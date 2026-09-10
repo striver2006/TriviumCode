@@ -18,9 +18,12 @@
 ## 当前已归档文件
 
 **综合设计文档**（三家 Agent 各自的完整设计，按 PRD FR-08 的 `日期-主题-角色` 规范命名）
-- [`2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md)：Driver-DualCritic 主攻双审流水线总体架构与详细设计（依据 PRD v1.3.0 与 5 份参考答卷 · Claude Code 方案）
+- [`2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md)：Driver-DualCritic 主攻双审流水线总体架构与详细设计（v1.1.0，依据 PRD v1.3.0 与 5 份参考答卷 · Claude Code 方案，已按审核意见 RV-01～RV-26 修订并附逐条应答）
 - [`2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md`](./2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md)：Driver-DualCritic 主攻双审流水线系统架构与详细设计规范（实施基准 · Gemini 架构师方案）
 - [`2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md`](./2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md)：Driver-DualCritic 主攻双审流水线总体架构与详细设计（HLD+LLD，v1.0.0 · 综合五份参考答卷与 PRD v1.3.0 的 GLM 裁决方案）
+
+**设计审核意见**
+- [`2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md)：对 claude 版综合设计的评审意见（参照 gemini / glm 两版，26 条意见，裁决为有条件通过，附 v1.1.0 修订清单与 PRD 回填项）
 
 **模板**
 - [`ADR_TEMPLATE.md`](./ADR_TEMPLATE.md)：架构决策记录编写模板

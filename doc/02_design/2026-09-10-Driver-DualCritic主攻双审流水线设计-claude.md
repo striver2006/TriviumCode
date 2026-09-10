@@ -3,8 +3,9 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`，遵循 PRD FR-08 的 `日期-主题-角色` 规范；角色后缀 `claude` 表示本文是主脑产出、**待双审**的文档
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.0.0
+> - **当前版本**：v1.1.0
 > - **状态**：评审中(In-Review)
+> - **审核依据**：[`2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md)（v1.1.0 按其 RV-01～RV-26 修订，逐条应答见第 22 章）
 > - **需求依据**：[PRD_driver_dual_critic.md](../01_requirements/PRD_driver_dual_critic.md) v1.3.0
 > - **参考方案**：[`reference/`](./reference/) 下 5 份多模型设计答卷（gemini / grok4.6 / dsv4flash / qwen3.8-flash / zcode）
 > - **外部调研截止**：2026-09-10（Antigravity CLI 官方文档与 CHANGELOG、Claude Code Hooks 官方文档、ZCode 官方文档与社区 bridge 实现）
@@ -16,7 +17,7 @@
 
 | 你是谁 | 建议阅读顺序 |
 | :--- | :--- |
-| 项目负责人 / 评审人 | 第 1 章 → 第 4 章 → 第 15 章（追溯矩阵）→ 第 18 章（待确认项） |
+| 项目负责人 / 评审人 | 第 1 章 → 第 4 章 → 第 15 章（追溯矩阵）→ 第 18 章（待确认项）→ 第 22 章（审核意见应答） |
 | 编排器开发者 | 第 3 章 → 第 5～7 章 → 第 9～12 章 → 第 16 章 |
 | Claude Code 侧（命令/Hook/协议）开发者 | 第 6.3 节 → 第 8 章 → 第 10 章 → 第 13 章 |
 | 测试与验收 | 第 12 章 → 第 15 章 → 第 17 章 |
@@ -44,7 +45,7 @@
 2. Antigravity 与 ZCode 必须以**厂商编程 Agent 运行时**执行审查（读仓库、工具循环、多步推理），并留下可核对的执行证据。
 3. 两位审查员**背靠背**并行，互相看不到对方产出；只读，不得改业务文件。
 4. 全过程以 Markdown 落盘到统一归档根的主题子目录，命名为 `YYYY-MM-DD-<主题>-{claude|gemini|glm}.md`。
-5. Driver 对每条意见逐条裁决（接受 / 不接受 / 暂缓 + 理由），裁决记录落盘。
+5. Driver 对每条意见逐条裁决（接受 / 驳回 / 暂缓 + 理由），裁决记录落盘。
 6. B/C/D 在裁决落盘后**停在人工审批**；A 一路跑到**真实执行**的编译测试。
 7. 可按任务分别指定两侧模型；默认与主脑异构；实际生效模型可核对。
 8. 预检失败即中止；单侧失败/超时不得伪装双审。
@@ -83,11 +84,11 @@
 | FR-02 走编程 Agent | 适配层直接拉起 `agy` / `zcode.cjs` 的 headless Agent 运行时，并强制采集工具轨迹作为证据 | 9.1～9.3、11.4 |
 | FR-03 审查对象 | 三个阶段（plan / code / bug）；「需求」并入 plan 与 code 的送审材料与审查镜头 | 7.2、9.4 |
 | FR-04/05/22 三套工件 | 归档规范固定四件套 / 三件套 / 四件套，命名与阶段目录强校验 | 第 6 章 |
-| FR-06 按任务指定模型 | 模型路由三级（配置 profile → 命令参数 → 生效值回填校验） | 第 11 章 |
+| FR-06 按任务指定模型 | 路由优先级四级（命令参数 → 主题覆盖 → profile → 阶段默认）+ ZCode 覆盖三档 + 生效值回读校验 | 第 11 章 |
 | FR-07 工作目录与可读范围 | 冻结镜像树（默认）/ 就地模式（可选），全库可读，仅屏蔽对方产出 | 10.1、10.2、18.1 |
 | FR-08/09 命名与归档 | `YYYY-MM-DD-<主题>[-r<N>][-revised\|-response]-<角色>.md`，主题子目录 + 阶段目录 | 6.2、6.3 |
 | FR-10 背靠背 | 独立进程、独立 HOME、独立冻结树、对方产出物理剔除、事后轨迹核验 | 第 10 章 |
-| FR-11 全流程顺序 | 命令 A 状态机 S1～S9 | 8.2 |
+| FR-11 全流程顺序 | 命令 A 状态机 S0～S10 | 8.2 |
 | FR-12 四条命令 | `/dual-run`、`/dual-review-plan`、`/dual-review-code`、`/dual-review-bug` | 第 7 章 |
 | FR-13/14 意见可裁决 + 逐条裁决 | `trivium.review.v1` 意见 schema + `trivium gate` 裁决完整性硬校验 | 6.5、6.6、8.6 |
 | FR-15 只读 | 三重保障：工具集裁剪 + 冻结树只读 + 前后指纹比对 | 10.3 |
@@ -112,15 +113,17 @@
 | 能力 | 事实 | 本设计用途 |
 | :--- | :--- | :--- |
 | Hook 事件 | 覆盖 `PreToolUse` / `PostToolUse` / `UserPromptSubmit` / `Stop` / `SubagentStop` / `SessionStart` / `SessionEnd` / `PermissionRequest` / `FileChanged` 等 | 闸门加锁、伪造检测、状态提示 |
-| matcher 语义 | `"*"`/省略=全匹配；纯字母数字与 `,`/`\|` 为精确或列表；其它字符按 JS 正则（非锚定） | `Edit\|Write\|MultiEdit\|NotebookEdit` 精确列表 |
+| matcher 语义 | `"*"`/省略=全匹配；纯字母数字与 `,`/`\|` 为精确或列表；其它字符按 JS 正则（非锚定） | `Edit\|Write\|NotebookEdit` 精确列表（当前内置工具清单中**不存在** `MultiEdit`，v1.1.0 已删除） |
 | `if` 条件 | 工具事件可用权限规则过滤，如 `"Bash(git *)"`、`"Edit(*.ts)"` | 精确拦截 `git commit`、业务路径写入 |
 | exit 2 | `PreToolUse` 阻断工具调用；`Stop` 阻止结束并让对话继续；`UserPromptSubmit` 阻断并清空提示 | 闸门与裁决完整性强制 |
-| JSON 输出 | `hookSpecificOutput` 支持 `permissionDecision`(allow/deny) + `permissionDecisionReason`、`systemMessage`、`additionalContext`、`stopReason`、`updatedInput` | 拒绝写入时把原因喂回 Driver |
+| Stop 阻断硬上限 | Stop hook 连续阻断 **8 次**后被 Claude Code 覆盖，可用环境变量 `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` 调整 | 本设计自设每阶段 2 次上限（8.5），两层保护 |
+| JSON 输出 | `hookSpecificOutput` 支持 `permissionDecision`(allow/deny/ask) + `permissionDecisionReason`、`additionalContext`、`updatedInput`；顶层字段 `systemMessage`、`continue` + `stopReason`（后者仅与 `continue: false` 配对）。**`Stop` 事件阻止收工用顶层 `{"decision":"block","reason":"…"}` 或 exit 2 + stderr**，不用 `stopReason` | 拒绝写入时把原因喂回 Driver；`hook-stop` 用 `decision: block` |
 | Handler 字段 | `type`(command/http/mcp_tool/prompt/agent)、`timeout`（command 默认 600s）、`statusMessage`（自定义等待提示） | 长时双审的等待可见性 |
 | 异步 | `async: true` 后台执行不阻塞；`asyncRewake: true` 在 exit 2 时唤醒 Claude；`async` 下 `timeout` 不生效 | 一期**不用**异步（见 4.4 决策 AD-03） |
 | 路径占位符 | `${CLAUDE_PROJECT_DIR}`、`${CLAUDE_PLUGIN_ROOT}` | Hook 命令写相对项目根的稳定路径 |
 | 作用域 | `~/.claude/settings.json`（全局）、`.claude/settings.json`（项目，可共享）、`.claude/settings.local.json`（本地） | 项目级注入，可随仓库分发 |
-| 自定义命令 | `.claude/commands/<name>.md`，frontmatter 支持 `description` / `argument-hint` / `allowed-tools`，正文用 `$ARGUMENTS` 接收命令后文本 | 四条 `/` 命令的实现载体 |
+| 自定义命令 | `.claude/commands/<name>.md`，frontmatter 支持 `description` / `argument-hint` / `allowed-tools`，正文用 `$ARGUMENTS` 接收命令后文本。**官方已将 `commands/` 标为 legacy，当前标准为 `.claude/skills/<name>/SKILL.md`**（两者并存、均可 `/` 调用） | 一期以 `commands/` 为载体（AD-13），`init` 预留 skills 目录，二期迁移 |
+| **Bash 工具超时** | Driver 通过 Bash 工具执行外部命令时受工具级超时约束（默认约 2 分钟，可用 `BASH_DEFAULT_TIMEOUT_MS` / `BASH_MAX_TIMEOUT_MS` 调整，上限约 10 分钟量级）；心跳输出**不能**延长该超时 | 双审单侧上限 900～1200s 远超此值，因此 `trivium review` 必须拆为 `--start` / `--wait` 分段调用（AD-03、7.5） |
 
 > 说明：VS Code 扩展与 CLI 共享 `~/.claude` 配置与 Hook 生效范围，因此「插件形态为唯一入口」（NFR-01）与 Hook 机制不冲突。
 
@@ -168,7 +171,8 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 | 项目公约 | 读 `AGENTS.md`，不把 `CLAUDE.md` 当运行时指令 | 参考方案 · 中 |
 
 **结论与对策**：
-- 模型路由采取**三级降级**：`ZCODE_MODEL` 环境变量 → 每次运行独立 config 副本（`ZCODE_HOME`/`--config`，若支持）→ 全局默认。无论走哪级，**生效模型一律从运行产物/会话日志回读**，不信配置意图（AC-13）。
+- 模型覆盖采取**三档降级**：`ZCODE_MODEL` 环境变量 → 每次运行独立 config 副本（`ZCODE_HOME`/`--config`，若支持）→ 全局默认。无论走哪档，**生效模型一律从运行产物/会话日志回读**，不信配置意图（AC-13）；回读不到时记 `model_effective: unverified`，不采信请求值。
+- 模型 ID 的大小写（`GLM-5.3` 与 `glm-5.3`）以 `zcode.model_override` 探针回读的规范写法为准，本文示例统一使用探针返回值。
 - 工具轨迹：`--json` 的 `eventCount` 不足以证明 Agent 行为；一期从会话日志（`~/.zcode/**/rollout/*.jsonl` 或 `log/*.jsonl`，探针钉死路径）提取读文件次数；二期改用 `app-server` 的 `session/subscribe` 事件流。
 
 ### 3.4 明确否决的实现路径
@@ -192,6 +196,9 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 | `agy.headless_read_ok` | 在临时目录跑一次「读取指定文件并回显首行」的最小任务，检查 `stream-json` 中是否出现读文件工具事件 | 判定 issue #548 是否影响本机；若不通过则记录 `agy.needs_pty=true` 或转 `--add-dir` 预授权方案，仍不通过则该侧不可用 |
 | `agy.json_schema_ok` | `--json-schema` 强制输出可解析为目标 schema | 降级为提示词约定 + 宽松解析 |
 | `agy.pty_required` | 管道下 stdout 是否为空但 exit 0；是则启用 `script -q /dev/null` 伪终端包装重试 | 记录到 probe |
+| `agy.home_isolation` | 依次实测：①独立 `HOME` + 拷入凭据/Agent 定义；②共享 `HOME` + 工作区级 Agent 定义（`.agents/agents/`）+ 独立 settings 路径（若 CLI 支持）；③共享 `HOME` 仅靠环境变量覆盖。记录**首个可用**方案为 `agy.isolation: home_copy\|shared_home_ws_agent\|shared_home_env` | 三者皆不可用则该侧不可用 |
+| `zcode.home_isolation` | 同上：独立 `HOME`（含 `~/.zcode` 凭据拷贝）/ `ZCODE_HOME` / 共享 `HOME`；同时确认该方案下 `zcode.trace_source` 路径 | 记录 `zcode.isolation` |
+| `isolation.cost` | 在目标仓库实测 `mirror` 构树耗时与磁盘占用，以及 `mirror` / `in-place` 两种模式下审查耗时与 `tool_calls` 差异 | 供 ADR-001 拍板（10.2、18.1） |
 | `zcode.node` / `zcode.entry` | 候选路径探测 + `version` 输出 | 预检失败 |
 | `zcode.readonly_flags` | 依次实测 `--mode plan`、`--disallowed-tools`、`--allowed-tools`，记录**实际被接受**的组合 | 只读不可保障则该侧不可用 |
 | `zcode.model_override` | 实测 `ZCODE_MODEL` / 独立 config / 全局默认三级中哪一级生效，记录 `env\|config_copy\|global` | 决定第 11.2 节路由实现 |
@@ -315,18 +322,19 @@ sequenceDiagram
 
 | # | 决策 | 备选 | 取舍理由 |
 | :--- | :--- | :--- | :--- |
-| **AD-01** | **编排器 = 本地一次性 CLI（`trivium`），由斜杠命令调用** | ①Claude 在对话里直接 shell 串两家 CLI；②常驻监视器 Daemon；③MCP Server | ① 超时/并行/PTY/隔离逻辑会污染主脑上下文，且模型可能「忘记」步骤，违反 P1；② 违反 PRD Non-Goal；③ 增加一层不必要的协议且 VS Code 扩展侧 stdio MCP 有被静默关闭的历史。CLI 同时满足「`/` 命令为唯一入口」与「确定性编排」 |
+| **AD-01** | **编排器 = 本地一次性 CLI（`trivium`），由斜杠命令调用** | ①Claude 在对话里直接 shell 串两家 CLI；②常驻监视器 Daemon；③MCP Server | ① 超时/并行/PTY/隔离逻辑会污染主脑上下文，且模型可能「忘记」步骤，违反 P1；② 违反 PRD Non-Goal；③ 增加一层不必要的协议，且社区反馈 VS Code 扩展侧 stdio MCP 曾出现被静默关闭的情况（转引自 grok4.6 答卷，无一手来源，置信度中；MCP 形态列为二期演进）。CLI 同时满足「`/` 命令为唯一入口」与「确定性编排」 |
 | **AD-02** | **归档根 = `.reviews/`** | `.dualcritic/`、`docs/agent-reviews/`、`.ddc/` | 本仓库已存在 `.reviews/` 且 `.env.example` 已定义 `REVIEW_ARTIFACTS_DIR=.reviews`；PRD 允许配置，沿用可减少一次迁移 |
-| **AD-03** | **双审调用为同步阻塞，不用 async Hook** | Stop Hook + `async:true/asyncRewake:true` 后台审查（zcode 参考方案） | 同步才能保证「命令返回时工件已齐」，闸门语义清晰；异步唤醒会与 B/C/D 的人工停点语义打架。等待可见性用 `statusMessage` + 编排器心跳输出解决 |
+| **AD-03** | **双审为「派生 + 分段等待」：`trivium review --start` 立即返回 `run_id`，命令模板循环调用 `review --wait <run_id> --timeout <s>` 直到完成；不用 async Hook** | ①单次同步阻塞调用；②Stop Hook + `async:true/asyncRewake:true` 后台审查（zcode 参考方案） | ① Driver 的 Bash 工具有工具级超时（3.1），单侧 900～1200s + 重试的同步调用必然被杀，心跳无法延长；② 异步唤醒会与 B/C/D 的人工停点语义打架。派生的工作子进程在两侧回收完成后即退出，不是常驻 Daemon；`--wait` 每次不超过 Bash 工具超时（默认 540s），返回专用退出码表示「仍在运行」。命令返回给 Driver 时工件已齐的语义由 `--wait` 的最终成功返回保证（7.5） |
 | **AD-04** | **触发方式 = 显式斜杠命令为主，Hook 只做护栏** | `PostToolUse(Write)` 自动交单、`PreToolUse(ExitPlanMode)` 计划闸门 | PRD 第 8 章规定四条命令的意图/输入/停点，且 B/C/D **必须**带提示语；自动交单无法获得提示语，且会在无关写入上误触发。Hook 用于：闸门期禁止业务写、禁止伪造审查文件、未完成裁决时阻止收工 |
-| **AD-05** | **隔离 = 冻结镜像树（默认 `mirror`）** | 就地在项目根跑 + 提示词约束 | 同一主题重跑时，历史 `*-gemini.md` / `*-glm.md` 已在仓库中，就地模式下 AC-04（可读范围不得包含对方产出）无法机械保证。镜像树可物理剔除对方产出，同时保留全库可读。保留 `in-place` 模式供严格按 FR-07 字面执行时选用（见 18.1） |
+| **AD-05** | **隔离模式二选一，默认 `mirror`（冻结镜像树），`in-place`（项目根就地）为完整规格化备选；默认值以独立 `ADR_001_isolation_mode.md` 立项，状态 Proposed，待 PRD FR-07 回填后 Accepted** | 仅 `in-place` + 提示词约束 | `mirror` 的收益：同一主题重跑时历史 `*-gemini.md` / `*-glm.md` 可被物理剔除，AC-04 机械成立。`mirror` 的代价（v1.1.0 补记）：镜像树不含 `.git`，审查员失去 `git log/blame`；构树尊重 `.gitignore`，被忽略的依赖目录缺席（需 `link_globs` 带入）；大仓库双份拷贝的时间与磁盘成本。`in-place` 与 PRD FR-07 字面一致、能力无损，但对方历史产出只能靠第 ④ 道轨迹核验**事后检出**（非事前阻断），strict 下检出即停。M0 用 `isolation.cost` 探针实测后拍板（10.2、18.1） |
 | **AD-06** | **只读 = 工具白名单/黑名单 + 只读目录 + 前后指纹三重** | 仅提示词约束 | 提示词可被绕过；三重叠加使「审查员改代码」成为可检出且可阻断的事件（FR-15 / AC-08） |
 | **AD-07** | **禁用 `--dangerously-skip-permissions`** | 用它避免 headless 挂起 | 它会连写工具一起放行，与只读要求正面冲突。挂起问题改用「自定义只读 Agent + 预授权只读工具 + 伪终端兜底 + 轨迹下限校验」解决 |
 | **AD-08** | **结构化输出 = `agy --json-schema` + zcode 提示词约定同一 schema；解析失败降级留原文** | 只收自由文本 | 结构化才能做严重度聚合、逐条裁决校验与统计；降级路径保证鲁棒（该侧标 `parse_fallback`，不参与阻断判定） |
 | **AD-09** | **失败策略默认 `strict`（阻塞中止）** | 默认 `degrade` | PRD 要求两种都支持、默认留给设计。默认严格更贴合「不得假双审」的整体立场；降级需项目配置或 `--allow-single` 显式开启，且必须写入降级标记与原因 |
 | **AD-10** | **阶段目录 `plan/` `code/` `bug/` `verify/`** | 全部平铺 + 文件名区分 | PRD 6.2 明确要求避免 `*-claude.md` 互相覆盖，`bug/` 为命令 D 必选 |
 | **AD-11** | **重跑 = 主题字段追加 `-r<N>`，绝不覆盖** | 覆盖旧件 / 移入 archive 子目录 | FR-25 要求既有工件无论是否已审批都不得覆盖；追加后缀保持命名规则不变，且 `ls` 即时间线 |
-| **AD-12** | **实现语言 = Python 3.11+ 标准库为主** | Bash / Node / Go | 目标项目语言不确定，不应强加 Node 工具链；macOS 自带 python3；JSON/子进程/哈希/路径处理均在标准库内；Bash 在并行+超时+JSON 解析上易碎 |
+| **AD-12** | **实现语言 = Python 3.9+ 标准库为主（解释器绝对路径由 `doctor` 探测并写入 `config.local.yaml`）** | Bash / Node / Go | 目标项目语言不确定，不应强加 Node 工具链；macOS 自带 python3（版本随系统而异，故下限取 3.9 而非 3.11）；JSON/子进程/哈希/路径处理均在标准库内；Bash 在并行+超时+JSON 解析上易碎 |
+| **AD-13** | **四条命令一期以 `.claude/commands/*.md` 为载体，`init` 同时预留 `.claude/skills/dual-critic/` 目录，二期迁移为 skills 主载体、commands 作别名** | 一期直接用 skills | 官方已把 `commands/` 标为 legacy、skills 为当前标准（3.1），但两者并存且 `$ARGUMENTS` / `allowed-tools` 语义一致；一期沿用 commands 可复用 gemini/glm 版与本文全部命令模板，降低 M2 风险；迁移成本仅为搬目录 |
 
 ---
 
@@ -372,13 +380,14 @@ TriviumCode/
 │   ├── commands/                     # → 安装到目标项目 .claude/commands/
 │   │   ├── dual-run.md  dual-review-plan.md
 │   │   ├── dual-review-code.md  dual-review-bug.md
-│   │   ├── dual-approve.md  dual-status.md
+│   │   ├── dual-approve.md  dual-abandon.md  dual-status.md
 │   ├── hooks/hooks.json              # → 合并进 .claude/settings.json
 │   ├── prompts/{plan,code,bug}-review.md   # 审查提示词模板（中文）
 │   ├── lenses.yaml                   # 两侧差异化审查镜头
 │   ├── agents/trivium-critic.md      # Antigravity 自定义只读审查 Agent 定义
 │   ├── templates/                    # 计划/根因/裁决/应答/验证 文档模板
 │   └── protocol/CLAUDE.md.snippet    # 注入目标项目 CLAUDE.md 的协议片段
+│   └── gitignore.snippet             # 注入目标项目 .gitignore 的规则片段（5.3）
 ├── install.sh                        # macOS 安装器（拷贝 + 注入 + doctor 自检）
 └── doc/                              # 本文档所在处
 ```
@@ -408,7 +417,10 @@ TriviumCode/
 └── CLAUDE.md                         # 含 TriviumCode 协议片段
 ```
 
-> `.gitignore` 需追加：`.trivium/run/`、`.trivium/logs/`、`.trivium/state.json`、`.trivium/config.local.yaml`、`.trivium/bin/`。
+> **`.gitignore` 规则（由 `trivium init` 幂等写入，见 `assets/gitignore.snippet`）**：
+> - 追加：`.trivium/run/`、`.trivium/logs/`、`.trivium/state.json`、`.trivium/lock/`、`.trivium/config.local.yaml`、`.trivium/bin/`；
+> - **本仓库现有 `.gitignore` 整体忽略 `.claude/`，会把随仓库分发的 `commands/` 与 `settings.json` 一并忽略**（审核意见 RV-06）。须改为白名单写法：`.claude/*`、`!.claude/commands/`、`!.claude/skills/`、`!.claude/settings.json`（`settings.local.json` 继续忽略）；`init` 检测到整体忽略规则时提示并改写；
+> - 现有 `logs/`、`*.log`、`*.local` 规则与上述条目的关系：`logs/` 会同时命中 `.trivium/logs/`（期望行为）；`*.local` 不会命中 `config.local.yaml`。
 >
 > **安装位置**：编排器本体安装在 `~/.trivium/`（全局，一次安装多项目复用），目标项目内只保留 `.trivium/bin/trivium` 符号链接与配置/运行时目录。这样 Hook 命令行路径稳定，且未执行过 `trivium init` 的项目里所有 Hook 一律 no-op（见 8.5）。
 
@@ -424,6 +436,7 @@ TriviumCode/
 - 主题子目录：`.reviews/<主题>/`。主题名规则：
   - 允许中英文、数字、`-`、`_`、`.`；长度 1～64；
   - **禁止**路径分隔符 `/`、`\`，禁止 `..`，禁止前导 `.`，禁止控制字符与空格（空格自动转 `-`）；
+  - **保留后缀**：主题不得以 `-r<数字>`、`-revised`、`-response`、`-verify` 结尾（否则文件名解析器无法区分「主题 release 第 2 轮」与「主题 release-r2 首轮」）；`topic --propose` 拒绝并给出修正建议；
   - 命令显式指定时以指定值为准；缺省时由 Driver 依任务目标推导候选，经 `trivium topic --propose` 校验后确定，并在命令输出中回显（PRD 第 8 章）。
 - 阶段目录：`plan/`、`code/`、`bug/`、`verify/`。命令 D 执行后 `bug/` 必须存在（AC-15）。
 
@@ -505,7 +518,7 @@ TriviumCode/
 
 | 类别 | 规则 | 是否可跳过 |
 | :--- | :--- | :--- |
-| 文档/注释/格式 | 匹配 `skip_globs`（默认 `**/*.md`、`docs/**`、`**/*.txt`）且 diff 中无非注释代码行变化 | 配置 `skip_doc_only_review: true` 时可跳过 |
+| 文档/注释/格式 | diff 涉及的**全部**路径匹配 `skip_globs`（默认 `**/*.md`、`docs/**`、`**/*.txt`）且不命中 `never_skip_globs`。一期只做路径判定；「仅注释/格式变化」需语言感知，列为二期 | 配置 `skip_doc_only_review: true` 时可跳过 |
 | 业务代码 | 其余源码路径 | **不可** |
 | 依赖清单 | `package.json` / `pubspec.yaml` / `Cargo.toml` / `requirements*.txt` 等（**锁文件除外**） | **不可** |
 | CI 与权限 | `.github/**`、`.gitlab-ci.yml`、`Dockerfile`、`.claude/**`、`.trivium/**`、权限/密钥相关文件 | **不可** |
@@ -564,7 +577,7 @@ blind: true
 started_at: 2026-09-10T14:23:10+08:00
 finished_at: 2026-09-10T14:31:02+08:00
 duration_s: 472
-tool_calls: {read: 27, grep: 9, run_command: 2}
+tool_calls: {read: 27, grep: 9, run_command: 2}   # run_command 仅统计只读命令白名单内的调用（10.3）
 evidence_ok: true          # 工具轨迹是否达到下限（AC-05）
 verdict: request-changes
 findings_count: {blocker: 1, major: 2, minor: 4, nit: 6}
@@ -596,18 +609,19 @@ addresses:               # 本件应答的两份审查文档
 | 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 落点 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | AGY-01 | gemini | blocker | 接受 | 确认存在；计划 §3 未覆盖并发回滚 | 修订计划 §3.2 新增补偿事务步骤 |
-| GLM-03 | glm | major | 不接受 | 该分支在 §配置校验 已被上游拒绝，证据 `src/x.ts:31` | 不改 |
+| GLM-03 | glm | major | 驳回 | 该分支在 §配置校验 已被上游拒绝，证据 `src/x.ts:31` | 不改 |
 | AGY-04 | gemini | minor | 暂缓 | 需等依赖库 2.x 升级；已记入遗留风险 | 遗留风险 §5 |
 
 硬规则（`gate` 强制）：
 
 1. 两份审查文档中出现的**每一个 `id`** 必须在表中出现且仅出现一次（缺 id → 失败；多余 id → 失败）。
-2. `裁决 ∈ {接受, 不接受, 暂缓}`；`暂缓` 仅在 `gate.allow_defer: true` 时合法（FR-14）。
+2. `裁决 ∈ {接受, 驳回, 暂缓}`（与 PRD FR-14 措辞一致）；`gate` 把「不接受」归一化为「驳回」后接受；`暂缓` 仅在 `gate.allow_defer: true` 时合法（FR-14）。
 3. 三种裁决**都**必须有非空「理由」。
 4. `接受` 必须有非空「落点」（计划/根因阶段指向修订件章节；代码阶段指向文件或修改计划）。
-5. `不接受` / `暂缓` 的理由中若出现空洞措辞（默认词表：「无需修改」「不适用」「已知悉」且无其它内容），判为无效理由并失败。
-6. 计划/根因阶段：即使全部意见都不接受，也必须产出修订件，并在正文写明「无修改及原因」（对齐 PRD 第 8 章「不得丢弃原稿重写」）。
-7. 双方**都**提出的同一条 `blocker`（`location` 指向同一处或文本相似度超阈值）不允许直接 `不接受`：必须 `接受` 或走人工仲裁并在 `task.json` 记 `disputed: true`。
+5. `驳回` / `暂缓` 的理由中若**仅**包含空洞措辞（默认词表：「无需修改」「不适用」「已知悉」且无其它内容），按 `gate.reason_policy` 处理：`warn`（默认）输出警告并在 `run.json` 记 `weak_reasons[]`；`hard` 判为失败。
+6. 计划/根因阶段：即使全部意见都驳回，也必须产出修订件，并在正文写明「无修改及原因」（对齐 PRD 第 8 章「不得丢弃原稿重写」）。
+7. 双方**都**提出的同一条 `blocker`（`location` 精确相同，或文本相似度超阈值）被 `驳回` 时，按 `gate.joint_blocker_policy` 处理：`warn`（默认）输出 `joint_blocker_rejected` 警告，要求理由非空并在 `task.json` 记 `disputed: true`，不阻断；`hard` 仅在 `location` 精确相同时判为失败（相似度判定永远只到 warning，避免启发式误判卡死闸门）。
+8. `parse_fallback` 侧（AD-08）的原文意见同样必须逐条进入裁决表：Driver 自行按 `<前缀>-F<序号>` 编号并标 `来源: fallback`；`gate` 对该侧只校验「每条被编号的意见均有裁决与理由」，不参与 `block_severities` 阻断判定。
 
 ### 6.7 运行元数据 schema（`trivium.run.v1`，对应 NFR-05 / FR-24）
 
@@ -646,11 +660,12 @@ addresses:               # 本件应答的两份审查文档
 
 | 斜杠命令 | PRD 语义 | 前置条件 | 必选输入 | 可选输入 | 自动执行到 | 停点 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `/dual-run` | 命令 A · 全流程 | 已给出任务目标 | 任务目标（可由对话上下文提供） | `--topic`、`--model-gemini`、`--model-glm`、`--profile`、提示语 | 计划双审 → 修订 → 编码 → 代码双审 → 应答 → 改码 → **编译测试** | 编译测试结束（成败均留痕） |
+| `/dual-run` | 命令 A · 全流程 | 已给出任务目标 | 任务目标（`$ARGUMENTS` 中除具名参数外的正文，可由对话上下文提供） | `--topic`、`--model-gemini`、`--model-glm`、`--profile`、`--focus <提示语>`（显式具名，避免与任务目标混淆） | 计划双审 → 修订 → 编码 → 代码双审 → 应答 → 改码 → **编译测试** | 编译测试结束（成败均留痕） |
 | `/dual-review-plan` | 命令 B · 计划审 | 原始计划已存在 | **提示语** | `--topic`、两侧模型、`--plan-file` | 双审 → 修订计划 | **等待人工审批** |
 | `/dual-review-code` | 命令 C · 代码审 | 待审代码已存在 | **提示语** | `--topic`、两侧模型、`--base <ref>` | 双审 → 应答（确认修改方案） | **等待人工审批** |
 | `/dual-review-bug` | 命令 D · 根因审 | 根因材料已存在 | **提示语** | `--topic`、两侧模型、`--rca-file` | 双审 → 修订根因结论 | **等待人工审批** |
-| `/dual-approve` | 辅助 · 人工审批 | 存在 `awaiting_approval` 闸门 | `--topic --stage` | `--reject --reason` | 记录审批并解除写锁 | — |
+| `/dual-approve` | 辅助 · 人工审批 | 存在 `awaiting_approval` 闸门 | `--topic --stage` | `--reject --reason` | 记录审批结论；通过或拒绝**均解除业务写锁**，拒绝时状态置 `rejected` 并保留全部工件 | — |
+| `/dual-abandon` | 辅助 · 放弃闸门 | 存在未关闭闸门 | `--topic` | `--reason` | 记录放弃、解除写锁、状态置 `abandoned`；工件保留 | — |
 | `/dual-status` | 辅助 · 状态查询 | — | — | `--topic` | 打印闸门、运行、降级与争议 | — |
 
 命令字符串沿用 PRD 第 11.2 节给出的候选拼写。安装器可选注册简写别名（`/dr`、`/drp`、`/drc`、`/drb`），语义不变。
@@ -676,7 +691,7 @@ addresses:               # 本件应答的两份审查文档
 | 主题名非法 | 报错并给出修正建议，退出码 `64` | PRD 第 8 章 |
 | 归档根不可写 / 非 git 仓库 | 报错，退出码 `69` | — |
 
-退出码约定：`0` 成功；`1` 一般失败；`2` 闸门阻断（供 Hook 使用）；`64` 参数错误；`65` 前置产物缺失；`69` 环境/预检失败；`75` 超时或单侧失败且为严格模式。
+退出码约定：`0` 成功；`1` 一般失败；`2` 闸门阻断（供 Hook 使用，Hook 子命令以 wrapper 保证只返回 `0`/`2`，内部异常一律 `1`）；`64` 参数错误；`65` 前置产物缺失；`69` 环境/预检失败；`70` 同主题已有运行持锁（12.6）；`73` 运行仍在进行（仅 `review --wait`）；`75` 超时或单侧失败且为严格模式。
 
 ### 7.4 斜杠命令文件的结构（`.claude/commands/dual-review-plan.md`）
 
@@ -686,24 +701,41 @@ addresses:               # 本件应答的两份审查文档
 ---
 description: 对已有计划做 Antigravity + ZCode 背靠背双审，并产出逐条裁决的修订计划
 argument-hint: <审查焦点提示语> [--topic <主题>] [--model-gemini <slug>] [--model-glm <id>]
-allowed-tools: Bash(trivium:*), Read, Write, Edit, Glob, Grep
+allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 ---
 
 参数：$ARGUMENTS
 
-执行契约（必须严格按序，不得跳步、不得自行调用 agy 或 zcode）：
-1. 运行 `trivium preflight --stage plan --json`。失败则原样转述错误并停止。
-2. 运行 `trivium topic resolve --stage plan --args "$ARGUMENTS" --json` 获得主题、原始计划路径与 run 上下文；
+执行契约（必须严格按序，不得跳步、不得自行调用 agy 或 zcode；下文 `TV` 指 `.trivium/bin/trivium`，
+一律用该项目相对路径，不依赖 PATH，见 10.5）：
+1. 运行 `TV preflight --stage plan --json`。失败则原样转述错误并停止。
+2. 运行 `TV topic resolve --stage plan --args "$ARGUMENTS" --json` 获得主题、原始计划路径与 run 上下文；
    若提示语为空则停止并说明「命令 B 必须带提示语」。
-3. 运行 `trivium review --stage plan --run-context <ctx> --json`；该命令会冻结送审包、并行双审、落盘两份审查文档与元数据。
+3. 运行 `TV review --stage plan --run-context <ctx> --start --json`，得到 `run_id`（该命令冻结送审包、派生工作进程并立即返回）。
+   然后循环运行 `TV review --wait <run_id> --timeout 540 --json`：退出码 `73` 表示仍在运行，打印其输出的进度摘要后继续等待；
+   退出码 `0` 表示两份审查文档与元数据已落盘；其它退出码按原样转述并停止。循环次数上限由输出中的 `max_waits` 给出（7.5）。
 4. 用 Read **完整读取**两份审查文档（禁止只读摘要段）。
 5. 依据 `trivium.disposition.v1` 写出修订计划 `…-revised-claude.md`：逐条列出每个意见编号的裁决与理由，接受项写明落点。
-6. 运行 `trivium gate --stage plan --check --json`；若返回缺失编号，补齐后重跑本步，直至通过。
-7. 运行 `trivium gate --stage plan --await-approval`，向用户输出停点说明与三份文档路径，然后**停止**，
+6. 运行 `TV gate --stage plan --check --json`；若返回缺失编号，补齐后重跑本步；最多重试 `max_check_retries`（默认 3）次，
+   仍不通过则向用户说明缺口并停止求助。
+7. 运行 `TV gate --stage plan --await-approval`，向用户输出停点说明与三份文档路径，然后**停止**，
    不得开始编写或修改任何业务代码。
 ```
 
 `dual-run.md`、`dual-review-code.md`、`dual-review-bug.md` 结构同构，差异仅在阶段、被审对象与停点（见第 8 章）。
+
+### 7.5 长时调用协议（`review --start` / `--wait`）
+
+审查单侧上限 900～1200s、可重试一次，一次运行的墙钟时间可达 30～40 分钟，远超 Driver 的 Bash 工具超时（3.1）。因此 `trivium review` 不做单次同步阻塞（AD-03），而按下表分段：
+
+| 子命令 | 行为 | 返回 |
+| :--- | :--- | :--- |
+| `review --start` | 预检通过后：冻结送审包 → 写 `run.json`（`status: running`）→ 以 `setsid`/双 fork 派生工作进程（真并行拉起两侧、回收、解析、落盘全部在该进程内完成，完成即退出）→ **立即返回** | `0` + `run_id`、`max_waits`（= ceil(总上限 / timeout) + 2） |
+| `review --wait <run_id> --timeout <s>` | 轮询 `.trivium/run/<run_id>/status.json`，最多等待 `<s>` 秒（默认 540，须小于 Bash 工具超时） | `0` 完成且工件已落盘；`73` 仍在运行（stdout 给出两侧状态、已用时、心跳时间）；`75` 严格模式单侧失败；其余同 7.3 |
+| `review --status <run_id>` | 只读一次状态，不等待 | 同上 |
+| `review --cancel <run_id>` | 向工作进程发 SIGTERM → SIGKILL，标 `cancelled` | `0` |
+
+约束：① 工作进程写 `status.json` 心跳（每 30s），`--wait` 发现心跳超过 `heartbeat_stale_s`（默认 120s）未更新且进程不存在时判 `failed(worker_lost)`；② 工作进程生命周期等于一次运行，不监听、不接受新任务，因此不是 PRD Non-Goal 所指的常驻 Daemon；③ `hook-session-start` 若发现 `running` 状态的运行，以 `additionalContext` 提醒 Driver 先 `--wait`；④ `run.json` 的 `command` 字段记录是否经 `--start/--wait` 完成，便于审计。
 
 ---
 
@@ -717,9 +749,9 @@ allowed-tools: Bash(trivium:*), Read, Write, Edit, Glob, Grep
 | :--- | :--- | :--- |
 | 探针结论存在且未过期 | `probe.generated_at` 在 `probe_ttl_days`（默认 7）内，且 CLI 版本未变 | 自动触发一次 `doctor`；仍失败则中止 |
 | Antigravity 可调用 | `agy --version` 成功 | 中止 |
-| Antigravity 已认证 | 最小 headless 探活任务返回 `status: SUCCESS` | 中止（提示先交互登录一次） |
+| Antigravity 已认证 | 最小 headless 探活任务返回 `status: SUCCESS`；结论带短 TTL 缓存（`preflight.auth_cache_ttl_h`，默认 1h，写 `config.local.yaml` 的 `probe.auth.agy_checked_at`），TTL 内跳过探活以省时省配额 | 中止（提示先交互登录一次） |
 | ZCode 可调用 | `node <entry> version` 成功 | 中止 |
-| ZCode 已认证 | 最小 headless 探活任务返回非鉴权错误 | 中止（提示凭据格式 `<id>.<secret>`） |
+| ZCode 已认证 | 最小 headless 探活任务返回非鉴权错误；同样带 TTL 缓存 | 中止（提示凭据格式 `<id>.<secret>`） |
 | 模型 slug 合法 | 在 `agy models` / ZCode 模型目录内 | 中止并列出可用值 |
 | 只读能力可用 | `probe.zcode.readonly_flags` 非空、`trivium-critic` Agent 定义存在 | 中止 |
 | 归档与 git | 归档根可写、`git rev-parse` 成功、工作区可快照 | 中止 |
@@ -759,7 +791,7 @@ stateDiagram-v2
 | S4 | `trivium gate --stage plan --check` | 通过/缺口清单 | 不通过时把缺失编号回喂 Driver |
 | S5 | Driver | 业务代码变更 | 唯一写代码者 |
 | S6 | `trivium review --stage code` | 两份审查文档 + `_meta/changes.diff` | diff 冻结见 9.2；纯文档 diff 按 6.4 判定 |
-| S7 | Driver | `code/…-response-claude.md` | 逐条「接受/不接受/暂缓 + 理由 + 修改计划」 |
+| S7 | Driver | `code/…-response-claude.md` | 逐条「接受/驳回/暂缓 + 理由 + 修改计划」 |
 | S8 | `trivium gate --stage code --check` | 同 S4 | — |
 | S9 | Driver | 代码修改 | 仅按已接受项修改 |
 | S10 | `trivium verify` | `verify/<日期>-<主题>-verify.md` + JSON | **真实执行**，失败则全流程状态为 `failed`（AC-10） |
@@ -788,12 +820,13 @@ stateDiagram-v2
 1. **状态层**：`trivium gate --await-approval` 在 `.trivium/state.json` 与 `task.json` 写入
    `{"topic":…, "stage":…, "state":"awaiting_approval", "since":…, "run_id":…}`。
 2. **提示层**：命令模板要求 Driver 输出统一停点话术（三份文档路径 + 审批方式 + 拒绝方式），然后结束回合。
-3. **强制层（Hook）**：`PreToolUse` 匹配 `Edit|Write|MultiEdit|NotebookEdit`，调用 `trivium gate hook-pre-write`：
-   - 若当前主题处于 `awaiting_approval` 且目标路径**不在**归档根内 → 返回 `permissionDecision: "deny"`，`permissionDecisionReason` 说明「B/C/D 闸门未审批，禁止修改业务文件；请先 `/dual-approve`」。
-   - 若目标路径以 `-gemini.md` / `-glm.md` 结尾 → 一律 `deny`（主脑不得伪造审查文件，PRD 6.3）。
+3. **强制层（Hook）**：`PreToolUse` 匹配 `Edit|Write|NotebookEdit`，调用 `trivium gate hook-pre-write`：
+   - 若存在**本会话**触发的 `awaiting_approval` 闸门（`state.json` 记录触发时的 `session_id`，与 Hook 输入的 `session_id` 比对）、闸门未超过 `gate.approval_lock_ttl_h`（默认 24h），且目标路径**不在**归档根内 → 返回 `permissionDecision: "deny"`，`permissionDecisionReason` 说明「B/C/D 闸门未审批，禁止修改业务文件；请先 `/dual-approve`，或 `/dual-abandon` 放弃」。
+   - 其它会话的闸门、或已过 TTL 的闸门：**不加锁**，仅由 `hook-session-start` 以 `additionalContext` 提醒（PRD 4.4 第 3 条约束的是流水线不得自动继续，不是开发者在同一仓库的其它编辑；审核意见 RV-05）。
+   - 若目标路径以 `-gemini.md` / `-glm.md` 结尾 → 一律 `deny`（主脑不得伪造审查文件，PRD 6.3；该规则不受会话与 TTL 限制）。
    - 其它情况返回 exit 0（不干预正常权限流）。
 
-**解除方式**：开发者执行 `/dual-approve --topic X --stage plan`（或 `--reject --reason …`）。审批结果写入 `task.json` 的 `approvals[]`（含时间、结论、理由），状态切换为 `approved` / `rejected`。拒绝时保留全部已有工件（PRD 第 10 章）。
+**解除方式**：开发者执行 `/dual-approve --topic X --stage plan`（或 `--reject --reason …`）或 `/dual-abandon --topic X`。审批结果写入 `task.json` 的 `approvals[]`（含时间、结论、理由），状态切换为 `approved` / `rejected` / `abandoned`；三种结论**均解除业务写锁**。拒绝或放弃时保留全部已有工件（PRD 第 10 章）；拒绝后 Driver 可按开发者意见改写 `.reviews/` 内的修订件（重跑 `gate --check`），但流水线不得自动进入编码/改码/修复，该约束由命令模板与 `hook-stop` 承担。
 
 ### 8.5 Hook 配置（注入目标项目 `.claude/settings.json`）
 
@@ -802,7 +835,7 @@ stateDiagram-v2
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "matcher": "Edit|Write|NotebookEdit",
         "hooks": [
           { "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium gate hook-pre-write",
@@ -847,17 +880,18 @@ Hook 行为约定：
 | :--- | :--- | :--- |
 | `hook-pre-write` | 每次文件写入前 | 见 8.4。安全兜底：①本设计的 Hook 配置只由 `trivium init` 注入**项目级** `.claude/settings.json`；②若被放进用户全局 settings，未初始化的项目里 `${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium` 不存在，命令以非 2 的非零码退出，属非阻断，不会误伤；③脚本自身在检测不到 `.trivium/config.yaml` 时直接 exit 0 |
 | `hook-pre-commit` | `git commit` 前 | 存在「审查文档已落盘但裁决件缺失/不完整」的阶段时 exit 2 阻断，说明缺哪些编号；可由 `gate.block_commit: false` 关闭 |
-| `hook-stop` | Driver 结束回合前 | 若存在 `review_done_awaiting_disposition` 状态 → exit 2，`stopReason` 指明「还有未逐条裁决的审查意见」；若为 `awaiting_approval` → exit 0（这是**期望的**停点）。带 `stop_hook_active` 早退与每阶段最多 2 次阻断上限，避免死循环 |
+| `hook-stop` | Driver 结束回合前 | 若存在**本会话**的 `review_done_awaiting_disposition` 状态 → 输出 `{"decision":"block","reason":"还有未逐条裁决的审查意见：…"}`（或 exit 2 + stderr）；若为 `awaiting_approval` → exit 0（这是**期望的**停点）。带 `stop_hook_active` 早退与每阶段最多 2 次阻断上限，避免死循环 |
 | `hook-session-start` | 会话开始 | 通过 `additionalContext` 注入当前待审批闸门与未完成裁决的清单 |
 
-> 说明：`Stop` 的阻断上限与 `stop_hook_active` 判据必须实现，Claude Code 自身也有连续阻断硬上限；两层保护共同防止「审查—阻断」死循环。
+> 说明：`Stop` 的阻断上限与 `stop_hook_active` 判据必须实现；Claude Code 自身在 Stop hook 连续阻断 8 次后会强制覆盖（`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`）；两层保护共同防止「审查—阻断」死循环。所有 Hook 子命令经统一 wrapper 执行：只在明确判定时返回 `2`，内部异常返回 `1`（非阻断），检测不到 `.trivium/config.yaml` 时返回 `0`。
 
 ### 8.6 裁决完整性校验算法（`trivium gate --check`）
 
 ```text
 输入：主题、阶段、run_id
 1. 读取该阶段本轮的两份审查文档 front-matter 与 findings 列表 → 集合 IDS
-   （单审降级时只读存在的一侧，并要求 run 元数据已标记 degraded）
+   （单审降级时只读存在的一侧，并要求 run 元数据已标记 degraded；
+    parse_fallback 侧无结构化 findings，改为收集裁决表中该侧前缀 `<前缀>-F<n>` 的编号，只校验有裁决与理由，6.6 规则 8）
 2. 定位本轮裁决件（plan/bug → *-revised-claude.md；code → *-response-claude.md）
    缺失 → FAIL(missing_disposition)
 3. 解析裁决件 front-matter：schema/topic/stage/kind/addresses 必须匹配本轮
@@ -865,13 +899,16 @@ Hook 行为约定：
 5. 校验：
    a. IDS - DEC.keys ≠ ∅            → FAIL(missing_findings, 列出编号)
    b. DEC.keys - IDS ≠ ∅            → FAIL(unknown_findings)
-   c. 任一裁决 ∉ {接受,不接受,暂缓}  → FAIL(bad_verdict)
+   c. 任一裁决 ∉ {接受,驳回,暂缓}（「不接受」归一化为「驳回」）→ FAIL(bad_verdict)
    d. 暂缓 且 allow_defer=false      → FAIL(defer_not_allowed)
-   e. 任一理由为空/命中空洞词表      → FAIL(empty_reason)
+   e. 任一理由为空                   → FAIL(empty_reason)
+      理由仅含空洞词表               → reason_policy=warn: WARN(weak_reason) / hard: FAIL
    f. 接受 且 落点为空               → FAIL(missing_action)
-   g. 双方共同 blocker 被「不接受」   → FAIL(joint_blocker_rejected) 或转人工仲裁
-6. 通过 → 写 run 元数据 gate.adjudication_complete=true，返回 0
-   失败 → 返回 2，stdout 输出结构化缺口清单（供 Driver 直接修补）
+   g. 双方共同 blocker 被「驳回」     → joint_blocker_policy=warn: WARN + task.json.disputed=true /
+                                       hard 且 location 精确相同: FAIL(joint_blocker_rejected)
+6. 通过 → 写 run 元数据 gate.adjudication_complete=true（含 warnings[]），返回 0
+   失败 → 返回 2，stdout 输出结构化缺口清单（供 Driver 直接修补）；
+   命令模板最多重试 gate.max_check_retries（默认 3）次，超限停下求助人工（7.4 步骤 6）
 ```
 
 ---
@@ -904,7 +941,9 @@ Hook 行为约定：
 要点：
 
 - **绝不使用 `git add -A` 操作真实索引**（与用户 Git 习惯冲突且有误提交风险）；一律走临时索引文件。
-- 镜像树中**不包含 `.git`**：审查员即使执行 `git commit` 也进不了主仓库。
+- 镜像树中**不包含 `.git`**：审查员即使执行 `git commit` 也进不了主仓库。代价是审查员失去 `git log` / `git blame` / `git diff` 等历史查询能力；若某阶段镜头依赖历史（如 `bug` 阶段追溯引入提交），可在 `_review/CONTEXT.md` 由编排器预先附上相关 `git log -p` 摘要。
+- 构树尊重 `.gitignore`，被忽略的依赖与构建目录（`node_modules/`、`.venv/`、`build/` 等）**不在**镜像树内。为让审查员能解析依赖类型、必要时执行只读命令，`isolation.link_globs`（默认 `node_modules/**`、`.venv/**`、`vendor/**`）匹配的目录以**符号链接**（或 APFS `clonefile`）带入镜像树，链接目标以只读方式访问；`.env*`、密钥文件永不带入。
+- 成本：每次运行两份拷贝。`freeze` 优先用 `cp -c`（APFS clonefile）复制 `git archive` 解包结果以共享数据块；`isolation.cost` 探针在 M0 记录目标仓库的构树耗时与占用（3.5）。
 - 冻结完成后记录 `snapshot_hash`；跑完再次校验镜像树哈希，有变化则该侧审查作废（只读失守，见 10.3）。
 - 非 git 仓库：`doctor` 判定为不支持，预检失败（PRD 要求工件纳入版本管理，git 是合理前置）。
 
@@ -943,7 +982,7 @@ Hook 行为约定：
 
 | 机制 | 说明 |
 | :--- | :--- |
-| ①**进程与会话独立** | 两侧各自独立子进程、独立 `HOME`（`.trivium/run/<run_id>/<critic>/home`）、独立会话，不共享任何上下文 |
+| ①**进程与会话独立** | 两侧各自独立子进程、独立会话与独立配置副本，不共享任何上下文。配置隔离的具体方式（独立 `HOME` 拷入凭据 / 共享 `HOME` + 独立 settings 路径 / 仅环境变量覆盖）由 `agy.home_isolation`、`zcode.home_isolation` 探针决定（3.5、11.2、11.3），本文不预设「独立 `HOME`」必然可用 |
 | ②**镜像树剔除对方产出** | 构造 critic X 的镜像树时，按 `peer_artifact_globs`（`**/*-<对方角色>.md`）剔除历史与当前的对方文件；对方产出在其可读范围内**物理不存在** |
 | ③**进行中产出不落仓库** | 本次运行的两侧结果先写 `.trivium/run/<run_id>/<critic>/out/`，**两侧都完成后**才由 `archive` 同时落盘到 `.reviews/`。因此审查进行中不可能读到对方本次结论 |
 | ④**事后轨迹核验** | 从工具轨迹中扫描是否出现对方角色文件路径；命中即判该侧审查作废（`peer_artifact_read: true`），重跑一次仍命中则该侧标 `failed` |
@@ -967,14 +1006,15 @@ flowchart LR
 ### 10.2 工作目录与可读范围（FR-07 / AC-11）
 
 - 默认 `isolation.mode: mirror`：审查 Agent 的工作根目录是**项目根的冻结镜像**，其内容为全库（除对方产出与 `.trivium/run`、`.git`），因此「根目录为所在项目根、除对方产出外可读全库」在内容语义上成立，同时使 AC-04 可被机械保证。
-- 备选 `isolation.mode: in-place`：直接以真实项目根为工作目录，仅靠 CLI 的路径 deny 规则屏蔽对方产出。**仅当 `doctor` 证明两侧都支持路径级 deny 且实测生效时才允许启用**；启用后 `run.json` 记录 `isolation_mode: in-place`，并在审查文档 front-matter 标注。
-- 该取舍是 PRD 唯一可能产生字面歧义的点，已列入第 18 章待确认项。
+- 备选 `isolation.mode: in-place`（**完整规格化，随时可切换**）：直接以真实项目根为工作目录，与 PRD FR-07 字面一致，`.git` 与依赖目录能力无损。隔离依靠 10.1 的第 ①③④ 道机制：本次运行的对方产出因延迟落盘而不存在；**历史**对方产出（同主题重跑）只能靠第 ④ 道轨迹核验**事后检出**，无法用文件系统 ACL 事前阻断——这是本模式的诚实边界，strict 下检出即该侧作废并停机（12.1）。若探针证明某侧 CLI 支持路径级 deny（如 Antigravity `permissions.deny`），则叠加使用，但不作为启用前提。启用后 `run.json` 记录 `isolation_mode: in-place`，并在审查文档 front-matter 标注。
+- 两种模式的 `_review/` 送审包、只读指纹比对、轨迹核验完全相同；差异仅在工作根与对方历史产出的可见性。
+- 默认值以 `ADR_001_isolation_mode.md` 立项（AD-05），M0 用 `isolation.cost` 探针实测两种模式的构树成本、审查耗时与 `tool_calls` 差异后拍板，并推动 PRD FR-07 回填表述（18.1、18.2）。
 
 ### 10.3 只读三重保障（FR-15 / AC-08）
 
 | 层 | Antigravity 侧 | ZCode 侧 |
 | :--- | :--- | :--- |
-| **工具层** | 自定义 Agent `trivium-critic` 的 `tools:` 白名单只含只读工具（查看文件、检索、列目录），不含写文件与危险命令；`commandExecutionPolicy` 设为沙箱/受限；配合 `permissions.deny` 兜底写类工具 | `--mode plan` + `--disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash,…"`（以 `probe.zcode.readonly_flags` 实测组合为准） |
+| **工具层** | 自定义 Agent `trivium-critic` 的 `tools:` 白名单只含只读工具（查看文件、检索、列目录）与**只读命令白名单**（`readonly_commands`，默认 `git log/blame/diff/show`、`ls`、`cat`、`grep`、`rg`、`find`；不含测试/构建命令，因镜像树默认无完整依赖），不含写文件与其它命令；`commandExecutionPolicy` 设为沙箱/受限；配合 `permissions.deny` 兜底写类工具 | `--mode plan` + `--disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash,…"`（以 `probe.zcode.readonly_flags` 实测组合为准；ZCode 侧若无法做命令级白名单，则整个 `Bash` 禁用，`run_command` 计数恒为 0） |
 | **文件系统层** | 镜像树 `chmod -R a-w`；无 `.git`；独立 `HOME` 隔离用户配置 | 同左 |
 | **事后核验层** | 跑前/跑后比对镜像树哈希 + 主仓库 `git status --porcelain -uall` 指纹；任一变化即 `readonly_breach: true` | 同左 |
 
@@ -1012,7 +1052,7 @@ flowchart LR
 | `run_id` / `topic` / `stage` | str | 运行标识 |
 | `critic` | `gemini` \| `glm` | 角色 |
 | `tree_dir` | path | 该侧冻结镜像树根（Agent 的 cwd） |
-| `home_dir` | path | 该侧独立 HOME |
+| `home_dir` | path? | 该侧独立 HOME / 配置副本目录；具体注入方式（`HOME`、`ZCODE_HOME`、settings 路径或环境变量）由探针结论 `*.isolation` 决定 |
 | `out_dir` | path | 该侧原始输出目录（不在镜像树内） |
 | `brief_path` | path | `_review/BRIEF.md`（树内相对路径） |
 | `model` | str | 请求模型（来自路由） |
@@ -1051,11 +1091,11 @@ agy -p "$(cat _review/BRIEF.md)" \
 
 要点：
 
-1. **不传 `--dangerously-skip-permissions`**（AD-07）。只读工具由 `trivium-critic` 的 `tools:` 白名单预授权；若 `probe.agy.headless_read_ok=false`，按序尝试：`--add-dir <tree>` → `permissions.allow` 独立 settings → 伪终端包装 `script -q /dev/null agy …`；全部失败则该侧不可用并中止（不得静默产出空审查）。
+1. **不传 `--dangerously-skip-permissions`**（AD-07）。只读工具由 `trivium-critic` 的 `tools:` 白名单预授权；若 `probe.agy.headless_read_ok=false`，按序尝试：`permissions.allow` 独立 settings → 伪终端包装 `script -q /dev/null agy …` → `--add-dir <tree>`（实验假设：1.1.20 的「默认审查模式下工作区只读授权」可能与显式 `--add-dir` 相关，M0 验证，验证不通过即从序列删除）；全部失败则该侧不可用并中止（不得静默产出空审查）。
 2. 用 `stream-json` 而非 `json`：需要 `step_type=tool` 事件来统计工具调用（AC-05 的证据）。最终结论从 `structured_output` 取；若 `--json-schema` 不可用（`probe.agy.json_schema_ok=false`），降级为提示词约定 + 从 `response` 中抽取 JSON 块，并标 `parse_fallback: true`。
 3. `--model` 传入非法 slug 会非零退出（不会静默换模型），这是好事：预检阶段已用 `agy models` 校验一次，运行时的非零退出直接归类为 `failed`。
-4. `model_effective` 优先取 JSON envelope 中的模型字段；不可得时取「预检已校验过的请求 slug」并在元数据标 `model_effective_source: requested`。
-5. 独立 `HOME` 只放该次运行的配置副本，凭据仍走用户已有登录态；若独立 HOME 导致认证失效，`doctor` 会探测到并改为「共享 HOME + 独立 settings 路径」。
+4. `model_effective` 优先取 JSON envelope 中的模型字段（`model_effective_source: envelope`）；不可得时，因 Antigravity 未知 slug 会非零退出、不会静默换模型，可取「预检已校验过的请求 slug」并标 `model_effective_source: requested`；两者皆不成立记 `unverified`，不采信任何猜测。
+5. 配置隔离方式由 `probe.agy.isolation` 决定（3.5）：`home_copy`（独立 `HOME`，拷入凭据文件与 `trivium-critic` 定义，文件权限 `0600`，跑完即删）/ `shared_home_ws_agent`（共享 `HOME`，Agent 定义由 `freeze` 写入镜像树 `.agents/agents/trivium-critic/agent.md`，settings 走独立路径或 `permissions.deny`）/ `shared_home_env`。v1.0.0「独立 HOME 且凭据走既有登录态」的写法自相矛盾（凭据本身在 `~/.gemini` 下），已按审核意见 RV-03 改为探针决定。
 
 ### 11.3 ZCode 适配（ZcodeAdapter）
 
@@ -1075,13 +1115,13 @@ ZCODE_MODEL="<model>" node "<entry>" \
 
 要点：
 
-1. **模型路由三级降级**（`probe.zcode.model_override` 决定用哪级）：
-   `env`（`ZCODE_MODEL` 环境变量，首选，天然支持两侧并行）→ `config_copy`（独立 `ZCODE_HOME`/`--config` 指向本次运行的配置副本）→ `global`（沿用全局默认，**必须**在文档头与元数据注明「未按任务指定，实际生效为全局默认」）。
-   **禁止**为了换模型去改用户全局配置文件（会与桌面端抢配置且无法并行）。
+1. **模型覆盖三档降级**（`probe.zcode.model_override` 决定用哪档）：
+   `env`（`ZCODE_MODEL` 环境变量，首选，天然支持两侧并行）→ `config_copy`（独立 `ZCODE_HOME`/`--config` 指向本次运行的配置副本）→ `global`（沿用全局默认）。落到 `global` 档时按 `critics.glm.unsupported_override` 处理：`reject`（默认，吸收 glm 版 D6）——请求模型与全局默认不一致即拒绝启动（退出 69，提示修复环境），一致则放行并如实记录「使用全局默认」；`annotate`——放行，但**必须**在文档头与元数据注明「未按任务指定，实际生效为全局默认」。
+   **禁止**为了换模型去改用户全局配置文件（会与桌面端抢配置且无法并行）。配置隔离与凭据方式同样由 `probe.zcode.isolation` 决定（`~/.zcode` 凭据在独立 `HOME` 下不存在，需拷入或改用 `ZCODE_API_KEY` 环境变量注入）。
 2. **生效模型回读**：从 `--json` envelope / 会话日志中读取实际模型 ID 写入 `model_effective`；不采信配置意图（AC-13）。
 3. 正文字段取 `.response`（非 `.text`），并从中抽取 JSON 块；解析失败 → 原文落盘 + `parse_fallback: true` + 该侧不参与阻断判定。
 4. 只读组合以 `probe.zcode.readonly_flags` 实测结果为准；若探针显示 `--mode plan` 仍允许子 Agent 写操作（社区在 0.16+ 观察到），改用「`--mode yolo` + 完整 denylist」并在 `run.json` 记录所用组合。
-5. 工具轨迹从 `probe.zcode.trace_source` 指定的会话日志提取；二期改用 `app-server` 的 `session/subscribe` 事件流以获得更完整轨迹并省去反复启动开销。
+5. 工具轨迹从 `probe.zcode.trace_source` 指定的会话日志提取（路径随隔离方式变化：独立 `HOME` 下日志天然按运行隔离，共享 `HOME` 下按 `sessionId` 匹配）；二期改用 `app-server` 的 `session/subscribe` 事件流以获得更完整轨迹并省去反复启动开销。
 6. 冻结树内放一份仅含审查员身份的 `AGENTS.md`（ZCode 读 `AGENTS.md` 而非 `CLAUDE.md`），避免它读到主仓库里「请实现 XX」的执笔指令。
 
 ### 11.4 Agent 执行证据校验（AC-05）
@@ -1096,7 +1136,7 @@ ZCODE_MODEL="<model>" node "<entry>" \
 
 ### 11.5 模型路由与异构默认（FR-06 / FR-17 / NFR-06）
 
-路由优先级：**命令行参数 > 主题级 `task.json` 覆盖 > `profile`（按任务类型）> 阶段默认值**。
+路由优先级四级（决定「请求哪个模型」，与 11.3 的 ZCode 覆盖三档「如何让请求生效」是两个概念）：**命令行参数 > 主题级 `task.json` 覆盖 > `profile`（按任务类型）> 阶段默认值**。
 
 ```yaml
 profiles:
@@ -1141,7 +1181,8 @@ profiles:
 | 命令 A 编译或测试失败 | 全流程状态 `failed`；已产生工件全部保留 | `verify` 记录含命令与退出码 | FR-21 / AC-10 |
 | B/C/D 缺提示语 | 拒绝启动（退出 64） | 无工件 | FR-20 |
 | B/C/D 找不到前置产物 | 拒绝启动（退出 65），说明缺什么 | 无工件 | FR-12 / FR-22 |
-| 人工在闸门拒绝 | 状态置 `rejected`，写入理由；写锁保持 | 已有工件保留 | FR-12 / FR-22 |
+| 人工在闸门拒绝 / 放弃 | 状态置 `rejected` / `abandoned`，写入理由；**解除业务写锁**；流水线不自动进入编码/改码/修复 | 已有工件保留 | FR-12 / FR-22 |
+| 运行进行中 Driver 会话结束或 `--wait` 心跳失联 | 工作进程独立于会话继续跑完；`hook-session-start` 提醒 `--wait`；心跳失联判 `failed(worker_lost)` | `run.json` 记 `status` | 7.5 |
 | 主脑试图伪造审查文件 | Hook `deny` | — | PRD 6.3 |
 
 ### 12.2 超时策略（NFR-03）
@@ -1156,7 +1197,7 @@ profiles:
 
 ### 12.3 重试策略（NFR-02）
 
-仅对**瞬时故障**重试一次：空输出、非 TTY 丢 stdout、429/网络抖动、schema 校验失败、工具证据不足。业务性失败（认证失败、模型非法、只读失守、读到对方产出且二次命中）不重试。同一 `(snapshot_hash, critic, model)` 命中缓存时直接复用既有结果，避免反复烧配额（重跑需 `--force` 穿透）。
+仅对**瞬时故障**重试一次：空输出、非 TTY 丢 stdout、429/网络抖动、schema 校验失败、工具证据不足。业务性失败（认证失败、模型非法、只读失守、读到对方产出且二次命中）不重试。结果缓存键为 `(snapshot_hash, brief_hash, critic, model, effort)`，其中 `brief_hash` 为渲染后 `BRIEF.md` 全文的 sha256（含提示语、镜头、输出契约），因此**换提示语必定重审**（AC-09）；全部相同才复用既有结果并在命令输出与 `run.json` 记 `cache_hit: true` 与来源 `run_id`，重跑加 `--force` 穿透。缓存默认关闭（`review.cache: false`），属 NFR-06 的可选优化。
 
 ### 12.4 失败策略配置
 
@@ -1174,6 +1215,12 @@ review:
 - 既有工件**无论是否已审批一律不覆盖**；`archive` 用原子独占创建保证。
 - `run.json` 记 `rerun_index`；`task.json` 保留全部轮次指针，形成可回溯的版本链。
 
+### 12.6 同主题并发互斥
+
+- `trivium review --start` 以 `.trivium/lock/<主题>.lock` 做互斥（`O_EXCL` 创建，内容为 PID、`run_id`、时间戳）；持锁期间对同一主题再次 `--start` 返回退出码 `70` 并提示现有 `run_id`。
+- 锁在工作进程退出时释放；若锁文件存在但 PID 不存在且时间戳早于 `heartbeat_stale_s`，视为遗留锁自动回收并记入日志。
+- `state.json` / `task.json` 的写入一律「读 → 改 → 原子替换」，且只在持锁时进行，避免 `-r<N>` 计算与状态更新竞争。
+
 ---
 
 ## 13. 配置与可观测
@@ -1189,15 +1236,19 @@ topic:
   forbid_chars: ["/", "\\", "..", " "]
 
 isolation:
-  mode: mirror                       # mirror | in-place
+  mode: mirror                       # mirror | in-place（默认值待 ADR-001 拍板）
   peer_artifact_globs: ["**/*-gemini.md", "**/*-glm.md"]
   exclude_globs: [".git/**", ".trivium/run/**", ".trivium/logs/**"]
+  link_globs: ["node_modules/**", ".venv/**", "vendor/**"]   # mirror 下以符号链接带入的被忽略目录
 
 review:
   parallel: true
   failure_policy: strict
   timeout_s: {plan: 900, code: 1200, bug: 1200}
+  wait_timeout_s: 540                # review --wait 单次上限，须小于 Bash 工具超时（7.5）
+  heartbeat_stale_s: 120
   retry: {transient_max: 1}
+  cache: false                       # 键含 brief_hash（12.3）
   min_tool_calls: {plan: 5, code: 5, bug: 5}
   block_severities: [blocker, major]
   skip_doc_only_review: false
@@ -1211,11 +1262,13 @@ critics:
     bin: /Users/<you>/.local/bin/agy          # 绝对路径（GUI 进程不读 .zshrc）
     agent: trivium-critic
     effort: {plan: high, code: medium, bug: high}
+    readonly_commands: ["git log", "git blame", "git diff", "git show", "ls", "cat", "grep", "rg", "find"]
   glm:
     vendor: zcode
     node: /opt/homebrew/bin/node
     entry: /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs
     max_turns: 40
+    unsupported_override: reject      # reject | annotate（11.3）
 
 profiles:  { … 见 11.5 … }
 active_profile: default
@@ -1224,12 +1277,19 @@ gate:
   require_adjudication: true
   allow_defer: true
   block_business_write_when_awaiting_approval: true
+  approval_lock_scope: session        # session（默认）| global
+  approval_lock_ttl_h: 24
   block_commit: true
   stop_hook_max_blocks: 2
+  max_check_retries: 3
+  reason_policy: warn                 # warn | hard（6.6 规则 5）
+  joint_blocker_policy: warn          # warn | hard（6.6 规则 7）
+
+preflight:
+  auth_cache_ttl_h: 1
 
 verify:
-  source: auto                        # auto | config
-  build: []                           # source=config 时手工填写
+  build: []                           # 只执行此处显式声明的命令；由 trivium init 依据 doctor 的 suggestion 经用户确认后写入（14.1）
   test: []
 
 retention:
@@ -1237,6 +1297,7 @@ retention:
 
 probe:                                # 由 trivium doctor 回填，勿手工编辑
   generated_at: null
+  verify_suggestion: {build: [], test: []}   # doctor 探测到的候选命令，仅供 init 展示确认，不自动执行
 ```
 
 `config.local.yaml` 可覆盖任意字段，用于放本机绝对路径与探针结论，不进 Git。
@@ -1245,7 +1306,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 
 每次运行必须可核对：**任务主题、阶段、两侧实际使用的模型、开始/结束时间、成功/失败/单审降级**。落点有三处：
 
-1. **命令输出**（人在 VS Code 里立刻看到）：开始时打印主题/阶段/两侧模型/超时；运行中每 30s 打印一次心跳（两侧状态与已用时）；结束时打印结论摘要、文件路径、降级与告警。
+1. **命令输出**（人在 VS Code 里立刻看到）：`--start` 时打印主题/阶段/两侧模型/超时/`run_id`；每次 `--wait` 返回时打印两侧状态、已用时与最近心跳（工作进程每 30s 更新 `status.json`）；完成时打印结论摘要、文件路径、降级与告警。
 2. **`_meta/run-<run_id>.json`**：机读全量事实（6.7 节 schema）。
 3. **`task.json`**：主题级汇总与闸门/审批/争议记录。
 
@@ -1255,12 +1316,13 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 
 ## 14. 编译测试出口（FR-21 / AC-10）
 
-### 14.1 命令来源（`verify.source: auto` 的探测顺序）
+### 14.1 命令来源（只执行显式配置，不猜测执行）
 
-1. `.trivium/config.yaml` 的 `verify.build` / `verify.test`（`source: config` 时只用这一项）；
-2. 项目 `CLAUDE.md` / `AGENTS.md` 中显式声明的构建测试命令段；
-3. 语言生态默认约定：`package.json` 的 `scripts.build` / `scripts.test`；`Makefile` 的 `build` / `test` 目标；`pubspec.yaml` → `flutter build` / `flutter test`；`Cargo.toml` → `cargo build` / `cargo test`；`pyproject.toml` → 已声明的测试命令；
-4. 均未命中：`doctor` 标记 `verify.commands: none`，**命令 A 拒绝启动**并要求先配置（避免跑完全流程却无法收口）。
+- `trivium verify` **只执行** `.trivium/config.yaml` 中 `verify.build` / `verify.test` 显式声明的命令；两者皆空时 `preflight --stage all` 失败，**命令 A 拒绝启动**并要求先配置（避免跑完全流程却无法收口）。
+- 配置的来源是 `trivium init`（或 `doctor --suggest-verify`）：按下列顺序探测候选命令，写入 `probe.verify_suggestion`，**逐条展示给用户确认**后才写入 `verify.build/test`；未经确认的候选永不执行（吸收 glm 版 3.7「不猜测执行」；探测到的 `scripts.test` 可能耗时极长、依赖外部服务或有副作用）。
+  1. 项目 `CLAUDE.md` / `AGENTS.md` 中显式声明的构建测试命令段；
+  2. 语言生态默认约定：`package.json` 的 `scripts.build` / `scripts.test`；`Makefile` 的 `build` / `test` 目标；`pubspec.yaml` → `flutter build` / `flutter test`；`Cargo.toml` → `cargo build` / `cargo test`；`pyproject.toml` → 已声明的测试命令。
+- 配置变更后 `verify` 记录命令原文与其 sha256，确保归档中的「实际执行命令」与配置可核对（AC-10）。
 
 ### 14.2 执行与记录
 
@@ -1281,7 +1343,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | FR-03 审查对象 | P0 | plan/code/bug 三阶段；需求审查并入送审包与镜头 | `brief` | 7.2、9.3、9.4 |
 | FR-04 计划留痕（含逐条裁决） | P0 | `plan/` 四件套 + `disposition.v1` 硬校验 | `archive`、`gate` | 6.3、6.6、8.6 |
 | FR-05 代码留痕 | P0 | `code/` 三件套 + 应答件逐条裁决 | 同上 | 6.3、6.6 |
-| FR-06 按任务指定模型 | P0 | 四级路由 + 生效值回读 | `config`、`adapters` | 11.5、11.2、11.3 |
+| FR-06 按任务指定模型 | P0 | 路由优先级四级 + ZCode 覆盖三档（`global` 档默认拒绝开工）+ 生效值回读 | `config`、`adapters` | 11.5、11.2、11.3 |
 | FR-07 工作目录与可读范围 | P0 | 冻结镜像树（默认）/ 就地模式 | `freeze` | 10.1、10.2、18.1 |
 | FR-08 工件命名 | P0 | `<日期>-<主题>[-r<N>][-revised\|-response]-<角色>.md` | `archive` | 6.2 |
 | FR-09 统一归档与主题子目录 | P0 | `.reviews/<主题>/<阶段>/` | `archive` | 6.1、6.2 |
@@ -1289,14 +1351,14 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | FR-11 全流程顺序 | P0 | 命令 A 状态机 S0～S10 | `cli`、命令模板 | 8.2 |
 | FR-12 四条命令 | P0 | `/dual-run` `/dual-review-plan` `/dual-review-code` `/dual-review-bug` | 命令模板 | 第 7 章 |
 | FR-13 意见可裁决 | P1 | `trivium.review.v1` 七字段必填 + 编号前缀隔离 | `parse` | 6.5 |
-| FR-14 逐条裁决 | P1 | 接受/不接受/暂缓 + 理由 + 落点，`gate` 硬校验 | `gate` | 6.6、8.6 |
+| FR-14 逐条裁决 | P1 | 接受/驳回/暂缓 + 理由 + 落点，`gate` 硬校验（空洞理由与共同 blocker 默认 warning） | `gate` | 6.6、8.6 |
 | FR-15 审查员只读 | P1 | 三重保障 + 失守检出与告警 | `freeze`、`guard` | 10.3 |
 | FR-16 送审自包含 | P1 | 送审包结构 + 冻结算法 + `_meta/` 落盘 | `freeze`、`brief` | 9.1、9.2 |
 | FR-17 模型异构默认 | P1 | 默认非 Claude 系；覆盖告警并写入元数据 | `config`、`meta` | 11.5 |
 | FR-18 启动预检 | P1 | `trivium preflight` 八项检查，失败零工件 | `preflight` | 8.1 |
 | FR-19 超时与降级可见 | P1 | strict/degrade 双策略 + 降级三处留痕 | `runner`、`meta` | 12.1、12.4 |
 | FR-20 提示语进上下文 | P1 | BRIEF 第 2 段逐字嵌入，两侧都有 | `brief` | 9.4 |
-| FR-21 编译测试出口 | P1 | `trivium verify` 真实执行 + 退出码记录 | `verify` | 第 14 章 |
+| FR-21 编译测试出口 | P1 | `trivium verify` 只执行经用户确认的显式配置命令 + 退出码记录 | `verify` | 第 14 章 |
 | FR-22 Bug 根因独立命令 | P0 | `/dual-review-bug` + `bug/` 四件套 + A/C 链路引导 | 命令模板、`archive` | 7.1、7.2、8.3、6.3 |
 | FR-23 可配置跳过纯文档审 | P2 | 程序化路径分类 + 不可跳过清单 | `freeze` | 6.4 |
 | FR-24 运行元数据 | P2 | `run-<run_id>.json` + `task.json` | `meta` | 6.7、13.2 |
@@ -1329,8 +1391,8 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | AC-09 提示语送达 | BRIEF 第 2 段逐字嵌入两侧 | 在两份 `_meta/brief-*.md` 中搜索提示语原文 |
 | AC-10 编译测试为真 | 真实执行 + 命令与退出码入档 | 故意让测试失败，全流程状态应为 `failed` |
 | AC-11 可读范围 | 镜像树含全库（除对方产出与 `.git`/run 目录） | 轨迹中出现对非被审对象源码的读取 |
-| AC-12 裁决完整性 | `gate --check` 六项硬规则 | 人为删掉一条裁决，`gate` 应报缺失编号 |
-| AC-13 按任务指定模型 | 四级路由 + 生效值回读 | `run.json` 中两侧 `model_effective` 不同且与指定一致 |
+| AC-12 裁决完整性 | `gate --check` 硬规则（8.6 a～d、f）+ 两项默认 warning（e 空洞词表、g 共同 blocker） | 人为删掉一条裁决，`gate` 应报缺失编号 |
+| AC-13 按任务指定模型 | 路由优先级四级 + ZCode 覆盖三档 + 生效值回读 | `run.json` 中两侧 `model_effective` 不同且与指定一致 |
 | AC-14 命令 D 人工闸门 | 同 AC-02 | 跑 `/dual-review-bug` 后尝试改代码，应被 deny |
 | AC-15 命令 D 工件齐全 | `bug/` 四件套，修订不覆盖原稿 | 目录校验 + 原稿哈希未变 |
 | AC-16 预检失败即中止 | 预检在送审前，失败零工件 | 断网/改坏路径后启动，检查无任何文件生成 |
@@ -1345,9 +1407,9 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 
 | 里程碑 | 内容 | 完成判据 | 预估 |
 | :--- | :--- | :--- | :--- |
-| **M0 探路（必须最先做）** | 在目标 macOS 机器上逐项实测第 3.5 节探针清单；把结论固化进 `config.local.yaml` 的 `probe:` 段；产出「本机坑清单」 | 拿到两侧**真实可用**的 headless 命令模板；能证明「只读生效 + 能读文件 + 能换模型 + 能拿轨迹」 | 1 天 |
+| **M0 探路（必须最先做）** | 在目标 macOS 机器上逐项实测第 3.5 节探针清单（含 `*.home_isolation`、`isolation.cost`）；把结论固化进 `config.local.yaml` 的 `probe:` 段；产出「本机坑清单」；据 `isolation.cost` 结果起草 `ADR_001_isolation_mode.md` | 拿到两侧**真实可用**的 headless 命令模板；能证明「只读生效 + 能读文件 + 能换模型 + 能拿轨迹 + 配置隔离方式明确」；ADR-001 进入评审 | 1～2 天 |
 | **M1 单阶段闭环** | `config`/`topic`/`freeze`/`brief`/`adapters`/`runner`/`parse`/`render`/`archive` 骨架；先只做 `plan` 阶段 | 手工调用 `trivium review --stage plan` 得到两份合规 Markdown + `_meta/` | 2～3 天 |
-| **M2 命令与闸门** | 四条斜杠命令 + `gate` 裁决校验 + Hook 三件套 + `state.json` | `/dual-review-plan` 端到端可跑；删一条裁决即被拦；闸门期写业务文件被 deny | 2～3 天 |
+| **M2 命令与闸门** | 六条斜杠命令（含 `/dual-approve`、`/dual-abandon`）+ `review --start/--wait` 协议 + `gate` 裁决校验 + Hook 三件套 + `state.json` + 主题锁 | `/dual-review-plan` 端到端可跑且单次 Bash 调用不超时；删一条裁决即被拦；同会话闸门期写业务文件被 deny，新会话不被误伤 | 3 天 |
 | **M3 隔离、降级、模型路由** | 镜像树剔除、轨迹核验、只读指纹、strict/degrade、模型三级路由与回读、`preflight` | AC-04 / AC-05 / AC-06 / AC-08 / AC-13 / AC-16 / AC-18 全部可演示 | 3 天 |
 | **M4 全流程与出口** | `code`/`bug` 阶段、命令 A 状态机、`verify` 编译测试、`report` | AC-01 / AC-10 / AC-14 / AC-15 通过 | 2～3 天 |
 | **M5 P2 与交付** | FR-23 跳过纯文档审、FR-24 元数据完善、FR-25 重跑版本、安装器、用户手册、`doctor --selftest` | 非作者可在 15 分钟内独立装好并跑通一条任务 | 2 天 |
@@ -1367,15 +1429,15 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | # | 交付物 | 对应章节 |
 | :--- | :--- | :--- |
 | 1 | `tools/trivium/`（编排器全部模块 + JSON Schema） | 第 5 章 |
-| 2 | `assets/commands/dual-*.md`（6 个命令模板） | 7.4 |
-| 3 | `assets/hooks/hooks.json` + 合并策略 | 8.5 |
+| 2 | `assets/commands/dual-*.md`（7 个命令模板） | 7.4 |
+| 3 | `assets/hooks/hooks.json` + 合并策略 + `assets/gitignore.snippet` | 8.5、5.3 |
 | 4 | `assets/prompts/{plan,code,bug}-review.md` + `lenses.yaml` | 9.3、9.4 |
 | 5 | `assets/agents/trivium-critic.md`（Antigravity 只读审查 Agent） | 10.3 |
 | 6 | `assets/templates/`（计划/根因/裁决/应答/验证 五类模板） | 6.6 |
 | 7 | `assets/protocol/CLAUDE.md.snippet` + 目标项目 `AGENTS.md` 模板 | 11.3 |
 | 8 | `install.sh` + `trivium doctor --selftest` | 16.1 M5 |
 | 9 | 端到端夹具仓库（含故意留洞的示例任务） | 第 17 章 |
-| 10 | 文档同步：`doc/03_api/PROTOCOL_*`、`doc/04_development/GUIDE_*`、`doc/07_manuals/QUICKSTART.md` | 18.2 |
+| 10 | 文档同步：`doc/03_api/PROTOCOL_*`、`doc/04_development/GUIDE_*`、`doc/07_manuals/QUICKSTART.md`；`ADR_001_isolation_mode.md` | 18.2、AD-05 |
 
 ---
 
@@ -1404,6 +1466,13 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | 闸门未审批时写业务文件 | Hook `deny`，原因文本包含 `/dual-approve` 指引 |
 | 编译测试失败 | 全流程状态 `failed`，工件保留 |
 | 主脑试图写 `*-glm.md` | Hook `deny` |
+| 单次 `review --wait` 超过 `wait_timeout_s` | 返回 73 并给出进度，工作进程继续；再次 `--wait` 最终返回 0 |
+| 工作进程被杀且心跳过期 | `failed(worker_lost)`，锁被回收 |
+| 同主题并发 `--start` | 第二次返回 70 并提示现有 `run_id` |
+| 新会话在他人闸门未审批时写业务文件 | **不** deny，仅会话开始时提醒 |
+| 裁决表写「不接受」 | 归一化为「驳回」通过；理由仅含空洞词表时 warn 不 FAIL |
+| 同快照换提示语重跑（开启缓存） | 不命中缓存，重新审查 |
+| `verify.build/test` 为空 | 命令 A 预检拒绝启动 |
 
 ### 17.3 手工验收剧本（对应 PRD 场景 S1～S5）
 
@@ -1421,13 +1490,17 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 
 | # | 议题 | 本文默认 | 备选与影响 |
 | :--- | :--- | :--- | :--- |
-| 1 | **隔离模式默认值** | `mirror`（冻结镜像树） | 备选 `in-place`（严格贴合 FR-07「工作目录为项目根」的字面表述）。`in-place` 的代价：同一主题重跑时对方历史产出在可读范围内，AC-04 只能靠 CLI 路径 deny 保证，机械性弱。**建议保持 `mirror`，并在 PRD 下一版把 FR-07 的表述明确为「项目根或其等价冻结快照」** |
+| 1 | **隔离模式默认值**（ADR-001，Proposed） | `mirror`（冻结镜像树） | 备选 `in-place`（严格贴合 FR-07 字面，能力无损，已完整规格化，10.2）。`mirror` 代价：无 `.git`、依赖目录需 `link_globs` 带入、双份拷贝；`in-place` 代价：对方历史产出只能事后检出。**M0 用 `isolation.cost` 实测后拍板；若维持 `mirror`，PRD 下一版把 FR-07 表述明确为「项目根或其等价冻结快照」；若改 `in-place`，本文默认值与 AD-05 随 ADR-001 修订** |
 | 2 | 失败策略默认值 | `strict`（阻塞中止） | 备选 `degrade`。严格模式更防「假双审」，但赶工时更容易被绕过 |
-| 3 | 第三态「暂缓」 | 允许（`allow_defer: true`） | 关闭则只能接受/不接受，裁决更硬但可能逼出敷衍接受 |
+| 3 | 第三态「暂缓」 | 允许（`allow_defer: true`） | 关闭则只能接受/驳回，裁决更硬但可能逼出敷衍接受 |
 | 4 | `hook-pre-commit` 拦截提交 | 默认开启 | 与开发者既有 Git 习惯有摩擦；可按项目关闭 |
 | 5 | `_meta/` 是否入 Git | 入（不含原始 stdout） | 不入则 AC-17 的可审计性只能靠哈希 |
 | 6 | 反驳轮（把分歧项定向回抛给审查员） | 一期不做 | 做则需第 7 阶段与轮次上限；成本与复杂度显著上升 |
 | 7 | 命令别名 | 保留 `/dual-*` 全名 | 可加 `/dr`、`/drp`、`/drc`、`/drb` 简写 |
+| 8 | 闸门期业务写锁的作用域 | 同会话 + 24h TTL（`approval_lock_scope: session`） | `global`：任何会话都锁，更硬但会锁死无关编辑（审核意见 RV-05） |
+| 9 | 命令载体 | 一期 `commands/`，二期 skills（AD-13） | 一期直接 skills：与官方方向一致，但需重做全部模板验证 |
+| 10 | ZCode 覆盖落到 `global` 档时的策略 | `reject` | `annotate`：放行并标注，更宽松但 FR-06 P0 实质打折 |
+| 11 | 审查员只读命令白名单 | 允许 `git log/blame/diff` 等只读命令，不含测试/构建 | 完全禁止命令：更简单，但 `bug` 阶段镜头能力下降；允许测试命令：需 `in-place` 或 `link_globs` 支撑 |
 
 ### 18.2 仓库内需同步修订的既有文档（PRD 11.3 已点名）
 
@@ -1436,7 +1509,13 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | [`.reviews/README.md`](../../.reviews/README.md) | 仍使用 `PLAN_RAW.md` / `PLAN_REVIEW_AGY.md` / `CODE_REVIEW_ZCODE.md` 等旧命名，与 PRD FR-08 及本文 6.2 冲突 | 按本文 6.1～6.3 重写为主题子目录 + 阶段目录 + `<日期>-<主题>-<角色>.md` |
 | [`README.md`](../../README.md) | ①快速开始的平台口径含「或 Linux / Windows」，与 NFR-01（本期 P0 一级平台为 macOS）不符；②架构图沿用旧命名；③模型示例（Gemini 2.5 / GLM-4 系）已过时 | 平台口径改为 macOS 一级、其它平台标注「未验证」；命名与模型示例按本文更新 |
 | [`.env.example`](../../.env.example) | `ANTIGRAVITY_MODEL=gemini-2.5-pro`、`ZCODE_MODEL=glm-4-plus`、`CLAUDE_MODEL=claude-3-7-sonnet-latest` 均为过时 slug | 更新为 `agy models` 与 ZCode 模型目录的现行值；并说明模型主路径是 `.trivium/config.yaml`，环境变量仅作覆盖 |
-| `doc/02_design/README.md` | 「当前已归档文件」未含 `reference/` 子目录与本文；且目录声明「扁平结构」但已存在 `reference/` 子目录 | 补录本文；对 `reference/` 子目录给出例外说明或将其扁平化 |
+| [`.gitignore`](../../.gitignore) | `.claude/` 整体忽略，与本文 3.1/5.3「命令与 Hook 随仓库分发」冲突 | 改为 `.claude/*` + `!.claude/commands/` + `!.claude/skills/` + `!.claude/settings.json`（5.3），`init` 幂等写入 |
+| [PRD](../01_requirements/PRD_driver_dual_critic.md) FR-07 | 「根目录为所在项目根目录」与 `mirror` 默认字面冲突 | 随 ADR-001 结论回填为「项目根或其等价冻结快照」或维持字面并改默认 `in-place` |
+| PRD FR-14 / AC-12 | 裁决词「驳回」与「不接受」并存 | 统一为「接受 / 驳回 / 暂缓」（6.6） |
+| PRD 4.4 第 3 条 | 「不得自动继续」未说明约束对象 | 明确约束的是流水线自动行为，不含开发者手工编辑（8.4） |
+| PRD 11.2 待设计对齐项 | 已由本文裁决但未回填 | 回填：归档根 `.reviews/`、命令拼写 `/dual-*`、默认 `strict`、阶段目录 `plan/ code/ bug/ verify/`、版本后缀 `-r<N>` 文法（6.2）、编译测试命令来源为显式配置（14.1） |
+| `doc/02_design/README.md` | 已补录三份综合设计与审核意见；目录声明「扁平结构」但存在 `reference/` 子目录 | 对 `reference/` 子目录给出例外说明或将其扁平化；评审通过后按 README 规范把本文拆为 `ARCH_` / `LLD_` / `ADR_`（或修订 README 允许日期命名作为正式设计） |
+| [`…-gemini.md`](./2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md) 元信息 | 自称「已批准 · 实施基线」，与索引「评审中」口径不符 | 改为「评审中」或「参考方案」 |
 
 **纪律**：后续实现若采用与本文不同的命名或平台口径，必须先回溯修订 PRD 与本文，禁止两套规范并行。
 
@@ -1457,6 +1536,9 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | R9 | 归档中意外写入密钥 | 安全事故 | 落盘前密钥扫描 + 原始日志不进 Git + 凭据只走环境注入 | 10.5 |
 | R10 | 冻结快照与真实工作区漂移 | 意见对不上号 | 临时索引 `write-tree` + `snapshot_hash` 三方一致校验 + 跑后镜像树哈希复核 | 9.2、10.3 |
 | R11 | 三家 CLI 升级导致参数失效 | 流水线中断 | `probe_ttl` 到期自动重跑 doctor；`preflight` 每次校验关键 flag；CLI 版本写入每份文档 front-matter | 8.1、13.1 |
+| R12 | Driver 的 Bash 工具超时杀掉长时双审 | 运行中断、工件缺失 | `review --start/--wait` 分段协议；`wait_timeout_s` 小于工具超时；工作进程独立于 Driver 会话 | 3.1、7.5 |
+| R13 | `mirror` 镜像树缺 `.git` 与依赖，审查深度下降 | AC-05 证据变薄、意见质量下降 | `link_globs` 带入依赖；`CONTEXT.md` 预附 git 历史摘要；M0 实测两模式差异后拍板 ADR-001 | 9.2、10.2 |
+| R14 | 配置隔离方式在目标机不可用（凭据随 `HOME`） | 该侧认证失败 | `*.home_isolation` 探针三选一；皆不可用则该侧不可用并中止 | 3.5、11.2、11.3 |
 
 ---
 
@@ -1493,3 +1575,41 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
 | v1.0.0 | 2026-09-10 | 首版。依据 PRD v1.3.0、5 份参考方案与 2026-09-10 联网调研，确定分层架构、组件划分、工件契约、四条命令流程、隔离与只读机制、模型路由、异常矩阵、追溯矩阵与实施路线。 |
+| v1.1.0 | 2026-09-10 | 按审核意见 RV-01～RV-26 修订（第 22 章逐条应答）：AD-03 改为 `review --start/--wait` 分段协议并新增 7.5、R12；AD-05/10.2 把 `in-place` 规格化为完整备选并立 ADR-001；3.5 新增 `home_isolation`、`isolation.cost` 探针，11.2/11.3 配置隔离改由探针决定；12.3 缓存键加 `brief_hash` 且默认关闭；8.4 闸门写锁限同会话 + TTL，新增 `/dual-abandon`；5.3/18.2 补 `.gitignore` 白名单；7.4 改用 `.trivium/bin/trivium`；3.1/8.5 修正 `MultiEdit`、Stop 阻断输出契约、8 次硬上限，新增 AD-13（commands vs skills）；6.6/8.6 裁决词对齐 FR-14，空洞理由与共同 blocker 默认 warning，新增 parse_fallback 侧规则；6.1 保留后缀；14.1 只执行显式配置；8.1 认证缓存；12.6 主题锁；6.4 简化为路径判定；AD-12 下限 3.9；术语「覆盖三档 / 路由四级」统一；18.1 新增 4 项待拍板；18.2 补 PRD 回填项。 |
+
+---
+
+## 22. 审核意见应答（v1.1.0）
+
+对 [审核意见 v1.0.0](./2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md) 的 RV-01～RV-26 逐条裁决，格式与 6.6 裁决表一致。
+
+| 意见编号 | 严重度 | 裁决 | 理由 | 落点 |
+| :--- | :--- | :--- | :--- | :--- |
+| RV-01 | major | 接受 | Bash 工具超时是硬约束，同步阻塞不可行 | AD-03、3.1 新增事实行、7.4 步骤 3、新增 7.5、7.3 退出码 73、12.1、13.1、17.2、R12 |
+| RV-02 | major | 接受 | 镜像树代价确未论证；`in-place` 备选原条件等于关死 | AD-05、9.2、10.2、13.1 `link_globs`、3.5 `isolation.cost`、16.1 M0、18.1 #1、18.2 PRD FR-07、R13 |
+| RV-03 | major | 接受 | 凭据在 `HOME` 下，原写法自相矛盾 | 3.5 两项探针、10.1 ①、11.1、11.2 #5、11.3 #1/#5、R14 |
+| RV-04 | major | 接受 | 键缺 brief 哈希会违反 AC-09 | 12.3（键含 `brief_hash`，默认关闭）、13.1、17.2 |
+| RV-05 | major | 接受 | PRD 约束对象是流水线自动行为；跨会话持久锁会误伤 | 8.4、7.1 `/dual-abandon`、12.1、13.1 `approval_lock_*`、18.1 #8、17.2 |
+| RV-06 | major | 接受 | 仓库 `.gitignore` 事实核实属实 | 5.3、5.2 `gitignore.snippet`、18.2、16.3 |
+| RV-07 | major | 接受 | 与 10.5 自相矛盾 | 7.4 模板与 `allowed-tools` |
+| RV-08 | minor | 接受 | 官方文档核实结果 | 3.1（`MultiEdit`、`stopReason`、8 次硬上限、commands legacy）、8.4、8.5、新增 AD-13 |
+| RV-09 | minor | 接受 | 与 PRD FR-14 对齐并兼容别名 | 6.6 规则 2 与示例、8.2 S7、8.6 5c、15.1、18.2 |
+| RV-10 | minor | 接受 | 启发式判定不应阻断闸门 | 6.6 规则 7、8.6 5g、13.1 `joint_blocker_policy` |
+| RV-11 | minor | 接受 | 同上 | 6.6 规则 5、8.6 5e、13.1 `reason_policy` |
+| RV-12 | minor | 接受 | 解析歧义真实存在；三种写法需统一 | 6.1 保留后缀、18.2 PRD 11.2 回填 |
+| RV-13 | minor | 接受 | 无上限可能死循环 | 7.4 步骤 6、8.6 步骤 6、13.1 `max_check_retries` |
+| RV-14 | minor | 接受 | 自动执行探测命令有副作用风险 | 14.1、13.1 `verify` 与 `probe.verify_suggestion`、15.1 FR-21、17.2 |
+| RV-15 | minor | 接受 | 每命令双侧探活成本偏高 | 8.1、13.1 `preflight.auth_cache_ttl_h` |
+| RV-16 | nit | 接受 | 编号与术语确不一致 | 第 2 章 FR-06/FR-11 行、3.3、11.3、11.5、15.1 |
+| RV-17 | minor | 接受 | 需明确只读命令边界与 fallback 侧裁决 | 10.3 `readonly_commands`、6.5 注释、6.6 规则 8、8.6 步骤 1、18.1 #11 |
+| RV-18 | nit | 接受 | 原理确未说明 | 11.2 #1 改为实验假设并移到序列末尾 |
+| RV-19 | minor | 接受 | `$ARGUMENTS` 混用有歧义 | 7.1 `/dual-run` 行 `--focus` |
+| RV-20 | minor | 接受 | 并发竞争真实存在 | 新增 12.6、7.3 退出码 70、5.3 `.trivium/lock/`、17.2 |
+| RV-21 | minor | 接受 | 注释判定需语言感知，一期不做 | 6.4 |
+| RV-22 | nit | 接受 | 论据无一手来源 | AD-01 标注置信度 |
+| RV-23 | nit | 接受 | 大小写由探针钉死 | 3.3 |
+| RV-24 | nit | 暂缓 | 拆分为 `ARCH_` / `LLD_` / `ADR_` 需在评审通过后进行，且依赖 README 规范是否修订 | 18.2 `doc/02_design/README.md` 行记录；ADR-001 先行 |
+| RV-25 | nit | 接受 | 同步项确不全 | 18.2 新增 `.gitignore`、PRD FR-07/FR-14/4.4/11.2、gemini 版元信息各行 |
+| RV-26 | nit | 接受 | 3.11 下限偏高 | AD-12 |
+
+**争议与说明**：无驳回项。RV-02 的最终默认值（`mirror` / `in-place`）本版未拍板，按审核建议转为 ADR-001 由 M0 实测数据决定；RV-24 暂缓的重开条件为「本文状态改为 Approved」。
