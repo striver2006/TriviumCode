@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trivium.disposition.v1",
+  "title": "TriviumCode 裁决件 front-matter",
+  "description": "Driver 三类裁决件的 front-matter（设计 §6.6）。正文的逐条裁决表由 gate 单独解析，不在本 schema 内。",
+  "type": "object",
+  "required": ["schema", "topic", "stage", "role", "kind", "run_id", "addresses"],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": "trivium.disposition.v1" },
+    "topic": { "type": "string", "minLength": 1 },
+    "stage": { "enum": ["plan", "code", "bug"] },
+    "role": { "const": "claude" },
+    "kind": {
+      "enum": ["revised", "response"],
+      "description": "plan/bug 用 revised，code 用 response"
+    },
+    "run_id": { "type": "string", "minLength": 1 },
+    "addresses": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "description": "本件应答的审查文档文件名。单审降级时只有一份"
+    }
+  }
+}

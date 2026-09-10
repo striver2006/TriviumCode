@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trivium.run.v1",
+  "title": "TriviumCode 运行元数据",
+  "description": "每次运行的机读全量事实（设计 §6.7），落于归档 _meta/run-<run_id>.json。对应 NFR-05 / FR-24。",
+  "type": "object",
+  "required": [
+    "schema", "run_id", "topic", "stage", "rerun_index", "command",
+    "snapshot", "started_at", "review_mode", "critics", "deny_paths",
+    "guard", "artifacts", "gate", "status"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": "trivium.run.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "topic": { "type": "string", "minLength": 1 },
+    "stage": { "enum": ["plan", "code", "bug"] },
+    "rerun_index": { "type": "integer", "minimum": 1 },
+    "command": { "type": "string" },
+    "prompt_hint": { "type": ["string", "null"] },
+    "snapshot": {
+      "type": "object",
+      "required": ["tree_hash", "subject_sha256", "drift"],
+      "properties": {
+        "git_head": { "type": ["string", "null"] },
+        "tree_hash": { "type": "string" },
+        "dirty": { "type": "boolean" },
+        "subject_sha256": { "type": "string" },
+        "drift": {
+          "type": "object",
+          "required": ["changed", "files", "policy"],
+          "properties": {
+            "changed": { "type": "boolean" },
+            "files": { "type": "array", "items": { "type": "string" } },
+            "policy": { "enum": ["warn", "fail"] }
+          }
+        }
+      }
+    },
+    "started_at": { "type": "string" },
+    "finished_at": { "type": ["string", "null"] },
+    "review_mode": {
+      "enum": ["dual", "single"],
+      "description": "single 即单审降级，必须同时有 degraded_reason（AC-06）"
+    },
+    "degraded_reason": { "type": ["string", "null"] },
+    "critics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gemini": { "$ref": "#/$defs/critic" },
+        "glm": { "$ref": "#/$defs/critic" }
+      }
+    },
+    "deny_paths": { "type": "array", "items": { "type": "string" } },
+    "guard": {
+      "type": "object",
+      "required": ["readonly_breach", "peer_artifact_read", "peer_deny_applied", "forged_role_file"],
+      "properties": {
+        "readonly_breach": { "type": "boolean" },
+        "peer_artifact_read": { "type": "boolean" },
+        "peer_deny_applied": {
+          "type": "object",
+          "description": "逐侧记录路径级 deny 是否实际生效。本机两侧均为 false（M0 实测）",
+          "additionalProperties": { "type": "boolean" }
+        },
+        "forged_role_file": { "type": "boolean" },
+        "breached_files": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": { "type": "string" },
+          "sha256": { "type": "string" }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": ["adjudication_complete", "state"],
+      "properties": {
+        "adjudication_complete": { "type": "boolean" },
+        "state": { "type": "string" },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "status": { "enum": ["running", "success", "failed", "cancelled"] },
+    "skipped": { "type": "boolean" },
+    "skip_reason": { "type": ["string", "null"] },
+    "cache_hit": { "type": "boolean" }
+  },
+  "$defs": {
+    "critic": {
+      "type": "object",
+      "required": ["vendor", "status", "duration_s", "tool_calls", "evidence_ok", "heterogeneous"],
+      "additionalProperties": true,
+      "properties": {
+        "vendor": { "enum": ["antigravity", "zcode"] },
+        "cli_version": { "type": ["string", "null"] },
+        "model_requested": { "type": ["string", "null"] },
+        "model_effective": {
+          "type": ["string", "null"],
+          "description": "回读得到的实际生效模型，不采信配置意图（AC-13）"
+        },
+        "model_effective_source": { "enum": ["envelope", "trace", "requested", "unverified"] },
+        "model_route": { "enum": ["env", "config_copy", "global"] },
+        "effort": { "type": "string" },
+        "status": { "enum": ["ok", "timeout", "failed", "parse_fallback"] },
+        "exit_code": { "type": ["integer", "null"] },
+        "duration_s": { "type": "number" },
+        "tool_calls": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" },
+          "description": "project_reads = 被审对象与送审包之外的项目文件读取次数（§11.4）"
+        },
+        "evidence_ok": { "type": "boolean" },
+        "usage": { "type": "object", "additionalProperties": { "type": "number" } },
+        "heterogeneous": {
+          "type": "boolean",
+          "description": "是否与主脑异构。false 时必须有 override_reason（AC-18）"
+        },
+        "override_reason": { "type": ["string", "null"] },
+        "fail_reason": { "type": ["string", "null"] },
+        "empty_review": { "type": "boolean" },
+        "parse_fallback": { "type": "boolean" },
+        "session_id": { "type": ["string", "null"] },
+        "peer_deny_applied": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -14,7 +14,7 @@
  * 因为那需要 Node ≥ 22，会把 Node 18 用户挡在门外。
  */
 import { build } from 'esbuild';
-import { readdir, mkdir, rm } from 'node:fs/promises';
+import { readdir, mkdir, rm, cp } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +28,9 @@ const COMMON = {
   platform: 'node',
   target: 'node18',
   logLevel: 'info',
+  // 默认 charset 是 ascii，会把全部中文转成 \u 转义：产物体积变大、且不可读不可 grep。
+  // 本项目的人读输出与提示词全是中文，保留 utf8 很有必要。
+  charset: 'utf8',
 };
 
 /** 递归收集某目录下的 .ts 文件 */
@@ -68,6 +71,14 @@ async function bundleBinaries() {
 async function buildTests() {
   const outdir = path.join(ROOT, 'dist/test');
   await rm(outdir, { recursive: true, force: true });
+
+  // 逐文件转译（bundle: false）不会内联 JSON 导入，也不会把资源拷过去。
+  // 打包产物靠 esbuild 内联即可，但测试构建必须把 schema 按同样的相对路径摆好，
+  // 否则 parse.ts 的 `import … from '../../skills/.../review.v1.json'` 会解析失败。
+  const schemaSrc = path.join(ROOT, 'skills/dual-critic/schema');
+  if (existsSync(schemaSrc)) {
+    await cp(schemaSrc, path.join(outdir, 'skills/dual-critic/schema'), { recursive: true });
+  }
   const entryPoints = [
     ...(await collectTs(path.join(ROOT, 'src'))),
     ...(await collectTs(path.join(ROOT, 'test'))),
@@ -75,6 +86,10 @@ async function buildTests() {
   if (entryPoints.length === 0) return;
   await build({
     ...COMMON,
+    // 测试构建只在本机跑，可以用更高的 target：node18 不支持 import attributes，
+    // esbuild 会把 `with { type: 'json' }` 剥掉，导致 Node 的 ESM loader 拒绝加载 JSON。
+    // 打包产物仍用 node18（AD-12 的兼容承诺），两者互不影响。
+    target: 'node22',
     entryPoints,
     outdir,
     outbase: ROOT,
