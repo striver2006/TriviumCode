@@ -1,0 +1,64 @@
+{
+  "_comment": [
+    "由 `trivium init` 合并进目标项目的 .claude/settings.json（设计 §8.5）。",
+    "",
+    "每条命令外面都包了一层存在性守卫：",
+    "  sh -c 'W=…; test -x \"$W\" || exit 0; exec \"$W\" …'",
+    "这不是多余的防御。.claude/settings.json 随 Git 分发，而 .trivium/bin/trivium",
+    "是 `trivium init` 在本机生成的产物、**不随 Git 分发**——因此「协作者克隆仓库后",
+    "还没跑过 init」是必然会发生的常态。此时若直接 exec 一个不存在的文件，",
+    "shell 返回 127；wrapper 内部的「检测不到 config.yaml 就 exit 0」那条铁律",
+    "根本没有执行机会，结果是每次工具调用都报一次钩子错误。",
+    "（审查意见 AGY-02 / GLM-01，修订版 M2 计划 §2.3）",
+    "",
+    "退出码约定见 src/trivium/hooks.ts 的三档语义：",
+    "  0 = 放行或判定不了；2 = 明确判定拦截；1 = 程序缺陷（非阻断）。"
+  ],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-pre-write'",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit:*)",
+            "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-pre-commit'",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-stop'",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-session-start'",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

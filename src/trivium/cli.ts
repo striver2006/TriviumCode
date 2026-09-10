@@ -4,13 +4,22 @@
  * 职责严格限定为：子命令解析、退出码约定、人读与 `--json` 机读输出。
  * **不做任何业务判定**——所有判定都在各自模块里。
  */
-import { EXIT, TriviumError, usageError } from './exit-codes.js';
+import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
 import { loadCtx } from './config.js';
 import { runDoctor, renderDoctorReport } from './doctor.js';
 import { runReview } from './review.js';
 import { cancelRun, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
+import {
+  checkAdjudication, inferLatestRunId, loadRoundReviews, renderGateResult,
+} from './gate.js';
+import { checkStageArtifacts, resolveRerunIndex } from './archive.js';
+import { readHookInput, runHook, type HookName } from './hooks.js';
+import { listOpenGates, setGate } from './state.js';
+import { recordApproval } from './approval.js';
+import { resolveTopic, listTopics } from './topic.js';
+import { readTask } from './meta.js';
 import { STAGES, type CriticId, type Stage } from './types.js';
-import { emitJson, fail, isJsonMode, say, setOutputMode, warn } from './util/log.js';
+import { emitJson, fail, isJsonMode, say, setOutputMode, step, warn } from './util/log.js';
 
 const VERSION = '0.1.0';
 
@@ -75,6 +84,22 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
 
   trivium review --status <run_id> [--json]    只读一次状态，不等待
   trivium review --cancel <run_id>             取消运行并回收主题锁
+
+  trivium gate --stage <s> --topic <主题> --check [--run-id <id>] [--json]
+      裁决完整性硬校验（§8.6）。返回 2 表示未通过，stdout 给出缺口清单供直接修补。
+      --check-artifacts   改为校验该阶段最低工件集（§6.3）
+      --await-approval    置闸门为 awaiting_approval 并输出停点话术
+
+  trivium gate hook-pre-write | hook-pre-commit | hook-stop | hook-session-start
+      Claude Code Hook 入口，从 stdin 读事件。**不应由人直接调用。**
+      退出码：0 放行或判定不了 ｜ 2 明确判定拦截 ｜ 1 程序缺陷（非阻断）
+
+  trivium approve --topic <主题> --stage <s> [--reject --reason <理由>]
+  trivium abandon --topic <主题> [--stage <s>] [--reason <理由>]
+      人工审批 / 放弃闸门。三种结论均解除业务写锁，工件一律保留。
+
+  trivium status [--topic <主题>] [--json]
+      打印闸门、运行、降级与争议。
 
   trivium --version
   trivium --help
@@ -266,6 +291,167 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
   return report.blockers.length === 0 ? EXIT.OK : EXIT.ENV;
 }
 
+const HOOK_NAMES: readonly HookName[] = [
+  'hook-pre-write', 'hook-pre-commit', 'hook-stop', 'hook-session-start',
+];
+
+async function cmdGate(args: ParsedArgs): Promise<number> {
+  // ── Hook 入口 ──
+  const sub = args.sub[0];
+  if (sub && (HOOK_NAMES as readonly string[]).includes(sub)) {
+    const input = await readHookInput();
+    const out = await runHook(sub as HookName, () => loadCtx({ allowUninitialized: true }), input);
+    if (out.json) process.stdout.write(JSON.stringify(out.json) + '\n');
+    if (out.stderr) process.stderr.write(out.stderr + '\n');
+    return out.exitCode;
+  }
+
+  const ctx = await loadCtx();
+  const stage = parseStage(args);
+  const topic = flagString(args, 'topic');
+  if (!topic) throw usageError('gate 需要 --topic');
+  const ref = await resolveTopic(ctx, topic, stage);
+
+  // 本轮轮次：已产出审查工件的最新一轮，即 resolveRerunIndex - 1
+  const nextIndex = await resolveRerunIndex(ref.layout, stage);
+  const rerunIndex = Math.max(1, nextIndex - 1);
+
+  // ── --check-artifacts ──
+  if (args.flags.get('check-artifacts') === true) {
+    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex);
+    if (isJsonMode()) {
+      emitJson({ ok: c.ok, stage, rerun_index: rerunIndex, present: c.present, missing: c.missing });
+    } else if (c.ok) {
+      say(`✓ ${stage} 阶段第 ${rerunIndex} 轮工件齐备：${c.present.join(' / ')}`);
+    } else {
+      fail(`${stage} 阶段第 ${rerunIndex} 轮缺件：${c.missing.join(' / ')}`);
+    }
+    return c.ok ? EXIT.OK : EXIT.MISSING_ARTIFACT;
+  }
+
+  // ── --await-approval ──
+  if (args.flags.get('await-approval') === true) {
+    const runId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
+    await setGate({
+      triviumDir: ctx.triviumDir, topic, stage, state: 'awaiting_approval',
+      runId, rerunIndex,
+      sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
+      heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+    });
+    const msg =
+      `已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
+      `  通过：/dual-approve --topic ${topic} --stage ${stage}\n` +
+      `  拒绝：/dual-approve --topic ${topic} --stage ${stage} --reject --reason <理由>\n` +
+      `  放弃：/dual-abandon --topic ${topic}\n` +
+      `  在此期间不得修改业务文件（Hook 会拦下）。`;
+    if (isJsonMode()) emitJson({ ok: true, state: 'awaiting_approval', stage, rerun_index: rerunIndex, message: msg });
+    else say(msg);
+    return EXIT.OK;
+  }
+
+  // ── --check（默认）──
+  const runId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
+  if (!runId) {
+    throw missingArtifactError(
+      `找不到 ${stage} 阶段第 ${rerunIndex} 轮的 run_id。请先跑一次双审，或用 --run-id 指定。`,
+    );
+  }
+  const { reviews, notes } = await loadRoundReviews(ref.layout, stage, runId);
+  for (const n of notes) step(n);
+
+  const result = await checkAdjudication({
+    cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
+    degraded: Object.values(reviews).some((r) => r === undefined),
+  });
+
+  if (isJsonMode()) {
+    emitJson({
+      ok: result.ok,
+      stage, rerun_index: rerunIndex, run_id: runId,
+      failures: result.failures,
+      warnings: result.warnings,
+      structured_ids: result.structuredIds,
+      fallback_ids: result.fallbackIds,
+      disposition: result.dispositionPath,
+    });
+  } else {
+    say(renderGateResult(result));
+  }
+  // 返回 2 让调用方（skill / Hook）能按闸门语义处理
+  return result.ok ? EXIT.OK : EXIT.GATE_BLOCK;
+}
+
+async function cmdApproval(
+  args: ParsedArgs,
+  fallbackDecision: 'approved' | 'abandoned',
+): Promise<number> {
+  const ctx = await loadCtx();
+  const topic = flagString(args, 'topic');
+  if (!topic) throw usageError('需要 --topic');
+
+  const decision =
+    fallbackDecision === 'approved' && args.flags.get('reject') === true ? 'rejected' : fallbackDecision;
+
+  // abandon 不带 --stage 时，放弃该主题下全部未关闭闸门
+  const stageRaw = flagString(args, 'stage');
+  const stages: Stage[] = stageRaw
+    ? [parseStage(args)]
+    : (await listOpenGates(ctx.triviumDir)).filter((g) => g.topic === topic).map((g) => g.stage);
+
+  if (stages.length === 0) {
+    throw missingArtifactError(`主题「${topic}」没有未关闭的闸门`);
+  }
+
+  for (const stage of stages) {
+    const out = await recordApproval({
+      ctx, topic, stage, decision,
+      reason: flagString(args, 'reason'),
+    });
+    say(out.message);
+  }
+  if (isJsonMode()) emitJson({ ok: true, topic, stages, decision });
+  return EXIT.OK;
+}
+
+async function cmdStatus(args: ParsedArgs): Promise<number> {
+  const ctx = await loadCtx();
+  const only = flagString(args, 'topic');
+  const gates = await listOpenGates(ctx.triviumDir);
+  const topics = only ? [only] : await listTopics(ctx);
+
+  const payload: Record<string, unknown>[] = [];
+  for (const t of topics) {
+    const task = await readTask({ archiveRoot: ctx.archiveRoot, topic: t });
+    const g = gates.filter((x) => x.topic === t);
+    payload.push({
+      topic: t,
+      open_gates: g.map((x) => ({ stage: x.stage, state: x.state, since: x.since })),
+      runs: task.runs.length,
+      degradations: task.degradations.length,
+      disputed: task.disputed,
+      approvals: task.approvals.length,
+    });
+  }
+
+  if (isJsonMode()) {
+    emitJson({ ok: true, topics: payload });
+  } else if (payload.length === 0) {
+    say('归档根下还没有任何主题。');
+  } else {
+    for (const p of payload) {
+      const gs = p['open_gates'] as { stage: string; state: string; since: string }[];
+      say(`主题 ${String(p['topic'])}`);
+      say(
+        `  运行 ${String(p['runs'])} 次 ｜ 降级 ${String(p['degradations'])} 次 ｜ ` +
+          `审批记录 ${String(p['approvals'])} 条${p['disputed'] ? ' ｜ ⚠️ 有争议项' : ''}`,
+      );
+      if (gs.length === 0) say('  无未关闭闸门');
+      else for (const x of gs) say(`  · ${x.stage}: ${x.state}（自 ${x.since}）`);
+    }
+  }
+  return EXIT.OK;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   setOutputMode({ json: args.flags.get('json') === true, quiet: args.flags.get('quiet') === true });
@@ -284,6 +470,14 @@ export async function main(argv: string[]): Promise<number> {
       return cmdDoctor(args);
     case 'review':
       return cmdReview(args);
+    case 'gate':
+      return cmdGate(args);
+    case 'approve':
+      return cmdApproval(args, 'approved');
+    case 'abandon':
+      return cmdApproval(args, 'abandoned');
+    case 'status':
+      return cmdStatus(args);
     default:
       throw usageError(`未知子命令：${args.command}\n\n${USAGE}`);
   }

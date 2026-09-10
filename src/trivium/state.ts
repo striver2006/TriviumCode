@@ -127,12 +127,22 @@ export async function getGate(
   return s.gates[gateKey(topic, stage)] ?? null;
 }
 
-/** 全部处于「等待人工审批」的闸门（`hook-session-start` 与 `status` 用） */
+/**
+ * 全部**未关闭**的闸门。
+ *
+ * 必须包含 `running`：设计 §8.5 要求双审进行中也拦业务写入（就地模式下审查员正在读
+ * 真实工作树，此时 Driver 改代码会造成漂移）。第一版漏了这个状态，
+ * 导致 hook-pre-write 根本看不到进行中的运行——被用例抓到。
+ */
+const OPEN_STATES: readonly GateState[] = [
+  'awaiting_approval',
+  'review_done_awaiting_disposition',
+  'running',
+];
+
 export async function listOpenGates(triviumDir: string): Promise<GateEntry[]> {
   const s = await readState(triviumDir);
-  return Object.values(s.gates).filter(
-    (g) => g.state === 'awaiting_approval' || g.state === 'review_done_awaiting_disposition',
-  );
+  return Object.values(s.gates).filter((g) => OPEN_STATES.includes(g.state));
 }
 
 /**
