@@ -200,3 +200,51 @@ test('回归：裁决件也不抬升轮次（它与审查同轮）', async () =>
   await writeArtifact({ layout: l, stage: 'code', role: 'claude', writer: 'driver', kind: 'response', rerunIndex: 5, content: 'z', date: DATE });
   assert.equal(await resolveRerunIndex(l, 'code'), 1, 'claude 角色一律不参与轮次计算');
 });
+
+
+// ── 回归：原稿只在第 1 轮，重跑的工件集校验不得误报缺原稿 ──
+
+test('回归：重跑时原稿留在第 1 轮，第 2 轮四件套仍应判齐备', async () => {
+  const l = await tmpLayout();
+  // 第 1 轮：原稿 + 两侧审查 + 裁决件
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', rerunIndex: 1, content: '原稿', date: DATE });
+  for (const role of ['gemini', 'glm'] as const) {
+    await writeArtifact({ layout: l, stage: 'plan', role, writer: role, rerunIndex: 1, content: 'x', date: DATE });
+  }
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'y', date: DATE });
+  assert.equal((await checkStageArtifacts(l, 'plan', 1)).ok, true);
+
+  // 第 2 轮：只有两侧审查 + 裁决件，原稿**不重新生成**
+  for (const role of ['gemini', 'glm'] as const) {
+    await writeArtifact({ layout: l, stage: 'plan', role, writer: role, rerunIndex: 2, content: 'x2', date: DATE });
+  }
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 2, content: 'y2', date: DATE });
+
+  const c2 = await checkStageArtifacts(l, 'plan', 2);
+  assert.equal(c2.ok, true, `第 2 轮应判齐备，实际缺：${c2.missing.join(', ')}`);
+});
+
+test('回归：真的没有原稿时仍要报缺（不能因跨轮次查找而放水）', async () => {
+  const l = await tmpLayout();
+  for (const role of ['gemini', 'glm'] as const) {
+    await writeArtifact({ layout: l, stage: 'plan', role, writer: role, rerunIndex: 1, content: 'x', date: DATE });
+  }
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'y', date: DATE });
+  const c = await checkStageArtifacts(l, 'plan', 1);
+  assert.equal(c.ok, false);
+  assert.ok(c.missing.some((m) => m.includes('原稿')));
+});
+
+test('回归：本轮审查缺失不受跨轮次查找影响', async () => {
+  const l = await tmpLayout();
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', rerunIndex: 1, content: '原稿', date: DATE });
+  for (const role of ['gemini', 'glm'] as const) {
+    await writeArtifact({ layout: l, stage: 'plan', role, writer: role, rerunIndex: 1, content: 'x', date: DATE });
+  }
+  // 第 2 轮只有 gemini
+  await writeArtifact({ layout: l, stage: 'plan', role: 'gemini', writer: 'gemini', rerunIndex: 2, content: 'x2', date: DATE });
+  const c = await checkStageArtifacts(l, 'plan', 2);
+  assert.equal(c.ok, false);
+  assert.ok(c.missing.some((m) => m.includes('glm')), '第 2 轮缺 glm 必须报出');
+  assert.ok(!c.missing.some((m) => m.includes('原稿')), '原稿在第 1 轮存在，不得报缺');
+});

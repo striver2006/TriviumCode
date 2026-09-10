@@ -232,21 +232,31 @@ export async function checkStageArtifacts(
   stage: Stage,
   rerunIndex: number,
 ): Promise<ArtifactCheck> {
-  const items = (await listStageArtifacts(layout, stage)).filter(
-    (i) => i.parsed.rerunIndex === rerunIndex,
-  );
-  const has = (role: Role, kind: DispositionKind | null) =>
-    items.some((i) => i.parsed.role === role && i.parsed.kind === kind);
+  const all = await listStageArtifacts(layout, stage);
+  const thisRound = all.filter((i) => i.parsed.rerunIndex === rerunIndex);
+
+  const hasThisRound = (role: Role, kind: DispositionKind | null) =>
+    thisRound.some((i) => i.parsed.role === role && i.parsed.kind === kind);
+  /**
+   * 原稿**跨轮次**查找。
+   *
+   * 依设计 §6.2 的目录示例，重跑时原稿不重新生成、停留在第 1 轮，
+   * 只有两侧审查与裁决件带 `-r<N>`。若按当前轮次过滤去找原稿，
+   * 任何重跑都会误报「缺原稿」——这与 resolveRerunIndex 的语义必须一致，
+   * 否则 `gate --check-artifacts` 在每次重跑上都会假失败。
+   */
+  const hasAnyRound = (role: Role, kind: DispositionKind | null) =>
+    all.some((i) => i.parsed.role === role && i.parsed.kind === kind);
 
   const required: { label: string; ok: boolean }[] = [];
   // code 阶段的被审对象是 diff 而非文档，因此没有 -claude.md 原稿
   if (stage === 'plan' || stage === 'bug') {
-    required.push({ label: '原稿 …-claude.md', ok: has('claude', null) });
+    required.push({ label: '原稿 …-claude.md（任一轮次）', ok: hasAnyRound('claude', null) });
   }
-  required.push({ label: '审查 …-gemini.md', ok: has('gemini', null) });
-  required.push({ label: '审查 …-glm.md', ok: has('glm', null) });
+  required.push({ label: '审查 …-gemini.md', ok: hasThisRound('gemini', null) });
+  required.push({ label: '审查 …-glm.md', ok: hasThisRound('glm', null) });
   const kind: DispositionKind = stage === 'code' ? 'response' : 'revised';
-  required.push({ label: `裁决件 …-${kind}-claude.md`, ok: has('claude', kind) });
+  required.push({ label: `裁决件 …-${kind}-claude.md`, ok: hasThisRound('claude', kind) });
 
   return {
     ok: required.every((r) => r.ok),
