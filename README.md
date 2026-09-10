@@ -1,6 +1,6 @@
-# TriviumCode (三方智鉴)
-
 <div align="center">
+
+# TriviumCode (三方智鉴)
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20VS%20Code-brightgreen.svg)](#)
