@@ -139,6 +139,15 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
     const r = results[c];
     const q = requests[c];
     if (!r || !q) continue;
+    /*
+     * 已经失败或超时的一侧不再评判证据。
+     *
+     * 一个超时被 SIGTERM 掉的进程当然「零工具调用、零项目文件读取」——
+     * 再报一遍「证据不足」只会把真正的原因（超时）埋在噪音里。
+     * 真实运行中就出现过这种误导：glm 侧 900s 超时，人读输出却说它证据不足。
+     * 失败原因由 runner 的 fail_reason 与 decideMode 的 degraded_reason 负责。
+     */
+    if (r.status === 'timeout' || r.status === 'failed') continue;
     sides[c] = judgeSide(cfg, c, r, reviews[c] ?? null, q, {
       archiveRootAbs: input.archiveRootAbs,
       projectRoot: input.projectRoot,
@@ -170,9 +179,13 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
     out.push(
       '只读失守：审查员的工具轨迹中出现了写事件。受影响的调用：\n' +
         v.breachedFiles.map((f) => `    ${f}`).join('\n') +
-        '\n  编排器**不会**自动回滚，请人工确认工作树状态（建议 `git status` 与 `git diff`）。',
+        '\n  编排器**不会**自动回滚。建议人工核对：\n' +
+        '    git status --porcelain -uall\n' +
+        '    git diff\n' +
+        '  确认无误后再决定是否 `git checkout --` 相关文件。',
     );
   }
+
   if (v.peerArtifactRead) {
     for (const s of Object.values(v.sides)) {
       if (s?.peerArtifactRead) {

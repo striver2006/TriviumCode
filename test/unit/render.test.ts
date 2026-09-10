@@ -164,3 +164,71 @@ test('countSeverities 对 null 安全', () => {
 test('parseFrontMatter 对无 front-matter 的文件返回 null', () => {
   assert.equal(parseFrontMatter('# 普通文档\n正文'), null);
 });
+
+// ── 回归：已失败/超时的一侧不再报「证据不足」（真实运行中出现过的误导）──
+
+test('回归：超时的一侧不产生证据不足告警，避免把真正原因埋在噪音里', async () => {
+  const { judgeRun, renderGuardWarnings } = await import('../../src/trivium/guard.js');
+  const { defaultConfig } = await import('../../src/trivium/config.js');
+  const { failedResult } = await import('../../src/trivium/adapters/base.js');
+  const path = await import('node:path');
+  const os = await import('node:os');
+  const { promises: fs } = await import('node:fs');
+  const { initFixtureRepo, workTreeHash } = await import('../../src/trivium/util/git.js');
+
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-guardnoise-'));
+  await fs.writeFile(path.join(dir, 'a.ts'), 'export const a = 1;\n');
+  await initFixtureRepo(dir);
+  const tree = await workTreeHash(dir);
+
+  const req = {
+    run_id: 'R', topic: 't', stage: 'plan' as const, critic: 'glm' as const,
+    project_root: dir, subject_path: path.join(dir, 'a.ts'), deny_paths: [],
+    out_dir: '/x', brief_path: '/b', brief_text: 'B', model: 'M',
+    timeout_s: 900, schema_path: '/s', min_tool_calls: 5, min_project_reads: 3,
+  };
+
+  const v = await judgeRun({
+    cfg: defaultConfig(),
+    projectRoot: dir,
+    archiveRootAbs: path.join(dir, '.reviews'),
+    archiveRootRel: '.reviews',
+    before: {
+      gitHead: null, treeHash: tree, dirty: false, subjectSha256: 'S',
+      subjectPath: req.subject_path, denyPaths: [], diffText: null, takenAt: 'now',
+    },
+    afterTreeHash: tree,
+    afterSubjectSha256: 'S',
+    relatedPaths: [],
+    results: {
+      glm: failedResult('glm', { status: 'timeout', reason: '脚本级超时（900s）' }),
+    },
+    reviews: { glm: null },
+    requests: { glm: req },
+  });
+
+  assert.equal(v.sides.glm, undefined, '超时侧不应产出 SideVerdict');
+  const warnings = renderGuardWarnings(v);
+  assert.equal(
+    warnings.some((w) => w.includes('证据不足')),
+    false,
+    `超时侧不该再报证据不足，实际告警：${warnings.join(' | ')}`,
+  );
+});
+
+test('只读失守的告警包含可执行的人工核对命令，且明确不自动回滚', async () => {
+  const { renderGuardWarnings } = await import('../../src/trivium/guard.js');
+  const warnings = renderGuardWarnings({
+    sides: {},
+    drift: { kind: 'none' },
+    driftAction: 'ok',
+    fingerprintChangedFiles: [],
+    readonlyBreach: true,
+    breachedFiles: ['write_to_file(/proj/src/x.ts)'],
+    peerArtifactRead: false,
+  });
+  const w = warnings.join('\n');
+  assert.match(w, /只读失守/);
+  assert.match(w, /git status --porcelain -uall/);
+  assert.match(w, /\*\*不会\*\*自动回滚/);
+});
