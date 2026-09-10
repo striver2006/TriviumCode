@@ -1,0 +1,29 @@
+需求：
+在 macOS + VS Code 原生开发流下，建立一套**“主攻 + 双审”（Driver-DualCritic）**的全自动多智能体协同流水线：
+
+1. Claude Code 作为主脑（以VS Code插件存在）：专注理解用户需求、起草方案、编写代码、修复缺陷；
+
+2. Antigravity (Google) 和 ZCode (智谱) 作为二次审核人员各自针对Claude Code给出的需求、计划、方案、代码、以及Bug根因定位等任务进行独立的审查，把审查意见输出给Claude Code参考，以提高任务执行的准确度。
+3.不是仅仅利用LLM的能力，而是要能利用这两个LLM厂商的编程Agent能力。
+
+4.工作过程要留痕。开发计划审核：Claude Code生成的原始计划文档，Antigravity (Google) 和
+ZCode (智谱)生成的审核文档，Claude Code生成的修改后划文档，都需要保存在项目的特定文件夹中，以备后续参考。代码审核：Antigravity (Google) 和ZCode (智谱)生成的审核文档，Claude Code对这些意见的应答文档（接受/不接受，修改计划），也需要保存下来。
+
+5.根据任务的不同，可以指定Antigravity (Google) 和 ZCode (智谱)使用不同的LLM。
+
+6.负责审查的Agent，在执行审查时根目录就是所在项目的根目录，除另一个审查Agent生成的文件外，它能读取整个项目的任何资料。
+
+7.Claude Code 生成的需要二次审核的文档时，以“日期-主题-claude.md"命名；Antigravity审核的文档输出，以“日期-主题-gemini.md"命名；ZCode审核的文档输出，以“日期-主题-glm.md"命名。
+
+8.三个Agent生成的文档统一存储在工程中的一个目录，按任务主题建子目录。
+
+9.两个负责审核的Agent互相不能看对方的输出的文档，以防上下文污染，破坏独立性。
+
+10.整个工作流程：Claude Code出方案->Gemini+GLM审核->CC修改方案->Claude Code修改代码->Gemini+GLM审查->CC确认修改方案->修改代码->编译测试。
+
+11.使用方式：以"/"命令的方式开启流程，具体分为以下几种命令：
+    A.启动全流程：Claude Code出方案->Gemini+GLM审核->CC修改方案->Claude Code修改代码->Gemini+GLM审查->CC确认修改方案->修改代码->编译测试，自动完成。
+    B.启动计划审核：Claude Code已经出好计划，根据命令后面带的提示语自动执行：Gemini+GLM审核->CC修改方案，等待人工审批。
+    C.启动代码审核：Claude Code已经写好代码，根据命令后面带的提示语自动执行：Gemini+GLM审查->CC确认修改方案，等待人工审核。
+
+12.其他最佳实践。
