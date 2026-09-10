@@ -52,7 +52,11 @@ ehthumbs_vista.db
 .zcode/
 .cursor/
 .windsurf/
-.claude/
+
+# Claude Code：忽略个人状态，但保留随仓库分发的 Hook 配置（设计 5.3 / 审核意见 RV-06）
+.claude/*
+!.claude/settings.json
+.claude/settings.local.json
 
 # VS Code (保留工作区推荐插件与通用配置，忽略个人状态)
 .vscode/*
@@ -73,6 +77,10 @@ yarn-error.log*
 pnpm-debug.log*
 .pnpm-debug.log*
 package-lock.json.bak
+
+# TriviumCode 构建产物（esbuild，设计 5.2：不进 Git）
+/dist/
+skills/dual-critic/scripts/trivium.cjs
 
 # Python
 __pycache__/
@@ -117,3 +125,14 @@ temp/
 .reviews/*.lock
 .reviews/*.tmp
 .reviews/*.cache
+
+# ------------------------------------------------------------------------------
+# TriviumCode 编排器运行时目录 (.trivium/)
+# config.yaml 为团队共享策略，进 Git；其余为本机状态与探针结论，不进 Git
+# 由 `trivium init` 幂等写入，见设计 5.3 / protocol/gitignore.snippet
+# ------------------------------------------------------------------------------
+.trivium/bin/
+.trivium/logs/
+.trivium/lock/
+.trivium/state.json
+.trivium/config.local.yaml
