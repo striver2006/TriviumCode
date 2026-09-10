@@ -1,0 +1,140 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一条：Hook no-op 铁律存在它自己管不到的路径——hooks 随项目 .claude/settings.json 进 Git 分发后，任何未在本机跑过 trivium init 的克隆机上 ${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium 不存在，hook 以 127 类非零码退出，铁律「检测不到 config.yaml 就 exit 0」根本没有执行机会，每次工具调用/收工都产生钩子报错。其次：--wait 默认 540s，但 skill 契约没有任何一处要求把 Bash 工具级超时从默认 120s 抬到 600s 上限，按现状实现第一个 --wait 调用必被工具超时杀掉，完成判据 1 直接失败。第三：工作进程派生只规定了 detached+unref，未规定 stdio 去向；stdio 继承管道会让 --start 的 Bash 调用一直挂到 worker 退出（或工具超时连坐）。第四：主题锁自动回收以「PID 不存在」为必要条件，macOS PID 复用会让遗留锁永不回收且无兜底。整体上计划与设计 §7.5/§8.5/§12.6 对齐良好、四条完成判据可测，上述缺口都能在计划层用几句话补齐，建议修订后实施。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.3（铁律）",
+      "problem": "「Hook wrapper 必须对未初始化项目 no-op」把 no-op 判据放在 wrapper 内部（检测不到 .trivium/config.yaml 则 exit 0），但 hook 命令本身是 ${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium，而 wrapper 与 .trivium/bin 是 init 在本机生成的产物、不随 Git 分发；.claude/settings.json 却「随仓库分发」。协作者克隆仓库后未跑 init 时：hooks 会触发、wrapper 不存在、shell 以 127 级非零码退出——wrapper 内的 no-op 检查永远没机会执行。设计 §8.5 行为约定②把这个情形定性为「非阻断、不会误伤」，但每次 Edit/Write/Bash(commit)/Stop/SessionStart 都向会话注入一条钩子报错，这不等于 no-op，「全局安装不得误伤其它仓库」的承诺在该路径上落空。另一条相邻边界：config.yaml 随 Git 分发且存在、但本机探针段缺失/过期时，wrapper 会跑起来并走到失败分支而非 exit 0。",
+      "evidence": "读 plan（.reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-claude.md:52-53）铁律原文；设计 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md:861-903 的 hook 命令用 ${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium，:909 约定②承认 wrapper 不存在时以非 2 非零码退出；README.md:252-265 目标项目布局标注 .claude/settings.json「随仓库分发」、.trivium/bin 由 init 生成。",
+      "suggestion": "把 no-op 守卫上移到 init 写入的 hook 命令层：命令外面包一层存在性守卫（wrapper 可执行才 exec，否则 exit 0），使「未 init 的克隆机」与「config 不可判定」都归入 exit 0；并在验收判据 3 的测试夹具中加入「hooks 已分发但本机未 init」与「config.yaml 存在但 wrapper 缺失」两个场景。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §2.1 / §2.4",
+      "problem": "--wait 默认等 540s，计划只写「须小于 Bash 工具超时」，但没有任何一处规定由谁、如何把该次 Bash 调用的工具级超时从默认 120s 抬到 600s 上限。skill 是「薄壳」，其实际调用序列继承自设计 §7.4 步骤 3，那里同样只写了 --timeout 540、未提工具超时参数。按现状实现，第一个 --wait 调用会在 120s 被工具杀掉：skill 契约也没有定义「Bash 工具超时」这种非退出码失败时该怎么记账，完成判据 1「单次 Bash 调用不超时」在首跑即失败。",
+      "evidence": "plan:28-30（默认 540、须小于 Bash 工具超时）、plan:62-64（薄壳定义）；设计 :130 实测记载 Bash 工具默认超时 120000ms、上限 600000ms、心跳输出不能延长；设计 :742-744 的 skill 步骤 3 无工具超时说明；设计 :1321 配置注释自认 540 小于「可调上限」但未落到调用侧。",
+      "suggestion": "在计划 §2.4 钉死：入口 skill 中每个 --wait 调用必须显式携带 600s 工具级超时（540 留 60s 余量），并定义 Bash 调用被工具超时杀掉时的行为（视为一次失败的等待、计入 max_waits 后重试）；可选：--wait 启动时自检可用余量，环境把上限调低时报错而非被杀。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "concurrency",
+      "location": "plan §2.1 / R-A",
+      "problem": "工作进程派生只规定了 detached+unref，漏掉了两个直接决定成败的细节：① stdio 去向未规定。若 worker 继承 --start 进程的 stdout/stderr（现有 util/exec.ts 的 run() 只有 pipe 模式，没有 detached 分支），--start 进程退出后 Bash 工具侧的管道 EOF 不闭合，该次 Bash 调用可能一直挂到 worker 退出（30~40 分钟）或被工具超时连坐杀掉同组 worker——这正是判据 1 要防的事。② R-A 的实测判据只验「父进程退出后 worker 仍在跑」，没有验「--start 的 Bash 调用立即返回」，恰好漏掉上面这个更常见的失败形态。",
+      "evidence": "plan:95（R-A 对策仅 detached: true + unref()）；src/trivium/util/exec.ts:79-83（现行 spawn 固定 stdio ['pipe','pipe','pipe']，无 detached/独立输出通道）；plan:12（判据 1 单次 Bash 调用不超时）。",
+      "suggestion": "计划补一行派生协议：spawn 选项钉死为 detached + stdio 重定向到运行目录内日志文件（或 'ignore'）+ unref + 写 pid 文件到 run 目录；R-A 验收改为两条断言——worker 脱离父进程存活、--start 调用秒级返回；顺带加一个「worker 存活期间同主题 --start 返回 70」的并发用例。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "concurrency",
+      "location": "plan §2.5",
+      "problem": "遗留锁自动回收的条件是「PID 不存在 且 时间戳早于 heartbeat_stale_s」，必要条件「PID 不存在」在 macOS 上不可靠：PID 复用频繁，worker 异常死后其 PID 被无关进程占用时 kill(pid,0) 成功，回收永不触发，同主题 --start 永远返回 70；计划又没有给出任何兜底（无 TTL-only 回收、无强制覆盖开关，§2.1 交付物里也没有 --cancel）。另外回收动作本身无身份校验：两个并发 --start 都判定遗留锁后先后 unlink，可能删掉对方刚创建的新锁，两个 worker 同主题并行，破坏「持锁才写 state.json」的前提。",
+      "evidence": "plan:68-70（回收条件）与 plan:23（O_EXCL 互斥）；设计 :1290-1292 同条件；doc/05_testing/REPORT_2026-09-11_m0_probe.md:261（P-01）已证明本机 macOS 无 GNU 工具链、进程操作须自行实现，进一步要求判据必须在本机可落地；src/trivium/exit-codes.ts:22-26（70/73 已有码位，无对应恢复子命令）。",
+      "suggestion": "锁文件内容增加进程启动时刻（macOS 可用 ps -p <pid> -o lstart= 取得并比对），PID 存活但启动时刻与锁内记录不符同样视为遗留；回收改为「读到遗留 → rename 成唯一临时名 → 复验内容一致 → 删除」防并发双回收；恢复设计 §7.5 的 --cancel 作为人工兜底（见 GLM-09）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.1 / R-A",
+      "problem": "同一机制混用了三种表述：§2.1 写「以 setsid/双 fork 派生」，R-A 写「detached: true + unref()」。macOS 没有 setsid 命令行工具（与 M0 坑 P-01「无 timeout」同类），双 fork 是 C 时代守护进程技巧，在 Node 里 detached:true 本身就完成 setsid——三种说法并存会诱导实现者去 shell 层拼命令，重蹈 P-01 已钉死过的坑。",
+      "evidence": "plan:27 与 plan:95 的表述差异；doc/05_testing/REPORT_2026-09-11_m0_probe.md:261 P-01 明确「超时一律在 Node 内实现、禁止 shell out」，同一纪律应外推到进程派生。",
+      "suggestion": "把 §2.1 的措辞统一为唯一机制：Node child_process spawn 的 detached 选项（即 POSIX setsid）+ unref，删除「setsid/双 fork」字样，或注明它们只是对 detached 语义的解释。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.1",
+      "problem": "--wait 的全部判定依据是轮询 status.json，但它的生命周期语义未定义：① worker 若在首次心跳前崩溃，status.json 不存在，「心跳超过 stale 且进程不存在」的规则没有说缺失文件按什么处理；② 心跳每 30s 重写一次，而 §2.5 的「读→改→原子替换」只列了 state.json/task.json，status.json 的撕裂读未防——--wait 可能读到半个 JSON，届时重试还是失败未定义。",
+      "evidence": "plan:28-32（--wait 轮询与 worker_lost 判据）、plan:72（原子替换只覆盖 state.json/task.json）；设计 :766 约束①（心跳写 status.json，每 30s）。",
+      "suggestion": "把 status.json 纳入同一条原子替换纪律；并明确：status.json 缺失 = 尚未有有效心跳，按 stale 逻辑与进程存活检查合并判定；解析失败按「本次轮询无效、继续等」处理并计入 --timeout 预算。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.3（铁律第 3 句）",
+      "problem": "「内部异常返回 1」没有给「config.yaml 存在但不可解析/损坏」分类。它不是内部异常而是环境不完整，按现约定会落到 1：在已 init 但配置被改坏的仓库里，每次工具调用都报一次非阻断钩子错误。no-op 的语义应当覆盖「判定不了」，而不仅是「判定为未初始化」。",
+      "evidence": "plan:53（「内部异常返回 1」）；plan:52（exit 0 的唯一触发条件是「检测不到 .trivium/config.yaml」，字面上不含「存在但损坏」）；src/trivium/exit-codes.ts:32-42（TriviumError 会把配置加载失败归入一般失败路径）。",
+      "suggestion": "铁律改为三档：wrapper 无法确认存在合法 config（缺失、不可读、schema 不合）一律 exit 0；读到合法 config 且明确判定 deny 才返回 2；真正的程序缺陷（如 hook 子命令自身抛错）才返回 1，并建议 1 的场景打 TRIVIUM_DEBUG 日志便于事后归因。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-08",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "concurrency",
+      "location": "plan §2.5",
+      "problem": "「state.json/task.json 只在持锁时写」的规则覆盖不全：gate --check、gate --await-approval、/dual-approve、/dual-abandon 以及 hook-stop 的每阶段阻断计数都在 review 进程结束（锁已释放）之后写这两个文件。它们都是「读→改→写」，两个并发写者（例如同主题 --start 与 /dual-approve 同时发生）会互相丢更新。原子替换只防撕裂不防丢失。",
+      "evidence": "plan:72-73（只在持锁时写）；plan:55-58 与设计 :852-857（闸门/审批状态由 gate 与 approve 写 state.json/task.json）；plan:96（R-B 的每阶段阻断上限 2 次需要跨回合记账，落点也是状态文件）。",
+      "suggestion": "把规则改写为「所有 state.json/task.json 的读改写都经同一把短临界区主题锁（try-lock，拿不到即重试或拒绝），review 工作进程长持锁只是其中一种持锁者」；hook 计数器如不适合加锁，改为单文件自增 + O_EXCL 重试。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-09",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §2.1",
+      "problem": "设计 §7.5 的长时调用协议是四个子命令（--start/--wait/--status/--cancel），计划 §2.1 只交付前两个，未声明后两个被裁剪、也未安排到别的里程碑。没有 --status，hook-session-start 的「提醒先 --wait」与人工排查都缺一个只读入口；没有 --cancel，卡死运行（进程活着但不再进展）只能靠手动 kill 和删锁（与 GLM-04 叠加后无任何工具化恢复路径）。",
+      "evidence": "设计 :759-764（四子命令表，含 --status 与 --cancel）；plan:26-32（交付物只含 --start/--wait）；plan:8-15（M2 完成判据四条均不要求这两个子命令，但 §2.1 自称实现设计 §7.5）。",
+      "suggestion": "在 §2.1 显式写明：--status/--cancel 随 --wait 一并实现（成本极低、同一条 status.json 读取路径），或注明裁剪理由与 M 几补齐；若裁剪，设计 §7.5 相应行按 §16.2 纪律回补修订。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "退出码 0/70/73/75 与 src/trivium/exit-codes.ts 及设计 §7.3 完全一致，无自造退出码，--start/--wait 的返回值契约有现成落点。",
+    "完成判据四条与设计 §16.1 M2 逐字对应，且每条都有可操作的判定方式（端到端跑通、删裁决被拦、跨会话写行为、frontmatter 生效）。",
+    "R-B 三层防死循环（stop_hook_active 早退 + 每阶段 2 次上限 + Claude Code 自身 8 次硬上限）与设计 §3.1 核实过的 CC 行为吻合，是正确的纵深防御。",
+    "gate 六项硬规则 + 两项默认 warning 与设计 §8.6 一一对应无遗漏；parse_fallback 侧只校验「有裁决与理由」与现有 src/trivium/review.ts:296-304 的 enumerateFallbackFindings 落盘形态一致。",
+    "R-D 的 hook 合并策略（按事件名追加而非替换、写前备份、冲突提示不强改）方向正确，是 settings.json 合并的合理最小方案。",
+    "实施顺序把主题锁与 state.json 放在第一步是对的，后续步骤都依赖这个互斥原语。",
+    "「工作进程生命周期等于一次运行、不是常驻 Daemon」的定位准确，与 PRD Non-Goal 不冲突，避免了 daemon 化的运维负担。",
+    "计划正确继承了 M0 坑清单的结论（超时在 Node 内实现、退出码不可单独采信），未与 doc/05_testing/REPORT_2026-09-11_m0_probe.md 的实测相抵触。",
+    "skill 薄壳定位与「禁止在 skill 里写编排逻辑」的纪律（设计 §16.2 纪律 4 / AD-13）表述一致，未出现计划越权扩边。"
+  ],
+  "not_covered": [
+    "未对 Claude Code 当前版本做任何 hook 实测：『if』字段、${CLAUDE_PROJECT_DIR} 展开、stop_hook_active、非 2 退出码的实际呈现方式，全部采信设计 §3.1 的文档核实结论，按 P7 纪律这些在实现期仍需探针验证。",
+    "未审查 agy/zcode 适配器内部实现与 M3 范围内容（隔离、模型路由、轨迹核验、preflight），本次只核对到 review.ts/runner.ts 的调用边界。",
+    "未逐条推演 gate 裁决表解析器的归一化规则（R-C 的列名归一、全角/多行单元格夹具设计），只核对了规则集与设计 §8.6 的一致性。",
+    "skills/dual-* 七个入口 skill 与核心 skill 文本尚不存在，无法评审其作为「薄壳」的具体措辞是否会把模型引入歧途。",
+    "src/install.ts 目前是占位文件（仅打印未实现并退出 1），只确认了占位与计划方向一致，未评审其未来实现。",
+    "按禁读清单未读 .trivium/、~/.trivium/、.env.example 及另一位审查员的产出；本次为纯只读审查，未运行任何命令。"
+  ],
+  "consulted": [
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-claude.md",
+    "skills/dual-critic/schema/review.v1.json",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md",
+    "doc/05_testing/REPORT_2026-09-11_m0_probe.md",
+    "doc/README.md",
+    "doc/02_design/README.md",
+    "README.md",
+    "src/trivium/cli.ts",
+    "src/trivium/review.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/exit-codes.ts",
+    "src/install.ts"
+  ]
+}
