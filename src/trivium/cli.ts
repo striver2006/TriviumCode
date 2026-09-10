@@ -18,6 +18,7 @@ import { listOpenGates, setGate } from './state.js';
 import { recordApproval } from './approval.js';
 import { resolveTopic, listTopics } from './topic.js';
 import { readTask } from './meta.js';
+import { runInit, renderInitReport } from './init.js';
 import { STAGES, type CriticId, type Stage } from './types.js';
 import { emitJson, fail, isJsonMode, say, setOutputMode, step, warn } from './util/log.js';
 
@@ -84,6 +85,11 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
 
   trivium review --status <run_id> [--json]    只读一次状态，不等待
   trivium review --cancel <run_id>             取消运行并回收主题锁
+
+  trivium init [--dry-run] [--asset-root <路径>]
+      在本项目布置运行时：.trivium/（config.yaml + bin/trivium wrapper）、
+      合并 Hook 进 .claude/settings.json、幂等追加 .gitignore 与协议片段。
+      全部操作幂等，重复运行不重复追加、不覆盖用户内容。
 
   trivium gate --stage <s> --topic <主题> --check [--run-id <id>] [--json]
       裁决完整性硬校验（§8.6）。返回 2 表示未通过，stdout 给出缺口清单供直接修补。
@@ -291,6 +297,19 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
   return report.blockers.length === 0 ? EXIT.OK : EXIT.ENV;
 }
 
+async function cmdInit(args: ParsedArgs): Promise<number> {
+  const ctx = await loadCtx({ allowUninitialized: true });
+  const dryRun = args.flags.get('dry-run') === true;
+  const report = await runInit({
+    ctx,
+    dryRun,
+    ...(flagString(args, 'asset-root') ? { assetRoot: flagString(args, 'asset-root')! } : {}),
+  });
+  if (isJsonMode()) emitJson({ ok: true, dry_run: dryRun, ...report });
+  else renderInitReport(report, dryRun);
+  return EXIT.OK;
+}
+
 const HOOK_NAMES: readonly HookName[] = [
   'hook-pre-write', 'hook-pre-commit', 'hook-stop', 'hook-session-start',
 ];
@@ -470,6 +489,8 @@ export async function main(argv: string[]): Promise<number> {
       return cmdDoctor(args);
     case 'review':
       return cmdReview(args);
+    case 'init':
+      return cmdInit(args);
     case 'gate':
       return cmdGate(args);
     case 'approve':
