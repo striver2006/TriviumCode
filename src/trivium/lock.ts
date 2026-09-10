@@ -215,6 +215,37 @@ export async function withTopicLock<T>(
   }
 }
 
+/**
+ * 全局短临界区。
+ *
+ * `state.json` 是**全局单文件**（`.trivium/state.json`），因此按主题加锁**不够**：
+ * 两个不同主题并发写会各拿到自己的锁、同时读改写同一个文件而丢更新
+ * （审查意见 GLM-08 说的正是这件事，本实现的第一版就这样错了，被并发用例抓到）。
+ * `task.json` 按主题存放（`.reviews/<主题>/task.json`），用主题锁是对的。
+ *
+ * 锁文件名以 `.` 开头，而主题名禁止以 `.` 开头（§6.1），因此不可能与主题锁撞名。
+ */
+const GLOBAL_LOCK_TOPIC = '.global-state';
+
+export async function withGlobalLock<T>(
+  opts: { triviumDir: string; heartbeatStaleMs: number; retries?: number; retryDelayMs?: number },
+  fn: () => Promise<T>,
+): Promise<T> {
+  const handle = await acquireLock({
+    triviumDir: opts.triviumDir,
+    topic: GLOBAL_LOCK_TOPIC,
+    kind: 'critical',
+    heartbeatStaleMs: opts.heartbeatStaleMs,
+    retries: opts.retries ?? 40,
+    retryDelayMs: opts.retryDelayMs ?? 100,
+  });
+  try {
+    return await fn();
+  } finally {
+    await handle.release();
+  }
+}
+
 /** 只读查询：主题当前是否被占用（`status` 与 `hook-session-start` 用） */
 export async function inspectLock(
   triviumDir: string,
