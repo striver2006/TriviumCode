@@ -43,14 +43,28 @@ export const metaDir = (l: ArchiveLayout, stage: StageOrVerify): string =>
 /**
  * 计算本次运行应使用的重跑轮次（§12.5）。
  *
- * 扫描该阶段目录下**已有的角色工件**，取最大 `-r<N>` 后加一；无既有工件则为 1。
- * 一次运行只算一次，两侧审查文档与裁决件**共用同一个 N**——否则会出现
+ * **只看审查工件**（`-gemini.md` / `-glm.md`），不看 Driver 的原稿。
+ * 依据设计 §6.2 的目录示例：重跑时原稿**不重新生成**，停留在第 1 轮，
+ * 只有两侧审查与裁决件带 `-r<N>`：
+ *
+ * ```
+ * 2026-09-10-登录重构-claude.md            ← 原稿，只有一份
+ * 2026-09-10-登录重构-gemini.md            ← 第 1 轮
+ * 2026-09-10-登录重构-r2-gemini.md         ← 第 2 轮
+ * ```
+ *
+ * 若把原稿也算进去，首次审查就会被算成第 2 轮——这是实跑时真的踩到的。
+ *
+ * 一次运行只算一次，两侧审查文档与裁决件**共用同一个 N**，否则会出现
  * `-r2-gemini.md` 配 `-r3-glm.md` 这种对不上的组合。
  */
 export async function resolveRerunIndex(l: ArchiveLayout, stage: Stage): Promise<number> {
   const items = await listStageArtifacts(l, stage);
   let max = 0;
-  for (const i of items) if (i.parsed.rerunIndex > max) max = i.parsed.rerunIndex;
+  for (const i of items) {
+    if (i.parsed.role === 'claude') continue; // 原稿与裁决件不决定轮次
+    if (i.parsed.rerunIndex > max) max = i.parsed.rerunIndex;
+  }
   return max + 1;
 }
 

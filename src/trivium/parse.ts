@@ -80,6 +80,30 @@ export function extractJsonCandidate(
   return null;
 }
 
+/**
+ * 厂商注入的噪音字段。
+ *
+ * M0 之后的实跑发现：即使用了 `--json-schema`，Antigravity 仍会往结构化输出的
+ * **根对象**塞 `toolAction` 与 `toolSummary` 两个自己的字段。审查内容本身完全合格，
+ * 但 schema 的 `additionalProperties: false` 会把整份结论判死并降级成 parse_fallback。
+ *
+ * 处理方式是在校验**之前**剥掉这些已知的厂商字段，而不是放宽 schema——
+ * 放宽会同时失去「字段名写错时能被发现」的保护。
+ */
+const VENDOR_NOISE_KEYS = ['toolAction', 'toolSummary'] as const;
+
+function stripVendorNoise(obj: Record<string, unknown>): { cleaned: Record<string, unknown>; stripped: string[] } {
+  const stripped: string[] = [];
+  const cleaned = { ...obj };
+  for (const k of VENDOR_NOISE_KEYS) {
+    if (k in cleaned) {
+      delete cleaned[k];
+      stripped.push(k);
+    }
+  }
+  return { cleaned, stripped };
+}
+
 /** 解析并校验审查结论 */
 export function parseReview(text: string): ParseOutcome {
   const cand = extractJsonCandidate(text);
@@ -97,6 +121,10 @@ export function parseReview(text: string): ParseOutcome {
       errors: [],
       rawText: text,
     };
+  }
+
+  if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+    obj = stripVendorNoise(obj as Record<string, unknown>).cleaned;
   }
 
   const validate = getValidator();

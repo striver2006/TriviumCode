@@ -161,3 +161,27 @@ test('降级兜底：从原文切出可逐条裁决的编号单元（§6.6 规�
 test('降级兜底：过短的碎片不计入', () => {
   assert.deepEqual(enumerateFallbackFindings('短\n\n也短', 'gemini'), []);
 });
+
+// ── 回归：厂商注入字段（实跑时 agy 真的塞了这两个）──
+
+test('回归：剥离 agy 注入的 toolAction / toolSummary 后仍能通过校验', () => {
+  const withNoise = {
+    ...validReview(),
+    toolAction: 'read_file',
+    toolSummary: '读取了 15 个文件',
+  };
+  const r = parseReview(JSON.stringify(withNoise));
+  assert.equal(r.ok, true, r.ok ? '' : `${r.reason}：${r.errors.join('; ')}`);
+  if (r.ok) {
+    assert.equal(r.review.findings.length, 1);
+    // 剥离后的对象上不应残留噪音字段
+    assert.ok(!('toolAction' in (r.review as unknown as Record<string, unknown>)));
+  }
+});
+
+test('回归：剥离只针对已知厂商字段，真正写错的字段名仍会被发现', () => {
+  const typo = { ...validReview(), findigs: [] };
+  const r = parseReview(JSON.stringify(typo));
+  assert.equal(r.ok, false, '未知的多余字段必须仍然报错，否则字段名写错就查不出来');
+  if (!r.ok) assert.ok(r.errors.some((e) => e.includes('findigs')));
+});

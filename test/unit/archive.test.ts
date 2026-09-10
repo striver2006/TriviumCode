@@ -168,3 +168,35 @@ test('不同主题的工件互不干扰', async () => {
   assert.equal((await listStageArtifacts(other, 'plan')).length, 1);
   assert.equal(await resolveRerunIndex(other, 'plan'), 2);
 });
+
+// ── 回归：轮次不得被 Driver 原稿抬升（实跑时踩到过）──
+
+test('回归：首次审查的轮次是 1，原稿存在也不抬升（设计 §6.2 目录示例）', async () => {
+  const l = await tmpLayout();
+  // Driver 先落原稿，这属于第 1 轮四件套的一部分
+  await writeArtifact({
+    layout: l, stage: 'plan', role: 'claude', writer: 'driver',
+    rerunIndex: 1, content: '# 计划\n', date: DATE,
+  });
+  assert.equal(await resolveRerunIndex(l, 'plan'), 1, '原稿不是「已完成的一轮」');
+});
+
+test('回归：轮次由审查工件决定；重跑时原稿不重新生成', async () => {
+  const l = await tmpLayout();
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', rerunIndex: 1, content: 'a', date: DATE });
+  const n1 = await resolveRerunIndex(l, 'plan');
+  assert.equal(n1, 1);
+
+  for (const role of ['gemini', 'glm'] as const) {
+    await writeArtifact({ layout: l, stage: 'plan', role, writer: role, rerunIndex: n1, content: 'x', date: DATE });
+  }
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: n1, content: 'y', date: DATE });
+
+  assert.equal(await resolveRerunIndex(l, 'plan'), 2, '有了第 1 轮审查，下一轮才是 2');
+});
+
+test('回归：裁决件也不抬升轮次（它与审查同轮）', async () => {
+  const l = await tmpLayout();
+  await writeArtifact({ layout: l, stage: 'code', role: 'claude', writer: 'driver', kind: 'response', rerunIndex: 5, content: 'z', date: DATE });
+  assert.equal(await resolveRerunIndex(l, 'code'), 1, 'claude 角色一律不参与轮次计算');
+});

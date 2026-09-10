@@ -18,7 +18,10 @@ export interface GitStatusEntry {
 }
 
 async function git(cwd: string, args: string[], env?: Record<string, string | undefined>) {
-  return run('git', args, { cwd, env, timeoutMs: 120_000 });
+  // core.quotePath=false：否则 git 会把非 ASCII 路径转成 C 风格八进制转义
+  // （中文路径变成 "\344\270\216…"），下游拿到的路径无法用于文件系统操作。
+  // 实跑时真的踩到过：漂移报告里的中文路径全是乱码。
+  return run('git', ['-c', 'core.quotePath=false', ...args], { cwd, env, timeoutMs: 120_000 });
 }
 
 export async function isGitRepo(cwd: string): Promise<boolean> {
@@ -78,12 +81,12 @@ export async function statusPorcelain(cwd: string): Promise<GitStatusEntry[]> {
       // 重命名形如 "old -> new"，取新路径
       const arrow = p.indexOf(' -> ');
       if (arrow !== -1) p = p.slice(arrow + 4);
-      // 含特殊字符时 git 会加引号
+      // core.quotePath=false 后一般不会再加引号，但含空格/引号的路径仍会被引起来
       if (p.startsWith('"') && p.endsWith('"')) {
         try {
           p = JSON.parse(p) as string;
         } catch {
-          /* 保持原样 */
+          p = p.slice(1, -1);
         }
       }
       return { status, path: p };
