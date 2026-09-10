@@ -16,11 +16,18 @@
 ---
 
 ## 当前已归档文件
-- [`2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md`](./2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md)：Driver-DualCritic 主攻双审流水线总体架构与详细设计（HLD+LLD，v1.0.0 · 综合五份参考答卷与 PRD v1.3.0 的 GLM 裁决方案）
+
+**综合设计文档**（三家 Agent 各自的完整设计，按 PRD FR-08 的 `日期-主题-角色` 规范命名）
+- [`2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md)：Driver-DualCritic 主攻双审流水线总体架构与详细设计（依据 PRD v1.3.0 与 5 份参考答卷 · Claude Code 方案）
 - [`2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md`](./2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md)：Driver-DualCritic 主攻双审流水线系统架构与详细设计规范（实施基准 · Gemini 架构师方案）
+- [`2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md`](./2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md)：Driver-DualCritic 主攻双审流水线总体架构与详细设计（HLD+LLD，v1.0.0 · 综合五份参考答卷与 PRD v1.3.0 的 GLM 裁决方案）
+
+**模板**
 - [`ADR_TEMPLATE.md`](./ADR_TEMPLATE.md)：架构决策记录编写模板
-- `2026-09-10-Claude-Code主攻双智能体审核流水线-dsv4flash.md`
-- `2026-09-10-Claude-Code主攻双智能体审核流水线-grok4.6.md`
-- `2026-09-10-Claude-Code主攻双智能体审核流水线-qwen3.8-flash.md`
-- `2026-09-10-Claude_Antigravity_ZCode_MultiAgent_Workflow-gemini.md`
-- `2026-09-10-Driver-DualCritic主攻双审流水线设计-zcode.md`
+
+**方案调研与多模型答卷**（存放于 [`reference/`](./reference/) 子目录，作为设计输入保留，不作为实现依据）
+- `reference/2026-09-10-Claude-Code主攻双智能体审核流水线-dsv4flash.md`
+- `reference/2026-09-10-Claude-Code主攻双智能体审核流水线-grok4.6.md`
+- `reference/2026-09-10-Claude-Code主攻双智能体审核流水线-qwen3.8-flash.md`
+- `reference/2026-09-10-Claude_Antigravity_ZCode_MultiAgent_Workflow-gemini.md`
+- `reference/2026-09-10-Driver-DualCritic主攻双审流水线设计-zcode.md`
