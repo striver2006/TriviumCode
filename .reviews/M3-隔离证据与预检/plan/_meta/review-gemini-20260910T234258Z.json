@@ -1,0 +1,110 @@
+{
+  "agreed": [
+    "准确抓住了当前阻塞全流程 skill 执行的两个致命缺失（缺少 preflight 和 topic resolve CLI 子命令），实施范围目标高度明确",
+    "恪守确定性归程序原则（P1），将参数解析、提示语切分与主题候选推导收敛在确定性 CLI 模块中，而非交付 LLM 推断",
+    "基于 M0 探针实测结论和 ADR-001 决策，务实放弃不支持的路径级 deny，按 §18.1 #12 默认降级处理，不重复造轮子",
+    "准确识别了探活高昂的配额与时间开销，结合 agy 升级风险（P-02）提出了引入 TTL 缓存机制的必要性",
+    "敏锐注意到了原 prepareRun 中阶段目录创建时机过早破坏 AC-16 零工件的问题"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md",
+    "doc/05_testing/REPORT_2026-09-11_m0_probe.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-claude.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-gemini.md",
+    "src/trivium/topic.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/config.ts",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-run/SKILL.md",
+    "skills/dual-review-code/SKILL.md",
+    "skills/dual-review-bug/SKILL.md",
+    "skills/dual-critic/schema/review.v1.json"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "读了被审对象 .reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-claude.md §1 与 §3.1，对比了设计文档 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md §7.3、§7.4、§8.1、§16.1，以及 skills/dual-review-plan/SKILL.md 与 src/trivium/topic.ts、src/trivium/review.ts。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §1 & §3.1",
+      "problem": "计划 §3.1 将 AC-16 零工件保证窄化为仅在 prepareRun 中推迟阶段目录创建，严重遗漏了端到端多命令调用链中的提前返回路径：① preflight 作为独立子命令（skill 第 1 步）在干净仓库探测「归档根可写」时若直接创建 .reviews/，后续检查失败将残留空归档根；若探针过期隐式跑 doctor 还会产生写入；② topic resolve（skill 第 2 步）运行在 preflight 与 review --start 之间，当前 topic.ts:37 中的 resolveTopic 内部仍调用 ensureDir。若沿用该逻辑，在提示语为空（退出 64）、主题名非法（退出 64）、原稿缺失（退出 65）或代码审无变更（退出 65）等提前返回分支上，空主题目录已被提前创建；③ review --start（skill 第 3 步）在 locateSubject、freeze 快照、routeModel 路由以及项目外运行目录创建等步骤中若异常退出，缺乏零工件清理兜底。",
+      "severity": "blocker",
+      "suggestion": "建立三层零工件防御契约：① preflight 对归档根的可写性探测在目录不存在时仅检查父目录权限，严禁创建 .reviews/；② topic resolve 定位为纯计算/纯查询命令，严禁调用 ensureDir 或执行任何写操作；③ prepareRun 将阶段目录创建严格后置到 writeMeta 落盘前的唯一临界点，并在前置步骤异常时确保项目外临时目录与工作区零污染。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读了被审对象 .reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-claude.md §1 与 §6 R-A，核对了 doc/05_testing/REPORT_2026-09-11_m0_probe.md §1、§3.1、§6.1、§6.3、§7（坑 P-02、P-03、P-08、P-10）与 src/trivium/config.ts。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §1 & §6 R-A",
+      "problem": "探活 TTL 缓存键仅含 CLI 版本无法防范配置与凭据失效，存在假阳性放行风险，且持久化结构缺失：① ZCode CLI 版本（0.16.5）长期不变，其可用性强依赖于 ~/.zcode/cli/config.json 的配置（provider、apiKey、baseURL）及账户鉴权状态（坑 P-08/P-10）。若配置被修改、删除或密钥失效，CLI 版本毫发未变，1 小时 TTL 缓存会假阳性放行导致审查中途崩溃；② Antigravity 侧无头只读能力强依赖于自定义 Agent ~/.gemini/config/agents/trivium-critic/agent.md（绕过 issue #548 软拒绝，坑 P-03）。若该文件被篡改或删除，即使 CLI 版本未变，探针结论 headless_read_ok 也已失效；③ 计划提出写入 config.local.yaml 的 probe.auth.agy_checked_at，仅存时间戳而未显式持久化当时的 CLI 版本与环境指纹，无法在下次预检时进行版本一致性比对；且未提供 --refresh-auth 强制刷新机制。",
+      "severity": "blocker",
+      "suggestion": "健全探活缓存的指纹维度与控制能力：① 缓存结构显式持久化包含 checked_at、cli_version、状态及配置校验指纹；② ZCode 缓存有效性必须叠加 ~/.zcode/cli/config.json 的 mtime 或文件哈希；Antigravity 必须核验只读 Agent 定义文件的存在性与哈希；③ 增加 --refresh-auth 显式穿透开关，支持主动失效。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读了被审对象 .reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-claude.md §1 与 §6 R-B，核对了 src/trivium/doctor.ts（line 75-104）、skills/dual-review-plan/SKILL.md（line 24, 53）以及设计文档 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md §7.4。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §1 & §6 R-B",
+      "problem": "预检中探针过期自动触发 doctor 的降级策略存在非交互超时与逻辑死锁矛盾：① 所有入口 skill 均通过非交互式命令行 TV preflight --stage <s> --json 调用，无法在终端挂起并等待用户确认耗时（与 R-B「明确告知」冲突）；② 完整 doctor 包含双侧无头模型探测，耗时数分钟，极易击穿 Driver 的 Bash 默认 120s 超时；③ 若降级采用 doctor --no-model-calls，probes/agy.ts 会跳过模型探针使 headless_read_ok 为 null，导致预检随后的只读能力与认证检查依然无法通过，形成逻辑死锁。",
+      "severity": "major",
+      "suggestion": "预检坚守快速失败原则：探针过期时直接退出（退出码 69），在输出的 JSON/人读信息中明确指引开发者手动执行 trivium doctor 重新校准，切勿在非交互预检中隐式拉起耗时且消耗配额的全局探测。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读了被审对象 .reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-claude.md §2，对比了 skills/dual-run/SKILL.md、skills/dual-review-code/SKILL.md、skills/dual-review-plan/SKILL.md 与设计文档 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md §7.3、§8.2。",
+      "id": "AGY-04",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §2",
+      "problem": "topic resolve 命令契约未适配全流程（命令 A）与代码审（命令 C）的生命周期差异：① 全流程命令 A（dual-run，stage: all）中，S0 预检之后才在 S1 起草方案，调用 topic resolve 时计划原稿物理上根本不存在，若强行要求输出已存在的 subject_path 将报 65 缺失产物错误；② 代码审命令 C（dual-review-code，stage: code）中，审查对象是工作区或基准分支的 git diff，不存在单一的 subject_path 文件；③ 提示语字段命名（Skill 传入的 --focus 与输出的 prompt_hint）未在契约中澄清。",
+      "severity": "major",
+      "suggestion": "明确各 stage 下 topic resolve 的输出契约：① stage: all 允许 subject_path: null，仅解析主题与任务目标；② stage: code 输出基准引用与 diff 标识而非单一文件路径；③ 仅在 stage: plan 与 bug 强制校验并返回原稿路径；④ 统一 --focus 与 prompt_hint 的对应契约。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读了被审对象 .reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-claude.md §4、§5 与 §6 R-C，核对了 src/trivium/run-protocol.ts（line 141, 219-225）与 src/trivium/review.ts。",
+      "id": "AGY-05",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §4 & §5 & §6 R-C",
+      "problem": "桩适配器在工作进程（worker）派生架构下的跨进程注入机制未予说明：系统长时调用协议（review --start）通过 spawnDetached 派生独立的子进程 trivium review --worker <runId>，工作进程内部在 rebuildContext 中重新载入硬编码的真实适配器（adapters: { gemini: agyAdapter, glm: zcodeAdapter }）。若仅在测试主进程内替换 CriticAdapter.run，派生的独立进程无法感知注入的桩逻辑，导致 fault-injection.test.ts 无法跨进程验证 AC-05/06/08。",
+      "severity": "minor",
+      "suggestion": "明确桩适配器的跨进程注入机制（如通过受控的环境变量 TRIVIUM_STUB_CRITIC 传递注入配置或测试专用 registry 派发），确保派生的 worker 进程也能复现注入故障。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "读了被审对象 .reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-claude.md §3.3，核对了 skills/dual-critic/schema/review.v1.json（line 44-48）。",
+      "id": "AGY-06",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §3.3",
+      "problem": "双审退化指标 Jaccard 相似度计算未定义跨 Agent 位置格式的归一化标准：Schema 中 location 为自由字符串，两家 Agent 输出格式各异（如单行 :88 vs 行区间 :85-92，或章节标记 plan §3.2 vs §3.2）。直接基于原始字符串集合计算交集会导致度量失真，有效交集几乎为 0。",
+      "severity": "nit",
+      "suggestion": "在落地计算函数前增加位置归一化预处理（提取相对路径、行区间重合度匹配、章节数字标准化）。"
+    }
+  ],
+  "not_covered": [
+    "src/trivium/probes/ 下各具体探针底层的细微命令行解析与环境变量传递细节本次未全量通读",
+    "src/trivium/init.ts 与安装器 src/install.ts 的初装流程未做全面动态演练",
+    "skills/dual-critic/prompts/ 下的具体提示词模板未做逐行对比"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最危险问题是 preflight 零工件保证边界被严重窄化，未覆盖 topic resolve 与归档根可写性探测等提前返回路径，仍会导致孤立空目录残留；同时探活 TTL 缓存仅含 CLI 版本无法防范 ZCode 凭据配置修改及 Antigravity 只读 Agent 丢失导致的假阳性放行，且缓存未持久化版本指纹。此外探针过期自动触发耗时数分钟的 doctor 存在非交互式超时与降级死锁风险，topic resolve 契约未适配命令 A 与 C 的生命周期，桩适配器缺少 worker 派生模式下的跨进程注入机制。建议修订计划补全防御维度与契约定义。",
+  "verdict": "request-changes"
+}

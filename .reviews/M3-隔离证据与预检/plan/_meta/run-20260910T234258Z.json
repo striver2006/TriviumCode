@@ -1,0 +1,124 @@
+{
+  "schema": "trivium.run.v1",
+  "run_id": "20260910T234258Z",
+  "topic": "M3-隔离证据与预检",
+  "stage": "plan",
+  "rerun_index": 2,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "重点看 preflight 的零工件保证是否真的覆盖了全部提前返回路径，以及 TTL 缓存键含 CLI 版本是否足以防止探针结论过期后被误用",
+  "snapshot": {
+    "git_head": "154d61794a90a18dde112b019cbc01f94c8be1e6",
+    "tree_hash": "d6cf80bb651ed50f52ab85f9209e77d673016950",
+    "dirty": true,
+    "subject_sha256": "d2d9ca8b79c029fe6186290e9a02ca6254c2883742182a379f4eb2731b373398",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-10T23:42:58.801Z",
+  "finished_at": "2026-09-10T23:55:16.038Z",
+  "review_mode": "dual",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.0",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 122.858,
+      "tool_calls": {
+        "read": 27,
+        "grep": 3,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 174855,
+        "output_tokens": 25021,
+        "thinking_tokens": 19113,
+        "cache_read_tokens": 1790778,
+        "total_tokens": 199876
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "2320890c-da71-4513-80ad-876a8de560d5",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3-Flash",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "model_effective_source": "trace",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 737.136,
+      "tool_calls": {
+        "read": 16,
+        "grep": 5,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 16
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 14,
+        "inputTokens": 875162,
+        "outputTokens": 33473,
+        "totalTokens": 908635,
+        "cacheReadTokens": 735168,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_5a11462e-c0c6-46ff-ba41-e49b3eb7e988",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-gemini.md",
+      "sha256": "6d2c18dbbe8121406b6d52141e186672e23a7b1f8aef6d629acacc303881fe3d"
+    },
+    {
+      "path": "M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md",
+      "sha256": "b3b3e68e42378a14f9ca0223ae4e5c549fe95ae8ce1039f4565e0678b63344d4"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
