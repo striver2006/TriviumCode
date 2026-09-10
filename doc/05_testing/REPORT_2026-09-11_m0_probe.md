@@ -2,8 +2,8 @@
 
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 执行实测）
 > - **创建日期**：2026-09-11
-> - **当前版本**：v1.0.0
-> - **状态**：草稿(Draft) —— Antigravity 侧全部完成（已由 `trivium doctor` 代码化复现），ZCode 侧阻塞待解
+> - **当前版本**：v1.1.0
+> - **状态**：评审中(In-Review) —— **两侧探针全部完成**，均已由 `trivium doctor` 代码化复现
 > - **依据**：[设计 v1.2.0](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md) §3.5 探针必测清单、§16.1 里程碑 M0
 > - **机读副本**：`.trivium/config.local.yaml` 的 `probe:` 段（不进 Git）
 
@@ -19,7 +19,7 @@
 | `node` | `/opt/homebrew/bin/node` **v25.2.1** | ✅ ≥ 18 |
 | `git` | 2.50.1 (Apple Git-155) | ✅ |
 | `agy` | `/Users/chenzhenbo/.local/bin/agy` **1.2.0** | ✅ |
-| `zcode` | `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` **0.16.5** | ⚠️ CLI 未配置模型 provider |
+| `zcode` | `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` **0.16.5** | ✅（需手工创建 CLI 侧 `config.json`，见 §6.3） |
 | `timeout` / `gtimeout` | **不存在**（本机无 GNU coreutils） | ⚠️ 见坑 P-01 |
 
 ## 2. 探针结论总表
@@ -41,12 +41,13 @@
 | `zcode.entry` | `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` | `zcode.cjs version` |
 | `zcode.version` | 0.16.5 | 同上 |
 | `zcode.readonly_flags` | ✅ **接受**：`--mode plan` / `--mode yolo` / `--disallowed-tools` / `--cwd` / `--json` / `--no-color`；**拒绝**：`--allowed-tools` / `--max-turns` / `--permission-mode` / `--settings`（见坑 P-05、冲突 C-09） | `trivium doctor --only zcode` |
-| `zcode.model_override` | ⚠️ **`config_copy`**（`env` 档已证伪，见 C-07；`--settings` 被拒，见 C-09 → 只能靠 `ZCODE_HOME`） | 见 §6 |
-| `zcode.trace_source` | 候选已定位：`~/.zcode/cli/log/zcode-<YYYY-MM-DD>.jsonl`（JSONL，含 `sessionId`/`turnId`/`traceId`/`context.model`），**已用它定位到两次失败根因**，可用性强 | 见 §6 |
-| `zcode.response_field` | ⏳ 未测（headless 未跑通） | — |
-| `zcode.path_deny` | ⏳ 未测（阻塞） | — |
-| `zcode.scratch_paths` | ⏳ 未测（阻塞） | — |
-| `verify.commands` | ⏳ 未测 | — |
+| `zcode.model_override` | ✅ **`config_copy`**，`isolation` = **`home_copy`**。rollout 回读到 `model.source=config`，直接印证该档位 | 见 §6.4、冲突 C-07 / C-08 / C-09 |
+| `zcode.trace_source` | ✅ `~/.zcode/cli/log/zcode-<date>.jsonl` —— 提供工具**名**、调用计数、`context.model`、结构化失败根因。**不含任何路径字段** | 见 §6.4 |
+| `zcode.trace_args_source`（新增） | ✅ `~/.zcode/cli/rollout/model-io-<sessionId>.jsonl` —— 提供工具**参数**（含文件路径）与 `model.source`。AC-04 轨迹核验与 AC-11 `consulted` 交叉核对的**唯一**取值点 | 见 §6.4、冲突 C-12 |
+| `zcode.response_field` | ✅ **`response`**（设计记载正确）。envelope 字段全集：`sessionId` / `traceId` / `turnId` / `response` / `usage` / `eventCount` / `projection`——**无 `model` 字段** | `trivium doctor --only zcode` |
+| `zcode.path_deny` | ❌ **supported: false** —— denylist 是**工具级**而非路径级，封掉一条读路径模型会换另一条 | 见 §6.5 |
+| `zcode.scratch_paths` | ✅ **`[]`**（项目根零污染，与 agy 侧一致） | `trivium doctor --only zcode` |
+| `verify.commands` | ✅ 候选 `build=[npm run build, npm run typecheck]` / `test=[npm test]`。**只探测不执行**，须经 `init` 逐条确认 | `trivium doctor` |
 
 ## 3. Antigravity headless 只读审查：可用配方（重要）
 
@@ -136,9 +137,9 @@ current  tree = eca0c88e2e93e6564a6cbc30629497db10e4637c   ← 完全一致
 **结论**：Antigravity 侧的只读指纹比对**不需要任何白名单**，任何项目根内的新增/修改都可直接判定为
 `readonly_breach` 或开发者漂移。这比设计预期（需要白名单）更干净。
 
-## 6. ZCode 侧：阻塞
+## 6. ZCode 侧
 
-### 6.1 阻塞原因
+### 6.1 曾经的阻塞与解法
 
 ZCode **CLI 的凭据与模型配置独立于桌面端**（设计 §3.3 记载属实），而本机 CLI 侧未配置：
 
@@ -161,7 +162,7 @@ Error: Model config is missing. Create /Users/chenzhenbo/.zcode/cli/config.json
 预检逻辑无需修改。但预检的实现必须**真跑一次最小 headless**，
 只检查凭据文件存在会漏判（凭据在、配置缺，照样跑不通）。
 
-### 6.2 阻塞前已确立的结论
+### 6.2 参数与模型覆盖
 
 - `--mode plan` / `--mode yolo` / `--disallowed-tools` / `--cwd` / `--json` / `--no-color` / `--prompt` **被接受**；
 - **`--max-turns`、`--allowed-tools`、`--permission-mode`、`--settings` 四个均被拒绝**（`Unknown option '<flag>'`），
@@ -180,6 +181,79 @@ Error: Model config is missing. Create /Users/chenzhenbo/.zcode/cli/config.json
 - 模型来源枚举在二进制中为 `{Default, Config, Env, Cli, Session, Agent, Tool}`——`Env` 档存在，
   但对应的不是 `ZCODE_MODEL`，具体键名待 CLI 跑通后回读确认。
 
+### 6.3 已实测验证的 CLI 配置最小结构
+
+在隔离的临时 `HOME` 下以**占位 key** 验证过：错误从 `Model config is missing`
+变为 `Unauthorized` / `Provider authentication failed`（`cause.code = provider_not_configured`），
+说明配置被正确解析、provider 被解析、请求已发出，仅 key 无效。**结构因此确认可用**。
+
+```json
+{
+  "provider": {
+    "bigmodel-coding-plan": {
+      "name": "BigModel / 智谱 Coding Plan",
+      "kind": "anthropic",
+      "options": {
+        "apiKey": "<由用户填写，编排器不经手>",
+        "baseURL": "https://open.bigmodel.cn/api/anthropic"
+      },
+      "source": "custom",
+      "models": { "GLM-5.3": {}, "GLM-5.3-Flash": {} }
+    }
+  },
+  "model": {
+    "main": "bigmodel-coding-plan/GLM-5.3",
+    "lite": "bigmodel-coding-plan/GLM-5.3-Flash"
+  }
+}
+```
+
+- 路径：`<HOME>/.zcode/cli/config.json`（默认 HOME 即 `~/.zcode/cli/config.json`）。
+- `provider` 各字段的取值可从应用内置目录
+  `/Applications/ZCode.app/Contents/Resources/model-providers/models_catalog_*.json`
+  查到（`schemaVersion: zcode.model-providers.v1`，含 `bigmodel` / `bigmodel-coding-plan` /
+  `zai` / `zai-coding-plan` 等 provider 的 `endpoints` 与模型列表）。
+- `model.main` / `model.lite` 必须是 `<providerId>/<modelName>` 全限定形态（坑 P-06）。
+- 这同时就是模型覆盖的实现形态：编排器为每次运行生成一份独立 HOME + `config.json` 副本
+  （`isolation: home_copy`），把该次要用的模型写进 `model.main`。
+
+### 6.4 证据链需要**两个**文件
+
+这是 ZCode 侧最容易踩的坑：单一日志不足以支撑验收。
+
+| 文件 | 提供 | 缺什么 |
+| :--- | :--- | :--- |
+| `~/.zcode/cli/log/zcode-<date>.jsonl` | 工具**名**、`tool.call.{started,completed,failed}` 状态、调用计数、`context.model`、结构化 `error.cause` | **任何路径字段**。`context` 只有 `queryId`/`turnNumber`/`model`/`iteration`/`querySource`/`toolName` |
+| `~/.zcode/cli/rollout/model-io-<sessionId>.jsonl` | `response.toolCalls[] = {id, name, input}`，`input` 内含 `file_path` / `path` / `pattern`；另有 `model.{modelId,providerId,role,source}` | 调用**状态**（成功/失败），只有请求与响应 |
+
+因此：
+- **工具调用计数与只读失守判定**（写事件扫描）走标准日志——需要 `completed` 状态才算证据；
+- **`deny_paths` 轨迹核验（AC-04）与 `consulted` 交叉核对（AC-11）走 rollout**——只有它有路径；
+- **生效模型（AC-13）**两处都有：日志的 `context.model` 给 `<providerId>/<modelId>`，
+  rollout 的 `model.source` 额外给出**来源档位**（实测 `config`，直接印证 `model_override = config_copy`）。
+
+### 6.5 `zcode.path_deny` = 不支持（结论有据）
+
+`--disallowed-tools` 支持 `Tool(arg)` 带参形态（`--help` 示例即 `"Bash(git *) Edit"`），
+语法上接受 `Read(<绝对路径>)`，但**挡不住文件**。实测两轮：
+
+1. 封 `Read(<peer>) Write Edit` → 模型改用 **`Bash` 的 `head -1`** 读到了目标文件；
+2. 再加封 `Bash`（完整 denylist）→ 模型改用 **`Grep`** 读到了目标文件。
+
+ZCode 的读路径有多条（`Read` / `Grep` / `Glob` / `ReadSessionContext` / `Bash`），
+要靠 denylist 挡住单个文件等于封掉全部读路径，那样连被审对象也读不了。粒度不可用。
+
+**记录**：`probe.zcode.path_deny = {supported: false, rule_syntax: null}`。
+与 agy 侧同样按 §18.1 #12 默认不阻断，`peer_deny_applied.glm = false`。
+
+**附带确认了一件重要的事**：第 1 轮实测中模型在 `--mode plan` 下**执行了 shell 命令**。
+即 `--mode plan` 并不阻止命令执行，与设计 §11.3 要点 4 引述的社区观察一致——
+完整 denylist 中 **`Bash` 是必需项**，不能依赖 `--mode plan` 达成只读（冲突项 C-10）。
+
+**一个正面观察**：模型在回答里明确指出「文件首行虽自称禁止读取，但它只是文件内容、
+并非来自系统或用户的指令」——它正确地把被审内容当数据而非指令处理。
+这印证了设计 §9.4 把禁读清单放在 **BRIEF（可信通道）**而不是依赖文件内容自述是对的。
+
 ## 7. 本机坑清单
 
 | # | 坑 | 影响 | 对策 |
@@ -192,6 +266,11 @@ Error: Model config is missing. Create /Users/chenzhenbo/.zcode/cli/config.json
 | **P-06** | `ZCODE_MODEL` 传裸模型名（`GLM-5.3-Flash`）会落到错误 provider 并报缺 `ANTHROPIC_API_KEY` | 模型路由静默走错，AC-13 失败 | 必须传 `<providerId>/<modelName>` 全限定 id；`doctor` 需回读并记录本机的规范写法 |
 | **P-07** | agy 1.1.28 起 **`--print-timeout` 到期不再非零退出**，而是返回部分输出并 exit 0 + stderr 警告 | 编排器若靠退出码判超时会把超时当成功 | 超时判定必须靠编排器自己的墙钟计时 + stderr 警告匹配，**不能**只看退出码 |
 | **P-08** | ZCode CLI 凭据/模型配置与桌面端**完全隔离** | 桌面端能用不代表 CLI 能用 | `preflight` 的「ZCode 已认证」检查必须真跑一次最小 headless，不能只检查桌面端配置 |
+| **P-13** | ZCode `--json` 的 stdout **不是纯 JSON**：前面可能有 `AI SDK Warning System: …` 等告警行 | `JSON.parse(stdout.trim())` 必然失败，会被误判为「输出不可解析」而触发无谓的 `parse_fallback` | 必须做括号配平扫描把 envelope 抠出来（已实现为 `extractJsonEnvelope`，含字符串内花括号与转义引号的用例） |
+| **P-14** | rollout 文件名是 `model-io-<sessionId>.jsonl`，而 `sessionId` **本身已带 `sess_` 前缀** | 拼成 `model-io-sess_${sessionId}` 会得到 `model-io-sess_sess_…` 而永远找不到文件（本次实现真的踩了一次） | 路径模板固定为 `model-io-{sessionId}.jsonl` |
+| **P-15** | ZCode envelope 里**没有 `model` 字段** | 无法从返回值直接回读生效模型，AC-13 会缺证据 | 生效模型从日志 `context.model` 或 rollout `model.{providerId,modelId}` 回读；两者皆不可得时记 `unverified`，不采信请求值 |
+| **P-11** | `zcode.cjs` **无法单独拉起 TUI**：报 `Cannot find package '@zcode/tui'`。TUI 只存在于桌面应用的 `app.asar` 内，磁盘上既无 `zcode-tui-runtime/`，也无 SEA 单文件可执行版 | 「开一次 TUI 生成配置」这条路走不通 | CLI 侧配置必须**手工创建**。已实测验证的最小结构见 §6.3 |
+| **P-12** | ZCode 的配置根**只认 `HOME`**。`ZCODE_HOME` 等专用变量看似存在（二进制中有该字符串）但对配置解析无效 | 按变量名推断隔离方案会失败 | 隔离一律走独立 `HOME`（`home_copy`），并把凭据写入该 HOME 下的 `config.json` 副本 |
 | **P-10** | ZCode「已登录」不等于「可用」：凭据与桌面端共享，但模型 provider 配置 CLI 侧独立且可能缺失 | 预检若只查凭据会漏判，跑到一半才失败 | 预检必须真跑一次最小 headless（P-08 的加强版）；错误分类要区分 `provider_not_configured` 与鉴权失败 |
 | **P-09** | `~/.zcode/v2/config.json` 内的 provider **apiKey 为明文**，且其中一个正是 `<id>.<secret>` 形态 | 该形态若混入归档就是安全事故 | 已作为 `archive` 密钥扫描器（§10.5）的真实用例；扫描器只存正则不存值。**另：已建议用户轮换该批 key** |
 
@@ -206,14 +285,30 @@ Error: Model config is missing. Create /Users/chenzhenbo/.zcode/cli/config.json
 | C-05 | §3.5「`zcode.trace_source`：`~/.zcode/**/rollout/*.jsonl` 或 `log/*.jsonl`」 | 确认为 `~/.zcode/cli/log/zcode-<date>.jsonl` | 钉死路径模板 |
 | C-06 | §12.2「Antigravity 侧同时设置 `--print-timeout`（进程内）与脚本级 timeout」 | `--print-timeout` 到期 exit 0 | 脚本级超时成为唯一可靠判据（P-07） |
 | **C-07** | §3.3 与 §11.3 要点 1：「**`ZCODE_MODEL` 环境变量优先于配置文件**」，且列为模型覆盖三档的**首选** `env` 档 | **zcode.cjs 0.16.5 中不存在裸 `ZCODE_MODEL`**，只有 `ZCODE_MODEL_RETRY_*` 与 `ZCODE_MODEL_TELEMETRY_ENABLED` | **`env` 档作废**。模型覆盖降为两档：`config_copy`（首选）→ `global`。§11.3 调用模板中的 `ZCODE_MODEL=...` 前缀须删除；仓库 `.env.example` 中的 `ZCODE_MODEL` 已改为注释并标注失效 |
+| **C-10** | §11.3 要点 4 把「`--mode plan` 仍允许子 Agent 探索」标为「社区观察，中，必须探针」 | **实测证实**：`--mode plan` 下模型执行了 `head -1` shell 命令 | `--mode plan` 不可作为只读手段单独使用，完整 denylist 中 `Bash` 为**必需项**；`readonly_flags` 固定为 `--mode plan` + 含 `Bash` 的完整 denylist |
+| **C-11** | §3.5「`zcode.path_deny`：同上，实测 `--disallowed-tools` / 配置文件 / `AGENTS.md` 之外是否存在路径级读取拒绝机制」 | 不存在。denylist 为**工具级**，封一条读路径模型换另一条（实测 `Bash` → `Grep`） | `supported: false`，与 agy 侧一同按 §18.1 #12 默认降级 |
+| **C-12** | §3.3「一期从会话日志（`~/.zcode/**/rollout/*.jsonl` 或 `log/*.jsonl`，探针钉死路径）提取读文件次数」——把两者当作**二选一** | 两者**都需要**：`log/` 有工具名与状态但无路径，`rollout/` 有路径但无状态 | `probe.zcode` 新增 `trace_args_source` 字段，适配层同时读两处（详见 §6.4） |
 | **C-09** | §3.3「`--allowed-tools` 在 `--help` 中列出但**实测报 Unknown option**（版本相关）」——只点名了这一个 | 实测**四个** flag 均被拒绝：`--allowed-tools`、`--max-turns`、`--permission-mode`、**`--settings`** | `--settings` 被拒是新增的关键约束：ZCode 的独立配置副本**不能**用 `--settings <path>` 注入，只能靠 `ZCODE_HOME` 环境变量。§11.3 调用模板须相应修改 |
-| **C-08** | §3.5「`zcode.home_isolation`：实测独立 `HOME` / `ZCODE_HOME` / 独立 settings 路径中首个可用者」列为**仅按需启用** | `ZCODE_HOME`、`ZCODE_DATA_BASE_DIR`、`ZCODE_STORAGE_DIR`、`ZCODE_LOG_DIR`、`ZCODE_API_KEY`、`ZCODE_BASE_URL` 均存在 | 因 C-07 使 `env` 档作废，`config_copy` 成为模型覆盖的**唯一可用手段**，故 `zcode.isolation` 从「按需」升为**必需**。附带收益：`ZCODE_LOG_DIR` 可让每次运行的会话日志天然隔离，轨迹提取不再需要按 `sessionId` 匹配 |
+| **C-08** | §3.5「`zcode.home_isolation`：实测独立 `HOME` / `ZCODE_HOME` / 独立 settings 路径中首个可用者」列为**仅按需启用** | 实测**只有 `HOME` 生效**。`ZCODE_HOME`、`ZCODE_DATA_BASE_DIR`、`ZCODE_STORAGE_DIR` 对配置解析**全部无效**（错误信息仍指向 `~/.zcode/cli/config.json`）；`--settings` 参数被拒（C-09） | 因 C-07 使 `env` 档作废、C-09 使 `--settings` 不可用，`config_copy` 成为模型覆盖的**唯一**手段，而它只能靠**独立 `HOME`** 实现。故 `zcode.isolation` 从「按需」升为**必需**，且取值锁定为 `home_copy`。代价：独立 HOME 下 `~/.zcode` 凭据不存在，必须把 `apiKey` 写进该 HOME 的 `config.json` 副本 |
 
-## 9. 下一步
+## 9. M0 完成情况与下一步
 
-1. **需要用户动作**：配置 ZCode CLI 的模型 provider（`~/.zcode/cli/config.json`，或 `zcode login`），
-   之后才能完成 `zcode.*` 六项探针与契约样本录制。
-2. 补完 `agy.json_schema_ok`（`--json-schema` 强制结构化输出）。
+**M0 完成判据（设计 §16.1）逐条核对**：
+
+| 判据 | 状态 |
+| :--- | :--- |
+| 拿到两侧**真实可用**的 headless 命令模板 | ✅ 均已跑通并固化进适配层（agy 见 §3.1，zcode 见 §6.2） |
+| 只读生效 | ⚠️ 部分：工具层可裁剪（agy 靠 Agent 白名单、zcode 靠完整 denylist 含 `Bash`），但**两侧都无文件系统级事前阻断**，按 ADR-001 由事后指纹与轨迹核验兜底 |
+| 能读文件 | ✅ 两侧哨兵均命中 |
+| 能换模型 | ✅ agy 用 `--model`（未知 slug 直接非零退出）；zcode 用独立 HOME 的 `config.json` 副本，且 `model.source` 可回读 |
+| 能拿轨迹 | ✅ agy 用 `stream-json` 自身；zcode 需**两个**文件（§6.4） |
+| 路径 deny 是否可用**已知** | ✅ 两侧均为 `false`，且各自跑过否定对照 |
+| 临时文件白名单**已知** | ✅ 两侧均为 `[]` |
+
+**下一步**：
+
+1. 录制两侧真实 stdout 样本到 `test/fixtures/recordings/`，供契约测试回放（§17.1）。
+   目前契约测试用的是**手工构造但取自实测形状**的样本，已覆盖两侧解析器的关键分支。
 3. ~~把本报告的结论编码进 `src/trivium/doctor.ts`~~ **已完成**：`trivium doctor [--only agy|zcode|env] [--no-model-calls]`
    已可复现全部结论并增量落盘到 `.trivium/config.local.yaml`。
    两处实现要点值得记录：
