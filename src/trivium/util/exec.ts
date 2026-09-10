@@ -169,3 +169,107 @@ export async function tryRun(
   const r = await run(bin, args, opts);
   return { ...r, ok: r.code === 0 && !r.timedOut };
 }
+
+
+// ─────────────────── 派生脱离父进程的工作进程 ───────────────────
+
+export interface SpawnDetachedOptions {
+  cwd?: string;
+  env?: Record<string, string | undefined>;
+  /** 日志文件路径。stdout/stderr 都重定向到它 */
+  logFile: string;
+}
+
+export interface SpawnDetachedResult {
+  pid: number;
+  commandLine: string;
+}
+
+/**
+ * 派生一个**脱离父进程**的工作进程（修订版 M2 计划 §2.1）。
+ *
+ * 唯一机制是 Node `spawn` 的 `detached` 选项——它本身就完成 POSIX `setsid`。
+ * **不使用** shell 层的 `setsid`（macOS 无此命令，同 M0 坑 P-01），
+ * 也**不存在**「双 fork」这一步（那是 C 时代守护进程技巧，Node 里无对应物）。
+ *
+ * `stdio` 必须重定向到文件，这一条是成败关键，双审两侧从不同角度都指出过：
+ *   - 继承父进程管道时，父进程退出后管道破裂，worker 死于 SIGPIPE（AGY-01）；
+ *   - 管道 EOF 不闭合会让派生方的调用一直挂到 worker 退出，
+ *     违反「`--start` 立即返回」的契约（GLM-03）。
+ */
+export async function spawnDetached(
+  bin: string,
+  args: readonly string[],
+  opts: SpawnDetachedOptions,
+): Promise<SpawnDetachedResult> {
+  const { promises: fsp } = await import('node:fs');
+  await fsp.mkdir(pathDirname(opts.logFile), { recursive: true });
+  // 'a' 而非 'w'：重试或多次派生时不覆盖既有日志
+  const handle = await fsp.open(opts.logFile, 'a');
+
+  const childEnv: NodeJS.ProcessEnv = { ...process.env };
+  for (const [k, v] of Object.entries(opts.env ?? {})) {
+    if (v === undefined) delete childEnv[k];
+    else childEnv[k] = v;
+  }
+
+  try {
+    const child = spawn(bin, [...args], {
+      cwd: opts.cwd,
+      env: childEnv,
+      detached: true,
+      stdio: ['ignore', handle.fd, handle.fd],
+    });
+    if (child.pid === undefined) throw new Error('spawn 未返回 pid');
+    // 父进程不等它，也不因它而延迟退出
+    child.unref();
+    return { pid: child.pid, commandLine: formatCommand(bin, args) };
+  } finally {
+    // fd 已交给子进程，父进程这一份可以关掉
+    await handle.close();
+  }
+}
+
+/** 避免为一个 dirname 引入 node:path 的顶层依赖（本文件其余部分不需要它） */
+function pathDirname(p: string): string {
+  const i = p.lastIndexOf('/');
+  return i <= 0 ? '/' : p.slice(0, i);
+}
+
+/**
+ * 进程是否存活，且**是不是同一个进程**。
+ *
+ * 单看 `kill(pid, 0)` 不够：macOS 的 PID 复用很频繁，worker 异常死后其 PID
+ * 可能被无关进程占用，此时 `kill` 成功会让遗留锁永不回收、主题被永久锁死
+ * （审查意见 GLM-04）。因此要比对进程的**启动时刻**。
+ */
+export async function processAlive(
+  pid: number,
+  expectedStartedAt?: string | null,
+): Promise<{ alive: boolean; sameProcess: boolean; startedAt: string | null }> {
+  let alive: boolean;
+  try {
+    process.kill(pid, 0);
+    alive = true;
+  } catch (e) {
+    // EPERM 表示进程存在但不属于当前用户——仍算存活
+    alive = (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+  if (!alive) return { alive: false, sameProcess: false, startedAt: null };
+
+  const startedAt = await processStartTime(pid);
+  if (!expectedStartedAt) return { alive: true, sameProcess: true, startedAt };
+  return {
+    alive: true,
+    sameProcess: startedAt !== null && startedAt === expectedStartedAt,
+    startedAt,
+  };
+}
+
+/** 取进程启动时刻。macOS/BSD 与 Linux 的 ps 都支持 `-o lstart=` */
+export async function processStartTime(pid: number): Promise<string | null> {
+  const r = await run('/bin/ps', ['-p', String(pid), '-o', 'lstart='], { timeoutMs: 10_000 });
+  if (r.code !== 0) return null;
+  const t = r.stdout.trim();
+  return t.length > 0 ? t : null;
+}
