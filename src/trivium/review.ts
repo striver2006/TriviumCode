@@ -72,7 +72,51 @@ function resolveAssetRoot(override?: string): string {
   );
 }
 
-export async function runReview(opts: ReviewOptions): Promise<ReviewOutcome> {
+/** 一次运行的准备产物：`--start` 与同步路径共用，也是交接给工作进程的全部上下文 */
+export interface PreparedRun {
+  runId: string;
+  rerunIndex: number;
+  topic: string;
+  stage: Stage;
+  runDirBase: string;
+  sides: CriticId[];
+  requests: Partial<Record<CriticId, CriticRequest>>;
+  snapshots: Partial<Record<CriticId, Awaited<ReturnType<typeof freeze>>>>;
+  subjectPath: string;
+  metaPaths: string[];
+  layoutTopic: string;
+}
+
+/**
+ * 一次运行的**内存上下文**。`--start` 与同步路径共用；工作进程从 `request.json`
+ * 重建它（不可序列化的部分——适配器实例、配置对象——由 `ctx` 现场重建）。
+ */
+export interface RunContext {
+  opts: ReviewOptions;
+  cfg: Config;
+  ctx: Ctx;
+  stage: Stage;
+  ref: Awaited<ReturnType<typeof resolveTopic>>;
+  adapterCtx: AdapterContext;
+  adapters: Record<CriticId, typeof agyAdapter | typeof zcodeAdapter>;
+  sides: CriticId[];
+  runId: string;
+  rerunIndex: number;
+  subjectPath: string;
+  runDirBase: string;
+  requests: Partial<Record<CriticId, CriticRequest>>;
+  snapshots: Partial<Record<CriticId, Awaited<ReturnType<typeof freeze>>>>;
+  primarySnap: Awaited<ReturnType<typeof freeze>>;
+  metaPaths: string[];
+  meta: Awaited<ReturnType<typeof newRunMeta>>;
+}
+
+/**
+ * 准备阶段：可用性检查 → 定位被审对象 → 冻结 → 渲染两侧送审包 → 写 run.json 骨架。
+ *
+ * 这一段**不拉起任何 Agent**，因此可以在 `--start` 的同步窗口内完成并秒级返回。
+ */
+export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const { ctx, stage } = opts;
   const cfg: Config = ctx.config;
   const assetRoot = resolveAssetRoot(opts.assetRoot);
@@ -193,6 +237,23 @@ export async function runReview(opts: ReviewOptions): Promise<ReviewOutcome> {
   await writeRunMeta(ref.layout, stage, meta);
   await registerRun(ref.layout, meta);
 
+  return {
+    opts, cfg, ctx, stage, ref, adapterCtx, adapters, sides,
+    runId, rerunIndex, subjectPath, runDirBase,
+    requests, snapshots, primarySnap, metaPaths, meta,
+  };
+}
+
+/**
+ * 执行阶段：并行拉起两侧 → 复算快照 → 解析 → guard 判定 → 齐备后同时落盘 → 收尾。
+ *
+ * 同步路径直接调用它；`--start` 派生的工作进程也调用它（先从 `request.json` 重建上下文）。
+ */
+export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+  const {
+    opts, cfg, ctx, stage, ref, adapterCtx, adapters, sides,
+    runId, rerunIndex, subjectPath, requests, primarySnap, metaPaths, meta,
+  } = rc;
   // ── 并行拉起两侧 ──
   const startedAt = new Date().toISOString();
   say(`开始双审：${sides.map((c) => `${c}(${requests[c]!.model})`).join(' ‖ ')}，单侧上限 ${cfg.review.timeout_s[stage]}s`);
@@ -390,6 +451,13 @@ export async function runReview(opts: ReviewOptions): Promise<ReviewOutcome> {
 }
 
 /** 己方历史产出与 Driver 对它的裁决（§9.4 第 4 段最后一条） */
+
+/** 同步路径（M1 行为）：准备 + 执行一气做完。长时运行请用 `--start` / `--wait` */
+export async function runReview(opts: ReviewOptions): Promise<ReviewOutcome> {
+  const rc = await prepareRun(opts);
+  return executeRun(rc);
+}
+
 async function listOwnHistory(
   stageDirAbs: string,
   projectRoot: string,

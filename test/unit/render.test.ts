@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  renderReviewDoc, renderFrontMatter, parseFrontMatter, countSeverities,
+  renderReviewDoc, parseFrontMatter, countSeverities,
 } from '../../src/trivium/render.js';
 import type { RenderInput } from '../../src/trivium/render.js';
 import type { CriticResult, Review } from '../../src/trivium/types.js';

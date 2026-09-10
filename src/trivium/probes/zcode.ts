@@ -20,10 +20,8 @@ import { exists, makeTempDir } from '../util/fsx.js';
 import { workTreeHash, statusPorcelain, diffTrees } from '../util/git.js';
 import { createFixture, SENTINEL_OPEN, SENTINEL_PEER, type Fixture } from './fixture.js';
 import {
-  parseZcodeEnvelope,
   parseZcodeRollout,
   parseZcodeTrace,
-  type ZcodeEnvelope,
   type ZcodeRollout,
 } from '../adapters/zcode-trace.js';
 import type { ZcodeProbe } from '../types.js';

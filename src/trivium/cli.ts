@@ -8,8 +8,9 @@ import { EXIT, TriviumError, usageError } from './exit-codes.js';
 import { loadCtx } from './config.js';
 import { runDoctor, renderDoctorReport } from './doctor.js';
 import { runReview } from './review.js';
+import { cancelRun, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
 import { STAGES, type CriticId, type Stage } from './types.js';
-import { emitJson, fail, isJsonMode, say, setOutputMode } from './util/log.js';
+import { emitJson, fail, isJsonMode, say, setOutputMode, warn } from './util/log.js';
 
 const VERSION = '0.1.0';
 
@@ -55,13 +56,25 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --no-model-calls  只做静态探测，不消耗厂商配额
       --only            只探测指定一侧
 
-  trivium review --stage plan|code|bug --topic <主题> [--focus <提示语>]
-                 [--context <路径,…>] [--plan-file <路径>] [--rca-file <路径>]
-                 [--model-gemini <slug>] [--model-glm <id>] [--json]
-      跑一次双审：冻结送审包 → 并行拉起两侧 → 复算快照 → 解析 → 核验 → 两侧齐备后同时落盘。
+  trivium review --stage plan|code|bug --topic <主题> --focus <提示语> [选项]
+      **同步**跑一次双审。仅供手工调试：一次运行墙钟可达 30~40 分钟，
+      远超 Driver 的 Bash 工具超时，从 skill 里必须改用 --start/--wait。
       --focus     审查焦点提示语。命令 B/C/D 必填（FR-20）
       --context   被审对象涉及的代码路径与相关文档，逗号分隔；并入必读清单
-      --only      仅跑一侧（调试用，结果会被标为降级——这不是双审）
+      --plan-file / --rca-file  显式指定被审对象
+      --model-gemini <slug> / --model-glm <id>  本次模型覆盖
+      --only gemini|glm  仅跑一侧（调试用，会被标为降级——这不是双审）
+
+  trivium review --start --stage <s> --topic <主题> --focus <提示语> [同上选项] [--json]
+      冻结送审包 → 派生工作进程 → **立即返回** run_id 与 max_waits。
+      返回的 bash_timeout_ms 是 skill 必须为每次 --wait 设置的工具级超时。
+
+  trivium review --wait <run_id> [--timeout <秒>] [--json]
+      轮询到完成或本次窗口用尽。退出码 73 表示仍在运行（**不是失败**），
+      打印进度后继续下一次 --wait。
+
+  trivium review --status <run_id> [--json]    只读一次状态，不等待
+  trivium review --cancel <run_id>             取消运行并回收主题锁
 
   trivium --version
   trivium --help
@@ -86,6 +99,57 @@ function parseStage(args: ParsedArgs): Stage {
 
 async function cmdReview(args: ParsedArgs): Promise<number> {
   const ctx = await loadCtx();
+
+  // ── 工作进程模式：不应由人直接调用 ──
+  const workerId = flagString(args, 'worker');
+  if (workerId) return workerMain(ctx, workerId);
+
+  // ── 只读/控制类子命令：只需要 run_id ──
+  const waitId = flagString(args, 'wait');
+  if (waitId) {
+    const timeoutS = Number.parseInt(flagString(args, 'timeout') ?? '', 10);
+    const out = await waitRun(
+      ctx,
+      waitId,
+      Number.isFinite(timeoutS) && timeoutS > 0 ? timeoutS : ctx.config.review.wait_timeout_s,
+    );
+    if (isJsonMode()) {
+      emitJson({
+        ok: out.exitCode === EXIT.OK,
+        still_running: out.exitCode === EXIT.STILL_RUNNING,
+        run_id: waitId,
+        phase: out.status?.phase ?? null,
+        artifacts: out.status?.artifacts ?? [],
+        message: out.status?.message ?? null,
+        progress: out.progress,
+      });
+    } else {
+      say(out.progress);
+    }
+    return out.exitCode;
+  }
+
+  const statusId = flagString(args, 'status');
+  if (statusId) {
+    const out = await statusRun(ctx, statusId);
+    if (isJsonMode()) {
+      emitJson({
+        ok: out.exitCode === EXIT.OK,
+        run_id: statusId,
+        phase: out.status?.phase ?? null,
+        status: out.status,
+        progress: out.progress,
+      });
+    } else {
+      say(out.progress);
+    }
+    return out.exitCode;
+  }
+
+  const cancelId = flagString(args, 'cancel');
+  if (cancelId) return cancelRun(ctx, cancelId);
+
+  // ── 启动类：需要完整参数 ──
   const stage = parseStage(args);
 
   const topic = flagString(args, 'topic');
@@ -112,7 +176,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   if (mg) modelOverrides.gemini = mg;
   if (mz) modelOverrides.glm = mz;
 
-  const out = await runReview({
+  const reviewOpts = {
     ctx,
     stage,
     topic,
@@ -122,7 +186,37 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     modelOverrides,
     command: `trivium review --stage ${stage}`,
     onlyCritic: (onlyRaw as CriticId | null) ?? null,
-  });
+  };
+
+  // ── --start：派生后立即返回 ──
+  if (args.flags.get('start') === true) {
+    const st = await startRun({ ...reviewOpts, command: `trivium review --start --stage ${stage}` });
+    if (isJsonMode()) {
+      emitJson({
+        ok: true,
+        run_id: st.runId,
+        max_waits: st.maxWaits,
+        wait_timeout_s: st.waitTimeoutS,
+        // skill 必须用这个值设置每次 --wait 的 Bash 工具超时（GLM-02）
+        bash_timeout_ms: st.bashTimeoutMs,
+        worker_pid: st.workerPid,
+        run_dir: st.runDir,
+      });
+    } else {
+      say(`已启动运行 ${st.runId}（工作进程 pid ${st.workerPid}）`);
+      say(`  请循环调用：trivium review --wait ${st.runId} --timeout ${st.waitTimeoutS}`);
+      say(`  循环上限 ${st.maxWaits} 次；每次调用的 Bash 工具超时须设为 ${st.bashTimeoutMs}ms`);
+      say(`  运行目录 ${st.runDir}`);
+    }
+    return EXIT.OK;
+  }
+
+  // ── 同步路径（手工调试）──
+  warn(
+    '同步模式：一次运行墙钟可达 30~40 分钟，会超出 Driver 的 Bash 工具超时。' +
+      '从 skill 调用请改用 --start / --wait。',
+  );
+  const out = await runReview(reviewOpts);
 
   if (isJsonMode()) {
     emitJson({
