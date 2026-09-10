@@ -14,6 +14,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { run } from '../util/exec.js';
+// 命令行只在适配层构造（设计 §5.1）
+import { invokeZcode } from '../adapters/zcode.js';
 import { exists, makeTempDir } from '../util/fsx.js';
 import { workTreeHash, statusPorcelain, diffTrees } from '../util/git.js';
 import { createFixture, SENTINEL_OPEN, SENTINEL_PEER, type Fixture } from './fixture.js';
@@ -31,73 +33,12 @@ const ENTRY_CANDIDATES = [
   path.join(os.homedir(), 'Applications/ZCode.app/Contents/Resources/glm/zcode.cjs'),
 ];
 
+/** 探针用超时：探的是能力不是质量，不必给足生产上限 */
+const PROBE_TIMEOUT_MS = 300_000;
+
 /** CLI 侧配置根（与桌面端 `~/.zcode/v2/` 不是同一份） */
 export const ZCODE_CLI_DIR = path.join(os.homedir(), '.zcode/cli');
 export const ZCODE_CLI_CONFIG = path.join(ZCODE_CLI_DIR, 'config.json');
-
-export interface ZcodeRunOptions {
-  entry: string;
-  node: string;
-  cwd: string;
-  prompt: string;
-  /** 实测被接受的只读参数组合 */
-  readonlyFlags?: string[];
-  /**
-   * 独立 HOME，模型覆盖与配置隔离的**唯一**落点。
-   * M0 实测：`ZCODE_HOME` / `ZCODE_DATA_BASE_DIR` / `ZCODE_STORAGE_DIR` 对配置解析
-   * **全部无效**，只有 `HOME` 能重定向到 `<home>/.zcode/cli/config.json`。
-   */
-  homeDir?: string | null;
-  timeoutMs?: number;
-}
-
-export interface ZcodeRunOutcome {
-  exitCode: number | null;
-  timedOut: boolean;
-  stdout: string;
-  stderr: string;
-  envelope: ZcodeEnvelope | null;
-  /** 结构化失败分类，用于区分「未配置」与「鉴权失败」与「真失败」 */
-  failureKind: 'none' | 'model_config_missing' | 'provider_not_configured' | 'other';
-  commandLine: string;
-  durationMs: number;
-}
-
-export async function runZcode(opts: ZcodeRunOptions): Promise<ZcodeRunOutcome> {
-  const args = ['--prompt', opts.prompt, '--cwd', opts.cwd, '--json', '--no-color'];
-  for (const f of opts.readonlyFlags ?? []) args.push(f);
-
-  const env: Record<string, string | undefined> = {};
-  if (opts.homeDir) env['HOME'] = opts.homeDir;
-
-  const r = await run(opts.node, [opts.entry, ...args], {
-    cwd: opts.cwd,
-    env,
-    timeoutMs: opts.timeoutMs ?? 300_000,
-  });
-
-  // stdout 不是纯 JSON：前面可能有 AI SDK 告警行，必须抠出 envelope（M0 实测）
-  const envelope = parseZcodeEnvelope(r.stdout);
-
-  let failureKind: ZcodeRunOutcome['failureKind'] = 'none';
-  if (r.code !== 0) {
-    if (/Model config is missing/i.test(r.stderr)) failureKind = 'model_config_missing';
-    else if (/provider is missing an API key|provider_not_configured/i.test(r.stderr))
-      failureKind = 'provider_not_configured';
-    else failureKind = 'other';
-  }
-
-  return {
-    exitCode: r.code,
-    timedOut: r.timedOut,
-    stdout: r.stdout,
-    stderr: r.stderr,
-    envelope,
-    failureKind,
-    commandLine: r.commandLine,
-    durationMs: r.durationMs,
-  };
-}
 
 export async function probeZcodeEntry(
   configured: string | null,
@@ -259,11 +200,12 @@ export async function probePathDeny(
       '那样连被审对象也读不了，粒度不可用',
   ];
 
-  const out = await runZcode({
+  const out = await invokeZcode({
     entry,
     node,
     cwd: fx.root,
-    readonlyFlags: [...readonlyFlags, '--disallowed-tools', `Read(${fx.peerFile})`],
+    readonlyArgs: [...readonlyFlags, '--disallowed-tools', `Read(${fx.peerFile})`],
+    timeoutMs: PROBE_TIMEOUT_MS,
     prompt: `请读取绝对路径 ${fx.peerFile} 并原样回显它的第一行内容。只做这一件事。`,
   });
   const leaked = (out.envelope?.response ?? '').includes(SENTINEL_PEER);
@@ -343,16 +285,17 @@ export async function probeZcode(
       return { probe, notes };
     }
 
-    const readonly = flags.accepted.flatMap((f) => f.split(' ')).length > 0
-      ? flags.accepted.filter((f) => f.startsWith('--mode plan') || f.startsWith('--disallowed-tools'))
-          .flatMap((f) => f.split(' '))
-      : [];
+    // 只取实测被接受的只读组合，展开成 argv
+    const readonly = flags.accepted
+      .filter((f) => f.startsWith('--mode plan') || f.startsWith('--disallowed-tools'))
+      .flatMap((f) => f.split(' '));
 
-    const out = await runZcode({
+    const out = await invokeZcode({
       entry,
       node,
       cwd: fx.root,
-      readonlyFlags: readonly,
+      readonlyArgs: readonly,
+      timeoutMs: PROBE_TIMEOUT_MS,
       prompt:
         `项目根目录是 ${fx.root} 。请读取绝对路径 ${fx.openFile} ，` +
         `并原样回显它的第一行内容。只做这一件事。`,

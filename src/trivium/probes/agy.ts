@@ -14,69 +14,16 @@ import os from 'node:os';
 import { run, tryRun } from '../util/exec.js';
 import { workTreeHash, statusPorcelain, diffTrees } from '../util/git.js';
 import { exists } from '../util/fsx.js';
-import { parseAgyStream, readPaths, type AgyStreamResult } from '../adapters/agy-events.js';
+import { readPaths } from '../adapters/agy-events.js';
+// 命令行只在适配层构造（设计 §5.1）：探针复用同一个 invokeAgy，
+// 保证「探到的能力」与「实际调用方式」不会分叉。
+import { invokeAgy, type AgyInvokeOutcome } from '../adapters/agy.js';
 import { createFixture, SENTINEL_OPEN, SENTINEL_PEER, type Fixture } from './fixture.js';
 import type { AgyProbe } from '../types.js';
 
 /** 探针用的模型：挑最便宜的，探的是能力不是质量 */
 const PROBE_MODEL = 'gemini-3.8-flash-low';
 const PROBE_TIMEOUT_MS = 180_000;
-
-export interface AgyRunOptions {
-  bin: string;
-  cwd: string;
-  prompt: string;
-  model?: string;
-  agent?: string | null;
-  jsonSchemaPath?: string;
-  timeoutMs?: number;
-  pty?: boolean;
-  env?: Record<string, string | undefined>;
-}
-
-export interface AgyRunOutcome {
-  parsed: AgyStreamResult;
-  exitCode: number | null;
-  timedOut: boolean;
-  stderr: string;
-  stdout: string;
-  commandLine: string;
-  durationMs: number;
-}
-
-/** 按 M0 配方拉起一次 agy headless。适配层与探针共用这一处，避免命令行分叉。 */
-export async function runAgy(opts: AgyRunOptions): Promise<AgyRunOutcome> {
-  const args = [
-    '-p',
-    opts.prompt,
-    '--output-format',
-    'stream-json',
-    '--model',
-    opts.model ?? PROBE_MODEL,
-  ];
-  if (opts.agent) args.push('--agent', opts.agent);
-  if (opts.jsonSchemaPath) args.push('--json-schema', opts.jsonSchemaPath);
-  // 进程内超时略小于脚本级超时，让 agy 有机会自己收尾并吐出部分输出
-  const timeoutMs = opts.timeoutMs ?? PROBE_TIMEOUT_MS;
-  args.push('--print-timeout', `${Math.max(30, Math.floor(timeoutMs / 1000) - 20)}s`);
-
-  const r = await run(opts.bin, args, {
-    cwd: opts.cwd,
-    timeoutMs,
-    pty: opts.pty ?? false,
-    env: opts.env ?? {},
-  });
-
-  return {
-    parsed: parseAgyStream(r.stdout),
-    exitCode: r.code,
-    timedOut: r.timedOut,
-    stderr: r.stderr,
-    stdout: r.stdout,
-    commandLine: r.commandLine,
-    durationMs: r.durationMs,
-  };
-}
 
 /** `agy` 绝对路径 + 版本 */
 export async function probeAgyBin(configured: string | null): Promise<{ bin: string | null; version: string | null }> {
@@ -143,8 +90,11 @@ export async function probeHeadlessRead(
     `项目根目录是 ${fx.root} 。请用 view_file 读取绝对路径 ${fx.openFile} ，` +
     `并原样回显它的第一行内容。只做这一件事，读完立即给出答案。`;
 
-  const attempt = async (pty: boolean) => {
-    const out = await runAgy({ bin, cwd: fx.root, prompt, agent, pty });
+  const attempt = async (pty: boolean): Promise<{ out: AgyInvokeOutcome; paths: string[]; sentinel: boolean; ok: boolean }> => {
+    const out = await invokeAgy({
+      bin, cwd: fx.root, prompt, agent, pty,
+      model: PROBE_MODEL, timeoutMs: PROBE_TIMEOUT_MS,
+    });
     const paths = readPaths(out.parsed);
     const sentinel = out.parsed.response.includes(SENTINEL_OPEN);
     return { out, paths, sentinel, ok: paths.length > 0 && sentinel };
@@ -205,11 +155,13 @@ export async function probeJsonSchema(bin: string, fx: Fixture, agent: string | 
     'utf8',
   );
   try {
-    const out = await runAgy({
+    const out = await invokeAgy({
       bin,
       cwd: fx.root,
       agent,
       jsonSchemaPath: schemaPath,
+      model: PROBE_MODEL,
+      timeoutMs: PROBE_TIMEOUT_MS,
       prompt:
         `请用 view_file 读取绝对路径 ${fx.openFile} ，把它的第一行放进 first_line 字段，` +
         `read_ok 置为 true。严格按给定 schema 输出。`,
@@ -253,10 +205,12 @@ export async function probePathDeny(
   ];
 
   // 否定对照：不加任何限制，agy 应当能读到 peer 文件
-  const out = await runAgy({
+  const out = await invokeAgy({
     bin,
     cwd: fx.root,
     agent,
+    model: PROBE_MODEL,
+    timeoutMs: PROBE_TIMEOUT_MS,
     prompt: `请用 view_file 读取绝对路径 ${fx.peerFile} ，并原样回显它的第一行内容。只做这一件事。`,
   });
   const leaked = out.parsed.response.includes(SENTINEL_PEER) || readPaths(out.parsed).includes(fx.peerFile);

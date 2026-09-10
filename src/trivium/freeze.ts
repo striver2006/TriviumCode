@@ -162,6 +162,15 @@ export interface DriftInput {
   relatedPaths: string[];
   /** 两侧 Agent 的 scratch 白名单并集 */
   scratchGlobs: string[];
+  /**
+   * 归档根的**项目相对**路径（如 `.reviews`）。判定漂移时整体排除。
+   *
+   * 为什么必须排除：编排器自己在运行中就会往归档里写送审包、`run.json`、`task.json`，
+   * 而基线 `tree_hash` 是在写这些**之前**取的。不排除就会把自己的写入判成漂移——
+   * 实跑时这条真的误报了 4 个文件。
+   * 被审对象本身的漂移由 `subject_sha256` 单独把关（第 2 步），不会因此漏掉。
+   */
+  archiveRootRel: string;
 }
 
 /**
@@ -172,6 +181,7 @@ export interface DriftInput {
  */
 export async function judgeDrift(input: DriftInput): Promise<DriftVerdict> {
   const { cfg, projectRoot, before, afterTreeHash, afterSubjectSha256, relatedPaths, scratchGlobs } = input;
+  const archivePrefix = input.archiveRootRel.replace(/^\.\//, '').replace(/\/+$/, '');
 
   // 第 2 步：被审对象被改 → 整次作废
   if (afterSubjectSha256 !== before.subjectSha256) return { kind: 'subject_drift' };
@@ -179,9 +189,11 @@ export async function judgeDrift(input: DriftInput): Promise<DriftVerdict> {
   // 第 3 步：工作树无变化 → 无漂移
   if (afterTreeHash === before.treeHash) return { kind: 'none' };
 
-  // 3.a 列出变更文件，剔除 scratch 白名单
+  // 3.a 列出变更文件，剔除 scratch 白名单与归档根
   const changed = (await diffTrees(projectRoot, before.treeHash, afterTreeHash)).filter(
-    (f) => !matchesAnyGlob(f, scratchGlobs),
+    (f) =>
+      !matchesAnyGlob(f, scratchGlobs) &&
+      !(archivePrefix.length > 0 && (f === archivePrefix || f.startsWith(`${archivePrefix}/`))),
   );
   // 3.b 全是 Agent 临时文件 → 无漂移
   if (changed.length === 0) return { kind: 'none' };

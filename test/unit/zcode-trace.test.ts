@@ -175,3 +175,37 @@ test('rollout：坏行与无 toolCalls 的行被跳过而非抛异常', async ()
   const r = parseZcodeRollout('{不是 JSON\n{"response":{}}\n' + ROLLOUT);
   assert.equal(r.toolCalls.length, 3);
 });
+
+// ─────────────────── 模型名前缀补全（坑 P-06 / 冲突 C-02） ───────────────────
+
+test('模型名补全：短名按探针回读的 providerId 补前缀', async () => {
+  const { qualifyZcodeModel } = await import('../../src/trivium/adapters/zcode.js');
+  assert.equal(
+    qualifyZcodeModel('GLM-5.3', 'bigmodel-coding-plan/GLM-5.3-Flash'),
+    'bigmodel-coding-plan/GLM-5.3',
+  );
+});
+
+test('模型名补全：已是全限定形态时原样返回', async () => {
+  const { qualifyZcodeModel } = await import('../../src/trivium/adapters/zcode.js');
+  assert.equal(
+    qualifyZcodeModel('builtin:zai/GLM-5.3', 'bigmodel-coding-plan/GLM-5.3'),
+    'builtin:zai/GLM-5.3',
+  );
+});
+
+test('模型名补全：探针没给出前缀时原样传，不瞎猜', async () => {
+  const { qualifyZcodeModel } = await import('../../src/trivium/adapters/zcode.js');
+  assert.equal(qualifyZcodeModel('GLM-5.3', null), 'GLM-5.3');
+  assert.equal(qualifyZcodeModel('GLM-5.3', 'GLM-5.3'), 'GLM-5.3');
+});
+
+test('模型名补全：providerId 含斜杠时只切最后一段', async () => {
+  const { qualifyZcodeModel } = await import('../../src/trivium/adapters/zcode.js');
+  assert.equal(qualifyZcodeModel('X', 'a/b/c'), 'a/b/X');
+});
+
+test('模型名补全：null 模型返回 null', async () => {
+  const { qualifyZcodeModel } = await import('../../src/trivium/adapters/zcode.js');
+  assert.equal(qualifyZcodeModel(null, 'p/m'), null);
+});
