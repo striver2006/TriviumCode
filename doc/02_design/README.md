@@ -16,6 +16,8 @@
 ---
 
 ## 当前已归档文件
+- [`2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md`](./2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md)：Driver-DualCritic 主攻双审流水线总体架构与详细设计（HLD+LLD，v1.0.0 · 综合五份参考答卷与 PRD v1.3.0 的 GLM 裁决方案）
+- [`2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md`](./2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md)：Driver-DualCritic 主攻双审流水线系统架构与详细设计规范（实施基准 · Gemini 架构师方案）
 - [`ADR_TEMPLATE.md`](./ADR_TEMPLATE.md)：架构决策记录编写模板
 - `2026-09-10-Claude-Code主攻双智能体审核流水线-dsv4flash.md`
 - `2026-09-10-Claude-Code主攻双智能体审核流水线-grok4.6.md`
