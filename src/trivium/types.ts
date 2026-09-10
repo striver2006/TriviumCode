@@ -61,8 +61,16 @@ export interface ZcodeProbe {
   readonly_flags: string[];
   /** 模型覆盖实际生效的档位 */
   model_override: 'env' | 'config_copy' | 'global' | null;
-  /** 工具轨迹来源（会话日志路径模板） */
+  /**
+   * 工具轨迹来源：**工具名、调用计数、生效模型、结构化失败根因**的路径模板。
+   * M0 实测该日志的 `tool.call.*` 事件里**没有任何路径字段**。
+   */
   trace_source: string | null;
+  /**
+   * 工具**参数**（含文件路径）的路径模板。
+   * `deny_paths` 轨迹核验（AC-04）与 `consulted` 交叉核对（AC-11）只能从这里取值。
+   */
+  trace_args_source?: string | null;
   /** 正文字段路径，设计记载为 .response */
   response_field: string | null;
   path_deny: PathDenyProbe;

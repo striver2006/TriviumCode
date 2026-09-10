@@ -37,6 +37,7 @@ export function defaultProbe(): ProbeSection {
       readonly_flags: [],
       model_override: null,
       trace_source: null,
+      trace_args_source: null,
       response_field: null,
       path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
       scratch_paths: [],
