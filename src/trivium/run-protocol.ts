@@ -24,6 +24,7 @@ import {
 } from './review.js';
 import { resolveTopic } from './topic.js';
 import { readRunMeta } from './meta.js';
+import { setGate } from './state.js';
 import { agyAdapter } from './adapters/agy.js';
 import { zcodeAdapter } from './adapters/zcode.js';
 import type { AdapterContext } from './adapters/base.js';
@@ -511,6 +512,17 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
     if (existing && existing.run_id === runId) {
       await reclaimStaleLock(path.join(ctx.triviumDir, 'lock', `${topic}.lock`), existing);
       say(`已回收主题「${topic}」的锁`);
+    }
+    /*
+     * 闸门也要一并回到 idle。取消后若还留着 `running`，Driver 会被一个已经不存在的
+     * 运行永久锁住业务写入——人的第一反应是去关 Hook，护栏就此报废。
+     */
+    if (s?.stage) {
+      await setGate({
+        triviumDir: ctx.triviumDir, topic, stage: s.stage, state: 'idle',
+        runId, sessionId: process.env['CLAUDE_SESSION_ID'] ?? null,
+        heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+      });
     }
   }
   say(`运行 ${runId} 已取消`);

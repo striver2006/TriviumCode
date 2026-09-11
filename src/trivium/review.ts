@@ -44,6 +44,7 @@ import { resolveRerunIndex, writeArtifact, writeMeta, metaDir } from './archive.
 import { newRunId, newRunMeta, registerRun, summarizeRun, writeRunMeta } from './meta.js';
 import { measureDivergence, renderDivergence } from './divergence.js';
 import { runRoot } from './config.js';
+import { setGate } from './state.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
 import { workTreeHash } from './util/git.js';
 import {
@@ -78,6 +79,13 @@ export interface ReviewOptions {
   assetRoot?: string;
   /** code 阶段的 diff 基线，默认 HEAD */
   diffBase?: string | null;
+  /**
+   * 触发本次运行的 Claude Code 会话 id。
+   *
+   * 闸门写锁的作用域默认是「同会话」（RV-05），没有它 `shouldLockWrites`
+   * 会因「闸门未记录触发会话」而一律不加锁——护栏静默失效。
+   */
+  sessionId?: string | null;
 }
 
 export interface ReviewOutcome {
@@ -364,6 +372,26 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   await writeRunMeta(ref.layout, stage, meta);
   await registerRun(ref.layout, meta);
 
+  /*
+   * ── 闸门状态必须写进 state.json，不能只写进 run.json ──
+   *
+   * 四个 Hook 都是读 `state.json` 判定的（listOpenGates）。原先 review 只在
+   * run.json 里记 `gate.state`，state.json 压根没被创建，于是
+   * `hook-pre-write`（审查期禁写）、`hook-pre-commit`（裁决未齐备禁提交）、
+   * `hook-stop`（裁决未齐备禁收工）**三个 Hook 全部无事可判、一律退 0**。
+   * 那是整条流水线最核心的护栏（AC-02 / AC-12 / §8.5），实测确认过是静默失效的。
+   */
+  if (!skipVerdict?.skipped) {
+    await setGate({
+      triviumDir: ctx.triviumDir,
+      topic: ref.topic, stage,
+      state: 'running',
+      runId, rerunIndex,
+      sessionId: opts.sessionId ?? null,
+      heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
+    });
+  }
+
   return {
     opts, cfg, ctx, stage, ref, adapterCtx, adapters, sides,
     runId, rerunIndex, subjectPath, runDirBase,
@@ -396,6 +424,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     meta.gate.adjudication_complete = true; // 没有意见可裁决
     await writeRunMeta(ref.layout, stage, meta);
     await registerRun(ref.layout, meta);
+    // 跳过等于这一轮没有待裁决的意见，闸门直接回 idle
+    await setGate({
+      triviumDir: ctx.triviumDir, topic: ref.topic, stage, state: 'idle',
+      runId, rerunIndex, sessionId: opts.sessionId ?? null,
+      heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
+    });
 
     const notice = renderSkipNotice(skipVerdict);
     say('');
@@ -586,6 +620,21 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
 
   await writeRunMeta(ref.layout, stage, meta);
   await registerRun(ref.layout, meta);
+
+  /*
+   * 同步到 state.json，Hook 才看得见。
+   *
+   * 失败的运行置 `idle`：没有可裁决的意见，却让闸门卡在 running 会把 Driver
+   * 永久锁死在一个已经结束的运行上——那比不拦更糟，因为人会去改配置绕开 Hook。
+   */
+  await setGate({
+    triviumDir: ctx.triviumDir,
+    topic: ref.topic, stage,
+    state: meta.status === 'success' ? 'review_done_awaiting_disposition' : 'idle',
+    runId, rerunIndex,
+    sessionId: opts.sessionId ?? null,
+    heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
+  });
 
   say('');
   say(summarizeRun(meta));

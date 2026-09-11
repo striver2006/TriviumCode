@@ -55,6 +55,8 @@ export interface FixtureOptions {
    * 要测 slug 校验真的生效就必须把目录填上。
    */
   probeModels?: { gemini: string[]; glm: string[] };
+  /** 原稿落在哪个阶段目录。plan（默认）或 bug */
+  draftStage?: 'plan' | 'bug';
 }
 
 export interface Fixture {
@@ -123,12 +125,15 @@ export async function makeFixture(opts: FixtureOptions): Promise<Fixture> {
   }
 
   const archiveRoot = path.join(root, '.reviews');
-  const stageDir = path.join(archiveRoot, opts.topic, 'plan');
+  const draftStage = opts.draftStage ?? 'plan';
+  const stageDir = path.join(archiveRoot, opts.topic, draftStage);
   if (opts.draft !== false) {
     await fs.mkdir(stageDir, { recursive: true });
     await fs.writeFile(
       path.join(stageDir, `${today()}-${opts.topic}-claude.md`),
-      '# 待审计划\n\n## 一、目标\n\n验证编排器行为。\n',
+      draftStage === 'bug'
+        ? '# 根因分析\n\n## 一、现象\n\n某接口偶发 500。\n\n## 二、根因\n\n并发下缓存击穿。\n'
+        : '# 待审计划\n\n## 一、目标\n\n验证编排器行为。\n',
       'utf8',
     );
   }

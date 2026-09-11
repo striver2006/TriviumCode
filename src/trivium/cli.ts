@@ -263,6 +263,8 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     modelOverrides,
     command: `trivium review --stage ${stage}`,
     onlyCritic: (onlyRaw as CriticId | null) ?? null,
+    // 闸门写锁默认按会话作用域（RV-05），拿不到会话 id 就一律不加锁
+    sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
   };
 
   // ── --start：派生后立即返回 ──
@@ -520,6 +522,24 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   } else {
     say(renderGateResult(result));
   }
+
+  /*
+   * 校验通过即把闸门从 `review_done_awaiting_disposition` 放行。
+   *
+   * 不这样做的话，`hook-pre-commit` / `hook-stop` 会在裁决**已经补齐之后**
+   * 继续拦人，用户唯一的出路是去改配置关掉 Hook——护栏一旦开始误伤，
+   * 第一个被关掉的就是它自己。
+   * 命令 B/C/D 随后会用 `--await-approval` 把闸门推进到人工审批态。
+   */
+  if (result.ok) {
+    await setGate({
+      triviumDir: ctx.triviumDir, topic, stage, state: 'idle',
+      runId, rerunIndex,
+      sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
+      heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+    });
+  }
+
   // 返回 2 让调用方（skill / Hook）能按闸门语义处理
   return result.ok ? EXIT.OK : EXIT.GATE_BLOCK;
 }
