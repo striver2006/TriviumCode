@@ -8,7 +8,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { run } from './exec.js';
-import { EXIT, TriviumError } from '../exit-codes.js';
+import { EXIT, TriviumError, swallowedTextHint } from '../exit-codes.js';
 import { makeTempDir } from './fsx.js';
 
 export interface GitStatusEntry {
@@ -191,7 +191,8 @@ export async function diffAgainst(
       EXIT.USAGE,
       `\`git diff ${base}\` 失败（退出码 ${tracked.code}）。\n` +
         `  ${tracked.stderr.trim().split('\n').slice(0, 3).join('\n  ')}\n` +
-        '  --base 是否写错？请给出一个存在的 ref。被审补丁在冻结前失败，未产生任何工件。',
+        '  --base 是否写错？请给出一个存在的 ref。被审补丁在冻结前失败，未产生任何工件。' +
+        swallowedTextHint(base),
     );
   }
   let out = tracked.stdout;

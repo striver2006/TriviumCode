@@ -40,9 +40,15 @@ function declaredFlags(md: string): string[] {
   return [...line.matchAll(/--([a-z][a-z0-9-]*)/g)].map((m) => m[1]!);
 }
 
-/** 抓出 `TV review --start …` 那一行命令模板。 */
+/**
+ * 抓出 `TV review --start …` 那一行命令模板。
+ *
+ * 必须锚定行首的 `TV review --start`，不能用 `includes('review --start')`：
+ * 正文里提到这个命令名是常事（例如第 2 步解释「第 3 步的 review --start 走
+ * 标准 argv 解析」），松匹配会取到那句引文，把整条契约测成一个假阳性。
+ */
 function startTemplate(md: string): string {
-  const line = md.split('\n').find((l) => l.includes('review --start'));
+  const line = md.split('\n').find((l) => l.trimStart().startsWith('TV review --start'));
   assert.ok(line, 'SKILL.md 缺少 review --start 命令模板');
   return line;
 }

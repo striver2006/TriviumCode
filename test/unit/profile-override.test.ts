@@ -67,3 +67,26 @@ test('不改动传入的 config 对象本身（避免跨调用污染）', () => 
   assert.equal(original.active_profile, 'default');
   assert.equal(switched.active_profile, 'hotfix');
 });
+
+test('档位值像是自由文本时，报错要点破「它被旗标吞了」', () => {
+  assert.throws(
+    () => applyProfileOverride(cfg(), '真正生效的任务目标'),
+    (e: { message: string }) => {
+      assert.match(e.message, /任务目标或焦点的一部分/,
+        '只说「档位不存在」时，用户以为自己填错了档位名——实情是他压根没想传这个参数');
+      assert.match(e.message, /双引号/, '要给出可操作的修法');
+      return true;
+    },
+  );
+});
+
+test('档位值是正常标识符时不加这句提示——避免噪音', () => {
+  assert.throws(
+    () => applyProfileOverride(cfg(), 'typo-profile'),
+    (e: { message: string }) => {
+      assert.doesNotMatch(e.message, /任务目标或焦点的一部分/);
+      assert.match(e.message, /不存在/);
+      return true;
+    },
+  );
+});

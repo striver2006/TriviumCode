@@ -8,7 +8,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import type { Config, Ctx, ProbeSection, Stage } from './types.js';
-import { EXIT, TriviumError, envError } from './exit-codes.js';
+import { EXIT, TriviumError, envError, swallowedTextHint } from './exit-codes.js';
 import { exists, expandHome } from './util/fsx.js';
 import { isGitRepo, repoRoot } from './util/git.js';
 
@@ -192,7 +192,8 @@ export function applyProfileOverride(cfg: Config, name: string | null | undefine
     throw new TriviumError(
       EXIT.USAGE,
       `profile「${wanted}」不存在。\n` +
-        `  可用档位：${available.length > 0 ? available.join('、') : '（config.yaml 未定义任何 profile）'}`,
+        `  可用档位：${available.length > 0 ? available.join('、') : '（config.yaml 未定义任何 profile）'}` +
+          swallowedTextHint(wanted),
     );
   }
   return { ...cfg, active_profile: wanted };

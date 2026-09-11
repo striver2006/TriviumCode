@@ -44,3 +44,24 @@ export class TriviumError extends Error {
 export const usageError = (m: string, d?: unknown) => new TriviumError(EXIT.USAGE, m, d);
 export const missingArtifact = (m: string, d?: unknown) => new TriviumError(EXIT.MISSING_ARTIFACT, m, d);
 export const envError = (m: string, d?: unknown) => new TriviumError(EXIT.ENV, m, d);
+
+/**
+ * 旗标值看起来像是从自由文本里误吞来的，就补一句解释。
+ *
+ * `topic resolve` 把 `--` 之后的内容拼成一整串再重新分词，于是任务目标或焦点里
+ * 出现的 `--base`、`--profile` 这类词会被当成真旗标，连同后一个 token 一起被抠走。
+ * 被抠走的那截几乎必然撞上下游校验（坏 ref / 坏档位 / 非法 slug），但原先的文案
+ * 只说「你写错了」——而用户的真实情况往往是**压根没想传这个参数**。
+ *
+ * 判据：ref 名与档位名都不含空格、也不会是中文；命中即几乎可以断定是误吞。
+ * 判错的代价只是多一行提示，判漏的代价是用户对着「请给出一个存在的 ref」发懵。
+ */
+export function swallowedTextHint(value: string): string {
+  const looksLikeProse = /\s/.test(value) || /[^\x20-\x7E]/.test(value);
+  if (!looksLikeProse) return '';
+  return (
+    '\n  这段文字像是任务目标或焦点的一部分——它前面的 `--xxx` 被当成了旗标，' +
+    '把它当值吞了进去。\n' +
+    '  请把整段用双引号包起来，例如：`"让 --base 真正进入冻结" --focus <焦点>`。'
+  );
+}

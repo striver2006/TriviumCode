@@ -208,6 +208,20 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     topicRaw = inferTopic(taskGoal ?? promptHint ?? '', ctx.config.topic.max_len);
     inferred = true;
     notes.push(`主题由任务目标推导：「${topicRaw}」——请向用户回显确认`);
+    /*
+     * ── 推导结果异常短，多半是任务目标被旗标截断了 ──
+     *
+     * 任务目标里出现 `--base` 这类词而没加引号时，它会被当成真旗标并吞掉后一个
+     * token，正文只剩开头零星几个字；主题从这截残渣推导，就成了「让」这种单字。
+     * `validateTopic` 不会拦——单字是合法主题名——于是真的建出 `.reviews/让/`。
+     * 上面那条通用提醒对所有推导主题一视同仁，这里把最可能出错的情形单独点破。
+     */
+    if (topicRaw.length <= 2) {
+      notes.push(
+        `主题「${topicRaw}」异常短：通常意味着任务目标被 \`--xxx\` 旗标截断（未加引号），` +
+          '请核对用户原始输入，必要时把整段用双引号包起来重传',
+      );
+    }
   }
   const v = validateTopic(topicRaw, ctx.config.topic.max_len);
   if (!v.ok) {

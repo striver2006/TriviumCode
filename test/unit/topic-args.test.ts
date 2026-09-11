@@ -209,6 +209,27 @@ test('焦点里出现白名单旗标字样不再被静默吞掉', async () => {
  * SKILL.md 要求执行者给自由文本加引号，以及下游校验（坏 base / 坏档位
  * / 非法 slug 都退 64）兜住大部分误吞。
  */
+test('主题被推成单字时给出「疑似被旗标截断」的提示', async () => {
+  const ctx = await fakeCtx();
+  // 「让 --base 真正进入冻结」未加引号：--base 吞掉「真正进入冻结」，正文只剩「让」
+  const r = await resolveTopicArgs({
+    ctx, scope: 'all', rawArgs: '让 --base 真正进入冻结 --focus 看看还有没有同类缺口',
+  });
+  assert.equal(r.topic, '让', '前提：截断后主题确实被推成了单字');
+  assert.ok(
+    r.notes.some((n) => n.includes('异常短')),
+    `单字主题是合法的、validateTopic 不会拦，只能靠 note 点破。实际 notes：${JSON.stringify(r.notes)}`,
+  );
+});
+
+test('正常长度的推导主题不触发该提示', async () => {
+  const ctx = await fakeCtx();
+  const r = await resolveTopicArgs({
+    ctx, scope: 'all', rawArgs: '把登录改造为 OIDC --focus 看会话固定',
+  });
+  assert.ok(!r.notes.some((n) => n.includes('异常短')), '不该对正常主题误报');
+});
+
 test('不加引号时焦点仍会在旗标字样处截断——这是预期行为，靠引号解决', async () => {
   const ctx = await fakeCtx();
   const r = await resolveTopicArgs({

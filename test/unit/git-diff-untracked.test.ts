@@ -73,3 +73,34 @@ test('空的未跟踪文件不报错（退出码 0 属正常，不是失败）',
     '空文件无内容差异时 git 退 0，这是正常情况，不该被当成失败抛出',
   );
 });
+
+test('坏 base 像是自由文本时，报错要点破「它被旗标吞了」', async () => {
+  const dir = await repo();
+  await fs.writeFile(path.join(dir, 'x.ts'), 'export const x = 1;\n');
+
+  await assert.rejects(
+    () => diffAgainst(dir, '真正进入冻结', []),
+    (e: { message: string }) => {
+      assert.match(e.message, /bad revision|unknown revision|fatal/i, '先如实转述 git 的话');
+      assert.match(
+        e.message, /任务目标或焦点的一部分/,
+        '「请给出一个存在的 ref」会把用户引向错误方向——他根本没想传 --base，' +
+          '那段文字是任务目标里的，被前面的 --base 吞了',
+      );
+      return true;
+    },
+  );
+});
+
+test('base 是正常 ref 写错时不加这句提示——避免噪音', async () => {
+  const dir = await repo();
+  await fs.writeFile(path.join(dir, 'x.ts'), 'export const x = 1;\n');
+
+  await assert.rejects(
+    () => diffAgainst(dir, 'no-such-branch', []),
+    (e: { message: string }) => {
+      assert.doesNotMatch(e.message, /任务目标或焦点的一部分/);
+      return true;
+    },
+  );
+});
