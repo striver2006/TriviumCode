@@ -24,7 +24,14 @@ import {
 } from './adapters/base.js';
 import { resolveAdapters } from './adapters/stub.js';
 import { freeze } from './freeze.js';
-import { buildMustReadList, excerptSubject, extractPathReferences, loadLenses, renderBrief } from './brief.js';
+import {
+  buildMustReadList,
+  excerptSubject,
+  extractPathReferences,
+  loadLenses,
+  loadStagePrompt,
+  renderBrief,
+} from './brief.js';
 import { parseReview, enumerateFallbackFindings } from './parse.js';
 import { decideMode, runBothSides } from './runner.js';
 import { judgeRun, renderGuardWarnings } from './guard.js';
@@ -263,6 +270,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const runDirBase = path.join(runRoot(cfg), repoId(ctx.projectRoot), runId);
 
   const lenses = await loadLenses(lensesPath);
+  // 阶段专属审查要点。缺文件返回 null，旧版安装不至于跑不起来
+  const stagePrompt = await loadStagePrompt(assetRoot, stage);
   const mustRead = await buildMustReadList(cfg, ctx.projectRoot, ref.topic, opts.contextPaths);
   const suggestedRead = extractPathReferences(subjectText);
   const excerpt = excerptSubject(subjectText);
@@ -306,7 +315,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       promptHint: opts.promptHint,
       subjectExcerpt: excerpt,
       mustRead, suggestedRead, ownHistory,
-      schemaPath, lenses,
+      schemaPath, lenses, stagePrompt,
       taskGoal: null,
       minToolCalls: cfg.review.min_tool_calls[stage],
       minProjectReads: cfg.review.min_project_reads[stage],

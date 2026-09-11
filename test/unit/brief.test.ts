@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import os from 'node:os';
+import { promises as fs, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
-  renderBrief,
+  loadStagePrompt, renderBrief,
   extractPathReferences,
   excerptSubject,
   type BriefInput,
@@ -49,6 +53,16 @@ function input(over: Partial<BriefInput> = {}): BriefInput {
   };
 }
 
+/** 运行时在 dist/test/test/unit/，源码在 test/unit/，所以向上找 package.json */
+const REPO_ROOT_FOR_PROMPTS = (() => {
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 8; i++) {
+    if (existsSync(path.join(dir, 'package.json'))) return dir;
+    dir = path.dirname(dir);
+  }
+  throw new Error('未能定位仓库根');
+})();
+
 test('八个段落按固定顺序出现，一个不缺', () => {
   const b = renderBrief(input());
   const headings = [
@@ -56,7 +70,7 @@ test('八个段落按固定顺序出现，一个不缺', () => {
     '## 2. 本次审查焦点',
     '## 3. 被审对象',
     '## 4. 项目上下文与必读清单',
-    '## 5. 你这一侧的审查镜头',
+    '## 5. 审查要点与你这一侧的镜头',
     '## 6. 输出契约',
     '## 7. 反谄媚约束',
     '## 8. 禁读清单与禁止事项',
@@ -169,4 +183,56 @@ test('节选：超长时截断头尾并提示读全文', () => {
   assert.ok(e.includes('请读真实路径获取全文'));
   assert.ok(e.startsWith('line0'));
   assert.ok(e.trimEnd().endsWith('line999'));
+});
+
+// ── 阶段专属审查要点（交付物 4）──
+
+test('阶段要点并入第 5 段，不另起第 9 段', () => {
+  const b = renderBrief(input({ stagePrompt: '本阶段的专属要点：先读补丁再读完整上下文。' }));
+  assert.match(b, /## 5\. 审查要点与你这一侧的镜头/);
+  assert.match(b, /先读补丁再读完整上下文/);
+  assert.doesNotMatch(b, /## 9\./, '八段结构是 §9.4 的明文契约，加段会让所有既有段号引用错位');
+  // 要点在镜头之前：先讲这一阶段该怎么看，再讲你这一侧看哪里
+  // 比的是段内小标题，不是 h2 标题——后者也含「你这一侧的镜头」四个字
+  assert.ok(b.indexOf('先读补丁') < b.indexOf('**你这一侧的镜头：**'));
+});
+
+test('缺 prompts/ 文件时第 5 段只含镜头，不报错', () => {
+  const b = renderBrief(input({ stagePrompt: null }));
+  assert.match(b, /## 5\. 审查要点与你这一侧的镜头/);
+  assert.match(b, /你这一侧的镜头/);
+});
+
+test('loadStagePrompt 剥掉写给维护者的 HTML 注释', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-prompt-'));
+  await fs.mkdir(path.join(dir, 'prompts'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, 'prompts/plan-review.md'),
+    '<!--\n这段是给维护者的，不该进 BRIEF\n-->\n\n真正给审查员看的内容。\n',
+    'utf8',
+  );
+  const got = await loadStagePrompt(dir, 'plan');
+  assert.equal(got, '真正给审查员看的内容。');
+  assert.doesNotMatch(got!, /给维护者/);
+});
+
+test('loadStagePrompt 文件不存在返回 null——旧版安装不该因此跑不起来', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-prompt-'));
+  assert.equal(await loadStagePrompt(dir, 'code'), null);
+});
+
+test('loadStagePrompt 只剩注释时也返回 null', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-prompt-'));
+  await fs.mkdir(path.join(dir, 'prompts'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'prompts/bug-review.md'), '<!-- 只有注释 -->\n', 'utf8');
+  assert.equal(await loadStagePrompt(dir, 'bug'), null);
+});
+
+test('随仓库分发的三份阶段要点都能加载，且不含写给维护者的注释', async () => {
+  const assetRoot = path.resolve(REPO_ROOT_FOR_PROMPTS, 'skills/dual-critic');
+  for (const stage of ['plan', 'code', 'bug'] as const) {
+    const got = await loadStagePrompt(assetRoot, stage);
+    assert.ok(got && got.length > 100, `${stage} 的阶段要点应存在且非空`);
+    assert.doesNotMatch(got, /<!--/, '注释必须被剥掉');
+  }
 });
