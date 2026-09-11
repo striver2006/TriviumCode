@@ -5,9 +5,9 @@
 > - **创建日期**：2026-09-10
 > - **当前版本**：v1.0.0
 > - **状态**：评审中(In-Review)
-> - **被审对象**：[`2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md) v1.0.0（下称「被审稿」）
+> - **被审对象**：[`2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`](../2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md) v1.0.0（下称「被审稿」）
 > - **参照方案**：[`…-gemini.md`](./2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md)（下称「gemini 版」）、[`…-glm.md`](./2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md)（下称「glm 版」）
-> - **需求准绳**：[PRD_driver_dual_critic.md](../01_requirements/PRD_driver_dual_critic.md) v1.3.0
+> - **需求准绳**：[PRD_driver_dual_critic.md](../../01_requirements/PRD_driver_dual_critic.md) v1.3.0
 
 ---
 

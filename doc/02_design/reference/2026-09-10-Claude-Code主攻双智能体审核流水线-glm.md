@@ -4,7 +4,7 @@
 > - **创建日期**：2026-09-10
 > - **当前版本**：v1.0.0
 > - **状态**：评审中(In-Review)
-> - **上游需求**：[PRD_driver_dual_critic.md](../01_requirements/PRD_driver_dual_critic.md) v1.3.0
+> - **上游需求**：[PRD_driver_dual_critic.md](../../01_requirements/PRD_driver_dual_critic.md) v1.3.0
 > - **参考方案**：`doc/02_design/reference/` 下 5 份多模型设计答卷（zcode / dsv4flash / grok4.6 / qwen3.8-flash / gemini）
 > - **本文性质**：总体架构设计（HLD）+ 组件级详细设计（LLD）+ 操作流程规范，**不含实现代码**
 > - **实现约束**：目标平台 macOS + VS Code（NFR-01）；主交互入口为 Claude Code `/` 命令；审查侧必须是 Antigravity 与 ZCode 的**编程 Agent 运行时**

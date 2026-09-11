@@ -3,9 +3,14 @@
 > - **文档标识**：`doc/02_design/2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md`
 > - **文档版本**：v1.0.0
 > - **创建日期**：2026-09-10
-> - **状态**：已批准 (Approved) · 实施基线
+> - **状态**：**参考方案 (Reference)**
+>
+> ⚠️ 该文原自称「已批准 (Approved) · 实施基线」，**该口径无效**。它是多模型设计调研中的一份答卷，
+> 从未被批准为实施基线。本项目的唯一实现依据是
+> [`2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`](../2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md)。
+> 本文结论可能已被该设计推翻，阅读时请以其为准。（设计 18.2 回填，2026-09-11）
 > - **系统架构师**：TriviumCode 核心架构团队 (Gemini)
-> - **关联需求**：[PRD_driver_dual_critic.md (v1.3.0)](../01_requirements/PRD_driver_dual_critic.md)
+> - **关联需求**：[PRD_driver_dual_critic.md (v1.3.0)](../../01_requirements/PRD_driver_dual_critic.md)
 > - **运行环境**：macOS (Sonoma 14+) + VS Code 原生开发流
 > - **核心智能体**：Claude Code (Driver 主脑) × Google Antigravity (Critic-A) × 智谱 ZCode (Critic-B)
 
@@ -843,7 +848,7 @@ Phase 4: 验证出口与质量加固 (Days 9-10)
 
 ## 9. 需求全景追溯与一致性矩阵
 
-本架构方案针对需求文档 [PRD_driver_dual_critic.md (v1.3.0)](../01_requirements/PRD_driver_dual_critic.md) 中定义的全部功能需求（FR）、非功能需求（NFR）与验收标准（AC）做出了 100% 覆盖的设计承诺：
+本架构方案针对需求文档 [PRD_driver_dual_critic.md (v1.3.0)](../../01_requirements/PRD_driver_dual_critic.md) 中定义的全部功能需求（FR）、非功能需求（NFR）与验收标准（AC）做出了 100% 覆盖的设计承诺：
 
 | PRD 需求项 | 需求类别与摘要 | 本设计方案的具体落地章节与实现机制 | 对应验收标准 (AC) | 满足状态 |
 | :--- | :--- | :--- | :--- | :--- |
