@@ -3,10 +3,11 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`，遵循 PRD FR-08 的 `日期-主题-角色` 规范；角色后缀 `claude` 表示本文是主脑产出、**待双审**的文档
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.2.0
+> - **当前版本**：v1.2.1
 > - **状态**：评审中(In-Review)
 > - **审核依据**：①[`2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md`](./reference/2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md)（v1.1.0 按其 RV-01～RV-26 修订，逐条应答见第 22 章）；②项目负责人评审意见 UR-01～UR-06（2026-09-11，v1.2.0 据此修订，逐条应答见第 23 章）
 > - **架构决策记录**：[`ADR_001_isolation_mode.md`](./ADR_001_isolation_mode.md)（就地审查模式，Accepted）
+> - **实测依据**：[`REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md)（M0 本机坑清单，15 个坑 P-01～P-15 与 12 条冲突 C-01～C-12；v1.2.1 据此回补第 3、10、11、12 章）。**凡本文与该报告冲突，以实测为准**（16.2 纪律 1）
 > - **需求依据**：[PRD_driver_dual_critic.md](../01_requirements/PRD_driver_dual_critic.md) v1.3.0
 > - **参考方案**：[`reference/`](./reference/) 下 5 份多模型设计答卷（gemini / grok4.6 / dsv4flash / qwen3.8-flash / zcode）
 > - **外部调研截止**：2026-09-10（Antigravity CLI 官方文档与 CHANGELOG、Claude Code Hooks 官方文档、ZCode 官方文档与社区 bridge 实现）
@@ -87,7 +88,7 @@
 | FR-02 走编程 Agent | 适配层直接拉起 `agy` / `zcode.cjs` 的 headless Agent 运行时，并强制采集工具轨迹作为证据 | 9.1～9.3、11.4 |
 | FR-03 审查对象 | 三个阶段（plan / code / bug）；「需求」并入 plan 与 code 的送审材料与审查镜头；审查员必须结合项目代码与文档核实（必读清单 + 项目文件读取下限） | 7.2、9.4、11.4 |
 | FR-04/05/22 三套工件 | 归档规范固定四件套 / 三件套 / 四件套，命名与阶段目录强校验 | 第 6 章 |
-| FR-06 按任务指定模型 | 路由优先级四级（命令参数 → 主题覆盖 → profile → 阶段默认）+ ZCode 覆盖三档 + 生效值回读校验 | 第 11 章 |
+| FR-06 按任务指定模型 | 路由优先级四级（命令参数 → 主题覆盖 → profile → 阶段默认）+ ZCode 覆盖两档 + 生效值回读校验 | 第 11 章 |
 | FR-07 工作目录与可读范围 | 就地模式（唯一模式，ADR-001）：审查员 cwd 即项目根，全库含 `.git` 与依赖可读，仅屏蔽对方产出 | 10.1、10.2 |
 | FR-08/09 命名与归档 | `YYYY-MM-DD-<主题>[-r<N>][-revised\|-response]-<角色>.md`，主题子目录 + 阶段目录 | 6.2、6.3 |
 | FR-10 背靠背 | 独立进程与会话、本次产出延迟落盘且运行目录在项目外、历史产出三层屏蔽（禁读清单 / 路径 deny / 轨迹核验） | 第 10 章 |
@@ -153,6 +154,7 @@
 
 **结论与对策**：
 - 只读保障采用**三重叠加**：自定义 Agent 的 `tools` 白名单（无写工具）+ `permissions.deny` 兜底 + 前后指纹比对与轨迹核验。若 `permissions.deny` 支持路径级规则（`agy.path_deny` 探针），同时用于屏蔽对方历史产出（10.1 第 ③ 道）。
+  **M0 实测结论：路径级 deny 在两侧均不可用**（agy 侧 C-04、ZCode 侧 C-11，各配负对照）。因此第 ③ 道屏蔽实际退化为「BRIEF 禁读清单 + 事后轨迹核验」两层，`peer_deny_applied` 逐侧记 `false`。这是按 18.1 #12 的默认处置——**继续运行并留痕**，不阻断；泄露物为上一轮已被裁决的旧意见，污染有限（R13）。
 - **禁止**使用 `--dangerously-skip-permissions`（gemini 参考方案曾建议使用，本设计明确否决，理由见 AD-07）。
 - 软拒绝与 issue #548 意味着「跑完了但没读文件」是真实风险 → 第 11.4 节的**工具轨迹下限校验**是必须项，不是可选项。
 
@@ -163,21 +165,21 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 | 能力 | 事实 | 置信度 |
 | :--- | :--- | :--- |
 | 入口 | 非独立 npm 包，而是桌面应用内置 Node 脚本。macOS：`/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`，用 `node` 调用（Node ≥ 18，官方建议 22+） | 社区+实测 · 高 |
-| 单次执行 | `--prompt "<text>"`；工作目录 `--cwd <path>`；附件 `--attach <path>`（可重复）；轮数 `--max-turns <n>` | 社区+实测 · 中高 |
+| 单次执行 | `--prompt "<text>"`；工作目录 `--cwd <path>`；附件 `--attach <path>`（可重复）。~~轮数 `--max-turns <n>`~~ **0.16.5 实测被拒**（坑清单 C-01/C-09） | M0 实测 · 高 |
 | 输出 | `--json`（另有 `--no-color`）；响应正文在 **`.response`** 字段（**不是** `.text`）；envelope 另含 `sessionId` / `traceId` / `turnId` / `usage` / `eventCount` / `stopReason` | 实测 · 中高（dsv4flash 与 bridge 互证） |
 | 权限档位 | `--mode plan\|build\|edit\|yolo`，`plan` 为只读 | 社区+实测 · 高 |
-| 工具裁剪 | `--disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash"` 反向 denylist **实测有效**；`--allowed-tools` 在 `--help` 中列出但**实测报 Unknown option**（版本相关） | 实测 · **中，必须探针** |
-| 只读推荐姿势 | bridge 项目指出 0.16+ 后 `--mode plan` 仍允许子 Agent 探索，改用 `--mode yolo` + `--disallowed-tools` 达到「完全只读」 | 社区 · **中，必须探针**（本设计默认 `--mode plan` + denylist，探针确认后再切） |
-| **模型指定** | **`ZCODE_MODEL=<canonical model id>` 环境变量优先于配置文件**；配置文件 `~/.zcode/v2/config.json`（另有资料指向 `~/.zcode/cli/config.json`，版本差异）；运行时切换走 `session/updateRuntimeModelConfig` | 社区 bridge · **中高，必须探针**。注：本仓库 `.env.example` 已存在 `ZCODE_MODEL` 变量，与该结论一致 |
+| 工具裁剪 | `--disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash"` 反向 denylist **实测有效**。`--help` 列出但 0.16.5 **实测被拒的有四个**：`--allowed-tools`、`--max-turns`、`--permission-mode`、`--settings`（坑清单 C-09） | M0 实测 · 高 |
+| 只读推荐姿势 | bridge 项目的观察**已被实测证实**：`--mode plan` 下模型仍执行了 shell 命令（坑清单 C-10）。因此 `--mode plan` **不可单独作为只读手段**，denylist 中 `Bash` 是必需项 | M0 实测 · 高 |
+| **模型指定** | ~~`ZCODE_MODEL` 环境变量~~ **0.16.5 中不存在该变量**（只有 `ZCODE_MODEL_RETRY_*` 与 `ZCODE_MODEL_TELEMETRY_ENABLED`），社区资料此处有误（坑清单 C-07）。配置文件实测为 `~/.zcode/cli/config.json`；无 `--model` flag。模型 id 须全限定为 `<providerId>/<modelName>`（C-02） | M0 实测 · 高 |
 | 会话续接 | `-c/--continue`、`--resume sess_xxx` | 社区+实测 · 中高 |
 | 常驻协议 | `app-server` 提供 stdio 上的 JSON-RPC 2.0：`session/new`、`session/prompt`、`session/subscribe`、`session/read`；事件含 `model.streaming` / `model.thinking` / `turn.failed` | 社区 bridge · 中高（**二期**用于降低启动开销与拿工具轨迹） |
-| 认证 | CLI 凭据独立于桌面端；`zcode login` 存在 OAuth 回调解析缺陷的实测记录；替代路径为 provider 配置 + `ZCODE_API_KEY`，且**凭据格式为 `<apiKeyId>.<apiKeySecret>`（有且仅有一个英文句点）** | 实测 · 中高 |
+| 认证 | CLI 凭据独立于桌面端；`zcode login` 存在 OAuth 回调解析缺陷的实测记录；替代路径为 provider 配置 + `ZCODE_API_KEY`，且**凭据格式为 `<apiKeyId>.<apiKeySecret>`（有且仅有一个英文句点）**。该形态已编入 `secrets` 扫描规则，防止凭据随工件落盘（NFR-04） | 实测 · 中高 |
 | 项目公约 | 读 `AGENTS.md`，不把 `CLAUDE.md` 当运行时指令 | 参考方案 · 中 |
 
 **结论与对策**：
-- 模型覆盖采取**三档降级**：`ZCODE_MODEL` 环境变量 → 每次运行独立 config 副本（`ZCODE_HOME`/`--config`，若支持）→ 全局默认。无论走哪档，**生效模型一律从运行产物/会话日志回读**，不信配置意图（AC-13）；回读不到时记 `model_effective: unverified`，不采信请求值。
+- 模型覆盖采取**两档降级**（v1.2.1 按 M0 实测由三档改为两档，`env` 档作废，见 C-07）：每次运行独立 config 副本 → 全局默认。副本只能通过**独立 `HOME`** 注入：`ZCODE_HOME`、`ZCODE_DATA_BASE_DIR`、`ZCODE_STORAGE_DIR` 对配置解析全部无效，`--settings` 参数被拒（C-08/C-09）。副本含凭据，故必须 `0600` 权限、跑完即删。无论走哪档，**生效模型一律从运行产物/会话日志回读**，不信配置意图（AC-13）；回读不到时记 `model_effective: unverified`，不采信请求值。
 - 模型 ID 的大小写（`GLM-5.3` 与 `glm-5.3`）以 `zcode.model_override` 探针回读的规范写法为准，本文示例统一使用探针返回值。
-- 工具轨迹：`--json` 的 `eventCount` 不足以证明 Agent 行为；一期从会话日志（`~/.zcode/**/rollout/*.jsonl` 或 `log/*.jsonl`，探针钉死路径）提取读文件次数；二期改用 `app-server` 的 `session/subscribe` 事件流。
+- 工具轨迹：`--json` 的 `eventCount` 不足以证明 Agent 行为；一期从会话日志提取。**两处日志都要读，不是二选一**（C-12）：`~/.zcode/cli/log/zcode-<date>.jsonl` 有工具名与完成状态但**无路径**，`rollout/model-io-<sessionId>.jsonl` 有工具参数里的路径但**无状态**；`project_reads` 与禁读核验都需要路径，只读前者会漏判。二期改用 `app-server` 的 `session/subscribe` 事件流。
 
 ### 3.4 明确否决的实现路径
 
@@ -206,7 +208,7 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 | `agy.home_isolation` / `zcode.home_isolation` | **仅当** `zcode.model_override` 落到 `config_copy` 档、或 `agy.path_deny` 需要独立 settings 路径时才需要：实测独立 `HOME`（拷入凭据）/ `ZCODE_HOME` / 独立 settings 路径 / 仅环境变量覆盖中首个可用者，记录 `*.isolation: home_copy\|settings_path\|env\|shared` | 需要而不可用时该侧不可用；默认共享 `HOME`（两侧厂商不同，`~/.gemini` 与 `~/.zcode` 天然不冲突） |
 | `zcode.entry` | 候选路径探测 + `version` 输出 | 预检失败 |
 | `zcode.readonly_flags` | 依次实测 `--mode plan`、`--disallowed-tools`、`--allowed-tools`，记录**实际被接受**的组合 | 只读不可保障则该侧不可用 |
-| `zcode.model_override` | 实测 `ZCODE_MODEL` / 独立 config / 全局默认三级中哪一级生效，记录 `env\|config_copy\|global` | 决定第 11.2 节路由实现 |
+| `zcode.model_override` | 实测独立 config 副本 / 全局默认哪一级生效，记录 `config_copy\|global`。M0 实测 `env` 档不存在（C-07），该枚举值保留仅为兼容旧结论文件 | 决定第 11.2 节路由实现 |
 | `zcode.trace_source` | 定位会话日志路径并确认可提取工具调用 | 无法提取则 AC-05 证据不足，该侧不合格 |
 | `zcode.response_field` | 确认正文字段是 `.response` | 解析器取值路径 |
 | `node` | 绝对路径可执行且 ≥ 18（编排器与 ZCode 共用前置；官方建议 22+），写入 `runtime.node` | 预检失败 |
@@ -362,7 +364,7 @@ sequenceDiagram
 | `freeze` | 计算快照：临时索引 `write-tree` 得 `tree_hash`、记录被审对象 sha256、生成 code 阶段 diff；跑后复算并判定漂移；枚举对方历史产出生成禁读清单 | TopicRef + 阶段 + 被审对象 | Snapshot（含 `deny_paths`） | 决定审查内容、复制文件 |
 | `brief` | 渲染送审材料（角色、镜头、被审对象路径、提示语、项目约束、**必读清单**、禁读清单、输出契约）到 `_meta/` | Snapshot + 模板 | brief 文件 | 调 Agent |
 | `adapters.agy` | 把统一请求翻译成 `agy` 调用；采集 stdout/轨迹；提取结构化结论与生效模型 | CriticRequest | CriticResult | 解析业务语义 |
-| `adapters.zcode` | 同上，针对 `zcode.cjs`；处理模型三级路由与轨迹来源 | CriticRequest | CriticResult | 同上 |
+| `adapters.zcode` | 同上，针对 `zcode.cjs`；处理模型覆盖两档与双日志轨迹来源 | CriticRequest | CriticResult | 同上 |
 | `runner` | 两侧真并行（cwd 均为项目根）、超时（SIGTERM→SIGKILL）、瞬时故障重试一次、心跳输出 | 2×CriticRequest | 2×CriticResult | 只读校验 |
 | `parse` | JSON 抽取 + `trivium.review.v1` schema 校验 + 降级策略 | CriticResult | Review | 渲染 |
 | `render` | Review → 人读 Markdown（含 front-matter）；Driver 裁决件骨架生成 | Review | Markdown | 落盘 |
@@ -771,13 +773,17 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 
 ### 8.1 通用前置：预检（FR-18 / AC-16）
 
-`trivium preflight` 在**任一侧送审开始前**完成，全部通过才继续：
+`trivium preflight` 在**任一侧送审开始前**完成，全部通过才继续。
+
+**作用域参数**：`trivium preflight --stage plan|code|bug|all`（默认 `all`）。`--stage all` 校验三个阶段 × 两侧的全部模型 slug；指定单阶段只校验该阶段，用于只跑某一阶段时省一次探活。注意 `all` **不是**阶段名，实现上需与 `Stage` 类型区分开（它只是预检的作用域）。
+
+**检查顺序是 fail-fast 的，且顺序本身有成本含义**：探针新鲜度排最前（它一旦过期，后面所有基于探针的判定都不可信，继续跑只是浪费）；两侧的**认证探活排最后**，因为只有它真的消耗厂商配额——前面任一项失败时就不该再烧配额。认证结论只在成功时才写入缓存，失败不缓存（否则一次网络抖动会把「未认证」钉住 TTL 那么久）。
 
 | 检查 | 判定 | 失败处理 |
 | :--- | :--- | :--- |
 | 探针结论存在且未过期 | `probe.generated_at` 在 `probe_ttl_days`（默认 7）内，且 CLI 版本未变 | 自动触发一次 `doctor`；仍失败则中止 |
 | Antigravity 可调用 | `agy --version` 成功 | 中止 |
-| Antigravity 已认证 | 最小 headless 探活任务返回 `status: SUCCESS`；结论带短 TTL 缓存（`preflight.auth_cache_ttl_h`，默认 1h，写 `config.local.yaml` 的 `probe.auth.agy_checked_at`），TTL 内跳过探活以省时省配额 | 中止（提示先交互登录一次） |
+| Antigravity 已认证 | 最小 headless 探活任务返回 `status: SUCCESS`；结论带短 TTL 缓存（`preflight.auth_cache_ttl_h`，默认 1h，写 `config.local.yaml` 的 `probe.auth.agy`，形状见 13.1），TTL 内跳过探活以省时省配额。缓存除 `checked_at` 外还记 `cli_version` 与凭据 `fingerprint`：CLI 升级或凭据轮换后必须重新探活，否则缓存会盖住一个已经失效的结论 | 中止（提示先交互登录一次） |
 | ZCode 可调用 | `node <entry> version` 成功 | 中止 |
 | ZCode 已认证 | 最小 headless 探活任务返回非鉴权错误；同样带 TTL 缓存 | 中止（提示凭据格式 `<id>.<secret>`） |
 | 模型 slug 合法 | 在 `agy models` / ZCode 模型目录内 | 中止并列出可用值 |
@@ -1168,27 +1174,32 @@ agy -p "$(cat <brief_path>)" \
 调用模板（同样以 `probe` 为准）：
 
 ```bash
-# cwd 由 --cwd 指定为项目根 ；HOME 默认共享 ；ZCODE_MODEL 视 probe 结论注入
-ZCODE_MODEL="<model>" "<runtime.node>" "<entry>" \
+# v1.2.1 按 M0 实测校正：删去 ZCODE_MODEL 与 --max-turns（两者在 0.16.5 均无效，C-07/C-01）；
+# 模型覆盖改由独立 HOME 下的 config 副本承载（C-08）
+HOME="<run_home>" "<runtime.node>" "<entry>" \
     --prompt "$(cat <brief_path>)" \
     --cwd "<project_root>" \
     --mode plan \
     --disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash" \
     --attach "<subject_path>" \
-    --max-turns 40 \
     --json --no-color
-# probe.zcode.path_deny.supported=true 时：按 rule_syntax 注入 deny_paths
+# <run_home>/.zcode/cli/config.json 为本次运行的配置副本（0600，跑完即删），其中写入
+#   全限定模型 id `<providerId>/<modelName>` 与凭据
+# probe.zcode.path_deny.supported 实测为 false（C-11），故不注入路径级 deny
 ```
 
 要点：
 
-1. **模型覆盖三档降级**（`probe.zcode.model_override` 决定用哪档）：
-   `env`（`ZCODE_MODEL` 环境变量，首选，天然支持两侧并行）→ `config_copy`（独立 `ZCODE_HOME`/`--config` 指向本次运行的配置副本）→ `global`（沿用全局默认）。落到 `global` 档时按 `critics.glm.unsupported_override` 处理：`reject`（默认，吸收 glm 版 D6）——请求模型与全局默认不一致即拒绝启动（退出 69，提示修复环境），一致则放行并如实记录「使用全局默认」；`annotate`——放行，但**必须**在文档头与元数据注明「未按任务指定，实际生效为全局默认」。
-   **禁止**为了换模型去改用户全局配置文件（会与桌面端抢配置且无法并行）。配置隔离与凭据方式同样由 `probe.zcode.isolation` 决定（`~/.zcode` 凭据在独立 `HOME` 下不存在，需拷入或改用 `ZCODE_API_KEY` 环境变量注入）。
+1. **模型覆盖两档降级**（`probe.zcode.model_override` 决定用哪档；v1.2.1 由三档改为两档，`env` 档作废见 C-07）：
+   `config_copy`（**首选**，独立 `HOME` 指向本次运行的配置副本）→ `global`（沿用全局默认）。
+   `config_copy` 只能靠 `HOME` 实现：`ZCODE_HOME` / `ZCODE_DATA_BASE_DIR` / `ZCODE_STORAGE_DIR` 对配置解析全部无效，`--settings <path>` 参数被拒（C-08 / C-09）。副本须拷入凭据（独立 `HOME` 下 `~/.zcode` 不存在）、权限 `0600`、跑完即删。
+   落到 `global` 档时按 `critics.glm.unsupported_override` 处理：`reject`（默认，吸收 glm 版 D6）——请求模型与全局默认不一致即拒绝启动（退出 69，提示修复环境），一致则放行并如实记录「使用全局默认」；`annotate`——放行，但**必须**在文档头与元数据注明「未按任务指定，实际生效为全局默认」。
+   **禁止**为了换模型去改用户全局配置文件（会与桌面端抢配置且无法并行）。
+   模型 id 写入副本前须补全为 `<providerId>/<modelName>`：`profiles` 里保留人类可读短名（如 `GLM-5.3`），由适配层按 `probe.zcode.model_id_form` 补前缀（C-02）。
 2. **生效模型回读**：从 `--json` envelope / 会话日志中读取实际模型 ID 写入 `model_effective`；不采信配置意图（AC-13）。
 3. 正文字段取 `.response`（非 `.text`），并从中抽取 JSON 块；解析失败 → 原文落盘 + `parse_fallback: true` + 该侧不参与阻断判定。
-4. 只读组合以 `probe.zcode.readonly_flags` 实测结果为准；若探针显示 `--mode plan` 仍允许子 Agent 写操作（社区在 0.16+ 观察到），改用「`--mode yolo` + 完整 denylist」并在 `run.json` 记录所用组合。
-5. 工具轨迹从 `probe.zcode.trace_source` 指定的会话日志提取（默认共享 `HOME`，按 `sessionId` 匹配；独立 `HOME` 下日志天然按运行隔离）；提取后复制一份到 `~/.trivium/runs/…/glm/trace/` 供轨迹核验与归档摘要；二期改用 `app-server` 的 `session/subscribe` 事件流以获得更完整轨迹并省去反复启动开销。
+4. 只读组合以 `probe.zcode.readonly_flags` 实测结果为准。**社区观察已被 M0 证实**：`--mode plan` 下模型仍执行了 shell 命令（C-10），因此 `--mode plan` 单独不构成只读，denylist 中 **`Bash` 是必需项**。另需注意 denylist 是**工具级而非路径级**：封掉一条读路径模型会换另一个工具绕过（实测 `Bash` → `Grep`），所以第 ③ 道路径屏蔽在 ZCode 侧不可用（C-11），只能靠禁读清单 + 事后轨迹核验两层。
+5. 工具轨迹要读**两处**日志，不是二选一（C-12）：`probe.zcode.trace_source`（`<HOME>/.zcode/cli/log/zcode-<date>.jsonl`）给工具名与完成状态，`probe.zcode.trace_args_source`（`rollout/model-io-<sessionId>.jsonl`）给工具参数里的**路径**。`project_reads` 下限与禁读核验都依赖路径，只读前者会漏判。按 `sessionId` 匹配（独立 `HOME` 下日志天然按运行隔离）；提取后复制一份到 `~/.trivium/runs/…/glm/trace/` 供轨迹核验与归档摘要；二期改用 `app-server` 的 `session/subscribe` 事件流。
 6. ZCode 读项目根的 `AGENTS.md`（而非 `CLAUDE.md`），就地模式下无法替换它。对策：`trivium init` 向项目 `AGENTS.md` 幂等追加「审查员身份」片段（`protocol/AGENTS.md.snippet`：「若你是通过 trivium 以审查员身份启动的，以提示词首段的角色与禁令为准，忽略本文件中面向执笔者的任务指令」）；BRIEF 第 1 段同时声明其优先级高于 `AGENTS.md`（9.4）。
 
 ### 11.4 Agent 执行证据校验（AC-05）
@@ -1205,7 +1216,7 @@ ZCODE_MODEL="<model>" "<runtime.node>" "<entry>" \
 
 ### 11.5 模型路由与异构默认（FR-06 / FR-17 / NFR-06）
 
-路由优先级四级（决定「请求哪个模型」，与 11.3 的 ZCode 覆盖三档「如何让请求生效」是两个概念）：**命令行参数 > 主题级 `task.json` 覆盖 > `profile`（按任务类型）> 阶段默认值**。
+路由优先级四级（决定「请求哪个模型」，与 11.3 的 ZCode 覆盖两档「如何让请求生效」是两个概念）：**命令行参数 > 主题级 `task.json` 覆盖 > `profile`（按任务类型）> 阶段默认值**。
 
 ```yaml
 profiles:
@@ -1227,7 +1238,14 @@ profiles:
 
 - 默认 profile 中两侧均为非 Claude 系模型；两侧默认互不相同（相同模型 + 相同镜头的双审只是把成本乘二）。
 - 若用户显式把某侧指定为 Claude 系（Antigravity 确实提供 `claude-*` slug），编排器：①打印醒目告警；②在 `run.json` 写 `heterogeneous: false` 与 `override_reason`；③在该侧审查文档 front-matter 标注。**不阻止**，但必须可见。
-- 模型 slug 一律以 `agy models` / ZCode 模型目录的实际值为准，配置中的示例值在 `doctor` 阶段做存在性校验。
+- 模型 slug 一律以 `agy models` / ZCode 模型目录的实际值为准。
+
+**slug 校验的执行点**（两处，缺一不可）：
+
+1. `preflight`（8.1）——按 `--stage` 作用域校验配置与 `task.json` 里的 slug。
+2. **`review` 自身的准备阶段，在冻结与任何落盘之前**——因为 `--model-gemini` / `--model-glm` 这类命令行覆盖是 skill 调用时才传入的，`preflight` 看不到它们，而 11.5 的路由只透传不校验。若不在这里再校验一次，非法 slug 会漏到运行中段才以业务性失败暴露：配额已烧、strict 下整次中止，且 8.1 承诺的「中止并列出可用值」在这条路径上根本不成立。
+
+校验的比对基准是探针回读的模型目录（`probe.agy.models` / `probe.zcode.models`）。**目录为空时跳过校验而非硬拒**：探针没跑过就没有可比对的基准，硬拒会让 `review` 在未 `doctor` 的项目里完全不可用；把「探针缺失」拦在门口是 `preflight` 的职责（它对过期/缺失探针 fail-fast），不是 slug 校验的。ZCode 侧允许短名，适配层按 `probe.zcode.model_id_form` 回读的 `providerId` 补全前缀后再比。
 
 ---
 
@@ -1263,7 +1281,14 @@ profiles:
 | `code` | 1200s | 需读补丁 + 上下文核实 |
 | `bug` | 1200s | 需复现推理 |
 
-双侧并行，总耗时取较大者。Antigravity 侧同时设置 `--print-timeout`（进程内）与脚本级 timeout（进程外）；ZCode 侧用 `--max-turns` + 脚本级 timeout。超时必须可观测：命令输出与 `run.json` 都记录。
+双侧并行，总耗时取较大者。
+
+**超时判据只有一个：编排器自己的进程级计时**（v1.2.1 按 M0 实测收紧）。原因是两条厂商内建机制都不可信：
+
+- Antigravity 的 `--print-timeout` 到期后**以 exit 0 退出**（坑清单 C-06 / P-07），即「超时」与「成功」在退出码上不可区分。它仍然设置，但只作为让子进程自己收手的礼貌手段，**不得**用它的退出码判超时。
+- ZCode 的 `--max-turns` 在 0.16.5 **被拒**（C-01），不存在。
+
+因此编排器统一用 Node 侧的 `AbortSignal` + `SIGTERM` → 宽限 → `SIGKILL` 实现单侧上限。**不 shell out 到 `timeout`/`gtimeout`**：macOS 默认不装 coreutils，本机实测两者均不存在（P-01）。超时必须可观测：命令输出与 `run.json` 都记录，且该侧记 `status: timeout` 而非 `failed`——`guard` 会跳过 timeout/failed 侧的证据判定，否则会把「没跑成」误报成「证据不足」而掩盖真实原因。
 
 ### 12.3 重试策略（NFR-02）
 
@@ -1374,9 +1399,14 @@ retention:
 probe:                                # 由 trivium doctor 回填，勿手工编辑
   generated_at: null
   verify_suggestion: {build: [], test: []}   # doctor 探测到的候选命令，仅供 init 展示确认，不自动执行
-  agy: {path_deny: {supported: null, rule_syntax: null}, scratch_paths: [], isolation: shared}
+  agy: {path_deny: {supported: null, rule_syntax: null}, scratch_paths: [], isolation: shared,
+        models: []}                           # models 为 agy models 回读的目录，slug 校验的比对基准
   zcode: {path_deny: {supported: null, rule_syntax: null}, scratch_paths: [], isolation: shared,
-          readonly_flags: [], model_override: null, trace_source: null, response_field: null}
+          readonly_flags: [], model_override: null, trace_source: null, response_field: null,
+          model_id_form: null, models: []}    # model_id_form 形如 <providerId>/<modelName>（坑 P-06）
+  auth:                                 # 8.1 认证探活的 TTL 缓存，逐侧一条；只在成功时写入
+    agy:   {checked_at: null, cli_version: null, fingerprint: null, ok: null}
+    zcode: {checked_at: null, cli_version: null, fingerprint: null, ok: null}
 ```
 
 `config.local.yaml` 可覆盖任意字段，用于放本机绝对路径与探针结论，不进 Git。
@@ -1422,7 +1452,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | FR-03 审查对象 | P0 | plan/code/bug 三阶段；需求审查并入送审包与镜头；必读清单 + `--context` + 项目文件读取下限保证结合全项目评审 | `brief`、`guard` | 7.2、9.3、9.4、11.4 |
 | FR-04 计划留痕（含逐条裁决） | P0 | `plan/` 四件套 + `disposition.v1` 硬校验 | `archive`、`gate` | 6.3、6.6、8.6 |
 | FR-05 代码留痕 | P0 | `code/` 三件套 + 应答件逐条裁决 | 同上 | 6.3、6.6 |
-| FR-06 按任务指定模型 | P0 | 路由优先级四级 + ZCode 覆盖三档（`global` 档默认拒绝开工）+ 生效值回读 | `config`、`adapters` | 11.5、11.2、11.3 |
+| FR-06 按任务指定模型 | P0 | 路由优先级四级 + ZCode 覆盖两档（`global` 档默认拒绝开工）+ 生效值回读 | `config`、`adapters` | 11.5、11.2、11.3 |
 | FR-07 工作目录与可读范围 | P0 | 就地模式（唯一，ADR-001）：cwd = 项目根，全库可读减去 `deny_paths` | `freeze`、`runner` | 10.1、10.2 |
 | FR-08 工件命名 | P0 | `<日期>-<主题>[-r<N>][-revised\|-response]-<角色>.md` | `archive` | 6.2 |
 | FR-09 统一归档与主题子目录 | P0 | `.reviews/<主题>/<阶段>/` | `archive` | 6.1、6.2 |
@@ -1471,10 +1501,10 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | AC-10 编译测试为真 | 真实执行 + 命令与退出码入档 | 故意让测试失败，全流程状态应为 `failed` |
 | AC-11 可读范围（结合全项目评审） | cwd = 项目根，全库可读；必读清单 + 项目文件读取下限 | `run.json.critics.*.tool_calls.project_reads ≥ min_project_reads`；`review.consulted` 非空且与轨迹交叉核对通过；轨迹中出现对 `--context` 路径或 `doc/` 文档的读取 |
 | AC-12 裁决完整性 | `gate --check` 硬规则（8.6 a～d、f）+ 两项默认 warning（e 空洞词表、g 共同 blocker） | 人为删掉一条裁决，`gate` 应报缺失编号 |
-| AC-13 按任务指定模型 | 路由优先级四级 + ZCode 覆盖三档 + 生效值回读 | `run.json` 中两侧 `model_effective` 不同且与指定一致 |
+| AC-13 按任务指定模型 | 路由优先级四级 + ZCode 覆盖两档 + 生效值回读 | `run.json` 中两侧 `model_effective` 不同且与指定一致 |
 | AC-14 命令 D 人工闸门 | 同 AC-02 | 跑 `/dual-review-bug` 后尝试改代码，应被 deny |
 | AC-15 命令 D 工件齐全 | `bug/` 四件套，修订不覆盖原稿 | 目录校验 + 原稿哈希未变 |
-| AC-16 预检失败即中止 | 预检在送审前，失败零工件 | 断网/改坏路径后启动，检查无任何文件生成 |
+| AC-16 预检失败即中止 | 预检在送审前，失败零工件；**`review` 自身的任一失败出口（64/65/69/70）同样不得留半套工件** | 断网/改坏路径后启动，检查无任何文件生成；另需覆盖「第一侧送审包已渲染、第二侧才失败」这一形态——按失败出口逐个比对 `.reviews/` 前后文件集合应逐字节一致（`test/integration/no-artifacts.test.ts`） |
 | AC-17 送审材料固定且自包含 | 送审包落 `_meta/` + `subject_sha256` + `tree_hash` 漂移检测 | 审查中修改被审对象，运行应判 `subject_drift` 作废；修改无关文件，应出 `drift` 警告并列出文件；结论只对应 `run.json.snapshot` 记录的哈希 |
 | AC-18 模型异构默认与覆盖可见 | 默认非 Claude 系；覆盖写入元数据与文档头 | 默认跑一次 + 显式覆盖跑一次，检查元数据 |
 
@@ -1489,7 +1519,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | **M0 探路（必须最先做）** | 在目标 macOS 机器上逐项实测第 3.5 节探针清单（含 `*.path_deny`、`*.scratch_paths`）；把结论固化进 `config.local.yaml` 的 `probe:` 段；产出「本机坑清单」 | 拿到两侧**真实可用**的 headless 命令模板；能证明「只读生效 + 能读文件 + 能换模型 + 能拿轨迹 + 路径 deny 是否可用已知 + 临时文件白名单已知」 | 1～2 天 |
 | **M1 单阶段闭环** | TypeScript 工程骨架（`package.json`、esbuild 打包、`node:test`）；`config`/`topic`/`freeze`/`brief`/`adapters`/`runner`/`parse`/`render`/`archive`；先只做 `plan` 阶段 | 手工调用 `node skills/dual-critic/scripts/trivium.cjs review --stage plan` 在真实项目根得到两份合规 Markdown + `_meta/` | 2～3 天 |
 | **M2 skills 与闸门** | 7 个入口 skill + 核心 skill + 安装器 + `review --start/--wait` 协议 + `gate` 裁决校验 + Hook 三件套 + `state.json` + 主题锁 | `/dual-review-plan` 端到端可跑且单次 Bash 调用不超时；删一条裁决即被拦；同会话闸门期写业务文件被 deny，新会话不被误伤；`disable-model-invocation` 生效 | 3 天 |
-| **M3 隔离、证据、降级、模型路由** | 禁读清单 + 路径 deny 注入 + 轨迹核验、只读指纹与漂移检测、项目文件读取下限与 `consulted` 核对、strict/degrade、模型三级路由与回读、`preflight` | AC-04 / AC-05 / AC-06 / AC-08 / AC-11 / AC-13 / AC-16 / AC-17 / AC-18 全部可演示 | 3 天 |
+| **M3 隔离、证据、降级、模型路由** | 禁读清单 + 路径 deny 注入 + 轨迹核验、只读指纹与漂移检测、项目文件读取下限与 `consulted` 核对、strict/degrade、模型四级路由与两档覆盖及回读、`preflight` | AC-04 / AC-05 / AC-06 / AC-08 / AC-11 / AC-13 / AC-16 / AC-17 / AC-18 全部可演示 | 3 天 |
 | **M4 全流程与出口** | `code`/`bug` 阶段、命令 A 状态机、`verify` 编译测试、`report` | AC-01 / AC-10 / AC-14 / AC-15 通过 | 2～3 天 |
 | **M5 P2 与交付** | FR-23 跳过纯文档审、FR-24 元数据完善、FR-25 重跑版本、安装器、用户手册、`doctor --selftest` | 非作者可在 15 分钟内独立装好并跑通一条任务 | 2 天 |
 
@@ -1588,11 +1618,13 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 
 ### 18.2 仓库内需同步修订的既有文档（PRD 11.3 已点名）
 
+> **完成状态（2026-09-11）**：`.reviews/README.md`、`README.md`、`.env.example`、`.gitignore`、`doc/02_design/README.md` 五项**已完成**；PRD 侧四项回填与 `-gemini.md` 元信息口径**仍待处理**。本表保留为核对清单。
+
 | 文件 | 问题 | 处置 |
 | :--- | :--- | :--- |
 | [`.reviews/README.md`](../../.reviews/README.md) | 仍使用 `PLAN_RAW.md` / `PLAN_REVIEW_AGY.md` / `CODE_REVIEW_ZCODE.md` 等旧命名，与 PRD FR-08 及本文 6.2 冲突 | 按本文 6.1～6.3 重写为主题子目录 + 阶段目录 + `<日期>-<主题>-<角色>.md` |
 | [`README.md`](../../README.md) | ①快速开始的平台口径含「或 Linux / Windows」，与 NFR-01（本期 P0 一级平台为 macOS）不符；②架构图沿用旧命名；③模型示例（Gemini 2.5 / GLM-4 系）已过时 | 平台口径改为 macOS 一级、其它平台标注「未验证」；命名与模型示例按本文更新 |
-| [`.env.example`](../../.env.example) | `ANTIGRAVITY_MODEL=gemini-2.5-pro`、`ZCODE_MODEL=glm-4-plus`、`CLAUDE_MODEL=claude-3-7-sonnet-latest` 均为过时 slug | 更新为 `agy models` 与 ZCode 模型目录的现行值；并说明模型主路径是 `.trivium/config.yaml`，环境变量仅作覆盖 |
+| [`.env.example`](../../.env.example) | `ANTIGRAVITY_MODEL=gemini-2.5-pro`、`ZCODE_MODEL=glm-4-plus`、`CLAUDE_MODEL=claude-3-7-sonnet-latest` 均为过时 slug | ✅ 已更新为 `agy models` 与 ZCode 模型目录的现行值；说明模型主路径是 `.trivium/config.yaml`，环境变量仅作覆盖；并标注 `ZCODE_MODEL` **已作废**（0.16.5 不存在该变量，C-07） |
 | [`.gitignore`](../../.gitignore) | `.claude/` 整体忽略，与本文 5.3「Hook 随仓库分发」冲突 | 改为 `.claude/*` + `!.claude/settings.json`（5.3），`init` 幂等写入；skills 走用户级安装，不需要 `!.claude/skills/` |
 | PRD FR-14 / AC-12 | 裁决词「驳回」与「不接受」并存 | 统一为「接受 / 驳回 / 暂缓」（6.6） |
 | PRD 4.4 第 3 条 | 「不得自动继续」未说明约束对象 | 明确约束的是流水线自动行为，不含开发者手工编辑（8.4） |
@@ -1610,7 +1642,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | :--- | :--- | :--- | :--- | :--- |
 | R1 | `agy -p` headless 权限缺陷（issue #548）导致工具被软拒绝或挂起 | 「跑完但没读文件」的空审查，AC-05 失败 | 只读 Agent 预授权 + `--add-dir` + 伪终端兜底 + **轨迹下限校验强制**；探针不通过则该侧不可用并中止 | 3.5、11.2、11.4 |
 | R2 | ZCode CLI 无稳定公开文档，参数随版本漂移（`--allowed-tools` 已知不一致） | 适配层易碎 | 全部参数走探针；契约测试用录制样本回放；`preflight` 每次校验关键 flag，CLI 版本入档 | 3.3、3.5、17.1 |
-| R3 | ZCode 模型指定失效，退回全局默认 | AC-13 不达标 | 三级路由 + 生效值回读 + 无法指定时显著标记；必要时该次运行标为「未按任务指定模型」 | 11.3 |
+| R3 | ZCode 模型指定失效，退回全局默认 | AC-13 不达标 | 两档覆盖 + 生效值回读 + 无法指定时显著标记；必要时该次运行标为「未按任务指定模型」。M0 实测 `env` 档不存在，唯一可用档是独立 `HOME` 下的 config 副本（C-07/C-08），该档失败即落 `global` | 11.3 |
 | R4 | 双审耗时长，开发者绕过流程 | 流水线形同虚设 | profile 分级选模型；纯文档 diff 可跳过（程序判定）；快照缓存复用；心跳输出缓解等待焦虑 | 6.4、11.5、13.2 |
 | R5 | 两侧意见雷同，双审退化成同审 | 成本翻倍无收益 | 差异化镜头 + 默认异构模型 + Jaccard 相似度可观测指标 | 9.3、11.5 |
 | R6 | 审查员「谄媚式」零意见或编造问题 | 审查失效 | 反谄媚提示 + `not_covered` 必填 + 空审查显式标记与告警 + 采纳率/误报率统计 | 9.4、13.2 |
@@ -1661,6 +1693,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | v1.0.0 | 2026-09-10 | 首版。依据 PRD v1.3.0、5 份参考方案与 2026-09-10 联网调研，确定分层架构、组件划分、工件契约、四条命令流程、隔离与只读机制、模型路由、异常矩阵、追溯矩阵与实施路线。 |
 | v1.1.0 | 2026-09-10 | 按审核意见 RV-01～RV-26 修订（第 22 章逐条应答）：AD-03 改为 `review --start/--wait` 分段协议并新增 7.5、R12；AD-05/10.2 把 `in-place` 规格化为完整备选并立 ADR-001；3.5 新增 `home_isolation`、`isolation.cost` 探针，11.2/11.3 配置隔离改由探针决定；12.3 缓存键加 `brief_hash` 且默认关闭；8.4 闸门写锁限同会话 + TTL，新增 `/dual-abandon`；5.3/18.2 补 `.gitignore` 白名单；7.4 改用 `.trivium/bin/trivium`；3.1/8.5 修正 `MultiEdit`、Stop 阻断输出契约、8 次硬上限，新增 AD-13（commands vs skills）；6.6/8.6 裁决词对齐 FR-14，空洞理由与共同 blocker 默认 warning，新增 parse_fallback 侧规则；6.1 保留后缀；14.1 只执行显式配置；8.1 认证缓存；12.6 主题锁；6.4 简化为路径判定；AD-12 下限 3.9；术语「覆盖三档 / 路由四级」统一；18.1 新增 4 项待拍板；18.2 补 PRD 回填项。 |
 | v1.2.0 | 2026-09-11 | 按项目负责人评审意见 UR-01～UR-06 修订（第 23 章逐条应答）：**就地审查为唯一隔离模式**（AD-05、ADR-001 Accepted；删除 `mirror`、`link_globs`、`isolation.cost`、`_review/` 目录；运行目录移至项目外 `~/.trivium/runs/`；10.1 改为「延迟落盘 + 历史产出三层屏蔽 + 只读指纹」；9.2 改为快照与漂移检测算法；10.3 文件系统层改为无、事后核验加轨迹写事件；3.5 新增 `path_deny`、`scratch_paths` 探针，`home_isolation` 降为按需）；**结合全项目评审加固**（9.4 新增必读清单段、7.1 新增 `--context`、6.5 新增 `consulted`、11.4 新增 `project_reads` 下限与交叉核对、R15）；**实现语言改为 Node.js + TypeScript 单文件打包**（AD-12、5.2、3.5 `node` 探针、17.1 `node:test`）；**命令载体改为用户级 skills、脚本随核心 skill 分发**（AD-13、3.1 skills 事实、5.2/5.3 目录、7.4 SKILL.md、8.5 skill hooks 说明、16.3 交付物）；8.5 `running` 期间 Driver 禁写；12.1 新增漂移行；13.1 新增 `runtime`、`min_project_reads`、`on_drift*`、`sensitive_globs`；15.1/15.3 追溯更新；18.1 #1/#9 已拍板、新增 #12/#13；18.2 删 PRD FR-07 回填项；R10/R13/R14 改写。 |
+| v1.2.1 | 2026-09-11 | 按 M0 本机实测回补（坑清单 C-01～C-12，逐条见 [`REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md) 第 8 节）：**3.3 ZCode 事实表按 0.16.5 实测改写**——`ZCODE_MODEL` 环境变量不存在（C-07）、`--max-turns`/`--allowed-tools`/`--permission-mode`/`--settings` 四个 flag 被拒（C-01/C-09）、`--mode plan` 仍可执行 shell 故 denylist 中 `Bash` 为必需（C-10）、模型 id 须全限定 `<providerId>/<modelName>`（C-02）、轨迹须同时读 `log/` 与 `rollout/` 两处（C-12）；**11.3 模型覆盖由三档改两档**（`env` 档作废，`config_copy` 只能靠独立 `HOME` 实现，C-07/C-08），调用模板同步校正；**3.1/10.1 第 ③ 道路径级 deny 两侧均不可用**（C-04/C-11，各配负对照），按 18.1 #12 降级为两层并逐侧留痕；**12.2 超时判据收紧为编排器进程级计时**（`--print-timeout` 到期 exit 0 不可区分成功与超时 C-06；本机无 `timeout` 命令 P-01；timeout 侧不参与证据判定）。另按 M3 双审意见回补：8.1 新增 `--stage` 作用域与 fail-fast 顺序（GLM-02）、13.1 补 `probe.auth` 逐侧形状与 `models`/`model_id_form` 字段、11.5 明确 slug 校验的两个执行点与「目录为空则跳过」的理由（GLM-01）、15.3 AC-16 验收口径扩展到 `review` 自身的全部失败出口。 |
 
 ---
 
