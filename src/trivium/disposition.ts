@@ -47,7 +47,13 @@ const COLUMN_ALIASES: Record<string, readonly string[]> = {
   severity: ['严重度', '严重性', 'severity'],
   disposal: ['裁决', '处置', '结论', 'disposal'],
   reason: ['理由', '原因', 'reason'],
-  action: ['落点', '落地点', '修改点', '动作', 'action'],
+  /*
+   * 「修改计划」必须在列：设计 §8.2 S7、`.reviews/README.md` 与随仓库分发的
+   * `templates/response.md.template` 都用这个词称呼代码应答件的这一列。
+   * 漏了它，照着自己的模板写出来的应答件会被自己的闸门判成「接受但没写落点」——
+   * 实测踩到过一次。
+   */
+  action: ['落点', '落地点', '修改点', '修改计划', '计划', '动作', 'action'],
 };
 
 function matchColumn(header: string): keyof typeof COLUMN_ALIASES | null {

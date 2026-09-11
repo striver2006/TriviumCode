@@ -1,0 +1,155 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一组仍在闸门状态机：setGate 是无条件覆盖、不做状态/run_id 条件迁移，cmdGate --check 的放行与 --cancel 的回收都能把同主题同阶段正在 running 的新一轮闸门清成 idle（GLM-r2-01）；worker 异常退出路径只释放主题锁、从不回收闸门，业务写锁要挂到 24h TTL（GLM-r2-02）——这正是本次指定焦点一。其次：留痕完整性核对的清单是被核对对象自己，删 run.json/整目录/改名即整枝绕过（GLM-r2-03）；diffAgainst 吞掉 tracked diff 的非零退出，错误 --base 产出残缺补丁照常送审（GLM-r2-04）。其余为 minor：被审补丁本身不在完整性核对的保护集、filesInDiff 不去引号可让业务文件逃过 FR-23 跳过判定、verify 的 unconfigured 语义混用与超时参数静默忽略、verify 工件与 report 的两处降级纪律缺口、report/verify 违背「只读归档」承诺。前四条修掉后可放行。",
+  "findings": [
+    {
+      "id": "GLM-r2-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "concurrency",
+      "location": "src/trivium/state.ts:101-119（setGate 无条件覆盖）；src/trivium/cli.ts:566-573（cmdGate --check 放行）；src/trivium/run-protocol.ts:524-534（cancelRun 回收）；src/trivium/review.ts:424-433（prepareRun 置 running）",
+      "problem": "闸门迁移全是 check-then-act／盲目覆盖，没有一条比较 prev.state/prev.run_id 的条件迁移。三个后果：①同主题同阶段的新一轮 r2 已 --start（gate=running, run_id=r2）时，对旧一轮 r1 的 gate --check 通过后把闸门覆写成 idle，r2 审查期内 hook-pre-write 的写锁（state.ts:169 只认 awaiting_approval/running）静默失效；②cancelRun 不校验闸门当前 run_id（run-protocol.ts:528 只判 s?.stage），清理一个早已失联的旧 run 会把正在跑的新一轮护栏一并清掉——先 --cancel 旧 run 再 --start 新 run 是正常操作序列；③r1 尚处 review_done_awaiting_disposition 未裁决时直接重跑 r2，prepareRun 的 setGate('running') 把 r1 的待裁决状态无声抹掉，而 --check 只校验最新轮（cli.ts:529-535 按 resolveRerunIndex 取最新），r1 从此逃过裁决也不拦提交。state.json 每 stage 只有一个槽位（gateKey=topic/stage）放大了全部三条。上一轮已提（GLM-01），本轮逐行核实仍未修。",
+      "evidence": "实读 state.ts setGate 全函数（s.gates[key]=entry 直接赋值，无比较交换）；cli.ts:566-573 result.ok 即 setGate idle；run-protocol.ts:516-534 锁回收有 existing.run_id===runId 守卫而闸门回收没有；review.ts:424-433/677-684 两处无条件覆盖；hooks.ts:196-213（pending 只认 review_done_awaiting_disposition）与 state.ts:137-141（OPEN_STATES 含 running）证实覆盖后哪些 Hook 失明。gate-loop.test.ts 无任何「新旧行并存」用例。",
+      "suggestion": "把 setGate 升级为条件迁移（在 updateState 的持锁回调内比较 prev）：放行仅当 prev.state==='review_done_awaiting_disposition' 且 prev.run_id===本次校验的 runId；cancelRun 只回收 prev.run_id===被取消 run 的闸门；prepareRun 置 running 前若 prev 为 review_done_awaiting_disposition 且属于别的 run_id，要么拒绝启动要么显式记 abandon。补一条「r1 待裁决 + r2 running」的集成用例锁住行为。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-r2-02",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/run-protocol.ts:360-369（workerMain catch）、:313-316（startRun catch）、:427-438（waitRun worker_lost）",
+      "problem": "prepareRun 把闸门置 running（review.ts:424-433）之后，三条异常路径都不回收闸门：worker 内 executeRun 中途抛错（写盘失败、render/guard 异常）时 workerMain 的 catch 只 patchStatus；startRun 在 prepareRun 之后 writeHandoff/spawnDetached 失败时只 lock.release()；--wait 判定 worker_lost 只改 status.json 后抛错。三种情况下闸门停留 running，同会话业务写锁一直挂到 TTL（config.ts:129 默认 approval_lock_ttl_h: 24）——正是 executeRun 自己注释里写的「比不拦更糟，因为人会去改配置绕开 Hook」的形态。对照 run-protocol.ts:370-377 的 finally 会释放主题锁：锁想到了，闸门漏了。上一轮已提（GLM-02），仍未修；这属本次焦点一「worker 异常退出」的正中靶心。",
+      "evidence": "实读 run-protocol.ts workerMain 全函数（catch 块 360-369 仅 patchStatus 与 return；finally 370-377 只处理锁）、startRun 的两个 catch（225-227 在 prepareRun 之前所以无害；313-316 在其后所以有害）、waitRun 的 worker_lost 分支；config.ts:129 默认 24h TTL；state.ts shouldLockWrites 对 running 生效。测试目录无「worker 中途崩溃后闸门状态」用例。",
+      "suggestion": "在 workerMain 与 startRun 的 catch/finally 补一次闸门回收（配合 GLM-r2-01 的条件迁移：仅当闸门仍记着本 run_id 时置 idle），或把 executeRun 的终态同步改成 try/finally 兜底。不必区分异常种类——无 worker 接手的 running 一律回收。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-r2-03",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:227-255（checkArchiveIntegrity）；src/trivium/archive.ts:322-358（listRecordedRuns）；src/trivium/topic.ts:56-66（listTopics）",
+      "problem": "留痕完整性核对的清单来自被核对对象自身：只枚举各阶段 _meta/ 下 run-*.json 的 artifacts[]。因此删除或搅坏 run.json 本身（listRecordedRuns 对解析失败静默 continue，archive.ts:352-354 注释明言「不是这里的职责」）、删除整个主题目录、把主题目录改名为 `_`/`.` 前缀（listTopics:60 过滤）都会让核对失去对象而放行——「删掉一份不顺眼的审查」只需连同它的 run.json 一起删。task.json.runs[] 是现成的外部锚（meta.ts:171-197 每次 registerRun 都登记），hook 没有使用；`.reviews/` 受版本管理，git 索引也是可用锚，同样没用。且 runHook 对内部异常退 1 非阻断（hooks.ts:415-418）、listTopics 读不到归档返回 []——整体 fail-open。上一轮已提（GLM-03），仍未修。",
+      "evidence": "实读 hooks.ts checkArchiveIntegrity 全函数（双重动态 import + listTopics/listRecordedRuns，无任何其它锚）；archive.ts listRecordedRuns（损坏 JSON catch 跳过，351-354）、checkRecordedArtifacts（只核对 artifacts[] 里登记的路径）；topic.ts listTopics（目录枚举 + 前缀过滤 + 异常返回 []）；meta.ts registerRun（task.json.runs 确实存在）。gate-loop.test.ts 的留痕用例只删/改工件文件本身，没有删 run.json、删整目录、改目录名的用例。",
+      "suggestion": "给核对补外部锚：先用 task.json.runs[] 反查每个登记过的 run 的 run-<id>.json 是否存在、可解析（清单被删/损坏即违例）；已跟踪归档文件用 git diff-index 查删除。损坏的 run.json 按「记录在案却不可读」拦截而非跳过。补三条集成用例：删 run.json、删整目录、目录改名。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-r2-04",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/util/git.ts:126-127（diffAgainst tracked 分支）；src/trivium/topic-args.ts:189-194；src/trivium/review.ts:263-270",
+      "problem": "`git diff <base>` 非零退出被静默吞掉：`let out = tracked.code === 0 ? tracked.stdout : ''`。--base 是用户参数（cli.ts review --base <ref>），拼错 ref、ref 被重写掉、git 环境异常时，tracked 变更全部消失而未跟踪文件的 diff 使 body 非空——review.ts:264 的空判定（trim 后非空）不会触发，于是一份缺失全部已跟踪变更的残缺补丁带着 `# base: <错误值>` 照常物化为 changes.diff、成为两侧共同的 subject_sha256、参与 FR-23 分类与漂移检测：两侧「认真审完」的其实是一段不完整的变更。topic-args.ts 的 diffAvailable 同样把「git 坏了」当成「有变更」。上一轮已提（GLM-04），仍未修；属本次焦点三最实的一条边界。",
+      "evidence": "实读 util/git.ts diffAgainst 全函数（126-127 原样保留吞错写法，本次变更只加了 excludes）；review.ts prepareRun（263-270 仅检查 body 非空，272 直接作为 subjectText）；exec.ts 的 run() 语义（非零退出只回报 code 不抛错）；changes.diff 头部确认 base 直接进入被审对象。",
+      "suggestion": "tracked.code !== 0 时抛错（复用 exit-codes 语义，报出 base 原值与 stderr 摘要），让「错误 --base」在冻结前失败且零工件；至少把失败事实写进补丁头，让离线审查员能看出补丁不可信。untracked 段的 code!==0 同理。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-r2-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/review.ts:645-650（meta.artifacts 只登记两侧审查文档）、:274-275 与 ：383-389（changes.diff 固定名写入）；src/trivium/archive.ts:144-169（writeMeta 不登记）",
+      "problem": "留痕完整性核对的保护集只有两份渲染后的审查文档：meta.artifacts 由 writeArtifact 的返回构建，而被审补丁 changes.diff 与两份 brief 都走 writeMeta、从不进 artifacts[]。更进一步的边界：changes.diff 是固定文件名，同主题第二次 code 审会把第一次的被审对象整体覆盖（writeMeta 语义即允许覆盖），r1 的 run.json 里只剩 snapshot.subject_sha256 这个哈希、没有任何东西回头核对它。结果：审查文档「删不掉也改不掉」，但「审的是什么」既不受核对保护、又在重跑时被销毁——hook 文案「已落盘的审查工件不得删除或改动」承诺的范围与实现不符。",
+      "evidence": "实读 review.ts（executeRun 只把 writeArtifact 的两份审查文档 push 进 artifacts，645-650 逐文件 sha256；prepareRun 中 pendingDiff/brief 均走 writeMeta）；archive.ts writeMeta（返回 sha256 但不写 run.json）；meta.ts（artifacts 仅由外部赋值）。gate-loop.test.ts 没有删 changes.diff 的用例。",
+      "suggestion": "把 changes.diff 与 brief 一并写入 run.json.artifacts（或为 changes.diff 按轮次归档 -r<N> 副本）；核对时对 code 阶段额外比对现存 changes.diff 与 snapshot.subject_sha256，不一致即报「被审对象已不符」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-r2-06",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/code-stage.ts:29-43（filesInDiff）；src/trivium/code-stage.ts:120-165（classifyDiff 的跳过判定）；test/unit/code-stage.test.ts",
+      "problem": "filesInDiff 的正则只认未加引号的 `diff --git a/X b/Y` 行，没有去引号逻辑。core.quotePath=false 只解决「可打印非 ASCII」（util/git.ts:20-25 的注释自证此事发生过）；文件名含双引号、控制字符或非 UTF-8 字节时 git 仍会加引号，该行不匹配、文件从清单消失。后果不止清单缺漏：classifyDiff 拿着不完整的 files 清单做 FR-23 判定，一份「文档 + 引号路径业务文件」的 diff 可被判成 doc_only——skip_doc_only_review 打开时这个业务变更整只逃过审查（默认关闭，故仅 minor）。方向性极差：错在漏审而非多审。单测没有引号路径用例。",
+      "evidence": "实读 code-stage.ts（新文件，正则无引号处理，对照同仓库 statusPorcelain 专门做了去引号）；util/git.ts:20-25（quotepath=false 的注释证实引号问题真实存在过）；config.ts:85（skip_doc_only_review 默认 false）；test/unit/code-stage.test.ts 覆盖了重命名与 /dev/null、没有引号路径。",
+      "suggestion": "filesInDiff 对 \"a/…\" 形式补去引号（复用 statusPorcelain 的写法）；补一条带引号路径的单测，并加一条「引号路径业务文件 + 全文档 → 不得判 doc_only」的分类用例锁住方向。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-r2-07",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/verify.ts:157 与 ：186-193（unconfigured 判定与渲染）；src/trivium/cli.ts:623-630、:632-639",
+      "problem": "「本次没选中的组」与「配置缺失」两种语义混为一谈：`--only build` 而 verify.build 未配（verify.test 可能配置齐全）时，collectCommands 返回空 → record.unconfigured=true，落盘记录渲染成「verify.build 与 verify.test **均为空**」——审计记录里出现与事实不符的陈述，cli 的 warn（cli.ts:629）同样失真。另外 `--timeout abc` 经 Number() 得 NaN、`--timeout 0` 得 0，都被 Number.isFinite 守卫静默回退默认值，用户拼错参数零提示。上一轮已提（GLM-06），仍未修。",
+      "evidence": "实读 cli.ts cmdVerify（632-639 的守卫只做回落，无报错分支）；verify.ts 新文件全文（unconfigured: commands.length === 0；renderVerifyDoc 未配置分支的「均为空」文案）；test/unit/verify.test.ts 只测了两组皆空。",
+      "suggestion": "unconfigured 仅当「两组配置都为空」为真；--only 选中组为空时另立标记（如 selected_empty）或直接 usage 报错；--timeout 解析失败应报 64 并回显原值。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-r2-08",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/verify.ts（runVerify 全函数，无 registerRun）；src/trivium/archive.ts:329（listRecordedRuns 硬编码 ['plan','code','bug']）；src/trivium/cli.ts:611-655（cmdVerify）",
+      "problem": "verify 是留痕体系的一等公民（AC-10 的 cmd_sha256 对账凭证、命令 A 的收口步骤），但 runVerify 只写 verify-*.md 与 _meta/verify-<run_id>.json、从不 registerRun，listRecordedRuns 也不迭代 verify。结果 hook-pre-commit 的留痕核对对 verify 工件完全失明：验证记录可被删除或改动而不拦——与 hook 拦截文案的普适承诺不一致。上一轮已提（GLM-07），仍未修。",
+      "evidence": "实读 verify.ts 新文件全文（两处落盘均无登记调用）；archive.ts listRecordedRuns 阶段清单；cli.ts cmdVerify 无其它登记路径。",
+      "suggestion": "让 verify 也走一次 registerRun（写 run.json、登记两份工件），或把 'verify' 纳入 listRecordedRuns 的阶段清单。两行级别的改动，收益是把 AC-10 凭证纳入护栏。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-r2-09",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/report.ts:128（loadDisposition 的 readFile）；src/trivium/report.ts:239-255（loadLatestVerify）",
+      "problem": "report 模块头自立的纪律是「缺件、解析失败一律如实列出，不静默跳过」，两处没守住：loadDisposition 的 fs.readFile 未捕获，单个裁决件读取失败（权限、竞态）让整份复盘崩溃退出，与其余位置「读不到就说读不到」的降级风格不一致；loadLatestVerify 对存在但损坏的 verify-*.json 返回 null，渲染成「尚无 verify 记录」——把「记录损坏」伪装成「从未验证」，恰好是模块自述要防的 P5 误读。上一轮已提（GLM-08），仍未修。",
+      "evidence": "实读 report.ts 两函数与模块头注释；对照同文件 enumerateRounds/buildRound 对缺件全部走 notes 的处理，唯这两处例外。",
+      "suggestion": "loadDisposition 包 try/catch 转 notes（该轮 disposals 记 null 并说明原因）；loadLatestVerify 解析失败时向 notes 写「最近一份 verify 记录损坏（<文件名>）」而非静默返回 null。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-r2-10",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/cli.ts:668-692（cmdReport）与 ：611-615（cmdVerify）；src/trivium/topic.ts:49-53（resolveTopic 内 ensureDir）",
+      "problem": "USAGE 承诺 report「只读归档，不重新调用任何 Agent」，但 cmdReport/cmdVerify 都经 resolveTopic 取 layout，而 resolveTopic 会 ensureDir 创建阶段目录——对一个不存在（或拼错名）的主题跑 `report --topic X`，会凭空创建 `.reviews/X/plan/` 空目录，既违背「只读归档」的文档承诺，也让拼错主题名得不到报错（得到一份空报告外加一个新目录）。verify 用 stage='plan' 的 ref 亦属语义借用。",
+      "evidence": "实读 cli.ts cmdReport/cmdVerify（均调 resolveTopic(ctx, topic, 'plan')）；topic.ts resolveTopic（ensureDir(ref.stageDirAbs) 无条件建目录）；对照 resolveTopicReadOnly 的存在与 init/preview 用途。",
+      "suggestion": "report/verify 改用 resolveTopicReadOnly（缺主题时由各自逻辑报 65/给出候选），或给 resolveTopic 加 create 开关。USAGE 的「只读」承诺随之成立。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "killProcessTree 按进程组杀并配 ESRCH 回退、pid<=1 与自杀守卫，worker-detach.test.ts 用真实进程树断言子孙不被 init 收养——--cancel 遗弃厂商进程烧配额的洞补得很实。",
+    "补丁算一次透传逐侧 freeze、落盘推迟到写入阶段，杜绝两侧 subject_sha256 漂移；FR-23 跳过在派生前收口（finished_inline），集成测试专门断言「不得派生 worker」。",
+    "补丁生成期无条件剔除归档根/.trivium/.git（pathspec + 未跟踪双路），sentinel 集成用例与自定义/越界归档根的单测都在——排除逻辑主路径经实证有效。",
+    "闸门状态同步进 state.json 补上了三个 Hook 全盲的核心缺口，gate-loop.test.ts 走真实 CLI 子进程端到端验证含删/改工件的拦截与恢复。",
+    "status.json 记录真实逐侧状态替代硬编码 'ok'，操作者可见的失败不再被谎报（实测踩过后的修复）。",
+    "doctor 分段落盘用 patchProbe 只写探过的段，并发 --only 不互相覆盖，配了两条针对性回归测试。",
+    "verify 的 fail-closed 语义正确：未配置退 64 且落盘记录、exit_code null 即 failed、build 失败不跑 test、重跑只追加，命令原文+sha256 可与配置对账。",
+    "selftest 边界诚实：桩适配器声明、notCovered 清单、失败保留夹具，且有回归测试防止「证明不了厂商 CLI 可用」这条边界被删。",
+    "--allow-single 受配置 allow_single_flag 单向约束（配置关掉命令行开不回来），strict 默认不被架空，有测试。",
+    "--cancel 附带把闸门收回 idle 的方向正确（只是缺 run_id 守卫，见 GLM-r2-01）。",
+    "被审对象文件清单与 base/head 记进补丁头，离线审查与事后复核有了锚（AC-17 的正确落点）。"
+  ],
+  "not_covered": [
+    "未运行任何测试或 selftest（只读审查）：458 用例与 doctor --selftest 14/14 的通过声明未独立复现。",
+    "adapters（agy/zcode/stub）、parse/render/runner/guard/divergence/lock.ts/status.ts/naming.ts/disposition.ts/gate.ts 未逐行读；GLM-r2-01/02 的竞态结论来自代码路径推演，未做真实多进程压测。",
+    "verify.ts、code-stage.ts、selftest.ts、doctor.ts、brief.ts、freeze.ts、topic-args.ts、util/exec.ts 及全部测试文件是经补丁（新文件全文）阅读的，未另开工作树文件核对；补丁头部 base=b43a7f5 与 head=92e71f0 之间是否恰为工作树状态，未独立验证 tree 哈希。",
+    "`:(exclude)` pathspec 对跨目录 rename（.reviews/ ↔ 业务目录）的行为未实测：理论最坏只泄漏对方工件的路径名而非内容，未验证。",
+    "留痕核对在 git 历史重写、换机器、大小写不敏感文件系统下的边界未展开；task.json 与 run.json 同归于尽的场景 GLM-r2-03 的建议方案也覆盖不了，需要 git 锚点兜底。",
+    "48 个文件中的文档类（QUICKSTART/GUIDE/CASE_manual_acceptance/PROTOCOL/设计文档/坑清单）只读了 diff 正文，未逐字核对与实现的一致性（退出码表、判据表、命令示例）。",
+    "install.ts 与 init.ts 的 Hook 合并、幂等追加逻辑未核；task.json 闸门镜像与 state.json 的双写一致性未审。",
+    "禁读清单（对方 r2 产出、.trivium/、.env.example）未触碰；上一轮意见的 Driver 裁决件尚未落盘，本轮对仍存在的问题按当前代码价值重新举证。"
+  ],
+  "consulted": [
+    ".reviews/M4-M5实现/code/_meta/changes.diff",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-glm.md",
+    "src/trivium/state.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/review.ts",
+    "src/trivium/report.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/config.ts",
+    "src/trivium/util/git.ts"
+  ]
+}

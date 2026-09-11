@@ -171,3 +171,34 @@ test('normalizeCell 去零宽字符与折叠空白', () => {
   assert.equal(normalizeCell('  接​受  '), '接受');
   assert.equal(normalizeCell('a\n b'), 'a b');
 });
+
+test('「修改计划」必须被认作落点列——设计与模板都用这个词', () => {
+  /*
+   * 随仓库分发的 templates/response.md.template 用的就是「修改计划」。
+   * 漏了这个别名，照模板写的应答件会被闸门判成「接受但没写落点」。
+   */
+  const md = [
+    '---', 'schema: trivium.disposition.v1', 'topic: T', 'stage: code',
+    'role: claude', 'kind: response', 'run_id: R', 'addresses: []', '---', '',
+    '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改计划 |',
+    '| :--- | :--- | :--- | :--- | :--- | :--- |',
+    '| AGY-01 | gemini | major | 接受 | 确实成立 | util/git.ts 抛错而非吞掉 |',
+    '',
+  ].join('\n');
+  const r = parseDisposition(md);
+  assert.equal(r.rows.length, 1, `解析失败：${JSON.stringify(r.problems)}`);
+  assert.equal(r.rows[0]!.action, 'util/git.ts 抛错而非吞掉');
+});
+
+test('落点列的其它同义写法一并认', () => {
+  for (const header of ['落点', '修改落点', '落地点', '修改点', '动作', 'action', '计划']) {
+    const md = [
+      '| 意见编号 | 裁决 | 理由 | ' + header + ' |',
+      '| :--- | :--- | :--- | :--- |',
+      '| GLM-01 | 接受 | 成立 | 某处 |',
+      '',
+    ].join('\n');
+    const r = parseDisposition(md);
+    assert.equal(r.rows[0]?.action, '某处', `列名「${header}」没被认出来`);
+  }
+});

@@ -1,0 +1,105 @@
+{
+  "schema": "trivium.run.v1",
+  "run_id": "20260911T023232Z",
+  "topic": "M4-M5实现",
+  "stage": "code",
+  "rerun_index": 2,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点看：闸门状态机在多进程下的一致性、留痕完整性核对的绕过可能、code 阶段补丁排除逻辑的边界、以及新增 verify/report/selftest 三个模块的错误处理",
+  "snapshot": {
+    "git_head": "5476238b1c20586eecf0718c5390bda1d1cb7753",
+    "tree_hash": "4569643c2f6f84cb0e792bf057315664d659218d",
+    "dirty": true,
+    "subject_sha256": "072b1fd30a62dd2db1eaa53db3f49c3ea004d5632cf52633a12ea49d6b8f53bb",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-11T02:32:32.996Z",
+  "finished_at": "2026-09-11T02:52:33.315Z",
+  "review_mode": "single",
+  "degraded_reason": "glm: timeout（脚本级超时（1200s））",
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.0",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort": "medium",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 259.931,
+      "tool_calls": {
+        "read": 55,
+        "grep": 16,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 30
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 363371,
+        "output_tokens": 47793,
+        "thinking_tokens": 39227,
+        "cache_read_tokens": 6822551,
+        "total_tokens": 411164
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "44bcffed-ca3e-4355-8d05-cc3438618297",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3-Flash",
+      "model_effective": null,
+      "model_effective_source": "unverified",
+      "status": "timeout",
+      "exit_code": 143,
+      "duration_s": 1200.212,
+      "tool_calls": {
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "heterogeneous": true,
+      "fail_reason": "脚本级超时（1200s）",
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": null,
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-glm.md"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "M4-M5实现/code/2026-09-11-M4-M5实现-r2-gemini.md",
+      "sha256": "dfd248269b482ff9ab526a7468f07f5ab1ff602397755fd4389d81d44028333c"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed"
+}

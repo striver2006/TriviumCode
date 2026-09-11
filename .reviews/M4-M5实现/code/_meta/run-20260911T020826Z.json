@@ -1,0 +1,110 @@
+{
+  "schema": "trivium.run.v1",
+  "run_id": "20260911T020826Z",
+  "topic": "M4-M5实现",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点看：闸门状态机在多进程下的一致性、留痕完整性核对的绕过可能、code 阶段补丁排除逻辑的边界、以及新增的 verify/report/selftest 三个模块的错误处理",
+  "snapshot": {
+    "git_head": "9666d7f3ddc939aee5db6eddfc9417af67c9108b",
+    "tree_hash": "8b5389d486cd30388d254ffb5d85ed8255d86b4a",
+    "dirty": false,
+    "subject_sha256": "4025b7eccf8f83814f0f5fa3a96afa83ffc83d890ad0892fad8bb068adcf264b",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-11T02:08:27.207Z",
+  "finished_at": "2026-09-11T02:26:10.845Z",
+  "review_mode": "single",
+  "degraded_reason": "gemini: failed（agy 非零退出（1）：error: invalid model selection (--model \"gemini-3.8-flash-high\" --effort \"medium\"): --model gemini-3.8-flash-high conflicts with --effort=medium\n）",
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.0",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": null,
+      "model_effective_source": "unverified",
+      "effort": "medium",
+      "status": "failed",
+      "exit_code": 1,
+      "duration_s": 5.664,
+      "tool_calls": {
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "heterogeneous": true,
+      "fail_reason": "agy 非零退出（1）：error: invalid model selection (--model \"gemini-3.8-flash-high\" --effort \"medium\"): --model gemini-3.8-flash-high conflicts with --effort=medium\n",
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3-Flash",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "model_effective_source": "trace",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1063.496,
+      "tool_calls": {
+        "read": 15,
+        "grep": 6,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 14
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 14,
+        "inputTokens": 1108562,
+        "outputTokens": 37618,
+        "totalTokens": 1146180,
+        "cacheReadTokens": 952320,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_e0820096-579b-4a37-ac54-0b599fdc162c",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "M4-M5实现/code/2026-09-11-M4-M5实现-glm.md",
+      "sha256": "752560820f0518b7a4ab9c1c513bf1adc4957fa0fc453a5c1d95deb72eb8a442"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed"
+}
