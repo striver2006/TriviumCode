@@ -161,37 +161,147 @@ const GIT_OPTS_WITH_VALUE = new Set([
 ]);
 
 /**
- * 取一段命令里 git 的**子命令**。
+ * 一段命令里的 git 调用：**子命令** + 它自己指定的工作目录
+ * （`-C` / `--work-tree` / `--git-dir`）。
  *
- * 不能拿 `/git.*commit/` 这种正则凑：`git log --format=commit` 会被误判成提交，
+ * 子命令不能拿 `/git.*commit/` 这种正则凑：`git log --format=commit` 会被误判成提交，
  * 于是闸门期内连看日志都被拦。必须跳过全局选项后取第一个非选项词。
  */
-function gitSubcommand(segment: string): string | null {
-  const tokens = segment.trim().split(/\s+/).filter(Boolean);
+interface GitCall {
+  subcommand: string;
+  /** `-C` 等选项给出的路径；没有则为 null，表示「就在当前目录」 */
+  dirOption: string | null;
+}
+
+function parseGitSegment(segment: string): GitCall | null {
+  const tokens = tokenize(segment);
   const gitAt = tokens.findIndex((t) => t === 'git' || t.endsWith('/git'));
   if (gitAt < 0) return null;
 
+  let dirOption: string | null = null;
   for (let i = gitAt + 1; i < tokens.length; i++) {
     const t = tokens[i]!;
-    if (!t.startsWith('-')) return t;
+    if (!t.startsWith('-')) return { subcommand: t, dirOption };
+
     // `--git-dir=x` 自带值；`--git-dir x` 要多吃一个词
-    if (GIT_OPTS_WITH_VALUE.has(t)) i++;
+    const eq = t.indexOf('=');
+    if (eq > 0) {
+      const name = t.slice(0, eq);
+      if (name === '--work-tree') dirOption = t.slice(eq + 1);
+      else if (name === '--git-dir') dirOption = stripDotGit(t.slice(eq + 1));
+      continue;
+    }
+    if (GIT_OPTS_WITH_VALUE.has(t)) {
+      const val = tokens[i + 1];
+      if (val !== undefined) {
+        if (t === '-C' || t === '--work-tree') dirOption = val;
+        else if (t === '--git-dir') dirOption = stripDotGit(val);
+      }
+      i++;
+    }
   }
   return null;
 }
 
-function looksLikeCommit(input: HookInput): boolean {
+/** `--git-dir` 指向 `.git` 本身，仓库根是它的父目录 */
+const stripDotGit = (p: string): string =>
+  path.basename(p) === '.git' ? path.dirname(p) : p;
+
+/** 极简分词：够用于识别 `cd`/`git` 与它们的第一个路径参数，不追求完整 shell 语义 */
+function tokenize(segment: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let quote: '"' | "'" | null = null;
+  for (const ch of segment.trim()) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else cur += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (cur) out.push(cur);
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+/**
+ * 这条命令里的 `git commit` 是否**打在本项目上**（审查意见：跨仓库误拦）。
+ *
+ * 实测暴露的问题：`hookPreCommit` 原先只看命令串里有没有 `git commit`，
+ * **完全不看提交的目标是哪个仓库**。于是一条
+ * `cd /tmp/夹具 && git init && git commit …` 会被**本项目**的闸门拦下，
+ * 而那次提交与本项目的归档状态毫无关系。
+ * 也就是说：本项目的闸门会拦住你对任何其它仓库的提交。
+ *
+ * 原则是**保守**的：能确认目标在项目外才放行，推断不出一律按「在项目内」处理。
+ * 从命令串推断目标仓库天然不可能严密（变量、子 shell、`cd -`……），
+ * 宁可多拦一次，也不能让真正该拦的提交溜过去。
+ */
+function commitTargetsProject(command: string, projectRoot: string): boolean {
+  const segments = command.split(/(?:&&|\|\||[;&|])/);
+  /** 当前目录。null 表示「已经推断不出来了」——此后一律按项目内处理 */
+  let cwd: string | null = projectRoot;
+
+  for (const seg of segments) {
+    const tokens = tokenize(seg);
+    if (tokens.length === 0) continue;
+
+    // ① cd 改变后续段落的当前目录
+    if (tokens[0] === 'cd') {
+      const target = tokens[1];
+      // `cd`（回 HOME）、`cd -`、`cd $VAR` 一律判为推断不出
+      if (target === undefined || target === '-' || /[$`]/.test(target)) {
+        cwd = null;
+      } else {
+        cwd = cwd === null ? null : path.resolve(cwd, target);
+      }
+      continue;
+    }
+
+    // ② 这一段是不是提交
+    const call = parseGitSegment(seg);
+    if (!call || call.subcommand !== 'commit') continue;
+
+    let target: string | null;
+    if (call.dirOption !== null) {
+      if (/[$`]/.test(call.dirOption)) target = null; // 路径含变量，推断不出
+      else target = cwd === null ? null : path.resolve(cwd, call.dirOption);
+    } else {
+      target = cwd;
+    }
+
+    if (target === null) return true; // 推断不出 → 按项目内处理
+    if (isInside(projectRoot, target)) return true;
+    // 这一段明确打在项目外，继续看后面还有没有别的提交
+  }
+  return false;
+}
+
+/** `child` 是否在 `parent` 之内（含相等） */
+function isInside(parent: string, child: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function looksLikeCommit(input: HookInput, projectRoot: string): boolean {
   const cmd = input.tool_input?.['command'];
   if (typeof cmd !== 'string') return true; // 拿不到命令行 → 不敢放过
-  // 复合命令里任一段是提交就算：`npm test && git commit -m y`
-  return cmd
-    .split(/(?:&&|\|\||[;&|])/)
-    .some((seg) => gitSubcommand(seg) === 'commit');
+  // 复合命令里任一段是**打在本项目上**的提交才算
+  return commitTargetsProject(cmd, projectRoot);
 }
 
 export async function hookPreCommit(ctx: Ctx, input: HookInput): Promise<HookOutput> {
   if (!ctx.config.gate.block_commit) return ALLOW;
-  if (input.tool_name === 'Bash' && !looksLikeCommit(input)) return ALLOW;
+  if (input.tool_name === 'Bash' && !looksLikeCommit(input, ctx.projectRoot)) return ALLOW;
 
   const open = await listOpenGates(ctx.triviumDir);
   /*

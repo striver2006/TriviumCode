@@ -313,6 +313,17 @@ test('hook 内部程序缺陷 → exit 1（非阻断）', async () => {
 
 // ─────────── hook-pre-commit 的命令自检 ───────────
 
+/** 造一个「有未裁决闸门」的上下文，作用域设为 global 以免会话过滤干扰 */
+async function pendingCtx(): Promise<Ctx> {
+  const ctx = await fakeCtx();
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: '闸门主题', stage: 'plan',
+    state: 'review_done_awaiting_disposition', sessionId: 'S1', heartbeatStaleMs: STALE,
+  });
+  ctx.config.gate.approval_lock_scope = 'global';
+  return ctx;
+}
+
 test('hook-pre-commit 只拦提交，不拦其它 Bash 命令', async () => {
   const ctx = await fakeCtx();
   await setGate({
@@ -373,21 +384,79 @@ test('hook-pre-commit 拿不到命令行时按「是提交」处理', async () =
   assert.equal(r.exitCode, EXIT.GATE_BLOCK);
 });
 
-test('hook-pre-commit 识别带前置参数与复合命令的提交', async () => {
-  const ctx = await fakeCtx();
-  await setGate({
-    triviumDir: ctx.triviumDir, topic: '闸门主题', stage: 'plan',
-    state: 'review_done_awaiting_disposition', sessionId: 'S1', heartbeatStaleMs: STALE,
-  });
-  ctx.config.gate.approval_lock_scope = 'global';
+test('hook-pre-commit 识别复合命令里打在本项目上的提交', async () => {
+  const ctx = await pendingCtx();
   for (const cmd of [
-    'git -C /tmp/x commit -m y',
     'npm test && git commit -m y',
     'git commit --amend',
+    'git -c user.name=x commit -m y',
+    `git -C ${'${ctx.projectRoot}'} commit -m y`.replace('${ctx.projectRoot}', ctx.projectRoot),
+    `cd ${ctx.projectRoot} && git commit -m y`,
+    'cd src && git commit -m y', // 相对 cd 仍在项目内
   ]) {
     const r = await hookPreCommit(ctx, {
       tool_name: 'Bash', session_id: 'S1', tool_input: { command: cmd },
     });
-    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `「${cmd}」应被识别为提交`);
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `「${cmd}」应被识别为本项目的提交`);
   }
+});
+
+// ── 跨仓库误拦（实测暴露）──
+
+test('打在别的仓库上的提交不该被本项目的闸门拦下', async () => {
+  const ctx = await pendingCtx();
+  /*
+   * 实测踩到：一条 `cd /tmp/夹具 && git init && git commit …` 被**本项目**的闸门
+   * 拦下，而那次提交与本项目的归档状态毫无关系。
+   * 原实现只看命令串里有没有 `git commit`，完全不看目标仓库——
+   * 等于本项目的闸门会拦住你对任何其它仓库的提交。
+   */
+  for (const cmd of [
+    'git -C /tmp/别的仓库 commit -m y',
+    'cd /tmp/别的仓库 && git commit -m y',
+    'cd /tmp/夹具 && git init -q . && git -c user.email=t@t commit -q -m base',
+    'git --git-dir=/tmp/别的仓库/.git --work-tree=/tmp/别的仓库 commit -m y',
+  ]) {
+    const r = await hookPreCommit(ctx, {
+      tool_name: 'Bash', session_id: 'S1', tool_input: { command: cmd },
+    });
+    assert.equal(r.exitCode, EXIT.OK, `「${cmd}」打在项目外，不该拦：${r.stderr ?? ''}`);
+  }
+});
+
+test('推断不出目标仓库时一律按项目内处理', async () => {
+  const ctx = await pendingCtx();
+  /*
+   * 从命令串推断目标仓库天然不可能严密（变量、子 shell、`cd -`……）。
+   * 保守方向是**宁可多拦**：漏拦一次违规提交的代价，远大于多拦一条命令。
+   */
+  for (const cmd of [
+    'cd $SOME_DIR && git commit -m y',
+    'cd - && git commit -m y',
+    'cd && git commit -m y',
+    'git -C "$REPO" commit -m y',
+  ]) {
+    const r = await hookPreCommit(ctx, {
+      tool_name: 'Bash', session_id: 'S1', tool_input: { command: cmd },
+    });
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `「${cmd}」推断不出目标，应保守拦下`);
+  }
+});
+
+test('先去项目外提交、再回项目内提交 → 仍然拦', async () => {
+  const ctx = await pendingCtx();
+  const cmd = `cd /tmp/别处 && git commit -m a && cd ${ctx.projectRoot} && git commit -m b`;
+  const r = await hookPreCommit(ctx, {
+    tool_name: 'Bash', session_id: 'S1', tool_input: { command: cmd },
+  });
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK, '只要有一段打在本项目上就该拦');
+});
+
+test('带空格的路径也能正确判断在不在项目内', async () => {
+  const ctx = await pendingCtx();
+  const outside = await hookPreCommit(ctx, {
+    tool_name: 'Bash', session_id: 'S1',
+    tool_input: { command: 'cd "/tmp/有 空格的目录" && git commit -m y' },
+  });
+  assert.equal(outside.exitCode, EXIT.OK);
 });
