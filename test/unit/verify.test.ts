@@ -243,3 +243,19 @@ test('两组皆空时仍判 unconfigured', async () => {
   assert.equal(out.record.selected_empty, undefined);
   assert.match(await fs.readFile(out.artifactPath, 'utf8'), /均为空/);
 });
+
+test('verify 的 run.json 用独立 schema 标识，不冒充 trivium.run.v1（AGY-03）', async () => {
+  const ctx = await ctxWith([], ['true']);
+  const out = await runVerify({ ctx, layout: layoutFor(ctx), runId: 'R-SCHEMA' });
+  const dir = path.dirname(out.metaPath);
+  const runJson = JSON.parse(await fs.readFile(path.join(dir, 'run-R-SCHEMA.json'), 'utf8')) as {
+    schema: string; stage: string;
+  };
+  /*
+   * 自称遵循某契约却不遵循，比不声明更糟——它会让下游以为可以按 run.v1 解析，
+   * 而这份文档违反 run.v1 的 stage 枚举、缺大量必填字段。
+   */
+  assert.equal(runJson.schema, 'trivium.verify-run.v1');
+  assert.notEqual(runJson.schema, 'trivium.run.v1');
+  assert.equal(runJson.stage, 'verify');
+});

@@ -73,18 +73,61 @@ export async function workTreeHash(cwd: string): Promise<string> {
 /**
  * 还原 git 加过引号的路径。
  *
- * `core.quotePath=false` 只解决「可打印非 ASCII 被转成八进制」这一类；
- * 路径里含空格、双引号、反斜杠或控制字符时，git **仍会**把整个路径引起来
- * 并做 C 风格转义。不还原的话，路径会带着引号进入后续比对，或整行匹配不上。
+ * `core.quotePath=false` 只解决「非 ASCII 被转成八进制」这一类。
+ * git 的 C 引用集是**双引号、反斜杠、控制字符**（以及 quotePath=true 时的非 ASCII），
+ * **不含空格**——含空格的路径不会被引起来。不还原的话，路径会带着引号进入后续比对。
  */
 export function unquoteGitPath(p: string): string {
   if (!(p.startsWith('"') && p.endsWith('"') && p.length >= 2)) return p;
-  try {
-    // C 风格转义与 JSON 字符串转义在这几种常见形态上一致
-    return JSON.parse(p) as string;
-  } catch {
-    return p.slice(1, -1);
+  const body = p.slice(1, -1);
+
+  /*
+   * 自己解析 C 风格转义，**不能借道 `JSON.parse`**（审查意见 AGY-04）。
+   *
+   * JSON 不支持八进制转义，而 git 在 `core.quotePath=true`（默认值）下正是用它
+   * 表示非 ASCII：实测 `src/中文"引号.ts` 会输出成
+   *   "src/\344\270\255\346\226\207\"\345\274\225\345\217\267.ts"
+   * `JSON.parse` 直接抛，旧实现退回 `slice(1,-1)`，留下满是裸转义的文本。
+   *
+   * 我们自己的调用一律加 `-c core.quotePath=false`，所以这条平时不触发；
+   * 但 `filesInDiff` 也会解析**外部产生的**补丁，那里没有这个保证。
+   *
+   * 八进制按**字节**收集后再整体按 UTF-8 解码——逐字节转 char 会把多字节汉字拆碎。
+   */
+  const bytes: number[] = [];
+  const pushStr = (str: string): void => {
+    for (const b of Buffer.from(str, 'utf8')) bytes.push(b);
+  };
+
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i]!;
+    if (ch !== '\\') {
+      pushStr(ch);
+      continue;
+    }
+    const next = body[i + 1];
+    if (next === undefined) break;
+    if (next >= '0' && next <= '7') {
+      // 最多三位八进制
+      let oct = '';
+      let k = i + 1;
+      while (k < body.length && oct.length < 3 && body[k]! >= '0' && body[k]! <= '7') {
+        oct += body[k]!;
+        k++;
+      }
+      bytes.push(Number.parseInt(oct, 8) & 0xff);
+      i = k - 1;
+      continue;
+    }
+    const simple: Record<string, string> = {
+      n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', v: '\v', a: '\x07',
+      '\\': '\\', '"': '"',
+    };
+    const mapped = simple[next];
+    pushStr(mapped ?? next); // 未知转义原样保留那个字符
+    i++;
   }
+  return Buffer.from(bytes).toString('utf8');
 }
 
 export async function statusPorcelain(cwd: string): Promise<GitStatusEntry[]> {

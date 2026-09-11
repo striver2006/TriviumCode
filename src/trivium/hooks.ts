@@ -366,13 +366,27 @@ export async function hookStop(ctx: Ctx, input: HookInput): Promise<HookOutput> 
 
 /** 会话开始时注入待办清单（设计 §8.5）。永不阻断 */
 export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
+  /*
+   * ── 先清扫「没人看管的 running 闸门」（审查意见 GLM-06）──
+   *
+   * SIGKILL / 断电之后的闸门回收原先全是 **push 式**：要么 worker 自己的 finally，
+   * 要么有人再跑一次 `--wait`。worker 被硬杀、且此后无人 `--wait` 时，闸门就一直
+   * 挂在 running 上，业务写入被拦到 24h TTL——而开发者往往只是关掉终端又开了一个。
+   *
+   * 会话开始是天然的 pull 式时机：此时扫一遍，发现 worker 已不存在就地回收。
+   */
+  const swept = await sweepDeadRunningGates(ctx);
+
   const open = await listOpenGates(ctx.triviumDir);
   const running = await findRunningRuns(ctx);
 
   const reportable = open.filter((g) => g.state !== 'running');
-  if (reportable.length === 0 && running.length === 0) return ALLOW;
+  if (reportable.length === 0 && running.length === 0 && swept.length === 0) return ALLOW;
 
   const lines: string[] = ['TriviumCode 待办：'];
+  for (const s of swept) {
+    lines.push(`  · 已回收 ${s} 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁`);
+  }
   for (const g of open) {
     // running 状态由下面的锁扫描单独报告，避免同一件事说两遍
     if (g.state === 'running') continue;
@@ -473,4 +487,44 @@ export async function runHook(
     if (process.env['TRIVIUM_DEBUG']) console.error(e);
     return { exitCode: EXIT.FAIL, stderr: `hook ${name} 内部错误：${(e as Error).message}` };
   }
+}
+
+/**
+ * 回收「闸门还是 running、但工作进程早已不存在」的遗留状态（审查意见 GLM-06）。
+ *
+ * 判据用 `status.json` 里记的 `worker_pid` + `worker_started_at`，
+ * 经 `processAlive` 比对启动时间——macOS 会复用 PID，只看 `kill(pid,0)` 会把
+ * 别人的新进程当成我们的 worker 还活着。
+ *
+ * 拿不准的一律**不回收**：宁可多拦一会儿（还有 TTL 兜底），
+ * 也不能在 worker 其实还在跑的时候把护栏撤了。
+ */
+async function sweepDeadRunningGates(ctx: Ctx): Promise<string[]> {
+  const { listOpenGates: list, setGateChecked } = await import('./state.js');
+  const { readStatus } = await import('./status.js');
+  const { processAlive } = await import('./util/exec.js');
+  const { runDirFor } = await import('./run-protocol.js');
+
+  const swept: string[] = [];
+  for (const g of (await list(ctx.triviumDir)).filter((x) => x.state === 'running')) {
+    if (!g.run_id) continue;
+    let alive = true;
+    try {
+      const st = await readStatus(runDirFor(ctx.config, ctx.projectRoot, g.run_id));
+      if (!st?.worker_pid) continue; // 读不到就别动它
+      alive = (await processAlive(st.worker_pid, st.worker_started_at ?? null)).alive;
+    } catch {
+      continue; // 判不了就不回收
+    }
+    if (alive) continue;
+
+    const r = await setGateChecked({
+      triviumDir: ctx.triviumDir,
+      topic: g.topic, stage: g.stage, state: 'idle', runId: g.run_id,
+      heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+      expect: { state: ['running'], runId: g.run_id, allowMissing: false },
+    });
+    if (r.applied) swept.push(`${g.topic}/${g.stage}`);
+  }
+  return swept;
 }

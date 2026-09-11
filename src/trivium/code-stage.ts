@@ -38,8 +38,10 @@ export function filesInDiff(diff: string): string[] {
     /*
      * 路径可能被引号包起来（审查意见 GLM-r2-06）。
      *
-     * `core.quotePath=false` 只解决「可打印非 ASCII 被转成八进制」；路径含空格、
-     * 双引号、反斜杠或控制字符时 git **仍会**引起来。旧正则只认未加引号的形态，
+     * `core.quotePath=false` 只解决「非 ASCII 被转成八进制」这一类。
+     * git 的 C 引用集是**双引号、反斜杠、控制字符**（以及 quotePath=true 时的非 ASCII），
+     * **不含空格**——空格路径不加引号，靠 ` b/` 分界（本文件的用例与实测都是这么写的）。
+     * 旧正则只认未加引号的形态，
      * 这类文件会**从清单里消失**——而 `classifyDiff` 正是拿这份清单做 FR-23 判定：
      * 一份「文档 + 引号路径业务文件」的 diff 会被判成 doc_only，
      * 开了 skip_doc_only_review 时那个业务变更整只逃过审查。

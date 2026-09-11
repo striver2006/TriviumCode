@@ -195,7 +195,15 @@ export async function runVerify(opts: VerifyOptions): Promise<VerifyOutcome> {
     `run-${runId}.json`,
     JSON.stringify(
       {
-        schema: 'trivium.run.v1',
+        /*
+         * 独立标识，**不冒充** `trivium.run.v1`（审查意见 AGY-03）。
+         *
+         * 原先自称遵循 run.v1，却违反它的 `stage` 枚举、缺大量必填字段——
+         * 用官方 schema 一校验就现形。**自称遵循某契约却不遵循，比不声明更糟**：
+         * 它会让下游以为可以按 run.v1 解析。
+         * verify 本来就不是一次审查运行，不该硬套审查运行的 schema。
+         */
+        schema: 'trivium.verify-run.v1',
         run_id: runId,
         topic: layout.topic,
         stage: 'verify',

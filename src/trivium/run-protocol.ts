@@ -344,7 +344,9 @@ async function releaseRunningGate(
       triviumDir: ctx.triviumDir,
       topic, stage, state: 'idle', runId,
       heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
-      expect: { state: ['running'], runId },
+      // 槽位不存在时**不要**凭空造一条 idle 记录（审查意见 AGY-02）：
+      // allowMissing 默认 true 对 prepareRun（首轮槽位本就是空的）合适，对回收则不然
+      expect: { state: ['running'], runId, allowMissing: false },
     });
   } catch {
     // 回收失败不该盖过真正的错误——闸门还有 TTL 兜底，但错误信息只有一次机会
@@ -527,6 +529,19 @@ export async function statusRun(ctx: Ctx, runId: string): Promise<{ exitCode: nu
 export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
   const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
   const s = await readStatus(runDir);
+
+  /*
+   * 已经结束的运行不能被「取消」（审查意见 GLM-04）。
+   *
+   * 原先无条件把 status 改写成 cancelled——那是**改写历史**：一次已经 success 的
+   * 运行事后被记成取消，归档里的事实就不再是当时发生的事实（P6 只追加不覆盖）。
+   * 也不该动闸门：那一轮的闸门可能正等着裁决，凭什么因为一次误敲的 --cancel 就清掉。
+   */
+  if (s && ['success', 'failed', 'cancelled'].includes(s.phase)) {
+    say(`运行 ${runId} 已处于终态（${s.phase}），无需取消。`);
+    say('  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。');
+    return EXIT.OK;
+  }
   const pid =
     s?.worker_pid ??
     (await fs
@@ -584,7 +599,7 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
         triviumDir: ctx.triviumDir, topic, stage: s.stage, state: 'idle',
         runId, sessionId: process.env['CLAUDE_SESSION_ID'] ?? null,
         heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
-        expect: { runId },
+        expect: { runId, allowMissing: false },
       });
       if (!g.applied && g.entry) step(`闸门未回收：${g.skipped}`);
     }

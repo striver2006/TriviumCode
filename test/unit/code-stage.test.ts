@@ -242,3 +242,15 @@ test('重命名且带引号时两侧路径都收', () => {
   const diff = 'diff --git "a/old 名.ts" "b/new 名.ts"\n';
   assert.deepEqual(filesInDiff(diff), ['new 名.ts', 'old 名.ts']);
 });
+
+test('八进制转义的路径也能还原（quotePath=true 的形态，审查意见 AGY-04）', () => {
+  /*
+   * 我们自己的调用一律加 `-c core.quotePath=false`，但 filesInDiff 也会解析
+   * **外部产生的**补丁，那里没有这个保证。实测 quotePath=true 时
+   * `src/中文"引号.ts` 输出成 "src/\344\270\255\346\226\207\"\345\274\225\345\217\267.ts"。
+   * JSON.parse 不支持八进制转义，会直接抛。
+   */
+  const octal = '"a/src/\\344\\270\\255\\346\\226\\207\\"\\345\\274\\225\\345\\217\\267.ts"';
+  const diff = `diff --git ${octal} ${octal.replace('a/', 'b/')}\n`;
+  assert.deepEqual(filesInDiff(diff), ['src/中文"引号.ts']);
+});

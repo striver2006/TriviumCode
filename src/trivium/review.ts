@@ -776,7 +776,26 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
 /** 同步路径（M1 行为）：准备 + 执行一气做完。长时运行请用 `--start` / `--wait` */
 export async function runReview(opts: ReviewOptions): Promise<ReviewOutcome> {
   const rc = await prepareRun(opts);
-  return executeRun(rc);
+  try {
+    return await executeRun(rc);
+  } catch (e) {
+    /*
+     * 同步路径也要回收闸门（审查意见 AGY-06）。
+     *
+     * 上一批只给 worker 那条路加了回收，漏了这里——而 `prepareRun` 在这条路上
+     * 同样置了 `running`。异常一抛，闸门就挂在 running 上直到 24h TTL，
+     * 业务写入全程被拦。
+     */
+    await setGateChecked({
+      triviumDir: rc.ctx.triviumDir,
+      topic: rc.ref.topic, stage: rc.stage, state: 'idle', runId: rc.runId,
+      heartbeatStaleMs: rc.cfg.review.heartbeat_stale_s * 1000,
+      expect: { state: ['running'], runId: rc.runId, allowMissing: false },
+    }).catch(() => {
+      /* 回收失败不该盖过真正的错误 */
+    });
+    throw e;
+  }
 }
 
 async function listOwnHistory(

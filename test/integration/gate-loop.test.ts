@@ -671,3 +671,103 @@ test('把 run.json 挪到别的阶段目录也拦（审查意见 GLM-08）', { s
   assert.equal(r.code, EXIT.GATE_BLOCK, `清单位置不符也该拦：\n${r.stdout}${r.stderr}`);
   assert.match(r.stderr, /运行清单已丢失/);
 });
+
+// ── 生命周期与后门（AGY-02 / AGY-05≡GLM-03 / AGY-06 / GLM-04 / GLM-06）──
+
+test('推断不出 runId 时 --await-approval 拒绝，而不是跳过校验', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  // 从没跑过审查：推断不出 runId
+  const r = await cli(
+    fx.root,
+    ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--session-id', SESSION],
+  );
+  /*
+   * 原先是 `if (runId) { 校验 }`——只要让 runId 推断失败，整段裁决完整性校验
+   * 就被绕过，闸门照样被置成 awaiting_approval。那是个后门。
+   */
+  assert.equal(r.code, EXIT.MISSING_ARTIFACT, `应拒绝：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout + r.stderr, /--run-id/, '要告诉人怎么显式指定');
+
+  const st = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8').catch(() => '{"gates":{}}')) as {
+    gates: Record<string, { state: string }>;
+  };
+  assert.notEqual(st.gates[`${TOPIC}/plan`]?.state, 'awaiting_approval');
+});
+
+test('--cancel 已终态的运行：不改写历史、不动闸门（审查意见 GLM-04）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root); // 跑完，status 已是 success
+
+  const statusPath = path.join(
+    process.env['HOME'] ?? '', '.trivium', 'runs',
+  );
+  const r = await cli(fx.root, ['review', '--cancel', runId]);
+  assert.equal(r.code, EXIT.OK);
+  assert.match(r.stdout + r.stderr, /已处于终态/);
+  assert.match(r.stdout + r.stderr, /不会被追溯改写/);
+
+  // 闸门仍停在「审完待裁决」——不该因为一次误敲的 --cancel 就被清掉
+  const st = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
+    gates: Record<string, { state: string }>;
+  };
+  assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'review_done_awaiting_disposition');
+  assert.ok(statusPath);
+});
+
+test('hook-session-start 回收「worker 已死但闸门还挂着」的遗留状态（GLM-06）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    { gemini: { mode: 'timeout' }, glm: { mode: 'timeout' } },
+  );
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { worker_pid: number };
+
+  const statePath = path.join(fx.root, '.trivium/state.json');
+  assert.equal(
+    (JSON.parse(await fs.readFile(statePath, 'utf8')) as { gates: Record<string, { state: string }> })
+      .gates[`${TOPIC}/plan`]?.state,
+    'running',
+  );
+
+  // 硬杀 worker，且**不**跑 --wait：原先这种情况下闸门会一直挂到 24h TTL
+  const { killProcessTree } = await import('../../src/trivium/util/exec.js');
+  killProcessTree(js.worker_pid, 'SIGKILL');
+  await new Promise((r) => setTimeout(r, 500));
+
+  const r = await hook(fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
+  assert.equal(r.code, EXIT.OK);
+  assert.match(r.stdout, /已回收/, `会话开始时应清扫：\n${r.stdout}${r.stderr}`);
+
+  const after = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
+    gates: Record<string, { state: string }>;
+  };
+  assert.equal(after.gates[`${TOPIC}/plan`]?.state, 'idle');
+
+  // 回收之后业务写入恢复
+  assert.equal(
+    (await hook(fx.root, 'hook-pre-write', writeEvent(path.join(fx.root, 'src/a.ts')))).code,
+    EXIT.OK,
+  );
+});
+
+test('worker 还活着时 hook-session-start 绝不回收', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    { gemini: { mode: 'timeout' }, glm: { mode: 'timeout' } },
+  );
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string; worker_pid: number };
+
+  const r = await hook(fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
+  assert.doesNotMatch(r.stdout, /已回收/, 'worker 还在跑就撤护栏，比不拦更危险');
+
+  const st = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
+    gates: Record<string, { state: string }>;
+  };
+  assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'running');
+
+  const { killProcessTree } = await import('../../src/trivium/util/exec.js');
+  killProcessTree(js.worker_pid, 'SIGKILL');
+});

@@ -20,7 +20,7 @@ import {
 } from './gate.js';
 import { checkStageArtifacts, resolveRerunIndex } from './archive.js';
 import { readHookInput, runHook, type HookName } from './hooks.js';
-import { listOpenGates, setGate, setGateChecked } from './state.js';
+import { listOpenGates, setGateChecked } from './state.js';
 import { recordApproval } from './approval.js';
 import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
 import { newRunId, readTask } from './meta.js';
@@ -520,7 +520,19 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
      *
      * 人工审批是在「机器已确认裁决齐备」之上再加一道，不是它的替代品。
      */
-    if (runId) {
+    /*
+     * 推断不出 runId 就**拒绝**，而不是跳过检查（审查意见 AGY-05 ≡ GLM-03）。
+     * `if (runId)` 那种写法等于留了个后门：只要让 runId 推断失败，
+     * 整段裁决完整性校验就被绕过。
+     */
+    if (!runId) {
+      throw missingArtifactError(
+        `找不到 ${stage} 阶段第 ${rerunIndex} 轮的 run_id，无法校验裁决完整性。\n` +
+          '  用 --run-id <id> 显式指定，或先跑一次双审。\n' +
+          '  （推断不出来时**不会**跳过校验——那等于给「跳过裁决直接审批」留后门。）',
+      );
+    }
+    {
       const { reviews } = await loadRoundReviews(ref.layout, stage, runId);
       const pre = await checkAdjudication({
         cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
@@ -535,12 +547,29 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
         return EXIT.GATE_BLOCK;
       }
     }
-    await setGate({
+    /*
+     * 条件迁移，与本批刚确立的「非覆盖场合一律条件迁移」保持一致（GLM-03）。
+     *
+     * 允许的来源含 `idle`：命令 B/C/D 的正常序列是 `--check`（通过后闸门回 idle）
+     * → `--await-approval`。把 idle 排除在外会把这条正常路径堵死。
+     * 真正要挡的是 `running`——那是**另一次运行**的护栏，不能被它清掉；
+     * 加上 runId 比对，别的 run 的闸门也动不了。
+     */
+    const g = await setGateChecked({
       triviumDir: ctx.triviumDir, topic, stage, state: 'awaiting_approval',
       runId, rerunIndex,
       sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
       heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+      expect: {
+        state: ['idle', 'review_done_awaiting_disposition', 'awaiting_approval', 'approved', 'rejected', 'abandoned'],
+        runId,
+        allowMissing: false,
+      },
     });
+    if (!g.applied) {
+      fail(`闸门未置为等待审批：${g.skipped ?? '当前状态不允许此迁移'}`);
+      return EXIT.GATE_BLOCK;
+    }
     const msg =
       `已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
       `  通过：/dual-approve --topic ${topic} --stage ${stage}\n` +
@@ -648,8 +677,19 @@ async function cmdVerify(args: ParsedArgs): Promise<number> {
   const ctx = await loadCtx();
   const topic = flagString(args, 'topic');
   if (!topic) throw usageError('verify 需要 --topic');
-  // 只读定位：不该因为跑一次 verify 就凭空创建阶段目录（审查意见 GLM-r2-10）
+  /*
+   * 只读定位**且**先确认主题存在（审查意见 GLM-05）。
+   * 上一轮只把 `resolveTopic` 换成只读版，但 `runVerify` 自己仍会为任意主题名
+   * 建出 `verify/` 与 `_meta/`——只读化做了一半。
+   */
   const ref = await resolveTopicReadOnly(ctx, topic, 'plan');
+  if (!(await exists(path.join(ctx.archiveRoot, ref.topic)))) {
+    const all = await listTopics(ctx);
+    throw missingArtifactError(
+      `主题「${topic}」在 ${path.relative(ctx.projectRoot, ctx.archiveRoot)} 下不存在。` +
+        (all.length > 0 ? `\n  现有主题：${all.join('、')}` : '\n  该归档根下还没有任何主题。'),
+    );
+  }
 
   const onlyRaw = flagString(args, 'only');
   if (onlyRaw && onlyRaw !== 'build' && onlyRaw !== 'test') {
