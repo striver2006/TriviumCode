@@ -5,7 +5,8 @@
  *   skills/dual-critic/agents/trivium-critic.md
  *                                         → ~/.gemini/config/agents/trivium-critic/agent.md
  *
- * 装完跑一次 `trivium doctor`。用户级安装一次、多项目复用（AD-13）；
+ * 装完跑一次 `node <SKILLS_TARGET>/dual-critic/scripts/trivium.cjs doctor`
+ * （`trivium` 不在 PATH 上，见下方输出文案）。用户级安装一次、多项目复用（AD-13）；
  * 目标项目里只留 `.trivium/` 配置与 wrapper。
  *
  * **不改用户的日常配置**（§16.2 纪律 5）：只写自己的 skill 目录与自己的 Agent 定义，
@@ -91,13 +92,17 @@ async function main(): Promise<number> {
   }
 
   console.log(`\n共 ${total} 个文件。`);
-  console.log('下一步：');
-  console.log('  1. 在任意项目里运行 `trivium doctor` 实测本机能力（会消耗少量厂商配额）；');
-  console.log('  2. 在要启用双审的项目根运行 `trivium init`；');
-  console.log('  3. 用 `/dual-review-plan <提示语>` 试跑一条。');
-  console.log('');
-  console.log('注意：`trivium` 命令本身不在 PATH 上。项目内一律用 `.trivium/bin/trivium`');
-  console.log('（由 init 生成，内含 node 绝对路径——GUI 进程不读 ~/.zshrc）。');
+  // `trivium` 不进 PATH 是有意的（AD-13），所以这里一律打印可直接复制执行的完整命令。
+  // wrapper 由 init 生成，故前两步只能走 skill 产物的绝对路径。
+  const cliPath = path.join(SKILLS_TARGET, 'dual-critic/scripts/trivium.cjs');
+  console.log('下一步（`trivium` 不在 PATH 上，用下面的完整命令）：');
+  console.log('  1. 实测本机能力（会消耗少量厂商配额）：');
+  console.log(`       node ${cliPath} doctor`);
+  console.log('  2. 在要启用双审的项目根启用：');
+  console.log(`       node ${cliPath} init`);
+  console.log('  3. init 之后该项目内改用 wrapper（内含 node 绝对路径——GUI 进程不读 ~/.zshrc）：');
+  console.log('       ./.trivium/bin/trivium doctor');
+  console.log('  4. 用 `/dual-review-plan <提示语>` 试跑一条。');
   return 0;
 }
 
