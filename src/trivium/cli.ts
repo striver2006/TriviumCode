@@ -4,10 +4,12 @@
  * 职责严格限定为：子命令解析、退出码约定、人读与 `--json` 机读输出。
  * **不做任何业务判定**——所有判定都在各自模块里。
  */
+import path from 'node:path';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
 import { loadCtx } from './config.js';
 import { runDoctor, renderDoctorReport } from './doctor.js';
 import { runReview } from './review.js';
+import { collectCommands, runVerify, summarizeVerify } from './verify.js';
 import { cancelRun, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
 import {
   checkAdjudication, inferLatestRunId, loadRoundReviews, renderGateResult,
@@ -17,7 +19,7 @@ import { readHookInput, runHook, type HookName } from './hooks.js';
 import { listOpenGates, setGate } from './state.js';
 import { recordApproval } from './approval.js';
 import { resolveTopic, listTopics } from './topic.js';
-import { readTask } from './meta.js';
+import { newRunId, readTask } from './meta.js';
 import { runInit, renderInitReport } from './init.js';
 import {
   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
@@ -114,6 +116,12 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
   trivium topic resolve --stage <s> -- <整串 $ARGUMENTS>   [--json]
       解析主题、提示语、被审对象与模型覆盖。**纯只读**，不创建任何目录。
       用 -- 终止符传原始参数串：它本身以 --topic 开头，用 --args <值> 会有歧义。
+
+  trivium verify --topic <主题> [--only build|test] [--timeout <秒>] [--json]
+      执行 .trivium/config.yaml 中 verify.build / verify.test **显式声明**的命令，
+      落盘 verify/<日期>-<主题>-verify.md 与 _meta/verify-<run_id>.json（FR-21 / AC-10）。
+      两组都没配时退 64——「什么都没跑」不是「通过」。
+      构建失败即不再跑测试：测试几乎必然连带失败，只会埋掉真正的根因。
 
   trivium init [--dry-run] [--asset-root <路径>]
       在本项目布置运行时：.trivium/（config.yaml + bin/trivium wrapper）、
@@ -525,6 +533,63 @@ async function cmdApproval(
   return EXIT.OK;
 }
 
+async function cmdVerify(args: ParsedArgs): Promise<number> {
+  const ctx = await loadCtx();
+  const topic = flagString(args, 'topic');
+  if (!topic) throw usageError('verify 需要 --topic');
+  const ref = await resolveTopic(ctx, topic, 'plan');
+
+  const onlyRaw = flagString(args, 'only');
+  if (onlyRaw && onlyRaw !== 'build' && onlyRaw !== 'test') {
+    throw usageError(`--only 只接受 build 或 test，收到「${onlyRaw}」`);
+  }
+  const only = (onlyRaw as 'build' | 'test' | null) ?? null;
+
+  const planned = collectCommands(ctx.config, only);
+  if (planned.length === 0) {
+    /*
+     * 不直接抛 usageError：§14.2 要求把「未配置」也落成一份记录，
+     * 否则事后看归档会以为这一步从未发生过。落盘后再以 64 退出。
+     */
+    warn('verify.build 与 verify.test 均未配置，本次什么也不会执行——这不等于通过。');
+  }
+
+  const timeoutRaw = Number(flagString(args, 'timeout') ?? '');
+  const runId = newRunId();
+  const out = await runVerify({
+    ctx,
+    layout: ref.layout,
+    runId,
+    only,
+    ...(Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? { timeoutS: timeoutRaw } : {}),
+    onProgress: (l) => say(l),
+  });
+
+  if (isJsonMode()) {
+    emitJson({
+      ok: out.exitCode === EXIT.OK,
+      run_id: runId,
+      status: out.record.status,
+      unconfigured: out.record.unconfigured,
+      commands: out.record.commands.map((c) => ({
+        cmd: c.cmd, group: c.group, exit_code: c.exit_code, duration_s: c.duration_s,
+      })),
+      artifact: out.artifactPath,
+      meta: out.metaPath,
+    });
+  } else {
+    say('');
+    say(`编译测试：${summarizeVerify(out.record)}`);
+    say('已落盘：');
+    say(`  ${path.relative(ctx.projectRoot, out.artifactPath)}`);
+    say(`  ${path.relative(ctx.projectRoot, out.metaPath)}`);
+    if (out.record.unconfigured) {
+      fail('未配置编译测试命令：请运行 `trivium init` 或 `trivium doctor --suggest-verify` 后重试。');
+    }
+  }
+  return out.exitCode;
+}
+
 async function cmdStatus(args: ParsedArgs): Promise<number> {
   const ctx = await loadCtx();
   const only = flagString(args, 'topic');
@@ -594,6 +659,8 @@ export async function main(argv: string[]): Promise<number> {
       return cmdApproval(args, 'approved');
     case 'abandon':
       return cmdApproval(args, 'abandoned');
+    case 'verify':
+      return cmdVerify(args);
     case 'status':
       return cmdStatus(args);
     default:

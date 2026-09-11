@@ -14,15 +14,20 @@
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 
 const HOME = os.homedir();
 const SKILLS_TARGET = path.join(HOME, '.claude/skills');
 const AGENT_TARGET = path.join(HOME, '.gemini/config/agents/trivium-critic/agent.md');
 
-/** 仓库根：本文件编译为 dist/install.cjs，故上溯一级 */
+/**
+ * 仓库根：本文件编译为 dist/install.cjs，故上溯一级。
+ *
+ * 不用 `import.meta.url` 兜底：产物是 CJS bundle，esbuild 会把 `import.meta` 置空
+ * 并在**每次构建**都警告一次——一个恒不生效的分支换来一条长期警告，不值得。
+ * `__filename` 在 CJS 里必然存在；退路用 argv[1]，只为 ESM 测试构建下不至于抛错。
+ */
 function repoRoot(): string {
-  const self = typeof __filename === 'string' ? __filename : fileURLToPath(import.meta.url);
+  const self = typeof __filename === 'string' ? __filename : (process.argv[1] ?? process.cwd());
   return path.resolve(path.dirname(self), '..');
 }
 
