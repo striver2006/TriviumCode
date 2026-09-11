@@ -385,11 +385,16 @@ export async function checkRunManifests(
   registered: { run_id: string; stage: StageOrVerify }[],
   present: RecordedRun[],
 ): Promise<TamperedArtifact[]> {
-  const byId = new Map(present.map((r) => [r.run_id, r]));
+  /*
+   * 按 `run_id + stage` 双键匹配（审查意见 GLM-08）。
+   * 只按 run_id 的话，把 `run-<id>.json` 从 plan/_meta 挪到 bug/_meta 照样命中，
+   * 期望路径与实际位置对不上却无人发现。
+   */
+  const byKey = new Map(present.map((r) => [`${r.stage}/${r.run_id}`, r]));
   const out: TamperedArtifact[] = [];
 
   for (const reg of registered) {
-    const got = byId.get(reg.run_id);
+    const got = byKey.get(`${reg.stage}/${reg.run_id}`);
     const rel = path.join(layout.topic, reg.stage, '_meta', runMetaFileNameOf(reg.run_id));
     if (!got) {
       out.push({

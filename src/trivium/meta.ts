@@ -73,12 +73,38 @@ export function emptyTask(topic: string, now = new Date().toISOString()): TaskMe
   };
 }
 
-export async function readTask(l: ArchiveLayout): Promise<TaskMeta> {
+/**
+ * 读 `task.json`，**区分「不存在」与「存在但读不出来」**（审查意见 AGY-01 ≡ GLM-02）。
+ *
+ * 这两种情况对不同调用方意味着完全相反的事：
+ *   · `report`：都算「没有可用数据」，宽松降级即可；
+ *   · **留痕核对**：`task.json` 是外部锚。「不存在」是正常（主题刚建、还没跑过），
+ *     「存在但损坏」却意味着**锚本身被搅坏了**——静默回落 `emptyTask` 等于让
+ *     核对失去全部对象，删掉或搅坏它就能整枝绕过。
+ *
+ * 我上一批刚修掉「清单来自被核对对象自身」，却让新加的锚重蹈了同样的覆辙。
+ */
+export async function readTaskStrict(
+  l: ArchiveLayout,
+): Promise<{ task: TaskMeta; state: 'ok' | 'missing' | 'unreadable'; error?: string }> {
+  let raw: string;
   try {
-    return JSON.parse(await fs.readFile(taskPath(l), 'utf8')) as TaskMeta;
-  } catch {
-    return emptyTask(l.topic);
+    raw = await fs.readFile(taskPath(l), 'utf8');
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'missing' };
+    return { task: emptyTask(l.topic), state: 'unreadable', error: (e as Error).message };
   }
+  try {
+    return { task: JSON.parse(raw) as TaskMeta, state: 'ok' };
+  } catch (e) {
+    return { task: emptyTask(l.topic), state: 'unreadable', error: (e as Error).message };
+  }
+}
+
+/** 宽松版：读不到就当空。只给「缺数据也能继续」的调用方用（如 report） */
+export async function readTask(l: ArchiveLayout): Promise<TaskMeta> {
+  return (await readTaskStrict(l)).task;
 }
 
 /** 读 → 改 → 原子替换。调用方须持有主题锁（§12.6） */

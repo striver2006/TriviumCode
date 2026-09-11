@@ -229,7 +229,7 @@ export async function hookPreCommit(ctx: Ctx, input: HookInput): Promise<HookOut
 async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
   const { listTopics } = await import('./topic.js');
   const { checkRecordedArtifacts, checkRunManifests, listRecordedRuns } = await import('./archive.js');
-  const { readTask } = await import('./meta.js');
+  const { readTaskStrict } = await import('./meta.js');
   const { deletedOrModifiedTracked } = await import('./util/git.js');
 
   const problems: string[] = [];
@@ -262,11 +262,20 @@ async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
     const layout = { archiveRoot: ctx.archiveRoot, topic };
     const present = await listRecordedRuns(layout);
 
-    // ① 外部锚：task.json 登记过的 run，其 run.json 必须在、且必须可读
-    const task = await readTask(layout);
+    /*
+     * ── 锚 ②：task.json 登记过的 run，其 run.json 必须在、且必须可读 ──
+     *
+     * 锚自身也要可信（审查意见 AGY-01 ≡ GLM-02）：`task.json` **存在但读不出来**
+     * 意味着锚被搅坏了，必须按违例拦截；「不存在」则是正常（主题刚建、还没跑过）。
+     * 静默回落成空 task 等于「搅坏它就能整枝绕过」——正是我上一批刚修掉的那个毛病。
+     */
+    const t = await readTaskStrict(layout);
+    if (t.state === 'unreadable') {
+      problems.push(`  · 主题元数据不可读：${path.join(topic, 'task.json')}（${t.error ?? '解析失败'}）`);
+    }
     const manifests = await checkRunManifests(
       layout,
-      task.runs.map((r) => ({ run_id: r.run_id, stage: r.stage })),
+      t.task.runs.map((r) => ({ run_id: r.run_id, stage: r.stage })),
       present,
     );
     for (const t of manifests) {

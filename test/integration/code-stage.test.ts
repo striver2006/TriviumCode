@@ -246,3 +246,70 @@ test('未跟踪文件的引号路径也进补丁', { skip: bundleMissing && bund
   const diff = await fs.readFile(path.join(fx.codeDir, '_meta', 'changes.diff'), 'utf8');
   assert.match(diff, /含 空格\.ts/);
 });
+
+test('同主题连跑两次 code 审后仍能提交（审查意见 GLM-01，blocker）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await codeFixture();
+  // 夹具里 src/a.ts 本来就是 `export const a = 1;`，必须写成不同的内容才有变更
+  await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 111;\n', 'utf8');
+  const run1 = await runCode(fx.root, fx.codeDir);
+  assert.equal(run1.exitCode, EXIT.OK);
+
+  const { run } = await import('../../src/trivium/util/exec.js');
+  const hookEv = JSON.stringify({
+    session_id: 'S', tool_name: 'Bash', tool_input: { command: ['git', 'commit', '-m', 'x'].join(' ') },
+  });
+  const { BUNDLE, ASSET_ROOT } = await import('../helpers/fixture.js');
+  const preCommit = () =>
+    run(process.execPath, [BUNDLE, 'gate', 'hook-pre-commit'], {
+      cwd: fx.root,
+      env: { TRIVIUM_ASSET_ROOT: ASSET_ROOT, TRIVIUM_STUB_CRITIC: undefined },
+      stdin: hookEv, timeoutMs: 30_000,
+    });
+
+  const today2 = (await import('../helpers/fixture.js')).today();
+  /** 补一轮裁决并通过闸门校验，让拦截原因只可能剩「留痕不完整」 */
+  const adjudicate = async (runId: string, roundPrefix: string) => {
+    await fs.writeFile(
+      path.join(fx.codeDir, `${today2}-${TOPIC}-${roundPrefix}response-claude.md`),
+      [
+        '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: code',
+        'role: claude', 'kind: response', `run_id: ${runId}`,
+        'addresses:',
+        `  - ${today2}-${TOPIC}-${roundPrefix}gemini.md`,
+        `  - ${today2}-${TOPIC}-${roundPrefix}glm.md`,
+        '---', '',
+        '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改计划 |',
+        '| :--- | :--- | :--- | :--- | :--- | :--- |',
+        '| AGY-01 | gemini | blocker | 接受 | 桩数据 | 某处 |',
+        '| GLM-01 | glm | blocker | 接受 | 桩数据 | 某处 |',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const g = await cli(fx.root, ['gate', '--stage', 'code', '--topic', TOPIC, '--check']);
+    assert.equal(g.code, EXIT.OK, `第 ${roundPrefix || 'r1'} 轮裁决应通过：\n${g.stdout}${g.stderr}`);
+  };
+
+  await adjudicate(run1.meta.run_id, '');
+  assert.equal((await preCommit()).code, EXIT.OK, '第一轮之后应放行');
+
+  // 第二轮：被审补丁若是固定文件名，这里会把第一轮的覆盖掉
+  await fs.writeFile(path.join(fx.root, 'src/b.ts'), 'export const b = 2;\n', 'utf8');
+  const run2 = await runCode(fx.root, fx.codeDir);
+  assert.equal(run2.exitCode, EXIT.OK);
+  await adjudicate(run2.meta.run_id, 'r2-');
+
+  /*
+   * 这是 GLM-01 的核心：第一轮 run.json 记录了被审补丁的 sha256。若补丁是固定
+   * 文件名，第二轮一覆盖，第一轮的记录就**永远**对不上——hook 永久拦截且不可恢复
+   * （原文件已被覆盖，谁也拿不回来）。护栏误伤正常工作，比不加护栏更糟。
+   */
+  const r = await preCommit();
+  assert.equal(r.code, EXIT.OK, `第二轮之后不该被自己的护栏拦死：\n${r.stdout}${r.stderr}`);
+
+  // 两轮的被审补丁各自独立留存
+  const metas = await fs.readdir(path.join(fx.codeDir, '_meta'));
+  const perRun = metas.filter((f) => /^changes-.+\.diff$/.test(f));
+  assert.equal(perRun.length, 2, `每轮应各有一份补丁，实际：${metas.join(', ')}`);
+  assert.ok(metas.includes('changes.diff'), '便利副本仍在（人读用，不进保护集）');
+});

@@ -73,6 +73,9 @@ function splitDiffGitPaths(rest: string): [string, string] | null {
   return m ? [m[1]!, m[2]!] : null;
 }
 
+/** 本轮被审补丁的文件名。带 run_id，因此每轮各自独立、互不覆盖（审查意见 GLM-01） */
+export const diffFileName = (runId: string): string => `changes-${runId}.diff`;
+
 /** 找到从 `from` 起那个双引号字符串的收尾引号下标（跳过 \" 转义） */
 function findClosingQuote(s: string, from: number): number {
   for (let i = from + 1; i < s.length; i++) {

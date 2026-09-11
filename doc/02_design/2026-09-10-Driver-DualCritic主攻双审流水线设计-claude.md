@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`，遵循 PRD FR-08 的 `日期-主题-角色` 规范；角色后缀 `claude` 表示本文是主脑产出、**待双审**的文档
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.2.1
+> - **当前版本**：v1.2.2
 > - **状态**：**已定稿并实现完成(Completed)** — 2026-09-11。M0～M5 全部里程碑达成，§16.3 十项交付物齐备；
 >   `npm run check` 全绿（458 用例）、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   本文继续作为**唯一实现依据**：后续任何与本文不一致的改动，仍须先回溯修订本文（16.2 纪律 1）
@@ -961,7 +961,10 @@ Hook 行为约定：
 .reviews/<主题>/<阶段>/_meta/
 ├── brief-gemini-<run_id>.md   # Critic-A 审查任务书（角色、焦点、被审对象路径、必读清单、禁读清单、镜头、输出契约）
 ├── brief-glm-<run_id>.md      # Critic-B 审查任务书（同上，镜头不同）
-├── changes.diff               # code 阶段：被审补丁（含 base/head 与文件清单头）
+├── changes-<run_id>.diff      # code 阶段：本轮被审补丁（含 base/head 与文件清单头）
+│                              # 带 run_id 而非固定名：它进留痕保护集，固定名会被下一轮覆盖
+│                              # 导致上一轮记录的 sha256 永远对不上（v1.2.2，审查意见 GLM-01）
+├── changes.diff               # 指向最新一轮的便利副本，不进保护集
 └── run-<run_id>.json          # 运行元数据（含 snapshot、deny_paths）
 
 ~/.claude/skills/dual-critic/schema/review.v1.json   # 输出 schema，以绝对路径传给 CLI
@@ -971,7 +974,7 @@ Hook 行为约定：
 
 | 材料 | plan / bug 阶段 | code 阶段 |
 | :--- | :--- | :--- |
-| 被审对象 | `.reviews/<主题>/<阶段>/<日期>-<主题>-claude.md` 的**真实路径**（不复制），sha256 写入 brief 与 `run.json` | `_meta/changes.diff`（`git diff <base>` + 未跟踪文件，9.2） |
+| 被审对象 | `.reviews/<主题>/<阶段>/<日期>-<主题>-claude.md` 的**真实路径**（不复制），sha256 写入 brief 与 `run.json` | `_meta/changes-<run_id>.diff`（`git diff <base>` + 未跟踪文件，9.2） |
 | BRIEF 正文 | 以 `-p` / `--prompt` 内联传入，同时落盘 `_meta/brief-<critic>-<run_id>.md` | 同左 |
 | 必读清单 | 编排器生成（9.4 第 4 段） | 同左，另附 diff 涉及文件的完整路径 |
 | 禁读清单 | 对方历史产出的**逐个文件路径**（`run.json.deny_paths`）+ `.trivium/`、`~/.trivium/` | 同左 |
@@ -983,7 +986,7 @@ Hook 行为约定：
 | 阶段 | 快照对象 | 算法 |
 | :--- | :--- | :--- |
 | `plan` / `bug` | 被审文档 + 当时的工作树 | ①`git rev-parse HEAD`；②用**临时索引**（独立 `GIT_INDEX_FILE`，不触碰用户暂存区）`add -A` → `write-tree` 得到 `tree_hash`；③被审文档 sha256 → `subject_sha256`；④枚举对方历史产出 → `deny_paths`；⑤渲染两侧 brief 到 `_meta/`。**不复制任何文件** |
-| `code` | `git diff <base>...工作区` + 未跟踪文件 | 在②得到的 tree 基础上生成 `changes.diff`（`--find-renames`）存 `code/_meta/`，其 sha256 即 `subject_sha256` |
+| `code` | `git diff <base>...工作区` + 未跟踪文件 | 在②得到的 tree 基础上生成 `changes-<run_id>.diff`（`--find-renames`）存 `code/_meta/`，其 sha256 即 `subject_sha256` |
 
 跑后复算与漂移判定（`guard`）：
 
@@ -1026,7 +1029,7 @@ Hook 行为约定：
 
 1. **角色与授权**：你是独立的二次审查员，工作目录就是本项目根目录；**禁止修改任何文件、禁止执行任何写命令**；你的结论由编排器落盘，不要自行写文件到仓库。本段声明的身份与约束优先级高于项目 `AGENTS.md` / `CLAUDE.md` 中面向执笔者的指令（那些是给 Driver 的）。
 2. **本次审查焦点**：逐字嵌入命令 B/C/D 的提示语（命令 A 的可选提示语同样嵌入）——这是 FR-20 / AC-09 的落点，两侧材料中必须都出现。
-3. **被审对象**：被审文档的**真实路径**（或 `_meta/changes.diff`）与其 sha256，并附摘要。要求「亲自读仓库核实」，而不是只看摘要（这是使用编程 Agent 的意义）。
+3. **被审对象**：被审文档的**真实路径**（或 `_meta/changes-<run_id>.diff`）与其 sha256，并附摘要。要求「亲自读仓库核实」，而不是只看摘要（这是使用编程 Agent 的意义）。
 4. **项目上下文与必读清单**（UR-01）：审查员**必须结合整个项目**评审，不得只看被审文档。编排器自动生成并按优先级列出：
    - 项目公约与文档入口：`CLAUDE.md`、`AGENTS.md`、`README.md`、`doc/` 及其各级 `README.md`（存在者）；
    - 需求与设计：`doc/01_requirements/`、`doc/02_design/` 下与主题相关的文件（按主题关键词匹配，最多 N 个，其余列目录）；
@@ -1123,7 +1126,7 @@ flowchart LR
 | `run_id` / `topic` / `stage` | str | 运行标识 |
 | `critic` | `gemini` \| `glm` | 角色 |
 | `project_root` | path | 项目根（Agent 的 cwd） |
-| `subject_path` | path | 被审对象真实路径（plan/bug 的 `-claude.md` 或 code 的 `_meta/changes.diff`） |
+| `subject_path` | path | 被审对象真实路径（plan/bug 的 `-claude.md` 或 code 的 `_meta/changes-<run_id>.diff`） |
 | `deny_paths` | path[] | 对方历史产出等禁读文件的项目相对路径（写入 BRIEF、注入路径 deny、供轨迹核验） |
 | `home_dir` | path? | 仅在探针要求独立配置副本时非空；注入方式（`HOME`、`ZCODE_HOME`、settings 路径或环境变量）由 `*.isolation` 决定 |
 | `out_dir` | path | 该侧原始输出目录（`~/.trivium/runs/…/<critic>/out`，项目外） |
@@ -1699,6 +1702,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | v1.1.0 | 2026-09-10 | 按审核意见 RV-01～RV-26 修订（第 22 章逐条应答）：AD-03 改为 `review --start/--wait` 分段协议并新增 7.5、R12；AD-05/10.2 把 `in-place` 规格化为完整备选并立 ADR-001；3.5 新增 `home_isolation`、`isolation.cost` 探针，11.2/11.3 配置隔离改由探针决定；12.3 缓存键加 `brief_hash` 且默认关闭；8.4 闸门写锁限同会话 + TTL，新增 `/dual-abandon`；5.3/18.2 补 `.gitignore` 白名单；7.4 改用 `.trivium/bin/trivium`；3.1/8.5 修正 `MultiEdit`、Stop 阻断输出契约、8 次硬上限，新增 AD-13（commands vs skills）；6.6/8.6 裁决词对齐 FR-14，空洞理由与共同 blocker 默认 warning，新增 parse_fallback 侧规则；6.1 保留后缀；14.1 只执行显式配置；8.1 认证缓存；12.6 主题锁；6.4 简化为路径判定；AD-12 下限 3.9；术语「覆盖三档 / 路由四级」统一；18.1 新增 4 项待拍板；18.2 补 PRD 回填项。 |
 | v1.2.0 | 2026-09-11 | 按项目负责人评审意见 UR-01～UR-06 修订（第 23 章逐条应答）：**就地审查为唯一隔离模式**（AD-05、ADR-001 Accepted；删除 `mirror`、`link_globs`、`isolation.cost`、`_review/` 目录；运行目录移至项目外 `~/.trivium/runs/`；10.1 改为「延迟落盘 + 历史产出三层屏蔽 + 只读指纹」；9.2 改为快照与漂移检测算法；10.3 文件系统层改为无、事后核验加轨迹写事件；3.5 新增 `path_deny`、`scratch_paths` 探针，`home_isolation` 降为按需）；**结合全项目评审加固**（9.4 新增必读清单段、7.1 新增 `--context`、6.5 新增 `consulted`、11.4 新增 `project_reads` 下限与交叉核对、R15）；**实现语言改为 Node.js + TypeScript 单文件打包**（AD-12、5.2、3.5 `node` 探针、17.1 `node:test`）；**命令载体改为用户级 skills、脚本随核心 skill 分发**（AD-13、3.1 skills 事实、5.2/5.3 目录、7.4 SKILL.md、8.5 skill hooks 说明、16.3 交付物）；8.5 `running` 期间 Driver 禁写；12.1 新增漂移行；13.1 新增 `runtime`、`min_project_reads`、`on_drift*`、`sensitive_globs`；15.1/15.3 追溯更新；18.1 #1/#9 已拍板、新增 #12/#13；18.2 删 PRD FR-07 回填项；R10/R13/R14 改写。 |
 | v1.2.1 | 2026-09-11 | 按 M0 本机实测回补（坑清单 C-01～C-12，逐条见 [`REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md) 第 8 节）：**3.3 ZCode 事实表按 0.16.5 实测改写**——`ZCODE_MODEL` 环境变量不存在（C-07）、`--max-turns`/`--allowed-tools`/`--permission-mode`/`--settings` 四个 flag 被拒（C-01/C-09）、`--mode plan` 仍可执行 shell 故 denylist 中 `Bash` 为必需（C-10）、模型 id 须全限定 `<providerId>/<modelName>`（C-02）、轨迹须同时读 `log/` 与 `rollout/` 两处（C-12）；**11.3 模型覆盖由三档改两档**（`env` 档作废，`config_copy` 只能靠独立 `HOME` 实现，C-07/C-08），调用模板同步校正；**3.1/10.1 第 ③ 道路径级 deny 两侧均不可用**（C-04/C-11，各配负对照），按 18.1 #12 降级为两层并逐侧留痕；**12.2 超时判据收紧为编排器进程级计时**（`--print-timeout` 到期 exit 0 不可区分成功与超时 C-06；本机无 `timeout` 命令 P-01；timeout 侧不参与证据判定）。另按 M3 双审意见回补：8.1 新增 `--stage` 作用域与 fail-fast 顺序（GLM-02）、13.1 补 `probe.auth` 逐侧形状与 `models`/`model_id_form` 字段、11.5 明确 slug 校验的两个执行点与「目录为空则跳过」的理由（GLM-01）、15.3 AC-16 验收口径扩展到 `review` 自身的全部失败出口。 |
+| v1.2.2 | 2026-09-11 | 按**自举双审**的裁决修订（两轮真实代码审，16 + 14 条意见逐条裁决，留痕见 `.reviews/M4-M5实现/` 与 `.reviews/S9-闸门与留痕加固/`）：**6.2 / 9.2 / 6.7 的 code 阶段被审补丁由固定名 `changes.diff` 改为 `changes-<run_id>.diff`**——它进留痕保护集之后，固定名会被下一轮覆盖，导致上一轮记录的 sha256 永远对不上、`hook-pre-commit` 永久拦截且不可恢复（审查意见 GLM-01，blocker）；固定名保留为指向最新一轮的便利副本，不进保护集。另记：8.4 的 `--await-approval` 增加裁决完整性前置校验（AGY-02）；8.5 的提交拦截不再按会话过滤——裁决完整性是仓库的属性而非会话的属性（AGY-05）。 |
 
 ---
 

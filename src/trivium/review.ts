@@ -41,6 +41,7 @@ import {
   buildDiffHeader,
   classifyDiff,
   diffExcludePrefixes,
+  diffFileName,
   filesInDiff,
   renderSkipNotice,
   summarizeDiff,
@@ -271,8 +272,18 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     const files = filesInDiff(body);
     frozenDiffText = buildDiffHeader({ runId, base, head: await headSha(ctx.projectRoot), files }) + body;
     subjectText = frozenDiffText;
-    subjectPath = path.join(metaDir(ref.layout, stage), 'changes.diff');
-    pendingDiff = { fileName: 'changes.diff', text: frozenDiffText };
+    /*
+     * ── 补丁按轮次命名（审查意见 GLM-01，blocker）──
+     *
+     * 原先固定叫 `changes.diff`。它既被登进留痕保护集（GLM-r2-05），又走覆盖写，
+     * 于是同主题第二次代码审一覆盖，上一轮 run.json 记录的 sha256 就**永远**对不上，
+     * `hook-pre-commit` 永久拦截且无法恢复——原文件已被覆盖，谁也拿不回来。
+     * 我加的护栏会误伤正常工作，比不加更糟。
+     *
+     * 带 run_id 之后每一轮的被审对象各自独立、互不覆盖，与两侧审查文档一样受保护。
+     */
+    subjectPath = path.join(metaDir(ref.layout, stage), diffFileName(runId));
+    pendingDiff = { fileName: diffFileName(runId), text: frozenDiffText };
 
     // FR-23：判定由程序做，不由模型做（§6.4）
     skipVerdict = classifyDiff(cfg, files);
@@ -394,6 +405,13 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text);
     metaPaths.push(w.absPath);
     metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
+    /*
+     * 另留一份 `changes.diff` 便于人读（`.reviews/README.md` 记载的就是这个名字）。
+     * 它**不进保护集**：它只是指向最新一轮的便利副本，会被下一轮覆盖，
+     * 受保护的是上面那份带 run_id 的。补丁头部自带 run_id，不会认错是哪一轮。
+     */
+    const alias = await writeMeta(ref.layout, stage, 'changes.diff', pendingDiff.text);
+    metaPaths.push(alias.absPath);
   }
   for (const b of pendingBriefs) {
     const w = await writeMeta(ref.layout, stage, b.fileName, b.text);

@@ -72,7 +72,8 @@
 ├── brief-glm-<run_id>.md        # 必读清单、禁读清单、本侧审查镜头、输出契约
 ├── review-gemini-<run_id>.json  # 结构化审查结论原文（trivium.review.v1）
 ├── review-glm-<run_id>.json
-├── changes.diff                 # 仅 code 阶段：被审补丁
+├── changes-<run_id>.diff        # 仅 code 阶段：本轮被审补丁（受留痕核对保护）
+├── changes.diff                 # 指向最新一轮的便利副本（人读用，不进保护集）
 └── run-<run_id>.json            # 运行元数据（trivium.run.v1）：快照哈希、两侧生效模型、
                                  # 起止时间、工具轨迹计数、降级原因、只读与隔离核验结论
 ```
@@ -99,7 +100,7 @@
 │   ├── 2026-09-10-登录重构-gemini.md
 │   ├── 2026-09-10-登录重构-glm.md
 │   ├── 2026-09-10-登录重构-response-claude.md
-│   └── _meta/{changes.diff, brief-*.md, review-*.json, run-*.json}
+│   └── _meta/{changes-<run_id>.diff, changes.diff, brief-*.md, review-*.json, run-*.json}
 ├── bug/
 │   ├── 2026-09-10-登录超时-claude.md
 │   ├── 2026-09-10-登录超时-gemini.md

@@ -631,3 +631,43 @@ test('git 锚只管删除：task.json 与裁决件的正常改动不得误伤', 
   assert.match(r.stderr, /已被改动/);
   assert.ok(runId);
 });
+
+// ── 锚自身也要可信（审查意见 AGY-01 ≡ GLM-02 / GLM-08）──
+
+test('搅坏 task.json → 按违例拦截，而不是静默当成空', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await completedRound(fx.root, fx.stageDir);
+
+  /*
+   * task.json 是外部锚。`readTask` 原先对损坏一律静默回落 emptyTask，
+   * 于是搅坏它就能让锚失去全部对象——正是我上一批刚修掉的「清单来自被核对对象
+   * 自身」的同一个毛病，只不过换了个地方重演。
+   */
+  await fs.writeFile(path.join(fx.archiveRoot, TOPIC, 'task.json'), '{ 这不是 JSON', 'utf8');
+
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `锚被搅坏必须拦：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /主题元数据不可读/);
+});
+
+test('task.json 不存在是正常的，不拦', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  // 主题刚建、还没跑过任何审查：没有 task.json 是常态
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.OK, `「不存在」与「被搅坏」必须区别对待：\n${r.stderr}`);
+});
+
+test('把 run.json 挪到别的阶段目录也拦（审查意见 GLM-08）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await completedRound(fx.root, fx.stageDir);
+
+  // 只按 run_id 匹配的话，跨阶段挪动照样命中，期望路径与实际位置对不上却无人发现
+  const src = path.join(fx.stageDir, '_meta', `run-${runId}.json`);
+  const bugMeta = path.join(fx.archiveRoot, TOPIC, 'bug', '_meta');
+  await fs.mkdir(bugMeta, { recursive: true });
+  await fs.rename(src, path.join(bugMeta, `run-${runId}.json`));
+
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `清单位置不符也该拦：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /运行清单已丢失/);
+});
