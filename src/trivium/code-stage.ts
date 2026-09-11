@@ -7,6 +7,7 @@
  */
 import path from 'node:path';
 import { matchesAnyGlob } from './util/fsx.js';
+import { unquoteGitPath } from './util/git.js';
 import type { Config } from './types.js';
 
 /** 冻结后的补丁 */
@@ -31,14 +32,61 @@ export interface FrozenDiff {
 export function filesInDiff(diff: string): string[] {
   const out = new Set<string>();
   for (const line of diff.split('\n')) {
-    const m = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
-    if (!m) continue;
-    out.add(m[1]!);
-    out.add(m[2]!);
+    if (!line.startsWith('diff --git ')) continue;
+    const rest = line.slice('diff --git '.length);
+
+    /*
+     * 路径可能被引号包起来（审查意见 GLM-r2-06）。
+     *
+     * `core.quotePath=false` 只解决「可打印非 ASCII 被转成八进制」；路径含空格、
+     * 双引号、反斜杠或控制字符时 git **仍会**引起来。旧正则只认未加引号的形态，
+     * 这类文件会**从清单里消失**——而 `classifyDiff` 正是拿这份清单做 FR-23 判定：
+     * 一份「文档 + 引号路径业务文件」的 diff 会被判成 doc_only，
+     * 开了 skip_doc_only_review 时那个业务变更整只逃过审查。
+     * 方向性极差：错在漏审而非多审。
+     */
+    const pair = splitDiffGitPaths(rest);
+    if (!pair) continue;
+    out.add(stripPrefix(pair[0], 'a/'));
+    out.add(stripPrefix(pair[1], 'b/'));
   }
   // /dev/null 只会出现在 ---/+++ 行，这里不会混进来，但新增文件的 a/ 侧是同名路径
   return [...out].sort();
 }
+
+/** 把 `a/X b/Y` 拆成两段，两侧都可能带引号 */
+function splitDiffGitPaths(rest: string): [string, string] | null {
+  if (rest.startsWith('"')) {
+    // 引号形态：`"a/含 空格.ts" "b/含 空格.ts"` 或 `"a/x" b/y`
+    const end = findClosingQuote(rest, 0);
+    if (end === -1) return null;
+    const left = unquoteGitPath(rest.slice(0, end + 1));
+    const right = rest.slice(end + 1).trim();
+    return [left, right.startsWith('"') ? unquoteGitPath(right) : right];
+  }
+  // 未加引号：右侧若带引号，以 ` "b/` 为界；否则按 ` b/` 拆
+  const quotedRight = rest.indexOf(' "b/');
+  if (quotedRight !== -1) {
+    return [rest.slice(0, quotedRight), unquoteGitPath(rest.slice(quotedRight + 1))];
+  }
+  const m = /^(a\/.+?) (b\/.+)$/.exec(rest);
+  return m ? [m[1]!, m[2]!] : null;
+}
+
+/** 找到从 `from` 起那个双引号字符串的收尾引号下标（跳过 \" 转义） */
+function findClosingQuote(s: string, from: number): number {
+  for (let i = from + 1; i < s.length; i++) {
+    if (s[i] === '\\') {
+      i++;
+      continue;
+    }
+    if (s[i] === '"') return i;
+  }
+  return -1;
+}
+
+const stripPrefix = (p: string, prefix: string): string =>
+  p.startsWith(prefix) ? p.slice(prefix.length) : p;
 
 /**
  * 被审补丁必须无条件剔除的项目内路径。

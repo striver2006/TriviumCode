@@ -197,3 +197,48 @@ test('归档根在项目外时不当成项目内前缀', () => {
   assert.ok(!ex.some((p) => p.startsWith('..')), `不得包含上溯路径：${ex.join(', ')}`);
   assert.ok(ex.includes('.trivium'));
 });
+
+// ── 引号路径（审查意见 GLM-r2-06，形态取自实测）──
+
+test('含空格的路径：git 不加引号，靠 " b/" 分界', () => {
+  const diff = 'diff --git a/src/含 空格.ts b/src/含 空格.ts\n';
+  assert.deepEqual(filesInDiff(diff), ['src/含 空格.ts']);
+});
+
+test('含双引号的路径：两侧都被引起来并转义', () => {
+  // 实测形态：diff --git "a/src/带\"引号.ts" "b/src/带\"引号.ts"
+  const diff = 'diff --git "a/src/带\\"引号.ts" "b/src/带\\"引号.ts"\n';
+  assert.deepEqual(filesInDiff(diff), ['src/带"引号.ts']);
+});
+
+test('引号路径与普通路径混在一起都能认出来', () => {
+  const diff = [
+    'diff --git a/README.md b/README.md',
+    'diff --git "a/src/带\\"引号.ts" "b/src/带\\"引号.ts"',
+    'diff --git a/src/普通.ts b/src/普通.ts',
+  ].join('\n');
+  assert.deepEqual(filesInDiff(diff), ['README.md', 'src/带"引号.ts', 'src/普通.ts']);
+});
+
+test('引号路径的业务文件不得让整份 diff 被判成 doc_only', () => {
+  /*
+   * 这是 GLM-r2-06 真正的危害：清单漏掉引号路径 → classifyDiff 只看到文档
+   * → 判 doc_only → 开了 skip_doc_only_review 时那个业务变更整只逃过审查。
+   * 方向性极差：错在漏审而非多审。
+   */
+  const c = cfg();
+  c.review.skip_doc_only_review = true;
+  const diff = [
+    'diff --git a/README.md b/README.md',
+    'diff --git "a/src/带\\"引号.ts" "b/src/带\\"引号.ts"',
+  ].join('\n');
+  const v = classifyDiff(c, filesInDiff(diff));
+  assert.equal(v.skipped, false, '掺了业务文件就不能跳过');
+  assert.equal(v.category, 'business');
+  assert.deepEqual(v.nonDocPaths, ['src/带"引号.ts']);
+});
+
+test('重命名且带引号时两侧路径都收', () => {
+  const diff = 'diff --git "a/old 名.ts" "b/new 名.ts"\n';
+  assert.deepEqual(filesInDiff(diff), ['new 名.ts', 'old 名.ts']);
+});

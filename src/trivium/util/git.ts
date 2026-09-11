@@ -8,6 +8,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { run } from './exec.js';
+import { EXIT, TriviumError } from '../exit-codes.js';
 import { makeTempDir } from './fsx.js';
 
 export interface GitStatusEntry {
@@ -69,6 +70,23 @@ export async function workTreeHash(cwd: string): Promise<string> {
 }
 
 /** `git status --porcelain -uall` 的结构化结果，用于只读指纹与 scratch_paths 探针 */
+/**
+ * 还原 git 加过引号的路径。
+ *
+ * `core.quotePath=false` 只解决「可打印非 ASCII 被转成八进制」这一类；
+ * 路径里含空格、双引号、反斜杠或控制字符时，git **仍会**把整个路径引起来
+ * 并做 C 风格转义。不还原的话，路径会带着引号进入后续比对，或整行匹配不上。
+ */
+export function unquoteGitPath(p: string): string {
+  if (!(p.startsWith('"') && p.endsWith('"') && p.length >= 2)) return p;
+  try {
+    // C 风格转义与 JSON 字符串转义在这几种常见形态上一致
+    return JSON.parse(p) as string;
+  } catch {
+    return p.slice(1, -1);
+  }
+}
+
 export async function statusPorcelain(cwd: string): Promise<GitStatusEntry[]> {
   const r = await git(cwd, ['status', '--porcelain', '-uall']);
   if (r.code !== 0) return [];
@@ -81,15 +99,7 @@ export async function statusPorcelain(cwd: string): Promise<GitStatusEntry[]> {
       // 重命名形如 "old -> new"，取新路径
       const arrow = p.indexOf(' -> ');
       if (arrow !== -1) p = p.slice(arrow + 4);
-      // core.quotePath=false 后一般不会再加引号，但含空格/引号的路径仍会被引起来
-      if (p.startsWith('"') && p.endsWith('"')) {
-        try {
-          p = JSON.parse(p) as string;
-        } catch {
-          p = p.slice(1, -1);
-        }
-      }
-      return { status, path: p };
+      return { status, path: unquoteGitPath(p) };
     });
 }
 
@@ -124,11 +134,35 @@ export async function diffAgainst(
   // 用 pathspec 让 git 自己排除已跟踪文件的变更
   const pathspecs = excludePrefixes.map((p) => `:(exclude)${p.replace(/\/+$/, '')}/**`);
   const tracked = await git(cwd, ['diff', '--find-renames', base, '--', '.', ...pathspecs]);
-  let out = tracked.code === 0 ? tracked.stdout : '';
+  /*
+   * ── 非零退出必须抛，不能吞（审查意见 GLM-r2-04）──
+   *
+   * `--base` 是用户参数。拼错 ref、ref 被重写掉、git 环境异常时，原先
+   * `tracked.code === 0 ? tracked.stdout : ''` 会让**已跟踪变更全部消失**，
+   * 而未跟踪文件的 diff 仍让 body 非空——空判定不触发，一份缺失全部已跟踪变更的
+   * 残缺补丁带着错误的 `# base:` 照常物化成 changes.diff、成为两侧共同的
+   * subject_sha256。两侧「认真审完」的其实是一段不完整的变更。
+   */
+  if (tracked.code !== 0) {
+    throw new TriviumError(
+      EXIT.USAGE,
+      `\`git diff ${base}\` 失败（退出码 ${tracked.code}）。\n` +
+        `  ${tracked.stderr.trim().split('\n').slice(0, 3).join('\n  ')}\n` +
+        '  --base 是否写错？请给出一个存在的 ref。被审补丁在冻结前失败，未产生任何工件。',
+    );
+  }
+  let out = tracked.stdout;
 
   const untracked = await git(cwd, ['ls-files', '--others', '--exclude-standard']);
-  if (untracked.code === 0) {
-    for (const f of untracked.stdout.split('\n').filter(Boolean)) {
+  if (untracked.code !== 0) {
+    throw new TriviumError(
+      EXIT.ENV,
+      `枚举未跟踪文件失败（退出码 ${untracked.code}）：${untracked.stderr.trim().slice(0, 200)}\n` +
+        '  未跟踪文件也是被审变更的一部分，拿不到就不能声称补丁完整。',
+    );
+  }
+  {
+    for (const f of untracked.stdout.split('\n').filter(Boolean).map(unquoteGitPath)) {
       if (excluded(f)) continue;
       const d = await git(cwd, ['diff', '--no-index', '--find-renames', '/dev/null', f]);
       // --no-index 有差异时退出码为 1，属正常

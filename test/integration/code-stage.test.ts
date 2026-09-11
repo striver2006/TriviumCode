@@ -213,3 +213,36 @@ test('未提交的对方审查产出不得进补丁（经被审对象泄漏）',
   assert.doesNotMatch(diff, /\.trivium\//, '运行时状态不该进补丁');
   assert.match(diff, /src\/a\.ts/, '真正的代码变更仍须在内');
 });
+
+test('坏 --base → 在冻结前失败且零工件（审查意见 GLM-r2-04）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 5;\n', 'utf8');
+  // 造一个未跟踪文件：它的 diff 会让 body 非空，正是旧实现的空判定失效之处
+  await fs.writeFile(path.join(fx.root, 'src/未跟踪.ts'), 'export const u = 1;\n', 'utf8');
+
+  const before = await listFiles(fx.archiveRoot);
+  const r = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'code', '--topic', TOPIC, '--focus', 'x', '--base', '压根不存在的ref'],
+    STUB,
+  );
+
+  /*
+   * 旧实现吞掉 `git diff` 的非零退出：已跟踪变更全部消失，而未跟踪文件让 body
+   * 非空，于是一份**缺失全部已跟踪变更**的残缺补丁带着错误的 base 照常送审，
+   * 两侧「认真审完」的其实是一段不完整的变更。
+   */
+  assert.equal(r.code, EXIT.USAGE, `坏 base 应退 64：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout + r.stderr, /压根不存在的ref/, '要回显用户给的原值');
+  assert.deepEqual(await listFiles(fx.archiveRoot), before, '失败在冻结之前，不得留任何工件');
+});
+
+test('未跟踪文件的引号路径也进补丁', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/含 空格.ts'), 'export const s = 1;\n', 'utf8');
+
+  const { meta } = await runCode(fx.root, fx.codeDir);
+  assert.equal(meta.status, 'success');
+  const diff = await fs.readFile(path.join(fx.codeDir, '_meta', 'changes.diff'), 'utf8');
+  assert.match(diff, /含 空格\.ts/);
+});
