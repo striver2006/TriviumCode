@@ -16,7 +16,13 @@ import type { Config, CriticId, CriticRequest, CriticResult, Ctx, Review, Stage 
 import { CRITICS } from './types.js';
 import { agyAdapter } from './adapters/agy.js';
 import { zcodeAdapter } from './adapters/zcode.js';
-import { isHeterogeneous, routeModel, type AdapterContext } from './adapters/base.js';
+import {
+  isHeterogeneous,
+  routeModel,
+  type AdapterContext,
+  type CriticAdapter,
+} from './adapters/base.js';
+import { resolveAdapters } from './adapters/stub.js';
 import { freeze } from './freeze.js';
 import { buildMustReadList, excerptSubject, extractPathReferences, loadLenses, renderBrief } from './brief.js';
 import { parseReview, enumerateFallbackFindings } from './parse.js';
@@ -26,6 +32,7 @@ import { renderReviewDoc } from './render.js';
 import { resolveTopicReadOnly, locateSubject } from './topic.js';
 import { resolveRerunIndex, writeArtifact, writeMeta, metaDir } from './archive.js';
 import { newRunId, newRunMeta, registerRun, summarizeRun, writeRunMeta } from './meta.js';
+import { measureDivergence, renderDivergence } from './divergence.js';
 import { runRoot } from './config.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
 import { workTreeHash } from './util/git.js';
@@ -99,7 +106,7 @@ export interface RunContext {
   stage: Stage;
   ref: Awaited<ReturnType<typeof resolveTopicReadOnly>>;
   adapterCtx: AdapterContext;
-  adapters: Record<CriticId, typeof agyAdapter | typeof zcodeAdapter>;
+  adapters: Record<CriticId, CriticAdapter>;
   sides: CriticId[];
   runId: string;
   rerunIndex: number;
@@ -124,7 +131,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const schemaPath = path.join(assetRoot, 'schema/review.v1.json');
   const lensesPath = path.join(assetRoot, 'lenses.yaml');
 
-  const adapters = { gemini: agyAdapter, glm: zcodeAdapter } as const;
+  // 经工厂取适配器：TRIVIUM_STUB_CRITIC 在场时换成桩（测试用，生产路径会打醒目告警）
+  const adapters = resolveAdapters({ gemini: agyAdapter, glm: zcodeAdapter });
   const adapterCtx: AdapterContext = {
     cfg,
     nodePath: cfg.runtime.node ?? process.execPath,
@@ -475,6 +483,18 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
 
   say('');
   say(summarizeRun(meta));
+
+  /*
+   * 双审退化提示（§9.3）。放在这里而非 `report`，是因为它只对**本次**两侧结论有意义，
+   * 而 report 是跨轮复盘——真正需要看到「这次两家在看同一批地方」的人是刚跑完的 Driver。
+   * report 之后会按主题做跨轮汇总，两者不冲突。
+   */
+  if (sides.length === 2) {
+    const div = measureDivergence(reviews.gemini ?? null, reviews.glm ?? null);
+    say(renderDivergence(div));
+    if (div.degenerate) warnings.push('双审退化：两侧镜头重合度过高，见上方 Jaccard 提示');
+  }
+
   if (warnings.length > 0) {
     say('');
     for (const w of warnings) warn(w);

@@ -27,6 +27,7 @@ import { readRunMeta } from './meta.js';
 import { agyAdapter } from './adapters/agy.js';
 import { zcodeAdapter } from './adapters/zcode.js';
 import type { AdapterContext } from './adapters/base.js';
+import { resolveAdapters } from './adapters/stub.js';
 import { ensureDir, exists } from './util/fsx.js';
 import { processAlive, processStartTime, spawnDetached } from './util/exec.js';
 import { fail, say, step, warn } from './util/log.js';
@@ -138,7 +139,11 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
     stage: h.stage,
     ref,
     adapterCtx,
-    adapters: { gemini: agyAdapter, glm: zcodeAdapter },
+    /*
+     * worker 进程独立重建上下文，必须**同样**经工厂取适配器。
+     * 只在测试主进程里替换适配器对派生 worker 无效——故障注入会静默失效（审查意见 AGY-05）。
+     */
+    adapters: resolveAdapters({ gemini: agyAdapter, glm: zcodeAdapter }),
     sides: h.sides,
     runId: h.run_id,
     rerunIndex: h.rerun_index,
