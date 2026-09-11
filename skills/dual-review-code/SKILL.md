@@ -37,7 +37,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 先运行：
 
 ```
-TV review --start --stage code --topic <主题> --focus <提示语> [--goal <任务目标>] [--base <ref>] [--context …] --json
+TV review --start --stage code --topic <主题> --focus <提示语> [--goal <任务目标>] [--base <ref>] [--model-gemini <slug>] [--model-glm <id>] [--context …] --json
 ```
 
 若上一步 resolve 输出的 `task_goal` 非空，把它原样传给 `--goal`。它与 `--focus` 是两回事：
@@ -50,6 +50,11 @@ resolve 总是输出该字段（用户没传时它就是 `HEAD`），而显式�
 （含已暂存、未暂存、未跟踪文件），不是 merge-base 语义。
 **漏传不会报错，只会静默错审**：补丁悄悄退回 `git diff HEAD`，两侧审查员读到的变更范围
 与用户以为送审的对不上，而留痕里记的 base 看起来一切正常。
+
+若 resolve 输出的 `models` 字段非空，把其中的模型覆盖原样传给 `--model-gemini` /
+`--model-glm`。**用户指定的模型只在这一步才真正生效**——独立的 `preflight` 看不到
+步骤 3 才传来的覆盖值（`review.ts` 的 slug 校验注释写明了这点），漏传会静默回退到
+profile 配置模型，且留痕里记的就是回退后的模型，事后看不出用户曾经指定过。
 
 它会冻结送审包、派生工作进程后**立即返回**，输出含 `run_id`、`max_waits`、
 `wait_timeout_s` 与 `bash_timeout_ms`。

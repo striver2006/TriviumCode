@@ -37,12 +37,22 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 先运行：
 
 ```
-TV review --start --stage plan --topic <主题> --focus <提示语> [--goal <任务目标>] [--context …] --json
+TV review --start --stage plan --topic <主题> --focus <提示语> [--goal <任务目标>] [--plan-file <路径>] [--model-gemini <slug>] [--model-glm <id>] [--context …] --json
 ```
 
 若上一步 resolve 输出的 `task_goal` 非空，把它原样传给 `--goal`。它与 `--focus` 是两回事：
 前者说「这次要达成什么」，进 BRIEF 第 4 段；后者说「这次重点看什么」，进第 2 段。
 省略 `--goal` 时编排器会回退到 `task.json` 已记录的目标或同主题 plan 原稿。
+
+若 resolve 输出的 `subject_path` 非空，把它原样传给 `--plan-file`。
+resolve 用它定位被审对象，而 `--start` 会**重新定位一次**——不传就自动取
+`plan/` 下最新的一份原稿，用户显式指定的那份会被静默换掉，
+而 resolve 阶段的存在性校验反倒让一切看起来正常。
+
+若 resolve 输出的 `models` 字段非空，把其中的模型覆盖原样传给 `--model-gemini` /
+`--model-glm`。**用户指定的模型只在这一步才真正生效**——独立的 `preflight` 看不到
+步骤 3 才传来的覆盖值（`review.ts` 的 slug 校验注释写明了这点），漏传会静默回退到
+profile 配置模型，且留痕里记的就是回退后的模型，事后看不出用户曾经指定过。
 
 它会冻结送审包、派生工作进程后**立即返回**，输出含 `run_id`、`max_waits`、
 `wait_timeout_s` 与 `bash_timeout_ms`。

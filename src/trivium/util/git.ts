@@ -207,8 +207,33 @@ export async function diffAgainst(
   {
     for (const f of untracked.stdout.split('\n').filter(Boolean).map(unquoteGitPath)) {
       if (excluded(f)) continue;
-      const d = await git(cwd, ['diff', '--no-index', '--find-renames', '/dev/null', f]);
-      // --no-index 有差异时退出码为 1，属正常
+      /*
+       * ── `--` 分隔符不是装饰（审查意见 GLM-04）──
+       *
+       * `ls-files` 输出的是不带 `./` 的相对路径，仓库根下一个名为 `-weird.txt`
+       * 的未跟踪文件会被 git 当成选项：实测退出码 129、stdout 为空。
+       * 少了这个分隔符，该文件就从补丁里静默消失。
+       */
+      const d = await git(cwd, ['diff', '--no-index', '--find-renames', '--', '/dev/null', f]);
+      /*
+       * ── 退出码不足以判定成败，要合看 stdout/stderr ──
+       *
+       * `--no-index` 有差异时退出码为 1（正常），空文件无内容差异时为 0（也正常）。
+       * 但文件在 `ls-files` 枚举之后、diff 之前被删掉时**同样是 1**，只是
+       * stdout 为空而 stderr 为 `error: Could not access '<f>'`——单看退出码
+       * 区分不出来。沿用本函数上方 tracked 分支确立的原则（GLM-r2-04）：
+       * 拿不到就不能声称补丁完整，宁可整次失败也不产出残缺补丁。
+       *
+       * `code === null` 是进程被信号终止（如 OOM kill），同样拿不到完整输出。
+       */
+      if (d.code === null || d.code > 1 || (d.code === 1 && !d.stdout && d.stderr.trim())) {
+        throw new TriviumError(
+          EXIT.ENV,
+          `未跟踪文件 ${f} 的补丁生成失败（${d.code === null ? '被信号终止' : `退出码 ${d.code}`}）：` +
+            `${d.stderr.trim().slice(0, 200)}\n` +
+            '  它是被审变更的一部分，漏掉它等于让两侧审查一段不完整的补丁。',
+        );
+      }
       if (d.stdout) out += d.stdout;
     }
   }

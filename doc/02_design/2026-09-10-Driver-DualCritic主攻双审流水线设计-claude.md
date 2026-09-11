@@ -993,7 +993,7 @@ Hook 行为约定：
 | 阶段 | 快照对象 | 算法 |
 | :--- | :--- | :--- |
 | `plan` / `bug` | 被审文档 + 当时的工作树 | ①`git rev-parse HEAD`；②用**临时索引**（独立 `GIT_INDEX_FILE`，不触碰用户暂存区）`add -A` → `write-tree` 得到 `tree_hash`；③被审文档 sha256 → `subject_sha256`；④枚举对方历史产出 → `deny_paths`；⑤渲染两侧 brief 到 `_meta/`。**不复制任何文件** |
-| `code` | `git diff <base>`（两点：base 树 vs 工作区）+ 未跟踪文件 | 在②得到的 tree 基础上生成 `changes-<run_id>.diff`（`--find-renames`）存 `code/_meta/`，其 sha256 即 `subject_sha256` |
+| `code` | `git diff <base>`（两点：base 树 vs 工作区）+ 未跟踪文件 | **不经②的 tree**：直接两点 `git diff <base> --find-renames` 对实时工作区（含已暂存/未暂存），未跟踪文件再逐个 `--no-index` 追加，并无条件剔除 `.reviews/` `.trivium/` `.git/`（②的 tree 反而**包含**前两者下的未跟踪文件，两者不等价）。产物 `changes-<run_id>.diff` 存 `code/_meta/`，其 sha256 即 `subject_sha256`；②的 tree 只用于跑后 `tree_hash'` 漂移复算 |
 
 跑后复算与漂移判定（`guard`）：
 

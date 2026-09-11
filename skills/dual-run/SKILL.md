@@ -34,6 +34,9 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
 **把本命令的首参（任务目标）原样传给 `--goal`**——它在这里落进 `task.json`，
 之后 S6 代码双审、乃至后续 bug 定位都会自动复用，审查员才知道这次改动要达成什么（§9.4）。
 **每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`（600000）。**
+**本命令收到的模型覆盖（`--model-gemini` / `--model-glm`）要一并传下去。**
+S2/S6 是委托执行，交接处最容易把它们丢掉——一丢就静默回退到 profile 配置模型，
+留痕里记的是回退后的模型，事后看不出用户曾经指定过。
 
 ### S3 修订计划
 读两份审查全文，写 `…-revised-claude.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
@@ -45,7 +48,9 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
 
 ### S6 代码双审
-同 S2，但 `--stage code`。被审对象是 `git diff`，不是文档。
+同 S2（含模型覆盖的透传），但 `--stage code`。被审对象是 `git diff`，不是文档。
+比较基线默认 `HEAD`，即「尚未提交的全部改动」；S5 若已经提交过，
+要按 `/dual-review-code` 第 3 步的说明显式给出 `--base`，否则补丁为空会退 65。
 
 ### S7 应答确认
 写 `…-response-claude.md`，逐条「接受/驳回/暂缓 + 理由 + 修改计划」。
