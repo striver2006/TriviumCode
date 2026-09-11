@@ -314,3 +314,189 @@ test('gate.block_commit 为 false 时完全不拦（用户显式关掉的开关�
   const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
   assert.equal(r.code, EXIT.OK, '配置关掉了拦截就该真的不拦——护栏也要可被知情地关掉');
 });
+
+// ── 闸门状态机的三种绕过序列（审查意见 GLM-r2-01）──
+
+test('旧轮未裁决就重跑 → 拒绝启动，并指出两条正当出路', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await runPlan(fx.root); // r1 审完，闸门停在 review_done_awaiting_disposition
+
+  const again = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION],
+    STUB,
+  );
+  /*
+   * 无条件覆盖会把 r1 的待裁决状态无声抹掉，而 gate --check 只校验最新轮——
+   * r1 从此既逃过裁决、也不再拦提交。
+   */
+  assert.equal(again.code, EXIT.GATE_BLOCK, `应拒绝启动：\n${again.stdout}${again.stderr}`);
+  const out = again.stdout + again.stderr;
+  assert.match(out, /尚未裁决/);
+  assert.match(out, /gate .*--check/, '要给出补裁决这条路');
+  assert.match(out, /abandon/, '也要给出显式作废这条路');
+
+  // 闸门没被动过
+  const st = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
+    gates: Record<string, { state: string }>;
+  };
+  assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'review_done_awaiting_disposition');
+});
+
+test('显式 abandon 之后可以重跑', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await runPlan(fx.root);
+
+  const ab = await cli(fx.root, ['abandon', '--topic', TOPIC, '--stage', 'plan', '--reason', '换个焦点重来']);
+  assert.equal(ab.code, EXIT.OK, `${ab.stdout}${ab.stderr}`);
+
+  const again = await runPlan(fx.root);
+  assert.ok(again, '作废之后应能正常重跑');
+  // 首轮工件仍在：abandon 只解闸门、不动工件
+  const docs = await fs.readdir(fx.stageDir);
+  assert.ok(docs.some((f) => f.endsWith('-gemini.md') && !f.includes('-r2-')));
+  assert.ok(docs.some((f) => f.includes('-r2-')));
+});
+
+test('gate --check 放行只动本轮闸门，不清掉已接管的新一轮', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root);
+  await writeDisposition(fx.stageDir, runId);
+
+  // 手工把闸门改成「新一轮 R-NEW 正在跑」，模拟 r2 已 --start
+  const statePath = path.join(fx.root, '.trivium/state.json');
+  const st = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
+    gates: Record<string, { state: string; run_id: string; since: string }>;
+  };
+  st.gates[`${TOPIC}/plan`]!.state = 'running';
+  st.gates[`${TOPIC}/plan`]!.run_id = 'R-NEW';
+  st.gates[`${TOPIC}/plan`]!.since = new Date().toISOString();
+  await fs.writeFile(statePath, JSON.stringify(st, null, 2));
+
+  // 对**旧**一轮跑 gate --check：校验本身应通过，但不能把 R-NEW 的护栏清掉
+  const check = await cli(
+    fx.root,
+    ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--run-id', runId, '--session-id', SESSION],
+  );
+  assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
+
+  const after = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
+    gates: Record<string, { state: string; run_id: string }>;
+  };
+  assert.equal(after.gates[`${TOPIC}/plan`]?.state, 'running', '新一轮的 running 不得被旧轮放行清掉');
+  assert.equal(after.gates[`${TOPIC}/plan`]?.run_id, 'R-NEW');
+});
+
+test('--cancel 旧 run 不清掉新一轮的闸门', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    { gemini: { mode: 'timeout' }, glm: { mode: 'timeout' } },
+  );
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string };
+
+  // 模拟新一轮已接管
+  const statePath = path.join(fx.root, '.trivium/state.json');
+  const st = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
+    gates: Record<string, { state: string; run_id: string }>;
+  };
+  st.gates[`${TOPIC}/plan`]!.run_id = 'R-NEW';
+  await fs.writeFile(statePath, JSON.stringify(st, null, 2));
+
+  await cli(fx.root, ['review', '--cancel', js.run_id]);
+
+  const after = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
+    gates: Record<string, { state: string; run_id: string }>;
+  };
+  /*
+   * 「先 --cancel 旧的，再 --start 新的」是正常序列。不比对 run_id 的话，
+   * 取消一个早已失联的旧 run 会把正在跑的新一轮护栏一并清掉。
+   */
+  assert.equal(after.gates[`${TOPIC}/plan`]?.state, 'running', '新一轮护栏不得被旧 run 的取消清掉');
+  assert.equal(after.gates[`${TOPIC}/plan`]?.run_id, 'R-NEW');
+});
+
+// ── worker 异常路径回收闸门（审查意见 GLM-r2-02 ≡ AGY-01）──
+
+test('worker 被杀后 --wait 判 worker_lost，并回收 running 闸门', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    // 让 worker 挂着，好在它干活时把它杀掉
+    { gemini: { mode: 'timeout' }, glm: { mode: 'timeout' } },
+  );
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as {
+    run_id: string; worker_pid: number;
+  };
+
+  const statePath = path.join(fx.root, '.trivium/state.json');
+  const before = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
+    gates: Record<string, { state: string }>;
+  };
+  assert.equal(before.gates[`${TOPIC}/plan`]?.state, 'running');
+
+  // 硬杀整个进程组，模拟崩溃/断电——不给 worker 任何收尾机会
+  const { killProcessTree } = await import('../../src/trivium/util/exec.js');
+  killProcessTree(js.worker_pid, 'SIGKILL');
+  await new Promise((r) => setTimeout(r, 500));
+
+  const w = await cli(fx.root, ['review', '--wait', js.run_id, '--timeout', '20'], null, 60_000);
+  assert.notEqual(w.code, EXIT.OK);
+  assert.match(w.stdout + w.stderr, /失联|worker_lost/);
+
+  const after = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
+    gates: Record<string, { state: string }>;
+  };
+  /*
+   * 不回收的话，业务写锁要一直挂到 24h TTL——正是 executeRun 注释里写的
+   * 「比不拦更糟，因为人会去改配置绕开 Hook」的形态。
+   */
+  assert.equal(after.gates[`${TOPIC}/plan`]?.state, 'idle', 'worker 没了就该回收闸门');
+
+  // 回收之后业务写入立刻恢复
+  const write = await hook(fx.root, 'hook-pre-write', writeEvent(path.join(fx.root, 'src/a.ts')));
+  assert.equal(write.code, EXIT.OK, `闸门已回收，写入应放行：\n${write.stderr}`);
+});
+
+// ── --await-approval 不能绕过裁决（审查意见 AGY-02）──
+
+test('裁决未齐备时 --await-approval 被拒，堵死「跳过裁决直接审批」', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await runPlan(fx.root); // 审完，但不写裁决件
+
+  const aw = await cli(
+    fx.root,
+    ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--session-id', SESSION],
+  );
+  /*
+   * 原先这里只 setGate、不做任何检查：直接 --await-approval 再 approve，
+   * 就能把逐条裁决与工件核验整段跳过。人工审批是加在「机器已确认裁决齐备」之上的
+   * 一道，不是它的替代品。
+   */
+  assert.equal(aw.code, EXIT.GATE_BLOCK, `应被拒：\n${aw.stdout}${aw.stderr}`);
+  assert.match(aw.stdout + aw.stderr, /裁决尚未齐备/);
+
+  // 闸门没被改成 awaiting_approval
+  const st = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
+    gates: Record<string, { state: string }>;
+  };
+  assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'review_done_awaiting_disposition');
+});
+
+test('裁决齐备后 --await-approval 正常置闸门', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root);
+  await writeDisposition(fx.stageDir, runId);
+
+  const aw = await cli(
+    fx.root,
+    ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--session-id', SESSION],
+  );
+  assert.equal(aw.code, EXIT.OK, `${aw.stdout}${aw.stderr}`);
+  const st = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
+    gates: Record<string, { state: string }>;
+  };
+  assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'awaiting_approval');
+});

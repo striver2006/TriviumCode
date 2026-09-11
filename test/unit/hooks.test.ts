@@ -151,13 +151,21 @@ test('本会话有未裁决阶段时拦提交并说明缺什么', async () => {
   assert.match(r.stderr ?? '', /gate\.block_commit: false/, '应告知如何关闭');
 });
 
-test('其它会话的未裁决阶段不拦本会话提交', async () => {
+test('未裁决即拦提交，**不分会话**（审查意见 AGY-05）', async () => {
   const ctx = await fakeCtx();
   await setGate({
     triviumDir: ctx.triviumDir, topic: 't', stage: 'code',
     state: 'review_done_awaiting_disposition', sessionId: 'S-OTHER', heartbeatStaleMs: STALE,
   });
-  assert.equal((await hookPreCommit(ctx, { session_id: SESSION })).exitCode, EXIT.OK);
+  /*
+   * 写锁按会话是 RV-05 的刻意设计（避免跨会话误伤），但「裁决是否齐备」是
+   * **仓库的属性、不是会话的属性**——换个会话、或直接在终端里 git commit，
+   * 未裁决的意见并不会因此变成已裁决。旧行为在这里放行，等于留了一条
+   * 「换个会话就能提交」的绕过路径。
+   */
+  assert.equal((await hookPreCommit(ctx, { session_id: SESSION })).exitCode, EXIT.GATE_BLOCK);
+  // 连 session_id 都没有（纯终端提交）同样拦
+  assert.equal((await hookPreCommit(ctx, {})).exitCode, EXIT.GATE_BLOCK);
 });
 
 test('等待审批的闸门不拦提交（那不是「裁决未完成」）', async () => {

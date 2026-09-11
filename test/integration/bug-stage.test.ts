@@ -117,6 +117,10 @@ test('bug 阶段重跑抬升 -r2，原文件不覆盖', { skip: bundleMissing &&
   const first = path.join(fx.bugDir, `${today()}-${TOPIC}-gemini.md`);
   const bytes = await fs.readFile(first);
 
+  // 未裁决就重跑会被闸门挡下（GLM-r2-01 ③），显式作废那一轮
+  const ab = await cli(fx.root, ['abandon', '--topic', TOPIC, '--stage', 'bug', '--reason', '重跑用例']);
+  assert.equal(ab.code, EXIT.OK, `${ab.stdout}${ab.stderr}`);
+
   await runStage(fx.root, 'bug', fx.bugDir);
   assert.deepEqual(await fs.readFile(first), bytes);
   const docs = await fs.readdir(fx.bugDir);

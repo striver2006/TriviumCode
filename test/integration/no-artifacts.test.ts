@@ -187,6 +187,13 @@ test('草稿已有且成功跑完 → 重跑抬升 -r2，原文件字节不变�
   };
 
   await runOnce();
+  /*
+   * 上一轮审完未裁决时，重跑会被闸门挡下（审查意见 GLM-r2-01 ③）——
+   * 否则待裁决状态会被无声抹掉、那一轮从此逃过裁决。
+   * 这里显式作废它，模拟「这一轮不要了，重来」的正当操作。
+   */
+  const ab = await cli(fx.root, ['abandon', '--topic', TOPIC, '--stage', 'plan', '--reason', '重跑用例']);
+  assert.equal(ab.code, EXIT.OK, `abandon 应成功：\n${ab.stdout}${ab.stderr}`);
   const first = path.join(fx.stageDir, `${today()}-${TOPIC}-gemini.md`);
   const firstBytes = await fs.readFile(first);
 

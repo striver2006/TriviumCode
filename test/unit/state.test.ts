@@ -4,7 +4,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
-  setGate, getGate, listOpenGates, readState, shouldLockWrites, gateKey, type GateEntry,
+  setGate,
+  setGateChecked, getGate, listOpenGates, readState, shouldLockWrites, gateKey, type GateEntry,
 } from '../../src/trivium/state.js';
 
 const STALE = 120_000;
@@ -159,4 +160,81 @@ test('闸门时间戳损坏 → 不加锁（宁可放过也不误伤）', () => 
   });
   assert.equal(r.lock, false);
   assert.match(r.reason, /不可解析/);
+});
+
+// ── 条件迁移（审查意见 GLM-r2-01）──
+
+test('expect.state 不匹配时不写入，并说明原因', async () => {
+  const dir = await tmp();
+  await setGate({ triviumDir: dir, topic: 't', stage: 'plan', state: 'running', runId: 'R1', heartbeatStaleMs: STALE });
+
+  const r = await setGateChecked({
+    triviumDir: dir, topic: 't', stage: 'plan', state: 'idle', runId: 'R1',
+    heartbeatStaleMs: STALE, expect: { state: ['review_done_awaiting_disposition'] },
+  });
+  assert.equal(r.applied, false);
+  assert.match(r.skipped ?? '', /当前状态为 running/);
+  assert.equal((await getGate(dir, 't', 'plan'))!.state, 'running', '未匹配时原状态必须保持');
+});
+
+test('expect.runId 不匹配时不写入——新一轮的护栏不该被旧 run 清掉', async () => {
+  const dir = await tmp();
+  // 新一轮 R2 已接管
+  await setGate({ triviumDir: dir, topic: 't', stage: 'plan', state: 'running', runId: 'R2', heartbeatStaleMs: STALE });
+
+  // 旧 run R1 的收尾/取消试图把闸门清成 idle
+  const r = await setGateChecked({
+    triviumDir: dir, topic: 't', stage: 'plan', state: 'idle', runId: 'R1',
+    heartbeatStaleMs: STALE, expect: { runId: 'R1' },
+  });
+  assert.equal(r.applied, false);
+  assert.match(r.skipped ?? '', /闸门当前记着 run R2/);
+  assert.equal((await getGate(dir, 't', 'plan'))!.state, 'running');
+  assert.equal((await getGate(dir, 't', 'plan'))!.run_id, 'R2');
+});
+
+test('expect 匹配时正常写入', async () => {
+  const dir = await tmp();
+  await setGate({ triviumDir: dir, topic: 't', stage: 'plan', state: 'running', runId: 'R1', heartbeatStaleMs: STALE });
+  const r = await setGateChecked({
+    triviumDir: dir, topic: 't', stage: 'plan', state: 'idle', runId: 'R1',
+    heartbeatStaleMs: STALE, expect: { state: ['running'], runId: 'R1' },
+  });
+  assert.equal(r.applied, true);
+  assert.equal((await getGate(dir, 't', 'plan'))!.state, 'idle');
+});
+
+test('闸门不存在时默认放行——首次置 running 的槽位本来就是空的', async () => {
+  const dir = await tmp();
+  const ok = await setGateChecked({
+    triviumDir: dir, topic: 't', stage: 'plan', state: 'running', runId: 'R1',
+    heartbeatStaleMs: STALE, expect: { state: ['idle'] },
+  });
+  assert.equal(ok.applied, true);
+
+  const dir2 = await tmp();
+  const no = await setGateChecked({
+    triviumDir: dir2, topic: 't', stage: 'plan', state: 'idle', runId: 'R1',
+    heartbeatStaleMs: STALE, expect: { state: ['running'], allowMissing: false },
+  });
+  assert.equal(no.applied, false);
+  assert.match(no.skipped ?? '', /闸门不存在/);
+});
+
+test('比较与写入在同一把锁内：并发的条件迁移只会成功一个', async () => {
+  const dir = await tmp();
+  await setGate({ triviumDir: dir, topic: 't', stage: 'plan', state: 'running', runId: 'R1', heartbeatStaleMs: STALE });
+
+  // 两个都期望 running → 只该有一个真正翻转（check-then-act 会两个都成功）
+  const results = await Promise.all([
+    setGateChecked({
+      triviumDir: dir, topic: 't', stage: 'plan', state: 'idle', runId: 'R1',
+      heartbeatStaleMs: STALE, expect: { state: ['running'], runId: 'R1' },
+    }),
+    setGateChecked({
+      triviumDir: dir, topic: 't', stage: 'plan', state: 'abandoned', runId: 'R1',
+      heartbeatStaleMs: STALE, expect: { state: ['running'], runId: 'R1' },
+    }),
+  ]);
+  assert.equal(results.filter((r) => r.applied).length, 1, '只该有一个成功翻转');
 });

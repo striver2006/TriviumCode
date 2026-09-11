@@ -96,14 +96,74 @@ export interface SetGateInput {
   rerunIndex?: number;
   sessionId?: string | null;
   heartbeatStaleMs: number;
+  /**
+   * 条件迁移：只有当前闸门满足 `expect` 时才写入（审查意见 GLM-r2-01）。
+   *
+   * `state.json` 每个 `<主题>/<阶段>` 只有**一个槽位**，而无条件覆盖会让三种
+   * 正常操作序列把**正在跑的那一轮**的护栏悄悄清掉：
+   *   ① 对旧一轮 `gate --check` 放行 → 把新一轮的 `running` 覆写成 `idle`；
+   *   ② `--cancel` 一个早已失联的旧 run → 连带清掉新一轮的护栏
+   *      （「先取消旧的再起新的」是正常序列）；
+   *   ③ 旧一轮尚未裁决就直接重跑 → 待裁决状态被无声抹掉，旧轮从此逃过裁决。
+   *
+   * 对照：`cancelRun` 回收**锁**时一直有 `existing.run_id === runId` 守卫，
+   * 回收闸门却没有——同一个函数里两套标准。
+   */
+  expect?: {
+    /** 当前状态必须是其中之一；省略表示不限 */
+    state?: readonly GateState[];
+    /** 当前 run_id 必须等于它；`null` 表示「必须没有 run_id」 */
+    runId?: string | null;
+    /** 闸门不存在时是否放行。默认 true——首次置 running 时槽位本来就是空的 */
+    allowMissing?: boolean;
+  };
 }
 
-export async function setGate(i: SetGateInput): Promise<GateEntry> {
+export interface SetGateResult {
+  /** 是否真的写入了 */
+  applied: boolean;
+  /** 写入后的条目；未写入时是原样的当前条目（可能为 null） */
+  entry: GateEntry | null;
+  /** 未写入的原因，供调用方决定是告警还是静默 */
+  skipped?: string;
+}
+
+/**
+ * 写闸门。带 `expect` 时是**比较-交换**，比较与写入都在同一把全局锁内完成，
+ * 因此不存在 check-then-act 的竞态窗口。
+ */
+export async function setGateChecked(i: SetGateInput): Promise<SetGateResult> {
   const key = gateKey(i.topic, i.stage);
-  let entry!: GateEntry;
+  let result: SetGateResult = { applied: false, entry: null };
+
   await updateState(i.triviumDir, i.topic, i.heartbeatStaleMs, (s) => {
-    const prev = s.gates[key];
-    entry = {
+    const prev = s.gates[key] ?? null;
+
+    if (i.expect) {
+      if (!prev) {
+        if (i.expect.allowMissing === false) {
+          result = { applied: false, entry: null, skipped: '闸门不存在' };
+          return;
+        }
+      } else {
+        if (i.expect.state && !i.expect.state.includes(prev.state)) {
+          result = {
+            applied: false, entry: prev,
+            skipped: `当前状态为 ${prev.state}，不在期望的 ${i.expect.state.join('/')} 之内`,
+          };
+          return;
+        }
+        if (i.expect.runId !== undefined && prev.run_id !== i.expect.runId) {
+          result = {
+            applied: false, entry: prev,
+            skipped: `闸门当前记着 run ${prev.run_id ?? '（无）'}，不是 ${i.expect.runId ?? '（无）'}`,
+          };
+          return;
+        }
+      }
+    }
+
+    const entry: GateEntry = {
       topic: i.topic,
       stage: i.stage,
       state: i.state,
@@ -114,8 +174,16 @@ export async function setGate(i: SetGateInput): Promise<GateEntry> {
       session_id: i.sessionId ?? prev?.session_id ?? null,
     };
     s.gates[key] = entry;
+    result = { applied: true, entry };
   });
-  return entry;
+
+  return result;
+}
+
+/** 无条件写入。只用于「这一步就是要覆盖」的场合，其余一律走 `setGateChecked` */
+export async function setGate(i: SetGateInput): Promise<GateEntry> {
+  const r = await setGateChecked(i);
+  return r.entry!;
 }
 
 export async function getGate(

@@ -194,13 +194,15 @@ export async function hookPreCommit(ctx: Ctx, input: HookInput): Promise<HookOut
   if (input.tool_name === 'Bash' && !looksLikeCommit(input)) return ALLOW;
 
   const open = await listOpenGates(ctx.triviumDir);
-  const pending = open.filter(
-    (g) =>
-      g.state === 'review_done_awaiting_disposition' &&
-      // 无活跃流水线主题一律放行；只拦本会话的
-      (ctx.config.gate.approval_lock_scope === 'global' ||
-        (g.session_id !== null && g.session_id === (input.session_id ?? null))),
-  );
+  /*
+   * **不按会话过滤**（审查意见 AGY-05）。
+   *
+   * 写锁按会话是 RV-05 的刻意设计——避免 A 会话的闸门误伤 B 会话正在做的无关工作。
+   * 但「裁决是否齐备」是**仓库的属性，不是会话的属性**：换个会话、或直接在终端里
+   * `git commit`，未裁决的审查意见并不会因此变成已裁决。原先沿用了会话过滤，
+   * 等于留了一条「换个会话就能提交」的绕过路径。
+   */
+  const pending = open.filter((g) => g.state === 'review_done_awaiting_disposition');
   if (pending.length > 0) {
     const list = pending.map((g) => `${g.topic}/${g.stage}`).join('、');
     return {

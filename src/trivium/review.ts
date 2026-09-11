@@ -51,7 +51,7 @@ import { resolveRerunIndex, writeArtifact, writeMeta, metaDir } from './archive.
 import { newRunId, newRunMeta, registerRun, summarizeRun, writeRunMeta } from './meta.js';
 import { measureDivergence, renderDivergence } from './divergence.js';
 import { runRoot } from './config.js';
-import { setGate } from './state.js';
+import { setGateChecked } from './state.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
 import { workTreeHash } from './util/git.js';
 import {
@@ -422,14 +422,31 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    * 那是整条流水线最核心的护栏（AC-02 / AC-12 / §8.5），实测确认过是静默失效的。
    */
   if (!skipVerdict?.skipped) {
-    await setGate({
+    /*
+     * 置 running 前先确认槽位不是**别的 run** 的待裁决状态（审查意见 GLM-r2-01 ③）。
+     *
+     * `state.json` 每个 <主题>/<阶段> 只有一个槽位。旧一轮审完未裁决就直接重跑，
+     * 无条件覆盖会把待裁决状态无声抹掉，而 `gate --check` 只校验最新轮——
+     * 旧那一轮从此既逃过裁决、也不再拦提交。
+     */
+    const g = await setGateChecked({
       triviumDir: ctx.triviumDir,
       topic: ref.topic, stage,
       state: 'running',
       runId, rerunIndex,
       sessionId: opts.sessionId ?? null,
       heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
+      expect: { state: ['idle', 'running', 'approved', 'rejected', 'abandoned'] },
     });
+    if (!g.applied) {
+      throw new TriviumError(
+        EXIT.GATE_BLOCK,
+        `上一轮（run ${g.entry?.run_id ?? '未知'}，第 ${g.entry?.rerun_index ?? '?'} 轮）的审查意见尚未裁决，不能直接重跑。\n` +
+          `  ${g.skipped ?? ''}\n` +
+          `  补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${ref.topic} --check\` 后再来，\n` +
+          `  或用 \`trivium abandon --topic ${ref.topic} --stage ${stage}\` 显式作废那一轮（工件保留）。`,
+      );
+    }
   }
 
   return {
@@ -464,11 +481,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     meta.gate.adjudication_complete = true; // 没有意见可裁决
     await writeRunMeta(ref.layout, stage, meta);
     await registerRun(ref.layout, meta);
-    // 跳过等于这一轮没有待裁决的意见，闸门直接回 idle
-    await setGate({
+    // 跳过等于这一轮没有待裁决的意见，闸门直接回 idle——但只回收属于本 run 的那个
+    await setGateChecked({
       triviumDir: ctx.triviumDir, topic: ref.topic, stage, state: 'idle',
       runId, rerunIndex, sessionId: opts.sessionId ?? null,
       heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
+      expect: { runId },
     });
 
     const notice = renderSkipNotice(skipVerdict);
@@ -674,13 +692,15 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
    * 失败的运行置 `idle`：没有可裁决的意见，却让闸门卡在 running 会把 Driver
    * 永久锁死在一个已经结束的运行上——那比不拦更糟，因为人会去改配置绕开 Hook。
    */
-  await setGate({
+  await setGateChecked({
     triviumDir: ctx.triviumDir,
     topic: ref.topic, stage,
     state: meta.status === 'success' ? 'review_done_awaiting_disposition' : 'idle',
     runId, rerunIndex,
     sessionId: opts.sessionId ?? null,
     heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
+    // 只写属于本 run 的闸门：并发的另一轮已经接管时不该被我们改写
+    expect: { runId },
   });
 
   say('');

@@ -19,7 +19,7 @@ import {
 } from './gate.js';
 import { checkStageArtifacts, resolveRerunIndex } from './archive.js';
 import { readHookInput, runHook, type HookName } from './hooks.js';
-import { listOpenGates, setGate } from './state.js';
+import { listOpenGates, setGate, setGateChecked } from './state.js';
 import { recordApproval } from './approval.js';
 import { resolveTopic, listTopics } from './topic.js';
 import { newRunId, readTask } from './meta.js';
@@ -509,6 +509,31 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   // ── --await-approval ──
   if (args.flags.get('await-approval') === true) {
     const runId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
+
+    /*
+     * ── 先校验裁决完整性，再置闸门（审查意见 AGY-02）──
+     *
+     * 原先这里只 setGate、不做任何前置检查。于是「直接 --await-approval 再 approve」
+     * 就能把逐条裁决与工件核验**整段跳过**——闸门从 review_done_awaiting_disposition
+     * 被覆写成 awaiting_approval，`approve` 再把它放行，全程没人检查过裁决件。
+     *
+     * 人工审批是在「机器已确认裁决齐备」之上再加一道，不是它的替代品。
+     */
+    if (runId) {
+      const { reviews } = await loadRoundReviews(ref.layout, stage, runId);
+      const pre = await checkAdjudication({
+        cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
+        degraded: Object.values(reviews).some((r) => r === undefined),
+      });
+      if (!pre.ok) {
+        say(renderGateResult(pre));
+        fail(
+          '裁决尚未齐备，不能置为等待人工审批。\n' +
+            `  先补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${topic} --check\`。`,
+        );
+        return EXIT.GATE_BLOCK;
+      }
+    }
     await setGate({
       triviumDir: ctx.triviumDir, topic, stage, state: 'awaiting_approval',
       runId, rerunIndex,
@@ -564,12 +589,22 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    * 命令 B/C/D 随后会用 `--await-approval` 把闸门推进到人工审批态。
    */
   if (result.ok) {
-    await setGate({
+    /*
+     * 只放行**本轮**的闸门（审查意见 GLM-r2-01 ①）。
+     *
+     * 无条件覆盖时，对旧一轮补完裁决跑 `--check`，会把已经接管的新一轮
+     * `running` 覆写成 `idle`——新一轮审查期内的业务写锁就此静默失效。
+     */
+    const g = await setGateChecked({
       triviumDir: ctx.triviumDir, topic, stage, state: 'idle',
       runId, rerunIndex,
       sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
       heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+      expect: { runId },
     });
+    if (!g.applied && g.entry) {
+      warn(`裁决已通过，但闸门未放行：${g.skipped}。该闸门属于另一次运行，本次不动它。`);
+    }
   }
 
   // 返回 2 让调用方（skill / Hook）能按闸门语义处理

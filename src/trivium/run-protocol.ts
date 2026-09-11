@@ -24,7 +24,7 @@ import {
 } from './review.js';
 import { resolveTopic } from './topic.js';
 import { readRunMeta } from './meta.js';
-import { setGate } from './state.js';
+import { setGateChecked } from './state.js';
 import { agyAdapter } from './adapters/agy.js';
 import { zcodeAdapter } from './adapters/zcode.js';
 import type { AdapterContext } from './adapters/base.js';
@@ -311,8 +311,43 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
       runDir: rc.runDirBase,
     };
   } catch (e) {
+    // prepareRun 之后才失败：闸门已经是 running，必须连它一起回收
+    await releaseRunningGate(ctx, rc.runId, rc.ref.topic, rc.stage);
     await lock.release();
     throw e;
+  }
+}
+
+/**
+ * 回收某次运行留下的 `running` 闸门（审查意见 GLM-r2-02 ≡ AGY-01）。
+ *
+ * `prepareRun` 一置 `running`，业务写锁就生效了。此后**三条异常路径**原先都不回收它：
+ * worker 内 `executeRun` 中途抛错、`startRun` 在 prepareRun 之后失败、
+ * `--wait` 判定 `worker_lost`。三种情况下闸门停在 `running`，同会话的业务写入
+ * 一直被拦到 24h TTL——正是 `executeRun` 自己注释里写的
+ * 「比不拦更糟，因为人会去改配置绕开 Hook」的形态。
+ *
+ * 对照：`workerMain` 的 finally 一直会释放主题**锁**。锁想到了，闸门漏了。
+ *
+ * 只回收仍记着本 `runId` 且仍是 `running` 的闸门：新一轮若已接管，那是它的护栏。
+ * 不区分异常种类——没有 worker 接手的 `running` 一律回收。
+ */
+async function releaseRunningGate(
+  ctx: Ctx,
+  runId: string,
+  topic: string | undefined,
+  stage: Stage | undefined,
+): Promise<void> {
+  if (!topic || !stage) return;
+  try {
+    await setGateChecked({
+      triviumDir: ctx.triviumDir,
+      topic, stage, state: 'idle', runId,
+      heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+      expect: { state: ['running'], runId },
+    });
+  } catch {
+    // 回收失败不该盖过真正的错误——闸门还有 TTL 兜底，但错误信息只有一次机会
   }
 }
 
@@ -369,8 +404,14 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
     return e instanceof TriviumError ? e.code : EXIT.FAIL;
   } finally {
     clearInterval(heartbeat);
+    const st = await readStatus(runDir);
+    /*
+     * 闸门与锁一起回收。executeRun 正常收尾时已把闸门置成终态，
+     * 此处的 expect 会因状态不再是 running 而跳过；只有异常路径才真正命中。
+     */
+    await releaseRunningGate(ctx, runId, st?.topic, st?.stage);
     // 释放锁：工作进程是最终持有者
-    const cur = await inspectLock(ctx.triviumDir, (await readStatus(runDir))?.topic ?? '');
+    const cur = await inspectLock(ctx.triviumDir, st?.topic ?? '');
     if (cur && cur.pid === process.pid) {
       await fs.rm(path.join(ctx.triviumDir, 'lock', `${cur.topic}.lock`), { force: true });
     }
@@ -430,6 +471,13 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
         s.exit_code = EXIT.FAIL;
         s.message = `worker_lost（${reading.reason}）`;
       });
+      /*
+       * worker 没了就不会再有人回收闸门，只能在这里收。
+       * 主题/阶段从 status.json 现读，不能用 `last`——worker 若在第一次
+       * `running` 读数之前就被杀掉，`last` 是 null，回收会被静默跳过。
+       */
+      const meta0 = await readStatus(runDir);
+      await releaseRunningGate(ctx, runId, meta0?.topic ?? last?.topic, meta0?.stage ?? last?.stage);
       throw new TriviumError(
         EXIT.FAIL,
         `运行 ${runId} 的工作进程失联（${reading.reason}）。` +
@@ -526,11 +574,19 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
      * 运行永久锁住业务写入——人的第一反应是去关 Hook，护栏就此报废。
      */
     if (s?.stage) {
-      await setGate({
+      /*
+       * 只回收**本 run** 的闸门（审查意见 GLM-r2-01 ②）。
+       * 「先 --cancel 旧 run，再 --start 新一轮」是正常序列；若不比对 run_id，
+       * 取消一个早已失联的旧 run 会把正在跑的新一轮护栏一并清掉。
+       * 回收锁时一直有 `existing.run_id === runId` 守卫，闸门这里以前漏了。
+       */
+      const g = await setGateChecked({
         triviumDir: ctx.triviumDir, topic, stage: s.stage, state: 'idle',
         runId, sessionId: process.env['CLAUDE_SESSION_ID'] ?? null,
         heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+        expect: { runId },
       });
+      if (!g.applied && g.entry) step(`闸门未回收：${g.skipped}`);
     }
   }
   say(`运行 ${runId} 已取消`);
