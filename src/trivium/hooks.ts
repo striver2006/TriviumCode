@@ -201,14 +201,57 @@ export async function hookPreCommit(ctx: Ctx, input: HookInput): Promise<HookOut
       (ctx.config.gate.approval_lock_scope === 'global' ||
         (g.session_id !== null && g.session_id === (input.session_id ?? null))),
   );
-  if (pending.length === 0) return ALLOW;
+  if (pending.length > 0) {
+    const list = pending.map((g) => `${g.topic}/${g.stage}`).join('、');
+    return {
+      exitCode: EXIT.GATE_BLOCK,
+      stderr:
+        `以下阶段的审查意见尚未逐条裁决，提交被拦下：${list}\n` +
+        `  请先补齐裁决件并通过 \`trivium gate --stage <阶段> --check\`。\n` +
+        `  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。`,
+    };
+  }
 
-  const list = pending.map((g) => `${g.topic}/${g.stage}`).join('、');
-  const reason =
-    `以下阶段的审查意见尚未逐条裁决，提交被拦下：${list}\n` +
-    `  请先补齐裁决件并通过 \`trivium gate --stage <阶段> --check\`。\n` +
-    `  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。`;
-  return { exitCode: EXIT.GATE_BLOCK, stderr: reason };
+  /*
+   * ── 留痕完整性：记录在案的工件不得消失或被改动（§17.3 剧本 5）──
+   *
+   * 仅凭闸门状态拦不住这件事：裁决通过后闸门已放行回 idle，此时删掉一份不顺眼的
+   * 审查文档再提交，一路绿灯。而「留痕」的意义恰恰在于它删不掉也改不掉（P5 / P6）。
+   *
+   * 判据取 run.json 的 artifacts[]（path + sha256），因此能区分「记录在案却不见了」
+   * 与「本来就还没写」——后者不在这里拦（那是上面闸门那一段的事）。
+   */
+  return checkArchiveIntegrity(ctx);
+}
+
+async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
+  const { listTopics } = await import('./topic.js');
+  const { checkRecordedArtifacts, listRecordedRuns } = await import('./archive.js');
+
+  const problems: string[] = [];
+  for (const topic of await listTopics(ctx)) {
+    const layout = { archiveRoot: ctx.archiveRoot, topic };
+    const runs = (await listRecordedRuns(layout)).filter((r) => r.artifacts.length > 0);
+    for (const t of await checkRecordedArtifacts(layout, runs)) {
+      problems.push(
+        t.kind === 'missing'
+          ? `  · 已丢失：${t.relPath}（run ${t.runId} 记录过它，sha256 ${t.recordedSha256.slice(0, 12)}）`
+          : `  · 已被改动：${t.relPath}（run ${t.runId} 记录 ${t.recordedSha256.slice(0, 12)}，现为 ${t.actualSha256?.slice(0, 12)}）`,
+      );
+    }
+  }
+  if (problems.length === 0) return ALLOW;
+
+  return {
+    exitCode: EXIT.GATE_BLOCK,
+    stderr:
+      '归档留痕不完整，提交被拦下——已落盘的审查工件不得删除或改动（FR-25 / 设计 §17.3 剧本 5）：\n' +
+      problems.slice(0, 20).join('\n') +
+      (problems.length > 20 ? `\n  · …另有 ${problems.length - 20} 项` : '') +
+      '\n\n  请用 `git checkout -- <路径>` 或 `git restore <路径>` 恢复。\n' +
+      '  确实要作废某一轮，用 `/dual-abandon --topic <主题>`——它保留工件、只解闸门。\n' +
+      '  重跑会自动抬升 -r<N>，既有工件一律不覆盖，不需要先删。',
+  };
 }
 
 // ─────────────────────── hook-stop ───────────────────────

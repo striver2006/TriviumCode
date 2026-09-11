@@ -27,7 +27,7 @@ import {
   type Role,
 } from './naming.js';
 import { assertNoSecrets } from './secrets.js';
-import { createExclusive, ensureDir, sha256, writeAtomic } from './util/fsx.js';
+import { createExclusive, ensureDir, sha256, sha256File, writeAtomic } from './util/fsx.js';
 
 export interface ArchiveLayout {
   archiveRoot: string;
@@ -263,4 +263,96 @@ export async function checkStageArtifacts(
     missing: required.filter((r) => !r.ok).map((r) => r.label),
     present: required.filter((r) => r.ok).map((r) => r.label),
   };
+}
+
+/** 一份「记录在案却已不符」的工件 */
+export interface TamperedArtifact {
+  /** 相对归档根的路径 */
+  relPath: string;
+  kind: 'missing' | 'modified';
+  runId: string;
+  stage: StageOrVerify;
+  recordedSha256: string;
+  actualSha256?: string;
+}
+
+/**
+ * 核对 `run.json` 记录过的工件是否仍在、内容是否仍是原样（FR-25 / P5 / P6）。
+ *
+ * ## 为什么需要这个
+ *
+ * 设计 §17.3 剧本 5 明文要求：「删掉一份审查文档后执行 `git commit`，
+ * `hook-pre-commit` 应阻断」。而仅凭闸门状态做不到——裁决通过后闸门已放行回
+ * `idle`，此时删掉一份不顺眼的审查再提交，一路绿灯。
+ *
+ * 判据用 `run.json` 的 `artifacts[]`（path + sha256）而不是「最低工件集是否齐备」：
+ * 前者能区分「**记录在案却不见了**」与「本来就还没写」，也能顺带发现内容被改动。
+ * 这是不可伪装性的落点——留痕的意义在于它删不掉也改不掉。
+ */
+export async function checkRecordedArtifacts(
+  layout: ArchiveLayout,
+  runs: { run_id: string; stage: StageOrVerify; artifacts: { path: string; sha256: string }[] }[],
+): Promise<TamperedArtifact[]> {
+  const out: TamperedArtifact[] = [];
+  for (const r of runs) {
+    for (const a of r.artifacts) {
+      const abs = path.join(layout.archiveRoot, a.path);
+      let actual: string;
+      try {
+        actual = await sha256File(abs);
+      } catch {
+        out.push({
+          relPath: a.path, kind: 'missing', runId: r.run_id, stage: r.stage,
+          recordedSha256: a.sha256,
+        });
+        continue;
+      }
+      if (actual !== a.sha256) {
+        out.push({
+          relPath: a.path, kind: 'modified', runId: r.run_id, stage: r.stage,
+          recordedSha256: a.sha256, actualSha256: actual,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** 读某主题各阶段全部 run.json（供 checkRecordedArtifacts 与 report 用） */
+export async function listRecordedRuns(
+  layout: ArchiveLayout,
+): Promise<{ run_id: string; stage: StageOrVerify; artifacts: { path: string; sha256: string }[]; status: string; skipped?: boolean }[]> {
+  const out: {
+    run_id: string; stage: StageOrVerify;
+    artifacts: { path: string; sha256: string }[]; status: string; skipped?: boolean;
+  }[] = [];
+  for (const stage of ['plan', 'code', 'bug'] as StageOrVerify[]) {
+    const dir = metaDir(layout, stage);
+    let files: string[];
+    try {
+      files = await fs.readdir(dir);
+    } catch {
+      continue;
+    }
+    for (const f of files.sort()) {
+      const m = /^run-(.+)\.json$/.exec(f);
+      if (!m) continue;
+      try {
+        const meta = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8')) as {
+          run_id?: string; status?: string; skipped?: boolean;
+          artifacts?: { path: string; sha256: string }[];
+        };
+        out.push({
+          run_id: meta.run_id ?? m[1]!,
+          stage,
+          artifacts: meta.artifacts ?? [],
+          status: meta.status ?? 'unknown',
+          ...(meta.skipped !== undefined ? { skipped: meta.skipped } : {}),
+        });
+      } catch {
+        // 单份 run.json 损坏不该让整次核对失败——它自己就是个问题，但不是这里的职责
+      }
+    }
+  }
+  return out;
 }

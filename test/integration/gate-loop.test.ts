@@ -212,3 +212,105 @@ test('伪造角色后缀文件一律拦下，与闸门状态无关（AC-07）', 
     assert.match(r.stderr, /不得自行产出/);
   }
 });
+
+// ── 留痕完整性：删不掉也改不掉（§17.3 剧本 5 / P5 / P6）──
+
+/** 跑完一轮 plan 并补齐裁决，把闸门推回 idle */
+async function completedRound(root: string, stageDir: string) {
+  const runId = await runPlan(root);
+  await writeDisposition(stageDir, runId);
+  const check = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
+  assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
+  const ok = await hook(root, 'hook-pre-commit', commitEvent);
+  assert.equal(ok.code, EXIT.OK, `基线状态应放行：\n${ok.stdout}${ok.stderr}`);
+  return runId;
+}
+
+test('删掉一份审查文档后提交被拦（§17.3 剧本 5）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await completedRound(fx.root, fx.stageDir);
+
+  const victim = path.join(fx.stageDir, `${today()}-${TOPIC}-gemini.md`);
+  const saved = await fs.readFile(victim);
+  await fs.rm(victim);
+
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  /*
+   * 这条路径**不可能**靠闸门状态拦住：裁决已通过，闸门早回了 idle。
+   * 删掉一份不顺眼的审查再提交，在修复前是一路绿灯的。
+   */
+  assert.equal(r.code, EXIT.GATE_BLOCK, `应拦下：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /已丢失/);
+  assert.match(r.stderr, new RegExp(`${TOPIC}/plan/.*-gemini\\.md`));
+  assert.match(r.stderr, /git checkout|git restore/, '必须给出恢复办法');
+  assert.match(r.stderr, /dual-abandon/, '必须给出「确实要作废」的正当出口');
+
+  // 恢复即放行
+  await fs.writeFile(victim, saved);
+  const after = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(after.code, EXIT.OK, `恢复后应放行：\n${after.stderr}`);
+});
+
+test('改动已落盘的审查文档后提交同样被拦', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await completedRound(fx.root, fx.stageDir);
+
+  const victim = path.join(fx.stageDir, `${today()}-${TOPIC}-glm.md`);
+  await fs.appendFile(victim, '\n<!-- 偷偷加一行 -->\n', 'utf8');
+
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `内容变了也要拦：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /已被改动/);
+  // 报出前后哈希，让人能确认到底改了什么
+  assert.match(r.stderr, /记录 [0-9a-f]{12}，现为 [0-9a-f]{12}/);
+});
+
+test('重跑抬升的新工件不会被误判——旧工件仍在即放行', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await completedRound(fx.root, fx.stageDir);
+
+  // 第二轮：产出 -r2，第一轮文件字节不变
+  const runId2 = await runPlan(fx.root);
+  await fs.writeFile(
+    path.join(fx.stageDir, `${today()}-${TOPIC}-r2-revised-claude.md`),
+    [
+      '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
+      'role: claude', 'kind: revised', `run_id: ${runId2}`,
+      'addresses:',
+      `  - ${today()}-${TOPIC}-r2-gemini.md`, `  - ${today()}-${TOPIC}-r2-glm.md`,
+      '---', '',
+      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- |',
+      '| AGY-01 | gemini | blocker | 接受 | 第二轮仍需补 | §1 |',
+      '| GLM-01 | glm | blocker | 接受 | 同上 | §1 |',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
+  assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
+
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.OK, `两轮工件都在，应放行：\n${r.stderr}`);
+});
+
+test('尚未落盘的工件不算「丢失」——只拦记录在案的', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  // 从没跑过任何审查：归档里只有原稿。这不是留痕缺失，不该拦
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.OK, `没有任何记录在案的工件时不该拦：\n${r.stderr}`);
+});
+
+test('gate.block_commit 为 false 时完全不拦（用户显式关掉的开关要生效）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await completedRound(fx.root, fx.stageDir);
+  await fs.rm(path.join(fx.stageDir, `${today()}-${TOPIC}-gemini.md`));
+
+  await fs.appendFile(
+    path.join(fx.root, '.trivium/config.yaml'),
+    'gate:\n  block_commit: false\n',
+    'utf8',
+  );
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.OK, '配置关掉了拦截就该真的不拦——护栏也要可被知情地关掉');
+});
