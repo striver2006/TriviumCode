@@ -265,11 +265,11 @@ export async function checkStageArtifacts(
   };
 }
 
-/** 一份「记录在案却已不符」的工件 */
+/** 一份「记录在案却已不符」的工件，或一份「登记过却读不到」的清单 */
 export interface TamperedArtifact {
   /** 相对归档根的路径 */
   relPath: string;
-  kind: 'missing' | 'modified';
+  kind: 'missing' | 'modified' | 'manifest_missing' | 'manifest_unreadable';
   runId: string;
   stage: StageOrVerify;
   recordedSha256: string;
@@ -319,14 +319,20 @@ export async function checkRecordedArtifacts(
 }
 
 /** 读某主题各阶段全部 run.json（供 checkRecordedArtifacts 与 report 用） */
-export async function listRecordedRuns(
-  layout: ArchiveLayout,
-): Promise<{ run_id: string; stage: StageOrVerify; artifacts: { path: string; sha256: string }[]; status: string; skipped?: boolean }[]> {
-  const out: {
-    run_id: string; stage: StageOrVerify;
-    artifacts: { path: string; sha256: string }[]; status: string; skipped?: boolean;
-  }[] = [];
-  for (const stage of ['plan', 'code', 'bug'] as StageOrVerify[]) {
+export interface RecordedRun {
+  run_id: string;
+  stage: StageOrVerify;
+  artifacts: { path: string; sha256: string }[];
+  status: string;
+  skipped?: boolean;
+  /** run.json 存在但解析失败 */
+  unreadable?: boolean;
+}
+
+export async function listRecordedRuns(layout: ArchiveLayout): Promise<RecordedRun[]> {
+  const out: RecordedRun[] = [];
+  // 'verify' 也要在内：验证记录是 AC-10 的对账凭证，不该逃过留痕核对（GLM-r2-08）
+  for (const stage of ['plan', 'code', 'bug', 'verify'] as StageOrVerify[]) {
     const dir = metaDir(layout, stage);
     let files: string[];
     try {
@@ -350,9 +356,54 @@ export async function listRecordedRuns(
           ...(meta.skipped !== undefined ? { skipped: meta.skipped } : {}),
         });
       } catch {
-        // 单份 run.json 损坏不该让整次核对失败——它自己就是个问题，但不是这里的职责
+        /*
+         * 损坏的 run.json **不能静默跳过**（审查意见 GLM-r2-03）。
+         * 跳过等于「搅坏清单即可让核对失去对象」——而清单本身就是被保护的东西。
+         * 记成 unreadable，交给调用方按违例处理。
+         */
+        out.push({ run_id: m[1]!, stage, artifacts: [], status: 'unreadable', unreadable: true });
       }
     }
   }
   return out;
 }
+
+/**
+ * 以 `task.json.runs[]` 为**外部锚**核对运行清单是否完整（审查意见 GLM-r2-03 ≡ AGY-04）。
+ *
+ * 原先的核对只枚举各阶段 `_meta/` 下的 `run-*.json` 并比对它们记录的工件——
+ * 也就是说，**清单来自被核对对象自身**。于是三条路径都能整枝绕过：
+ *   · 删掉 `run-<id>.json`（连同那份不顺眼的审查文档一起删）；
+ *   · 把 `run-<id>.json` 搅坏（旧实现静默跳过）；
+ *   · 删掉整个主题目录、或把它改名成 `_`/`.` 前缀（`listTopics` 会过滤掉）。
+ *
+ * `task.json` 在每次 `registerRun` 时登记 run 指针，是现成的外部锚：
+ * 它记过的 run，其 `run-<id>.json` 就必须在、且必须可读。
+ */
+export async function checkRunManifests(
+  layout: ArchiveLayout,
+  registered: { run_id: string; stage: StageOrVerify }[],
+  present: RecordedRun[],
+): Promise<TamperedArtifact[]> {
+  const byId = new Map(present.map((r) => [r.run_id, r]));
+  const out: TamperedArtifact[] = [];
+
+  for (const reg of registered) {
+    const got = byId.get(reg.run_id);
+    const rel = path.join(layout.topic, reg.stage, '_meta', runMetaFileNameOf(reg.run_id));
+    if (!got) {
+      out.push({
+        relPath: rel, kind: 'manifest_missing',
+        runId: reg.run_id, stage: reg.stage, recordedSha256: '',
+      });
+    } else if (got.unreadable) {
+      out.push({
+        relPath: rel, kind: 'manifest_unreadable',
+        runId: reg.run_id, stage: reg.stage, recordedSha256: '',
+      });
+    }
+  }
+  return out;
+}
+
+const runMetaFileNameOf = (runId: string): string => `run-${runId}.json`;

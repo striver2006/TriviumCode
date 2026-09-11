@@ -150,3 +150,31 @@ export async function initFixtureRepo(dir: string): Promise<void> {
     timeoutMs: 30_000,
   });
 }
+
+/**
+ * 工作树中相对 HEAD **被删除或被改动**的已跟踪文件（限定某个路径前缀）。
+ *
+ * 留痕核对的第二个外部锚（审查意见 GLM-r2-03）。第一个锚 `task.json.runs[]` 治不了
+ * 「把整个主题目录删掉或改名」——那会把 `task.json` 自己也带走。
+ * 而 `.reviews/` 是**刻意纳入版本管理**的，git 索引记得每一份已提交的工件，
+ * 删目录、改目录名（表现为一批删除 + 一批未跟踪新增）都瞒不过它。
+ *
+ * 只看已跟踪文件，所以它与基于 run.json 的核对互补：
+ * git 管已提交的，run.json 管刚落盘还没提交的。
+ */
+export async function deletedOrModifiedTracked(
+  cwd: string,
+  pathPrefix: string,
+): Promise<{ deleted: string[]; modified: string[] }> {
+  const r = await git(cwd, ['diff', '--name-status', '--no-renames', 'HEAD', '--', pathPrefix]);
+  const deleted: string[] = [];
+  const modified: string[] = [];
+  if (r.code !== 0) return { deleted, modified }; // 无 HEAD（空仓库）等情形：没有可比对的基线
+  for (const line of r.stdout.split('\n')) {
+    const m = /^([A-Z])\t(.+)$/.exec(line.trim());
+    if (!m) continue;
+    if (m[1] === 'D') deleted.push(m[2]!);
+    else if (m[1] === 'M') modified.push(m[2]!);
+  }
+  return { deleted, modified };
+}

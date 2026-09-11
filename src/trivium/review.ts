@@ -381,14 +381,24 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    * 顺序：建阶段目录 → 写两份 brief → 建运行目录 → 写 run.json
    */
   await ensureDir(ref.stageDirAbs);
+  /*
+   * `_meta/` 里的被审补丁与两份 brief 也要进 `run.json.artifacts`（审查意见 GLM-r2-05）。
+   *
+   * 原先保护集只有两份渲染后的审查文档，于是「审查文档删不掉也改不掉」，
+   * 但「**审的是什么**」既不受核对保护、又在重跑时被同名覆盖——
+   * hook 文案承诺的范围与实现不符。
+   */
+  const metaArtifacts: { path: string; sha256: string }[] = [];
   // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前
   if (pendingDiff) {
     const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text);
     metaPaths.push(w.absPath);
+    metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
   }
   for (const b of pendingBriefs) {
     const w = await writeMeta(ref.layout, stage, b.fileName, b.text);
     metaPaths.push(w.absPath);
+    metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
   }
   await ensureDir(runDirBase);
 
@@ -404,6 +414,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     denyPaths: primarySnap.denyPaths,
     driftPolicy: cfg.review.on_drift,
   });
+  meta.artifacts = [...metaArtifacts];
+
   // FR-23：跳过也要留痕，且必须写明命中的规则供人复核（§6.4）
   if (skipVerdict?.skipped) {
     meta.skipped = true;
@@ -660,12 +672,19 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       peer_deny_applied: r.peer_deny_applied,
     };
   }
-  meta.artifacts = await Promise.all(
-    artifacts.map(async (p) => ({
-      path: path.relative(ctx.archiveRoot, p),
-      sha256: await sha256File(p),
-    })),
-  );
+  /*
+   * 追加而非替换：prepareRun 已经把 `_meta/` 的补丁与两份 brief 登记进去了，
+   * 整体覆盖会把它们挤掉，保护集又缩回只剩审查文档。
+   */
+  meta.artifacts = [
+    ...meta.artifacts,
+    ...(await Promise.all(
+      artifacts.map(async (p) => ({
+        path: path.relative(ctx.archiveRoot, p),
+        sha256: await sha256File(p),
+      })),
+    )),
+  ];
 
   // 被审对象漂移 → 整次运行作废（§9.2 第 2 步，优先级最高）
   let exitCode: number = EXIT.OK;

@@ -57,6 +57,8 @@ export interface FixtureOptions {
   probeModels?: { gemini: string[]; glm: string[] };
   /** 原稿落在哪个阶段目录。plan（默认）或 bug */
   draftStage?: 'plan' | 'bug';
+  /** 覆盖 verify 段的 YAML 行（默认两组皆空） */
+  extraVerify?: string[];
 }
 
 export interface Fixture {
@@ -94,8 +96,7 @@ export async function makeFixture(opts: FixtureOptions): Promise<Fixture> {
       '  wait_timeout_s: 30',
       ...(opts.extraReview ?? []).map((l) => `  ${l}`),
       'verify:',
-      '  build: []',
-      '  test: []',
+      ...(opts.extraVerify ?? ['  build: []', '  test: []']),
       '',
     ].join('\n'),
     'utf8',

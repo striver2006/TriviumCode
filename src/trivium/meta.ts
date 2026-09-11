@@ -7,7 +7,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { CriticId, RunMeta, Stage } from './types.js';
+import type { CriticId, RunMeta, Stage , StageOrVerify } from './types.js';
 import { writeAtomic } from './util/fsx.js';
 import { topicDir, type ArchiveLayout } from './archive.js';
 
@@ -36,7 +36,11 @@ export interface TaskMeta {
   /** 每阶段每轮的运行指针，形成可回溯的版本链（FR-25） */
   runs: {
     run_id: string;
-    stage: Stage;
+    /**
+     * `verify` 也在内（审查意见 GLM-r2-08）：验证记录是 AC-10 的对账凭证，
+     * 必须和三个审查阶段一样受留痕核对保护，那就得先在这里登记。
+     */
+    stage: StageOrVerify;
     rerun_index: number;
     status: RunMeta['status'];
     review_mode: RunMeta['review_mode'];

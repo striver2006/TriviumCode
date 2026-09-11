@@ -228,12 +228,46 @@ export async function hookPreCommit(ctx: Ctx, input: HookInput): Promise<HookOut
 
 async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
   const { listTopics } = await import('./topic.js');
-  const { checkRecordedArtifacts, listRecordedRuns } = await import('./archive.js');
+  const { checkRecordedArtifacts, checkRunManifests, listRecordedRuns } = await import('./archive.js');
+  const { readTask } = await import('./meta.js');
+  const { deletedOrModifiedTracked } = await import('./util/git.js');
 
   const problems: string[] = [];
+
+  /*
+   * ── 锚 ①：git 索引（审查意见 GLM-r2-03）──
+   *
+   * 目录枚举 + run.json 治不了「把整个主题目录删掉或改名」——那会把 `task.json`
+   * 自己也带走，核对随之失去对象。而 `.reviews/` 是**刻意纳入版本管理**的，
+   * git 记得每一份已提交的工件：删目录、改目录名（表现为一批删除 + 未跟踪新增）
+   * 都瞒不过它。与 run.json 互补：git 管已提交的，run.json 管刚落盘未提交的。
+   */
+  const archiveRel = path.relative(ctx.projectRoot, ctx.archiveRoot) || ctx.config.archive_root;
+  const tracked = await deletedOrModifiedTracked(ctx.projectRoot, archiveRel);
+  for (const f of tracked.deleted) problems.push(`  · 已提交的归档文件被删除：${f}`);
+  for (const f of tracked.modified) problems.push(`  · 已提交的归档文件被改动：${f}`);
+
   for (const topic of await listTopics(ctx)) {
     const layout = { archiveRoot: ctx.archiveRoot, topic };
-    const runs = (await listRecordedRuns(layout)).filter((r) => r.artifacts.length > 0);
+    const present = await listRecordedRuns(layout);
+
+    // ① 外部锚：task.json 登记过的 run，其 run.json 必须在、且必须可读
+    const task = await readTask(layout);
+    const manifests = await checkRunManifests(
+      layout,
+      task.runs.map((r) => ({ run_id: r.run_id, stage: r.stage })),
+      present,
+    );
+    for (const t of manifests) {
+      problems.push(
+        t.kind === 'manifest_missing'
+          ? `  · 运行清单已丢失：${t.relPath}（task.json 登记过 run ${t.runId}）`
+          : `  · 运行清单不可读：${t.relPath}（run ${t.runId} 的 run.json 存在但解析失败）`,
+      );
+    }
+
+    // ② 清单内登记的工件必须在、且内容不变
+    const runs = present.filter((r) => r.artifacts.length > 0);
     for (const t of await checkRecordedArtifacts(layout, runs)) {
       problems.push(
         t.kind === 'missing'

@@ -18,6 +18,7 @@ import path from 'node:path';
 import { run } from './util/exec.js';
 import { sha256 } from './util/fsx.js';
 import { writeMeta, writeVerifyRecord, type ArchiveLayout } from './archive.js';
+import { updateTask } from './meta.js';
 import { localDate } from './naming.js';
 import { EXIT, usageError } from './exit-codes.js';
 import type { Config, Ctx } from './types.js';
@@ -168,6 +169,41 @@ export async function runVerify(opts: VerifyOptions): Promise<VerifyOutcome> {
     JSON.stringify(record, null, 2) + '\n',
   );
 
+  /*
+   * ── 把验证记录纳入留痕护栏（审查意见 GLM-r2-08）──
+   *
+   * verify 是留痕体系的一等公民：`cmd_sha256` 是 AC-10 的对账凭证、S10 是命令 A
+   * 的收口步骤。但原先它只写自己的两份文件、从不 `registerRun`，
+   * `hook-pre-commit` 的留痕核对对它**完全失明**——验证记录可被删改而不拦，
+   * 与 hook 拦截文案的普适承诺不符。
+   *
+   * 写一份 verify 阶段的 run.json 并登记进 task.json，两份工件一并进保护集。
+   */
+  await writeMeta(
+    layout,
+    'verify',
+    `run-${runId}.json`,
+    JSON.stringify(
+      {
+        schema: 'trivium.run.v1',
+        run_id: runId,
+        topic: layout.topic,
+        stage: 'verify',
+        rerun_index: written.effectiveRerunIndex,
+        status: record.status,
+        started_at: record.started_at,
+        finished_at: record.finished_at,
+        artifacts: [
+          { path: written.relPath, sha256: written.sha256 },
+          { path: meta.relPath, sha256: meta.sha256 },
+        ],
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+  await registerVerifyRun(layout, runId, written.effectiveRerunIndex, record.status);
+
   const exitCode = record.unconfigured ? EXIT.USAGE : failed ? EXIT.FAIL : EXIT.OK;
   return { record, exitCode, artifactPath: written.absPath, metaPath: meta.absPath };
 }
@@ -254,3 +290,23 @@ export function summarizeVerify(r: VerifyRecord): string {
 
 export const verifyDirName = (layout: ArchiveLayout): string =>
   path.join(layout.archiveRoot, layout.topic, 'verify');
+
+/** 把本次验证登记进 `task.json.runs[]`，让留痕核对有外部锚可查 */
+async function registerVerifyRun(
+  layout: ArchiveLayout,
+  runId: string,
+  rerunIndex: number,
+  status: 'success' | 'failed',
+): Promise<void> {
+  await updateTask(layout, (t) => {
+    if (t.runs.some((r) => r.run_id === runId)) return;
+    t.runs.push({
+      run_id: runId,
+      stage: 'verify',
+      rerun_index: rerunIndex,
+      status: status === 'success' ? 'success' : 'failed',
+      review_mode: 'dual',
+      started_at: new Date().toISOString(),
+    });
+  });
+}

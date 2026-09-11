@@ -164,7 +164,25 @@ export async function runSelftest(opts: SelftestOptions = {}): Promise<SelftestR
     };
   }
 
-  const root = await buildFixture();
+  /*
+   * 夹具的创建也要在 try 里（审查意见 AGY-06）：原先它在 try 之外，
+   * mkdtemp / git init 失败会直接抛出——临时目录可能已建了一半却没人清，
+   * 调用方也拿不到结构化诊断，只得到一个裸异常。
+   */
+  let root = '';
+  try {
+    root = await buildFixture();
+  } catch (e) {
+    if (root) await fs.rm(root, { recursive: true, force: true });
+    return {
+      ok: false,
+      steps: [{ name: '创建夹具仓库', ok: false, detail: (e as Error).message }],
+      fixtureRoot: root,
+      kept: false,
+      notCovered,
+    };
+  }
+
   const env: Record<string, string | undefined> = {
     [STUB_ENV_VAR]: STUB,
     CLAUDE_SESSION_ID: SESSION,

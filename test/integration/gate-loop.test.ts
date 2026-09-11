@@ -500,3 +500,94 @@ test('裁决齐备后 --await-approval 正常置闸门', { skip: bundleMissing &
   };
   assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'awaiting_approval');
 });
+
+// ── 留痕核对的外部锚（审查意见 GLM-r2-03 ≡ AGY-04）──
+
+test('删掉 run.json 本身也拦——清单不能是被核对对象自己', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await completedRound(fx.root, fx.stageDir);
+
+  /*
+   * 最省事的绕过方式：连同不顺眼的审查文档一起，把记录它的 run.json 也删掉。
+   * 旧实现的清单只来自 run-*.json，删了就失去对象，一路放行。
+   * 现在 task.json.runs[] 是外部锚：它登记过的 run，run.json 就必须在。
+   */
+  await fs.rm(path.join(fx.stageDir, '_meta', `run-${runId}.json`));
+  await fs.rm(path.join(fx.stageDir, `${today()}-${TOPIC}-gemini.md`));
+
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `应拦下：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /运行清单已丢失/);
+  assert.match(r.stderr, new RegExp(runId));
+});
+
+test('把 run.json 搅坏也拦，而不是静默跳过', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await completedRound(fx.root, fx.stageDir);
+
+  await fs.writeFile(path.join(fx.stageDir, '_meta', `run-${runId}.json`), '{ 这不是 JSON', 'utf8');
+
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `损坏的清单必须按违例处理：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /运行清单不可读/);
+});
+
+test('被审补丁与送审包也在保护集内（审查意见 GLM-r2-05）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await completedRound(fx.root, fx.stageDir);
+
+  // brief 是「审的是什么」的一半：以前它不受保护，删了也不拦
+  const brief = path.join(fx.stageDir, '_meta', `brief-gemini-${runId}.md`);
+  const saved = await fs.readFile(brief);
+  await fs.rm(brief);
+
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `送审包被删也该拦：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /brief-gemini/);
+
+  await fs.writeFile(brief, saved);
+  assert.equal((await hook(fx.root, 'hook-pre-commit', commitEvent)).code, EXIT.OK);
+});
+
+test('已提交的归档文件被删 → git 锚捕获（整目录删除/改名的情形）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await completedRound(fx.root, fx.stageDir);
+
+  // 提交进 git，模拟「归档已入库」
+  const { run } = await import('../../src/trivium/util/exec.js');
+  await run('git', ['add', '-A', '--', '.reviews'], { cwd: fx.root, timeoutMs: 30_000 });
+  await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', '归档', '--no-verify'], {
+    cwd: fx.root, timeoutMs: 30_000,
+  });
+  assert.equal((await hook(fx.root, 'hook-pre-commit', commitEvent)).code, EXIT.OK, '提交后应放行');
+
+  /*
+   * 把整个主题目录删掉：task.json 也一起没了，基于 run.json 的核对彻底失去对象。
+   * 只有 git 索引还记得这些文件曾经存在。
+   */
+  await fs.rm(path.join(fx.archiveRoot, TOPIC), { recursive: true });
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `删掉整个主题目录必须被拦：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /已提交的归档文件被删除/);
+});
+
+test('verify 记录也受保护（审查意见 GLM-r2-08）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({
+    topic: TOPIC,
+    extraVerify: ["  build: ['echo ok']", '  test: []'],
+  });
+  await completedRound(fx.root, fx.stageDir);
+
+  const v = await cli(fx.root, ['verify', '--topic', TOPIC]);
+  assert.equal(v.code, EXIT.OK, `${v.stdout}${v.stderr}`);
+  assert.equal((await hook(fx.root, 'hook-pre-commit', commitEvent)).code, EXIT.OK);
+
+  // verify 记录是 AC-10 的对账凭证，删它必须被拦
+  const verifyDir = path.join(fx.archiveRoot, TOPIC, 'verify');
+  const doc = (await fs.readdir(verifyDir)).find((f) => f.endsWith('-verify.md'))!;
+  await fs.rm(path.join(verifyDir, doc));
+
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `验证记录被删必须拦：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /verify/);
+});
