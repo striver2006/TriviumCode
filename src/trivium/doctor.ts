@@ -9,9 +9,11 @@
  *   - 人读：stdout 的分项报告（`--json` 时改为结构化输出）。
  */
 import path from 'node:path';
+import YAML from 'yaml';
 import { defaultProbe, patchProbe } from './config.js';
 import { EXIT } from './exit-codes.js';
-import { probeEnv, probeVerifyCommands } from './probes/env.js';
+import { probeEnv } from './probes/env.js';
+import { probeVerifyCommands } from './probes/verify-commands.js';
 import { probeAgy } from './probes/agy.js';
 import { probeZcode } from './probes/zcode.js';
 import type { Config, ProbeSection } from './types.js';
@@ -65,11 +67,15 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     );
   }
 
-  probe.verify_suggestion = await probeVerifyCommands(opts.projectRoot);
+  // 落盘契约保持 {build, test}：candidates 只活在内存里供 --suggest-verify 展示来源
+  const sug = await probeVerifyCommands(opts.projectRoot);
+  probe.verify_suggestion = { build: sug.build, test: sug.test };
   notes.push(
-    `编译测试命令候选：build=${JSON.stringify(probe.verify_suggestion.build)} ` +
-      `test=${JSON.stringify(probe.verify_suggestion.test)}（仅候选，需 init 逐条确认后才会执行）`,
+    `编译测试命令候选：build=${JSON.stringify(sug.build)} ` +
+      `test=${JSON.stringify(sug.test)}（仅候选，需人确认后写入 verify 才会执行）`,
   );
+  notes.push(...sug.notes.map((n) => `[verify-probe] ${n}`));
+  if (sug.truncated) notes.push('[verify-probe] 候选数已达上限，可能有子项目未列出');
 
   /*
    * ── 分段落盘（审查意见 GLM-08）──
@@ -201,15 +207,23 @@ export async function suggestVerify(projectRoot: string): Promise<number> {
     say('  未探测到任何候选。这不是错误——本项目可能用的是探测器不认识的工具链。');
     say('  请手工把命令写进 .trivium/config.yaml 的 verify.build / verify.test。');
   } else {
-    for (const c of s.build) say(`  build  ${c}`);
-    for (const c of s.test) say(`  test   ${c}`);
+    // 对齐来源列：命令长度参差时右侧仍成列
+    const w = Math.max(...s.candidates.map((c) => c.cmd.length));
+    for (const c of s.candidates) {
+      say(`  ${c.group.padEnd(5)}  ${c.cmd.padEnd(w)}  ← ${c.source}`);
+    }
   }
+  for (const n of s.notes) say(`  · ${n}`);
+  if (s.truncated) say('  · 候选数已达上限，可能有子项目未列出');
   say('');
   say('逐条确认后，把下面这段写进 .trivium/config.yaml（删掉你不要的行）：');
   say('');
-  say('verify:');
-  say(`  build: [${s.build.map((c) => `'${c}'`).join(', ')}]`);
-  say(`  test:  [${s.test.map((c) => `'${c}'`).join(', ')}]`);
+  /*
+   * 用 YAML.stringify 而非手工拼 `'${c}'`：命令里只要出现单引号
+   * （目录名含引号时 cd 前缀就会带上）手工拼法即产出非法 YAML，
+   * 用户粘进 config.yaml 会解析失败。
+   */
+  say(YAML.stringify({ verify: { build: s.build, test: s.test } }, { lineWidth: 0 }).trimEnd());
   say('');
   warn(
     '这些命令会被 `trivium verify` **真实执行**。请先自己确认每一条：\n' +
