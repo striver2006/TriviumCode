@@ -45,24 +45,16 @@ export function formatSchemaErrors(errors: readonly ErrorObject[] | null | undef
  *   2. 包在 ```json 代码围栏里（模型的常见习惯）；
  *   3. 从第一个 `{` 做括号配平扫描（兜底）。
  */
-export function extractJsonCandidate(
-  text: string,
-): { json: string; from: 'whole' | 'fence' | 'braces' } | null {
-  const trimmed = text.trim();
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return { json: trimmed, from: 'whole' };
+export type JsonCandidate = { json: string; from: 'whole' | 'fence' | 'braces' };
 
-  const fence = /```(?:json|JSON)?\s*\n([\s\S]*?)\n```/.exec(text);
-  if (fence?.[1]) {
-    const inner = fence[1].trim();
-    if (inner.startsWith('{')) return { json: inner, from: 'fence' };
-  }
-
-  const start = text.indexOf('{');
-  if (start === -1) return null;
+/** 扫出文本里**全部**顶层花括号配平的片段 */
+function scanBalancedObjects(text: string): string[] {
+  const out: string[] = [];
+  let start = -1;
   let depth = 0;
   let inStr = false;
   let escaped = false;
-  for (let i = start; i < text.length; i++) {
+  for (let i = 0; i < text.length; i++) {
     const ch = text[i]!;
     if (inStr) {
       if (escaped) escaped = false;
@@ -70,14 +62,69 @@ export function extractJsonCandidate(
       else if (ch === '"') inStr = false;
       continue;
     }
-    if (ch === '"') inStr = true;
-    else if (ch === '{') depth++;
-    else if (ch === '}') {
-      depth--;
-      if (depth === 0) return { json: text.slice(start, i + 1), from: 'braces' };
+    if (ch === '"') {
+      inStr = true;
+    } else if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && start >= 0) {
+          out.push(text.slice(start, i + 1));
+          start = -1;
+        }
+      }
     }
   }
-  return null;
+  return out;
+}
+
+/**
+ * 从回答里抠出**全部**候选 JSON，按可靠性排序。
+ *
+ * 为什么要返回多个而不是一个：实测 agy 1.2.0 会输出**两个首尾相接的 JSON 对象**
+ * （内容完全相同，疑似流式收尾重复了一次）。此时整段文本仍然「以 { 开头、以 } 结尾」，
+ * 旧实现据此当成一个整体返回，`JSON.parse` 在第二个对象的起始处报语法错误，
+ * 于是一份完全合格的审查结论**每次**都被降级成 parse_fallback、失去阻断资格。
+ *
+ * 顺序：整段 → 代码围栏（可能多个）→ 逐个顶层配平片段。
+ */
+export function extractJsonCandidates(text: string): JsonCandidate[] {
+  const out: JsonCandidate[] = [];
+  const seen = new Set<string>();
+  const push = (json: string, from: JsonCandidate['from']): void => {
+    const t = json.trim();
+    if (t.length === 0 || seen.has(t)) return;
+    seen.add(t);
+    out.push({ json: t, from });
+  };
+
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) push(trimmed, 'whole');
+
+  for (const m of text.matchAll(/```(?:json|JSON)?\s*\n([\s\S]*?)\n```/g)) {
+    const inner = m[1]?.trim();
+    if (inner?.startsWith('{')) push(inner, 'fence');
+  }
+
+  for (const frag of scanBalancedObjects(text)) push(frag, 'braces');
+
+  /*
+   * 再按行取一遍。配平扫描有个硬伤：**首个对象被截断**（未闭合的 `{`）会让深度
+   * 再也回不到 0，后面所有完整对象一起被吞掉。而 agy 的 stream-json 本来就是
+   * 行分隔的，逐行捡「以 { 开头、以 } 结尾」的行能从截断中恢复。
+   */
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (t.startsWith('{') && t.endsWith('}')) push(t, 'braces');
+  }
+  return out;
+}
+
+/** 首个候选。保留给只需要「大致抠一段 JSON」的调用方 */
+export function extractJsonCandidate(text: string): JsonCandidate | null {
+  return extractJsonCandidates(text)[0] ?? null;
 }
 
 /**
@@ -106,37 +153,43 @@ function stripVendorNoise(obj: Record<string, unknown>): { cleaned: Record<strin
 
 /** 解析并校验审查结论 */
 export function parseReview(text: string): ParseOutcome {
-  const cand = extractJsonCandidate(text);
-  if (!cand) {
+  const candidates = extractJsonCandidates(text);
+  if (candidates.length === 0) {
     return { ok: false, reason: '回答中找不到 JSON 对象', errors: [], rawText: text };
   }
 
-  let obj: unknown;
-  try {
-    obj = JSON.parse(cand.json);
-  } catch (e) {
-    return {
-      ok: false,
-      reason: `JSON 语法错误：${(e as Error).message}`,
-      errors: [],
-      rawText: text,
-    };
-  }
-
-  if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
-    obj = stripVendorNoise(obj as Record<string, unknown>).cleaned;
-  }
-
   const validate = getValidator();
-  if (!validate(obj)) {
-    return {
-      ok: false,
-      reason: 'JSON 不符合 trivium.review.v1',
-      errors: formatSchemaErrors(validate.errors),
-      rawText: text,
-    };
+  /*
+   * 逐个候选试，取**首个既能解析又通过校验**的。
+   *
+   * 不是「取第一个能解析的」：agy 的重复输出里两个对象都合法，但若第一个恰好
+   * 是残缺的流式片段，只试一次就会白白降级。也不是「取最后一个」：那会让
+   * 厂商在结论之后追加的任何东西顶掉真正的结论。
+   */
+  let lastReason = '回答中找不到可用的 JSON 对象';
+  let lastErrors: string[] = [];
+
+  for (const cand of candidates) {
+    let obj: unknown;
+    try {
+      obj = JSON.parse(cand.json);
+    } catch (e) {
+      lastReason = `JSON 语法错误：${(e as Error).message}`;
+      lastErrors = [];
+      continue;
+    }
+
+    if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+      obj = stripVendorNoise(obj as Record<string, unknown>).cleaned;
+    }
+
+    if (validate(obj)) return { ok: true, review: obj as Review, extractedFrom: cand.from };
+
+    lastReason = 'JSON 不符合 trivium.review.v1';
+    lastErrors = formatSchemaErrors(validate.errors);
   }
-  return { ok: true, review: obj, extractedFrom: cand.from };
+
+  return { ok: false, reason: lastReason, errors: lastErrors, rawText: text };
 }
 
 export interface ReviewIntegrity {

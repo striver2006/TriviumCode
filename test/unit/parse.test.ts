@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   parseReview,
   extractJsonCandidate,
+  extractJsonCandidates,
   checkReviewIntegrity,
   enumerateFallbackFindings,
 } from '../../src/trivium/parse.js';
@@ -184,4 +185,60 @@ test('回归：剥离只针对已知厂商字段，真正写错的字段名仍�
   const r = parseReview(JSON.stringify(typo));
   assert.equal(r.ok, false, '未知的多余字段必须仍然报错，否则字段名写错就查不出来');
   if (!r.ok) assert.ok(r.errors.some((e) => e.includes('findigs')));
+});
+
+// ── agy 1.2.0 输出两个首尾相接的 JSON 对象（实测踩到）──
+
+test('两个首尾相接的 JSON 对象：取首个通过校验的，不再整段降级', () => {
+  /*
+   * 实测：agy 1.2.0 把 envelope 吐了两遍（内容相同，疑似流式收尾重复）。
+   * 整段文本仍「以 { 开头、以 } 结尾」，旧实现据此当成一个整体，
+   * JSON.parse 在第二个对象的起始处报语法错误——
+   * 一份完全合格的 6 条意见结论**每次**被降级成 parse_fallback、失去阻断资格。
+   */
+  const one = JSON.stringify(validReview());
+  const r = parseReview(`${one}\n${one}`);
+  assert.equal(r.ok, true, `应解析成功，实际：${r.ok ? '' : r.reason}`);
+  assert.equal(r.ok && r.review.findings.length, 1);
+});
+
+test('第一个对象残缺时跳过它，取后面合格的那个', () => {
+  // 不是「取第一个能解析的」：流式片段可能先到
+  const broken = '{"schema":"trivium.review.v1","findings":[';
+  const good = JSON.stringify(validReview());
+  const r = parseReview(`${broken}\n${good}`);
+  assert.equal(r.ok, true, r.ok ? '' : r.reason);
+});
+
+test('结论之后追加的噪声对象顶不掉真正的结论', () => {
+  const good = JSON.stringify(validReview());
+  const noise = JSON.stringify({ toolAction: 'done', note: '收尾' });
+  const r = parseReview(`${good}\n${noise}`);
+  assert.equal(r.ok, true, r.ok ? '' : r.reason);
+  assert.equal(r.ok && r.review.findings[0]!.id, 'AGY-01');
+});
+
+test('全都不合格时如实报最后一次的校验错误', () => {
+  const r = parseReview('{"a":1}\n{"b":2}');
+  assert.equal(r.ok, false);
+  assert.match(r.ok ? '' : r.reason, /不符合 trivium\.review\.v1/);
+});
+
+test('extractJsonCandidates 去重并保序', () => {
+  const one = '{"x":1}';
+  const c = extractJsonCandidates(`${one}\n${one}`);
+  /*
+   * 整段仍「以 { 开头、以 } 结尾」，所以先作为 whole 入列（它解析不了，
+   * parseReview 会跳过它）；随后两个相同片段去重成一个。
+   * 这正是 agy 重复输出时的形状。
+   */
+  assert.deepEqual(c.map((x) => x.from), ['whole', 'braces']);
+  assert.equal(c[1]!.json, one);
+});
+
+test('extractJsonCandidates 同时收代码围栏与裸对象，且不重复', () => {
+  const text = ['前言', '```json', '{"a":1}', '```', '尾巴 {"b":2} 结束'].join('\n');
+  const got = extractJsonCandidates(text).map((c) => `${c.from}:${c.json}`);
+  // 围栏里的那个先入列；配平扫描再扫到同一段时被去重
+  assert.deepEqual(got, ['fence:{"a":1}', 'braces:{"b":2}']);
 });
