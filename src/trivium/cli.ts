@@ -8,7 +8,7 @@ import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
 import { loadCtx } from './config.js';
-import { runDoctor, renderDoctorReport } from './doctor.js';
+import { runDoctor, renderDoctorReport, suggestVerify } from './doctor.js';
 import { selftestCommand } from './selftest.js';
 import { runReview } from './review.js';
 import { collectCommands, runVerify, summarizeVerify } from './verify.js';
@@ -90,6 +90,11 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       本机能力探针。实测两家 CLI 的真实能力并回填 .trivium/config.local.yaml 的 probe: 段。
       --no-model-calls  只做静态探测，不消耗厂商配额
       --only            只探测指定一侧
+      两侧各自探完即中途落盘：那几步已经烧过配额，中断不该让它白费
+
+  trivium doctor --suggest-verify
+      展示探测到的编译测试命令候选与可粘贴的 YAML。**只展示不写入**——
+      这些命令会被真实执行，是否执行由你确认（§14.1）。
 
   trivium doctor --selftest [--keep-fixture] [--asset-root <路径>]
       在临时夹具仓库里**真跑**一遍整条流水线：双审 → 闸门拦截 → 补裁决 →
@@ -340,6 +345,11 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
    * 因此放在 loadCtx 之前——装完还没 init 的项目里也该能自检，
    * 那正是「非作者 15 分钟装好」最需要它的时刻。
    */
+  if (args.flags.get('suggest-verify') === true) {
+    const ctx = await loadCtx({ allowUninitialized: true });
+    return suggestVerify(ctx.projectRoot);
+  }
+
   if (args.flags.get('selftest') === true) {
     return selftestCommand({
       keepFixture: args.flags.get('keep-fixture') === true,

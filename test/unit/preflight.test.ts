@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
+import YAML from 'yaml';
 import {
   parsePreflightScope, checkModelSlugs, runPreflight, commitAuthCache, renderPreflight,
 } from '../../src/trivium/preflight.js';
 import { defaultConfig, patchProbe } from '../../src/trivium/config.js';
+import { runDoctor } from '../../src/trivium/doctor.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
-import type { Config, Ctx } from '../../src/trivium/types.js';
+import type { Config, Ctx, ProbeSection } from '../../src/trivium/types.js';
 
 function freshProbe(cfg: Config): void {
   cfg.probe.generated_at = new Date().toISOString();
@@ -269,4 +271,64 @@ test('无既有结论时仍从默认值起步（首次探测）', async () => {
   const { probe } = await probeAgy(null, 'trivium-critic', { skipModelCalls: true });
   assert.equal(probe.headless_read_ok, null);
   assert.equal(probe.path_deny.supported, null);
+});
+
+// ── doctor 的分段落盘（审查意见 GLM-08）──
+
+test('doctor 探完一侧即中途落盘，且 --only 不碰未探的那一侧', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ckpt-'));
+  const triviumDir = path.join(root, '.trivium');
+  await fs.mkdir(triviumDir, { recursive: true });
+
+  // 先摆一份「上一次探到的」zcode 结论
+  await patchProbe(triviumDir, (cur) => {
+    cur.zcode.response_field = 'response';
+    cur.zcode.version = '0.16.5';
+  });
+
+  /*
+   * 关键：调用方传进来的 config.probe **故意不含**这份 zcode 结论
+   * （模拟配置合并链没把 config.local.yaml 读进来，或两次 doctor 并发）。
+   * checkpoint 若整段 Object.assign，zcode 就会被擦成默认值——
+   * 那正是 GLM-08 当初修掉的问题。
+   */
+  const cfg = defaultConfig();
+  await runDoctor({
+    config: cfg, projectRoot: root, triviumDir,
+    only: 'agy', skipModelCalls: true,
+  });
+
+  const onDisk = YAML.parse(
+    await fs.readFile(path.join(triviumDir, 'config.local.yaml'), 'utf8'),
+  ) as { probe: ProbeSection };
+
+  assert.ok(onDisk.probe.host, 'env 段必须已落盘——中途写过一次');
+  assert.ok(onDisk.probe.generated_at, 'generated_at 应已写入');
+  assert.equal(
+    onDisk.probe.zcode.response_field,
+    'response',
+    '--only agy 不得覆盖 zcode 段',
+  );
+  assert.equal(onDisk.probe.zcode.version, '0.16.5');
+});
+
+test('--only zcode 同样不碰 agy 段', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ckpt3-'));
+  const triviumDir = path.join(root, '.trivium');
+  await fs.mkdir(triviumDir, { recursive: true });
+  await patchProbe(triviumDir, (cur) => {
+    cur.agy.version = '1.2.0';
+    cur.agy.headless_read_ok = true;
+  });
+
+  await runDoctor({
+    config: defaultConfig(), projectRoot: root, triviumDir,
+    only: 'zcode', skipModelCalls: true,
+  });
+
+  const onDisk = YAML.parse(
+    await fs.readFile(path.join(triviumDir, 'config.local.yaml'), 'utf8'),
+  ) as { probe: ProbeSection };
+  assert.equal(onDisk.probe.agy.version, '1.2.0');
+  assert.equal(onDisk.probe.agy.headless_read_ok, true);
 });

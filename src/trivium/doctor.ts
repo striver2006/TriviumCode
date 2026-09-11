@@ -8,7 +8,9 @@
  *   - 机读：`.trivium/config.local.yaml` 的 `probe:` 段；
  *   - 人读：stdout 的分项报告（`--json` 时改为结构化输出）。
  */
-import { defaultProbe, persistProbe } from './config.js';
+import path from 'node:path';
+import { defaultProbe, patchProbe } from './config.js';
+import { EXIT } from './exit-codes.js';
 import { probeEnv, probeVerifyCommands } from './probes/env.js';
 import { probeAgy } from './probes/agy.js';
 import { probeZcode } from './probes/zcode.js';
@@ -69,6 +71,49 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
       `test=${JSON.stringify(probe.verify_suggestion.test)}（仅候选，需 init 逐条确认后才会执行）`,
   );
 
+  /*
+   * ── 分段落盘（审查意见 GLM-08）──
+   *
+   * 每探完一段就写一次，而不是攒到最后一次性写。
+   *
+   * agy 与 zcode 两段各要真实调用厂商模型若干次。若只在末尾落盘，一次 Ctrl+C、
+   * 一次网络中断、或第二段抛异常，前面已经烧掉的配额就全白费——下次重跑还得再烧一遍。
+   * 探针结论是**增量事实**，探到多少存多少才对。
+   *
+   * 用 patchProbe 而非 persistProbe：它在全局锁内重读再合并，
+   * 不会把并发的另一次 doctor（比如 --only 另一侧）的结论覆盖掉。
+   */
+  /** 本次真正探过的段。没探过的段一个字节都不碰 */
+  const probedSections = new Set<'env' | 'agy' | 'zcode'>();
+
+  const checkpoint = async (label: 'env' | 'agy' | 'zcode'): Promise<void> => {
+    probedSections.add(label);
+    try {
+      /*
+       * patchProbe 的回调是**原地修改**、返回 void。写成
+       * `(cur) => ({ ...cur, ...probe })` 的话返回值会被丢弃，实际一个字节都不写。
+       *
+       * 并且只写**探过的段**，不能 Object.assign 整个对象：`--only agy` 时
+       * probe.zcode 还是调用方传进来的那份，整段覆盖会把盘上更新的 zcode 结论
+       * 擦成旧值——这正是 GLM-08 当初修掉的问题，整段覆盖会把它带回来。
+       */
+      await patchProbe(opts.triviumDir, (cur) => {
+        if (probedSections.has('env')) {
+          if (probe.host) cur.host = probe.host;
+          cur.verify_suggestion = probe.verify_suggestion;
+        }
+        if (probedSections.has('agy')) cur.agy = probe.agy;
+        if (probedSections.has('zcode')) cur.zcode = probe.zcode;
+        if (probe.auth) cur.auth = { ...cur.auth, ...probe.auth };
+        if (probe.generated_at) cur.generated_at = probe.generated_at;
+      });
+    } catch (e) {
+      // 中途落盘失败不该中断探测：结论仍在内存里，末尾还会再写一次（那一次失败才算真失败）
+      notes.push(`[warn] ${label} 阶段的中途落盘失败（不影响继续探测）：${(e as Error).message}`);
+    }
+  };
+  await checkpoint('env');
+
   // ── Antigravity ─────────────────────────────────────────────────────
   if (only === null || only === 'agy') {
     step('探测 Antigravity（agy）…');
@@ -78,6 +123,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     });
     probe.agy = r.probe;
     notes.push(...r.notes.map((n) => `[agy] ${n}`));
+    await checkpoint('agy'); // 这一段已经烧过配额，先存下来
     if (!r.probe.bin) blockers.push('未找到 agy 可执行文件');
     else if (r.probe.headless_read_ok === false) {
       blockers.push(
@@ -96,6 +142,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     });
     probe.zcode = r.probe;
     notes.push(...r.notes.map((n) => `[zcode] ${n}`));
+    await checkpoint('zcode');
     if (!r.probe.entry) blockers.push('未找到 zcode.cjs 入口');
     else if (r.probe.response_field === null && !opts.skipModelCalls) {
       blockers.push(
@@ -107,8 +154,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
 
   probe.generated_at = new Date().toISOString();
 
-  // runtime.node 是 wrapper 与 ZCode 共用的绝对路径，必须落盘
-  const written = await persistProbe(opts.triviumDir, probe);
+  /*
+   * 末尾再写一次，只为补上 generated_at 并确保前面每一段都落了盘。
+   * 走 patchProbe（锁内读-改-写）而不是 persistProbe（整体替换）——
+   * 后者会把并发的另一次 doctor（例如 `--only` 另一侧）的结论覆盖掉。
+   */
+  await checkpoint(only === null ? 'zcode' : only === 'agy' ? 'agy' : 'zcode');
+  const written = path.join(opts.triviumDir, 'config.local.yaml');
   notes.push(`探针结论已写入 ${written}`);
 
   return { probe, notes, blockers };
@@ -128,4 +180,43 @@ export function renderDoctorReport(report: DoctorReport): void {
     for (const b of report.blockers) warn(b);
   }
   say('');
+}
+
+/**
+ * `doctor --suggest-verify`（设计 §14.1）。
+ *
+ * 只**展示**探测到的候选命令并给出可粘贴的 YAML，**绝不自行写入配置**。
+ *
+ * 这不是偷懒。`scripts.test` 完全可能耗时极长、依赖外部服务、或有副作用
+ * （清库、发请求、改远端状态）。§14.1 的原话是「逐条展示给用户确认后才写入」——
+ * 「确认」的意思是人点头，不是程序代人点头。
+ */
+export async function suggestVerify(projectRoot: string): Promise<number> {
+  const s = await probeVerifyCommands(projectRoot);
+
+  say('');
+  say('编译测试命令候选（探测所得，**尚未**写入任何配置）');
+  say('────────────────────────────────────────────────────────────');
+  if (s.build.length === 0 && s.test.length === 0) {
+    say('  未探测到任何候选。这不是错误——本项目可能用的是探测器不认识的工具链。');
+    say('  请手工把命令写进 .trivium/config.yaml 的 verify.build / verify.test。');
+  } else {
+    for (const c of s.build) say(`  build  ${c}`);
+    for (const c of s.test) say(`  test   ${c}`);
+  }
+  say('');
+  say('逐条确认后，把下面这段写进 .trivium/config.yaml（删掉你不要的行）：');
+  say('');
+  say('verify:');
+  say(`  build: [${s.build.map((c) => `'${c}'`).join(', ')}]`);
+  say(`  test:  [${s.test.map((c) => `'${c}'`).join(', ')}]`);
+  say('');
+  warn(
+    '这些命令会被 `trivium verify` **真实执行**。请先自己确认每一条：\n' +
+      '  · 它耗时多久？\n' +
+      '  · 它依赖外部服务或网络吗？\n' +
+      '  · 它有副作用吗（清库、写远端、发通知）？\n' +
+      '编排器绝不替你决定执行什么——未经你写入配置的候选永不执行（§14.1）。',
+  );
+  return EXIT.OK;
 }
