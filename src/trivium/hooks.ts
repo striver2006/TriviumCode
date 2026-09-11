@@ -244,8 +244,19 @@ async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
    */
   const archiveRel = path.relative(ctx.projectRoot, ctx.archiveRoot) || ctx.config.archive_root;
   const tracked = await deletedOrModifiedTracked(ctx.projectRoot, archiveRel);
+  /*
+   * **只看删除，不看改动**。两个锚各管一件事，重叠会误伤：
+   *
+   *   · git 管「东西没了」——它是唯一能发现「整个主题目录被删/改名」的机制，
+   *     因为那会把 task.json 与 run.json 一起带走。
+   *   · run.json 的 sha256 管「内容变了」——它**精确知道**哪些文件该不可变
+   *     （两侧审查文档、被审补丁、送审包）。
+   *
+   * 若 git 这一侧也拦改动，就会误伤两类本就该可变的文件：编排器每次运行都要更新的
+   * `task.json`，以及 Driver 本就该修订的裁决件（「修订」正是它的用途）。
+   * 护栏一旦开始误伤正常工作，第一个被关掉的就是它自己。
+   */
   for (const f of tracked.deleted) problems.push(`  · 已提交的归档文件被删除：${f}`);
-  for (const f of tracked.modified) problems.push(`  · 已提交的归档文件被改动：${f}`);
 
   for (const topic of await listTopics(ctx)) {
     const layout = { archiveRoot: ctx.archiveRoot, topic };

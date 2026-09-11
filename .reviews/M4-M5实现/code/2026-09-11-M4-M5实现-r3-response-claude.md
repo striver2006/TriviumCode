@@ -43,6 +43,12 @@ gemini 侧本轮 `parse_fallback`（agy 吐了两个首尾相接的 JSON 对象�
 | GLM-r2-08 | glm | minor | 接受 | 成立。`verify` 记录是 AC-10 的对账凭证，却完全不在留痕核对的保护范围内——可以被删被改而不拦，与 hook 文案的普适承诺不一致 | 把 `'verify'` 纳入 `listRecordedRuns` 的阶段清单，并让 `runVerify` 登记其两份工件。补用例：删 verify 记录应被拦 |
 | GLM-r2-09 | glm | minor | 接受 | 成立，且正中该模块自述的纪律。`loadLatestVerify` 把「记录损坏」渲染成「尚无 verify 记录」，恰好是 P5 要防的误读 | `report.ts`：`loadDisposition` 的 readFile 包 try/catch 转 notes；`loadLatestVerify` 解析失败时写 notes「最近一份 verify 记录损坏（文件名）」而非返回 null |
 | GLM-r2-10 | glm | minor | 暂缓 | 问题成立（`resolveTopic` 无条件 `ensureDir`，`report --topic 拼错名` 会凭空建目录并给出空报告）。暂缓不是因为不重要，而是因为它和 GLM-r2-05 都要动 `review.ts` 的落盘顺序与 `topic.ts` 的建目录时机，两处一起改才不会互相打架。**条件**：与 GLM-r2-05 同一批改，若该批未能在本里程碑内完成则单独提交 | `cli.ts` 的 `cmdReport`/`cmdVerify` 改用 `resolveTopicReadOnly`，缺主题时报 65 并给候选；或给 `resolveTopic` 加 `create` 开关。与 GLM-r2-05 合并实施 |
+| AGY-01 | gemini | blocker | 接受 | 与 GLM-r2-02 同一处：worker 异常退出不回收闸门，业务写锁挂到 24h TTL | 见 GLM-r2-02 的修改计划；`releaseRunningGate` 三处统一回收 |
+| AGY-02 | gemini | blocker | 接受 | 独有发现且成立：`gate --await-approval` 只 setGate、零前置校验，直接调用它再 approve 即可完全跳过逐条裁决与工件核验。人工审批是加在「机器已确认裁决齐备」之上的一道，不是替代品 | `cli.ts` 的 `--await-approval` 前置跑一次 `checkAdjudication`，不通过退 2 并打印缺口 |
+| AGY-03 | gemini | major | 驳回 | **实测不成立**：`git diff --no-index /dev/null new.ts` 输出 `diff --git a/new.ts b/new.ts`，git 已归一化，`/dev/null` 只出现在 `---` 行而 `filesInDiff` 只解析 `^diff --git` 行；本次真实 changes.diff 的 48 项清单里也确实没有 dev/null。`code-stage.ts` 早有同结论的注释与单测 | 不改 |
+| AGY-04 | gemini | major | 接受 | 与 GLM-r2-03 同一处。glm 的版本更完整（多给了「删整目录」「目录改名」两条绕过路径与 task.json 外部锚的建议），按 glm 的方案实施 | 见 GLM-r2-03 的修改计划 |
+| AGY-05 | gemini | minor | 接受 | 独有发现且成立：`hookPreCommit` 复用了 `approval_lock_scope` 的会话过滤，非当前会话的提交不被拦。但**裁决完整性是仓库的属性、不是会话的属性**——写锁按会话是 RV-05 的刻意设计，提交拦截不该沿用 | `hooks.ts` 去掉 pending 的会话过滤，仅 `block_commit` 开关控制 |
+| AGY-06 | gemini | nit | 接受 | 成立：`buildFixture` 在 try 之外，夹具初始化失败会泄漏临时目录且无结构化诊断 | `selftest.ts` 把 buildFixture 移进 try，失败时清理并返回结构化诊断 |
 
 ## 2. 双方共同指出的问题
 
@@ -57,19 +63,18 @@ gemini 判 AGY-01 为 blocker、glm 判 GLM-r2-02 为 major。**按较高者处�
 它会让开发者在一次崩溃之后 24 小时内无法改任何业务文件，而人的第一反应是去关掉 Hook——
 护栏一旦开始误伤，第一个被关掉的就是它自己。
 
-## 3. gemini 侧（parse_fallback）的逐条裁决
+## 3. 关于 gemini 侧的解析降级
 
-该侧未参与阻断判定，但意见照样裁决。**不进第 1 节的机读表**：`gate --check` 的
-`fallback_ids` 为空，把这些编号写进表里会触发 `unknown_findings`。
+本轮 gemini 侧被判 `parse_fallback`，当时 `gate --check` 的 `fallback_ids` 为空，
+其 6 条意见不在机读校验范围内——所以初稿把它们放在这一节单独裁决，避免触发
+`unknown_findings`。
 
-| 编号 | 严重度 | 裁决 | 说明 |
-| :--- | :--- | :--- | :--- |
-| AGY-01 | blocker | **接受** | 与 GLM-r2-02 同一处，见第 1 节 |
-| AGY-02 | blocker | **接受** | 独有发现且成立：`gate --await-approval` 只 `setGate` 不做任何前置校验，直接调用它再 `approve` 即可完全跳过逐条裁决与工件核验。修改计划：`--await-approval` 前置要求本轮 `gate --check` 已通过（或就地跑一次校验），不通过则退 2 |
-| AGY-03 | major | **驳回** | 实测不成立。`git diff --no-index /dev/null new.ts` 的输出是 `diff --git a/new.ts b/new.ts`——git 已归一化，`/dev/null` 只出现在 `---` 行，而 `filesInDiff` 只解析 `^diff --git` 行。本次真实 `changes.diff` 的文件清单（48 项）里也确实没有 `dev/null`。附：`code-stage.ts` 已有同样结论的注释与单测 |
-| AGY-04 | major | **接受** | 与 GLM-r2-03 同一处，见第 1 节。glm 的版本更完整（多给了「删整目录」「目录改名」两条绕过路径与 `task.json` 外部锚的建议），按 glm 的修改计划实施 |
-| AGY-05 | minor | **接受** | 独有发现且成立：`hookPreCommit` 复用了 `approval_lock_scope` 的会话过滤，非当前会话的提交不会被未裁决闸门拦截。但**裁决完整性是仓库的属性，不是会话的属性**——写锁按会话是 RV-05 的刻意设计（避免跨会话误伤），提交拦截不该沿用。修改计划：`hookPreCommit` 不再按会话过滤 pending，仅 `block_commit` 开关控制 |
-| AGY-06 | nit | **接受** | 成立。`buildFixture` 在 try 之外，夹具初始化失败会泄漏临时目录且无结构化诊断。修改计划：移进 try，失败时按一条 step 记录并清理 |
+**修掉解析缺陷之后情况变了**：`gate` 会用**当前**解析器重试历史 `parse_fallback`
+原文（§6.6 规则 8 的既定行为——解析器修好之后，旧的运行不该继续背着一个已经不存在
+的缺陷），于是 AGY-01～06 全部解析成功并进入机读校验。它们已并入第 1 节的主表。
+
+这条连锁反应本身是个好信号：**留痕是可复核的**，工具变好之后旧记录会跟着变准，
+而不是被冻结在当初那次失败里。
 
 ## 4. 本轮未覆盖
 
@@ -82,3 +87,32 @@ gemini 判 AGY-01 为 blocker、glm 判 GLM-r2-02 为 major。**按较高者处�
   只看了代码。文档与实现的一致性本轮无人核对。
 - 本轮补丁 277 KB / 48 文件，是一次里程碑的全部变更，**不是**一个正常的审查单元。
   两侧都只能做抽样深读（glm 读 15 文件、gemini 读 44 文件），覆盖面必然有限。
+
+---
+
+## 5. 实施记录（S9，2026-09-11）
+
+14 条接受项全部实施完毕，分四批提交。每批都补了对应用例——**用例本身逮到过
+两处实施缺口**（`gate --check` 的放行路径漏改、`worker_lost` 分支拿不到
+topic/stage），这两处若只靠类型检查和既有用例都发现不了。
+
+| 编号 | 落点 | 提交 |
+| :--- | :--- | :--- |
+| GLM-r2-01 | `state.ts` 新增 `setGateChecked`（`expect` 比较-交换，比较与写入同锁内）；`review.ts` / `cli.ts` / `run-protocol.ts` 三处调用点分别按 ①②③ 收紧；③ 改为**拒绝启动**并给出补裁决与 `abandon` 两条出路 | `90898f1` |
+| GLM-r2-02 ≡ AGY-01 | 新增 `releaseRunningGate`，worker finally / startRun 后置 catch / `--wait` 的 `worker_lost` 三处统一回收 | `90898f1` |
+| AGY-02 | `--await-approval` 前置跑一次 `checkAdjudication`，不过退 2 | `90898f1` |
+| AGY-05 | `hookPreCommit` 去掉会话过滤——裁决是仓库的属性 | `90898f1` |
+| GLM-r2-03 ≡ AGY-04 | 两个外部锚：`task.json.runs[]` 反查 run.json 存在且可读（损坏按违例拦）；`git diff --name-status HEAD` 捕获已提交归档文件的删改（治「删整个目录」） | `9b61de1` |
+| GLM-r2-05 | `changes.diff` 与两份 brief 进 `run.json.artifacts`；executeRun 收尾改为**追加**而非替换 | `9b61de1` |
+| GLM-r2-08 | verify 写 run.json 并 `registerRun`；`listRecordedRuns` 纳入 `'verify'`；`TaskMeta.runs[].stage` 放宽为 `StageOrVerify` | `9b61de1` |
+| AGY-06 | `buildFixture` 移进 try，失败时清理并返回结构化诊断 | `9b61de1` |
+| GLM-r2-04 | `diffAgainst` 对 tracked / untracked 的非零退出一律抛错并回显原值 | `7c37d73` |
+| GLM-r2-06 | 抽出 `unquoteGitPath`，`filesInDiff` 与未跟踪枚举复用；形态取自实测 | `7c37d73` |
+| GLM-r2-07 | `unconfigured` 仅两组皆空；新增 `selected_empty`；`--timeout` 坏值退 64 | `1329765` |
+| GLM-r2-09 | `loadDisposition` 读失败进 notes；新增 `verifyUnreadable` 区分「损坏」与「从未验证」 | `1329765` |
+| GLM-r2-10 | report / verify 改用 `resolveTopicReadOnly`；report 对不存在的主题退 65 并列候选 | `1329765` |
+
+**GLM-r2-10 原裁决是「暂缓」**，条件是「与 GLM-r2-05 同一批改」。GLM-r2-05 已在
+第二批落地，条件达成，故在第四批一并完成——暂缓不是搁置，是附条件的延后。
+
+测试 472 → 503（+31），`npm run check` 全绿。

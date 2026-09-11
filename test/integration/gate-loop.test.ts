@@ -591,3 +591,43 @@ test('verify 记录也受保护（审查意见 GLM-r2-08）', { skip: bundleMiss
   assert.equal(r.code, EXIT.GATE_BLOCK, `验证记录被删必须拦：\n${r.stdout}${r.stderr}`);
   assert.match(r.stderr, /verify/);
 });
+
+test('git 锚只管删除：task.json 与裁决件的正常改动不得误伤', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await completedRound(fx.root, fx.stageDir);
+
+  const { run } = await import('../../src/trivium/util/exec.js');
+  await run('git', ['add', '-A', '--', '.reviews'], { cwd: fx.root, timeoutMs: 30_000 });
+  await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', '归档', '--no-verify'], {
+    cwd: fx.root, timeoutMs: 30_000,
+  });
+
+  /*
+   * 两类本就该可变的已提交归档文件：
+   *   · task.json —— 编排器每次运行都要更新它；
+   *   · 裁决件 —— Driver 本就该修订它（S9 追加实施记录就是这么做的）。
+   * 若 git 锚也拦改动，正常工作会被一路误伤，人的第一反应就是关掉 Hook。
+   */
+  await fs.appendFile(
+    path.join(fx.stageDir, `${today()}-${TOPIC}-revised-claude.md`),
+    '\n## 实施记录\n\n已按接受项改完。\n',
+    'utf8',
+  );
+  const taskPath = path.join(fx.archiveRoot, TOPIC, 'task.json');
+  const task = JSON.parse(await fs.readFile(taskPath, 'utf8')) as { updated_at: string };
+  task.updated_at = new Date().toISOString();
+  await fs.writeFile(taskPath, JSON.stringify(task, null, 2));
+
+  assert.equal(
+    (await hook(fx.root, 'hook-pre-commit', commitEvent)).code,
+    EXIT.OK,
+    'task.json 与裁决件的改动是正常工作，不得拦',
+  );
+
+  // 但审查文档的内容改动仍由 run.json 的 sha256 精确拦下
+  await fs.appendFile(path.join(fx.stageDir, `${today()}-${TOPIC}-glm.md`), '\n偷改一行\n', 'utf8');
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `审查文档被改仍须拦：\n${r.stderr}`);
+  assert.match(r.stderr, /已被改动/);
+  assert.ok(runId);
+});
