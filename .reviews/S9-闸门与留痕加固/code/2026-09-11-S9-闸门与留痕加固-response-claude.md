@@ -64,3 +64,39 @@ addresses:
 - `hook-session-start` 的既有逻辑两侧都没读（GLM-06 的修改计划要动它）。
 - 本批改动对**性能**的影响无人评估：`checkArchiveIntegrity` 现在每次提交都要
   遍历全部主题 + 跑一次 `git diff`，归档变大后的开销未测。
+
+---
+
+## 4. 实施记录（S9，2026-09-11）
+
+14 条全部实施完毕（含原本暂缓的 GLM-08——其条件「与 GLM-02 同批改」已达成），
+分三批提交。
+
+| 编号 | 落点 | 提交 |
+| :--- | :--- | :--- |
+| GLM-01 | 补丁改名 `changes-<run_id>.diff` 并登记该名；固定名保留为不进保护集的便利副本；`.reviews/README.md` 与设计 6.2/9.2/6.7 同步，设计升 v1.2.2 | `8ee0115` |
+| AGY-01 ≡ GLM-02 | `meta.ts` 新增 `readTaskStrict` 区分「不存在」与「存在但读不出来」；hooks 对后者按违例拦截；report 继续用宽松版 | `8ee0115` |
+| GLM-08 | `checkRunManifests` 改 `run_id + stage` 双键匹配 | `8ee0115` |
+| AGY-02 | 闸门回收显式 `allowMissing: false` | `a8e4539` |
+| AGY-05 ≡ GLM-03 | 推断不出 runId 即退 65（不再跳过校验）；写入改条件迁移 | `a8e4539` |
+| AGY-06 | `runReview` 同步路径补闸门回收 | `a8e4539` |
+| GLM-04 | `--cancel` 对终态运行不改写 status、不动闸门 | `a8e4539` |
+| GLM-05 | `cmdVerify` 主题不存在即退 65 | `a8e4539` |
+| GLM-06 | `hook-session-start` 增加 pull 式清扫（`processAlive` 比对启动时间，判不准不回收） | `a8e4539` |
+| AGY-03 | verify 的 run.json 改用 `trivium.verify-run.v1` | `a8e4539` |
+| AGY-04 | `unquoteGitPath` 自行解析 C 风格转义，八进制按字节收集后整体 UTF-8 解码 | `a8e4539` |
+| GLM-07 | 按实测改写 `code-stage.ts` 与 `util/git.ts` 的两处错误注释 | `a8e4539` |
+
+### 实施中发现的两处偏差
+
+1. **`--await-approval` 的允许来源要含 `idle`**。我最初把 `expect.state` 设成
+   只允许 `review_done_awaiting_disposition`，结果 AC-14 用例立刻失败——因为
+   `gate --check` 通过后闸门本就回到 `idle`，B/C/D 的正常序列是
+   `--check` → `--await-approval`。真正要挡的是**另一次运行**的 `running`，
+   加上 runId 比对就够了。这条是用例救回来的。
+2. **AGY-04 的实际触发条件比意见描述的窄**。实测确认：`core.quotePath=false`
+   （我们自己的调用一律带它）时中文保持原样，`JSON.parse` 够用；只有
+   `quotePath=true` 才产生八进制。但 `filesInDiff` 也解析**外部产生的**补丁，
+   那里没有这个保证，所以仍按接受实施。
+
+测试 508 → 514（+9，本轮累计 +6 实现批次）；`doctor --selftest` 14/14 通过。
