@@ -137,10 +137,28 @@ node --test "dist/test/test/unit/**/*.test.js"
 node --test "dist/test/test/integration/gate-loop.test.js"
 ```
 
-改了 `skills/` 下的资产（`lenses.yaml`、`prompts/`、模板、`hooks.json`）之后，
-要 `node dist/install.cjs` 重装才会生效——`review` 默认读的是
-`~/.claude/skills/dual-critic/`，不是仓库工作树。调试时可用
-`TRIVIUM_ASSET_ROOT=<repo>/skills/dual-critic` 直接指向工作树。
+### ⚠️ 改完代码必须重装，否则你验的是旧产物
+
+`trivium init` 生成的 `.trivium/bin/trivium` 指向的是**已安装副本**
+`~/.claude/skills/dual-critic/scripts/trivium.cjs`，**不是**仓库里刚 `npm run build`
+出来的那个。所以：
+
+```bash
+npm run build && node dist/install.cjs   # 两步都要，缺一不可
+```
+
+只 `npm run build` 就去跑 `.trivium/bin/trivium`，跑的还是改之前的代码。
+实测踩过：修完 agy 的 `--effort` 冲突直接重跑真实审查，仍以同样方式失败，
+查了才发现 wrapper 指向的是旧副本——白烧一次配额。
+
+调试时想绕开重装，可以直接调仓库产物：
+
+```bash
+node skills/dual-critic/scripts/trivium.cjs <子命令>
+```
+
+改了 `skills/` 下的**资产**（`lenses.yaml`、`prompts/`、模板、`hooks.json`）同理，
+或用 `TRIVIUM_ASSET_ROOT=<repo>/skills/dual-critic` 指向工作树。
 
 ---
 

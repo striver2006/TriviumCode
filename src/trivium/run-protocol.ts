@@ -30,7 +30,7 @@ import { zcodeAdapter } from './adapters/zcode.js';
 import type { AdapterContext } from './adapters/base.js';
 import { resolveAdapters } from './adapters/stub.js';
 import { ensureDir, exists } from './util/fsx.js';
-import { processAlive, processStartTime, spawnDetached } from './util/exec.js';
+import { killProcessTree, processAlive, processStartTime, spawnDetached } from './util/exec.js';
 import { fail, say, step, warn } from './util/log.js';
 
 /** 心跳间隔：设计 §7.5 规定 30s */
@@ -489,12 +489,9 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
   if (pid !== null) {
     const live = await processAlive(pid, s?.worker_started_at ?? null);
     if (live.alive && live.sameProcess) {
-      step(`向工作进程 ${pid} 发送 SIGTERM`);
-      try {
-        process.kill(pid, 'SIGTERM');
-      } catch {
-        /* 已退出 */
-      }
+      // 按**进程组**发：只杀 worker 会把 agy / zcode 遗弃给 init 继续烧配额
+      step(`向工作进程组 ${pid} 发送 SIGTERM（含两侧厂商子进程）`);
+      killProcessTree(pid, 'SIGTERM');
       // 宽限 5s 后 SIGKILL
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
@@ -502,12 +499,8 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
         await new Promise((r) => setTimeout(r, 250));
       }
       if ((await processAlive(pid, s?.worker_started_at ?? null)).alive) {
-        warn(`工作进程 ${pid} 未响应 SIGTERM，发送 SIGKILL`);
-        try {
-          process.kill(pid, 'SIGKILL');
-        } catch {
-          /* ignore */
-        }
+        warn(`工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL`);
+        killProcessTree(pid, 'SIGKILL');
       }
     } else {
       step(`工作进程 ${pid} 已不存在，仅做状态与锁的清理`);

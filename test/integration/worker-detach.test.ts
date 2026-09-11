@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { spawnDetached, processAlive, run } from '../../src/trivium/util/exec.js';
+import { killProcessTree, spawnDetached, processAlive, run } from '../../src/trivium/util/exec.js';
 
 /**
  * R-A 的验收（修订版 M2 计划 §6）：两条断言，不是一条模糊判据。
@@ -166,4 +166,77 @@ test('processAlive 能区分「同一进程」与「PID 被复用」', async () 
   const reused = await processAlive(process.pid, 'Thu Jan  1 00:00:00 1970');
   assert.equal(reused.alive, true);
   assert.equal(reused.sameProcess, false, '启动时刻不符即判为 PID 被复用');
+});
+
+// ── --cancel 必须连带杀掉厂商子进程（实测遗弃过）──
+
+test('killProcessTree 杀整组：子孙进程不被遗弃给 init', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-tree-'));
+
+  /*
+   * 造一棵真进程树：detached 的父进程再 spawn 一个长睡子进程。
+   * 这正是 worker → agy/zcode 的形状。只 kill 父进程的话，
+   * 子进程会被 init 收养并继续跑——实测中 `--cancel` 之后 zcode-cli 的 PPID
+   * 变成 1 且仍在消耗配额，就是这么来的。
+   */
+  const script = path.join(dir, 'parent.mjs');
+  await fs.writeFile(
+    script,
+    [
+      "import { spawn } from 'node:child_process';",
+      "import { writeFileSync } from 'node:fs';",
+      // 子进程睡很久；把它的 pid 写出来供断言
+      `const child = spawn(process.execPath, ['-e', 'setTimeout(()=>{},600000)'], { stdio: 'ignore' });`,
+      `writeFileSync(${JSON.stringify(path.join(dir, 'child.pid'))}, String(child.pid));`,
+      'setTimeout(() => {}, 600000);',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const parent = await spawnDetached(process.execPath, [script], {
+    cwd: dir,
+    logFile: path.join(dir, 'p.log'),
+  });
+
+  // 等子进程起来
+  let childPid = 0;
+  for (let i = 0; i < 50 && childPid === 0; i++) {
+    try {
+      childPid = Number.parseInt(await fs.readFile(path.join(dir, 'child.pid'), 'utf8'), 10);
+    } catch {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  assert.ok(childPid > 0, '子进程没起来，用例前提不成立');
+  assert.equal((await processAlive(childPid, null)).alive, true);
+
+  assert.equal(killProcessTree(parent.pid, 'SIGKILL'), true);
+
+  // 两个都应在短时间内消失
+  for (let i = 0; i < 50; i++) {
+    const p = (await processAlive(parent.pid, null)).alive;
+    const c = (await processAlive(childPid, null)).alive;
+    if (!p && !c) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.equal((await processAlive(parent.pid, null)).alive, false, '父进程应已退出');
+  assert.equal(
+    (await processAlive(childPid, null)).alive,
+    false,
+    '子进程必须一起被杀——否则它会被 init 收养并继续烧配额',
+  );
+});
+
+test('killProcessTree 对已退出的 pid 返回 false 而不抛异常', async () => {
+  const r = await run(process.execPath, ['-e', 'process.exit(0)'], { timeoutMs: 10_000 });
+  assert.equal(r.code, 0);
+  // 用一个几乎不可能存在的 pid
+  assert.equal(killProcessTree(999_999, 'SIGTERM'), false);
+});
+
+test('killProcessTree 拒绝 pid <= 1，绝不误杀 init 或整个会话', () => {
+  assert.equal(killProcessTree(0, 'SIGKILL'), false, 'pid 0 是「当前进程组」，会自杀');
+  assert.equal(killProcessTree(1, 'SIGKILL'), false);
+  assert.equal(killProcessTree(-5, 'SIGKILL'), false);
+  assert.equal(killProcessTree(process.pid, 'SIGKILL'), false, '绝不对自己发信号');
 });

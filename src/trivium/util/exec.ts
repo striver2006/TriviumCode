@@ -273,3 +273,44 @@ export async function processStartTime(pid: number): Promise<string | null> {
   const t = r.stdout.trim();
   return t.length > 0 ? t : null;
 }
+
+/**
+ * 向工作进程**及其全部后代**发信号。
+ *
+ * `spawnDetached` 用 `detached: true`（即 POSIX `setsid`），所以工作进程是自己
+ * 进程组的组长、pgid 等于它的 pid，它拉起的 agy / zcode 也在同一组里。
+ * 只 `kill(pid)` 的话，两侧厂商进程会被**遗弃给 init 继续跑**——实测确认过：
+ * `--cancel` 之后 `zcode-cli` 的 PPID 变成 1 且仍在消耗配额。
+ * 取消的意义就是停止花钱，所以必须按进程组发。
+ *
+ * 返回是否至少送达了一个目标。组不存在（ESRCH）时退回单进程，
+ * 因为组可能已经空了、也可能这个 pid 压根不是组长。
+ */
+export function killProcessTree(pid: number, signal: NodeJS.Signals): boolean {
+  if (!Number.isInteger(pid) || pid <= 1) return false;
+  // 绝不对自己所在的组发信号：那会把编排器自己一起杀掉
+  const ownGroup = typeof process.getgid === 'function' ? safePgrp() : null;
+  if (ownGroup !== null && pid === ownGroup) return false;
+
+  try {
+    process.kill(-pid, signal); // 负数 = 整个进程组
+    return true;
+  } catch {
+    try {
+      process.kill(pid, signal);
+      return true;
+    } catch {
+      return false; // 已经退出了
+    }
+  }
+}
+
+function safePgrp(): number | null {
+  try {
+    // Node 没有直接的 getpgrp 绑定，用 process.pid 的组近似：
+    // 我们只需要防住「pid 恰好等于自身进程组」这一种自杀场景
+    return process.pid;
+  } catch {
+    return null;
+  }
+}
