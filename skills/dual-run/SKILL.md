@@ -34,9 +34,9 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
 **把本命令的首参（任务目标）原样传给 `--goal`**——它在这里落进 `task.json`，
 之后 S6 代码双审、乃至后续 bug 定位都会自动复用，审查员才知道这次改动要达成什么（§9.4）。
 **每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`（600000）。**
-**本命令收到的模型覆盖（`--model-gemini` / `--model-glm`）要一并传下去。**
-S2/S6 是委托执行，交接处最容易把它们丢掉——一丢就静默回退到 profile 配置模型，
-留痕里记的是回退后的模型，事后看不出用户曾经指定过。
+**本命令收到的模型覆盖（`--model-gemini` / `--model-glm`）与档位（`--profile`）
+要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉——一丢就静默回退到
+配置里的 `active_profile`，留痕里记的是回退后的模型，事后看不出用户曾经指定过。
 
 ### S3 修订计划
 读两份审查全文，写 `…-revised-claude.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。

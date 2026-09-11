@@ -59,6 +59,20 @@ export function splitArguments(raw: string): ParsedArgsBundle {
       named[name] = t.slice(eq + 1);
       continue;
     }
+    /*
+     * ── `--focus` 贪婪取值，其余旗标只吃一个 token ──
+     *
+     * 焦点是自由文本，天然带空格。若照单 token 取，用户写
+     * `--focus 重点看 并发安全` 只会拿到「重点看」，剩下的悄悄漏进正文——
+     * 又是一次静默截断。其余旗标（topic / base / context / model-*）都是单值，
+     * 贪婪反而会把后面的正文吞进去，所以只对 focus 放宽。
+     */
+    if (name === 'focus') {
+      const parts: string[] = [];
+      while (i + 1 < tokens.length && !isKnownFlag(tokens[i + 1]!)) parts.push(tokens[++i]!);
+      named[name] = parts.join(' ');
+      continue;
+    }
     const next = tokens[i + 1];
     if (next !== undefined && !isKnownFlag(next)) {
       named[name] = next;
@@ -154,16 +168,44 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
   const { named, rest } = splitArguments(rawArgs);
   const notes: string[] = [];
 
-  // 提示语：--focus 优先，否则取剩余正文
-  const promptHint = (named['focus'] ?? rest).trim() || null;
-  // 任务目标：只认位置参数正文（命令 A 的首参），--focus 不参与——它语义是本次焦点
+  /*
+   * ── 焦点只认 `--focus`，位置参数一律是任务目标 ──
+   *
+   * 位置参数的本质是「具名参数挑剩下的残渣」，没有边界：焦点里只要出现
+   * `--base` 这类白名单词，就会连同后一个 token 被抠进 named，正文静默缺一块——
+   * 而 BRIEF 第 2 段是 FR-20 / AC-09 承诺**逐字**嵌入的唯一落点，不能建在残渣上。
+   *
+   * 改判之后四条命令规则一致：首参恒为「要达成什么」，焦点恒走 `--focus`。
+   * 顺带修掉 B/C/D 的 task_goal 与 prompt_hint 必然雷同（同取 rest）的老问题。
+   */
+  const promptHint = (named['focus'] ?? '').trim() || null;
   const taskGoal = rest.trim() || null;
+
+  /*
+   * ── B/C/D 缺焦点在这里就退，不留给执行者自觉 ──
+   *
+   * FR-20 要求命令 B/C/D 必带焦点。原先只有 SKILL.md 里一句「若提示语为空 →
+   * 停止」，靠执行者判断；而焦点改走 `--focus` 之后，旧写法
+   * `/dual-review-code <一段话>` 会把那段话整体落到任务目标上、焦点为空，
+   * 正是最容易踩的迁移坑——必须给一个明确的报错，而不是让它带着空焦点跑完。
+   *
+   * 命令 A（scope=all）不在此列：它的焦点本就是可选的补充提示。
+   */
+  if (scope !== 'all' && !promptHint) {
+    throw new TriviumError(
+      EXIT.USAGE,
+      '缺少 --focus：命令 B/C/D 必须携带审查焦点提示语（FR-20）。\n' +
+        '  焦点会逐字进入两侧送审材料，是 AC-09 的验收落点。\n' +
+        '  写法：<任务目标> --focus <本次重点看什么>\n' +
+        `  ${taskGoal ? `检测到首参「${taskGoal}」——它会被当作任务目标；若这就是你想说的审查焦点，请改写成 --focus 形式。` : ''}`.trimEnd(),
+    );
+  }
 
   // 主题：显式指定优先，否则从提示语/任务目标推导
   let inferred = false;
   let topicRaw = named['topic']?.trim() ?? '';
   if (topicRaw.length === 0) {
-    topicRaw = inferTopic(promptHint ?? '', ctx.config.topic.max_len);
+    topicRaw = inferTopic(taskGoal ?? promptHint ?? '', ctx.config.topic.max_len);
     inferred = true;
     notes.push(`主题由任务目标推导：「${topicRaw}」——请向用户回显确认`);
   }

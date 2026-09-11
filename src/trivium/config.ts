@@ -8,7 +8,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import type { Config, Ctx, ProbeSection, Stage } from './types.js';
-import { envError } from './exit-codes.js';
+import { EXIT, TriviumError, envError } from './exit-codes.js';
 import { exists, expandHome } from './util/fsx.js';
 import { isGitRepo, repoRoot } from './util/git.js';
 
@@ -168,6 +168,34 @@ export interface LoadOptions {
   cwd?: string;
   /** 允许在非 git 仓库、无 .trivium 的目录加载（doctor 需要） */
   allowUninitialized?: boolean;
+}
+
+/**
+ * 应用 `--profile` 覆盖：换掉本次运行使用的模型档位（AGY-04 / GLM-05）。
+ *
+ * profile 是 `config.yaml` 里预设的成套模型（default / architecture / hotfix / …），
+ * 平时由 `active_profile` 固定。`--profile` 让单次运行临时切档，省去改配置再改回来。
+ *
+ * 实现刻意选择「覆盖 `active_profile`」而不是给 `routeModel` 加参数：
+ * 后者内部读的就是 `cfg.profiles[cfg.active_profile]`，覆盖源头则两个调用点、
+ * 以及 review/preflight 里那两句「profile『X』未定义模型」的错误文案全部自动正确，
+ * 不存在漏改一处的可能。
+ *
+ * 与 `--model-*` 不冲突且优先级更低：后者直指某个具体模型（routeModel 的 `cli` 档），
+ * 本参数只是换一张默认值表——更具体的赢。
+ */
+export function applyProfileOverride(cfg: Config, name: string | null | undefined): Config {
+  const wanted = name?.trim();
+  if (!wanted) return cfg;
+  if (!cfg.profiles[wanted]) {
+    const available = Object.keys(cfg.profiles);
+    throw new TriviumError(
+      EXIT.USAGE,
+      `profile「${wanted}」不存在。\n` +
+        `  可用档位：${available.length > 0 ? available.join('、') : '（config.yaml 未定义任何 profile）'}`,
+    );
+  }
+  return { ...cfg, active_profile: wanted };
 }
 
 /** 加载配置并解析出运行上下文 */

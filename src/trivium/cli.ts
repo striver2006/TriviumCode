@@ -8,7 +8,7 @@ import path from 'node:path';
 import { exists } from './util/fsx.js';
 import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
-import { loadCtx } from './config.js';
+import { applyProfileOverride, loadCtx } from './config.js';
 import { runDoctor, renderDoctorReport, suggestVerify } from './doctor.js';
 import { selftestCommand } from './selftest.js';
 import { runReview } from './review.js';
@@ -113,6 +113,9 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --plan-file / --rca-file  显式指定被审对象
       --base <ref>  仅 code 阶段：diff 比较基线，默认 HEAD
       --model-gemini <slug> / --model-glm <id>  本次模型覆盖
+      --profile <名称>  本次改用另一档模型（config.yaml 的 profiles）。
+                  与 --model-* 不冲突：那个指定具体模型、优先级更高，
+                  这个只换默认值表。档位不存在则退 64 并列出可用值
       --only gemini|glm  仅跑一侧（调试用，会被标为降级——这不是双审）
       --allow-single  一侧失败时不中止，产出单审结果并留痕（§12.4）。
                       受配置 review.allow_single_flag 约束；默认策略是 strict
@@ -131,6 +134,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
   trivium preflight --stage plan|code|bug|all [--json] [--skip-auth-check] [--refresh-auth]
       启动预检（FR-18 / AC-16）。失败时**不产生任何工件**。
       --stage all   命令 A 用：校验全部三阶段的模型 slug + 编译测试命令已配置
+      --profile <名称>  按该档位预检——要校验的是本次实际会用的模型
       --refresh-auth  强制重新探活，穿透 TTL 缓存
 
   trivium topic resolve --stage <s> -- <整串 $ARGUMENTS>   [--json]
@@ -196,6 +200,12 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   // ── 工作进程模式：不应由人直接调用 ──
   const workerId = flagString(args, 'worker');
   if (workerId) return workerMain(ctx, workerId);
+
+  /*
+   * `--profile` 换本次运行的模型档位。放在 worker 分支**之后**：工作进程按
+   * request.json 重建，档位已在派生时定死，再覆盖一次只会引入不一致。
+   */
+  ctx.config = applyProfileOverride(ctx.config, flagString(args, 'profile'));
 
   // ── 只读/控制类子命令：只需要 run_id ──
   const waitId = flagString(args, 'wait');
@@ -399,6 +409,8 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
 
 async function cmdPreflight(args: ParsedArgs): Promise<number> {
   const ctx = await loadCtx();
+  // 预检要校验的是**本次实际会用**的档位，所以同样受 --profile 影响
+  ctx.config = applyProfileOverride(ctx.config, flagString(args, 'profile'));
   const scope = parsePreflightScope(flagString(args, 'stage'));
 
   const modelOverrides: Partial<Record<CriticId, string>> = {};

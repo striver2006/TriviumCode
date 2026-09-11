@@ -24,12 +24,11 @@ const REVIEW_SKILLS = ['dual-review-code', 'dual-review-plan', 'dual-review-bug'
 /**
  * 豁免：声明了但**故意**不进模板的旗标。
  *
- * `--profile` 不是遗漏而是悬空——`cli.ts` 全部子命令都不解析它
- * （AGY-04 ≡ GLM-05，已裁决为暂缓）。把它写进模板等于让 Driver 去传一个
- * CLI 不认的旗标，比不传更糟。待项目负责人在「实现覆盖能力」与
- * 「从声明中摘掉」之间拍板后，这条豁免应当随之删除。
+ * 目前为空。`--profile` 曾在此豁免（AGY-04 ≡ GLM-05，悬空于 argument-hint 而
+ * CLI 不解析），项目负责人拍板「保留即实现」后已接上 `applyProfileOverride`，
+ * 豁免随之删除——这一族缺口现在没有例外。
  */
-const EXEMPT = new Set(['profile']);
+const EXEMPT = new Set<string>();
 
 const readSkill = (name: string): string =>
   readFileSync(path.join(REPO_ROOT, 'skills', name, 'SKILL.md'), 'utf8');

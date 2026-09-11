@@ -1,7 +1,7 @@
 ---
 name: dual-review-plan
 description: 对已有计划做 Antigravity + ZCode 背靠背双审，并产出逐条裁决的修订计划（命令 B）
-argument-hint: <审查焦点提示语> [--topic <主题>] [--context <路径,…>] [--model-gemini <slug>] [--model-glm <id>] [--plan-file <路径>]
+argument-hint: <任务目标> --focus <审查焦点提示语> [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-gemini <slug>] [--model-glm <id>] [--plan-file <路径>]
 disable-model-invocation: true
 allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 ---
@@ -27,8 +27,8 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 
 运行 `TV topic resolve --stage plan --json -- $ARGUMENTS`。
 
-- 若提示语为空 → 停止并说明「命令 B 必须携带审查焦点提示语」（FR-20）。
-  提示语会**逐字**进入两侧送审材料，是 AC-09 的验收落点，不能省。
+- 焦点为空时 `topic resolve` 会直接退 64 并给出写法提示，原样转述即可（FR-20）。
+  **注意旧写法迁移**：`<一段话>` 会被当作任务目标而非焦点，必须显式 `--focus`。
 - 若未提供 `--context` → 依据计划 内容补一份涉及路径清单再传入。
   你在起草时本就知道涉及哪些模块，这一步能显著提升审查质量（UR-01 / AC-11）。
 
@@ -37,12 +37,31 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 先运行：
 
 ```
-TV review --start --stage plan --topic <主题> --focus <提示语> [--goal <任务目标>] [--plan-file <路径>] [--model-gemini <slug>] [--model-glm <id>] [--context …] --json
+TV review --start --stage plan --topic <主题> --focus <提示语> [--goal <任务目标>] [--plan-file <路径>] [--model-gemini <slug>] [--model-glm <id>] [--profile <名称>] [--context …] --json
 ```
 
 若上一步 resolve 输出的 `task_goal` 非空，把它原样传给 `--goal`。它与 `--focus` 是两回事：
 前者说「这次要达成什么」，进 BRIEF 第 4 段；后者说「这次重点看什么」，进第 2 段。
 省略 `--goal` 时编排器会回退到 `task.json` 已记录的目标或同主题 plan 原稿。
+
+**焦点必须走 `--focus`，不能直接写成首参。** 首参是**任务目标**（这次要达成什么，
+进 BRIEF 第 4 段），`--focus` 是**本次重点看什么**（进第 2 段，FR-20 / AC-09 的
+唯一落点，逐字嵌入）。两者语义不同，不可互相顶替。
+
+`--focus` 会贪婪取到下一个已知旗标为止，所以焦点里带空格无需引号；
+但要把它写在其它旗标**之前**或用旗标隔开，否则后面的内容会被一并吃进焦点。
+
+**自由文本里若出现 `--` 开头的词，必须用双引号包起来再传。** 例如焦点是
+「核实 --base 透传是否准确」，要写成 `--focus "核实 --base 透传是否准确"`——
+否则 `--base` 会被当成真旗标，连同后一个词一起从焦点里被抠走，且**不报错**。
+任务目标同理。这里的引号是**字面字符**：`--` 之后的内容会被拼成一整串再重新分词，
+shell 的引号在拼接时就没了，所以引号要真实出现在 `$ARGUMENTS` 文本里。
+（多数误吞会被下游校验拦住——档位不存在退 64、坏 base 退 64、非法 slug 退 64——
+但焦点被截短后仍是合法字符串，没有任何校验能发现，只能靠引号。）
+
+若 resolve 输出的 `profile` 非空，把它原样传给 `--profile`。它换的是本次运行的
+模型档位（`config.yaml` 的 `profiles`），与 `--model-*` 不冲突——后者指定具体模型、
+优先级更高，前者只换默认值表。档位不存在会退 64 并列出可用值。
 
 若 resolve 输出的 `subject_path` 非空，把它原样传给 `--plan-file`。
 resolve 用它定位被审对象，而 `--start` 会**重新定位一次**——不传就自动取
