@@ -1,0 +1,2396 @@
+# trivium changes.diff
+# run_id: 20260911T063947Z
+# base: 92e71f0b
+# head: 4b797e1af6ba09938baeb902cb887f649cc330b3
+# files: 28
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-09-11_manual_acceptance.md
+#   src/trivium/archive.ts
+#   src/trivium/cli.ts
+#   src/trivium/code-stage.ts
+#   src/trivium/disposition.ts
+#   src/trivium/hooks.ts
+#   src/trivium/meta.ts
+#   src/trivium/parse.ts
+#   src/trivium/report.ts
+#   src/trivium/review.ts
+#   src/trivium/run-protocol.ts
+#   src/trivium/selftest.ts
+#   src/trivium/state.ts
+#   src/trivium/util/git.ts
+#   src/trivium/verify.ts
+#   test/helpers/fixture.ts
+#   test/integration/bug-stage.test.ts
+#   test/integration/code-stage.test.ts
+#   test/integration/gate-loop.test.ts
+#   test/integration/no-artifacts.test.ts
+#   test/unit/code-stage.test.ts
+#   test/unit/disposition-parse.test.ts
+#   test/unit/hooks.test.ts
+#   test/unit/parse.test.ts
+#   test/unit/report.test.ts
+#   test/unit/state.test.ts
+#   test/unit/verify.test.ts
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index 05f6b5c..873f8e7 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -24,4 +24,5 @@
+ ## 当前已归档文件
+ 
+ - [`CASE_manual_acceptance.md`](./CASE_manual_acceptance.md)：人工验收剧本（PRD 场景 S1～S5 / 设计 §17.3）。自动化测试与 `doctor --selftest` 覆盖不到的部分——需要人在 Claude Code 窗口里操作，或必须真实消耗两侧厂商配额。
++- [`REPORT_2026-09-11_manual_acceptance.md`](./REPORT_2026-09-11_manual_acceptance.md)：人工验收执行结果。剧本 2/4/5 通过，1/3 的 skill 层留给使用者；记录本次真实运行逮到的 6 个缺陷与一次真实代码双审的结果。
+ - [`REPORT_2026-09-11_m0_probe.md`](./REPORT_2026-09-11_m0_probe.md)：M0 探针本机实测报告（本机坑清单）。18 个坑 P-01～P-18 与 12 条与厂商文档记载不符之处 C-01～C-12。
+diff --git a/doc/05_testing/REPORT_2026-09-11_manual_acceptance.md b/doc/05_testing/REPORT_2026-09-11_manual_acceptance.md
+new file mode 100644
+index 0000000..3dedd24
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-09-11_manual_acceptance.md
+@@ -0,0 +1,126 @@
++# REPORT：人工验收执行结果（2026-09-11）
++
++> 依据 [`CASE_manual_acceptance.md`](./CASE_manual_acceptance.md) 与设计 §17.3。
++> 执行环境：macOS 25.6.0 ｜ node v25.2.1 ｜ `agy` **1.2.0** ｜ `zcode.cjs` **0.16.5**。
++> 本次**真实消耗两侧厂商配额**：共 6 次双审（含 3 次失败/中止）+ 3 次认证探活。
++
++---
++
++## 总览
++
++| 剧本 | 结论 | 说明 |
++| :--- | :--- | :--- |
++| 1 · 全程只开 Claude Code | ⚠️ **部分** | 编排器侧全链路已实测走通；`/dual-run` 这一层需由使用者在 Claude Code 窗口里跑（入口 skill 标了 `disable-model-invocation: true`，Driver 不自行调用） |
++| 2 · 进程与隔离实证 | ✅ **通过（并推翻了原判据）** | 实测结果与剧本原文不符，已据实重写剧本并补 P-17 / P-18 |
++| 3 · 三条命令停在人工闸门 | ⚠️ **部分** | AC-14 已有端到端自动化用例（bug 阶段闸门期改代码被 deny → approve 解锁）；三条 `/dual-*` 命令各跑一次真实审查未做，成本高 |
++| 4 · 换模型并回读生效值 | ✅ **通过** | 5 条判据全中，见下 |
++| 5 · 留痕删不掉也改不掉 | ✅ **通过** | 在**真实归档**上五步全对 |
++
++**本次真实运行共逮到 6 个缺陷**（全部已修并提交），是本轮最主要的产出——
++它们无一能被桩适配器或单元测试发现。清单见末节。
++
++---
++
++## 剧本 2 · 进程与隔离实证
++
++**判据结果**
++
++| # | 判据 | 结果 | 实测证据 |
++| :--- | :--- | :--- | :--- |
++| 2.1 | 两侧确有独立进程 | ✅ | `zcode-cli` pid 97109（启动 10:08:27，与 run 起始同秒）；agy 侧 `agy -p <BRIEF…>` pid 97108 |
++| 2.2 | cwd 为项目根 | ✅ | 三个进程 `lsof -a -d cwd` 均为 `/Users/chenzhenbo/Work/TriviumCode` |
++| 2.3 | agy hub 带 `--add-dir=<项目根>` | ✅ | `agy --hub --hub-port=59812 --app_data_dir=antigravity --add-dir=/Users/chenzhenbo/Work/TriviumCode` |
++| 2.4 | 审查进行中树内无对方结论 | ✅ | 轮询期间 `.reviews/<主题>/code/` 下 `-gemini.md`/`-glm.md` 计数恒为 0 |
++| 2.5 | 原始输出在项目外 | ✅ | `~/.trivium/runs/TriviumCode-2217d505/<run_id>/{gemini,glm}/` |
++| 2.6 | 两侧结论同时出现 | ✅ | 两份 `.md` 在同一次落盘批次产生 |
++
++**原剧本被实测推翻的两处**（已补为坑 P-17 / P-18 并重写剧本）：
++
++1. **`agy -p` 只活约 10 秒**，随后工作转交常驻 **hub 进程**；该 hub 在本次运行之前
++   就已存在（启动于前一天 23:34，早于本次运行 8.5 小时）。
++   所以「运行期间 `ps` 一直能看到 agy」不成立。
++   **更要紧的含义**：hub **跨运行复用**，因此「为每次运行准备独立 `HOME`」
++   这类隔离手段对它**不生效**。
++2. **ZCode 把进程名改成 `zcode-cli`**（另有 `zcode-node-repl-mcp` 辅助进程），
++   `pgrep -f 'zcode\.cjs'` **恒为空**。按原判据验会误得「ZCode 没跑起来」。
++
++---
++
++## 剧本 4 · 换模型并回读生效值
++
++在 `doctor --selftest --keep-fixture` 留下的小夹具仓库里跑（项目小、两侧快；
++`config.local.yaml` 从主仓库复制，探针是本机级结论，不必重跑 doctor）。
++
++| 轮 | 侧 | 请求 | **回读到的生效模型** | 来源 | 耗时 |
++| :--- | :--- | :--- | :--- | :--- | :--- |
++| r2 | gemini | `gemini-3.1-pro-high` | `gemini-3.1-pro-high` | `envelope` | 61s |
++| r2 | glm | `GLM-5.3` | `bigmodel-coding-plan/GLM-5.3` | `trace` | 331s |
++| r3 | gemini | `gemini-3.8-flash-high` | `gemini-3.8-flash-high` | `envelope` | 130s |
++| r3 | glm | `GLM-5.3-Flash` | `bigmodel-coding-plan/GLM-5.3-Flash` | `trace` | 360s |
++
++| # | 判据 | 结果 |
++| :--- | :--- | :--- |
++| 4.1 | 两次生效模型不同且与各自请求一致 | ✅ ZCode 侧带 `bigmodel-coding-plan/` 前缀属正常（C-02），后半段匹配 |
++| 4.2 | 来源是 `envelope` / `trace`，不是 `requested` / `unverified` | ✅ 四条全部有实证来源 |
++| 4.3 | 两侧 `heterogeneous: true` | ✅ 四条全 true |
++| 4.4 | ZCode 桌面端默认模型未被改动 | ✅ `~/.zcode/cli/config.json` sha256 跑前跑后均为 `2aea2d84aee8401e` |
++| 4.5 | 第二轮抬 `-r<N>`，既有工件不覆盖 | ✅ 目录下并存 `-gemini.md` / `-r2-*` / `-r3-*` 共 5 份，互不相同 |
++
++---
++
++## 剧本 5 · 留痕删不掉也改不掉
++
++在**真实归档**（`.reviews/M4-M5实现/code/`）上执行：
++
++| 步骤 | 期望 | 实测 |
++| :--- | :--- | :--- |
++| ① 归档完整时提交 | `0` | ✅ `0` |
++| ② 删掉 `…-r3-glm.md` | `2` + 点名路径与 run_id | ✅ `2`，报「已丢失：…（run 20260911T025329Z 记录过它，sha256 fe92c00a91ab）」 |
++| ③ 恢复后 | `0` | ✅ `0` |
++| ④ 追加一行改动内容 | `2` + 前后哈希 | ✅ `2`，报「记录 fe92c00a91ab，现为 d40525728d6d」 |
++| ⑤ `git restore` 后 | `0` | ✅ `0` |
++
++---
++
++## 剧本 1 / 3 的未尽部分
++
++| 缺什么 | 为什么本次没做 | 谁来做 |
++| :--- | :--- | :--- |
++| 在 Claude Code 里真打一次 `/dual-run` | 七个入口 skill 都标了 `disable-model-invocation: true`——Driver **不应**自行调用它们，这正是设计要的。编排器侧的 S0～S10 各步已逐个实测 | 使用者，按剧本 1 |
++| `/dual-review-plan` `/dual-review-code` `/dual-review-bug` 各跑一次真实审查并停在闸门 | 三次真实双审约 40～60 分钟且消耗可观配额；闸门行为本身已有端到端自动化覆盖（`gate-loop.test.ts` 7 例、`bug-stage.test.ts` 7 例含 AC-14 全链路） | 使用者，按剧本 3 |
++
++---
++
++## 本次真实运行逮到的缺陷（均已修复并提交）
++
++无一能被桩适配器或单元测试发现——它们要么依赖厂商真实行为，要么依赖多进程真实时序。
++
++| # | 缺陷 | 后果 | 提交 |
++| :--- | :--- | :--- | :--- |
++| 1 | **agy 1.2.0 拒绝「自带档位的 slug + `--effort`」**（P-16） | gemini 侧 5.6s 非零退出、白烧一次调用，strict 下整次作废。plan 阶段恰好 slug 与 effort 都是 `high` 所以从未暴露 | `ef80ad8` |
++| 2 | **`status.json` 逐侧状态硬编码 `'ok'`** | 一侧硬失败时 `--wait`/`--status` 仍显示「gemini: ok」，而 run.json 里是 failed | `ef80ad8` |
++| 3 | **code 阶段摘要里 HEAD 恒显示 `—`** | 摘要信息缺失 | `ef80ad8` |
++| 4 | **`--cancel` 只杀 worker，厂商进程被遗弃给 init** | 取消之后 `zcode-cli` 的 PPID 变成 1 且**仍在烧配额**。改为按进程组发信号 | `5476238` |
++| 5 | **「修改计划」列名不被闸门识别** | 照着**随仓库分发的** `response.md.template` 写应答件，必然被自己的闸门判成「接受但没写落点」 | `c515275` |
++| 6 | **agy 吐两个相接 JSON 对象 → 每次降级 `parse_fallback`** | 一份合格的 6 条意见结论**每次**失去阻断资格；本次就因此丢了 gemini 独有的 blocker（AGY-02） | `68a9c1f` |
++
++另有一条运维事实值得记住：`.trivium/bin/trivium` 指向的是**已安装副本**，
++改完代码只 `npm run build` 不 `node dist/install.cjs`，跑的还是旧产物——
++本次因此白跑一次真实审查。已写进 [`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md)。
++
++---
++
++## 顺带产出：一次真实的代码双审
++
++对 M4+M5 全部变更（48 文件 / 277 KB 补丁）跑 `--stage code`，两侧在背靠背状态下
++**独立收敛到同两处**：
++
++- worker 异常退出不回收闸门，业务写锁挂到 24h TTL（GLM-r2-02 ≡ AGY-01）
++- 留痕完整性核对的清单来自被核对对象自身，可整枝绕过（GLM-r2-03 ≡ AGY-04）
++
++共 16 条意见（glm 10 + gemini 6），已逐条裁决：接受 14、驳回 1、暂缓 1。
++驳回的那条附了实测反证。裁决件见
++`.reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r3-response-claude.md`，
++`gate --stage code --check` 已通过。
++
++**已接受但尚未实施的修改计划共 14 条**，落点逐条写在裁决件里——这是下一步的工作。
+diff --git a/src/trivium/archive.ts b/src/trivium/archive.ts
+index 346caef..edda8eb 100644
+--- a/src/trivium/archive.ts
++++ b/src/trivium/archive.ts
+@@ -265,11 +265,11 @@ export async function checkStageArtifacts(
+   };
+ }
+ 
+-/** 一份「记录在案却已不符」的工件 */
++/** 一份「记录在案却已不符」的工件，或一份「登记过却读不到」的清单 */
+ export interface TamperedArtifact {
+   /** 相对归档根的路径 */
+   relPath: string;
+-  kind: 'missing' | 'modified';
++  kind: 'missing' | 'modified' | 'manifest_missing' | 'manifest_unreadable';
+   runId: string;
+   stage: StageOrVerify;
+   recordedSha256: string;
+@@ -319,14 +319,20 @@ export async function checkRecordedArtifacts(
+ }
+ 
+ /** 读某主题各阶段全部 run.json（供 checkRecordedArtifacts 与 report 用） */
+-export async function listRecordedRuns(
+-  layout: ArchiveLayout,
+-): Promise<{ run_id: string; stage: StageOrVerify; artifacts: { path: string; sha256: string }[]; status: string; skipped?: boolean }[]> {
+-  const out: {
+-    run_id: string; stage: StageOrVerify;
+-    artifacts: { path: string; sha256: string }[]; status: string; skipped?: boolean;
+-  }[] = [];
+-  for (const stage of ['plan', 'code', 'bug'] as StageOrVerify[]) {
++export interface RecordedRun {
++  run_id: string;
++  stage: StageOrVerify;
++  artifacts: { path: string; sha256: string }[];
++  status: string;
++  skipped?: boolean;
++  /** run.json 存在但解析失败 */
++  unreadable?: boolean;
++}
++
++export async function listRecordedRuns(layout: ArchiveLayout): Promise<RecordedRun[]> {
++  const out: RecordedRun[] = [];
++  // 'verify' 也要在内：验证记录是 AC-10 的对账凭证，不该逃过留痕核对（GLM-r2-08）
++  for (const stage of ['plan', 'code', 'bug', 'verify'] as StageOrVerify[]) {
+     const dir = metaDir(layout, stage);
+     let files: string[];
+     try {
+@@ -350,9 +356,54 @@ export async function listRecordedRuns(
+           ...(meta.skipped !== undefined ? { skipped: meta.skipped } : {}),
+         });
+       } catch {
+-        // 单份 run.json 损坏不该让整次核对失败——它自己就是个问题，但不是这里的职责
++        /*
++         * 损坏的 run.json **不能静默跳过**（审查意见 GLM-r2-03）。
++         * 跳过等于「搅坏清单即可让核对失去对象」——而清单本身就是被保护的东西。
++         * 记成 unreadable，交给调用方按违例处理。
++         */
++        out.push({ run_id: m[1]!, stage, artifacts: [], status: 'unreadable', unreadable: true });
+       }
+     }
+   }
+   return out;
+ }
++
++/**
++ * 以 `task.json.runs[]` 为**外部锚**核对运行清单是否完整（审查意见 GLM-r2-03 ≡ AGY-04）。
++ *
++ * 原先的核对只枚举各阶段 `_meta/` 下的 `run-*.json` 并比对它们记录的工件——
++ * 也就是说，**清单来自被核对对象自身**。于是三条路径都能整枝绕过：
++ *   · 删掉 `run-<id>.json`（连同那份不顺眼的审查文档一起删）；
++ *   · 把 `run-<id>.json` 搅坏（旧实现静默跳过）；
++ *   · 删掉整个主题目录、或把它改名成 `_`/`.` 前缀（`listTopics` 会过滤掉）。
++ *
++ * `task.json` 在每次 `registerRun` 时登记 run 指针，是现成的外部锚：
++ * 它记过的 run，其 `run-<id>.json` 就必须在、且必须可读。
++ */
++export async function checkRunManifests(
++  layout: ArchiveLayout,
++  registered: { run_id: string; stage: StageOrVerify }[],
++  present: RecordedRun[],
++): Promise<TamperedArtifact[]> {
++  const byId = new Map(present.map((r) => [r.run_id, r]));
++  const out: TamperedArtifact[] = [];
++
++  for (const reg of registered) {
++    const got = byId.get(reg.run_id);
++    const rel = path.join(layout.topic, reg.stage, '_meta', runMetaFileNameOf(reg.run_id));
++    if (!got) {
++      out.push({
++        relPath: rel, kind: 'manifest_missing',
++        runId: reg.run_id, stage: reg.stage, recordedSha256: '',
++      });
++    } else if (got.unreadable) {
++      out.push({
++        relPath: rel, kind: 'manifest_unreadable',
++        runId: reg.run_id, stage: reg.stage, recordedSha256: '',
++      });
++    }
++  }
++  return out;
++}
++
++const runMetaFileNameOf = (runId: string): string => `run-${runId}.json`;
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index 7b3b2ba..0d7a546 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -5,6 +5,7 @@
+  * **不做任何业务判定**——所有判定都在各自模块里。
+  */
+ import path from 'node:path';
++import { exists } from './util/fsx.js';
+ import { promises as fsp } from 'node:fs';
+ import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
+ import { loadCtx } from './config.js';
+@@ -19,9 +20,9 @@ import {
+ } from './gate.js';
+ import { checkStageArtifacts, resolveRerunIndex } from './archive.js';
+ import { readHookInput, runHook, type HookName } from './hooks.js';
+-import { listOpenGates, setGate } from './state.js';
++import { listOpenGates, setGate, setGateChecked } from './state.js';
+ import { recordApproval } from './approval.js';
+-import { resolveTopic, listTopics } from './topic.js';
++import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
+ import { newRunId, readTask } from './meta.js';
+ import { runInit, renderInitReport } from './init.js';
+ import {
+@@ -509,6 +510,31 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+   // ── --await-approval ──
+   if (args.flags.get('await-approval') === true) {
+     const runId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
++
++    /*
++     * ── 先校验裁决完整性，再置闸门（审查意见 AGY-02）──
++     *
++     * 原先这里只 setGate、不做任何前置检查。于是「直接 --await-approval 再 approve」
++     * 就能把逐条裁决与工件核验**整段跳过**——闸门从 review_done_awaiting_disposition
++     * 被覆写成 awaiting_approval，`approve` 再把它放行，全程没人检查过裁决件。
++     *
++     * 人工审批是在「机器已确认裁决齐备」之上再加一道，不是它的替代品。
++     */
++    if (runId) {
++      const { reviews } = await loadRoundReviews(ref.layout, stage, runId);
++      const pre = await checkAdjudication({
++        cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
++        degraded: Object.values(reviews).some((r) => r === undefined),
++      });
++      if (!pre.ok) {
++        say(renderGateResult(pre));
++        fail(
++          '裁决尚未齐备，不能置为等待人工审批。\n' +
++            `  先补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${topic} --check\`。`,
++        );
++        return EXIT.GATE_BLOCK;
++      }
++    }
+     await setGate({
+       triviumDir: ctx.triviumDir, topic, stage, state: 'awaiting_approval',
+       runId, rerunIndex,
+@@ -564,12 +590,22 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+    * 命令 B/C/D 随后会用 `--await-approval` 把闸门推进到人工审批态。
+    */
+   if (result.ok) {
+-    await setGate({
++    /*
++     * 只放行**本轮**的闸门（审查意见 GLM-r2-01 ①）。
++     *
++     * 无条件覆盖时，对旧一轮补完裁决跑 `--check`，会把已经接管的新一轮
++     * `running` 覆写成 `idle`——新一轮审查期内的业务写锁就此静默失效。
++     */
++    const g = await setGateChecked({
+       triviumDir: ctx.triviumDir, topic, stage, state: 'idle',
+       runId, rerunIndex,
+       sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
+       heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
++      expect: { runId },
+     });
++    if (!g.applied && g.entry) {
++      warn(`裁决已通过，但闸门未放行：${g.skipped}。该闸门属于另一次运行，本次不动它。`);
++    }
+   }
+ 
+   // 返回 2 让调用方（skill / Hook）能按闸门语义处理
+@@ -612,7 +648,8 @@ async function cmdVerify(args: ParsedArgs): Promise<number> {
+   const ctx = await loadCtx();
+   const topic = flagString(args, 'topic');
+   if (!topic) throw usageError('verify 需要 --topic');
+-  const ref = await resolveTopic(ctx, topic, 'plan');
++  // 只读定位：不该因为跑一次 verify 就凭空创建阶段目录（审查意见 GLM-r2-10）
++  const ref = await resolveTopicReadOnly(ctx, topic, 'plan');
+ 
+   const onlyRaw = flagString(args, 'only');
+   if (onlyRaw && onlyRaw !== 'build' && onlyRaw !== 'test') {
+@@ -629,14 +666,27 @@ async function cmdVerify(args: ParsedArgs): Promise<number> {
+     warn('verify.build 与 verify.test 均未配置，本次什么也不会执行——这不等于通过。');
+   }
+ 
+-  const timeoutRaw = Number(flagString(args, 'timeout') ?? '');
++  /*
++   * `--timeout` 解析失败必须报错（审查意见 GLM-r2-07）。
++   * 原先 `Number.isFinite` 守卫只做静默回落：`--timeout abc` 得 NaN、`--timeout 0`
++   * 得 0，两者都悄悄用了默认值，用户拼错参数**零提示**。
++   */
++  const timeoutStr = flagString(args, 'timeout');
++  let timeoutS: number | null = null;
++  if (timeoutStr !== null) {
++    const n = Number(timeoutStr);
++    if (!Number.isFinite(n) || n <= 0) {
++      throw usageError(`--timeout 需要一个正数秒数，收到「${timeoutStr}」。`);
++    }
++    timeoutS = n;
++  }
+   const runId = newRunId();
+   const out = await runVerify({
+     ctx,
+     layout: ref.layout,
+     runId,
+     only,
+-    ...(Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? { timeoutS: timeoutRaw } : {}),
++    ...(timeoutS !== null ? { timeoutS } : {}),
+     onProgress: (l) => say(l),
+   });
+ 
+@@ -669,7 +719,20 @@ async function cmdReport(args: ParsedArgs): Promise<number> {
+   const ctx = await loadCtx();
+   const topic = flagString(args, 'topic');
+   if (!topic) throw usageError('report 需要 --topic');
+-  const ref = await resolveTopic(ctx, topic, 'plan');
++
++  /*
++   * USAGE 承诺 report「只读归档」，而 `resolveTopic` 会无条件 `ensureDir`——
++   * 对拼错的主题名跑 report 会**凭空建出** `.reviews/<拼错名>/plan/`，
++   * 既违背文档承诺，也让拼错名得不到报错（只得到一份空报告加一个新目录）。
++   */
++  const ref = await resolveTopicReadOnly(ctx, topic, 'plan');
++  if (!(await exists(path.join(ctx.archiveRoot, ref.topic)))) {
++    const all = await listTopics(ctx);
++    throw missingArtifactError(
++      `主题「${topic}」在 ${path.relative(ctx.projectRoot, ctx.archiveRoot)} 下不存在。` +
++        (all.length > 0 ? `\n  现有主题：${all.join('、')}` : '\n  该归档根下还没有任何主题。'),
++    );
++  }
+ 
+   const report = await buildTopicReport(ref.layout);
+   if (isJsonMode()) {
+diff --git a/src/trivium/code-stage.ts b/src/trivium/code-stage.ts
+index 2016a20..3bfaaf7 100644
+--- a/src/trivium/code-stage.ts
++++ b/src/trivium/code-stage.ts
+@@ -7,6 +7,7 @@
+  */
+ import path from 'node:path';
+ import { matchesAnyGlob } from './util/fsx.js';
++import { unquoteGitPath } from './util/git.js';
+ import type { Config } from './types.js';
+ 
+ /** 冻结后的补丁 */
+@@ -31,15 +32,62 @@ export interface FrozenDiff {
+ export function filesInDiff(diff: string): string[] {
+   const out = new Set<string>();
+   for (const line of diff.split('\n')) {
+-    const m = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
+-    if (!m) continue;
+-    out.add(m[1]!);
+-    out.add(m[2]!);
++    if (!line.startsWith('diff --git ')) continue;
++    const rest = line.slice('diff --git '.length);
++
++    /*
++     * 路径可能被引号包起来（审查意见 GLM-r2-06）。
++     *
++     * `core.quotePath=false` 只解决「可打印非 ASCII 被转成八进制」；路径含空格、
++     * 双引号、反斜杠或控制字符时 git **仍会**引起来。旧正则只认未加引号的形态，
++     * 这类文件会**从清单里消失**——而 `classifyDiff` 正是拿这份清单做 FR-23 判定：
++     * 一份「文档 + 引号路径业务文件」的 diff 会被判成 doc_only，
++     * 开了 skip_doc_only_review 时那个业务变更整只逃过审查。
++     * 方向性极差：错在漏审而非多审。
++     */
++    const pair = splitDiffGitPaths(rest);
++    if (!pair) continue;
++    out.add(stripPrefix(pair[0], 'a/'));
++    out.add(stripPrefix(pair[1], 'b/'));
+   }
+   // /dev/null 只会出现在 ---/+++ 行，这里不会混进来，但新增文件的 a/ 侧是同名路径
+   return [...out].sort();
+ }
+ 
++/** 把 `a/X b/Y` 拆成两段，两侧都可能带引号 */
++function splitDiffGitPaths(rest: string): [string, string] | null {
++  if (rest.startsWith('"')) {
++    // 引号形态：`"a/含 空格.ts" "b/含 空格.ts"` 或 `"a/x" b/y`
++    const end = findClosingQuote(rest, 0);
++    if (end === -1) return null;
++    const left = unquoteGitPath(rest.slice(0, end + 1));
++    const right = rest.slice(end + 1).trim();
++    return [left, right.startsWith('"') ? unquoteGitPath(right) : right];
++  }
++  // 未加引号：右侧若带引号，以 ` "b/` 为界；否则按 ` b/` 拆
++  const quotedRight = rest.indexOf(' "b/');
++  if (quotedRight !== -1) {
++    return [rest.slice(0, quotedRight), unquoteGitPath(rest.slice(quotedRight + 1))];
++  }
++  const m = /^(a\/.+?) (b\/.+)$/.exec(rest);
++  return m ? [m[1]!, m[2]!] : null;
++}
++
++/** 找到从 `from` 起那个双引号字符串的收尾引号下标（跳过 \" 转义） */
++function findClosingQuote(s: string, from: number): number {
++  for (let i = from + 1; i < s.length; i++) {
++    if (s[i] === '\\') {
++      i++;
++      continue;
++    }
++    if (s[i] === '"') return i;
++  }
++  return -1;
++}
++
++const stripPrefix = (p: string, prefix: string): string =>
++  p.startsWith(prefix) ? p.slice(prefix.length) : p;
++
+ /**
+  * 被审补丁必须无条件剔除的项目内路径。
+  *
+diff --git a/src/trivium/disposition.ts b/src/trivium/disposition.ts
+index 0279e27..2e4cb50 100644
+--- a/src/trivium/disposition.ts
++++ b/src/trivium/disposition.ts
+@@ -47,7 +47,13 @@ const COLUMN_ALIASES: Record<string, readonly string[]> = {
+   severity: ['严重度', '严重性', 'severity'],
+   disposal: ['裁决', '处置', '结论', 'disposal'],
+   reason: ['理由', '原因', 'reason'],
+-  action: ['落点', '落地点', '修改点', '动作', 'action'],
++  /*
++   * 「修改计划」必须在列：设计 §8.2 S7、`.reviews/README.md` 与随仓库分发的
++   * `templates/response.md.template` 都用这个词称呼代码应答件的这一列。
++   * 漏了它，照着自己的模板写出来的应答件会被自己的闸门判成「接受但没写落点」——
++   * 实测踩到过一次。
++   */
++  action: ['落点', '落地点', '修改点', '修改计划', '计划', '动作', 'action'],
+ };
+ 
+ function matchColumn(header: string): keyof typeof COLUMN_ALIASES | null {
+diff --git a/src/trivium/hooks.ts b/src/trivium/hooks.ts
+index 24304a0..fccd2fe 100644
+--- a/src/trivium/hooks.ts
++++ b/src/trivium/hooks.ts
+@@ -194,13 +194,15 @@ export async function hookPreCommit(ctx: Ctx, input: HookInput): Promise<HookOut
+   if (input.tool_name === 'Bash' && !looksLikeCommit(input)) return ALLOW;
+ 
+   const open = await listOpenGates(ctx.triviumDir);
+-  const pending = open.filter(
+-    (g) =>
+-      g.state === 'review_done_awaiting_disposition' &&
+-      // 无活跃流水线主题一律放行；只拦本会话的
+-      (ctx.config.gate.approval_lock_scope === 'global' ||
+-        (g.session_id !== null && g.session_id === (input.session_id ?? null))),
+-  );
++  /*
++   * **不按会话过滤**（审查意见 AGY-05）。
++   *
++   * 写锁按会话是 RV-05 的刻意设计——避免 A 会话的闸门误伤 B 会话正在做的无关工作。
++   * 但「裁决是否齐备」是**仓库的属性，不是会话的属性**：换个会话、或直接在终端里
++   * `git commit`，未裁决的审查意见并不会因此变成已裁决。原先沿用了会话过滤，
++   * 等于留了一条「换个会话就能提交」的绕过路径。
++   */
++  const pending = open.filter((g) => g.state === 'review_done_awaiting_disposition');
+   if (pending.length > 0) {
+     const list = pending.map((g) => `${g.topic}/${g.stage}`).join('、');
+     return {
+@@ -226,12 +228,57 @@ export async function hookPreCommit(ctx: Ctx, input: HookInput): Promise<HookOut
+ 
+ async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
+   const { listTopics } = await import('./topic.js');
+-  const { checkRecordedArtifacts, listRecordedRuns } = await import('./archive.js');
++  const { checkRecordedArtifacts, checkRunManifests, listRecordedRuns } = await import('./archive.js');
++  const { readTask } = await import('./meta.js');
++  const { deletedOrModifiedTracked } = await import('./util/git.js');
+ 
+   const problems: string[] = [];
++
++  /*
++   * ── 锚 ①：git 索引（审查意见 GLM-r2-03）──
++   *
++   * 目录枚举 + run.json 治不了「把整个主题目录删掉或改名」——那会把 `task.json`
++   * 自己也带走，核对随之失去对象。而 `.reviews/` 是**刻意纳入版本管理**的，
++   * git 记得每一份已提交的工件：删目录、改目录名（表现为一批删除 + 未跟踪新增）
++   * 都瞒不过它。与 run.json 互补：git 管已提交的，run.json 管刚落盘未提交的。
++   */
++  const archiveRel = path.relative(ctx.projectRoot, ctx.archiveRoot) || ctx.config.archive_root;
++  const tracked = await deletedOrModifiedTracked(ctx.projectRoot, archiveRel);
++  /*
++   * **只看删除，不看改动**。两个锚各管一件事，重叠会误伤：
++   *
++   *   · git 管「东西没了」——它是唯一能发现「整个主题目录被删/改名」的机制，
++   *     因为那会把 task.json 与 run.json 一起带走。
++   *   · run.json 的 sha256 管「内容变了」——它**精确知道**哪些文件该不可变
++   *     （两侧审查文档、被审补丁、送审包）。
++   *
++   * 若 git 这一侧也拦改动，就会误伤两类本就该可变的文件：编排器每次运行都要更新的
++   * `task.json`，以及 Driver 本就该修订的裁决件（「修订」正是它的用途）。
++   * 护栏一旦开始误伤正常工作，第一个被关掉的就是它自己。
++   */
++  for (const f of tracked.deleted) problems.push(`  · 已提交的归档文件被删除：${f}`);
++
+   for (const topic of await listTopics(ctx)) {
+     const layout = { archiveRoot: ctx.archiveRoot, topic };
+-    const runs = (await listRecordedRuns(layout)).filter((r) => r.artifacts.length > 0);
++    const present = await listRecordedRuns(layout);
++
++    // ① 外部锚：task.json 登记过的 run，其 run.json 必须在、且必须可读
++    const task = await readTask(layout);
++    const manifests = await checkRunManifests(
++      layout,
++      task.runs.map((r) => ({ run_id: r.run_id, stage: r.stage })),
++      present,
++    );
++    for (const t of manifests) {
++      problems.push(
++        t.kind === 'manifest_missing'
++          ? `  · 运行清单已丢失：${t.relPath}（task.json 登记过 run ${t.runId}）`
++          : `  · 运行清单不可读：${t.relPath}（run ${t.runId} 的 run.json 存在但解析失败）`,
++      );
++    }
++
++    // ② 清单内登记的工件必须在、且内容不变
++    const runs = present.filter((r) => r.artifacts.length > 0);
+     for (const t of await checkRecordedArtifacts(layout, runs)) {
+       problems.push(
+         t.kind === 'missing'
+diff --git a/src/trivium/meta.ts b/src/trivium/meta.ts
+index 685fe02..c5b7814 100644
+--- a/src/trivium/meta.ts
++++ b/src/trivium/meta.ts
+@@ -7,7 +7,7 @@
+  */
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+-import type { CriticId, RunMeta, Stage } from './types.js';
++import type { CriticId, RunMeta, Stage , StageOrVerify } from './types.js';
+ import { writeAtomic } from './util/fsx.js';
+ import { topicDir, type ArchiveLayout } from './archive.js';
+ 
+@@ -36,7 +36,11 @@ export interface TaskMeta {
+   /** 每阶段每轮的运行指针，形成可回溯的版本链（FR-25） */
+   runs: {
+     run_id: string;
+-    stage: Stage;
++    /**
++     * `verify` 也在内（审查意见 GLM-r2-08）：验证记录是 AC-10 的对账凭证，
++     * 必须和三个审查阶段一样受留痕核对保护，那就得先在这里登记。
++     */
++    stage: StageOrVerify;
+     rerun_index: number;
+     status: RunMeta['status'];
+     review_mode: RunMeta['review_mode'];
+diff --git a/src/trivium/parse.ts b/src/trivium/parse.ts
+index 6cd160f..c8136b3 100644
+--- a/src/trivium/parse.ts
++++ b/src/trivium/parse.ts
+@@ -45,24 +45,16 @@ export function formatSchemaErrors(errors: readonly ErrorObject[] | null | undef
+  *   2. 包在 ```json 代码围栏里（模型的常见习惯）；
+  *   3. 从第一个 `{` 做括号配平扫描（兜底）。
+  */
+-export function extractJsonCandidate(
+-  text: string,
+-): { json: string; from: 'whole' | 'fence' | 'braces' } | null {
+-  const trimmed = text.trim();
+-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return { json: trimmed, from: 'whole' };
+-
+-  const fence = /```(?:json|JSON)?\s*\n([\s\S]*?)\n```/.exec(text);
+-  if (fence?.[1]) {
+-    const inner = fence[1].trim();
+-    if (inner.startsWith('{')) return { json: inner, from: 'fence' };
+-  }
++export type JsonCandidate = { json: string; from: 'whole' | 'fence' | 'braces' };
+ 
+-  const start = text.indexOf('{');
+-  if (start === -1) return null;
++/** 扫出文本里**全部**顶层花括号配平的片段 */
++function scanBalancedObjects(text: string): string[] {
++  const out: string[] = [];
++  let start = -1;
+   let depth = 0;
+   let inStr = false;
+   let escaped = false;
+-  for (let i = start; i < text.length; i++) {
++  for (let i = 0; i < text.length; i++) {
+     const ch = text[i]!;
+     if (inStr) {
+       if (escaped) escaped = false;
+@@ -70,14 +62,69 @@ export function extractJsonCandidate(
+       else if (ch === '"') inStr = false;
+       continue;
+     }
+-    if (ch === '"') inStr = true;
+-    else if (ch === '{') depth++;
+-    else if (ch === '}') {
+-      depth--;
+-      if (depth === 0) return { json: text.slice(start, i + 1), from: 'braces' };
++    if (ch === '"') {
++      inStr = true;
++    } else if (ch === '{') {
++      if (depth === 0) start = i;
++      depth++;
++    } else if (ch === '}') {
++      if (depth > 0) {
++        depth--;
++        if (depth === 0 && start >= 0) {
++          out.push(text.slice(start, i + 1));
++          start = -1;
++        }
++      }
+     }
+   }
+-  return null;
++  return out;
++}
++
++/**
++ * 从回答里抠出**全部**候选 JSON，按可靠性排序。
++ *
++ * 为什么要返回多个而不是一个：实测 agy 1.2.0 会输出**两个首尾相接的 JSON 对象**
++ * （内容完全相同，疑似流式收尾重复了一次）。此时整段文本仍然「以 { 开头、以 } 结尾」，
++ * 旧实现据此当成一个整体返回，`JSON.parse` 在第二个对象的起始处报语法错误，
++ * 于是一份完全合格的审查结论**每次**都被降级成 parse_fallback、失去阻断资格。
++ *
++ * 顺序：整段 → 代码围栏（可能多个）→ 逐个顶层配平片段。
++ */
++export function extractJsonCandidates(text: string): JsonCandidate[] {
++  const out: JsonCandidate[] = [];
++  const seen = new Set<string>();
++  const push = (json: string, from: JsonCandidate['from']): void => {
++    const t = json.trim();
++    if (t.length === 0 || seen.has(t)) return;
++    seen.add(t);
++    out.push({ json: t, from });
++  };
++
++  const trimmed = text.trim();
++  if (trimmed.startsWith('{') && trimmed.endsWith('}')) push(trimmed, 'whole');
++
++  for (const m of text.matchAll(/```(?:json|JSON)?\s*\n([\s\S]*?)\n```/g)) {
++    const inner = m[1]?.trim();
++    if (inner?.startsWith('{')) push(inner, 'fence');
++  }
++
++  for (const frag of scanBalancedObjects(text)) push(frag, 'braces');
++
++  /*
++   * 再按行取一遍。配平扫描有个硬伤：**首个对象被截断**（未闭合的 `{`）会让深度
++   * 再也回不到 0，后面所有完整对象一起被吞掉。而 agy 的 stream-json 本来就是
++   * 行分隔的，逐行捡「以 { 开头、以 } 结尾」的行能从截断中恢复。
++   */
++  for (const line of text.split('\n')) {
++    const t = line.trim();
++    if (t.startsWith('{') && t.endsWith('}')) push(t, 'braces');
++  }
++  return out;
++}
++
++/** 首个候选。保留给只需要「大致抠一段 JSON」的调用方 */
++export function extractJsonCandidate(text: string): JsonCandidate | null {
++  return extractJsonCandidates(text)[0] ?? null;
+ }
+ 
+ /**
+@@ -106,37 +153,43 @@ function stripVendorNoise(obj: Record<string, unknown>): { cleaned: Record<strin
+ 
+ /** 解析并校验审查结论 */
+ export function parseReview(text: string): ParseOutcome {
+-  const cand = extractJsonCandidate(text);
+-  if (!cand) {
++  const candidates = extractJsonCandidates(text);
++  if (candidates.length === 0) {
+     return { ok: false, reason: '回答中找不到 JSON 对象', errors: [], rawText: text };
+   }
+ 
+-  let obj: unknown;
+-  try {
+-    obj = JSON.parse(cand.json);
+-  } catch (e) {
+-    return {
+-      ok: false,
+-      reason: `JSON 语法错误：${(e as Error).message}`,
+-      errors: [],
+-      rawText: text,
+-    };
+-  }
++  const validate = getValidator();
++  /*
++   * 逐个候选试，取**首个既能解析又通过校验**的。
++   *
++   * 不是「取第一个能解析的」：agy 的重复输出里两个对象都合法，但若第一个恰好
++   * 是残缺的流式片段，只试一次就会白白降级。也不是「取最后一个」：那会让
++   * 厂商在结论之后追加的任何东西顶掉真正的结论。
++   */
++  let lastReason = '回答中找不到可用的 JSON 对象';
++  let lastErrors: string[] = [];
+ 
+-  if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+-    obj = stripVendorNoise(obj as Record<string, unknown>).cleaned;
+-  }
++  for (const cand of candidates) {
++    let obj: unknown;
++    try {
++      obj = JSON.parse(cand.json);
++    } catch (e) {
++      lastReason = `JSON 语法错误：${(e as Error).message}`;
++      lastErrors = [];
++      continue;
++    }
+ 
+-  const validate = getValidator();
+-  if (!validate(obj)) {
+-    return {
+-      ok: false,
+-      reason: 'JSON 不符合 trivium.review.v1',
+-      errors: formatSchemaErrors(validate.errors),
+-      rawText: text,
+-    };
++    if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
++      obj = stripVendorNoise(obj as Record<string, unknown>).cleaned;
++    }
++
++    if (validate(obj)) return { ok: true, review: obj as Review, extractedFrom: cand.from };
++
++    lastReason = 'JSON 不符合 trivium.review.v1';
++    lastErrors = formatSchemaErrors(validate.errors);
+   }
+-  return { ok: true, review: obj, extractedFrom: cand.from };
++
++  return { ok: false, reason: lastReason, errors: lastErrors, rawText: text };
+ }
+ 
+ export interface ReviewIntegrity {
+diff --git a/src/trivium/report.ts b/src/trivium/report.ts
+index 6136215..296053b 100644
+--- a/src/trivium/report.ts
++++ b/src/trivium/report.ts
+@@ -74,6 +74,8 @@ export interface TopicReport {
+   task: TaskMeta;
+   rounds: RoundReport[];
+   verify: VerifyRecord | null;
++  /** 最近一份 verify 记录存在但读不出来——与「从未验证」必须区分开 */
++  verifyUnreadable: string | null;
+   /** 主题级问题（缺 task.json、阶段目录读不到等） */
+   notes: string[];
+ }
+@@ -118,6 +120,7 @@ async function loadDisposition(
+   layout: ArchiveLayout,
+   stage: Stage,
+   rerunIndex: number,
++  notes: string[],
+ ): Promise<{ disposals: Record<Disposal, number>; contested: RoundReport['contested'] } | null> {
+   const items = await listStageArtifacts(layout, stage);
+   const hit = items.find(
+@@ -125,7 +128,18 @@ async function loadDisposition(
+   );
+   if (!hit) return null;
+ 
+-  const md = await fs.readFile(path.join(layout.archiveRoot, layout.topic, stage, hit.fileName), 'utf8');
++  /*
++   * 读不到就说读不到（审查意见 GLM-r2-09）。
++   * 原先这里的 readFile 未捕获：单个裁决件因权限或竞态读失败，会让**整份复盘**
++   * 崩溃退出，与本模块其余位置「缺件一律进 notes」的降级风格自相矛盾。
++   */
++  let md: string;
++  try {
++    md = await fs.readFile(path.join(layout.archiveRoot, layout.topic, stage, hit.fileName), 'utf8');
++  } catch (e) {
++    notes.push(`裁决件读取失败（${hit.fileName}）：${(e as Error).message}`);
++    return null;
++  }
+   const parsed = parseDisposition(md);
+   const disposals: Record<Disposal, number> = { 接受: 0, 驳回: 0, 暂缓: 0 };
+   const contested: RoundReport['contested'] = [];
+@@ -224,7 +238,7 @@ async function buildRound(
+     }
+   }
+ 
+-  const disp = await loadDisposition(layout, stage, rerunIndex);
++  const disp = await loadDisposition(layout, stage, rerunIndex, notes);
+   if (disp) {
+     base.disposals = disp.disposals;
+     base.contested = disp.contested;
+@@ -236,21 +250,33 @@ async function buildRound(
+ }
+ 
+ /** 读该主题最近一次 verify 记录 */
+-async function loadLatestVerify(layout: ArchiveLayout): Promise<VerifyRecord | null> {
++async function loadLatestVerify(
++  layout: ArchiveLayout,
++  notes: string[],
++): Promise<{ record: VerifyRecord | null; unreadable: string | null }> {
+   const dir = metaDir(layout, 'verify');
+   let files: string[];
+   try {
+     files = await fs.readdir(dir);
+   } catch {
+-    return null;
++    return { record: null, unreadable: null }; // 目录不存在 = 确实从未验证过，这不是降级
+   }
+   const candidates = files.filter((f) => /^verify-.+\.json$/.test(f)).sort();
+   const last = candidates.at(-1);
+-  if (!last) return null;
++  if (!last) return { record: null, unreadable: null };
+   try {
+-    return JSON.parse(await fs.readFile(path.join(dir, last), 'utf8')) as VerifyRecord;
+-  } catch {
+-    return null;
++    return {
++      record: JSON.parse(await fs.readFile(path.join(dir, last), 'utf8')) as VerifyRecord,
++      unreadable: null,
++    };
++  } catch (e) {
++    /*
++     * 解析失败**不能**返回 null（审查意见 GLM-r2-09）：那会渲染成
++     * 「尚无 verify 记录」，把「记录损坏」伪装成「从未验证」——
++     * 恰好是本模块自述要防的 P5 误读。
++     */
++    notes.push(`最近一份 verify 记录损坏（${last}）：${(e as Error).message}`);
++    return { record: null, unreadable: last };
+   }
+ }
+ 
+@@ -272,7 +298,10 @@ export async function buildTopicReport(layout: ArchiveLayout): Promise<TopicRepo
+     generatedAt: new Date().toISOString(),
+     task,
+     rounds,
+-    verify: await loadLatestVerify(layout),
++    ...(await (async () => {
++      const v = await loadLatestVerify(layout, notes);
++      return { verify: v.record, verifyUnreadable: v.unreadable };
++    })()),
+     notes,
+   };
+ }
+@@ -475,7 +504,18 @@ export function renderTopicReport(r: TopicReport): string {
+ 
+   // ── 八、编译测试出口 ──
+   L.push('## 八、编译测试出口', '');
+-  L.push(r.verify ? `- ${summarizeVerify(r.verify)}（运行 \`${r.verify.run_id}\`）` : '- 尚无 verify 记录', '');
++  if (r.verify) {
++    L.push(`- ${summarizeVerify(r.verify)}（运行 \`${r.verify.run_id}\`）`, '');
++  } else if (r.verifyUnreadable) {
++    // 「记录损坏」渲染成「尚无记录」就是把失败伪装成没发生过（P5）
++    L.push(
++      `- ⚠️ **最近一份 verify 记录损坏**（\`${r.verifyUnreadable}\`），无法判断是否通过。`,
++      '  这**不等于**从未验证——请检查该文件，必要时重跑 `trivium verify`。',
++      '',
++    );
++  } else {
++    L.push('- 尚无 verify 记录', '');
++  }
+ 
+   // ── 九、审批 ──
+   L.push('## 九、审批记录', '');
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index a78195c..12175aa 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -51,7 +51,7 @@ import { resolveRerunIndex, writeArtifact, writeMeta, metaDir } from './archive.
+ import { newRunId, newRunMeta, registerRun, summarizeRun, writeRunMeta } from './meta.js';
+ import { measureDivergence, renderDivergence } from './divergence.js';
+ import { runRoot } from './config.js';
+-import { setGate } from './state.js';
++import { setGateChecked } from './state.js';
+ import { ensureDir, sha256, sha256File } from './util/fsx.js';
+ import { workTreeHash } from './util/git.js';
+ import {
+@@ -381,14 +381,24 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+    * 顺序：建阶段目录 → 写两份 brief → 建运行目录 → 写 run.json
+    */
+   await ensureDir(ref.stageDirAbs);
++  /*
++   * `_meta/` 里的被审补丁与两份 brief 也要进 `run.json.artifacts`（审查意见 GLM-r2-05）。
++   *
++   * 原先保护集只有两份渲染后的审查文档，于是「审查文档删不掉也改不掉」，
++   * 但「**审的是什么**」既不受核对保护、又在重跑时被同名覆盖——
++   * hook 文案承诺的范围与实现不符。
++   */
++  const metaArtifacts: { path: string; sha256: string }[] = [];
+   // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前
+   if (pendingDiff) {
+     const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text);
+     metaPaths.push(w.absPath);
++    metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
+   }
+   for (const b of pendingBriefs) {
+     const w = await writeMeta(ref.layout, stage, b.fileName, b.text);
+     metaPaths.push(w.absPath);
++    metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
+   }
+   await ensureDir(runDirBase);
+ 
+@@ -404,6 +414,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+     denyPaths: primarySnap.denyPaths,
+     driftPolicy: cfg.review.on_drift,
+   });
++  meta.artifacts = [...metaArtifacts];
++
+   // FR-23：跳过也要留痕，且必须写明命中的规则供人复核（§6.4）
+   if (skipVerdict?.skipped) {
+     meta.skipped = true;
+@@ -422,14 +434,31 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+    * 那是整条流水线最核心的护栏（AC-02 / AC-12 / §8.5），实测确认过是静默失效的。
+    */
+   if (!skipVerdict?.skipped) {
+-    await setGate({
++    /*
++     * 置 running 前先确认槽位不是**别的 run** 的待裁决状态（审查意见 GLM-r2-01 ③）。
++     *
++     * `state.json` 每个 <主题>/<阶段> 只有一个槽位。旧一轮审完未裁决就直接重跑，
++     * 无条件覆盖会把待裁决状态无声抹掉，而 `gate --check` 只校验最新轮——
++     * 旧那一轮从此既逃过裁决、也不再拦提交。
++     */
++    const g = await setGateChecked({
+       triviumDir: ctx.triviumDir,
+       topic: ref.topic, stage,
+       state: 'running',
+       runId, rerunIndex,
+       sessionId: opts.sessionId ?? null,
+       heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
++      expect: { state: ['idle', 'running', 'approved', 'rejected', 'abandoned'] },
+     });
++    if (!g.applied) {
++      throw new TriviumError(
++        EXIT.GATE_BLOCK,
++        `上一轮（run ${g.entry?.run_id ?? '未知'}，第 ${g.entry?.rerun_index ?? '?'} 轮）的审查意见尚未裁决，不能直接重跑。\n` +
++          `  ${g.skipped ?? ''}\n` +
++          `  补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${ref.topic} --check\` 后再来，\n` +
++          `  或用 \`trivium abandon --topic ${ref.topic} --stage ${stage}\` 显式作废那一轮（工件保留）。`,
++      );
++    }
+   }
+ 
+   return {
+@@ -464,11 +493,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+     meta.gate.adjudication_complete = true; // 没有意见可裁决
+     await writeRunMeta(ref.layout, stage, meta);
+     await registerRun(ref.layout, meta);
+-    // 跳过等于这一轮没有待裁决的意见，闸门直接回 idle
+-    await setGate({
++    // 跳过等于这一轮没有待裁决的意见，闸门直接回 idle——但只回收属于本 run 的那个
++    await setGateChecked({
+       triviumDir: ctx.triviumDir, topic: ref.topic, stage, state: 'idle',
+       runId, rerunIndex, sessionId: opts.sessionId ?? null,
+       heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
++      expect: { runId },
+     });
+ 
+     const notice = renderSkipNotice(skipVerdict);
+@@ -642,12 +672,19 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+       peer_deny_applied: r.peer_deny_applied,
+     };
+   }
+-  meta.artifacts = await Promise.all(
+-    artifacts.map(async (p) => ({
+-      path: path.relative(ctx.archiveRoot, p),
+-      sha256: await sha256File(p),
+-    })),
+-  );
++  /*
++   * 追加而非替换：prepareRun 已经把 `_meta/` 的补丁与两份 brief 登记进去了，
++   * 整体覆盖会把它们挤掉，保护集又缩回只剩审查文档。
++   */
++  meta.artifacts = [
++    ...meta.artifacts,
++    ...(await Promise.all(
++      artifacts.map(async (p) => ({
++        path: path.relative(ctx.archiveRoot, p),
++        sha256: await sha256File(p),
++      })),
++    )),
++  ];
+ 
+   // 被审对象漂移 → 整次运行作废（§9.2 第 2 步，优先级最高）
+   let exitCode: number = EXIT.OK;
+@@ -674,13 +711,15 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+    * 失败的运行置 `idle`：没有可裁决的意见，却让闸门卡在 running 会把 Driver
+    * 永久锁死在一个已经结束的运行上——那比不拦更糟，因为人会去改配置绕开 Hook。
+    */
+-  await setGate({
++  await setGateChecked({
+     triviumDir: ctx.triviumDir,
+     topic: ref.topic, stage,
+     state: meta.status === 'success' ? 'review_done_awaiting_disposition' : 'idle',
+     runId, rerunIndex,
+     sessionId: opts.sessionId ?? null,
+     heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
++    // 只写属于本 run 的闸门：并发的另一轮已经接管时不该被我们改写
++    expect: { runId },
+   });
+ 
+   say('');
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index aba05f5..08b44e5 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -24,7 +24,7 @@ import {
+ } from './review.js';
+ import { resolveTopic } from './topic.js';
+ import { readRunMeta } from './meta.js';
+-import { setGate } from './state.js';
++import { setGateChecked } from './state.js';
+ import { agyAdapter } from './adapters/agy.js';
+ import { zcodeAdapter } from './adapters/zcode.js';
+ import type { AdapterContext } from './adapters/base.js';
+@@ -311,11 +311,46 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
+       runDir: rc.runDirBase,
+     };
+   } catch (e) {
++    // prepareRun 之后才失败：闸门已经是 running，必须连它一起回收
++    await releaseRunningGate(ctx, rc.runId, rc.ref.topic, rc.stage);
+     await lock.release();
+     throw e;
+   }
+ }
+ 
++/**
++ * 回收某次运行留下的 `running` 闸门（审查意见 GLM-r2-02 ≡ AGY-01）。
++ *
++ * `prepareRun` 一置 `running`，业务写锁就生效了。此后**三条异常路径**原先都不回收它：
++ * worker 内 `executeRun` 中途抛错、`startRun` 在 prepareRun 之后失败、
++ * `--wait` 判定 `worker_lost`。三种情况下闸门停在 `running`，同会话的业务写入
++ * 一直被拦到 24h TTL——正是 `executeRun` 自己注释里写的
++ * 「比不拦更糟，因为人会去改配置绕开 Hook」的形态。
++ *
++ * 对照：`workerMain` 的 finally 一直会释放主题**锁**。锁想到了，闸门漏了。
++ *
++ * 只回收仍记着本 `runId` 且仍是 `running` 的闸门：新一轮若已接管，那是它的护栏。
++ * 不区分异常种类——没有 worker 接手的 `running` 一律回收。
++ */
++async function releaseRunningGate(
++  ctx: Ctx,
++  runId: string,
++  topic: string | undefined,
++  stage: Stage | undefined,
++): Promise<void> {
++  if (!topic || !stage) return;
++  try {
++    await setGateChecked({
++      triviumDir: ctx.triviumDir,
++      topic, stage, state: 'idle', runId,
++      heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
++      expect: { state: ['running'], runId },
++    });
++  } catch {
++    // 回收失败不该盖过真正的错误——闸门还有 TTL 兜底，但错误信息只有一次机会
++  }
++}
++
+ // ─────────────────────── worker ───────────────────────
+ 
+ /**
+@@ -369,8 +404,14 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
+     return e instanceof TriviumError ? e.code : EXIT.FAIL;
+   } finally {
+     clearInterval(heartbeat);
++    const st = await readStatus(runDir);
++    /*
++     * 闸门与锁一起回收。executeRun 正常收尾时已把闸门置成终态，
++     * 此处的 expect 会因状态不再是 running 而跳过；只有异常路径才真正命中。
++     */
++    await releaseRunningGate(ctx, runId, st?.topic, st?.stage);
+     // 释放锁：工作进程是最终持有者
+-    const cur = await inspectLock(ctx.triviumDir, (await readStatus(runDir))?.topic ?? '');
++    const cur = await inspectLock(ctx.triviumDir, st?.topic ?? '');
+     if (cur && cur.pid === process.pid) {
+       await fs.rm(path.join(ctx.triviumDir, 'lock', `${cur.topic}.lock`), { force: true });
+     }
+@@ -430,6 +471,13 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
+         s.exit_code = EXIT.FAIL;
+         s.message = `worker_lost（${reading.reason}）`;
+       });
++      /*
++       * worker 没了就不会再有人回收闸门，只能在这里收。
++       * 主题/阶段从 status.json 现读，不能用 `last`——worker 若在第一次
++       * `running` 读数之前就被杀掉，`last` 是 null，回收会被静默跳过。
++       */
++      const meta0 = await readStatus(runDir);
++      await releaseRunningGate(ctx, runId, meta0?.topic ?? last?.topic, meta0?.stage ?? last?.stage);
+       throw new TriviumError(
+         EXIT.FAIL,
+         `运行 ${runId} 的工作进程失联（${reading.reason}）。` +
+@@ -526,11 +574,19 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
+      * 运行永久锁住业务写入——人的第一反应是去关 Hook，护栏就此报废。
+      */
+     if (s?.stage) {
+-      await setGate({
++      /*
++       * 只回收**本 run** 的闸门（审查意见 GLM-r2-01 ②）。
++       * 「先 --cancel 旧 run，再 --start 新一轮」是正常序列；若不比对 run_id，
++       * 取消一个早已失联的旧 run 会把正在跑的新一轮护栏一并清掉。
++       * 回收锁时一直有 `existing.run_id === runId` 守卫，闸门这里以前漏了。
++       */
++      const g = await setGateChecked({
+         triviumDir: ctx.triviumDir, topic, stage: s.stage, state: 'idle',
+         runId, sessionId: process.env['CLAUDE_SESSION_ID'] ?? null,
+         heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
++        expect: { runId },
+       });
++      if (!g.applied && g.entry) step(`闸门未回收：${g.skipped}`);
+     }
+   }
+   say(`运行 ${runId} 已取消`);
+diff --git a/src/trivium/selftest.ts b/src/trivium/selftest.ts
+index 8e70a47..802db05 100644
+--- a/src/trivium/selftest.ts
++++ b/src/trivium/selftest.ts
+@@ -164,7 +164,25 @@ export async function runSelftest(opts: SelftestOptions = {}): Promise<SelftestR
+     };
+   }
+ 
+-  const root = await buildFixture();
++  /*
++   * 夹具的创建也要在 try 里（审查意见 AGY-06）：原先它在 try 之外，
++   * mkdtemp / git init 失败会直接抛出——临时目录可能已建了一半却没人清，
++   * 调用方也拿不到结构化诊断，只得到一个裸异常。
++   */
++  let root = '';
++  try {
++    root = await buildFixture();
++  } catch (e) {
++    if (root) await fs.rm(root, { recursive: true, force: true });
++    return {
++      ok: false,
++      steps: [{ name: '创建夹具仓库', ok: false, detail: (e as Error).message }],
++      fixtureRoot: root,
++      kept: false,
++      notCovered,
++    };
++  }
++
+   const env: Record<string, string | undefined> = {
+     [STUB_ENV_VAR]: STUB,
+     CLAUDE_SESSION_ID: SESSION,
+diff --git a/src/trivium/state.ts b/src/trivium/state.ts
+index 9275001..40b7fcb 100644
+--- a/src/trivium/state.ts
++++ b/src/trivium/state.ts
+@@ -96,14 +96,74 @@ export interface SetGateInput {
+   rerunIndex?: number;
+   sessionId?: string | null;
+   heartbeatStaleMs: number;
++  /**
++   * 条件迁移：只有当前闸门满足 `expect` 时才写入（审查意见 GLM-r2-01）。
++   *
++   * `state.json` 每个 `<主题>/<阶段>` 只有**一个槽位**，而无条件覆盖会让三种
++   * 正常操作序列把**正在跑的那一轮**的护栏悄悄清掉：
++   *   ① 对旧一轮 `gate --check` 放行 → 把新一轮的 `running` 覆写成 `idle`；
++   *   ② `--cancel` 一个早已失联的旧 run → 连带清掉新一轮的护栏
++   *      （「先取消旧的再起新的」是正常序列）；
++   *   ③ 旧一轮尚未裁决就直接重跑 → 待裁决状态被无声抹掉，旧轮从此逃过裁决。
++   *
++   * 对照：`cancelRun` 回收**锁**时一直有 `existing.run_id === runId` 守卫，
++   * 回收闸门却没有——同一个函数里两套标准。
++   */
++  expect?: {
++    /** 当前状态必须是其中之一；省略表示不限 */
++    state?: readonly GateState[];
++    /** 当前 run_id 必须等于它；`null` 表示「必须没有 run_id」 */
++    runId?: string | null;
++    /** 闸门不存在时是否放行。默认 true——首次置 running 时槽位本来就是空的 */
++    allowMissing?: boolean;
++  };
+ }
+ 
+-export async function setGate(i: SetGateInput): Promise<GateEntry> {
++export interface SetGateResult {
++  /** 是否真的写入了 */
++  applied: boolean;
++  /** 写入后的条目；未写入时是原样的当前条目（可能为 null） */
++  entry: GateEntry | null;
++  /** 未写入的原因，供调用方决定是告警还是静默 */
++  skipped?: string;
++}
++
++/**
++ * 写闸门。带 `expect` 时是**比较-交换**，比较与写入都在同一把全局锁内完成，
++ * 因此不存在 check-then-act 的竞态窗口。
++ */
++export async function setGateChecked(i: SetGateInput): Promise<SetGateResult> {
+   const key = gateKey(i.topic, i.stage);
+-  let entry!: GateEntry;
++  let result: SetGateResult = { applied: false, entry: null };
++
+   await updateState(i.triviumDir, i.topic, i.heartbeatStaleMs, (s) => {
+-    const prev = s.gates[key];
+-    entry = {
++    const prev = s.gates[key] ?? null;
++
++    if (i.expect) {
++      if (!prev) {
++        if (i.expect.allowMissing === false) {
++          result = { applied: false, entry: null, skipped: '闸门不存在' };
++          return;
++        }
++      } else {
++        if (i.expect.state && !i.expect.state.includes(prev.state)) {
++          result = {
++            applied: false, entry: prev,
++            skipped: `当前状态为 ${prev.state}，不在期望的 ${i.expect.state.join('/')} 之内`,
++          };
++          return;
++        }
++        if (i.expect.runId !== undefined && prev.run_id !== i.expect.runId) {
++          result = {
++            applied: false, entry: prev,
++            skipped: `闸门当前记着 run ${prev.run_id ?? '（无）'}，不是 ${i.expect.runId ?? '（无）'}`,
++          };
++          return;
++        }
++      }
++    }
++
++    const entry: GateEntry = {
+       topic: i.topic,
+       stage: i.stage,
+       state: i.state,
+@@ -114,8 +174,16 @@ export async function setGate(i: SetGateInput): Promise<GateEntry> {
+       session_id: i.sessionId ?? prev?.session_id ?? null,
+     };
+     s.gates[key] = entry;
++    result = { applied: true, entry };
+   });
+-  return entry;
++
++  return result;
++}
++
++/** 无条件写入。只用于「这一步就是要覆盖」的场合，其余一律走 `setGateChecked` */
++export async function setGate(i: SetGateInput): Promise<GateEntry> {
++  const r = await setGateChecked(i);
++  return r.entry!;
+ }
+ 
+ export async function getGate(
+diff --git a/src/trivium/util/git.ts b/src/trivium/util/git.ts
+index 3f49711..c19c9ac 100644
+--- a/src/trivium/util/git.ts
++++ b/src/trivium/util/git.ts
+@@ -8,6 +8,7 @@
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import { run } from './exec.js';
++import { EXIT, TriviumError } from '../exit-codes.js';
+ import { makeTempDir } from './fsx.js';
+ 
+ export interface GitStatusEntry {
+@@ -69,6 +70,23 @@ export async function workTreeHash(cwd: string): Promise<string> {
+ }
+ 
+ /** `git status --porcelain -uall` 的结构化结果，用于只读指纹与 scratch_paths 探针 */
++/**
++ * 还原 git 加过引号的路径。
++ *
++ * `core.quotePath=false` 只解决「可打印非 ASCII 被转成八进制」这一类；
++ * 路径里含空格、双引号、反斜杠或控制字符时，git **仍会**把整个路径引起来
++ * 并做 C 风格转义。不还原的话，路径会带着引号进入后续比对，或整行匹配不上。
++ */
++export function unquoteGitPath(p: string): string {
++  if (!(p.startsWith('"') && p.endsWith('"') && p.length >= 2)) return p;
++  try {
++    // C 风格转义与 JSON 字符串转义在这几种常见形态上一致
++    return JSON.parse(p) as string;
++  } catch {
++    return p.slice(1, -1);
++  }
++}
++
+ export async function statusPorcelain(cwd: string): Promise<GitStatusEntry[]> {
+   const r = await git(cwd, ['status', '--porcelain', '-uall']);
+   if (r.code !== 0) return [];
+@@ -81,15 +99,7 @@ export async function statusPorcelain(cwd: string): Promise<GitStatusEntry[]> {
+       // 重命名形如 "old -> new"，取新路径
+       const arrow = p.indexOf(' -> ');
+       if (arrow !== -1) p = p.slice(arrow + 4);
+-      // core.quotePath=false 后一般不会再加引号，但含空格/引号的路径仍会被引起来
+-      if (p.startsWith('"') && p.endsWith('"')) {
+-        try {
+-          p = JSON.parse(p) as string;
+-        } catch {
+-          p = p.slice(1, -1);
+-        }
+-      }
+-      return { status, path: p };
++      return { status, path: unquoteGitPath(p) };
+     });
+ }
+ 
+@@ -124,11 +134,35 @@ export async function diffAgainst(
+   // 用 pathspec 让 git 自己排除已跟踪文件的变更
+   const pathspecs = excludePrefixes.map((p) => `:(exclude)${p.replace(/\/+$/, '')}/**`);
+   const tracked = await git(cwd, ['diff', '--find-renames', base, '--', '.', ...pathspecs]);
+-  let out = tracked.code === 0 ? tracked.stdout : '';
++  /*
++   * ── 非零退出必须抛，不能吞（审查意见 GLM-r2-04）──
++   *
++   * `--base` 是用户参数。拼错 ref、ref 被重写掉、git 环境异常时，原先
++   * `tracked.code === 0 ? tracked.stdout : ''` 会让**已跟踪变更全部消失**，
++   * 而未跟踪文件的 diff 仍让 body 非空——空判定不触发，一份缺失全部已跟踪变更的
++   * 残缺补丁带着错误的 `# base:` 照常物化成 changes.diff、成为两侧共同的
++   * subject_sha256。两侧「认真审完」的其实是一段不完整的变更。
++   */
++  if (tracked.code !== 0) {
++    throw new TriviumError(
++      EXIT.USAGE,
++      `\`git diff ${base}\` 失败（退出码 ${tracked.code}）。\n` +
++        `  ${tracked.stderr.trim().split('\n').slice(0, 3).join('\n  ')}\n` +
++        '  --base 是否写错？请给出一个存在的 ref。被审补丁在冻结前失败，未产生任何工件。',
++    );
++  }
++  let out = tracked.stdout;
+ 
+   const untracked = await git(cwd, ['ls-files', '--others', '--exclude-standard']);
+-  if (untracked.code === 0) {
+-    for (const f of untracked.stdout.split('\n').filter(Boolean)) {
++  if (untracked.code !== 0) {
++    throw new TriviumError(
++      EXIT.ENV,
++      `枚举未跟踪文件失败（退出码 ${untracked.code}）：${untracked.stderr.trim().slice(0, 200)}\n` +
++        '  未跟踪文件也是被审变更的一部分，拿不到就不能声称补丁完整。',
++    );
++  }
++  {
++    for (const f of untracked.stdout.split('\n').filter(Boolean).map(unquoteGitPath)) {
+       if (excluded(f)) continue;
+       const d = await git(cwd, ['diff', '--no-index', '--find-renames', '/dev/null', f]);
+       // --no-index 有差异时退出码为 1，属正常
+@@ -150,3 +184,31 @@ export async function initFixtureRepo(dir: string): Promise<void> {
+     timeoutMs: 30_000,
+   });
+ }
++
++/**
++ * 工作树中相对 HEAD **被删除或被改动**的已跟踪文件（限定某个路径前缀）。
++ *
++ * 留痕核对的第二个外部锚（审查意见 GLM-r2-03）。第一个锚 `task.json.runs[]` 治不了
++ * 「把整个主题目录删掉或改名」——那会把 `task.json` 自己也带走。
++ * 而 `.reviews/` 是**刻意纳入版本管理**的，git 索引记得每一份已提交的工件，
++ * 删目录、改目录名（表现为一批删除 + 一批未跟踪新增）都瞒不过它。
++ *
++ * 只看已跟踪文件，所以它与基于 run.json 的核对互补：
++ * git 管已提交的，run.json 管刚落盘还没提交的。
++ */
++export async function deletedOrModifiedTracked(
++  cwd: string,
++  pathPrefix: string,
++): Promise<{ deleted: string[]; modified: string[] }> {
++  const r = await git(cwd, ['diff', '--name-status', '--no-renames', 'HEAD', '--', pathPrefix]);
++  const deleted: string[] = [];
++  const modified: string[] = [];
++  if (r.code !== 0) return { deleted, modified }; // 无 HEAD（空仓库）等情形：没有可比对的基线
++  for (const line of r.stdout.split('\n')) {
++    const m = /^([A-Z])\t(.+)$/.exec(line.trim());
++    if (!m) continue;
++    if (m[1] === 'D') deleted.push(m[2]!);
++    else if (m[1] === 'M') modified.push(m[2]!);
++  }
++  return { deleted, modified };
++}
+diff --git a/src/trivium/verify.ts b/src/trivium/verify.ts
+index 319230c..925e53c 100644
+--- a/src/trivium/verify.ts
++++ b/src/trivium/verify.ts
+@@ -18,6 +18,7 @@ import path from 'node:path';
+ import { run } from './util/exec.js';
+ import { sha256 } from './util/fsx.js';
+ import { writeMeta, writeVerifyRecord, type ArchiveLayout } from './archive.js';
++import { updateTask } from './meta.js';
+ import { localDate } from './naming.js';
+ import { EXIT, usageError } from './exit-codes.js';
+ import type { Config, Ctx } from './types.js';
+@@ -47,8 +48,15 @@ export interface VerifyRecord {
+   project_root: string;
+   commands: VerifyCommandRecord[];
+   status: 'success' | 'failed';
+-  /** 配置里两组命令都为空时为 true——此时既不算通过也不算失败，属配置缺失 */
++  /** **两组都为空**时为 true——此时既不算通过也不算失败，属配置缺失 */
+   unconfigured: boolean;
++  /**
++   * `--only` 选中的那一组为空，但另一组配了（审查意见 GLM-r2-07）。
++   *
++   * 与 `unconfigured` 是两回事。混为一谈会让落盘记录写出「两组**均为空**」这种
++   * **与事实不符的陈述**——审计记录里出现假话，比少写一句糟得多。
++   */
++  selected_empty?: 'build' | 'test';
+ }
+ 
+ /** 取输出尾部若干行。默认 200 行，对齐 §14.2 */
+@@ -154,7 +162,10 @@ export async function runVerify(opts: VerifyOptions): Promise<VerifyOutcome> {
+     project_root: ctx.projectRoot,
+     commands: records,
+     status: failed ? 'failed' : 'success',
+-    unconfigured: commands.length === 0,
++    unconfigured: cfg.verify.build.length === 0 && cfg.verify.test.length === 0,
++    ...(commands.length === 0 && opts.only && !(cfg.verify.build.length === 0 && cfg.verify.test.length === 0)
++      ? { selected_empty: opts.only }
++      : {}),
+   };
+ 
+   const written = await writeVerifyRecord(layout, renderVerifyDoc(record), {
+@@ -168,6 +179,41 @@ export async function runVerify(opts: VerifyOptions): Promise<VerifyOutcome> {
+     JSON.stringify(record, null, 2) + '\n',
+   );
+ 
++  /*
++   * ── 把验证记录纳入留痕护栏（审查意见 GLM-r2-08）──
++   *
++   * verify 是留痕体系的一等公民：`cmd_sha256` 是 AC-10 的对账凭证、S10 是命令 A
++   * 的收口步骤。但原先它只写自己的两份文件、从不 `registerRun`，
++   * `hook-pre-commit` 的留痕核对对它**完全失明**——验证记录可被删改而不拦，
++   * 与 hook 拦截文案的普适承诺不符。
++   *
++   * 写一份 verify 阶段的 run.json 并登记进 task.json，两份工件一并进保护集。
++   */
++  await writeMeta(
++    layout,
++    'verify',
++    `run-${runId}.json`,
++    JSON.stringify(
++      {
++        schema: 'trivium.run.v1',
++        run_id: runId,
++        topic: layout.topic,
++        stage: 'verify',
++        rerun_index: written.effectiveRerunIndex,
++        status: record.status,
++        started_at: record.started_at,
++        finished_at: record.finished_at,
++        artifacts: [
++          { path: written.relPath, sha256: written.sha256 },
++          { path: meta.relPath, sha256: meta.sha256 },
++        ],
++      },
++      null,
++      2,
++    ) + '\n',
++  );
++  await registerVerifyRun(layout, runId, written.effectiveRerunIndex, record.status);
++
+   const exitCode = record.unconfigured ? EXIT.USAGE : failed ? EXIT.FAIL : EXIT.OK;
+   return { record, exitCode, artifactPath: written.absPath, metaPath: meta.absPath };
+ }
+@@ -194,6 +240,16 @@ export function renderVerifyDoc(r: VerifyRecord): string {
+     return lines.join('\n') + '\n';
+   }
+ 
++  if (r.selected_empty) {
++    lines.push(
++      `> ⚠️ 本次以 \`--only ${r.selected_empty}\` 运行，而 \`verify.${r.selected_empty}\` 为空，`,
++      '> 因此什么也没执行。**另一组是配置齐全的**——这不是配置缺失，只是本次没选中它。',
++      '> 去掉 `--only` 可执行全部已配置的命令。',
++      '',
++    );
++    return lines.join('\n') + '\n';
++  }
++
+   lines.push(
+     '## 一、执行的命令',
+     '',
+@@ -243,6 +299,9 @@ export function assertVerifyConfigured(cfg: Config): void {
+ /** 供 report 引用：某主题最近一次验证记录的摘要 */
+ export function summarizeVerify(r: VerifyRecord): string {
+   if (r.unconfigured) return '未配置编译测试命令（既非通过也非失败）';
++  if (r.selected_empty) {
++    return `本次 --only ${r.selected_empty}，而该组为空（另一组已配置，非配置缺失）`;
++  }
+   const failedCmds = r.commands.filter((c) => c.exit_code !== 0);
+   const total = r.commands.reduce((a, c) => a + c.duration_s, 0);
+   return (
+@@ -254,3 +313,23 @@ export function summarizeVerify(r: VerifyRecord): string {
+ 
+ export const verifyDirName = (layout: ArchiveLayout): string =>
+   path.join(layout.archiveRoot, layout.topic, 'verify');
++
++/** 把本次验证登记进 `task.json.runs[]`，让留痕核对有外部锚可查 */
++async function registerVerifyRun(
++  layout: ArchiveLayout,
++  runId: string,
++  rerunIndex: number,
++  status: 'success' | 'failed',
++): Promise<void> {
++  await updateTask(layout, (t) => {
++    if (t.runs.some((r) => r.run_id === runId)) return;
++    t.runs.push({
++      run_id: runId,
++      stage: 'verify',
++      rerun_index: rerunIndex,
++      status: status === 'success' ? 'success' : 'failed',
++      review_mode: 'dual',
++      started_at: new Date().toISOString(),
++    });
++  });
++}
+diff --git a/test/helpers/fixture.ts b/test/helpers/fixture.ts
+index 3c97a1e..2f622f9 100644
+--- a/test/helpers/fixture.ts
++++ b/test/helpers/fixture.ts
+@@ -57,6 +57,8 @@ export interface FixtureOptions {
+   probeModels?: { gemini: string[]; glm: string[] };
+   /** 原稿落在哪个阶段目录。plan（默认）或 bug */
+   draftStage?: 'plan' | 'bug';
++  /** 覆盖 verify 段的 YAML 行（默认两组皆空） */
++  extraVerify?: string[];
+ }
+ 
+ export interface Fixture {
+@@ -94,8 +96,7 @@ export async function makeFixture(opts: FixtureOptions): Promise<Fixture> {
+       '  wait_timeout_s: 30',
+       ...(opts.extraReview ?? []).map((l) => `  ${l}`),
+       'verify:',
+-      '  build: []',
+-      '  test: []',
++      ...(opts.extraVerify ?? ['  build: []', '  test: []']),
+       '',
+     ].join('\n'),
+     'utf8',
+diff --git a/test/integration/bug-stage.test.ts b/test/integration/bug-stage.test.ts
+index 3b861f4..b2454e6 100644
+--- a/test/integration/bug-stage.test.ts
++++ b/test/integration/bug-stage.test.ts
+@@ -117,6 +117,10 @@ test('bug 阶段重跑抬升 -r2，原文件不覆盖', { skip: bundleMissing &&
+   const first = path.join(fx.bugDir, `${today()}-${TOPIC}-gemini.md`);
+   const bytes = await fs.readFile(first);
+ 
++  // 未裁决就重跑会被闸门挡下（GLM-r2-01 ③），显式作废那一轮
++  const ab = await cli(fx.root, ['abandon', '--topic', TOPIC, '--stage', 'bug', '--reason', '重跑用例']);
++  assert.equal(ab.code, EXIT.OK, `${ab.stdout}${ab.stderr}`);
++
+   await runStage(fx.root, 'bug', fx.bugDir);
+   assert.deepEqual(await fs.readFile(first), bytes);
+   const docs = await fs.readdir(fx.bugDir);
+diff --git a/test/integration/code-stage.test.ts b/test/integration/code-stage.test.ts
+index a18de66..ef5179e 100644
+--- a/test/integration/code-stage.test.ts
++++ b/test/integration/code-stage.test.ts
+@@ -213,3 +213,36 @@ test('未提交的对方审查产出不得进补丁（经被审对象泄漏）',
+   assert.doesNotMatch(diff, /\.trivium\//, '运行时状态不该进补丁');
+   assert.match(diff, /src\/a\.ts/, '真正的代码变更仍须在内');
+ });
++
++test('坏 --base → 在冻结前失败且零工件（审查意见 GLM-r2-04）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await codeFixture();
++  await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 5;\n', 'utf8');
++  // 造一个未跟踪文件：它的 diff 会让 body 非空，正是旧实现的空判定失效之处
++  await fs.writeFile(path.join(fx.root, 'src/未跟踪.ts'), 'export const u = 1;\n', 'utf8');
++
++  const before = await listFiles(fx.archiveRoot);
++  const r = await cli(
++    fx.root,
++    ['review', '--start', '--stage', 'code', '--topic', TOPIC, '--focus', 'x', '--base', '压根不存在的ref'],
++    STUB,
++  );
++
++  /*
++   * 旧实现吞掉 `git diff` 的非零退出：已跟踪变更全部消失，而未跟踪文件让 body
++   * 非空，于是一份**缺失全部已跟踪变更**的残缺补丁带着错误的 base 照常送审，
++   * 两侧「认真审完」的其实是一段不完整的变更。
++   */
++  assert.equal(r.code, EXIT.USAGE, `坏 base 应退 64：\n${r.stdout}${r.stderr}`);
++  assert.match(r.stdout + r.stderr, /压根不存在的ref/, '要回显用户给的原值');
++  assert.deepEqual(await listFiles(fx.archiveRoot), before, '失败在冻结之前，不得留任何工件');
++});
++
++test('未跟踪文件的引号路径也进补丁', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await codeFixture();
++  await fs.writeFile(path.join(fx.root, 'src/含 空格.ts'), 'export const s = 1;\n', 'utf8');
++
++  const { meta } = await runCode(fx.root, fx.codeDir);
++  assert.equal(meta.status, 'success');
++  const diff = await fs.readFile(path.join(fx.codeDir, '_meta', 'changes.diff'), 'utf8');
++  assert.match(diff, /含 空格\.ts/);
++});
+diff --git a/test/integration/gate-loop.test.ts b/test/integration/gate-loop.test.ts
+index 3c02522..e08addc 100644
+--- a/test/integration/gate-loop.test.ts
++++ b/test/integration/gate-loop.test.ts
+@@ -314,3 +314,320 @@ test('gate.block_commit 为 false 时完全不拦（用户显式关掉的开关
+   const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+   assert.equal(r.code, EXIT.OK, '配置关掉了拦截就该真的不拦——护栏也要可被知情地关掉');
+ });
++
++// ── 闸门状态机的三种绕过序列（审查意见 GLM-r2-01）──
++
++test('旧轮未裁决就重跑 → 拒绝启动，并指出两条正当出路', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  await runPlan(fx.root); // r1 审完，闸门停在 review_done_awaiting_disposition
++
++  const again = await cli(
++    fx.root,
++    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION],
++    STUB,
++  );
++  /*
++   * 无条件覆盖会把 r1 的待裁决状态无声抹掉，而 gate --check 只校验最新轮——
++   * r1 从此既逃过裁决、也不再拦提交。
++   */
++  assert.equal(again.code, EXIT.GATE_BLOCK, `应拒绝启动：\n${again.stdout}${again.stderr}`);
++  const out = again.stdout + again.stderr;
++  assert.match(out, /尚未裁决/);
++  assert.match(out, /gate .*--check/, '要给出补裁决这条路');
++  assert.match(out, /abandon/, '也要给出显式作废这条路');
++
++  // 闸门没被动过
++  const st = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
++    gates: Record<string, { state: string }>;
++  };
++  assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'review_done_awaiting_disposition');
++});
++
++test('显式 abandon 之后可以重跑', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  await runPlan(fx.root);
++
++  const ab = await cli(fx.root, ['abandon', '--topic', TOPIC, '--stage', 'plan', '--reason', '换个焦点重来']);
++  assert.equal(ab.code, EXIT.OK, `${ab.stdout}${ab.stderr}`);
++
++  const again = await runPlan(fx.root);
++  assert.ok(again, '作废之后应能正常重跑');
++  // 首轮工件仍在：abandon 只解闸门、不动工件
++  const docs = await fs.readdir(fx.stageDir);
++  assert.ok(docs.some((f) => f.endsWith('-gemini.md') && !f.includes('-r2-')));
++  assert.ok(docs.some((f) => f.includes('-r2-')));
++});
++
++test('gate --check 放行只动本轮闸门，不清掉已接管的新一轮', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const runId = await runPlan(fx.root);
++  await writeDisposition(fx.stageDir, runId);
++
++  // 手工把闸门改成「新一轮 R-NEW 正在跑」，模拟 r2 已 --start
++  const statePath = path.join(fx.root, '.trivium/state.json');
++  const st = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
++    gates: Record<string, { state: string; run_id: string; since: string }>;
++  };
++  st.gates[`${TOPIC}/plan`]!.state = 'running';
++  st.gates[`${TOPIC}/plan`]!.run_id = 'R-NEW';
++  st.gates[`${TOPIC}/plan`]!.since = new Date().toISOString();
++  await fs.writeFile(statePath, JSON.stringify(st, null, 2));
++
++  // 对**旧**一轮跑 gate --check：校验本身应通过，但不能把 R-NEW 的护栏清掉
++  const check = await cli(
++    fx.root,
++    ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--run-id', runId, '--session-id', SESSION],
++  );
++  assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
++
++  const after = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
++    gates: Record<string, { state: string; run_id: string }>;
++  };
++  assert.equal(after.gates[`${TOPIC}/plan`]?.state, 'running', '新一轮的 running 不得被旧轮放行清掉');
++  assert.equal(after.gates[`${TOPIC}/plan`]?.run_id, 'R-NEW');
++});
++
++test('--cancel 旧 run 不清掉新一轮的闸门', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const started = await cli(
++    fx.root,
++    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
++    { gemini: { mode: 'timeout' }, glm: { mode: 'timeout' } },
++  );
++  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string };
++
++  // 模拟新一轮已接管
++  const statePath = path.join(fx.root, '.trivium/state.json');
++  const st = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
++    gates: Record<string, { state: string; run_id: string }>;
++  };
++  st.gates[`${TOPIC}/plan`]!.run_id = 'R-NEW';
++  await fs.writeFile(statePath, JSON.stringify(st, null, 2));
++
++  await cli(fx.root, ['review', '--cancel', js.run_id]);
++
++  const after = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
++    gates: Record<string, { state: string; run_id: string }>;
++  };
++  /*
++   * 「先 --cancel 旧的，再 --start 新的」是正常序列。不比对 run_id 的话，
++   * 取消一个早已失联的旧 run 会把正在跑的新一轮护栏一并清掉。
++   */
++  assert.equal(after.gates[`${TOPIC}/plan`]?.state, 'running', '新一轮护栏不得被旧 run 的取消清掉');
++  assert.equal(after.gates[`${TOPIC}/plan`]?.run_id, 'R-NEW');
++});
++
++// ── worker 异常路径回收闸门（审查意见 GLM-r2-02 ≡ AGY-01）──
++
++test('worker 被杀后 --wait 判 worker_lost，并回收 running 闸门', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const started = await cli(
++    fx.root,
++    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
++    // 让 worker 挂着，好在它干活时把它杀掉
++    { gemini: { mode: 'timeout' }, glm: { mode: 'timeout' } },
++  );
++  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as {
++    run_id: string; worker_pid: number;
++  };
++
++  const statePath = path.join(fx.root, '.trivium/state.json');
++  const before = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
++    gates: Record<string, { state: string }>;
++  };
++  assert.equal(before.gates[`${TOPIC}/plan`]?.state, 'running');
++
++  // 硬杀整个进程组，模拟崩溃/断电——不给 worker 任何收尾机会
++  const { killProcessTree } = await import('../../src/trivium/util/exec.js');
++  killProcessTree(js.worker_pid, 'SIGKILL');
++  await new Promise((r) => setTimeout(r, 500));
++
++  const w = await cli(fx.root, ['review', '--wait', js.run_id, '--timeout', '20'], null, 60_000);
++  assert.notEqual(w.code, EXIT.OK);
++  assert.match(w.stdout + w.stderr, /失联|worker_lost/);
++
++  const after = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
++    gates: Record<string, { state: string }>;
++  };
++  /*
++   * 不回收的话，业务写锁要一直挂到 24h TTL——正是 executeRun 注释里写的
++   * 「比不拦更糟，因为人会去改配置绕开 Hook」的形态。
++   */
++  assert.equal(after.gates[`${TOPIC}/plan`]?.state, 'idle', 'worker 没了就该回收闸门');
++
++  // 回收之后业务写入立刻恢复
++  const write = await hook(fx.root, 'hook-pre-write', writeEvent(path.join(fx.root, 'src/a.ts')));
++  assert.equal(write.code, EXIT.OK, `闸门已回收，写入应放行：\n${write.stderr}`);
++});
++
++// ── --await-approval 不能绕过裁决（审查意见 AGY-02）──
++
++test('裁决未齐备时 --await-approval 被拒，堵死「跳过裁决直接审批」', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  await runPlan(fx.root); // 审完，但不写裁决件
++
++  const aw = await cli(
++    fx.root,
++    ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--session-id', SESSION],
++  );
++  /*
++   * 原先这里只 setGate、不做任何检查：直接 --await-approval 再 approve，
++   * 就能把逐条裁决与工件核验整段跳过。人工审批是加在「机器已确认裁决齐备」之上的
++   * 一道，不是它的替代品。
++   */
++  assert.equal(aw.code, EXIT.GATE_BLOCK, `应被拒：\n${aw.stdout}${aw.stderr}`);
++  assert.match(aw.stdout + aw.stderr, /裁决尚未齐备/);
++
++  // 闸门没被改成 awaiting_approval
++  const st = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
++    gates: Record<string, { state: string }>;
++  };
++  assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'review_done_awaiting_disposition');
++});
++
++test('裁决齐备后 --await-approval 正常置闸门', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const runId = await runPlan(fx.root);
++  await writeDisposition(fx.stageDir, runId);
++
++  const aw = await cli(
++    fx.root,
++    ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--session-id', SESSION],
++  );
++  assert.equal(aw.code, EXIT.OK, `${aw.stdout}${aw.stderr}`);
++  const st = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
++    gates: Record<string, { state: string }>;
++  };
++  assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'awaiting_approval');
++});
++
++// ── 留痕核对的外部锚（审查意见 GLM-r2-03 ≡ AGY-04）──
++
++test('删掉 run.json 本身也拦——清单不能是被核对对象自己', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const runId = await completedRound(fx.root, fx.stageDir);
++
++  /*
++   * 最省事的绕过方式：连同不顺眼的审查文档一起，把记录它的 run.json 也删掉。
++   * 旧实现的清单只来自 run-*.json，删了就失去对象，一路放行。
++   * 现在 task.json.runs[] 是外部锚：它登记过的 run，run.json 就必须在。
++   */
++  await fs.rm(path.join(fx.stageDir, '_meta', `run-${runId}.json`));
++  await fs.rm(path.join(fx.stageDir, `${today()}-${TOPIC}-gemini.md`));
++
++  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `应拦下：\n${r.stdout}${r.stderr}`);
++  assert.match(r.stderr, /运行清单已丢失/);
++  assert.match(r.stderr, new RegExp(runId));
++});
++
++test('把 run.json 搅坏也拦，而不是静默跳过', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const runId = await completedRound(fx.root, fx.stageDir);
++
++  await fs.writeFile(path.join(fx.stageDir, '_meta', `run-${runId}.json`), '{ 这不是 JSON', 'utf8');
++
++  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `损坏的清单必须按违例处理：\n${r.stdout}${r.stderr}`);
++  assert.match(r.stderr, /运行清单不可读/);
++});
++
++test('被审补丁与送审包也在保护集内（审查意见 GLM-r2-05）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const runId = await completedRound(fx.root, fx.stageDir);
++
++  // brief 是「审的是什么」的一半：以前它不受保护，删了也不拦
++  const brief = path.join(fx.stageDir, '_meta', `brief-gemini-${runId}.md`);
++  const saved = await fs.readFile(brief);
++  await fs.rm(brief);
++
++  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `送审包被删也该拦：\n${r.stdout}${r.stderr}`);
++  assert.match(r.stderr, /brief-gemini/);
++
++  await fs.writeFile(brief, saved);
++  assert.equal((await hook(fx.root, 'hook-pre-commit', commitEvent)).code, EXIT.OK);
++});
++
++test('已提交的归档文件被删 → git 锚捕获（整目录删除/改名的情形）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  await completedRound(fx.root, fx.stageDir);
++
++  // 提交进 git，模拟「归档已入库」
++  const { run } = await import('../../src/trivium/util/exec.js');
++  await run('git', ['add', '-A', '--', '.reviews'], { cwd: fx.root, timeoutMs: 30_000 });
++  await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', '归档', '--no-verify'], {
++    cwd: fx.root, timeoutMs: 30_000,
++  });
++  assert.equal((await hook(fx.root, 'hook-pre-commit', commitEvent)).code, EXIT.OK, '提交后应放行');
++
++  /*
++   * 把整个主题目录删掉：task.json 也一起没了，基于 run.json 的核对彻底失去对象。
++   * 只有 git 索引还记得这些文件曾经存在。
++   */
++  await fs.rm(path.join(fx.archiveRoot, TOPIC), { recursive: true });
++  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `删掉整个主题目录必须被拦：\n${r.stdout}${r.stderr}`);
++  assert.match(r.stderr, /已提交的归档文件被删除/);
++});
++
++test('verify 记录也受保护（审查意见 GLM-r2-08）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({
++    topic: TOPIC,
++    extraVerify: ["  build: ['echo ok']", '  test: []'],
++  });
++  await completedRound(fx.root, fx.stageDir);
++
++  const v = await cli(fx.root, ['verify', '--topic', TOPIC]);
++  assert.equal(v.code, EXIT.OK, `${v.stdout}${v.stderr}`);
++  assert.equal((await hook(fx.root, 'hook-pre-commit', commitEvent)).code, EXIT.OK);
++
++  // verify 记录是 AC-10 的对账凭证，删它必须被拦
++  const verifyDir = path.join(fx.archiveRoot, TOPIC, 'verify');
++  const doc = (await fs.readdir(verifyDir)).find((f) => f.endsWith('-verify.md'))!;
++  await fs.rm(path.join(verifyDir, doc));
++
++  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `验证记录被删必须拦：\n${r.stdout}${r.stderr}`);
++  assert.match(r.stderr, /verify/);
++});
++
++test('git 锚只管删除：task.json 与裁决件的正常改动不得误伤', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const runId = await completedRound(fx.root, fx.stageDir);
++
++  const { run } = await import('../../src/trivium/util/exec.js');
++  await run('git', ['add', '-A', '--', '.reviews'], { cwd: fx.root, timeoutMs: 30_000 });
++  await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', '归档', '--no-verify'], {
++    cwd: fx.root, timeoutMs: 30_000,
++  });
++
++  /*
++   * 两类本就该可变的已提交归档文件：
++   *   · task.json —— 编排器每次运行都要更新它；
++   *   · 裁决件 —— Driver 本就该修订它（S9 追加实施记录就是这么做的）。
++   * 若 git 锚也拦改动，正常工作会被一路误伤，人的第一反应就是关掉 Hook。
++   */
++  await fs.appendFile(
++    path.join(fx.stageDir, `${today()}-${TOPIC}-revised-claude.md`),
++    '\n## 实施记录\n\n已按接受项改完。\n',
++    'utf8',
++  );
++  const taskPath = path.join(fx.archiveRoot, TOPIC, 'task.json');
++  const task = JSON.parse(await fs.readFile(taskPath, 'utf8')) as { updated_at: string };
++  task.updated_at = new Date().toISOString();
++  await fs.writeFile(taskPath, JSON.stringify(task, null, 2));
++
++  assert.equal(
++    (await hook(fx.root, 'hook-pre-commit', commitEvent)).code,
++    EXIT.OK,
++    'task.json 与裁决件的改动是正常工作，不得拦',
++  );
++
++  // 但审查文档的内容改动仍由 run.json 的 sha256 精确拦下
++  await fs.appendFile(path.join(fx.stageDir, `${today()}-${TOPIC}-glm.md`), '\n偷改一行\n', 'utf8');
++  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `审查文档被改仍须拦：\n${r.stderr}`);
++  assert.match(r.stderr, /已被改动/);
++  assert.ok(runId);
++});
+diff --git a/test/integration/no-artifacts.test.ts b/test/integration/no-artifacts.test.ts
+index 549622d..70e1cd2 100644
+--- a/test/integration/no-artifacts.test.ts
++++ b/test/integration/no-artifacts.test.ts
+@@ -187,6 +187,13 @@ test('草稿已有且成功跑完 → 重跑抬升 -r2，原文件字节不变
+   };
+ 
+   await runOnce();
++  /*
++   * 上一轮审完未裁决时，重跑会被闸门挡下（审查意见 GLM-r2-01 ③）——
++   * 否则待裁决状态会被无声抹掉、那一轮从此逃过裁决。
++   * 这里显式作废它，模拟「这一轮不要了，重来」的正当操作。
++   */
++  const ab = await cli(fx.root, ['abandon', '--topic', TOPIC, '--stage', 'plan', '--reason', '重跑用例']);
++  assert.equal(ab.code, EXIT.OK, `abandon 应成功：\n${ab.stdout}${ab.stderr}`);
+   const first = path.join(fx.stageDir, `${today()}-${TOPIC}-gemini.md`);
+   const firstBytes = await fs.readFile(first);
+ 
+@@ -202,3 +209,39 @@ test('草稿已有且成功跑完 → 重跑抬升 -r2，原文件字节不变
+     `重跑应产出 -r2 文件，实际：${docs.join(', ')}`,
+   );
+ });
++
++test('report 不存在的主题 → 退 65 并给候选，不凭空建目录（审查意见 GLM-r2-10）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const before = await listFiles(fx.archiveRoot);
++
++  const r = await cli(fx.root, ['report', '--topic', '拼错的主题名']);
++  /*
++   * USAGE 承诺 report「只读归档」，而 resolveTopic 会无条件 ensureDir——
++   * 对拼错的主题名跑 report 会凭空建出 .reviews/<拼错名>/plan/，
++   * 既违背承诺，也让拼错名得不到报错（只得到一份空报告加一个新目录）。
++   */
++  assert.equal(r.code, EXIT.MISSING_ARTIFACT, `应退 65：\n${r.stdout}${r.stderr}`);
++  assert.match(r.stdout + r.stderr, new RegExp(TOPIC), '要给出现有主题作为候选');
++  assert.deepEqual(await listFiles(fx.archiveRoot), before, '只读命令不得创建任何目录');
++});
++
++test('verify 也不凭空建目录', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const before = await listFiles(fx.archiveRoot);
++  await cli(fx.root, ['verify', '--topic', '另一个拼错名']);
++  const after = await listFiles(fx.archiveRoot);
++  assert.ok(
++    !after.some((f) => f.startsWith('另一个拼错名/plan/')),
++    `不该建出 plan 目录：${after.filter((f) => f.startsWith('另一个拼错名')).join(', ')}`,
++  );
++  assert.ok(after.length >= before.length);
++});
++
++test('--timeout 拼错时报 64 并回显原值，不静默回退默认值', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC, extraVerify: ["  build: ['echo ok']", '  test: []'] });
++  for (const bad of ['abc', '0', '-5']) {
++    const r = await cli(fx.root, ['verify', '--topic', TOPIC, '--timeout', bad]);
++    assert.equal(r.code, EXIT.USAGE, `「${bad}」应退 64：\n${r.stdout}${r.stderr}`);
++    assert.match(r.stdout + r.stderr, new RegExp(bad.replace('-', '\\-')), '要回显用户给的原值');
++  }
++});
+diff --git a/test/unit/code-stage.test.ts b/test/unit/code-stage.test.ts
+index 23eb8e1..4f2b21a 100644
+--- a/test/unit/code-stage.test.ts
++++ b/test/unit/code-stage.test.ts
+@@ -197,3 +197,48 @@ test('归档根在项目外时不当成项目内前缀', () => {
+   assert.ok(!ex.some((p) => p.startsWith('..')), `不得包含上溯路径：${ex.join(', ')}`);
+   assert.ok(ex.includes('.trivium'));
+ });
++
++// ── 引号路径（审查意见 GLM-r2-06，形态取自实测）──
++
++test('含空格的路径：git 不加引号，靠 " b/" 分界', () => {
++  const diff = 'diff --git a/src/含 空格.ts b/src/含 空格.ts\n';
++  assert.deepEqual(filesInDiff(diff), ['src/含 空格.ts']);
++});
++
++test('含双引号的路径：两侧都被引起来并转义', () => {
++  // 实测形态：diff --git "a/src/带\"引号.ts" "b/src/带\"引号.ts"
++  const diff = 'diff --git "a/src/带\\"引号.ts" "b/src/带\\"引号.ts"\n';
++  assert.deepEqual(filesInDiff(diff), ['src/带"引号.ts']);
++});
++
++test('引号路径与普通路径混在一起都能认出来', () => {
++  const diff = [
++    'diff --git a/README.md b/README.md',
++    'diff --git "a/src/带\\"引号.ts" "b/src/带\\"引号.ts"',
++    'diff --git a/src/普通.ts b/src/普通.ts',
++  ].join('\n');
++  assert.deepEqual(filesInDiff(diff), ['README.md', 'src/带"引号.ts', 'src/普通.ts']);
++});
++
++test('引号路径的业务文件不得让整份 diff 被判成 doc_only', () => {
++  /*
++   * 这是 GLM-r2-06 真正的危害：清单漏掉引号路径 → classifyDiff 只看到文档
++   * → 判 doc_only → 开了 skip_doc_only_review 时那个业务变更整只逃过审查。
++   * 方向性极差：错在漏审而非多审。
++   */
++  const c = cfg();
++  c.review.skip_doc_only_review = true;
++  const diff = [
++    'diff --git a/README.md b/README.md',
++    'diff --git "a/src/带\\"引号.ts" "b/src/带\\"引号.ts"',
++  ].join('\n');
++  const v = classifyDiff(c, filesInDiff(diff));
++  assert.equal(v.skipped, false, '掺了业务文件就不能跳过');
++  assert.equal(v.category, 'business');
++  assert.deepEqual(v.nonDocPaths, ['src/带"引号.ts']);
++});
++
++test('重命名且带引号时两侧路径都收', () => {
++  const diff = 'diff --git "a/old 名.ts" "b/new 名.ts"\n';
++  assert.deepEqual(filesInDiff(diff), ['new 名.ts', 'old 名.ts']);
++});
+diff --git a/test/unit/disposition-parse.test.ts b/test/unit/disposition-parse.test.ts
+index 02bd053..243324b 100644
+--- a/test/unit/disposition-parse.test.ts
++++ b/test/unit/disposition-parse.test.ts
+@@ -171,3 +171,34 @@ test('normalizeCell 去零宽字符与折叠空白', () => {
+   assert.equal(normalizeCell('  接​受  '), '接受');
+   assert.equal(normalizeCell('a\n b'), 'a b');
+ });
++
++test('「修改计划」必须被认作落点列——设计与模板都用这个词', () => {
++  /*
++   * 随仓库分发的 templates/response.md.template 用的就是「修改计划」。
++   * 漏了这个别名，照模板写的应答件会被闸门判成「接受但没写落点」。
++   */
++  const md = [
++    '---', 'schema: trivium.disposition.v1', 'topic: T', 'stage: code',
++    'role: claude', 'kind: response', 'run_id: R', 'addresses: []', '---', '',
++    '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改计划 |',
++    '| :--- | :--- | :--- | :--- | :--- | :--- |',
++    '| AGY-01 | gemini | major | 接受 | 确实成立 | util/git.ts 抛错而非吞掉 |',
++    '',
++  ].join('\n');
++  const r = parseDisposition(md);
++  assert.equal(r.rows.length, 1, `解析失败：${JSON.stringify(r.problems)}`);
++  assert.equal(r.rows[0]!.action, 'util/git.ts 抛错而非吞掉');
++});
++
++test('落点列的其它同义写法一并认', () => {
++  for (const header of ['落点', '修改落点', '落地点', '修改点', '动作', 'action', '计划']) {
++    const md = [
++      '| 意见编号 | 裁决 | 理由 | ' + header + ' |',
++      '| :--- | :--- | :--- | :--- |',
++      '| GLM-01 | 接受 | 成立 | 某处 |',
++      '',
++    ].join('\n');
++    const r = parseDisposition(md);
++    assert.equal(r.rows[0]?.action, '某处', `列名「${header}」没被认出来`);
++  }
++});
+diff --git a/test/unit/hooks.test.ts b/test/unit/hooks.test.ts
+index d18e7e4..6720f5a 100644
+--- a/test/unit/hooks.test.ts
++++ b/test/unit/hooks.test.ts
+@@ -151,13 +151,21 @@ test('本会话有未裁决阶段时拦提交并说明缺什么', async () => {
+   assert.match(r.stderr ?? '', /gate\.block_commit: false/, '应告知如何关闭');
+ });
+ 
+-test('其它会话的未裁决阶段不拦本会话提交', async () => {
++test('未裁决即拦提交，**不分会话**（审查意见 AGY-05）', async () => {
+   const ctx = await fakeCtx();
+   await setGate({
+     triviumDir: ctx.triviumDir, topic: 't', stage: 'code',
+     state: 'review_done_awaiting_disposition', sessionId: 'S-OTHER', heartbeatStaleMs: STALE,
+   });
+-  assert.equal((await hookPreCommit(ctx, { session_id: SESSION })).exitCode, EXIT.OK);
++  /*
++   * 写锁按会话是 RV-05 的刻意设计（避免跨会话误伤），但「裁决是否齐备」是
++   * **仓库的属性、不是会话的属性**——换个会话、或直接在终端里 git commit，
++   * 未裁决的意见并不会因此变成已裁决。旧行为在这里放行，等于留了一条
++   * 「换个会话就能提交」的绕过路径。
++   */
++  assert.equal((await hookPreCommit(ctx, { session_id: SESSION })).exitCode, EXIT.GATE_BLOCK);
++  // 连 session_id 都没有（纯终端提交）同样拦
++  assert.equal((await hookPreCommit(ctx, {})).exitCode, EXIT.GATE_BLOCK);
+ });
+ 
+ test('等待审批的闸门不拦提交（那不是「裁决未完成」）', async () => {
+diff --git a/test/unit/parse.test.ts b/test/unit/parse.test.ts
+index b3b7b55..c92f733 100644
+--- a/test/unit/parse.test.ts
++++ b/test/unit/parse.test.ts
+@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
+ import {
+   parseReview,
+   extractJsonCandidate,
++  extractJsonCandidates,
+   checkReviewIntegrity,
+   enumerateFallbackFindings,
+ } from '../../src/trivium/parse.js';
+@@ -185,3 +186,59 @@ test('回归：剥离只针对已知厂商字段，真正写错的字段名仍
+   assert.equal(r.ok, false, '未知的多余字段必须仍然报错，否则字段名写错就查不出来');
+   if (!r.ok) assert.ok(r.errors.some((e) => e.includes('findigs')));
+ });
++
++// ── agy 1.2.0 输出两个首尾相接的 JSON 对象（实测踩到）──
++
++test('两个首尾相接的 JSON 对象：取首个通过校验的，不再整段降级', () => {
++  /*
++   * 实测：agy 1.2.0 把 envelope 吐了两遍（内容相同，疑似流式收尾重复）。
++   * 整段文本仍「以 { 开头、以 } 结尾」，旧实现据此当成一个整体，
++   * JSON.parse 在第二个对象的起始处报语法错误——
++   * 一份完全合格的 6 条意见结论**每次**被降级成 parse_fallback、失去阻断资格。
++   */
++  const one = JSON.stringify(validReview());
++  const r = parseReview(`${one}\n${one}`);
++  assert.equal(r.ok, true, `应解析成功，实际：${r.ok ? '' : r.reason}`);
++  assert.equal(r.ok && r.review.findings.length, 1);
++});
++
++test('第一个对象残缺时跳过它，取后面合格的那个', () => {
++  // 不是「取第一个能解析的」：流式片段可能先到
++  const broken = '{"schema":"trivium.review.v1","findings":[';
++  const good = JSON.stringify(validReview());
++  const r = parseReview(`${broken}\n${good}`);
++  assert.equal(r.ok, true, r.ok ? '' : r.reason);
++});
++
++test('结论之后追加的噪声对象顶不掉真正的结论', () => {
++  const good = JSON.stringify(validReview());
++  const noise = JSON.stringify({ toolAction: 'done', note: '收尾' });
++  const r = parseReview(`${good}\n${noise}`);
++  assert.equal(r.ok, true, r.ok ? '' : r.reason);
++  assert.equal(r.ok && r.review.findings[0]!.id, 'AGY-01');
++});
++
++test('全都不合格时如实报最后一次的校验错误', () => {
++  const r = parseReview('{"a":1}\n{"b":2}');
++  assert.equal(r.ok, false);
++  assert.match(r.ok ? '' : r.reason, /不符合 trivium\.review\.v1/);
++});
++
++test('extractJsonCandidates 去重并保序', () => {
++  const one = '{"x":1}';
++  const c = extractJsonCandidates(`${one}\n${one}`);
++  /*
++   * 整段仍「以 { 开头、以 } 结尾」，所以先作为 whole 入列（它解析不了，
++   * parseReview 会跳过它）；随后两个相同片段去重成一个。
++   * 这正是 agy 重复输出时的形状。
++   */
++  assert.deepEqual(c.map((x) => x.from), ['whole', 'braces']);
++  assert.equal(c[1]!.json, one);
++});
++
++test('extractJsonCandidates 同时收代码围栏与裸对象，且不重复', () => {
++  const text = ['前言', '```json', '{"a":1}', '```', '尾巴 {"b":2} 结束'].join('\n');
++  const got = extractJsonCandidates(text).map((c) => `${c.from}:${c.json}`);
++  // 围栏里的那个先入列；配平扫描再扫到同一段时被去重
++  assert.deepEqual(got, ['fence:{"a":1}', 'braces:{"b":2}']);
++});
+diff --git a/test/unit/report.test.ts b/test/unit/report.test.ts
+index 851a843..f6e892a 100644
+--- a/test/unit/report.test.ts
++++ b/test/unit/report.test.ts
+@@ -294,3 +294,38 @@ test('task.json 的降级与争议项被带进报告', async () => {
+   assert.match(md, /双方共同 blocker 被驳回/);
+   assert.match(md, /X-1、Y-2/);
+ });
++
++// ── 降级纪律：读不到就说读不到（审查意见 GLM-r2-09）──
++
++test('verify 记录损坏 → 如实说损坏，不伪装成「从未验证」', async () => {
++  const l = await archive();
++  await seedRound(l, { rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM') });
++  const vdir = path.join(l.archiveRoot, TOPIC, 'verify', '_meta');
++  await fs.mkdir(vdir, { recursive: true });
++  await fs.writeFile(path.join(vdir, 'verify-R9.json'), '{ 这不是 JSON', 'utf8');
++
++  const r = await buildTopicReport(l);
++  assert.ok(
++    r.notes.some((n) => /verify 记录损坏/.test(n)),
++    `应如实报损坏，实际 notes：${r.notes.join(' | ')}`,
++  );
++  const md = renderTopicReport(r);
++  assert.match(md, /verify 记录损坏/);
++  // 「记录损坏」被渲染成「尚无记录」恰是 P5 要防的误读
++  assert.doesNotMatch(md, /- 尚无 verify 记录/);
++});
++
++test('裁决件读不到不让整份复盘崩溃', async () => {
++  const l = await archive();
++  await seedRound(l, { rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM') });
++  // 写一份裁决件，然后把它变成目录——readFile 必然失败
++  const p = path.join(l.archiveRoot, TOPIC, 'plan', `${new Date().toISOString().slice(0, 10)}-${TOPIC}-revised-claude.md`);
++  await fs.mkdir(p, { recursive: true });
++
++  const r = await buildTopicReport(l); // 不该抛
++  assert.ok(
++    r.rounds[0]!.notes.some((n) => /裁决件读取失败/.test(n)),
++    `应进 notes，实际：${r.rounds[0]!.notes.join(' | ')}`,
++  );
++  assert.equal(r.rounds[0]!.disposals, null);
++});
+diff --git a/test/unit/state.test.ts b/test/unit/state.test.ts
+index 2861072..3aa29e6 100644
+--- a/test/unit/state.test.ts
++++ b/test/unit/state.test.ts
+@@ -4,7 +4,8 @@ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import {
+-  setGate, getGate, listOpenGates, readState, shouldLockWrites, gateKey, type GateEntry,
++  setGate,
++  setGateChecked, getGate, listOpenGates, readState, shouldLockWrites, gateKey, type GateEntry,
+ } from '../../src/trivium/state.js';
+ 
+ const STALE = 120_000;
+@@ -160,3 +161,80 @@ test('闸门时间戳损坏 → 不加锁（宁可放过也不误伤）', () =>
+   assert.equal(r.lock, false);
+   assert.match(r.reason, /不可解析/);
+ });
++
++// ── 条件迁移（审查意见 GLM-r2-01）──
++
++test('expect.state 不匹配时不写入，并说明原因', async () => {
++  const dir = await tmp();
++  await setGate({ triviumDir: dir, topic: 't', stage: 'plan', state: 'running', runId: 'R1', heartbeatStaleMs: STALE });
++
++  const r = await setGateChecked({
++    triviumDir: dir, topic: 't', stage: 'plan', state: 'idle', runId: 'R1',
++    heartbeatStaleMs: STALE, expect: { state: ['review_done_awaiting_disposition'] },
++  });
++  assert.equal(r.applied, false);
++  assert.match(r.skipped ?? '', /当前状态为 running/);
++  assert.equal((await getGate(dir, 't', 'plan'))!.state, 'running', '未匹配时原状态必须保持');
++});
++
++test('expect.runId 不匹配时不写入——新一轮的护栏不该被旧 run 清掉', async () => {
++  const dir = await tmp();
++  // 新一轮 R2 已接管
++  await setGate({ triviumDir: dir, topic: 't', stage: 'plan', state: 'running', runId: 'R2', heartbeatStaleMs: STALE });
++
++  // 旧 run R1 的收尾/取消试图把闸门清成 idle
++  const r = await setGateChecked({
++    triviumDir: dir, topic: 't', stage: 'plan', state: 'idle', runId: 'R1',
++    heartbeatStaleMs: STALE, expect: { runId: 'R1' },
++  });
++  assert.equal(r.applied, false);
++  assert.match(r.skipped ?? '', /闸门当前记着 run R2/);
++  assert.equal((await getGate(dir, 't', 'plan'))!.state, 'running');
++  assert.equal((await getGate(dir, 't', 'plan'))!.run_id, 'R2');
++});
++
++test('expect 匹配时正常写入', async () => {
++  const dir = await tmp();
++  await setGate({ triviumDir: dir, topic: 't', stage: 'plan', state: 'running', runId: 'R1', heartbeatStaleMs: STALE });
++  const r = await setGateChecked({
++    triviumDir: dir, topic: 't', stage: 'plan', state: 'idle', runId: 'R1',
++    heartbeatStaleMs: STALE, expect: { state: ['running'], runId: 'R1' },
++  });
++  assert.equal(r.applied, true);
++  assert.equal((await getGate(dir, 't', 'plan'))!.state, 'idle');
++});
++
++test('闸门不存在时默认放行——首次置 running 的槽位本来就是空的', async () => {
++  const dir = await tmp();
++  const ok = await setGateChecked({
++    triviumDir: dir, topic: 't', stage: 'plan', state: 'running', runId: 'R1',
++    heartbeatStaleMs: STALE, expect: { state: ['idle'] },
++  });
++  assert.equal(ok.applied, true);
++
++  const dir2 = await tmp();
++  const no = await setGateChecked({
++    triviumDir: dir2, topic: 't', stage: 'plan', state: 'idle', runId: 'R1',
++    heartbeatStaleMs: STALE, expect: { state: ['running'], allowMissing: false },
++  });
++  assert.equal(no.applied, false);
++  assert.match(no.skipped ?? '', /闸门不存在/);
++});
++
++test('比较与写入在同一把锁内：并发的条件迁移只会成功一个', async () => {
++  const dir = await tmp();
++  await setGate({ triviumDir: dir, topic: 't', stage: 'plan', state: 'running', runId: 'R1', heartbeatStaleMs: STALE });
++
++  // 两个都期望 running → 只该有一个真正翻转（check-then-act 会两个都成功）
++  const results = await Promise.all([
++    setGateChecked({
++      triviumDir: dir, topic: 't', stage: 'plan', state: 'idle', runId: 'R1',
++      heartbeatStaleMs: STALE, expect: { state: ['running'], runId: 'R1' },
++    }),
++    setGateChecked({
++      triviumDir: dir, topic: 't', stage: 'plan', state: 'abandoned', runId: 'R1',
++      heartbeatStaleMs: STALE, expect: { state: ['running'], runId: 'R1' },
++    }),
++  ]);
++  assert.equal(results.filter((r) => r.applied).length, 1, '只该有一个成功翻转');
++});
+diff --git a/test/unit/verify.test.ts b/test/unit/verify.test.ts
+index b6d20ac..c561fb2 100644
+--- a/test/unit/verify.test.ts
++++ b/test/unit/verify.test.ts
+@@ -219,3 +219,27 @@ test('摘要点名失败的命令', () => {
+     /既非通过也非失败/,
+   );
+ });
++
++// ── unconfigured 与「本次没选中」是两回事（审查意见 GLM-r2-07）──
++
++test('--only build 而 build 未配：不得写成「两组均为空」', async () => {
++  const ctx = await ctxWith([], ['npm test']); // test 配了，build 没配
++  const out = await runVerify({ ctx, layout: layoutFor(ctx), runId: 'R1', only: 'build' });
++
++  assert.equal(out.record.unconfigured, false, '另一组配了，就不是配置缺失');
++  assert.equal(out.record.selected_empty, 'build');
++
++  const doc = await fs.readFile(out.artifactPath, 'utf8');
++  assert.doesNotMatch(doc, /均为空/, '审计记录里不能出现与事实不符的陈述');
++  assert.match(doc, /--only build/);
++  assert.match(doc, /另一组是配置齐全的/);
++  assert.match(summarizeVerify(out.record), /另一组已配置/);
++});
++
++test('两组皆空时仍判 unconfigured', async () => {
++  const ctx = await ctxWith([], []);
++  const out = await runVerify({ ctx, layout: layoutFor(ctx), runId: 'R2', only: 'build' });
++  assert.equal(out.record.unconfigured, true);
++  assert.equal(out.record.selected_empty, undefined);
++  assert.match(await fs.readFile(out.artifactPath, 'utf8'), /均为空/);
++});

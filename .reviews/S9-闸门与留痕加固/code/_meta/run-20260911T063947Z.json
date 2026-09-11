@@ -1,0 +1,139 @@
+{
+  "schema": "trivium.run.v1",
+  "run_id": "20260911T063947Z",
+  "topic": "S9-闸门与留痕加固",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "这批改动动了闸门状态机与留痕核对两处最敏感的地方。重点看：①条件迁移 setGateChecked 的 expect 语义是否还有漏网的状态序列；②三条异常路径的闸门回收是否真的覆盖全部退出路径（含 startRun 在 prepare 之前失败、worker 被 SIGKILL）；③两个外部锚（task.json / git）的职责切分有没有新的绕过或误伤；④diffAgainst 改为抛错后，是否有调用方把它当成空 diff 处理；⑤引号路径解析 splitDiffGitPaths 的边界",
+  "snapshot": {
+    "git_head": "4b797e1af6ba09938baeb902cb887f649cc330b3",
+    "tree_hash": "1758ddb41807a47a5a90895b99390262bb2acddb",
+    "dirty": false,
+    "subject_sha256": "523777a134790162d938511efa956e0e6469dce77f1e3daf313a48fe92344ddd",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-11T06:39:47.429Z",
+  "finished_at": "2026-09-11T06:59:19.832Z",
+  "review_mode": "dual",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.0",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort": "medium",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 239.738,
+      "tool_calls": {
+        "read": 35,
+        "grep": 9,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 289486,
+        "output_tokens": 41163,
+        "thinking_tokens": 32588,
+        "cache_read_tokens": 4762458,
+        "total_tokens": 330649
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "faac5af1-e0e4-4c3b-935b-84d295903538",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3-Flash",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "model_effective_source": "trace",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1172.289,
+      "tool_calls": {
+        "read": 22,
+        "grep": 3,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 12,
+        "inputTokens": 1182608,
+        "outputTokens": 42473,
+        "totalTokens": 1225081,
+        "cacheReadTokens": 1040512,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_5d4d4816-2877-4f2d-ba5c-bcc99e080926",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r3-glm.md"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "S9-闸门与留痕加固/code/_meta/changes.diff",
+      "sha256": "523777a134790162d938511efa956e0e6469dce77f1e3daf313a48fe92344ddd"
+    },
+    {
+      "path": "S9-闸门与留痕加固/code/_meta/brief-gemini-20260911T063947Z.md",
+      "sha256": "6a898171672052d9334e64349fad198cf5ce463881f9c913f1dd27d4f931853e"
+    },
+    {
+      "path": "S9-闸门与留痕加固/code/_meta/brief-glm-20260911T063947Z.md",
+      "sha256": "2f71d4d0cc29954579119ba229c5d230910984f21c01049b8b37fb7f2f1db568"
+    },
+    {
+      "path": "S9-闸门与留痕加固/code/2026-09-11-S9-闸门与留痕加固-gemini.md",
+      "sha256": "bca7649afe9b19f868eceab04a7d4544bb6bd846241b8ce2d989e425c810fcbc"
+    },
+    {
+      "path": "S9-闸门与留痕加固/code/2026-09-11-S9-闸门与留痕加固-glm.md",
+      "sha256": "95d463ede0912387f9cd3e3bfaaa18e5675cc9d8f7989cc2500c5660d41c77d0"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

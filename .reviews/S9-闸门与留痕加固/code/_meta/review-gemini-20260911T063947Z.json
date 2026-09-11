@@ -1,0 +1,110 @@
+{
+  "agreed": [
+    "diffAgainst 在 git 命令执行失败时改为显式抛出 TriviumError，堵死了坏 base 参数下静默将残缺补丁送审的严重问题。",
+    "parseReview 针对 agy 1.2.0 重复输出相接 JSON 对象的问题，引入 extractJsonCandidates 进行多候选去重与 ajv 逐项验证，避免合格结论被误判降级。",
+    "report 模块在 verify 记录损坏或裁决件读取失败时如实记录 notes 并告警，严格区分「记录损坏」与「从未验证」，符合 P5 拒绝掩盖的设计准则。",
+    "hook-pre-commit 去除了裁决齐备性检查时的会话过滤，明确了裁决完备性是仓库属性而非会话属性，封堵了换会话绕过提交检查的漏洞。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/S9-闸门与留痕加固/code/_meta/changes.diff",
+    "src/trivium/state.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/types.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/review.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/report.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/code-stage.ts",
+    "src/trivium/verify.ts",
+    "skills/dual-critic/schema/run.v1.json"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/meta.ts 第 76-81 行，readTask 的 catch 分支直接返回 emptyTask(l.topic)；在 src/trivium/hooks.ts 第 266 行，checkArchiveIntegrity 调用 readTask 获取 task 后，将 task.runs 传入 checkRunManifests。若 task.json 格式被搅坏或读失败，readTask 静默返回 runs 为空数组，checkRunManifests 误判为没有登记过任何 run，从而跳过了对该主题全部 run.json 的核对。",
+      "id": "AGY-01",
+      "kind": "security",
+      "layer": "code",
+      "location": "src/trivium/meta.ts:76-82",
+      "problem": "作为留痕核对关键外部锚的 task.json，在损坏（非法 JSON）或读取失败时被 readTask 静默捕获并回落为 emptyTask，导致 checkRunManifests 核对对象被清空，整枝绕过留痕检查。这与 GLM-r2-03 关于清单损坏绝不能静默跳过的原则相悖。",
+      "severity": "major",
+      "suggestion": "readTask 应在文件存在但解析失败时显式抛错或返回带有 unreadable 标记的对象；checkArchiveIntegrity 针对损坏的 task.json 必须作为违例上报，禁止静默当成空任务放行。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/state.ts 第 143-164 行，当 prev 为空时，代码仅检查 allowMissing === false，由于 allowMissing 默认为 undefined/true，直接跳过了对 expect.state 与 expect.runId 的校验并写入。调用方如 releaseRunningGate (run-protocol.ts:343) 传入 expect: { state: ['running'], runId }，在闸门原本不存在时会被无条件放行并创建 idle 闸门。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/state.ts:143-164",
+      "problem": "setGateChecked 条件迁移中 allowMissing 默认值为 true 过于宽泛，导致在槽位不存在闸门记录时，expect.runId 与 expect.state 校验被完全绕过，空槽位直接满足条件并写入。期望特定 runId 或 running 状态的操作（如回收、取消）会在空状态下凭空生成条目。",
+      "severity": "major",
+      "suggestion": "当调用方显式指定了 expect.runId 或 expect.state 时，allowMissing 不应默认为 true；或者要求当闸门不存在时，仅在 expect 未指定特定 runId 且明确允许 missing（如首次置 running）时才放行。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/verify.ts 第 1494-1516 行，写出的 JSON 中包含 schema: 'trivium.run.v1' 和 stage: 'verify'；但在 skills/dual-critic/schema/run.v1.json 中，stage 属性为 enum: ['plan', 'code', 'bug']，且必填字段包含 command, snapshot, review_mode, critics, deny_paths, guard, gate，verify 写出的元数据均不具备。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "code",
+      "location": "src/trivium/verify.ts:1494-1516",
+      "problem": "verify 阶段生成的 run-<id>.json 标明遵循 trivium.run.v1，但违反了该 Schema 的 stage 枚举值约束，并缺失了大量必填字段，造成对外契约漂移。如果使用官方 Schema 校验该工件将报错。",
+      "severity": "minor",
+      "suggestion": "在 skills/dual-critic/schema/run.v1.json 中扩展 stage 枚举（加入 verify）并为 verify 阶段单独定义或放宽必填字段约束，或者为 verify 运行定义独立的 schema（如 trivium.verify-run.v1）。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/util/git.ts 第 1340-1345 行，unquoteGitPath 使用 JSON.parse(p) 反转转义。当 git 输出包含 C 风格八进制转义（如非 ASCII 字符或未关闭 core.quotePath 时中文文件名被转为 \\\\344\\\\270\\\\255）时，JSON.parse 会抛出 SyntaxError 并回退到 p.slice(1, -1)，裸八进制字符依然残留。",
+      "id": "AGY-04",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/util/git.ts:1338-1346",
+      "problem": "unquoteGitPath 借用 JSON.parse 无法解析 git 原生 C 风格字符串中的八进制转义序列（\\\\NNN），导致包含非 ASCII / 中文字符的被引用路径还原失败，残存裸转义文本，影响下游文件匹配与状态判断。",
+      "severity": "minor",
+      "suggestion": "实现符合 git quotePath 规则的 C 风格八进制与常见转义字符解码器，或在 JSON.parse 尝试前先将 \\\\NNN 八进制转义序列转换为对应的字节/字符。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/cli.ts 第 317-335 行，cmdGate 在处理 --await-approval 时，if (runId) 才会执行 loadRoundReviews 与 checkAdjudication。若 runId 为 null，整段校验被直接跳过，并随后执行 setGate({ state: 'awaiting_approval' })。",
+      "id": "AGY-05",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/cli.ts:317-331",
+      "problem": "cmdGate 的 --await-approval 前置检查依赖 runId 存在。在尚无运行记录的新主题或无法推断 runId 时，裁决齐备性检查被直接绕过，闸门直接置为 awaiting_approval，偏离了必须经裁决校验才可进入审批态的初衷。",
+      "severity": "minor",
+      "suggestion": "当 runId 为 null 时，直接报错并拒绝置为 awaiting_approval，提示需要至少存在一轮已完成的审查记录。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "在 src/trivium/cli.ts 第 328 行及 src/trivium/review.ts 第 759-762 行，runReview 先执行 prepareRun（闸门置为 running），紧接着直接 await executeRun(rc)。期间若发生未捕获异常或进程被中断，缺乏类似 workerMain 的 finally 回收逻辑。",
+      "id": "AGY-06",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/review.ts:759-762",
+      "problem": "同步审查入口 runReview 在 prepareRun 成功置闸门为 running 后，调用 executeRun 缺少全局 try...finally 保护。若执行期间发生异常，闸门将残留在 running 状态并锁定业务写入直至 24h 超时。",
+      "severity": "minor",
+      "suggestion": "在 runReview 中对 executeRun 增加 try...finally 包装，并在异常退出时调用 releaseRunningGate 回收当前 run 的 running 闸门。"
+    }
+  ],
+  "not_covered": [
+    "未实际拉起真实的 agy (Antigravity) 和 zcode.cjs 运行完整的多进程长时审查流程（仅进行静态代码与逻辑推演）。",
+    "未覆盖 macOS 以外操作系统环境（如 Linux/Windows）以及特定 git 配置（如 diff.noprefix=true）下的边界表现。",
+    "未执行耗时较长的端到端并发压力测试，对跨进程高并发文件写锁争用的极限边界未能完整验证。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "1. 最严重问题：作为留痕核对外部锚的 task.json 在损坏或读失败时被 readTask 静默吞掉并回退为空，导致整主题全部 run.json 的清单核对被整枝绕过。\n2. setGateChecked 中 allowMissing 默认 true 导致空闸门绕过 expect.runId/state 检查凭空创建条目。\n3. verify 产出的 run-*.json 标明 trivium.run.v1 但违背其 schema enum 与必填字段，存在契约漂移。\n4. unquoteGitPath 借用 JSON.parse 无法解析 git C 风格八进制转义，导致中文等特殊路径还原失败。\n5. cmdGate --await-approval 在 runId 为空时绕过裁决检查；runReview 同步路径缺少异常闸门回收。",
+  "verdict": "request-changes"
+}
