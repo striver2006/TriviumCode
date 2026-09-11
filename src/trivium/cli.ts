@@ -9,6 +9,7 @@ import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
 import { loadCtx } from './config.js';
 import { runDoctor, renderDoctorReport } from './doctor.js';
+import { selftestCommand } from './selftest.js';
 import { runReview } from './review.js';
 import { collectCommands, runVerify, summarizeVerify } from './verify.js';
 import { buildTopicReport, renderTopicReport } from './report.js';
@@ -89,6 +90,12 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       本机能力探针。实测两家 CLI 的真实能力并回填 .trivium/config.local.yaml 的 probe: 段。
       --no-model-calls  只做静态探测，不消耗厂商配额
       --only            只探测指定一侧
+
+  trivium doctor --selftest [--keep-fixture] [--asset-root <路径>]
+      在临时夹具仓库里**真跑**一遍整条流水线：双审 → 闸门拦截 → 补裁决 →
+      闸门放行 → 编译测试 → 复盘 → 重跑不覆盖，逐步核对退出码与落盘结果。
+      两侧走桩适配器，**零配额消耗**；因此它证明不了两家 CLI 可用——
+      那是 doctor 与 preflight 的职责，输出里会写明这条边界。
 
   trivium review --stage plan|code|bug --topic <主题> --focus <提示语> [选项]
       **同步**跑一次双审。仅供手工调试：一次运行墙钟可达 30~40 分钟，
@@ -325,6 +332,18 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
 }
 
 async function cmdDoctor(args: ParsedArgs): Promise<number> {
+  /*
+   * --selftest 不读当前项目的配置：它在自己的临时夹具里跑。
+   * 因此放在 loadCtx 之前——装完还没 init 的项目里也该能自检，
+   * 那正是「非作者 15 分钟装好」最需要它的时刻。
+   */
+  if (args.flags.get('selftest') === true) {
+    return selftestCommand({
+      keepFixture: args.flags.get('keep-fixture') === true,
+      assetRoot: flagString(args, 'asset-root'),
+    });
+  }
+
   // doctor 要能在尚未 init 的项目里跑——它本来就是 init 的前置
   const ctx = await loadCtx({ allowUninitialized: true });
 
