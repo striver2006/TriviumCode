@@ -302,3 +302,84 @@ test('hook 内部程序缺陷 → exit 1（非阻断）', async () => {
   // 该输入不一定抛错；关键是不返回 2
   assert.notEqual(r.exitCode, EXIT.GATE_BLOCK);
 });
+
+// ─────────── hook-pre-commit 的命令自检 ───────────
+
+test('hook-pre-commit 只拦提交，不拦其它 Bash 命令', async () => {
+  const ctx = await fakeCtx();
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: '闸门主题', stage: 'plan',
+    state: 'review_done_awaiting_disposition', sessionId: 'S1', heartbeatStaleMs: STALE,
+  });
+  ctx.config.gate.approval_lock_scope = 'global';
+
+  const blocked = await hookPreCommit(ctx, {
+    tool_name: 'Bash', session_id: 'S1',
+    tool_input: { command: 'git commit -m "x"' },
+  });
+  assert.equal(blocked.exitCode, EXIT.GATE_BLOCK, '裁决未齐备时提交必须被拦');
+
+  // `git log --format=commit` 是关键用例：拿正则硬凑会把它误判成提交
+  for (const cmd of [
+    'npm test',
+    'git status',
+    'git log --format=commit',
+    'git log --oneline | grep commit',
+    'git -C /tmp/x status',
+    'ls -la',
+  ]) {
+    const r = await hookPreCommit(ctx, {
+      tool_name: 'Bash', session_id: 'S1', tool_input: { command: cmd },
+    });
+    assert.equal(r.exitCode, EXIT.OK, `「${cmd}」不是提交，不该被拦`);
+  }
+});
+
+test('已知过拦：引号里出现 git commit 也会被拦（取保守一侧）', async () => {
+  const ctx = await fakeCtx();
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: '闸门主题', stage: 'plan',
+    state: 'review_done_awaiting_disposition', sessionId: 'S1', heartbeatStaleMs: STALE,
+  });
+  ctx.config.gate.approval_lock_scope = 'global';
+  /*
+   * 这是**有意记录**的过拦，不是遗漏：不做完整 shell 词法分析就分不清
+   * `echo git commit` 与真提交。宁可误拦一条 echo，也不能漏过一次违规提交。
+   * 若将来确有困扰，正解是引入真正的词法分析，而不是放宽判据。
+   */
+  const r = await hookPreCommit(ctx, {
+    tool_name: 'Bash', session_id: 'S1', tool_input: { command: 'echo git commit' },
+  });
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
+});
+
+test('hook-pre-commit 拿不到命令行时按「是提交」处理', async () => {
+  const ctx = await fakeCtx();
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: '闸门主题', stage: 'plan',
+    state: 'review_done_awaiting_disposition', sessionId: 'S1', heartbeatStaleMs: STALE,
+  });
+  ctx.config.gate.approval_lock_scope = 'global';
+  // 宁可误拦也不放过：Hook 的职责是拦住违规提交
+  const r = await hookPreCommit(ctx, { tool_name: 'Bash', session_id: 'S1' });
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
+});
+
+test('hook-pre-commit 识别带前置参数与复合命令的提交', async () => {
+  const ctx = await fakeCtx();
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: '闸门主题', stage: 'plan',
+    state: 'review_done_awaiting_disposition', sessionId: 'S1', heartbeatStaleMs: STALE,
+  });
+  ctx.config.gate.approval_lock_scope = 'global';
+  for (const cmd of [
+    'git -C /tmp/x commit -m y',
+    'npm test && git commit -m y',
+    'git commit --amend',
+  ]) {
+    const r = await hookPreCommit(ctx, {
+      tool_name: 'Bash', session_id: 'S1', tool_input: { command: cmd },
+    });
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `「${cmd}」应被识别为提交`);
+  }
+});

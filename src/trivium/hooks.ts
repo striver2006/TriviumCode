@@ -147,8 +147,51 @@ function deny(reason: string): HookOutput {
  * 作用域按修订计划 §2.3（意见 AGY-03）：**仅当本会话存在未裁决阶段时**才拦截。
  * 原稿没界定作用域，等于对仓库内任何 `git commit` 都可能拦截——那会误伤日常提交。
  */
+/**
+ * 判断这次 Bash 调用是不是在提交。
+ *
+ * `settings.json` 的 `if: "Bash(git commit:*)"` 已经做了过滤，这里是第二道：
+ * 该字段只在工具事件上生效、且写错一个字就会静默全匹配，而本 Hook 一旦全匹配，
+ * 闸门期内**每一条** Bash 命令都会被拦下——那是比漏拦更糟的故障形态。
+ * 判不出来时按「是提交」处理：Hook 的职责是拦住违规提交，不是放过可疑输入。
+ */
+/** 需要额外吃掉一个参数值的 git 全局选项 */
+const GIT_OPTS_WITH_VALUE = new Set([
+  '-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env',
+]);
+
+/**
+ * 取一段命令里 git 的**子命令**。
+ *
+ * 不能拿 `/git.*commit/` 这种正则凑：`git log --format=commit` 会被误判成提交，
+ * 于是闸门期内连看日志都被拦。必须跳过全局选项后取第一个非选项词。
+ */
+function gitSubcommand(segment: string): string | null {
+  const tokens = segment.trim().split(/\s+/).filter(Boolean);
+  const gitAt = tokens.findIndex((t) => t === 'git' || t.endsWith('/git'));
+  if (gitAt < 0) return null;
+
+  for (let i = gitAt + 1; i < tokens.length; i++) {
+    const t = tokens[i]!;
+    if (!t.startsWith('-')) return t;
+    // `--git-dir=x` 自带值；`--git-dir x` 要多吃一个词
+    if (GIT_OPTS_WITH_VALUE.has(t)) i++;
+  }
+  return null;
+}
+
+function looksLikeCommit(input: HookInput): boolean {
+  const cmd = input.tool_input?.['command'];
+  if (typeof cmd !== 'string') return true; // 拿不到命令行 → 不敢放过
+  // 复合命令里任一段是提交就算：`npm test && git commit -m y`
+  return cmd
+    .split(/(?:&&|\|\||[;&|])/)
+    .some((seg) => gitSubcommand(seg) === 'commit');
+}
+
 export async function hookPreCommit(ctx: Ctx, input: HookInput): Promise<HookOutput> {
   if (!ctx.config.gate.block_commit) return ALLOW;
+  if (input.tool_name === 'Bash' && !looksLikeCommit(input)) return ALLOW;
 
   const open = await listOpenGates(ctx.triviumDir);
   const pending = open.filter(
