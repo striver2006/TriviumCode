@@ -36,12 +36,20 @@ const TOPIC = '故障注入';
 /** 跑完整 --start → --wait 循环，返回最终退出码与 run.json */
 async function runInjected(
   stub: StubConfig,
+  extraArgs: string[] = [],
+  extraReview: string[] = [],
 ): Promise<{ root: string; stageDir: string; exitCode: number; meta: RunMeta; waitOut: string }> {
-  const { root, stageDir } = await makeFixture({ topic: TOPIC });
+  const { root, stageDir } = await makeFixture({
+    topic: TOPIC,
+    ...(extraReview.length > 0 ? { extraReview } : {}),
+  });
 
   const started = await cli(
     root,
-    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', '注入用例', '--json'],
+    [
+      'review', '--start', '--stage', 'plan', '--topic', TOPIC,
+      '--focus', '注入用例', '--json', ...extraArgs,
+    ],
     stub,
   );
   assert.equal(started.code, EXIT.OK, `--start 应成功：\n${started.stdout}\n${started.stderr}`);
@@ -61,7 +69,8 @@ async function runInjected(
 
   // --wait 轮询到终态。桩瞬时返回，一两轮就够；上限防死循环
   let exitCode: number = EXIT.STILL_RUNNING;
-  let waitOut = '';
+  // 从 --start 的输出攒起：prepareRun 阶段的告警（如「忽略 --allow-single」）只打在那里
+  let waitOut = started.stdout + started.stderr;
   for (let i = 0; i < 12 && exitCode === EXIT.STILL_RUNNING; i++) {
     const w = await cli(root, ['review', '--wait', runId, '--timeout', '20'], stub, 60_000);
     exitCode = w.code ?? EXIT.FAIL;
@@ -189,4 +198,53 @@ test('回读到的生效模型与请求不符时如实记录（AC-13）', { skip
     meta.critics.gemini?.model_requested,
     '生效模型取自回读，不能用请求值顶替',
   );
+});
+
+// ── --allow-single（§12.4）──
+
+test('默认 strict：一侧失败即整次中止（退 75）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { exitCode, meta } = await runInjected({
+    gemini: { mode: 'fail', note: '桩注入的进程级失败' },
+    glm: { mode: 'ok' },
+  });
+  assert.equal(exitCode, EXIT.STRICT_ABORT, 'strict 下必须以 75 中止');
+  assert.equal(meta.status, 'failed');
+  assert.equal(meta.review_mode, 'single');
+  assert.ok(meta.degraded_reason, '降级原因必须留痕（AC-06）');
+});
+
+test('--allow-single：一侧失败不中止，产出单审并标降级', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { exitCode, meta, stageDir, waitOut } = await runInjected(
+    { gemini: { mode: 'fail' }, glm: { mode: 'ok' } },
+    ['--allow-single'],
+  );
+  assert.equal(exitCode, EXIT.OK, `应放行：\n${waitOut}`);
+  assert.equal(meta.status, 'success');
+  assert.equal(meta.review_mode, 'single');
+  assert.ok(meta.degraded_reason, '降级即便被允许也必须留痕');
+
+  // 幸存侧照常落盘，失败侧留 .failed.json——不靠删文件假装没跑（P5）
+  const docs = await fs.readdir(stageDir);
+  assert.ok(docs.some((f) => f.endsWith('-glm.md')));
+  assert.ok(!docs.some((f) => f.endsWith('-gemini.md')));
+  const metas = await fs.readdir(path.join(stageDir, '_meta'));
+  assert.ok(metas.some((f) => f.startsWith('review-gemini-') && f.endsWith('.failed.json')));
+});
+
+test('配置关掉 allow_single_flag 时，命令行也开不回来', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { exitCode, waitOut } = await runInjected(
+    { gemini: { mode: 'fail' }, glm: { mode: 'ok' } },
+    ['--allow-single'],
+    ['allow_single_flag: false'],
+  );
+  assert.equal(exitCode, EXIT.STRICT_ABORT, '配置层关掉的东西，命令行不该能开回来');
+  assert.match(waitOut, /忽略 --allow-single/);
+});
+
+test('两侧都失败：无论什么策略都中止', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { exitCode } = await runInjected(
+    { gemini: { mode: 'fail' }, glm: { mode: 'timeout' } },
+    ['--allow-single'],
+  );
+  assert.notEqual(exitCode, EXIT.OK, '没有任何一侧成功时不存在「单审结果」可言');
 });

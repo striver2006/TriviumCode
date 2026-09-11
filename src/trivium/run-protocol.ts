@@ -72,6 +72,9 @@ interface Handoff {
     command: string;
     onlyCritic: CriticId | null;
     assetRoot?: string;
+    /** 会话 id 与临时降级开关必须一起交接：worker 是另一个进程，读不到 --start 的 argv */
+    sessionId: string | null;
+    allowSingle: boolean;
   };
 }
 
@@ -95,6 +98,8 @@ async function writeHandoff(rc: RunContext): Promise<void> {
       modelOverrides: rc.opts.modelOverrides,
       command: rc.opts.command,
       onlyCritic: rc.opts.onlyCritic ?? null,
+      sessionId: rc.opts.sessionId ?? null,
+      allowSingle: rc.opts.allowSingle === true,
       ...(rc.opts.assetRoot ? { assetRoot: rc.opts.assetRoot } : {}),
     },
   };
@@ -133,6 +138,8 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
       modelOverrides: h.options.modelOverrides,
       command: h.options.command,
       onlyCritic: h.options.onlyCritic,
+      sessionId: h.options.sessionId ?? null,
+      allowSingle: h.options.allowSingle === true,
       ...(h.options.assetRoot ? { assetRoot: h.options.assetRoot } : {}),
     } satisfies ReviewOptions,
     cfg: ctx.config,

@@ -106,6 +106,8 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --base <ref>  仅 code 阶段：diff 比较基线，默认 HEAD
       --model-gemini <slug> / --model-glm <id>  本次模型覆盖
       --only gemini|glm  仅跑一侧（调试用，会被标为降级——这不是双审）
+      --allow-single  一侧失败时不中止，产出单审结果并留痕（§12.4）。
+                      受配置 review.allow_single_flag 约束；默认策略是 strict
 
   trivium review --start --stage <s> --topic <主题> --focus <提示语> [同上选项] [--json]
       冻结送审包 → 派生工作进程 → **立即返回** run_id 与 max_waits。
@@ -272,6 +274,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     onlyCritic: (onlyRaw as CriticId | null) ?? null,
     // 闸门写锁默认按会话作用域（RV-05），拿不到会话 id 就一律不加锁
     sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
+    allowSingle: args.flags.get('allow-single') === true,
   };
 
   // ── --start：派生后立即返回 ──

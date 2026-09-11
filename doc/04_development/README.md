@@ -17,3 +17,9 @@
 ## 质量要求
 - 本地静态分析与 Lint 检查须保持 0 Error、0 Warning。
 - 严禁硬编码任何 API Key 或敏感凭据，统一通过环境变量读取。
+
+---
+
+## 当前已归档文件
+
+- [`GUIDE_env_setup.md`](./GUIDE_env_setup.md)：本地开发与调试指南（工具链、产物与目录、分层测试、实现纪律 §16.2、常用调试姿势、改动时的同步清单）。面向修改 TriviumCode 自身的人；只想使用请看 [`doc/07_manuals/QUICKSTART.md`](../07_manuals/QUICKSTART.md)。

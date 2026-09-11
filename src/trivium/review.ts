@@ -93,6 +93,13 @@ export interface ReviewOptions {
    * 会因「闸门未记录触发会话」而一律不加锁——护栏静默失效。
    */
   sessionId?: string | null;
+  /**
+   * 本次运行临时降级：一侧失败时不中止，产出单审结果并留痕（§12.4）。
+   *
+   * 受 `review.allow_single_flag` 约束——配置里关掉这个开关，命令行也不能降级，
+   * 否则「默认 strict」就成了纸面规定。
+   */
+  allowSingle?: boolean;
 }
 
 export interface ReviewOutcome {
@@ -196,6 +203,19 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   }
   if (sides.length < 2) {
     warn(`只跑 ${sides.join('/')} 一侧：这不是双审，结果会被标为降级。仅供调试使用。`);
+  }
+  if (opts.allowSingle) {
+    if (cfg.review.allow_single_flag) {
+      warn(
+        '已启用 --allow-single：一侧失败时不中止，产出单审结果。' +
+          '单审的交叉验证价值远低于双审，结果会在元数据与文档头标为降级（AC-06）。',
+      );
+    } else {
+      warn(
+        '配置 review.allow_single_flag 为 false，忽略 --allow-single，仍按 strict 执行。' +
+          '这是刻意的：配置层关掉的东西，命令行不该能开回来。',
+      );
+    }
   }
 
   /*
@@ -499,7 +519,13 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     results, reviews, requests,
   });
 
-  const mode = decideMode(results, cfg.review.failure_policy);
+  /*
+   * 失败策略：配置给默认值，`--allow-single` 只在 allow_single_flag 允许时才能覆盖。
+   * 若配置关掉了开关而命令行仍传了它，照 strict 执行——已在 prepareRun 里告警过。
+   */
+  const effectivePolicy: 'strict' | 'degrade' =
+    opts.allowSingle && cfg.review.allow_single_flag ? 'degrade' : cfg.review.failure_policy;
+  const mode = decideMode(results, effectivePolicy);
   const warnings = renderGuardWarnings(verdict);
 
   // ── 两侧齐备后同时落盘（§10.1 第 ② 道）──
