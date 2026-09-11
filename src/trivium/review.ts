@@ -48,8 +48,8 @@ import {
   type SkipVerdict,
 } from './code-stage.js';
 import { diffAgainst, headSha } from './util/git.js';
-import { resolveRerunIndex, writeArtifact, writeMeta, metaDir } from './archive.js';
-import { newRunId, newRunMeta, registerRun, summarizeRun, writeRunMeta } from './meta.js';
+import { resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
+import { newRunId, newRunMeta, readTask, registerRun, summarizeRun, writeRunMeta } from './meta.js';
 import { measureDivergence, renderDivergence } from './divergence.js';
 import { runRoot } from './config.js';
 import { setGateChecked } from './state.js';
@@ -65,6 +65,82 @@ import {
 import { checkModelSlugs } from './preflight.js';
 import { say, step, warn } from './util/log.js';
 
+/** 任务目标进 BRIEF 只占一行，不是正文——超长就截断，别把第 4 段挤成一篇文章 */
+const TASK_GOAL_MAX = 200;
+
+function clampGoal(raw: string | null | undefined): string | null {
+  const t = (raw ?? '').replace(/\s+/g, ' ').trim();
+  if (t.length === 0) return null;
+  return t.length > TASK_GOAL_MAX ? `${t.slice(0, TASK_GOAL_MAX)}…` : t;
+}
+
+/**
+ * 从 plan 阶段原稿里取任务目标：第一个 Markdown 标题，取不到就取第一段正文。
+ *
+ * 跳过 YAML front matter 与围栏代码块——否则 `---` 或 ```lang 会被当成标题行。
+ */
+function goalFromPlanDoc(text: string): string | null {
+  const lines = text.split('\n');
+  let i = 0;
+  if (lines[0]?.trim() === '---') {
+    const end = lines.findIndex((l, n) => n > 0 && l.trim() === '---');
+    if (end > 0) i = end + 1;
+  }
+  let inFence = false;
+  for (; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; continue; }
+    if (inFence) continue;
+    const t = line.trim();
+    if (t.length === 0) continue;
+    const h = /^#{1,6}\s+(.*)$/.exec(t);
+    return clampGoal(h ? h[1]! : t);
+  }
+  return null;
+}
+
+/**
+ * 解析本次要送进 BRIEF 第 4 段的任务目标（设计 §9.4）。
+ *
+ * 三级来源，取第一个非空：
+ *   1. 显式 `--goal`（`/dual-run <任务目标>` 透传而来）
+ *   2. `task.json` 的 `goal`——主题首次跑时落下的原文，后续阶段复用
+ *   3. 同主题 plan 阶段原稿的标题/首段
+ *
+ * 都取不到就返回 null，该行不渲染（保持既有行为，不硬造一个目标去误导审查员）。
+ * 刻意**不**兜底到主题名：主题是个短标签，当任务目标只会给审查员噪音。
+ *
+ * 两侧共用同一个结果——和「补丁只算一次」同理，否则两位审查员可能看到不同的目标。
+ */
+export async function resolveTaskGoal(
+  opts: Pick<ReviewOptions, 'taskGoal' | 'stage' | 'subjectFile'>,
+  ref: { topic: string; layout: ArchiveLayout },
+  projectRoot: string,
+): Promise<string | null> {
+  const explicit = clampGoal(opts.taskGoal);
+  if (explicit) return explicit;
+
+  const persisted = clampGoal((await readTask(ref.layout)).goal);
+  if (persisted) return persisted;
+
+  /*
+   * plan 阶段不走这条回退：它的被审对象**就是**那份计划文档，
+   * 再把自己的标题当成任务目标塞回第 4 段，是同义反复。
+   */
+  if (opts.stage === 'plan') return null;
+
+  try {
+    const planRef = { topic: ref.topic, layout: ref.layout, stage: 'plan' as const,
+      stageDirAbs: stageDir(ref.layout, 'plan') };
+    // 显式 subjectFile 是给当前阶段的，不能拿来定位 plan 原稿
+    const planPath = await locateSubject(planRef, null, projectRoot);
+    return goalFromPlanDoc(await fs.readFile(planPath, 'utf8'));
+  } catch {
+    // 纯 code 主题没有 plan 目录，属正常情况——静默跳过，不是错误
+    return null;
+  }
+}
+
 /** 运行目录按仓库路径哈希分桶，避免不同项目互相覆盖 */
 export function repoId(projectRoot: string): string {
   return `${path.basename(projectRoot)}-${sha256(projectRoot).slice(0, 8)}`;
@@ -75,6 +151,13 @@ export interface ReviewOptions {
   stage: Stage;
   topic: string;
   promptHint: string | null;
+  /**
+   * 任务目标原文：这次到底想达成什么（设计 §9.4，进 BRIEF 第 4 段）。
+   *
+   * **不要拿 `promptHint` 顶替它**（RV-19）：那是「本次审查焦点」，语义不同且已独占第 2 段。
+   * 不传时由 `resolveTaskGoal` 回退到 task.json / plan 原稿。
+   */
+  taskGoal?: string | null;
   /** Driver 指明的相关路径（UR-01），并入必读清单 */
   contextPaths: string[];
   /** plan/bug 的被审对象显式路径 */
@@ -317,6 +400,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const mustRead = await buildMustReadList(cfg, ctx.projectRoot, ref.topic, opts.contextPaths);
   const suggestedRead = extractPathReferences(subjectText);
   const excerpt = excerptSubject(subjectText);
+  // 两侧共用同一个任务目标：逐侧各解析一次，可能因中途写入而拿到不同结果
+  const taskGoal = await resolveTaskGoal(opts, ref, ctx.projectRoot);
 
   // ── 冻结 + 送审包（禁读清单逐侧不同：屏蔽的是**对方**的历史产出）──
   const snapshots: Partial<Record<CriticId, Awaited<ReturnType<typeof freeze>>>> = {};
@@ -358,7 +443,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       subjectExcerpt: excerpt,
       mustRead, suggestedRead, ownHistory,
       schemaPath, lenses, stagePrompt,
-      taskGoal: null,
+      taskGoal,
       minToolCalls: cfg.review.min_tool_calls[stage],
       minProjectReads: cfg.review.min_project_reads[stage],
     });
@@ -425,6 +510,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     runId, topic: ref.topic, stage, rerunIndex,
     command: opts.command,
     promptHint: opts.promptHint,
+    taskGoal,
     treeHash: primarySnap.treeHash,
     gitHead: primarySnap.gitHead,
     dirty: primarySnap.dirty,
@@ -441,6 +527,23 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   }
   await writeRunMeta(ref.layout, stage, meta);
   await registerRun(ref.layout, meta);
+
+  /*
+   * 任务目标落进 task.json，供本主题后续阶段复用——但**只落显式传入的那一个**。
+   *
+   * 从 plan 原稿推导出来的值不写回：它是个尽力而为的猜测（一个标题而已），
+   * 一旦持久化就会永久占位，把日后真正传进来的 `--goal` 挡在门外——
+   * 上面那条「已有则不覆盖」的规则会站在错误的一边。推导每次现算即可，成本几乎为零。
+   *
+   * 同理只在首次落：`/dual-run <任务目标>` 说的那句话是主题存在的理由，
+   * 后续各阶段带着各自的 --focus 跑，不该把它一次次冲刷掉。
+   */
+  if (clampGoal(opts.taskGoal)) {
+    const { updateTask } = await import('./meta.js');
+    await updateTask(ref.layout, (t) => {
+      if (!t.goal) t.goal = taskGoal;
+    });
+  }
 
   /*
    * ── 闸门状态必须写进 state.json，不能只写进 run.json ──

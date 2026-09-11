@@ -31,6 +31,14 @@ export interface ApprovalRecord {
 export interface TaskMeta {
   schema: 'trivium.task.v1';
   topic: string;
+  /**
+   * 任务目标原文（设计 §9.4）：这次到底想达成什么。
+   *
+   * 与 `prompt_hint`（本次审查焦点，RV-19）是两回事，不可互相顶替。
+   * 主题级持久化：首次由 `/dual-run <任务目标>` 落下，之后 code / bug 阶段直接复用——
+   * 否则审查员只知道「改了什么」，不知道「想达成什么」，判不了改没改偏（FR-03）。
+   */
+  goal: string | null;
   created_at: string;
   updated_at: string;
   /** 每阶段每轮的运行指针，形成可回溯的版本链（FR-25） */
@@ -62,6 +70,7 @@ export function emptyTask(topic: string, now = new Date().toISOString()): TaskMe
   return {
     schema: 'trivium.task.v1',
     topic,
+    goal: null,
     created_at: now,
     updated_at: now,
     runs: [],
@@ -128,6 +137,8 @@ export interface NewRunMetaInput {
   rerunIndex: number;
   command: string;
   promptHint: string | null;
+  /** 本次运行实际送进 BRIEF 第 4 段的任务目标（已解析，可能来自 task.json 或 plan 原稿） */
+  taskGoal: string | null;
   treeHash: string;
   gitHead: string | null;
   dirty: boolean;
@@ -146,6 +157,7 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     rerun_index: i.rerunIndex,
     command: i.command,
     prompt_hint: i.promptHint,
+    task_goal: i.taskGoal,
     snapshot: {
       git_head: i.gitHead,
       tree_hash: i.treeHash,

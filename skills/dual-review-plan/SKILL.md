@@ -37,8 +37,12 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 先运行：
 
 ```
-TV review --start --stage plan --topic <主题> --focus <提示语> [--context …] --json
+TV review --start --stage plan --topic <主题> --focus <提示语> [--goal <任务目标>] [--context …] --json
 ```
+
+若上一步 resolve 输出的 `task_goal` 非空，把它原样传给 `--goal`。它与 `--focus` 是两回事：
+前者说「这次要达成什么」，进 BRIEF 第 4 段；后者说「这次重点看什么」，进第 2 段。
+省略 `--goal` 时编排器会回退到 `task.json` 已记录的目标或同主题 plan 原稿。
 
 它会冻结送审包、派生工作进程后**立即返回**，输出含 `run_id`、`max_waits`、
 `wait_timeout_s` 与 `bash_timeout_ms`。

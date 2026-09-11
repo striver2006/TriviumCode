@@ -107,6 +107,8 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       **同步**跑一次双审。仅供手工调试：一次运行墙钟可达 30~40 分钟，
       远超 Driver 的 Bash 工具超时，从 skill 里必须改用 --start/--wait。
       --focus     审查焦点提示语。命令 B/C/D 必填（FR-20）
+      --goal      任务目标原文：这次想达成什么，进 BRIEF 第 4 段（§9.4）。
+                  与 --focus 是两回事，不可互相顶替。省略时回退 task.json / plan 原稿
       --context   被审对象涉及的代码路径与相关文档，逗号分隔；并入必读清单
       --plan-file / --rca-file  显式指定被审对象
       --base <ref>  仅 code 阶段：diff 比较基线，默认 HEAD
@@ -261,6 +263,8 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   }
 
   const contextRaw = flagString(args, 'context');
+  // 任务目标与审查焦点分开传（RV-19）：前者说「要达成什么」，后者说「这次重点看什么」
+  const goal = flagString(args, 'goal');
   const modelOverrides: Partial<Record<CriticId, string>> = {};
   const mg = flagString(args, 'model-gemini');
   const mz = flagString(args, 'model-glm');
@@ -272,6 +276,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     stage,
     topic,
     promptHint: focus,
+    taskGoal: goal ?? null,
     contextPaths: contextRaw ? contextRaw.split(',').map((c) => c.trim()).filter(Boolean) : [],
     subjectFile: flagString(args, 'plan-file') ?? flagString(args, 'rca-file'),
     diffBase: flagString(args, 'base'),

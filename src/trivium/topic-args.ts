@@ -110,6 +110,13 @@ export interface TopicResolution {
   /** 统一字段名：skill 传 --focus，编排器内部一律叫 prompt_hint（AGY-04） */
   prompt_hint: string | null;
   /**
+   * 任务目标原文：`/dual-run <任务目标>` 的位置参数正文（设计 §9.4）。
+   *
+   * 与 `prompt_hint` **刻意分开**（RV-19）——`/dual-review-code` 只带 --focus，
+   * 此处即为 null，由编排器回退到 task.json / plan 原稿。
+   */
+  task_goal: string | null;
+  /**
    * 被审对象路径。按 stage 不同（AGY-04）：
    *   plan / bug → 必须定位到原稿，找不到退 65
    *   code       → null，改看 base 与 diff_available
@@ -149,6 +156,8 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
 
   // 提示语：--focus 优先，否则取剩余正文
   const promptHint = (named['focus'] ?? rest).trim() || null;
+  // 任务目标：只认位置参数正文（命令 A 的首参），--focus 不参与——它语义是本次焦点
+  const taskGoal = rest.trim() || null;
 
   // 主题：显式指定优先，否则从提示语/任务目标推导
   let inferred = false;
@@ -207,6 +216,7 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
   return {
     topic,
     prompt_hint: promptHint,
+    task_goal: taskGoal,
     subject_path: subjectPath,
     base,
     diff_available: diffAvailable,

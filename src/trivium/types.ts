@@ -314,6 +314,8 @@ export interface RunMeta {
   rerun_index: number;
   command: string;
   prompt_hint: string | null;
+  /** 送进 BRIEF 第 4 段的任务目标；便于事后追溯审查员当时看到的是什么 */
+  task_goal: string | null;
   snapshot: SnapshotMeta;
   started_at: string;
   finished_at: string | null;

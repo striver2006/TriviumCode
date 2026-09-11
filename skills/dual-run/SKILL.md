@@ -31,6 +31,8 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
 
 ### S2 计划双审
 按 `/dual-review-plan` 的第 3 步执行 `--start` / `--wait` 循环。
+**把本命令的首参（任务目标）原样传给 `--goal`**——它在这里落进 `task.json`，
+之后 S6 代码双审、乃至后续 bug 定位都会自动复用，审查员才知道这次改动要达成什么（§9.4）。
 **每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`（600000）。**
 
 ### S3 修订计划

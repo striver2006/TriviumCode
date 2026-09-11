@@ -65,7 +65,7 @@ async function seedRound(
 ) {
   const meta = newRunMeta({
     runId: opts.runId, topic: l.topic, stage: 'plan', rerunIndex: opts.rerunIndex,
-    command: 'test', promptHint: '焦点',
+    command: 'test', promptHint: '焦点', taskGoal: null,
     treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S',
     denyPaths: [], driftPolicy: 'warn',
   });

@@ -236,3 +236,23 @@ test('随仓库分发的三份阶段要点都能加载，且不含写给维护�
     assert.doesNotMatch(got, /<!--/, '注释必须被剥掉');
   }
 });
+
+test('任务目标非空时渲染进第 4 段，且不与第 2 段的审查焦点混淆', () => {
+  const b = renderBrief(input());
+  assert.ok(b.includes('任务目标：把登录改造为 OIDC'), '第 4 段缺任务目标行');
+
+  // RV-19：两者是不同概念，各自只出现在自己那一段
+  const seg4 = b.slice(b.indexOf('## 4.'), b.indexOf('## 5.'));
+  assert.ok(seg4.includes('任务目标：把登录改造为 OIDC'));
+  assert.ok(!seg4.includes('重点看并发与回滚'), '审查焦点串进了第 4 段');
+  const seg2 = b.slice(b.indexOf('## 2.'), b.indexOf('## 3.'));
+  assert.ok(!seg2.includes('把登录改造为 OIDC'), '任务目标串进了第 2 段');
+});
+
+test('任务目标为空时该行整体消失，第 4 段其余内容完好', () => {
+  const b = renderBrief(input({ taskGoal: null }));
+  assert.ok(!b.includes('任务目标：'), '空任务目标不应渲染出标签');
+  const seg4 = b.slice(b.indexOf('## 4.'), b.indexOf('## 5.'));
+  assert.ok(seg4.includes('**你必须结合整个项目评审'));
+  assert.ok(seg4.includes('CLAUDE.md'), '必读清单不应受影响');
+});
