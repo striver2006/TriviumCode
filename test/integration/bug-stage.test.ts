@@ -131,3 +131,71 @@ test('三个阶段的闸门各自独立——bug 齐备不代表 plan 齐备', {
   const plan = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check-artifacts']);
   assert.equal(plan.code, EXIT.MISSING_ARTIFACT, 'bug 阶段的工件不能算到 plan 头上');
 });
+
+test('AC-14：命令 D 置人工闸门后，改业务代码应被 deny', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const SESSION = 'S-AC14';
+  const fx = await bugFixture();
+  const { runId } = await runStage(fx.root, 'bug', fx.bugDir);
+
+  // 命令 D 的收尾：裁决齐备后置人工闸门（§8.4）
+  await fs.writeFile(
+    path.join(fx.bugDir, `${today()}-${TOPIC}-revised-claude.md`),
+    [
+      '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: bug',
+      'role: claude', 'kind: revised', `run_id: ${runId}`,
+      'addresses:', `  - ${today()}-${TOPIC}-gemini.md`, `  - ${today()}-${TOPIC}-glm.md`,
+      '---', '',
+      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- |',
+      '| AGY-01 | gemini | blocker | 接受 | 并发路径确实没覆盖 | §二 |',
+      '| GLM-01 | glm | blocker | 接受 | 同一处，一并补 | §二 |',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  const check = await cli(
+    fx.root,
+    ['gate', '--stage', 'bug', '--topic', TOPIC, '--check', '--session-id', SESSION],
+  );
+  assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
+
+  const await_ = await cli(
+    fx.root,
+    ['gate', '--stage', 'bug', '--topic', TOPIC, '--await-approval', '--session-id', SESSION],
+  );
+  assert.equal(await_.code, EXIT.OK, `${await_.stdout}${await_.stderr}`);
+
+  // 此刻改业务代码必须被拦（AC-14 的原话：应被 deny）
+  const { run } = await import('../../src/trivium/util/exec.js');
+  const { BUNDLE, ASSET_ROOT } = await import('../helpers/fixture.js');
+  const deny = await run(process.execPath, [BUNDLE, 'gate', 'hook-pre-write'], {
+    cwd: fx.root,
+    env: { TRIVIUM_ASSET_ROOT: ASSET_ROOT, TRIVIUM_STUB_CRITIC: undefined },
+    stdin: JSON.stringify({
+      session_id: SESSION,
+      tool_name: 'Edit',
+      tool_input: { file_path: path.join(fx.root, 'src/a.ts') },
+    }),
+    timeoutMs: 30_000,
+  });
+  assert.equal(deny.code, EXIT.GATE_BLOCK, `改代码应被拦下：\n${deny.stdout}${deny.stderr}`);
+  assert.match(deny.stderr, /dual-approve --topic 根因主题 --stage bug/, '必须给出放行路径');
+  assert.match(deny.stderr, /dual-abandon/);
+
+  // 审批通过后解锁
+  const approve = await cli(
+    fx.root,
+    ['approve', '--topic', TOPIC, '--stage', 'bug'],
+  );
+  assert.equal(approve.code, EXIT.OK, `${approve.stdout}${approve.stderr}`);
+  const after = await run(process.execPath, [BUNDLE, 'gate', 'hook-pre-write'], {
+    cwd: fx.root,
+    env: { TRIVIUM_ASSET_ROOT: ASSET_ROOT, TRIVIUM_STUB_CRITIC: undefined },
+    stdin: JSON.stringify({
+      session_id: SESSION, tool_name: 'Edit',
+      tool_input: { file_path: path.join(fx.root, 'src/a.ts') },
+    }),
+    timeoutMs: 30_000,
+  });
+  assert.equal(after.code, EXIT.OK, `审批后应解锁：\n${after.stdout}${after.stderr}`);
+});
