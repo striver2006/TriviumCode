@@ -201,6 +201,7 @@ git check-ignore -v .claude/settings.json   # 应命中 !.claude/settings.json �
 | 某侧报不可用 | `trivium preflight --stage plan`，它会指出是探针过期、CLI 不可调用还是未认证 |
 | 某侧审查被判「证据不足」 | 该侧读的项目文件数或工具调用数没达下限。看 `_meta/run-*.json` 的 `tool_calls` |
 | 一侧超时 | 默认 strict 策略会中止整次运行。可调 `.trivium/config.yaml` 的 `review.timeout_s`，或临时用 `--allow-single` 降级（会被标记为降级，不是双审） |
+| 跑起来之后卡住（锁、闸门、跑挂、留痕） | [`RUNBOOK_pipeline_ops.md`](../06_deployment/RUNBOOK_pipeline_ops.md) 按出口码查 |
 | 装完想确认一切正常 | `doctor --selftest`；加 `--keep-fixture` 保留夹具，去掉 `TRIVIUM_STUB_CRITIC` 在其中重跑可检验两侧真实审查 |
 
 退出码约定：`0` 成功 ｜ `1` 一般失败 ｜ `2` 闸门阻断 ｜ `64` 参数错误 ｜
@@ -214,5 +215,6 @@ git check-ignore -v .claude/settings.json   # 应命中 !.claude/settings.json �
 - [`.reviews/README.md`](../../.reviews/README.md)：留痕目录与命名规范
 - [`doc/03_api/PROTOCOL_dual_critic_relay.md`](../03_api/PROTOCOL_dual_critic_relay.md)：工件中继与协议契约
 - [`doc/04_development/GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md)：本地开发与调试
+- [`doc/06_deployment/RUNBOOK_pipeline_ops.md`](../06_deployment/RUNBOOK_pipeline_ops.md)：运行期故障处置（锁、闸门、跑挂、留痕）
 - [设计文档](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md)：唯一实现依据
 - [M0 本机坑清单](../05_testing/REPORT_2026-09-11_m0_probe.md)：两家 CLI 的实测行为与 12 条与文档记载不符之处

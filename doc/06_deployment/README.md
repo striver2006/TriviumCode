@@ -17,3 +17,15 @@
 
 ## 应急处置原则
 当遇到模型服务熔断、本地文件锁定等问题时，请优先参考 `RUNBOOK_*.md` 文档执行标准化排查操作。
+
+---
+
+## 当前已归档文件
+
+- [`RUNBOOK_pipeline_ops.md`](./RUNBOOK_pipeline_ops.md)：**双审流水线运行期故障处置**。
+  面向已装好并在用的场景：退出码速查、主题锁（exit 70）、闸门阻断（exit 2）、
+  审查跑挂、环境与厂商侧（exit 69）、留痕完整性、复盘取证。
+  安装与首次跑通见 [`QUICKSTART.md`](../07_manuals/QUICKSTART.md)。
+
+> **本目录无 `DEPLOY_*`**：TriviumCode 是本机 CLI 工具，没有宿主机部署与服务拉起，
+> 安装步骤即 `QUICKSTART.md` 第 1、3 节。另立一份会造成两套规范漂移。
