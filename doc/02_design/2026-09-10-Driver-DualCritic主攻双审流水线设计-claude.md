@@ -1443,9 +1443,23 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 ### 14.1 命令来源（只执行显式配置，不猜测执行）
 
 - `trivium verify` **只执行** `.trivium/config.yaml` 中 `verify.build` / `verify.test` 显式声明的命令；两者皆空时 `preflight --stage all` 失败，**命令 A 拒绝启动**并要求先配置（避免跑完全流程却无法收口）。
-- 配置的来源是 `trivium init`（或 `doctor --suggest-verify`）：按下列顺序探测候选命令，写入 `probe.verify_suggestion`，**逐条展示给用户确认**后才写入 `verify.build/test`；未经确认的候选永不执行（吸收 glm 版 3.7「不猜测执行」；探测到的 `scripts.test` 可能耗时极长、依赖外部服务或有副作用）。
-  1. 项目 `CLAUDE.md` / `AGENTS.md` 中显式声明的构建测试命令段；
-  2. 语言生态默认约定：`package.json` 的 `scripts.build` / `scripts.test`；`Makefile` 的 `build` / `test` 目标；`pubspec.yaml` → `flutter build` / `flutter test`；`Cargo.toml` → `cargo build` / `cargo test`；`pyproject.toml` → 已声明的测试命令。
+- 配置的来源是 `doctor --suggest-verify`：探测候选命令并**展示**（同时写入 `probe.verify_suggestion` 留痕），由人确认后**手工写入** `verify.build/test`；未经写入的候选永不执行（吸收 glm 版 3.7「不猜测执行」；探测到的 `scripts.test` 可能耗时极长、依赖外部服务或有副作用）。
+  1. ~~项目 `CLAUDE.md` / `AGENTS.md` 中显式声明的构建测试命令段~~ —— **暂缓，不实现**。理由：愿意在 `CLAUDE.md` 里写结构化命令声明的人，本来就可以直接写进 `.trivium/config.yaml`，而后者才是真正会被执行的那份，职责重叠；且该来源在本文中从未定义语法，无规格可依。
+  2. 语言生态默认约定，实际实现见下表。
+- **探测范围**：项目根 + 深度 2 以内的子目录（覆盖 `<root>/client`、`<root>/packages/app` 两种 monorepo 布局）。子目录命中时命令自带 `cd <dir> && ` 前缀——`trivium verify` 以项目根为 cwd 且逐条起独立 shell，`cd` 不跨条累积。某个非根目录一旦产出候选即视为项目单元边界，不再下探其子树（否则 Tauri 项目会多出一条本该由 `pnpm tauri build` 驱动的 `cargo build`）。点开头目录与产物目录（`node_modules`、`dist`、`target`、`testdata` 等）一律排除。
+
+| 生态 | 触发 | build | test |
+| :--- | :--- | :--- | :--- |
+| Node | `package.json` | `<pm> run build`（无则 `typecheck`） | `<pm> run test` |
+| Make | `Makefile` / `makefile` / `GNUmakefile` | `make build` | `make test` |
+| Rust | `Cargo.toml` | `cargo build` | `cargo test` |
+| Flutter | `pubspec.yaml` | `flutter build` | `flutter test` |
+| Go | `go.mod` | `go build ./...` | `go test ./...` |
+| Python | `pyproject.toml` | `<runner>mypy .`（仅当有 mypy 配置） | `<runner>pytest`（仅当有 pytest 信号） |
+
+- `<pm>` 按 `packageManager` 字段 > 同目录 lockfile > 上溯至项目根的 lockfile 判定（`pnpm > yarn > bun > npm`）；一律输出 `<pm> run <script>` 而不省略 `run`——`bun test` 跑的是 bun 内置测试运行器，与 `scripts.test` 语义不同。`npm init` 的占位 test（恒定非零退出）会被过滤。
+- `<runner>` 按 `uv.lock` > `poetry` > `pdm` 判定。Python 侧**无 pytest 信号时不产出 test 候选**，也不猜 `unittest discover`——这些命令会被真实执行，宁缺毋滥。
+- JS 工作区根（`pnpm-workspace.yaml` / `workspaces` 字段）与 `go.work` 会压制后代目录的同生态候选，避免与根上的聚合命令重复。
 - 配置变更后 `verify` 记录命令原文与其 sha256，确保归档中的「实际执行命令」与配置可核对（AC-10）。
 
 ### 14.2 执行与记录

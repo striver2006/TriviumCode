@@ -428,7 +428,7 @@ sequenceDiagram
 | 严格模式默认值 | 必须同时支持严格与降级 | **默认 `strict`**（一侧失败即中止、退 75）；需要时以 `--allow-single` 单次降级，降级在 `run.json` / `task.json` / 文档头三处留痕 | 设计 12.4、18.1 #2（2026-09-11 拍板） |
 | 阶段子目录 | 必须避免各阶段 `*-claude.md` 互相覆盖 | **`plan/` `code/` `bug/` `verify/`** 四个阶段目录 | 设计 6.1 |
 | 修订计划/根因与原稿区分 | 修订不得覆盖原稿；主题追加 `-revised` | **`-revised`**（计划/根因）与 **`-response`**（代码应答）两个后缀；不引入中文别名。防覆盖由 `O_CREAT\|O_EXCL` 原子创建保证，命中即抬升 `-r<N>` | 设计 6.2、FR-25 |
-| 编译测试命令 | 必须真实执行项目既有编译测试 | **只执行 `.trivium/config.yaml` 的 `verify.build` / `verify.test` 显式声明的命令，绝不猜测执行**；候选由 `trivium doctor --suggest-verify` 展示、经人逐条确认后写入 | 设计 14.1 |
+| 编译测试命令 | 必须真实执行项目既有编译测试 | **只执行 `.trivium/config.yaml` 的 `verify.build` / `verify.test` 显式声明的命令，绝不猜测执行**；候选由 `trivium doctor --suggest-verify` 展示（覆盖 Node/Make/Rust/Flutter/Go/Python，含深度 2 以内的 monorepo 子目录）、经人逐条确认后**手工写入** | 设计 14.1 |
 
 ### 11.3 与现有仓库文档的关系
 
