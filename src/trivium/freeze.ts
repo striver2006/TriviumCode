@@ -13,6 +13,7 @@ import { promises as fs } from 'node:fs';
 import type { Config, CriticId, Stage } from './types.js';
 import { diffTrees, headSha, statusPorcelain, workTreeHash, diffAgainst } from './util/git.js';
 import { matchesAnyGlob, sha256, sha256File } from './util/fsx.js';
+import { diffExcludePrefixes } from './code-stage.js';
 
 export interface Snapshot {
   gitHead: string | null;
@@ -103,6 +104,14 @@ export interface FreezeInput {
   subjectPath?: string;
   /** code 阶段的 diff 基线 */
   base?: string;
+  /**
+   * code 阶段：已算好的补丁正文。
+   *
+   * 必须由调用方算一次后传进来。freeze 是**逐侧**调用的，若每侧各自
+   * `git diff` 一次，两次之间工作树一有变动，同一次运行的两侧就会拿到不同的
+   * `subject_sha256`——那等于两侧审的根本不是同一段变更。
+   */
+  diffText?: string;
 }
 
 /** 冻结送审快照。**不复制文件** */
@@ -120,7 +129,9 @@ export async function freeze(input: FreezeInput): Promise<Snapshot> {
 
   if (stage === 'code') {
     const base = input.base ?? 'HEAD';
-    diffText = await diffAgainst(projectRoot, base);
+    diffText =
+      input.diffText ??
+      (await diffAgainst(projectRoot, base, diffExcludePrefixes(path.relative(projectRoot, archiveRoot))));
     subjectSha256 = sha256(diffText);
     // 真实路径在 _meta/ 下，由调用方落盘后回填；这里先给逻辑路径
     subjectPath = path.join(archiveRoot, '_pending', 'changes.diff');

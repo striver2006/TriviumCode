@@ -43,8 +43,12 @@ export interface FixtureOptions {
   topic: string;
   /** 是否预置待审计划草稿。置 false 用于验证「缺件即失败且零工件」 */
   draft?: boolean;
-  /** 额外写进 .trivium/config.yaml 的 YAML 行 */
-  extraConfig?: string[];
+  /**
+   * 追加到 `review:` **段内**的 YAML 行（如 `skip_doc_only_review: true`）。
+   * 缩进由本函数补——原先让调用方自己写缩进并追加到文件末尾，
+   * 结果挂到了 `verify:` 下面，配置静默不生效。
+   */
+  extraReview?: string[];
   /**
    * 是否预置一份假探针结论（含模型目录）。
    * 默认不置——`checkModelSlugs` 在目录为空时会**整段跳过**，
@@ -83,11 +87,13 @@ export async function makeFixture(opts: FixtureOptions): Promise<Fixture> {
       'review:',
       '  timeout_s:',
       '    plan: 120',
+      '    code: 120',
+      '    bug: 120',
       '  wait_timeout_s: 30',
+      ...(opts.extraReview ?? []).map((l) => `  ${l}`),
       'verify:',
       '  build: []',
       '  test: []',
-      ...(opts.extraConfig ?? []),
       '',
     ].join('\n'),
     'utf8',

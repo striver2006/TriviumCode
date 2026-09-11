@@ -100,13 +100,36 @@ export async function diffTrees(cwd: string, treeA: string, treeB: string): Prom
   return r.stdout.split('\n').filter(Boolean);
 }
 
-/** code 阶段的被审补丁：`git diff <base>` + 未跟踪文件 */
-export async function diffAgainst(cwd: string, base: string): Promise<string> {
-  const tracked = await git(cwd, ['diff', '--find-renames', base, '--']);
+/**
+ * code 阶段的被审补丁：`git diff <base>` + 未跟踪文件。
+ *
+ * `excludePrefixes` 是**安全边界，不是优化**。未跟踪文件靠 `--exclude-standard`
+ * 走 `.gitignore`，但那是用户的文件，不能拿它当保障：
+ *
+ * - `.reviews/` 是**刻意纳入版本管理**的，对方的审查产出一旦处于未跟踪状态
+ *   （刚落盘还没 commit，正是常态）就会被收进补丁，
+ *   于是经**被审对象本身**泄漏给审查员——三道屏蔽全部绕过。
+ * - `.trivium/` 下的运行时状态、锁、日志同理，只会给补丁添噪。
+ *
+ * 所以这两处由调用方显式传入并在此无条件剔除，与 `.gitignore` 写了什么无关。
+ */
+export async function diffAgainst(
+  cwd: string,
+  base: string,
+  excludePrefixes: readonly string[] = [],
+): Promise<string> {
+  const excluded = (rel: string): boolean =>
+    excludePrefixes.some((p) => rel === p || rel.startsWith(p.endsWith('/') ? p : `${p}/`));
+
+  // 用 pathspec 让 git 自己排除已跟踪文件的变更
+  const pathspecs = excludePrefixes.map((p) => `:(exclude)${p.replace(/\/+$/, '')}/**`);
+  const tracked = await git(cwd, ['diff', '--find-renames', base, '--', '.', ...pathspecs]);
   let out = tracked.code === 0 ? tracked.stdout : '';
+
   const untracked = await git(cwd, ['ls-files', '--others', '--exclude-standard']);
   if (untracked.code === 0) {
     for (const f of untracked.stdout.split('\n').filter(Boolean)) {
+      if (excluded(f)) continue;
       const d = await git(cwd, ['diff', '--no-index', '--find-renames', '/dev/null', f]);
       // --no-index 有差异时退出码为 1，属正常
       if (d.stdout) out += d.stdout;

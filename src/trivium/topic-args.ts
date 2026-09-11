@@ -15,6 +15,7 @@ import type { CriticId, Ctx, Stage } from './types.js';
 import { validateTopic, parseArtifactName } from './naming.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { exists } from './util/fsx.js';
+import { diffExcludePrefixes } from './code-stage.js';
 import type { PreflightScope } from './preflight.js';
 
 /** 具名参数白名单。其余正文即提示语 */
@@ -186,7 +187,10 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
   } else if (scope === 'code') {
     base = named['base'] ?? 'HEAD';
     const { diffAgainst } = await import('./util/git.js');
-    const diff = await diffAgainst(ctx.projectRoot, base);
+    const diff = await diffAgainst(
+      ctx.projectRoot, base,
+      diffExcludePrefixes(path.relative(ctx.projectRoot, ctx.archiveRoot)),
+    );
     diffAvailable = diff.trim().length > 0;
     if (!diffAvailable) {
       throw new TriviumError(

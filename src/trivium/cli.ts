@@ -96,6 +96,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --focus     审查焦点提示语。命令 B/C/D 必填（FR-20）
       --context   被审对象涉及的代码路径与相关文档，逗号分隔；并入必读清单
       --plan-file / --rca-file  显式指定被审对象
+      --base <ref>  仅 code 阶段：diff 比较基线，默认 HEAD
       --model-gemini <slug> / --model-glm <id>  本次模型覆盖
       --only gemini|glm  仅跑一侧（调试用，会被标为降级——这不是双审）
 
@@ -258,6 +259,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     promptHint: focus,
     contextPaths: contextRaw ? contextRaw.split(',').map((c) => c.trim()).filter(Boolean) : [],
     subjectFile: flagString(args, 'plan-file') ?? flagString(args, 'rca-file'),
+    diffBase: flagString(args, 'base'),
     modelOverrides,
     command: `trivium review --stage ${stage}`,
     onlyCritic: (onlyRaw as CriticId | null) ?? null,
@@ -266,6 +268,20 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   // ── --start：派生后立即返回 ──
   if (args.flags.get('start') === true) {
     const st = await startRun({ ...reviewOpts, command: `trivium review --start --stage ${stage}` });
+
+    // FR-23 纯文档跳过：同步窗口内已收口，没有 worker，skill 不该再进 --wait 循环
+    if (st.finishedInline) {
+      if (isJsonMode()) {
+        emitJson({
+          ok: true, run_id: st.runId, finished_inline: true,
+          max_waits: 0, skipped: true, notice: st.inlineNotice ?? '',
+        });
+      } else {
+        say(st.inlineNotice ?? `运行 ${st.runId} 已在同步窗口内完成，无需 --wait。`);
+      }
+      return EXIT.OK;
+    }
+
     if (isJsonMode()) {
       emitJson({
         ok: true,

@@ -154,6 +154,12 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
     primarySnap: primary,
     metaPaths: h.meta_paths,
     meta,
+    /*
+     * worker 不重复冻结：补丁已由 --start 落盘，跳过判定若为「跳过」也根本不会
+     * 走到派生 worker 这一步——startRun 在派生前就已收口。
+     */
+    pendingDiff: null,
+    skipVerdict: null,
   };
 }
 
@@ -169,6 +175,13 @@ export interface StartOutcome {
   bashTimeoutMs: number;
   workerPid: number;
   runDir: string;
+  /**
+   * 本次运行在同步窗口内就已完成，**没有**派生 worker，调用方不必再 `--wait`。
+   * 目前唯一的来源是 FR-23 的纯文档跳过。
+   */
+  finishedInline?: boolean;
+  /** finishedInline 时的人读说明 */
+  inlineNotice?: string;
 }
 
 /**
@@ -203,6 +216,32 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
   } catch (e) {
     await lock.release(); // 准备失败就别占着锁
     throw e;
+  }
+
+  /*
+   * ── 纯文档跳过必须在**派生之前**收口（FR-23 / §6.4）──
+   *
+   * 跳过判定只存在于 prepareRun 的返回值里，而 worker 是另一个进程、
+   * 自己 rebuildContext，拿不到它。若在这里不收口，`--start --stage code`
+   * 对纯文档变更会照样派生一个 worker 去跑完整双审——判定形同失效，
+   * 而且白烧两侧配额。
+   */
+  if (rc.skipVerdict?.skipped) {
+    try {
+      const out = await executeRun(rc); // 不碰任何适配器，立即返回
+      return {
+        runId: rc.runId,
+        maxWaits: 0,
+        waitTimeoutS: cfg.review.wait_timeout_s,
+        bashTimeoutMs: 600_000,
+        workerPid: process.pid,
+        runDir: rc.runDirBase,
+        finishedInline: true,
+        inlineNotice: out.warnings.join('\n'),
+      };
+    } finally {
+      await lock.release(); // 没有 worker 接手，锁必须在这里还
+    }
   }
 
   try {

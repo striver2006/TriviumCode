@@ -30,13 +30,29 @@ import { decideMode, runBothSides } from './runner.js';
 import { judgeRun, renderGuardWarnings } from './guard.js';
 import { renderReviewDoc } from './render.js';
 import { resolveTopicReadOnly, locateSubject } from './topic.js';
+import {
+  buildDiffHeader,
+  classifyDiff,
+  diffExcludePrefixes,
+  filesInDiff,
+  renderSkipNotice,
+  summarizeDiff,
+  type SkipVerdict,
+} from './code-stage.js';
+import { diffAgainst, headSha } from './util/git.js';
 import { resolveRerunIndex, writeArtifact, writeMeta, metaDir } from './archive.js';
 import { newRunId, newRunMeta, registerRun, summarizeRun, writeRunMeta } from './meta.js';
 import { measureDivergence, renderDivergence } from './divergence.js';
 import { runRoot } from './config.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
 import { workTreeHash } from './util/git.js';
-import { EXIT, envError, usageError, TriviumError } from './exit-codes.js';
+import {
+  EXIT,
+  envError,
+  missingArtifact as missingArtifactError,
+  usageError,
+  TriviumError,
+} from './exit-codes.js';
 import { checkModelSlugs } from './preflight.js';
 import { say, step, warn } from './util/log.js';
 
@@ -60,6 +76,8 @@ export interface ReviewOptions {
   onlyCritic?: CriticId | null;
   /** 覆盖 skill 资产根（默认取安装位置） */
   assetRoot?: string;
+  /** code 阶段的 diff 基线，默认 HEAD */
+  diffBase?: string | null;
 }
 
 export interface ReviewOutcome {
@@ -117,6 +135,10 @@ export interface RunContext {
   primarySnap: Awaited<ReturnType<typeof freeze>>;
   metaPaths: string[];
   meta: Awaited<ReturnType<typeof newRunMeta>>;
+  /** code 阶段：待落盘的补丁（与 brief 一样推迟到写入阶段） */
+  pendingDiff: { fileName: string; text: string } | null;
+  /** code 阶段：FR-23 的跳过判定 */
+  skipVerdict: SkipVerdict | null;
 }
 
 /**
@@ -175,12 +197,58 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const rerunIndex = await resolveRerunIndex(ref.layout, stage);
   const runId = newRunId();
 
-  // ── 被审对象 ──
-  const subjectPath = await locateSubject(ref, opts.subjectFile, ctx.projectRoot);
-  const subjectText = await fs.readFile(subjectPath, 'utf8');
+  /*
+   * ── 被审对象 ──
+   *
+   * plan / bug 的被审对象是一份现成的 Markdown 原稿；code 没有，它的被审对象是
+   * **一段变更**，必须先物化成 `code/_meta/changes.diff`。
+   *
+   * 补丁在这里算**一次**并透传给逐侧的 freeze：若每侧各自 git diff，两次之间
+   * 工作树一有变动，两侧就会审到不同的东西。落盘同样推迟到写入阶段（GLM-04）。
+   */
+  let subjectPath: string;
+  let subjectText: string;
+  let pendingDiff: { fileName: string; text: string } | null = null;
+  let frozenDiffText: string | null = null;
+  let skipVerdict: SkipVerdict | null = null;
+
+  if (stage === 'code') {
+    const base = opts.diffBase ?? 'HEAD';
+    const excludes = diffExcludePrefixes(
+      path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root,
+    );
+    const body = await diffAgainst(ctx.projectRoot, base, excludes);
+    if (body.trim().length === 0) {
+      throw missingArtifactError(
+        `\`git diff ${base}\` 为空：没有待审变更。\n` +
+          '  代码审的被审对象是一段变更，没有变更就没有可审之物——\n' +
+          '  请先完成编码，或用 --base <ref> 指定正确的比较基线。',
+      );
+    }
+    const files = filesInDiff(body);
+    frozenDiffText = buildDiffHeader({ runId, base, head: await headSha(ctx.projectRoot), files }) + body;
+    subjectText = frozenDiffText;
+    subjectPath = path.join(metaDir(ref.layout, stage), 'changes.diff');
+    pendingDiff = { fileName: 'changes.diff', text: frozenDiffText };
+
+    // FR-23：判定由程序做，不由模型做（§6.4）
+    skipVerdict = classifyDiff(cfg, files);
+  } else {
+    subjectPath = await locateSubject(ref, opts.subjectFile, ctx.projectRoot);
+    subjectText = await fs.readFile(subjectPath, 'utf8');
+  }
 
   step(`主题 ${ref.topic} ｜ 阶段 ${stage} ｜ 第 ${rerunIndex} 轮 ｜ run ${runId}`);
   step(`被审对象 ${path.relative(ctx.projectRoot, subjectPath)}`);
+  if (stage === 'code' && frozenDiffText) {
+    step(
+      summarizeDiff({
+        path: subjectPath, sha256: '', files: filesInDiff(frozenDiffText),
+        base: opts.diffBase ?? 'HEAD', head: null,
+        bytes: Buffer.byteLength(frozenDiffText, 'utf8'),
+      }),
+    );
+  }
 
   // ── 运行目录（项目外，§10.1 第 ② 道）──
   // 运行目录也推迟到落盘阶段才建（GLM-04）
@@ -206,7 +274,11 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       stage,
       critic,
       subjectPath,
+      ...(opts.diffBase ? { base: opts.diffBase } : {}),
+      ...(frozenDiffText !== null ? { diffText: frozenDiffText } : {}),
     });
+    // code 阶段 freeze 只能给出占位路径，真实路径在 _meta/ 下，这里回填
+    if (stage === 'code') snap.subjectPath = subjectPath;
     snapshots[critic] = snap;
 
     const routed = routeModel(cfg, critic, stage, { cli: opts.modelOverrides[critic] ?? null });
@@ -261,6 +333,11 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    * 顺序：建阶段目录 → 写两份 brief → 建运行目录 → 写 run.json
    */
   await ensureDir(ref.stageDirAbs);
+  // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前
+  if (pendingDiff) {
+    const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text);
+    metaPaths.push(w.absPath);
+  }
   for (const b of pendingBriefs) {
     const w = await writeMeta(ref.layout, stage, b.fileName, b.text);
     metaPaths.push(w.absPath);
@@ -279,6 +356,11 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     denyPaths: primarySnap.denyPaths,
     driftPolicy: cfg.review.on_drift,
   });
+  // FR-23：跳过也要留痕，且必须写明命中的规则供人复核（§6.4）
+  if (skipVerdict?.skipped) {
+    meta.skipped = true;
+    meta.skip_reason = skipVerdict.reasons.join('；');
+  }
   await writeRunMeta(ref.layout, stage, meta);
   await registerRun(ref.layout, meta);
 
@@ -286,6 +368,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     opts, cfg, ctx, stage, ref, adapterCtx, adapters, sides,
     runId, rerunIndex, subjectPath, runDirBase,
     requests, snapshots, primarySnap, metaPaths, meta,
+    pendingDiff, skipVerdict,
   };
 }
 
@@ -297,8 +380,31 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
 export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   const {
     opts, cfg, ctx, stage, ref, adapterCtx, adapters, sides,
-    runId, rerunIndex, subjectPath, requests, primarySnap, metaPaths, meta,
+    runId, rerunIndex, subjectPath, requests, primarySnap, metaPaths, meta, skipVerdict,
   } = rc;
+
+  /*
+   * ── FR-23：纯文档变更跳过代码审（§6.4）──
+   *
+   * 一个 Agent 都不拉起，也**不生成任何审查文档**。伪造两份「无问题」的结论
+   * 会让 gate --check-artifacts 以为这一轮审过了，那比不审更危险（P5）。
+   */
+  if (skipVerdict?.skipped) {
+    meta.status = 'success';
+    meta.finished_at = new Date().toISOString();
+    meta.gate.state = 'skipped_doc_only';
+    meta.gate.adjudication_complete = true; // 没有意见可裁决
+    await writeRunMeta(ref.layout, stage, meta);
+    await registerRun(ref.layout, meta);
+
+    const notice = renderSkipNotice(skipVerdict);
+    say('');
+    say(notice);
+    return {
+      runId, rerunIndex, artifacts: [], metaPaths,
+      warnings: [notice], exitCode: EXIT.OK,
+    };
+  }
   // ── 并行拉起两侧 ──
   const startedAt = new Date().toISOString();
   say(`开始双审：${sides.map((c) => `${c}(${requests[c]!.model})`).join(' ‖ ')}，单侧上限 ${cfg.review.timeout_s[stage]}s`);
