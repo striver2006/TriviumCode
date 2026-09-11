@@ -74,6 +74,8 @@ export interface TopicReport {
   task: TaskMeta;
   rounds: RoundReport[];
   verify: VerifyRecord | null;
+  /** 最近一份 verify 记录存在但读不出来——与「从未验证」必须区分开 */
+  verifyUnreadable: string | null;
   /** 主题级问题（缺 task.json、阶段目录读不到等） */
   notes: string[];
 }
@@ -118,6 +120,7 @@ async function loadDisposition(
   layout: ArchiveLayout,
   stage: Stage,
   rerunIndex: number,
+  notes: string[],
 ): Promise<{ disposals: Record<Disposal, number>; contested: RoundReport['contested'] } | null> {
   const items = await listStageArtifacts(layout, stage);
   const hit = items.find(
@@ -125,7 +128,18 @@ async function loadDisposition(
   );
   if (!hit) return null;
 
-  const md = await fs.readFile(path.join(layout.archiveRoot, layout.topic, stage, hit.fileName), 'utf8');
+  /*
+   * 读不到就说读不到（审查意见 GLM-r2-09）。
+   * 原先这里的 readFile 未捕获：单个裁决件因权限或竞态读失败，会让**整份复盘**
+   * 崩溃退出，与本模块其余位置「缺件一律进 notes」的降级风格自相矛盾。
+   */
+  let md: string;
+  try {
+    md = await fs.readFile(path.join(layout.archiveRoot, layout.topic, stage, hit.fileName), 'utf8');
+  } catch (e) {
+    notes.push(`裁决件读取失败（${hit.fileName}）：${(e as Error).message}`);
+    return null;
+  }
   const parsed = parseDisposition(md);
   const disposals: Record<Disposal, number> = { 接受: 0, 驳回: 0, 暂缓: 0 };
   const contested: RoundReport['contested'] = [];
@@ -224,7 +238,7 @@ async function buildRound(
     }
   }
 
-  const disp = await loadDisposition(layout, stage, rerunIndex);
+  const disp = await loadDisposition(layout, stage, rerunIndex, notes);
   if (disp) {
     base.disposals = disp.disposals;
     base.contested = disp.contested;
@@ -236,21 +250,33 @@ async function buildRound(
 }
 
 /** 读该主题最近一次 verify 记录 */
-async function loadLatestVerify(layout: ArchiveLayout): Promise<VerifyRecord | null> {
+async function loadLatestVerify(
+  layout: ArchiveLayout,
+  notes: string[],
+): Promise<{ record: VerifyRecord | null; unreadable: string | null }> {
   const dir = metaDir(layout, 'verify');
   let files: string[];
   try {
     files = await fs.readdir(dir);
   } catch {
-    return null;
+    return { record: null, unreadable: null }; // 目录不存在 = 确实从未验证过，这不是降级
   }
   const candidates = files.filter((f) => /^verify-.+\.json$/.test(f)).sort();
   const last = candidates.at(-1);
-  if (!last) return null;
+  if (!last) return { record: null, unreadable: null };
   try {
-    return JSON.parse(await fs.readFile(path.join(dir, last), 'utf8')) as VerifyRecord;
-  } catch {
-    return null;
+    return {
+      record: JSON.parse(await fs.readFile(path.join(dir, last), 'utf8')) as VerifyRecord,
+      unreadable: null,
+    };
+  } catch (e) {
+    /*
+     * 解析失败**不能**返回 null（审查意见 GLM-r2-09）：那会渲染成
+     * 「尚无 verify 记录」，把「记录损坏」伪装成「从未验证」——
+     * 恰好是本模块自述要防的 P5 误读。
+     */
+    notes.push(`最近一份 verify 记录损坏（${last}）：${(e as Error).message}`);
+    return { record: null, unreadable: last };
   }
 }
 
@@ -272,7 +298,10 @@ export async function buildTopicReport(layout: ArchiveLayout): Promise<TopicRepo
     generatedAt: new Date().toISOString(),
     task,
     rounds,
-    verify: await loadLatestVerify(layout),
+    ...(await (async () => {
+      const v = await loadLatestVerify(layout, notes);
+      return { verify: v.record, verifyUnreadable: v.unreadable };
+    })()),
     notes,
   };
 }
@@ -475,7 +504,18 @@ export function renderTopicReport(r: TopicReport): string {
 
   // ── 八、编译测试出口 ──
   L.push('## 八、编译测试出口', '');
-  L.push(r.verify ? `- ${summarizeVerify(r.verify)}（运行 \`${r.verify.run_id}\`）` : '- 尚无 verify 记录', '');
+  if (r.verify) {
+    L.push(`- ${summarizeVerify(r.verify)}（运行 \`${r.verify.run_id}\`）`, '');
+  } else if (r.verifyUnreadable) {
+    // 「记录损坏」渲染成「尚无记录」就是把失败伪装成没发生过（P5）
+    L.push(
+      `- ⚠️ **最近一份 verify 记录损坏**（\`${r.verifyUnreadable}\`），无法判断是否通过。`,
+      '  这**不等于**从未验证——请检查该文件，必要时重跑 `trivium verify`。',
+      '',
+    );
+  } else {
+    L.push('- 尚无 verify 记录', '');
+  }
 
   // ── 九、审批 ──
   L.push('## 九、审批记录', '');

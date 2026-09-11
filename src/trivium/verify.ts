@@ -48,8 +48,15 @@ export interface VerifyRecord {
   project_root: string;
   commands: VerifyCommandRecord[];
   status: 'success' | 'failed';
-  /** 配置里两组命令都为空时为 true——此时既不算通过也不算失败，属配置缺失 */
+  /** **两组都为空**时为 true——此时既不算通过也不算失败，属配置缺失 */
   unconfigured: boolean;
+  /**
+   * `--only` 选中的那一组为空，但另一组配了（审查意见 GLM-r2-07）。
+   *
+   * 与 `unconfigured` 是两回事。混为一谈会让落盘记录写出「两组**均为空**」这种
+   * **与事实不符的陈述**——审计记录里出现假话，比少写一句糟得多。
+   */
+  selected_empty?: 'build' | 'test';
 }
 
 /** 取输出尾部若干行。默认 200 行，对齐 §14.2 */
@@ -155,7 +162,10 @@ export async function runVerify(opts: VerifyOptions): Promise<VerifyOutcome> {
     project_root: ctx.projectRoot,
     commands: records,
     status: failed ? 'failed' : 'success',
-    unconfigured: commands.length === 0,
+    unconfigured: cfg.verify.build.length === 0 && cfg.verify.test.length === 0,
+    ...(commands.length === 0 && opts.only && !(cfg.verify.build.length === 0 && cfg.verify.test.length === 0)
+      ? { selected_empty: opts.only }
+      : {}),
   };
 
   const written = await writeVerifyRecord(layout, renderVerifyDoc(record), {
@@ -230,6 +240,16 @@ export function renderVerifyDoc(r: VerifyRecord): string {
     return lines.join('\n') + '\n';
   }
 
+  if (r.selected_empty) {
+    lines.push(
+      `> ⚠️ 本次以 \`--only ${r.selected_empty}\` 运行，而 \`verify.${r.selected_empty}\` 为空，`,
+      '> 因此什么也没执行。**另一组是配置齐全的**——这不是配置缺失，只是本次没选中它。',
+      '> 去掉 `--only` 可执行全部已配置的命令。',
+      '',
+    );
+    return lines.join('\n') + '\n';
+  }
+
   lines.push(
     '## 一、执行的命令',
     '',
@@ -279,6 +299,9 @@ export function assertVerifyConfigured(cfg: Config): void {
 /** 供 report 引用：某主题最近一次验证记录的摘要 */
 export function summarizeVerify(r: VerifyRecord): string {
   if (r.unconfigured) return '未配置编译测试命令（既非通过也非失败）';
+  if (r.selected_empty) {
+    return `本次 --only ${r.selected_empty}，而该组为空（另一组已配置，非配置缺失）`;
+  }
   const failedCmds = r.commands.filter((c) => c.exit_code !== 0);
   const total = r.commands.reduce((a, c) => a + c.duration_s, 0);
   return (

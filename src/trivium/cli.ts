@@ -5,6 +5,7 @@
  * **不做任何业务判定**——所有判定都在各自模块里。
  */
 import path from 'node:path';
+import { exists } from './util/fsx.js';
 import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
 import { loadCtx } from './config.js';
@@ -21,7 +22,7 @@ import { checkStageArtifacts, resolveRerunIndex } from './archive.js';
 import { readHookInput, runHook, type HookName } from './hooks.js';
 import { listOpenGates, setGate, setGateChecked } from './state.js';
 import { recordApproval } from './approval.js';
-import { resolveTopic, listTopics } from './topic.js';
+import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
 import { newRunId, readTask } from './meta.js';
 import { runInit, renderInitReport } from './init.js';
 import {
@@ -647,7 +648,8 @@ async function cmdVerify(args: ParsedArgs): Promise<number> {
   const ctx = await loadCtx();
   const topic = flagString(args, 'topic');
   if (!topic) throw usageError('verify 需要 --topic');
-  const ref = await resolveTopic(ctx, topic, 'plan');
+  // 只读定位：不该因为跑一次 verify 就凭空创建阶段目录（审查意见 GLM-r2-10）
+  const ref = await resolveTopicReadOnly(ctx, topic, 'plan');
 
   const onlyRaw = flagString(args, 'only');
   if (onlyRaw && onlyRaw !== 'build' && onlyRaw !== 'test') {
@@ -664,14 +666,27 @@ async function cmdVerify(args: ParsedArgs): Promise<number> {
     warn('verify.build 与 verify.test 均未配置，本次什么也不会执行——这不等于通过。');
   }
 
-  const timeoutRaw = Number(flagString(args, 'timeout') ?? '');
+  /*
+   * `--timeout` 解析失败必须报错（审查意见 GLM-r2-07）。
+   * 原先 `Number.isFinite` 守卫只做静默回落：`--timeout abc` 得 NaN、`--timeout 0`
+   * 得 0，两者都悄悄用了默认值，用户拼错参数**零提示**。
+   */
+  const timeoutStr = flagString(args, 'timeout');
+  let timeoutS: number | null = null;
+  if (timeoutStr !== null) {
+    const n = Number(timeoutStr);
+    if (!Number.isFinite(n) || n <= 0) {
+      throw usageError(`--timeout 需要一个正数秒数，收到「${timeoutStr}」。`);
+    }
+    timeoutS = n;
+  }
   const runId = newRunId();
   const out = await runVerify({
     ctx,
     layout: ref.layout,
     runId,
     only,
-    ...(Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? { timeoutS: timeoutRaw } : {}),
+    ...(timeoutS !== null ? { timeoutS } : {}),
     onProgress: (l) => say(l),
   });
 
@@ -704,7 +719,20 @@ async function cmdReport(args: ParsedArgs): Promise<number> {
   const ctx = await loadCtx();
   const topic = flagString(args, 'topic');
   if (!topic) throw usageError('report 需要 --topic');
-  const ref = await resolveTopic(ctx, topic, 'plan');
+
+  /*
+   * USAGE 承诺 report「只读归档」，而 `resolveTopic` 会无条件 `ensureDir`——
+   * 对拼错的主题名跑 report 会**凭空建出** `.reviews/<拼错名>/plan/`，
+   * 既违背文档承诺，也让拼错名得不到报错（只得到一份空报告加一个新目录）。
+   */
+  const ref = await resolveTopicReadOnly(ctx, topic, 'plan');
+  if (!(await exists(path.join(ctx.archiveRoot, ref.topic)))) {
+    const all = await listTopics(ctx);
+    throw missingArtifactError(
+      `主题「${topic}」在 ${path.relative(ctx.projectRoot, ctx.archiveRoot)} 下不存在。` +
+        (all.length > 0 ? `\n  现有主题：${all.join('、')}` : '\n  该归档根下还没有任何主题。'),
+    );
+  }
 
   const report = await buildTopicReport(ref.layout);
   if (isJsonMode()) {

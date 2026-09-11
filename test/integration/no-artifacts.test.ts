@@ -209,3 +209,39 @@ test('草稿已有且成功跑完 → 重跑抬升 -r2，原文件字节不变�
     `重跑应产出 -r2 文件，实际：${docs.join(', ')}`,
   );
 });
+
+test('report 不存在的主题 → 退 65 并给候选，不凭空建目录（审查意见 GLM-r2-10）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const before = await listFiles(fx.archiveRoot);
+
+  const r = await cli(fx.root, ['report', '--topic', '拼错的主题名']);
+  /*
+   * USAGE 承诺 report「只读归档」，而 resolveTopic 会无条件 ensureDir——
+   * 对拼错的主题名跑 report 会凭空建出 .reviews/<拼错名>/plan/，
+   * 既违背承诺，也让拼错名得不到报错（只得到一份空报告加一个新目录）。
+   */
+  assert.equal(r.code, EXIT.MISSING_ARTIFACT, `应退 65：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout + r.stderr, new RegExp(TOPIC), '要给出现有主题作为候选');
+  assert.deepEqual(await listFiles(fx.archiveRoot), before, '只读命令不得创建任何目录');
+});
+
+test('verify 也不凭空建目录', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const before = await listFiles(fx.archiveRoot);
+  await cli(fx.root, ['verify', '--topic', '另一个拼错名']);
+  const after = await listFiles(fx.archiveRoot);
+  assert.ok(
+    !after.some((f) => f.startsWith('另一个拼错名/plan/')),
+    `不该建出 plan 目录：${after.filter((f) => f.startsWith('另一个拼错名')).join(', ')}`,
+  );
+  assert.ok(after.length >= before.length);
+});
+
+test('--timeout 拼错时报 64 并回显原值，不静默回退默认值', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC, extraVerify: ["  build: ['echo ok']", '  test: []'] });
+  for (const bad of ['abc', '0', '-5']) {
+    const r = await cli(fx.root, ['verify', '--topic', TOPIC, '--timeout', bad]);
+    assert.equal(r.code, EXIT.USAGE, `「${bad}」应退 64：\n${r.stdout}${r.stderr}`);
+    assert.match(r.stdout + r.stderr, new RegExp(bad.replace('-', '\\-')), '要回显用户给的原值');
+  }
+});

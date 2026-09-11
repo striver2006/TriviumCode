@@ -219,3 +219,27 @@ test('摘要点名失败的命令', () => {
     /既非通过也非失败/,
   );
 });
+
+// ── unconfigured 与「本次没选中」是两回事（审查意见 GLM-r2-07）──
+
+test('--only build 而 build 未配：不得写成「两组均为空」', async () => {
+  const ctx = await ctxWith([], ['npm test']); // test 配了，build 没配
+  const out = await runVerify({ ctx, layout: layoutFor(ctx), runId: 'R1', only: 'build' });
+
+  assert.equal(out.record.unconfigured, false, '另一组配了，就不是配置缺失');
+  assert.equal(out.record.selected_empty, 'build');
+
+  const doc = await fs.readFile(out.artifactPath, 'utf8');
+  assert.doesNotMatch(doc, /均为空/, '审计记录里不能出现与事实不符的陈述');
+  assert.match(doc, /--only build/);
+  assert.match(doc, /另一组是配置齐全的/);
+  assert.match(summarizeVerify(out.record), /另一组已配置/);
+});
+
+test('两组皆空时仍判 unconfigured', async () => {
+  const ctx = await ctxWith([], []);
+  const out = await runVerify({ ctx, layout: layoutFor(ctx), runId: 'R2', only: 'build' });
+  assert.equal(out.record.unconfigured, true);
+  assert.equal(out.record.selected_empty, undefined);
+  assert.match(await fs.readFile(out.artifactPath, 'utf8'), /均为空/);
+});

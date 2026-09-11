@@ -294,3 +294,38 @@ test('task.json 的降级与争议项被带进报告', async () => {
   assert.match(md, /双方共同 blocker 被驳回/);
   assert.match(md, /X-1、Y-2/);
 });
+
+// ── 降级纪律：读不到就说读不到（审查意见 GLM-r2-09）──
+
+test('verify 记录损坏 → 如实说损坏，不伪装成「从未验证」', async () => {
+  const l = await archive();
+  await seedRound(l, { rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM') });
+  const vdir = path.join(l.archiveRoot, TOPIC, 'verify', '_meta');
+  await fs.mkdir(vdir, { recursive: true });
+  await fs.writeFile(path.join(vdir, 'verify-R9.json'), '{ 这不是 JSON', 'utf8');
+
+  const r = await buildTopicReport(l);
+  assert.ok(
+    r.notes.some((n) => /verify 记录损坏/.test(n)),
+    `应如实报损坏，实际 notes：${r.notes.join(' | ')}`,
+  );
+  const md = renderTopicReport(r);
+  assert.match(md, /verify 记录损坏/);
+  // 「记录损坏」被渲染成「尚无记录」恰是 P5 要防的误读
+  assert.doesNotMatch(md, /- 尚无 verify 记录/);
+});
+
+test('裁决件读不到不让整份复盘崩溃', async () => {
+  const l = await archive();
+  await seedRound(l, { rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM') });
+  // 写一份裁决件，然后把它变成目录——readFile 必然失败
+  const p = path.join(l.archiveRoot, TOPIC, 'plan', `${new Date().toISOString().slice(0, 10)}-${TOPIC}-revised-claude.md`);
+  await fs.mkdir(p, { recursive: true });
+
+  const r = await buildTopicReport(l); // 不该抛
+  assert.ok(
+    r.rounds[0]!.notes.some((n) => /裁决件读取失败/.test(n)),
+    `应进 notes，实际：${r.rounds[0]!.notes.join(' | ')}`,
+  );
+  assert.equal(r.rounds[0]!.disposals, null);
+});
