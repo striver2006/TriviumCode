@@ -281,7 +281,14 @@ export async function runInit(opts: InitOptions): Promise<InitReport> {
     report.created.push(reviewsReadme);
   }
 
-  if (!opts.verify) {
+  /*
+   * 判据取磁盘上的**实际配置**（ctx.config 已由 loadCtx 合并 config.yaml
+   * 与 config.local.yaml），而非本次入参：config.yaml 已存在时 init 不覆盖它，
+   * 若只看 opts.verify，重跑 init 会对一份配好的项目误报「留空」。
+   * opts.verify 仍优先——它代表本次刚确认并写入的候选（§14.1）。
+   */
+  const effectiveVerify = opts.verify ?? ctx.config.verify;
+  if (effectiveVerify.build.length === 0 && effectiveVerify.test.length === 0) {
     report.notes.push(
       'verify.build / verify.test 留空：编排器**只执行**显式配置的命令，不猜测执行（§14.1）。' +
         '请把 `trivium doctor` 探测到的候选逐条确认后写入 .trivium/config.yaml。' +

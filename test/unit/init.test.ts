@@ -70,6 +70,20 @@ test('未确认编译测试命令时 verify 留空，并明确说明不猜测执
   assert.match(cfg, /verify:\s*\n\s*build:\s*\[\]/);
 });
 
+test('已配置 verify 的项目重跑 init 不误报留空（判据取实际配置，非本次入参）', async () => {
+  const ctx = await fakeProject();
+  // 模拟 loadCtx 从磁盘 config.yaml 合并出的状态：verify 已配好
+  ctx.config.verify = { build: ['cd server && go build ./...'], test: ['cd server && go test ./...'] };
+  await fs.mkdir(ctx.triviumDir, { recursive: true });
+  await fs.writeFile(path.join(ctx.triviumDir, 'config.yaml'), 'verify:\n  build:\n    - cd server && go build ./...\n  test:\n    - cd server && go test ./...\n');
+
+  const r = await runInit({ ctx, assetRoot: await fakeAssets() });
+  assert.ok(
+    !r.notes.some((n) => n.includes('不猜测执行')),
+    `已配置 verify 却仍告警留空：${r.notes.join(' | ')}`,
+  );
+});
+
 test('已确认的命令会写入 verify', async () => {
   const ctx = await fakeProject();
   await runInit({
