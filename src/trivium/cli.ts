@@ -5,11 +5,13 @@
  * **不做任何业务判定**——所有判定都在各自模块里。
  */
 import path from 'node:path';
+import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
 import { loadCtx } from './config.js';
 import { runDoctor, renderDoctorReport } from './doctor.js';
 import { runReview } from './review.js';
 import { collectCommands, runVerify, summarizeVerify } from './verify.js';
+import { buildTopicReport, renderTopicReport } from './report.js';
 import { cancelRun, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
 import {
   checkAdjudication, inferLatestRunId, loadRoundReviews, renderGateResult,
@@ -122,6 +124,11 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       落盘 verify/<日期>-<主题>-verify.md 与 _meta/verify-<run_id>.json（FR-21 / AC-10）。
       两组都没配时退 64——「什么都没跑」不是「通过」。
       构建失败即不再跑测试：测试几乎必然连带失败，只会埋掉真正的根因。
+
+  trivium report --topic <主题> [--out <路径>] [--json]
+      依据 .reviews/ 生成人读复盘：时间线、每轮意见数与严重度分布、采纳率、
+      被驳回项与理由、生效模型核对、降级与告警清单、双审退化指标、耗时汇总。
+      只读归档，不重新调用任何 Agent；默认打到 stdout，--out 写文件。
 
   trivium init [--dry-run] [--asset-root <路径>]
       在本项目布置运行时：.trivium/（config.yaml + bin/trivium wrapper）、
@@ -590,6 +597,31 @@ async function cmdVerify(args: ParsedArgs): Promise<number> {
   return out.exitCode;
 }
 
+async function cmdReport(args: ParsedArgs): Promise<number> {
+  const ctx = await loadCtx();
+  const topic = flagString(args, 'topic');
+  if (!topic) throw usageError('report 需要 --topic');
+  const ref = await resolveTopic(ctx, topic, 'plan');
+
+  const report = await buildTopicReport(ref.layout);
+  if (isJsonMode()) {
+    emitJson({ ok: true, ...report });
+    return EXIT.OK;
+  }
+
+  const md = renderTopicReport(report);
+  const out = flagString(args, 'out');
+  if (out) {
+    const dest = path.isAbsolute(out) ? out : path.join(ctx.projectRoot, out);
+    await fsp.mkdir(path.dirname(dest), { recursive: true });
+    await fsp.writeFile(dest, md, 'utf8');
+    say(`复盘已写入 ${path.relative(ctx.projectRoot, dest)}`);
+  } else {
+    process.stdout.write(md);
+  }
+  return EXIT.OK;
+}
+
 async function cmdStatus(args: ParsedArgs): Promise<number> {
   const ctx = await loadCtx();
   const only = flagString(args, 'topic');
@@ -661,6 +693,8 @@ export async function main(argv: string[]): Promise<number> {
       return cmdApproval(args, 'abandoned');
     case 'verify':
       return cmdVerify(args);
+    case 'report':
+      return cmdReport(args);
     case 'status':
       return cmdStatus(args);
     default:

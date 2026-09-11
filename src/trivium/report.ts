@@ -1,0 +1,496 @@
+/**
+ * 主题级复盘报告（设计 §5.1 `report`、§9.3、§15.2）。
+ *
+ * 输出：时间线、每轮意见数与严重度分布、采纳率、被驳回项与理由、
+ * 降级与告警清单、耗时与 token 汇总、双审退化提示。
+ *
+ * ## 数据源只有 `.reviews/`
+ *
+ * 报告**不**重新调用任何 Agent、不读 `~/.trivium/runs/`（那是本机临时物，
+ * 30 天后就没了），只读归档目录——这是 P4「工件即接口」的直接后果：
+ * 换一台机器、换一个人，拿着同一份 `.reviews/` 必须能得出同一份报告。
+ *
+ * ## 读不到就说读不到
+ *
+ * 缺件、解析失败、单侧降级一律**如实列出**，不静默跳过也不补零。
+ * 一份把缺失渲染成「0 条意见」的复盘会让人以为那一轮很干净（P5 不可伪装）。
+ */
+import path from 'node:path';
+import { promises as fs } from 'node:fs';
+import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
+import { readRunMeta, readTask, type TaskMeta } from './meta.js';
+import { loadRoundReviews } from './gate.js';
+import { parseDisposition } from './disposition.js';
+import { measureDivergence, type DivergenceReport } from './divergence.js';
+import { summarizeVerify, type VerifyRecord } from './verify.js';
+import { STAGES, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';
+
+const SEVERITIES: readonly Severity[] = ['blocker', 'major', 'minor', 'nit'];
+const DISPOSALS: readonly Disposal[] = ['接受', '驳回', '暂缓'];
+
+/** 一轮（同一 run_id）的复盘数据 */
+export interface RoundReport {
+  stage: Stage;
+  rerunIndex: number;
+  runId: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  status: RunMeta['status'] | null;
+  reviewMode: RunMeta['review_mode'] | null;
+  degradedReason: string | null;
+  /** 逐侧：生效模型、状态、耗时、意见数 */
+  sides: {
+    critic: CriticId;
+    status: string;
+    modelEffective: string | null;
+    modelRequested: string | null;
+    durationS: number;
+    findings: number | null;
+    evidenceOk: boolean;
+    failReason: string | null;
+  }[];
+  /** 两侧合计的严重度分布 */
+  severity: Record<Severity, number>;
+  /** 裁决分布；裁决件缺失时为 null */
+  disposals: Record<Disposal, number> | null;
+  /** 被驳回与暂缓的条目，带理由——复盘最该被人读到的部分 */
+  contested: { id: string; disposal: Disposal; severity: Severity | null; reason: string }[];
+  divergence: DivergenceReport | null;
+  guardFlags: string[];
+  /**
+   * 逐侧 token 用量。**不跨厂商相加**：两家的字段名体系不同
+   * （agy 用 `input_tokens`，zcode 用 `inputTokens`），相加只会得出一个
+   * 谁都对不上的数。也只收数值字段——实测 `usage` 里混有字符串（如 `source`），
+   * 直接累加会得出 `00provider` 这种东西。
+   */
+  tokens: Partial<Record<CriticId, Record<string, number>>>;
+  /** 本轮读取归档时遇到的问题，原样呈现 */
+  notes: string[];
+}
+
+export interface TopicReport {
+  topic: string;
+  generatedAt: string;
+  task: TaskMeta;
+  rounds: RoundReport[];
+  verify: VerifyRecord | null;
+  /** 主题级问题（缺 task.json、阶段目录读不到等） */
+  notes: string[];
+}
+
+const zeroSeverity = (): Record<Severity, number> => ({ blocker: 0, major: 0, minor: 0, nit: 0 });
+
+/** 枚举某阶段所有已产出审查工件的轮次与其 run_id */
+async function enumerateRounds(
+  layout: ArchiveLayout,
+  stage: Stage,
+): Promise<{ rerunIndex: number; runId: string | null }[]> {
+  const items = await listStageArtifacts(layout, stage);
+  const byRound = new Map<number, string | null>();
+  for (const i of items) {
+    if (i.parsed.role === 'claude') continue; // 原稿与裁决件不定义轮次
+    if (!byRound.has(i.parsed.rerunIndex)) byRound.set(i.parsed.rerunIndex, null);
+  }
+
+  // run_id 从 _meta/run-*.json 反查：文件名里带，比解析 front-matter 更直接
+  const dir = metaDir(layout, stage);
+  let metaFiles: string[] = [];
+  try {
+    metaFiles = await fs.readdir(dir);
+  } catch {
+    /* 阶段还没跑过 */
+  }
+  for (const f of metaFiles.sort()) {
+    const m = /^run-(.+)\.json$/.exec(f);
+    if (!m) continue;
+    const runId = m[1]!;
+    const meta = await readRunMeta(layout, stage, runId);
+    if (meta && byRound.has(meta.rerun_index)) byRound.set(meta.rerun_index, runId);
+  }
+
+  return [...byRound.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([rerunIndex, runId]) => ({ rerunIndex, runId }));
+}
+
+/** 找本轮的裁决件（`-revised-claude.md` 或 `-response-claude.md`） */
+async function loadDisposition(
+  layout: ArchiveLayout,
+  stage: Stage,
+  rerunIndex: number,
+): Promise<{ disposals: Record<Disposal, number>; contested: RoundReport['contested'] } | null> {
+  const items = await listStageArtifacts(layout, stage);
+  const hit = items.find(
+    (i) => i.parsed.role === 'claude' && i.parsed.kind !== null && i.parsed.rerunIndex === rerunIndex,
+  );
+  if (!hit) return null;
+
+  const md = await fs.readFile(path.join(layout.archiveRoot, layout.topic, stage, hit.fileName), 'utf8');
+  const parsed = parseDisposition(md);
+  const disposals: Record<Disposal, number> = { 接受: 0, 驳回: 0, 暂缓: 0 };
+  const contested: RoundReport['contested'] = [];
+  for (const r of parsed.rows) {
+    disposals[r.disposal]++;
+    if (r.disposal !== '接受') {
+      contested.push({ id: r.id, disposal: r.disposal, severity: r.severity, reason: r.reason });
+    }
+  }
+  return { disposals, contested };
+}
+
+async function buildRound(
+  layout: ArchiveLayout,
+  stage: Stage,
+  rerunIndex: number,
+  runId: string | null,
+): Promise<RoundReport> {
+  const notes: string[] = [];
+  const base: RoundReport = {
+    stage,
+    rerunIndex,
+    runId: runId ?? '（读不到 run_id）',
+    startedAt: null,
+    finishedAt: null,
+    status: null,
+    reviewMode: null,
+    degradedReason: null,
+    sides: [],
+    severity: zeroSeverity(),
+    disposals: null,
+    contested: [],
+    divergence: null,
+    guardFlags: [],
+    tokens: {},
+    notes,
+  };
+
+  if (!runId) {
+    notes.push('该轮有审查文档但找不到对应的 `_meta/run-*.json`，元数据部分无法呈现');
+    return base;
+  }
+
+  const meta = await readRunMeta(layout, stage, runId);
+  if (!meta) {
+    notes.push(`\`_meta/run-${runId}.json\` 读取失败`);
+    return base;
+  }
+
+  base.startedAt = meta.started_at;
+  base.finishedAt = meta.finished_at;
+  base.status = meta.status;
+  base.reviewMode = meta.review_mode;
+  base.degradedReason = meta.degraded_reason;
+
+  const { reviews, notes: reviewNotes } = await loadRoundReviews(layout, stage, runId);
+  notes.push(...reviewNotes);
+
+  for (const c of Object.keys(meta.critics) as CriticId[]) {
+    const m = meta.critics[c]!;
+    const review = reviews[c] ?? null;
+    base.sides.push({
+      critic: c,
+      status: m.status,
+      modelEffective: m.model_effective,
+      modelRequested: m.model_requested,
+      durationS: m.duration_s,
+      findings: review ? review.findings.length : null,
+      evidenceOk: m.evidence_ok,
+      failReason: m.fail_reason ?? null,
+    });
+    for (const f of review?.findings ?? []) {
+      if (SEVERITIES.includes(f.severity)) base.severity[f.severity]++;
+    }
+    const numeric: Record<string, number> = {};
+    for (const [k, v] of Object.entries(m.usage ?? {})) {
+      if (typeof v === 'number' && Number.isFinite(v)) numeric[k] = v;
+    }
+    if (Object.keys(numeric).length > 0) base.tokens[c] = numeric;
+  }
+
+  // 只有两侧都拿到结构化结论时，重合度才有意义
+  if (reviews.gemini && reviews.glm) {
+    base.divergence = measureDivergence(reviews.gemini, reviews.glm);
+  }
+
+  if (meta.guard.readonly_breach) base.guardFlags.push('只读失守');
+  if (meta.guard.peer_artifact_read) base.guardFlags.push('读到对方产出');
+  if (meta.guard.forged_role_file) base.guardFlags.push('角色后缀伪造');
+  if (meta.snapshot.drift.changed) {
+    base.guardFlags.push(`漂移 ${meta.snapshot.drift.files.length} 个文件（${meta.snapshot.drift.policy}）`);
+  }
+  for (const c of Object.keys(meta.guard.peer_deny_applied) as CriticId[]) {
+    if (meta.guard.peer_deny_applied[c] === false) {
+      base.guardFlags.push(`${c} 侧路径级 deny 未生效（第 ③ 道屏蔽降级）`);
+    }
+  }
+
+  const disp = await loadDisposition(layout, stage, rerunIndex);
+  if (disp) {
+    base.disposals = disp.disposals;
+    base.contested = disp.contested;
+  } else if (meta.status === 'success') {
+    notes.push('本轮尚无裁决件——审查已完成但意见未逐条裁决');
+  }
+
+  return base;
+}
+
+/** 读该主题最近一次 verify 记录 */
+async function loadLatestVerify(layout: ArchiveLayout): Promise<VerifyRecord | null> {
+  const dir = metaDir(layout, 'verify');
+  let files: string[];
+  try {
+    files = await fs.readdir(dir);
+  } catch {
+    return null;
+  }
+  const candidates = files.filter((f) => /^verify-.+\.json$/.test(f)).sort();
+  const last = candidates.at(-1);
+  if (!last) return null;
+  try {
+    return JSON.parse(await fs.readFile(path.join(dir, last), 'utf8')) as VerifyRecord;
+  } catch {
+    return null;
+  }
+}
+
+export async function buildTopicReport(layout: ArchiveLayout): Promise<TopicReport> {
+  const notes: string[] = [];
+  const task = await readTask(layout);
+  const rounds: RoundReport[] = [];
+
+  for (const stage of STAGES) {
+    for (const { rerunIndex, runId } of await enumerateRounds(layout, stage)) {
+      rounds.push(await buildRound(layout, stage, rerunIndex, runId));
+    }
+  }
+
+  if (rounds.length === 0) notes.push('该主题下没有任何已产出审查工件的轮次');
+
+  return {
+    topic: layout.topic,
+    generatedAt: new Date().toISOString(),
+    task,
+    rounds,
+    verify: await loadLatestVerify(layout),
+    notes,
+  };
+}
+
+// ─────────────────────────── 渲染 ───────────────────────────
+
+const pct = (n: number, d: number): string => (d === 0 ? '—' : `${Math.round((n / d) * 100)}%`);
+
+/** 采纳率 = 接受 / 已裁决总数。只统计有裁决件的轮次 */
+export function acceptanceRate(rounds: RoundReport[]): { accepted: number; total: number } {
+  let accepted = 0;
+  let total = 0;
+  for (const r of rounds) {
+    if (!r.disposals) continue;
+    accepted += r.disposals['接受'];
+    total += DISPOSALS.reduce((a, d) => a + r.disposals![d], 0);
+  }
+  return { accepted, total };
+}
+
+export function renderTopicReport(r: TopicReport): string {
+  const L: string[] = [
+    `# 复盘 · ${r.topic}`,
+    '',
+    `- **生成时间**：${r.generatedAt}`,
+    `- **主题创建**：${r.task.created_at}`,
+    `- **当前闸门**：${r.task.gate.state}${r.task.gate.stage ? `（${r.task.gate.stage}）` : ''}`,
+    `- **轮次总数**：${r.rounds.length}`,
+    '',
+    '> 数据源只有 `.reviews/`。报告不重新调用任何 Agent，也不依赖本机临时目录——',
+    '> 换一台机器、拿同一份归档，应得出同一份报告（设计原则 P4）。',
+    '',
+  ];
+
+  if (r.notes.length > 0) {
+    L.push('> ⚠️ ' + r.notes.join('\n> ⚠️ '), '');
+  }
+
+  // ── 一、时间线 ──
+  L.push(
+    '## 一、时间线',
+    '',
+    '| 阶段 | 轮 | 运行 | 起始 | 状态 | 模式 | 耗时（较慢侧） |',
+    '| :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
+  );
+  for (const d of r.rounds) {
+    const slowest = d.sides.reduce((a, s) => Math.max(a, s.durationS), 0);
+    L.push(
+      `| ${d.stage} | r${d.rerunIndex} | \`${d.runId}\` | ${d.startedAt ?? '—'} | ` +
+        `${d.status ?? '—'} | ${d.reviewMode ?? '—'}${d.degradedReason ? `（${d.degradedReason}）` : ''} | ` +
+        `${Math.round(slowest)}s |`,
+    );
+  }
+  L.push('');
+
+  // ── 二、每轮意见与裁决 ──
+  L.push('## 二、每轮意见数、严重度分布与裁决', '');
+  if (r.rounds.length === 0) {
+    L.push('（无数据）', '');
+  } else {
+    L.push(
+      '| 阶段/轮 | gemini | glm | blocker | major | minor | nit | 接受 | 驳回 | 暂缓 |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
+    );
+    for (const d of r.rounds) {
+      const side = (c: CriticId): string => {
+        const s = d.sides.find((x) => x.critic === c);
+        if (!s) return '—';
+        // 失败/降级侧显示原因而不是 0：0 会被读成「没提意见」
+        if (s.findings === null) return `（${s.status}）`;
+        return String(s.findings);
+      };
+      const dz = d.disposals;
+      L.push(
+        `| ${d.stage} r${d.rerunIndex} | ${side('gemini')} | ${side('glm')} | ` +
+          SEVERITIES.map((s) => d.severity[s]).join(' | ') +
+          ' | ' +
+          (dz ? DISPOSALS.map((x) => dz[x]).join(' | ') : '— | — | —') +
+          ' |',
+      );
+    }
+    const { accepted, total } = acceptanceRate(r.rounds);
+    L.push(
+      '',
+      `**采纳率**：${accepted} / ${total} = ${pct(accepted, total)}` +
+        (total === 0 ? '（尚无裁决件）' : ''),
+      '',
+      '> 失败或降级侧显示状态而非 `0`：`0` 会被读成「该侧认为没问题」，两者不是一回事。',
+      '',
+    );
+  }
+
+  // ── 三、被驳回与暂缓 ──
+  L.push('## 三、被驳回与暂缓的意见', '');
+  const contested = r.rounds.flatMap((d) =>
+    d.contested.map((c) => ({ ...c, stage: d.stage, rerunIndex: d.rerunIndex })),
+  );
+  if (contested.length === 0) {
+    L.push('（无——全部意见均被接受，或尚无裁决件）', '');
+  } else {
+    L.push('| 阶段/轮 | 编号 | 严重度 | 裁决 | 理由 |', '| :--- | :--- | :--- | :--- | :--- |');
+    for (const c of contested) {
+      L.push(
+        `| ${c.stage} r${c.rerunIndex} | ${c.id} | ${c.severity ?? '—'} | ${c.disposal} | ` +
+          `${c.reason.replace(/\|/g, '\\|') || '（未写理由）'} |`,
+      );
+    }
+    L.push('', '> 这一节是复盘的重点：被驳回的意见与其理由，是下一轮最值得回看的地方。', '');
+  }
+
+  // ── 四、生效模型 ──
+  L.push('## 四、生效模型（AC-13 / AC-18 核对）', '', '| 阶段/轮 | 侧 | 请求 | 实际生效 | 证据 |', '| :--- | :--- | :--- | :--- | :--- |');
+  for (const d of r.rounds) {
+    for (const s of d.sides) {
+      const mismatch = s.modelEffective && s.modelRequested && !s.modelEffective.endsWith(s.modelRequested);
+      L.push(
+        `| ${d.stage} r${d.rerunIndex} | ${s.critic} | ${s.modelRequested ?? '—'} | ` +
+          `${s.modelEffective ?? '**未回读到**'}${mismatch ? ' ⚠️' : ''} | ${s.evidenceOk ? 'ok' : '不足'} |`,
+      );
+    }
+  }
+  L.push('', '> `未回读到` 表示生效模型无法核实，一律不用请求值顶替（AC-13）。', '');
+
+  // ── 五、降级、告警与隔离 ──
+  L.push('## 五、降级、告警与隔离结论', '');
+  const alerts: string[] = [];
+  for (const d of r.rounds) {
+    if (d.degradedReason) alerts.push(`${d.stage} r${d.rerunIndex}：降级——${d.degradedReason}`);
+    for (const g of d.guardFlags) alerts.push(`${d.stage} r${d.rerunIndex}：${g}`);
+    for (const s of d.sides) {
+      if (s.failReason) alerts.push(`${d.stage} r${d.rerunIndex} ${s.critic}：${s.status}——${s.failReason}`);
+    }
+    for (const n of d.notes) alerts.push(`${d.stage} r${d.rerunIndex}：${n}`);
+  }
+  for (const dg of r.task.degradations) alerts.push(`task.json 记录的降级：${dg.stage} ${dg.run_id}——${dg.reason}`);
+  if (r.task.disputed) {
+    for (const dp of r.task.disputes) {
+      alerts.push(`争议项：${dp.finding_ids.join('、')}——${dp.note}`);
+    }
+  }
+  L.push(alerts.length === 0 ? '（无）' : alerts.map((a) => `- ${a}`).join('\n'), '');
+
+  // ── 六、双审退化 ──
+  L.push('## 六、双审退化指标（§9.3）', '');
+  const withDiv = r.rounds.filter((d) => d.divergence);
+  if (withDiv.length === 0) {
+    L.push('（无可比对的轮次：需要两侧都产出结构化结论）', '');
+  } else {
+    L.push('| 阶段/轮 | Jaccard（归一化） | 未归一化 | 共同覆盖 | 仅 gemini | 仅 glm |', '| :--- | :--- | :--- | :--- | :--- | :--- |');
+    for (const d of withDiv) {
+      const v = d.divergence!;
+      L.push(
+        `| ${d.stage} r${d.rerunIndex} | ${v.jaccard.toFixed(2)}${v.degenerate ? ' ⚠️' : ''} | ` +
+          `${v.rawJaccard.toFixed(2)} | ${v.overlap.length} | ${v.onlyA.length} | ${v.onlyB.length} |`,
+      );
+    }
+    const degenerate = withDiv.filter((d) => d.divergence!.degenerate);
+    L.push('');
+    if (degenerate.length > 0) {
+      L.push(
+        `> ⚠️ 有 ${degenerate.length} 轮重合度超过阈值：两侧在看同一批地方，差异化镜头没起作用。`,
+        '> 建议调整 `lenses.yaml` 的镜头，或改用差异更大的模型组合。**这是提示，不是错误。**',
+        '',
+      );
+    }
+    L.push(
+      '> 位置先归一化再比（行区间重合、章节前缀、路径前缀），否则指标恒为 0——',
+      '> 实测过两侧概念重叠而原始 Jaccard 为 0.00 的情形。',
+      '',
+    );
+  }
+
+  // ── 七、耗时与 token ──
+  L.push('## 七、耗时与 token 汇总', '');
+  const perSide: Partial<Record<CriticId, Record<string, number>>> = {};
+  let totalSeconds = 0;
+  for (const d of r.rounds) {
+    totalSeconds += d.sides.reduce((a, s) => Math.max(a, s.durationS), 0);
+    for (const c of Object.keys(d.tokens) as CriticId[]) {
+      const acc = (perSide[c] ??= {});
+      for (const [k, v] of Object.entries(d.tokens[c]!)) acc[k] = (acc[k] ?? 0) + v;
+    }
+  }
+  L.push(`- **墙钟合计**（各轮取较慢侧）：${Math.round(totalSeconds)}s`, '');
+  const sidesWithTokens = Object.keys(perSide) as CriticId[];
+  if (sidesWithTokens.length === 0) {
+    L.push('- **token**：厂商未在产物中提供用量，无法汇总（不估算）', '');
+  } else {
+    for (const c of sidesWithTokens) {
+      const entries = Object.entries(perSide[c]!).sort(([a], [b]) => a.localeCompare(b));
+      L.push(`- **${c} token**：${entries.map(([k, v]) => `${k} ${v}`).join(' ｜ ')}`);
+    }
+    L.push(
+      '',
+      '> 两侧**不合计**：agy 用 `input_tokens` 一套字段名，zcode 用 `inputTokens` 另一套，',
+      '> 相加只会得出一个谁都对不上的数。也只收数值字段，厂商混进来的字符串（如 `source`）一律丢弃。',
+      '',
+    );
+  }
+
+  // ── 八、编译测试出口 ──
+  L.push('## 八、编译测试出口', '');
+  L.push(r.verify ? `- ${summarizeVerify(r.verify)}（运行 \`${r.verify.run_id}\`）` : '- 尚无 verify 记录', '');
+
+  // ── 九、审批 ──
+  L.push('## 九、审批记录', '');
+  if (r.task.approvals.length === 0) {
+    L.push('（无）', '');
+  } else {
+    L.push('| 时间 | 阶段 | 运行 | 结论 | 理由 |', '| :--- | :--- | :--- | :--- | :--- |');
+    for (const a of r.task.approvals) {
+      L.push(
+        `| ${a.at} | ${a.stage} | \`${a.run_id}\` | ${a.decision} | ` +
+          `${(a.reason ?? '').replace(/\|/g, '\\|')} |`,
+      );
+    }
+    L.push('');
+  }
+
+  return L.join('\n') + '\n';
+}
