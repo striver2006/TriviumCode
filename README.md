@@ -6,11 +6,11 @@
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20VS%20Code-brightgreen.svg)](#-快速开始)
 [![Workflow](https://img.shields.io/badge/Architecture-Driver--DualCritic-orange.svg)](#-核心架构与流转时序)
 [![Agents](https://img.shields.io/badge/Agents-Claude%20Code%20%7C%20Antigravity%20%7C%20ZCode-purple.svg)](#-核心特性与创新)
-[![Status](https://img.shields.io/badge/Status-设计已定稿%20·%20实现中-yellow.svg)](./doc/02_design/README.md)
+[![Status](https://img.shields.io/badge/Status-M0～M5%20已实现-brightgreen.svg)](./doc/02_design/README.md)
 
 **面向 macOS + VS Code 原生开发流的「主攻 + 双审」（Driver-DualCritic）全自动多智能体协同流水线**
 
-[快速开始](#-快速开始) • [四条命令](#-四条命令) • [核心架构](#-核心架构与流转时序) • [全流程留痕](#-全流程审计与留痕机制) • [文档中心](./doc/README.md) • [贡献指南](./CONTRIBUTING.md)
+[快速开始](#-快速开始) • [15 分钟上手](./doc/07_manuals/QUICKSTART.md) • [四条命令](#-四条命令) • [核心架构](#-核心架构与流转时序) • [全流程留痕](#-全流程审计与留痕机制) • [文档中心](./doc/README.md) • [贡献指南](./CONTRIBUTING.md)
 
 </div>
 
@@ -290,7 +290,19 @@ npm run build        # esbuild 打包为单文件零依赖 skills/dual-critic/sc
 node dist/install.cjs
 ```
 
-安装器会：把 `skills/*` 拷贝到 `~/.claude/skills/`（用户级）；把只读审查 Agent 定义拷贝到 `~/.gemini/config/agents/trivium-critic/agent.md`；然后运行 `trivium doctor`。
+安装器会：把 `skills/*` 拷贝到 `~/.claude/skills/`（用户级）；把只读审查 Agent 定义拷贝到 `~/.gemini/config/agents/trivium-critic/agent.md`；然后**提示**你接下来该做什么——它不会替你跑 `doctor`，因为那会消耗厂商配额。
+
+> **`trivium` 不在 PATH 上**，这是有意的。下文为可读性写作 `trivium <子命令>`，实际调用是：
+> - 项目内（`init` 之后）：`.trivium/bin/trivium <子命令>` ——wrapper 内含 node 绝对路径，GUI 启动的进程不读 `~/.zshrc`；
+> - 还没 `init` 的项目里：`node ~/.claude/skills/dual-critic/scripts/trivium.cjs <子命令>`。
+
+装完先自检一次，**不消耗任何厂商配额**：
+
+```bash
+node ~/.claude/skills/dual-critic/scripts/trivium.cjs doctor --selftest
+```
+
+它在临时夹具仓库里真跑一遍整条流水线（双审 → 闸门拦截 → 补裁决 → 闸门放行 → 编译测试 → 复盘 → 重跑不覆盖），14 步逐一核对退出码。两侧走桩适配器，所以它**证明不了**两家 CLI 可用——那是下一步 `doctor` 的事，输出里会写明这条边界。
 
 ### 3. 本机能力探测
 
@@ -309,7 +321,21 @@ cd /path/to/your-project
 trivium init
 ```
 
-`init` 会创建 `.trivium/`（配置、wrapper）、合并 Hook 进 `.claude/settings.json`、幂等追加 `.gitignore` 规则与 `CLAUDE.md` / `AGENTS.md` 协议片段，并**逐条展示探测到的编译测试命令候选供你确认**（未经确认的命令永不执行）。
+`init` 会创建 `.trivium/`（配置、wrapper）、合并 Hook 进 `.claude/settings.json`、幂等追加 `.gitignore` 规则与 `CLAUDE.md` / `AGENTS.md` 协议片段。
+
+**必须补一步**：把编译测试命令写进 `.trivium/config.yaml`。编排器**只执行**你显式声明的命令，绝不猜测执行——`scripts.test` 完全可能耗时极长、依赖外部服务或有副作用。
+
+```bash
+trivium doctor --suggest-verify   # 只展示候选与可粘贴的 YAML，不写入
+```
+
+```yaml
+verify:
+  build: ['npm run typecheck', 'npm run build']
+  test:  ['npm test']
+```
+
+两者皆空时 `/dual-run`（命令 A）会拒绝启动：跑完全流程却无法收口没有意义。
 
 ### 5. 跑第一条任务
 
@@ -323,6 +349,14 @@ trivium init
 
 ```text
 /dual-approve --topic 登录重构 --stage plan
+```
+
+跑完想看复盘：
+
+```bash
+trivium report --topic 登录重构    # 时间线、意见数与严重度分布、采纳率、被驳回项与理由、
+                                  # 生效模型核对、降级与告警、双审退化指标、耗时汇总
+trivium verify --topic 登录重构    # 真实执行配置里的编译测试命令并落盘记录
 ```
 
 ### 6. 配置
@@ -341,6 +375,10 @@ trivium init
 | [总体架构与详细设计](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md) | **唯一实现依据**。架构、组件、接口契约、命名规范、异常矩阵、实施路线与验收映射 |
 | [ADR-001 隔离模式](./doc/02_design/ADR_001_isolation_mode.md) | 为何采用就地审查而非冻结镜像树 |
 | [留痕目录规范](./.reviews/README.md) | 归档结构、命名规则、各阶段工件集 |
+| [**快速上手**](./doc/07_manuals/QUICKSTART.md) | 15 分钟装好并跑通一条真实任务：前置条件、安装自检、探针实测、项目启用、第一条任务、三道护栏、排障 |
+| [协议与接口契约](./doc/03_api/PROTOCOL_dual_critic_relay.md) | 四份 JSON Schema、BRIEF 八段结构、快照与漂移算法、退出码、`--start`/`--wait` 分段协议、Hook 契约 |
+| [开发与调试指南](./doc/04_development/GUIDE_env_setup.md) | 面向修改本项目的人：工具链、产物布局、分层测试、九条实现纪律 |
+| [M0 本机坑清单](./doc/05_testing/REPORT_2026-09-11_m0_probe.md) | 两家 CLI 的实测行为，含 15 个坑与 12 条与厂商文档记载不符之处 |
 | [文档中心索引](./doc/README.md) | 全部工程文档的分类与命名规范 |
 
 ---
