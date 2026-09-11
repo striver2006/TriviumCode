@@ -151,8 +151,13 @@ gate:
 preflight:
   auth_cache_ttl_h: 1
 verify:
-  build: []
-  test: []
+  # 这两组命令是 `trivium doctor` 探测出的候选，经逐条确认后写入（§14.1）。
+  # 编排器**只执行**这里显式声明的命令，不猜测执行。
+  build:
+    - npm run typecheck
+    - npm run build
+  test:
+    - npm test
 retention:
   run_dir_days: 30
 probe_ttl_days: 7

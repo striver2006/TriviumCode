@@ -45,7 +45,7 @@ export function defaultProbe(): ProbeSection {
       model_id_form: null,
       models: [],
     },
-    auth: { agy_checked_at: null, zcode_checked_at: null },
+    auth: {},
   };
 }
 
@@ -215,8 +215,18 @@ export function runRoot(cfg: Config): string {
   return expandHome(cfg.runtime.run_root);
 }
 
-/** 把 probe 段写回 config.local.yaml，保留该文件的其它字段 */
-export async function persistProbe(triviumDir: string, probe: ProbeSection): Promise<string> {
+/**
+ * 把 probe 段写回 config.local.yaml，保留该文件的其它字段。
+ *
+ * **必须在全局锁内调用**（审查意见 GLM-07）。这是对全局单文件的「读 → 改 → 写」，
+ * 原子替换只防撕裂不防丢更新：两个并发 preflight、或 preflight 的自动 doctor 撞上
+ * 手工 doctor，会互相覆盖（缓存时间戳或新鲜探针被旧内存态盖掉）。
+ * 本项目已在 state.json 上踩过同一个坑，这里不再重复。
+ *
+ * 加锁由调用方负责——`persistProbe` 自己加锁会与调用方已持有的锁死锁。
+ * 唯一的调用入口是 `persistProbeLocked`。
+ */
+async function persistProbeUnlocked(triviumDir: string, probe: ProbeSection): Promise<string> {
   const p = path.join(triviumDir, 'config.local.yaml');
   const existing = ((await readYamlIfExists(p)) as Record<string, unknown> | undefined) ?? {};
   existing['probe'] = probe;
@@ -227,6 +237,39 @@ export async function persistProbe(triviumDir: string, probe: ProbeSection): Pro
     '# 其它字段可覆盖 config.yaml 中的任意配置项。\n\n';
   await fs.writeFile(p, header + YAML.stringify(existing, { lineWidth: 0 }), 'utf8');
   return p;
+}
+
+/** 串行化版本：所有生产路径都走这个（GLM-07） */
+export async function persistProbe(
+  triviumDir: string,
+  probe: ProbeSection,
+  heartbeatStaleMs = 120_000,
+): Promise<string> {
+  const { withGlobalLock } = await import('./lock.js');
+  return withGlobalLock({ triviumDir, heartbeatStaleMs }, () =>
+    persistProbeUnlocked(triviumDir, probe),
+  );
+}
+
+/**
+ * 只更新 probe 的一部分（探活缓存等），不覆盖其它段。
+ *
+ * 与 persistProbe 的区别：它接受一个 mutate 函数，在**锁内**先读回最新的
+ * probe 再改——避免用调用方的旧内存态整体覆盖别人刚写的结论。
+ */
+export async function patchProbe(
+  triviumDir: string,
+  mutate: (p: ProbeSection) => void,
+  heartbeatStaleMs = 120_000,
+): Promise<string> {
+  const { withGlobalLock } = await import('./lock.js');
+  return withGlobalLock({ triviumDir, heartbeatStaleMs }, async () => {
+    const p = path.join(triviumDir, 'config.local.yaml');
+    const existing = ((await readYamlIfExists(p)) as Record<string, unknown> | undefined) ?? {};
+    const probe = ((existing['probe'] as ProbeSection | undefined) ?? defaultProbe());
+    mutate(probe);
+    return persistProbeUnlocked(triviumDir, probe);
+  });
 }
 
 /** 探针结论是否已过期（preflight 用，设计 §8.1） */

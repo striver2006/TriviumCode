@@ -29,13 +29,27 @@ export function resolveTopicName(ctx: Ctx, raw: string): string {
   return v.normalized;
 }
 
-/** 解析主题引用并**创建**阶段目录 */
-export async function resolveTopic(ctx: Ctx, rawTopic: string, stage: Stage): Promise<TopicRef> {
+/**
+ * 解析主题引用，**不创建**任何目录。
+ *
+ * 零工件保证要求目录创建推迟到「确定要落盘」的那一刻（审查意见 GLM-04）：
+ * 在此之前若 locateSubject 抛 65 或 routeModel 抛 69，就会留下孤立空目录。
+ */
+export async function resolveTopicReadOnly(
+  ctx: Ctx,
+  rawTopic: string,
+  stage: Stage,
+): Promise<TopicRef> {
   const topic = resolveTopicName(ctx, rawTopic);
   const layout: ArchiveLayout = { archiveRoot: ctx.archiveRoot, topic };
-  const dir = stageDir(layout, stage);
-  await ensureDir(dir);
-  return { topic, layout, stage, stageDirAbs: dir };
+  return { topic, layout, stage, stageDirAbs: stageDir(layout, stage) };
+}
+
+/** 解析主题引用并**创建**阶段目录。只在确定要落盘时调用 */
+export async function resolveTopic(ctx: Ctx, rawTopic: string, stage: Stage): Promise<TopicRef> {
+  const ref = await resolveTopicReadOnly(ctx, rawTopic, stage);
+  await ensureDir(ref.stageDirAbs);
+  return ref;
 }
 
 /** 已存在的主题清单（供 status / report / 候选提示） */

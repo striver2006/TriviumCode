@@ -18,8 +18,13 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
 ## 状态机 S0～S10（设计 §8.2）
 
 ### S0 预检
-`TV preflight --stage all --json`。**`verify.build` / `verify.test` 皆为空时本命令拒绝启动**
-——跑完全流程却无法收口是不可接受的（§14.1）。失败则原样转述并停止。
+`TV preflight --stage all --json`
+
+`--stage all` 是命令 A 专用的范围：它校验 active profile 下**全部三个阶段**两侧的
+模型 slug，并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
+跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
+
+失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
 
 ### S1 起草计划
 把方案写成 `.reviews/<主题>/plan/<日期>-<主题>-claude.md`。用 Write 落盘。

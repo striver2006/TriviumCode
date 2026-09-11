@@ -107,6 +107,39 @@ export async function probeReadonlyFlags(
 }
 
 /**
+ * 采集 ZCode 的可用模型清单。
+ *
+ * 数据源是 CLI 侧的 `~/.zcode/cli/config.json`——**不是**桌面端那份
+ * （两者配置不共享，坑 P-08）。清单同时收录短名与 `<providerId>/<modelName>`
+ * 全限定形态，因为 profile 里允许写短名、适配层再补全前缀（坑 P-06）。
+ *
+ * 不采集这一项的后果很隐蔽：`preflight` 的 slug 校验会因清单为空而**空转**，
+ * 非法模型名一路漏到运行中段才以业务性失败暴露。本项目真的踩过这一次。
+ */
+export async function probeZcodeModels(homeDir?: string | null): Promise<string[]> {
+  const p = path.join(
+    homeDir ? path.join(homeDir, '.zcode/cli') : ZCODE_CLI_DIR,
+    'config.json',
+  );
+  if (!(await exists(p))) return [];
+  try {
+    const cfg = JSON.parse(await fs.readFile(p, 'utf8')) as {
+      provider?: Record<string, { models?: Record<string, unknown> }>;
+    };
+    const out = new Set<string>();
+    for (const [providerId, pv] of Object.entries(cfg.provider ?? {})) {
+      for (const modelId of Object.keys(pv.models ?? {})) {
+        out.add(modelId);
+        out.add(`${providerId}/${modelId}`);
+      }
+    }
+    return [...out].sort();
+  } catch {
+    return [];
+  }
+}
+
+/**
  * 定位工具轨迹来源。M0 实测需要**两个**文件，各自提供不同的信息：
  *   - `log/zcode-<date>.jsonl`：工具名、调用计数、`context.model`、结构化失败根因；
  *   - `rollout/model-io-sess_<sessionId>.jsonl`：工具**参数**（含文件路径）、`model.source`。
@@ -223,22 +256,27 @@ export async function probePathDeny(
 export async function probeZcode(
   configuredEntry: string | null,
   node: string,
-  opts: { skipModelCalls?: boolean } = {},
+  opts: { skipModelCalls?: boolean; existing?: ZcodeProbe } = {},
 ): Promise<{ probe: ZcodeProbe; notes: string[] }> {
   const notes: string[] = [];
-  const probe: ZcodeProbe = {
-    entry: null,
-    version: null,
-    readonly_flags: [],
-    model_override: null,
-    trace_source: null,
-    response_field: null,
-    path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
-    scratch_paths: [],
-    isolation: 'shared',
-    model_id_form: null,
-    models: [],
-  };
+  // 同 probeAgy：以既有结论为起点，跳过的探针保留原值——否则
+  // `doctor --no-model-calls` 会把上一次真实探到的 response_field / path_deny /
+  // scratch_paths / model_override 覆盖成 null，preflight 随即判该侧不可用。
+  const probe: ZcodeProbe = opts.existing
+    ? structuredClone(opts.existing)
+    : {
+        entry: null,
+        version: null,
+        readonly_flags: [],
+        model_override: null,
+        trace_source: null,
+        response_field: null,
+        path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
+        scratch_paths: [],
+        isolation: 'shared',
+        model_id_form: null,
+        models: [],
+      };
 
   const { entry, version } = await probeZcodeEntry(configuredEntry, node);
   probe.entry = entry;
@@ -247,6 +285,14 @@ export async function probeZcode(
     notes.push('未找到 zcode.cjs 入口，ZCode 侧不可用');
     return { probe, notes };
   }
+
+  const zcodeModels = await probeZcodeModels();
+  probe.models = zcodeModels;
+  notes.push(
+    zcodeModels.length > 0
+      ? `可用模型 ${zcodeModels.length} 个（含短名与全限定形态）：${zcodeModels.slice(0, 6).join(', ')}…`
+      : '⚠️ 未采集到模型清单（CLI config.json 缺失或无 provider）——preflight 的 slug 校验会空转',
+  );
 
   const ts = await probeTraceSource();
   probe.trace_source = ts.names;
@@ -279,7 +325,10 @@ export async function probeZcode(
     );
 
     if (opts.skipModelCalls || !cliConfigured) {
-      notes.push('跳过需要真实模型调用的 ZCode 探针（配置缺失或已显式跳过）');
+      notes.push(
+        '跳过需要真实模型调用的 ZCode 探针（配置缺失或已显式跳过）——' +
+          'response_field / path_deny / scratch_paths / model_override 保留上一次的结论',
+      );
       return { probe, notes };
     }
 

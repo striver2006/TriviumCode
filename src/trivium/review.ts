@@ -23,13 +23,14 @@ import { parseReview, enumerateFallbackFindings } from './parse.js';
 import { decideMode, runBothSides } from './runner.js';
 import { judgeRun, renderGuardWarnings } from './guard.js';
 import { renderReviewDoc } from './render.js';
-import { resolveTopic, locateSubject } from './topic.js';
+import { resolveTopicReadOnly, locateSubject } from './topic.js';
 import { resolveRerunIndex, writeArtifact, writeMeta, metaDir } from './archive.js';
 import { newRunId, newRunMeta, registerRun, summarizeRun, writeRunMeta } from './meta.js';
 import { runRoot } from './config.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
 import { workTreeHash } from './util/git.js';
-import { EXIT, envError, TriviumError } from './exit-codes.js';
+import { EXIT, envError, usageError, TriviumError } from './exit-codes.js';
+import { checkModelSlugs } from './preflight.js';
 import { say, step, warn } from './util/log.js';
 
 /** 运行目录按仓库路径哈希分桶，避免不同项目互相覆盖 */
@@ -96,7 +97,7 @@ export interface RunContext {
   cfg: Config;
   ctx: Ctx;
   stage: Stage;
-  ref: Awaited<ReturnType<typeof resolveTopic>>;
+  ref: Awaited<ReturnType<typeof resolveTopicReadOnly>>;
   adapterCtx: AdapterContext;
   adapters: Record<CriticId, typeof agyAdapter | typeof zcodeAdapter>;
   sides: CriticId[];
@@ -129,6 +130,19 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     nodePath: cfg.runtime.node ?? process.execPath,
   };
 
+  /*
+   * ── slug 校验内嵌于此（审查意见 GLM-01）──
+   *
+   * 独立的 `preflight` 命令看不到 skill 步骤 3 才传来的 --model-* 覆盖值，
+   * 而 routeModel 只透传不校验。若不在这里校验，非法 slug 会漏到运行中段才
+   * 以业务性失败暴露——白烧配额且 strict 下整次中止。
+   * §7.3 承诺的「退 64 并列出可用值」正是在这一处才真正成立。
+   */
+  {
+    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides);
+    if (!slug.ok) throw usageError(`模型 slug 不合法：\n  ${slug.detail}`);
+  }
+
   // ── 可用性检查：不可用就别开工，避免产生半套工件（AC-16 的精神）──
   const sides: CriticId[] = opts.onlyCritic ? [opts.onlyCritic] : [...CRITICS];
   for (const c of sides) {
@@ -139,7 +153,17 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     warn(`只跑 ${sides.join('/')} 一侧：这不是双审，结果会被标为降级。仅供调试使用。`);
   }
 
-  const ref = await resolveTopic(ctx, opts.topic, stage);
+  /*
+   * ── 零工件：先全部算、再统一写（审查意见 GLM-04）──
+   *
+   * 原先的顺序是「建阶段目录 → 逐侧冻结并**立即**写 brief」，于是
+   * locateSubject 抛 65、或第二侧 routeModel 抛 69 时，第一侧的 brief 已经落盘，
+   * 留下「目录 + 单侧 brief + 运行目录」的半套工件。
+   * review.ts 自己那句「不可用就别开工，避免产生半套工件」的注释因此没有兑现。
+   *
+   * 现在改为：全部计算在内存里完成，只有都成功了才开始落盘。
+   */
+  const ref = await resolveTopicReadOnly(ctx, opts.topic, stage);
   const rerunIndex = await resolveRerunIndex(ref.layout, stage);
   const runId = newRunId();
 
@@ -151,8 +175,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   step(`被审对象 ${path.relative(ctx.projectRoot, subjectPath)}`);
 
   // ── 运行目录（项目外，§10.1 第 ② 道）──
+  // 运行目录也推迟到落盘阶段才建（GLM-04）
   const runDirBase = path.join(runRoot(cfg), repoId(ctx.projectRoot), runId);
-  await ensureDir(runDirBase);
 
   const lenses = await loadLenses(lensesPath);
   const mustRead = await buildMustReadList(cfg, ctx.projectRoot, ref.topic, opts.contextPaths);
@@ -163,6 +187,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const snapshots: Partial<Record<CriticId, Awaited<ReturnType<typeof freeze>>>> = {};
   const requests: Partial<Record<CriticId, CriticRequest>> = {};
   const metaPaths: string[] = [];
+  /** 两侧的 brief 先攒在这里，全部算完才落盘（GLM-04） */
+  const pendingBriefs: { fileName: string; text: string }[] = [];
 
   for (const critic of sides) {
     const snap = await freeze({
@@ -198,10 +224,10 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       minProjectReads: cfg.review.min_project_reads[stage],
     });
 
-    // BRIEF 落归档 _meta/（它本身就是审计材料，AC-17）
+    // 先不落盘：brief 暂存内存，等两侧都算完再统一写（GLM-04）
     const briefFile = `brief-${critic}-${runId}.md`;
-    const w = await writeMeta(ref.layout, stage, briefFile, briefText);
-    metaPaths.push(w.absPath);
+    const briefAbs = path.join(metaDir(ref.layout, stage), briefFile);
+    pendingBriefs.push({ fileName: briefFile, text: briefText });
 
     requests[critic] = {
       run_id: runId, topic: ref.topic, stage, critic,
@@ -209,7 +235,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       subject_path: subjectPath,
       deny_paths: snap.denyPaths,
       out_dir: path.join(runDirBase, critic, 'out'),
-      brief_path: w.absPath,
+      brief_path: briefAbs,
       brief_text: briefText,
       model: routed.model,
       effort: critic === 'gemini' ? cfg.critics.gemini.effort[stage] : undefined,
@@ -221,6 +247,17 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   }
 
   const primarySnap = snapshots[sides[0]!]!;
+
+  /*
+   * ── 到这里为止**一个文件都没写**。从这一行开始才落盘。──
+   * 顺序：建阶段目录 → 写两份 brief → 建运行目录 → 写 run.json
+   */
+  await ensureDir(ref.stageDirAbs);
+  for (const b of pendingBriefs) {
+    const w = await writeMeta(ref.layout, stage, b.fileName, b.text);
+    metaPaths.push(w.absPath);
+  }
+  await ensureDir(runDirBase);
 
   // ── run.json 骨架（status: running），崩溃后也能取证 ──
   const meta = newRunMeta({

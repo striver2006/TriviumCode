@@ -25,7 +25,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 
 ### 2. 解析主题与被审对象
 
-运行 `TV topic resolve --stage bug --args "$ARGUMENTS" --json`。
+运行 `TV topic resolve --stage bug --json -- $ARGUMENTS`。
 
 - 若提示语为空 → 停止并说明「命令 D 必须携带审查焦点提示语」（FR-20）。
   提示语会**逐字**进入两侧送审材料，是 AC-09 的验收落点，不能省。

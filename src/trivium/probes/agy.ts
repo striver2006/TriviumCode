@@ -248,21 +248,31 @@ export async function probeScratchPaths(fx: Fixture): Promise<string[]> {
 export async function probeAgy(
   configuredBin: string | null,
   agentName: string,
-  opts: { skipModelCalls?: boolean } = {},
+  opts: { skipModelCalls?: boolean; existing?: AgyProbe } = {},
 ): Promise<{ probe: AgyProbe; notes: string[] }> {
   const notes: string[] = [];
-  const probe: AgyProbe = {
-    bin: null,
-    version: null,
-    models: [],
-    headless_read_ok: null,
-    json_schema_ok: null,
-    pty_required: null,
-    path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
-    scratch_paths: [],
-    isolation: 'shared',
-    read_strategy: null,
-  };
+  /*
+   * 以**既有结论**为起点，而不是从 null 开始。
+   *
+   * 否则 `doctor --no-model-calls`（文档里作为「省配额」选项推荐的）会把上一次
+   * 真实探到的 headless_read_ok / json_schema_ok / path_deny / scratch_paths
+   * 统统覆盖成 null，preflight 随即判该侧不可用——用户会以为是环境坏了。
+   * 真跑时踩过这一次。跳过的探针必须保留原值。
+   */
+  const probe: AgyProbe = opts.existing
+    ? structuredClone(opts.existing)
+    : {
+        bin: null,
+        version: null,
+        models: [],
+        headless_read_ok: null,
+        json_schema_ok: null,
+        pty_required: null,
+        path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
+        scratch_paths: [],
+        isolation: 'shared',
+        read_strategy: null,
+      };
 
   const { bin, version } = await probeAgyBin(configuredBin);
   probe.bin = bin;
@@ -275,7 +285,10 @@ export async function probeAgy(
   if (probe.models.length === 0) notes.push('agy models 输出为空或不可解析');
 
   if (opts.skipModelCalls) {
-    notes.push('已跳过需要真实模型调用的探针（--no-model-calls）');
+    notes.push(
+      '已跳过需要真实模型调用的探针（--no-model-calls）——' +
+        'headless_read_ok / json_schema_ok / path_deny / scratch_paths 保留上一次的结论',
+    );
     return { probe, notes };
   }
 

@@ -19,6 +19,10 @@ import { recordApproval } from './approval.js';
 import { resolveTopic, listTopics } from './topic.js';
 import { readTask } from './meta.js';
 import { runInit, renderInitReport } from './init.js';
+import {
+  commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
+} from './preflight.js';
+import { resolveTopicArgs } from './topic-args.js';
 import { STAGES, type CriticId, type Stage } from './types.js';
 import { emitJson, fail, isJsonMode, say, setOutputMode, step, warn } from './util/log.js';
 
@@ -28,14 +32,30 @@ interface ParsedArgs {
   command: string;
   sub: string[];
   flags: Map<string, string | boolean>;
+  /**
+   * `--` 之后的全部内容，原样拼回一个字符串。
+   *
+   * 存在的理由：`topic resolve` 要接收 skill 的整串 `$ARGUMENTS`，而它本身以
+   * `--topic …` 开头。用 `--args <值>` 传会被下面的「值不能以 -- 开头」规则误判成
+   * 布尔标志——真跑时踩过。`--` 终止符让这种值可以无歧义地传进来。
+   */
+  trailing: string;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
   const flags = new Map<string, string | boolean>();
   const positional: string[] = [];
+  let trailing = '';
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
+
+    // `--` 之后的一切都不再解析，整体作为 trailing
+    if (a === '--') {
+      trailing = argv.slice(i + 1).join(' ');
+      break;
+    }
+
     if (!a.startsWith('--')) {
       positional.push(a);
       continue;
@@ -55,7 +75,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
   }
 
-  return { command: positional[0] ?? '', sub: positional.slice(1), flags };
+  return { command: positional[0] ?? '', sub: positional.slice(1), flags, trailing };
 }
 
 const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编排器
@@ -85,6 +105,15 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
 
   trivium review --status <run_id> [--json]    只读一次状态，不等待
   trivium review --cancel <run_id>             取消运行并回收主题锁
+
+  trivium preflight --stage plan|code|bug|all [--json] [--skip-auth-check] [--refresh-auth]
+      启动预检（FR-18 / AC-16）。失败时**不产生任何工件**。
+      --stage all   命令 A 用：校验全部三阶段的模型 slug + 编译测试命令已配置
+      --refresh-auth  强制重新探活，穿透 TTL 缓存
+
+  trivium topic resolve --stage <s> -- <整串 $ARGUMENTS>   [--json]
+      解析主题、提示语、被审对象与模型覆盖。**纯只读**，不创建任何目录。
+      用 -- 终止符传原始参数串：它本身以 --topic 开头，用 --args <值> 会有歧义。
 
   trivium init [--dry-run] [--asset-root <路径>]
       在本项目布置运行时：.trivium/（config.yaml + bin/trivium wrapper）、
@@ -297,6 +326,70 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
   return report.blockers.length === 0 ? EXIT.OK : EXIT.ENV;
 }
 
+async function cmdPreflight(args: ParsedArgs): Promise<number> {
+  const ctx = await loadCtx();
+  const scope = parsePreflightScope(flagString(args, 'stage'));
+
+  const modelOverrides: Partial<Record<CriticId, string>> = {};
+  const mg = flagString(args, 'model-gemini');
+  const mz = flagString(args, 'model-glm');
+  if (mg) modelOverrides.gemini = mg;
+  if (mz) modelOverrides.glm = mz;
+
+  const r = await runPreflight({
+    ctx,
+    scope,
+    modelOverrides,
+    skipAuthCheck: args.flags.get('skip-auth-check') === true,
+    refreshAuth: args.flags.get('refresh-auth') === true,
+  });
+  // 只有通过才写探活缓存——否则「预检失败」会留下写入，AC-16 字面不成立（GLM-05）
+  await commitAuthCache(ctx, r);
+
+  if (isJsonMode()) {
+    emitJson({
+      ok: r.ok,
+      scope: r.scope,
+      checks: r.checks.map((c) => ({ name: c.name, ok: c.ok, detail: c.detail })),
+      exit_code: r.exitCode,
+    });
+  } else {
+    say(renderPreflight(r));
+  }
+  return r.ok ? EXIT.OK : r.exitCode;
+}
+
+async function cmdTopic(args: ParsedArgs): Promise<number> {
+  if (args.sub[0] !== 'resolve') {
+    throw usageError(`topic 只支持 resolve 子命令，收到：${args.sub[0] ?? '(空)'}`);
+  }
+  const ctx = await loadCtx();
+  const scope = parsePreflightScope(flagString(args, 'stage'));
+  /*
+   * 三种传法都支持，优先级：`--` 终止符 > `--args=<值>` > `--args <值>`。
+   * skill 用 `--` 形式最稳——整串 $ARGUMENTS 以 `--topic` 开头时另两种会歧义。
+   */
+  const rawArgs = args.trailing || flagString(args, 'args') || '';
+  if (rawArgs.length === 0) {
+    throw usageError(
+      'topic resolve 需要原始参数串。推荐写法：\n' +
+        '  trivium topic resolve --stage plan -- <整串 $ARGUMENTS>',
+    );
+  }
+
+  const r = await resolveTopicArgs({ ctx, scope, rawArgs });
+  if (isJsonMode()) {
+    emitJson({ ok: true, ...r });
+  } else {
+    say(`主题 ${r.topic}${r.topic_inferred ? '（由任务目标推导，请确认）' : ''}`);
+    say(`提示语 ${r.prompt_hint ?? '(无)'}`);
+    say(`被审对象 ${r.subject_path ?? (r.base ? `git diff ${r.base}` : '(本阶段无单一被审文件)')}`);
+    if (r.context_paths.length > 0) say(`必读路径 ${r.context_paths.join(', ')}`);
+    for (const n of r.notes) step(n);
+  }
+  return EXIT.OK;
+}
+
 async function cmdInit(args: ParsedArgs): Promise<number> {
   const ctx = await loadCtx({ allowUninitialized: true });
   const dryRun = args.flags.get('dry-run') === true;
@@ -491,6 +584,10 @@ export async function main(argv: string[]): Promise<number> {
       return cmdReview(args);
     case 'init':
       return cmdInit(args);
+    case 'preflight':
+      return cmdPreflight(args);
+    case 'topic':
+      return cmdTopic(args);
     case 'gate':
       return cmdGate(args);
     case 'approve':

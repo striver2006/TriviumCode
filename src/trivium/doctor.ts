@@ -74,6 +74,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     step('探测 Antigravity（agy）…');
     const r = await probeAgy(opts.config.critics.gemini.bin, opts.config.critics.gemini.agent, {
       skipModelCalls: opts.skipModelCalls ?? false,
+      existing: probe.agy,
     });
     probe.agy = r.probe;
     notes.push(...r.notes.map((n) => `[agy] ${n}`));
@@ -91,6 +92,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     step('探测 ZCode（zcode.cjs）…');
     const r = await probeZcode(opts.config.critics.glm.entry, env.nodePath ?? process.execPath, {
       skipModelCalls: opts.skipModelCalls ?? false,
+      existing: probe.zcode,
     });
     probe.zcode = r.probe;
     notes.push(...r.notes.map((n) => `[zcode] ${n}`));

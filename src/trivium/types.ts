@@ -81,14 +81,33 @@ export interface ZcodeProbe {
   models?: string[];
 }
 
+export interface AuthCacheEntry {
+  checked_at: string;
+  cli_version: string | null;
+  /** 决定可用性的配置文件指纹：agy 取 Agent 定义哈希，zcode 取 CLI config.json 哈希 */
+  fingerprint: string | null;
+  /** 恒为 true——负结论不入缓存 */
+  ok: true;
+}
+
 export interface ProbeSection {
   generated_at: string | null;
   /** doctor 探测到的编译测试候选命令，仅供 init 展示确认，绝不自动执行（设计 §14.1） */
   verify_suggestion: { build: string[]; test: string[] };
   agy: AgyProbe;
   zcode: ZcodeProbe;
-  /** preflight 探活结果的短 TTL 缓存 */
-  auth?: { agy_checked_at?: string | null; zcode_checked_at?: string | null };
+  /**
+   * preflight 探活结果的短 TTL 缓存（审查意见 AGY-02 / GLM-06）。
+   *
+   * 只有时间戳是不够的：ZCode 的 CLI 版本长期不变，但可用性取决于
+   * `~/.zcode/cli/config.json` 的 provider 与 apiKey（坑 P-08 / P-10）；
+   * Antigravity 的只读保障取决于 Agent 定义文件存在。因此缓存键要含
+   * **版本 + 配置指纹**，任一变化即失效。
+   *
+   * 且**只缓存正结论**：失败探活本身快且便宜，缓存负结论会把「用户交互登录修复后」
+   * 挡在 TTL 之外，而 `--skip-auth-check` 是跳过而非刷新、缓存依然是脏的。
+   */
+  auth?: Partial<Record<CriticId, AuthCacheEntry>>;
   /** 本机环境事实 */
   host?: {
     platform: string;
