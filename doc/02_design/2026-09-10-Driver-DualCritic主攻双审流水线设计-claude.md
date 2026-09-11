@@ -9,7 +9,7 @@
 >   本文继续作为**唯一实现依据**：后续任何与本文不一致的改动，仍须先回溯修订本文（16.2 纪律 1）
 > - **审核依据**：①[`2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md`](./reference/2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md)（v1.1.0 按其 RV-01～RV-26 修订，逐条应答见第 22 章）；②项目负责人评审意见 UR-01～UR-06（2026-09-11，v1.2.0 据此修订，逐条应答见第 23 章）
 > - **架构决策记录**：[`ADR_001_isolation_mode.md`](./ADR_001_isolation_mode.md)（就地审查模式，Accepted）
-> - **实测依据**：[`REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md)（M0 本机坑清单，15 个坑 P-01～P-15 与 12 条冲突 C-01～C-12；v1.2.1 据此回补第 3、10、11、12 章）。**凡本文与该报告冲突，以实测为准**（16.2 纪律 1）
+> - **实测依据**：[`REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md)（M0 本机坑清单，18 个坑 P-01～P-18 与 12 条冲突 C-01～C-12；v1.2.1 据此回补第 3、10、11、12 章）。**凡本文与该报告冲突，以实测为准**（16.2 纪律 1）
 > - **需求依据**：[PRD_driver_dual_critic.md](../01_requirements/PRD_driver_dual_critic.md) v1.3.0
 > - **参考方案**：[`reference/`](./reference/) 下 5 份多模型设计答卷（gemini / grok4.6 / dsv4flash / qwen3.8-flash / zcode）
 > - **外部调研截止**：2026-09-10（Antigravity CLI 官方文档与 CHANGELOG、Claude Code Hooks 官方文档、ZCode 官方文档与社区 bridge 实现）
@@ -1521,7 +1521,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 
 | 里程碑 | 内容 | 完成判据 | 预估 | 状态 |
 | :--- | :--- | :--- | :--- | :--- |
-| **M0 探路（必须最先做）** | 在目标 macOS 机器上逐项实测第 3.5 节探针清单（含 `*.path_deny`、`*.scratch_paths`）；把结论固化进 `config.local.yaml` 的 `probe:` 段；产出「本机坑清单」 | 拿到两侧**真实可用**的 headless 命令模板；能证明「只读生效 + 能读文件 + 能换模型 + 能拿轨迹 + 路径 deny 是否可用已知 + 临时文件白名单已知」 | 1～2 天 | ✅ 两侧探针全部有确定结论；`path_deny` 两侧均实测为 `false`（各配负对照），`scratch_paths` 均为 `[]`；产出 15 个坑 + 12 条冲突的本机坑清单，冲突已回补进 v1.2.1 |
+| **M0 探路（必须最先做）** | 在目标 macOS 机器上逐项实测第 3.5 节探针清单（含 `*.path_deny`、`*.scratch_paths`）；把结论固化进 `config.local.yaml` 的 `probe:` 段；产出「本机坑清单」 | 拿到两侧**真实可用**的 headless 命令模板；能证明「只读生效 + 能读文件 + 能换模型 + 能拿轨迹 + 路径 deny 是否可用已知 + 临时文件白名单已知」 | 1～2 天 | ✅ 两侧探针全部有确定结论；`path_deny` 两侧均实测为 `false`（各配负对照），`scratch_paths` 均为 `[]`；产出 18 个坑 + 12 条冲突的本机坑清单（P-16～P-18 为 M4/M5 期间真实运行补录），冲突已回补进 v1.2.1 |
 | **M1 单阶段闭环** | TypeScript 工程骨架（`package.json`、esbuild 打包、`node:test`）；`config`/`topic`/`freeze`/`brief`/`adapters`/`runner`/`parse`/`render`/`archive`；先只做 `plan` 阶段 | 手工调用 `node skills/dual-critic/scripts/trivium.cjs review --stage plan` 在真实项目根得到两份合规 Markdown + `_meta/` | 2～3 天 | ✅ `plan` 阶段真实跑通并自举两次（M2 / M3 计划审各一轮，共 29 条真实意见） |
 | **M2 skills 与闸门** | 7 个入口 skill + 核心 skill + 安装器 + `review --start/--wait` 协议 + `gate` 裁决校验 + Hook 三件套 + `state.json` + 主题锁 | `/dual-review-plan` 端到端可跑且单次 Bash 调用不超时；删一条裁决即被拦；同会话闸门期写业务文件被 deny，新会话不被误伤；`disable-model-invocation` 生效 | 3 天 | ✅ 7 个入口 skill + 核心 skill + 安装器 + `--start`/`--wait` 分段协议 + `gate --check` + Hook 三件套；未初始化仓库中四个 Hook 均退 0 零输出 |
 | **M3 隔离、证据、降级、模型路由** | 禁读清单 + 路径 deny 注入 + 轨迹核验、只读指纹与漂移检测、项目文件读取下限与 `consulted` 核对、strict/degrade、模型四级路由与两档覆盖及回读、`preflight` | AC-04 / AC-05 / AC-06 / AC-08 / AC-11 / AC-13 / AC-16 / AC-17 / AC-18 全部可演示 | 3 天 | ✅ 含桩适配器跨进程注入（`TRIVIUM_STUB_CRITIC`）与位置归一化后的退化指标；故障注入 14 例、零工件 7 例 |

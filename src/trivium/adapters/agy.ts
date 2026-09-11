@@ -54,12 +54,36 @@ export interface AgyInvokeOutcome {
   printTimeoutWarned: boolean;
 }
 
+/**
+ * 模型 slug 是否自带努力档位后缀。
+ *
+ * agy 的目录形如 `gemini-3.8-flash-high` / `gemini-3.1-pro-low` / `gpt-oss-120b-medium`；
+ * 也有不带档位的（`claude-sonnet-4-6`），那种才需要 `--effort`。
+ */
+export function modelEncodesEffort(model: string | null): boolean {
+  return model !== null && /-(high|medium|low)$/.test(model);
+}
+
 /** 拼装并执行一次 agy headless。**唯一**构造 agy 命令行的地方 */
 export async function invokeAgy(opts: AgyInvokeOptions): Promise<AgyInvokeOutcome> {
   const args = ['-p', opts.prompt, '--output-format', 'stream-json'];
   if (opts.model) args.push('--model', opts.model);
   if (opts.agent) args.push('--agent', opts.agent);
-  if (opts.effort) args.push('--effort', opts.effort);
+  /*
+   * `--effort` 只在模型 slug **没有**自带档位时才传。
+   *
+   * agy 1.2.0 的 slug 本身就编码了档位（`gemini-3.8-flash-high`、`gemini-3.1-pro-low`），
+   * 此时再给 `--effort` 会被直接拒绝：
+   *   error: invalid model selection (--model "gemini-3.8-flash-high" --effort "medium"):
+   *          --model gemini-3.8-flash-high conflicts with --effort=medium
+   * 实测踩到（坑 P-16）：plan 阶段恰好 slug 与 effort 都是 high 所以一直没暴露，
+   * code 阶段配的是 medium，一跑就非零退出、白烧一次调用。
+   *
+   * slug 是权威：它来自探针回读的模型目录，而 `critics.gemini.effort` 只是配置意图。
+   */
+  if (opts.effort && !modelEncodesEffort(opts.model ?? null)) {
+    args.push('--effort', opts.effort);
+  }
   if (opts.jsonSchemaPath) args.push('--json-schema', opts.jsonSchemaPath);
 
   // 进程内超时略小于脚本级超时，让 agy 有机会自己收尾并吐出已有输出

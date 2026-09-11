@@ -53,9 +53,20 @@ cd /path/to/你的项目
 
 **验什么**：两侧真的以独立进程跑在项目根上；两侧原始输出落在**项目树之外**。
 
+> ⚠️ **先读这一段，否则你会验出错误结论。** 2026-09-11 一次真实运行实测到：
+>
+> - **agy 的 `-p` 进程只活约 10 秒**，随后把工作交给一个常驻 **hub 进程**
+>   （`agy --hub --hub-port=<n> --app_data_dir=antigravity --add-dir=<项目根>`）。
+>   该 hub **跨运行复用**，实测启动时间比本次运行早 8.5 小时。
+>   所以「运行期间 ps 一直能看到 `agy -p`」**不成立**（坑 P-17）。
+> - **ZCode 把进程名改成 `zcode-cli`**（另有 `zcode-node-repl-mcp` 辅助进程），
+>   `pgrep -f 'zcode\.cjs'` **恒为空**（坑 P-18）。
+>
+> 按旧写法验，两侧都会得出「进程没起来」的错误结论。
+
 **怎么做**（需要两个终端）
 
-终端 A —— 起一次审查并**立刻**开始观察：
+终端 A —— 起一次审查：
 
 ```bash
 TV=.trivium/bin/trivium
@@ -63,19 +74,28 @@ $TV review --start --stage plan --topic <你的主题> --focus "看并发与回�
 # 记下返回的 run_id 与 run_dir
 ```
 
-终端 B —— 在审查跑着的时候执行：
+终端 B —— **立刻**开始轮询（`agy -p` 只有约 10 秒窗口）：
 
 ```bash
-# ① 两个进程都在，且 cwd 指向项目根
-ps -eo pid,ppid,command | grep -E 'agy|zcode\.cjs' | grep -v grep
-for p in $(pgrep -f 'agy|zcode\.cjs'); do
+for i in $(seq 1 30); do
+  date +%H:%M:%S
+  ps -eo pid,command | grep -E 'zcode-cli|agy ' | grep -v grep | cut -c1-140
+  sleep 5
+done
+```
+
+抓到 pid 后取 cwd：
+
+```bash
+for p in $(pgrep -x zcode-cli) $(pgrep -f 'agy --hub'); do
   echo "pid $p cwd: $(lsof -a -d cwd -p $p -Fn 2>/dev/null | tail -1 | cut -c2-)"
+  ps -p $p -o lstart=
 done
 
-# ② 项目树内**没有**本次对方结论
+# 项目树内**没有**本次对方结论
 ls .reviews/<主题>/plan/          # 此刻不应出现 -gemini.md / -glm.md
 
-# ③ 项目外的运行目录里有两侧原始输出
+# 项目外的运行目录里有两侧原始输出
 ls -R ~/.trivium/runs/*/<run_id>/
 ```
 
@@ -83,16 +103,21 @@ ls -R ~/.trivium/runs/*/<run_id>/
 
 | # | 判据 | 依据 |
 | :--- | :--- | :--- |
-| 2.1 | `ps` 同时看到 `agy` 与 `zcode.cjs` 两个进程 | 真的拉起了厂商 Agent，不是 LLM 补全 |
-| 2.2 | 两个进程的 cwd 都是项目根 | 就地审查（ADR-001），不是镜像树 |
-| 2.3 | 审查进行中，`.reviews/<主题>/plan/` 里**没有** `-gemini.md` / `-glm.md` | 延迟落盘：对方本次结论在树内物理不存在（§10.1 第 ② 道） |
-| 2.4 | `~/.trivium/runs/<repo_id>/<run_id>/{gemini,glm}/` 下有原始 stdout 与轨迹 | 原始日志可能含仓库片段，故留在项目外 |
-| 2.5 | 两侧结论**同时**出现（不是一先一后） | 齐备后统一落盘 |
+| 2.1 | 能看到 `zcode-cli` 进程；agy 侧能看到 `agy --hub …`（`agy -p` 若没抓到属正常，它只活约 10s） | 真的拉起了厂商 Agent，不是 LLM 补全 |
+| 2.2 | 这些进程的 cwd 都是项目根 | 就地审查（ADR-001），不是镜像树 |
+| 2.3 | agy hub 的命令行里带 `--add-dir=<项目根>` | 工作区授权的实际落点 |
+| 2.4 | 审查进行中，`.reviews/<主题>/plan/` 里**没有** `-gemini.md` / `-glm.md` | 延迟落盘：对方本次结论在树内物理不存在（§10.1 第 ② 道） |
+| 2.5 | `~/.trivium/runs/<repo_id>/<run_id>/{gemini,glm}/` 下有原始 stdout 与轨迹 | 原始日志可能含仓库片段，故留在项目外 |
+| 2.6 | 两侧结论**同时**出现（不是一先一后） | 齐备后统一落盘 |
+
+**一并注意 agy hub 的隔离含义**：hub 跨运行复用，因此「为每次运行准备独立
+`HOME`」这类手段对它**不生效**。隔离结论一律以 `probe.agy.isolation` 为准，
+不要假设每次运行都有独立的 agy 进程空间（P-17）。
 
 > `lsof` 在部分 macOS 安全设置下需要授权。取不到 cwd 时，退而求其次看
-> `ps -o command=` 里是否带 `--cwd <项目根>`（ZCode 侧）。
+> agy hub 命令行里的 `--add-dir`。
 
-**同时可验剧本 5 的第一半**：审查进行中，让 Claude Code 改一个业务文件，
+**同时可验**：审查进行中，让 Claude Code 改一个业务文件，
 应被 `hook-pre-write` 以 exit 2 拦下并提示「审查进行中」。
 
 ---

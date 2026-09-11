@@ -109,6 +109,14 @@ export interface ReviewOutcome {
   metaPaths: string[];
   warnings: string[];
   exitCode: number;
+  /**
+   * 逐侧真实状态。
+   *
+   * 工作进程要拿它去写 `status.json`——此前那里**硬编码 `'ok'`**，
+   * 于是一侧硬失败时 `--wait` / `--status` 仍显示「gemini: ok」，
+   * 操作者看到的状态与 run.json 相反。
+   */
+  sideStatuses: Partial<Record<CriticId, CriticResult['status']>>;
 }
 
 /** skill 资产根：优先环境变量，其次用户级安装位置 */
@@ -276,10 +284,13 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   step(`主题 ${ref.topic} ｜ 阶段 ${stage} ｜ 第 ${rerunIndex} 轮 ｜ run ${runId}`);
   step(`被审对象 ${path.relative(ctx.projectRoot, subjectPath)}`);
   if (stage === 'code' && frozenDiffText) {
+    // head 从补丁头部回读，别再传 null——此前摘要里 HEAD 恒显示为「—」
+    const headLine = /^# head: (.+)$/m.exec(frozenDiffText);
     step(
       summarizeDiff({
         path: subjectPath, sha256: '', files: filesInDiff(frozenDiffText),
-        base: opts.diffBase ?? 'HEAD', head: null,
+        base: opts.diffBase ?? 'HEAD',
+        head: headLine?.[1]?.startsWith('(') ? null : (headLine?.[1] ?? null),
         bytes: Buffer.byteLength(frozenDiffText, 'utf8'),
       }),
     );
@@ -466,6 +477,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     return {
       runId, rerunIndex, artifacts: [], metaPaths,
       warnings: [notice], exitCode: EXIT.OK,
+      sideStatuses: {},
     };
   }
   // ── 并行拉起两侧 ──
@@ -694,7 +706,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   for (const a of artifacts) say(`  ${path.relative(ctx.projectRoot, a)}`);
   say(`  ${path.relative(ctx.projectRoot, metaDir(ref.layout, stage))}/ （${metaPaths.length} 份审计材料）`);
 
-  return { runId, rerunIndex, artifacts, metaPaths, warnings, exitCode };
+  return {
+    runId, rerunIndex, artifacts, metaPaths, warnings, exitCode,
+    sideStatuses: Object.fromEntries(
+      sides.map((c) => [c, results[c]?.status ?? 'failed']),
+    ) as Partial<Record<CriticId, CriticResult['status']>>,
+  };
 }
 
 /** 己方历史产出与 Driver 对它的裁决（§9.4 第 4 段最后一条） */

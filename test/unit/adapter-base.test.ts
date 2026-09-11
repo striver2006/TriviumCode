@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { modelEncodesEffort } from '../../src/trivium/adapters/agy.js';
 import assert from 'node:assert/strict';
 import {
   checkEvidence,
@@ -153,4 +154,24 @@ test('失败结果构造：evidence_ok 恒为 false，字段不漏', () => {
   assert.equal(r.model_effective_source, 'unverified');
   assert.equal(r.peer_deny_applied, false);
   assert.equal(r.fail_reason, '超时');
+});
+
+// ── agy 的 --effort 与模型 slug 冲突（坑 P-16，实测踩到）──
+
+test('模型 slug 自带档位时不再传 --effort', () => {
+  // agy 1.2.0：`--model gemini-3.8-flash-high --effort medium` 会被直接拒绝
+  assert.equal(modelEncodesEffort('gemini-3.8-flash-high'), true);
+  assert.equal(modelEncodesEffort('gemini-3.1-pro-low'), true);
+  assert.equal(modelEncodesEffort('gpt-oss-120b-medium'), true);
+});
+
+test('不带档位的 slug 仍需要 --effort', () => {
+  assert.equal(modelEncodesEffort('claude-sonnet-4-6'), false);
+  assert.equal(modelEncodesEffort('claude-opus-4-6-thinking'), false);
+  assert.equal(modelEncodesEffort(null), false);
+});
+
+test('档位只认结尾，中间出现 high/low 不算', () => {
+  assert.equal(modelEncodesEffort('gemini-high-pro'), false);
+  assert.equal(modelEncodesEffort('some-lowercase'), false);
 });

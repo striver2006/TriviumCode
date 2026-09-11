@@ -24,4 +24,4 @@
 ## 当前已归档文件
 
 - [`CASE_manual_acceptance.md`](./CASE_manual_acceptance.md)：人工验收剧本（PRD 场景 S1～S5 / 设计 §17.3）。自动化测试与 `doctor --selftest` 覆盖不到的部分——需要人在 Claude Code 窗口里操作，或必须真实消耗两侧厂商配额。
-- [`REPORT_2026-09-11_m0_probe.md`](./REPORT_2026-09-11_m0_probe.md)：M0 探针本机实测报告（本机坑清单）。15 个坑 P-01～P-15 与 12 条与厂商文档记载不符之处 C-01～C-12。
+- [`REPORT_2026-09-11_m0_probe.md`](./REPORT_2026-09-11_m0_probe.md)：M0 探针本机实测报告（本机坑清单）。18 个坑 P-01～P-18 与 12 条与厂商文档记载不符之处 C-01～C-12。

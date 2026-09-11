@@ -272,6 +272,9 @@ ZCode 的读路径有多条（`Read` / `Grep` / `Glob` / `ReadSessionContext` / 
 | **P-11** | `zcode.cjs` **无法单独拉起 TUI**：报 `Cannot find package '@zcode/tui'`。TUI 只存在于桌面应用的 `app.asar` 内，磁盘上既无 `zcode-tui-runtime/`，也无 SEA 单文件可执行版 | 「开一次 TUI 生成配置」这条路走不通 | CLI 侧配置必须**手工创建**。已实测验证的最小结构见 §6.3 |
 | **P-12** | ZCode 的配置根**只认 `HOME`**。`ZCODE_HOME` 等专用变量看似存在（二进制中有该字符串）但对配置解析无效 | 按变量名推断隔离方案会失败 | 隔离一律走独立 `HOME`（`home_copy`），并把凭据写入该 HOME 下的 `config.json` 副本 |
 | **P-10** | ZCode「已登录」不等于「可用」：凭据与桌面端共享，但模型 provider 配置 CLI 侧独立且可能缺失 | 预检若只查凭据会漏判，跑到一半才失败 | 预检必须真跑一次最小 headless（P-08 的加强版）；错误分类要区分 `provider_not_configured` 与鉴权失败 |
+| **P-16** | agy 1.2.0 拒绝「自带档位的模型 slug + `--effort`」组合：`--model gemini-3.8-flash-high --effort medium` 直接非零退出，报 `conflicts with --effort=medium` | 一次真实代码审在 5.6s 内失败、白烧一次调用。**plan 阶段恰好 slug 与 effort 都是 `high`，一致所以从未暴露**；code 阶段配的是 `medium`，一跑就中 | slug 自带 `-high\|-medium\|-low` 后缀时**不传** `--effort`（slug 是权威，它来自探针回读的模型目录；`critics.gemini.effort` 只是配置意图）。见 `adapters/agy.ts` 的 `modelEncodesEffort` |
+| **P-17** | agy headless 的 `-p` 进程**只存活约 10 秒**，随后工作转交给一个常驻 **hub 进程**（`agy --hub --hub-port=<n> --app_data_dir=antigravity --add-dir=<项目根>`）。该 hub 在本次运行之前**就已存在**（实测启动时间早于本次运行 8.5 小时） | 「运行期间 `ps` 能看到 agy 进程」这条验收判据按字面理解会失败；更重要的是：hub 跨运行复用，**独立 `HOME` 之类的隔离手段对它不生效** | 验收改看 hub 的 `--add-dir` 与 cwd；隔离结论以 `probe.agy.isolation` 为准，不要假设每次运行都有独立的 agy 进程空间 |
+| **P-18** | ZCode 的 headless 进程把进程名改成 **`zcode-cli`**（另有 `zcode-node-repl-mcp` 辅助进程），`ps`/`pgrep` 里**看不到 `zcode.cjs`** | `pgrep -f 'zcode\.cjs'` 恒为空，按它做存活检查或验收会误判「没跑起来」 | 认 `zcode-cli` 这个进程名；cwd 实测确为项目根（`lsof -a -d cwd`）|
 | **P-09** | `~/.zcode/v2/config.json` 内的 provider **apiKey 为明文**，且其中一个正是 `<id>.<secret>` 形态 | 该形态若混入归档就是安全事故 | 已作为 `archive` 密钥扫描器（§10.5）的真实用例；扫描器只存正则不存值。**另：已建议用户轮换该批 key** |
 
 ## 8. 与设计文档的冲突项

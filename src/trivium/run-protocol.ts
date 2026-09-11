@@ -344,8 +344,16 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
       s.exit_code = outcome.exitCode;
       s.artifacts = outcome.artifacts;
       s.message = outcome.warnings.length > 0 ? outcome.warnings.join(' ｜ ') : null;
+      /*
+       * 写**真实**的逐侧状态，不是一律 'ok'。
+       *
+       * 硬编码 'ok' 会让一侧非零退出时，`--wait` / `--status` 仍显示
+       * 「gemini: ok」，而 run.json 里明明是 failed——操作者据此以为两侧都跑成了，
+       * 直到去翻元数据才发现相反。实测踩到过一次。
+       */
       for (const c of rc.sides) {
-        if (s.sides[c]) s.sides[c]!.state = 'ok';
+        const side = s.sides[c];
+        if (side) side.state = outcome.sideStatuses[c] ?? 'failed';
       }
     });
     return outcome.exitCode;
