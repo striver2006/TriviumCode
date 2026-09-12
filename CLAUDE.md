@@ -22,6 +22,11 @@
 - Hook 对 Edit / Write 精确拦截；对 Bash 只按写命令形态做**启发式**拦截
   （重定向、`tee`、`sed -i`、`rm/mv/cp`、`git checkout` …），不是完备的——别去绕它，
   绕过去的改动同样会被跑后复算判成漂移。
+- Bash 拦截有一种**已知误拦**：判定在未剥 heredoc 的原文上做，命令正文里只要出现
+  `-gemini.md`、`_meta`、`task.json`、`state.json`、`.trivium` 字样就会命中，
+  哪怕实际写的是别的文件——写讨论本护栏的文档或脚本时最常撞上。
+  **出口是改用 Write / Edit 工具**（精确判定，不看字面），不是想办法绕过判定。
+  这个误拦是刻意接受的取舍，不要当成 bug 去「修」。
 
 留痕全部在 `.reviews/<主题>/{plan,code,bug,verify}/`，命名为
 `<日期>-<主题>[-r<N>][-revised|-response]-<角色>.md`。
