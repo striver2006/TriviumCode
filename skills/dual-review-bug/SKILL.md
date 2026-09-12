@@ -132,4 +132,8 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 运行 `TV gate --stage bug --topic <主题> --await-approval`，
 把它输出的停点话术与三份文档路径转述给用户，然后**停止**。
 
+话术里有一枚**一次性审批确认码**，要原样转述给用户——没有它用户没法通过审批。
+**这个码是给用户的，不是给你的。** 不要自己拿它去跑 `approve`：
+审批是解除护栏的动作，发起权在用户手里（见 approval.ts 对这道护栏的说明）。
+
 **此后不得自动实施修复。** 等用户 `/dual-approve` 之后才能继续。

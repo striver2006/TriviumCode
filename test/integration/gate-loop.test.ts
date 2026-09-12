@@ -49,10 +49,14 @@ const writeEvent = (p: string) => ({
   tool_input: { file_path: p },
 });
 
-async function runPlan(root: string) {
+async function runPlan(root: string, entry?: 'A' | 'B' | 'C' | 'D') {
   const started = await cli(
     root,
-    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    [
+      'review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x',
+      ...(entry ? ['--entry', entry] : []),
+      '--session-id', SESSION, '--json',
+    ],
     STUB,
   );
   assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
@@ -175,6 +179,65 @@ test('裁决齐备并通过校验 → 闸门回 idle，两个 Hook 一起放行'
   // AC-01：四件套齐备
   const arts = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check-artifacts']);
   assert.equal(arts.code, EXIT.OK, `${arts.stdout}${arts.stderr}`);
+});
+
+/*
+ * AGY-02：停点不能靠 Driver 记得走完流程。
+ *
+ * 原先 `gate --check` 通过后一律落回 idle，把「推进到人工审批态」交给随后那一步
+ * `--await-approval`——而那只是 skill 文档里的一行字。Driver 省略它，闸门就停在
+ * idle，四个 Hook 全部放行，人工审批被静默旁路；用户此时再走 /dual-approve
+ * 反而会因为状态是 idle 被拒。现在按 run.json 的 entry 分流，B/C/D 直接立起闸门。
+ */
+test('AGY-02：命令 B/C/D 的 check 通过后闸门立起来，省略 --await-approval 也旁路不了', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root, 'C');
+  await writeDisposition(fx.stageDir, runId);
+
+  const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
+  assert.equal(check.code, EXIT.OK, `裁决校验应通过：\n${check.stdout}${check.stderr}`);
+
+  const gates = () => fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')
+    .then((s) => (JSON.parse(s) as { gates: Record<string, { state: string; approval_code_hash?: string | null }> }).gates);
+  assert.equal((await gates())[`${TOPIC}/plan`]?.state, 'awaiting_approval', '停点必须由机制立起来，不能指望执笔者记得');
+
+  // 此刻业务写入仍被拦
+  const denied = await hook(fx.root, 'hook-pre-write', writeEvent(path.join(fx.root, 'src/a.ts')));
+  assert.equal(denied.code, EXIT.GATE_BLOCK, `等待审批期间不得改业务文件：\n${denied.stdout}${denied.stderr}`);
+
+  // 还没取过码 → 审批走不通（省略 --await-approval 只会卡住自己）
+  assert.equal((await gates())[`${TOPIC}/plan`]?.approval_code_hash ?? null, null);
+  const early = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--code', 'TRV-AAAA-BBBB']);
+  assert.equal(early.code, EXIT.GATE_BLOCK, '没发过码就不能审批');
+  assert.match(early.stdout + early.stderr, /--await-approval/);
+
+  // 走完整流程：取码 → 审批
+  const awaited = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--session-id', SESSION]);
+  assert.equal(awaited.code, EXIT.OK, `${awaited.stdout}${awaited.stderr}`);
+  const code = /审批确认码：(TRV-[A-Z0-9]{4}-[A-Z0-9]{4})/.exec(awaited.stdout)?.[1];
+  assert.ok(code, `停点话术应给出确认码：\n${awaited.stdout}`);
+
+  const approved = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--code', code]);
+  assert.equal(approved.code, EXIT.OK, `${approved.stdout}${approved.stderr}`);
+  assert.equal((await hook(fx.root, 'hook-pre-write', writeEvent(path.join(fx.root, 'src/a.ts')))).code, EXIT.OK, '审批后应解锁');
+
+  // 码是一次性的：同一个码不能再用第二次
+  const replay = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--code', code]);
+  assert.notEqual(replay.code, EXIT.OK, '用过的码不得复用');
+});
+
+test('AGY-05：通过审批必须显式指定 --stage，不能批量放行', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root, 'C');
+  await writeDisposition(fx.stageDir, runId);
+  await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
+
+  const r = await cli(fx.root, ['approve', '--topic', TOPIC, '--code', 'TRV-AAAA-BBBB']);
+  assert.equal(r.code, EXIT.USAGE, `缺 --stage 应退 64：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout + r.stderr, /必须显式指定 --stage/);
+  // 放弃则允许省略 --stage（收紧动作，语义不同）
+  const a = await cli(fx.root, ['abandon', '--topic', TOPIC]);
+  assert.equal(a.code, EXIT.OK, `${a.stdout}${a.stderr}`);
 });
 
 test('裁决件不完整 → 校验不放行，闸门保持拦截', { skip: bundleMissing && bundleSkipReason }, async () => {

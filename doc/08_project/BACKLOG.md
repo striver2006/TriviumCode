@@ -71,7 +71,7 @@
 留痕在 `.reviews/审核修复/code/`，逐条裁决见同目录 `-response-claude.md`。
 结论是**没有完全堵上**：两侧从不同入口指向同一处薄弱带——`hook-pre-bash` 出口。
 
-第一梯队（hook-pre-bash 出口）与第二梯队（提交出口）已落地，其余按裁决件的梯队顺序推进。
+第一至三梯队（hook-pre-bash 出口 / 提交出口 / 审批链）已落地，只剩第四梯队 AGY-04。
 
 | # | 状态 | 条目 | 位置 |
 | :-- | :-- | :-- | :-- |
@@ -80,8 +80,8 @@
 | GLM-03 | done | `hookPreBash` 先剥 heredoc 再判写命令形态，`python3 - <<'PY' … PY` 提前放行，两条规则连评估机会都没有；而 `judgeDrift` 把归档与 `.trivium/` 整体排除，无跑后兜底。已改为在未剥离原文上判定 | hooks.ts `hookPreBash` |
 | AGY-03 | done | Hook 守卫一律 `test -x "$W" \|\| exit 0`：`rm -rf .trivium/bin` 即让四个拦截型 Hook 永真放行。已区分「未初始化」（exit 0）与「已初始化但 wrapper 没了」（exit 2），并把 `.trivium/bin` 纳入保护集 | hooks.json、.claude/settings.json、hooks.ts |
 | GLM-02 | done | `sh -c 'git commit …'` 整段被引号吞成一个 token，`parseGitSegment` 找不到字面 `git` 即 fail-open，裁决期提交拦截与留痕完整性校验同时被跳过。两处都改了：函数内加保守兜底；`if: Bash(git commit:*)` 是**前缀**匹配、该形态根本不触发 Hook，已去掉改由 `looksLikeCommit` 在进程内过滤 | hooks.ts `parseGitSegment`、hooks.json、.claude/settings.json |
-| AGY-02 | todo | `gate --check` 通过后无条件落回 `idle`，`--await-approval` 是独立一步；Driver 省略它则人工审批被静默旁路，四个 Hook 全部放行 | cli.ts gate 分支 |
-| GLM-01 | todo | 人工审批闸门可被 Driver 一条 `trivium approve` 自行关闭：`recordApproval` 不校验来源，skill 的 allowed-tools 预批准了 `Bash(.trivium/bin/trivium:*)`。会话比对救不了（人工审批与自批同会话）。拟加一次性确认码 | cli.ts `cmdApproval`、approval.ts `recordApproval` |
-| GLM-05 | todo | `ApprovalInput.sessionId` 从未传入也从未使用，`ApprovalRecord` 不含来源——事后无法回答「这次 approve 是人发的还是模型发的」 | approval.ts:15-22,62-68 |
-| AGY-05 | todo | `cmdApproval` 允许 approve 省略 `--stage`，会枚举到未裁决阶段并抛 MISSING_ARTIFACT 而非友好提示 | cli.ts `cmdApproval` |
+| AGY-02 | done | `gate --check` 通过后无条件落回 `idle`，`--await-approval` 是独立一步；Driver 省略它则人工审批被静默旁路，四个 Hook 全部放行 | cli.ts gate 分支 |
+| GLM-01 | done | 人工审批闸门可被 Driver 一条 `trivium approve` 自行关闭：`recordApproval` 不校验来源，skill 的 allowed-tools 预批准了 `Bash(.trivium/bin/trivium:*)`。会话比对救不了（人工审批与自批同会话）。已加一次性确认码（`--await-approval` 发码、明文不落盘、用过即废、通过审批必须 `--code`）。**注意它是审计护栏不是权限边界**：码的明文经 stdout 由 Driver 转述，Driver 读得到；真正的边界需要不经过模型的带外通道（TTY / 审批 UI），本项目没有——RUNBOOK 与协议片段已如实写明 | cli.ts `cmdApproval`、approval.ts `recordApproval` |
+| GLM-05 | done | `ApprovalInput.sessionId` 从未传入也从未使用，`ApprovalRecord` 不含来源——事后无法回答「这次 approve 是人发的还是模型发的」 | approval.ts:15-22,62-68 |
+| AGY-05 | done | `cmdApproval` 允许 approve 省略 `--stage`，会枚举到未裁决阶段并抛 MISSING_ARTIFACT 而非友好提示 | cli.ts `cmdApproval` |
 | AGY-04 | todo | 同上文 Minor 条目：NAMED_FLAGS 缺 `only/allow-single/session-id` | topic-args.ts:22-25 |

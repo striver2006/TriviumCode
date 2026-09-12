@@ -42,6 +42,16 @@ export interface ApprovalRecord {
   run_id: string;
   decision: 'approved' | 'rejected' | 'abandoned';
   reason: string | null;
+  /**
+   * 发起这次审批的会话 id，`null` 表示没传（审查意见 GLM-05）。
+   *
+   * 「谁解的闸」是整条链子上最该留痕的事件，原先却是唯一不留痕的：
+   * `ApprovalInput.sessionId` 从 CLI 就没传进来、`recordApproval` 也不用它。
+   * 事后无法回答「这次 approve 是人发的还是模型发的」。
+   */
+  session_id?: string | null;
+  /** 是否校验过审批确认码。`approved` 恒为 true（不带码根本进不来），其余为 false */
+  code_verified?: boolean;
 }
 
 export interface TaskMeta {
