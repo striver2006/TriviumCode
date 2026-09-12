@@ -38,7 +38,7 @@
 | M18 | done | zcode availability 只要求 readonly_flags 非空，`--disallowed-tools` 探不到仍判可用 | adapters/zcode.ts:146-152 |
 | M19 | done | `retention.run_dir_days` 有配置有文档零实现；`~/.trivium/runs` 已 3400 目录/580MB | config.ts:138、RUNBOOK:172 |
 | M20 | done | 测试夹具与 selftest 不覆盖 `run_root`，污染真实 `~/.trivium/runs` | test/helpers/fixture.ts、selftest.ts |
-| M21 | doing | 已补：install.ts（5 条）、approval（4 条）、zcode availability、同进程并发抢锁与 task.json 并发、真进程树超时。再补：两侧 argv 拼装契约（test/unit/adapter-argv.test.ts）、topic 直接单测（test/unit/topic.test.ts）。仍缺：跨进程抢锁竞态 | test/ |
+| M21 | done | 已补：install.ts（5 条）、approval（4 条）、zcode availability、同进程并发抢锁与 task.json 并发、真进程树超时、两侧 argv 拼装契约（test/unit/adapter-argv.test.ts）、topic 直接单测（test/unit/topic.test.ts）。**跨进程抢锁竞态已补**（test/integration/lock-cross-process.test.ts，4 条）：起真实子进程验 `fs.link` 的 EEXIST 互斥、临界区读改写不丢更新、SIGKILL 后真实 `pid_gone` 回收、并发回收同一把遗留锁只一个赢。同进程 `Promise.all` 只在一个事件循环里交错，证明不了系统调用层的互斥；`pid: 2 ** 22` 假 PID 也走不到 `processAlive` 比对启动时刻的分支——这两处是它与既有单测的分工 | test/ |
 
 ## Minor / Nit
 
