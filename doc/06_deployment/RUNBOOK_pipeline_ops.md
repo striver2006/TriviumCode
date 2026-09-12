@@ -210,7 +210,7 @@ trivium doctor --only agy       # 只探一侧，省配额
 已落盘的审查工件被删除或改动了。这是**设计要挡的**（P5 / P6、FR-25）：
 留痕的意义恰恰在于它删不掉也改不掉。
 
-校验有两个外部锚：git 索引（只查删除）与 `task.json` 的 `runs[]`。
+校验有三个锚：git 索引（删除一律拦；审查文档、`_meta/` 审计材料与运行清单等**不可变工件**的改动也拦，task.json 与裁决件的正常改动放过）、`task.json` 的 `runs[]`、以及 `.trivium/state.json`（记过运行的主题，其 `task.json` 必须还在——首次提交前 git 没有基线，这是仅剩的锚）。另外 `hook-pre-write` 不允许 Driver 写 `_meta/` 与 `task.json`：它们是锚与 `gate --check` 的事实来源。
 
 **处置**：把被删/被改的文件恢复回去（`git checkout -- <path>`）。
 如果你确实想重跑那一轮，正规做法是**再跑一次**——`archive` 以 `O_CREAT|O_EXCL`

@@ -5,7 +5,7 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   hookPreWrite, hookPreCommit, hookStop, hookSessionStart, runHook,
-  extractTargetPath, isForgedRoleFile, isInsideArchive, type HookInput,
+  extractTargetPath, isForgedRoleFile, isInsideArchive, isOrchestratorOwned, type HookInput,
 } from '../../src/trivium/hooks.js';
 import { setGate } from '../../src/trivium/state.js';
 import { defaultConfig } from '../../src/trivium/config.js';
@@ -59,7 +59,32 @@ test('判定路径是否在归档根内', () => {
   assert.equal(isInsideArchive('/p/.reviews', '/p', '/p/.reviews'), false, '归档根自身不算「内部」');
 });
 
+test('判定归档内哪些文件由编排器独占（_meta/ 与 task.json）', () => {
+  assert.equal(isOrchestratorOwned('.reviews/t/plan/_meta/review-gemini-R1.json', '/p', '/p/.reviews'), true);
+  assert.equal(isOrchestratorOwned('/p/.reviews/t/task.json', '/p', '/p/.reviews'), true);
+  assert.equal(isOrchestratorOwned('.reviews/t/plan/2026-09-10-t-revised-claude.md', '/p', '/p/.reviews'), false);
+  assert.equal(isOrchestratorOwned('.reviews/t/plan/2026-09-10-t-claude.md', '/p', '/p/.reviews'), false);
+  assert.equal(isOrchestratorOwned('src/task.json', '/p', '/p/.reviews'), false, '归档外的同名文件不算');
+});
+
 // ── hook-pre-write ──
+
+test('Driver 不得写 _meta/ 与 task.json：它们是留痕核对的锚，与闸门状态无关', async () => {
+  const ctx = await fakeCtx();
+  // 没有任何闸门——该规则和伪造审查文件一样不受会话与 TTL 限制
+  for (const p of [
+    '.reviews/t/plan/_meta/review-gemini-R1.json',
+    '.reviews/t/code/_meta/run-R1.json',
+    '.reviews/t/task.json',
+  ]) {
+    const r = await hookPreWrite(ctx, writeInput(p));
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `${p} 应被拒`);
+    assert.match(r.stderr ?? '', /编排器独占维护/);
+  }
+  // 裁决件与原稿照常放行
+  assert.equal((await hookPreWrite(ctx, writeInput('.reviews/t/plan/2026-09-10-t-revised-claude.md'))).exitCode, EXIT.OK);
+  assert.equal((await hookPreWrite(ctx, writeInput('.reviews/t/plan/2026-09-10-t-claude.md'))).exitCode, EXIT.OK);
+});
 
 test('伪造审查文件一律拒绝，不受会话与 TTL 限制', async () => {
   const ctx = await fakeCtx();

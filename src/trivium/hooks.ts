@@ -23,7 +23,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type { Ctx, Stage } from './types.js';
 import { EXIT } from './exit-codes.js';
-import { listOpenGates, shouldLockWrites } from './state.js';
+import { listOpenGates, readState, shouldLockWrites } from './state.js';
 import { bumpStopBlockCount } from './lock.js';
 import { exists } from './util/fsx.js';
 
@@ -81,6 +81,49 @@ export function isForgedRoleFile(targetPath: string): boolean {
   return /-(?:gemini|glm)\.md$/.test(path.basename(targetPath));
 }
 
+/**
+ * 归档内由编排器**独占维护**的文件：`_meta/` 下的全部审计材料与 `task.json`。
+ *
+ * Driver 合法要写的只有原稿与裁决件。`_meta/review-*.json` 是 `gate --check` 唯一的
+ * 事实来源，`run-*.json` 的 sha256 与 `task.json.runs[]` 是留痕核对的锚——
+ * 这些若对 Driver 开放，「改锚即可整枝绕过」（P5 不可伪装）。该规则同样不受会话与 TTL 限制。
+ */
+export function isOrchestratorOwned(targetPath: string, projectRoot: string, archiveRoot: string): boolean {
+  const abs = path.isAbsolute(targetPath) ? targetPath : path.resolve(projectRoot, targetPath);
+  const rel = path.relative(archiveRoot, abs);
+  if (rel.length === 0 || rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  return rel.split(path.sep).includes('_meta') || path.basename(abs) === 'task.json';
+}
+
+/**
+ * 已提交的归档文件里，哪些**一经落盘即不可变**（git 锚要拦其改动）。
+ * 返回 null 表示该文件本就可变（task.json、原稿、裁决件、便利副本 changes.diff）。
+ */
+const IMMUTABLE_META = /^(?:review-.+\.(?:json|fallback-items\.md)|brief-.+\.md|changes-.+\.diff)$/;
+async function immutableChangeReason(projectRoot: string, relFromRoot: string): Promise<string | null> {
+  const base = path.basename(relFromRoot);
+  const inMeta = relFromRoot.split('/').includes('_meta');
+  if (isForgedRoleFile(base)) return '审查文档只能由编排器落盘，改动即伪造';
+  if (inMeta && IMMUTABLE_META.test(base)) return '审计材料一经落盘即不可变';
+  if (inMeta && /^run-.+\.json$/.test(base)) {
+    /*
+     * run.json 只在运行**期间**被编排器改写（骨架 → 收尾）。已提交的版本若还是
+     * `running`，说明有人在运行中途提交过，本次改动是正常收尾，不能拦。
+     */
+    const { readAtHead } = await import('./util/git.js');
+    const head = await readAtHead(projectRoot, relFromRoot);
+    if (head) {
+      try {
+        if ((JSON.parse(head) as { status?: string }).status === 'running') return null;
+      } catch {
+        /* HEAD 里的版本本身就坏了：按不可变处理 */
+      }
+    }
+    return '运行清单是留痕核对的锚，改锚即可整枝绕过';
+  }
+  return null;
+}
+
 // ─────────────────────── hook-pre-write ───────────────────────
 
 /**
@@ -102,8 +145,18 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
     );
   }
 
-  // 闸门写锁只管归档根之外的业务文件；裁决件本身要写进归档，不能拦
-  if (isInsideArchive(target, ctx.projectRoot, ctx.archiveRoot)) return ALLOW;
+  // 闸门写锁只管归档根之外的业务文件；裁决件本身要写进归档，不能拦——
+  // 但 `_meta/` 与 task.json 是编排器独占的锚，Driver 一律不得手工改动
+  if (isInsideArchive(target, ctx.projectRoot, ctx.archiveRoot)) {
+    if (isOrchestratorOwned(target, ctx.projectRoot, ctx.archiveRoot)) {
+      return deny(
+        `禁止写入 ${path.relative(ctx.projectRoot, path.resolve(ctx.projectRoot, target))}：` +
+          '归档内的 _meta/ 与 task.json 由编排器独占维护，是留痕核对的锚与 gate --check 的事实来源（FR-25 / P5）。' +
+          'Driver 只应写原稿与裁决件。',
+      );
+    }
+    return ALLOW;
+  }
   if (!ctx.config.gate.block_business_write_when_awaiting_approval) return ALLOW;
 
   const open = await listOpenGates(ctx.triviumDir);
@@ -355,18 +408,37 @@ async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
   const archiveRel = path.relative(ctx.projectRoot, ctx.archiveRoot) || ctx.config.archive_root;
   const tracked = await deletedOrModifiedTracked(ctx.projectRoot, archiveRel);
   /*
-   * **只看删除，不看改动**。两个锚各管一件事，重叠会误伤：
+   * 删除一律拦；改动**只拦不可变工件**。
    *
-   *   · git 管「东西没了」——它是唯一能发现「整个主题目录被删/改名」的机制，
-   *     因为那会把 task.json 与 run.json 一起带走。
-   *   · run.json 的 sha256 管「内容变了」——它**精确知道**哪些文件该不可变
-   *     （两侧审查文档、被审补丁、送审包）。
+   * 原先 git 锚刻意只看删除，把「内容变了」全交给 run.json 的 sha256。但 run.json 自己
+   * 也在归档里、同样可改：改一份审查文档 → 重算 sha 写回 run.json → 两处都是 `M`，
+   * git 锚失明、run.json 锚自证清白，全程放行。锚与被核对对象同域时，锚本身必须由
+   * 不可变规则守住：审查文档、`_meta/` 审计材料、运行清单一经提交即不得改动。
    *
-   * 若 git 这一侧也拦改动，就会误伤两类本就该可变的文件：编排器每次运行都要更新的
-   * `task.json`，以及 Driver 本就该修订的裁决件（「修订」正是它的用途）。
-   * 护栏一旦开始误伤正常工作，第一个被关掉的就是它自己。
+   * 仍然放过两类本就该可变的文件：编排器每次运行都要更新的 `task.json`，以及 Driver
+   * 本就该修订的裁决件（「修订」正是它的用途）。护栏一旦误伤正常工作，第一个被关掉的
+   * 就是它自己。
    */
   for (const f of tracked.deleted) problems.push(`  · 已提交的归档文件被删除：${f}`);
+  for (const f of tracked.modified) {
+    const why = await immutableChangeReason(ctx.projectRoot, f);
+    if (why) problems.push(`  · 已提交的不可变工件被改动：${f}（${why}）`);
+  }
+
+  /*
+   * ── 锚 ③：state.json 记过闸门的主题，其 task.json 必须还在 ──
+   *
+   * 首次提交之前归档全是未跟踪文件，git 锚没有基线；此时 `rm -rf .reviews/<主题>`
+   * 会把 task.json 与全部 run.json 一起带走，锚 ①② 同时失去对象、`listTopics`
+   * 也枚举不到它。state.json 在 .trivium/ 下、每次运行都会为主题写一条闸门（含终态），
+   * 是此刻仍然在手的锚。只看带 run_id 的闸门：那才意味着真的跑过、task.json 真的写过。
+   */
+  const gates = Object.values((await readState(ctx.triviumDir)).gates).filter((g) => g.run_id !== null);
+  for (const topic of new Set(gates.map((g) => g.topic))) {
+    if (!(await exists(path.join(ctx.archiveRoot, topic, 'task.json')))) {
+      problems.push(`  · 主题归档已消失：${path.join(archiveRel, topic, 'task.json')}（state.json 记录过该主题的运行）`);
+    }
+  }
 
   for (const topic of await listTopics(ctx)) {
     const layout = { archiveRoot: ctx.archiveRoot, topic };

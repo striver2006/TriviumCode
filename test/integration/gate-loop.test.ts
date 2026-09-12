@@ -592,7 +592,99 @@ test('verify 记录也受保护（审查意见 GLM-r2-08）', { skip: bundleMiss
   assert.match(r.stderr, /verify/);
 });
 
-test('git 锚只管删除：task.json 与裁决件的正常改动不得误伤', { skip: bundleMissing && bundleSkipReason }, async () => {
+test('改审查文档并同步改写 run.json 的 sha → git 锚拦下（锚与被核对对象同域）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await completedRound(fx.root, fx.stageDir);
+
+  const { run } = await import('../../src/trivium/util/exec.js');
+  await run('git', ['add', '-A', '--', '.reviews'], { cwd: fx.root, timeoutMs: 30_000 });
+  await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', '归档', '--no-verify'], {
+    cwd: fx.root, timeoutMs: 30_000,
+  });
+
+  /*
+   * 完整的篡改链：改掉一份审查文档里不顺眼的意见，再把 run.json 里它的 sha256 改成新值。
+   * run.json 锚自证清白；原先 git 锚刻意只看删除，两处都是 M → 全程放行。
+   */
+  const { createHash } = await import('node:crypto');
+  const doc = path.join(fx.stageDir, `${today()}-${TOPIC}-gemini.md`);
+  await fs.appendFile(doc, '\n（偷偷删掉了一条 blocker）\n', 'utf8');
+  const newSha = createHash('sha256').update(await fs.readFile(doc)).digest('hex');
+  const runPath = path.join(fx.stageDir, '_meta', `run-${runId}.json`);
+  const meta = JSON.parse(await fs.readFile(runPath, 'utf8')) as { artifacts: { path: string; sha256: string }[] };
+  const rel = path.relative(fx.archiveRoot, doc);
+  const entry = meta.artifacts.find((a) => a.path === rel);
+  assert.ok(entry, `run.json 应登记 ${rel}`);
+  entry!.sha256 = newSha;
+  await fs.writeFile(runPath, JSON.stringify(meta, null, 2) + '\n', 'utf8');
+
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `改锚绕过必须被拦：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /不可变工件被改动/);
+  assert.match(r.stderr, /gemini\.md/);
+  assert.match(r.stderr, new RegExp(`run-${runId}\\.json`));
+});
+
+test('结构化结论 review-*.json 在保护集内：改成空意见即拦，删掉则 gate --check 失败', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await completedRound(fx.root, fx.stageDir);
+
+  /*
+   * `_meta/review-<c>-<runId>.json` 是 gate --check 唯一的事实来源。
+   * 原先它既不受写锁保护也不在保护集内：改成 findings: [] 就能让空裁决表过闸，
+   * 提交时也无人核对——纯用 Write 工具即可，连 Bash 都不需要。
+   */
+  const rj = path.join(fx.stageDir, '_meta', `review-gemini-${runId}.json`);
+  const saved = await fs.readFile(rj);
+  const empty = { ...(JSON.parse(saved.toString('utf8')) as Record<string, unknown>), findings: [] };
+  await fs.writeFile(rj, JSON.stringify(empty, null, 2) + '\n', 'utf8');
+
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `结论被改必须拦：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, new RegExp(`review-gemini-${runId}\\.json`));
+
+  // 删掉它：gate --check 不能把该侧当成「无意见」放行
+  await fs.rm(rj);
+  const g = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
+  assert.equal(g.code, EXIT.GATE_BLOCK, `结论缺失时 --check 必须失败：\n${g.stdout}${g.stderr}`);
+  assert.match(g.stdout, /missing_review_json/);
+
+  await fs.writeFile(rj, saved);
+  assert.equal((await hook(fx.root, 'hook-pre-commit', commitEvent)).code, EXIT.OK);
+});
+
+test('首次提交之前删掉整个主题目录 → state.json 锚拦下', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await completedRound(fx.root, fx.stageDir);
+
+  /*
+   * 归档还全是未跟踪文件：git 锚没有基线；task.json 与 run.json 一起被删，
+   * 锚 ①② 同时失去对象，listTopics 也枚举不到它。只剩 .trivium/state.json 还记得
+   * 这个主题跑过——而「提交这一次」恰恰是工件首次进入版本管理的时刻。
+   */
+  await fs.rm(path.join(fx.archiveRoot, TOPIC), { recursive: true });
+  const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `首次提交前删主题也该拦：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /主题归档已消失/);
+  assert.match(r.stderr, new RegExp(TOPIC));
+});
+
+test('hook-pre-write 拒绝 Driver 写 _meta/ 与 task.json（真实 CLI）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await completedRound(fx.root, fx.stageDir);
+  for (const p of [
+    path.join(fx.stageDir, '_meta', `review-gemini-${runId}.json`),
+    path.join(fx.archiveRoot, TOPIC, 'task.json'),
+  ]) {
+    const r = await hook(fx.root, 'hook-pre-write', writeEvent(p));
+    assert.equal(r.code, EXIT.GATE_BLOCK, `${p} 是留痕的锚，Driver 不得手工改：\n${r.stderr}`);
+  }
+  // 裁决件照常放行
+  const ok = await hook(fx.root, 'hook-pre-write', writeEvent(path.join(fx.stageDir, `${today()}-${TOPIC}-r2-revised-claude.md`)));
+  assert.equal(ok.code, EXIT.OK);
+});
+
+test('git 锚：task.json 与裁决件的正常改动不得误伤，不可变工件的改动才拦', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   const runId = await completedRound(fx.root, fx.stageDir);
 
@@ -606,7 +698,8 @@ test('git 锚只管删除：task.json 与裁决件的正常改动不得误伤', 
    * 两类本就该可变的已提交归档文件：
    *   · task.json —— 编排器每次运行都要更新它；
    *   · 裁决件 —— Driver 本就该修订它（S9 追加实施记录就是这么做的）。
-   * 若 git 锚也拦改动，正常工作会被一路误伤，人的第一反应就是关掉 Hook。
+   * 若 git 锚连这两类也拦，正常工作会被一路误伤，人的第一反应就是关掉 Hook。
+   * 不可变的是审查文档、_meta/ 审计材料与运行清单——见上一条用例。
    */
   await fs.appendFile(
     path.join(fx.stageDir, `${today()}-${TOPIC}-revised-claude.md`),

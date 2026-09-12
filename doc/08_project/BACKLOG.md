@@ -11,7 +11,7 @@
 | B1 | done | 闸门 `session_id` 为 null 时写锁与收工拦截静默失效（skill 默认路径从未生效） | state.ts `shouldLockWrites`、hooks.ts `hookStop` |
 | B2 | done | B/C/D 位置参数语义反直觉且 `/dual-run` 在 S2 必退 64；改为「位置参数按命令语义定，旗标只做覆盖」，`review --start` 加 `--entry` | topic-args.ts、cli.ts、四份 SKILL.md、设计 §7.1/§7.3 |
 | B3 | todo | code 阶段 `subject_drift` 永远不触发：跑后复算读的是冻结 diff 文件本身；`relatedPaths` 漏了 diff 涉及文件 | review.ts:649/681、freeze.ts:134/167 |
-| B4 | todo | 留痕防篡改链断裂：归档内 hookPreWrite 一律放行（含 `_meta/`）；`_meta/review-*.json` 不在保护集却是 gate 唯一输入；git 锚只看删除；首次提交前无基线 | hooks.ts:106/356/369、review.ts:735、gate.ts:87 |
+| B4 | done | 留痕防篡改链断裂：归档内 hookPreWrite 一律放行（含 `_meta/`）；`_meta/review-*.json` 不在保护集却是 gate 唯一输入；git 锚只看删除；首次提交前无基线 | hooks.ts:106/356/369、review.ts:735、gate.ts:87 |
 | B5 | todo | Bash 出口不设防（`cat >`/`sed -i`）；dual-run 授予裸 Bash | .claude/settings.json、skills/dual-run/SKILL.md |
 
 ## Major
@@ -27,7 +27,7 @@
 | M7 | todo | worker 心跳 `void patchStatus` 无 catch → 写失败即崩；心跳与终态写入争用 | run-protocol.ts:365-368 |
 | M8 | todo | `exec.run` 超时不杀进程树；`finish` 只挂 `close` 可能永不 resolve | util/exec.ts:145-153 |
 | M9 | todo | 两侧 writeArtifact 各自抬升 `-r<N>`，可分叉 | review.ts:728-732 vs archive.ts:57-59 |
-| M10 | todo | 两侧都 parse_fallback 时空裁决表直接通过；fallback 条目从不被要求出现 | gate.ts:143-153,197 |
+| M10 | done | 两侧都 parse_fallback 时空裁决表直接通过；fallback 条目从不被要求出现 | gate.ts:143-153,197 |
 | M11 | todo | `task.json.disputed` 从未写为 true，status/report 的争议提示永不触发 | gate.ts:232-250、meta.ts:80 |
 | M12 | todo | config.yaml 完全不校验：`gate: "off"`、拼错枚举、`stop_hook_max_blocks: 0` 均静默 fail-open | config.ts:203-240 |
 | M13 | todo | PROTOCOL 称四份 Schema/ajv 强校验：`config.v1.json` 不存在，`run.v1`/`disposition.v1` 零加载 | doc/03_api、skills/dual-critic/schema |

@@ -699,6 +699,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
 
   // ── 两侧齐备后同时落盘（§10.1 第 ② 道）──
   const artifacts: string[] = [];
+  /*
+   * 结构化结论、失败记录与 fallback 单元也进 `run.json.artifacts` 保护集。
+   * `review-<c>-<runId>.json` 是 `gate --check` **唯一**的事实来源：不受保护时，
+   * 把它改成 `findings: []` 就能让空裁决表过闸，且提交时无人核对。
+   */
+  const protectedMeta: { path: string; sha256: string }[] = [];
   for (const c of sides) {
     const r = results[c];
     if (!r) continue;
@@ -709,6 +715,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
         JSON.stringify({ critic: c, status: r.status, fail_reason: r.fail_reason, attempts: attempts[c] }, null, 2) + '\n',
       );
       metaPaths.push(w.absPath);
+      protectedMeta.push({ path: w.relPath, sha256: w.sha256 });
       continue;
     }
 
@@ -743,6 +750,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       JSON.stringify(reviews[c] ?? { parse_fallback: true, raw: fallbackText[c] ?? null }, null, 2) + '\n',
     );
     metaPaths.push(rj.absPath);
+    protectedMeta.push({ path: rj.relPath, sha256: rj.sha256 });
 
     // parse_fallback 侧另存编号化的原文，让 Driver 有可逐条裁决的单元（§6.6 规则 8）
     if (reviews[c] === null && fallbackText[c]) {
@@ -752,6 +760,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
         `# ${c} 侧解析降级：待逐条裁决的意见单元\n\n${items.map((i) => `- ${i}`).join('\n')}\n`,
       );
       metaPaths.push(fb.absPath);
+      protectedMeta.push({ path: fb.relPath, sha256: fb.sha256 });
     }
   }
 
@@ -805,6 +814,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
    */
   meta.artifacts = [
     ...meta.artifacts,
+    ...protectedMeta,
     ...(await Promise.all(
       artifacts.map(async (p) => ({
         path: path.relative(ctx.archiveRoot, p),

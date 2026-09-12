@@ -121,9 +121,71 @@ test('AGY-04 的关键点：fallback 虚拟编号不被判「多余 id」', asyn
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     // glm 侧 parse_fallback，没有结构化 findings
     reviews: { gemini: review([{ id: 'AGY-01' }]), glm: null }, degraded: false,
+    expectedFallbackIds: ['GLM-F01', 'GLM-F02'],
   });
   assert.equal(r.ok, true, renderGateResult(r));
   assert.deepEqual(r.fallbackIds.sort(), ['GLM-F01', 'GLM-F02']);
+});
+
+/*
+ * ── fallback 编号也要逐条对账（§6.6 规则 8）──
+ *
+ * 原先 fallback 行只在出现时被校验、从不被要求出现：两侧都解析降级时
+ * structuredIds 为空，一张只有表头的裁决表就能过闸——而「两侧都降级」恰恰是
+ * 最容易被制造出来的状态。
+ */
+test('fallback 单元少裁一条 → missing_findings 点名 <前缀>-F<n>', async () => {
+  const l = await layout();
+  await putDisposition(l, `${HEAD}
+| GLM-F01 | fallback | — | 接受 | 确认成立 | — |
+| GLM-F02 | fallback | — | 驳回 | 上游已覆盖 | — |`);
+  const r = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
+    reviews: { glm: null }, degraded: false,
+    expectedFallbackIds: ['GLM-F01', 'GLM-F02', 'GLM-F03'],
+  });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.failures.find((x) => x.code === 'missing_findings')?.ids, ['GLM-F03']);
+});
+
+test('关键用例：两侧都 parse_fallback 时空裁决表不得通过', async () => {
+  const l = await layout();
+  await putDisposition(l, `${HEAD}`);
+  const r = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: null, glm: null }, degraded: false,
+    expectedFallbackIds: ['AGY-F01', 'GLM-F01'],
+  });
+  assert.equal(r.ok, false, '两侧共 2 条降级单元待裁决，空表必须失败');
+  assert.ok(r.failures.some((x) => x.code === 'unparsable_table'), renderGateResult(r));
+  assert.match(renderGateResult(r), /含 2 条降级编号/);
+});
+
+test('裁了清单之外的 fallback 编号 → unknown_findings', async () => {
+  const l = await layout();
+  await putDisposition(l, `${HEAD}
+| GLM-F01 | fallback | — | 接受 | 确认成立 | — |
+| GLM-F07 | fallback | — | 驳回 | 编号抄错了 | — |`);
+  const r = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
+    reviews: { glm: null }, degraded: false, expectedFallbackIds: ['GLM-F01'],
+  });
+  assert.deepEqual(r.failures.find((x) => x.code === 'unknown_findings')?.ids, ['GLM-F07']);
+});
+
+test('run.json 记录已产出结论、结构化结论却读不到 → missing_review_json', async () => {
+  const l = await layout();
+  await putDisposition(l, `${HEAD}
+| AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
+  const r = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
+    missingSides: ['glm'],
+  });
+  assert.equal(r.ok, false, '结论文件是唯一事实来源，缺了不能当「该侧无意见」放行');
+  const f = r.failures.find((x) => x.code === 'missing_review_json');
+  assert.match(f!.message, /glm/);
+  assert.match(f!.message, /git restore/);
 });
 
 test('AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求落点', async () => {
@@ -132,7 +194,7 @@ test('AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求�
 | GLM-F01 | fallback | — | 接受 | 确认成立 | |`);
   const r = await checkAdjudication({
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
-    reviews: { glm: null }, degraded: false,
+    reviews: { glm: null }, degraded: false, expectedFallbackIds: ['GLM-F01'],
   });
   assert.equal(r.ok, true, `fallback 侧不应因缺落点而失败：${renderGateResult(r)}`);
 });

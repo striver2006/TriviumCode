@@ -265,6 +265,12 @@ export async function initFixtureRepo(dir: string): Promise<void> {
  * 只看已跟踪文件，所以它与基于 run.json 的核对互补：
  * git 管已提交的，run.json 管刚落盘还没提交的。
  */
+/** 读 HEAD 中某文件的内容（路径相对仓库根）。无 HEAD 或文件不在 HEAD 里返回 null */
+export async function readAtHead(cwd: string, relPath: string): Promise<string | null> {
+  const r = await git(cwd, ['show', `HEAD:${relPath}`]);
+  return r.code === 0 ? r.stdout : null;
+}
+
 export async function deletedOrModifiedTracked(
   cwd: string,
   pathPrefix: string,

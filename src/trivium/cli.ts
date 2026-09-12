@@ -566,10 +566,11 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       );
     }
     {
-      const { reviews } = await loadRoundReviews(ref.layout, stage, runId);
+      const { reviews, expectedFallbackIds, missingSides } = await loadRoundReviews(ref.layout, stage, runId);
       const pre = await checkAdjudication({
         cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
         degraded: Object.values(reviews).some((r) => r === undefined),
+        expectedFallbackIds, missingSides,
       });
       if (!pre.ok) {
         say(renderGateResult(pre));
@@ -621,12 +622,13 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       `找不到 ${stage} 阶段第 ${rerunIndex} 轮的 run_id。请先跑一次双审，或用 --run-id 指定。`,
     );
   }
-  const { reviews, notes } = await loadRoundReviews(ref.layout, stage, runId);
+  const { reviews, notes, expectedFallbackIds, missingSides } = await loadRoundReviews(ref.layout, stage, runId);
   for (const n of notes) step(n);
 
   const result = await checkAdjudication({
     cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
     degraded: Object.values(reviews).some((r) => r === undefined),
+    expectedFallbackIds, missingSides,
   });
 
   if (isJsonMode()) {

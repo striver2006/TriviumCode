@@ -26,7 +26,8 @@ export type GateFailureCode =
   | 'defer_not_allowed'
   | 'empty_reason'
   | 'missing_action'
-  | 'joint_blocker_rejected';
+  | 'joint_blocker_rejected'
+  | 'missing_review_json';
 
 export interface GateFailure {
   code: GateFailureCode;
@@ -75,6 +76,13 @@ export interface GateCheckInput {
   reviews: Partial<Record<CriticId, Review | null>>;
   /** 单审降级时缺失的一侧，需已在 run 元数据标记 */
   degraded: boolean;
+  /**
+   * parse_fallback 侧落盘的待裁决单元编号（`<前缀>-F<n>`，来自 `.fallback-items.md`）。
+   * 提供时**逐条要求**出现在裁决表里（§6.6 规则 8）；不提供则只校验出现的 fallback 行。
+   */
+  expectedFallbackIds?: string[];
+  /** run.json 记录跑过、却读不到结构化结论的一侧——那是留痕被动过，必须失败 */
+  missingSides?: CriticId[];
 }
 
 export async function checkAdjudication(input: GateCheckInput): Promise<GateCheckResult> {
@@ -140,13 +148,32 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
   for (const p of parsed.problems) {
     warnings.push({ code: 'parse_problem', message: `第 ${p.line} 行：${p.message}` });
   }
+
+  /*
+   * run.json 说这一侧跑过且有结论，结构化结论却读不到：那不是「本轮没跑这一侧」，
+   * 而是 `_meta/review-*.json` 被删或被搅坏。它是本函数唯一的事实来源——
+   * 缺了就没有任何东西可以校验，只能失败，不能当成「该侧无意见」放行。
+   */
+  const missingSides = input.missingSides ?? [];
+  if (missingSides.length > 0) {
+    failures.push({
+      code: 'missing_review_json',
+      message:
+        `读不到 ${missingSides.join('、')} 侧的结构化结论（_meta/review-<侧>-<run_id>.json），` +
+        '而 run.json 记录该侧已产出结论。结论文件是裁决校验的唯一事实来源，请用 git restore 恢复，或重跑一轮。',
+    });
+  }
+
+  const expectedFallback = input.expectedFallbackIds ?? null;
+  const expectedCount = structuredIds.length + (expectedFallback?.length ?? 0);
   if (parsed.rows.length === 0) {
-    // 结构化意见为空时，空表是合法的（双侧都无意见）
-    if (structuredIds.length > 0) {
+    // 两侧都确无意见（结构化为空且无待裁决的降级单元）时，空表是合法的
+    if (expectedCount > 0) {
       failures.push({
         code: 'unparsable_table',
         message:
-          '裁决表为空或无法解析，但两侧共有 ' + structuredIds.length + ' 条意见需要裁决。' +
+          '裁决表为空或无法解析，但本轮共有 ' + expectedCount + ' 条意见需要裁决' +
+          (expectedFallback && expectedFallback.length > 0 ? `（含 ${expectedFallback.length} 条降级编号）` : '') + '。' +
           parsed.problems.map((p) => `\n    第 ${p.line} 行：${p.message}`).join(''),
       });
     }
@@ -161,8 +188,19 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
   const decKeys = new Set(structuredRows.map((r) => r.id));
   const idsSet = new Set(structuredIds);
 
+  /*
+   * fallback 编号同样要逐条对账（§6.6 规则 8）。原先 fallback 行只在**出现时**被校验、
+   * 从不被**要求**出现：两侧都解析降级时 structuredIds 为空，一张只有表头的裁决表就能过闸。
+   * `.fallback-items.md` 是编排器落盘的待裁决单元清单，拿它当期望集。
+   */
+  const fallbackSet = new Set(fallbackIds);
+  const missingFallback = expectedFallback ? expectedFallback.filter((id) => !fallbackSet.has(id)) : [];
+  const unknownFallback = expectedFallback
+    ? fallbackIds.filter((id) => !expectedFallback.includes(id))
+    : [];
+
   // 第 5 步 a：缺裁决
-  const missing = [...idsSet].filter((id) => !decKeys.has(id)).sort();
+  const missing = [...[...idsSet].filter((id) => !decKeys.has(id)), ...missingFallback].sort();
   if (missing.length > 0) {
     failures.push({
       code: 'missing_findings',
@@ -170,8 +208,8 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
       ids: missing,
     });
   }
-  // 第 5 步 b：多余裁决——fallback 编号已在上一步拆出，不会误判
-  const unknown = [...decKeys].filter((id) => !idsSet.has(id)).sort();
+  // 第 5 步 b：多余裁决——fallback 编号已在上一步拆出，只与降级单元清单比对
+  const unknown = [...[...decKeys].filter((id) => !idsSet.has(id)), ...unknownFallback].sort();
   if (unknown.length > 0) {
     failures.push({
       code: 'unknown_findings',
@@ -324,10 +362,21 @@ export async function loadRoundReviews(
   layout: ArchiveLayout,
   stage: Stage,
   runId: string,
-): Promise<{ reviews: Partial<Record<CriticId, Review | null>>; notes: string[] }> {
+): Promise<{
+  reviews: Partial<Record<CriticId, Review | null>>;
+  notes: string[];
+  /** parse_fallback 侧待裁决单元的编号（读自 .fallback-items.md） */
+  expectedFallbackIds: string[];
+  /** run.json 记录已产出结论、结构化结论却读不到的一侧 */
+  missingSides: CriticId[];
+}> {
   const reviews: Partial<Record<CriticId, Review | null>> = {};
   const notes: string[] = [];
+  const expectedFallbackIds: string[] = [];
+  const missingSides: CriticId[] = [];
   const dir = metaDir(layout, stage);
+  const { readRunMeta } = await import('./meta.js');
+  const runMeta = await readRunMeta(layout, stage, runId);
 
   for (const c of ['gemini', 'glm'] as CriticId[]) {
     const p = path.join(dir, `review-${c}-${runId}.json`);
@@ -345,22 +394,49 @@ export async function loadRoundReviews(
           );
         } else {
           reviews[c] = null;
-          notes.push(`${c} 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号校验`);
+          expectedFallbackIds.push(...(await readFallbackIds(path.join(dir, `review-${c}-${runId}.fallback-items.md`))));
+          notes.push(`${c} 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验`);
         }
       } else {
         reviews[c] = raw as Review;
       }
     } catch {
-      // 该侧可能失败了（单审降级），或本轮没跑这一侧
       const failed = path.join(dir, `review-${c}-${runId}.failed.json`);
       if (await fileExists(failed)) {
         notes.push(`${c} 侧本轮失败，未产出结论（单审降级）`);
-      } else {
+        continue;
+      }
+      /*
+       * 读不到结论也没有失败记录：要么本轮没跑这一侧（`--only`），要么结论文件被动过。
+       * 以 run.json 为准；run.json 自己也读不到时同样按「被动过」处理——
+       * 它本就是留痕核对的锚，缺了不能当成没跑。
+       */
+      const ran = runMeta === null || (runMeta.critics[c]?.status === 'ok' || runMeta.critics[c]?.status === 'parse_fallback');
+      if (ran) {
+        missingSides.push(c);
         notes.push(`读不到 ${c} 侧的结构化结论：${path.relative(layout.archiveRoot, p)}`);
+      } else {
+        notes.push(`本轮未跑 ${c} 侧`);
       }
     }
   }
-  return { reviews, notes };
+  return { reviews, notes, expectedFallbackIds, missingSides };
+}
+
+/** 从 `.fallback-items.md` 读回编排器编好号的待裁决单元（每行 `- <前缀>-F<n>: …`） */
+async function readFallbackIds(p: string): Promise<string[]> {
+  let text: string;
+  try {
+    text = await fs.readFile(p, 'utf8');
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const line of text.split('\n')) {
+    const m = /^-\s+((?:AGY|GLM)-F\d+):/.exec(line.trim());
+    if (m) out.push(m[1]!);
+  }
+  return out;
 }
 
 async function fileExists(p: string): Promise<boolean> {
