@@ -1338,19 +1338,17 @@ HOME="<run_home>" "<runtime.node>" "<entry>" \
 
 ```yaml
 profiles:
-  default:                       # 均衡
-    gemini: {plan: gemini-3.1-pro-high, code: gemini-3.8-flash-high, bug: gemini-3.1-pro-high}
-    glm:    {plan: GLM-5.3,             code: GLM-5.3-Flash,          bug: GLM-5.3}
-  architecture:                  # 不可逆决策，双强审
-    gemini: {plan: gemini-3.1-pro-high, effort: high}
-    glm:    {plan: GLM-5.3}
-  hotfix:                        # 只求快速交叉验证
-    gemini: {code: gemini-3.8-flash-low}
-    glm:    {code: GLM-5.3-Flash}
-  security:
-    gemini: {code: gemini-3.1-pro-high, effort: high}
-    glm:    {code: GLM-5.3}
+  default:                       # 日常
+    gemini: {plan: gemini-3.8-flash-high, code: gemini-3.8-flash-high, bug: gemini-3.8-flash-high}
+    glm:    {plan: GLM-5.3,               code: GLM-5.3,               bug: GLM-5.3}
+  flash:                         # 省时省配额：只把 GLM 侧换成 Flash
+    gemini: {plan: gemini-3.8-flash-high, code: gemini-3.8-flash-high, bug: gemini-3.8-flash-high}
+    glm:    {plan: GLM-5.3-Flash,         code: GLM-5.3-Flash,         bug: GLM-5.3-Flash}
 ```
+
+两档的 Gemini 侧相同，差异收敛到「GLM 侧用不用 Flash」这一个维度。档位级 `effort`
+字段已移除：它在实现里没有读取点，且 slug 自带 `-high/-medium/-low` 后缀时
+`buildAgyArgs` 本就不会传 `--effort`（坑 P-16），写了也不生效。
 
 **异构默认的强制**（FR-17 / AC-18）：
 
@@ -1621,7 +1619,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | NFR-03 超时（有上限且可观测） | 阶段化超时 + 进程内外双保险 + 记录 | 12.2 |
 | NFR-04 安全（只读、无密钥入档） | 三重只读 + 落盘前密钥扫描 | 10.3、10.5 |
 | NFR-05 可观测 | 命令输出 + `run.json` + `task.json` 三处 | 13.2、6.7 |
-| NFR-06 成本 | profile 分级（architecture/hotfix/security）+ 快照缓存复用 | 11.5、12.3 |
+| NFR-06 成本 | profile 分级（default/flash）+ 快照缓存复用 | 11.5、12.3 |
 | NFR-07 审计（人可读 Markdown） | 全部结论渲染为带 front-matter 的 Markdown，VS Code 可直接预览 | 6.5、6.6 |
 
 ### 15.3 验收标准 → 验证方式

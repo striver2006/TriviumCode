@@ -72,7 +72,7 @@ test('合法的覆盖（本项目自己的 config.yaml 形状）照常通过', a
     '    code: 2700',
     '    bug: 1200',
     'profiles:',
-    '  hotfix:',
+    '  flash:',
     '    gemini: { plan: a, code: b, bug: c }',
     'verify:',
     '  build: [npm run build]',

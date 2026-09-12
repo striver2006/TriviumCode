@@ -103,7 +103,10 @@ export function defaultConfig(): Config {
         vendor: 'antigravity',
         bin: null,
         agent: 'trivium-critic',
-        effort: { plan: 'high', code: 'medium', bug: 'high' },
+        // slug 后缀才是权威：模型名带 -high/-medium/-low 时 buildAgyArgs 不传 --effort
+        // （agy 1.2.0 会报冲突，坑 P-16）。当前两档 slug 全是 -high，此处三项均随之写 high，
+        // 否则归档 front-matter 会记下一个从未生效的 effort 值。
+        effort: { plan: 'high', code: 'high', bug: 'high' },
         readonly_commands: [
           'git log', 'git blame', 'git diff', 'git show', 'git status',
           'ls', 'cat', 'head', 'tail', 'grep', 'rg', 'find', 'wc',
@@ -111,22 +114,16 @@ export function defaultConfig(): Config {
       },
       glm: { vendor: 'zcode', entry: null, max_turns: 40, unsupported_override: 'reject' },
     },
+    // 两档的差异只在 GLM 侧用不用 Flash——gemini 侧两档相同。
+    // 不写 profile 级 effort：该字段无任何读取点，且 slug 自带后缀时 effort 本就不生效。
     profiles: {
       default: {
-        gemini: { plan: 'gemini-3.1-pro-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.1-pro-high' },
-        glm: { plan: 'GLM-5.3', code: 'GLM-5.3-Flash', bug: 'GLM-5.3' },
-      },
-      architecture: {
-        gemini: { plan: 'gemini-3.1-pro-high', code: 'gemini-3.1-pro-high', bug: 'gemini-3.1-pro-high', effort: 'high' },
+        gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
         glm: { plan: 'GLM-5.3', code: 'GLM-5.3', bug: 'GLM-5.3' },
       },
-      hotfix: {
-        gemini: { plan: 'gemini-3.8-flash-low', code: 'gemini-3.8-flash-low', bug: 'gemini-3.8-flash-low' },
+      flash: {
+        gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
         glm: { plan: 'GLM-5.3-Flash', code: 'GLM-5.3-Flash', bug: 'GLM-5.3-Flash' },
-      },
-      security: {
-        gemini: { plan: 'gemini-3.1-pro-high', code: 'gemini-3.1-pro-high', bug: 'gemini-3.1-pro-high', effort: 'high' },
-        glm: { plan: 'GLM-5.3', code: 'GLM-5.3', bug: 'GLM-5.3' },
       },
     },
     active_profile: 'default',
@@ -182,7 +179,7 @@ export interface LoadOptions {
 /**
  * 应用 `--profile` 覆盖：换掉本次运行使用的模型档位（AGY-04 / GLM-05）。
  *
- * profile 是 `config.yaml` 里预设的成套模型（default / architecture / hotfix / …），
+ * profile 是 `config.yaml` 里预设的成套模型（default / flash），
  * 平时由 `active_profile` 固定。`--profile` 让单次运行临时切档，省去改配置再改回来。
  *
  * 实现刻意选择「覆盖 `active_profile`」而不是给 `routeModel` 加参数：

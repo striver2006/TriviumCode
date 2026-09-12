@@ -18,16 +18,16 @@ function cfg(): Config {
   c.profiles = {
     default: { gemini: { plan: 'g-pro', code: 'g-flash', bug: 'g-pro' },
                glm: { plan: 'GLM-5.3', code: 'GLM-5.3-Flash', bug: 'GLM-5.3' } },
-    hotfix: { gemini: { plan: 'g-low', code: 'g-low', bug: 'g-low' },
-              glm: { plan: 'GLM-Flash', code: 'GLM-Flash', bug: 'GLM-Flash' } },
+    flash: { gemini: { plan: 'g-low', code: 'g-low', bug: 'g-low' },
+             glm: { plan: 'GLM-Flash', code: 'GLM-Flash', bug: 'GLM-Flash' } },
   };
   c.active_profile = 'default';
   return c;
 }
 
 test('换档后 routeModel 取的是新档位的模型', () => {
-  const c = applyProfileOverride(cfg(), 'hotfix');
-  assert.equal(c.active_profile, 'hotfix');
+  const c = applyProfileOverride(cfg(), 'flash');
+  assert.equal(c.active_profile, 'flash');
   assert.deepEqual(routeModel(c, 'gemini', 'code'), { model: 'g-low', source: 'profile' });
   assert.deepEqual(routeModel(c, 'glm', 'plan'), { model: 'GLM-Flash', source: 'profile' });
 });
@@ -46,14 +46,14 @@ test('档位不存在退 64 并列出可用值——不静默回退到 default',
       assert.equal(e.code, EXIT.USAGE);
       assert.match(e.message, /不存在/);
       assert.match(e.message, /default/, '要列出可用档位，否则用户不知道能填什么');
-      assert.match(e.message, /hotfix/);
+      assert.match(e.message, /flash/);
       return true;
     },
   );
 });
 
 test('--model-* 优先于档位：更具体的赢', () => {
-  const c = applyProfileOverride(cfg(), 'hotfix');
+  const c = applyProfileOverride(cfg(), 'flash');
   assert.deepEqual(
     routeModel(c, 'gemini', 'code', { cli: 'g-pro-explicit' }),
     { model: 'g-pro-explicit', source: 'cli' },
@@ -63,9 +63,9 @@ test('--model-* 优先于档位：更具体的赢', () => {
 
 test('不改动传入的 config 对象本身（避免跨调用污染）', () => {
   const original = cfg();
-  const switched = applyProfileOverride(original, 'hotfix');
+  const switched = applyProfileOverride(original, 'flash');
   assert.equal(original.active_profile, 'default');
-  assert.equal(switched.active_profile, 'hotfix');
+  assert.equal(switched.active_profile, 'flash');
 });
 
 test('档位值像是自由文本时，报错要点破「它被旗标吞了」', () => {

@@ -298,7 +298,7 @@ test('已存在的 config.yaml 不被覆盖', async () => {
   const ctx = await fakeProject();
   const assetRoot = await fakeAssets();
   await fs.mkdir(ctx.triviumDir, { recursive: true });
-  await fs.writeFile(path.join(ctx.triviumDir, 'config.yaml'), '# 我手工调过的配置\nactive_profile: security\n');
+  await fs.writeFile(path.join(ctx.triviumDir, 'config.yaml'), '# 我手工调过的配置\nactive_profile: flash\n');
   const r = await runInit({ ctx, assetRoot });
   const cfg = await fs.readFile(path.join(ctx.triviumDir, 'config.yaml'), 'utf8');
   assert.match(cfg, /我手工调过的配置/);

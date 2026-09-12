@@ -406,14 +406,12 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `critics.glm.unsupported_override` | `reject` | 模型覆盖落到全局档时拒绝还是标注 |
 | `active_profile` | `default` | 当前档位 |
 
-四个内置档位：
+两个内置档位。两档的 Gemini 侧相同，差异只在 GLM 侧用不用 Flash：
 
-| 档位 | 用途 |
-| :--- | :--- |
-| `default` | plan/bug 用强模型，code 用快模型 |
-| `architecture` | 全部用强模型 + effort high |
-| `hotfix` | 全部用快模型，省时省配额 |
-| `security` | 同 architecture |
+| 档位 | 三个阶段的 Gemini 侧 | 三个阶段的 GLM 侧 | 用途 |
+| :--- | :--- | :--- | :--- |
+| `default` | `gemini-3.8-flash-high` | `GLM-5.3` | 日常 |
+| `flash` | `gemini-3.8-flash-high` | `GLM-5.3-Flash` | 省时省配额 |
 
 单次切换用 `--profile <名称>`；只换某一侧的模型用 `--model-gemini` / `--model-glm`（优先级更高）。
 

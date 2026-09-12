@@ -137,10 +137,10 @@ test('模型路由四级优先级：命令行 > 主题 > profile', () => {
     source: 'topic',
   });
   assert.deepEqual(routeModel(cfg, 'gemini', 'plan'), {
-    model: 'gemini-3.1-pro-high',
+    model: 'gemini-3.8-flash-high',
     source: 'profile',
   });
-  assert.deepEqual(routeModel(cfg, 'glm', 'code'), { model: 'GLM-5.3-Flash', source: 'profile' });
+  assert.deepEqual(routeModel(cfg, 'glm', 'code'), { model: 'GLM-5.3', source: 'profile' });
 });
 
 test('模型路由：profile 缺该阶段时返回 none 而非瞎猜', () => {
