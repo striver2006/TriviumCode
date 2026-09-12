@@ -55,6 +55,13 @@ export interface AgyProbe {
   isolation: 'home_copy' | 'settings_path' | 'env' | 'shared';
   /** 达成 headless_read_ok 所需的额外手段，供适配层复现 */
   read_strategy?: 'default' | 'allow_settings' | 'pty' | 'add_dir' | null;
+  /**
+   * 探针**实际用来验证**的只读 Agent 名：agent.md 存在时为配置的名字，不存在时探针
+   * 改用默认 Agent 探测、此处为 null。适配层一律用这个值（P7：命令行由探针结论构造）——
+   * 原先适配层取配置里的名字，与探针验证过的配置不是同一个，agent.md 缺失时只读白名单失效。
+   * 旧探针结论没有该字段（undefined）：适配层回退到配置名。
+   */
+  agent?: string | null;
 }
 
 export interface ZcodeProbe {

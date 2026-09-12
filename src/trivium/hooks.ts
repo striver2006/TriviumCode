@@ -235,8 +235,23 @@ const WRITE_LIKE: readonly RegExp[] = [
   /\b(?:writeFile|appendFile|mkdirSync|rmSync)\w*\(/, // node -e
 ];
 
+/**
+ * 剥掉 heredoc 正文（`<<'TAG' … TAG`）：那是喂给命令的**数据**，不是命令。
+ * 不剥的话，`python3 - <<'PY'` 里嵌着的测试源码只要含 `writeFile(` 或 `-gemini.md`
+ * 字样就会被当成真实写命令——本项目自己的实施过程就被这条误报拦过。
+ * 代价是 heredoc 喂给解释器的脚本本身若写文件，这里看不见；启发式本就不追求完备。
+ */
+export function stripHeredocs(cmd: string): string {
+  // 保留标记所在的整行（`cat <<'EOF' > src/a.ts` 的重定向就在那一行），只剥正文与终止符
+  return cmd.replace(
+    /(<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2[^\n]*\n)[\s\S]*?\n\s*\3(?=\s|$)/g,
+    '$1__HEREDOC_BODY__',
+  );
+}
+
 export function looksLikeWriteCommand(cmd: string): boolean {
-  return WRITE_LIKE.some((re) => re.test(cmd));
+  const effective = stripHeredocs(cmd);
+  return WRITE_LIKE.some((re) => re.test(effective));
 }
 
 /** Bash 写命令是否指向编排器独占的东西（角色后缀 / _meta / task.json / state.json / lock） */
@@ -261,7 +276,7 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
   if (!looksLikeWriteCommand(cmd)) return ALLOW;
 
   const shown = cmd.length > 120 ? `${cmd.slice(0, 120)}…` : cmd;
-  if (bashTargetsProtected(cmd, ctx)) {
+  if (bashTargetsProtected(stripHeredocs(cmd), ctx)) {
     return deny(
       `禁止用 Bash 改动编排器独占的文件：${shown}\n` +
         '  审查文档（-gemini.md / -glm.md）、归档内 _meta/ 与 task.json、.trivium/state.json 与 lock/ 只能由编排器维护（FR-25 / P5）。',

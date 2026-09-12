@@ -183,6 +183,16 @@ test('写命令形态识别：重定向 / tee / sed -i / rm / git checkout 算�
   ]) assert.equal(looksLikeWriteCommand(c), false, `不该判为写：${c}`);
 });
 
+test('heredoc 正文是数据不是命令：里面的 writeFile( / -gemini.md 字样不触发拦截', async () => {
+  const script = "python3 - <<'PY'\nimport pathlib\np = pathlib.Path('x')\ns = \"await fs.writeFile(f, 'rm -rf src'); // 2026-09-12-t-gemini.md\"\nPY";
+  assert.equal(looksLikeWriteCommand(script), false, '本项目实施过程中就被这条误报拦过');
+  const ctx = await fakeCtx();
+  assert.equal((await hookPreBash(ctx, bashInput(script))).exitCode, EXIT.OK);
+  // heredoc 之外的真实写命令照样识别
+  assert.equal(looksLikeWriteCommand("cat <<'EOF' > src/a.ts\nx\nEOF"), true);
+  assert.equal(looksLikeWriteCommand("python3 - <<'PY'\nprint(1)\nPY\nrm -rf src"), true);
+});
+
 test('闸门期用 Bash 改工作树被拦，并说明这是启发式与解除办法', async () => {
   const ctx = await fakeCtx();
   await setGate({ triviumDir: ctx.triviumDir, topic: '登录重构', stage: 'plan', state: 'awaiting_approval', sessionId: SESSION, heartbeatStaleMs: STALE });

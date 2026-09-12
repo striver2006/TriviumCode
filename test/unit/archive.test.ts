@@ -48,6 +48,23 @@ test('防覆盖：同名再写不覆盖原文件，而是抬升 -r<N>', async ()
   assert.equal(await fs.readFile(first.absPath, 'utf8'), '第一轮\n');
 });
 
+test('listRecordedRuns：审查阶段下不合 run.v1 的清单判不可读；verify/ 下的遗留 run.v1 标签不误判', async () => {
+  const { listRecordedRuns } = await import('../../src/trivium/archive.js');
+  const l = await tmpLayout();
+  await fs.mkdir(path.join(l.archiveRoot, l.topic, 'plan/_meta'), { recursive: true });
+  await fs.mkdir(path.join(l.archiveRoot, l.topic, 'verify/_meta'), { recursive: true });
+  // plan 下自称 run.v1 却缺必填字段：被搅坏
+  await fs.writeFile(path.join(l.archiveRoot, l.topic, 'plan/_meta/run-R1.json'), JSON.stringify({ schema: 'trivium.run.v1', run_id: 'R1', status: 'success' }));
+  // verify 下 AGY-03 之前的历史记录：标 run.v1 但形状是 verify 记录，是合法的不可变工件
+  await fs.writeFile(path.join(l.archiveRoot, l.topic, 'verify/_meta/run-V1.json'), JSON.stringify({
+    schema: 'trivium.run.v1', run_id: 'V1', topic: l.topic, stage: 'verify', rerun_index: 1, status: 'success',
+    started_at: 'x', finished_at: 'y', artifacts: [],
+  }));
+  const runs = await listRecordedRuns(l);
+  assert.equal(runs.find((r) => r.run_id === 'R1')?.unreadable, true);
+  assert.equal(runs.find((r) => r.run_id === 'V1')?.unreadable, undefined, '历史 verify 记录不得被误判，否则提交永久被拦');
+});
+
 test('firstFreeRerunIndex：对两侧都空闲的轮次，单侧残留即整体抬升', async () => {
   const { firstFreeRerunIndex } = await import('../../src/trivium/archive.js');
   const l = await tmpLayout();

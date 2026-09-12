@@ -376,8 +376,13 @@ export async function listRecordedRuns(layout: ArchiveLayout): Promise<RecordedR
           schema?: string; run_id?: string; status?: string; skipped?: boolean;
           artifacts?: { path: string; sha256: string }[];
         };
-        // 自称 trivium.run.v1 却不合契约：也是「被搅坏」，按不可读处理（verify 记录另有 schema，不在此列）
-        if (meta.schema === 'trivium.run.v1' && validateRunMeta(meta).length > 0) {
+        /*
+         * 自称 trivium.run.v1 却不合契约：也是「被搅坏」，按不可读处理。
+         * 只对审查阶段目录生效：verify/ 下的记录另有 schema（trivium.verify-run.v1，AGY-03），
+         * 而 AGY-03 之前落盘的历史 verify 记录仍标着 run.v1——它们是合法的不可变工件（P6），
+         * 本仓库归档里就有一份，拿 run.v1 去校验会把它误判成不可读、永久拦住提交。
+         */
+        if (stage !== 'verify' && meta.schema === 'trivium.run.v1' && validateRunMeta(meta).length > 0) {
           throw new Error('不符合 trivium.run.v1');
         }
         out.push({

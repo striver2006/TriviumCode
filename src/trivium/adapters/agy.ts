@@ -24,7 +24,6 @@ import {
   readPaths,
   successfulToolCalls,
   writeEvents,
-  AGY_READ_TOOLS,
   type AgyStreamResult,
 } from './agy-events.js';
 import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
@@ -64,8 +63,11 @@ export function modelEncodesEffort(model: string | null): boolean {
   return model !== null && /-(high|medium|low)$/.test(model);
 }
 
-/** 拼装并执行一次 agy headless。**唯一**构造 agy 命令行的地方 */
-export async function invokeAgy(opts: AgyInvokeOptions): Promise<AgyInvokeOutcome> {
+/**
+ * agy 的 argv 拼装。纯函数，与执行分离——M0 坑清单里的调用配方（P-07 / P-16 / AD-07）
+ * 在这里有回归测试守着，厂商升级后能第一时间发现配方失效。
+ */
+export function buildAgyArgs(opts: Omit<AgyInvokeOptions, 'bin' | 'cwd' | 'pty' | 'env'>): string[] {
   const args = ['-p', opts.prompt, '--output-format', 'stream-json'];
   if (opts.model) args.push('--model', opts.model);
   if (opts.agent) args.push('--agent', opts.agent);
@@ -89,6 +91,12 @@ export async function invokeAgy(opts: AgyInvokeOptions): Promise<AgyInvokeOutcom
   // 进程内超时略小于脚本级超时，让 agy 有机会自己收尾并吐出已有输出
   const innerS = Math.max(30, Math.floor(opts.timeoutMs / 1000) - 20);
   args.push('--print-timeout', `${innerS}s`);
+  return args;
+}
+
+/** 拼装并执行一次 agy headless。**唯一**执行 agy 的地方 */
+export async function invokeAgy(opts: AgyInvokeOptions): Promise<AgyInvokeOutcome> {
+  const args = buildAgyArgs(opts);
 
   const r = await run(opts.bin, args, {
     cwd: opts.cwd,
@@ -132,8 +140,30 @@ function countTools(parsed: AgyStreamResult): CriticResult['tool_calls'] {
         break;
     }
   }
-  void AGY_READ_TOOLS;
   return counts;
+}
+
+/**
+ * 本次调用该用哪个只读 Agent：探针实际验证过的那个（P7）。
+ *
+ *   - 探针记了名字 → 用它；
+ *   - 探针明确记了 null → agent.md 缺失、当时是用默认 Agent 探的，该侧不可用；
+ *   - 旧探针结论没有该字段 → 回退到配置名（兼容），下次 doctor 会补上。
+ */
+export function resolveAgyAgent(
+  probe: { agent?: string | null },
+  configured: string,
+): { agent: string | null; reason: string | null } {
+  if (probe.agent === undefined) return { agent: configured, reason: null };
+  if (probe.agent === null) {
+    return {
+      agent: null,
+      reason:
+        `探针验证时只读审查 Agent 未安装（当时以默认 Agent 探测）。请确认 ` +
+        `~/.gemini/config/agents/${configured}/agent.md 已由安装器写入，然后重跑 trivium doctor --only agy`,
+    };
+  }
+  return { agent: probe.agent, reason: null };
 }
 
 export const agyAdapter: CriticAdapter = {
@@ -153,6 +183,8 @@ export const agyAdapter: CriticAdapter = {
     if (p.headless_read_ok === null) {
       return { ok: false, reason: '探针尚未实测 agy headless 读取能力，请先运行 trivium doctor' };
     }
+    const agent = resolveAgyAgent(p, ctx.cfg.critics.gemini.agent);
+    if (agent.reason) return { ok: false, reason: agent.reason };
     return { ok: true };
   },
 
@@ -174,7 +206,8 @@ export const agyAdapter: CriticAdapter = {
         cwd: req.project_root,
         prompt: req.brief_text,
         model: req.model,
-        agent: ctx.cfg.critics.gemini.agent,
+        // 探针验证过的 Agent，不是配置意图（P7）；availability 已挡掉 null 的情形
+        agent: resolveAgyAgent(probe, ctx.cfg.critics.gemini.agent).agent,
         effort: req.effort ?? null,
         // 探针说 --json-schema 不可用时降级为提示词约定 + 宽松解析（AD-08）
         jsonSchemaPath: probe.json_schema_ok === false ? null : req.schema_path,

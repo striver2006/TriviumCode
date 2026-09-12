@@ -31,6 +31,7 @@ export function defaultProbe(): ProbeSection {
       scratch_paths: [],
       isolation: 'shared',
       read_strategy: null,
+      agent: null,
     },
     zcode: {
       entry: null,

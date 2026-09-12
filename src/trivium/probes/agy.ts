@@ -25,6 +25,11 @@ import type { AgyProbe } from '../types.js';
 const PROBE_MODEL = 'gemini-3.8-flash-low';
 const PROBE_TIMEOUT_MS = 180_000;
 
+/** 只读审查 Agent 定义的路径（安装器与探针共用同一条规则） */
+export function agyAgentPath(agentName: string): string {
+  return path.join(os.homedir(), '.gemini/config/agents', agentName, 'agent.md');
+}
+
 /** `agy` 绝对路径 + 版本 */
 export async function probeAgyBin(configured: string | null): Promise<{ bin: string | null; version: string | null }> {
   const candidates = [
@@ -272,6 +277,7 @@ export async function probeAgy(
         scratch_paths: [],
         isolation: 'shared',
         read_strategy: null,
+        agent: null,
       };
 
   const { bin, version } = await probeAgyBin(configuredBin);
@@ -293,8 +299,10 @@ export async function probeAgy(
   }
 
   // 自定义 Agent 必须已安装，否则只读白名单不生效
-  const agentPath = path.join(os.homedir(), '.gemini/config/agents', agentName, 'agent.md');
+  const agentPath = agyAgentPath(agentName);
   const agent = (await exists(agentPath)) ? agentName : null;
+  // 记下本次验证用的是哪个 Agent：适配层只认这个值，不认配置意图（P7）
+  probe.agent = agent;
   if (!agent) {
     notes.push(
       `未找到只读审查 Agent 定义 ${agentPath}；将以默认 Agent 探测，` +

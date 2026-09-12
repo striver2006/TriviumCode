@@ -68,15 +68,31 @@ export interface ZcodeInvokeOutcome {
   failureKind: 'none' | 'model_config_missing' | 'provider_not_configured' | 'other';
 }
 
-/** **唯一**构造 zcode 命令行的地方 */
-export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvokeOutcome> {
-  const args = [
+/** zcode 的 argv 拼装。纯函数，与执行分离，让 M0 调用配方有回归测试 */
+export function buildZcodeArgs(opts: Pick<ZcodeInvokeOptions, 'entry' | 'prompt' | 'cwd' | 'readonlyArgs'>): string[] {
+  return [
     opts.entry,
     '--prompt', opts.prompt,
     '--cwd', opts.cwd,
     '--json', '--no-color',
     ...opts.readonlyArgs,
   ];
+}
+
+/**
+ * 从探针结论构造只读参数：只传探针实测**被接受**的旗标，且 denylist 一律用完整清单
+ * （探针试的是精简版，适配层要的是含 NotebookEdit / WebFetch 的全集）。
+ */
+export function readonlyArgsFromProbe(readonlyFlags: readonly string[]): string[] {
+  const out: string[] = [];
+  if (readonlyFlags.some((f) => f.startsWith('--mode plan'))) out.push('--mode', 'plan');
+  if (readonlyFlags.some((f) => f.startsWith('--disallowed-tools'))) out.push('--disallowed-tools', ZCODE_READONLY_DENYLIST);
+  return out;
+}
+
+/** **唯一**执行 zcode 的地方 */
+export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvokeOutcome> {
+  const args = buildZcodeArgs(opts);
 
   const env: Record<string, string | undefined> = {};
   if (opts.homeDir) env['HOME'] = opts.homeDir;
@@ -186,13 +202,7 @@ export const zcodeAdapter: CriticAdapter = {
     const tracePath = path.join(req.out_dir, 'trace.json');
 
     // 只读参数以探针实测「实际被接受」的为准，并强制补全 denylist
-    const readonlyArgs: string[] = [];
-    if (probe.readonly_flags.some((f) => f.startsWith('--mode plan'))) {
-      readonlyArgs.push('--mode', 'plan');
-    }
-    if (probe.readonly_flags.some((f) => f.startsWith('--disallowed-tools'))) {
-      readonlyArgs.push('--disallowed-tools', ZCODE_READONLY_DENYLIST);
-    }
+    const readonlyArgs = readonlyArgsFromProbe(probe.readonly_flags);
 
     // 模型名补全必须在写配置副本之前——写进去的裸名会让 provider 解析失败
     const qualified = qualifyZcodeModel(req.model, probe.model_id_form ?? null);
