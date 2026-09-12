@@ -5,6 +5,7 @@ import {
   classifyDiff,
   diffExcludePrefixes,
   filesInDiff,
+  parseFrozenDiff,
   renderSkipNotice,
   summarizeDiff,
 } from '../../src/trivium/code-stage.js';
@@ -20,6 +21,18 @@ import { defaultConfig } from '../../src/trivium/config.js';
 const cfg = () => defaultConfig();
 
 // ── 文件清单提取 ──
+
+test('parseFrozenDiff：头部逐字拆回、正文原样、base 与文件清单可回读', () => {
+  const body = 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-x\n+y\n';
+  const header = buildDiffHeader({ runId: 'R1', base: 'main', head: 'abc', files: ['src/a.ts'] });
+  const p = parseFrozenDiff(header + body);
+  assert.equal(p.header, header, '头部必须逐字保留，复算时要拿它拼回去比哈希');
+  assert.equal(p.body, body);
+  assert.equal(p.base, 'main');
+  assert.deepEqual(p.files, ['src/a.ts']);
+  assert.equal(parseFrozenDiff(body).header, '', '无头部时 header 为空、base 为 null');
+  assert.equal(parseFrozenDiff(body).base, null);
+});
 
 test('从 diff 头提取文件路径', () => {
   const diff = [

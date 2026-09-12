@@ -29,11 +29,12 @@ async function runCode(
   root: string,
   codeDir: string,
   extra: string[] = [],
+  stub: StubConfig = STUB,
 ): Promise<{ exitCode: number; meta: RunMeta; out: string }> {
   const started = await cli(
     root,
     ['review', '--start', '--stage', 'code', '--topic', TOPIC, '--focus', '看变更', '--json', ...extra],
-    STUB,
+    stub,
   );
   assert.equal(started.code, EXIT.OK, `--start 失败：\n${started.stdout}\n${started.stderr}`);
   const cand = extractJsonCandidate(started.stdout);
@@ -43,7 +44,7 @@ async function runCode(
   let exitCode: number = EXIT.STILL_RUNNING;
   let out = started.stdout;
   for (let i = 0; i < 12 && exitCode === EXIT.STILL_RUNNING; i++) {
-    const w = await cli(root, ['review', '--wait', js.run_id, '--timeout', '20'], STUB, 60_000);
+    const w = await cli(root, ['review', '--wait', js.run_id, '--timeout', '20'], stub, 60_000);
     exitCode = w.code ?? EXIT.FAIL;
     out += w.stdout + w.stderr;
   }
@@ -52,6 +53,37 @@ async function runCode(
   ) as RunMeta;
   return { exitCode, meta, out };
 }
+
+test('审查期间被审代码被改 → subject_drift，整次作废（设计 §9.2 第 2 步）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 2;\n');
+  /*
+   * 原先跑后复算读的是冻结的 changes-<run_id>.diff 本身，与冻结值恒等，
+   * 这条护栏在 code 阶段从未触发过；run.json 照样写 drift: false。
+   * 桩在「审查期间」真的改动了被审文件，被审对象（相对 base 的变更）已经不是送审的那份。
+   */
+  const { exitCode, meta } = await runCode(
+    fx.root, fx.codeDir, [],
+    { gemini: { mode: 'mutate_file', note: 'src/app.ts' }, glm: { mode: 'ok' } },
+  );
+  assert.notEqual(exitCode, EXIT.OK, '被审对象漂移必须让整次运行失败');
+  assert.equal(meta.status, 'failed');
+  assert.equal(meta.snapshot.drift.changed, true, 'run.json 不得再写 drift: false');
+  assert.equal(meta.gate.state, 'failed');
+});
+
+test('审查期间无关文件被改：code 阶段的被审对象是整段工作树变更，同样判 subject_drift', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 2;\n');
+  // 新建一个与 diff 无关的文件：git diff HEAD 含未跟踪文件，补丁正文随之变化
+  const { exitCode, meta } = await runCode(
+    fx.root, fx.codeDir, [],
+    { gemini: { mode: 'mutate_file', note: 'src/unrelated.ts' }, glm: { mode: 'ok' } },
+  );
+  assert.notEqual(exitCode, EXIT.OK);
+  assert.equal(meta.status, 'failed');
+  assert.equal(meta.snapshot.drift.changed, true);
+});
 
 test('run.json 记下发起命令 --entry', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await codeFixture();

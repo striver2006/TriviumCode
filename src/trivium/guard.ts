@@ -106,6 +106,8 @@ export interface JudgeRunInput {
   archiveRootAbs: string;
   /** 归档根的项目相对路径，漂移判定要整体排除它 */
   archiveRootRel: string;
+  /** `.trivium/` 的项目相对路径，同样排除；缺省 `.trivium` */
+  triviumDirRel?: string;
   before: Snapshot;
   afterTreeHash: string;
   afterSubjectSha256: string;
@@ -132,6 +134,7 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
     relatedPaths: input.relatedPaths,
     scratchGlobs,
     archiveRootRel: input.archiveRootRel,
+    ...(input.triviumDirRel ? { triviumDirRel: input.triviumDirRel } : {}),
   });
 
   const sides: Partial<Record<CriticId, SideVerdict>> = {};

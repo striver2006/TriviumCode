@@ -131,6 +131,28 @@ export function buildDiffHeader(i: {
   ].join('\n');
 }
 
+/**
+ * 把冻结的补丁拆回头部与正文，并回读 base 与文件清单。
+ *
+ * 跑后复算漂移要用它：头部（含 run_id / base / 冻结时的文件清单）原样保留，
+ * 只把正文换成**此刻**重新 `git diff <base>` 的结果，再算 sha256 与冻结值比对。
+ * 头部逐字复用，正文一字不差时哈希才相等——这正是「被审对象是否被动过」的定义。
+ */
+export function parseFrozenDiff(text: string): {
+  header: string;
+  body: string;
+  base: string | null;
+  files: string[];
+} {
+  const lines = text.split('\n');
+  let i = 0;
+  while (i < lines.length && lines[i]!.startsWith('#')) i++;
+  const header = lines.slice(0, i).join('\n') + (i > 0 ? '\n' : '');
+  const body = lines.slice(i).join('\n');
+  const base = /^# base: (.+)$/m.exec(header)?.[1]?.trim() ?? null;
+  return { header, body, base, files: filesInDiff(body) };
+}
+
 // ───────────────────── FR-23 路径分类 ─────────────────────
 
 export type DiffCategory = 'doc_only' | 'business' | 'dependency' | 'ci_or_permission';

@@ -176,6 +176,31 @@ test('只读了送审材料自己 → 判 no_project_context', { skip: bundleMis
   );
 });
 
+// ── 跑后复算的漂移判定（设计 §9.2 第 3 步）──
+
+test('审查期间无关业务文件被改 → unrelated，默认 warn，运行仍成功', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { exitCode, meta } = await runInjected({
+    gemini: { mode: 'mutate_file', note: 'src/b.ts' }, glm: { mode: 'ok' },
+  });
+  assert.equal(exitCode, EXIT.OK, '无关漂移默认只告警');
+  assert.equal(meta.status, 'success');
+  assert.equal(meta.snapshot.drift.changed, true);
+  assert.deepEqual(meta.snapshot.drift.files, ['src/b.ts']);
+  assert.equal(meta.snapshot.drift.policy, 'warn');
+  assert.equal(meta.guard.readonly_breach, false, '轨迹无写事件：这是开发者手改，不是审查员失守');
+});
+
+test('审查期间 --context 涉及的文件被改 → related，默认 fail', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { exitCode, meta } = await runInjected(
+    { gemini: { mode: 'mutate_file', note: 'src/a.ts' }, glm: { mode: 'ok' } },
+    ['--context', 'src'],
+  );
+  assert.notEqual(exitCode, EXIT.OK, '相关漂移默认判失败');
+  assert.equal(meta.status, 'failed');
+  assert.equal(meta.snapshot.drift.policy, 'fail');
+  assert.deepEqual(meta.snapshot.drift.files, ['src/a.ts']);
+});
+
 test('审查中写项目文件 → readonly_breach', { skip: bundleMissing && bundleSkipReason }, async () => {
   const { meta } = await runInjected({ gemini: { mode: 'write_breach' }, glm: { mode: 'ok' } });
   assert.equal(meta.guard.readonly_breach, true, '审查员写文件必须被判只读违规');

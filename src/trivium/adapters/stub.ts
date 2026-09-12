@@ -42,6 +42,12 @@ export type StubMode =
   | 'write_breach'
   /** 读取了禁读清单里的文件（对应「读到对方产出」） */
   | 'peer_leak'
+  /**
+   * **真的**改动工作树里的一个文件（`note` = 项目相对路径，不存在则创建），
+   * 对应「审查期间开发者在别处继续改代码」——轨迹里没有写事件，只有指纹变化。
+   * 用来验证跑后复算的漂移判定（设计 §9.2）。
+   */
+  | 'mutate_file'
   /** 进程级失败 */
   | 'fail';
 
@@ -178,6 +184,14 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
               ...req.deny_paths.map((p) => `${req.project_root}/${p}`),
             ],
           };
+        case 'mutate_file': {
+          const { promises: fsp } = await import('node:fs');
+          const nodePath = await import('node:path');
+          const target = nodePath.join(req.project_root, spec.note ?? 'src/mutated-by-stub.ts');
+          await fsp.mkdir(nodePath.dirname(target), { recursive: true });
+          await fsp.appendFile(target, `// mutated during review by stub ${critic}\n`, 'utf8');
+          return baseResult(critic, req, spec);
+        }
         case 'ok':
         default:
           return baseResult(critic, req, spec);

@@ -182,6 +182,13 @@ export interface DriftInput {
    * 被审对象本身的漂移由 `subject_sha256` 单独把关（第 2 步），不会因此漏掉。
    */
   archiveRootRel: string;
+  /**
+   * `.trivium/` 的项目相对路径，同样整体排除。编排器运行中会写 `state.json` 与
+   * 主题锁文件；真实项目里它们被 `init` 写进 .gitignore 才没进 tree_hash，
+   * 但漂移判定不该依赖用户的 .gitignore——夹具里没有那几行时就误报了两个文件。
+   * 缺省为 `.trivium`。
+   */
+  triviumDirRel?: string;
 }
 
 /**
@@ -192,7 +199,11 @@ export interface DriftInput {
  */
 export async function judgeDrift(input: DriftInput): Promise<DriftVerdict> {
   const { cfg, projectRoot, before, afterTreeHash, afterSubjectSha256, relatedPaths, scratchGlobs } = input;
-  const archivePrefix = input.archiveRootRel.replace(/^\.\//, '').replace(/\/+$/, '');
+  const normPrefix = (p: string): string => p.replace(/^\.\//, '').replace(/\/+$/, '');
+  // 编排器自己的写入点：归档根与 .trivium/，整体排除
+  const ownPrefixes = [normPrefix(input.archiveRootRel), normPrefix(input.triviumDirRel ?? '.trivium')]
+    .filter((p) => p.length > 0 && !p.startsWith('..'));
+  const isOwn = (f: string): boolean => ownPrefixes.some((p) => f === p || f.startsWith(`${p}/`));
 
   // 第 2 步：被审对象被改 → 整次作废
   if (afterSubjectSha256 !== before.subjectSha256) return { kind: 'subject_drift' };
@@ -200,11 +211,9 @@ export async function judgeDrift(input: DriftInput): Promise<DriftVerdict> {
   // 第 3 步：工作树无变化 → 无漂移
   if (afterTreeHash === before.treeHash) return { kind: 'none' };
 
-  // 3.a 列出变更文件，剔除 scratch 白名单与归档根
+  // 3.a 列出变更文件，剔除 scratch 白名单、归档根与 .trivium/
   const changed = (await diffTrees(projectRoot, before.treeHash, afterTreeHash)).filter(
-    (f) =>
-      !matchesAnyGlob(f, scratchGlobs) &&
-      !(archivePrefix.length > 0 && (f === archivePrefix || f.startsWith(`${archivePrefix}/`))),
+    (f) => !matchesAnyGlob(f, scratchGlobs) && !isOwn(f),
   );
   // 3.b 全是 Agent 临时文件 → 无漂移
   if (changed.length === 0) return { kind: 'none' };

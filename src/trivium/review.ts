@@ -43,6 +43,7 @@ import {
   diffExcludePrefixes,
   diffFileName,
   filesInDiff,
+  parseFrozenDiff,
   renderSkipNotice,
   summarizeDiff,
   type SkipVerdict,
@@ -652,7 +653,26 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
 
   // ── 复算快照，判漂移 ──
   const afterTreeHash = await workTreeHash(ctx.projectRoot);
-  const afterSubjectSha = await sha256File(subjectPath);
+  /*
+   * 被审对象的复算必须**重新取一次**，不能重读冻结文件。
+   *
+   * plan / bug 的被审对象是工作树里的原稿，`sha256File` 重读就是复算。
+   * code 的被审对象是「相对 base 的变更」，冻结件 `_meta/changes-<run_id>.diff` 只是它的
+   * 快照——重读快照永远等于快照自己，`subject_drift` 在 code 阶段就从未触发过：
+   * 审查期间改了被审代码，run.json 照样写 drift: false（设计 §9.2 第 2 步失效）。
+   * 现在头部逐字复用、正文此刻重新 `git diff <base>`，与冻结值比对。
+   */
+  let afterSubjectSha: string;
+  let diffFiles: string[] = [];
+  if (stage === 'code') {
+    const frozen = parseFrozenDiff(await fs.readFile(subjectPath, 'utf8'));
+    diffFiles = frozen.files;
+    const excludes = diffExcludePrefixes(path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root);
+    const nowBody = await diffAgainst(ctx.projectRoot, frozen.base ?? opts.diffBase ?? 'HEAD', excludes);
+    afterSubjectSha = sha256(frozen.header + nowBody);
+  } else {
+    afterSubjectSha = await sha256File(subjectPath);
+  }
 
   // ── 解析 ──
   const reviews: Partial<Record<CriticId, Review | null>> = {};
@@ -681,10 +701,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     projectRoot: ctx.projectRoot,
     archiveRootAbs: ctx.archiveRoot,
     archiveRootRel: path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root,
+    triviumDirRel: path.relative(ctx.projectRoot, ctx.triviumDir) || '.trivium',
     before: primarySnap,
     afterTreeHash,
     afterSubjectSha256: afterSubjectSha,
-    relatedPaths: opts.contextPaths,
+    // 「相关」= --context 指明的路径 **与 diff 涉及文件**（设计 §9.2 第 3.c 步，freeze.ts 注释同）
+    relatedPaths: [...opts.contextPaths, ...diffFiles],
     results, reviews, requests,
   });
 

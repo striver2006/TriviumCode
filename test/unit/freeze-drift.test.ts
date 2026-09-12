@@ -72,6 +72,22 @@ test('回归：编排器自己往归档写入不算漂移（实跑时误报过 4
   assert.equal(v.kind, 'none', '归档根内的变更必须被整体排除');
 });
 
+test('回归：编排器往 .trivium/ 写 state.json 与锁文件不算漂移（不依赖用户的 .gitignore）', async () => {
+  const dir = await repo();
+  const before = await workTreeHash(dir);
+  await fs.mkdir(path.join(dir, '.trivium/lock'), { recursive: true });
+  await fs.writeFile(path.join(dir, '.trivium/state.json'), '{}\n');
+  await fs.writeFile(path.join(dir, '.trivium/lock/t.lock'), '{}\n');
+  const after = await workTreeHash(dir);
+  assert.notEqual(before, after, '前提：夹具没有 .gitignore，这些写入确实进了 tree_hash');
+
+  const v = await judgeDrift({
+    ...BASE, projectRoot: dir, before: snap(before),
+    afterTreeHash: after, afterSubjectSha256: 'SUBJ',
+  });
+  assert.equal(v.kind, 'none', '.trivium/ 是编排器自己的写入点，必须整体排除');
+});
+
 test('无关业务文件被改 → unrelated，默认 warn', async () => {
   const dir = await repo();
   const before = await workTreeHash(dir);

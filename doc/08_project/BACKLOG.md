@@ -10,7 +10,7 @@
 | :-- | :-- | :-- | :-- |
 | B1 | done | 闸门 `session_id` 为 null 时写锁与收工拦截静默失效（skill 默认路径从未生效） | state.ts `shouldLockWrites`、hooks.ts `hookStop` |
 | B2 | done | B/C/D 位置参数语义反直觉且 `/dual-run` 在 S2 必退 64；改为「位置参数按命令语义定，旗标只做覆盖」，`review --start` 加 `--entry` | topic-args.ts、cli.ts、四份 SKILL.md、设计 §7.1/§7.3 |
-| B3 | todo | code 阶段 `subject_drift` 永远不触发：跑后复算读的是冻结 diff 文件本身；`relatedPaths` 漏了 diff 涉及文件 | review.ts:649/681、freeze.ts:134/167 |
+| B3 | done | code 阶段 `subject_drift` 永远不触发：跑后复算读的是冻结 diff 文件本身；`relatedPaths` 漏了 diff 涉及文件 | review.ts:649/681、freeze.ts:134/167 |
 | B4 | done | 留痕防篡改链断裂：归档内 hookPreWrite 一律放行（含 `_meta/`）；`_meta/review-*.json` 不在保护集却是 gate 唯一输入；git 锚只看删除；首次提交前无基线 | hooks.ts:106/356/369、review.ts:735、gate.ts:87 |
 | B5 | todo | Bash 出口不设防（`cat >`/`sed -i`）；dual-run 授予裸 Bash | .claude/settings.json、skills/dual-run/SKILL.md |
 
