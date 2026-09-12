@@ -18,17 +18,35 @@ import { exists } from './util/fsx.js';
 import { diffExcludePrefixes } from './code-stage.js';
 import type { PreflightScope } from './preflight.js';
 
-/** 具名参数白名单。其余正文按命令语义落到焦点或任务目标（见 resolveTopicArgs） */
+/**
+ * 具名参数白名单。其余正文按命令语义落到焦点或任务目标（见 resolveTopicArgs）。
+ *
+ * `only` / `allow-single` / `session-id` 是后补的（审查意见 AGY-04）：`review --start`
+ * 三个都支持，这里却不认识，于是它们被当成正文压进 restParts——单审降级意图丢失，
+ * 焦点正文里还平白多出一截 `--allow-single`。这一族缺口的形状与 `--base` 那次相同：
+ * 不报错、留痕正常、审的不是用户以为的东西。
+ */
 const NAMED_FLAGS = [
   'topic', 'context', 'plan-file', 'rca-file', 'base',
   'model-gemini', 'model-glm', 'profile', 'focus', 'goal',
+  'only', 'allow-single', 'session-id',
 ] as const;
 /** 自由文本旗标：贪婪取到下一个已知旗标为止 */
 const GREEDY_FLAGS: ReadonlySet<string> = new Set(['focus', 'goal']);
+/**
+ * 布尔旗标：**不吃后面的 token**。
+ *
+ * 若让 `--allow-single` 走「取下一个 token 当值」的默认路径，
+ * `/dual-review-code --allow-single 重点看并发安全` 会把「重点看并发安全」当成它的值吞掉，
+ * 焦点变成空——补白名单反倒制造出一个新的静默截断。
+ */
+const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['allow-single']);
 type NamedFlag = (typeof NAMED_FLAGS)[number];
 
 export interface ParsedArgsBundle {
   named: Partial<Record<NamedFlag, string>>;
+  /** 出现过的布尔旗标 */
+  booleans: Set<string>;
   /** 去掉具名参数后剩下的正文 */
   rest: string;
 }
@@ -41,6 +59,7 @@ export interface ParsedArgsBundle {
  */
 export function splitArguments(raw: string): ParsedArgsBundle {
   const named: Partial<Record<NamedFlag, string>> = {};
+  const booleans = new Set<string>();
   const restParts: string[] = [];
   const tokens = tokenize(raw);
 
@@ -55,6 +74,12 @@ export function splitArguments(raw: string): ParsedArgsBundle {
     if (!(NAMED_FLAGS as readonly string[]).includes(name)) {
       // 不是我们认识的参数 → 当作提示语正文的一部分，原样保留
       restParts.push(t);
+      continue;
+    }
+    if (BOOLEAN_FLAGS.has(name)) {
+      // `--allow-single` 或 `--allow-single=false`，都不吃后面的 token
+      const v = eq === -1 ? 'true' : t.slice(eq + 1).trim().toLowerCase();
+      if (v !== 'false' && v !== '0') booleans.add(name);
       continue;
     }
     if (eq !== -1) {
@@ -83,7 +108,7 @@ export function splitArguments(raw: string): ParsedArgsBundle {
       named[name] = '';
     }
   }
-  return { named, rest: restParts.join(' ').trim() };
+  return { named, booleans, rest: restParts.join(' ').trim() };
 }
 
 function isKnownFlag(token: string): boolean {
@@ -147,6 +172,17 @@ export interface TopicResolution {
   context_paths: string[];
   models: Partial<Record<CriticId, string>>;
   profile: string | null;
+  /** 只跑一侧（`review --start --only gemini|glm`），null 表示两侧都跑 */
+  only: CriticId | null;
+  /** 一侧失败时不中止，产出单审结果并留痕（§12.4） */
+  allow_single: boolean;
+  /**
+   * 调用方传进来的会话 id。
+   *
+   * 它不该由用户手打（宿主注入或 CLI 从环境取），但整串 `$ARGUMENTS` 里出现时
+   * 必须被识别——否则会被当成正文吞进审查焦点。原样回显，供上层决定要不要透传。
+   */
+  session_id: string | null;
   /** 主题是否由编排器推导而来（skill 需回显给用户确认） */
   topic_inferred: boolean;
   notes: string[];
@@ -169,8 +205,23 @@ export interface ResolveInput {
 
 export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolution> {
   const { ctx, scope, rawArgs } = input;
-  const { named, rest } = splitArguments(rawArgs);
+  const { named, booleans, rest } = splitArguments(rawArgs);
   const notes: string[] = [];
+
+  /*
+   * `--only` 的取值在这里就校验（审查意见 AGY-04）。
+   * 留到 `review --start` 才报错的话，用户要等解析走完一整轮才看到「拼错了」，
+   * 而 resolve 的职责本就是「把整串参数切清楚并当场指出问题」。
+   */
+  const onlyRaw = named['only']?.trim() ?? '';
+  if (onlyRaw && onlyRaw !== 'gemini' && onlyRaw !== 'glm') {
+    throw new TriviumError(EXIT.USAGE, `--only 只接受 gemini | glm，收到：${onlyRaw}`);
+  }
+  const only = (onlyRaw || null) as CriticId | null;
+  const allowSingle = booleans.has('allow-single');
+  if (only && allowSingle) {
+    notes.push('同时给了 --only 与 --allow-single：只跑一侧时降级本就必然发生，--allow-single 不改变行为');
+  }
 
   /*
    * ── 位置参数按命令语义定，旗标只做覆盖 ──
@@ -300,6 +351,9 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     context_paths: contextPaths,
     models,
     profile: named['profile'] ?? null,
+    only,
+    allow_single: allowSingle,
+    session_id: named['session-id']?.trim() || null,
     topic_inferred: inferred,
     notes,
   };

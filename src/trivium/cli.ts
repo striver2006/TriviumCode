@@ -492,6 +492,8 @@ async function cmdTopic(args: ParsedArgs): Promise<number> {
     say(`提示语 ${r.prompt_hint ?? '(无)'}`);
     say(`被审对象 ${r.subject_path ?? (r.base ? `git diff ${r.base}` : '(本阶段无单一被审文件)')}`);
     if (r.context_paths.length > 0) say(`必读路径 ${r.context_paths.join(', ')}`);
+    if (r.only) say(`只跑一侧 ${r.only}`);
+    if (r.allow_single) say('允许单审降级 --allow-single');
     for (const n of r.notes) step(n);
   }
   return EXIT.OK;

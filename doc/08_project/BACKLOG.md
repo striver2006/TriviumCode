@@ -50,7 +50,7 @@
 - ~~run-protocol.ts:409-419 worker 锁回收依赖 status 可读，request.json 里有 topic 可兜底~~ done
 - ~~exec.ts:217-226 spawnDetached 未挂 `error` 监听~~ done
 - ~~cli.ts `--wait --timeout` 非法值静默回落，verify 侧已按 GLM-r2-07 修好~~ done
-- topic-args.ts NAMED_FLAGS 缺 `only/allow-single/session-id`
+- ~~topic-args.ts NAMED_FLAGS 缺 `only/allow-single/session-id`~~ done
 - ~~runner.ts:80-84 重试追加的 BRIEF 不回写 `_meta/`~~ done
 - ~~base.ts:115-131 checkPeerLeak 不归一化路径；min_project_reads 不校验项目内~~ done
 - ~~zcode.ts:45 denylist 不含 WebFetch，zcode-trace.ts:76 还把它算作读证据~~ done
@@ -71,7 +71,7 @@
 留痕在 `.reviews/审核修复/code/`，逐条裁决见同目录 `-response-claude.md`。
 结论是**没有完全堵上**：两侧从不同入口指向同一处薄弱带——`hook-pre-bash` 出口。
 
-第一至三梯队（hook-pre-bash 出口 / 提交出口 / 审批链）已落地，只剩第四梯队 AGY-04。
+四个梯队（hook-pre-bash 出口 / 提交出口 / 审批链 / 参数契约）已全部落地。
 
 | # | 状态 | 条目 | 位置 |
 | :-- | :-- | :-- | :-- |
@@ -84,4 +84,4 @@
 | GLM-01 | done | 人工审批闸门可被 Driver 一条 `trivium approve` 自行关闭：`recordApproval` 不校验来源，skill 的 allowed-tools 预批准了 `Bash(.trivium/bin/trivium:*)`。会话比对救不了（人工审批与自批同会话）。已加一次性确认码（`--await-approval` 发码、明文不落盘、用过即废、通过审批必须 `--code`）。**注意它是审计护栏不是权限边界**：码的明文经 stdout 由 Driver 转述，Driver 读得到；真正的边界需要不经过模型的带外通道（TTY / 审批 UI），本项目没有——RUNBOOK 与协议片段已如实写明 | cli.ts `cmdApproval`、approval.ts `recordApproval` |
 | GLM-05 | done | `ApprovalInput.sessionId` 从未传入也从未使用，`ApprovalRecord` 不含来源——事后无法回答「这次 approve 是人发的还是模型发的」 | approval.ts:15-22,62-68 |
 | AGY-05 | done | `cmdApproval` 允许 approve 省略 `--stage`，会枚举到未裁决阶段并抛 MISSING_ARTIFACT 而非友好提示 | cli.ts `cmdApproval` |
-| AGY-04 | todo | 同上文 Minor 条目：NAMED_FLAGS 缺 `only/allow-single/session-id` | topic-args.ts:22-25 |
+| AGY-04 | done | NAMED_FLAGS 缺 `only/allow-single/session-id`，三者被当成正文吞进审查焦点（已实跑复现：焦点变成「重点看并发安全 --only glm --allow-single --session-id S-TEST」）。补白名单并输出；`--allow-single` 单列为布尔旗标，否则「取下一个 token 当值」会吞掉正文、制造新的静默截断；三条 review skill 补 argument-hint 与模板槽位 | topic-args.ts、三条 SKILL.md |

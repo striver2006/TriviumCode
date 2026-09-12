@@ -312,3 +312,57 @@ test('命令 A 不要求 --focus：它的焦点本就是可选补充', async () 
   assert.equal(r.prompt_hint, null);
   assert.equal(r.task_goal, '把登录改造为 OIDC');
 });
+
+// ── AGY-04：only / allow-single / session-id 曾不在白名单里 ──
+
+test('AGY-04：三个旗标被识别，不再被当成正文吞进审查焦点', () => {
+  const r = splitArguments('重点看并发 --only glm --allow-single --session-id S-1 --topic T');
+  assert.equal(r.rest, '重点看并发', '旗标不得残留在正文里');
+  assert.equal(r.named['only'], 'glm');
+  assert.equal(r.named['session-id'], 'S-1');
+  assert.ok(r.booleans.has('allow-single'));
+});
+
+test('AGY-04：--allow-single 是布尔旗标，绝不能吃掉后面的正文', () => {
+  /*
+   * 若让它走「取下一个 token 当值」的默认路径，补白名单反倒制造出一个
+   * 新的静默截断——焦点会变成空，而用户看不到任何报错。
+   */
+  const r = splitArguments('--allow-single 重点看并发安全');
+  assert.ok(r.booleans.has('allow-single'));
+  assert.equal(r.rest, '重点看并发安全');
+
+  // 贪婪旗标也要在它面前停下
+  const g = splitArguments('--focus 重点看并发 --allow-single --topic T');
+  assert.equal(g.named['focus'], '重点看并发');
+  assert.ok(g.booleans.has('allow-single'));
+  assert.equal(g.named['topic'], 'T');
+
+  // 显式否定
+  assert.ok(!splitArguments('--allow-single=false x').booleans.has('allow-single'));
+});
+
+test('AGY-04：resolveTopicArgs 把三者输出，不静默丢弃', async () => {
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 3;\n');
+  const r = await resolveTopicArgs({
+    ctx, scope: 'code',
+    rawArgs: '重点看并发 --topic T --only gemini --allow-single --session-id S-9',
+  });
+  assert.equal(r.prompt_hint, '重点看并发');
+  assert.equal(r.only, 'gemini');
+  assert.equal(r.allow_single, true);
+  assert.equal(r.session_id, 'S-9');
+});
+
+test('AGY-04：--only 取值当场校验，拼错不必等到 review --start', async () => {
+  const ctx = await fakeCtx();
+  await assert.rejects(
+    resolveTopicArgs({ ctx, scope: 'code', rawArgs: '重点看并发 --topic T --only gemmini' }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.USAGE);
+      assert.match(e.message, /只接受 gemini \| glm/);
+      return true;
+    },
+  );
+});
