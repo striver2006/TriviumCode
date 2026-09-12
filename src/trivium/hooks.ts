@@ -329,9 +329,18 @@ function parseGitSegment(segment: string): GitCall | null {
   if (gitAt < 0) return null;
 
   let dirOption: string | null = null;
+  /** `-c alias.<name>=commit` 定义的别名：随后出现的 <name> 就是 commit */
+  const commitAliases = new Set<string>();
   for (let i = gitAt + 1; i < tokens.length; i++) {
     const t = tokens[i]!;
-    if (!t.startsWith('-')) return { subcommand: t, dirOption };
+    if (!t.startsWith('-')) {
+      /*
+       * 子命令不是字面量（`git $S`、`` git `cat x` ``）→ 推断不出，按「是提交」处理：
+       * 与本函数上方目录推断不出时的保守原则一致，否则 `S=commit; git $S` 直接放行。
+       */
+      if (/[$`]/.test(t)) return { subcommand: 'commit', dirOption };
+      return { subcommand: commitAliases.has(t) ? 'commit' : t, dirOption };
+    }
 
     // `--git-dir=x` 自带值；`--git-dir x` 要多吃一个词
     const eq = t.indexOf('=');
@@ -346,6 +355,10 @@ function parseGitSegment(segment: string): GitCall | null {
       if (val !== undefined) {
         if (t === '-C' || t === '--work-tree') dirOption = val;
         else if (t === '--git-dir') dirOption = stripDotGit(val);
+        else if (t === '-c') {
+          const alias = /^alias\.([^=]+)=commit\b/.exec(val);
+          if (alias) commitAliases.add(alias[1]!);
+        }
       }
       i++;
     }
@@ -620,12 +633,11 @@ export async function hookStop(ctx: Ctx, input: HookInput): Promise<HookOutput> 
     ctx.config.gate.stop_hook_max_blocks,
   );
   if (exceeded) {
-    return {
-      exitCode: EXIT.OK,
-      stderr:
-        `已连续 ${count - 1} 次阻断收工仍未完成裁决，本次放行以避免死循环。\n` +
-        `  ${g.topic}/${g.stage} 的裁决仍未齐备，请手工处理。`,
-    };
+    const msg =
+      `已连续 ${count - 1} 次阻断收工仍未完成裁决，本次放行以避免死循环。\n` +
+      `  ${g.topic}/${g.stage} 的裁决仍未齐备，请手工处理。`;
+    // exit 0 的 stderr 不会展示给用户；systemMessage 才会——这条提示恰恰是给人看的
+    return { exitCode: EXIT.OK, json: { systemMessage: msg }, stderr: msg };
   }
 
   const list = pending.map((x) => `${x.topic}/${x.stage}`).join('、');
@@ -819,8 +831,19 @@ async function sweepDeadRunningGates(ctx: Ctx): Promise<string[]> {
     let alive = true;
     try {
       const st = await readStatus(runDirFor(ctx.config, ctx.projectRoot, g.run_id));
-      if (!st?.worker_pid) continue; // 读不到就别动它
-      alive = (await processAlive(st.worker_pid, st.worker_started_at ?? null)).alive;
+      if (!st?.worker_pid) {
+        /*
+         * 读不到 status（运行目录被 retention 清掉、或从未写成）：拿不准就不动——
+         * 但不能永远不动。超过 approval_lock_ttl_h 的 running 闸门早已不再加锁
+         * （shouldLockWrites 的 TTL 判据），却会一直卡在 running 上：report / status
+         * 永远显示进行中，下一轮 --start 也要靠 expect 绕过它。过了 TTL 就回收。
+         */
+        const ageH = (Date.now() - new Date(g.since).getTime()) / 3_600_000;
+        if (!(ageH > ctx.config.gate.approval_lock_ttl_h)) continue;
+        alive = false;
+      } else {
+        alive = (await processAlive(st.worker_pid, st.worker_started_at ?? null)).alive;
+      }
     } catch {
       continue; // 判不了就不回收
     }

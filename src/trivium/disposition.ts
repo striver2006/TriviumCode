@@ -58,12 +58,21 @@ const COLUMN_ALIASES: Record<string, readonly string[]> = {
 
 function matchColumn(header: string): keyof typeof COLUMN_ALIASES | null {
   const h = normalizeCell(header).toLowerCase();
+  // 先精确匹配，再包含匹配：`id` 的包含匹配会命中 `evidence`，一列 Evidence 排在编号列前面就整表取错
   for (const [key, aliases] of Object.entries(COLUMN_ALIASES)) {
-    if (aliases.some((a) => h === a.toLowerCase() || h.includes(a.toLowerCase()))) {
-      return key as keyof typeof COLUMN_ALIASES;
-    }
+    if (aliases.some((a) => h === a.toLowerCase())) return key as keyof typeof COLUMN_ALIASES;
+  }
+  // 包含匹配跳过 `id` 这类超短 ASCII 别名（会命中 evidence）；中文两字别名（落点 / 裁决）照常
+  const shortAscii = (a: string): boolean => a.length <= 2 && /^[\x00-\x7f]+$/.test(a);
+  for (const [key, aliases] of Object.entries(COLUMN_ALIASES)) {
+    if (aliases.some((a) => !shortAscii(a) && h.includes(a.toLowerCase()))) return key as keyof typeof COLUMN_ALIASES;
   }
   return null;
+}
+
+/** 去掉编号上的装饰：`**AGY-01**`、`` `AGY-01` ``、`AGY-01（blocker）` 都还原成 AGY-01 */
+export function stripIdDecoration(cell: string): string {
+  return cell.replace(/[*`_]/g, '').replace(/[（(].*$/, '').trim();
 }
 
 /** 裁决词归一。§6.6 规则 2：「不接受」归一化为「驳回」后接受 */
@@ -186,10 +195,16 @@ export function parseDisposition(md: string): ParsedDisposition {
     const cells = splitTableRow(raw);
     const lineNo = i + 1;
 
-    const idCell = normalizeCell(cells[idx('id')] ?? '');
+    const idCell = stripIdDecoration(normalizeCell(cells[idx('id')] ?? ''));
     if (idCell.length === 0) continue; // 空行，跳过
-    // 只收形如 AGY-01 / GLM-r2-03 / AGY-F01 的编号，避免把小结行当数据
-    if (!/^(AGY|GLM)-/.test(idCell)) continue;
+    // 只收形如 AGY-01 / GLM-r2-03 / AGY-F01 的编号，避免把小结行当数据；
+    // 但单元格里明明含编号却不在行首（如「见 AGY-01」）要报出来，而不是静默丢弃后让 gate 报「缺裁决」
+    if (!/^(AGY|GLM)-/.test(idCell)) {
+      if (/\b(AGY|GLM)-(?:r\d+-)?(?:F)?\d+/.test(idCell)) {
+        problems.push({ line: lineNo, message: `第一列「${idCell}」含意见编号但不以编号开头，本行被忽略——编号列只写编号本身` });
+      }
+      continue;
+    }
 
     const disposalRaw = cells[idx('disposal')] ?? '';
     const disposal = normalizeDisposal(disposalRaw);

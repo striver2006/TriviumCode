@@ -118,8 +118,10 @@ export async function runVerify(opts: VerifyOptions): Promise<VerifyOutcome> {
     const t0 = Date.now();
     /*
      * 经 shell 执行：配置里写的是给人看的命令行（含管道、&&、环境变量前缀），
-     * 拆成 argv 会改变语义。这不是注入面——命令来自本项目配置文件，
-     * 且已经过 init 的逐条确认。
+     * 拆成 argv 会改变语义。命令来自本项目的 .trivium/config.yaml——它随仓库分发，
+     * 克隆一个陌生仓库后跑 verify 就是执行对方写进配置的 shell。威胁模型假定你信任
+     * 所在仓库（与 npm test 同级），编排器**不做**任何确认环节；doctor --suggest-verify
+     * 只展示候选，写进配置的是人。
      */
     const r = await run('/bin/sh', ['-c', cmd], {
       cwd: ctx.projectRoot,

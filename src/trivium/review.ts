@@ -581,6 +581,11 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
       expect: { state: ['idle', 'running', 'approved', 'rejected', 'abandoned'] },
     });
+    if (g.applied) {
+      // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）
+      const { resetStopBlockCount } = await import('./lock.js');
+      await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);
+    }
     if (!g.applied) {
       throw new TriviumError(
         EXIT.GATE_BLOCK,
@@ -645,12 +650,18 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   const startedAt = new Date().toISOString();
   say(`开始双审：${sides.map((c) => `${c}(${requests[c]!.model})`).join(' ‖ ')}，单侧上限 ${cfg.review.timeout_s[stage]}s`);
 
+  /** 重试时追加进 BRIEF 的提示。归档里的 brief-* 是第一次那份，追加内容也要留痕，否则审计材料与实际送审不符 */
+  const retryHints: Partial<Record<CriticId, string[]>> = {};
   const { results, attempts } = await runBothSides({
     ctx: adapterCtx,
     adapters,
     requests,
     maxTransientRetries: cfg.review.retry.transient_max,
-    onRetryBrief: (critic, prev) => buildRetryHint(critic, prev),
+    onRetryBrief: (critic, prev) => {
+      const hint = buildRetryHint(critic, prev);
+      (retryHints[critic] ??= []).push(hint);
+      return hint;
+    },
   });
   const finishedAt = new Date().toISOString();
 
@@ -742,6 +753,16 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
    */
   const protectedMeta: { path: string; sha256: string }[] = [];
   for (const c of sides) {
+    const hints = retryHints[c];
+    if (hints && hints.length > 0) {
+      const w = await writeMeta(
+        ref.layout, stage, `brief-${c}-${runId}.retry.md`,
+        `# ${c} 侧重试时追加进 BRIEF 的内容（共 ${hints.length} 次）\n\n` +
+          hints.map((h, i) => `## 第 ${i + 2} 次尝试追加\n\n${h}\n`).join('\n'),
+      );
+      metaPaths.push(w.absPath);
+      protectedMeta.push({ path: w.relPath, sha256: w.sha256 });
+    }
     const r = results[c];
     if (!r) continue;
     // 失败侧不产出审查文档，改在 _meta/ 记 failed.json——绝不改名冒充对方（AC-06）

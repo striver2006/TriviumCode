@@ -19,6 +19,31 @@ const REQ = {
 };
 const OPTS = { archiveRootAbs: '/proj/.reviews' };
 
+test('项目文件读取只算项目根之内的：读 ~/ 下的无关文件不能凑数（AC-11）', () => {
+  const r = checkEvidence(
+    {
+      tool_calls: { read: 6, grep: 2 },
+      read_paths: ['/Users/x/.zshrc', '/etc/hosts', '/proj/src/a.ts', './src/b.ts', REQ.subject_path],
+      trace_path: '/runs/trace.jsonl',
+    },
+    REQ,
+    OPTS,
+  );
+  assert.equal(r.projectReads, 2, '只有 /proj/src/a.ts 与 ./src/b.ts 算项目内读取');
+});
+
+test('禁读核对做路径归一化：./ 前缀、.. 与 macOS 的 /private 前缀都能命中', () => {
+  const deny = ['.reviews/t/plan/2026-09-10-t-glm.md'];
+  const r = checkPeerLeak(
+    ['./.reviews/t/plan/2026-09-10-t-glm.md', '/private/proj/src/../.reviews/t/plan/2026-09-10-t-glm.md'],
+    deny,
+    '/proj',
+  );
+  assert.equal(r.leaked, true);
+  assert.equal(r.hits.length, 2);
+  assert.equal(checkPeerLeak(['/proj/src/a.ts'], deny, '/proj').leaked, false);
+});
+
 test('证据充分时通过', () => {
   const r = checkEvidence(
     {

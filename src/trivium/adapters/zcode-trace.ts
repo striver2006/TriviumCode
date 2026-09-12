@@ -72,8 +72,11 @@ export function parseZcodeEnvelope(stdout: string): ZcodeEnvelope | null {
   };
 }
 
-/** ZCode 的读类工具。M0 实测模型会在被封一个之后换用另一个——这就是路径级 deny 无效的原因 */
-export const ZCODE_READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'ReadSessionContext', 'WebFetch']);
+/**
+ * ZCode 的读类工具。M0 实测模型会在被封一个之后换用另一个——这就是路径级 deny 无效的原因。
+ * WebFetch / WebSearch 不在其列：出网不是「读项目」，把被审代码发到外部端点不该计入 AC-11 的证据。
+ */
+export const ZCODE_READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'ReadSessionContext']);
 /** 写类工具与 shell：出现即 readonly_breach（FR-15 / AC-08） */
 export const ZCODE_WRITE_TOOLS = new Set([
   'Write', 'Edit', 'MultiEdit', 'ApplyPatch', 'NotebookEdit', 'Bash',

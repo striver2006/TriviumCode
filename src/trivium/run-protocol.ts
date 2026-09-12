@@ -415,13 +415,15 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
   } finally {
     clearInterval(heartbeat);
     const st = await readStatus(runDir);
+    // status 读不到（被清理工具删了）时从交接文件取身份，否则锁与闸门都漏回收
+    const id = st ? { topic: st.topic, stage: st.stage } : await readHandoffIdentity(runDir);
     /*
      * 闸门与锁一起回收。executeRun 正常收尾时已把闸门置成终态，
      * 此处的 expect 会因状态不再是 running 而跳过；只有异常路径才真正命中。
      */
-    await releaseRunningGate(ctx, runId, st?.topic, st?.stage);
+    await releaseRunningGate(ctx, runId, id?.topic, id?.stage);
     // 释放锁：工作进程是最终持有者
-    const cur = await inspectLock(ctx.triviumDir, st?.topic ?? '');
+    const cur = await inspectLock(ctx.triviumDir, id?.topic ?? '');
     if (cur && cur.pid === process.pid) {
       await fs.rm(path.join(ctx.triviumDir, 'lock', `${cur.topic}.lock`), { force: true });
     }
@@ -534,9 +536,28 @@ export async function statusRun(ctx: Ctx, runId: string): Promise<{ exitCode: nu
  *
  * 这是 GLM-04 场景（进程活着但不再进展）唯一的工具化恢复路径。
  */
+/** status.json 读不到时，从交接文件取主题与阶段（它在派生前就写好了） */
+async function readHandoffIdentity(runDir: string): Promise<{ topic: string; stage: Stage } | null> {
+  try {
+    const h = JSON.parse(await fs.readFile(requestPath(runDir), 'utf8')) as Partial<Handoff>;
+    return h.topic && h.stage ? { topic: h.topic, stage: h.stage } : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
   const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
   const s = await readStatus(runDir);
+  /*
+   * status.json 读不到（刚派生还没落盘、或运行目录被清了）时原先：patchStatus 静默不写、
+   * 锁与闸门因为拿不到 topic 全部跳过，最后仍打印「已取消」。交接文件里有主题与阶段，拿它兜底；
+   * 两者都没有就如实说找不到，而不是宣称取消成功。
+   */
+  const identity = s ? { topic: s.topic, stage: s.stage } : await readHandoffIdentity(runDir);
+  if (!s && !identity) {
+    throw missingArtifact(`找不到运行 ${runId} 的状态文件与交接文件（${runDir}），无法取消；若它仍在跑，请用 trivium status 查看主题锁`);
+  }
 
   /*
    * 已经结束的运行不能被「取消」（审查意见 GLM-04）。
@@ -578,14 +599,16 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
     }
   }
 
-  await patchStatus(runDir, (st) => {
+  const patched = await patchStatus(runDir, (st) => {
     st.phase = 'cancelled';
     st.exit_code = EXIT.FAIL;
     st.message = '被 --cancel 取消';
   });
+  if (!patched) warn(`运行 ${runId} 没有 status.json，终态未落盘；仅回收锁与闸门`);
 
   // 回收锁：走 rename → 复验 → 删除，不直接 unlink
-  const topic = s?.topic;
+  const topic = identity?.topic;
+  const stage = identity?.stage;
   if (topic) {
     const existing = await inspectLock(ctx.triviumDir, topic);
     if (existing && existing.run_id === runId) {
@@ -596,7 +619,7 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
      * 闸门也要一并回到 idle。取消后若还留着 `running`，Driver 会被一个已经不存在的
      * 运行永久锁住业务写入——人的第一反应是去关 Hook，护栏就此报废。
      */
-    if (s?.stage) {
+    if (stage) {
       /*
        * 只回收**本 run** 的闸门（审查意见 GLM-r2-01 ②）。
        * 「先 --cancel 旧 run，再 --start 新一轮」是正常序列；若不比对 run_id，
@@ -604,7 +627,7 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
        * 回收锁时一直有 `existing.run_id === runId` 守卫，闸门这里以前漏了。
        */
       const g = await setGateChecked({
-        triviumDir: ctx.triviumDir, topic, stage: s.stage, state: 'idle',
+        triviumDir: ctx.triviumDir, topic, stage, state: 'idle',
         runId, sessionId: process.env['CLAUDE_SESSION_ID'] ?? null,
         heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
         expect: { runId, allowMissing: false },

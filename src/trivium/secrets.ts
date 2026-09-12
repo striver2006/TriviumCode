@@ -1,3 +1,4 @@
+import { EXIT, TriviumError } from './exit-codes.js';
 /**
  * 落盘前的密钥扫描（设计 §10.5 / NFR-04）。
  *
@@ -130,7 +131,9 @@ export function assertNoSecrets(content: string, whatItIs: string): void {
   const detail = hits
     .map((h) => `  ${whatItIs}:${h.line}  [${h.rule}]  ${h.preview}`)
     .join('\n');
-  throw new Error(
+  // 受控错误：这是明确的判定，不是程序缺陷——cli 顶层不打堆栈，按一般失败退出
+  throw new TriviumError(
+    EXIT.FAIL,
     `拒绝落盘：检测到疑似密钥（归档会进 Git，写入即永久泄露）。\n${detail}\n` +
       `若确认为误报，请修改内容或调整 review.sensitive_globs 后重试；不要绕过本检查。`,
   );

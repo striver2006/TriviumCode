@@ -42,7 +42,8 @@ export function qualifyZcodeModel(model: string | null, modelIdForm: string | nu
 }
 
 /** 完整只读 denylist。`Bash` 必须在列——`--mode plan` 挡不住命令执行（M0 实测） */
-export const ZCODE_READONLY_DENYLIST = 'Write,Edit,MultiEdit,ApplyPatch,NotebookEdit,Bash';
+/** 写类工具 + shell + 出网：审查员不该把被审代码发到外部端点 */
+export const ZCODE_READONLY_DENYLIST = 'Write,Edit,MultiEdit,ApplyPatch,NotebookEdit,Bash,WebFetch,WebSearch';
 
 export interface ZcodeInvokeOptions {
   entry: string;

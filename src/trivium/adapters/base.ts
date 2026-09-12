@@ -7,6 +7,7 @@
  *
  * 铁律（原则 P7）：命令行**一律由 probe 结论构造**，不得硬编码设计文档里的示例。
  */
+import nodePath from 'node:path';
 import type { Config, CriticId, CriticRequest, CriticResult, Stage } from '../types.js';
 
 export interface AdapterContext {
@@ -95,11 +96,14 @@ export function checkEvidence(
   }
 
   // ③ 项目文件读取下限——防止「把 BRIEF 与被审文档反复读 N 遍」通过上一条
-  const excluded = [req.subject_path, req.brief_path].map((p) => p.replace(/\/+$/, ''));
+  const excluded = new Set([req.subject_path, req.brief_path].map((p) => normalizeAbs(p, req.project_root)));
   const projectReads = result.read_paths.filter((p) => {
-    if (excluded.includes(p)) return false;
+    const abs = normalizeAbs(p, req.project_root);
+    if (excluded.has(abs)) return false;
     // 归档根内的文件不算「项目上下文」——那是审查材料本身
-    return !p.startsWith(opts.archiveRootAbs);
+    if (isUnder(abs, opts.archiveRootAbs)) return false;
+    // 项目根之外的读取（~/ 下的无关文件）也不算：AC-11 要的是「结合整个项目评审」
+    return isUnder(abs, req.project_root);
   }).length;
 
   if (projectReads < req.min_project_reads) {
@@ -117,17 +121,25 @@ export function checkPeerLeak(
   denyPaths: readonly string[],
   projectRoot: string,
 ): { leaked: boolean; hits: string[] } {
-  const denySet = new Set(denyPaths);
-  const hits = readPaths.filter((p) => {
-    // 轨迹里可能是绝对路径，禁读清单是项目相对路径，两边都比一次
-    if (denySet.has(p)) return true;
-    if (p.startsWith(projectRoot)) {
-      const rel = p.slice(projectRoot.length).replace(/^\/+/, '');
-      return denySet.has(rel);
-    }
-    return false;
-  });
+  /*
+   * 两边都归一成绝对路径再比：轨迹里可能是 `./x`、`/abs/../abs/x`、macOS 的 `/private/var/…`
+   * 对 `/var/…`；原先纯字符串比对，任何写法差异都会让「读到对方产出」漏报，
+   * 而漏报的后果是本应作废的结论照常采纳。
+   */
+  const denySet = new Set(denyPaths.map((d) => normalizeAbs(d, projectRoot)));
+  const hits = readPaths.filter((p) => denySet.has(normalizeAbs(p, projectRoot)));
   return { leaked: hits.length > 0, hits: [...new Set(hits)] };
+}
+
+/** 归一成绝对路径：解析 `./`、`..`，并抹平 macOS 的 /private 前缀 */
+function normalizeAbs(p: string, projectRoot: string): string {
+  const abs = nodePath.resolve(projectRoot, p);
+  return abs.startsWith('/private/') ? abs.slice('/private'.length) : abs;
+}
+
+function isUnder(abs: string, root: string): boolean {
+  const r = root.startsWith('/private/') ? root.slice('/private'.length) : root;
+  return abs === r || abs.startsWith(r.endsWith('/') ? r : `${r}/`);
 }
 
 /** 模型路由：命令行参数 > 主题级覆盖 > profile > 阶段默认（设计 §11.5 四级） */

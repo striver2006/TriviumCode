@@ -557,6 +557,47 @@ test('打在别的仓库上的提交不该被本项目的闸门拦下', async ()
   }
 });
 
+test('子命令不是字面量或经 alias 定义：按「是提交」保守处理', async () => {
+  const ctx = await pendingCtx();
+  for (const cmd of [
+    'S=commit; git $S -m y',
+    'git -c alias.ci=commit ci -m y',
+    'git `echo commit` -m y',
+  ]) {
+    const r = await hookPreCommit(ctx, { tool_name: 'Bash', session_id: 'S1', tool_input: { command: cmd } });
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `「${cmd}」推断不出子命令，应保守拦下`);
+  }
+  // alias 指向别的子命令不误拦
+  const ok = await hookPreCommit(ctx, { tool_name: 'Bash', session_id: 'S1', tool_input: { command: 'git -c alias.st=status st' } });
+  assert.equal(ok.exitCode, EXIT.OK);
+});
+
+test('收工阻断超限放行时，提示走 systemMessage 让用户看得到', async () => {
+  const ctx = await fakeCtx();
+  ctx.config.gate.stop_hook_max_blocks = 1;
+  await setGate({ triviumDir: ctx.triviumDir, topic: 't', stage: 'plan', state: 'review_done_awaiting_disposition', sessionId: SESSION, heartbeatStaleMs: STALE });
+  await hookStop(ctx, { session_id: SESSION });
+  const r = await hookStop(ctx, { session_id: SESSION });
+  assert.equal(r.exitCode, EXIT.OK);
+  assert.match(String(r.json?.['systemMessage']), /避免死循环/, 'exit 0 的 stderr 用户看不到');
+});
+
+test('session-start：读不到 status 的 running 闸门，超过 TTL 才回收', async () => {
+  const ctx = await fakeCtx();
+  await setGate({ triviumDir: ctx.triviumDir, topic: 't', stage: 'plan', state: 'running', runId: 'R-gone', heartbeatStaleMs: STALE });
+  // 刚建的不动
+  await hookSessionStart(ctx);
+  const { getGate } = await import('../../src/trivium/state.js');
+  assert.equal((await getGate(ctx.triviumDir, 't', 'plan'))?.state, 'running');
+  // 把 since 拨到 25 小时前（TTL 默认 24h）
+  const sp = path.join(ctx.triviumDir, 'state.json');
+  const st = JSON.parse(await fs.readFile(sp, 'utf8')) as { gates: Record<string, { since: string }> };
+  st.gates['t/plan']!.since = new Date(Date.now() - 25 * 3_600_000).toISOString();
+  await fs.writeFile(sp, JSON.stringify(st), 'utf8');
+  await hookSessionStart(ctx);
+  assert.equal((await getGate(ctx.triviumDir, 't', 'plan'))?.state, 'idle', '过了 TTL 的孤儿 running 闸门应回收，否则永久显示进行中');
+});
+
 test('推断不出目标仓库时一律按项目内处理', async () => {
   const ctx = await pendingCtx();
   /*

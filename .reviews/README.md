@@ -55,7 +55,7 @@
 | `plan/` | ①`…-claude.md` 原始计划 ②`…-gemini.md` ③`…-glm.md` ④`…-revised-claude.md` 修订计划（含逐条裁决） | FR-04 / AC-01 |
 | `code/` | ①`…-gemini.md` ②`…-glm.md` ③`…-response-claude.md` 应答件（逐条接受/驳回/暂缓 + 理由 + 修改计划） | FR-05 / AC-01 |
 | `bug/` | ①`…-claude.md` 根因原稿 ②`…-gemini.md` ③`…-glm.md` ④`…-revised-claude.md` 修订根因 | FR-22 / AC-15 |
-| `verify/` | `…-verify.md` + `_meta/verify-<run_id>.json`（含实际执行的命令与退出码） | FR-21 / AC-10 |
+| `verify/` | `…-verify.md` + `_meta/verify-<run_id>.json`（含实际执行的命令与退出码）。不在 `--check-artifacts` 的阶段范围内（它只认 plan/code/bug），由留痕核对保护 | FR-21 / AC-10 |
 | 每次运行 | `_meta/run-<run_id>.json`、两份 `brief-*`、两份 `review-*.json`（单审时缺失侧以 `review-<critic>-<run_id>.failed.json` 记录原因） | NFR-05 / AC-06 / AC-17 |
 
 缺件即失败。**审查结果为零条意见时文件照常落盘**并在元数据标 `empty_review: true`，不得删除该侧文件假装没跑（P5 不可伪装）。

@@ -283,6 +283,20 @@ test('allow_defer=false 时「暂缓」被拒', async () => {
   assert.deepEqual(r.failures.find((x) => x.code === 'defer_not_allowed')?.ids, ['AGY-01']);
 });
 
+test('裁决件的 run_id 与本轮不符 → bad_front_matter（不得复用上一轮的裁决件）', async () => {
+  const l = await layout();
+  await putDisposition(l, `${HEAD}
+| AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
+  const r = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R2',
+  });
+  const f = r.failures.find((x) => x.code === 'bad_front_matter');
+  assert.ok(f, renderGateResult(r));
+  assert.match(f!.message, /run_id=R1/);
+  assert.match(f!.message, /R2/);
+});
+
 test('front-matter 与本轮不匹配 → bad_front_matter', async () => {
   const l = await layout();
   const md = `---

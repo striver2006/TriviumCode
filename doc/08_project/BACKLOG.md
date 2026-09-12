@@ -2,7 +2,7 @@
 
 来源：2026-09-12 对当前实现（HEAD 0aaf855）的整体审核。三路只读审核（核心编排链路 /
 闸门与留痕保障 / skills·文档·测试一致性）的结论经逐条对照源码核实后收录于此。
-状态列：`todo` 未开始 ｜ `doing` 进行中 ｜ `done <commit>` 已落地。
+状态列：`todo` 未开始 ｜ `doing` 进行中 ｜ `done` 已落地（2026-09-12 一次性推进：bbc11fd → 本批）。
 
 ## Blocker
 
@@ -38,29 +38,29 @@
 | M18 | done | zcode availability 只要求 readonly_flags 非空，`--disallowed-tools` 探不到仍判可用 | adapters/zcode.ts:146-152 |
 | M19 | done | `retention.run_dir_days` 有配置有文档零实现；`~/.trivium/runs` 已 3400 目录/580MB | config.ts:138、RUNBOOK:172 |
 | M20 | done | 测试夹具与 selftest 不覆盖 `run_root`，污染真实 `~/.trivium/runs` | test/helpers/fixture.ts、selftest.ts |
-| M21 | todo | 零覆盖：install.ts、adapters/zcode.ts、agy 的 invokeAgy/agyAdapter、topic.ts、approval `--reject`；无真并发抢锁用例 | test/ |
+| M21 | doing | 已补：install.ts（5 条）、approval（4 条）、zcode availability、同进程并发抢锁与 task.json 并发、真进程树超时。仍缺：invokeAgy / invokeZcode 的命令行构造、topic.ts 直接单测、跨进程抢锁竞态 | test/ |
 
 ## Minor / Nit
 
-- hooks.ts:176-204 子命令非字面量 `commit`（`git $S`、alias）fail-open，与目录推断的保守原则相反
-- hooks.ts:451-458 阻断超限放行用 exit 0 + stderr，提示用户看不到
-- lock.ts:273-295 stop_hook 计数只在审批时归零，跨轮累积后收工拦截永久失效
-- hooks.ts:620-628 session-start 对读不到 status 的 running 闸门永不回收
-- run-protocol.ts:529-608 `--cancel` 缺 status.json 时不落终态不回收锁，仍报「已取消」
-- run-protocol.ts:409-419 worker 锁回收依赖 status 可读，request.json 里有 topic 可兜底
-- exec.ts:217-226 spawnDetached 未挂 `error` 监听
-- cli.ts `--wait --timeout` 非法值静默回落，verify 侧已按 GLM-r2-07 修好
+- ~~hooks.ts:176-204 子命令非字面量 `commit`（`git $S`、alias）fail-open，与目录推断的保守原则相反~~ done
+- ~~hooks.ts:451-458 阻断超限放行用 exit 0 + stderr，提示用户看不到~~ done
+- ~~lock.ts:273-295 stop_hook 计数只在审批时归零，跨轮累积后收工拦截永久失效~~ done
+- ~~hooks.ts:620-628 session-start 对读不到 status 的 running 闸门永不回收~~ done
+- ~~run-protocol.ts:529-608 `--cancel` 缺 status.json 时不落终态不回收锁，仍报「已取消」~~ done
+- ~~run-protocol.ts:409-419 worker 锁回收依赖 status 可读，request.json 里有 topic 可兜底~~ done
+- ~~exec.ts:217-226 spawnDetached 未挂 `error` 监听~~ done
+- ~~cli.ts `--wait --timeout` 非法值静默回落，verify 侧已按 GLM-r2-07 修好~~ done
 - topic-args.ts NAMED_FLAGS 缺 `only/allow-single/session-id`
-- runner.ts:80-84 重试追加的 BRIEF 不回写 `_meta/`
-- base.ts:115-131 checkPeerLeak 不归一化路径；min_project_reads 不校验项目内
-- zcode.ts:45 denylist 不含 WebFetch，zcode-trace.ts:76 还把它算作读证据
+- ~~runner.ts:80-84 重试追加的 BRIEF 不回写 `_meta/`~~ done
+- ~~base.ts:115-131 checkPeerLeak 不归一化路径；min_project_reads 不校验项目内~~ done
+- ~~zcode.ts:45 denylist 不含 WebFetch，zcode-trace.ts:76 还把它算作读证据~~ done
 - agy.ts:176 `--agent` 取自配置而非探针结论
-- disposition.ts:59-67 表头 `includes('id')` 会命中 Evidence 列；:189-192 `**AGY-01**` 被静默丢弃
-- gate.ts:123-137 裁决件不校验 run_id
-- secrets.ts:133 抛裸 Error；`.env*` 默认 glob 不跨目录
-- verify.ts:119-128 注释称命令「经 init 逐条确认」，实际无该环节
-- dual-approve allowed-tools 只有 trivium 却要求改写修订件；dual-status 提示 `trivium review --wait` 不在 PATH
-- .reviews/README 把 verify/ 列入 --check-artifacts 范围，parseStage 不接受 verify
-- QUICKSTART 说 init 生成 config.local.yaml（实为 doctor）；墙钟 2~15 分钟 vs USAGE 30~40 分钟
+- ~~disposition.ts:59-67 表头 `includes('id')` 会命中 Evidence 列；:189-192 `**AGY-01**` 被静默丢弃~~ done
+- ~~gate.ts:123-137 裁决件不校验 run_id~~ done
+- ~~secrets.ts:133 抛裸 Error；`.env*` 默认 glob 不跨目录~~ done
+- ~~verify.ts:119-128 注释称命令「经 init 逐条确认」，实际无该环节~~ done
+- ~~dual-approve allowed-tools 只有 trivium 却要求改写修订件；dual-status 提示 `trivium review --wait` 不在 PATH~~ done
+- ~~.reviews/README 把 verify/ 列入 --check-artifacts 范围，parseStage 不接受 verify~~ done
+- ~~QUICKSTART 说 init 生成 config.local.yaml（实为 doctor）；墙钟 2~15 分钟 vs USAGE 30~40 分钟~~ done
 - 重复实现：locateSubject×2、花括号配平扫描×2、路径正则×2、probeScratchPaths×2、runDir 拼接×2
-- exec.ts:290-316 safePgrp 用 `getgid` 判进程组无效；`script -q /dev/null` 是 BSD 语法，Linux 无守卫
+- ~~exec.ts:290-316 safePgrp 用 `getgid` 判进程组无效；`script -q /dev/null` 是 BSD 语法，Linux 无守卫~~ done

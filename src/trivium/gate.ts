@@ -84,6 +84,8 @@ export interface GateCheckInput {
   expectedFallbackIds?: string[];
   /** run.json 记录跑过、却读不到结构化结论的一侧——那是留痕被动过，必须失败 */
   missingSides?: CriticId[];
+  /** 本轮 run_id：裁决件 front-matter 的 run_id 必须与之一致，否则把上一轮的裁决件抄过来也能过 */
+  runId?: string;
 }
 
 export async function checkAdjudication(input: GateCheckInput): Promise<GateCheckResult> {
@@ -136,6 +138,9 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     if (fm.topic !== layout.topic) mismatches.push(`topic=${fm.topic}（应为 ${layout.topic}）`);
     if (fm.stage !== stage) mismatches.push(`stage=${fm.stage}（应为 ${stage}）`);
     if (fm.kind !== kind) mismatches.push(`kind=${fm.kind}（${stage} 阶段应为 ${kind}）`);
+    if (input.runId && fm.run_id !== input.runId) {
+      mismatches.push(`run_id=${String(fm.run_id)}（本轮应为 ${input.runId}；不得复用上一轮的裁决件）`);
+    }
     if (!Array.isArray(fm.addresses) || fm.addresses.length === 0) {
       mismatches.push('addresses 为空（必须列出本件应答的审查文档）');
     }

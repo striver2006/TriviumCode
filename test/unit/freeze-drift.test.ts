@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { judgeDrift, driftAction, type Snapshot } from '../../src/trivium/freeze.js';
+import { judgeDrift, driftAction, enumerateDenyPaths, type Snapshot } from '../../src/trivium/freeze.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { initFixtureRepo, workTreeHash } from '../../src/trivium/util/git.js';
 
@@ -31,6 +31,16 @@ const BASE = {
   scratchGlobs: [] as string[],
   archiveRootRel: '.reviews',
 };
+
+test('禁读清单：子目录里的 .env.production 也在内（默认 sensitive_globs 补了 **/.env*）', async () => {
+  const dir = await repo();
+  await fs.mkdir(path.join(dir, 'config'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'config/.env.production'), 'X=1\n');
+  await fs.writeFile(path.join(dir, '.env'), 'X=1\n');
+  const deny = await enumerateDenyPaths(defaultConfig(), dir, path.join(dir, '.reviews'), 'gemini');
+  assert.ok(deny.includes('.env'));
+  assert.ok(deny.includes('config/.env.production'), JSON.stringify(deny));
+});
 
 test('工作树未变 → 无漂移', async () => {
   const dir = await repo();

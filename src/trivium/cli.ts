@@ -213,12 +213,16 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   // ── 只读/控制类子命令：只需要 run_id ──
   const waitId = flagString(args, 'wait');
   if (waitId) {
-    const timeoutS = Number.parseInt(flagString(args, 'timeout') ?? '', 10);
-    const out = await waitRun(
-      ctx,
-      waitId,
-      Number.isFinite(timeoutS) && timeoutS > 0 ? timeoutS : ctx.config.review.wait_timeout_s,
-    );
+    // 与 verify 一致（GLM-r2-07）：拼错的 --timeout 报错，不静默回落默认值——skill 是按
+    // --start 返回的 wait_timeout_s 设 Bash 超时的，静默换值会让两者对不上
+    const timeoutStr = flagString(args, 'timeout');
+    let timeoutS = ctx.config.review.wait_timeout_s;
+    if (timeoutStr !== null) {
+      const n = Number(timeoutStr);
+      if (!Number.isFinite(n) || n <= 0) throw usageError(`--timeout 需要一个正数秒数，收到「${timeoutStr}」。`);
+      timeoutS = n;
+    }
+    const out = await waitRun(ctx, waitId, timeoutS);
     if (isJsonMode()) {
       emitJson({
         ok: out.exitCode === EXIT.OK,
@@ -570,7 +574,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       const pre = await checkAdjudication({
         cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
         degraded: Object.values(reviews).some((r) => r === undefined),
-        expectedFallbackIds, missingSides,
+        expectedFallbackIds, missingSides, runId,
       });
       if (!pre.ok) {
         say(renderGateResult(pre));
@@ -628,7 +632,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   const result = await checkAdjudication({
     cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
     degraded: Object.values(reviews).some((r) => r === undefined),
-    expectedFallbackIds, missingSides,
+    expectedFallbackIds, missingSides, runId,
   });
 
   if (isJsonMode()) {
@@ -682,6 +686,11 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     });
     if (!g.applied && g.entry) {
       warn(`裁决已通过，但闸门未放行：${g.skipped}。该闸门属于另一次运行，本次不动它。`);
+    }
+    // 阻断计数只在审批时归零会跨轮累积：走 --check 放行的轮次不归零，下一轮首次 Stop 就超限放行
+    if (g.applied) {
+      const { resetStopBlockCount } = await import('./lock.js');
+      await resetStopBlockCount(ctx.triviumDir, topic, stage);
     }
   }
 

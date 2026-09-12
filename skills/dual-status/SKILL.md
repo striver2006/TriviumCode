@@ -16,5 +16,5 @@ allowed-tools: Bash(.trivium/bin/trivium:*)
 
 把输出原样转述给用户。
 
-若看到 `双审进行中`，提醒用户可以用 `trivium review --wait <run_id>` 继续等待，
-或 `trivium review --cancel <run_id>` 取消。
+若看到 `双审进行中`，提醒用户可以用 `.trivium/bin/trivium review --wait <run_id>` 继续等待，
+或 `.trivium/bin/trivium review --cancel <run_id>` 取消（`trivium` 不在 PATH 上）。

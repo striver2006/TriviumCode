@@ -75,8 +75,13 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     killTree = false,
   } = opts;
 
+  // BSD script（macOS）：`script -q /dev/null <cmd…>`；util-linux script：`script -q -c "<cmd>" /dev/null`
   const realBin = pty ? 'script' : bin;
-  const realArgs = pty ? ['-q', '/dev/null', bin, ...args] : [...args];
+  const realArgs = pty
+    ? process.platform === 'linux'
+      ? ['-q', '-c', formatCommand(bin, args), '/dev/null']
+      : ['-q', '/dev/null', bin, ...args]
+    : [...args];
   const commandLine = formatCommand(realBin, realArgs);
 
   const childEnv: NodeJS.ProcessEnv = { ...process.env };

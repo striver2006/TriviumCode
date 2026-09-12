@@ -29,6 +29,24 @@ const STANDARD = `| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 落点
 | GLM-03 | glm | major | 驳回 | 该分支在配置校验处已被上游拒绝 | 不改 |
 | AGY-04 | gemini | minor | 暂缓 | 需等依赖库升级 | 遗留风险 §5 |`;
 
+test('编号带装饰（加粗 / 反引号 / 括注严重度）照样识别；含编号却不以编号开头的行报出来', () => {
+  const d = parseDisposition(doc(`| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 落点 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **AGY-01** | gemini | major | 接受 | 成立 | §1 |
+| \`GLM-01\` | glm | minor | 驳回 | 上游已拒 | |
+| AGY-02（blocker） | gemini | blocker | 接受 | 成立 | §2 |
+| 见 AGY-03 | gemini | minor | 暂缓 | 等依赖 | |`));
+  assert.deepEqual(d.rows.map((r) => r.id), ['AGY-01', 'GLM-01', 'AGY-02']);
+  assert.ok(d.problems.some((p) => /AGY-03/.test(p.message) && /不以编号开头/.test(p.message)), JSON.stringify(d.problems));
+});
+
+test('表头精确匹配优先：Evidence 列排在编号列前面也不会被当成 id 列', () => {
+  const d = parseDisposition(doc(`| Evidence | 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 落点 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| src/a.ts:1 | AGY-01 | gemini | major | 接受 | 成立 | §1 |`));
+  assert.deepEqual(d.rows.map((r) => r.id), ['AGY-01']);
+});
+
 test('标准表格：三行全部解析，字段归位', () => {
   const p = parseDisposition(doc(STANDARD));
   assert.deepEqual(p.problems, []);
