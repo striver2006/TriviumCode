@@ -80,7 +80,7 @@ export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvoke
   const env: Record<string, string | undefined> = {};
   if (opts.homeDir) env['HOME'] = opts.homeDir;
 
-  const r = await run(opts.node, args, { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs });
+  const r = await run(opts.node, args, { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, killTree: true });
 
   let failureKind: ZcodeInvokeOutcome['failureKind'] = 'none';
   if (r.code !== 0) {

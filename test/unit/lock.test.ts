@@ -154,6 +154,74 @@ test('回收用 rename → 复验 → 删除，并发只有一个成功', async 
   assert.equal(results.filter(Boolean).length, 1, '三个并发回收者只应有一个成功');
 });
 
+test('回收复验不符时，把别人的新锁放回去而不是删掉（GLM-04 的承诺此前未兑现）', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  // 我们判定为遗留的是 A；但在我们动手前它已被 release、别人建了新锁 B
+  const A: LockContent = {
+    topic: TOPIC, stage: null, run_id: 'R-A', pid: 2 ** 22, pid_started_at: null, acquired_at: 'A', kind: 'run',
+  };
+  const B: LockContent = { ...A, run_id: 'R-B', pid: process.pid, acquired_at: 'B' };
+  await fs.writeFile(lockFile(dir), JSON.stringify(B));
+
+  const ok = await reclaimStaleLock(lockFile(dir), A);
+  assert.equal(ok, false);
+  const onDisk = await inspectLock(dir, TOPIC);
+  assert.equal(onDisk?.run_id, 'R-B', '别人的新锁必须原样留在原位');
+});
+
+test('原本不可解析、此刻已是合法锁 → 不回收（那是别人刚建的）', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  const B: LockContent = {
+    topic: TOPIC, stage: null, run_id: 'R-B', pid: process.pid, pid_started_at: null, acquired_at: 'B', kind: 'run',
+  };
+  await fs.writeFile(lockFile(dir), JSON.stringify(B));
+  assert.equal(await reclaimStaleLock(lockFile(dir), null), false);
+  assert.equal((await inspectLock(dir, TOPIC))?.run_id, 'R-B');
+});
+
+test('锁文件一出现就是完整内容：并发争抢从不观察到空文件', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  let sawEmpty = false;
+  // 一边高频轮询锁文件内容，一边并发抢锁
+  const poll = (async () => {
+    const until = Date.now() + 400;
+    while (Date.now() < until) {
+      try {
+        const raw = await fs.readFile(lockFile(dir), 'utf8');
+        if (raw.length === 0) sawEmpty = true;
+      } catch { /* 不存在是正常 */ }
+    }
+  })();
+  const handles = await Promise.all(
+    Array.from({ length: 6 }, () =>
+      acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 200, retryDelayMs: 5 })
+        .then(async (h) => { await new Promise((r) => setTimeout(r, 10)); await h.release(); }),
+    ),
+  );
+  await poll;
+  assert.ok(handles.length === 6);
+  assert.equal(sawEmpty, false, 'open(wx) 后再 writeFile 会留下空文件窗口，并发者会把活锁当 unparsable 回收');
+});
+
+test('不可解析但刚写下的锁文件：不抢，先当活锁重试', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  await fs.writeFile(lockFile(dir), '');
+  await assert.rejects(
+    acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 1, retryDelayMs: 5 }),
+    (e: { code?: number }) => e.code === EXIT.LOCKED,
+  );
+  // 放旧了才按 unparsable 回收
+  const old = new Date(Date.now() - 60_000);
+  await fs.utimes(lockFile(dir), old, old);
+  const h = await acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 1, retryDelayMs: 5 });
+  assert.equal(h.content.pid, process.pid);
+  await h.release();
+});
+
 test('短临界区串行化：并发 withTopicLock 不会交叠', async () => {
   const dir = await tmpTrivium();
   let inside = 0;

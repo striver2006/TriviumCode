@@ -4,9 +4,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
-  setGate,
+  setGate, StateCorruptError,
   setGateChecked, getGate, listOpenGates, readState, shouldLockWrites, gateKey, type GateEntry,
 } from '../../src/trivium/state.js';
+import { EXIT } from '../../src/trivium/exit-codes.js';
 
 const STALE = 120_000;
 
@@ -68,6 +69,25 @@ test('listOpenGates 只列未关闭的闸门', async () => {
   await setGate({ triviumDir: d, topic: 'D', stage: 'plan', state: 'abandoned', heartbeatStaleMs: STALE });
   const open = await listOpenGates(d);
   assert.deepEqual(open.map((g) => g.topic).sort(), ['A', 'B']);
+});
+
+test('state.json 不存在 → 空状态（还没跑过，正常）', async () => {
+  const d = await tmp();
+  assert.deepEqual((await readState(d)).gates, {});
+});
+
+test('state.json 存在但坏了 → 抛 StateCorruptError（退出码 2），不得静默当成空', async () => {
+  const d = await tmp();
+  await fs.writeFile(path.join(d, 'state.json'), '{ 这不是 JSON', 'utf8');
+  await assert.rejects(readState(d), (e: unknown) => {
+    assert.ok(e instanceof StateCorruptError);
+    assert.equal((e as StateCorruptError).code, EXIT.GATE_BLOCK);
+    return true;
+  });
+  // 形状不对也算坏
+  await fs.writeFile(path.join(d, 'state.json'), '{"schema":"x"}', 'utf8');
+  await assert.rejects(readState(d), StateCorruptError);
+  await assert.rejects(listOpenGates(d), StateCorruptError, '所有读取入口都不得回落成「无闸门」');
 });
 
 test('并发 setGate 不丢更新（经短临界区串行化，GLM-08）', async () => {

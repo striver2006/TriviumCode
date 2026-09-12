@@ -352,6 +352,37 @@ test('明确判定拦截 → exit 2（唯一返回 2 的路径）', async () => 
   assert.equal(r.exitCode, EXIT.GATE_BLOCK);
 });
 
+test('state.json 被搅坏 → 三个拦截型 Hook 一律 exit 2（fail-closed），session-start 只提示', async () => {
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.triviumDir, 'state.json'), '{ 这不是 JSON', 'utf8');
+  /*
+   * 原先 readState 解析失败静默回落成空状态：`echo x > .trivium/state.json` 就能让
+   * 全部闸门瞬间消失，写锁、收工拦截、提交拦截同时解除。它是 Hook 的唯一判定依据。
+   */
+  for (const name of ['hook-pre-write', 'hook-pre-commit', 'hook-stop'] as const) {
+    const r = await runHook(name, async () => ctx, {
+      session_id: SESSION, tool_name: 'Bash',
+      tool_input: { file_path: 'src/a.ts', command: 'git commit -m x' },
+    });
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `${name} 在判定依据损坏时必须拦`);
+    assert.match(r.stderr ?? '', /闸门状态文件不可读/);
+  }
+  const s = await runHook('hook-session-start', async () => ctx, { session_id: SESSION });
+  assert.equal(s.exitCode, EXIT.OK, 'session-start 永不阻断');
+  assert.match(String((s.json?.['hookSpecificOutput'] as Record<string, unknown>)['additionalContext']), /不可读/);
+});
+
+test('Driver 不得用 Write 覆盖 .trivium/state.json 与 lock/（那等于自己解闸）', async () => {
+  const ctx = await fakeCtx();
+  for (const p of ['.trivium/state.json', '.trivium/lock/t.lock', path.join(ctx.triviumDir, 'state.json')]) {
+    const r = await hookPreWrite(ctx, writeInput(p));
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `${p} 应被拒`);
+    assert.match(r.stderr ?? '', /dual-approve/);
+  }
+  // config.yaml 是用户自己的配置，不在此列
+  assert.equal((await hookPreWrite(ctx, writeInput('.trivium/config.yaml'))).exitCode, EXIT.OK);
+});
+
 test('hook 内部程序缺陷 → exit 1（非阻断）', async () => {
   const ctx = await fakeCtx();
   // 让 state.json 变成目录，触发读取异常路径之外的真实错误

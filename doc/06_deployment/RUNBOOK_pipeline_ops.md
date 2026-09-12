@@ -115,7 +115,7 @@ idle → running → review_done_awaiting_disposition → awaiting_approval → 
 ### 想彻底退出这个主题
 
 ```bash
-/dual-abandon --topic <主题>              # 放弃该主题下全部未关闭闸门
+/dual-abandon --topic <主题>              # 放弃该主题下全部未关闭闸门（running 的除外：先 --cancel）
 /dual-abandon --topic <主题> --stage code # 只放弃一个阶段
 ```
 

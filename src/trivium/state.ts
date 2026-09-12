@@ -13,6 +13,25 @@ import { promises as fs } from 'node:fs';
 import type { Stage } from './types.js';
 import { withGlobalLock } from './lock.js';
 import { writeAtomic } from './util/fsx.js';
+import { EXIT, TriviumError } from './exit-codes.js';
+
+/**
+ * `state.json` **存在但读不出来**。
+ *
+ * 它是四个 Hook 的唯一判定依据。原先解析失败静默回落成空状态——`echo x > state.json`
+ * 就能让全部 awaiting_approval / review_done / running 闸门瞬间消失，写锁、收工拦截、
+ * 提交拦截同时解除。与 `readTaskStrict` 区分「不存在」与「存在但坏了」是同一条纪律：
+ * 不存在是正常（还没跑过），坏了必须按违例处理。退出码 2：Hook 收到就是拦截。
+ */
+export class StateCorruptError extends TriviumError {
+  constructor(p: string, cause: string) {
+    super(
+      EXIT.GATE_BLOCK,
+      `闸门状态文件不可读：${p}（${cause}）。它是所有 Hook 的唯一依据，坏了不能当成没有闸门。\n` +
+        '  若确认其中没有进行中的运行，删除该文件即可重建；否则请先修复 JSON。',
+    );
+  }
+}
 
 export type GateState =
   | 'idle'
@@ -63,10 +82,22 @@ function empty(): StateFile {
 }
 
 export async function readState(triviumDir: string): Promise<StateFile> {
+  const p = statePath(triviumDir);
+  let raw: string;
   try {
-    return JSON.parse(await fs.readFile(statePath(triviumDir), 'utf8')) as StateFile;
-  } catch {
-    return empty();
+    raw = await fs.readFile(p, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return empty(); // 还没跑过：正常
+    throw new StateCorruptError(p, (e as Error).message);
+  }
+  try {
+    const s = JSON.parse(raw) as StateFile;
+    if (!s || typeof s !== 'object' || typeof s.gates !== 'object' || s.gates === null) {
+      throw new Error('缺少 gates 对象');
+    }
+    return s;
+  } catch (e) {
+    throw new StateCorruptError(p, (e as Error).message);
   }
 }
 

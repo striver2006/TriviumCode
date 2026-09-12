@@ -18,7 +18,7 @@ import path from 'node:path';
 import { run } from './util/exec.js';
 import { sha256 } from './util/fsx.js';
 import { writeMeta, writeVerifyRecord, type ArchiveLayout } from './archive.js';
-import { updateTask } from './meta.js';
+import { updateTask, type TaskLock } from './meta.js';
 import { localDate } from './naming.js';
 import { EXIT, usageError } from './exit-codes.js';
 import type { Config, Ctx } from './types.js';
@@ -220,7 +220,7 @@ export async function runVerify(opts: VerifyOptions): Promise<VerifyOutcome> {
       2,
     ) + '\n',
   );
-  await registerVerifyRun(layout, runId, written.effectiveRerunIndex, record.status);
+  await registerVerifyRun(layout, runId, written.effectiveRerunIndex, record.status, { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 });
 
   const exitCode = record.unconfigured ? EXIT.USAGE : failed ? EXIT.FAIL : EXIT.OK;
   return { record, exitCode, artifactPath: written.absPath, metaPath: meta.absPath };
@@ -328,6 +328,7 @@ async function registerVerifyRun(
   runId: string,
   rerunIndex: number,
   status: 'success' | 'failed',
+  lock: TaskLock,
 ): Promise<void> {
   await updateTask(layout, (t) => {
     if (t.runs.some((r) => r.run_id === runId)) return;
@@ -339,5 +340,5 @@ async function registerVerifyRun(
       review_mode: 'dual',
       started_at: new Date().toISOString(),
     });
-  });
+  }, lock);
 }

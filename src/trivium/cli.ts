@@ -687,14 +687,23 @@ async function cmdApproval(
   const decision =
     fallbackDecision === 'approved' && args.flags.get('reject') === true ? 'rejected' : fallbackDecision;
 
-  // abandon 不带 --stage 时，放弃该主题下全部未关闭闸门
+  // abandon 不带 --stage 时，放弃该主题下全部未关闭闸门——但 running 的不动：
+  // 那是别的运行正在用的护栏，要先 --cancel（recordApproval 也会拒绝）
   const stageRaw = flagString(args, 'stage');
+  const open = (await listOpenGates(ctx.triviumDir)).filter((g) => g.topic === topic);
+  const running = stageRaw ? [] : open.filter((g) => g.state === 'running');
+  for (const g of running) {
+    warn(`${g.topic}/${g.stage} 双审进行中（run ${g.run_id ?? '未知'}），本次不放弃它；如需中止请 trivium review --cancel ${g.run_id ?? '<run_id>'}`);
+  }
   const stages: Stage[] = stageRaw
     ? [parseStage(args)]
-    : (await listOpenGates(ctx.triviumDir)).filter((g) => g.topic === topic).map((g) => g.stage);
+    : open.filter((g) => g.state !== 'running').map((g) => g.stage);
 
   if (stages.length === 0) {
-    throw missingArtifactError(`主题「${topic}」没有未关闭的闸门`);
+    throw missingArtifactError(
+      `主题「${topic}」没有可${fallbackDecision === 'approved' ? '审批' : '放弃'}的闸门` +
+        (running.length > 0 ? '（进行中的运行请先 --cancel）' : ''),
+    );
   }
 
   for (const stage of stages) {

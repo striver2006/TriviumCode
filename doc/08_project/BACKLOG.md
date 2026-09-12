@@ -18,14 +18,14 @@
 
 | # | 状态 | 条目 | 位置 |
 | :-- | :-- | :-- | :-- |
-| M1 | todo | `reclaimStaleLock` 复验结果被丢弃，`rm` 无条件执行，调用方忽略返回值 → 删掉别人的新锁 | lock.ts:97-112,179 |
-| M2 | todo | 锁文件先 `open('wx')` 后写内容，空文件窗口被判 `unparsable` 误回收活锁 | lock.ts:148-152,73 |
-| M3 | todo | `readState` 解析失败静默返回空状态，所有闸门一次性消失 | state.ts:59-65 |
-| M4 | todo | `recordApproval` 无条件 `setGate`，abandon 跳过状态校验，可覆写并发 `running` | approval.ts:34-39,58-64 |
-| M5 | todo | `withTopicLock` 零调用；task.json 读改写四处不持锁 | meta.ts:213、verify.ts:332、approval.ts:53、review.ts:543 |
-| M6 | todo | 同步路径 `runReview` 不取主题锁 | review.ts:880-902 |
-| M7 | todo | worker 心跳 `void patchStatus` 无 catch → 写失败即崩；心跳与终态写入争用 | run-protocol.ts:365-368 |
-| M8 | todo | `exec.run` 超时不杀进程树；`finish` 只挂 `close` 可能永不 resolve | util/exec.ts:145-153 |
+| M1 | done | `reclaimStaleLock` 复验结果被丢弃，`rm` 无条件执行，调用方忽略返回值 → 删掉别人的新锁 | lock.ts:97-112,179 |
+| M2 | done | 锁文件先 `open('wx')` 后写内容，空文件窗口被判 `unparsable` 误回收活锁 | lock.ts:148-152,73 |
+| M3 | done | `readState` 解析失败静默返回空状态，所有闸门一次性消失 | state.ts:59-65 |
+| M4 | done | `recordApproval` 无条件 `setGate`，abandon 跳过状态校验，可覆写并发 `running` | approval.ts:34-39,58-64 |
+| M5 | done | `withTopicLock` 零调用；task.json 读改写四处不持锁 | meta.ts:213、verify.ts:332、approval.ts:53、review.ts:543 |
+| M6 | done | 同步路径 `runReview` 不取主题锁 | review.ts:880-902 |
+| M7 | done | worker 心跳 `void patchStatus` 无 catch → 写失败即崩；心跳与终态写入争用 | run-protocol.ts:365-368 |
+| M8 | done | `exec.run` 超时不杀进程树；`finish` 只挂 `close` 可能永不 resolve | util/exec.ts:145-153 |
 | M9 | todo | 两侧 writeArtifact 各自抬升 `-r<N>`，可分叉 | review.ts:728-732 vs archive.ts:57-59 |
 | M10 | done | 两侧都 parse_fallback 时空裁决表直接通过；fallback 条目从不被要求出现 | gate.ts:143-153,197 |
 | M11 | todo | `task.json.disputed` 从未写为 true，status/report 的争议提示永不触发 | gate.ts:232-250、meta.ts:80 |

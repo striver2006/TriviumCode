@@ -104,11 +104,35 @@ export async function reclaimStaleLock(p: string, expected: LockContent | null):
   // 复验：拿到手的确实是我们判定为遗留的那一份
   const got = await readLock(tmp);
   const same =
-    expected === null ||
-    got === null ||
-    (got.pid === expected.pid && got.acquired_at === expected.acquired_at);
-  await fs.rm(tmp, { force: true });
-  return same;
+    expected === null
+      ? got === null // 原本就不可解析：此刻若已是合法锁，那是别人刚建的
+      : got === null || (got.pid === expected.pid && got.acquired_at === expected.acquired_at);
+  if (same) {
+    await fs.rm(tmp, { force: true });
+    return true;
+  }
+  /*
+   * 不是那一份：原持有者已 release、别人已重新持有，我们 rename 走的是**别人的新锁**。
+   * 原先这里照样 rm——复验结论既不影响删除、调用方也忽略返回值，头注释承诺的
+   * 「防第二个删掉第一个刚创建的新锁」从未兑现，结果是两个进程同时「持锁」。
+   * 放回去；放不回（此刻又冒出一把新锁）只能丢弃这一份，由持有者 release 时的
+   * 「只删自己的锁」规则兜底。
+   */
+  try {
+    await fs.rename(tmp, p);
+  } catch {
+    await fs.rm(tmp, { force: true });
+  }
+  return false;
+}
+
+/** 锁文件距上次修改多久（毫秒）；读不到视为无穷久 */
+async function fileAgeMs(p: string): Promise<number> {
+  try {
+    return Date.now() - (await fs.stat(p)).mtimeMs;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
 }
 
 export interface AcquireOptions {
@@ -144,13 +168,17 @@ export async function acquireLock(opts: AcquireOptions): Promise<LockHandle> {
       kind: opts.kind ?? 'critical',
     };
 
+    /*
+     * 先把完整内容写进临时文件，再 `link` 进位：`link` 在目标已存在时原子地失败（EEXIST），
+     * 成功时目标文件**一出现就是完整内容**。原先是 `open('wx')` 之后再 `writeFile`，
+     * 两步之间存在一个空文件窗口——并发者此时 readLock 得 null、judgeStale 判 `unparsable`、
+     * 立刻把一把活锁当遗留锁回收掉。withGlobalLock 默认 40×100ms 重试，两个会话同时写
+     * state.json 时这个窗口会被反复命中。
+     */
+    const tmp = `${p}.tmp-${process.pid}-${randomUUID()}`;
+    await fs.writeFile(tmp, JSON.stringify(content, null, 2) + '\n');
     try {
-      const fh = await fs.open(p, 'wx'); // O_CREAT|O_EXCL
-      try {
-        await fh.writeFile(JSON.stringify(content, null, 2) + '\n');
-      } finally {
-        await fh.close();
-      }
+      await fs.link(tmp, p);
       return {
         path: p,
         content,
@@ -164,15 +192,19 @@ export async function acquireLock(opts: AcquireOptions): Promise<LockHandle> {
       };
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    } finally {
+      await fs.rm(tmp, { force: true });
     }
 
     // 已被占用：看是不是遗留锁
     const existing = await readLock(p);
     const terminal = opts.runTerminal ? await opts.runTerminal(existing?.run_id ?? null) : false;
-    const stale = await judgeStale(existing, {
+    let stale = await judgeStale(existing, {
       heartbeatStaleMs: opts.heartbeatStaleMs,
       runTerminal: terminal,
     });
+    // 防御：不可解析但刚写下不久的文件，可能是别的工具正在写——别抢，重试
+    if (stale === 'unparsable' && (await fileAgeMs(p)) < 2_000) stale = null;
 
     if (stale !== null) {
       warn(`回收主题「${opts.topic}」的遗留锁（原因 ${stale}，原持有者 pid ${existing?.pid ?? '?'}）`);

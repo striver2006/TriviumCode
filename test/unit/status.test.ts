@@ -56,6 +56,24 @@ test('patchStatus 读改写', async () => {
 
 // ── GLM-06 的三种情形 ──
 
+test('同进程并发 patchStatus 串行化：心跳不会把终态回滚成 running', async () => {
+  const dir = await runDir();
+  await writeStatus(dir, base());
+  /*
+   * worker 里心跳定时器与终态写入在同一个事件循环里交错：心跳在终态写入前读、
+   * 之后写，终态就被回滚。两者同进程，一条 promise 链即可消掉窗口。
+   */
+  await Promise.all([
+    patchStatus(dir, (s) => { s.phase = 'success'; s.exit_code = 0; }),
+    patchStatus(dir, () => {}), // 心跳
+    patchStatus(dir, (s) => { s.artifacts.push('a'); }),
+    patchStatus(dir, () => {}),
+  ]);
+  const s = await readStatus(dir);
+  assert.equal(s?.phase, 'success', '终态不得被并发的心跳回滚');
+  assert.deepEqual(s?.artifacts, ['a']);
+});
+
 test('情形 A1：status.json 不存在但进程活着 → inconclusive，继续等', async () => {
   const d = await runDir();
   const r = await interpretStatus(d, {

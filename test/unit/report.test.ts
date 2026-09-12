@@ -1,4 +1,8 @@
 import { test } from 'node:test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as joinPath } from 'node:path';
+const TASK_LOCK_DIR = mkdtempSync(joinPath(tmpdir(), 'trivium-report-lock-'));
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
@@ -102,7 +106,7 @@ async function seedRound(
 
   meta.status = 'success';
   await writeRunMeta(l, 'plan', meta);
-  await registerRun(l, meta);
+  await registerRun(l, meta, { triviumDir: TASK_LOCK_DIR, heartbeatStaleMs: 120_000 });
   return meta;
 }
 

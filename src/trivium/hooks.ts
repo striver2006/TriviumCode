@@ -13,6 +13,7 @@
  * | :--- | :--- | :--- |
  * | 无法确认存在**合法** config（缺失/不可读/schema 不合） | 0 | no-op 的语义是「判定不了就别管」，不只是「判定为未初始化」（GLM-07） |
  * | 读到合法 config 且**明确判定**应拦截 | 2 | 唯一返回 2 的路径 |
+ * | config 合法但 `state.json` **存在却读不出来** | 2 | 它是唯一判定依据，坏了不能当成没有闸门（否则搅坏它即可整枝绕过） |
  * | 真正的程序缺陷 | 1 | 非阻断；带 TRIVIUM_DEBUG 时打日志便于归因 |
  *
  * 注意 wrapper 文件本身缺失时 shell 会返回 127、`loadCtx` 抛 envError 返回 69——
@@ -23,7 +24,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type { Ctx, Stage } from './types.js';
 import { EXIT } from './exit-codes.js';
-import { listOpenGates, readState, shouldLockWrites } from './state.js';
+import { listOpenGates, readState, shouldLockWrites, StateCorruptError } from './state.js';
 import { bumpStopBlockCount } from './lock.js';
 import { exists } from './util/fsx.js';
 
@@ -88,6 +89,14 @@ export function isForgedRoleFile(targetPath: string): boolean {
  * 事实来源，`run-*.json` 的 sha256 与 `task.json.runs[]` 是留痕核对的锚——
  * 这些若对 Driver 开放，「改锚即可整枝绕过」（P5 不可伪装）。该规则同样不受会话与 TTL 限制。
  */
+/** `.trivium/state.json` 与 `.trivium/lock/**`：闸门状态与锁，Driver 不得手工改 */
+export function isTriviumStateFile(targetPath: string, projectRoot: string, triviumDir: string): boolean {
+  const abs = path.isAbsolute(targetPath) ? targetPath : path.resolve(projectRoot, targetPath);
+  const rel = path.relative(triviumDir, abs);
+  if (rel.length === 0 || rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  return rel === 'state.json' || rel === 'lock' || rel.startsWith(`lock${path.sep}`);
+}
+
 export function isOrchestratorOwned(targetPath: string, projectRoot: string, archiveRoot: string): boolean {
   const abs = path.isAbsolute(targetPath) ? targetPath : path.resolve(projectRoot, targetPath);
   const rel = path.relative(archiveRoot, abs);
@@ -142,6 +151,14 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
     return deny(
       `禁止写入 ${path.basename(target)}：审查文档只能由编排器从审查员的结构化输出渲染落盘。` +
         `主脑不得自行产出 -gemini.md / -glm.md（PRD 6.3 / 设计 §10.4）。`,
+    );
+  }
+  // 闸门状态与锁同样是编排器独占的：Driver 用 Write 覆盖 state.json 等于自己解闸
+  if (isTriviumStateFile(target, ctx.projectRoot, ctx.triviumDir)) {
+    return deny(
+      `禁止写入 ${path.relative(ctx.projectRoot, path.resolve(ctx.projectRoot, target))}：` +
+        '.trivium/state.json 与 .trivium/lock/ 由编排器独占维护，是全部 Hook 的判定依据。' +
+        '要解除闸门请走 /dual-approve 或 /dual-abandon。',
     );
   }
 
@@ -667,6 +684,16 @@ export async function runHook(
         return await hookSessionStart(ctx);
     }
   } catch (e) {
+    if (e instanceof StateCorruptError) {
+      // 判定依据本身坏了 ≠ 判定不了：fail-closed。session-start 永不阻断，改为提示
+      if (name === 'hook-session-start') {
+        return {
+          exitCode: EXIT.OK,
+          json: { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: `TriviumCode：${e.message}` } },
+        };
+      }
+      return { exitCode: EXIT.GATE_BLOCK, stderr: e.message };
+    }
     // 真正的程序缺陷：非阻断，但要能归因
     if (process.env['TRIVIUM_DEBUG']) console.error(e);
     return { exitCode: EXIT.FAIL, stderr: `hook ${name} 内部错误：${(e as Error).message}` };

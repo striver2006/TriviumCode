@@ -367,8 +367,12 @@ async function releaseRunningGate(
 export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
   const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
   const heartbeat = setInterval(() => {
-    // 只刷心跳，不改语义。--wait 靠它判定「还活着」
-    void patchStatus(runDir, () => {});
+    // 只刷心跳，不改语义。--wait 靠它判定「还活着」。
+    // 必须 catch：Node ≥ 18 默认 unhandled rejection 即崩，磁盘满 / 目录被删时
+    // 一次心跳写失败就会在两侧配额中段把整个 worker 炸掉
+    patchStatus(runDir, () => {}).catch((e: unknown) => {
+      if (process.env['TRIVIUM_DEBUG']) console.error('[heartbeat]', e);
+    });
   }, HEARTBEAT_MS);
 
   try {

@@ -10,6 +10,21 @@ import { promises as fs } from 'node:fs';
 import type { CriticId, RunMeta, Stage, StageOrVerify, CommandEntry } from './types.js';
 import { writeAtomic } from './util/fsx.js';
 import { topicDir, type ArchiveLayout } from './archive.js';
+import { withTopicLock } from './lock.js';
+
+/** `updateTask` 的短临界区参数 */
+export interface TaskLock {
+  triviumDir: string;
+  heartbeatStaleMs: number;
+}
+
+/**
+ * task.json 的临界区用**独立**锁名，不复用主题锁 `<主题>.lock`：
+ * 后者由 review worker 以长持锁形式占着，worker 自己收尾时要写 task.json，
+ * 复用会自锁。`.` 开头保证不与任何主题撞名（§6.1 禁止主题以 `.` 开头），
+ * `hook-session-start` 枚举锁目录时也会跳过它。
+ */
+const taskLockName = (topic: string): string => `.task-${topic}`;
 
 /** run_id 形如 20260910T142310Z：UTC 紧凑时间戳，可排序、可做文件名 */
 export function newRunId(now: Date = new Date()): string {
@@ -116,16 +131,29 @@ export async function readTask(l: ArchiveLayout): Promise<TaskMeta> {
   return (await readTaskStrict(l)).task;
 }
 
-/** 读 → 改 → 原子替换。调用方须持有主题锁（§12.6） */
+/**
+ * 读 → 改 → 原子替换，**在短临界区内**（§12.6 / GLM-08）。
+ *
+ * 原子替换只防撕裂不防丢更新：worker 收尾的 `registerRun`、`trivium verify` 的
+ * `registerVerifyRun`、`/dual-approve` 的审批记录，三者互不持锁时会互相覆盖——
+ * 丢一条 run 指针，那个 run 的 run.json 就失去了外部锚。头注释「调用方须持有主题锁」
+ * 原先无人遵守（`withTopicLock` 全仓零调用），现在由本函数自己加锁。
+ */
 export async function updateTask(
   l: ArchiveLayout,
   mutate: (t: TaskMeta) => void,
+  lock: TaskLock,
 ): Promise<TaskMeta> {
-  const t = await readTask(l);
-  mutate(t);
-  t.updated_at = new Date().toISOString();
-  await writeAtomic(taskPath(l), JSON.stringify(t, null, 2) + '\n');
-  return t;
+  return withTopicLock(
+    { triviumDir: lock.triviumDir, topic: taskLockName(l.topic), heartbeatStaleMs: lock.heartbeatStaleMs },
+    async () => {
+      const t = await readTask(l);
+      mutate(t);
+      t.updated_at = new Date().toISOString();
+      await writeAtomic(taskPath(l), JSON.stringify(t, null, 2) + '\n');
+      return t;
+    },
+  );
 }
 
 // ─────────────────────────── run.json ───────────────────────────
@@ -213,7 +241,7 @@ export async function readRunMeta(
 }
 
 /** 把一次运行登记进 task.json（幂等：同 run_id 覆盖而非追加） */
-export async function registerRun(l: ArchiveLayout, meta: RunMeta): Promise<void> {
+export async function registerRun(l: ArchiveLayout, meta: RunMeta, lock: TaskLock): Promise<void> {
   await updateTask(l, (t) => {
     const entry = {
       run_id: meta.run_id,
@@ -238,7 +266,7 @@ export async function registerRun(l: ArchiveLayout, meta: RunMeta): Promise<void
         });
       }
     }
-  });
+  }, lock);
 }
 
 /** 人读的运行摘要（命令输出用，对应 §13.2 第 1 处落点） */

@@ -50,7 +50,8 @@ import {
 } from './code-stage.js';
 import { diffAgainst, headSha } from './util/git.js';
 import { resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
-import { newRunId, newRunMeta, readTask, registerRun, summarizeRun, writeRunMeta } from './meta.js';
+import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
+import { acquireLock } from './lock.js';
 import { measureDivergence, renderDivergence } from './divergence.js';
 import { runRoot } from './config.js';
 import { setGateChecked } from './state.js';
@@ -533,7 +534,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     meta.skip_reason = skipVerdict.reasons.join('；');
   }
   await writeRunMeta(ref.layout, stage, meta);
-  await registerRun(ref.layout, meta);
+  const taskLock: TaskLock = { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 };
+  await registerRun(ref.layout, meta, taskLock);
 
   /*
    * 任务目标落进 task.json，供本主题后续阶段复用——但**只落显式传入的那一个**。
@@ -549,7 +551,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     const { updateTask } = await import('./meta.js');
     await updateTask(ref.layout, (t) => {
       if (!t.goal) t.goal = taskGoal;
-    });
+    }, taskLock);
   }
 
   /*
@@ -620,7 +622,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     meta.gate.state = 'skipped_doc_only';
     meta.gate.adjudication_complete = true; // 没有意见可裁决
     await writeRunMeta(ref.layout, stage, meta);
-    await registerRun(ref.layout, meta);
+    await registerRun(ref.layout, meta, { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 });
     // 跳过等于这一轮没有待裁决的意见，闸门直接回 idle——但只回收属于本 run 的那个
     await setGateChecked({
       triviumDir: ctx.triviumDir, topic: ref.topic, stage, state: 'idle',
@@ -862,7 +864,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   meta.gate.state = meta.status === 'success' ? 'review_done_awaiting_disposition' : 'failed';
 
   await writeRunMeta(ref.layout, stage, meta);
-  await registerRun(ref.layout, meta);
+  await registerRun(ref.layout, meta, { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 });
 
   /*
    * 同步到 state.json，Hook 才看得见。
@@ -916,6 +918,33 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
 
 /** 同步路径（M1 行为）：准备 + 执行一气做完。长时运行请用 `--start` / `--wait` */
 export async function runReview(opts: ReviewOptions): Promise<ReviewOutcome> {
+  const { ctx } = opts;
+  /*
+   * 同步路径同样要持主题锁（§12.6）。原先一行锁都没有：终端里的同步 `review` 与
+   * skill 侧的 `--start` worker 同时跑同一主题，两边同时冻结、同时算出同一个 -r<N>、
+   * 同时写 _meta/ 与 task.json，闸门互相覆盖。与 startRun 用同一套判据。
+   */
+  const lock = await acquireLock({
+    triviumDir: ctx.triviumDir,
+    topic: opts.topic,
+    stage: opts.stage,
+    kind: 'run',
+    heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+    runTerminal: async (runId) => {
+      if (!runId) return false;
+      const ref = await resolveTopicReadOnly(ctx, opts.topic, opts.stage);
+      const m = await readRunMeta(ref.layout, opts.stage, runId);
+      return m !== null && m.status !== 'running';
+    },
+  });
+  try {
+    return await runReviewLocked(opts);
+  } finally {
+    await lock.release();
+  }
+}
+
+async function runReviewLocked(opts: ReviewOptions): Promise<ReviewOutcome> {
   const rc = await prepareRun(opts);
   try {
     return await executeRun(rc);

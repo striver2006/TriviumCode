@@ -24,6 +24,14 @@ export interface RunOptions {
   pty?: boolean;
   /** 输出上限，超出即截断，防止把整个仓库读进内存 */
   maxBufferBytes?: number;
+  /**
+   * 超时时杀**整棵进程树**而不只是直接子进程。
+   *
+   * 实现是让子进程成为自己进程组的组长（`detached: true`），超时按进程组发信号。
+   * 厂商 CLI 都会再派生子进程（pty 模式下直接子进程更只是 `script` 包装），
+   * 只 `kill(pid)` 会把真正烧配额的那个遗弃给 init。适配器一律打开它。
+   */
+  killTree?: boolean;
 }
 
 export interface RunResult {
@@ -64,6 +72,7 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     onStdoutLine,
     pty = false,
     maxBufferBytes = DEFAULT_MAX_BUFFER,
+    killTree = false,
   } = opts;
 
   const realBin = pty ? 'script' : bin;
@@ -80,6 +89,7 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     cwd,
     env: childEnv,
     stdio: ['pipe', 'pipe', 'pipe'],
+    ...(killTree ? { detached: true } : {}),
   };
 
   return new Promise<RunResult>((resolve) => {
@@ -94,6 +104,7 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     let lineBuf = '';
     let softTimer: NodeJS.Timeout | undefined;
     let hardTimer: NodeJS.Timeout | undefined;
+    let exitTimer: NodeJS.Timeout | undefined;
 
     const appendOut = (chunk: string) => {
       if (stdout.length + chunk.length > maxBufferBytes) {
@@ -125,6 +136,7 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
       settled = true;
       if (softTimer) clearTimeout(softTimer);
       if (hardTimer) clearTimeout(hardTimer);
+      if (exitTimer) clearTimeout(exitTimer);
       if (lineBuf.length > 0 && onStdoutLine) onStdoutLine(lineBuf);
       resolve({
         code,
@@ -143,12 +155,25 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
       finish(null, null);
     });
     child.on('close', finish);
+    /*
+     * `close` 要等**全部 stdio 管道**关闭。子进程退出后若留下继承了 stdout 管道的
+     * 孙进程（`sleep 30 &` 之类），管道不闭合，`close` 永不触发，本 Promise 永不 resolve——
+     * 上层的 runOneSide 挂死，`--wait` 永远 73。因此 `exit` 之后给一个短兜底：
+     * 已退出的进程不会再产出输出，两秒后没等到 close 就按已收到的输出收尾。
+     */
+    child.on('exit', (code, signal) => {
+      exitTimer = setTimeout(() => finish(code, signal), 2_000);
+    });
 
+    const signalChild = (sig: NodeJS.Signals) => {
+      if (killTree && child.pid) killProcessTree(child.pid, sig);
+      else child.kill(sig);
+    };
     if (timeoutMs > 0) {
       softTimer = setTimeout(() => {
         timedOut = true;
-        child.kill('SIGTERM');
-        hardTimer = setTimeout(() => child.kill('SIGKILL'), killGraceMs);
+        signalChild('SIGTERM');
+        hardTimer = setTimeout(() => signalChild('SIGKILL'), killGraceMs);
       }, timeoutMs);
     }
 
@@ -221,6 +246,9 @@ export async function spawnDetached(
       stdio: ['ignore', handle.fd, handle.fd],
     });
     if (child.pid === undefined) throw new Error('spawn 未返回 pid');
+    // spawn 失败时 Node 会**异步**再发一次 'error'；没有监听者就是未捕获异常，
+    // 会盖掉上面那条本该返回的退出码
+    child.once('error', () => { /* 已由 pid 缺失路径报告 */ });
     // 父进程不等它，也不因它而延迟退出
     child.unref();
     return { pid: child.pid, commandLine: formatCommand(bin, args) };
@@ -288,9 +316,8 @@ export async function processStartTime(pid: number): Promise<string | null> {
  */
 export function killProcessTree(pid: number, signal: NodeJS.Signals): boolean {
   if (!Number.isInteger(pid) || pid <= 1) return false;
-  // 绝不对自己所在的组发信号：那会把编排器自己一起杀掉
-  const ownGroup = typeof process.getgid === 'function' ? safePgrp() : null;
-  if (ownGroup !== null && pid === ownGroup) return false;
+  // 绝不对自己发组信号：`kill(-pid)` 以 pid 为组号，pid 等于自身时就是自杀
+  if (pid === process.pid) return false;
 
   try {
     process.kill(-pid, signal); // 负数 = 整个进程组
@@ -305,12 +332,3 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals): boolean {
   }
 }
 
-function safePgrp(): number | null {
-  try {
-    // Node 没有直接的 getpgrp 绑定，用 process.pid 的组近似：
-    // 我们只需要防住「pid 恰好等于自身进程组」这一种自杀场景
-    return process.pid;
-  } catch {
-    return null;
-  }
-}

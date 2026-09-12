@@ -93,6 +93,7 @@ export async function invokeAgy(opts: AgyInvokeOptions): Promise<AgyInvokeOutcom
   const r = await run(opts.bin, args, {
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
+    killTree: true,
     pty: opts.pty ?? false,
     env: opts.env ?? {},
   });

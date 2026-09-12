@@ -101,15 +101,35 @@ export async function readStatus(runDir: string): Promise<RunStatus | null> {
   }
 }
 
+/**
+ * 读改写。**同一进程内按 runDir 串行化**。
+ *
+ * worker 里心跳定时器与终态写入在同一个事件循环里交错：心跳在终态写入之前读、
+ * 之后写，终态就被回滚成 running，`--wait` 只能等到心跳过期判 worker_lost，
+ * 把一次成功的运行报成失联。两者都在同一进程，一条 promise 链就能消掉这个窗口。
+ */
+const patchQueues = new Map<string, Promise<unknown>>();
+
 export async function patchStatus(
   runDir: string,
   mutate: (s: RunStatus) => void,
 ): Promise<RunStatus | null> {
-  const s = await readStatus(runDir);
-  if (!s) return null;
-  mutate(s);
-  await writeStatus(runDir, s);
-  return s;
+  const prev = patchQueues.get(runDir) ?? Promise.resolve();
+  const next = prev
+    .catch(() => undefined)
+    .then(async () => {
+      const s = await readStatus(runDir);
+      if (!s) return null;
+      mutate(s);
+      await writeStatus(runDir, s);
+      return s;
+    });
+  patchQueues.set(runDir, next);
+  try {
+    return await next;
+  } finally {
+    if (patchQueues.get(runDir) === next) patchQueues.delete(runDir);
+  }
 }
 
 export const TERMINAL_PHASES: readonly RunPhase[] = ['success', 'failed', 'cancelled'];
