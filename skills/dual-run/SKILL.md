@@ -56,7 +56,13 @@ Bash 按写命令形态启发式拦截（重定向、`tee`、`sed -i`、`rm/mv/c
   自动复用，审查员才知道这次改动要达成什么，§9.4）；
 - `--focus` 传 S0.5 的 `prompt_hint`，为空则不传；`--context` 传 `context_paths`。
 
-**每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`（600000）。**
+**每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`。**
+
+**开场播报与每次 `--wait` 后的进度播报，随委托一并继承**，`finished_inline: true`
+时跳过两者、直接转述 `notice` 的分支也一并继承。那里对 Driver 说的「先向用户发一条
+文本消息，再发下一次 `--wait`」在 S2 / S6 里同样是硬要求——命令 A 的链路更长，
+用户等得更久，漏掉播报的代价比命令 B/C/D 还大。
+
 **本命令收到的模型覆盖（`--model-gemini` / `--model-glm`）与档位（`--profile`）
 要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉——一丢就静默回退到
 配置里的 `active_profile`，留痕里记的是回退后的模型，事后看不出用户曾经指定过。

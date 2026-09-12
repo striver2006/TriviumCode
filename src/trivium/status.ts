@@ -196,25 +196,157 @@ export async function interpretStatus(
   return { kind: 'running', status: raw };
 }
 
+/*
+ * ───────────────────────── 进度渲染 ─────────────────────────
+ *
+ * 用户在等待期间只能看到这里渲染出来的东西。原先它只回答「跑了多久」，
+ * 不回答「还要多久」——已用时没有分母，看到 612s 无从判断是正常还是快卡死。
+ * `ProgressBudget` 补的就是那个分母。
+ */
+
+/** 状态词的中文译表。集中一处，避免散落在渲染点各写各的 */
+const SIDE_STATE_CN: Record<SideStatus['state'], string> = {
+  pending: '待启动',
+  running: '审查中',
+  ok: '已完成',
+  failed: '失败',
+  timeout: '超时',
+  parse_fallback: '解析回退',
+};
+
+const PHASE_CN: Record<RunPhase, string> = {
+  starting: '启动中',
+  running: '审查中',
+  parsing: '解析中',
+  archiving: '归档中',
+  success: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+};
+
+/** 秒数人读化：`612` → `10m12s`，`45` → `45s`。612s 读起来要心算 */
+export function fmtDuration(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m${s % 60}s`;
+}
+
+/** 渲染期待值所需的预算参数。全部可选传入——不传就退回「只说已用时」的老输出 */
+export interface ProgressBudget {
+  /** 本阶段单侧超时（`review.timeout_s[stage]`），`pct` 的分母 */
+  stageTimeoutS: number;
+  /** 每次 `--wait` 的窗口，用于推算「第几次等待」 */
+  waitTimeoutS: number;
+  /** 循环上限（`computeMaxWaits` 的结果），「共几次」 */
+  maxWaits: number;
+}
+
+/**
+ * 已用时相对预算的换算。
+ *
+ * `pct` 的分母有意用**单阶段超时**而非 `computeMaxWaits` 那个含重试的总预算：
+ * 绝大多数运行不重试、一侧几百秒就收，用最坏预算做分母会让它们永远显示成
+ * 一成多，那个数字对「还要多久」没有指导意义。代价是重试时会超 100%，
+ * 所以超出后不再显示百分比，改说一句解释——那一刻用户要的本就是解释。
+ */
+export function budgetOf(rawElapsedS: number, b: ProgressBudget, attempt = 0) {
+  /*
+   * 先钳非负（审查意见 GLM-07）：时钟回拨（NTP 校正）会让 started_at 落在 now
+   * 之后，elapsed 为负就会渲染出「（-3%）」与「第 0/32 次等待」——后者正是
+   * 「第 0 次」那个刚修掉的毛病。与 fmtDuration 同口径。
+   */
+  const elapsedS = Math.max(0, rawElapsedS);
+  const over = elapsedS > b.stageTimeoutS;
+  const pct = Math.min(100, Math.round((elapsedS / Math.max(1, b.stageTimeoutS)) * 100));
+  // 从 1 起算：elapsed 为 0 时人在等的是「第 1 次」，不是「第 0 次」
+  const waitsDone = Math.floor(elapsedS / Math.max(1, b.waitTimeoutS)) + 1;
+  const span = over
+    ? `已超单次预算 · 重试收尾中${attempt > 0 ? `（第 ${attempt} 次尝试）` : ''}`
+    : `已用 ${fmtDuration(elapsedS)} / 预算 ${fmtDuration(b.stageTimeoutS)}（${pct}%）`;
+  return { elapsedS, over, pct, waitsDone, span };
+}
+
+/**
+ * 结构化进度视图，供 CLI **原样透出**。
+ *
+ * 导出它是为了消掉第二份真相：CLI 曾按自己的 `Date.now()` 手写重算 pct 与
+ * waits_done，两份时间戳在窗口边界会差一次进位，且改了这里的舍入规则 CLI 会
+ * 静默漂移（审查意见 GLM-05）。文字与字段现在同源同一刻。
+ */
+export interface ProgressView {
+  elapsed_s: number;
+  pct: number;
+  waits_done: number;
+}
+
+export function progressViewOf(
+  s: RunStatus,
+  now: number = Date.now(),
+  budget?: ProgressBudget,
+): ProgressView | null {
+  if (!budget) return null;
+  const v = budgetOf(Math.round((now - new Date(s.started_at).getTime()) / 1000), budget, maxAttempt(s));
+  return { elapsed_s: v.elapsedS, pct: v.pct, waits_done: v.waitsDone };
+}
+
+/** 两侧里最大的尝试次数——超预算文案要说清是第几次重试 */
+function maxAttempt(s: RunStatus): number {
+  let m = 0;
+  for (const side of Object.values(s.sides)) if (side && side.attempt > m) m = side.attempt;
+  return m;
+}
+
 /** 人读进度摘要（`--wait` 每次返回时打印，§13.2 第 1 处落点） */
-export function renderProgress(s: RunStatus, now: number = Date.now()): string {
+export function renderProgress(
+  s: RunStatus,
+  now: number = Date.now(),
+  budget?: ProgressBudget,
+): string {
   const elapsed = Math.round((now - new Date(s.started_at).getTime()) / 1000);
   const beat = Math.round((now - new Date(s.heartbeat_at).getTime()) / 1000);
   const lines = [
-    `运行 ${s.run_id} ｜ 主题 ${s.topic} ｜ 阶段 ${s.stage} ｜ 阶段状态 ${s.phase}`,
-    `已用时 ${elapsed}s ｜ 最近心跳 ${beat}s 前`,
+    `运行 ${s.run_id} ｜ 主题 ${s.topic} ｜ 阶段 ${s.stage} ｜ 阶段状态 ${PHASE_CN[s.phase] ?? s.phase}`,
   ];
+  if (budget) {
+    const b = budgetOf(elapsed, budget, maxAttempt(s));
+    lines.push(`${b.span} ｜ 第 ${b.waitsDone}/${budget.maxWaits} 次等待 ｜ 最近心跳 ${beat}s 前`);
+  } else {
+    lines.push(`已用时 ${elapsed}s ｜ 最近心跳 ${beat}s 前`);
+  }
   for (const [c, side] of Object.entries(s.sides)) {
     if (!side) continue;
     lines.push(
-      `  ${c}: ${side.state}` +
+      `  ${c}: ${SIDE_STATE_CN[side.state] ?? side.state}` +
         `${side.model ? ` ｜ ${side.model}` : ''}` +
         `${side.attempt > 0 ? ` ｜ 第 ${side.attempt} 次尝试` : ''}` +
-        `${side.elapsed_s > 0 ? ` ｜ ${Math.round(side.elapsed_s)}s` : ''}` +
+        `${side.elapsed_s > 0 ? ` ｜ ${fmtDuration(side.elapsed_s)}` : ''}` +
         `${side.note ? ` ｜ ${side.note}` : ''}`,
     );
   }
   return lines.join('\n');
+}
+
+/**
+ * 单行进度摘要，供 skill **原样念给用户**。
+ *
+ * 给成品而不是给原料：让 Driver 自己从 `progress` 里组织语言，每次说法都不一样，
+ * 用户反而更难看出「和上次比变了什么」。
+ */
+export function renderProgressBrief(
+  s: RunStatus,
+  now: number = Date.now(),
+  budget?: ProgressBudget,
+): string {
+  const elapsed = Math.round((now - new Date(s.started_at).getTime()) / 1000);
+  const head = `${s.stage} ${PHASE_CN[s.phase] ?? s.phase}`;
+  const span = budget
+    ? budgetOf(elapsed, budget, maxAttempt(s)).span
+    : `已用 ${fmtDuration(elapsed)}`;
+  const sides = Object.entries(s.sides)
+    .filter(([, side]) => side)
+    .map(([c, side]) => `${c} ${SIDE_STATE_CN[side!.state] ?? side!.state}`)
+    .join(' · ');
+  return sides ? `${head} ｜ ${span} ｜ ${sides}` : `${head} ｜ ${span}`;
 }
 
 /**

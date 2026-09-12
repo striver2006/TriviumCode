@@ -174,3 +174,54 @@ test('parse_fallback 侧算「跑成功了」，不触发降级中止', () => {
   assert.equal(d.mode, 'dual');
   assert.equal(d.abort, false);
 });
+
+// ── 等待期逐侧进展回写（审查意见 AGY-01）──
+
+test('单侧进展在开始、重试与收口三处各回调一次，attempt 递增', async () => {
+  const failing = failedResult('gemini', { status: 'failed', reason: 'schema 校验失败' });
+  const a = stub('gemini', [failing, okResult('gemini')]);
+  const seen: Array<{ critic: CriticId; state?: string; attempt?: number; note?: string | null }> = [];
+  await runBothSides({
+    ctx: CTX,
+    adapters: { gemini: a, glm: a },
+    requests: { gemini: req('gemini') },
+    maxTransientRetries: 1,
+    onSideProgress: (critic, p) => seen.push({ critic, state: p.state, attempt: p.attempt, note: p.note }),
+  });
+  // 第 1 次开始 → 瞬时故障重试 → 第 2 次开始 → 收口
+  assert.deepEqual(
+    seen.map((s) => [s.state, s.attempt]),
+    [['running', 1], ['running', 1], ['running', 2], ['ok', 2]],
+  );
+  assert.equal(seen[1]!.note, '瞬时故障，重试中');
+});
+
+test('终态失败也回写，并带上失败原因', async () => {
+  const failing = failedResult('glm', { status: 'failed', reason: '鉴权失败' });
+  const a = stub('glm', [failing]);
+  const seen: Array<{ state?: string; note?: string | null }> = [];
+  await runBothSides({
+    ctx: CTX,
+    adapters: { gemini: a, glm: a },
+    requests: { glm: req('glm') },
+    maxTransientRetries: 1,
+    onSideProgress: (_c, p) => seen.push({ state: p.state, note: p.note }),
+  });
+  const last = seen.at(-1)!;
+  assert.equal(last.state, 'failed');
+  assert.equal(last.note, '鉴权失败');
+});
+
+test('进展回调抛异常不得连累审查本身', async () => {
+  const a = stub('gemini', [okResult('gemini')]);
+  const out = await runBothSides({
+    ctx: CTX,
+    adapters: { gemini: a, glm: a },
+    requests: { gemini: req('gemini') },
+    maxTransientRetries: 1,
+    onSideProgress: () => {
+      throw new Error('磁盘炸了');
+    },
+  });
+  assert.equal(out.results.gemini?.status, 'ok', '进度写失败不该让审查失败');
+});

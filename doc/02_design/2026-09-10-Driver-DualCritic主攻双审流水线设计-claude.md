@@ -336,7 +336,7 @@ sequenceDiagram
 | :--- | :--- | :--- | :--- |
 | **AD-01** | **编排器 = 本地一次性 CLI（`trivium`），由斜杠命令调用** | ①Claude 在对话里直接 shell 串两家 CLI；②常驻监视器 Daemon；③MCP Server | ① 超时/并行/PTY/隔离逻辑会污染主脑上下文，且模型可能「忘记」步骤，违反 P1；② 违反 PRD Non-Goal；③ 增加一层不必要的协议，且社区反馈 VS Code 扩展侧 stdio MCP 曾出现被静默关闭的情况（转引自 grok4.6 答卷，无一手来源，置信度中；MCP 形态列为二期演进）。CLI 同时满足「`/` 命令为唯一入口」与「确定性编排」 |
 | **AD-02** | **归档根 = `.reviews/`** | `.dualcritic/`、`docs/agent-reviews/`、`.ddc/` | 本仓库已存在 `.reviews/` 且 `.env.example` 已定义 `REVIEW_ARTIFACTS_DIR=.reviews`；PRD 允许配置，沿用可减少一次迁移 |
-| **AD-03** | **双审为「派生 + 分段等待」：`trivium review --start` 立即返回 `run_id`，命令模板循环调用 `review --wait <run_id> --timeout <s>` 直到完成；不用 async Hook** | ①单次同步阻塞调用；②Stop Hook + `async:true/asyncRewake:true` 后台审查（zcode 参考方案） | ① Driver 的 Bash 工具有工具级超时（3.1），单侧 900～1200s + 重试的同步调用必然被杀，心跳无法延长；② 异步唤醒会与 B/C/D 的人工停点语义打架。派生的工作子进程在两侧回收完成后即退出，不是常驻 Daemon；`--wait` 每次不超过 Bash 工具超时（默认 540s），返回专用退出码表示「仍在运行」。命令返回给 Driver 时工件已齐的语义由 `--wait` 的最终成功返回保证（7.5） |
+| **AD-03** | **双审为「派生 + 分段等待」：`trivium review --start` 立即返回 `run_id`，命令模板循环调用 `review --wait <run_id> --timeout <s>` 直到完成；不用 async Hook** | ①单次同步阻塞调用；②Stop Hook + `async:true/asyncRewake:true` 后台审查（zcode 参考方案） | ① Driver 的 Bash 工具有工具级超时（3.1），单侧 900～1200s + 重试的同步调用必然被杀，心跳无法延长；② 异步唤醒会与 B/C/D 的人工停点语义打架。派生的工作子进程在两侧回收完成后即退出，不是常驻 Daemon；`--wait` 每次不超过 Bash 工具超时（窗口取 `wait_timeout_s`），返回专用退出码表示「仍在运行」。命令返回给 Driver 时工件已齐的语义由 `--wait` 的最终成功返回保证（7.5） |
 | **AD-04** | **触发方式 = 显式斜杠命令为主，Hook 只做护栏** | `PostToolUse(Write)` 自动交单、`PreToolUse(ExitPlanMode)` 计划闸门 | PRD 第 8 章规定四条命令的意图/输入/停点，且 B/C/D **必须**带提示语；自动交单无法获得提示语，且会在无关写入上误触发。Hook 用于：闸门期禁止业务写、禁止伪造审查文件、未完成裁决时阻止收工 |
 | **AD-05** | **就地审查（`in-place`）为唯一隔离模式：审查员 cwd 即项目根，不构造镜像树**（`ADR_001_isolation_mode.md`，Accepted，2026-09-11） | ①冻结镜像树 `mirror`（v1.0.0～v1.1.0 默认）；②`in-place` 仅靠提示词 | 项目负责人裁决 UR-03/UR-06。`in-place` 与 PRD FR-07 字面一致，`.git`、依赖目录、`git log/blame` 能力无损，零拷贝。需要屏蔽的对方产出只有两类：**本次**结论（延迟落盘 + 运行目录在项目外，审查中物理不存在，无需提示词）与**同主题重跑时的历史**产出（三层屏蔽：BRIEF 逐个列出的禁读清单 → CLI 路径级 deny（探针可用时注入）→ 事后轨迹核验，命中即作废重跑）。代价：整树无法 `chmod` 只读，只读退化为「工具层禁写 + 前后指纹」；审查期间开发者手改文件会造成漂移，只能检出并记录（9.2）；两家 Agent 在 cwd 的临时文件需探针白名单（10.3）。`mirror` 方案被否决的理由：无 `.git`、依赖缺席、双份拷贝、与 FR-07 字面冲突需回填 PRD，而其唯一收益（历史产出物理剔除）可由三层屏蔽以可接受的置信度替代 |
 | **AD-06** | **只读 = 工具白名单/黑名单 + 前后指纹（`tree_hash` + `git status --porcelain -uall`，排除 scratch 白名单）+ 轨迹核验三重** | 仅提示词约束；整树 `chmod a-w`（就地模式不可行） | 提示词可被绕过；三重叠加使「审查员改代码」成为可检出的事件，主仓库被写入即中止并列出受影响文件（FR-15 / AC-08） |
@@ -779,7 +779,8 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
    若提示语为空则停止并说明「命令 B 必须带提示语」；若未提供 `--context`，依据计划内容补一份涉及路径清单再传入。
 3. 运行 `TV review --start --entry B --stage plan --topic <主题> --focus <焦点> [--goal …] [--plan-file …] [--context …] --json`，
    得到 `run_id`（该命令冻结送审包、派生工作进程并立即返回）。上一步解析出的参数逐项透传，不得省略。
-   然后循环运行 `TV review --wait <run_id> --timeout 540 --json`：退出码 `73` 表示仍在运行，打印其输出的进度摘要后继续等待；
+   然后循环运行 `TV review --wait <run_id> --timeout <wait_timeout_s> --json`：退出码 `73` 表示仍在运行，
+   **向用户播报一条 `progress_brief` 后**继续等待（7.5.1）；
    退出码 `0` 表示两份审查文档与元数据已落盘；其它退出码按原样转述并停止。循环次数上限由输出中的 `max_waits` 给出（7.5）。
 4. 用 Read **完整读取**两份审查文档（禁止只读摘要段）。
 5. 依据 `trivium.disposition.v1` 写出修订计划 `…-revised-claude.md`：逐条列出每个意见编号的裁决与理由，接受项写明落点。
@@ -798,11 +799,62 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 | 子命令 | 行为 | 返回 |
 | :--- | :--- | :--- |
 | `review --start` | 预检通过后：冻结送审包 → 写 `run.json`（`status: running`）→ 以 `setsid`/双 fork 派生工作进程（真并行拉起两侧、回收、解析、落盘全部在该进程内完成，完成即退出）→ **立即返回** | `0` + `run_id`、`max_waits`（= ceil(总上限 / timeout) + 2） |
-| `review --wait <run_id> --timeout <s>` | 轮询 `~/.trivium/runs/<repo_id>/<run_id>/status.json`，最多等待 `<s>` 秒（默认 540，须小于 Bash 工具超时） | `0` 完成且工件已落盘；`73` 仍在运行（stdout 给出两侧状态、已用时、心跳时间）；`75` 严格模式单侧失败；其余同 7.3 |
+| `review --wait <run_id> --timeout <s>` | 轮询 `~/.trivium/runs/<repo_id>/<run_id>/status.json`，最多等待 `<s>` 秒（默认见 `defaultConfig()` 的 `wait_timeout_s`，须小于 Bash 工具超时） | `0` 完成且工件已落盘；`73` 仍在运行（stdout 给出两侧状态、已用时/预算、心跳时间，JSON 另给 `progress_brief` 等结构化进度，见 7.5.1）；`75` 严格模式单侧失败；其余同 7.3 |
 | `review --status <run_id>` | 只读一次状态，不等待 | 同上 |
 | `review --cancel <run_id>` | 向工作进程发 SIGTERM → SIGKILL，标 `cancelled` | `0` |
 
 约束：① 工作进程写 `status.json` 心跳（每 30s），`--wait` 发现心跳超过 `heartbeat_stale_s`（默认 120s）未更新且进程不存在时判 `failed(worker_lost)`；② 工作进程生命周期等于一次运行，不监听、不接受新任务，因此不是 PRD Non-Goal 所指的常驻 Daemon；③ `hook-session-start` 若发现 `running` 状态的运行，以 `additionalContext` 提醒 Driver 先 `--wait`；④ `run.json` 的 `command` 字段记录是否经 `--start/--wait` 完成，便于审计。
+
+### 7.5.1 等待期进度反馈
+
+一次双审的墙钟在十几到四十几分钟之间。这段时间里用户唯一的信息来源是 Driver，
+而 Driver **只有在工具调用返回的那一刻才能说话**——Bash 工具在命令退出前不回传
+stdout。由此得到本节的第一条硬事实：
+
+> **用户能收到进度的最小间隔恒等于 `wait_timeout_s`。** 它既是 `--wait` 的窗口，
+> 也是反馈的节拍器。想让反馈更密，只能调小它；没有别的旋钮，也不该有第二个
+> （两个旋钮 = 两个真相）。默认 180s 是成本与体感的折中。
+
+**数据侧（编排器负责）。** `--wait --json` 同时给出人读整段与成品单行：
+
+| 字段 | 含义 |
+| :--- | :--- |
+| `progress` | 多行人读进度。**语义锁定**，既有调用方按原样转述 |
+| `progress_brief` | 单行摘要，供 Driver **原样念给用户**。给成品而不是原料：让 Driver 自己组织语言，每次说法都不一样，用户反而更难看出「和上次比变了什么」 |
+| `elapsed_s` / `budget_s` / `pct` | 已用、预算与百分比。`pct` 封顶 100 |
+| `waits_done` / `max_waits` | 第几次 / 共几次等待，从 1 起算 |
+| `sides` | 两侧状态原始值，供需要细粒度时取用 |
+
+`status` 为 null（窗口用尽且全程无有效心跳）时，各字段**存在但取值退化**，
+具体为：`elapsed_s` / `budget_s` / `pct` / `waits_done` 置 `null`，`sides` 置 `{}`，
+`max_waits` **仍按配置给出**（它不依赖运行状态），`progress` 与 `progress_brief`
+均为同一句启动提示。字段一个都不省略——省略会让 Driver 分不清「没有」与「读不到」。
+
+`pct` 的分母有意取**单阶段超时**而非 `computeMaxWaits` 那个含重试的总预算：
+绝大多数运行不重试、一侧几百秒就收，用最坏预算做分母会让它们永远显示成一成多，
+那个数字对「还要多久」没有指导意义。代价是重试时会超 100%，故超出后不再显示百分比，
+改说「已超单次预算 · 重试收尾中」——那一刻用户要的本就是解释而非数字。
+由此 `第 N/M 次等待` 的 M（含重试预算）与 `pct` 的分母（不含）不同源，
+**这是有意的取舍，不是 bug**。
+
+`--start` 另外返回 `stage_timeout_s` 与两侧生效 `models`，供开场播报；
+它们经 profile 与 `--model-*` 覆盖路由后只有编排器知道，让 skill 文档自己写死
+等于让它随配置漂移成错误播报。
+
+**义务侧（skill 负责）。** 三条，写在四个 skill 的等待段落里：
+
+1. `--start` 返回后**立刻**播报一条开场（主题、阶段、两侧模型、预算、节奏、`run_id`）；
+2. 每次 `--wait` 返回后**先向用户发一条文本消息，再发下一次 `--wait`**，内容为
+   `progress_brief`，退出码 `73` 与 `0` 都要说；
+3. 两侧状态较上次有变化时补一句说明，**不变时不补**——每次都写只会淹掉真正的变化。
+
+第 2 条的措辞是有来历的：它此前写作「打印进度后继续等」，而「打印」在 Driver 的
+语境里就是工具输出——它本来就打印了，义务在字面上已被满足，于是没人向用户说话。
+**描述 CLI 的行为不等于规定 Driver 的义务**，这类措辞在指令文档里要格外当心。
+
+这三条**没有强制力**：CLI 管不到 Driver 说不说话，`hook-stop` 也只在收工时触发、
+管不到等待期。它与「逐条裁决」是同一种约束强度，靠的是 Driver 守指令。
+如实记录，不假装它是强制。
 
 ---
 
@@ -1410,7 +1462,7 @@ review:
   failure_policy: strict
   allow_single_flag: true            # 是否允许命令行用 --only / --allow-single 显式降级为单审
   timeout_s: {plan: 900, code: 1200, bug: 1200}
-  wait_timeout_s: 540                # review --wait 单次上限，须小于 Bash 工具超时 120s 的可调上限（7.5）
+  wait_timeout_s: 180                # review --wait 单次上限，也是用户收到进度的最小间隔（7.5.1）
   heartbeat_stale_s: 120
   retry: {transient_max: 1}
   cache: false                       # 键含 brief_hash（12.3）

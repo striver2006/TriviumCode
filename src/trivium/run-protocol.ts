@@ -17,7 +17,8 @@ import { runRoot } from './config.js';
 import { acquireLock, inspectLock, reclaimStaleLock } from './lock.js';
 import {
   computeMaxWaits, interpretStatus, newStatus, patchStatus, readStatus,
-  renderProgress, writeStatus, type RunStatus,
+  renderProgress, renderProgressBrief, progressViewOf, writeStatus,
+  type ProgressBudget, type ProgressView, type RunStatus,
 } from './status.js';
 import {
   executeRun, prepareRun, repoId, type PreparedRun, type ReviewOptions, type RunContext,
@@ -177,6 +178,18 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
 
 // ─────────────────────── --start ───────────────────────
 
+/**
+ * 每次 `--wait` 的 Bash 调用应设的工具级超时。
+ *
+ * Bash 工具默认 120s、上限 600s，而 `--wait` 会等满 `waitTimeoutS`——不显式抬高
+ * 就必被工具超时杀掉（审查意见 GLM-02，也是 M2 完成判据 6）。原先固定取上限值，
+ * 但窗口调小后那就成了「卡死也要干等 10 分钟」：改成贴着窗口留 60s 余量，
+ * 余量覆盖进程启动与收尾，与原先 600-540 的余量等价。窗口若仍是 540s，结果不变。
+ */
+export function bashTimeoutFor(waitTimeoutS: number): number {
+  return Math.min(600_000, waitTimeoutS * 1000 + 60_000);
+}
+
 export interface StartOutcome {
   runId: string;
   /** skill 侧的 `--wait` 循环上限 */
@@ -185,6 +198,10 @@ export interface StartOutcome {
   waitTimeoutS: number;
   /** skill 必须为每次 --wait 的 Bash 调用设置的工具级超时（毫秒） */
   bashTimeoutMs: number;
+  /** 本阶段单侧超时，供 skill 的开场播报说明「预算多久」 */
+  stageTimeoutS: number;
+  /** 两侧**生效**模型（已过 profile 与 --model-* 覆盖），供开场播报 */
+  models: Partial<Record<CriticId, string>>;
   workerPid: number;
   runDir: string;
   /**
@@ -245,7 +262,9 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
         runId: rc.runId,
         maxWaits: 0,
         waitTimeoutS: cfg.review.wait_timeout_s,
-        bashTimeoutMs: 600_000,
+        bashTimeoutMs: bashTimeoutFor(cfg.review.wait_timeout_s),
+        stageTimeoutS: cfg.review.timeout_s[rc.stage],
+        models: {},
         workerPid: process.pid,
         runDir: rc.runDirBase,
         finishedInline: true,
@@ -308,11 +327,21 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
         cfg.review.retry.transient_max,
       ),
       waitTimeoutS,
-      // 每次 --wait 的 Bash 调用必须显式抬到 600s 上限：默认 120s 会把它杀掉
-      // （审查意见 GLM-02，也是 M2 完成判据 6）
-      bashTimeoutMs: 600_000,
+      bashTimeoutMs: bashTimeoutFor(waitTimeoutS),
       workerPid: spawned.pid,
       runDir: rc.runDirBase,
+      /*
+       * 开场播报要用的两项（审查意见 GLM-02）。skill 被要求在 --start 之后
+       * 立刻告诉用户「两侧是谁、预算多久」，而这两项原先只有编排器知道：
+       * 模型是 profile 与 --model-* 覆盖路由后的**生效值**，让 skill 文档
+       * 自己写死等于让它随配置漂移成错误播报。
+       */
+      stageTimeoutS: cfg.review.timeout_s[rc.stage],
+      models: Object.fromEntries(
+        Object.entries(rc.requests)
+          .filter(([, r]) => r)
+          .map(([c, r]) => [c, r!.model]),
+      ) as Partial<Record<CriticId, string>>,
     };
   } catch (e) {
     // prepareRun 之后才失败：闸门已经是 running，必须连它一起回收
@@ -382,6 +411,28 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
       for (const c of rc.sides) if (s.sides[c]) s.sides[c]!.state = 'running';
     });
 
+    /*
+     * 逐侧进展回写（审查意见 AGY-01）。
+     *
+     * 没有它时，等待期的 status.json 从头到尾只有上面那次「两侧 running」，
+     * 直到下面写终态——`--wait` 每次返回的两侧状态恒定不变，「一侧先跑完」
+     * 与「正在重试」这些用户最想知道的事一个也看不见。
+     *
+     * 回调是同步的而 patchStatus 是异步的：不 await，靠 patchStatus 自身按
+     * runDir 串行化的 promise 链保序（status.ts 的 patchQueues）。
+     * 失败由 runner 的 emitProgress 吞掉，不连累审查。
+     */
+    rc.onSideProgress = (critic, p) => {
+      void patchStatus(runDir, (s) => {
+        const side = s.sides[critic];
+        if (!side) return;
+        if (p.state !== undefined) side.state = p.state;
+        if (p.attempt !== undefined) side.attempt = p.attempt;
+        if (p.elapsed_s !== undefined) side.elapsed_s = p.elapsed_s;
+        if (p.note !== undefined) side.note = p.note;
+      });
+    };
+
     const outcome = await executeRun(rc);
 
     await patchStatus(runDir, (s) => {
@@ -437,6 +488,35 @@ export interface WaitOutcome {
   status: RunStatus | null;
   /** 人读进度，供 skill 原样转述 */
   progress: string;
+  /**
+   * 单行摘要，供 skill **原样念给用户**。
+   *
+   * `status` 为 null（窗口用尽且全程无有效心跳）时退化为与 `progress` 同一句
+   * 启动提示——渲染要 RunStatus，那时没有（审查意见 AGY-05 ≡ GLM-06）。
+   */
+  progressBrief: string;
+  /** 本次渲染用的预算参数，供 CLI 透出结构化字段 */
+  budget: ProgressBudget;
+  /**
+   * 算好的结构化进度，CLI **原样透出**、不再自算（审查意见 GLM-05）。
+   * `status` 为 null 时为 null。
+   */
+  view: ProgressView | null;
+}
+
+/**
+ * 从配置装配进度预算。`--wait` 与 `--status` 共用，两处显示的期待值才会一致。
+ *
+ * `waitTimeoutS` 可显式传入**本次实际生效的窗口**：`--timeout` 能覆盖配置值，
+ * 而「第 N/M 次等待」若还按配置窗口算，就与用户看到的等待节奏脱节（审查意见 AGY-02）。
+ */
+export function budgetFor(cfg: Config, stage: Stage, waitTimeoutSOverride?: number): ProgressBudget {
+  const waitTimeoutS = waitTimeoutSOverride ?? cfg.review.wait_timeout_s;
+  return {
+    stageTimeoutS: cfg.review.timeout_s[stage],
+    waitTimeoutS,
+    maxWaits: computeMaxWaits(cfg.review.timeout_s[stage], waitTimeoutS, cfg.review.retry.transient_max),
+  };
 }
 
 /**
@@ -459,6 +539,15 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
     fallbackPid = null;
   }
 
+  /*
+   * 预算要按**本次运行的阶段**取（plan/code/bug 的超时差一倍以上）。status.json
+   * 还没落地时从交接文件取身份——它在 `--start` 的同步窗口里就写好了，比 status 早。
+   */
+  const stage0 =
+    (await readStatus(runDir))?.stage ?? (await readHandoffIdentity(runDir))?.stage ?? 'plan';
+  // 用**本次实际生效**的窗口，而不是配置值——`--timeout` 能覆盖它（AGY-02）
+  const budget = budgetFor(cfg, stage0, timeoutS);
+
   const deadline = Date.now() + timeoutS * 1000;
   const pollMs = 2000;
   let last: RunStatus | null = null;
@@ -471,10 +560,15 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
 
     if (reading.kind === 'terminal') {
       const code = reading.status.exit_code ?? EXIT.OK;
+      // 同一刻算出文字与字段，两者不会在秒边界互相打架
+      const at = Date.now();
       return {
         exitCode: code,
         status: reading.status,
-        progress: renderProgress(reading.status),
+        progress: renderProgress(reading.status, at, budget),
+        progressBrief: renderProgressBrief(reading.status, at, budget),
+        budget,
+        view: progressViewOf(reading.status, at, budget),
       };
     }
     if (reading.kind === 'worker_lost') {
@@ -500,27 +594,50 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
 
     if (Date.now() >= deadline) {
       // 本次窗口用尽但运行仍在继续：这是**预期**返回，不是失败
+      const starting = `运行 ${runId} 仍在启动中（尚无有效心跳）`;
+      const at = Date.now();
       return {
         exitCode: EXIT.STILL_RUNNING,
         status: last,
-        progress: last
-          ? renderProgress(last)
-          : `运行 ${runId} 仍在启动中（尚无有效心跳）`,
+        progress: last ? renderProgress(last, at, budget) : starting,
+        progressBrief: last ? renderProgressBrief(last, at, budget) : starting,
+        budget,
+        view: last ? progressViewOf(last, at, budget) : null,
       };
     }
     await new Promise((r) => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
   }
 }
 
-/** `review --status <runId>`：只读一次，不等待 */
-export async function statusRun(ctx: Ctx, runId: string): Promise<{ exitCode: number; status: RunStatus | null; progress: string }> {
+/**
+ * `review --status <runId>`：只读一次，不等待。
+ *
+ * 返回形状与 `waitRun` 对齐（审查意见 AGY-03 ≡ GLM-02）：设计 7.5 表里
+ * `--status` 行的返回写的是「同上」，`--wait` 既然给了结构化进度，这里也得给，
+ * 否则按「同上」写客户端的人会拿到一半字段。
+ */
+export async function statusRun(
+  ctx: Ctx,
+  runId: string,
+): Promise<{
+  exitCode: number;
+  status: RunStatus | null;
+  progress: string;
+  progressBrief: string;
+  budget: ProgressBudget | null;
+  view: ProgressView | null;
+}> {
   const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
   const s = await readStatus(runDir);
   if (!s) {
+    const miss = `找不到运行 ${runId} 的状态文件（${runDir}）`;
     return {
       exitCode: EXIT.MISSING_ARTIFACT,
       status: null,
-      progress: `找不到运行 ${runId} 的状态文件（${runDir}）`,
+      progress: miss,
+      progressBrief: miss,
+      budget: null,
+      view: null,
     };
   }
   const code =
@@ -528,7 +645,21 @@ export async function statusRun(ctx: Ctx, runId: string): Promise<{ exitCode: nu
     : s.phase === 'failed' ? EXIT.FAIL
     : s.phase === 'cancelled' ? EXIT.FAIL
     : EXIT.STILL_RUNNING;
-  return { exitCode: code, status: s, progress: renderProgress(s) };
+  /*
+   * 手工自查看到的期待值要与自动等待循环一致，否则同一次运行在两个地方
+   * 显示成两个样子（审查意见 AGY-03）。budget 的两项数据 `ctx.config` 与
+   * `s.stage` 都在手上，没有拿不到的问题。
+   */
+  const budget = budgetFor(ctx.config, s.stage);
+  const at = Date.now();
+  return {
+    exitCode: code,
+    status: s,
+    progress: renderProgress(s, at, budget),
+    progressBrief: renderProgressBrief(s, at, budget),
+    budget,
+    view: progressViewOf(s, at, budget),
+  };
 }
 
 /**

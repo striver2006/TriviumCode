@@ -125,6 +125,28 @@ node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 node dist/install.cjs --uninstall
 ```
 
+> **`init` 不会刷新已有的 `config.yaml`**——它对已存在的那份无条件跳过、绝不覆盖。
+> 想拿到新版默认值（例如把等待窗口从 540s 调到 180s 以加密进度反馈），
+> 只能手工编辑项目里的 `.trivium/config.yaml`。
+
+### 双审跑起来之后，你会看到什么
+
+启动时先收到一条开场：主题、阶段、两侧模型、本阶段预算、汇报节奏与 `run_id`。
+此后每隔一个等待窗口（`review.wait_timeout_s`，默认 180s）收到一行进度，形如
+
+```
+plan 审查中 ｜ 已用 5m0s / 预算 15m0s（33%）｜ gemini 已完成 · glm 审查中
+```
+
+（数字按**出厂默认**配置：plan 单侧预算 900s、窗口 180s。项目若覆盖了
+`review.timeout_s`，分母随之变化。）
+
+两侧状态有变化时会多一句说明。想自己查用 `/dual-status`，想中止用
+`.trivium/bin/trivium review --cancel <run_id>`。
+
+反馈间隔就等于那个窗口，调小它就更密——代价是等待往返变多。原因见设计 7.5.1：
+主脑只有在工具调用返回的那一刻才能说话。
+
 `brew upgrade node` 之后 wrapper 若失效，`trivium doctor` 会点名「wrapper 写死的 node 已不存在」，重跑 `init` 即可。
 
 ---

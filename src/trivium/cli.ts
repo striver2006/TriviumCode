@@ -201,6 +201,38 @@ function parseStage(args: ParsedArgs): Stage {
   return raw as Stage;
 }
 
+/**
+ * `--wait` 与 `--status` 共用的进度字段组装。
+ *
+ * 两条命令的 JSON 必须是同一组字段——设计 7.5 表里 `--status` 行的返回写的就是
+ * 「同上」（审查意见 AGY-03 ≡ GLM-02）。组装只在这里做一次，也就不会长出第三份真相。
+ *
+ * `progress` 的语义**保持不变**：三个 skill 已约定原样转述它，改语义会静默破坏
+ * 既有行为，新字段一律并列增加。
+ *
+ * `status` 为 null 时（尚无有效心跳、或状态文件不存在）新字段**存在但取值为 null**，
+ * 不是省略——省略会让调用方分不清「没有」和「读不到」。
+ */
+function progressFields(out: {
+  progress: string;
+  progressBrief: string;
+  budget: { stageTimeoutS: number; maxWaits: number } | null;
+  view: { elapsed_s: number; pct: number; waits_done: number } | null;
+  status: { sides: unknown } | null;
+}): Record<string, unknown> {
+  return {
+    progress: out.progress,
+    // ↓ skill 要原样念给用户的一行
+    progress_brief: out.progressBrief,
+    elapsed_s: out.view?.elapsed_s ?? null,
+    budget_s: out.view ? (out.budget?.stageTimeoutS ?? null) : null,
+    pct: out.view?.pct ?? null,
+    waits_done: out.view?.waits_done ?? null,
+    max_waits: out.budget?.maxWaits ?? null,
+    sides: out.status?.sides ?? {},
+  };
+}
+
 async function cmdReview(args: ParsedArgs): Promise<number> {
   const ctx = await loadCtx();
 
@@ -235,7 +267,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
         phase: out.status?.phase ?? null,
         artifacts: out.status?.artifacts ?? [],
         message: out.status?.message ?? null,
-        progress: out.progress,
+        ...progressFields(out),
       });
     } else {
       say(out.progress);
@@ -252,7 +284,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
         run_id: statusId,
         phase: out.status?.phase ?? null,
         status: out.status,
-        progress: out.progress,
+        ...progressFields(out),
       });
     } else {
       say(out.progress);
@@ -347,6 +379,9 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
         wait_timeout_s: st.waitTimeoutS,
         // skill 必须用这个值设置每次 --wait 的 Bash 工具超时（GLM-02）
         bash_timeout_ms: st.bashTimeoutMs,
+        // ↓ 开场播报要用：两侧是谁、预算多久。只有编排器知道生效值
+        stage_timeout_s: st.stageTimeoutS,
+        models: st.models,
         worker_pid: st.workerPid,
         run_dir: st.runDir,
       });

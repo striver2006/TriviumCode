@@ -33,7 +33,7 @@ import {
   renderBrief,
 } from './brief.js';
 import { parseReview, enumerateFallbackFindings } from './parse.js';
-import { decideMode, runBothSides } from './runner.js';
+import { decideMode, runBothSides, type SideProgress } from './runner.js';
 import { judgeRun, renderGuardWarnings } from './guard.js';
 import { renderReviewDoc } from './render.js';
 import { resolveTopicReadOnly, locateSubject } from './topic.js';
@@ -260,6 +260,11 @@ export interface RunContext {
   pendingDiff: { fileName: string; text: string } | null;
   /** code 阶段：FR-23 的跳过判定 */
   skipVerdict: SkipVerdict | null;
+  /**
+   * 单侧进展回调，由工作进程注入以把状态刷进 `status.json`（审查意见 AGY-01）。
+   * 同步路径（手工调试）不注入——那条路上没有人在 `--wait`，写了也没人看。
+   */
+  onSideProgress?: (critic: CriticId, patch: SideProgress) => void;
 }
 
 /**
@@ -662,6 +667,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       (retryHints[critic] ??= []).push(hint);
       return hint;
     },
+    // 等待期的逐侧进展回写。只有工作进程会传它；同步路径不传，行为不变（AGY-01）
+    onSideProgress: rc.onSideProgress,
   });
   const finishedAt = new Date().toISOString();
 

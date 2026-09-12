@@ -1,0 +1,80 @@
+{
+  "agreed": [
+    "The decision to use a short, single-line text message for broadcasting progress limits context noise.",
+    "The decision not to forcefully migrate `wait_timeout_s` for existing projects respects user config ownership (Risk R4).",
+    "The modification to `bashTimeoutMs` (`Math.min(600_000, waitTimeoutS * 1000 + 60_000)`) safely supports varying `waitTimeoutS` values."
+  ],
+  "consulted": [
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "src/trivium/config.ts",
+    "src/trivium/init.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts",
+    "skills/dual-run/SKILL.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "Plan Step 3 instructs to change the default `wait_timeout_s` from 540 to 180 in `init.ts`. However, `src/trivium/init.ts` does not contain the default values. It calls `defaultConfig()` from `src/trivium/config.ts`, where `wait_timeout_s` is defined as 540 at line 77. Modifying `init.ts` directly will miss the actual source of truth.",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "步骤 3",
+      "problem": "Incorrect target file for updating the default `wait_timeout_s` configuration.",
+      "severity": "major",
+      "suggestion": "Update the plan to modify the `wait_timeout_s` default in `src/trivium/config.ts` (`defaultConfig()`) instead of `init.ts`."
+    },
+    {
+      "confidence": "high",
+      "evidence": "Plan Step 1 introduces `budget_s` (e.g., 2700) and `pct` in the JSON output, while `max_waits` is computed using `computeMaxWaits`. `computeMaxWaits` in `src/trivium/run-protocol.ts` factors in retry budgets (`total = stageTimeoutS * (1 + transientRetries)`). If `budget_s` uses the nominal `stageTimeoutS`, retries will cause `elapsed_s` to exceed `budget_s`, making `pct` rise up to 200%.",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "步骤 1",
+      "problem": "Misalignment between `budget_s` (nominal timeout) and `max_waits` (total timeout including retries) leads to `pct` exceeding 100% during retries.",
+      "severity": "minor",
+      "suggestion": "Clarify whether `budget_s` represents the nominal `stageTimeoutS` or the total allowed time including retries. If the former, ensure the UI message gracefully handles percentages over 100% (e.g. indicating a retry). If the latter, base `budget_s` and `pct` on the `total` used in `computeMaxWaits`."
+    },
+    {
+      "confidence": "high",
+      "evidence": "Plan Step 2 states that existing callers like `trivium status` cannot obtain the budget, so `budget` must be optional and the two expectation lines will be omitted for them. However, in `src/trivium/cli.ts:statusRun(ctx, runId)`, the `ctx` contains `config`, and the fetched `RunStatus` contains `stage`. `statusRun` can fully compute the budget using `ctx.config.review.timeout_s[s.stage]`.",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "步骤 2",
+      "problem": "Incorrect assumption that `trivium status` cannot access budget parameters, resulting in a degraded user experience (missing expectation metrics) for manual status checks.",
+      "severity": "minor",
+      "suggestion": "Update the plan so that `statusRun` constructs and passes the `ProgressBudget` to `renderProgress`, allowing manual CLI checks to display the same rich expectation context as the automated wait loops."
+    },
+    {
+      "confidence": "high",
+      "evidence": "Plan Step 1 defines `waits_done` as `⌈elapsed / waitTimeoutS⌉`. Right after `startRun`, `elapsed` is 0, so the formula evaluates to `0`, producing an awkward \"第 0/32 次等待\". Also, at exactly 180s, `180/180 = 1`, so the second wait starts but it still reports as wait 1.",
+      "id": "AGY-04",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "步骤 1",
+      "problem": "The `waits_done` calculation formula `⌈elapsed / waitTimeoutS⌉` evaluates to 0 for initial waits.",
+      "severity": "nit",
+      "suggestion": "Change the formula to `Math.floor(elapsed / waitTimeoutS) + 1` to ensure it starts at 1 and correctly increments at the wait boundary."
+    },
+    {
+      "confidence": "medium",
+      "evidence": "In `src/trivium/cli.ts`, `waitRun` returns a `WaitOutcome` where `status` is of type `RunStatus | null`. The plan instructs adding fields derived from `status` (like `sides`, `elapsed_s`, `pct`) to the JSON output in `cli.ts:231`, but does not define behavior for when `out.status` is null.",
+      "id": "AGY-05",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "步骤 1",
+      "problem": "Missing fallback behavior for the new JSON fields when `out.status` is null.",
+      "severity": "nit",
+      "suggestion": "Specify that if `out.status` is null, the new fields should either be omitted or set to safe defaults (e.g. `sides: {}`), and `progress_brief` should fall back to `out.progress`."
+    }
+  ],
+  "not_covered": [
+    "Interaction with specific LLM API rate limiting boundaries outside of nominal timeouts",
+    "Thorough review of UI formatting across different OS terminals"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "The implementation plan successfully addresses the problem of opacity during long wait cycles by introducing a deterministic JSON broadcast loop and driver CLI output modifications. However, the plan incorrectly instructs modifying `init.ts` instead of `config.ts` for the default `wait_timeout_s`. Additionally, there are minor inconsistencies between how budget percentage and retry mechanisms interact, and `trivium status` missing out on budget displays due to an incorrect assumption about context availability.",
+  "verdict": "approve-with-nits"
+}

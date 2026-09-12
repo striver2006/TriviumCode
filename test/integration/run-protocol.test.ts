@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { cancelRun, runDirFor, statusRun, waitRun } from '../../src/trivium/run-protocol.js';
+import { bashTimeoutFor, cancelRun, runDirFor, statusRun, waitRun } from '../../src/trivium/run-protocol.js';
 import { newStatus, readStatus, writeStatus } from '../../src/trivium/status.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { acquireLock, inspectLock } from '../../src/trivium/lock.js';
@@ -72,12 +72,53 @@ test('--status 在运行中返回 73 并渲染两侧进度', async () => {
   try {
     const out = await statusRun(ctx, 'R-STATUS');
     assert.equal(out.exitCode, EXIT.STILL_RUNNING);
-    assert.match(out.progress, /阶段状态 running/);
+    assert.match(out.progress, /阶段状态 审查中/);
     assert.match(out.progress, /gemini/);
     assert.match(out.progress, /glm/);
+    // 手工自查与自动等待循环看到同样的期待值（审查意见 AGY-03）
+    assert.match(out.progress, /预算/);
+    assert.match(out.progress, /次等待/);
   } finally {
     killQuietly(pid);
   }
+});
+
+test('尚无有效心跳时：status 为 null，字段退化而非报错（AC-19）', async () => {
+  const ctx = await fakeCtx();
+  const runId = 'R-NO-HEARTBEAT';
+  const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
+  await fs.mkdir(runDir, { recursive: true });
+
+  // 只起进程、写 pid，**不写 status.json**——worker 还没产生第一次心跳的那一瞬
+  const script = path.join(runDir, 'fake-worker.mjs');
+  await fs.writeFile(script, 'setTimeout(() => process.exit(0), 60000);', 'utf8');
+  const spawned = await spawnDetached(process.execPath, [script], {
+    cwd: ctx.projectRoot,
+    logFile: path.join(runDir, 'worker.log'),
+  });
+  await fs.writeFile(path.join(runDir, 'worker.pid'), `${spawned.pid}\n`, 'utf8');
+
+  try {
+    const out = await waitRun(ctx, runId, 1); // 1s 窗口，立刻用尽
+    assert.equal(out.exitCode, EXIT.STILL_RUNNING);
+    assert.equal(out.status, null);
+    assert.match(out.progressBrief, /仍在启动中/);
+    assert.equal(out.progress, out.progressBrief, 'null 时两者是同一句提示');
+    assert.equal(out.view, null);
+    // budget 不依赖运行状态，仍须给出——max_waits 照样有意义
+    assert.ok(out.budget.maxWaits > 0);
+  } finally {
+    killQuietly(spawned.pid);
+  }
+});
+
+test('Bash 工具超时贴着等待窗口，并封顶在平台上限', () => {
+  // 窗口 180s：留 60s 余量覆盖启动与收尾，卡死 4 分钟就能发现
+  assert.equal(bashTimeoutFor(180), 240_000);
+  // 窗口仍是 540s 时结果与改动前一致，既有项目不受影响
+  assert.equal(bashTimeoutFor(540), 600_000);
+  // 超过平台上限一律封顶
+  assert.equal(bashTimeoutFor(900), 600_000);
 });
 
 test('--status 对不存在的运行返回 65', async () => {

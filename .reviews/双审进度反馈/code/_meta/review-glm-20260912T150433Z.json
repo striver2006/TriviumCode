@@ -1,0 +1,124 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "整体判断：本补丁是对已批准修订计划的忠实落地，可以接受。核心机制全部核实成立：progress 语义未动、新字段并列增加；status 为 null 时字段存在且取 null/{}；pct 分母取舍与超限文案按修订 B 实现；waits_done 公式与边界按修订 D；--start 增 stage_timeout_s/models 按修订 G；文档去数字化后活代码与四个 skill 均无 540/600000 残留，打包产物 trivium.cjs 已确认重新生成并含新实现。最值得处理的一条（GLM-01）：设计 7.5.1 对 null 情形的措辞（「上述字段存在但取值为 null」）与已批准契约（修订 E：sides={}、max_waits 仍给数字、progress/brief 是提示句）不一致，实现是对的，文档这句会误导后来按它写客户端的人。其余为 --status 的「同上」承诺、finished_inline 路径的开场播报缺口、AC-19 null 边界零测试、budgetOf 换算在 cli.ts 重复实现，及两条 nit。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md:828-829（7.5.1）",
+      "problem": "7.5.1 写「status 为 null 时，上述字段存在但取值为 null」，但「上述字段」含 progress/progress_brief（此时是启动提示句，非 null）、sides（实现与修订版计划修订 E 明确为 {}）与 max_waits（仍按配置给数字）。实现（cli.ts wait 分支）与修订版计划一致，是设计文档这句没有同步收紧。本节其余部分都在做「把语义钉死防误读」的事，唯独这句自己留了歧义：按字面实现客户端的人会写错 null 分支。",
+      "evidence": "读 doc/02_design/…设计-claude.md:818-829（字段表 + null 句）；读 .reviews/双审进度反馈/plan/2026-09-12-双审进度反馈-revised-claude.md 修订 E（117-124 行：四个字段置 null、sides 置 {}、max_waits 仍按配置给出）；读 src/trivium/cli.ts:238-259（elapsed_s/budget_s/pct/waits_done 置 null，sides {}，max_waits 数字）；读 src/trivium/run-protocol.ts:559-568（brief 退化为提示句）。",
+      "suggestion": "把 7.5.1 那句改成修订 E 的精确表述：elapsed_s/budget_s/pct/waits_done 置 null，sides 置 {}，max_waits 仍按配置给出，progress 与 progress_brief 均为同一句启动提示。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/cli.ts:267-282 与 doc/02_design/…设计-claude.md:802-803（7.5 表）",
+      "problem": "7.5 表中 review --status 行的返回写「同上」，而 --wait 行本次新增了「JSON 另给 progress_brief 等结构化进度，见 7.5.1」——「同上」因此现在也承诺了这些字段。但 cli.ts 的 --status --json 只发 ok/run_id/phase/status/progress，没有 progress_brief/elapsed_s/budget_s/pct/waits_done/max_waits/sides；statusRun 的返回形状（run-protocol.ts:575-596）也不含 brief。文本路径（say(out.progress)）经 AGY-03 修订后已带预算，一致；不一致的只在 JSON 契约与设计措辞。",
+      "evidence": "读 src/trivium/cli.ts:218-282（--wait 与 --status 两个 JSON 分支的字段清单对比）；读 src/trivium/run-protocol.ts:574-596（statusRun 无 progressBrief/budget 字段）；读 doc/02_design/…设计-claude.md:799-804（--status 行「同上」）。",
+      "suggestion": "二选一：给 statusRun/JSON 补上同一组结构化字段（budgetFor(ctx.config, s.stage) 已在手上）；或把设计表 --status 行的「同上」限定为退出码语义，注明 progress_brief 等字段仅 --wait 提供。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "skills/dual-review-plan/SKILL.md:96-104（另三个 skill 同段）",
+      "problem": "新增的开场播报义务要求「两侧模型（models）、本阶段预算（stage_timeout_s）」且「一律取自返回值」，但 FR-23 纯文档跳过路径上 --start 早返回的 JSON 只有 finished_inline/max_waits/skipped/notice（cli.ts:347-361），没有 models 与 stage_timeout_s；StartOutcome 在该路径也返回 models:{}（run-protocol.ts:258-276）。四个 skill 全文都没有 finished_inline 分支（预存在的缺口），本次的播报义务恰好建在这个缺口上面：开启 skip_doc_only_review 的项目里，字面照做的 Driver 会播报出空模型。默认关闭所以触发面小，但指令文档的义务与数据来源应闭环。",
+      "evidence": "读 skills/dual-review-plan/SKILL.md 全文（无 finished_inline 分支，播报段在 96-104 行）；读 src/trivium/cli.ts:346-384（finishedInline 早返回 JSON 无 models/stage_timeout_s）；读 src/trivium/run-protocol.ts:250-276（skip 路径 models:{}）；grep skills/ 确认 finished_inline 仅出现在打包产物。",
+      "suggestion": "在四个 skill 的播报义务前补一句分支：返回含 finished_inline: true 时跳过开场播报与 --wait 循环，直接转述 notice 收尾；dual-run 的 S2/S6 委托同样继承这句。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/integration/run-protocol.test.ts:37-59,102-117",
+      "problem": "AC-19 显式点名的「运行尚无有效心跳」边界没有任何测试覆盖。集成测试的 seedRun 总是写好 status.json，因此 waitRun 的 status-null 返回（progressBrief=「仍在启动中」提示、status=null，run-protocol.ts:559-568）与 CLI 对应的 null 字段组（cli.ts:250-259）都只被人工路径触达。这条兜底若被改坏——渲染时解引用 null、或字段被省略——不会有任何测试变红，而它正是 AC-19 验收句单独给出的 Given。",
+      "evidence": "读 test/integration/run-protocol.test.ts 全文（seedRun:49-56 必写 status.json；无任何用例布置「只有 worker.pid 没有 status.json」的运行目录）；读 test/unit/status.test.ts 全文（renderProgressBrief 的测试都传非 null 的 RunStatus）；读 src/trivium/run-protocol.ts:495-571（null 返回分支）。",
+      "suggestion": "补一个集成用例：布置只写 worker.pid 不写 status.json 的运行目录，用短窗口调 waitRun，断言 status===null、exitCode 73、progressBrief 匹配「仍在启动中」；CLI 层若可测，再断言 JSON 新字段为 null 且键存在。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/cli.ts:239,251-257 与 src/trivium/status.ts:252-261",
+      "problem": "pct 与 waits_done 的换算在 cli.ts 里按另一份 Date.now() 手写重算了一遍，而 budgetOf 是 status.ts 的模块私有函数。两处当前一致，但：(1) 文字 progress 与 JSON 结构化字段在秒/窗口边界可能差一次进位（两份时间戳不同）；(2) 将来改 budgetOf 的舍入或封顶规则，cli.ts 会静默漂移。run-protocol.ts:590-595 刚为同构问题写过理由（AGY-03：「否则同一次运行在两个地方显示成两个样子」），这条是同一纪律在 cli.ts 内部的漏网。",
+      "evidence": "读 src/trivium/status.ts:244-261（budgetOf 私有、未被导出）；读 src/trivium/cli.ts:229-264（elapsedS/pct/waits_done 用独立 Date.now() 与手写公式）；读 src/trivium/run-protocol.ts:480-496 与 590-595（budgetFor 复用与 AGY-03 注释）。",
+      "suggestion": "导出 budgetOf（或让 WaitOutcome 直接带上算好的 elapsed/pct/waitsDone），CLI 只透出不再自算，消除第二份真相。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "doc/07_manuals/QUICKSTART.md:138",
+      "problem": "示例行「已用 10m12s / 预算 25m（40%）」在任何配置下都打不出来：25m=1500s 是本项目的 config 覆盖值（出厂默认 plan 为 900s=15m，config.ts:76），而 612s/1500s 按实现的 Math.round 应显示 41%（612/900 则是 68%）。数字对不上号会让照着文档建立预期的用户怀疑自己的配置装错了——本补丁的主题恰是让这些数字可信任。",
+      "evidence": "读 doc/07_manuals/QUICKSTART.md:128-145；读 src/trivium/config.ts:72-83（默认 timeout_s plan:900 与 wait_timeout_s:180）；读 src/trivium/status.ts:252-261（Math.round 舍入）；读 test/unit/status.test.ts:193-204（612s→23% 佐证 round 行为）。",
+      "suggestion": "示例换成出厂默认配置能产出的自洽数字（例如「已用 5m0s / 预算 15m（33%）」），或注明预算以本项目覆盖配置为例。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/status.ts:252-261（budgetOf）",
+      "problem": "pct 与 waits_done 只有上界/除零防护，没有下界钳制：若 started_at 因时钟回拨（NTP 校正）落在 now 之后，elapsed 为负，会渲染出「（-3%）」与「第 0/32 次等待」——后者正是 AGY-04 刚在 elapsed=0 处修掉的同款「第 0 次」。fmtDuration 对负数已钳到 0s（:228-232），同一族函数防护不一致。触发条件罕见，但修复是一行 Math.max(0, …) 的事。",
+      "evidence": "读 src/trivium/status.ts:227-261（fmtDuration 钳负、budgetOf 的 pct/waitsDone 无下界）；读 .reviews/双审进度反馈/plan/2026-09-12-双审进度反馈-revised-claude.md 修订 D（AGY-04「第 0 次」先例）。",
+      "suggestion": "budgetOf 里对 elapsedS 先钳非负（与 fmtDuration 同口径），pct/waitsDone 自然归 0/1。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "默认值 540→180 的落点、幅度与全部文档同步做得干净：活代码与四个 skill 经 grep 确认无 540/600000 字面量残留，打包产物 skills/dual-critic/scripts/trivium.cjs 已确认重新生成（含 wait_timeout_s:180、bashTimeoutFor、renderProgressBrief、progress_brief），与修订 A「不手改产物」的口径一致",
+    "bashTimeoutFor 贴窗口加 60s 余量并封顶 600s 的设计合理：窗口 180s 时卡死 4 分钟即可暴露，窗口 540s 时行为与改动前完全一致，且新默认值离平台上限更远、更安全；三条边界都有测试锁住（run-protocol.test.ts:86-93）",
+    "progress 原字段语义锁定、新字段并列增加的决策正确（cli.ts:231-237 注释把「为什么不动它」写清了），brief 在 status null 时退化启动提示句而非报错，符合 AC-19",
+    "pct 分母取单阶段超时并在超限后改说「已超单次预算 · 重试收尾中」的取舍（修订 B）实现与文档三处（设计 7.5.1、RUNBOOK、代码注释）口径完全一致，「有意不同源，不是 bug」防了未来的好心修复",
+    "waitRun 按运行阶段取预算且带 handoff 兜底（run-protocol.ts:510-516）是对的：交接文件在 --start 同步窗口先于 status.json 落盘，'plan' 兜底实际不可达但方向保守；statusRun 与 waitRun 共用 budgetFor 保证手工自查与自动循环一致（AGY-03 修订落实）",
+    "waits_done 从 1 起算并在窗口边界进位的公式（修订 D）实现正确，两条边界单测锁住；时长人读化 fmtDuration 对负数与进位处理正确",
+    "测试更新到位：中文化后的断言（阶段状态 审查中、glm: 已完成）与 max_waits 新窗口自适应（2700/1500 覆盖值 + 默认值口径在修订 J 里注明）都补了；「不传 budget 退回老输出」的负向断言（doesNotMatch 预算/次等待）保住了既有调用方",
+    "修订 K「状态不变不补说明、不做无变化分支」写入四个 skill，避免了要求 Driver 跨窗口记忆 sides 的不可靠设计"
+  ],
+  "not_covered": [
+    "未运行测试与构建（只读审查约束），所有结论来自读码而非执行；npx tsc/test 是否全绿未验证",
+    "打包产物 skills/dual-critic/scripts/trivium.cjs 仅定向 grep 核对关键符号与行号，未逐行比对与 src 的一致性",
+    "本项目 .trivium/config.yaml 在禁读清单内，测试注释与修订 J 所称的覆盖值（plan 1500 / code 2700）未直接核实，仅交叉印证于测试与 QUICKSTART 示例",
+    "src/trivium/review.ts（prepareRun/executeRun）、hooks.ts、schemas.ts 未读：wait_timeout_s 是否被 config 校验上界（如须小于 Bash 上限 600s）未核实——窗口被配到 ≥600s 时 bash_timeout_ms 封顶后余量归零，属预存在约束非本补丁引入",
+    "修订 F 的验收 grep（grep -rn \"540s\\|（600000）\" skills/）会命中再生成的 bundle 注释（trivium.cjs:16395「原值 540s」）——bundle 不属被审 diff，此账目差异未列为意见，提请 Driver 自行裁决验收口径是否排除生成物",
+    "PRD/设计正文的其余未变更章节、doc/01_requirements 与 doc/02_design 的 README 索引仅按任务书背景采信，未逐节重读",
+    "另一位审查员的视角（其结论按约不可见、不可推测）未纳入"
+  ],
+  "consulted": [
+    ".reviews/双审进度反馈/code/_meta/changes-20260912T150433Z.diff",
+    ".reviews/双审进度反馈/plan/2026-09-12-双审进度反馈-revised-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md",
+    "doc/07_manuals/QUICKSTART.md",
+    "src/trivium/status.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/config.ts",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-run/SKILL.md",
+    "skills/dual-critic/scripts/trivium.cjs",
+    "test/unit/status.test.ts",
+    "test/integration/run-protocol.test.ts"
+  ]
+}

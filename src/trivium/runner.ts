@@ -39,12 +39,34 @@ export function isTransientFailure(r: CriticResult): boolean {
   return transient.some((t) => reason.includes(t));
 }
 
+/**
+ * 单侧进展的增量快照。
+ *
+ * 存在的理由：没有它时，等待期的 `status.json` 从头到尾只有「两侧 running」——
+ * `workerMain` 在 executeRun 之前一次性置 running、之后一次性写终态，中间没人
+ * 回写。于是 `--wait` 每次返回的两侧状态恒定不变、`attempt` 恒为 0，
+ * 「一侧先跑完」「正在重试」这些**用户最想知道的事**全都看不见（审查意见 AGY-01）。
+ */
+export interface SideProgress {
+  state?: 'running' | 'ok' | 'failed' | 'timeout' | 'parse_fallback';
+  /** 第几次尝试，从 1 起算 */
+  attempt?: number;
+  /** 本侧已耗时（秒） */
+  elapsed_s?: number;
+  note?: string | null;
+}
+
 export interface RunnerInput {
   ctx: AdapterContext;
   adapters: Record<CriticId, CriticAdapter>;
   requests: Partial<Record<CriticId, CriticRequest>>;
   /** 重试前对 BRIEF 追加提示（如 schema 错误清单、「你未读取任何项目文件」） */
   onRetryBrief?: (critic: CriticId, previous: CriticResult) => string | null;
+  /**
+   * 单侧进展回调，供工作进程把状态刷进 `status.json`。
+   * **回调不得影响审查本身**：抛异常一律吞掉（见 emitProgress）。
+   */
+  onSideProgress?: (critic: CriticId, patch: SideProgress) => void;
   maxTransientRetries: number;
 }
 
@@ -54,6 +76,25 @@ export interface RunnerOutput {
   attempts: Partial<Record<CriticId, number>>;
 }
 
+/**
+ * 发一次进展回调。**吞掉一切异常**：进度是附加品，写它出问题不该连累审查。
+ * 回调实现里会碰文件系统（patchStatus），不吞的话一次瞬时 EBUSY 就能毁掉整轮。
+ */
+function emitProgress(input: RunnerInput, critic: CriticId, patch: SideProgress): void {
+  try {
+    input.onSideProgress?.(critic, patch);
+  } catch {
+    /* 进度回写失败不影响审查 */
+  }
+}
+
+/** 把适配器结果的状态映射成 status.json 的侧状态词 */
+function sideStateOf(r: CriticResult): NonNullable<SideProgress['state']> {
+  if (r.status === 'ok') return 'ok';
+  if (r.status === 'timeout') return 'timeout';
+  return 'failed';
+}
+
 /** 跑一侧，含瞬时故障重试 */
 async function runOneSide(
   input: RunnerInput,
@@ -61,15 +102,23 @@ async function runOneSide(
   req: CriticRequest,
 ): Promise<{ result: CriticResult; attempts: number }> {
   const adapter = input.adapters[critic];
+  const startedAt = Date.now();
+  const elapsed = () => Math.round((Date.now() - startedAt) / 1000);
   let attempts = 0;
   let last: CriticResult;
 
   for (;;) {
     attempts++;
     step(`[${critic}] 第 ${attempts} 次尝试，模型 ${req.model}，上限 ${req.timeout_s}s`);
+    // 尝试开始：让等待中的用户看见「第几次尝试」，重试尤其要看得见
+    emitProgress(input, critic, { state: 'running', attempt: attempts, elapsed_s: elapsed() });
     last = await adapter.run(input.ctx, req);
 
-    if (last.status === 'ok') return { result: last, attempts };
+    if (last.status === 'ok') {
+      // 本侧收口：另一侧还在跑时，这一刻的「已完成」正是用户最想看到的变化
+      emitProgress(input, critic, { state: 'ok', attempt: attempts, elapsed_s: elapsed() });
+      return { result: last, attempts };
+    }
     if (attempts > input.maxTransientRetries) break;
     if (!isTransientFailure(last)) {
       step(`[${critic}] 失败原因判定为业务性，不重试：${last.fail_reason}`);
@@ -77,6 +126,12 @@ async function runOneSide(
     }
 
     warn(`[${critic}] 瞬时故障，重试一次：${last.fail_reason}`);
+    emitProgress(input, critic, {
+      state: 'running',
+      attempt: attempts,
+      elapsed_s: elapsed(),
+      note: '瞬时故障，重试中',
+    });
     const extra = input.onRetryBrief?.(critic, last);
     if (extra) {
       // 把失败原因追加进 BRIEF，让模型知道上一次哪里不对
@@ -84,6 +139,12 @@ async function runOneSide(
     }
   }
 
+  emitProgress(input, critic, {
+    state: sideStateOf(last),
+    attempt: attempts,
+    elapsed_s: elapsed(),
+    note: last.fail_reason ?? null,
+  });
   return { result: last, attempts };
 }
 

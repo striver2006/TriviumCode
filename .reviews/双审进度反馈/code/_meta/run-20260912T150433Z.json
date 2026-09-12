@@ -1,0 +1,155 @@
+{
+  "schema": "trivium.run.v1",
+  "run_id": "20260912T150433Z",
+  "topic": "双审进度反馈",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "让双审等待期间的进度及时反馈给用户",
+  "entry": "A",
+  "snapshot": {
+    "git_head": "c16d044c5c112aeb46e1aff1c6591218df2f1936",
+    "tree_hash": "94db50d04924a69c61c953fca5c3cc1f2275c44f",
+    "dirty": true,
+    "subject_sha256": "4c436a7436d51b3c1eb47e5b4b7ce8559fb6e6a65eb3fcb3277e2cf50fe75eaf",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-12T15:04:33.506Z",
+  "finished_at": "2026-09-12T15:20:11.661Z",
+  "review_mode": "dual",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort": "medium",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 168.364,
+      "tool_calls": {
+        "read": 25,
+        "grep": 9,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 20
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 227576,
+        "output_tokens": 33026,
+        "thinking_tokens": 27933,
+        "cache_read_tokens": 3186127,
+        "total_tokens": 260602
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "6f0156cd-a37b-4dd2-ab98-fa527e26777d",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3-Flash",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "model_effective_source": "trace",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 938.016,
+      "tool_calls": {
+        "read": 15,
+        "grep": 5,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 9,
+        "inputTokens": 713181,
+        "outputTokens": 33544,
+        "totalTokens": 746725,
+        "cacheReadTokens": 585664,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_a0236a8a-46ad-4932-be32-6afcb315a222",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/C命令base透传修复/code/2026-09-12-C命令base透传修复-glm.md",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r3-glm.md",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-glm.md",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-r2-glm.md",
+    ".reviews/S9-闸门与留痕加固/code/2026-09-11-S9-闸门与留痕加固-glm.md",
+    ".reviews/双审进度反馈/plan/2026-09-12-双审进度反馈-glm.md",
+    ".reviews/审核修复/code/2026-09-12-审核修复-glm.md"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "双审进度反馈/code/_meta/changes-20260912T150433Z.diff",
+      "sha256": "4c436a7436d51b3c1eb47e5b4b7ce8559fb6e6a65eb3fcb3277e2cf50fe75eaf"
+    },
+    {
+      "path": "双审进度反馈/code/_meta/brief-gemini-20260912T150433Z.md",
+      "sha256": "d3acdfa2bb9e5a5af95f28af50610c14995dedc6794ef84ab2dc616d975f5cac"
+    },
+    {
+      "path": "双审进度反馈/code/_meta/brief-glm-20260912T150433Z.md",
+      "sha256": "3ab566d738a397d220a744a06e20141bba0864aadd287275cc3adc57586969f4"
+    },
+    {
+      "path": "双审进度反馈/code/_meta/review-gemini-20260912T150433Z.json",
+      "sha256": "610bf04e854c108d209916b101aeee7e638348100818c53df693754c597923e5"
+    },
+    {
+      "path": "双审进度反馈/code/_meta/review-glm-20260912T150433Z.json",
+      "sha256": "23933bb669d016bbf9566bbaf71e96d4b071264387a32f1e91a1f608e2d137ea"
+    },
+    {
+      "path": "双审进度反馈/code/2026-09-12-双审进度反馈-gemini.md",
+      "sha256": "f6366fd3c2db146f3568aa8c931e0d86951ce5e205bbeacedc680c0f8884b857"
+    },
+    {
+      "path": "双审进度反馈/code/2026-09-12-双审进度反馈-glm.md",
+      "sha256": "39fa7cf9f48f4f982d1b70e5d6e41dd14f39a2fc23bfbc3a0f3885b61672d2b4"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

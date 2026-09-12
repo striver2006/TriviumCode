@@ -5,7 +5,8 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   newStatus, writeStatus, readStatus, patchStatus, interpretStatus,
-  renderProgress, computeMaxWaits, statusPath, isTerminal, type RunStatus,
+  renderProgress, renderProgressBrief, fmtDuration, computeMaxWaits, statusPath, isTerminal,
+  type ProgressBudget, type RunStatus,
 } from '../../src/trivium/status.js';
 import { processStartTime } from '../../src/trivium/util/exec.js';
 
@@ -14,6 +15,8 @@ async function runDir(): Promise<string> {
 }
 const STALE = 120_000;
 const DEAD_PID = 2 ** 22;
+/** code 阶段 2700s、窗口 180s、重试 1 次 → maxWaits = ceil(5400/180)+2 = 32 */
+const BUDGET: ProgressBudget = { stageTimeoutS: 2700, waitTimeoutS: 180, maxWaits: 32 };
 
 function base(): RunStatus {
   return newStatus({
@@ -173,13 +176,83 @@ test('进度摘要包含两侧状态、已用时与心跳新鲜度', () => {
   const s = base();
   s.phase = 'running';
   s.sides.gemini = { state: 'running', model: 'M1', attempt: 1, elapsed_s: 42 };
-  s.sides.glm = { state: 'ok', model: 'M2', attempt: 1, elapsed_s: 120, note: '已完成' };
+  s.sides.glm = { state: 'ok', model: 'M2', attempt: 1, elapsed_s: 120, note: '收尾' };
   const out = renderProgress(s);
-  assert.match(out, /gemini: running/);
+  assert.match(out, /gemini: 审查中/);
   assert.match(out, /第 1 次尝试/);
-  assert.match(out, /glm: ok/);
-  assert.match(out, /已完成/);
+  assert.match(out, /glm: 已完成/);
+  assert.match(out, /收尾/);
   assert.match(out, /最近心跳/);
+  // 不传 budget 时退回老输出：不得出现期待值字段，既有调用方不受影响
+  assert.doesNotMatch(out, /预算/);
+  assert.doesNotMatch(out, /次等待/);
+});
+
+// ── 等待期进度反馈（FR-26 / AC-19）──
+
+test('传入 budget 时补出期待值：预算、百分比、第几次等待', () => {
+  const s = base();
+  s.phase = 'running';
+  s.started_at = new Date(Date.now() - 612_000).toISOString(); // 已用 612s
+  s.sides.gemini = { state: 'ok', model: 'M1', attempt: 1, elapsed_s: 340 };
+  s.sides.glm = { state: 'running', model: 'M2', attempt: 1, elapsed_s: 612 };
+  const out = renderProgress(s, Date.now(), BUDGET);
+  assert.match(out, /已用 10m12s \/ 预算 45m0s（23%）/);
+  // 612 / 180 = 3.4 → 第 4 次；从 1 起算
+  assert.match(out, /第 4\/32 次等待/);
+  assert.match(out, /阶段状态 审查中/);
+});
+
+test('waits_done 从 1 起算，并在窗口边界进位', () => {
+  const s = base();
+  s.phase = 'running';
+  // elapsed 为 0：人在等的是「第 1 次」，不是「第 0 次」
+  assert.match(renderProgress(s, Date.now(), BUDGET), /第 1\/32 次等待/);
+  s.started_at = new Date(Date.now() - 180_000).toISOString();
+  assert.match(renderProgress(s, Date.now(), BUDGET), /第 2\/32 次等待/);
+});
+
+test('超出单阶段预算时不显示百分比，改说重试收尾', () => {
+  const s = base();
+  s.phase = 'running';
+  s.started_at = new Date(Date.now() - 3000_000).toISOString(); // 3000s > 2700s
+  s.sides.glm = { state: 'running', model: 'M2', attempt: 2, elapsed_s: 3000 };
+  const out = renderProgress(s, Date.now(), BUDGET);
+  assert.match(out, /已超单次预算 · 重试收尾中（第 2 次尝试）/);
+  assert.doesNotMatch(out, /%/);
+});
+
+test('brief 是单行摘要，含阶段、时间段与两侧状态', () => {
+  const s = base();
+  s.phase = 'running';
+  s.started_at = new Date(Date.now() - 612_000).toISOString();
+  s.sides.gemini = { state: 'ok', model: 'M1', attempt: 1, elapsed_s: 340 };
+  s.sides.glm = { state: 'running', model: 'M2', attempt: 1, elapsed_s: 612 };
+  const brief = renderProgressBrief(s, Date.now(), BUDGET);
+  assert.equal(brief.includes('\n'), false, 'brief 必须是单行');
+  assert.match(brief, /gemini 已完成 · glm 审查中/);
+  assert.match(brief, /已用 10m12s \/ 预算 45m0s（23%）/);
+  assert.ok([...brief].length <= 60, `brief 应控制在 60 字以内，实际 ${[...brief].length}：${brief}`);
+});
+
+test('时钟回拨：elapsed 为负时钳到 0，不渲染负百分比或「第 0 次」', () => {
+  const s = base();
+  s.phase = 'running';
+  // started_at 落在 now 之后（NTP 校正）
+  s.started_at = new Date(Date.now() + 30_000).toISOString();
+  const out = renderProgress(s, Date.now(), BUDGET);
+  assert.doesNotMatch(out, /（-\d+%）/, '不得出现负百分比');
+  assert.doesNotMatch(out, /第 0\//, '不得出现「第 0 次」');
+  assert.match(out, /已用 0s/);
+  assert.match(out, /第 1\/32 次等待/);
+  assert.match(out, /（0%）/);
+});
+
+test('时长渲染：不足一分钟按秒，超过则分秒', () => {
+  assert.equal(fmtDuration(45), '45s');
+  assert.equal(fmtDuration(612), '10m12s');
+  assert.equal(fmtDuration(60), '1m0s');
+  assert.equal(fmtDuration(-5), '0s');
 });
 
 test('max_waits 覆盖「单侧超时 × (1+重试)」并留 2 次余量', () => {
@@ -189,6 +262,13 @@ test('max_waits 覆盖「单侧超时 × (1+重试)」并留 2 次余量', () =>
   assert.equal(computeMaxWaits(900, 540, 0), 4);
   // code 阶段 1200s、重试 1 次 → 2400s → ceil(2400/540)=5 → +2 = 7
   assert.equal(computeMaxWaits(1200, 540, 1), 7);
+});
+
+test('窗口收窄到 180s 后 max_waits 自适应（本项目 timeout_s 覆盖值）', () => {
+  // code 2700s × 2 ÷ 180 = 30 → +2 = 32
+  assert.equal(computeMaxWaits(2700, 180, 1), 32);
+  // plan 1500s × 2 ÷ 180 = ceil(16.67)=17 → +2 = 19
+  assert.equal(computeMaxWaits(1500, 180, 1), 19);
 });
 
 test('max_waits 对异常入参不炸（除零保护）', () => {

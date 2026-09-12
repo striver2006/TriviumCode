@@ -74,7 +74,13 @@ export function defaultConfig(): Config {
       failure_policy: 'strict',
       allow_single_flag: true,
       timeout_s: { plan: 900, code: 1200, bug: 1200 },
-      wait_timeout_s: 540,
+      /*
+       * 每次 `--wait` 的窗口，同时也是**用户能收到进度的最小间隔**——Bash 工具在
+       * 命令退出前不回传 stdout，窗口内 Driver 物理上说不了话。原值 540s 意味着
+       * 用户每 9 分钟才听到一声，与没有反馈在体感上没有区别。180s 是成本与体感的
+       * 折中：更短（如 60s）会让 code 阶段逼近百次往返，收益却是边际的。
+       */
+      wait_timeout_s: 180,
       heartbeat_stale_s: 120,
       retry: { transient_max: 1 },
       cache: false,

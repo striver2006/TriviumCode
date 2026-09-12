@@ -34,7 +34,9 @@ review:
     # 自举的常态（一次里程碑的全部变更），留 2 倍余量。
     code: 2700
     bug: 1200
-  wait_timeout_s: 540
+  # 每次 --wait 的窗口，也是用户能收到进度的最小间隔（Bash 工具在命令退出前
+  # 不回传 stdout，窗口内 Driver 说不了话）。540→180：9 分钟一声等于没有反馈
+  wait_timeout_s: 180
   heartbeat_stale_s: 120
   retry:
     transient_max: 1

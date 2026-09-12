@@ -1,0 +1,894 @@
+# trivium changes.diff
+# run_id: 20260912T150433Z
+# base: HEAD
+# head: c16d044c5c112aeb46e1aff1c6591218df2f1936
+# files: 14
+#   doc/01_requirements/PRD_driver_dual_critic.md
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md
+#   doc/06_deployment/RUNBOOK_pipeline_ops.md
+#   doc/07_manuals/QUICKSTART.md
+#   skills/dual-review-bug/SKILL.md
+#   skills/dual-review-code/SKILL.md
+#   skills/dual-review-plan/SKILL.md
+#   skills/dual-run/SKILL.md
+#   src/trivium/cli.ts
+#   src/trivium/config.ts
+#   src/trivium/run-protocol.ts
+#   src/trivium/status.ts
+#   test/integration/run-protocol.test.ts
+#   test/unit/status.test.ts
+diff --git a/doc/01_requirements/PRD_driver_dual_critic.md b/doc/01_requirements/PRD_driver_dual_critic.md
+index 5943b80..83d1056 100644
+--- a/doc/01_requirements/PRD_driver_dual_critic.md
++++ b/doc/01_requirements/PRD_driver_dual_critic.md
+@@ -113,6 +113,7 @@ AI 编程已从单次补全进入自主智能体阶段。开发者在 macOS + VS
+ - [ ] **FR-23 可配置跳过纯文档审**：对仅含文档、注释或格式、且配置允许的代码 diff，可跳过代码双审。业务代码、依赖清单（锁文件除外）、CI 与权限相关文件变更不得跳过。
+ - [ ] **FR-24 运行元数据**：每次任务运行将所用模型、起止时间、成败状态写入该主题子目录，便于复盘。Token 与 CLI 版本为可选字段。
+ - [ ] **FR-25 阶段重跑不覆盖既有工件**：同一任务同一阶段允许重跑。重跑产生的新文件一律追加版本后缀（或等价的新文件名），既有工件无论是否已经人工审批均不得覆盖，避免同日重跑撞名覆盖审查或主脑文件。
++- [ ] **FR-26 等待期进度反馈**：双审进行期间，用户必须按稳定节奏收到可读进度，每条能回答「跑到哪了 / 还要多久 / 两侧各自什么状态」。编排器在每次等待返回时给出成品单行摘要与结构化进度（已用、预算、百分比、第几次/共几次、两侧状态），主脑负责**向用户播报**而非仅打印到工具输出；启动时另播报一条含两侧生效模型与阶段预算的开场。反馈的最小间隔等于单次等待窗口——主脑只在工具调用返回时才能说话，这是平台约束（设计 7.5.1）。
+ 
+ ---
+ 
+@@ -270,6 +271,9 @@ sequenceDiagram
+ 18. **AC-18 模型异构默认与覆盖可见**（FR-17）  
+     Given 未显式覆盖审查模型，When 双审实际执行，Then 两边所用模型均与主脑不同源（非 Claude 系）；Given 用户显式覆盖审查模型，Then 覆盖后的模型在归档或本次运行的可观测信息中可见（NFR-05）。
+ 
++19. **AC-19 等待期进度可读可预期**（FR-26）  
++    Given 一次已启动的双审，When 每次等待窗口返回，Then 返回中含单行成品摘要与结构化进度字段（已用、预算、百分比、第几次/共几次、两侧状态），且主脑向用户播报该摘要；Given 启动时刻，Then 用户收到一条含主题、阶段、两侧生效模型、阶段预算与汇报节奏的开场播报；Given 运行尚无有效心跳，Then 上述字段存在但取值为空，摘要退化为启动提示而非报错。
++
+ ---
+ 
+ ## 6. 工件与留痕规范
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md
+index 93d4739..aec2ffe 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md
+@@ -336,7 +336,7 @@ sequenceDiagram
+ | :--- | :--- | :--- | :--- |
+ | **AD-01** | **编排器 = 本地一次性 CLI（`trivium`），由斜杠命令调用** | ①Claude 在对话里直接 shell 串两家 CLI；②常驻监视器 Daemon；③MCP Server | ① 超时/并行/PTY/隔离逻辑会污染主脑上下文，且模型可能「忘记」步骤，违反 P1；② 违反 PRD Non-Goal；③ 增加一层不必要的协议，且社区反馈 VS Code 扩展侧 stdio MCP 曾出现被静默关闭的情况（转引自 grok4.6 答卷，无一手来源，置信度中；MCP 形态列为二期演进）。CLI 同时满足「`/` 命令为唯一入口」与「确定性编排」 |
+ | **AD-02** | **归档根 = `.reviews/`** | `.dualcritic/`、`docs/agent-reviews/`、`.ddc/` | 本仓库已存在 `.reviews/` 且 `.env.example` 已定义 `REVIEW_ARTIFACTS_DIR=.reviews`；PRD 允许配置，沿用可减少一次迁移 |
+-| **AD-03** | **双审为「派生 + 分段等待」：`trivium review --start` 立即返回 `run_id`，命令模板循环调用 `review --wait <run_id> --timeout <s>` 直到完成；不用 async Hook** | ①单次同步阻塞调用；②Stop Hook + `async:true/asyncRewake:true` 后台审查（zcode 参考方案） | ① Driver 的 Bash 工具有工具级超时（3.1），单侧 900～1200s + 重试的同步调用必然被杀，心跳无法延长；② 异步唤醒会与 B/C/D 的人工停点语义打架。派生的工作子进程在两侧回收完成后即退出，不是常驻 Daemon；`--wait` 每次不超过 Bash 工具超时（默认 540s），返回专用退出码表示「仍在运行」。命令返回给 Driver 时工件已齐的语义由 `--wait` 的最终成功返回保证（7.5） |
++| **AD-03** | **双审为「派生 + 分段等待」：`trivium review --start` 立即返回 `run_id`，命令模板循环调用 `review --wait <run_id> --timeout <s>` 直到完成；不用 async Hook** | ①单次同步阻塞调用；②Stop Hook + `async:true/asyncRewake:true` 后台审查（zcode 参考方案） | ① Driver 的 Bash 工具有工具级超时（3.1），单侧 900～1200s + 重试的同步调用必然被杀，心跳无法延长；② 异步唤醒会与 B/C/D 的人工停点语义打架。派生的工作子进程在两侧回收完成后即退出，不是常驻 Daemon；`--wait` 每次不超过 Bash 工具超时（窗口取 `wait_timeout_s`），返回专用退出码表示「仍在运行」。命令返回给 Driver 时工件已齐的语义由 `--wait` 的最终成功返回保证（7.5） |
+ | **AD-04** | **触发方式 = 显式斜杠命令为主，Hook 只做护栏** | `PostToolUse(Write)` 自动交单、`PreToolUse(ExitPlanMode)` 计划闸门 | PRD 第 8 章规定四条命令的意图/输入/停点，且 B/C/D **必须**带提示语；自动交单无法获得提示语，且会在无关写入上误触发。Hook 用于：闸门期禁止业务写、禁止伪造审查文件、未完成裁决时阻止收工 |
+ | **AD-05** | **就地审查（`in-place`）为唯一隔离模式：审查员 cwd 即项目根，不构造镜像树**（`ADR_001_isolation_mode.md`，Accepted，2026-09-11） | ①冻结镜像树 `mirror`（v1.0.0～v1.1.0 默认）；②`in-place` 仅靠提示词 | 项目负责人裁决 UR-03/UR-06。`in-place` 与 PRD FR-07 字面一致，`.git`、依赖目录、`git log/blame` 能力无损，零拷贝。需要屏蔽的对方产出只有两类：**本次**结论（延迟落盘 + 运行目录在项目外，审查中物理不存在，无需提示词）与**同主题重跑时的历史**产出（三层屏蔽：BRIEF 逐个列出的禁读清单 → CLI 路径级 deny（探针可用时注入）→ 事后轨迹核验，命中即作废重跑）。代价：整树无法 `chmod` 只读，只读退化为「工具层禁写 + 前后指纹」；审查期间开发者手改文件会造成漂移，只能检出并记录（9.2）；两家 Agent 在 cwd 的临时文件需探针白名单（10.3）。`mirror` 方案被否决的理由：无 `.git`、依赖缺席、双份拷贝、与 FR-07 字面冲突需回填 PRD，而其唯一收益（历史产出物理剔除）可由三层屏蔽以可接受的置信度替代 |
+ | **AD-06** | **只读 = 工具白名单/黑名单 + 前后指纹（`tree_hash` + `git status --porcelain -uall`，排除 scratch 白名单）+ 轨迹核验三重** | 仅提示词约束；整树 `chmod a-w`（就地模式不可行） | 提示词可被绕过；三重叠加使「审查员改代码」成为可检出的事件，主仓库被写入即中止并列出受影响文件（FR-15 / AC-08） |
+@@ -779,7 +779,8 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
+    若提示语为空则停止并说明「命令 B 必须带提示语」；若未提供 `--context`，依据计划内容补一份涉及路径清单再传入。
+ 3. 运行 `TV review --start --entry B --stage plan --topic <主题> --focus <焦点> [--goal …] [--plan-file …] [--context …] --json`，
+    得到 `run_id`（该命令冻结送审包、派生工作进程并立即返回）。上一步解析出的参数逐项透传，不得省略。
+-   然后循环运行 `TV review --wait <run_id> --timeout 540 --json`：退出码 `73` 表示仍在运行，打印其输出的进度摘要后继续等待；
++   然后循环运行 `TV review --wait <run_id> --timeout <wait_timeout_s> --json`：退出码 `73` 表示仍在运行，
++   **向用户播报一条 `progress_brief` 后**继续等待（7.5.1）；
+    退出码 `0` 表示两份审查文档与元数据已落盘；其它退出码按原样转述并停止。循环次数上限由输出中的 `max_waits` 给出（7.5）。
+ 4. 用 Read **完整读取**两份审查文档（禁止只读摘要段）。
+ 5. 依据 `trivium.disposition.v1` 写出修订计划 `…-revised-claude.md`：逐条列出每个意见编号的裁决与理由，接受项写明落点。
+@@ -798,12 +799,61 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
+ | 子命令 | 行为 | 返回 |
+ | :--- | :--- | :--- |
+ | `review --start` | 预检通过后：冻结送审包 → 写 `run.json`（`status: running`）→ 以 `setsid`/双 fork 派生工作进程（真并行拉起两侧、回收、解析、落盘全部在该进程内完成，完成即退出）→ **立即返回** | `0` + `run_id`、`max_waits`（= ceil(总上限 / timeout) + 2） |
+-| `review --wait <run_id> --timeout <s>` | 轮询 `~/.trivium/runs/<repo_id>/<run_id>/status.json`，最多等待 `<s>` 秒（默认 540，须小于 Bash 工具超时） | `0` 完成且工件已落盘；`73` 仍在运行（stdout 给出两侧状态、已用时、心跳时间）；`75` 严格模式单侧失败；其余同 7.3 |
++| `review --wait <run_id> --timeout <s>` | 轮询 `~/.trivium/runs/<repo_id>/<run_id>/status.json`，最多等待 `<s>` 秒（默认见 `defaultConfig()` 的 `wait_timeout_s`，须小于 Bash 工具超时） | `0` 完成且工件已落盘；`73` 仍在运行（stdout 给出两侧状态、已用时/预算、心跳时间，JSON 另给 `progress_brief` 等结构化进度，见 7.5.1）；`75` 严格模式单侧失败；其余同 7.3 |
+ | `review --status <run_id>` | 只读一次状态，不等待 | 同上 |
+ | `review --cancel <run_id>` | 向工作进程发 SIGTERM → SIGKILL，标 `cancelled` | `0` |
+ 
+ 约束：① 工作进程写 `status.json` 心跳（每 30s），`--wait` 发现心跳超过 `heartbeat_stale_s`（默认 120s）未更新且进程不存在时判 `failed(worker_lost)`；② 工作进程生命周期等于一次运行，不监听、不接受新任务，因此不是 PRD Non-Goal 所指的常驻 Daemon；③ `hook-session-start` 若发现 `running` 状态的运行，以 `additionalContext` 提醒 Driver 先 `--wait`；④ `run.json` 的 `command` 字段记录是否经 `--start/--wait` 完成，便于审计。
+ 
++### 7.5.1 等待期进度反馈
++
++一次双审的墙钟在十几到四十几分钟之间。这段时间里用户唯一的信息来源是 Driver，
++而 Driver **只有在工具调用返回的那一刻才能说话**——Bash 工具在命令退出前不回传
++stdout。由此得到本节的第一条硬事实：
++
++> **用户能收到进度的最小间隔恒等于 `wait_timeout_s`。** 它既是 `--wait` 的窗口，
++> 也是反馈的节拍器。想让反馈更密，只能调小它；没有别的旋钮，也不该有第二个
++> （两个旋钮 = 两个真相）。默认 180s 是成本与体感的折中。
++
++**数据侧（编排器负责）。** `--wait --json` 同时给出人读整段与成品单行：
++
++| 字段 | 含义 |
++| :--- | :--- |
++| `progress` | 多行人读进度。**语义锁定**，既有调用方按原样转述 |
++| `progress_brief` | 单行摘要，供 Driver **原样念给用户**。给成品而不是原料：让 Driver 自己组织语言，每次说法都不一样，用户反而更难看出「和上次比变了什么」 |
++| `elapsed_s` / `budget_s` / `pct` | 已用、预算与百分比。`pct` 封顶 100 |
++| `waits_done` / `max_waits` | 第几次 / 共几次等待，从 1 起算 |
++| `sides` | 两侧状态原始值，供需要细粒度时取用 |
++
++`status` 为 null（窗口用尽且全程无有效心跳）时，上述字段**存在但取值为 null**，
++`progress_brief` 退化为启动提示句。省略字段会让 Driver 分不清「没有」与「读不到」。
++
++`pct` 的分母有意取**单阶段超时**而非 `computeMaxWaits` 那个含重试的总预算：
++绝大多数运行不重试、一侧几百秒就收，用最坏预算做分母会让它们永远显示成一成多，
++那个数字对「还要多久」没有指导意义。代价是重试时会超 100%，故超出后不再显示百分比，
++改说「已超单次预算 · 重试收尾中」——那一刻用户要的本就是解释而非数字。
++由此 `第 N/M 次等待` 的 M（含重试预算）与 `pct` 的分母（不含）不同源，
++**这是有意的取舍，不是 bug**。
++
++`--start` 另外返回 `stage_timeout_s` 与两侧生效 `models`，供开场播报；
++它们经 profile 与 `--model-*` 覆盖路由后只有编排器知道，让 skill 文档自己写死
++等于让它随配置漂移成错误播报。
++
++**义务侧（skill 负责）。** 三条，写在四个 skill 的等待段落里：
++
++1. `--start` 返回后**立刻**播报一条开场（主题、阶段、两侧模型、预算、节奏、`run_id`）；
++2. 每次 `--wait` 返回后**先向用户发一条文本消息，再发下一次 `--wait`**，内容为
++   `progress_brief`，退出码 `73` 与 `0` 都要说；
++3. 两侧状态较上次有变化时补一句说明，**不变时不补**——每次都写只会淹掉真正的变化。
++
++第 2 条的措辞是有来历的：它此前写作「打印进度后继续等」，而「打印」在 Driver 的
++语境里就是工具输出——它本来就打印了，义务在字面上已被满足，于是没人向用户说话。
++**描述 CLI 的行为不等于规定 Driver 的义务**，这类措辞在指令文档里要格外当心。
++
++这三条**没有强制力**：CLI 管不到 Driver 说不说话，`hook-stop` 也只在收工时触发、
++管不到等待期。它与「逐条裁决」是同一种约束强度，靠的是 Driver 守指令。
++如实记录，不假装它是强制。
++
+ ---
+ 
+ ## 8. 操作流程详细设计
+@@ -1410,7 +1460,7 @@ review:
+   failure_policy: strict
+   allow_single_flag: true            # 是否允许命令行用 --only / --allow-single 显式降级为单审
+   timeout_s: {plan: 900, code: 1200, bug: 1200}
+-  wait_timeout_s: 540                # review --wait 单次上限，须小于 Bash 工具超时 120s 的可调上限（7.5）
++  wait_timeout_s: 180                # review --wait 单次上限，也是用户收到进度的最小间隔（7.5.1）
+   heartbeat_stale_s: 120
+   retry: {transient_max: 1}
+   cache: false                       # 键含 brief_hash（12.3）
+diff --git a/doc/06_deployment/RUNBOOK_pipeline_ops.md b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+index 46b9ea3..44a9451 100644
+--- a/doc/06_deployment/RUNBOOK_pipeline_ops.md
++++ b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+@@ -34,11 +34,30 @@ trivium status --json          # 要脚本处理时
+ | `65` | 前置产物缺失（找不到计划 / 根因材料 / 无代码变更） | 是 → 见 §六 |
+ | `69` | 环境或预检失败（CLI 不可调用、未认证、非 git 仓库、归档根不可写） | 是 → 见 §五 |
+ | `70` | 同主题已被锁 | 是 → 见 §二 |
+-| `73` | 运行仍在进行中（仅 `review --wait`） | **否**，继续下一次 `--wait` |
++| `73` | 运行仍在进行中（仅 `review --wait`） | **否**，向用户播报进度后继续下一次 `--wait` |
+ | `75` | 严格模式中止（超时或单侧失败） | 是 → 见 §四 |
+ 
+ `2` 和 `73` 最容易被误判成故障。`2` 是闸门在挡你，`73` 是还没跑完。
+ 
++### 等待期的进度反馈
++
++`73` 返回里带 `progress_brief`（单行成品摘要）与结构化进度
++（`elapsed_s` / `budget_s` / `pct` / `waits_done` / `max_waits` / `sides`）。
++Driver 被要求**每次都向用户播报**那一行，不是只打印到工具输出——设计 7.5.1。
++
++**调节反馈密度**：改项目 `.trivium/config.yaml` 的 `review.wait_timeout_s`。
++它既是单次等待窗口，也是用户能收到进度的最小间隔（Bash 工具在命令退出前不回传
++stdout，窗口内 Driver 说不了话）。默认 180s；调小更密，代价是等待往返变多，
++code 阶段大补丁下可到数十次。
++
++> **升级已有项目的配置只能手工改。** `trivium init` 对已存在的 `config.yaml`
++> 无条件跳过、绝不覆盖，重跑它改不了 `wait_timeout_s`。新默认值只对
++> 全新 `init` 出来的项目生效。
++
++`pct` 的分母是**单阶段超时**，不含重试预算；一侧触发重试、墙钟超出预算后，
++摘要不再显示百分比，改说「已超单次预算 · 重试收尾中」。此时 `waits_done/max_waits`
++仍有余量是正常的——两者分母本就不同源，这是有意的取舍，不是计数错乱。
++
+ ---
+ 
+ ## 二、主题被锁（exit 70）
+diff --git a/doc/07_manuals/QUICKSTART.md b/doc/07_manuals/QUICKSTART.md
+index 19d27c4..8b2ff45 100644
+--- a/doc/07_manuals/QUICKSTART.md
++++ b/doc/07_manuals/QUICKSTART.md
+@@ -125,6 +125,25 @@ node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ node dist/install.cjs --uninstall
+ ```
+ 
++> **`init` 不会刷新已有的 `config.yaml`**——它对已存在的那份无条件跳过、绝不覆盖。
++> 想拿到新版默认值（例如把等待窗口从 540s 调到 180s 以加密进度反馈），
++> 只能手工编辑项目里的 `.trivium/config.yaml`。
++
++### 双审跑起来之后，你会看到什么
++
++启动时先收到一条开场：主题、阶段、两侧模型、本阶段预算、汇报节奏与 `run_id`。
++此后每隔一个等待窗口（`review.wait_timeout_s`，默认 180s）收到一行进度，形如
++
++```
++plan 审查中 ｜ 已用 10m12s / 预算 25m（40%）｜ gemini 已完成 · glm 审查中
++```
++
++两侧状态有变化时会多一句说明。想自己查用 `/dual-status`，想中止用
++`.trivium/bin/trivium review --cancel <run_id>`。
++
++反馈间隔就等于那个窗口，调小它就更密——代价是等待往返变多。原因见设计 7.5.1：
++主脑只有在工具调用返回的那一刻才能说话。
++
+ `brew upgrade node` 之后 wrapper 若失效，`trivium doctor` 会点名「wrapper 写死的 node 已不存在」，重跑 `init` 即可。
+ 
+ ---
+diff --git a/skills/dual-review-bug/SKILL.md b/skills/dual-review-bug/SKILL.md
+index 872bee8..df5abe2 100644
+--- a/skills/dual-review-bug/SKILL.md
++++ b/skills/dual-review-bug/SKILL.md
+@@ -94,7 +94,14 @@ resolve 用它定位被审对象，而 `--start` 会**重新定位一次**——
+ profile 配置模型，且留痕里记的就是回退后的模型，事后看不出用户曾经指定过。
+ 
+ 它会冻结送审包、派生工作进程后**立即返回**，输出含 `run_id`、`max_waits`、
+-`wait_timeout_s` 与 `bash_timeout_ms`。
++`wait_timeout_s`、`bash_timeout_ms`，以及开场播报要用的 `stage_timeout_s`
++与两侧生效 `models`。
++
++**`--start` 返回后立刻向用户播报一条**：主题、阶段、两侧模型（`models`）、
++本阶段预算（`stage_timeout_s`）、汇报节奏（约每 `wait_timeout_s` 秒一次）、`run_id`；
++并告诉他想自己看进度可以随时 `/dual-status`，想中止用 `TV review --cancel <run_id>`。
++这些值**一律取自返回值**，不要写死——模型经 profile 与 `--model-*` 覆盖路由，
++写死就会漂移成错误播报。
+ 
+ 然后循环运行：
+ 
+@@ -102,15 +109,24 @@ profile 配置模型，且留痕里记的就是回退后的模型，事后看不
+ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ ```
+ 
+-> **每次 `--wait` 的 Bash 调用必须把工具级超时设为 `bash_timeout_ms`（600000）。**
+-> Bash 工具默认超时是 120s，而 `--wait` 会等 540s——不设就必被工具超时杀掉，
+-> 这一条是本命令能否跑通的前提。
++> **每次 `--wait` 的 Bash 调用必须把工具级超时设为返回的 `bash_timeout_ms`。**
++> Bash 工具默认超时是 120s，而 `--wait` 会等满 `wait_timeout_s`——不设就必被
++> 工具超时杀掉，这一条是本命令能否跑通的前提。
+ >
+ > 若某次 `--wait` 因工具超时而拿不到退出码：**按「仍在运行」处理**，
+ > 计入 `max_waits` 预算后继续下一次 `--wait`。工作进程不受影响，仍在跑。
+ 
+-退出码含义：`73` 仍在运行（打印进度后继续等）；`0` 两份审查文档与元数据已落盘；
+-其它按原样转述并停止。循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++**每次 `--wait` 返回后，先向用户发一条文本消息，再发下一次 `--wait`。**
++这条消息是**给用户看的**，不是工具输出——工具输出在折叠视图下用户看不到，
++只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
++不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
++
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
++
++退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
++（播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
++循环次数上限为返回的 `max_waits`，超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-review-code/SKILL.md b/skills/dual-review-code/SKILL.md
+index d7f2c23..4f76574 100644
+--- a/skills/dual-review-code/SKILL.md
++++ b/skills/dual-review-code/SKILL.md
+@@ -96,7 +96,14 @@ resolve 总是输出该字段（用户没传时它就是 `HEAD`），而显式
+ profile 配置模型，且留痕里记的就是回退后的模型，事后看不出用户曾经指定过。
+ 
+ 它会冻结送审包、派生工作进程后**立即返回**，输出含 `run_id`、`max_waits`、
+-`wait_timeout_s` 与 `bash_timeout_ms`。
++`wait_timeout_s`、`bash_timeout_ms`，以及开场播报要用的 `stage_timeout_s`
++与两侧生效 `models`。
++
++**`--start` 返回后立刻向用户播报一条**：主题、阶段、两侧模型（`models`）、
++本阶段预算（`stage_timeout_s`）、汇报节奏（约每 `wait_timeout_s` 秒一次）、`run_id`；
++并告诉他想自己看进度可以随时 `/dual-status`，想中止用 `TV review --cancel <run_id>`。
++这些值**一律取自返回值**，不要写死——模型经 profile 与 `--model-*` 覆盖路由，
++写死就会漂移成错误播报。
+ 
+ 然后循环运行：
+ 
+@@ -104,15 +111,24 @@ profile 配置模型，且留痕里记的就是回退后的模型，事后看不
+ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ ```
+ 
+-> **每次 `--wait` 的 Bash 调用必须把工具级超时设为 `bash_timeout_ms`（600000）。**
+-> Bash 工具默认超时是 120s，而 `--wait` 会等 540s——不设就必被工具超时杀掉，
+-> 这一条是本命令能否跑通的前提。
++> **每次 `--wait` 的 Bash 调用必须把工具级超时设为返回的 `bash_timeout_ms`。**
++> Bash 工具默认超时是 120s，而 `--wait` 会等满 `wait_timeout_s`——不设就必被
++> 工具超时杀掉，这一条是本命令能否跑通的前提。
+ >
+ > 若某次 `--wait` 因工具超时而拿不到退出码：**按「仍在运行」处理**，
+ > 计入 `max_waits` 预算后继续下一次 `--wait`。工作进程不受影响，仍在跑。
+ 
+-退出码含义：`73` 仍在运行（打印进度后继续等）；`0` 两份审查文档与元数据已落盘；
+-其它按原样转述并停止。循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++**每次 `--wait` 返回后，先向用户发一条文本消息，再发下一次 `--wait`。**
++这条消息是**给用户看的**，不是工具输出——工具输出在折叠视图下用户看不到，
++只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
++不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
++
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
++
++退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
++（播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
++循环次数上限为返回的 `max_waits`，超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-review-plan/SKILL.md b/skills/dual-review-plan/SKILL.md
+index 977f605..c8c47bb 100644
+--- a/skills/dual-review-plan/SKILL.md
++++ b/skills/dual-review-plan/SKILL.md
+@@ -94,7 +94,14 @@ resolve 用它定位被审对象，而 `--start` 会**重新定位一次**——
+ profile 配置模型，且留痕里记的就是回退后的模型，事后看不出用户曾经指定过。
+ 
+ 它会冻结送审包、派生工作进程后**立即返回**，输出含 `run_id`、`max_waits`、
+-`wait_timeout_s` 与 `bash_timeout_ms`。
++`wait_timeout_s`、`bash_timeout_ms`，以及开场播报要用的 `stage_timeout_s`
++与两侧生效 `models`。
++
++**`--start` 返回后立刻向用户播报一条**：主题、阶段、两侧模型（`models`）、
++本阶段预算（`stage_timeout_s`）、汇报节奏（约每 `wait_timeout_s` 秒一次）、`run_id`；
++并告诉他想自己看进度可以随时 `/dual-status`，想中止用 `TV review --cancel <run_id>`。
++这些值**一律取自返回值**，不要写死——模型经 profile 与 `--model-*` 覆盖路由，
++写死就会漂移成错误播报。
+ 
+ 然后循环运行：
+ 
+@@ -102,15 +109,24 @@ profile 配置模型，且留痕里记的就是回退后的模型，事后看不
+ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ ```
+ 
+-> **每次 `--wait` 的 Bash 调用必须把工具级超时设为 `bash_timeout_ms`（600000）。**
+-> Bash 工具默认超时是 120s，而 `--wait` 会等 540s——不设就必被工具超时杀掉，
+-> 这一条是本命令能否跑通的前提。
++> **每次 `--wait` 的 Bash 调用必须把工具级超时设为返回的 `bash_timeout_ms`。**
++> Bash 工具默认超时是 120s，而 `--wait` 会等满 `wait_timeout_s`——不设就必被
++> 工具超时杀掉，这一条是本命令能否跑通的前提。
+ >
+ > 若某次 `--wait` 因工具超时而拿不到退出码：**按「仍在运行」处理**，
+ > 计入 `max_waits` 预算后继续下一次 `--wait`。工作进程不受影响，仍在跑。
+ 
+-退出码含义：`73` 仍在运行（打印进度后继续等）；`0` 两份审查文档与元数据已落盘；
+-其它按原样转述并停止。循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++**每次 `--wait` 返回后，先向用户发一条文本消息，再发下一次 `--wait`。**
++这条消息是**给用户看的**，不是工具输出——工具输出在折叠视图下用户看不到，
++只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
++不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
++
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
++
++退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
++（播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
++循环次数上限为返回的 `max_waits`，超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-run/SKILL.md b/skills/dual-run/SKILL.md
+index 434c196..b0a08d8 100644
+--- a/skills/dual-run/SKILL.md
++++ b/skills/dual-run/SKILL.md
+@@ -56,7 +56,12 @@ Bash 按写命令形态启发式拦截（重定向、`tee`、`sed -i`、`rm/mv/c
+   自动复用，审查员才知道这次改动要达成什么，§9.4）；
+ - `--focus` 传 S0.5 的 `prompt_hint`，为空则不传；`--context` 传 `context_paths`。
+ 
+-**每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`（600000）。**
++**每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`。**
++
++**开场播报与每次 `--wait` 后的进度播报，随委托一并继承。** 那里对 Driver 说的
++「先向用户发一条文本消息，再发下一次 `--wait`」在 S2 / S6 里同样是硬要求——
++命令 A 的链路更长，用户等得更久，漏掉播报的代价比命令 B/C/D 还大。
++
+ **本命令收到的模型覆盖（`--model-gemini` / `--model-glm`）与档位（`--profile`）
+ 要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉——一丢就静默回退到
+ 配置里的 `active_profile`，留痕里记的是回退后的模型，事后看不出用户曾经指定过。
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index c3b0027..32754c9 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -228,6 +228,15 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
+     }
+     const out = await waitRun(ctx, waitId, timeoutS);
+     if (isJsonMode()) {
++      /*
++       * `progress` 的语义保持不变——三个 skill 已约定原样转述它，改语义会静默
++       * 破坏既有行为。新字段并列增加（审查意见 AGY-02/05、GLM-05/06）。
++       *
++       * `status` 为 null 时新字段**存在但取值为 null**，不是省略：省略会让
++       * Driver 分不清「没有」和「读不到」。
++       */
++      const s = out.status;
++      const elapsedS = s ? Math.round((Date.now() - new Date(s.started_at).getTime()) / 1000) : null;
+       emitJson({
+         ok: out.exitCode === EXIT.OK,
+         still_running: out.exitCode === EXIT.STILL_RUNNING,
+@@ -236,6 +245,18 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
+         artifacts: out.status?.artifacts ?? [],
+         message: out.status?.message ?? null,
+         progress: out.progress,
++        // ↓ skill 要原样念给用户的一行
++        progress_brief: out.progressBrief,
++        elapsed_s: elapsedS,
++        budget_s: s ? out.budget.stageTimeoutS : null,
++        pct:
++          elapsedS === null
++            ? null
++            : Math.min(100, Math.round((elapsedS / Math.max(1, out.budget.stageTimeoutS)) * 100)),
++        waits_done:
++          elapsedS === null ? null : Math.floor(elapsedS / Math.max(1, out.budget.waitTimeoutS)) + 1,
++        max_waits: out.budget.maxWaits,
++        sides: s?.sides ?? {},
+       });
+     } else {
+       say(out.progress);
+@@ -347,6 +368,9 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
+         wait_timeout_s: st.waitTimeoutS,
+         // skill 必须用这个值设置每次 --wait 的 Bash 工具超时（GLM-02）
+         bash_timeout_ms: st.bashTimeoutMs,
++        // ↓ 开场播报要用：两侧是谁、预算多久。只有编排器知道生效值
++        stage_timeout_s: st.stageTimeoutS,
++        models: st.models,
+         worker_pid: st.workerPid,
+         run_dir: st.runDir,
+       });
+diff --git a/src/trivium/config.ts b/src/trivium/config.ts
+index c777257..6a8c27c 100644
+--- a/src/trivium/config.ts
++++ b/src/trivium/config.ts
+@@ -74,7 +74,13 @@ export function defaultConfig(): Config {
+       failure_policy: 'strict',
+       allow_single_flag: true,
+       timeout_s: { plan: 900, code: 1200, bug: 1200 },
+-      wait_timeout_s: 540,
++      /*
++       * 每次 `--wait` 的窗口，同时也是**用户能收到进度的最小间隔**——Bash 工具在
++       * 命令退出前不回传 stdout，窗口内 Driver 物理上说不了话。原值 540s 意味着
++       * 用户每 9 分钟才听到一声，与没有反馈在体感上没有区别。180s 是成本与体感的
++       * 折中：更短（如 60s）会让 code 阶段逼近百次往返，收益却是边际的。
++       */
++      wait_timeout_s: 180,
+       heartbeat_stale_s: 120,
+       retry: { transient_max: 1 },
+       cache: false,
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index f3e7cc9..d80deb9 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -17,7 +17,8 @@ import { runRoot } from './config.js';
+ import { acquireLock, inspectLock, reclaimStaleLock } from './lock.js';
+ import {
+   computeMaxWaits, interpretStatus, newStatus, patchStatus, readStatus,
+-  renderProgress, writeStatus, type RunStatus,
++  renderProgress, renderProgressBrief, writeStatus,
++  type ProgressBudget, type RunStatus,
+ } from './status.js';
+ import {
+   executeRun, prepareRun, repoId, type PreparedRun, type ReviewOptions, type RunContext,
+@@ -177,6 +178,18 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
+ 
+ // ─────────────────────── --start ───────────────────────
+ 
++/**
++ * 每次 `--wait` 的 Bash 调用应设的工具级超时。
++ *
++ * Bash 工具默认 120s、上限 600s，而 `--wait` 会等满 `waitTimeoutS`——不显式抬高
++ * 就必被工具超时杀掉（审查意见 GLM-02，也是 M2 完成判据 6）。原先固定取上限值，
++ * 但窗口调小后那就成了「卡死也要干等 10 分钟」：改成贴着窗口留 60s 余量，
++ * 余量覆盖进程启动与收尾，与原先 600-540 的余量等价。窗口若仍是 540s，结果不变。
++ */
++export function bashTimeoutFor(waitTimeoutS: number): number {
++  return Math.min(600_000, waitTimeoutS * 1000 + 60_000);
++}
++
+ export interface StartOutcome {
+   runId: string;
+   /** skill 侧的 `--wait` 循环上限 */
+@@ -185,6 +198,10 @@ export interface StartOutcome {
+   waitTimeoutS: number;
+   /** skill 必须为每次 --wait 的 Bash 调用设置的工具级超时（毫秒） */
+   bashTimeoutMs: number;
++  /** 本阶段单侧超时，供 skill 的开场播报说明「预算多久」 */
++  stageTimeoutS: number;
++  /** 两侧**生效**模型（已过 profile 与 --model-* 覆盖），供开场播报 */
++  models: Partial<Record<CriticId, string>>;
+   workerPid: number;
+   runDir: string;
+   /**
+@@ -245,7 +262,9 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
+         runId: rc.runId,
+         maxWaits: 0,
+         waitTimeoutS: cfg.review.wait_timeout_s,
+-        bashTimeoutMs: 600_000,
++        bashTimeoutMs: bashTimeoutFor(cfg.review.wait_timeout_s),
++        stageTimeoutS: cfg.review.timeout_s[rc.stage],
++        models: {},
+         workerPid: process.pid,
+         runDir: rc.runDirBase,
+         finishedInline: true,
+@@ -308,11 +327,21 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
+         cfg.review.retry.transient_max,
+       ),
+       waitTimeoutS,
+-      // 每次 --wait 的 Bash 调用必须显式抬到 600s 上限：默认 120s 会把它杀掉
+-      // （审查意见 GLM-02，也是 M2 完成判据 6）
+-      bashTimeoutMs: 600_000,
++      bashTimeoutMs: bashTimeoutFor(waitTimeoutS),
+       workerPid: spawned.pid,
+       runDir: rc.runDirBase,
++      /*
++       * 开场播报要用的两项（审查意见 GLM-02）。skill 被要求在 --start 之后
++       * 立刻告诉用户「两侧是谁、预算多久」，而这两项原先只有编排器知道：
++       * 模型是 profile 与 --model-* 覆盖路由后的**生效值**，让 skill 文档
++       * 自己写死等于让它随配置漂移成错误播报。
++       */
++      stageTimeoutS: cfg.review.timeout_s[rc.stage],
++      models: Object.fromEntries(
++        Object.entries(rc.requests)
++          .filter(([, r]) => r)
++          .map(([c, r]) => [c, r!.model]),
++      ) as Partial<Record<CriticId, string>>,
+     };
+   } catch (e) {
+     // prepareRun 之后才失败：闸门已经是 running，必须连它一起回收
+@@ -437,6 +466,25 @@ export interface WaitOutcome {
+   status: RunStatus | null;
+   /** 人读进度，供 skill 原样转述 */
+   progress: string;
++  /**
++   * 单行摘要，供 skill **原样念给用户**。
++   *
++   * `status` 为 null（窗口用尽且全程无有效心跳）时退化为与 `progress` 同一句
++   * 启动提示——渲染要 RunStatus，那时没有（审查意见 AGY-05 ≡ GLM-06）。
++   */
++  progressBrief: string;
++  /** 本次渲染用的预算参数，供 CLI 透出结构化字段 */
++  budget: ProgressBudget;
++}
++
++/** 从配置装配进度预算。`--wait` 与 `--status` 共用，两处显示的期待值才会一致 */
++export function budgetFor(cfg: Config, stage: Stage): ProgressBudget {
++  const waitTimeoutS = cfg.review.wait_timeout_s;
++  return {
++    stageTimeoutS: cfg.review.timeout_s[stage],
++    waitTimeoutS,
++    maxWaits: computeMaxWaits(cfg.review.timeout_s[stage], waitTimeoutS, cfg.review.retry.transient_max),
++  };
+ }
+ 
+ /**
+@@ -459,6 +507,14 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
+     fallbackPid = null;
+   }
+ 
++  /*
++   * 预算要按**本次运行的阶段**取（plan/code/bug 的超时差一倍以上）。status.json
++   * 还没落地时从交接文件取身份——它在 `--start` 的同步窗口里就写好了，比 status 早。
++   */
++  const stage0 =
++    (await readStatus(runDir))?.stage ?? (await readHandoffIdentity(runDir))?.stage ?? 'plan';
++  const budget = budgetFor(cfg, stage0);
++
+   const deadline = Date.now() + timeoutS * 1000;
+   const pollMs = 2000;
+   let last: RunStatus | null = null;
+@@ -474,7 +530,9 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
+       return {
+         exitCode: code,
+         status: reading.status,
+-        progress: renderProgress(reading.status),
++        progress: renderProgress(reading.status, Date.now(), budget),
++        progressBrief: renderProgressBrief(reading.status, Date.now(), budget),
++        budget,
+       };
+     }
+     if (reading.kind === 'worker_lost') {
+@@ -500,12 +558,13 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
+ 
+     if (Date.now() >= deadline) {
+       // 本次窗口用尽但运行仍在继续：这是**预期**返回，不是失败
++      const starting = `运行 ${runId} 仍在启动中（尚无有效心跳）`;
+       return {
+         exitCode: EXIT.STILL_RUNNING,
+         status: last,
+-        progress: last
+-          ? renderProgress(last)
+-          : `运行 ${runId} 仍在启动中（尚无有效心跳）`,
++        progress: last ? renderProgress(last, Date.now(), budget) : starting,
++        progressBrief: last ? renderProgressBrief(last, Date.now(), budget) : starting,
++        budget,
+       };
+     }
+     await new Promise((r) => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
+@@ -528,7 +587,12 @@ export async function statusRun(ctx: Ctx, runId: string): Promise<{ exitCode: nu
+     : s.phase === 'failed' ? EXIT.FAIL
+     : s.phase === 'cancelled' ? EXIT.FAIL
+     : EXIT.STILL_RUNNING;
+-  return { exitCode: code, status: s, progress: renderProgress(s) };
++  /*
++   * 手工自查（`trivium status` / `/dual-status`）看到的期待值要与自动等待循环一致，
++   * 否则同一次运行在两个地方显示成两个样子（审查意见 AGY-03）。
++   * budget 的两项数据 `ctx.config` 与 `s.stage` 都在手上，没有拿不到的问题。
++   */
++  return { exitCode: code, status: s, progress: renderProgress(s, Date.now(), budgetFor(ctx.config, s.stage)) };
+ }
+ 
+ /**
+diff --git a/src/trivium/status.ts b/src/trivium/status.ts
+index 596a8de..c96167b 100644
+--- a/src/trivium/status.ts
++++ b/src/trivium/status.ts
+@@ -196,27 +196,130 @@ export async function interpretStatus(
+   return { kind: 'running', status: raw };
+ }
+ 
++/*
++ * ───────────────────────── 进度渲染 ─────────────────────────
++ *
++ * 用户在等待期间只能看到这里渲染出来的东西。原先它只回答「跑了多久」，
++ * 不回答「还要多久」——已用时没有分母，看到 612s 无从判断是正常还是快卡死。
++ * `ProgressBudget` 补的就是那个分母。
++ */
++
++/** 状态词的中文译表。集中一处，避免散落在渲染点各写各的 */
++const SIDE_STATE_CN: Record<SideStatus['state'], string> = {
++  pending: '待启动',
++  running: '审查中',
++  ok: '已完成',
++  failed: '失败',
++  timeout: '超时',
++  parse_fallback: '解析回退',
++};
++
++const PHASE_CN: Record<RunPhase, string> = {
++  starting: '启动中',
++  running: '审查中',
++  parsing: '解析中',
++  archiving: '归档中',
++  success: '已完成',
++  failed: '失败',
++  cancelled: '已取消',
++};
++
++/** 秒数人读化：`612` → `10m12s`，`45` → `45s`。612s 读起来要心算 */
++export function fmtDuration(sec: number): string {
++  const s = Math.max(0, Math.round(sec));
++  if (s < 60) return `${s}s`;
++  return `${Math.floor(s / 60)}m${s % 60}s`;
++}
++
++/** 渲染期待值所需的预算参数。全部可选传入——不传就退回「只说已用时」的老输出 */
++export interface ProgressBudget {
++  /** 本阶段单侧超时（`review.timeout_s[stage]`），`pct` 的分母 */
++  stageTimeoutS: number;
++  /** 每次 `--wait` 的窗口，用于推算「第几次等待」 */
++  waitTimeoutS: number;
++  /** 循环上限（`computeMaxWaits` 的结果），「共几次」 */
++  maxWaits: number;
++}
++
++/**
++ * 已用时相对预算的换算。
++ *
++ * `pct` 的分母有意用**单阶段超时**而非 `computeMaxWaits` 那个含重试的总预算：
++ * 绝大多数运行不重试、一侧几百秒就收，用最坏预算做分母会让它们永远显示成
++ * 一成多，那个数字对「还要多久」没有指导意义。代价是重试时会超 100%，
++ * 所以超出后不再显示百分比，改说一句解释——那一刻用户要的本就是解释。
++ */
++function budgetOf(elapsedS: number, b: ProgressBudget, attempt: number) {
++  const over = elapsedS > b.stageTimeoutS;
++  const pct = Math.min(100, Math.round((elapsedS / Math.max(1, b.stageTimeoutS)) * 100));
++  // 从 1 起算：elapsed 为 0 时人在等的是「第 1 次」，不是「第 0 次」
++  const waitsDone = Math.floor(elapsedS / Math.max(1, b.waitTimeoutS)) + 1;
++  const span = over
++    ? `已超单次预算 · 重试收尾中${attempt > 0 ? `（第 ${attempt} 次尝试）` : ''}`
++    : `已用 ${fmtDuration(elapsedS)} / 预算 ${fmtDuration(b.stageTimeoutS)}（${pct}%）`;
++  return { over, pct, waitsDone, span };
++}
++
++/** 两侧里最大的尝试次数——超预算文案要说清是第几次重试 */
++function maxAttempt(s: RunStatus): number {
++  let m = 0;
++  for (const side of Object.values(s.sides)) if (side && side.attempt > m) m = side.attempt;
++  return m;
++}
++
+ /** 人读进度摘要（`--wait` 每次返回时打印，§13.2 第 1 处落点） */
+-export function renderProgress(s: RunStatus, now: number = Date.now()): string {
++export function renderProgress(
++  s: RunStatus,
++  now: number = Date.now(),
++  budget?: ProgressBudget,
++): string {
+   const elapsed = Math.round((now - new Date(s.started_at).getTime()) / 1000);
+   const beat = Math.round((now - new Date(s.heartbeat_at).getTime()) / 1000);
+   const lines = [
+-    `运行 ${s.run_id} ｜ 主题 ${s.topic} ｜ 阶段 ${s.stage} ｜ 阶段状态 ${s.phase}`,
+-    `已用时 ${elapsed}s ｜ 最近心跳 ${beat}s 前`,
++    `运行 ${s.run_id} ｜ 主题 ${s.topic} ｜ 阶段 ${s.stage} ｜ 阶段状态 ${PHASE_CN[s.phase] ?? s.phase}`,
+   ];
++  if (budget) {
++    const b = budgetOf(elapsed, budget, maxAttempt(s));
++    lines.push(`${b.span} ｜ 第 ${b.waitsDone}/${budget.maxWaits} 次等待 ｜ 最近心跳 ${beat}s 前`);
++  } else {
++    lines.push(`已用时 ${elapsed}s ｜ 最近心跳 ${beat}s 前`);
++  }
+   for (const [c, side] of Object.entries(s.sides)) {
+     if (!side) continue;
+     lines.push(
+-      `  ${c}: ${side.state}` +
++      `  ${c}: ${SIDE_STATE_CN[side.state] ?? side.state}` +
+         `${side.model ? ` ｜ ${side.model}` : ''}` +
+         `${side.attempt > 0 ? ` ｜ 第 ${side.attempt} 次尝试` : ''}` +
+-        `${side.elapsed_s > 0 ? ` ｜ ${Math.round(side.elapsed_s)}s` : ''}` +
++        `${side.elapsed_s > 0 ? ` ｜ ${fmtDuration(side.elapsed_s)}` : ''}` +
+         `${side.note ? ` ｜ ${side.note}` : ''}`,
+     );
+   }
+   return lines.join('\n');
+ }
+ 
++/**
++ * 单行进度摘要，供 skill **原样念给用户**。
++ *
++ * 给成品而不是给原料：让 Driver 自己从 `progress` 里组织语言，每次说法都不一样，
++ * 用户反而更难看出「和上次比变了什么」。
++ */
++export function renderProgressBrief(
++  s: RunStatus,
++  now: number = Date.now(),
++  budget?: ProgressBudget,
++): string {
++  const elapsed = Math.round((now - new Date(s.started_at).getTime()) / 1000);
++  const head = `${s.stage} ${PHASE_CN[s.phase] ?? s.phase}`;
++  const span = budget
++    ? budgetOf(elapsed, budget, maxAttempt(s)).span
++    : `已用 ${fmtDuration(elapsed)}`;
++  const sides = Object.entries(s.sides)
++    .filter(([, side]) => side)
++    .map(([c, side]) => `${c} ${SIDE_STATE_CN[side!.state] ?? side!.state}`)
++    .join(' · ');
++  return sides ? `${head} ｜ ${span} ｜ ${sides}` : `${head} ｜ ${span}`;
++}
++
+ /**
+  * `--wait` 的循环次数上限（`--start` 返回给 skill 用）。
+  *
+diff --git a/test/integration/run-protocol.test.ts b/test/integration/run-protocol.test.ts
+index 3e89be6..ece0167 100644
+--- a/test/integration/run-protocol.test.ts
++++ b/test/integration/run-protocol.test.ts
+@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
+ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+-import { cancelRun, runDirFor, statusRun, waitRun } from '../../src/trivium/run-protocol.js';
++import { bashTimeoutFor, cancelRun, runDirFor, statusRun, waitRun } from '../../src/trivium/run-protocol.js';
+ import { newStatus, readStatus, writeStatus } from '../../src/trivium/status.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
+ import { acquireLock, inspectLock } from '../../src/trivium/lock.js';
+@@ -72,14 +72,26 @@ test('--status 在运行中返回 73 并渲染两侧进度', async () => {
+   try {
+     const out = await statusRun(ctx, 'R-STATUS');
+     assert.equal(out.exitCode, EXIT.STILL_RUNNING);
+-    assert.match(out.progress, /阶段状态 running/);
++    assert.match(out.progress, /阶段状态 审查中/);
+     assert.match(out.progress, /gemini/);
+     assert.match(out.progress, /glm/);
++    // 手工自查与自动等待循环看到同样的期待值（审查意见 AGY-03）
++    assert.match(out.progress, /预算/);
++    assert.match(out.progress, /次等待/);
+   } finally {
+     killQuietly(pid);
+   }
+ });
+ 
++test('Bash 工具超时贴着等待窗口，并封顶在平台上限', () => {
++  // 窗口 180s：留 60s 余量覆盖启动与收尾，卡死 4 分钟就能发现
++  assert.equal(bashTimeoutFor(180), 240_000);
++  // 窗口仍是 540s 时结果与改动前一致，既有项目不受影响
++  assert.equal(bashTimeoutFor(540), 600_000);
++  // 超过平台上限一律封顶
++  assert.equal(bashTimeoutFor(900), 600_000);
++});
++
+ test('--status 对不存在的运行返回 65', async () => {
+   const ctx = await fakeCtx();
+   const out = await statusRun(ctx, 'R-NOPE');
+diff --git a/test/unit/status.test.ts b/test/unit/status.test.ts
+index a03e23b..8244311 100644
+--- a/test/unit/status.test.ts
++++ b/test/unit/status.test.ts
+@@ -5,7 +5,8 @@ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import {
+   newStatus, writeStatus, readStatus, patchStatus, interpretStatus,
+-  renderProgress, computeMaxWaits, statusPath, isTerminal, type RunStatus,
++  renderProgress, renderProgressBrief, fmtDuration, computeMaxWaits, statusPath, isTerminal,
++  type ProgressBudget, type RunStatus,
+ } from '../../src/trivium/status.js';
+ import { processStartTime } from '../../src/trivium/util/exec.js';
+ 
+@@ -14,6 +15,8 @@ async function runDir(): Promise<string> {
+ }
+ const STALE = 120_000;
+ const DEAD_PID = 2 ** 22;
++/** code 阶段 2700s、窗口 180s、重试 1 次 → maxWaits = ceil(5400/180)+2 = 32 */
++const BUDGET: ProgressBudget = { stageTimeoutS: 2700, waitTimeoutS: 180, maxWaits: 32 };
+ 
+ function base(): RunStatus {
+   return newStatus({
+@@ -173,13 +176,70 @@ test('进度摘要包含两侧状态、已用时与心跳新鲜度', () => {
+   const s = base();
+   s.phase = 'running';
+   s.sides.gemini = { state: 'running', model: 'M1', attempt: 1, elapsed_s: 42 };
+-  s.sides.glm = { state: 'ok', model: 'M2', attempt: 1, elapsed_s: 120, note: '已完成' };
++  s.sides.glm = { state: 'ok', model: 'M2', attempt: 1, elapsed_s: 120, note: '收尾' };
+   const out = renderProgress(s);
+-  assert.match(out, /gemini: running/);
++  assert.match(out, /gemini: 审查中/);
+   assert.match(out, /第 1 次尝试/);
+-  assert.match(out, /glm: ok/);
+-  assert.match(out, /已完成/);
++  assert.match(out, /glm: 已完成/);
++  assert.match(out, /收尾/);
+   assert.match(out, /最近心跳/);
++  // 不传 budget 时退回老输出：不得出现期待值字段，既有调用方不受影响
++  assert.doesNotMatch(out, /预算/);
++  assert.doesNotMatch(out, /次等待/);
++});
++
++// ── 等待期进度反馈（FR-26 / AC-19）──
++
++test('传入 budget 时补出期待值：预算、百分比、第几次等待', () => {
++  const s = base();
++  s.phase = 'running';
++  s.started_at = new Date(Date.now() - 612_000).toISOString(); // 已用 612s
++  s.sides.gemini = { state: 'ok', model: 'M1', attempt: 1, elapsed_s: 340 };
++  s.sides.glm = { state: 'running', model: 'M2', attempt: 1, elapsed_s: 612 };
++  const out = renderProgress(s, Date.now(), BUDGET);
++  assert.match(out, /已用 10m12s \/ 预算 45m0s（23%）/);
++  // 612 / 180 = 3.4 → 第 4 次；从 1 起算
++  assert.match(out, /第 4\/32 次等待/);
++  assert.match(out, /阶段状态 审查中/);
++});
++
++test('waits_done 从 1 起算，并在窗口边界进位', () => {
++  const s = base();
++  s.phase = 'running';
++  // elapsed 为 0：人在等的是「第 1 次」，不是「第 0 次」
++  assert.match(renderProgress(s, Date.now(), BUDGET), /第 1\/32 次等待/);
++  s.started_at = new Date(Date.now() - 180_000).toISOString();
++  assert.match(renderProgress(s, Date.now(), BUDGET), /第 2\/32 次等待/);
++});
++
++test('超出单阶段预算时不显示百分比，改说重试收尾', () => {
++  const s = base();
++  s.phase = 'running';
++  s.started_at = new Date(Date.now() - 3000_000).toISOString(); // 3000s > 2700s
++  s.sides.glm = { state: 'running', model: 'M2', attempt: 2, elapsed_s: 3000 };
++  const out = renderProgress(s, Date.now(), BUDGET);
++  assert.match(out, /已超单次预算 · 重试收尾中（第 2 次尝试）/);
++  assert.doesNotMatch(out, /%/);
++});
++
++test('brief 是单行摘要，含阶段、时间段与两侧状态', () => {
++  const s = base();
++  s.phase = 'running';
++  s.started_at = new Date(Date.now() - 612_000).toISOString();
++  s.sides.gemini = { state: 'ok', model: 'M1', attempt: 1, elapsed_s: 340 };
++  s.sides.glm = { state: 'running', model: 'M2', attempt: 1, elapsed_s: 612 };
++  const brief = renderProgressBrief(s, Date.now(), BUDGET);
++  assert.equal(brief.includes('\n'), false, 'brief 必须是单行');
++  assert.match(brief, /gemini 已完成 · glm 审查中/);
++  assert.match(brief, /已用 10m12s \/ 预算 45m0s（23%）/);
++  assert.ok([...brief].length <= 60, `brief 应控制在 60 字以内，实际 ${[...brief].length}：${brief}`);
++});
++
++test('时长渲染：不足一分钟按秒，超过则分秒', () => {
++  assert.equal(fmtDuration(45), '45s');
++  assert.equal(fmtDuration(612), '10m12s');
++  assert.equal(fmtDuration(60), '1m0s');
++  assert.equal(fmtDuration(-5), '0s');
+ });
+ 
+ test('max_waits 覆盖「单侧超时 × (1+重试)」并留 2 次余量', () => {
+@@ -191,6 +251,13 @@ test('max_waits 覆盖「单侧超时 × (1+重试)」并留 2 次余量', () =>
+   assert.equal(computeMaxWaits(1200, 540, 1), 7);
+ });
+ 
++test('窗口收窄到 180s 后 max_waits 自适应（本项目 timeout_s 覆盖值）', () => {
++  // code 2700s × 2 ÷ 180 = 30 → +2 = 32
++  assert.equal(computeMaxWaits(2700, 180, 1), 32);
++  // plan 1500s × 2 ÷ 180 = ceil(16.67)=17 → +2 = 19
++  assert.equal(computeMaxWaits(1500, 180, 1), 19);
++});
++
+ test('max_waits 对异常入参不炸（除零保护）', () => {
+   assert.ok(computeMaxWaits(900, 0, 1) > 0);
+   assert.equal(computeMaxWaits(900, 540, -3), computeMaxWaits(900, 540, 0));
