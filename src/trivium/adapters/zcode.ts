@@ -150,6 +150,20 @@ export const zcodeAdapter: CriticAdapter = {
         reason: '探针未实测到任何可用的只读参数组合，无法保障审查员只读，该侧不可用',
       };
     }
+    /*
+     * `--disallowed-tools` 是硬前置：probes/zcode.ts 与 ZCODE_READONLY_DENYLIST 的注释
+     * 都写明 `--mode plan` 并不阻止命令执行，完整 denylist 里的 Bash 是必需项。
+     * 原先只要 readonly_flags 非空就判可用——某个版本把 --disallowed-tools 改名后，
+     * 审查员会在没有任何工具级 denylist 的情况下跑起来，失守只能事后靠轨迹发现。
+     */
+    if (!p.readonly_flags.some((f) => f.startsWith('--disallowed-tools'))) {
+      return {
+        ok: false,
+        reason:
+          '探针未实测到 --disallowed-tools 被接受：仅靠 --mode plan 挡不住 Bash 写入（M0 实测），' +
+          '无法保障审查员只读，该侧不可用。请重跑 trivium doctor 或升级 ZCode',
+      };
+    }
     if (p.response_field === null) {
       return {
         ok: false,

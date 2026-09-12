@@ -9,7 +9,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { run } from './exec.js';
 import { EXIT, TriviumError, swallowedTextHint } from '../exit-codes.js';
-import { makeTempDir } from './fsx.js';
+import { makeTempDir, matchesAnyGlob } from './fsx.js';
 
 export interface GitStatusEntry {
   /** git status --porcelain 的两字符状态码，如 '??' 'M ' ' M' 'A ' */
@@ -170,12 +170,23 @@ export async function diffAgainst(
   cwd: string,
   base: string,
   excludePrefixes: readonly string[] = [],
+  /**
+   * 按 glob 剔除的路径（`review.sensitive_globs`）。敏感文件只列进禁读清单是不够的：
+   * 根目录一个未被 .gitignore 覆盖的 `.env`、或一份被误提交本次又被修改的 `*.pem`，
+   * 会整篇收进补丁，经**被审对象本身**进 BRIEF、argv 与 request.json——
+   * 禁读清单里还写着「禁止读取 .env」，内容却已经在任务书里了。
+   */
+  excludeGlobs: readonly string[] = [],
 ): Promise<string> {
   const excluded = (rel: string): boolean =>
-    excludePrefixes.some((p) => rel === p || rel.startsWith(p.endsWith('/') ? p : `${p}/`));
+    excludePrefixes.some((p) => rel === p || rel.startsWith(p.endsWith('/') ? p : `${p}/`)) ||
+    matchesAnyGlob(rel, excludeGlobs);
 
-  // 用 pathspec 让 git 自己排除已跟踪文件的变更
-  const pathspecs = excludePrefixes.map((p) => `:(exclude)${p.replace(/\/+$/, '')}/**`);
+  // 用 pathspec 让 git 自己排除已跟踪文件的变更；glob 魔法与 fsx.matchesAnyGlob 同为 fnmatch 语义
+  const pathspecs = [
+    ...excludePrefixes.map((p) => `:(exclude)${p.replace(/\/+$/, '')}/**`),
+    ...excludeGlobs.map((g) => `:(exclude,glob)${g}`),
+  ];
   const tracked = await git(cwd, ['diff', '--find-renames', base, '--', '.', ...pathspecs]);
   /*
    * ── 非零退出必须抛，不能吞（审查意见 GLM-r2-04）──

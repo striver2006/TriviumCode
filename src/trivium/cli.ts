@@ -165,7 +165,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --check-artifacts   改为校验该阶段最低工件集（§6.3）
       --await-approval    置闸门为 awaiting_approval 并输出停点话术
 
-  trivium gate hook-pre-write | hook-pre-commit | hook-stop | hook-session-start
+  trivium gate hook-pre-write | hook-pre-bash | hook-pre-commit | hook-stop | hook-session-start
       Claude Code Hook 入口，从 stdin 读事件。**不应由人直接调用。**
       退出码：0 放行或判定不了 ｜ 2 明确判定拦截 ｜ 1 程序缺陷（非阻断）
 
@@ -503,7 +503,7 @@ async function cmdInit(args: ParsedArgs): Promise<number> {
 }
 
 const HOOK_NAMES: readonly HookName[] = [
-  'hook-pre-write', 'hook-pre-commit', 'hook-stop', 'hook-session-start',
+  'hook-pre-write', 'hook-pre-bash', 'hook-pre-commit', 'hook-stop', 'hook-session-start',
 ];
 
 async function cmdGate(args: ParsedArgs): Promise<number> {

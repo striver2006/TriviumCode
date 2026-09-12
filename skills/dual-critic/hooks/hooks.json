@@ -11,6 +11,9 @@
     "根本没有执行机会，结果是每次工具调用都报一次钩子错误。",
     "（审查意见 AGY-02 / GLM-01，修订版 M2 计划 §2.3）",
     "",
+    "hook-pre-bash 挂在全部 Bash 事件上（无 if 过滤）：hook-pre-write 只覆盖 Edit / Write，",
+    "`cat > f`、`sed -i`、`tee`、`git checkout` 是旁路；它按写命令形态做启发式拦截，只在闸门期生效。",
+    "",
     "退出码约定见 src/trivium/hooks.ts 的三档语义：",
     "  0 = 放行或判定不了；2 = 明确判定拦截；1 = 程序缺陷（非阻断）。"
   ],
@@ -22,6 +25,16 @@
           {
             "type": "command",
             "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-pre-write'",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-pre-bash'",
             "timeout": 15
           }
         ]

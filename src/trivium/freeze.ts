@@ -131,7 +131,7 @@ export async function freeze(input: FreezeInput): Promise<Snapshot> {
     const base = input.base ?? 'HEAD';
     diffText =
       input.diffText ??
-      (await diffAgainst(projectRoot, base, diffExcludePrefixes(path.relative(projectRoot, archiveRoot))));
+      (await diffAgainst(projectRoot, base, diffExcludePrefixes(path.relative(projectRoot, archiveRoot)), cfg.review.sensitive_globs));
     subjectSha256 = sha256(diffText);
     // 真实路径在 _meta/ 下，由调用方落盘后回填；这里先给逻辑路径
     subjectPath = path.join(archiveRoot, '_pending', 'changes.diff');

@@ -3,6 +3,7 @@
  *
  * 闸门「真正停住」的强制层。四个子命令：
  *   `hook-pre-write`   写入前拦截（闸门未审批 / 伪造审查文件）
+ *   `hook-pre-bash`    Bash 写命令的启发式拦截（闸门期的 `cat >`、`sed -i`、`tee`、`rm/mv/cp`、`git checkout` …）
  *   `hook-pre-commit`  `git commit` 前拦截（裁决未完成）
  *   `hook-stop`        收工前拦截（裁决未完成）
  *   `hook-session-start` 注入待办清单
@@ -207,6 +208,85 @@ function deny(reason: string): HookOutput {
     },
     stderr: reason,
   };
+}
+
+// ─────────────────────── hook-pre-bash ───────────────────────
+
+/**
+ * Bash 命令是否**像**在改动工作树。
+ *
+ * 启发式，不是 shell 语义分析：`hook-pre-write` 只挂在 Edit / Write / NotebookEdit 上，
+ * `cat > src/a.ts`、`sed -i`、`tee`、`git checkout` 全是旁路——而这恰恰是模型最顺手的工具。
+ * 方向取保守：宁可在闸门期多拦一条无害命令（用户可以等审完再跑），也不能放过一次写入。
+ * 只在闸门期生效，日常不受影响。
+ */
+const WRITE_LIKE: readonly RegExp[] = [
+  /(^|[^<>|&\d])>{1,2}(?!\s*(?:&|\/dev\/null))/,        // 重定向（排除 2>&1 与 > /dev/null）
+  /\btee\b/,
+  /\bsed\s+(?:-[A-Za-z]*i|--in-place)\b/,
+  /\bperl\s+-[A-Za-z]*i\b/,
+  /\b(?:rm|mv|cp|touch|mkdir|rmdir|ln|install|rsync|patch|dd|truncate|chmod|chown|unzip|tar)\b/,
+  /\bgit\s+(?:-[^\s]+\s+)*(?:checkout|restore|switch|stash|reset|apply|am|cherry-pick|merge|rebase|pull|revert|clean|mv|rm|commit)\b/,
+  /\b(?:npm|pnpm|yarn|bun)\s+(?:install|i|ci|add|remove|rm|uninstall|update|up|pkg|link)\b/,
+  /\bpip3?\s+(?:install|uninstall)\b/,
+  /\bcargo\s+(?:add|remove|install)\b/,
+  /\bgo\s+(?:get|mod)\b/,
+  /\bopen\([^)]*['"][wax]/,          // python open(..., 'w')
+  /\b(?:writeFile|appendFile|mkdirSync|rmSync)\w*\(/, // node -e
+];
+
+export function looksLikeWriteCommand(cmd: string): boolean {
+  return WRITE_LIKE.some((re) => re.test(cmd));
+}
+
+/** Bash 写命令是否指向编排器独占的东西（角色后缀 / _meta / task.json / state.json / lock） */
+function bashTargetsProtected(cmd: string, ctx: Ctx): boolean {
+  if (/-(?:gemini|glm)\.md\b/.test(cmd)) return true;
+  const archiveRel = path.relative(ctx.projectRoot, ctx.archiveRoot) || ctx.config.archive_root;
+  if (new RegExp(`${archiveRel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[^\s]*(?:/_meta/|/task\.json)`).test(cmd)) return true;
+  if (/\.trivium\/(?:state\.json|lock\b)/.test(cmd)) return true;
+  return false;
+}
+
+/**
+ * `PreToolUse` 的 Bash 分支（B5）。两条规则，与 hook-pre-write 一一对应：
+ *   1. 写命令指向编排器独占对象（审查文档 / _meta / task.json / state.json / lock）一律拒绝；
+ *   2. 闸门写锁期间，任何像在改动工作树的命令都拒绝。
+ * 判不出命令行时放行——Bash 事件里没有 command 字段只可能是协议变了，别把整条工具链拦死。
+ */
+export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutput> {
+  if (input.tool_name && input.tool_name !== 'Bash') return ALLOW;
+  const cmd = input.tool_input?.['command'];
+  if (typeof cmd !== 'string' || cmd.trim().length === 0) return ALLOW;
+  if (!looksLikeWriteCommand(cmd)) return ALLOW;
+
+  const shown = cmd.length > 120 ? `${cmd.slice(0, 120)}…` : cmd;
+  if (bashTargetsProtected(cmd, ctx)) {
+    return deny(
+      `禁止用 Bash 改动编排器独占的文件：${shown}\n` +
+        '  审查文档（-gemini.md / -glm.md）、归档内 _meta/ 与 task.json、.trivium/state.json 与 lock/ 只能由编排器维护（FR-25 / P5）。',
+    );
+  }
+  if (!ctx.config.gate.block_business_write_when_awaiting_approval) return ALLOW;
+
+  const open = await listOpenGates(ctx.triviumDir);
+  for (const gate of open) {
+    const decision = shouldLockWrites(gate, {
+      currentSessionId: input.session_id ?? null,
+      scope: ctx.config.gate.approval_lock_scope,
+      ttlHours: ctx.config.gate.approval_lock_ttl_h,
+    });
+    if (decision.lock) {
+      return deny(
+        `${decision.reason}，此时不得用 Bash 改动工作树：${shown}\n` +
+          '  这是按写命令形态的启发式判定（重定向、tee、sed -i、rm/mv/cp、git checkout…），只在闸门期生效。\n' +
+          '  裁决件请用 Write 工具写进归档；其它改动请等审查结束，或\n' +
+          `  通过审批：/dual-approve --topic ${gate.topic} --stage ${gate.stage}\n` +
+          `  放弃闸门：/dual-abandon --topic ${gate.topic}`,
+      );
+    }
+  }
+  return ALLOW;
 }
 
 // ─────────────────────── hook-pre-commit ───────────────────────
@@ -578,13 +658,28 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
    */
   const swept = await sweepDeadRunningGates(ctx);
 
+  /*
+   * 顺手按 retention.run_dir_days 清理本项目过期的运行目录。会话开始是唯一稳定的
+   * pull 式时机；失败不影响会话（目录清不掉只是占空间）。
+   */
+  let pruned = 0;
+  try {
+    const { pruneRunDirs } = await import('./retention.js');
+    pruned = (await pruneRunDirs(ctx.config, ctx.projectRoot)).removed.length;
+  } catch (e) {
+    if (process.env['TRIVIUM_DEBUG']) console.error('[retention]', e);
+  }
+
   const open = await listOpenGates(ctx.triviumDir);
   const running = await findRunningRuns(ctx);
 
   const reportable = open.filter((g) => g.state !== 'running');
-  if (reportable.length === 0 && running.length === 0 && swept.length === 0) return ALLOW;
+  if (reportable.length === 0 && running.length === 0 && swept.length === 0 && pruned === 0) return ALLOW;
 
   const lines: string[] = ['TriviumCode 待办：'];
+  if (pruned > 0) {
+    lines.push(`  · 已清理 ${pruned} 个超过 ${ctx.config.retention.run_dir_days} 天的运行目录（retention.run_dir_days）`);
+  }
   for (const s of swept) {
     lines.push(`  · 已回收 ${s} 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁`);
   }
@@ -647,7 +742,7 @@ async function findRunningRuns(
 
 // ─────────────────────── 统一 wrapper ───────────────────────
 
-export type HookName = 'hook-pre-write' | 'hook-pre-commit' | 'hook-stop' | 'hook-session-start';
+export type HookName = 'hook-pre-write' | 'hook-pre-bash' | 'hook-pre-commit' | 'hook-stop' | 'hook-session-start';
 
 /**
  * 统一 wrapper：把三档退出码语义收在一处（修订计划 §2.3 / 意见 GLM-07）。
@@ -676,6 +771,8 @@ export async function runHook(
     switch (name) {
       case 'hook-pre-write':
         return await hookPreWrite(ctx, input);
+      case 'hook-pre-bash':
+        return await hookPreBash(ctx, input);
       case 'hook-pre-commit':
         return await hookPreCommit(ctx, input);
       case 'hook-stop':

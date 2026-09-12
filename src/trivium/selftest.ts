@@ -104,6 +104,9 @@ async function buildFixture(): Promise<string> {
   await fs.writeFile(
     path.join(root, '.trivium/config.yaml'),
     [
+      // 运行目录放到夹具旁边，不污染真实的 ~/.trivium/runs（M20）；夹具本身随 --keep-fixture 决定去留
+      'runtime:',
+      `  run_root: ${root}-runs`,
       'review:',
       '  timeout_s:',
       '    plan: 120',

@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
-  hookPreWrite, hookPreCommit, hookStop, hookSessionStart, runHook,
+  hookPreWrite, hookPreBash, hookPreCommit, hookStop, hookSessionStart, runHook, looksLikeWriteCommand,
   extractTargetPath, isForgedRoleFile, isInsideArchive, isOrchestratorOwned, type HookInput,
 } from '../../src/trivium/hooks.js';
 import { setGate } from '../../src/trivium/state.js';
@@ -166,6 +166,54 @@ test('拿不到目标路径时放过（宁可放过也不误伤）', async () =>
     state: 'awaiting_approval', sessionId: SESSION, heartbeatStaleMs: STALE,
   });
   assert.equal((await hookPreWrite(ctx, { session_id: SESSION, tool_input: {} })).exitCode, EXIT.OK);
+});
+
+// ── hook-pre-bash（B5：Bash 是 hook-pre-write 的旁路）──
+
+const bashInput = (command: string): HookInput => ({ session_id: SESSION, tool_name: 'Bash', tool_input: { command } });
+
+test('写命令形态识别：重定向 / tee / sed -i / rm / git checkout 算写，只读命令不算', () => {
+  for (const c of [
+    'cat > src/a.ts <<EOF\nx\nEOF', 'echo x >> src/a.ts', 'printf x | tee src/a.ts', "sed -i '' s/x/y/ src/a.ts",
+    'rm -rf src', 'mv a b', 'git checkout -- src/a.ts', 'git stash', 'npm install lodash', "python3 -c \"open('a','w').write('x')\"",
+  ]) assert.equal(looksLikeWriteCommand(c), true, `应判为写：${c}`);
+  for (const c of [
+    'git status', 'git diff HEAD', 'npm test', 'npm run build 2>&1 | tail', 'grep -rn foo src', 'ls -la', 'cat src/a.ts',
+    'echo hi > /dev/null', 'node --test dist/test', 'git log --oneline | head',
+  ]) assert.equal(looksLikeWriteCommand(c), false, `不该判为写：${c}`);
+});
+
+test('闸门期用 Bash 改工作树被拦，并说明这是启发式与解除办法', async () => {
+  const ctx = await fakeCtx();
+  await setGate({ triviumDir: ctx.triviumDir, topic: '登录重构', stage: 'plan', state: 'awaiting_approval', sessionId: SESSION, heartbeatStaleMs: STALE });
+  const r = await hookPreBash(ctx, bashInput('cat > src/auth/oidc.ts <<EOF\nx\nEOF'));
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
+  assert.match(r.stderr ?? '', /启发式/);
+  assert.match(r.stderr ?? '', /dual-approve --topic 登录重构/);
+  // 只读命令照常
+  assert.equal((await hookPreBash(ctx, bashInput('npm test'))).exitCode, EXIT.OK);
+});
+
+test('没有闸门时 Bash 写命令放行；但指向审查文档 / _meta / state.json 的写命令任何时候都拦', async () => {
+  const ctx = await fakeCtx();
+  assert.equal((await hookPreBash(ctx, bashInput('cat > src/a.ts'))).exitCode, EXIT.OK);
+  for (const c of [
+    'cat > .reviews/t/plan/2026-09-12-t-gemini.md',
+    'echo {} > .reviews/t/plan/_meta/review-gemini-R1.json',
+    'echo {} > .reviews/t/task.json',
+    'echo x > .trivium/state.json',
+    'rm -rf .trivium/lock',
+  ]) {
+    const r = await hookPreBash(ctx, bashInput(c));
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `应拦：${c}`);
+    assert.match(r.stderr ?? '', /编排器独占/);
+  }
+});
+
+test('拿不到命令行或不是 Bash 事件 → 放行', async () => {
+  const ctx = await fakeCtx();
+  assert.equal((await hookPreBash(ctx, { session_id: SESSION, tool_name: 'Bash' })).exitCode, EXIT.OK);
+  assert.equal((await hookPreBash(ctx, { session_id: SESSION, tool_name: 'Write', tool_input: { command: 'rm -rf x' } })).exitCode, EXIT.OK);
 });
 
 // ── hook-pre-commit（AGY-03：作用域）──

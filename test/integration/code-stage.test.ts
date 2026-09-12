@@ -85,6 +85,21 @@ test('审查期间无关文件被改：code 阶段的被审对象是整段工作
   assert.equal(meta.snapshot.drift.changed, true);
 });
 
+test('.env 等敏感文件的改动不进被审补丁（M17）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 2;\n');
+  // 夹具的 .env 未被 .gitignore 覆盖：原先会整篇进补丁，经被审对象本身送到两家厂商
+  await fs.writeFile(path.join(fx.root, '.env'), 'DB_PASSWORD=Tr0ub4dor\n');
+  const { exitCode, meta } = await runCode(fx.root, fx.codeDir);
+  assert.equal(exitCode, EXIT.OK);
+  const diffEntry = meta.artifacts.find((a) => /changes-.+\.diff$/.test(a.path));
+  assert.ok(diffEntry);
+  const diff = await fs.readFile(path.join(fx.archiveRoot, diffEntry!.path), 'utf8');
+  assert.match(diff, /src\/app\.ts/);
+  assert.doesNotMatch(diff, /Tr0ub4dor/, '.env 的内容进了补丁');
+  assert.doesNotMatch(diff, /\.env/);
+});
+
 test('run.json 记下发起命令 --entry', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await codeFixture();
   await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 2;\n');

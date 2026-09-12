@@ -275,6 +275,7 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     const diff = await diffAgainst(
       ctx.projectRoot, base,
       diffExcludePrefixes(path.relative(ctx.projectRoot, ctx.archiveRoot)),
+      ctx.config.review.sensitive_globs,
     );
     diffAvailable = diff.trim().length > 0;
     if (!diffAvailable) {

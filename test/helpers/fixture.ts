@@ -88,6 +88,10 @@ export async function makeFixture(opts: FixtureOptions): Promise<Fixture> {
   await fs.writeFile(
     path.join(root, '.trivium/config.yaml'),
     [
+      // 运行目录放到夹具旁边：默认 ~/.trivium/runs 会让每个夹具在真实用户目录里
+      // 留一个桶，审核时那里已堆了 3000 多个 trivium-fx-*（M20）
+      'runtime:',
+      `  run_root: ${root}-runs`,
       'review:',
       '  timeout_s:',
       '    plan: 120',

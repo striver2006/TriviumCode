@@ -21,6 +21,27 @@ async function repo(): Promise<string> {
   return dir;
 }
 
+test('sensitive_globs 命中的文件不进补丁——已跟踪的改动与未跟踪的新文件都剔除（M17）', async () => {
+  const dir = await repo();
+  await fs.writeFile(path.join(dir, '.env'), 'SECRET=old\n');
+  await fs.mkdir(path.join(dir, 'certs'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'certs/server.pem'), 'PEM-old\n');
+  const { run } = await import('../../src/trivium/util/exec.js');
+  await run('git', ['add', '-A'], { cwd: dir });
+  await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'seed', '--no-verify'], { cwd: dir });
+  // 已跟踪的敏感文件被修改 + 未跟踪的新敏感文件 + 一处正常改动
+  await fs.writeFile(path.join(dir, '.env'), 'SECRET=new\n');
+  await fs.writeFile(path.join(dir, 'id_rsa'), 'PRIVATE\n');
+  await fs.writeFile(path.join(dir, 'tracked.ts'), 'export const a = 2;\n');
+
+  const globs = ['.env*', '**/*.pem', '**/*.key', '**/id_rsa*'];
+  const diff = await diffAgainst(dir, 'HEAD', [], globs);
+  assert.match(diff, /tracked\.ts/);
+  assert.doesNotMatch(diff, /SECRET=new/, '已跟踪的 .env 改动不得进补丁');
+  assert.doesNotMatch(diff, /PRIVATE/, '未跟踪的 id_rsa 不得进补丁');
+  assert.doesNotMatch(diff, /\.env/);
+});
+
 test('`-` 前缀的未跟踪文件必须进补丁，不能被 git 当成选项吃掉', async () => {
   const dir = await repo();
   // ls-files 输出的是不带 ./ 的相对路径，所以这个文件名会直接撞上 git 的选项解析

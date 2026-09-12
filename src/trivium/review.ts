@@ -351,7 +351,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     const excludes = diffExcludePrefixes(
       path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root,
     );
-    const body = await diffAgainst(ctx.projectRoot, base, excludes);
+    // 敏感文件不进补丁（M17）：它们只该出现在禁读清单里，不该经被审对象本身送出去
+    const body = await diffAgainst(ctx.projectRoot, base, excludes, cfg.review.sensitive_globs);
     if (body.trim().length === 0) {
       throw missingArtifactError(
         `\`git diff ${base}\` 为空：没有待审变更。\n` +
@@ -670,7 +671,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     const frozen = parseFrozenDiff(await fs.readFile(subjectPath, 'utf8'));
     diffFiles = frozen.files;
     const excludes = diffExcludePrefixes(path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root);
-    const nowBody = await diffAgainst(ctx.projectRoot, frozen.base ?? opts.diffBase ?? 'HEAD', excludes);
+    const nowBody = await diffAgainst(ctx.projectRoot, frozen.base ?? opts.diffBase ?? 'HEAD', excludes, cfg.review.sensitive_globs);
     afterSubjectSha = sha256(frozen.header + nowBody);
   } else {
     afterSubjectSha = await sha256File(subjectPath);
