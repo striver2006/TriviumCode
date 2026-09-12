@@ -1,0 +1,105 @@
+{
+  "agreed": [
+    "留痕完整性三锚防御体系（Git 索引锚 deletedOrModifiedTracked、task.json 锚 checkRunManifests、state.json 锚 checkArchiveIntegrity）设计完备，能有效防范删除/改名主题目录或破坏清单的绕过行为。",
+    "代码阶段漂移复算已从重读快照修正为动态针对 base 重新执行 git diff 并比对 sha256（review.ts:681-687），彻底解决了此前 code 阶段 subject_drift 永不触发的 Blocker（B3）。",
+    "敏感文件过滤机制（util/git.ts:diffAgainst）在补丁生成阶段通过 git pathspec 与 matchesAnyGlob 统一过滤 sensitive_globs，对未跟踪文件同样严密阻断，避免凭据借道补丁本身送审。",
+    "闸门 session_id 为 null 时统一按本会话保守加锁（state.ts:shouldLockWrites、hooks.ts:hookStop），有效修复了 Claude Code 在 Bash 环境中不注入 session 环境变量导致写锁与收工拦截默认失效的问题（B1）。",
+    "锁回收与阻断计数保护机制（lock.ts）通过基于唯一命名的 O_EXCL 文件统计目录条目数，消除了并发 Hook 竞争写计数的丢更新与死锁隐患；sweepDeadRunningGates 结合 PID 与启动时间校验有效防范进程复用误判。"
+  ],
+  "consulted": [
+    ".claude/settings.json",
+    ".gitignore",
+    "CLAUDE.md",
+    "README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md",
+    "skills/dual-approve/SKILL.md",
+    "skills/dual-review-code/SKILL.md",
+    "skills/dual-run/SKILL.md",
+    "src/trivium/approval.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/code-stage.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/init.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/state.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/verify.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/unit/hooks.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/hooks.ts:261 中：new RegExp(`${archiveRel...}/[^\\\\s]*(?:/_meta/|/task\\\\.json)`)。由于模板字面量内未双重转义，`\\\\s` 被 JS 编译为普通字符 's'，导致生成的正则表达式实际为 `[^s]*`。任何名称含字母 's' 的主题（如 auth_service、session、user_status、skills 等），匹配在遇到字母 's' 时即刻截断，无法到达 `/_meta/`。在 review_done_awaiting_disposition 状态下，hookPreBash 完全依赖 bashTargetsProtected 拦截对 _meta 与 task.json 的写命令，由于正则失配，Driver 使用 sed -i 或 cat 重定向篡改审查结论（_meta/review-*.json）或 task.json 不会被拦截。",
+      "id": "AGY-01",
+      "kind": "security",
+      "layer": "code",
+      "location": "src/trivium/hooks.ts:261",
+      "problem": "bashTargetsProtected 正则表达式因模板字符串未转义 \\\\s 蜕化为 [^s]*，导致含字母 's' 的主题归档独占文件（_meta/ 与 task.json）对 Bash 写入完全失防",
+      "severity": "blocker",
+      "suggestion": "将模板字面量中的 `[^\\\\s]*` 修正为双反斜杠转义 `[^\\\\\\\\s]*`，或改用结构化分词/路径组件规范化判断，避免手写正则歧义。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/cli.ts:680-686 中，gate --check 在裁决校验通过后，无条件执行 setGateChecked 将闸门重置为 'idle'。在命令 B/C/D（dual-review-plan/code/bug）的流水线定义中，停点恒为「等待人工审批」（awaiting_approval）。当前实现将置为 awaiting_approval 的逻辑拆分到了一个独立的命令步骤 `gate --await-approval` 中（cli.ts:596-606 及 skills/dual-review-code/SKILL.md 第 7 步）。由于 gate --check 已将闸门刷回 idle，如果 Driver 省略调用 --await-approval，所有的 Hook（hook-pre-write、hook-pre-bash、hook-stop、hook-pre-commit）均视闸门为 idle 并全部放行，Driver 可直接修改业务代码并提交收工，人工审批闸门被静默旁路；且此时若用户尝试执行 /dual-approve，src/trivium/approval.ts:52 会因状态为 idle 而报错拒绝。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "code",
+      "location": "src/trivium/cli.ts:680-686",
+      "problem": "gate --check 成功后无条件将闸门重置为 idle，使命令 B/C/D 的 awaiting_approval 闸门沦为非强制的自愿调用，可被 Driver 静默跳过",
+      "severity": "blocker",
+      "suggestion": "结合 run.json 中的 entry 标记或显式参数，当属于命令 B/C/D 时，gate --check 校验通过应直接原子迁移到 awaiting_approval 状态并输出停点指引，禁止中途落回 idle。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/hooks.ts:258-264 的 bashTargetsProtected 中：仅包含以 archiveRel 为前缀的字符串正则和 `.trivium/(state.json|lock)`。若在子目录执行命令（如 `cd .reviews/topic/plan && rm -rf _meta` 或 `rm -rf _meta`），命令不含 .reviews 前缀即可绕过匹配。更严重的是，该判定未涵盖 `.trivium` 目录本身及 `.trivium/bin`，一旦执行 `rm -rf .trivium` 或 `chmod -x .trivium/bin/trivium`，.claude/settings.json 中的所有 Hook 守卫 `test -x \"$W\" || exit 0` 将全部因 wrapper 不可执行而永真 exit 0，整套闸门与防篡改体系被一次性解除。",
+      "id": "AGY-03",
+      "kind": "security",
+      "layer": "code",
+      "location": "src/trivium/hooks.ts:258-264",
+      "problem": "bashTargetsProtected 缺乏对相对路径、全目录删除及 .trivium/bin 篡改的防御，攻击者破坏 wrapper 可使所有 Hook fail-open",
+      "severity": "major",
+      "suggestion": "在 bashTargetsProtected 中增加对裸 `_meta`、`task.json`、`.trivium` 全目录及其 `bin` 子目录的保护，并在 `settings.json` 的 hook 脚本中对缺失 wrapper 行为进行审计或采取更安全的防御姿态。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/topic-args.ts:22-25 中，NAMED_FLAGS 白名单仅包含 topic、context、plan-file、rca-file、base、model-gemini、model-glm、profile、focus、goal。当用户或上层调用传入 `--only`、`--allow-single` 或 `--session-id` 时，splitArguments 将其视为未知参数压入 restParts，导致单审降级标记或会话 ID 无法被 topic resolve 正确识别，反而被拼进任务目标或焦点正文中。该项虽记录在 BACKLOG.md:373，但仍属当前代码的契约缺陷。",
+      "id": "AGY-04",
+      "kind": "contract",
+      "layer": "code",
+      "location": "src/trivium/topic-args.ts:22-25",
+      "problem": "NAMED_FLAGS 遗漏 only、allow-single 与 session-id 具名参数，导致其被吞入自由文本参数中丢失契约语义",
+      "severity": "minor",
+      "suggestion": "将 'only'、'allow-single'、'session-id' 补入 topic-args.ts 的 NAMED_FLAGS 并映射到 TopicResolution 输出结构中。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/cli.ts:720-735 的 cmdApproval 中：当未提供 --stage 时，代码枚举主题下所有非 running 的开放闸门（包含 review_done_awaiting_disposition）。随后依次调用 recordApproval(..., decision: 'approved')。但在 src/trivium/approval.ts:52 中，approved 决策严格要求当前状态必须为 awaiting_approval。若当前存在未裁决阶段，执行 trivium approve --topic <topic> 将直接抛出 MISSING_ARTIFACT 异常中断，而非友好提示。与 abandon 支持批量放弃不同，approve 语义上必须显式指定 --stage。",
+      "id": "AGY-05",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/cli.ts:720-724",
+      "problem": "cmdApproval 允许审批（approve）操作省略 --stage，会意外尝试批准未裁决阶段并触发异常崩错",
+      "severity": "minor",
+      "suggestion": "在 cmdApproval 中区分 approve 与 abandon：decision 为 approved 时强制要求提供 --stage，未提供时退 USAGE 错误。"
+    }
+  ],
+  "not_covered": [
+    "真实交互环境下 Claude Code GUI 进程生命周期中各 Hook 事件的触发时序与偶发性进程中断行为",
+    "跨进程并发重入下 updateState 全局锁在极端高频文件竞争下的底层文件系统兼容性表现",
+    "真实厂商 API 超时或格式损毁时 parse_fallback 降级单元生成的极度罕见边界场景"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本次审查重点核实闸门与留痕的防绕过机制。核查发现两项 blocker 级绕过隐患：\n1. hooks.ts:261 中 bashTargetsProtected 的正则因模板字符串未转义 \\\\s 蜕化为 [^s]*，含字母 's' 的主题归档（_meta/ 与 task.json）对 Bash 写入完全失防，Driver 可借道篡改审查结论或元数据；\n2. cli.ts:680 中 gate --check 校验通过后无条件将闸门刷为 idle，使 B/C/D 命令的人工审批（awaiting_approval）沦为可被 Driver 随意跳过的非强制步骤，跳过后所有 Hook 均将放行。\n此外，bashTargetsProtected 缺少对 rm -rf .trivium/bin 的防御，一旦 wrapper 被删所有 Hook 将 fail-open。综上，判定为 request-changes。",
+  "verdict": "request-changes"
+}

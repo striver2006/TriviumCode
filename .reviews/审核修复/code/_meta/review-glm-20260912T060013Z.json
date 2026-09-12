@@ -1,0 +1,93 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "本批把已记录的绕过路径（state.json 搅坏即清闸、session_id 为 null 不加锁、闸门槽位无条件覆盖、git 锚只看删除）确实堵上了，锚链与 CAS 有集成测试背书。但围绕审查焦点仍有三条未堵的绕路：①人工审批闸门本身可由 Driver 用一条预批准的 Bash 命令（trivium approve）自行关闭，无任何来源校验；②hook-pre-commit 对 `sh -c 'git commit …'` 整串引号形态 fail-open，裁决期提交拦截与留痕完整性校验同时被跳过，与该函数自称的保守原则相悖；③heredoc 包裹的命令在 pre-bash 里被整体豁免，保护文件规则与闸门期写锁同时失效，而 _meta/ 与 state.json 恰好没有漂移复算兜底——裁决事实来源可在裁决期被一致化篡改。三条均有明确修法。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/cli.ts:701（cmdApproval）；src/trivium/approval.ts:29（recordApproval）",
+      "problem": "人工审批闸门（B/C/D 的核心停点）可被 Driver 一条命令自行关闭：`trivium approve --topic <t> --stage <s>` 是普通 CLI 子命令，recordApproval 对调用来源不做任何校验。`hook-pre-bash` 只拦「写命令形态」，approve 不在其列、提前放行；而 /dual-review-* 的 allowed-tools 恰好预批准 `Bash(.trivium/bin/trivium:*)`（/dual-run 更有裸 Bash），模型自批不需要用户任何确认。等French CLAUDE.md 写的「想继续请让用户走 /dual-approve」只是提示词约束——这正是 dual-run SKILL 里「不靠你自觉」所嘲讽的那类护栏。会话比对也救不了：人工 /dual-approve 与自批发生在同一会话。",
+      "evidence": "读了 src/trivium/cli.ts（case 'approve' → cmdApproval，未传任何来源参数）、src/trivium/approval.ts（ApprovalInput.sessionId 全程未用）、src/trivium/hooks.ts:272-305（hookPreBash 对非写命令提前 ALLOW）、被审 diff 中 dual-review-bug/dual-run SKILL.md 的 allowed-tools 行。无任何测试覆盖「触发闸门的会话自己调用 approve」。",
+      "suggestion": "承认并收窄这条信任边界：至少在 RUNBOOK / CLAUDE.md 明示「审批动作本身靠提示词与工具可见性约束」；再叠加一道机械痕迹，例如 `gate --check` 通过置 awaiting_approval 时生成一次性确认码回显给用户、approve 必须携带（别用会话 id 区分，人在同一会话）；并把调用来源（session、时间）落进 task.json.approvals 供事后审计。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:341（parseGitSegment）、hooks.ts:389（tokenize）、hooks.ts:480（hookPreCommit）",
+      "problem": "`sh -c 'git commit -m x'` 整段被引号包进一个 token，tokenize 的产出里不存在等于 'git' 的 token，parseGitSegment 返回 null，looksLikeCommit 判「不是提交」，hookPreCommit 在闸门与完整性检查之前直接放行。后果：在 `review_done_awaiting_disposition`（shouldLockWrites 不加锁的状态）下，Driver 可以绕过「裁决未齐不得提交」与 checkArchiveIntegrity 两条拦截，把被篡改的归档一次性洗进 HEAD——此后 git 锚对这笔篡改永久失明。函数注释自称「判不出来时按『是提交』处理」，该形态恰好判不出来却放了。BACKLOG 把「子命令非字面量 commit fail-open」标为 done，但只修了 `git $S` 与 `-c alias` 两种形态。",
+      "evidence": "读了 src/trivium/hooks.ts 全文：tokenize（389-412）把引号内空格保留进同一 token；parseGitSegment:343 用 `t === 'git' || t.endsWith('/git')` 找 git，找不到即 null；hookPreCommit:482 `!looksLikeCommit → ALLOW` 在 pending 检查之前。test/unit/hooks.test.ts:500 只测了 `echo git commit`（过拦方向），没有 `sh -c 'git commit'`（漏拦方向）的用例。",
+      "suggestion": "parseGitSegment 找不到字面 git token 时，对整段做保守兜底：命中 /\\bgit\\b[^|;&]*\\bcommit\\b 即按提交处理（与本函数既有的「推断不出按项目内/按提交」原则一致）；补 `sh -c 'git commit …'` 必须被拦的测试。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:244（stripHeredocs）、hooks.ts:252-255（looksLikeWriteCommand）、hooks.ts:276（hookPreBash 早退）",
+      "problem": "hookPreBash 先剥 heredoc 再判「是否写命令」：`python3 - <<'PY' … PY` 剥完只剩 `python3 -`，looksLikeWriteCommand 为假即**提前 ALLOW**，两条规则（保护文件一律拒、闸门期拒写）连评估机会都没有。被豁免的恰是没有跑后兜底的对象：judgeDrift 把归档根与 .trivium/ 整体排除（编排器自有写入区），提交锚只在 commit 时触发。于是在 `review_done_awaiting_disposition`（非加锁状态）期间，一条 heredoc 命令即可把 `_meta/review-<侧>-<run>.json` 改成 `findings: []`（再配一张空裁决表，`gate --check` 直接放行）、或把 state.json 重写为合法的空闸门。RUNBOOK 宣称对审查文档/_meta/task.json/state.json 的写命令「任何时候都挡」，CLAUDE.md 说「绕过去的改动同样会被跑后复算判成漂移」——对这几类对象两句都不成立。",
+      "evidence": "读了 src/trivium/hooks.ts:215-305 与 test/unit/hooks.test.ts:186-194（该测试把 heredoc 内含 writeFile(/-gemini.md 字样的命令固化为例行放行，且未区分「heredoc 正文是否指向保护路径」）；被审 diff 中 RUNBOOK §三与 freeze.ts judgeDrift 的 ownPrefixes 排除逻辑。剥离逻辑对 rule 1 的 bashTargetsProtected 同样生效，正文里的保护路径一并不可见。",
+      "suggestion": "分层处理：规则 1（保护目标，本就宣称无条件）改在**未剥离的原文**上找保护路径模式——误报代价是多拦一条无害命令，与本 Hook 既有的保守方向一致；规则 2（闸门期写锁）至少在存在 open gate 时不剥 heredoc（闸门期宁可过拦是注释里自认的取向）。补「heredoc 内写 state.json/_meta 必须被拦」的用例；同步修正 RUNBOOK 的「任何时候都挡」表述或把它变成真的。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:258-264（bashTargetsProtected）",
+      "problem": "保护目标判定依赖命令文本里出现 `<archiveRel>/` 字面前缀：`cd .reviews && cat > t/plan/_meta/run-x.json` 的写段不含 `.reviews/`，规则 1 漏过；`review_done_awaiting_disposition` 期间规则 2 又不加锁，该形态可在裁决期裸写归档。同段还要求 `/_meta/` 带尾斜杠，重定向指向 `_meta` 目录本身（`> …/t/_meta`）不命中。",
+      "evidence": "读了 src/trivium/hooks.ts:257-264（正则拼装与转义）与同文件 commitTargetsProject（427-465）——后者已有 cd 归一化跟踪机制，前者没有复用。hookPreWrite 的路径版保护（isOrchestratorOwned）不受此影响，缺口仅在 Bash 出口。",
+      "suggestion": "复用 commitTargetsProject 的 cd/目录跟踪思路对写目标做归一化前缀判定；或对规则 1 放宽为「归档前缀与 _meta/task.json/state.json 字样同段出现即按保护处理」——规则 1 的误报代价低（用户可改用 Write 工具写归档内合法文件）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/approval.ts:15-22（ApprovalInput.sessionId）",
+      "problem": "ApprovalInput.sessionId 从 CLI（cli.ts:732-735）就从未传入，recordApproval 拿到也从未使用：审批记录（task.json.approvals）不含任何会话来源。整个锁设计都押在 session 身份上（shouldLockWrites、hookStop），唯独「谁解的闸」这一最关键的事件不留痕——事后无法回答「这次 approve 是人发的还是模型发的」。这也是 GLM-01 无法用会话比对补救的直接原因。",
+      "evidence": "读了 src/trivium/approval.ts 全文与 src/trivium/cli.ts:731-737：cmdApproval 构造 recordApproval 时只传 ctx/topic/stage/decision/reason；ApprovalRecord（approval.ts:62-68）只有 at/stage/run_id/decision/reason。",
+      "suggestion": "在 ApprovalRecord 落 sessionId（CLI 从 --session-id / CLAUDE_SESSION_ID 取，可为 null），或在 type 上删掉这个死字段——二选一，别让接口假装支持来源追踪。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "state.json fail-closed（StateCorruptError → Hook 退 2）真实堵上了「搅坏判定文件即清空全部闸门」的绕过，hooks.test.ts 有三个拦截型 Hook 的用例",
+    "session_id 为 null 按本会话加锁（state.ts shouldLockWrites、hookStop 同一原则）修复了 B1 所述「默认路径写锁与收工拦截从未生效」的问题，且两侧测试都覆盖了 null 用例",
+    "审批/取消/gate --check 全部改比较-交换（setGateChecked expect），闸门槽位被并发运行抢占的三种覆写形态关闭；approval.test.ts 覆盖 running 不可审批/放弃与 CAS 生效",
+    "git 锚从「只看删除」扩展到不可变工件改动，集成测试覆盖了「改审查文档+同步改写 run.json sha」的完整篡改链（gate-loop.test.ts），这是本批最有价值的一条修复",
+    "state.json 锚③补了首次提交前无基线的删除窗口；review-*.json 进保护集并新增 missing_review_json，堵住了「改成 findings:[] 让空裁决表过闸」的 Write 工具级绕过",
+    "裁决件 front-matter 绑定 run_id、fallback 单元逐条对账，堵住复用上一轮裁决件与空表过闸（M10）",
+    "code 阶段被审对象改为跑后重取 git diff 复算（parseFrozenDiff 头部逐字复用），subject_drift 从「永不触发」变为有效（B3）",
+    "updateTask 短临界区 + 全部调用点补锁、锁回收先复验再删、link 原子建锁消除空文件窗口（M1/M2/M5/M6），并发面收得很干净",
+    "配置 schema 校验（M12）堵住 gate:\"off\"、拼错枚举的静默 fail-open；敏感文件不进补丁并补 **/.env*（M17）",
+    "hook-pre-commit 对 `git $S`/alias 的保守化与「推断不出目标仓库按项目内」的取态测试充分，方向正确"
+  ],
+  "not_covered": [
+    "只读约束下未运行测试与构建，未验证测试全绿；对测试有效性的判断仅基于读码",
+    "adapters（agy/zcode/stub/zcode-trace）、doctor、install、probes、util/exec 进程树超时、retention、topic-args 分词器仅经 diff 粗读，未对照现文件逐行核对",
+    "跨进程真实竞态（两会话同时 --start / 审批与 worker 收尾交错）未实测，仅静态推理",
+    "对 Claude Code 平台行为的假设未实测：allowed-tools 预批准语义、Bash 工具不注入 CLAUDE_SESSION_ID、Write 工具对符号链接的解析（保护路径判定均为词法匹配，symlink 变体未验证）",
+    "config.v1.json schema 全文、run.v1.json 其余字段只抽查与本次焦点相关的部分",
+    "设计文档 §7.1/§7.3 的大段改写只读了与命令语义、Hook 层相关的段落"
+  ],
+  "consulted": [
+    ".reviews/审核修复/code/_meta/changes-20260912T060013Z.diff",
+    "src/trivium/hooks.ts",
+    "src/trivium/state.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/run-protocol.ts",
+    "test/unit/hooks.test.ts",
+    "/Users/chenzhenbo/.claude/skills/dual-critic/schema/review.v1.json"
+  ]
+}

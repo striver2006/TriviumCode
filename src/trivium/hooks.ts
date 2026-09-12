@@ -18,8 +18,12 @@
  * | 真正的程序缺陷 | 1 | 非阻断；带 TRIVIUM_DEBUG 时打日志便于归因 |
  *
  * 注意 wrapper 文件本身缺失时 shell 会返回 127、`loadCtx` 抛 envError 返回 69——
- * 两者都不是 0。因此**真正的守卫在 hook 命令层**（`test -x … || exit 0`，见 §2.3），
- * 本文件的三档是第二道。
+ * 两者都不是 0。因此**真正的守卫在 hook 命令层**（见 §2.3），本文件的三档是第二道。
+ * 该守卫不再是一律 `|| exit 0`：那样 `rm -rf .trivium/bin` 就能让四个拦截型 Hook
+ * 全部永真放行（审查意见 AGY-03）。现在它区分「项目从未初始化」（exit 0）与
+ * 「初始化过但 wrapper 没了」（exit 2 并说明修复办法），契约由
+ * `test/contract/hook-guard.test.ts` 实跑守住；wrapper 目录本身也进了
+ * `hook-pre-bash` 的保护集。
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -233,6 +237,8 @@ const WRITE_LIKE: readonly RegExp[] = [
   /\bgo\s+(?:get|mod)\b/,
   /\bopen\([^)]*['"][wax]/,          // python open(..., 'w')
   /\b(?:writeFile|appendFile|mkdirSync|rmSync)\w*\(/, // node -e
+  /\b(?:write_text|write_bytes|rmtree|unlink|makedirs)\(/, // python pathlib / shutil / os
+  /\b(?:os|shutil)\.(?:remove|rename|replace|copy\w*|move)\(/,
 ];
 
 /**
@@ -254,18 +260,103 @@ export function looksLikeWriteCommand(cmd: string): boolean {
   return WRITE_LIKE.some((re) => re.test(effective));
 }
 
-/** Bash 写命令是否指向编排器独占的东西（角色后缀 / _meta / task.json / state.json / lock） */
-function bashTargetsProtected(cmd: string, ctx: Ctx): boolean {
+/**
+ * 命令段里的候选路径 token：剥掉前导重定向符与选项，其余一律当作可能的路径。
+ * `cat q >x.json` 与 `cat q > x.json` 都要能取到 `x.json`。
+ */
+function candidatePathTokens(segment: string): string[] {
+  const out: string[] = [];
+  for (const raw of tokenize(segment)) {
+    const t = raw.replace(/^\d*(?:>{1,2}|<)/, '');
+    if (t.length === 0 || t.startsWith('-')) continue;
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * 字面兜底：token 里直接出现独占对象的**路径组件**。
+ *
+ * 归一化判定要求推断得出当前目录，而 `cd $VAR`、子 shell 都会让它失效。
+ * 这条不依赖当前目录：`rm -rf _meta`、`> ../x/task.json` 一律命中。
+ * 误报代价低（改归档内的合法文件可以用 Write 工具），与规则 1 的保守取向一致。
+ *
+ * 边界用「非路径字符」而不是 `/` 或行尾：`tokenize` 会吃掉引号，
+ * `open('.trivium/state.json','w')` 出来是 `open(.trivium/state.json,w)`——
+ * 路径尾部是逗号、括号而非 `/`。但 `my_meta`、`state.jsonx` 不能误命中，
+ * 故前后都排除构成文件名的字符（`\w`、`.`、`-`）。
+ */
+const MENTIONS_OWNED = /(?:^|[^\w.\-])(?:_meta|task\.json|state\.json|\.trivium)(?:$|[^\w\-])/;
+
+/**
+ * 一个已归一化的绝对路径是否是编排器独占对象。
+ *
+ * 独占集合：
+ *   - `.trivium` 目录本身，及其下的 `state.json` / `lock` / `bin`
+ *     （`bin` 是审查意见 AGY-03：wrapper 一旦被删或去掉执行位，
+ *      `.claude/settings.json` 里每条 Hook 的存在性守卫都会永真放行，
+ *      整套闸门被一次性解除——它必须和判定文件同级受保护）
+ *   - 归档根本身，及其下任意含 `_meta` 组件的路径、任意 `task.json`
+ */
+function isOrchestratorOwnedPath(abs: string, ctx: Ctx): boolean {
+  if (isInside(ctx.triviumDir, abs)) {
+    const rel = path.relative(ctx.triviumDir, abs);
+    if (rel === '') return true;
+    const head = rel.split(path.sep)[0]!;
+    return head === 'state.json' || head === 'lock' || head === 'bin';
+  }
+  if (isInside(ctx.archiveRoot, abs)) {
+    const rel = path.relative(ctx.archiveRoot, abs);
+    if (rel === '') return true;
+    const parts = rel.split(path.sep);
+    return parts.includes('_meta') || parts[parts.length - 1] === 'task.json';
+  }
+  return false;
+}
+
+/**
+ * Bash 写命令是否指向编排器独占的东西（角色后缀 / _meta / task.json / state.json / lock / bin）。
+ *
+ * 原先用模板字面量拼正则，`[^\s]` 在模板里被 JS 解析成 `[^s]`（未识别转义丢反斜杠），
+ * `task\.json` 的点同样退化为通配。**主题名只要含 ASCII 字母 `s`（session、auth_svc…），
+ * 归档的 `_meta/` 与 `task.json` 对 Bash 写入就完全失防**——护栏是否生效取决于
+ * 主题名怎么起（审查意见 AGY-01，本轮实跑复现）。
+ *
+ * 现在改为路径判定：按 `cd` 跟踪当前目录（复用 `commitTargetsProject` 的思路，
+ * 审查意见 GLM-04），把候选 token 归一化成绝对路径再比对独占集合；
+ * 推断不出目录时退回不依赖目录的字面兜底。
+ */
+function bashTargetsProtected(cmd: string, ctx: Ctx, startCwd: string): boolean {
+  // ① 角色后缀：审查文档只能由编排器落盘，出现在命令任何位置都拒
   if (/-(?:gemini|glm)\.md\b/.test(cmd)) return true;
-  const archiveRel = path.relative(ctx.projectRoot, ctx.archiveRoot) || ctx.config.archive_root;
-  if (new RegExp(`${archiveRel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[^\s]*(?:/_meta/|/task\.json)`).test(cmd)) return true;
-  if (/\.trivium\/(?:state\.json|lock\b)/.test(cmd)) return true;
+
+  const segments = cmd.split(/(?:&&|\|\||[;&|])/);
+  /** 当前目录。null 表示推断不出，此后只靠字面兜底 */
+  let cwd: string | null = startCwd;
+
+  for (const seg of segments) {
+    const tokens = tokenize(seg);
+    if (tokens.length === 0) continue;
+
+    if (tokens[0] === 'cd') {
+      const target = tokens[1];
+      if (target === undefined || target === '-' || /[$`]/.test(target)) cwd = null;
+      else cwd = cwd === null ? null : path.resolve(cwd, target);
+      continue;
+    }
+
+    for (const t of candidatePathTokens(seg)) {
+      if (MENTIONS_OWNED.test(t)) return true;
+      if (cwd === null || /[$`]/.test(t)) continue;
+      if (isOrchestratorOwnedPath(path.resolve(cwd, t), ctx)) return true;
+    }
+  }
   return false;
 }
 
 /**
  * `PreToolUse` 的 Bash 分支（B5）。两条规则，与 hook-pre-write 一一对应：
- *   1. 写命令指向编排器独占对象（审查文档 / _meta / task.json / state.json / lock）一律拒绝；
+ *   1. 写命令指向编排器独占对象（审查文档 / _meta / task.json / state.json / lock / bin）一律拒绝；
  *   2. 闸门写锁期间，任何像在改动工作树的命令都拒绝。
  * 判不出命令行时放行——Bash 事件里没有 command 字段只可能是协议变了，别把整条工具链拦死。
  */
@@ -273,13 +364,28 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
   if (input.tool_name && input.tool_name !== 'Bash') return ALLOW;
   const cmd = input.tool_input?.['command'];
   if (typeof cmd !== 'string' || cmd.trim().length === 0) return ALLOW;
-  if (!looksLikeWriteCommand(cmd)) return ALLOW;
+  /*
+   * **在未剥离 heredoc 的原文上判定**（审查意见 GLM-03）。
+   *
+   * 原先先剥 heredoc 再判「是否写命令」，于是 `python3 - <<'PY' … PY` 剥完只剩
+   * `python3 -`，两条规则连评估机会都没有就提前放行。被豁免的恰是没有跑后兜底的对象：
+   * `judgeDrift` 把归档根与 `.trivium/` 整体排除（编排器自有写入区），提交锚只在 commit 时触发。
+   * 结果是一条 heredoc 就能在裁决期把 `_meta/review-<侧>-<run>.json` 改成 `findings: []`
+   * 再配一张空裁决表过闸，而 RUNBOOK 宣称的「任何时候都挡」对它并不成立。
+   *
+   * 代价是 heredoc 正文里出现保护路径字面量的命令会被误拦（本项目实施过程中就遇到过）。
+   * 这个代价是**刻意接受**的：正文写保护路径正是要防的攻击形态，
+   * 而合法需求可以改用 Write 工具。`looksLikeWriteCommand` 保留剥离语义供他处使用。
+   */
+  const writeLike = WRITE_LIKE.some((re) => re.test(cmd));
+  if (!writeLike) return ALLOW;
 
   const shown = cmd.length > 120 ? `${cmd.slice(0, 120)}…` : cmd;
-  if (bashTargetsProtected(stripHeredocs(cmd), ctx)) {
+  if (bashTargetsProtected(cmd, ctx, input.cwd ?? ctx.projectRoot)) {
     return deny(
       `禁止用 Bash 改动编排器独占的文件：${shown}\n` +
-        '  审查文档（-gemini.md / -glm.md）、归档内 _meta/ 与 task.json、.trivium/state.json 与 lock/ 只能由编排器维护（FR-25 / P5）。',
+        '  审查文档（-gemini.md / -glm.md）、归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n' +
+        '  只能由编排器维护（FR-25 / P5）。删掉或改坏 bin/ 会让 .claude/settings.json 里每条 Hook 的守卫永真放行。',
     );
   }
   if (!ctx.config.gate.block_business_write_when_awaiting_approval) return ALLOW;

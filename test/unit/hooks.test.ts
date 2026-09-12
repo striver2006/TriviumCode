@@ -183,14 +183,77 @@ test('写命令形态识别：重定向 / tee / sed -i / rm / git checkout 算�
   ]) assert.equal(looksLikeWriteCommand(c), false, `不该判为写：${c}`);
 });
 
-test('heredoc 正文是数据不是命令：里面的 writeFile( / -gemini.md 字样不触发拦截', async () => {
+test('looksLikeWriteCommand 保留剥离语义：heredoc 正文是数据不是命令', () => {
   const script = "python3 - <<'PY'\nimport pathlib\np = pathlib.Path('x')\ns = \"await fs.writeFile(f, 'rm -rf src'); // 2026-09-12-t-gemini.md\"\nPY";
   assert.equal(looksLikeWriteCommand(script), false, '本项目实施过程中就被这条误报拦过');
-  const ctx = await fakeCtx();
-  assert.equal((await hookPreBash(ctx, bashInput(script))).exitCode, EXIT.OK);
   // heredoc 之外的真实写命令照样识别
   assert.equal(looksLikeWriteCommand("cat <<'EOF' > src/a.ts\nx\nEOF"), true);
   assert.equal(looksLikeWriteCommand("python3 - <<'PY'\nprint(1)\nPY\nrm -rf src"), true);
+});
+
+test('GLM-03：hookPreBash 在未剥离的原文上判，heredoc 里写保护对象必须被拦', async () => {
+  const ctx = await fakeCtx();
+  // 攻击形态：一条 heredoc 把审查结论改成空 findings，再配空裁决表过闸
+  const attack = "python3 - <<'PY'\nimport json, pathlib\np = pathlib.Path('.reviews/t/code/_meta/review-glm-R1.json')\np.write_text(json.dumps({'findings': []}))\nPY";
+  const r = await hookPreBash(ctx, bashInput(attack));
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK, 'heredoc 正文指向 _meta 必须拦');
+  assert.match(r.stderr ?? '', /编排器独占/);
+  // state.json 同理
+  const attack2 = "python3 - <<'PY'\nopen('.trivium/state.json','w').write('{\"gates\":[]}')\nPY";
+  assert.equal((await hookPreBash(ctx, bashInput(attack2))).exitCode, EXIT.GATE_BLOCK);
+  // 正文不涉保护对象、又没有闸门 → 仍然放行（误拦面只覆盖保护对象与闸门期）
+  const benign = "python3 - <<'PY'\ns = \"await fs.writeFile(f, 'x')\"\nPY";
+  assert.equal((await hookPreBash(ctx, bashInput(benign))).exitCode, EXIT.OK);
+});
+
+test('GLM-03：闸门期不剥 heredoc，正文里的写命令一并拦下', async () => {
+  const ctx = await fakeCtx();
+  await setGate({ triviumDir: ctx.triviumDir, topic: '登录重构', stage: 'plan', state: 'awaiting_approval', sessionId: SESSION, heartbeatStaleMs: STALE });
+  const script = "python3 - <<'PY'\nopen('src/auth/oidc.ts','w').write('x')\nPY";
+  assert.equal((await hookPreBash(ctx, bashInput(script))).exitCode, EXIT.GATE_BLOCK);
+});
+
+test('AGY-01：主题名含 ASCII s 时保护不得失效（原正则蜕化为 [^s]*）', async () => {
+  const ctx = await fakeCtx();
+  for (const topic of ['session', 'auth_service', 'user_status', 'skills', '审核修复']) {
+    for (const c of [
+      `echo {} > .reviews/${topic}/code/_meta/review-glm-R1.json`,
+      `sed -i '' s/x/y/ .reviews/${topic}/code/_meta/run-R1.json`,
+      `echo {} > .reviews/${topic}/task.json`,
+    ]) {
+      const r = await hookPreBash(ctx, bashInput(c));
+      assert.equal(r.exitCode, EXIT.GATE_BLOCK, `主题 ${topic} 应拦：${c}`);
+    }
+  }
+});
+
+test('GLM-04：cd 归一化后的相对路径与不带尾斜杠的 _meta 目录本身都受保护', async () => {
+  const ctx = await fakeCtx();
+  for (const c of [
+    'cd .reviews && echo {} > t/plan/_meta/run-R1.json',   // 写段不含 .reviews 前缀
+    'cd .reviews/t/plan && rm -rf _meta',                   // 裸目录名
+    'echo {} > .reviews/t/plan/_meta',                      // 指向 _meta 本身，无尾斜杠
+    'rm -rf .reviews',                                      // 整个归档根
+  ]) {
+    const r = await hookPreBash(ctx, bashInput(c));
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `应拦：${c}`);
+  }
+});
+
+test('AGY-03：.trivium 与 wrapper 目录受保护（删掉它等于一次性解除全部 Hook）', async () => {
+  const ctx = await fakeCtx();
+  for (const c of [
+    'rm -rf .trivium',
+    'rm -rf .trivium/bin',
+    'chmod -x .trivium/bin/trivium',
+    'mv .trivium/bin/trivium /tmp/x',
+  ]) {
+    const r = await hookPreBash(ctx, bashInput(c));
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `应拦：${c}`);
+    assert.match(r.stderr ?? '', /编排器独占/);
+  }
+  // 项目内其它文件不受影响
+  assert.equal((await hookPreBash(ctx, bashInput('rm -rf dist'))).exitCode, EXIT.OK);
 });
 
 test('闸门期用 Bash 改工作树被拦，并说明这是启发式与解除办法', async () => {

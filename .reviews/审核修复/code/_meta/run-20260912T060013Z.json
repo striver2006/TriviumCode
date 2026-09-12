@@ -1,0 +1,151 @@
+{
+  "schema": "trivium.run.v1",
+  "run_id": "20260912T060013Z",
+  "topic": "审核修复",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点核实闸门与留痕的绕过路径是否真的堵上",
+  "task_goal": null,
+  "entry": "C",
+  "snapshot": {
+    "git_head": "5962b6cacf01c723933cd5a639e90e0d75d4d700",
+    "tree_hash": "e6fa75a1b78278425877ca561a224afa794af4b9",
+    "dirty": false,
+    "subject_sha256": "1c9a51e4382c443969318bf55ff584e3d0fb70dba7d7df18e2a0a9c6971dd1d8",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-12T06:00:13.637Z",
+  "finished_at": "2026-09-12T06:14:07.984Z",
+  "review_mode": "dual",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.1",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort": "medium",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 316.265,
+      "tool_calls": {
+        "read": 50,
+        "grep": 14,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 23
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 416088,
+        "output_tokens": 58260,
+        "thinking_tokens": 47756,
+        "cache_read_tokens": 7880183,
+        "total_tokens": 474348
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "372d902d-5539-4db0-afcf-492faef768df",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3-Flash",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "model_effective_source": "trace",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 834.147,
+      "tool_calls": {
+        "read": 13,
+        "grep": 3,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 7
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 11,
+        "inputTokens": 1201048,
+        "outputTokens": 34446,
+        "totalTokens": 1235494,
+        "cacheReadTokens": 1011456,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_90d57dd4-290f-497e-8d1a-72691ff4b409",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/C命令base透传修复/code/2026-09-12-C命令base透传修复-glm.md",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r3-glm.md",
+    ".reviews/S9-闸门与留痕加固/code/2026-09-11-S9-闸门与留痕加固-glm.md"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "审核修复/code/_meta/changes-20260912T060013Z.diff",
+      "sha256": "1c9a51e4382c443969318bf55ff584e3d0fb70dba7d7df18e2a0a9c6971dd1d8"
+    },
+    {
+      "path": "审核修复/code/_meta/brief-gemini-20260912T060013Z.md",
+      "sha256": "d94c83fe6221c88d4b81334ac38731a94cb2a6d6bdd66b7aefa832840e1597ea"
+    },
+    {
+      "path": "审核修复/code/_meta/brief-glm-20260912T060013Z.md",
+      "sha256": "de10a4d4a7a482f04cd7c6041bd3a2869870a70d9d7793d6cfa977fd14b05307"
+    },
+    {
+      "path": "审核修复/code/_meta/review-gemini-20260912T060013Z.json",
+      "sha256": "feab45a94a3384d0cf82dca3365f9f67f685fb3ed0514c696d63bf52cb4383d6"
+    },
+    {
+      "path": "审核修复/code/_meta/review-glm-20260912T060013Z.json",
+      "sha256": "509c71710e409c89290bb10eeadfa922718620d0bd84085dc58f1860e4580999"
+    },
+    {
+      "path": "审核修复/code/2026-09-12-审核修复-gemini.md",
+      "sha256": "037b0289b9d3087a21c34817eca29b7845d2ac25e3a39832bfe8376f124c2294"
+    },
+    {
+      "path": "审核修复/code/2026-09-12-审核修复-glm.md",
+      "sha256": "5a0115abe30dcbfd75efb1390d6bd1294cb30ad3802e64c73db28cf76044809b"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

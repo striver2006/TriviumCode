@@ -3,13 +3,21 @@
     "由 `trivium init` 合并进目标项目的 .claude/settings.json（设计 §8.5）。",
     "",
     "每条命令外面都包了一层存在性守卫：",
-    "  sh -c 'W=…; test -x \"$W\" || exit 0; exec \"$W\" …'",
+    "  sh -c 'W=…; test -x \"$W\" && exec \"$W\" …; test -f \"$D/config.yaml\" || exit 0; … exit 2'",
     "这不是多余的防御。.claude/settings.json 随 Git 分发，而 .trivium/bin/trivium",
     "是 `trivium init` 在本机生成的产物、**不随 Git 分发**——因此「协作者克隆仓库后",
     "还没跑过 init」是必然会发生的常态。此时若直接 exec 一个不存在的文件，",
     "shell 返回 127；wrapper 内部的「检测不到 config.yaml 就 exit 0」那条铁律",
     "根本没有执行机会，结果是每次工具调用都报一次钩子错误。",
     "（审查意见 AGY-02 / GLM-01，修订版 M2 计划 §2.3）",
+    "",
+    "但守卫**不能一律 exit 0**（审查意见 AGY-03）：那样一条 `rm -rf .trivium/bin`",
+    "或 `chmod -x` 就能让四个拦截型 Hook 全部永真放行，整套闸门被一次性解除，",
+    "而且悄无声息。所以守卫区分两种情形：",
+    "  · 没有 .trivium/config.yaml → 项目从未初始化，静默 exit 0（协作者常态）",
+    "  · 有 config.yaml 但 wrapper 没了 → 护栏被破坏，exit 2 并说明如何修复",
+    "SessionStart 不是拦截型 Hook（只注入待办清单），仍一律 exit 0。",
+    "wrapper 本身也已进入 hook-pre-bash 的保护集，Bash 侧删改会被当场拦下。",
     "",
     "hook-pre-bash 挂在全部 Bash 事件上（无 if 过滤）：hook-pre-write 只覆盖 Edit / Write，",
     "`cat > f`、`sed -i`、`tee`、`git checkout` 是旁路；它按写命令形态做启发式拦截，只在闸门期生效。",
@@ -24,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-pre-write'",
+            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-write; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
             "timeout": 15
           }
         ]
@@ -34,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-pre-bash'",
+            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-bash; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
             "timeout": 15
           }
         ]
@@ -45,7 +53,7 @@
           {
             "type": "command",
             "if": "Bash(git commit:*)",
-            "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-pre-commit'",
+            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-commit; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
             "timeout": 15
           }
         ]
@@ -56,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-stop'",
+            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-stop; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
             "timeout": 30
           }
         ]

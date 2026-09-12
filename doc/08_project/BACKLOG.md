@@ -64,3 +64,24 @@
 - ~~QUICKSTART 说 init 生成 config.local.yaml（实为 doctor）；墙钟 2~15 分钟 vs USAGE 30~40 分钟~~ done
 - 重复实现：locateSubject×2、花括号配平扫描×2、路径正则×2、probeScratchPaths×2、runDir 拼接×2
 - ~~exec.ts:290-316 safePgrp 用 `getgid` 判进程组无效；`script -q /dev/null` 是 BSD 语法，Linux 无守卫~~ done
+
+## 2026-09-12 双审 · code 阶段（run `20260912T060013Z`，base 0aaf855）
+
+焦点「核实闸门与留痕的绕过路径是否真的堵上」，两侧均判 `request-changes`。
+留痕在 `.reviews/审核修复/code/`，逐条裁决见同目录 `-response-claude.md`。
+结论是**没有完全堵上**：两侧从不同入口指向同一处薄弱带——`hook-pre-bash` 出口。
+
+第一梯队（hook-pre-bash 出口）已落地，其余按裁决件的梯队顺序推进。
+
+| # | 状态 | 条目 | 位置 |
+| :-- | :-- | :-- | :-- |
+| AGY-01 | done | `bashTargetsProtected` 模板拼正则蜕化为 `[^s]*`（模板里 `\s`→`s`），**主题名含 ASCII `s` 时归档 `_meta/`、`task.json` 对 Bash 写入完全失防**；已实跑复现，改为路径组件判定 | hooks.ts `bashTargetsProtected` |
+| GLM-04 | done | 同处：依赖 `<archiveRel>/` 字面前缀，`cd .reviews && …` 漏过；`/_meta/` 要求尾斜杠，指向目录本身不命中。已复用 `commitTargetsProject` 的 cd 归一化 | hooks.ts `bashTargetsProtected` |
+| GLM-03 | done | `hookPreBash` 先剥 heredoc 再判写命令形态，`python3 - <<'PY' … PY` 提前放行，两条规则连评估机会都没有；而 `judgeDrift` 把归档与 `.trivium/` 整体排除，无跑后兜底。已改为在未剥离原文上判定 | hooks.ts `hookPreBash` |
+| AGY-03 | done | Hook 守卫一律 `test -x "$W" \|\| exit 0`：`rm -rf .trivium/bin` 即让四个拦截型 Hook 永真放行。已区分「未初始化」（exit 0）与「已初始化但 wrapper 没了」（exit 2），并把 `.trivium/bin` 纳入保护集 | hooks.json、.claude/settings.json、hooks.ts |
+| GLM-02 | todo | `sh -c 'git commit …'` 整段被引号吞成一个 token，`parseGitSegment` 找不到字面 `git` 即 fail-open，裁决期提交拦截与留痕完整性校验同时被跳过。**注意 settings.json 的 `if: Bash(git commit:*)` 可能使该形态根本不触发 Hook，两处都要改** | hooks.ts `parseGitSegment`、.claude/settings.json |
+| AGY-02 | todo | `gate --check` 通过后无条件落回 `idle`，`--await-approval` 是独立一步；Driver 省略它则人工审批被静默旁路，四个 Hook 全部放行 | cli.ts gate 分支 |
+| GLM-01 | todo | 人工审批闸门可被 Driver 一条 `trivium approve` 自行关闭：`recordApproval` 不校验来源，skill 的 allowed-tools 预批准了 `Bash(.trivium/bin/trivium:*)`。会话比对救不了（人工审批与自批同会话）。拟加一次性确认码 | cli.ts `cmdApproval`、approval.ts `recordApproval` |
+| GLM-05 | todo | `ApprovalInput.sessionId` 从未传入也从未使用，`ApprovalRecord` 不含来源——事后无法回答「这次 approve 是人发的还是模型发的」 | approval.ts:15-22,62-68 |
+| AGY-05 | todo | `cmdApproval` 允许 approve 省略 `--stage`，会枚举到未裁决阶段并抛 MISSING_ARTIFACT 而非友好提示 | cli.ts `cmdApproval` |
+| AGY-04 | todo | 同上文 Minor 条目：NAMED_FLAGS 缺 `only/allow-single/session-id` | topic-args.ts:22-25 |

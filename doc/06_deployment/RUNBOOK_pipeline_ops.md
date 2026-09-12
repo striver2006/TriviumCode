@@ -90,7 +90,7 @@ SIGTERM → 宽限 → SIGKILL，按**进程组**杀（厂商 CLI 会派生子�
 | Hook | 挡什么 | 什么状态下挡 |
 | :--- | :--- | :--- |
 | `hook-pre-write` | 业务文件写入（Edit / Write） | `awaiting_approval`（等人工审批）、`running`（审查进行中，改了会造成快照漂移） |
-| `hook-pre-bash` | 像在改动工作树的 Bash 命令（重定向、`tee`、`sed -i`、`rm/mv/cp`、`git checkout` …，启发式） | 同上；对审查文档 / `_meta/` / `task.json` / `state.json` 的写命令则任何时候都挡 |
+| `hook-pre-bash` | 像在改动工作树的 Bash 命令（重定向、`tee`、`sed -i`、`rm/mv/cp`、`git checkout` …，启发式） | 同上；对审查文档 / `_meta/` / `task.json` / `state.json` / `.trivium/bin` 的写命令则任何时候都挡。判定在**未剥离 heredoc 的原文**上做：`python3 - <<'PY' … PY` 的正文若指向上述对象同样拦，代价是正文里出现这些路径字面量的无害命令会被误拦（改用 Write 工具即可） |
 | `hook-pre-commit` | `git commit` | 同上，外加留痕完整性校验失败 |
 | `hook-stop` | 收工 | `review_done_awaiting_disposition`（裁决件没齐） |
 
