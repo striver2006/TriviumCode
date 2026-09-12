@@ -1,7 +1,7 @@
 # CASE：人工验收剧本（PRD 场景 S1～S5）
 
 > 对应 [设计 §17.3](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md)。
-> 自动化测试（`npm run check`，458 例）与 `trivium doctor --selftest`（14 步）**覆盖不到**下面这些，
+> 自动化测试（`npm run check`，712 例）与 `trivium doctor --selftest`（14 步）**覆盖不到**下面这些，
 > 因为它们要么需要人在 Claude Code 窗口里操作，要么必须真实消耗两侧厂商配额。
 
 ## 先做这一步
@@ -222,7 +222,11 @@ PY
 
 ```bash
 TV=.trivium/bin/trivium
-# 前提：某主题的 plan 阶段已跑完双审、裁决已通过 gate --check（闸门回 idle）
+# 前提：某主题的 plan 阶段已跑完双审、裁决已通过 gate --check。
+#      注意闸门此刻**未必回 idle**：若这一轮是 /dual-review-plan（entry B）发起的，
+#      --check 通过后闸门会立起 awaiting_approval（那正是命令 B 的停点）。
+#      本剧本验的是提交拦截，两种状态下都该按下面的期望值走；
+#      若想先回到 idle，用 /dual-approve --topic <主题> --stage plan 放行。
 
 # ① 基线：此刻提交应放行
 echo '{"session_id":"manual","tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' \
@@ -260,6 +264,63 @@ git restore .reviews/<主题>/plan/<日期>-<主题>-glm.md
 >
 > 确实要作废某一轮时用 `/dual-abandon --topic <主题>`——它保留工件、只解闸门。
 > 重跑会自动抬升 `-r<N>`，既有工件一律不覆盖，**不需要先删**。
+
+---
+
+## 剧本 6 · Bash 旁路挡得住（P5 / P6）
+
+**验什么**：`hook-pre-write` 只覆盖 Edit / Write，而写文件的路不止那一条。
+`cat > f`、`sed -i`、`tee`、`git checkout -- f` 都能绕过去，`hook-pre-bash` 是补这个缺口的。
+这是本轮加固的重点，自动化层有单测，但**真实归档上的表现值得人工确认一次**。
+
+**怎么做**
+
+```bash
+TV=.trivium/bin/trivium
+probe () {   # $1 = 要试的命令字符串
+  printf '{"session_id":"manual","tool_name":"Bash","tool_input":{"command":%s}}' \
+    "$(printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+    | $TV gate hook-pre-bash; echo "  exit=$?  ← $1"
+}
+
+# ── A 组：编排器独占对象，闸门是否开着都该拦 ──
+probe "rm .reviews/<主题>/plan/<日期>-<主题>-gemini.md"      # 期望 2
+probe "sed -i '' 's/blocker/minor/' .reviews/<主题>/plan/<日期>-<主题>-glm.md"  # 期望 2
+probe "echo x > .reviews/<主题>/plan/_meta/task.json"        # 期望 2
+probe "rm -rf .trivium/bin"                                  # 期望 2
+probe "cat <<'EOF' > .reviews/<主题>/plan/_meta/run-x.json
+{}
+EOF"                                                          # 期望 2（heredoc 不能逃逸）
+
+# ── B 组：普通业务文件，只在闸门期拦 ──
+probe "cat > src/foo.ts"        # 闸门期 2 / 闸门空闲 0
+probe "git checkout -- src/"    # 闸门期 2 / 闸门空闲 0
+
+# ── C 组：只读命令，任何时候都放行 ──
+probe "git log --oneline -5"    # 期望 0
+probe "grep -rn foo src/"       # 期望 0
+```
+
+B 组要各跑两遍：一遍在 `awaiting_approval` 或 `running` 期间，一遍在闸门空闲时。
+用 `$TV status --json` 确认当前状态。
+
+**判据**
+
+| # | 判据 | 退出码 |
+| :--- | :--- | :--- |
+| 6.1 | 改角色后缀文件（删 / `sed -i`）任何时候都被拦 | `2` |
+| 6.2 | 改归档 `_meta/` 或 `task.json` 任何时候都被拦 | `2` |
+| 6.3 | 删 wrapper 或 `.trivium/` 的状态与锁被拦 | `2` |
+| 6.4 | heredoc 藏起来的写入同样被拦（判定在未剥 heredoc 的原文上做） | `2` |
+| 6.5 | 普通业务文件的写命令：闸门期拦、空闲放行 | `2` / `0` |
+| 6.6 | 只读命令任何时候不误伤 | `0` |
+| 6.7 | 删掉 wrapper 后再调任意工具，四个拦截型 Hook 报「护栏失效」而**不是**静默放行 | `2` |
+
+> 6.7 单独试：`chmod -x .trivium/bin/trivium` 后随便跑一个 Edit，应看到修复指引；
+> `chmod +x` 恢复。**不要在这一步真的 `rm -rf` wrapper**，恢复要重跑 `trivium init`。
+>
+> 拦截是**启发式**的，不求完备——它挡住顺手的旁路。真绕过去了，改动仍会被跑后复算
+> 判成漂移，整次审查可能作废（剧本 3 验的就是这件事）。
 
 ---
 

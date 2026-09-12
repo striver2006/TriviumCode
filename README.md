@@ -169,7 +169,7 @@ TriviumCode **绝非**调用 LLM 补全接口，而是直接拉起各厂商**系
 | 层 | 内容 |
 | :--- | :--- |
 | 交互层 | Claude Code + 四条 `/` 命令 + Hook 护栏 |
-| 编排层 | `trivium` CLI：`preflight` `topic` `freeze` `brief` `runner` `parse` `render` `guard` `gate` `archive` `meta` `verify` `report`。**无常驻进程**，每条命令按需拉起、跑完即退 |
+| 编排层 | `trivium` CLI：`init` `doctor` `preflight` `topic resolve` `review`（`--start`/`--wait`/`--status`/`--cancel`）`gate`（含五个 `hook-*` 入口）`approve` `abandon` `verify` `report` `status`。**无常驻进程**，每条命令按需拉起、跑完即退 |
 | 适配层 | `AgyAdapter` / `ZcodeAdapter`：把两家 CLI 的参数、输出字段、模型指定方式、只读方式、轨迹来源差异收敛到统一契约 |
 | 执行层 | `agy` / `zcode.cjs` 的 headless Agent 运行时 |
 | 归档层 | `.reviews/`（进 Git，是本流水线对外的「事实」）+ `.trivium/`（本机运行时状态） |

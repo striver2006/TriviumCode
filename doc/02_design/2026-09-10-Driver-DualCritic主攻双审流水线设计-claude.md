@@ -3,9 +3,9 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`，遵循 PRD FR-08 的 `日期-主题-角色` 规范；角色后缀 `claude` 表示本文是主脑产出、**待双审**的文档
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.2.2
+> - **当前版本**：v1.2.3
 > - **状态**：**已定稿并实现完成(Completed)** — 2026-09-11。M0～M5 全部里程碑达成，§16.3 十项交付物齐备；
->   `npm run check` 全绿（458 用例）、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+>   `npm run check` 全绿（712 用例）、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   本文继续作为**唯一实现依据**：后续任何与本文不一致的改动，仍须先回溯修订本文（16.2 纪律 1）
 > - **审核依据**：①[`2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md`](./reference/2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md)（v1.1.0 按其 RV-01～RV-26 修订，逐条应答见第 22 章）；②项目负责人评审意见 UR-01～UR-06（2026-09-11，v1.2.0 据此修订，逐条应答见第 23 章）
 > - **架构决策记录**：[`ADR_001_isolation_mode.md`](./ADR_001_isolation_mode.md)（就地审查模式，Accepted）
@@ -695,11 +695,11 @@ addresses:               # 本件应答的两份审查文档
 | 斜杠命令 | PRD 语义 | 前置条件 | 必选输入 | 可选输入 | 自动执行到 | 停点 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `/dual-run` | 命令 A · 全流程 | 已给出任务目标 | 任务目标（`$ARGUMENTS` 中除具名参数外的正文，可由对话上下文提供） | `--topic`、`--model-gemini`、`--model-glm`、`--profile`、`--focus <提示语>`（显式具名，避免与任务目标混淆）、`--context <路径,…>` | 计划双审 → 修订 → 编码 → 代码双审 → 应答 → 改码 → **编译测试** | 编译测试结束（成败均留痕） |
-| `/dual-review-plan` | 命令 B · 计划审 | 原始计划已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--plan-file`、`--context <路径,…>` | 双审 → 修订计划 | **等待人工审批** |
-| `/dual-review-code` | 命令 C · 代码审 | 待审代码已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--base <ref>`、`--context <路径,…>` | 双审 → 应答（确认修改方案） | **等待人工审批** |
-| `/dual-review-bug` | 命令 D · 根因审 | 根因材料已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--rca-file`、`--context <路径,…>` | 双审 → 修订根因结论 | **等待人工审批** |
-| `/dual-approve` | 辅助 · 人工审批 | 存在 `awaiting_approval` 闸门 | `--topic --stage` | `--reject --reason` | 记录审批结论；通过或拒绝**均解除业务写锁**，拒绝时状态置 `rejected` 并保留全部工件 | — |
-| `/dual-abandon` | 辅助 · 放弃闸门 | 存在未关闭闸门 | `--topic` | `--reason` | 记录放弃、解除写锁、状态置 `abandoned`；工件保留 | — |
+| `/dual-review-plan` | 命令 B · 计划审 | 原始计划已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--plan-file`、`--context <路径,…>`、`--only <一侧>`、`--allow-single` | 双审 → 修订计划 | **等待人工审批** |
+| `/dual-review-code` | 命令 C · 代码审 | 待审代码已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--base <ref>`、`--context <路径,…>`、`--only <一侧>`、`--allow-single` | 双审 → 应答（确认修改方案） | **等待人工审批** |
+| `/dual-review-bug` | 命令 D · 根因审 | 根因材料已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--rca-file`、`--context <路径,…>`、`--only <一侧>`、`--allow-single` | 双审 → 修订根因结论 | **等待人工审批** |
+| `/dual-approve` | 辅助 · 人工审批 | 存在 `awaiting_approval` 闸门 | `--topic --stage` | `--reject --reason` | 记录审批结论；通过或拒绝**均解除业务写锁**，拒绝时状态置 `rejected` 并保留全部工件。闸门处于 `running` 时一律退 `2`（审查还没跑完，无从审批），须先 `review --cancel` | — |
+| `/dual-abandon` | 辅助 · 放弃闸门 | 存在未关闭闸门 | `--topic` | `--stage`（省略则放弃该主题全部非 `running` 闸门）、`--reason` | 记录放弃、解除写锁、状态置 `abandoned`；工件保留。`running` 闸门跳过不放弃，须先 `review --cancel` | — |
 | `/dual-status` | 辅助 · 状态查询 | — | — | `--topic` | 打印闸门、运行、降级与争议 | — |
 
 命令字符串沿用 PRD 第 11.2 节给出的候选拼写。安装器可选注册简写别名（`/dr`、`/drp`、`/drc`、`/drb`），语义不变。
@@ -763,7 +763,7 @@ addresses:               # 本件应答的两份审查文档
 ---
 name: dual-review-plan
 description: 对已有计划做 Antigravity + ZCode 背靠背双审，并产出逐条裁决的修订计划（命令 B）
-argument-hint: <审查焦点提示语> [--topic <主题>] [--context <路径,…>] [--model-gemini <slug>] [--model-glm <id>]
+argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--plan-file <路径>] [--model-gemini <slug>] [--model-glm <id>] [--profile <档位>] [--only <一侧>] [--allow-single]
 disable-model-invocation: true      # 只允许人用 / 触发，Claude 不得自行发起双审
 allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 ---
@@ -774,9 +774,11 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 一律用该项目相对路径，不依赖 PATH 与 ${CLAUDE_SKILL_DIR}，见 5.3 / 10.5；若该文件不存在，
 提示用户先在本项目执行 `trivium init` 并停止）：
 1. 运行 `TV preflight --stage plan --json`。失败则原样转述错误并停止。
-2. 运行 `TV topic resolve --stage plan --args "$ARGUMENTS" --json` 获得主题、原始计划路径与 run 上下文；
+2. 运行 `TV topic resolve --stage plan --json -- $ARGUMENTS` 获得主题、原始计划路径与 run 上下文。
+   原始参数串**必须走 `--` 终止符**传入：它本身以 `--topic` 开头，写成 `--args <值>` 会有歧义；
    若提示语为空则停止并说明「命令 B 必须带提示语」；若未提供 `--context`，依据计划内容补一份涉及路径清单再传入。
-3. 运行 `TV review --stage plan --run-context <ctx> --start --json`，得到 `run_id`（该命令冻结送审包、派生工作进程并立即返回）。
+3. 运行 `TV review --start --entry B --stage plan --topic <主题> --focus <焦点> [--goal …] [--plan-file …] [--context …] --json`，
+   得到 `run_id`（该命令冻结送审包、派生工作进程并立即返回）。上一步解析出的参数逐项透传，不得省略。
    然后循环运行 `TV review --wait <run_id> --timeout 540 --json`：退出码 `73` 表示仍在运行，打印其输出的进度摘要后继续等待；
    退出码 `0` 表示两份审查文档与元数据已落盘；其它退出码按原样转述并停止。循环次数上限由输出中的 `max_waits` 给出（7.5）。
 4. 用 Read **完整读取**两份审查文档（禁止只读摘要段）。
@@ -907,36 +909,53 @@ stateDiagram-v2
       {
         "matcher": "Edit|Write|NotebookEdit",
         "hooks": [
-          { "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium gate hook-pre-write",
-            "timeout": 15 }
+          {
+            "type": "command",
+            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-write; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
+            "timeout": 15
+          }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command",
-            "if": "Bash(git commit:*)",
-            "command": "${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium gate hook-pre-commit",
-            "timeout": 15 }
+          {
+            "type": "command",
+            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-bash; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-commit; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
+            "timeout": 15
+          }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium gate hook-stop",
-            "timeout": 30 }
+          {
+            "type": "command",
+            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-stop; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
+            "timeout": 30
+          }
         ]
       }
     ],
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium gate hook-session-start",
-            "timeout": 15 }
+          {
+            "type": "command",
+            "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-session-start'",
+            "timeout": 15
+          }
         ]
       }
     ]
@@ -948,14 +967,15 @@ Hook 行为约定：
 
 | Hook | 触发 | 行为 |
 | :--- | :--- | :--- |
-| `hook-pre-write` | 每次文件写入前 | 见 8.4。另：存在**本会话**触发且状态为 `running` 的审查运行时，同样 `deny` 归档根之外的写入（就地模式下审查员正在读真实工作树，Driver 此时不得改业务文件；Driver 本就处于 `--wait` 循环，正常不会触发）。安全兜底：①本设计的 Hook 配置只由 `trivium init` 注入**项目级** `.claude/settings.json`；②若被放进用户全局 settings，未初始化的项目里 `${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium` 不存在，命令以非 2 的非零码退出，属非阻断，不会误伤；③脚本自身在检测不到 `.trivium/config.yaml` 时直接 exit 0 |
-| `hook-pre-commit` | `git commit` 前 | 存在「审查文档已落盘但裁决件缺失/不完整」的阶段时 exit 2 阻断，说明缺哪些编号；可由 `gate.block_commit: false` 关闭 |
+| `hook-pre-write` | 每次文件写入前 | 见 8.4。另：存在**本会话**触发且状态为 `running` 的审查运行时，同样 `deny` 归档根之外的写入（就地模式下审查员正在读真实工作树，Driver 此时不得改业务文件；Driver 本就处于 `--wait` 循环，正常不会触发）。安全兜底：①本设计的 Hook 配置只由 `trivium init` 注入**项目级** `.claude/settings.json`；②每条命令外层的 `sh -c` 守卫**区分两种情形**：无 `.trivium/config.yaml` → 项目从未初始化（协作者克隆仓库后尚未跑过 `trivium init` 是必然常态），静默 exit 0，不会误伤；有 `config.yaml` 但 wrapper 缺失或不可执行 → 护栏已被破坏，exit 2 并打印修复指引。守卫**不可一律 exit 0**：那样一条 `rm -rf` 或 `chmod -x` 打在 wrapper 上，就能把四个拦截型 Hook 一次性变成永真放行，而且悄无声息（审查意见 AGY-03）；③wrapper 自身在检测不到 `.trivium/config.yaml` 时同样返回 0 |
+| `hook-pre-bash` | 每次 Bash 调用前 | `hook-pre-write` 只覆盖 Edit / Write / NotebookEdit，`cat > f`、`sed -i`、`tee`、`git checkout` 都是旁路。本 Hook 挂**全部** Bash 事件（无 `if` 过滤），按写命令形态做**启发式**拦截（重定向、`tee`、`sed -i` / `perl -i`、`rm` / `mv` / `cp` / `touch`、`git checkout` / `reset` / `commit`、包管理器安装等）：①命中编排器独占对象（角色后缀文件、运行时状态目录及其下的状态文件、锁与 wrapper、归档内 `_meta/` 与 `task.json`）→ **任何时候**都 deny，不受闸门状态限制；②其余写命令仅在闸门期（`awaiting_approval` / `running`）deny。判定**刻意在未剥 heredoc 的原文上**进行——先剥 heredoc 会让 `cat <<'EOF' > 受保护文件` 整个逃逸。启发式不求完备：它挡住顺手的旁路，绕过去的改动仍会被跑后复算判成漂移 |
+| `hook-pre-commit` | 每次 Bash 调用前 | 存在「审查文档已落盘但裁决件缺失/不完整」的阶段时 exit 2 阻断，说明缺哪些编号；并校验留痕完整性三条锚（已提交工件被删 / 不可变工件被改、run 清单与其元数据文件互相可达且 `artifacts[].sha256` 逐份吻合、记过 run 的主题其 `task.json` 仍在）。**不按会话过滤**——裁决完整性是仓库的属性，不是会话的属性。原先带 `if: Bash(git commit:*)`，但那是**前缀**匹配：`sh -c 'git commit -m x'` 不以 `git commit` 开头，Hook 根本不触发，裁决期的提交拦截与留痕校验被一起跳过，被篡改的归档可以一次性洗进 HEAD（审查意见 GLM-02）。现改为不设 `if`、由 `looksLikeCommit` 在进程内过滤，它还要判这次提交是否打在**本项目**上（前缀规则本来也表达不了这件事）。可由 `gate.block_commit: false` 关闭 |
 | `hook-stop` | Driver 结束回合前 | 若存在**本会话**的 `review_done_awaiting_disposition` 状态 → 输出 `{"decision":"block","reason":"还有未逐条裁决的审查意见：…"}`（或 exit 2 + stderr）；若为 `awaiting_approval` → exit 0（这是**期望的**停点）。带 `stop_hook_active` 早退与每阶段最多 2 次阻断上限，避免死循环 |
 | `hook-session-start` | 会话开始 | 通过 `additionalContext` 注入当前待审批闸门与未完成裁决的清单 |
 
 > 说明：`Stop` 的阻断上限与 `stop_hook_active` 判据必须实现；Claude Code 自身在 Stop hook 连续阻断 8 次后会强制覆盖（`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`）；两层保护共同防止「审查—阻断」死循环。所有 Hook 子命令经统一 wrapper 执行：只在明确判定时返回 `2`，内部异常返回 `1`（非阻断），检测不到 `.trivium/config.yaml` 时返回 `0`。
 >
-> **为什么不用 SKILL.md frontmatter 的 `hooks`**：skill 内声明的 hooks 只在该 skill 激活期间生效；闸门（`awaiting_approval`）要跨越多个回合甚至多个会话持续守住，必须是项目级 `settings.json` 中的常驻 Hook。skill 级 hooks 可作为二期加固（例如在双审进行中额外拦截 Bash 写命令），不作为一期依赖。
+> **为什么不用 SKILL.md frontmatter 的 `hooks`**：skill 内声明的 hooks 只在该 skill 激活期间生效；闸门（`awaiting_approval`）要跨越多个回合甚至多个会话持续守住，必须是项目级 `settings.json` 中的常驻 Hook。「在双审进行中额外拦截 Bash 写命令」这件事已由项目级的 `hook-pre-bash` 承担，不再依赖 skill 级 hooks。
 
 ### 8.6 裁决完整性校验算法（`trivium gate --check`）
 
@@ -978,7 +998,11 @@ Hook 行为约定：
    f. 接受 且 落点为空               → FAIL(missing_action)
    g. 双方共同 blocker 被「驳回」     → joint_blocker_policy=warn: WARN + task.json.disputed=true /
                                        hard 且 location 精确相同: FAIL(joint_blocker_rejected)
-6. 通过 → 写 run 元数据 gate.adjudication_complete=true（含 warnings[]），返回 0
+6. 通过 → 写 run 元数据 gate.adjudication_complete=true（含 warnings[]），返回 0，
+   并按 run 元数据记录的 entry 分流闸门：
+     entry = B/C/D → 原子迁入 awaiting_approval（这三条命令的停点就是人工审批，
+                     放回 idle 等于把停点丢掉，闸门写锁与 hook-stop 都不再守得住）
+     entry = A 或无 entry → 回 idle（命令 A 不设人工闸门）
    失败 → 返回 2，stdout 输出结构化缺口清单（供 Driver 直接修补）；
    命令模板最多重试 gate.max_check_retries（默认 3）次，超限停下求助人工（7.4 步骤 6）
 ```
@@ -1384,6 +1408,7 @@ isolation:                           # 就地模式（唯一模式，ADR-001）
 review:
   parallel: true
   failure_policy: strict
+  allow_single_flag: true            # 是否允许命令行用 --only / --allow-single 显式降级为单审
   timeout_s: {plan: 900, code: 1200, bug: 1200}
   wait_timeout_s: 540                # review --wait 单次上限，须小于 Bash 工具超时 120s 的可调上限（7.5）
   heartbeat_stale_s: 120
@@ -1393,12 +1418,13 @@ review:
   min_project_reads: {plan: 3, code: 3, bug: 3}   # 被审对象之外的项目文件读取下限（11.4）
   on_drift: warn                     # warn | fail：审查期间无关文件被改（9.2）
   on_drift_related: fail             # warn | fail：--context / diff 涉及文件被改
-  sensitive_globs: [".env*", "**/*.pem", "**/*.key", "**/id_rsa*"]   # 进禁读清单与路径 deny
+  sensitive_globs: [".env*", "**/.env*", "**/*.pem", "**/*.key", "**/id_rsa*"]   # 进禁读清单与路径 deny
+                                     # `.env*` 只匹配根目录（glob 的 * 不跨 /），子目录里的要靠 **/.env*
   block_severities: [blocker, major]
   skip_doc_only_review: false
   skip_globs: ["**/*.md", "docs/**", "**/*.txt"]
-  never_skip_globs: ["**/package.json", "**/pubspec.yaml", "**/Cargo.toml",
-                     ".github/**", "Dockerfile", ".claude/**", ".trivium/**"]
+  never_skip_globs: ["**/package.json", "**/pubspec.yaml", "**/Cargo.toml", "**/requirements*.txt",
+                     ".github/**", ".gitlab-ci.yml", "Dockerfile", ".claude/**", ".trivium/**"]
 
 critics:
   gemini:
@@ -1406,7 +1432,8 @@ critics:
     bin: /Users/<you>/.local/bin/agy          # 绝对路径（GUI 进程不读 .zshrc）
     agent: trivium-critic
     effort: {plan: high, code: medium, bug: high}
-    readonly_commands: ["git log", "git blame", "git diff", "git show", "ls", "cat", "grep", "rg", "find"]
+    readonly_commands: ["git log", "git blame", "git diff", "git show", "git status",
+                        "ls", "cat", "head", "tail", "grep", "rg", "find", "wc"]
   glm:
     vendor: zcode
     entry: /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs   # node 取 runtime.node
@@ -1438,11 +1465,15 @@ verify:
 retention:
   run_dir_days: 30
 
-probe:                                # 由 trivium doctor 回填，勿手工编辑
+probe_ttl_days: 7                     # 探针结论的新鲜期，过期后需重跑 doctor
+
+probe:                                # 由 trivium doctor 回填，勿手工编辑（下面是**节选**，完整形状以 defaultProbe() 为准）
   generated_at: null
   verify_suggestion: {build: [], test: []}   # doctor 探测到的候选命令，仅供 init 展示确认，不自动执行
   agy: {path_deny: {supported: null, rule_syntax: null}, scratch_paths: [], isolation: shared,
-        models: []}                           # models 为 agy models 回读的目录，slug 校验的比对基准
+        models: [],                           # models 为 agy models 回读的目录，slug 校验的比对基准
+        agent: null,                          # 探针验证过的只读 Agent 名；--agent 取这里，配置值只作兜底
+        read_strategy: null, pty_required: null}   # 本机可用的 headless 只读配方（坑 P-13）
   zcode: {path_deny: {supported: null, rule_syntax: null}, scratch_paths: [], isolation: shared,
           readonly_flags: [], model_override: null, trace_source: null, response_field: null,
           model_id_form: null, models: []}    # model_id_form 形如 <providerId>/<modelName>（坑 P-06）
@@ -1577,7 +1608,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | :--- | :--- | :--- | :--- | :--- |
 | **M0 探路（必须最先做）** | 在目标 macOS 机器上逐项实测第 3.5 节探针清单（含 `*.path_deny`、`*.scratch_paths`）；把结论固化进 `config.local.yaml` 的 `probe:` 段；产出「本机坑清单」 | 拿到两侧**真实可用**的 headless 命令模板；能证明「只读生效 + 能读文件 + 能换模型 + 能拿轨迹 + 路径 deny 是否可用已知 + 临时文件白名单已知」 | 1～2 天 | ✅ 两侧探针全部有确定结论；`path_deny` 两侧均实测为 `false`（各配负对照），`scratch_paths` 均为 `[]`；产出 18 个坑 + 12 条冲突的本机坑清单（P-16～P-18 为 M4/M5 期间真实运行补录），冲突已回补进 v1.2.1 |
 | **M1 单阶段闭环** | TypeScript 工程骨架（`package.json`、esbuild 打包、`node:test`）；`config`/`topic`/`freeze`/`brief`/`adapters`/`runner`/`parse`/`render`/`archive`；先只做 `plan` 阶段 | 手工调用 `node skills/dual-critic/scripts/trivium.cjs review --stage plan` 在真实项目根得到两份合规 Markdown + `_meta/` | 2～3 天 | ✅ `plan` 阶段真实跑通并自举两次（M2 / M3 计划审各一轮，共 29 条真实意见） |
-| **M2 skills 与闸门** | 7 个入口 skill + 核心 skill + 安装器 + `review --start/--wait` 协议 + `gate` 裁决校验 + Hook 三件套 + `state.json` + 主题锁 | `/dual-review-plan` 端到端可跑且单次 Bash 调用不超时；删一条裁决即被拦；同会话闸门期写业务文件被 deny，新会话不被误伤；`disable-model-invocation` 生效 | 3 天 | ✅ 7 个入口 skill + 核心 skill + 安装器 + `--start`/`--wait` 分段协议 + `gate --check` + Hook 三件套；未初始化仓库中四个 Hook 均退 0 零输出 |
+| **M2 skills 与闸门** | 7 个入口 skill + 核心 skill + 安装器 + `review --start/--wait` 协议 + `gate` 裁决校验 + Hook 五件套 + `state.json` + 主题锁 | `/dual-review-plan` 端到端可跑且单次 Bash 调用不超时；删一条裁决即被拦；同会话闸门期写业务文件被 deny，新会话不被误伤；`disable-model-invocation` 生效 | 3 天 | ✅ 7 个入口 skill + 核心 skill + 安装器 + `--start`/`--wait` 分段协议 + `gate --check` + Hook 五件套（`pre-write` / `pre-bash` / `pre-commit` / `stop` / `session-start`）；未初始化仓库（无 `config.yaml`）中五个 Hook 均退 0 零输出，已初始化但 wrapper 被删则四个拦截型 Hook 退 2 |
 | **M3 隔离、证据、降级、模型路由** | 禁读清单 + 路径 deny 注入 + 轨迹核验、只读指纹与漂移检测、项目文件读取下限与 `consulted` 核对、strict/degrade、模型四级路由与两档覆盖及回读、`preflight` | AC-04 / AC-05 / AC-06 / AC-08 / AC-11 / AC-13 / AC-16 / AC-17 / AC-18 全部可演示 | 3 天 | ✅ 含桩适配器跨进程注入（`TRIVIUM_STUB_CRITIC`）与位置归一化后的退化指标；故障注入 14 例、零工件 7 例 |
 | **M4 全流程与出口** | `code`/`bug` 阶段、命令 A 状态机、`verify` 编译测试、`report` | AC-01 / AC-10 / AC-14 / AC-15 通过 | 2～3 天 | ✅ `code`/`bug` 阶段 + `verify` + `report`；AC-01 / AC-10 / AC-14 / AC-15 均有端到端用例 |
 | **M5 P2 与交付** | FR-23 跳过纯文档审、FR-24 元数据完善、FR-25 重跑版本、安装器、用户手册、`doctor --selftest` | 非作者可在 15 分钟内独立装好并跑通一条任务 | 2 天 | ✅ FR-23 跳过 + `doctor --selftest`（14 步）+ 故意留洞的端到端夹具 + QUICKSTART / PROTOCOL / GUIDE 三份文档 |
@@ -1637,6 +1668,11 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | 闸门未审批时写业务文件 | Hook `deny`，原因文本包含 `/dual-approve` 指引 |
 | 编译测试失败 | 全流程状态 `failed`，工件保留 |
 | 主脑试图写 `*-glm.md` | Hook `deny` |
+| 闸门期用 Bash 写业务文件（`cat > f`、`sed -i f`、`tee f`、`git checkout -- f`） | `hook-pre-bash` `deny`，原因文本包含 `/dual-approve` 指引 |
+| 任何时候用 Bash 改编排器独占对象（角色后缀文件、运行时状态与锁、归档 `_meta/` 与 `task.json`、wrapper） | `hook-pre-bash` `deny`，**不受闸门状态限制** |
+| 用 heredoc 把写入藏进 `cat <<'EOF' > 受保护文件` | 仍被 `hook-pre-bash` 命中（判定在未剥 heredoc 的原文上进行） |
+| `sh -c 'git commit -m x'` 绕过前缀匹配提交 | `hook-pre-commit` 仍触发（已去掉 `if`，改进程内判定），裁决未齐备时 exit 2 |
+| 已初始化项目中删除或 `chmod -x` wrapper 后再调用工具 | 四个拦截型 Hook 的 `sh -c` 守卫 exit 2 并打印修复指引，**不得**放行 |
 | 单次 `review --wait` 超过 `wait_timeout_s` | 返回 73 并给出进度，工作进程继续；再次 `--wait` 最终返回 0 |
 | 工作进程被杀且心跳过期 | `failed(worker_lost)`，锁被回收 |
 | 同主题并发 `--start` | 第二次返回 70 并提示现有 `run_id` |
@@ -1757,6 +1793,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | v1.2.0 | 2026-09-11 | 按项目负责人评审意见 UR-01～UR-06 修订（第 23 章逐条应答）：**就地审查为唯一隔离模式**（AD-05、ADR-001 Accepted；删除 `mirror`、`link_globs`、`isolation.cost`、`_review/` 目录；运行目录移至项目外 `~/.trivium/runs/`；10.1 改为「延迟落盘 + 历史产出三层屏蔽 + 只读指纹」；9.2 改为快照与漂移检测算法；10.3 文件系统层改为无、事后核验加轨迹写事件；3.5 新增 `path_deny`、`scratch_paths` 探针，`home_isolation` 降为按需）；**结合全项目评审加固**（9.4 新增必读清单段、7.1 新增 `--context`、6.5 新增 `consulted`、11.4 新增 `project_reads` 下限与交叉核对、R15）；**实现语言改为 Node.js + TypeScript 单文件打包**（AD-12、5.2、3.5 `node` 探针、17.1 `node:test`）；**命令载体改为用户级 skills、脚本随核心 skill 分发**（AD-13、3.1 skills 事实、5.2/5.3 目录、7.4 SKILL.md、8.5 skill hooks 说明、16.3 交付物）；8.5 `running` 期间 Driver 禁写；12.1 新增漂移行；13.1 新增 `runtime`、`min_project_reads`、`on_drift*`、`sensitive_globs`；15.1/15.3 追溯更新；18.1 #1/#9 已拍板、新增 #12/#13；18.2 删 PRD FR-07 回填项；R10/R13/R14 改写。 |
 | v1.2.1 | 2026-09-11 | 按 M0 本机实测回补（坑清单 C-01～C-12，逐条见 [`REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md) 第 8 节）：**3.3 ZCode 事实表按 0.16.5 实测改写**——`ZCODE_MODEL` 环境变量不存在（C-07）、`--max-turns`/`--allowed-tools`/`--permission-mode`/`--settings` 四个 flag 被拒（C-01/C-09）、`--mode plan` 仍可执行 shell 故 denylist 中 `Bash` 为必需（C-10）、模型 id 须全限定 `<providerId>/<modelName>`（C-02）、轨迹须同时读 `log/` 与 `rollout/` 两处（C-12）；**11.3 模型覆盖由三档改两档**（`env` 档作废，`config_copy` 只能靠独立 `HOME` 实现，C-07/C-08），调用模板同步校正；**3.1/10.1 第 ③ 道路径级 deny 两侧均不可用**（C-04/C-11，各配负对照），按 18.1 #12 降级为两层并逐侧留痕；**12.2 超时判据收紧为编排器进程级计时**（`--print-timeout` 到期 exit 0 不可区分成功与超时 C-06；本机无 `timeout` 命令 P-01；timeout 侧不参与证据判定）。另按 M3 双审意见回补：8.1 新增 `--stage` 作用域与 fail-fast 顺序（GLM-02）、13.1 补 `probe.auth` 逐侧形状与 `models`/`model_id_form` 字段、11.5 明确 slug 校验的两个执行点与「目录为空则跳过」的理由（GLM-01）、15.3 AC-16 验收口径扩展到 `review` 自身的全部失败出口。 |
 | v1.2.2 | 2026-09-11 | 按**自举双审**的裁决修订（两轮真实代码审，16 + 14 条意见逐条裁决，留痕见 `.reviews/M4-M5实现/` 与 `.reviews/S9-闸门与留痕加固/`）：**6.2 / 9.2 / 6.7 的 code 阶段被审补丁由固定名 `changes.diff` 改为 `changes-<run_id>.diff`**——它进留痕保护集之后，固定名会被下一轮覆盖，导致上一轮记录的 sha256 永远对不上、`hook-pre-commit` 永久拦截且不可恢复（审查意见 GLM-01，blocker）；固定名保留为指向最新一轮的便利副本，不进保护集。另记：8.4 的 `--await-approval` 增加裁决完整性前置校验（AGY-02）；8.5 的提交拦截不再按会话过滤——裁决完整性是仓库的属性而非会话的属性（AGY-05）。 |
+| v1.2.3 | 2026-09-12 | 按**整体审核 + 四梯队双审修复**回补，使本文与实现重新一致（16.2 纪律 1；留痕见 `.reviews/审核修复/`）。**8.5 Hook 契约重写**：注入的 Hook 由四个增至**五个**，新增 `hook-pre-bash`（挂全部 Bash 事件，按写命令形态启发式拦截；编排器独占对象任何时候都 deny，其余写命令仅闸门期 deny；判定刻意在未剥 heredoc 的原文上进行）；`hook-pre-commit` **删去 `if: Bash(git commit:*)`**——前缀匹配拦不住 `sh -c 'git commit …'`，改由进程内 `looksLikeCommit` 过滤并判提交是否打在本项目上（GLM-02）；每条命令外层 `sh -c` 守卫由「检测不到 wrapper 就退 0」改为**两分支**——无 `config.yaml` 退 0、有 `config.yaml` 但 wrapper 缺失退 2，否则一条 `rm -rf` 打在 wrapper 上即可无声解除全部护栏（AGY-03）；JSON 示例改为与 `hooks.json` 逐字同源。**8.6 步骤 6 新增 entry 分流**：`gate --check` 通过后按 run 元数据的 entry 决定去向，B/C/D 迁入 `awaiting_approval` 而非一律回 `idle`，否则这三条命令的人工停点被丢掉（AGY-02）。**7.1 / 7.4 命令规格校正**：B/C/D 可选输入补 `--only` / `--allow-single`（它们曾被吞进审查焦点，AGY-04），`/dual-abandon` 补 `--stage`，`/dual-approve` 与 `/dual-abandon` 补「`running` 闸门须先 `review --cancel`」；skill 模板的 `topic resolve` 改用 `--` 终止符传原始参数串（`--args` 与以 `--topic` 开头的正文有歧义），`review --start` 删去从未实现的 `--run-context`、改为实际的 `--entry` 参数集，`argument-hint` 补齐五个旗标。**13.1 配置对齐实现**：新增 `review.allow_single_flag` 与顶层 `probe_ttl_days`，`sensitive_globs` 补 `**/.env*`（glob 的 `*` 不跨 `/`），`never_skip_globs` 补 `**/requirements*.txt` 与 `.gitlab-ci.yml`，`readonly_commands` 由 9 项补至 13 项。**17.2 故障注入表**补六条 `hook-pre-bash` 与守卫用例。另：16.1 M2「Hook 三件套」改五件套，用例数 458 → 712。 |
 
 ---
 

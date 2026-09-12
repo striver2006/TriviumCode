@@ -162,23 +162,46 @@ trivium review --start --stage <s> --topic <t> --focus <hint> --json
 
 ## 七、Hook 契约（§8.5）
 
-四个 Hook 注册在 `.claude/settings.json`（随仓库分发），全部经
-`sh -c 'W=…; test -x "$W" || exit 0; exec "$W" …'` 包一层：**检测不到 wrapper 就退 0**。
+**五个** Hook 注册在 `.claude/settings.json`（随仓库分发）——`PreToolUse` 下三条
+（`Edit|Write|NotebookEdit` 一条、`Bash` 两条），加 `Stop` 与 `SessionStart` 各一条。
+
+每条命令外层都包一层存在性守卫，且**区分两种情形**：
+
+```sh
+sh -c 'D="${CLAUDE_PROJECT_DIR}/.trivium"; W="$D/bin/trivium";
+       test -x "$W" && exec "$W" gate hook-<名>;      # 正常路径
+       test -f "$D/config.yaml" || exit 0;            # 项目从未初始化 → 静默放行
+       echo "护栏失效…" >&2; exit 2'                   # 已初始化但 wrapper 没了 → 保守拦截
+```
+
+wrapper 是 `trivium init` 在本机生成的产物、**不随 Git 分发**，所以「协作者克隆仓库后还没跑过
+init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一律 exit 0**：那样一条 `rm -rf` 或
+`chmod -x` 打在 wrapper 上，就能把四个拦截型 Hook 一次性变成永真放行，而且悄无声息。
+`SessionStart` 不是拦截型 Hook（只注入待办清单），仍一律 exit 0。
 
 | Hook | 事件 | 拦什么 |
 | :--- | :--- | :--- |
-| `hook-pre-write` | `PreToolUse` / `Edit\|Write\|NotebookEdit` | ①主脑写 `*-gemini.md` / `*-glm.md`（AC-07，与闸门状态无关）②闸门期改业务文件（归档内不拦） |
-| `hook-pre-commit` | `PreToolUse` / `Bash`，`if: Bash(git commit:*)` | 裁决未齐备时禁止提交（AC-12） |
+| `hook-pre-write` | `PreToolUse` / `Edit\|Write\|NotebookEdit` | ①主脑写 `*-gemini.md` / `*-glm.md`（AC-07，与闸门状态无关）②编排器独占对象（运行时状态与锁、归档内 `_meta/` 与 `task.json`）③闸门期改业务文件（归档内不拦） |
+| `hook-pre-bash` | `PreToolUse` / `Bash`（无 `if` 过滤） | `hook-pre-write` 只覆盖 Edit / Write，`cat > f`、`sed -i`、`tee`、`git checkout` 是旁路。按写命令形态做**启发式**拦截：命中编排器独占对象 → **任何时候**都拦；其余写命令 → 仅闸门期拦。判定在**未剥 heredoc 的原文**上进行 |
+| `hook-pre-commit` | `PreToolUse` / `Bash`（无 `if` 过滤） | 裁决未齐备时禁止提交（AC-12），并校验留痕完整性 |
 | `hook-stop` | `Stop` | 裁决未齐备时禁止收工（AC-02），输出 `{"decision":"block","reason":…}` |
-| `hook-session-start` | `SessionStart` | 发现 `running` 的运行时以 `additionalContext` 提醒先 `--wait` |
+| `hook-session-start` | `SessionStart` | 发现 `running` 的运行时以 `additionalContext` 提醒先 `--wait`；顺带回收死掉的 `running` 闸门 |
 
 **判定读的是 `.trivium/state.json`**（`listOpenGates`），不是 `run.json`。
-`review` 必须把闸门状态同步进 state.json，否则这三个 Hook 全都无事可判、一律退 0——
-那是整条流水线最核心的护栏。`gate --check` 通过后必须把闸门放行回 `idle`，
-否则补齐裁决的人依然被拦，唯一出路是关掉 Hook。
+`review` 必须把闸门状态同步进 state.json，否则这四个拦截型 Hook 全都无事可判、一律退 0——
+那是整条流水线最核心的护栏。
 
-`hook-pre-commit` 除了依赖 `if` 字段，还自行解析 git 子命令：跳过全局选项后取第一个
-非选项词。用 `/git.*commit/` 这类正则会把 `git log --format=commit` 误判成提交。
+`gate --check` 通过后**按 `run.json` 的 `entry` 分流**：entry = B/C/D 直接立起
+`awaiting_approval`（这三条命令的停点就是人工审批）；entry = A 或无 entry 才回 `idle`
+（命令 A 不设人工闸门）。两种去向都必须发生——若 B/C/D 也放回 idle，停点就被丢掉；
+若 A 也停在 awaiting_approval，补齐裁决的人反被拦住，唯一出路是关掉 Hook。
+
+`hook-pre-commit` 曾依赖 `if: Bash(git commit:*)` 做第一道过滤，但那是**前缀**匹配：
+`sh -c 'git commit -m x'` 不以 `git commit` 开头，Hook 根本不触发。现已删去 `if`，改为挂
+全部 Bash 事件、在进程内自行解析 git 子命令：跳过全局选项后取第一个非选项词（用
+`/git.*commit/` 这类正则会把 `git log --format=commit` 误判成提交），并额外判定这次提交
+**打在哪个仓库上**——前缀规则表达不了这件事。它也**不按会话过滤**：裁决完整性是仓库的
+属性，不是会话的属性。
 
 ---
 
@@ -204,9 +227,10 @@ trivium review --start --stage <s> --topic <t> --focus <hint> --json
 | `doctor` | 逐项实测设计 §3.5 的本机能力探针清单，回填 `probe:` 段 |
 | `doctor --selftest` | 临时夹具里真跑整条流水线，14 步核对（桩适配器，零配额） |
 | `preflight --stage plan\|code\|bug\|all` | 设计 §8.1 的启动预检，fail-fast，失败零工件 |
-| `topic resolve --stage <s> -- <$ARGUMENTS>` | 解析主题/提示语/被审对象/模型覆盖，**纯只读** |
+| `topic resolve --stage <s> -- <$ARGUMENTS>` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。`--stage` 也接受 `all`（命令 A 用） |
 | `review --stage <s>` | 同步跑一次双审（手工调试用） |
 | `review --start / --wait / --status / --cancel` | 分段协议 |
+| `review --worker <run_id>` | 工作进程入口，由 `--start` 派生。**不应由人直接调用** |
 | `gate --check` / `--check-artifacts` / `--await-approval` | 裁决完整性 / 最低工件集 / 置人工闸门 |
 | `gate hook-*` | Hook 入口，从 stdin 读事件。**不应由人直接调用** |
 | `approve` / `abandon` | 人工审批 / 放弃闸门 |

@@ -50,6 +50,7 @@ src/ + test/        → dist/test/（逐文件转译 ESM，供 node --test）
 | 层 | 位置 | 特征 |
 | :--- | :--- | :--- |
 | 单元 | `test/unit/` | 纯函数与单模块，毫秒级 |
+| 契约 | `test/contract/` | 守跨文件的对账关系：`hook-guard.test.ts` 比对 `hooks.json` 下发的守卫形态，`skill-flag-parity.test.ts` 比对 SKILL.md 的 `argument-hint` 与 CLI 实际接受的旗标。改了一侧忘了另一侧，这层会红 |
 | 集成 | `test/integration/` | **调真实打包 CLI 的子进程**，动真实 git 仓库 |
 | 自检 | `trivium doctor --selftest` | 整条流水线端到端，14 步 |
 
@@ -68,7 +69,7 @@ src/ + test/        → dist/test/（逐文件转译 ESM，供 node --test）
    `TRIVIUM_STUB_CRITIC` 跨进程注入（`spawnDetached` 继承环境变量），
    并且每个用例都断言产出带着桩指纹 `cli_version: 'stub/0.0.0'`——
    那个字段只可能由**真正执行适配器的进程**写入。
-2. **闸门护栏**：三个 Hook 读 `state.json`，而 `review` 当时只写 `run.json`。
+2. **闸门护栏**：四个拦截型 Hook 读 `state.json`，而 `review` 当时只写 `run.json`。
    单元测试直接调 `hookXxx` 并手工 `setGate`，正好绕过缺口，于是
    「裁决未齐备不得提交/收工」这条最核心的护栏一直没在工作而测试全绿。
 
@@ -98,7 +99,11 @@ src/ + test/        → dist/test/（逐文件转译 ESM，供 node --test）
 2. **`archive` 是 `.reviews/` 的唯一写出口。** 命名生成、`O_CREAT|O_EXCL` 防覆盖、
    `-r<N>` 抬升只在那一处实现。散落到第二处就必然出现两套命名。
 3. **Hook wrapper 检测不到 `.trivium/config.yaml` 一律退 0。** 它是全局安装的，
-   误伤其它仓库比漏拦更糟。
+   误伤其它仓库比漏拦更糟。但注意这条**只覆盖「没有 config.yaml」那一支**：
+   `hooks.json` 下发的外层 `sh -c` 守卫里还有另一支——**有 `config.yaml` 但 wrapper
+   缺失或不可执行 → exit 2**。护栏被破坏与项目未初始化是两回事，后者放行，前者必须拦，
+   否则一条 `rm -rf` 打在 wrapper 上就能无声解除全部拦截型 Hook。
+   照着旧语义写新 Hook 会把这个洞重新开出来，`test/contract/hook-guard.test.ts` 守着这条。
 4. **git 快照只用临时索引。** `GIT_INDEX_FILE` + `read-tree` + `add -A` + `write-tree`，
    绝不触碰用户的暂存区。所有 git 调用前缀 `-c core.quotePath=false`，
    否则中文路径会变成八进制转义。

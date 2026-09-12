@@ -88,7 +88,7 @@ node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 ├── bin/trivium          # wrapper，项目内统一入口（内含 node 稳定路径）
 ├── config.yaml          # 团队共享策略，进 Git
 └── config.local.yaml    # 探针结论，由上一步 doctor 写入，不进 Git
-.claude/settings.json    # 四个 Hook 的注册（随仓库分发）
+.claude/settings.json    # 五个 Hook 的注册（随仓库分发）
 .gitignore               # 追加 .trivium 的本机状态项
 CLAUDE.md / AGENTS.md    # 追加协议片段，标记括起，可重复运行
 ```
@@ -165,7 +165,7 @@ node dist/install.cjs --uninstall
 
 ---
 
-## 5. 会挡你的三道护栏
+## 5. 会挡你的四道护栏
 
 它们由 Claude Code Hook 强制，**不靠模型自觉**。
 
@@ -174,6 +174,10 @@ node dist/install.cjs --uninstall
 | 审查进行中 | 改业务文件 | 等审查跑完。审查员正在读真实工作树，你的改动会造成快照漂移，可能让整次运行作废 |
 | 审查完成、裁决未齐备 | `git commit`、结束对话 | 补齐裁决件，跑 `gate --stage <阶段> --check` 通过 |
 | 任何时候 | 主脑写 `*-gemini.md` / `*-glm.md` | 这两类文件只能由编排器渲染落盘（AC-07），你的产出后缀是 `-claude` |
+| 闸门期 / 任何时候 | 用 **Bash** 绕过前三道：`cat > f`、`sed -i`、`tee`、`git checkout -- f` | Edit / Write 只是写文件的一条路，这些是旁路。命中编排器独占对象（角色后缀文件、`.trivium/` 的状态与锁、归档内 `_meta/` 与 `task.json`）**任何时候**都挡；其余写命令只在闸门期挡 |
+
+第四道是**启发式**的，不求完备——它挡住顺手的旁路，但不要指望绕过去就没事：
+绕过去的改动同样会被跑后复算判成漂移，整次审查可能作废。
 
 被挡住时 Hook 会打印具体主题、阶段与解法。**不要靠改配置绕开**——那会让整条流水线
 退化成「两个模型随口说了点什么」。

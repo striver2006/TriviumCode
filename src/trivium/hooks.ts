@@ -415,15 +415,16 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
 /**
  * `git commit` 前拦截（设计 §8.5）。
  *
- * 作用域按修订计划 §2.3（意见 AGY-03）：**仅当本会话存在未裁决阶段时**才拦截。
- * 原稿没界定作用域，等于对仓库内任何 `git commit` 都可能拦截——那会误伤日常提交。
+ * 作用域**不按会话过滤**（意见 AGY-05）：裁决完整性是仓库的属性，不是会话的属性——
+ * 换个会话就能把未裁决的审查提交进去，等于这道护栏不存在。误伤面由另一侧收窄：
+ * 只拦真正打在**本项目**上的提交（commitTargetsProject），仓库外的 `git -C /other commit` 不管。
  */
 /**
  * 判断这次 Bash 调用是不是在提交。
  *
- * `settings.json` 的 `if: "Bash(git commit:*)"` 已经做了过滤，这里是第二道：
- * 该字段只在工具事件上生效、且写错一个字就会静默全匹配，而本 Hook 一旦全匹配，
- * 闸门期内**每一条** Bash 命令都会被拦下——那是比漏拦更糟的故障形态。
+ * 这里是**唯一**一道过滤。`settings.json` 原先带 `if: "Bash(git commit:*)"`，但那是前缀匹配：
+ * `sh -c 'git commit -m x'` 不以 `git commit` 开头，Hook 根本不触发（意见 GLM-02）。该字段已删除，
+ * 本 Hook 改挂全部 Bash 事件，过滤全在进程内完成。
  * 判不出来时按「是提交」处理：Hook 的职责是拦住违规提交，不是放过可疑输入。
  */
 /** 需要额外吃掉一个参数值的 git 全局选项 */

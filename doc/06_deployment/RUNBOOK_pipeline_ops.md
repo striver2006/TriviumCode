@@ -97,8 +97,9 @@ SIGTERM → 宽限 → SIGKILL，按**进程组**杀（厂商 CLI 会派生子�
 ### 闸门状态与出口
 
 ```
-idle → running → review_done_awaiting_disposition → awaiting_approval → approved / rejected
-                                                                      ↘ abandoned
+idle → running → review_done_awaiting_disposition ──gate --check──┬─ entry B/C/D ─→ awaiting_approval ─→ approved / rejected
+                                                                  │                                   ↘ abandoned
+                                                                  └─ entry A / 无 entry ─→ idle
 ```
 
 | 卡在 | 为什么 | 正规出口 |
