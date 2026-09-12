@@ -22,6 +22,12 @@
     "hook-pre-bash 挂在全部 Bash 事件上（无 if 过滤）：hook-pre-write 只覆盖 Edit / Write，",
     "`cat > f`、`sed -i`、`tee`、`git checkout` 是旁路；它按写命令形态做启发式拦截，只在闸门期生效。",
     "",
+    "hook-pre-commit 同样挂全部 Bash 事件（审查意见 GLM-02）。它原先带 `if: Bash(git commit:*)`，",
+    "而那是**前缀**匹配：`sh -c 'git commit -m x'` 不以 `git commit` 开头，Hook 根本不会触发——",
+    "裁决期的提交拦截与留痕完整性校验被一起跳过，被篡改的归档可以一次性洗进 HEAD。",
+    "改为不设 if、由 hooks.ts 的 `looksLikeCommit` 在进程内过滤（它还要判提交打在哪个仓库上，",
+    "前缀规则本来也表达不了这件事）。代价是每次 Bash 调用多起一个短命进程，换的是这条路真的堵上。",
+    "",
     "退出码约定见 src/trivium/hooks.ts 的三档语义：",
     "  0 = 放行或判定不了；2 = 明确判定拦截；1 = 程序缺陷（非阻断）。"
   ],
@@ -52,7 +58,6 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(git commit:*)",
             "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-commit; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
             "timeout": 15
           }

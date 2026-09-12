@@ -104,6 +104,24 @@ test('wrapper 就位时守卫把判定交给编排器本身', async () => {
   }
 });
 
+test('GLM-02：hook-pre-commit 不得靠前缀型 if 过滤（sh -c 包裹的提交会整个漏掉）', () => {
+  const raw = readFileSync(path.join(REPO_ROOT, 'skills/dual-critic/hooks/hooks.json'), 'utf8');
+  const parsed = JSON.parse(raw) as { hooks: Record<string, HookEntry[]> };
+  for (const entries of Object.values(parsed.hooks)) {
+    for (const entry of entries as (HookEntry & { hooks: { command: string; if?: string }[] })[]) {
+      for (const h of entry.hooks) {
+        if (!/gate hook-pre-commit/.test(h.command)) continue;
+        assert.equal(
+          h.if,
+          undefined,
+          'if 是前缀匹配：`sh -c \'git commit …\'` 不以 git commit 开头，Hook 根本不触发，' +
+            '裁决期提交拦截与留痕完整性校验会被一起跳过。过滤必须留在 looksLikeCommit 里做。',
+        );
+      }
+    }
+  }
+});
+
 test('session-start 不是拦截型：任何情形都不得阻断会话', async () => {
   const cmds = loadHookCommands();
   const cmd = cmds.get('session-start');

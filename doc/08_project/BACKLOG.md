@@ -71,7 +71,7 @@
 留痕在 `.reviews/审核修复/code/`，逐条裁决见同目录 `-response-claude.md`。
 结论是**没有完全堵上**：两侧从不同入口指向同一处薄弱带——`hook-pre-bash` 出口。
 
-第一梯队（hook-pre-bash 出口）已落地，其余按裁决件的梯队顺序推进。
+第一梯队（hook-pre-bash 出口）与第二梯队（提交出口）已落地，其余按裁决件的梯队顺序推进。
 
 | # | 状态 | 条目 | 位置 |
 | :-- | :-- | :-- | :-- |
@@ -79,7 +79,7 @@
 | GLM-04 | done | 同处：依赖 `<archiveRel>/` 字面前缀，`cd .reviews && …` 漏过；`/_meta/` 要求尾斜杠，指向目录本身不命中。已复用 `commitTargetsProject` 的 cd 归一化 | hooks.ts `bashTargetsProtected` |
 | GLM-03 | done | `hookPreBash` 先剥 heredoc 再判写命令形态，`python3 - <<'PY' … PY` 提前放行，两条规则连评估机会都没有；而 `judgeDrift` 把归档与 `.trivium/` 整体排除，无跑后兜底。已改为在未剥离原文上判定 | hooks.ts `hookPreBash` |
 | AGY-03 | done | Hook 守卫一律 `test -x "$W" \|\| exit 0`：`rm -rf .trivium/bin` 即让四个拦截型 Hook 永真放行。已区分「未初始化」（exit 0）与「已初始化但 wrapper 没了」（exit 2），并把 `.trivium/bin` 纳入保护集 | hooks.json、.claude/settings.json、hooks.ts |
-| GLM-02 | todo | `sh -c 'git commit …'` 整段被引号吞成一个 token，`parseGitSegment` 找不到字面 `git` 即 fail-open，裁决期提交拦截与留痕完整性校验同时被跳过。**注意 settings.json 的 `if: Bash(git commit:*)` 可能使该形态根本不触发 Hook，两处都要改** | hooks.ts `parseGitSegment`、.claude/settings.json |
+| GLM-02 | done | `sh -c 'git commit …'` 整段被引号吞成一个 token，`parseGitSegment` 找不到字面 `git` 即 fail-open，裁决期提交拦截与留痕完整性校验同时被跳过。两处都改了：函数内加保守兜底；`if: Bash(git commit:*)` 是**前缀**匹配、该形态根本不触发 Hook，已去掉改由 `looksLikeCommit` 在进程内过滤 | hooks.ts `parseGitSegment`、hooks.json、.claude/settings.json |
 | AGY-02 | todo | `gate --check` 通过后无条件落回 `idle`，`--await-approval` 是独立一步；Driver 省略它则人工审批被静默旁路，四个 Hook 全部放行 | cli.ts gate 分支 |
 | GLM-01 | todo | 人工审批闸门可被 Driver 一条 `trivium approve` 自行关闭：`recordApproval` 不校验来源，skill 的 allowed-tools 预批准了 `Bash(.trivium/bin/trivium:*)`。会话比对救不了（人工审批与自批同会话）。拟加一次性确认码 | cli.ts `cmdApproval`、approval.ts `recordApproval` |
 | GLM-05 | todo | `ApprovalInput.sessionId` 从未传入也从未使用，`ApprovalRecord` 不含来源——事后无法回答「这次 approve 是人发的还是模型发的」 | approval.ts:15-22,62-68 |

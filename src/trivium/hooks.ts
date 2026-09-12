@@ -447,7 +447,24 @@ interface GitCall {
 function parseGitSegment(segment: string): GitCall | null {
   const tokens = tokenize(segment);
   const gitAt = tokens.findIndex((t) => t === 'git' || t.endsWith('/git'));
-  if (gitAt < 0) return null;
+  if (gitAt < 0) {
+    /*
+     * 找不到字面 `git` token **不等于**这段不是提交（审查意见 GLM-02）。
+     *
+     * `tokenize` 把引号内的空格保留进同一个 token，于是 `sh -c 'git commit -m x'`
+     * 产出的是一个 `git commit -m x`——没有任何 token 等于 `git`，原先直接返回 null，
+     * `looksLikeCommit` 判「不是提交」，`hookPreCommit` 在闸门与留痕完整性检查**之前**
+     * 就放行了。后果是在 `review_done_awaiting_disposition`（不加写锁的状态）下，
+     * 可以绕过「裁决未齐不得提交」与 `checkArchiveIntegrity` 两条拦截，
+     * 把被篡改的归档一次性洗进 HEAD——此后 git 锚对这笔篡改永久失明。
+     *
+     * 兜底与本函数既有的保守原则一致（子命令非字面量时按「是提交」处理）：
+     * 整段里 `git` 与 `commit` 同时出现就按提交论。dirOption 取 null，
+     * 于是沿用当前段的 cwd 判断目标仓库——`cd /tmp/x && sh -c 'git commit'`
+     * 仍能正确判在项目外，跨仓库不误拦的性质不受影响。
+     */
+    return /\bgit\b[^|;&]*\bcommit\b/.test(segment) ? { subcommand: 'commit', dirOption: null } : null;
+  }
 
   let dirOption: string | null = null;
   /** `-c alias.<name>=commit` 定义的别名：随后出现的 <name> 就是 commit */

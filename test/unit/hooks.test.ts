@@ -560,6 +560,35 @@ test('hook-pre-commit 只拦提交，不拦其它 Bash 命令', async () => {
   }
 });
 
+test('GLM-02：引号包裹整段的提交（sh -c 与 bash -lc）不得 fail-open', async () => {
+  const ctx = await fakeCtx();
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: '闸门主题', stage: 'plan',
+    state: 'review_done_awaiting_disposition', sessionId: 'S1', heartbeatStaleMs: STALE,
+  });
+  ctx.config.gate.approval_lock_scope = 'global';
+  /*
+   * tokenize 把引号内的空格保留进同一 token，于是整段里没有任何 token 等于 `git`。
+   * 原先 parseGitSegment 直接返回 null，提交在闸门与留痕完整性检查之前就被放行。
+   */
+  for (const cmd of [
+    "sh -c 'git commit -m x'",
+    'bash -lc "git commit -am fix"',
+    "sh -c 'cd . && git commit -m x'",
+    "zsh -c 'git -C . commit -m x'",
+  ]) {
+    const r = await hookPreCommit(ctx, { tool_name: 'Bash', session_id: 'S1', tool_input: { command: cmd } });
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `裁决未齐备，应拦：${cmd}`);
+    assert.match(r.stderr ?? '', /尚未逐条裁决/);
+  }
+  // 引号包裹但明确打在项目外的提交仍不误拦
+  const outside = await hookPreCommit(ctx, {
+    tool_name: 'Bash', session_id: 'S1',
+    tool_input: { command: `cd ${path.join(os.tmpdir(), 'other-repo')} && sh -c 'git commit -m x'` },
+  });
+  assert.equal(outside.exitCode, EXIT.OK, '别的仓库的提交不该被本项目闸门拦下');
+});
+
 test('已知过拦：引号里出现 git commit 也会被拦（取保守一侧）', async () => {
   const ctx = await fakeCtx();
   await setGate({

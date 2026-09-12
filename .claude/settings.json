@@ -26,7 +26,6 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(git commit:*)",
             "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-commit; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
             "timeout": 15
           }
