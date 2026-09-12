@@ -90,3 +90,9 @@
 | GLM-05 | done | `ApprovalInput.sessionId` 从未传入也从未使用，`ApprovalRecord` 不含来源——事后无法回答「这次 approve 是人发的还是模型发的」 | approval.ts:15-22,62-68 |
 | AGY-05 | done | `cmdApproval` 允许 approve 省略 `--stage`，会枚举到未裁决阶段并抛 MISSING_ARTIFACT 而非友好提示 | cli.ts `cmdApproval` |
 | AGY-04 | done | NAMED_FLAGS 缺 `only/allow-single/session-id`，三者被当成正文吞进审查焦点（已实跑复现：焦点变成「重点看并发安全 --only glm --allow-single --session-id S-TEST」）。补白名单并输出；`--allow-single` 单列为布尔旗标，否则「取下一个 token 当值」会吞掉正文、制造新的静默截断；三条 review skill 补 argument-hint 与模板槽位 | topic-args.ts、三条 SKILL.md |
+
+## 待双审（不自行实施）
+
+| # | 状态 | 条目 | 位置 |
+| :-- | :-- | :-- | :-- |
+| RV-B1 | todo | **`git commit` 是否退出 `hook-pre-bash` 的保护集扫描。** 支持改的论据：`git commit` 不改工作树、只写 `.git`；「用 commit 把篡改洗进 HEAD」这个攻击面由 `hook-pre-commit` 专管（留痕完整性三条锚 + 不按会话过滤），因此 `hook-pre-bash` 对 commit 做字面扫描的防护增量接近零，而本项目的 commit message 天然高频提及归档文件名（2026-09-12 改护栏文档时实撞两次）。**待决的语义后果**：把 `commit` 从 `WRITE_LIKE` 的 git 分支摘掉，等于 `awaiting_approval` 期间用 Bash 提交不再被 `hook-pre-bash` 拦，而 `hook-pre-commit` 在该状态下裁决已齐备会放行——「等人工审批期间是否允许提交」是**设计问题，需要拍板**，不是清理误报的顺手改动。**为什么不自行实施**：护栏判定已栽过四次（AGY-01 模板正则、GLM-04 字面前缀、GLM-03 剥 heredoc、AGY-03 守卫 exit 0），每次都是「看起来合理的收窄」、每次都开了洞、且都由双审发现；且不应在「降低 Driver 自身摩擦」的动机下修改护栏。须走 `/dual-review-code` | hooks.ts `WRITE_LIKE` / `bashTargetsProtected` |

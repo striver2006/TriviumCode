@@ -385,7 +385,12 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
     return deny(
       `禁止用 Bash 改动编排器独占的文件：${shown}\n` +
         '  审查文档（-gemini.md / -glm.md）、归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n' +
-        '  只能由编排器维护（FR-25 / P5）。删掉或改坏 bin/ 会让 .claude/settings.json 里每条 Hook 的守卫永真放行。',
+        '  只能由编排器维护（FR-25 / P5）。删掉或改坏 bin/ 会让 .claude/settings.json 里每条 Hook 的守卫永真放行。\n' +
+        '\n' +
+        '  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\n' +
+        '  那是本 Hook 的已知误拦：判定在未剥 heredoc 的原文上做，看见字面就拦，区分不了「写它」与「说它」。\n' +
+        '  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\n' +
+        '  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。',
     );
   }
   if (!ctx.config.gate.block_business_write_when_awaiting_approval) return ALLOW;
