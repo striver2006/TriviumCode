@@ -85,6 +85,36 @@ async function writeDisposition(stageDir: string, runId: string) {
   );
 }
 
+test('双方共同 blocker 被驳回 → task.json 记 disputed，status 显示争议（§6.6 规则 7）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root);
+  // 桩两侧的第 1 条都是 blocker 且 location 相同（src/stub.ts:10）：全部驳回即命中判据 g
+  await fs.writeFile(
+    path.join(fx.stageDir, `${today()}-${TOPIC}-revised-claude.md`),
+    [
+      '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
+      'role: claude', 'kind: revised', `run_id: ${runId}`,
+      'addresses:', `  - ${today()}-${TOPIC}-gemini.md`, `  - ${today()}-${TOPIC}-glm.md`,
+      '---', '',
+      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- |',
+      '| AGY-01 | gemini | blocker | 驳回 | 该路径已被上游 src/x.ts:31 拒绝 | |',
+      '| GLM-01 | glm | blocker | 驳回 | 同上，上游已处理 | |',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  const g = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
+  assert.equal(g.code, EXIT.OK, `默认 warn 策略下不阻断：\n${g.stdout}${g.stderr}`);
+  assert.match(g.stdout, /joint_blocker_rejected/);
+
+  const task = JSON.parse(await fs.readFile(path.join(fx.archiveRoot, TOPIC, 'task.json'), 'utf8')) as { disputed: boolean };
+  assert.equal(task.disputed, true, '设计明文要求记 disputed: true，原先从未写入');
+
+  const st = await cli(fx.root, ['status', '--topic', TOPIC, '--json']);
+  assert.match(st.stdout, /"disputed":\s*true/);
+});
+
 test('review 必须把闸门写进 state.json，否则四个 Hook 全都无事可判', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   await runPlan(fx.root);

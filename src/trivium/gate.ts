@@ -13,6 +13,7 @@ import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
 import { dispositionKindForStage } from './naming.js';
 import { parseFrontMatter } from './render.js';
 import { parseReview } from './parse.js';
+import { validateDispositionFrontMatter } from './schemas.js';
 
 // ─────────────────────── 校验结果 ───────────────────────
 
@@ -129,7 +130,8 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
   if (!fm) {
     failures.push({ code: 'bad_front_matter', message: '裁决件缺少可解析的 front-matter' });
   } else {
-    const mismatches: string[] = [];
+    // 先过 trivium.disposition.v1（形状与必填），再做本轮特有的一致性比对
+    const mismatches: string[] = [...validateDispositionFrontMatter(fm)];
     if (fm.schema !== 'trivium.disposition.v1') mismatches.push(`schema=${fm.schema}`);
     if (fm.topic !== layout.topic) mismatches.push(`topic=${fm.topic}（应为 ${layout.topic}）`);
     if (fm.stage !== stage) mismatches.push(`stage=${fm.stage}（应为 ${stage}）`);

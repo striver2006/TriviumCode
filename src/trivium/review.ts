@@ -49,7 +49,7 @@ import {
   type SkipVerdict,
 } from './code-stage.js';
 import { diffAgainst, headSha } from './util/git.js';
-import { resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
+import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
 import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
 import { acquireLock } from './lock.js';
 import { measureDivergence, renderDivergence } from './divergence.js';
@@ -722,6 +722,17 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   const warnings = renderGuardWarnings(verdict);
 
   // ── 两侧齐备后同时落盘（§10.1 第 ② 道）──
+  /*
+   * 先定一个两侧**共用**的轮次。`writeArtifact` 命中已存在时逐侧独立抬升，
+   * 会分叉成 -r2-gemini.md 配 -r3-glm.md（archive.ts 头注释的不变式被打破），
+   * `gate --check-artifacts` 与 report 按单一轮次找就对不上。正常情况下等于
+   * prepareRun 算出的 rerunIndex；只有目录在运行期间被塞了同名文件才会抬升。
+   */
+  const sharedIndex = await firstFreeRerunIndex(ref.layout, stage, sides, rerunIndex);
+  if (sharedIndex !== rerunIndex) {
+    warn(`第 ${rerunIndex} 轮的审查文档名已被占用，两侧一并抬升到第 ${sharedIndex} 轮`);
+    meta.rerun_index = sharedIndex;
+  }
   const artifacts: string[] = [];
   /*
    * 结构化结论、失败记录与 fallback 单元也进 `run.json.artifacts` 保护集。
@@ -745,7 +756,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
 
     const side = verdict.sides[c];
     const doc = renderReviewDoc({
-      critic: c, stage, topic: ref.topic, runId, rerunIndex,
+      critic: c, stage, topic: ref.topic, runId, rerunIndex: sharedIndex,
       review: reviews[c] ?? null,
       rawText: fallbackText[c] ?? null,
       result: r,
@@ -764,8 +775,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
 
     const written = await writeArtifact({
       layout: ref.layout, stage, role: c, writer: c,
-      rerunIndex, content: doc,
+      rerunIndex: sharedIndex, content: doc,
     });
+    if (written.effectiveRerunIndex !== sharedIndex) {
+      // 预扫描之后仍撞名：只可能是运行期间有人往目录里塞文件。两侧已经不共用 N，如实告警
+      warn(`${c} 侧审查文档落到了第 ${written.effectiveRerunIndex} 轮（预定第 ${sharedIndex} 轮），两侧轮次不一致，请人工核对`);
+    }
     artifacts.push(written.absPath);
 
     // 结构化原文进 _meta/，供 gate 机读与追溯
@@ -876,7 +891,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     triviumDir: ctx.triviumDir,
     topic: ref.topic, stage,
     state: meta.status === 'success' ? 'review_done_awaiting_disposition' : 'idle',
-    runId, rerunIndex,
+    runId, rerunIndex: sharedIndex,
     sessionId: opts.sessionId ?? null,
     heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
     // 只写属于本 run 的闸门：并发的另一轮已经接管时不该被我们改写

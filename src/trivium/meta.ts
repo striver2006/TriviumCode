@@ -11,6 +11,7 @@ import type { CriticId, RunMeta, Stage, StageOrVerify, CommandEntry } from './ty
 import { writeAtomic } from './util/fsx.js';
 import { topicDir, type ArchiveLayout } from './archive.js';
 import { withTopicLock } from './lock.js';
+import { validateRunMeta } from './schemas.js';
 
 /** `updateTask` 的短临界区参数 */
 export interface TaskLock {
@@ -219,6 +220,11 @@ export async function writeRunMeta(
   stage: Stage,
   meta: RunMeta,
 ): Promise<string> {
+  // 写前按 trivium.run.v1 校验：不合契约的运行元数据是程序缺陷，宁可在这里炸也不落盘
+  const problems = validateRunMeta(meta);
+  if (problems.length > 0) {
+    throw new Error(`run.json 不符合 trivium.run.v1：${problems.join('；')}`);
+  }
   // 走 archive 是纪律（§16.2 纪律 2），但 run.json 不含审查正文、
   // 且 archive.writeMeta 已含密钥扫描，这里直接复用它
   const { writeMeta } = await import('./archive.js');

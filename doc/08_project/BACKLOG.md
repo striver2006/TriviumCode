@@ -26,11 +26,11 @@
 | M6 | done | 同步路径 `runReview` 不取主题锁 | review.ts:880-902 |
 | M7 | done | worker 心跳 `void patchStatus` 无 catch → 写失败即崩；心跳与终态写入争用 | run-protocol.ts:365-368 |
 | M8 | done | `exec.run` 超时不杀进程树；`finish` 只挂 `close` 可能永不 resolve | util/exec.ts:145-153 |
-| M9 | todo | 两侧 writeArtifact 各自抬升 `-r<N>`，可分叉 | review.ts:728-732 vs archive.ts:57-59 |
+| M9 | done | 两侧 writeArtifact 各自抬升 `-r<N>`，可分叉 | review.ts:728-732 vs archive.ts:57-59 |
 | M10 | done | 两侧都 parse_fallback 时空裁决表直接通过；fallback 条目从不被要求出现 | gate.ts:143-153,197 |
-| M11 | todo | `task.json.disputed` 从未写为 true，status/report 的争议提示永不触发 | gate.ts:232-250、meta.ts:80 |
-| M12 | todo | config.yaml 完全不校验：`gate: "off"`、拼错枚举、`stop_hook_max_blocks: 0` 均静默 fail-open | config.ts:203-240 |
-| M13 | todo | PROTOCOL 称四份 Schema/ajv 强校验：`config.v1.json` 不存在，`run.v1`/`disposition.v1` 零加载 | doc/03_api、skills/dual-critic/schema |
+| M11 | done | `task.json.disputed` 从未写为 true，status/report 的争议提示永不触发 | gate.ts:232-250、meta.ts:80 |
+| M12 | done | config.yaml 完全不校验：`gate: "off"`、拼错枚举、`stop_hook_max_blocks: 0` 均静默 fail-open | config.ts:203-240 |
+| M13 | done | PROTOCOL 称四份 Schema/ajv 强校验：`config.v1.json` 不存在，`run.v1`/`disposition.v1` 零加载 | doc/03_api、skills/dual-critic/schema |
 | M14 | todo | init 的 hook 去重正则匹配不到 JSON 转义后的命令串（死代码），升级会叠加重复 hook | init.ts:167-171 |
 | M15 | todo | 安装器无卸载路径，copyDir 不裁剪孤儿文件 | install.ts |
 | M16 | todo | wrapper 写死 `process.execPath`（Homebrew Cellar 版本化路径），brew upgrade 后每次 hook 报 127；doctor 不校验 | init.ts:215、doctor.ts |

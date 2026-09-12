@@ -11,6 +11,7 @@ import type { Config, Ctx, ProbeSection, Stage } from './types.js';
 import { EXIT, TriviumError, envError, swallowedTextHint } from './exit-codes.js';
 import { exists, expandHome } from './util/fsx.js';
 import { isGitRepo, repoRoot } from './util/git.js';
+import { validateConfig } from './schemas.js';
 
 export const CONFIG_SCHEMA_ID = 'trivium.config.v1' as const;
 export const TRIVIUM_DIR = '.trivium';
@@ -227,6 +228,22 @@ export async function loadCtx(opts: LoadOptions = {}): Promise<Ctx> {
   if (!(await exists(triviumDir)) && !opts.allowUninitialized) {
     throw envError(
       `本项目尚未初始化 TriviumCode（缺 ${TRIVIUM_DIR}/）。请先运行 \`trivium init\`。`,
+    );
+  }
+
+  /*
+   * 合并结果按 trivium.config.v1 校验，非法值**明确报错**而不是静默落回默认。
+   * 原先一处校验都没有：`gate: "off"` 会让 deepMerge 用标量顶掉整个对象，
+   * `block_commit` 变 undefined、提交拦截静默关闭；`approval_lock_scope: sesion`
+   * 拼错反而按 global 全局加锁；`stop_hook_max_blocks: 0` 让收工拦截一次都不生效。
+   * 与项目其它处处「宁可失败也不静默降级」的纪律对齐。
+   */
+  const problems = validateConfig(cfg);
+  if (problems.length > 0) {
+    throw envError(
+      `配置不合法（${sources.slice(1).join('、') || '内置默认'}）：\n` +
+        problems.map((p) => `  · ${p}`).join('\n') +
+        '\n  契约见 skills/dual-critic/schema/config.v1.json。',
     );
   }
 

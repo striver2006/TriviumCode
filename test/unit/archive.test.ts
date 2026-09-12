@@ -48,6 +48,17 @@ test('防覆盖：同名再写不覆盖原文件，而是抬升 -r<N>', async ()
   assert.equal(await fs.readFile(first.absPath, 'utf8'), '第一轮\n');
 });
 
+test('firstFreeRerunIndex：对两侧都空闲的轮次，单侧残留即整体抬升', async () => {
+  const { firstFreeRerunIndex } = await import('../../src/trivium/archive.js');
+  const l = await tmpLayout();
+  await fs.mkdir(path.join(l.archiveRoot, l.topic, 'plan'), { recursive: true });
+  // 上一次运行写完 gemini 侧就崩了，留下 -r2-gemini.md 而没有 -r2-glm.md
+  await fs.writeFile(path.join(l.archiveRoot, l.topic, 'plan', `${DATE}-${l.topic}-r2-gemini.md`), 'x');
+  const n = await firstFreeRerunIndex(l, 'plan', ['gemini', 'glm'], 2, DATE);
+  assert.equal(n, 3, '不能让 glm 落在 r2 而 gemini 抬到 r3');
+  assert.equal(await firstFreeRerunIndex(l, 'plan', ['gemini', 'glm'], 4, DATE), 4);
+});
+
 test('resolveRerunIndex：按已有工件的最大轮次加一，两侧共用同一 N', async () => {
   const l = await tmpLayout();
   assert.equal(await resolveRerunIndex(l, 'plan'), 1);

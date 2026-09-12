@@ -646,6 +646,19 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   }
 
   /*
+   * 双方共同 blocker 被驳回且策略为 warn：设计 §6.6 规则 7 / §8.6 判据 g 要求
+   * 「输出警告**并在 task.json 记 disputed: true**」。原先只 push 进 warnings，
+   * disputed 初始化为 false 后再无写入点，status / report 的「有争议项」永不触发。
+   */
+  if (result.warnings.some((w) => w.code === 'joint_blocker_rejected')) {
+    const { updateTask } = await import('./meta.js');
+    await updateTask(ref.layout, (t) => {
+      t.disputed = true;
+    }, { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 });
+    warn('双方共同提出的 blocker 被驳回：已在 task.json 记为有争议项（disputed），status / report 会显示');
+  }
+
+  /*
    * 校验通过即把闸门从 `review_done_awaiting_disposition` 放行。
    *
    * 不这样做的话，`hook-pre-commit` / `hook-stop` 会在裁决**已经补齐之后**

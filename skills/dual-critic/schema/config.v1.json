@@ -1,0 +1,559 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trivium.config.v1",
+  "title": "TriviumCode 配置",
+  "description": "内置默认 → .trivium/config.yaml → .trivium/config.local.yaml 四级合并**之后**的完整形状（设计 §13.1）。任何一级写错字段名或枚举值都在这里报错，而不是静默落回默认值：闸门配置写成 gate: \"off\" 会让 block_commit 变 undefined、提交拦截静默关闭。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "archive_root",
+    "topic",
+    "runtime",
+    "isolation",
+    "review",
+    "critics",
+    "profiles",
+    "active_profile",
+    "gate",
+    "preflight",
+    "verify",
+    "retention",
+    "probe",
+    "probe_ttl_days"
+  ],
+  "properties": {
+    "schema": {
+      "const": "trivium.config.v1"
+    },
+    "archive_root": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!\\.\\.)(?!/).+",
+      "description": "项目相对路径，不得逃出项目根"
+    },
+    "topic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_len",
+        "forbid_chars"
+      ],
+      "properties": {
+        "max_len": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "forbid_chars": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "run_root"
+      ],
+      "properties": {
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_root": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "isolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "peer_artifact_globs",
+        "deny_via_cli",
+        "context_max_docs"
+      ],
+      "properties": {
+        "peer_artifact_globs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deny_via_cli": {
+          "enum": [
+            "auto",
+            "off"
+          ]
+        },
+        "context_max_docs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parallel",
+        "failure_policy",
+        "allow_single_flag",
+        "timeout_s",
+        "wait_timeout_s",
+        "heartbeat_stale_s",
+        "retry",
+        "cache",
+        "min_tool_calls",
+        "min_project_reads",
+        "on_drift",
+        "on_drift_related",
+        "sensitive_globs",
+        "block_severities",
+        "skip_doc_only_review",
+        "skip_globs",
+        "never_skip_globs"
+      ],
+      "properties": {
+        "parallel": {
+          "type": "boolean"
+        },
+        "failure_policy": {
+          "enum": [
+            "strict",
+            "degrade"
+          ]
+        },
+        "allow_single_flag": {
+          "type": "boolean"
+        },
+        "timeout_s": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "plan",
+            "code",
+            "bug"
+          ],
+          "properties": {
+            "plan": {
+              "type": "number",
+              "minimum": 0
+            },
+            "code": {
+              "type": "number",
+              "minimum": 0
+            },
+            "bug": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "wait_timeout_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "heartbeat_stale_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "transient_max"
+          ],
+          "properties": {
+            "transient_max": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "cache": {
+          "type": "boolean"
+        },
+        "min_tool_calls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "plan",
+            "code",
+            "bug"
+          ],
+          "properties": {
+            "plan": {
+              "type": "number",
+              "minimum": 0
+            },
+            "code": {
+              "type": "number",
+              "minimum": 0
+            },
+            "bug": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "min_project_reads": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "plan",
+            "code",
+            "bug"
+          ],
+          "properties": {
+            "plan": {
+              "type": "number",
+              "minimum": 0
+            },
+            "code": {
+              "type": "number",
+              "minimum": 0
+            },
+            "bug": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "on_drift": {
+          "enum": [
+            "warn",
+            "fail"
+          ]
+        },
+        "on_drift_related": {
+          "enum": [
+            "warn",
+            "fail"
+          ]
+        },
+        "sensitive_globs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "block_severities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "blocker",
+              "major",
+              "minor",
+              "nit"
+            ]
+          }
+        },
+        "skip_doc_only_review": {
+          "type": "boolean"
+        },
+        "skip_globs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "never_skip_globs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "critics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gemini",
+        "glm"
+      ],
+      "properties": {
+        "gemini": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "vendor",
+            "bin",
+            "agent",
+            "effort",
+            "readonly_commands"
+          ],
+          "properties": {
+            "vendor": {
+              "const": "antigravity"
+            },
+            "bin": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "agent": {
+              "type": "string",
+              "minLength": 1
+            },
+            "effort": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "plan",
+                "code",
+                "bug"
+              ],
+              "properties": {
+                "plan": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                },
+                "code": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                },
+                "bug": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                }
+              }
+            },
+            "readonly_commands": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "glm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "vendor",
+            "entry",
+            "max_turns",
+            "unsupported_override"
+          ],
+          "properties": {
+            "vendor": {
+              "const": "zcode"
+            },
+            "entry": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "max_turns": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "unsupported_override": {
+              "enum": [
+                "reject",
+                "annotate"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "gemini": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "bug": {
+                "type": "string"
+              },
+              "effort": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            }
+          },
+          "glm": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "bug": {
+                "type": "string"
+              },
+              "effort": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "active_profile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "require_adjudication",
+        "allow_defer",
+        "block_business_write_when_awaiting_approval",
+        "approval_lock_scope",
+        "approval_lock_ttl_h",
+        "block_commit",
+        "stop_hook_max_blocks",
+        "max_check_retries",
+        "reason_policy",
+        "joint_blocker_policy"
+      ],
+      "properties": {
+        "require_adjudication": {
+          "type": "boolean"
+        },
+        "allow_defer": {
+          "type": "boolean"
+        },
+        "block_business_write_when_awaiting_approval": {
+          "type": "boolean"
+        },
+        "approval_lock_scope": {
+          "enum": [
+            "session",
+            "global"
+          ]
+        },
+        "approval_lock_ttl_h": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "block_commit": {
+          "type": "boolean"
+        },
+        "stop_hook_max_blocks": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "0 会让 count > 0 恒真，收工拦截一次都不生效"
+        },
+        "max_check_retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reason_policy": {
+          "enum": [
+            "warn",
+            "hard"
+          ]
+        },
+        "joint_blocker_policy": {
+          "enum": [
+            "warn",
+            "hard"
+          ]
+        }
+      }
+    },
+    "preflight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "auth_cache_ttl_h"
+      ],
+      "properties": {
+        "auth_cache_ttl_h": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "build",
+        "test"
+      ],
+      "properties": {
+        "build": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "test": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_dir_days"
+      ],
+      "properties": {
+        "run_dir_days": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "description": "由 doctor 实测回填，形状随探针演进，这里只要求是对象",
+      "additionalProperties": true
+    },
+    "probe_ttl_days": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}

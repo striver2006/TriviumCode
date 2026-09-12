@@ -120,7 +120,11 @@
           "description": "project_reads = 被审对象与送审包之外的项目文件读取次数（§11.4）"
         },
         "evidence_ok": { "type": "boolean" },
-        "usage": { "type": "object", "additionalProperties": { "type": "number" } },
+        "usage": {
+          "type": "object",
+          "description": "厂商回读的原样 token 用量。实测 zcode 会混入字符串 source 字段，故值类型不限定为数字；report 汇总时只取数字",
+          "additionalProperties": { "type": ["number", "string", "boolean", "null"] }
+        },
         "heterogeneous": {
           "type": "boolean",
           "description": "是否与主脑异构。false 时必须有 override_reason（AC-18）"

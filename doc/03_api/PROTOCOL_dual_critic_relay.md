@@ -11,15 +11,15 @@
 
 ## 一、四份 JSON Schema
 
-机读契约的唯一真理来源在 `skills/dual-critic/schema/`，由 `parse` / `gate` / `meta`
-共用，ajv（draft 2020-12）强校验。
+机读契约的唯一真理来源在 `skills/dual-critic/schema/`，ajv（draft 2020-12）强校验。
+`review.v1` 由 `parse` 持有（要把错误回喂给模型），其余三份集中在 `schemas.ts`。
 
-| Schema | 文件 | 生产者 | 消费者 |
+| Schema | 文件 | 生产者 | 校验落点 |
 | :--- | :--- | :--- | :--- |
-| `trivium.review.v1` | `review.v1.json` | 两侧审查员（最终回答即该 JSON） | `parse` → `render` → `gate` |
-| `trivium.disposition.v1` | `disposition.v1.json` | Driver（裁决件 front-matter + 表格） | `gate --check` |
-| `trivium.run.v1` | `run.v1.json` | 编排器 | `gate`、`report`、人工审计 |
-| `trivium.config.v1` | `config.v1.json` | 人（`.trivium/config.yaml`） | `config` 四级合并后校验 |
+| `trivium.review.v1` | `review.v1.json` | 两侧审查员（最终回答即该 JSON） | `parse`（失败即 parse_fallback） |
+| `trivium.disposition.v1` | `disposition.v1.json` | Driver（裁决件 front-matter；表格由 gate 单独解析） | `gate --check` 的 bad_front_matter |
+| `trivium.run.v1` | `run.v1.json` | 编排器 | `writeRunMeta` 写前校验；留痕核对把不合契约的 run.json 视为「不可读」并拦提交 |
+| `trivium.config.v1` | `config.v1.json` | 人（`.trivium/config.yaml` / `config.local.yaml`） | `loadCtx` 四级合并后校验，不合法退 69 并逐条列出（未知字段、枚举值、区间） |
 
 ### `trivium.review.v1` 的硬约束
 

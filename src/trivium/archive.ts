@@ -27,7 +27,8 @@ import {
   type Role,
 } from './naming.js';
 import { assertNoSecrets } from './secrets.js';
-import { createExclusive, ensureDir, sha256, sha256File, writeAtomic } from './util/fsx.js';
+import { createExclusive, ensureDir, exists, sha256, sha256File, writeAtomic } from './util/fsx.js';
+import { validateRunMeta } from './schemas.js';
 
 export interface ArchiveLayout {
   archiveRoot: string;
@@ -66,6 +67,33 @@ export async function resolveRerunIndex(l: ArchiveLayout, stage: Stage): Promise
     if (i.parsed.rerunIndex > max) max = i.parsed.rerunIndex;
   }
   return max + 1;
+}
+
+/**
+ * 从 `startAt` 起找第一个对**全部**给定角色都空闲的轮次（同一天同主题）。
+ *
+ * `writeArtifact` 命中已存在时逐侧独立抬升，两侧各自 `n++` 会分叉成
+ * `-r2-gemini.md` 配 `-r3-glm.md`——与上面「共用同一个 N」的不变式矛盾，
+ * `gate --check-artifacts` 按单一轮次过滤时必报缺件。executeRun 落盘前先用它定一个
+ * 共同的 N，再把两侧都写到那个 N 上。
+ */
+export async function firstFreeRerunIndex(
+  l: ArchiveLayout,
+  stage: Stage,
+  roles: readonly Role[],
+  startAt: number,
+  date: string = localDate(),
+): Promise<number> {
+  const dir = stageDir(l, stage);
+  for (let n = Math.max(1, startAt); n < startAt + MAX_BUMP; n++) {
+    const taken = await Promise.all(
+      roles.map((role) =>
+        exists(path.join(dir, buildArtifactName({ date, topic: l.topic, rerunIndex: n, kind: null, role }))),
+      ),
+    );
+    if (!taken.some(Boolean)) return n;
+  }
+  throw new Error(`从第 ${startAt} 轮起 ${MAX_BUMP} 个轮次都被占用：${dir}`);
 }
 
 export interface WriteArtifactInput {
@@ -345,9 +373,13 @@ export async function listRecordedRuns(layout: ArchiveLayout): Promise<RecordedR
       if (!m) continue;
       try {
         const meta = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8')) as {
-          run_id?: string; status?: string; skipped?: boolean;
+          schema?: string; run_id?: string; status?: string; skipped?: boolean;
           artifacts?: { path: string; sha256: string }[];
         };
+        // 自称 trivium.run.v1 却不合契约：也是「被搅坏」，按不可读处理（verify 记录另有 schema，不在此列）
+        if (meta.schema === 'trivium.run.v1' && validateRunMeta(meta).length > 0) {
+          throw new Error('不符合 trivium.run.v1');
+        }
         out.push({
           run_id: meta.run_id ?? m[1]!,
           stage,
