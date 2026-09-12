@@ -12,7 +12,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import type { Config, CriticId, CriticRequest, CriticResult, Ctx, Review, Stage } from './types.js';
+import type { Config, CriticId, CriticRequest, CriticResult, Ctx, Review, Stage, CommandEntry } from './types.js';
 import { CRITICS } from './types.js';
 import { agyAdapter } from './adapters/agy.js';
 import { zcodeAdapter } from './adapters/zcode.js';
@@ -158,6 +158,11 @@ export interface ReviewOptions {
    * 不传时由 `resolveTaskGoal` 回退到 task.json / plan 原稿。
    */
   taskGoal?: string | null;
+  /**
+   * 发起本次运行的斜杠命令（A/B/C/D），记入 run.json 供留痕；手工调用为 null。
+   * 也决定 `--focus` 是否必填：只有命令 A 的焦点是可选补充（PRD 第 8 章）。
+   */
+  entry?: CommandEntry | null;
   /** Driver 指明的相关路径（UR-01），并入必读清单 */
   contextPaths: string[];
   /** plan/bug 的被审对象显式路径 */
@@ -173,8 +178,8 @@ export interface ReviewOptions {
   /**
    * 触发本次运行的 Claude Code 会话 id。
    *
-   * 闸门写锁的作用域默认是「同会话」（RV-05），没有它 `shouldLockWrites`
-   * 会因「闸门未记录触发会话」而一律不加锁——护栏静默失效。
+   * 闸门写锁的作用域默认是「同会话」（RV-05）。传了才能区分「别的会话」；
+   * 不传时闸门记 null，`shouldLockWrites` 按本会话保守加锁（不会静默失效）。
    */
   sessionId?: string | null;
   /**
@@ -511,6 +516,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     command: opts.command,
     promptHint: opts.promptHint,
     taskGoal,
+    entry: opts.entry ?? null,
     treeHash: primarySnap.treeHash,
     gitHead: primarySnap.gitHead,
     dirty: primarySnap.dirty,

@@ -10,10 +10,15 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
 
 # 命令 A · 全流程
 
-下文 `TV` 指 `.trivium/bin/trivium`。若该文件不存在，提示用户先 `trivium init` 并停止。
+下文 `TV` 指 `.trivium/bin/trivium`——**一律用这个项目相对路径**，不依赖 `PATH`。
+若该文件不存在，提示用户先 `trivium init` 并停止。
+
+**你不得自行调用 `agy` 或 `zcode`。** 并行、超时、指纹、轨迹核验、防覆盖命名、
+裁决校验全部在编排器内（设计 §16.2 纪律 4）。
 
 **命令 A 不设人工闸门**（PRD 4.4），但仍受两条护栏约束：审查期禁写业务文件、
-裁决未完成不得收工。两者都由 Hook 强制，不靠你自觉。
+裁决未完成不得收工。两者都由 Hook 强制（对 Edit / Write 工具生效），不靠你自觉；
+审查期内也**不要**用 Bash 绕过去改业务文件——审查员正在读真实工作树，改了就是快照漂移。
 
 ## 状态机 S0～S10（设计 §8.2）
 
@@ -26,13 +31,29 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
 
 失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
 
+### S0.5 解析主题与参数
+`TV topic resolve --stage all --json -- $ARGUMENTS`
+
+**命令后的正文是任务目标**（「这次要达成什么」，进 BRIEF 第 4 段）；审查焦点是可选补充，
+只认显式 `--focus <提示语>`（进第 2 段）。输出字段：
+- `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导，**回显给用户确认**后再继续；
+- `task_goal`：透传给 S2/S6 的 `--goal`；
+- `prompt_hint`：非空时透传给 S2/S6 的 `--focus`，为空则省略；
+- `context_paths` / `models` / `profile`：分别透传给 `--context` / `--model-gemini` `--model-glm` / `--profile`。
+
+构造这条命令时，正文里若出现 `--` 开头的词，由你给它补上**字面**双引号
+（`-- '"让 --base 真正进入冻结" --focus 看同类缺口'`），否则它会被当成真旗标吞掉后一个词。
+
 ### S1 起草计划
 把方案写成 `.reviews/<主题>/plan/<日期>-<主题>-claude.md`。用 Write 落盘。
 
 ### S2 计划双审
-按 `/dual-review-plan` 的第 3 步执行 `--start` / `--wait` 循环。
-**把本命令的首参（任务目标）原样传给 `--goal`**——它在这里落进 `task.json`，
-之后 S6 代码双审、乃至后续 bug 定位都会自动复用，审查员才知道这次改动要达成什么（§9.4）。
+按 `/dual-review-plan` 的第 3 步执行 `--start` / `--wait` 循环，但：
+- **`--entry A`** 替代那里的 `--entry B`——它标记这轮由命令 A 发起，并让编排器接受省略 `--focus`；
+- `--goal` 传 S0.5 的 `task_goal`（它在这里落进 `task.json`，之后 S6、乃至后续 bug 定位都会
+  自动复用，审查员才知道这次改动要达成什么，§9.4）；
+- `--focus` 传 S0.5 的 `prompt_hint`，为空则不传；`--context` 传 `context_paths`。
+
 **每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`（600000）。**
 **本命令收到的模型覆盖（`--model-gemini` / `--model-glm`）与档位（`--profile`）
 要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉——一丢就静默回退到
@@ -48,7 +69,8 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
 
 ### S6 代码双审
-同 S2（含模型覆盖的透传），但 `--stage code`。被审对象是 `git diff`，不是文档。
+同 S2（`--entry A`，含 `--goal` / `--focus` / `--context` / 模型覆盖的透传），但 `--stage code`，
+按 `/dual-review-code` 的第 3 步执行。被审对象是 `git diff`，不是文档。
 比较基线默认 `HEAD`，即「尚未提交的全部改动」；S5 若已经提交过，
 要按 `/dual-review-code` 第 3 步的说明显式给出 `--base`，否则补丁为空会退 65。
 

@@ -29,7 +29,7 @@ import {
   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
 } from './preflight.js';
 import { resolveTopicArgs } from './topic-args.js';
-import { STAGES, type CriticId, type Stage } from './types.js';
+import { COMMAND_ENTRIES, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
 import { emitJson, fail, isJsonMode, say, setOutputMode, step, warn } from './util/log.js';
 
 const VERSION = '0.1.0';
@@ -106,9 +106,12 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
   trivium review --stage plan|code|bug --topic <主题> --focus <提示语> [选项]
       **同步**跑一次双审。仅供手工调试：一次运行墙钟可达 30~40 分钟，
       远超 Driver 的 Bash 工具超时，从 skill 里必须改用 --start/--wait。
-      --focus     审查焦点提示语。命令 B/C/D 必填（FR-20）
+      --focus     审查焦点提示语：这次重点看什么，进 BRIEF 第 2 段（FR-20 / AC-09）。
+                  除 --entry A 外必填；缺失退 64
       --goal      任务目标原文：这次想达成什么，进 BRIEF 第 4 段（§9.4）。
                   与 --focus 是两回事，不可互相顶替。省略时回退 task.json / plan 原稿
+      --entry A|B|C|D  发起本次运行的斜杠命令，记入 run.json 留痕。
+                  只有 A（全流程）的焦点是可选补充；手工调用可省略，按 B/C/D 规则校验
       --context   被审对象涉及的代码路径与相关文档，逗号分隔；并入必读清单
       --plan-file / --rca-file  显式指定被审对象
       --base <ref>  仅 code 阶段：diff 比较基线，默认 HEAD
@@ -120,7 +123,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --allow-single  一侧失败时不中止，产出单审结果并留痕（§12.4）。
                       受配置 review.allow_single_flag 约束；默认策略是 strict
 
-  trivium review --start --stage <s> --topic <主题> --focus <提示语> [同上选项] [--json]
+  trivium review --start --entry <A|B|C|D> --stage <s> --topic <主题> --focus <提示语> [同上选项] [--json]
       冻结送审包 → 派生工作进程 → **立即返回** run_id 与 max_waits。
       返回的 bash_timeout_ms 是 skill 必须为每次 --wait 设置的工具级超时。
 
@@ -258,12 +261,23 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   const topic = flagString(args, 'topic');
   if (!topic) throw usageError('缺少 --topic。主题名规则见设计 §6.1');
 
+  /*
+   * `--entry`：发起本次运行的斜杠命令。记入 run.json 留痕之外，它决定焦点是否必填——
+   * FR-20 / §7.3 要求 B/C/D 缺提示语一律拒绝启动（退 64），而命令 A 的焦点只是可选补充
+   * （PRD 第 8 章）。省略时按 B/C/D 规则校验：手工调用也不该带着空焦点跑完。
+   */
+  const entryRaw = flagString(args, 'entry');
+  if (entryRaw && !(COMMAND_ENTRIES as readonly string[]).includes(entryRaw)) {
+    throw usageError(`--entry 只接受 ${COMMAND_ENTRIES.join(' | ')}，收到：${entryRaw}`);
+  }
+  const entry = (entryRaw as CommandEntry | null) ?? null;
+
   const focus = flagString(args, 'focus');
-  // FR-20 / §7.3：B/C/D 缺提示语一律拒绝启动，退出码 64
-  if (!focus) {
+  if (!focus && entry !== 'A') {
     throw usageError(
       '缺少 --focus：命令 B/C/D 必须携带审查焦点提示语（FR-20）。' +
-        '提示语会逐字进入两侧送审材料，是 AC-09 的验收落点。',
+        '提示语会逐字进入两侧送审材料，是 AC-09 的验收落点。' +
+        (entry === null ? '（只有 --entry A 的全流程可以省略焦点。）' : ''),
     );
   }
 
@@ -285,15 +299,17 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     ctx,
     stage,
     topic,
-    promptHint: focus,
+    promptHint: focus ?? null,
     taskGoal: goal ?? null,
+    entry,
     contextPaths: contextRaw ? contextRaw.split(',').map((c) => c.trim()).filter(Boolean) : [],
     subjectFile: flagString(args, 'plan-file') ?? flagString(args, 'rca-file'),
     diffBase: flagString(args, 'base'),
     modelOverrides,
     command: `trivium review --stage ${stage}`,
     onlyCritic: (onlyRaw as CriticId | null) ?? null,
-    // 闸门写锁默认按会话作用域（RV-05），拿不到会话 id 就一律不加锁
+    // 闸门写锁默认按会话作用域（RV-05）。拿不到会话 id 时闸门记 null，
+    // 写锁按「本会话」保守处理（state.ts GateEntry.session_id）
     sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
     allowSingle: args.flags.get('allow-single') === true,
   };

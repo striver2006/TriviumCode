@@ -1,0 +1,66 @@
+# BACKLOG · 技术债与待办池
+
+来源：2026-09-12 对当前实现（HEAD 0aaf855）的整体审核。三路只读审核（核心编排链路 /
+闸门与留痕保障 / skills·文档·测试一致性）的结论经逐条对照源码核实后收录于此。
+状态列：`todo` 未开始 ｜ `doing` 进行中 ｜ `done <commit>` 已落地。
+
+## Blocker
+
+| # | 状态 | 条目 | 位置 |
+| :-- | :-- | :-- | :-- |
+| B1 | done | 闸门 `session_id` 为 null 时写锁与收工拦截静默失效（skill 默认路径从未生效） | state.ts `shouldLockWrites`、hooks.ts `hookStop` |
+| B2 | done | B/C/D 位置参数语义反直觉且 `/dual-run` 在 S2 必退 64；改为「位置参数按命令语义定，旗标只做覆盖」，`review --start` 加 `--entry` | topic-args.ts、cli.ts、四份 SKILL.md、设计 §7.1/§7.3 |
+| B3 | todo | code 阶段 `subject_drift` 永远不触发：跑后复算读的是冻结 diff 文件本身；`relatedPaths` 漏了 diff 涉及文件 | review.ts:649/681、freeze.ts:134/167 |
+| B4 | todo | 留痕防篡改链断裂：归档内 hookPreWrite 一律放行（含 `_meta/`）；`_meta/review-*.json` 不在保护集却是 gate 唯一输入；git 锚只看删除；首次提交前无基线 | hooks.ts:106/356/369、review.ts:735、gate.ts:87 |
+| B5 | todo | Bash 出口不设防（`cat >`/`sed -i`）；dual-run 授予裸 Bash | .claude/settings.json、skills/dual-run/SKILL.md |
+
+## Major
+
+| # | 状态 | 条目 | 位置 |
+| :-- | :-- | :-- | :-- |
+| M1 | todo | `reclaimStaleLock` 复验结果被丢弃，`rm` 无条件执行，调用方忽略返回值 → 删掉别人的新锁 | lock.ts:97-112,179 |
+| M2 | todo | 锁文件先 `open('wx')` 后写内容，空文件窗口被判 `unparsable` 误回收活锁 | lock.ts:148-152,73 |
+| M3 | todo | `readState` 解析失败静默返回空状态，所有闸门一次性消失 | state.ts:59-65 |
+| M4 | todo | `recordApproval` 无条件 `setGate`，abandon 跳过状态校验，可覆写并发 `running` | approval.ts:34-39,58-64 |
+| M5 | todo | `withTopicLock` 零调用；task.json 读改写四处不持锁 | meta.ts:213、verify.ts:332、approval.ts:53、review.ts:543 |
+| M6 | todo | 同步路径 `runReview` 不取主题锁 | review.ts:880-902 |
+| M7 | todo | worker 心跳 `void patchStatus` 无 catch → 写失败即崩；心跳与终态写入争用 | run-protocol.ts:365-368 |
+| M8 | todo | `exec.run` 超时不杀进程树；`finish` 只挂 `close` 可能永不 resolve | util/exec.ts:145-153 |
+| M9 | todo | 两侧 writeArtifact 各自抬升 `-r<N>`，可分叉 | review.ts:728-732 vs archive.ts:57-59 |
+| M10 | todo | 两侧都 parse_fallback 时空裁决表直接通过；fallback 条目从不被要求出现 | gate.ts:143-153,197 |
+| M11 | todo | `task.json.disputed` 从未写为 true，status/report 的争议提示永不触发 | gate.ts:232-250、meta.ts:80 |
+| M12 | todo | config.yaml 完全不校验：`gate: "off"`、拼错枚举、`stop_hook_max_blocks: 0` 均静默 fail-open | config.ts:203-240 |
+| M13 | todo | PROTOCOL 称四份 Schema/ajv 强校验：`config.v1.json` 不存在，`run.v1`/`disposition.v1` 零加载 | doc/03_api、skills/dual-critic/schema |
+| M14 | todo | init 的 hook 去重正则匹配不到 JSON 转义后的命令串（死代码），升级会叠加重复 hook | init.ts:167-171 |
+| M15 | todo | 安装器无卸载路径，copyDir 不裁剪孤儿文件 | install.ts |
+| M16 | todo | wrapper 写死 `process.execPath`（Homebrew Cellar 版本化路径），brew upgrade 后每次 hook 报 127；doctor 不校验 | init.ts:215、doctor.ts |
+| M17 | todo | 被审补丁不按 `sensitive_globs` 剔除，`.env` 可经补丁进 BRIEF/argv/request.json | code-stage.ts:104-109、util/git.ts:200-240 |
+| M18 | todo | zcode availability 只要求 readonly_flags 非空，`--disallowed-tools` 探不到仍判可用 | adapters/zcode.ts:146-152 |
+| M19 | todo | `retention.run_dir_days` 有配置有文档零实现；`~/.trivium/runs` 已 3400 目录/580MB | config.ts:138、RUNBOOK:172 |
+| M20 | todo | 测试夹具与 selftest 不覆盖 `run_root`，污染真实 `~/.trivium/runs` | test/helpers/fixture.ts、selftest.ts |
+| M21 | todo | 零覆盖：install.ts、adapters/zcode.ts、agy 的 invokeAgy/agyAdapter、topic.ts、approval `--reject`；无真并发抢锁用例 | test/ |
+
+## Minor / Nit
+
+- hooks.ts:176-204 子命令非字面量 `commit`（`git $S`、alias）fail-open，与目录推断的保守原则相反
+- hooks.ts:451-458 阻断超限放行用 exit 0 + stderr，提示用户看不到
+- lock.ts:273-295 stop_hook 计数只在审批时归零，跨轮累积后收工拦截永久失效
+- hooks.ts:620-628 session-start 对读不到 status 的 running 闸门永不回收
+- run-protocol.ts:529-608 `--cancel` 缺 status.json 时不落终态不回收锁，仍报「已取消」
+- run-protocol.ts:409-419 worker 锁回收依赖 status 可读，request.json 里有 topic 可兜底
+- exec.ts:217-226 spawnDetached 未挂 `error` 监听
+- cli.ts `--wait --timeout` 非法值静默回落，verify 侧已按 GLM-r2-07 修好
+- topic-args.ts NAMED_FLAGS 缺 `only/allow-single/session-id`
+- runner.ts:80-84 重试追加的 BRIEF 不回写 `_meta/`
+- base.ts:115-131 checkPeerLeak 不归一化路径；min_project_reads 不校验项目内
+- zcode.ts:45 denylist 不含 WebFetch，zcode-trace.ts:76 还把它算作读证据
+- agy.ts:176 `--agent` 取自配置而非探针结论
+- disposition.ts:59-67 表头 `includes('id')` 会命中 Evidence 列；:189-192 `**AGY-01**` 被静默丢弃
+- gate.ts:123-137 裁决件不校验 run_id
+- secrets.ts:133 抛裸 Error；`.env*` 默认 glob 不跨目录
+- verify.ts:119-128 注释称命令「经 init 逐条确认」，实际无该环节
+- dual-approve allowed-tools 只有 trivium 却要求改写修订件；dual-status 提示 `trivium review --wait` 不在 PATH
+- .reviews/README 把 verify/ 列入 --check-artifacts 范围，parseStage 不接受 verify
+- QUICKSTART 说 init 生成 config.local.yaml（实为 doctor）；墙钟 2~15 分钟 vs USAGE 30~40 分钟
+- 重复实现：locateSubject×2、花括号配平扫描×2、路径正则×2、probeScratchPaths×2、runDir 拼接×2
+- exec.ts:290-316 safePgrp 用 `getgid` 判进程组无效；`script -q /dev/null` 是 BSD 语法，Linux 无守卫

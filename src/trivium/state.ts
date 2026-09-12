@@ -38,6 +38,12 @@ export interface GateEntry {
    * `approval_lock_scope: session` 下，写锁只对**本会话**生效：
    * 其它会话的闸门只提醒不加锁，因为 PRD 4.4 约束的是流水线不得自动继续，
    * 不是开发者在同一仓库里的其它编辑（审核意见 RV-05）。
+   *
+   * **为 null 时按「本会话」处理**（保守方向）。会话 id 只能靠 `--session-id` 或
+   * `CLAUDE_SESSION_ID` 环境变量传入，而 Claude Code 并不向 Bash 工具注入后者——
+   * 于是 skill 正常走一遍，闸门几乎总是 null。原先把 null 判为「无法判定作用域，不加锁」，
+   * 结果是写锁与收工拦截在默认路径上从未生效过（本仓库自己的 state.json 三个真实闸门
+   * 全是 null）。拿不准是不是别人的会话时，宁可多拦一会儿（还有 TTL 兜底）。
    */
   session_id: string | null;
 }
@@ -244,13 +250,13 @@ export function shouldLockWrites(
     return { lock: false, reason: `闸门已超过 ${opts.ttlHours}h TTL（${ageH.toFixed(1)}h），不加锁` };
   }
 
-  if (opts.scope === 'session') {
-    if (gate.session_id === null) {
-      return { lock: false, reason: '闸门未记录触发会话，无法判定作用域，不加锁' };
-    }
-    if (gate.session_id !== opts.currentSessionId) {
-      return { lock: false, reason: '闸门由其它会话触发，仅提醒不加锁' };
-    }
+  /*
+   * 作用域判定：只有**明确记录了别的会话**才不加锁。
+   * `session_id` 为 null 意味着无从证明它是别人的——按本会话处理（见 GateEntry.session_id）。
+   * 反过来写成「null 就不加锁」，护栏会在最常见的路径上静默失效。
+   */
+  if (opts.scope === 'session' && gate.session_id !== null && gate.session_id !== opts.currentSessionId) {
+    return { lock: false, reason: '闸门由其它会话触发，仅提醒不加锁' };
   }
 
   return {

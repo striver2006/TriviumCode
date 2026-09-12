@@ -436,7 +436,9 @@ export async function hookStop(ctx: Ctx, input: HookInput): Promise<HookOutput> 
   const pending = open.filter((g) => {
     if (g.state !== 'review_done_awaiting_disposition') return false;
     if (ctx.config.gate.approval_lock_scope === 'global') return true;
-    return g.session_id !== null && g.session_id === (input.session_id ?? null);
+    // 与 shouldLockWrites 同一条保守原则：只有明确记录了**别的**会话才放行，
+    // null 无从证明是别人的，按本会话处理（否则默认路径上收工拦截从不生效）
+    return g.session_id === null || g.session_id === (input.session_id ?? null);
   });
   if (pending.length === 0) return ALLOW;
 

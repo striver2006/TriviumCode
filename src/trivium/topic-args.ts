@@ -18,11 +18,13 @@ import { exists } from './util/fsx.js';
 import { diffExcludePrefixes } from './code-stage.js';
 import type { PreflightScope } from './preflight.js';
 
-/** 具名参数白名单。其余正文即提示语 */
+/** 具名参数白名单。其余正文按命令语义落到焦点或任务目标（见 resolveTopicArgs） */
 const NAMED_FLAGS = [
   'topic', 'context', 'plan-file', 'rca-file', 'base',
-  'model-gemini', 'model-glm', 'profile', 'focus',
+  'model-gemini', 'model-glm', 'profile', 'focus', 'goal',
 ] as const;
+/** 自由文本旗标：贪婪取到下一个已知旗标为止 */
+const GREEDY_FLAGS: ReadonlySet<string> = new Set(['focus', 'goal']);
 type NamedFlag = (typeof NAMED_FLAGS)[number];
 
 export interface ParsedArgsBundle {
@@ -60,14 +62,14 @@ export function splitArguments(raw: string): ParsedArgsBundle {
       continue;
     }
     /*
-     * ── `--focus` 贪婪取值，其余旗标只吃一个 token ──
+     * ── `--focus` / `--goal` 贪婪取值，其余旗标只吃一个 token ──
      *
-     * 焦点是自由文本，天然带空格。若照单 token 取，用户写
+     * 焦点与任务目标都是自由文本，天然带空格。若照单 token 取，用户写
      * `--focus 重点看 并发安全` 只会拿到「重点看」，剩下的悄悄漏进正文——
      * 又是一次静默截断。其余旗标（topic / base / context / model-*）都是单值，
-     * 贪婪反而会把后面的正文吞进去，所以只对 focus 放宽。
+     * 贪婪反而会把后面的正文吞进去，所以只对这两个放宽。
      */
-    if (name === 'focus') {
+    if (GREEDY_FLAGS.has(name)) {
       const parts: string[] = [];
       while (i + 1 < tokens.length && !isKnownFlag(tokens[i + 1]!)) parts.push(tokens[++i]!);
       named[name] = parts.join(' ');
@@ -121,13 +123,15 @@ function tokenize(raw: string): string[] {
 
 export interface TopicResolution {
   topic: string;
-  /** 统一字段名：skill 传 --focus，编排器内部一律叫 prompt_hint（AGY-04） */
+  /**
+   * 审查焦点（编排器内部一律叫 prompt_hint，AGY-04）。
+   * B/C/D 的命令正文就是它；命令 A 只认显式 `--focus`。
+   */
   prompt_hint: string | null;
   /**
-   * 任务目标原文：`/dual-run <任务目标>` 的位置参数正文（设计 §9.4）。
-   *
-   * 与 `prompt_hint` **刻意分开**（RV-19）——`/dual-review-code` 只带 --focus，
-   * 此处即为 null，由编排器回退到 task.json / plan 原稿。
+   * 任务目标原文（设计 §9.4，进 BRIEF 第 4 段）。
+   * 命令 A 的命令正文就是它；B/C/D 只认显式 `--goal`（或「`<目标> --focus <焦点>`」写法里的正文），
+   * 为 null 时由编排器回退到 task.json / plan 原稿。与 `prompt_hint` **刻意分开**（RV-19）。
    */
   task_goal: string | null;
   /**
@@ -169,35 +173,51 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
   const notes: string[] = [];
 
   /*
-   * ── 焦点只认 `--focus`，位置参数一律是任务目标 ──
+   * ── 位置参数按命令语义定，旗标只做覆盖 ──
    *
-   * 位置参数的本质是「具名参数挑剩下的残渣」，没有边界：焦点里只要出现
-   * `--base` 这类白名单词，就会连同后一个 token 被抠进 named，正文静默缺一块——
-   * 而 BRIEF 第 2 段是 FR-20 / AC-09 承诺**逐字**嵌入的唯一落点，不能建在残渣上。
+   *   命令 A（scope=all）：正文 = 任务目标（「要达成什么」，BRIEF 第 4 段），`--focus` 可选。
+   *   命令 B/C/D：       正文 = 审查焦点（「重点看什么」，第 2 段，FR-20 / AC-09 的唯一落点），
+   *                     `--goal` 可选；任务目标缺省时由编排器回退到 task.json / plan 原稿。
    *
-   * 改判之后四条命令规则一致：首参恒为「要达成什么」，焦点恒走 `--focus`。
-   * 顺带修掉 B/C/D 的 task_goal 与 prompt_hint 必然雷同（同取 rest）的老问题。
+   * 这是 PRD 的原始定义（第 8 章：「命令后面带的提示语」= 审查焦点）。用户在 B/C/D 里
+   * 最常打的就是焦点，几乎不会打目标——目标本来就能从归档里取回。曾经把 B/C/D 的正文
+   * 改判为任务目标、焦点强制走 `--focus`，动机是「正文里出现 `--base` 会被吞掉」；
+   * 但那是分词器的固有歧义，`--focus` 贪婪取值遇到已知旗标同样截断，没解决问题，
+   * 反倒让 `/dual-review-code 重点看并发` 直接退 64。
+   *
+   * 兼容显式写法 `<任务目标> --focus <焦点>`：B/C/D 给了 `--focus`，正文就落到任务目标上。
+   * 显式 `--goal` / `--focus` 永远优先于正文。
    */
-  const promptHint = (named['focus'] ?? '').trim() || null;
-  const taskGoal = rest.trim() || null;
+  const focusFlag = (named['focus'] ?? '').trim() || null;
+  const goalFlag = (named['goal'] ?? '').trim() || null;
+  const body = rest.trim() || null;
+
+  let promptHint: string | null;
+  let taskGoal: string | null;
+  if (scope === 'all') {
+    taskGoal = goalFlag ?? body;
+    promptHint = focusFlag;
+  } else if (focusFlag) {
+    promptHint = focusFlag;
+    taskGoal = goalFlag ?? body;
+  } else {
+    promptHint = body;
+    taskGoal = goalFlag;
+  }
 
   /*
-   * ── B/C/D 缺焦点在这里就退，不留给执行者自觉 ──
+   * ── B/C/D 什么都没写才退 64（FR-20），不留给执行者自觉 ──
    *
-   * FR-20 要求命令 B/C/D 必带焦点。原先只有 SKILL.md 里一句「若提示语为空 →
-   * 停止」，靠执行者判断；而焦点改走 `--focus` 之后，旧写法
-   * `/dual-review-code <一段话>` 会把那段话整体落到任务目标上、焦点为空，
-   * 正是最容易踩的迁移坑——必须给一个明确的报错，而不是让它带着空焦点跑完。
-   *
+   * 原先只有 SKILL.md 里一句「若提示语为空 → 停止」，靠执行者判断。
    * 命令 A（scope=all）不在此列：它的焦点本就是可选的补充提示。
    */
   if (scope !== 'all' && !promptHint) {
     throw new TriviumError(
       EXIT.USAGE,
-      '缺少 --focus：命令 B/C/D 必须携带审查焦点提示语（FR-20）。\n' +
+      '缺少审查焦点：命令 B/C/D 必须写明本次重点看什么（FR-20）。\n' +
         '  焦点会逐字进入两侧送审材料，是 AC-09 的验收落点。\n' +
-        '  写法：<任务目标> --focus <本次重点看什么>\n' +
-        `  ${taskGoal ? `检测到首参「${taskGoal}」——它会被当作任务目标；若这就是你想说的审查焦点，请改写成 --focus 形式。` : ''}`.trimEnd(),
+        '  写法：/dual-review-<plan|code|bug> <本次重点看什么>\n' +
+        '  也可显式：<任务目标> --focus <本次重点看什么>',
     );
   }
 
@@ -207,18 +227,18 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
   if (topicRaw.length === 0) {
     topicRaw = inferTopic(taskGoal ?? promptHint ?? '', ctx.config.topic.max_len);
     inferred = true;
-    notes.push(`主题由任务目标推导：「${topicRaw}」——请向用户回显确认`);
+    notes.push(`主题由${taskGoal ? '任务目标' : '审查焦点'}推导：「${topicRaw}」——请向用户回显确认`);
     /*
      * ── 推导结果异常短，多半是任务目标被旗标截断了 ──
      *
-     * 任务目标里出现 `--base` 这类词而没加引号时，它会被当成真旗标并吞掉后一个
+     * 正文里出现 `--base` 这类词而没加引号时，它会被当成真旗标并吞掉后一个
      * token，正文只剩开头零星几个字；主题从这截残渣推导，就成了「让」这种单字。
      * `validateTopic` 不会拦——单字是合法主题名——于是真的建出 `.reviews/让/`。
      * 上面那条通用提醒对所有推导主题一视同仁，这里把最可能出错的情形单独点破。
      */
     if (topicRaw.length <= 2) {
       notes.push(
-        `主题「${topicRaw}」异常短：通常意味着任务目标被 \`--xxx\` 旗标截断（未加引号），` +
+        `主题「${topicRaw}」异常短：通常意味着正文被 \`--xxx\` 旗标截断（未加引号），` +
           '请核对用户原始输入，必要时把整段用双引号包起来重传',
       );
     }

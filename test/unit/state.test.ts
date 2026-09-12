@@ -142,12 +142,25 @@ test('review_done_awaiting_disposition 不加写锁（那是 hook-stop 的职责
   assert.equal(r.lock, false, '裁决未完成应阻止收工，而不是锁住写入');
 });
 
-test('闸门未记录会话 id 时不加锁（无法判定作用域，宁可放过）', () => {
+/*
+ * 闸门未记录会话 id → **加锁**（保守方向）。
+ *
+ * 会话 id 只能靠 --session-id / CLAUDE_SESSION_ID 传入，而 Claude Code 不向 Bash 工具
+ * 注入后者，skill 正常走一遍闸门几乎总是 null。原先把 null 判为「无法判定作用域，不加锁」，
+ * 等于写锁在默认路径上从未生效（本仓库 state.json 三个真实闸门全是 null）。
+ */
+test('闸门未记录会话 id 时按本会话处理，照样加锁', () => {
   const r = shouldLockWrites(entry({ session_id: null }), {
     currentSessionId: 'S-CURRENT', scope: 'session', ttlHours: 24,
   });
-  assert.equal(r.lock, false);
-  assert.match(r.reason, /无法判定作用域/);
+  assert.equal(r.lock, true, 'null 无从证明是别人的会话，不能放过');
+});
+
+test('hook 自己也拿不到会话 id（两边都是 null）时同样加锁', () => {
+  const r = shouldLockWrites(entry({ session_id: null }), {
+    currentSessionId: null, scope: 'session', ttlHours: 24,
+  });
+  assert.equal(r.lock, true);
 });
 
 test('无闸门 → 不加锁', () => {

@@ -11,7 +11,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { Config, CriticId, CriticRequest, Ctx, Stage } from './types.js';
+import type { Config, CriticId, CriticRequest, Ctx, Stage, CommandEntry } from './types.js';
 import { EXIT, TriviumError, envError, missingArtifact } from './exit-codes.js';
 import { runRoot } from './config.js';
 import { acquireLock, inspectLock, reclaimStaleLock } from './lock.js';
@@ -75,6 +75,8 @@ interface Handoff {
     /** 会话 id 与临时降级开关必须一起交接：worker 是另一个进程，读不到 --start 的 argv */
     sessionId: string | null;
     allowSingle: boolean;
+    /** 发起命令（A/B/C/D）同样只有 --start 知道，要随交接文件带给 worker */
+    entry?: CommandEntry | null;
   };
 }
 
@@ -100,6 +102,7 @@ async function writeHandoff(rc: RunContext): Promise<void> {
       onlyCritic: rc.opts.onlyCritic ?? null,
       sessionId: rc.opts.sessionId ?? null,
       allowSingle: rc.opts.allowSingle === true,
+      entry: rc.opts.entry ?? null,
       ...(rc.opts.assetRoot ? { assetRoot: rc.opts.assetRoot } : {}),
     },
   };
@@ -140,6 +143,7 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
       onlyCritic: h.options.onlyCritic,
       sessionId: h.options.sessionId ?? null,
       allowSingle: h.options.allowSingle === true,
+      entry: h.options.entry ?? null,
       ...(h.options.assetRoot ? { assetRoot: h.options.assetRoot } : {}),
     } satisfies ReviewOptions,
     cfg: ctx.config,

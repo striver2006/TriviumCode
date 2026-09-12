@@ -53,6 +53,14 @@ async function runCode(
   return { exitCode, meta, out };
 }
 
+test('run.json 记下发起命令 --entry', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 2;\n');
+  const { exitCode, meta } = await runCode(fx.root, fx.codeDir, ['--entry', 'C']);
+  assert.equal(exitCode, EXIT.OK);
+  assert.equal(meta.entry, 'C', 'run.json 应记下发起命令，供事后追溯这轮是谁发起的');
+});
+
 test('无待审变更 → 退 65 且零工件', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await codeFixture();
   const before = await listFiles(fx.archiveRoot);

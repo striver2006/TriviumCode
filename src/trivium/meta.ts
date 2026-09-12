@@ -7,7 +7,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { CriticId, RunMeta, Stage , StageOrVerify } from './types.js';
+import type { CriticId, RunMeta, Stage, StageOrVerify, CommandEntry } from './types.js';
 import { writeAtomic } from './util/fsx.js';
 import { topicDir, type ArchiveLayout } from './archive.js';
 
@@ -139,6 +139,8 @@ export interface NewRunMetaInput {
   promptHint: string | null;
   /** 本次运行实际送进 BRIEF 第 4 段的任务目标（已解析，可能来自 task.json 或 plan 原稿） */
   taskGoal: string | null;
+  /** 发起本次运行的斜杠命令（A/B/C/D），手工调用为 null */
+  entry?: CommandEntry | null;
   treeHash: string;
   gitHead: string | null;
   dirty: boolean;
@@ -158,6 +160,7 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     command: i.command,
     prompt_hint: i.promptHint,
     task_goal: i.taskGoal,
+    entry: i.entry ?? null,
     snapshot: {
       git_head: i.gitHead,
       tree_hash: i.treeHash,

@@ -169,14 +169,16 @@ test('--focus 与 prompt_hint 的对应统一（AGY-04）', async () => {
 });
 
 /*
- * ── 焦点只认 --focus，位置参数一律是任务目标 ──
+ * ── 位置参数按命令语义定，旗标只做覆盖 ──
  *
- * 旧实现 `named['focus'] ?? rest` 让焦点落在「具名参数挑剩下的残渣」上：
- * 焦点里出现白名单词就连同后一个 token 被抠走，正文静默缺一块，
- * 而第 2 段是 FR-20 / AC-09 承诺**逐字**嵌入的唯一落点。
+ *   命令 A：正文 = 任务目标，`--focus` 可选
+ *   B/C/D：正文 = 审查焦点（PRD 第 8 章「命令后面带的提示语」），`--goal` 可选
+ *
+ * 用户在 B/C/D 里最常打的就是焦点，几乎不会打目标——目标能从归档回退取回。
+ * 显式旗标永远优先于正文。
  */
 
-test('位置参数是任务目标，不再兼作焦点', async () => {
+test('命令 A：正文是任务目标，--focus 是可选补充', async () => {
   const ctx = await fakeCtx();
   const r = await resolveTopicArgs({
     ctx, scope: 'all', rawArgs: '--topic T 把登录改造为 OIDC --focus 重点看会话固定',
@@ -184,6 +186,42 @@ test('位置参数是任务目标，不再兼作焦点', async () => {
   assert.equal(r.task_goal, '把登录改造为 OIDC');
   assert.equal(r.prompt_hint, '重点看会话固定');
   assert.notEqual(r.task_goal, r.prompt_hint, '两者同源会让 BRIEF 第 2 段与第 4 段雷同');
+});
+
+test('B/C/D：正文就是审查焦点，用户不必区分目标与焦点', async () => {
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
+  const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: '--topic T 重点看并发安全与回滚路径' });
+  assert.equal(r.prompt_hint, '重点看并发安全与回滚路径');
+  assert.equal(r.task_goal, null, '目标缺省，交给编排器回退 task.json / plan 原稿');
+});
+
+test('B/C/D：显式 --goal 是已知旗标且贪婪取值，不会被吞进焦点', async () => {
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
+  const r = await resolveTopicArgs({
+    ctx, scope: 'code', rawArgs: '--topic T 重点看并发 --goal 把登录改造为 OIDC 并补回滚',
+  });
+  assert.equal(r.prompt_hint, '重点看并发');
+  assert.equal(r.task_goal, '把登录改造为 OIDC 并补回滚');
+});
+
+test('B/C/D：兼容显式写法 <任务目标> --focus <焦点>——给了 --focus，正文落到目标', async () => {
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
+  const r = await resolveTopicArgs({
+    ctx, scope: 'code', rawArgs: '--topic T 把登录改造为 OIDC --focus 重点看会话固定',
+  });
+  assert.equal(r.task_goal, '把登录改造为 OIDC');
+  assert.equal(r.prompt_hint, '重点看会话固定');
+});
+
+test('B/C/D：主题缺省时从焦点推导，note 说明来源', async () => {
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
+  const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: '重点看并发安全' });
+  assert.equal(r.topic_inferred, true);
+  assert.ok(r.notes.some((n) => n.includes('由审查焦点推导')), JSON.stringify(r.notes));
 });
 
 test('焦点里出现白名单旗标字样不再被静默吞掉', async () => {
@@ -252,17 +290,20 @@ test('--focus 贪婪取到下一个已知旗标为止，带空格无需引号', 
   assert.equal(r.models.glm, 'GLM-5.3');
 });
 
-test('B/C/D 缺 --focus 直接退 64，并提示首参会被当成任务目标', async () => {
+test('B/C/D 什么都没写（无正文、无 --focus）才退 64（FR-20）', async () => {
   const ctx = await fakeCtx();
-  await assert.rejects(
-    resolveTopicArgs({ ctx, scope: 'code', rawArgs: '--topic T 顺手把提示语写成了首参' }),
-    (e: { code?: number; message: string }) => {
-      assert.equal(e.code, EXIT.USAGE);
-      assert.match(e.message, /缺少 --focus/);
-      assert.match(e.message, /顺手把提示语写成了首参/, '应回显首参，点破这正是旧写法的迁移坑');
-      return true;
-    },
-  );
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
+  for (const raw of ['--topic T', '--topic T --goal 只给了目标']) {
+    await assert.rejects(
+      resolveTopicArgs({ ctx, scope: 'code', rawArgs: raw }),
+      (e: { code?: number; message: string }) => {
+        assert.equal(e.code, EXIT.USAGE);
+        assert.match(e.message, /缺少审查焦点/);
+        assert.match(e.message, /dual-review-<plan\|code\|bug> <本次重点看什么>/, '报错要直接给出最自然的写法');
+        return true;
+      },
+    );
+  }
 });
 
 test('命令 A 不要求 --focus：它的焦点本就是可选补充', async () => {

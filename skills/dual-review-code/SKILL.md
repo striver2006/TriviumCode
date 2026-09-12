@@ -1,7 +1,7 @@
 ---
 name: dual-review-code
 description: 对已有代码变更做背靠背双审，并产出逐条应答与修改方案（命令 C）
-argument-hint: <任务目标> --focus <审查焦点提示语> [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-gemini <slug>] [--model-glm <id>] [--base <ref>]
+argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-gemini <slug>] [--model-glm <id>] [--base <ref>]
 disable-model-invocation: true
 allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 ---
@@ -27,28 +27,30 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 
 运行 `TV topic resolve --stage code --json -- $ARGUMENTS`。
 
-- 焦点为空时 `topic resolve` 会直接退 64 并给出写法提示，原样转述即可（FR-20）。
-  **注意旧写法迁移**：`<一段话>` 会被当作任务目标而非焦点，必须显式 `--focus`。
-- 若未提供 `--context` → 依据代码变更 内容补一份涉及路径清单再传入。
+- 用户什么都没写（既无正文也无 `--focus`）时 `topic resolve` 会退 64 并给出写法提示，
+  原样转述即可（FR-20）。
+- 若未提供 `--context` → 依据代码变更内容补一份涉及路径清单再传入。
   你在起草时本就知道涉及哪些模块，这一步能显著提升审查质量（UR-01 / AC-11）。
 
-**首参是任务目标，焦点走 `--focus`。** 前者说「这次要达成什么」（进 BRIEF 第 4 段），
-后者说「这次重点看什么」（进第 2 段，FR-20 / AC-09 的唯一落点，逐字嵌入）。
-`--focus` 贪婪取到下一个已知旗标为止，所以焦点带空格无需引号。
+**命令后的正文就是审查焦点**（「这次重点看什么」，进 BRIEF 第 2 段，FR-20 / AC-09 的
+唯一落点，逐字嵌入）。用户不需要区分「目标」与「焦点」，直接写重点看什么即可。
+任务目标（「这次要达成什么」，进第 4 段）**不必**用户提供：编排器会回退到 `task.json`
+已记录的目标或同主题 plan 原稿；用户确实想指定时写 `--goal <任务目标>`。
+也兼容显式写法 `<任务目标> --focus <焦点>`：给了 `--focus`，正文就落到任务目标上。
+`--focus` 与 `--goal` 都贪婪取到下一个已知旗标为止，带空格无需引号。
 
-**构造这条命令时，由你给任务目标与焦点补上字面双引号**——只要其中出现 `--` 开头的词。
-不要指望用户在聊天框里自己加：他们不会，也不该被要求这么做。哪一段是目标、哪一段是焦点，
-只有你分得清，所以这件事只能你做。
+**构造这条命令时，由你给自由文本补上字面双引号**——只要其中出现 `--` 开头的词。
+不要指望用户在聊天框里自己加：他们不会，也不该被要求这么做。
 
-例：用户说「让 `--base` 真正进入冻结，重点核实还有没有同类缺口」，要传成
+例：用户说「重点核实 `--base` 透传说明是否准确」，要传成
 
 ```
-TV topic resolve --stage code --json -- '"让 --base 真正进入冻结" --focus 重点核实还有没有同类缺口'
+TV topic resolve --stage code --json -- '"重点核实 --base 透传说明是否准确"'
 ```
 
-漏了那对引号，`--base` 就成了真旗标，连同后一个词一起被抠走：任务目标只剩「让」，
-主题也跟着被推成单字，而 `--base` 拿到一个必然非法的 ref。加引号**不改变逐字内容**，
-只是让解析器看清边界，FR-20 的逐字承诺不受影响。
+漏了那对引号，`--base` 就成了真旗标，连同后一个词一起被抠走：焦点只剩「重点核实」，
+而 `--base` 拿到一个必然非法的值。加引号**不改变逐字内容**，只是让解析器看清边界，
+FR-20 的逐字承诺不受影响。resolve 若提示「主题异常短」，多半就是这里漏了引号。
 
 > 为什么 shell 的引号不管用：`--` 之后的内容会被**拼成一整串再重新分词**，
 > shell 引号在拼接那一刻就没了。引号必须作为**字面字符**出现在那一串里。
@@ -59,8 +61,11 @@ TV topic resolve --stage code --json -- '"让 --base 真正进入冻结" --focus
 先运行：
 
 ```
-TV review --start --stage code --topic <主题> --focus <提示语> [--goal <任务目标>] [--base <ref>] [--model-gemini <slug>] [--model-glm <id>] [--profile <名称>] [--context …] --json
+TV review --start --entry C --stage code --topic <主题> --focus <提示语> [--goal <任务目标>] [--base <ref>] [--model-gemini <slug>] [--model-glm <id>] [--profile <名称>] [--context …] --json
 ```
+
+`--entry C` 标记本次运行由命令 C 发起，记入 run.json 留痕；它也让 CLI 按 B/C/D 规则
+校验焦点必填（缺 `--focus` 退 64）。
 
 若上一步 resolve 输出的 `task_goal` 非空，把它原样传给 `--goal`。它与 `--focus` 是两回事：
 前者说「这次要达成什么」，进 BRIEF 第 4 段；后者说「这次重点看什么」，进第 2 段。

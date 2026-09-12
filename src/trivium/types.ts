@@ -11,6 +11,9 @@
 
 export type Stage = 'plan' | 'code' | 'bug';
 export type StageOrVerify = Stage | 'verify';
+/** 发起本次运行的斜杠命令（设计 §7.1）：A 全流程 / B 计划审 / C 代码审 / D 根因审 */
+export type CommandEntry = 'A' | 'B' | 'C' | 'D';
+export const COMMAND_ENTRIES: readonly CommandEntry[] = ['A', 'B', 'C', 'D'];
 export type CriticId = 'gemini' | 'glm';
 export type Vendor = 'antigravity' | 'zcode';
 export type Severity = 'blocker' | 'major' | 'minor' | 'nit';
@@ -316,6 +319,8 @@ export interface RunMeta {
   prompt_hint: string | null;
   /** 送进 BRIEF 第 4 段的任务目标；便于事后追溯审查员当时看到的是什么 */
   task_goal: string | null;
+  /** 发起本次运行的斜杠命令；null 表示直接从命令行手工调用 */
+  entry?: CommandEntry | null;
   snapshot: SnapshotMeta;
   started_at: string;
   finished_at: string | null;

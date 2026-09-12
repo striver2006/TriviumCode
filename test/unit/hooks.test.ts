@@ -102,6 +102,17 @@ test('其它会话的闸门不拦本会话的业务写入（RV-05）', async () 
   assert.equal((await hookPreWrite(ctx, writeInput('src/a.ts'))).exitCode, EXIT.OK);
 });
 
+test('闸门未记录会话 id（skill 默认路径）时业务写入照样被拦', async () => {
+  const ctx = await fakeCtx();
+  // 不传 sessionId：这正是 skill 里 `review --start` 不带 --session-id 时的真实形态
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: 't', stage: 'plan',
+    state: 'awaiting_approval', heartbeatStaleMs: STALE,
+  });
+  const r = await hookPreWrite(ctx, writeInput('src/a.ts'));
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK, 'session_id 为 null 不能成为写锁失效的理由');
+});
+
 test('双审进行中也拦业务写入（就地模式下审查员在读真实工作树）', async () => {
   const ctx = await fakeCtx();
   await setGate({
@@ -199,6 +210,24 @@ test('裁决未完成时阻止收工，并给出该怎么做', async () => {
   assert.equal(r.exitCode, EXIT.GATE_BLOCK);
   assert.equal(r.json?.['decision'], 'block');
   assert.match(String(r.json?.['reason']), /trivium.disposition.v1/);
+});
+
+test('闸门未记录会话 id 时收工拦截照样生效', async () => {
+  const ctx = await fakeCtx();
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: 't', stage: 'plan',
+    state: 'review_done_awaiting_disposition', heartbeatStaleMs: STALE,
+  });
+  assert.equal((await hookStop(ctx, { session_id: SESSION })).exitCode, EXIT.GATE_BLOCK);
+});
+
+test('明确属于其它会话的待裁决闸门不拦本会话收工（RV-05）', async () => {
+  const ctx = await fakeCtx();
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: 't', stage: 'plan',
+    state: 'review_done_awaiting_disposition', sessionId: 'S-OTHER', heartbeatStaleMs: STALE,
+  });
+  assert.equal((await hookStop(ctx, { session_id: SESSION })).exitCode, EXIT.OK);
 });
 
 test('awaiting_approval 是期望的停点，放行收工', async () => {

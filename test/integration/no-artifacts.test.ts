@@ -109,6 +109,28 @@ test('非法主题名 → 退 64，不创建主题目录', { skip: bundleMissing
   }
 });
 
+test('缺 --focus → 退 64，除非 --entry A（命令 A 的焦点是可选补充）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const stub = { gemini: { mode: 'ok' as const }, glm: { mode: 'ok' as const } };
+
+  // 不带 --entry：按 B/C/D 规则，缺焦点即拒
+  let r = await cli(fx.root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC], stub);
+  assert.equal(r.code, EXIT.USAGE, `缺 --focus 应退 64：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /只有 --entry A/);
+
+  // --entry B：同样拒
+  r = await cli(fx.root, ['review', '--start', '--entry', 'B', '--stage', 'plan', '--topic', TOPIC], stub);
+  assert.equal(r.code, EXIT.USAGE);
+
+  // 非法 --entry
+  r = await cli(fx.root, ['review', '--start', '--entry', 'X', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x'], stub);
+  assert.equal(r.code, EXIT.USAGE);
+  assert.match(r.stderr, /--entry 只接受/);
+
+  // 以上三次都不该留下工件
+  assert.deepEqual(await listFiles(path.join(fx.archiveRoot, TOPIC, 'plan', '_meta')), []);
+});
+
 test('缺待审计划草稿 → 退 65 且不留空主题目录（AC-16）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC, draft: false });
 

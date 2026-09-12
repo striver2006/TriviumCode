@@ -78,20 +78,38 @@ for (const name of REVIEW_SKILLS) {
   });
 }
 
+for (const name of REVIEW_SKILLS) {
+  test(`${name}：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源`, () => {
+    const letter = { 'dual-review-plan': 'B', 'dual-review-code': 'C', 'dual-review-bug': 'D' }[name];
+    assert.ok(
+      new RegExp(`--entry ${letter}\\b`).test(startTemplate(readSkill(name))),
+      `${name} 的 --start 模板缺 --entry ${letter}：run.json 记不到发起命令`,
+    );
+  });
+}
+
 /**
  * `/dual-run` 没有自己的 `--start` 模板——S2/S6 委托给 B/C 的第 3 步执行。
- * 所以对它只能断言「委托说明里点名了模型覆盖要一并传下去」，
- * 否则命令 A 收到的 `--model-*` 会在委托的交接处丢掉。
+ * 委托的交接处是所有旗标最容易丢的地方：argument-hint 里声明的每一个旗标，
+ * 正文里都必须交代它怎么传下去；否则用户传的值在 S0 之后就静默消失。
+ * 这正是 B2 缺口的形状：`--focus` / `--context` 声明了、正文一次没提，
+ * 而 S2 委托的 `review --start` 又要求 `--focus`，命令 A 在 S2 必然退 64。
  */
-test('dual-run：委托 B/C 执行时要交代模型覆盖的去向', () => {
+test('dual-run：argument-hint 声明的每个旗标在正文里都有交代', () => {
   const md = readSkill('dual-run');
-  assert.ok(
-    declaredFlags(md).includes('model-gemini'),
-    '前提变了：dual-run 不再声明 --model-gemini，本测试需要重写',
+  const body = md.split('\n').filter((l) => !l.startsWith('argument-hint:')).join('\n');
+  const missing = declaredFlags(md).filter((f) => !new RegExp(`--${f}\\b`).test(body));
+  assert.deepEqual(
+    missing,
+    [],
+    `dual-run 声明了 ${missing.map((f) => `--${f}`).join('、')}，但正文没有交代它们怎么传给 B/C 的第 3 步`,
   );
-  assert.ok(
-    /模型覆盖/.test(md),
-    'dual-run 声明了 --model-gemini/--model-glm，但 S2/S6 的委托说明里没有交代' +
-      '它们怎么传给 B/C 的第 3 步——交接处会把用户指定的模型丢掉。',
-  );
+});
+
+test('dual-run：有主题解析步骤，且委托执行时以命令 A 身份启动', () => {
+  const md = readSkill('dual-run');
+  assert.ok(/TV topic resolve --stage all/.test(md), 'dual-run 缺 topic resolve 步骤：主题名会由模型自由发挥');
+  assert.ok(/--entry A\b/.test(md), 'dual-run 委托 B/C 第 3 步时必须传 --entry A，否则缺焦点会退 64');
+  assert.ok(/模型覆盖/.test(md), 'S2/S6 的委托说明里没有交代模型覆盖怎么传下去');
+  assert.ok(/不得自行调用 `agy` 或 `zcode`/.test(md), 'dual-run 缺「不得自行调用 agy / zcode」禁令，B/C/D 都有');
 });
