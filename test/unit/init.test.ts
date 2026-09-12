@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
-  runInit, mergeHooks, fixGitignore, writeWrapper, type InitReport,
+  runInit, mergeHooks, fixGitignore, writeWrapper, hookNamesOf, stableNodePath, checkWrapper, type InitReport,
 } from '../../src/trivium/init.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import type { Ctx } from '../../src/trivium/types.js';
@@ -107,6 +107,49 @@ test('wrapper 内写死 node 绝对路径且可执行（GUI 进程不读 .zshrc�
   assert.equal(st.mode & 0o111, 0o111, '必须可执行');
 });
 
+// ── wrapper 的 node 路径要稳定（brew upgrade 后不能失效）──
+
+test('Homebrew Cellar 版本化路径换成 opt/ 稳定入口；其它路径原样', async () => {
+  const yes = async () => true;
+  const no = async () => false;
+  assert.equal(
+    await stableNodePath('/opt/homebrew/Cellar/node/25.2.1/bin/node', yes),
+    '/opt/homebrew/opt/node/bin/node',
+  );
+  assert.equal(
+    await stableNodePath('/usr/local/Cellar/node@22/22.1.0/bin/node', yes),
+    '/usr/local/opt/node@22/bin/node',
+  );
+  assert.equal(await stableNodePath('/opt/homebrew/Cellar/node/25.2.1/bin/node', no), '/opt/homebrew/Cellar/node/25.2.1/bin/node', '稳定入口不存在就保持原样');
+  assert.equal(await stableNodePath('/Users/x/.nvm/versions/node/v22.0.0/bin/node', yes), '/Users/x/.nvm/versions/node/v22.0.0/bin/node');
+});
+
+test('checkWrapper：wrapper 在但写死的 node 或 bundle 没了 → 报出来（否则每次 Hook 报 127）', async () => {
+  const ctx = await fakeProject();
+  assert.deepEqual(await checkWrapper(ctx.triviumDir), [], '没有 wrapper 时无事可报');
+  const report = emptyReport();
+  await writeWrapper(ctx.triviumDir, '/nonexistent/Cellar/node/1.0.0/bin/node', '/nonexistent/assets', report, false);
+  const problems = await checkWrapper(ctx.triviumDir);
+  assert.equal(problems.length, 2, JSON.stringify(problems));
+  assert.match(problems[0]!, /node 已不存在/);
+  assert.match(problems[1]!, /bundle 已不存在/);
+  // 换成真实存在的 node 与 bundle 后不再报
+  await writeWrapper(ctx.triviumDir, process.execPath, path.dirname(path.dirname(new URL(import.meta.url).pathname)), report, false);
+  const stillBundleMissing = await checkWrapper(ctx.triviumDir);
+  assert.ok(stillBundleMissing.every((p) => !/node 已不存在/.test(p)));
+});
+
+test('重跑 writeWrapper 报告为 updated 而非 created', async () => {
+  const ctx = await fakeProject();
+  const r1 = emptyReport();
+  await writeWrapper(ctx.triviumDir, '/usr/bin/node', '/assets', r1, false);
+  const r2 = emptyReport();
+  await writeWrapper(ctx.triviumDir, '/usr/bin/node', '/assets', r2, false);
+  assert.equal(r1.created.length, 1);
+  assert.equal(r2.created.length, 0);
+  assert.equal(r2.updated.length, 1);
+});
+
 // ── Hook 合并（风险 R-D）──
 
 test('合并 Hook 保留用户自己的 hooks，并按事件名追加', async () => {
@@ -147,6 +190,40 @@ test('合并 Hook 幂等：重复合并不叠加', async () => {
   ) as { hooks: Record<string, { hooks: unknown[] }[]> };
   const total = s.hooks['PreToolUse']!.reduce((n, e) => n + e.hooks.length, 0);
   assert.equal(total, 1, `重复合并不应叠加，实际 ${total}`);
+});
+
+test('升级路径：旧版 TriviumCode Hook 被替换，不叠加也不残留', async () => {
+  const ctx = await fakeProject();
+  const assetRoot = await fakeAssets();
+  await fs.mkdir(path.join(ctx.projectRoot, '.claude'), { recursive: true });
+  // 旧版：命令文本不同（没有存在性守卫、timeout 不同），但调的是同一个 gate hook-pre-write
+  await fs.writeFile(
+    path.join(ctx.projectRoot, '.claude/settings.json'),
+    JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          { matcher: 'Bash', hooks: [{ type: 'command', command: 'echo mine' }] },
+          { matcher: 'Edit|Write', hooks: [{ type: 'command', command: '.trivium/bin/trivium gate hook-pre-write', timeout: 5 }] },
+        ],
+      },
+    }),
+  );
+  const report = emptyReport();
+  await mergeHooks(ctx.projectRoot, path.join(assetRoot, 'hooks/hooks.json'), report, false);
+  const s = JSON.parse(await fs.readFile(path.join(ctx.projectRoot, '.claude/settings.json'), 'utf8')) as {
+    hooks: Record<string, { hooks: { command: string }[] }[]>;
+  };
+  const preWrite = s.hooks['PreToolUse']!.filter((e) => e.hooks.some((h) => h.command.includes('hook-pre-write')));
+  assert.equal(preWrite.length, 1, `旧版应被替换而非叠加，实际 ${preWrite.length} 条`);
+  assert.match(preWrite[0]!.hooks[0]!.command, /test -x/, '应是新版命令文本');
+  assert.ok(s.hooks['PreToolUse']!.some((e) => e.hooks.some((h) => h.command === 'echo mine')), '用户自己的 hook 不动');
+  assert.ok(report.notes.some((n) => n.includes('替换')));
+});
+
+test('hookNamesOf 从真实命令串里识别出 gate hook-<name>（旧正则匹配不到 JSON 转义后的引号）', () => {
+  const entry = { matcher: 'Edit', hooks: [{ type: 'command', command: 'sh -c \'W="${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium"; test -x "$W" || exit 0; exec "$W" gate hook-pre-write\'' }] };
+  assert.deepEqual([...hookNamesOf(entry)], ['pre-write']);
+  assert.deepEqual([...hookNamesOf({ hooks: [{ command: 'echo mine' }] })], []);
 });
 
 test('settings.json 不是合法 JSON 时跳过合并而非破坏内容', async () => {

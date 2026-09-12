@@ -7,6 +7,7 @@ import os from 'node:os';
 import { run, tryRun } from '../util/exec.js';
 import { gitVersion } from '../util/git.js';
 import { exists } from '../util/fsx.js';
+import { stableNodePath } from '../init.js';
 
 export interface EnvProbeResult {
   nodePath: string | null;
@@ -22,8 +23,9 @@ export interface EnvProbeResult {
 
 /** 找到 node 的**绝对路径**——wrapper 与 ZCode 都要用它，GUI 进程不读 .zshrc（设计 §10.5） */
 async function resolveNodePath(): Promise<string | null> {
-  // 首选当前进程自己的解释器：它一定可执行，且与编排器同版本
-  if (process.execPath && (await exists(process.execPath))) return process.execPath;
+  // 首选当前进程自己的解释器：它一定可执行，且与编排器同版本；
+  // Homebrew 下换成 opt/ 稳定入口，免得 brew upgrade 后 wrapper 里的路径失效
+  if (process.execPath && (await exists(process.execPath))) return stableNodePath(process.execPath);
   const which = await tryRun('/usr/bin/which', ['node']);
   return which.ok ? which.stdout.trim() : null;
 }

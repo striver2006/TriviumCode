@@ -85,9 +85,9 @@ node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 ```
 .trivium/
-├── bin/trivium          # wrapper，项目内统一入口
+├── bin/trivium          # wrapper，项目内统一入口（内含 node 稳定路径）
 ├── config.yaml          # 团队共享策略，进 Git
-└── config.local.yaml    # 探针结论与本机路径，不进 Git
+└── config.local.yaml    # 探针结论，由上一步 doctor 写入，不进 Git
 .claude/settings.json    # 四个 Hook 的注册（随仓库分发）
 .gitignore               # 追加 .trivium 的本机状态项
 CLAUDE.md / AGENTS.md    # 追加协议片段，标记括起，可重复运行
@@ -112,6 +112,20 @@ verify:
 ```bash
 git check-ignore -v .claude/settings.json   # 应命中 !.claude/settings.json 这条否定规则
 ```
+
+### 升级与卸载
+
+```bash
+# 升级：重新构建并安装。安装器会裁剪 ~/.claude/skills/dual-*/ 里源码已不存在的旧文件，
+# 各项目内重跑 init 刷新 wrapper（旧版 Hook 条目会被替换，不会叠加）
+npm run build && node dist/install.cjs
+node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+
+# 卸载：只删用户级的 skill 目录与只读 Agent 定义；项目内的 .trivium/ 与 Hook 不动
+node dist/install.cjs --uninstall
+```
+
+`brew upgrade node` 之后 wrapper 若失效，`trivium doctor` 会点名「wrapper 写死的 node 已不存在」，重跑 `init` 即可。
 
 ---
 

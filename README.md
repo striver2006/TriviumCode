@@ -290,7 +290,7 @@ npm run build        # esbuild 打包为单文件零依赖 skills/dual-critic/sc
 node dist/install.cjs
 ```
 
-安装器会：把 `skills/*` 拷贝到 `~/.claude/skills/`（用户级）；把只读审查 Agent 定义拷贝到 `~/.gemini/config/agents/trivium-critic/agent.md`；然后**提示**你接下来该做什么——它不会替你跑 `doctor`，因为那会消耗厂商配额。
+安装器会：把 `skills/*` 同步到 `~/.claude/skills/`（用户级；升级时裁剪源码已不存在的旧文件）；把只读审查 Agent 定义拷贝到 `~/.gemini/config/agents/trivium-critic/agent.md`；然后**提示**你接下来该做什么——它不会替你跑 `doctor`，因为那会消耗厂商配额。卸载用 `node dist/install.cjs --uninstall`（项目内的 `.trivium/` 与 Hook 不动）。
 
 > **`trivium` 不在 PATH 上**，这是有意的。下文为可读性写作 `trivium <子命令>`，实际调用是：
 > - 项目内（`init` 之后）：`.trivium/bin/trivium <子命令>` ——wrapper 内含 node 绝对路径，GUI 启动的进程不读 `~/.zshrc`；

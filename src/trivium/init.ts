@@ -157,34 +157,82 @@ export async function mergeHooks(
 
   const existingHooks = (settings['hooks'] ?? {}) as Record<string, unknown[]>;
   let added = 0;
+  let replaced = 0;
   for (const [event, entries] of Object.entries(incoming.hooks)) {
     const cur = Array.isArray(existingHooks[event]) ? existingHooks[event] : [];
     for (const entry of entries) {
       const sig = JSON.stringify(entry);
-      // 幂等：命令完全相同就不重复加
-      const dup = cur.some((c) => JSON.stringify(c) === sig);
-      // 也认「命令里已含 trivium gate hook-…」的旧版本，避免升级时叠加
-      const sameHook = cur.some((c) => {
-        const s = JSON.stringify(c);
-        const m = /trivium['"]? (gate )?hook-[a-z-]+/.exec(sig);
-        return m !== null && s.includes(m[0]);
-      });
-      if (dup || sameHook) continue;
-      cur.push(entry);
-      added++;
+      const mine = hookNamesOf(entry);
+      /*
+       * 同一条 TriviumCode Hook 的识别依据是它调用的 `gate hook-<name>`，不是命令全文。
+       * 原先的正则 /trivium['"]? (gate )?hook-/ 要求 `trivium` 后紧跟空格，而真实命令是
+       * `…/bin/trivium"; test -x "$W" || exit 0; exec "$W" gate hook-…`——永远匹配不上，
+       * 去重只剩 JSON 全等：命令文本或 timeout 一变，重跑 init 就在同一事件下叠加第二条，
+       * 每次工具调用双倍执行。升级时应当**替换**旧条目，而不是跳过或叠加。
+       */
+      const at = cur.findIndex((c) => [...hookNamesOf(c)].some((n) => mine.has(n)));
+      if (at === -1) {
+        cur.push(entry);
+        added++;
+      } else if (JSON.stringify(cur[at]) !== sig) {
+        cur[at] = entry;
+        replaced++;
+      }
     }
     existingHooks[event] = cur;
   }
   settings['hooks'] = existingHooks;
 
-  if (added === 0) {
+  if (added === 0 && replaced === 0) {
     report.skipped.push(`${target}（Hook 已就位）`);
     return;
   }
   await ensureDir(path.dirname(target));
   if (!dryRun) await writeAtomic(target, JSON.stringify(settings, null, 2) + '\n');
   (had ? report.updated : report.created).push(target);
+  if (replaced > 0) report.notes.push(`已把 ${replaced} 条旧版 TriviumCode Hook 替换为当前版本`);
   if (had) report.notes.push(`已备份原 settings.json 到 ${path.basename(target)}.trivium-backup`);
+}
+
+/** 一条 hooks 条目里调用了哪些 `gate hook-<name>`（TriviumCode 的 Hook 身份） */
+export function hookNamesOf(entry: unknown): Set<string> {
+  const out = new Set<string>();
+  for (const m of JSON.stringify(entry).matchAll(/gate hook-([a-z-]+)/g)) out.add(m[1]!);
+  return out;
+}
+
+/**
+ * 把 Homebrew Cellar 的版本化路径换成稳定入口。
+ *
+ * `process.execPath` 在 Homebrew 下解析为 `/opt/homebrew/Cellar/node/25.2.1/bin/node`，
+ * `brew upgrade node` 后该路径消失；hooks.json 的守卫只检查 wrapper 自身可执行，
+ * 于是每次 Edit / Write / Bash / Stop 都报一次 127。`<prefix>/opt/node[@N]/bin/node`
+ * 是 Homebrew 维护的稳定符号链接，升级后仍然有效。
+ */
+export async function stableNodePath(
+  execPath: string,
+  existsFn: (p: string) => Promise<boolean> = exists,
+): Promise<string> {
+  const m = /^(.*)\/Cellar\/(node(?:@\d+)?)\/[^/]+\/bin\/node$/.exec(execPath);
+  if (!m) return execPath;
+  const stable = `${m[1]}/opt/${m[2]}/bin/node`;
+  return (await existsFn(stable)) ? stable : execPath;
+}
+
+/**
+ * 校验 wrapper 指向的 node 与 bundle 是否仍然存在（供 doctor / init 报告）。
+ * wrapper 自身在、里面写死的路径却失效，是 `brew upgrade node` 或重装 skill 之后的常见形态。
+ */
+export async function checkWrapper(triviumDir: string): Promise<string[]> {
+  const p = path.join(triviumDir, 'bin/trivium');
+  if (!(await exists(p))) return [];
+  const script = await fs.readFile(p, 'utf8');
+  const m = /^exec "([^"]+)" "([^"]+)"/m.exec(script);
+  if (!m) return [`${p} 不是 trivium init 生成的 wrapper 形态，请重跑 trivium init`];
+  const problems: string[] = [];
+  if (!(await exists(m[1]!))) problems.push(`wrapper 写死的 node 已不存在：${m[1]}（brew upgrade node 之后常见）。请重跑 trivium init`);
+  if (!(await exists(m[2]!))) problems.push(`wrapper 指向的 bundle 已不存在：${m[2]}。请重新安装 skill 后重跑 trivium init`);
+  return problems;
 }
 
 /** wrapper 内写死 node 绝对路径：GUI 进程不读 ~/.zshrc（设计 §10.5） */
@@ -201,18 +249,19 @@ export async function writeWrapper(
     `# 由 \`trivium init\` 生成。node 路径写死是刻意的：\n` +
     `# GUI 进程（VS Code）不读 ~/.zshrc，依赖 PATH 会在插件里失效（设计 §10.5）。\n` +
     `exec "${nodePath}" "${path.join(assetRoot, 'scripts/trivium.cjs')}" "$@"\n`;
+  const had = await exists(p);
   await ensureDir(path.dirname(p));
   if (!dryRun) {
     await writeAtomic(p, script);
     await fs.chmod(p, 0o755);
   }
-  report.created.push(p);
+  (had ? report.updated : report.created).push(p);
 }
 
 export async function runInit(opts: InitOptions): Promise<InitReport> {
   const { ctx } = opts;
   const assetRoot = opts.assetRoot ?? assetRootDefault();
-  const nodePath = opts.nodePath ?? ctx.config.runtime.node ?? process.execPath;
+  const nodePath = opts.nodePath ?? ctx.config.runtime.node ?? (await stableNodePath(process.execPath));
   const dryRun = opts.dryRun ?? false;
   const report: InitReport = { created: [], updated: [], skipped: [], notes: [] };
 

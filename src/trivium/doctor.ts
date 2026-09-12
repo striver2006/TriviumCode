@@ -60,6 +60,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   notes.push(`git=${env.gitVersion ?? '未找到'}`);
   if (!env.nodeOk) blockers.push('Node.js 不可用或版本低于 18');
   if (!env.gitOk) blockers.push('git 不可用或版本过低');
+  // wrapper 自身在、里面写死的 node / bundle 却没了：每次 Hook 都会报 127
+  const { checkWrapper } = await import('./init.js');
+  for (const w of await checkWrapper(opts.triviumDir)) blockers.push(w);
   if (!env.hasTimeoutBin) {
     notes.push(
       '本机无 GNU coreutils 的 timeout/gtimeout —— 编排器的超时全部在 Node 内实现，' +
