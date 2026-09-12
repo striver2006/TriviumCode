@@ -50,8 +50,6 @@ export interface ApprovalRecord {
    * 事后无法回答「这次 approve 是人发的还是模型发的」。
    */
   session_id?: string | null;
-  /** 是否校验过审批确认码。`approved` 恒为 true（不带码根本进不来），其余为 false */
-  code_verified?: boolean;
 }
 
 export interface TaskMeta {

@@ -73,6 +73,9 @@
 
 四个梯队（hook-pre-bash 出口 / 提交出口 / 审批链 / 参数契约）已全部落地。
 
+其中 GLM-01 只**部分接受**：审批动作本身没有机械边界，这一条至今开着（详见该行）。
+机械可堵的都堵上了，这一条堵不上——受限于宿主没有绕开模型的带外通道。
+
 | # | 状态 | 条目 | 位置 |
 | :-- | :-- | :-- | :-- |
 | AGY-01 | done | `bashTargetsProtected` 模板拼正则蜕化为 `[^s]*`（模板里 `\s`→`s`），**主题名含 ASCII `s` 时归档 `_meta/`、`task.json` 对 Bash 写入完全失防**；已实跑复现，改为路径组件判定 | hooks.ts `bashTargetsProtected` |
@@ -81,7 +84,7 @@
 | AGY-03 | done | Hook 守卫一律 `test -x "$W" \|\| exit 0`：`rm -rf .trivium/bin` 即让四个拦截型 Hook 永真放行。已区分「未初始化」（exit 0）与「已初始化但 wrapper 没了」（exit 2），并把 `.trivium/bin` 纳入保护集 | hooks.json、.claude/settings.json、hooks.ts |
 | GLM-02 | done | `sh -c 'git commit …'` 整段被引号吞成一个 token，`parseGitSegment` 找不到字面 `git` 即 fail-open，裁决期提交拦截与留痕完整性校验同时被跳过。两处都改了：函数内加保守兜底；`if: Bash(git commit:*)` 是**前缀**匹配、该形态根本不触发 Hook，已去掉改由 `looksLikeCommit` 在进程内过滤 | hooks.ts `parseGitSegment`、hooks.json、.claude/settings.json |
 | AGY-02 | done | `gate --check` 通过后无条件落回 `idle`，`--await-approval` 是独立一步；Driver 省略它则人工审批被静默旁路，四个 Hook 全部放行 | cli.ts gate 分支 |
-| GLM-01 | done | 人工审批闸门可被 Driver 一条 `trivium approve` 自行关闭：`recordApproval` 不校验来源，skill 的 allowed-tools 预批准了 `Bash(.trivium/bin/trivium:*)`。会话比对救不了（人工审批与自批同会话）。已加一次性确认码（`--await-approval` 发码、明文不落盘、用过即废、通过审批必须 `--code`）。**注意它是审计护栏不是权限边界**：码的明文经 stdout 由 Driver 转述，Driver 读得到；真正的边界需要不经过模型的带外通道（TTY / 审批 UI），本项目没有——RUNBOOK 与协议片段已如实写明 | cli.ts `cmdApproval`、approval.ts `recordApproval` |
+| GLM-01 | 部分接受 | 人工审批闸门可被 Driver 一条 `trivium approve` 自行关闭：`recordApproval` 不校验来源，skill 的 allowed-tools 预批准了 `Bash(.trivium/bin/trivium:*)`。会话比对救不了（人工审批与自批同会话）。**建议的一次性确认码实现后又移除**（项目负责人拍板）：码的明文经 stdout 由 Driver 转述、Driver 读得到，构不成权限边界，只会让人以为这道关是机械保证的——虚假的安全感比没有护栏更糟。采纳的是建议里的另两项：**明示信任边界**（RUNBOOK、协议片段、approval.ts 注释都写明「审批不校验调用来源，靠提示词约束」）与**事后对账**（approvals 记时间/阶段/run_id/会话来源，见 GLM-05）。真正的机械边界需要宿主提供不经过模型的带外通道（TTY / 审批 UI），本项目没有，**此项仍开着** | approval.ts、RUNBOOK、协议片段 |
 | GLM-05 | done | `ApprovalInput.sessionId` 从未传入也从未使用，`ApprovalRecord` 不含来源——事后无法回答「这次 approve 是人发的还是模型发的」 | approval.ts:15-22,62-68 |
 | AGY-05 | done | `cmdApproval` 允许 approve 省略 `--stage`，会枚举到未裁决阶段并抛 MISSING_ARTIFACT 而非友好提示 | cli.ts `cmdApproval` |
 | AGY-04 | done | NAMED_FLAGS 缺 `only/allow-single/session-id`，三者被当成正文吞进审查焦点（已实跑复现：焦点变成「重点看并发安全 --only glm --allow-single --session-id S-TEST」）。补白名单并输出；`--allow-single` 单列为布尔旗标，否则「取下一个 token 当值」会吞掉正文、制造新的静默截断；三条 review skill 补 argument-hint 与模板槽位 | topic-args.ts、三条 SKILL.md |

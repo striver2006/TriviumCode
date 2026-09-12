@@ -65,18 +65,6 @@ export interface GateEntry {
    * 全是 null）。拿不准是不是别人的会话时，宁可多拦一会儿（还有 TTL 兜底）。
    */
   session_id: string | null;
-  /**
-   * 审批确认码的 sha256（明文不落盘）。`gate --await-approval` 生成，`approve` 比对。
-   *
-   * 存在的理由见 approval.ts 的 `generateApprovalCode` 注释（审查意见 GLM-01）：
-   * `trivium approve` 是普通子命令，`recordApproval` 不校验调用来源，而 skill 的
-   * allowed-tools 预批准了 `Bash(.trivium/bin/trivium:*)`——Driver 自批不需要用户
-   * 任何确认。有这个字段后，审批至少要跨越「把停点话术里的码显式抄进命令」这一步。
-   *
-   * null 表示该闸门还没发过码（旧闸门，或 `--check` 立起来但没走 `--await-approval`），
-   * 此时 approve 一律拒绝并提示先取码。
-   */
-  approval_code_hash?: string | null;
 }
 
 export interface StateFile {
@@ -145,13 +133,6 @@ export interface SetGateInput {
   rerunIndex?: number;
   sessionId?: string | null;
   heartbeatStaleMs: number;
-  /**
-   * 审批确认码的 sha256。
-   *   · 省略        → 沿用闸门已有的值
-   *   · 字符串      → 写入（`--await-approval` 发码时）
-   *   · `null`      → 显式清空（闸门关闭或重新进入其它状态时，旧码即刻作废）
-   */
-  approvalCodeHash?: string | null;
   /**
    * 条件迁移：只有当前闸门满足 `expect` 时才写入（审查意见 GLM-r2-01）。
    *
@@ -228,16 +209,6 @@ export async function setGateChecked(i: SetGateInput): Promise<SetGateResult> {
       since: new Date().toISOString(),
       // 会话 id 一旦记下就不因后续状态变化而丢——写锁的作用域判定要用它
       session_id: i.sessionId ?? prev?.session_id ?? null,
-      /*
-       * 确认码则相反，**只在 awaiting_approval 期间有意义**：闸门一旦离开该状态
-       * （审批完成、被放弃、或新一轮接管），旧码必须立刻失效，否则一个码能审批两次。
-       */
-      approval_code_hash:
-        i.state === 'awaiting_approval'
-          ? i.approvalCodeHash !== undefined
-            ? i.approvalCodeHash
-            : (prev?.approval_code_hash ?? null)
-          : null,
     };
     s.gates[key] = entry;
     result = { applied: true, entry };

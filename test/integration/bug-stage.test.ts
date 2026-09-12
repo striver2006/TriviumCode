@@ -169,13 +169,6 @@ test('AC-14：命令 D 置人工闸门后，改业务代码应被 deny', { skip:
   );
   assert.equal(await_.code, EXIT.OK, `${await_.stdout}${await_.stderr}`);
 
-  /*
-   * 停点话术里必须带一枚一次性确认码（审查意见 GLM-01）。
-   * 没有它就没法 approve——这正是「Driver 不能顺手自批」那道护栏的落点。
-   */
-  const code = /审批确认码：(TRV-[A-Z0-9]{4}-[A-Z0-9]{4})/.exec(await_.stdout)?.[1];
-  assert.ok(code, `停点话术应给出确认码：\n${await_.stdout}`);
-
   // 此刻改业务代码必须被拦（AC-14 的原话：应被 deny）
   const { run } = await import('../../src/trivium/util/exec.js');
   const { BUNDLE, ASSET_ROOT } = await import('../helpers/fixture.js');
@@ -193,14 +186,10 @@ test('AC-14：命令 D 置人工闸门后，改业务代码应被 deny', { skip:
   assert.match(deny.stderr, /dual-approve --topic 根因主题 --stage bug/, '必须给出放行路径');
   assert.match(deny.stderr, /dual-abandon/);
 
-  // 不带码的审批必须被拒，闸门不动
-  const noCode = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'bug']);
-  assert.equal(noCode.code, EXIT.USAGE, `缺码不该通过：\n${noCode.stdout}${noCode.stderr}`);
-
   // 审批通过后解锁
   const approve = await cli(
     fx.root,
-    ['approve', '--topic', TOPIC, '--stage', 'bug', '--code', code],
+    ['approve', '--topic', TOPIC, '--stage', 'bug'],
   );
   assert.equal(approve.code, EXIT.OK, `${approve.stdout}${approve.stderr}`);
   const after = await run(process.execPath, [BUNDLE, 'gate', 'hook-pre-write'], {

@@ -21,7 +21,7 @@ import {
 import { checkStageArtifacts, resolveRerunIndex } from './archive.js';
 import { readHookInput, runHook, type HookName } from './hooks.js';
 import { listOpenGates, setGateChecked } from './state.js';
-import { recordApproval, generateApprovalCode, hashApprovalCode } from './approval.js';
+import { recordApproval } from './approval.js';
 import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
 import { newRunId, readTask, readRunMeta } from './meta.js';
 import { runInit, renderInitReport } from './init.js';
@@ -163,7 +163,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
   trivium gate --stage <s> --topic <主题> --check [--run-id <id>] [--json]
       裁决完整性硬校验（§8.6）。返回 2 表示未通过，stdout 给出缺口清单供直接修补。
       --check-artifacts   改为校验该阶段最低工件集（§6.3）
-      --await-approval    置闸门为 awaiting_approval，发一枚一次性审批确认码并输出停点话术
+      --await-approval    置闸门为 awaiting_approval 并输出停点话术
       校验通过后闸门去哪由 run.json 的 entry 决定：B/C/D 直接立起 awaiting_approval
       （停点是这三条命令的定义），A 与无 entry 的调用回 idle。
 
@@ -171,11 +171,11 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       Claude Code Hook 入口，从 stdin 读事件。**不应由人直接调用。**
       退出码：0 放行或判定不了 ｜ 2 明确判定拦截 ｜ 1 程序缺陷（非阻断）
 
-  trivium approve --topic <主题> --stage <s> --code <确认码> [--reject --reason <理由>]
+  trivium approve --topic <主题> --stage <s> [--reject --reason <理由>]
   trivium abandon --topic <主题> [--stage <s>] [--reason <理由>]
       人工审批 / 放弃闸门。三种结论均解除业务写锁，工件一律保留。
-      通过必须带 --stage 与 --code（码来自 gate --await-approval 的停点话术）；
-      拒绝与放弃都不需要码，也允许省略 --stage——它们是收紧，不是放行。
+      通过必须带 --stage（一次放行哪一道要说清楚）；拒绝与放弃可以省略。
+      **审批不校验调用来源**：它靠提示词约束，审批记录里留会话来源供事后对账。
 
   trivium status [--topic <主题>] [--json]
       打印闸门、运行、降级与争议。
@@ -599,18 +599,10 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
      * 真正要挡的是 `running`——那是**另一次运行**的护栏，不能被它清掉；
      * 加上 runId 比对，别的 run 的闸门也动不了。
      */
-    /*
-     * 发一枚一次性确认码（审查意见 GLM-01）。每次调用都换新码，旧码即刻作废：
-     * 用户重跑本命令总能拿到当前有效的码，而一个码不会被用两次。
-     * 明文只在这里出现一次，落盘的只有 sha256——它挡什么、挡不住什么，
-     * 见 approval.ts `generateApprovalCode` 的注释，别把它当权限边界。
-     */
-    const code = generateApprovalCode();
     const g = await setGateChecked({
       triviumDir: ctx.triviumDir, topic, stage, state: 'awaiting_approval',
       runId, rerunIndex,
       sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
-      approvalCodeHash: hashApprovalCode(code),
       heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
       expect: {
         state: ['idle', 'review_done_awaiting_disposition', 'awaiting_approval', 'approved', 'rejected', 'abandoned'],
@@ -624,20 +616,12 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     }
     const msg =
       `已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
-      `\n` +
-      `  本次停点的审批确认码：${code}\n` +
-      `\n` +
-      `  通过：/dual-approve --topic ${topic} --stage ${stage} --code ${code}\n` +
+      `  通过：/dual-approve --topic ${topic} --stage ${stage}\n` +
       `  拒绝：/dual-approve --topic ${topic} --stage ${stage} --reject --reason <理由>\n` +
       `  放弃：/dual-abandon --topic ${topic}\n` +
-      `  （拒绝与放弃不需要码：它们是收紧，不是放行）\n` +
       `  在此期间不得修改业务文件（Hook 会拦下）。`;
-    if (isJsonMode()) {
-      emitJson({
-        ok: true, state: 'awaiting_approval', stage, rerun_index: rerunIndex,
-        approval_code: code, message: msg,
-      });
-    } else say(msg);
+    if (isJsonMode()) emitJson({ ok: true, state: 'awaiting_approval', stage, rerun_index: rerunIndex, message: msg });
+    else say(msg);
     return EXIT.OK;
   }
 
@@ -695,8 +679,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    *
    * 现在按 run.json 记下的 `entry` 分流：
    *   · B/C/D（/dual-review-*）→ 停点是它们的定义，直接立起 `awaiting_approval`；
-   *     确认码留给 `--await-approval` 发，所以即便 Driver 省略那一步，
-   *     闸门也已经拦着，而且没有码就通不过审批——省略只会卡住自己。
+   *     即便 Driver 省略随后的 `--await-approval`，闸门也已经拦着。
    *   · A（/dual-run）→ 按 PRD 4.4 不设人工闸门，维持原来的 `idle`。
    *   · 读不到 entry（旧 run.json、或手工调用）→ 同样回 idle，保持向后兼容：
    *     这条路径上没人声称过有停点，不能凭空造一个出来拦住用户。
@@ -716,7 +699,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     } else {
       const msg =
         `裁决齐备，已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
-        `  取确认码：trivium gate --stage ${stage} --topic ${topic} --await-approval\n` +
+        `  停点话术：trivium gate --stage ${stage} --topic ${topic} --await-approval\n` +
         '  在此期间不得修改业务文件（Hook 会拦下）。';
       if (!isJsonMode()) say(msg);
       const { resetStopBlockCount } = await import('./lock.js');
@@ -816,7 +799,6 @@ async function cmdApproval(
       ctx, topic, stage, decision,
       reason: flagString(args, 'reason'),
       sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
-      code: flagString(args, 'code'),
     });
     say(out.message);
   }

@@ -105,29 +105,27 @@ idle → running → review_done_awaiting_disposition → awaiting_approval → 
 | :--- | :--- | :--- |
 | `running` | 审查进行中 | 等它跑完；或 `review --cancel <run_id>` |
 | `review_done_awaiting_disposition` | 审查意见没逐条裁决 | 补齐裁决件（接受/驳回/暂缓 + 理由，接受要写落点），再 `trivium gate --stage <s> --topic <主题> --check` |
-| `awaiting_approval` | 等你人工审批 | `/dual-approve --topic <主题> --stage <s> --code <确认码>`；不想继续就 `/dual-abandon --topic <主题>` |
+| `awaiting_approval` | 等你人工审批 | `/dual-approve --topic <主题> --stage <s>`；不想继续就 `/dual-abandon --topic <主题>` |
 
-闸门进入 `awaiting_approval` 有两个入口：命令 B/C/D 的 `gate --check` 通过后**直接**
-立起来（停点是这三条命令的定义，不靠执笔者记得走下一步），随后 `gate --await-approval`
-发一枚**一次性审批确认码**。通过审批必须带 `--stage` 与 `--code`；拒绝与放弃都不需要码，
-也可以省略 `--stage`——它们是收紧，不是放行。码只对本次停点有效，用过即作废。
+命令 B/C/D 的 `gate --check` 通过后会**直接**把闸门立起来（停点是这三条命令的定义，
+不靠执笔者记得走下一步），`gate --await-approval` 随后输出停点话术。
+通过审批必须带 `--stage`（一次放行哪一道要说清楚）；拒绝与放弃可以省略。
 
-> **这道护栏挡什么、挡不住什么**
+> **审批这道关的信任边界（请照实理解，不要高估）**
 >
-> `trivium approve` 是普通 CLI 子命令，`recordApproval` 不校验调用来源，而
+> `trivium approve` 是普通 CLI 子命令，`recordApproval` **不校验调用来源**，而
 > `/dual-review-*` 的 allowed-tools 预批准了 `Bash(.trivium/bin/trivium:*)`。也就是说
-> **人工审批闸门原本可以由 Driver 自己一条命令关掉，不需要你任何确认**；CLAUDE.md 里
-> 「想继续请让用户走 /dual-approve」只是提示词约束。按会话区分也没用——人工审批与自批
-> 发生在同一个会话里。
+> **人工审批闸门可以由 Driver 自己一条命令关掉，不需要你任何确认**；CLAUDE.md 里
+> 「想继续请让用户走 /dual-approve」是提示词约束，不是机械保证。
+> 按会话区分也没用——人工审批与自批发生在同一个会话里。
 >
-> 确认码让审批至少要跨越「把停点话术里的码显式抄进命令」这一步，于是自批从「顺手就做了」
-> 变成一次留在命令行与 `task.json.approvals`（含会话来源）里的、可审计的明确动作。
+> 曾经加过一枚一次性确认码（`--await-approval` 发码、approve 必须 `--code`），
+> 后来**移除了**：码的明文经 stdout 由 Driver 转述给你，Driver 读得到它，
+> 于是它构不成权限边界，只会让人以为这道关是机械保证的——虚假的安全感比没有护栏更糟。
 >
-> 但它**不是权限边界**：码的明文出现在 `gate --await-approval` 的 stdout 里，而在
-> Claude Code 这类宿主中 stdout 正是经由 Driver 转述给你的——Driver 读得到它。
-> 真正的边界需要一条不经过模型的带外通道（TTY、审批 UI），本项目没有。
-> 所以：**码由你保管、由你发起审批**；若你发现某次 approve 不是你本人发起的，
-> `task.json.approvals` 里有时间与会话 id 可查。
+> 现有的是**事后对账**：每次审批都会把时间、阶段、run_id 与会话来源写进
+> `task.json.approvals`。若你怀疑某次 approve 不是你本人发起的，那里可查。
+> 真正的机械边界需要宿主提供一条不经过模型的带外通道（TTY、审批 UI），本项目没有。
 
 ### 裁决校验不过
 
