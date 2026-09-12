@@ -289,6 +289,57 @@ test('拿不到命令行或不是 Bash 事件 → 放行', async () => {
   assert.equal((await hookPreBash(ctx, { session_id: SESSION, tool_name: 'Write', tool_input: { command: 'rm -rf x' } })).exitCode, EXIT.OK);
 });
 
+test('RV-B1（已撤回）：借 git commit 夹带的五类形态，任何时候都不得绕过保护集', async () => {
+  const ctx = await fakeCtx();
+  /*
+   * 2026-09-12 曾加过「整条命令就是一次 git commit 即豁免保护集扫描」的例外（RV-B1），
+   * 被双审打穿后撤回（11 条意见全部接受，留痕见 .reviews/RV-B1-commit豁免/）。
+   * 下面五类是当时实测能放行的夹带路径，现在全部锁成负例——
+   * 谁再想开这个口子，这一组会当场红。
+   *
+   * 撤回的理由不是「前置条件不够多」，而是方向错了：原判定 fail-closed（看见字面就拦），
+   * 豁免把它变成需要穷举危险形态的 fail-open，而 shell 的攻击面穷举不完。
+   */
+  for (const [c, why] of [
+    // ① 换行：分段正则不含 \n，但 shell 把换行当分隔符照常执行（AGY-r2-01 / GLM-r2-01）
+    ['git commit -m x\nrm .reviews/t/plan/a-gemini.md', '换行后接写命令'],
+    ['git commit -m x\r\necho {} > .reviews/t/plan/_meta/run-R1.json', 'CRLF 换行'],
+    // ② 附着重定向：重定向符不是分段字符，目标可被截断/创建（GLM-r2-02，Gemini 未发现）
+    ['git commit -m x > .reviews/t/plan/a-glm.md', '重定向截断审查文档'],
+    ['git commit -m x >> .reviews/t/plan/_meta/review-glm-R1.json', '追加写 _meta'],
+    // ③ 文本提及：根本不是 commit，只因文本里出现 git 与 commit（AGY-r2-04 / GLM-r2-03）
+    ['echo 记得 git commit > .reviews/t/plan/_meta/review-glm-R1.json', '文本提及 + 重定向'],
+    ['cp /tmp/fake.md .reviews/t/code/a-glm.md # 之后记得 git commit', '注释伪装'],
+    ['sh -c "rm .reviews/t/plan/a-gemini.md" git commit', 'sh -c 前缀 + git commit 尾随'],
+    // ④ 配置 / 环境注入：git 会经 shell 执行 editor（AGY-r2-03 / GLM-r2-04）
+    ['git -c core.editor="rm .reviews/t/plan/a-gemini.md" commit --allow-empty', '-c core.editor 注入'],
+    ['GIT_EDITOR="rm .reviews/t/plan/a-glm.md" git commit --allow-empty', 'GIT_EDITOR 前缀'],
+    // ⑤ 进程替换：替换体在子进程真实执行（AGY-r2-02 / GLM-r2-05）
+    ['git commit -F <(rm .reviews/t/plan/a-gemini.md)', '进程替换'],
+    // 原本就该拦的复合与替换形态，一并留住
+    ['git commit -m x && rm .reviews/t/plan/a-gemini.md', '复合段'],
+    ['git commit -m "$(rm .reviews/t/plan/a-gemini.md)"', '命令替换'],
+    ["git commit -F - <<'EOF'\n改 .reviews/t/plan/_meta/run-R1.json\nEOF", 'heredoc'],
+    ['git checkout -- .reviews/t/plan/_meta', 'git checkout'],
+  ] as const) {
+    const r = await hookPreBash(ctx, bashInput(c));
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `应拦（${why}）：${c}`);
+    assert.match(r.stderr ?? '', /编排器独占/);
+  }
+});
+
+test('RV-B1 边界：git add 本就不在 WRITE_LIKE 里，与撤回的豁免无关', async () => {
+  const ctx = await fakeCtx();
+  /*
+   * `git add` 不是写命令形态（它只动索引，不创建也不修改文件），`hookPreBash` 在
+   * `writeLike` 那一关就放行了，压根到不了保护集判定——这是**既有行为**，
+   * 与 RV-B1 的加入和撤回都无关。
+   * 防线不在这里：伪造 `-gemini.md` 必须先写出来，而写这一步（Edit/Write 与 Bash 写命令）
+   * 两条路都拦；真把它提交进去则由 hookPreCommit 的留痕完整性锚兜住。
+   */
+  assert.equal((await hookPreBash(ctx, bashInput('git add .reviews/t/plan/a-gemini.md'))).exitCode, EXIT.OK);
+});
+
 // ── hook-pre-commit（AGY-03：作用域）──
 
 test('无活跃流水线主题时，日常 git commit 放行（AGY-03）', async () => {

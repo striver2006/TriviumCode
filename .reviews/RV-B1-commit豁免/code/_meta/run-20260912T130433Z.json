@@ -1,0 +1,152 @@
+{
+  "schema": "trivium.run.v1",
+  "run_id": "20260912T130433Z",
+  "topic": "RV-B1-commit豁免",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点核实 isExemptCommitCommand 的三个前置条件能否被绕过，是否存在第四条夹带路径",
+  "task_goal": null,
+  "entry": "C",
+  "snapshot": {
+    "git_head": "b4fe405ef627960dbc46b81980b8b7e5c2a014fd",
+    "tree_hash": "e94df1b0fed5d52c3be8fe38865704869c10574d",
+    "dirty": true,
+    "subject_sha256": "638e76dce32511cc4ddca9b24332919013791979526e3bc70834e0fbdbdf69bf",
+    "drift": {
+      "changed": true,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-12T13:04:34.173Z",
+  "finished_at": "2026-09-12T13:38:37.991Z",
+  "review_mode": "dual",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort": "medium",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 111.279,
+      "tool_calls": {
+        "read": 12,
+        "grep": 0,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 10
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 96956,
+        "output_tokens": 26401,
+        "thinking_tokens": 23237,
+        "cache_read_tokens": 477794,
+        "total_tokens": 123357
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "8a39877c-ccfc-4ff7-9b55-b50c110ab7b4",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3-Flash",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "model_effective_source": "trace",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 2043.617,
+      "tool_calls": {
+        "read": 107,
+        "grep": 1,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 56
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 103,
+        "inputTokens": 14191626,
+        "outputTokens": 56150,
+        "totalTokens": 14247776,
+        "cacheReadTokens": 13994432,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_db3308fe-196f-4061-8ce1-b84220801316",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/C命令base透传修复/code/2026-09-12-C命令base透传修复-glm.md",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r3-glm.md",
+    ".reviews/S9-闸门与留痕加固/code/2026-09-11-S9-闸门与留痕加固-glm.md",
+    ".reviews/审核修复/code/2026-09-12-审核修复-glm.md"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "RV-B1-commit豁免/code/_meta/changes-20260912T130433Z.diff",
+      "sha256": "638e76dce32511cc4ddca9b24332919013791979526e3bc70834e0fbdbdf69bf"
+    },
+    {
+      "path": "RV-B1-commit豁免/code/_meta/brief-gemini-20260912T130433Z.md",
+      "sha256": "57ae719084a26007b286d3d2b327395a4e11298ad89f998c88da5a28c096e193"
+    },
+    {
+      "path": "RV-B1-commit豁免/code/_meta/brief-glm-20260912T130433Z.md",
+      "sha256": "24a5c463a8c1a1d52036cf417217e5eb669da67cb6850a2ef6817aa593badb87"
+    },
+    {
+      "path": "RV-B1-commit豁免/code/_meta/review-gemini-20260912T130433Z.json",
+      "sha256": "e4728b19feefd637192b1da86fee9aacf8389b8c0876c75b768e19880f5049e4"
+    },
+    {
+      "path": "RV-B1-commit豁免/code/_meta/review-glm-20260912T130433Z.json",
+      "sha256": "937c8233af2554779d023e7985693578cab7f58bcf5cc9d22ee5fbc096e93e95"
+    },
+    {
+      "path": "RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-gemini.md",
+      "sha256": "2205212488e20a36ffcc8f977a08ec4f842dba0adcb89d3aecf23c14442dbdb9"
+    },
+    {
+      "path": "RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-glm.md",
+      "sha256": "ae79bf9ed527c9463dba6773e2cfb0b716b31fb43f4d3c2fde657cf3bf39647c"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed"
+}

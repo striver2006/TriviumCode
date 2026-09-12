@@ -1,0 +1,105 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "焦点问题答复：三个前置条件全部存在绕过，第四条夹带路径不止一条，建议 request-changes。最危险两条：①换行不分段——分节正则（hooks.ts:361）只认 &&、||、;、&、| 五种分隔符，「git commit -m x」后接换行再接任意写命令，按实现只算一段、三前置全过、闸门外放行，shell 却把第二行当独立命令真实执行；②附着重定向——「git commit -m x > .reviews/<主题>/plan/…-glm.md」三前置全过，shell 用重定向创建/截断受保护文件，可把审查文档截成空文件、可在 _meta/ 下制造损坏的 review JSON。两者都击穿「编排器独占对象任何时候都 deny」的不变式（设计 §8.5），且落在自述无跑后兜底的保护集上。另有三条次级路径：parseGitSegment 的 fail-closed 兜底被豁免复用成 fail-open（命令文本提到 git commit 即豁免）、env 前缀 + GIT_EDITOR 注入、进程替换 <( >( 未被替换检查覆盖。窄版范围控制、四处文档同步与 git add 边界澄清本身做得对；测试把三个已文档化前置各自锁住（修正上一轮的过低评价），但上述未文档化路径全部无负例。本轮为同一补丁的重审（代码未变），结论与上一轮一致且已逐条独立复核。",
+  "findings": [
+    {
+      "id": "GLM-r2-01",
+      "severity": "blocker",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:361、:340-346、:364-367",
+      "problem": "前置①「整条命令只有一个有效段」可被换行绕过。shell 里换行与 ; 同为命令分隔符，而分节正则只认 &&、||、;、&、|，「git commit -m x」+ 换行 +「rm .reviews/<主题>/plan/a-gemini.md」切出来恰是一段，三个前置全过（tokenize 按空白分词，多行串照样解析出子命令 commit），整条豁免、闸门外放行——shell 却把第二行当独立命令真实执行。豁免的提前返回还跳过了紧随其后的「角色后缀整串扫描」，补丁前这类命令在该步必被拦。被豁免的对象恰是设计自述「没有任何跑后兜底」的保护集。",
+      "evidence": "通读 src/trivium/hooks.ts 全文：:361 分节正则不含换行；:340-346 三前置；:364 在 :366-367 的角色后缀字面检查之前提前返回 false；:553-576 tokenize 对每个字符按空白分词，换行即 token 分隔，多行串的 token 序列仍含 git、commit，parseGitSegment 返回 subcommand commit；:415 写形态判定在原文上进行，豁免后只剩 :431-449 闸门分支，闸门外放行。旁证：test/unit/hooks.test.ts:319 的 heredoc 负例本身就是多行字符串（多行命令按单条送达且换行不分节），而 :292-348 四组新用例没有任何多行负例；:270-284 锁定的「任何时候都拦」不变式被本路径击穿。",
+      "suggestion": "在前置①追加「trim 后不含内部换行」判断（更贴现有结构），或把换行、回车纳入分节字符类；补「commit 后换行+写命令」的 GATE_BLOCK 负例；四处文档（CLAUDE.md、skills/dual-critic/protocol/CLAUDE.md.snippet、QUICKSTART §5、设计 §8.5 与 §17.2）的不豁免清单同步补这一形态。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-r2-02",
+      "severity": "blocker",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:340-346、:360-367（豁免范围）；:227-242（WRITE_LIKE）",
+      "problem": "第四条夹带路径：附着在命令上的重定向。豁免论据「commit 的参数是 message、pathspec 与 -F 读的文件，没有一个是被写入的路径」漏了 shell 层的重定向：「git commit -m x > .reviews/<主题>/plan/…-glm.md」（> 截断、>> 追加、2> 同理）满足全部三前置——单段、无替换、无 heredoc、子命令 commit——整条豁免、闸门外放行，而 shell 会用 git 的输出创建或截断重定向目标：既可把既有审查文档截成空文件，也可在 _meta/ 下制造损坏的 review JSON（gate --check 唯一的事实来源）。补丁前这些命令被角色后缀整串扫描拦下。（>| 与 &> 因恰好含分段字符 &、| 被切成多段而侥幸安全，是巧合不是设计。）",
+      "evidence": "实读 src/trivium/hooks.ts:340-346、:360-367：重定向符不是分段字符，重定向目标在豁免路径上不参与任何检查；:228 的 WRITE_LIKE 重定向正则只决定命令进不进闸门分支，豁免后保护集扫描已不存在；test/unit/hooks.test.ts:270-284 既有用例锁定「echo {} > …/_meta/…、cat > …-gemini.md 无闸门也拦」的不变式，本路径使同类形态绕过该不变式；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md:971 自述该保护「任何时候都 deny」且对 judgeDrift 排除、无跑后兜底。",
+      "suggestion": "增设第四前置：命令正文出现重定向或进程替换操作符（>、>>、2>、&>、>|、<(、>()即不豁免、回到全扫——宁可退回误拦也不要在豁免里放行写形态；为每类补正负用例，并同步四处文档的不豁免清单。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-r2-03",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:488-507（:490 findIndex、:507 兜底正则）、:345（豁免复用点）、:364（提前返回位置）",
+      "problem": "parseGitSegment 为 hookPreCommit 设计的「宁可错拦」兜底，被豁免复用后方向反转为「宁可错放」。它在整段任意位置找 git token，找不到字面 token 时按兜底正则（git 与 commit 同现即按提交论）——这意味着命令文本里仅仅「提到 git commit」就足以豁免整条命令：「cp /tmp/fake.md .reviews/<主题>/code/a-glm.md # 之后记得 git commit」或「echo 请及时 git commit > .reviews/<主题>/plan/_meta/review-glm-R1.json」都会被判成 commit 而跳过全部保护集扫描，闸门外伪造或覆盖审查文档畅通无阻。豁免的提前返回还发生在角色后缀整串扫描之前，补丁前这类命令必被拦。pre-commit 方向的过拦是测试里明文记载的刻意保守（test/unit/hooks.test.ts:650-666），同一判据换到豁免方向恰成「宁可错放」。",
+      "evidence": "实读 src/trivium/hooks.ts:488-507（findIndex 在全段任意位置匹配 git 或 */git；无字面 token 时兜底正则全文匹配）、:340-346、:364；test/unit/hooks.test.ts:650-666（pre-commit 方向对 echo git commit 的过拦被有意记录为保守取舍）、:621-648（sh -c 形态在 pre-commit 方向不得 fail-open 的用例——同一宽松判据两处方向性相反）。",
+      "suggestion": "豁免路径不应继承「任意位置 + 兜底正则」的宽松语义：要求剥掉 sh -c / bash -c 前缀后 git 调用位于段首再解析，或至少不让兜底正则参与豁免判定；在两个复用点用注释写明方向性差异（一处拦、一处放），防止下次再被对称复用。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-r2-04",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:490、:513-521、:345",
+      "problem": "环境变量前缀不破坏「单段」判定：「GIT_EDITOR='rm .reviews/<主题>/plan/a-glm.md' git commit --allow-empty」三前置全过——VAR=value 是一个独立 token，不影响 findIndex 定位 git——整条豁免、闸门外放行；而 git 在未给 -m/-F 时会以 shell 执行 GIT_EDITOR，删除真实发生（commit 随后因空 message 中止，已无所谓）。EDITOR=…、GIT_SEQUENCE_EDITOR=… 同族；「env VAR=… git commit」同理。补丁前该命令被整串角色后缀扫描拦下。",
+      "evidence": "实读 src/trivium/hooks.ts:488-521（子命令解析从 git token 之后开始，前置 env token 不参与判定）、:340-346、:360-367；GIT_EDITOR 优先级最高且经 shell 执行是 git 的文档化行为。本形态未实机跑过，机制推演基于上述代码与 git 行为。",
+      "suggestion": "前置条件增加「剥掉 sh -c 前缀后段首必须直接是 git，不得有 VAR=value 前缀」（至少覆盖 EDITOR 与 GIT_* 家族），或按 GLM-r2-02 的重定向/进程替换前置兜住落盘后果；补负例并真机验证一次。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-r2-05",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:317-318（HAS_SUBSTITUTION）",
+      "problem": "命令替换检查只覆盖 $(、反引号、${，漏了 bash/zsh 的进程替换 <( 与 >(：「git commit -F <(rm .reviews/<主题>/plan/a-glm.md)」单段、替换检查不命中、无 heredoc，整条豁免；在支持进程替换的 shell（本机 /bin/sh 即 bash）下，替换体里的 rm 会真实执行。这正是前置②想封堵的「豁免掩护下执行真实写命令」，只是换了操作符。",
+      "evidence": "实读 src/trivium/hooks.ts:317-318 与 :340-346：<( 与 >( 不是 $(、反引号或 ${，检查不命中是字面事实；实际可利用性取决于宿主 CLI 用什么 shell 执行 Bash 命令，故置信 medium。",
+      "suggestion": "HAS_SUBSTITUTION 补 <( 与 >( 两个序列（误伤面几乎为零），或并入 GLM-r2-02 建议的重定向/进程替换前置一并处理；补负例。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-r2-06",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/hooks.test.ts:292-348",
+      "problem": "四组新用例把三个已文档化前置各自锁住了（逐一反证可验：删单段前置则 :311-314 失败、删替换前置则 :316-317 失败、删 heredoc 前置则 :319 失败——此处修正上一轮「删任意前置仍几乎全绿」的过重说法），但对上述未文档化的夹带面零负例：无换行组合、无附着重定向、无「文本提及 git commit」、无 env 前缀、无进程替换。另外豁免正例「git commit -F /tmp/msg.txt」（:299）不含任何保护名，补丁前同样放行，作为豁免用例不具区分力；:270-284 恰是被绕过的「任何时候都拦」不变式组，豁免侧没有与之对照的负例。",
+      "evidence": "通读 test/unit/hooks.test.ts:292-348 全部四组新用例，并与 :270-284（既有不变式组）、:650-666（pre-commit 方向的保守取舍记载）对照；对每个前置做了删除反证推演。",
+      "suggestion": "修复 GLM-r2-01～05 时，为每类形态各补一条 idle 上下文下的 GATE_BLOCK 负例（多行 / 附着重定向 / 文本提及 / env 前缀 / 进程替换各一）；把 :299 换成含保护名的 -F 形态（如 -F 指向归档 _meta/ 下路径）使其真正具备区分力。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "窄版范围控制正确：豁免只去掉保护集扫描（hooks.ts:364）、WRITE_LIKE 未动（:233 仍列 commit）、闸门分支（:431-449）独立生效，且有锁定用例（test/unit/hooks.test.ts:342-348）；BACKLOG 中「等人工审批期间是否允许提交」的设计问题确实未被触发、无需拍板。",
+    "三个已文档化前置对既定三条路径（&& / ; 复合、$() / 反引号 / ${} 替换、<< heredoc）的封堵成立，负例与设计 §8.5 的论述一致，且每组负例对对应前置具备区分力。",
+    "git add 边界澄清准确且有价值：WRITE_LIKE 的 git 分支确实不含 add（hooks.ts:233），测试注释把「既有行为」与「本次改动」切开（hooks.test.ts:330-340），能防止未来误判 RV-B1 放宽了 git add。",
+    "文档同步完整：CLAUDE.md、skills/dual-critic/protocol/CLAUDE.md.snippet、QUICKSTART §5（:195-206）、设计 §8.5 行为表（:971）/ §17.2 故障注入表 / v1.2.4 changelog、BACKLOG:98 状态推进互相一致，与实现逐字核对无漂移（除不豁免形态清单漏了本次发现的几类，见各条 suggestion）。",
+    "复用 parseGitSegment 而非另写解析的初衷正确（避免 AGY-01 式自造正则）；问题在复用方向而非复用本身（GLM-r2-03）。",
+    "在 bashTargetsProtected 内部就地豁免、保持 hookPreBash 控制流不变的做法改动面最小，且该函数仅 hookPreBash 一处调用（hooks.ts:419），无其它调用点被隐式改变行为。",
+    "「用 commit 把篡改洗进 HEAD 由 hook-pre-commit 专管」的论证在已登记工件范围内成立：checkArchiveIntegrity（hooks.ts:681-782）的三条锚对已提交工件的删除与不可变工件改动确有拦截。"
+  ],
+  "not_covered": [
+    "未运行测试套件与构建（本轮只读约束），BACKLOG 声称的 716/716 与「真机实测三条」未复核。",
+    "未做任何运行时复现（无 node -e、无真机 shell 验证）：全部结论来自对 src/trivium/hooks.ts 与测试文件的逐行读取加 shell 语义推演。GLM-r2-01/02/03 的推演是确定性的字符串与正则事实；GLM-r2-04/05 依赖 git 编辑器行为与宿主 shell 能力，未实机验证。",
+    "hookPreCommit 三条锚仅在 hooks.ts:681-782 层面核对，archive.ts 与 util/git.ts 的实现未重审；「刚落盘、尚未登记进 run.json 的工件被删」的可检出性空窗（上一轮已提出）仍未定论。",
+    "wrapper / hooks.json 注入层与 sh -c 守卫不在本补丁 touched 范围，未审。",
+    "另一位审查员（AGY 侧）的视角未覆盖，其文件按禁读清单未读。",
+    "工作树与被审 diff 的一致性仅对 src/trivium/hooks.ts 与 test/unit/hooks.test.ts 直接核验（实读内容与 diff 逐一吻合）；其余 5 个文档文件按 diff 内容采信，本轮未做工作树漂移复测。"
+  ],
+  "consulted": [
+    ".reviews/RV-B1-commit豁免/code/_meta/changes-20260912T134136Z.diff",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-glm.md",
+    "src/trivium/hooks.ts",
+    "test/unit/hooks.test.ts",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md",
+    "doc/07_manuals/QUICKSTART.md",
+    "doc/08_project/BACKLOG.md"
+  ]
+}

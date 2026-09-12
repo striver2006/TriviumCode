@@ -314,6 +314,29 @@ function isOrchestratorOwnedPath(abs: string, ctx: Ctx): boolean {
   return false;
 }
 
+/*
+ * ## 为什么这里没有「git commit 豁免」（RV-B1，已撤回）
+ *
+ * 曾经加过一条豁免：整条命令就是一次 `git commit` 时跳过本函数的保护集扫描，
+ * 动机是 commit message 天然会提到归档文件名，而字面扫描区分不了「写它」与「说它」。
+ * 论据看着也成立：commit 不改工作树，参数是 message、pathspec 与 `-F` 读的文件。
+ *
+ * 双审把它打穿了（2026-09-12，11 条意见全部接受，留痕见 `.reviews/RV-B1-commit豁免/`）。
+ * 三个前置条件（单段 / 无命令替换 / 无 heredoc）至少漏掉五条路径，其中三条实测放行：
+ *   · 换行：`git commit -m x` + 换行 + `rm …-gemini.md`——分段正则不含 `\n`，shell 却照执行
+ *   · 附着重定向：`git commit -m x > …-glm.md`——重定向符不是分段字符，目标不参与任何检查
+ *   · 文本提及：`echo 记得 git commit > …/_meta/review-glm-R1.json`——根本不是 commit，
+ *     只因 `parseGitSegment` 的兜底正则见到 git 与 commit 同现就按提交论
+ * 另有 `-c core.editor=…` / `GIT_EDITOR=…` 经 shell 执行、进程替换 `<(…)` 两条。
+ *
+ * 结论不是「再收窄一点」，而是**这个方向本身不成立**：原判定是 fail-closed（看见字面
+ * 就拦，代价是误拦），豁免把它变成需要穷举危险形态的 fail-open，而 shell 的攻击面
+ * 穷举不完。误拦有零成本出口（Write / Edit 工具落文件，提交用 `git commit -F <文件>`），
+ * 漏拦则直接击穿「编排器独占对象任何时候都 deny」，且这条路没有任何跑后兜底。
+ *
+ * 本轮发现的五类形态已作为负例留在 `test/unit/hooks.test.ts`，谁再开这个口子会当场红。
+ */
+
 /**
  * Bash 写命令是否指向编排器独占的东西（角色后缀 / _meta / task.json / state.json / lock / bin）。
  *
@@ -443,6 +466,19 @@ const GIT_OPTS_WITH_VALUE = new Set([
  *
  * 子命令不能拿 `/git.*commit/` 这种正则凑：`git log --format=commit` 会被误判成提交，
  * 于是闸门期内连看日志都被拦。必须跳过全局选项后取第一个非选项词。
+ *
+ * ⚠️ **本函数的保守方向是「拦截」，禁止复用于任何放行 / 白名单判定。**
+ *
+ * 它处处向「是提交」倾斜：`findIndex` 在整段**任意位置**找 `git`；找不到字面 token 时
+ * 用兜底正则（`git` 与 `commit` 同现即按提交论）；子命令非字面量时也按提交处理。
+ * 这些在 `hookPreCommit` 方向上是对的——宁可误拦一条 `echo git commit`，
+ * 也不能漏过一次违规提交（对应用例：test/unit/hooks.test.ts 的「已知过拦」一组）。
+ *
+ * 但同一判据换到放行方向，「宁可错拦」就变成「宁可错放」：
+ * `echo 记得 git commit > …/_meta/review-glm-R1.json` 会被判成提交而获得豁免。
+ * RV-B1 正是这么被打穿的（2026-09-12 双审，AGY-r2-04 / GLM-r2-03，已撤回）。
+ * 要做放行判定就另写严格解析（首个 token 必须严格是 git、无 env 前缀、无兜底），
+ * 不要图省事复用这一个。
  */
 interface GitCall {
   subcommand: string;
