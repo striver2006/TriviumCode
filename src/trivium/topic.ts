@@ -6,6 +6,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
 import type { Ctx, Stage } from './types.js';
 import { validateTopic, parseArtifactName } from './naming.js';
 import { missingArtifact, usageError } from './exit-codes.js';
@@ -69,13 +70,14 @@ export async function listTopics(ctx: Ctx): Promise<string[]> {
  * 定位被审对象（设计 §8.3）。
  *
  * plan / bug 阶段：`--plan-file` / `--rca-file` 显式指定，
- * 否则取该阶段下**最新的、非 revised/response 的 `claude` 文件**。
+ * 否则取该阶段下**最新的、非 revised/response 的当轮 Driver 后缀文件**。
  * 找不到即抛 65 并列出候选——不得静默新建空原稿。
  */
 export async function locateSubject(
   ref: TopicRef,
   explicitPath: string | null,
   projectRoot: string,
+  driver: AgentId = DEFAULT_DRIVER,
 ): Promise<string> {
   if (explicitPath) {
     const abs = path.isAbsolute(explicitPath) ? explicitPath : path.join(projectRoot, explicitPath);
@@ -98,7 +100,9 @@ export async function locateSubject(
       (c) =>
         c.parsed !== null &&
         c.parsed.topic === ref.topic &&
-        c.parsed.role === 'claude' &&
+        // 原稿由当轮 Driver 产出；写死 'claude' 会让非 Claude Driver
+        // 在第一步就找不到被审对象并退 65（计划 §2.1 / B-1）
+        c.parsed.role === driver &&
         c.parsed.kind === null,
     )
     // 同主题同阶段可能有多轮原稿，取轮次最大者
@@ -108,7 +112,7 @@ export async function locateSubject(
     const all = entries.length > 0 ? `\n  该目录下现有文件：${entries.join(', ')}` : '';
     throw missingArtifact(
       `在 ${ref.stageDirAbs} 下找不到主题「${ref.topic}」的原稿` +
-        `（形如 <日期>-${ref.topic}-claude.md）。请先落盘原稿，或用 --plan-file / --rca-file 显式指定。${all}`,
+        `（形如 <日期>-${ref.topic}-${driver}.md）。请先落盘原稿，或用 --plan-file / --rca-file 显式指定。${all}`,
     );
   }
   return path.join(ref.stageDirAbs, candidates[0]!.fileName);

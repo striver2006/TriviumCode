@@ -17,13 +17,14 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
 import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
 import { readRunMeta, readTask, type TaskMeta } from './meta.js';
 import { loadRoundReviews } from './gate.js';
 import { parseDisposition } from './disposition.js';
 import { measureDivergence, type DivergenceReport } from './divergence.js';
 import { summarizeVerify, type VerifyRecord } from './verify.js';
-import { STAGES, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';
+import { CRITICS, STAGES, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';
 
 const SEVERITIES: readonly Severity[] = ['blocker', 'major', 'minor', 'nit'];
 const DISPOSALS: readonly Disposal[] = ['接受', '驳回', '暂缓'];
@@ -86,11 +87,13 @@ const zeroSeverity = (): Record<Severity, number> => ({ blocker: 0, major: 0, mi
 async function enumerateRounds(
   layout: ArchiveLayout,
   stage: Stage,
+  /** 当轮 Driver：它的产出（原稿与裁决件）不定义轮次（审查意见 AGY-04 / GLM-06） */
+  driver: AgentId = DEFAULT_DRIVER,
 ): Promise<{ rerunIndex: number; runId: string | null }[]> {
   const items = await listStageArtifacts(layout, stage);
   const byRound = new Map<number, string | null>();
   for (const i of items) {
-    if (i.parsed.role === 'claude') continue; // 原稿与裁决件不定义轮次
+    if (i.parsed.role === driver) continue; // 原稿与裁决件不定义轮次
     if (!byRound.has(i.parsed.rerunIndex)) byRound.set(i.parsed.rerunIndex, null);
   }
 
@@ -121,10 +124,12 @@ async function loadDisposition(
   stage: Stage,
   rerunIndex: number,
   notes: string[],
+  /** 裁决件后缀 = 当轮 Driver（审查意见 AGY-04 / GLM-06） */
+  driver: AgentId = DEFAULT_DRIVER,
 ): Promise<{ disposals: Record<Disposal, number>; contested: RoundReport['contested'] } | null> {
   const items = await listStageArtifacts(layout, stage);
   const hit = items.find(
-    (i) => i.parsed.role === 'claude' && i.parsed.kind !== null && i.parsed.rerunIndex === rerunIndex,
+    (i) => i.parsed.role === driver && i.parsed.kind !== null && i.parsed.rerunIndex === rerunIndex,
   );
   if (!hit) return null;
 
@@ -362,9 +367,10 @@ export function renderTopicReport(r: TopicReport): string {
   if (r.rounds.length === 0) {
     L.push('（无数据）', '');
   } else {
+    // 审核者列按当前启用集合生成，列数随之变化（M7b 的 N 侧聚合在此自然成立）
     L.push(
-      '| 阶段/轮 | gemini | glm | blocker | major | minor | nit | 接受 | 驳回 | 暂缓 |',
-      '| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
+      `| 阶段/轮 | ${CRITICS.join(' | ')} | blocker | major | minor | nit | 接受 | 驳回 | 暂缓 |`,
+      `| :--- ${CRITICS.map(() => '| :--- ').join('')}| :--- | :--- | :--- | :--- | :--- | :--- | :--- |`,
     );
     for (const d of r.rounds) {
       const side = (c: CriticId): string => {
@@ -376,7 +382,7 @@ export function renderTopicReport(r: TopicReport): string {
       };
       const dz = d.disposals;
       L.push(
-        `| ${d.stage} r${d.rerunIndex} | ${side('gemini')} | ${side('glm')} | ` +
+        `| ${d.stage} r${d.rerunIndex} | ${CRITICS.map(side).join(' | ')} | ` +
           SEVERITIES.map((s) => d.severity[s]).join(' | ') +
           ' | ' +
           (dz ? DISPOSALS.map((x) => dz[x]).join(' | ') : '— | — | —') +

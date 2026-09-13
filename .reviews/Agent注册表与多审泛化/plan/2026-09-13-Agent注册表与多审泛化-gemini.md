@@ -1,0 +1,181 @@
+---
+schema: trivium.review.v1
+topic: Agent注册表与多审泛化
+stage: plan
+role: gemini
+vendor: antigravity
+agent_cli: agy/1.2.2
+model_requested: gemini-3.8-flash-high
+model_effective: gemini-3.8-flash-high
+model_effective_source: envelope
+effort: high
+run_id: 20260913T115435Z
+rerun_index: 1
+snapshot_hash: sha256:4d720fe25a2ad2073ac31d6a8f2301ef07f5b892e066c4e9a7b4bc47506d3750
+blind: true
+started_at: 2026-09-13T11:54:35.894Z
+finished_at: 2026-09-13T12:05:31.249Z
+duration_s: 248
+tool_calls:
+  read: 55
+  grep: 12
+  glob: 0
+  run_command: 0
+  project_reads: 29
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 1
+  major: 2
+  minor: 2
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: 2fb9242f-2acb-4117-829a-a1fa3f2e8a64
+---
+
+# 计划审查：Agent注册表与多审泛化
+
+> Critic-A · Google Antigravity ｜ 模型 `gemini-3.8-flash-high`
+> ｜ 运行 `20260913T115435Z`
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+最危险问题：实施计划遗漏了 topic.ts（原稿定位）、naming.ts（裁决件生成）、archive.ts（工件核验）及 gate.ts（run_id 反查）等多处 Driver 硬编码，若按计划实施，任意非 Claude 的 Driver 启动即崩溃。
+其次，D-3 deny 方案所依据的 task.json 工件结构与实际代码不符，且对历史 v1 主题的 fail-closed 兜底会错误禁读全部历史设计原稿与裁决件。
+此外，M7a 完成判据因禁读集扩容而无法做到工件逐字节相同；M7b 降级脚本对 3 审或新 Driver 工件在结构上无法无损降级回 v1。
+D-5 joint blocker 判定缺乏等级约束，存在 Driver 接受某 location 的 nit 即可豁免两位审查员共同 blocker 的护栏漏洞。
+总体方案与分阶段架构路线方向值得肯定，但上述核心逻辑与兼容性漏洞必须修订后方可落地。
+
+**结论**：`request-changes`
+
+## 审查意见（共 5 条：阻断 1 ｜ 重要 2 ｜ 次要 2）
+
+### AGY-01 · 阻断（blocker）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §1、§2.2 (D-4) ｜ src/trivium/topic.ts:101 ｜ src/trivium/gate.ts:467 ｜ src/trivium/archive.ts:282` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：硬编码清单存在重大遗漏，导致非 Claude 的 Driver 会在原稿定位、裁决件命名、轮次反查和留痕核验环节直接崩溃：① topic.ts:101 与 topic-args.ts:401 在未显式传参时限定只找 c.parsed.role === 'claude'，其他 Driver 会直接抛出 EXIT 65；② naming.ts:93 在 buildArtifactName 中硬编码 a.kind !== null && a.role !== 'claude' 抛错，阻断非 Claude 裁决件落盘；③ archive.ts:282-288 (checkRecordedArtifacts) 写死校验 -claude.md 原稿、-gemini.md、-glm.md 审查件与 -claude 裁决件，Driver 或审核者变更后 gate --check-artifacts 必报假缺件；④ gate.ts:467 (inferLatestRunId) 跳过 claude，当 Claude 为审核者时反查 run_id 失败返回 null。
+
+**依据**：读 topic.ts:101、topic-args.ts:401、archive.ts:282-288、naming.ts:93、gate.ts:467、report.ts:93,127，并对照计划 §1 与 §2.2。计划声称逐点核对后遗漏仅 4 处，但上述多处代码均直接硬编码 i.parsed.role === 'claude' 或字面量 'claude'。
+
+**建议**：将上述硬编码点补入 M7a 重构清单；把原稿定位、裁决件生成、留痕核验与 run_id 反查中的角色判定全部参数化为由当前运行上下文（当轮 Driver 与 critics_selected）驱动，并在 M7a 增加非 Claude Driver 单元夹具。
+
+### AGY-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.1 (D-3) ｜ src/trivium/meta.ts:69-80 ｜ src/trivium/freeze.ts:42-70` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：D-3 方案依据的事实基础有误，且兜底策略破坏历史主题读取：① 计划称「task.json.runs[] 已逐轮记录该轮的工件清单」，但实际 task.json.runs[] 仅含 run_id/stage 等指针，工件清单只在 run-<id>.json；② 计划设定「历史主题无 driver 字段时 fail-closed 禁读该后缀全部文件」，而在 M0～M5 生产的所有历史主题中，task.json 均为 v1 规范且无 driver 字段（当时 Driver 恒为 claude，绝非审查员）。该兜底规则会导致所有历史主题的 -claude.md 设计原稿与裁决件被全部加入禁读列表，审核者被错误剥夺读取历史设计背景的合法权限；③ freeze.ts 遍历整个 archiveRoot，跨主题反推工件角色若依赖解析所有历史 run.json 会带来额外 I/O 开销与脆弱性。
+
+**依据**：读 meta.ts:69-80、archive.ts:320-360、freeze.ts:40-75，并比对计划 §3.1 D-3。task.json 的 TaskMeta.runs[] 定义不含 artifacts 字段，工件清单存在于各轮独立的 run-<id>.json 中。且 M0～M5 的历史主题 task.json 均无 driver 字段。
+
+**建议**：修正工件事实来源（明确由各 run.json 提供工件清单）；对缺少 driver 字段的历史主题明确定义向下兼容规则：历史 v1 主题默认其 driver 为 claude，不得盲目 fail-closed 封杀全部 claude 文件；利用工件 front-matter 中已有的 schema 类型（review.v1 vs disposition.v1）作为工件性质的内生判定依据。
+
+### AGY-03 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.1、§4.2 (D-6) ｜ skills/dual-critic/schema/run.v1.json:49-56` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：M7a 验收判据自相矛盾，且 M7b 降级脚本设计不切实际：① M7a 将「deny 矩阵重做（扩展 _meta 与 ~/.trivium）」纳入交付，但 brief.md 第 8 段与 run.json 会记录 deny_paths，禁读集扩展后相关工件必定产生 diff，要求「工件逐字节同现状」在逻辑上不可达；② M7a 声称「仍只注册 gemini/glm 两家」，但当前系统运行处处依赖 claude 作为 Driver。若 M7a 注册表不含 claude，注册表就不是完整的单一来源；③ M7b 声称回退依靠「已产 v2 工件降级脚本」，但若在 M7b 产生了 3 审核者或非 Claude Driver 的工件，run.v1.json（critics 仅限 gemini/glm 两键）和 disposition.v1.json（role 写死 claude）在结构上根本无法无损表达这些运行，降级脚本势必导致审计数据失真或校验报错。
+
+**依据**：读 plan §4.1、§4.2，比对 brief.ts:201-210、types.ts:337 及 skills/dual-critic/schema/run.v1.json:49-56。M7a 包含禁读矩阵扩容，run.v1.json 限制 critics 为固定二元键且 additionalProperties: false。
+
+**建议**：修正 M7a 完成判据，明确排除 deny_paths 扩容带来的预期工件差异（沿用提案 §14 表述）；明确 claude 在 M7a 注册表中的基座地位；诚实界定 M7b 回退边界，明确指出包含多审与新 Driver 特性的新工件无法无损逆向降级为 v1，降级脚本仅支持原样双审形态的格式回退。
+
+### AGY-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.2 (D-5) ｜ src/trivium/gate.ts:314-338` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：D-5 裁决在 joint blocker 判定口径上存在削弱护栏的漏洞：计划判定「某 location 上的 blocker，全部提出者均被驳回，且无任何入选审核者在该 location 提出并被接受的对应意见」。由于 gate.ts 仅做字符串 location 匹配，若审核者 C 在该 location 提了一条微不足道的 nit 意见被 Driver 接受，按该规则就会直接豁免 A 和 B 两位审核者共同提出的严重 blocker 争议；此外在 joint_blocker_policy: hard 模式下，「2 驳 1 接受」直接不触发 disputed，导致两位独立审查员同时预警的阻断级问题无法阻断闸门。
+
+**依据**：读 plan §3.2 (D-5) 与 src/trivium/gate.ts:314-338。gate.ts 仅按 location 字符串完全相同分组，无语义对应判定。
+
+**建议**：收紧豁免条件：明确背书意见必须同为 blocker 等级才能冲抵 joint blocker 争议；对于 2 驳 1 接受的情形，即便不按完全对抗处理，在 hard 模式下也应保留显式 warning 与审计标记，并在数据层固化 partial_dispute 字段校验。
+
+### AGY-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §2.1 (AC-N5a) ｜ src/trivium/gate.ts:388` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：AC-N5a「Critic 路径零改动」依赖底层未提及的改造点：计划承诺新增 critic-only Agent 时 gate 等 8 个模块逐字节无 diff。但现状 gate.ts:388 在 loadRoundReviews 中直接硬编码遍历 ['gemini', 'glm']，如果不先行泛化，新增 Critic 的结构化结论根本不会被读取比对，AC-N5a 的桩测试将当场红。
+
+**依据**：读 plan §2.1 (AC-N5a) 与 src/trivium/gate.ts:388。gate.ts:388 写死 for (const c of ['gemini', 'glm'] as CriticId[])。
+
+**建议**：在 M7a 内部重构中明确将 loadRoundReviews 改由入参的动态 critics_selected 集合驱动，并在桩 Critic 测试中验证不修改 gate.ts 文件即可完整跑通裁决对账。
+
+## 认为正确的部分
+
+- 赞同 D-2 将 AC-N5 核心流程零改动拆分为「Critic 路径零改动」与「Driver 路径受限改动（白名单）」的务实裁决，诚实承认了厂商 Driver 交互界面的固有异构性与护栏差异。
+- 赞同 D-6 将巨型 M7 拆分为 M7a（行为等价内部重构）与 M7b（对外契约升版）的分阶段路线，在对外契约零变更前提下建立行为等价回退闸口。
+- 赞同 D-7 对并行层改造量的务实下调，核实确认 runner.ts 现状已是基于 Object.keys(input.requests) 的 N 路 allSettled。
+- 赞同 D-4 对 A-1（inferSource 显式查表无匹配返回 null 报错）和 A-2（轮次计算排除当轮 driver 原稿）的静默隐患修补纪律。
+- 赞同第 5 节对待拍板事项的务实建议，特别是默认审核者维持 [gemini, glm] 以保持现有日常运行成本与等待预期。
+
+## 未覆盖范围（本侧盲区）
+
+- 未对 Codex CLI 经各三方兼容端点（DashScope、DeepSeek）的实际调用延迟与网络波动容错做真实压测，依赖 M6 探针实测结果。
+- 未在真实 VS Code 界面中挂载 Antigravity 或 ZCode 作为 Driver 触发流水线命令，交互体验与终端传参约束依赖后续探针定形。
+- 未对超千个历史工件的大型归档在执行全量 deny 路径枚举时的耗时进行基准性能测试。
+
+## 实际查阅的项目文件
+
+- `.reviews/Agent注册表与多审泛化/plan/2026-09-13-Agent注册表与多审泛化-claude.md`
+- `CLAUDE.md`
+- `AGENTS.md`
+- `README.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `doc/02_design/2026-09-13-通用Agent编排与动态多审设计-glm.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`
+- `doc/01_requirements/PRD_driver_dual_critic.md`
+- `doc/02_design/LLD_orchestrator.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `src/trivium/types.ts`
+- `src/trivium/runner.ts`
+- `src/trivium/freeze.ts`
+- `src/trivium/disposition.ts`
+- `src/trivium/archive.ts`
+- `src/trivium/naming.ts`
+- `src/trivium/config.ts`
+- `src/trivium/gate.ts`
+- `src/trivium/hooks.ts`
+- `src/trivium/topic.ts`
+- `src/trivium/topic-args.ts`
+- `src/trivium/report.ts`
+- `src/trivium/brief.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/render.ts`
+- `skills/dual-critic/schema/review.v1.json`
+- `skills/dual-critic/schema/disposition.v1.json`
+- `skills/dual-critic/schema/run.v1.json`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":55,"grep":12,"glob":0,"run_command":0,"project_reads":29}
+
+---
+
+*本文档由 TriviumCode 编排器从 `gemini` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

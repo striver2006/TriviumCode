@@ -11,7 +11,8 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { CriticId, Ctx, Stage } from './types.js';
+import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
+import { CRITICS, type CriticId, type Ctx, type Stage } from './types.js';
 import { validateTopic, parseArtifactName } from './naming.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { exists } from './util/fsx.js';
@@ -214,8 +215,12 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
    * 而 resolve 的职责本就是「把整串参数切清楚并当场指出问题」。
    */
   const onlyRaw = named['only']?.trim() ?? '';
-  if (onlyRaw && onlyRaw !== 'gemini' && onlyRaw !== 'glm') {
-    throw new TriviumError(EXIT.USAGE, `--only 只接受 gemini | glm，收到：${onlyRaw}`);
+  // 合法值取自当前启用的审核者集合，不写死两家（M7b 起 `--critics` 取代本旗标）
+  if (onlyRaw && !CRITICS.includes(onlyRaw as CriticId)) {
+    throw new TriviumError(
+      EXIT.USAGE,
+      `--only 只接受 ${CRITICS.join(' | ')}，收到：${onlyRaw}`,
+    );
   }
   const only = (onlyRaw || null) as CriticId | null;
   const allowSingle = booleans.has('allow-single');
@@ -370,6 +375,14 @@ async function locateSubjectReadOnly(
   topic: string,
   stage: Stage,
   explicit: string | null,
+  /**
+   * 当轮 Driver：原稿由它产出（审查意见 AGY-03 / GLM-01）。
+   *
+   * 与 `topic.locateSubject` 同款。这一处曾经漏改，还被 `registry-parity`
+   * 的白名单无理由豁免掉了——grep 对账本是为补人工清单的漏而设，
+   * 白名单把它重新变回了盲区。
+   */
+  driver: AgentId = DEFAULT_DRIVER,
 ): Promise<string> {
   if (explicit) {
     const abs = path.isAbsolute(explicit) ? explicit : path.join(ctx.projectRoot, explicit);
@@ -387,7 +400,7 @@ async function locateSubjectReadOnly(
     throw new TriviumError(
       EXIT.MISSING_ARTIFACT,
       `找不到主题「${topic}」的 ${stage} 阶段目录（${path.relative(ctx.projectRoot, stageDir)}）。\n` +
-        `  请先落盘原稿（形如 <日期>-${topic}-claude.md），或用 ` +
+        `  请先落盘原稿（形如 <日期>-${topic}-${driver}.md），或用 ` +
         `${stage === 'plan' ? '--plan-file' : '--rca-file'} 显式指定。`,
     );
   }
@@ -398,7 +411,7 @@ async function locateSubjectReadOnly(
       (c) =>
         c.parsed !== null &&
         c.parsed.topic === topic &&
-        c.parsed.role === 'claude' &&
+        c.parsed.role === driver &&
         c.parsed.kind === null,
     )
     .sort((a, b) => b.parsed!.rerunIndex - a.parsed!.rerunIndex || b.fileName.localeCompare(a.fileName));
@@ -406,7 +419,7 @@ async function locateSubjectReadOnly(
   if (candidates.length === 0) {
     throw new TriviumError(
       EXIT.MISSING_ARTIFACT,
-      `在 ${path.relative(ctx.projectRoot, stageDir)} 下找不到原稿（形如 <日期>-${topic}-claude.md）。\n` +
+      `在 ${path.relative(ctx.projectRoot, stageDir)} 下找不到原稿（形如 <日期>-${topic}-${driver}.md）。\n` +
         `  该目录下现有：${entries.length > 0 ? entries.join(', ') : '（空）'}`,
     );
   }

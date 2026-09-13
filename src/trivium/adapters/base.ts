@@ -126,8 +126,25 @@ export function checkPeerLeak(
    * 对 `/var/…`；原先纯字符串比对，任何写法差异都会让「读到对方产出」漏报，
    * 而漏报的后果是本应作废的结论照常采纳。
    */
-  const denySet = new Set(denyPaths.map((d) => normalizeAbs(d, projectRoot)));
-  const hits = readPaths.filter((p) => denySet.has(normalizeAbs(p, projectRoot)));
+  const denyAbs = denyPaths.map((d) => normalizeAbs(d, projectRoot));
+  const denySet = new Set(denyAbs);
+
+  /*
+   * 目录形态的条目要按**前缀**命中（审查意见 GLM-03）。
+   *
+   * 纯 `Set.has()` 时，`.trivium` 这类目录条目永远等不到 `.trivium/state.json`
+   * 这样的实际读取路径——BRIEF 第 8 段向审查员承诺「读其中任何一个本次审查即作废」，
+   * 而机器核验对它的效力是零。那正是措施 a 要关闭的「提示语禁了一堆、核验只对
+   * 其中一部分」的错位，不能在这里再造一个。
+   *
+   * 判据用 `<条目>/` 前缀而非 `startsWith(条目)`：否则 `.trivium` 会误伤
+   * `.trivium-backup` 这类同前缀的兄弟路径。
+   */
+  const hits = readPaths.filter((p) => {
+    const abs = normalizeAbs(p, projectRoot);
+    if (denySet.has(abs)) return true;
+    return denyAbs.some((d) => abs.startsWith(`${d}${nodePath.sep}`));
+  });
   return { leaked: hits.length > 0, hits: [...new Set(hits)] };
 }
 

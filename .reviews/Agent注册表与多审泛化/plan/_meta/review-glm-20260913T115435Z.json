@@ -1,0 +1,123 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "方向性裁定（D-2/D-5/D-6/D-7 与 §2.2 四处遗漏）经逐行读码核实全部成立，M7a/M7b 拆分与回退闸口是本计划最有价值的改造。但有三处硬伤需先改：最危险的是 D-3「按角色登记」所引事实来源不存在——task.json.runs[] 只有运行指针、无工件清单，原稿与裁决件又不在任何登记清单中，fail-closed 兜底会把 v1 历史主题的被审对象原稿推进 deny 集，审核者正常读取即触发 peer_leak 作废重跑（GLM-02）；其次 M7a「双侧真实跑一轮、工件逐字节同现状」的闸口判据与时变字段、同里程碑内的 deny 集合扩展双重矛盾，按字面不可执行（GLM-03/04）；硬编码盘点仍漏 gate/topic 至少四处，其中一处会让第三家审核者的意见整体对 gate 不可见（GLM-01）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.2 / §4.1（M7a 内容清单）；对照 src/trivium/gate.ts:388、src/trivium/gate.ts:443、src/trivium/topic.ts:101、src/trivium/disposition.ts:202",
+      "problem": "D-4 自称「补全提案漏掉的 4 处」但盘点仍不完整，且 M7a 的字面量迁移清单（naming/freeze/disposition/archive/hooks）与 AC-N5a 要求零 diff 的八模块（另含 gate/brief/runner/disposition/schema 生成）对不上。至少还有四处同类硬编码未登记：① gate.ts:388 loadRoundReviews 以 `['gemini','glm']` 字面循环读结构化结论——N 侧下第三家的 review-<c>-<runId>.json 永不被读取，其意见对 gate 整体不可见（静默漏裁，比 A-1 的误判更隐蔽）；② gate.ts:443 readFallbackIds 的 `(?:AGY|GLM)-F\\d+` 正则读不回新前缀的 fallback 编号；③ topic.ts:101 locateSubject 只认 `role === 'claude'` 的原稿，Driver 换家后找不到被审对象直接退 65；④ disposition.ts:202 行过滤 `/^(AGY|GLM)-/` 会把未登记前缀的裁决行静默丢弃，下游 gate 报「缺裁决」而根因误导。按现清单执行 M7a，这些点会在 M8/M9/M10 以难定位的故障复现。",
+      "evidence": "逐行读了 gate.ts、topic.ts、disposition.ts：loadRoundReviews 的字面循环在 gate.ts:388，readFallbackIds 正则在 gate.ts:443，locateSubject 过滤条件 `c.parsed.role === 'claude'` 在 topic.ts:95-105，parseDisposition 行过滤在 disposition.ts:202-207。提案 §4 二十点与计划 §2.2 四点均未覆盖 ①②③；M7a 内容行（§4.1）枚举的迁移模块不含 gate/topic/brief，而 AC-N5a（§2.1）把 gate、brief 列入零 diff 八模块。",
+      "suggestion": "补全盘点并让 M7a 模块清单与 AC-N5a 八模块一致；对全仓做一次「反推/枚举 Agent 的字面量」（gemini|glm|AGY|GLM|claude）grep 级对账，把对账结果固化为 registry-parity 的负例输入，而不是靠人工清单维持完整性。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "security",
+      "location": "plan §3.1（D-3 处置）",
+      "problem": "D-3 的实施依据与仓库现状不符，且对「不禁」侧文件没有反推路径。(a) 事实来源错位：task.json.runs[] 只登记运行指针（run_id/stage/rerun_index/status/review_mode/started_at），不含工件清单，清单在各 _meta/run-<id>.json 的 artifacts[] 里；(b) 即便改用 run.json，其 artifacts[] 也只收录编排器本轮写的审查件与 _meta 材料——原稿（人在 review 前写）与裁决件（Driver 在 review 后写）不在任何登记清单，「归档内每个文件反推角色」对这两类最关键的「不禁」文件没有事实来源；(c) fail-closed 触发条件「历史主题无 driver 字段」过宽：v1 工件无 driver 字段时 driver≡claude 是由 schema 版本可判的确定事实，按写下的规则会对 v1 历史主题的 claude 后缀全部禁读——包括被审对象原稿；而 checkPeerLeak 以 deny 集合核验轨迹，审核者读原稿即 peer_leak → 作废重跑烧配额。「宁可少读一份 Driver 原稿」的实际代价是「读了就作废」。",
+      "evidence": "meta.ts:69-80（TaskMeta.runs 各字段，无 artifacts）；review.ts:883-890（meta.artifacts 仅由本轮 writeArtifact 产物与 metaArtifacts 组成）；archive.ts:44-58（原稿跨轮不重新生成，恒停第 1 轮）；adapters/base.ts:119-130（checkPeerLeak 用 denyPaths 核验 readPaths，命中即泄漏处置）；freeze.ts:48-70（现状仅按对方后缀枚举，佐证 D-3 方向正确但同源核验意味着 deny 集合误伤直接变成作废重跑）。",
+      "suggestion": "在 M7a 显式定义角色反推优先级链：run.json.artifacts 命中 ⇒ 按该 run 的 critics_selected 定角色；kind=revised/response ⇒ 裁决件=该轮 driver；driver 后缀且未登记 ⇒ 原稿；并把「原稿/裁决件纳入 run.json.artifacts 登记」列入 M7b 契约变更。fail-closed 仅用于连 schema 版本都无法判定的情形，v1 历史主题按 driver=claude 推断。deny-matrix 测试矩阵补「审核者读当轮原稿不触发 peer_leak」的负例。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.2（M7a 完成判据）与 §4.1（回退闸口）",
+      "problem": "「双侧真实跑一轮、工件逐字节同现状」按字面不可执行：run_id 本身是 UTC 时间戳，started_at/finished_at/duration_s 全是时变字段，加上两侧 LLM 输出非确定，两次真实运行的产物必然不同字节。R29 允许录制轨迹回放做初判，但「真实运行作为合入前最后一次确认」依然没有逐字节可言。这是整条路线上「最有价值的闸口」，判据含糊会在验收时被迫临场解释——恰是纪律 1 要避免的两套规范。",
+      "evidence": "meta.ts:31-33（newRunId=UTC 紧凑时间戳，进文件名与 run.json）；types.ts:331-345（started_at/finished_at/duration_s/artifacts 均入 RunMeta）；runner.ts:99-149（duration_s 为实测值）；plan §4.2 M7a 行原文与 R29 原文。",
+      "suggestion": "把判据改写为可执行口径：桩适配器（TRIVIUM_STUB_CRITIC，跨进程生效且指纹可断言）+ 固定时钟下，新旧代码对同一录入输入产出比对，时变字段（run_id/时间戳/耗时）归一化后逐字段相等；真实双审只承担结构等价冒烟与「既有主题 gate --check 通过」两项。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §4.1（M7a 同时含「§3.1 deny 矩阵重做」与「工件逐字节同现状」）",
+      "problem": "M7a 内部自相矛盾：deny 矩阵按角色重做会同步扩展 deny 集合（§3.1 明言「同源生成自然覆盖措施 a 的 _meta 缺口」，即新增 _meta 结构化件、~/.trivium 等），而 deny_paths 写进 run.json、禁读清单渲染进 brief——集合一变，M7a 自己产出的工件必然与现状不同，「逐字节同现状」在里程碑内必假。提案 M7 判据里「除 schema 版本号与 deny 集合的有意扩展」这句豁免在计划中被丢掉了。",
+      "evidence": "types.ts:337（RunMeta.deny_paths 入档）；主设计 §6.7/§9.4（run.json 含 deny_paths、brief 文件含禁读清单，doc/02_design/2026-09-10-…主设计:1072/:1090）；提案 §14 M7 完成判据原文含豁免措辞；计划 §4.1 M7a 行两处判据无此豁免。",
+      "suggestion": "二选一并写明：把 deny 集合扩展挪到 M7b，M7a 只做「生成结构重做、集合暂不变」；或在 M7a 判据中显式豁免 run.json.deny_paths 与 brief 禁读段，并论证其为何不属对外契约变更（对照提案原豁免口径）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §4.2（M8/M9 回退单元「摘注册项（critic_enabled:false）」）与 §2.2 A-1",
+      "problem": "回退动作二义：「摘注册项」与「置 critic_enabled: false」是两种深度的回退。若真摘除注册项，历史主题已归档的 -codex.md 与 CODEX- 前缀在 A-1 的新纪律（显式查表、无匹配即报错）、A-3/A-4 的注册表生成正则、deny 矩阵角色反推里全部变成未注册值——历史主题 gate 重跑直接报错，AC-07 检查器也不再识别这些文件，回退破坏既有留痕的可读性，与「回退单元」的卖点相悖。若只置开关则无此问题，但计划两种说法混在一格。",
+      "evidence": "plan §4.2 M8 行原文；plan §2.2 A-1 处置「无匹配返回 null 并让调用方报错」；naming.ts:109-110/140-142（NAME_RE 与 looksLikeRoleArtifact 字面集）；archive.ts:385-387（不合契约按不可读处理并按违例上报的先例）。",
+      "suggestion": "明确回退=保留注册项、仅置 critic_enabled:false（禁选不禁认）；若确需摘项，补「后缀/前缀识别集 = 注册表 ∪ 归档中历史出现过的值」的兜底规则并纳入 registry-parity 测试。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §2.1（AC-N5a 口径）",
+      "problem": "「八个模块逐字节无 diff」未界定 diff 对象是否包含生成产物。schema 前缀 pattern、hooks 字面集、USAGE 字符串若改由注册表生成，接入第五家必然改变生成产物本身，与「逐字节无 diff」冲突；同时桩 Agent 的意见前缀（如 STUB-）不在静态分发的 review.v1.json pattern（仅 ^(AGY|GLM)-）内，桩侧输出先过不了自己的 schema 校验，AC-N5a 夹具按现契约跑不通。",
+      "evidence": "skills/dual-critic/schema/review.v1.json:33（pattern 仅 AGY|GLM）；types.ts:27（CRITIC_PREFIX 表）；types.ts:370（CriticRequest.schema_path 把该 schema 交给 CLI 强制输出形状）；提案 §6.2 与计划 §3.3「schema 由注册表/配置生成」的表述未落到分发机制。",
+      "suggestion": "在 AC-N5a 写明 diff 范围=模块源码（生成器代码），产物与注册表的一致性由 registry-parity 对账承担；并定义桩夹具的前缀处理方式（夹具内联注册项，或 pattern 由注册表在构建期渲染）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §2.1（AC-N5b 验证方式）",
+      "problem": "driver-onboarding-scope.test.ts「以 git diff 对照白名单」的机制未定义：仓库内的测试无法知道某次 diff 是否来自「接入新 Agent」这一事件，单测/契约测试没有天然基线可对照。它实质是 CI 对 PR diff 的流程闸门或脚手架对账，按测试文件形态落地会变成无法实现的验收项。R30 中「白名单写进测试、放宽必改测试」的部分是可测且正确的，问题只在「git diff 对照」这一半。",
+      "evidence": "plan §2.1 AC-N5b 原文与 R30 原文；AGENTS.md 对 test/{unit,contract,integration} 的定位（夹具仓库+打包产物运行，无对外部事件 diff 的先例）。",
+      "suggestion": "拆成两个机制：registry-parity 断言白名单常量↔文档一致（可测）；「接入第五家只碰白名单内文件」由 CI 检查或 doctor 子命令承担，AC-N5b 写清执行主体与触发时机。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "D-2 拆分 AC-N5 为 N5a/N5b 成立：guardLevel 的消费端确是分支逻辑、hooks 多目标合并确需逐家形状，「Driver 路径零改动」不可达的论证与提案 §1.3 Non-Goal 自洽，拆分后的口径诚实且可验收",
+    "D-3 驳回「后缀差集」的方向正确且必要：freeze.ts:48/66 只按后缀枚举、命令文本扫描与 BRIEF 同源派生，跨轮角色翻转场景（上轮 claude 当审核者、本轮当 Driver）确实无人拦截，构造的反例成立",
+    "D-5 裁定与现状代码一致：findJointRejectedBlockers（gate.ts:314-338）本就是「全部提出者均驳回」（every + size≥2），n=2 逐字节兼容的论断经核实成立；partial_dispute 的落点 task.json.disputes（meta.ts:87-88）已存在，方案可落地",
+    "D-7 工作量下调属实：runner.ts:158-162 已按 requests 键集 allSettled，decideMode 的 okSides.length===0 判据对 N 侧天然正确，types.ts:336/341 已是动态 map——提案 #11 确实高估",
+    "§2.2 四处遗漏（A-1～A-4）逐行核实全部属实，「靠巧合正确」的定性准确，A-1 的「查表返回 AgentId|null、禁止三目兜底」纪律与配套负例设计是对的",
+    "D-6 拆 M7a/M7b、把回退闸口设在两者之间、§4.3 的每里程碑独立价值分析，是对提案回退性缺陷的实质性修复，M7a 可与 M6 并行的判断也对（注册表形状不依赖探针结论）",
+    "§5 待拍板建议 #7（旧旗标长期保留）与 #8（命中不设开关）与 RV-B1 教训和 readonly_commands 既有旋钮的论证一致"
+  ],
+  "not_covered": [
+    "未运行任何构建/测试/探针命令（只读审查），全部结论来自静态读码与文档比对",
+    "M6/M8/M9/M10 依赖的厂商侧事实（Codex CLI 旗标与事件流、Claude headless 信任行为、Antigravity 入口承载）无法本机核实，仅审了计划的内部一致性，未验证其外部事实的置信度标注",
+    "主设计/PRD/LLD/PROTOCOL 仅做了定向段落核对（joint blocker 语义、deny 清单、AC 编号、run.json 契约、BRIEF 结构引用），未逐章通读全文",
+    "N 侧超时与 max_waits 预算的交互（计划已自标 M7 补测）、lenses.yaml 四镜头内容质量、§5 待拍板事项的业务取舍深度未覆盖"
+  ],
+  "consulted": [
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计-glm.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "README.md",
+    "AGENTS.md",
+    "src/trivium/types.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/disposition.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/state.ts",
+    "src/trivium/config.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/schemas.ts",
+    "skills/dual-critic/schema/review.v1.json",
+    "skills/dual-critic/schema/disposition.v1.json"
+  ]
+}

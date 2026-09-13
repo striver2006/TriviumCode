@@ -20,6 +20,7 @@
  * 生产路径若检测到这个变量会打**醒目告警**——它能伪造「审查通过」，
  * 绝不能在真实审查里生效而无人知晓。
  */
+import { agentById } from '../agents/registry.js';
 import type { CriticId, CriticRequest, CriticResult } from '../types.js';
 import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
 import { warn } from '../util/log.js';
@@ -80,7 +81,15 @@ export function readStubConfig(env: NodeJS.ProcessEnv = process.env): StubConfig
 export const encodeStubConfig = (c: StubConfig): string => JSON.stringify(c);
 
 function sampleReview(critic: CriticId, n: number): string {
-  const prefix = critic === 'gemini' ? 'AGY' : 'GLM';
+  /*
+   * 前缀取自注册表，不用三目兜底（与 A-1 同一形态）。
+   *
+   * 桩适配器是 AC-N5a「新增 critic 后核心流程零改动」的验收夹具——
+   * 它自己写死两家的话，接第三家时桩会产出错误前缀的意见，
+   * 夹具本身就成了泛化的绊脚石。这一处是 `registry-parity` 的
+   * grep 对账抓出来的，两侧计划审查与我的原稿都漏了它。
+   */
+  const prefix = agentById(critic)?.findingPrefix ?? critic.toUpperCase();
   const findings = Array.from({ length: n }, (_, i) => ({
     id: `${prefix}-${String(i + 1).padStart(2, '0')}`,
     severity: i === 0 ? 'blocker' : 'minor',

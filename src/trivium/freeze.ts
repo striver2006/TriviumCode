@@ -10,9 +10,12 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER, isAgentId, type AgentId } from './agents/registry.js';
 import type { Config, CriticId, Stage } from './types.js';
+import { parseArtifactName, type DispositionKind, type Role } from './naming.js';
+import { parseFrontMatter } from './render.js';
 import { diffTrees, headSha, statusPorcelain, workTreeHash, diffAgainst } from './util/git.js';
-import { matchesAnyGlob, sha256, sha256File } from './util/fsx.js';
+import { expandHome, matchesAnyGlob, sha256, sha256File } from './util/fsx.js';
 import { diffExcludePrefixes } from './code-stage.js';
 
 export interface Snapshot {
@@ -30,25 +33,112 @@ export interface Snapshot {
 }
 
 /**
+ * 判定一份角色工件是不是「他人的审查意见」——即对 `critic` 必须屏蔽的内容。
+ *
+ * ## 为什么不能按后缀差集判（计划 §3.1 / D-3）
+ *
+ * 后缀标识**产出方**，不携带**产出角色**。Driver 任意化之后，同一后缀在
+ * 不同运行里可能是 Driver 也可能是审核者：设某主题第 1 轮 ZCode 当 Driver、
+ * Claude 当审核者，产出 `…-claude.md`（一份完整的审查意见）；第 2 轮换回
+ * Claude 当 Driver，按「deny = 全部后缀 − {自身, driver}」计算，`-claude.md`
+ * 因等于 driver 后缀而**整体不禁**——上一轮的审查意见就这样合法地摊在
+ * 另外两个审核者面前，且不会被任何检测命中（命令文本扫描的字面集同源派生，
+ * 一并放行）。
+ *
+ * ## 判据优先级（front-matter 为主）
+ *
+ * 审查件与裁决件的 front-matter 自带 `schema` 与 `role`，是**文件自身携带
+ * 的角色证据**，不依赖任何外部登记——这一点关键：`run.json.artifacts` 只
+ * 收录编排器本轮写出的审查件与 `_meta` 材料，原稿（审查前由人写）与裁决件
+ * （审查后由 Driver 写）根本不在其中，「按登记清单反推」对最需要判定的两类
+ * 文件没有事实来源。
+ */
+async function classifyArtifact(
+  absPath: string,
+  role: Role,
+  kind: DispositionKind | null,
+  driver: AgentId,
+): Promise<'peer-review' | 'own-or-driver' | 'indeterminate'> {
+  /*
+   * 裁决件由 Driver 产出，是审查员的合法上下文（§9.4 第 4 段）——但**必须同时
+   * 核对后缀**（审查意见 GLM-04）。只看 `kind` 会放行 `…-revised-gemini.md`
+   * 这类「审核者后缀 + 裁决件中缀」的名字：它以 `-gemini.md` 结尾，重构前会被
+   * 禁，只看 kind 则在读文件之前就直接放行，deny 集合反而比重构前收窄。
+   *
+   * 编排器自己不会产出这种名字（`buildArtifactName` 会拦），但 deny 矩阵的定位
+   * 正是兜住「留痕被误放或被动过」的文件——文件名零成本可伪造，把他人意见原文
+   * 改个中缀就绕过整套 front-matter 判定。裁决件本就只能是 Driver 后缀，
+   * 后缀对不上的判不确定即禁，不构成误伤。
+   */
+  if (kind !== null) return role === driver ? 'own-or-driver' : 'indeterminate';
+
+  let fm: Record<string, unknown> | null = null;
+  try {
+    fm = parseFrontMatter(await fs.readFile(absPath, 'utf8'));
+  } catch {
+    fm = null;
+  }
+
+  const schema = typeof fm?.['schema'] === 'string' ? (fm['schema'] as string) : null;
+  if (schema === 'trivium.review.v1') return 'peer-review';
+  if (schema === 'trivium.disposition.v1') return 'own-or-driver';
+
+  /*
+   * 没有可辨识的 schema：原稿就是这种形态（Driver 手写的 Markdown）。
+   * 后缀等于当轮 Driver 时按原稿处理；否则是一份「顶着审核者后缀却不是
+   * 审查件」的可疑文件，判不出就禁——fail-closed 只用在这里，不外扩。
+   */
+  return role === driver ? 'own-or-driver' : 'indeterminate';
+}
+
+/**
  * 枚举禁读清单。
  *
- * 由两部分组成：
- *   - 对方**历史**产出：按 `isolation.peer_artifact_globs` 在归档根内扫描，
- *     但只收**对方**角色的文件（己方历史产出是要给审查员看的，§9.4 第 4 段最后一条）；
+ * 由四部分组成：
+ *   - **他人的审查意见**：`.md` 审查件按 `classifyArtifact` 逐份判定（见上），
+ *     己方历史产出不禁（是要给审查员看的，§9.4 第 4 段最后一条）；
+ *   - 同一批意见的**结构化原文** `_meta/review-<他人>-<runId>.json` 与其
+ *     fallback 编号件——重构前只禁 `.md` 而漏掉这些，提示语禁了一堆、机器
+ *     核验只对其中一部分，是现存的隔离缺口（计划 §2.2 措施 a）；
+ *   - 编排器自身的状态目录 `.trivium/`；
  *   - 敏感文件：`review.sensitive_globs`。
  *
- * 逐个列出真实路径而非给 glob，是为了让轨迹核验与提示语之间可以逐条对账。
+ * 逐个列出真实路径而非给 glob，是为了让轨迹核验与提示语之间可以逐条对账——
+ * BRIEF 第 8 段的禁读清单与 `checkPeerLeak` 的机器集合由**同一份**返回值生成。
  */
 export async function enumerateDenyPaths(
   cfg: Config,
   projectRoot: string,
   archiveRoot: string,
   critic: CriticId,
+  driver: AgentId = DEFAULT_DRIVER,
+  /**
+   * 当轮主题。给了就只扫 `<archiveRoot>/<topic>`（审查意见 AGY-02 / GLM-02）。
+   *
+   * 不剪枝有两重代价，其中误伤那重是实打实的：非 Claude Driver 下，全仓**其它
+   * 主题**的 `-claude.md` 原稿因无 review schema 且 `role !== driver` 被判
+   * indeterminate，整批进禁读集——审核者正常读取即 `peer_leak` 作废重跑。
+   * 另一重是 I/O：`classifyArtifact` 要读文件，全归档 × 每侧 × 每次运行。
+   *
+   * 跨主题的他人审查意见不再入集是有意的：那是另一个任务的意见，锚定污染的
+   * 风险远低于上面那种误伤。
+   */
+  topic: string | null = null,
 ): Promise<string[]> {
-  const peerRole: CriticId = critic === 'gemini' ? 'glm' : 'gemini';
   const out = new Set<string>();
+  const scanRoot = topic ? path.join(archiveRoot, topic) : archiveRoot;
 
-  // 1) 对方历史审查产出
+  /*
+   * 候选 glob 由注册表生成，配置项 `peer_artifact_globs` 降为**追加**项。
+   * 重构前默认值只有两条审核者后缀，`-claude.md` 压根不在候选里——
+   * 这正是上面那个跨轮翻转场景无人拦截的直接原因。
+   */
+  const artifactGlobs = [
+    ...ALL_AGENT_IDS.map((id) => `**/*-${id}.md`),
+    ...cfg.isolation.peer_artifact_globs,
+  ];
+
+  // 1) 他人的审查产出（.md 正文 + _meta 结构化原文）
   const walk = async (dir: string): Promise<void> => {
     let entries: import('node:fs').Dirent[];
     try {
@@ -63,11 +153,42 @@ export async function enumerateDenyPaths(
         continue;
       }
       const rel = path.relative(projectRoot, abs);
-      if (!e.name.endsWith(`-${peerRole}.md`)) continue;
-      if (matchesAnyGlob(rel, cfg.isolation.peer_artifact_globs)) out.add(rel);
+
+      /*
+       * `_meta/` 下的结构化意见与 fallback 编号件：它们是意见**原文**，
+       * 泄漏后果与 `.md` 等同。按文件名里的角色段判定，不读内容。
+       */
+      const metaHit = /^review-([a-z]+)-.+\.(?:json|md)$/.exec(e.name);
+      if (metaHit) {
+        const owner = metaHit[1]!;
+        if (owner !== critic && isAgentId(owner)) out.add(rel);
+        continue;
+      }
+
+      const parsed = parseArtifactName(e.name);
+      if (!parsed) continue;
+      if (parsed.role === critic) continue; // 己方历史产出：合法输入
+      if (!matchesAnyGlob(rel, artifactGlobs)) continue;
+
+      const verdict = await classifyArtifact(abs, parsed.role, parsed.kind, driver);
+      if (verdict === 'peer-review' || verdict === 'indeterminate') out.add(rel);
     }
   };
-  await walk(archiveRoot);
+  await walk(scanRoot);
+
+  /*
+   * 1b) 编排器自身的两个目录。
+   *
+   * `.trivium/`：护栏载体（state.json、lock、bin），审查员没有读它的正当理由。
+   *
+   * `~/.trivium/runs/`：**对方本轮的原始输出就写在这里**——延迟落盘只保证
+   * 项目树内看不到，运行目录里是实时的。它一直写在 BRIEF 第 8 段的提示语里，
+   * 却从不在机器集合中（措施 a 的通道③）。既然 `checkPeerLeak` 现在支持
+   * 目录前缀匹配（审查意见 GLM-03），就一并收进来——否则收敛提示语之后，
+   * BRIEF 仍在承诺一件机器核验不了的事，只修一半等于没修。
+   */
+  out.add('.trivium');
+  out.add(expandHome(cfg.runtime.run_root));
 
   // 2) 敏感文件（就地模式无法「不带入」，只能列进禁读清单，§9.2 末条）
   const walkSensitive = async (dir: string, depth: number): Promise<void> => {
@@ -100,6 +221,22 @@ export interface FreezeInput {
   archiveRoot: string;
   stage: Stage;
   critic: CriticId;
+  /**
+   * 当轮主题。禁读枚举只扫这个主题的目录（审查意见 AGY-02 / GLM-02）。
+   *
+   * 不给就退回全归档扫描——只为兼容尚未传参的旧调用，新代码一律传。
+   */
+  topic?: string;
+  /**
+   * 当轮 Driver（审查意见 AGY-01）。
+   *
+   * 这个字段曾经**漏掉**：`enumerateDenyPaths` 加了 driver 参数，而作为唯一
+   * 调用入口的 `freeze()` 没跟着加，于是真实流水线上 driver 恒为缺省值——
+   * 整个按角色判定的 deny 矩阵在 M10 到来时会静默失效。`deny-matrix` 的用例
+   * 当时直接调 `enumerateDenyPaths`、绕过了这里，10 条全绿也没能发现。
+   * 教训：测试要覆盖**调用链**，不只是函数。
+   */
+  driver?: AgentId;
   /** plan/bug：原稿绝对路径。code：忽略，改用 base 生成 diff */
   subjectPath?: string;
   /** code 阶段的 diff 基线 */
@@ -141,7 +278,14 @@ export async function freeze(input: FreezeInput): Promise<Snapshot> {
     subjectSha256 = await sha256File(subjectPath);
   }
 
-  const denyPaths = await enumerateDenyPaths(cfg, projectRoot, archiveRoot, critic);
+  const denyPaths = await enumerateDenyPaths(
+    cfg,
+    projectRoot,
+    archiveRoot,
+    critic,
+    input.driver ?? DEFAULT_DRIVER,
+    input.topic ?? null,
+  );
 
   return {
     gitHead,

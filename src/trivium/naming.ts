@@ -7,9 +7,17 @@
  * 这里只做纯函数的「生成」与「解析」，不碰文件系统——落盘与防覆盖在 archive。
  * 拆成纯函数是为了让 §17.1 的单元层能在没有真实 CLI 与仓库的情况下覆盖它。
  */
+import { DEFAULT_DRIVER, suffixAlternation, type AgentId } from './agents/registry.js';
 import type { CriticId, Stage } from './types.js';
 
-export type Role = 'claude' | CriticId;
+/**
+ * 工件角色后缀 = 已登记的 Agent id（计划 §2.1）。
+ *
+ * 重构前是 `'claude' | CriticId` 两类三值，隐含「Driver 恒为 claude、
+ * claude 从不当审核者」的假设。后缀标识**产出方**，与「发起方」正交，
+ * 因此它的取值域就是全部注册 Agent，与谁当 Driver 无关。
+ */
+export type Role = AgentId;
 export type DispositionKind = 'revised' | 'response';
 
 /** 主题名的保留后缀：主题不得以这些结尾，否则文件名无法反向解析 */
@@ -87,11 +95,20 @@ export function localDate(d: Date = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** 生成工件文件名 */
-export function buildArtifactName(a: ArtifactName): string {
+/**
+ * 生成工件文件名。
+ *
+ * `driver` 指当轮发起方，裁决件后缀只能是它（计划 §2.1 / B-2）。缺省
+ * `claude` 保持旧调用行为不变——M7a 里 Driver 恒为 claude，此参数为
+ * M10 的 Driver 任意化预留。重构前这里写死 `a.role !== 'claude'`，
+ * 非 Claude Driver 的裁决件根本无法落盘。
+ */
+export function buildArtifactName(a: ArtifactName, driver: AgentId = DEFAULT_DRIVER): string {
   if (a.rerunIndex < 1) throw new Error(`rerunIndex 必须 ≥ 1，收到 ${a.rerunIndex}`);
-  if (a.kind !== null && a.role !== 'claude') {
-    throw new Error(`-${a.kind} 是 Driver 裁决件专用后缀，不能用于角色 ${a.role}`);
+  if (a.kind !== null && a.role !== driver) {
+    throw new Error(
+      `-${a.kind} 是 Driver 裁决件专用后缀（当轮 Driver：${driver}），不能用于角色 ${a.role}`,
+    );
   }
   const parts = [a.topic];
   if (a.rerunIndex > 1) parts.push(`r${a.rerunIndex}`);
@@ -106,8 +123,17 @@ export function buildVerifyName(date: string, topic: string, rerunIndex = 1): st
   return `${date}-${parts.join('-')}-verify.md`;
 }
 
-const NAME_RE =
-  /^(\d{4}-\d{2}-\d{2})-(.+?)(?:-r(\d+))?(?:-(revised|response))?-(claude|gemini|glm)\.md$/;
+/*
+ * 角色后缀集由注册表生成（计划 §2.1 / GLM-05）。
+ *
+ * 写死三值时，一旦归档里出现过 `-codex.md`，该文件对解析器即不存在——
+ * `listStageArtifacts` 跳过它、AC-07 检查器不识别它、gate 找不到它。
+ * 识别集必须始终覆盖全部已登记后缀，**与该 Agent 当前是否启用无关**：
+ * 历史留痕的可读性不能随注册项的启停而消失。
+ */
+const NAME_RE = new RegExp(
+  `^(\\d{4}-\\d{2}-\\d{2})-(.+?)(?:-r(\\d+))?(?:-(revised|response))?-(${suffixAlternation()})\\.md$`,
+);
 
 /** 解析工件文件名。不合规返回 null——调用方据此判定「非本流水线产出」 */
 export function parseArtifactName(fileName: string): ArtifactName | null {
@@ -123,12 +149,18 @@ export function parseArtifactName(fileName: string): ArtifactName | null {
   };
 }
 
-/** 角色后缀硬约束（§6.2 / PRD 6.3）：审查员不得产 claude，Driver 不得产 gemini/glm */
+/**
+ * 角色后缀硬约束（§6.2 / PRD 6.3）：交互写者只能产出自己的后缀，
+ * 审查员后缀的文件由编排器 `archive` 独占产出。
+ *
+ * `driver` 缺省 `claude`，与重构前语义逐项相同。
+ */
 export function roleIsAllowedForWriter(
   writer: 'driver' | CriticId,
   role: Role,
+  driver: AgentId = DEFAULT_DRIVER,
 ): boolean {
-  return writer === 'driver' ? role === 'claude' : role === writer;
+  return writer === 'driver' ? role === driver : role === writer;
 }
 
 /** 阶段对应的裁决件后缀（§6.3） */
@@ -136,7 +168,12 @@ export function dispositionKindForStage(stage: Stage): DispositionKind {
   return stage === 'code' ? 'response' : 'revised';
 }
 
-/** 某文件名是否可能被 AC-07 的角色后缀检查器误判——_meta/ 内不得出现这类名字 */
+/**
+ * 某文件名是否可能被 AC-07 的角色后缀检查器误判——_meta/ 内不得出现这类名字。
+ *
+ * 后缀集由注册表生成（计划 §2.2 / A-3）：写死三值时，新后缀 `-codex.md`
+ * 落进 `_meta/` 不再被识别。
+ */
 export function looksLikeRoleArtifact(fileName: string): boolean {
-  return /-(?:claude|gemini|glm)\.md$/.test(fileName);
+  return new RegExp(`-(?:${suffixAlternation()})\\.md$`).test(fileName);
 }

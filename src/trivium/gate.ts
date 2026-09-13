@@ -7,7 +7,8 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { Config, CriticId, Disposal, DispositionRow, Review, Stage } from './types.js';
+import { DEFAULT_DRIVER, findingPrefixAlternation, type AgentId } from './agents/registry.js';
+import { CRITICS, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
 import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
 import { dispositionKindForStage } from './naming.js';
@@ -86,6 +87,11 @@ export interface GateCheckInput {
   missingSides?: CriticId[];
   /** 本轮 run_id：裁决件 front-matter 的 run_id 必须与之一致，否则把上一轮的裁决件抄过来也能过 */
   runId?: string;
+  /**
+   * 当轮 Driver。裁决件后缀与它一致（计划 §9.1）。
+   * 缺省 `claude` 与重构前行为逐项相同，为 M10 的 Driver 任意化预留。
+   */
+  driver?: AgentId;
 }
 
 export async function checkAdjudication(input: GateCheckInput): Promise<GateCheckResult> {
@@ -102,8 +108,9 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
   // 第 2 步：定位本轮裁决件
   const kind = dispositionKindForStage(stage);
   const items = await listStageArtifacts(layout, stage);
+  const driver = input.driver ?? DEFAULT_DRIVER;
   const hit = items.find(
-    (i) => i.parsed.role === 'claude' && i.parsed.kind === kind && i.parsed.rerunIndex === rerunIndex,
+    (i) => i.parsed.role === driver && i.parsed.kind === kind && i.parsed.rerunIndex === rerunIndex,
   );
   if (!hit) {
     return {
@@ -112,7 +119,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
         {
           code: 'missing_disposition',
           message:
-            `找不到第 ${rerunIndex} 轮的裁决件（应为 …-${rerunIndex > 1 ? `r${rerunIndex}-` : ''}${kind}-claude.md）。` +
+            `找不到第 ${rerunIndex} 轮的裁决件（应为 …-${rerunIndex > 1 ? `r${rerunIndex}-` : ''}${kind}-${driver}.md）。` +
             `${stage === 'code' ? '代码审' : '计划/根因审'}必须产出裁决件，即使全部驳回也要写明「无修改及原因」（§6.6 规则 6）。`,
         },
       ],
@@ -358,7 +365,22 @@ export function renderGateResult(r: GateCheckResult): string {
 // ─────────────────────── 读取本轮结构化结论 ───────────────────────
 
 /**
- * 从归档 `_meta/` 读回本轮两侧的结构化结论。
+ * 本轮实际入选的审核者集合。
+ *
+ * 事实来源是 `run.json.critics` 的键集——它记录的是「这一轮真的跑了谁」，
+ * 与当前配置启用了谁无关（历史轮次可能跑过现已停用的 Agent）。
+ * run.json 缺失或键集为空时回落到当前启用集合，保持旧归档可读。
+ *
+ * M7b 引入 `critics_selected` 字段后，这里改读那个字段即可——
+ * 它能区分「计划跑但失败了」与「压根没入选」，键集做不到。
+ */
+function criticsOf(runMeta: RunMeta | null): readonly CriticId[] {
+  const recorded = Object.keys(runMeta?.critics ?? {}) as CriticId[];
+  return recorded.length > 0 ? recorded : CRITICS;
+}
+
+/**
+ * 从归档 `_meta/` 读回本轮各审核者的结构化结论。
  *
  * 对 `parse_fallback` 侧会用**当前**解析器重试一次原文。理由：解析降级往往是
  * 解析器一侧的缺陷（本项目就踩过一次——厂商往结构化输出注入了自己的字段，
@@ -385,7 +407,16 @@ export async function loadRoundReviews(
   const { readRunMeta } = await import('./meta.js');
   const runMeta = await readRunMeta(layout, stage, runId);
 
-  for (const c of ['gemini', 'glm'] as CriticId[]) {
+  /*
+   * 遍历范围取自本轮实际入选的审核者，而非字面两家（计划 §2.1 / B-5）。
+   *
+   * 这是两侧审查里最严重的一处：写死 `['gemini','glm']` 时，第三家的
+   * `review-<c>-<runId>.json` 永远不会被读取——它的意见对 gate **整体不可见**，
+   * 闸门会放行一个从未被裁决的审核者。故障形态是静默漏裁，不是报错。
+   *
+   * `criticsOf` 优先读 run.json 的记录，缺失时回落到当前启用集合（历史工件兼容）。
+   */
+  for (const c of criticsOf(runMeta)) {
     const p = path.join(dir, `review-${c}-${runId}.json`);
     try {
       const raw = JSON.parse(await fs.readFile(p, 'utf8')) as
@@ -440,7 +471,7 @@ async function readFallbackIds(p: string): Promise<string[]> {
   }
   const out: string[] = [];
   for (const line of text.split('\n')) {
-    const m = /^-\s+((?:AGY|GLM)-F\d+):/.exec(line.trim());
+    const m = new RegExp(`^-\\s+((?:${findingPrefixAlternation()})-F\\d+):`).exec(line.trim());
     if (m) out.push(m[1]!);
   }
   return out;
@@ -455,16 +486,23 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
-/** 从审查文档 front-matter 读回本轮的 run_id（`gate --check` 不必要求人传） */
+/**
+ * 从审查文档 front-matter 读回本轮的 run_id（`gate --check` 不必要求人传）。
+ *
+ * 跳过的是**当轮 Driver 的产出**（原稿与裁决件不带审查侧的 run_id），
+ * 而不是字面的 claude（计划 §2.1 / B-4）——Claude 作为审核者时，
+ * 写死跳过会让反查恒返回 null。
+ */
 export async function inferLatestRunId(
   layout: ArchiveLayout,
   stage: Stage,
   rerunIndex: number,
+  driver: AgentId = DEFAULT_DRIVER,
 ): Promise<string | null> {
   const items = await listStageArtifacts(layout, stage);
   for (const i of items) {
     if (i.parsed.rerunIndex !== rerunIndex) continue;
-    if (i.parsed.role === 'claude') continue;
+    if (i.parsed.role === driver) continue;
     const p = path.join(layout.archiveRoot, layout.topic, stage, i.fileName);
     const fm = parseFrontMatter(await fs.readFile(p, 'utf8'));
     const runId = fm?.['run_id'];

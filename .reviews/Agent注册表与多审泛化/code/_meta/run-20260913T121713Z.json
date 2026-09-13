@@ -1,0 +1,157 @@
+{
+  "schema": "trivium.run.v1",
+  "run_id": "20260913T121713Z",
+  "topic": "Agent注册表与多审泛化",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点看 M7a 是否真的行为等价（默认双审路径逐项不变）、deny 矩阵按 front-matter 判角色有无新破洞或误伤、以及 12 处硬编码改读注册表后是否还有遗漏的二元兜底",
+  "task_goal": "把固定 Driver 与固定双审演进为通用 Agent 注册表架构：任意注册 Agent 可作 Driver、每次审核动态选 1 至 3 个审核者、逐审核者指定模型与思考等级并提供高中低三档组合、Codex 接入 QWen 与 DeepSeek 等多模型并透传厂商 profile、新增 Agent 只需注册项与适配器与探针与镜头与入口资产五件套而核心流程零改动",
+  "entry": "A",
+  "snapshot": {
+    "git_head": "a90ac874aa9c2fb6073164b0e82920efe143312d",
+    "tree_hash": "44a82426cacf2e5470c433077929d604dfb63b01",
+    "dirty": true,
+    "subject_sha256": "fdccd8aa283cc86bd30e3c506350edaf8a9bc984ddb922baf65a7cc28d7c9d68",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-13T12:17:13.756Z",
+  "finished_at": "2026-09-13T12:28:53.360Z",
+  "review_mode": "dual",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 327.782,
+      "tool_calls": {
+        "read": 44,
+        "grep": 26,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 28
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 441245,
+        "output_tokens": 53288,
+        "thinking_tokens": 45078,
+        "cache_read_tokens": 8678550,
+        "total_tokens": 494533
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "7b36cc33-a450-4109-ad76-3e1d17abb52e",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 699.466,
+      "tool_calls": {
+        "read": 19,
+        "grep": 9,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 13,
+        "inputTokens": 1268115,
+        "outputTokens": 45862,
+        "totalTokens": 1313977,
+        "cacheReadTokens": 1137920,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_e53926c5-994f-4b4a-a320-f4b20f750aaa",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/Agent注册表与多审泛化/plan/2026-09-13-Agent注册表与多审泛化-glm.md",
+    ".reviews/C命令base透传修复/code/2026-09-12-C命令base透传修复-glm.md",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r3-glm.md",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-glm.md",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-r2-glm.md",
+    ".reviews/S9-闸门与留痕加固/code/2026-09-11-S9-闸门与留痕加固-glm.md",
+    ".reviews/双审进度反馈/code/2026-09-12-双审进度反馈-glm.md",
+    ".reviews/双审进度反馈/plan/2026-09-12-双审进度反馈-glm.md",
+    ".reviews/审核修复/code/2026-09-12-审核修复-glm.md"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "Agent注册表与多审泛化/code/_meta/changes-20260913T121713Z.diff",
+      "sha256": "fdccd8aa283cc86bd30e3c506350edaf8a9bc984ddb922baf65a7cc28d7c9d68"
+    },
+    {
+      "path": "Agent注册表与多审泛化/code/_meta/brief-gemini-20260913T121713Z.md",
+      "sha256": "527530aff291e14ade47482967361f1ce6959bd9bd0f002b3705888a219abbbd"
+    },
+    {
+      "path": "Agent注册表与多审泛化/code/_meta/brief-glm-20260913T121713Z.md",
+      "sha256": "d95cf0067da62c462daa1d62845d28a2af1db439622e84ffc964b8d261dbd0b0"
+    },
+    {
+      "path": "Agent注册表与多审泛化/code/_meta/review-gemini-20260913T121713Z.json",
+      "sha256": "13385d1e91c9778333ec9f63ac0dbd99c6cc926b056570f82e3a8cd40cb8ea93"
+    },
+    {
+      "path": "Agent注册表与多审泛化/code/_meta/review-glm-20260913T121713Z.json",
+      "sha256": "c1e9e7a51ccb0a8d49a2c7bd4abbdaf9867cdbb5d4666ed1a9aac63e8f29fa5e"
+    },
+    {
+      "path": "Agent注册表与多审泛化/code/2026-09-13-Agent注册表与多审泛化-gemini.md",
+      "sha256": "2f781f1533c2f2006d0d94e7a23a67ac5106219ec9c98d512be880b03e0b0e7b"
+    },
+    {
+      "path": "Agent注册表与多审泛化/code/2026-09-13-Agent注册表与多审泛化-glm.md",
+      "sha256": "d2b176cc40a79acc3a385f3196aef34f225b8a15ba52789ec1a4d5aff0369120"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

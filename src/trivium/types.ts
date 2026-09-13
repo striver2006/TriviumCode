@@ -9,22 +9,47 @@
  * Schema 是运行时真理来源（ajv 校验），本文件是编译期的同一份约定。改一处必须改另一处。
  */
 
+import { agentById, CRITIC_AGENT_IDS, type AgentId } from './agents/registry.js';
+
+export type { AgentId };
+
 export type Stage = 'plan' | 'code' | 'bug';
 export type StageOrVerify = Stage | 'verify';
 /** 发起本次运行的斜杠命令（设计 §7.1）：A 全流程 / B 计划审 / C 代码审 / D 根因审 */
 export type CommandEntry = 'A' | 'B' | 'C' | 'D';
 export const COMMAND_ENTRIES: readonly CommandEntry[] = ['A', 'B', 'C', 'D'];
-export type CriticId = 'gemini' | 'glm';
+/**
+ * 当前可选为审核者的 Agent。
+ *
+ * M7a 仍是两值——与重构前逐项相同（行为等价）。它现在由
+ * `agents/registry.ts` 的 `criticEnabled` 派生而非独立定义：
+ * M8 / M9 启用 codex / claude 时只改注册表，本别名自动跟随。
+ */
+export type CriticId = Extract<AgentId, 'gemini' | 'glm'>;
 export type Vendor = 'antigravity' | 'zcode';
 export type Severity = 'blocker' | 'major' | 'minor' | 'nit';
 export type Confidence = 'high' | 'medium' | 'low';
 export type Verdict = 'approve' | 'approve-with-nits' | 'request-changes' | 'block';
 
 export const STAGES: readonly Stage[] = ['plan', 'code', 'bug'];
-export const CRITICS: readonly CriticId[] = ['gemini', 'glm'];
-export const CRITIC_VENDOR: Record<CriticId, Vendor> = { gemini: 'antigravity', glm: 'zcode' };
-/** 意见编号前缀，两侧不冲突（设计 §6.5） */
-export const CRITIC_PREFIX: Record<CriticId, string> = { gemini: 'AGY', glm: 'GLM' };
+
+/*
+ * ── 以下三张表由注册表派生，不再手写字面量（计划 §2.1）──
+ *
+ * 重构前它们是三份独立的字面表，新增一家要改三处、改一漏二不会报错。
+ * 现在唯一来源是 `agents/registry.ts`，`registry-parity.test.ts` 对账。
+ */
+
+export const CRITICS: readonly CriticId[] = CRITIC_AGENT_IDS as readonly CriticId[];
+
+export const CRITIC_VENDOR: Record<CriticId, Vendor> = Object.fromEntries(
+  CRITICS.map((c) => [c, agentById(c)!.vendor as Vendor]),
+) as Record<CriticId, Vendor>;
+
+/** 意见编号前缀，各家不冲突（设计 §6.5） */
+export const CRITIC_PREFIX: Record<CriticId, string> = Object.fromEntries(
+  CRITICS.map((c) => [c, agentById(c)!.findingPrefix]),
+) as Record<CriticId, string>;
 
 // ─────────────────────────── 探针（设计 §3.5） ───────────────────────────
 
@@ -257,7 +282,14 @@ export type Disposal = '接受' | '驳回' | '暂缓';
 
 export interface DispositionRow {
   id: string;
-  source: CriticId | 'fallback';
+  /**
+   * `null` = 来源无法判定（`来源` 列缺失或写错，且编号前缀未登记）。
+   *
+   * 重构前这里不可为 null，因为 `inferSource` 用三目兜底保证「总有个值」——
+   * 代价是第三家的编号被静默归给 glm（计划 §2.2 / A-1）。现在无匹配如实记 null，
+   * 由解析器报出 problem，而不是编一个来源出来。
+   */
+  source: CriticId | 'fallback' | null;
   severity: Severity | null;
   disposal: Disposal;
   reason: string;

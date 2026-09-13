@@ -8,7 +8,8 @@
  * 失败时报**具体行号**而不是笼统「解析失败」——否则 Driver 无从修补（R-C）。
  */
 import YAML from 'yaml';
-import type { CriticId, Disposal, DispositionRow, Severity, Stage } from './types.js';
+import { agentByFindingId, findingPrefixAlternation } from './agents/registry.js';
+import { CRITICS, type CriticId, type Disposal, type DispositionRow, type Severity, type Stage } from './types.js';
 
 export interface DispositionFrontMatter {
   schema: string;
@@ -93,9 +94,12 @@ function normalizeSeverity(raw: string): Severity | null {
 
 function normalizeSource(raw: string): CriticId | 'fallback' | null {
   const s = normalizeCell(raw).toLowerCase();
-  if (s.includes('gemini')) return 'gemini';
-  if (s.includes('glm')) return 'glm';
+  // 先认 fallback：它不是 Agent，且「fallback」不会与任何 Agent id 冲突
   if (s.includes('fallback')) return 'fallback';
+  // 按注册表逐项匹配，而非字面 if 链（计划 §2.1）
+  for (const c of CRITICS) {
+    if (s.includes(c)) return c;
+  }
   return null;
 }
 
@@ -199,8 +203,16 @@ export function parseDisposition(md: string): ParsedDisposition {
     if (idCell.length === 0) continue; // 空行，跳过
     // 只收形如 AGY-01 / GLM-r2-03 / AGY-F01 的编号，避免把小结行当数据；
     // 但单元格里明明含编号却不在行首（如「见 AGY-01」）要报出来，而不是静默丢弃后让 gate 报「缺裁决」
-    if (!/^(AGY|GLM)-/.test(idCell)) {
-      if (/\b(AGY|GLM)-(?:r\d+-)?(?:F)?\d+/.test(idCell)) {
+    if (!new RegExp(`^(?:${findingPrefixAlternation()})-`).test(idCell)) {
+      /*
+       * 第二重检测**不限于已登记前缀**（审查意见 GLM-05）。
+       *
+       * 收行（上一行）用登记集是对的——只有登记前缀才算合法数据行。但「这一格
+       * 看着像个编号却没被收」的告警若也限定登记集，未登记的前缀（人写错拼、
+       * 第五家接入前的编号）就两重都不命中，照旧静默 continue，下游 gate 报
+       * 「缺裁决」而根因完全误导。这正是 B-7 要消除的形态，只做前半等于没做。
+       */
+      if (/\b[A-Z][A-Z0-9]{1,15}-(?:r\d+-)?(?:F)?\d+/.test(idCell)) {
         problems.push({ line: lineNo, message: `第一列「${idCell}」含意见编号但不以编号开头，本行被忽略——编号列只写编号本身` });
       }
       continue;
@@ -220,9 +232,18 @@ export function parseDisposition(md: string): ParsedDisposition {
     const actIdx = idx('action');
     const srcIdx = idx('source');
 
+    const source = (srcIdx >= 0 ? normalizeSource(cells[srcIdx] ?? '') : null) ?? inferSource(idCell);
+    if (source === null) {
+      // 不静默兜底到任一审核者（A-1）：来源判不出就如实报出来，让 Driver 补「来源」列
+      problems.push({
+        line: lineNo,
+        message: `意见 ${idCell} 的来源无法判定：「来源」列未填或不可识别，且${unknownSourceReason(idCell)}`,
+      });
+    }
+
     rows.push({
       id: idCell,
-      source: (srcIdx >= 0 ? normalizeSource(cells[srcIdx] ?? '') : null) ?? inferSource(idCell),
+      source,
       severity: sevIdx >= 0 ? normalizeSeverity(cells[sevIdx] ?? '') : null,
       disposal,
       reason: normalizeCell(cells[idx('reason')] ?? ''),
@@ -236,13 +257,36 @@ export function parseDisposition(md: string): ParsedDisposition {
   return { frontMatter, rows, problems };
 }
 
-/** 编号前缀能反推来源，`来源` 列缺失或写错时兜底 */
-function inferSource(id: string): CriticId | 'fallback' {
-  if (/^AGY-F/.test(id) || /^GLM-F/.test(id)) return 'fallback';
-  return id.startsWith('AGY-') ? 'gemini' : 'glm';
+/**
+ * 编号前缀能反推来源，`来源` 列缺失或写错时兜底。
+ *
+ * **无匹配返回 null，禁止三目兜底**（计划 §2.2 / A-1）。重构前末行是
+ * `id.startsWith('AGY-') ? 'gemini' : 'glm'`——第三家的 `CODEX-03` 会被
+ * 静默归给 glm。双侧下它恰好正确（只有两种可能），是「靠巧合正确」。
+ */
+function inferSource(id: string): CriticId | 'fallback' | null {
+  if (isFallbackId(id)) return 'fallback';
+  const agent = agentByFindingId(id);
+  if (!agent) return null;
+  return CRITICS.includes(agent.id as CriticId) ? (agent.id as CriticId) : null;
+}
+
+/**
+ * 来源判不出时的**准确**说法（审查意见 AGY-05）。
+ *
+ * 「查不到」与「查到了但当前没启用为审核者」是两回事：`CODEX-03` 的前缀
+ * 确实登记在注册表里，只是该 Agent 还没作为审核者启用。笼统说「不属于任何
+ * 已登记 Agent」与事实冲突，会把排查引向错误方向。
+ */
+function unknownSourceReason(id: string): string {
+  const agent = agentByFindingId(id);
+  if (agent) {
+    return `编号前缀属于已登记的 ${agent.display}（${agent.id}），但它当前未启用为审核者`;
+  }
+  return '编号前缀不属于任何已登记 Agent';
 }
 
 /** 是否为 parse_fallback 的虚拟编号（`<前缀>-F<序号>`，§6.6 规则 8） */
 export function isFallbackId(id: string): boolean {
-  return /^(AGY|GLM)-F\d+$/.test(id);
+  return new RegExp(`^(?:${findingPrefixAlternation()})-F\\d+$`).test(id);
 }

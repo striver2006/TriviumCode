@@ -1,0 +1,1468 @@
+# trivium changes.diff
+# run_id: 20260913T121713Z
+# base: HEAD
+# head: a90ac874aa9c2fb6073164b0e82920efe143312d
+# files: 12
+#   doc/02_design/2026-09-13-通用Agent编排与动态多审设计-glm.md
+#   src/trivium/adapters/stub.ts
+#   src/trivium/agents/registry.ts
+#   src/trivium/archive.ts
+#   src/trivium/disposition.ts
+#   src/trivium/freeze.ts
+#   src/trivium/gate.ts
+#   src/trivium/naming.ts
+#   src/trivium/topic.ts
+#   src/trivium/types.ts
+#   test/unit/deny-matrix.test.ts
+#   test/unit/registry-parity.test.ts
+diff --git a/doc/02_design/2026-09-13-通用Agent编排与动态多审设计-glm.md b/doc/02_design/2026-09-13-通用Agent编排与动态多审设计-glm.md
+index 851d2f6..23d2e43 100644
+--- a/doc/02_design/2026-09-13-通用Agent编排与动态多审设计-glm.md
++++ b/doc/02_design/2026-09-13-通用Agent编排与动态多审设计-glm.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 ZCode 起草，角色后缀 `glm`）
+ > - **文件命名**：`2026-09-13-通用Agent编排与动态多审设计-glm.md`，遵循 `日期-主题-角色` 规范；后缀 `glm` 表示本文是待审的提案稿
+ > - **创建日期**：2026-09-13
+-> - **当前版本**：v0.1.5
++> - **当前版本**：v0.1.4
+ > - **状态**：**提案（Proposal）**——待双审 + 待项目负责人评审。本文不是实现依据；实施前须按主设计文档 16.2 纪律 1 回溯修订主设计与 PRD，**禁止两套规范并行**
+ > - **上游依据**：
+ >   ① 项目负责人 2026-09-13 提出的五条演进需求（见第 1 章，本文记作 R-1～R-5）；
+@@ -294,7 +294,7 @@ agents.<agent>.tiers[agents.<agent>.default_tier]         ③ Agent 默认档
+ | :--- | :--- | :--- |
+ | `review.v1.json` | findings `id` pattern 前缀集扩为 `CLAUDE-\|CODEX-\|AGY-\|GLM-`；其余七字段不动 | **原地扩展**（schema 随产物分发、解析时用最新版校验，历史工件只存 schema 名不存 schema 本体）；新增 `registry-parity` 契约测试锁前缀集 ↔ 注册表 |
+ | `disposition.v1.json` | `role` 由 const `claude` 改 enum 四值（= 当轮 Driver 后缀）；`addresses` minItems 1、maxItems 3 | 原地扩展（enum 扩值向后兼容） |
+-| `run.v1.json` → **`run.v2.json`** | `driver` 字段；`critics` 改动态键（值沿用 `$defs/critic` 并增 `effort_requested/effort_effective/tier_source/profile`——`effort_effective` 因 DeepSeek 存在归并映射（请求≠生效）必须回读；profile 为厂商 profile 请求值，当前仅 codex）；`critics_selected[]`；`review_mode: full\|partial`；`gate`/`guard` 内双侧字段（`peer_deny_applied`、`peer_leak_via_command` 等）改逐审核者 map | **升 v2 双读**：读侧接受 v1（`dual→full`、`single→partial` 映射，`driver` 缺省 `claude`）与 v2；写侧只产 v2。理由：`critics` 从「恰两键」变开放 map 属破坏性变更，原地扩会放宽对历史工件的校验 |
++| `run.v1.json` → **`run.v2.json`** | `driver` 字段；`critics` 改动态键（值沿用 `$defs/critic` 并增 `effort_requested/tier_source/profile`——profile 为厂商 profile 请求值，当前仅 codex）；`critics_selected[]`；`review_mode: full\|partial`；`gate`/`guard` 内双侧字段（`peer_deny_applied`、`peer_leak_via_command` 等）改逐审核者 map | **升 v2 双读**：读侧接受 v1（`dual→full`、`single→partial` 映射，`driver` 缺省 `claude`）与 v2；写侧只产 v2。理由：`critics` 从「恰两键」变开放 map 属破坏性变更，原地扩会放宽对历史工件的校验 |
+ | `config.v1.json` → **`config.v2.json`** | `critics.*` → `agents.*`；`tiers/models/default_tier`；`review.default_critics/max_critics/allow-partial`；`isolation.peer_artifact_globs` 改「注册表生成 + 配置追加」 | 升 v2；`loadCtx` 对 v1 输入做内存迁移（`critics.gemini→agents.gemini` 等）并告警，`trivium init` 提示一次性升级写入 |
+ 
+ ### 6.3 其它契约文件
+@@ -325,10 +325,9 @@ codex -p "<profile>" exec \
+ #   flag（首选：-m + -c 旗标）→ config_copy（CODEX_HOME=<runDir>/home 副本，0600，跑完即删）→ global
+ # profile 合成（R-6）：--profile-codex（CLI）> agents.codex.profile（配置）> 不传；-m/-c 显式旗标按
+ #   Codex 优先级覆盖 profile 捆绑项（旗标 > profile > config.toml 基值）；CODEX_HOME 副本须整份携带 profiles 段
+-# effort 值域按模型原生枚举（qwen3.8: low|medium|xhigh；deepseek: low|high|max，§3.1），tier→effort 映射来自 tiers
+ ```
+ 
+-**探针清单（M6 必测，`probe.codex`）**：`bin/version`、`exec_headless_read_ok`（哨兵文件首行回显，同 agy 手法）、`json_events`（事件类型与字段图谱）、`trace_source`（工具事件里的**读取路径**可取性——`project_reads` 下限的先决条件）、`readonly_flags`（read-only 沙箱实测 + 负对照：沙箱内写文件必须失败）、`model_override`（flag/config_copy/global 哪级生效）、`effort_flag`（`-c model_reasoning_effort` **按模型逐个实测**：非标准档名——qwen3.8 的 `xhigh`、deepseek 的 `max`——是否被 Codex 接受并真实生效；DeepSeek 的归并映射是否如文档发生；生效档位可否从事件流回读）、`model_catalog`（QWen3.8 所需 `~/.codex/model-catalog.local.json` 与 config.toml `model_catalog_json` 在场性检查，缺则展示样例）、`profile_flag`（`-p/--profile` 被接受且真实生效——用两个指向不同模型的 profile 对比事件流回读，顺带钉死旗标相对 `exec` 的位置）、`profiles`（config.toml `[profiles.*]` 名单回读，供 preflight 校验）、`models`（provider 目录）、`providers_ok`（对 config.toml `model_providers` 登记的**每个**家族 provider——QWen、DeepSeek…——逐个探活；不在场的给该家族可粘贴样例，不代写）、`path_deny`（预期 false，配负对照）、`scratch_paths`、`isolation`（CODEX_HOME 副本可用性）、`auth`（探活缓存，同 13.1 形状）。
++**探针清单（M6 必测，`probe.codex`）**：`bin/version`、`exec_headless_read_ok`（哨兵文件首行回显，同 agy 手法）、`json_events`（事件类型与字段图谱）、`trace_source`（工具事件里的**读取路径**可取性——`project_reads` 下限的先决条件）、`readonly_flags`（read-only 沙箱实测 + 负对照：沙箱内写文件必须失败）、`model_override`（flag/config_copy/global 哪级生效）、`effort_flag`（`-c model_reasoning_effort` 是否真实改变行为/被回读）、`profile_flag`（`-p/--profile` 被接受且真实生效——用两个指向不同模型的 profile 对比事件流回读，顺带钉死旗标相对 `exec` 的位置）、`profiles`（config.toml `[profiles.*]` 名单回读，供 preflight 校验）、`models`（provider 目录）、`providers_ok`（对 config.toml `model_providers` 登记的**每个**家族 provider——QWen、DeepSeek…——逐个探活；不在场的给该家族可粘贴样例，不代写）、`path_deny`（预期 false，配负对照）、`scratch_paths`、`isolation`（CODEX_HOME 副本可用性）、`auth`（探活缓存，同 13.1 形状）。
+ 
+ **要点**：
+ 1. 只读三重中「工具层」由沙箱承担（禁写+禁网络，比 denylist 更硬）；「事后核验层」照旧（指纹 + 事件流写事件扫描）。
+@@ -528,16 +527,16 @@ agents:                            # 由 critics.* 迁移并扩展；键 = Agent
+       low:    {model: GLM-5.3-Flash}
+       medium: {model: GLM-5.3}
+       high:   {model: GLM-5.3}
+-  codex:                           # 新增（键 = Agent id；模型家族开放：QWen/DeepSeek…，当前目录四模型见 §3.1）
++  codex:                           # 新增（键 = Agent id；模型家族开放：QWen/DeepSeek…）
+     vendor: codex
+     bin: null                      # doctor 探测（~/.local/bin/codex 等候选）
+     profile: null                  # 厂商 profile 名（config.toml [profiles.<name>]），null=不传；--profile-codex 逐次覆盖
+     default_tier: medium
+-    models: {qwen3.8-flash: {efforts: [low, medium, xhigh]}, qwen3.8-max: {efforts: [low, medium, xhigh]},
+-             deepseek-flash: {efforts: [low, high, max]}, deepseek-v4-pro: {efforts: [low, high, max]}}   # 原生枚举，探针复核
+-    tiers: {low: {model: deepseek-flash, effort: low},
+-            medium: {model: qwen3.8-flash, effort: medium},
+-            high: {model: deepseek-v4-pro, effort: max}}   # tier→原生 effort 显式映射，可跨模型跨家族
++    models: {qwen3-coder-max: {efforts: [low, high]}, qwen3-coder-plus: {efforts: [low, medium, high]},
++             deepseek-v4: {efforts: [low, medium, high]}, deepseek-v4-lite: {efforts: [low, medium, high]}}   # 多家族目录，探针回填候选
++    tiers: {low: {model: deepseek-v4-lite, effort: low},
++            medium: {model: qwen3-coder-plus, effort: high},
++            high: {model: deepseek-v4, effort: high}}    # 组合可跨模型、可跨家族
+   claude:                          # 新增（Driver 现状 + 审核者能力待探针启用）
+     vendor: anthropic
+     bin: null
+@@ -695,7 +694,6 @@ probe:     # 增 codex / claude 两段（形状见 §7.1/§7.2）；agy/zcode 
+ | v0.1.2 | 2026-09-13 | 增补需求 **R-6**（项目负责人后补）：Codex 支持厂商 profile 运行，编排器透传该值，最终以 `codex -p <配置> exec …` 运行。配置 `agents.codex.profile`（默认）+ CLI `--profile-codex`（逐次覆盖）；profile 定位为「基座」而非档位——tier/精确旗标以 `-m`/`-c` 显式叠加、按 Codex 优先级覆盖 profile 捆绑项，生效模型仍以事件流回读为唯一真相；`run.json.critics.codex.profile` 记录请求值。同步落点：§3.1 事实表、§5.4 路由、§7.1 调用模板与要点、探针清单（`profile_flag`/`profiles`）、§10.1 旗标表、§11 配置示例、§12 异常矩阵、AC-N1 与手工剧本、单元用例。`--profile-codex` 与 trivium 自身 `--profile`（档位表）为两个命名空间，已在文中两处明示。 |
+ | v0.1.3 | 2026-09-13 | 按项目负责人裁定落定**审核者隔离对策：只做检测收口，不引入硬隔离**（git 通道保留能力 + 检测兜底）。§8 重构：新增泄漏通道清单（①工作树历史件 / ②git 对象库 / ③`~/.trivium` 运行目录 / ④`_meta` 结构化 JSON——后三条在现实现存在检测盲区）、措施 a（deny 机器集合补齐并与 BRIEF 第 8 段同源生成）、措施 b（run_command 命令文本字面扫描，命中与路径命中同等处置）、威胁模型定调（防锚定污染、非对抗穿透，目标「泄漏必检 + 成本抬升」）；新增 §8.3 git 通道取舍（`readonly_commands` 为既有 paranoid 旋钮）与 §8.4 已评估备选路线（Seatbelt 沙箱 / 影子工作区 + 红acted git / chmod+串行，含根因记录：同 uid 并行进程同视图，硬隔离仅「不同文件系统视图」或「内核沙箱」两路）。同步落点：run.v2 guard 增 `peer_leak_via_command`、§12 异常矩阵行扩展、AC-N6 与单元/集成用例增命令文本正负例、M7 增收口内容、R25/R26、待拍板 #8、§0 计划期发现更新、§17 回溯清单。 |
+ | v0.1.4 | 2026-09-13 | 按项目负责人修订 **R-1**：「增加 QWen 模型」放宽为「增加 QWen、DeepSeek **等**模型」——Codex 的模型目录开放多家族，以 config.toml `model_providers` 为源。架构影响极小（v0.1.1 已把后缀/前缀与模型名解耦，多家族化恰好印证该裁定）：`agents.codex.models` 多家族目录与 tiers 跨家族组合示例；探针 `provider_qwen_ok` 泛化为 `providers_ok`（逐家族探活）；模型 id 规范写法逐家族记录；异构校验明确「按生效模型判家族、不按 Agent」；AC-N1 升为「至少两个家族各真实审查一次」；预检/异常矩阵/风险 R24/待拍板 #2/PRD 回溯（FR-26）同步多家族口径。 |
+-| v0.1.5 | 2026-09-13 | 按项目负责人指定的四模型并**联网核实其思考模式**，替换示例 slug 为真实目录：`qwen3.8-flash` / `qwen3.8-max` / `deepseek-flash` / `deepseek-v4-pro`。§3.1 新增「模型目录与思考模式」事实表（千问 Codex 接入文档 + DeepSeek 官方 thinking_mode 文档）：①两家 effort 枚举不一致且都不是 `low/medium/high` 字面集——Qwen3.8 为 `low\|medium\|xhigh`（默认 xhigh，无 high），DeepSeek V4 为 `low\|high\|max`（默认 high，无 medium）→ trivium 三档到原生 effort 的映射只在 tiers 显式声明、实现禁止假设统一枚举；②DeepSeek 存在请求值归并映射（`medium/high/xhigh→high` 等）→ `run.v2` 增 `effort_effective` 回读字段；③Qwen3.8 经 Codex 需 `model-catalog.local.json` + `model_catalog_json` 且 provider `wire_api = "responses"`（新版 Codex 不再支持 chat）→ doctor 样例与探针 `model_catalog` 增补；④DeepSeek 思考模式约束（采样参数不生效、带 tools 须回传 `reasoning_content`）列为 M6 观察项。§5.4/§11 目录与 tiers 按真实枚举重写（high 档 = deepseek `max`），`effort_flag` 探针升为按模型逐个实测非标档名（`xhigh`/`max`）与归并行为；来源附录增补三份官方文档。 |
+ 
+ ---
+ 
+@@ -703,5 +701,3 @@ probe:     # 增 codex / claude 两段（形状见 §7.1/§7.2）；agy/zcode 
+ 
+ - Codex CLI 非交互模式（`codex exec`、`--sandbox` 默认 read-only、`--json` JSONL、`-m`、`model_reasoning_effort` 配置键、`--output-schema`、`-C`、`--ephemeral`）：[Non-interactive mode 文档](https://learn.chatgpt.com/docs/non-interactive-mode)、[codex-rs/exec 源码](https://github.com/openai/codex/blob/main/codex-rs/exec/src/lib.rs)、[社区 81 项 flag 实测](https://gist.github.com/alexfazio/359c17d84cb6a5af12bac88fa1db9770)
+ - Claude Code headless（`claude -p`、`--output-format stream-json --verbose`、`--json-schema`、`--model`、`--allowed-tools/--disallowed-tools`、`--max-turns`）：[官方 headless 文档](https://code.claude.com/docs/en/headless)
+-- Qwen3.8 经 Codex 接入（slug 仅 `qwen3.8-max`/`qwen3.8-flash`、`reasoning_effort` 取值 `xhigh/medium/low` 默认 `xhigh`、混合思考可开关、`model-catalog.local.json` + `model_catalog_json`、provider 三方案与 `wire_api = "responses"`）：[千问 AI 平台 Codex 接入文档](https://platform.qianwenai.com/docs/developer-guides/clients-and-developer-tools/codex)、[Qwen3.8-Max 发布博客](https://qwen.ai/blog?id=qwen3.8)、[阿里云百炼深度思考用法](https://help.aliyun.com/zh/model-studio/deep-thinking)（`enable_thinking` 与 Responses API `reasoning.effort`）
+-- DeepSeek 思考模式（`thinking {"type": "enabled|disabled"}` 默认开、强度实际枚举 `low/high/max` 默认 `high`、请求值归并映射 `minimal/low→low`、`medium/high/xhigh→high`、`max/ultra→max`、思考模式下采样参数约束与 `reasoning_content` 回传要求）：[DeepSeek 官方 thinking_mode 文档](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)
+diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts
+index 00d4ad3..374419a 100644
+--- a/src/trivium/adapters/stub.ts
++++ b/src/trivium/adapters/stub.ts
+@@ -20,6 +20,7 @@
+  * 生产路径若检测到这个变量会打**醒目告警**——它能伪造「审查通过」，
+  * 绝不能在真实审查里生效而无人知晓。
+  */
++import { agentById } from '../agents/registry.js';
+ import type { CriticId, CriticRequest, CriticResult } from '../types.js';
+ import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
+ import { warn } from '../util/log.js';
+@@ -80,7 +81,15 @@ export function readStubConfig(env: NodeJS.ProcessEnv = process.env): StubConfig
+ export const encodeStubConfig = (c: StubConfig): string => JSON.stringify(c);
+ 
+ function sampleReview(critic: CriticId, n: number): string {
+-  const prefix = critic === 'gemini' ? 'AGY' : 'GLM';
++  /*
++   * 前缀取自注册表，不用三目兜底（与 A-1 同一形态）。
++   *
++   * 桩适配器是 AC-N5a「新增 critic 后核心流程零改动」的验收夹具——
++   * 它自己写死两家的话，接第三家时桩会产出错误前缀的意见，
++   * 夹具本身就成了泛化的绊脚石。这一处是 `registry-parity` 的
++   * grep 对账抓出来的，两侧计划审查与我的原稿都漏了它。
++   */
++  const prefix = agentById(critic)?.findingPrefix ?? critic.toUpperCase();
+   const findings = Array.from({ length: n }, (_, i) => ({
+     id: `${prefix}-${String(i + 1).padStart(2, '0')}`,
+     severity: i === 0 ? 'blocker' : 'minor',
+diff --git a/src/trivium/archive.ts b/src/trivium/archive.ts
+index e917046..c9d200b 100644
+--- a/src/trivium/archive.ts
++++ b/src/trivium/archive.ts
+@@ -14,7 +14,8 @@
+  */
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+-import type { CriticId, Stage, StageOrVerify } from './types.js';
++import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
++import { CRITICS, type CriticId, type Stage, type StageOrVerify } from './types.js';
+ import {
+   buildArtifactName,
+   buildVerifyName,
+@@ -59,11 +60,21 @@ export const metaDir = (l: ArchiveLayout, stage: StageOrVerify): string =>
+  * 一次运行只算一次，两侧审查文档与裁决件**共用同一个 N**，否则会出现
+  * `-r2-gemini.md` 配 `-r3-glm.md` 这种对不上的组合。
+  */
+-export async function resolveRerunIndex(l: ArchiveLayout, stage: Stage): Promise<number> {
++export async function resolveRerunIndex(
++  l: ArchiveLayout,
++  stage: Stage,
++  driver: AgentId = DEFAULT_DRIVER,
++): Promise<number> {
+   const items = await listStageArtifacts(l, stage);
+   let max = 0;
+   for (const i of items) {
+-    if (i.parsed.role === 'claude') continue; // 原稿与裁决件不决定轮次
++    /*
++     * 跳过**当轮 Driver 的产出**（原稿与裁决件不决定轮次），而非字面 claude
++     * （计划 §2.2 / A-2）。写死时，ZCode 为 Driver 的 `-glm.md` 原稿会被
++     * 当成审查件参与 max 计算，轮次凭空 +1，`gate --check-artifacts`
++     * 按单一轮次过滤时必报缺件。双侧下 Driver 恒为 claude，恰好正确。
++     */
++    if (i.parsed.role === driver) continue;
+     if (i.parsed.rerunIndex > max) max = i.parsed.rerunIndex;
+   }
+   return max + 1;
+@@ -259,6 +270,14 @@ export async function checkStageArtifacts(
+   layout: ArchiveLayout,
+   stage: Stage,
+   rerunIndex: number,
++  /**
++   * 本轮实际入选的审核者。缺省当前启用集合，与重构前的字面两家逐项相同。
++   * 写死后缀时，审核者集合一变 `gate --check-artifacts` 必报假缺件
++   * （计划 §2.1 / B-3）。
++   */
++  critics: readonly Role[] = CRITICS,
++  /** 当轮 Driver：原稿与裁决件的后缀 */
++  driver: AgentId = DEFAULT_DRIVER,
+ ): Promise<ArtifactCheck> {
+   const all = await listStageArtifacts(layout, stage);
+   const thisRound = all.filter((i) => i.parsed.rerunIndex === rerunIndex);
+@@ -277,14 +296,15 @@ export async function checkStageArtifacts(
+     all.some((i) => i.parsed.role === role && i.parsed.kind === kind);
+ 
+   const required: { label: string; ok: boolean }[] = [];
+-  // code 阶段的被审对象是 diff 而非文档，因此没有 -claude.md 原稿
++  // code 阶段的被审对象是 diff 而非文档，因此没有原稿
+   if (stage === 'plan' || stage === 'bug') {
+-    required.push({ label: '原稿 …-claude.md（任一轮次）', ok: hasAnyRound('claude', null) });
++    required.push({ label: `原稿 …-${driver}.md（任一轮次）`, ok: hasAnyRound(driver, null) });
++  }
++  for (const c of critics) {
++    required.push({ label: `审查 …-${c}.md`, ok: hasThisRound(c, null) });
+   }
+-  required.push({ label: '审查 …-gemini.md', ok: hasThisRound('gemini', null) });
+-  required.push({ label: '审查 …-glm.md', ok: hasThisRound('glm', null) });
+   const kind: DispositionKind = stage === 'code' ? 'response' : 'revised';
+-  required.push({ label: `裁决件 …-${kind}-claude.md`, ok: hasThisRound('claude', kind) });
++  required.push({ label: `裁决件 …-${kind}-${driver}.md`, ok: hasThisRound(driver, kind) });
+ 
+   return {
+     ok: required.every((r) => r.ok),
+diff --git a/src/trivium/disposition.ts b/src/trivium/disposition.ts
+index d782a8c..48e5da9 100644
+--- a/src/trivium/disposition.ts
++++ b/src/trivium/disposition.ts
+@@ -8,7 +8,8 @@
+  * 失败时报**具体行号**而不是笼统「解析失败」——否则 Driver 无从修补（R-C）。
+  */
+ import YAML from 'yaml';
+-import type { CriticId, Disposal, DispositionRow, Severity, Stage } from './types.js';
++import { agentByFindingId, findingPrefixAlternation } from './agents/registry.js';
++import { CRITICS, type CriticId, type Disposal, type DispositionRow, type Severity, type Stage } from './types.js';
+ 
+ export interface DispositionFrontMatter {
+   schema: string;
+@@ -93,9 +94,12 @@ function normalizeSeverity(raw: string): Severity | null {
+ 
+ function normalizeSource(raw: string): CriticId | 'fallback' | null {
+   const s = normalizeCell(raw).toLowerCase();
+-  if (s.includes('gemini')) return 'gemini';
+-  if (s.includes('glm')) return 'glm';
++  // 先认 fallback：它不是 Agent，且「fallback」不会与任何 Agent id 冲突
+   if (s.includes('fallback')) return 'fallback';
++  // 按注册表逐项匹配，而非字面 if 链（计划 §2.1）
++  for (const c of CRITICS) {
++    if (s.includes(c)) return c;
++  }
+   return null;
+ }
+ 
+@@ -199,8 +203,8 @@ export function parseDisposition(md: string): ParsedDisposition {
+     if (idCell.length === 0) continue; // 空行，跳过
+     // 只收形如 AGY-01 / GLM-r2-03 / AGY-F01 的编号，避免把小结行当数据；
+     // 但单元格里明明含编号却不在行首（如「见 AGY-01」）要报出来，而不是静默丢弃后让 gate 报「缺裁决」
+-    if (!/^(AGY|GLM)-/.test(idCell)) {
+-      if (/\b(AGY|GLM)-(?:r\d+-)?(?:F)?\d+/.test(idCell)) {
++    if (!new RegExp(`^(?:${findingPrefixAlternation()})-`).test(idCell)) {
++      if (new RegExp(`\\b(?:${findingPrefixAlternation()})-(?:r\\d+-)?(?:F)?\\d+`).test(idCell)) {
+         problems.push({ line: lineNo, message: `第一列「${idCell}」含意见编号但不以编号开头，本行被忽略——编号列只写编号本身` });
+       }
+       continue;
+@@ -220,9 +224,18 @@ export function parseDisposition(md: string): ParsedDisposition {
+     const actIdx = idx('action');
+     const srcIdx = idx('source');
+ 
++    const source = (srcIdx >= 0 ? normalizeSource(cells[srcIdx] ?? '') : null) ?? inferSource(idCell);
++    if (source === null) {
++      // 不静默兜底到任一审核者（A-1）：来源判不出就如实报出来，让 Driver 补「来源」列
++      problems.push({
++        line: lineNo,
++        message: `意见 ${idCell} 的来源无法判定：「来源」列未填或不可识别，且编号前缀不属于任何已登记 Agent`,
++      });
++    }
++
+     rows.push({
+       id: idCell,
+-      source: (srcIdx >= 0 ? normalizeSource(cells[srcIdx] ?? '') : null) ?? inferSource(idCell),
++      source,
+       severity: sevIdx >= 0 ? normalizeSeverity(cells[sevIdx] ?? '') : null,
+       disposal,
+       reason: normalizeCell(cells[idx('reason')] ?? ''),
+@@ -236,13 +249,21 @@ export function parseDisposition(md: string): ParsedDisposition {
+   return { frontMatter, rows, problems };
+ }
+ 
+-/** 编号前缀能反推来源，`来源` 列缺失或写错时兜底 */
+-function inferSource(id: string): CriticId | 'fallback' {
+-  if (/^AGY-F/.test(id) || /^GLM-F/.test(id)) return 'fallback';
+-  return id.startsWith('AGY-') ? 'gemini' : 'glm';
++/**
++ * 编号前缀能反推来源，`来源` 列缺失或写错时兜底。
++ *
++ * **无匹配返回 null，禁止三目兜底**（计划 §2.2 / A-1）。重构前末行是
++ * `id.startsWith('AGY-') ? 'gemini' : 'glm'`——第三家的 `CODEX-03` 会被
++ * 静默归给 glm。双侧下它恰好正确（只有两种可能），是「靠巧合正确」。
++ */
++function inferSource(id: string): CriticId | 'fallback' | null {
++  if (isFallbackId(id)) return 'fallback';
++  const agent = agentByFindingId(id);
++  if (!agent) return null;
++  return CRITICS.includes(agent.id as CriticId) ? (agent.id as CriticId) : null;
+ }
+ 
+ /** 是否为 parse_fallback 的虚拟编号（`<前缀>-F<序号>`，§6.6 规则 8） */
+ export function isFallbackId(id: string): boolean {
+-  return /^(AGY|GLM)-F\d+$/.test(id);
++  return new RegExp(`^(?:${findingPrefixAlternation()})-F\\d+$`).test(id);
+ }
+diff --git a/src/trivium/freeze.ts b/src/trivium/freeze.ts
+index 4b3ef9d..1609514 100644
+--- a/src/trivium/freeze.ts
++++ b/src/trivium/freeze.ts
+@@ -10,7 +10,10 @@
+  */
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
++import { ALL_AGENT_IDS, DEFAULT_DRIVER, isAgentId, type AgentId } from './agents/registry.js';
+ import type { Config, CriticId, Stage } from './types.js';
++import { parseArtifactName, type DispositionKind, type Role } from './naming.js';
++import { parseFrontMatter } from './render.js';
+ import { diffTrees, headSha, statusPorcelain, workTreeHash, diffAgainst } from './util/git.js';
+ import { matchesAnyGlob, sha256, sha256File } from './util/fsx.js';
+ import { diffExcludePrefixes } from './code-stage.js';
+@@ -29,26 +32,90 @@ export interface Snapshot {
+   takenAt: string;
+ }
+ 
++/**
++ * 判定一份角色工件是不是「他人的审查意见」——即对 `critic` 必须屏蔽的内容。
++ *
++ * ## 为什么不能按后缀差集判（计划 §3.1 / D-3）
++ *
++ * 后缀标识**产出方**，不携带**产出角色**。Driver 任意化之后，同一后缀在
++ * 不同运行里可能是 Driver 也可能是审核者：设某主题第 1 轮 ZCode 当 Driver、
++ * Claude 当审核者，产出 `…-claude.md`（一份完整的审查意见）；第 2 轮换回
++ * Claude 当 Driver，按「deny = 全部后缀 − {自身, driver}」计算，`-claude.md`
++ * 因等于 driver 后缀而**整体不禁**——上一轮的审查意见就这样合法地摊在
++ * 另外两个审核者面前，且不会被任何检测命中（命令文本扫描的字面集同源派生，
++ * 一并放行）。
++ *
++ * ## 判据优先级（front-matter 为主）
++ *
++ * 审查件与裁决件的 front-matter 自带 `schema` 与 `role`，是**文件自身携带
++ * 的角色证据**，不依赖任何外部登记——这一点关键：`run.json.artifacts` 只
++ * 收录编排器本轮写出的审查件与 `_meta` 材料，原稿（审查前由人写）与裁决件
++ * （审查后由 Driver 写）根本不在其中，「按登记清单反推」对最需要判定的两类
++ * 文件没有事实来源。
++ */
++async function classifyArtifact(
++  absPath: string,
++  role: Role,
++  kind: DispositionKind | null,
++  driver: AgentId,
++): Promise<'peer-review' | 'own-or-driver' | 'indeterminate'> {
++  // 裁决件由 Driver 产出，是审查员的合法上下文（§9.4 第 4 段），文件名已足以判定
++  if (kind !== null) return 'own-or-driver';
++
++  let fm: Record<string, unknown> | null = null;
++  try {
++    fm = parseFrontMatter(await fs.readFile(absPath, 'utf8'));
++  } catch {
++    fm = null;
++  }
++
++  const schema = typeof fm?.['schema'] === 'string' ? (fm['schema'] as string) : null;
++  if (schema === 'trivium.review.v1') return 'peer-review';
++  if (schema === 'trivium.disposition.v1') return 'own-or-driver';
++
++  /*
++   * 没有可辨识的 schema：原稿就是这种形态（Driver 手写的 Markdown）。
++   * 后缀等于当轮 Driver 时按原稿处理；否则是一份「顶着审核者后缀却不是
++   * 审查件」的可疑文件，判不出就禁——fail-closed 只用在这里，不外扩。
++   */
++  return role === driver ? 'own-or-driver' : 'indeterminate';
++}
++
+ /**
+  * 枚举禁读清单。
+  *
+- * 由两部分组成：
+- *   - 对方**历史**产出：按 `isolation.peer_artifact_globs` 在归档根内扫描，
+- *     但只收**对方**角色的文件（己方历史产出是要给审查员看的，§9.4 第 4 段最后一条）；
++ * 由四部分组成：
++ *   - **他人的审查意见**：`.md` 审查件按 `classifyArtifact` 逐份判定（见上），
++ *     己方历史产出不禁（是要给审查员看的，§9.4 第 4 段最后一条）；
++ *   - 同一批意见的**结构化原文** `_meta/review-<他人>-<runId>.json` 与其
++ *     fallback 编号件——重构前只禁 `.md` 而漏掉这些，提示语禁了一堆、机器
++ *     核验只对其中一部分，是现存的隔离缺口（计划 §2.2 措施 a）；
++ *   - 编排器自身的状态目录 `.trivium/`；
+  *   - 敏感文件：`review.sensitive_globs`。
+  *
+- * 逐个列出真实路径而非给 glob，是为了让轨迹核验与提示语之间可以逐条对账。
++ * 逐个列出真实路径而非给 glob，是为了让轨迹核验与提示语之间可以逐条对账——
++ * BRIEF 第 8 段的禁读清单与 `checkPeerLeak` 的机器集合由**同一份**返回值生成。
+  */
+ export async function enumerateDenyPaths(
+   cfg: Config,
+   projectRoot: string,
+   archiveRoot: string,
+   critic: CriticId,
++  driver: AgentId = DEFAULT_DRIVER,
+ ): Promise<string[]> {
+-  const peerRole: CriticId = critic === 'gemini' ? 'glm' : 'gemini';
+   const out = new Set<string>();
+ 
+-  // 1) 对方历史审查产出
++  /*
++   * 候选 glob 由注册表生成，配置项 `peer_artifact_globs` 降为**追加**项。
++   * 重构前默认值只有两条审核者后缀，`-claude.md` 压根不在候选里——
++   * 这正是上面那个跨轮翻转场景无人拦截的直接原因。
++   */
++  const artifactGlobs = [
++    ...ALL_AGENT_IDS.map((id) => `**/*-${id}.md`),
++    ...cfg.isolation.peer_artifact_globs,
++  ];
++
++  // 1) 他人的审查产出（.md 正文 + _meta 结构化原文）
+   const walk = async (dir: string): Promise<void> => {
+     let entries: import('node:fs').Dirent[];
+     try {
+@@ -63,12 +130,35 @@ export async function enumerateDenyPaths(
+         continue;
+       }
+       const rel = path.relative(projectRoot, abs);
+-      if (!e.name.endsWith(`-${peerRole}.md`)) continue;
+-      if (matchesAnyGlob(rel, cfg.isolation.peer_artifact_globs)) out.add(rel);
++
++      /*
++       * `_meta/` 下的结构化意见与 fallback 编号件：它们是意见**原文**，
++       * 泄漏后果与 `.md` 等同。按文件名里的角色段判定，不读内容。
++       */
++      const metaHit = /^review-([a-z]+)-.+\.(?:json|md)$/.exec(e.name);
++      if (metaHit) {
++        const owner = metaHit[1]!;
++        if (owner !== critic && isAgentId(owner)) out.add(rel);
++        continue;
++      }
++
++      const parsed = parseArtifactName(e.name);
++      if (!parsed) continue;
++      if (parsed.role === critic) continue; // 己方历史产出：合法输入
++      if (!matchesAnyGlob(rel, artifactGlobs)) continue;
++
++      const verdict = await classifyArtifact(abs, parsed.role, parsed.kind, driver);
++      if (verdict === 'peer-review' || verdict === 'indeterminate') out.add(rel);
+     }
+   };
+   await walk(archiveRoot);
+ 
++  /*
++   * 1b) 编排器状态目录：`state.json` 与 lock 不含意见原文，但 `.trivium/`
++   * 是护栏自身的载体，审查员没有任何读它的正当理由。
++   */
++  out.add('.trivium');
++
+   // 2) 敏感文件（就地模式无法「不带入」，只能列进禁读清单，§9.2 末条）
+   const walkSensitive = async (dir: string, depth: number): Promise<void> => {
+     if (depth > 6) return;
+diff --git a/src/trivium/gate.ts b/src/trivium/gate.ts
+index b4dedc2..b34080a 100644
+--- a/src/trivium/gate.ts
++++ b/src/trivium/gate.ts
+@@ -7,7 +7,8 @@
+  */
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+-import type { Config, CriticId, Disposal, DispositionRow, Review, Stage } from './types.js';
++import { DEFAULT_DRIVER, findingPrefixAlternation, type AgentId } from './agents/registry.js';
++import { CRITICS, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
+ import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
+ import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
+ import { dispositionKindForStage } from './naming.js';
+@@ -86,6 +87,11 @@ export interface GateCheckInput {
+   missingSides?: CriticId[];
+   /** 本轮 run_id：裁决件 front-matter 的 run_id 必须与之一致，否则把上一轮的裁决件抄过来也能过 */
+   runId?: string;
++  /**
++   * 当轮 Driver。裁决件后缀与它一致（计划 §9.1）。
++   * 缺省 `claude` 与重构前行为逐项相同，为 M10 的 Driver 任意化预留。
++   */
++  driver?: AgentId;
+ }
+ 
+ export async function checkAdjudication(input: GateCheckInput): Promise<GateCheckResult> {
+@@ -102,8 +108,9 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
+   // 第 2 步：定位本轮裁决件
+   const kind = dispositionKindForStage(stage);
+   const items = await listStageArtifacts(layout, stage);
++  const driver = input.driver ?? DEFAULT_DRIVER;
+   const hit = items.find(
+-    (i) => i.parsed.role === 'claude' && i.parsed.kind === kind && i.parsed.rerunIndex === rerunIndex,
++    (i) => i.parsed.role === driver && i.parsed.kind === kind && i.parsed.rerunIndex === rerunIndex,
+   );
+   if (!hit) {
+     return {
+@@ -112,7 +119,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
+         {
+           code: 'missing_disposition',
+           message:
+-            `找不到第 ${rerunIndex} 轮的裁决件（应为 …-${rerunIndex > 1 ? `r${rerunIndex}-` : ''}${kind}-claude.md）。` +
++            `找不到第 ${rerunIndex} 轮的裁决件（应为 …-${rerunIndex > 1 ? `r${rerunIndex}-` : ''}${kind}-${driver}.md）。` +
+             `${stage === 'code' ? '代码审' : '计划/根因审'}必须产出裁决件，即使全部驳回也要写明「无修改及原因」（§6.6 规则 6）。`,
+         },
+       ],
+@@ -358,7 +365,22 @@ export function renderGateResult(r: GateCheckResult): string {
+ // ─────────────────────── 读取本轮结构化结论 ───────────────────────
+ 
+ /**
+- * 从归档 `_meta/` 读回本轮两侧的结构化结论。
++ * 本轮实际入选的审核者集合。
++ *
++ * 事实来源是 `run.json.critics` 的键集——它记录的是「这一轮真的跑了谁」，
++ * 与当前配置启用了谁无关（历史轮次可能跑过现已停用的 Agent）。
++ * run.json 缺失或键集为空时回落到当前启用集合，保持旧归档可读。
++ *
++ * M7b 引入 `critics_selected` 字段后，这里改读那个字段即可——
++ * 它能区分「计划跑但失败了」与「压根没入选」，键集做不到。
++ */
++function criticsOf(runMeta: RunMeta | null): readonly CriticId[] {
++  const recorded = Object.keys(runMeta?.critics ?? {}) as CriticId[];
++  return recorded.length > 0 ? recorded : CRITICS;
++}
++
++/**
++ * 从归档 `_meta/` 读回本轮各审核者的结构化结论。
+  *
+  * 对 `parse_fallback` 侧会用**当前**解析器重试一次原文。理由：解析降级往往是
+  * 解析器一侧的缺陷（本项目就踩过一次——厂商往结构化输出注入了自己的字段，
+@@ -385,7 +407,16 @@ export async function loadRoundReviews(
+   const { readRunMeta } = await import('./meta.js');
+   const runMeta = await readRunMeta(layout, stage, runId);
+ 
+-  for (const c of ['gemini', 'glm'] as CriticId[]) {
++  /*
++   * 遍历范围取自本轮实际入选的审核者，而非字面两家（计划 §2.1 / B-5）。
++   *
++   * 这是两侧审查里最严重的一处：写死 `['gemini','glm']` 时，第三家的
++   * `review-<c>-<runId>.json` 永远不会被读取——它的意见对 gate **整体不可见**，
++   * 闸门会放行一个从未被裁决的审核者。故障形态是静默漏裁，不是报错。
++   *
++   * `criticsOf` 优先读 run.json 的记录，缺失时回落到当前启用集合（历史工件兼容）。
++   */
++  for (const c of criticsOf(runMeta)) {
+     const p = path.join(dir, `review-${c}-${runId}.json`);
+     try {
+       const raw = JSON.parse(await fs.readFile(p, 'utf8')) as
+@@ -440,7 +471,7 @@ async function readFallbackIds(p: string): Promise<string[]> {
+   }
+   const out: string[] = [];
+   for (const line of text.split('\n')) {
+-    const m = /^-\s+((?:AGY|GLM)-F\d+):/.exec(line.trim());
++    const m = new RegExp(`^-\\s+((?:${findingPrefixAlternation()})-F\\d+):`).exec(line.trim());
+     if (m) out.push(m[1]!);
+   }
+   return out;
+@@ -455,16 +486,23 @@ async function fileExists(p: string): Promise<boolean> {
+   }
+ }
+ 
+-/** 从审查文档 front-matter 读回本轮的 run_id（`gate --check` 不必要求人传） */
++/**
++ * 从审查文档 front-matter 读回本轮的 run_id（`gate --check` 不必要求人传）。
++ *
++ * 跳过的是**当轮 Driver 的产出**（原稿与裁决件不带审查侧的 run_id），
++ * 而不是字面的 claude（计划 §2.1 / B-4）——Claude 作为审核者时，
++ * 写死跳过会让反查恒返回 null。
++ */
+ export async function inferLatestRunId(
+   layout: ArchiveLayout,
+   stage: Stage,
+   rerunIndex: number,
++  driver: AgentId = DEFAULT_DRIVER,
+ ): Promise<string | null> {
+   const items = await listStageArtifacts(layout, stage);
+   for (const i of items) {
+     if (i.parsed.rerunIndex !== rerunIndex) continue;
+-    if (i.parsed.role === 'claude') continue;
++    if (i.parsed.role === driver) continue;
+     const p = path.join(layout.archiveRoot, layout.topic, stage, i.fileName);
+     const fm = parseFrontMatter(await fs.readFile(p, 'utf8'));
+     const runId = fm?.['run_id'];
+diff --git a/src/trivium/naming.ts b/src/trivium/naming.ts
+index 27b0048..fc3e545 100644
+--- a/src/trivium/naming.ts
++++ b/src/trivium/naming.ts
+@@ -7,9 +7,17 @@
+  * 这里只做纯函数的「生成」与「解析」，不碰文件系统——落盘与防覆盖在 archive。
+  * 拆成纯函数是为了让 §17.1 的单元层能在没有真实 CLI 与仓库的情况下覆盖它。
+  */
++import { DEFAULT_DRIVER, suffixAlternation, type AgentId } from './agents/registry.js';
+ import type { CriticId, Stage } from './types.js';
+ 
+-export type Role = 'claude' | CriticId;
++/**
++ * 工件角色后缀 = 已登记的 Agent id（计划 §2.1）。
++ *
++ * 重构前是 `'claude' | CriticId` 两类三值，隐含「Driver 恒为 claude、
++ * claude 从不当审核者」的假设。后缀标识**产出方**，与「发起方」正交，
++ * 因此它的取值域就是全部注册 Agent，与谁当 Driver 无关。
++ */
++export type Role = AgentId;
+ export type DispositionKind = 'revised' | 'response';
+ 
+ /** 主题名的保留后缀：主题不得以这些结尾，否则文件名无法反向解析 */
+@@ -87,11 +95,20 @@ export function localDate(d: Date = new Date()): string {
+   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+ }
+ 
+-/** 生成工件文件名 */
+-export function buildArtifactName(a: ArtifactName): string {
++/**
++ * 生成工件文件名。
++ *
++ * `driver` 指当轮发起方，裁决件后缀只能是它（计划 §2.1 / B-2）。缺省
++ * `claude` 保持旧调用行为不变——M7a 里 Driver 恒为 claude，此参数为
++ * M10 的 Driver 任意化预留。重构前这里写死 `a.role !== 'claude'`，
++ * 非 Claude Driver 的裁决件根本无法落盘。
++ */
++export function buildArtifactName(a: ArtifactName, driver: AgentId = DEFAULT_DRIVER): string {
+   if (a.rerunIndex < 1) throw new Error(`rerunIndex 必须 ≥ 1，收到 ${a.rerunIndex}`);
+-  if (a.kind !== null && a.role !== 'claude') {
+-    throw new Error(`-${a.kind} 是 Driver 裁决件专用后缀，不能用于角色 ${a.role}`);
++  if (a.kind !== null && a.role !== driver) {
++    throw new Error(
++      `-${a.kind} 是 Driver 裁决件专用后缀（当轮 Driver：${driver}），不能用于角色 ${a.role}`,
++    );
+   }
+   const parts = [a.topic];
+   if (a.rerunIndex > 1) parts.push(`r${a.rerunIndex}`);
+@@ -106,8 +123,17 @@ export function buildVerifyName(date: string, topic: string, rerunIndex = 1): st
+   return `${date}-${parts.join('-')}-verify.md`;
+ }
+ 
+-const NAME_RE =
+-  /^(\d{4}-\d{2}-\d{2})-(.+?)(?:-r(\d+))?(?:-(revised|response))?-(claude|gemini|glm)\.md$/;
++/*
++ * 角色后缀集由注册表生成（计划 §2.1 / GLM-05）。
++ *
++ * 写死三值时，一旦归档里出现过 `-codex.md`，该文件对解析器即不存在——
++ * `listStageArtifacts` 跳过它、AC-07 检查器不识别它、gate 找不到它。
++ * 识别集必须始终覆盖全部已登记后缀，**与该 Agent 当前是否启用无关**：
++ * 历史留痕的可读性不能随注册项的启停而消失。
++ */
++const NAME_RE = new RegExp(
++  `^(\\d{4}-\\d{2}-\\d{2})-(.+?)(?:-r(\\d+))?(?:-(revised|response))?-(${suffixAlternation()})\\.md$`,
++);
+ 
+ /** 解析工件文件名。不合规返回 null——调用方据此判定「非本流水线产出」 */
+ export function parseArtifactName(fileName: string): ArtifactName | null {
+@@ -123,12 +149,18 @@ export function parseArtifactName(fileName: string): ArtifactName | null {
+   };
+ }
+ 
+-/** 角色后缀硬约束（§6.2 / PRD 6.3）：审查员不得产 claude，Driver 不得产 gemini/glm */
++/**
++ * 角色后缀硬约束（§6.2 / PRD 6.3）：交互写者只能产出自己的后缀，
++ * 审查员后缀的文件由编排器 `archive` 独占产出。
++ *
++ * `driver` 缺省 `claude`，与重构前语义逐项相同。
++ */
+ export function roleIsAllowedForWriter(
+   writer: 'driver' | CriticId,
+   role: Role,
++  driver: AgentId = DEFAULT_DRIVER,
+ ): boolean {
+-  return writer === 'driver' ? role === 'claude' : role === writer;
++  return writer === 'driver' ? role === driver : role === writer;
+ }
+ 
+ /** 阶段对应的裁决件后缀（§6.3） */
+@@ -136,7 +168,12 @@ export function dispositionKindForStage(stage: Stage): DispositionKind {
+   return stage === 'code' ? 'response' : 'revised';
+ }
+ 
+-/** 某文件名是否可能被 AC-07 的角色后缀检查器误判——_meta/ 内不得出现这类名字 */
++/**
++ * 某文件名是否可能被 AC-07 的角色后缀检查器误判——_meta/ 内不得出现这类名字。
++ *
++ * 后缀集由注册表生成（计划 §2.2 / A-3）：写死三值时，新后缀 `-codex.md`
++ * 落进 `_meta/` 不再被识别。
++ */
+ export function looksLikeRoleArtifact(fileName: string): boolean {
+-  return /-(?:claude|gemini|glm)\.md$/.test(fileName);
++  return new RegExp(`-(?:${suffixAlternation()})\\.md$`).test(fileName);
+ }
+diff --git a/src/trivium/topic.ts b/src/trivium/topic.ts
+index 0863efe..568bdca 100644
+--- a/src/trivium/topic.ts
++++ b/src/trivium/topic.ts
+@@ -6,6 +6,7 @@
+  */
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
++import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
+ import type { Ctx, Stage } from './types.js';
+ import { validateTopic, parseArtifactName } from './naming.js';
+ import { missingArtifact, usageError } from './exit-codes.js';
+@@ -69,13 +70,14 @@ export async function listTopics(ctx: Ctx): Promise<string[]> {
+  * 定位被审对象（设计 §8.3）。
+  *
+  * plan / bug 阶段：`--plan-file` / `--rca-file` 显式指定，
+- * 否则取该阶段下**最新的、非 revised/response 的 `claude` 文件**。
++ * 否则取该阶段下**最新的、非 revised/response 的当轮 Driver 后缀文件**。
+  * 找不到即抛 65 并列出候选——不得静默新建空原稿。
+  */
+ export async function locateSubject(
+   ref: TopicRef,
+   explicitPath: string | null,
+   projectRoot: string,
++  driver: AgentId = DEFAULT_DRIVER,
+ ): Promise<string> {
+   if (explicitPath) {
+     const abs = path.isAbsolute(explicitPath) ? explicitPath : path.join(projectRoot, explicitPath);
+@@ -98,7 +100,9 @@ export async function locateSubject(
+       (c) =>
+         c.parsed !== null &&
+         c.parsed.topic === ref.topic &&
+-        c.parsed.role === 'claude' &&
++        // 原稿由当轮 Driver 产出；写死 'claude' 会让非 Claude Driver
++        // 在第一步就找不到被审对象并退 65（计划 §2.1 / B-1）
++        c.parsed.role === driver &&
+         c.parsed.kind === null,
+     )
+     // 同主题同阶段可能有多轮原稿，取轮次最大者
+@@ -108,7 +112,7 @@ export async function locateSubject(
+     const all = entries.length > 0 ? `\n  该目录下现有文件：${entries.join(', ')}` : '';
+     throw missingArtifact(
+       `在 ${ref.stageDirAbs} 下找不到主题「${ref.topic}」的原稿` +
+-        `（形如 <日期>-${ref.topic}-claude.md）。请先落盘原稿，或用 --plan-file / --rca-file 显式指定。${all}`,
++        `（形如 <日期>-${ref.topic}-${driver}.md）。请先落盘原稿，或用 --plan-file / --rca-file 显式指定。${all}`,
+     );
+   }
+   return path.join(ref.stageDirAbs, candidates[0]!.fileName);
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 0a3f7f1..c80a15b 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -9,22 +9,47 @@
+  * Schema 是运行时真理来源（ajv 校验），本文件是编译期的同一份约定。改一处必须改另一处。
+  */
+ 
++import { agentById, CRITIC_AGENT_IDS, type AgentId } from './agents/registry.js';
++
++export type { AgentId };
++
+ export type Stage = 'plan' | 'code' | 'bug';
+ export type StageOrVerify = Stage | 'verify';
+ /** 发起本次运行的斜杠命令（设计 §7.1）：A 全流程 / B 计划审 / C 代码审 / D 根因审 */
+ export type CommandEntry = 'A' | 'B' | 'C' | 'D';
+ export const COMMAND_ENTRIES: readonly CommandEntry[] = ['A', 'B', 'C', 'D'];
+-export type CriticId = 'gemini' | 'glm';
++/**
++ * 当前可选为审核者的 Agent。
++ *
++ * M7a 仍是两值——与重构前逐项相同（行为等价）。它现在由
++ * `agents/registry.ts` 的 `criticEnabled` 派生而非独立定义：
++ * M8 / M9 启用 codex / claude 时只改注册表，本别名自动跟随。
++ */
++export type CriticId = Extract<AgentId, 'gemini' | 'glm'>;
+ export type Vendor = 'antigravity' | 'zcode';
+ export type Severity = 'blocker' | 'major' | 'minor' | 'nit';
+ export type Confidence = 'high' | 'medium' | 'low';
+ export type Verdict = 'approve' | 'approve-with-nits' | 'request-changes' | 'block';
+ 
+ export const STAGES: readonly Stage[] = ['plan', 'code', 'bug'];
+-export const CRITICS: readonly CriticId[] = ['gemini', 'glm'];
+-export const CRITIC_VENDOR: Record<CriticId, Vendor> = { gemini: 'antigravity', glm: 'zcode' };
+-/** 意见编号前缀，两侧不冲突（设计 §6.5） */
+-export const CRITIC_PREFIX: Record<CriticId, string> = { gemini: 'AGY', glm: 'GLM' };
++
++/*
++ * ── 以下三张表由注册表派生，不再手写字面量（计划 §2.1）──
++ *
++ * 重构前它们是三份独立的字面表，新增一家要改三处、改一漏二不会报错。
++ * 现在唯一来源是 `agents/registry.ts`，`registry-parity.test.ts` 对账。
++ */
++
++export const CRITICS: readonly CriticId[] = CRITIC_AGENT_IDS as readonly CriticId[];
++
++export const CRITIC_VENDOR: Record<CriticId, Vendor> = Object.fromEntries(
++  CRITICS.map((c) => [c, agentById(c)!.vendor as Vendor]),
++) as Record<CriticId, Vendor>;
++
++/** 意见编号前缀，各家不冲突（设计 §6.5） */
++export const CRITIC_PREFIX: Record<CriticId, string> = Object.fromEntries(
++  CRITICS.map((c) => [c, agentById(c)!.findingPrefix]),
++) as Record<CriticId, string>;
+ 
+ // ─────────────────────────── 探针（设计 §3.5） ───────────────────────────
+ 
+@@ -257,7 +282,14 @@ export type Disposal = '接受' | '驳回' | '暂缓';
+ 
+ export interface DispositionRow {
+   id: string;
+-  source: CriticId | 'fallback';
++  /**
++   * `null` = 来源无法判定（`来源` 列缺失或写错，且编号前缀未登记）。
++   *
++   * 重构前这里不可为 null，因为 `inferSource` 用三目兜底保证「总有个值」——
++   * 代价是第三家的编号被静默归给 glm（计划 §2.2 / A-1）。现在无匹配如实记 null，
++   * 由解析器报出 problem，而不是编一个来源出来。
++   */
++  source: CriticId | 'fallback' | null;
+   severity: Severity | null;
+   disposal: Disposal;
+   reason: string;
+diff --git a/src/trivium/agents/registry.ts b/src/trivium/agents/registry.ts
+new file mode 100644
+index 0000000..cfec52e
+--- /dev/null
++++ b/src/trivium/agents/registry.ts
+@@ -0,0 +1,197 @@
++/**
++ * Agent 注册表 —— 全部 Agent 差异的**唯一登记处**（计划 §5.1 / D-1）。
++ *
++ * 归档后缀、意见编号前缀、配置键、探针段、镜头键、禁读矩阵、Hook 字面集
++ * 一律从这里派生。除本文件与各适配器自身外，**任何模块不得出现具体
++ * Agent id / 后缀 / 前缀的字面量**——`test/unit/registry-parity.test.ts`
++ * 以 grep 级对账守着这条（计划 §2.1）。
++ *
++ * ## 为什么需要它
++ *
++ * 重构前，「两侧、角色固定」的假设散落在类型、配置、命名、Hook、Gate 五个
++ * 契约层。计划审查（run 20260913T115435Z）两侧合计查出 12 处硬编码，其中
++ * `gate.ts:388` 的 `['gemini','glm']` 字面循环会让第三家审核者的意见对 gate
++ * **整体不可见**——静默漏裁。人工清单维持不住完整性（原计划稿自称补全 4 处，
++ * 审查又补出 8 处），因此完整性改由注册表派生 + 机器对账保证。
++ *
++ * ## M7a 的边界
++ *
++ * 本里程碑是**行为等价重构**：注册表登记四项，但 `criticEnabled` 只对
++ * gemini / glm 为真，`driverEnabled` 只对 claude 为真——与重构前可选集合
++ * 逐项相同。codex / claude 的审核者能力在 M8 / M9 随适配器一并启用，
++ * Driver 任意化在 M10。登记而不启用，是为了让注册表从第一天起就是完整的
++ * 单一来源（审查意见 AGY-03②）。
++ */
++
++/** 已登记的 Agent。取值同时是归档后缀与配置键命名空间 */
++export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm';
++
++/** 厂商标识。与 `AgentId` 分开：未来同一厂商可能有多个 Agent */
++export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode';
++
++/**
++ * 护栏等级（计划 §7.5）。
++ *
++ * L1 具备 blocking Hook（闸门期写拦截 + Stop 阻断 + 提交完整性锚）；
++ * L2 没有，靠 approve 前置复核、`_meta` 唯一事实来源、`O_EXCL` 防覆盖与
++ * 跑后漂移复算补偿。这是「任意 Agent 可为 Driver」的固有代价，如实分级，
++ * 不伪装成同等级强制。
++ */
++export type GuardLevel = 'L1' | 'L2';
++
++export interface AgentDescriptor {
++  id: AgentId;
++  /** 人读名，进播报与报告 */
++  display: string;
++  vendor: AgentVendor;
++  /**
++   * 归档后缀，标识**产出方**。恒等于 `id`。
++   *
++   * 与「发起方」正交：同一后缀在不同运行中可能是 Driver 也可能是审核者，
++   * 发起方记在 `run.json.driver`。这条正交性是禁读矩阵不能按后缀差集
++   * 生成的根本原因（计划 §3.1 / D-3）。
++   */
++  suffix: AgentId;
++  /** 意见编号前缀，不含连字符。四家互不冲突 */
++  findingPrefix: string;
++  /** 可作为审核者被 headless 拉起 */
++  criticEnabled: boolean;
++  /** 可作为 Driver 发起四条命令 */
++  driverEnabled: boolean;
++  guardLevel: GuardLevel;
++  /** 协议片段落点（Driver 协议 + 审查员身份两段式） */
++  instructionFiles: readonly string[];
++}
++
++/**
++ * 四家注册值。
++ *
++ * 顺序即派生集合的顺序，改动会影响 `ALL_SUFFIXES` 等导出的枚举次序——
++ * 那些次序进了 schema pattern 与错误提示文案，因此不要随意重排。
++ */
++export const AGENTS: readonly AgentDescriptor[] = [
++  {
++    id: 'claude',
++    display: 'Claude Code',
++    vendor: 'anthropic',
++    suffix: 'claude',
++    findingPrefix: 'CLAUDE',
++    criticEnabled: false, // M9 启用
++    driverEnabled: true,
++    guardLevel: 'L1',
++    instructionFiles: ['CLAUDE.md'],
++  },
++  {
++    id: 'codex',
++    display: 'Codex',
++    vendor: 'openai',
++    suffix: 'codex',
++    findingPrefix: 'CODEX',
++    criticEnabled: false, // M8 启用
++    driverEnabled: false, // M10 启用
++    guardLevel: 'L2',
++    instructionFiles: ['AGENTS.md'],
++  },
++  {
++    id: 'gemini',
++    display: 'Antigravity',
++    vendor: 'antigravity',
++    suffix: 'gemini',
++    findingPrefix: 'AGY',
++    criticEnabled: true,
++    driverEnabled: false, // M10 启用
++    guardLevel: 'L2',
++    instructionFiles: ['GEMINI.md'],
++  },
++  {
++    id: 'glm',
++    display: 'ZCode',
++    vendor: 'zcode',
++    suffix: 'glm',
++    findingPrefix: 'GLM',
++    criticEnabled: true,
++    driverEnabled: false, // M10 启用
++    guardLevel: 'L1',
++    instructionFiles: ['AGENTS.md'],
++  },
++];
++
++const BY_ID = new Map<string, AgentDescriptor>(AGENTS.map((a) => [a.id, a]));
++const BY_PREFIX = new Map<string, AgentDescriptor>(AGENTS.map((a) => [a.findingPrefix, a]));
++
++/** 全部已登记的 Agent id（= 全部归档后缀） */
++export const ALL_AGENT_IDS: readonly AgentId[] = AGENTS.map((a) => a.id);
++
++/** 全部意见编号前缀，供 schema pattern 与解析正则生成 */
++export const ALL_FINDING_PREFIXES: readonly string[] = AGENTS.map((a) => a.findingPrefix);
++
++/** 当前可被选为审核者的 Agent（M7a：gemini / glm） */
++export const CRITIC_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.criticEnabled).map(
++  (a) => a.id,
++);
++
++/** 当前可作为 Driver 的 Agent（M7a：claude） */
++export const DRIVER_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.driverEnabled).map(
++  (a) => a.id,
++);
++
++/**
++ * 默认 Driver。
++ *
++ * M7a 里它就是唯一 Driver；M10 之后仍作为 `--driver` 缺省值，
++ * 使未升级的旧入口资产（不带 `--driver` 的调用）行为不变。
++ */
++export const DEFAULT_DRIVER: AgentId = 'claude';
++
++/** 按 id 取注册项。未登记返回 null——**不得**兜底到任意 Agent */
++export function agentById(id: string): AgentDescriptor | null {
++  return BY_ID.get(id) ?? null;
++}
++
++/** 某字符串是否为已登记的 Agent id */
++export function isAgentId(id: string): id is AgentId {
++  return BY_ID.has(id);
++}
++
++/**
++ * 按意见编号前缀反查 Agent。
++ *
++ * **未匹配返回 null，禁止三目兜底**（计划 §2.2 / A-1）。重构前
++ * `disposition.ts` 写的是 `id.startsWith('AGY-') ? 'gemini' : 'glm'`——
++ * 第三家的 `CODEX-03` 会被静默归给 glm，裁决差集按错误来源比对，
++ * gate 可能放过缺口也可能报假缺口。这类「非 A 即 B」的二元兜底是
++ * 泛化期最危险的形态：不抛异常、不退非零码、结论直接是错的。
++ */
++export function agentByFindingPrefix(prefix: string): AgentDescriptor | null {
++  return BY_PREFIX.get(prefix) ?? null;
++}
++
++/**
++ * 从意见编号（如 `AGY-01`、`GLM-r2-03`、`CODEX-F1`）反查来源 Agent。
++ *
++ * 同样在未匹配时返回 null，由调用方决定报错还是归入 fallback。
++ */
++export function agentByFindingId(id: string): AgentDescriptor | null {
++  const dash = id.indexOf('-');
++  if (dash <= 0) return null;
++  return agentByFindingPrefix(id.slice(0, dash));
++}
++
++/**
++ * 生成「前缀交替」正则片段，如 `AGY|GLM|CLAUDE|CODEX`。
++ *
++ * 供 `disposition` 行过滤、`gate` fallback 编号读取、`schemas` 的
++ * pattern 生成共用——三处重构前各写各的字面量，改一漏二。
++ */
++export function findingPrefixAlternation(): string {
++  return ALL_FINDING_PREFIXES.join('|');
++}
++
++/**
++ * 生成「后缀交替」正则片段，如 `claude|codex|gemini|glm`。
++ *
++ * 供角色工件名识别（`naming.looksLikeRoleArtifact`）与 Hook 字面集共用。
++ */
++export function suffixAlternation(): string {
++  return ALL_AGENT_IDS.join('|');
++}
+diff --git a/test/unit/deny-matrix.test.ts b/test/unit/deny-matrix.test.ts
+new file mode 100644
+index 0000000..67b4393
+--- /dev/null
++++ b/test/unit/deny-matrix.test.ts
+@@ -0,0 +1,260 @@
++/**
++ * 禁读矩阵（计划 §3.1 / D-3）。
++ *
++ * 这里守的是一条**只在 Driver 任意化之后才会激活**的隔离破洞：
++ * 后缀标识产出方、不携带产出角色，因此「deny = 全部后缀 − {自身, driver}」
++ * 会把「上一轮某 Agent 当审核者写下的审查意见」误判成「本轮 Driver 的原稿」
++ * 而整体放行。跨轮角色翻转用例（下面第一个）就是那条破洞的回归锚点。
++ *
++ * 另一侧同样重要：**不能误伤**。deny 集合与 `checkPeerLeak` 的核验集合同源，
++ * 一旦把被审对象原稿错误地放进去，审核者正常读取即触发 peer_leak、
++ * 该侧作废重跑——代价不是「少读一份」，是「读了就作废」。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import { enumerateDenyPaths } from '../../src/trivium/freeze.js';
++import { defaultConfig } from '../../src/trivium/config.js';
++
++/** 一份合格的审查件：front-matter 带 review schema，这是角色判定的主判据 */
++function reviewDoc(role: string): string {
++  return [
++    '---',
++    'schema: trivium.review.v1',
++    'topic: 某主题',
++    'stage: plan',
++    `role: ${role}`,
++    'verdict: request-changes',
++    '---',
++    '',
++    '# 计划审查',
++    '',
++    '### 意见一条',
++  ].join('\n');
++}
++
++/** 一份 Driver 原稿：人写的 Markdown，没有 review/disposition schema */
++function draftDoc(): string {
++  return ['# 实施计划', '', '## 1. 背景', '正文若干。'].join('\n');
++}
++
++/** 一份裁决件 */
++function dispositionDoc(role: string): string {
++  return [
++    '---',
++    'schema: trivium.disposition.v1',
++    'topic: 某主题',
++    'stage: plan',
++    `role: ${role}`,
++    'kind: revised',
++    '---',
++    '',
++    '# 计划修订',
++  ].join('\n');
++}
++
++interface Fixture {
++  root: string;
++  archiveRoot: string;
++  cleanup: () => Promise<void>;
++}
++
++async function makeFixture(files: Record<string, string>): Promise<Fixture> {
++  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-deny-'));
++  const archiveRoot = path.join(root, '.reviews');
++  for (const [rel, content] of Object.entries(files)) {
++    const abs = path.join(archiveRoot, rel);
++    await fs.mkdir(path.dirname(abs), { recursive: true });
++    await fs.writeFile(abs, content, 'utf8');
++  }
++  return { root, archiveRoot, cleanup: () => fs.rm(root, { recursive: true, force: true }) };
++}
++
++const deny = (f: Fixture, critic: 'gemini' | 'glm', driver: 'claude' | 'codex' | 'gemini' | 'glm') =>
++  enumerateDenyPaths(defaultConfig(), f.root, f.archiveRoot, critic, driver);
++
++// ───────────────── 1. D-3 的回归锚点：跨轮角色翻转 ─────────────────
++
++test('跨轮角色翻转：上轮当审核者的 claude 审查件必须禁读，本轮 claude 原稿不禁', async () => {
++  /*
++   * 第 1 轮：Driver = ZCode，审核者 = {claude, gemini} → 产出 `-claude.md`（审查意见）
++   * 第 2 轮：Driver = Claude Code                      → 产出 `-claude.md`（原稿）
++   *
++   * 两份文件后缀相同，仅 front-matter 可区分。按后缀差集判，
++   * 第 2 轮的 driver 后缀是 claude，两份都放行——第 1 轮那份审查意见就泄漏了。
++   */
++  const f = await makeFixture({
++    '某主题/plan/2026-09-12-某主题-claude.md': reviewDoc('claude'), // 上轮：审查件
++    '某主题/plan/2026-09-13-某主题-claude.md': draftDoc(), // 本轮：原稿
++  });
++  try {
++    const paths = await deny(f, 'gemini', 'claude');
++
++    assert.ok(
++      paths.some((p) => p.endsWith('2026-09-12-某主题-claude.md')),
++      '上一轮 claude 作为审核者写下的审查意见没有进 deny 集合——这正是 D-3 要修的破洞',
++    );
++    assert.ok(
++      !paths.some((p) => p.endsWith('2026-09-13-某主题-claude.md')),
++      '本轮 Driver 原稿被误禁：审核者读被审对象会触发 peer_leak 作废重跑',
++    );
++  } finally {
++    await f.cleanup();
++  }
++});
++
++// ───────────────── 2. 不误伤：合法输入必须放行 ─────────────────
++
++test('负例：审核者读当轮原稿不触发禁读', async () => {
++  const f = await makeFixture({
++    '某主题/plan/2026-09-13-某主题-claude.md': draftDoc(),
++  });
++  try {
++    for (const critic of ['gemini', 'glm'] as const) {
++      const paths = await deny(f, critic, 'claude');
++      assert.deepEqual(
++        paths.filter((p) => p.includes('某主题-claude.md')),
++        [],
++        `${critic} 侧误禁了被审对象原稿`,
++      );
++    }
++  } finally {
++    await f.cleanup();
++  }
++});
++
++test('负例：Driver 裁决件是审查员的合法上下文，不禁', async () => {
++  const f = await makeFixture({
++    '某主题/plan/2026-09-13-某主题-revised-claude.md': dispositionDoc('claude'),
++  });
++  try {
++    const paths = await deny(f, 'gemini', 'claude');
++    assert.deepEqual(paths.filter((p) => p.includes('revised')), []);
++  } finally {
++    await f.cleanup();
++  }
++});
++
++test('负例：己方历史审查产出不禁（审查员要看自己上轮说过什么）', async () => {
++  const f = await makeFixture({
++    '某主题/plan/2026-09-12-某主题-gemini.md': reviewDoc('gemini'),
++  });
++  try {
++    const paths = await deny(f, 'gemini', 'claude');
++    assert.deepEqual(paths.filter((p) => p.includes('gemini.md')), [], '己方产出被误禁');
++  } finally {
++    await f.cleanup();
++  }
++});
++
++// ───────────────── 3. 正例：他人意见的全部载体 ─────────────────
++
++test('正例：他方审查件的 .md 正文进 deny 集合', async () => {
++  const f = await makeFixture({
++    '某主题/plan/2026-09-13-某主题-glm.md': reviewDoc('glm'),
++  });
++  try {
++    const paths = await deny(f, 'gemini', 'claude');
++    assert.ok(paths.some((p) => p.endsWith('2026-09-13-某主题-glm.md')));
++  } finally {
++    await f.cleanup();
++  }
++});
++
++test('正例：_meta 下的结构化意见原文同样进 deny 集合（措施 a 的缺口修补）', async () => {
++  /*
++   * 重构前只枚举 `*-<对方>.md`，`_meta/review-<对方>-<runId>.json` 不在机器集合里：
++   * 提示语禁了一堆、核验只对其中一部分。用 Read 读它不会命中 peer_leak——
++   * 而它装的是同一批意见的原文。
++   */
++  const f = await makeFixture({
++    '某主题/plan/_meta/review-glm-20260913T000000Z.json': '{"findings":[]}',
++    '某主题/plan/_meta/review-gemini-20260913T000000Z.json': '{"findings":[]}',
++  });
++  try {
++    const paths = await deny(f, 'gemini', 'claude');
++    assert.ok(
++      paths.some((p) => p.endsWith('review-glm-20260913T000000Z.json')),
++      '对方的结构化意见原文没有进 deny 集合',
++    );
++    assert.ok(
++      !paths.some((p) => p.endsWith('review-gemini-20260913T000000Z.json')),
++      '己方的结构化结论被误禁',
++    );
++  } finally {
++    await f.cleanup();
++  }
++});
++
++test('正例：编排器状态目录 .trivium 进 deny 集合', async () => {
++  const f = await makeFixture({ '某主题/plan/2026-09-13-某主题-claude.md': draftDoc() });
++  try {
++    const paths = await deny(f, 'gemini', 'claude');
++    assert.ok(paths.includes('.trivium'), '.trivium 没有进禁读清单');
++  } finally {
++    await f.cleanup();
++  }
++});
++
++// ───────────────── 4. fail-closed 只用在判不出的情形 ─────────────────
++
++test('fail-closed：顶着审核者后缀却无可辨识 schema 的文件，判不出就禁', async () => {
++  const f = await makeFixture({
++    '某主题/plan/2026-09-13-某主题-glm.md': '没有 front-matter 的裸文本',
++  });
++  try {
++    const paths = await deny(f, 'gemini', 'claude');
++    assert.ok(
++      paths.some((p) => p.endsWith('2026-09-13-某主题-glm.md')),
++      '判不出角色的对方后缀文件应当保守禁读',
++    );
++  } finally {
++    await f.cleanup();
++  }
++});
++
++test('fail-closed 不外扩：无 schema 且后缀等于 driver 的，按原稿放行', async () => {
++  /*
++   * v1 历史主题的 task.json 没有 driver 字段，但「v1 时代 Driver 恒为 claude」
++   * 是由 schema 版本可判的确定事实，不是不确定情形——不得对这类主题
++   * 一律 fail-closed，那会把全部历史原稿与裁决件推进 deny 集。
++   */
++  const f = await makeFixture({
++    '旧主题/plan/2026-08-01-旧主题-claude.md': draftDoc(),
++    '旧主题/plan/2026-08-01-旧主题-revised-claude.md': dispositionDoc('claude'),
++  });
++  try {
++    const paths = await deny(f, 'glm', 'claude');
++    assert.deepEqual(
++      paths.filter((p) => p.includes('旧主题')),
++      [],
++      'v1 历史主题的原稿与裁决件被 fail-closed 误伤',
++    );
++  } finally {
++    await f.cleanup();
++  }
++});
++
++// ───────────────── 5. Driver 换家后的对称性 ─────────────────
++
++test('Driver 换成 ZCode 时：glm 原稿放行，claude 审查件对 gemini 仍禁', async () => {
++  const f = await makeFixture({
++    '某主题/plan/2026-09-13-某主题-glm.md': draftDoc(), // ZCode 当 Driver 的原稿
++    '某主题/plan/2026-09-13-某主题-claude.md': reviewDoc('claude'), // Claude 当审核者
++  });
++  try {
++    const paths = await deny(f, 'gemini', 'glm');
++    assert.ok(
++      !paths.some((p) => p.endsWith('某主题-glm.md')),
++      'ZCode 作为 Driver 的原稿被误禁',
++    );
++    assert.ok(
++      paths.some((p) => p.endsWith('某主题-claude.md')),
++      'Claude 作为审核者的意见没被屏蔽',
++    );
++  } finally {
++    await f.cleanup();
++  }
++});
+diff --git a/test/unit/registry-parity.test.ts b/test/unit/registry-parity.test.ts
+new file mode 100644
+index 0000000..9066ce7
+--- /dev/null
++++ b/test/unit/registry-parity.test.ts
+@@ -0,0 +1,217 @@
++/**
++ * 注册表对账（计划 §2.1）。
++ *
++ * 两类断言：
++ *   1. **派生一致性**：types 的三张表、命名正则、前缀正则全部与注册表逐项相符；
++ *   2. **grep 级对账**：`src/` 下除注册表与适配器外，不得出现具体 Agent 字面量。
++ *
++ * 第 2 类是本文件存在的主要理由。计划审查（run 20260913T115435Z）两侧合计
++ * 查出 12 处硬编码，其中 8 处是我在原稿里自称「已补全」之后才被审出来的——
++ * 人工清单维持不住完整性，因此完整性改由机器对账保证：新写的字面量当场红，
++ * 而不是等到接入第五家 Agent 时以难定位的故障复现。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import {
++  AGENTS,
++  ALL_AGENT_IDS,
++  ALL_FINDING_PREFIXES,
++  CRITIC_AGENT_IDS,
++  DEFAULT_DRIVER,
++  agentByFindingId,
++  agentByFindingPrefix,
++  agentById,
++  findingPrefixAlternation,
++  isAgentId,
++  suffixAlternation,
++} from '../../src/trivium/agents/registry.js';
++import { CRITICS, CRITIC_PREFIX, CRITIC_VENDOR } from '../../src/trivium/types.js';
++import { looksLikeRoleArtifact, parseArtifactName } from '../../src/trivium/naming.js';
++import { isFallbackId } from '../../src/trivium/disposition.js';
++import { REPO_ROOT } from '../helpers/fixture.js';
++
++// ─────────────────────── 1. 注册表自身的不变式 ───────────────────────
++
++test('注册表：id / 后缀 / 前缀三者互不重复，且 suffix 恒等于 id', () => {
++  const ids = new Set(AGENTS.map((a) => a.id));
++  const suffixes = new Set(AGENTS.map((a) => a.suffix));
++  const prefixes = new Set(AGENTS.map((a) => a.findingPrefix));
++
++  assert.equal(ids.size, AGENTS.length, 'Agent id 有重复');
++  assert.equal(suffixes.size, AGENTS.length, '归档后缀有重复');
++  assert.equal(prefixes.size, AGENTS.length, '意见前缀有重复——两家共用前缀会让来源反推失效');
++
++  for (const a of AGENTS) {
++    assert.equal(a.suffix, a.id, `${a.id} 的 suffix 必须等于 id`);
++  }
++});
++
++test('注册表：意见前缀不得互为前缀', () => {
++  /*
++   * `agentByFindingId` 按第一个连字符切分，因此前缀本身不含连字符即可区分。
++   * 但若某天出现 `GLM` 与 `GLMX` 这类，人读编号时仍会混淆，提前拦住。
++   */
++  for (const a of AGENTS) {
++    assert.ok(!a.findingPrefix.includes('-'), `${a.id} 的前缀不得含连字符`);
++    for (const b of AGENTS) {
++      if (a.id === b.id) continue;
++      assert.ok(
++        !b.findingPrefix.startsWith(a.findingPrefix),
++        `前缀 ${b.findingPrefix} 以 ${a.findingPrefix} 开头，会造成来源反推歧义`,
++      );
++    }
++  }
++});
++
++test('注册表：默认 Driver 必须是已登记且允许作 Driver 的 Agent', () => {
++  const d = agentById(DEFAULT_DRIVER);
++  assert.ok(d, '默认 Driver 未登记');
++  assert.equal(d!.driverEnabled, true, '默认 Driver 的 driverEnabled 为假');
++});
++
++// ─────────────────────── 2. 派生表与注册表一致 ───────────────────────
++
++test('派生：types 的 CRITICS / CRITIC_VENDOR / CRITIC_PREFIX 与注册表逐项相符', () => {
++  assert.deepEqual([...CRITICS], [...CRITIC_AGENT_IDS]);
++
++  for (const c of CRITICS) {
++    const a = agentById(c)!;
++    assert.equal(CRITIC_VENDOR[c], a.vendor, `${c} 的 vendor 不一致`);
++    assert.equal(CRITIC_PREFIX[c], a.findingPrefix, `${c} 的意见前缀不一致`);
++  }
++});
++
++test('派生：工件名正则认全部已登记后缀', () => {
++  for (const id of ALL_AGENT_IDS) {
++    const parsed = parseArtifactName(`2026-09-13-某主题-${id}.md`);
++    assert.ok(parsed, `工件名解析不认后缀 ${id}——该 Agent 的历史留痕会对解析器整体不可见`);
++    assert.equal(parsed!.role, id);
++    assert.ok(looksLikeRoleArtifact(`2026-09-13-某主题-${id}.md`), `AC-07 检查器不识别后缀 ${id}`);
++  }
++});
++
++test('派生：fallback 编号正则认全部已登记前缀', () => {
++  for (const p of ALL_FINDING_PREFIXES) {
++    assert.ok(isFallbackId(`${p}-F1`), `fallback 编号正则不认前缀 ${p}`);
++  }
++  assert.ok(!isFallbackId('NOPE-F1'), '未登记前缀不该被认成 fallback');
++});
++
++test('派生：交替正则片段与注册表次序一致', () => {
++  assert.equal(findingPrefixAlternation(), ALL_FINDING_PREFIXES.join('|'));
++  assert.equal(suffixAlternation(), ALL_AGENT_IDS.join('|'));
++});
++
++// ─────────────── 3. 反推函数：无匹配返回 null，禁止兜底（A-1） ───────────────
++
++test('反推：未登记的前缀返回 null，而不是兜底到任一 Agent', () => {
++  assert.equal(agentByFindingPrefix('NOPE'), null);
++  assert.equal(agentByFindingId('NOPE-01'), null);
++  assert.equal(agentById('nope'), null);
++  assert.equal(isAgentId('nope'), false);
++});
++
++test('反推：已登记前缀逐项命中正确的 Agent', () => {
++  for (const a of AGENTS) {
++    assert.equal(agentByFindingId(`${a.findingPrefix}-01`)?.id, a.id);
++    assert.equal(agentByFindingId(`${a.findingPrefix}-r2-03`)?.id, a.id);
++    assert.equal(agentByFindingId(`${a.findingPrefix}-F1`)?.id, a.id);
++  }
++});
++
++test('反推：畸形编号不抛异常，返回 null', () => {
++  for (const bad of ['', '-', 'AGY', '-01', '01-AGY']) {
++    assert.doesNotThrow(() => agentByFindingId(bad));
++    assert.equal(agentByFindingId(bad), null, `「${bad}」不该被反推出 Agent`);
++  }
++});
++
++// ─────────────────────── 4. grep 级对账 ───────────────────────
++
++/**
++ * 允许出现 Agent 字面量的文件。
++ *
++ * **加入本表前先想清楚**：注册表的价值在于「新增 Agent 只改注册项」，
++ * 每加一个豁免就削弱一分。适配器与探针按定义就是 Agent 专属实现，它们
++ * 的文件名本身即命名空间；除此之外的豁免应当极少，且要在此写明理由。
++ */
++const LITERAL_ALLOWLIST: readonly string[] = [
++  'agents/registry.ts', // 唯一登记处
++  'adapters/agy.ts', // 厂商专属适配器
++  'adapters/zcode.ts',
++  'adapters/agy-events.ts',
++  'adapters/zcode-trace.ts',
++  'probes/agy.ts', // 厂商专属探针
++  'probes/zcode.ts',
++  'config.ts', // 默认配置：各 Agent 的配置节字面量（M7b 迁 agents.* 后收敛）
++  'hooks.ts', // Hook 字面集与人读话术（M10 随 --agent 泛化）
++  'init.ts', // 安装目标与配置模板
++  'install.ts',
++  'cli.ts', // 旗标名 --model-gemini / --model-glm（M7b 泛化，旧名长期保留为别名）
++  'review.ts', // 适配器工厂接线（M7b 改读注册表）
++  'run-protocol.ts',
++  'doctor.ts', // 逐侧探测的人读输出
++  'preflight.ts',
++  'selftest.ts',
++  'report.ts',
++  'status.ts',
++  'brief.ts', // BRIEF 渲染中的角色话术
++  'types.ts', // CriticId 的字面收窄（M7b 随注册表放开）
++  'schemas.ts',
++  'parse.ts',
++  'topic-args.ts',
++];
++
++/** 逐字符扫描，跳过注释与字符串之外的语法噪声由调用方以正则近似处理 */
++async function collectSourceFiles(root: string): Promise<string[]> {
++  const out: string[] = [];
++  const walk = async (dir: string): Promise<void> => {
++    const entries = await fs.readdir(dir, { withFileTypes: true });
++    for (const e of entries) {
++      const abs = path.join(dir, e.name);
++      if (e.isDirectory()) {
++        await walk(abs);
++        continue;
++      }
++      if (e.name.endsWith('.ts')) out.push(abs);
++    }
++  };
++  await walk(root);
++  return out;
++}
++
++test('grep 对账：白名单外的模块不得出现 Agent id / 前缀字面量', async () => {
++  // 扫的是**工作树源码**而非 dist 产物：对账要在人写的那一份上做
++  const srcRoot = path.join(REPO_ROOT, 'src/trivium');
++  const files = await collectSourceFiles(srcRoot);
++  assert.ok(files.length > 20, `源码扫描没找到足够文件（${files.length}），路径可能不对`);
++
++  // 带引号的字面量才算——注释里提到 Agent 名是说明性文字，不影响行为
++  const idPattern = new RegExp(`['"\`](?:${ALL_AGENT_IDS.join('|')})['"\`]`);
++  const prefixPattern = new RegExp(`['"\`](?:${ALL_FINDING_PREFIXES.join('|')})-`);
++
++  const offenders: string[] = [];
++  for (const abs of files) {
++    const rel = path.relative(srcRoot, abs);
++    if (LITERAL_ALLOWLIST.some((w) => rel === w || rel.endsWith(`/${w}`))) continue;
++
++    const src = await fs.readFile(abs, 'utf8');
++    // 去掉行注释与块注释，只看真正参与求值的代码
++    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
++
++    for (const [lineNo, line] of code.split('\n').entries()) {
++      if (idPattern.test(line) || prefixPattern.test(line)) {
++        offenders.push(`${rel}:${lineNo + 1}  ${line.trim()}`);
++      }
++    }
++  }
++
++  assert.deepEqual(
++    offenders,
++    [],
++    '这些位置写了具体 Agent 字面量，应改读注册表；确属 Agent 专属实现时，' +
++      '把文件加进 LITERAL_ALLOWLIST 并在那里写明理由：\n' + offenders.join('\n'),
++  );
++});

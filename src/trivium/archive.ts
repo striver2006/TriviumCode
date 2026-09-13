@@ -14,7 +14,8 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { CriticId, Stage, StageOrVerify } from './types.js';
+import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
+import { CRITICS, type CriticId, type Stage, type StageOrVerify } from './types.js';
 import {
   buildArtifactName,
   buildVerifyName,
@@ -59,11 +60,21 @@ export const metaDir = (l: ArchiveLayout, stage: StageOrVerify): string =>
  * 一次运行只算一次，两侧审查文档与裁决件**共用同一个 N**，否则会出现
  * `-r2-gemini.md` 配 `-r3-glm.md` 这种对不上的组合。
  */
-export async function resolveRerunIndex(l: ArchiveLayout, stage: Stage): Promise<number> {
+export async function resolveRerunIndex(
+  l: ArchiveLayout,
+  stage: Stage,
+  driver: AgentId = DEFAULT_DRIVER,
+): Promise<number> {
   const items = await listStageArtifacts(l, stage);
   let max = 0;
   for (const i of items) {
-    if (i.parsed.role === 'claude') continue; // 原稿与裁决件不决定轮次
+    /*
+     * 跳过**当轮 Driver 的产出**（原稿与裁决件不决定轮次），而非字面 claude
+     * （计划 §2.2 / A-2）。写死时，ZCode 为 Driver 的 `-glm.md` 原稿会被
+     * 当成审查件参与 max 计算，轮次凭空 +1，`gate --check-artifacts`
+     * 按单一轮次过滤时必报缺件。双侧下 Driver 恒为 claude，恰好正确。
+     */
+    if (i.parsed.role === driver) continue;
     if (i.parsed.rerunIndex > max) max = i.parsed.rerunIndex;
   }
   return max + 1;
@@ -259,6 +270,14 @@ export async function checkStageArtifacts(
   layout: ArchiveLayout,
   stage: Stage,
   rerunIndex: number,
+  /**
+   * 本轮实际入选的审核者。缺省当前启用集合，与重构前的字面两家逐项相同。
+   * 写死后缀时，审核者集合一变 `gate --check-artifacts` 必报假缺件
+   * （计划 §2.1 / B-3）。
+   */
+  critics: readonly Role[] = CRITICS,
+  /** 当轮 Driver：原稿与裁决件的后缀 */
+  driver: AgentId = DEFAULT_DRIVER,
 ): Promise<ArtifactCheck> {
   const all = await listStageArtifacts(layout, stage);
   const thisRound = all.filter((i) => i.parsed.rerunIndex === rerunIndex);
@@ -277,14 +296,15 @@ export async function checkStageArtifacts(
     all.some((i) => i.parsed.role === role && i.parsed.kind === kind);
 
   const required: { label: string; ok: boolean }[] = [];
-  // code 阶段的被审对象是 diff 而非文档，因此没有 -claude.md 原稿
+  // code 阶段的被审对象是 diff 而非文档，因此没有原稿
   if (stage === 'plan' || stage === 'bug') {
-    required.push({ label: '原稿 …-claude.md（任一轮次）', ok: hasAnyRound('claude', null) });
+    required.push({ label: `原稿 …-${driver}.md（任一轮次）`, ok: hasAnyRound(driver, null) });
   }
-  required.push({ label: '审查 …-gemini.md', ok: hasThisRound('gemini', null) });
-  required.push({ label: '审查 …-glm.md', ok: hasThisRound('glm', null) });
+  for (const c of critics) {
+    required.push({ label: `审查 …-${c}.md`, ok: hasThisRound(c, null) });
+  }
   const kind: DispositionKind = stage === 'code' ? 'response' : 'revised';
-  required.push({ label: `裁决件 …-${kind}-claude.md`, ok: hasThisRound('claude', kind) });
+  required.push({ label: `裁决件 …-${kind}-${driver}.md`, ok: hasThisRound(driver, kind) });
 
   return {
     ok: required.every((r) => r.ok),
