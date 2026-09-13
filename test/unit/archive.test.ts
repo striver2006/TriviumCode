@@ -164,6 +164,42 @@ test('阶段最低工件集：plan 缺件时报出缺什么', async () => {
   assert.equal(c.ok, true, `仍缺：${c.missing.join(', ')}`);
 });
 
+test('未登记的审查件被查出来：堵住「把伪审查件搬进阶段目录」', async () => {
+  /*
+   * 审查意见 GLM-03。Write 侧收窄放开 doc/ 之后，`cp -R doc/ .reviews/t/plan/`
+   * 这类**全程不含角色后缀字样**的搬运不会命中 Hook 的任何字面规则，
+   * 而 hook-pre-commit 的 git 锚对新增未跟踪文件失明，此前完全没有兜底。
+   *
+   * 这道核对是**路径信号**：不问文件怎么进来的，只问它在不在 run.json 的登记内。
+   */
+  const l = await tmpLayout();
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', rerunIndex: 1, content: 'a', date: DATE });
+  const g = await writeArtifact({ layout: l, stage: 'plan', role: 'gemini', writer: 'gemini', rerunIndex: 1, content: 'b', date: DATE });
+  const z = await writeArtifact({ layout: l, stage: 'plan', role: 'glm', writer: 'glm', rerunIndex: 1, content: 'c', date: DATE });
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'd', date: DATE });
+
+  const recorded = new Set(
+    [g, z].map((a) => path.relative(l.archiveRoot, path.join(l.archiveRoot, l.topic, 'plan', a.fileName))),
+  );
+
+  // 登记齐全时照常通过
+  let c = await checkStageArtifacts(l, 'plan', 1, undefined, undefined, recorded);
+  assert.equal(c.ok, true, `不该有缺口：${c.missing.join(', ')}`);
+
+  // 手工塞一份没登记的审查件进阶段目录（模拟 cp -R 搬运）
+  const smuggled = path.join(l.archiveRoot, l.topic, 'plan', `${DATE}-登录重构-r9-gemini.md`);
+  await fs.writeFile(smuggled, '# 伪造的审查意见\n');
+
+  c = await checkStageArtifacts(l, 'plan', 1, undefined, undefined, recorded);
+  assert.equal(c.ok, false, '未登记的审查件必须被查出来');
+  assert.match(c.missing.join(' '), /未登记的审查件/);
+  assert.match(c.missing.join(' '), /r9-gemini\.md/);
+
+  // 不传登记清单时跳过该项（向后兼容）
+  const skipped = await checkStageArtifacts(l, 'plan', 1);
+  assert.equal(skipped.ok, true, '没提供登记清单就不该据此判失败');
+});
+
 test('阶段最低工件集：code 三件套不含 -claude.md 原稿，裁决件用 -response', async () => {
   const l = await tmpLayout();
   await writeArtifact({ layout: l, stage: 'code', role: 'gemini', writer: 'gemini', rerunIndex: 1, content: 'a', date: DATE });

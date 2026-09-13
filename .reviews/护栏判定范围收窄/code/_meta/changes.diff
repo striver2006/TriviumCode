@@ -1,0 +1,503 @@
+# trivium changes.diff
+# run_id: 20260913T164857Z
+# base: HEAD
+# head: 7f5ca77bf791884ac22accc99896ad6b36c267f4
+# files: 4
+#   CLAUDE.md
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   src/trivium/hooks.ts
+#   test/unit/hooks.test.ts
+diff --git a/CLAUDE.md b/CLAUDE.md
+index efbfdc0..50a8dda 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -9,8 +9,10 @@
+ - 四条命令是唯一入口：`/dual-run`（全流程）、`/dual-review-plan`、
+   `/dual-review-code`、`/dual-review-bug`。**不要自行调用 `agy` 或 `zcode`**——
+   并行、超时、指纹核验、防覆盖命名都在编排器内，绕过它会失去全部保障。
+-- **禁止产出 `*-gemini.md` 或 `*-glm.md`。** 那是审查员的角色后缀，
++- **禁止在归档根（`.reviews/`）内产出 `*-gemini.md` 或 `*-glm.md`。** 那是审查员的角色后缀，
+   Hook 会拦下你的写入。你的产出后缀是 `-claude`。
++  归档根**之外**的同形态文件不拦（`doc/` 下的设计稿等）——它们不进入 `gate` 的读取面，
++  拦它只有误锁成本。判定按词法路径与 realpath 真实路径的并集算，软链两个方向都拦得住。
+ - 审查意见必须**逐条**裁决（接受 / 驳回 / 暂缓 + 理由，接受要写落点）。
+   禁止静默忽略。裁决未齐备时 Hook 会阻止你收工。
+ - 闸门期（等待人工审批）不得修改业务文件。想继续请让用户走 `/dual-approve`。
+@@ -22,10 +24,12 @@
+ - Hook 对 Edit / Write 精确拦截；对 Bash 只按写命令形态做**启发式**拦截
+   （重定向、`tee`、`sed -i`、`rm/mv/cp`、`git checkout` …），不是完备的——别去绕它，
+   绕过去的改动同样会被跑后复算判成漂移。
+-- Bash 拦截有一种**已知误拦**：判定在未剥 heredoc 的原文上做，命令正文里只要出现
+-  `-gemini.md`、`_meta`、`task.json`、`state.json`、`.trivium` 字样就会命中，
+-  哪怕实际写的是别的文件——**任何把这些名字写进 Bash 命令文本的场合都会撞上**，
+-  包括 commit message。
++- Bash 拦截仍有**已知误拦**，但 2026-09-14 收窄过一次：判定在未剥 heredoc 的原文上做，
++  命令正文里出现 `_meta`、`task.json`、`state.json`、`.trivium` 字样一律命中；
++  角色后缀（`-gemini.md` / `-glm.md`）改为**宽介入、严放行**——整条命令出现即介入，
++  但当全部含该后缀的 token 都是干净纯路径、当前目录可推断、解析后在归档根外，
++  且同段没有别的 token 指进归档根时，放行（`git mv doc/a-glm.md doc/b.md` 因此可用）。
++  **commit message 仍会撞上**：它含空格与引号，不算干净纯路径。
+   **出口是改用 Write / Edit 工具落文件，提交说明写进文件再 `git commit -F <文件>`**
+   （精确判定，不看字面），不是想办法绕过判定。
+   这个误拦是刻意接受的取舍，不要当成 bug 去「修」。
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 4ae19ea..b8a7cac 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.2.5
++> - **当前版本**：v1.2.6
+ > - **状态**：**已定稿并实现完成(Completed)** — 2026-09-11。M0～M5 全部里程碑达成，§16.3 十项交付物齐备；
+ >   `npm run check` 全绿（712 用例）、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   本文继续作为**唯一实现依据**：后续任何与本文不一致的改动，仍须先回溯修订本文（16.2 纪律 1）
+@@ -947,7 +947,9 @@ stateDiagram-v2
+    - 若存在**本会话**触发的 `awaiting_approval` 闸门（`state.json` 记录触发时的 `session_id`，与 Hook 输入的 `session_id` 比对）、闸门未超过 `gate.approval_lock_ttl_h`（默认 24h），且目标路径**不在**归档根内 → 返回 `permissionDecision: "deny"`，`permissionDecisionReason` 说明「B/C/D 闸门未审批，禁止修改业务文件；请先 `/dual-approve`，或 `/dual-abandon` 放弃」。
+    - 其它会话的闸门、或已过 TTL 的闸门：**不加锁**，仅由 `hook-session-start` 以 `additionalContext` 提醒（PRD 4.4 第 3 条约束的是流水线不得自动继续，不是开发者在同一仓库的其它编辑；审核意见 RV-05）。
+    - 闸门 `session_id` 为 **null** 时按「本会话」处理，照样加锁。会话 id 只能靠 `--session-id` / `CLAUDE_SESSION_ID` 传入，而 Claude Code 不向 Bash 工具注入后者，skill 正常走一遍闸门几乎总是 null；若把 null 判为「不加锁」，写锁与 `hook-stop` 在默认路径上就从未生效过（实测本仓库 `state.json` 的真实闸门全是 null）。拿不准是不是别人的会话时宁可多拦，TTL 兜底。
+-   - 若目标路径以 `-gemini.md` / `-glm.md` 结尾 → 一律 `deny`（主脑不得伪造审查文件，PRD 6.3；该规则不受会话与 TTL 限制）。
++   - 若目标路径以审核者角色后缀（`-gemini.md` / `-glm.md`，取值由 Agent 注册表派生）结尾**且落在归档根内** → 一律 `deny`（主脑不得伪造审查文件，PRD 6.3；该规则不受会话与 TTL 限制）。
++     判定「落在归档根内」时，**词法路径与 realpath 解析后的真实路径任一在归档内即算在内**——前者拦「归档内软链指向归档外」，后者拦「归档外软链指向归档内」；`archiveRoot` 须做对称 realpath 规范化（macOS 的 `/var` → `/private/var`），解析失败时回退为纯词法比较且不得让异常外泄到 Hook 兜底分支（那会变成静默放行）。
++     **归档根之外的同形态文件不拦**：`doc/` 下沿用「日期-主题-角色」命名的设计文档不进入 `gate` 的任何读取面（`loadRoundReviews` 只读 `_meta/review-<critic>-<runId>.json`、`checkAdjudication` 只取 `listStageArtifacts` 的结果），拦它没有防御价值，只有误锁成本。
+    - 其它情况返回 exit 0（不干预正常权限流）。
+ 
+ **解除方式**：开发者执行 `/dual-approve --topic X --stage plan`（或 `--reject --reason …`）或 `/dual-abandon --topic X`。审批结果写入 `task.json` 的 `approvals[]`（含时间、结论、理由），状态切换为 `approved` / `rejected` / `abandoned`；三种结论**均解除业务写锁**。拒绝或放弃时保留全部已有工件（PRD 第 10 章）；拒绝后 Driver 可按开发者意见改写 `.reviews/` 内的修订件（重跑 `gate --check`），但流水线不得自动进入编码/改码/修复，该约束由命令模板与 `hook-stop` 承担。
+@@ -1848,6 +1850,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
+ | v1.2.3 | 2026-09-12 | 按**整体审核 + 四梯队双审修复**回补，使本文与实现重新一致（16.2 纪律 1；留痕见 `.reviews/审核修复/`）。**8.5 Hook 契约重写**：注入的 Hook 由四个增至**五个**，新增 `hook-pre-bash`（挂全部 Bash 事件，按写命令形态启发式拦截；编排器独占对象任何时候都 deny，其余写命令仅闸门期 deny；判定刻意在未剥 heredoc 的原文上进行）；`hook-pre-commit` **删去 `if: Bash(git commit:*)`**——前缀匹配拦不住 `sh -c 'git commit …'`，改由进程内 `looksLikeCommit` 过滤并判提交是否打在本项目上（GLM-02）；每条命令外层 `sh -c` 守卫由「检测不到 wrapper 就退 0」改为**两分支**——无 `config.yaml` 退 0、有 `config.yaml` 但 wrapper 缺失退 2，否则一条 `rm -rf` 打在 wrapper 上即可无声解除全部护栏（AGY-03）；JSON 示例改为与 `hooks.json` 逐字同源。**8.6 步骤 6 新增 entry 分流**：`gate --check` 通过后按 run 元数据的 entry 决定去向，B/C/D 迁入 `awaiting_approval` 而非一律回 `idle`，否则这三条命令的人工停点被丢掉（AGY-02）。**7.1 / 7.4 命令规格校正**：B/C/D 可选输入补 `--only` / `--allow-single`（它们曾被吞进审查焦点，AGY-04），`/dual-abandon` 补 `--stage`，`/dual-approve` 与 `/dual-abandon` 补「`running` 闸门须先 `review --cancel`」；skill 模板的 `topic resolve` 改用 `--` 终止符传原始参数串（`--args` 与以 `--topic` 开头的正文有歧义），`review --start` 删去从未实现的 `--run-context`、改为实际的 `--entry` 参数集，`argument-hint` 补齐五个旗标。**13.1 配置对齐实现**：新增 `review.allow_single_flag` 与顶层 `probe_ttl_days`，`sensitive_globs` 补 `**/.env*`（glob 的 `*` 不跨 `/`），`never_skip_globs` 补 `**/requirements*.txt` 与 `.gitlab-ci.yml`，`readonly_commands` 由 9 项补至 13 项。**17.2 故障注入表**补六条 `hook-pre-bash` 与守卫用例。另：16.1 M2「Hook 三件套」改五件套，用例数 458 → 712。**两项已知且不打算改的取舍就地记载**（项目负责人拍板「不改，文档说明即可」）：①`hook-pre-bash` 在未剥 heredoc 原文上判定带来的**误拦**——正文含保护路径字面量即命中，出口是改用 Write / Edit 工具，收窄规则会把判定推回 AGY-01 那类整体失防的形态（§8.5 行为表、QUICKSTART §5、CLAUDE.md 片段）；②人工审批**不是机械保证**——`approve` 不校验调用来源，确认码路线已试过并撤销，实际保障是留痕与 `approvals[]` 事后对账（QUICKSTART 新增 §5.1，RUNBOOK 原有信任边界段，BACKLOG 的 GLM-01 据此**保持 open**）。 |
+ | v1.2.4 | 2026-09-12 | **RV-B1：`git commit` 退出 `hook-pre-bash` 的保护集扫描**（项目负责人批准实施）。起因是上一版记载的误拦在实践中反复触发——本项目的 commit message 天然高频提及归档文件名。论据：`git commit` 不改工作树，参数是 message、pathspec 与 `-F` 读的文件，没有一个是被写入的路径；而「用 commit 把篡改洗进 HEAD」由 `hook-pre-commit` 的留痕完整性三条锚专管，`bashTargetsProtected` 对 commit 做字面扫描的防护增量接近零。**采用窄版**：豁免只跳过 `bashTargetsProtected`，`WRITE_LIKE` 未动，故 commit 仍算写命令形态、控制流照常落到闸门写锁分支——**闸门期提交仍被拦，BACKLOG 中「等人工审批期间是否允许提交」那个待决设计问题未被触发**。豁免设三个前置条件（整条命令只有一个有效段 / 不含命令替换 / 不含 heredoc 标记），分别封堵 `git commit -m x && rm …-gemini.md`、`git commit -m "$(rm …)"`、`git commit -F - <<'EOF'` 三条夹带路径。落点：8.5 行为表、17.2 故障注入表补四条、`hooks.ts` 新增 `isExemptCommitCommand`（复用既有 `parseGitSegment`，不另写判定）、`test/unit/hooks.test.ts` 新增四组用例。附带澄清一处既有边界：`git add` 本就不在 `WRITE_LIKE` 内，与本次豁免无关。 |
+ | v1.2.5 | 2026-09-12 | **RV-B1 撤回**（双审 `20260912T134136Z`，Gemini `block` 4 blocker、ZCode `request-changes` 2 blocker + 3 major，11 条意见全部接受、零驳回；留痕见 `.reviews/RV-B1-commit豁免/code/`）。v1.2.4 的三个前置条件**至少漏掉五条夹带路径**，其中三条已实机验证放行：①**换行**——分段正则不含 `\r\n`，`git commit -m x` 换行后接 `rm …-gemini.md` 被判单段而豁免，shell 却把第二行当独立命令执行；②**附着重定向**——重定向符不是分段字符，`git commit -m x > …-glm.md` 可截断既有审查文档、或在 `_meta/` 下制造损坏的 review JSON（`gate --check` 唯一事实来源），此条为 ZCode 独有发现；③**文本提及**——`echo 记得 git commit > …/_meta/review-glm-R1.json` 根本不是提交命令，只因 `parseGitSegment` 的兜底正则见 `git` 与 `commit` 同现即按提交论而获豁免。另有 `-c core.editor=` / `GIT_EDITOR=` 经 shell 执行、进程替换 `<(…)` 两条未实测但机制成立。**根因**：`parseGitSegment` 是为 `hook-pre-commit` 的「宁可错拦」设计的（任意位置找 `git`、非字面量按提交论、兜底正则），复用到放行侧后保守方向翻转为「宁可错放」——问题在复用方向而非复用本身。**撤回而非再收窄**：原判定 fail-closed，豁免把它变成需要穷举危险形态的 fail-open，而 shell 攻击面穷举不完；误拦有零成本出口（Write / Edit 落文件、`git commit -F <文件>`），漏拦则击穿「独占对象任何时候都 deny」且无跑后兜底，收益风险严重不对称。落点：`hooks.ts` 删除 `isExemptCommitCommand` 与 `HAS_SUBSTITUTION`、恢复角色后缀整串前置扫描，并在 `parseGitSegment` 注释中写明「本函数保守方向是拦截，禁止复用于任何放行/白名单判定」；`test/unit/hooks.test.ts` **不删反增**，五类形态全部转为「任何时候不得绕过保护集」的负例（714/714 通过，三条实测由放行转为拦截）；8.5 行为表与 17.2 故障注入表、CLAUDE.md 与 snippet、QUICKSTART §5 同步撤回豁免表述。**教训记此**：RV-B1 的动机是降低 Driver 自身被误拦的摩擦，而 BACKLOG 原条目里已亲手写明「不应在降低 Driver 自身摩擦的动机下修改护栏」——写下了，仍然做了，双审兜住了。 |
++| v1.2.6 | 2026-09-14 | **护栏判定范围收窄**（计划双审 `20260913T162911Z`，r2；Gemini 3 条含 1 blocker、ZCode 解析降级后含 4 条实质意见含 2 blocker，全部接受；留痕见 `.reviews/护栏判定范围收窄/`）。8.4 第 3 层的角色后缀判定由「路径以 `-gemini.md` / `-glm.md` 结尾即一律 deny」收窄为「**且落在归档根内**才 deny」。动机：`doc/` 下沿用「日期-主题-角色」命名的设计文档被同一条规则锁死，本仓库的两份设计稿与 `reference/` 下数份历史答卷长期无法编辑，只能人工绕开；而归档根之外的同形态文件不进入 `gate` 的任何读取面（`loadRoundReviews` 只读 `_meta/review-<critic>-<runId>.json`、`checkAdjudication` 只取 `listStageArtifacts` 的结果），拦它没有防御价值。**收窄的是作用域，不是判定强度**：归档内的行为逐字不变。同时补齐三条此前未言明的边界——①「落在归档内」取**词法路径与 realpath 真实路径的并集**（分别拦「归档内软链指向外」与「归档外软链指向内」），`archiveRoot` 做对称 realpath 规范化（macOS `/var` → `/private/var`）；②解析失败回退纯词法比较且**异常不得外泄**到 Hook 兜底分支（`runHook` 的 catch 返回 ALLOW、`EXIT.FAIL=1` 按 `hooks.json` 约定亦为非阻断，两条都是静默放行）；③Bash 侧同步收窄时采「**宽介入、严放行**」——介入条件与现行整条命令正则同宽，放行须逐条举证（全部含该字面量的 token 均为干净纯路径、cwd 可推断、解析后在归档外，且同段其余 token 不得解析进归档根，后者拦 `cp doc/x-gemini.md .reviews/t/plan/` 这类搬运式伪造）。RV-B1 的五类负例连同新增形态一并锁为准入硬条件。 |
+ 
+ ---
+ 
+diff --git a/src/trivium/hooks.ts b/src/trivium/hooks.ts
+index e8431f9..ee77913 100644
+--- a/src/trivium/hooks.ts
++++ b/src/trivium/hooks.ts
+@@ -27,7 +27,8 @@
+  */
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+-import type { Ctx, Stage } from './types.js';
++import fsSync from 'node:fs';
++import { CRITICS, type Ctx, type Stage } from './types.js';
+ import { EXIT } from './exit-codes.js';
+ import { listOpenGates, readState, shouldLockWrites, StateCorruptError } from './state.js';
+ import { bumpStopBlockCount } from './lock.js';
+@@ -82,9 +83,99 @@ export function isInsideArchive(targetPath: string, projectRoot: string, archive
+   return rel.length > 0 && !rel.startsWith('..') && !path.isAbsolute(rel);
+ }
+ 
+-/** 是否试图伪造审查文件（§10.4 / PRD 6.3）。该规则不受会话与 TTL 限制 */
+-export function isForgedRoleFile(targetPath: string): boolean {
+-  return /-(?:gemini|glm)\.md$/.test(path.basename(targetPath));
++/**
++ * 文件名是不是审核者角色工件的形态。**只问形态，不问位置。**
++ *
++ * 后缀集由 Agent 注册表派生，不写死字面量（`registry-parity` 的 grep 对账守着）。
++ */
++export function hasCriticRoleSuffix(fileName: string): boolean {
++  return new RegExp(`-(?:${CRITICS.join('|')})\\.md$`).test(path.basename(fileName));
++}
++
++/**
++ * 目标是否落在归档根内——**词法路径与真实路径取并集**（设计 §8.4，2026-09-14 收窄）。
++ *
++ * 两个方向的软链都要拦，缺一不可：
++ *   · 词法在归档内、realpath 指向归档外 → 仍算归档内。否则「在归档里放一个指向 /tmp
++ *     的软链」就能让对归档内路径的写入被放行。
++ *   · 词法在归档外、realpath 落在归档内 → 也算归档内。否则 `doc/x-glm.md` 做成指向
++ *     真审查件的软链，Write 会沿链覆写它。
++ *
++ * `archiveRoot` 必须**对称**做 realpath：macOS 的 `/var` 是指向 `/private/var` 的系统
++ * 软链，只解一边会把同一个位置判成两处（`adapters/base.ts` 的 `normalizeAbs` 抹平
++ * `/private` 前缀正是同一个坑）。
++ *
++ * **本函数不抛异常。** 解析失败一律回退到纯词法比较——异常若外泄到 `runHook`，
++ * 外层 catch 会 `return ALLOW`，或走 `EXIT.FAIL=1`（`hooks.json` 约定「1 = 非阻断」），
++ * 两条路径都是**静默放行**，与本判定的 fail-closed 取向正相反。
++ */
++export function isInsideArchiveResolved(
++  targetPath: string,
++  projectRoot: string,
++  archiveRoot: string,
++): boolean {
++  const lexical = path.isAbsolute(targetPath)
++    ? targetPath
++    : path.resolve(projectRoot, targetPath);
++
++  // 词法先判：归档内的软链指向归档外，也算归档内
++  if (isInside(archiveRoot, lexical)) return true;
++
++  const root = safeRealpath(archiveRoot);
++  if (root === null) return false; // 归档根不可解析 → 退化为纯词法比较（等价于现状）
++
++  return isInside(root, resolveExisting(lexical));
++}
++
++/** realpath，失败返回 null。绝不抛 */
++function safeRealpath(p: string): string | null {
++  try {
++    return fsSync.realpathSync(p);
++  } catch {
++    return null;
++  }
++}
++
++/**
++ * 尽力解析绝对路径：逐级向上回溯到**首个真实存在的祖先**做 realpath，
++ * 再把其余部分拼回去。
++ *
++ * 不能因为 `ENOENT` 就下结论——`doc/new_sub/x-glm.md` 这类新建子目录的合法写入、
++ * 以及归档根尚未创建的测试夹具，都会走到这里。直接判「在归档内」会把它们全锁死。
++ */
++function resolveExisting(abs: string): string {
++  const tail: string[] = [];
++  let cur = abs;
++
++  for (let i = 0; i < 64; i++) {
++    const real = safeRealpath(cur);
++    if (real !== null) return tail.length === 0 ? real : path.join(real, ...tail);
++
++    const parent = path.dirname(cur);
++    if (parent === cur) break; // 到根了
++    tail.unshift(path.basename(cur));
++    cur = parent;
++  }
++  return abs; // 一路解析不出（不该发生）→ 用词法路径
++}
++
++/**
++ * 是否试图伪造审查文件（§10.4 / PRD 6.3）。该规则不受会话与 TTL 限制。
++ *
++ * = 形态像审查件 **且** 落在归档根内。归档根之外的同形态文件不拦——它们不进入
++ * `gate` 的任何读取面（`loadRoundReviews` 只读 `_meta/review-<critic>-<runId>.json`，
++ * `checkAdjudication` 只取 `listStageArtifacts` 的结果），拦它没有防御价值，
++ * 只会锁死 `doc/` 下沿用同一命名规范的设计文档。
++ */
++export function isForgedRoleFile(
++  targetPath: string,
++  projectRoot: string,
++  archiveRoot: string,
++): boolean {
++  return (
++    hasCriticRoleSuffix(targetPath) &&
++    isInsideArchiveResolved(targetPath, projectRoot, archiveRoot)
++  );
+ }
+ 
+ /**
+@@ -117,7 +208,17 @@ const IMMUTABLE_META = /^(?:review-.+\.(?:json|fallback-items\.md)|brief-.+\.md|
+ async function immutableChangeReason(projectRoot: string, relFromRoot: string): Promise<string | null> {
+   const base = path.basename(relFromRoot);
+   const inMeta = relFromRoot.split('/').includes('_meta');
+-  if (isForgedRoleFile(base)) return '审查文档只能由编排器落盘，改动即伪造';
++  /*
++   * 这里用**纯后缀检查**，不做位置判定（审查意见 AGY-03）。
++   *
++   * 调用方 `deletedOrModifiedTracked` 传进来的范围本就是 `archiveRel`——能进
++   * `tracked.modified` 的文件天然在归档根内，再判一次位置是多余的，还会给每次
++   * `git commit` 加上一轮 realpath I/O。
++   *
++   * 也正因如此，这里**不能**换成组合判定 `isForgedRoleFile`：`base` 是 basename，
++   * 位置判定会把它解析到项目根、恒判「归档外」，提交锚就此静默失效。
++   */
++  if (hasCriticRoleSuffix(base)) return '审查文档只能由编排器落盘，改动即伪造';
+   if (inMeta && IMMUTABLE_META.test(base)) return '审计材料一经落盘即不可变';
+   if (inMeta && /^run-.+\.json$/.test(base)) {
+     /*
+@@ -152,10 +253,11 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
+   const target = extractTargetPath(input);
+   if (!target) return ALLOW; // 拿不到路径就别拦，宁可放过也不误伤
+ 
+-  if (isForgedRoleFile(target)) {
++  if (isForgedRoleFile(target, ctx.projectRoot, ctx.archiveRoot)) {
+     return deny(
+       `禁止写入 ${path.basename(target)}：审查文档只能由编排器从审查员的结构化输出渲染落盘。` +
+-        `主脑不得自行产出 -gemini.md / -glm.md（PRD 6.3 / 设计 §10.4）。`,
++        `主脑不得自行产出归档根内的审查员后缀文件（PRD 6.3 / 设计 §10.4）。\n` +
++        `  归档根之外的同形态文件不受此限——doc/ 下沿用「日期-主题-角色」命名的设计稿可正常编辑。`,
+     );
+   }
+   // 闸门状态与锁同样是编排器独占的：Driver 用 Write 覆盖 state.json 等于自己解闸
+@@ -337,6 +439,91 @@ function isOrchestratorOwnedPath(abs: string, ctx: Ctx): boolean {
+  * 本轮发现的五类形态已作为负例留在 `test/unit/hooks.test.ts`，谁再开这个口子会当场红。
+  */
+ 
++/**
++ * 分段字符。**含换行**：`git commit -m x` 换行后接 `rm …` 时，shell 把第二行当独立命令
++ * 执行，而分段正则若不含 `\n`，两行会被当成一段——`cd` 段的 `continue` 会让整段后续
++ * token 漏检（审查意见 AGY-01）。
++ */
++const SEGMENT_SPLIT = /(?:&&|\|\||[;&|\n\r])/;
++
++/** 角色后缀字面量（宽口径：词边界，不锚定行尾，不看 basename） */
++const ROLE_SUFFIX_ANYWHERE = new RegExp(`-(?:${CRITICS.join('|')})\\.md\\b`);
++
++/** 「干净纯路径」：不含任何 shell 元字符、空格、等号、引号残留 */
++const DIRTY_TOKEN = /[\s='"`$()<>&;|]/;
++
++/**
++ * 规则 ①：角色后缀的写入拦截——**宽介入、严放行**。
++ *
++ * ## 为什么介入条件必须与整条命令正则同宽
++ *
++ * 两次设计都栽在把「更窄的信号」当成「更宽的判据」：
++ *   · 第一版：`path.resolve` 得出归档外路径 ⇒ 判「确实在归档外」。可 `resolve` 对任何
++ *     字符串都返回路径，`core.editor=rm .reviews/…` 会拼成 `<root>/core.editor=rm …`
++ *     从而「看起来在归档外」。
++ *   · 第二版：token 的 basename 匹配角色后缀 ⇒ 才介入。可 `<(rm .reviews/…-gemini.md)`
++ *     的 token 尾随 `)`，basename 是 `a-gemini.md)`，`$` 锚定的正则不匹配，规则根本
++ *     不介入就放行了——后面写得再严的「脏字符」判据也执行不到。
++ *
++ * 结论（审查意见 GLM-01）：介入判定一律用与现行整条命令相同的宽口径，收窄只发生在
++ * **放行**一侧，且放行需要逐条举证。往脏字符表里补 `)` 是穷举路线，RV-B1 已证明走不通。
++ *
++ * ## 放行的四个条件（全部满足才放行）
++ *
++ *   (a) 每一段的 cwd 都能推断出来
++ *   (b) 每一个含该后缀的 token 都是干净纯路径
++ *   (c) 这些 token 解析后全部在归档根外
++ *   (d) 同段其余任何 token 都没有指进归档根 —— 拦「搬运式伪造」：
++ *       `cp doc/x-gemini.md .reviews/t/plan/` 的后缀在源 token（归档外）、
++ *       归档在目录 token（无后缀、不介入），两头都躲开则伪审查件直接落进阶段目录，
++ *       而 `listStageArtifacts` 按文件名清点、`checkStageArtifacts` 据此判「审查件在位」，
++ *       留痕与 `--check-artifacts` 双双被伪造，且 git 锚对未跟踪新增文件失明（GLM-02）。
++ */
++function roleSuffixRuleBlocks(cmd: string, ctx: Ctx, startCwd: string): boolean {
++  if (!ROLE_SUFFIX_ANYWHERE.test(cmd)) return false; // 全文无该字面量 → 本规则不管
++
++  let cwd: string | null = startCwd;
++
++  for (const seg of cmd.split(SEGMENT_SPLIT)) {
++    const tokens = tokenize(seg);
++    if (tokens.length === 0) continue;
++
++    if (tokens[0] === 'cd') {
++      const target = tokens[1];
++      if (target === undefined || target === '-' || /[$`]/.test(target)) cwd = null;
++      else cwd = cwd === null ? null : path.resolve(cwd, target);
++      continue;
++    }
++
++    const segHasSuffix = tokens.some((t) => ROLE_SUFFIX_ANYWHERE.test(t));
++
++    for (const raw of tokens) {
++      const t = raw.replace(/^\d*(?:>{1,2}|<)/, ''); // 只剥重定向前缀，`-` 开头的照查（D-6）
++      if (t.length === 0) continue;
++
++      const isSuffixToken = ROLE_SUFFIX_ANYWHERE.test(t);
++
++      // (b) 含后缀的 token 必须干净
++      if (isSuffixToken && DIRTY_TOKEN.test(t)) return true;
++
++      // (a) 定位不出 → 无法举证 → 拦
++      if (cwd === null) {
++        if (isSuffixToken || segHasSuffix) return true;
++        continue;
++      }
++
++      // (c)(d) 后缀 token 与同段其余 token，都不得落进归档根
++      if (isSuffixToken || segHasSuffix) {
++        if (DIRTY_TOKEN.test(t)) continue; // 非后缀的脏 token 无法定位，不据此放行也不据此拦
++        if (isInsideArchiveResolved(path.resolve(cwd, t), ctx.projectRoot, ctx.archiveRoot)) {
++          return true;
++        }
++      }
++    }
++  }
++  return false; // 全部举证通过 → 放行
++}
++
+ /**
+  * Bash 写命令是否指向编排器独占的东西（角色后缀 / _meta / task.json / state.json / lock / bin）。
+  *
+@@ -350,10 +537,10 @@ function isOrchestratorOwnedPath(abs: string, ctx: Ctx): boolean {
+  * 推断不出目录时退回不依赖目录的字面兜底。
+  */
+ function bashTargetsProtected(cmd: string, ctx: Ctx, startCwd: string): boolean {
+-  // ① 角色后缀：审查文档只能由编排器落盘，出现在命令任何位置都拒
+-  if (/-(?:gemini|glm)\.md\b/.test(cmd)) return true;
++  // ① 角色后缀：宽介入、严放行（设计 §8.4，2026-09-14 收窄）
++  if (roleSuffixRuleBlocks(cmd, ctx, startCwd)) return true;
+ 
+-  const segments = cmd.split(/(?:&&|\|\||[;&|])/);
++  const segments = cmd.split(SEGMENT_SPLIT);
+   /** 当前目录。null 表示推断不出，此后只靠字面兜底 */
+   let cwd: string | null = startCwd;
+ 
+diff --git a/test/unit/hooks.test.ts b/test/unit/hooks.test.ts
+index 76ee8f5..2df594f 100644
+--- a/test/unit/hooks.test.ts
++++ b/test/unit/hooks.test.ts
+@@ -5,8 +5,10 @@ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import {
+   hookPreWrite, hookPreBash, hookPreCommit, hookStop, hookSessionStart, runHook, looksLikeWriteCommand,
+-  extractTargetPath, isForgedRoleFile, isInsideArchive, isOrchestratorOwned, type HookInput,
++  extractTargetPath, isForgedRoleFile, hasCriticRoleSuffix, isInsideArchive, isOrchestratorOwned,
++  type HookInput,
+ } from '../../src/trivium/hooks.js';
++import { exists } from '../../src/trivium/util/fsx.js';
+ import { setGate } from '../../src/trivium/state.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+@@ -44,12 +46,38 @@ test('从各种 tool_input 字段名里取出目标路径', () => {
+   assert.equal(extractTargetPath({}), null);
+ });
+ 
+-test('识别伪造审查文件', () => {
+-  assert.equal(isForgedRoleFile('/p/.reviews/t/plan/2026-09-10-t-gemini.md'), true);
+-  assert.equal(isForgedRoleFile('2026-09-10-t-glm.md'), true);
+-  assert.equal(isForgedRoleFile('2026-09-10-t-claude.md'), false);
+-  assert.equal(isForgedRoleFile('2026-09-10-t-revised-claude.md'), false);
+-  assert.equal(isForgedRoleFile('src/gemini.md'), false, '文件名必须以 -gemini.md 结尾');
++test('纯后缀检查：只问形态，不问位置', () => {
++  // 提交锚（immutableChangeReason）用的就是这一支，传进来的是 basename
++  assert.equal(hasCriticRoleSuffix('2026-09-10-t-gemini.md'), true);
++  assert.equal(hasCriticRoleSuffix('2026-09-10-t-glm.md'), true);
++  assert.equal(hasCriticRoleSuffix('2026-09-10-t-claude.md'), false);
++  assert.equal(hasCriticRoleSuffix('2026-09-10-t-revised-claude.md'), false);
++  assert.equal(hasCriticRoleSuffix('src/gemini.md'), false, '文件名必须以 -gemini.md 结尾');
++});
++
++test('识别伪造审查文件：形态像 + 落在归档内', () => {
++  const root = '/p';
++  const archive = '/p/.reviews';
++
++  assert.equal(isForgedRoleFile('/p/.reviews/t/plan/2026-09-10-t-gemini.md', root, archive), true);
++  assert.equal(isForgedRoleFile('.reviews/t/plan/2026-09-10-t-glm.md', root, archive), true);
++  assert.equal(isForgedRoleFile('2026-09-10-t-claude.md', root, archive), false);
++
++  /*
++   * 有意的契约变更（2026-09-14 收窄，计划 D-4）：归档根之外的同形态文件不再拦。
++   * 它们进不了 gate 的任何读取面，拦它没有防御价值，只会锁死 doc/ 下沿用
++   * 「日期-主题-角色」命名的设计稿——本仓库自己就踩了很久。
++   */
++  assert.equal(
++    isForgedRoleFile('doc/02_design/2026-09-10-t-glm.md', root, archive),
++    false,
++    'doc/ 下的同形态设计稿应放行',
++  );
++  assert.equal(
++    isForgedRoleFile('2026-09-10-t-glm.md', root, archive),
++    false,
++    '项目根下的裸名文件不在归档内，应放行',
++  );
+ });
+ 
+ test('判定路径是否在归档根内', () => {
+@@ -321,6 +349,26 @@ test('RV-B1（已撤回）：借 git commit 夹带的五类形态，任何时候
+     ['git commit -m "$(rm .reviews/t/plan/a-gemini.md)"', '命令替换'],
+     ["git commit -F - <<'EOF'\n改 .reviews/t/plan/_meta/run-R1.json\nEOF", 'heredoc'],
+     ['git checkout -- .reviews/t/plan/_meta', 'git checkout'],
++    /*
++     * ⑥ 2026-09-14 收窄时新增的形态（计划 §5）。前两条是收窄方案两度栽过的地方：
++     *    token 尾随 `)` / `,w)` 时 basename 不匹配 `$` 锚定的后缀正则，
++     *    若以「basename 匹配」为介入条件就会直接放行——故介入必须用宽口径。
++     */
++    ['python3 -c "open(\'.reviews/t/plan/a-gemini.md\',\'w\')"', '单行 python 写归档件'],
++    ['node -e "require(\'fs\').writeFileSync(\'.reviews/t/plan/a-glm.md\',\'x\')"', '单行 node 写归档件'],
++    /*
++     * ⑦ 搬运式伪造（GLM-r2-02）：后缀在**源** token（归档外，本身可放行），
++     *    归档在**目录** token（无后缀、不介入）。两头都躲开判定，伪审查件就落进
++     *    阶段目录——而 listStageArtifacts 按文件名清点、checkStageArtifacts 据此
++     *    判「审查件在位」，留痕与 --check-artifacts 双双被伪造，git 锚对未跟踪
++     *    新增文件还失明。收窄前靠整条文本正则拦住，收窄后必须靠条件 (d) 自己站稳。
++     */
++    ['cp doc/2026-09-14-t-gemini.md .reviews/t/plan/', 'cp 搬运：后缀在源'],
++    ['mv doc/2026-09-14-t-glm.md .reviews/t/plan/', 'mv 搬运：后缀在源'],
++    ['install doc/2026-09-14-t-gemini.md .reviews/t/plan/x.md', 'install 搬运'],
++    ['rsync doc/2026-09-14-t-glm.md .reviews/t/plan/', 'rsync 搬运'],
++    // ⑧ 定位不出当前目录时不得放行
++    ['cd $UNKNOWN && rm 2026-09-14-t-glm.md', 'cwd 推断不出'],
+   ] as const) {
+     const r = await hookPreBash(ctx, bashInput(c));
+     assert.equal(r.exitCode, EXIT.GATE_BLOCK, `应拦（${why}）：${c}`);
+@@ -328,6 +376,84 @@ test('RV-B1（已撤回）：借 git commit 夹带的五类形态，任何时候
+   }
+ });
+ 
++test('收窄后：doc/ 下的同形态文件可以正常改动', async () => {
++  const ctx = await fakeCtx();
++  for (const [c, why] of [
++    ['git mv doc/2026-09-14-t-glm.md doc/2026-09-14-t.md', '设计稿改名'],
++    ['sed -i "" s/a/b/ doc/02_design/2026-09-14-t-gemini.md', '就地编辑设计稿'],
++    ['cp doc/a-glm.md doc/b-glm.md', '归档外互拷'],
++  ] as const) {
++    const r = await hookPreBash(ctx, bashInput(c));
++    assert.equal(r.exitCode, EXIT.OK, `应放行（${why}）：${c}`);
++  }
++});
++
++test('收窄后：Write 侧对 doc/ 放行、对归档内仍拦', async () => {
++  const ctx = await fakeCtx();
++  const inDoc = await hookPreWrite(ctx, writeInput('doc/02_design/2026-09-14-t-glm.md'));
++  assert.equal(inDoc.exitCode, EXIT.OK, 'doc/ 下的设计稿应可写');
++
++  const inArchive = await hookPreWrite(ctx, writeInput('.reviews/t/plan/2026-09-14-t-glm.md'));
++  assert.equal(inArchive.exitCode, EXIT.GATE_BLOCK, '归档内的审查件仍不许伪造');
++});
++
++test('软链：两个方向都拦得住', async () => {
++  const ctx = await fakeCtx();
++  const archive = ctx.archiveRoot;
++  await fs.mkdir(path.join(archive, 't/plan'), { recursive: true });
++  await fs.mkdir(path.join(ctx.projectRoot, 'doc'), { recursive: true });
++
++  // ① 归档外的软链指向归档内：realpath 落在归档内 → 拦
++  const realArtifact = path.join(archive, 't/plan/2026-09-14-t-gemini.md');
++  await fs.writeFile(realArtifact, '# real\n');
++  const linkInDoc = path.join(ctx.projectRoot, 'doc/2026-09-14-t-gemini.md');
++  await fs.symlink(realArtifact, linkInDoc);
++  assert.equal(
++    isForgedRoleFile(linkInDoc, ctx.projectRoot, archive),
++    true,
++    'doc/ 下指向归档内的软链，Write 会沿链覆写真审查件',
++  );
++
++  // ② 归档内的软链指向归档外：词法在归档内 → 仍拦
++  const outside = path.join(ctx.projectRoot, 'outside.md');
++  await fs.writeFile(outside, '# outside\n');
++  const linkInArchive = path.join(archive, 't/plan/2026-09-14-t-glm.md');
++  await fs.symlink(outside, linkInArchive);
++  assert.equal(
++    isForgedRoleFile(linkInArchive, ctx.projectRoot, archive),
++    true,
++    '归档内的路径不因软链指向外部而被放行',
++  );
++});
++
++test('归档根不可解析时，归档内的后缀写入仍被拦', async () => {
++  /*
++   * 审查意见 GLM-r2-03：realpath 失败若让异常外泄，runHook 的兜底 catch 会
++   * return ALLOW、或走 EXIT.FAIL=1（hooks.json 约定「1 = 非阻断」）——两条都是
++   * 静默放行。这里的夹具没有真建 .reviews/，realpathSync 必然 ENOENT。
++   */
++  const ctx = await fakeCtx();
++  assert.equal(await exists(ctx.archiveRoot), false, '前置：归档根不存在');
++
++  assert.equal(
++    isForgedRoleFile('.reviews/t/plan/2026-09-14-t-gemini.md', ctx.projectRoot, ctx.archiveRoot),
++    true,
++    '归档根解析不出时应退化为词法比较，而不是放行',
++  );
++
++  const r = await hookPreWrite(ctx, writeInput('.reviews/t/plan/2026-09-14-t-glm.md'));
++  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
++});
++
++test('父目录尚不存在的合法新建不被误杀', async () => {
++  // 审查意见 AGY-r2-02：ENOENT 就判「归档内」会锁死 doc/ 下新建子目录的写入
++  const ctx = await fakeCtx();
++  assert.equal(
++    isForgedRoleFile('doc/new_sub/2026-09-14-t-glm.md', ctx.projectRoot, ctx.archiveRoot),
++    false,
++  );
++});
++
+ test('RV-B1 边界：git add 本就不在 WRITE_LIKE 里，与撤回的豁免无关', async () => {
+   const ctx = await fakeCtx();
+   /*

@@ -1,0 +1,78 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "block",
+  "summary": "收窄的骨架是对的：isInsideArchiveResolved 的词法∪realpath 并集与 resolveExisting 回溯在 Write 侧无残余绕过（焦点二通过），提交锚改用 hasCriticRoleSuffix 与收窄前逐字等价且范围由 git pathspec 锁定（焦点三后半通过），SEGMENT_SPLIT 补换行也顺带修了 v1.2.5 记载的残留。但焦点一的答案是**否**——四个放行条件并非无缝，条件 (d) 存在两个单命令级的绕过（GLM-01：含 $/命令替换的目标 token 被 continue 跳过；GLM-02：「干净纯路径」黑名单漏 ~ 与 glob 展开字符，静态解析与 shell 展开脱节），两者都能把伪审查件直接送进阶段目录且收窄前会被整条文本正则拦住，判定强度低于收窄前，与设计 v1.2.6「收窄的是作用域，不是判定强度」的承诺直接冲突。另有目录级免字面量搬运通道（GLM-03，两步链）与 deny 文案漂移（GLM-04）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "blocker",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:515-521（roleSuffixRuleBlocks 条件 (d) 的 `if (DIRTY_TOKEN.test(t)) continue;`）",
+      "problem": "条件 (d) 对「无法静态定位」的 token 采取跳过而非拦截，跳过即等于放行整条命令。搬运目标 token 含 `$VAR`、`$(cmd)` 或反引号时，DIRTY_TOKEN 命中、直接 continue，归档根判定完全不执行。`D=.reviews/t/plan; cp doc/x-glm.md $D/` 会全程放行：段1 `D=.reviews/t/plan` 无后缀字面不检查；段2 中 `cp` 与 `doc/x-glm.md` 干净且在归档外（(b)(c) 通过），`$D/` 含 `$` 被跳过 → return false 放行；MENTIONS_OWNED 不含 `.reviews`、isOrchestratorOwnedPath 只护 _meta/task.json/.trivium，也无兜底。shell 展开后伪审查件落进阶段目录。`cp doc/x-glm.md \"$(echo .reviews)/t/plan/\"` 同理（tokenize 剥引号后 token 含空格与 $，同样跳过）。这与实现自身条件 (a) 的取向自相矛盾——cwd 推断不出时选择拦（「举证不了就拦」），token 定位不出时却选择放行；也与计划 r2 §2.2 表格 (d) 的定义直接冲突：计划明言「同段内其余**全部** token（含 `-` 开头、含 `=` 内嵌值）**经同一判定**后，没有任何一个落在归档根内」，实现对脏 token 根本不做判定。收窄前这些命令被「整条文本含后缀即拦」挡住，收窄后放行——正是 plan 轮 GLM-02（搬运式伪造，blocker）所封形态的变体，仅把目标路径藏进变量就重新打开。伪审查件落进阶段目录后 checkStageArtifacts 按文件名判「审查件在位」（archive.ts:303-305），git 锚对未跟踪新增文件失明，无跑后兜底。",
+      "evidence": "src/trivium/hooks.ts:516-518：`if (isSuffixToken || segHasSuffix) { if (DIRTY_TOKEN.test(t)) continue; // 非后缀的脏 token 无法定位，不据此放行也不据此拦`——注释自称「不据此放行」，但函数结尾 `return false` 就是放行，跳过检查的 token 实际被据此放行了。对照 .reviews/护栏判定范围收窄/plan/2026-09-14-护栏判定范围收窄-r2-revised-claude.md §2.2：(d) 的计划文本是「同段内其余全部 token（含 - 开头、含 = 内嵌值）经同一判定后，没有任何一个落在归档根内」。同文件 §2.2 表格将 `cp doc/x-gemini.md .reviews/t/plan/` 列为 (d) 必拦形态，而 `$D/` 形态在 test/unit/hooks.test.ts 的负例表中无任何覆盖。",
+      "suggestion": "条件 (d) 不应跳过脏 token：segHasSuffix 为真的段内，出现含 `$` 或反引号的 token（shell 必然展开、静态无法举证）应直接 return true，与条件 (a) 「推断不出即拦」取同一取向；或至少对脏 token 做不依赖 cwd 的字面兜底（token 文本中出现归档根的路径组件即拦，与 MENTIONS_OWNED 同思路）。负例表补 `D=.reviews/t; cp doc/x-glm.md $D/` 与 `cp doc/x-glm.md \"$(echo .reviews)/t/plan/\"` 两条准入硬条件。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "blocker",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:453（DIRTY_TOKEN 字符集定义）与 :518（path.resolve(cwd, t)）",
+      "problem": "「干净纯路径」用黑名单字符集定义（`[\\s='\"\\`$()<>&;|]`），漏掉了 shell 展开字符 `~`、`*`、`?`、`{}`、`\\`。含这些字符的 token 被判「干净」，参与 (c)(d) 判定时 path.resolve 按字面解析，与 shell 展开后的真实路径脱节。形态一（本仓库布局直接可用）：`cp doc/x-glm.md ~/Work/TriviumCode/.reviews/t/plan/`——`~` 不在黑名单，token 判干净；path.resolve 把 `~` 当普通目录名拼成 `<cwd>/~/Work/...`，词法与 realpath 都判归档外 → 放行；shell 把 `~` 展开为 $HOME，目标实际是本仓库归档内，伪审查件落盘。形态二（不依赖仓库布局）：`cp doc/x-glm.md .rev*`——`*` 不在黑名单，`.rev*` 按字面解析不在归档内（path.relative 产出 `..` 开头）→ 放行；glob 展开匹配 `.reviews` 目录，cp 落归档。两者都是单命令、无需任何前置状态，且收窄前被整条文本正则拦住。注释自己写明「往脏字符表里补字符是穷举路线，RV-B1 已证明走不通」——但黑名单本身正是同一个穷举路线的镜像：黑名单漏一个展开字符，放行侧就漏一类攻击。",
+      "evidence": "src/trivium/hooks.ts:453：`const DIRTY_TOKEN = /[\\s='\"`$()<>&;|]/;`——逐字符核对无 `~`、`*`、`?`、`{`、`}`、`\\`。Node 的 path.resolve 对 `~` 无展开语义（按字面路径段拼接），而 POSIX shell 对前导 `~` 与 glob 字符必展开。本任务书载明工作目录为 /Users/chenzhenbo/Work/TriviumCode，即在 $HOME 之下，形态一成立。glob 形态依赖 bash 默认行为（未匹配保留字面、匹配即展开），非交互 Bash 即此行为。",
+      "suggestion": "把「干净纯路径」从黑名单反转为白名单：token 仅由字母、数字、`_`、`.`、`/`、`-` 与非 ASCII（中文文件名）构成才算干净，其余一律视为不可举证。白名单不面临「漏一个字符漏一类攻击」的穷举问题。负例表补 `cp doc/x-glm.md ~/Work/TriviumCode/.reviews/t/plan/`（或以夹具 HOME 模拟）与 `cp doc/x-glm.md .rev*` 两条。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:483（roleSuffixRuleBlocks 介入条件）与 src/trivium/archive.ts:303-305（checkStageArtifacts 按文件名清点）",
+      "problem": "收窄创设了新系统状态——doc/ 下从此可合法存在 `-gemini.md`/`-glm.md` 形态文件——但护栏只覆盖「命令文本显式出现后缀字样」的搬运形态。目录级搬运全程不含后缀字样：`cp -R doc/ .reviews/t/plan/`（或 rsync/tar 同类）不命中 ROLE_SUFFIX_ANYWHERE → 规则①不介入；`.reviews/t/plan/` 不含 _meta/task.json/.trivium 字样 → 规则②③也不拦 → 放行，doc/ 下合法创建的同形态文件成批落进阶段目录。落盘后 checkStageArtifacts 按 parseArtifactName 解析出的 role 与轮次判「审查件在位」，--check-artifacts 与留痕双双被伪造；git 锚只对已提交且被改/删的文件生效（deletedOrModifiedTracked 走 git diff HEAD，对未跟踪新增文件失明），judgeDrift 又把归档根整体排除——无任何跑后兜底。收窄前 doc/ 里不可能存在该形态文件（Write/Bash 一律拦），此链不存在；收窄后链完整。计划 r2 §2.2 的条件 (d) 只封了「后缀显式出现在源 token」的单文件形态，未考虑字面量完全不出现的目录级搬运。单看每条命令都与收窄前等价，系统层面不等价。",
+      "evidence": "src/trivium/hooks.ts:483：`if (!ROLE_SUFFIX_ANYWHERE.test(cmd)) return false;`——无字面量即不介入。src/trivium/archive.ts:303-305：`for (const c of critics) { required.push({ label: `审查 …-${c}.md`, ok: hasThisRound(c, null) }); }`——按文件名在位即通过。src/trivium/util/git.ts:289：`git diff --name-status HEAD -- pathPrefix` 不含未跟踪文件。test/unit/hooks.test.ts 的负例表⑦只有「后缀在源 token」的单文件搬运，无目录级形态。",
+      "suggestion": "两个方向任选或并用：①介入侧——同段其余 token 落进归档根（含阶段目录）的写命令形态不依赖后缀字面量也纳入保护（把「搬运」从字面信号改为路径信号）；②兜底侧——gate --check-artifacts / checkStageArtifacts 对「文件名解析为角色工件、却不在本轮 run.json artifacts[] 登记内」的文件报警，补上目前对新增未跟踪文件完全失明的跑后核对。负例表补 `cp -R doc/ .reviews/t/plan/` 一条以固定预期行为。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/hooks.ts:600-602（hookPreBash 的 deny 文案）",
+      "problem": "deny 文案仍写「判定在未剥 heredoc 的原文上做，看见字面就拦，区分不了写它与说它」。角色后缀分支本次已改为宽介入、严放行——doc/ 下的干净纯路径写命令不再被拦，「看见字面就拦」对角色后缀不再成立；被拦场景的出路描述（「改用 Write / Edit 工具」）对角色后缀情形也不准确（归档外同形态文件 Bash 本就放行，归档内 Write 同样拦）。该文案对 _meta/task.json/.trivium 字面仍然准确，但角色后缀与它们共用同一段文案。CLAUDE.md 已同步改写，hook 侧文案漏同步，被拦的 Driver 会按失准文案误判原因与出口。",
+      "evidence": "src/trivium/hooks.ts:600-602：`'只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\\n那是本 Hook 的已知误拦：判定在未剥 heredoc 的原文上做，看见字面就拦，区分不了「写它」与「说它」。'`。对照本次 CLAUDE.md 变更（diff :34-39）：「角色后缀（-gemini.md / -glm.md）改为宽介入、严放行……当全部含该后缀的 token 都是干净纯路径……且同段没有别的 token 指进归档根时，放行」。",
+      "suggestion": "deny 文案按两类保护对象拆开表述：_meta/task.json/state.json/.trivium 仍是一律字面拦；角色后缀说明收窄后的真实判定（归档根内拦、归档根外干净路径放行），并保留「不要绕判定」的告诫。纯文案改动，不涉行为。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "isInsideArchiveResolved 的词法先判 + 对称 realpath + resolveExisting 逐级回溯设计正确：词法分支拦「归档内软链指向外」，realpath 分支拦「归档外软链指向内」，回溯解决了 ENOENT 误杀新建子目录的问题，safeRealpath 全捕获使异常不可能外泄到 runHook 的 ALLOW/FAIL=1 两条静默放行路径。我沿词法 `..` 展开、中间软链目录组件、回溯深度、/var→/private/var 规范化各方向推演，Write 侧无残余绕过（硬链与 TOCTOU 为计划 §8 已登记的既有缺口，不在本次范围）。",
+    "提交锚（immutableChangeReason）改用 hasCriticRoleSuffix 与收窄前逐字等价：旧 isForgedRoleFile 就是 basename + `$` 锚定后缀匹配，新函数字面相同；deletedOrModifiedTracked 由 `git diff --name-status HEAD -- <archiveRel>` 限定范围（util/git.ts:289），tracked.modified 天然在归档内，「能进锚的文件无需再判位置」的论证成立，且正确避开了组合判定会把 basename 解析到项目根导致锚静默失效的坑。",
+    "hookPreWrite 对归档内的判定强度与收窄前等价（词法命中归档内即拦，realpath 并集只增不减），归档外放行是有意的、已在测试中以显式契约断言固定的行为变更。",
+    "SEGMENT_SPLIT 补 \\n\\r 修复了 v1.2.5 记载的换行漏检在 bashTargetsProtected 主循环的残留，roleSuffixRuleBlocks 与主循环共用同一分隔符集合，不会再分叉。",
+    "介入条件与现行整条命令正则逐字同宽（\\b 词边界、不锚定行尾），plan 轮 GLM-01/AGY-01 指出的「窄信号当宽判据」死穴被正确规避；RV-B1 五类负例保留为准入硬条件并新增⑥⑦⑧形态，「归档根不可解析仍拦」「父目录不存在不误杀」两个边界用例带前置断言，质量高。",
+    "后缀集由 CRITICS（agents/registry 派生）拼正则，当前值 gemini/glm 无正则元字符，无注入风险；CLAUDE.md 与主设计 v1.2.6 的回补同步完成。"
+  ],
+  "not_covered": [
+    "全程静态推演与阅读核实，未实际执行 npm run build / 测试或对 hookPreBash 做实机注入验证（GLM-01/02/03 的推演均基于 tokenize/DIRTY_TOKEN/path.resolve/bash 语义的逐行核对，建议实施期按负例实测，正如计划 D-5 对上一轮的要求）。",
+    "硬链绕过、TOCTOU、isInsideArchive（闸门写锁分支）的软链对称性：计划 §8 已登记为既有缺口或另立任务，本轮未重复深挖。",
+    "hooks.json wrapper 守卫、test/contract 层、install 链路、gate.ts 的裁决件解析全量逻辑（仅读了 loadRoundReviews/checkAdjudication 与 archive.ts 的工件清点相关段落）未审。",
+    "M7a Agent 注册表本身（agents/registry.ts）未读，CRITICS 派生链的正确性仅通过 types.ts 的类型约束侧面确认。",
+    "heredoc 正文喂解释器（sh <<EOF）等更多间接执行形态未做穷举——本轮意见集中在与焦点直接对应的四个放行条件，不构成对其它攻击面的完备扫描。"
+  ],
+  "consulted": [
+    ".reviews/护栏判定范围收窄/code/_meta/changes-20260913T164857Z.diff",
+    "src/trivium/hooks.ts",
+    "src/trivium/types.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/util/git.ts",
+    "test/unit/hooks.test.ts",
+    ".reviews/护栏判定范围收窄/plan/2026-09-14-护栏判定范围收窄-r2-revised-claude.md",
+    "AGENTS.md",
+    "CLAUDE.md"
+  ]
+}

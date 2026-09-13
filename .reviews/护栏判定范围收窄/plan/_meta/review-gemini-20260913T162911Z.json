@@ -1,0 +1,74 @@
+{
+  "agreed": [
+    "认可方案核心论据与收窄方向：Write 侧伪造审查件防线完全建立在 gate 的封闭读取路径上，doc/ 下合法文件的同名后缀不进入读取链路，收窄作用域在架构逻辑上自洽且必要。",
+    "认可关注点分离（D-1）：将纯后缀识别 hasCriticRoleSuffix 与物理位置判定 isInsideArchiveResolved 解耦，符合单一职责原则。",
+    "认可注册表收敛与无字面量原则：后缀集合通过注册表派生，遵循 registry-parity.test.ts 的 grep 对账契约。",
+    "认可 D-4 契约变更如实登记与对照测试：明确裸文件名判定变更并保留完整负例对照。",
+    "认可 D-7 文档纪律坚守：重申并在文档中固化 git commit -F 标准姿态，不给执笔者留侥幸心理。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/hooks.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/adapters/base.ts",
+    "skills/dual-critic/hooks/hooks.json",
+    "test/contract/hook-guard.test.ts",
+    "test/unit/hooks.test.ts",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "test/unit/registry-parity.test.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/init.ts",
+    ".reviews/护栏判定范围收窄/plan/2026-09-14-护栏判定范围收窄-gemini.md",
+    ".reviews/护栏判定范围收窄/plan/2026-09-13-护栏判定范围收窄-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/护栏判定范围收窄/plan/2026-09-13-护栏判定范围收窄-claude.md §3.2、§3.3、src/trivium/hooks.ts:352-378、554-577 与 test/unit/hooks.test.ts:303-328。计划 §3.2 规定在外层「basename 不匹配角色后缀 → 本规则不管（交给既有 ②③）」，仅在匹配时才校验「干净纯路径（不含括号、重定向等）」。但在 RV-B1 负例 git commit -F <(rm .reviews/t/plan/a-gemini.md)（hooks.test.ts:318）和 git commit -m \"$(rm .reviews/t/plan/a-gemini.md)\"（hooks.test.ts:321）中，tokenize 分出的 token 为 .reviews/t/plan/a-gemini.md) 与 $(rm .reviews/t/plan/a-gemini.md)，其 path.basename 均为 a-gemini.md)。由于带尾随右括号 )，根本无法匹配 ROLE_SUFFIX_RE（带 $ 锚点），因而直接走向「本规则不管」分支被直接放行；内层的「不含 ( ) <」根本无机会执行。此外，cmd.split(/(?:&&|\\|\\||[;&|])/) 不切换行符，多行命令下若首行含 cd（如 cd /tmp\\nrm .reviews/...），分段匹配 cd 后的 continue 会导致同段内后续行 token 被完全漏检。",
+      "id": "AGY-01",
+      "kind": "security",
+      "layer": "plan",
+      "location": "plan §3.2 & src/trivium/hooks.ts:352-378",
+      "problem": "D-2 将 Bash 角色后缀判定改为基于 token basename 的白名单放行，因分词与正则尾随符失配导致 RV-B1 负例中的进程替换与命令替换形态被外层直接忽略放行，击穿 D-5 准入硬条件",
+      "severity": "blocker",
+      "suggestion": "判定必须以全文是否出现角色后缀字面量 /-(?:gemini|glm)\\.md\\b/ 为拦截入口，默认一律视为命中独占保护集（拦）；仅当能证明整条命令中所有出现该字面量的 token 均且仅为纯路径、不含任何控制/嵌入字符、当前 cwd 明确且 realpath 解析后均处于归档外时才放行，只要存在任何非纯路径 token 或末尾附带特殊字符即坚决拦截。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/护栏判定范围收窄/plan/2026-09-13-护栏判定范围收窄-claude.md §4.1、src/trivium/hooks.ts:79-83、test/unit/hooks.test.ts:18-32。一方面，isInsideArchiveResolved 仅返回 isInside(root, resolved)。若在归档内存在软链接指向归档外路径（如 .reviews/t/plan/x-gemini.md -> /tmp/evil.md），其真实落点在归档外，解析后被误判为「归档外」，导致 hookPreWrite 放行对归档内文件的修改；归档保护应当是「词法路径在归档内」或「真实解析路径在归档内」满足其一即属归档。另一方面，§4.1 规定「任一步 realpath 抛错（父目录也不存在等）→ 按在归档内处理」。在测试环境（如 hooks.test.ts:fakeCtx 并未实际在磁盘创建 .reviews/）或未完成初始化的仓库中，Step 2 realpathSync(archiveRoot) 会抛出 ENOENT，导致 doc/ 下的全部正常编辑直接被 fail-closed 拦截；同时当开发者在 doc/ 下创建新子目录的文件时（如 doc/new_sub/x-glm.md），直接父目录尚未建立也会抛出 ENOENT 被误判为归档内而锁死合法写入。此外步骤 3 伪代码写成 + basename(abs) 会丢失路径分隔符。",
+      "id": "AGY-02",
+      "kind": "security",
+      "layer": "plan",
+      "location": "plan §4.1 & src/trivium/hooks.ts:79-83",
+      "problem": "D-3 软链防护仅以 realpath 落点判归档内存在残余绕过风险，且对父目录或 archiveRoot 不存在时的粗暴抛错处理会导致合法文件与单元测试被误杀",
+      "severity": "major",
+      "suggestion": "归档内判定应结合词法路径与真实解析路径（任一在归档内即判在归档内）；对于父目录或 archiveRoot 尚不存在的情形，应逐级向上回溯至首个真实存在的祖先目录解析 realpath 再结合相对路径做对称规范化，而非在 ENOENT 时直接草率判定在归档内；同时显式使用 path.join 拼接路径。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/护栏判定范围收窄/plan/2026-09-13-护栏判定范围收窄-claude.md §2 与 src/trivium/hooks.ts:117-121, 698-716。immutableChangeReason 当前签名仅接收 (projectRoot, relFromRoot)，调用处为 immutableChangeReason(ctx.projectRoot, f)。计划声明将其改为组合判定 isForgedRoleFile(relFromRoot, projectRoot, archiveRoot)，遗漏了该函数的形参扩展及 hooks.ts:714 调用处的 ctx.archiveRoot 透传说明。此外，hooks.ts:699 中 deletedOrModifiedTracked 传入的范围本身就是 archiveRel，能够进入 tracked.modified 的文件均已被限定在归档根内，在此处直接调用纯后缀检查 hasCriticRoleSuffix(base) 即可守卫防篡改锚，无需在每次 git commit 时反复对归档文件做 realpathSync I/O。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §2 (D-1) & src/trivium/hooks.ts:117-121, 714",
+      "problem": "immutableChangeReason 的组合判定改造未声明函数签名与调用处改动，且在 git 提交锚中重复执行 realpath 带来不必要的 I/O 开销",
+      "severity": "minor",
+      "suggestion": "明确补充 immutableChangeReason 签名的演进说明；或更优的方案是直接利用关注点分离后的纯后缀检查 hasCriticRoleSuffix（由于传入范围已通过 git 索引限制在归档内），避免重复 I/O。"
+    }
+  ],
+  "not_covered": [
+    "未在真实动态 Agent 会话（agy、zcode）中实际执行长管道与复杂子 shell 注入测试，仅做基于 AST 与正则的静态语义推演。",
+    "未覆盖多磁盘挂载点、网络文件系统（NFS/Samba）等极端文件系统环境下的 realpath 行为（当前定位仅一级支持 macOS 本地 APFS）。",
+    "未推演当用户在 git config 中自定义了复杂 core.commentChar 或 core.editor 别名时的深层 Bash 参数解析边界。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "【审查结论：request-changes】\n1. 最危险漏洞：§3.2（D-2）Bash 侧白名单在外层按 token 的 basename 匹配角色后缀，导致末尾附带右括号等特殊字符的注入命令（如 `<(rm ...-gemini.md)` 和 `$(rm ...-gemini.md)`）直接走入「本规则不管」分支而放行，直接打穿 RV-B1 负例，击穿 D-5 准入硬条件。\n2. 架构与规范化漏洞：§4.1（D-3）仅按 realpath 落点判归档内存在内部软链向外指的漏报风险；且当 archiveRoot 未创建或 doc/ 下新子目录新建文件时，因父目录 ENOENT 抛错直接 fail-closed 判为归档内，将误杀合法编辑及单元测试。\n3. 调用契约遗漏：§2（D-1）修改 immutableChangeReason 遗漏了其自身形参声明与调用处（hooks.ts:714）的 archiveRoot 透传，且在已受限的提交锚中存在冗余 realpath I/O。\n4. 认可：肯定收窄 Write 侧误锁的核心动机、关注点拆分及契约变更的清晰登记。\n本计划必须修正 Bash 侧拦截逻辑与软链规范化边界后，方可进入实施。",
+  "verdict": "request-changes"
+}

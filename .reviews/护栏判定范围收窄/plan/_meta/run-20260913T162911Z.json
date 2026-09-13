@@ -1,0 +1,158 @@
+{
+  "schema": "trivium.run.v1",
+  "run_id": "20260913T162911Z",
+  "topic": "护栏判定范围收窄",
+  "stage": "plan",
+  "rerun_index": 2,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "重点看 r2 重写的 D-2（Bash 侧白名单式放行）是否真的堵住了 r1 被打穿的 4 类形态、D-3 的 realpath 顺序与 archiveRoot 对称规范化有无残余绕过，以及放行条件收严后会不会把合法编辑也误拦",
+  "task_goal": "把 Hook 的伪造审查件判定从「只看文件名 basename」收窄为「限定在归档根内」，消除对 doc/ 下沿用同一命名形态的设计文档的误锁；Bash 侧的保护字面判定同步收窄，保持与 Write/Edit 侧判定一致",
+  "entry": "A",
+  "snapshot": {
+    "git_head": "7f5ca77bf791884ac22accc99896ad6b36c267f4",
+    "tree_hash": "6a1648415e7f525d92435bd0e5234587782b77be",
+    "dirty": true,
+    "subject_sha256": "b4b02872d11f929c1af22292f7d1cf09887b1991661f98f15f6306a6c2f9f4d0",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-13T16:29:11.696Z",
+  "finished_at": "2026-09-13T16:39:51.943Z",
+  "review_mode": "dual",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 258.641,
+      "tool_calls": {
+        "read": 32,
+        "grep": 6,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 365362,
+        "output_tokens": 49837,
+        "thinking_tokens": 41362,
+        "cache_read_tokens": 2693889,
+        "total_tokens": 415199
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "10d9116f-a9bb-4e28-ab76-f749689bec60",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "model_route": "config_copy",
+      "status": "parse_fallback",
+      "exit_code": 0,
+      "duration_s": 640.078,
+      "tool_calls": {
+        "read": 13,
+        "grep": 8,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 13
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 6,
+        "inputTokens": 402887,
+        "outputTokens": 38822,
+        "totalTokens": 441709,
+        "cacheReadTokens": 321664,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": "JSON 不符合 trivium.review.v1：/findings/1 must have required property 'location' {\"missingProperty\":\"location\"}",
+      "empty_review": false,
+      "parse_fallback": true,
+      "session_id": "sess_dfc897b4-ef9b-440e-a054-9f05e2a7211e",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/Agent注册表与多审泛化/code/2026-09-13-Agent注册表与多审泛化-glm.md",
+    ".reviews/Agent注册表与多审泛化/plan/2026-09-13-Agent注册表与多审泛化-glm.md",
+    ".reviews/C命令base透传修复/code/2026-09-12-C命令base透传修复-glm.md",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r3-glm.md",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-glm.md",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-r2-glm.md",
+    ".reviews/S9-闸门与留痕加固/code/2026-09-11-S9-闸门与留痕加固-glm.md",
+    ".reviews/双审进度反馈/code/2026-09-12-双审进度反馈-glm.md",
+    ".reviews/双审进度反馈/plan/2026-09-12-双审进度反馈-glm.md",
+    ".reviews/审核修复/code/2026-09-12-审核修复-glm.md"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "护栏判定范围收窄/plan/_meta/brief-gemini-20260913T162911Z.md",
+      "sha256": "edcaf3909cd9cb1e3388d59c313a1509cfc6eb5265ac2996253df1233de4d945"
+    },
+    {
+      "path": "护栏判定范围收窄/plan/_meta/brief-glm-20260913T162911Z.md",
+      "sha256": "464d41a6e3f69e19dad66454fd82e855d7868518019535505a67d7fb8a49e881"
+    },
+    {
+      "path": "护栏判定范围收窄/plan/_meta/review-gemini-20260913T162911Z.json",
+      "sha256": "1b0d9a257814e252f6a8b9e58980b9a4e4b24114a15efd2baf0273ee6deb7a43"
+    },
+    {
+      "path": "护栏判定范围收窄/plan/_meta/review-glm-20260913T162911Z.json",
+      "sha256": "aec6803a6045689b3be235698288908fc5a649eed7450cd2baa6eee1594109eb"
+    },
+    {
+      "path": "护栏判定范围收窄/plan/_meta/review-glm-20260913T162911Z.fallback-items.md",
+      "sha256": "459906a249335a04e2f06af1c8a4a5a9f388dba061e33daaa5cafd208032351a"
+    },
+    {
+      "path": "护栏判定范围收窄/plan/2026-09-14-护栏判定范围收窄-r2-gemini.md",
+      "sha256": "88777834506975c6b5343c6fbd2e15be59ecb82c20de9eaad9425dd0c62ffec4"
+    },
+    {
+      "path": "护栏判定范围收窄/plan/2026-09-14-护栏判定范围收窄-r2-glm.md",
+      "sha256": "2ffbdd43f5ae4e8aeb29be72724281e5c65afae55e02668f49e646a3e61fd8cc"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

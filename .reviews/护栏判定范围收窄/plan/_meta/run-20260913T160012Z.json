@@ -1,0 +1,133 @@
+{
+  "schema": "trivium.run.v1",
+  "run_id": "20260913T160012Z",
+  "topic": "护栏判定范围收窄",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "重点看收窄后会不会给伪造审查件开新口子（路径穿越、符号链接、归档根被改配置），Bash 侧与 Write 侧两条判定收窄后是否仍然等价，以及既有契约测试与历史留痕是否受影响",
+  "task_goal": "把 Hook 的伪造审查件判定从「只看文件名 basename」收窄为「限定在归档根内」，消除对 doc/ 下沿用同一命名形态的设计文档的误锁；Bash 侧的保护字面判定同步收窄，保持与 Write/Edit 侧判定一致",
+  "entry": "A",
+  "snapshot": {
+    "git_head": "7f5ca77bf791884ac22accc99896ad6b36c267f4",
+    "tree_hash": "fd49210d8134b5cc6fe7940e027356c779c53414",
+    "dirty": true,
+    "subject_sha256": "591a0e435850dc3b9adf967246aa3b4c046bce93ffd8977b33bb3da64fe309e7",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-13T16:00:12.968Z",
+  "finished_at": "2026-09-13T16:25:13.217Z",
+  "review_mode": "single",
+  "degraded_reason": "glm: timeout（脚本级超时（1500s））",
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 205.751,
+      "tool_calls": {
+        "read": 35,
+        "grep": 12,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 20
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 301343,
+        "output_tokens": 44576,
+        "thinking_tokens": 35086,
+        "cache_read_tokens": 3299556,
+        "total_tokens": 345919
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "1439ced2-a317-4e9a-a869-812339a38e39",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3-Flash",
+      "model_effective": null,
+      "model_effective_source": "unverified",
+      "status": "timeout",
+      "exit_code": 143,
+      "duration_s": 1500.107,
+      "tool_calls": {
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "heterogeneous": true,
+      "fail_reason": "脚本级超时（1500s）",
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": null,
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/Agent注册表与多审泛化/code/2026-09-13-Agent注册表与多审泛化-glm.md",
+    ".reviews/Agent注册表与多审泛化/plan/2026-09-13-Agent注册表与多审泛化-glm.md",
+    ".reviews/C命令base透传修复/code/2026-09-12-C命令base透传修复-glm.md",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r3-glm.md",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-glm.md",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-r2-glm.md",
+    ".reviews/S9-闸门与留痕加固/code/2026-09-11-S9-闸门与留痕加固-glm.md",
+    ".reviews/双审进度反馈/code/2026-09-12-双审进度反馈-glm.md",
+    ".reviews/双审进度反馈/plan/2026-09-12-双审进度反馈-glm.md",
+    ".reviews/审核修复/code/2026-09-12-审核修复-glm.md"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "护栏判定范围收窄/plan/_meta/brief-gemini-20260913T160012Z.md",
+      "sha256": "4d03a39b05d970bf6f8a89aee52304a865ec0817e2139179770f0a848717a7f0"
+    },
+    {
+      "path": "护栏判定范围收窄/plan/_meta/brief-glm-20260913T160012Z.md",
+      "sha256": "0da30d5e67066f82e2bb88d0a670b6724abe9f6c03dda1b7ba02db2c3817c4ed"
+    },
+    {
+      "path": "护栏判定范围收窄/plan/_meta/review-gemini-20260913T160012Z.json",
+      "sha256": "91d7c40047ad5c7def598ce56d80bdcaec2c040abc01d4f031a4105f804f06fe"
+    },
+    {
+      "path": "护栏判定范围收窄/plan/_meta/review-glm-20260913T160012Z.failed.json",
+      "sha256": "c72414f0bc6a0769aad0f76a6d19995626bffa18c79d35fd7d70f908c82c0638"
+    },
+    {
+      "path": "护栏判定范围收窄/plan/2026-09-14-护栏判定范围收窄-gemini.md",
+      "sha256": "c68555c1f4d47ec7d26192b85b56a5b26d765c6e5268fd08b2b6f37b035acb5f"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed"
+}

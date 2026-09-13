@@ -5,8 +5,10 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   hookPreWrite, hookPreBash, hookPreCommit, hookStop, hookSessionStart, runHook, looksLikeWriteCommand,
-  extractTargetPath, isForgedRoleFile, isInsideArchive, isOrchestratorOwned, type HookInput,
+  extractTargetPath, isForgedRoleFile, hasCriticRoleSuffix, isInsideArchive, isOrchestratorOwned,
+  type HookInput,
 } from '../../src/trivium/hooks.js';
+import { exists } from '../../src/trivium/util/fsx.js';
 import { setGate } from '../../src/trivium/state.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
@@ -44,12 +46,38 @@ test('从各种 tool_input 字段名里取出目标路径', () => {
   assert.equal(extractTargetPath({}), null);
 });
 
-test('识别伪造审查文件', () => {
-  assert.equal(isForgedRoleFile('/p/.reviews/t/plan/2026-09-10-t-gemini.md'), true);
-  assert.equal(isForgedRoleFile('2026-09-10-t-glm.md'), true);
-  assert.equal(isForgedRoleFile('2026-09-10-t-claude.md'), false);
-  assert.equal(isForgedRoleFile('2026-09-10-t-revised-claude.md'), false);
-  assert.equal(isForgedRoleFile('src/gemini.md'), false, '文件名必须以 -gemini.md 结尾');
+test('纯后缀检查：只问形态，不问位置', () => {
+  // 提交锚（immutableChangeReason）用的就是这一支，传进来的是 basename
+  assert.equal(hasCriticRoleSuffix('2026-09-10-t-gemini.md'), true);
+  assert.equal(hasCriticRoleSuffix('2026-09-10-t-glm.md'), true);
+  assert.equal(hasCriticRoleSuffix('2026-09-10-t-claude.md'), false);
+  assert.equal(hasCriticRoleSuffix('2026-09-10-t-revised-claude.md'), false);
+  assert.equal(hasCriticRoleSuffix('src/gemini.md'), false, '文件名必须以 -gemini.md 结尾');
+});
+
+test('识别伪造审查文件：形态像 + 落在归档内', () => {
+  const root = '/p';
+  const archive = '/p/.reviews';
+
+  assert.equal(isForgedRoleFile('/p/.reviews/t/plan/2026-09-10-t-gemini.md', root, archive), true);
+  assert.equal(isForgedRoleFile('.reviews/t/plan/2026-09-10-t-glm.md', root, archive), true);
+  assert.equal(isForgedRoleFile('2026-09-10-t-claude.md', root, archive), false);
+
+  /*
+   * 有意的契约变更（2026-09-14 收窄，计划 D-4）：归档根之外的同形态文件不再拦。
+   * 它们进不了 gate 的任何读取面，拦它没有防御价值，只会锁死 doc/ 下沿用
+   * 「日期-主题-角色」命名的设计稿——本仓库自己就踩了很久。
+   */
+  assert.equal(
+    isForgedRoleFile('doc/02_design/2026-09-10-t-glm.md', root, archive),
+    false,
+    'doc/ 下的同形态设计稿应放行',
+  );
+  assert.equal(
+    isForgedRoleFile('2026-09-10-t-glm.md', root, archive),
+    false,
+    '项目根下的裸名文件不在归档内，应放行',
+  );
 });
 
 test('判定路径是否在归档根内', () => {
@@ -321,11 +349,144 @@ test('RV-B1（已撤回）：借 git commit 夹带的五类形态，任何时候
     ['git commit -m "$(rm .reviews/t/plan/a-gemini.md)"', '命令替换'],
     ["git commit -F - <<'EOF'\n改 .reviews/t/plan/_meta/run-R1.json\nEOF", 'heredoc'],
     ['git checkout -- .reviews/t/plan/_meta', 'git checkout'],
+    /*
+     * ⑥ 2026-09-14 收窄时新增的形态（计划 §5）。前两条是收窄方案两度栽过的地方：
+     *    token 尾随 `)` / `,w)` 时 basename 不匹配 `$` 锚定的后缀正则，
+     *    若以「basename 匹配」为介入条件就会直接放行——故介入必须用宽口径。
+     */
+    ['python3 -c "open(\'.reviews/t/plan/a-gemini.md\',\'w\')"', '单行 python 写归档件'],
+    ['node -e "require(\'fs\').writeFileSync(\'.reviews/t/plan/a-glm.md\',\'x\')"', '单行 node 写归档件'],
+    /*
+     * ⑦ 搬运式伪造（GLM-r2-02）：后缀在**源** token（归档外，本身可放行），
+     *    归档在**目录** token（无后缀、不介入）。两头都躲开判定，伪审查件就落进
+     *    阶段目录——而 listStageArtifacts 按文件名清点、checkStageArtifacts 据此
+     *    判「审查件在位」，留痕与 --check-artifacts 双双被伪造，git 锚对未跟踪
+     *    新增文件还失明。收窄前靠整条文本正则拦住，收窄后必须靠条件 (d) 自己站稳。
+     */
+    ['cp doc/2026-09-14-t-gemini.md .reviews/t/plan/', 'cp 搬运：后缀在源'],
+    ['mv doc/2026-09-14-t-glm.md .reviews/t/plan/', 'mv 搬运：后缀在源'],
+    ['install doc/2026-09-14-t-gemini.md .reviews/t/plan/x.md', 'install 搬运'],
+    ['rsync doc/2026-09-14-t-glm.md .reviews/t/plan/', 'rsync 搬运'],
+    // ⑧ 定位不出当前目录时不得放行
+    ['cd $UNKNOWN && rm 2026-09-14-t-glm.md', 'cwd 推断不出'],
   ] as const) {
     const r = await hookPreBash(ctx, bashInput(c));
     assert.equal(r.exitCode, EXIT.GATE_BLOCK, `应拦（${why}）：${c}`);
     assert.match(r.stderr ?? '', /编排器独占/);
   }
+});
+
+test('Bash 侧不随 Write 侧收窄：命令文本出现角色后缀一律拦', async () => {
+  /*
+   * 收窄尝试经三轮双审打穿后撤回（详见 hooks.ts 的长注释）。压垮它的是
+   * 「收窄创设了新系统状态」——doc/ 下从此可合法存在同形态文件，于是
+   * `cp -R doc/ .reviews/t/plan/` 这类全程不含后缀字样的搬运成为新通道，
+   * 以字面量为介入信号的规则结构性失效。
+   *
+   * 这里锁死「Bash 侧维持字面拦」的现状：误拦有 Write/Edit 出口，
+   * 漏拦则伪审查件直接落进阶段目录。
+   */
+  const ctx = await fakeCtx();
+  for (const [c, why] of [
+    ['git mv doc/2026-09-14-t-glm.md doc/2026-09-14-t.md', '归档外改名也拦（有 Write 出口）'],
+    ['sed -i "" s/a/b/ doc/02_design/2026-09-14-t-gemini.md', '归档外就地编辑也拦'],
+    ['cp doc/x-gemini.md .reviews/t/plan/', '搬运式伪造'],
+    ['D=.reviews/t/plan; cp doc/x-glm.md $D/', '变量承载归档路径'],
+    ['cp doc/x-glm.md ~/Work/TriviumCode/.reviews/t/plan/', '~ 展开后落进归档'],
+  ] as const) {
+    const r = await hookPreBash(ctx, bashInput(c));
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `应拦（${why}）：${c}`);
+  }
+});
+
+test('收窄后：Write 侧对 doc/ 放行、对归档内仍拦', async () => {
+  const ctx = await fakeCtx();
+  const inDoc = await hookPreWrite(ctx, writeInput('doc/02_design/2026-09-14-t-glm.md'));
+  assert.equal(inDoc.exitCode, EXIT.OK, 'doc/ 下的设计稿应可写');
+
+  const inArchive = await hookPreWrite(ctx, writeInput('.reviews/t/plan/2026-09-14-t-glm.md'));
+  assert.equal(inArchive.exitCode, EXIT.GATE_BLOCK, '归档内的审查件仍不许伪造');
+});
+
+test('软链：两个方向都拦得住', async () => {
+  const ctx = await fakeCtx();
+  const archive = ctx.archiveRoot;
+  await fs.mkdir(path.join(archive, 't/plan'), { recursive: true });
+  await fs.mkdir(path.join(ctx.projectRoot, 'doc'), { recursive: true });
+
+  // ① 归档外的软链指向归档内：realpath 落在归档内 → 拦
+  const realArtifact = path.join(archive, 't/plan/2026-09-14-t-gemini.md');
+  await fs.writeFile(realArtifact, '# real\n');
+  const linkInDoc = path.join(ctx.projectRoot, 'doc/2026-09-14-t-gemini.md');
+  await fs.symlink(realArtifact, linkInDoc);
+  assert.equal(
+    isForgedRoleFile(linkInDoc, ctx.projectRoot, archive),
+    true,
+    'doc/ 下指向归档内的软链，Write 会沿链覆写真审查件',
+  );
+
+  // ② 归档内的软链指向归档外：词法在归档内 → 仍拦
+  const outside = path.join(ctx.projectRoot, 'outside.md');
+  await fs.writeFile(outside, '# outside\n');
+  const linkInArchive = path.join(archive, 't/plan/2026-09-14-t-glm.md');
+  await fs.symlink(outside, linkInArchive);
+  assert.equal(
+    isForgedRoleFile(linkInArchive, ctx.projectRoot, archive),
+    true,
+    '归档内的路径不因软链指向外部而被放行',
+  );
+});
+
+test('归档根不可解析时，归档内的后缀写入仍被拦', async () => {
+  /*
+   * 审查意见 GLM-r2-03：realpath 失败若让异常外泄，runHook 的兜底 catch 会
+   * return ALLOW、或走 EXIT.FAIL=1（hooks.json 约定「1 = 非阻断」）——两条都是
+   * 静默放行。这里的夹具没有真建 .reviews/，realpathSync 必然 ENOENT。
+   */
+  const ctx = await fakeCtx();
+  assert.equal(await exists(ctx.archiveRoot), false, '前置：归档根不存在');
+
+  assert.equal(
+    isForgedRoleFile('.reviews/t/plan/2026-09-14-t-gemini.md', ctx.projectRoot, ctx.archiveRoot),
+    true,
+    '归档根解析不出时应退化为词法比较，而不是放行',
+  );
+
+  const r = await hookPreWrite(ctx, writeInput('.reviews/t/plan/2026-09-14-t-glm.md'));
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
+});
+
+test('悬空软链：指向归档内尚未创建的文件，仍被拦', async () => {
+  /*
+   * 审查意见 AGY-02。realpathSync 对悬空软链同样抛 ENOENT，若直接进回溯逻辑，
+   * 这条软链会被当成「doc 下一个还不存在的普通文件」而放行——
+   * 而 Write 会沿链把文件在归档内创建出来。
+   */
+  const ctx = await fakeCtx();
+  await fs.mkdir(path.join(ctx.projectRoot, 'doc'), { recursive: true });
+  await fs.mkdir(path.join(ctx.archiveRoot, 't/plan'), { recursive: true });
+
+  const notYetCreated = path.join(ctx.archiveRoot, 't/plan/2026-09-14-t-gemini.md');
+  const dangling = path.join(ctx.projectRoot, 'doc/2026-09-14-t-gemini.md');
+  await fs.symlink(notYetCreated, dangling);
+  assert.equal(await exists(notYetCreated), false, '前置：目标确实还不存在');
+
+  assert.equal(
+    isForgedRoleFile(dangling, ctx.projectRoot, ctx.archiveRoot),
+    true,
+    '悬空软链的落点在归档内，必须拦',
+  );
+  const r = await hookPreWrite(ctx, writeInput(dangling));
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
+});
+
+test('父目录尚不存在的合法新建不被误杀', async () => {
+  // 审查意见 AGY-r2-02：ENOENT 就判「归档内」会锁死 doc/ 下新建子目录的写入
+  const ctx = await fakeCtx();
+  assert.equal(
+    isForgedRoleFile('doc/new_sub/2026-09-14-t-glm.md', ctx.projectRoot, ctx.archiveRoot),
+    false,
+  );
 });
 
 test('RV-B1 边界：git add 本就不在 WRITE_LIKE 里，与撤回的豁免无关', async () => {

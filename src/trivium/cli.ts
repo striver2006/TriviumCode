@@ -18,7 +18,7 @@ import { cancelRun, startRun, statusRun, waitRun, workerMain } from './run-proto
 import {
   checkAdjudication, inferLatestRunId, loadRoundReviews, renderGateResult,
 } from './gate.js';
-import { checkStageArtifacts, resolveRerunIndex } from './archive.js';
+import { checkStageArtifacts, listRecordedRuns, resolveRerunIndex } from './archive.js';
 import { readHookInput, runHook, type HookName } from './hooks.js';
 import { listOpenGates, setGateChecked } from './state.js';
 import { recordApproval } from './approval.js';
@@ -574,7 +574,15 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
 
   // ── --check-artifacts ──
   if (args.flags.get('check-artifacts') === true) {
-    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex);
+    /*
+     * 传入全部 run.json 的工件登记，让 checkStageArtifacts 能查出「没登记却混在
+     * 阶段目录里」的审查件（审查意见 GLM-03）——搬运进来的伪审查件在此暴露。
+     */
+    const recorded = new Set<string>();
+    for (const r of await listRecordedRuns(ref.layout)) {
+      for (const a of r.artifacts) recorded.add(a.path);
+    }
+    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, undefined, undefined, recorded);
     if (isJsonMode()) {
       emitJson({ ok: c.ok, stage, rerun_index: rerunIndex, present: c.present, missing: c.missing });
     } else if (c.ok) {

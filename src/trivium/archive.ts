@@ -278,6 +278,11 @@ export async function checkStageArtifacts(
   critics: readonly Role[] = CRITICS,
   /** 当轮 Driver：原稿与裁决件的后缀 */
   driver: AgentId = DEFAULT_DRIVER,
+  /**
+   * 全部 run.json 登记过的工件路径（相对归档根）。
+   * 给了就核对「阶段目录里有没有没登记的审核者工件」；`null` 跳过该项。
+   */
+  recordedPaths: ReadonlySet<string> | null = null,
 ): Promise<ArtifactCheck> {
   const all = await listStageArtifacts(layout, stage);
   const thisRound = all.filter((i) => i.parsed.rerunIndex === rerunIndex);
@@ -305,6 +310,33 @@ export async function checkStageArtifacts(
   }
   const kind: DispositionKind = stage === 'code' ? 'response' : 'revised';
   required.push({ label: `裁决件 …-${kind}-${driver}.md`, ok: hasThisRound(driver, kind) });
+
+  /*
+   * ── 未登记的审核者工件（审查意见 GLM-03）──
+   *
+   * 阶段目录里出现了审核者后缀的工件，却不在任何一轮 `run.json.artifacts[]` 的登记内，
+   * 说明它不是编排器写的。此前对这种文件**完全失明**：`hook-pre-commit` 的 git 锚只看
+   * 已跟踪文件的改动，新增未跟踪文件不触发；`checkRecordedArtifacts` 只核对「登记过的
+   * 还在不在、有没有被改」，反方向（「没登记的混进来」）无人管。
+   *
+   * 它堵的是把伪审查件搬进阶段目录的整类手法——`cp -R doc/ .reviews/t/plan/`、`tar`、
+   * 手工拖拽一视同仁。之所以放在这里而不是 Hook：这是**路径信号**，对「文件怎么进来的」
+   * 不敏感，不像命令行字面扫描那样可以被改写命令绕开（Bash 侧收窄的三轮教训见
+   * `hooks.ts` 里那段注释）。
+   *
+   * `recordedPaths` 为 null 时跳过本项（调用方没提供登记清单，不代表文件非法）。
+   */
+  const unregistered: string[] = [];
+  if (recordedPaths !== null) {
+    for (const i of all) {
+      if (!critics.includes(i.parsed.role)) continue; // 只管审核者后缀的工件
+      const rel = path.relative(layout.archiveRoot, path.join(stageDir(layout, stage), i.fileName));
+      if (!recordedPaths.has(rel)) unregistered.push(i.fileName);
+    }
+  }
+  for (const f of unregistered) {
+    required.push({ label: `未登记的审查件 ${f}（不在任何 run.json 的 artifacts 内）`, ok: false });
+  }
 
   return {
     ok: required.every((r) => r.ok),
