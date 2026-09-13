@@ -1,6 +1,6 @@
 # CASE：人工验收剧本（PRD 场景 S1～S5）
 
-> 对应 [设计 §17.3](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md)。
+> 对应 [设计 §17.3](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)。
 > 自动化测试（`npm run check`，712 例）与 `trivium doctor --selftest`（14 步）**覆盖不到**下面这些，
 > 因为它们要么需要人在 Claude Code 窗口里操作，要么必须真实消耗两侧厂商配额。
 

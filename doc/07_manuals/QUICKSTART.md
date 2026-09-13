@@ -1,7 +1,7 @@
 # 快速上手：Driver-DualCritic 双审流水线
 
 > 目标：**15 分钟内**装好并跑通一条真实任务。
-> 依据 [设计 v1.2.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md) 与 [PRD v1.3.0](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.2.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.3.0](../01_requirements/PRD_driver_dual_critic.md)。
 
 这条流水线让 Claude Code 主攻写代码，**Google Antigravity** 与**智谱 ZCode** 两个
 独立审查员背靠背复审，结论逐条落盘留痕。你的角色是 Driver 的使用者——按 `/dual-*`
@@ -303,5 +303,5 @@ plan 审查中 ｜ 已用 5m0s / 预算 15m0s（33%）｜ gemini 已完成 · gl
 - [`doc/03_api/PROTOCOL_dual_critic_relay.md`](../03_api/PROTOCOL_dual_critic_relay.md)：工件中继与协议契约
 - [`doc/04_development/GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md)：本地开发与调试
 - [`doc/06_deployment/RUNBOOK_pipeline_ops.md`](../06_deployment/RUNBOOK_pipeline_ops.md)：运行期故障处置（锁、闸门、跑挂、留痕）
-- [设计文档](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md)：唯一实现依据
+- [设计文档](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：唯一实现依据
 - [M0 本机坑清单](../05_testing/REPORT_2026-09-11_m0_probe.md)：两家 CLI 的实测行为与 12 条与文档记载不符之处

@@ -372,7 +372,7 @@ trivium verify --topic 登录重构    # 真实执行配置里的编译测试命
 | 文档 | 内容 |
 | :--- | :--- |
 | [产品需求文档 (PRD)](./doc/01_requirements/PRD_driver_dual_critic.md) | 角色定义、S1～S5 场景、FR-01～FR-25 功能需求、NFR、AC-01～AC-18 验收标准 |
-| [总体架构与详细设计](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md) | **唯一实现依据**。架构、组件、接口契约、命名规范、异常矩阵、实施路线与验收映射 |
+| [总体架构与详细设计](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) | **唯一实现依据**。架构、组件、接口契约、命名规范、异常矩阵、实施路线与验收映射 |
 | [ADR-001 隔离模式](./doc/02_design/ADR_001_isolation_mode.md) | 为何采用就地审查而非冻结镜像树 |
 | [留痕目录规范](./.reviews/README.md) | 归档结构、命名规则、各阶段工件集 |
 | [**快速上手**](./doc/07_manuals/QUICKSTART.md) | 15 分钟装好并跑通一条真实任务：前置条件、安装自检、探针实测、项目启用、第一条任务、三道护栏、排障 |

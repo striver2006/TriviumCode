@@ -13,7 +13,7 @@
 
 | 文档 | 回答的问题 | 本文与它的关系 |
 | :--- | :--- | :--- |
-| [设计文档](./2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md) | **为什么这么设计**（唯一实现依据，19 万字） | 本文不重述决策依据。冲突时以设计文档为准 |
+| [设计文档](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) | **为什么这么设计**（唯一实现依据，19 万字） | 本文不重述决策依据。冲突时以设计文档为准 |
 | [PROTOCOL_dual_critic_relay.md](../03_api/PROTOCOL_dual_critic_relay.md) | **对外契约是什么**（四份 Schema、BRIEF 八段、漂移算法、退出码） | 本文不重述契约，只讲契约在代码里的落点 |
 | [QUICKSTART.md](../07_manuals/QUICKSTART.md) / [MANUAL_user.md](../07_manuals/MANUAL_user.md) | **怎么用** | 本文不讲用法 |
 | **本文** | **代码怎么组织、一次调用实际怎么走** | — |
@@ -534,7 +534,7 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 ## 八、往下读
 
 - [PROTOCOL_dual_critic_relay.md](../03_api/PROTOCOL_dual_critic_relay.md)：四份 Schema、BRIEF 八段、漂移算法的**契约定义**
-- [设计文档](./2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md)：唯一实现依据，§18.1 有 8 项仍未拍板的决策
+- [设计文档](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：唯一实现依据，§18.1 有 8 项仍未拍板的决策
 - [ADR_001_isolation_mode.md](./ADR_001_isolation_mode.md)：为什么选就地审查而非镜像树
 - [REPORT_2026-09-11_m0_probe.md](../05_testing/REPORT_2026-09-11_m0_probe.md)：两家 CLI 的 18 个实测坑与 12 条与厂商文档不符之处
 - [BACKLOG.md](../08_project/BACKLOG.md)：技术债唯一事实源

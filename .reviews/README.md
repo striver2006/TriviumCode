@@ -2,7 +2,7 @@
 
 本目录是 **「主攻 + 双审」（Driver-DualCritic）** 流水线对外的**事实来源**：全部审查结论、逐条裁决与审计材料都落在这里并纳入 Git 版本管理，所有验收标准（AC-01～AC-18）都从本目录读取。
 
-> 规范依据：[PRD v1.3.0](../doc/01_requirements/PRD_driver_dual_critic.md) FR-08 / FR-09，[设计 v1.2.0](../doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md) 第 6 章。
+> 规范依据：[PRD v1.3.0](../doc/01_requirements/PRD_driver_dual_critic.md) FR-08 / FR-09，[设计 v1.2.0](../doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6 章。
 > 本目录内的文件**一律由编排器 `trivium` 的 `archive` 模块生成**，是唯一落盘出口；请勿手工创建或改名。
 
 ---

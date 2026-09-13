@@ -171,7 +171,7 @@ node skills/dual-critic/scripts/trivium.cjs <子命令>
 
 | 改了什么 | 必须同步 |
 | :--- | :--- |
-| 任何与设计文档不一致的行为 | 先回补修订 [设计文档](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md)，升补丁版本并在变更记录列明。**禁止两套规范并行** |
+| 任何与设计文档不一致的行为 | 先回补修订 [设计文档](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)，升补丁版本并在变更记录列明。**禁止两套规范并行** |
 | 四份 JSON Schema | 同步 `parse` / `gate` / `meta` 的校验与 [`PROTOCOL_dual_critic_relay.md`](../03_api/PROTOCOL_dual_critic_relay.md) |
 | CLI 参数或退出码 | `USAGE` 字符串、PROTOCOL 文档、相关 SKILL.md |
 | 探针项 | 设计 §3.5 的清单与 [M0 坑清单](../05_testing/REPORT_2026-09-11_m0_probe.md) |
