@@ -7,7 +7,7 @@
 >
 > ⚠️ 该文原自称「已批准 (Approved) · 实施基线」，**该口径无效**。它是多模型设计调研中的一份答卷，
 > 从未被批准为实施基线。本项目的唯一实现依据是
-> [`2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md`](../2026-09-10-Driver-DualCritic主攻双审流水线设计-claude.md)。
+> [`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`](../2026-09-10-Driver-DualCritic主攻双审流水线设计.md)。
 > 本文结论可能已被该设计推翻，阅读时请以其为准。（设计 18.2 回填，2026-09-11）
 > - **系统架构师**：TriviumCode 核心架构团队 (Gemini)
 > - **关联需求**：[PRD_driver_dual_critic.md (v1.3.0)](../../01_requirements/PRD_driver_dual_critic.md)
