@@ -38,6 +38,10 @@
 
 - [`../05_testing/REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md)：M0 探针本机实测报告（本机坑清单）。设计原则 P7 规定实现代码只读探针结论、不得硬编码 CLI 命令行，本报告是该结论的人读副本（机读副本在 `.trivium/config.local.yaml` 的 `probe:` 段，不进 Git）。
 
+### 演进提案（待审，不作为实现依据）
+
+- [`2026-09-13-通用Agent编排与动态多审设计-glm.md`](./2026-09-13-通用Agent编排与动态多审设计-glm.md)：**通用 Agent 编排与动态多审（Driver-MultiCritic）演进计划**（v0.1.5，状态：提案——待双审与项目负责人评审）。依据 2026-09-13 六条演进需求（QWen/DeepSeek 等多模型经 Codex 接入、含 profile 透传与四模型真实思考模式枚举，任意 Agent 可为 Driver，每次审核选 1～3 个审核者，逐审核者模型+思考等级三档，通用扩展架构）起草；提出 Agent 注册表、Driver 运行属性化、N 方隔离与闸门泛化、配置/schema v2、M6～M11 实施路线。**实施前须按纪律 1 回溯修订主设计与 PRD**。计划期登记既有隔离缺口（`_meta/review-<peer>-*.json` 不在禁读清单、git 对象库与 `~/.trivium` 运行目录为检测盲区）并裁定对策：只做检测收口，硬隔离路线（Seatbelt/影子工作区）留档备选。
+
 ### 模板
 
 - [`ADR_TEMPLATE.md`](./ADR_TEMPLATE.md)：架构决策记录编写模板
