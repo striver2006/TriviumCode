@@ -1,0 +1,180 @@
+{
+  "schema": "trivium.run.v1",
+  "run_id": "20260913T223700Z",
+  "topic": "配置v2与动态多审",
+  "stage": "plan",
+  "rerun_index": 2,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "本稿是第二稿，首轮因一侧网络失败整轮作废，其单侧结论未作准入依据但已用作重写线索。重点看四处：一是本稿声称与设计文档 §11/§6.2/§12/AC-N3 逐项一致、因而无需修订设计文档，这个声称是否成立，还有没有残余分歧；二是 §4 的泛化欠账清单是否还有遗漏，注意 registry-parity 的 grep 只抓带引号字面量、属性访问形态会漏网；三是 §3.4 读侧改为「非 v1 非 v2 即不可读」会不会误伤归档里既有的历史工件，尤其 verify 目录下标着 run.v1 的记录；四是 §3.5 用夹具重打包替代环境变量后，零改动验收跑在一份改过注册表的产物上究竟证明了什么",
+  "task_goal": "把配置与运行面从固定双审泛化为按 Agent 注册表驱动：配置 schema 升到 v2 并按设计文档 §11 做内存迁移全兼容；审核者由固定两家改为每轮动态选择 1 至 3 家，运行元数据记录本轮实际入选者；清理 M7b 泛化欠账；新增桩 Agent 接入夹具作为零改动接入的验收装置",
+  "entry": "A",
+  "snapshot": {
+    "git_head": "ffa0059f1e686bec0f71f8ea0a344f68c0ec3685",
+    "tree_hash": "7adabca61ae5c16b3144c6c37a2f720b3fcaa034",
+    "dirty": true,
+    "subject_sha256": "4f2fca7fa63c3e08995b4983274dd5b22dbb73edae522e60da3190a7f08c346d",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-13T22:37:00.973Z",
+  "finished_at": "2026-09-13T22:49:09.599Z",
+  "review_mode": "dual",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 239.356,
+      "tool_calls": {
+        "read": 47,
+        "grep": 11,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 28
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 345782,
+        "output_tokens": 47916,
+        "thinking_tokens": 36230,
+        "cache_read_tokens": 6925057,
+        "total_tokens": 393698
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "8b520198-de2b-430c-91ef-1b7bc03ed2a4",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 728.472,
+      "tool_calls": {
+        "read": 34,
+        "grep": 9,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 30
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 19,
+        "inputTokens": 2300242,
+        "outputTokens": 53832,
+        "totalTokens": 2354074,
+        "cacheReadTokens": 2135936,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_167dd870-1921-464e-987f-e432beb935f4",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/Agent注册表与多审泛化/code/2026-09-13-Agent注册表与多审泛化-glm.md",
+    ".reviews/Agent注册表与多审泛化/code/_meta/review-glm-20260913T121713Z.json",
+    ".reviews/Agent注册表与多审泛化/plan/2026-09-13-Agent注册表与多审泛化-glm.md",
+    ".reviews/Agent注册表与多审泛化/plan/_meta/review-glm-20260913T115435Z.json",
+    ".reviews/C命令base透传修复/code/2026-09-12-C命令base透传修复-glm.md",
+    ".reviews/C命令base透传修复/code/_meta/review-glm-20260911T155806Z.json",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md",
+    ".reviews/M2-skills与闸门/plan/_meta/review-glm-20260910T221346Z.json",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md",
+    ".reviews/M3-隔离证据与预检/plan/_meta/review-glm-20260910T232427Z.failed.json",
+    ".reviews/M3-隔离证据与预检/plan/_meta/review-glm-20260910T234258Z.json",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r3-glm.md",
+    ".reviews/M4-M5实现/code/_meta/review-glm-20260911T020826Z.json",
+    ".reviews/M4-M5实现/code/_meta/review-glm-20260911T023232Z.failed.json",
+    ".reviews/M4-M5实现/code/_meta/review-glm-20260911T025329Z.json",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-glm.md",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-r2-glm.md",
+    ".reviews/RV-B1-commit豁免/code/_meta/review-glm-20260912T130433Z.json",
+    ".reviews/RV-B1-commit豁免/code/_meta/review-glm-20260912T134136Z.json",
+    ".reviews/S9-闸门与留痕加固/code/2026-09-11-S9-闸门与留痕加固-glm.md",
+    ".reviews/S9-闸门与留痕加固/code/_meta/review-glm-20260911T063947Z.json",
+    ".reviews/双审进度反馈/code/2026-09-12-双审进度反馈-glm.md",
+    ".reviews/双审进度反馈/code/_meta/review-glm-20260912T150433Z.json",
+    ".reviews/双审进度反馈/plan/2026-09-12-双审进度反馈-glm.md",
+    ".reviews/双审进度反馈/plan/_meta/review-glm-20260912T144811Z.json",
+    ".reviews/审核修复/code/2026-09-12-审核修复-glm.md",
+    ".reviews/审核修复/code/_meta/review-glm-20260912T060013Z.json",
+    ".reviews/护栏判定范围收窄/code/2026-09-14-护栏判定范围收窄-glm.md",
+    ".reviews/护栏判定范围收窄/code/_meta/review-glm-20260913T164857Z.json",
+    ".reviews/护栏判定范围收窄/plan/2026-09-14-护栏判定范围收窄-r2-glm.md",
+    ".reviews/护栏判定范围收窄/plan/_meta/review-glm-20260913T160012Z.failed.json",
+    ".reviews/护栏判定范围收窄/plan/_meta/review-glm-20260913T162911Z.fallback-items.md",
+    ".reviews/护栏判定范围收窄/plan/_meta/review-glm-20260913T162911Z.json",
+    ".reviews/配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-glm.md",
+    ".reviews/配置v2与动态多审/plan/_meta/review-glm-20260913T172119Z.fallback-items.md",
+    ".reviews/配置v2与动态多审/plan/_meta/review-glm-20260913T172119Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "配置v2与动态多审/plan/_meta/brief-gemini-20260913T223700Z.md",
+      "sha256": "32332fe725f63baf37b3d1c65bff560947c9d1954def7b161c81a0d8a77bee28"
+    },
+    {
+      "path": "配置v2与动态多审/plan/_meta/brief-glm-20260913T223700Z.md",
+      "sha256": "224b48c17f5153159a58379ebeb3a1fc269b9529cfcc6ca010b55aa1ea26ab1b"
+    },
+    {
+      "path": "配置v2与动态多审/plan/_meta/review-gemini-20260913T223700Z.json",
+      "sha256": "de405f04b9b9d27e687e108c5759a6e300b0b648f8f8c525199e9512adb22315"
+    },
+    {
+      "path": "配置v2与动态多审/plan/_meta/review-glm-20260913T223700Z.json",
+      "sha256": "80ec21e29a7325c9e1b768b2265125aeee13ca3c8172611ac2aede32036d33f3"
+    },
+    {
+      "path": "配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-r2-gemini.md",
+      "sha256": "249402b4c520cb3912b2fd8628b527e6aee8a89f2d4d27522b069c8c2cf3cd56"
+    },
+    {
+      "path": "配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-r2-glm.md",
+      "sha256": "4e83f7ed88c9a8e5b18e6f54ab69451df7047b42904f0e4fb0b6f5b5c5ef64a8"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
