@@ -14,8 +14,6 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import type { Config, CriticId, CriticRequest, CriticResult, Ctx, Review, Stage, CommandEntry } from './types.js';
 import { CRITICS, CRITIC_VENDOR } from './types.js';
-import { agyAdapter } from './adapters/agy.js';
-import { zcodeAdapter } from './adapters/zcode.js';
 import {
   isHeterogeneous,
   routeModel,
@@ -23,6 +21,7 @@ import {
   type CriticAdapter,
 } from './adapters/base.js';
 import { resolveAdapters } from './adapters/stub.js';
+import { realAdapters } from './adapters/index.js';
 import { freeze } from './freeze.js';
 import {
   buildMustReadList,
@@ -52,7 +51,7 @@ import { diffAgainst, headSha } from './util/git.js';
 import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
 import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
 import { acquireLock } from './lock.js';
-import { measureDivergence, renderDivergence } from './divergence.js';
+import { measureAllPairs, renderDivergence } from './divergence.js';
 import { runRoot } from './config.js';
 import { setGateChecked } from './state.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
@@ -312,7 +311,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const lensesPath = path.join(assetRoot, 'lenses.yaml');
 
   // 经工厂取适配器：TRIVIUM_STUB_CRITIC 在场时换成桩（测试用，生产路径会打醒目告警）
-  const adapters = resolveAdapters({ gemini: agyAdapter, glm: zcodeAdapter });
+  const adapters = resolveAdapters(realAdapters());
   const adapterCtx: AdapterContext = {
     cfg,
     nodePath: cfg.runtime.node ?? process.execPath,
@@ -978,14 +977,19 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   say(summarizeRun(meta));
 
   /*
-   * 双审退化提示（§9.3）。放在这里而非 `report`，是因为它只对**本次**两侧结论有意义，
+   * 多审退化提示（§9.3）。放在这里而非 `report`，是因为它只对**本次**结论有意义，
    * 而 report 是跨轮复盘——真正需要看到「这次两家在看同一批地方」的人是刚跑完的 Driver。
    * report 之后会按主题做跨轮汇总，两者不冲突。
    */
-  if (sides.length === 2) {
-    const div = measureDivergence(reviews.gemini ?? null, reviews.glm ?? null);
+  /*
+   * 逐对算，不再写死「恰好两侧且必是 gemini×glm」。
+   * 两侧时产出一对，与旧行为等价；三审时三对，不会静默丢掉任何一家。
+   */
+  for (const div of measureAllPairs(reviews, sides)) {
     say(renderDivergence(div));
-    if (div.degenerate) warnings.push('双审退化：两侧镜头重合度过高，见上方 Jaccard 提示');
+    if (div.degenerate) {
+      warnings.push(`多审退化：${div.a} 与 ${div.b} 的镜头重合度过高，见上方 Jaccard 提示`);
+    }
   }
 
   if (warnings.length > 0) {

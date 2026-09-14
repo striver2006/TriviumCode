@@ -10,6 +10,7 @@ import type {
   CriticId, CriticResult, Review, Severity, Stage, Vendor,
 } from './types.js';
 import { CRITIC_VENDOR } from './types.js';
+import { agentById } from './agents/registry.js';
 
 const SEVERITY_ORDER: readonly Severity[] = ['blocker', 'major', 'minor', 'nit'];
 const SEVERITY_LABEL: Record<Severity, string> = {
@@ -95,11 +96,21 @@ export function renderFrontMatter(input: RenderInput): string {
   return `---\n${YAML.stringify(fm, { lineWidth: 0 }).trimEnd()}\n---`;
 }
 
-const CRITIC_LABEL: Record<CriticId, string> = {
-  gemini: 'Critic-A · Google Antigravity',
-  glm: 'Critic-B · 智谱 ZCode',
-};
 const STAGE_LABEL: Record<Stage, string> = { plan: '计划审查', code: '代码审查', bug: '根因审查' };
+
+/**
+ * 审查文档抬头的人读全称，取自注册表。
+ *
+ * 此前是 `CRITIC_LABEL: Record<CriticId, string>` 的两键字面表——它**不带引号**，
+ * 因此 grep 对账的字面量扫描抓不到它，白名单里也就没有它的条目：
+ * 一个「白名单外无硬编码」的结论看着成立、实际有洞（M7b 第 2 步补的属性访问对账）。
+ *
+ * 未登记的 id 回落到 id 本身而不抛异常：抬头是人读文案，
+ * 为它炸掉一次已经跑完、结论已在手里的审查不划算。
+ */
+function criticLabel(critic: CriticId): string {
+  return agentById(critic)?.label ?? critic;
+}
 
 /** 渲染完整审查文档 */
 export function renderReviewDoc(input: RenderInput): string {
@@ -108,7 +119,7 @@ export function renderReviewDoc(input: RenderInput): string {
 
   parts.push(`# ${STAGE_LABEL[input.stage]}：${input.topic}
 
-> ${CRITIC_LABEL[input.critic]} ｜ 模型 \`${result.model_effective ?? input.modelRequested ?? '未知'}\`
+> ${criticLabel(input.critic)} ｜ 模型 \`${result.model_effective ?? input.modelRequested ?? '未知'}\`
 > ｜ 运行 \`${input.runId}\`${input.rerunIndex > 1 ? ` ｜ 第 ${input.rerunIndex} 轮` : ''}`);
 
   // 不可伪装的标记必须在正文顶部就能看见，而不是只在 front-matter 里

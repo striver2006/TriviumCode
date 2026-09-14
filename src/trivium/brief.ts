@@ -17,10 +17,19 @@ import { CRITIC_PREFIX } from './types.js';
 import { exists } from './util/fsx.js';
 import type { Snapshot } from './freeze.js';
 
-export interface Lenses {
-  gemini: Partial<Record<Stage, string>>;
-  glm: Partial<Record<Stage, string>>;
-}
+/**
+ * `lenses.yaml` 的形状：**按审核者 id 键控**的镜头表。
+ *
+ * 此前是写死两键的 interface（`{ gemini: …; glm: … }`）。`lenses[critic]` 之所以
+ * 合法，只因当时 `CriticId` 恰好就是那两个值——这是**类型层的巧合**，不是设计。
+ * 放开审核者枚举后（桩 Agent 夹具、M8/M9）它会直接编译不过，而 `brief.ts`
+ * 一旦被迫改动，第 6 步「新增 Agent 时核心流程零改动」的验收就会被自己打红
+ * （计划双审 GLM-03）。因此类型泛化必须**先于**桩夹具落地。
+ *
+ * 用 `Partial` 而非要求四键齐备：镜头是**可选**的资产，缺了只是那一侧按通用标准审，
+ * 不该让整条流水线跑不起来（与 `loadStagePrompt` 缺文件返回 null 同理）。
+ */
+export type Lenses = Partial<Record<CriticId, Partial<Record<Stage, string>>>>;
 
 export async function loadLenses(lensesPath: string): Promise<Lenses> {
   const raw = await fs.readFile(lensesPath, 'utf8');

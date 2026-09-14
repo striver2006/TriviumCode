@@ -2,7 +2,7 @@
  * 主题级复盘报告（设计 §5.1 `report`、§9.3、§15.2）。
  *
  * 输出：时间线、每轮意见数与严重度分布、采纳率、被驳回项与理由、
- * 降级与告警清单、耗时与 token 汇总、双审退化提示。
+ * 降级与告警清单、耗时与 token 汇总、多审退化提示。
  *
  * ## 数据源只有 `.reviews/`
  *
@@ -22,7 +22,7 @@ import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
 import { readRunMeta, readTask, type TaskMeta } from './meta.js';
 import { loadRoundReviews } from './gate.js';
 import { parseDisposition } from './disposition.js';
-import { measureDivergence, type DivergenceReport } from './divergence.js';
+import { measureAllPairs, type DivergenceReport } from './divergence.js';
 import { summarizeVerify, type VerifyRecord } from './verify.js';
 import { CRITICS, STAGES, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';
 
@@ -56,7 +56,8 @@ export interface RoundReport {
   disposals: Record<Disposal, number> | null;
   /** 被驳回与暂缓的条目，带理由——复盘最该被人读到的部分 */
   contested: { id: string; disposal: Disposal; severity: Severity | null; reason: string }[];
-  divergence: DivergenceReport | null;
+  /** 本轮各**对**审核者的重合度。两侧时恰好一项；三审时三项（逐对） */
+  divergences: DivergenceReport[];
   guardFlags: string[];
   /**
    * 逐侧 token 用量。**不跨厂商相加**：两家的字段名体系不同
@@ -177,7 +178,7 @@ async function buildRound(
     severity: zeroSeverity(),
     disposals: null,
     contested: [],
-    divergence: null,
+    divergences: [],
     guardFlags: [],
     tokens: {},
     notes,
@@ -226,10 +227,12 @@ async function buildRound(
     if (Object.keys(numeric).length > 0) base.tokens[c] = numeric;
   }
 
-  // 只有两侧都拿到结构化结论时，重合度才有意义
-  if (reviews.gemini && reviews.glm) {
-    base.divergence = measureDivergence(reviews.gemini, reviews.glm);
-  }
+  /*
+   * 逐对计算，而不是写死 `reviews.gemini × reviews.glm`——那个写法在三审时
+   * 会把第三家静默丢掉。论域取本轮 run.json 实际登记的审核者，
+   * 不取当前启用集合：复盘读的是**历史**轮次，那时的入选集合可能与现在不同。
+   */
+  base.divergences = measureAllPairs(reviews, Object.keys(meta.critics) as CriticId[]);
 
   if (meta.guard.readonly_breach) base.guardFlags.push('只读失守');
   if (meta.guard.peer_artifact_read) base.guardFlags.push('读到对方产出');
@@ -450,25 +453,27 @@ export function renderTopicReport(r: TopicReport): string {
   }
   L.push(alerts.length === 0 ? '（无）' : alerts.map((a) => `- ${a}`).join('\n'), '');
 
-  // ── 六、双审退化 ──
-  L.push('## 六、双审退化指标（§9.3）', '');
-  const withDiv = r.rounds.filter((d) => d.divergence);
+  // ── 六、多审退化 ──
+  L.push('## 六、多审退化指标（§9.3）', '');
+  const withDiv = r.rounds.filter((d) => d.divergences.length > 0);
   if (withDiv.length === 0) {
-    L.push('（无可比对的轮次：需要两侧都产出结构化结论）', '');
+    L.push('（无可比对的轮次：需要至少两侧都产出结构化结论）', '');
   } else {
-    L.push('| 阶段/轮 | Jaccard（归一化） | 未归一化 | 共同覆盖 | 仅 gemini | 仅 glm |', '| :--- | :--- | :--- | :--- | :--- | :--- |');
+    // 表头不再写死两侧名：配对身份随每行给出，三审时会有三行
+    L.push('| 阶段/轮 | 配对 | Jaccard（归一化） | 未归一化 | 共同覆盖 | 仅前者 | 仅后者 |', '| :--- | :--- | :--- | :--- | :--- | :--- | :--- |');
     for (const d of withDiv) {
-      const v = d.divergence!;
-      L.push(
-        `| ${d.stage} r${d.rerunIndex} | ${v.jaccard.toFixed(2)}${v.degenerate ? ' ⚠️' : ''} | ` +
-          `${v.rawJaccard.toFixed(2)} | ${v.overlap.length} | ${v.onlyA.length} | ${v.onlyB.length} |`,
-      );
+      for (const v of d.divergences) {
+        L.push(
+          `| ${d.stage} r${d.rerunIndex} | ${v.a} × ${v.b} | ${v.jaccard.toFixed(2)}${v.degenerate ? ' ⚠️' : ''} | ` +
+            `${v.rawJaccard.toFixed(2)} | ${v.overlap.length} | ${v.onlyA.length} | ${v.onlyB.length} |`,
+        );
+      }
     }
-    const degenerate = withDiv.filter((d) => d.divergence!.degenerate);
+    const degenerate = withDiv.filter((d) => d.divergences.some((v) => v.degenerate));
     L.push('');
     if (degenerate.length > 0) {
       L.push(
-        `> ⚠️ 有 ${degenerate.length} 轮重合度超过阈值：两侧在看同一批地方，差异化镜头没起作用。`,
+        `> ⚠️ 有 ${degenerate.length} 轮存在重合度超过阈值的配对：那两家在看同一批地方，差异化镜头没起作用。`,
         '> 建议调整 `lenses.yaml` 的镜头，或改用差异更大的模型组合。**这是提示，不是错误。**',
         '',
       );

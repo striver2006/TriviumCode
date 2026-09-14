@@ -309,8 +309,14 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
   const topic = v.normalized;
 
   const models: Partial<Record<CriticId, string>> = {};
-  if (named['model-gemini']) models.gemini = named['model-gemini'];
-  if (named['model-glm']) models.glm = named['model-glm'];
+  /*
+   * 逐审核者取 `--model-<id>`，不再写死两个旗标名。
+   * 旗标名对既有两侧逐字不变（id 即 gemini / glm），第三家启用后自动可用。
+   */
+  for (const c of CRITICS) {
+    const v = named[`model-${c}`];
+    if (v) models[c] = v;
+  }
 
   const contextPaths = (named['context'] ?? '')
     .split(',')

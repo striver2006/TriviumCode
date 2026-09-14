@@ -43,6 +43,15 @@ export interface AgentDescriptor {
   id: AgentId;
   /** 人读名，进播报与报告 */
   display: string;
+  /**
+   * 审查文档抬头的人读全称（`render.ts` 的第一行）。
+   *
+   * 「Critic-A / Critic-B」是主设计第 0 章术语表**钉死的称谓**（A = gemini、B = glm），
+   * 不是按运行期位置算出来的序号——所以它登记在这里，而不是渲染时数下标。
+   * 若按下标算，启用第三家后既有两侧的字母会跟着漂移，历史留痕的抬头就对不上了。
+   * codex / claude 启用为审核者时（M8 / M9）字母由届时的设计裁定，现在不预留。
+   */
+  label: string;
   vendor: AgentVendor;
   /**
    * 归档后缀，标识**产出方**。恒等于 `id`。
@@ -73,6 +82,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
   {
     id: 'claude',
     display: 'Claude Code',
+    label: 'Anthropic Claude Code',
     vendor: 'anthropic',
     suffix: 'claude',
     findingPrefix: 'CLAUDE',
@@ -84,6 +94,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
   {
     id: 'codex',
     display: 'Codex',
+    label: 'OpenAI Codex',
     vendor: 'openai',
     suffix: 'codex',
     findingPrefix: 'CODEX',
@@ -95,6 +106,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
   {
     id: 'gemini',
     display: 'Antigravity',
+    label: 'Critic-A · Google Antigravity',
     vendor: 'antigravity',
     suffix: 'gemini',
     findingPrefix: 'AGY',
@@ -106,6 +118,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
   {
     id: 'glm',
     display: 'ZCode',
+    label: 'Critic-B · 智谱 ZCode',
     vendor: 'zcode',
     suffix: 'glm',
     findingPrefix: 'GLM',

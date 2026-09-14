@@ -312,3 +312,40 @@ test('回归：本轮审查缺失不受跨轮次查找影响', async () => {
   assert.ok(c.missing.some((m) => m.includes('glm')), '第 2 轮缺 glm 必须报出');
   assert.ok(!c.missing.some((m) => m.includes('原稿')), '原稿在第 1 轮存在，不得报缺');
 });
+
+/*
+ * ── 单侧轮次不得被误报缺件（M7b 第 2 步，两侧收敛意见 AGY-04 ≡ GLM-02）──
+ *
+ * 计划 §4 的欠账表把这条列为「闸门缺口」：`--check-artifacts` 此前给
+ * `critics` 传 `undefined`，于是回落到**当前启用集合**去找工件。
+ * `--only gemini` 跑完的轮次里 glm 那份工件永远不存在，一个完全合规的轮次
+ * 被判成缺件。
+ *
+ * **正负成对写**是有意的：只写正例的话，把实现改成「永远不报缺件」也能过。
+ * 负例锁住的是「传与不传确实有差别」——修复本身才有防回退锚点。
+ */
+
+test('单侧轮次：传入真实入选集合则不报缺件', async () => {
+  const l = await tmpLayout();
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', rerunIndex: 1, content: 'a', date: DATE });
+  await writeArtifact({ layout: l, stage: 'plan', role: 'gemini', writer: 'gemini', rerunIndex: 1, content: 'b', date: DATE });
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'd', date: DATE });
+
+  const c = await checkStageArtifacts(l, 'plan', 1, ['gemini']);
+  assert.equal(c.ok, true, `单侧轮次不该缺件，实缺：${c.missing.join(', ')}`);
+});
+
+test('单侧轮次：不传入选集合就会回落到启用集合，并误报另一侧缺件', async () => {
+  // 这是修复前的行为。留作负例，锁住「传与不传有差别」——否则上面的正例证明不了什么
+  const l = await tmpLayout();
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', rerunIndex: 1, content: 'a', date: DATE });
+  await writeArtifact({ layout: l, stage: 'plan', role: 'gemini', writer: 'gemini', rerunIndex: 1, content: 'b', date: DATE });
+  await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'd', date: DATE });
+
+  const c = await checkStageArtifacts(l, 'plan', 1);
+  assert.equal(c.ok, false, '回落到启用集合时应当报缺件——这正是被修掉的缺陷');
+  assert.ok(
+    c.missing.some((m) => m.includes('glm')),
+    `缺件应点名未入选的那一侧，实得：${c.missing.join(', ')}`,
+  );
+});

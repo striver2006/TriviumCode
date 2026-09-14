@@ -1,0 +1,110 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "四个焦点逐一核实。(1) 接线守卫恰当：realAdapters() 仅在 prepareRun（review.ts:314）与 rebuildContext（run-protocol.ts:158）两处惰性调用，report/gate/doctor/status/verify/preflight/topic 等只读路径不经过它、不会误伤正常路径；调用点位于可用性检查、冻结与配额消耗之前，失败零浪费；plain Error 经 cli.ts main 兜底退 1 并完整转述修法文案，与「注册表-接线不一致=程序缺陷」的定性相称；resolveAdapters 以 real 表为底逐 id 替换，TRIVIUM_STUB_CRITIC 不会绕过守卫，未来桩 Agent 按计划六件套把自己的桩适配器接进 WIRED 即可满足守卫，无结构性冲突。(2) 逐对计算无漏消费点：全仓 grep 确认旧单数 divergence 字段的全部消费方（report.ts 渲染、review.ts 播报、三个测试）都已迁到 divergences/measureAllPairs；skills 与文档不消费 report --json 的报告字段，形状变更（divergence→divergences、逐项新增 a/b）在仓内无机读下游，与演进设计 §411「逐对 Jaccard」及主设计 M7b 台账行一致，可接受；遗留：n=3 行为零测试（GLM-01）。(3) 扫描器只排路径分隔符的边界划得对——再排点号会把 cfg.critics.<id> 这类最常见真阳性吞掉，而误报有零成本出口（白名单+理由）；但仍有三类形态全盲、且测试注释宣称的覆盖面比实际强（GLM-03）；白名单 20→10 的删除逐项核实成立，过期条目守卫方向正确。(4) 无越界：diff 逐项对应计划第 2 步欠账清单（适配器接线、--model-* 泛化、分歧度逐对、label、报告表头、--check-artifacts 论域、对账扩展），Lenses 类型泛化行为中性且为第 6 步零改动验收铺路，CriticId 字面收窄保留的理由（Vendor/CriticRunMeta 耦合属 run.v2 范围）成立，同意缓放。结论：2 minor（两处测试缺口）+ 3 nit，无 blocker/major。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/divergence.test.ts（缺例）；src/trivium/divergence.ts:185-202",
+      "problem": "measureAllPairs 是本次「分歧度 N 方化」的核心交付，却没有任何直接测试：divergence.test.ts 未导入它；report.test.ts 只经 buildTopicReport 覆盖 n=2（恰好一对）与单侧失败（空数组）两种形态。三审产三对、配对身份逐对传播、三方中一方为 null 时应「跳过含它的一对、保留另一对」（即 2 对而非 3 或 0）——这些新行为在现有测试里不存在能区分对错的输入：把双重循环改回写死一对，除 report.test.ts 的 length 断言外在 n=2 输入下依旧全绿。计划 §6 把三审集成用例排在第 6 步（桩夹具），但该函数是纯函数，当下即可单测，不必等夹具。",
+      "evidence": "实读 test/unit/divergence.test.ts 全文（155 行，import 仅 measureDivergence/normalizeLocation/renderDivergence/sameLocation，无 measureAllPairs 用例）；grep 全 test/ 仅 test/unit/report.test.ts:158-185 经 buildTopicReport 间接覆盖 n=2（断言 divergences.length===1 与 [v.a,v.b] 配对身份）与单侧失败（divergences 深等于空数组）两形态；.reviews/配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-claude.md §6 将「三审（桩）全链路：分歧度含第三家」列为集成用例，本 diff 未交付任何对应测试。",
+      "suggestion": "在 divergence.test.ts 补纯函数用例：三个 id、其中一个 review 为 null → 断言恰好 2 对且每对 a/b 与传入一致；三侧齐备 → 3 对。不依赖桩与夹具，可即刻锁定循环与身份传播契约。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/cli.ts:608-611（缺配套测试）",
+      "problem": "--check-artifacts 从「回落当前启用集合」改为「以 run.json 登记的 critics 为准」，是计划 §4 欠账表点名的闸门缺口修复（「单侧轮次被误报缺件」），计划 §6 为它列了集成用例，但本 diff 未交付：archive.test.ts 全部 checkStageArtifacts 调用均不传 critics（走默认 CRITICS），两个集成用例（bug-stage/gate-loop）都是双测轮次、无 --only 场景。把 cli.ts:610-611 回退成 undefined（即恢复误报缺陷），现有全套测试仍然绿——修复本身没有防回退锚点。这与上一轮 AGY-01 揭示的形态同构：新增行为一行测试都没有。",
+      "evidence": "实读 src/trivium/cli.ts:600-619（roundCritics 推导：--run-id 或 inferLatestRunId → readRunMeta → Object.keys(critics)）；grep test/ 全部 checkStageArtifacts 调用（test/unit/archive.test.ts:151-310 共 14 处）均不传 critics 或显式 undefined；test/integration/bug-stage.test.ts:83/101/135 与 gate-loop.test.ts:180 的 --check-artifacts 用例均无 --only；计划 §4 行「--check-artifacts 的 critics 集合｜单侧轮次被误报缺件」与 §6 行「--check-artifacts 在单侧轮次不误报缺件｜集成」。",
+      "suggestion": "补一例集成（既有桩夹具跑 --only gemini 的 review，随后 gate --check-artifacts 应 ok），或对 cli.ts 新逻辑做窄测；计划已列，按计划补齐即可。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "test/unit/registry-parity.test.ts:267-303（属性访问对账及其注释）",
+      "problem": "「只排路径分隔符」的边界本身划得对，但对三类高频形态仍然全盲，且测试注释对覆盖面的宣称比实际强：(a) 散文/文案形态——注释 275-276 行把「divergence.ts 的『仅 gemini / 仅 glm』文案」列为新扫描覆盖的对象，但「仅 gemini 」（空格前缀、后随非冒号）三种正则都不匹配；本次是靠重构成 ${d.a} 修掉的，若有人回退成写死文案，对账依旧绿灯——该举例的两个同伴（reviews.gemini 的 .gemini、CRITIC_LABEL 的 gemini:）确实被覆盖，唯独它不能。(b) 无引号正则/裸标识符——adapters/base.ts:180 的 !/claude/i.test(model) 是行为逻辑（isHeterogeneous，FR-17），同样三形态全盲且 base.ts 不在白名单。(c) 旗标与枚举散文——cli.ts:118「--model-gemini <slug> / --model-glm <id>」、:122「--only gemini|glm」（USAGE 模板串）在第三家启用后会静默过期，而 cli.ts 的白名单条目恰因这些形态不可见被过期守卫判死删除。结论「白名单外无字面量」按当前注释口径读会高估。",
+      "evidence": "实读 test/unit/registry-parity.test.ts:240-241（idPattern/prefixPattern）、:270-279（注释举例）、:302-303（propPattern=\\.(?:ids)(?![\\w/-])、keyPattern=(?:^|[{,(]|\\s)(?:ids)\\s*[:?]），并对 cli.ts:118/122（USAGE 模板串原文）、src/trivium/adapters/base.ts:177-181（!/claude/i.test(model)）、divergence.ts:164（现 ${d.a} × ${d.b}）逐串验证不命中任何模式；实读 diff 确认 cli.ts 白名单条目「旗标名 --model-gemini / --model-glm」本次被删除。",
+      "suggestion": "至少把口径改准：在属性访问对账的注释里明确列出「不覆盖的形态」（裸标识符与正则字面量、模板串里的旗标/枚举散文、路径内嵌 id），并修正 275-276 行对 divergence 文案的举例（改为「靠人工修复、对账不守」或撤回该例）；有余力再考虑给文案形态加窄模式（如 (仅|只)\\s*<id>）。不建议追求全覆盖——那会滑向误报海洋。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/divergence.ts:1-6 ↔ doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md:411",
+      "problem": "人读退化提示的术语三处不一致：演进设计 §411 定的是「多审退化」，主设计 §9.3 原文仍是「双审退化」，实现统一成了第三个词「审查退化」（divergence/review/report/render 全链 + USAGE）。行为（逐对 Jaccard、阈值 0.8、聚合输出）与设计一致，但该术语进入 run.json 的 warnings 与人读报告，是用户可见契约；AGENTS.md 同步清单要求行为与设计不一致时先回补设计文档。另 LLD_orchestrator.md:99 的模块表仍写「双审退化指标｜159 行｜measureDivergence()」，未随本次改动更新。",
+      "evidence": "grep 并实读 doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md:411（「两两 Jaccard > 0.8 触发『多审退化』提示（从双侧推广为逐对计算，report 聚合输出）」）、doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1312（§9.3「『双审退化』提示」）、src/trivium/divergence.ts:1-6 与 review.ts 播报文案（「审查退化」）、doc/02_design/LLD_orchestrator.md:99。",
+      "suggestion": "二选一收口：改设计（演进设计 411 与主设计 §9.3 术语改为「审查退化」并按纪律升补丁版本），或改实现统一到「多审退化」；顺带更新 LLD 模块表那一行。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/cli.ts:163-168（USAGE gate 段）",
+      "problem": "--check-artifacts 本轮新增了接受 --run-id 的能力（cli.ts:608 优先取显式 run-id 再推断最新一轮），但 USAGE 只把 [--run-id <id>] 标在 --check 行上，--check-artifacts 的说明行只字未提。多轮同名阶段下这是唯一能精确指定校验对象的诊断出口，不可发现即等于不存在。",
+      "evidence": "实读 src/trivium/cli.ts:163-168（USAGE gate 段：--check 行带 [--run-id <id>]，:165 的 --check-artifacts 说明行无）与 :608（check-artifacts 分支 flagString(args,'run-id') 生效；diff 确认旧代码该分支不读 run-id，此能力为本 diff 新增）。",
+      "suggestion": "USAGE 的 --check-artifacts 行补 [ --run-id <id>] 一段；按 AGENTS.md 同步清单核对 PROTOCOL/SKILL.md 是否需要同句。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "焦点一（接线守卫）成立：realAdapters() 惰性调用于 prepareRun（review.ts:314）与 rebuildContext（run-protocol.ts:158）两处，不在模块顶层；逐一核对 report/gate/doctor/status/verify/preflight/topic/approve 的调用链均不经过它，正常只读路径零误伤。失败点在可用性检查、送审包冻结与任何配额消耗之前；错误文案给出两条出路（补接线 / criticEnabled 改回 false）且点名 display 名；经 main 的兜底 catch 退 1 而非 69/64，与「源码级配置错误=程序缺陷」的定性相称。",
+    "守卫与桩机制的相互作用正确：resolveAdapters（stub.ts:218-237）以 real 表为底、逐 id 替换，TRIVIUM_STUB_CRITIC 在场时守卫仍先执行——配置错误在测试里也该炸，这是想要的语义；未来桩 Agent 按计划六件套第 2 件（adapters/stub-agent.ts）把桩适配器作为该 Agent 的执行者接进 WIRED 即满足守卫，无结构性冲突。adapters/index.ts 与 registry 的分工（身份 vs 由谁执行）清晰，run-protocol 的 worker 重建与主进程同源取表，修掉了 AGY-05 记载的静默失联形态。",
+    "焦点二（分歧度逐对）消费点无遗漏：全仓 grep「divergence」确认旧单数字段的全部消费方（report.ts 渲染六节、review.ts 播报与 warnings、divergence/report/registry-parity 三个测试）都已迁移；measureAllPairs 在两侧时与旧行为逐字段等价（report.test.ts:160-163 锁定），单侧失败跳过该对（report.test.ts:185）；论域取 run.json 的 meta.critics 而非当前启用集合，对历史轮次复盘是正确取向。",
+    "report --json 形状变更可接受：报告输出无 JSON Schema 契约（四份 schema 为 config/review/disposition/run），仓内 skills 与文档只消费 gate/preflight/topic/review --json，不解析报告字段；配对身份进 DivergenceReport 使渲染侧摆脱「A=gemini」的默契，是三审前的必要一步；与演进设计 §411「逐对计算、report 聚合」及主设计 M7b 台账行（:2084）一致。",
+    "焦点三的边界决策正确：propPattern 刻意不排点号——排掉点号会让 cfg.critics.gemini.effort 这类最常见真阳性全数漏网，为治误报造出更糟的漏报；(?![\\w/-]) 排路径分隔符使 .claude/skills、.trivium/** 不再误报，而误报本有零成本出口（白名单+理由）。白名单 20→10 的删除逐项核实成立（被删文件的带引号/属性/键形态确已清空），过期条目守卫用四模式并集复核、方向正确，本次实际清出的 8 条死条目证明了它的价值。",
+    "焦点四（无越界）成立：diff 逐项对应计划第 2 步欠账清单，未触碰 schema/config v2/--critics/run.v2/桩夹具；Lenses 类型泛化（brief.ts）行为中性——lenses[critic]?.[stage]（brief.ts:112）本就是动态键查表，泛化只是让类型层如实，且避免第 6 步零改动验收被 brief.ts 编译错打红；CriticId 字面收窄保留的理由成立——CriticRunMeta.vendor 的 Vendor 两值枚举（types.ts:29/322）与 run.v1 线契约耦合，放开 CriticId 必然拖入 run.v2 的枚举改造，缓放到第 3 步是对的，且上一轮 GLM-03 的裁决已把 vendor 链路登记进该步清单。render.ts 的 criticLabel 未登记回落 id 而不抛异常、label 进注册表而非渲染时数下标（字母漂移问题）两处设计判断都稳妥。"
+  ],
+  "not_covered": [
+    "只读约束下未执行 npm run typecheck/build/test；「当前树对账与测试全绿」是从正则定义与源码逐串核对推得的结论，未实测复跑验证。",
+    "runner.ts、gate.ts、status.ts、doctor.ts、selftest.ts、preflight.ts、hooks.ts 未逐行复审（非本 diff 触碰文件，仅按调用链需要抽查了 gate.ts 的 inferLatestRunId 与 archive.ts 的 checkStageArtifacts 签名区）。",
+    "四份 JSON Schema JSON 文件未逐字核对（本 diff 未动 schema；types.ts 已通读）。",
+    "readRunMeta（meta.ts:243-255）为 JSON.parse 直转零校验，「可解析但缺 critics 字段」的畸形 run.json 会让 cli.ts:610 的 Object.keys 抛 TypeError 退 1——未作为意见提出：writeRunMeta 写前过 ajv 校验、历史写入方均含 critics，且 report.ts:207/235 的同形用法先于本 diff 存在、风险敞口未变化，如实记录于此。",
+    "PROTOCOL_dual_critic_relay.md 与三份 SKILL.md 未逐字通读（仅 grep 确认 report --json 无机读下游、--model-* 旗标在 skills 的呈现形态）。",
+    "上一轮裁决承诺的第 1 步补测与修缮（gate.test.ts 两例、runner 负例、JSDoc 挪位、LLD warning 表）是否已另行落盘不在本 diff 13 个文件之内，未核对其完成状态。"
+  ],
+  "consulted": [
+    ".reviews/配置v2与动态多审/code/_meta/changes-20260914T021531Z.diff",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/divergence.ts",
+    "src/trivium/report.ts",
+    "src/trivium/types.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/archive.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/divergence.test.ts",
+    "test/unit/report.test.ts",
+    "test/unit/archive.test.ts",
+    ".reviews/配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-claude.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-glm.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-response-claude.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "README.md",
+    "CLAUDE.md"
+  ]
+}

@@ -96,7 +96,7 @@ graph TD
 | :--- | ---: | :--- | :--- |
 | `parse.ts` | 262 | 从厂商 stdout 里抠出审查结论并按 schema 校验 | `parseReview()` `extractJsonCandidates()` `enumerateFallbackFindings()` |
 | `disposition.ts` | 248 | 裁决表解析与三态归一 | `parseDisposition()` `normalizeDisposal()` |
-| `divergence.ts` | 159 | 双审退化指标（镜头重合度 Jaccard） | `measureDivergence()` |
+| `divergence.ts` | 202 | 多审退化指标（镜头重合度 Jaccard，按入选集合逐对计算） | `measureDivergence()` `measureAllPairs()` |
 | `schemas.ts` | 57 | 三份 schema 的 ajv 编译与缓存（`review.v1` 由 `parse.ts` 自持） | `validateRun()` `validateConfig()` |
 
 ### 2.6 适配层

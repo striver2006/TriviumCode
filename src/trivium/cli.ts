@@ -152,7 +152,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
 
   trivium report --topic <主题> [--out <路径>] [--json]
       依据 .reviews/ 生成人读复盘：时间线、每轮意见数与严重度分布、采纳率、
-      被驳回项与理由、生效模型核对、降级与告警清单、双审退化指标、耗时汇总。
+      被驳回项与理由、生效模型核对、降级与告警清单、多审退化指标、耗时汇总。
       只读归档，不重新调用任何 Agent；默认打到 stdout，--out 写文件。
 
   trivium init [--dry-run] [--asset-root <路径>]
@@ -162,7 +162,9 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
 
   trivium gate --stage <s> --topic <主题> --check [--run-id <id>] [--json]
       裁决完整性硬校验（§8.6）。返回 2 表示未通过，stdout 给出缺口清单供直接修补。
-      --check-artifacts   改为校验该阶段最低工件集（§6.3）
+      --check-artifacts [--run-id <id>]
+                          改为校验该阶段最低工件集（§6.3）。审核者集合取自该轮
+                          run.json 的实际登记，单侧轮次不会被误报缺件
       --await-approval    置闸门为 awaiting_approval 并输出停点话术
       校验通过后闸门去哪由 run.json 的 entry 决定：B/C/D 直接立起 awaiting_approval
       （停点是这三条命令的定义），A 与无 entry 的调用回 idle。
@@ -186,6 +188,22 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
 退出码：0 成功 / 1 一般失败 / 2 闸门阻断 / 64 参数错误 / 65 前置产物缺失
         69 环境或预检失败 / 70 主题被锁 / 73 运行仍在进行 / 75 严格模式中止
 `;
+
+/**
+ * 逐审核者的模型覆盖：`--model-<id>`，`<id>` 取自注册表派生的可用审核者集合。
+ *
+ * 此前只解析 `--model-gemini` / `--model-glm` 两个写死的旗标，第三家**无法覆盖模型**。
+ * 泛化后旗标名对既有两侧**逐字不变**（id 就是 `gemini` / `glm`，
+ * 拼出来还是同样两个名字），因此不需要别名表，也不存在兼容断点。
+ */
+function collectModelOverrides(args: ParsedArgs): Partial<Record<CriticId, string>> {
+  const out: Partial<Record<CriticId, string>> = {};
+  for (const c of CRITICS) {
+    const v = flagString(args, `model-${c}`);
+    if (v) out[c] = v;
+  }
+  return out;
+}
 
 function flagString(args: ParsedArgs, name: string): string | null {
   const v = args.flags.get(name);
@@ -336,11 +354,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   const contextRaw = flagString(args, 'context');
   // 任务目标与审查焦点分开传（RV-19）：前者说「要达成什么」，后者说「这次重点看什么」
   const goal = flagString(args, 'goal');
-  const modelOverrides: Partial<Record<CriticId, string>> = {};
-  const mg = flagString(args, 'model-gemini');
-  const mz = flagString(args, 'model-glm');
-  if (mg) modelOverrides.gemini = mg;
-  if (mz) modelOverrides.glm = mz;
+  const modelOverrides = collectModelOverrides(args);
 
   const reviewOpts = {
     ctx,
@@ -479,11 +493,7 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
   ctx.config = applyProfileOverride(ctx.config, flagString(args, 'profile'));
   const scope = parsePreflightScope(flagString(args, 'stage'));
 
-  const modelOverrides: Partial<Record<CriticId, string>> = {};
-  const mg = flagString(args, 'model-gemini');
-  const mz = flagString(args, 'model-glm');
-  if (mg) modelOverrides.gemini = mg;
-  if (mz) modelOverrides.glm = mz;
+  const modelOverrides = collectModelOverrides(args);
 
   const r = await runPreflight({
     ctx,
@@ -589,7 +599,18 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     for (const r of await listRecordedRuns(ref.layout)) {
       for (const a of r.artifacts) recorded.add(a.path);
     }
-    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, undefined, undefined, recorded);
+    /*
+     * 传本轮**实际入选**的审核者，不再让它回落到当前启用集合。
+     *
+     * 回落的后果是**单侧轮次被误报缺件**：`--only gemini` 跑完后，
+     * 校验仍按两侧找工件，glm 那份永远不存在，于是一个完全合规的轮次
+     * 被判成缺件。run.json 记着谁真的跑过，以它为准。
+     * 读不到 run.json 时才回落到默认集合——那时没有更好的依据。
+     */
+    const artifactRunId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
+    const artifactMeta = artifactRunId ? await readRunMeta(ref.layout, stage, artifactRunId) : null;
+    const roundCritics = artifactMeta ? (Object.keys(artifactMeta.critics) as CriticId[]) : undefined;
+    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, roundCritics, undefined, recorded);
     if (isJsonMode()) {
       emitJson({ ok: c.ok, stage, rerun_index: rerunIndex, present: c.present, missing: c.missing });
     } else if (c.ok) {

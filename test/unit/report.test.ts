@@ -156,11 +156,14 @@ test('归一化后的重合度进表，且未归一化值一并给出', async ()
     glm: review(['src/a.ts:8-12'], [], 'GLM'),
   });
   const r = await buildTopicReport(l);
-  const v = r.rounds[0]!.divergence!;
+  // 两侧时恰好一对，与旧行为等价；配对身份随项给出（M7b 第 2 步）
+  assert.equal(r.rounds[0]!.divergences.length, 1, '两侧应恰好产出一对');
+  const v = r.rounds[0]!.divergences[0]!;
+  assert.deepEqual([v.a, v.b], ['gemini', 'glm'], '配对身份要如实记，渲染侧不再靠默契补名字');
   assert.equal(v.jaccard, 1, ':10 落在 :8-12 内，是同一处');
   assert.equal(v.rawJaccard, 0, '原始字符串不相等');
   assert.equal(v.degenerate, true);
-  assert.match(renderTopicReport(r), /双审退化|重合度超过阈值/);
+  assert.match(renderTopicReport(r), /退化|重合度超过阈值/);
 });
 
 // ── 降级与缺件 ──
@@ -179,7 +182,7 @@ test('单侧超时：显示状态而非 0，并进降级清单', async () => {
   assert.equal(glm.findings, null, '失败侧的意见数必须是 null，不能是 0');
   assert.equal(glm.status, 'timeout');
   assert.equal(d.reviewMode, 'single');
-  assert.equal(d.divergence, null, '只有一侧有结论时不算重合度');
+  assert.deepEqual(d.divergences, [], '只有一侧有结论时不算重合度');
 
   const md = renderTopicReport(r);
   assert.match(md, /（timeout）/, '表里显示状态');

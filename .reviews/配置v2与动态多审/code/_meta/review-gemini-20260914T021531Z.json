@@ -1,0 +1,107 @@
+{
+  "agreed": [
+    "适配器接线表收敛为唯一登记处 src/trivium/adapters/index.ts 结构清晰，realAdapters() 启动守卫 fail-fast 时机恰当，根除了 review.ts 与 run-protocol.ts 双重字面表改一漏二导致 worker 注入失效的隐患。",
+    "分歧度泛化为 measureAllPairs 逐对计算，DivergenceReport 携带 a 与 b 显式配对身份，彻底消除了下游依赖「A 必为 gemini、B 必为 glm」的隐式默契，报告渲染相应扩展为通用配对格式。",
+    "cmdGate 传入 roundCritics 校验阶段工件，精准消除了单侧轮次在 --check-artifacts 处被误报缺失另一侧工件的缺陷。",
+    "严格恪守第 2 步的步骤边界，未修改任何 JSON Schema，未触碰 run.v2 / config.v2 落盘契约，未引入 --critics，克制保留 CriticId 字面收窄，未发生越界实现。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/divergence.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/init.ts",
+    "src/trivium/render.ts",
+    "src/trivium/report.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/selftest.ts",
+    "src/trivium/topic-args.ts",
+    "test/unit/archive.test.ts",
+    "test/unit/divergence.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/report.test.ts",
+    ".reviews/配置v2与动态多审/code/_meta/changes-20260914T021531Z.diff",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-gemini.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-response-claude.md",
+    ".reviews/配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "核查 src/trivium/init.ts 全文（如第 46、90、96、97、98、103、143 行），所有出现的 .claude 均紧跟路径分隔符 /，已被属性访问扫描器的 (?![\\w/-]) 排除，且全文件无任何带引号的 AgentId / 前缀字面量；但在 test/unit/registry-parity.test.ts:145 中 LITERAL_ALLOWLIST 仍保留了 init.ts。导致 test/unit/registry-parity.test.ts:189-213 执行「不得留过期条目」守卫时，init.ts 判定 needed 恒为 false 并被塞入 stale 数组，assert.deepEqual(stale, []) 必然断言失败。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "test/unit/registry-parity.test.ts:145",
+      "problem": "白名单收敛漏删已无硬编码的 init.ts，导致新增的「不得留过期条目」守卫测试断言失败。",
+      "severity": "major",
+      "suggestion": "将 init.ts 从 LITERAL_ALLOWLIST 中剔除，白名单从 10 条收敛至 9 条，使守卫自查用例通过。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查看 test/unit/registry-parity.test.ts:302-303：propPattern 仅捕获点号属性访问，keyPattern 强制要求后置冒号或问号 (:?)。在代码中使用对象字面量属性简写（如 { gemini, glm }）或解构赋值简写（如 const { gemini } = reviews;）时，既无前置点号也无后置冒号，扫描器将完全漏报。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "test/unit/registry-parity.test.ts:302-303",
+      "problem": "属性访问对账扫描器存在对象简写与解构简写形态的漏报盲区。",
+      "severity": "minor",
+      "suggestion": "补充简写语法模式匹配（例如在左大括号后紧接 AgentId 且后跟逗号或右大括号），防止属性简写绕过对账。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查看 test/unit/divergence.test.ts:4-8，该测试文件完全未导入亦未测试 measureAllPairs。而在 test/unit/report.test.ts:159 中仅间接覆盖了两侧固定一对的场景，完全缺失针对 3 侧生成 3 对、某侧为 null/失败时跳过配对、单侧或空集合生成 0 对的独立单测断言。",
+      "id": "AGY-03",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/unit/divergence.test.ts:4-8",
+      "problem": "新增的核心函数 measureAllPairs 缺乏针对多审（≥3 家）、单审及部分失败等场景的单元测试。",
+      "severity": "minor",
+      "suggestion": "在 test/unit/divergence.test.ts 中引入 measureAllPairs，补齐三审 3 对、某侧为 null 跳过、单审返回空数组等边界用例。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查看 src/trivium/cli.ts:607-611，改动提取了 artifactMeta.critics 并传入 checkStageArtifacts 校验工件以防单侧运行误判缺件。但查阅 test/unit/archive.test.ts 及全仓测试，没有任何用例测试该入参分支，未能落实计划 §6 承诺的「--check-artifacts 在单侧轮次不误报缺件 | 集成 | §4 欠账」用例。",
+      "id": "AGY-04",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "src/trivium/cli.ts:607-611",
+      "problem": "cmdGate 传入 roundCritics 避免单侧轮次误报缺件的改动缺少测试覆盖。",
+      "severity": "minor",
+      "suggestion": "在 test/unit/archive.test.ts 补充用例：模拟单侧轮次元数据，验证 checkStageArtifacts 传入 roundCritics 时不误报缺少未入选侧工件。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查看 src/trivium/adapters/index.ts:55，报错信息显示「新增 Agent 的五件套里，适配器这一件还没补」。而第二稿计划 .reviews/配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-claude.md:289 已明确定稿为「六件套，不是五件套（第一稿漏了模型路由）」。",
+      "id": "AGY-05",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/adapters/index.ts:55",
+      "problem": "适配器未接线守卫报错文案残留「五件套」旧称谓，与第二稿计划定稿的「六件套」不一致。",
+      "severity": "nit",
+      "suggestion": "将文案与注释中的「五件套」更新为「六件套（或接入套件）」，与实施计划保持一致。"
+    }
+  ],
+  "not_covered": [
+    "未执行 npm test 测试命令（只读审查员环境无执行权限，结论由代码静态逻辑与正则演绎得出）。",
+    "未验证实际多进程拉起 Antigravity CLI 与 ZCode CLI 运行时的进程与网络交互。",
+    "未验证后续第 3 步至第 6 步的实现（依据计划分步送审策略，当前仅就第 2 步补丁送审）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "总判断：【request-changes】。实现严格克制在第 2 步泛化欠账与扫描器加固范围内，未越界做后续步骤，适配器唯一接线表 fail-fast 守卫时机与措辞恰当，DivergenceReport 自带配对身份的 report --json 形状变更合理。\n但存在一处直接导致单测红灯的缺陷：白名单收敛时遗留了 init.ts，由于该文件内所有 .claude 均带路径分隔符已被排除，导致新增的「不得留过期条目」守卫自查时判定 init.ts 为 stale 从而断言失败。需将其从白名单剔除收敛至 9 条；另有两处单测盲区与一处扫描器简写漏报盲区需补齐。",
+  "verdict": "request-changes"
+}

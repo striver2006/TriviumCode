@@ -1,0 +1,817 @@
+# trivium changes.diff
+# run_id: 20260914T021531Z
+# base: HEAD
+# head: 3ceeee62693d6d8b3caab593f1d335642ed731cb
+# files: 13
+#   src/trivium/adapters/index.ts
+#   src/trivium/agents/registry.ts
+#   src/trivium/brief.ts
+#   src/trivium/cli.ts
+#   src/trivium/divergence.ts
+#   src/trivium/render.ts
+#   src/trivium/report.ts
+#   src/trivium/review.ts
+#   src/trivium/run-protocol.ts
+#   src/trivium/topic-args.ts
+#   test/unit/divergence.test.ts
+#   test/unit/registry-parity.test.ts
+#   test/unit/report.test.ts
+diff --git a/src/trivium/agents/registry.ts b/src/trivium/agents/registry.ts
+index cfec52e..31827f7 100644
+--- a/src/trivium/agents/registry.ts
++++ b/src/trivium/agents/registry.ts
+@@ -43,6 +43,15 @@ export interface AgentDescriptor {
+   id: AgentId;
+   /** 人读名，进播报与报告 */
+   display: string;
++  /**
++   * 审查文档抬头的人读全称（`render.ts` 的第一行）。
++   *
++   * 「Critic-A / Critic-B」是主设计第 0 章术语表**钉死的称谓**（A = gemini、B = glm），
++   * 不是按运行期位置算出来的序号——所以它登记在这里，而不是渲染时数下标。
++   * 若按下标算，启用第三家后既有两侧的字母会跟着漂移，历史留痕的抬头就对不上了。
++   * codex / claude 启用为审核者时（M8 / M9）字母由届时的设计裁定，现在不预留。
++   */
++  label: string;
+   vendor: AgentVendor;
+   /**
+    * 归档后缀，标识**产出方**。恒等于 `id`。
+@@ -73,6 +82,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
+   {
+     id: 'claude',
+     display: 'Claude Code',
++    label: 'Anthropic Claude Code',
+     vendor: 'anthropic',
+     suffix: 'claude',
+     findingPrefix: 'CLAUDE',
+@@ -84,6 +94,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
+   {
+     id: 'codex',
+     display: 'Codex',
++    label: 'OpenAI Codex',
+     vendor: 'openai',
+     suffix: 'codex',
+     findingPrefix: 'CODEX',
+@@ -95,6 +106,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
+   {
+     id: 'gemini',
+     display: 'Antigravity',
++    label: 'Critic-A · Google Antigravity',
+     vendor: 'antigravity',
+     suffix: 'gemini',
+     findingPrefix: 'AGY',
+@@ -106,6 +118,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
+   {
+     id: 'glm',
+     display: 'ZCode',
++    label: 'Critic-B · 智谱 ZCode',
+     vendor: 'zcode',
+     suffix: 'glm',
+     findingPrefix: 'GLM',
+diff --git a/src/trivium/brief.ts b/src/trivium/brief.ts
+index f4068eb..57ad927 100644
+--- a/src/trivium/brief.ts
++++ b/src/trivium/brief.ts
+@@ -17,10 +17,19 @@ import { CRITIC_PREFIX } from './types.js';
+ import { exists } from './util/fsx.js';
+ import type { Snapshot } from './freeze.js';
+ 
+-export interface Lenses {
+-  gemini: Partial<Record<Stage, string>>;
+-  glm: Partial<Record<Stage, string>>;
+-}
++/**
++ * `lenses.yaml` 的形状：**按审核者 id 键控**的镜头表。
++ *
++ * 此前是写死两键的 interface（`{ gemini: …; glm: … }`）。`lenses[critic]` 之所以
++ * 合法，只因当时 `CriticId` 恰好就是那两个值——这是**类型层的巧合**，不是设计。
++ * 放开审核者枚举后（桩 Agent 夹具、M8/M9）它会直接编译不过，而 `brief.ts`
++ * 一旦被迫改动，第 6 步「新增 Agent 时核心流程零改动」的验收就会被自己打红
++ * （计划双审 GLM-03）。因此类型泛化必须**先于**桩夹具落地。
++ *
++ * 用 `Partial` 而非要求四键齐备：镜头是**可选**的资产，缺了只是那一侧按通用标准审，
++ * 不该让整条流水线跑不起来（与 `loadStagePrompt` 缺文件返回 null 同理）。
++ */
++export type Lenses = Partial<Record<CriticId, Partial<Record<Stage, string>>>>;
+ 
+ export async function loadLenses(lensesPath: string): Promise<Lenses> {
+   const raw = await fs.readFile(lensesPath, 'utf8');
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index bebc5b5..33f130d 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -152,7 +152,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
+ 
+   trivium report --topic <主题> [--out <路径>] [--json]
+       依据 .reviews/ 生成人读复盘：时间线、每轮意见数与严重度分布、采纳率、
+-      被驳回项与理由、生效模型核对、降级与告警清单、双审退化指标、耗时汇总。
++      被驳回项与理由、生效模型核对、降级与告警清单、审查退化指标、耗时汇总。
+       只读归档，不重新调用任何 Agent；默认打到 stdout，--out 写文件。
+ 
+   trivium init [--dry-run] [--asset-root <路径>]
+@@ -187,6 +187,22 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
+         69 环境或预检失败 / 70 主题被锁 / 73 运行仍在进行 / 75 严格模式中止
+ `;
+ 
++/**
++ * 逐审核者的模型覆盖：`--model-<id>`，`<id>` 取自注册表派生的可用审核者集合。
++ *
++ * 此前只解析 `--model-gemini` / `--model-glm` 两个写死的旗标，第三家**无法覆盖模型**。
++ * 泛化后旗标名对既有两侧**逐字不变**（id 就是 `gemini` / `glm`，
++ * 拼出来还是同样两个名字），因此不需要别名表，也不存在兼容断点。
++ */
++function collectModelOverrides(args: ParsedArgs): Partial<Record<CriticId, string>> {
++  const out: Partial<Record<CriticId, string>> = {};
++  for (const c of CRITICS) {
++    const v = flagString(args, `model-${c}`);
++    if (v) out[c] = v;
++  }
++  return out;
++}
++
+ function flagString(args: ParsedArgs, name: string): string | null {
+   const v = args.flags.get(name);
+   return typeof v === 'string' && v.length > 0 ? v : null;
+@@ -336,11 +352,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
+   const contextRaw = flagString(args, 'context');
+   // 任务目标与审查焦点分开传（RV-19）：前者说「要达成什么」，后者说「这次重点看什么」
+   const goal = flagString(args, 'goal');
+-  const modelOverrides: Partial<Record<CriticId, string>> = {};
+-  const mg = flagString(args, 'model-gemini');
+-  const mz = flagString(args, 'model-glm');
+-  if (mg) modelOverrides.gemini = mg;
+-  if (mz) modelOverrides.glm = mz;
++  const modelOverrides = collectModelOverrides(args);
+ 
+   const reviewOpts = {
+     ctx,
+@@ -479,11 +491,7 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
+   ctx.config = applyProfileOverride(ctx.config, flagString(args, 'profile'));
+   const scope = parsePreflightScope(flagString(args, 'stage'));
+ 
+-  const modelOverrides: Partial<Record<CriticId, string>> = {};
+-  const mg = flagString(args, 'model-gemini');
+-  const mz = flagString(args, 'model-glm');
+-  if (mg) modelOverrides.gemini = mg;
+-  if (mz) modelOverrides.glm = mz;
++  const modelOverrides = collectModelOverrides(args);
+ 
+   const r = await runPreflight({
+     ctx,
+@@ -589,7 +597,18 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+     for (const r of await listRecordedRuns(ref.layout)) {
+       for (const a of r.artifacts) recorded.add(a.path);
+     }
+-    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, undefined, undefined, recorded);
++    /*
++     * 传本轮**实际入选**的审核者，不再让它回落到当前启用集合。
++     *
++     * 回落的后果是**单侧轮次被误报缺件**：`--only gemini` 跑完后，
++     * 校验仍按两侧找工件，glm 那份永远不存在，于是一个完全合规的轮次
++     * 被判成缺件。run.json 记着谁真的跑过，以它为准。
++     * 读不到 run.json 时才回落到默认集合——那时没有更好的依据。
++     */
++    const artifactRunId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
++    const artifactMeta = artifactRunId ? await readRunMeta(ref.layout, stage, artifactRunId) : null;
++    const roundCritics = artifactMeta ? (Object.keys(artifactMeta.critics) as CriticId[]) : undefined;
++    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, roundCritics, undefined, recorded);
+     if (isJsonMode()) {
+       emitJson({ ok: c.ok, stage, rerun_index: rerunIndex, present: c.present, missing: c.missing });
+     } else if (c.ok) {
+diff --git a/src/trivium/divergence.ts b/src/trivium/divergence.ts
+index c92ee25..162effb 100644
+--- a/src/trivium/divergence.ts
++++ b/src/trivium/divergence.ts
+@@ -1,15 +1,17 @@
+ /**
+- * 双审退化指标（设计 §9.3）。
++ * 审查退化指标（设计 §9.3）。
+  *
+  * 若两侧 `findings` 的位置集合 Jaccard 相似度长期 > 0.8，说明两侧在看同一批地方，
+- * 差异化镜头没起作用——`report` 会输出「双审退化」提示（不是报错）。
++ * 差异化镜头没起作用——`report` 会输出「审查退化」提示（不是报错）。
++ * N 方化后按**逐对**计算，措辞相应由「双审」改为「审查」（M7b 第 2 步）。
+  *
+  * **必须先归一化**（审查意见 AGY-06）：`location` 是自由字符串，两家格式各异
+  * （`src/a.ts:88` vs `src/a.ts:85-92`，`plan §3.2` vs `§3.2`）。
+  * 直接算原始字符串交集会失真——M3 那轮双审实测原始 Jaccard = **0.00**，
+  * 而两侧明明有概念重叠（AGY-01 与 GLM-03 讲同一件事）。
+  */
+-import type { Review } from './types.js';
++import type { CriticId, Review } from './types.js';
++import { CRITICS } from './types.js';
+ 
+ export interface NormalizedLocation {
+   /** 文件相对路径，或章节标记（形如 `§3.2`） */
+@@ -72,6 +74,15 @@ export function sameLocation(a: NormalizedLocation, b: NormalizedLocation): bool
+ }
+ 
+ export interface DivergenceReport {
++  /**
++   * 本次比对的**一对**审核者。
++   *
++   * 此前不记：`onlyA` / `onlyB` 的 A、B 是位置而非身份，渲染时只能靠
++   * 「A 就是 gemini、B 就是 glm」的默契补上名字——那个默契在三审时就不成立了。
++   * 记下来之后，渲染侧不必再知道有哪几家（M7b 第 2 步）。
++   */
++  a: CriticId;
++  b: CriticId;
+   /** 归一化后的 Jaccard 相似度，0~1 */
+   jaccard: number;
+   /** 未归一化的对照值，便于看出归一化到底起了多少作用 */
+@@ -80,7 +91,7 @@ export interface DivergenceReport {
+   overlap: string[];
+   onlyA: string[];
+   onlyB: string[];
+-  /** 是否触发「双审退化」提示 */
++  /** 是否触发「审查退化」提示 */
+   degenerate: boolean;
+   threshold: number;
+ }
+@@ -110,6 +121,7 @@ export function measureDivergence(
+   a: Review | null,
+   b: Review | null,
+   threshold = 0.8,
++  pair: { a: CriticId; b: CriticId } = { a: CRITICS[0]!, b: CRITICS[1] ?? CRITICS[0]! },
+ ): DivergenceReport {
+   const la = dedupe((a?.findings ?? []).map((f) => normalizeLocation(f.location)));
+   const lb = dedupe((b?.findings ?? []).map((f) => normalizeLocation(f.location)));
+@@ -133,6 +145,8 @@ export function measureDivergence(
+   const rawUnion = new Set([...rawA, ...rawB]).size;
+ 
+   return {
++    a: pair.a,
++    b: pair.b,
+     jaccard,
+     rawJaccard: rawUnion === 0 ? 0 : rawInter / rawUnion,
+     overlap,
+@@ -147,13 +161,42 @@ export function measureDivergence(
+ export function renderDivergence(d: DivergenceReport): string {
+   const lines = [
+     `镜头重合度 Jaccard = ${d.jaccard.toFixed(2)}（未归一化 ${d.rawJaccard.toFixed(2)}，阈值 ${d.threshold}）`,
+-    `  两侧共同覆盖 ${d.overlap.length} 处 ｜ 仅 gemini ${d.onlyA.length} 处 ｜ 仅 glm ${d.onlyB.length} 处`,
++    `  ${d.a} × ${d.b}：共同覆盖 ${d.overlap.length} 处 ｜ 仅 ${d.a} ${d.onlyA.length} 处 ｜ 仅 ${d.b} ${d.onlyB.length} 处`,
+   ];
+   if (d.degenerate) {
+     lines.push(
+-      '  ⚠️ 双审退化：两侧在看同一批地方，差异化镜头没起作用。',
++      `  ⚠️ 审查退化：${d.a} 与 ${d.b} 在看同一批地方，差异化镜头没起作用。`,
+       '     建议调整 lenses.yaml 的镜头或改用差异更大的模型组合。',
+     );
+   }
+   return lines.join('\n');
+ }
++
++/**
++ * 按入选审核者集合**两两**计算重合度（设计 §7.4 要求逐对 Jaccard）。
++ *
++ * 此前只算 `reviews.gemini × reviews.glm` 一对写死的组合：三审时第三家
++ * **静默丢失**——不报错、不告警，指标看着正常，只是少了一对。两侧时
++ * 本函数恰好产出一对，与旧行为逐字段等价。
++ *
++ * 只对**两侧都拿到结构化结论**的组合计算：一方是 `parse_fallback`（`null`）时
++ * 位置集合为空，算出来的 0 不是「没有重合」而是「没法比」，会污染退化判定。
++ */
++export function measureAllPairs(
++  reviews: Partial<Record<CriticId, Review | null>>,
++  critics: readonly CriticId[],
++  threshold = 0.8,
++): DivergenceReport[] {
++  const out: DivergenceReport[] = [];
++  for (let i = 0; i < critics.length; i++) {
++    for (let j = i + 1; j < critics.length; j++) {
++      const a = critics[i]!;
++      const b = critics[j]!;
++      const ra = reviews[a];
++      const rb = reviews[b];
++      if (!ra || !rb) continue;
++      out.push(measureDivergence(ra, rb, threshold, { a, b }));
++    }
++  }
++  return out;
++}
+diff --git a/src/trivium/render.ts b/src/trivium/render.ts
+index 8ef1119..2aba3a7 100644
+--- a/src/trivium/render.ts
++++ b/src/trivium/render.ts
+@@ -10,6 +10,7 @@ import type {
+   CriticId, CriticResult, Review, Severity, Stage, Vendor,
+ } from './types.js';
+ import { CRITIC_VENDOR } from './types.js';
++import { agentById } from './agents/registry.js';
+ 
+ const SEVERITY_ORDER: readonly Severity[] = ['blocker', 'major', 'minor', 'nit'];
+ const SEVERITY_LABEL: Record<Severity, string> = {
+@@ -95,12 +96,22 @@ export function renderFrontMatter(input: RenderInput): string {
+   return `---\n${YAML.stringify(fm, { lineWidth: 0 }).trimEnd()}\n---`;
+ }
+ 
+-const CRITIC_LABEL: Record<CriticId, string> = {
+-  gemini: 'Critic-A · Google Antigravity',
+-  glm: 'Critic-B · 智谱 ZCode',
+-};
+ const STAGE_LABEL: Record<Stage, string> = { plan: '计划审查', code: '代码审查', bug: '根因审查' };
+ 
++/**
++ * 审查文档抬头的人读全称，取自注册表。
++ *
++ * 此前是 `CRITIC_LABEL: Record<CriticId, string>` 的两键字面表——它**不带引号**，
++ * 因此 grep 对账的字面量扫描抓不到它，白名单里也就没有它的条目：
++ * 一个「白名单外无硬编码」的结论看着成立、实际有洞（M7b 第 2 步补的属性访问对账）。
++ *
++ * 未登记的 id 回落到 id 本身而不抛异常：抬头是人读文案，
++ * 为它炸掉一次已经跑完、结论已在手里的审查不划算。
++ */
++function criticLabel(critic: CriticId): string {
++  return agentById(critic)?.label ?? critic;
++}
++
+ /** 渲染完整审查文档 */
+ export function renderReviewDoc(input: RenderInput): string {
+   const parts: string[] = [renderFrontMatter(input)];
+@@ -108,7 +119,7 @@ export function renderReviewDoc(input: RenderInput): string {
+ 
+   parts.push(`# ${STAGE_LABEL[input.stage]}：${input.topic}
+ 
+-> ${CRITIC_LABEL[input.critic]} ｜ 模型 \`${result.model_effective ?? input.modelRequested ?? '未知'}\`
++> ${criticLabel(input.critic)} ｜ 模型 \`${result.model_effective ?? input.modelRequested ?? '未知'}\`
+ > ｜ 运行 \`${input.runId}\`${input.rerunIndex > 1 ? ` ｜ 第 ${input.rerunIndex} 轮` : ''}`);
+ 
+   // 不可伪装的标记必须在正文顶部就能看见，而不是只在 front-matter 里
+diff --git a/src/trivium/report.ts b/src/trivium/report.ts
+index b103619..bd7e675 100644
+--- a/src/trivium/report.ts
++++ b/src/trivium/report.ts
+@@ -2,7 +2,7 @@
+  * 主题级复盘报告（设计 §5.1 `report`、§9.3、§15.2）。
+  *
+  * 输出：时间线、每轮意见数与严重度分布、采纳率、被驳回项与理由、
+- * 降级与告警清单、耗时与 token 汇总、双审退化提示。
++ * 降级与告警清单、耗时与 token 汇总、审查退化提示。
+  *
+  * ## 数据源只有 `.reviews/`
+  *
+@@ -22,7 +22,7 @@ import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
+ import { readRunMeta, readTask, type TaskMeta } from './meta.js';
+ import { loadRoundReviews } from './gate.js';
+ import { parseDisposition } from './disposition.js';
+-import { measureDivergence, type DivergenceReport } from './divergence.js';
++import { measureAllPairs, type DivergenceReport } from './divergence.js';
+ import { summarizeVerify, type VerifyRecord } from './verify.js';
+ import { CRITICS, STAGES, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';
+ 
+@@ -56,7 +56,8 @@ export interface RoundReport {
+   disposals: Record<Disposal, number> | null;
+   /** 被驳回与暂缓的条目，带理由——复盘最该被人读到的部分 */
+   contested: { id: string; disposal: Disposal; severity: Severity | null; reason: string }[];
+-  divergence: DivergenceReport | null;
++  /** 本轮各**对**审核者的重合度。两侧时恰好一项；三审时三项（逐对） */
++  divergences: DivergenceReport[];
+   guardFlags: string[];
+   /**
+    * 逐侧 token 用量。**不跨厂商相加**：两家的字段名体系不同
+@@ -177,7 +178,7 @@ async function buildRound(
+     severity: zeroSeverity(),
+     disposals: null,
+     contested: [],
+-    divergence: null,
++    divergences: [],
+     guardFlags: [],
+     tokens: {},
+     notes,
+@@ -226,10 +227,12 @@ async function buildRound(
+     if (Object.keys(numeric).length > 0) base.tokens[c] = numeric;
+   }
+ 
+-  // 只有两侧都拿到结构化结论时，重合度才有意义
+-  if (reviews.gemini && reviews.glm) {
+-    base.divergence = measureDivergence(reviews.gemini, reviews.glm);
+-  }
++  /*
++   * 逐对计算，而不是写死 `reviews.gemini × reviews.glm`——那个写法在三审时
++   * 会把第三家静默丢掉。论域取本轮 run.json 实际登记的审核者，
++   * 不取当前启用集合：复盘读的是**历史**轮次，那时的入选集合可能与现在不同。
++   */
++  base.divergences = measureAllPairs(reviews, Object.keys(meta.critics) as CriticId[]);
+ 
+   if (meta.guard.readonly_breach) base.guardFlags.push('只读失守');
+   if (meta.guard.peer_artifact_read) base.guardFlags.push('读到对方产出');
+@@ -450,25 +453,27 @@ export function renderTopicReport(r: TopicReport): string {
+   }
+   L.push(alerts.length === 0 ? '（无）' : alerts.map((a) => `- ${a}`).join('\n'), '');
+ 
+-  // ── 六、双审退化 ──
+-  L.push('## 六、双审退化指标（§9.3）', '');
+-  const withDiv = r.rounds.filter((d) => d.divergence);
++  // ── 六、审查退化 ──
++  L.push('## 六、审查退化指标（§9.3）', '');
++  const withDiv = r.rounds.filter((d) => d.divergences.length > 0);
+   if (withDiv.length === 0) {
+-    L.push('（无可比对的轮次：需要两侧都产出结构化结论）', '');
++    L.push('（无可比对的轮次：需要至少两侧都产出结构化结论）', '');
+   } else {
+-    L.push('| 阶段/轮 | Jaccard（归一化） | 未归一化 | 共同覆盖 | 仅 gemini | 仅 glm |', '| :--- | :--- | :--- | :--- | :--- | :--- |');
++    // 表头不再写死两侧名：配对身份随每行给出，三审时会有三行
++    L.push('| 阶段/轮 | 配对 | Jaccard（归一化） | 未归一化 | 共同覆盖 | 仅前者 | 仅后者 |', '| :--- | :--- | :--- | :--- | :--- | :--- | :--- |');
+     for (const d of withDiv) {
+-      const v = d.divergence!;
+-      L.push(
+-        `| ${d.stage} r${d.rerunIndex} | ${v.jaccard.toFixed(2)}${v.degenerate ? ' ⚠️' : ''} | ` +
+-          `${v.rawJaccard.toFixed(2)} | ${v.overlap.length} | ${v.onlyA.length} | ${v.onlyB.length} |`,
+-      );
++      for (const v of d.divergences) {
++        L.push(
++          `| ${d.stage} r${d.rerunIndex} | ${v.a} × ${v.b} | ${v.jaccard.toFixed(2)}${v.degenerate ? ' ⚠️' : ''} | ` +
++            `${v.rawJaccard.toFixed(2)} | ${v.overlap.length} | ${v.onlyA.length} | ${v.onlyB.length} |`,
++        );
++      }
+     }
+-    const degenerate = withDiv.filter((d) => d.divergence!.degenerate);
++    const degenerate = withDiv.filter((d) => d.divergences.some((v) => v.degenerate));
+     L.push('');
+     if (degenerate.length > 0) {
+       L.push(
+-        `> ⚠️ 有 ${degenerate.length} 轮重合度超过阈值：两侧在看同一批地方，差异化镜头没起作用。`,
++        `> ⚠️ 有 ${degenerate.length} 轮存在重合度超过阈值的配对：那两家在看同一批地方，差异化镜头没起作用。`,
+         '> 建议调整 `lenses.yaml` 的镜头，或改用差异更大的模型组合。**这是提示，不是错误。**',
+         '',
+       );
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index 612e31e..d9655a2 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -14,8 +14,6 @@ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import type { Config, CriticId, CriticRequest, CriticResult, Ctx, Review, Stage, CommandEntry } from './types.js';
+ import { CRITICS, CRITIC_VENDOR } from './types.js';
+-import { agyAdapter } from './adapters/agy.js';
+-import { zcodeAdapter } from './adapters/zcode.js';
+ import {
+   isHeterogeneous,
+   routeModel,
+@@ -23,6 +21,7 @@ import {
+   type CriticAdapter,
+ } from './adapters/base.js';
+ import { resolveAdapters } from './adapters/stub.js';
++import { realAdapters } from './adapters/index.js';
+ import { freeze } from './freeze.js';
+ import {
+   buildMustReadList,
+@@ -52,7 +51,7 @@ import { diffAgainst, headSha } from './util/git.js';
+ import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
+ import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
+ import { acquireLock } from './lock.js';
+-import { measureDivergence, renderDivergence } from './divergence.js';
++import { measureAllPairs, renderDivergence } from './divergence.js';
+ import { runRoot } from './config.js';
+ import { setGateChecked } from './state.js';
+ import { ensureDir, sha256, sha256File } from './util/fsx.js';
+@@ -312,7 +311,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+   const lensesPath = path.join(assetRoot, 'lenses.yaml');
+ 
+   // 经工厂取适配器：TRIVIUM_STUB_CRITIC 在场时换成桩（测试用，生产路径会打醒目告警）
+-  const adapters = resolveAdapters({ gemini: agyAdapter, glm: zcodeAdapter });
++  const adapters = resolveAdapters(realAdapters());
+   const adapterCtx: AdapterContext = {
+     cfg,
+     nodePath: cfg.runtime.node ?? process.execPath,
+@@ -978,14 +977,19 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+   say(summarizeRun(meta));
+ 
+   /*
+-   * 双审退化提示（§9.3）。放在这里而非 `report`，是因为它只对**本次**两侧结论有意义，
++   * 审查退化提示（§9.3）。放在这里而非 `report`，是因为它只对**本次**结论有意义，
+    * 而 report 是跨轮复盘——真正需要看到「这次两家在看同一批地方」的人是刚跑完的 Driver。
+    * report 之后会按主题做跨轮汇总，两者不冲突。
+    */
+-  if (sides.length === 2) {
+-    const div = measureDivergence(reviews.gemini ?? null, reviews.glm ?? null);
++  /*
++   * 逐对算，不再写死「恰好两侧且必是 gemini×glm」。
++   * 两侧时产出一对，与旧行为等价；三审时三对，不会静默丢掉任何一家。
++   */
++  for (const div of measureAllPairs(reviews, sides)) {
+     say(renderDivergence(div));
+-    if (div.degenerate) warnings.push('双审退化：两侧镜头重合度过高，见上方 Jaccard 提示');
++    if (div.degenerate) {
++      warnings.push(`审查退化：${div.a} 与 ${div.b} 的镜头重合度过高，见上方 Jaccard 提示`);
++    }
+   }
+ 
+   if (warnings.length > 0) {
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index ba86934..f803620 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -26,10 +26,9 @@ import {
+ import { resolveTopic } from './topic.js';
+ import { readRunMeta } from './meta.js';
+ import { setGateChecked } from './state.js';
+-import { agyAdapter } from './adapters/agy.js';
+-import { zcodeAdapter } from './adapters/zcode.js';
+ import type { AdapterContext } from './adapters/base.js';
+ import { resolveAdapters } from './adapters/stub.js';
++import { realAdapters } from './adapters/index.js';
+ import { ensureDir, exists } from './util/fsx.js';
+ import { killProcessTree, processAlive, processStartTime, spawnDetached } from './util/exec.js';
+ import { fail, say, step, warn } from './util/log.js';
+@@ -156,7 +155,7 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
+      * worker 进程独立重建上下文，必须**同样**经工厂取适配器。
+      * 只在测试主进程里替换适配器对派生 worker 无效——故障注入会静默失效（审查意见 AGY-05）。
+      */
+-    adapters: resolveAdapters({ gemini: agyAdapter, glm: zcodeAdapter }),
++    adapters: resolveAdapters(realAdapters()),
+     sides: h.sides,
+     runId: h.run_id,
+     rerunIndex: h.rerun_index,
+diff --git a/src/trivium/topic-args.ts b/src/trivium/topic-args.ts
+index ac4e9ec..740f40e 100644
+--- a/src/trivium/topic-args.ts
++++ b/src/trivium/topic-args.ts
+@@ -309,8 +309,14 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
+   const topic = v.normalized;
+ 
+   const models: Partial<Record<CriticId, string>> = {};
+-  if (named['model-gemini']) models.gemini = named['model-gemini'];
+-  if (named['model-glm']) models.glm = named['model-glm'];
++  /*
++   * 逐审核者取 `--model-<id>`，不再写死两个旗标名。
++   * 旗标名对既有两侧逐字不变（id 即 gemini / glm），第三家启用后自动可用。
++   */
++  for (const c of CRITICS) {
++    const v = named[`model-${c}`];
++    if (v) models[c] = v;
++  }
+ 
+   const contextPaths = (named['context'] ?? '')
+     .split(',')
+diff --git a/test/unit/divergence.test.ts b/test/unit/divergence.test.ts
+index 3dc10bd..a6af8c7 100644
+--- a/test/unit/divergence.test.ts
++++ b/test/unit/divergence.test.ts
+@@ -97,20 +97,21 @@ test('归一化把 0.00 的原始 Jaccard 救回真实重合度', () => {
+   assert.equal(d.degenerate, false);
+ });
+ 
+-test('两侧看同一批地方 → 判双审退化', () => {
++test('两侧看同一批地方 → 判审查退化', () => {
+   const a = review(['src/a.ts:10', 'src/b.ts:20', 'src/c.ts:30']);
+   const b = review(['src/a.ts:8-12', 'src/b.ts:20', 'src/c.ts:28-33']);
+   const d = measureDivergence(a, b);
+   assert.equal(d.jaccard, 1);
+   assert.equal(d.degenerate, true);
+-  assert.match(renderDivergence(d), /双审退化/);
++  assert.match(renderDivergence(d), /审查退化/);
++  assert.match(renderDivergence(d), /gemini × glm/, '配对身份要出现在人读输出里');
+ });
+ 
+ test('两侧都零意见不判退化——那是「都认为没问题」', () => {
+   const d = measureDivergence(review([]), review([]));
+   assert.equal(d.jaccard, 0);
+   assert.equal(d.degenerate, false, '空集的 Jaccard 无定义，不能当成重合');
+-  assert.doesNotMatch(renderDivergence(d), /双审退化/);
++  assert.doesNotMatch(renderDivergence(d), /审查退化/);
+ });
+ 
+ test('一侧缺失（降级单审）不报错', () => {
+diff --git a/test/unit/registry-parity.test.ts b/test/unit/registry-parity.test.ts
+index 7922576..182a1fa 100644
+--- a/test/unit/registry-parity.test.ts
++++ b/test/unit/registry-parity.test.ts
+@@ -139,28 +139,17 @@ test('反推：畸形编号不抛异常，返回 null', () => {
+  */
+ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
+   { file: 'agents/registry.ts', why: '唯一登记处，字面量的来源本身' },
++  { file: 'adapters/index.ts', why: 'Agent id → 厂商适配器的唯一接线处；新增一家在此加一行（M7b 第 2 步把 review/run-protocol 两份字面表收敛到这里）' },
+   { file: 'adapters/agy.ts', why: '厂商专属适配器：文件本身即该 Agent 的命名空间' },
+   { file: 'adapters/zcode.ts', why: '厂商专属适配器：ZCode 调用与参数构造' },
+-  { file: 'adapters/agy-events.ts', why: '厂商专属：Antigravity 事件流解析' },
+-  { file: 'adapters/zcode-trace.ts', why: '厂商专属：ZCode 工具轨迹解析' },
+-  { file: 'probes/agy.ts', why: '厂商专属探针' },
+-  { file: 'probes/zcode.ts', why: '厂商专属探针：ZCode 能力实测' },
+-  { file: 'config.ts', why: '默认配置里各 Agent 的配置节键名；M7b 迁 agents.* 后收敛' },
+-  { file: 'hooks.ts', why: 'Hook 字面集与人读话术；M10 随 --agent 泛化' },
+   { file: 'init.ts', why: '安装目标与配置模板；M10 随多目标合并泛化' },
+   // 注意：`src/install.ts` 不在本对账的扫描范围（只扫 src/trivium/），
+   // 因此不需要、也不应该为它留白名单条目——留着只会误导读者以为它被扫过。
+-  { file: 'cli.ts', why: '旗标名 --model-gemini / --model-glm；M7b 泛化，旧名长期保留为别名' },
+-  { file: 'review.ts', why: '适配器工厂接线 { gemini: agyAdapter, glm: zcodeAdapter }；M7b 改读注册表' },
+-  { file: 'run-protocol.ts', why: 'worker 进程的适配器重建接线；M7b 改读注册表' },
+   { file: 'doctor.ts', why: '逐侧探测的人读输出与厂商专属诊断话术' },
+-  { file: 'preflight.ts', why: '逐侧预检的人读输出' },
++  { file: 'preflight.ts', why: '逐侧预检的人读输出，以及 checkModelSlugs 的厂商专属 slug 校验分支（agy 目录硬校验 vs zcode 短名补全，无法登记为统一数据）' },
++  { file: 'review.ts', why: 'effortFor 的厂商专属分支：v1 配置的 critics.* 是厂商形状、effort 只存在于 gemini 段；M7b 第 4 步 config v2 统一成 agents.<id>.effort 后收敛' },
+   { file: 'selftest.ts', why: '自检场景里两侧桩的固定编排；M7b 增 N 侧场景' },
+-  { file: 'status.ts', why: '两侧进度的人读渲染；M7b 随动态 map 泛化' },
+-  { file: 'brief.ts', why: 'BRIEF 渲染中的角色话术' },
+   { file: 'types.ts', why: 'CriticId 的字面收窄（Extract<AgentId, …>）；M7b 随注册表放开' },
+-  { file: 'schemas.ts', why: 'schema 文件名与 ajv 校验接线' },
+-  { file: 'parse.ts', why: '厂商结构化输出的字段兼容（各家注入自有字段）' },
+ ];
+ 
+ test('白名单纪律：每一项都要写明理由，且不得豁免不存在的文件', async () => {
+@@ -186,6 +175,43 @@ test('白名单纪律：每一项都要写明理由，且不得豁免不存在
+   }
+ });
+ 
++/**
++ * 白名单条目**仍然被需要**——移除它会让扫描变红。
++ *
++ * 上一个用例只守「文件还在」。但豁免过期的形态不是文件消失，而是
++ * **文件里的字面量被清干净了、条目却留着**：豁免面悄悄扩大，
++ * 日后有人往那个文件里写回硬编码，对账不会报。
++ *
++ * 本次实测就查出 8 条这样的死条目（`hooks.ts`、`parse.ts`、`schemas.ts`、
++ * `brief.ts`、`status.ts`、`config.ts` 与两份轨迹解析）——它们多半是随
++ * M7a 的泛化一起被清空的，清的人没回头删条目。这很自然，所以要让机器守。
++ */
++test('白名单纪律：不得留过期条目（豁免必须仍然被需要）', async () => {
++  const srcRoot = path.join(REPO_ROOT, 'src/trivium');
++  const idPattern = new RegExp(`['"\`](?:${ALL_AGENT_IDS.join('|')})['"\`]`);
++  const prefixPattern = new RegExp(`['"\`](?:${ALL_FINDING_PREFIXES.join('|')})-`);
++  const ids = ALL_AGENT_IDS.join('|');
++  const propPattern = new RegExp(`\\.(?:${ids})(?![\\w/-])`);
++  const keyPattern = new RegExp(`(?:^|[{,(]|\\s)(?:${ids})\\s*[:?]`);
++
++  const stale: string[] = [];
++  for (const entry of LITERAL_ALLOWLIST) {
++    const src = await fs.readFile(path.join(srcRoot, entry.file), 'utf8');
++    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
++    const needed = code
++      .split('\n')
++      .some((l) => idPattern.test(l) || prefixPattern.test(l) || propPattern.test(l) || keyPattern.test(l));
++    if (!needed) stale.push(entry.file);
++  }
++
++  assert.deepEqual(
++    stale,
++    [],
++    '这些文件已经没有 Agent 字面量了，白名单条目应当删除——' +
++      '留着等于给它们开一张长期空白支票：\n' + stale.join('\n'),
++  );
++});
++
+ /** 逐字符扫描，跳过注释与字符串之外的语法噪声由调用方以正则近似处理 */
+ async function collectSourceFiles(root: string): Promise<string[]> {
+   const out: string[] = [];
+@@ -237,3 +263,65 @@ test('grep 对账：白名单外的模块不得出现 Agent id / 前缀字面量
+       '把文件加进 LITERAL_ALLOWLIST 并在那里写明理由：\n' + offenders.join('\n'),
+   );
+ });
++
++/*
++ * ── 属性访问形态的对账（M7b 第 2 步）──
++ *
++ * 上面那个扫描**只抓带引号的字面量**，于是 `reviews.gemini`、`{ gemini: agyAdapter }`、
++ * `CRITIC_LABEL` 的对象键这类**不带引号**的形态全部漏网。
++ *
++ * 这不是假想：`report.ts` 的分歧度计算写着 `reviews.gemini && reviews.glm`，
++ * 它**不在白名单里**（白名单自己就是按「带引号扫描」的结果建的），却实打实硬编码了两侧——
++ * 三审时第三家的分歧度会被静默丢掉。`render.ts` 的标签表、`divergence.ts` 的
++ * 「仅 gemini / 仅 glm」文案同理。
++ *
++ * 教训：**对账的覆盖面决定白名单的可信度**。扫不到的形态，白名单也不会有它的条目，
++ * 于是「白名单外无字面量」这个结论看着成立、实际有洞。
++ */
++test('grep 对账（属性访问形态）：白名单外不得出现 .<id> / <id>: 的硬编码', async () => {
++  const srcRoot = path.join(REPO_ROOT, 'src/trivium');
++  const files = await collectSourceFiles(srcRoot);
++
++  const ids = ALL_AGENT_IDS.join('|');
++  /*
++   * 两种形态：
++   *   `.gemini`  属性访问（`reviews.gemini`、`cfg.critics.glm`）
++   *   `gemini:`  对象字面量的键 / 类型成员（`{ gemini: agyAdapter }`、`gemini: string`）
++   * 后者要求前面是 `{`、`,`、行首或空白，避免误伤 `case 'gemini':` 之外的正常代码
++   * （带引号的那种由上一个测试负责）。
++   */
++  /*
++   * `(?![\\w/-])` 只排**路径分隔符**：`.claude/skills/...` 里的 `.claude` 是目录名，
++   * 不是对 Agent 的属性访问。不排会把 USAGE 文案与资产路径全判成硬编码。
++   *
++   * **刻意不排 `.`**：第一版顺手把点也排掉，结果 `cfg.critics.gemini.effort` 这类
++   * 真硬编码被一并吞掉——为治误报而开的口子造出了漏报，比误报更糟。
++   * 对账器自己也遵守「宁可误报、不可漏报」：误报有零成本出口（加白名单并写明理由），
++   * 漏报则是把盲区伪装成绿灯。
++   */
++  const propPattern = new RegExp(`\\.(?:${ids})(?![\\w/-])`);
++  const keyPattern = new RegExp(`(?:^|[{,(]|\\s)(?:${ids})\\s*[:?]`);
++
++  const offenders: string[] = [];
++  for (const abs of files) {
++    const rel = path.relative(srcRoot, abs);
++    if (LITERAL_ALLOWLIST.some((w) => rel === w.file || rel.endsWith(`/${w.file}`))) continue;
++
++    const src = await fs.readFile(abs, 'utf8');
++    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
++
++    for (const [lineNo, line] of code.split('\n').entries()) {
++      if (propPattern.test(line) || keyPattern.test(line)) {
++        offenders.push(`${rel}:${lineNo + 1}  ${line.trim()}`);
++      }
++    }
++  }
++
++  assert.deepEqual(
++    offenders,
++    [],
++    '这些位置以**属性访问或对象键**的形态硬编码了 Agent（带引号的那种由上一个用例负责）。\n' +
++      '改读注册表派生的集合/映射；确属 Agent 专属实现时加进 LITERAL_ALLOWLIST 并写明理由：\n' +
++      offenders.join('\n'),
++  );
++});
+diff --git a/test/unit/report.test.ts b/test/unit/report.test.ts
+index a23926a..a41e504 100644
+--- a/test/unit/report.test.ts
++++ b/test/unit/report.test.ts
+@@ -156,11 +156,14 @@ test('归一化后的重合度进表，且未归一化值一并给出', async ()
+     glm: review(['src/a.ts:8-12'], [], 'GLM'),
+   });
+   const r = await buildTopicReport(l);
+-  const v = r.rounds[0]!.divergence!;
++  // 两侧时恰好一对，与旧行为等价；配对身份随项给出（M7b 第 2 步）
++  assert.equal(r.rounds[0]!.divergences.length, 1, '两侧应恰好产出一对');
++  const v = r.rounds[0]!.divergences[0]!;
++  assert.deepEqual([v.a, v.b], ['gemini', 'glm'], '配对身份要如实记，渲染侧不再靠默契补名字');
+   assert.equal(v.jaccard, 1, ':10 落在 :8-12 内，是同一处');
+   assert.equal(v.rawJaccard, 0, '原始字符串不相等');
+   assert.equal(v.degenerate, true);
+-  assert.match(renderTopicReport(r), /双审退化|重合度超过阈值/);
++  assert.match(renderTopicReport(r), /退化|重合度超过阈值/);
+ });
+ 
+ // ── 降级与缺件 ──
+@@ -179,7 +182,7 @@ test('单侧超时：显示状态而非 0，并进降级清单', async () => {
+   assert.equal(glm.findings, null, '失败侧的意见数必须是 null，不能是 0');
+   assert.equal(glm.status, 'timeout');
+   assert.equal(d.reviewMode, 'single');
+-  assert.equal(d.divergence, null, '只有一侧有结论时不算重合度');
++  assert.deepEqual(d.divergences, [], '只有一侧有结论时不算重合度');
+ 
+   const md = renderTopicReport(r);
+   assert.match(md, /（timeout）/, '表里显示状态');
+diff --git a/src/trivium/adapters/index.ts b/src/trivium/adapters/index.ts
+new file mode 100644
+index 0000000..3df5fb8
+--- /dev/null
++++ b/src/trivium/adapters/index.ts
+@@ -0,0 +1,59 @@
++/**
++ * 适配器接线表 —— Agent id → 厂商适配器的**唯一**登记处（M7b 第 2 步）。
++ *
++ * 此前这张表以字面量形式**各写一份**在 `review.ts` 与 `run-protocol.ts`：
++ * `{ gemini: agyAdapter, glm: zcodeAdapter }`。两处都要改、改一漏二不会报错，
++ * 而漏掉 `run-protocol.ts` 那份的后果尤其隐蔽——主进程换了适配器、
++ * 派生的 worker 仍用旧表，故障注入会静默失效。
++ *
++ * 新增一家 Agent 时，这里加一行就是「五件套」里的**适配器**那一件；
++ * 「有哪几家、各自叫什么」仍只在 `agents/registry.ts` 登记，两者分工不重叠：
++ * 注册表回答**身份**，本表回答**由谁执行**。
++ */
++import { agyAdapter } from './agy.js';
++import { zcodeAdapter } from './zcode.js';
++import type { CriticAdapter } from './base.js';
++import { CRITIC_AGENT_IDS, agentById } from '../agents/registry.js';
++import type { CriticId } from '../types.js';
++
++/**
++ * 真实适配器接线。
++ *
++ * 键是 Agent id（= 注册表的 id），值是该厂商 CLI 的调用实现。
++ * 未接线的 Agent 不出现在这里——`criticEnabled` 为真却缺接线是**配置错误**，
++ * 由下面的 `realAdapters()` 在启动时响亮报出，而不是等运行到一半才 undefined。
++ */
++const WIRED: Partial<Record<CriticId, CriticAdapter>> = {
++  gemini: agyAdapter,
++  glm: zcodeAdapter,
++};
++
++/**
++ * 取全部已启用审核者的真实适配器。
++ *
++ * **启用与接线必须对齐**：注册表里 `criticEnabled: true` 却没有适配器，
++ * 等于承诺了一个跑不起来的审核者。与其让它在 `runBothSides` 里以
++ * `adapters[c]` 为 undefined 的形态炸在半路（那时送审包已渲染、配额已烧），
++ * 不如在取表的这一刻就失败。
++ */
++export function realAdapters(): Record<CriticId, CriticAdapter> {
++  const out = {} as Record<CriticId, CriticAdapter>;
++  const missing: string[] = [];
++
++  for (const id of CRITIC_AGENT_IDS) {
++    const a = WIRED[id as CriticId];
++    if (!a) {
++      missing.push(`${id}（${agentById(id)?.display ?? id}）`);
++      continue;
++    }
++    out[id as CriticId] = a;
++  }
++
++  if (missing.length > 0) {
++    throw new Error(
++      `注册表把 ${missing.join('、')} 标为可用审核者，但 adapters/index.ts 里没有它们的接线。\n` +
++        '  新增 Agent 的五件套里，适配器这一件还没补——要么补接线，要么把 criticEnabled 改回 false。',
++    );
++  }
++  return out;
++}

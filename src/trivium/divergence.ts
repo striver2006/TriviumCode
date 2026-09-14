@@ -1,15 +1,17 @@
 /**
- * 双审退化指标（设计 §9.3）。
+ * 多审退化指标（设计 §9.3）。
  *
  * 若两侧 `findings` 的位置集合 Jaccard 相似度长期 > 0.8，说明两侧在看同一批地方，
- * 差异化镜头没起作用——`report` 会输出「双审退化」提示（不是报错）。
+ * 差异化镜头没起作用——`report` 会输出「多审退化」提示（不是报错）。
+ * N 方化后按**逐对**计算，措辞相应由「双审」改为「审查」（M7b 第 2 步）。
  *
  * **必须先归一化**（审查意见 AGY-06）：`location` 是自由字符串，两家格式各异
  * （`src/a.ts:88` vs `src/a.ts:85-92`，`plan §3.2` vs `§3.2`）。
  * 直接算原始字符串交集会失真——M3 那轮双审实测原始 Jaccard = **0.00**，
  * 而两侧明明有概念重叠（AGY-01 与 GLM-03 讲同一件事）。
  */
-import type { Review } from './types.js';
+import type { CriticId, Review } from './types.js';
+import { CRITICS } from './types.js';
 
 export interface NormalizedLocation {
   /** 文件相对路径，或章节标记（形如 `§3.2`） */
@@ -72,6 +74,15 @@ export function sameLocation(a: NormalizedLocation, b: NormalizedLocation): bool
 }
 
 export interface DivergenceReport {
+  /**
+   * 本次比对的**一对**审核者。
+   *
+   * 此前不记：`onlyA` / `onlyB` 的 A、B 是位置而非身份，渲染时只能靠
+   * 「A 就是 gemini、B 就是 glm」的默契补上名字——那个默契在三审时就不成立了。
+   * 记下来之后，渲染侧不必再知道有哪几家（M7b 第 2 步）。
+   */
+  a: CriticId;
+  b: CriticId;
   /** 归一化后的 Jaccard 相似度，0~1 */
   jaccard: number;
   /** 未归一化的对照值，便于看出归一化到底起了多少作用 */
@@ -80,7 +91,7 @@ export interface DivergenceReport {
   overlap: string[];
   onlyA: string[];
   onlyB: string[];
-  /** 是否触发「双审退化」提示 */
+  /** 是否触发「多审退化」提示 */
   degenerate: boolean;
   threshold: number;
 }
@@ -110,6 +121,7 @@ export function measureDivergence(
   a: Review | null,
   b: Review | null,
   threshold = 0.8,
+  pair: { a: CriticId; b: CriticId } = { a: CRITICS[0]!, b: CRITICS[1] ?? CRITICS[0]! },
 ): DivergenceReport {
   const la = dedupe((a?.findings ?? []).map((f) => normalizeLocation(f.location)));
   const lb = dedupe((b?.findings ?? []).map((f) => normalizeLocation(f.location)));
@@ -133,6 +145,8 @@ export function measureDivergence(
   const rawUnion = new Set([...rawA, ...rawB]).size;
 
   return {
+    a: pair.a,
+    b: pair.b,
     jaccard,
     rawJaccard: rawUnion === 0 ? 0 : rawInter / rawUnion,
     overlap,
@@ -147,13 +161,42 @@ export function measureDivergence(
 export function renderDivergence(d: DivergenceReport): string {
   const lines = [
     `镜头重合度 Jaccard = ${d.jaccard.toFixed(2)}（未归一化 ${d.rawJaccard.toFixed(2)}，阈值 ${d.threshold}）`,
-    `  两侧共同覆盖 ${d.overlap.length} 处 ｜ 仅 gemini ${d.onlyA.length} 处 ｜ 仅 glm ${d.onlyB.length} 处`,
+    `  ${d.a} × ${d.b}：共同覆盖 ${d.overlap.length} 处 ｜ 仅 ${d.a} ${d.onlyA.length} 处 ｜ 仅 ${d.b} ${d.onlyB.length} 处`,
   ];
   if (d.degenerate) {
     lines.push(
-      '  ⚠️ 双审退化：两侧在看同一批地方，差异化镜头没起作用。',
+      `  ⚠️ 多审退化：${d.a} 与 ${d.b} 在看同一批地方，差异化镜头没起作用。`,
       '     建议调整 lenses.yaml 的镜头或改用差异更大的模型组合。',
     );
   }
   return lines.join('\n');
+}
+
+/**
+ * 按入选审核者集合**两两**计算重合度（设计 §7.4 要求逐对 Jaccard）。
+ *
+ * 此前只算 `reviews.gemini × reviews.glm` 一对写死的组合：三审时第三家
+ * **静默丢失**——不报错、不告警，指标看着正常，只是少了一对。两侧时
+ * 本函数恰好产出一对，与旧行为逐字段等价。
+ *
+ * 只对**两侧都拿到结构化结论**的组合计算：一方是 `parse_fallback`（`null`）时
+ * 位置集合为空，算出来的 0 不是「没有重合」而是「没法比」，会污染退化判定。
+ */
+export function measureAllPairs(
+  reviews: Partial<Record<CriticId, Review | null>>,
+  critics: readonly CriticId[],
+  threshold = 0.8,
+): DivergenceReport[] {
+  const out: DivergenceReport[] = [];
+  for (let i = 0; i < critics.length; i++) {
+    for (let j = i + 1; j < critics.length; j++) {
+      const a = critics[i]!;
+      const b = critics[j]!;
+      const ra = reviews[a];
+      const rb = reviews[b];
+      if (!ra || !rb) continue;
+      out.push(measureDivergence(ra, rb, threshold, { a, b }));
+    }
+  }
+  return out;
 }

@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  measureAllPairs,
   measureDivergence,
   normalizeLocation,
   renderDivergence,
   sameLocation,
 } from '../../src/trivium/divergence.js';
-import type { Review, Finding } from '../../src/trivium/types.js';
+import type { CriticId, Review, Finding } from '../../src/trivium/types.js';
 
 /**
  * 位置归一化（审查意见 AGY-06）。
@@ -97,20 +98,21 @@ test('归一化把 0.00 的原始 Jaccard 救回真实重合度', () => {
   assert.equal(d.degenerate, false);
 });
 
-test('两侧看同一批地方 → 判双审退化', () => {
+test('两侧看同一批地方 → 判多审退化', () => {
   const a = review(['src/a.ts:10', 'src/b.ts:20', 'src/c.ts:30']);
   const b = review(['src/a.ts:8-12', 'src/b.ts:20', 'src/c.ts:28-33']);
   const d = measureDivergence(a, b);
   assert.equal(d.jaccard, 1);
   assert.equal(d.degenerate, true);
-  assert.match(renderDivergence(d), /双审退化/);
+  assert.match(renderDivergence(d), /多审退化/);
+  assert.match(renderDivergence(d), /gemini × glm/, '配对身份要出现在人读输出里');
 });
 
 test('两侧都零意见不判退化——那是「都认为没问题」', () => {
   const d = measureDivergence(review([]), review([]));
   assert.equal(d.jaccard, 0);
   assert.equal(d.degenerate, false, '空集的 Jaccard 无定义，不能当成重合');
-  assert.doesNotMatch(renderDivergence(d), /双审退化/);
+  assert.doesNotMatch(renderDivergence(d), /多审退化/);
 });
 
 test('一侧缺失（降级单审）不报错', () => {
@@ -150,4 +152,76 @@ test('同侧重复不会把重合度刷成 1', () => {
   const d = measureDivergence(a, b);
   assert.equal(d.jaccard, 0.5);
   assert.equal(d.degenerate, false);
+});
+
+/*
+ * ── 逐对计算（M7b 第 2 步，两侧收敛意见 AGY-03 ≡ GLM-01）──
+ *
+ * `measureAllPairs` 是本步「分歧度 N 方化」的核心交付，此前**零直接测试**：
+ * 本文件没导入它，`report.test.ts` 只经 `buildTopicReport` 间接覆盖 n=2。
+ * 判据（glm 给的，很锋利）：**把双重循环改回写死一对，n=2 输入下依旧全绿**——
+ * 也就是说那个交付没有任何防回退锚点。
+ *
+ * 这些用例是纯函数级的，不依赖桩与夹具。计划把三审用例排在第 6 步，
+ * 那是给**集成**用例的分期，不该顺带把纯函数单测也推迟。
+ */
+
+const R = (locs: string[]) => review(locs);
+
+test('逐对：三侧齐备 → 恰好 3 对，且配对身份逐对如实', () => {
+  const critics = ['gemini', 'glm', 'codex'] as unknown as CriticId[];
+  const pairs = measureAllPairs(
+    {
+      gemini: R(['src/a.ts:1']),
+      glm: R(['src/a.ts:1']),
+      codex: R(['src/b.ts:2']),
+    } as never,
+    critics,
+  );
+
+  assert.equal(pairs.length, 3, '三侧应产出 C(3,2)=3 对');
+  assert.deepEqual(
+    pairs.map((p) => `${p.a}×${p.b}`),
+    ['gemini×glm', 'gemini×codex', 'glm×codex'],
+    '配对身份要如实且不重复——写死一对或漏配都会在这里显形',
+  );
+});
+
+test('逐对：某侧无结构化结论 → 跳过含它的对，保留其余（是 2 对，不是 3 也不是 0）', () => {
+  /*
+   * 这个数字是关键：
+   *   3 对 = 没跳过（拿 null 去算，得出的 0 不是「没重合」而是「没法比」）
+   *   0 对 = 整体放弃（一侧 parse_fallback 就把另两侧的可比性也丢了）
+   * 只有 2 对是对的。
+   */
+  const critics = ['gemini', 'glm', 'codex'] as unknown as CriticId[];
+  const pairs = measureAllPairs(
+    { gemini: R(['src/a.ts:1']), glm: null, codex: R(['src/b.ts:2']) } as never,
+    critics,
+  );
+
+  assert.equal(pairs.length, 1, 'gemini×codex 一对——含 glm 的两对都该跳过');
+  assert.deepEqual([pairs[0]!.a, pairs[0]!.b], ['gemini', 'codex']);
+});
+
+test('逐对：单侧或空集 → 0 对，且不抛异常', () => {
+  const one = measureAllPairs({ gemini: R(['src/a.ts:1']) } as never, ['gemini'] as never);
+  assert.deepEqual(one, [], '一侧凑不成对');
+
+  assert.doesNotThrow(() => measureAllPairs({} as never, [] as never));
+  assert.deepEqual(measureAllPairs({} as never, [] as never), []);
+});
+
+test('逐对：两侧时与旧的单对行为逐字段等价（本步是行为等价重构）', () => {
+  const a = R(['src/a.ts:88', 'plan §3.2']);
+  const b = R(['src/a.ts:85-92', '§3.2']);
+  const critics = ['gemini', 'glm'] as unknown as CriticId[];
+
+  const pairs = measureAllPairs({ gemini: a, glm: b } as never, critics);
+  const legacy = measureDivergence(a, b);
+
+  assert.equal(pairs.length, 1);
+  const { a: _a, b: _b, ...rest } = pairs[0]!;
+  const { a: _la, b: _lb, ...legacyRest } = legacy;
+  assert.deepEqual(rest, legacyRest, '除配对身份外，指标必须与旧实现逐字段相同');
 });
