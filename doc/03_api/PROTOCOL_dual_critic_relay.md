@@ -1,6 +1,6 @@
 # PROTOCOL：Driver-DualCritic 工件中继与协议契约
 
-> 依据 [设计 v1.3.5](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.3](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.6](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.4](../01_requirements/PRD_driver_dual_critic.md)。
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
 >
 > **⚠️ 本文描述的是当前真实生效的契约**（**`config.v2`** / **`run.v2`** / 两侧审核者 / 固定 Claude Code Driver）。
@@ -64,9 +64,17 @@ YAML 往返会丢注释，原注释保留在备份中）。三条跨字段规则
 
 ### `trivium.review.v1` 的硬约束
 
-- **意见编号前缀固定**：Antigravity 为 `AGY-`、ZCode 为 `GLM-`，两侧不冲突；
-  pattern 为 `^(AGY|GLM)-(r[0-9]+-)?[0-9]{2,}$`（序号至少两位，重跑追加轮次如 `AGY-r2-01`）。
-  裁决件解析器据此过滤数据行，所以编号不合规的意见会在闸门处被视为不存在。
+- **意见编号前缀逐侧固定，但不由 schema 枚举**：Antigravity 为 `AGY-`、ZCode 为 `GLM-`，各侧不冲突；
+  schema 的 pattern 只校**形状**——`^[A-Z][A-Z0-9]*-(r[0-9]+-)?[0-9]{2,}$`
+  （序号至少两位，重跑追加轮次如 `AGY-r2-01`）。
+  **「哪些前缀合法、各属哪一家」的唯一来源是 Agent 注册表**（设计 16.2 纪律 7）：
+  前缀是否属于本侧由 `parse.ts` 的 `checkReviewIntegrity` 按注册表判定，不合则 `guard` 记 integrity 问题
+  ——那道检查校的是「属于本侧」，比枚举「在名单里」更强。
+  裁决件解析器同样按注册表派生的前缀交替式过滤数据行，所以编号不合规的意见会在闸门处被视为不存在。
+
+  > 此处曾写死 `^(AGY|GLM)-`（至设计 v1.3.5）。M7b 第 6 步的桩夹具实测发现：
+  > 那样写会让第三家的**合法**结论被 ajv 拒掉、整份退化成 `parse_fallback`，
+  > 而当时没有任何检查看着这份 schema，全套测试照常全绿。详见设计 6.5 与 5.1.1。
 - **每条意见七个字段必填**：`id` / `severity` / `location` / `problem` / `evidence` /
   `suggestion` / `confidence`，另需 `layer` 与 `kind`。
 - **每条意见必须是可单独接受或驳回的最小单元**——这是「逐条裁决」得以成立的前提。

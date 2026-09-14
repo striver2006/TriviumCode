@@ -1,0 +1,41 @@
+/**
+ * 桩 Agent 的能力探针 —— 接入套件里的**第 3 件**（M7b 第 6 步夹具）。
+ *
+ * 覆盖到临时构建树的 `src/trivium/probes/stub.ts`，不进生产树。
+ * 形状对齐 `probes/agy.ts`：一个异步 `probeXxx()`，回答「这家现在能不能用、
+ * 版本是什么、有哪些模型」。桩没有外部 CLI，所以三问都是常量。
+ *
+ * ## 本件暴露出的一处真实缺口
+ *
+ * 真实探针的结论要落进 `config.probe.<厂商段>`（`probe.agy` / `probe.zcode`），
+ * 而 `ProbeSection`（`types.ts`）是**按厂商固定键的闭合形状**——新增一家的探针结论
+ * **无处落盘**，除非改 `types.ts` 的 `ProbeSection` 及其消费点。
+ * （只到 `types.ts`：`config.v2.json` 的 `probe` 段是 `additionalProperties: true`，
+ * 任意厂商键本就过 ajv——此处原先多记了一个文件，经代码双审 GLM-05 核正。）
+ *
+ * 桩绕过了这件事：它的结论只在本进程内被适配器直接消费，不经配置。
+ * 所以本夹具能证明「多一家也跑得起来」，**不能**证明「多一家的探针结论存得下」。
+ * 这一条已登记为接入套件的真实成本，见 BACKLOG EV-05。
+ */
+
+export interface StubProbe {
+  /** 恒为 true：桩不依赖任何外部 CLI、凭据或网络 */
+  available: true;
+  /** 对齐 `probe.agy.version` / `probe.zcode.version` 的位置 */
+  version: string;
+  /** 对齐 `probe.agy.models`：桩只认这一个 slug，`profiles` 里必须配它 */
+  models: readonly string[];
+}
+
+export const STUB_MODEL = 'stub-model-v0';
+
+/**
+ * 「探测」桩 Agent。
+ *
+ * 写成 async 是刻意的**形状对齐**而非必要：真实探针都要 exec 厂商 CLI，
+ * 调用方按异步写。若这里图省事写成同步，接第三家真实 Agent 时调用处要改签名，
+ * 而改调用处正是本步要证明「不必发生」的那件事。
+ */
+export async function probeStub(): Promise<StubProbe> {
+  return { available: true, version: 'stub/0.0.0', models: [STUB_MODEL] };
+}

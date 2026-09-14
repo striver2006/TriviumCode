@@ -72,13 +72,39 @@ export function validateConfig(data: unknown): string[] {
 }
 
 /**
- * `config.v2` 的 `agents` 段当前**已定义形状**的 vendor。
+ * `config.v2` 的 `agents` 段当前**已定义形状**的 vendor —— **从 schema 现取，不另写一份**。
  *
  * 与注册表的「已登记」是两回事：登记表示这家存在，有形状才表示它能被配置。
- * codex（openai）/ claude（anthropic）随 M8 / M9 / M10 加入 `config.v2.json` 的
- * `oneOf` 时，这里同步加一个值——**两处要一起改**，所以放在离 schema 最近的地方。
+ *
+ * 上一版是手写的 `new Set(['antigravity', 'zcode'])`，注释还写着「随 M8 / M9 / M10
+ * 加入 oneOf 时，这里同步加一个值——**两处要一起改**」。那句话把一个第二事实源
+ * 当成纪律来维护：新增一家时只改 schema 不改这里，症状是它的配置段被 ajv 放行
+ * 之后，又被这里以「形状尚未定义」拒掉——一条自相矛盾的错误；只改这里不改 schema
+ * 则反过来。M7b 第 6 步的桩夹具正是在这里卡住的（桩 Agent 要被 `--critics` 选中
+ * 就必须有配置段，而配置段要过两道各写一份的关）。
+ *
+ * 判别式 `vendor: { const }` 本就是 schema 里**允许**出现的形态（它是形状判别式，
+ * 不是身份枚举——见 registry-parity 对两者的区分），所以现取即可，不必再抄。
  */
-const CONFIGURABLE_VENDORS = new Set(['antigravity', 'zcode']);
+function configurableVendors(): ReadonlySet<string> {
+  const shapes = (configSchema as {
+    properties?: { agents?: { additionalProperties?: { oneOf?: { properties?: { vendor?: { const?: unknown } } }[] } } };
+  }).properties?.agents?.additionalProperties?.oneOf ?? [];
+  const out = new Set<string>();
+  for (const shape of shapes) {
+    const v = shape.properties?.vendor?.const;
+    if (typeof v === 'string') out.add(v);
+  }
+  if (out.size === 0) {
+    // 取空说明 schema 的结构变了而本函数没跟上。静默返回空集会把**每一个**配置段
+    // 都判成「形状尚未定义」——一条指向错误方向的报错。宁可在这里就说清真实原因。
+    throw new Error(
+      'config.v2.json 的 agents.additionalProperties.oneOf 里取不到任何 vendor 判别式，' +
+        'schemas.ts 的 configurableVendors() 需要跟随 schema 结构一并更新。',
+    );
+  }
+  return out;
+}
 
 /**
  * 配置里与 Agent 身份有关的跨字段规则（设计 13.1.1 / 计划 §3.2「约束二」）。
@@ -109,7 +135,8 @@ function checkConfigAgents(data: unknown): string[] {
        * gemini、glm」就照着改成 `claude`，而 `claude` 的配置形状要等 M9 / M10 才定义，
        * ajv 的 `oneOf` 会用一条机读错误拒掉它——用户完全看不出真正的原因。
        */
-      const configurable = ALL_AGENT_IDS.filter((x) => CONFIGURABLE_VENDORS.has(agentById(x)!.vendor));
+      const vendors = configurableVendors();
+      const configurable = ALL_AGENT_IDS.filter((x) => vendors.has(agentById(x)!.vendor));
       const pending = ALL_AGENT_IDS.filter((x) => !configurable.includes(x));
       problems.push(
         `agents.${id} 不是已登记的 Agent id。当前可配置：${configurable.join('、')}` +
@@ -119,7 +146,7 @@ function checkConfigAgents(data: unknown): string[] {
       );
       continue;
     }
-    if (!CONFIGURABLE_VENDORS.has(agent.vendor)) {
+    if (!configurableVendors().has(agent.vendor)) {
       problems.push(
         `agents.${id} 的配置形状尚未定义（随 M8 / M9 / M10 加入），当前版本不能配置它。` +
           '登记在注册表里只表示「这家存在」，不表示「它已经能被配置」',

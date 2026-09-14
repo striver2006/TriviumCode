@@ -21,8 +21,8 @@
  * 绝不能在真实审查里生效而无人知晓。
  */
 import { agentById } from '../agents/registry.js';
-import type { CriticId, CriticRequest, CriticResult } from '../types.js';
-import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
+import { CRITICS, type CriticId, type CriticRequest, type CriticResult } from '../types.js';
+import { failedResult, type AdapterContext, type AdapterTable, type CriticAdapter } from './base.js';
 import { warn } from '../util/log.js';
 
 export const STUB_ENV_VAR = 'TRIVIUM_STUB_CRITIC';
@@ -49,6 +49,15 @@ export type StubMode =
    * 用来验证跑后复算的漂移判定（设计 §9.2）。
    */
   | 'mutate_file'
+  /**
+   * 产出**前缀不属于本侧**的结论（`note` = 要冒用的前缀，缺省为「另一侧的前缀」）。
+   *
+   * 对应两种真实形态：冒名（某侧产出对侧前缀）与未登记前缀（模型自造 `FOO-01`）。
+   * 放开 `review.v1.json` 的前缀枚举之前，这两种都被 ajv 挡在门外；放开之后
+   * 它们是 schema 合法的结构化结论，必须由注册表判定接住——本模式就是那条
+   * 接力是否成立的检验（审查意见 AGY-01 ≡ GLM-02）。
+   */
+  | 'wrong_prefix'
   /** 进程级失败 */
   | 'fail';
 
@@ -80,7 +89,7 @@ export function readStubConfig(env: NodeJS.ProcessEnv = process.env): StubConfig
 /** 序列化，供测试设置环境变量 */
 export const encodeStubConfig = (c: StubConfig): string => JSON.stringify(c);
 
-function sampleReview(critic: CriticId, n: number): string {
+function sampleReview(critic: CriticId, n: number, prefixOverride?: string): string {
   /*
    * 前缀取自注册表，不用三目兜底（与 A-1 同一形态）。
    *
@@ -89,7 +98,7 @@ function sampleReview(critic: CriticId, n: number): string {
    * 夹具本身就成了泛化的绊脚石。这一处是 `registry-parity` 的
    * grep 对账抓出来的，两侧计划审查与我的原稿都漏了它。
    */
-  const prefix = agentById(critic)?.findingPrefix ?? critic.toUpperCase();
+  const prefix = prefixOverride ?? agentById(critic)?.findingPrefix ?? critic.toUpperCase();
   const findings = Array.from({ length: n }, (_, i) => ({
     id: `${prefix}-${String(i + 1).padStart(2, '0')}`,
     severity: i === 0 ? 'blocker' : 'minor',
@@ -201,6 +210,19 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
           await fsp.appendFile(target, `// mutated during review by stub ${critic}\n`, 'utf8');
           return baseResult(critic, req, spec);
         }
+        case 'wrong_prefix': {
+          /*
+           * 缺省冒用「另一侧」的前缀：那是最危险的形态——未登记前缀会在闸门处
+           * 以「缺裁决」现形（虽然报错指向错误原因），而冒名前缀会被 gate 的
+           * Set 去重与对侧合并，裁决一次即过闸，**静默**碰撞。
+           */
+          const others = CRITICS.filter((c) => c !== critic);
+          const fallbackPrefix = others[0] ? (agentById(others[0])?.findingPrefix ?? 'OTHER') : 'OTHER';
+          return {
+            ...baseResult(critic, req, spec),
+            raw_response_text: sampleReview(critic, spec.findings ?? 1, spec.note ?? fallbackPrefix),
+          };
+        }
         case 'ok':
         default:
           return baseResult(critic, req, spec);
@@ -216,9 +238,9 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
  * 否则跨进程注入就会漏掉那条路径。
  */
 export function resolveAdapters(
-  real: Record<CriticId, CriticAdapter>,
+  real: AdapterTable,
   env: NodeJS.ProcessEnv = process.env,
-): Record<CriticId, CriticAdapter> {
+): AdapterTable {
   const stub = readStubConfig(env);
   if (!stub) return real;
 

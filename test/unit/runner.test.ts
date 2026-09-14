@@ -306,3 +306,31 @@ test('进展回调抛异常不得连累审查本身', async () => {
   });
   assert.equal(out.results.gemini?.status, 'ok', '进度写失败不该让审查失败');
 });
+
+/*
+ * ── 查表缺项必须说得出是谁缺（M7b 第 6 步）──
+ *
+ * `CriticId` 放开成注册表全集之后，`Record<CriticId, CriticAdapter>` 成了一句谎话
+ * （Driver 与尚未接入的 Agent 本就没有适配器）。改成 `AdapterTable = Partial<…>` 后
+ * 取值处必须显式判空——**而判空分支本身要被测**，否则它只是一段好看的死代码。
+ *
+ * 这条路径在生产里不可达（`realAdapters()` 会先响亮失败），但 `runBothSides`
+ * 是导出函数、`adapters` 是入参，手工构造的调用方随时能撞上它。
+ */
+test('入选了某侧却没有它的适配器 → 该侧记 failed 并点名，不连带丢掉另一侧', async () => {
+  const good = stub('gemini', [okResult('gemini')]);
+  const out = await runBothSides({
+    ctx: CTX,
+    // glm 被请求了，表里却没有它
+    adapters: { gemini: good },
+    requests: { gemini: req('gemini'), glm: req('glm') },
+    maxTransientRetries: 0,
+  });
+  assert.equal(out.results.gemini?.status, 'ok', '有适配器的那侧照常跑完');
+  assert.equal(out.results.glm?.status, 'failed');
+  assert.match(
+    out.results.glm!.fail_reason!,
+    /glm/,
+    '报错必须点名是哪一侧缺适配器——否则排障时看到的只是一条 TypeError',
+  );
+});

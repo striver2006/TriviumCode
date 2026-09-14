@@ -4,7 +4,7 @@
  * 只负责「把两侧跑起来并收回结果」。只读校验、漂移判定、证据下限一律不在这里
  * ——那是 `guard` 的职责。
  */
-import type { CriticAdapter, AdapterContext } from './adapters/base.js';
+import type { AdapterTable, AdapterContext } from './adapters/base.js';
 import type { CriticId, CriticRequest, CriticResult, ReviewMode } from './types.js';
 import { step, warn } from './util/log.js';
 
@@ -58,7 +58,7 @@ export interface SideProgress {
 
 export interface RunnerInput {
   ctx: AdapterContext;
-  adapters: Record<CriticId, CriticAdapter>;
+  adapters: AdapterTable;
   requests: Partial<Record<CriticId, CriticRequest>>;
   /** 重试前对 BRIEF 追加提示（如 schema 错误清单、「你未读取任何项目文件」） */
   onRetryBrief?: (critic: CriticId, previous: CriticResult) => string | null;
@@ -102,6 +102,9 @@ async function runOneSide(
   req: CriticRequest,
 ): Promise<{ result: CriticResult; attempts: number }> {
   const adapter = input.adapters[critic];
+  // 查表可缺（见 AdapterTable 的说明）。缺了就在这里说清是谁缺，
+  // 而不是让 `adapter.run` 崩出一条与原因无关的 TypeError。
+  if (!adapter) throw new Error(`没有 ${critic} 侧的适配器，无法执行该侧审查。`);
   const startedAt = Date.now();
   const elapsed = () => Math.round((Date.now() - startedAt) / 1000);
   let attempts = 0;

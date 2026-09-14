@@ -6,15 +6,15 @@
  * 而漏掉 `run-protocol.ts` 那份的后果尤其隐蔽——主进程换了适配器、
  * 派生的 worker 仍用旧表，故障注入会静默失效。
  *
- * 新增一家 Agent 时，这里加一行就是「六件套」里的**适配器**那一件；
+ * 新增一家 Agent 时，这里加一行就是**接入套件**（设计 5.1.1，七件）里第 ② 件的一半——
+ * 另一半是 `adapters/<id>.ts` 本体；
  * 「有哪几家、各自叫什么」仍只在 `agents/registry.ts` 登记，两者分工不重叠：
  * 注册表回答**身份**，本表回答**由谁执行**。
  */
 import { agyAdapter } from './agy.js';
 import { zcodeAdapter } from './zcode.js';
-import type { CriticAdapter } from './base.js';
+import type { AdapterTable } from './base.js';
 import { CRITIC_AGENT_IDS, agentById } from '../agents/registry.js';
-import type { CriticId } from '../types.js';
 
 /**
  * 真实适配器接线。
@@ -23,7 +23,7 @@ import type { CriticId } from '../types.js';
  * 未接线的 Agent 不出现在这里——`criticEnabled` 为真却缺接线是**配置错误**，
  * 由下面的 `realAdapters()` 在启动时响亮报出，而不是等运行到一半才 undefined。
  */
-const WIRED: Partial<Record<CriticId, CriticAdapter>> = {
+const WIRED: AdapterTable = {
   gemini: agyAdapter,
   glm: zcodeAdapter,
 };
@@ -36,23 +36,23 @@ const WIRED: Partial<Record<CriticId, CriticAdapter>> = {
  * `adapters[c]` 为 undefined 的形态炸在半路（那时送审包已渲染、配额已烧），
  * 不如在取表的这一刻就失败。
  */
-export function realAdapters(): Record<CriticId, CriticAdapter> {
-  const out = {} as Record<CriticId, CriticAdapter>;
+export function realAdapters(): AdapterTable {
+  const out: AdapterTable = {};
   const missing: string[] = [];
 
   for (const id of CRITIC_AGENT_IDS) {
-    const a = WIRED[id as CriticId];
+    const a = WIRED[id];
     if (!a) {
       missing.push(`${id}（${agentById(id)?.display ?? id}）`);
       continue;
     }
-    out[id as CriticId] = a;
+    out[id] = a;
   }
 
   if (missing.length > 0) {
     throw new Error(
       `注册表把 ${missing.join('、')} 标为可用审核者，但 adapters/index.ts 里没有它们的接线。\n` +
-        '  新增 Agent 的六件套里，适配器这一件还没补——要么补接线，要么把 criticEnabled 改回 false。',
+        '  接入套件（设计 5.1.1）第 ② 件「适配器」还没补齐——要么补接线，要么把 criticEnabled 改回 false。',
     );
   }
   return out;

@@ -19,13 +19,30 @@ export type StageOrVerify = Stage | 'verify';
 export type CommandEntry = 'A' | 'B' | 'C' | 'D';
 export const COMMAND_ENTRIES: readonly CommandEntry[] = ['A', 'B', 'C', 'D'];
 /**
- * 当前可选为审核者的 Agent。
+ * 可出现在「审核者」位置的 Agent —— **就是注册表的全集**（M7b 第 6 步放开）。
  *
- * M7a 仍是两值——与重构前逐项相同（行为等价）。它现在由
- * `agents/registry.ts` 的 `criticEnabled` 派生而非独立定义：
- * M8 / M9 启用 codex / claude 时只改注册表，本别名自动跟随。
+ * ## 为什么是全集，而不是「当前启用的那几家」
+ *
+ * 想要的显然是后者，但 TypeScript 表达不了：`criticEnabled` 是运行期的字段值，
+ * 类型层取不到 `AGENTS.filter(...)` 的结果。能写出来的只有两种形态——
+ * 注册表全集，或者**再手写一遍**的字面 union。
+ *
+ * 此前用的是后者（`Extract<AgentId, 'gemini' | 'glm'>`），而它的注释写着
+ * 「M8 / M9 启用时只改注册表，本别名自动跟随」。**那句话是假的**：`Extract`
+ * 的第二个参数就是手写的两值，注册表把 codex 的 `criticEnabled` 改成 true
+ * 之后它纹丝不动。于是「唯一登记处」在这一处是破的——注册表说三家，类型说两家，
+ * 中间靠 `CRITICS` 那个 `as` 断言把差异抹平。第 6 步的桩夹具正是被它卡住：
+ * 夹具只许改注册表与接入套件（设计 5.1.1），改不到这里，类型层就永远不认第三家。
+ *
+ * 全集的代价是**类型层不再拦「把 Driver 当审核者用」**。这个代价是可接受的，
+ * 因为那道防线本来就不该由类型承担：`resolveCriticSelection` 里「当轮 Driver
+ * 不得入选」是**独立检查**，不依赖 `criticEnabled` 顺带生效（M7b 第 5 步的取舍之一）。
+ * 类型层收窄给的是一种错觉——它挡的是字面量写错，挡不住任何来自配置或命令行的值，
+ * 而后者才是真实入口。
+ *
+ * **运行期的真集合始终是 `CRITICS`**（由 `criticEnabled` 派生）。
  */
-export type CriticId = Extract<AgentId, 'gemini' | 'glm'>;
+export type CriticId = AgentId;
 /**
  * 厂商标识。**直接就是注册表的 `AgentVendor`**（M7b 第 3 步收口 EV-03）。
  *
@@ -197,8 +214,9 @@ export interface ReviewConfig {
    * 每一项都必须在 `agents` 里有配置，且必须是注册表中 `criticEnabled: true` 的 Agent。
    * 默认值维持 `[gemini, glm]`——与现状等价，成本不变。
    *
-   * **接线在第 5 步**：本步（第 4 步）只让它进入配置契约与校验，
-   * `--critics` 入口尚未接上，运行时仍走 `CRITICS` 全集。
+   * 接线已在 M7b 第 5 步完成：不给 `--critics` 时，`resolveCriticSelection`
+   * 取的就是这个字段（优先级 `--critics` > `--only` > 本字段），
+   * **不再回落到 `CRITICS` 全集**。
    */
   default_critics: CriticId[];
   /** 单次运行可选审核者的基数上限（FR-29：1～3） */

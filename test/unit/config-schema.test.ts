@@ -7,6 +7,8 @@ import { defaultConfig, loadCtx } from '../../src/trivium/config.js';
 import { validateConfig, validateRunMeta, validateDispositionFrontMatter } from '../../src/trivium/schemas.js';
 import { newRunMeta } from '../../src/trivium/meta.js';
 import { CRITICS } from '../../src/trivium/types.js';
+import { AGENTS } from '../../src/trivium/agents/registry.js';
+import { REPO_ROOT } from '../helpers/fixture.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 
 /*
@@ -103,4 +105,63 @@ test('裁决件 front-matter 按 disposition.v1 校验', () => {
   const bad = validateDispositionFrontMatter({ schema: 'trivium.disposition.v1', topic: 't', stage: 'plan', role: 'gemini', kind: 'revised', run_id: 'R1', addresses: [] });
   assert.ok(bad.some((m) => m.includes('role')), JSON.stringify(bad));
   assert.ok(bad.some((m) => m.includes('addresses')), JSON.stringify(bad));
+});
+
+/*
+ * ── 「哪些厂商已有配置形状」只许有一份来源（M7b 第 6 步）──
+ *
+ * `schemas.ts` 此前手写 `new Set(['antigravity','zcode'])`，注释里还把
+ * 「新增一家时两处要一起改」当纪律写着。那是一个第二事实源：
+ *   · 只改 schema 不改它 → 配置段被 ajv 放行，再被它以「形状尚未定义」拒掉，
+ *     用户拿到一条自相矛盾的报错；
+ *   · 只改它不改 schema → 反过来。
+ * 现在从 `config.v2.json` 的 `agents.additionalProperties.oneOf` 现取。
+ */
+test('可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家', async () => {
+  const schema = JSON.parse(
+    await fs.readFile(
+      path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'), 'utf8',
+    ),
+  ) as { properties: { agents: { additionalProperties: { oneOf: { properties: { vendor: { const: string } } }[] } } } };
+  const declared = schema.properties.agents.additionalProperties.oneOf
+    .map((b) => b.properties.vendor.const)
+    .sort();
+
+  /*
+   * 正向：schema 里声明过形状的厂商，其配置段必须能过校验。
+   * 用注册表里 vendor 命中 declared 的 Agent 去构造，而不是写死 gemini / glm——
+   * 写死的话这条断言自己就成了第三个事实源。
+   */
+  for (const vendor of declared) {
+    const agent = AGENTS.find((a) => a.vendor === vendor);
+    assert.ok(agent, `schema 声明了 ${vendor} 的形状，注册表里却没有这个厂商的 Agent`);
+    const cfg = defaultConfig();
+    assert.ok(
+      cfg.agents[agent.id],
+      `内置默认配置应当含 agents.${agent.id}——它是 declared 厂商，本用例靠它取到一份合法段`,
+    );
+    assert.deepEqual(validateConfig(cfg), [], `agents.${agent.id} 的合法配置不该被拒`);
+  }
+
+  /*
+   * 反向：注册表里登记、但 schema 没给形状的厂商，配置段必须被**明确**拒绝，
+   * 且报错要说清是「形状尚未定义」而不是别的——用户照着这条话才知道该等哪个里程碑。
+   */
+  const pending = AGENTS.filter((a) => !declared.includes(a.vendor));
+  assert.ok(pending.length > 0, '注册表里应当至少有一个形状未定义的 Agent（当前是 claude / codex）');
+  /*
+   * **逐个**查，不是查第一个。只查 `find()` 的话，这条断言只覆盖 AGENTS 里最靠前的
+   * 那一家——往手写集合里错加一个别的厂商，它照样全绿。实测确认过：
+   * 把 openai 塞回手写集合时，只查首项的版本一声不吭。
+   */
+  for (const agent of pending) {
+    const cfg = defaultConfig();
+    (cfg.agents as Record<string, unknown>)[agent.id] = { vendor: agent.vendor };
+    const problems = validateConfig(cfg);
+    assert.ok(problems.length > 0, `agents.${agent.id} 的形状还没定义，不该被放行`);
+    assert.ok(
+      problems.some((p) => p.includes('形状尚未定义')),
+      `agents.${agent.id} 的报错要说清真实原因（形状尚未定义），实际是：\n${problems.join('\n')}`,
+    );
+  }
 });

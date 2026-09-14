@@ -151,10 +151,9 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
   // 已被属性扫描排除，文件本身确无 Agent 字面量。此前判它「仍需要」是坏剥离器
   // 造出的假命中（见 stripComments 的注释）。
   { file: 'doctor.ts', why: '逐侧探测的人读输出与厂商专属诊断话术' },
-  { file: 'preflight.ts', why: '逐侧预检的人读输出，以及 checkModelSlugs 的厂商专属 slug 校验分支（agy 目录硬校验 vs zcode 短名补全，无法登记为统一数据）' },
-  { file: 'review.ts', why: 'effortFor 的厂商专属分支：effort 只存在于 antigravity 形状的配置段，ZCode 0.16.5 实测没有等价旗标（M0 坑清单 C-07）。**M7b 第 4 步后仍需要**——config v2 只把 critics.* 改名为 agents.*，并未把 effort 统一成逐 Agent 字段；设计 13.1.1 把 tiers / models / default_tier 排在 M11，在那之前这里的编译期穷尽（switch + never）是能拿到的最强保证' },
+  { file: 'preflight.ts', why: '逐侧预检的人读输出，以及两处按 Agent id 取厂商配置段的指纹计算（agyFingerprint 读 agents.gemini 的只读 Agent 定义）。M7b 第 6 步已把 checkModelSlugs 的身份穷尽改成按 vendor 分派，那一条不再是豁免理由；剩下的是「哪一家的可用性由哪个文件决定」，属厂商专属事实' },
   { file: 'selftest.ts', why: '自检场景里两侧桩的固定编排；M7b 增 N 侧场景' },
-  { file: 'types.ts', why: 'CriticId 的字面收窄（Extract<AgentId, …>）；M7b 随注册表放开' },
+  { file: 'types.ts', why: "Disposition.role 的字面 'claude'：裁决件的作者恒为当轮 Driver，而 Driver 任意化排在 M10。此前的豁免理由是 CriticId 的字面收窄，M7b 第 6 步已把它放开成注册表全集——理由换了，豁免仍需要，所以是改写而不是删除" },
 ];
 
 test('白名单纪律：每一项都要写明理由，且不得豁免不存在的文件', async () => {
@@ -733,4 +732,167 @@ test('run.v2 校验：未启用但已登记的 Agent 出现在入选集合里，
     `${spare} 是已登记 Agent，run.v2 不该在形状上拒绝它——` +
       '拒绝即说明枚举被塞回了 schema（可能不是用 enum 写的）',
   );
+});
+
+/*
+ * ── 全目录兜底扫描（M7b 第 6 步，桩夹具实测查出）──
+ *
+ * 上面两条对账各自维护一份**显式路径清单**，并在注释里写着「新增机读契约时，
+ * 对账要跟着建」。那句话没守住：`review.v1.json` 从来没被任何一条盯过，
+ * 而它的 `findings.items.id.pattern` 写着 `^(AGY|GLM)-…`——第三家审核者的
+ * 合法结论会被 ajv 拒掉，整份结论退化成 `parse_fallback`，
+ * 意见编号变成 `STUB-F1` 这类兜底号，而**全套测试照常全绿**。
+ *
+ * 这已经是同一形状的第四次（白名单过期条目 → run.v2 → config.v2 → review.v1）。
+ * 前三次的对策都是「记得把新文件加进清单」，而它每次都失效。所以这一次换成
+ * **全目录兜底**：扫 `schema/` 下每一份契约的每一个校验关键字，
+ * 新增 schema 文件自动进入论域，不需要谁记得。
+ *
+ * 论域刻意只盯 Agent **id** 与**意见编号前缀**，不盯 vendor——
+ * `vendor: {const: …}` 是可辨识联合的形状判别式，必须留着（见上一条的反向断言）。
+ */
+test('全部机读 schema：任何校验关键字都不得枚举 Agent id 或意见编号前缀', async () => {
+  const files = (await fs.readdir(SCHEMA_DIR)).filter((f) => f.endsWith('.json')).sort();
+  assert.ok(files.length > 0, `${SCHEMA_DIR} 下一个 schema 都没有，扫描论域是空的`);
+
+  /*
+   * `run.v1` 是**历史契约**：既有归档是不可变工件，必须按写入时的规范解读（P6）。
+   * 它写死两家正是 M7b 第 3 步必须升版而非原地扩展的原因，所以豁免它不是妥协。
+   * 豁免面刻意只有这一条——多一条就要在这里写清为什么。
+   */
+  const HISTORICAL = new Set(['run.v1.json']);
+
+  // 人读字段不参与：描述里举例写 `AGY-r2-01` 是应该的，那不是校验规则
+  const PROSE_KEYS = new Set(['description', 'title', '$comment', '$id', '$schema']);
+
+  /*
+   * `const` 的豁免面：只豁免**形状判别式**所在的键。
+   *
+   * 可辨识联合靠 `{vendor: {const: …}}` 工作（上方另有反向断言盯着它还在）。
+   * 把豁免写成「键名白名单」而不是「不扫 const」，是为了让豁免面**可见且可数**：
+   * 想再加一个，就得在这里写下它叫什么、为什么。
+   */
+  const VENDOR_DISCRIMINANT_KEYS = new Set(['vendor']);
+
+  /*
+   * **具名豁免**：已知的、有理由的、且已登记为欠账的身份常量。
+   *
+   * 补上 const 分支之后第一次跑就扫出了它——那是真命中，不是误报。
+   * 处置方式刻意选「按路径具名豁免」而不是「不扫 const」：
+   * 前者豁免面是一条可数的路径且必须写下理由，后者是整片论域悄悄消失。
+   * 这与白名单纪律同构（豁免要写理由、要被守着不能过期）。
+   */
+  const NAMED_EXEMPTIONS: readonly { file: string; at: string; why: string }[] = [
+    {
+      file: 'disposition.v1.json',
+      at: 'properties.role.const',
+      why:
+        '裁决件的作者恒为**当轮 Driver**，而 Driver 任意化排在 M10——在那之前它事实上只有一个取值。' +
+        '泛化它要同时改 gate 的消费点与 Driver 自己的产出模板，属 M10 范围，本轮只登记不改（BACKLOG EV-07）。' +
+        '`types.ts` 的 Disposition.role 有同源豁免，两处理由一致。',
+    },
+  ];
+  /** 被豁免挡下的命中，用来守「豁免仍然被需要」——空头支票要当场现形 */
+  const suppressed = new Set<string>();
+  const exempt = (file: string, at: string): boolean => {
+    const e = NAMED_EXEMPTIONS.find((x) => x.file === file && at.startsWith(x.at));
+    if (!e) return false;
+    suppressed.add(`${e.file}#${e.at}`);
+    return true;
+  };
+  const ids = ALL_AGENT_IDS as readonly string[];
+  const prefixes = ALL_FINDING_PREFIXES as readonly string[];
+
+  const hits: string[] = [];
+
+  const scan = (node: unknown, file: string, at: string): void => {
+    if (Array.isArray(node)) {
+      node.forEach((v, i) => scan(v, file, `${at}[${i}]`));
+      return;
+    }
+    if (node === null || typeof node !== 'object') return;
+
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      const here = at ? `${at}.${k}` : k;
+      if (PROSE_KEYS.has(k)) continue;
+
+      // ① enum 直接列身份
+      if (k === 'enum' && Array.isArray(v)) {
+        const vals = v.filter((x): x is string => typeof x === 'string');
+        const allIds = vals.length >= 2 && vals.every((x) => ids.includes(x));
+        const allPrefixes = vals.length >= 2 && vals.every((x) => prefixes.includes(x));
+        if (allIds || allPrefixes) {
+          hits.push(`${file} 的 ${here} 用 enum 列出了 ${JSON.stringify(vals)}`);
+        }
+      }
+
+      /*
+       * ② const 钉死单个身份（审查意见 AGY-05 ≡ GLM-03）。
+       *
+       * 第一版这里只有 `enum` 一支，而上方注释写的是「enum / const 直接列身份」
+       * ——**注释宣称了不存在的覆盖**，比单纯漏做更糟：下一个人会以为这块已经守住。
+       *
+       * `vendor` 键豁免：`{vendor: {const: 'antigravity'}}` 是可辨识联合的**形状判别式**，
+       * 删掉它 `agents` 就退化成任意对象（上方另有一条反向断言盯着它还在）。
+       * 但「豁免 vendor 键」与「完全不扫 const」之间差着整片论域，前者才是要的。
+       */
+      if (k === 'const' && typeof v === 'string' && !VENDOR_DISCRIMINANT_KEYS.has(at.split('.').pop() ?? '')) {
+        if ((ids.includes(v) || prefixes.includes(v)) && !exempt(file, here)) {
+          hits.push(`${file} 的 ${here} 用 const 钉死了身份「${v}」`);
+        }
+      }
+
+      // ③ 正则等字符串里塞身份（`^(AGY|GLM)-…` 与 `^AGY-…` 都要抓）
+      if (typeof v === 'string') {
+        /*
+         * 判据由「≥2 个 token 的交替式」放宽为「出现任一已登记 id 或前缀」。
+         *
+         * 原门槛 `alternation.length >= 2` 让**单前缀字面**（如 `^AGY-`）整类穿过
+         * ——而把两家收窄成一家，和写死两家是同一种病，甚至更隐蔽。
+         * 人读字段已在 PROSE_KEYS 排除，所以这里剩下的都是真正参与校验的关键字。
+         */
+        const hitTokens = [...ids, ...prefixes].filter((t) =>
+          new RegExp(`(?:^|[^A-Za-z0-9])${t}(?:[^A-Za-z0-9]|$)`).test(v),
+        );
+        if (hitTokens.length > 0 && !exempt(file, here)) {
+          hits.push(
+            `${file} 的 ${here} 在校验关键字里写了身份 ${JSON.stringify(hitTokens)}：${JSON.stringify(v)}`,
+          );
+        }
+      }
+
+      scan(v, file, here);
+    }
+  };
+
+  for (const f of files) {
+    if (HISTORICAL.has(f)) continue;
+    scan(JSON.parse(await fs.readFile(path.join(SCHEMA_DIR, f), 'utf8')), f, '');
+  }
+
+  assert.deepEqual(
+    hits,
+    [],
+    'Agent 身份的唯一来源是 agents/registry.ts（纪律 7）。schema 只校**形状**，\n' +
+      '  身份留给 schemas.ts / parse.ts 的注册表校验（两段式）。命中：\n' +
+      hits.map((h) => `    ${h}`).join('\n'),
+  );
+
+  /*
+   * 豁免也要被守着：**没被用到的豁免就是空头支票**。
+   *
+   * 与白名单的「不得留过期条目」同一条纪律。少了这一条，
+   * NAMED_EXEMPTIONS 可以随便变长而无人察觉，扫描器的论域就会一点点漏空——
+   * 而那正是这条扫描本身要治的病（前三次同形都是「论域悄悄缩小、测试照常全绿」）。
+   */
+  const unused = NAMED_EXEMPTIONS.filter((e) => !suppressed.has(`${e.file}#${e.at}`));
+  assert.deepEqual(
+    unused.map((e) => `${e.file}#${e.at}`),
+    [],
+    '这些具名豁免本轮一次都没挡下命中——对应的身份常量多半已经清掉了，条目应当删除',
+  );
+
+  for (const e of NAMED_EXEMPTIONS) {
+    assert.ok(e.why.trim().length >= 20, `具名豁免 ${e.file}#${e.at} 的理由写得太短`);
+  }
 });

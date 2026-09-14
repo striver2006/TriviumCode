@@ -332,3 +332,51 @@ test('--only zcode 同样不碰 agy 段', async () => {
   assert.equal(onDisk.probe.agy.version, '1.2.0');
   assert.equal(onDisk.probe.agy.headless_read_ok, true);
 });
+
+/*
+ * ── 「无法校验」是第三态，不是通过（M7b 第 6 步）──
+ *
+ * 上面那条「模型清单为空时不误判」只锁了**不判失败**。它当时对应的实现是
+ * `if (models.length > 0 && …)`——目录为空就整段跳过、静默通过，于是
+ * 「校验过了」和「没得校验」在输出里长得一模一样。
+ *
+ * 第 6 步把厂商分派从「按 Agent 身份穷尽」改成「按 vendor 查表」之后，
+ * 这个第三态还多了一个来源：**新厂商根本没有模型目录探针**。桩 Agent 就是。
+ * 判它失败会让零改动验收被自己打红；静默通过则等于对第三家的模型只字不提。
+ * 所以取第三态：不拦，但说出来。
+ */
+test('模型目录为空时不判失败，但必须在输出里点名是哪几侧没被实际校验', async () => {
+  const ctx = await fakeCtx((c) => {
+    c.probe.agy.models = [];
+    c.probe.zcode.models = [];
+  });
+  const r = checkModelSlugs(ctx.config, 'plan');
+  assert.equal(r.ok, true, '没有目录可比对不等于配错了，不能拦');
+  assert.match(r.detail, /未实际校验/, '「没得校验」必须在输出里可见，否则与「校验通过」无从区分');
+  for (const side of ['gemini', 'glm'] as const) {
+    assert.match(r.detail, new RegExp(side), `未校验的侧要逐个点名，缺 ${side}`);
+  }
+});
+
+test('模型目录齐备时不出现「未实际校验」字样（避免恒真提示）', async () => {
+  const ctx = await fakeCtx();
+  const r = checkModelSlugs(ctx.config, 'plan');
+  assert.equal(r.ok, true);
+  assert.doesNotMatch(
+    r.detail, /未实际校验/,
+    '两侧目录都在却仍打这句提示的话，它就成了永远显示的噪音，真有缺口时没人会注意',
+  );
+});
+
+test('一侧有目录一侧没有：只点名没有的那一侧', async () => {
+  const ctx = await fakeCtx((c) => {
+    c.probe.zcode.models = [];
+  });
+  const r = checkModelSlugs(ctx.config, 'plan');
+  assert.equal(r.ok, true);
+  assert.match(r.detail, /glm/, '没目录的那侧要点名');
+  assert.doesNotMatch(
+    r.detail, /未实际校验[^\n]*gemini/,
+    '有目录的那侧已经真校验过了，不该混进「未校验」清单',
+  );
+});

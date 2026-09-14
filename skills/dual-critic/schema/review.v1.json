@@ -30,8 +30,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "pattern": "^(AGY|GLM)-(r[0-9]+-)?[0-9]{2,}$",
-            "description": "编号前缀固定：Antigravity 为 AGY-，ZCode 为 GLM-；重跑时追加轮次如 AGY-r2-01"
+            "pattern": "^[A-Z][A-Z0-9]*-(r[0-9]+-)?[0-9]{2,}$",
+            "description": "形状：<前缀>-<两位以上序号>，重跑时追加轮次如 AGY-r2-01。**本 schema 只校形状，不枚举前缀**——「哪些前缀合法、各属哪一家」的唯一来源是 agents/registry.ts（纪律 7）。前缀是否属于本侧由 parse.ts 的 checkReviewIntegrity 按注册表判定，不合则 guard 记 integrity 问题。此前这里写死 ^(AGY|GLM)-，第三家审核者的合法结论会被 ajv 拒掉、整份结论退化成 parse_fallback——而 schema 文件同时是交给厂商 CLI 的生成约束，运行时改写它会让文件与校验器分叉，所以只能在文件里放开。"
           },
           "severity": { "enum": ["blocker", "major", "minor", "nit"] },
           "layer": { "enum": ["requirement", "plan", "code", "rca"] },

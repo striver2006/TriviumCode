@@ -13,12 +13,13 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import type { Config, CriticId, CriticRequest, CriticResult, Ctx, Review, Stage, CommandEntry } from './types.js';
-import { CRITIC_VENDOR } from './types.js';
+import { CRITIC_PREFIX, CRITIC_VENDOR } from './types.js';
+import { agentById } from './agents/registry.js';
 import {
   isHeterogeneous,
   routeModel,
   type AdapterContext,
-  type CriticAdapter,
+  type AdapterTable,
 } from './adapters/base.js';
 import { resolveAdapters } from './adapters/stub.js';
 import { realAdapters } from './adapters/index.js';
@@ -31,7 +32,7 @@ import {
   loadStagePrompt,
   renderBrief,
 } from './brief.js';
-import { parseReview, enumerateFallbackFindings } from './parse.js';
+import { parseReview, checkReviewIntegrity, enumerateFallbackFindings } from './parse.js';
 import { decideMode, runBothSides, type SideProgress } from './runner.js';
 import { judgeRun, renderGuardWarnings } from './guard.js';
 import { renderReviewDoc } from './render.js';
@@ -226,35 +227,39 @@ function resolveAssetRoot(override?: string): string {
 }
 
 /**
- * 逐侧取思考等级。**穷尽分支，不留三目兜底。**
+ * 逐侧取思考等级。**按 vendor 分派，不按 Agent 身份穷尽。**
  *
- * 此前是 `critic === 'gemini' ? agentConfigOf(cfg, 'gemini', 'antigravity').effort[stage] : undefined`：
- * 非 gemini 的一切取值都静默落进 `undefined`，第三家接入后思考等级会无声丢失
- * （不抛异常、不退非零，只是那一侧按厂商默认档跑）。
+ * 演化到第三版，每一版治的是上一版的病：
  *
- * 为什么这里用 switch + `never` 而不是像 vendor 那样查注册表：v1 配置的
- * `critics.*` 是**厂商专属形状**——`effort` 只存在于 gemini 段，ZCode 0.16.5
- * 实测没有等价旗标（M0 坑清单 C-07），压根没有可查的统一字段。在 config v2
- * 把它统一成 `agents.<id>.effort` 之前（设计 13.1.1，M7b 第 4 步），
- * 编译期穷尽是能拿到的最强保证：**新增一个 CriticId 会直接编译不过**，
- * 而不是安静地返回 undefined。
+ *   v1 三目：`critic === 'gemini' ? … : undefined`。非 gemini 的一切取值静默落进
+ *   undefined，第三家接入后思考等级无声丢失——不抛异常、不退非零，只是那一侧
+ *   按厂商默认档跑。
+ *
+ *   v2 `switch` + `never`（M7b 第 1 步）：把静默换成编译期硬阻塞。两值时无懈可击，
+ *   但它把「哪几家有思考等级」钉成一张**按身份**的表，于是注册表加一家这里当场
+ *   编译不过，而修法只有「再加一个 case」——「新增 Agent 只需接入套件」那句话
+ *   就此不成立，第 6 步的零改动验收会被自己打红（计划 §3.5 / GLM-03 警告的形态）。
+ *
+ *   v3（本版）：判据改回**厂商**。`effort` 本来就是 antigravity 形状配置段的字段，
+ *   ZCode 0.16.5 实测无等价旗标（M0 坑清单 C-07）——它是厂商事实，不是身份事实。
+ *   而 vendor 随新 Agent 一起进注册表（接入套件第 ① 件），所以按它分派不必改这里。
+ *
+ * vendor 取**注册表登记的**，不取配置段里自称的：后者是被校验的一方，
+ * 拿它当判据等于让被校验方自己决定走哪条分支。用注册表还能保住
+ * `agentConfigOf` 的「缺段即就地失败」——若写成 `cfg.agents[critic]?.vendor === …`，
+ * 配置缺了 `agents.gemini` 会静默返回 undefined，思考等级无声降级成默认档，
+ * 而留痕里看不出配置有洞。
  */
 function effortFor(
   cfg: Config,
   critic: CriticId,
   stage: Stage,
 ): 'low' | 'medium' | 'high' | undefined {
-  switch (critic) {
-    case 'gemini':
-      return agentConfigOf(cfg, 'gemini', 'antigravity').effort[stage];
-    case 'glm':
-      // ZCode 无思考等级旗标（C-07）。是「本侧不存在此概念」，不是「忘了传」。
-      return undefined;
-    default: {
-      const unreachable: never = critic;
-      throw new Error(`未处理的审核者思考等级取法：${String(unreachable)}`);
-    }
+  if (agentById(critic)?.vendor === 'antigravity') {
+    return agentConfigOf(cfg, critic, 'antigravity').effort[stage];
   }
+  // 其余厂商形状不存在「思考等级」这个概念。是「本侧没有此概念」，不是「忘了传」。
+  return undefined;
 }
 
 /** 一次运行的准备产物：`--start` 与同步路径共用，也是交接给工作进程的全部上下文 */
@@ -283,7 +288,7 @@ export interface RunContext {
   stage: Stage;
   ref: Awaited<ReturnType<typeof resolveTopicReadOnly>>;
   adapterCtx: AdapterContext;
-  adapters: Record<CriticId, CriticAdapter>;
+  adapters: AdapterTable;
   sides: CriticId[];
   runId: string;
   rerunIndex: number;
@@ -361,7 +366,20 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     throw usageError('入选审核者集合为空：一次审查至少要有一个审核者。');
   }
   for (const c of sides) {
-    const av = adapters[c].availability(adapterCtx);
+    const adapter = adapters[c];
+    /*
+     * 入选却没有适配器 = 注册表与接线表不一致，属**程序缺陷**而非环境问题。
+     * `realAdapters()` 已在取表时挡过一道（`criticEnabled` 却缺接线即抛），
+     * 这里是第二道：`--critics` 让入选集合第一次由外部输入决定，
+     * 而它校验的是「是否已启用为审核者」，与「是否接了线」不是同一件事。
+     */
+    if (!adapter) {
+      throw new Error(
+        `入选审核者 ${c} 没有对应的适配器。\n` +
+          '  这说明注册表与 adapters/index.ts 的接线表不一致——属程序缺陷，不是配置问题。',
+      );
+    }
+    const av = adapter.availability(adapterCtx);
     if (!av.ok) throw envError(`${c} 侧不可用：${av.reason}`);
   }
   if (sides.length < 2) {
@@ -783,14 +801,50 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       continue;
     }
     const p = parseReview(r.raw_response_text);
-    if (p.ok) {
+    /*
+     * 形状过了之后**立刻**验编号前缀归属，不合即按解析失败处置（审查意见 AGY-01 ≡ GLM-02）。
+     *
+     * ## 为什么这一步必须在这里、而且必须是阻断的
+     *
+     * M7b 第 6 步把 `review.v1.json` 的 `findings[].id` pattern 由 `^(AGY|GLM)-`
+     * 放开成只校形状，身份交给注册表判定。方向是对的（schema 不该是第二事实源），
+     * 但**我当时只比较了两道检查的判定语义，没比较它们的执行后果**：
+     *
+     *   · 放开前：非法前缀被 ajv 拒 → 整份候选作废 → 走下面的 fallback → 由
+     *     `enumerateFallbackFindings` 用**本侧合法前缀**重新编号 → 可裁决。**硬失败。**
+     *   · 放开后：非法前缀是 schema 合法的结构化结论，`checkReviewIntegrity` 的
+     *     `prefixOk` 只进 `guard` 的告警文本——不改 status、不进 run.json、
+     *     不进审查文档、`gate` 也不复核。**等于没有后盾。**
+     *
+     * 两条下游后果都实际可达：
+     *   ① **死锁**——未登记前缀（`FOO-01`）照常进裁决差集，而 `disposition.ts`
+     *      的收行正则只认已登记前缀，那一行永远收不进去；`gate --check` 报的是
+     *      误导性的「缺裁决」，Driver 怎么填都过不去。
+     *   ② **冒名**——某侧产出另一侧的前缀（gemini 出 `GLM-01`），`gate` 的 Set
+     *      去重把它与对侧合并，裁决一次即过闸，跨侧意见静默碰撞。
+     *
+     * 另有第三条：这份 schema 同时是 `agy --json-schema` 的**生成约束**，放开后
+     * 受限解码允许模型产出任意大写前缀，而 schema 错误重试通道不再能纠正它。
+     *
+     * 所以这里不是「再加一道保险」，而是**把被撤走的那道后盾接回等价位置**。
+     * 撤掉一道防线时要问的是「被撤的那道产生什么后果、留下的那道产生什么后果」，
+     * 两者不相等就不是等价替换——这条纪律是本轮双审换来的。
+     *
+     * **只拦前缀归属**：重复编号与 evidence-consulted 两项在改动前就只是告警，
+     * 未因本次改动变化，不在此处顺手收严（那属独立取舍，要单独论证）。
+     */
+    const integrity = p.ok ? checkReviewIntegrity(p.review, c) : null;
+    if (p.ok && integrity!.prefixOk) {
       reviews[c] = p.review;
     } else {
+      const reason = p.ok
+        ? `编号前缀不属于本侧（应为 ${CRITIC_PREFIX[c]}-）：${integrity!.badIds.join(', ')}`
+        : `${p.reason}${p.errors.length > 0 ? `：${p.errors.slice(0, 5).join('; ')}` : ''}`;
       reviews[c] = null;
       fallbackText[c] = r.raw_response_text;
       r.status = 'parse_fallback';
-      r.fail_reason = `${p.reason}${p.errors.length > 0 ? `：${p.errors.slice(0, 5).join('; ')}` : ''}`;
-      warn(`${c} 侧输出未能结构化解析，转 parse_fallback：${p.reason}`);
+      r.fail_reason = reason;
+      warn(`${c} 侧输出未能结构化解析，转 parse_fallback：${reason}`);
     }
   }
 

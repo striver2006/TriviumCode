@@ -6,6 +6,7 @@ import {
   bundleMissing,
   bundleSkipReason,
   cli,
+  listFiles,
   makeFixture,
 } from '../helpers/fixture.js';
 import { type StubConfig } from '../../src/trivium/adapters/stub.js';
@@ -399,3 +400,74 @@ test('--critics 拼错：退 64 且不产生任何工件',
       '退 64 的路径不该留下任何运行痕迹',
     );
   });
+
+/*
+ * ── 前缀归属的执行权重（审查意见 AGY-01 ≡ GLM-02，两侧独立收敛）──
+ *
+ * M7b 第 6 步把 `review.v1.json` 的编号 pattern 由 `^(AGY|GLM)-` 放开成只校形状，
+ * 身份改由注册表判定。方向对，但当时**只比较了两道检查的判定语义、没比较执行后果**：
+ *
+ *   放开前：非法前缀被 ajv 拒 → 整份作废 → parse_fallback → 用本侧合法前缀重编号 → 可裁决
+ *   放开后：非法前缀是 schema 合法的结构化结论，prefixOk 只进 guard 的告警文本
+ *
+ * 下游两条后果都实际可达：未登记前缀会让 `gate --check` 陷入解不开的「缺裁决」
+ * （裁决件的收行正则只认已登记前缀，Driver 怎么填都收不进去，而报错指向的是
+ * 一个错误的原因）；冒名前缀会被 gate 的 Set 与对侧合并，裁决一次即过闸。
+ *
+ * 这两条用例锁的是「被撤走的后盾被接回了等价位置」。
+ */
+
+test('冒用对侧前缀 → 该侧转 parse_fallback，不得作为结构化结论落盘', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { meta } = await runInjected({
+    gemini: { mode: 'wrong_prefix' }, // 默认冒用另一侧的前缀
+    glm: { mode: 'ok' },
+  });
+
+  assert.equal(
+    meta.critics.gemini?.status,
+    'parse_fallback',
+    '前缀不属于本侧的结论必须被挡在结构化通道之外——否则它会与对侧的编号在闸门差集里碰撞，' +
+      '裁决一次即过闸，跨侧意见静默合并',
+  );
+  assert.match(
+    meta.critics.gemini?.fail_reason ?? '',
+    /前缀不属于本侧/,
+    '失败原因要说清真实根因，而不是笼统的「解析失败」',
+  );
+  // 对侧不受连累：一侧的完整性问题不该毁掉另一侧
+  assert.equal(meta.critics.glm?.status, 'ok');
+});
+
+test('自造未登记前缀 → 同样转 parse_fallback，且重编号用本侧合法前缀', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { meta, stageDir } = await runInjected({
+    gemini: { mode: 'wrong_prefix', note: 'FOO' },
+    glm: { mode: 'ok' },
+  });
+
+  assert.equal(meta.critics.gemini?.status, 'parse_fallback');
+
+  /*
+   * 只断言 status 不够。转 fallback 之后，该侧意见由 `enumerateFallbackFindings`
+   * 用**本侧合法前缀**重新编号，于是重新可裁决——那正是被撤走的后盾原本的效果。
+   * 若重编号仍带 `FOO-`，死锁照旧，status 却已经是 parse_fallback 了。
+   */
+  const metaDirAbs = path.join(stageDir, '_meta');
+  const metaFiles = await listFiles(metaDirAbs);
+  const fallbackFile = metaFiles.find((f) => f.includes('fallback') && f.includes('gemini'));
+  assert.ok(fallbackFile, `未找到 gemini 侧的 fallback 编号件：\n${metaFiles.join('\n')}`);
+  const body = await fs.readFile(path.join(metaDirAbs, fallbackFile), 'utf8');
+  /*
+   * 盯的是**单元编号**（行首 `- <编号>:`），不是全文。
+   * 原始结论会被整段引用进单元正文里——那是对的，Driver 需要看见审查员究竟说了什么；
+   * 关键在于可裁决的那个编号是本侧合法前缀。第一版断言写成「全文不得出现 FOO-」，
+   * 把「引用它」误当成「用它编号」，是过严而非过松，实测当场红。
+   */
+  const unitIds = [...body.matchAll(/^- ([A-Za-z0-9-]+):/gm)].map((m) => m[1]!);
+  assert.ok(unitIds.length > 0, `fallback 件里没有可裁决单元：\n${body}`);
+  for (const id of unitIds) {
+    assert.match(
+      id, /^AGY-F\d+$/,
+      `可裁决单元的编号必须用本侧合法前缀，实际是「${id}」——否则裁决行照样收不进去，闸门死锁`,
+    );
+  }
+});

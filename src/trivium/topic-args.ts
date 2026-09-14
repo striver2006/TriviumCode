@@ -11,7 +11,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
 import { CRITICS, type CriticId, type Ctx, type Stage } from './types.js';
 import { resolveCriticSelection } from './critics.js';
 import { validateTopic, parseArtifactName } from './naming.js';
@@ -28,11 +28,30 @@ import type { PreflightScope } from './preflight.js';
  * 焦点正文里还平白多出一截 `--allow-single`。这一族缺口的形状与 `--base` 那次相同：
  * 不报错、留痕正常、审的不是用户以为的东西。
  */
-const NAMED_FLAGS = [
+const STATIC_FLAGS = [
   'topic', 'context', 'plan-file', 'rca-file', 'base',
-  'model-gemini', 'model-glm', 'profile', 'focus', 'goal',
+  'profile', 'focus', 'goal',
   'only', 'allow-single', 'session-id', 'critics',
 ] as const;
+type StaticFlag = (typeof STATIC_FLAGS)[number];
+
+/**
+ * 逐 Agent 的模型覆盖旗标，由注册表派生。
+ *
+ * **此前这里写死 `model-gemini` / `model-glm` 两条**，而下方取值的循环早在
+ * M7b 第 2 步就改成了按集合拼名（`model-${c}`）。两者之间的缝隙正是本文件
+ * 头部登记的那一族缺口：`--model-<第三家>` 不在白名单里，于是不报错、
+ * 不退非零码，整段被当成正文压进 `restParts`——模型覆盖静默丢失，
+ * 焦点正文里还平白多出一截 `--model-xxx`。
+ *
+ * 用模板字面量类型从 `AgentId` 派生，注册表加一家这里自动跟随；
+ * 论域取**全部已登记 Agent** 而非当前可用审核者，是为了让「写了但不可用」
+ * 落到下面那条明确的报错上，而不是退回静默吞进正文。
+ */
+type ModelFlag = `model-${AgentId}`;
+const MODEL_FLAGS: readonly ModelFlag[] = ALL_AGENT_IDS.map((id): ModelFlag => `model-${id}`);
+
+const NAMED_FLAGS: readonly (StaticFlag | ModelFlag)[] = [...STATIC_FLAGS, ...MODEL_FLAGS];
 /** 自由文本旗标：贪婪取到下一个已知旗标为止 */
 const GREEDY_FLAGS: ReadonlySet<string> = new Set(['focus', 'goal']);
 /**
@@ -364,10 +383,23 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
   /*
    * 逐审核者取 `--model-<id>`，不再写死两个旗标名。
    * 旗标名对既有两侧逐字不变（id 即 gemini / glm），第三家启用后自动可用。
+   *
+   * 白名单的论域是**全部已登记 Agent**，取值的论域是**当前可用审核者**——
+   * 两者之差（登记了但未启用为审核者，如 Driver 自身）必须当场报错。
+   * 不报的话它会落进「解析成功、随后被丢弃」：留痕里看不出用户指定过模型，
+   * 而这正是 `--base` 漏传那一族的形状。
    */
-  for (const c of CRITICS) {
-    const v = named[`model-${c}`];
-    if (v) models[c] = v;
+  for (const id of ALL_AGENT_IDS) {
+    const v = named[`model-${id}`];
+    if (!v) continue;
+    if (!(CRITICS as readonly string[]).includes(id)) {
+      throw new TriviumError(
+        EXIT.USAGE,
+        `--model-${id}：${id} 当前不是可用审核者，不能为它指定模型。\n` +
+          `  当前可用：${CRITICS.join('、')}`,
+      );
+    }
+    models[id] = v;
   }
 
   const contextPaths = (named['context'] ?? '')

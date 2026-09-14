@@ -23,6 +23,22 @@ export interface CriticAdapter {
   run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult>;
 }
 
+/**
+ * Agent id → 适配器的查表结构。
+ *
+ * **是 `Partial`，而且必须是。** `CriticId` 在 M7b 第 6 步放开成注册表全集之后，
+ * `Record<CriticId, CriticAdapter>` 就成了一句谎话：它承诺**每一个已登记 Agent**
+ * 都有适配器，而 Driver（claude）与尚未接入的 codex 本来就没有、也不该有。
+ *
+ * 谎话的代价不是类型不好看，而是**取值处的 undefined 检查被类型系统免掉了**：
+ * `adapters[critic]` 恒被当成非空，真缺一个就在 `adapter.run` 上崩出一条
+ * 与原因无关的 TypeError。改成 Partial 后取值处必须显式判空，缺谁说得出名字。
+ *
+ * 「已启用为审核者的那几家一定在表里」这条保证由 `realAdapters()` 在取表时
+ * **运行期**兑现（缺接线即响亮失败），不靠类型硬编。
+ */
+export type AdapterTable = Partial<Record<CriticId, CriticAdapter>>;
+
 /** 失败结果的统一构造，避免各适配器自行拼字段时漏项 */
 export function failedResult(
   critic: CriticId,

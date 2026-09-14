@@ -8,6 +8,7 @@ import { defaultConfig } from '../../src/trivium/config.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { CRITICS, type Ctx } from '../../src/trivium/types.js';
+import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
 
 async function fakeCtx(): Promise<Ctx> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-args-'));
@@ -412,4 +413,58 @@ test('AGY-04：--only 取值当场校验，拼错不必等到 review --start', a
       return true;
     },
   );
+});
+
+/*
+ * ── `--model-<id>` 的白名单按注册表派生（M7b 第 6 步）──
+ *
+ * 此前 `NAMED_FLAGS` 里写死 `model-gemini` / `model-glm` 两条，而取值的循环
+ * 早在第 2 步就改成了按集合拼名。两者之间的缝隙与本文件头部登记的那一族同形：
+ * 第三家的 `--model-<id>` 不在白名单里 → 不报错、不退非零 → 整段被当成正文
+ * 压进 `restParts`。症状是模型覆盖静默丢失，外加焦点正文里多出一截旗标字样。
+ */
+test('模型覆盖旗标的白名单按注册表派生，不是写死两条', () => {
+  for (const id of ALL_AGENT_IDS) {
+    const r = splitArguments(`看并发 --model-${id} m-1 --topic T`);
+    assert.equal(
+      r.named[`model-${id}` as 'model-gemini'], 'm-1',
+      `--model-${id} 必须被识别为旗标——漏一家就意味着那家的模型覆盖会被静默吞进正文`,
+    );
+    assert.equal(r.rest, '看并发', `--model-${id} 不得残留在焦点正文里`);
+  }
+});
+
+test('给非审核者指定模型 → 退 64 并列出当前可用，而不是解析成功后被悄悄丢弃', async () => {
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 4;\n');
+  /*
+   * 白名单的论域是「全部已登记 Agent」，取值的论域是「当前可用审核者」。
+   * 两者之差（Driver 自身、尚未启用的第三家）必须当场报错：
+   * 放任它走到「解析成功、随后被丢弃」，留痕里就看不出用户指定过模型——
+   * 这正是 `--base` 漏传那一族的形状。
+   */
+  const driverSide = ALL_AGENT_IDS.find((id) => !(CRITICS as readonly string[]).includes(id));
+  assert.ok(driverSide, '注册表里应当至少有一个未启用为审核者的 Agent（当前是 claude / codex）');
+
+  await assert.rejects(
+    resolveTopicArgs({ ctx, scope: 'code', rawArgs: `看并发 --topic T --model-${driverSide} m-9` }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.USAGE, '参数错误一律退 64');
+      assert.match(e.message, new RegExp(`model-${driverSide}`), '报错要点名是哪个旗标');
+      for (const c of CRITICS) {
+        assert.match(e.message, new RegExp(c), '要列出当前可用的审核者，别让用户再猜一次');
+      }
+      return true;
+    },
+  );
+});
+
+test('可用审核者的模型覆盖照常生效（上一条不得误伤正常路径）', async () => {
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 5;\n');
+  const side = CRITICS[0]!;
+  const r = await resolveTopicArgs({
+    ctx, scope: 'code', rawArgs: `看并发 --topic T --model-${side} m-7`,
+  });
+  assert.equal(r.models[side], 'm-7');
 });

@@ -18,6 +18,7 @@ import type { AuthCacheEntry, Config, CriticId, Ctx, Stage } from './types.js';
 import { CRITICS, STAGES } from './types.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { agentConfigOf, patchProbe, probeIsFresh } from './config.js';
+import { agentById } from './agents/registry.js';
 import { invokeAgy } from './adapters/agy.js';
 import { invokeZcode, qualifyZcodeModel } from './adapters/zcode.js';
 import { routeModel } from './adapters/base.js';
@@ -206,8 +207,8 @@ export function checkModelSlugs(
   overrides: Partial<Record<CriticId, string>> = {},
 ): CheckResult {
   const bad: string[] = [];
-  const agyModels = cfg.probe.agy.models;
-  const zcodeModels = cfg.probe.zcode.models ?? [];
+  /** 无法校验的侧：**不判失败，但必须说出来**（详见 checkModelAgainstCatalog） */
+  const unverifiable = new Set<string>();
 
   for (const stage of scopeStages(scope)) {
     for (const critic of CRITICS) {
@@ -216,46 +217,83 @@ export function checkModelSlugs(
         bad.push(`${critic}/${stage}: profile「${cfg.active_profile}」未定义模型且无覆盖`);
         continue;
       }
-      /*
-       * 穷尽分支，不用 `if (gemini) … else …` 二分。
-       *
-       * 二分写法下，任何**非 gemini** 的审核者（含将来的第三家与测试桩）都会掉进
-       * else 分支、被拿去按 ZCode 的模型目录校验，于是报一条驳斥自己的错：
-       * 「模型 X 不在 ZCode 模型目录中」——而那侧压根不是 ZCode。
-       * 新增 CriticId 时这里会直接编译不过，比运行期误报早得多。
-       */
-      if (critic === 'gemini') {
-        // 未知 slug 会让 agy 直接非零退出，不会静默换模型——所以这里能硬校验
-        if (agyModels.length > 0 && !agyModels.includes(routed.model)) {
-          bad.push(
-            `${critic}/${stage}: slug「${routed.model}」不在 agy models 中。` +
-              `可用值：${agyModels.join(', ')}`,
-          );
-        }
-      } else if (critic === 'glm') {
-        // ZCode 侧允许短名，适配层会按探针回读的 providerId 补全前缀（坑 P-06）
-        const qualified = qualifyZcodeModel(routed.model, cfg.probe.zcode.model_id_form ?? null);
-        const short = (qualified ?? '').split('/').pop() ?? '';
-        if (zcodeModels.length > 0 && !zcodeModels.some((m) => m === short || m === qualified)) {
-          bad.push(
-            `${critic}/${stage}: 模型「${routed.model}」不在 ZCode 模型目录中。` +
-              `可用值：${zcodeModels.join(', ')}`,
-          );
-        }
-      } else {
-        const unreachable: never = critic;
-        throw new Error(`未处理的审核者 slug 校验：${String(unreachable)}`);
-      }
+      const r = checkModelAgainstCatalog(cfg, critic, routed.model);
+      if (r.kind === 'bad') bad.push(`${critic}/${stage}: ${r.detail}`);
+      else if (r.kind === 'unverifiable') unverifiable.add(`${critic}（${r.why}）`);
     }
   }
 
-  return bad.length === 0
-    ? {
-        name: '模型 slug 合法',
-        ok: true,
-        detail: `已校验 ${scopeStages(scope).length} 个阶段 × ${CRITICS.length} 侧`,
-      }
-    : { name: '模型 slug 合法', ok: false, exitCode: EXIT.USAGE, detail: bad.join('\n  ') };
+  if (bad.length > 0) {
+    return { name: '模型 slug 合法', ok: false, exitCode: EXIT.USAGE, detail: bad.join('\n  ') };
+  }
+  const scale = `已校验 ${scopeStages(scope).length} 个阶段 × ${CRITICS.length} 侧`;
+  return {
+    name: '模型 slug 合法',
+    ok: true,
+    detail:
+      unverifiable.size === 0
+        ? scale
+        : `${scale}\n  ⚠️ 其中无模型目录可比对、未实际校验：${[...unverifiable].join('、')}`,
+  };
+}
+
+/** 单侧模型 slug 的比对结论。三态，**「无法校验」与「通过」分开记** */
+type CatalogCheck =
+  | { kind: 'ok' }
+  | { kind: 'bad'; detail: string }
+  | { kind: 'unverifiable'; why: string };
+
+/**
+ * 拿本侧**厂商**的模型目录比对 slug。
+ *
+ * ## 为什么按 vendor 分派，而不是按审核者 id 穷尽
+ *
+ * 上一版写的是 `if (critic === 'gemini') … else if (critic === 'glm') … else never`。
+ * 那个 `never` 是 M7b 第 1 步刻意加的，用来治更早的 `if/else` 二分——二分会把
+ * 任何非 gemini 的侧拿去按 ZCode 的目录校验，报出一条驳斥自己的错
+ * （「模型 X 不在 ZCode 模型目录中」，而那侧压根不是 ZCode）。
+ *
+ * 但 `never` 只是把静默误判换成了**编译期硬阻塞**：注册表一加第三家，本文件
+ * 当场编译不过，而修法只有「再加一个 case」——于是「新增 Agent 只需接入套件」
+ * 这句话就不成立了，第 6 步的零改动验收会被自己打红（计划 §3.5 / GLM-03 警告的正是这个形态）。
+ *
+ * 真正的判据是 vendor：模型目录是**厂商**的事实，不是 Agent 身份的事实。
+ * 而 vendor 随新 Agent 一起进注册表（接入套件第 ① 件），所以按它分派不需要改这里。
+ *
+ * ## 未知厂商为什么记「无法校验」而不是失败
+ *
+ * 探针目录本来就可能为空（`makeFixture` 不给 `probeModels` 时就是空），
+ * 此前的写法在目录为空时**整段跳过、静默通过**。判失败会让没探过针的场景一律
+ * 起不来；静默通过则让「校验了」和「没得校验」看起来一模一样。
+ * 所以取第三态：不拦，但把是哪几侧没校验写进预检输出。
+ */
+function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string): CatalogCheck {
+  const vendor = agentById(critic)?.vendor ?? null;
+
+  if (vendor === 'antigravity') {
+    const models = cfg.probe.agy.models;
+    if (models.length === 0) return { kind: 'unverifiable', why: '探针未记录 agy 模型目录' };
+    // 未知 slug 会让 agy 直接非零退出，不会静默换模型——所以这里能硬校验
+    return models.includes(model)
+      ? { kind: 'ok' }
+      : { kind: 'bad', detail: `slug「${model}」不在 agy models 中。可用值：${models.join(', ')}` };
+  }
+
+  if (vendor === 'zcode') {
+    const models = cfg.probe.zcode.models ?? [];
+    if (models.length === 0) return { kind: 'unverifiable', why: '探针未记录 ZCode 模型目录' };
+    // ZCode 侧允许短名，适配层会按探针回读的 providerId 补全前缀（坑 P-06）
+    const qualified = qualifyZcodeModel(model, cfg.probe.zcode.model_id_form ?? null);
+    const short = (qualified ?? '').split('/').pop() ?? '';
+    return models.some((m) => m === short || m === qualified)
+      ? { kind: 'ok' }
+      : {
+          kind: 'bad',
+          detail: `模型「${model}」不在 ZCode 模型目录中。可用值：${models.join(', ')}`,
+        };
+  }
+
+  return { kind: 'unverifiable', why: `厂商 ${vendor ?? '未登记'} 没有模型目录探针` };
 }
 
 /** 只读能力可用（§8.1）：ZCode 的 readonly_flags 非空 + Antigravity 的只读 Agent 存在 */

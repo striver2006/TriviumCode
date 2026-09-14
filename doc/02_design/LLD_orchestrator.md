@@ -116,13 +116,17 @@ graph TD
 
 **适配层是唯一允许调用厂商 CLI 的地方**（`adapters/base.ts` 文件头铁律）。
 
-> **M7a 的边界**（读代码前务必分清）：注册表**登记**了四家，但当前 `criticEnabled` 只对
-> `gemini` / `glm` 为真、`driverEnabled` 只对 `claude` 为真——与重构前的可选集合**逐项相同**。
-> `src/trivium/types.ts` 的 `CriticId` 仍是 `Extract<AgentId, 'gemini' | 'glm'>`，
-> `review.v1.json` 的意见编号 pattern 仍为 `^(AGY|GLM)-…`。
+> **当前边界**（读代码前务必分清）：注册表**登记**了四家，但 `criticEnabled` 只对
+> `gemini` / `glm` 为真、`driverEnabled` 只对 `claude` 为真——与 M7a 重构前的可选集合**逐项相同**。
 > **「注册表登记了四家」不等于「系统支持四家」**：`codex` / `claude` 的审核者能力在 M8 / M9，
 > Driver 任意化在 M10。登记而不启用，是为了让注册表从第一天起就是完整的单一来源。
-> 设计依据见[设计 v1.3.5](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 5.1、6.2、16.1。
+>
+> **两处类型／契约收窄已在 M7b 第 6 步放开**（此处原文记的是收窄状态，已过期）：
+> `types.ts` 的 `CriticId` 由 `Extract<AgentId, 'gemini' | 'glm'>` 放开为 `AgentId`
+> （运行期的真集合始终是 `CRITICS`，由 `criticEnabled` 派生）；
+> `review.v1.json` 的意见编号 pattern 由 `^(AGY|GLM)-…` 改为只校形状，身份交给注册表校验。
+> 两者都是「新增一家 Agent 只需接入套件」这条承诺的前置——不放开，套件白名单之外就得改核心。
+> 设计依据见[设计 v1.3.6](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 5.1、5.1.1、6.2、6.5、16.1。
 
 ### 2.7 基础层
 

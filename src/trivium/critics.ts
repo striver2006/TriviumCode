@@ -132,10 +132,23 @@ export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput 
           `  当前可用：${legalList(cfg, driver)}`,
       );
     }
+    /*
+     * 入选审核者必须在 `agents` 段里有条目——这是**统一的前置条件**，
+     * 不是「要从那里取调用参数」（审查意见 GLM-06）。
+     *
+     * 原文案写的是「无法取到它的调用参数」。对 antigravity 形状那是实话
+     * （`agent` 与 `effort` 确实只在那里），但 M7b 第 6 步的桩实测撞出来的形态恰恰是
+     * **段里只有 vendor 判别式、没有任何调用参数**——照原文案去排障，
+     * 人会去找一个根本不存在的东西。「第一个错误不得把用户引向第二个错误」。
+     *
+     * 这条校验真正的价值是把「配置缺段」从运行中段提前到参数解析时刻（零工件、退 64），
+     * 并让 `legalList` 的「可用」有单一判据。
+     */
     if (cfg.agents[id as CriticId] === undefined) {
       throw new TriviumError(
         EXIT.USAGE,
-        `${source} 的「${id}」在配置的 agents 段里没有条目，无法取到它的调用参数。\n` +
+        `${source} 的「${id}」在配置的 agents 段里没有条目。\n` +
+          '  入选审核者必须在 agents 段有条目（统一前置条件；antigravity 形状另需从这里取 agent 与 effort）。\n' +
           `  当前可用：${legalList(cfg, driver)}`,
       );
     }
