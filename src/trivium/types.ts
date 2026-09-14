@@ -308,6 +308,112 @@ export interface CodexProbe extends CommonProbe {
   model_catalog_path: string | null;
 }
 
+/**
+ * Claude Code CLI 的探针结论（M6 第 3 步，本机实测 `2.1.270`）。
+ *
+ * 同 `CodexProbe`：**每个字段都注明谁消费、什么时候消费**（EV-06 的应用）。
+ *
+ * ## 与另两家最要紧的差别
+ *
+ * 只读保障走的是**工具白名单**（`--restricted --strict-mcp-config --tools …`）
+ * 而不是沙箱，于是被拒的尝试**留在轨迹里**——codex 那边被沙箱挡下的命令
+ * 一条事件都不产生。加上读取路径有结构化字段、且支持路径级 deny，
+ * claude 侧是三家里**可核验性最强**的一侧。
+ */
+export interface ClaudeProbe extends CommonProbe {
+  /**
+   * `claude -p` headless 下能否真的读到文件（哨兵首行回显命中）。
+   * **消费方**：M9 适配器的 `availability()`——false 即该侧不可用。
+   */
+  headless_read_ok: boolean | null;
+  /**
+   * 工具调用的**参数**里有没有结构化路径（`Read` 的 `file_path`）。
+   *
+   * 本机实测 **true**，与 codex 相反（那边路径只在 shell 命令文本里）。
+   * **消费方**：M9 的 `project_reads` 统计与 `deny_paths` 轨迹核验——
+   * 为真时两者都能走结构化字段，不必做命令文本解析（BACKLOG EV-01 对该侧非必需）。
+   */
+  trace_path_structured: boolean | null;
+  /**
+   * 白名单外的工具被调用时，这次**尝试**是否留在轨迹里。
+   *
+   * 本机实测 **true**：模型照常发出 `tool_use`，随后收到
+   * `No such tool available: Write. Write is disabled for this session,
+   * in subagents as well as here.` 的 `tool_result`。
+   * **消费方**：`guard` 的 `write_events` 判定——为真时设计 §10.3
+   * 「轨迹有写事件即判失守」对该侧**成立**（codex 侧恒为假）。
+   *
+   * 注意判据要扫 `tool_use` 的工具名，**不是** `permission_denials`：
+   * 白名单外的工具走「工具不存在」路径，不进 denials（见 `path_deny`）。
+   */
+  denied_tool_in_trace: boolean | null;
+  /**
+   * 负对照是否**真的落了文件**。
+   *
+   * 独立于 `readonly_flags` 与 `tool_surface_checked`（审查意见 GLM-01 路径②）：
+   * 原实现里 breach 发生时只清空 `readonly_flags`，于是「文件真被创建了」这个
+   * **已核实的事实**又一次塌缩进 flags 空集——与「工具面脏」「压根没核对」三者
+   * 共用一个信号，读侧分不出来。
+   *
+   * 这是同一个塌缩模式的第三次（r3 的 flags 空集双义、r3 的 `path_deny`
+   * 无从证实落 false、本轮的 breach）。共同形状：**一个字段承载多个互斥的意思**。
+   *
+   * **消费方**：`claudeSeverity` —— 为 true 时**恒 blocker**，
+   * 且排在一切「没测到」判据之前：文件在不在是文件系统事实，
+   * 不依赖读探针跑没跑完。
+   */
+  readonly_breach: boolean | null;
+  /**
+   * 工具面**核对过没有**。
+   *
+   * 加这个字段是因为 `readonly_flags` 的空集承载了两个互斥的意思
+   * （审查意见 AGY-02 ≡ GLM-01）：「核对过、发现混入了写工具」与「压根没核对」。
+   * 后者发生在读探针拿不到 `system/init` 时——未登录、断网、spawn 报错，
+   * 而 `run()` 对这些**都不抛错**。
+   *
+   * 两者塌缩的后果落在**安全判定**上：`claudeSeverity` 把空集判成失守，
+   * 于是登录态一过期，默认 `doctor` 就给出一条**失实的失守指控**。
+   * claude 是 Driver（`driverEnabled: true`）、人人皆装，这不是个别用户被误伤。
+   * **消费方**：`claudeSeverity` —— 只有它为 true 时，空的 `readonly_flags` 才算失守。
+   */
+  tool_surface_checked: boolean | null;
+  /**
+   * 实测**实际被接受**的只读参数组合。
+   *
+   * **`--strict-mcp-config` 是硬前置**：不加它时 MCP 服务器的工具会混进工具面，
+   * 本机实测混入了含发信、建档、分享、删除等**写操作**的条目——
+   * 那是能越出项目边界的失守面，比「能写项目文件」更严重。
+   * 它同时也是成本项：本机实测一次最小任务 $0.199 → $0.0083（24 倍）。
+   * **消费方**：M9 适配器构造命令行（P7）。
+   */
+  readonly_flags: string[];
+  /** `--model` 是否真实生效（`system/init` 事件回读）。**消费方**：M11 档位路由 */
+  model_flag: boolean | null;
+  /**
+   * `--json-schema` 能否强制出结构化输出。
+   *
+   * 本机实测 true，但有两处形态要记：①参数取**内联 JSON 字符串**，
+   * 不是文件路径（codex 的 `--output-schema` 才是文件）；
+   * ②`result` 字段回来的是**JSON 字符串**，调用方要再 parse 一次。
+   * **消费方**：M9 的结构化解析；为 false 时降级为提示词约定 + 宽松解析。
+   */
+  json_schema_ok: boolean | null;
+  /**
+   * 会话 id 的来源路径。本机实测：**每条事件都带 `session_id`**，
+   * 且 `--session-id` 可由调用方指定。
+   * **消费方**：M9 的留痕与轨迹定位。
+   */
+  session_id_source: string | null;
+  /**
+   * headless 在一个**全新目录**里首跑是否需要人工信任。
+   *
+   * 设计单列此项的理由：若需要，则该侧对「新克隆的仓库」不可用，必须如实标记，
+   * 不能靠「我这台机器上是好的」糊过去。本机实测 **false**（无提示、直接跑通）。
+   * **消费方**：M9 的可用性判定与用户文档。
+   */
+  trust_prompt_required: boolean | null;
+}
+
 export interface AuthCacheEntry {
   checked_at: string;
   cli_version: string | null;
@@ -340,6 +446,7 @@ export type ProbeByCli = { [cliName: string]: CommonProbe | undefined } & {
   agy?: AgyProbe;
   zcode?: ZcodeProbe;
   codex?: CodexProbe;
+  claude?: ClaudeProbe;
 };
 
 export interface ProbeSection {

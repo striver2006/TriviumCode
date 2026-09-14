@@ -1,0 +1,131 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的是一条假安全 blocker：探针拿不到 system/init 时 readonly_flags 留空，claudeSeverity 把「没测到」判成「只读失守」恒阻断——claude 是 Driver CLI、人人皆装，未登录或断网的机器跑默认 doctor 即命中（GLM-01）。焦点三的答案：两条判据不够——「无从证实」分支落了确定 false（GLM-02），且泄漏判据查的是解析后 trace 而非宣称的「整条事件流」，Grep 通道未做负对照（GLM-03）。焦点一：安全不变量固化进唯一构造处是对的，但探针预算也一起固化了，M9 复用即踩（GLM-04）。焦点二：三态口径正确，提示词与判据还能更稳（GLM-07）。焦点四：EV-01 的结论站得住。三份真跑样本、锁事实用例与严重度分档是本步扎实的一面。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/claude.ts:337-354（判据消费方 src/trivium/doctor.ts:164-173）",
+      "problem": "探针失败会被记成安全失守：工具面核对整个包在 `if (read.init)` 里，read 探针拿不到 init 事件（未登录、spawn 报错、输出非 JSON——exec.ts 的 run 不抛错、返回空 stdout）时 readonly_flags 保持空集，而 claudeSeverity 对「非 skipModelCalls 且 flags 为空」恒判 blocker「工具面混入了写工具，或负对照下文件仍被创建」。这是把「没测到」塌缩成确定否定，且发生在安全判定上、先于 headless_read_ok===null 的 note 返回——用户看到的不是「未得出结论请重跑」，而是一条失实的失守指控。claude 是 Driver（registry.ts driverEnabled: true），每个用户都装，默认全量 doctor 真调模型，首次运行遇上登录态过期即命中；这正是上一轮 GLM-01/AGY-01 确立的三态原则在新增代码里的同形复发。",
+      "evidence": "src/trivium/probes/claude.ts:337（`if (read.init)` 才设/清 flags，缺失时留空）、:270-282（fresh probe 的 flags 初值 []）、src/trivium/doctor.ts:164-173（flags 空 + 非 skipModelCalls 恒 blocker）、:178（null 的 note 排在 blocker 之后永远走不到）、src/trivium/util/exec.ts:86-125（run 对 spawn/报错不抛错）、src/trivium/agents/registry.ts:114-115（claude criticEnabled:false / driverEnabled:true）。test/unit/claude-severity.test.ts 只测了 skipModelCalls:true 时空 flags 不算失守，未测「init 缺失 + 非 skip」。",
+      "suggestion": "把「测过且失守」与「未测」区分开：init 缺失时不得让空 flags 进入失守判据——探针侧给 doctor 一个「工具面核对是否执行过」的信号，或 doctor 侧在 headless_read_ok===null 时优先给「未得出结论」note。补一条用例：init 缺失（探针失败）时不得产出 blocker。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/probes/claude.ts:251-258",
+      "problem": "path_deny 的「哨兵未泄漏且未记 denials」分支落 `supported: false`，而 method 文案自己写着「挡没挡住无从证实」——文案与字段不一致，且违反 PathDenyProbe 契约（types.ts:88「false = 本机确认不支持」）。这正是开发者焦点三问的情形：模型没去读（claude.ts:220-221 的注释自己列了这种可能），或读了但走了 denials 之外的通道。后果与同文件 denied_tool_in_trace 注释（:380-382）描述的完全同形：M9 读到 false 会按「本机确认不支持」把第③道屏蔽退化成「禁读清单 + 事后核验」——而能力可能明明在。attempts:[rule] 同样与「已尝试但不成立的注入点」语义不符（该规则未被证明不成立）。",
+      "evidence": "src/trivium/probes/claude.ts:240-258（leaked/recorded 两条件与三分支）、:220-221（注释自认「模型压根没去读」会被误判）、src/trivium/types.ts:87-95（false 与 attempts 的契约语义）。对照同文件 :386-389：denied_tool_in_trace 对同构情形已正确记 null。",
+      "suggestion": "该分支记 supported:null（method 保留「无从证实」说明），attempts 不写；与其它 null 结论一样走「请重跑」的提示路径。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/probes/claude.ts:239（对照 :167-169、:208、:224）",
+      "problem": "泄漏判据的检查通道比宣称的窄，且 deny 规则只验了 Read 一条路：`JSON.stringify(t)` 查的是解析后 trace，而 parseClaudeEvents 只保留 is_error 的 tool_result 内容——成功 tool_result（正是「读到的内容」的载体）被丢弃，execProbe 又只回传解析结果、原始 stdout 被丢弃。于是「经白名单内的 Grep 读到被拒目录内容、但不逐字回显」的泄漏不可见；若同次 Read 尝试记了 denial，探针会落 supported:true，M9 据此认为 CLI 层拦得住，第③道屏蔽实际可能有洞——deny 规则只写 `Read(./dir/**)`，白名单里留在工具面的 Grep/Glob 是否受该规则约束没有任何负对照。报告 D-3「不必退化/三层屏蔽完整」与第五节表格据此下了超出证据的结论。锁事实④的测试断言的是原始全文（doesNotMatch(raw)），比探针运行时判据更严——同一事实两个口径。",
+      "evidence": "src/trivium/probes/claude.ts:239（查解析后 trace）、:167-169（仅 is_error 的 tool_result 进 trace）、:195-211（execProbe 丢弃 r.stdout）、:224（规则仅 Read）、:45（Grep/Glob 在白名单）；test/unit/claude-events.test.ts:111（测试断言 raw 全文，口径更严）；doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md D-3 与第五节（「CLI 层就能拦住」「三层完整」）。",
+      "suggestion": "泄漏判据改查原始 stdout（execProbe 透传 raw）；补一条 Grep 负对照（要求在被拒目录里 Grep 哨兵词）后再支撑「CLI 层能拦住」；补测前报告对 D-3 加「仅对 Read 工具验证过」的限定，M9 设计不得只凭当前结论免做事后轨迹核验。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "major",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/probes/claude.ts:41、47-73",
+      "problem": "claudeArgs 注释明说「唯一构造处，探针与适配层共用一套配方」，但把探针尺度的成本闸门一起固化了：--max-budget-usd 固定 PROBE_BUDGET_USD='0.20'（其注释自述按单次 $0.008 留一个数量级余量，是探针尺度）。M9 审查任务（整份 BRIEF + diff、审查档模型）单次成本可远超 $0.20，超出即被 CLI 掐断——按注释字面复用「这套配方」的适配层会把探针的成本闸门套到审查调用上。model 已可选化而预算没有；session_id_source 的字段注释承诺「--session-id 可由调用方指定、消费方 M9 留痕」，构造处同样未暴露。安全不变量（--restricted/--strict-mcp-config/--tools 白名单）固化是对的且有配方测试锁着，问题只在探针专属常量与共享配方未分层。",
+      "evidence": "src/trivium/probes/claude.ts:47（「唯一构造处，探针与适配层共用」）、:67（--max-budget-usd 固定）、:34-40（预算的探针尺度自述）、:68（model 已可选）；src/trivium/types.ts ClaudeProbe.session_id_source 注释（消费方 M9 留痕、可指定）；doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md 第五节（给 M9 的配方清单含预算）；对照 src/trivium/adapters/agy.ts:71-95（agy 适配层自持 buildAgyArgs，与探针配方分离，无此耦合）。",
+      "suggestion": "预算改为可选项（探针默认 0.20）；在 claudeArgs 注释里把「安全不变量」与「探针默认」分层写明，M9 扩形点（预算、session-id）列出来，别让「共用一套配方」读成「逐字复用」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/claude.ts:331-335",
+      "problem": "trust_prompt_required=true 从探针不可达：`read.completed ? false : null` 把「需要人工信任」与一切其它失败（超时、未登录、报错）合流成 null。字段设计初衷（「需要」时如实标记、写进用户文档）在实现里没有判据；doctor 的 `=== true` note 分支与 claude-severity.test.ts 的对应用例只对合成数据成立。真需要信任的机器上，用户只会反复收到「请重跑 doctor --only claude」——一条永远不可能成功的建议，而本该出现的「该侧对新克隆的仓库不可用」提示永不触发。",
+      "evidence": "src/trivium/probes/claude.ts:331-335（赋值只有 false/null 两态）、src/trivium/doctor.ts:192-201（true 分支不可达）、test/unit/claude-severity.test.ts（trust 用例靠 healthy({trust_prompt_required:true}) 合成构造）。",
+      "suggestion": "最低限度：在 headless_read_ok===null 的 note 里把「新目录首跑可能需要人工信任」列为候选原因；更好：用失败输出的文本特征（stderr 文案）尝试把信任提示从一般失败里区分出来，区分不了就承认不可判。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/probes/claude.ts:343-353",
+      "problem": "工具面核对只查 mcp__ 前缀，未核对「恰等于白名单」：锁事实①对样本断言 tools deepEqual ['Glob','Grep','Read']（全等），探针运行时却只 filter mcp__ 前缀。若 CLI 漂移把非 MCP 写工具（如 Bash）放回工具面，只要模型当次没去用、负对照没落文件，探针会记「工具面干净」且 readonly_flags 完好——只读保障的检出强度弱于自家测试锁定的口径。init.tools 数据已在手，全等核对是零成本的。",
+      "evidence": "src/trivium/probes/claude.ts:343-353（仅 filter mcp__）；test/unit/claude-events.test.ts 锁事实①（deepEqual 全等断言，经被审 diff 与本次直读核对）。",
+      "suggestion": "运行时核对 init.tools 集合恰为白名单（无序全等），不等即清 flags 并在 note 里点名多出的工具。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/claude.ts:362-397",
+      "problem": "denied_tool_in_trace 的判据还能更稳（焦点二）。三态口径本身正确（文案与字段一致，理由成立），但：①提示词只布置任务（「请创建文件 breach.txt」），模型可凭系统提示里的工具面推断「不能写」而不发起调用——报告自记两次一次没调；把提示词改成显式指令「调用 Write 工具尝试创建，即使预计会被拒绝也要发起」可显著压低「没试」的概率。②triedWrite 的正则 /write|edit|bash/ 限定了工具名，而「白名单外调用留痕」这一性质由任一白名单外 tool_use + 对应 is_error 即可证明（Task 等尝试同样留痕同样被拒），判据放宽可减少 null。③true 的判据 toolErrors.length>0 不与被拒的那次调用配对，任何无关错误都算数。",
+      "evidence": "src/trivium/probes/claude.ts:365（任务式提示词）、:386（正则限定工具名）、:389（toolErrors 计数不配对）；doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md「denied_tool_in_trace 记 null 的原因」（两次一次没调的自述）与证明边界第 2 条（只测了一个模型）。",
+      "suggestion": "提示词改为显式要求发起调用；判据放宽为「任一白名单外 tool_use 且按 tool_use_id 配对到 is_error 结果」。注意即便如此该字段仍非每次可得，null 口径要保留。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-08",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/probes/claude.ts:48-73",
+      "problem": "claudeArgs 的 cwd 是必填死参数：opts.cwd 在返回数组中从未被引用，实际工作目录由 execProbe 经 run() 的 spawn 选项传入。「唯一构造处」的签名让调用方以为它约束进程工作目录——与上一轮 GLM-09（codex readCatalogPath 的 void bin 死参数）同形，那个刚被接受并清理。",
+      "evidence": "src/trivium/probes/claude.ts:48-73（数组无一处引用 opts.cwd）、:202-207（cwd 实际经 run 的 spawn 选项传入）；test/unit/claude-events.test.ts:150（测试还传了 cwd:'/tmp'，强化了「它有用」的错觉）。",
+      "suggestion": "删掉该选项（claude CLI 无 --cwd 旗标，cwd 属于 spawn 选项语义），或在 M9 扩形时让它真正参与构造。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "焦点四的答案：EV-01 对 claude 侧非必需的结论站得住。白名单无 Bash、读取走 Read/Grep/Glob 的结构化参数，且 claudeArgs 把白名单固化进唯一构造处并有配方测试锁着——「路径在结构化字段里」这一前提由机制固定，不只是单次实测；「范围可收窄但不能取消」也对（codex 侧是唯一手段）。真正不稳的是 D-3（GLM-03），不是 EV-01。",
+    "三态口径与「文案与字段一致」在 denied_tool_in_trace、headless_read_ok 上做对了——上一轮 GLM-01/05 的教训被正确应用到这两处；doctor 对 null 给「未得出结论请重跑」note、不静默放行的分档也对。",
+    "readonly 失守恒 blocker、未启用侧「没装/读不到」按 criticEnabled 与 --only 分档的矩阵，从上一轮 codex 修复正确移植；claudeSeverity 抽成纯函数并配安全判定用例，比埋在 runDoctor 里等真跑强。",
+    "--strict-mcp-config 的发现（安全与成本同向、24 倍差异）是本步最有价值的实测；「混入样本含用户集成清单、不进仓库」的处置得当，锁事实①从反面守住了工具面干净。",
+    "三份真跑样本 + 四条锁事实用例把 M9 据以决策的前提变成会红的断言；fixtures README 写明重录时机、成本与「样本分叉而测试仍绿」的自认缺口，处置诚实。",
+    "preflight.test.ts 删除「已登记未实现」用例是那条用例自我宣告的机器信号（全部接入即红），删得诚实且留了恢复指引；registry-parity 对 probes/claude.ts 的豁免与 codex 同规格，已核 registry.ts:107-118（claude 的 cliName 恰等于自己的 AgentId），理由属实。",
+    "defaultProbe 补齐 claude 专属空壳（AGY-06 教训直接应用）；doctor 接线与 codex 段完全同构（checkpoint 增量落盘、existing 保留语义、configuredBin 传 null 与 codex 一致）。",
+    "「--json-schema 收内联 JSON 而非文件路径」「result 回来是 JSON 字符串要再 parse」两处形态记进了字段注释与配方测试，M9 抄配方时不会踩 codex 的镜像坑。"
+  ],
+  "not_covered": [
+    "只读审查，未运行 npm run check 与真机 doctor --only claude；typecheck 与测试全绿与否未经执行验证。",
+    "Grep/Glob 是否受 Read() deny 规则约束只有静态推理（GLM-03 标 medium 的原因）——审查员无写权限且不应烧用户配额去实测，需 Driver 决定是否补负对照。",
+    "doc/02_design 主设计 §3.5/§10.1/§10.3 与演进设计 §3.2、doc/08_project/BACKLOG.md 的 EV-01/EV-06 台账原文未直接比对；EV-01 结论以 types.ts 消费方注释、两份 M6 报告与 codex-events 测试交叉印证为限。",
+    "三份 .jsonl 样本的逐字节内容以被审 diff 的全文转述为准（锁事实用例直接消费、形状已锁）；test/unit/preflight.test.ts 与 registry-parity.test.ts 的改动经 diff 与关键行 grep 核对，未逐行通读全文。",
+    "adapters/ 其余文件、preflight.ts 全文、skills/ 契约面（config.v2 对 claude 专有字段的 additionalProperties）未逐行审；M9/M11 的真实需求形状以设计文档表述与 agy 适配器先例（buildAgyArgs）推断，M9 尚无代码。",
+    "另一位审查员的结论未读、未引用、未猜测（背靠背约束）。"
+  ],
+  "consulted": [
+    ".reviews/探针扩展与事实回填/code/_meta/changes-20260914T154909Z.diff",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/types.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/adapters/agy.ts",
+    "test/unit/claude-events.test.ts",
+    "test/unit/codex-events.test.ts",
+    "test/helpers/fixture.ts",
+    "test/unit/registry-parity.test.ts",
+    "doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-14-探针扩展与事实回填-r2-glm.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-14-探针扩展与事实回填-r2-response-claude.md"
+  ]
+}

@@ -593,74 +593,28 @@ test('defaultProbe 的键集恒等于注册表的 cliName 全集', async () => {
   );
 });
 
-test('doctor --only <已登记未实现> 给出确定答复而不是退 64', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-unimpl-'));
-  const triviumDir = path.join(root, TRIVIUM_DIR);
-  await fs.mkdir(triviumDir, { recursive: true });
-
+test('--only 的取值集合随注册表派生，每一家已登记 CLI 都合法', async () => {
   const { ALL_CLI_NAMES } = await import('../../src/trivium/agents/registry.js');
-  const { isDoctorOnly } = await import('../../src/trivium/doctor.js');
-  /*
-   * 已接线探针实现的 CLI。**接入下一家时必须同步这里。**
-   *
-   * 它没有可派生的来源：唯一的信号是 doctor 会不会报「尚无探针实现」，
-   * 而那恰恰是本用例要断言的东西——拿它来挑选被测对象就成了循环论证。
-   *
-   * 原注释写的是「M6 第 2/3 步接上之后，这条测试该自动去找下一个未实现的」，
-   * 那是假的（审查意见 GLM-05）：filter 写死排除两家，所谓「自动」靠的是
-   * 注册表排序与接入顺序的巧合。若第 2 步先接的恰好是排在最前的 claude，
-   * 下面的 runDoctor 会真去探一侧已实现的，断言当场红。
-   *
-   * 全部接入后 `unimplemented` 为空集，紧跟的断言会红——那就是提醒删除本用例的机器信号。
-   *
-   * **本条纪律立完的下一轮就被违反了一次**（M6 第 2 步，审查意见 AGY-05）：
-   * codex 探针接入后这里没同步，而测试**没有红**——`unimplemented` 取 `[0]`
-   * 拿到的是排在前面的 claude，照常走「未实现」分支。语义已经错了（codex 已实现
-   * 却被当成未实现），机器却没报警。这恰是上一轮预言的形态：
-   * 「靠的是注册表排序与接入顺序的巧合，不是机制」。
-   * 留着这段话，是因为它比任何抽象告诫都更能说明为什么这里必须手工同步。
-   */
-  const PROBE_IMPLEMENTED = ['agy', 'zcode', 'codex'];
-  const unimplemented = ALL_CLI_NAMES.filter((n) => !PROBE_IMPLEMENTED.includes(n));
-  assert.ok(
-    unimplemented.length > 0,
-    '注册表里已没有未实现探针的 CLI——本用例的前提消失了，应当删除它（连同 PROBE_IMPLEMENTED）',
-  );
+  const { isDoctorOnly, DOCTOR_ONLY_ENV } = await import('../../src/trivium/doctor.js');
 
-  for (const name of unimplemented) {
+  for (const name of ALL_CLI_NAMES) {
     assert.ok(isDoctorOnly(name), `--only ${name} 必须是合法取值（不得退 64）`);
   }
-
-  /*
-   * **反向守卫**：清单外的每一家，doctor 都必须真的报「尚无探针实现」。
-   *
-   * 正向（「清单内的确实实现了」）不可派生，但反向可以——而漏加恰恰是反向能抓的：
-   * 接入 codex 却忘了同步清单时，codex 落进 `unimplemented`，
-   * 而 doctor 对它**不会**报那句话（它有探针了），这条断言当场红。
-   *
-   * 起草本用例时只写了正向，于是 M6 第 2 步漏加 codex 时测试一声不吭
-   * （`unimplemented[0]` 取到排在前面的 claude，照常走未实现分支）。
-   * 「靠注册表排序的巧合」那句预言，就是在这里应验的。
-   */
-  for (const name of unimplemented) {
-    const probed = await runDoctor({
-      config: defaultConfig(), projectRoot: root, triviumDir,
-      only: name, skipModelCalls: true,
-    });
-    assert.ok(
-      probed.notes.some((n) => n.includes(name) && n.includes('尚无探针实现')),
-      `${name} 不在 PROBE_IMPLEMENTED 里，doctor 却没报「尚无探针实现」——` +
-        `多半是它的探针已经接上了，而这份清单忘了同步`,
-    );
-  }
-
-  const r = await runDoctor({
-    config: defaultConfig(), projectRoot: root, triviumDir,
-    only: unimplemented[0]!, skipModelCalls: true,
-  });
-  assert.equal(r.blockers.length, 0, '「已登记未实现」不是失败，不得进 blockers');
-  assert.ok(
-    r.notes.some((n) => n.includes(unimplemented[0]!) && n.includes('尚无探针实现')),
-    '必须点名说出是哪一侧、为什么没有结论——不能静默通过',
-  );
+  assert.ok(isDoctorOnly(DOCTOR_ONLY_ENV), '环境段也是合法取值');
+  assert.ok(!isDoctorOnly('__not_a_cli__'), '没登记的名字仍要退 64，别把校验放没了');
 });
+
+/*
+ * ── 这里原本还有一条「已登记但尚无探针实现的 CLI 给确定答复」的用例 ──
+ *
+ * 它连同 `PROBE_IMPLEMENTED` 清单一起，于 **M6 第 3 步删除**：四家探针全部接入后
+ * 「未实现的 CLI」这个集合空了，用例的前提不复存在。
+ *
+ * **删除是那条用例自己要求的**——它里面写着「全部接入后 unimplemented 为空集，
+ * 紧跟的断言会红，那就是提醒删除本用例的机器信号」。本步 claude 探针接上之后
+ * 它如期红了，于是照它说的办。这比留一条永远测不到东西的用例诚实。
+ *
+ * `doctor` 里那段「尚无探针实现」的答复逻辑**保留**：它是给第五家准备的，
+ * 接入新 CLI 而探针还没写时仍会走到。届时若想恢复覆盖，把本注释连同
+ * 那条用例（见 git history，M6 第 2 步的版本）一起取回即可。
+ */

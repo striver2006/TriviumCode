@@ -158,7 +158,15 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
       '扫描器查的是 AgentId 全集（claude / codex / gemini / glm），而那两个文件里写的 ' +
       "'agy' / 'zcode' 是 cliName——对应的 AgentId 分别是 gemini 与 glm，扫不到；" +
       'codex 与 claude 的 cliName 恰好等于自己的 AgentId，于是同形的写法（which codex）会命中。' +
-      'M9 接入 claude 探针时会遇到同一件事，届时按本条同理处置',
+      '（M6 第 3 步接 claude 探针时果然遇到了同一件事，按本条同理加了下一条）',
+  },
+  {
+    file: 'probes/claude.ts',
+    why:
+      '厂商专属探针，与 probes/codex.ts 同规格、同成因：claude 的 cliName 恰等于自己的 ' +
+      'AgentId，于是 `which claude` 这类写法会被 AgentId 扫描命中，' +
+      '而 probes/agy.ts、probes/zcode.ts 写的 cliName 不与任何 AgentId 相撞、扫不到。' +
+      '上一条豁免的理由里预言过「接 claude 探针时会遇到同一件事」——本条就是它',
   },
   { file: 'doctor.ts', why: '逐侧探测的人读输出与厂商专属诊断话术' },
   { file: 'preflight.ts', why: '逐侧预检的人读输出，以及两处按 Agent id 取厂商配置段的指纹计算（agyFingerprint 读 agents.gemini 的只读 Agent 定义）。M7b 第 6 步已把 checkModelSlugs 的身份穷尽改成按 vendor 分派，那一条不再是豁免理由；剩下的是「哪一家的可用性由哪个文件决定」，属厂商专属事实' },
@@ -955,5 +963,51 @@ test('ProbeByCli 的具名键 ⊆ 注册表 cliName 集', async () => {
     [],
     `ProbeByCli 出现了不在注册表 cliName 集里的具名键：${strays.join('、')}。` +
       '探针段键集的唯一来源是注册表，类型层只能给已登记的 CLI 加精确形状',
+  );
+});
+
+// ───────────── 5. 适配层不得引用探针实现（M6 第 3 步 r4，审查意见 GLM-06）─────────────
+
+test('架构契约：adapters/ 不得 import probes/', async () => {
+  /*
+   * 原则 P7：**适配层只读探针结论，不复用探针的实现**。
+   *
+   * 这条此前只活在 `probes/claude.ts` 的一句 JSDoc 里（「M9 不要 import 本函数」）。
+   * 而 AGENTS.md 纪律 12 说得很清楚：**「靠记性的纪律要换成不依赖记性的机制」**——
+   * 仓库无 eslint，本文件的既有扫描只查 Agent 字面量，
+   * M9 落地时顺手 import 一下不会被打红。
+   *
+   * 为什么不能 import：探针的参数构造带着**探针尺度**的默认值
+   * （成本闸门按单次 $0.008 留余量、模型挑最便宜的一档）。
+   * M9 的审查任务要读整份 BRIEF 与 diff，逐字复用会被 CLI 当场掐断——
+   * 而那是运行时才暴露的失败。适配层该读 `probe.readonly_flags` 自己构造，
+   * `adapters/zcode.ts` 的 `readonlyArgsFromProbe` 就是现成先例。
+   */
+  const dir = path.join(REPO_ROOT, 'src/trivium/adapters');
+  const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.ts'));
+  assert.ok(files.length > 0, '适配层目录不该是空的——扫描范围写错了会让本条永绿');
+
+  const offenders: string[] = [];
+  for (const f of files) {
+    const src = await fs.readFile(path.join(dir, f), 'utf8');
+    for (const [i, line] of src.split('\n').entries()) {
+      // 只看 import / require 形态，避免把注释里提到 probes 的句子算进来
+      if (/^\s*(import|export)\b[^;]*from\s+['"][^'"]*probes\//.test(line)) {
+        offenders.push(`adapters/${f}:${i + 1}  ${line.trim()}`);
+      }
+      if (/require\(\s*['"][^'"]*probes\//.test(line)) {
+        offenders.push(`adapters/${f}:${i + 1}  ${line.trim()}`);
+      }
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    '适配层引用了探针实现，违反 P7：\n' +
+      offenders.join('\n') +
+      '\n  适配层应当读 probe.<cli>.readonly_flags 自己构造命令行' +
+      '（见 adapters/zcode.ts 的 readonlyArgsFromProbe）。' +
+      '探针的参数构造带着探针尺度的默认值，逐字复用会在运行时被掐断。',
   );
 });

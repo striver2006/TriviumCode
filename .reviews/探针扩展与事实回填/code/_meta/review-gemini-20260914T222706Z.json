@@ -1,0 +1,82 @@
+{
+  "agreed": [
+    "Grep 负对照的实测验证打破了原先「CLI 层路径拦截完备」的虚假假设，及时拉回了「第 ③ 道屏蔽必须依靠事后轨迹核验兜底」的安全底线，避免了 M9 产生危险的单点依赖。",
+    "erroredToolUseIds 按 tool_use_id 进行调用与错误结果配对，有效修复了上一轮不区分错误归属、只数错误总数的粗糙判定。",
+    "探针录制真实 stream-json 样本并固化为「锁事实」断言，为后续 CLI 升级提供了清晰的破坏性变更预警。",
+    "删除已全部实现的 PROBE_IMPLEMENTED 清单测试，严格遵守了上一轮设立的测试自我声明纪律。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "test/unit/claude-events.test.ts",
+    "test/unit/claude-severity.test.ts",
+    "doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-15-探针扩展与事实回填-r3-gemini.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-15-探针扩展与事实回填-r3-response-claude.md",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/fixture.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/doctor.ts:172-184 中，probe.headless_read_ok === null 时直接 return note。由此造成双重遮蔽：① 在 src/trivium/probes/claude.ts:536 中若负对照写文件成功（breached 为真）或工具面核对出混入（tool_surface_checked: true 且 readonly_flags: []），但读探针偶然超时导致 headless_read_ok 为 null，行 193 的 blocker 将被完全跳过，安全失守被降级为重跑建议；② 在 src/trivium/probes/claude.ts:473-477 中，trust_prompt_required === true 依赖 !read.completed，此时 headless_read_ok 必为 null，行 228 的信任提示分支在真实探针运行下 100% 不可达。test/unit/claude-severity.test.ts:87 仅靠 healthy() 合成数据产生假绿。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/doctor.ts:172",
+      "problem": "claudeSeverity 将 headless_read_ok === null 提到失守判据之前且直接 return，在真实场景下双重遮蔽了确证的只读失守阻断（降级为普通 note）以及 trust_prompt_required 信任提示分支（沦为死逻辑）。",
+      "severity": "major",
+      "suggestion": "取消逐个提前 return，改用 SeverityLine[] 累积或调整分支顺序：确证失守（tool_surface_checked === true && readonly_flags.length === 0）必须排在首位恒为 blocker；特化诊断 trust_prompt_required === true 必须优先于泛化的 headless_read_ok === null 诊断；单测需补充真实探针组合形态的断言。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/probes/claude.ts:114-126 中，judgeToolSurface 仅计算 extra = tools.filter(t => !expected.includes(t))，即仅断言 tools ⊆ expected。若 tools 缺失关键读工具（例如只有 ['Glob'] 甚至空数组 []），clean 仍返回 true。而在 src/trivium/probes/claude.ts:505 中，探针无差别输出 notes.push('工具面与白名单全等：' + tools)，并在 test/unit/claude-events.test.ts:264 中以「少于白名单不算失守」作为测试断言。JSDoc、Note 与测试名称均声称「全等」，与实际实现的「子集包含」发生契约口径脱节。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "code",
+      "location": "src/trivium/probes/claude.ts:114",
+      "problem": "judgeToolSurface 实际为子集校验（tools ⊆ expected），但 JSDoc、Notes 日志与单测均声称「无序全等」，且在工具面缺失核心 Read 工具时仍向用户输出「工具面与白名单全等」的失实文案。",
+      "severity": "minor",
+      "suggestion": "若意图是允许只少不多，应将 JSDoc 与 Notes 的「全等」话术修改为「工具面干净且无未授权工具」，并增加缺失核心读工具（Read）的 missing 校验，避免在核心能力丧失时仍误报「全等」。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/probes/claude.ts:70-101 中，claudeArgs 声明了 budgetUsd、sessionId、model 等调用尺度参数，且 JSDoc 注释明确指示「M9 读 probe.readonly_flags 自己构造，不要 import 本函数（原则 P7）」。但在探针内部，execProbe 实际调用 claudeArgs 时从未传入这些尺度参数（预算写死 0.20，模型写死 Haiku，未传 sessionId）。这些入参唯一的消费者是 test/unit/claude-events.test.ts:222 中的单测用例 m9Scale。这形成了「探针为适配层保留参数，文档又禁止适配层调用」的架构边界混淆。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/probes/claude.ts:70",
+      "problem": "claudeArgs 将探针未使用的 M9 审查任务尺度参数（budgetUsd, sessionId 等）混在探针模块中，且注释要求 M9 适配层不要 import 该函数，造成了契约定位模糊与架构职责分裂。",
+      "severity": "minor",
+      "suggestion": "明晰探针与适配层的边界：将 claudeArgs 确定为探针私有的 buildProbeArgs，剥离探针未用的 M9 尺度入参；未来 M9 适配器（adapters/claude.ts）遵循 P7 原则，独立实现专用的 buildClaudeArgs 并展开消费 probe.readonly_flags。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "在 doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md:475 中，D-1 指出 M9 的 project_reads 与 deny_paths 核验可走结构化字段（Read 的 file_path）。而在 D-3 中已实测证实 Grep 会完全穿透 permissions.deny。若 M9 事后轨迹核验仅核查 Read.file_path，模型通过 Grep 的 path 参数检索禁读目录将成为未被拦截、也未被事后发现的全新泄漏盲区。",
+      "id": "AGY-04",
+      "kind": "security",
+      "layer": "plan",
+      "location": "doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md:475",
+      "problem": "实测报告在证实 permissions.deny 无法阻挡 Grep 绕过后，未在给 M9 的建议中强调「事后轨迹核验必须同步覆盖 Grep 的 path 参数」，存在核验设计盲区。",
+      "severity": "nit",
+      "suggestion": "在报告第 5 节及主设计回填中补充说明：M9 适配层进行 deny_paths 轨迹核验时，检查面必须同时覆盖 Read 的 file_path 与 Grep 的 path 参数。"
+    }
+  ],
+  "not_covered": [
+    "未在网络抖动、未登录状态的真实物理机环境中运行 doctor 全量命令验证进程超时与信号退出行为",
+    "未覆盖 M9 适配层拉起并发审查任务时的大文本输出缓冲区与高并发内存开销表现",
+    "未在非 macOS 环境下测试路径分隔符及环境变量对 Claude CLI 调用的影响"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最危险问题是 doctor 中 claudeSeverity 将 headless_read_ok === null 的判断置于失守判据之前且直接 return，在真实场景中将确证的只读失守 blocker 掩盖为普通 note，并将 trust_prompt_required 信任分支变成了 100% 不可达的死逻辑（AGY-01）；\n其次 judgeToolSurface 实为子集检查（tools ⊆ expected），但在 JSDoc 与 Notes 中宣称「全等」，丢失 Read 时仍误报全等，重蹈文案与实现两套口径的覆辙（AGY-02）；\n此外 claudeArgs 包含探针未用的 M9 尺度参数，与 P7 适配层自建参数构造的边界产生混淆（AGY-03）；\n报告证实 Grep 绕过 permissions.deny 结论稳健，Glob 虽未单独测但未影响「事后核验兜底」结论，需补足 M9 轨迹核验覆盖 Grep 参数的建议（AGY-04）。\n整体验收需阻断修复。",
+  "verdict": "request-changes"
+}

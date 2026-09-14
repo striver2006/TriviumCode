@@ -17,7 +17,8 @@ import { probeVerifyCommands } from './probes/verify-commands.js';
 import { probeAgy } from './probes/agy.js';
 import { probeZcode } from './probes/zcode.js';
 import { probeCodex } from './probes/codex.js';
-import type { CodexProbe, Config, ProbeSection } from './types.js';
+import { probeClaude } from './probes/claude.js';
+import type { ClaudeProbe, CodexProbe, Config, ProbeSection } from './types.js';
 import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
 import { say, step, warn } from './util/log.js';
 
@@ -135,6 +136,121 @@ export function codexSeverity(
       },
     ];
   }
+  return [];
+}
+
+/**
+ * claude 探针结论 → 诊断严重度（与 `codexSeverity` 同构）。
+ *
+ * 抽成纯函数的理由同上一步：这里有一条**安全判定**（只读失守），
+ * 埋在 `runDoctor` 里就要真跑才走得到，等于没有断言守着。
+ *
+ * 判据字段与 codex 不同——claude 的只读靠**工具白名单**而不是沙箱，
+ * 所以失守的形态是「工具面混入了写工具」或「负对照真落了文件」，
+ * 两者都反映在 `readonly_flags` 被清空上。
+ */
+export function claudeSeverity(
+  probe: ClaudeProbe,
+  ctx: { enabled: boolean; asked: boolean; skipModelCalls: boolean },
+): SeverityLine[] {
+  const gate = (message: string): SeverityLine =>
+    ctx.enabled || ctx.asked
+      ? { level: 'blocker', message }
+      : { level: 'note', message: `${message}（该侧尚未启用为审核者，故不阻断）` };
+
+  if (!probe.entrypoint) return [gate('未找到 claude 可执行文件')];
+
+  /*
+   * ── 判定顺序（审查意见 AGY-01 ≡ GLM-01，r4 复审后重排）──
+   *
+   * **确证的事实排在推断之前；特化诊断排在泛化之前。**
+   *
+   * r3 修「没测到被判失守」时我做了两步：加 `tool_surface_checked` 前置条件、
+   * 再把 null note 提到失守判据之前。**第一步就够了**——init 缺失时
+   * `checked === false`，失守判据根本不触发。第二步是多余的，而且开了反方向的洞：
+   * 已核实的失守在读探针没跑到 result 时被「请重跑」压掉，blocker 进不了 blockers。
+   *
+   * 关键在于**这些事实彼此独立**：`system/init` 在事件流前部就到、
+   * `breach.txt` 在不在是文件系统事实——两者都不依赖 result 事件。
+   * **「读探针没跑完」不等于「什么都没测到」。**
+   */
+
+  // ① 负对照真落了文件：最硬的证据，独立于读探针跑没跑完（GLM-01 路径②）
+  if (probe.readonly_breach === true) {
+    return [
+      {
+        level: 'blocker',
+        message:
+          'claude 只读负对照失败：只读白名单下文件仍被创建，该侧不可用于审查。' +
+          '在修好之前不要把它接入任何审查链路。',
+      },
+    ];
+  }
+
+  // ② 工具面核对过且不干净：同样是已核实的失守
+  if (
+    !ctx.skipModelCalls &&
+    probe.tool_surface_checked === true &&
+    probe.readonly_flags.length === 0
+  ) {
+    return [
+      {
+        level: 'blocker',
+        message:
+          'claude 只读保障不成立：工具面混入了白名单外的工具。' +
+          '请确认 --restricted 与 --strict-mcp-config 都生效；在修好之前不要把它接入审查链路。',
+      },
+    ];
+  }
+
+  /*
+   * ③ 信任提示：**特化**诊断，必须排在泛化的 null 之前。
+   *
+   * 它的产出前提正是 `!read.completed`，而那时 `headless_read_ok` 必为 null——
+   * 泛化 note 排前面的话，这条永远被截住（r3 修好了探针侧的不可达，
+   * r4 发现 doctor 侧又把它挡住了，同一个字段连着两轮不可达）。
+   */
+  if (probe.trust_prompt_required === true) {
+    return [
+      {
+        level: 'note',
+        message:
+          '⚠️ headless 在新目录首跑需要人工信任——该侧对「新克隆的仓库」不可用，' +
+          '接入前要在用户文档里写明这条限制。',
+      },
+    ];
+  }
+
+  // ④ 读探针有结论且是否定：能力缺陷
+  if (probe.headless_read_ok === false) {
+    return [gate('claude headless 读不到文件——该侧无法作为审查员使用')];
+  }
+
+  // ⑤ 泛化的「没测到」：排在全部确证判据之后
+  if (probe.headless_read_ok === null && !ctx.skipModelCalls) {
+    return [
+      {
+        level: 'note',
+        message:
+          '⚠️ 读文件探针未得出结论（超时、进程报错，或事件流里没有 result）——' +
+          '这既不是通过也不是失败。常见原因：登录态过期、网络不通，' +
+          '或在新目录首跑时需要人工信任。请重跑 `trivium doctor --only claude`。',
+      },
+    ];
+  }
+
+  // ⑥ 工具面没核对成：同样是「没测到」，不当失守
+  if (!ctx.skipModelCalls && probe.tool_surface_checked === false) {
+    return [
+      {
+        level: 'note',
+        message:
+          '⚠️ 工具面未核对（读探针没拿到 system/init）——只读保障**未得出结论**，' +
+          '既不能算通过也不能算失守。请重跑 `trivium doctor --only claude`。',
+      },
+    ];
+  }
+
   return [];
 }
 
@@ -306,6 +422,26 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     })) {
       if (line.level === 'blocker') blockers.push(line.message);
       else notes.push(`[codex] ${line.message}`);
+    }
+  }
+
+  // ── Claude Code ─────────────────────────────────────────────────────
+  if (only === null || only === 'claude') {
+    step('探测 Claude Code（claude -p）…');
+    const r = await probeClaude(null, {
+      skipModelCalls: opts.skipModelCalls ?? false,
+      existing: probe.cli.claude,
+    });
+    probe.cli.claude = r.probe;
+    notes.push(...r.notes.map((n) => `[claude] ${n}`));
+    await checkpoint('claude');
+    for (const line of claudeSeverity(r.probe, {
+      enabled: agentByCliName('claude')?.criticEnabled === true,
+      asked: only === 'claude',
+      skipModelCalls: opts.skipModelCalls ?? false,
+    })) {
+      if (line.level === 'blocker') blockers.push(line.message);
+      else notes.push(`[claude] ${line.message}`);
     }
   }
 

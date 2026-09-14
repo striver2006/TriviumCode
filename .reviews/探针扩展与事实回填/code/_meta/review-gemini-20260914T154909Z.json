@@ -1,0 +1,118 @@
+{
+  "agreed": [
+    "--strict-mcp-config 硬前置的发现极其深刻，实测揭示了 MCP 写工具混入工作树外攻击面与 24 倍调用成本差异，且通过锁事实①建立了严格的反向守卫用例。",
+    "将路径级 deny 实测证实为 Claude 专属优势（D-3），为设计 §10.1 第 ③ 道屏蔽提供了免于退化的 CLI 层原生支撑。",
+    "探针录制真实 JSONL 样本替代手编 fixture，并在 claude-events.test.ts 中建立了三条「锁事实」断言，纪律严明。",
+    "claudeSeverity 抽为独立纯函数并配备分档单测，与 codexSeverity 保持结构同构，消除了安全断言埋在执行流程里的盲区。",
+    "全接入后依注释约定主动删除已失效的 PROBE_IMPLEMENTED 清单用例，兑现了上一轮立下的测试纪律，比留存无效覆盖诚实。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/types.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/config.ts",
+    "test/unit/claude-events.test.ts",
+    "test/unit/claude-severity.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/fixtures/claude-events/README.md",
+    "doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md",
+    "src/trivium/parse.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/util/fsx.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/ADR_002_multicritic_isolation.md",
+    "skills/dual-critic/schema/review.v1.json",
+    "skills/dual-critic/schema/config.v2.json",
+    ".reviews/探针扩展与事实回填/code/_meta/changes-20260914T154909Z.diff",
+    ".reviews/探针扩展与事实回填/code/2026-09-14-探针扩展与事实回填-gemini.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-14-探针扩展与事实回填-r2-gemini.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-14-探针扩展与事实回填-r2-response-claude.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-14-探针扩展与事实回填-response-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/probes/claude.ts:788-795 中，当 leaked === false && recorded === false 时（例如模型未发起读取工具调用），函数返回 supported: false，而 method 明确注明「哨兵未出现，但该次尝试也没记入 permission_denials——挡没挡住无从证实」。在 src/trivium/types.ts:251 中 PathDenyProbe.supported 定义为 boolean | null，null 正是未得出结论态。此处与上一轮 denied_tool_in_trace 的塌缩错误完全同形；若模型偶然未调用 Read，落盘的 supported: false 会导致 M9 的第 ③ 道屏蔽（设计 §10.1）退化为事后核验，误杀本侧的核心隔离优势。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/probes/claude.ts:789",
+      "problem": "probeClaudePathDeny 将未证实状态（哨兵未泄漏且未记录 denials）直接判定为 supported: false，文案自认「无从证实」而字段却落确定否定，会导致 M9 误将可用的路径级 deny 降级。",
+      "severity": "major",
+      "suggestion": "仅在 leaked === true（哨兵泄漏）时返回 supported: false；在 !leaked && !recorded 时返回 supported: null，与三态契约及 method 文案对齐。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/probes/claude.ts:874-891 中，probe.readonly_flags 仅在 if (read.init) 成立且无 MCP 工具时才被填充；若 read 探针发生网络超时或在输出 init 事件前报错退出，read.init 为 null，readonly_flags 保持空数组 []，同时 breach.txt 负对照也未产生 breach。此时在 src/trivium/doctor.ts:164-173 中，claudeSeverity 优先判断 probe.readonly_flags.length === 0，直接抛出阻断级 blocker（「claude 只读保障不成立：工具面混入了写工具，或负对照下文件仍被创建」），完全盖过了 line 178 本应给出的 note（「⚠️ 读文件探针未得出结论……」）。这使偶发读超时被误报为严重安全失守。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/probes/claude.ts:874",
+      "problem": "probeClaude 未在 read.init 为空（如读探针超时或网络报错）时妥善处置 readonly_flags，导致 claudeSeverity 将偶发读超时误判为阻断级「只读保障不成立」。",
+      "severity": "major",
+      "suggestion": "在 probeClaude 中，当未观察到 read.init 时明确记录工具面状态未测（或避免让未探状态伪装成失守），并在 claudeSeverity 中仅在确认负对照 breach 或明确检出 MCP 工具混入时才报只读失守 blocker。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/probes/claude.ts:585-610 中，claudeArgs 将 --max-budget-usd 硬编码为 PROBE_BUDGET_USD（0.20 美元），这满足最小探针需要，但 M9 作为独立审查员执行全量任务时必然因预算过低熔断；其入参声明了 cwd: string 但在函数体内从未被读取；且 src/trivium/types.ts:358 明确标注 ClaudeProbe.readonly_flags 的消费方是「M9 适配器构造命令行（P7）」，若 M9 必须复用 claudeArgs，则 P7 适配层只读探针结论的纪律被硬编码架空。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "code",
+      "location": "src/trivium/probes/claude.ts:585",
+      "problem": "claudeArgs 宣称为「唯一构造处」，但硬编码了探针专属参数（预算 $0.20、Haiku 默认模型、固定工具列表），包含死参数 cwd，且与 P7 纪律由适配器读取 readonly_flags 的设计相抵触。",
+      "severity": "minor",
+      "suggestion": "剥离探针专用硬编码，将 claudeArgs 定位为参数拼装纯函数，支持传入可选预算、模型与额外参数，移除未引用的 cwd，明确探针与未来 M9 适配层在参数拼装上的职责边界。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/probes/claude.ts:860-862 中，判定为 v.includes(fx.openFile)。在 macOS 上 src/trivium/util/fsx.ts:118 的 makeTempDir 返回 /var/folders/...，而系统真实路径为 /private/var/folders/...；且 Claude Code 在执行项目内文件读取时常使用相对路径 README.md。此时模型即使在 tool_use.input.file_path 中传入了结构化相对路径或 realpath，v.includes(fx.openFile) 均会判为 false，导致 trace_path_structured 误报为 false，并在 M9 中引起不必要的文本回退。与 test/unit/claude-events.test.ts:1168 中以 includes('sentinel.txt') 判定的口径脱节。",
+      "id": "AGY-04",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/probes/claude.ts:861",
+      "problem": "trace_path_structured 采用绝对路径精确子串匹配，在 macOS 临时目录软链及模型相对路径调用下存在假阴性风险。",
+      "severity": "minor",
+      "suggestion": "判据改为检查入参是否包含目标文件名 path.basename(fx.openFile) 或将其归一化后比对，避免软链前缀或相对路径导致假阴性。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/probes/claude.ts:872 中，probe.trust_prompt_required = read.completed ? false : null。返回值只有 false 或 null，绝无可能为 true。但在 src/trivium/doctor.ts:192 中专门编写了 if (probe.trust_prompt_required === true) 的 note 提示，且 test/unit/claude-severity.test.ts:87 注释声称「本机实测为 false，但判定链路要在——否则换台机器为真时没人会注意到」。若新机器上真有信任弹窗阻塞进程，read.completed 必为 false，字段只会落 null，导致该判定链路根本无法在真机上生效。",
+      "id": "AGY-05",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/probes/claude.ts:872",
+      "problem": "trust_prompt_required 的三元表达式永不产出 true，导致声称的「需要人工信任时单列 note」守卫链路沦为不可达死逻辑。",
+      "severity": "minor",
+      "suggestion": "检查未完成执行的 stdout/stderr 或进程退出原因中是否匹配信任提示特征（如 /trust/i 等），匹配时置为 true，否则置为 null；使 true 状态具备真实生成路径。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md:53-55 及 line 157 中，称 EV-01 的必要性「只来自 codex」。但根据 doc/08_project/BACKLOG.md EV-01 与 doc/02_design/ADR_002_multicritic_isolation.md §一/§三，EV-01（命令文本字面扫描）是针对泄漏通道②（通过 git 对象库如 git show 绕过文件系统读取）设立的，本就适用于具备命令执行能力的 Agy 和 ZCode。Claude 侧无需命令扫描的本质在于其审查白名单移除了 Bash 命令执行工具且具备 CLI 层路径拦截，而非单纯因 Read 参数结构化；Codex 只是新增消费方而非唯一来源。",
+      "id": "AGY-06",
+      "kind": "scope-drift",
+      "layer": "requirement",
+      "location": "doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md:53",
+      "problem": "实测报告将 EV-01 豁免理由归因为「路径有结构化字段」并称「必要性只来自 codex」，与 ADR-002 和 BACKLOG 的原始定义存在偏差。",
+      "severity": "nit",
+      "suggestion": "修订实测报告中的表述，准确阐明 Claude 侧免于命令文本扫描的主因是无 Bash 命令工具面与具备 CLI 拦截，纠正「必要性只来自 codex」的说法。"
+    }
+  ],
+  "not_covered": [
+    "未在真实未登录状态或 API Key 环境变量覆盖的纯净 macOS 机器上验证真实 claude 错误回吐分支",
+    "未覆盖极端高并发或 Node 子进程树在跨平台 Unix 信号传播中的孤儿进程回收表现",
+    "未在 Windows 或 Linux 平台验证绝对路径反斜杠及符号链接的 realpath 展开差异"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最危险问题是 probeClaudePathDeny 将未证实状态（既未泄漏也未记入 denials）错误塌缩为 supported: false，文案自称「无从证实」字段却落确定否定，会误导 M9 降级第 ③ 道屏蔽（AGY-01）；\n其次若读探针偶发超时导致 read.init 为空，readonly_flags 留空会被 claudeSeverity 误判为阻断级「只读保障不成立」假失守（AGY-02）；\n此外 claudeArgs 硬编码了探针专用预算与模型且包含未用参数 cwd，与 P7 纪律冲突（AGY-03）；trace_path_structured 绝对路径子串匹配在软链与相对路径下易假阴性（AGY-04）；\ntrust_prompt_required 三元表达式永不为 true 使声称的守卫链路失真（AGY-05）；报告对 EV-01 归因将常规读与 git 通道混淆，且将 Agy/ZCode 既有需求误称为「只来自 codex」（AGY-06）。\n针对焦点二：denied_tool_in_trace 现行提示词过软易引出纯文本推脱，提示词适度加强配合现有三态兜底更为稳妥。",
+  "verdict": "request-changes"
+}

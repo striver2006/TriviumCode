@@ -96,6 +96,20 @@ export function defaultProbe(): ProbeSection {
     model_catalog_path: null,
   };
 
+  cli.claude = {
+    ...emptyCommonProbe(),
+    headless_read_ok: null,
+    trace_path_structured: null,
+    denied_tool_in_trace: null,
+    readonly_breach: null,
+    tool_surface_checked: null,
+    readonly_flags: [],
+    model_flag: null,
+    json_schema_ok: null,
+    session_id_source: null,
+    trust_prompt_required: null,
+  };
+
   return {
     generated_at: null,
     verify_suggestion: { build: [], test: [] },
