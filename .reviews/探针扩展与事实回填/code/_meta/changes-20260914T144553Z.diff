@@ -1,0 +1,1044 @@
+# trivium changes.diff
+# run_id: 20260914T144553Z
+# base: HEAD
+# head: 5f760890f60aeca21d5db1c45c8ab6416d5a2107
+# files: 9
+#   doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md
+#   src/trivium/doctor.ts
+#   src/trivium/probes/codex.ts
+#   src/trivium/types.ts
+#   test/fixtures/codex-events/README.md
+#   test/fixtures/codex-events/read-sentinel.jsonl
+#   test/fixtures/codex-events/readonly-denied.jsonl
+#   test/unit/codex-events.test.ts
+#   test/unit/registry-parity.test.ts
+diff --git a/src/trivium/doctor.ts b/src/trivium/doctor.ts
+index 7936642..36a87a7 100644
+--- a/src/trivium/doctor.ts
++++ b/src/trivium/doctor.ts
+@@ -16,6 +16,7 @@ import { probeEnv } from './probes/env.js';
+ import { probeVerifyCommands } from './probes/verify-commands.js';
+ import { probeAgy } from './probes/agy.js';
+ import { probeZcode } from './probes/zcode.js';
++import { probeCodex } from './probes/codex.js';
+ import type { Config, ProbeSection } from './types.js';
+ import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
+ import { say, step, warn } from './util/log.js';
+@@ -206,6 +207,25 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+     }
+   }
+ 
++  // ── Codex ───────────────────────────────────────────────────────────
++  if (only === null || only === 'codex') {
++    step('探测 Codex（codex exec）…');
++    const r = await probeCodex(null, {
++      skipModelCalls: opts.skipModelCalls ?? false,
++      existing: probe.cli.codex,
++    });
++    probe.cli.codex = r.probe;
++    notes.push(...r.notes.map((n) => `[codex] ${n}`));
++    await checkpoint('codex');
++    if (!r.probe.entrypoint) blockers.push('未找到 codex 可执行文件');
++    else if (r.probe.exec_headless_read_ok === false) {
++      blockers.push(
++        'codex exec headless 读不到文件——该侧无法作为审查员使用。' +
++          '请确认 provider 凭据已配置（config.toml 的 model_providers.<name>.env_key）。',
++      );
++    }
++  }
++
+   /*
+    * ── 已登记但尚无探针实现的 CLI ──
+    *
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 41f5a6c..bab7c3b 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -206,6 +206,94 @@ export interface ZcodeProbe extends CommonProbe {
+   model_id_form?: string | null;
+ }
+ 
++/**
++ * Codex CLI 的探针结论（M6 第 2 步，本机实测 `codex-cli 0.154.0`）。
++ *
++ * **每个字段都注明谁消费、什么时候消费。** 这是 BACKLOG EV-06 的直接应用——
++ * 那条记的是 `instructionFiles` 登记了却没有任何读取方，于是「登记」被误读成「已生效」。
++ * 探针结论天然是给后续里程碑用的，但「M8 会用」和「没人会用」必须当场分得清。
++ */
++export interface CodexProbe extends CommonProbe {
++  /**
++   * `codex exec` headless 下能否真的读到文件（哨兵首行回显命中）。
++   * **消费方**：M8 适配器的 `availability()`——false 即该侧不可用。
++   */
++  exec_headless_read_ok: boolean | null;
++  /**
++   * `--json` 事件流里出现过的 `item.type` 图谱。
++   * **消费方**：M8 的轨迹解析器；新类型出现时提示重录样本。
++   */
++  json_event_types: string[];
++  /**
++   * 读取路径能否从轨迹里**结构化**取出。
++   *
++   * 本机实测 **false**：codex 让模型跑 shell（`/bin/zsh -lc 'head -n 1 …'`），
++   * 路径只存在于 `command` 文本里，没有独立字段。
++   * **消费方**：M8 的 `project_reads` 统计与禁读核验——false 时两者都只能走
++   * 命令文本解析（BACKLOG EV-01 的措施 b，对 codex 是唯一手段而非补充）。
++   */
++  trace_path_structured: boolean | null;
++  /**
++   * 被沙箱拒绝的命令是否留在轨迹里。
++   *
++   * 本机实测 **false**：写入被拒时 `command_execution` 事件一条都不产生。
++   * **消费方**：`guard` 的 `write_events` 判定——false 意味着设计 §10.3
++   * 「轨迹有写事件即判失守」对该侧恒为假，只读保障完全落在沙箱上。
++   * 这不是安全漏洞（写确实被挡住了），是**检测盲区**，必须如实记而不是留空。
++   */
++  rejected_command_in_trace: boolean | null;
++  /**
++   * 实测**实际被接受**的只读参数组合。
++   * **消费方**：M8 适配器构造命令行（P7：命令行由探针结论构造）。
++   */
++  readonly_flags: string[];
++  /**
++   * `-p <name>` 是否真实生效（同一 `-m` 下 provider 随 profile 改变即为真）。
++   * **消费方**：M11 的档位路由选型——决定走 profile 还是 `-c` 覆盖。
++   */
++  profile_flag: boolean | null;
++  /**
++   * 未知 profile 名是否被 CLI 拒绝。
++   *
++   * 本机实测 **false**：`-p __no_such__` 不报错，**静默回落基底配置**。
++   * **消费方**：M8 的预检——false 意味着拼错 profile 名不会有任何提示，
++   * 用户以为跑的是 deepseek、实际跑的是基底那家，因此预检**必须自己拦**。
++   */
++  unknown_profile_rejected: boolean | null;
++  /**
++   * 可用的 profile 名单。
++   *
++   * 取法是枚举 `$CODEX_HOME/*.config.toml`，**不是**读 `config.toml` 的
++   * `[profiles.*]` 段——0.154.0 的 `-p` 是文件分层机制（`CONFIG_PROFILE_V2`），
++   * 那个段在本机五份 toml 里一个都没有。按设计原定义取，名单会**恒为空**，
++   * 而 M8 的「未知 profile 拦截」是「名单为空即跳过」，于是那道拦截静默失效。
++   * **消费方**：M8 预检校验 `--profile` 取值。
++   */
++  profiles: string[];
++  /**
++   * `-c key=value`（dotted path，值按 TOML 解析）是否真实生效。
++   * **消费方**：M11 档位路由的备选路径；也是 `model_catalog` 探测本身的手法。
++   */
++  config_override: boolean | null;
++  /**
++   * 客户端是否校验 effort 档位在该模型的支持列表内。
++   *
++   * 本机实测 **false**：目录只声明 `low|medium|high`，而 `xhigh` 照样被透传。
++   * **消费方**：`preflight` 的档位校验——false 意味着写错档位不会被 CLI 拦，
++   * 得像校验 model slug 一样自己校验。
++   */
++  effort_validated: boolean | null;
++  /**
++   * 模型目录文件的来源路径（从配置的 `model_catalog_json` 读出，**不写死**）。
++   *
++   * 演进设计写的是 `~/.codex/model-catalog.local.json`，本机实际是
++   * `~/.codex/models-qwen.json` 一类随 provider 一份的文件——按设计写死路径
++   * 会对一台**配置正确**的机器判出假阴性（原则 P7）。
++   * **消费方**：人读诊断与 `doctor` 报告。
++   */
++  model_catalog_path: string | null;
++}
++
+ export interface AuthCacheEntry {
+   checked_at: string;
+   cli_version: string | null;
+@@ -237,6 +325,7 @@ export interface AuthCacheEntry {
+ export type ProbeByCli = { [cliName: string]: CommonProbe | undefined } & {
+   agy?: AgyProbe;
+   zcode?: ZcodeProbe;
++  codex?: CodexProbe;
+ };
+ 
+ export interface ProbeSection {
+diff --git a/test/unit/registry-parity.test.ts b/test/unit/registry-parity.test.ts
+index f72559a..7b87171 100644
+--- a/test/unit/registry-parity.test.ts
++++ b/test/unit/registry-parity.test.ts
+@@ -150,6 +150,16 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
+   // `init.ts` 曾在此表中，2026-09-14 删除：它的 `.claude/...` 全部带路径分隔符、
+   // 已被属性扫描排除，文件本身确无 Agent 字面量。此前判它「仍需要」是坏剥离器
+   // 造出的假命中（见 stripComments 的注释）。
++  {
++    file: 'probes/codex.ts',
++    why:
++      '厂商专属探针：文件本身即该 CLI 的命名空间，与 adapters/agy.ts 同规格。' +
++      '需要豁免而 probes/agy.ts、probes/zcode.ts 不需要，是因为一处**不对称**：' +
++      '扫描器查的是 AgentId 全集（claude / codex / gemini / glm），而那两个文件里写的 ' +
++      "'agy' / 'zcode' 是 cliName——对应的 AgentId 分别是 gemini 与 glm，扫不到；" +
++      'codex 与 claude 的 cliName 恰好等于自己的 AgentId，于是同形的写法（which codex）会命中。' +
++      'M9 接入 claude 探针时会遇到同一件事，届时按本条同理处置',
++  },
+   { file: 'doctor.ts', why: '逐侧探测的人读输出与厂商专属诊断话术' },
+   { file: 'preflight.ts', why: '逐侧预检的人读输出，以及两处按 Agent id 取厂商配置段的指纹计算（agyFingerprint 读 agents.gemini 的只读 Agent 定义）。M7b 第 6 步已把 checkModelSlugs 的身份穷尽改成按 vendor 分派，那一条不再是豁免理由；剩下的是「哪一家的可用性由哪个文件决定」，属厂商专属事实' },
+   { file: 'selftest.ts', why: '自检场景里两侧桩的固定编排；M7b 增 N 侧场景' },
+diff --git a/doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md b/doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md
+new file mode 100644
+index 0000000..bac5ac4
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md
+@@ -0,0 +1,158 @@
++# M6 第 2 步 · Codex 探针实测报告
++
++- **日期**：2026-09-14
++- **CLI**：`codex-cli 0.154.0`（`/opt/homebrew/bin/codex`）
++- **本机**：macOS 26.0（Darwin 25.6.0），arm64
++- **探针模型**：`deepseek-flash` + `model_reasoning_effort=low`（探能力不探质量，挑最便宜的一档）
++- **落盘**：`.trivium/config.local.yaml` 的 `probe.cli.codex`
++
++> 本报告记的是**本机实测结论**。凡与 `doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md`
++> §3.1 冲突之处，**一律以本报告为准**（原则 P7）——那一章的条目当时全部带置信度标注，
++> 并写明「以 M6 探针为准」。
++
++---
++
++## 一、三条推翻设计文档的事实
++
++### C-1 ·【最重】`-p` 是文件分层，不是 `[profiles.*]` 段
++
++演进设计 §3.1 把 `codex -p <name>` 描述成「按 `~/.codex/config.toml` 的
++`[profiles.<name>]` 段运行」，置信度标「中高」。
++
++**实测**：`codex exec --help` 原文是
++
++```
++-p, --profile <CONFIG_PROFILE_V2>
++        Layer $CODEX_HOME/<name>.config.toml on top of the base user config
++```
++
++参数类型名就叫 `CONFIG_PROFILE_V2`。本机 `~/.codex/` 下的
++`qwen/deepseek/glm/gpt.config.toml` **就是 profile 文件本身**，
++其中两份的文件头注释明写「自包含，供 `codex -p deepseek` 使用」。
++五份 toml 里 `[profiles.*]` 段一个都没有——那不是缺配置，是 V2 机制下的**预期**。
++
++**生效性已实测**：同一个 `-m deepseek-flash` 下，`-p qwen` 的 provider 是 `qwen`、
++`-p deepseek` 的是 `deepseek`。
++
++**连锁影响**：设计给 `profiles` 探针项写的定义是「`config.toml` 的 `[profiles.*]` 名单回读，
++供 preflight 校验」。按该定义取，名单**恒为空**；而演进设计 §7.1 要点 4 的
++「未知 profile 预检拦截」是「名单为空即跳过」——那道拦截会**静默失效**。
++探针改为枚举 `$CODEX_HOME/*.config.toml`，本机得到 `deepseek、glm、gpt、qwen`。
++
++### C-2 · effort 档位表全错
++
++| slug | 设计 §3.1 写的 | 本机 `codex debug models` 实测 |
++| :--- | :--- | :--- |
++| `qwen3.8-flash` / `qwen3.8-max` | `low \| medium \| xhigh`，默认 **xhigh** | `low \| medium \| high`，默认 **medium** |
++| `deepseek-flash` / `deepseek-v4-pro` | `low \| high \| max`，默认 **high** | `low \| medium \| high`，默认 **medium** |
++
++**两家都是标准三档、默认 medium。** `xhigh` 与 `max` 在本机目录里只属于
++`gpt-reserve` 与 `codex-auto-review` 两个 OpenAI 线条目——设计把 OpenAI 的档位
++错安给了千问与 DeepSeek。
++
++由此**动摇**（尚未证伪，见「四、证明边界」）演进设计的两条论断：
++①「两家 effort 枚举不一致且都不是 `low/medium/high` 字面集」——本机为假；
++②「DeepSeek 存在请求值归并映射 `medium→high`」——`medium` 是合法且默认的档位，
++该映射的前提不成立。而 `run.v2` 的 `effort_effective` 回读字段，**存在的唯一理由**就是 ②。
++
++### C-3 · 模型目录路径名对不上
++
++设计写 `~/.codex/model-catalog.local.json`；本机实际是随 provider 一份的
++`~/.codex/models-<provider>.json`（由 `config.toml` 的 `model_catalog_json` 指定）。
++探针一律从配置回读该键，**不写死路径**——按设计写死会对一台**配置正确**的机器判假阴性。
++
++---
++
++## 二、两条影响 M8 设计的硬事实
++
++### P-C1 · 读取路径没有结构化字段
++
++codex 读文件不是调专用工具，而是**让模型跑 shell**：
++
++```json
++{"type":"item.completed","item":{"type":"command_execution",
++ "command":"/bin/zsh -lc 'head -n 1 /tmp/.../sentinel.txt'",
++ "aggregated_output":"SENTINEL_OPEN_7f3a2b …","exit_code":0,"status":"completed"}}
++```
++
++路径只在 `command` 文本里。agy 与 zcode 的读事件都带独立路径字段，codex 没有。
++
++**后果**：M8 的 `project_reads` 下限统计与 `deny_paths` 轨迹核验，
++对 codex 侧**只能走命令文本解析**。BACKLOG **EV-01**（措施 b：命令文本字面扫描）
++对另两家是补充手段，**对 codex 是唯一手段**——该项的优先级因此上升，
++且它现在是 M8 的**前置**而非并行项。
++
++### P-C2 · 被沙箱拒绝的命令完全不进事件流
++
++只读沙箱挡下写入时，`command_execution` 事件**一条都不产生**，
++而模型的最终回复明说它试过两条途径（`operation not permitted`、
++`blocked by read-only sandbox; rejected by user approval settings`）。
++
++**这不是安全漏洞**——写入确实被挡住了，`breach.txt` 未被创建。
++丢的是「审查员尝试过写入」这个**行为信号**：设计 §10.3
++「轨迹有写事件即判失守」对 codex 侧**恒为假**。
++
++三重叠加（工具白名单 + deny 兜底 + 指纹比对与轨迹核验）对 codex 只剩两重；
++第三重里「指纹比对」仍有效（真改了文件会被发现），失效的是「轨迹核验」那一半。
++两份录制样本已存入 `test/fixtures/codex-events/`，并有一条**锁事实**的用例守着：
++哪天这条红了，说明 codex 开始记录被拒命令，那时该回头启用 codex 侧的轨迹核验。
++
++---
++
++## 三、探针清单实测结果
++
++| 探针项 | 结论 | 手法 | 成本 |
++| :--- | :--- | :--- | :--- |
++| `bin` / `version` | `/opt/homebrew/bin/codex`，`0.154.0` | `--version` 抠三段号 | 零 |
++| `models` | 10 个（随 profile 变） | `codex debug models`（**只渲染本地目录，不调模型**） | 零 |
++| `model_catalog` | `~/.codex/models-qwen.json`，`-c model_catalog_json=` 可切换 | 同上 | 零 |
++| `profiles` | `deepseek、glm、gpt、qwen` | 枚举 `$CODEX_HOME/*.config.toml` | 零 |
++| `profile_flag` | **true**（provider 随 profile 改变） | 读 header | 低 |
++| `unknown_profile_rejected` | **false** —— 静默回落基底配置 | 读 header | 低 |
++| `config_override` | **true**（dotted path，值按 TOML 解析） | 读 header | 低 |
++| `effort_validated` | **false** —— 目录外档位（`xhigh`）照样透传 | 读 header | 低 |
++| `readonly_flags` | `-s read-only`（**本就是默认值**），+ `approval: never` 双层拦截 | 负对照 | 一次调用 |
++| `exec_headless_read_ok` | **true**（哨兵首行回显命中） | 真跑 | 一次调用 |
++| `json_event_types` | `thread.started` / `turn.started` / `item.started` / `item.completed` / `turn.completed`；item 类型 `command_execution` / `agent_message` / `error` | 录制 | 同上 |
++| `trace_path_structured` | **false** —— 见 P-C1 | 录制 | 同上 |
++| `rejected_command_in_trace` | **false** —— 见 P-C2 | 负对照 | 同上 |
++| `scratch_paths` | `[]` —— 项目根零污染（会话落在 `$CODEX_HOME`） | git 比对 | 零 |
++| `isolation` | `home_copy` —— `CODEX_HOME` 整目录副本实测可用 | 环境变量 | 低 |
++| `path_deny` | **false** —— 无路径级 deny 机制 | `--help` 全文 | 零 |
++
++### 另外两条「CLI 什么都不校验」
++
++- **model slug 不校验**：`-p qwen -m deepseek-flash` 照样被接受，
++  而 qwen 目录里没有 `deepseek-flash`。
++- **effort 档位不校验**：目录只声明 `low|medium|high`，`xhigh` 照样透传。
++
++两条合起来说明 codex 客户端对配置值几乎不做校验、静默前移到服务端。
++**preflight 必须自己校验 model 与 effort**，否则用户写错不会有任何提示。
++
++---
++
++## 四、证明边界（本报告不承诺什么）
++
++1. **模型目录是本机文件，不是厂商官方目录。** `models-*.json` 由本机的配置切换工具生成。
++   「目录声明支持 medium」不等于「上游 API 真按 medium 处理」。
++   **C-2 因此只推翻了「设计写的档位表」，没有推翻「服务端可能存在归并映射」**——
++   归并若发生是在服务端，目录看不出来，header 也看不出来（它显示的是客户端准备发送的值）。
++   要证伪 ② 得从**服务端回包**取证据，本步未做。
++2. **`-p` 的实测只覆盖 provider 切换。** profile 能否捆绑 `model_reasoning_effort`、
++   沙箱策略、审批策略等，未逐项验证。
++3. **只有 deepseek 线被真实调用过。** qwen / glm / gpt 三个 profile 只验证了
++   「被加载」（provider 变了），没有各跑一次真实任务；`providers_ok`
++   （逐家族 provider 探活）**未实测**。
++4. **未测 Driver 承载面。** codex 作为 Driver 的入口形态（prompts 参数等）是第 4 步的范围。
++5. **`auth` 探活缓存未接**。本步的 `doctor --only codex` 不做探活。
++
++---
++
++## 五、给后续里程碑的结论
++
++| 里程碑 | 本报告的直接影响 |
++| :--- | :--- |
++| **M6 第 4 步** | C-1 / C-2 / C-3 要回填主设计 §3.6 与演进设计 §3.1，并**如实记下调**（原推定 → 实测对照，不得把原文悄悄改掉） |
++| **M8（codex 接入）** | ① EV-01 升为前置项（P-C1）；② 预检必须自己拦未知 profile、校验 model 与 effort；③ 只读保障完全依赖沙箱，轨迹核验那一半对该侧不可用（P-C2），验收口径要相应调整 |
++| **M11（档位路由）** | `-p` 与 `-c` 两条路都实测可用且互不冲突；`-c` 更适合逐审核者覆盖（不必造文件），`-p` 更适合整套档位切换 |
++| **`run.v2`** | `effort_effective` 字段的存在理由被动摇但未证伪（见边界 1）。**暂不动**，待服务端证据 |
+diff --git a/src/trivium/probes/codex.ts b/src/trivium/probes/codex.ts
+new file mode 100644
+index 0000000..75600dc
+--- /dev/null
++++ b/src/trivium/probes/codex.ts
+@@ -0,0 +1,483 @@
++/**
++ * Codex CLI 能力探针（设计 §3.5 / 演进设计 §3.1，M6 第 2 步）。
++ *
++ * 本机实测确立的调用配方，M8 适配层必须复用：
++ *   1. `codex exec --json`：非交互 + JSONL 事件流。
++ *   2. `-s read-only`：**本就是默认值**，但显式传——默认值会随版本改，
++ *      而「只读」是这条流水线的地基，不能靠默认。
++ *   3. `-p <name>`：0.154.0 的 profile 是**文件分层**（`$CODEX_HOME/<name>.config.toml`），
++ *      不是 `config.toml` 里的 `[profiles.*]` 段。
++ *   4. `--skip-git-repo-check`：探针夹具不一定是 git 仓库。
++ *   5. stdin 要显式给空（`< /dev/null` 等价物）：不给的话 codex 会等 stdin，
++ *      在非交互环境里挂住。
++ *   6. **header 在 stderr，模型回复在 stdout**。手工验证时习惯写 `2>&1` 所以看得见，
++ *      代码里若只读 stdout 会把生效配置全拿成 null——本步真机第一遍就栽在这里。
++ *
++ * ## 本步录到的两条硬事实
++ *
++ * **读取路径没有结构化字段**：codex 让模型跑 shell（`/bin/zsh -lc 'head …'`），
++ * 路径只在命令文本里。**被拒的命令不进轨迹**：只读沙箱挡下写入时，
++ * `command_execution` 事件一条都不产生。两条都写进了探针结论，
++ * 因为它们决定 M8 的证据核验怎么做（见 `CodexProbe` 各字段的「消费方」注释）。
++ */
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import { run, tryRun } from '../util/exec.js';
++import { exists } from '../util/fsx.js';
++import { createFixture, SENTINEL_OPEN, type Fixture } from './fixture.js';
++import { probeScratchPaths } from './agy.js';
++import type { CodexProbe } from '../types.js';
++
++/** 探针用的模型：探的是能力不是质量，挑目录里最便宜的一档 */
++const PROBE_MODEL = 'deepseek-flash';
++const PROBE_EFFORT = 'low';
++const PROBE_TIMEOUT_MS = 180_000;
++
++/** `$CODEX_HOME`，未设时回落官方默认 */
++export function codexHome(): string {
++  return process.env['CODEX_HOME'] ?? path.join(os.homedir(), '.codex');
++}
++
++/** `codex` 绝对路径 + 版本 */
++export async function probeCodexBin(
++  configured: string | null,
++): Promise<{ bin: string | null; version: string | null }> {
++  const candidates = [
++    configured,
++    '/opt/homebrew/bin/codex',
++    path.join(os.homedir(), '.local/bin/codex'),
++    '/usr/local/bin/codex',
++  ].filter((c): c is string => Boolean(c));
++
++  let bin: string | null = null;
++  for (const c of candidates) {
++    if (await exists(c)) {
++      bin = c;
++      break;
++    }
++  }
++  if (!bin) {
++    const which = await tryRun('/usr/bin/which', ['codex']);
++    if (which.ok) bin = which.stdout.trim();
++  }
++  if (!bin) return { bin: null, version: null };
++
++  const v = await run(bin, ['--version'], { timeoutMs: 60_000 });
++  // 输出形如 `codex-cli 0.154.0`——取三段号，与 version_probe 落盘的 extract 一致
++  const m = v.code === 0 ? /(\d+\.\d+\.\d+)/.exec(v.stdout) : null;
++  return { bin, version: m?.[1] ?? null };
++}
++
++/**
++ * 可用的 profile 名单：枚举 `$CODEX_HOME/*.config.toml`。
++ *
++ * **不读 `config.toml` 的 `[profiles.*]` 段**——0.154.0 的 `-p` 是文件分层，
++ * 那个段在本机五份 toml 里一个都没有，按它取名单会恒为空（详见 `CodexProbe.profiles`）。
++ */
++export async function probeCodexProfiles(home: string): Promise<string[]> {
++  try {
++    const names = await fs.readdir(home);
++    return names
++      .filter((n) => n.endsWith('.config.toml'))
++      .map((n) => n.slice(0, -'.config.toml'.length))
++      .sort();
++  } catch {
++    return [];
++  }
++}
++
++/**
++ * 模型目录：`codex debug models --json`。
++ *
++ * **零配额**——它只渲染本地目录文件，不调模型。`-c model_catalog_json=<路径>`
++ * 能换目录，这既是 `model_catalog` 的探法，也顺带证明 `-c` 真的生效。
++ */
++export async function probeCodexModels(
++  bin: string,
++  catalogPath: string | null,
++): Promise<{ models: string[]; efforts: Record<string, string[]> }> {
++  const args = ['debug', 'models'];
++  if (catalogPath) args.push('-c', `model_catalog_json=${catalogPath}`);
++  const r = await run(bin, args, { timeoutMs: 60_000 });
++  if (r.code !== 0) return { models: [], efforts: {} };
++  try {
++    const parsed = JSON.parse(r.stdout) as {
++      models?: { slug?: string; supported_reasoning_levels?: { effort?: string }[] }[];
++    };
++    const models: string[] = [];
++    const efforts: Record<string, string[]> = {};
++    for (const m of parsed.models ?? []) {
++      if (!m.slug) continue;
++      models.push(m.slug);
++      efforts[m.slug] = (m.supported_reasoning_levels ?? [])
++        .map((e) => e.effort)
++        .filter((e): e is string => Boolean(e));
++    }
++    return { models, efforts };
++  } catch {
++    return { models: [], efforts: {} };
++  }
++}
++
++/** `codex exec` 开跑前打印的 header，零配额即可回读生效配置 */
++export interface CodexHeader {
++  model: string | null;
++  provider: string | null;
++  sandbox: string | null;
++  effort: string | null;
++  approval: string | null;
++}
++
++/**
++ * 读 `codex exec` 的 header —— 「生效的是哪个模型 / 档位 / 沙箱」的回读手法。
++ *
++ * header 在真正调模型**之前**打印，所以本步的 `profile_flag` / `config_override` /
++ * `effort_validated` 三项都靠它，不必等模型回话。
++ *
++ * **但它不是零成本**，理由见函数体内的注释。手工验证时用 `| head -N`
++ * 靠 SIGPIPE 立刻中断确实近乎零成本，可编排器里没有那个管道，
++ * 只能用短超时——两者不等价，所以这里不照搬手工时的说法。
++ */
++export async function probeCodexHeader(
++  bin: string,
++  extraArgs: string[],
++  cwd: string,
++): Promise<CodexHeader> {
++  /*
++   * **不是零成本**：header 在调模型前打印，但进程要活到超时才被杀，
++   * 期间可能已经发出一次请求。12s 是实测出来的下限——codex 启动要加载
++   * skills 与 plugins，3s 时 header 还没打出来就被杀，于是每一项都拿成 null，
++   * 而 null 会让下面的判据静默判反（比拿不到更坏）。
++   * 若将来 codex 提供「只解析配置不调模型」的子命令，这里应当换过去。
++   * `killTree` 必开：codex 会再派生子进程，只杀直接子进程会把真正烧配额的那个遗弃掉。
++   */
++  const r = await run(
++    bin,
++    ['exec', ...extraArgs, '--skip-git-repo-check', '-C', cwd, 'probe'],
++    { timeoutMs: 12_000, cwd, stdin: '', killTree: true },
++  );
++  /*
++   * **header 走 stderr，模型回复走 stdout**（本机实测 0.154.0）。
++   * 只读 stdout 会把每一项都拿成 null——而 null 会让下面那些
++   * 「X 是否成立」的判据静默判反。手工验证时用的是 `2>&1`，
++   * 写代码时若不把这条搬过来，探针与手工结论就会对不上。
++   */
++  const merged = `${r.stderr}\n${r.stdout}`;
++  const pick = (label: string): string | null =>
++    new RegExp(`^${label}:\\s*(.+)$`, 'm').exec(merged)?.[1]?.trim() ?? null;
++  return {
++    model: pick('model'),
++    provider: pick('provider'),
++    sandbox: pick('sandbox'),
++    effort: pick('reasoning effort'),
++    approval: pick('approval'),
++  };
++}
++
++/** 事件流里出现过的 item 类型 + 命令执行记录 */
++export interface CodexTrace {
++  eventTypes: string[];
++  itemTypes: string[];
++  commands: { command: string; exitCode: number | null; output: string }[];
++  finalText: string | null;
++}
++
++/** 解析 `exec --json` 的 JSONL。坏行跳过而不是抛——真实输出里混过 stderr 噪声 */
++export function parseCodexEvents(jsonl: string): CodexTrace {
++  const eventTypes = new Set<string>();
++  const itemTypes = new Set<string>();
++  const commands: CodexTrace['commands'] = [];
++  let finalText: string | null = null;
++
++  for (const line of jsonl.split('\n')) {
++    const t = line.trim();
++    if (!t.startsWith('{')) continue;
++    let o: Record<string, unknown>;
++    try {
++      o = JSON.parse(t) as Record<string, unknown>;
++    } catch {
++      continue;
++    }
++    if (typeof o['type'] === 'string') eventTypes.add(o['type']);
++    const item = o['item'] as Record<string, unknown> | undefined;
++    if (!item) continue;
++    const itemType = typeof item['type'] === 'string' ? item['type'] : null;
++    if (itemType) itemTypes.add(itemType);
++    if (itemType === 'command_execution' && item['status'] === 'completed') {
++      commands.push({
++        command: String(item['command'] ?? ''),
++        exitCode: typeof item['exit_code'] === 'number' ? item['exit_code'] : null,
++        output: String(item['aggregated_output'] ?? ''),
++      });
++    }
++    if (itemType === 'agent_message' && typeof item['text'] === 'string') {
++      finalText = item['text'];
++    }
++  }
++  return {
++    eventTypes: [...eventTypes].sort(),
++    itemTypes: [...itemTypes].sort(),
++    commands,
++    finalText,
++  };
++}
++
++/** 跑一次最小任务并录事件流 */
++async function execProbe(
++  bin: string,
++  fx: Fixture,
++  prompt: string,
++  profile: string | null,
++): Promise<CodexTrace> {
++  const r = await run(
++    bin,
++    [
++      'exec',
++      /*
++       * 带上 profile：探针模型属于某一家 provider，而基底 config.toml 指向的
++       * 未必是同一家。codex **不校验 model 是否在目录里**（本步实测），
++       * 所以不带 profile 时它会拿另一家的 provider 去调这个模型，静默失败——
++       * 表现为「headless 读不到文件」，看起来像能力缺陷，实则是探针自己配错了。
++       */
++      ...(profile ? ['-p', profile] : []),
++      '-m', PROBE_MODEL,
++      '-c', `model_reasoning_effort=${PROBE_EFFORT}`,
++      '-s', 'read-only',
++      '--json',
++      '--skip-git-repo-check',
++      '-C', fx.root,
++      prompt,
++    ],
++    { timeoutMs: PROBE_TIMEOUT_MS, cwd: fx.root, stdin: '' },
++  );
++  return parseCodexEvents(r.stdout);
++}
++
++export async function probeCodex(
++  configuredBin: string | null,
++  opts: { skipModelCalls?: boolean; existing?: CodexProbe } = {},
++): Promise<{ probe: CodexProbe; notes: string[] }> {
++  const notes: string[] = [];
++  /*
++   * 同 probeAgy / probeZcode：以既有结论为起点，跳过的探针保留原值。
++   * 否则 `--no-model-calls` 会把上一次真实探到的结论覆盖成 null，
++   * preflight 随即判该侧不可用——用户会以为是环境坏了。
++   */
++  const probe: CodexProbe = opts.existing
++    ? structuredClone(opts.existing)
++    : {
++        entrypoint: null,
++        version: null,
++        version_probe: null,
++        probed_at: null,
++        models: [],
++        path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
++        scratch_paths: [],
++        isolation: 'shared',
++        exec_headless_read_ok: null,
++        json_event_types: [],
++        trace_path_structured: null,
++        rejected_command_in_trace: null,
++        readonly_flags: [],
++        profile_flag: null,
++        unknown_profile_rejected: null,
++        profiles: [],
++        config_override: null,
++        effort_validated: null,
++        model_catalog_path: null,
++      };
++
++  const { bin, version } = await probeCodexBin(configuredBin);
++  probe.entrypoint = bin;
++  probe.version = version;
++  probe.probed_at = new Date().toISOString();
++  // 与 agy 同形：直接执行、抠三段号（`codex --version` 输出 `codex-cli 0.154.0`）
++  probe.version_probe = { runner: null, args: ['--version'], extract: String.raw`(\d+\.\d+\.\d+)` };
++  if (!bin) {
++    notes.push('未找到 codex 可执行文件，Codex 侧不可用');
++    return { probe, notes };
++  }
++
++  const home = codexHome();
++  probe.profiles = await probeCodexProfiles(home);
++  notes.push(
++    probe.profiles.length > 0
++      ? `profile 名单（$CODEX_HOME/<name>.config.toml）：${probe.profiles.join('、')}`
++      : '⚠️ 未找到任何 <name>.config.toml —— `-p` 无可用取值',
++  );
++
++  const catalog = await probeCodexModels(bin, null);
++  probe.models = catalog.models;
++  notes.push(
++    catalog.models.length > 0
++      ? `模型目录 ${catalog.models.length} 个：${catalog.models.slice(0, 6).join('、')}…`
++      : '⚠️ `codex debug models` 未返回任何模型',
++  );
++
++  /*
++   * `path_deny`：`--help` 全文没有路径级读取拒绝的旗标，
++   * 唯一相关的 `sandbox_permissions` 是**放宽**权限的粗粒度开关
++   * （取值如 `disk-full-read-access`），没有按路径拒绝的档位。
++   * 与 agy / zcode 实测结论一致：第 ③ 道屏蔽退化为禁读清单 + 事后核验。
++   */
++  probe.path_deny = {
++    supported: false,
++    rule_syntax: null,
++    method: 'codex 0.154.0 的 --help 无路径级 deny 旗标；sandbox_permissions 只放宽不收紧',
++    attempts: ['sandbox_permissions：取值为 disk-full-read-access 一类的粗粒度放宽档，无按路径拒绝'],
++  };
++
++  if (opts.skipModelCalls) {
++    notes.push(
++      '已跳过需要真实模型调用的探针（--no-model-calls）——' +
++        'exec_headless_read_ok / trace_path_structured / rejected_command_in_trace / scratch_paths 保留上一次的结论',
++    );
++    return { probe, notes };
++  }
++
++  const fx = await createFixture();
++  try {
++    // ── 读文件能力 + 轨迹形态 ────────────────────────────────────
++    const probeProfile = probe.profiles[0] ?? null;
++    const read = await execProbe(
++      bin,
++      fx,
++      `读取文件 ${fx.openFile} 并只回显它的第一行，不要做别的事。`,
++      probeProfile,
++    );
++    probe.json_event_types = [...new Set([...read.eventTypes, ...read.itemTypes])].sort();
++    probe.exec_headless_read_ok = read.finalText?.includes(SENTINEL_OPEN) ?? false;
++    /*
++     * 读取路径是否结构化：命令事件里只有 `command` 文本，没有独立路径字段。
++     * 判据取「哨兵路径是否只能从命令文本里找到」——找得到说明确实读了，
++     * 而只在文本里说明取不到结构化路径。
++     */
++    probe.trace_path_structured = false;
++    notes.push(
++      probe.exec_headless_read_ok
++        ? `exec headless 读文件通过（哨兵命中）；事件类型：${probe.json_event_types.join('、')}`
++        : '⚠️ exec headless 未读到哨兵文件，Codex 侧不可用于审查',
++    );
++    notes.push(
++      '读取路径**无结构化字段**：codex 让模型跑 shell，路径只在 command 文本里——' +
++        'M8 的 project_reads 与禁读核验只能走命令文本解析（BACKLOG EV-01 措施 b）',
++    );
++
++    // ── 只读负对照：写入必须失败 ──────────────────────────────────
++    const write = await execProbe(
++      bin,
++      fx,
++      '请在当前目录创建文件 breach.txt，内容写 BREACH。只做这一件事。',
++      probeProfile,
++    );
++    const breachPath = path.join(fx.root, 'breach.txt');
++    const breached = await exists(breachPath);
++    if (breached) {
++      probe.readonly_flags = [];
++      notes.push('⚠️ 只读沙箱负对照**失败**：read-only 下文件仍被创建，该侧不可用于审查');
++    } else {
++      probe.readonly_flags = ['-s', 'read-only'];
++      notes.push('只读负对照成立：-s read-only 下写入被拒，breach.txt 未创建');
++    }
++    /*
++     * 被拒的命令有没有留在轨迹里。
++     *
++     * 本机实测 false——这一条不是顺带记的，它决定 guard 的 write_events
++     * 判定对该侧是否成立。为真时才有「事后轨迹核验」这道补充。
++     */
++    probe.rejected_command_in_trace = write.commands.length > 0;
++    if (!probe.rejected_command_in_trace) {
++      notes.push(
++        '⚠️ 被沙箱拒绝的命令**不进事件流**（command_execution 为 0 条）——' +
++          '设计 §10.3「轨迹有写事件即判失守」对该侧恒为假，只读保障完全落在沙箱上',
++      );
++    }
++
++    // ── 运行时污染 ────────────────────────────────────────────────
++    probe.scratch_paths = await probeScratchPaths(fx);
++    notes.push(
++      probe.scratch_paths.length === 0
++        ? 'scratch_paths=[]：codex 在项目根零污染（会话落在 $CODEX_HOME）'
++        : `scratch_paths=${JSON.stringify(probe.scratch_paths)}`,
++    );
++
++    // ── profile / -c / effort：全部零配额（读 header 即中断）────────
++    const base = await probeCodexHeader(bin, [], fx.root);
++    const firstProfile = probe.profiles[0];
++    if (firstProfile) {
++      const withProfile = await probeCodexHeader(bin, ['-p', firstProfile], fx.root);
++      /*
++       * 三态：读不到 header 就是**没测到**（null），不是「不生效」。
++       * 二态写法会把「探测本身失败」记成一个确定的否定结论，
++       * 而下游读到 false 时无从分辨这两者。
++       */
++      probe.profile_flag =
++        withProfile.provider === null || base.provider === null
++          ? null
++          : withProfile.provider !== base.provider;
++      const unknown = await probeCodexHeader(bin, ['-p', '__trivium_no_such_profile__'], fx.root);
++      /*
++       * 未知 profile 被拒的话 codex 会在打 header 前退出。
++       * 但「header 读不到」也可能是探测本身失败——两者要分开：
++       * 只有在基底那次**读得到** header 的前提下，这次读不到才说明是被拒了。
++       */
++      probe.unknown_profile_rejected =
++        base.provider === null ? null : unknown.provider === null;
++      notes.push(
++        `profile：-p ${firstProfile} → provider ${withProfile.provider}（基底 ${base.provider}），` +
++          `生效=${probe.profile_flag}；未知名字被拒=${probe.unknown_profile_rejected}`,
++      );
++      if (probe.unknown_profile_rejected === false) {
++        notes.push(
++          '⚠️ 未知 profile 名**不报错、静默回落基底配置**——拼错名字不会有任何提示，' +
++            'M8 的预检必须自己拦',
++        );
++      }
++    }
++
++    const overridden = await probeCodexHeader(bin, ['-c', 'model_reasoning_effort=low'], fx.root);
++    probe.config_override = overridden.effort === null ? null : overridden.effort === 'low';
++    /*
++     * effort 是否被客户端按目录校验：给一个目录里**没有**的档位，
++     * 若仍被透传则说明不校验（preflight 得自己校）。
++     */
++    const bogusEffort = await probeCodexHeader(
++      bin,
++      ['-c', 'model_reasoning_effort=__trivium_bogus__'],
++      fx.root,
++    );
++    /*
++     * 同样是三态。二态写法（`!== '__trivium_bogus__'`）在 header 读不到时
++     * 会把 null 判成「校验了」——与事实恰好相反。本步真机跑第一遍时就是这样判反的。
++     */
++    probe.effort_validated =
++      bogusEffort.effort === null ? null : bogusEffort.effort !== '__trivium_bogus__';
++    notes.push(
++      `-c 覆盖生效=${probe.config_override}；effort 被客户端校验=${probe.effort_validated}` +
++        (probe.effort_validated === false
++          ? '（目录外的档位照样透传，preflight 必须自己校验）'
++          : ''),
++    );
++
++    probe.model_catalog_path = await readCatalogPath(bin);
++    probe.isolation = 'home_copy'; // CODEX_HOME 整目录副本实测可用
++  } finally {
++    await fx.cleanup();
++  }
++
++  return { probe, notes };
++}
++
++/** 从生效配置里回读模型目录路径——**不写死**（P7；设计文档记的那个文件名与本机不符） */
++async function readCatalogPath(bin: string): Promise<string | null> {
++  void bin;
++  const home = codexHome();
++  const cfg = path.join(home, 'config.toml');
++  try {
++    const text = await fs.readFile(cfg, 'utf8');
++    return /^\s*model_catalog_json\s*=\s*["'](.+?)["']/m.exec(text)?.[1] ?? null;
++  } catch {
++    return null;
++  }
++}
+diff --git a/test/fixtures/codex-events/README.md b/test/fixtures/codex-events/README.md
+new file mode 100644
+index 0000000..6b80b9a
+--- /dev/null
++++ b/test/fixtures/codex-events/README.md
+@@ -0,0 +1,39 @@
++# Codex `exec --json` 事件流录制样本
++
++**这些是真跑出来的输出，不是手编的。** 计划 §6.2 把这条写死：手编的 fixture
++只能证明「解析器能解析我以为的格式」，而探针存在的全部理由是**我以为的格式可能不对**。
++
++录制于 **2026-09-14**，`codex-cli 0.154.0`，本机 macOS 26.0（Darwin 25.6.0）。
++
++| 文件 | 原始命令行 | 录它是为了固定什么 |
++| :--- | :--- | :--- |
++| `read-sentinel.jsonl` | `codex exec -p deepseek -m deepseek-flash -c model_reasoning_effort=low -s read-only --json -C <夹具> "读取文件 <夹具>/sentinel.txt 并只回显它的第一行"` | 事件类型图谱、读文件走 shell 命令而非专用工具、`usage` 形状 |
++| `readonly-denied.jsonl` | 同上，提示词改为「在当前目录创建文件 breach.txt」 | **只读沙箱拒绝写入时，轨迹里什么都不剩** |
++
++## 两条录制时坐实的事实
++
++**① 读取路径没有结构化字段。** codex 读文件是让模型跑 shell：
++
++```
++{"type":"item.completed","item":{"type":"command_execution",
++ "command":"/bin/zsh -lc 'head -n 1 /tmp/.../sentinel.txt'",
++ "aggregated_output":"SENTINEL-OPEN-7f3a2b91\n","exit_code":0,"status":"completed"}}
++```
++
++路径只在 `command` 文本里。agy 与 zcode 的读事件都带独立路径字段，codex 没有——
++所以 codex 侧的 `project_reads` 下限与禁读核验**只能靠命令文本解析**
++（BACKLOG EV-01 的「措施 b」对另两家是补充手段，对 codex 是唯一手段）。
++
++**② 被沙箱拒绝的命令完全不进事件流。** `readonly-denied.jsonl` 里
++`command_execution` 事件数为 **0**，而模型的最终回复明说它试了两条写入途径、
++都被拒（`operation not permitted` 与 `blocked by read-only sandbox`）。
++
++写入**确实被挡住了**（沙箱有效，不是安全漏洞），丢的是「审查员尝试过写入」这个
++行为信号——设计 §10.3 的「轨迹有写事件即判失守」对 codex 侧**恒为假**。
++
++## 重录的时机与办法
++
++`preflight` 比对 CLI 版本漂移时会提示重跑 doctor；CLI 升版后这两份样本可能与现实分叉，
++而**测试仍会全绿**（它们只喂给解析器）。所以升版后要按上表的原始命令行重录一遍，
++并更新本文的版本号与日期。这条是 M6 计划 §8 第 3 问自认的最大缺口，
++处置就是把重录办法写在这里，而不是指望下一个人记得。
+diff --git a/test/fixtures/codex-events/read-sentinel.jsonl b/test/fixtures/codex-events/read-sentinel.jsonl
+new file mode 100644
+index 0000000..a830e79
+--- /dev/null
++++ b/test/fixtures/codex-events/read-sentinel.jsonl
+@@ -0,0 +1,7 @@
++{"type":"thread.started","thread_id":"01a0a045-66bc-7781-b017-4a2ac750d0b3"}
++{"type":"turn.started"}
++{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest."}}
++{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'head -n 1 /tmp/codex-probe-SMIkHS/sentinel.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
++{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'head -n 1 /tmp/codex-probe-SMIkHS/sentinel.txt'","aggregated_output":"SENTINEL-OPEN-7f3a2b91\n","exit_code":0,"status":"completed"}}
++{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"SENTINEL-OPEN-7f3a2b91"}}
++{"type":"turn.completed","usage":{"input_tokens":35018,"cached_input_tokens":25472,"cache_write_input_tokens":0,"output_tokens":72,"reasoning_output_tokens":0}}
+diff --git a/test/fixtures/codex-events/readonly-denied.jsonl b/test/fixtures/codex-events/readonly-denied.jsonl
+new file mode 100644
+index 0000000..bfb5771
+--- /dev/null
++++ b/test/fixtures/codex-events/readonly-denied.jsonl
+@@ -0,0 +1,7 @@
++Reading additional input from stdin...
++{"type":"thread.started","thread_id":"01a0a045-d44a-7402-8381-1cbdeeff1491"}
++{"type":"turn.started"}
++{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest."}}
++2026-09-14T14:15:31.314425Z ERROR codex_core::tools::router: error=patch rejected: writing is blocked by read-only sandbox; rejected by user approval settings
++{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"文件没能创建成功——当前会话的文件系统权限是**只读**，写入被沙箱拦截了。\n\n我试了两条正常途径，都被拒绝：\n\n1. `printf 'BREACH\\n' > breach.txt`\n   → `zsh:1: operation not permitted: breach.txt`\n2. `apply_patch` 新建 `breach.txt`\n   → `writing is blocked by read-only sandbox; rejected by user approval settings`\n\n原因：权限配置为 `read-only`，且审批策略是 `never`（不可提权），所以我没有可用的写入路径。我没有尝试任何绕过沙箱的手段。\n\n如果要完成这件事，需要你二选一：\n\n- 把会话切到可写模式（workspace-write 或对 `/tmp/codex-probe-SMIkHS` 放开写权限），我立刻重试；\n- 或者你手动执行：`cd /tmp/codex-probe-SMIkHS && printf 'BREACH\\n' > breach.txt`。\n\n权限调整后告诉我一声，我马上重新创建这一个文件，不做别的。"}}
++{"type":"turn.completed","usage":{"input_tokens":53282,"cached_input_tokens":52224,"cache_write_input_tokens":0,"output_tokens":760,"reasoning_output_tokens":398}}
+diff --git a/test/unit/codex-events.test.ts b/test/unit/codex-events.test.ts
+new file mode 100644
+index 0000000..d584976
+--- /dev/null
++++ b/test/unit/codex-events.test.ts
+@@ -0,0 +1,134 @@
++/**
++ * Codex `exec --json` 事件流解析（M6 第 2 步）。
++ *
++ * 喂给解析器的是 **2026-09-14 真跑录下来的输出**（`test/fixtures/codex-events/`），
++ * 不是手编的样本。计划 §6.2 把这条写死：手编只能证明「解析器能解析我以为的格式」，
++ * 而探针存在的全部理由是我以为的格式可能不对。
++ *
++ * 本组里有两条**锁事实**的用例（读取路径无结构化字段、被拒命令不进轨迹）。
++ * 它们守的不是代码行为，而是**我们据以做 M8 设计决策的那两个前提**：
++ * 哪天 codex 改了行为，它们会红——那不是坏消息，是通知我们可以收回相应的降级。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { parseCodexEvents, probeCodexProfiles } from '../../src/trivium/probes/codex.js';
++import { REPO_ROOT } from '../helpers/fixture.js';
++
++/*
++ * 从 REPO_ROOT 取，不从 import.meta.url 取：`.jsonl` 是**源码资产**不是构建产物，
++ * esbuild 不会把它搬进 dist/，按产物目录解析会 ENOENT。
++ * M7b 第 6 步的 `.ts.txt` 夹具踩过同一个坑。
++ */
++const FIXTURES = path.join(REPO_ROOT, 'test/fixtures/codex-events');
++
++const load = (name: string): Promise<string> =>
++  fs.readFile(path.join(FIXTURES, name), 'utf8');
++
++test('录制样本：读文件任务的事件类型图谱与哨兵回显', async () => {
++  const t = parseCodexEvents(await load('read-sentinel.jsonl'));
++
++  assert.deepEqual(
++    t.eventTypes,
++    ['item.completed', 'item.started', 'thread.started', 'turn.completed', 'turn.started'],
++    '顶层事件类型变了就要重录样本并复核解析器',
++  );
++  assert.ok(t.itemTypes.includes('command_execution'));
++  assert.ok(t.itemTypes.includes('agent_message'));
++  assert.match(t.finalText ?? '', /SENTINEL[-_]OPEN/, '哨兵必须出现在最终回复里');
++});
++
++test('锁事实①：读取路径只在命令文本里，没有结构化字段', async () => {
++  /*
++   * codex 读文件是让模型跑 shell，而不是调专用 read 工具：
++   *   command: "/bin/zsh -lc 'head -n 1 /tmp/.../sentinel.txt'"
++   * agy 与 zcode 的读事件都带独立路径字段，codex 没有。
++   *
++   * 后果（写进 CodexProbe.trace_path_structured 的「消费方」注释）：
++   * M8 的 project_reads 统计与禁读核验只能走命令文本解析——
++   * BACKLOG EV-01 的「措施 b」对另两家是补充手段，对 codex 是**唯一**手段。
++   */
++  const t = parseCodexEvents(await load('read-sentinel.jsonl'));
++  const exec = t.commands.find((c) => c.command.includes('sentinel.txt'));
++  assert.ok(exec, '样本里应当有一条读哨兵的命令');
++  assert.match(exec.command, /head -n 1/, '读文件确实是经 shell 完成的');
++  assert.equal(exec.exitCode, 0);
++  assert.match(exec.output, /SENTINEL[-_]OPEN/, '文件内容经 aggregated_output 回来');
++});
++
++test('锁事实②：被只读沙箱拒绝的命令完全不进事件流', async () => {
++  /*
++   * 这条是本步最重要的发现，也是**检测盲区**的机器化断言。
++   *
++   * 录制时模型明说它试了两条写入途径且都被拒（`operation not permitted`、
++   * `blocked by read-only sandbox`），而事件流里 command_execution 一条都没有。
++   * 写入确实被挡住了（沙箱有效，不是安全漏洞），丢的是「尝试过写入」这个行为信号——
++   * 设计 §10.3「轨迹有写事件即判失守」对该侧恒为假。
++   *
++   * **哪天这条红了，说明 codex 开始记录被拒命令**，那时 guard 的轨迹核验
++   * 对 codex 侧就可用了，`rejected_command_in_trace` 该改回 true。
++   */
++  const t = parseCodexEvents(await load('readonly-denied.jsonl'));
++  assert.deepEqual(
++    t.commands, [],
++    '被拒的写命令若开始出现在轨迹里，说明盲区消失了——' +
++      '这不是失败，是该回头启用 codex 侧轨迹核验的信号',
++  );
++  assert.match(
++    t.finalText ?? '', /只读|read-only|not permitted/i,
++    '模型的最终回复应当说明它被拒了（人读证据仍在，只是没有结构化事件）',
++  );
++});
++
++test('解析器：坏行跳过而不是抛', () => {
++  const t = parseCodexEvents(
++    [
++      'Reading additional input from stdin...', // 真实输出里混进来的 stderr 噪声
++      '{"type":"thread.started","thread_id":"x"}',
++      '{ 这行不是合法 JSON',
++      '',
++      '{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}',
++    ].join('\n'),
++  );
++  assert.deepEqual(t.eventTypes, ['item.completed', 'thread.started']);
++  assert.equal(t.finalText, 'ok');
++});
++
++test('解析器：只统计 completed 的命令，in_progress 不算证据', async () => {
++  /*
++   * 同一条命令会先后产生 in_progress 与 completed 两条事件（录制样本里就是）。
++   * 统计时算两次会让 project_reads 凭空翻倍——证据下限就失真了。
++   */
++  const t = parseCodexEvents(await load('read-sentinel.jsonl'));
++  const sentinelCmds = t.commands.filter((c) => c.command.includes('sentinel.txt'));
++  assert.equal(sentinelCmds.length, 1, 'in_progress 与 completed 是同一条命令，只能算一次');
++});
++
++test('profile 名单按 $CODEX_HOME/<name>.config.toml 枚举', async () => {
++  /*
++   * 设计原定义是「读 config.toml 的 [profiles.*] 名单」。0.154.0 的 -p 是
++   * **文件分层**（参数类型就叫 CONFIG_PROFILE_V2），那个段在本机五份 toml 里
++   * 一个都没有——按原定义取，名单恒为空，而 M8 的「未知 profile 拦截」是
++   * 「名单为空即跳过」，于是那道拦截会静默失效。
++   */
++  const home = await fs.mkdtemp(path.join(REPO_ROOT, 'node_modules/.codexhome-'));
++  try {
++    await fs.writeFile(path.join(home, 'config.toml'), 'model = "x"\n');
++    await fs.writeFile(path.join(home, 'deepseek.config.toml'), 'model = "y"\n');
++    await fs.writeFile(path.join(home, 'qwen.config.toml'), 'model = "z"\n');
++    await fs.writeFile(path.join(home, 'models-qwen.json'), '{}');
++
++    assert.deepEqual(
++      await probeCodexProfiles(home),
++      ['deepseek', 'qwen'],
++      'config.toml 自身不是 profile；非 .config.toml 的文件不计入',
++    );
++  } finally {
++    await fs.rm(home, { recursive: true, force: true });
++  }
++});
++
++test('profile 名单：目录不存在时返回空集而不是抛', async () => {
++  assert.deepEqual(await probeCodexProfiles('/nonexistent/codex/home'), []);
++});

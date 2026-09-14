@@ -612,8 +612,15 @@ test('doctor --only <已登记未实现> 给出确定答复而不是退 64', asy
    * 下面的 runDoctor 会真去探一侧已实现的，断言当场红。
    *
    * 全部接入后 `unimplemented` 为空集，紧跟的断言会红——那就是提醒删除本用例的机器信号。
+   *
+   * **本条纪律立完的下一轮就被违反了一次**（M6 第 2 步，审查意见 AGY-05）：
+   * codex 探针接入后这里没同步，而测试**没有红**——`unimplemented` 取 `[0]`
+   * 拿到的是排在前面的 claude，照常走「未实现」分支。语义已经错了（codex 已实现
+   * 却被当成未实现），机器却没报警。这恰是上一轮预言的形态：
+   * 「靠的是注册表排序与接入顺序的巧合，不是机制」。
+   * 留着这段话，是因为它比任何抽象告诫都更能说明为什么这里必须手工同步。
    */
-  const PROBE_IMPLEMENTED = ['agy', 'zcode'];
+  const PROBE_IMPLEMENTED = ['agy', 'zcode', 'codex'];
   const unimplemented = ALL_CLI_NAMES.filter((n) => !PROBE_IMPLEMENTED.includes(n));
   assert.ok(
     unimplemented.length > 0,
@@ -622,6 +629,29 @@ test('doctor --only <已登记未实现> 给出确定答复而不是退 64', asy
 
   for (const name of unimplemented) {
     assert.ok(isDoctorOnly(name), `--only ${name} 必须是合法取值（不得退 64）`);
+  }
+
+  /*
+   * **反向守卫**：清单外的每一家，doctor 都必须真的报「尚无探针实现」。
+   *
+   * 正向（「清单内的确实实现了」）不可派生，但反向可以——而漏加恰恰是反向能抓的：
+   * 接入 codex 却忘了同步清单时，codex 落进 `unimplemented`，
+   * 而 doctor 对它**不会**报那句话（它有探针了），这条断言当场红。
+   *
+   * 起草本用例时只写了正向，于是 M6 第 2 步漏加 codex 时测试一声不吭
+   * （`unimplemented[0]` 取到排在前面的 claude，照常走未实现分支）。
+   * 「靠注册表排序的巧合」那句预言，就是在这里应验的。
+   */
+  for (const name of unimplemented) {
+    const probed = await runDoctor({
+      config: defaultConfig(), projectRoot: root, triviumDir,
+      only: name, skipModelCalls: true,
+    });
+    assert.ok(
+      probed.notes.some((n) => n.includes(name) && n.includes('尚无探针实现')),
+      `${name} 不在 PROBE_IMPLEMENTED 里，doctor 却没报「尚无探针实现」——` +
+        `多半是它的探针已经接上了，而这份清单忘了同步`,
+    );
   }
 
   const r = await runDoctor({

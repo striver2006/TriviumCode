@@ -206,6 +206,108 @@ export interface ZcodeProbe extends CommonProbe {
   model_id_form?: string | null;
 }
 
+/**
+ * Codex CLI 的探针结论（M6 第 2 步，本机实测 `codex-cli 0.154.0`）。
+ *
+ * **每个字段都注明谁消费、什么时候消费。** 这是 BACKLOG EV-06 的直接应用——
+ * 那条记的是 `instructionFiles` 登记了却没有任何读取方，于是「登记」被误读成「已生效」。
+ * 探针结论天然是给后续里程碑用的，但「M8 会用」和「没人会用」必须当场分得清。
+ */
+export interface CodexProbe extends CommonProbe {
+  /**
+   * `codex exec` headless 下能否真的读到文件（哨兵首行回显命中）。
+   * **消费方**：M8 适配器的 `availability()`——false 即该侧不可用。
+   */
+  exec_headless_read_ok: boolean | null;
+  /**
+   * `--json` 事件流里出现过的**顶层事件类型**（`thread.started` / `turn.completed` …）。
+   * **消费方**：M8 的轨迹解析器；新类型出现时提示重录样本。
+   */
+  json_event_types: string[];
+  /**
+   * 出现过的 **item 类型**（`command_execution` / `agent_message` / `error` …）。
+   *
+   * 与上一字段分开记（审查意见 GLM-08）：原先合并去重成一个列表，
+   * 而两个名字空间混在一起后不可区分（`error` 是 item 类型、`turn.started` 是事件类型），
+   * 「新类型出现就重录样本」这条消费口径本应对 **item 类型**敏感，合并会把它变粗。
+   * 解析器内部本来就维护着两个独立集合，合并那一步才是多余的。
+   */
+  json_item_types: string[];
+  /**
+   * 读取路径能否从轨迹里**结构化**取出。
+   *
+   * 本机实测 **false**：codex 让模型跑 shell（`/bin/zsh -lc 'head -n 1 …'`），
+   * 路径只存在于 `command` 文本里，没有独立字段。
+   * **消费方**：M8 的 `project_reads` 统计与禁读核验——false 时两者都只能走
+   * 命令文本解析（BACKLOG EV-01 的措施 b，对 codex 是唯一手段而非补充）。
+   */
+  trace_path_structured: boolean | null;
+  /**
+   * 被沙箱拒绝的命令是否留在轨迹里。
+   *
+   * 本机实测 **false**：写入被拒时 `command_execution` 事件一条都不产生。
+   * **消费方**：`guard` 的 `write_events` 判定——false 意味着设计 §10.3
+   * 「轨迹有写事件即判失守」对该侧恒为假，只读保障完全落在沙箱上。
+   * 这不是安全漏洞（写确实被挡住了），是**检测盲区**，必须如实记而不是留空。
+   */
+  rejected_command_in_trace: boolean | null;
+  /**
+   * 实测**实际被接受**的只读参数组合。
+   * **消费方**：M8 适配器构造命令行（P7：命令行由探针结论构造）。
+   */
+  readonly_flags: string[];
+  /**
+   * `-p <name>` 是否真实生效（同一 `-m` 下 provider 随 profile 改变即为真）。
+   * **消费方**：M11 的档位路由选型——决定走 profile 还是 `-c` 覆盖。
+   */
+  profile_flag: boolean | null;
+  /**
+   * 未知 profile 名是否被 CLI 拒绝。
+   *
+   * 本机实测 **false**：`-p __no_such__` 不报错，**静默回落基底配置**。
+   * **消费方**：M8 的预检——false 意味着拼错 profile 名不会有任何提示，
+   * 用户以为跑的是 deepseek、实际跑的是基底那家，因此预检**必须自己拦**。
+   */
+  unknown_profile_rejected: boolean | null;
+  /**
+   * 可用的 profile 名单。
+   *
+   * 取法是枚举 `$CODEX_HOME/*.config.toml`，**不是**读 `config.toml` 的
+   * `[profiles.*]` 段——0.154.0 的 `-p` 是文件分层机制（`CONFIG_PROFILE_V2`），
+   * 那个段在本机五份 toml 里一个都没有。按设计原定义取，名单会**恒为空**，
+   * 而 M8 的「未知 profile 拦截」是「名单为空即跳过」，于是那道拦截静默失效。
+   * **消费方**：M8 预检校验 `--profile` 取值。
+   */
+  profiles: string[];
+  /**
+   * `-c key=value`（dotted path，值按 TOML 解析）是否真实生效。
+   * **消费方**：M11 档位路由的备选路径；也是 `model_catalog` 探测本身的手法。
+   */
+  config_override: boolean | null;
+  /**
+   * 客户端是否校验 effort 档位在该模型的支持列表内。
+   *
+   * 本机实测 **false**：目录只声明 `low|medium|high`，而 `xhigh` 照样被透传。
+   * **消费方**：`preflight` 的档位校验——false 意味着写错档位不会被 CLI 拦，
+   * 得像校验 model slug 一样自己校验。
+   */
+  effort_validated: boolean | null;
+  /**
+   * 模型目录文件的来源路径（从配置的 `model_catalog_json` 读出，**不写死**）。
+   *
+   * 演进设计写的是 `~/.codex/model-catalog.local.json`，本机实际是
+   * `~/.codex/models-qwen.json` 一类随 provider 一份的文件——按设计写死路径
+   * 会对一台**配置正确**的机器判出假阴性（原则 P7）。
+   *
+   * **口径**：优先取本次探针实际使用的 profile 文件里的 `model_catalog_json`，
+   * 取不到再回落基底 `config.toml`。profile 是文件分层机制（C-1），
+   * `<name>.config.toml` 同样能设这个键，只读基底会记错活跃档位下的目录
+   * （审查意见 GLM-09）。
+   * **消费方**：人读诊断与 `doctor` 报告。
+   */
+  model_catalog_path: string | null;
+}
+
 export interface AuthCacheEntry {
   checked_at: string;
   cli_version: string | null;
@@ -237,6 +339,7 @@ export interface AuthCacheEntry {
 export type ProbeByCli = { [cliName: string]: CommonProbe | undefined } & {
   agy?: AgyProbe;
   zcode?: ZcodeProbe;
+  codex?: CodexProbe;
 };
 
 export interface ProbeSection {

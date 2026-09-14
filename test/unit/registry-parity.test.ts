@@ -150,6 +150,16 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
   // `init.ts` 曾在此表中，2026-09-14 删除：它的 `.claude/...` 全部带路径分隔符、
   // 已被属性扫描排除，文件本身确无 Agent 字面量。此前判它「仍需要」是坏剥离器
   // 造出的假命中（见 stripComments 的注释）。
+  {
+    file: 'probes/codex.ts',
+    why:
+      '厂商专属探针：文件本身即该 CLI 的命名空间，与 adapters/agy.ts 同规格。' +
+      '需要豁免而 probes/agy.ts、probes/zcode.ts 不需要，是因为一处**不对称**：' +
+      '扫描器查的是 AgentId 全集（claude / codex / gemini / glm），而那两个文件里写的 ' +
+      "'agy' / 'zcode' 是 cliName——对应的 AgentId 分别是 gemini 与 glm，扫不到；" +
+      'codex 与 claude 的 cliName 恰好等于自己的 AgentId，于是同形的写法（which codex）会命中。' +
+      'M9 接入 claude 探针时会遇到同一件事，届时按本条同理处置',
+  },
   { file: 'doctor.ts', why: '逐侧探测的人读输出与厂商专属诊断话术' },
   { file: 'preflight.ts', why: '逐侧预检的人读输出，以及两处按 Agent id 取厂商配置段的指纹计算（agyFingerprint 读 agents.gemini 的只读 Agent 定义）。M7b 第 6 步已把 checkModelSlugs 的身份穷尽改成按 vendor 分派，那一条不再是豁免理由；剩下的是「哪一家的可用性由哪个文件决定」，属厂商专属事实' },
   { file: 'selftest.ts', why: '自检场景里两侧桩的固定编排；M7b 增 N 侧场景' },

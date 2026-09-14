@@ -1,0 +1,140 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的不是四个焦点本身，而是探针把「没测到/自己配错」记成确定否定：exec_headless_read_ok 仍是二态塌缩（GLM-01）且探针模型与 profiles[0] 绑死（GLM-02），两者都会在健康的 codex 环境上产出假 blocker；只读负对照失守只记 note 不进 blockers，与「读不到文件是 blocker」形成严重度倒挂（GLM-03）。焦点一：11 个字段的消费方注释是 EV-06 的正解、不算过度登记，真正的残余形态是三个「常量字段」被当作本机实测落盘（GLM-04）。焦点二：12s 抢 header 站得住，但有更确定的流式早退法，且两处「零配额」注释与实现自相矛盾（GLM-06）。焦点三：三态没盖全——rejected_command_in_trace 同样塌缩（GLM-05）。焦点四：C-2 的边界分寸恰当、不保守。录制样本与锁事实用例的做法扎实。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/codex.ts:350（判据消费方 src/trivium/doctor.ts:221-226）",
+      "problem": "exec_headless_read_ok 是唯一驱动 doctor blocker 的 codex 判据，却仍是二态塌缩：`read.finalText?.includes(SENTINEL_OPEN) ?? false` 把 finalText 为 null 的全部路径——180 秒超时被杀（exec.ts 的 run 超时后返回截断输出，不抛错）、spawn error、provider 报错退出、事件流里没有 agent_message——统统记成确定否定 `false`。开发者在本文件 415-455 行刚把三处 header 判据改成三态并写明理由（「二态写法会把探测本身失败记成一个确定的否定结论」），恰恰漏掉了 gating 最重的这一处。后果：一次网络抖动或配额耗尽，config.local.yaml 落盘 `exec_headless_read_ok: false` 这个「能力缺陷」事实，doctor 打出 blocker「该侧无法作为审查员使用」并附一个可能完全不对的诊断提示；M8 的 availability() 读到 false 也无从分辨「测了不行」与「没测成」。",
+      "evidence": "src/trivium/probes/codex.ts:350（`?? false` 塌缩）、src/trivium/doctor.ts:221-226（blocker 仅判 `=== false`，null 静默通过且无「未得出结论」提示）、src/trivium/util/exec.ts:139-156（超时不抛错、resolve 截断输出，证实超时路径会走到这个赋值）、src/trivium/probes/codex.ts:410-426（同文件三处三态的正确写法可作范本）。",
+      "suggestion": "finalText 为 null 时记 null（与同文件三处 header 判据同一口径）；doctor 侧对 null 给一条「探针未得出结论，请重跑 doctor --only codex」的 note 而非 blocker。注意 null 分支不能只是静默放行——否则「没测到」与「测了没问题」在报告里长得一样。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/codex.ts:33-34、342-348",
+      "problem": "探针模型 'deepseek-flash' 是硬编码常量，而实际使用的 profile 取 `profiles[0]`（$CODEX_HOME/*.config.toml 按字典序排序后的第一个）。本机恰好 deepseek 排最前所以能跑通；在任何 profile 集合不同的机器上（例如只装了 qwen.config.toml），探针会拿 qwen 的 provider 去调 deepseek-flash——而本步实测自己确认了「codex 不校验 model 是否在目录里」，请求必然失败，exec_headless_read_ok 落 false，doctor 打出假 blocker「该侧无法作为审查员使用」。execProbe 的注释自己精确描述了这类失败形态（「表现为 headless 读不到文件，看起来像能力缺陷，实则是探针自己配错了」），但只防了「不带 profile」这一半，没防「带错 profile」的另一半。",
+      "evidence": "src/trivium/probes/codex.ts:33（PROBE_MODEL 常量）、:342（`probe.profiles[0] ?? null`）、:78-88（probeCodexProfiles 返回排序名单，取值取决于机器上有哪些 *.config.toml）、:237-243（注释自认 codex 不校验 model、错配会静默失败）；doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md §三「model slug 不校验」。",
+      "suggestion": "探针模型从所选 profile 的实际目录取（`codex debug models` 支持叠加 -p/-c 参数，probeCodexModels 已有 catalogPath 机制可扩展），或遍历 profiles 找第一个目录里有可用模型的；最低限度，把失败归因写进 note（「profile X 的目录里没有探针模型」）而不是落一个能力否定。与 GLM-01 同修时，这类失败应落 null 而非 false。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/doctor.ts:220-226（判据源头 src/trivium/probes/codex.ts:374-382）",
+      "problem": "只读负对照失败的严重度倒挂：breach.txt 在 `-s read-only` 下被真实创建——即该侧作为审查员时**可以写项目文件**，这是比「读不到文件」严重得多的失守——却只产生一条 ⚠️ note 和 `readonly_flags: []`，不进 blockers；同一个 20 行的代码块里，「读不到文件」反而是 blocker。而 preflight 侧今天也没有兜底：checkReadonlyCapability 硬绑 zcode（`cfg.probe.cli.zcode?.readonly_flags`），codex 的 readonly_flags 无任何闸门消费（EV-05② 剩余项尚未泛化）。两边合起来：沙箱失守的机器上 doctor 报「✓ 未发现阻断级问题」，且探针自己的 note 文案都写了「该侧不可用于审查」——判定与自家文案矛盾。",
+      "evidence": "src/trivium/probes/codex.ts:374-382（breached 只 push note、readonly_flags=[]）；src/trivium/doctor.ts:220-226（blockers 只看 entrypoint 与 exec_headless_read_ok）；src/trivium/preflight.ts:379-381、591（checkReadonlyCapability 只读 cli.zcode）。blockers 的契约是「非空则 preflight 必然失败」（doctor.ts:55-57），一个不可用作审查员的侧理应命中。",
+      "suggestion": "在 doctor 的 codex 段补一条：非 skipModelCalls 且负对照 breach 时 push blocker（文案可沿用自家 note「只读沙箱负对照失败，该侧不可用于审查」）。这不是要提前做 EV-05② 的泛化——是在这段新代码内部把两种失败的严重度摆正。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "major",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/probes/codex.ts:351-356、324-329、464",
+      "problem": "三个字段是常量不是测量，却随每次 doctor 刷新 probed_at 落盘成「本机实测」：① trace_path_structured 无条件赋 false，其上一行注释描述的判据（「哨兵路径是否只能从命令文本里找到」）在代码里根本没有实现——这是上一轮裁决 §0.1「注释宣称了实现没兑现的事」的同形复发；② isolation 无条件赋 'home_copy'，而 M8 将据此选择隔离方式；③ path_deny 无条件赋 supported:false，method 字符串写死「codex 0.154.0 的 --help 无路径级 deny 旗标」——探针并没有真跑 --help。对照项目自己的标准：agy.ts 的 probePathDeny 真跑否定对照并按实测结果组织 method，注释明写「这样 supported: false 才是『实测过的结论』而不是『没试过』」。探针架构的全部立足点是 P7「能力靠探针」，每台机器重跑 doctor 都会把这些单机结论重新盖上自己的时间戳，版本漂移后重跑也不会变。",
+      "evidence": "src/trivium/probes/codex.ts:356（`probe.trace_path_structured = false` 裸赋值，351-355 注释描述的判据未实现）、:464（`probe.isolation = 'home_copy'` 注释称「实测可用」但本函数内无任何 CODEX_HOME 副本实验）、:324-329（path_deny 常量含写死的版本号）；src/trivium/probes/agy.ts:185-232（既有标准：真跑否定对照）；src/trivium/types.ts:235、167（两字段的消费方注释都以此为「实测」前提）。",
+      "suggestion": "三处都廉价可测：trace_path_structured 在解析 completed 的 command_execution 项时检查除 command 外是否有字段的值含哨兵路径（有→true）；isolation 至少用 CODEX_HOME 指向临时副本真跑一次 `--version`；path_deny 真跑一次 `codex exec --help` 扫 deny 字样再下结论。若某项本步确无精力实测，就把值记 null 并在 method 里写明「依据 M6 单机录制样本，未在本机复测」，别用确定的布尔冒充测量。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/codex.ts:389",
+      "problem": "rejected_command_in_trace 同样存在「没测到→false」塌缩：`write.commands.length > 0` 在写入探针本身失败（超时、provider 报错、模型拒绝任务而未尝试写入）时 commands 为空，被记成确定结论「被沙箱拒绝的命令不进事件流」。该字段的消费方是 guard 的 write_events 判定依据，落 false 等于宣布「检测盲区存在」——而这个盲区只在「模型确实尝试过写入且被拒」时才被证实（录制样本里正是靠模型 finalText 自述尝试了两条途径才坐实的）。塌缩方向偏保守（少启用一道核验而非放过一次 breach），故降为 minor。",
+      "evidence": "src/trivium/probes/codex.ts:368-389（write 探针的 RunResult 被丢弃、只留解析结果，超时/失败不可辨）；test/fixtures/codex-events/README.md:27-29（结论的成立前提是「模型明说它试了两条写入途径且都被拒」）；src/trivium/types.ts:236-244（消费方注释以「写入被拒时」为条件）。",
+      "suggestion": "与 GLM-01 同一修法：write 探针未完成（无 finalText）时记 null；有 finalText 且其内容含被拒叙述而 commands 为空时才记 false。execProbe 可顺带返回 RunResult 的 timedOut 供判据使用。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/probes/codex.ts:123、405（对照同文件 148-153）",
+      "problem": "「零配额」注释自相矛盾：probeCodexHeader 的 interface 级 docstring 写「零配额即可回读生效配置」，调用点注释写「profile / -c / effort：全部零配额（读 header 即中断）」；而函数体内的注释明确承认「不是零成本……期间可能已经发出一次请求」，报告表格的成本列也老实写「低」。M8 适配层抄配方时读的是 docstring 与调用点注释——按「零配额」的理解，将来可能毫无心理负担地在更高频的路径上复用这个手法。顺带量化：一次全量 doctor 对 codex 最多 5 次 header 探测，每次最长 12s 超时 + 5s SIGKILL 宽限。",
+      "evidence": "src/trivium/probes/codex.ts:123、405（两处「零配额」）与 :148-153（函数体承认可能发出请求）；doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md §三（成本列「低」）；src/trivium/util/exec.ts:177-183（超时→SIGTERM→killGraceMs 5s→SIGKILL 的时长构成）。",
+      "suggestion": "把 docstring 与调用点注释改成与函数体一致的说法（「低成本；进程活到超时，期间可能已发出一次请求」）。另回答焦点二的「更确定的办法」：与其用实测凑出的固定 12s，不如流式读 stderr、五个标签凑齐即 killTree——这是手工 `| head -N` 靠 SIGPIPE 中断的代码内等价物，既消掉经验常数，也把「可能已发出请求」压到接近零；run() 已有 onStdoutLine 先例，补 stderr 行回调即可。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/fixtures/codex-events/（对照 src/trivium/probes/codex.ts:166-175）",
+      "problem": "header 格式没有任何录制样本，pick() 的解析正则零测试覆盖。两份 fixture 锁的是 stdout 的 --json 事件流，而 header 走 stderr、五个标签（model/provider/sandbox/reasoning effort/approval）的拼写与格式恰是本步真机第一遍就栽过的坑（「只读 stdout 会把生效配置全拿成 null」）。若 codex 升版改了标签（例如 'reasoning effort' 改成 'effort'），pick() 全部返回 null，五个 header 派生字段集体变 null 且没有任何测试变红——事件流有「图谱变了就重录」的守卫，header 没有，防护不对称。",
+      "evidence": "src/trivium/probes/codex.ts:166-175（pick 正则与标签拼写无测试引用）；test/fixtures/codex-events/README.md:8-11（两份样本均为事件流，无 header 样本）；test/unit/codex-events.test.ts 全文（只测 parseCodexEvents 与 probeCodexProfiles）。",
+      "suggestion": "把一次真跑的 stderr header 录成样本进 fixtures（哪怕只有几行），为 pick() 补一条格式单测，与事件流样本同等对待；README 的重录表加一行 header 样本。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-08",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/codex.ts:349（对照 src/trivium/types.ts:223-226）",
+      "problem": "json_event_types 的文档说「`--json` 事件流里出现过的 `item.type` 图谱」，实际值却是顶层事件类型与 item 类型合并去重后的单一列表。两个名字空间在同一列表里不可区分（'error' 是 item 类型、'turn.started' 是事件类型），消费方注释要的「新类型出现时提示重录样本」会因此变粗——重录判据本应对 item 类型图谱敏感。",
+      "evidence": "src/trivium/probes/codex.ts:349（`[...new Set([...read.eventTypes, ...read.itemTypes])]`）与 parseCodexEvents 内部明明维护着两个独立集合（:187-224）；src/trivium/types.ts:223-226（字段文档只提 item.type）。",
+      "suggestion": "要么分成两个字段（与解析器内部结构一致），要么把 types.ts 的文档改准确（「事件类型与 item 类型的合并图谱」）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-09",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/probes/codex.ts:473-483",
+      "problem": "readCatalogPath 的 bin 参数被 `void bin` 显式弃用（死参数）；且它只读基底 `$CODEX_HOME/config.toml` 的 model_catalog_json——而 C-1 恰恰确立了 profile 是文件分层机制，`<name>.config.toml` 同样可以设这个键，活跃 profile 下实际生效的目录文件可能不是基底记录的那份。字段消费方是「人读诊断」，误报代价低，故 nit。",
+      "evidence": "src/trivium/probes/codex.ts:473-483（void bin；仅读 config.toml）；本文件 :8 与报告 C-1（profile 文件分层、逐份自包含）；src/trivium/types.ts:287-294（消费方为人读诊断）。",
+      "suggestion": "去掉死参数；诊断口径注明「基底配置的取值」，或按本次探针实际使用的 profile 文件回读。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "三处 header 判据的三态化正确，且 unknown_profile_rejected 以「基底那次读得到 header」为前提条件、把『探测本身失败』与『被 CLI 拒绝』分开——比单纯三态更严谨，焦点三问的那三处本身没问题（漏的是 exec_headless_read_ok 与 rejected_command_in_trace，见 GLM-01/05）。",
+    "焦点一的答案：11 个新字段逐个注明消费方与消费时机，是 EV-06「登记必须说清谁消费」的正解，不算另一种形式的登记不接线；真正的残余形态是 GLM-04 指出的三个常量字段。",
+    "焦点四的答案：报告「证明边界」第 1 条的分寸恰当、不保守——模型目录是本机配置工具生成的文件、header 显示的是客户端准备发送的值，两个证据源都推不出服务端行为；『C-2 只推翻档位表、未推翻服务端归并映射，run.v2 的 effort_effective 暂不动、待服务端回包证据』恰好停在证据边界上，比按本机目录就删字段稳。",
+    "C-1 的实测与连锁分析（按 [profiles.*] 取名单恒为空 → 「名单为空即跳过」的未知 profile 拦截静默失效）扎实，profiles 改为枚举 *.config.toml 并配了两个有效单测（含目录不存在返空集）。",
+    "真跑录制样本 + 两条锁事实用例（含「哪天红了说明盲区消失、该回头启用轨迹核验」的正向解读）与「in_progress 不算证据」的防翻倍用例，把据以做 M8 设计决策的前提变成了会被打红的断言；fixtures README 写明重录时机与命令行，处置了「样本与现实分叉而测试全绿」的自认缺口。",
+    "调用配方注释（header 在 stderr、stdin 显式给空、killTree 必开、-s read-only 显式传不靠默认）写在了 M8 复用时一定会读的位置，且都给出了踩坑出处。",
+    "doctor 接线与 agy/zcode 同构：复用 checkpoint 增量落盘、existing 保留语义（--no-model-calls 不覆盖旧结论）、blocker 文案与另两侧同规格；config.v2 的 commonProbe additionalProperties:true（已核 schema 原文）使 codex 专有字段落盘与读回校验无契约阻碍。",
+    "registry-parity 对 probes/codex.ts 的豁免理由属实：已核注册表（codex 的 cliName 恰等于自己的 AgentId，agy/zcode 的 cliName 不与任何 AgentId 相撞）与 zcode.ts 实况（仅有的 'glm' 是带路径分隔符的 Resources/glm/ 段，属扫描器排除形态）。"
+  ],
+  "not_covered": [
+    "只读审查，未运行 npm run check / 真机 doctor --only codex；typecheck 与测试全绿与否、12s 超时下限的可复现性，均以静态阅读与报告/注释的实测陈述为据，未经执行验证。",
+    "doc/02_design 设计原文（主设计 §3.5/§3.6/§10.3、演进设计 §3.1/§7.1）与 doc/08_project/BACKLOG.md 的 EV-01/EV-06 台账原文未直接比对；消费方注释与设计消费点的一致性以 types.ts 与报告交叉印证为限。AGENTS.md 改动同步清单要求的「探针项 → 设计 §3.5」回填按报告排在 M6 第 4 步，该滞后的计划背书未独立核实。",
+    "src/trivium/preflight.ts 只读了 checkReadonlyCapability 相关段落（grep 定位），其与 probe.cli.codex 的完整交互（新鲜度 TTL、版本漂移对 codex 段的处理）未逐行审。",
+    "codex 作为 Driver 的承载面（M6 第 4 步范围）、auth 探活缓存、adapters 层未来接线未审；codex-events 两条 .jsonl 的逐字节内容以 diff 与 README 转述为准（测试直接消费它们，形状已由用例锁定）。",
+    "另一位审查员的结论未读、未引用、未猜测（背靠背约束）。"
+  ],
+  "consulted": [
+    ".reviews/探针扩展与事实回填/code/_meta/changes-20260914T144553Z.diff",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/types.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/probes/zcode.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md",
+    "test/unit/codex-events.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/fixtures/codex-events/README.md"
+  ]
+}

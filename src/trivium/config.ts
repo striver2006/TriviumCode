@@ -75,6 +75,27 @@ export function defaultProbe(): ProbeSection {
     model_id_form: null,
   };
 
+  /*
+   * codex 的专属空壳（审查意见 AGY-06）：`CodexProbe` 的专属字段声明为**非可选**，
+   * 只给 `emptyCommonProbe()` 的话，未探环境下它们全是 undefined，
+   * 类型契约与运行期事实不符。
+   */
+  cli.codex = {
+    ...emptyCommonProbe(),
+    exec_headless_read_ok: null,
+    json_event_types: [],
+    json_item_types: [],
+    trace_path_structured: null,
+    rejected_command_in_trace: null,
+    readonly_flags: [],
+    profile_flag: null,
+    unknown_profile_rejected: null,
+    profiles: [],
+    config_override: null,
+    effort_validated: null,
+    model_catalog_path: null,
+  };
+
   return {
     generated_at: null,
     verify_suggestion: { build: [], test: [] },

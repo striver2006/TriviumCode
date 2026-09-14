@@ -20,6 +20,25 @@ export interface RunOptions {
   stdin?: string;
   /** 每读到一行 stdout 调用一次（用于 stream-json 增量解析） */
   onStdoutLine?: (line: string) => void;
+  /**
+   * 每读到一行 stderr 调用一次。
+   *
+   * 与 `onStdoutLine` 对称。加它是因为有些 CLI 把**生效配置**打在 stderr 上
+   * （codex 0.154.0 的 exec header 就是），而那正是探针要的东西。
+   */
+  onStderrLine?: (line: string) => void;
+  /**
+   * 回调里调用它即**立刻终止子进程**（按 `killTree` 的设置决定杀谁）。
+   *
+   * 这是手工 `cmd | head -N` 靠 SIGPIPE 中断的代码内等价物：
+   * 拿到想要的几行就走人，不必等进程自己结束、也不必赌一个固定超时。
+   * 对会烧配额的 CLI 尤其要紧——**固定超时无论调到多少，都只是在赌
+   * 「请求还没发出去」**，而早退能把那个窗口压到接近零。
+   *
+   * 早退终止的结果里 `timedOut` 为 false、`earlyStopped` 为 true：
+   * 两者必须分得开，否则调用方无从判断输出是不是完整的。
+   */
+  stopEarly?: (stop: () => void) => void;
   /** 用 `script -q /dev/null` 包一层伪终端（应对 agy 在管道下丢 stdout，probe.agy.pty_required） */
   pty?: boolean;
   /** 输出上限，超出即截断，防止把整个仓库读进内存 */
@@ -42,6 +61,8 @@ export interface RunResult {
   durationMs: number;
   /** 因超时被杀 */
   timedOut: boolean;
+  /** 因调用方在流式回调里主动早退而被杀（不是超时，输出是「够用了」而非「被截断」） */
+  earlyStopped: boolean;
   /** 因超出 maxBufferBytes 而截断 */
   truncated: boolean;
   /** 实际执行的命令行（人读，用于写进 run.json 与坑清单） */
@@ -70,6 +91,8 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     killGraceMs = 5_000,
     stdin,
     onStdoutLine,
+    onStderrLine,
+    stopEarly,
     pty = false,
     maxBufferBytes = DEFAULT_MAX_BUFFER,
     killTree = false,
@@ -105,8 +128,10 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     let stderr = '';
     let truncated = false;
     let timedOut = false;
+    let earlyStopped = false;
     let settled = false;
     let lineBuf = '';
+    let errLineBuf = '';
     let softTimer: NodeJS.Timeout | undefined;
     let hardTimer: NodeJS.Timeout | undefined;
     let exitTimer: NodeJS.Timeout | undefined;
@@ -134,6 +159,14 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     child.stderr?.on('data', (c: string) => {
       if (stderr.length + c.length <= maxBufferBytes) stderr += c;
       else truncated = true;
+      if (!onStderrLine) return;
+      errLineBuf += c;
+      let nl: number;
+      while ((nl = errLineBuf.indexOf('\n')) !== -1) {
+        const line = errLineBuf.slice(0, nl);
+        errLineBuf = errLineBuf.slice(nl + 1);
+        if (line.length > 0) onStderrLine(line);
+      }
     });
 
     const finish = (code: number | null, signal: NodeJS.Signals | null) => {
@@ -143,6 +176,7 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
       if (hardTimer) clearTimeout(hardTimer);
       if (exitTimer) clearTimeout(exitTimer);
       if (lineBuf.length > 0 && onStdoutLine) onStdoutLine(lineBuf);
+      if (errLineBuf.length > 0 && onStderrLine) onStderrLine(errLineBuf);
       resolve({
         code,
         signal,
@@ -150,6 +184,7 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
         stderr,
         durationMs: Date.now() - startedAt,
         timedOut,
+        earlyStopped,
         truncated,
         commandLine,
       });
@@ -174,6 +209,18 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
       if (killTree && child.pid) killProcessTree(child.pid, sig);
       else child.kill(sig);
     };
+    /*
+     * 早退句柄：调用方在流式回调里判断「够了」就调它。
+     * 与超时走同一条 SIGTERM → 宽限 → SIGKILL 链路，区别只在标记哪个字段——
+     * 两者必须分得开，否则调用方无从判断输出是「够用了」还是「被截断了」。
+     */
+    stopEarly?.(() => {
+      if (settled || earlyStopped) return;
+      earlyStopped = true;
+      signalChild('SIGTERM');
+      hardTimer = setTimeout(() => signalChild('SIGKILL'), killGraceMs);
+    });
+
     if (timeoutMs > 0) {
       softTimer = setTimeout(() => {
         timedOut = true;

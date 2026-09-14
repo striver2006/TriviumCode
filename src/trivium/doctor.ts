@@ -16,7 +16,8 @@ import { probeEnv } from './probes/env.js';
 import { probeVerifyCommands } from './probes/verify-commands.js';
 import { probeAgy } from './probes/agy.js';
 import { probeZcode } from './probes/zcode.js';
-import type { Config, ProbeSection } from './types.js';
+import { probeCodex } from './probes/codex.js';
+import type { CodexProbe, Config, ProbeSection } from './types.js';
 import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
 import { say, step, warn } from './util/log.js';
 
@@ -53,6 +54,88 @@ export interface DoctorReport {
   notes: string[];
   /** 阻断级问题：非空则 preflight 必然失败 */
   blockers: string[];
+}
+
+/** 一条诊断结论：进 blockers 还是只进 notes */
+export interface SeverityLine {
+  level: 'blocker' | 'note';
+  message: string;
+}
+
+/**
+ * codex 探针结论 → 诊断严重度（审查意见 GLM-03 / AGY-01 / GLM-01）。
+ *
+ * **抽成纯函数是为了能测**：这里有一条安全判定（沙箱失守），
+ * 而它原先埋在 `runDoctor` 里、要真跑 codex 才走得到，等于没有测试守着。
+ *
+ * 三种失败不是一回事，原实现把它们压成了一档、而且压反了：
+ * 「读不到文件」是 blocker，「沙箱失守」只是一条 note——后者意味着
+ * 这一侧当审查员时**能写项目文件**，严重得多，却让 doctor 照常报
+ * 「✓ 未发现阻断级问题」。
+ *
+ *   | 情形                | 未启用为审核者 | 已启用 |
+ *   | 没装                | note           | blocker |
+ *   | 装了但读不到文件    | note           | blocker |
+ *   | 装了但**沙箱失守**  | blocker        | blocker |
+ *
+ * 末行不分档：失守说明这台机器上的 codex 现在就是不安全的，
+ * 与「我们打不打算用它当审核者」无关。
+ *
+ * 前两行按 `criticEnabled` 分档的理由：codex 现在是 false，而全量 `doctor`
+ * 会因 blockers 非空退非零码——**没装 codex 的用户什么都没做错，却会被硬阻断**。
+ * 只有他显式 `--only codex` 时，「没装」才是他正想知道的答案。
+ */
+export function codexSeverity(
+  probe: CodexProbe,
+  ctx: { enabled: boolean; asked: boolean; skipModelCalls: boolean },
+): SeverityLine[] {
+  const gate = (message: string): SeverityLine =>
+    ctx.enabled || ctx.asked
+      ? { level: 'blocker', message }
+      : { level: 'note', message: `${message}（该侧尚未启用为审核者，故不阻断）` };
+
+  if (!probe.entrypoint) return [gate('未找到 codex 可执行文件')];
+
+  /*
+   * 只读负对照失守：**恒 blocker**，不看 criticEnabled、不看是否点名。
+   * 判据要排除 skipModelCalls——那时负对照根本没跑，readonly_flags
+   * 保留的是上一次结论，空集不代表失守。
+   */
+  if (!ctx.skipModelCalls && probe.readonly_flags.length === 0) {
+    return [
+      {
+        level: 'blocker',
+        message:
+          'codex 只读沙箱负对照失败：-s read-only 下文件仍被创建，该侧不可用于审查。' +
+          '在沙箱修好之前不要把它接入任何审查链路。',
+      },
+    ];
+  }
+
+  if (probe.exec_headless_read_ok === false) {
+    return [
+      gate(
+        'codex exec headless 读不到文件——该侧无法作为审查员使用。' +
+          '请确认 provider 凭据已配置（config.toml 的 model_providers.<name>.env_key）。',
+      ),
+    ];
+  }
+
+  /*
+   * 第三态不静默放行：null 是「没测出结论」，与「测了没问题」必须
+   * 在报告里长得不一样，否则三态改造就白做了。
+   */
+  if (probe.exec_headless_read_ok === null && !ctx.skipModelCalls) {
+    return [
+      {
+        level: 'note',
+        message:
+          '⚠️ 读文件探针未得出结论（超时、进程报错或事件流里没有最终回复）——' +
+          '这既不是通过也不是失败。请重跑 `trivium doctor --only codex`。',
+      },
+    ];
+  }
+  return [];
 }
 
 export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
@@ -203,6 +286,26 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
         'ZCode headless 未跑通。注意：CLI 的模型 provider 配置独立于桌面端，' +
           '「已登录」不等于「可用」——请确认 ~/.zcode/cli/config.json 存在。',
       );
+    }
+  }
+
+  // ── Codex ───────────────────────────────────────────────────────────
+  if (only === null || only === 'codex') {
+    step('探测 Codex（codex exec）…');
+    const r = await probeCodex(null, {
+      skipModelCalls: opts.skipModelCalls ?? false,
+      existing: probe.cli.codex,
+    });
+    probe.cli.codex = r.probe;
+    notes.push(...r.notes.map((n) => `[codex] ${n}`));
+    await checkpoint('codex');
+    for (const line of codexSeverity(r.probe, {
+      enabled: agentByCliName('codex')?.criticEnabled === true,
+      asked: only === 'codex',
+      skipModelCalls: opts.skipModelCalls ?? false,
+    })) {
+      if (line.level === 'blocker') blockers.push(line.message);
+      else notes.push(`[codex] ${line.message}`);
     }
   }
 
