@@ -2,8 +2,12 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.0
+> - **当前版本**：v1.1.0
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.0（2026-09-14）随[设计 v1.3.0](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 的规范链回溯同步：
+>   2.6 适配层新增 `agents/registry.ts`（M7a 引入的 Agent 注册表，全部 Agent 差异的唯一登记处），
+>   并写明**M7a 是行为等价重构**的边界——登记四家但只启用两家审核者与一个 Driver，
+>   避免读者据模块存在推断系统已支持四家。本文其余部分描述的仍是当前真实代码路径。
 
 ---
 
@@ -99,6 +103,7 @@ graph TD
 
 | 模块 | 行数 | 职责 |
 | :--- | ---: | :--- |
+| **`agents/registry.ts`** | — | **全部 Agent 差异的唯一登记处**（M7a 引入，`039bdc9`）。`AgentDescriptor` 登记四家（`claude` / `codex` / `gemini` / `glm`）的 id、显示名、vendor、归档后缀、意见前缀、`criticEnabled` / `driverEnabled`、护栏等级与协议片段落点；归档后缀、意见前缀、配置键、探针段、镜头键、**禁读矩阵**、Hook 字面集一律由它派生。`test/unit/registry-parity.test.ts` 以 grep 级对账守着「除本文件与各适配器外，任何模块不得出现具体 Agent id / 后缀 / 前缀字面量」 |
 | `adapters/base.ts` | 164 | 适配器契约、证据下限判定、泄漏判定 |
 | `adapters/agy.ts` | 314 | Antigravity CLI 的 argv 构造与结果解析 |
 | `adapters/zcode.ts` | 331 | ZCode CLI 同上，外加 `HOME` 副本的模型覆盖 |
@@ -110,6 +115,14 @@ graph TD
 | `probes/env.ts` `probes/fixture.ts` | 61 / 84 | 环境探测、夹具构造 |
 
 **适配层是唯一允许调用厂商 CLI 的地方**（`adapters/base.ts` 文件头铁律）。
+
+> **M7a 的边界**（读代码前务必分清）：注册表**登记**了四家，但当前 `criticEnabled` 只对
+> `gemini` / `glm` 为真、`driverEnabled` 只对 `claude` 为真——与重构前的可选集合**逐项相同**。
+> `src/trivium/types.ts` 的 `CriticId` 仍是 `Extract<AgentId, 'gemini' | 'glm'>`，
+> `review.v1.json` 的意见编号 pattern 仍为 `^(AGY|GLM)-…`。
+> **「注册表登记了四家」不等于「系统支持四家」**：`codex` / `claude` 的审核者能力在 M8 / M9，
+> Driver 任意化在 M10。登记而不启用，是为了让注册表从第一天起就是完整的单一来源。
+> 设计依据见[设计 v1.3.0](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 5.1、6.2、16.1。
 
 ### 2.7 基础层
 

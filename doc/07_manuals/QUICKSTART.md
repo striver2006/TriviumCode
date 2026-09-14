@@ -1,7 +1,11 @@
 # 快速上手：Driver-DualCritic 双审流水线
 
 > 目标：**15 分钟内**装好并跑通一条真实任务。
-> 依据 [设计 v1.2.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.3.0](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.0](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.0](../01_requirements/PRD_driver_dual_critic.md)。
+>
+> **本文描述的是当前可用的系统**：Claude Code 主攻 + Antigravity / ZCode 两侧审查。
+> 设计文档里带【待实施】标记的能力（第三、四家 Agent、每次选 1～3 个审核者、
+> 换一家 Agent 主攻、思考等级三档）**还不能用**，按本文操作即可，无需关心它们。
 
 这条流水线让 Claude Code 主攻写代码，**Google Antigravity** 与**智谱 ZCode** 两个
 独立审查员背靠背复审，结论逐条落盘留痕。你的角色是 Driver 的使用者——按 `/dual-*`

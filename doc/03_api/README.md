@@ -24,7 +24,9 @@
 
 - 智能体协同流水线统一以**本地文件**为中继通道。工件路径与命名见
   [`.reviews/README.md`](../../.reviews/README.md)：
-  `.reviews/<主题>/{plan,code,bug,verify}/<日期>-<主题>[-r<N>][-revised|-response]-{claude|gemini|glm}.md`。
+  `.reviews/<主题>/{plan,code,bug,verify}/<日期>-<主题>[-r<N>][-revised|-response]-<角色>.md`。
+  角色取值即 Agent id：当前生效为 `claude`（Driver）/ `gemini` / `glm`（两侧审核者）；
+  `codex` / `claude`（作为审核者）随设计 M8 / M9 启用，取值集**由 Agent 注册表统一派生**。
   > 早期文档里的 `.reviews/PLAN.md` / `DIFF.patch` / `CODE_*.md` 平铺命名**已废弃**，
   > 与 PRD FR-08 及设计 §6.2 冲突，勿再沿用。
 - 工件数据字段统一用**蛇形命名法**（snake_case），与四份 JSON Schema 一致；

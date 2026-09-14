@@ -6,7 +6,8 @@
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20VS%20Code-brightgreen.svg)](#-快速开始)
 [![Workflow](https://img.shields.io/badge/Architecture-Driver--DualCritic-orange.svg)](#-核心架构与流转时序)
 [![Agents](https://img.shields.io/badge/Agents-Claude%20Code%20%7C%20Antigravity%20%7C%20ZCode-purple.svg)](#-核心特性与创新)
-[![Status](https://img.shields.io/badge/Status-M0～M5%20已实现-brightgreen.svg)](./doc/02_design/README.md)
+[![Status](https://img.shields.io/badge/Status-M0～M5%20%2B%20M7a%20已实现-brightgreen.svg)](./doc/02_design/README.md)
+[![Roadmap](https://img.shields.io/badge/Roadmap-M6～M11%20多%20Agent%20演进中-blue.svg)](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)
 
 **面向 macOS + VS Code 原生开发流的「主攻 + 双审」（Driver-DualCritic）全自动多智能体协同流水线**
 
@@ -25,6 +26,13 @@
 - 以 **Claude Code** 为主控研发核心（**Driver**），负责端到端的需求理解、方案拟定、代码编写与缺陷修复，且是**唯一有权改动业务代码**的智能体；
 - 引入 **Google Antigravity** 与 **智谱 ZCode** 组成异构专家评审团（**Dual-Critic**），以**背靠背互不可见**的独立视角交叉审查技术方案、代码变更与 Bug 根因定位，全程**只读**；
 - 形成「主脑起草 → 专家并发盲审 → 主脑逐条裁决 → 收敛确认」的闭环自愈开发流水线。
+
+> **演进方向（尚未实现）**：项目正在把这套流水线从「固定 Driver + 固定双审」泛化为
+> 「**任意注册 Agent 可为 Driver + 每次审核动态选 1～3 个审核者 + 逐审核者指定模型与思考等级**」
+> （多审 / MultiCritic）。目前**已合入的只有底层的 Agent 注册表重构**（M7a，行为与之前逐项等价）；
+> 第三、四家 Agent、动态选审核者、换一家 Agent 主攻等能力**均在路线图上、尚不可用**。
+> 规范与进度见[设计文档](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
+> **本 README 其余部分描述的都是当前可用的系统。**
 
 ### 三个角色
 

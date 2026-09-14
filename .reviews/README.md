@@ -1,8 +1,13 @@
 # 多智能体协同审计与留痕目录 (.reviews)
 
-本目录是 **「主攻 + 双审」（Driver-DualCritic）** 流水线对外的**事实来源**：全部审查结论、逐条裁决与审计材料都落在这里并纳入 Git 版本管理，所有验收标准（AC-01～AC-18）都从本目录读取。
+本目录是 **「主攻 + 多审」（Driver-MultiCritic）** 流水线对外的**事实来源**：全部审查结论、逐条裁决与审计材料都落在这里并纳入 Git 版本管理，验收标准（AC-01～AC-19，演进项 AC-20～AC-25 待实施）都从本目录读取。
 
-> 规范依据：[PRD v1.3.0](../doc/01_requirements/PRD_driver_dual_critic.md) FR-08 / FR-09，[设计 v1.2.0](../doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6 章。
+> 规范依据：[PRD v1.4.0](../doc/01_requirements/PRD_driver_dual_critic.md) FR-08 / FR-09，[设计 v1.3.0](../doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6 章。
+>
+> **措辞说明**：N 方化后「双审」的正确称谓是「**多审**」，文档层面统称多审；
+> 但**命令名 `/dual-*`、本目录名 `.reviews/` 与运行时目录一律不改名**（兼容优先）。
+> **当前真实生效的仍是两侧审查**（Antigravity + ZCode）；「每次选 1～3 个审核者」
+> 与第三、四家 Agent 均为【待实施】，见设计 16.1 与 §24 台账。
 > 本目录内的文件**一律由编排器 `trivium` 的 `archive` 模块生成**，是唯一落盘出口；请勿手工创建或改名。
 
 ---
@@ -30,7 +35,8 @@
 <YYYY-MM-DD>-<主题字段>-<角色>.md
 
 主题字段 = <主题>[-r<N>][-revised|-response]
-角色     = claude | gemini | glm
+角色     = claude | gemini | glm          # 当前生效；取值即 Agent id，由注册表统一派生
+         → claude | codex | gemini | glm  # 【待实施 · M8/M9】codex 与 claude 启用为审核者后
 ```
 
 | 片段 | 含义 |
@@ -43,7 +49,11 @@
 | `gemini` | Critic-A（Google Antigravity）产出——独立审查 |
 | `glm` | Critic-B（智谱 ZCode）产出——独立审查 |
 
-**角色后缀是硬约束**：审查员不得产出 `claude` 后缀，Driver 不得产出 `gemini` / `glm` 后缀（由 Claude Code Hook 与 `archive` 双重拦截）。
+**角色后缀是硬约束**：审查员不得产出 Driver 的后缀，Driver 不得产出审核者的后缀（由 Claude Code Hook 与 `archive` 双重拦截）。当前即「审查员不得产出 `claude`，Driver 不得产出 `gemini` / `glm`」。
+
+> **后缀标识产出方，不标识发起方**。发起方（当轮 Driver）记在运行元数据里，两者**正交**——
+> 【待实施 · M10】任意 Agent 可为 Driver 之后，同一个后缀在不同运行中既可能是 Driver 也可能是审核者。
+> 这条正交性是禁读矩阵**不能按后缀差集生成**的根本原因。
 **只追加不覆盖**：既有工件无论是否已审批一律不覆盖，`archive` 以 `O_CREAT|O_EXCL` 原子创建，命中已存在文件即视为重跑并自动抬升 `-r<N>`（FR-25）。
 
 ---

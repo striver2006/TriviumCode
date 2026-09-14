@@ -17,7 +17,8 @@ Claude Code 主攻执笔，Antigravity（`agy`）与 ZCode 背靠背只读双审
 TypeScript 编写，esbuild 打成**单文件零依赖 CJS**；仅支持 macOS + VS Code，
 Node ≥ 18（开发建议 ≥ 22）。
 
-- `src/trivium/` — 编排器全部实现（`cli.ts` 入口，`adapters/` 收敛两家 CLI 差异）
+- `src/trivium/` — 编排器全部实现（`cli.ts` 入口，`adapters/` 收敛两家 CLI 差异，
+  `agents/registry.ts` 是 Agent 差异的唯一登记处）
 - `src/install.ts` — 安装器（→ `dist/install.cjs`）
 - `skills/` — 8 个 Claude 用户级 skill，核心资产在 `skills/dual-critic/`
   （`scripts/trivium.cjs` 为打包产物**不进 Git**；`schema/` 四份 JSON Schema、
@@ -57,6 +58,15 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
 7. **`state.json` 全局，写入必须持全局锁 + 读改原子替换**；按主题加锁会互相丢更新。
 8. **计数禁止读-改-写**：每次增量写唯一文件、计数取 `readdir().length`。
 9. **不动用户全局配置**；需要独立配置走临时副本（`0600`，用完即删）。
+10. **`agents/registry.ts` 是所有 Agent 差异的唯一来源**（设计 16.2 纪律 7）。归档后缀、
+    意见编号前缀、配置键、探针段、镜头键、禁读矩阵、Hook 字面集全部由它派生。
+    **除它本身与各厂商适配器内部外，任何模块不得出现具体 Agent id / 后缀 / 前缀的字面量**——
+    `test/unit/registry-parity.test.ts` 以 grep 级对账守着，加硬编码直接打红。
+11. **禁读矩阵禁止手工枚举。** 人工清单维持不住完整性：计划稿自称补全 4 处硬编码、
+    双审又查出 8 处，其中按 `['gemini','glm']` 字面循环的一处会让第三家审核者的意见
+    **对闸门整体不可见**（静默漏裁）。一律注册表派生 + 机器对账。
+12. **四份 JSON Schema 的枚举与前缀集必须与注册表 parity。** 改了注册表就要同步 schema，
+    反之亦然；两边任一单改都属于埋坑。
 
 ## 测试要点
 

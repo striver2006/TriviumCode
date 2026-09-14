@@ -1,7 +1,13 @@
 # PROTOCOL：Driver-DualCritic 工件中继与协议契约
 
-> 依据 [设计 v1.2.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.3.0](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.0](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.0](../01_requirements/PRD_driver_dual_critic.md)。
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
+>
+> **⚠️ 本文描述的是当前真实生效的契约**（`config.v1` / `run.v1` / 两侧审核者 / 固定 Claude Code Driver）。
+> 多 Agent 演进带来的契约变更——`config.v2`、`run.v2`（含 `driver` / `critics_selected` / `review_mode`）、
+> 意见编号前缀扩为四值、裁决件 `role` 扩为四值与 `addresses` 基数 1～3、`--critics` 等新旗标——
+> **均尚未生效**，规范见设计 6.7.1 / 13.1.1 与 §24 台账，随各里程碑并入本文。
+> 在那之前，**按本文实现的客户端不会被演进破坏**：v2 上线后读侧双读、旧形态长期兼容。
 
 三方（Claude Code Driver、Antigravity Critic-A、ZCode Critic-B）之间**没有**任何进程间
 协议——它们互不通信。全部协同经由**本地文件**与**编排器进程**完成。这是有意的设计
