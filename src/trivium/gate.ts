@@ -392,16 +392,20 @@ export function renderGateResult(r: GateCheckResult): string {
 /**
  * 本轮实际入选的审核者集合。
  *
- * 事实来源是 `run.json.critics` 的键集——它记录的是「这一轮真的跑了谁」，
- * 与当前配置启用了谁无关（历史轮次可能跑过现已停用的 Agent）。
- * run.json 缺失或键集为空时回落到当前启用集合，保持旧归档可读。
+ * 事实来源是 `run.json.critics_selected`（M7b 第 3 步起）——它记的是
+ * 「这一轮本该跑谁」，与当前配置启用了谁无关（历史轮次可能跑过现已停用的 Agent）。
  *
- * M7b 引入 `critics_selected` 字段后，这里改读那个字段即可——
- * 它能区分「计划跑但失败了」与「压根没入选」，键集做不到。
+ * 此前读的是 `critics` 的**键集**，那是「实际产出了结果的」：入选却整侧失联时
+ * 它就少一个键，于是「压根没入选」与「计划跑但一条结果都没有」不可区分——
+ * 后者本该被判成缺件，却因为键集里没有它而静默通过。`readRunMeta` 会把历史
+ * v1 记录迁移成 v2 形状，其 `critics_selected` 正是由键集推导，因此旧归档的
+ * 判读结论保持不变（迁移不会把信息变多，见 `migrateRunMetaV1`）。
+ *
+ * run.json 读不到、或迁移后集合为空时回落到当前启用集合，保持旧归档可读。
  */
 function criticsOf(runMeta: RunMeta | null): readonly CriticId[] {
-  const recorded = Object.keys(runMeta?.critics ?? {}) as CriticId[];
-  return recorded.length > 0 ? recorded : CRITICS;
+  const selected = runMeta?.critics_selected ?? [];
+  return selected.length > 0 ? selected : CRITICS;
 }
 
 /**

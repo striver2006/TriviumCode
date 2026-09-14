@@ -926,7 +926,13 @@ async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
       problems.push(
         t.kind === 'manifest_missing'
           ? `  · 运行清单已丢失：${t.relPath}（task.json 登记过 run ${t.runId}）`
-          : `  · 运行清单不可读：${t.relPath}（run ${t.runId} 的 run.json 存在但解析失败）`,
+          /*
+           * 原因用透传的真实值，不再硬编码「解析失败」（审查意见 GLM-03）。
+           * 不可读有两种成因：文件真的坏了，与解析成功但不合它自称的契约。
+           * 后者报「解析失败」会把排障者引去查 JSON 损坏，而这条链路是提交拦截，
+           * 诊断给错方向的代价最高。
+           */
+          : `  · 运行清单不可读：${t.relPath}（run ${t.runId}：${t.reason ?? '存在但读不出来'}）`,
       );
     }
 

@@ -9,9 +9,14 @@ import {
   writeVerifyRecord,
   resolveRerunIndex,
   listStageArtifacts,
+  listRecordedRuns,
   checkStageArtifacts,
+  metaDir,
   type ArchiveLayout,
 } from '../../src/trivium/archive.js';
+import { newRunMeta } from '../../src/trivium/meta.js';
+import { CRITICS, type StageOrVerify } from '../../src/trivium/types.js';
+import { REPO_ROOT } from '../helpers/fixture.js';
 
 async function tmpLayout(): Promise<ArchiveLayout> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-archive-'));
@@ -348,4 +353,172 @@ test('单侧轮次：不传入选集合就会回落到启用集合，并误报�
     c.missing.some((m) => m.includes('glm')),
     `缺件应点名未入选的那一侧，实得：${c.missing.join(', ')}`,
   );
+});
+
+// ─────────── 读侧按阶段精确分发（设计 §6.7.1，M7b 第 3 步）───────────
+
+/**
+ * 构造一份合法的 `trivium.run.v2` 运行元数据。
+ *
+ * 用真实写侧 `newRunMeta` 而不是手写字面量：手写夹具会与写侧各自漂移，
+ * 而本组用例断言的恰恰是「写侧产出的形状能被读侧认出来」。
+ */
+function v2Meta(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    ...(newRunMeta({
+      runId: 'RV2', topic: '登录重构', stage: 'plan', rerunIndex: 1, command: 'x',
+      promptHint: null, taskGoal: null, criticsSelected: CRITICS,
+      treeHash: 'h', gitHead: null, dirty: false, subjectSha256: 's',
+      denyPaths: [], driftPolicy: 'warn',
+    }) as unknown as Record<string, unknown>),
+    ...over,
+  };
+}
+
+/** v1 时代的形状：没有 driver / critics_selected，完成度是 dual|single */
+function v1Meta(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schema: 'trivium.run.v1',
+    run_id: 'RV1', topic: '登录重构', stage: 'plan', rerun_index: 1, command: 'x',
+    prompt_hint: null, task_goal: null,
+    snapshot: {
+      git_head: null, tree_hash: 'h', dirty: false, subject_sha256: 's',
+      drift: { changed: false, files: [], policy: 'warn' },
+    },
+    started_at: 'x', finished_at: 'y',
+    review_mode: 'dual', degraded_reason: null,
+    critics: {},
+    deny_paths: [],
+    guard: { readonly_breach: false, peer_artifact_read: false, peer_deny_applied: {}, forged_role_file: false },
+    artifacts: [], gate: { adjudication_complete: false, state: 'running' }, status: 'success',
+    ...over,
+  };
+}
+
+async function writeRawRunMeta(
+  l: ArchiveLayout, stage: StageOrVerify, runId: string, body: unknown,
+): Promise<void> {
+  const dir = metaDir(l, stage);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, `run-${runId}.json`), JSON.stringify(body));
+}
+
+const unreadableOf = async (l: ArchiveLayout, runId: string): Promise<boolean | undefined> =>
+  (await listRecordedRuns(l)).find((r) => r.run_id === runId)?.unreadable;
+
+/*
+ * §2.4 的收严，本步最重要的一条行为变化。
+ *
+ * 旧实现是 `schema === 'trivium.run.v1' && 校验不过` 才判坏——`schema` 一旦不是
+ * 那个字面量，第一个合取项即为 false，**整个校验被跳过**，记录的工件清单原样进表。
+ * 而这份清单正是提交完整性锚的消费对象：把 schema 改成任意别的字符串，
+ * 清单就脱离了契约校验。那是伪造通道，不是宽容。
+ */
+test('审查阶段：未知 schema 判不可读（旧实现静默放行，是条伪造通道）', async () => {
+  const l = await tmpLayout();
+  await writeRawRunMeta(l, 'plan', 'RFAKE', {
+    schema: 'trivium.run.v3', run_id: 'RFAKE', status: 'success',
+    artifacts: [{ path: 'x.md', sha256: 'deadbeef' }],
+  });
+  assert.equal(await unreadableOf(l, 'RFAKE'), true);
+});
+
+test('审查阶段：schema 字段缺失同样判不可读', async () => {
+  const l = await tmpLayout();
+  await writeRawRunMeta(l, 'plan', 'RNONE', { run_id: 'RNONE', status: 'success', artifacts: [] });
+  assert.equal(await unreadableOf(l, 'RNONE'), true);
+});
+
+test('审查阶段：写侧产出的 run.v2 可读', async () => {
+  const l = await tmpLayout();
+  await writeRawRunMeta(l, 'plan', 'RV2', v2Meta());
+  assert.equal(await unreadableOf(l, 'RV2'), undefined);
+});
+
+test('审查阶段：自称 run.v2 却不合契约 → 不可读', async () => {
+  const l = await tmpLayout();
+  await writeRawRunMeta(l, 'plan', 'RBAD', v2Meta({ critics_selected: [] }));
+  assert.equal(await unreadableOf(l, 'RBAD'), true);
+});
+
+test('审查阶段：历史 run.v1 按 v1 契约判读，合契约即可读', async () => {
+  const l = await tmpLayout();
+  await writeRawRunMeta(l, 'plan', 'RV1', v1Meta());
+  assert.equal(
+    await unreadableOf(l, 'RV1'), undefined,
+    '既有归档是不可变工件，必须按写入时的规范解读（P6）',
+  );
+});
+
+test('审查阶段：自称 run.v1 却缺必填字段 → 仍判不可读', async () => {
+  const l = await tmpLayout();
+  await writeRawRunMeta(l, 'plan', 'RV1BAD', { schema: 'trivium.run.v1', run_id: 'RV1BAD', status: 'success' });
+  assert.equal(await unreadableOf(l, 'RV1BAD'), true);
+});
+
+/*
+ * verify 分支：写错会**永久拦死本仓库的每一次 git commit**（§6.7.1 的方框）。
+ *
+ * 提交完整性锚见 unreadable 即闸门阻断，而归档里的历史 verify 记录违反 stage 枚举、
+ * 缺大量必填字段——拿审查契约去校验它们，结果是无法通过改代码之外的任何手段解除的死锁。
+ */
+test('verify 阶段：verify-run.v1 可读', async () => {
+  const l = await tmpLayout();
+  await writeRawRunMeta(l, 'verify', 'V1', {
+    schema: 'trivium.verify-run.v1', run_id: 'V1', status: 'success', artifacts: [],
+  });
+  assert.equal(await unreadableOf(l, 'V1'), undefined);
+});
+
+test('verify 阶段：历史 run.v1 不施加审查元数据校验（写错即锁死仓库提交）', async () => {
+  const l = await tmpLayout();
+  // 形状是 verify 记录、标签却是 run.v1：拿审查契约校验必然不过
+  await writeRawRunMeta(l, 'verify', 'V2', {
+    schema: 'trivium.run.v1', run_id: 'V2', topic: l.topic, stage: 'verify',
+    rerun_index: 1, status: 'success', started_at: 'x', finished_at: 'y', artifacts: [],
+  });
+  assert.equal(
+    await unreadableOf(l, 'V2'), undefined,
+    'verify 下的历史 run.v1 一旦被判不可读，此后每一次 git commit 都会被拦死',
+  );
+});
+
+test('verify 阶段：未知 schema 仍判不可读（宽容只给两种历史形状，不是给所有）', async () => {
+  const l = await tmpLayout();
+  await writeRawRunMeta(l, 'verify', 'V3', {
+    schema: 'trivium.whatever.v9', run_id: 'V3', status: 'success', artifacts: [],
+  });
+  assert.equal(await unreadableOf(l, 'V3'), true);
+});
+
+/*
+ * 拿**本仓库的真实归档**当回归夹具。
+ *
+ * 上面每一条都是我造的样本，而造样本的人与实现分发规则的是同一个——
+ * 我没想到的形态，样本里同样不会有。真实归档是唯一不受这个偏差影响的输入：
+ * 它由过去几十次运行自然积累，含 §6.7.1 点名的那 5 份历史记录。
+ * 断言的不变量很朴素：**当前实现读不坏本仓库已有的任何一份留痕**——
+ * 它一旦变红，下一次提交就会被拦死。
+ */
+test('真实归档回归：本仓库归档里没有任何一份运行留痕被判不可读', async () => {
+  const archiveRoot = path.join(REPO_ROOT, '.reviews');
+  let topics: string[];
+  try {
+    topics = (await fs.readdir(archiveRoot, { withFileTypes: true }))
+      .filter((d) => d.isDirectory() && !d.name.startsWith('.') && !d.name.startsWith('_'))
+      .map((d) => d.name);
+  } catch {
+    return; // 全新检出没有归档：跳过，而不是假装通过
+  }
+
+  let seen = 0;
+  const bad: string[] = [];
+  for (const topic of topics) {
+    for (const r of await listRecordedRuns({ archiveRoot, topic })) {
+      seen++;
+      if (r.unreadable) bad.push(`${topic}/${r.stage}/${r.run_id}`);
+    }
+  }
+  assert.deepEqual(bad, [], '真实归档里出现不可读留痕，提交会被永久拦死');
+  assert.ok(seen > 0, '一份都没扫到说明夹具本身失效了，不等于「全都可读」');
 });

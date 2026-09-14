@@ -38,6 +38,12 @@ export interface RoundReport {
   finishedAt: string | null;
   status: RunMeta['status'] | null;
   reviewMode: RunMeta['review_mode'] | null;
+  /**
+   * 本轮入选的审核者。与 `reviewMode` 分列渲染：前者答「审了谁」，
+   * 后者答「入选的都成了吗」——把两件事挤进一列，就看不出 `full` 到底是
+   * 三侧全成还是只选了一侧（AC-22）。
+   */
+  criticsSelected: CriticId[];
   degradedReason: string | null;
   /** 逐侧：生效模型、状态、耗时、意见数 */
   sides: {
@@ -173,6 +179,7 @@ async function buildRound(
     finishedAt: null,
     status: null,
     reviewMode: null,
+    criticsSelected: [],
     degradedReason: null,
     sides: [],
     severity: zeroSeverity(),
@@ -199,6 +206,7 @@ async function buildRound(
   base.finishedAt = meta.finished_at;
   base.status = meta.status;
   base.reviewMode = meta.review_mode;
+  base.criticsSelected = [...meta.critics_selected];
   base.degradedReason = meta.degraded_reason;
 
   const { reviews, notes: reviewNotes } = await loadRoundReviews(layout, stage, runId);
@@ -352,14 +360,15 @@ export function renderTopicReport(r: TopicReport): string {
   L.push(
     '## 一、时间线',
     '',
-    '| 阶段 | 轮 | 运行 | 起始 | 状态 | 模式 | 耗时（较慢侧） |',
-    '| :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
+    '| 阶段 | 轮 | 运行 | 起始 | 状态 | 审核者 | 完成度 | 耗时（较慢侧） |',
+    '| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
   );
   for (const d of r.rounds) {
     const slowest = d.sides.reduce((a, s) => Math.max(a, s.durationS), 0);
     L.push(
       `| ${d.stage} | r${d.rerunIndex} | \`${d.runId}\` | ${d.startedAt ?? '—'} | ` +
-        `${d.status ?? '—'} | ${d.reviewMode ?? '—'}${d.degradedReason ? `（${d.degradedReason}）` : ''} | ` +
+        `${d.status ?? '—'} | ${d.criticsSelected.join('、') || '—'} | ` +
+        `${d.reviewMode ?? '—'}${d.degradedReason ? `（${d.degradedReason}）` : ''} | ` +
         `${Math.round(slowest)}s |`,
     );
   }

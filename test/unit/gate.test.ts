@@ -7,6 +7,7 @@ import {
   checkAdjudication, findJointRejectedBlockers, isHollowReason, loadRoundReviews, renderGateResult,
 } from '../../src/trivium/gate.js';
 import { newRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
+import { CRITICS } from '../../src/trivium/types.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { writeArtifact, type ArchiveLayout } from '../../src/trivium/archive.js';
 import type { Finding, Review } from '../../src/trivium/types.js';
@@ -459,14 +460,15 @@ test('非降级轮次不得凭空冒出 degraded_round 警告', async () => {
 test('loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推', async () => {
   const base = {
     topic: TOPIC, stage: 'plan' as const, rerunIndex: 1, command: 'x',
-    promptHint: null, taskGoal: null, treeHash: 'h', gitHead: null, dirty: false,
+    promptHint: null, taskGoal: null, criticsSelected: CRITICS,
+    treeHash: 'h', gitHead: null, dirty: false,
     subjectSha256: 's', denyPaths: [], driftPolicy: 'warn' as const,
   };
 
   // ① 有降级原因 → true
   const lDeg = await layout();
   const degraded = newRunMeta({ ...base, runId: 'RDEG' });
-  degraded.review_mode = 'single';
+  degraded.review_mode = 'partial';
   degraded.degraded_reason = 'glm: timeout（超时）';
   await writeRunMeta(lDeg, 'plan', degraded);
   const deg = await loadRoundReviews(lDeg, 'plan', 'RDEG');

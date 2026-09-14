@@ -7,11 +7,14 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { CriticId, RunMeta, Stage, StageOrVerify, CommandEntry } from './types.js';
+import type {
+  AgentId, CriticId, LegacyReviewMode, RunMeta, Stage, StageOrVerify, CommandEntry,
+} from './types.js';
 import { writeAtomic } from './util/fsx.js';
 import { topicDir, type ArchiveLayout } from './archive.js';
 import { withTopicLock } from './lock.js';
-import { validateRunMeta } from './schemas.js';
+import { validateRunMeta, validateRunMetaV1 } from './schemas.js';
+import { DEFAULT_DRIVER } from './agents/registry.js';
 
 /** `updateTask` 的短临界区参数 */
 export interface TaskLock {
@@ -75,7 +78,13 @@ export interface TaskMeta {
     stage: StageOrVerify;
     rerun_index: number;
     status: RunMeta['status'];
-    review_mode: RunMeta['review_mode'];
+    /**
+     * 本轮完成度。**联合里带着 v1 的旧取值**（`dual` / `single`）：
+     * `task.json` 仍是 `trivium.task.v1`，既有文件里存着它们，而本字段
+     * 目前只写不读（没有任何消费点），没有理由为了收窄类型去改写历史留痕。
+     * 真要判完成度请读 `run-<id>.json`——那里的 v1 记录有正式的迁移路径。
+     */
+    review_mode: RunMeta['review_mode'] | LegacyReviewMode;
     started_at: string;
   }[];
   /** 当前闸门状态 */
@@ -178,6 +187,10 @@ export interface NewRunMetaInput {
   taskGoal: string | null;
   /** 发起本次运行的斜杠命令（A/B/C/D），手工调用为 null */
   entry?: CommandEntry | null;
+  /** 当轮发起方。省略时取注册表的 `DEFAULT_DRIVER`（M7b 恒为 claude） */
+  driver?: AgentId;
+  /** 本轮入选的审核者集合。**必填**：它是「本该跑几侧」的唯一事实来源 */
+  criticsSelected: readonly CriticId[];
   treeHash: string;
   gitHead: string | null;
   dirty: boolean;
@@ -189,7 +202,7 @@ export interface NewRunMetaInput {
 /** 运行开始时先写一份 `status: running` 的骨架，便于 `--wait` 与崩溃后取证 */
 export function newRunMeta(i: NewRunMetaInput): RunMeta {
   return {
-    schema: 'trivium.run.v1',
+    schema: 'trivium.run.v2',
     run_id: i.runId,
     topic: i.topic,
     stage: i.stage,
@@ -198,6 +211,8 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     prompt_hint: i.promptHint,
     task_goal: i.taskGoal,
     entry: i.entry ?? null,
+    driver: i.driver ?? DEFAULT_DRIVER,
+    critics_selected: [...i.criticsSelected],
     snapshot: {
       git_head: i.gitHead,
       tree_hash: i.treeHash,
@@ -207,7 +222,11 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     },
     started_at: new Date().toISOString(),
     finished_at: null,
-    review_mode: 'dual',
+    /*
+     * 骨架先记 `full`：此刻还没有任何一侧失败。
+     * 真值由 `review.ts` 在 `decideMode` 之后回填（入选侧全成功才留 `full`）。
+     */
+    review_mode: 'full',
     degraded_reason: null,
     critics: {},
     deny_paths: i.denyPaths,
@@ -228,10 +247,10 @@ export async function writeRunMeta(
   stage: Stage,
   meta: RunMeta,
 ): Promise<string> {
-  // 写前按 trivium.run.v1 校验：不合契约的运行元数据是程序缺陷，宁可在这里炸也不落盘
+  // 写前按 trivium.run.v2 校验：不合契约的运行元数据是程序缺陷，宁可在这里炸也不落盘
   const problems = validateRunMeta(meta);
   if (problems.length > 0) {
-    throw new Error(`run.json 不符合 trivium.run.v1：${problems.join('；')}`);
+    throw new Error(`run.json 不符合 trivium.run.v2：${problems.join('；')}`);
   }
   // 走 archive 是纪律（§16.2 纪律 2），但 run.json 不含审查正文、
   // 且 archive.writeMeta 已含密钥扫描，这里直接复用它
@@ -240,18 +259,67 @@ export async function writeRunMeta(
   return w.absPath;
 }
 
+/**
+ * 把一份 `trivium.run.v1` 记录映射为**内存中的 v2 形状**（设计 §6.7.1）。
+ *
+ * 落盘的 v1 文件原样不动——它是不可变工件（P6），迁移只发生在读进内存这一刻。
+ * 映射规则由 §6.7.1 钉死：
+ *   · `dual → full`、`single → partial`；
+ *   · `driver` 缺省 `claude`（v1 时代 Driver 是系统常量，不存在别的可能）；
+ *   · `critics_selected` 由 `critics` 的实有键推导。
+ *
+ * **最后一条是有损的**：v1 里「入选但整侧失联」与「压根没入选」本来就分不开，
+ * 键集是当时能拿到的最好近似。迁移不会把信息变多，只是把旧事实放进新形状——
+ * 调用方据此判缺件时，对 v1 记录的结论仍然只有 v1 那么准。
+ */
+export function migrateRunMetaV1(raw: unknown): RunMeta {
+  const v1 = raw as Omit<RunMeta, 'schema' | 'driver' | 'critics_selected' | 'review_mode'> & {
+    schema: 'trivium.run.v1';
+    review_mode: LegacyReviewMode;
+  };
+  return {
+    ...v1,
+    schema: 'trivium.run.v2',
+    driver: DEFAULT_DRIVER,
+    critics_selected: Object.keys(v1.critics ?? {}) as CriticId[],
+    review_mode: v1.review_mode === 'single' ? 'partial' : 'full',
+  };
+}
+
+/**
+ * 读回一份审查阶段的运行元数据，**按 schema 精确分发**（设计 §6.7.1 读侧）。
+ *
+ * 此前这里是 `JSON.parse` 直转、零校验：`schema` 字段写成任何字符串都能读出来，
+ * 而返回值会被 `gate` 与 `report` 当成事实用。改为只认两种形状：
+ *   · `trivium.run.v1` → v1 校验器通过后映射为内存 v2；
+ *   · `trivium.run.v2` → v2 校验器；
+ *   · 其余（含 `schema` 缺失）→ `null`，与「文件不存在」同等对待。
+ *
+ * 注意本函数只服务审查阶段（签名即是 `Stage`）。verify 阶段另有形状，
+ * 它的分支在 `archive.ts` 的 `listRecordedRuns` 里——那条分支写错会让归档中
+ * 全部 verify 历史记录被判不可读，进而**永久拦死本仓库的每一次提交**（§6.7.1 的方框）。
+ */
 export async function readRunMeta(
   l: ArchiveLayout,
   stage: Stage,
   runId: string,
 ): Promise<RunMeta | null> {
   const { metaDir } = await import('./archive.js');
+  let raw: unknown;
   try {
     const p = path.join(metaDir(l, stage), runMetaFileName(runId));
-    return JSON.parse(await fs.readFile(p, 'utf8')) as RunMeta;
+    raw = JSON.parse(await fs.readFile(p, 'utf8'));
   } catch {
     return null;
   }
+  const schema = (raw as { schema?: unknown } | null)?.schema;
+  if (schema === 'trivium.run.v2') {
+    return validateRunMeta(raw).length === 0 ? (raw as RunMeta) : null;
+  }
+  if (schema === 'trivium.run.v1') {
+    return validateRunMetaV1(raw).length === 0 ? migrateRunMetaV1(raw) : null;
+  }
+  return null;
 }
 
 /** 把一次运行登记进 task.json（幂等：同 run_id 覆盖而非追加） */
@@ -287,7 +355,14 @@ export async function registerRun(l: ArchiveLayout, meta: RunMeta, lock: TaskLoc
 export function summarizeRun(meta: RunMeta): string {
   const lines: string[] = [
     `主题 ${meta.topic} ｜ 阶段 ${meta.stage} ｜ 第 ${meta.rerun_index} 轮 ｜ 运行 ${meta.run_id}`,
-    `状态 ${meta.status} ｜ 模式 ${meta.review_mode}${meta.degraded_reason ? `（降级：${meta.degraded_reason}）` : ''}`,
+    /*
+     * 参与者事实与降级警示**分开说**（设计 §3.4 / AC-22）。
+     * 「入选 1 侧并成功」是配置意图，不该看起来像出了事；而只印 `full`
+     * 又看不出本轮到底审了谁——两件事各占一句，谁也不顶替谁。
+     */
+    `状态 ${meta.status} ｜ 完成度 ${meta.review_mode}` +
+      `${meta.degraded_reason ? `（降级：${meta.degraded_reason}）` : ''}`,
+    `本轮审核者：${meta.critics_selected.join('、') || '（无）'} ｜ 发起方 ${meta.driver}`,
   ];
   for (const c of Object.keys(meta.critics) as CriticId[]) {
     const m = meta.critics[c]!;

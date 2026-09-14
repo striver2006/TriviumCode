@@ -337,7 +337,20 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     if (!av.ok) throw envError(`${c} 侧不可用：${av.reason}`);
   }
   if (sides.length < 2) {
-    warn(`只跑 ${sides.join('/')} 一侧：这不是双审，结果会被标为降级。仅供调试使用。`);
+    /*
+     * 中性陈述，**不断言降级**（审查意见 AGY-01 ≡ GLM-01，两侧独立收敛）。
+     *
+     * 原文案写的是「结果会被标为降级」。M7b 第 3 步之后那是假话：单侧入选且成功时
+     * `review_mode` 记 `full`、不写 `degraded_reason`、渲染也不打降级横幅
+     * （FR-29 / AC-22：选 1 个审核者是配置意图，不是降级）。照那句话去找降级标记会找不到。
+     *
+     * 这条漏改本身值得记：改语义时，**凡断言该语义的文案都要一并过一遍**——
+     * 文档有 §24 台账看着，而代码里的 warn 文案没有任何对账清单。
+     */
+    warn(
+      `本轮只跑 ${sides.join('/')} 一侧：结论没有交叉验证，不构成多审。` +
+        '这是配置意图而非降级，留痕里不会有降级标记——参与者事实见审查文档抬头与 run 元数据的 critics_selected。',
+    );
   }
   if (opts.allowSingle) {
     if (cfg.review.allow_single_flag) {
@@ -556,6 +569,11 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     promptHint: opts.promptHint,
     taskGoal,
     entry: opts.entry ?? null,
+    /*
+     * 入选集合就是 `sides`——`--only` 收窄后的那一份，不是当前启用的全集。
+     * 两者分开记，`gate` 才能把「入选但失败」与「压根没入选」判成两回事（§6.7.1）。
+     */
+    criticsSelected: sides,
     treeHash: primarySnap.treeHash,
     gitHead: primarySnap.gitHead,
     dirty: primarySnap.dirty,
@@ -826,7 +844,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       startedAt, finishedAt,
       evidenceOk: side?.evidenceOk ?? false,
       projectReads: side?.projectReads ?? 0,
-      // 用真实判定，不再从 mode 反推——mode 是 v1 线格式值，不表达降级（runner.ts ModeDecision）
+      selectedCritics: mode.selectedSides,
+      // 用真实判定，不再从 mode 反推——mode 只说完成度，不说参与者基数（runner.ts ModeDecision）
       degraded: mode.degraded,
       drift: verdict.drift.kind !== 'none',
       peerDeny: r.peer_deny_applied,
@@ -892,14 +911,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
        * 那个三目最危险的地方是它不会响亮失败：第三家会被**静默记成 zcode**，
        * 而 vendor 是适配器路由与禁读矩阵的依据，留痕直接是错的。
        *
-       * **边界（别把这条读强了）**：本处修的是**值**——第三家现在会记真值。
-       * 但类型层的编译期防错**尚未建立**：`CRITIC_VENDOR` 的派生处有一个
-       * `as Vendor` 断言（`types.ts`），把 `AgentVendor`（四值）宽 union 断言成
-       * `Vendor`（两值），恒编译通过。因此新增 `CriticId` 时这条链**不会**像
-       * `effortFor` / `checkModelSlugs` 的 `never` 分支那样报错，而是把新 vendor
-       * 静默塞进值位、落盘后才被 run.v1 的枚举校验拒掉。
-       * `Vendor` 是 run.v1 的线契约枚举，改它属数据契约层——随 run.v2 一并处理
-       * （审查意见 GLM-03，已登记 BACKLOG EV-03）。
+       * 类型层的防错也已补齐（M7b 第 3 步，BACKLOG EV-03 收口）：`Vendor` 不再是
+       * 独立的两值 union，而**就是**注册表的 `AgentVendor`，`CRITIC_VENDOR` 派生处
+       * 那个把四值宽 union 断言成两值的 `as Vendor` 随之删除。此前它恒编译通过，
+       * 新增审核者时这条链不会像 `effortFor` / `checkModelSlugs` 的 `never` 分支
+       * 那样报错，而是把新 vendor 静默塞进值位、落盘才被枚举校验拒掉。
+       * 前提是 `run.v2` 的 `vendor` 不再枚举两值——所以它只能随本步一起做。
        */
       vendor: CRITIC_VENDOR[c],
       cli_version: r.cli_version,

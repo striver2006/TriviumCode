@@ -38,6 +38,13 @@ export interface RenderInput {
   /** 由 guard 判定后传入 */
   evidenceOk: boolean;
   projectReads: number;
+  /**
+   * 本轮**入选**的审核者集合，用于渲染中性的参与者事实。
+   *
+   * 与 `degraded` 是两件事，不可互相顶替：选 1 侧并成功是配置意图，
+   * 此时 `degraded` 为 false 却仍该让读者看见「本轮只审了一侧」（AC-22）。
+   */
+  selectedCritics: readonly CriticId[];
   degraded: boolean;
   drift: boolean;
   /** 路径级 deny 是否实际生效（§10.2 要求逐侧标注） */
@@ -64,7 +71,13 @@ export function renderFrontMatter(input: RenderInput): string {
     stage: input.stage,
     role: input.critic,
     vendor,
-    agent_cli: `${vendor === 'antigravity' ? 'agy' : 'zcode'}/${input.result.cli_version ?? 'unknown'}`,
+    /*
+     * CLI 名取自注册表，不再从 vendor 三目算。
+     * 原式 `vendor === 'antigravity' ? 'agy' : 'zcode'` 在两值时恰好穷尽，
+     * 而 `Vendor` 放开成四值后它会把 codex / claude 静默记成 zcode——
+     * front-matter 是审计凭证，写错不报错比报错更坏。
+     */
+    agent_cli: `${agentById(input.critic)?.cliName ?? input.critic}/${input.result.cli_version ?? 'unknown'}`,
     model_requested: input.modelRequested,
     // 回读值，不采信 Agent 自述（AC-13）
     model_effective: input.result.model_effective,
@@ -120,11 +133,24 @@ export function renderReviewDoc(input: RenderInput): string {
   parts.push(`# ${STAGE_LABEL[input.stage]}：${input.topic}
 
 > ${criticLabel(input.critic)} ｜ 模型 \`${result.model_effective ?? input.modelRequested ?? '未知'}\`
-> ｜ 运行 \`${input.runId}\`${input.rerunIndex > 1 ? ` ｜ 第 ${input.rerunIndex} 轮` : ''}`);
+> ｜ 运行 \`${input.runId}\`${input.rerunIndex > 1 ? ` ｜ 第 ${input.rerunIndex} 轮` : ''}
+> ｜ 本轮审核者 ${input.selectedCritics.join('、') || '（未记录）'}`);
 
-  // 不可伪装的标记必须在正文顶部就能看见，而不是只在 front-matter 里
+  /*
+   * 不可伪装的标记必须在正文顶部就能看见，而不是只在 front-matter 里。
+   *
+   * **参与者事实与降级警示分两处说**（设计 §3.4 / AC-22）：
+   * 「本轮审核者」是中性陈述，始终渲染在抬头；下面的横幅只在真降级时出现。
+   * 旧文案「另一侧未能完成」在两处都站不住：选 1 侧成功时它是假话（没有任何
+   * 一侧失败），三审挂一侧时「另一侧」也指代不清。
+   */
   const flags: string[] = [];
-  if (input.degraded) flags.push('**本次为单审降级**：另一侧未能完成，本结论不构成双审。');
+  if (input.degraded) {
+    flags.push(
+      '**本次为降级轮次**：有入选审核者未能完成，本结论不构成本轮预期的完整多审。' +
+        '实际完成情况见抬头的审核者清单与 run 元数据的 `degraded_reason`。',
+    );
+  }
   if (review === null) flags.push('**解析降级**：本侧输出未能解析为结构化结论，下方为原文。该侧不参与阻断判定。');
   if (!input.evidenceOk) flags.push('**Agent 执行证据不足**：本侧不得计为合格双审的一半。');
   if (input.drift) flags.push('**审查期间工作树发生漂移**：本结论对应送审时刻的快照，与当前工作树可能已不一致。');

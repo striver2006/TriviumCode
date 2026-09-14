@@ -122,11 +122,11 @@ test('两侧真并行，一侧抛异常不连带丢掉另一侧（AC-06）', asy
   assert.match(out.results.glm!.fail_reason!, /适配器异常/);
 });
 
-test('两侧都成功 → dual，不降级', () => {
+test('两侧都成功 → full，不降级', () => {
   const d = decideMode({ gemini: okResult('gemini'), glm: okResult('glm') }, 'strict', ['gemini', 'glm']);
   assert.deepEqual(
     { mode: d.mode, abort: d.abort, reason: d.degradedReason },
-    { mode: 'dual', abort: false, reason: null },
+    { mode: 'full', abort: false, reason: null },
   );
 });
 
@@ -136,20 +136,20 @@ test('严格模式下单侧失败即中止，但幸存侧结果与原因都保�
     'strict',
     ['gemini', 'glm'],
   );
-  assert.equal(d.mode, 'single');
+  assert.equal(d.mode, 'partial');
   assert.equal(d.abort, true);
   assert.deepEqual(d.okSides, ['gemini']);
   assert.deepEqual(d.failedSides, ['glm']);
   assert.match(d.degradedReason!, /glm: timeout/);
 });
 
-test('降级模式下单侧失败继续，但必须标 single 与原因（不得伪装双审）', () => {
+test('降级模式下单侧失败继续，但必须标 partial 与原因（不得伪装双审）', () => {
   const d = decideMode(
     { gemini: okResult('gemini'), glm: failedResult('glm', { status: 'failed', reason: '炸了' }) },
     'degrade',
     ['gemini', 'glm'],
   );
-  assert.equal(d.mode, 'single');
+  assert.equal(d.mode, 'partial');
   assert.equal(d.abort, false);
   assert.ok(d.degradedReason && d.degradedReason.length > 0, '降级必须留痕');
 });
@@ -200,7 +200,7 @@ test('入选一侧且成功：不是降级，但参与者基数必须机器可�
 });
 
 test('入选两侧却只回来一侧：缺失侧必须显形，不能当成全成功', () => {
-  // 装配链断了才会出现；修复前 Object.keys(results) 见不到它，会判成 dual/不降级
+  // 装配链断了才会出现；修复前 Object.keys(results) 见不到它，会判成 full/不降级
   const d = decideMode({ gemini: okResult('gemini') }, 'degrade', ['gemini', 'glm']);
 
   assert.deepEqual(d.missingSides, ['glm']);
@@ -211,7 +211,7 @@ test('入选两侧却只回来一侧：缺失侧必须显形，不能当成全�
 
 test('未入选侧的结果混进 results 时被忽略，不得污染判定（审查意见 AGY-02 ≡ GLM-02）', () => {
   /*
-   * 求交之前：ran 直接取键集，glm 的失败会把 mode 判成 single、degraded 置 true、
+   * 求交之前：ran 直接取键集，glm 的失败会把 mode 判成 partial、degraded 置 true、
    * strict 下还会 abort——只防「入选却没跑」、不防「没入选却有结果」的不对称漏洞。
    */
   const polluted = decideMode(
@@ -231,10 +231,10 @@ test('未入选侧的结果混进 results 时被忽略，不得污染判定（�
   assert.deepEqual(polluted.selectedSides, ['gemini']);
 });
 
-test('degraded 与 mode 解耦：mode 是 v1 线格式值，不得当降级标志用', () => {
+test('degraded 与 mode 解耦：mode 只说完成度，不得当降级标志用', () => {
   const intentionalSingle = decideMode({ gemini: okResult('gemini') }, 'strict', ['gemini']);
-  // mode 仍是 v1 enum 的「无失败」值，但它**不表达**参与者基数
-  assert.equal(intentionalSingle.mode, 'dual');
+  // 只入选一侧且它成功了：完成度是 full，**不表达**参与者基数（AC-22）
+  assert.equal(intentionalSingle.mode, 'full');
   assert.equal(intentionalSingle.degraded, false, 'mode 与 degraded 各自独立');
 
   const realDegrade = decideMode(
@@ -242,7 +242,7 @@ test('degraded 与 mode 解耦：mode 是 v1 线格式值，不得当降级标�
     'degrade',
     ['gemini', 'glm'],
   );
-  assert.equal(realDegrade.mode, 'single');
+  assert.equal(realDegrade.mode, 'partial');
   assert.equal(realDegrade.degraded, true);
 });
 
@@ -252,7 +252,7 @@ test('parse_fallback 侧算「跑成功了」，不触发降级中止', () => {
     'strict',
     ['gemini', 'glm'],
   );
-  assert.equal(d.mode, 'dual');
+  assert.equal(d.mode, 'full');
   assert.equal(d.abort, false);
 });
 

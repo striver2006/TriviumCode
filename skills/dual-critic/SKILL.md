@@ -16,7 +16,7 @@ disable-model-invocation: true
 | 路径 | 用途 |
 | :--- | :--- |
 | `scripts/trivium.cjs` | 编排器本体（esbuild 单文件产物，不进 Git） |
-| `schema/` | `review.v1` / `disposition.v1` / `run.v1` / `config.v1` 四份契约，是 parse / gate / meta / config 的运行时真理来源 |
+| `schema/` | `review.v1` / `disposition.v1` / `run.v2`（`run.v1` 只读保留）/ `config.v1` 五份契约，是 parse / gate / meta / config 的运行时真理来源 |
 | `prompts/` | 各阶段的审查提示词模板 |
 | `lenses.yaml` | 两侧差异化审查镜头（§9.3），避免双审退化成同审 |
 | `agents/trivium-critic.md` | Antigravity 只读审查 Agent 定义 → 安装到 `~/.gemini/config/agents/` |

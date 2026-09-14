@@ -29,7 +29,7 @@ import {
 } from './naming.js';
 import { assertNoSecrets } from './secrets.js';
 import { createExclusive, ensureDir, exists, sha256, sha256File, writeAtomic } from './util/fsx.js';
-import { validateRunMeta } from './schemas.js';
+import { validateRunMeta, validateRunMetaV1 } from './schemas.js';
 
 export interface ArchiveLayout {
   archiveRoot: string;
@@ -354,6 +354,13 @@ export interface TamperedArtifact {
   stage: StageOrVerify;
   recordedSha256: string;
   actualSha256?: string;
+  /**
+   * `manifest_unreadable` 的**真实**原因，透传自 `runManifestProblem()`。
+   *
+   * 存在的理由见 `RecordedRun.unreadableReason`：不透传的话，调用方只能硬编码
+   * 「解析失败」，而那对「解析成功但契约不认」的记录是错误的排障方向。
+   */
+  reason?: string;
 }
 
 /**
@@ -405,8 +412,76 @@ export interface RecordedRun {
   artifacts: { path: string; sha256: string }[];
   status: string;
   skipped?: boolean;
-  /** run.json 存在但解析失败 */
+  /** run.json 存在但读不出来——**成因不止一种**，见下 */
   unreadable?: boolean;
+  /**
+   * 不可读的具体原因（审查意见 GLM-03）。
+   *
+   * M7b 第 3 步之前，unreadable 基本只有「JSON 坏了」一种成因，调用方硬编码
+   * 「存在但解析失败」是准的。本步把**契约拒绝**（未知 schema、不合 v1/v2）
+   * 也纳入 unreadable 之后，那句话对一份**解析完全成功、只是 schema 不被接受**的
+   * 文件就是错的——排障者会被引去查 JSON 损坏。
+   *
+   * 而这条链路正是「写错会永久拦死每一次 `git commit`」的那条：
+   * 在最需要准确诊断的地方给错方向，代价最高。所以原因必须透传，不能在 catch 里丢掉。
+   */
+  unreadableReason?: string;
+}
+
+/**
+ * 运行清单的**读侧按阶段分发**（设计 §6.7.1，规格钉死、写错会锁死仓库提交）。
+ *
+ * 返回 null 表示可读；返回字符串表示不可读，字符串本身是原因。
+ *
+ * ```text
+ * 审查阶段（plan / code / bug）：
+ *   trivium.run.v1  → v1 校验器（历史契约，按写入时的规范解读）
+ *   trivium.run.v2  → v2 校验器
+ *   其余（含缺失）   → 不可读
+ *
+ * verify 阶段：
+ *   trivium.verify-run.v1 → 照常可读
+ *   trivium.run.v1        → 照常可读，且**不施加审查元数据契约校验**
+ *   其余                   → 不可读
+ * ```
+ *
+ * 两处要点，都不是随手写的：
+ *
+ * **一、审查阶段的兜底从「放过」改成「不可读」（§2.4 的收严）。** 旧实现是
+ * `schema === 'trivium.run.v1' && 校验不过` 才判坏——`schema` 一旦不是那个字面量，
+ * 第一个合取项即为 false，整个校验被跳过、`artifacts` 原样进清单。而这份清单正是
+ * 提交完整性锚的消费对象：**把 schema 改成任意别的字符串，清单就脱离了契约校验**。
+ * 那是个伪造通道，不是宽容。升 v2 后若沿用 `if (v1) … else …` 的形态还会放大它。
+ *
+ * **二、verify 阶段的 `run.v1` 不走审查校验器。** 这不是宽容，是按写入时的规范
+ * 解读留痕（P6「只追加不覆盖」的同一立场）：`verify` 本就不是一次审查运行，
+ * 早期落盘的记录违反 `stage` 枚举、缺大量必填字段。本仓库归档中**每一份** verify
+ * 运行留痕都命中本规则（绝大多数是 `verify-run.v1`，另有历史遗留的 `run.v1`），
+ * 且**每跑一次 `verify` 就多一份**——所以这里不写具体数量：写死的计数必然过期，
+ * 而分支按形状分发、与数量无关（审查意见 GLM-04：原注释写「5 份」，实测已是 6 份）。
+ * 按无分支的字面规则实现会把它们全判不可读，而 `hooks.ts` 的 `checkRunManifests`
+ * 见 unreadable 即 `EXIT.GATE_BLOCK`——**此后每一次 `git commit` 都会被拦死，
+ * 且无法通过改代码之外的任何手段解除。**
+ */
+export function runManifestProblem(
+  stage: StageOrVerify,
+  meta: { schema?: string },
+): string | null {
+  if (stage === 'verify') {
+    if (meta.schema === 'trivium.verify-run.v1') return null;
+    // 历史形状：可读，但不施加审查元数据契约校验
+    if (meta.schema === 'trivium.run.v1') return null;
+    return `verify 阶段不认识的 schema：${JSON.stringify(meta.schema)}`;
+  }
+  if (meta.schema === 'trivium.run.v2') {
+    const problems = validateRunMeta(meta);
+    return problems.length > 0 ? `不符合 trivium.run.v2：${problems.join('；')}` : null;
+  }
+  if (meta.schema === 'trivium.run.v1') {
+    const problems = validateRunMetaV1(meta);
+    return problems.length > 0 ? `不符合 trivium.run.v1：${problems.join('；')}` : null;
+  }
+  return `不认识的 schema：${JSON.stringify(meta.schema)}`;
 }
 
 export async function listRecordedRuns(layout: ArchiveLayout): Promise<RecordedRun[]> {
@@ -428,15 +503,8 @@ export async function listRecordedRuns(layout: ArchiveLayout): Promise<RecordedR
           schema?: string; run_id?: string; status?: string; skipped?: boolean;
           artifacts?: { path: string; sha256: string }[];
         };
-        /*
-         * 自称 trivium.run.v1 却不合契约：也是「被搅坏」，按不可读处理。
-         * 只对审查阶段目录生效：verify/ 下的记录另有 schema（trivium.verify-run.v1，AGY-03），
-         * 而 AGY-03 之前落盘的历史 verify 记录仍标着 run.v1——它们是合法的不可变工件（P6），
-         * 本仓库归档里就有一份，拿 run.v1 去校验会把它误判成不可读、永久拦住提交。
-         */
-        if (stage !== 'verify' && meta.schema === 'trivium.run.v1' && validateRunMeta(meta).length > 0) {
-          throw new Error('不符合 trivium.run.v1');
-        }
+        const bad = runManifestProblem(stage, meta);
+        if (bad) throw new Error(bad);
         out.push({
           run_id: meta.run_id ?? m[1]!,
           stage,
@@ -444,13 +512,21 @@ export async function listRecordedRuns(layout: ArchiveLayout): Promise<RecordedR
           status: meta.status ?? 'unknown',
           ...(meta.skipped !== undefined ? { skipped: meta.skipped } : {}),
         });
-      } catch {
+      } catch (e) {
         /*
-         * 损坏的 run.json **不能静默跳过**（审查意见 GLM-r2-03）。
+         * 读不出来的 run.json **不能静默跳过**（审查意见 GLM-r2-03）。
          * 跳过等于「搅坏清单即可让核对失去对象」——而清单本身就是被保护的东西。
          * 记成 unreadable，交给调用方按违例处理。
+         *
+         * **原因要带上**（审查意见 GLM-03）：这里的异常有两种来源，
+         * `JSON.parse` 抛的（文件真坏了）与 `runManifestProblem` 抛的（契约不认），
+         * 排障动作完全不同。丢掉原因就只能靠调用方猜，而它猜的那句「解析失败」
+         * 对后一种是错的。
          */
-        out.push({ run_id: m[1]!, stage, artifacts: [], status: 'unreadable', unreadable: true });
+        out.push({
+          run_id: m[1]!, stage, artifacts: [], status: 'unreadable', unreadable: true,
+          unreadableReason: (e as Error).message,
+        });
       }
     }
   }
@@ -494,6 +570,7 @@ export async function checkRunManifests(
       out.push({
         relPath: rel, kind: 'manifest_unreadable',
         runId: reg.run_id, stage: reg.stage, recordedSha256: '',
+        ...(got.unreadableReason ? { reason: got.unreadableReason } : {}),
       });
     }
   }

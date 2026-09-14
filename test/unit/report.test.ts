@@ -10,7 +10,7 @@ import { promises as fs } from 'node:fs';
 import { acceptanceRate, buildTopicReport, renderTopicReport, type RoundReport } from '../../src/trivium/report.js';
 import { newRunMeta, writeRunMeta, registerRun, type TaskMeta } from '../../src/trivium/meta.js';
 import { writeArtifact, writeMeta, type ArchiveLayout } from '../../src/trivium/archive.js';
-import type { Review } from '../../src/trivium/types.js';
+import { CRITICS, type Review } from '../../src/trivium/types.js';
 
 /**
  * 主题级复盘（设计 §5.1 / §9.3 / §15.2）。
@@ -69,7 +69,7 @@ async function seedRound(
 ) {
   const meta = newRunMeta({
     runId: opts.runId, topic: l.topic, stage: 'plan', rerunIndex: opts.rerunIndex,
-    command: 'test', promptHint: '焦点', taskGoal: null,
+    command: 'test', promptHint: '焦点', taskGoal: null, criticsSelected: CRITICS,
     treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S',
     denyPaths: [], driftPolicy: 'warn',
   });
@@ -84,7 +84,7 @@ async function seedRound(
       };
       await writeMeta(l, 'plan', `review-glm-${opts.runId}.failed.json`,
         JSON.stringify({ critic: 'glm', status: 'timeout', fail_reason: '脚本级超时（900s）' }) + '\n');
-      meta.review_mode = 'single';
+      meta.review_mode = 'partial';
       meta.degraded_reason = 'glm: timeout';
       continue;
     }
@@ -136,7 +136,7 @@ test('一轮双审：时间线、意见数、严重度分布、生效模型齐�
   assert.equal(r.rounds.length, 1);
   const d = r.rounds[0]!;
   assert.equal(d.runId, 'R1');
-  assert.equal(d.reviewMode, 'dual');
+  assert.equal(d.reviewMode, 'full');
   assert.deepEqual(
     d.sides.map((s) => [s.critic, s.findings]).sort(),
     [['gemini', 2], ['glm', 1]],
@@ -181,7 +181,7 @@ test('单侧超时：显示状态而非 0，并进降级清单', async () => {
   const glm = d.sides.find((s) => s.critic === 'glm')!;
   assert.equal(glm.findings, null, '失败侧的意见数必须是 null，不能是 0');
   assert.equal(glm.status, 'timeout');
-  assert.equal(d.reviewMode, 'single');
+  assert.equal(d.reviewMode, 'partial');
   assert.deepEqual(d.divergences, [], '只有一侧有结论时不算重合度');
 
   const md = renderTopicReport(r);

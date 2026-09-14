@@ -84,11 +84,11 @@ graph TD
 
 | 模块 | 行数 | 职责 | 关键导出 |
 | :--- | ---: | :--- | :--- |
-| `archive.ts` | 451 | 防覆盖落盘、最低工件集校验、sha256 核对 | `writeArtifact()` `checkRecordedArtifacts()` `checkRunManifests()` |
-| `meta.ts` | 307 | `run.json` / `task.json` 的构造与更新 | `newRunId()` `writeRunMeta()` `updateTask()` `readTaskStrict()` |
+| `archive.ts` | 550 | 防覆盖落盘、最低工件集校验、sha256 核对、**运行清单读侧按阶段分发**（设计 6.7.1） | `writeArtifact()` `checkRecordedArtifacts()` `checkRunManifests()` `runManifestProblem()` |
+| `meta.ts` | 382 | `run.json`（`trivium.run.v2`）与主题级任务档的构造与更新；**读侧按 schema 分发与 v1 → v2 内存迁移** | `newRunId()` `writeRunMeta()` `readRunMeta()` `migrateRunMetaV1()` `updateTask()` `readTaskStrict()` |
 | `naming.ts` | 142 | 文件名生成与反解析（纯函数，不碰文件系统） | `buildArtifactName()` `parseArtifactName()` `validateTopic()` |
-| `report.ts` | 536 | 人读复盘生成 | `buildReport()` |
-| `render.ts` | 216 | 审查文档的 Markdown 渲染 | `renderReviewDoc()` |
+| `report.ts` | 556 | 人读复盘生成 | `buildReport()` |
+| `render.ts` | 253 | 审查文档的 Markdown 渲染（参与者事实与降级警示分两处标注） | `renderReviewDoc()` |
 
 ### 2.5 解析层
 
@@ -97,7 +97,7 @@ graph TD
 | `parse.ts` | 262 | 从厂商 stdout 里抠出审查结论并按 schema 校验 | `parseReview()` `extractJsonCandidates()` `enumerateFallbackFindings()` |
 | `disposition.ts` | 248 | 裁决表解析与三态归一 | `parseDisposition()` `normalizeDisposal()` |
 | `divergence.ts` | 202 | 多审退化指标（镜头重合度 Jaccard，按入选集合逐对计算） | `measureDivergence()` `measureAllPairs()` |
-| `schemas.ts` | 57 | 三份 schema 的 ajv 编译与缓存（`review.v1` 由 `parse.ts` 自持） | `validateRun()` `validateConfig()` |
+| `schemas.ts` | 125 | 四份 schema 的 ajv 编译与缓存（`review.v1` 由 `parse.ts` 自持）；`run.v2` 另在 ajv 之后按注册表补校 Agent 身份——id 与 vendor **不在 schema 里枚举**（纪律 7：抄第二份来源就会改一漏二） | `validateRunMeta()` `validateRunMetaV1()` `validateConfig()` |
 
 ### 2.6 适配层
 
@@ -122,7 +122,7 @@ graph TD
 > `review.v1.json` 的意见编号 pattern 仍为 `^(AGY|GLM)-…`。
 > **「注册表登记了四家」不等于「系统支持四家」**：`codex` / `claude` 的审核者能力在 M8 / M9，
 > Driver 任意化在 M10。登记而不启用，是为了让注册表从第一天起就是完整的单一来源。
-> 设计依据见[设计 v1.3.0](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 5.1、6.2、16.1。
+> 设计依据见[设计 v1.3.1](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 5.1、6.2、16.1。
 
 ### 2.7 基础层
 

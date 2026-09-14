@@ -28,6 +28,7 @@ import {
   suffixAlternation,
 } from '../../src/trivium/agents/registry.js';
 import { CRITICS, CRITIC_PREFIX, CRITIC_VENDOR } from '../../src/trivium/types.js';
+import { validateRunMeta } from '../../src/trivium/schemas.js';
 import { looksLikeRoleArtifact, parseArtifactName } from '../../src/trivium/naming.js';
 import { isFallbackId } from '../../src/trivium/disposition.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
@@ -584,4 +585,101 @@ test('剥离器：正则字面量里的引号不得让机器失步（比原 bug 
   const kept = stripCommentsKeepStrings(src);
   assert.doesNotMatch(kept, /说明文字/, '正则里的反引号让机器失步，块注释没被剥掉');
   assert.match(stripComments(src), /glm:/, '失步会连带吞掉后续真实代码');
+});
+
+// ──────────── 4. JSON Schema 侧的对账（审查意见 GLM-02，M7b 第 3 步）────────────
+
+/*
+ * 上面三组只扫 `src/trivium/` 的**代码**字面量。schema 文件是另一个论域，
+ * 此前没有任何机器检查看着它——而 `run.v2` 的设计恰恰把「不在 schema 里枚举
+ * Agent id 与 vendor」当成一条硬约束（纪律 7：注册表是唯一来源）。
+ *
+ * 缺这组对账的后果不是理论风险：往 `critics_selected.items` 或 `critic.vendor`
+ * 加回 `enum: ["gemini","glm"]`，全套测试**照样全绿**，直到 M8 接入第三家时
+ * 才在 `writeRunMeta` 运行期抛「run.json 不符合 trivium.run.v2」——正是
+ * `schemas.ts` 注释里自己描述的「改一漏二、跑到运行期才发现」那个症状。
+ * v1 的 schema 就是这么写死两家的，那也正是本步必须升版而非原地扩展的原因。
+ *
+ * 我为这条约束留的保障原本只有 schema 里的一段注释。**注释守不住的东西要让机器守**
+ * ——这是第 2 步刚学过的一课（白名单「过期条目」守卫），在新文件上又漏了一次。
+ */
+const SCHEMA_DIR = path.join(REPO_ROOT, 'skills/dual-critic/schema');
+
+/** 取 JSON 里某条点路径的节点，缺失返回 undefined */
+function nodeAt(root: unknown, dotted: string): unknown {
+  let cur: unknown = root;
+  for (const seg of dotted.split('.')) {
+    if (cur === null || typeof cur !== 'object') return undefined;
+    cur = (cur as Record<string, unknown>)[seg];
+  }
+  return cur;
+}
+
+test('run.v2 schema：身份字段一律不得枚举 Agent id 或 vendor', async () => {
+  const schema = JSON.parse(await fs.readFile(path.join(SCHEMA_DIR, 'run.v2.json'), 'utf8'));
+
+  /*
+   * 这三处是 v1 写死两家的对应位置，逐一盯住。
+   * 新增身份字段时**要往这张表里加**——漏加不会报错，正是本组对账要防的形态。
+   */
+  const identityPaths = [
+    'properties.driver',
+    'properties.critics_selected.items',
+    '$defs.critic.properties.vendor',
+  ];
+
+  for (const p of identityPaths) {
+    const node = nodeAt(schema, p);
+    assert.ok(node, `run.v2.json 缺少 ${p}：本对账的盯防点失效了，先修路径再说`);
+    assert.equal(
+      (node as Record<string, unknown>)['enum'], undefined,
+      `run.v2.json 的 ${p} 出现了 enum：Agent 身份的唯一来源是注册表（纪律 7），` +
+        '在 schema 里抄第二份，新增一家时改一漏二不会报错。' +
+        '身份校验请留在 schemas.ts 的 checkAgentIdentities()',
+    );
+  }
+});
+
+/*
+ * 结构断言之外再加一条**行为**断言：拿一个当前未启用为审核者的已登记 Agent
+ * （M7b 下是 codex / claude）去过校验器，形状必须被接受。
+ *
+ * 两条一起才完整：结构断言防「加回 enum」，行为断言防「换个写法把枚举塞回去」
+ * （`const`、`pattern`、`oneOf` 都能达到同样效果而绕开对 `enum` 的检查）。
+ */
+test('run.v2 校验：未启用但已登记的 Agent 出现在入选集合里，形状上必须被接受', () => {
+  const spare = ALL_AGENT_IDS.find((id) => !CRITIC_AGENT_IDS.includes(id));
+  assert.ok(spare, '四家全部启用为审核者时本用例失去意义，届时改用别的夹具');
+
+  const agent = agentById(spare)!;
+  const meta = {
+    schema: 'trivium.run.v2',
+    run_id: 'R1', topic: 't', stage: 'plan', rerun_index: 1, command: 'x',
+    prompt_hint: null, task_goal: null,
+    driver: DEFAULT_DRIVER,
+    critics_selected: [spare],
+    snapshot: {
+      git_head: null, tree_hash: 'h', dirty: false, subject_sha256: 's',
+      drift: { changed: false, files: [], policy: 'warn' },
+    },
+    started_at: 'x', finished_at: null,
+    review_mode: 'full', degraded_reason: null,
+    critics: {
+      [spare]: {
+        vendor: agent.vendor, cli_version: null,
+        model_requested: null, model_effective: null,
+        status: 'ok', exit_code: 0, duration_s: 1,
+        tool_calls: {}, evidence_ok: true, heterogeneous: true,
+      },
+    },
+    deny_paths: [],
+    guard: { readonly_breach: false, peer_artifact_read: false, peer_deny_applied: {}, forged_role_file: false },
+    artifacts: [], gate: { adjudication_complete: false, state: 'running' }, status: 'running',
+  };
+
+  assert.deepEqual(
+    validateRunMeta(meta), [],
+    `${spare} 是已登记 Agent，run.v2 不该在形状上拒绝它——` +
+      '拒绝即说明枚举被塞回了 schema（可能不是用 enum 写的）',
+  );
 });

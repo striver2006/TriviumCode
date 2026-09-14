@@ -54,6 +54,16 @@ export interface AgentDescriptor {
   label: string;
   vendor: AgentVendor;
   /**
+   * 该 Agent 的 CLI 命令名，进审查文档 front-matter 的 `agent_cli`。
+   *
+   * 登记而不是从 vendor 三目算：`render.ts` 原先写的是
+   * `vendor === 'antigravity' ? 'agy' : 'zcode'`——两值时它恰好穷尽，
+   * 而本步把 `Vendor` 放开成注册表的四值后，它会把 codex / claude
+   * **静默记成 zcode**。这正是计划 §2.3 点名的那类二元兜底：不报错、
+   * 不退非零码，只是留痕直接写错，而 front-matter 是审计凭证。
+   */
+  cliName: string;
+  /**
    * 归档后缀，标识**产出方**。恒等于 `id`。
    *
    * 与「发起方」正交：同一后缀在不同运行中可能是 Driver 也可能是审核者，
@@ -84,6 +94,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
     display: 'Claude Code',
     label: 'Anthropic Claude Code',
     vendor: 'anthropic',
+    cliName: 'claude',
     suffix: 'claude',
     findingPrefix: 'CLAUDE',
     criticEnabled: false, // M9 启用
@@ -96,6 +107,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
     display: 'Codex',
     label: 'OpenAI Codex',
     vendor: 'openai',
+    cliName: 'codex',
     suffix: 'codex',
     findingPrefix: 'CODEX',
     criticEnabled: false, // M8 启用
@@ -108,6 +120,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
     display: 'Antigravity',
     label: 'Critic-A · Google Antigravity',
     vendor: 'antigravity',
+    cliName: 'agy',
     suffix: 'gemini',
     findingPrefix: 'AGY',
     criticEnabled: true,
@@ -120,6 +133,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
     display: 'ZCode',
     label: 'Critic-B · 智谱 ZCode',
     vendor: 'zcode',
+    cliName: 'zcode',
     suffix: 'glm',
     findingPrefix: 'GLM',
     criticEnabled: true,

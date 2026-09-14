@@ -95,7 +95,7 @@ test('桩经环境变量跨进程注入，worker 真的用了桩（AGY-05）', {
     );
     assert.equal(meta.critics[side]?.status, 'ok');
   }
-  assert.equal(meta.review_mode, 'dual');
+  assert.equal(meta.review_mode, 'full');
   assert.equal(meta.status, 'success');
 });
 
@@ -130,7 +130,7 @@ test('一侧超时 → 降级单审，失败侧留 .failed.json 而非消失（A
   assert.match(meta.critics.gemini?.fail_reason ?? '', /超时/);
   assert.equal(meta.critics.glm?.status, 'ok');
   assert.equal(meta.critics.glm?.cli_version, 'stub/0.0.0', 'glm 侧仍须走桩');
-  assert.equal(meta.review_mode, 'single', '一侧失败即降级为单审');
+  assert.equal(meta.review_mode, 'partial', '一侧失败即降级续跑');
   assert.ok(meta.degraded_reason, '降级必须写明原因');
 
   // P5 不可伪装：失败侧不能靠删文件假装没跑
@@ -234,7 +234,7 @@ test('默认 strict：一侧失败即整次中止（退 75）', { skip: bundleMi
   });
   assert.equal(exitCode, EXIT.STRICT_ABORT, 'strict 下必须以 75 中止');
   assert.equal(meta.status, 'failed');
-  assert.equal(meta.review_mode, 'single');
+  assert.equal(meta.review_mode, 'partial');
   assert.ok(meta.degraded_reason, '降级原因必须留痕（AC-06）');
 });
 
@@ -245,7 +245,7 @@ test('--allow-single：一侧失败不中止，产出单审并标降级', { skip
   );
   assert.equal(exitCode, EXIT.OK, `应放行：\n${waitOut}`);
   assert.equal(meta.status, 'success');
-  assert.equal(meta.review_mode, 'single');
+  assert.equal(meta.review_mode, 'partial');
   assert.ok(meta.degraded_reason, '降级即便被允许也必须留痕');
 
   // 幸存侧照常落盘，失败侧留 .failed.json——不靠删文件假装没跑（P5）

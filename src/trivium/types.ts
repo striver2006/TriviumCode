@@ -5,13 +5,13 @@
  *   trivium.config.v1      → Config
  *   trivium.review.v1      → Review / Finding
  *   trivium.disposition.v1 → Disposition / DispositionRow
- *   trivium.run.v1         → RunMeta
+ *   trivium.run.v2         → RunMeta（v1 是历史契约，只读侧认，见 meta.ts 的 migrateRunMetaV1）
  * Schema 是运行时真理来源（ajv 校验），本文件是编译期的同一份约定。改一处必须改另一处。
  */
 
-import { agentById, CRITIC_AGENT_IDS, type AgentId } from './agents/registry.js';
+import { agentById, CRITIC_AGENT_IDS, type AgentId, type AgentVendor } from './agents/registry.js';
 
-export type { AgentId };
+export type { AgentId, AgentVendor };
 
 export type Stage = 'plan' | 'code' | 'bug';
 export type StageOrVerify = Stage | 'verify';
@@ -26,7 +26,21 @@ export const COMMAND_ENTRIES: readonly CommandEntry[] = ['A', 'B', 'C', 'D'];
  * M8 / M9 启用 codex / claude 时只改注册表，本别名自动跟随。
  */
 export type CriticId = Extract<AgentId, 'gemini' | 'glm'>;
-export type Vendor = 'antigravity' | 'zcode';
+/**
+ * 厂商标识。**直接就是注册表的 `AgentVendor`**（M7b 第 3 步收口 EV-03）。
+ *
+ * 此前它是独立的两值 union `'antigravity' | 'zcode'`，与注册表的四值 union
+ * 各写一份。后果不是「多写一遍」而是**编译期防错被一个断言穿掉**：
+ * `CRITIC_VENDOR` 的派生处写着 `agentById(c)!.vendor as Vendor`，把四值宽 union
+ * 断言成两值窄 union，恒编译通过。于是新增一家审核者时，这条链不会像
+ * `effortFor` / `checkModelSlugs` 的 `never` 分支那样在编译期报错，
+ * 而是把新 vendor 静默塞进值位，直到落盘被 schema 枚举拒掉才现形。
+ *
+ * 收口的前提是 `run.v2` 的 `vendor` 不再枚举两值（见 run.v2.json 的说明），
+ * 所以这条与本步的数据契约升版是同一件事，不能单独提前做——这也是
+ * BACKLOG EV-03 当初被判为「随 run.v2 一并处理」的理由。
+ */
+export type Vendor = AgentVendor;
 export type Severity = 'blocker' | 'major' | 'minor' | 'nit';
 export type Confidence = 'high' | 'medium' | 'low';
 export type Verdict = 'approve' | 'approve-with-nits' | 'request-changes' | 'block';
@@ -43,7 +57,7 @@ export const STAGES: readonly Stage[] = ['plan', 'code', 'bug'];
 export const CRITICS: readonly CriticId[] = CRITIC_AGENT_IDS as readonly CriticId[];
 
 export const CRITIC_VENDOR: Record<CriticId, Vendor> = Object.fromEntries(
-  CRITICS.map((c) => [c, agentById(c)!.vendor as Vendor]),
+  CRITICS.map((c) => [c, agentById(c)!.vendor]),
 ) as Record<CriticId, Vendor>;
 
 /** 意见编号前缀，各家不冲突（设计 §6.5） */
@@ -307,7 +321,7 @@ export interface Disposition {
   rows: DispositionRow[];
 }
 
-// ─────────────────── 运行元数据（trivium.run.v1，§6.7） ───────────────────
+// ────────────────── 运行元数据（trivium.run.v2，§6.7.1） ──────────────────
 
 export interface ToolCallCounts {
   read?: number;
@@ -348,8 +362,24 @@ export interface SnapshotMeta {
   drift: { changed: boolean; files: string[]; policy: 'warn' | 'fail' };
 }
 
+/**
+ * 本轮审查的完成度（`run.v2`，取代 v1 的 `dual` / `single`）。
+ *
+ * `full` = 入选的审核者全部成功；`partial` = 有入选者失败后降级续跑。
+ * **它只回答「入选的都成了吗」，不回答「跑了几侧」**——后者看 `critics_selected`。
+ * v1 把这两件事挤进一个值，于是 `--only gemini` 成功跑完被记成 `dual`（§2.1）：
+ * 留痕上看不出本轮只审了一侧，AC-06 的可核对性形同虚设。
+ */
+export type ReviewMode = 'full' | 'partial';
+
+/**
+ * v1 时代的完成度取值。**只出现在读侧**：既有归档里的 v1 记录按写入时的规范
+ * 解读，读进内存时映射为 `ReviewMode`（`dual → full`、`single → partial`）。
+ */
+export type LegacyReviewMode = 'dual' | 'single';
+
 export interface RunMeta {
-  schema: 'trivium.run.v1';
+  schema: 'trivium.run.v2';
   run_id: string;
   topic: string;
   stage: Stage;
@@ -360,10 +390,25 @@ export interface RunMeta {
   task_goal: string | null;
   /** 发起本次运行的斜杠命令；null 表示直接从命令行手工调用 */
   entry?: CommandEntry | null;
+  /**
+   * **当轮发起方**的 Agent id（§6.7.1）。与归档后缀（产出方）正交：
+   * 同一 Agent 在不同运行里可能是 Driver 也可能是审核者，
+   * 这条正交性正是禁读矩阵不能按后缀差集生成的根本原因。
+   * M7b 起恒为 `claude`，M10 放开 `--driver` 后才会变。
+   */
+  driver: AgentId;
+  /**
+   * 本轮**入选**的审核者集合（基数 1～3，FR-29）。
+   *
+   * 与 `critics` 的键集**不是一回事**：后者是「实际产出了结果的」，
+   * 入选却整侧失联时它就少一个键。要区分「计划跑但失败了」与「压根没入选」，
+   * 只能靠本字段——这也是 `gate` 判定缺件、`render` 渲染参与者事实的依据。
+   */
+  critics_selected: CriticId[];
   snapshot: SnapshotMeta;
   started_at: string;
   finished_at: string | null;
-  review_mode: 'dual' | 'single';
+  review_mode: ReviewMode;
   degraded_reason: string | null;
   critics: Partial<Record<CriticId, CriticRunMeta>>;
   deny_paths: string[];

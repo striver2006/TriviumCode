@@ -6,6 +6,7 @@ import { promises as fs } from 'node:fs';
 import { defaultConfig, loadCtx } from '../../src/trivium/config.js';
 import { validateConfig, validateRunMeta, validateDispositionFrontMatter } from '../../src/trivium/schemas.js';
 import { newRunMeta } from '../../src/trivium/meta.js';
+import { CRITICS } from '../../src/trivium/types.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 
 /*
@@ -85,9 +86,10 @@ test('合法的覆盖（本项目自己的 config.yaml 形状）照常通过', a
 
 // ── run.v1 与 disposition.v1 从此真的被加载（审核 M13）──
 
-test('newRunMeta 产出的骨架符合 trivium.run.v1', () => {
+test('newRunMeta 产出的骨架符合 trivium.run.v2', () => {
   const meta = newRunMeta({
     runId: 'R1', topic: 't', stage: 'plan', rerunIndex: 1, command: 'x', promptHint: null, taskGoal: null,
+    criticsSelected: CRITICS,
     treeHash: 'h', gitHead: null, dirty: false, subjectSha256: 's', denyPaths: [], driftPolicy: 'warn',
   });
   assert.deepEqual(validateRunMeta(meta), []);

@@ -339,7 +339,13 @@ async function registerVerifyRun(
       stage: 'verify',
       rerun_index: rerunIndex,
       status: status === 'success' ? 'success' : 'failed',
-      review_mode: 'dual',
+      /*
+       * verify 不是一次审查运行，没有审核者可言——这里记 `full` 表达的是
+       * 「本次登记不涉及任何降级」，而不是「跑满了几侧」。
+       * 旧值 `dual` 更糟：它声称跑了两个审核者，是一句假话。
+       * 真正的 verify 事实在 `verify/_meta/run-<id>.json`（trivium.verify-run.v1）。
+       */
+      review_mode: 'full',
       started_at: new Date().toISOString(),
     });
   }, lock);

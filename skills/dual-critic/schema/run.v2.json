@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trivium.run.v2",
+  "title": "TriviumCode 运行元数据 v2",
+  "description": "每次运行的机读全量事实（设计 §6.7.1），落于归档 _meta/run-<run_id>.json。对应 NFR-05 / FR-24 / FR-29。v1 保留为历史契约（双读），本版为当前唯一写出的形状。",
+  "type": "object",
+  "required": [
+    "schema", "run_id", "topic", "stage", "rerun_index", "command",
+    "driver", "critics_selected",
+    "snapshot", "started_at", "review_mode", "critics", "deny_paths",
+    "guard", "artifacts", "gate", "status"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": "trivium.run.v2" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "topic": { "type": "string", "minLength": 1 },
+    "stage": { "enum": ["plan", "code", "bug"] },
+    "rerun_index": { "type": "integer", "minimum": 1 },
+    "command": { "type": "string" },
+    "prompt_hint": { "type": ["string", "null"] },
+    "task_goal": { "type": ["string", "null"] },
+    "entry": { "enum": ["A", "B", "C", "D", null] },
+    "driver": {
+      "type": "string",
+      "minLength": 1,
+      "description": "当轮发起方的 Agent id。与归档后缀（产出方）正交：同一 Agent 在不同运行中可能是 Driver 也可能是审核者。M7b 起恒为 claude，M10 起可变。取值是否为已登记 Agent 由代码层按注册表校验——此处不枚举，见下方 critics 的说明"
+    },
+    "critics_selected": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "本轮入选的审核者集合，基数 1～3（FR-29）。它区分「计划跑但失败了」与「压根没入选」——critics 的键集做不到这件事。选 1 个是配置意图而非降级：此时 review_mode 仍为 full 且无 degraded_reason（AC-22）"
+    },
+    "snapshot": {
+      "type": "object",
+      "required": ["tree_hash", "subject_sha256", "drift"],
+      "properties": {
+        "git_head": { "type": ["string", "null"] },
+        "tree_hash": { "type": "string" },
+        "dirty": { "type": "boolean" },
+        "subject_sha256": { "type": "string" },
+        "drift": {
+          "type": "object",
+          "required": ["changed", "files", "policy"],
+          "properties": {
+            "changed": { "type": "boolean" },
+            "files": { "type": "array", "items": { "type": "string" } },
+            "policy": { "enum": ["warn", "fail"] }
+          }
+        }
+      }
+    },
+    "started_at": { "type": "string" },
+    "finished_at": { "type": ["string", "null"] },
+    "review_mode": {
+      "enum": ["full", "partial"],
+      "description": "full = 入选的审核者全部成功；partial = 部分入选者失败后降级续跑（必须同时有 degraded_reason）。取代 v1 的 dual/single——后者把「跑了几侧」与「是否降级」混成一个值，导致 --only 单侧成功被记为 dual（§2.1）"
+    },
+    "degraded_reason": { "type": ["string", "null"] },
+    "critics": {
+      "type": "object",
+      "description": "逐审核者的运行事实，键取自 critics_selected。v1 在此处写死 gemini / glm 两键（additionalProperties: false），第三家入选即校验不过——这是本次升 v2 而非原地扩展的直接动因。键是否为已登记 Agent 不在 schema 里枚举：注册表是唯一来源（纪律 7），在 schema 里再抄一份等于制造第二个来源，新增一家时改一漏二不会报错。身份校验由 schemas.ts 的 validateRunMeta 在 ajv 之后按注册表补做",
+      "additionalProperties": { "$ref": "#/$defs/critic" }
+    },
+    "deny_paths": { "type": "array", "items": { "type": "string" } },
+    "guard": {
+      "type": "object",
+      "required": ["readonly_breach", "peer_artifact_read", "peer_deny_applied", "forged_role_file"],
+      "properties": {
+        "readonly_breach": { "type": "boolean" },
+        "peer_artifact_read": { "type": "boolean" },
+        "peer_deny_applied": {
+          "type": "object",
+          "description": "逐侧记录路径级 deny 是否实际生效。本机两侧均为 false（M0 实测）",
+          "additionalProperties": { "type": "boolean" }
+        },
+        "forged_role_file": { "type": "boolean" },
+        "breached_files": { "type": "array", "items": { "type": "string" } },
+        "peer_leak_via_command": {
+          "type": "object",
+          "description": "命令文本通道（§10.2 措施 b）的命中记录。【提案 · 未排期】——schema 先留位，写侧尚未接线，故本字段目前恒不出现。字段在而值缺失不等于「未命中」，判读时先看它在不在",
+          "properties": {
+            "hit": { "type": "boolean" },
+            "commands": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": { "type": "string" },
+          "sha256": { "type": "string" }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": ["adjudication_complete", "state"],
+      "properties": {
+        "adjudication_complete": { "type": "boolean" },
+        "state": { "type": "string" },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "status": { "enum": ["running", "success", "failed", "cancelled"] },
+    "skipped": { "type": "boolean" },
+    "skip_reason": { "type": ["string", "null"] },
+    "cache_hit": { "type": "boolean" }
+  },
+  "$defs": {
+    "critic": {
+      "type": "object",
+      "required": ["vendor", "status", "duration_s", "tool_calls", "evidence_ok", "heterogeneous"],
+      "additionalProperties": true,
+      "properties": {
+        "vendor": {
+          "type": "string",
+          "minLength": 1,
+          "description": "厂商标识，取自注册表的 vendor。与 critics 的键同理不在此枚举：v1 写死 antigravity / zcode 两值，第三家的 openai 会被判非法"
+        },
+        "cli_version": { "type": ["string", "null"] },
+        "model_requested": { "type": ["string", "null"] },
+        "model_effective": {
+          "type": ["string", "null"],
+          "description": "回读得到的实际生效模型，不采信配置意图（AC-13）"
+        },
+        "model_effective_source": { "enum": ["envelope", "trace", "requested", "unverified"] },
+        "model_route": { "enum": ["env", "config_copy", "global"] },
+        "effort": { "type": "string" },
+        "effort_requested": {
+          "type": ["string", "null"],
+          "description": "思考等级的请求值。【待实施 · M11】schema 先留位，写侧尚未接线"
+        },
+        "effort_effective": {
+          "type": ["string", "null"],
+          "description": "思考等级的生效值，必须回读而非采信请求值——部分厂商存在归并映射（如 medium/high/xhigh → high），「请求 medium 实际生效 high」。这是 AC-13「生效模型可核对」对 effort 的延伸。【待实施 · M11】"
+        },
+        "tier_source": {
+          "type": ["string", "null"],
+          "description": "档位的来源（命令行 / 档位表 / 默认）。【待实施 · M11】"
+        },
+        "profile": {
+          "type": ["string", "null"],
+          "description": "厂商侧 profile 名。【待实施 · M11】"
+        },
+        "status": { "enum": ["ok", "timeout", "failed", "parse_fallback"] },
+        "exit_code": { "type": ["integer", "null"] },
+        "duration_s": { "type": "number" },
+        "tool_calls": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" },
+          "description": "project_reads = 被审对象与送审包之外的项目文件读取次数（§11.4）"
+        },
+        "evidence_ok": { "type": "boolean" },
+        "usage": {
+          "type": "object",
+          "description": "厂商回读的原样 token 用量。实测 zcode 会混入字符串 source 字段，故值类型不限定为数字；report 汇总时只取数字",
+          "additionalProperties": { "type": ["number", "string", "boolean", "null"] }
+        },
+        "heterogeneous": {
+          "type": "boolean",
+          "description": "是否与主脑异构。false 时必须有 override_reason（AC-18）"
+        },
+        "override_reason": { "type": ["string", "null"] },
+        "fail_reason": { "type": ["string", "null"] },
+        "empty_review": { "type": "boolean" },
+        "parse_fallback": { "type": "boolean" },
+        "session_id": { "type": ["string", "null"] },
+        "peer_deny_applied": { "type": "boolean" }
+      }
+    }
+  }
+}

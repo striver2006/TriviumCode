@@ -4,7 +4,7 @@ import {
   renderReviewDoc, parseFrontMatter, countSeverities,
 } from '../../src/trivium/render.js';
 import type { RenderInput } from '../../src/trivium/render.js';
-import type { CriticResult, Review } from '../../src/trivium/types.js';
+import { CRITICS, type CriticResult, type Review } from '../../src/trivium/types.js';
 
 const RESULT: CriticResult = {
   critic: 'gemini', status: 'ok', exit_code: 0, duration_s: 472.4,
@@ -40,6 +40,7 @@ function input(over: Partial<RenderInput> = {}): RenderInput {
     modelRequested: 'gemini-3.1-pro-high', effort: 'high',
     snapshotHash: 'sha256:8c1f', startedAt: '2026-09-10T14:23:10+08:00',
     finishedAt: '2026-09-10T14:31:02+08:00', evidenceOk: true, projectReads: 21,
+    selectedCritics: CRITICS,
     degraded: false, drift: false, peerDeny: false, consultedUnverified: false,
     heterogeneous: true, ...over,
   };
@@ -75,8 +76,34 @@ test('意见按严重度排序，blocker 排在最前', () => {
 
 test('降级标记出现在正文顶部而非只在 front-matter（不可伪装）', () => {
   const md = renderReviewDoc(input({ degraded: true }));
-  assert.ok(md.includes('本次为单审降级'));
+  assert.ok(md.includes('本次为降级轮次'));
   assert.equal(parseFrontMatter(md)!['degraded'], true);
+});
+
+/*
+ * 参与者事实与降级警示是**两件事**（设计 §3.4 / AC-22）。
+ *
+ * 旧渲染只有一个降级横幅，文案写着「另一侧未能完成」：
+ *   · 只入选一侧并成功时，它是**假话**——没有任何一侧失败，却打降级横幅；
+ *   · 反过来若因此不打任何标记，读者又看不出这份结论只有一侧背书。
+ * 所以中性的「本轮审核者」始终渲染，降级横幅只在真降级时出现。
+ */
+test('入选一侧并成功：渲染参与者事实，但不打降级横幅', () => {
+  const md = renderReviewDoc(input({ selectedCritics: ['gemini'], degraded: false }));
+  assert.ok(md.includes('本轮审核者 gemini'), '必须让读者看见本轮只审了一侧');
+  assert.ok(!md.includes('本次为降级轮次'), '选 1 审是配置意图，不是降级');
+  assert.equal(parseFrontMatter(md)!['degraded'], false);
+});
+
+test('参与者事实在降级轮次里照样渲染，两个标记并存不互相顶替', () => {
+  const md = renderReviewDoc(input({ selectedCritics: CRITICS, degraded: true }));
+  assert.ok(md.includes(`本轮审核者 ${CRITICS.join('、')}`));
+  assert.ok(md.includes('本次为降级轮次'));
+});
+
+test('降级文案不得再出现「另一侧」这种只对两侧成立的指代', () => {
+  const md = renderReviewDoc(input({ selectedCritics: CRITICS, degraded: true }));
+  assert.ok(!md.includes('另一侧'), '三审挂一侧时「另一侧」指代不清');
 });
 
 test('证据不足会显式标注该侧不算合格双审的一半', () => {

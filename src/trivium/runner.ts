@@ -5,7 +5,7 @@
  * ——那是 `guard` 的职责。
  */
 import type { CriticAdapter, AdapterContext } from './adapters/base.js';
-import type { CriticId, CriticRequest, CriticResult } from './types.js';
+import type { CriticId, CriticRequest, CriticResult, ReviewMode } from './types.js';
 import { step, warn } from './util/log.js';
 
 /**
@@ -199,21 +199,17 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
   return { results, attempts };
 }
 
-export type ReviewMode = 'dual' | 'single';
-
 export interface ModeDecision {
   /**
-   * **`run.v1` 的线格式值，不表达参与者基数。**
+   * 本轮完成度，**不表达参与者基数**。
    *
-   * 它只回答「入选的各侧是否都成功了」：全成功 `dual`，有失败 `single`。
-   * 想知道「本轮该跑几侧、实际是哪几侧」，看 `selectedSides` / `okSides`，
-   * **不要看它**——`--only gemini` 跑成功时它同样是 `dual`。
+   * 它只回答「入选的各侧是否都成功了」：全成功 `full`，有失败 `partial`。
+   * 想知道「本轮该跑几侧、实际是哪几侧」，看 `selectedSides` / `okSides`。
    *
-   * 之所以留着这个会被误读的名字：`run.v1.json` 的 enum 就是 `["dual","single"]`，
-   * 记 `single` 会被读成降级（与「选 1 审是配置意图」冲突）、记 `full` 通不过校验。
-   * 三个取值在 v1 契约层都不可达，因此本步**只修内存层判定、不动落盘值**；
-   * 真正的修法是 `run.v2` 的 `review_mode: full|partial` + `critics_selected`
-   * （设计 6.7.1，随 M7b 第 3 步交付）。
+   * 第 1 步时这里还叫 `dual` / `single`，因为 `run.v1` 的 enum 就那两值：
+   * 记 `single` 会被读成降级（与「选 1 审是配置意图」冲突）、记 `full` 通不过校验，
+   * 三个取值在 v1 契约层都不可达。第 3 步升 `run.v2` 后这个约束才解除，
+   * 内存层判定与落盘值自此同名同义（设计 §6.7.1）。
    */
   mode: ReviewMode;
   /** 严格模式下是否应中止整次运行 */
@@ -283,7 +279,7 @@ export function decideMode(
 
   if (failedSides.length === 0) {
     return {
-      mode: 'dual',
+      mode: 'full',
       abort: false,
       degradedReason: null,
       okSides,
@@ -306,7 +302,7 @@ export function decideMode(
   const abort = okSides.length === 0 ? true : failurePolicy === 'strict';
 
   return {
-    mode: 'single',
+    mode: 'partial',
     abort,
     degradedReason: reason,
     okSides,

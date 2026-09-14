@@ -1,13 +1,15 @@
 # PROTOCOL：Driver-DualCritic 工件中继与协议契约
 
-> 依据 [设计 v1.3.0](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.0](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.1](../01_requirements/PRD_driver_dual_critic.md)。
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
 >
-> **⚠️ 本文描述的是当前真实生效的契约**（`config.v1` / `run.v1` / 两侧审核者 / 固定 Claude Code Driver）。
-> 多 Agent 演进带来的契约变更——`config.v2`、`run.v2`（含 `driver` / `critics_selected` / `review_mode`）、
-> 意见编号前缀扩为四值、裁决件 `role` 扩为四值与 `addresses` 基数 1～3、`--critics` 等新旗标——
-> **均尚未生效**，规范见设计 6.7.1 / 13.1.1 与 §24 台账，随各里程碑并入本文。
-> 在那之前，**按本文实现的客户端不会被演进破坏**：v2 上线后读侧双读、旧形态长期兼容。
+> **⚠️ 本文描述的是当前真实生效的契约**（`config.v1` / **`run.v2`** / 两侧审核者 / 固定 Claude Code Driver）。
+> `run.v2`（含 `driver` / `critics_selected` / `review_mode: full|partial`）**已于 M7b 第 3 步生效**，
+> 规范见设计 6.7.1；`run.v1` 降为**历史契约**，读侧长期双读、既有归档不受影响。
+> 其余多 Agent 演进带来的契约变更——`config.v2`、意见编号前缀扩为四值、
+> 裁决件 `role` 扩为四值与 `addresses` 基数 1～3、`--critics` 等新旗标——**均尚未生效**，
+> 规范见设计 13.1.1 与 §24 台账，随各里程碑并入本文。
+> **按本文实现的客户端不会被演进破坏**：读侧双读、旧形态长期兼容。
 
 三方（Claude Code Driver、Antigravity Critic-A、ZCode Critic-B）之间**没有**任何进程间
 协议——它们互不通信。全部协同经由**本地文件**与**编排器进程**完成。这是有意的设计
@@ -15,17 +17,29 @@
 
 ---
 
-## 一、四份 JSON Schema
+## 一、五份 JSON Schema
 
 机读契约的唯一真理来源在 `skills/dual-critic/schema/`，ajv（draft 2020-12）强校验。
-`review.v1` 由 `parse` 持有（要把错误回喂给模型），其余三份集中在 `schemas.ts`。
+`review.v1` 由 `parse` 持有（要把错误回喂给模型），其余集中在 `schemas.ts`。
 
 | Schema | 文件 | 生产者 | 校验落点 |
 | :--- | :--- | :--- | :--- |
 | `trivium.review.v1` | `review.v1.json` | 两侧审查员（最终回答即该 JSON） | `parse`（失败即 parse_fallback） |
 | `trivium.disposition.v1` | `disposition.v1.json` | Driver（裁决件 front-matter；表格由 gate 单独解析） | `gate --check` 的 bad_front_matter |
-| `trivium.run.v1` | `run.v1.json` | 编排器 | `writeRunMeta` 写前校验；留痕核对把不合契约的 run.json 视为「不可读」并拦提交 |
+| `trivium.run.v2` | `run.v2.json` | 编排器 | `writeRunMeta` 写前校验；留痕核对把不合契约的 run.json 视为「不可读」并拦提交 |
+| `trivium.run.v1` | `run.v1.json` | **已停写**（M7b 第 3 步前的编排器） | 只读：既有归档按写入时的规范解读，读进内存时迁移为 v2 形状 |
 | `trivium.config.v1` | `config.v1.json` | 人（`.trivium/config.yaml` / `config.local.yaml`） | `loadCtx` 四级合并后校验，不合法退 69 并逐条列出（未知字段、枚举值、区间） |
+
+### `trivium.run.v2` 的读侧分发（按阶段，设计 6.7.1）
+
+审查阶段（`plan` / `code` / `bug`）只认 `run.v1`（迁移为内存 v2）与 `run.v2`，
+**其余取值含缺失一律判「不可读」**——此前是「非 v1 即放过」，把 `schema` 改成任意
+字符串就能让工件清单脱离契约校验。verify 阶段另认 `verify-run.v1` 与历史 `run.v1`，
+且**不施加审查元数据契约校验**：那是按写入时的规范解读留痕，改错会让归档中的历史记录
+被判不可读，进而永久拦死每一次提交。
+
+`run.v2` 的 Agent id 与 vendor **不在 schema 里枚举**：唯一来源是 `agents/registry.ts`
+（设计 §16.2 纪律 7），身份校验由 `schemas.ts` 在 ajv 之后按注册表补做。
 
 ### `trivium.review.v1` 的硬约束
 

@@ -604,12 +604,19 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
      *
      * 回落的后果是**单侧轮次被误报缺件**：`--only gemini` 跑完后，
      * 校验仍按两侧找工件，glm 那份永远不存在，于是一个完全合规的轮次
-     * 被判成缺件。run.json 记着谁真的跑过，以它为准。
-     * 读不到 run.json 时才回落到默认集合——那时没有更好的依据。
+     * 被判成缺件。读不到 run.json 时才回落到默认集合——那时没有更好的依据。
+     *
+     * 事实来源是 `critics_selected`（「本该跑谁」），**不是 `critics` 的键集**
+     * （「实际产出了结果的」）。第 2 步只能读键集，因为那时还没有这个字段，
+     * 而键集在一种形态下会漏判：某侧入选却整侧失联、连一条结果都没记上，
+     * 键集里就没有它——于是工件校验压根不去找那一侧的审查文档，
+     * **一个真实的缺件被静默放过**。它与「单侧轮次误报」是同一枚硬币的两面，
+     * 只有同时知道「本该跑谁」和「跑出了什么」才能两头都判对。
+     * 历史 v1 记录经 `readRunMeta` 迁移后，该字段正是由键集推导，判读结论不变。
      */
     const artifactRunId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
     const artifactMeta = artifactRunId ? await readRunMeta(ref.layout, stage, artifactRunId) : null;
-    const roundCritics = artifactMeta ? (Object.keys(artifactMeta.critics) as CriticId[]) : undefined;
+    const roundCritics = artifactMeta ? artifactMeta.critics_selected : undefined;
     const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, roundCritics, undefined, recorded);
     if (isJsonMode()) {
       emitJson({ ok: c.ok, stage, rerun_index: rerunIndex, present: c.present, missing: c.missing });
