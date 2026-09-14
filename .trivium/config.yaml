@@ -1,8 +1,9 @@
 # TriviumCode 项目配置（进 Git，团队共享）
 # 本机绝对路径与探针结论在 config.local.yaml（不进 Git）
 # verify.build / verify.test 只执行此处显式声明的命令——编排器不猜测执行（§14.1）
+# 本文件由 trivium init 从 trivium.config.v1 改写而来，原文见 config.yaml.trivium-backup（YAML 往返会丢失注释，原注释在备份里）
 
-schema: trivium.config.v1
+schema: trivium.config.v2
 archive_root: .reviews
 topic:
   max_len: 64
@@ -23,26 +24,10 @@ isolation:
 review:
   parallel: true
   failure_policy: strict
-  allow_single_flag: true
-  # plan 从设计默认的 900 提到 1500：本项目实测 GLM-5.3-Flash 在本仓库上
-  # 一次计划审要 682~900+ 秒（74 次工具调用、含子 Agent），900s 会卡在边缘。
-  # 这是本项目的环境事实，不是设计默认值有错——§12.2 的数字来自参考方案实测。
   timeout_s:
     plan: 1500
-    # code 从设计默认的 1200 提到 2700：本项目实测 GLM-5.3-Flash 审一份
-    # 258KB 补丁用了 1063s，277KB 的那次直接撞满 1200s 超时。大补丁是本项目
-    # 自举的常态（一次里程碑的全部变更），留 2 倍余量。
-    #
-    # 2026-09-13 再提到 7200（2 小时）：单轮跑完整条 M6~M11 演进路线（Agent 注册表
-    # 与多审泛化），补丁规模是既有记录的数倍、达 MB 量级。上面两条实测的耗时与
-    # 补丁大小近似线性，2700s 按此外推不够用；而 failure_policy 为 strict，
-    # 一侧超时即整轮作废，返工成本远高于多等。
-    # 代价：maxWaits = ceil(7200*(1+transient_max)/180)+2 = 82 次等待往返
-    # （computeMaxWaits，status.ts:358），Driver 侧循环变长但每 180s 仍有进度播报。
     code: 7200
     bug: 1200
-  # 每次 --wait 的窗口，也是用户能收到进度的最小间隔（Bash 工具在命令退出前
-  # 不回传 stdout，窗口内 Driver 说不了话）。540→180：9 分钟一声等于没有反馈
   wait_timeout_s: 180
   heartbeat_stale_s: 120
   retry:
@@ -81,39 +66,8 @@ review:
     - Dockerfile
     - .claude/**
     - .trivium/**
-critics:
-  gemini:
-    vendor: antigravity
-    bin: null
-    agent: trivium-critic
-    # slug 后缀才是权威：模型名带 -high/-medium/-low 时编排器不传 --effort
-    # （agy 1.2.0 会报冲突，坑 P-16）。当前两档 slug 全是 -high，此处三项均随之写 high，
-    # 否则归档 front-matter 会记下一个从未生效的 effort 值。
-    effort:
-      plan: high
-      code: high
-      bug: high
-    readonly_commands:
-      - git log
-      - git blame
-      - git diff
-      - git show
-      - git status
-      - ls
-      - cat
-      - head
-      - tail
-      - grep
-      - rg
-      - find
-      - wc
-  glm:
-    vendor: zcode
-    entry: null
-    max_turns: 40
-    unsupported_override: reject
-# 两档的差异只在 GLM 侧用不用 Flash——gemini 侧两档相同。
-# 不写 profile 级 effort：该字段无任何读取点，且 slug 自带后缀时 effort 本就不生效。
+  allow_partial_flag: true
+  max_critics: 3
 profiles:
   default:
     gemini:
@@ -148,8 +102,6 @@ gate:
 preflight:
   auth_cache_ttl_h: 1
 verify:
-  # 这两组命令是 `trivium doctor` 探测出的候选，经逐条确认后写入（§14.1）。
-  # 编排器**只执行**这里显式声明的命令，不猜测执行。
   build:
     - npm run typecheck
     - npm run build
@@ -158,3 +110,31 @@ verify:
 retention:
   run_dir_days: 30
 probe_ttl_days: 7
+agents:
+  gemini:
+    vendor: antigravity
+    bin: null
+    agent: trivium-critic
+    effort:
+      plan: high
+      code: high
+      bug: high
+    readonly_commands:
+      - git log
+      - git blame
+      - git diff
+      - git show
+      - git status
+      - ls
+      - cat
+      - head
+      - tail
+      - grep
+      - rg
+      - find
+      - wc
+  glm:
+    vendor: zcode
+    entry: null
+    max_turns: 40
+    unsupported_override: reject
