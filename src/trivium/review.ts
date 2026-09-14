@@ -13,7 +13,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import type { Config, CriticId, CriticRequest, CriticResult, Ctx, Review, Stage, CommandEntry } from './types.js';
-import { CRITICS, CRITIC_VENDOR } from './types.js';
+import { CRITIC_VENDOR } from './types.js';
 import {
   isHeterogeneous,
   routeModel,
@@ -53,6 +53,7 @@ import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun,
 import { acquireLock } from './lock.js';
 import { measureAllPairs, renderDivergence } from './divergence.js';
 import { agentConfigOf, runRoot } from './config.js';
+import { resolveCriticSelection } from './critics.js';
 import { setGateChecked } from './state.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
 import { workTreeHash } from './util/git.js';
@@ -170,8 +171,14 @@ export interface ReviewOptions {
   subjectFile: string | null;
   modelOverrides: Partial<Record<CriticId, string>>;
   command: string;
-  /** 只跑一侧（调试用）。生产不应使用——那是伪双审 */
-  onlyCritic?: CriticId | null;
+  /**
+   * 本轮**入选**的审核者集合（M7b 第 5 步）。
+   *
+   * 由调用方经 `resolveCriticSelection` 解析并校验完再传进来——本模块不再自己
+   * 推导「跑哪几侧」。省略时回落到配置的 `review.default_critics`（同一个判定处），
+   * 使手工构造 `ReviewOptions` 的调用点（测试、selftest）不必逐个补这个字段。
+   */
+  critics?: readonly CriticId[] | null;
   /** 覆盖 skill 资产根（默认取安装位置） */
   assetRoot?: string;
   /** code 阶段的 diff 基线，默认 HEAD */
@@ -331,7 +338,28 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   }
 
   // ── 可用性检查：不可用就别开工，避免产生半套工件（AC-16 的精神）──
-  const sides: CriticId[] = opts.onlyCritic ? [opts.onlyCritic] : [...CRITICS];
+  /*
+   * 入选集合：调用方给了就用它，没给就走同一个判定处取配置默认值。
+   *
+   * **不再回落到 `CRITICS` 全集**（M7b 第 5 步）——那是 v1 时代「配置不表达选侧」
+   * 留下的写法。现在 `review.default_critics` 才是默认值的所在，
+   * 而它的内置默认恰好就是全集，所以对既有两侧行为逐字不变。
+   */
+  const sides: CriticId[] = [...(opts.critics ?? resolveCriticSelection(cfg))];
+  /*
+   * **空集合要在这里就失败**（审查意见 GLM-05）。
+   *
+   * `??` 只对 null / undefined 回落，不防空数组：直传 `critics: []` 会得到零侧运行，
+   * 而下游一路绿灯——可用性检查空转、`decideMode` 对空入选集按「全成功」记 `full`、
+   * 闸门按空集校验通过。**一次什么都没审的运行会成功过闸**，这是最坏的一类空真。
+   *
+   * 生产路径当前不可达（两个 CLI 入口都经 `resolveCriticSelection`，它保证非空；
+   * worker 从交接文件拷贝）。但上面那段注释**恰恰邀请手工构造的调用方**省略该字段，
+   * 那正是最可能传错的调用方。判定处的非空不变式要延伸到直接传参的路径。
+   */
+  if (sides.length === 0) {
+    throw usageError('入选审核者集合为空：一次审查至少要有一个审核者。');
+  }
   for (const c of sides) {
     const av = adapters[c].availability(adapterCtx);
     if (!av.ok) throw envError(`${c} 侧不可用：${av.reason}`);

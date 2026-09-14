@@ -1,0 +1,123 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "一条 major：三份 SKILL.md（B/C/D）第 3 步的透传指令自相矛盾——critics 数组要求「无条件传 --critics」，而 resolve 输出的 only 非空仍要求「传 --only」；用户只写旧旗标 --only 时两字段都非空，照抄输出即向 review --start 同时递两旗标，被本步新加的「同时给即退 64」当场拒绝。设计 7.1 承诺长期保留的旧别名在升级后的 skill 上必败，括号里「照抄它的输出不会撞上」的断言对该路径不成立，而 flag-parity 只验槽位与 models 正文、三条集成用例都是 --start 直调，均挡不住。审查焦点其余四问均立得住：三条取舍实现与负例齐备；判定处单源、下游全以入选集合为输入、未见绕行；三条集成用例走真实子进程、能挡「接线漏传」变异；AC-22 部分达成边界划得对。另有 4 minor（dual-run 对 --critics 拼错报错/合法静默丢、--only+--allow-single 提示文案与新语义相抵、MANUAL 头部现状断言未跟 QUICKSTART、prepareRun 不防空数组）与 2 nit（PRD FR-29 行尾标记仍是「待实施」、driver 参数无生产接线点）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "contract",
+      "location": "skills/dual-review-code/SKILL.md:88-99（dual-review-plan/SKILL.md:86-97、dual-review-bug/SKILL.md:86-97 同文）；src/trivium/topic-args.ts:232-236、376-377；src/trivium/critics.ts:49-55",
+      "problem": "三份 skill 第 3 步同时给出两条互斥指令：①「把 resolve 输出的 critics 数组用逗号连接后传给 --critics，无条件传」；②「若 resolve 输出的 only 非空，把它传给 --only」，并以「resolve 已经挡住了这种组合，照抄它的输出不会撞上」自证安全。该断言只覆盖「用户同时给两个旗标」一种情形：用户只写旧旗标 `--only glm` 时，resolve 正常返回 critics:['glm'] 且 only:'glm'（TopicResolution 两字段都非空），照抄输出即向 review --start 同时传 --critics glm 与 --only glm，命中本步新加的「两旗标同时给即退 64」（critics.ts:49-55，cli.ts:354-357 原样递入），--start 必败且零工件。也就是说：设计 7.1 明写「长期保留为别名（旧 SKILL.md 可能未同步升级）」的 --only，在升级后的新 skill 资产上一条都跑不通——用户没写 --critics，报错却说他写了。skill-flag-parity 只断言 argument-hint ⊆ --start 模板槽位、正文仅对 models 做透传断言，这一冲突完全在防区外；三条新集成用例都是 --start 直调，也覆盖不到 skill 链路。",
+      "evidence": "skills/dual-review-code/SKILL.md:88-99（另两份经 grep 确认同文）；src/trivium/topic-args.ts:232-236（critics 与 only 同时解析）、376-377（两者都原样进 TopicResolution）；src/trivium/cli.ts:346-357（--start 把两旗标一起递给 resolveCriticSelection）；src/trivium/critics.ts:49-55（同时给即抛 EXIT.USAGE）；test/contract/skill-flag-parity.test.ts:33-78（防区只有槽位与 models 正文）。",
+      "suggestion": "改三份 SKILL 第 3 步正文：--only 不再透传（critics 数组已完整覆盖该意图，含旧写法），只保留 --allow-single 的透传与漏传后果说明；或在 resolveTopicArgs 里当入选来自 --only 时把输出 only 置 null，下游就没有第二个旗标可传。同时给 skill-flag-parity 补一条与 models 同款的正文断言（如要求出现「resolve 输出的 critics」透传句），把这条接线纳入机器盯防；有余力再补一条「resolve(--only) 的输出照抄进 --start 应成功」的集成用例。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "skills/dual-run/SKILL.md:37、57、66-68；src/trivium/topic-args.ts:31-35、232-236",
+      "problem": "命令 A（/dual-run）的 S0.5 跑 `topic resolve --stage all`，而 NAMED_FLAGS 新增的 'critics' 不分 scope：用户在 /dual-run 里写 `--critics glm` 会被从任务目标正文里切出并解析校验。拼错则整条命令 A 当场退 64；合法则 resolve 输出 critics:['glm'] 之后被正文静默丢弃——S2/S6 委托 B/C 的交接说明只覆盖 --focus/--context/--model-*/--profile，critics 无路可走，双审照跑两侧、留痕一切正常。「错的报错、对的消失」正是本项目反复记录的静默丢参族。contract 测试对 dual-run 只校验「已声明旗标 ⊆ 正文交代」，--critics 未声明即不在防区。注：--only 在命令 A 上本有同形旧账，本步把 --critics 接入 B/C/D 时没有处置这条同族路径，而新旗标的解析值真实出现在 resolve 输出里，更容易被误以为已生效。",
+      "evidence": "skills/dual-run/SKILL.md:37（S0.5 `topic resolve --stage all --json -- $ARGUMENTS`）、57 与 66-68（S2/S6 交接只提 focus/context/models/profile）；src/trivium/topic-args.ts:31-35（NAMED_FLAGS 含 critics、无 scope 区分）、232-236（stage=all 同样走 resolveCriticSelection）；test/contract/skill-flag-parity.test.ts:98-107（dual-run 只对声明过的旗标做正文对账）。",
+      "suggestion": "二选一并写进设计 7.1：dual-run 的 argument-hint 声明 --critics，并在 S2/S6 交代「把 resolve 输出的 critics 传给 B/C 第 3 步的 --critics」（contract 测试随之自动纳入盯防）；或 resolveTopicArgs 对 scope=all 显式拒绝 --critics/--only（退 64 并说明该旗标只适用于 B/C/D），把静默丢弃变成明确报错。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/topic-args.ts:238-240",
+      "problem": "resolve 对「--only 与 --allow-single 同时给」的 note 仍是旧语义：「只跑一侧时降级本就必然发生，--allow-single 不改变行为」。本步刚把 --only 重定义为「--critics 的单元素写法、选 1 侧是配置意图、成功记 full 且不写 degraded_reason」（critics.ts 的入选路径、runner.ts decideMode、review.ts:353-368 的中性 warn 都已改口径），该 note 的「降级必然发生」成为假话；且 --allow-single 实际改变失败分支（strict 下该侧失败整次按 75 中止，degrade 下继续留痕），「不改变行为」也不成立。这是设计 v1.3.2/v1.3.3 连续两次记录过的「改语义时凡断言该语义的文案都要一并过一遍」的第三次同形，且这次残留就在实现新语义的同一个函数里。",
+      "evidence": "src/trivium/topic-args.ts:238-240（note 原文，本补丁未触碰该段）；src/trivium/critics.ts:62-64（--only 走入选集合路径，不再有降级含义）；src/trivium/runner.ts:252-291（decideMode：入选全成功即 full、degradedReason 为 null）；src/trivium/review.ts:353-368（单侧 warn 已改中性口径，注释自述旧文案在 M7b 第 3 步后是假话）。",
+      "suggestion": "重写该 note 对齐新口径，例如「已按 --only 只选一侧：这是配置意图，成功时不标降级；--allow-single 只影响该侧失败时是否中止（§12.4）」，并顺手 grep 一遍「降级」在 --only 语境下的其余出现。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/07_manuals/MANUAL_user.md:8-14",
+      "problem": "MANUAL 头部仍断言「每次审核动态选 1～3 个审核者……尚未实现，本手册不涉及」，而本步之后该能力的 1～2 侧分支已经可用。同批 QUICKSTART 已加例外（第 9 行）与用法（第 199 行「想只跑一侧：给 B/C/D 加 --critics」），MANUAL 只改了设计版本引用、没跟正文；且 MANUAL 自我定位是「命令：逐条完整契约、全部参数」（分工表），读者照它查参数根本不会知道 --critics 存在。上一轮 AGY-04 的接受理由恰是「手册是用户唯一会照着改配置的文档，滞后的代价比设计文档高」。",
+      "evidence": "doc/07_manuals/MANUAL_user.md:8-14（头部断言原文）、20-25（分工表自称「逐条完整契约、全部参数」）；doc/07_manuals/QUICKSTART.md:9、199（已加例外与用法）；doc/01_requirements/PRD_driver_dual_critic.md:362-366（AC-22 部分可跑通的口径）。",
+      "suggestion": "给 MANUAL 头部补与 QUICKSTART 同款的例外说明（--critics 已可用、可选当前两家、选第三家被拒），把 --critics/--only（含互斥与退 64 规则）写进手册的命令参数章节；「本手册不涉及」清单里把「动态选 1～3 个审核者」收窄为「第三家接入与三审加严」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/review.ts:348",
+      "problem": "`opts.critics ?? resolveCriticSelection(cfg)` 只对 null/undefined 回落，不防空数组：直接传 critics: []（类型允许、非 nullish、?? 不触发）会得到零侧运行——可用性检查空转、sides.length<2 的 warn 打出「本轮只跑 / 一侧」的畸形文案、decideMode 对空入选集按「全成功」记 full、闸门按空集校验，形成「零侧审查成功过闸」的空真形态。当前三个生产调用点都不可达（CLI/resolve 经 resolveCriticSelection 恒非空，worker 从 handoff 拷贝），但该字段的注释明说回落是「使手工构造 ReviewOptions 的调用点（测试、selftest）不必逐个补这个字段」——那正是未来最可能传错的调用方，且失败全程无报错。",
+      "evidence": "src/trivium/review.ts:174-181（注释邀请手工构造调用方）、348（?? 不防空数组）、353-368（空集落入单侧 warn 分支）；src/trivium/runner.ts:268-291（decideMode 对空 selected 返回 full）；src/trivium/critics.ts:70-75（非空保证只在判定处被调用时成立）。",
+      "suggestion": "prepareRun 对 sides.length===0 直接抛 usageError（「入选集合为空：一次审查至少要有一个审核者」），把判定处的非空不变式延伸到直接传参的调用方；可在单测补一条直传空数组的负例，至少在注释里写明该前提。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/01_requirements/PRD_driver_dual_critic.md:183 与 189-194",
+      "problem": "FR-29 行尾里程碑标记仍是「〔待实施 · M7b；验收 AC-22〕」，而同一 bullet 的分步说明已写「入口已接线（第 5 步）……本条记为部分达成」，AC-22 自己的标记也已翻成「部分达成 · M7b 第 5 步」。v1.4.3 变更说明的主题就是精确化达成口径，条目内部却留下一处新旧口径并存；对照 FR-31 的行尾标记（「注册表本体已实现 · M7a；五件套接入的端到端验证待实施 · M7b」）可知本项目的行尾标记本就承载状态。",
+      "evidence": "doc/01_requirements/PRD_driver_dual_critic.md:181-194（FR-29 全文：183 行标记 vs 189-194 正文）、380（AC-22 标记已改「部分达成」）、199-201（FR-31 的拆分式标记先例）。",
+      "suggestion": "FR-29 行尾改为拆分式，如「〔部分达成 · M7b 第 5 步；三侧待 M8/M9；验收 AC-22〕」，与其正文及 AC-22 的标记对齐。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/critics.ts:37-38、113-120；src/trivium/cli.ts:354-357；src/trivium/topic-args.ts:232-235",
+      "problem": "resolveCriticSelection 的 driver 参数是「当轮 Driver 不得入选」独立检查的注入口，单测专门用传参模拟过 M9 形态；但两个生产调用点（cli.ts、topic-args.ts）都没传，恒用 DEFAULT_DRIVER。M10「任意 Driver」落地时若发起侧忘了把当轮 Driver 接进来，这条独立检查会对着错误的 Agent 静默生效——本检查要防的「自己审自己」在另一维度重演。接口注释只写了「默认取注册表缺省值（M7b 恒为 claude）」，没有把「M10 必须接线」登记进任何待办。",
+      "evidence": "src/trivium/critics.ts:37-38（默认值）、113-120（检查本体）；src/trivium/cli.ts:354-357 与 src/trivium/topic-args.ts:232-235（两处调用均未传 driver）；test/unit/critics.test.ts「Driver 检查不依赖 criticEnabled 顺带生效」用例（该参数目前仅测试在用）。",
+      "suggestion": "在设计 7.1 的 --critics 规则或 16.1 的 M10 条目里显式登记「接入任意 Driver 时两个入口必须把当轮 driver 传入 resolveCriticSelection」；或让判定处从 ctx/config 单源读取当轮 Driver、参数仅留测试注入口并注明。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "三条取舍逐条成立且都有负例锁住：重复项报错而非去重（critics.ts:77-95）；--critics 与 --only 同给即退 64、取值相同也拒（:49-55，两条用例）；「当轮 Driver 不得入选」写成独立检查、排在 criticEnabled 判定之前（:113-120），并有专门用例传 driver 模拟「Driver 已启用为审核者」的未来形态——不依赖顺带生效的设计意图被真正测住了。",
+    "判定处确实单源：topic resolve（topic-args.ts:232）、review --start（cli.ts:354）、review.ts:348 的缺省回落，三次调用的是同一个 resolveCriticSelection；旧的两份字面 --only 校验（两处 CRITICS.includes）已删干净；下游 runner 的 decideMode、gate 的 criticsOf（gate.ts:406-408 读 run.json 的 critics_selected，读不到才回落）、gate --check-artifacts 的 roundCritics（cli.ts:622-625）全部以入选集合为输入，全仓检索未见第四处自行选侧。doctor 的 --only（agy|zcode|env）是探针范围的另一命名空间，不受牵连。",
+    "三条集成用例真能挡「接线漏传」：runInjected 走打包产物的真实子进程并断言 worker 是另一进程（fault-injection.test.ts:37-84）；单侧用例同时断言 critics_selected、meta.critics 键集、review_mode=full、degraded_reason=null 与文档清单——重做「opts.critics 恒取配置默认」的变异会精确变红；缺省用例防「永远只跑第一侧」的反向实现；拼错用例断言 64 且 _meta 目录不存在。把变异史写进用例注释本身也是资产。它们盖不住的恰好是 skill 透传链路，即 GLM-01。",
+    "AC-22「部分达成」的边界划得对：选 3 与三前缀覆盖在当前注册表状态下结构性不可达（criticEnabled 仅两家），不是实现缺口；「选 2」与缺省在 resolve→sides→runner 全链路等价，缺省双测有集成用例；PRD 抬头/S7/FR-29/AC-22 四处口径一致，且明示不得据此宣称 FR-29 完整达成。",
+    "错误信息质量延续了上轮 GLM-04 的修复方向：所有拒绝分支都带 legalList 可用值清单，报错点名出问题的旗标来源（--critics/--only/review.default_critics 三种分得开），并有专门用例锁住「第一个错误不得把用户引向第二个错误」。",
+    "USAGE、QUICKSTART、PROTOCOL 头部、设计 7.1 关于 --critics 的规则（校验项、缺省来源、退 64 零工件、选 1 侧不标降级、与 --only 互斥）四处一致；run-protocol 的交接结构把 critics 随 handoff 带给 worker，且 worker 用 h.sides 而非重新推导，不会重演二次冻结的不一致。"
+  ],
+  "not_covered": [
+    "只读约束：未实跑 npm run check、任何测试或变异；「--only 经 skill 必退 64」与「dual-run 静默丢合法 --critics」是按 SKILL 指令文本与 critics.ts/cli.ts/topic-args.ts 代码推演的结论，未起真实 Driver 或子进程演示。",
+    "runner.ts / gate.ts / meta.ts / report.ts / disposition.ts / archive.ts 只核对了与入选集合、降级判定相关的段落（检索定位后局部精读），全文未逐行重读；report 表头仍按 CRITICS 全集渲染两列（单侧轮次多一列空位）这类纯展示面未深究。",
+    "上一轮 r4 全部 13 条意见在本补丁的落地质量未逐条复核（仅确认 AGENTS.md 的 schema 计数已改为不含数字的表述）；selftest（doctor --selftest）、install.ts、hooks.json、prompts/lenses 资产未审。",
+    "PROTOCOL / 设计文档 / ADR / LLD 仅读被审 diff 涉及段与 7.1、16.1、§24 相关行；QUICKSTART 只核对了 --critics 相关行（第 9、134、199 行），其余章节未重读。",
+    "安全镜头下未见新增注入/越界面（判定函数不碰文件系统、用户输入只进 stderr 报错文本），但 brief 渲染与 freeze 链未做逐行安全复核；--critics 值为空串或缺值时按「未给」处理沿用分词器既有行为（与 --topic 等一致），未计入发现。",
+    "三份 review skill 中 plan/bug 仅核对透传段与 code 版同文（grep 定位），其余正文未逐字比对；dual-run 只读了 S0.5/S2 交接相关段。"
+  ],
+  "consulted": [
+    ".reviews/配置v2与动态多审/code/_meta/changes-20260914T061843Z.diff",
+    "src/trivium/critics.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/exit-codes.ts",
+    "test/unit/critics.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/contract/skill-flag-parity.test.ts",
+    "skills/dual-review-code/SKILL.md",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-review-bug/SKILL.md",
+    "skills/dual-run/SKILL.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/07_manuals/QUICKSTART.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r4-glm.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r4-response-claude.md"
+  ]
+}

@@ -7,10 +7,13 @@
 >
 > **⚠️ 本手册描述的是当前可用的系统**：Claude Code 主攻，Antigravity 与 ZCode 两侧背靠背审查。
 >
-> 设计文档中带【待实施】标记的多 Agent 能力——第三、四家 Agent 参与审查、
-> 每次审核动态选 1～3 个审核者、换一家 Agent 主攻、逐审核者选思考等级三档——
-> **尚未实现**，本手册不涉及。届时它们会随各自里程碑写进本手册。
-> （规范见[设计 v1.3.3](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
+> 设计文档中带【待实施】标记的多 Agent 能力——**第三、四家 Agent 参与审查与三审加严**、
+> 换一家 Agent 主攻、逐审核者选思考等级三档——**尚未实现**，本手册不涉及。
+> 届时它们会随各自里程碑写进本手册。
+>
+> **一个例外**：`--critics <id,…>` **已可用**，能从当前两家里指定本轮跑哪几侧
+> （选一侧不算降级）。参数规则见 §4.2；选第三家仍会被拒——只有两家启用了审核者能力。
+> （规范见[设计 v1.3.5](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
 > 术语上，N 方化后「双审」的正确称谓是「**多审**」；命令名 `/dual-*` 与归档目录一律不改名。）
 
 ---
@@ -253,7 +256,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 /dual-review-plan <审查焦点提示语> [--goal <任务目标>] [--topic <主题>]
                   [--context <路径,…>] [--profile <名称>]
                   [--model-gemini <slug>] [--model-glm <id>]
-                  [--plan-file <路径>] [--only gemini|glm] [--allow-single]
+                  [--plan-file <路径>] [--critics <id,…>] [--only gemini|glm] [--allow-single]
 ```
 
 **对「已有」计划做双审**——所以先得有一份草稿落在 `.reviews/<主题>/plan/<日期>-<主题>-claude.md`。让 Claude Code 写好再发这条命令。
@@ -297,12 +300,26 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 漏了引号，`--plan-file` 会被当成真旗标，连同后一个词一起被抠走。若解析器提示「主题异常短」，多半就是这里漏了引号。
 
-### 4.7 `--only` 与 `--allow-single`（降级）
+### 4.7 `--critics`（选审核者）与 `--allow-single`（降级）
+
+**这是两件不同的事**，本手册曾把它们混为一谈：前者是「本轮想让谁审」，后者是「有人没审成时怎么办」。
 
 | | 作用 | 后果 |
 | :--- | :--- | :--- |
-| `--only gemini\|glm` | 只跑一侧，调试用 | **会被标为降级——这不是双审** |
-| `--allow-single` | 一侧失败时不中止，产出单审结果 | 同上，且留痕记 `degradations[]` |
+| `--critics <id,…>` | 指定本轮跑哪几侧，逗号分隔 | **不标降级**——选几侧是配置意图。留痕如实记入选集合 |
+| `--only gemini\|glm` | `--critics` 的单元素**旧写法**，长期保留 | 同上。**不要与 `--critics` 同时给**，会退 64 |
+| `--allow-single` | 入选侧有失败时不中止，用幸存侧的结果继续 | **这才是降级**：留痕记 `degraded_reason` 与 `degradations[]` |
+
+`--critics` 的校验规则（任一条不过即**退 64 且不产生任何工件**）：
+
+- 每项必须是当前**已启用为审核者**的 Agent，且在配置的 `agents` 段里有条目；
+- 不得含当轮 Driver——自己审自己不构成二次审查；
+- 不得重复（`--critics x,x` 多半是笔误，静默去重会悄悄减少侧数）；
+- 个数在 1 到 `review.max_critics` 之间；
+- 不给时取 `review.default_critics`。
+
+**当前可选的只有两家**（gemini、glm）。第三、四家虽已登记在注册表里，
+但审核者能力随后续里程碑接入，现在选它们会被明确拒绝并告知原因。
 
 `--allow-single` 受配置 `review.allow_partial_flag`（旧名 `allow_single_flag`）约束，二者是**与**关系：配置里关掉，命令行也开不回来。这是刻意的——否则「默认 strict」就只是纸面规定。
 
@@ -373,7 +390,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `review.heartbeat_stale_s` | 120 | 超过这个时间没心跳判 worker 失联 |
 | `review.failure_policy` | `strict` | 一侧失败即中止。改 `degrade` 则继续出单审 |
 | `review.allow_partial_flag` | `true` | 是否允许命令行 `--allow-single`。设 `false` 则命令行也开不回来。**旧名 `allow_single_flag` 仍可用**（加载时自动迁移） |
-| `review.default_critics` | `[gemini, glm]` | 不给 `--critics` 时的默认审核者集合。**当前只被校验、尚未接线**——它还不改变实际跑哪几侧 |
+| `review.default_critics` | `[gemini, glm]` | 不给 `--critics` 时的默认审核者集合。**已接线**：它就是缺省跑哪几侧的来源 |
 | `review.max_critics` | `3` | 单次运行可选审核者的基数上限 |
 | `review.parallel` | `true` | 两侧并行。改 `false` 只会更慢，无收益 |
 | `review.retry.transient_max` | 1 | 瞬时失败重试次数（429、连接重置、解析失败等）。超时**不重试**——大概率再超时 |

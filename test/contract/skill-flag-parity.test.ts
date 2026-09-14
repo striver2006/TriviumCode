@@ -28,7 +28,22 @@ const REVIEW_SKILLS = ['dual-review-code', 'dual-review-plan', 'dual-review-bug'
  * CLI 不解析），项目负责人拍板「保留即实现」后已接上 `applyProfileOverride`，
  * 豁免随之删除——这一族缺口现在没有例外。
  */
-const EXEMPT = new Set<string>();
+const EXEMPT = new Set<string>([
+  /*
+   * `--only`：**用户可写，Driver 不得透传**（M7b 第 5 步，审查意见 AGY-01 ≡ GLM-01）。
+   *
+   * 它是 `--critics` 的单元素旧写法，设计 7.1 承诺长期保留为别名，所以
+   * argument-hint 里必须留着它——那是「用户能写什么」的清单。
+   * 但 `topic resolve` 会把它的结果并进 `critics` 数组并**把输出的 `only` 置 null**，
+   * Driver 手上根本拿不到可传的值；若模板还留着这个槽位，照抄就会同时拼出
+   * `--critics` 与 `--only` 而撞上互斥退 64——用户没写 `--critics`，报错却说他写了。
+   *
+   * 这条豁免与当年 `--profile` 那次**性质相反**：那次是「声明了却没人实现」的悬空，
+   * 补上实现后豁免即删；这次是「声明给用户、刻意不进 Driver 模板」的分工，
+   * 属于长期状态。两者都要求写明理由，不写就退化成掩盖没改完的模块。
+   */
+  'only',
+]);
 
 const readSkill = (name: string): string =>
   readFileSync(path.join(REPO_ROOT, 'skills', name, 'SKILL.md'), 'utf8');
@@ -74,6 +89,38 @@ for (const name of REVIEW_SKILLS) {
       /resolve 输出的 `models`/.test(md),
       `${name} 补了 --model-* 槽位还不够：正文必须指示 Driver 把 resolve 输出的 ` +
         '`models` 字段透传下去，否则 Driver 不知道该填什么。',
+    );
+  });
+
+  /*
+   * 与 `models` 同款的正文断言（审查意见 GLM-01）。
+   *
+   * **槽位存在 ≠ Driver 知道该填什么**，而 M7b 第 5 步的 major 恰恰出在正文：
+   * 模板有 `--critics` 槽位、argument-hint 也声明了，唯独正文把透传规则写错了
+   * （让 Driver 同时传 `--only`），于是 `--only` 场景整条链路必退 64。
+   * 那次 flag-parity 全绿——它当时只校验槽位。
+   */
+  test(`${name}：正文要交代把 resolve 输出的 critics 透传下去`, () => {
+    const md = readSkill(name);
+    assert.ok(
+      /resolve 输出的 `critics`/.test(md),
+      `${name} 有 --critics 槽位还不够：正文必须指示 Driver 把 resolve 输出的 ` +
+        '`critics` 字段透传下去，否则用户选的侧数会在 resolve 之后静默丢失。',
+    );
+  });
+
+  /*
+   * 反向断言：正文**不得**指示 Driver 传 `--only`。
+   *
+   * 这条防的是「有人照旧文档把 `--only` 透传加回来」——`topic resolve` 已把
+   * 输出的 `only` 置 null，加回来拿不到值；真要硬拼一个，就会撞上互斥退 64。
+   */
+  test(`${name}：正文不得指示 Driver 透传 --only（它已并入 critics）`, () => {
+    const md = readSkill(name);
+    assert.doesNotMatch(
+      md, /把它传给 `--only`/,
+      `${name} 的正文又把 --only 透传写回来了。它是 --critics 的单元素旧写法，` +
+        'resolve 会把结果并进 critics 并把 only 置 null——同时递两个旗标会退 64。',
     );
   });
 }

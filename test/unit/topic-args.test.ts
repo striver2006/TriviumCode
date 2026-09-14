@@ -7,7 +7,7 @@ import { splitArguments, inferTopic, resolveTopicArgs } from '../../src/trivium/
 import { defaultConfig } from '../../src/trivium/config.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
-import type { Ctx } from '../../src/trivium/types.js';
+import { CRITICS, type Ctx } from '../../src/trivium/types.js';
 
 async function fakeCtx(): Promise<Ctx> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-args-'));
@@ -177,6 +177,35 @@ test('--focus 与 prompt_hint 的对应统一（AGY-04）', async () => {
  * 用户在 B/C/D 里最常打的就是焦点，几乎不会打目标——目标能从归档回退取回。
  * 显式旗标永远优先于正文。
  */
+
+/*
+ * 命令 A 明确拒绝选侧旗标（审查意见 GLM-02）。
+ *
+ * 修复前：`NAMED_FLAGS` 不分 scope，`/dual-run --critics glm` 会被解析成功，
+ * 然后被 S2/S6 的交接说明静默丢弃（那里只交代 focus / context / models / profile）。
+ * **拼错的当场退 64，写对的反而无声消失**——「错的报错、对的消失」。
+ */
+for (const flag of ['--critics glm', '--only glm']) {
+  test(`命令 A 拒绝 ${flag.split(' ')[0]}：明确报错，不静默丢弃`, async () => {
+    const ctx = await fakeCtx();
+    await assert.rejects(
+      resolveTopicArgs({ ctx, scope: 'all', rawArgs: `把登录改造为 OIDC ${flag}` }),
+      (e: { code?: number; message: string }) => {
+        assert.equal(e.code, EXIT.USAGE);
+        assert.match(e.message, /命令 A/);
+        assert.match(e.message, /dual-review/, '要告诉用户改用哪条命令');
+        return true;
+      },
+    );
+  });
+}
+
+test('B/C/D 不受影响：同样的旗标在这里照常生效', async () => {
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 9;\n');
+  const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: '看并发 --topic T --critics glm' });
+  assert.deepEqual(r.critics, ['glm']);
+});
 
 test('命令 A：正文是任务目标，--focus 是可选补充', async () => {
   const ctx = await fakeCtx();
@@ -350,9 +379,18 @@ test('AGY-04：resolveTopicArgs 把三者输出，不静默丢弃', async () => 
     rawArgs: '重点看并发 --topic T --only gemini --allow-single --session-id S-9',
   });
   assert.equal(r.prompt_hint, '重点看并发');
-  assert.equal(r.only, 'gemini');
   assert.equal(r.allow_single, true);
   assert.equal(r.session_id, 'S-9');
+  /*
+   * `--only` 的意图落在 `critics` 里，而不是回显到 `only` 字段（M7b 第 5 步）。
+   * 本用例的意图是「这三个旗标都不被静默丢弃」——`--only` 的**意图没丢**，
+   * 只是换了承载字段。断言随之锚到意图上：输出里要能看出用户选了 gemini 一侧。
+   */
+  assert.deepEqual(r.critics, ['gemini'], '--only 的意图必须体现在入选集合里');
+  assert.equal(
+    r.only, null,
+    '输出的 only 要置 null：留着它，下游照抄就会同时拼出两个旗标而退 64',
+  );
 });
 
 test('AGY-04：--only 取值当场校验，拼错不必等到 review --start', async () => {
@@ -361,7 +399,16 @@ test('AGY-04：--only 取值当场校验，拼错不必等到 review --start', a
     resolveTopicArgs({ ctx, scope: 'code', rawArgs: '重点看并发 --topic T --only gemmini' }),
     (e: { code?: number; message: string }) => {
       assert.equal(e.code, EXIT.USAGE);
-      assert.match(e.message, /只接受 gemini \| glm/);
+      /*
+       * 断言锚在**意图**上：拼错要当场退 64，且错误里要列出合法值。
+       * M7b 第 5 步把校验收敛进 `resolveCriticSelection` 后措辞变了
+       * （从「只接受 X | Y」变成「含未登记的 Agent…可用：X | Y」），
+       * 原先逐字匹配措辞的断言会为一次纯文案调整变红——那是脆断言。
+       */
+      assert.match(e.message, /gemmini/, '要点名拼错的那个值');
+      for (const c of CRITICS) {
+        assert.match(e.message, new RegExp(c), `要列出合法值 ${c}，否则用户不知道该写什么`);
+      }
       return true;
     },
   );

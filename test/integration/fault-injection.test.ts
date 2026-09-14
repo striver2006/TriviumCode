@@ -273,3 +273,129 @@ test('两侧都失败：无论什么策略都中止', { skip: bundleMissing && b
   );
   assert.notEqual(exitCode, EXIT.OK, '没有任何一侧成功时不存在「单审结果」可言');
 });
+
+// ─────────────── `--critics` 的调用链（M7b 第 5 步）───────────────
+
+/*
+ * **这组必须走真实子进程，纯函数测试证明不了它。**
+ *
+ * `resolveCriticSelection` 的单测只说明「判定函数返回了什么」；本组说明
+ * 「那个返回值一路走到了落盘」。两者的差别不是理论上的：实施时做过一次变异——
+ * 把 `review.ts` 的 `opts.critics ?? …` 改成永远取配置默认值（模拟接线漏传），
+ * **全量 873 条测试无一变红**。调用链当时是零覆盖的。
+ *
+ * 第 3 步刚记下「函数对了不等于调用链对了」，这里是同一课的第二次。
+ */
+test('--critics 单侧：真的只跑那一侧，且不记降级（AC-22 的核心断言）',
+  { skip: bundleMissing && bundleSkipReason }, async () => {
+    const { exitCode, meta, stageDir } = await runInjected(
+      { gemini: { mode: 'ok' }, glm: { mode: 'ok' } },
+      ['--critics', 'glm'],
+    );
+
+    assert.equal(exitCode, EXIT.OK);
+    assert.deepEqual(meta.critics_selected, ['glm'], '入选集合要如实记录用户的选择');
+    assert.deepEqual(
+      Object.keys(meta.critics), ['glm'],
+      '未入选的一侧不该被跑起来——这正是漏传 critics 时会失守的地方',
+    );
+
+    /*
+     * **选 1 侧是配置意图，不是降级**（FR-29 / AC-22）。
+     * 第 3 步把 `review_mode: full|partial` 与 `critics_selected` 分开，
+     * 就是为了让这一刻成立：单侧成功记 `full`、不写降级原因。
+     */
+    assert.equal(meta.review_mode, 'full', '选 1 侧并成功不是降级');
+    assert.equal(meta.degraded_reason, null);
+
+    // 只数**审查文档**：阶段目录里还有 Driver 的原稿（plan 阶段的被审对象）
+    const reviews = (await fs.readdir(stageDir))
+      .filter((f) => f.endsWith('.md') && !f.endsWith('-claude.md'));
+    assert.deepEqual(
+      reviews.map((f) => f.slice(f.lastIndexOf('-') + 1)), ['glm.md'],
+      `只该落 glm 一侧的审查文档，实得：${reviews.join('、')}`,
+    );
+  });
+
+test('缺省（不给 --critics）：仍按 default_critics 跑满两侧',
+  { skip: bundleMissing && bundleSkipReason }, async () => {
+    // 与上一条成对：只有单侧用例的话，「永远只跑第一侧」的实现也能过
+    const { meta } = await runInjected({ gemini: { mode: 'ok' }, glm: { mode: 'ok' } });
+    assert.deepEqual(meta.critics_selected, ['gemini', 'glm']);
+    assert.deepEqual(Object.keys(meta.critics).sort(), ['gemini', 'glm']);
+    assert.equal(meta.review_mode, 'full');
+  });
+
+/*
+ * **跨命令串联：`topic resolve` 的输出照抄进 `--start` 必须能启动**
+ * （审查意见 AGY-03 ≡ GLM-01 的测试面）。
+ *
+ * 上面三条用例都是 `--start` **直调**——它们挡住了「接线漏传」，却挡不住「接线拼错」。
+ * 而真实链路是 `resolve → Driver 按 SKILL 拼装 → --start`，M7b 第 5 步的 major
+ * 恰恰出在拼装那一步：resolve 对 `--only` 同时输出 `critics` 与 `only` 两个字段，
+ * skill 又让 Driver 两个都传，于是 `--only` 场景**整条链路必退 64**。
+ * 当时全量测试无一变红——这一段从未被覆盖过。
+ */
+async function resolveThenStart(userArgs: string): Promise<{ code: number | null; out: string }> {
+  const { root } = await makeFixture({ topic: TOPIC });
+  const stub = { gemini: { mode: 'ok' as const }, glm: { mode: 'ok' as const } };
+
+  const r = await cli(root, ['topic', 'resolve', '--stage', 'plan', '--json', '--', userArgs], stub);
+  assert.equal(r.code, EXIT.OK, `resolve 应成功：\n${r.stdout}\n${r.stderr}`);
+  const cand = extractJsonCandidate(r.stdout);
+  assert.ok(cand, `resolve --json 未产出可解析 JSON：\n${r.stdout}`);
+  const res = JSON.parse(cand.json) as {
+    topic: string; prompt_hint: string | null; critics: string[];
+    only: string | null; allow_single: boolean;
+  };
+
+  /*
+   * **照 SKILL.md 的透传规则拼装**：critics 无条件传、`--only` 不传。
+   * 这个函数就是 Driver 那一步的机器复刻——它拼错，这里就红。
+   */
+  assert.equal(res.only, null, 'resolve 不该再输出可传的 only：它已并入 critics');
+  const args = [
+    'review', '--start', '--stage', 'plan', '--topic', res.topic,
+    '--focus', res.prompt_hint ?? 'x', '--entry', 'B',
+    '--critics', res.critics.join(','),
+    ...(res.allow_single ? ['--allow-single'] : []),
+    '--json',
+  ];
+  const s = await cli(root, args, stub);
+  return { code: s.code ?? EXIT.FAIL, out: s.stdout + s.stderr };
+}
+
+test('跨命令：resolve(--critics) 的输出照抄进 --start 能启动',
+  { skip: bundleMissing && bundleSkipReason }, async () => {
+    const { code, out } = await resolveThenStart(`看并发 --topic ${TOPIC} --critics glm`);
+    assert.equal(code, EXIT.OK, `照抄 resolve 输出不该失败：\n${out}`);
+  });
+
+test('跨命令：resolve(--only) 的输出照抄进 --start 也能启动（旧别名不得必败）',
+  { skip: bundleMissing && bundleSkipReason }, async () => {
+    /*
+     * 设计 7.1 承诺 `--only` **长期保留为别名**，理由是旧 SKILL.md 可能未同步升级。
+     * 修复前这条必退 64，且报错说「你不能同时给两个」——而用户根本没写 `--critics`。
+     */
+    const { code, out } = await resolveThenStart(`看并发 --topic ${TOPIC} --only glm`);
+    assert.equal(code, EXIT.OK, `旧别名经 resolve 后必须仍能走通：\n${out}`);
+  });
+
+test('--critics 拼错：退 64 且不产生任何工件',
+  { skip: bundleMissing && bundleSkipReason }, async () => {
+    const { root } = await makeFixture({ topic: TOPIC });
+    const r = await cli(
+      root,
+      ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--critics', 'gemmini'],
+      {},
+    );
+    assert.equal(r.code, EXIT.USAGE, '参数错误一律退 64');
+    /*
+     * 「零工件」是设计 §12 对参数错误的硬要求：失败得早，别留半套目录。
+     * 这里查阶段目录压根没被建出来。
+     */
+    await assert.rejects(
+      fs.access(path.join(root, '.reviews', TOPIC, 'plan', '_meta')),
+      '退 64 的路径不该留下任何运行痕迹',
+    );
+  });

@@ -13,6 +13,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
 import { CRITICS, type CriticId, type Ctx, type Stage } from './types.js';
+import { resolveCriticSelection } from './critics.js';
 import { validateTopic, parseArtifactName } from './naming.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { exists } from './util/fsx.js';
@@ -30,7 +31,7 @@ import type { PreflightScope } from './preflight.js';
 const NAMED_FLAGS = [
   'topic', 'context', 'plan-file', 'rca-file', 'base',
   'model-gemini', 'model-glm', 'profile', 'focus', 'goal',
-  'only', 'allow-single', 'session-id',
+  'only', 'allow-single', 'session-id', 'critics',
 ] as const;
 /** 自由文本旗标：贪婪取到下一个已知旗标为止 */
 const GREEDY_FLAGS: ReadonlySet<string> = new Set(['focus', 'goal']);
@@ -175,6 +176,13 @@ export interface TopicResolution {
   profile: string | null;
   /** 只跑一侧（`review --start --only gemini|glm`），null 表示两侧都跑 */
   only: CriticId | null;
+  /**
+   * 本轮入选的审核者集合（`--critics a,b`；缺省取 `review.default_critics`）。
+   *
+   * **恒非空**：这里已经解析并校验完，skill 照抄透传即可，不必再自己拼。
+   * `--only` 是它的单元素特例，两者同时给会在此处退 64。
+   */
+  critics: CriticId[];
   /** 一侧失败时不中止，产出单审结果并留痕（§12.4） */
   allow_single: boolean;
   /**
@@ -215,17 +223,61 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
    * 而 resolve 的职责本就是「把整串参数切清楚并当场指出问题」。
    */
   const onlyRaw = named['only']?.trim() ?? '';
-  // 合法值取自当前启用的审核者集合，不写死两家（M7b 起 `--critics` 取代本旗标）
-  if (onlyRaw && !CRITICS.includes(onlyRaw as CriticId)) {
+  /*
+   * `--critics` 与 `--only` 的解析与校验都交给 `resolveCriticSelection`
+   * （M7b 第 5 步）。此前这里自己实现了一遍 `--only` 的字面校验，
+   * 而 `cli.ts` 的 `review --start` 又实现了一遍——两处不一致正是上一轮
+   * 修掉的形态。现在只有一个判定处，两个入口都调它。
+   */
+  /*
+   * 命令 A 不接受选侧旗标（审查意见 GLM-02）。
+   *
+   * `NAMED_FLAGS` 不分 scope，于是 `/dual-run --critics glm` 会被解析成功，
+   * 然后**被 S2/S6 的交接说明静默丢弃**（那里只交代了 focus / context / models / profile）——
+   * 拼错的当场退 64，写对的反而无声消失。「错的报错、对的消失」是本项目反复记过的形态。
+   *
+   * 不给命令 A 补透传而是明确拒绝：它一次要跑 plan 与 code 两轮双审，
+   * 「这一轮选哪几侧」在命令 A 层面语义本就模糊。与其定义一个想不清楚的语义，
+   * 不如让用户改用 B/C/D。这条边界写在设计 7.1。
+   */
+  if (scope === 'all' && (named['critics'] || onlyRaw)) {
+    const given = named['critics'] ? '--critics' : '--only';
     throw new TriviumError(
       EXIT.USAGE,
-      `--only 只接受 ${CRITICS.join(' | ')}，收到：${onlyRaw}`,
+      `命令 A（全流程）不接受 ${given}：它一次要跑计划审与代码审两轮，` +
+        '「本轮选哪几侧」在这一层没有确定语义。\n' +
+        '  想指定审核者请改用 /dual-review-plan、/dual-review-code 或 /dual-review-bug。',
     );
   }
-  const only = (onlyRaw || null) as CriticId | null;
+
+  const critics = resolveCriticSelection(ctx.config, {
+    critics: named['critics'] ?? null,
+    only: onlyRaw || null,
+  });
+  /*
+   * **入选来自 `--only` 时，输出的 `only` 置 null**（审查意见 AGY-01 ≡ GLM-01，两侧判 major）。
+   *
+   * 这是那条 major 的**数据层修法**：`critics` 已经完整表达了入选集合（含 `--only` 的
+   * 单元素形态），再把 `only` 一并输出，下游照抄就会同时拼出两个旗标而撞上互斥——
+   * 实测 `--only glm` 时 `--start` 必退 64，且报错说的是「你不能同时给两个」，
+   * 而用户根本没写 `--critics`。
+   *
+   * 文档层（三份 SKILL 删去 `--only` 透传）也改了，但**光改文档不够**：文档会被抄错、
+   * 会有未同步的旧副本。这里让第二个旗标在数据上就不存在，错误形态才真正不可达。
+   */
+  const only: CriticId | null = null;
   const allowSingle = booleans.has('allow-single');
-  if (only && allowSingle) {
-    notes.push('同时给了 --only 与 --allow-single：只跑一侧时降级本就必然发生，--allow-single 不改变行为');
+  if (onlyRaw && allowSingle) {
+    /*
+     * 口径按新语义重写（审查意见 GLM-03）。原文写的是「只跑一侧时降级本就必然发生，
+     * --allow-single 不改变行为」——本步之后两句都是假话：选一侧成功记 `full`、
+     * 不写 `degraded_reason`；而 `--allow-single` 实际改变的是**失败分支**
+     * （strict 下该侧失败整次退 75，degrade 下继续留痕）。
+     */
+    notes.push(
+      '已按 --only 只选一侧：这是配置意图，成功时不标降级；' +
+        '--allow-single 只影响该侧失败时是否中止（§12.4）',
+    );
   }
 
   /*
@@ -363,6 +415,7 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     models,
     profile: named['profile'] ?? null,
     only,
+    critics,
     allow_single: allowSingle,
     session_id: named['session-id']?.trim() || null,
     topic_inferred: inferred,

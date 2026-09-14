@@ -1,6 +1,6 @@
 # PROTOCOL：Driver-DualCritic 工件中继与协议契约
 
-> 依据 [设计 v1.3.3](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.2](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.5](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.3](../01_requirements/PRD_driver_dual_critic.md)。
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
 >
 > **⚠️ 本文描述的是当前真实生效的契约**（**`config.v2`** / **`run.v2`** / 两侧审核者 / 固定 Claude Code Driver）。
@@ -9,10 +9,13 @@
 > 新增 `review.default_critics` / `max_critics`）于第 4 步生效，规范见设计 13.1.1。
 > 两份 v1 均降为**历史契约**：`run.v1` 读侧双读，`config.v1` 读侧自动迁移——
 > **已初始化的项目不改配置也能跑**，磁盘改写由 `trivium init` 可选执行（带备份）。
+> **`--critics <id,…>` 自 M7b 第 5 步起生效**：选 1～`max_critics` 个审核者，
+> 缺省取 `review.default_critics`，校验不过退 64 且零工件；`--only` 是它的单元素旧写法，
+> **两者同时给即拒**。选 1 侧记 `review_mode: full`、不写 `degraded_reason`——
+> 配置意图不是降级。规则细则见设计 7.1。
 > 其余多 Agent 演进带来的契约变更——意见编号前缀扩为四值、裁决件 `role` 扩为四值与
-> `addresses` 基数 1～3、`--critics` 等新旗标——**均尚未生效**，随各里程碑并入本文。
-> `review.default_critics` 虽已进入配置契约，但**消费端在第 5 步才接线**：
-> 在那之前它只被校验，不改变实际跑哪几侧。
+> `addresses` 基数 1～3、`--tier-*` / `--effort-*` 等旗标——**均尚未生效**，随各里程碑并入本文。
+> 注意 `--critics` 当前实际可选的只有两家：第三家的审核者能力随 M8 / M9 接入。
 > **按本文实现的客户端不会被演进破坏**：读侧双读、旧形态长期兼容。
 
 三方（Claude Code Driver、Antigravity Critic-A、ZCode Critic-B）之间**没有**任何进程间

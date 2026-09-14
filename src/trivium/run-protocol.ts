@@ -70,7 +70,8 @@ interface Handoff {
     subjectFile: string | null;
     modelOverrides: Partial<Record<CriticId, string>>;
     command: string;
-    onlyCritic: CriticId | null;
+    /** 本轮入选的审核者集合。worker 是另一个进程，必须随交接文件带过去 */
+    critics: CriticId[];
     assetRoot?: string;
     /** 会话 id 与临时降级开关必须一起交接：worker 是另一个进程，读不到 --start 的 argv */
     sessionId: string | null;
@@ -99,7 +100,7 @@ async function writeHandoff(rc: RunContext): Promise<void> {
       subjectFile: rc.opts.subjectFile,
       modelOverrides: rc.opts.modelOverrides,
       command: rc.opts.command,
-      onlyCritic: rc.opts.onlyCritic ?? null,
+      critics: [...rc.sides],
       sessionId: rc.opts.sessionId ?? null,
       allowSingle: rc.opts.allowSingle === true,
       entry: rc.opts.entry ?? null,
@@ -140,7 +141,7 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
       subjectFile: h.options.subjectFile,
       modelOverrides: h.options.modelOverrides,
       command: h.options.command,
-      onlyCritic: h.options.onlyCritic,
+      critics: h.options.critics,
       sessionId: h.options.sessionId ?? null,
       allowSingle: h.options.allowSingle === true,
       entry: h.options.entry ?? null,

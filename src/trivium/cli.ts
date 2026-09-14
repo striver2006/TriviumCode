@@ -29,6 +29,7 @@ import {
   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
 } from './preflight.js';
 import { resolveTopicArgs } from './topic-args.js';
+import { resolveCriticSelection } from './critics.js';
 import { COMMAND_ENTRIES, CRITICS, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
 import { emitJson, fail, isJsonMode, say, setOutputMode, step, warn } from './util/log.js';
 
@@ -119,7 +120,10 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --profile <名称>  本次改用另一档模型（config.yaml 的 profiles）。
                   与 --model-* 不冲突：那个指定具体模型、优先级更高，
                   这个只换默认值表。档位不存在则退 64 并列出可用值
-      --only gemini|glm  仅跑一侧（调试用，会被标为降级——这不是双审）
+      --critics <id,…>  本轮入选的审核者，逗号分隔（1～review.max_critics 个）。
+                  缺省取 review.default_critics。选 1 个是配置意图、不标降级；
+                  含当轮 Driver、含未启用为审核者的 Agent、或重复项一律退 64
+      --only gemini|glm  仅跑一侧。**--critics 的单元素旧写法**，两者不能同时给
       --allow-single  一侧失败时不中止，产出单审结果并留痕（§12.4）。
                       受配置 review.allow_partial_flag 约束（旧名 allow_single_flag 仍可用）；默认 strict
 
@@ -341,15 +345,16 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
 
   const onlyRaw = flagString(args, 'only');
   /*
-   * 用注册表派生的集合判，不写字面白名单。
+   * 入选集合的解析与校验交给 `resolveCriticSelection`——**与 `topic resolve` 同一个判定处**。
    *
-   * `topic-args.ts` 同一个旗标走的是 `CRITICS.includes`，两处此前不一致：
-   * 启用第三家时这里会**先于**它拒掉合法取值，而错误信息还振振有词地
-   * 只列两家。校验逻辑分两处实现、其中一处硬编码，是改一漏二的典型形态。
+   * 此前这里和 `topic-args.ts` 各实现了一遍 `--only` 的字面校验，两处一度不一致：
+   * 启用第三家时这边会**先于**那边拒掉合法取值，而错误信息还振振有词地只列两家。
+   * 校验逻辑分两处实现是改一漏二的典型形态，M7b 第 5 步收敛成一处。
    */
-  if (onlyRaw && !(CRITICS as readonly string[]).includes(onlyRaw)) {
-    throw usageError(`--only 只接受 ${CRITICS.join(' | ')}，收到：${onlyRaw}`);
-  }
+  const critics = resolveCriticSelection(ctx.config, {
+    critics: flagString(args, 'critics'),
+    only: onlyRaw,
+  });
 
   const contextRaw = flagString(args, 'context');
   // 任务目标与审查焦点分开传（RV-19）：前者说「要达成什么」，后者说「这次重点看什么」
@@ -368,7 +373,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     diffBase: flagString(args, 'base'),
     modelOverrides,
     command: `trivium review --stage ${stage}`,
-    onlyCritic: (onlyRaw as CriticId | null) ?? null,
+    critics,
     // 闸门写锁默认按会话作用域（RV-05）。拿不到会话 id 时闸门记 null，
     // 写锁按「本会话」保守处理（state.ts GateEntry.session_id）
     sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,

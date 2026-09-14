@@ -1,7 +1,7 @@
 ---
 name: dual-review-code
 description: 对已有代码变更做背靠背双审，并产出逐条应答与修改方案（命令 C）
-argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-gemini <slug>] [--model-glm <id>] [--base <ref>] [--only gemini|glm] [--allow-single]
+argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-gemini <slug>] [--model-glm <id>] [--base <ref>] [--critics <id,…>] [--only gemini|glm] [--allow-single]
 disable-model-invocation: true
 allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 ---
@@ -61,7 +61,7 @@ FR-20 的逐字承诺不受影响。resolve 若提示「主题异常短」，多
 先运行：
 
 ```
-TV review --start --entry C --stage code --topic <主题> --focus <提示语> [--goal <任务目标>] [--base <ref>] [--model-gemini <slug>] [--model-glm <id>] [--profile <名称>] [--context …] [--only <侧>] [--allow-single] --json
+TV review --start --entry C --stage code --topic <主题> --focus <提示语> [--goal <任务目标>] [--base <ref>] [--model-gemini <slug>] [--model-glm <id>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] --json
 ```
 
 `--entry C` 标记本次运行由命令 C 发起，记入 run.json 留痕；它也让 CLI 按 B/C/D 规则
@@ -85,10 +85,22 @@ resolve 总是输出该字段（用户没传时它就是 `HEAD`），而显式�
 **漏传不会报错，只会静默错审**：补丁悄悄退回 `git diff HEAD`，两侧审查员读到的变更范围
 与用户以为送审的对不上，而留痕里记的 base 看起来一切正常。
 
-若 resolve 输出的 `only` 非空，把它传给 `--only`；`allow_single` 为 true 时加上
-`--allow-single`。两者都是用户显式要求的降级：前者只跑一侧，后者允许一侧失败时
-不中止、产出单审结果并留痕（§12.4）。**漏传的后果是静默忽略用户的要求**——
-照常跑两侧、一侧失败就整次失败，而留痕里看不出用户曾经要求过降级。
+**把 resolve 输出的 `critics` 数组用逗号连接后传给 `--critics`，无条件传。**
+它是本轮**入选的审核者集合**，resolve 已经解析并校验完：默认值回落、旧旗标 `--only`
+的单元素形态、各项合法性，全都在里面了。照抄即可。
+不传不会报错——`--start` 会自己再取一次配置默认值——但用户写的 `--critics` 就此消失，
+而留痕里记的入选集合看起来一切正常。这与 `--base` 漏传是同一族缺口：不报错、审的不是
+用户以为的那几侧。
+
+**不要传 `--only`。** 它是 `--critics` 的单元素旧写法，用户写了它，resolve 会把结果
+并进 `critics` 数组并把 `only` 置为 null——你手上根本拿不到可传的值。
+两个旗标同时递给 `--start` 会被判互斥并退 64（那是给**用户**同时写两个准备的拦截，
+不是给你的）。
+
+`allow_single` 为 true 时加上 `--allow-single`：那是用户显式要求的降级，
+允许一侧失败时不中止、产出结果并留痕（§12.4）。
+**漏传的后果是静默忽略用户的要求**——一侧失败就整次失败，
+而留痕里看不出用户曾经要求过降级。
 
 若 resolve 输出的 `models` 字段非空，把其中的模型覆盖原样传给 `--model-gemini` /
 `--model-glm`。**用户指定的模型只在这一步才真正生效**——独立的 `preflight` 看不到
