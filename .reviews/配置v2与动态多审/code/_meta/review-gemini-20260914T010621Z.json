@@ -1,0 +1,62 @@
+{
+  "agreed": [
+    "decideMode 增加入选集合入参后，在既有所有正常执行路径（双侧全成功、单侧失败降级、两侧全失败、--only 显式单审成功/失败）上均未改变 run.json 的落盘值与 review_mode / degraded_reason 取值，第一步不改落盘约束恪守严格。",
+    "degraded 字段接通方式准确：生产侧从 runMeta.degraded_reason != null 读取属于持久化的客观事实且显式单审不误报；消费侧在 checkAdjudication 出 warning 而非 failure 恰到好处，既消除了此前将单审误认为完整双审的事后审计盲区，又避免了将合法的降级运行变成无法满足的死锁闸门。",
+    "四处二元三目修复到位：vendor 查注册表 CRITIC_VENDOR、cli 查 CRITICS.includes，effort 与 preflight 在当前阶段走带 never 穷尽检查的编译期分支，理由充分（当前配置与探针在 v1 下未泛化抽象，穷尽分支能在新增 Agent 时编译期报错阻断，防御效果最强）。",
+    "严格遵守步骤边界：补丁仅限 6 个文件，未修改任何 JSON Schema，未提前引入 run.v2 字段或 config.v2 结构，未修改第 2 步的泛化欠账（如分歧度计算、适配器工厂解耦等），未发生越界实现。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/配置v2与动态多审/code/_meta/changes-20260914T010621Z.diff",
+    ".reviews/配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-claude.md",
+    ".reviews/配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-r2-revised-claude.md",
+    "src/trivium/runner.ts",
+    "src/trivium/review.ts",
+    "src/trivium/render.ts",
+    "src/trivium/types.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/cli.ts",
+    "test/unit/runner.test.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/registry-parity.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查看 test/unit/gate.test.ts，全部 21 处 checkAdjudication 测试用例均硬编码 degraded: false，没有任何用例断言 degraded: true 时 warnings 包含 degraded_round 且 ok 为 true；亦无用例测试 loadRoundReviews 读取含 degraded_reason 的 runMeta 时返回 degraded: true。这偏离了计划中「闸门对 review_mode: partial 的行为可观测 | 单元 + 集成」的测试要求。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "src/trivium/gate.ts:182",
+      "problem": "gate.ts 新增的降级轮次警告逻辑（warning: degraded_round）与 loadRoundReviews 的 degraded 提取在单元测试中完全缺失覆盖。",
+      "severity": "minor",
+      "suggestion": "在 test/unit/gate.test.ts 中补充测试：断言 checkAdjudication 在 degraded: true 时产出 code 为 degraded_round 的 warning 且保持 ok: true；断言 loadRoundReviews 在 runMeta.degraded_reason 有值时返回 degraded: true，为 null 时返回 false。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/runner.ts:257-267 中 ran = Object.keys(results)，okSides = ran.filter(...)，failedSides 包含 ran 中非 ok 的所有侧。若 selected 仅为 ['gemini']，但外部在 results 中传入了带有失败状态的 'glm'，failedSides 会将未入选的 glm 计入并判定为 single/degraded: true 甚至在 strict 策略下触发 abort；若传入成功的 glm，okSides 也会包含未入选侧。判定基准应严格闭合在 selectedSides 集合内。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/runner.ts:257-267",
+      "problem": "decideMode 判定的基准集合未严格收敛于 selectedSides，若 results 传入未入选侧的结果会污染判定。",
+      "severity": "minor",
+      "suggestion": "以 selectedSides 为全集论域计算判定：okSides 与 failedSides 均应限定在 selectedSides 之内（例如 okSides = selectedSides.filter(...)，missingSides = selectedSides.filter(c => !(c in results))，failedSides = selectedSides.filter(c => !okSides.includes(c))），确保纯函数的输入契约完备防御冗余键。"
+    }
+  ],
+  "not_covered": [
+    "本次审查仅覆盖第 1 步补丁涉及的代码及直接关联的上下游调用链，未执行构建与全量测试套件（严格只读环境无命令执行工具）。",
+    "未验证后续第 2 步至第 6 步的实现（依据计划分步推进策略，当前仅就第 1 步送审）。",
+    "未测试真实 Antigravity CLI 与 ZCode CLI 的运行时环境与网络交互。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "总体判断：【approve-with-nits】。实现严格克制在第 1 步范围内，未改动 schema 与落盘数据结构，未越界做后续步骤，四处二元三目收敛到位，降级 warning 强弱恰当。\n最需注意的问题是：gate.ts 新增的 degraded（warning: degraded_round 与 loadRoundReviews 提取）改动在 test/unit/gate.test.ts 中存在测试盲区（用例一律传死 degraded: false，未测降级告警）；另外 decideMode 内部未将 okSides/failedSides 限定在 selected 子集内，若 results 混入未入选侧的失败结果会导致误判降级。两处均为 minor，补齐测试与集合过滤即可。",
+  "verdict": "approve-with-nits"
+}

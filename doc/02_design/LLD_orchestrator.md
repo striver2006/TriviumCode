@@ -302,6 +302,11 @@ bashTimeoutFor  = min(600_000, waitTimeoutS × 1000 + 60_000)
 | `missing_action` | 「接受」但没写落点 |
 | `weak_reason` | 命中空洞词表，按 `reason_policy` 分流 warn / hard |
 | `joint_blocker_rejected` | 双方共同提的 blocker 被全部驳回 |
+| `parse_problem` | 裁决表某行解析不了（逐行报出行号与原因） |
+| `degraded_round` | 本轮是降级轮次（有入选审核者未成功）。**只出 warning 不出 failure**：降级是关于「运行」的事实，Driver 改裁决件修不掉它，报 failure 会变成无法满足的闸门 |
+
+> **本表以 `gate.ts` 的 `GateWarning` / `GateFailureCode` 联合类型为唯一来源。**
+> 扩枚举时请一并回补本表；即便漏补，以类型为准——本表只会不全，不会变错。
 
 **关键的拆分顺序**（`gate.ts:189-207`）：**先按 `isFallbackId()` 把虚拟编号拆出去，再做差集**——否则合法的 `AGY-F01` 会被判 `unknown_findings`。fallback 行的期望集来自 `.fallback-items.md`，这条修的是「原先 fallback 行只在出现时被校验、从不被要求出现：两侧都降级时一张空表就能过闸」。
 

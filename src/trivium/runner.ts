@@ -202,45 +202,117 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
 export type ReviewMode = 'dual' | 'single';
 
 export interface ModeDecision {
+  /**
+   * **`run.v1` 的线格式值，不表达参与者基数。**
+   *
+   * 它只回答「入选的各侧是否都成功了」：全成功 `dual`，有失败 `single`。
+   * 想知道「本轮该跑几侧、实际是哪几侧」，看 `selectedSides` / `okSides`，
+   * **不要看它**——`--only gemini` 跑成功时它同样是 `dual`。
+   *
+   * 之所以留着这个会被误读的名字：`run.v1.json` 的 enum 就是 `["dual","single"]`，
+   * 记 `single` 会被读成降级（与「选 1 审是配置意图」冲突）、记 `full` 通不过校验。
+   * 三个取值在 v1 契约层都不可达，因此本步**只修内存层判定、不动落盘值**；
+   * 真正的修法是 `run.v2` 的 `review_mode: full|partial` + `critics_selected`
+   * （设计 6.7.1，随 M7b 第 3 步交付）。
+   */
   mode: ReviewMode;
   /** 严格模式下是否应中止整次运行 */
   abort: boolean;
   degradedReason: string | null;
   okSides: CriticId[];
   failedSides: CriticId[];
+  /**
+   * 本轮**入选**的审核者集合——即「本该跑几侧」。
+   *
+   * 这是本函数此前完全缺失的输入。没有它，`--only gemini` 成功跑完与双侧全成功
+   * 的返回值**逐字段相同**，留痕里查不出本轮只审了一侧（AC-06）。
+   */
+  selectedSides: CriticId[];
+  /** 入选却连一条结果都没产出的一侧。正常不可达；可达即说明装配链断了 */
+  missingSides: CriticId[];
+  /**
+   * 真实降级判定：**入选的侧里有没有没成功的**。
+   *
+   * 与 `mode` 解耦是有意的——`mode === 'single'` 此前被当成降级的同义词
+   * （`review.ts` 与 `gate.ts` 各自重算一遍），而「显式只选一侧并成功」
+   * 不是降级、不该打降级横幅（设计 AC-22：选 1 审是配置意图）。
+   */
+  degraded: boolean;
 }
 
 /**
  * 按失败策略决定继续还是中止（设计 §12.4 / AD-09）。
  *
  * 铁律：**绝不**把单审改名冒充双审（AC-06）。幸存侧的文件照常落盘并标 degraded。
+ *
+ * `selected` 是必填的：把它做成可选参数等于允许调用方沿用「只看跑过的」的旧语义，
+ * 而那正是本次要修的缺陷——判定必须同时知道「该跑哪几侧」与「跑出了什么」。
+ *
+ * **前置条件**：`results` 的键集应是 `selected` 的子集。
+ * 多出来的键会被**忽略**（不参与判定），少的键进 `missingSides`。
+ * 忽略而不是抛异常，是因为本函数在判定路径上，多余键本身不构成安全问题，
+ * 为它炸掉一次本可继续的运行不划算。
  */
 export function decideMode(
   results: Partial<Record<CriticId, CriticResult>>,
   failurePolicy: 'strict' | 'degrade',
+  selected: readonly CriticId[],
 ): ModeDecision {
-  const all = Object.keys(results) as CriticId[];
-  const okSides = all.filter((c) => results[c]?.status === 'ok' || results[c]?.status === 'parse_fallback');
-  const failedSides = all.filter((c) => !okSides.includes(c));
+  const selectedSides = [...selected];
+  /*
+   * 先与入选集合求交：判定的**论域就是入选集合**，两个方向都设防。
+   *
+   * 只防 `selected ∖ ran`（下面的 missingSides）而不防 `ran ∖ selected`，
+   * 会留下一个不对称的洞：未入选侧的失败结果一旦混进 results，
+   * 就会把 mode 判成 single、degraded 置 true，strict 下还会 abort。
+   * 当前唯一生产调用点受 `runBothSides` 的装配契约保护、该形态不可达，
+   * 但本函数是**导出的纯函数**、测试直接调用，且 M7b 第 3 步起调用方会增多——
+   * 一个纯函数的输入契约不该靠调用方的装配事实来保证（审查意见 AGY-02 ≡ GLM-02）。
+   */
+  const ran = (Object.keys(results) as CriticId[]).filter((c) => selectedSides.includes(c));
+
+  const okSides = ran.filter(
+    (c) => results[c]?.status === 'ok' || results[c]?.status === 'parse_fallback',
+  );
+  /*
+   * 入选却没有结果条目的一侧，此前从判定里整个消失：`Object.keys(results)` 见不到它，
+   * 于是「少跑了一侧」与「全成功」不可区分。并进 failedSides 才能让它显形。
+   */
+  const missingSides = selectedSides.filter((c) => !ran.includes(c));
+  const failedSides = [...ran.filter((c) => !okSides.includes(c)), ...missingSides];
 
   if (failedSides.length === 0) {
-    return { mode: 'dual', abort: false, degradedReason: null, okSides, failedSides };
+    return {
+      mode: 'dual',
+      abort: false,
+      degradedReason: null,
+      okSides,
+      failedSides,
+      selectedSides,
+      missingSides,
+      degraded: false,
+    };
   }
 
   const reason = failedSides
-    .map((c) => `${c}: ${results[c]?.status}（${results[c]?.fail_reason ?? '未记录原因'}）`)
+    .map((c) =>
+      missingSides.includes(c)
+        ? `${c}: 入选但未产出任何结果`
+        : `${c}: ${results[c]?.status}（${results[c]?.fail_reason ?? '未记录原因'}）`,
+    )
     .join('；');
 
-  // 两侧都失败：无论什么策略都无法继续
-  if (okSides.length === 0) {
-    return { mode: 'single', abort: true, degradedReason: reason, okSides, failedSides };
-  }
+  // 入选侧全军覆没：无论什么策略都无法继续
+  const abort = okSides.length === 0 ? true : failurePolicy === 'strict';
 
   return {
     mode: 'single',
-    abort: failurePolicy === 'strict',
+    abort,
     degradedReason: reason,
     okSides,
     failedSides,
+    selectedSides,
+    missingSides,
+    degraded: true,
   };
 }

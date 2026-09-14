@@ -29,7 +29,7 @@ import {
   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
 } from './preflight.js';
 import { resolveTopicArgs } from './topic-args.js';
-import { COMMAND_ENTRIES, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
+import { COMMAND_ENTRIES, CRITICS, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
 import { emitJson, fail, isJsonMode, say, setOutputMode, step, warn } from './util/log.js';
 
 const VERSION = '0.1.0';
@@ -322,8 +322,15 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   }
 
   const onlyRaw = flagString(args, 'only');
-  if (onlyRaw && onlyRaw !== 'gemini' && onlyRaw !== 'glm') {
-    throw usageError(`--only 只接受 gemini | glm，收到：${onlyRaw}`);
+  /*
+   * 用注册表派生的集合判，不写字面白名单。
+   *
+   * `topic-args.ts` 同一个旗标走的是 `CRITICS.includes`，两处此前不一致：
+   * 启用第三家时这里会**先于**它拒掉合法取值，而错误信息还振振有词地
+   * 只列两家。校验逻辑分两处实现、其中一处硬编码，是改一漏二的典型形态。
+   */
+  if (onlyRaw && !(CRITICS as readonly string[]).includes(onlyRaw)) {
+    throw usageError(`--only 只接受 ${CRITICS.join(' | ')}，收到：${onlyRaw}`);
   }
 
   const contextRaw = flagString(args, 'context');
@@ -619,10 +626,10 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       );
     }
     {
-      const { reviews, expectedFallbackIds, missingSides } = await loadRoundReviews(ref.layout, stage, runId);
+      const { reviews, expectedFallbackIds, missingSides, degraded } = await loadRoundReviews(ref.layout, stage, runId);
       const pre = await checkAdjudication({
         cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
-        degraded: Object.values(reviews).some((r) => r === undefined),
+        degraded,
         expectedFallbackIds, missingSides, runId,
       });
       if (!pre.ok) {
@@ -675,12 +682,12 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       `找不到 ${stage} 阶段第 ${rerunIndex} 轮的 run_id。请先跑一次双审，或用 --run-id 指定。`,
     );
   }
-  const { reviews, notes, expectedFallbackIds, missingSides } = await loadRoundReviews(ref.layout, stage, runId);
+  const { reviews, notes, expectedFallbackIds, missingSides, degraded } = await loadRoundReviews(ref.layout, stage, runId);
   for (const n of notes) step(n);
 
   const result = await checkAdjudication({
     cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
-    degraded: Object.values(reviews).some((r) => r === undefined),
+    degraded,
     expectedFallbackIds, missingSides, runId,
   });
 

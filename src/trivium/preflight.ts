@@ -216,6 +216,14 @@ export function checkModelSlugs(
         bad.push(`${critic}/${stage}: profile「${cfg.active_profile}」未定义模型且无覆盖`);
         continue;
       }
+      /*
+       * 穷尽分支，不用 `if (gemini) … else …` 二分。
+       *
+       * 二分写法下，任何**非 gemini** 的审核者（含将来的第三家与测试桩）都会掉进
+       * else 分支、被拿去按 ZCode 的模型目录校验，于是报一条驳斥自己的错：
+       * 「模型 X 不在 ZCode 模型目录中」——而那侧压根不是 ZCode。
+       * 新增 CriticId 时这里会直接编译不过，比运行期误报早得多。
+       */
       if (critic === 'gemini') {
         // 未知 slug 会让 agy 直接非零退出，不会静默换模型——所以这里能硬校验
         if (agyModels.length > 0 && !agyModels.includes(routed.model)) {
@@ -224,7 +232,7 @@ export function checkModelSlugs(
               `可用值：${agyModels.join(', ')}`,
           );
         }
-      } else {
+      } else if (critic === 'glm') {
         // ZCode 侧允许短名，适配层会按探针回读的 providerId 补全前缀（坑 P-06）
         const qualified = qualifyZcodeModel(routed.model, cfg.probe.zcode.model_id_form ?? null);
         const short = (qualified ?? '').split('/').pop() ?? '';
@@ -234,12 +242,19 @@ export function checkModelSlugs(
               `可用值：${zcodeModels.join(', ')}`,
           );
         }
+      } else {
+        const unreachable: never = critic;
+        throw new Error(`未处理的审核者 slug 校验：${String(unreachable)}`);
       }
     }
   }
 
   return bad.length === 0
-    ? { name: '模型 slug 合法', ok: true, detail: `已校验 ${scopeStages(scope).length} 个阶段 × 2 侧` }
+    ? {
+        name: '模型 slug 合法',
+        ok: true,
+        detail: `已校验 ${scopeStages(scope).length} 个阶段 × ${CRITICS.length} 侧`,
+      }
     : { name: '模型 slug 合法', ok: false, exitCode: EXIT.USAGE, detail: bad.join('\n  ') };
 }
 

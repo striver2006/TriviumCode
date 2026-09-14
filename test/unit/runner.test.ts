@@ -123,7 +123,7 @@ test('两侧真并行，一侧抛异常不连带丢掉另一侧（AC-06）', asy
 });
 
 test('两侧都成功 → dual，不降级', () => {
-  const d = decideMode({ gemini: okResult('gemini'), glm: okResult('glm') }, 'strict');
+  const d = decideMode({ gemini: okResult('gemini'), glm: okResult('glm') }, 'strict', ['gemini', 'glm']);
   assert.deepEqual(
     { mode: d.mode, abort: d.abort, reason: d.degradedReason },
     { mode: 'dual', abort: false, reason: null },
@@ -134,6 +134,7 @@ test('严格模式下单侧失败即中止，但幸存侧结果与原因都保�
   const d = decideMode(
     { gemini: okResult('gemini'), glm: failedResult('glm', { status: 'timeout', reason: '超时' }) },
     'strict',
+    ['gemini', 'glm'],
   );
   assert.equal(d.mode, 'single');
   assert.equal(d.abort, true);
@@ -146,6 +147,7 @@ test('降级模式下单侧失败继续，但必须标 single 与原因（不得
   const d = decideMode(
     { gemini: okResult('gemini'), glm: failedResult('glm', { status: 'failed', reason: '炸了' }) },
     'degrade',
+    ['gemini', 'glm'],
   );
   assert.equal(d.mode, 'single');
   assert.equal(d.abort, false);
@@ -160,16 +162,95 @@ test('两侧都失败：无论什么策略都中止', () => {
         glm: failedResult('glm', { status: 'failed', reason: 'b' }),
       },
       policy,
+      ['gemini', 'glm'],
     );
     assert.equal(d.abort, true, `${policy} 下两侧全败应中止`);
     assert.deepEqual(d.okSides, []);
   }
 });
 
+/*
+ * ── 入选集合参与判定（M7b 第 1 步 §2.1）──
+ *
+ * 这三例针对的是一个**会带病通过既有测试**的缺陷：原有五个 decideMode 用例
+ * 全部传入两侧，单侧入选的形态一个都没覆盖，于是「只审了一侧」与「双审全成功」
+ * 返回值逐字段相同（实测确认），留痕里查不出来（AC-06）。
+ */
+
+test('入选一侧且成功：不是降级，但参与者基数必须机器可判（AC-06 / 设计 AC-22）', () => {
+  const one = decideMode({ gemini: okResult('gemini') }, 'strict', ['gemini']);
+  const two = decideMode({ gemini: okResult('gemini'), glm: okResult('glm') }, 'strict', [
+    'gemini',
+    'glm',
+  ]);
+
+  // 选 1 审是**配置意图**，不打降级横幅、不写降级理由（设计 AC-22）
+  assert.equal(one.degraded, false, '显式只选一侧并成功，不是降级');
+  assert.equal(one.degradedReason, null);
+  assert.equal(one.abort, false);
+
+  // 但两者必须可区分——这正是修复前做不到的事
+  assert.deepEqual(one.selectedSides, ['gemini']);
+  assert.deepEqual(two.selectedSides, ['gemini', 'glm']);
+  assert.notDeepEqual(
+    one.selectedSides,
+    two.selectedSides,
+    '单侧与双侧的入选集合必须不同，否则留痕里查不出本轮只审了一侧',
+  );
+});
+
+test('入选两侧却只回来一侧：缺失侧必须显形，不能当成全成功', () => {
+  // 装配链断了才会出现；修复前 Object.keys(results) 见不到它，会判成 dual/不降级
+  const d = decideMode({ gemini: okResult('gemini') }, 'degrade', ['gemini', 'glm']);
+
+  assert.deepEqual(d.missingSides, ['glm']);
+  assert.deepEqual(d.failedSides, ['glm'], '缺失侧要并进 failedSides');
+  assert.equal(d.degraded, true);
+  assert.match(d.degradedReason!, /glm: 入选但未产出任何结果/);
+});
+
+test('未入选侧的结果混进 results 时被忽略，不得污染判定（审查意见 AGY-02 ≡ GLM-02）', () => {
+  /*
+   * 求交之前：ran 直接取键集，glm 的失败会把 mode 判成 single、degraded 置 true、
+   * strict 下还会 abort——只防「入选却没跑」、不防「没入选却有结果」的不对称漏洞。
+   */
+  const polluted = decideMode(
+    {
+      gemini: okResult('gemini'),
+      glm: failedResult('glm', { status: 'failed', reason: '这一侧压根没入选' }),
+    },
+    'strict',
+    ['gemini'],
+  );
+
+  assert.equal(polluted.degraded, false, '未入选侧的失败不得触发降级');
+  assert.equal(polluted.abort, false, 'strict 下也不得因未入选侧而中止');
+  assert.equal(polluted.degradedReason, null);
+  assert.deepEqual(polluted.okSides, ['gemini']);
+  assert.deepEqual(polluted.failedSides, [], '未入选侧不得进 failedSides');
+  assert.deepEqual(polluted.selectedSides, ['gemini']);
+});
+
+test('degraded 与 mode 解耦：mode 是 v1 线格式值，不得当降级标志用', () => {
+  const intentionalSingle = decideMode({ gemini: okResult('gemini') }, 'strict', ['gemini']);
+  // mode 仍是 v1 enum 的「无失败」值，但它**不表达**参与者基数
+  assert.equal(intentionalSingle.mode, 'dual');
+  assert.equal(intentionalSingle.degraded, false, 'mode 与 degraded 各自独立');
+
+  const realDegrade = decideMode(
+    { gemini: okResult('gemini'), glm: failedResult('glm', { status: 'failed', reason: 'x' }) },
+    'degrade',
+    ['gemini', 'glm'],
+  );
+  assert.equal(realDegrade.mode, 'single');
+  assert.equal(realDegrade.degraded, true);
+});
+
 test('parse_fallback 侧算「跑成功了」，不触发降级中止', () => {
   const d = decideMode(
     { gemini: okResult('gemini'), glm: okResult('glm', { status: 'parse_fallback' }) },
     'strict',
+    ['gemini', 'glm'],
   );
   assert.equal(d.mode, 'dual');
   assert.equal(d.abort, false);

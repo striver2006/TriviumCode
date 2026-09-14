@@ -13,7 +13,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import type { Config, CriticId, CriticRequest, CriticResult, Ctx, Review, Stage, CommandEntry } from './types.js';
-import { CRITICS } from './types.js';
+import { CRITICS, CRITIC_VENDOR } from './types.js';
 import { agyAdapter } from './adapters/agy.js';
 import { zcodeAdapter } from './adapters/zcode.js';
 import {
@@ -217,6 +217,38 @@ function resolveAssetRoot(override?: string): string {
     process.env['TRIVIUM_ASSET_ROOT'] ??
     path.join(os.homedir(), '.claude/skills/dual-critic')
   );
+}
+
+/**
+ * 逐侧取思考等级。**穷尽分支，不留三目兜底。**
+ *
+ * 此前是 `critic === 'gemini' ? cfg.critics.gemini.effort[stage] : undefined`：
+ * 非 gemini 的一切取值都静默落进 `undefined`，第三家接入后思考等级会无声丢失
+ * （不抛异常、不退非零，只是那一侧按厂商默认档跑）。
+ *
+ * 为什么这里用 switch + `never` 而不是像 vendor 那样查注册表：v1 配置的
+ * `critics.*` 是**厂商专属形状**——`effort` 只存在于 gemini 段，ZCode 0.16.5
+ * 实测没有等价旗标（M0 坑清单 C-07），压根没有可查的统一字段。在 config v2
+ * 把它统一成 `agents.<id>.effort` 之前（设计 13.1.1，M7b 第 4 步），
+ * 编译期穷尽是能拿到的最强保证：**新增一个 CriticId 会直接编译不过**，
+ * 而不是安静地返回 undefined。
+ */
+function effortFor(
+  cfg: Config,
+  critic: CriticId,
+  stage: Stage,
+): 'low' | 'medium' | 'high' | undefined {
+  switch (critic) {
+    case 'gemini':
+      return cfg.critics.gemini.effort[stage];
+    case 'glm':
+      // ZCode 无思考等级旗标（C-07）。是「本侧不存在此概念」，不是「忘了传」。
+      return undefined;
+    default: {
+      const unreachable: never = critic;
+      throw new Error(`未处理的审核者思考等级取法：${String(unreachable)}`);
+    }
+  }
 }
 
 /** 一次运行的准备产物：`--start` 与同步路径共用，也是交接给工作进程的全部上下文 */
@@ -475,7 +507,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       brief_path: briefAbs,
       brief_text: briefText,
       model: routed.model,
-      effort: critic === 'gemini' ? cfg.critics.gemini.effort[stage] : undefined,
+      effort: effortFor(cfg, critic, stage),
       timeout_s: cfg.review.timeout_s[stage],
       schema_path: schemaPath,
       min_tool_calls: cfg.review.min_tool_calls[stage],
@@ -737,7 +769,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
    */
   const effectivePolicy: 'strict' | 'degrade' =
     opts.allowSingle && cfg.review.allow_single_flag ? 'degrade' : cfg.review.failure_policy;
-  const mode = decideMode(results, effectivePolicy);
+  const mode = decideMode(results, effectivePolicy, sides);
   const warnings = renderGuardWarnings(verdict);
 
   // ── 两侧齐备后同时落盘（§10.1 第 ② 道）──
@@ -795,7 +827,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       startedAt, finishedAt,
       evidenceOk: side?.evidenceOk ?? false,
       projectReads: side?.projectReads ?? 0,
-      degraded: mode.mode === 'single',
+      // 用真实判定，不再从 mode 反推——mode 是 v1 线格式值，不表达降级（runner.ts ModeDecision）
+      degraded: mode.degraded,
       drift: verdict.drift.kind !== 'none',
       peerDeny: r.peer_deny_applied,
       consultedUnverified: side?.consultedUnverified ?? true,
@@ -855,7 +888,21 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     if (!r) continue;
     const side = verdict.sides[c];
     meta.critics[c] = {
-      vendor: c === 'gemini' ? 'antigravity' : 'zcode',
+      /*
+       * 从注册表取，不再 `c === 'gemini' ? 'antigravity' : 'zcode'`。
+       * 那个三目最危险的地方是它不会响亮失败：第三家会被**静默记成 zcode**，
+       * 而 vendor 是适配器路由与禁读矩阵的依据，留痕直接是错的。
+       *
+       * **边界（别把这条读强了）**：本处修的是**值**——第三家现在会记真值。
+       * 但类型层的编译期防错**尚未建立**：`CRITIC_VENDOR` 的派生处有一个
+       * `as Vendor` 断言（`types.ts`），把 `AgentVendor`（四值）宽 union 断言成
+       * `Vendor`（两值），恒编译通过。因此新增 `CriticId` 时这条链**不会**像
+       * `effortFor` / `checkModelSlugs` 的 `never` 分支那样报错，而是把新 vendor
+       * 静默塞进值位、落盘后才被 run.v1 的枚举校验拒掉。
+       * `Vendor` 是 run.v1 的线契约枚举，改它属数据契约层——随 run.v2 一并处理
+       * （审查意见 GLM-03，已登记 BACKLOG EV-03）。
+       */
+      vendor: CRITIC_VENDOR[c],
       cli_version: r.cli_version,
       model_requested: requests[c]!.model,
       model_effective: r.model_effective,

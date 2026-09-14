@@ -4,8 +4,9 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
-  checkAdjudication, findJointRejectedBlockers, isHollowReason, renderGateResult,
+  checkAdjudication, findJointRejectedBlockers, isHollowReason, loadRoundReviews, renderGateResult,
 } from '../../src/trivium/gate.js';
+import { newRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { writeArtifact, type ArchiveLayout } from '../../src/trivium/archive.js';
 import type { Finding, Review } from '../../src/trivium/types.js';
@@ -409,4 +410,72 @@ test('渲染结果在失败时列出编号，便于 Driver 直接照着补', asy
   const out = renderGateResult(r);
   assert.match(out, /missing_findings/);
   assert.match(out, /AGY-02, AGY-03/);
+});
+
+/*
+ * ── 降级轮次的显形（M7b 第 1 步 §2.2）──
+ *
+ * 这两例针对的是本轮改动**自身**的测试盲区：`degraded` 此前生产侧算死值
+ * （`Object.values(reviews).some((r) => r === undefined)` 恒为 false）、消费侧不读，
+ * 而既有 21 个 checkAdjudication 用例**一律传 `degraded: false`**——
+ * 把整段 degraded_round 逻辑删掉，测试照样全绿（审查意见 AGY-01）。
+ */
+
+test('降级轮次出 warning 而非 failure：闸门仍放行，但审计面上看得见', async () => {
+  const l = await layout();
+  await putDisposition(l, `${HEAD}
+| AGY-01 | gemini | major | 接受 | 确认成立 | §3.2 |`);
+  const r = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: review([{ id: 'AGY-01' }]) },
+    degraded: true,
+  });
+
+  /*
+   * `ok` 必须仍为 true：降级是关于**运行**的事实，Driver 改裁决件修不掉它。
+   * 这条断言锁住的是那个刻意的强弱选择——日后若有人把它改成 failure，
+   * 合法的 degrade / --allow-single 路径会变成不可满足的死闸门。
+   */
+  assert.equal(r.ok, true, renderGateResult(r));
+  assert.ok(
+    r.warnings.some((w) => w.code === 'degraded_round'),
+    `降级轮次必须留下 degraded_round 警告，实得：${JSON.stringify(r.warnings)}`,
+  );
+});
+
+test('非降级轮次不得凭空冒出 degraded_round 警告', async () => {
+  const l = await layout();
+  await putDisposition(l, `${HEAD}
+| AGY-01 | gemini | major | 接受 | 确认成立 | §3.2 |`);
+  const r = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: review([{ id: 'AGY-01' }]) },
+    degraded: false,
+  });
+  assert.equal(r.ok, true, renderGateResult(r));
+  assert.ok(!r.warnings.some((w) => w.code === 'degraded_round'));
+});
+
+test('loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推', async () => {
+  const base = {
+    topic: TOPIC, stage: 'plan' as const, rerunIndex: 1, command: 'x',
+    promptHint: null, taskGoal: null, treeHash: 'h', gitHead: null, dirty: false,
+    subjectSha256: 's', denyPaths: [], driftPolicy: 'warn' as const,
+  };
+
+  // ① 有降级原因 → true
+  const lDeg = await layout();
+  const degraded = newRunMeta({ ...base, runId: 'RDEG' });
+  degraded.review_mode = 'single';
+  degraded.degraded_reason = 'glm: timeout（超时）';
+  await writeRunMeta(lDeg, 'plan', degraded);
+  const deg = await loadRoundReviews(lDeg, 'plan', 'RDEG');
+  assert.equal(deg.degraded, true);
+
+  // ② 无降级原因 → false
+  const lOk = await layout();
+  const clean = newRunMeta({ ...base, runId: 'ROK' });
+  await writeRunMeta(lOk, 'plan', clean);
+  const ok = await loadRoundReviews(lOk, 'plan', 'ROK');
+  assert.equal(ok.degraded, false, '没有 degraded_reason 就不是降级轮次');
 });

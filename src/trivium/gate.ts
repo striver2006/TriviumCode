@@ -40,7 +40,7 @@ export interface GateFailure {
 }
 
 export interface GateWarning {
-  code: 'weak_reason' | 'joint_blocker_rejected' | 'parse_problem';
+  code: 'weak_reason' | 'joint_blocker_rejected' | 'parse_problem' | 'degraded_round';
   message: string;
   ids?: string[];
 }
@@ -76,7 +76,14 @@ export interface GateCheckInput {
   rerunIndex: number;
   /** 本轮两侧的结构化结论。parse_fallback 侧传 null */
   reviews: Partial<Record<CriticId, Review | null>>;
-  /** 单审降级时缺失的一侧，需已在 run 元数据标记 */
+  /**
+   * 本轮是否为降级轮次（有入选侧未成功），取自 run 元数据的 `degraded_reason`。
+   *
+   * **务必传真实值。** 此前调用方一律写
+   * `Object.values(reviews).some((r) => r === undefined)`——而 `reviews` 只在
+   * 读到结论时才建键，`Object.values` 永远拿不到 `undefined`，那个表达式**恒为 false**。
+   * 生产侧算的是死值、消费侧又不读，本字段两头都是死的。
+   */
   degraded: boolean;
   /**
    * parse_fallback 侧落盘的待裁决单元编号（`<前缀>-F<n>`，来自 `.fallback-items.md`）。
@@ -161,6 +168,24 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
 
   for (const p of parsed.problems) {
     warnings.push({ code: 'parse_problem', message: `第 ${p.line} 行：${p.message}` });
+  }
+
+  /*
+   * 降级轮次显形。
+   *
+   * 本函数校验的是「裁决是否齐备」，而齐备与否的基准是**本轮实际产出的结论**。
+   * 一个降级轮次（一侧失败）只要幸存侧被逐条裁决就会通过——这没错，但
+   * `gate --check` 的输出此前完全看不出「这一轮只有一侧」，事后复核容易把它
+   * 当成完整双审。出 warning 而不是 failure：降级是关于**运行**的事实，
+   * 不是 Driver 改裁决件能修的东西，报 failure 会变成无法满足的闸门。
+   */
+  if (input.degraded) {
+    warnings.push({
+      code: 'degraded_round',
+      message:
+        '本轮是降级轮次（有入选审核者未成功产出结论），裁决完整性是**对幸存侧**校验的。' +
+        '复核时请一并核对 run 元数据的 degraded_reason。',
+    });
   }
 
   /*
@@ -398,6 +423,14 @@ export async function loadRoundReviews(
   expectedFallbackIds: string[];
   /** run.json 记录已产出结论、结构化结论却读不到的一侧 */
   missingSides: CriticId[];
+  /**
+   * 本轮是否为降级轮次，读自 run 元数据的 `degraded_reason`。
+   *
+   * 由本函数一并返回而不是让调用方自己算：`runMeta` 已经在这里读过了，
+   * 调用方手上只有 `reviews`，从它推不出降级——两处 `gate --check` 此前
+   * 各自用 `Object.values(reviews).some((r) => r === undefined)` 推，恒为 false。
+   */
+  degraded: boolean;
 }> {
   const reviews: Partial<Record<CriticId, Review | null>> = {};
   const notes: string[] = [];
@@ -458,7 +491,15 @@ export async function loadRoundReviews(
       }
     }
   }
-  return { reviews, notes, expectedFallbackIds, missingSides };
+  /*
+   * 降级事实取自 run 元数据，不从 `reviews` 反推。
+   *
+   * `degraded_reason` 是 `decideMode` 判定降级时写进去的唯一凭据；run.json 读不到时
+   * 保守记 false——此时 `missingSides` 已经在上面把「留痕被动过」判成失败，
+   * 不需要再叠一层猜测。
+   */
+  const degraded = runMeta?.degraded_reason != null;
+  return { reviews, notes, expectedFallbackIds, missingSides, degraded };
 }
 
 /** 从 `.fallback-items.md` 读回编排器编好号的待裁决单元（每行 `- <前缀>-F<n>: …`） */

@@ -1,0 +1,519 @@
+# trivium changes.diff
+# run_id: 20260914T010621Z
+# base: HEAD
+# head: 4aa6bf64fb69432c94a1b0c26e25954a9481cd55
+# files: 6
+#   src/trivium/cli.ts
+#   src/trivium/gate.ts
+#   src/trivium/preflight.ts
+#   src/trivium/review.ts
+#   src/trivium/runner.ts
+#   test/unit/runner.test.ts
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index dbe6b75..bebc5b5 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -29,7 +29,7 @@ import {
+   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
+ } from './preflight.js';
+ import { resolveTopicArgs } from './topic-args.js';
+-import { COMMAND_ENTRIES, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
++import { COMMAND_ENTRIES, CRITICS, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
+ import { emitJson, fail, isJsonMode, say, setOutputMode, step, warn } from './util/log.js';
+ 
+ const VERSION = '0.1.0';
+@@ -322,8 +322,15 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
+   }
+ 
+   const onlyRaw = flagString(args, 'only');
+-  if (onlyRaw && onlyRaw !== 'gemini' && onlyRaw !== 'glm') {
+-    throw usageError(`--only 只接受 gemini | glm，收到：${onlyRaw}`);
++  /*
++   * 用注册表派生的集合判，不写字面白名单。
++   *
++   * `topic-args.ts` 同一个旗标走的是 `CRITICS.includes`，两处此前不一致：
++   * 启用第三家时这里会**先于**它拒掉合法取值，而错误信息还振振有词地
++   * 只列两家。校验逻辑分两处实现、其中一处硬编码，是改一漏二的典型形态。
++   */
++  if (onlyRaw && !(CRITICS as readonly string[]).includes(onlyRaw)) {
++    throw usageError(`--only 只接受 ${CRITICS.join(' | ')}，收到：${onlyRaw}`);
+   }
+ 
+   const contextRaw = flagString(args, 'context');
+@@ -619,10 +626,10 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+       );
+     }
+     {
+-      const { reviews, expectedFallbackIds, missingSides } = await loadRoundReviews(ref.layout, stage, runId);
++      const { reviews, expectedFallbackIds, missingSides, degraded } = await loadRoundReviews(ref.layout, stage, runId);
+       const pre = await checkAdjudication({
+         cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
+-        degraded: Object.values(reviews).some((r) => r === undefined),
++        degraded,
+         expectedFallbackIds, missingSides, runId,
+       });
+       if (!pre.ok) {
+@@ -675,12 +682,12 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+       `找不到 ${stage} 阶段第 ${rerunIndex} 轮的 run_id。请先跑一次双审，或用 --run-id 指定。`,
+     );
+   }
+-  const { reviews, notes, expectedFallbackIds, missingSides } = await loadRoundReviews(ref.layout, stage, runId);
++  const { reviews, notes, expectedFallbackIds, missingSides, degraded } = await loadRoundReviews(ref.layout, stage, runId);
+   for (const n of notes) step(n);
+ 
+   const result = await checkAdjudication({
+     cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
+-    degraded: Object.values(reviews).some((r) => r === undefined),
++    degraded,
+     expectedFallbackIds, missingSides, runId,
+   });
+ 
+diff --git a/src/trivium/gate.ts b/src/trivium/gate.ts
+index b34080a..6e769ed 100644
+--- a/src/trivium/gate.ts
++++ b/src/trivium/gate.ts
+@@ -40,7 +40,7 @@ export interface GateFailure {
+ }
+ 
+ export interface GateWarning {
+-  code: 'weak_reason' | 'joint_blocker_rejected' | 'parse_problem';
++  code: 'weak_reason' | 'joint_blocker_rejected' | 'parse_problem' | 'degraded_round';
+   message: string;
+   ids?: string[];
+ }
+@@ -76,7 +76,14 @@ export interface GateCheckInput {
+   rerunIndex: number;
+   /** 本轮两侧的结构化结论。parse_fallback 侧传 null */
+   reviews: Partial<Record<CriticId, Review | null>>;
+-  /** 单审降级时缺失的一侧，需已在 run 元数据标记 */
++  /**
++   * 本轮是否为降级轮次（有入选侧未成功），取自 run 元数据的 `degraded_reason`。
++   *
++   * **务必传真实值。** 此前调用方一律写
++   * `Object.values(reviews).some((r) => r === undefined)`——而 `reviews` 只在
++   * 读到结论时才建键，`Object.values` 永远拿不到 `undefined`，那个表达式**恒为 false**。
++   * 生产侧算的是死值、消费侧又不读，本字段两头都是死的。
++   */
+   degraded: boolean;
+   /**
+    * parse_fallback 侧落盘的待裁决单元编号（`<前缀>-F<n>`，来自 `.fallback-items.md`）。
+@@ -163,6 +170,24 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
+     warnings.push({ code: 'parse_problem', message: `第 ${p.line} 行：${p.message}` });
+   }
+ 
++  /*
++   * 降级轮次显形。
++   *
++   * 本函数校验的是「裁决是否齐备」，而齐备与否的基准是**本轮实际产出的结论**。
++   * 一个降级轮次（一侧失败）只要幸存侧被逐条裁决就会通过——这没错，但
++   * `gate --check` 的输出此前完全看不出「这一轮只有一侧」，事后复核容易把它
++   * 当成完整双审。出 warning 而不是 failure：降级是关于**运行**的事实，
++   * 不是 Driver 改裁决件能修的东西，报 failure 会变成无法满足的闸门。
++   */
++  if (input.degraded) {
++    warnings.push({
++      code: 'degraded_round',
++      message:
++        '本轮是降级轮次（有入选审核者未成功产出结论），裁决完整性是**对幸存侧**校验的。' +
++        '复核时请一并核对 run 元数据的 degraded_reason。',
++    });
++  }
++
+   /*
+    * run.json 说这一侧跑过且有结论，结构化结论却读不到：那不是「本轮没跑这一侧」，
+    * 而是 `_meta/review-*.json` 被删或被搅坏。它是本函数唯一的事实来源——
+@@ -398,6 +423,14 @@ export async function loadRoundReviews(
+   expectedFallbackIds: string[];
+   /** run.json 记录已产出结论、结构化结论却读不到的一侧 */
+   missingSides: CriticId[];
++  /**
++   * 本轮是否为降级轮次，读自 run 元数据的 `degraded_reason`。
++   *
++   * 由本函数一并返回而不是让调用方自己算：`runMeta` 已经在这里读过了，
++   * 调用方手上只有 `reviews`，从它推不出降级——两处 `gate --check` 此前
++   * 各自用 `Object.values(reviews).some((r) => r === undefined)` 推，恒为 false。
++   */
++  degraded: boolean;
+ }> {
+   const reviews: Partial<Record<CriticId, Review | null>> = {};
+   const notes: string[] = [];
+@@ -458,7 +491,15 @@ export async function loadRoundReviews(
+       }
+     }
+   }
+-  return { reviews, notes, expectedFallbackIds, missingSides };
++  /*
++   * 降级事实取自 run 元数据，不从 `reviews` 反推。
++   *
++   * `degraded_reason` 是 `decideMode` 判定降级时写进去的唯一凭据；run.json 读不到时
++   * 保守记 false——此时 `missingSides` 已经在上面把「留痕被动过」判成失败，
++   * 不需要再叠一层猜测。
++   */
++  const degraded = runMeta?.degraded_reason != null;
++  return { reviews, notes, expectedFallbackIds, missingSides, degraded };
+ }
+ 
+ /** 从 `.fallback-items.md` 读回编排器编好号的待裁决单元（每行 `- <前缀>-F<n>: …`） */
+diff --git a/src/trivium/preflight.ts b/src/trivium/preflight.ts
+index 54371e6..55e06e8 100644
+--- a/src/trivium/preflight.ts
++++ b/src/trivium/preflight.ts
+@@ -216,6 +216,14 @@ export function checkModelSlugs(
+         bad.push(`${critic}/${stage}: profile「${cfg.active_profile}」未定义模型且无覆盖`);
+         continue;
+       }
++      /*
++       * 穷尽分支，不用 `if (gemini) … else …` 二分。
++       *
++       * 二分写法下，任何**非 gemini** 的审核者（含将来的第三家与测试桩）都会掉进
++       * else 分支、被拿去按 ZCode 的模型目录校验，于是报一条驳斥自己的错：
++       * 「模型 X 不在 ZCode 模型目录中」——而那侧压根不是 ZCode。
++       * 新增 CriticId 时这里会直接编译不过，比运行期误报早得多。
++       */
+       if (critic === 'gemini') {
+         // 未知 slug 会让 agy 直接非零退出，不会静默换模型——所以这里能硬校验
+         if (agyModels.length > 0 && !agyModels.includes(routed.model)) {
+@@ -224,7 +232,7 @@ export function checkModelSlugs(
+               `可用值：${agyModels.join(', ')}`,
+           );
+         }
+-      } else {
++      } else if (critic === 'glm') {
+         // ZCode 侧允许短名，适配层会按探针回读的 providerId 补全前缀（坑 P-06）
+         const qualified = qualifyZcodeModel(routed.model, cfg.probe.zcode.model_id_form ?? null);
+         const short = (qualified ?? '').split('/').pop() ?? '';
+@@ -234,12 +242,19 @@ export function checkModelSlugs(
+               `可用值：${zcodeModels.join(', ')}`,
+           );
+         }
++      } else {
++        const unreachable: never = critic;
++        throw new Error(`未处理的审核者 slug 校验：${String(unreachable)}`);
+       }
+     }
+   }
+ 
+   return bad.length === 0
+-    ? { name: '模型 slug 合法', ok: true, detail: `已校验 ${scopeStages(scope).length} 个阶段 × 2 侧` }
++    ? {
++        name: '模型 slug 合法',
++        ok: true,
++        detail: `已校验 ${scopeStages(scope).length} 个阶段 × ${CRITICS.length} 侧`,
++      }
+     : { name: '模型 slug 合法', ok: false, exitCode: EXIT.USAGE, detail: bad.join('\n  ') };
+ }
+ 
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index ee6a4b5..52e3a5b 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -13,7 +13,7 @@ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import type { Config, CriticId, CriticRequest, CriticResult, Ctx, Review, Stage, CommandEntry } from './types.js';
+-import { CRITICS } from './types.js';
++import { CRITICS, CRITIC_VENDOR } from './types.js';
+ import { agyAdapter } from './adapters/agy.js';
+ import { zcodeAdapter } from './adapters/zcode.js';
+ import {
+@@ -211,6 +211,38 @@ export interface ReviewOutcome {
+ }
+ 
+ /** skill 资产根：优先环境变量，其次用户级安装位置 */
++/**
++ * 逐侧取思考等级。**穷尽分支，不留三目兜底。**
++ *
++ * 此前是 `critic === 'gemini' ? cfg.critics.gemini.effort[stage] : undefined`：
++ * 非 gemini 的一切取值都静默落进 `undefined`，第三家接入后思考等级会无声丢失
++ * （不抛异常、不退非零，只是那一侧按厂商默认档跑）。
++ *
++ * 为什么这里用 switch + `never` 而不是像 vendor 那样查注册表：v1 配置的
++ * `critics.*` 是**厂商专属形状**——`effort` 只存在于 gemini 段，ZCode 0.16.5
++ * 实测没有等价旗标（M0 坑清单 C-07），压根没有可查的统一字段。在 config v2
++ * 把它统一成 `agents.<id>.effort` 之前（设计 13.1.1，M7b 第 4 步），
++ * 编译期穷尽是能拿到的最强保证：**新增一个 CriticId 会直接编译不过**，
++ * 而不是安静地返回 undefined。
++ */
++function effortFor(
++  cfg: Config,
++  critic: CriticId,
++  stage: Stage,
++): 'low' | 'medium' | 'high' | undefined {
++  switch (critic) {
++    case 'gemini':
++      return cfg.critics.gemini.effort[stage];
++    case 'glm':
++      // ZCode 无思考等级旗标（C-07）。是「本侧不存在此概念」，不是「忘了传」。
++      return undefined;
++    default: {
++      const unreachable: never = critic;
++      throw new Error(`未处理的审核者思考等级取法：${String(unreachable)}`);
++    }
++  }
++}
++
+ function resolveAssetRoot(override?: string): string {
+   return (
+     override ??
+@@ -475,7 +507,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+       brief_path: briefAbs,
+       brief_text: briefText,
+       model: routed.model,
+-      effort: critic === 'gemini' ? cfg.critics.gemini.effort[stage] : undefined,
++      effort: effortFor(cfg, critic, stage),
+       timeout_s: cfg.review.timeout_s[stage],
+       schema_path: schemaPath,
+       min_tool_calls: cfg.review.min_tool_calls[stage],
+@@ -737,7 +769,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+    */
+   const effectivePolicy: 'strict' | 'degrade' =
+     opts.allowSingle && cfg.review.allow_single_flag ? 'degrade' : cfg.review.failure_policy;
+-  const mode = decideMode(results, effectivePolicy);
++  const mode = decideMode(results, effectivePolicy, sides);
+   const warnings = renderGuardWarnings(verdict);
+ 
+   // ── 两侧齐备后同时落盘（§10.1 第 ② 道）──
+@@ -795,7 +827,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+       startedAt, finishedAt,
+       evidenceOk: side?.evidenceOk ?? false,
+       projectReads: side?.projectReads ?? 0,
+-      degraded: mode.mode === 'single',
++      // 用真实判定，不再从 mode 反推——mode 是 v1 线格式值，不表达降级（runner.ts ModeDecision）
++      degraded: mode.degraded,
+       drift: verdict.drift.kind !== 'none',
+       peerDeny: r.peer_deny_applied,
+       consultedUnverified: side?.consultedUnverified ?? true,
+@@ -855,7 +888,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+     if (!r) continue;
+     const side = verdict.sides[c];
+     meta.critics[c] = {
+-      vendor: c === 'gemini' ? 'antigravity' : 'zcode',
++      /*
++       * 从注册表取，不再 `c === 'gemini' ? 'antigravity' : 'zcode'`。
++       * 那个三目最危险的地方是它不会响亮失败：第三家会被**静默记成 zcode**，
++       * 而 vendor 是适配器路由与禁读矩阵的依据，留痕直接是错的。
++       */
++      vendor: CRITIC_VENDOR[c],
+       cli_version: r.cli_version,
+       model_requested: requests[c]!.model,
+       model_effective: r.model_effective,
+diff --git a/src/trivium/runner.ts b/src/trivium/runner.ts
+index 529bac4..3830493 100644
+--- a/src/trivium/runner.ts
++++ b/src/trivium/runner.ts
+@@ -202,45 +202,102 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
+ export type ReviewMode = 'dual' | 'single';
+ 
+ export interface ModeDecision {
++  /**
++   * **`run.v1` 的线格式值，不表达参与者基数。**
++   *
++   * 它只回答「入选的各侧是否都成功了」：全成功 `dual`，有失败 `single`。
++   * 想知道「本轮该跑几侧、实际是哪几侧」，看 `selectedSides` / `okSides`，
++   * **不要看它**——`--only gemini` 跑成功时它同样是 `dual`。
++   *
++   * 之所以留着这个会被误读的名字：`run.v1.json` 的 enum 就是 `["dual","single"]`，
++   * 记 `single` 会被读成降级（与「选 1 审是配置意图」冲突）、记 `full` 通不过校验。
++   * 三个取值在 v1 契约层都不可达，因此本步**只修内存层判定、不动落盘值**；
++   * 真正的修法是 `run.v2` 的 `review_mode: full|partial` + `critics_selected`
++   * （设计 6.7.1，随 M7b 第 3 步交付）。
++   */
+   mode: ReviewMode;
+   /** 严格模式下是否应中止整次运行 */
+   abort: boolean;
+   degradedReason: string | null;
+   okSides: CriticId[];
+   failedSides: CriticId[];
++  /**
++   * 本轮**入选**的审核者集合——即「本该跑几侧」。
++   *
++   * 这是本函数此前完全缺失的输入。没有它，`--only gemini` 成功跑完与双侧全成功
++   * 的返回值**逐字段相同**，留痕里查不出本轮只审了一侧（AC-06）。
++   */
++  selectedSides: CriticId[];
++  /** 入选却连一条结果都没产出的一侧。正常不可达；可达即说明装配链断了 */
++  missingSides: CriticId[];
++  /**
++   * 真实降级判定：**入选的侧里有没有没成功的**。
++   *
++   * 与 `mode` 解耦是有意的——`mode === 'single'` 此前被当成降级的同义词
++   * （`review.ts` 与 `gate.ts` 各自重算一遍），而「显式只选一侧并成功」
++   * 不是降级、不该打降级横幅（设计 AC-22：选 1 审是配置意图）。
++   */
++  degraded: boolean;
+ }
+ 
+ /**
+  * 按失败策略决定继续还是中止（设计 §12.4 / AD-09）。
+  *
+  * 铁律：**绝不**把单审改名冒充双审（AC-06）。幸存侧的文件照常落盘并标 degraded。
++ *
++ * `selected` 是必填的：把它做成可选参数等于允许调用方沿用「只看跑过的」的旧语义，
++ * 而那正是本次要修的缺陷——判定必须同时知道「该跑哪几侧」与「跑出了什么」。
+  */
+ export function decideMode(
+   results: Partial<Record<CriticId, CriticResult>>,
+   failurePolicy: 'strict' | 'degrade',
++  selected: readonly CriticId[],
+ ): ModeDecision {
+-  const all = Object.keys(results) as CriticId[];
+-  const okSides = all.filter((c) => results[c]?.status === 'ok' || results[c]?.status === 'parse_fallback');
+-  const failedSides = all.filter((c) => !okSides.includes(c));
++  const selectedSides = [...selected];
++  const ran = Object.keys(results) as CriticId[];
++
++  const okSides = ran.filter(
++    (c) => results[c]?.status === 'ok' || results[c]?.status === 'parse_fallback',
++  );
++  /*
++   * 入选却没有结果条目的一侧，此前从判定里整个消失：`Object.keys(results)` 见不到它，
++   * 于是「少跑了一侧」与「全成功」不可区分。并进 failedSides 才能让它显形。
++   */
++  const missingSides = selectedSides.filter((c) => !ran.includes(c));
++  const failedSides = [...ran.filter((c) => !okSides.includes(c)), ...missingSides];
+ 
+   if (failedSides.length === 0) {
+-    return { mode: 'dual', abort: false, degradedReason: null, okSides, failedSides };
++    return {
++      mode: 'dual',
++      abort: false,
++      degradedReason: null,
++      okSides,
++      failedSides,
++      selectedSides,
++      missingSides,
++      degraded: false,
++    };
+   }
+ 
+   const reason = failedSides
+-    .map((c) => `${c}: ${results[c]?.status}（${results[c]?.fail_reason ?? '未记录原因'}）`)
++    .map((c) =>
++      missingSides.includes(c)
++        ? `${c}: 入选但未产出任何结果`
++        : `${c}: ${results[c]?.status}（${results[c]?.fail_reason ?? '未记录原因'}）`,
++    )
+     .join('；');
+ 
+-  // 两侧都失败：无论什么策略都无法继续
+-  if (okSides.length === 0) {
+-    return { mode: 'single', abort: true, degradedReason: reason, okSides, failedSides };
+-  }
++  // 入选侧全军覆没：无论什么策略都无法继续
++  const abort = okSides.length === 0 ? true : failurePolicy === 'strict';
+ 
+   return {
+     mode: 'single',
+-    abort: failurePolicy === 'strict',
++    abort,
+     degradedReason: reason,
+     okSides,
+     failedSides,
++    selectedSides,
++    missingSides,
++    degraded: true,
+   };
+ }
+diff --git a/test/unit/runner.test.ts b/test/unit/runner.test.ts
+index e53a160..def8468 100644
+--- a/test/unit/runner.test.ts
++++ b/test/unit/runner.test.ts
+@@ -123,7 +123,7 @@ test('两侧真并行，一侧抛异常不连带丢掉另一侧（AC-06）', asy
+ });
+ 
+ test('两侧都成功 → dual，不降级', () => {
+-  const d = decideMode({ gemini: okResult('gemini'), glm: okResult('glm') }, 'strict');
++  const d = decideMode({ gemini: okResult('gemini'), glm: okResult('glm') }, 'strict', ['gemini', 'glm']);
+   assert.deepEqual(
+     { mode: d.mode, abort: d.abort, reason: d.degradedReason },
+     { mode: 'dual', abort: false, reason: null },
+@@ -134,6 +134,7 @@ test('严格模式下单侧失败即中止，但幸存侧结果与原因都保
+   const d = decideMode(
+     { gemini: okResult('gemini'), glm: failedResult('glm', { status: 'timeout', reason: '超时' }) },
+     'strict',
++    ['gemini', 'glm'],
+   );
+   assert.equal(d.mode, 'single');
+   assert.equal(d.abort, true);
+@@ -146,6 +147,7 @@ test('降级模式下单侧失败继续，但必须标 single 与原因（不得
+   const d = decideMode(
+     { gemini: okResult('gemini'), glm: failedResult('glm', { status: 'failed', reason: '炸了' }) },
+     'degrade',
++    ['gemini', 'glm'],
+   );
+   assert.equal(d.mode, 'single');
+   assert.equal(d.abort, false);
+@@ -160,16 +162,73 @@ test('两侧都失败：无论什么策略都中止', () => {
+         glm: failedResult('glm', { status: 'failed', reason: 'b' }),
+       },
+       policy,
++      ['gemini', 'glm'],
+     );
+     assert.equal(d.abort, true, `${policy} 下两侧全败应中止`);
+     assert.deepEqual(d.okSides, []);
+   }
+ });
+ 
++/*
++ * ── 入选集合参与判定（M7b 第 1 步 §2.1）──
++ *
++ * 这三例针对的是一个**会带病通过既有测试**的缺陷：原有五个 decideMode 用例
++ * 全部传入两侧，单侧入选的形态一个都没覆盖，于是「只审了一侧」与「双审全成功」
++ * 返回值逐字段相同（实测确认），留痕里查不出来（AC-06）。
++ */
++
++test('入选一侧且成功：不是降级，但参与者基数必须机器可判（AC-06 / 设计 AC-22）', () => {
++  const one = decideMode({ gemini: okResult('gemini') }, 'strict', ['gemini']);
++  const two = decideMode({ gemini: okResult('gemini'), glm: okResult('glm') }, 'strict', [
++    'gemini',
++    'glm',
++  ]);
++
++  // 选 1 审是**配置意图**，不打降级横幅、不写降级理由（设计 AC-22）
++  assert.equal(one.degraded, false, '显式只选一侧并成功，不是降级');
++  assert.equal(one.degradedReason, null);
++  assert.equal(one.abort, false);
++
++  // 但两者必须可区分——这正是修复前做不到的事
++  assert.deepEqual(one.selectedSides, ['gemini']);
++  assert.deepEqual(two.selectedSides, ['gemini', 'glm']);
++  assert.notDeepEqual(
++    one.selectedSides,
++    two.selectedSides,
++    '单侧与双侧的入选集合必须不同，否则留痕里查不出本轮只审了一侧',
++  );
++});
++
++test('入选两侧却只回来一侧：缺失侧必须显形，不能当成全成功', () => {
++  // 装配链断了才会出现；修复前 Object.keys(results) 见不到它，会判成 dual/不降级
++  const d = decideMode({ gemini: okResult('gemini') }, 'degrade', ['gemini', 'glm']);
++
++  assert.deepEqual(d.missingSides, ['glm']);
++  assert.deepEqual(d.failedSides, ['glm'], '缺失侧要并进 failedSides');
++  assert.equal(d.degraded, true);
++  assert.match(d.degradedReason!, /glm: 入选但未产出任何结果/);
++});
++
++test('degraded 与 mode 解耦：mode 是 v1 线格式值，不得当降级标志用', () => {
++  const intentionalSingle = decideMode({ gemini: okResult('gemini') }, 'strict', ['gemini']);
++  // mode 仍是 v1 enum 的「无失败」值，但它**不表达**参与者基数
++  assert.equal(intentionalSingle.mode, 'dual');
++  assert.equal(intentionalSingle.degraded, false, 'mode 与 degraded 各自独立');
++
++  const realDegrade = decideMode(
++    { gemini: okResult('gemini'), glm: failedResult('glm', { status: 'failed', reason: 'x' }) },
++    'degrade',
++    ['gemini', 'glm'],
++  );
++  assert.equal(realDegrade.mode, 'single');
++  assert.equal(realDegrade.degraded, true);
++});
++
+ test('parse_fallback 侧算「跑成功了」，不触发降级中止', () => {
+   const d = decideMode(
+     { gemini: okResult('gemini'), glm: okResult('glm', { status: 'parse_fallback' }) },
+     'strict',
++    ['gemini', 'glm'],
+   );
+   assert.equal(d.mode, 'dual');
+   assert.equal(d.abort, false);
