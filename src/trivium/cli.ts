@@ -121,7 +121,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                   这个只换默认值表。档位不存在则退 64 并列出可用值
       --only gemini|glm  仅跑一侧（调试用，会被标为降级——这不是双审）
       --allow-single  一侧失败时不中止，产出单审结果并留痕（§12.4）。
-                      受配置 review.allow_single_flag 约束；默认策略是 strict
+                      受配置 review.allow_partial_flag 约束（旧名 allow_single_flag 仍可用）；默认 strict
 
   trivium review --start --entry <A|B|C|D> --stage <s> --topic <主题> --focus <提示语> [同上选项] [--json]
       冻结送审包 → 派生工作进程 → **立即返回** run_id 与 max_waits。

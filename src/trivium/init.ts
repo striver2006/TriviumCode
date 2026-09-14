@@ -15,8 +15,8 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import type { Ctx } from './types.js';
-import { defaultConfig } from './config.js';
-import { ensureDir, exists, writeAtomic } from './util/fsx.js';
+import { CONFIG_SCHEMA_ID, CONFIG_SCHEMA_ID_V1, defaultConfig, migrateConfigV1 } from './config.js';
+import { createExclusive, ensureDir, exists, writeAtomic } from './util/fsx.js';
 import { say, step, warn } from './util/log.js';
 
 const MARKER_BEGIN = '<!-- BEGIN TriviumCode -->';
@@ -258,6 +258,85 @@ export async function writeWrapper(
   (had ? report.updated : report.created).push(p);
 }
 
+/**
+ * `config.yaml` 的 v1 → v2 一次性磁盘改写（设计 §13.1.1，M7b 第 4 步）。
+ *
+ * 返回是否真的改写了。**这是可选优化，不是必要步骤**：`loadCtx` 的内存迁移
+ * 已经让旧配置照常可用，所以这里的每一条失败路径都选择「放弃改写并说明」，
+ * 而不是让 `init` 整个失败——为一个锦上添花的动作打断初始化不划算。
+ *
+ * 失败路径纪律（计划 §3.2 逐条钉死）：
+ *   · 备份用 `O_CREAT|O_EXCL`，已存在即放弃——与归档的防覆盖铁律同纪律，
+ *     决不覆盖一份可能是上一次改写留下的、唯一的原文；
+ *   · 已是 v2 则幂等 no-op；
+ *   · 新文件走临时文件 + `rename` 原子替换（`writeAtomic`），不留半份。
+ *
+ * **注释保留是尽力项，不是验收项**：YAML 往返会丢掉原文件里的解释性注释。
+ * 原文完整保留在备份里，这一点会在报告里对用户说明。
+ */
+async function rewriteConfigToV2(
+  cfgPath: string,
+  report: InitReport,
+  dryRun: boolean,
+): Promise<boolean> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(cfgPath, 'utf8');
+  } catch (e) {
+    report.notes.push(`${cfgPath} 读取失败，跳过 v2 改写：${(e as Error).message}`);
+    return false;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = YAML.parse(raw);
+  } catch (e) {
+    report.notes.push(`${cfgPath} 不是合法 YAML，跳过 v2 改写（内存迁移不受影响）：${(e as Error).message}`);
+    return false;
+  }
+
+  const { config: migrated, note } = migrateConfigV1(parsed);
+  if (!note) return false; // 已是 v2，或没有任何可迁移的东西：幂等 no-op
+
+  const backup = `${cfgPath}.trivium-backup`;
+  if (!dryRun) {
+    try {
+      // O_EXCL：备份已存在就放弃。宁可不改，也不覆盖唯一的原文
+      await createExclusive(backup, raw);
+    } catch (e) {
+      const why = (e as NodeJS.ErrnoException).code === 'EEXIST'
+        ? `${path.basename(backup)} 已存在`
+        : (e as Error).message;
+      report.notes.push(
+        `跳过 config.yaml 的 v2 改写：备份写不成（${why}）。\n` +
+          '  旧配置仍可用——每次运行会在内存里迁移，只是每次都会打一行提示。',
+      );
+      return false;
+    }
+    const header =
+      '# TriviumCode 项目配置（进 Git，团队共享）\n' +
+      '# 本机绝对路径与探针结论在 config.local.yaml（不进 Git）\n' +
+      '# verify.build / verify.test 只执行此处显式声明的命令——编排器不猜测执行（§14.1）\n' +
+      `# 本文件由 trivium init 从 ${CONFIG_SCHEMA_ID_V1} 改写而来，原文见 ` +
+      `${path.basename(backup)}（YAML 往返会丢失注释，原注释在备份里）\n\n`;
+    await writeAtomic(cfgPath, header + YAML.stringify(migrated, { lineWidth: 0 }));
+  }
+
+  report.updated.push(cfgPath);
+  /*
+   * dry-run 用将来时（审查意见 GLM-08）：那条路径不写备份也不写新文件，
+   * 用完成时态点名一个**不存在的备份文件**会误导，而该陈述还会进 `--json` 机读输出。
+   */
+  report.notes.push(
+    dryRun
+      ? `将把 ${cfgPath} 改写为 ${CONFIG_SCHEMA_ID}，原文将备份到 ${path.basename(backup)}。\n` +
+          '  注意：YAML 往返会丢掉原文件里的注释，原注释将完整保留在备份中。'
+      : `已把 ${cfgPath} 改写为 ${CONFIG_SCHEMA_ID}，原文备份到 ${path.basename(backup)}。\n` +
+          '  注意：YAML 往返会丢掉原文件里的注释，原注释完整保留在备份中。',
+  );
+  return true;
+}
+
 export async function runInit(opts: InitOptions): Promise<InitReport> {
   const { ctx } = opts;
   const assetRoot = opts.assetRoot ?? assetRootDefault();
@@ -277,7 +356,8 @@ export async function runInit(opts: InitOptions): Promise<InitReport> {
   // ── config.yaml（团队共享策略，进 Git）──
   const cfgPath = path.join(ctx.triviumDir, 'config.yaml');
   if (await exists(cfgPath)) {
-    report.skipped.push(`${cfgPath}（已存在，不覆盖）`);
+    const rewritten = await rewriteConfigToV2(cfgPath, report, dryRun);
+    if (!rewritten) report.skipped.push(`${cfgPath}（已存在，不覆盖）`);
   } else {
     const base = defaultConfig();
     // probe 段属本机结论，落在 config.local.yaml，不进这份

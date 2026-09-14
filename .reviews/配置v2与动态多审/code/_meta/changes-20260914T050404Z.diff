@@ -1,0 +1,1945 @@
+# trivium changes.diff
+# run_id: 20260914T050404Z
+# base: HEAD
+# head: 5b83e4b290204095e589ea66af87e372255e1b8e
+# files: 20
+#   doc/01_requirements/PRD_driver_dual_critic.md
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/ADR_002_multicritic_isolation.md
+#   doc/02_design/LLD_orchestrator.md
+#   doc/02_design/README.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/07_manuals/MANUAL_user.md
+#   doc/07_manuals/QUICKSTART.md
+#   skills/dual-critic/SKILL.md
+#   skills/dual-critic/schema/config.v2.json
+#   src/trivium/adapters/agy.ts
+#   src/trivium/config.ts
+#   src/trivium/doctor.ts
+#   src/trivium/init.ts
+#   src/trivium/preflight.ts
+#   src/trivium/review.ts
+#   src/trivium/schemas.ts
+#   src/trivium/types.ts
+#   test/unit/config-migrate.test.ts
+#   test/unit/registry-parity.test.ts
+diff --git a/doc/01_requirements/PRD_driver_dual_critic.md b/doc/01_requirements/PRD_driver_dual_critic.md
+index 71e8365..7fdcdc4 100644
+--- a/doc/01_requirements/PRD_driver_dual_critic.md
++++ b/doc/01_requirements/PRD_driver_dual_critic.md
+@@ -2,16 +2,16 @@
+ 
+ > - **作者 / 负责人**：Chen Zhenbo（依据原始需求整理）
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.4.1
++> - **当前版本**：v1.4.2
+ > - **状态**：**基线已实现、演进需求待实施(Baseline implemented, evolution pending)**
+ > - **来源**：[原始需求.txt](./原始需求.txt)；演进需求来源见 3.2 小节「多 Agent 演进需求」
+-> - **文档版本**：v1.4.1
++> - **文档版本**：v1.4.2
+ > - **⚠️ 实现状态**：FR-01～FR-26 与 AC-01～AC-19 是**已实现基线**；
+ >   **FR-27～FR-31 与 AC-20～AC-25 是演进需求，截至本版无一条达成验收**（各条标注了实现里程碑）。
+ >   现有能力另含两项**不改变对外行为**的内部工作：一次行为等价重构（Agent 注册表，M7a），
+->   以及 M7b 前三步的契约与泛化（`run.v2`、适配器接线收敛、多审退化逐对计算）。
++>   以及 M7b 前四步的契约与泛化（`run.v2`、`config.v2` 与其内存迁移、适配器接线收敛、多审退化逐对计算）。
+ >   **不得据 FR-27～FR-31 判定系统现有能力，也不得把内部改动读成需求达成。**
+-> - **变更说明**：v1.4.1（2026-09-14）随主设计 v1.3.1 的 `run.v2` 落地同步，**只精确化实现状态口径、不改任何需求条款**：把三处「截至本版尚未实现」的全称断言改为「无一条达成验收」，并在 FR-29 末尾记下它的**分步落地状态**——数据契约一侧已成立（`critics_selected` 与 `review_mode: full|partial` 落盘、选 1 侧不标降级、参与者事实与降级警示分两处标注），仍缺 `--critics` 入口，故 AC-22 跑不起来、本条整体仍记待实施。改这三处的理由：M7b 分六步交付，「尚未实现」这种整体断言在中途会同时变成两种意义上的不准确——既低估了已落的契约，又可能被读成能力已具备。判定口径统一为**以 AC 是否可跑为准，不以内部改动为准**。v1.4.0 承接 2026-09-13 项目负责人提出的六条多 Agent 演进需求，
++> - **变更说明**：v1.4.2（2026-09-14）随主设计 v1.3.2 的 `config.v2` 落地同步，同样**只精确化实现状态口径、不改需求条款**：FR-29 的分步落地说明补上配置契约一侧（`default_critics` / `max_critics` 已进入校验，登记但未启用的 Agent 出现在其中会报错），并把「仍缺入口」改写为「仍缺入口**与消费端**」——第 4 步只让该字段被校验，**不改变实际跑哪几侧**，接线在第 5 步。不写清这一点，读者会从「配置里已经有 default_critics」推出「已经能选审核者了」。v1.4.1（2026-09-14）随主设计 v1.3.1 的 `run.v2` 落地同步，**只精确化实现状态口径、不改任何需求条款**：把三处「截至本版尚未实现」的全称断言改为「无一条达成验收」，并在 FR-29 末尾记下它的**分步落地状态**——数据契约一侧已成立（`critics_selected` 与 `review_mode: full|partial` 落盘、选 1 侧不标降级、参与者事实与降级警示分两处标注），仍缺 `--critics` 入口，故 AC-22 跑不起来、本条整体仍记待实施。改这三处的理由：M7b 分六步交付，「尚未实现」这种整体断言在中途会同时变成两种意义上的不准确——既低估了已落的契约，又可能被读成能力已具备。判定口径统一为**以 AC 是否可跑为准，不以内部改动为准**。v1.4.0 承接 2026-09-13 项目负责人提出的六条多 Agent 演进需求，
+ >   按[设计 v1.3.0](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 的规范链回溯（§24 台账）同步修订：
+ >   ①**FR-01 措辞改「当轮 Driver」**——「唯一执笔者」的约束不变，变的只是由谁担任；
+ >   ②3.2 新增 **FR-27～FR-31**（多模型经 Codex 接入含 profile 透传、任意 Agent 为 Driver、
+@@ -73,7 +73,7 @@ AI 编程已从单次补全进入自主智能体阶段。开发者在 macOS + VS
+ 
+ **场景 S5 · 按任务选模型**：开发者（或项目配置）为本次任务指定 Antigravity 与 ZCode 各自使用的 LLM，两边可以使用不同模型。
+ 
+-> **以下 S6～S8 为演进场景，截至 v1.4.1 均不可用**（对应 FR-27～FR-31）。
++> **以下 S6～S8 为演进场景，截至 v1.4.2 均不可用**（对应 FR-27～FR-31）。
+ 
+ **场景 S6 · 换一家 Agent 主攻**〔待实施 · M10〕：开发者在另一家编程 Agent 里发起命令 B。
+ 该 Agent 起草与裁决，其余三家中的若干家做只读审查，工件与闸门语义不变。
+@@ -130,13 +130,13 @@ AI 编程已从单次补全进入自主智能体阶段。开发者在 macOS + VS
+ 
+ ### 3.2 P1（重要推荐 · 最佳实践）
+ 
+-> **⚠️ 实现状态（v1.4.1 起）**：本节的 **FR-27～FR-31 为多 Agent 演进需求，截至本版均未达成验收**。
++> **⚠️ 实现状态（v1.4.2 起）**：本节的 **FR-27～FR-31 为多 Agent 演进需求，截至本版均未达成验收**。
+ > 系统的**现状能力止于 FR-01～FR-26**，外加一次行为等价的内部重构（Agent 注册表，M7a）
+-> 与 M7b 前三步的**契约与内部泛化**（`run.v2` 落盘入选集合与完成度、适配器接线收敛、
+-> 多审退化逐对计算——见 FR-29 末尾的分步落地说明）。
++> 与 M7b 前四步的**契约与内部泛化**（`run.v2` 落盘入选集合与完成度、`config.v2` 与其内存迁移、
++> 适配器接线收敛、多审退化逐对计算——见 FR-29 末尾的分步落地说明）。
+ > **这些不构成任何一条 FR 的达成**：对外可观察的能力（选 1～3 个审核者、第三家接入）
+ > 仍要等入口接线与适配器到位，判定现状能力时**一律以 AC 是否可跑为准，不以内部改动为准**。
+-> 五条演进需求的设计依据见[设计 v1.3.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 二期里程碑表与 §24 台账，
++> 五条演进需求的设计依据见[设计 v1.3.2](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 二期里程碑表与 §24 台账，
+ > **各条的实现里程碑逐条标注在需求末尾**。不得据这五条判定系统现有能力。
+ 
+ - [ ] **FR-13 审查意见可裁决**：每条意见必须是可单独接受/驳回的最小单元，至少包含：编号、严重度（`blocker` / `major` / `minor` / `nit`）、位置、问题、依据、建议、置信度。Antigravity 与 ZCode 的编号前缀不得冲突。
+@@ -178,8 +178,11 @@ AI 编程已从单次补全进入自主智能体阶段。开发者在 macOS + VS
+   **分步落地状态（M7b 按六步交付）**：数据契约一侧已成立——`run.v2` 落盘 `critics_selected`
+   与 `review_mode: full|partial`，「入选 1 侧并成功」记 `full` 且不写降级理由，
+   审查文档把参与者事实与降级警示分两处标注（第 1、3 步，设计 6.7.1）。
+-  **仍缺入口**：目前只能用 `--only` 选单侧，`--critics` 与 `default_critics` 在第 5 步接线；
+-  在那之前 AC-22 的「分别选 1 / 2 / 3 各跑一轮」跑不起来，故本条整体仍记待实施。
++  配置契约一侧也已成立——`config.v2` 的 `review.default_critics` 与 `max_critics` 进入校验，
++  登记但未启用为审核者的 Agent 出现在其中会报错而非静默忽略（第 4 步，设计 13.1.1）。
++  **仍缺入口与消费端**：目前只能用 `--only` 选单侧，`--critics` 与 `default_critics` 的**接线**在第 5 步；
++  在那之前 `default_critics` 只被校验、不改变实际跑哪几侧，AC-22 的「分别选 1 / 2 / 3 各跑一轮」
++  跑不起来，故本条整体仍记待实施。
+ - [ ] **FR-30 逐审核者指定模型与思考等级，并提供高中低三档组合**：
+   每个 Agent 可配置三档「模型 + 思考等级」预设，发起时选档或精确覆盖；
+   **生效值一律回读可核对**——思考等级的请求值与生效值可能不同（部分厂商存在归并映射），
+@@ -347,9 +350,9 @@ sequenceDiagram
+ 19. **AC-19 等待期进度可读可预期**（FR-26）  
+     Given 一次已启动的双审，When 每次等待窗口返回，Then 返回中含单行成品摘要与结构化进度字段（已用、预算、百分比、第几次/共几次、两侧状态），且主脑向用户播报该摘要；Given 启动时刻，Then 用户收到一条含主题、阶段、两侧生效模型、阶段预算与汇报节奏的开场播报；Given 运行尚无有效心跳，Then 上述字段存在但取值为空，摘要退化为启动提示而非报错。
+ 
+-    > **以下 AC-20～AC-25 对应 FR-27～FR-31，均为演进验收，截至 v1.4.1 无一条可跑通。**
++    > **以下 AC-20～AC-25 对应 FR-27～FR-31，均为演进验收，截至 v1.4.2 无一条可跑通。**
+     > 它们描述的是**达成时该如何验收**，不是对现状的断言。各条末尾标注实现里程碑。
+-    > M7b 前三步落地的是契约与内部泛化，未使其中任何一条转为可验收——判定以本表为准。
++    > M7b 前四步落地的是契约与内部泛化，未使其中任何一条转为可验收——判定以本表为准。
+ 
+ 20. **AC-20 Codex 多模型家族真实审查**（FR-27）〔待实施 · M8〕
+     Given 已按指引完成至少两个模型家族的 provider 配置，When 分别指定两家族的模型各发起一次审查，
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index c2483d0..ca0b4ff 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,11 +3,11 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.1
++> - **当前版本**：v1.3.2
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+->   其中**已合入的是 M7a 与 M7b 的前三步**（第 3 步起 `run.v2` 生效，见 6.7.1）；M6 与 M8～M11 尚未开工。
++>   其中**已合入的是 M7a 与 M7b 的前四步**（`run.v2` 见 6.7.1、`config.v2` 见 13.1.1）；M6 与 M8～M11 尚未开工。
+ >   本文继续作为**唯一实现依据**：后续任何与本文不一致的改动，仍须先回溯修订本文（16.2 纪律 1、纪律 6）
+ >
+ > - **审核依据**：①[`2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md`](./reference/2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md)（v1.1.0 按其 RV-01～RV-26 修订，逐条应答见第 22 章）；②项目负责人评审意见 UR-01～UR-06（2026-09-11，v1.2.0 据此修订，逐条应答见第 23 章）
+@@ -1790,10 +1790,17 @@ probe:                                # 由 trivium doctor 回填，勿手工编
+ 
+ `config.local.yaml` 可覆盖任意字段，用于放本机绝对路径与探针结论，不进 Git。
+ 
+-### 13.1.1 配置 v2 增量（`trivium.config.v2`）—— 【待实施 · M7b】
++### 13.1.1 配置 v2 增量（`trivium.config.v2`）—— 【已实现 · M7b 第 4 步】
+ 
+-> **本节是增量规格，不替换 13.1。** 13.1 的 `config.v1` 是**当前代码唯一支持的形状**，
+-> 保留为现状基线；M7b 实施完毕后再做主次替换。全量示例见演进设计 §11。
++> **本节是增量规格，不替换 13.1。** `trivium.config.v2` 自 M7b 第 4 步起是**当前写出的形状**；
++> 13.1 的 `config.v1` 降为**历史契约 · 读侧迁移**：`loadCtx` 检测到 v1 形态即在内存中迁成 v2
++> 再交付校验，**磁盘文件不动**。13.1 的 v1 正文原样保留——既有项目的配置仍长那样。
++> 全量示例见演进设计 §11。
++>
++> **仍待实施的是表中标了里程碑的两组**：`agents.<id>.tiers` / `models` / `default_tier`
++> 与 `profiles` 的 `{tier}` 形态（【待实施 · M11】），以及 `review.default_critics` 的**消费端**
++> ——本步只让它进入配置契约与校验，`--critics` 入口在第 5 步接线，
++> 在那之前运行时仍走当前启用的审核者全集。
+ 
+ | 变更 | 说明 |
+ | :--- | :--- |
+@@ -1975,7 +1982,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
+ | **第零步** 演进设计定稿与回溯 | 演进设计升 v1.0.0 并移出提案区；本文与 PRD 按演进设计 §17 批 A 回溯；建 §24 台账与 ADR-002 | 本文 v1.3.0 + PRD v1.4.0 落盘；§24 台账「批 A」列全绿 | ✅ 2026-09-14 |
+ | **M6 探针扩展** | `probes/codex.ts`、`probes/claude.ts` 全清单实测；Driver 入口承载面探针；坑清单报告增补 | `doctor --only codex/claude` 有确定结论；**3.6 / 3.7 事实表按实测回填本文**（纪律 6a）；Driver 入口形态待拍板项收敛 | ⏳ 未开始 |
+ | **M7a 注册表（行为等价重构）** | `agents/registry.ts`：后缀 / 前缀 / 配置键 / 探针段 / 镜头键 / 禁读矩阵 / Hook 字面集统一派生；`registry-parity` grep 级对账测试；**顺带完成 10.2 措施 a 的路径侧收口**（结构化意见与运行目录进 deny 机器集合，提示语与核验同源） | `npm run check` 全绿；双侧行为与重构前逐项等价，**唯一有意的行为变化是 deny 集合的扩展**（那是修补既有缺口，方向是收紧）；四家登记但 `criticEnabled` 仅 gemini/glm、`driverEnabled` 仅 claude | ✅ 2026-09-13（`039bdc9`） |
+-| **M7b 配置 v2 与动态多审** | types / config v2 / 四份 schema；naming·hooks·gate·freeze·brief·runner·CLI 的 N 方化；**禁读矩阵的 N 方泛化**（措施 a 的路径侧已随 M7a 落地，此处做三审展开）；全部新测试；selftest N 侧场景 | `npm run check` 全绿；双侧默认行为与 M7a 后等价（除 schema 版本号）；AC-22 / AC-24 / AC-25 | 🔄 进行中（六步分批交付）：第 1 步 ✅ `3ceeee6`（既有缺陷修复）；第 2 步 ✅ `a891ab2`（泛化欠账与对账扩展）；第 3 步 ✅ **run.v2 与读侧按阶段分发**（6.7.1）；第 4～6 步 ⏳ config v2／`--critics` 接线／桩夹具 |
++| **M7b 配置 v2 与动态多审** | types / config v2 / 四份 schema；naming·hooks·gate·freeze·brief·runner·CLI 的 N 方化；**禁读矩阵的 N 方泛化**（措施 a 的路径侧已随 M7a 落地，此处做三审展开）；全部新测试；selftest N 侧场景 | `npm run check` 全绿；双侧默认行为与 M7a 后等价（除 schema 版本号）；AC-22 / AC-24 / AC-25 | 🔄 进行中（六步分批交付）：第 1 步 ✅ `3ceeee6`（既有缺陷修复）；第 2 步 ✅ `a891ab2`（泛化欠账与对账扩展）；第 3 步 ✅ `5b83e4b`（**run.v2 与读侧按阶段分发**，6.7.1）；第 4 步 ✅ **config v2 与内存迁移**（13.1.1）；第 5～6 步 ⏳ `--critics` 接线／桩夹具 |
+ | **M8 Codex（多模型）审核者** | `adapters/codex.ts` + 探针接线（含逐家族 provider 探活）+ 镜头 codex 键 + 密钥扫描增补 | AC-20（两家族各真实审查一次）；沙箱负对照通过 | ⏳ 未开始 |
+ | **M9 Claude Code 审核者** | `adapters/claude.ts` + 审查员身份片段 + `critic_enabled` 开关 | 真实审查一次，`consulted` 交叉核对通过 | ⏳ 未开始 |
+ | **M10 任意 Driver** | 四家入口资产与单源渲染；install 多目标；`hooks --agent`；`approve` 前置复核；协议片段两段式 | AC-21 + 兼容验收；ZCode/Codex Driver 夹具跑通 | ⏳ 未开始 |
+@@ -2282,6 +2289,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | **v1.3.0** | 2026-09-14 | **规范链回溯：把多 Agent 演进并入本文，消除「两套规范并行」**（计划双审 `20260913T232505Z`；Gemini `request-changes` 2 major + 2 minor + 2 nit、ZCode `request-changes` 2 major + 3 minor + 2 nit，13 条全部接受零驳回；留痕见 `.reviews/演进设计定稿与回溯/plan/`）。背景：[演进设计](./2026-09-13-通用Agent编排与动态多审设计.md) 自 2026-09-13 起草后一直标着「提案 · 不是实现依据」，而 M7a 已按它实施合入——规范与实现错位。项目负责人 2026-09-14 裁定「先把演进设计定稿升版并全量回溯」，本版即该裁定的执行。**一、确立规范关系**：演进设计升 v1.0.0 为**受控增量规范**，其条款效力由本文 16.1 与新增 §24 台账**逐条显式授予**，冲突一律以本文为准，且它自 v1.0.0 起**冻结正文**——全仓仍是一条规范链，读者永远从本文入口。**二、新增文档头「实现状态基线」与三级状态标记**（【已实现 · M7a】/【待实施 · M\<n\>】/【提案 · 未排期】）：未标记者描述当前真实系统或对其的有效约束、风险与待决议题，**M6 及其后的能力一律带标记且不得作为验收依据**。只给增量加标记（M0～M5 基线占全文九成以上），让标记的出现本身成为信号。标记粒度对齐「**能力是否可被外部观察到**」而非「代码文件是否已改」——6.2 / 6.5 是示范条目：注册表已统一派生后缀与前缀（已实现），但生效枚举与 schema 前缀仍锁两家（待实施 M8/M9）。**三、16.2 新增纪律 6（回溯颗粒度）与纪律 7（注册表单一来源）**。纪律 6 拆两款：**6a 事实回填类**（第 3 章能力事实表）数据只能由该里程碑自身产出，故为**测后回填、作完成判据**（延续 M0 → v1.2.1 的既有做法）；**6b 特性契约类**（旗标、数据契约、路由、Hook 形态）为**工前并入、作准入前置**。这不是对纪律 1 的放宽——纪律 1 触发条件本就是「不一致的**改动**」，而本条把并入钉死在两个硬时点，**两端都有闸门，比现状更严**；若反过来把需 M6 实测才能定稿的事实表写进正文，本文将描述一个不存在的系统，既违反 P7 也让本文作为验收口径失效。纪律 7 明确禁读矩阵**禁止手工枚举**：人工清单维持不住完整性（计划稿自称补全 4 处硬编码、双审又补出 8 处，其中按 `['gemini','glm']` 字面循环的一处会让第三家审核者意见对闸门**整体不可见**）。**四、契约按「并排追加」而非替换升版**：新增 **6.7.1**（`run.v2` 增量，含四个可选的 effort/tier/profile 字段、可选的 `peer_leak_via_command`，以及**按阶段分支的读侧分发**——verify 阶段的历史 `run.v1` 不施加审查元数据校验，否则归档中 5 份历史记录会被判 unreadable 并**永久拦死本仓库的每一次 `git commit`**）与 **13.1.1**（`config.v2` 增量，含「`agents` 键不要求 `criticEnabled`」「`profiles` 在 M7b 只收裸 slug」「迁移告警走 **stderr**」三条分期取舍）。6.7 与 13.1 的 v1 正文**原样保留为现状基线**，M7b 完成后再做主次替换——本文既要当「现状唯一依据」又要当「演进准绳」，正文就必须容得下两代契约并存。**五、增量并入**：术语表四条（Agent / 注册表 / 档位 / 多审，并裁定「文档统称多审、命令名与归档根一律不改名」）；1.1 演进目标表 R-1～R-6；4.1 分层图与 5.1 组件表的注册表；6.2 / 6.5 / 6.6 的枚举泛化与状态拆解；8.6 gate 的 N 方化；8.5 **护栏分级 L1/L2**（L2 无 blocking Hook，靠 approve 前置复核 + `_meta` 唯一事实 + `O_EXCL` + 跑后复算三层补偿，**如实分级不伪装成同等级强制**）；10.1 末段的**四条泄漏通道清单与检测收口**（措施 a 随 M7b、措施 b 移出为独立演进项、威胁模型定调为「防锚定污染与非对抗穿透」、git 通道保留能力而非封死）；12.1 演进增补行；15.1 FR-27～31 与 15.3 AC-20～25；16.1 二期里程碑表（**仅 M7a 已合入**，M7 拆为 M7a/M7b）；17.2 演进增补用例；18.1 新增待拍板 #14～#21（演进设计 §16 的**八项**，原清单误记为七项）；第 19 章 R16～R26。**六、新增 §24「演进并入台账」**作为并入进度的唯一记账面，并明确**对账锚是演进设计 §17.2 清单而非台账自身**——两表同源时「条目数相等」对共同缺项完全失明，那正是原清单漏掉 9 类条目却无人发觉的机制。**七、PRD 编号顺延**：演进需求排 FR-27～FR-31、验收排 AC-20～AC-25（原演进设计写的 FR-26～30 / AC-19～24 **与已实现的 FR-26「等待期进度反馈」及 AC-19 撞号**，违反 PRD「编号一经分配即保持稳定」；两侧审查员独立收敛于此）。**八、18.2 新增 18.2.1 受控同步清单**，记录本轮批 A 已完成的 14 份文档与批 B 的 5 份（RUNBOOK、CASE、`.env.example`、仓库根 `CLAUDE.md`、`skills/` 12 份资产），并记下经全仓 grep 判定「已核、无需改」的文件，避免下一轮重复排查。**九、代码双审（`20260913T234949Z`；Gemini `approve` 零意见、ZCode `request-changes` 1 major + 1 minor + 3 nit，5 条全部接受）查出并修正的四类问题**：①**把已收口的写成了盲区**（GLM-01，本版最重的一条）——10.1 通道表、ADR-002、PRD AC-25 把泄漏通道③④记为「检测盲区 / 措施 a 待 M7b」，而实测 `freeze.ts` 的 `enumerateDenyPaths()` 已把归档 `_meta/` 下的结构化意见与运行目录纳入 deny 机器集合、`brief.ts` 第 8 段与 `checkPeerLeak` 同源、`deny-matrix.test.ts` 有正例单测且用例名逐字写着「措施 a 的缺口修补」，`git log` 定年为 `039bdc9`（M7a）。**这是本版章程的反向失守**：要防「把不存在的写成存在」，却犯了它的镜像。根因是回溯时**照抄了演进设计 2026-09-13 起草时刻的措辞而未回到代码复核**——那时确是盲区，M7a 同日修掉了。据此改正四处现状断言，并厘清边界：M7a 完成的是**两侧形态的路径侧收口**，**M7b 仍需 N 方泛化**，措施 b 仍未排期。16.1 的 M7a 行「逐项等价」相应改为「唯一有意的行为变化是 deny 集合的扩展」，M7b 行删去误记在其名下的该项。**教训记此：凡写「现状」断言，一律以代码为准复核一次，不得照抄更早的文档——抄一句现状断言与自己写一句，责任相同。** ②**审计面边界未明示**（GLM-02）——被审补丁无条件剔除归档根，故「补丁 ≠ 本轮全部改动」，归档根内对已跟踪文件的合法修改须由 Driver 在应答件显式列出；9.2 补该边界说明，并写明**不要改成「按跟踪状态区分」**（那会把 fail-closed 变成 fail-open，与 RV-B1 及 Bash 侧收窄两次撤回同构）。③**台账漏记状态标记制度自身的载体**（GLM-03）——§24.1 补「文档头『实现状态基线』」行。④**依赖行自相矛盾**（GLM-04）与 **§11.1 缺指针**（GLM-05）——16.1 依赖改画为「探针链 M6」与「主干链 M7a→M7b」**并行**（M7a 事实上已先于 M6 完成，原箭头会被读成 M7b 被 M6 阻塞，正落在本版要消除的死循环面上）；§11.1 补批 B-契约指针，使批 B 五项在正文的指针链完整。 |
+ | **v1.3.1** | 2026-09-14 | **`run.v2` 落地，6.7.1 由【待实施】翻为【已实现 · M7b 第 3 步】**。本版是**状态翻转与实现登记**，不改任何规格文字——6.7.1 的字段表、v1→v2 映射规则、按阶段分发的三段伪码都是 v1.3.0 已定稿的内容，实现照其执行，逐条对得上。改动四处：①**6.7.1 抬头**改为已实现，并写明「`run.v1` 降为历史契约 · 双读保留、6.7 的 v1 正文原样保留为理解既有归档的唯一依据」，同时点名**仍未接线的两组可选字段**（`guard.peer_leak_via_command` 随措施 b、四个 effort/tier/profile 字段随 M11）——它们已在 schema 留位但写侧不写，不点名就会被读成已生效。②**16.1 的 M7b 行**由「⏳ 未开始」改为「🔄 进行中」并列出六步的逐步状态（第 1～3 步已合入，第 4～6 步待做），理由是 M7b 按裁定分六步交付、每步独立双审与提交，整行一个状态位表达不了实际进度。③**文档头实现状态基线**由「仅 M7a 已合入」改为「M7a 与 M7b 前三步已合入」。④**§24 台账**「6.7 → run.v2」行补实现证据。实现侧的三件事记此备查：**一是读侧按阶段分发含一处收严**——6.7.1 规定「审查阶段的其余 schema（含缺失）→ 不可读」，而改动前是「非 `run.v1` 即放过」，把 `schema` 改成任意字符串就能让工件清单脱离契约校验；这是条伪造通道，收严方向与 P5 一致。**二是 v1 → v2 的映射有损且必须说破**：`critics_selected` 由 `critics` 键集推导，而 v1 里「入选但整侧失联」与「压根没入选」本就分不开，故对历史记录的判读精度仍只有 v1 那么准——迁移不会把信息变多。**三是 vendor 枚举随注册表放开**（BACKLOG EV-03 收口），`run.v2` 的 `vendor` 与 Agent id 一律**不在 schema 里枚举**，身份校验改由 `schemas.ts` 在 ajv 之后按注册表补做：在 schema 里抄第二份等于违反纪律 7，而 v1 恰恰那么写死了两家，那正是本次必须升版而非原地扩展的直接原因。代码双审留痕见 `.reviews/配置v2与动态多审/code/`。 |
++| **v1.3.2** | 2026-09-14 | **`config.v2` 落地，13.1.1 由【待实施】翻为【已实现 · M7b 第 4 步】**。与 v1.3.1 同属**状态翻转与实现登记**，不改规格文字。改动三处：①13.1.1 抬头改为已实现，写明「v1 降为历史契约 · 读侧迁移、13.1 的 v1 正文原样保留」，并点名**仍待实施的两组**——M11 的档位字段，以及 `review.default_critics` 的**消费端**（本步只让它进入配置契约与校验，`--critics` 入口在第 5 步接线，在那之前运行时仍走启用集合全集）；②16.1 的 M7b 行补第 4 步；③§24 台账「13.1 → config.v2」行补实现证据。实现侧三件事记此备查：**一是迁移在内存里做、磁盘文件不动**——这是本步的核心承诺，`loadCtx` 只读不写，`trivium init` 的一次性改写是可选优化。若改成「读到 v1 就拒绝启动」，每个已初始化的项目都会在升级编排器的瞬间硬失败，而那种失败发生在用户机器上、在他们没做任何改动的时候。**二是迁移必须逐源进行、且在 deepMerge 之前**：`defaultConfig()` 已是 v2 形状，先合并的话磁盘上的 `critics` 段只会作为额外的键并排落在结果里，而 `agents` 仍是内置默认——**用户配的值一个都不生效且没有任何报错**。同理，迁移的触发条件不能只看 `schema` 字段：`config.local.yaml` 是覆盖片段、通常没有那个字段，却完全可能写着 `critics.gemini.bin`，只认 schema 会让它被 v2 的未知字段校验拒掉，而用户看到的错误与真正的原因（我们改了键名）毫无关系。两条都锁了用例，颠倒顺序会精确变红。**三是 `agents` 的键只要求「是已登记 Agent」、不要求 `criticEnabled`**（本节表格原文），`criticEnabled` 的约束点在 `default_critics`。M7b 计划稿 §3.2「约束一」写的是「agents 的键必须 criticEnabled」，与本节相反，**以本文为准**——那条会把未来的 Driver 配置段一并拒掉。跨字段与身份规则同 `run.v2` 走两段式校验（ajv 之后按注册表补校）。代码双审留痕见 `.reviews/配置v2与动态多审/code/`。 |
+ 
+ ---
+ 
+@@ -2371,7 +2379,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ | 11.1 适配层契约泛化 | **B-契约** | **M8** | ⏳ 未并入 | — |
+ | 11.5 档位路由 | **B-契约** | **M11** | ⏳ 未并入（指针占位） | 11.5 引言块 |
+ | 12.1 异常矩阵增行 | A | 第零步 | ✅ 已并入 v1.3.0 | 12.1「演进增补行」表 |
+-| 13.1 → config.v2 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0 | **13.1.1**（并排追加，v1 基线保留） |
++| 13.1 → config.v2 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0；**实现 ✅ 已落地（M7b 第 4 步，2026-09-14）** | **13.1.1**（并排追加，v1 基线保留）；`schema/config.v2.json`、`config.ts` 的 `migrateConfigV1` 与 `agentConfigOf`、`init.ts` 的一次性改写 |
+ | 15.1 增 FR-27～31 | A | 第零步 | ✅ 已并入 v1.3.0 | 15.1 |
+ | 15.3 增 AC-20～25 | A | 第零步 | ✅ 已并入 v1.3.0 | 15.3 |
+ | 16.1 增 M6～M11 | A | 第零步 | ✅ 已并入 v1.3.0 | 16.1「二期」表 |
+diff --git a/doc/02_design/ADR_002_multicritic_isolation.md b/doc/02_design/ADR_002_multicritic_isolation.md
+index fdcb841..120776a 100644
+--- a/doc/02_design/ADR_002_multicritic_isolation.md
++++ b/doc/02_design/ADR_002_multicritic_isolation.md
+@@ -4,7 +4,7 @@
+ > - **决策者**：Chen Zhenbo（项目负责人）
+ > - **记录者**：Driver（Claude）
+ > - **创建日期**：2026-09-14（决策发生于 2026-09-13，本文为事后立档）
+-> - **关联**：[设计 v1.3.1](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 10.1 / 10.2、
++> - **关联**：[设计 v1.3.2](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 10.1 / 10.2、
+ >   [演进设计 v1.0.0](./2026-09-13-通用Agent编排与动态多审设计.md) §8.2～§8.4、
+ >   [ADR-001](./ADR_001_isolation_mode.md)（就地审查模式）、PRD FR-10 / AC-04
+ > - **前置**：本决策**建立在 ADR-001 之上**。ADR-001 选定「就地审查」——审查员以真实项目根为
+diff --git a/doc/02_design/LLD_orchestrator.md b/doc/02_design/LLD_orchestrator.md
+index 982f89e..09cdecf 100644
+--- a/doc/02_design/LLD_orchestrator.md
++++ b/doc/02_design/LLD_orchestrator.md
+@@ -97,7 +97,7 @@ graph TD
+ | `parse.ts` | 262 | 从厂商 stdout 里抠出审查结论并按 schema 校验 | `parseReview()` `extractJsonCandidates()` `enumerateFallbackFindings()` |
+ | `disposition.ts` | 248 | 裁决表解析与三态归一 | `parseDisposition()` `normalizeDisposal()` |
+ | `divergence.ts` | 202 | 多审退化指标（镜头重合度 Jaccard，按入选集合逐对计算） | `measureDivergence()` `measureAllPairs()` |
+-| `schemas.ts` | 125 | 四份 schema 的 ajv 编译与缓存（`review.v1` 由 `parse.ts` 自持）；`run.v2` 另在 ajv 之后按注册表补校 Agent 身份——id 与 vendor **不在 schema 里枚举**（纪律 7：抄第二份来源就会改一漏二） | `validateRunMeta()` `validateRunMetaV1()` `validateConfig()` |
++| `schemas.ts` | 212 | 五份 schema 的 ajv 编译与缓存（`review.v1` 由 `parse.ts` 自持）；`run.v2` 与 `config.v2` 另在 ajv 之后按注册表补校 Agent 身份与跨字段规则——id 与 vendor **不在 schema 里枚举**（纪律 7：抄第二份来源就会改一漏二） | `validateRunMeta()` `validateRunMetaV1()` `validateConfig()` |
+ 
+ ### 2.6 适配层
+ 
+@@ -122,18 +122,18 @@ graph TD
+ > `review.v1.json` 的意见编号 pattern 仍为 `^(AGY|GLM)-…`。
+ > **「注册表登记了四家」不等于「系统支持四家」**：`codex` / `claude` 的审核者能力在 M8 / M9，
+ > Driver 任意化在 M10。登记而不启用，是为了让注册表从第一天起就是完整的单一来源。
+-> 设计依据见[设计 v1.3.1](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 5.1、6.2、16.1。
++> 设计依据见[设计 v1.3.2](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 5.1、6.2、16.1。
+ 
+ ### 2.7 基础层
+ 
+ | 模块 | 行数 | 职责 |
+ | :--- | ---: | :--- |
+-| `config.ts` | 335 | 四级配置合并（内置默认 → `config.yaml` → `config.local.yaml` → 命令行）、探针回填与时效 |
++| `config.ts` | 494 | 四级配置合并（内置默认 → `config.yaml` → `config.local.yaml` → 命令行）、**v1 → v2 内存迁移**（`migrateConfigV1`，逐源且在合并之前）、按 vendor 收窄的配置取值（`agentConfigOf`）、探针回填与时效 |
+ | `lock.ts` | 327 | 主题锁（长持锁 / 短临界区）、遗留锁回收、免锁计数 |
+ | `freeze.ts` | 249 | 快照冻结、禁读清单枚举、漂移判定 |
+ | `brief.ts` | 310 | 八段送审任务书渲染 |
+ | `secrets.ts` | 140 | 落盘前的密钥扫描（10 条规则 + 熵判定） |
+-| `types.ts` | 399 | 全部类型定义与编译期契约 |
++| `types.ts` | 518 | 全部类型定义与编译期契约 |
+ | `exit-codes.ts` | 67 | 九个退出码 |
+ | `util/exec.ts` | 339 | 子进程执行、进程树杀灭、PID 复用识别 |
+ | `util/git.ts` | 300 | 工作树哈希、补丁生成、变更列举 |
+@@ -149,7 +149,7 @@ graph TD
+ 
+ | 动作 | 实现 | 幂等策略 |
+ | :--- | :--- | :--- |
+-| 建 `.trivium/`（`config.yaml` + `bin/trivium`） | `init.ts:280-297` | `config.yaml` 已存在则**无条件跳过，绝不覆盖** |
++| 建 `.trivium/`（`config.yaml` + wrapper） | `init.ts` | `config.yaml` 已存在则不覆盖内容；仅当它是 `config.v1` 形态时做**一次性改写**（`rewriteConfigToV2`：备份走 `O_EXCL`、新文件原子替换；备份已存在即放弃改写且**不中断 init**——内存迁移已让旧配置可用，为可选优化打断初始化不划算） |
+ | 合并 Hook 进 `.claude/settings.json` | `mergeHooks()` `init.ts:129` | **按事件名替换**同名条目（识别依据是命令里的 `gate hook-<name>`，不是命令全文） |
+ | 修 `.gitignore` | `fixGitignore()` `init.ts:78` | 整体忽略 `.claude/` → 白名单写法；`.trivium/` 规则按标记去重 |
+ | 追加协议片段到 `CLAUDE.md` / `AGENTS.md` | `appendSnippet()` `init.ts:50` | **见标记即跳过** |
+diff --git a/doc/02_design/README.md b/doc/02_design/README.md
+index a7a72b1..bcc3720 100644
+--- a/doc/02_design/README.md
++++ b/doc/02_design/README.md
+@@ -21,7 +21,7 @@
+ 
+ ### 唯一实现依据
+ 
+-- [`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：**Driver-DualCritic 主攻双审流水线总体架构与详细设计**（**v1.3.1**，状态：**基线已实现、演进进行中**）。依据 PRD v1.4.1 与 5 份参考答卷起草。
++- [`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：**Driver-DualCritic 主攻双审流水线总体架构与详细设计**（**v1.3.2**，状态：**基线已实现、演进进行中**）。依据 PRD v1.4.2 与 5 份参考答卷起草。
+   演进历程：v1.1.0 按设计审核意见 RV-01～RV-26 修订；v1.2.0 按项目负责人意见 UR-01～UR-06 修订（就地审查、结合全项目评审、Node.js + TypeScript、用户级 skills 载体），均附逐条应答；v1.2.1 按 M0 本机实测回补第 3、10、11、12 章；v1.2.2～v1.2.5 按多轮自举双审加固护栏（含 RV-B1 的实施与撤回）；v1.2.6～v1.2.7 护栏判定范围收窄与 Bash 侧撤回；**v1.3.0 把 M6～M11 的多 Agent 演进并入本文**，新增「实现状态基线」与三级状态标记、纪律 6（回溯颗粒度）与纪律 7（注册表单一来源）、§24 演进并入台账。
+   覆盖架构、组件划分、接口契约、目录与命名规范、操作流程、异常矩阵、实施路线（M0～M11）与验收映射。
+   **⚠️ 读法**：正文未加状态标记者描述当前真实系统（M0～M5 基线 + M7a 注册表重构）；
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index fd54833..cb70163 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -1,14 +1,18 @@
+ # PROTOCOL：Driver-DualCritic 工件中继与协议契约
+ 
+-> 依据 [设计 v1.3.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.1](../01_requirements/PRD_driver_dual_critic.md)。
++> 依据 [设计 v1.3.2](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.2](../01_requirements/PRD_driver_dual_critic.md)。
+ > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
+ >
+-> **⚠️ 本文描述的是当前真实生效的契约**（`config.v1` / **`run.v2`** / 两侧审核者 / 固定 Claude Code Driver）。
+-> `run.v2`（含 `driver` / `critics_selected` / `review_mode: full|partial`）**已于 M7b 第 3 步生效**，
+-> 规范见设计 6.7.1；`run.v1` 降为**历史契约**，读侧长期双读、既有归档不受影响。
+-> 其余多 Agent 演进带来的契约变更——`config.v2`、意见编号前缀扩为四值、
+-> 裁决件 `role` 扩为四值与 `addresses` 基数 1～3、`--critics` 等新旗标——**均尚未生效**，
+-> 规范见设计 13.1.1 与 §24 台账，随各里程碑并入本文。
++> **⚠️ 本文描述的是当前真实生效的契约**（**`config.v2`** / **`run.v2`** / 两侧审核者 / 固定 Claude Code Driver）。
++> `run.v2`（含 `driver` / `critics_selected` / `review_mode: full|partial`）于 M7b 第 3 步生效，规范见设计 6.7.1；
++> `config.v2`（`critics.*` → `agents.*`、`allow_single_flag` → `allow_partial_flag`、
++> 新增 `review.default_critics` / `max_critics`）于第 4 步生效，规范见设计 13.1.1。
++> 两份 v1 均降为**历史契约**：`run.v1` 读侧双读，`config.v1` 读侧自动迁移——
++> **已初始化的项目不改配置也能跑**，磁盘改写由 `trivium init` 可选执行（带备份）。
++> 其余多 Agent 演进带来的契约变更——意见编号前缀扩为四值、裁决件 `role` 扩为四值与
++> `addresses` 基数 1～3、`--critics` 等新旗标——**均尚未生效**，随各里程碑并入本文。
++> `review.default_critics` 虽已进入配置契约，但**消费端在第 5 步才接线**：
++> 在那之前它只被校验，不改变实际跑哪几侧。
+ > **按本文实现的客户端不会被演进破坏**：读侧双读、旧形态长期兼容。
+ 
+ 三方（Claude Code Driver、Antigravity Critic-A、ZCode Critic-B）之间**没有**任何进程间
+@@ -17,7 +21,7 @@
+ 
+ ---
+ 
+-## 一、五份 JSON Schema
++## 一、六份 JSON Schema
+ 
+ 机读契约的唯一真理来源在 `skills/dual-critic/schema/`，ajv（draft 2020-12）强校验。
+ `review.v1` 由 `parse` 持有（要把错误回喂给模型），其余集中在 `schemas.ts`。
+@@ -28,7 +32,8 @@
+ | `trivium.disposition.v1` | `disposition.v1.json` | Driver（裁决件 front-matter；表格由 gate 单独解析） | `gate --check` 的 bad_front_matter |
+ | `trivium.run.v2` | `run.v2.json` | 编排器 | `writeRunMeta` 写前校验；留痕核对把不合契约的 run.json 视为「不可读」并拦提交 |
+ | `trivium.run.v1` | `run.v1.json` | **已停写**（M7b 第 3 步前的编排器） | 只读：既有归档按写入时的规范解读，读进内存时迁移为 v2 形状 |
+-| `trivium.config.v1` | `config.v1.json` | 人（`.trivium/config.yaml` / `config.local.yaml`） | `loadCtx` 四级合并后校验，不合法退 69 并逐条列出（未知字段、枚举值、区间） |
++| `trivium.config.v2` | `config.v2.json` | 人（`.trivium/config.yaml` / `config.local.yaml`） | `loadCtx` 四级合并后校验，不合法退 69 并逐条列出（未知字段、枚举值、区间） |
++| `trivium.config.v1` | `config.v1.json` | **已停写**（M7b 第 4 步前的形状） | 只读：`loadCtx` 在合并**之前**逐源迁成 v2，磁盘文件不动 |
+ 
+ ### `trivium.run.v2` 的读侧分发（按阶段，设计 6.7.1）
+ 
+@@ -41,6 +46,19 @@
+ `run.v2` 的 Agent id 与 vendor **不在 schema 里枚举**：唯一来源是 `agents/registry.ts`
+ （设计 §16.2 纪律 7），身份校验由 `schemas.ts` 在 ajv 之后按注册表补做。
+ 
++### `trivium.config.v2` 的迁移与两段式校验（设计 13.1.1）
++
++`loadCtx` 对**每个** YAML 源单独做 v1 → v2 迁移，且**在四级合并之前**——
++顺序颠倒会让磁盘上的 `critics` 段作为额外的键并排落在结果里，而 `agents` 仍是内置默认，
++**用户配的值一个都不生效且不报错**。迁移的触发条件也不只看 `schema` 字段：
++`config.local.yaml` 是覆盖片段、通常没有那个字段，因此另认 `critics` 与
++`review.allow_single_flag` 两个旧形态的特征键（它们在 v2 里都已不是合法键，不存在误伤）。
++
++**迁移只在内存里发生，磁盘文件不动**；`trivium init` 提供可选的一次性改写（备份走 `O_EXCL`，
++YAML 往返会丢注释，原注释保留在备份中）。三条跨字段规则由代码层补校：
++`agents` 的键必须是已登记 Agent（**不要求 `criticEnabled`**——Driver 自身也需要配置容身之处）、
++`agents.<id>.vendor` 必须与注册表相符、`default_critics` 每项必须是可用审核者且在 `agents` 中有配置段。
++
+ ### `trivium.review.v1` 的硬约束
+ 
+ - **意见编号前缀固定**：Antigravity 为 `AGY-`、ZCode 为 `GLM-`，两侧不冲突；
+diff --git a/doc/07_manuals/MANUAL_user.md b/doc/07_manuals/MANUAL_user.md
+index 326da6e..d260565 100644
+--- a/doc/07_manuals/MANUAL_user.md
++++ b/doc/07_manuals/MANUAL_user.md
+@@ -10,7 +10,7 @@
+ > 设计文档中带【待实施】标记的多 Agent 能力——第三、四家 Agent 参与审查、
+ > 每次审核动态选 1～3 个审核者、换一家 Agent 主攻、逐审核者选思考等级三档——
+ > **尚未实现**，本手册不涉及。届时它们会随各自里程碑写进本手册。
+-> （规范见[设计 v1.3.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
++> （规范见[设计 v1.3.2](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
+ > 术语上，N 方化后「双审」的正确称谓是「**多审**」；命令名 `/dual-*` 与归档目录一律不改名。）
+ 
+ ---
+diff --git a/doc/07_manuals/QUICKSTART.md b/doc/07_manuals/QUICKSTART.md
+index 789ccd1..f63d8f1 100644
+--- a/doc/07_manuals/QUICKSTART.md
++++ b/doc/07_manuals/QUICKSTART.md
+@@ -1,7 +1,7 @@
+ # 快速上手：Driver-DualCritic 双审流水线
+ 
+ > 目标：**15 分钟内**装好并跑通一条真实任务。
+-> 依据 [设计 v1.3.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.1](../01_requirements/PRD_driver_dual_critic.md)。
++> 依据 [设计 v1.3.2](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.2](../01_requirements/PRD_driver_dual_critic.md)。
+ >
+ > **本文描述的是当前可用的系统**：Claude Code 主攻 + Antigravity / ZCode 两侧审查。
+ > 设计文档里带【待实施】标记的能力（第三、四家 Agent、每次选 1～3 个审核者、
+diff --git a/skills/dual-critic/SKILL.md b/skills/dual-critic/SKILL.md
+index b6a086a..d34515e 100644
+--- a/skills/dual-critic/SKILL.md
++++ b/skills/dual-critic/SKILL.md
+@@ -16,7 +16,7 @@ disable-model-invocation: true
+ | 路径 | 用途 |
+ | :--- | :--- |
+ | `scripts/trivium.cjs` | 编排器本体（esbuild 单文件产物，不进 Git） |
+-| `schema/` | `review.v1` / `disposition.v1` / `run.v2`（`run.v1` 只读保留）/ `config.v1` 五份契约，是 parse / gate / meta / config 的运行时真理来源 |
++| `schema/` | `review.v1` / `disposition.v1` / `run.v2` / `config.v2` 四份当前契约，外加 `run.v1` / `config.v1` 两份只读保留的历史契约，是 parse / gate / meta / config 的运行时真理来源 |
+ | `prompts/` | 各阶段的审查提示词模板 |
+ | `lenses.yaml` | 两侧差异化审查镜头（§9.3），避免双审退化成同审 |
+ | `agents/trivium-critic.md` | Antigravity 只读审查 Agent 定义 → 安装到 `~/.gemini/config/agents/` |
+diff --git a/src/trivium/adapters/agy.ts b/src/trivium/adapters/agy.ts
+index f2c3629..15a9bd7 100644
+--- a/src/trivium/adapters/agy.ts
++++ b/src/trivium/adapters/agy.ts
+@@ -27,6 +27,7 @@ import {
+   type AgyStreamResult,
+ } from './agy-events.js';
+ import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
++import { agentConfigOf } from '../config.js';
+ 
+ export interface AgyInvokeOptions {
+   bin: string;
+@@ -177,13 +178,13 @@ export const agyAdapter: CriticAdapter = {
+         ok: false,
+         reason:
+           'agy headless 无法读取文件（issue #548）。请确认只读审查 Agent 已安装到 ' +
+-          `~/.gemini/config/agents/${ctx.cfg.critics.gemini.agent}/agent.md`,
++          `~/.gemini/config/agents/${agentConfigOf(ctx.cfg, 'gemini', 'antigravity').agent}/agent.md`,
+       };
+     }
+     if (p.headless_read_ok === null) {
+       return { ok: false, reason: '探针尚未实测 agy headless 读取能力，请先运行 trivium doctor' };
+     }
+-    const agent = resolveAgyAgent(p, ctx.cfg.critics.gemini.agent);
++    const agent = resolveAgyAgent(p, agentConfigOf(ctx.cfg, 'gemini', 'antigravity').agent);
+     if (agent.reason) return { ok: false, reason: agent.reason };
+     return { ok: true };
+   },
+@@ -207,7 +208,7 @@ export const agyAdapter: CriticAdapter = {
+         prompt: req.brief_text,
+         model: req.model,
+         // 探针验证过的 Agent，不是配置意图（P7）；availability 已挡掉 null 的情形
+-        agent: resolveAgyAgent(probe, ctx.cfg.critics.gemini.agent).agent,
++        agent: resolveAgyAgent(probe, agentConfigOf(ctx.cfg, 'gemini', 'antigravity').agent).agent,
+         effort: req.effort ?? null,
+         // 探针说 --json-schema 不可用时降级为提示词约定 + 宽松解析（AD-08）
+         jsonSchemaPath: probe.json_schema_ok === false ? null : req.schema_path,
+diff --git a/src/trivium/config.ts b/src/trivium/config.ts
+index 189fb2c..67471bb 100644
+--- a/src/trivium/config.ts
++++ b/src/trivium/config.ts
+@@ -7,13 +7,16 @@
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import YAML from 'yaml';
+-import type { Config, Ctx, ProbeSection, Stage } from './types.js';
++import type { AgentConfig, AgentId, Config, Ctx, ProbeSection, Stage } from './types.js';
++import { CRITICS } from './types.js';
+ import { EXIT, TriviumError, envError, swallowedTextHint } from './exit-codes.js';
+ import { exists, expandHome } from './util/fsx.js';
+ import { isGitRepo, repoRoot } from './util/git.js';
+ import { validateConfig } from './schemas.js';
+ 
+-export const CONFIG_SCHEMA_ID = 'trivium.config.v1' as const;
++export const CONFIG_SCHEMA_ID = 'trivium.config.v2' as const;
++/** v1 的 schema 标识。只出现在读侧：磁盘上的旧配置按它识别并做内存迁移 */
++export const CONFIG_SCHEMA_ID_V1 = 'trivium.config.v1' as const;
+ export const TRIVIUM_DIR = '.trivium';
+ 
+ export function defaultProbe(): ProbeSection {
+@@ -72,7 +75,14 @@ export function defaultConfig(): Config {
+     review: {
+       parallel: true,
+       failure_policy: 'strict',
+-      allow_single_flag: true,
++      allow_partial_flag: true,
++      /*
++       * 默认审核者集合维持两家——与现状等价，成本不变（设计 13.1.1）。
++       * 从注册表的 criticEnabled 派生而不是写死 `['gemini','glm']`：
++       * 启用第三家时这里自动跟随，不必记得回来改（纪律 7）。
++       */
++      default_critics: [...CRITICS],
++      max_critics: 3,
+       timeout_s: { plan: 900, code: 1200, bug: 1200 },
+       /*
+        * 每次 `--wait` 的窗口，同时也是**用户能收到进度的最小间隔**——Bash 工具在
+@@ -98,7 +108,7 @@ export function defaultConfig(): Config {
+         '.github/**', '.gitlab-ci.yml', 'Dockerfile', '.claude/**', '.trivium/**',
+       ],
+     },
+-    critics: {
++    agents: {
+       gemini: {
+         vendor: 'antigravity',
+         bin: null,
+@@ -205,6 +215,131 @@ export function applyProfileOverride(cfg: Config, name: string | null | undefine
+   return { ...cfg, active_profile: wanted };
+ }
+ 
++/**
++ * 按 vendor 取某个 Agent 的配置段，并把联合类型收窄到该厂商的形状。
++ *
++ * `agents` 是 `Partial<Record<AgentId, AgentConfig>>`，直接 `cfg.agents.gemini!.agent`
++ * 有两个问题：一是 `!` 在配置缺段时不报错，而是把 undefined 带到下游某处才崩，
++ * 错误信息与真正的原因（配置里没有这一段）毫无关系；二是联合类型下访问
++ * 厂商专属字段编译不过，只能再加一次断言，于是 vendor 写错也不会被发现。
++ *
++ * 本函数把两件事一起做掉：**缺段就地失败并说清是哪一段**，vendor 不符也失败
++ * ——后者是路由错配，会把请求发给错误的 CLI（与 `run.v2` 的 vendor 逐值比对同一纪律）。
++ */
++export function agentConfigOf<V extends AgentConfig['vendor']>(
++  cfg: Config,
++  id: AgentId,
++  vendor: V,
++): Extract<AgentConfig, { vendor: V }> {
++  const seg = cfg.agents[id];
++  if (!seg) {
++    throw envError(
++      `配置里缺少 agents.${id} 段，而本次运行需要它。\n` +
++        `  已配置的 Agent：${Object.keys(cfg.agents).join('、') || '（无）'}`,
++    );
++  }
++  if (seg.vendor !== vendor) {
++    throw envError(
++      `agents.${id}.vendor 是 ${seg.vendor}，但此处按 ${vendor} 使用它。\n` +
++        '  vendor 决定适配器路由与禁读矩阵，错配会把请求发给另一家 CLI。',
++    );
++  }
++  return seg as Extract<AgentConfig, { vendor: V }>;
++}
++
++/**
++ * v1 → v2 的**内存迁移**（设计 §13.1.1，M7b 第 4 步）。
++ *
++ * 返回迁移后的配置与一条人读说明；入参不是 v1 时原样返回、说明为 null（幂等）。
++ *
++ * **磁盘上的文件不动。** 这是本步最重要的性质：已初始化的目标项目升级编排器后
++ * **不改配置也能跑**，`trivium init` 的一次性改写因此是可选优化而非必要步骤。
++ * 若改成「读到 v1 就拒绝启动」，每个已有项目都会在升级瞬间硬失败。
++ *
++ * 迁移四件事：
++ *   · `critics.*` → `agents.*`；
++ *   · `allow_single_flag` → `allow_partial_flag`（两者同时在场时**以新名为准**并在说明里点出）；
++ *   · 补 `default_critics`（取 `agents` 的实有键）与 `max_critics`；
++ *   · schema 标识改写为 v2。
++ *
++ * `default_critics` 取实有键而不是 `CRITICS` 全集，是为了让「配置里只写了一家」
++ * 的旧项目迁移后仍然只跑那一家——迁移不该悄悄扩大审查面。
++ */
++export function migrateConfigV1(raw: unknown): { config: unknown; note: string | null } {
++  if (typeof raw !== 'object' || raw === null) return { config: raw, note: null };
++  const c = { ...(raw as Record<string, unknown>) };
++  const review0 = c['review'] as Record<string, unknown> | undefined;
++
++  /*
++   * 触发条件不只看 `schema` 字段（审查这条要特别留意）。
++   *
++   * `config.local.yaml` 是**覆盖片段**，通常根本没有 `schema` 键，却完全可能写着
++   * `critics.gemini.bin` 这种本机路径覆盖。只认 schema 字段的话，那类文件不会被迁移，
++   * 它的 `critics` 段就会原样穿过合并、被 v2 的 `additionalProperties: false` 判非法——
++   * 用户看到的是「你的本机配置不合法」，而真正的原因是我们改了键名。
++   *
++   * 所以再认两个旧形态的**特征键**。两者在 v2 里都已不是合法键，
++   * 出现即可断定是旧配置，不存在误伤。
++   */
++  const looksV1 =
++    c['schema'] === CONFIG_SCHEMA_ID_V1 ||
++    c['critics'] !== undefined ||
++    review0?.['allow_single_flag'] !== undefined;
++  if (!looksV1) return { config: raw, note: null };
++
++  const changes: string[] = [];
++
++  if (c['critics'] !== undefined && c['agents'] === undefined) {
++    c['agents'] = c['critics'];
++    changes.push('critics.* → agents.*');
++  }
++  delete c['critics'];
++
++  const review = { ...((c['review'] as Record<string, unknown> | undefined) ?? {}) };
++  if (review['allow_single_flag'] !== undefined) {
++    if (review['allow_partial_flag'] === undefined) {
++      review['allow_partial_flag'] = review['allow_single_flag'];
++      changes.push('review.allow_single_flag → allow_partial_flag');
++    } else {
++      /*
++       * 两个名字同时在场：**以新名为准**，并把这件事说出来。
++       * 静默取其一是最坏的选择——用户改了旧名却不生效，且无从察觉。
++       */
++      changes.push('review 同时写了 allow_single_flag 与 allow_partial_flag，以后者为准');
++    }
++    delete review['allow_single_flag'];
++  }
++  if (review['default_critics'] === undefined) {
++    const keys = Object.keys((c['agents'] as Record<string, unknown> | undefined) ?? {});
++    if (keys.length > 0) {
++      review['default_critics'] = keys;
++      changes.push(`review.default_critics 补为 [${keys.join(', ')}]`);
++    }
++  }
++  /*
++   * `max_critics` 只在**整份配置**（有 schema 字段的那份）上补默认值。
++   * 覆盖片段补了也无害，但会让 config.local.yaml 凭空多出一个用户没写的键，
++   * 日后排查「这个值哪来的」会多绕一圈。
++   */
++  if (c['schema'] === CONFIG_SCHEMA_ID_V1 && review['max_critics'] === undefined) {
++    review['max_critics'] = 3;
++  }
++  if (Object.keys(review).length > 0) c['review'] = review;
++
++  if (c['schema'] === CONFIG_SCHEMA_ID_V1) c['schema'] = CONFIG_SCHEMA_ID;
++
++  // 只改了片段里不存在的东西（例如空对象）：没有实质变化就不打扰用户
++  if (changes.length === 0) return { config: c, note: null };
++
++  return {
++    config: c,
++    note:
++      `检测到 ${CONFIG_SCHEMA_ID_V1} 形态的配置，已在内存中按 ${CONFIG_SCHEMA_ID} 迁移（磁盘文件未改动）：\n` +
++      changes.map((x) => `    · ${x}`).join('\n') +
++      `\n  旧配置继续可用。想一次性改写磁盘（带备份）请运行 \`trivium init\`。`,
++  };
++}
++
+ /** 加载配置并解析出运行上下文 */
+ export async function loadCtx(opts: LoadOptions = {}): Promise<Ctx> {
+   const cwd = opts.cwd ?? process.cwd();
+@@ -221,15 +356,42 @@ export async function loadCtx(opts: LoadOptions = {}): Promise<Ctx> {
+   const sources: string[] = ['<builtin defaults>'];
+   let cfg = defaultConfig();
+ 
++  /*
++   * **迁移必须逐源进行、且在 deepMerge 之前**（设计 §13.1.1）。
++   *
++   * 顺序颠倒会得到一个静默错误的结果：`defaultConfig()` 已是 v2 形状（带 `agents`），
++   * 先合并的话，磁盘上的 `critics` 段只会作为一个**额外的键**并排落在结果里，
++   * 而 `agents` 仍是内置默认——用户配的 bin / agent / max_turns **一个都不生效**，
++   * 却没有任何报错。先迁移再合并，`critics` 在进入合并前就已改名为 `agents`。
++   */
++  const migrationNotes: string[] = [];
+   for (const name of ['config.yaml', 'config.local.yaml']) {
+     const p = path.join(triviumDir, name);
+     const data = await readYamlIfExists(p);
+     if (data !== undefined) {
+-      cfg = deepMerge(cfg, data);
++      const { config: migrated, note } = migrateConfigV1(data);
++      if (note) migrationNotes.push(`${p}：${note}`);
++      cfg = deepMerge(cfg, migrated);
+       sources.push(p);
+     }
+   }
+ 
++  /*
++   * 告警走 **stderr**，每次 CLI 调用最多一次（设计 §13.1.1 的方框）。
++   *
++   * 不能走 stdout：`--json` 模式下 stdout 只允许出现一个 JSON，
++   * 掺一行人读文字就会破坏 Hook 与 skills 读取 CLI 输出的协议。
++   * `warn()` 本身恒走 stderr，这里依赖的就是那条铁律。
++   *
++   * 跨进程不去重：`--start` 派生的 worker 是独立进程，会各打一次。
++   * 为此引入跨进程状态不值得——那是个需要落盘、需要清理、还会在并发下出错的
++   * 机制，用来省掉一行提示。
++   */
++  if (migrationNotes.length > 0) {
++    const { warn } = await import('./util/log.js');
++    for (const n of migrationNotes) warn(n);
++  }
++
+   if (!(await exists(triviumDir)) && !opts.allowUninitialized) {
+     throw envError(
+       `本项目尚未初始化 TriviumCode（缺 ${TRIVIUM_DIR}/）。请先运行 \`trivium init\`。`,
+@@ -237,7 +399,7 @@ export async function loadCtx(opts: LoadOptions = {}): Promise<Ctx> {
+   }
+ 
+   /*
+-   * 合并结果按 trivium.config.v1 校验，非法值**明确报错**而不是静默落回默认。
++   * 合并结果按 trivium.config.v2 校验，非法值**明确报错**而不是静默落回默认。
+    * 原先一处校验都没有：`gate: "off"` 会让 deepMerge 用标量顶掉整个对象，
+    * `block_commit` 变 undefined、提交拦截静默关闭；`approval_lock_scope: sesion`
+    * 拼错反而按 global 全局加锁；`stop_hook_max_blocks: 0` 让收工拦截一次都不生效。
+@@ -248,7 +410,7 @@ export async function loadCtx(opts: LoadOptions = {}): Promise<Ctx> {
+     throw envError(
+       `配置不合法（${sources.slice(1).join('、') || '内置默认'}）：\n` +
+         problems.map((p) => `  · ${p}`).join('\n') +
+-        '\n  契约见 skills/dual-critic/schema/config.v1.json。',
++        '\n  契约见 skills/dual-critic/schema/config.v2.json。',
+     );
+   }
+ 
+diff --git a/src/trivium/doctor.ts b/src/trivium/doctor.ts
+index c737ef5..3271bb4 100644
+--- a/src/trivium/doctor.ts
++++ b/src/trivium/doctor.ts
+@@ -10,7 +10,7 @@
+  */
+ import path from 'node:path';
+ import YAML from 'yaml';
+-import { defaultProbe, patchProbe } from './config.js';
++import { agentConfigOf, defaultProbe, patchProbe } from './config.js';
+ import { EXIT } from './exit-codes.js';
+ import { probeEnv } from './probes/env.js';
+ import { probeVerifyCommands } from './probes/verify-commands.js';
+@@ -126,7 +126,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+   // ── Antigravity ─────────────────────────────────────────────────────
+   if (only === null || only === 'agy') {
+     step('探测 Antigravity（agy）…');
+-    const r = await probeAgy(opts.config.critics.gemini.bin, opts.config.critics.gemini.agent, {
++    const r = await probeAgy(agentConfigOf(opts.config, 'gemini', 'antigravity').bin, agentConfigOf(opts.config, 'gemini', 'antigravity').agent, {
+       skipModelCalls: opts.skipModelCalls ?? false,
+       existing: probe.agy,
+     });
+@@ -145,7 +145,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+   // ── ZCode ───────────────────────────────────────────────────────────
+   if (only === null || only === 'zcode') {
+     step('探测 ZCode（zcode.cjs）…');
+-    const r = await probeZcode(opts.config.critics.glm.entry, env.nodePath ?? process.execPath, {
++    const r = await probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {
+       skipModelCalls: opts.skipModelCalls ?? false,
+       existing: probe.zcode,
+     });
+diff --git a/src/trivium/init.ts b/src/trivium/init.ts
+index 702b878..909651a 100644
+--- a/src/trivium/init.ts
++++ b/src/trivium/init.ts
+@@ -15,8 +15,8 @@ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import YAML from 'yaml';
+ import type { Ctx } from './types.js';
+-import { defaultConfig } from './config.js';
+-import { ensureDir, exists, writeAtomic } from './util/fsx.js';
++import { CONFIG_SCHEMA_ID, CONFIG_SCHEMA_ID_V1, defaultConfig, migrateConfigV1 } from './config.js';
++import { createExclusive, ensureDir, exists, writeAtomic } from './util/fsx.js';
+ import { say, step, warn } from './util/log.js';
+ 
+ const MARKER_BEGIN = '<!-- BEGIN TriviumCode -->';
+@@ -258,6 +258,78 @@ export async function writeWrapper(
+   (had ? report.updated : report.created).push(p);
+ }
+ 
++/**
++ * `config.yaml` 的 v1 → v2 一次性磁盘改写（设计 §13.1.1，M7b 第 4 步）。
++ *
++ * 返回是否真的改写了。**这是可选优化，不是必要步骤**：`loadCtx` 的内存迁移
++ * 已经让旧配置照常可用，所以这里的每一条失败路径都选择「放弃改写并说明」，
++ * 而不是让 `init` 整个失败——为一个锦上添花的动作打断初始化不划算。
++ *
++ * 失败路径纪律（计划 §3.2 逐条钉死）：
++ *   · 备份用 `O_CREAT|O_EXCL`，已存在即放弃——与归档的防覆盖铁律同纪律，
++ *     决不覆盖一份可能是上一次改写留下的、唯一的原文；
++ *   · 已是 v2 则幂等 no-op；
++ *   · 新文件走临时文件 + `rename` 原子替换（`writeAtomic`），不留半份。
++ *
++ * **注释保留是尽力项，不是验收项**：YAML 往返会丢掉原文件里的解释性注释。
++ * 原文完整保留在备份里，这一点会在报告里对用户说明。
++ */
++async function rewriteConfigToV2(
++  cfgPath: string,
++  report: InitReport,
++  dryRun: boolean,
++): Promise<boolean> {
++  let raw: string;
++  try {
++    raw = await fs.readFile(cfgPath, 'utf8');
++  } catch (e) {
++    report.notes.push(`${cfgPath} 读取失败，跳过 v2 改写：${(e as Error).message}`);
++    return false;
++  }
++
++  let parsed: unknown;
++  try {
++    parsed = YAML.parse(raw);
++  } catch (e) {
++    report.notes.push(`${cfgPath} 不是合法 YAML，跳过 v2 改写（内存迁移不受影响）：${(e as Error).message}`);
++    return false;
++  }
++
++  const { config: migrated, note } = migrateConfigV1(parsed);
++  if (!note) return false; // 已是 v2，或没有任何可迁移的东西：幂等 no-op
++
++  const backup = `${cfgPath}.trivium-backup`;
++  if (!dryRun) {
++    try {
++      // O_EXCL：备份已存在就放弃。宁可不改，也不覆盖唯一的原文
++      await createExclusive(backup, raw);
++    } catch (e) {
++      const why = (e as NodeJS.ErrnoException).code === 'EEXIST'
++        ? `${path.basename(backup)} 已存在`
++        : (e as Error).message;
++      report.notes.push(
++        `跳过 config.yaml 的 v2 改写：备份写不成（${why}）。\n` +
++          '  旧配置仍可用——每次运行会在内存里迁移，只是每次都会打一行提示。',
++      );
++      return false;
++    }
++    const header =
++      '# TriviumCode 项目配置（进 Git，团队共享）\n' +
++      '# 本机绝对路径与探针结论在 config.local.yaml（不进 Git）\n' +
++      '# verify.build / verify.test 只执行此处显式声明的命令——编排器不猜测执行（§14.1）\n' +
++      `# 本文件由 trivium init 从 ${CONFIG_SCHEMA_ID_V1} 改写而来，原文见 ` +
++      `${path.basename(backup)}（YAML 往返会丢失注释，原注释在备份里）\n\n`;
++    await writeAtomic(cfgPath, header + YAML.stringify(migrated, { lineWidth: 0 }));
++  }
++
++  report.updated.push(cfgPath);
++  report.notes.push(
++    `已把 ${cfgPath} 改写为 ${CONFIG_SCHEMA_ID}，原文备份到 ${path.basename(backup)}。\n` +
++      '  注意：YAML 往返会丢掉原文件里的注释，原注释完整保留在备份中。',
++  );
++  return true;
++}
++
+ export async function runInit(opts: InitOptions): Promise<InitReport> {
+   const { ctx } = opts;
+   const assetRoot = opts.assetRoot ?? assetRootDefault();
+@@ -277,7 +349,8 @@ export async function runInit(opts: InitOptions): Promise<InitReport> {
+   // ── config.yaml（团队共享策略，进 Git）──
+   const cfgPath = path.join(ctx.triviumDir, 'config.yaml');
+   if (await exists(cfgPath)) {
+-    report.skipped.push(`${cfgPath}（已存在，不覆盖）`);
++    const rewritten = await rewriteConfigToV2(cfgPath, report, dryRun);
++    if (!rewritten) report.skipped.push(`${cfgPath}（已存在，不覆盖）`);
+   } else {
+     const base = defaultConfig();
+     // probe 段属本机结论，落在 config.local.yaml，不进这份
+diff --git a/src/trivium/preflight.ts b/src/trivium/preflight.ts
+index 55e06e8..0fc9941 100644
+--- a/src/trivium/preflight.ts
++++ b/src/trivium/preflight.ts
+@@ -17,7 +17,7 @@ import { promises as fs, constants as fsConstants } from 'node:fs';
+ import type { AuthCacheEntry, Config, CriticId, Ctx, Stage } from './types.js';
+ import { CRITICS, STAGES } from './types.js';
+ import { EXIT, TriviumError } from './exit-codes.js';
+-import { patchProbe, probeIsFresh } from './config.js';
++import { agentConfigOf, patchProbe, probeIsFresh } from './config.js';
+ import { invokeAgy } from './adapters/agy.js';
+ import { invokeZcode, qualifyZcodeModel } from './adapters/zcode.js';
+ import { routeModel } from './adapters/base.js';
+@@ -77,7 +77,7 @@ export interface PreflightOptions {
+ 
+ /** 决定 agy 可用性的配置指纹：只读 Agent 定义文件（AGY-02） */
+ async function agyFingerprint(cfg: Config): Promise<string | null> {
+-  const p = path.join(os.homedir(), '.gemini/config/agents', cfg.critics.gemini.agent, 'agent.md');
++  const p = path.join(os.homedir(), '.gemini/config/agents', agentConfigOf(cfg, 'gemini', 'antigravity').agent, 'agent.md');
+   return (await exists(p)) ? sha256File(p) : null;
+ }
+ 
+@@ -267,7 +267,7 @@ async function checkReadonlyCapability(cfg: Config): Promise<CheckResult> {
+   const agentPath = path.join(
+     os.homedir(),
+     '.gemini/config/agents',
+-    cfg.critics.gemini.agent,
++    agentConfigOf(cfg, 'gemini', 'antigravity').agent,
+     'agent.md',
+   );
+   if (!(await exists(agentPath))) {
+@@ -366,7 +366,7 @@ async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe
+     cwd: ctx.projectRoot,
+     prompt: '只回复 OK 两个字母，不要调用任何工具。',
+     model: cfg.probe.agy.models[0] ?? null,
+-    agent: cfg.critics.gemini.agent,
++    agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
+     timeoutMs: 120_000,
+     pty: cfg.probe.agy.pty_required === true,
+   });
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index 7641a88..d2182e7 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -52,7 +52,7 @@ import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeM
+ import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
+ import { acquireLock } from './lock.js';
+ import { measureAllPairs, renderDivergence } from './divergence.js';
+-import { runRoot } from './config.js';
++import { agentConfigOf, runRoot } from './config.js';
+ import { setGateChecked } from './state.js';
+ import { ensureDir, sha256, sha256File } from './util/fsx.js';
+ import { workTreeHash } from './util/git.js';
+@@ -186,7 +186,7 @@ export interface ReviewOptions {
+   /**
+    * 本次运行临时降级：一侧失败时不中止，产出单审结果并留痕（§12.4）。
+    *
+-   * 受 `review.allow_single_flag` 约束——配置里关掉这个开关，命令行也不能降级，
++   * 受 `review.allow_partial_flag` 约束——配置里关掉这个开关，命令行也不能降级，
+    * 否则「默认 strict」就成了纸面规定。
+    */
+   allowSingle?: boolean;
+@@ -221,7 +221,7 @@ function resolveAssetRoot(override?: string): string {
+ /**
+  * 逐侧取思考等级。**穷尽分支，不留三目兜底。**
+  *
+- * 此前是 `critic === 'gemini' ? cfg.critics.gemini.effort[stage] : undefined`：
++ * 此前是 `critic === 'gemini' ? agentConfigOf(cfg, 'gemini', 'antigravity').effort[stage] : undefined`：
+  * 非 gemini 的一切取值都静默落进 `undefined`，第三家接入后思考等级会无声丢失
+  * （不抛异常、不退非零，只是那一侧按厂商默认档跑）。
+  *
+@@ -239,7 +239,7 @@ function effortFor(
+ ): 'low' | 'medium' | 'high' | undefined {
+   switch (critic) {
+     case 'gemini':
+-      return cfg.critics.gemini.effort[stage];
++      return agentConfigOf(cfg, 'gemini', 'antigravity').effort[stage];
+     case 'glm':
+       // ZCode 无思考等级旗标（C-07）。是「本侧不存在此概念」，不是「忘了传」。
+       return undefined;
+@@ -353,7 +353,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+     );
+   }
+   if (opts.allowSingle) {
+-    if (cfg.review.allow_single_flag) {
++    if (cfg.review.allow_partial_flag) {
+       warn(
+         '已启用 --allow-single：一侧失败时不中止，产出单审结果。' +
+           '单审的交叉验证价值远低于双审，结果会在元数据与文档头标为降级（AC-06）。',
+@@ -781,11 +781,11 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+   });
+ 
+   /*
+-   * 失败策略：配置给默认值，`--allow-single` 只在 allow_single_flag 允许时才能覆盖。
++   * 失败策略：配置给默认值，`--allow-single` 只在 allow_partial_flag 允许时才能覆盖。
+    * 若配置关掉了开关而命令行仍传了它，照 strict 执行——已在 prepareRun 里告警过。
+    */
+   const effectivePolicy: 'strict' | 'degrade' =
+-    opts.allowSingle && cfg.review.allow_single_flag ? 'degrade' : cfg.review.failure_policy;
++    opts.allowSingle && cfg.review.allow_partial_flag ? 'degrade' : cfg.review.failure_policy;
+   const mode = decideMode(results, effectivePolicy, sides);
+   const warnings = renderGuardWarnings(verdict);
+ 
+diff --git a/src/trivium/schemas.ts b/src/trivium/schemas.ts
+index 992a7f3..3954c01 100644
+--- a/src/trivium/schemas.ts
++++ b/src/trivium/schemas.ts
+@@ -2,7 +2,9 @@
+  * 四份 JSON Schema 的运行时校验器（设计 §6 / PROTOCOL §一）。
+  *
+  * `review.v1` 由 parse.ts 自己持有（它还要把错误回喂给模型）；其余集中在这里：
+- *   - `config.v1`      → loadCtx 四级合并之后校验（M12：原先完全不校验，`gate: "off"` 静默 fail-open）
++ *   - `config.v2`      → loadCtx 四级合并之后校验（M12：原先完全不校验，`gate: "off"` 静默 fail-open）。
++ *                        v1 不在这里：它在 `config.ts` 由 `migrateConfigV1` 迁成 v2 之后才进校验，
++ *                        使校验只面对一种形状
+  *   - `run.v2`         → writeRunMeta 写前校验；留痕核对把不合 schema 的 run.json 当作「不可读」
+  *   - `run.v1`         → **历史契约，只读不写**（M7b 第 3 步）。既有归档是不可变工件（P6），
+  *                        必须按写入时的规范解读，故 v1 校验器长期保留
+@@ -13,11 +15,11 @@
+  */
+ import { Ajv2020 } from 'ajv/dist/2020.js';
+ import type { ErrorObject, ValidateFunction } from 'ajv';
+-import configSchema from '../../skills/dual-critic/schema/config.v1.json' with { type: 'json' };
++import configSchema from '../../skills/dual-critic/schema/config.v2.json' with { type: 'json' };
+ import runV1Schema from '../../skills/dual-critic/schema/run.v1.json' with { type: 'json' };
+ import runV2Schema from '../../skills/dual-critic/schema/run.v2.json' with { type: 'json' };
+ import dispositionSchema from '../../skills/dual-critic/schema/disposition.v1.json' with { type: 'json' };
+-import { agentById, isAgentId } from './agents/registry.js';
++import { ALL_AGENT_IDS, CRITIC_AGENT_IDS, agentById, isAgentId } from './agents/registry.js';
+ 
+ let ajv: Ajv2020 | undefined;
+ const cache = new Map<string, ValidateFunction>();
+@@ -45,9 +47,83 @@ export function formatErrors(errors: readonly ErrorObject[] | null | undefined):
+   });
+ }
+ 
++/**
++ * 校验 `trivium.config.v2`。
++ *
++ * **两段式，与 `validateRunMeta` 同构**：ajv 校形状，注册表校身份。
++ * 理由也相同——Agent id 与 vendor 的唯一来源是注册表（纪律 7），
++ * 在 schema 里抄第二份，新增一家时改一漏二不会报错。
++ */
+ export function validateConfig(data: unknown): string[] {
+-  const v = compile('config', configSchema as object);
+-  return v(data) ? [] : formatErrors(v.errors);
++  const v = compile('config.v2', configSchema as object);
++  if (!v(data)) return formatErrors(v.errors);
++  return checkConfigAgents(data);
++}
++
++/**
++ * 配置里与 Agent 身份有关的跨字段规则（设计 13.1.1 / 计划 §3.2「约束二」）。
++ *
++ * 这三条 JSON Schema 都表达不了：前两条要查注册表，第三条要跨字段比对。
++ * 与 `config.ts` 的既有纪律一致——**非法值明确报错，不静默落回默认**。
++ */
++function checkConfigAgents(data: unknown): string[] {
++  const c = data as {
++    agents?: Record<string, { vendor?: unknown }>;
++    review?: { default_critics?: unknown; max_critics?: unknown };
++  };
++  const problems: string[] = [];
++  const agents = c.agents ?? {};
++
++  for (const [id, seg] of Object.entries(agents)) {
++    const agent = agentById(id);
++    /*
++     * 键只要求「是已登记 Agent」，**不要求 criticEnabled**（设计 13.1.1）：
++     * Driver 自身也需要配置容身之处。M7b 计划稿 §3.2 写的是「必须 criticEnabled」，
++     * 以设计为准——那条会把未来的 Driver 段一并拒掉。
++     */
++    if (!agent) {
++      problems.push(
++        `agents.${id} 不是已登记的 Agent id（已登记：${ALL_AGENT_IDS.join('、')}）`,
++      );
++      continue;
++    }
++    if (seg?.vendor !== agent.vendor) {
++      problems.push(
++        `agents.${id}.vendor 与注册表不符：配的是 ${JSON.stringify(seg?.vendor)}，` +
++          `登记的是 ${agent.vendor}。vendor 决定适配器路由与禁读矩阵，错配会发给另一家 CLI`,
++      );
++    }
++  }
++
++  const picked = c.review?.default_critics;
++  if (Array.isArray(picked)) {
++    const max = typeof c.review?.max_critics === 'number' ? c.review.max_critics : 3;
++    if (picked.length > max) {
++      problems.push(`review.default_critics 有 ${picked.length} 项，超过 max_critics=${max}`);
++    }
++    for (const id of picked) {
++      if (typeof id !== 'string') {
++        problems.push(`review.default_critics 含非字符串项：${JSON.stringify(id)}`);
++        continue;
++      }
++      /*
++       * **这里才是 criticEnabled 的约束点**：能被选为审核者的必须是启用了审核者
++       * 能力的 Agent。登记但未启用（当前的 codex / claude）出现在这里要报错，
++       * 而不是静默忽略——静默会让用户以为第三家已经在跑了。
++       */
++      if (!CRITIC_AGENT_IDS.includes(id as never)) {
++        problems.push(
++          `review.default_critics 的「${id}」不是当前可用的审核者` +
++            `（可用：${CRITIC_AGENT_IDS.join('、')}）`,
++        );
++        continue;
++      }
++      if (!(id in agents)) {
++        problems.push(`review.default_critics 的「${id}」在 agents 里没有配置段`);
++      }
++    }
++  }
++  return problems;
+ }
+ 
+ /**
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 21448c0..4b17867 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -183,7 +183,26 @@ export interface IsolationConfig {
+ export interface ReviewConfig {
+   parallel: boolean;
+   failure_policy: 'strict' | 'degrade';
+-  allow_single_flag: boolean;
++  /**
++   * 允许部分入选审核者失败后降级续跑（`--allow-single` 的配置开关）。
++   *
++   * v1 里叫 `allow_single_flag`。改名是因为「single」在 N 方语境下已经不成立：
++   * 三审挂一侧后剩两侧，那不是 single 而是 partial（对齐 `run.v2` 的完成度取值）。
++   * **旧名长期保留为别名**，`loadCtx` 的内存迁移会把它搬过来，旧配置不改也能跑。
++   */
++  allow_partial_flag: boolean;
++  /**
++   * 不给 `--critics` 时的默认审核者集合（设计 13.1.1）。
++   *
++   * 每一项都必须在 `agents` 里有配置，且必须是注册表中 `criticEnabled: true` 的 Agent。
++   * 默认值维持 `[gemini, glm]`——与现状等价，成本不变。
++   *
++   * **接线在第 5 步**：本步（第 4 步）只让它进入配置契约与校验，
++   * `--critics` 入口尚未接上，运行时仍走 `CRITICS` 全集。
++   */
++  default_critics: CriticId[];
++  /** 单次运行可选审核者的基数上限（FR-29：1～3） */
++  max_critics: number;
+   timeout_s: Record<Stage, number>;
+   wait_timeout_s: number;
+   heartbeat_stale_s: number;
+@@ -216,6 +235,19 @@ export interface GlmCriticConfig {
+   unsupported_override: 'reject' | 'annotate';
+ }
+ 
++/**
++ * 单个 Agent 的配置段（`config.v2` 的 `agents.<id>`）。
++ *
++ * **以 `vendor` 为判别式的可辨识联合，不是同构 record**：两家的字段集合完全不同
++ * （antigravity 要 `agent` 与 `effort`，zcode 要 `entry` 与 `max_turns`），
++ * 硬压成同一个形状只会得到一堆互相不适用的可选字段，校验也就形同虚设。
++ *
++ * codex / claude 的形状随 M8 / M9 / M10 加入本联合。在那之前，配置里写
++ * `agents.claude` 会被 schema 拒——那不是缺陷，而是「形状尚未定义」的如实反映：
++ * 设计 13.1.1 允许 Driver 段存在，但没说它长什么样，凭空放行等于承诺一个不存在的契约。
++ */
++export type AgentConfig = GeminiCriticConfig | GlmCriticConfig;
++
+ export interface GateConfig {
+   require_adjudication: boolean;
+   allow_defer: boolean;
+@@ -233,13 +265,23 @@ export type ProfileEntry = Partial<Record<Stage, string>> & { effort?: 'low' | '
+ export type Profile = Partial<Record<CriticId, ProfileEntry>>;
+ 
+ export interface Config {
+-  schema: 'trivium.config.v1';
++  schema: 'trivium.config.v2';
+   archive_root: string;
+   topic: { max_len: number; forbid_chars: string[] };
+   runtime: RuntimeConfig;
+   isolation: IsolationConfig;
+   review: ReviewConfig;
+-  critics: { gemini: GeminiCriticConfig; glm: GlmCriticConfig };
++  /**
++   * 逐 Agent 的配置段，键是注册表的 Agent id（v1 里叫 `critics`）。
++   *
++   * **键只要求「是已登记 Agent」，不要求 `criticEnabled: true`**（设计 13.1.1）：
++   * Driver 自身也需要配置容身之处。`criticEnabled` 只约束 `review.default_critics`
++   * 与 `--critics` 的每一项。
++   *
++   * 这一条与 M7b 计划稿 §3.2「约束一」写的相反（那里要求键必须 `criticEnabled`），
++   * 以设计为准——计划稿早于设计定稿，那条约束会把未来的 Driver 段一并拒掉。
++   */
++  agents: Partial<Record<AgentId, AgentConfig>>;
+   profiles: Record<string, Profile>;
+   active_profile: string;
+   gate: GateConfig;
+diff --git a/test/unit/registry-parity.test.ts b/test/unit/registry-parity.test.ts
+index b8cb2de..6fc4067 100644
+--- a/test/unit/registry-parity.test.ts
++++ b/test/unit/registry-parity.test.ts
+@@ -143,7 +143,7 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
+   { file: 'adapters/index.ts', why: 'Agent id → 厂商适配器的唯一接线处；新增一家在此加一行（M7b 第 2 步把 review/run-protocol 两份字面表收敛到这里）' },
+   { file: 'adapters/agy.ts', why: '厂商专属适配器：文件本身即该 Agent 的命名空间' },
+   { file: 'adapters/zcode.ts', why: '厂商专属适配器：ZCode 调用与参数构造' },
+-  { file: 'config.ts', why: '默认配置里各 Agent 的厂商专属配置段（critics.gemini / critics.glm 的 vendor、entry、max_turns 与模型档位）；M7b 第 4 步迁 agents.* 后收敛' },
++  { file: 'config.ts', why: '内置默认配置里各 Agent 的厂商专属配置段（agents.gemini / agents.glm 的 vendor、agent、entry、max_turns）与 profiles 的逐 Agent 模型档位。M7b 第 4 步迁成 agents.* 后**仍需要**：内置默认值本身就得指名道姓地写出每一家配什么，那不是硬编码而是默认值的定义处；新增一家时这里加一段，与注册表加一行是同一件事的两面' },
+   // 注意：`src/install.ts` 不在本对账的扫描范围（只扫 src/trivium/），
+   // 因此不需要、也不应该为它留白名单条目——留着只会误导读者以为它被扫过。
+   //
+@@ -152,7 +152,7 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
+   // 造出的假命中（见 stripComments 的注释）。
+   { file: 'doctor.ts', why: '逐侧探测的人读输出与厂商专属诊断话术' },
+   { file: 'preflight.ts', why: '逐侧预检的人读输出，以及 checkModelSlugs 的厂商专属 slug 校验分支（agy 目录硬校验 vs zcode 短名补全，无法登记为统一数据）' },
+-  { file: 'review.ts', why: 'effortFor 的厂商专属分支：v1 配置的 critics.* 是厂商形状、effort 只存在于 gemini 段；M7b 第 4 步 config v2 统一成 agents.<id>.effort 后收敛' },
++  { file: 'review.ts', why: 'effortFor 的厂商专属分支：effort 只存在于 antigravity 形状的配置段，ZCode 0.16.5 实测没有等价旗标（M0 坑清单 C-07）。**M7b 第 4 步后仍需要**——config v2 只把 critics.* 改名为 agents.*，并未把 effort 统一成逐 Agent 字段；设计 13.1.1 把 tiers / models / default_tier 排在 M11，在那之前这里的编译期穷尽（switch + never）是能拿到的最强保证' },
+   { file: 'selftest.ts', why: '自检场景里两侧桩的固定编排；M7b 增 N 侧场景' },
+   { file: 'types.ts', why: 'CriticId 的字面收窄（Extract<AgentId, …>）；M7b 随注册表放开' },
+ ];
+diff --git a/skills/dual-critic/schema/config.v2.json b/skills/dual-critic/schema/config.v2.json
+new file mode 100644
+index 0000000..3aeec76
+--- /dev/null
++++ b/skills/dual-critic/schema/config.v2.json
+@@ -0,0 +1,554 @@
++{
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "$id": "trivium.config.v2",
++  "title": "TriviumCode 项目配置 v2",
++  "description": "设计 §13.1 + §13.1.1。v1 保留为历史契约：loadCtx 检测到 v1 会做内存迁移后再校验，磁盘上的旧配置不改也能跑。",
++  "type": "object",
++  "additionalProperties": false,
++  "required": [
++    "schema",
++    "archive_root",
++    "topic",
++    "runtime",
++    "isolation",
++    "review",
++    "agents",
++    "profiles",
++    "active_profile",
++    "gate",
++    "preflight",
++    "verify",
++    "retention",
++    "probe",
++    "probe_ttl_days"
++  ],
++  "properties": {
++    "schema": {
++      "const": "trivium.config.v2"
++    },
++    "archive_root": {
++      "type": "string",
++      "minLength": 1,
++      "pattern": "^(?!\\.\\.)(?!/).+",
++      "description": "项目相对路径，不得逃出项目根"
++    },
++    "topic": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": [
++        "max_len",
++        "forbid_chars"
++      ],
++      "properties": {
++        "max_len": {
++          "type": "integer",
++          "minimum": 1,
++          "maximum": 255
++        },
++        "forbid_chars": {
++          "type": "array",
++          "items": {
++            "type": "string"
++          }
++        }
++      }
++    },
++    "runtime": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": [
++        "node",
++        "run_root"
++      ],
++      "properties": {
++        "node": {
++          "type": [
++            "string",
++            "null"
++          ]
++        },
++        "run_root": {
++          "type": "string",
++          "minLength": 1
++        }
++      }
++    },
++    "isolation": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": [
++        "peer_artifact_globs",
++        "deny_via_cli",
++        "context_max_docs"
++      ],
++      "properties": {
++        "peer_artifact_globs": {
++          "type": "array",
++          "items": {
++            "type": "string"
++          }
++        },
++        "deny_via_cli": {
++          "enum": [
++            "auto",
++            "off"
++          ]
++        },
++        "context_max_docs": {
++          "type": "integer",
++          "minimum": 0
++        }
++      }
++    },
++    "review": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": [
++        "parallel",
++        "failure_policy",
++        "allow_partial_flag",
++        "timeout_s",
++        "wait_timeout_s",
++        "heartbeat_stale_s",
++        "retry",
++        "cache",
++        "min_tool_calls",
++        "min_project_reads",
++        "on_drift",
++        "on_drift_related",
++        "sensitive_globs",
++        "block_severities",
++        "skip_doc_only_review",
++        "skip_globs",
++        "never_skip_globs",
++        "default_critics",
++        "max_critics"
++      ],
++      "properties": {
++        "parallel": {
++          "type": "boolean"
++        },
++        "failure_policy": {
++          "enum": [
++            "strict",
++            "degrade"
++          ]
++        },
++        "allow_partial_flag": {
++          "type": "boolean",
++          "description": "允许部分入选审核者失败后降级续跑。v1 叫 allow_single_flag，旧名长期保留为别名，由 loadCtx 内存迁移搬过来。改名的理由：三审挂一侧后剩两侧，那是 partial 不是 single。"
++        },
++        "timeout_s": {
++          "type": "object",
++          "additionalProperties": false,
++          "required": [
++            "plan",
++            "code",
++            "bug"
++          ],
++          "properties": {
++            "plan": {
++              "type": "number",
++              "minimum": 0
++            },
++            "code": {
++              "type": "number",
++              "minimum": 0
++            },
++            "bug": {
++              "type": "number",
++              "minimum": 0
++            }
++          }
++        },
++        "wait_timeout_s": {
++          "type": "number",
++          "exclusiveMinimum": 0
++        },
++        "heartbeat_stale_s": {
++          "type": "number",
++          "exclusiveMinimum": 0
++        },
++        "retry": {
++          "type": "object",
++          "additionalProperties": false,
++          "required": [
++            "transient_max"
++          ],
++          "properties": {
++            "transient_max": {
++              "type": "integer",
++              "minimum": 0
++            }
++          }
++        },
++        "cache": {
++          "type": "boolean"
++        },
++        "min_tool_calls": {
++          "type": "object",
++          "additionalProperties": false,
++          "required": [
++            "plan",
++            "code",
++            "bug"
++          ],
++          "properties": {
++            "plan": {
++              "type": "number",
++              "minimum": 0
++            },
++            "code": {
++              "type": "number",
++              "minimum": 0
++            },
++            "bug": {
++              "type": "number",
++              "minimum": 0
++            }
++          }
++        },
++        "min_project_reads": {
++          "type": "object",
++          "additionalProperties": false,
++          "required": [
++            "plan",
++            "code",
++            "bug"
++          ],
++          "properties": {
++            "plan": {
++              "type": "number",
++              "minimum": 0
++            },
++            "code": {
++              "type": "number",
++              "minimum": 0
++            },
++            "bug": {
++              "type": "number",
++              "minimum": 0
++            }
++          }
++        },
++        "on_drift": {
++          "enum": [
++            "warn",
++            "fail"
++          ]
++        },
++        "on_drift_related": {
++          "enum": [
++            "warn",
++            "fail"
++          ]
++        },
++        "sensitive_globs": {
++          "type": "array",
++          "items": {
++            "type": "string"
++          }
++        },
++        "block_severities": {
++          "type": "array",
++          "items": {
++            "enum": [
++              "blocker",
++              "major",
++              "minor",
++              "nit"
++            ]
++          }
++        },
++        "skip_doc_only_review": {
++          "type": "boolean"
++        },
++        "skip_globs": {
++          "type": "array",
++          "items": {
++            "type": "string"
++          }
++        },
++        "never_skip_globs": {
++          "type": "array",
++          "items": {
++            "type": "string"
++          }
++        },
++        "default_critics": {
++          "type": "array",
++          "minItems": 1,
++          "uniqueItems": true,
++          "items": {
++            "type": "string",
++            "minLength": 1
++          },
++          "description": "不给 --critics 时的默认审核者集合。每项必须在 agents 里有配置、必须是 criticEnabled 的 Agent、且长度不超过 max_critics——三条都是跨字段约束，schema 表达不了，由 schemas.ts 补校。此处同样不枚举 Agent id（纪律 7）。"
++        },
++        "max_critics": {
++          "type": "integer",
++          "minimum": 1,
++          "maximum": 3,
++          "description": "单次运行可选审核者的基数上限（FR-29：1～3）。"
++        }
++      }
++    },
++    "agents": {
++      "type": "object",
++      "minProperties": 1,
++      "description": "逐 Agent 的配置段，键是注册表的 Agent id。键只要求「是已登记 Agent」，不要求 criticEnabled——Driver 自身也需要配置容身之处（设计 13.1.1）。键是否已登记、vendor 是否与注册表相符，由 schemas.ts 在 ajv 之后按注册表补校：Agent 身份的唯一来源是注册表（纪律 7），在 schema 里抄第二份，新增一家时改一漏二不会报错。值以 vendor 为判别式做可辨识联合——两家字段集合完全不同，压成同构 record 会让校验形同虚设。codex / claude 的形状随 M8 / M9 / M10 加入 oneOf。",
++      "additionalProperties": {
++        "oneOf": [
++          {
++            "type": "object",
++            "additionalProperties": false,
++            "required": [
++              "vendor",
++              "bin",
++              "agent",
++              "effort",
++              "readonly_commands"
++            ],
++            "properties": {
++              "vendor": {
++                "const": "antigravity"
++              },
++              "bin": {
++                "type": [
++                  "string",
++                  "null"
++                ]
++              },
++              "agent": {
++                "type": "string",
++                "minLength": 1
++              },
++              "effort": {
++                "type": "object",
++                "additionalProperties": false,
++                "required": [
++                  "plan",
++                  "code",
++                  "bug"
++                ],
++                "properties": {
++                  "plan": {
++                    "enum": [
++                      "low",
++                      "medium",
++                      "high"
++                    ]
++                  },
++                  "code": {
++                    "enum": [
++                      "low",
++                      "medium",
++                      "high"
++                    ]
++                  },
++                  "bug": {
++                    "enum": [
++                      "low",
++                      "medium",
++                      "high"
++                    ]
++                  }
++                }
++              },
++              "readonly_commands": {
++                "type": "array",
++                "items": {
++                  "type": "string"
++                }
++              }
++            }
++          },
++          {
++            "type": "object",
++            "additionalProperties": false,
++            "required": [
++              "vendor",
++              "entry",
++              "max_turns",
++              "unsupported_override"
++            ],
++            "properties": {
++              "vendor": {
++                "const": "zcode"
++              },
++              "entry": {
++                "type": [
++                  "string",
++                  "null"
++                ]
++              },
++              "max_turns": {
++                "type": "integer",
++                "minimum": 1
++              },
++              "unsupported_override": {
++                "enum": [
++                  "reject",
++                  "annotate"
++                ]
++              }
++            }
++          }
++        ]
++      }
++    },
++    "profiles": {
++      "type": "object",
++      "minProperties": 1,
++      "additionalProperties": {
++        "type": "object",
++        "minProperties": 1,
++        "description": "档位表，键是 Agent id。M7b 只接受裸 slug（逐阶段的模型名字符串），不接受 {tier} 或 {model, effort}——现实现拿不到模型即退 69，接受一个「schema 层合法、运行期必然失败」的形态正是本项目反对的。M11 随档位全链路放开。",
++        "additionalProperties": {
++          "type": "object",
++          "additionalProperties": false,
++          "properties": {
++            "plan": {
++              "type": "string"
++            },
++            "code": {
++              "type": "string"
++            },
++            "bug": {
++              "type": "string"
++            },
++            "effort": {
++              "enum": [
++                "low",
++                "medium",
++                "high"
++              ]
++            }
++          }
++        }
++      }
++    },
++    "active_profile": {
++      "type": "string",
++      "minLength": 1
++    },
++    "gate": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": [
++        "require_adjudication",
++        "allow_defer",
++        "block_business_write_when_awaiting_approval",
++        "approval_lock_scope",
++        "approval_lock_ttl_h",
++        "block_commit",
++        "stop_hook_max_blocks",
++        "max_check_retries",
++        "reason_policy",
++        "joint_blocker_policy"
++      ],
++      "properties": {
++        "require_adjudication": {
++          "type": "boolean"
++        },
++        "allow_defer": {
++          "type": "boolean"
++        },
++        "block_business_write_when_awaiting_approval": {
++          "type": "boolean"
++        },
++        "approval_lock_scope": {
++          "enum": [
++            "session",
++            "global"
++          ]
++        },
++        "approval_lock_ttl_h": {
++          "type": "number",
++          "exclusiveMinimum": 0
++        },
++        "block_commit": {
++          "type": "boolean"
++        },
++        "stop_hook_max_blocks": {
++          "type": "integer",
++          "minimum": 1,
++          "description": "0 会让 count > 0 恒真，收工拦截一次都不生效"
++        },
++        "max_check_retries": {
++          "type": "integer",
++          "minimum": 0
++        },
++        "reason_policy": {
++          "enum": [
++            "warn",
++            "hard"
++          ]
++        },
++        "joint_blocker_policy": {
++          "enum": [
++            "warn",
++            "hard"
++          ]
++        }
++      }
++    },
++    "preflight": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": [
++        "auth_cache_ttl_h"
++      ],
++      "properties": {
++        "auth_cache_ttl_h": {
++          "type": "number",
++          "minimum": 0
++        }
++      }
++    },
++    "verify": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": [
++        "build",
++        "test"
++      ],
++      "properties": {
++        "build": {
++          "type": "array",
++          "items": {
++            "type": "string"
++          }
++        },
++        "test": {
++          "type": "array",
++          "items": {
++            "type": "string"
++          }
++        }
++      }
++    },
++    "retention": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": [
++        "run_dir_days"
++      ],
++      "properties": {
++        "run_dir_days": {
++          "type": "integer",
++          "minimum": 0
++        }
++      }
++    },
++    "probe": {
++      "type": "object",
++      "description": "由 doctor 实测回填，形状随探针演进，这里只要求是对象",
++      "additionalProperties": true
++    },
++    "probe_ttl_days": {
++      "type": "number",
++      "exclusiveMinimum": 0
++    }
++  }
++}
+diff --git a/test/unit/config-migrate.test.ts b/test/unit/config-migrate.test.ts
+new file mode 100644
+index 0000000..9963bbc
+--- /dev/null
++++ b/test/unit/config-migrate.test.ts
+@@ -0,0 +1,301 @@
++/**
++ * 配置 v1 → v2：内存迁移、两段式校验、`init` 的一次性磁盘改写。
++ *
++ * 对应设计 §13.1.1（M7b 第 4 步）。
++ *
++ * 本组用例存在的理由：**旧配置不改也能跑**是这一步的核心承诺。
++ * 若它失守，每个已初始化的项目都会在升级编排器的瞬间硬失败——
++ * 而那种失败发生在用户机器上、在他们没做任何改动的时候。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import YAML from 'yaml';
++import {
++  CONFIG_SCHEMA_ID,
++  CONFIG_SCHEMA_ID_V1,
++  deepMerge,
++  defaultConfig,
++  loadCtx,
++  migrateConfigV1,
++} from '../../src/trivium/config.js';
++import { validateConfig } from '../../src/trivium/schemas.js';
++import { runInit } from '../../src/trivium/init.js';
++import { CRITICS } from '../../src/trivium/types.js';
++
++async function projectWith(files: Record<string, string>): Promise<string> {
++  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-mig-'));
++  await fs.mkdir(path.join(root, '.trivium'), { recursive: true });
++  for (const [name, body] of Object.entries(files)) {
++    await fs.writeFile(path.join(root, '.trivium', name), body, 'utf8');
++  }
++  return root;
++}
++
++/** 一份最小但完整的 v1 配置 */
++const v1Yaml = (extra = ''): string =>
++  [
++    `schema: ${CONFIG_SCHEMA_ID_V1}`,
++    'review:',
++    '  allow_single_flag: false',
++    'critics:',
++    '  gemini:',
++    '    vendor: antigravity',
++    '    bin: /custom/agy',
++    '  glm:',
++    '    vendor: zcode',
++    '    max_turns: 99',
++    extra,
++    '',
++  ].join('\n');
++
++// ─────────────────────── 纯函数：migrateConfigV1 ───────────────────────
++
++test('迁移：critics.* 搬到 agents.*，schema 标识改写为 v2', () => {
++  const { config, note } = migrateConfigV1(YAML.parse(v1Yaml()));
++  const c = config as Record<string, unknown>;
++  assert.equal(c['schema'], CONFIG_SCHEMA_ID);
++  assert.ok(c['agents'], 'critics 应已搬成 agents');
++  assert.equal(c['critics'], undefined, '旧键必须移除，否则会被 v2 的未知字段校验拒掉');
++  assert.ok(note, '有实质变化就要告诉用户');
++});
++
++test('迁移：allow_single_flag 搬到 allow_partial_flag，值保持不变', () => {
++  const { config } = migrateConfigV1(YAML.parse(v1Yaml()));
++  const review = (config as { review: Record<string, unknown> }).review;
++  assert.equal(review['allow_partial_flag'], false, '值要搬过去，不是重置为默认');
++  assert.equal(review['allow_single_flag'], undefined);
++});
++
++/*
++ * 两个名字同时在场时**以新名为准**，并把这件事写进告警。
++ * 静默取其一是最坏的选择：用户改了旧名却不生效，而且无从察觉。
++ */
++test('迁移：新旧名同时在场 → 以新名为准，且告警点出这件事', () => {
++  const raw = YAML.parse(v1Yaml());
++  raw.review.allow_partial_flag = true; // 与旧名的 false 冲突
++  const { config, note } = migrateConfigV1(raw);
++  const review = (config as { review: Record<string, unknown> }).review;
++  assert.equal(review['allow_partial_flag'], true, '新名优先');
++  assert.match(note ?? '', /同时写了/, '冲突必须说出来，不能静默取一个');
++});
++
++test('迁移：default_critics 取 agents 的实有键，不扩大审查面', () => {
++  const raw = YAML.parse(v1Yaml());
++  delete raw.critics.glm; // 旧配置只写了一家
++  const { config } = migrateConfigV1(raw);
++  const review = (config as { review: Record<string, unknown> }).review;
++  assert.deepEqual(
++    review['default_critics'], ['gemini'],
++    '只配了一家的项目，迁移后不该被悄悄加上第二家',
++  );
++});
++
++test('迁移幂等：v2 输入原样返回，不再告警', () => {
++  const { config, note } = migrateConfigV1(defaultConfig());
++  assert.equal(note, null);
++  assert.deepEqual(validateConfig(config), []);
++});
++
++test('迁移：非对象输入不炸（YAML 可能解析出标量或 null）', () => {
++  for (const bad of [null, undefined, 42, 'x', []]) {
++    assert.doesNotThrow(() => migrateConfigV1(bad));
++  }
++});
++
++/*
++ * 覆盖片段（config.local.yaml）通常**没有 schema 字段**，却完全可能写着
++ * `critics.gemini.bin` 这种本机路径覆盖。只按 schema 字段判定的话，它不会被迁移，
++ * 那个 critics 段会原样穿过合并、被 v2 的未知字段校验拒掉——
++ * 用户看到「你的本机配置不合法」，而真正的原因是我们改了键名。
++ */
++test('迁移：没有 schema 字段但有 critics 段的覆盖片段，照样迁移', () => {
++  const { config, note } = migrateConfigV1({ critics: { glm: { vendor: 'zcode', max_turns: 7 } } });
++  const c = config as Record<string, unknown>;
++  assert.ok(c['agents'], '覆盖片段也要迁移');
++  assert.equal(c['critics'], undefined);
++  assert.ok(note);
++});
++
++test('迁移：只有 allow_single_flag 的覆盖片段也认得出来', () => {
++  const { config, note } = migrateConfigV1({ review: { allow_single_flag: true } });
++  const review = (config as { review: Record<string, unknown> }).review;
++  assert.equal(review['allow_partial_flag'], true);
++  assert.ok(note);
++});
++
++test('迁移：与 v1 无关的片段原样返回，不打扰用户', () => {
++  const { config, note } = migrateConfigV1({ review: { wait_timeout_s: 60 } });
++  assert.equal(note, null);
++  assert.deepEqual(config, { review: { wait_timeout_s: 60 } });
++});
++
++// ─────────────── loadCtx：迁移在合并之前（顺序错了会静默失效）───────────────
++
++/*
++ * **本组最重要的一条。**
++ *
++ * `defaultConfig()` 已是 v2 形状（带 `agents`）。若先 deepMerge 再迁移，
++ * 磁盘上的 `critics` 段只会作为一个额外的键并排落在结果里，而 `agents` 仍是内置默认——
++ * 用户配的 bin / max_turns **一个都不生效，且没有任何报错**。
++ * 断言「用户配的值真的生效了」，才能锁住这个顺序。
++ */
++test('loadCtx：v1 配置里的自定义值真的生效（锁住「先迁移、后合并」）', async () => {
++  const root = await projectWith({ 'config.yaml': v1Yaml() });
++  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
++
++  assert.equal(ctx.config.schema, CONFIG_SCHEMA_ID);
++  const glm = ctx.config.agents.glm;
++  assert.ok(glm && glm.vendor === 'zcode');
++  assert.equal(glm.max_turns, 99, '顺序错了这里会是内置默认 40，且不报错');
++  const gemini = ctx.config.agents.gemini;
++  assert.ok(gemini && gemini.vendor === 'antigravity');
++  assert.equal(gemini.bin, '/custom/agy');
++  assert.equal(ctx.config.review.allow_partial_flag, false);
++});
++
++test('loadCtx：config.local.yaml 的 v1 覆盖片段同样生效', async () => {
++  const root = await projectWith({
++    'config.yaml': v1Yaml(),
++    'config.local.yaml': 'critics:\n  glm:\n    max_turns: 123\n',
++  });
++  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
++  const glm = ctx.config.agents.glm;
++  assert.ok(glm && glm.vendor === 'zcode');
++  assert.equal(glm.max_turns, 123, '本机覆盖片段没被迁移的话，这里会停在 99');
++});
++
++test('loadCtx：磁盘文件不被改动（内存迁移的核心性质）', async () => {
++  const root = await projectWith({ 'config.yaml': v1Yaml() });
++  const before = await fs.readFile(path.join(root, '.trivium/config.yaml'), 'utf8');
++  await loadCtx({ cwd: root, allowUninitialized: true });
++  const after = await fs.readFile(path.join(root, '.trivium/config.yaml'), 'utf8');
++  assert.equal(after, before, 'loadCtx 只读不写——磁盘改写是 init 的事');
++});
++
++// ─────────────── 两段式校验：注册表身份与跨字段规则 ───────────────
++
++test('校验：agents 的键不是已登记 Agent → 报错并列出已登记的', () => {
++  const cfg = defaultConfig() as unknown as { agents: Record<string, unknown> };
++  cfg.agents['nobody'] = { vendor: 'zcode', entry: null, max_turns: 1, unsupported_override: 'reject' };
++  const problems = validateConfig(cfg);
++  assert.ok(problems.some((p) => p.includes('nobody')), problems.join('；'));
++});
++
++test('校验：agents.<id>.vendor 与注册表不符 → 报错（路由错配会发给另一家 CLI）', () => {
++  const cfg = JSON.parse(JSON.stringify(defaultConfig()));
++  cfg.agents.glm.vendor = 'antigravity';
++  const problems = validateConfig(cfg);
++  assert.ok(problems.some((p) => p.includes('vendor')), problems.join('；'));
++});
++
++/*
++ * `criticEnabled` 的约束点在 default_critics，**不在 agents 的键上**（设计 13.1.1）：
++ * Driver 自身也需要配置容身之处。M7b 计划稿 §3.2 写的是「agents 的键必须 criticEnabled」，
++ * 那条会把未来的 Driver 段一并拒掉，已按设计纠正。
++ */
++test('校验：登记但未启用为审核者的 Agent 出现在 default_critics → 报错，不静默忽略', () => {
++  const cfg = JSON.parse(JSON.stringify(defaultConfig()));
++  cfg.review.default_critics = ['codex'];
++  const problems = validateConfig(cfg);
++  assert.ok(
++    problems.some((p) => p.includes('codex')),
++    `静默忽略会让用户以为第三家已经在跑了，实得：${problems.join('；')}`,
++  );
++});
++
++test('校验：default_critics 里的 Agent 在 agents 中没有配置段 → 报错', () => {
++  const cfg = JSON.parse(JSON.stringify(defaultConfig()));
++  delete cfg.agents[CRITICS[0]!];
++  const problems = validateConfig(cfg);
++  assert.ok(problems.some((p) => p.includes('没有配置段')), problems.join('；'));
++});
++
++test('校验：default_critics 超过 max_critics → 报错', () => {
++  const cfg = JSON.parse(JSON.stringify(defaultConfig()));
++  cfg.review.max_critics = 1;
++  cfg.review.default_critics = [...CRITICS];
++  const problems = validateConfig(cfg);
++  assert.ok(problems.some((p) => p.includes('max_critics')), problems.join('；'));
++});
++
++test('校验：迁移产出的配置本身是合法 v2', () => {
++  const { config } = migrateConfigV1(YAML.parse(v1Yaml()));
++  // 用 deepMerge 而不是展开运算符：后者会把 review 整段替换成迁移片段里的几个键
++  assert.deepEqual(validateConfig(deepMerge(defaultConfig(), config)), []);
++});
++
++// ─────────────────── init：一次性磁盘改写 ───────────────────
++
++async function initOn(root: string): Promise<{ report: Awaited<ReturnType<typeof runInit>>; text: string }> {
++  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
++  const report = await runInit({ ctx, assetRoot: path.join(root, 'no-assets') });
++  const text = await fs.readFile(path.join(root, '.trivium/config.yaml'), 'utf8');
++  return { report, text };
++}
++
++test('init：把 v1 的 config.yaml 改写为 v2，并备份原文', async () => {
++  const root = await projectWith({ 'config.yaml': v1Yaml() });
++  const original = await fs.readFile(path.join(root, '.trivium/config.yaml'), 'utf8');
++  const { report, text } = await initOn(root);
++
++  const parsed = YAML.parse(text);
++  assert.equal(parsed.schema, CONFIG_SCHEMA_ID);
++  assert.ok(parsed.agents, '改写后应是 agents');
++  assert.equal(parsed.critics, undefined);
++  assert.equal(parsed.agents.glm.max_turns, 99, '用户的自定义值必须原样保留');
++
++  const backup = await fs.readFile(path.join(root, '.trivium/config.yaml.trivium-backup'), 'utf8');
++  assert.equal(backup, original, '备份必须是逐字原文——注释只存在于这里');
++  assert.ok(report.notes.some((n) => n.includes('备份')), report.notes.join('；'));
++});
++
++test('init：已是 v2 时幂等 no-op，不产生备份', async () => {
++  const root = await projectWith({
++    'config.yaml': YAML.stringify({ ...defaultConfig(), probe: undefined }),
++  });
++  const { report } = await initOn(root);
++  assert.equal(
++    await fs.access(path.join(root, '.trivium/config.yaml.trivium-backup')).then(() => true, () => false),
++    false,
++    '没有可迁移的东西就不该动磁盘',
++  );
++  assert.ok(report.skipped.some((s) => s.includes('config.yaml')));
++});
++
++/*
++ * 备份已存在即放弃改写——与归档的防覆盖铁律同纪律：宁可不改，
++ * 也不覆盖一份可能是上一次改写留下的、唯一的原文。
++ * 放弃后必须**照常完成 init**：内存迁移已经让旧配置可用，
++ * 为一个可选优化打断初始化不划算。
++ */
++test('init：备份已存在 → 放弃改写但不中断 init，并说明原因', async () => {
++  const root = await projectWith({
++    'config.yaml': v1Yaml(),
++    'config.yaml.trivium-backup': '# 上一次改写留下的原文\n',
++  });
++  const original = await fs.readFile(path.join(root, '.trivium/config.yaml'), 'utf8');
++  const { report, text } = await initOn(root);
++
++  assert.equal(text, original, '备份写不成时，原文件必须原样不动');
++  assert.equal(
++    await fs.readFile(path.join(root, '.trivium/config.yaml.trivium-backup'), 'utf8'),
++    '# 上一次改写留下的原文\n',
++    '既有备份不得被覆盖',
++  );
++  assert.ok(
++    report.notes.some((n) => n.includes('跳过') && n.includes('备份')),
++    `要说清为什么没改，实得：${report.notes.join('；')}`,
++  );
++});
++
++test('init：改写后的配置能被 loadCtx 直接加载，且不再触发迁移告警', async () => {
++  const root = await projectWith({ 'config.yaml': v1Yaml() });
++  await initOn(root);
++  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
++  assert.equal(ctx.config.schema, CONFIG_SCHEMA_ID);
++  assert.equal(ctx.config.agents.glm?.vendor, 'zcode');
++  assert.equal(migrateConfigV1(YAML.parse(await fs.readFile(path.join(root, '.trivium/config.yaml'), 'utf8'))).note, null);
++});

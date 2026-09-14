@@ -27,6 +27,7 @@ import {
   type AgyStreamResult,
 } from './agy-events.js';
 import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
+import { agentConfigOf } from '../config.js';
 
 export interface AgyInvokeOptions {
   bin: string;
@@ -177,13 +178,13 @@ export const agyAdapter: CriticAdapter = {
         ok: false,
         reason:
           'agy headless 无法读取文件（issue #548）。请确认只读审查 Agent 已安装到 ' +
-          `~/.gemini/config/agents/${ctx.cfg.critics.gemini.agent}/agent.md`,
+          `~/.gemini/config/agents/${agentConfigOf(ctx.cfg, 'gemini', 'antigravity').agent}/agent.md`,
       };
     }
     if (p.headless_read_ok === null) {
       return { ok: false, reason: '探针尚未实测 agy headless 读取能力，请先运行 trivium doctor' };
     }
-    const agent = resolveAgyAgent(p, ctx.cfg.critics.gemini.agent);
+    const agent = resolveAgyAgent(p, agentConfigOf(ctx.cfg, 'gemini', 'antigravity').agent);
     if (agent.reason) return { ok: false, reason: agent.reason };
     return { ok: true };
   },
@@ -207,7 +208,7 @@ export const agyAdapter: CriticAdapter = {
         prompt: req.brief_text,
         model: req.model,
         // 探针验证过的 Agent，不是配置意图（P7）；availability 已挡掉 null 的情形
-        agent: resolveAgyAgent(probe, ctx.cfg.critics.gemini.agent).agent,
+        agent: resolveAgyAgent(probe, agentConfigOf(ctx.cfg, 'gemini', 'antigravity').agent).agent,
         effort: req.effort ?? null,
         // 探针说 --json-schema 不可用时降级为提示词约定 + 宽松解析（AD-08）
         jsonSchemaPath: probe.json_schema_ok === false ? null : req.schema_path,

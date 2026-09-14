@@ -52,7 +52,7 @@ import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeM
 import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
 import { acquireLock } from './lock.js';
 import { measureAllPairs, renderDivergence } from './divergence.js';
-import { runRoot } from './config.js';
+import { agentConfigOf, runRoot } from './config.js';
 import { setGateChecked } from './state.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
 import { workTreeHash } from './util/git.js';
@@ -186,7 +186,7 @@ export interface ReviewOptions {
   /**
    * 本次运行临时降级：一侧失败时不中止，产出单审结果并留痕（§12.4）。
    *
-   * 受 `review.allow_single_flag` 约束——配置里关掉这个开关，命令行也不能降级，
+   * 受 `review.allow_partial_flag` 约束——配置里关掉这个开关，命令行也不能降级，
    * 否则「默认 strict」就成了纸面规定。
    */
   allowSingle?: boolean;
@@ -221,7 +221,7 @@ function resolveAssetRoot(override?: string): string {
 /**
  * 逐侧取思考等级。**穷尽分支，不留三目兜底。**
  *
- * 此前是 `critic === 'gemini' ? cfg.critics.gemini.effort[stage] : undefined`：
+ * 此前是 `critic === 'gemini' ? agentConfigOf(cfg, 'gemini', 'antigravity').effort[stage] : undefined`：
  * 非 gemini 的一切取值都静默落进 `undefined`，第三家接入后思考等级会无声丢失
  * （不抛异常、不退非零，只是那一侧按厂商默认档跑）。
  *
@@ -239,7 +239,7 @@ function effortFor(
 ): 'low' | 'medium' | 'high' | undefined {
   switch (critic) {
     case 'gemini':
-      return cfg.critics.gemini.effort[stage];
+      return agentConfigOf(cfg, 'gemini', 'antigravity').effort[stage];
     case 'glm':
       // ZCode 无思考等级旗标（C-07）。是「本侧不存在此概念」，不是「忘了传」。
       return undefined;
@@ -353,14 +353,15 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     );
   }
   if (opts.allowSingle) {
-    if (cfg.review.allow_single_flag) {
+    if (cfg.review.allow_partial_flag) {
       warn(
         '已启用 --allow-single：一侧失败时不中止，产出单审结果。' +
           '单审的交叉验证价值远低于双审，结果会在元数据与文档头标为降级（AC-06）。',
       );
     } else {
       warn(
-        '配置 review.allow_single_flag 为 false，忽略 --allow-single，仍按 strict 执行。' +
+        '配置 review.allow_partial_flag（旧名 allow_single_flag）为 false，' +
+          '忽略 --allow-single，仍按 strict 执行。' +
           '这是刻意的：配置层关掉的东西，命令行不该能开回来。',
       );
     }
@@ -781,11 +782,11 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   });
 
   /*
-   * 失败策略：配置给默认值，`--allow-single` 只在 allow_single_flag 允许时才能覆盖。
+   * 失败策略：配置给默认值，`--allow-single` 只在 allow_partial_flag 允许时才能覆盖。
    * 若配置关掉了开关而命令行仍传了它，照 strict 执行——已在 prepareRun 里告警过。
    */
   const effectivePolicy: 'strict' | 'degrade' =
-    opts.allowSingle && cfg.review.allow_single_flag ? 'degrade' : cfg.review.failure_policy;
+    opts.allowSingle && cfg.review.allow_partial_flag ? 'degrade' : cfg.review.failure_policy;
   const mode = decideMode(results, effectivePolicy, sides);
   const warnings = renderGuardWarnings(verdict);
 

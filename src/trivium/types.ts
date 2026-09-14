@@ -183,7 +183,26 @@ export interface IsolationConfig {
 export interface ReviewConfig {
   parallel: boolean;
   failure_policy: 'strict' | 'degrade';
-  allow_single_flag: boolean;
+  /**
+   * 允许部分入选审核者失败后降级续跑（`--allow-single` 的配置开关）。
+   *
+   * v1 里叫 `allow_single_flag`。改名是因为「single」在 N 方语境下已经不成立：
+   * 三审挂一侧后剩两侧，那不是 single 而是 partial（对齐 `run.v2` 的完成度取值）。
+   * **旧名长期保留为别名**，`loadCtx` 的内存迁移会把它搬过来，旧配置不改也能跑。
+   */
+  allow_partial_flag: boolean;
+  /**
+   * 不给 `--critics` 时的默认审核者集合（设计 13.1.1）。
+   *
+   * 每一项都必须在 `agents` 里有配置，且必须是注册表中 `criticEnabled: true` 的 Agent。
+   * 默认值维持 `[gemini, glm]`——与现状等价，成本不变。
+   *
+   * **接线在第 5 步**：本步（第 4 步）只让它进入配置契约与校验，
+   * `--critics` 入口尚未接上，运行时仍走 `CRITICS` 全集。
+   */
+  default_critics: CriticId[];
+  /** 单次运行可选审核者的基数上限（FR-29：1～3） */
+  max_critics: number;
   timeout_s: Record<Stage, number>;
   wait_timeout_s: number;
   heartbeat_stale_s: number;
@@ -216,6 +235,19 @@ export interface GlmCriticConfig {
   unsupported_override: 'reject' | 'annotate';
 }
 
+/**
+ * 单个 Agent 的配置段（`config.v2` 的 `agents.<id>`）。
+ *
+ * **以 `vendor` 为判别式的可辨识联合，不是同构 record**：两家的字段集合完全不同
+ * （antigravity 要 `agent` 与 `effort`，zcode 要 `entry` 与 `max_turns`），
+ * 硬压成同一个形状只会得到一堆互相不适用的可选字段，校验也就形同虚设。
+ *
+ * codex / claude 的形状随 M8 / M9 / M10 加入本联合。在那之前，配置里写
+ * `agents.claude` 会被 schema 拒——那不是缺陷，而是「形状尚未定义」的如实反映：
+ * 设计 13.1.1 允许 Driver 段存在，但没说它长什么样，凭空放行等于承诺一个不存在的契约。
+ */
+export type AgentConfig = GeminiCriticConfig | GlmCriticConfig;
+
 export interface GateConfig {
   require_adjudication: boolean;
   allow_defer: boolean;
@@ -233,13 +265,23 @@ export type ProfileEntry = Partial<Record<Stage, string>> & { effort?: 'low' | '
 export type Profile = Partial<Record<CriticId, ProfileEntry>>;
 
 export interface Config {
-  schema: 'trivium.config.v1';
+  schema: 'trivium.config.v2';
   archive_root: string;
   topic: { max_len: number; forbid_chars: string[] };
   runtime: RuntimeConfig;
   isolation: IsolationConfig;
   review: ReviewConfig;
-  critics: { gemini: GeminiCriticConfig; glm: GlmCriticConfig };
+  /**
+   * 逐 Agent 的配置段，键是注册表的 Agent id（v1 里叫 `critics`）。
+   *
+   * **键只要求「是已登记 Agent」，不要求 `criticEnabled: true`**（设计 13.1.1）：
+   * Driver 自身也需要配置容身之处。`criticEnabled` 只约束 `review.default_critics`
+   * 与 `--critics` 的每一项。
+   *
+   * 这一条与 M7b 计划稿 §3.2「约束一」写的相反（那里要求键必须 `criticEnabled`），
+   * 以设计为准——计划稿早于设计定稿，那条约束会把未来的 Driver 段一并拒掉。
+   */
+  agents: Partial<Record<AgentId, AgentConfig>>;
   profiles: Record<string, Profile>;
   active_profile: string;
   gate: GateConfig;

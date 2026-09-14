@@ -10,7 +10,7 @@
  */
 import path from 'node:path';
 import YAML from 'yaml';
-import { defaultProbe, patchProbe } from './config.js';
+import { agentConfigOf, defaultProbe, patchProbe } from './config.js';
 import { EXIT } from './exit-codes.js';
 import { probeEnv } from './probes/env.js';
 import { probeVerifyCommands } from './probes/verify-commands.js';
@@ -126,7 +126,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   // ── Antigravity ─────────────────────────────────────────────────────
   if (only === null || only === 'agy') {
     step('探测 Antigravity（agy）…');
-    const r = await probeAgy(opts.config.critics.gemini.bin, opts.config.critics.gemini.agent, {
+    const r = await probeAgy(agentConfigOf(opts.config, 'gemini', 'antigravity').bin, agentConfigOf(opts.config, 'gemini', 'antigravity').agent, {
       skipModelCalls: opts.skipModelCalls ?? false,
       existing: probe.agy,
     });
@@ -145,7 +145,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   // ── ZCode ───────────────────────────────────────────────────────────
   if (only === null || only === 'zcode') {
     step('探测 ZCode（zcode.cjs）…');
-    const r = await probeZcode(opts.config.critics.glm.entry, env.nodePath ?? process.execPath, {
+    const r = await probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {
       skipModelCalls: opts.skipModelCalls ?? false,
       existing: probe.zcode,
     });

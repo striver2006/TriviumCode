@@ -1,7 +1,7 @@
 # 快速上手：Driver-DualCritic 双审流水线
 
 > 目标：**15 分钟内**装好并跑通一条真实任务。
-> 依据 [设计 v1.3.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.1](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.3](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.2](../01_requirements/PRD_driver_dual_critic.md)。
 >
 > **本文描述的是当前可用的系统**：Claude Code 主攻 + Antigravity / ZCode 两侧审查。
 > 设计文档里带【待实施】标记的能力（第三、四家 Agent、每次选 1～3 个审核者、
@@ -129,7 +129,12 @@ node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 node dist/install.cjs --uninstall
 ```
 
-> **`init` 不会刷新已有的 `config.yaml`**——它对已存在的那份无条件跳过、绝不覆盖。
+> **`init` 不会改写已有 `config.yaml` 的内容**——唯一的例外是**版本迁移**：
+> 那份配置若仍是旧的 `trivium.config.v1` 形态，`init` 会把它一次性改写为 `config.v2`
+> 并把原文备份到 `config.yaml.trivium-backup`（备份已存在就放弃改写，绝不覆盖）。
+> 这一步是**可选优化**：不跑 `init` 也能照常工作，加载时会在内存里自动迁移、磁盘不动。
+> 注意 YAML 往返会丢掉原文件里的注释，**原注释完整保留在备份中**。
+> `config.local.yaml` 不在改写范围内（它不进 Git，属本机私有）。
 > 想拿到新版默认值（例如把等待窗口从 540s 调到 180s 以加密进度反馈），
 > 只能手工编辑项目里的 `.trivium/config.yaml`。
 

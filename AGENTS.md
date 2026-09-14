@@ -21,7 +21,7 @@ Node ≥ 18（开发建议 ≥ 22）。
   `agents/registry.ts` 是 Agent 差异的唯一登记处）
 - `src/install.ts` — 安装器（→ `dist/install.cjs`）
 - `skills/` — 8 个 Claude 用户级 skill，核心资产在 `skills/dual-critic/`
-  （`scripts/trivium.cjs` 为打包产物**不进 Git**；`schema/` 四份 JSON Schema、
+  （`scripts/trivium.cjs` 为打包产物**不进 Git**；`schema/` 机读契约，含当前形状与只读保留的历史形状、
   `prompts/` `lenses.yaml/`、`hooks/`）
 - `test/{unit,contract,integration}/` — 分层测试，共享夹具在 `test/helpers/fixture.ts`
 - `doc/` — 工程文档（八个一级子目录，**单层扁平**，文件名带前缀）
@@ -65,8 +65,10 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
 11. **禁读矩阵禁止手工枚举。** 人工清单维持不住完整性：计划稿自称补全 4 处硬编码、
     双审又查出 8 处，其中按 `['gemini','glm']` 字面循环的一处会让第三家审核者的意见
     **对闸门整体不可见**（静默漏裁）。一律注册表派生 + 机器对账。
-12. **四份 JSON Schema 的枚举与前缀集必须与注册表 parity。** 改了注册表就要同步 schema，
-    反之亦然；两边任一单改都属于埋坑。
+12. **JSON Schema 的枚举与前缀集必须与注册表 parity。** 改了注册表就要同步 schema，
+    反之亦然；两边任一单改都属于埋坑。**新增一份机读契约时，对账要跟着建**——
+    `registry-parity` 的 schema 扫描是显式路径清单，不会自动覆盖新文件
+    （`run.v2` 与 `config.v2` 各漏过一次，都是补出来的）。
 
 ## 测试要点
 
@@ -93,7 +95,7 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
 | 改了什么 | 必须同步 |
 | :--- | :--- |
 | 与设计文档不一致的行为 | 先回补修订 `doc/02_design/` 设计文档（唯一实现依据），升补丁版本 |
-| 四份 JSON Schema | `parse` / `gate` / `meta` 校验与 `doc/03_api/PROTOCOL_dual_critic_relay.md` |
+| JSON Schema（含新增一份） | `parse` / `gate` / `meta` 校验、`doc/03_api/PROTOCOL_dual_critic_relay.md`、`skills/dual-critic/SKILL.md`、**本文件的契约面描述**、`registry-parity` 的 schema 扫描盯防点 |
 | CLI 参数或退出码 | `USAGE` 字符串、PROTOCOL 文档、相关 SKILL.md |
 | 探针项 | 设计 §3.5 清单与 `doc/05_testing/REPORT_2026-09-11_m0_probe.md`（M0 坑清单） |
 | BRIEF 段落 | 八段结构是契约，只并入现有段，不得增删段号 |

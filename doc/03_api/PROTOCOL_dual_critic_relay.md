@@ -1,14 +1,18 @@
 # PROTOCOL：Driver-DualCritic 工件中继与协议契约
 
-> 依据 [设计 v1.3.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.1](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.3](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.2](../01_requirements/PRD_driver_dual_critic.md)。
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
 >
-> **⚠️ 本文描述的是当前真实生效的契约**（`config.v1` / **`run.v2`** / 两侧审核者 / 固定 Claude Code Driver）。
-> `run.v2`（含 `driver` / `critics_selected` / `review_mode: full|partial`）**已于 M7b 第 3 步生效**，
-> 规范见设计 6.7.1；`run.v1` 降为**历史契约**，读侧长期双读、既有归档不受影响。
-> 其余多 Agent 演进带来的契约变更——`config.v2`、意见编号前缀扩为四值、
-> 裁决件 `role` 扩为四值与 `addresses` 基数 1～3、`--critics` 等新旗标——**均尚未生效**，
-> 规范见设计 13.1.1 与 §24 台账，随各里程碑并入本文。
+> **⚠️ 本文描述的是当前真实生效的契约**（**`config.v2`** / **`run.v2`** / 两侧审核者 / 固定 Claude Code Driver）。
+> `run.v2`（含 `driver` / `critics_selected` / `review_mode: full|partial`）于 M7b 第 3 步生效，规范见设计 6.7.1；
+> `config.v2`（`critics.*` → `agents.*`、`allow_single_flag` → `allow_partial_flag`、
+> 新增 `review.default_critics` / `max_critics`）于第 4 步生效，规范见设计 13.1.1。
+> 两份 v1 均降为**历史契约**：`run.v1` 读侧双读，`config.v1` 读侧自动迁移——
+> **已初始化的项目不改配置也能跑**，磁盘改写由 `trivium init` 可选执行（带备份）。
+> 其余多 Agent 演进带来的契约变更——意见编号前缀扩为四值、裁决件 `role` 扩为四值与
+> `addresses` 基数 1～3、`--critics` 等新旗标——**均尚未生效**，随各里程碑并入本文。
+> `review.default_critics` 虽已进入配置契约，但**消费端在第 5 步才接线**：
+> 在那之前它只被校验，不改变实际跑哪几侧。
 > **按本文实现的客户端不会被演进破坏**：读侧双读、旧形态长期兼容。
 
 三方（Claude Code Driver、Antigravity Critic-A、ZCode Critic-B）之间**没有**任何进程间
@@ -17,7 +21,7 @@
 
 ---
 
-## 一、五份 JSON Schema
+## 一、六份 JSON Schema
 
 机读契约的唯一真理来源在 `skills/dual-critic/schema/`，ajv（draft 2020-12）强校验。
 `review.v1` 由 `parse` 持有（要把错误回喂给模型），其余集中在 `schemas.ts`。
@@ -28,7 +32,8 @@
 | `trivium.disposition.v1` | `disposition.v1.json` | Driver（裁决件 front-matter；表格由 gate 单独解析） | `gate --check` 的 bad_front_matter |
 | `trivium.run.v2` | `run.v2.json` | 编排器 | `writeRunMeta` 写前校验；留痕核对把不合契约的 run.json 视为「不可读」并拦提交 |
 | `trivium.run.v1` | `run.v1.json` | **已停写**（M7b 第 3 步前的编排器） | 只读：既有归档按写入时的规范解读，读进内存时迁移为 v2 形状 |
-| `trivium.config.v1` | `config.v1.json` | 人（`.trivium/config.yaml` / `config.local.yaml`） | `loadCtx` 四级合并后校验，不合法退 69 并逐条列出（未知字段、枚举值、区间） |
+| `trivium.config.v2` | `config.v2.json` | 人（`.trivium/config.yaml` / `config.local.yaml`） | `loadCtx` 四级合并后校验，不合法退 69 并逐条列出（未知字段、枚举值、区间） |
+| `trivium.config.v1` | `config.v1.json` | **已停写**（M7b 第 4 步前的形状） | 只读：`loadCtx` 在合并**之前**逐源迁成 v2，磁盘文件不动 |
 
 ### `trivium.run.v2` 的读侧分发（按阶段，设计 6.7.1）
 
@@ -40,6 +45,19 @@
 
 `run.v2` 的 Agent id 与 vendor **不在 schema 里枚举**：唯一来源是 `agents/registry.ts`
 （设计 §16.2 纪律 7），身份校验由 `schemas.ts` 在 ajv 之后按注册表补做。
+
+### `trivium.config.v2` 的迁移与两段式校验（设计 13.1.1）
+
+`loadCtx` 对**每个** YAML 源单独做 v1 → v2 迁移，且**在四级合并之前**——
+顺序颠倒会让磁盘上的 `critics` 段作为额外的键并排落在结果里，而 `agents` 仍是内置默认，
+**用户配的值一个都不生效且不报错**。迁移的触发条件也不只看 `schema` 字段：
+`config.local.yaml` 是覆盖片段、通常没有那个字段，因此另认 `critics` 与
+`review.allow_single_flag` 两个旧形态的特征键（它们在 v2 里都已不是合法键，不存在误伤）。
+
+**迁移只在内存里发生，磁盘文件不动**；`trivium init` 提供可选的一次性改写（备份走 `O_EXCL`，
+YAML 往返会丢注释，原注释保留在备份中）。三条跨字段规则由代码层补校：
+`agents` 的键必须是已登记 Agent（**不要求 `criticEnabled`**——Driver 自身也需要配置容身之处）、
+`agents.<id>.vendor` 必须与注册表相符、`default_critics` 每项必须是可用审核者且在 `agents` 中有配置段。
 
 ### `trivium.review.v1` 的硬约束
 

@@ -17,7 +17,7 @@ import { promises as fs, constants as fsConstants } from 'node:fs';
 import type { AuthCacheEntry, Config, CriticId, Ctx, Stage } from './types.js';
 import { CRITICS, STAGES } from './types.js';
 import { EXIT, TriviumError } from './exit-codes.js';
-import { patchProbe, probeIsFresh } from './config.js';
+import { agentConfigOf, patchProbe, probeIsFresh } from './config.js';
 import { invokeAgy } from './adapters/agy.js';
 import { invokeZcode, qualifyZcodeModel } from './adapters/zcode.js';
 import { routeModel } from './adapters/base.js';
@@ -77,7 +77,7 @@ export interface PreflightOptions {
 
 /** 决定 agy 可用性的配置指纹：只读 Agent 定义文件（AGY-02） */
 async function agyFingerprint(cfg: Config): Promise<string | null> {
-  const p = path.join(os.homedir(), '.gemini/config/agents', cfg.critics.gemini.agent, 'agent.md');
+  const p = path.join(os.homedir(), '.gemini/config/agents', agentConfigOf(cfg, 'gemini', 'antigravity').agent, 'agent.md');
   return (await exists(p)) ? sha256File(p) : null;
 }
 
@@ -267,7 +267,7 @@ async function checkReadonlyCapability(cfg: Config): Promise<CheckResult> {
   const agentPath = path.join(
     os.homedir(),
     '.gemini/config/agents',
-    cfg.critics.gemini.agent,
+    agentConfigOf(cfg, 'gemini', 'antigravity').agent,
     'agent.md',
   );
   if (!(await exists(agentPath))) {
@@ -366,7 +366,7 @@ async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe
     cwd: ctx.projectRoot,
     prompt: '只回复 OK 两个字母，不要调用任何工具。',
     model: cfg.probe.agy.models[0] ?? null,
-    agent: cfg.critics.gemini.agent,
+    agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
     timeoutMs: 120_000,
     pty: cfg.probe.agy.pty_required === true,
   });

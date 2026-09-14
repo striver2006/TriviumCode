@@ -143,7 +143,7 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
   { file: 'adapters/index.ts', why: 'Agent id → 厂商适配器的唯一接线处；新增一家在此加一行（M7b 第 2 步把 review/run-protocol 两份字面表收敛到这里）' },
   { file: 'adapters/agy.ts', why: '厂商专属适配器：文件本身即该 Agent 的命名空间' },
   { file: 'adapters/zcode.ts', why: '厂商专属适配器：ZCode 调用与参数构造' },
-  { file: 'config.ts', why: '默认配置里各 Agent 的厂商专属配置段（critics.gemini / critics.glm 的 vendor、entry、max_turns 与模型档位）；M7b 第 4 步迁 agents.* 后收敛' },
+  { file: 'config.ts', why: '内置默认配置里各 Agent 的厂商专属配置段（agents.gemini / agents.glm 的 vendor、agent、entry、max_turns）与 profiles 的逐 Agent 模型档位。M7b 第 4 步迁成 agents.* 后**仍需要**：内置默认值本身就得指名道姓地写出每一家配什么，那不是硬编码而是默认值的定义处；新增一家时这里加一段，与注册表加一行是同一件事的两面' },
   // 注意：`src/install.ts` 不在本对账的扫描范围（只扫 src/trivium/），
   // 因此不需要、也不应该为它留白名单条目——留着只会误导读者以为它被扫过。
   //
@@ -152,7 +152,7 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
   // 造出的假命中（见 stripComments 的注释）。
   { file: 'doctor.ts', why: '逐侧探测的人读输出与厂商专属诊断话术' },
   { file: 'preflight.ts', why: '逐侧预检的人读输出，以及 checkModelSlugs 的厂商专属 slug 校验分支（agy 目录硬校验 vs zcode 短名补全，无法登记为统一数据）' },
-  { file: 'review.ts', why: 'effortFor 的厂商专属分支：v1 配置的 critics.* 是厂商形状、effort 只存在于 gemini 段；M7b 第 4 步 config v2 统一成 agents.<id>.effort 后收敛' },
+  { file: 'review.ts', why: 'effortFor 的厂商专属分支：effort 只存在于 antigravity 形状的配置段，ZCode 0.16.5 实测没有等价旗标（M0 坑清单 C-07）。**M7b 第 4 步后仍需要**——config v2 只把 critics.* 改名为 agents.*，并未把 effort 统一成逐 Agent 字段；设计 13.1.1 把 tiers / models / default_tier 排在 M11，在那之前这里的编译期穷尽（switch + never）是能拿到的最强保证' },
   { file: 'selftest.ts', why: '自检场景里两侧桩的固定编排；M7b 增 N 侧场景' },
   { file: 'types.ts', why: 'CriticId 的字面收窄（Extract<AgentId, …>）；M7b 随注册表放开' },
 ];
@@ -636,6 +636,57 @@ test('run.v2 schema：身份字段一律不得枚举 Agent id 或 vendor', async
       `run.v2.json 的 ${p} 出现了 enum：Agent 身份的唯一来源是注册表（纪律 7），` +
         '在 schema 里抄第二份，新增一家时改一漏二不会报错。' +
         '身份校验请留在 schemas.ts 的 checkAgentIdentities()',
+    );
+  }
+});
+
+/*
+ * `config.v2.json` 同属机读契约、同样有「不枚举 Agent 身份」的性质，
+ * 上一条建立对账时却只盯了 `run.v2.json`——**同一个洞在新文件上重开**
+ * （审查意见 AGY-05 ≡ GLM-02）。这已经是第三次同形：白名单过期条目、
+ * run.v2 的枚举、现在是 config.v2。新增机读契约时，对账要跟着建。
+ *
+ * **两类 enum / const 必须分清**，否则这条对账一上来就会误伤：
+ *   · **身份枚举**（`default_critics.items` 的取值）→ 禁止。那是注册表的职责。
+ *   · **形状判别式**（`agents` 的 `oneOf` 分支里的 `vendor: {const: …}`）→ **必须允许**。
+ *     可辨识联合正是靠它工作的；把它也禁掉，`agents` 就没法按厂商分形状了。
+ *
+ * 所以盯防点写成**显式路径清单**而不是全文搜 enum——全文搜必然扫到 vendor const。
+ */
+test('config.v2 schema：身份字段不得枚举 Agent id（但形状判别式的 vendor const 必须留着）', async () => {
+  const schema = JSON.parse(await fs.readFile(path.join(SCHEMA_DIR, 'config.v2.json'), 'utf8'));
+
+  for (const p of ['properties.review.properties.default_critics.items']) {
+    const node = nodeAt(schema, p);
+    assert.ok(node, `config.v2.json 缺少 ${p}：盯防点失效了，先修路径再说`);
+    for (const forbidden of ['enum', 'const']) {
+      assert.equal(
+        (node as Record<string, unknown>)[forbidden], undefined,
+        `config.v2.json 的 ${p} 出现了 ${forbidden}：可用审核者的唯一来源是注册表的 ` +
+          'criticEnabled（纪律 7）。在 schema 里抄第二份，启用第三家时改一漏二不会报错，' +
+          '症状要到运行期才现形。身份校验请留在 schemas.ts 的 checkConfigAgents()',
+      );
+    }
+  }
+
+  // `agents` 的键同样不该被枚举：它只要求「是已登记 Agent」，由代码层判定
+  const agents = nodeAt(schema, 'properties.agents') as Record<string, unknown>;
+  assert.ok(agents, 'config.v2.json 缺少 properties.agents');
+  assert.equal(agents['propertyNames'], undefined, 'agents 的键不该用 propertyNames 枚举');
+  assert.equal(agents['enum'], undefined);
+
+  /*
+   * 反向断言：`oneOf` 分支里的 vendor 判别式**还在**。
+   * 少了它，`agents` 就退化成「任意对象」，两家的字段集合再也校验不出来——
+   * 这条防的是「为了让上面的禁令过关而把判别式一起删掉」。
+   */
+  const branches = nodeAt(schema, 'properties.agents.additionalProperties.oneOf') as unknown[];
+  assert.ok(Array.isArray(branches) && branches.length >= 2, 'agents 应按 vendor 分形状');
+  for (const b of branches) {
+    const v = nodeAt(b, 'properties.vendor') as Record<string, unknown> | undefined;
+    assert.ok(
+      v && typeof v['const'] === 'string',
+      'oneOf 分支缺少 vendor 判别式：可辨识联合靠它工作，删掉它校验就形同虚设',
     );
   }
 });

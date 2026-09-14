@@ -97,7 +97,7 @@ graph TD
 | `parse.ts` | 262 | 从厂商 stdout 里抠出审查结论并按 schema 校验 | `parseReview()` `extractJsonCandidates()` `enumerateFallbackFindings()` |
 | `disposition.ts` | 248 | 裁决表解析与三态归一 | `parseDisposition()` `normalizeDisposal()` |
 | `divergence.ts` | 202 | 多审退化指标（镜头重合度 Jaccard，按入选集合逐对计算） | `measureDivergence()` `measureAllPairs()` |
-| `schemas.ts` | 125 | 四份 schema 的 ajv 编译与缓存（`review.v1` 由 `parse.ts` 自持）；`run.v2` 另在 ajv 之后按注册表补校 Agent 身份——id 与 vendor **不在 schema 里枚举**（纪律 7：抄第二份来源就会改一漏二） | `validateRunMeta()` `validateRunMetaV1()` `validateConfig()` |
+| `schemas.ts` | 212 | 五份 schema 的 ajv 编译与缓存（`review.v1` 由 `parse.ts` 自持）；`run.v2` 与 `config.v2` 另在 ajv 之后按注册表补校 Agent 身份与跨字段规则——id 与 vendor **不在 schema 里枚举**（纪律 7：抄第二份来源就会改一漏二） | `validateRunMeta()` `validateRunMetaV1()` `validateConfig()` |
 
 ### 2.6 适配层
 
@@ -122,18 +122,18 @@ graph TD
 > `review.v1.json` 的意见编号 pattern 仍为 `^(AGY|GLM)-…`。
 > **「注册表登记了四家」不等于「系统支持四家」**：`codex` / `claude` 的审核者能力在 M8 / M9，
 > Driver 任意化在 M10。登记而不启用，是为了让注册表从第一天起就是完整的单一来源。
-> 设计依据见[设计 v1.3.1](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 5.1、6.2、16.1。
+> 设计依据见[设计 v1.3.3](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 5.1、6.2、16.1。
 
 ### 2.7 基础层
 
 | 模块 | 行数 | 职责 |
 | :--- | ---: | :--- |
-| `config.ts` | 335 | 四级配置合并（内置默认 → `config.yaml` → `config.local.yaml` → 命令行）、探针回填与时效 |
+| `config.ts` | 494 | 四级配置合并（内置默认 → `config.yaml` → `config.local.yaml` → 命令行）、**v1 → v2 内存迁移**（`migrateConfigV1`，逐源且在合并之前）、按 vendor 收窄的配置取值（`agentConfigOf`）、探针回填与时效 |
 | `lock.ts` | 327 | 主题锁（长持锁 / 短临界区）、遗留锁回收、免锁计数 |
 | `freeze.ts` | 249 | 快照冻结、禁读清单枚举、漂移判定 |
 | `brief.ts` | 310 | 八段送审任务书渲染 |
 | `secrets.ts` | 140 | 落盘前的密钥扫描（10 条规则 + 熵判定） |
-| `types.ts` | 399 | 全部类型定义与编译期契约 |
+| `types.ts` | 518 | 全部类型定义与编译期契约 |
 | `exit-codes.ts` | 67 | 九个退出码 |
 | `util/exec.ts` | 339 | 子进程执行、进程树杀灭、PID 复用识别 |
 | `util/git.ts` | 300 | 工作树哈希、补丁生成、变更列举 |
@@ -149,7 +149,7 @@ graph TD
 
 | 动作 | 实现 | 幂等策略 |
 | :--- | :--- | :--- |
-| 建 `.trivium/`（`config.yaml` + `bin/trivium`） | `init.ts:280-297` | `config.yaml` 已存在则**无条件跳过，绝不覆盖** |
+| 建 `.trivium/`（`config.yaml` + wrapper） | `init.ts` | `config.yaml` 已存在则不覆盖内容；仅当它是 `config.v1` 形态时做**一次性改写**（`rewriteConfigToV2`：备份走 `O_EXCL`、新文件原子替换；备份已存在即放弃改写且**不中断 init**——内存迁移已让旧配置可用，为可选优化打断初始化不划算） |
 | 合并 Hook 进 `.claude/settings.json` | `mergeHooks()` `init.ts:129` | **按事件名替换**同名条目（识别依据是命令里的 `gate hook-<name>`，不是命令全文） |
 | 修 `.gitignore` | `fixGitignore()` `init.ts:78` | 整体忽略 `.claude/` → 白名单写法；`.trivium/` 规则按标记去重 |
 | 追加协议片段到 `CLAUDE.md` / `AGENTS.md` | `appendSnippet()` `init.ts:50` | **见标记即跳过** |

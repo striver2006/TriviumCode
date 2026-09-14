@@ -1,0 +1,132 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "一条 major：migrateConfigV1 按「迁移后 agents 实有键」补 review.default_critics，对 config.local.yaml 这类覆盖片段也照补——deepMerge 对数组是整体替换，最典型的 local 形态（只写 critics.gemini.bin 本机覆盖）迁移后会把默认两家集合顶成单元素，第 5 步接线后即为静默单审，而设计 13.1.1 明写默认值维持 [gemini, glm]，且现有用例已把错误行为锁成期望值。三条审查焦点其余判断均成立：逐源迁移先于合并的顺序论证正确并有最强用例锁定；特征键触发条件（critics / allow_single_flag 在 v2 均非法键）站得住；agents 键不要求 criticEnabled、约束点落在 default_critics 的取舍正确；init 失败路径纪律完整（O_EXCL 备份、失败即放弃不中断、原子替换、幂等）；agentConfigOf 优于原先的非空断言；default_critics 不接线在 PRD / PROTOCOL / 设计抬头 / types 注释四处说破，足以防误读。另有四条 minor（config.v2.json 的不枚举缺机器对账、critics 与 agents 并存静默丢弃、已登记无形状 Agent 的报错断档、迁移告警承诺的 init 改写只覆盖 config.yaml 一源）与两条 nit（双源两条告警与设计「最多一次」不符、dry-run 完成时态报告），无 blocker。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/config.ts:312-318（migrateConfigV1 补 default_critics）与 src/trivium/config.ts:160-170（deepMerge 数组整体替换）",
+      "problem": "迁移在 review.default_critics 缺失时按「迁移后 agents 的实有键」补值，对覆盖片段不例外。config.local.yaml 最典型的内容就是单侧本机覆盖（如 critics.gemini.bin），迁移后片段带上 review.default_critics: ['gemini']，而 deepMerge 对数组是整体替换语义，它会顶掉默认 / 主配置的 [gemini, glm]，最终 ctx.config.review.default_critics 只剩一家。主配置只写一侧 critics 的场景同理产出单元素集合——但 v1 时代的实际运行恒为两家（deepMerge 补默认键 + 运行时走 CRITICS 全集，critics 键集从来不是 v1 的选侧机制），两个方向都与设计 13.1.1 表格「review.default_critics 默认值维持 [gemini, glm]（成本与现状一致）」不符，也与「旧配置不改也能跑（行为不变）」的核心承诺冲突。本步无消费端故无运行时影响，但错值已在；第 5 步接线后这些项目将静默单审，而 AC-22 验收走 --critics 入口、测不到「v1 local 迁移后的默认值」。佐证其为疏漏而非意图：max_critics 特意加了「只在带 schema 字段的整份配置上补」的条件（config.ts:324 注释说明作者已意识到片段不该凭空多键），同一考虑没落到 default_critics 上；且设计 13.1.1 的迁移段只列了 critics→agents、allow_single_flag 改名、profiles 包装三件事，并没有「补 default_critics 取实有键」这一步，v1.3.2 变更记录也未登记该决策。",
+      "evidence": "src/trivium/config.ts:268-341（migrateConfigV1 全文，312-318 补实有键、324 max_critics 的整份配置限定）、160-170（deepMerge 对数组整体替换）、359-377（loadCtx 逐源迁移后再合并）；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1809（「默认值维持 [gemini, glm]」）、1815-1818（迁移段未列补 default_critics）；test/unit/config-migrate.test.ts:85-94（「default_critics 取 agents 的实有键，不扩大审查面」把实有键行为锁成期望值）、159-168（local 片段用例只断言 max_turns=123，未断言 default_critics——按此用例数据推演合并结果是 ['glm']）；src/trivium/types.ts:57（CRITICS 派生自注册表，v1 运行时跑全集）。",
+      "suggestion": "迁移不要补 review.default_critics（合并时自然继承 defaultConfig 的 [...CRITICS]；磁盘片段本就无须自带该键，校验针对合并结果）；若要保留显式化，仅对带 schema 字段的整份配置补、且补注册表启用全集。同时补一条 loadCtx 用例断言「local 只有单侧 critics 覆盖时合并结果 default_critics 仍为两家」，并修正现有「不扩大审查面」用例的期望方向。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/registry-parity.test.ts:606-636（SCHEMA_DIR 枚举扫描只读 run.v2.json）；skills/dual-critic/schema/config.v2.json:278-286",
+      "problem": "上一轮（第 3 步）GLM-02 指出「schema 不枚举 Agent 身份」只由注释守护、已被接受并落地为 registry-parity 的 run.v2.json 枚举扫描；本步新增的 config.v2.json 具有同种性质（review.default_critics.items 为 type:string、agents 的键不枚举，做法正确），却未被该扫描纳入——同一个洞在新文件上重开。将来有人往 default_critics.items 加回 enum:[\"gemini\",\"glm\"]，现有测试全绿，直到 M8/M9 启用第三家才在运行期报「配置不合法」，正是 schemas.ts 注释自己描述的「改一漏二、运行期才发现」症状。扫描规则需区分「身份枚举」（禁止）与 agents 段 oneOf 里的 vendor const（形状判别式，必须允许），否则会误伤。",
+      "evidence": "test/unit/registry-parity.test.ts:606-636（扫描仅 JSON.parse 读 run.v2.json 并断言三个盯防点不含 enum）；skills/dual-critic/schema/config.v2.json:278-286（default_critics.items 仅 minLength，无机器守护）、296-399（agents additionalProperties oneOf 的 vendor const）；.reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r3-response-claude.md（上轮 GLM-02 的接受与落地承诺）。",
+      "suggestion": "把 config.v2.json 的 review.default_critics.items 纳入 SCHEMA_DIR 扫描的盯防点（断言不含 enum / const）；agents 的 vendor const 属形状判别，扫描规则里显式豁免并在注释里写明两者边界。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/config.ts:292-296",
+      "problem": "critics 与 agents 同时在场时（agents 已存在则不搬运改名）无条件 delete c['critics'] 且不 push 任何 change：若该源没有其它 v1 特征，note 为 null，整段静默丢弃。触发形态现实存在——用户手工升级时把 schema 改成 v2、抄入默认 agents 段、忘了删自己的 critics 覆盖，critics 里的自定义值（bin / max_turns 等）无声消失。与本项目「非法值明确报错、不静默落回」的纪律（loadCtx 校验注释 config.ts:401-407 自我表述）相悖。",
+      "evidence": "src/trivium/config.ts:292-296（if 条件只覆盖 agents 缺失的搬运，delete 无条件执行且无 changes 记录）、331-332（changes 为空则 note 为 null）；test/unit/config-migrate.test.ts 无「两键并存」用例（经被审 diff 全文核实）。",
+      "suggestion": "并存时至少在 changes 里记一条「critics 段与 agents 并存，已忽略前者（其自定义值未生效）」，让告警把丢弃说出来；更强硬的做法是直接报配置错误，让用户手工二选一。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/schemas.ts checkConfigAgents（经被审 diff 新增段全文）",
+      "problem": "回答审查焦点的直接提问：claude/codex 段被 oneOf 拒本身可接受——形状尚未定义就不放行，凭空放行等于承诺一个不存在的契约，types.ts 的说理成立。但两段式校验在「已登记而无形状」的交集上没有桥：用户配了未登记 id（如 agents.nobody，值凑巧匹配 zcode 形状能过 ajv）时，checkConfigAgents 给出人话错误并列出「已登记：claude、codex、gemini、glm」；用户循提示改用 claude 后，撞上的却是 ajv oneOf 的机读错误，错误信息不会告诉用户「该 Agent 的配置形状要等 M9/M10 才定义」。第一个错误把用户引向第二个错误。",
+      "evidence": "src/trivium/schemas.ts 的 checkConfigAgents 与 validateConfig（先 ajv 后补校，oneOf 拒绝时到不了补校层，经被审 diff 新增段全文核实）；skills/dual-critic/schema/config.v2.json:300-398（oneOf 仅 antigravity/zcode 两形状）；src/trivium/agents/registry.ts:91-144（claude vendor=anthropic、codex vendor=openai，均不在两形状内）；test/unit/config-migrate.test.ts 对应负例只覆盖「未登记 id」。",
+      "suggestion": "在 checkConfigAgents（或 ajv oneOf 报错后的补充提示）对「已登记但 oneOf 尚无该 vendor 形状」的键补一条人话：该 Agent 的配置形状尚未定义（随 M8/M9/M10），当前版本不能配置它——把两段式校验的空档补上。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/config.ts:337-340（迁移告警文案）与 src/trivium/init.ts:349-353（runInit 仅对 config.yaml 调 rewriteConfigToV2）",
+      "problem": "迁移告警说「想一次性改写磁盘（带备份）请运行 trivium init」，但 init 的一次性改写只覆盖 config.yaml 一个源；config.local.yaml 仍是 v1 的项目跑完 init 后，每次 loadCtx 照旧打迁移告警，与告警自己给出的出路矛盾，用户会以为 init 没成功或坏了。设计 13.1.1 写「trivium init 检测旧版时提供一次性改写（带备份）」，未限定单一源——这是实现窄于设计条文的偏离，需要显式裁决是「计划收窄」还是「实现漏做」。",
+      "evidence": "src/trivium/config.ts:337-340（note 文案含「请运行 trivium init」）；src/trivium/init.ts:349-353（改写仅作用于 cfgPath = config.yaml）、277-331（rewriteConfigToV2 无 local 分支）；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1818。",
+      "suggestion": "二选一：init 对 config.local.yaml 也做同样的带备份改写（失败路径纪律可完全复用）；或告警文案按源区分——对 local 说「本文件不进 Git，请手工改名或接受每次提示」。若裁定维持现状，回补设计 13.1.1 写明 init 只改写 config.yaml。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "AGENTS.md:23-25",
+      "problem": "AGENTS.md 项目概览仍写「schema/ 四份 JSON Schema」，实存六份（review.v1 / disposition.v1 / run.v1 / run.v2 / config.v1 / config.v2，已 Glob 核实）。失真自第 3 步起（五份），本步加深到六份。AGENTS.md 是 Driver 与审查员的首读指令文件，也是「改动同步清单」的载体，它自己的契约面计数却是错的；§24 台账 18.2.1 的受控同步清单亦未把 AGENTS.md 列入排查对象，导致两次 schema 增份都没触发它的更新。",
+      "evidence": "AGENTS.md:23-25（「四份 JSON Schema」原文）；skills/dual-critic/schema/ 目录 Glob 结果六份；skills/dual-critic/SKILL.md 与 doc/03_api/PROTOCOL_dual_critic_relay.md 均已在本补丁内同步为「四份当前 + 两份历史 / 六份」口径，唯独 AGENTS.md 未在 20 个被改文件中。",
+      "suggestion": "刷新 AGENTS.md 的 schema 计数（建议改为不含具体数字的表述，如「当前契约 + 只读历史契约若干份」），并把 AGENTS.md 补进 18.2.1 受控同步清单的排查对象，避免下次增份再漏。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/config.ts:390-393；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1817",
+      "problem": "config.yaml 与 config.local.yaml 皆为 v1 时，migrationNotes 有两条、for 循环逐条 warn；设计 13.1.1 写「在 stderr 告警一次（每次 CLI 调用最多一次，允许派生的 worker 各打一次）」。行为无碍（就多一行提示），但实现与条文有可观察差异。",
+      "evidence": "src/trivium/config.ts:367-393（逐源收集 notes 后循环 warn）；设计 1815-1817 行的方框原文。",
+      "suggestion": "合并为一条告警（两源的变化列在同一条里），或回溯设计措辞为「每源最多一次」——两边对齐即可。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-08",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/init.ts:325-330",
+      "problem": "rewriteConfigToV2 的 report.updated.push 与「已把 … 改写为 …，原文备份到 …」notes 在 if (!dryRun) 块之外：init --dry-run（cli.ts:158/556 用户可达）下不写备份不写新文件，报告却用完成时态描述两者，--json 模式下该陈述进机读输出（虽有 dry_run:true 并存）。与 mergeHooks 等既有动作的 dry-run 报告模式一致（惯例如此），但既有 notes 多为解释性陈述，本条是对一个不存在的备份文件的指名引用。",
+      "evidence": "src/trivium/init.ts:302-330（写盘在 if (!dryRun) 内、报告在外）；src/trivium/cli.ts:556-563（--dry-run 旗标读取与 emitJson）；test/unit/config-migrate.test.ts 未覆盖 dry-run 分支。",
+      "suggestion": "dry-run 分支的 notes 改用将来时（「将改写为 v2，原文将备份到 X」），并考虑给 rewriteConfigToV2 补一条 dry-run 断言不落盘的用例。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "迁移逐源进行、且在 deepMerge 之前：顺序论证正确——defaultConfig() 已是 v2 形状，先合并会让磁盘 critics 段并排落成废键、用户配置静默失效；且用最强形态锁住（断言用户自定义值真的生效、磁盘文件逐字不动两条用例），颠倒顺序会精确变红。",
+    "触发条件除 schema 字段外认 critics 与 review.allow_single_flag 两个特征键，站得住：两键在 v2 里都不是合法键，出现即可断定旧形态、无误伤面；「与 v1 无关的片段原样返回」「只有 allow_single_flag 的片段也认得出」正反用例齐备。回答审查焦点的提问：我没有找到会被这两个特征键误迁的 v2 合法形态。",
+    "agents 的键不要求 criticEnabled、该约束只落在 default_critics 上：取舍正确。设计 13.1.1 表格原文如此，M7b 计划稿 §3.2 的「约束一」确实会把未来的 Driver 配置段一并拒掉，以设计为准并显式记录分歧的处理符合纪律；checkConfigAgents 里「这里才是 criticEnabled 的约束点」的注释与配套负例（codex 进 default_critics 即报错）把这个边界守住了。",
+    "claude/codex 段被 oneOf 拒本身可接受（详见 GLM-04 的报错体验建议）：登记≠有形状，放行等于承诺不存在的契约，types.ts:243-248 的说理成立。",
+    "agentConfigOf 用 vendor 判别式收窄并缺段就地失败，确实比原先的非空断言更安全：缺段与 vendor 错配都在源头报错并说明真实原因，而「! 把 undefined 带到下游才崩」的错误与本因无关；且由于 deepMerge 无删除语义（默认键恒在）、validateConfig 先挡 vendor 错配，它在生产路径实为不可达的防御层，定位恰当。",
+    "init 一次性改写的失败路径纪律完整：备份走 fs.open(target,'wx')（O_CREAT|O_EXCL，fsx.ts:37-45）、EEXIST 即放弃且不中断 init 并说明原因、新文件 writeAtomic 原子替换、已是 v2 幂等 no-op 且不产生备份文件；改写 / 幂等 / 备份放弃 / loadCtx 往返四组用例覆盖到位。YAML 往返丢注释定为尽力项、原文逐字保备份（测试断言 backup === original）的处置诚实。",
+    "v1 → v2 除三个键变更（critics→agents、allow_single_flag→allow_partial_flag、新增 default_critics/max_critics）外无任何约束收严——逐段比对 config.v1.json 与 config.v2.json 的 required / 枚举 / 数值约束后确认，「升级即坏」不存在；profiles 从两键枚举放开为任意 Agent id 键是纪律 7 的正确应用。",
+    "default_critics 只校验不接线，在 PRD v1.4.2 FR-29（「仍缺入口与消费端……不改变实际跑哪几侧」）、PROTOCOL 头部、设计 13.1.1 抬头、types.ts:197-203 四处一致说破，文本足以防止读者从「配置里有这个字段」推出「已能选审核者」。",
+    "两段式校验实现干净：ajv 校形状、注册表校身份与跨字段，vendor 逐值比对能抓张冠李戴；测试整体质量高（迁移幂等、非对象输入不炸、未登记 / vendor 错配 / 未启用 / 缺段 / 超限逐条有负例）。",
+    "构建侧无遗漏：scripts/build.mjs:78-81 整目录递归拷贝 schema 进 dist/test，config.v2.json 新文件自动跟进；registry-parity 白名单两条 why 的更新（config.ts 默认值定义处、review.ts 编译期穷尽）论证成立，不是硬编码欠账。"
+  ],
+  "not_covered": [
+    "未执行 npm run check 或任何构建 / 测试（审查员只读约束），全部结论基于静态读码与推演；「两源皆 v1 时 default_critics 被顶成单元素」是按 migrateConfigV1 与 deepMerge 代码逐行推演的结果，未实跑验证。",
+    "schemas.ts / doctor.ts / preflight.ts / review.ts / agy.ts / config-migrate.test.ts 的内容经被审 diff 的新增段全文核实，未另行直读仓库原文；diff 未含的既有逻辑（如 review.ts 的 runner 调度、preflight 八项检查的其余部分）未逐行重读。",
+    "config.v1.json 与 config.v2.json 的比对聚焦 required / 枚举 / 数值约束，未逐条核对 description 文案差异。",
+    "cli.ts 只审了 init 子命令、--dry-run 与 --json 相关行，USAGE 其余部分与其它子命令未看。",
+    "selftest、集成测试（fault-injection 等）与 install.ts、hooks.json、prompts、lenses 等 skills 资产未审（不在本补丁焦点内）；「迁移告警走 stderr 不破坏 --json 协议」仅从 loadCtx 注释与 util/log 的铁律表述推断，未实跑验证。",
+    "上一轮（第 3 步）四条已接受意见的落地质量未全面复核，只核实了与本步交界的两处：schema 枚举扫描确已在基线（registry-parity.test.ts:606-636，由此得出 GLM-02 的覆盖缺口）、白名单 why 更新（registry-parity.test.ts:146/155）。"
+  ],
+  "consulted": [
+    ".reviews/配置v2与动态多审/code/_meta/changes-20260914T050404Z.diff",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r3-glm.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r3-response-claude.md",
+    "src/trivium/config.ts",
+    "src/trivium/init.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/types.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/util/fsx.ts",
+    "test/unit/registry-parity.test.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/config.v1.json",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "AGENTS.md"
+  ]
+}

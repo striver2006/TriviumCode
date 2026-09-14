@@ -10,7 +10,7 @@
 > 设计文档中带【待实施】标记的多 Agent 能力——第三、四家 Agent 参与审查、
 > 每次审核动态选 1～3 个审核者、换一家 Agent 主攻、逐审核者选思考等级三档——
 > **尚未实现**，本手册不涉及。届时它们会随各自里程碑写进本手册。
-> （规范见[设计 v1.3.1](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
+> （规范见[设计 v1.3.3](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
 > 术语上，N 方化后「双审」的正确称谓是「**多审**」；命令名 `/dual-*` 与归档目录一律不改名。）
 
 ---
@@ -304,7 +304,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `--only gemini\|glm` | 只跑一侧，调试用 | **会被标为降级——这不是双审** |
 | `--allow-single` | 一侧失败时不中止，产出单审结果 | 同上，且留痕记 `degradations[]` |
 
-`--allow-single` 受配置 `review.allow_single_flag` 约束，二者是**与**关系：配置里关掉，命令行也开不回来。这是刻意的——否则「默认 strict」就只是纸面规定。
+`--allow-single` 受配置 `review.allow_partial_flag`（旧名 `allow_single_flag`）约束，二者是**与**关系：配置里关掉，命令行也开不回来。这是刻意的——否则「默认 strict」就只是纸面规定。
 
 **降级绝不冒充双审**：幸存侧的文件照常落盘并标 `degraded`，失败侧在 `_meta/` 写一份 `.failed.json`，**不产出审查文档**。
 
@@ -372,7 +372,9 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `review.wait_timeout_s` | **180** | 每次等待窗口，**同时是你能收到进度的最小间隔**。调小反馈更密，代价是往返变多 |
 | `review.heartbeat_stale_s` | 120 | 超过这个时间没心跳判 worker 失联 |
 | `review.failure_policy` | `strict` | 一侧失败即中止。改 `degrade` 则继续出单审 |
-| `review.allow_single_flag` | `true` | 是否允许命令行 `--allow-single`。设 `false` 则命令行也开不回来 |
+| `review.allow_partial_flag` | `true` | 是否允许命令行 `--allow-single`。设 `false` 则命令行也开不回来。**旧名 `allow_single_flag` 仍可用**（加载时自动迁移） |
+| `review.default_critics` | `[gemini, glm]` | 不给 `--critics` 时的默认审核者集合。**当前只被校验、尚未接线**——它还不改变实际跑哪几侧 |
+| `review.max_critics` | `3` | 单次运行可选审核者的基数上限 |
 | `review.parallel` | `true` | 两侧并行。改 `false` 只会更慢，无收益 |
 | `review.retry.transient_max` | 1 | 瞬时失败重试次数（429、连接重置、解析失败等）。超时**不重试**——大概率再超时 |
 | `review.min_tool_calls` | 每阶段 5 | 证据下限：该侧至少要有这么多次读/搜工具调用 |
@@ -407,12 +409,16 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 | 字段 | 默认 | 说明 |
 | :--- | :--- | :--- |
-| `critics.gemini.agent` | `trivium-critic` | 只读 Agent 定义名。**工具白名单不含任何写工具** |
-| `critics.gemini.effort` | plan high / code medium / bug high | 思考档位。**模型 slug 自带档位时不传**，否则 agy 会直接拒绝 |
-| `critics.gemini.readonly_commands` | `git log`, `ls`, `cat`, `grep` 等 | 允许的只读命令 |
-| `critics.glm.max_turns` | 40 | ZCode 的最大轮数 |
-| `critics.glm.unsupported_override` | `reject` | 模型覆盖落到全局档时拒绝还是标注 |
+| `agents.gemini.agent` | `trivium-critic` | 只读 Agent 定义名。**工具白名单不含任何写工具** |
+| `agents.gemini.effort` | plan high / code high / bug high | 思考档位。**模型 slug 自带档位时不传**，否则 agy 会直接拒绝 |
+| `agents.gemini.readonly_commands` | `git log`, `ls`, `cat`, `grep` 等 | 允许的只读命令 |
+| `agents.glm.max_turns` | 40 | ZCode 的最大轮数 |
+| `agents.glm.unsupported_override` | `reject` | 模型覆盖落到全局档时拒绝还是标注 |
 | `active_profile` | `default` | 当前档位 |
+
+> **字段名自 `config.v2` 起由 `critics.*` 改为 `agents.*`**（旧名仍能跑：加载时自动在内存里迁移，
+> 磁盘文件不动）。`agents` 的键是 Agent id；只有**已定义配置形状**的 Agent 能配，
+> 当前是 gemini 与 glm——codex / claude 虽已登记在注册表里，形状要等后续里程碑才定义。
 
 两个内置档位。两档的 Gemini 侧相同，差异只在 GLM 侧用不用 Flash：
 

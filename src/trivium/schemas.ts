@@ -2,7 +2,9 @@
  * 四份 JSON Schema 的运行时校验器（设计 §6 / PROTOCOL §一）。
  *
  * `review.v1` 由 parse.ts 自己持有（它还要把错误回喂给模型）；其余集中在这里：
- *   - `config.v1`      → loadCtx 四级合并之后校验（M12：原先完全不校验，`gate: "off"` 静默 fail-open）
+ *   - `config.v2`      → loadCtx 四级合并之后校验（M12：原先完全不校验，`gate: "off"` 静默 fail-open）。
+ *                        v1 不在这里：它在 `config.ts` 由 `migrateConfigV1` 迁成 v2 之后才进校验，
+ *                        使校验只面对一种形状
  *   - `run.v2`         → writeRunMeta 写前校验；留痕核对把不合 schema 的 run.json 当作「不可读」
  *   - `run.v1`         → **历史契约，只读不写**（M7b 第 3 步）。既有归档是不可变工件（P6），
  *                        必须按写入时的规范解读，故 v1 校验器长期保留
@@ -13,11 +15,11 @@
  */
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { ErrorObject, ValidateFunction } from 'ajv';
-import configSchema from '../../skills/dual-critic/schema/config.v1.json' with { type: 'json' };
+import configSchema from '../../skills/dual-critic/schema/config.v2.json' with { type: 'json' };
 import runV1Schema from '../../skills/dual-critic/schema/run.v1.json' with { type: 'json' };
 import runV2Schema from '../../skills/dual-critic/schema/run.v2.json' with { type: 'json' };
 import dispositionSchema from '../../skills/dual-critic/schema/disposition.v1.json' with { type: 'json' };
-import { agentById, isAgentId } from './agents/registry.js';
+import { ALL_AGENT_IDS, CRITIC_AGENT_IDS, agentById, isAgentId } from './agents/registry.js';
 
 let ajv: Ajv2020 | undefined;
 const cache = new Map<string, ValidateFunction>();
@@ -45,9 +47,122 @@ export function formatErrors(errors: readonly ErrorObject[] | null | undefined):
   });
 }
 
+/**
+ * 校验 `trivium.config.v2`。
+ *
+ * **两段式，与 `validateRunMeta` 同构**：ajv 校形状，注册表校身份。
+ * 理由也相同——Agent id 与 vendor 的唯一来源是注册表（纪律 7），
+ * 在 schema 里抄第二份，新增一家时改一漏二不会报错。
+ */
 export function validateConfig(data: unknown): string[] {
-  const v = compile('config', configSchema as object);
-  return v(data) ? [] : formatErrors(v.errors);
+  const v = compile('config.v2', configSchema as object);
+  if (!v(data)) {
+    /*
+     * ajv 失败时**也要跑一次身份检查**（审查意见 GLM-04）。
+     *
+     * 两段式的天然断档在这里：`agents.claude` 会被 `oneOf` 在 ajv 阶段就拒掉，
+     * 压根到不了下面的补校层，于是用户只拿到一串「不匹配任何分支」的机读错误，
+     * 完全看不出真正的原因是「该 Agent 的配置形状要等 M9 / M10 才定义」。
+     *
+     * 附加而不是替换 ajv 的错误：形状问题可能不止这一个，盖掉别的更糟。
+     */
+    return [...formatErrors(v.errors), ...checkConfigAgents(data)];
+  }
+  return checkConfigAgents(data);
+}
+
+/**
+ * `config.v2` 的 `agents` 段当前**已定义形状**的 vendor。
+ *
+ * 与注册表的「已登记」是两回事：登记表示这家存在，有形状才表示它能被配置。
+ * codex（openai）/ claude（anthropic）随 M8 / M9 / M10 加入 `config.v2.json` 的
+ * `oneOf` 时，这里同步加一个值——**两处要一起改**，所以放在离 schema 最近的地方。
+ */
+const CONFIGURABLE_VENDORS = new Set(['antigravity', 'zcode']);
+
+/**
+ * 配置里与 Agent 身份有关的跨字段规则（设计 13.1.1 / 计划 §3.2「约束二」）。
+ *
+ * 这三条 JSON Schema 都表达不了：前两条要查注册表，第三条要跨字段比对。
+ * 与 `config.ts` 的既有纪律一致——**非法值明确报错，不静默落回默认**。
+ */
+function checkConfigAgents(data: unknown): string[] {
+  const c = data as {
+    agents?: Record<string, { vendor?: unknown }>;
+    review?: { default_critics?: unknown; max_critics?: unknown };
+  };
+  const problems: string[] = [];
+  const agents = c.agents ?? {};
+
+  for (const [id, seg] of Object.entries(agents)) {
+    const agent = agentById(id);
+    /*
+     * 键只要求「是已登记 Agent」，**不要求 criticEnabled**（设计 13.1.1）：
+     * Driver 自身也需要配置容身之处。M7b 计划稿 §3.2 写的是「必须 criticEnabled」，
+     * 以设计为准——那条会把未来的 Driver 段一并拒掉。
+     */
+    if (!agent) {
+      /*
+       * 列出已登记 id 时要顺带说明**哪些现在还配不了**（审查意见 GLM-04）。
+       *
+       * 不说的话这条错误会把用户引向下一个错误：他看到「已登记：claude、codex、
+       * gemini、glm」就照着改成 `claude`，而 `claude` 的配置形状要等 M9 / M10 才定义，
+       * ajv 的 `oneOf` 会用一条机读错误拒掉它——用户完全看不出真正的原因。
+       */
+      const configurable = ALL_AGENT_IDS.filter((x) => CONFIGURABLE_VENDORS.has(agentById(x)!.vendor));
+      const pending = ALL_AGENT_IDS.filter((x) => !configurable.includes(x));
+      problems.push(
+        `agents.${id} 不是已登记的 Agent id。当前可配置：${configurable.join('、')}` +
+          (pending.length > 0
+            ? `；${pending.join('、')} 虽已登记，但配置形状尚未定义（随 M8 / M9 / M10），现在还不能配`
+            : ''),
+      );
+      continue;
+    }
+    if (!CONFIGURABLE_VENDORS.has(agent.vendor)) {
+      problems.push(
+        `agents.${id} 的配置形状尚未定义（随 M8 / M9 / M10 加入），当前版本不能配置它。` +
+          '登记在注册表里只表示「这家存在」，不表示「它已经能被配置」',
+      );
+      continue;
+    }
+    if (seg?.vendor !== agent.vendor) {
+      problems.push(
+        `agents.${id}.vendor 与注册表不符：配的是 ${JSON.stringify(seg?.vendor)}，` +
+          `登记的是 ${agent.vendor}。vendor 决定适配器路由与禁读矩阵，错配会发给另一家 CLI`,
+      );
+    }
+  }
+
+  const picked = c.review?.default_critics;
+  if (Array.isArray(picked)) {
+    const max = typeof c.review?.max_critics === 'number' ? c.review.max_critics : 3;
+    if (picked.length > max) {
+      problems.push(`review.default_critics 有 ${picked.length} 项，超过 max_critics=${max}`);
+    }
+    for (const id of picked) {
+      if (typeof id !== 'string') {
+        problems.push(`review.default_critics 含非字符串项：${JSON.stringify(id)}`);
+        continue;
+      }
+      /*
+       * **这里才是 criticEnabled 的约束点**：能被选为审核者的必须是启用了审核者
+       * 能力的 Agent。登记但未启用（当前的 codex / claude）出现在这里要报错，
+       * 而不是静默忽略——静默会让用户以为第三家已经在跑了。
+       */
+      if (!CRITIC_AGENT_IDS.includes(id as never)) {
+        problems.push(
+          `review.default_critics 的「${id}」不是当前可用的审核者` +
+            `（可用：${CRITIC_AGENT_IDS.join('、')}）`,
+        );
+        continue;
+      }
+      if (!(id in agents)) {
+        problems.push(`review.default_critics 的「${id}」在 agents 里没有配置段`);
+      }
+    }
+  }
+  return problems;
 }
 
 /**
