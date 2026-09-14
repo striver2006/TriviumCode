@@ -95,20 +95,85 @@ export interface PathDenyProbe {
   attempts?: string[];
 }
 
-export interface AgyProbe {
-  bin: string | null;
+/** 隔离手段。探针实测「独立 HOME / 独立 settings 路径 / 仅环境变量 / 共享」中首个可用者 */
+export type ProbeIsolation = 'home_copy' | 'settings_path' | 'env' | 'shared';
+
+/**
+ * 复现「取版本」这一步所需的调用方式，由探针落盘、`preflight` 复用。
+ *
+ * 存在的理由是 P7 的直接应用：**命令行由探针结论构造，不由读侧按家分支猜**。
+ * 两家的取法真的不同——agy 是 `agy --version` 取全文，
+ * zcode 是 `node zcode.cjs version` 再正则抠三段号。原先这条知识写死在
+ * `checkCliVersions` 的两个分支里，于是第三家的版本漂移一律不被检查
+ * （BACKLOG EV-05②）。搬进探针结论之后，读侧只剩一条规则。
+ */
+export interface VersionProbe {
+  /**
+   * 需要用哪个运行时来跑 entrypoint。
+   *
+   * `null` = 直接执行 entrypoint 本身（agy）；
+   * `'node'` = 用 Node 跑（zcode 的 .cjs）——**记的是「要 node」这个事实，
+   * 不是某个 node 的绝对路径**：路径随机器和版本管理器变，落盘会立刻过期。
+   */
+  runner: 'node' | null;
+  /** 传给 CLI 的参数，不含 entrypoint 本身 */
+  args: string[];
+  /** 从 stdout 抠版本号的正则（取第 1 捕获组）。null = 取 trim 后的全文 */
+  extract: string | null;
+}
+
+/**
+ * 各家探针结论的**共有事实**（M6 第 1 步）。
+ *
+ * 抽取判据不是「看起来像」，而是**泛化读侧真正需要什么**：
+ * `preflight` 的版本漂移比对要 `entrypoint` + `version`，
+ * `guard` 的只读失守判定要 `scratch_paths`，
+ * TTL 新鲜度要 `probed_at`。这三处都不需要任何一家的特有字段，
+ * 所以它们——且只有它们——进共有面。特有字段留在各家 interface 里，
+ * 由各家适配器消费（纪律 10 对适配器内部的豁免）。
+ *
+ * ## 为什么是 `entrypoint` 而不是保留 `bin` / `entry`
+ *
+ * 两家原先各叫各的（agy 记 `bin`、zcode 记 `entry`），于是「怎么取可执行路径」
+ * 成了一条**按家分叉的知识**，`checkCliVersions` 只能写死两个分支——
+ * 那正是 EV-05② 里「第三家的 CLI 在不在一律不被检查」的成因。
+ * 统一成一个名字之后，版本比对只需要「取 entrypoint 跑 --version」这一条规则，
+ * 对第几家都成立。
+ *
+ * **不保留旧名做别名**：那会让同一个事实有两个字段，写入方稍不注意就写岔。
+ * 盘上旧结论由 `migrateProbeSection` 在读盘时搬到新名，一次性完成。
+ */
+export interface CommonProbe {
+  /** CLI 可执行入口的绝对路径。null = 未探到（该侧不可用） */
+  entrypoint: string | null;
+  /** CLI 自报版本。`preflight` 据此判漂移 */
   version: string | null;
+  /** 怎么再取一次版本。null = 探针没记，该侧的版本漂移无法检查（如实报告，不静默） */
+  version_probe: VersionProbe | null;
+  /**
+   * **这一键**是何时探的。
+   *
+   * 与 `ProbeSection.generated_at` 分工不同：那个记的是「探针段整体最后写过的时刻」，
+   * 任何一次 `doctor` 都会刷新它。若 TTL 只看它，`doctor --only codex` 会把
+   * agy / zcode 的过期结论一并刷成「新鲜」——审查意见 GLM-03 实测指出的失真。
+   * 按键判定之后，没重探的键该过期照样过期。
+   */
+  probed_at: string | null;
+  /** 该 CLI 可用的模型 slug 目录。空数组 = 未探到或该家无目录概念 */
   models: string[];
+  path_deny: PathDenyProbe;
+  /** Agent 在项目根自建的临时文件白名单，指纹比对时排除 */
+  scratch_paths: string[];
+  isolation: ProbeIsolation;
+}
+
+export interface AgyProbe extends CommonProbe {
   /** headless 下是否真的会读文件（Antigravity issue #548 的本机判定） */
   headless_read_ok: boolean | null;
   /** --json-schema 是否能强制出可解析的结构化输出 */
   json_schema_ok: boolean | null;
   /** 管道下 stdout 是否为空、需要 `script -q /dev/null` 伪终端包装 */
   pty_required: boolean | null;
-  path_deny: PathDenyProbe;
-  /** Agent 在项目根自建的临时文件白名单，指纹比对时排除 */
-  scratch_paths: string[];
-  isolation: 'home_copy' | 'settings_path' | 'env' | 'shared';
   /** 达成 headless_read_ok 所需的额外手段，供适配层复现 */
   read_strategy?: 'default' | 'allow_settings' | 'pty' | 'add_dir' | null;
   /**
@@ -120,9 +185,7 @@ export interface AgyProbe {
   agent?: string | null;
 }
 
-export interface ZcodeProbe {
-  entry: string | null;
-  version: string | null;
+export interface ZcodeProbe extends CommonProbe {
   /** 实测**实际被接受**的只读参数组合，不是文档上写的 */
   readonly_flags: string[];
   /** 模型覆盖实际生效的档位 */
@@ -139,12 +202,8 @@ export interface ZcodeProbe {
   trace_args_source?: string | null;
   /** 正文字段路径，设计记载为 .response */
   response_field: string | null;
-  path_deny: PathDenyProbe;
-  scratch_paths: string[];
-  isolation: 'home_copy' | 'settings_path' | 'env' | 'shared';
   /** 实测到的模型 id 规范写法（本机为 builtin:<provider>/<name> 形态） */
   model_id_form?: string | null;
-  models?: string[];
 }
 
 export interface AuthCacheEntry {
@@ -156,12 +215,43 @@ export interface AuthCacheEntry {
   ok: true;
 }
 
+/**
+ * 各 CLI 的探针结论表，**按 `cliName` 索引**（M6 第 1 步，审查意见 AGY-01 / GLM-04）。
+ *
+ * ## 键集与类型是两件事，不是两份事实源
+ *
+ * - **键集**的唯一来源是注册表的 `ALL_CLI_NAMES`。谁该有一段、`--only` 接受哪些取值、
+ *   `defaultProbe` 生成哪些键，全从那里派生——加一家 CLI 不必改本文件。
+ * - **类型**为已实现专属形状的两家给出精确定义。这不是枚举身份：各家探针结论的
+ *   字段本来就不同（agy 有 `pty_required`、zcode 有 `response_field`），
+ *   那是**真实差异**，泛化不掉也不该泛化。尚未实现专属形状的 CLI 落 `CommonProbe`。
+ *
+ * `registry-parity` 以「探针段具名键 ⊆ cliName 集」守着两者不分叉。
+ *
+ * ## 为什么每个键都是可选的
+ *
+ * 「这家还没探过」与「探过、结论为否」必须可区分——前者该提示去跑 doctor，
+ * 后者该如实报告该侧不可用。这与 M7b 第 6 步 `checkModelSlugs` 引入
+ * 「无法校验」第三态是同一条口径：**静默通过会让「校验了」与「没得校验」长得一模一样。**
+ */
+export type ProbeByCli = { [cliName: string]: CommonProbe | undefined } & {
+  agy?: AgyProbe;
+  zcode?: ZcodeProbe;
+};
+
 export interface ProbeSection {
+  /**
+   * 探针段**整体**最后写过的时刻。
+   *
+   * 注意它**不是** TTL 判据：按键的新鲜度看 `CommonProbe.probed_at`。
+   * 两者分开的理由写在那个字段上（GLM-03）。这里保留它是为了回答
+   * 「这份 config.local.yaml 上次被 doctor 动过是什么时候」。
+   */
   generated_at: string | null;
   /** doctor 探测到的编译测试候选命令，仅供 init 展示确认，绝不自动执行（设计 §14.1） */
   verify_suggestion: { build: string[]; test: string[] };
-  agy: AgyProbe;
-  zcode: ZcodeProbe;
+  /** 各 CLI 的探针结论。旧盘上的 `probe.agy` / `probe.zcode` 由读盘迁移搬进来 */
+  cli: ProbeByCli;
   /**
    * preflight 探活结果的短 TTL 缓存（审查意见 AGY-02 / GLM-06）。
    *

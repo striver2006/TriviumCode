@@ -7,8 +7,18 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
-import type { AgentConfig, AgentId, Config, Ctx, ProbeSection, Stage } from './types.js';
+import type {
+  AgentConfig,
+  AgentId,
+  CommonProbe,
+  Config,
+  Ctx,
+  ProbeByCli,
+  ProbeSection,
+  Stage,
+} from './types.js';
 import { CRITICS } from './types.js';
+import { ALL_CLI_NAMES } from './agents/registry.js';
 import { EXIT, TriviumError, envError, swallowedTextHint } from './exit-codes.js';
 import { exists, expandHome } from './util/fsx.js';
 import { isGitRepo, repoRoot } from './util/git.js';
@@ -19,38 +29,129 @@ export const CONFIG_SCHEMA_ID = 'trivium.config.v2' as const;
 export const CONFIG_SCHEMA_ID_V1 = 'trivium.config.v1' as const;
 export const TRIVIUM_DIR = '.trivium';
 
+/** 共有事实的空值。各家的专属字段在各自的 default 里补 */
+function emptyCommonProbe(): CommonProbe {
+  return {
+    entrypoint: null,
+    version: null,
+    version_probe: null,
+    probed_at: null,
+    models: [],
+    path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
+    scratch_paths: [],
+    isolation: 'shared',
+  };
+}
+
+/**
+ * 探针段的空壳。
+ *
+ * **键集从注册表派生**（M6 第 1 步）：新增一家 CLI 时这里不必改一个字——
+ * 这正是「接入套件只需几件」对探针段的兑现。已实现专属形状的两家
+ * 在派生出的共有面上补自己的字段；其余家就是一份 `CommonProbe`，
+ * 足够 `preflight` 的版本比对与 TTL 判定消费。
+ */
 export function defaultProbe(): ProbeSection {
+  const cli: ProbeByCli = {};
+  for (const name of ALL_CLI_NAMES) cli[name] = emptyCommonProbe();
+
+  // 两家的专属字段。写在派生循环之后，而不是把它们塞进循环里按名字分派——
+  // 那样就又成了「按身份走分支」，正是本步要消灭的形态。
+  cli.agy = {
+    ...emptyCommonProbe(),
+    headless_read_ok: null,
+    json_schema_ok: null,
+    pty_required: null,
+    read_strategy: null,
+    agent: null,
+  };
+  cli.zcode = {
+    ...emptyCommonProbe(),
+    readonly_flags: [],
+    model_override: null,
+    trace_source: null,
+    trace_args_source: null,
+    response_field: null,
+    model_id_form: null,
+  };
+
   return {
     generated_at: null,
     verify_suggestion: { build: [], test: [] },
-    agy: {
-      bin: null,
-      version: null,
-      models: [],
-      headless_read_ok: null,
-      json_schema_ok: null,
-      pty_required: null,
-      path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
-      scratch_paths: [],
-      isolation: 'shared',
-      read_strategy: null,
-      agent: null,
-    },
-    zcode: {
-      entry: null,
-      version: null,
-      readonly_flags: [],
-      model_override: null,
-      trace_source: null,
-      trace_args_source: null,
-      response_field: null,
-      path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
-      scratch_paths: [],
-      isolation: 'shared',
-      model_id_form: null,
-      models: [],
-    },
+    cli,
     auth: {},
+  };
+}
+
+/**
+ * 旧探针段（`probe.agy` / `probe.zcode` 平铺、入口字段名为 `bin` / `entry`）
+ * → 新形状（`probe.cli.<cliName>`、入口统一为 `entrypoint`）的**内存迁移**。
+ *
+ * 与 `migrateConfigV1` 同规格：**只在读侧发生，不回写磁盘**，幂等，
+ * 入参已是新形状时原样返回。理由也一样——若改成「读到旧形状就拒绝启动」，
+ * 每台已经跑过 doctor 的机器都会在升级瞬间硬失败，而它们盘上的结论本身是好的。
+ *
+ * 不迁移的后果不是报错而是**静默退化**：`preflight` 取不到 `entrypoint`
+ * 会判成「该侧未探过」，提示去重跑 doctor——结论还在盘上却被当成不存在。
+ */
+export function migrateProbeSection(raw: unknown): { probe: unknown; note: string | null } {
+  if (raw === null || typeof raw !== 'object') return { probe: raw, note: null };
+  const p = { ...(raw as Record<string, unknown>) };
+
+  /*
+   * 判据取「顶层有没有以 cliName 命名的段」，不取 schema 字段——探针段没有自己的版本号。
+   *
+   * `!== null` 不能省：`typeof null === 'object'` 是 JS 的经典坑，
+   * 盘上写成 `probe.agy:`（YAML 空值）会被当成旧段，展开得到 `{}`，
+   * 再补上默认字段就成了一个**凭空造出来的完整段**（审查意见 GLM-04）。
+   */
+  const legacyKeys = ALL_CLI_NAMES.filter(
+    (n) => p[n] !== undefined && p[n] !== null && typeof p[n] === 'object',
+  );
+  if (legacyKeys.length === 0) return { probe: raw, note: null };
+
+  const cli = { ...((p['cli'] as Record<string, unknown> | undefined) ?? {}) };
+  for (const name of legacyKeys) {
+    const old = { ...(p[name] as Record<string, unknown>) };
+    /*
+     * 入口字段改名。两家旧名不同（agy 记 bin、zcode 记 entry），所以两个都试——
+     * 这**不是**按身份分支：任何一家的旧结论里至多只有其中一个键，
+     * 取到哪个都写进同一个 entrypoint，加第三家也不必再加一行。
+     */
+    if (old['entrypoint'] === undefined) {
+      old['entrypoint'] = old['bin'] ?? old['entry'] ?? null;
+    }
+    delete old['bin'];
+    delete old['entry'];
+    /*
+     * 按键时间戳只补给**确实探到过东西**的段（审查意见 AGY-02）。
+     *
+     * `probed_at` 的语义是「这一键探到过」。一个 `bin: null` 的旧段从来没探到过任何东西——
+     * 给它盖上段整体的 `generated_at` 就是伪造事实，而后果是具体的：
+     * `preflight` 本轮新增的宽容路径 `if (!probe?.probed_at) continue`
+     * （没探过就跳过）会因此**失效**，`checkProbeFreshness` 还会把它报成「新鲜」。
+     * 旧盘上只跑过 `doctor --only zcode` 的机器正是这个形态。
+     *
+     * 有入口时回落到 `generated_at`：那是它被探到的最晚可能时刻。
+     * 宁可判得比真实更旧（顶多多探一次），也不能判得更新（过期结论会蒙混过关）。
+     */
+    if (old['probed_at'] === undefined) {
+      old['probed_at'] = old['entrypoint'] ? (p['generated_at'] ?? null) : null;
+    }
+    if (old['models'] === undefined) old['models'] = [];
+    /*
+     * 新形状优先，旧值只补缺失键（审查意见 AGY-02 第三点）。
+     * 直接 `cli[name] = old` 会让一份**已经是新形状**的段被同名旧段整体盖掉——
+     * 两种形状并存的文件（迁移写了一半、或人手工改过）就会丢掉新数据。
+     */
+    cli[name] = { ...old, ...((cli[name] as Record<string, unknown> | undefined) ?? {}) };
+    delete p[name];
+  }
+  p['cli'] = cli;
+
+  return {
+    probe: p,
+    note: `探针段已迁移到按 CLI 索引的新形状（${legacyKeys.join('、')}）。下次 doctor 会按新形状写盘。`,
   };
 }
 
@@ -382,13 +483,45 @@ export async function loadCtx(opts: LoadOptions = {}): Promise<Ctx> {
    * 而 `agents` 仍是内置默认——用户配的 bin / agent / max_turns **一个都不生效**，
    * 却没有任何报错。先迁移再合并，`critics` 在进入合并前就已改名为 `agents`。
    */
-  const migrated: { file: string; shared: boolean; note: string }[] = [];
+  /*
+   * `kind` 区分两类迁移：配置 schema v1→v2、探针段形状。
+   * 不区分的后果实测过一次——探针段迁移会打出「检测到 config.v1 形态的配置」
+   * 并建议「手工把 critics: 改名为 agents:」，而那个文件的 schema 早已是 v2、
+   * 里面根本没有 critics 段。照那句出路去排障，人会去找一个不存在的东西
+   * （「第一个错误不得把用户引向第二个错误」）。
+   */
+  const migrated: {
+    file: string;
+    shared: boolean;
+    note: string;
+    kind: 'config-v1' | 'probe-shape';
+  }[] = [];
   for (const name of ['config.yaml', 'config.local.yaml']) {
     const p = path.join(triviumDir, name);
     const data = await readYamlIfExists(p);
     if (data !== undefined) {
       const { config: out, note } = migrateConfigV1(data);
-      if (note) migrated.push({ file: p, shared: name === 'config.yaml', note });
+      if (note) migrated.push({ file: p, shared: name === 'config.yaml', note, kind: 'config-v1' });
+      /*
+       * 探针段的形状迁移是**独立维度**，必须单独走一次：
+       * 一份 schema 已是 v2 的配置，`probe` 段完全可能还是 M6 之前的平铺形状
+       * （v2 落地于 M7b 第 4 步，探针段改形状在 M6 第 1 步，两者不同期）。
+       * 挂在 `migrateConfigV1` 的 v1 分支里就会漏掉这类文件——而那正是**最常见**的一类：
+       * 本仓库自己的 config.local.yaml 就是。
+       */
+      const doc = out as Record<string, unknown> | null;
+      if (doc !== null && typeof doc === 'object' && doc['probe'] !== undefined) {
+        const { probe, note: probeNote } = migrateProbeSection(doc['probe']);
+        if (probeNote) {
+          doc['probe'] = probe;
+          migrated.push({
+            file: p,
+            shared: name === 'config.yaml',
+            note: probeNote,
+            kind: 'probe-shape',
+          });
+        }
+      }
       cfg = deepMerge(cfg, out);
       sources.push(p);
     }
@@ -415,17 +548,25 @@ export async function loadCtx(opts: LoadOptions = {}): Promise<Ctx> {
    */
   if (migrated.length > 0) {
     const { warn } = await import('./util/log.js');
+    const wayOut = (m: (typeof migrated)[number]): string => {
+      // 探针段只落在 config.local.yaml，且由 doctor 独占写出——出路是重跑 doctor，
+      // 与 config schema 的迁移出路无关（init 不碰探针段，手工改名也不适用）。
+      if (m.kind === 'probe-shape') return '重跑 `trivium doctor` 会按新形状写盘；在那之前旧结论照常可用';
+      return m.shared
+        ? '`trivium init` 可一次性改写它（带备份）'
+        : '本文件不进 Git，init 不会改它——手工把 `critics:` 改名为 `agents:`，或忽略本提示';
+    };
     const body = migrated
-      .map((m) => `  ${m.file}：\n${m.note}\n    出路：${
-        m.shared
-          ? '`trivium init` 可一次性改写它（带备份）'
-          : '本文件不进 Git，init 不会改它——手工把 `critics:` 改名为 `agents:`，或忽略本提示'
-      }`)
+      .map((m) => `  ${m.file}：\n    ${m.note}\n    出路：${wayOut(m)}`)
       .join('\n');
-    warn(
-      `检测到 ${CONFIG_SCHEMA_ID_V1} 形态的配置，已在内存中按 ${CONFIG_SCHEMA_ID} 迁移` +
-        `（磁盘文件未改动，旧配置继续可用）：\n${body}`,
-    );
+    const kinds = new Set(migrated.map((m) => m.kind));
+    const head =
+      kinds.size > 1
+        ? '检测到两类需要迁移的旧形态（配置 schema 与探针段）'
+        : kinds.has('config-v1')
+          ? `检测到 ${CONFIG_SCHEMA_ID_V1} 形态的配置，已在内存中按 ${CONFIG_SCHEMA_ID} 迁移`
+          : '检测到旧形状的探针段，已在内存中按「按 CLI 索引」的新形状迁移';
+    warn(`${head}（磁盘文件未改动，旧配置继续可用）：\n${body}`);
   }
 
   if (!(await exists(triviumDir)) && !opts.allowUninitialized) {
@@ -515,16 +656,52 @@ export async function patchProbe(
   return withGlobalLock({ triviumDir, heartbeatStaleMs }, async () => {
     const p = path.join(triviumDir, 'config.local.yaml');
     const existing = ((await readYamlIfExists(p)) as Record<string, unknown> | undefined) ?? {};
-    const probe = ((existing['probe'] as ProbeSection | undefined) ?? defaultProbe());
+    /*
+     * 这条路径**绕过 loadConfig 直接读盘**，所以迁移要在这里再做一次。
+     * 漏掉的后果不是报错而是数据丢失：旧形状的 `probe.agy` 不被搬走，
+     * mutate 往 `probe.cli.agy` 写新结论，落盘后同一份文件里**两种形状并存**，
+     * 下次读盘迁移又把旧的搬回来盖掉新的。
+     */
+    const { probe: raw } = migrateProbeSection(existing['probe']);
+    const probe = ((raw as ProbeSection | undefined) ?? defaultProbe());
+    // 迁移只保证已有键的形状，不保证键齐全（旧盘上没有 codex/claude 段）。
+    // 补空壳是必要的：mutate 里的 `cur.cli[name] = …` 读改写要有个落点。
+    probe.cli = { ...defaultProbe().cli, ...probe.cli };
     mutate(probe);
     return persistProbeUnlocked(triviumDir, probe);
   });
 }
 
-/** 探针结论是否已过期（preflight 用，设计 §8.1） */
-export function probeIsFresh(cfg: Config): boolean {
-  const at = cfg.probe.generated_at;
+/** 某个时间戳是否还在 TTL 内。空串 / 非法时间一律判为不新鲜 */
+function withinTtl(at: string | null | undefined, ttlDays: number): boolean {
   if (!at) return false;
   const ageMs = Date.now() - new Date(at).getTime();
-  return Number.isFinite(ageMs) && ageMs < cfg.probe_ttl_days * 86_400_000;
+  return Number.isFinite(ageMs) && ageMs < ttlDays * 86_400_000;
+}
+
+/**
+ * **某一条 CLI** 的探针结论是否还新鲜（设计 §8.1）。
+ *
+ * 按键判定而不是看全局 `generated_at`：后者被任何一次 doctor 刷新，
+ * 于是 `doctor --only codex` 会把 agy / zcode 的过期结论一并刷成「新鲜」
+ * （审查意见 GLM-03）。这个失真在两家时就已存在，四家并入同一段后会被放大。
+ */
+export function cliProbeIsFresh(cfg: Config, cliName: string): boolean {
+  return withinTtl(cfg.probe.cli[cliName]?.probed_at, cfg.probe_ttl_days);
+}
+
+/**
+ * 探针结论整体是否可用（preflight 用）。
+ *
+ * 判据是「**有没有任何一条** CLI 的结论还新鲜」，而不是全局时间戳。
+ * 具体哪几侧过期由 `staleCliProbes` 逐一列出——一句「探针已过期」
+ * 在四家并存时不足以让人知道该重探谁。
+ */
+export function probeIsFresh(cfg: Config): boolean {
+  return ALL_CLI_NAMES.some((name) => cliProbeIsFresh(cfg, name));
+}
+
+/** 结论已过期或从未探过的 CLI 名单，供 preflight 点名 */
+export function staleCliProbes(cfg: Config): string[] {
+  return ALL_CLI_NAMES.filter((name) => !cliProbeIsFresh(cfg, name));
 }

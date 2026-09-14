@@ -19,7 +19,13 @@ import configSchema from '../../skills/dual-critic/schema/config.v2.json' with {
 import runV1Schema from '../../skills/dual-critic/schema/run.v1.json' with { type: 'json' };
 import runV2Schema from '../../skills/dual-critic/schema/run.v2.json' with { type: 'json' };
 import dispositionSchema from '../../skills/dual-critic/schema/disposition.v1.json' with { type: 'json' };
-import { ALL_AGENT_IDS, CRITIC_AGENT_IDS, agentById, isAgentId } from './agents/registry.js';
+import {
+  ALL_AGENT_IDS,
+  ALL_CLI_NAMES,
+  CRITIC_AGENT_IDS,
+  agentById,
+  isAgentId,
+} from './agents/registry.js';
 
 let ajv: Ajv2020 | undefined;
 const cache = new Map<string, ValidateFunction>();
@@ -116,9 +122,29 @@ function checkConfigAgents(data: unknown): string[] {
   const c = data as {
     agents?: Record<string, { vendor?: unknown }>;
     review?: { default_critics?: unknown; max_critics?: unknown };
+    probe?: { cli?: Record<string, unknown> };
   };
   const problems: string[] = [];
   const agents = c.agents ?? {};
+
+  /*
+   * 探针段的键必须是已登记的 CLI 名——**两段式的第二段**（纪律 12，审查意见 GLM-08）。
+   *
+   * M6 第 1 步给 `probe.cli` 加了 `commonProbe` 的 ajv 形状校验，但只做了第一段。
+   * 缺了这一段的后果不是报错而是**静默不生效**：一个形状完整的未登记键
+   * （例如从 zcode 段复制改名）过得了 ajv，`preflight` / `doctor` 按 `ALL_CLI_NAMES`
+   * 遍历时把它忽略，而 `guard` 若按盘上实有键遍历还会消费它的 `scratch_paths`——
+   * 一个没人登记的键能影响只读失守判定。`agents` 段的未登记键是明确报错的，
+   * 两处防护强度不该差这么多。
+   */
+  for (const key of Object.keys(c.probe?.cli ?? {})) {
+    if (!ALL_CLI_NAMES.includes(key)) {
+      problems.push(
+        `probe.cli.${key} 不是已登记的 CLI 名。探针段按 cliName 索引，` +
+          `键集的唯一来源是 agents/registry.ts；当前已登记：${ALL_CLI_NAMES.join('、')}`,
+      );
+    }
+  }
 
   for (const [id, seg] of Object.entries(agents)) {
     const agent = agentById(id);

@@ -52,6 +52,8 @@ import type { RunMeta } from '../../src/trivium/types.js';
 
 const TOPIC = '接入套件验收';
 const FAKE_CLI_VERSION = '9.9.9';
+/** 夹具里各处时间戳取同一个值：探针段的 probed_at 要与 generated_at 一致才像真盘面 */
+const NOW = new Date().toISOString();
 
 interface Kit {
   /** 打过 overlay 的临时构建树 */
@@ -326,8 +328,15 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
 
   /*
    * 假 CLI：preflight 的 checkCliVersions 会真的执行它们并比对版本号。
-   * 这两项是**按厂商写死**的编排，桩侧不经过——正因如此，让既有两侧真跑一遍
-   * 才有意义：它保证本用例检验的是完整 preflight，而不是被绕过的 preflight。
+   *
+   * **这要求探针段写成新形状并带上 `version_probe`**（审查意见 GLM-01）。
+   * M6 第 1 步之前这里写的是旧平铺形状（`agy.bin` / `zcode.entry`）；改动落地后，
+   * 旧形状经 `migrateProbeSection` 迁移时不会被凭空补上 `version_probe`（刻意的保守选择），
+   * 于是 `readCliVersion` 走「无从查」第三态——**假 CLI 从此再没被执行过，而本用例照样全绿**。
+   * 这是全仓唯一端到端跑通「取版本 + 比对」的地方，那次静默降级把它变成了空转。
+   *
+   * 另有一条用例专门覆盖「旧盘迁移后走第三态」，见文件末尾——
+   * 两条各守一边：这条守版本比对真的发生，那条守第三态真的被点名。
    */
   const fakeAgy = path.join(root, 'fake/agy');
   await fs.mkdir(path.dirname(fakeAgy), { recursive: true });
@@ -380,21 +389,36 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
     path.join(root, '.trivium/config.local.yaml'),
     [
       'probe:',
-      `  generated_at: '${new Date().toISOString()}'`,
-      '  agy:',
-      `    bin: ${fakeAgy}`,
-      `    version: '${FAKE_CLI_VERSION}'`,
-      '    models:',
-      "      - 'gemini-3.8-flash-high'",
-      '    headless_read_ok: true',
-      '  zcode:',
-      `    entry: ${fakeZcode}`,
-      `    version: '${FAKE_CLI_VERSION}'`,
-      '    readonly_flags:',
-      "      - '--mode'",
-      "      - 'plan'",
-      '    models:',
-      "      - 'GLM-5.3'",
+      `  generated_at: '${NOW}'`,
+      '  cli:',
+      '    agy:',
+      `      entrypoint: ${fakeAgy}`,
+      `      version: '${FAKE_CLI_VERSION}'`,
+      `      probed_at: '${NOW}'`,
+      '      version_probe:',
+      '        runner: null',
+      '        args:',
+      "          - '--version'",
+      '        extract: null',
+      '      models:',
+      "        - 'gemini-3.8-flash-high'",
+      '      headless_read_ok: true',
+      '    zcode:',
+      `      entrypoint: ${fakeZcode}`,
+      `      version: '${FAKE_CLI_VERSION}'`,
+      `      probed_at: '${NOW}'`,
+      '      version_probe:',
+      "        runner: 'node'",
+      '        args:',
+      "          - 'version'",
+      // 假 zcode 输出 `zcode 9.9.9`，与真实 zcode 一样要抠正则才拿得到纯版本号；
+      // 写 null 取全文会与 version 字段对不上，被误报成版本漂移。
+      "        extract: '(\\d+\\.\\d+\\.\\d+)'",
+      '      readonly_flags:',
+      "        - '--mode'",
+      "        - 'plan'",
+      '      models:',
+      "        - 'GLM-5.3'",
       '',
     ].join('\n'),
     'utf8',

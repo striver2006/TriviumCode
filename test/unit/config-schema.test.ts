@@ -165,3 +165,46 @@ test('可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家
     );
   }
 });
+
+/*
+ * ── 探针段键集的身份校验：两段式的第二段（审查意见 GLM-08）──
+ *
+ * M6 第 1 步给 `probe.cli` 加了 ajv 的 `commonProbe` 形状校验——那是第一段。
+ * 只有第一段的后果不是报错而是**静默不生效**：一个形状完整的未登记键
+ * （例如从 zcode 段复制改名）过得了 ajv，`preflight` / `doctor` 按注册表遍历时
+ * 把它忽略，而 `guard` 若按盘上实有键遍历还会消费它的 scratch_paths——
+ * 一个没人登记的键能影响只读失守判定。`agents` 段的未登记键是明确报错的，
+ * 两处防护强度不该差这么多。
+ */
+
+test('探针段出现未登记的 CLI 名时明确报错，而不是静默忽略', async () => {
+  const { defaultProbe } = await import('../../src/trivium/config.js');
+  const cfg = defaultConfig();
+  // 形状完整——只有键名没登记。这正是 ajv 拦不住的那一类。
+  (cfg.probe.cli as Record<string, unknown>)['zcodee'] = defaultProbe().cli.zcode;
+
+  const problems = validateConfig(cfg);
+  assert.ok(problems.length > 0, '形状再完整，键名没登记也不该放行');
+  assert.ok(
+    problems.some((p) => p.includes('probe.cli.zcodee')),
+    `报错要点名是哪个键，实际是：\n${problems.join('\n')}`,
+  );
+  assert.ok(
+    problems.some((p) => p.includes('registry')),
+    '要指明键集的唯一来源是注册表，否则用户不知道该去哪儿加',
+  );
+});
+
+test('探针段的合法键集恒等于注册表 cliName 全集', async () => {
+  const { ALL_CLI_NAMES } = await import('../../src/trivium/agents/registry.js');
+  // 逐个查而不是查第一个——理由同上面那条（只查首项的版本对错加的厂商一声不吭）。
+  for (const name of ALL_CLI_NAMES) {
+    const cfg = defaultConfig();
+    assert.ok(cfg.probe.cli[name], `defaultProbe 应当为已登记的 ${name} 预留段`);
+    assert.deepEqual(
+      validateConfig(cfg).filter((p) => p.includes(`probe.cli.${name}`)),
+      [],
+      `${name} 已在注册表登记，不该被校验拒绝`,
+    );
+  }
+});

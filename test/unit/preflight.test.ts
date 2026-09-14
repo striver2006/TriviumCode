@@ -7,22 +7,27 @@ import YAML from 'yaml';
 import {
   parsePreflightScope, checkModelSlugs, runPreflight, commitAuthCache, renderPreflight,
 } from '../../src/trivium/preflight.js';
-import { defaultConfig, patchProbe } from '../../src/trivium/config.js';
+import { TRIVIUM_DIR, defaultConfig, patchProbe } from '../../src/trivium/config.js';
 import { runDoctor } from '../../src/trivium/doctor.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { Config, Ctx, ProbeSection } from '../../src/trivium/types.js';
 
 function freshProbe(cfg: Config): void {
-  cfg.probe.generated_at = new Date().toISOString();
-  cfg.probe.agy.bin = '/nonexistent/agy';
-  cfg.probe.agy.version = '1.2.0';
-  cfg.probe.agy.models = ['gemini-3.1-pro-high', 'gemini-3.8-flash-high', 'gemini-3.8-flash-low'];
-  cfg.probe.zcode.entry = '/nonexistent/zcode.cjs';
-  cfg.probe.zcode.version = '0.16.5';
-  cfg.probe.zcode.models = ['GLM-5.3', 'GLM-5.3-Flash', 'bigmodel/GLM-5.3', 'bigmodel/GLM-5.3-Flash'];
-  cfg.probe.zcode.model_id_form = 'bigmodel/GLM-5.3';
-  cfg.probe.zcode.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit'];
+  const now = new Date().toISOString();
+  cfg.probe.generated_at = now;
+  const agy = cfg.probe.cli.agy!;
+  agy.entrypoint = '/nonexistent/agy';
+  agy.version = '1.2.0';
+  agy.probed_at = now;
+  agy.models = ['gemini-3.1-pro-high', 'gemini-3.8-flash-high', 'gemini-3.8-flash-low'];
+  const zcode = cfg.probe.cli.zcode!;
+  zcode.entrypoint = '/nonexistent/zcode.cjs';
+  zcode.version = '0.16.5';
+  zcode.probed_at = now;
+  zcode.models = ['GLM-5.3', 'GLM-5.3-Flash', 'bigmodel/GLM-5.3', 'bigmodel/GLM-5.3-Flash'];
+  zcode.model_id_form = 'bigmodel/GLM-5.3';
+  zcode.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit'];
 }
 
 async function fakeCtx(mutate?: (c: Config) => void): Promise<Ctx> {
@@ -91,8 +96,8 @@ test('glm 侧短名合法（适配层会补 providerId 前缀）', async () => {
 
 test('模型清单为空时不误判（探针未采集到就跳过该项）', async () => {
   const ctx = await fakeCtx((c) => {
-    c.probe.agy.models = [];
-    c.probe.zcode.models = [];
+    c.probe.cli.agy!.models = [];
+    c.probe.cli.zcode!.models = [];
   });
   assert.equal(checkModelSlugs(ctx.config, 'plan', { gemini: 'anything' }).ok, true);
 });
@@ -122,12 +127,20 @@ test('从未探针 → 退 69，且明确说明不自动拉起 doctor', async ()
 });
 
 test('探针过期 → 退 69 并指引手动执行', async () => {
+  const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
   const ctx = await fakeCtx((c) => {
-    c.probe.generated_at = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    c.probe.generated_at = old;
+    /*
+     * TTL 按**键**判定（GLM-03），所以要逐键设旧。
+     * 只改 `generated_at` 已经不等于过期了——这正是本步要的语义：
+     * 全局时间戳被任何一次 doctor 刷新，让它决定新鲜度，
+     * `doctor --only codex` 就会把没重探的键一并刷成「新鲜」。
+     */
+    for (const p of Object.values(c.probe.cli)) if (p) p.probed_at = old;
   });
   const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
   assert.equal(r.ok, false);
-  assert.match(r.checks.find((x) => !x.ok)!.detail, /已过期/);
+  assert.match(r.checks.find((x) => !x.ok)!.detail, /已全部过期/);
 });
 
 test('探针过期时后续检查不再执行（快速失败，不白烧配额）', async () => {
@@ -178,7 +191,7 @@ test('预检失败时不写探活缓存', async () => {
 
 test('预检失败时不创建归档根（可写性探测用父目录权限）', async () => {
   const ctx = await fakeCtx((c) => {
-    c.probe.zcode.readonly_flags = [];
+    c.probe.cli.zcode!.readonly_flags = [];
   });
   const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
   assert.equal(r.ok, false);
@@ -187,7 +200,7 @@ test('预检失败时不创建归档根（可写性探测用父目录权限）',
 
 test('渲染器把失败项与退出码都写清楚', async () => {
   const ctx = await fakeCtx((c) => {
-    c.probe.agy.bin = null;
+    c.probe.cli.agy!.entrypoint = null;
   });
   const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
   const out = renderPreflight(r);
@@ -232,6 +245,7 @@ test('回归：--no-model-calls 保留上一次探到的 agy 结论', async () =
   const { probeAgy } = await import('../../src/trivium/probes/agy.js');
   const existing = {
     bin: '/usr/bin/agy', version: '1.2.0', models: ['m1'],
+    entrypoint: '/x/agy', version_probe: null, probed_at: new Date().toISOString(),
     headless_read_ok: true, json_schema_ok: true, pty_required: false,
     path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: ['a'] },
     scratch_paths: [], isolation: 'shared' as const, read_strategy: 'default' as const,
@@ -249,7 +263,8 @@ test('回归：--no-model-calls 保留上一次探到的 agy 结论', async () =
 test('回归：--no-model-calls 保留上一次探到的 zcode 结论', async () => {
   const { probeZcode } = await import('../../src/trivium/probes/zcode.js');
   const existing = {
-    entry: '/x/zcode.cjs', version: '0.16.5',
+    entrypoint: '/x/zcode.cjs', version: '0.16.5',
+    version_probe: null, probed_at: new Date().toISOString(),
     readonly_flags: ['--mode plan'], model_override: 'config_copy' as const,
     trace_source: '/log/{date}.jsonl', trace_args_source: '/rollout/{sessionId}.jsonl',
     response_field: 'response',
@@ -282,8 +297,8 @@ test('doctor 探完一侧即中途落盘，且 --only 不碰未探的那一侧',
 
   // 先摆一份「上一次探到的」zcode 结论
   await patchProbe(triviumDir, (cur) => {
-    cur.zcode.response_field = 'response';
-    cur.zcode.version = '0.16.5';
+    cur.cli.zcode!.response_field = 'response';
+    cur.cli.zcode!.version = '0.16.5';
   });
 
   /*
@@ -305,11 +320,11 @@ test('doctor 探完一侧即中途落盘，且 --only 不碰未探的那一侧',
   assert.ok(onDisk.probe.host, 'env 段必须已落盘——中途写过一次');
   assert.ok(onDisk.probe.generated_at, 'generated_at 应已写入');
   assert.equal(
-    onDisk.probe.zcode.response_field,
+    onDisk.probe.cli.zcode!.response_field,
     'response',
     '--only agy 不得覆盖 zcode 段',
   );
-  assert.equal(onDisk.probe.zcode.version, '0.16.5');
+  assert.equal(onDisk.probe.cli.zcode!.version, '0.16.5');
 });
 
 test('--only zcode 同样不碰 agy 段', async () => {
@@ -317,8 +332,8 @@ test('--only zcode 同样不碰 agy 段', async () => {
   const triviumDir = path.join(root, '.trivium');
   await fs.mkdir(triviumDir, { recursive: true });
   await patchProbe(triviumDir, (cur) => {
-    cur.agy.version = '1.2.0';
-    cur.agy.headless_read_ok = true;
+    cur.cli.agy!.version = '1.2.0';
+    cur.cli.agy!.headless_read_ok = true;
   });
 
   await runDoctor({
@@ -329,8 +344,8 @@ test('--only zcode 同样不碰 agy 段', async () => {
   const onDisk = YAML.parse(
     await fs.readFile(path.join(triviumDir, 'config.local.yaml'), 'utf8'),
   ) as { probe: ProbeSection };
-  assert.equal(onDisk.probe.agy.version, '1.2.0');
-  assert.equal(onDisk.probe.agy.headless_read_ok, true);
+  assert.equal(onDisk.probe.cli.agy!.version, '1.2.0');
+  assert.equal(onDisk.probe.cli.agy!.headless_read_ok, true);
 });
 
 /*
@@ -347,8 +362,8 @@ test('--only zcode 同样不碰 agy 段', async () => {
  */
 test('模型目录为空时不判失败，但必须在输出里点名是哪几侧没被实际校验', async () => {
   const ctx = await fakeCtx((c) => {
-    c.probe.agy.models = [];
-    c.probe.zcode.models = [];
+    c.probe.cli.agy!.models = [];
+    c.probe.cli.zcode!.models = [];
   });
   const r = checkModelSlugs(ctx.config, 'plan');
   assert.equal(r.ok, true, '没有目录可比对不等于配错了，不能拦');
@@ -370,7 +385,7 @@ test('模型目录齐备时不出现「未实际校验」字样（避免恒真�
 
 test('一侧有目录一侧没有：只点名没有的那一侧', async () => {
   const ctx = await fakeCtx((c) => {
-    c.probe.zcode.models = [];
+    c.probe.cli.zcode!.models = [];
   });
   const r = checkModelSlugs(ctx.config, 'plan');
   assert.equal(r.ok, true);
@@ -378,5 +393,244 @@ test('一侧有目录一侧没有：只点名没有的那一侧', async () => {
   assert.doesNotMatch(
     r.detail, /未实际校验[^\n]*gemini/,
     '有目录的那侧已经真校验过了，不该混进「未校验」清单',
+  );
+});
+
+/*
+ * ── 版本校验的「无从查」第三态（M6 第 1 步）──
+ *
+ * 三种原因各一条，且都要**点名**。合成一条「未校验」是不够的：
+ * 三种原因的出路不同——没记录方式该重跑 doctor，运行时不认识说明该侧当前不支持，
+ * 正则非法说明盘上被改坏了。说不清原因，用户只能瞎试。
+ *
+ * 第一条同时是 GLM-01 要求的配套：stub 集成夹具改成新形状之后，
+ * 「旧盘迁移后走第三态」这条真实路径要有人**断言**它，
+ * 而不是像之前那样让它默默顶替掉版本比对的覆盖。
+ */
+
+/** 造一个入口真实存在、可控 version_probe 的探针段 */
+function probeWithVersionProbe(c: Config, vp: unknown): void {
+  const now = new Date().toISOString();
+  c.probe.generated_at = now;
+  const agy = c.probe.cli.agy!;
+  agy.probed_at = now;
+  agy.entrypoint = process.execPath; // node 自己一定存在，才走得到取版本那一步
+  agy.version = 'whatever';
+  agy.version_probe = vp as never;
+  agy.models = ['gemini-3.8-flash-high'];
+  // 另一侧压成「没探过」，免得它的失败盖过本条要看的检查项
+  c.probe.cli.zcode!.probed_at = null;
+}
+
+function coverageDetail(r: { checks: { name: string; detail: string }[] }): string {
+  return r.checks.find((x) => x.name === '版本漂移检查覆盖面')?.detail ?? '';
+}
+
+test('第三态①：探针没记录取版本方式时点名，不判失败', async () => {
+  const ctx = await fakeCtx((c) => probeWithVersionProbe(c, null));
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
+  const detail = coverageDetail(r);
+  assert.match(detail, /agy/, '必须点名是哪一侧');
+  assert.match(detail, /未记录取版本的方式/, '必须说清原因——出路是重跑 doctor');
+  assert.ok(
+    r.checks.find((x) => x.name === '版本漂移检查覆盖面')?.ok,
+    '无从查不判失败：判失败会让刚迁移过来的旧盘直接跑不动',
+  );
+});
+
+test('第三态②：不认识的运行时被点名，而不是静默按直接执行处理', async () => {
+  /*
+   * GLM-03 的回归。原实现写的是 `runner === 'node' ? … : <直接执行 entrypoint>`，
+   * 于是 'python' 会被静默当成「直接执行」，跑出一个看不懂的错。
+   */
+  const ctx = await fakeCtx((c) =>
+    probeWithVersionProbe(c, { runner: 'python', args: ['-V'], extract: null }),
+  );
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
+  const detail = coverageDetail(r);
+  assert.match(detail, /不认识的运行时/);
+  assert.match(detail, /python/, '要说出是哪个运行时，否则用户不知道改什么');
+});
+
+test('第三态③：extract 不是合法正则时点名，而不是抛 JS 原始栈', async () => {
+  /*
+   * GLM-07 的回归。盘上被改坏时，`new RegExp('(')` 会抛 SyntaxError 一路穿到
+   * cli.ts 的全局 catch，用户看到 JS 正则错误——而该做的是重跑 doctor。
+   */
+  const ctx = await fakeCtx((c) =>
+    probeWithVersionProbe(c, { runner: null, args: ['--version'], extract: '(' }),
+  );
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
+  const detail = coverageDetail(r);
+  assert.match(detail, /不是合法正则/);
+  assert.equal(r.ok, true, '盘上一个字段被改坏不该让整个预检以 JS 异常收场');
+});
+
+/*
+ * ── TTL 按键判定（M6 第 1 步，审查意见 GLM-03）──
+ *
+ * 两条不变量在改造前都不成立：
+ *   ① `probeIsFresh` 只看全局 `generated_at`，任何一次 doctor 都刷新它，
+ *      于是 `--only X` 会把其它侧的**过期**结论一并刷成「新鲜」；
+ *   ② 末次 checkpoint 的标签三元回落（`only === 'env'` 时落 'zcode'）
+ *      会把本次根本没探过的段按起点 clone 整段写回。
+ */
+
+test('全局时间戳新鲜但某键过期时，该键判为不新鲜', async () => {
+  /*
+   * 这条直指判定本身，是上面那条落盘断言杀不掉的变异面。
+   *
+   * 构造的正是 `doctor --only <另一侧>` 跑完的盘面：全局 `generated_at` 刚被刷新，
+   * 而 zcode 的按键时间戳还停在 30 天前。若 `cliProbeIsFresh` 退回去看全局戳，
+   * 它会把这份**过期**结论报成新鲜——preflight 于是拿着陈旧的 entrypoint 与
+   * readonly_flags 继续跑，而那正是 TTL 要防的事。
+   *
+   * 起草时这条漏了：原先只断言「盘上的 probed_at 字段没被改写」，
+   * 那是数据没被污染，不等于判定用了它。变异验证当场打脸（实现改回全局判定，
+   * 全部 29 条照绿），才补上本例。
+   */
+  const { cliProbeIsFresh, probeIsFresh, staleCliProbes } = await import(
+    '../../src/trivium/config.js'
+  );
+  const cfg = defaultConfig();
+  const now = new Date().toISOString();
+  const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
+
+  cfg.probe.generated_at = now; // 全局戳刚被另一侧的 doctor 刷新
+  cfg.probe.cli.agy!.probed_at = now;
+  cfg.probe.cli.zcode!.probed_at = old;
+
+  assert.equal(cliProbeIsFresh(cfg, 'agy'), true, '刚探过的那侧是新鲜的');
+  assert.equal(
+    cliProbeIsFresh(cfg, 'zcode'), false,
+    '没重探的那侧必须仍判过期——全局时间戳被刷新不该让它蒙混过关',
+  );
+  assert.equal(probeIsFresh(cfg), true, '还有一侧新鲜，整体不算全部过期');
+  assert.ok(
+    staleCliProbes(cfg).includes('zcode'),
+    '过期的那侧必须被点名，否则用户不知道该重探谁',
+  );
+});
+
+test('--only 一侧不刷新另一侧的新鲜度', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ttl-'));
+  const triviumDir = path.join(root, TRIVIUM_DIR);
+  await fs.mkdir(triviumDir, { recursive: true });
+
+  // zcode 侧摆一份 30 天前的旧结论
+  const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  await patchProbe(triviumDir, (cur) => {
+    cur.cli.zcode!.entrypoint = '/x/zcode.cjs';
+    cur.cli.zcode!.version = '0.16.5';
+    cur.cli.zcode!.probed_at = old;
+  });
+
+  // 只探 agy
+  await runDoctor({
+    config: defaultConfig(), projectRoot: root, triviumDir,
+    only: 'agy', skipModelCalls: true,
+  });
+
+  const onDisk = YAML.parse(
+    await fs.readFile(path.join(triviumDir, 'config.local.yaml'), 'utf8'),
+  ) as { probe: ProbeSection };
+
+  assert.equal(
+    onDisk.probe.cli.zcode!.probed_at, old,
+    '--only agy 不得刷新 zcode 的按键时间戳——否则过期结论会蒙混过关',
+  );
+  assert.ok(onDisk.probe.generated_at, '全局时间戳照常刷新（它记的是「段整体何时写过」）');
+  assert.notEqual(
+    onDisk.probe.generated_at, old,
+    '全局时间戳与按键时间戳是两个语义，不该同步',
+  );
+});
+
+test('--only env 不写任何厂商段', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-envonly-'));
+  const triviumDir = path.join(root, TRIVIUM_DIR);
+  await fs.mkdir(triviumDir, { recursive: true });
+
+  await patchProbe(triviumDir, (cur) => {
+    cur.cli.zcode!.response_field = 'response';
+    cur.cli.zcode!.version = '0.16.5';
+    cur.cli.agy!.version = '1.2.0';
+  });
+
+  /*
+   * 关键：传进去的 config.probe 是**默认值**（不含上面那份结论）。
+   * 末次 checkpoint 若借用厂商标签（原实现 `only === 'env'` 时落 'zcode'），
+   * 就会把默认值当成 zcode 结论整段写回，把盘上的擦掉。
+   */
+  await runDoctor({
+    config: defaultConfig(), projectRoot: root, triviumDir,
+    only: 'env', skipModelCalls: true,
+  });
+
+  const onDisk = YAML.parse(
+    await fs.readFile(path.join(triviumDir, 'config.local.yaml'), 'utf8'),
+  ) as { probe: ProbeSection };
+
+  assert.equal(onDisk.probe.cli.zcode!.response_field, 'response', '--only env 不得动 zcode 段');
+  assert.equal(onDisk.probe.cli.zcode!.version, '0.16.5');
+  assert.equal(onDisk.probe.cli.agy!.version, '1.2.0', '--only env 不得动 agy 段');
+  assert.ok(onDisk.probe.host, 'env 段本身要写');
+});
+
+/*
+ * ── 探针段键集随注册表派生（验收 ②）──
+ *
+ * 这条守的是「新增一家 CLI 不必改 doctor」。断言用**注册表实际登记的全集**，
+ * 不写死家数——写死的话，加一家时这条测试自己会先绿着骗人。
+ */
+test('defaultProbe 的键集恒等于注册表的 cliName 全集', async () => {
+  const { defaultProbe } = await import('../../src/trivium/config.js');
+  const { ALL_CLI_NAMES } = await import('../../src/trivium/agents/registry.js');
+  assert.deepEqual(
+    Object.keys(defaultProbe().cli).sort(),
+    [...ALL_CLI_NAMES].sort(),
+    '探针段键集必须与注册表 cliName 全集逐项相等',
+  );
+});
+
+test('doctor --only <已登记未实现> 给出确定答复而不是退 64', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-unimpl-'));
+  const triviumDir = path.join(root, TRIVIUM_DIR);
+  await fs.mkdir(triviumDir, { recursive: true });
+
+  const { ALL_CLI_NAMES } = await import('../../src/trivium/agents/registry.js');
+  const { isDoctorOnly } = await import('../../src/trivium/doctor.js');
+  /*
+   * 已接线探针实现的 CLI。**接入下一家时必须同步这里。**
+   *
+   * 它没有可派生的来源：唯一的信号是 doctor 会不会报「尚无探针实现」，
+   * 而那恰恰是本用例要断言的东西——拿它来挑选被测对象就成了循环论证。
+   *
+   * 原注释写的是「M6 第 2/3 步接上之后，这条测试该自动去找下一个未实现的」，
+   * 那是假的（审查意见 GLM-05）：filter 写死排除两家，所谓「自动」靠的是
+   * 注册表排序与接入顺序的巧合。若第 2 步先接的恰好是排在最前的 claude，
+   * 下面的 runDoctor 会真去探一侧已实现的，断言当场红。
+   *
+   * 全部接入后 `unimplemented` 为空集，紧跟的断言会红——那就是提醒删除本用例的机器信号。
+   */
+  const PROBE_IMPLEMENTED = ['agy', 'zcode'];
+  const unimplemented = ALL_CLI_NAMES.filter((n) => !PROBE_IMPLEMENTED.includes(n));
+  assert.ok(
+    unimplemented.length > 0,
+    '注册表里已没有未实现探针的 CLI——本用例的前提消失了，应当删除它（连同 PROBE_IMPLEMENTED）',
+  );
+
+  for (const name of unimplemented) {
+    assert.ok(isDoctorOnly(name), `--only ${name} 必须是合法取值（不得退 64）`);
+  }
+
+  const r = await runDoctor({
+    config: defaultConfig(), projectRoot: root, triviumDir,
+    only: unimplemented[0]!, skipModelCalls: true,
+  });
+  assert.equal(r.blockers.length, 0, '「已登记未实现」不是失败，不得进 blockers');
+  assert.ok(
+    r.notes.some((n) => n.includes(unimplemented[0]!) && n.includes('尚无探针实现')),
+    '必须点名说出是哪一侧、为什么没有结论——不能静默通过',
   );
 });

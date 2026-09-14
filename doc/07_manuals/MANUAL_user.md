@@ -343,7 +343,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 这些没有 skill 包装，在终端里跑：
 
 ```bash
-.trivium/bin/trivium doctor [--selftest|--suggest-verify|--no-model-calls|--only agy|zcode]
+.trivium/bin/trivium doctor [--selftest|--suggest-verify|--no-model-calls|--only <cli>|env]
 .trivium/bin/trivium preflight --stage plan|code|bug|all
 .trivium/bin/trivium verify --topic <主题> [--only build|test]
 .trivium/bin/trivium report --topic <主题> [--out <路径>]

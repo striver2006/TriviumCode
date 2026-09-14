@@ -159,8 +159,12 @@ export const zcodeAdapter: CriticAdapter = {
   critic: 'glm',
 
   availability(ctx: AdapterContext) {
-    const p = ctx.cfg.probe.zcode;
-    if (!p.entry) return { ok: false, reason: '探针未找到 zcode.cjs 入口，请先运行 trivium doctor' };
+    // 同 agy：「未探过」与「探过但没找到」要分开答，判据用 probed_at 而非 `!p`（AGY-01）。
+    const p = ctx.cfg.probe.cli.zcode;
+    if (!p?.probed_at) {
+      return { ok: false, reason: 'zcode 尚未探测，请先运行 trivium doctor --only zcode' };
+    }
+    if (!p.entrypoint) return { ok: false, reason: '探针未找到 zcode.cjs 入口，请先运行 trivium doctor' };
     if (p.readonly_flags.length === 0) {
       return {
         ok: false,
@@ -193,9 +197,18 @@ export const zcodeAdapter: CriticAdapter = {
   },
 
   async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
-    const probe = ctx.cfg.probe.zcode;
-    const entry = probe.entry;
-    if (!entry) return failedResult('glm', { status: 'failed', reason: 'zcode entry 未探测到' });
+    const probe = ctx.cfg.probe.cli.zcode;
+    // 两态判据同 availability()：以 probed_at 区分（AGY-01）。
+    if (!probe?.probed_at) {
+      return failedResult('glm', {
+        status: 'failed',
+        reason: 'zcode 尚未探测，请先运行 trivium doctor --only zcode',
+      });
+    }
+    if (!probe.entrypoint) {
+      return failedResult('glm', { status: 'failed', reason: 'zcode 入口未探测到' });
+    }
+    const entry = probe.entrypoint;
 
     await ensureDir(req.out_dir);
     const stdoutPath = path.join(req.out_dir, 'stdout.json');

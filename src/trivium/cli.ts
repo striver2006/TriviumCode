@@ -9,7 +9,13 @@ import { exists } from './util/fsx.js';
 import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
 import { applyProfileOverride, loadCtx } from './config.js';
-import { runDoctor, renderDoctorReport, suggestVerify } from './doctor.js';
+import {
+  runDoctor,
+  renderDoctorReport,
+  suggestVerify,
+  doctorOnlyChoices,
+  isDoctorOnly,
+} from './doctor.js';
 import { selftestCommand } from './selftest.js';
 import { runReview } from './review.js';
 import { collectCommands, runVerify, summarizeVerify } from './verify.js';
@@ -88,11 +94,12 @@ function parseArgs(argv: string[]): ParsedArgs {
 const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编排器
 
 用法：
-  trivium doctor [--json] [--no-model-calls] [--only agy|zcode|env]
-      本机能力探针。实测两家 CLI 的真实能力并回填 .trivium/config.local.yaml 的 probe: 段。
+  trivium doctor [--json] [--no-model-calls] [--only ${doctorOnlyChoices().join('|')}]
+      本机能力探针。实测各家 CLI 的真实能力并回填 .trivium/config.local.yaml 的 probe: 段。
       --no-model-calls  只做静态探测，不消耗厂商配额
-      --only            只探测指定一侧
-      两侧各自探完即中途落盘：那几步已经烧过配额，中断不该让它白费
+      --only            只探测指定一侧（取值随注册表登记的 CLI 自动扩展）
+      每段探完即中途落盘：那几步已经烧过配额，中断不该让它白费
+      已登记但尚无探针实现的 CLI 会明确报「登记了、本轮无结论」，不是失败
 
   trivium doctor --suggest-verify
       展示探测到的编译测试命令候选与可粘贴的 YAML。**只展示不写入**——
@@ -463,11 +470,14 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
 
   const onlyRaw = args.flags.get('only');
   const only =
-    typeof onlyRaw === 'string' && ['agy', 'zcode', 'env'].includes(onlyRaw)
-      ? (onlyRaw as 'agy' | 'zcode' | 'env')
-      : null;
+    // 取值集合由注册表派生（`doctorOnlyChoices`），不在此处枚举——
+    // 原先写死的三值会让 `doctor --only codex` 在进 doctor 之前就退 64，
+    // 而 codex 明明已在注册表登记（审查意见 AGY-03 / GLM-06）。
+    typeof onlyRaw === 'string' && isDoctorOnly(onlyRaw) ? onlyRaw : null;
   if (onlyRaw !== undefined && only === null) {
-    throw usageError(`--only 只接受 agy | zcode | env，收到：${String(onlyRaw)}`);
+    throw usageError(
+      `--only 只接受 ${doctorOnlyChoices().join(' | ')}，收到：${String(onlyRaw)}`,
+    );
   }
 
   const report = await runDoctor({

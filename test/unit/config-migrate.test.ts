@@ -412,3 +412,120 @@ test('init：改写后的配置能被 loadCtx 直接加载，且不再触发迁�
   assert.equal(ctx.config.agents.glm?.vendor, 'zcode');
   assert.equal(migrateConfigV1(YAML.parse(await fs.readFile(path.join(root, '.trivium/config.yaml'), 'utf8'))).note, null);
 });
+
+/*
+ * ── 探针段形状迁移（M6 第 1 步，审查意见 AGY-03）──
+ *
+ * 本组存在的理由与上面那组一样：**旧盘不改也能跑**。
+ *
+ * 起草时这里是空的——我只做了真机验证，而真机恰恰只有一种形态
+ * （本机 agy / zcode 两段都有真结论）。下面第 2、3 条命中的两个缺陷，
+ * 真机一个都撞不上。「跑一遍真的」不能替代单测：真实环境只有一种形态，
+ * 缺陷藏在其它形态里。
+ */
+
+test('探针迁移：旧平铺改为按 CLI 索引，bin / entry 统一成 entrypoint', async () => {
+  const { migrateProbeSection } = await import('../../src/trivium/config.js');
+  const now = new Date().toISOString();
+  const { probe, note } = migrateProbeSection({
+    generated_at: now,
+    agy: { bin: '/x/agy', version: '1.2.2', models: ['m1'] },
+    zcode: { entry: '/x/zcode.cjs', version: '0.16.5' },
+  });
+  const p = probe as Record<string, any>;
+
+  assert.ok(note, '发生迁移时必须给出人读说明');
+  assert.equal(p.agy, undefined, '旧的平铺键要被搬走，不能两种形状并存');
+  assert.equal(p.zcode, undefined);
+  assert.equal(p.cli.agy.entrypoint, '/x/agy');
+  assert.equal(p.cli.zcode.entrypoint, '/x/zcode.cjs');
+  assert.equal(p.cli.agy.bin, undefined, '旧名不保留——同一个事实不留两个字段');
+  assert.equal(p.cli.zcode.entry, undefined);
+  assert.equal(p.cli.agy.probed_at, now, '有入口的段回落到 generated_at');
+  assert.deepEqual(p.cli.zcode.models, [], '缺失的共有字段补默认值');
+});
+
+test('探针迁移：从没探到入口的旧段不得被盖上时间戳', async () => {
+  /*
+   * AGY-02 的回归。旧盘上只跑过 `doctor --only zcode` 就是这个形态：
+   * generated_at 是新鲜的，而 agy 段的 bin 为 null。
+   *
+   * 无条件回填 generated_at 会让这个**从没探到任何东西**的段冒充「探过」，
+   * 于是 preflight 的 `if (!probe?.probed_at) continue`（没探过就跳过）失效，
+   * checkProbeFreshness 还会把它报成「新鲜」——一个事实层面的错。
+   */
+  const { migrateProbeSection } = await import('../../src/trivium/config.js');
+  const now = new Date().toISOString();
+  const { probe } = migrateProbeSection({
+    generated_at: now,
+    agy: { bin: null, version: null },
+    zcode: { entry: '/x/zcode.cjs', version: '0.16.5' },
+  });
+  const p = probe as Record<string, any>;
+
+  assert.equal(p.cli.agy.probed_at, null, '没探到入口 = 没探过，不能盖时间戳');
+  assert.equal(p.cli.zcode.probed_at, now, '探到了的那侧照常回落');
+});
+
+test('探针迁移：YAML 空值段不被当成旧段', async () => {
+  /*
+   * GLM-04 的回归。`typeof null === 'object'` 会让盘上的 `probe.agy:`（空值）
+   * 通过「是对象吗」的判据，展开得 {}，再补默认字段就成了一个凭空造出来的完整段。
+   */
+  const { migrateProbeSection } = await import('../../src/trivium/config.js');
+  const { probe, note } = migrateProbeSection({
+    generated_at: new Date().toISOString(),
+    agy: null,
+    zcode: { entry: '/x/zcode.cjs' },
+  });
+  const p = probe as Record<string, any>;
+
+  assert.equal(p.cli.agy, undefined, '空值键不该被造成一个完整探针段');
+  assert.ok(p.cli.zcode, '同段里真实存在的旧结论仍要迁移');
+  assert.ok(note);
+});
+
+test('探针迁移：对新形状幂等', async () => {
+  const { migrateProbeSection } = await import('../../src/trivium/config.js');
+  const already = {
+    generated_at: new Date().toISOString(),
+    cli: { agy: { entrypoint: '/x/agy', version: '1.2.2', probed_at: '2026-09-14T00:00:00.000Z' } },
+  };
+  const { probe, note } = migrateProbeSection(already);
+  assert.equal(note, null, '已是新形状时不得报「已迁移」——那会每次 CLI 调用都打一条假告警');
+  assert.deepEqual(probe, already, '原样返回');
+});
+
+test('探针迁移：已有新形状的键不被同名旧段覆写', async () => {
+  /*
+   * AGY-02 第三点。两种形状并存的文件（迁移写了一半、或人手工改过）
+   * 若让旧段整体覆盖，新数据就丢了。
+   */
+  const { migrateProbeSection } = await import('../../src/trivium/config.js');
+  const { probe } = migrateProbeSection({
+    generated_at: new Date().toISOString(),
+    agy: { bin: '/old/agy', version: '1.0.0' },
+    cli: { agy: { entrypoint: '/new/agy', version: '1.2.2', probed_at: '2026-09-14T00:00:00.000Z' } },
+  });
+  const p = probe as Record<string, any>;
+  assert.equal(p.cli.agy.entrypoint, '/new/agy', '新形状优先');
+  assert.equal(p.cli.agy.version, '1.2.2');
+});
+
+test('探针迁移：不凭空造 version_probe', async () => {
+  /*
+   * 这条守的是一个**刻意的保守选择**：迁移无从知道该怎么取版本，
+   * 编造一条可能把错误命令落成事实。缺口由预检的「无法校验」第三态点名。
+   * 写成用例是为了防止日后有人「顺手补上」——那看起来像改进，实则是伪造探测结果。
+   */
+  const { migrateProbeSection } = await import('../../src/trivium/config.js');
+  const { probe } = migrateProbeSection({
+    generated_at: new Date().toISOString(),
+    agy: { bin: '/x/agy', version: '1.2.2' },
+  });
+  const p = probe as Record<string, any>;
+  assert.equal(
+    p.cli.agy.version_probe, undefined,
+    '迁移不得编造取版本的方式；该缺口由 preflight 的第三态如实点名',
+  );
+});

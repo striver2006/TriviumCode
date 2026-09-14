@@ -1,0 +1,113 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险一条：§3.1「没有安全退路」建立在错误的机制模型上——本机 codex 0.154.0 的 -p 是文件分层机制（$CODEX_HOME/<name>.config.toml，盘上四份正用于此），-c key=value 在 --help 与演进设计自己的对策行里都是明载路径，[profiles.*] 段缺失恰是 V2 机制下的预期而非危险信号；严重性叙事与 profiles 探针项定义需重写（GLM-01）。其次：§8.3 提的「preflight 比对版本漂移」处置恰好被 §1.2 排除的 EV-05② 挡住——checkCliVersions 只认 agy/zcode，对 codex/claude 不生效（GLM-02）；探针新鲜度是全局单键，--only codex 会刷新其它侧的 TTL 表象（GLM-03）。probeKey 判为过度登记、cliName 即够（GLM-04）；EV-05② 排除成立但缺中间态显式化（GLM-05）；第 1 步改动面漏 cli.ts（GLM-06）。方向与测试设计（负对照、录制 fixture、变异验证）扎实，修订后可开工。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.1 / §5 第 2 步（对照演进设计 §3.1 厂商 profile 行、§7.1 探针清单）",
+      "problem": "冲突 A 的「没有安全退路」论证基于对 -p 机制的错误模型，退路清单漏了两条本机可证路径。其一：-c/--config key=value 在本机 0.154.0 的 --help 明载（dotted path、值按 TOML 解析、示例 -c model=\"o3\"），且演进设计 §3.1 对策行原文就是「运行期模型/effort 覆盖优先走 -m/-c 旗标，旗标不支持时经 CODEX_HOME 副本」、§7.1 模板注释「flag（首选：-m + -c 旗标）→ config_copy → global」——计划断言的「只剩 CODEX_HOME 一条路」与所引设计相抵。其二：-p/--profile 在 0.154.0 的真实机制是「Layer $CODEX_HOME/<name>.config.toml on top of the base user config」（--help 原文），不是设计 §3.1 写的 config.toml [profiles.<name>] 段；本机 ~/.codex/ 恰有 qwen/deepseek/glm/gpt 四份 <name>.config.toml，其中两份文件头注释明写「自包含，供 codex -p deepseek / codex -p glm 使用」——profile 机制在本机大概率已在使用中，「[profiles.*] 零证据」指向的是「设计与该版本实现不符」，不是「--profile 不可用」。连锁后果：第 2 步清单的 profiles 项按设计原文定义为「config.toml [profiles.*] 名单回读，供 preflight 校验」，按 V2 机制该名单恒为空，M8 的未知 profile 预检拦截（§7.1 要点 4，名单为空即跳过）将静默失效——正是本项目反复反对的「两值下恰好正确」形态。R-3/R-4 按侧降级的设计级后果叙事也随之失据。",
+      "evidence": "本机只读实跑：/opt/homebrew/bin/codex --version（codex-cli 0.154.0，与计划 §2.1 一致）；codex --help 中 -c 与 -p 两条目原文如上；/bin/ls ~/.codex 见四份 <name>.config.toml 与 models-*.json；cat 四份副本见「供 codex -p deepseek/glm 使用」注释；对五份 toml（config.toml 与四份副本）grep 'profile' 零命中——计划 §3.1 的文件事实为真但推论方向反了。doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md:102（[profiles.<name>] 段机制描述）、:123（对策行「优先走 -m/-c 旗标」）、:370（profiles 探针项定义与 profile_flag 判据）。注意 --help 也可能说谎（zcode --max-turns 先例，src/trivium/probes/zcode.ts:61-66），最终以探针为准——但「没有安全退路」的断语在文件级证据上已不成立。",
+      "suggestion": "把冲突 A 改写为「--profile 机制与设计描述不符（V2 文件分层 vs [profiles.*] 段），以探针为准」，严重性叙事整体降档、留待实测；退路清单补 -c（一般覆盖）与 -p（文件分层）两条；profiles 探针项改为枚举 $CODEX_HOME/*.config.toml（或实测 -p 实际读取来源）以喂给 M8 预检名单；第 2 步清单增 config_override 探针项（-c 的 dotted path、provider 覆盖、与 -m/-p 的叠加优先级）。§7.1 注释「CODEX_HOME 副本须整份携带 profiles 段」一并按实测修订。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §1.2 / §6.1 / §8 第 3 问（对照 src/trivium/preflight.ts:138-195）",
+      "problem": "第 3 焦点问自认的最大缺口（CLI 升版后 fixture 与现实分叉、测试仍全绿），其提出的处置「preflight 比对版本漂移即提示重探」与 §1.2 排除 EV-05② 直接打架：版本漂移比对在 preflight 的落点就是 checkCliVersions，而它正是 EV-05② 三处写死之一、只认 agy/zcode。排除 EV-05② 后，该处置对 M6 本轮新落的 probe.codex/probe.claude 恰好不成立——两家 CLI 升版在 preflight 依旧完全静默，缺口没被关上。此外 fixture 没有再生触发机制，谁在何时重录无人负责。",
+      "evidence": "src/trivium/preflight.ts:138-195 checkCliVersions 无条件只比对 cfg.probe.agy.version 与 cfg.probe.zcode.version（实跑 --version，漂移退 EXIT.ENV），无注册表遍历；doc/08_project/BACKLOG.md EV-05 行明载「checkCliVersions 与 checkReadonlyCapability 不遍历审核者集合……一律不被检查，且不报任何提示」；演进设计 §15 R16 对策为「全参数走探针 + 录制样本契约回放 + preflight 校验关键 flag + 版本入档」。计划 §9 将 EV-05② 列入不做，§8.3 的处置只是「例如……够不够」的开放问句。",
+      "suggestion": "二选一并写死在计划里：① 把 checkCliVersions 的遍历按注册表泛化收进第 1 步的「preflight 读侧跟随」——版本比对只需要「如何取版本」的知识，可由探针结论自带，不依赖 M8 适配器；② 显式接受「codex/claude 的版本漂移可见性随 EV-05② 于 M8 收口」为已知中间态并登记 BACKLOG。另建议 doctor 实跑时归档各探针的原始输出（带 CLI 版本），兼作 fixture 再生来源，兑现 R16 的「录制样本契约回放」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4.4 / §5 第 1 步（对应 src/trivium/config.ts:525-530、src/trivium/doctor.ts:96-171）",
+      "problem": "两条段落级不变量在现状代码里都不成立，而第 1 步重构探针段形状时未纳入。其一（新鲜度）：probeIsFresh 只看全局 generated_at，doctor 任何 --only 运行都无条件刷新它——J1 的头号命令 doctor --only codex 会把 agy/zcode 的过期结论刷成「新鲜」，TTL 契约对未重探的段失真；M6 把四段并入同一个 probe 段后失真被放大。其二（写集）：doctor 末次 checkpoint 在 --only env 时按 'zcode' 标签落盘，会把本次没探过的段整段写回起点 clone——并发 doctor 下丢更新，违反 doctor.ts:95-96「没探过的段一个字节都不碰」的自述。§4.2 论证「结论落进 probe 段 TTL 才管得住」，但现行 TTL 机制恰恰是段盲的，这个论证只对了一半。",
+      "evidence": "src/trivium/config.ts:525-530 probeIsFresh 仅读 cfg.probe.generated_at 与 probe_ttl_days；src/trivium/doctor.ts:164 无条件 probe.generated_at = new Date()，:117 checkpoint 回调无条件写回 generated_at；:171 末次 checkpoint 的三元回落（only==='env' 时落 'zcode' 标签）使 :109-115 把 probedSections 补进 'zcode' 后整段写回 probe.zcode（起点 clone）。",
+      "suggestion": "第 1 步的 CommonProbe 为每键带时间戳（或每键 freshness 判定），使「该键何时探的」与「段整体何时写过」分开；验收补两条断言：「--only X 不刷新其它键的新鲜度」「--only env 不写任何厂商段」；末次 checkpoint 的标签回落改为只补 generated_at 的显式路径。§6.3 变异验证同步加这两条的变异面。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §4.3 / §5 第 1 步（对照 src/trivium/agents/registry.ts）",
+      "problem": "对第 1 焦点问的回答：probeKey 拟定是过度登记，开发者的自我怀疑成立——这是把命名约定问题升格成了结构问题。现有两键本就等于各自 cliName（计划 §4.3 自己的表格）；cliName 是已登记字段且四家唯一，读写两侧复用同一个字段不存在第二事实源，不可能「错位」。「登记而不是从 vendor 三目算」的先例（cliName、agentByFindingPrefix 的 null 纪律）治的是从另一字段推算映射，不适用于同值复用；probeKey 反而新增一个可与 cliName 悄悄不一致的第二字段。且 registry 注释明言「未来同一厂商可能有多个 Agent」——两家 Agent 共用一条 CLI 时，探针事实属于 CLI 而非 Agent，按 cliName 索引天然共享一份结论才是对的，按 Agent 的 probeKey 会落两份。",
+      "evidence": "src/trivium/agents/registry.ts:29-30（AgentVendor 注释「未来同一厂商可能有多个 Agent」）、:59-65（cliName 登记理由——针对推算而非复用）、:91-144（四家 cliName：claude/codex/agy/zcode，全表唯一）；src/trivium/types.ts:159-164（现探针段两键 agy/zcode 恰为两家 cliName）；test/unit/registry-parity.test.ts 的 schema 全目录扫描与代码字面量对账是现成的机器对账挂载点。",
+      "suggestion": "探针段键直接用 cliName，registry 注释写明「探针段按 CLI 而非厂商/Agent 索引」；registry-parity 增两条机器对账：cliName 全表唯一、探针段键集 ⊆ cliName 集。§6.3 的变异断言（键改回 vendor 推算必红）在 cliName 方案下同样可写。若仍坚持 probeKey，必须补「probeKey ≡ cliName」的 parity 断言——但那等于承认该字段没有独立存在的必要。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "scope-drift",
+      "location": "plan §1.2 / §9（EV-05②，对照 doc/08_project/BACKLOG.md EV-05 行）",
+      "problem": "对第 4 焦点问的裁定：排除本身是合理的范围控制——criticEnabled=false 期间 preflight 不消费两家新结论，不会产生错误行为；readonly 检查与探活的「怎么调用」确实要等 M8 适配器才有真实形状。但处置缺了 EV-05 自己先例要求的「中间态显式化」：本轮落盘 probe.codex/probe.claude 后，两家的 CLI 在不在、版本对不对、凭据活不活对 preflight 仍是静默的，恰是 BACKLOG 警告的「不报任何提示」。不做这一步登记，「探到的东西继续没人用」的批评就仍然成立。",
+      "evidence": "doc/08_project/BACKLOG.md EV-05 行明载「中间态的处置：第 6 步已把 checkModelSlugs 改成按 vendor 分派并引入『无法校验』第三态……使这一项的缺口从静默变为可见；另外两项仍是静默的」；src/trivium/preflight.ts:530 探活编排写死 probeAgyAuth/probeZcodeAuth 两函数并行。计划 §9 只写「见 §8 第 4 问，请审查者裁定」，未安排任何台账动作。",
+      "suggestion": "在 BACKLOG EV-05② 补记一行中间态声明：「M6 已落盘 codex/claude 探针结论，但 checkCliVersions/checkReadonlyCapability/探活仍只认两家，可见性随本项于 M8 收口」——把「登记而不接线」变成有登记、有期限、有中间态声明的显式缓办。可与 GLM-02 的处置②合并落地。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §5 第 1 步改动面（对照 src/trivium/cli.ts:91、:470）",
+      "problem": "第 1 步改动面漏列 cli.ts 与同步面。--only 的字面校验与 USAGE 文案都在 cli.ts 而非 doctor.ts：不改 cli.ts:470 的三值白名单，验收①（doctor --only codex 给出确定答复）根本到不了 doctor 就被 usageError 退 64 拦下；cli.ts:91 的 USAGE 字符串同样写死 agy|zcode|env 三值。按项目同步规范，CLI 参数变化还须同步 USAGE、PROTOCOL 与 SKILL.md，并有契约测试盯防。",
+      "evidence": "src/trivium/cli.ts:470「--only 只接受 agy | zcode | env」usageError（EXIT.USAGE=64，src/trivium/exit-codes.ts:16——计划「退 64」的口径属实）；cli.ts:91 USAGE 内「trivium doctor [--json] [--no-model-calls] [--only agy|zcode|env]」；计划第 1 步改动面仅列 agents/registry.ts、types.ts、doctor.ts、config.ts、preflight.ts、registry-parity。",
+      "suggestion": "第 1 步改动面补 cli.ts（--only 校验按注册表派生 + USAGE 文案同步），并按 AGENTS.md 改动同步清单核对 test/contract 的 doctor argument-hint 盯防点与 PROTOCOL/SKILL.md 同步项，避免验收①实现时才发现清单不全。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§4.2 把 EV-05① 从「登记不修」改判为第 1 步准入条件的论证成立：结论落不进 probe 段就没有 preflight/TTL/复用，确实不叫「确定结论」；这是对已登记欠账的显式范围变更而非悄悄扩大。",
+    "§4.4 的 Partial 语义（「未探过」与「探过为否」必须可区分）与 M7b checkModelSlugs 的三态口径（preflight.ts:240-244、270-297 亲核）一致；CommonProbe 抽取共有事实的方向合理。",
+    "§6.2「fixture 必须是录制的真输出并附版本/时间/命令行」写死得对，与演进设计 R16「录制样本契约回放」同向；§6.3 的变异验证两条（第 1 步结构变异、解析器改坏字段不得静默沿用默认值）都是真能红的变异。",
+    "§5 第 2 步的必配负对照（read-only 沙箱下写必须失败、被 deny 文件必须读不到且轨迹无读取事件）与「每段探完即落盘」复用 checkpoint/patchProbe（config.ts:509-522 全局锁内读改合并）与既有机制吻合，配额中断保护是真的。",
+    "§7 回滚论证亲核为真：skills/dual-critic/schema/config.v2.json:544-548 probe 段 additionalProperties:true，第 1 步 revert 后多余键确实不炸校验。",
+    "计划引用的代码事实全部核实无误：types.ts:159 ProbeSection 固定双键、doctor.ts:28-29 三值 only、probedSections 三值 Set（doctor.ts:96）、EXIT.USAGE=64、主设计 3.6/3.7 占位与 §24 台账行（2026-09-10-主设计:259/268/2532-2533）。",
+    "冲突 B/C 的文件事实亲核为真：config.toml 确有 model_catalog_json 键（P7 读键不写死路径的处置正确）、默认模型确为 qwen3.6-flash + low；§10 的自查与「下调也要写、保留原推定→实测对照」的回填纪律是这份计划最好的部分。"
+  ],
+  "not_covered": [
+    ".trivium/config.local.yaml 的 probe 落盘现状（§2.2 的「两段齐备、TTL 内新鲜」）——禁读清单含 .trivium 整棵子树，未核。",
+    "凭据在否（QWEN_API_KEY/DEEPSEEK_API_KEY/auth.json）——刻意只信计划陈述，未读任何凭据文件。",
+    "models-qwen.json / models-deepseek.json 目录内容未逐个核对（§3.3 四个 slug 的在场性与 deepseek 副本的 effort=medium 只核到文件存在与 config.toml 键，未开目录文件）。",
+    "claude CLI（2.1.270）与 agy 的在位性未实测；本审查对四家 CLI 只做了 codex 的只读 --version/--help 核查。",
+    "所有运行期行为均未实测：-c 与 -p 的实际生效、--strict-config、claude 信任行为等，结论只到「文件级/帮助文本级证据」——按纪律 1 最终以 M6 探针为准。",
+    "test/contract 层对 doctor argument-hint 的具体盯防点未逐条读（GLM-06 仅基于 cli.ts 字面与同步规范推断）。"
+  ],
+  "consulted": [
+    ".reviews/探针扩展与事实回填/plan/2026-09-14-探针扩展与事实回填-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/types.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/config.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/exit-codes.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "test/unit/registry-parity.test.ts"
+  ]
+}

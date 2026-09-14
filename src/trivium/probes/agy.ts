@@ -267,8 +267,10 @@ export async function probeAgy(
   const probe: AgyProbe = opts.existing
     ? structuredClone(opts.existing)
     : {
-        bin: null,
+        entrypoint: null,
         version: null,
+        version_probe: null,
+        probed_at: null,
         models: [],
         headless_read_ok: null,
         json_schema_ok: null,
@@ -281,8 +283,16 @@ export async function probeAgy(
       };
 
   const { bin, version } = await probeAgyBin(configuredBin);
-  probe.bin = bin;
+  probe.entrypoint = bin;
   probe.version = version;
+  // 这一段刚探过，时间戳按键记（TTL 按键判定，见 CommonProbe.probed_at）
+  probe.probed_at = new Date().toISOString();
+  /*
+   * 把「怎么再取一次版本」也落盘（P7）。preflight 的版本漂移比对据此复现调用，
+   * 不再按家写死分支——这是 checkCliVersions 能泛化的前提。
+   * agy 直接执行、取 stdout 全文，所以 runner 为 null、extract 为 null。
+   */
+  probe.version_probe = { runner: null, args: ['--version'], extract: null };
   if (!bin) {
     notes.push('未找到 agy 可执行文件，Antigravity 侧不可用');
     return { probe, notes };

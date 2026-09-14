@@ -8,6 +8,7 @@ import type { Config, CriticId, CriticRequest, CriticResult, Review } from './ty
 import { checkEvidence, checkPeerLeak } from './adapters/base.js';
 import { checkReviewIntegrity } from './parse.js';
 import { judgeDrift, driftAction, type DriftVerdict, type Snapshot } from './freeze.js';
+import { ALL_CLI_NAMES } from './agents/registry.js';
 import { matchesAnyGlob } from './util/fsx.js';
 
 export interface SideVerdict {
@@ -121,9 +122,22 @@ export interface JudgeRunInput {
 export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
   const { cfg, results, reviews, requests } = input;
 
-  // 两侧 scratch 白名单并集：这一步不能省，否则会把 Agent 自己的会话缓存
-  // 误判成「只读失守」（M0 实测本机两侧均为空，但别的机器上未必）
-  const scratchGlobs = [...cfg.probe.agy.scratch_paths, ...cfg.probe.zcode.scratch_paths];
+  /*
+   * 全部已探 CLI 的 scratch 白名单并集：这一步不能省，否则会把 Agent 自己的
+   * 会话缓存误判成「只读失守」（M0 实测本机两侧均为空，但别的机器上未必）。
+   *
+   * 遍历而不是写死两段（原文是 `[...cfg.probe.agy.scratch_paths, ...cfg.probe.zcode.scratch_paths]`）：
+   * 探针段 Partial 化之后那种写法在 `noUncheckedIndexedAccess` 下直接编译不过，
+   * 而若图省事强转，缺段时会变成运行期 TypeError——这是 guard 这条只读护栏的路径，
+   * 不能靠强转糊过去（审查意见 AGY-03）。取并集也天然对第三家成立。
+   *
+   * 按 `ALL_CLI_NAMES` 取键，**不按盘上实有键**（审查意见 GLM-08）：
+   * `Object.values(cfg.probe.cli)` 会把未登记的键也算进来，于是一个没人登记的段
+   * 能往只读失守的白名单里塞 glob——而 `preflight` / `doctor` 都按注册表遍历、
+   * 根本看不见它。`schemas.ts` 已补了「probe.cli 键 ⊆ 已登记 CLI」的校验把关，
+   * 这里同口径是第二道：即使有人直接改盘绕过校验，影响面也不会扩大。
+   */
+  const scratchGlobs = ALL_CLI_NAMES.flatMap((n) => cfg.probe.cli[n]?.scratch_paths ?? []);
 
   const drift = await judgeDrift({
     cfg,

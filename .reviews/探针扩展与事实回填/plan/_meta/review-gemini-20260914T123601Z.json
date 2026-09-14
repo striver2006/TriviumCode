@@ -1,0 +1,114 @@
+{
+  "agreed": [
+    "准确识别出 EV-05① 是 M6 实施的准入前置（必须先在 types.ts 打开探针闭合结构，新厂商结论才能有结构化容身之处），并将其作为第 1 步先行实施，改动顺序合理。",
+    "将 EV-05② 明确排除在本轮之外属于高度克制的合理范围控制（当前两家新 Agent 的 criticEnabled 仍为 false，preflight 是为当轮入选审核者服务的，且此时没有可插拔适配器，在 M6 强做 EV-05② 会导致架构倒挂和范围失控）。",
+    "探针第 2 步针对只读能力与路径 deny 配齐严格的负对照（如 read-only 下写操作必须失败、deny 路径必须读不到且轨迹无事件），防止自证式假通过。",
+    "坚持录制真实 CLI 输出作为单测 fixture，拒绝手编测试用例，并覆盖成功/失败/畸形三态。",
+    "遵守原则 P7，不硬编码 CLI 命令行，坚持「探能力不探质量」，优先使用低配额轻量模型。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/探针扩展与事实回填/plan/2026-09-14-探针扩展与事实回填-claude.md",
+    "src/trivium/types.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/config.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/guard.ts",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "skills/dual-critic/schema/review.v1.json",
+    "skills/dual-critic/schema/config.v2.json",
+    "tsconfig.json",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/fixtures/stub-agent-kit/pieces/stub-probe.ts.txt",
+    "test/fixtures/stub-agent-kit/overlay.ts",
+    "test/integration/stub-agent-kit.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/agents/registry.ts 中，已登记的四家 Agent 其 cliName 分别为 agy, zcode, claude, codex，恰好逐字对应探针段的键名。探针的本质是探测 CLI 工具的能力，按 cliName 索引在概念上完全自洽，盘上数据无需任何迁移。更关键的是，test/fixtures/stub-agent-kit/overlay.ts:208 的桩 Agent 登记项已包含 cliName: '${STUB_ID}'；若在 AgentDescriptor 中新增必填字段 probeKey，overlay 补丁将无法通过 TS 类型检查，直接导致 test/integration/stub-agent-kit.test.ts 失败。",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §4.3",
+      "problem": "probeKey 属于过度登记（将命名约定升格为结构字段），且会打断既有的接入套件验收测试 stub-agent-kit.test.ts。",
+      "severity": "major",
+      "suggestion": "放弃新增 probeKey 字段，明确探针段以 cliName 为索引键。这样既无二元推算风险，又保持了最小改动面，且能无缝兼容既有桩 Agent 夹具。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "演进设计 doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md §3.1（第 101 与 123 行）及变更记录（第 817 行）明确记载，Codex 的模型与 effort 覆盖主路径本就包含 -m 与 -c key=value；Codex CLI 支持通过 -c 动态覆盖配置项（如 -c model_provider=\"deepseek\"、-c model_reasoning_effort=\"low\"），无需修改用户全局配置，也无需构造 CODEX_HOME 副本。且本机五份 toml 暂无 [profiles.*] 段仅说明用户未配置 profile，并不等于 CLI 不支持 --profile。计划第 2 步声称「若 --profile 不被接受，实测手法要整体改走 CODEX_HOME 副本」是不必要的收窄。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §3.1",
+      "problem": "判定 codex --profile「没有安全退路」存在夸大，漏掉了 -c key=value（--config）命令行覆盖这一强退路，且导致第 2 步实测手法过早绑定 CODEX_HOME。",
+      "severity": "minor",
+      "suggestion": "将冲突 A 的严重性从「没有安全退路、设计级降级」下调为常规探针项；在第 2 步中将 -c key=value 纳入模型与 provider 覆盖的实测路径，优先验证 -c 能否动态切换 provider 与 effort，而非直接走笨重的 CODEX_HOME 副本。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "1. src/trivium/cli.ts:466-470 硬编码校验了 ['agy', 'zcode', 'env'].includes(onlyRaw)，非法值直接抛 EXIT.USAGE（64 码）。若第 1 步不修改 cli.ts，doctor --only codex 绝不可能如验收判据 ① 所言「不再退 64 而是给出已登记未实现」，它会在进入 doctor.ts 之前就被 cli.ts 拦截。连带 cli.ts:91 的 USAGE 提示也未更新。\\n2. src/trivium/guard.ts:126 硬编码读取 [...cfg.probe.agy.scratch_paths, ...cfg.probe.zcode.scratch_paths]。当 ProbeSection 按计划泛化为 Partial<Record<...>> 时，tsconfig.json 的 noUncheckedIndexedAccess: true 会使该处产生类型报错；若强转或缺失 agy 段，则会在运行时抛出 TypeError: Cannot read properties of undefined。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §5 第 1 步",
+      "problem": "第 1 步改动面遗漏了 src/trivium/cli.ts 与 src/trivium/guard.ts，导致验收判据 ① 无法通过且存在编译期与运行期破坏。",
+      "severity": "major",
+      "suggestion": "将 src/trivium/cli.ts（--only 白名单与 USAGE）和 src/trivium/guard.ts（从所有探过/登记的 Agent 动态汇集 scratch_paths）显式纳入第 1 步改动面，并补齐相应单测断言。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "1. 计划 §5 第 4 步要求执行「Driver 入口承载面探针（codex prompts 参数、zcode skills 目录优先级与 Hook 形态、antigravity driver agent 定义）」，但未说明这些探针是由 doctor 自动执行还是人工实测，更未定义其结论是落入 probe 段的何种数据结构、还是仅写进 Markdown 报告。\\n2. 计划表 1.1（J3）及 §5 第 4 步引用「演进设计 §18 第 3 项」，而在 doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md 中，§18 是「变更记录」，「待拍板事项」实际位于 §16（第 3 项为 Antigravity 入口形态）。",
+      "id": "AGY-04",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §5 第 4 步",
+      "problem": "第 4 步 Driver 入口承载面探针缺乏落点契约，且判据 J3 引用的章节号存在笔误。",
+      "severity": "minor",
+      "suggestion": "明确 Driver 入口承载面探针的执行形式与交付载体（建议定调为人读评估，落入坑清单报告与设计回填，不污染机读 ProbeSection）；修正对演进设计章节号的引用（§18 → §16）。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "主设计 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md §24 演进并入台账中，第 2532-2533 行明确登记了「3.6 Codex 事实表」与「3.7 Claude headless 事实表」为 M6 的 B-事实条目。演进设计 §14/§17.3 规定「每个里程碑的完成判据都含一条回溯项……落主设计者随之升次版本」。计划在 §1.1 J2 与 §5 第 4 步虽提到回填 3.6/3.7，但遗漏了同步将 §24 台账更新为「✅ 已并入」及将主设计文档版本由 v1.3.6 升至 v1.3.7 的动作。",
+      "id": "AGY-05",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §5 第 4 步",
+      "problem": "第 4 步回填未包含主设计 §24「演进并入台账」的行状态更新与文档版本号抬升。",
+      "severity": "minor",
+      "suggestion": "在第 4 步的交付清单中补充更新主设计 §24 台账对应条目状态，并将主设计版本号由 v1.3.6 升至 v1.3.7，维持规范链台账闭环。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "演进设计与当前代码中，skills/dual-critic/schema/config.v2.json:547 对 probe 段的约束为 additionalProperties: true（弱校验）。作者在 §8 第 3 问中担忧「CLI 升版后 fixture 与现实分叉，测试全绿」。当 doctor 在真实环境运行并落盘时，若解析器输出的探针对象存在拼写错误或字段缺失，config.v2.json 的 ajv 校验不会报错，错误会一直潜伏至适配层读取时才以运行时异常爆发。",
+      "id": "AGY-06",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §6.1",
+      "problem": "探针三层测试体系在真实探针输出落盘时缺少机读 Schema 形状校验护栏。",
+      "severity": "minor",
+      "suggestion": "在 src/trivium/schemas.ts 或单元测试中为 CommonProbe 及各厂商探针增加严格的内部形状校验（或在测试中使用契约模式核验落盘后的 probe 对象），配合 preflight 的版本漂移强校验，确保真实运行产出的探针结论与类型定义严格一致。"
+    }
+  ],
+  "not_covered": [
+    "未在真实 macOS 机器上运行 codex exec 或 claude -p 命令以核验其 CLI 真实 stdout/stderr 格式（受审查员只读与无子进程执行环境约束，仅对照官方设计文档、M0 坑清单报告与代码静态核对）。",
+    "未核验 ~/.codex/config.toml 与各预置 provider 副本的具体内容及凭据有效性（严格遵守不触碰敏感凭据纪律）。",
+    "未对 M8/M9 阶段将要引入的 adapters/codex.ts 与 adapters/claude.ts 详细接口签名进行前瞻性验证。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "计划整体方向清晰，严格遵循 P7「能力靠探针」与纪律 6a「先探路后回填」，将 EV-05① 纳为准入条件、排除 EV-05② 的范围控制完全成立。\n最危险问题在于第 1 步改动面遗漏了 cli.ts（--only 白名单校验）与 guard.ts（scratch_paths 硬编码），会导致判据 ① 无法达成且触发 TS 编译/运行时报错（AGY-03）。\n此外，probeKey 属过度登记，且未同步更新接入套件验收装置，会直接导致 stub-agent-kit.test.ts 失败，应直接复用 cliName（AGY-01）。\n对 codex --profile「没有安全退路」的判定存在夸大，漏掉了 -c key=value 这一关键命令行退路（AGY-02）。\n第 4 步 Driver 入口承载面探针的落点载体未决策，且待拍板项章节号存在笔误（AGY-04）。\n建议针对上述两处遗漏文件和设计点做微调收敛后推进实施。",
+  "verdict": "request-changes"
+}

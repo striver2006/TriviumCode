@@ -17,6 +17,7 @@ import { probeVerifyCommands } from './probes/verify-commands.js';
 import { probeAgy } from './probes/agy.js';
 import { probeZcode } from './probes/zcode.js';
 import type { Config, ProbeSection } from './types.js';
+import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
 import { say, step, warn } from './util/log.js';
 
 export interface DoctorOptions {
@@ -25,8 +26,26 @@ export interface DoctorOptions {
   config: Config;
   /** 跳过一切消耗厂商配额的模型调用，只做静态探测 */
   skipModelCalls?: boolean;
-  /** 只跑某一侧：agy | zcode | env */
-  only?: 'agy' | 'zcode' | 'env' | null;
+  /**
+   * 只跑某一段：任一 `cliName`，或 `env`。
+   *
+   * 取值集合由注册表派生（`isDoctorOnly`），不在类型里枚举——
+   * 枚举过一次，结果是 `doctor --only codex` 在进 doctor 之前就被
+   * `cli.ts` 的三值白名单退 64（审查意见 AGY-03 / GLM-06）。
+   */
+  only?: string | null;
+}
+
+/** `--only` 的合法取值：全部已登记 CLI，外加环境段 */
+export const DOCTOR_ONLY_ENV = 'env' as const;
+
+/** 合法 `--only` 取值清单，供 cli.ts 校验与 USAGE 文案共用 —— 两处不得各写各的 */
+export function doctorOnlyChoices(): string[] {
+  return [...ALL_CLI_NAMES, DOCTOR_ONLY_ENV];
+}
+
+export function isDoctorOnly(v: string): boolean {
+  return doctorOnlyChoices().includes(v);
 }
 
 export interface DoctorReport {
@@ -39,10 +58,20 @@ export interface DoctorReport {
 export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   // 以**已落盘的探针结论**为基线，只覆盖本次真正探测过的段落。
   // 否则 `--only zcode` 会把上一轮的 agy 结论一并清空（探针结论是增量积累的）。
+  const base = defaultProbe();
+  const loaded = structuredClone(opts.config.probe ?? {}) as Partial<ProbeSection>;
   const probe: ProbeSection = {
-    ...defaultProbe(),
-    ...structuredClone(opts.config.probe ?? {}),
-  } as ProbeSection;
+    ...base,
+    ...loaded,
+    /*
+     * `cli` 要**逐键合并**，不能靠外层展开。
+     * 外层展开时盘上的 `cli` 会整体顶掉 `defaultProbe()` 的那份，
+     * 于是本次新登记、盘上还没有的 CLI（M6 之后就是 codex / claude）
+     * 连空壳都没有——后面 `probe.cli[name] = …` 写得进去，但读侧
+     * `cli[name]?.version` 在探测前一律是 undefined，报告里会少掉整段。
+     */
+    cli: { ...base.cli, ...(loaded.cli ?? {}) },
+  };
   const notes: string[] = [];
   const blockers: string[] = [];
   const only = opts.only ?? null;
@@ -92,48 +121,64 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
    * 用 patchProbe 而非 persistProbe：它在全局锁内重读再合并，
    * 不会把并发的另一次 doctor（比如 --only 另一侧）的结论覆盖掉。
    */
-  /** 本次真正探过的段。没探过的段一个字节都不碰 */
-  const probedSections = new Set<'env' | 'agy' | 'zcode'>();
+  /**
+   * 本次真正探过的段。没探过的段一个字节都不碰。
+   *
+   * 元素是 `cliName` 或 `DOCTOR_ONLY_ENV`——集合由运行期决定，
+   * 不再是写死的三值联合类型（否则加一家 CLI 就要改这里）。
+   */
+  const probedSections = new Set<string>();
 
-  const checkpoint = async (label: 'env' | 'agy' | 'zcode'): Promise<void> => {
-    probedSections.add(label);
+  /**
+   * @param label 本次新探完的段；传 `null` 表示**不新增任何段**，
+   *   只把已探过的段与 `generated_at` 再落一次（末尾补写用）。
+   */
+  const checkpoint = async (label: string | null): Promise<void> => {
+    if (label !== null) probedSections.add(label);
     try {
       /*
        * patchProbe 的回调是**原地修改**、返回 void。写成
        * `(cur) => ({ ...cur, ...probe })` 的话返回值会被丢弃，实际一个字节都不写。
        *
        * 并且只写**探过的段**，不能 Object.assign 整个对象：`--only agy` 时
-       * probe.zcode 还是调用方传进来的那份，整段覆盖会把盘上更新的 zcode 结论
+       * probe.cli.zcode 还是调用方传进来的那份，整段覆盖会把盘上更新的 zcode 结论
        * 擦成旧值——这正是 GLM-08 当初修掉的问题，整段覆盖会把它带回来。
        */
       await patchProbe(opts.triviumDir, (cur) => {
-        if (probedSections.has('env')) {
+        if (probedSections.has(DOCTOR_ONLY_ENV)) {
           if (probe.host) cur.host = probe.host;
           cur.verify_suggestion = probe.verify_suggestion;
         }
-        if (probedSections.has('agy')) cur.agy = probe.agy;
-        if (probedSections.has('zcode')) cur.zcode = probe.zcode;
+        // 按本次探过的 CLI 逐键写回。遍历 probedSections 而不是遍历全部 CLI：
+        // 后者会把没探过的键也写一遍，正是上一行注释警告的那种整段覆盖。
+        for (const name of probedSections) {
+          if (name === DOCTOR_ONLY_ENV) continue;
+          const probed = probe.cli[name];
+          if (probed) cur.cli[name] = probed;
+        }
         if (probe.auth) cur.auth = { ...cur.auth, ...probe.auth };
         if (probe.generated_at) cur.generated_at = probe.generated_at;
       });
     } catch (e) {
       // 中途落盘失败不该中断探测：结论仍在内存里，末尾还会再写一次（那一次失败才算真失败）
-      notes.push(`[warn] ${label} 阶段的中途落盘失败（不影响继续探测）：${(e as Error).message}`);
+      notes.push(
+        `[warn] ${label ?? '收尾'} 阶段的中途落盘失败（不影响继续探测）：${(e as Error).message}`,
+      );
     }
   };
-  await checkpoint('env');
+  await checkpoint(DOCTOR_ONLY_ENV);
 
   // ── Antigravity ─────────────────────────────────────────────────────
   if (only === null || only === 'agy') {
     step('探测 Antigravity（agy）…');
     const r = await probeAgy(agentConfigOf(opts.config, 'gemini', 'antigravity').bin, agentConfigOf(opts.config, 'gemini', 'antigravity').agent, {
       skipModelCalls: opts.skipModelCalls ?? false,
-      existing: probe.agy,
+      existing: probe.cli.agy,
     });
-    probe.agy = r.probe;
+    probe.cli.agy = r.probe;
     notes.push(...r.notes.map((n) => `[agy] ${n}`));
     await checkpoint('agy'); // 这一段已经烧过配额，先存下来
-    if (!r.probe.bin) blockers.push('未找到 agy 可执行文件');
+    if (!r.probe.entrypoint) blockers.push('未找到 agy 可执行文件');
     else if (r.probe.headless_read_ok === false) {
       blockers.push(
         'agy headless 无法读取文件（issue #548）。请确认只读审查 Agent 已安装到 ' +
@@ -147,12 +192,12 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     step('探测 ZCode（zcode.cjs）…');
     const r = await probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {
       skipModelCalls: opts.skipModelCalls ?? false,
-      existing: probe.zcode,
+      existing: probe.cli.zcode,
     });
-    probe.zcode = r.probe;
+    probe.cli.zcode = r.probe;
     notes.push(...r.notes.map((n) => `[zcode] ${n}`));
     await checkpoint('zcode');
-    if (!r.probe.entry) blockers.push('未找到 zcode.cjs 入口');
+    if (!r.probe.entrypoint) blockers.push('未找到 zcode.cjs 入口');
     else if (r.probe.response_field === null && !opts.skipModelCalls) {
       blockers.push(
         'ZCode headless 未跑通。注意：CLI 的模型 provider 配置独立于桌面端，' +
@@ -161,14 +206,44 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     }
   }
 
+  /*
+   * ── 已登记但尚无探针实现的 CLI ──
+   *
+   * 判据 J1 要求 `doctor --only codex` 给出**确定结论**。在此之前它退 64
+   * （`cli.ts` 三值白名单），而 64 的语义是「你的参数写错了」——可 codex
+   * 明明在注册表里登记着，用户没写错任何东西。
+   *
+   * 这里给的是第三种答复：**登记了、但本轮没有可跑的探针**。它不是失败
+   * （不进 blockers、不影响退出码），也不是静默通过——名字与原因都说出来。
+   * 判据用「盘上有没有结论」而不是维护一张「哪几家已实现」的清单：
+   * 后者是又一处要随实现进度手工同步的枚举，而探针实现一旦接上，
+   * `probed_at` 自然就有值了。
+   */
+  for (const name of ALL_CLI_NAMES) {
+    if (probedSections.has(name)) continue; // 本次刚探过
+    if (only !== null && only !== name) continue; // 用户没点名这一侧
+    if (probe.cli[name]?.probed_at) continue; // 盘上有旧结论，不是「无实现」
+    const agent = agentByCliName(name);
+    notes.push(
+      `[${name}] 已在注册表登记（${agent?.display ?? name}），但尚无探针实现，` +
+        '本次未产生任何结论——这是确定答复而非失败。探针随 M6 第 2 / 3 步接入。',
+    );
+  }
+
   probe.generated_at = new Date().toISOString();
 
   /*
    * 末尾再写一次，只为补上 generated_at 并确保前面每一段都落了盘。
    * 走 patchProbe（锁内读-改-写）而不是 persistProbe（整体替换）——
    * 后者会把并发的另一次 doctor（例如 `--only` 另一侧）的结论覆盖掉。
+   *
+   * **传 null，不借用任何厂商标签**（审查意见 GLM-03）。原实现写的是
+   * `checkpoint(only === null ? 'zcode' : only === 'agy' ? 'agy' : 'zcode')`：
+   * `--only env` 时那个三元会落到 `'zcode'` 上，于是把本次**根本没探过**的
+   * zcode 段按起点 clone 整段写回——与 checkpoint 自己「没探过的段一个字节都不碰」
+   * 的注释直接矛盾，并发 doctor 下会丢更新。
    */
-  await checkpoint(only === null ? 'zcode' : only === 'agy' ? 'agy' : 'zcode');
+  await checkpoint(null);
   const written = path.join(opts.triviumDir, 'config.local.yaml');
   notes.push(`探针结论已写入 ${written}`);
 

@@ -543,12 +543,119 @@
     },
     "probe": {
       "type": "object",
-      "description": "由 doctor 实测回填，形状随探针演进，这里只要求是对象",
+      "description": "由 doctor 实测回填。各家结论按 cliName 索引落在 cli 段——键集的唯一来源是 agents/registry.ts，schema 只校形状、不枚举任何 Agent 身份（纪律 12）。",
+      "properties": {
+        "cli": {
+          "type": "object",
+          "description": "按 CLI 名索引的探针结论。additionalProperties 承载共有形状，各家的专属字段由该对象自身的 additionalProperties:true 放行。",
+          "additionalProperties": {
+            "$ref": "#/$defs/commonProbe"
+          }
+        }
+      },
       "additionalProperties": true
     },
     "probe_ttl_days": {
       "type": "number",
       "exclusiveMinimum": 0
+    }
+  },
+  "$defs": {
+    "commonProbe": {
+      "type": "object",
+      "description": "各家探针结论的共有事实。required 是真正的防线：字段拼错（entrypont）在 additionalProperties:true 下不会被拒，但缺了 required 里的正确名字就会——否则错误要潜伏到适配层读取时才以运行期异常爆发（M6 计划双审 AGY-06）。",
+      "required": [
+        "entrypoint",
+        "version",
+        "probed_at",
+        "models",
+        "path_deny",
+        "scratch_paths",
+        "isolation"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "entrypoint": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "CLI 可执行入口绝对路径"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "probed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "这一键何时探的；TTL 按它判定"
+        },
+        "version_probe": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "怎么再取一次版本。null = 未记录，该侧版本漂移无从检查",
+          "required": [
+            "runner",
+            "args",
+            "extract"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "runner": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "跑 entrypoint 需要的运行时。**当前只识别 'node' 与 null（直接执行）；其它值一律视为未支持**——读侧会把该侧记为「无法校验版本」并在预检输出里点名，而不是静默按直接执行处理。记的是「需要什么运行时」这个事实，不是某个 node 的绝对路径：路径随机器与版本管理器变，落盘会立刻过期。类型层不在此处用 enum 收窄，是为了让盘上的未支持值走「说不认识」而不是被 ajv 拒成格式错误。"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "extract": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "抠版本号的正则，取第 1 捕获组"
+            }
+          }
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scratch_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isolation": {
+          "type": "string",
+          "description": "隔离手段。这是**手段**的枚举，不是 Agent 身份，不受纪律 12 约束",
+          "enum": [
+            "home_copy",
+            "settings_path",
+            "env",
+            "shared"
+          ]
+        },
+        "path_deny": {
+          "type": "object"
+        }
+      }
     }
   }
 }

@@ -14,11 +14,11 @@
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs, constants as fsConstants } from 'node:fs';
-import type { AuthCacheEntry, Config, CriticId, Ctx, Stage } from './types.js';
+import type { AuthCacheEntry, CommonProbe, Config, CriticId, Ctx, Stage } from './types.js';
 import { CRITICS, STAGES } from './types.js';
 import { EXIT, TriviumError } from './exit-codes.js';
-import { agentConfigOf, patchProbe, probeIsFresh } from './config.js';
-import { agentById } from './agents/registry.js';
+import { agentConfigOf, patchProbe, probeIsFresh, staleCliProbes } from './config.js';
+import { ALL_CLI_NAMES, agentById, agentByCliName } from './agents/registry.js';
 import { invokeAgy } from './adapters/agy.js';
 import { invokeZcode, qualifyZcodeModel } from './adapters/zcode.js';
 import { routeModel } from './adapters/base.js';
@@ -121,75 +121,154 @@ function checkProbeFreshness(cfg: Config): CheckResult {
         '  预检刻意**不**自动拉起 doctor：它会击穿 Bash 工具的 600s 超时，届时配额已烧而结论未落盘。',
     };
   }
+  const stale = staleCliProbes(cfg);
   if (!probeIsFresh(cfg)) {
     return {
       name: '探针结论未过期',
       ok: false,
       exitCode: EXIT.ENV,
       detail:
-        `探针结论已过期（generated_at=${cfg.probe.generated_at}，超过 probe_ttl_days=${cfg.probe_ttl_days}）。\n` +
+        `探针结论已全部过期或从未探过（超过 probe_ttl_days=${cfg.probe_ttl_days}）：${stale.join('、')}。\n` +
         '  请手动运行 `trivium doctor` 重新校准后重试。',
     };
   }
-  return { name: '探针结论新鲜', ok: true, detail: `generated_at=${cfg.probe.generated_at}` };
+  /*
+   * 部分过期**不判失败**，但要点名。
+   *
+   * 判据是「有没有任一侧还新鲜」而不是「是否全都新鲜」：四家登记之后，
+   * 尚无探针实现的 codex / claude 永远不会有 `probed_at`，
+   * 按「全都新鲜」判会让预检**恒失败**——那是把登记当成了欠账。
+   */
+  const detail =
+    stale.length === 0
+      ? `全部 ${ALL_CLI_NAMES.length} 侧均在 TTL 内`
+      : `过期或未探：${stale.join('、')}（其余在 TTL 内；跑 doctor --only <名> 可单独补）`;
+  return { name: '探针结论新鲜', ok: true, detail };
 }
 
-/** CLI 版本与探针记录是否一致（治 agy 自升级，坑 P-02） */
-async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {
-  const out: CheckResult[] = [];
+/**
+ * 按探针记录的方式再取一次版本。
+ *
+ * 返回 `undefined` 表示**无从检查**（第三态），此时 `why` 说明原因、进预检输出点名。
+ * 三种「无从查」都不判失败，但都不静默：没记录取版本方式、运行时不认识、
+ * `extract` 不是合法正则。
+ */
+async function readCliVersion(
+  cfg: Config,
+  probe: CommonProbe,
+): Promise<{ version: string | null } | { unverifiable: string }> {
+  const vp = probe.version_probe;
+  const entry = probe.entrypoint;
+  if (!vp || !entry) return { unverifiable: '探针结论未记录取版本的方式' };
 
-  const bin = cfg.probe.agy.bin;
-  if (!bin || !(await exists(bin))) {
-    out.push({
-      name: 'Antigravity 可调用',
-      ok: false,
-      exitCode: EXIT.ENV,
-      detail: `探针记录的 agy 路径不可用：${bin ?? '(未记录)'}。请重新运行 doctor。`,
-    });
-  } else {
-    const r = await run(bin, ['--version'], { timeoutMs: 60_000 });
-    const v = r.code === 0 ? r.stdout.trim() : null;
-    if (v === null) {
-      out.push({ name: 'Antigravity 可调用', ok: false, exitCode: EXIT.ENV, detail: 'agy --version 失败' });
-    } else if (v !== cfg.probe.agy.version) {
-      out.push({
-        name: 'Antigravity 版本与探针一致',
-        ok: false,
-        exitCode: EXIT.ENV,
-        detail:
-          `agy 版本已变（探针记录 ${cfg.probe.agy.version} → 实际 ${v}）。\n` +
-          '  参数与行为可能随版本漂移，请重新运行 `trivium doctor`。',
-      });
-    } else {
-      out.push({ name: 'Antigravity 可调用', ok: true, detail: `agy ${v}` });
+  /*
+   * 只识别 `'node'` 与 `null` 两种运行时（审查意见 GLM-03）。
+   *
+   * 原实现写的是 `vp.runner === 'node' ? … : <直接执行 entrypoint>`，
+   * 于是盘上任何别的值（手工改的、或将来第三家写进去的 `'python'`）
+   * 都被**静默**当成「直接执行」，结果是去直接跑一个 .py 文件、报一个看不懂的错。
+   * TS 的 `'node' | null` 拦得住新代码写错字面量，拦不住盘上的值。
+   * 这里把「将来可扩展」变成显式契约：不认识就如实说不认识。
+   */
+  if (vp.runner !== null && vp.runner !== 'node') {
+    return { unverifiable: `不认识的运行时「${String(vp.runner)}」（当前只支持 node 与直接执行）` };
+  }
+
+  /*
+   * 正则由盘上数据构造，必须防非法（审查意见 GLM-07）。
+   * 不防的话 `SyntaxError` 会穿到 cli.ts 的全局 catch，用户看到的是 JS 正则错误加原始栈——
+   * 而该做的事是重跑 doctor。错误信息把人引向错误的方向，与 critics.ts 那条
+   * 「无法取到调用参数」是同族问题。
+   */
+  let re: RegExp | null = null;
+  if (vp.extract) {
+    try {
+      re = new RegExp(vp.extract);
+    } catch {
+      return { unverifiable: `探针记录的 extract 不是合法正则：${vp.extract}` };
     }
   }
 
-  const entry = cfg.probe.zcode.entry;
-  if (!entry || !(await exists(entry))) {
-    out.push({
-      name: 'ZCode 可调用',
-      ok: false,
-      exitCode: EXIT.ENV,
-      detail: `探针记录的 zcode 入口不可用：${entry ?? '(未记录)'}。请重新运行 doctor。`,
-    });
-  } else {
-    const node = cfg.runtime.node ?? process.execPath;
-    const r = await run(node, [entry, 'version'], { timeoutMs: 60_000 });
-    const m = r.code === 0 ? /(\d+\.\d+\.\d+)/.exec(r.stdout) : null;
-    const v = m?.[1] ?? null;
-    if (v === null) {
-      out.push({ name: 'ZCode 可调用', ok: false, exitCode: EXIT.ENV, detail: 'zcode version 失败' });
-    } else if (v !== cfg.probe.zcode.version) {
+  const runner = vp.runner === 'node' ? (cfg.runtime.node ?? process.execPath) : entry;
+  const args = vp.runner === 'node' ? [entry, ...vp.args] : vp.args;
+  const r = await run(runner, args, { timeoutMs: 60_000 });
+  if (r.code !== 0) return { version: null };
+  if (!re) return { version: r.stdout.trim() };
+  return { version: re.exec(r.stdout)?.[1] ?? null };
+}
+
+/**
+ * CLI 版本与探针记录是否一致（治 agy 自升级，坑 P-02）。
+ *
+ * **遍历已探 CLI，不再无条件检查写死的两家**（审查意见 GLM-02）。
+ * 原实现是两段逐字展开的分支，于是 BACKLOG EV-05② 记的
+ * 「第三家的 CLI 在不在、版本对不对一律不被检查，且不报任何提示」就成立。
+ * 泛化的前提是「怎么取版本」这条知识随探针结论落盘（`VersionProbe`），
+ * 而它**不依赖任何 M8 适配器**——这正是把本项从 EV-05② 里摘出来、
+ * 收进 M6 第 1 步的理由。
+ *
+ * 三态而非两态：查得通、查出漂移、**无从查**。第三态不判失败但要点名，
+ * 否则「检查过」与「没得检查」在输出里长得一模一样——与 M7b 第 6 步
+ * `checkModelSlugs` 的口径一致。
+ */
+async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {
+  const out: CheckResult[] = [];
+  const unverifiable: string[] = [];
+
+  for (const cliName of ALL_CLI_NAMES) {
+    const probe = cfg.probe.cli[cliName];
+    // 没探过的 CLI 不在这里报——`checkProbeFreshness` 已经统一点过名了，
+    // 这里再报一遍会把「没探过」说成「不可调用」，是两回事。
+    if (!probe?.probed_at) continue;
+
+    const label = agentByCliName(cliName)?.display ?? cliName;
+    const entry = probe.entrypoint;
+    if (!entry || !(await exists(entry))) {
       out.push({
-        name: 'ZCode 版本与探针一致',
+        name: `${label} 可调用`,
         ok: false,
         exitCode: EXIT.ENV,
-        detail: `zcode 版本已变（${cfg.probe.zcode.version} → ${v}）。请重新运行 doctor。`,
+        detail: `探针记录的 ${cliName} 入口不可用：${entry ?? '(未记录)'}。请重新运行 doctor。`,
+      });
+      continue;
+    }
+
+    const res = await readCliVersion(cfg, probe);
+    if ('unverifiable' in res) {
+      unverifiable.push(`${cliName}（${res.unverifiable}）`);
+      out.push({ name: `${label} 可调用`, ok: true, detail: `${cliName} 入口在位（版本未校验）` });
+      continue;
+    }
+    const v = res.version;
+    if (v === null) {
+      out.push({
+        name: `${label} 可调用`,
+        ok: false,
+        exitCode: EXIT.ENV,
+        detail: `${cliName} 取版本失败。请重新运行 doctor。`,
+      });
+    } else if (v !== probe.version) {
+      out.push({
+        name: `${label} 版本与探针一致`,
+        ok: false,
+        exitCode: EXIT.ENV,
+        detail:
+          `${cliName} 版本已变（探针记录 ${probe.version} → 实际 ${v}）。\n` +
+          '  参数与行为可能随版本漂移，请重新运行 `trivium doctor`。',
       });
     } else {
-      out.push({ name: 'ZCode 可调用', ok: true, detail: `zcode ${v}` });
+      out.push({ name: `${label} 可调用`, ok: true, detail: `${cliName} ${v}` });
     }
+  }
+
+  if (unverifiable.length > 0) {
+    out.push({
+      name: '版本漂移检查覆盖面',
+      ok: true,
+      detail:
+        '⚠️ 下列 CLI 本次只确认入口在位、未实际比对版本（括号内为原因）：' +
+        `${unverifiable.join('、')}。重跑 doctor 可补齐。`,
+    });
   }
   return out;
 }
@@ -271,7 +350,7 @@ function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string):
   const vendor = agentById(critic)?.vendor ?? null;
 
   if (vendor === 'antigravity') {
-    const models = cfg.probe.agy.models;
+    const models = cfg.probe.cli.agy?.models ?? [];
     if (models.length === 0) return { kind: 'unverifiable', why: '探针未记录 agy 模型目录' };
     // 未知 slug 会让 agy 直接非零退出，不会静默换模型——所以这里能硬校验
     return models.includes(model)
@@ -280,10 +359,10 @@ function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string):
   }
 
   if (vendor === 'zcode') {
-    const models = cfg.probe.zcode.models ?? [];
+    const models = cfg.probe.cli.zcode?.models ?? [];
     if (models.length === 0) return { kind: 'unverifiable', why: '探针未记录 ZCode 模型目录' };
     // ZCode 侧允许短名，适配层会按探针回读的 providerId 补全前缀（坑 P-06）
-    const qualified = qualifyZcodeModel(model, cfg.probe.zcode.model_id_form ?? null);
+    const qualified = qualifyZcodeModel(model, cfg.probe.cli.zcode?.model_id_form ?? null);
     const short = (qualified ?? '').split('/').pop() ?? '';
     return models.some((m) => m === short || m === qualified)
       ? { kind: 'ok' }
@@ -299,7 +378,8 @@ function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string):
 /** 只读能力可用（§8.1）：ZCode 的 readonly_flags 非空 + Antigravity 的只读 Agent 存在 */
 async function checkReadonlyCapability(cfg: Config): Promise<CheckResult> {
   const problems: string[] = [];
-  if (cfg.probe.zcode.readonly_flags.length === 0) {
+  const readonlyFlags = cfg.probe.cli.zcode?.readonly_flags ?? [];
+  if (readonlyFlags.length === 0) {
     problems.push('探针未实测到任何可用的 ZCode 只读参数组合');
   }
   const agentPath = path.join(
@@ -315,7 +395,7 @@ async function checkReadonlyCapability(cfg: Config): Promise<CheckResult> {
     );
   }
   return problems.length === 0
-    ? { name: '只读能力可用', ok: true, detail: `ZCode 组合 ${cfg.probe.zcode.readonly_flags.join(' ')}` }
+    ? { name: '只读能力可用', ok: true, detail: `ZCode 组合 ${readonlyFlags.join(' ')}` }
     : { name: '只读能力可用', ok: false, exitCode: EXIT.ENV, detail: problems.join('\n  ') };
 }
 
@@ -374,7 +454,7 @@ interface AuthProbe {
 
 async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe> {
   const cfg = ctx.config;
-  const version = cfg.probe.agy.version;
+  const version = cfg.probe.cli.agy?.version ?? null;
   const fp = await agyFingerprint(cfg);
   const cached = cfg.probe.auth?.gemini;
 
@@ -390,7 +470,7 @@ async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe
     step(`[gemini] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
   }
 
-  const bin = cfg.probe.agy.bin;
+  const bin = cfg.probe.cli.agy?.entrypoint ?? null;
   if (!bin) {
     return {
       critic: 'gemini',
@@ -403,10 +483,10 @@ async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe
     bin,
     cwd: ctx.projectRoot,
     prompt: '只回复 OK 两个字母，不要调用任何工具。',
-    model: cfg.probe.agy.models[0] ?? null,
+    model: cfg.probe.cli.agy?.models[0] ?? null,
     agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
     timeoutMs: 120_000,
-    pty: cfg.probe.agy.pty_required === true,
+    pty: cfg.probe.cli.agy?.pty_required === true,
   });
 
   const ok = out.parsed.status === 'SUCCESS' && !out.timedOut;
@@ -428,7 +508,7 @@ async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe
 
 async function probeZcodeAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe> {
   const cfg = ctx.config;
-  const version = cfg.probe.zcode.version;
+  const version = cfg.probe.cli.zcode?.version ?? null;
   const fp = await zcodeFingerprint();
   const cached = cfg.probe.auth?.glm;
 
@@ -444,7 +524,7 @@ async function probeZcodeAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthPro
     step(`[glm] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
   }
 
-  const entry = cfg.probe.zcode.entry;
+  const entry = cfg.probe.cli.zcode?.entrypoint ?? null;
   if (!entry) {
     return {
       critic: 'glm',

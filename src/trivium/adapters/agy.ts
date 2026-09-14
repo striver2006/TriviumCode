@@ -171,8 +171,21 @@ export const agyAdapter: CriticAdapter = {
   critic: 'gemini',
 
   availability(ctx: AdapterContext) {
-    const p = ctx.cfg.probe.agy;
-    if (!p.bin) return { ok: false, reason: '探针未找到 agy 可执行文件，请先运行 trivium doctor' };
+    /*
+    * 「这一侧还没探过」与「探过、没找到可执行文件」是两回事：
+    * 前者该去跑 doctor，后者是该侧真的不可用。
+    *
+    * 判据用 `probed_at` 而**不是** `!p`（审查意见 AGY-01）：`defaultProbe()` 为全部
+    * 已登记 CLI 预填空壳、`patchProbe` 又按 default 补齐，于是 `p` 恒非空，
+    * `if (!p)` 那一支恒不可达——两态会永远答同一句。这两处改动出自同一次提交，
+    * 是我加的预填让我自己写的判据失效的。口径与 `preflight` 的
+    * `if (!probe?.probed_at) continue` 和 doctor 的「未实现 CLI 答复」一致。
+    */
+    const p = ctx.cfg.probe.cli.agy;
+    if (!p?.probed_at) {
+      return { ok: false, reason: 'agy 尚未探测，请先运行 trivium doctor --only agy' };
+    }
+    if (!p.entrypoint) return { ok: false, reason: '探针未找到 agy 可执行文件，请先运行 trivium doctor' };
     if (p.headless_read_ok === false) {
       return {
         ok: false,
@@ -190,11 +203,18 @@ export const agyAdapter: CriticAdapter = {
   },
 
   async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
-    const probe = ctx.cfg.probe.agy;
-    const bin = probe.bin;
-    if (!bin) {
-      return failedResult('gemini', { status: 'failed', reason: 'agy bin 未探测到' });
+    const probe = ctx.cfg.probe.cli.agy;
+    // 两态判据同 availability()：以 probed_at 区分，不用 `!probe`（AGY-01）。
+    if (!probe?.probed_at) {
+      return failedResult('gemini', {
+        status: 'failed',
+        reason: 'agy 尚未探测，请先运行 trivium doctor --only agy',
+      });
     }
+    if (!probe.entrypoint) {
+      return failedResult('gemini', { status: 'failed', reason: 'agy 入口未探测到' });
+    }
+    const bin = probe.entrypoint;
 
     await ensureDir(req.out_dir);
     const stdoutPath = path.join(req.out_dir, 'stdout.jsonl');

@@ -896,3 +896,54 @@ test('全部机读 schema：任何校验关键字都不得枚举 Agent id 或意
     assert.ok(e.why.trim().length >= 20, `具名豁免 ${e.file}#${e.at} 的理由写得太短`);
   }
 });
+
+// ─────────────────── 4. 探针段按 cliName 索引（M6 第 1 步）───────────────────
+
+/*
+ * 这两条是 M6 计划双审 GLM-04 要求的配套对账。
+ *
+ * 背景：计划原拟新增一个 `probeKey` 字段专门做探针段的键，两侧独立判为过度登记——
+ * 同一个事实立两个字段就是第二事实源。改为直接复用 `cliName` 之后，
+ * **复用方案自己的前提**需要机器守住：cliName 必须全表唯一，
+ * 且探针段的类型层具名键不得与它分叉。
+ */
+
+test('cliName 全表唯一', () => {
+  const names = AGENTS.map((a) => a.cliName);
+  const dupes = names.filter((n, i) => names.indexOf(n) !== i);
+  assert.deepEqual(
+    dupes,
+    [],
+    'cliName 重复会让两件事同时坏掉：审查文档 front-matter 的 agent_cli 分不清是哪家，' +
+      '且两家 Agent 会争抢同一个探针段键',
+  );
+});
+
+test('ProbeByCli 的具名键 ⊆ 注册表 cliName 集', async () => {
+  /*
+   * 类型层为已实现专属形状的家给出精确类型（`agy?: AgyProbe`）。那些具名键
+   * 一旦拼错或与注册表分叉，`defaultProbe()` 因为索引签名照样通过，
+   * 症状要到消费方取特有字段时才现形——正是纪律 12 要防的「第二事实源」形态。
+   *
+   * 扫源码而不是扫运行期对象：运行期只看得见 `defaultProbe` 填了什么，
+   * 看不见类型里声明了什么，而分叉恰恰发生在后者。
+   */
+  const src = await fs.readFile(
+    path.join(REPO_ROOT, 'src/trivium/types.ts'),
+    'utf8',
+  );
+  const block = /export type ProbeByCli = \{[^}]*\} & \{([^}]*)\}/.exec(src);
+  assert.ok(block, '没能在 types.ts 里定位 ProbeByCli 的具名键块——正则或类型形状变了');
+
+  const named = [...block[1]!.matchAll(/^\s*(\w+)\?:/gm)].map((m) => m[1]!);
+  assert.ok(named.length > 0, '应当至少有一个具名键（agy / zcode）');
+
+  const cliNames = new Set(AGENTS.map((a) => a.cliName));
+  const strays = named.filter((n) => !cliNames.has(n));
+  assert.deepEqual(
+    strays,
+    [],
+    `ProbeByCli 出现了不在注册表 cliName 集里的具名键：${strays.join('、')}。` +
+      '探针段键集的唯一来源是注册表，类型层只能给已登记的 CLI 加精确形状',
+  );
+});

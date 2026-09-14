@@ -1,0 +1,203 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260914T123601Z",
+  "topic": "探针扩展与事实回填",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "重点看四处：一是 probeKey 这个新登记字段站不站得住，还是直接用 cliName 更小且同样挡得住错位；二是我判定 codex --profile「没有安全退路」有没有夸大，特别是 -c key=value 旗标算不算我漏掉的第三条路；三是探针的三层测试划分留没留缺口——解析器对真实输出解析正确这件事没有自动化覆盖，CLI 升版后 fixture 与现实分叉测试仍然全绿；四是把 EV-05② 排除在本轮之外是合理的范围控制还是又一次「登记而不接线」",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "critics_selected": [
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "d0c0734874420d41c533c908d27d04ff33a215c5",
+    "tree_hash": "82a91f94d974d5e4390cb851b48ed2712a4639fa",
+    "dirty": true,
+    "subject_sha256": "1cf8100bfa35bdb657c70b95ed75a5493d7028b07ce56db9e5da0ce62d3fc5a2",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-14T12:36:01.631Z",
+  "finished_at": "2026-09-14T12:56:12.216Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 313.106,
+      "tool_calls": {
+        "read": 41,
+        "grep": 12,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 28
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 346158,
+        "output_tokens": 44775,
+        "thinking_tokens": 37359,
+        "cache_read_tokens": 5527595,
+        "total_tokens": 390933
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "d2f3f090-ffba-46e4-bb7e-516fa5b00ed5",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1210.445,
+      "tool_calls": {
+        "read": 19,
+        "grep": 5,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 19
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 8,
+        "inputTokens": 718699,
+        "outputTokens": 39412,
+        "totalTokens": 758111,
+        "cacheReadTokens": 584832,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_476495cd-a5c8-4044-942c-58e53d4bee6c",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/Agent注册表与多审泛化/code/2026-09-13-Agent注册表与多审泛化-glm.md",
+    ".reviews/Agent注册表与多审泛化/code/_meta/review-glm-20260913T121713Z.json",
+    ".reviews/Agent注册表与多审泛化/plan/2026-09-13-Agent注册表与多审泛化-glm.md",
+    ".reviews/Agent注册表与多审泛化/plan/_meta/review-glm-20260913T115435Z.json",
+    ".reviews/C命令base透传修复/code/2026-09-12-C命令base透传修复-glm.md",
+    ".reviews/C命令base透传修复/code/_meta/review-glm-20260911T155806Z.json",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-glm.md",
+    ".reviews/M2-skills与闸门/plan/_meta/review-glm-20260910T221346Z.json",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-glm.md",
+    ".reviews/M3-隔离证据与预检/plan/_meta/review-glm-20260910T232427Z.failed.json",
+    ".reviews/M3-隔离证据与预检/plan/_meta/review-glm-20260910T234258Z.json",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-glm.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r3-glm.md",
+    ".reviews/M4-M5实现/code/_meta/review-glm-20260911T020826Z.json",
+    ".reviews/M4-M5实现/code/_meta/review-glm-20260911T023232Z.failed.json",
+    ".reviews/M4-M5实现/code/_meta/review-glm-20260911T025329Z.json",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-glm.md",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-r2-glm.md",
+    ".reviews/RV-B1-commit豁免/code/_meta/review-glm-20260912T130433Z.json",
+    ".reviews/RV-B1-commit豁免/code/_meta/review-glm-20260912T134136Z.json",
+    ".reviews/S9-闸门与留痕加固/code/2026-09-11-S9-闸门与留痕加固-glm.md",
+    ".reviews/S9-闸门与留痕加固/code/_meta/review-glm-20260911T063947Z.json",
+    ".reviews/双审进度反馈/code/2026-09-12-双审进度反馈-glm.md",
+    ".reviews/双审进度反馈/code/_meta/review-glm-20260912T150433Z.json",
+    ".reviews/双审进度反馈/plan/2026-09-12-双审进度反馈-glm.md",
+    ".reviews/双审进度反馈/plan/_meta/review-glm-20260912T144811Z.json",
+    ".reviews/审核修复/code/2026-09-12-审核修复-glm.md",
+    ".reviews/审核修复/code/_meta/review-glm-20260912T060013Z.json",
+    ".reviews/护栏判定范围收窄/code/2026-09-14-护栏判定范围收窄-glm.md",
+    ".reviews/护栏判定范围收窄/code/_meta/review-glm-20260913T164857Z.json",
+    ".reviews/护栏判定范围收窄/plan/2026-09-14-护栏判定范围收窄-r2-glm.md",
+    ".reviews/护栏判定范围收窄/plan/_meta/review-glm-20260913T160012Z.failed.json",
+    ".reviews/护栏判定范围收窄/plan/_meta/review-glm-20260913T162911Z.fallback-items.md",
+    ".reviews/护栏判定范围收窄/plan/_meta/review-glm-20260913T162911Z.json",
+    ".reviews/演进设计定稿与回溯/code/2026-09-14-演进设计定稿与回溯-glm.md",
+    ".reviews/演进设计定稿与回溯/code/_meta/review-glm-20260913T234949Z.json",
+    ".reviews/演进设计定稿与回溯/plan/2026-09-14-演进设计定稿与回溯-glm.md",
+    ".reviews/演进设计定稿与回溯/plan/_meta/review-glm-20260913T232505Z.json",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-glm.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r2-glm.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r3-glm.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r4-glm.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r5-glm.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r6-glm.md",
+    ".reviews/配置v2与动态多审/code/_meta/review-glm-20260914T010621Z.json",
+    ".reviews/配置v2与动态多审/code/_meta/review-glm-20260914T021531Z.json",
+    ".reviews/配置v2与动态多审/code/_meta/review-glm-20260914T032508Z.json",
+    ".reviews/配置v2与动态多审/code/_meta/review-glm-20260914T050404Z.json",
+    ".reviews/配置v2与动态多审/code/_meta/review-glm-20260914T061843Z.json",
+    ".reviews/配置v2与动态多审/code/_meta/review-glm-20260914T102535Z.json",
+    ".reviews/配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-glm.md",
+    ".reviews/配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-r2-glm.md",
+    ".reviews/配置v2与动态多审/plan/_meta/review-glm-20260913T172119Z.fallback-items.md",
+    ".reviews/配置v2与动态多审/plan/_meta/review-glm-20260913T172119Z.json",
+    ".reviews/配置v2与动态多审/plan/_meta/review-glm-20260913T223700Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": []
+  },
+  "artifacts": [
+    {
+      "path": "探针扩展与事实回填/plan/_meta/brief-gemini-20260914T123601Z.md",
+      "sha256": "93ec2da22a5fd9cdf2987622cd887609397be808a5d13fcf5f30d1be67991267"
+    },
+    {
+      "path": "探针扩展与事实回填/plan/_meta/brief-glm-20260914T123601Z.md",
+      "sha256": "3542b5b964a3974a8424d3bb7a7c8dc5bb02d9b3028c9fd3c2f5dbcdedf14fb4"
+    },
+    {
+      "path": "探针扩展与事实回填/plan/_meta/review-gemini-20260914T123601Z.json",
+      "sha256": "659456a91e1b7a884ae841e0bbabdc0a9571909c9e39851be394d3324a83f448"
+    },
+    {
+      "path": "探针扩展与事实回填/plan/_meta/review-glm-20260914T123601Z.json",
+      "sha256": "61f04f1f158f7a2d194cad6d2e4019f89610ae88fb6f7025ad7c424727077078"
+    },
+    {
+      "path": "探针扩展与事实回填/plan/2026-09-14-探针扩展与事实回填-gemini.md",
+      "sha256": "98904c8695e3129032bef86bac1724948f0e294d322beb7e4fbe8a92c0568d5d"
+    },
+    {
+      "path": "探针扩展与事实回填/plan/2026-09-14-探针扩展与事实回填-glm.md",
+      "sha256": "2d9042f0222d4d7226ffffc89a08b0124581ca23bba2d3236404b32ebdfa5069"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

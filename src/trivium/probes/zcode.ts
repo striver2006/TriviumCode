@@ -265,8 +265,10 @@ export async function probeZcode(
   const probe: ZcodeProbe = opts.existing
     ? structuredClone(opts.existing)
     : {
-        entry: null,
+        entrypoint: null,
         version: null,
+        version_probe: null,
+        probed_at: null,
         readonly_flags: [],
         model_override: null,
         trace_source: null,
@@ -279,8 +281,20 @@ export async function probeZcode(
       };
 
   const { entry, version } = await probeZcodeEntry(configuredEntry, node);
-  probe.entry = entry;
+  probe.entrypoint = entry;
   probe.version = version;
+  probe.probed_at = new Date().toISOString();
+  /*
+   * 取版本的方式与 agy 完全不同：要用 node 跑 .cjs、子命令是 `version` 而非
+   * `--version`、且 stdout 里混着别的内容要正则抠。正因为不同，它才必须
+   * 随结论落盘而不是写死在读侧（P7）。`runner: 'node'` 记的是「需要 node」
+   * 这个事实——具体哪个 node 由运行时的 runtime.node 决定，落盘会立刻过期。
+   */
+  probe.version_probe = {
+    runner: 'node',
+    args: ['version'],
+    extract: String.raw`(\d+\.\d+\.\d+)`,
+  };
   if (!entry) {
     notes.push('未找到 zcode.cjs 入口，ZCode 侧不可用');
     return { probe, notes };

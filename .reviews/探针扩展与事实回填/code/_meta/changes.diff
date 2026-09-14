@@ -1,0 +1,1787 @@
+# trivium changes.diff
+# run_id: 20260914T134654Z
+# base: HEAD
+# head: d0c0734874420d41c533c908d27d04ff33a215c5
+# files: 16
+#   doc/07_manuals/MANUAL_user.md
+#   skills/dual-critic/schema/config.v2.json
+#   src/trivium/adapters/agy.ts
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/agents/registry.ts
+#   src/trivium/cli.ts
+#   src/trivium/config.ts
+#   src/trivium/doctor.ts
+#   src/trivium/guard.ts
+#   src/trivium/preflight.ts
+#   src/trivium/probes/agy.ts
+#   src/trivium/probes/zcode.ts
+#   src/trivium/types.ts
+#   test/unit/preflight.test.ts
+#   test/unit/registry-parity.test.ts
+#   test/unit/zcode-availability.test.ts
+diff --git a/doc/07_manuals/MANUAL_user.md b/doc/07_manuals/MANUAL_user.md
+index eb855d4..d552131 100644
+--- a/doc/07_manuals/MANUAL_user.md
++++ b/doc/07_manuals/MANUAL_user.md
+@@ -343,7 +343,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ 这些没有 skill 包装，在终端里跑：
+ 
+ ```bash
+-.trivium/bin/trivium doctor [--selftest|--suggest-verify|--no-model-calls|--only agy|zcode]
++.trivium/bin/trivium doctor [--selftest|--suggest-verify|--no-model-calls|--only <cli>|env]
+ .trivium/bin/trivium preflight --stage plan|code|bug|all
+ .trivium/bin/trivium verify --topic <主题> [--only build|test]
+ .trivium/bin/trivium report --topic <主题> [--out <路径>]
+diff --git a/skills/dual-critic/schema/config.v2.json b/skills/dual-critic/schema/config.v2.json
+index 3aeec76..0636700 100644
+--- a/skills/dual-critic/schema/config.v2.json
++++ b/skills/dual-critic/schema/config.v2.json
+@@ -543,12 +543,119 @@
+     },
+     "probe": {
+       "type": "object",
+-      "description": "由 doctor 实测回填，形状随探针演进，这里只要求是对象",
++      "description": "由 doctor 实测回填。各家结论按 cliName 索引落在 cli 段——键集的唯一来源是 agents/registry.ts，schema 只校形状、不枚举任何 Agent 身份（纪律 12）。",
++      "properties": {
++        "cli": {
++          "type": "object",
++          "description": "按 CLI 名索引的探针结论。additionalProperties 承载共有形状，各家的专属字段由该对象自身的 additionalProperties:true 放行。",
++          "additionalProperties": {
++            "$ref": "#/$defs/commonProbe"
++          }
++        }
++      },
+       "additionalProperties": true
+     },
+     "probe_ttl_days": {
+       "type": "number",
+       "exclusiveMinimum": 0
+     }
++  },
++  "$defs": {
++    "commonProbe": {
++      "type": "object",
++      "description": "各家探针结论的共有事实。required 是真正的防线：字段拼错（entrypont）在 additionalProperties:true 下不会被拒，但缺了 required 里的正确名字就会——否则错误要潜伏到适配层读取时才以运行期异常爆发（M6 计划双审 AGY-06）。",
++      "required": [
++        "entrypoint",
++        "version",
++        "probed_at",
++        "models",
++        "path_deny",
++        "scratch_paths",
++        "isolation"
++      ],
++      "additionalProperties": true,
++      "properties": {
++        "entrypoint": {
++          "type": [
++            "string",
++            "null"
++          ],
++          "description": "CLI 可执行入口绝对路径"
++        },
++        "version": {
++          "type": [
++            "string",
++            "null"
++          ]
++        },
++        "probed_at": {
++          "type": [
++            "string",
++            "null"
++          ],
++          "description": "这一键何时探的；TTL 按它判定"
++        },
++        "version_probe": {
++          "type": [
++            "object",
++            "null"
++          ],
++          "description": "怎么再取一次版本。null = 未记录，该侧版本漂移无从检查",
++          "required": [
++            "runner",
++            "args",
++            "extract"
++          ],
++          "additionalProperties": false,
++          "properties": {
++            "runner": {
++              "type": [
++                "string",
++                "null"
++              ],
++              "description": "跑 entrypoint 需要的运行时；null = 直接执行。记事实不记绝对路径"
++            },
++            "args": {
++              "type": "array",
++              "items": {
++                "type": "string"
++              }
++            },
++            "extract": {
++              "type": [
++                "string",
++                "null"
++              ],
++              "description": "抠版本号的正则，取第 1 捕获组"
++            }
++          }
++        },
++        "models": {
++          "type": "array",
++          "items": {
++            "type": "string"
++          }
++        },
++        "scratch_paths": {
++          "type": "array",
++          "items": {
++            "type": "string"
++          }
++        },
++        "isolation": {
++          "type": "string",
++          "description": "隔离手段。这是**手段**的枚举，不是 Agent 身份，不受纪律 12 约束",
++          "enum": [
++            "home_copy",
++            "settings_path",
++            "env",
++            "shared"
++          ]
++        },
++        "path_deny": {
++          "type": "object"
++        }
++      }
++    }
+   }
+ }
+diff --git a/src/trivium/adapters/agy.ts b/src/trivium/adapters/agy.ts
+index 15a9bd7..df8ad22 100644
+--- a/src/trivium/adapters/agy.ts
++++ b/src/trivium/adapters/agy.ts
+@@ -171,8 +171,11 @@ export const agyAdapter: CriticAdapter = {
+   critic: 'gemini',
+ 
+   availability(ctx: AdapterContext) {
+-    const p = ctx.cfg.probe.agy;
+-    if (!p.bin) return { ok: false, reason: '探针未找到 agy 可执行文件，请先运行 trivium doctor' };
++    // 探针段可选化之后要显式处理「这一侧还没探过」——它与「探过、没找到」
++    // 是两回事，前者该去跑 doctor，后者是该侧真的不可用。
++    const p = ctx.cfg.probe.cli.agy;
++    if (!p) return { ok: false, reason: 'agy 尚未探测，请先运行 trivium doctor --only agy' };
++    if (!p.entrypoint) return { ok: false, reason: '探针未找到 agy 可执行文件，请先运行 trivium doctor' };
+     if (p.headless_read_ok === false) {
+       return {
+         ok: false,
+@@ -190,11 +193,16 @@ export const agyAdapter: CriticAdapter = {
+   },
+ 
+   async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
+-    const probe = ctx.cfg.probe.agy;
+-    const bin = probe.bin;
+-    if (!bin) {
+-      return failedResult('gemini', { status: 'failed', reason: 'agy bin 未探测到' });
++    const probe = ctx.cfg.probe.cli.agy;
++    // 先判整段再取字段：探针段可选化后，「这一侧没探过」与「探过但没找到入口」
++    // 都会走到这里，而后续整个函数都要用 probe 的其它字段。
++    if (!probe?.entrypoint) {
++      return failedResult('gemini', {
++        status: 'failed',
++        reason: probe ? 'agy 入口未探测到' : 'agy 尚未探测，请先运行 trivium doctor --only agy',
++      });
+     }
++    const bin = probe.entrypoint;
+ 
+     await ensureDir(req.out_dir);
+     const stdoutPath = path.join(req.out_dir, 'stdout.jsonl');
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index e2c8d36..4c65585 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -159,8 +159,10 @@ export const zcodeAdapter: CriticAdapter = {
+   critic: 'glm',
+ 
+   availability(ctx: AdapterContext) {
+-    const p = ctx.cfg.probe.zcode;
+-    if (!p.entry) return { ok: false, reason: '探针未找到 zcode.cjs 入口，请先运行 trivium doctor' };
++    // 同 agy：「未探过」与「探过但没找到」要分开答。
++    const p = ctx.cfg.probe.cli.zcode;
++    if (!p) return { ok: false, reason: 'zcode 尚未探测，请先运行 trivium doctor --only zcode' };
++    if (!p.entrypoint) return { ok: false, reason: '探针未找到 zcode.cjs 入口，请先运行 trivium doctor' };
+     if (p.readonly_flags.length === 0) {
+       return {
+         ok: false,
+@@ -193,9 +195,15 @@ export const zcodeAdapter: CriticAdapter = {
+   },
+ 
+   async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
+-    const probe = ctx.cfg.probe.zcode;
+-    const entry = probe.entry;
+-    if (!entry) return failedResult('glm', { status: 'failed', reason: 'zcode entry 未探测到' });
++    const probe = ctx.cfg.probe.cli.zcode;
++    // 同 agy：先判整段，后续全函数都依赖 probe 的其它字段。
++    if (!probe?.entrypoint) {
++      return failedResult('glm', {
++        status: 'failed',
++        reason: probe ? 'zcode 入口未探测到' : 'zcode 尚未探测，请先运行 trivium doctor --only zcode',
++      });
++    }
++    const entry = probe.entrypoint;
+ 
+     await ensureDir(req.out_dir);
+     const stdoutPath = path.join(req.out_dir, 'stdout.json');
+diff --git a/src/trivium/agents/registry.ts b/src/trivium/agents/registry.ts
+index 218d9dd..d362f50 100644
+--- a/src/trivium/agents/registry.ts
++++ b/src/trivium/agents/registry.ts
+@@ -61,6 +61,20 @@ export interface AgentDescriptor {
+    * 而本步把 `Vendor` 放开成注册表的四值后，它会把 codex / claude
+    * **静默记成 zcode**。这正是计划 §2.3 点名的那类二元兜底：不报错、
+    * 不退非零码，只是留痕直接写错，而 front-matter 是审计凭证。
++   *
++   * ## 它同时是探针段的索引键（M6 第 1 步）
++   *
++   * `config.local.yaml` 的 `probe.cli.<cliName>` 按本字段索引，
++   * **不按 vendor、也不按 Agent id**。理由是探针探的是「这条命令行能干什么」——
++   * 二进制在不在、旗标接不接受、日志落在哪——那是 **CLI 的事实，不是 Agent 的事实**。
++   * 若按 Agent id 索引，将来同一厂商的两个 Agent 共用一条 CLI 时会落**两份重复结论**，
++   * 而两份还可能互相不一致；按 cliName 索引则天然共享同一份。
++   *
++   * M6 计划稿原拟新增一个 `probeKey` 字段专门承载它，双审两侧独立判为**过度登记**
++   * （AGY-01 / GLM-04）：那会给同一个事实立第二个字段，恰是纪律 7 反对的第二事实源；
++   * 而「登记而不是推算」的先例（上一段）治的是**从另一字段推算映射**，
++   * 不适用于**同值复用**。`registry-parity` 以两条对账守着这个决定：
++   * cliName 全表唯一、探针段具名键 ⊆ cliName 集。
+    */
+   cliName: string;
+   /**
+@@ -152,6 +166,22 @@ export const ALL_AGENT_IDS: readonly AgentId[] = AGENTS.map((a) => a.id);
+ /** 全部意见编号前缀，供 schema pattern 与解析正则生成 */
+ export const ALL_FINDING_PREFIXES: readonly string[] = AGENTS.map((a) => a.findingPrefix);
+ 
++/**
++ * 全部已登记的 CLI 名 —— **探针段键集的唯一来源**（M6 第 1 步）。
++ *
++ * 去重是必要的而非防御性的：将来同一厂商的两个 Agent 共用一条 CLI 时，
++ * 它们只该占探针段的**一个**键（见 `cliName` 的登记说明）。
++ * `registry-parity` 另有一条「cliName 全表唯一」的对账——那条守的是
++ * **当前**四家不得重名（重名会让 `agent_cli` 留痕分不清是哪家）；
++ * 这里的去重守的是**键集**语义，两者不冲突也不互相替代。
++ */
++export const ALL_CLI_NAMES: readonly string[] = [...new Set(AGENTS.map((a) => a.cliName))];
++
++/** 按 CLI 名取注册项。同名多 Agent 时返回第一个——调用方只该用它取 CLI 级事实 */
++export function agentByCliName(cliName: string): AgentDescriptor | null {
++  return AGENTS.find((a) => a.cliName === cliName) ?? null;
++}
++
+ /** 当前可被选为审核者的 Agent（M7a：gemini / glm） */
+ export const CRITIC_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.criticEnabled).map(
+   (a) => a.id,
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index 3911050..561acf6 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -9,7 +9,13 @@ import { exists } from './util/fsx.js';
+ import { promises as fsp } from 'node:fs';
+ import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
+ import { applyProfileOverride, loadCtx } from './config.js';
+-import { runDoctor, renderDoctorReport, suggestVerify } from './doctor.js';
++import {
++  runDoctor,
++  renderDoctorReport,
++  suggestVerify,
++  doctorOnlyChoices,
++  isDoctorOnly,
++} from './doctor.js';
+ import { selftestCommand } from './selftest.js';
+ import { runReview } from './review.js';
+ import { collectCommands, runVerify, summarizeVerify } from './verify.js';
+@@ -88,11 +94,12 @@ function parseArgs(argv: string[]): ParsedArgs {
+ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编排器
+ 
+ 用法：
+-  trivium doctor [--json] [--no-model-calls] [--only agy|zcode|env]
+-      本机能力探针。实测两家 CLI 的真实能力并回填 .trivium/config.local.yaml 的 probe: 段。
++  trivium doctor [--json] [--no-model-calls] [--only ${doctorOnlyChoices().join('|')}]
++      本机能力探针。实测各家 CLI 的真实能力并回填 .trivium/config.local.yaml 的 probe: 段。
+       --no-model-calls  只做静态探测，不消耗厂商配额
+-      --only            只探测指定一侧
+-      两侧各自探完即中途落盘：那几步已经烧过配额，中断不该让它白费
++      --only            只探测指定一侧（取值随注册表登记的 CLI 自动扩展）
++      每段探完即中途落盘：那几步已经烧过配额，中断不该让它白费
++      已登记但尚无探针实现的 CLI 会明确报「登记了、本轮无结论」，不是失败
+ 
+   trivium doctor --suggest-verify
+       展示探测到的编译测试命令候选与可粘贴的 YAML。**只展示不写入**——
+@@ -463,11 +470,14 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
+ 
+   const onlyRaw = args.flags.get('only');
+   const only =
+-    typeof onlyRaw === 'string' && ['agy', 'zcode', 'env'].includes(onlyRaw)
+-      ? (onlyRaw as 'agy' | 'zcode' | 'env')
+-      : null;
++    // 取值集合由注册表派生（`doctorOnlyChoices`），不在此处枚举——
++    // 原先写死的三值会让 `doctor --only codex` 在进 doctor 之前就退 64，
++    // 而 codex 明明已在注册表登记（审查意见 AGY-03 / GLM-06）。
++    typeof onlyRaw === 'string' && isDoctorOnly(onlyRaw) ? onlyRaw : null;
+   if (onlyRaw !== undefined && only === null) {
+-    throw usageError(`--only 只接受 agy | zcode | env，收到：${String(onlyRaw)}`);
++    throw usageError(
++      `--only 只接受 ${doctorOnlyChoices().join(' | ')}，收到：${String(onlyRaw)}`,
++    );
+   }
+ 
+   const report = await runDoctor({
+diff --git a/src/trivium/config.ts b/src/trivium/config.ts
+index 9b2e696..1eb246f 100644
+--- a/src/trivium/config.ts
++++ b/src/trivium/config.ts
+@@ -7,8 +7,18 @@
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import YAML from 'yaml';
+-import type { AgentConfig, AgentId, Config, Ctx, ProbeSection, Stage } from './types.js';
++import type {
++  AgentConfig,
++  AgentId,
++  CommonProbe,
++  Config,
++  Ctx,
++  ProbeByCli,
++  ProbeSection,
++  Stage,
++} from './types.js';
+ import { CRITICS } from './types.js';
++import { ALL_CLI_NAMES } from './agents/registry.js';
+ import { EXIT, TriviumError, envError, swallowedTextHint } from './exit-codes.js';
+ import { exists, expandHome } from './util/fsx.js';
+ import { isGitRepo, repoRoot } from './util/git.js';
+@@ -19,41 +29,107 @@ export const CONFIG_SCHEMA_ID = 'trivium.config.v2' as const;
+ export const CONFIG_SCHEMA_ID_V1 = 'trivium.config.v1' as const;
+ export const TRIVIUM_DIR = '.trivium';
+ 
++/** 共有事实的空值。各家的专属字段在各自的 default 里补 */
++function emptyCommonProbe(): CommonProbe {
++  return {
++    entrypoint: null,
++    version: null,
++    version_probe: null,
++    probed_at: null,
++    models: [],
++    path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
++    scratch_paths: [],
++    isolation: 'shared',
++  };
++}
++
++/**
++ * 探针段的空壳。
++ *
++ * **键集从注册表派生**（M6 第 1 步）：新增一家 CLI 时这里不必改一个字——
++ * 这正是「接入套件只需几件」对探针段的兑现。已实现专属形状的两家
++ * 在派生出的共有面上补自己的字段；其余家就是一份 `CommonProbe`，
++ * 足够 `preflight` 的版本比对与 TTL 判定消费。
++ */
+ export function defaultProbe(): ProbeSection {
++  const cli: ProbeByCli = {};
++  for (const name of ALL_CLI_NAMES) cli[name] = emptyCommonProbe();
++
++  // 两家的专属字段。写在派生循环之后，而不是把它们塞进循环里按名字分派——
++  // 那样就又成了「按身份走分支」，正是本步要消灭的形态。
++  cli.agy = {
++    ...emptyCommonProbe(),
++    headless_read_ok: null,
++    json_schema_ok: null,
++    pty_required: null,
++    read_strategy: null,
++    agent: null,
++  };
++  cli.zcode = {
++    ...emptyCommonProbe(),
++    readonly_flags: [],
++    model_override: null,
++    trace_source: null,
++    trace_args_source: null,
++    response_field: null,
++    model_id_form: null,
++  };
++
+   return {
+     generated_at: null,
+     verify_suggestion: { build: [], test: [] },
+-    agy: {
+-      bin: null,
+-      version: null,
+-      models: [],
+-      headless_read_ok: null,
+-      json_schema_ok: null,
+-      pty_required: null,
+-      path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
+-      scratch_paths: [],
+-      isolation: 'shared',
+-      read_strategy: null,
+-      agent: null,
+-    },
+-    zcode: {
+-      entry: null,
+-      version: null,
+-      readonly_flags: [],
+-      model_override: null,
+-      trace_source: null,
+-      trace_args_source: null,
+-      response_field: null,
+-      path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
+-      scratch_paths: [],
+-      isolation: 'shared',
+-      model_id_form: null,
+-      models: [],
+-    },
++    cli,
+     auth: {},
+   };
+ }
+ 
++/**
++ * 旧探针段（`probe.agy` / `probe.zcode` 平铺、入口字段名为 `bin` / `entry`）
++ * → 新形状（`probe.cli.<cliName>`、入口统一为 `entrypoint`）的**内存迁移**。
++ *
++ * 与 `migrateConfigV1` 同规格：**只在读侧发生，不回写磁盘**，幂等，
++ * 入参已是新形状时原样返回。理由也一样——若改成「读到旧形状就拒绝启动」，
++ * 每台已经跑过 doctor 的机器都会在升级瞬间硬失败，而它们盘上的结论本身是好的。
++ *
++ * 不迁移的后果不是报错而是**静默退化**：`preflight` 取不到 `entrypoint`
++ * 会判成「该侧未探过」，提示去重跑 doctor——结论还在盘上却被当成不存在。
++ */
++export function migrateProbeSection(raw: unknown): { probe: unknown; note: string | null } {
++  if (raw === null || typeof raw !== 'object') return { probe: raw, note: null };
++  const p = { ...(raw as Record<string, unknown>) };
++
++  // 判据取「顶层有没有以 cliName 命名的段」，不取 schema 字段——探针段没有自己的版本号。
++  const legacyKeys = ALL_CLI_NAMES.filter((n) => p[n] !== undefined && typeof p[n] === 'object');
++  if (legacyKeys.length === 0) return { probe: raw, note: null };
++
++  const cli = { ...((p['cli'] as Record<string, unknown> | undefined) ?? {}) };
++  for (const name of legacyKeys) {
++    const old = { ...(p[name] as Record<string, unknown>) };
++    /*
++     * 入口字段改名。两家旧名不同（agy 记 bin、zcode 记 entry），所以两个都试——
++     * 这**不是**按身份分支：任何一家的旧结论里至多只有其中一个键，
++     * 取到哪个都写进同一个 entrypoint，加第三家也不必再加一行。
++     */
++    if (old['entrypoint'] === undefined) {
++      old['entrypoint'] = old['bin'] ?? old['entry'] ?? null;
++    }
++    delete old['bin'];
++    delete old['entry'];
++    // 旧结论没有按键时间戳。回落到段整体的 generated_at：那是它实际被探到的最晚可能时刻，
++    // 宁可判得比真实更旧（顶多多探一次），也不能判得更新（那会让过期结论蒙混过关）。
++    if (old['probed_at'] === undefined) old['probed_at'] = p['generated_at'] ?? null;
++    if (old['models'] === undefined) old['models'] = [];
++    cli[name] = old;
++    delete p[name];
++  }
++  p['cli'] = cli;
++
++  return {
++    probe: p,
++    note: `探针段已迁移到按 CLI 索引的新形状（${legacyKeys.join('、')}）。下次 doctor 会按新形状写盘。`,
++  };
++}
++
+ /**
+  * 内置默认配置。
+  *
+@@ -382,13 +458,45 @@ export async function loadCtx(opts: LoadOptions = {}): Promise<Ctx> {
+    * 而 `agents` 仍是内置默认——用户配的 bin / agent / max_turns **一个都不生效**，
+    * 却没有任何报错。先迁移再合并，`critics` 在进入合并前就已改名为 `agents`。
+    */
+-  const migrated: { file: string; shared: boolean; note: string }[] = [];
++  /*
++   * `kind` 区分两类迁移：配置 schema v1→v2、探针段形状。
++   * 不区分的后果实测过一次——探针段迁移会打出「检测到 config.v1 形态的配置」
++   * 并建议「手工把 critics: 改名为 agents:」，而那个文件的 schema 早已是 v2、
++   * 里面根本没有 critics 段。照那句出路去排障，人会去找一个不存在的东西
++   * （「第一个错误不得把用户引向第二个错误」）。
++   */
++  const migrated: {
++    file: string;
++    shared: boolean;
++    note: string;
++    kind: 'config-v1' | 'probe-shape';
++  }[] = [];
+   for (const name of ['config.yaml', 'config.local.yaml']) {
+     const p = path.join(triviumDir, name);
+     const data = await readYamlIfExists(p);
+     if (data !== undefined) {
+       const { config: out, note } = migrateConfigV1(data);
+-      if (note) migrated.push({ file: p, shared: name === 'config.yaml', note });
++      if (note) migrated.push({ file: p, shared: name === 'config.yaml', note, kind: 'config-v1' });
++      /*
++       * 探针段的形状迁移是**独立维度**，必须单独走一次：
++       * 一份 schema 已是 v2 的配置，`probe` 段完全可能还是 M6 之前的平铺形状
++       * （v2 落地于 M7b 第 4 步，探针段改形状在 M6 第 1 步，两者不同期）。
++       * 挂在 `migrateConfigV1` 的 v1 分支里就会漏掉这类文件——而那正是**最常见**的一类：
++       * 本仓库自己的 config.local.yaml 就是。
++       */
++      const doc = out as Record<string, unknown> | null;
++      if (doc !== null && typeof doc === 'object' && doc['probe'] !== undefined) {
++        const { probe, note: probeNote } = migrateProbeSection(doc['probe']);
++        if (probeNote) {
++          doc['probe'] = probe;
++          migrated.push({
++            file: p,
++            shared: name === 'config.yaml',
++            note: probeNote,
++            kind: 'probe-shape',
++          });
++        }
++      }
+       cfg = deepMerge(cfg, out);
+       sources.push(p);
+     }
+@@ -415,17 +523,25 @@ export async function loadCtx(opts: LoadOptions = {}): Promise<Ctx> {
+    */
+   if (migrated.length > 0) {
+     const { warn } = await import('./util/log.js');
++    const wayOut = (m: (typeof migrated)[number]): string => {
++      // 探针段只落在 config.local.yaml，且由 doctor 独占写出——出路是重跑 doctor，
++      // 与 config schema 的迁移出路无关（init 不碰探针段，手工改名也不适用）。
++      if (m.kind === 'probe-shape') return '重跑 `trivium doctor` 会按新形状写盘；在那之前旧结论照常可用';
++      return m.shared
++        ? '`trivium init` 可一次性改写它（带备份）'
++        : '本文件不进 Git，init 不会改它——手工把 `critics:` 改名为 `agents:`，或忽略本提示';
++    };
+     const body = migrated
+-      .map((m) => `  ${m.file}：\n${m.note}\n    出路：${
+-        m.shared
+-          ? '`trivium init` 可一次性改写它（带备份）'
+-          : '本文件不进 Git，init 不会改它——手工把 `critics:` 改名为 `agents:`，或忽略本提示'
+-      }`)
++      .map((m) => `  ${m.file}：\n    ${m.note}\n    出路：${wayOut(m)}`)
+       .join('\n');
+-    warn(
+-      `检测到 ${CONFIG_SCHEMA_ID_V1} 形态的配置，已在内存中按 ${CONFIG_SCHEMA_ID} 迁移` +
+-        `（磁盘文件未改动，旧配置继续可用）：\n${body}`,
+-    );
++    const kinds = new Set(migrated.map((m) => m.kind));
++    const head =
++      kinds.size > 1
++        ? '检测到两类需要迁移的旧形态（配置 schema 与探针段）'
++        : kinds.has('config-v1')
++          ? `检测到 ${CONFIG_SCHEMA_ID_V1} 形态的配置，已在内存中按 ${CONFIG_SCHEMA_ID} 迁移`
++          : '检测到旧形状的探针段，已在内存中按「按 CLI 索引」的新形状迁移';
++    warn(`${head}（磁盘文件未改动，旧配置继续可用）：\n${body}`);
+   }
+ 
+   if (!(await exists(triviumDir)) && !opts.allowUninitialized) {
+@@ -515,16 +631,52 @@ export async function patchProbe(
+   return withGlobalLock({ triviumDir, heartbeatStaleMs }, async () => {
+     const p = path.join(triviumDir, 'config.local.yaml');
+     const existing = ((await readYamlIfExists(p)) as Record<string, unknown> | undefined) ?? {};
+-    const probe = ((existing['probe'] as ProbeSection | undefined) ?? defaultProbe());
++    /*
++     * 这条路径**绕过 loadConfig 直接读盘**，所以迁移要在这里再做一次。
++     * 漏掉的后果不是报错而是数据丢失：旧形状的 `probe.agy` 不被搬走，
++     * mutate 往 `probe.cli.agy` 写新结论，落盘后同一份文件里**两种形状并存**，
++     * 下次读盘迁移又把旧的搬回来盖掉新的。
++     */
++    const { probe: raw } = migrateProbeSection(existing['probe']);
++    const probe = ((raw as ProbeSection | undefined) ?? defaultProbe());
++    // 迁移只保证已有键的形状，不保证键齐全（旧盘上没有 codex/claude 段）。
++    // 补空壳是必要的：mutate 里的 `cur.cli[name] = …` 读改写要有个落点。
++    probe.cli = { ...defaultProbe().cli, ...probe.cli };
+     mutate(probe);
+     return persistProbeUnlocked(triviumDir, probe);
+   });
+ }
+ 
+-/** 探针结论是否已过期（preflight 用，设计 §8.1） */
+-export function probeIsFresh(cfg: Config): boolean {
+-  const at = cfg.probe.generated_at;
++/** 某个时间戳是否还在 TTL 内。空串 / 非法时间一律判为不新鲜 */
++function withinTtl(at: string | null | undefined, ttlDays: number): boolean {
+   if (!at) return false;
+   const ageMs = Date.now() - new Date(at).getTime();
+-  return Number.isFinite(ageMs) && ageMs < cfg.probe_ttl_days * 86_400_000;
++  return Number.isFinite(ageMs) && ageMs < ttlDays * 86_400_000;
++}
++
++/**
++ * **某一条 CLI** 的探针结论是否还新鲜（设计 §8.1）。
++ *
++ * 按键判定而不是看全局 `generated_at`：后者被任何一次 doctor 刷新，
++ * 于是 `doctor --only codex` 会把 agy / zcode 的过期结论一并刷成「新鲜」
++ * （审查意见 GLM-03）。这个失真在两家时就已存在，四家并入同一段后会被放大。
++ */
++export function cliProbeIsFresh(cfg: Config, cliName: string): boolean {
++  return withinTtl(cfg.probe.cli[cliName]?.probed_at, cfg.probe_ttl_days);
++}
++
++/**
++ * 探针结论整体是否可用（preflight 用）。
++ *
++ * 判据是「**有没有任何一条** CLI 的结论还新鲜」，而不是全局时间戳。
++ * 具体哪几侧过期由 `staleCliProbes` 逐一列出——一句「探针已过期」
++ * 在四家并存时不足以让人知道该重探谁。
++ */
++export function probeIsFresh(cfg: Config): boolean {
++  return ALL_CLI_NAMES.some((name) => cliProbeIsFresh(cfg, name));
++}
++
++/** 结论已过期或从未探过的 CLI 名单，供 preflight 点名 */
++export function staleCliProbes(cfg: Config): string[] {
++  return ALL_CLI_NAMES.filter((name) => !cliProbeIsFresh(cfg, name));
+ }
+diff --git a/src/trivium/doctor.ts b/src/trivium/doctor.ts
+index 3271bb4..7936642 100644
+--- a/src/trivium/doctor.ts
++++ b/src/trivium/doctor.ts
+@@ -17,6 +17,7 @@ import { probeVerifyCommands } from './probes/verify-commands.js';
+ import { probeAgy } from './probes/agy.js';
+ import { probeZcode } from './probes/zcode.js';
+ import type { Config, ProbeSection } from './types.js';
++import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
+ import { say, step, warn } from './util/log.js';
+ 
+ export interface DoctorOptions {
+@@ -25,8 +26,26 @@ export interface DoctorOptions {
+   config: Config;
+   /** 跳过一切消耗厂商配额的模型调用，只做静态探测 */
+   skipModelCalls?: boolean;
+-  /** 只跑某一侧：agy | zcode | env */
+-  only?: 'agy' | 'zcode' | 'env' | null;
++  /**
++   * 只跑某一段：任一 `cliName`，或 `env`。
++   *
++   * 取值集合由注册表派生（`isDoctorOnly`），不在类型里枚举——
++   * 枚举过一次，结果是 `doctor --only codex` 在进 doctor 之前就被
++   * `cli.ts` 的三值白名单退 64（审查意见 AGY-03 / GLM-06）。
++   */
++  only?: string | null;
++}
++
++/** `--only` 的合法取值：全部已登记 CLI，外加环境段 */
++export const DOCTOR_ONLY_ENV = 'env' as const;
++
++/** 合法 `--only` 取值清单，供 cli.ts 校验与 USAGE 文案共用 —— 两处不得各写各的 */
++export function doctorOnlyChoices(): string[] {
++  return [...ALL_CLI_NAMES, DOCTOR_ONLY_ENV];
++}
++
++export function isDoctorOnly(v: string): boolean {
++  return doctorOnlyChoices().includes(v);
+ }
+ 
+ export interface DoctorReport {
+@@ -39,10 +58,20 @@ export interface DoctorReport {
+ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+   // 以**已落盘的探针结论**为基线，只覆盖本次真正探测过的段落。
+   // 否则 `--only zcode` 会把上一轮的 agy 结论一并清空（探针结论是增量积累的）。
++  const base = defaultProbe();
++  const loaded = structuredClone(opts.config.probe ?? {}) as Partial<ProbeSection>;
+   const probe: ProbeSection = {
+-    ...defaultProbe(),
+-    ...structuredClone(opts.config.probe ?? {}),
+-  } as ProbeSection;
++    ...base,
++    ...loaded,
++    /*
++     * `cli` 要**逐键合并**，不能靠外层展开。
++     * 外层展开时盘上的 `cli` 会整体顶掉 `defaultProbe()` 的那份，
++     * 于是本次新登记、盘上还没有的 CLI（M6 之后就是 codex / claude）
++     * 连空壳都没有——后面 `probe.cli[name] = …` 写得进去，但读侧
++     * `cli[name]?.version` 在探测前一律是 undefined，报告里会少掉整段。
++     */
++    cli: { ...base.cli, ...(loaded.cli ?? {}) },
++  };
+   const notes: string[] = [];
+   const blockers: string[] = [];
+   const only = opts.only ?? null;
+@@ -92,48 +121,64 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+    * 用 patchProbe 而非 persistProbe：它在全局锁内重读再合并，
+    * 不会把并发的另一次 doctor（比如 --only 另一侧）的结论覆盖掉。
+    */
+-  /** 本次真正探过的段。没探过的段一个字节都不碰 */
+-  const probedSections = new Set<'env' | 'agy' | 'zcode'>();
++  /**
++   * 本次真正探过的段。没探过的段一个字节都不碰。
++   *
++   * 元素是 `cliName` 或 `DOCTOR_ONLY_ENV`——集合由运行期决定，
++   * 不再是写死的三值联合类型（否则加一家 CLI 就要改这里）。
++   */
++  const probedSections = new Set<string>();
+ 
+-  const checkpoint = async (label: 'env' | 'agy' | 'zcode'): Promise<void> => {
+-    probedSections.add(label);
++  /**
++   * @param label 本次新探完的段；传 `null` 表示**不新增任何段**，
++   *   只把已探过的段与 `generated_at` 再落一次（末尾补写用）。
++   */
++  const checkpoint = async (label: string | null): Promise<void> => {
++    if (label !== null) probedSections.add(label);
+     try {
+       /*
+        * patchProbe 的回调是**原地修改**、返回 void。写成
+        * `(cur) => ({ ...cur, ...probe })` 的话返回值会被丢弃，实际一个字节都不写。
+        *
+        * 并且只写**探过的段**，不能 Object.assign 整个对象：`--only agy` 时
+-       * probe.zcode 还是调用方传进来的那份，整段覆盖会把盘上更新的 zcode 结论
++       * probe.cli.zcode 还是调用方传进来的那份，整段覆盖会把盘上更新的 zcode 结论
+        * 擦成旧值——这正是 GLM-08 当初修掉的问题，整段覆盖会把它带回来。
+        */
+       await patchProbe(opts.triviumDir, (cur) => {
+-        if (probedSections.has('env')) {
++        if (probedSections.has(DOCTOR_ONLY_ENV)) {
+           if (probe.host) cur.host = probe.host;
+           cur.verify_suggestion = probe.verify_suggestion;
+         }
+-        if (probedSections.has('agy')) cur.agy = probe.agy;
+-        if (probedSections.has('zcode')) cur.zcode = probe.zcode;
++        // 按本次探过的 CLI 逐键写回。遍历 probedSections 而不是遍历全部 CLI：
++        // 后者会把没探过的键也写一遍，正是上一行注释警告的那种整段覆盖。
++        for (const name of probedSections) {
++          if (name === DOCTOR_ONLY_ENV) continue;
++          const probed = probe.cli[name];
++          if (probed) cur.cli[name] = probed;
++        }
+         if (probe.auth) cur.auth = { ...cur.auth, ...probe.auth };
+         if (probe.generated_at) cur.generated_at = probe.generated_at;
+       });
+     } catch (e) {
+       // 中途落盘失败不该中断探测：结论仍在内存里，末尾还会再写一次（那一次失败才算真失败）
+-      notes.push(`[warn] ${label} 阶段的中途落盘失败（不影响继续探测）：${(e as Error).message}`);
++      notes.push(
++        `[warn] ${label ?? '收尾'} 阶段的中途落盘失败（不影响继续探测）：${(e as Error).message}`,
++      );
+     }
+   };
+-  await checkpoint('env');
++  await checkpoint(DOCTOR_ONLY_ENV);
+ 
+   // ── Antigravity ─────────────────────────────────────────────────────
+   if (only === null || only === 'agy') {
+     step('探测 Antigravity（agy）…');
+     const r = await probeAgy(agentConfigOf(opts.config, 'gemini', 'antigravity').bin, agentConfigOf(opts.config, 'gemini', 'antigravity').agent, {
+       skipModelCalls: opts.skipModelCalls ?? false,
+-      existing: probe.agy,
++      existing: probe.cli.agy,
+     });
+-    probe.agy = r.probe;
++    probe.cli.agy = r.probe;
+     notes.push(...r.notes.map((n) => `[agy] ${n}`));
+     await checkpoint('agy'); // 这一段已经烧过配额，先存下来
+-    if (!r.probe.bin) blockers.push('未找到 agy 可执行文件');
++    if (!r.probe.entrypoint) blockers.push('未找到 agy 可执行文件');
+     else if (r.probe.headless_read_ok === false) {
+       blockers.push(
+         'agy headless 无法读取文件（issue #548）。请确认只读审查 Agent 已安装到 ' +
+@@ -147,12 +192,12 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+     step('探测 ZCode（zcode.cjs）…');
+     const r = await probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {
+       skipModelCalls: opts.skipModelCalls ?? false,
+-      existing: probe.zcode,
++      existing: probe.cli.zcode,
+     });
+-    probe.zcode = r.probe;
++    probe.cli.zcode = r.probe;
+     notes.push(...r.notes.map((n) => `[zcode] ${n}`));
+     await checkpoint('zcode');
+-    if (!r.probe.entry) blockers.push('未找到 zcode.cjs 入口');
++    if (!r.probe.entrypoint) blockers.push('未找到 zcode.cjs 入口');
+     else if (r.probe.response_field === null && !opts.skipModelCalls) {
+       blockers.push(
+         'ZCode headless 未跑通。注意：CLI 的模型 provider 配置独立于桌面端，' +
+@@ -161,14 +206,44 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+     }
+   }
+ 
++  /*
++   * ── 已登记但尚无探针实现的 CLI ──
++   *
++   * 判据 J1 要求 `doctor --only codex` 给出**确定结论**。在此之前它退 64
++   * （`cli.ts` 三值白名单），而 64 的语义是「你的参数写错了」——可 codex
++   * 明明在注册表里登记着，用户没写错任何东西。
++   *
++   * 这里给的是第三种答复：**登记了、但本轮没有可跑的探针**。它不是失败
++   * （不进 blockers、不影响退出码），也不是静默通过——名字与原因都说出来。
++   * 判据用「盘上有没有结论」而不是维护一张「哪几家已实现」的清单：
++   * 后者是又一处要随实现进度手工同步的枚举，而探针实现一旦接上，
++   * `probed_at` 自然就有值了。
++   */
++  for (const name of ALL_CLI_NAMES) {
++    if (probedSections.has(name)) continue; // 本次刚探过
++    if (only !== null && only !== name) continue; // 用户没点名这一侧
++    if (probe.cli[name]?.probed_at) continue; // 盘上有旧结论，不是「无实现」
++    const agent = agentByCliName(name);
++    notes.push(
++      `[${name}] 已在注册表登记（${agent?.display ?? name}），但尚无探针实现，` +
++        '本次未产生任何结论——这是确定答复而非失败。探针随 M6 第 2 / 3 步接入。',
++    );
++  }
++
+   probe.generated_at = new Date().toISOString();
+ 
+   /*
+    * 末尾再写一次，只为补上 generated_at 并确保前面每一段都落了盘。
+    * 走 patchProbe（锁内读-改-写）而不是 persistProbe（整体替换）——
+    * 后者会把并发的另一次 doctor（例如 `--only` 另一侧）的结论覆盖掉。
++   *
++   * **传 null，不借用任何厂商标签**（审查意见 GLM-03）。原实现写的是
++   * `checkpoint(only === null ? 'zcode' : only === 'agy' ? 'agy' : 'zcode')`：
++   * `--only env` 时那个三元会落到 `'zcode'` 上，于是把本次**根本没探过**的
++   * zcode 段按起点 clone 整段写回——与 checkpoint 自己「没探过的段一个字节都不碰」
++   * 的注释直接矛盾，并发 doctor 下会丢更新。
+    */
+-  await checkpoint(only === null ? 'zcode' : only === 'agy' ? 'agy' : 'zcode');
++  await checkpoint(null);
+   const written = path.join(opts.triviumDir, 'config.local.yaml');
+   notes.push(`探针结论已写入 ${written}`);
+ 
+diff --git a/src/trivium/guard.ts b/src/trivium/guard.ts
+index 4526c3e..831f702 100644
+--- a/src/trivium/guard.ts
++++ b/src/trivium/guard.ts
+@@ -121,9 +121,16 @@ export interface JudgeRunInput {
+ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
+   const { cfg, results, reviews, requests } = input;
+ 
+-  // 两侧 scratch 白名单并集：这一步不能省，否则会把 Agent 自己的会话缓存
+-  // 误判成「只读失守」（M0 实测本机两侧均为空，但别的机器上未必）
+-  const scratchGlobs = [...cfg.probe.agy.scratch_paths, ...cfg.probe.zcode.scratch_paths];
++  /*
++   * 全部已探 CLI 的 scratch 白名单并集：这一步不能省，否则会把 Agent 自己的
++   * 会话缓存误判成「只读失守」（M0 实测本机两侧均为空，但别的机器上未必）。
++   *
++   * 遍历而不是写死两段（原文是 `[...cfg.probe.agy.scratch_paths, ...cfg.probe.zcode.scratch_paths]`）：
++   * 探针段 Partial 化之后那种写法在 `noUncheckedIndexedAccess` 下直接编译不过，
++   * 而若图省事强转，缺段时会变成运行期 TypeError——这是 guard 这条只读护栏的路径，
++   * 不能靠强转糊过去（审查意见 AGY-03）。取并集也天然对第三家成立。
++   */
++  const scratchGlobs = Object.values(cfg.probe.cli).flatMap((p) => p?.scratch_paths ?? []);
+ 
+   const drift = await judgeDrift({
+     cfg,
+diff --git a/src/trivium/preflight.ts b/src/trivium/preflight.ts
+index 421e52a..5e7510e 100644
+--- a/src/trivium/preflight.ts
++++ b/src/trivium/preflight.ts
+@@ -14,11 +14,11 @@
+ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs, constants as fsConstants } from 'node:fs';
+-import type { AuthCacheEntry, Config, CriticId, Ctx, Stage } from './types.js';
++import type { AuthCacheEntry, CommonProbe, Config, CriticId, Ctx, Stage } from './types.js';
+ import { CRITICS, STAGES } from './types.js';
+ import { EXIT, TriviumError } from './exit-codes.js';
+-import { agentConfigOf, patchProbe, probeIsFresh } from './config.js';
+-import { agentById } from './agents/registry.js';
++import { agentConfigOf, patchProbe, probeIsFresh, staleCliProbes } from './config.js';
++import { ALL_CLI_NAMES, agentById, agentByCliName } from './agents/registry.js';
+ import { invokeAgy } from './adapters/agy.js';
+ import { invokeZcode, qualifyZcodeModel } from './adapters/zcode.js';
+ import { routeModel } from './adapters/base.js';
+@@ -121,76 +121,117 @@ function checkProbeFreshness(cfg: Config): CheckResult {
+         '  预检刻意**不**自动拉起 doctor：它会击穿 Bash 工具的 600s 超时，届时配额已烧而结论未落盘。',
+     };
+   }
++  const stale = staleCliProbes(cfg);
+   if (!probeIsFresh(cfg)) {
+     return {
+       name: '探针结论未过期',
+       ok: false,
+       exitCode: EXIT.ENV,
+       detail:
+-        `探针结论已过期（generated_at=${cfg.probe.generated_at}，超过 probe_ttl_days=${cfg.probe_ttl_days}）。\n` +
++        `探针结论已全部过期或从未探过（超过 probe_ttl_days=${cfg.probe_ttl_days}）：${stale.join('、')}。\n` +
+         '  请手动运行 `trivium doctor` 重新校准后重试。',
+     };
+   }
+-  return { name: '探针结论新鲜', ok: true, detail: `generated_at=${cfg.probe.generated_at}` };
++  /*
++   * 部分过期**不判失败**，但要点名。
++   *
++   * 判据是「有没有任一侧还新鲜」而不是「是否全都新鲜」：四家登记之后，
++   * 尚无探针实现的 codex / claude 永远不会有 `probed_at`，
++   * 按「全都新鲜」判会让预检**恒失败**——那是把登记当成了欠账。
++   */
++  const detail =
++    stale.length === 0
++      ? `全部 ${ALL_CLI_NAMES.length} 侧均在 TTL 内`
++      : `过期或未探：${stale.join('、')}（其余在 TTL 内；跑 doctor --only <名> 可单独补）`;
++  return { name: '探针结论新鲜', ok: true, detail };
+ }
+ 
+-/** CLI 版本与探针记录是否一致（治 agy 自升级，坑 P-02） */
++/** 按探针记录的方式再取一次版本。`version_probe` 为空时返回 undefined（= 无从检查） */
++async function readCliVersion(
++  cfg: Config,
++  probe: CommonProbe,
++): Promise<string | null | undefined> {
++  const vp = probe.version_probe;
++  const entry = probe.entrypoint;
++  if (!vp || !entry) return undefined;
++  const runner = vp.runner === 'node' ? (cfg.runtime.node ?? process.execPath) : entry;
++  const args = vp.runner === 'node' ? [entry, ...vp.args] : vp.args;
++  const r = await run(runner, args, { timeoutMs: 60_000 });
++  if (r.code !== 0) return null;
++  if (!vp.extract) return r.stdout.trim();
++  return new RegExp(vp.extract).exec(r.stdout)?.[1] ?? null;
++}
++
++/**
++ * CLI 版本与探针记录是否一致（治 agy 自升级，坑 P-02）。
++ *
++ * **遍历已探 CLI，不再无条件检查写死的两家**（审查意见 GLM-02）。
++ * 原实现是两段逐字展开的分支，于是 BACKLOG EV-05② 记的
++ * 「第三家的 CLI 在不在、版本对不对一律不被检查，且不报任何提示」就成立。
++ * 泛化的前提是「怎么取版本」这条知识随探针结论落盘（`VersionProbe`），
++ * 而它**不依赖任何 M8 适配器**——这正是把本项从 EV-05② 里摘出来、
++ * 收进 M6 第 1 步的理由。
++ *
++ * 三态而非两态：查得通、查出漂移、**无从查**。第三态不判失败但要点名，
++ * 否则「检查过」与「没得检查」在输出里长得一模一样——与 M7b 第 6 步
++ * `checkModelSlugs` 的口径一致。
++ */
+ async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {
+   const out: CheckResult[] = [];
++  const unverifiable: string[] = [];
+ 
+-  const bin = cfg.probe.agy.bin;
+-  if (!bin || !(await exists(bin))) {
+-    out.push({
+-      name: 'Antigravity 可调用',
+-      ok: false,
+-      exitCode: EXIT.ENV,
+-      detail: `探针记录的 agy 路径不可用：${bin ?? '(未记录)'}。请重新运行 doctor。`,
+-    });
+-  } else {
+-    const r = await run(bin, ['--version'], { timeoutMs: 60_000 });
+-    const v = r.code === 0 ? r.stdout.trim() : null;
+-    if (v === null) {
+-      out.push({ name: 'Antigravity 可调用', ok: false, exitCode: EXIT.ENV, detail: 'agy --version 失败' });
+-    } else if (v !== cfg.probe.agy.version) {
++  for (const cliName of ALL_CLI_NAMES) {
++    const probe = cfg.probe.cli[cliName];
++    // 没探过的 CLI 不在这里报——`checkProbeFreshness` 已经统一点过名了，
++    // 这里再报一遍会把「没探过」说成「不可调用」，是两回事。
++    if (!probe?.probed_at) continue;
++
++    const label = agentByCliName(cliName)?.display ?? cliName;
++    const entry = probe.entrypoint;
++    if (!entry || !(await exists(entry))) {
+       out.push({
+-        name: 'Antigravity 版本与探针一致',
++        name: `${label} 可调用`,
+         ok: false,
+         exitCode: EXIT.ENV,
+-        detail:
+-          `agy 版本已变（探针记录 ${cfg.probe.agy.version} → 实际 ${v}）。\n` +
+-          '  参数与行为可能随版本漂移，请重新运行 `trivium doctor`。',
++        detail: `探针记录的 ${cliName} 入口不可用：${entry ?? '(未记录)'}。请重新运行 doctor。`,
+       });
+-    } else {
+-      out.push({ name: 'Antigravity 可调用', ok: true, detail: `agy ${v}` });
++      continue;
+     }
+-  }
+ 
+-  const entry = cfg.probe.zcode.entry;
+-  if (!entry || !(await exists(entry))) {
+-    out.push({
+-      name: 'ZCode 可调用',
+-      ok: false,
+-      exitCode: EXIT.ENV,
+-      detail: `探针记录的 zcode 入口不可用：${entry ?? '(未记录)'}。请重新运行 doctor。`,
+-    });
+-  } else {
+-    const node = cfg.runtime.node ?? process.execPath;
+-    const r = await run(node, [entry, 'version'], { timeoutMs: 60_000 });
+-    const m = r.code === 0 ? /(\d+\.\d+\.\d+)/.exec(r.stdout) : null;
+-    const v = m?.[1] ?? null;
+-    if (v === null) {
+-      out.push({ name: 'ZCode 可调用', ok: false, exitCode: EXIT.ENV, detail: 'zcode version 失败' });
+-    } else if (v !== cfg.probe.zcode.version) {
++    const v = await readCliVersion(cfg, probe);
++    if (v === undefined) {
++      unverifiable.push(cliName);
++      out.push({ name: `${label} 可调用`, ok: true, detail: `${cliName} 入口在位（版本未校验）` });
++    } else if (v === null) {
+       out.push({
+-        name: 'ZCode 版本与探针一致',
++        name: `${label} 可调用`,
+         ok: false,
+         exitCode: EXIT.ENV,
+-        detail: `zcode 版本已变（${cfg.probe.zcode.version} → ${v}）。请重新运行 doctor。`,
++        detail: `${cliName} 取版本失败。请重新运行 doctor。`,
++      });
++    } else if (v !== probe.version) {
++      out.push({
++        name: `${label} 版本与探针一致`,
++        ok: false,
++        exitCode: EXIT.ENV,
++        detail:
++          `${cliName} 版本已变（探针记录 ${probe.version} → 实际 ${v}）。\n` +
++          '  参数与行为可能随版本漂移，请重新运行 `trivium doctor`。',
+       });
+     } else {
+-      out.push({ name: 'ZCode 可调用', ok: true, detail: `zcode ${v}` });
++      out.push({ name: `${label} 可调用`, ok: true, detail: `${cliName} ${v}` });
+     }
+   }
++
++  if (unverifiable.length > 0) {
++    out.push({
++      name: '版本漂移检查覆盖面',
++      ok: true,
++      detail:
++        `⚠️ 下列 CLI 的探针结论未记录取版本的方式，本次只确认入口在位、` +
++        `未实际比对版本：${unverifiable.join('、')}。重跑 doctor 可补齐。`,
++    });
++  }
+   return out;
+ }
+ 
+@@ -271,7 +312,7 @@ function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string):
+   const vendor = agentById(critic)?.vendor ?? null;
+ 
+   if (vendor === 'antigravity') {
+-    const models = cfg.probe.agy.models;
++    const models = cfg.probe.cli.agy?.models ?? [];
+     if (models.length === 0) return { kind: 'unverifiable', why: '探针未记录 agy 模型目录' };
+     // 未知 slug 会让 agy 直接非零退出，不会静默换模型——所以这里能硬校验
+     return models.includes(model)
+@@ -280,10 +321,10 @@ function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string):
+   }
+ 
+   if (vendor === 'zcode') {
+-    const models = cfg.probe.zcode.models ?? [];
++    const models = cfg.probe.cli.zcode?.models ?? [];
+     if (models.length === 0) return { kind: 'unverifiable', why: '探针未记录 ZCode 模型目录' };
+     // ZCode 侧允许短名，适配层会按探针回读的 providerId 补全前缀（坑 P-06）
+-    const qualified = qualifyZcodeModel(model, cfg.probe.zcode.model_id_form ?? null);
++    const qualified = qualifyZcodeModel(model, cfg.probe.cli.zcode?.model_id_form ?? null);
+     const short = (qualified ?? '').split('/').pop() ?? '';
+     return models.some((m) => m === short || m === qualified)
+       ? { kind: 'ok' }
+@@ -299,7 +340,8 @@ function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string):
+ /** 只读能力可用（§8.1）：ZCode 的 readonly_flags 非空 + Antigravity 的只读 Agent 存在 */
+ async function checkReadonlyCapability(cfg: Config): Promise<CheckResult> {
+   const problems: string[] = [];
+-  if (cfg.probe.zcode.readonly_flags.length === 0) {
++  const readonlyFlags = cfg.probe.cli.zcode?.readonly_flags ?? [];
++  if (readonlyFlags.length === 0) {
+     problems.push('探针未实测到任何可用的 ZCode 只读参数组合');
+   }
+   const agentPath = path.join(
+@@ -315,7 +357,7 @@ async function checkReadonlyCapability(cfg: Config): Promise<CheckResult> {
+     );
+   }
+   return problems.length === 0
+-    ? { name: '只读能力可用', ok: true, detail: `ZCode 组合 ${cfg.probe.zcode.readonly_flags.join(' ')}` }
++    ? { name: '只读能力可用', ok: true, detail: `ZCode 组合 ${readonlyFlags.join(' ')}` }
+     : { name: '只读能力可用', ok: false, exitCode: EXIT.ENV, detail: problems.join('\n  ') };
+ }
+ 
+@@ -374,7 +416,7 @@ interface AuthProbe {
+ 
+ async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe> {
+   const cfg = ctx.config;
+-  const version = cfg.probe.agy.version;
++  const version = cfg.probe.cli.agy?.version ?? null;
+   const fp = await agyFingerprint(cfg);
+   const cached = cfg.probe.auth?.gemini;
+ 
+@@ -390,7 +432,7 @@ async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe
+     step(`[gemini] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
+   }
+ 
+-  const bin = cfg.probe.agy.bin;
++  const bin = cfg.probe.cli.agy?.entrypoint ?? null;
+   if (!bin) {
+     return {
+       critic: 'gemini',
+@@ -403,10 +445,10 @@ async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe
+     bin,
+     cwd: ctx.projectRoot,
+     prompt: '只回复 OK 两个字母，不要调用任何工具。',
+-    model: cfg.probe.agy.models[0] ?? null,
++    model: cfg.probe.cli.agy?.models[0] ?? null,
+     agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
+     timeoutMs: 120_000,
+-    pty: cfg.probe.agy.pty_required === true,
++    pty: cfg.probe.cli.agy?.pty_required === true,
+   });
+ 
+   const ok = out.parsed.status === 'SUCCESS' && !out.timedOut;
+@@ -428,7 +470,7 @@ async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe
+ 
+ async function probeZcodeAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe> {
+   const cfg = ctx.config;
+-  const version = cfg.probe.zcode.version;
++  const version = cfg.probe.cli.zcode?.version ?? null;
+   const fp = await zcodeFingerprint();
+   const cached = cfg.probe.auth?.glm;
+ 
+@@ -444,7 +486,7 @@ async function probeZcodeAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthPro
+     step(`[glm] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
+   }
+ 
+-  const entry = cfg.probe.zcode.entry;
++  const entry = cfg.probe.cli.zcode?.entrypoint ?? null;
+   if (!entry) {
+     return {
+       critic: 'glm',
+diff --git a/src/trivium/probes/agy.ts b/src/trivium/probes/agy.ts
+index 380a079..b8e0e9c 100644
+--- a/src/trivium/probes/agy.ts
++++ b/src/trivium/probes/agy.ts
+@@ -267,8 +267,10 @@ export async function probeAgy(
+   const probe: AgyProbe = opts.existing
+     ? structuredClone(opts.existing)
+     : {
+-        bin: null,
++        entrypoint: null,
+         version: null,
++        version_probe: null,
++        probed_at: null,
+         models: [],
+         headless_read_ok: null,
+         json_schema_ok: null,
+@@ -281,8 +283,16 @@ export async function probeAgy(
+       };
+ 
+   const { bin, version } = await probeAgyBin(configuredBin);
+-  probe.bin = bin;
++  probe.entrypoint = bin;
+   probe.version = version;
++  // 这一段刚探过，时间戳按键记（TTL 按键判定，见 CommonProbe.probed_at）
++  probe.probed_at = new Date().toISOString();
++  /*
++   * 把「怎么再取一次版本」也落盘（P7）。preflight 的版本漂移比对据此复现调用，
++   * 不再按家写死分支——这是 checkCliVersions 能泛化的前提。
++   * agy 直接执行、取 stdout 全文，所以 runner 为 null、extract 为 null。
++   */
++  probe.version_probe = { runner: null, args: ['--version'], extract: null };
+   if (!bin) {
+     notes.push('未找到 agy 可执行文件，Antigravity 侧不可用');
+     return { probe, notes };
+diff --git a/src/trivium/probes/zcode.ts b/src/trivium/probes/zcode.ts
+index d7cdef2..d16caad 100644
+--- a/src/trivium/probes/zcode.ts
++++ b/src/trivium/probes/zcode.ts
+@@ -265,8 +265,10 @@ export async function probeZcode(
+   const probe: ZcodeProbe = opts.existing
+     ? structuredClone(opts.existing)
+     : {
+-        entry: null,
++        entrypoint: null,
+         version: null,
++        version_probe: null,
++        probed_at: null,
+         readonly_flags: [],
+         model_override: null,
+         trace_source: null,
+@@ -279,8 +281,20 @@ export async function probeZcode(
+       };
+ 
+   const { entry, version } = await probeZcodeEntry(configuredEntry, node);
+-  probe.entry = entry;
++  probe.entrypoint = entry;
+   probe.version = version;
++  probe.probed_at = new Date().toISOString();
++  /*
++   * 取版本的方式与 agy 完全不同：要用 node 跑 .cjs、子命令是 `version` 而非
++   * `--version`、且 stdout 里混着别的内容要正则抠。正因为不同，它才必须
++   * 随结论落盘而不是写死在读侧（P7）。`runner: 'node'` 记的是「需要 node」
++   * 这个事实——具体哪个 node 由运行时的 runtime.node 决定，落盘会立刻过期。
++   */
++  probe.version_probe = {
++    runner: 'node',
++    args: ['version'],
++    extract: String.raw`(\d+\.\d+\.\d+)`,
++  };
+   if (!entry) {
+     notes.push('未找到 zcode.cjs 入口，ZCode 侧不可用');
+     return { probe, notes };
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index d8f68da..1ecf2ab 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -95,20 +95,85 @@ export interface PathDenyProbe {
+   attempts?: string[];
+ }
+ 
+-export interface AgyProbe {
+-  bin: string | null;
++/** 隔离手段。探针实测「独立 HOME / 独立 settings 路径 / 仅环境变量 / 共享」中首个可用者 */
++export type ProbeIsolation = 'home_copy' | 'settings_path' | 'env' | 'shared';
++
++/**
++ * 各家探针结论的**共有事实**（M6 第 1 步）。
++ *
++ * 抽取判据不是「看起来像」，而是**泛化读侧真正需要什么**：
++ * `preflight` 的版本漂移比对要 `entrypoint` + `version`，
++ * `guard` 的只读失守判定要 `scratch_paths`，
++ * TTL 新鲜度要 `probed_at`。这三处都不需要任何一家的特有字段，
++ * 所以它们——且只有它们——进共有面。特有字段留在各家 interface 里，
++ * 由各家适配器消费（纪律 10 对适配器内部的豁免）。
++ *
++ * ## 为什么是 `entrypoint` 而不是保留 `bin` / `entry`
++ *
++ * 两家原先各叫各的（agy 记 `bin`、zcode 记 `entry`），于是「怎么取可执行路径」
++ * 成了一条**按家分叉的知识**，`checkCliVersions` 只能写死两个分支——
++ * 那正是 EV-05② 里「第三家的 CLI 在不在一律不被检查」的成因。
++ * 统一成一个名字之后，版本比对只需要「取 entrypoint 跑 --version」这一条规则，
++ * 对第几家都成立。
++ *
++ * **不保留旧名做别名**：那会让同一个事实有两个字段，写入方稍不注意就写岔。
++ * 盘上旧结论由 `migrateProbeSection` 在读盘时搬到新名，一次性完成。
++ */
++/**
++ * 复现「取版本」这一步所需的调用方式，由探针落盘、`preflight` 复用。
++ *
++ * 存在的理由是 P7 的直接应用：**命令行由探针结论构造，不由读侧按家分支猜**。
++ * 两家的取法真的不同——agy 是 `agy --version` 取全文，
++ * zcode 是 `node zcode.cjs version` 再正则抠三段号。原先这条知识写死在
++ * `checkCliVersions` 的两个分支里，于是第三家的版本漂移一律不被检查
++ * （BACKLOG EV-05②）。搬进探针结论之后，读侧只剩一条规则。
++ */
++export interface VersionProbe {
++  /**
++   * 需要用哪个运行时来跑 entrypoint。
++   *
++   * `null` = 直接执行 entrypoint 本身（agy）；
++   * `'node'` = 用 Node 跑（zcode 的 .cjs）——**记的是「要 node」这个事实，
++   * 不是某个 node 的绝对路径**：路径随机器和版本管理器变，落盘会立刻过期。
++   */
++  runner: 'node' | null;
++  /** 传给 CLI 的参数，不含 entrypoint 本身 */
++  args: string[];
++  /** 从 stdout 抠版本号的正则（取第 1 捕获组）。null = 取 trim 后的全文 */
++  extract: string | null;
++}
++
++export interface CommonProbe {
++  /** CLI 可执行入口的绝对路径。null = 未探到（该侧不可用） */
++  entrypoint: string | null;
++  /** CLI 自报版本。`preflight` 据此判漂移 */
+   version: string | null;
++  /** 怎么再取一次版本。null = 探针没记，该侧的版本漂移无法检查（如实报告，不静默） */
++  version_probe: VersionProbe | null;
++  /**
++   * **这一键**是何时探的。
++   *
++   * 与 `ProbeSection.generated_at` 分工不同：那个记的是「探针段整体最后写过的时刻」，
++   * 任何一次 `doctor` 都会刷新它。若 TTL 只看它，`doctor --only codex` 会把
++   * agy / zcode 的过期结论一并刷成「新鲜」——审查意见 GLM-03 实测指出的失真。
++   * 按键判定之后，没重探的键该过期照样过期。
++   */
++  probed_at: string | null;
++  /** 该 CLI 可用的模型 slug 目录。空数组 = 未探到或该家无目录概念 */
+   models: string[];
++  path_deny: PathDenyProbe;
++  /** Agent 在项目根自建的临时文件白名单，指纹比对时排除 */
++  scratch_paths: string[];
++  isolation: ProbeIsolation;
++}
++
++export interface AgyProbe extends CommonProbe {
+   /** headless 下是否真的会读文件（Antigravity issue #548 的本机判定） */
+   headless_read_ok: boolean | null;
+   /** --json-schema 是否能强制出可解析的结构化输出 */
+   json_schema_ok: boolean | null;
+   /** 管道下 stdout 是否为空、需要 `script -q /dev/null` 伪终端包装 */
+   pty_required: boolean | null;
+-  path_deny: PathDenyProbe;
+-  /** Agent 在项目根自建的临时文件白名单，指纹比对时排除 */
+-  scratch_paths: string[];
+-  isolation: 'home_copy' | 'settings_path' | 'env' | 'shared';
+   /** 达成 headless_read_ok 所需的额外手段，供适配层复现 */
+   read_strategy?: 'default' | 'allow_settings' | 'pty' | 'add_dir' | null;
+   /**
+@@ -120,9 +185,7 @@ export interface AgyProbe {
+   agent?: string | null;
+ }
+ 
+-export interface ZcodeProbe {
+-  entry: string | null;
+-  version: string | null;
++export interface ZcodeProbe extends CommonProbe {
+   /** 实测**实际被接受**的只读参数组合，不是文档上写的 */
+   readonly_flags: string[];
+   /** 模型覆盖实际生效的档位 */
+@@ -139,12 +202,8 @@ export interface ZcodeProbe {
+   trace_args_source?: string | null;
+   /** 正文字段路径，设计记载为 .response */
+   response_field: string | null;
+-  path_deny: PathDenyProbe;
+-  scratch_paths: string[];
+-  isolation: 'home_copy' | 'settings_path' | 'env' | 'shared';
+   /** 实测到的模型 id 规范写法（本机为 builtin:<provider>/<name> 形态） */
+   model_id_form?: string | null;
+-  models?: string[];
+ }
+ 
+ export interface AuthCacheEntry {
+@@ -156,12 +215,43 @@ export interface AuthCacheEntry {
+   ok: true;
+ }
+ 
++/**
++ * 各 CLI 的探针结论表，**按 `cliName` 索引**（M6 第 1 步，审查意见 AGY-01 / GLM-04）。
++ *
++ * ## 键集与类型是两件事，不是两份事实源
++ *
++ * - **键集**的唯一来源是注册表的 `ALL_CLI_NAMES`。谁该有一段、`--only` 接受哪些取值、
++ *   `defaultProbe` 生成哪些键，全从那里派生——加一家 CLI 不必改本文件。
++ * - **类型**为已实现专属形状的两家给出精确定义。这不是枚举身份：各家探针结论的
++ *   字段本来就不同（agy 有 `pty_required`、zcode 有 `response_field`），
++ *   那是**真实差异**，泛化不掉也不该泛化。尚未实现专属形状的 CLI 落 `CommonProbe`。
++ *
++ * `registry-parity` 以「探针段具名键 ⊆ cliName 集」守着两者不分叉。
++ *
++ * ## 为什么每个键都是可选的
++ *
++ * 「这家还没探过」与「探过、结论为否」必须可区分——前者该提示去跑 doctor，
++ * 后者该如实报告该侧不可用。这与 M7b 第 6 步 `checkModelSlugs` 引入
++ * 「无法校验」第三态是同一条口径：**静默通过会让「校验了」与「没得校验」长得一模一样。**
++ */
++export type ProbeByCli = { [cliName: string]: CommonProbe | undefined } & {
++  agy?: AgyProbe;
++  zcode?: ZcodeProbe;
++};
++
+ export interface ProbeSection {
++  /**
++   * 探针段**整体**最后写过的时刻。
++   *
++   * 注意它**不是** TTL 判据：按键的新鲜度看 `CommonProbe.probed_at`。
++   * 两者分开的理由写在那个字段上（GLM-03）。这里保留它是为了回答
++   * 「这份 config.local.yaml 上次被 doctor 动过是什么时候」。
++   */
+   generated_at: string | null;
+   /** doctor 探测到的编译测试候选命令，仅供 init 展示确认，绝不自动执行（设计 §14.1） */
+   verify_suggestion: { build: string[]; test: string[] };
+-  agy: AgyProbe;
+-  zcode: ZcodeProbe;
++  /** 各 CLI 的探针结论。旧盘上的 `probe.agy` / `probe.zcode` 由读盘迁移搬进来 */
++  cli: ProbeByCli;
+   /**
+    * preflight 探活结果的短 TTL 缓存（审查意见 AGY-02 / GLM-06）。
+    *
+diff --git a/test/unit/preflight.test.ts b/test/unit/preflight.test.ts
+index 94cb334..11f1a4e 100644
+--- a/test/unit/preflight.test.ts
++++ b/test/unit/preflight.test.ts
+@@ -7,22 +7,27 @@ import YAML from 'yaml';
+ import {
+   parsePreflightScope, checkModelSlugs, runPreflight, commitAuthCache, renderPreflight,
+ } from '../../src/trivium/preflight.js';
+-import { defaultConfig, patchProbe } from '../../src/trivium/config.js';
++import { TRIVIUM_DIR, defaultConfig, patchProbe } from '../../src/trivium/config.js';
+ import { runDoctor } from '../../src/trivium/doctor.js';
+ import { initFixtureRepo } from '../../src/trivium/util/git.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import type { Config, Ctx, ProbeSection } from '../../src/trivium/types.js';
+ 
+ function freshProbe(cfg: Config): void {
+-  cfg.probe.generated_at = new Date().toISOString();
+-  cfg.probe.agy.bin = '/nonexistent/agy';
+-  cfg.probe.agy.version = '1.2.0';
+-  cfg.probe.agy.models = ['gemini-3.1-pro-high', 'gemini-3.8-flash-high', 'gemini-3.8-flash-low'];
+-  cfg.probe.zcode.entry = '/nonexistent/zcode.cjs';
+-  cfg.probe.zcode.version = '0.16.5';
+-  cfg.probe.zcode.models = ['GLM-5.3', 'GLM-5.3-Flash', 'bigmodel/GLM-5.3', 'bigmodel/GLM-5.3-Flash'];
+-  cfg.probe.zcode.model_id_form = 'bigmodel/GLM-5.3';
+-  cfg.probe.zcode.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit'];
++  const now = new Date().toISOString();
++  cfg.probe.generated_at = now;
++  const agy = cfg.probe.cli.agy!;
++  agy.entrypoint = '/nonexistent/agy';
++  agy.version = '1.2.0';
++  agy.probed_at = now;
++  agy.models = ['gemini-3.1-pro-high', 'gemini-3.8-flash-high', 'gemini-3.8-flash-low'];
++  const zcode = cfg.probe.cli.zcode!;
++  zcode.entrypoint = '/nonexistent/zcode.cjs';
++  zcode.version = '0.16.5';
++  zcode.probed_at = now;
++  zcode.models = ['GLM-5.3', 'GLM-5.3-Flash', 'bigmodel/GLM-5.3', 'bigmodel/GLM-5.3-Flash'];
++  zcode.model_id_form = 'bigmodel/GLM-5.3';
++  zcode.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit'];
+ }
+ 
+ async function fakeCtx(mutate?: (c: Config) => void): Promise<Ctx> {
+@@ -91,8 +96,8 @@ test('glm 侧短名合法（适配层会补 providerId 前缀）', async () => {
+ 
+ test('模型清单为空时不误判（探针未采集到就跳过该项）', async () => {
+   const ctx = await fakeCtx((c) => {
+-    c.probe.agy.models = [];
+-    c.probe.zcode.models = [];
++    c.probe.cli.agy!.models = [];
++    c.probe.cli.zcode!.models = [];
+   });
+   assert.equal(checkModelSlugs(ctx.config, 'plan', { gemini: 'anything' }).ok, true);
+ });
+@@ -122,12 +127,20 @@ test('从未探针 → 退 69，且明确说明不自动拉起 doctor', async ()
+ });
+ 
+ test('探针过期 → 退 69 并指引手动执行', async () => {
++  const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
+   const ctx = await fakeCtx((c) => {
+-    c.probe.generated_at = new Date(Date.now() - 30 * 86_400_000).toISOString();
++    c.probe.generated_at = old;
++    /*
++     * TTL 按**键**判定（GLM-03），所以要逐键设旧。
++     * 只改 `generated_at` 已经不等于过期了——这正是本步要的语义：
++     * 全局时间戳被任何一次 doctor 刷新，让它决定新鲜度，
++     * `doctor --only codex` 就会把没重探的键一并刷成「新鲜」。
++     */
++    for (const p of Object.values(c.probe.cli)) if (p) p.probed_at = old;
+   });
+   const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
+   assert.equal(r.ok, false);
+-  assert.match(r.checks.find((x) => !x.ok)!.detail, /已过期/);
++  assert.match(r.checks.find((x) => !x.ok)!.detail, /已全部过期/);
+ });
+ 
+ test('探针过期时后续检查不再执行（快速失败，不白烧配额）', async () => {
+@@ -178,7 +191,7 @@ test('预检失败时不写探活缓存', async () => {
+ 
+ test('预检失败时不创建归档根（可写性探测用父目录权限）', async () => {
+   const ctx = await fakeCtx((c) => {
+-    c.probe.zcode.readonly_flags = [];
++    c.probe.cli.zcode!.readonly_flags = [];
+   });
+   const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
+   assert.equal(r.ok, false);
+@@ -187,7 +200,7 @@ test('预检失败时不创建归档根（可写性探测用父目录权限）',
+ 
+ test('渲染器把失败项与退出码都写清楚', async () => {
+   const ctx = await fakeCtx((c) => {
+-    c.probe.agy.bin = null;
++    c.probe.cli.agy!.entrypoint = null;
+   });
+   const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
+   const out = renderPreflight(r);
+@@ -232,6 +245,7 @@ test('回归：--no-model-calls 保留上一次探到的 agy 结论', async () =
+   const { probeAgy } = await import('../../src/trivium/probes/agy.js');
+   const existing = {
+     bin: '/usr/bin/agy', version: '1.2.0', models: ['m1'],
++    entrypoint: '/x/agy', version_probe: null, probed_at: new Date().toISOString(),
+     headless_read_ok: true, json_schema_ok: true, pty_required: false,
+     path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: ['a'] },
+     scratch_paths: [], isolation: 'shared' as const, read_strategy: 'default' as const,
+@@ -249,7 +263,8 @@ test('回归：--no-model-calls 保留上一次探到的 agy 结论', async () =
+ test('回归：--no-model-calls 保留上一次探到的 zcode 结论', async () => {
+   const { probeZcode } = await import('../../src/trivium/probes/zcode.js');
+   const existing = {
+-    entry: '/x/zcode.cjs', version: '0.16.5',
++    entrypoint: '/x/zcode.cjs', version: '0.16.5',
++    version_probe: null, probed_at: new Date().toISOString(),
+     readonly_flags: ['--mode plan'], model_override: 'config_copy' as const,
+     trace_source: '/log/{date}.jsonl', trace_args_source: '/rollout/{sessionId}.jsonl',
+     response_field: 'response',
+@@ -282,8 +297,8 @@ test('doctor 探完一侧即中途落盘，且 --only 不碰未探的那一侧',
+ 
+   // 先摆一份「上一次探到的」zcode 结论
+   await patchProbe(triviumDir, (cur) => {
+-    cur.zcode.response_field = 'response';
+-    cur.zcode.version = '0.16.5';
++    cur.cli.zcode!.response_field = 'response';
++    cur.cli.zcode!.version = '0.16.5';
+   });
+ 
+   /*
+@@ -305,11 +320,11 @@ test('doctor 探完一侧即中途落盘，且 --only 不碰未探的那一侧',
+   assert.ok(onDisk.probe.host, 'env 段必须已落盘——中途写过一次');
+   assert.ok(onDisk.probe.generated_at, 'generated_at 应已写入');
+   assert.equal(
+-    onDisk.probe.zcode.response_field,
++    onDisk.probe.cli.zcode!.response_field,
+     'response',
+     '--only agy 不得覆盖 zcode 段',
+   );
+-  assert.equal(onDisk.probe.zcode.version, '0.16.5');
++  assert.equal(onDisk.probe.cli.zcode!.version, '0.16.5');
+ });
+ 
+ test('--only zcode 同样不碰 agy 段', async () => {
+@@ -317,8 +332,8 @@ test('--only zcode 同样不碰 agy 段', async () => {
+   const triviumDir = path.join(root, '.trivium');
+   await fs.mkdir(triviumDir, { recursive: true });
+   await patchProbe(triviumDir, (cur) => {
+-    cur.agy.version = '1.2.0';
+-    cur.agy.headless_read_ok = true;
++    cur.cli.agy!.version = '1.2.0';
++    cur.cli.agy!.headless_read_ok = true;
+   });
+ 
+   await runDoctor({
+@@ -329,8 +344,8 @@ test('--only zcode 同样不碰 agy 段', async () => {
+   const onDisk = YAML.parse(
+     await fs.readFile(path.join(triviumDir, 'config.local.yaml'), 'utf8'),
+   ) as { probe: ProbeSection };
+-  assert.equal(onDisk.probe.agy.version, '1.2.0');
+-  assert.equal(onDisk.probe.agy.headless_read_ok, true);
++  assert.equal(onDisk.probe.cli.agy!.version, '1.2.0');
++  assert.equal(onDisk.probe.cli.agy!.headless_read_ok, true);
+ });
+ 
+ /*
+@@ -347,8 +362,8 @@ test('--only zcode 同样不碰 agy 段', async () => {
+  */
+ test('模型目录为空时不判失败，但必须在输出里点名是哪几侧没被实际校验', async () => {
+   const ctx = await fakeCtx((c) => {
+-    c.probe.agy.models = [];
+-    c.probe.zcode.models = [];
++    c.probe.cli.agy!.models = [];
++    c.probe.cli.zcode!.models = [];
+   });
+   const r = checkModelSlugs(ctx.config, 'plan');
+   assert.equal(r.ok, true, '没有目录可比对不等于配错了，不能拦');
+@@ -370,7 +385,7 @@ test('模型目录齐备时不出现「未实际校验」字样（避免恒真
+ 
+ test('一侧有目录一侧没有：只点名没有的那一侧', async () => {
+   const ctx = await fakeCtx((c) => {
+-    c.probe.zcode.models = [];
++    c.probe.cli.zcode!.models = [];
+   });
+   const r = checkModelSlugs(ctx.config, 'plan');
+   assert.equal(r.ok, true);
+@@ -380,3 +395,157 @@ test('一侧有目录一侧没有：只点名没有的那一侧', async () => {
+     '有目录的那侧已经真校验过了，不该混进「未校验」清单',
+   );
+ });
++
++/*
++ * ── TTL 按键判定（M6 第 1 步，审查意见 GLM-03）──
++ *
++ * 两条不变量在改造前都不成立：
++ *   ① `probeIsFresh` 只看全局 `generated_at`，任何一次 doctor 都刷新它，
++ *      于是 `--only X` 会把其它侧的**过期**结论一并刷成「新鲜」；
++ *   ② 末次 checkpoint 的标签三元回落（`only === 'env'` 时落 'zcode'）
++ *      会把本次根本没探过的段按起点 clone 整段写回。
++ */
++
++test('全局时间戳新鲜但某键过期时，该键判为不新鲜', async () => {
++  /*
++   * 这条直指判定本身，是上面那条落盘断言杀不掉的变异面。
++   *
++   * 构造的正是 `doctor --only <另一侧>` 跑完的盘面：全局 `generated_at` 刚被刷新，
++   * 而 zcode 的按键时间戳还停在 30 天前。若 `cliProbeIsFresh` 退回去看全局戳，
++   * 它会把这份**过期**结论报成新鲜——preflight 于是拿着陈旧的 entrypoint 与
++   * readonly_flags 继续跑，而那正是 TTL 要防的事。
++   *
++   * 起草时这条漏了：原先只断言「盘上的 probed_at 字段没被改写」，
++   * 那是数据没被污染，不等于判定用了它。变异验证当场打脸（实现改回全局判定，
++   * 全部 29 条照绿），才补上本例。
++   */
++  const { cliProbeIsFresh, probeIsFresh, staleCliProbes } = await import(
++    '../../src/trivium/config.js'
++  );
++  const cfg = defaultConfig();
++  const now = new Date().toISOString();
++  const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
++
++  cfg.probe.generated_at = now; // 全局戳刚被另一侧的 doctor 刷新
++  cfg.probe.cli.agy!.probed_at = now;
++  cfg.probe.cli.zcode!.probed_at = old;
++
++  assert.equal(cliProbeIsFresh(cfg, 'agy'), true, '刚探过的那侧是新鲜的');
++  assert.equal(
++    cliProbeIsFresh(cfg, 'zcode'), false,
++    '没重探的那侧必须仍判过期——全局时间戳被刷新不该让它蒙混过关',
++  );
++  assert.equal(probeIsFresh(cfg), true, '还有一侧新鲜，整体不算全部过期');
++  assert.ok(
++    staleCliProbes(cfg).includes('zcode'),
++    '过期的那侧必须被点名，否则用户不知道该重探谁',
++  );
++});
++
++test('--only 一侧不刷新另一侧的新鲜度', async () => {
++  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ttl-'));
++  const triviumDir = path.join(root, TRIVIUM_DIR);
++  await fs.mkdir(triviumDir, { recursive: true });
++
++  // zcode 侧摆一份 30 天前的旧结论
++  const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
++  await patchProbe(triviumDir, (cur) => {
++    cur.cli.zcode!.entrypoint = '/x/zcode.cjs';
++    cur.cli.zcode!.version = '0.16.5';
++    cur.cli.zcode!.probed_at = old;
++  });
++
++  // 只探 agy
++  await runDoctor({
++    config: defaultConfig(), projectRoot: root, triviumDir,
++    only: 'agy', skipModelCalls: true,
++  });
++
++  const onDisk = YAML.parse(
++    await fs.readFile(path.join(triviumDir, 'config.local.yaml'), 'utf8'),
++  ) as { probe: ProbeSection };
++
++  assert.equal(
++    onDisk.probe.cli.zcode!.probed_at, old,
++    '--only agy 不得刷新 zcode 的按键时间戳——否则过期结论会蒙混过关',
++  );
++  assert.ok(onDisk.probe.generated_at, '全局时间戳照常刷新（它记的是「段整体何时写过」）');
++  assert.notEqual(
++    onDisk.probe.generated_at, old,
++    '全局时间戳与按键时间戳是两个语义，不该同步',
++  );
++});
++
++test('--only env 不写任何厂商段', async () => {
++  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-envonly-'));
++  const triviumDir = path.join(root, TRIVIUM_DIR);
++  await fs.mkdir(triviumDir, { recursive: true });
++
++  await patchProbe(triviumDir, (cur) => {
++    cur.cli.zcode!.response_field = 'response';
++    cur.cli.zcode!.version = '0.16.5';
++    cur.cli.agy!.version = '1.2.0';
++  });
++
++  /*
++   * 关键：传进去的 config.probe 是**默认值**（不含上面那份结论）。
++   * 末次 checkpoint 若借用厂商标签（原实现 `only === 'env'` 时落 'zcode'），
++   * 就会把默认值当成 zcode 结论整段写回，把盘上的擦掉。
++   */
++  await runDoctor({
++    config: defaultConfig(), projectRoot: root, triviumDir,
++    only: 'env', skipModelCalls: true,
++  });
++
++  const onDisk = YAML.parse(
++    await fs.readFile(path.join(triviumDir, 'config.local.yaml'), 'utf8'),
++  ) as { probe: ProbeSection };
++
++  assert.equal(onDisk.probe.cli.zcode!.response_field, 'response', '--only env 不得动 zcode 段');
++  assert.equal(onDisk.probe.cli.zcode!.version, '0.16.5');
++  assert.equal(onDisk.probe.cli.agy!.version, '1.2.0', '--only env 不得动 agy 段');
++  assert.ok(onDisk.probe.host, 'env 段本身要写');
++});
++
++/*
++ * ── 探针段键集随注册表派生（验收 ②）──
++ *
++ * 这条守的是「新增一家 CLI 不必改 doctor」。断言用**注册表实际登记的全集**，
++ * 不写死家数——写死的话，加一家时这条测试自己会先绿着骗人。
++ */
++test('defaultProbe 的键集恒等于注册表的 cliName 全集', async () => {
++  const { defaultProbe } = await import('../../src/trivium/config.js');
++  const { ALL_CLI_NAMES } = await import('../../src/trivium/agents/registry.js');
++  assert.deepEqual(
++    Object.keys(defaultProbe().cli).sort(),
++    [...ALL_CLI_NAMES].sort(),
++    '探针段键集必须与注册表 cliName 全集逐项相等',
++  );
++});
++
++test('doctor --only <已登记未实现> 给出确定答复而不是退 64', async () => {
++  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-unimpl-'));
++  const triviumDir = path.join(root, TRIVIUM_DIR);
++  await fs.mkdir(triviumDir, { recursive: true });
++
++  const { ALL_CLI_NAMES } = await import('../../src/trivium/agents/registry.js');
++  const { isDoctorOnly } = await import('../../src/trivium/doctor.js');
++  // 取一个「已登记但本轮还没有探针实现」的 CLI——不写死 codex/claude：
++  // M6 第 2/3 步接上之后，这条测试该自动去找下一个未实现的，而不是失效。
++  const unimplemented = ALL_CLI_NAMES.filter((n) => n !== 'agy' && n !== 'zcode');
++  assert.ok(unimplemented.length > 0, '注册表里应当有尚未实现探针的 CLI');
++
++  for (const name of unimplemented) {
++    assert.ok(isDoctorOnly(name), `--only ${name} 必须是合法取值（不得退 64）`);
++  }
++
++  const r = await runDoctor({
++    config: defaultConfig(), projectRoot: root, triviumDir,
++    only: unimplemented[0]!, skipModelCalls: true,
++  });
++  assert.equal(r.blockers.length, 0, '「已登记未实现」不是失败，不得进 blockers');
++  assert.ok(
++    r.notes.some((n) => n.includes(unimplemented[0]!) && n.includes('尚无探针实现')),
++    '必须点名说出是哪一侧、为什么没有结论——不能静默通过',
++  );
++});
+diff --git a/test/unit/registry-parity.test.ts b/test/unit/registry-parity.test.ts
+index 0ea7a2a..f72559a 100644
+--- a/test/unit/registry-parity.test.ts
++++ b/test/unit/registry-parity.test.ts
+@@ -896,3 +896,54 @@ test('全部机读 schema：任何校验关键字都不得枚举 Agent id 或意
+     assert.ok(e.why.trim().length >= 20, `具名豁免 ${e.file}#${e.at} 的理由写得太短`);
+   }
+ });
++
++// ─────────────────── 4. 探针段按 cliName 索引（M6 第 1 步）───────────────────
++
++/*
++ * 这两条是 M6 计划双审 GLM-04 要求的配套对账。
++ *
++ * 背景：计划原拟新增一个 `probeKey` 字段专门做探针段的键，两侧独立判为过度登记——
++ * 同一个事实立两个字段就是第二事实源。改为直接复用 `cliName` 之后，
++ * **复用方案自己的前提**需要机器守住：cliName 必须全表唯一，
++ * 且探针段的类型层具名键不得与它分叉。
++ */
++
++test('cliName 全表唯一', () => {
++  const names = AGENTS.map((a) => a.cliName);
++  const dupes = names.filter((n, i) => names.indexOf(n) !== i);
++  assert.deepEqual(
++    dupes,
++    [],
++    'cliName 重复会让两件事同时坏掉：审查文档 front-matter 的 agent_cli 分不清是哪家，' +
++      '且两家 Agent 会争抢同一个探针段键',
++  );
++});
++
++test('ProbeByCli 的具名键 ⊆ 注册表 cliName 集', async () => {
++  /*
++   * 类型层为已实现专属形状的家给出精确类型（`agy?: AgyProbe`）。那些具名键
++   * 一旦拼错或与注册表分叉，`defaultProbe()` 因为索引签名照样通过，
++   * 症状要到消费方取特有字段时才现形——正是纪律 12 要防的「第二事实源」形态。
++   *
++   * 扫源码而不是扫运行期对象：运行期只看得见 `defaultProbe` 填了什么，
++   * 看不见类型里声明了什么，而分叉恰恰发生在后者。
++   */
++  const src = await fs.readFile(
++    path.join(REPO_ROOT, 'src/trivium/types.ts'),
++    'utf8',
++  );
++  const block = /export type ProbeByCli = \{[^}]*\} & \{([^}]*)\}/.exec(src);
++  assert.ok(block, '没能在 types.ts 里定位 ProbeByCli 的具名键块——正则或类型形状变了');
++
++  const named = [...block[1]!.matchAll(/^\s*(\w+)\?:/gm)].map((m) => m[1]!);
++  assert.ok(named.length > 0, '应当至少有一个具名键（agy / zcode）');
++
++  const cliNames = new Set(AGENTS.map((a) => a.cliName));
++  const strays = named.filter((n) => !cliNames.has(n));
++  assert.deepEqual(
++    strays,
++    [],
++    `ProbeByCli 出现了不在注册表 cliName 集里的具名键：${strays.join('、')}。` +
++      '探针段键集的唯一来源是注册表，类型层只能给已登记的 CLI 加精确形状',
++  );
++});
+diff --git a/test/unit/zcode-availability.test.ts b/test/unit/zcode-availability.test.ts
+index cb94899..b227817 100644
+--- a/test/unit/zcode-availability.test.ts
++++ b/test/unit/zcode-availability.test.ts
+@@ -5,9 +5,9 @@ import { defaultConfig } from '../../src/trivium/config.js';
+ 
+ function ctxWith(flags: string[]) {
+   const cfg = defaultConfig();
+-  cfg.probe.zcode.entry = '/x/zcode.cjs';
+-  cfg.probe.zcode.readonly_flags = flags;
+-  cfg.probe.zcode.response_field = 'response';
++  cfg.probe.cli.zcode!.entrypoint = '/x/zcode.cjs';
++  cfg.probe.cli.zcode!.readonly_flags = flags;
++  cfg.probe.cli.zcode!.response_field = 'response';
+   return { cfg, nodePath: process.execPath };
+ }
+ 

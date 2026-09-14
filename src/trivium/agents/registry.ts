@@ -61,6 +61,20 @@ export interface AgentDescriptor {
    * 而本步把 `Vendor` 放开成注册表的四值后，它会把 codex / claude
    * **静默记成 zcode**。这正是计划 §2.3 点名的那类二元兜底：不报错、
    * 不退非零码，只是留痕直接写错，而 front-matter 是审计凭证。
+   *
+   * ## 它同时是探针段的索引键（M6 第 1 步）
+   *
+   * `config.local.yaml` 的 `probe.cli.<cliName>` 按本字段索引，
+   * **不按 vendor、也不按 Agent id**。理由是探针探的是「这条命令行能干什么」——
+   * 二进制在不在、旗标接不接受、日志落在哪——那是 **CLI 的事实，不是 Agent 的事实**。
+   * 若按 Agent id 索引，将来同一厂商的两个 Agent 共用一条 CLI 时会落**两份重复结论**，
+   * 而两份还可能互相不一致；按 cliName 索引则天然共享同一份。
+   *
+   * M6 计划稿原拟新增一个 `probeKey` 字段专门承载它，双审两侧独立判为**过度登记**
+   * （AGY-01 / GLM-04）：那会给同一个事实立第二个字段，恰是纪律 7 反对的第二事实源；
+   * 而「登记而不是推算」的先例（上一段）治的是**从另一字段推算映射**，
+   * 不适用于**同值复用**。`registry-parity` 以两条对账守着这个决定：
+   * cliName 全表唯一、探针段具名键 ⊆ cliName 集。
    */
   cliName: string;
   /**
@@ -151,6 +165,22 @@ export const ALL_AGENT_IDS: readonly AgentId[] = AGENTS.map((a) => a.id);
 
 /** 全部意见编号前缀，供 schema pattern 与解析正则生成 */
 export const ALL_FINDING_PREFIXES: readonly string[] = AGENTS.map((a) => a.findingPrefix);
+
+/**
+ * 全部已登记的 CLI 名 —— **探针段键集的唯一来源**（M6 第 1 步）。
+ *
+ * 去重是必要的而非防御性的：将来同一厂商的两个 Agent 共用一条 CLI 时，
+ * 它们只该占探针段的**一个**键（见 `cliName` 的登记说明）。
+ * `registry-parity` 另有一条「cliName 全表唯一」的对账——那条守的是
+ * **当前**四家不得重名（重名会让 `agent_cli` 留痕分不清是哪家）；
+ * 这里的去重守的是**键集**语义，两者不冲突也不互相替代。
+ */
+export const ALL_CLI_NAMES: readonly string[] = [...new Set(AGENTS.map((a) => a.cliName))];
+
+/** 按 CLI 名取注册项。同名多 Agent 时返回第一个——调用方只该用它取 CLI 级事实 */
+export function agentByCliName(cliName: string): AgentDescriptor | null {
+  return AGENTS.find((a) => a.cliName === cliName) ?? null;
+}
 
 /** 当前可被选为审核者的 Agent（M7a：gemini / glm） */
 export const CRITIC_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.criticEnabled).map(

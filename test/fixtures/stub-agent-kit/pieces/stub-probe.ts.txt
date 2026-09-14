@@ -5,17 +5,20 @@
  * 形状对齐 `probes/agy.ts`：一个异步 `probeXxx()`，回答「这家现在能不能用、
  * 版本是什么、有哪些模型」。桩没有外部 CLI，所以三问都是常量。
  *
- * ## 本件暴露出的一处真实缺口
+ * ## 本件曾暴露的一处缺口 —— 已于 M6 第 1 步收口
  *
- * 真实探针的结论要落进 `config.probe.<厂商段>`（`probe.agy` / `probe.zcode`），
- * 而 `ProbeSection`（`types.ts`）是**按厂商固定键的闭合形状**——新增一家的探针结论
- * **无处落盘**，除非改 `types.ts` 的 `ProbeSection` 及其消费点。
- * （只到 `types.ts`：`config.v2.json` 的 `probe` 段是 `additionalProperties: true`，
- * 任意厂商键本就过 ajv——此处原先多记了一个文件，经代码双审 GLM-05 核正。）
+ * 原文记的是：真实探针的结论要落进 `config.probe.<厂商段>`，而 `ProbeSection`
+ * 是**按厂商固定键的闭合形状**，新增一家的探针结论无处落盘，除非改 `types.ts`。
  *
- * 桩绕过了这件事：它的结论只在本进程内被适配器直接消费，不经配置。
- * 所以本夹具能证明「多一家也跑得起来」，**不能**证明「多一家的探针结论存得下」。
- * 这一条已登记为接入套件的真实成本，见 BACKLOG EV-05。
+ * **那个缺口没有了**（代码双审 GLM-02 要求同步本注释）：M6 第 1 步把探针段改成
+ * `probe.cli.<cliName>`，键集由注册表的 `ALL_CLI_NAMES` 派生——新增一家不必改
+ * `types.ts` 一个字，尚无专属形状的 CLI 落 `CommonProbe` 即可承载
+ * 版本、入口、scratch 白名单与按键 TTL。接入套件因此**少一件成本**。
+ *
+ * 桩仍然绕过这条链路：它的结论只在本进程内被适配器直接消费，不经配置。
+ * 所以本夹具证明的仍是「多一家也跑得起来」，而**不是**「多一家的探针结论存得下」——
+ * 后者现在由 `test/unit/config-schema.test.ts` 的键集校验与
+ * `test/unit/preflight.test.ts` 的派生断言守着。
  */
 
 export interface StubProbe {
