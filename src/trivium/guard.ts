@@ -5,7 +5,9 @@
  * 这样「检出」与「处置」分开，处置策略可配而检出逻辑恒定。
  */
 import nodePath from 'node:path';
-import type { Config, CriticId, CriticRequest, CriticResult, Review } from './types.js';
+import type { Config, CriticId, CriticRequest, CriticResult, Review,
+  SuspectedWrite,
+} from './types.js';
 import {
   checkEvidence,
   checkPeerLeak,
@@ -44,6 +46,16 @@ export interface SideVerdict {
   consultedUnverified: boolean;
   /** 结构性问题（编号前缀错、重复编号等） */
   integrityIssues: string[];
+  /**
+   * **疑似**写入：命中写形态但判不实的命令（M8 第 3 步，r9 双审 GLM-05 接线）。
+   *
+   * 不参与 `readonlyBreach`——它是排查线索，不是判决。
+   * 之所以要让它出现在判定结果里而不是只躺在 `trace.json`：
+   * 契约注释承诺了「进 doctor 输出」，而**宣称了不存在的消费方**正是
+   * EV-06 记的那个形态。要么让宣称成真，要么把宣称改小；这里选前者，
+   * 因为这一档的价值恰恰就在「人读排查有入口」。
+   */
+  suspectedWrites: SuspectedWrite[];
   /**
    * 该侧两条核验通道的可用档位（§11.1，M8 第 2 步）。
    *
@@ -175,6 +187,7 @@ export function judgeSide(
     peerCommandHits: peerCmd.hits,
     consultedUnverified,
     integrityIssues,
+    suspectedWrites: [...(result.suspected_write_events ?? [])],
     verification: {
       readonly: cap.rejectionRecorded ? 'ok' : 'unavailable',
       path: cap.traceShape === 'command-trace' ? 'unavailable' : 'ok',
@@ -450,6 +463,21 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
       out.push(
         `${s.critic} 侧只读核验不可用：该侧被拒的写操作不进轨迹，` +
           '「未检出写事件」不足以排除失守（只读保障从三重降到两重，指纹比对仍有效）',
+      );
+    }
+    /*
+     * 疑似写入的人读出口（r9 双审 GLM-05）。
+     *
+     * 这一档不判失守，但**必须看得见**：它记的是「命中写形态却判不实」的命令，
+     * 恰恰是排查只读问题时最该先看的那几条。只落 `trace.json` 等于埋起来——
+     * 而契约注释承诺过它会出现在输出里。
+     */
+    if (s.suspectedWrites.length > 0) {
+      const head = s.suspectedWrites.slice(0, 3).map((w) => `「${w.command}」（${w.why}）`);
+      out.push(
+        `${s.critic} 侧有 ${s.suspectedWrites.length} 条**疑似写入**（不判失守，仅供排查）：` +
+          head.join('；') +
+          (s.suspectedWrites.length > head.length ? ` …另 ${s.suspectedWrites.length - head.length} 条见 trace.json` : ''),
       );
     }
     if (s.verification.path === 'unavailable') {

@@ -167,3 +167,37 @@ test('preflight --critics 选了环境未配的 codex → 如实拦下并说明�
   assert.match(readonly!.detail, /凭据/, '要说清缺的是什么');
   assert.match(readonly!.detail, /model_providers/, '要给出可粘贴的落点');
 });
+
+test('review --start：非默认侧的非法 slug 必须被拦（第五处回落的锁例）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * r9 双审 AGY-04：`checkModelSlugs` 曾在 `sides` 解析**之前**被调用且不传第四个参数，
+   * 于是第四个参数落到缺省集合——`--critics codex --model-codex <非法>` 完全不被校验，
+   * 非法 slug 漏到运行中段才以业务失败暴露（白烧配额）。
+   *
+   * 这条必须走真实子进程：单测直调 `checkModelSlugs` 传什么参数都对，
+   * 守不住「调用点传没传、排在 sides 前面还是后面」。
+   */
+  await seedProbes();
+  const r = await cli(
+    root,
+    ['review', '--start', '--entry', 'C', '--stage', 'code', '--topic', TOPIC,
+     '--focus', 'x', '--critics', 'codex', '--model-codex', 'no-such-model-9.9', '--json'],
+    null, 180_000,
+  );
+  assert.equal(r.code, EXIT.USAGE, `非法 slug 应退 64，实得 ${r.code}`);
+  assert.match(r.stdout + r.stderr, /no-such-model-9\.9/, '要点名是哪个 slug');
+});
+
+test('preflight：未入选侧的版本漂移只提示，不让本次运行失败', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * r9 双审 GLM-08：`checkCliVersions` 遍历全部已探 CLI 且一律判失败，
+   * 而 `doctor` 默认会探测四家——于是 codex 自升级后，默认两侧的运行也被它拦下，
+   * 与 runPreflight 自述的「按入选侧检查」原则打架。
+   */
+  await seedProbes({ version: '0.0.1-drifted' }); // 探针记的版本与假 CLI 实际输出不符
+  const r = await cli(root, ['preflight', '--stage', 'plan', '--skip-auth-check', '--json'], null, 180_000);
+  const out = JSON.parse(r.stdout) as { ok: boolean; checks: { name: string; ok: boolean; detail: string }[] };
+  assert.equal(out.ok, true, '没选 codex 的运行不该因它的版本漂移而失败');
+  const drift = out.checks.find((c) => c.detail.includes('仅提示'));
+  assert.ok(drift, '漂移本身仍要说出来（有排查价值），只是不计失败');
+});

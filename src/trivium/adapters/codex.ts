@@ -10,6 +10,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import type { CriticRequest, CriticResult, CodexCriticConfig } from '../types.js';
 import { run } from '../util/exec.js';
 import { ensureDir, exists, sha256File } from '../util/fsx.js';
@@ -115,6 +116,27 @@ export async function invokeCodex(opts: CodexInvokeOptions): Promise<CodexInvoke
   };
 }
 
+/**
+ * 从一份 TOML 里抽出全部 `[model_providers.*]` 段的正文（含段头）。
+ *
+ * 供探活指纹使用：**只有这部分与鉴权相关**，其余顶层杂项每次用 codex 都在变，
+ * 并进指纹会让缓存恒失效。抽不到就返回 null（该文件没有 provider 定义）。
+ */
+export function providerSection(text: string): string | null {
+  const out: string[] = [];
+  let inSection = false;
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (t.startsWith('[')) {
+      inSection = t.startsWith('[model_providers');
+      if (inSection) out.push(line);
+      continue;
+    }
+    if (inSection) out.push(line);
+  }
+  return out.length > 0 ? out.join('\n') : null;
+}
+
 /** 取 codex 的配置段。缺段或 vendor 不符时由 `agentConfigOf` 响亮失败 */
 function codexConfig(ctx: AdapterContext): CodexCriticConfig {
   return agentConfigOf(ctx.cfg, 'codex', 'openai') as CodexCriticConfig;
@@ -195,10 +217,14 @@ export const codexAdapter: CriticAdapter = {
   /**
    * 探活。
    *
-   * 指纹取本次 profile 的分层文件 + `auth.json`：这两处任一改动都会换掉凭据或 provider，
-   * 旧的「已认证」结论随即失效。基底 `config.toml` 不进指纹——它的大部分内容
-   * （plugins、mcp_servers、projects 信任表）与鉴权无关，且每次用 codex 都在变，
-   * 把它算进去等于让缓存永远失效。
+   * 指纹取三部分：本次 profile 的分层文件、`auth.json`、以及基底 `config.toml` 里的
+   * **`[model_providers.*]` 段**。任一改动都会换掉凭据或 provider，旧的「已认证」随即失效。
+   *
+   * 基底文件**整份**不进指纹——它的其余内容（plugins、mcp_servers、projects 信任表）
+   * 与鉴权无关且每次用 codex 都在变，整份哈希会让缓存恒失效。
+   * 只取 provider 段是 r9 双审 GLM-10 的处置：那条指出 provider 定义**可能只写在基底里**
+   * （`probeCodexProviders` 对两份 toml 都查，正说明这是真实形态），
+   * 而我当初排除整个基底的理由只对那些杂项成立、对 provider 段不成立。
    *
    * 最小调用走与真实审查**同一条隔离路径**（裁剪副本 + 双覆盖）：
    * 探活若走宿主机配置而真实运行走副本，探到的「能用」证明不了副本里也能用——
@@ -215,6 +241,20 @@ export const codexAdapter: CriticAdapter = {
           if (!f) continue;
           const p = path.join(home, f);
           if (await exists(p)) parts.push((await sha256File(p)) ?? '');
+        }
+        /*
+         * 基底 `config.toml` 的 **provider 段**也要进指纹（r9 双审 GLM-10）。
+         *
+         * 不取整份文件：它的大部分内容（plugins、mcp_servers、projects 信任表）
+         * 与鉴权无关且每次用 codex 都在变，整份哈希会让缓存恒失效——那是当初
+         * 排除它的理由，而那个理由**只对那些杂项成立**。
+         * provider 段可能只写在基底里（`probeCodexProviders` 对两份 toml 都查
+         * 正说明这是真实形态），在那里轮换凭据不该让「已认证」缓存继续沿用。
+         */
+        const base = path.join(home, 'config.toml');
+        if (await exists(base)) {
+          const seg = providerSection(await fs.readFile(base, 'utf8'));
+          if (seg) parts.push(createHash('sha256').update(seg).digest('hex'));
         }
         return parts.length > 0 ? parts.join(':') : null;
       },

@@ -139,3 +139,104 @@ test('同一条命令重复出现时不重复计数', () => {
   const r = classify('echo x > src/a.ts', 'echo x > src/a.ts');
   assert.equal(r.writes.length, 1);
 });
+
+// ───────────── 掩码判据（r9 双审 AGY-02 ≡ GLM-01，blocker 的锁例） ─────────────
+
+/*
+ * 这一组每一条都对应 r9 实跑复现过的一个失效形态。
+ *
+ * 原实现 `/\|\||;|&(?!&)/` 的负向前瞻只看后一个字符：`&&` 的第二个 `&` 后面是空格，
+ * 断言通过 ⇒ 命中。于是凡带 `&&` 链或 `2>&1` 后缀的真实写入全部降档为疑似，
+ * 而 `guard.ts` 以 write_events 非空为只读失守的唯一判据——**加个 2>&1 就能绕过**。
+ *
+ * 代码注释当时已经写着「&& 不算掩码」，却没有任何用例断言它。本组就是那些断言。
+ */
+
+test('掩码：&& 链里的真实写入必须判失守（注释一直这么写，此前无用例守）', () => {
+  const c = 'cd . && echo x > src/a.ts';
+  assert.deepEqual(classify(c).writes, [c], 'a && b 退 0 意味着两段都成功，不是掩码');
+});
+
+test('掩码：fd 重定向不是掩码（2>&1 / >&2 / &>）', () => {
+  for (const c of ['echo x > src/a.ts 2>&1', 'cp /tmp/a src/b.ts 2>&1', 'echo x > src/a.ts &> /dev/null']) {
+    assert.deepEqual(classify(c).writes, [c], `这不是掩码结构，是重定向：${c}`);
+  }
+});
+
+test('掩码：|| 与 ; 仍判掩码（既有行为不得变）', () => {
+  for (const c of ['touch src/x.ts || true', 'touch src/x.ts ; true']) {
+    const r = classify(c);
+    assert.deepEqual(r.writes, [], `整条退出码不代表写段成功：${c}`);
+    assert.ok(r.suspected[0]!.why.includes('掩码'));
+  }
+});
+
+test('掩码：管道与后台也让整条退出码与写段脱钩', () => {
+  for (const c of ['touch src/x.ts | true', 'touch src/x.ts & echo done']) {
+    const r = classify(c);
+    assert.deepEqual(r.writes, [], `无 pipefail / 后台执行时整条退出码不反映写段：${c}`);
+  }
+});
+
+// ───────────── 写入位与过滤面（r9 双审 AGY-01/03/05 ≡ GLM-02/03/04） ─────────────
+
+test('目标面：无扩展名的裸文件名也是路径（Makefile / LICENSE / build）', () => {
+  /*
+   * 上一版用「含 / 或带扩展名」当路径判据，把这一族整个滤掉：
+   * `echo bad > Makefile` **两档都不进**（重定向目标被滤空，echo 又不在写动词表），
+   * 其余降级成「提不出目标」。而 codex 的 cwd 就是项目根，裸相对名是模型的自然写法。
+   */
+  for (const c of ['echo bad > Makefile', 'rm Makefile', 'mkdir build', 'touch LICENSE']) {
+    assert.deepEqual(classify(c).writes, [c], `项目内的真实写入：${c}`);
+  }
+});
+
+test('目标面：解析不了的 token 仍归疑似（变量、命令替换、通配）', () => {
+  for (const c of ['cp $SRC $DST', 'rm src/*.ts']) {
+    const r = classify(c);
+    assert.deepEqual(r.writes, [], `静态解析不出目标就不下判决：${c}`);
+    assert.ok(r.suspected[0]!.why.includes('提不出'));
+  }
+});
+
+test('写入位：chmod / chown 的第一个操作数是 mode / owner，不是目标', () => {
+  // chown 的 owner 含点时会被旧判据当成路径（user.name → /proj/user.name）而误报失守
+  const r = classify('chown user.name /tmp/target.ts');
+  assert.deepEqual(r.writes, [], 'owner 不是写入目标，真实目标在项目外');
+  assert.ok(r.suspected[0]!.why.includes('项目外'));
+
+  assert.deepEqual(classify('chmod 644 src/a.ts').writes, ['chmod 644 src/a.ts']);
+  assert.deepEqual(classify('chmod +x scripts/b.sh').writes, ['chmod +x scripts/b.sh']);
+});
+
+test('写入位：重定向记号不得混进写动词的操作数', () => {
+  // `cp a b 2>&1` 的 last 操作数曾被取成 `2>&1`，于是真实写入落到「提不出目标」
+  const c = 'cp /tmp/a src/b.ts 2>&1';
+  assert.deepEqual(classify(c).writes, [c]);
+});
+
+test('写入位：ln 单操作数形态的目标是 cwd 下的 basename', () => {
+  // POSIX：`ln -s /etc/passwd` 创建的是 ./passwd——在项目内
+  const c = 'ln -s /etc/passwd';
+  assert.deepEqual(classify(c).writes, [c], '取源路径会把项目内的写入误判成项目外');
+});
+
+test('写入位：-t / --target-directory 指定的目录才是目标', () => {
+  const outward = classify('ln -s -t /tmp src/a.ts');
+  assert.deepEqual(outward.writes, [], '真实写入在 /tmp，项目内的源不是写入点');
+
+  const inward = 'cp -t src /tmp/a.ts /tmp/b.ts';
+  assert.deepEqual(classify(inward).writes, [inward], '真实目标 src/ 在项目内');
+
+  const inline = 'cp --target-directory=src /tmp/a.ts';
+  assert.deepEqual(classify(inline).writes, [inline]);
+});
+
+test('幂等：长旗标 --parents / --force 也要认出来', () => {
+  // 判不出幂等 ⇒ 把没有实际写入的成功命令判成失守 ⇒ 整侧作废（误杀方向）
+  for (const c of ['mkdir --parents src/existing', 'rm --force src/gone.ts']) {
+    const r = classify(c);
+    assert.deepEqual(r.writes, [], `幂等空操作不判失守：${c}`);
+    assert.ok(r.suspected[0]!.why.includes('幂等'));
+  }
+});

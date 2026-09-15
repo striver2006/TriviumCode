@@ -639,21 +639,57 @@ export interface WriteCommandClassification {
   suspected: SuspectedWrite[];
 }
 
+/**
+ * 段分隔符（带捕获，`split` 后奇数下标即分隔符本身）。
+ *
+ * **fd 重定向不是分隔符**：`2>&1`、`>&2`、`&>file` 里的 `&` 与命令分隔无关。
+ * 这正是 r9 双审那个 blocker 的两半之一——原判据 `&(?!&)` 既命中 `&&` 的第二个 `&`
+ * （它后面是空格，负向前瞻通过），也命中 `2>&1` 的 `&`，于是
+ * **在真实写命令后加个 `2>&1` 就能绕过只读失守判定**。
+ *
+ * 前后顾各排除 `>` 与 `&`：前者挡住 fd 重定向，后者让 `&&` 走前面那条交替分支。
+ * 断言这条行为的用例在 `test/unit/codex-write-verbs.test.ts` 的
+ * 「掩码：fd 重定向不是掩码」与「掩码：&& 链里的真实写入必须判失守」两条。
+ */
+const SEGMENT_SPLIT_RE = /(\|\||&&|(?<![>&])[|;&](?![>&])|[()])/;
+
 /** 设备路径：写它不构成对项目或留痕的破坏，也不值得进疑似档 */
 function isDevicePath(p: string): boolean {
   return p === '/dev/null' || p.startsWith('/dev/');
 }
 
-/** 看起来像路径才算写入目标——`chmod 644 f` 的 `644`、`ln -s` 的 `-s` 不是 */
-function looksLikePath(t: string): boolean {
-  return t.includes('/') || /\.[A-Za-z0-9]+$/.test(t);
+/**
+ * 这个 token 能不能**静态解析**成一条确定路径。
+ *
+ * 排除的是变量、命令替换与通配——它们要跑起来才知道指向哪里，
+ * 判定层不做 I/O 也不展开（与 `extractPathTokens` 的口径一致）。
+ *
+ * ## 为什么不再用「看起来像路径」那套启发式
+ *
+ * 上一版用的是 `t.includes('/') || /\.[A-Za-z0-9]+$/.test(t)`，它把**无扩展名的
+ * 裸文件名**一并滤掉了（r9 双审 AGY-01 ≡ GLM-02）：`echo bad > Makefile` 因此
+ * **两档都不进**（重定向目标被滤空，而 `echo` 不在写动词表，fallback 也不命中），
+ * `rm Makefile` / `mkdir build` / `touch LICENSE` 则降级成「提不出目标」。
+ * 而 codex 的 cwd 就是项目根，裸相对名正是模型最自然的写法。
+ *
+ * 根因是那道启发式**用错了地方**：它本是给「参数位猜测」用的，
+ * 而重定向目标与写动词的操作数位置是**确定**的，不需要猜。
+ * 现在按动词把操作数摘干净（见 `writeSinksOfSegment`），这里只排除解析不了的。
+ */
+function isResolvablePath(t: string): boolean {
+  return t.length > 0 && !/[$`*?]/.test(t);
 }
+
+/** 这些动词的第一个非旗标操作数不是路径：`chmod 644 f` 的 `644`、`chown user f` 的 `user` */
+const NON_PATH_FIRST_OPERAND: ReadonlySet<string> = new Set(['chmod', 'chown']);
 
 /**
  * 从一段命令里取出写入目标。段已去引号、已按分隔符切开。
  */
 function writeSinksOfSegment(tokens: readonly string[]): string[] {
   const sinks: string[] = [];
+  /** 被重定向记号消耗掉的下标——不能再当作写动词的操作数（`cp a b 2>&1` 的 `2>&1`） */
+  const consumed = new Set<number>();
 
   /*
    * ① 输出重定向 —— 与动词无关的写形态，必须单列。
@@ -663,9 +699,15 @@ function writeSinksOfSegment(tokens: readonly string[]): string[] {
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
     if (!REDIRECT_RE.test(t)) continue;
+    consumed.add(i);
     const glued = t.replace(REDIRECT_RE, '');
-    if (glued) sinks.push(glued);           // `>out.txt` 紧贴写法
-    else if (tokens[i + 1]) sinks.push(tokens[i + 1]!); // `> out.txt` 分离写法
+    if (glued) {
+      // `>out.txt` 紧贴写法。`2>&1` 这类 fd 复制的残留以 `&` 开头，不是文件目标
+      if (!glued.startsWith('&')) sinks.push(glued);
+    } else if (tokens[i + 1]) {
+      consumed.add(i + 1);
+      sinks.push(tokens[i + 1]!); // `> out.txt` 分离写法
+    }
   }
 
   // ② 写动词的写入位
@@ -676,9 +718,40 @@ function writeSinksOfSegment(tokens: readonly string[]): string[] {
       // dd 的写入点是 `of=`，位置无关
       for (const t of tokens) if (t.startsWith('of=')) sinks.push(t.slice(3));
     } else {
-      const args = tokens.slice(tokens.indexOf(verb) + 1).filter((t) => !t.startsWith('-'));
+      const verbIdx = tokens.indexOf(verb);
+      let args = tokens.filter(
+        (t, i) => i > verbIdx && !consumed.has(i) && !t.startsWith('-'),
+      );
+
+      /*
+       * `-t <dir>` / `--target-directory=<dir>`：目标是那个**目录**，不是最后一个操作数
+       * （r9 双审 GLM-04，双向都有翻转案例：`ln -s -t /tmp src/a.ts` 误报、
+       * `cp -t src /tmp/a.ts /tmp/b.ts` 漏报）。
+       */
+      const tIdx = tokens.findIndex((t, i) => i > verbIdx && (t === '-t' || t === '--target-directory'));
+      const tInline = tokens.find((t, i) => i > verbIdx && t.startsWith('--target-directory='));
+      const targetDir = tInline
+        ? tInline.slice('--target-directory='.length)
+        : tIdx >= 0
+          ? tokens[tIdx + 1]
+          : null;
+      if (targetDir) {
+        sinks.push(targetDir);
+        args = [];
+      } else if (NON_PATH_FIRST_OPERAND.has(base)) {
+        // mode / owner 不是写入目标，跳过；其余操作数**不再过滤**
+        args = args.slice(1);
+      }
+
       const mode = WRITE_VERB_SINK[base];
-      if (mode === 'last') {
+      if (base === 'ln' && args.length === 1) {
+        /*
+         * `ln -s <源>` 单操作数形态：POSIX 下目标是 cwd 下的 `basename(源)`，
+         * 而不是源本身（r9 双审 AGY-05）。取最后一个会把项目内的写入
+         * 误判成「目标在项目外」。
+         */
+        sinks.push(args[0]!.split('/').pop() ?? args[0]!);
+      } else if (mode === 'last') {
         const last = args.at(-1);
         if (last) sinks.push(last);
       } else {
@@ -687,7 +760,7 @@ function writeSinksOfSegment(tokens: readonly string[]): string[] {
     }
   }
 
-  return sinks.filter(looksLikePath);
+  return sinks.filter(isResolvablePath);
 }
 
 /**
@@ -734,20 +807,44 @@ export function classifyWriteCommands(
       /[\s;&|()]/.test(inner) ? ' ' : ` ${inner} `,
     );
 
-    // 掩码结构：`||` 与 `;`（以及后台 `&`）让整条退出码与各段成功脱钩；`&&` 不算
-    const masked = /\|\||;|&(?!&)/.test(dequoted);
-
-    const segments = dequoted.split(/\|\||&&|[|;()]/);
+    /*
+     * 分段并保留分隔符：奇数下标是分隔符，偶数下标是段。
+     * 掩码判定**按段**做而不是按整条做（r9 双审 AGY-02 ≡ GLM-01）。
+     */
+    const parts = dequoted.split(SEGMENT_SPLIT_RE);
     let hitAny = false;
 
-    for (const seg of segments) {
+    for (let si = 0; si < parts.length; si += 2) {
+      const seg = parts[si]!;
+      /*
+       * 这一段的成功能否从**整条命令**的 exit 0 推出来？
+       *
+       * 能推出 ⟺ 它左右紧邻的分隔符都是 `&&`（或不存在）：
+       * `a && b` 退 0 意味着两段都成功，而 `a || b` / `a ; b` / `a | b` / `a & b`
+       * 的退出码都只反映其中一段。推不出就归疑似档——**判不实不下判决**。
+       *
+       * 保守之处：`a ; b` 的 **b** 其实可信（exit 0 就是 b 的），这里一并判不可信。
+       * 方向是安全的（降级为疑似，不会误判失守），换来的是判据只有一条规则。
+       */
+      const leftSep = si > 0 ? parts[si - 1] : undefined;
+      const rightSep = si + 1 < parts.length ? parts[si + 1] : undefined;
+      const masked =
+        (leftSep !== undefined && leftSep !== '&&') || (rightSep !== undefined && rightSep !== '&&');
+
       const tokens = seg.split(/[\s<]+/).filter((t) => t.length > 0);
       if (tokens.length === 0) continue;
 
       const verb = (tokens.find((t) => !t.includes('=')) ?? '').split('/').pop() ?? '';
+      /*
+       * 幂等形态：`mkdir -p <已存在>` 不发写调用即退 0，`rm -f <不存在>` 按 POSIX 退 0。
+       *
+       * **长旗标也要认**（r9 双审 GLM-03）：`^-\w*p` 匹配不了 `--parents`
+       * ——第二个 `-` 不是 `\w`。判不出幂等的后果是把一次没有实际写入的成功命令
+       * 判成只读失守、整侧作废，**是误杀方向**，本主题对这个方向的定级一贯更重。
+       */
       const idempotent =
-        (verb === 'mkdir' && tokens.some((t) => /^-\w*p/.test(t))) ||
-        (verb === 'rm' && tokens.some((t) => /^-\w*f/.test(t)));
+        (verb === 'mkdir' && tokens.some((t) => /^-\w*p/.test(t) || t === '--parents')) ||
+        (verb === 'rm' && tokens.some((t) => /^-\w*f/.test(t) || t === '--force'));
 
       for (const sink of writeSinksOfSegment(tokens)) {
         if (isDevicePath(sink)) continue;

@@ -8,8 +8,10 @@ import test from 'node:test';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { buildCodexArgs, buildCodexResult, codexAdapter, readonlyArgsFromProbe } from '../../src/trivium/adapters/codex.js';
+import { buildCodexArgs, buildCodexResult, codexAdapter, providerSection, readonlyArgsFromProbe } from '../../src/trivium/adapters/codex.js';
 import { capabilityParity } from '../../src/trivium/doctor.js';
+import { judgeSide, renderGuardWarnings } from '../../src/trivium/guard.js';
+import { COMMAND_TRACE_CAPABILITY } from '../../src/trivium/adapters/base.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import type { Config } from '../../src/trivium/types.js';
 import {
@@ -382,4 +384,60 @@ test('可用性：profile 存在但该家族没有凭据 → 拒，并给出可�
 
 test('可用性：探针齐备且家族有凭据 → 可用', () => {
   assert.deepEqual(codexAdapter.availability(AVAIL_CTX(probeWith())), { ok: true });
+});
+
+// ───────────── C 批：契约消费方与指纹（r9 双审 GLM-05 / GLM-10） ─────────────
+
+test('疑似写有人读出口：判定告警里点得出条数与理由', () => {
+  /*
+   * r9 双审 GLM-05：契约注释承诺「进 doctor 输出」，而全仓没有任何消费方——
+   * 「宣称了不存在的消费方」正是 EV-06 那个形态。
+   * 这一档不判失守，但必须看得见：它记的是「命中写形态却判不实」的命令，
+   * 恰是排查只读问题时最该先看的几条。
+   */
+  const result = buildCodexResult(
+    parseCodexEvents(
+      '{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"cp src/a.ts /tmp/leak.ts"}}\n' +
+        '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}\n',
+    ),
+    { sessionId: null, modelProvider: null, modelEffective: 'm', cliVersion: null },
+    OUTCOME, PATHS, PROBE, '/proj',
+  );
+  assert.equal(result.suspected_write_events?.length, 1, '结果里要带着它');
+
+  const req = {
+    critic: 'codex' as const, stage: 'code' as const, model: 'm', effort: null,
+    brief_text: '', brief_path: '/proj/b.md', subject_path: '/proj/subject.md',
+    project_root: '/proj', out_dir: '/tmp/out', timeout_s: 60,
+    min_tool_calls: 0, min_project_reads: 0, deny_paths: [],
+  };
+  const verdict = judgeSide(defaultConfig(), 'codex', result, null, req as never, {
+    archiveRootAbs: '/proj/.reviews', projectRoot: '/proj',
+    capability: COMMAND_TRACE_CAPABILITY,
+  });
+  assert.equal(verdict.suspectedWrites.length, 1, '判定结果要带着它，否则渲染层拿不到');
+  assert.equal(verdict.readonlyBreach, false, '疑似档不驱动只读失守');
+
+  const notes = renderGuardWarnings({
+    sides: { codex: verdict }, drift: { changed: false, files: [], related: [] },
+    driftAction: 'ok', fingerprintChangedFiles: [], unattributedDriftFiles: [],
+  } as never);
+  assert.ok(
+    notes.some((n) => n.includes('疑似写入') && n.includes('/tmp/leak.ts')),
+    `告警里要点名条数与命令，实得：${notes.join(' / ')}`,
+  );
+});
+
+test('探活指纹：基底 config.toml 的 provider 段参与指纹，其余杂项不参与', () => {
+  // r9 双审 GLM-10：provider 定义可能只写在基底里，在那里轮换凭据不该让缓存继续沿用
+  const withProvider = `model = "m"\n[plugins."x"]\nenabled = true\n\n[model_providers.qwen]\nexperimental_bearer_token = "AAA"\n`;
+  const rotated = withProvider.replace('AAA', 'BBB');
+  const noisyOnly = withProvider.replace('enabled = true', 'enabled = false');
+
+  const a = providerSection(withProvider);
+  assert.ok(a?.includes('[model_providers.qwen]'), '要抽出 provider 段');
+  assert.ok(!a!.includes('plugins'), '与鉴权无关的段不得进指纹——否则缓存恒失效');
+  assert.notEqual(providerSection(rotated), a, '轮换凭据必须改变指纹');
+  assert.equal(providerSection(noisyOnly), a, '只改 plugins 不该动指纹');
+  assert.equal(providerSection('model = "m"\n'), null, '没有 provider 段就返回 null');
 });

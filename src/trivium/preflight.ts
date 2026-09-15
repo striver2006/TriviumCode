@@ -206,25 +206,47 @@ async function readCliVersion(
  * 否则「检查过」与「没得检查」在输出里长得一模一样——与 M7b 第 6 步
  * `checkModelSlugs` 的口径一致。
  */
-async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {
+async function checkCliVersions(
+  cfg: Config,
+  critics: readonly CriticId[] = DEFAULT_CRITICS,
+): Promise<CheckResult[]> {
   const out: CheckResult[] = [];
   const unverifiable: string[] = [];
+  /*
+   * **未入选侧的版本漂移降级为 note，不判失败**（r9 双审 GLM-08）。
+   *
+   * 为什么不像只读能力那样直接跳过：版本漂移是本机环境的客观事实，
+   * 说出来对排查有价值（「codex 升级了，下次探针该重跑」）。
+   * 但它不该让一次**压根没选它**的运行整场失败——`doctor` 默认会探测全部四家，
+   * 于是 codex 自升级后，默认两侧的运行也会被它拦下，
+   * 而那正是 `runPreflight` 里「按入选侧检查」这条原则要避免的。
+   *
+   * 两条原则的分工写在这里，免得后来者看到同一个函数里一处全查一处按需查而困惑：
+   * **能不能用** 按入选侧判（不选就不关心），**环境变没变** 全查但只对入选侧计失败。
+   */
+  const selectedCli = new Set(
+    critics.map((c) => agentById(c)?.cliName).filter((n): n is string => Boolean(n)),
+  );
 
   for (const cliName of ALL_CLI_NAMES) {
     const probe = cfg.probe.cli[cliName];
     // 没探过的 CLI 不在这里报——`checkProbeFreshness` 已经统一点过名了，
     // 这里再报一遍会把「没探过」说成「不可调用」，是两回事。
     if (!probe?.probed_at) continue;
+    const selected = selectedCli.has(cliName);
 
     const label = agentByCliName(cliName)?.display ?? cliName;
+    /** 未入选侧的坏消息只报为 note：说出来有价值，但不该让没选它的运行失败 */
+    const fail = (name: string, detail: string): CheckResult =>
+      selected
+        ? { name, ok: false, exitCode: EXIT.ENV, detail }
+        : { name, ok: true, detail: `${detail}（本次未选用该侧，仅提示）` };
+
     const entry = probe.entrypoint;
     if (!entry || !(await exists(entry))) {
-      out.push({
-        name: `${label} 可调用`,
-        ok: false,
-        exitCode: EXIT.ENV,
-        detail: `探针记录的 ${cliName} 入口不可用：${entry ?? '(未记录)'}。请重新运行 doctor。`,
-      });
+      out.push(
+        fail(`${label} 可调用`, `探针记录的 ${cliName} 入口不可用：${entry ?? '(未记录)'}。请重新运行 doctor。`),
+      );
       continue;
     }
 
@@ -236,21 +258,15 @@ async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {
     }
     const v = res.version;
     if (v === null) {
-      out.push({
-        name: `${label} 可调用`,
-        ok: false,
-        exitCode: EXIT.ENV,
-        detail: `${cliName} 取版本失败。请重新运行 doctor。`,
-      });
+      out.push(fail(`${label} 可调用`, `${cliName} 取版本失败。请重新运行 doctor。`));
     } else if (v !== probe.version) {
-      out.push({
-        name: `${label} 版本与探针一致`,
-        ok: false,
-        exitCode: EXIT.ENV,
-        detail:
+      out.push(
+        fail(
+          `${label} 版本与探针一致`,
           `${cliName} 版本已变（探针记录 ${probe.version} → 实际 ${v}）。\n` +
-          '  参数与行为可能随版本漂移，请重新运行 `trivium doctor`。',
-      });
+            '  参数与行为可能随版本漂移，请重新运行 `trivium doctor`。',
+        ),
+      );
     } else {
       out.push({ name: `${label} 可调用`, ok: true, detail: `${cliName} ${v}` });
     }
@@ -393,7 +409,9 @@ function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string):
  */
 function checkReadonlyCapability(ctx: Ctx, critics: readonly CriticId[]): CheckResult {
   const adapters = realAdapters();
-  const actx: AdapterContext = { cfg: ctx.config, nodePath: process.execPath };
+  // nodePath 取与运行期同一口径：配了 runtime.node 的机器上，预检与真实运行
+  // 必须走同一个 node，否则就是本函数注释自称要消灭的那种「同一个问题两个答案」
+  const actx: AdapterContext = { cfg: ctx.config, nodePath: ctx.config.runtime.node ?? process.execPath };
   const problems: string[] = [];
   const oks: string[] = [];
 
@@ -490,7 +508,7 @@ async function probeAuth(
   const version = (cliName ? cfg.probe.cli[cliName]?.version : null) ?? null;
 
   const auth = adapter.authProbe?.(
-    { cfg, nodePath: process.execPath },
+    { cfg, nodePath: cfg.runtime.node ?? process.execPath },
     ctx.projectRoot,
   );
   if (!auth) {
@@ -537,7 +555,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
   // ① 探针新鲜度（过期即快速失败，不拉 doctor）
   checks.push(checkProbeFreshness(cfg));
   // ② ③ CLI 可调用且版本与探针一致
-  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg)));
+  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected)));
   // ④ 只读能力
   if (checks.every((c) => c.ok)) checks.push(checkReadonlyCapability(ctx, selected));
   // ⑤ 模型 slug（按本次实际生效值）

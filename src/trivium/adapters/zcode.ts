@@ -223,7 +223,12 @@ export const zcodeAdapter: CriticAdapter = {
           prompt: '只回复 OK 两个字母，不要调用任何工具。',
           readonlyArgs: readonlyArgsFromProbe(cfg.probe.cli.zcode?.readonly_flags ?? []),
           homeDir: null,
-          timeoutMs: 120_000,
+          /*
+           * 180s，与搬家前 `preflight` 里的值一致（r9 双审 GLM-07）。
+           * M8 第 3 步把探活搬进适配器时手抄成了 120s——**一次搬家不该顺带改行为**。
+           * 本侧要起 node 子进程再拉 CLI，比 agy 慢，那 60 秒是当初特意给的。
+           */
+          timeoutMs: 180_000,
         });
         const ok = out.failureKind === 'none' && !out.timedOut && out.envelope !== null;
         return {

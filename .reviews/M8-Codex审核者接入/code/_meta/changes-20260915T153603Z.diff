@@ -1,0 +1,3812 @@
+# trivium changes.diff
+# run_id: 20260915T153603Z
+# base: 9d511a6
+# head: a8c75954c38941c20259f6bc4c1127c0cffeed83
+# files: 31
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   skills/dual-critic/lenses.yaml
+#   skills/dual-critic/schema/config.v2.json
+#   src/trivium/adapters/agy.ts
+#   src/trivium/adapters/base.ts
+#   src/trivium/adapters/codex-home.ts
+#   src/trivium/adapters/codex-trace.ts
+#   src/trivium/adapters/codex.ts
+#   src/trivium/adapters/index.ts
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/agents/registry.ts
+#   src/trivium/archive.ts
+#   src/trivium/cli.ts
+#   src/trivium/config.ts
+#   src/trivium/divergence.ts
+#   src/trivium/doctor.ts
+#   src/trivium/gate.ts
+#   src/trivium/preflight.ts
+#   src/trivium/probes/codex.ts
+#   src/trivium/secrets.ts
+#   src/trivium/types.ts
+#   test/fixtures/stub-agent-kit/overlay.ts
+#   test/integration/codex-wiring.test.ts
+#   test/integration/stub-agent-kit.test.ts
+#   test/unit/codex-adapter.test.ts
+#   test/unit/codex-write-verbs.test.ts
+#   test/unit/config-migrate.test.ts
+#   test/unit/critics.test.ts
+#   test/unit/preflight.test.ts
+#   test/unit/registry-parity.test.ts
+#   test/unit/run-meta.test.ts
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index 85ee641..eb8d017 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -290,7 +290,7 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一
+ | :--- | :--- |
+ | `doctor` | 逐项实测设计 §3.5 的本机能力探针清单，回填 `probe:` 段 |
+ | `doctor --selftest` | 临时夹具里真跑整条流水线，14 步核对（桩适配器，零配额） |
+-| `preflight --stage plan\|code\|bug\|all` | 设计 §8.1 的启动预检，fail-fast，失败零工件 |
++| `preflight --stage plan\|code\|bug\|all [--critics <id,…>]` | 设计 §8.1 的启动预检，fail-fast，失败零工件。`--critics` 指定本次要用哪几侧——只读能力、模型 slug、探活都只查这几侧，缺省取 `review.default_critics`（M8 第 3 步）。**四条 skill 的第 1 步不传它**：那时 `topic resolve` 还没跑、选侧尚未解析出来。选了非缺省侧时，该侧的可用性由 `review --start` 在拉起 CLI 之前的 `availability()` 兜住（AC-20 末条的落点），`--critics` 供用户显式预检时用 |
+ | `topic resolve --stage <s> -- <$ARGUMENTS>` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。`--stage` 也接受 `all`（命令 A 用） |
+ | `review --stage <s>` | 同步跑一次双审（手工调试用） |
+ | `review --start / --wait / --status / --cancel` | 分段协议 |
+diff --git a/skills/dual-critic/lenses.yaml b/skills/dual-critic/lenses.yaml
+index 64b0131..3caec0b 100644
+--- a/skills/dual-critic/lenses.yaml
++++ b/skills/dual-critic/lenses.yaml
+@@ -38,3 +38,21 @@ glm:
+     - 修复面是否过大或治标：会不会顺手改了不相干的东西
+     - 同一模式在别处是否还存在
+     - 回归用例是否会漏：它能捕获这次的 bug 吗
++
++# codex（Critic-C）取第三视角。三条轴刻意与 A/B 两侧**零字面交叠**：
++# 计划双审 GLM-10 指出初版有三条与既有镜头字面重合（「回滚路径」「谁会被打断」「环境」），
++# 而 report 的 Jaccard 退化提示按 lenses.yaml 自己的口径要「长期 > 0.8」才触发，
++# 一两轮看不出来——字面重合现在就能收窄，比事后告警便宜。
++codex:
++  plan: |
++    - 外部依赖与环境假设：版本、平台、可得性，哪些前提在别人机器上不成立
++    - 成本与配额：这次要烧多少、失败时烧多少、有没有更便宜的等价路径
++    - 回滚与迁移的**成本核算**：真要退回去，要几步、丢什么、谁来做
++  code: |
++    - 跨平台与环境耦合：路径分隔、shell 差异、编码、locale、临时目录
++    - 资源与生命周期：文件句柄、子进程、临时文件、超时后谁来收尾
++    - 运行环境与依赖版本兼容：Node 版本、CLI 版本漂移、打包产物的约束
++  bug: |
++    - 时序与环境变量态：并发、时钟、locale、继承来的 env 是否参与了故障
++    - 证据能不能在**别的机器**上重放：依赖本机状态的结论算不算数
++    - 修复的可观测性：下次再发生，从哪条留痕能立刻看出来
+diff --git a/skills/dual-critic/schema/config.v2.json b/skills/dual-critic/schema/config.v2.json
+index c1004ce..96c1dfa 100644
+--- a/skills/dual-critic/schema/config.v2.json
++++ b/skills/dual-critic/schema/config.v2.json
+@@ -296,7 +296,7 @@
+     "agents": {
+       "type": "object",
+       "minProperties": 1,
+-      "description": "逐 Agent 的配置段，键是注册表的 Agent id。键只要求「是已登记 Agent」，不要求 criticEnabled——Driver 自身也需要配置容身之处（设计 13.1.1）。键是否已登记、vendor 是否与注册表相符，由 schemas.ts 在 ajv 之后按注册表补校：Agent 身份的唯一来源是注册表（纪律 7），在 schema 里抄第二份，新增一家时改一漏二不会报错。值以 vendor 为判别式做可辨识联合——两家字段集合完全不同，压成同构 record 会让校验形同虚设。codex / claude 的形状随 M8 / M9 / M10 加入 oneOf。",
++      "description": "逐 Agent 的配置段，键是注册表的 Agent id。键只要求「是已登记 Agent」，不要求 criticEnabled——Driver 自身也需要配置容身之处（设计 13.1.1）。键是否已登记、vendor 是否与注册表相符，由 schemas.ts 在 ajv 之后按注册表补校：Agent 身份的唯一来源是注册表（纪律 7），在 schema 里抄第二份，新增一家时改一漏二不会报错。值以 vendor 为判别式做可辨识联合——两家字段集合完全不同，压成同构 record 会让校验形同虚设。codex 的形状已于 M8 第 3 步加入 oneOf；claude 随 M9 / M10 加入。",
+       "additionalProperties": {
+         "oneOf": [
+           {
+@@ -393,6 +393,66 @@
+                 ]
+               }
+             }
++          },
++          {
++            "type": "object",
++            "additionalProperties": false,
++            "required": [
++              "vendor",
++              "bin",
++              "profile",
++              "effort"
++            ],
++            "properties": {
++              "vendor": {
++                "const": "openai"
++              },
++              "bin": {
++                "type": [
++                  "string",
++                  "null"
++                ]
++              },
++              "profile": {
++                "type": [
++                  "string",
++                  "null"
++                ],
++                "description": "厂商 profile 名，对应 $CODEX_HOME/<name>.config.toml（0.154.0 的 -p 是文件分层，不是 config.toml 里的 [profiles.*] 段）。它同时是「模型属于哪个 provider 家族」的唯一判定依据——实测 model_provider 随 -p 走，按模型 slug 前缀猜家族会随目录命名漂移。"
++              },
++              "effort": {
++                "type": "object",
++                "additionalProperties": false,
++                "required": [
++                  "plan",
++                  "code",
++                  "bug"
++                ],
++                "properties": {
++                  "plan": {
++                    "enum": [
++                      "low",
++                      "medium",
++                      "high"
++                    ]
++                  },
++                  "code": {
++                    "enum": [
++                      "low",
++                      "medium",
++                      "high"
++                    ]
++                  },
++                  "bug": {
++                    "enum": [
++                      "low",
++                      "medium",
++                      "high"
++                    ]
++                  }
++                }
++              }
++            }
+           }
+         ]
+       }
+diff --git a/src/trivium/adapters/agy.ts b/src/trivium/adapters/agy.ts
+index a80ad5b..a362807 100644
+--- a/src/trivium/adapters/agy.ts
++++ b/src/trivium/adapters/agy.ts
+@@ -15,10 +15,11 @@
+  *     所以超时判定必须靠编排器自己的墙钟计时，不能只看退出码（坑 P-07）。
+  */
+ import path from 'node:path';
++import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import type { CriticRequest, CriticResult } from '../types.js';
+ import { run } from '../util/exec.js';
+-import { ensureDir } from '../util/fsx.js';
++import { ensureDir, exists, sha256File } from '../util/fsx.js';
+ import {
+   parseAgyStream,
+   readPaths,
+@@ -182,6 +183,46 @@ export const agyAdapter: CriticAdapter = {
+    */
+   capability: TOOL_TRACE_CAPABILITY,
+ 
++  /**
++   * 探活（M8 第 3 步从 `preflight` 搬来）。
++   *
++   * 指纹取只读审查 Agent 的定义文件：那份 `agent.md` 一改，白名单就换了，
++   * 旧的「已认证」结论对新的工具面不再成立——所以它必须参与缓存失效判定。
++   */
++  authProbe(ctx: AdapterContext, projectRoot: string) {
++    const cfg = ctx.cfg;
++    return {
++      async fingerprint() {
++        const f = path.join(
++          os.homedir(), '.gemini/config/agents',
++          agentConfigOf(cfg, 'gemini', 'antigravity').agent, 'agent.md',
++        );
++        return (await exists(f)) ? sha256File(f) : null;
++      },
++      async probe() {
++        const bin = cfg.probe.cli.agy?.entrypoint ?? null;
++        if (!bin) return { ok: false, detail: 'agy 路径未记录' };
++        const out = await invokeAgy({
++          bin,
++          cwd: projectRoot,
++          prompt: '只回复 OK 两个字母，不要调用任何工具。',
++          model: cfg.probe.cli.agy?.models[0] ?? null,
++          agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
++          timeoutMs: 120_000,
++          pty: cfg.probe.cli.agy?.pty_required === true,
++        });
++        const ok = out.parsed.status === 'SUCCESS' && !out.timedOut;
++        return {
++          ok,
++          detail: ok
++            ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
++            : `探活失败（status=${out.parsed.status}）。请先交互登录一次：\`agy\` 然后完成登录流程。\n` +
++              `  stderr: ${out.stderr.slice(0, 200)}`,
++        };
++      },
++    };
++  },
++
+   availability(ctx: AdapterContext) {
+     /*
+     * 「这一侧还没探过」与「探过、没找到可执行文件」是两回事：
+diff --git a/src/trivium/adapters/base.ts b/src/trivium/adapters/base.ts
+index 99acad9..e723d03 100644
+--- a/src/trivium/adapters/base.ts
++++ b/src/trivium/adapters/base.ts
+@@ -9,7 +9,9 @@
+  */
+ import nodePath from 'node:path';
+ import os from 'node:os';
+-import type { Config, CriticId, CriticRequest, CriticResult, Stage } from '../types.js';
++import type {
++  Config, CriticId, CriticRequest, CriticResult, Stage, SuspectedWrite,
++} from '../types.js';
+ 
+ export interface AdapterContext {
+   cfg: Config;
+@@ -58,12 +60,48 @@ export interface TraceCapability {
+   rejectionRecorded: boolean;
+ }
+ 
++/**
++ * 探活能力（M8 第 3 步，收敛 `preflight` 的按厂商分派）。
++ *
++ * ## 切分口径
++ *
++ * **厂商知识回到适配器**：指纹从哪个文件算、最小调用怎么发、失败该怎么说。
++ * **通用逻辑留在 `preflight`**：TTL、版本比对、缓存读写、失败即不缓存。
++ *
++ * 这样新增一家只写自己那两件，而缓存策略不会被抄成三份各自漂移。
++ * 收敛前 `preflight` 里是 `probeAgyAuth` / `probeZcodeAuth` 两个写死分支，
++ * 计划双审两侧独立指出再加第三个就是第三次堆砌（AGY-03 ≡ GLM-06）。
++ */
++export interface AuthProbe {
++  /**
++   * 该侧凭据的指纹（通常是凭据文件的哈希），缓存失效判据之一。
++   * `null` = 无从计算，此时缓存只由 TTL 与 CLI 版本约束。
++   */
++  fingerprint(): Promise<string | null>;
++  /** 真跑一次最小 headless 调用。**这是预检里最贵的一步**，由调用方决定要不要跑 */
++  probe(): Promise<{ ok: boolean; detail: string }>;
++}
++
+ export interface CriticAdapter {
+   readonly critic: CriticId;
+   /** 该侧轨迹的证据形状——判定层据此分档，不按 Agent id 分叉（§11.1） */
+   readonly capability: TraceCapability;
+   /** 该侧是否可用（探针结论决定）。不可用时给出人读原因 */
+   availability(ctx: AdapterContext): { ok: boolean; reason?: string };
++  /**
++   * 模型 slug 在与探针目录比对**之前**的归一。**可选**：不需要归一的侧不实现。
++   *
++   * 存在的理由是 zcode：配置里写短名，实际传参要补 `<providerId>/` 前缀（坑 P-06），
++   * 而预检要比对的是**补全后**的形态。这条知识属于那一侧，不该住在 `preflight` 里
++   * ——它住在那里时，`checkModelAgainstCatalog` 就得按 vendor 分支，
++   * 于是第三家一律落「无法校验」（计划双审 GLM-04）。
++   */
++  normalizeModelForCatalog?(cfg: Config, model: string): string;
++  /**
++   * 探活。**可选**：没有凭据概念的侧（如桩）不实现，`preflight` 相应跳过并如实说明——
++   * 「没得探」与「探过通过」不能长得一样。
++   */
++  authProbe?(ctx: AdapterContext, projectRoot: string): AuthProbe;
+   run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult>;
+ }
+ 
+@@ -537,6 +575,220 @@ export function effectiveReadPaths(
+   return [...out];
+ }
+ 
++/**
++ * `command-trace` 族的能力（M8 第 3 步）。
++ *
++ * `rejectionRecorded: false` 的依据是 M6 的 P-C2，并在本步的隔离实测里再次复现：
++ * 让模型尝试 `echo BREACH > /tmp/…`，文件未被创建、**而轨迹里连那条命令都没有**。
++ * 于是阴性结论（没检出写事件）排除不了「试过但被拒」，只读保障降到两重；
++ * 阳性方向不受影响——成功执行的命令照常留痕（P-C1）。
++ */
++export const COMMAND_TRACE_CAPABILITY: TraceCapability = {
++  traceShape: 'command-trace',
++  rejectionRecorded: false,
++};
++
++/**
++ * 写动词闭集 —— 回答「**这是不是写操作**」。
++ *
++ * ## 为什么不复用 `WRITE_VERB_TARGET`
++ *
++ * 那张表回答的是另一个问题：「这个参数位**算不算读证据**」。两张表的键集看着像，
++ * 语义不同，正确内容因此也不同——`cd` / `pushd` 必须在那张表里（它们的参数是目录、
++ * 不是被读的文件），却绝不能在这张表里（它们不发生任何写系统调用）。
++ *
++ * M8 第 3 步的计划稿曾写「复用那张表的动词集，不新起一张表——两张表会漂移」。
++ * 防漂移这个理由本身没错，**错在前提**：防漂移的前提是两张表语义相同。
++ * 计划双审两侧独立判它是 blocker（AGY-01 ≡ GLM-01），随后的隔离实测当场复现：
++ * 模型跑的第二条命令就是 `/bin/zsh -lc 'cd . && echo ok'`，`exit_code: 0`、
++ * `status: completed`，按那个判据会被记成写事件 ⇒ `guard.ts` 无分级地判只读失守
++ * ⇒ 整侧作废。审查员开头先 `cd` 再 grep 是最常见的形态，这不是边缘情形。
++ *
++ * 两张表的关系由 `test/unit/codex-write-verbs.test.ts` 的对账用例守着：
++ * `cd`/`pushd` 必须**在** `WRITE_VERB_TARGET`、**不在**本集合。
++ * 后来者若再想合并，那条用例会当场红。
++ */
++const WRITE_VERBS: ReadonlySet<string> = new Set([
++  'cp', 'mv', 'install', 'ln', 'tee',
++  'rm', 'rmdir', 'mkdir', 'touch',
++  'chmod', 'chown', 'truncate', 'dd',
++]);
++
++/**
++ * 各写动词的**写入位**（与 `WRITE_VERB_TARGET` 的「参数位」分开定义，理由同上）。
++ *
++ * `ln` 取 `last` 而不是 `all-after-flags`：`ln -s a b` 只创建 `b`，
++ * 把源 `a` 也当写入点会在「源在项目内、链接在项目外」时误判。
++ */
++const WRITE_VERB_SINK: Record<string, 'last' | 'all-after-flags'> = {
++  cp: 'last', mv: 'last', install: 'last', ln: 'last', truncate: 'last',
++  tee: 'all-after-flags',
++  rm: 'all-after-flags', rmdir: 'all-after-flags',
++  mkdir: 'all-after-flags', touch: 'all-after-flags',
++  chmod: 'all-after-flags', chown: 'all-after-flags',
++};
++
++/** 对账用例的读取面：两个集合都要能被测试拿到，才谈得上对账 */
++export const WRITE_VERBS_FOR_PARITY: readonly string[] = [...WRITE_VERBS].sort();
++export const WRITE_TARGET_VERBS_FOR_PARITY: readonly string[] = Object.keys(WRITE_VERB_TARGET).sort();
++
++export interface WriteCommandClassification {
++  /** 高置信写入：目标在项目内、无掩码、非幂等空操作。进 `write_events`，驱动只读失守 */
++  writes: string[];
++  /** 判不实的：目标在项目外/提不出、段含掩码、幂等形态。**不**驱动失守，只留痕 */
++  suspected: SuspectedWrite[];
++}
++
++/** 设备路径：写它不构成对项目或留痕的破坏，也不值得进疑似档 */
++function isDevicePath(p: string): boolean {
++  return p === '/dev/null' || p.startsWith('/dev/');
++}
++
++/** 看起来像路径才算写入目标——`chmod 644 f` 的 `644`、`ln -s` 的 `-s` 不是 */
++function looksLikePath(t: string): boolean {
++  return t.includes('/') || /\.[A-Za-z0-9]+$/.test(t);
++}
++
++/**
++ * 从一段命令里取出写入目标。段已去引号、已按分隔符切开。
++ */
++function writeSinksOfSegment(tokens: readonly string[]): string[] {
++  const sinks: string[] = [];
++
++  /*
++   * ① 输出重定向 —— 与动词无关的写形态，必须单列。
++   * `echo BREACH > file` 的动词是 `echo`，不在任何写动词表里，
++   * 只按动词判会把最常见的写入形态整个漏掉。
++   */
++  for (let i = 0; i < tokens.length; i++) {
++    const t = tokens[i]!;
++    if (!REDIRECT_RE.test(t)) continue;
++    const glued = t.replace(REDIRECT_RE, '');
++    if (glued) sinks.push(glued);           // `>out.txt` 紧贴写法
++    else if (tokens[i + 1]) sinks.push(tokens[i + 1]!); // `> out.txt` 分离写法
++  }
++
++  // ② 写动词的写入位
++  const verb = tokens.find((t) => !t.includes('=')) ?? '';
++  const base = verb.split('/').pop() ?? verb;
++  if (WRITE_VERBS.has(base)) {
++    if (base === 'dd') {
++      // dd 的写入点是 `of=`，位置无关
++      for (const t of tokens) if (t.startsWith('of=')) sinks.push(t.slice(3));
++    } else {
++      const args = tokens.slice(tokens.indexOf(verb) + 1).filter((t) => !t.startsWith('-'));
++      const mode = WRITE_VERB_SINK[base];
++      if (mode === 'last') {
++        const last = args.at(-1);
++        if (last) sinks.push(last);
++      } else {
++        sinks.push(...args);
++      }
++    }
++  }
++
++  return sinks.filter(looksLikePath);
++}
++
++/**
++ * 把成功执行过的命令分成「写事件」与「疑似写」两档（设计 §10.3 / §11.1，M8 第 3 步）。
++ *
++ * ## 调用契约
++ *
++ * 入参 `succeededCommands` 必须**只含成功执行的命令**（`status: completed`
++ * 且 `exit_code === 0`），由适配器筛好再喂进来。本函数不看退出码——
++ * `command_texts` 那份全集要留给措施 b（泄漏企图即便失败也要扫），两者论域不同。
++ *
++ * ## 为什么要分两档
++ *
++ * 只读失守是**安全指控**，`guard.ts` 对它没有分级：`write_events` 非空即失守、
++ * 整侧作废。所以进这一档的必须是高置信形态，其余如实记成疑似——
++ * 丢弃它们会让排查失去线索，混进去则会让正常审查被误杀。
++ *
++ * 三类判不实的形态（计划双审 GLM-01 逐条列出，本实现逐条落地）：
++ *
++ * 1. **幂等空操作**：`mkdir -p <已存在>` 不发写调用即退 0，`rm -f <不存在>`
++ *    按 POSIX 退 0——写动词在场、成功退出，却没有任何写入发生。
++ * 2. **失败掩码**：`touch x || true`、`…; true`——整条命令的 exit 0
++ *    不代表写段成功。`&&` 不算掩码：`a && b` 退 0 意味着两段都成功。
++ * 3. **项目外目标**：见下。
++ *
++ * ## 「项目外写入不算失守」是本步的裁决，不是宽松
++ *
++ * 依据是自洽性：codex 每次运行都会往 `$CODEX_HOME/sessions/` 写会话文件，
++ * 而本步回读生效模型**正是靠读那个文件**（AC-20 的 J3 依赖它）。
++ * 若项目外写入算失守，那么这条流水线赖以工作的那次写入自己就会把每一轮判成失守。
++ * 只读承诺的保护对象是**被审项目与归档留痕**，不是「该进程一个字节都不许写」。
++ * 项目外写入仍进疑似档——它可能是把被审代码外泄到 `/tmp` 的前兆。
++ */
++export function classifyWriteCommands(
++  succeededCommands: readonly string[],
++  projectRoot: string,
++): WriteCommandClassification {
++  const writes: string[] = [];
++  const suspected: SuspectedWrite[] = [];
++
++  for (const raw of succeededCommands) {
++    const cmd = unwrapSubshell(raw);
++    const dequoted = cmd.replace(/(['"`])([\s\S]*?)\1/g, (_m, _q, inner: string) =>
++      /[\s;&|()]/.test(inner) ? ' ' : ` ${inner} `,
++    );
++
++    // 掩码结构：`||` 与 `;`（以及后台 `&`）让整条退出码与各段成功脱钩；`&&` 不算
++    const masked = /\|\||;|&(?!&)/.test(dequoted);
++
++    const segments = dequoted.split(/\|\||&&|[|;()]/);
++    let hitAny = false;
++
++    for (const seg of segments) {
++      const tokens = seg.split(/[\s<]+/).filter((t) => t.length > 0);
++      if (tokens.length === 0) continue;
++
++      const verb = (tokens.find((t) => !t.includes('=')) ?? '').split('/').pop() ?? '';
++      const idempotent =
++        (verb === 'mkdir' && tokens.some((t) => /^-\w*p/.test(t))) ||
++        (verb === 'rm' && tokens.some((t) => /^-\w*f/.test(t)));
++
++      for (const sink of writeSinksOfSegment(tokens)) {
++        if (isDevicePath(sink)) continue;
++        hitAny = true;
++        const abs = normalizeAbs(expandHome(sink), projectRoot);
++
++        if (!isUnder(abs, projectRoot)) {
++          suspected.push({ command: raw, why: `写入目标在项目外：${abs}` });
++          continue;
++        }
++        if (masked) {
++          suspected.push({ command: raw, why: '命令含 || 或 ; 掩码，整条退出码不代表写段成功' });
++          continue;
++        }
++        if (idempotent) {
++          suspected.push({ command: raw, why: `${verb} 的幂等形态，成功退出不等于发生了写入` });
++          continue;
++        }
++        writes.push(raw);
++      }
++    }
++
++    // 命中写动词却一个目标都提不出来（变量拼接、命令替换…）——判不出即疑似
++    if (!hitAny) {
++      const verbs = dequoted
++        .split(/\|\||&&|[|;()]/)
++        .map((s) => (s.trim().split(/\s+/)[0] ?? '').split('/').pop() ?? '');
++      if (verbs.some((v) => WRITE_VERBS.has(v))) {
++        suspected.push({ command: raw, why: '命中写动词但提不出写入目标（变量拼接或命令替换）' });
++      }
++    }
++  }
++
++  return {
++    writes: [...new Set(writes)],
++    suspected: suspected.filter(
++      (s, i, arr) => arr.findIndex((x) => x.command === s.command && x.why === s.why) === i,
++    ),
++  };
++}
++
+ /** 轨迹核验：读取路径中是否命中禁读清单（§10.1 第 ③ 道 (c) 层 / AC-04） */
+ export function checkPeerLeak(
+   readPaths: readonly string[],
+diff --git a/src/trivium/adapters/codex-home.ts b/src/trivium/adapters/codex-home.ts
+new file mode 100644
+index 0000000..40b003d
+--- /dev/null
++++ b/src/trivium/adapters/codex-home.ts
+@@ -0,0 +1,247 @@
++/**
++ * codex 的运行隔离：独立 `CODEX_HOME` **与** 独立 `HOME`（设计 §3.6，BACKLOG EV-08）。
++ *
++ * ## 为什么必须双覆盖
++ *
++ * M6 第 4 步三条臂实测：`~/.agents/skills` 这个指令根**随 `HOME` 派生**，
++ * 不随 `CODEX_HOME`。只隔离后者，宿主机上任意第三方 skill 的描述都会进入
++ * 审查会话的 developer 消息——沙箱只读挡得住**写**，挡不住**指令注入**。
++ *
++ * ## 本步实测补出的两条（M6 没覆盖到，各自都能让方案不成立）
++ *
++ * **① 配置里的 `~` 跟 `HOME` 走。** 本机 `config.toml` 写着
++ * `model_catalog_json = "~/.codex/models-qwen.json"`，隔离 `HOME` 之后它指向
++ * fakehome 下不存在的文件，codex 直接 `Error: No such file or directory` 退出。
++ * 只隔离 `CODEX_HOME` 反而正常——所以 M6 第 4 步的 B 臂恰好错过了它。
++ *
++ * **② 不裁剪就等于把宿主机的执行通道带进来。** 真实环境的模型可见输入里有
++ * `mcp_servers.node_repl`（一个 JS REPL）、十余个 plugins、6 个 skill 根、
++ * 约 25 份第三方 skill 描述（含「代码提交、推送」「浏览器自动化、发帖、登录网站」）。
++ * MCP server 是独立进程通道，`-s read-only` 管的是模型生成的 shell 命令，管不到它。
++ *
++ * 两条的处置**合在一起才成立**：只裁剪不重写路径 ⇒ ① 退出；只重写不裁剪 ⇒ ② 泄漏。
++ * 实测（裁剪 + 重写 + 双覆盖）后 skill roots 只剩副本自带的 `.system` 一个，
++ * 第三方 skill 与 MCP 全部消失，模型可见输入从数倍长降到 17 KB。
++ */
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import { ensureDir, exists } from '../util/fsx.js';
++
++/**
++ * 副本 `config.toml` 保留的顶层键。
++ *
++ * **白名单而不是黑名单**：漏掉一个该剥的段会静默泄漏一条能力通道（不可见），
++ * 漏掉一个该留的键只会让功能不可用（可见）。安全取向上二者不对称。
++ *
++ * 代价如实登记：新版本 codex 若把模型相关配置挪进新段，副本会**丢功能**。
++ * 这就是下面 `strippedKeys` 存在的理由——丢了什么要说得出来，
++ * 不能让「静默丢功能」成为白名单的隐性成本（计划双审 GLM-07）。
++ */
++const KEEP_TOP_KEYS: ReadonlySet<string> = new Set([
++  'model',
++  'model_provider',
++  'model_reasoning_effort',
++  'model_catalog_json',
++]);
++
++/** 保留的段前缀：provider 定义必须留，否则没有 base_url 与凭据 */
++const KEEP_SECTION_PREFIX = '[model_providers';
++
++export interface CodexHomePrep {
++  /** 独立 `CODEX_HOME` */
++  codexHome: string;
++  /** 独立 `HOME`（空目录，斩断 `~/.agents/skills` 这条指令根） */
++  fakeHome: string;
++  /** 被剥掉的键与段，逐条留痕 */
++  strippedKeys: string[];
++  /** 被重写的 `~/` 路径，逐条留痕（`原值 → 新值` 或 `原值 → 跳过（原因）`） */
++  rewrittenPaths: string[];
++  /** 拷进副本的文件名清单——J9 的扫描面按这份清单算，不按形态枚举 */
++  copiedFiles: string[];
++  /** 准备过程中的非致命问题（人读） */
++  warnings: string[];
++}
++
++/** `$CODEX_HOME`，未设时回落官方默认 */
++export function codexHomeOf(env: NodeJS.ProcessEnv = process.env): string {
++  return env['CODEX_HOME'] ?? path.join(os.homedir(), '.codex');
++}
++
++/**
++ * 按白名单裁剪一份 TOML。
++ *
++ * **按行处理而不是解析 TOML**：本项目只依赖 ajv 与 yaml，没有 TOML 解析库
++ * （计划双审 AGY-02），而打包产物必须是单文件。半吊子的解析比不解析更危险，
++ * 所以这里只做一件有明确边界的事——识别段头与顶层键，其余原样搬运或剥除。
++ */
++export function trimCodexToml(text: string): { kept: string; stripped: string[] } {
++  const stripped: string[] = [];
++  const out: string[] = [];
++  let inKeptSection = false;
++  let sawSection = false;
++
++  for (const line of text.split('\n')) {
++    const s = line.trim();
++    if (s.startsWith('[')) {
++      sawSection = true;
++      inKeptSection = s.startsWith(KEEP_SECTION_PREFIX);
++      if (inKeptSection) out.push(line);
++      else stripped.push(s);
++      continue;
++    }
++    if (!sawSection) {
++      // 段头之前的都是顶层键
++      if (s === '' || s.startsWith('#')) continue;
++      const key = s.split('=')[0]?.trim() ?? '';
++      if (KEEP_TOP_KEYS.has(key)) out.push(line);
++      else if (key) stripped.push(key);
++      continue;
++    }
++    if (inKeptSection) out.push(line);
++  }
++  return { kept: `${out.join('\n').trim()}\n`, stripped };
++}
++
++/** 一行 TOML 里的 `键 = "~/…"` 形态。只认**字符串标量** */
++const HOME_VALUE_RE = /^(\s*[\w.\-]+\s*=\s*)(["'])(~\/.+?)\2(.*)$/;
++
++/**
++ * 重写副本里的 `~/` 路径，并把指向的文件拷进副本。
++ *
++ * **只作用于裁剪后的幸存键**（顺序由 `prepareCodexHome` 保证）：
++ * 先重写再裁剪会把 `notify` 这类已剥段指向的文件也拷进来，白扩敏感面
++ * （计划双审 GLM-08）。
++ *
++ * 非标量值（数组、内联表、多行字符串）**不处理并留痕**——它们要真正的 TOML
++ * 解析才能安全改写，而本模块刻意不做解析。
++ */
++export async function rewriteHomePaths(
++  file: string,
++  destDir: string,
++): Promise<{ rewritten: string[]; copied: string[]; warnings: string[] }> {
++  const rewritten: string[] = [];
++  const copied: string[] = [];
++  const warnings: string[] = [];
++
++  const text = await fs.readFile(file, 'utf8');
++  const out: string[] = [];
++
++  for (const line of text.split('\n')) {
++    const m = HOME_VALUE_RE.exec(line);
++    if (!m) {
++      // 非标量但含 ~/ 的值：留痕，不猜
++      if (/=\s*[[{].*~\//.test(line)) {
++        const key = line.split('=')[0]?.trim() ?? '(未知键)';
++        warnings.push(`${key}：值含 ~/ 但不是字符串标量，未重写（隔离下可能失效）`);
++      }
++      out.push(line);
++      continue;
++    }
++
++    const raw = m[3]!;
++    const src = path.join(os.homedir(), raw.slice(2));
++    let stat: Awaited<ReturnType<typeof fs.stat>> | null = null;
++    try {
++      stat = await fs.stat(src);
++    } catch {
++      stat = null;
++    }
++
++    if (!stat) {
++      out.push(line);
++      rewritten.push(`${raw} → 跳过（目标不存在）`);
++      continue;
++    }
++    if (!stat.isFile()) {
++      out.push(line);
++      rewritten.push(`${raw} → 跳过（目标不是普通文件）`);
++      continue;
++    }
++
++    const base = path.basename(src);
++    const dst = path.join(destDir, base);
++    await fs.copyFile(src, dst);
++    await fs.chmod(dst, 0o600);
++    copied.push(base);
++    out.push(`${m[1]}"${dst}"${m[4]}`);
++    rewritten.push(`${raw} → ${dst}`);
++  }
++
++  await fs.writeFile(file, out.join('\n'), 'utf8');
++  await fs.chmod(file, 0o600);
++  return { rewritten, copied, warnings };
++}
++
++/**
++ * 为一次运行准备隔离的 `CODEX_HOME` + `HOME`。
++ *
++ * 顺序**写死为「裁剪 → 重写 → 拷贝」**，理由见 `rewriteHomePaths`。
++ *
++ * `[projects.*]` 段随裁剪一并剥掉，再按当次 `projectRoot` 重新生成一条——
++ * 抄宿主机整张信任表等于把「这台机器信任过哪些目录」带进审查会话。
++ * 本步实测：副本里连信任记录都没有时，非交互下也不会要求信任目录，
++ * 所以这一条是**保险而非必需**，写它是为了不依赖那个观察在未来版本继续成立。
++ */
++export async function prepareCodexHome(
++  runDir: string,
++  opts: { profile: string | null; projectRoot: string; sourceHome?: string },
++): Promise<CodexHomePrep> {
++  const src = opts.sourceHome ?? codexHomeOf();
++  const codexHome = path.join(runDir, 'codexhome');
++  const fakeHome = path.join(codexHome, 'fakehome');
++  await ensureDir(codexHome);
++  await ensureDir(fakeHome);
++
++  const prep: CodexHomePrep = {
++    codexHome, fakeHome, strippedKeys: [], rewrittenPaths: [], copiedFiles: [], warnings: [],
++  };
++
++  // ① 裁剪：基底 config.toml 与本次 profile 的分层文件
++  const tomls = ['config.toml', ...(opts.profile ? [`${opts.profile}.config.toml`] : [])];
++  for (const name of tomls) {
++    const from = path.join(src, name);
++    if (!(await exists(from))) {
++      if (name !== 'config.toml') {
++        prep.warnings.push(`profile 文件 ${name} 不存在于 ${src}——该 profile 可能未配置`);
++      }
++      continue;
++    }
++    const { kept, stripped } = trimCodexToml(await fs.readFile(from, 'utf8'));
++    const to = path.join(codexHome, name);
++    await fs.writeFile(to, kept, 'utf8');
++    await fs.chmod(to, 0o600);
++    prep.strippedKeys.push(...stripped.map((k) => `${name}:${k}`));
++  }
++
++  // ② 重写 + ③ 拷贝（只作用于幸存键）
++  for (const name of tomls) {
++    const f = path.join(codexHome, name);
++    if (!(await exists(f))) continue;
++    const r = await rewriteHomePaths(f, codexHome);
++    prep.rewrittenPaths.push(...r.rewritten);
++    prep.copiedFiles.push(...r.copied);
++    prep.warnings.push(...r.warnings);
++  }
++
++  // 凭据：auth.json 原样拷入并收紧权限
++  const auth = path.join(src, 'auth.json');
++  if (await exists(auth)) {
++    const to = path.join(codexHome, 'auth.json');
++    await fs.copyFile(auth, to);
++    await fs.chmod(to, 0o600);
++    prep.copiedFiles.push('auth.json');
++  } else {
++    prep.warnings.push(`未找到 ${auth}——该侧可能无法通过鉴权`);
++  }
++
++  // 按当次项目根重建信任记录（不抄宿主机整张表）
++  const base = path.join(codexHome, 'config.toml');
++  if (await exists(base)) {
++    const trust = `\n[projects."${opts.projectRoot}"]\ntrust_level = "trusted"\n`;
++    await fs.appendFile(base, trust, 'utf8');
++  }
++
++  prep.copiedFiles = [...new Set(prep.copiedFiles)];
++  return prep;
++}
+diff --git a/src/trivium/adapters/codex-trace.ts b/src/trivium/adapters/codex-trace.ts
+new file mode 100644
+index 0000000..920a006
+--- /dev/null
++++ b/src/trivium/adapters/codex-trace.ts
+@@ -0,0 +1,249 @@
++/**
++ * codex 事件流与会话文件的解析（设计 §11.1，M8 第 3 步）。
++ *
++ * ## 为什么住在 adapters/ 而不是 probes/
++ *
++ * 本文件原是 `probes/codex.ts` 的一部分。适配器接入时若再写一份解析，
++ * 同一个事实就有了两个来源（纪律 7）——探针据一份下结论、适配器据另一份采证据，
++ * 两份漂移了没人发现。搬家后探针 import 本模块，与
++ * `zcode-trace.ts` / `agy-events.ts` 的分工一致：解析是纯函数，执行留在适配器里。
++ *
++ * 搬家的安全网是 `test/unit/codex-events.test.ts`——它先于搬家存在且当时全绿。
++ */
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++
++/** 一条命令执行记录 */
++export interface CodexCommand {
++  command: string;
++  exitCode: number | null;
++  status: string;
++  output: string;
++}
++
++/** 事件流里出现过的 item 类型 + 命令执行记录 */
++export interface CodexTrace {
++  /** 顶层事件类型（thread.started / turn.completed / error …） */
++  eventTypes: string[];
++  /** item 类型（command_execution / agent_message / reasoning / error …） */
++  itemTypes: string[];
++  commands: CodexCommand[];
++  finalText: string | null;
++  /** 会话 id。与会话文件名精确关联，不靠「取最新文件」（zcode 侧的坑 P-14） */
++  threadId: string | null;
++  /**
++   * 错误消息（顶层 `{"type":"error"}` 事件与 `error` item 合流）。
++   *
++   * **顶层 error 是本步实测新发现的形态**，探针记录的 `json_event_types` 里没有它：
++   * 跨家族调用（`-p qwen -m deepseek-flash`）时流里是
++   * `Reconnecting... 1/5 (stream disconnected: Model not found: deepseek-flash)`，
++   * 重试五次后退 1。不认这个类型，失败原因就只剩一个退出码。
++   */
++  errors: string[];
++  /**
++   * 已完成的 item 原始对象。
++   *
++   * 留着是为了让「读取路径有没有结构化字段」可以**真测**而不是写常量：
++   * 判据要看除 `command` 外有没有别的字段装着路径（M6 审查意见 GLM-04）。
++   */
++  rawItems: Record<string, unknown>[];
++}
++
++/** 解析 `exec --json` 的 JSONL。坏行跳过而不是抛——真实输出里混过 stderr 噪声 */
++export function parseCodexEvents(jsonl: string): CodexTrace {
++  const eventTypes = new Set<string>();
++  const itemTypes = new Set<string>();
++  const commands: CodexCommand[] = [];
++  const rawItems: Record<string, unknown>[] = [];
++  const errors: string[] = [];
++  let finalText: string | null = null;
++  let threadId: string | null = null;
++
++  for (const line of jsonl.split('\n')) {
++    const t = line.trim();
++    if (!t.startsWith('{')) continue;
++    let o: Record<string, unknown>;
++    try {
++      o = JSON.parse(t) as Record<string, unknown>;
++    } catch {
++      continue;
++    }
++    if (typeof o['type'] === 'string') eventTypes.add(o['type']);
++    if (o['type'] === 'thread.started' && typeof o['thread_id'] === 'string') {
++      threadId = o['thread_id'];
++    }
++    // 顶层 error 事件：没有 item，消息直接挂在事件上
++    if (o['type'] === 'error' && typeof o['message'] === 'string') {
++      errors.push(o['message']);
++      continue;
++    }
++
++    const item = o['item'] as Record<string, unknown> | undefined;
++    if (!item) continue;
++    const itemType = typeof item['type'] === 'string' ? item['type'] : null;
++    if (itemType) itemTypes.add(itemType);
++    if (o['type'] === 'item.completed') rawItems.push(item);
++    if (itemType === 'command_execution' && item['status'] === 'completed') {
++      commands.push({
++        command: String(item['command'] ?? ''),
++        exitCode: typeof item['exit_code'] === 'number' ? item['exit_code'] : null,
++        status: String(item['status'] ?? ''),
++        output: String(item['aggregated_output'] ?? ''),
++      });
++    }
++    if (itemType === 'agent_message' && typeof item['text'] === 'string') {
++      finalText = item['text'];
++    }
++    if (itemType === 'error' && typeof item['message'] === 'string') {
++      errors.push(item['message']);
++    }
++  }
++  return {
++    eventTypes: [...eventTypes].sort(),
++    itemTypes: [...itemTypes].sort(),
++    commands,
++    finalText,
++    threadId,
++    errors,
++    rawItems,
++  };
++}
++
++/**
++ * 「这次跑完了没有」—— 三态判据的**共用前提**（M6 审查意见 GLM-01 / GLM-05）。
++ *
++ * `run()` 超时**不抛错**、返回截断输出，所以只看解析结果的话，
++ * 一次网络抖动与一次真实的能力缺陷长得一模一样。
++ * 判据取「有没有最终回复」而不是退出码：codex 在模型拒绝任务时也可能退 0，
++ * 而那时同样没有可用结论。
++ */
++export function traceCompleted(trace: CodexTrace, timedOut: boolean): boolean {
++  return !timedOut && trace.finalText !== null;
++}
++
++/**
++ * 成功执行过的命令 —— 写判据的入参（`classifyWriteCommands` 的调用契约）。
++ *
++ * 判据是 `status: completed` **且** `exit_code === 0`。失败的命令不进这一档，
++ * 但它们仍留在 `command_texts` 全集里供措施 b 扫描：泄漏企图即便失败也要检出，
++ * 两者论域不同。
++ */
++export function succeededCommands(trace: CodexTrace): string[] {
++  return trace.commands.filter((c) => c.status === 'completed' && c.exitCode === 0).map((c) => c.command);
++}
++
++/** 会话元数据里能回读到的生效事实 */
++export interface CodexSessionMeta {
++  sessionId: string | null;
++  /** provider 家族（`qwen` / `deepseek` …）——随 `-p` 走 */
++  modelProvider: string | null;
++  /** 生效模型 slug——随 `-m` 走，不是 profile 的意图值 */
++  modelEffective: string | null;
++  cliVersion: string | null;
++}
++
++/**
++ * 解析会话文件首行的 `session_meta`（**生效模型的唯一回读落点**）。
++ *
++ * ## 为什么必须从这里读
++ *
++ * `exec --json` 的事件流里**没有任何 model 字段**（本步实测三组调用逐行核对，
++ * 既有样本 `test/fixtures/codex-events/read-sentinel.jsonl` 同形）。
++ * 而 AC-20 要求「生效模型与指定一致且互可区分」，`model_effective` 拿不到就没法验收。
++ *
++ * ## 实测依据（M8 第 3 步，2026-09-15）
++ *
++ * | 命令 | 回读值 |
++ * | :--- | :--- |
++ * | `-p qwen` | `qwen` / `qwen3.8-max` |
++ * | `-p deepseek` | `deepseek` / `deepseek-flash` |
++ * | `-p qwen -m qwen3.8-flash` | `qwen` / **`qwen3.8-flash`** |
++ *
++ * 第三组证明它**跟随 `-m` 覆盖**、而不是复读 profile 的意图值——
++ * 这正是 AC-20 那句「生效模型仍以回读为准、不采信 profile 意图」要的东西。
++ *
++ * ## 边界
++ *
++ * `base_instructions.provenance` 不是公开契约，字段名可能随版本变。
++ * 取不到时返回 null，由调用方记 `unverified`——**绝不用 requested 冒充**
++ * （与 `adapters/zcode.ts` 的既定纪律一致）。
++ */
++export function parseCodexSessionMeta(firstLine: string): CodexSessionMeta {
++  const empty: CodexSessionMeta = {
++    sessionId: null, modelProvider: null, modelEffective: null, cliVersion: null,
++  };
++  let o: Record<string, unknown>;
++  try {
++    o = JSON.parse(firstLine.trim()) as Record<string, unknown>;
++  } catch {
++    return empty;
++  }
++  if (o['type'] !== 'session_meta') return empty;
++  const p = o['payload'] as Record<string, unknown> | undefined;
++  if (!p) return empty;
++
++  const base = p['base_instructions'] as Record<string, unknown> | undefined;
++  const prov = base?.['provenance'] as Record<string, unknown> | undefined;
++
++  return {
++    sessionId: typeof p['session_id'] === 'string' ? p['session_id'] : null,
++    modelProvider: typeof p['model_provider'] === 'string' ? p['model_provider'] : null,
++    modelEffective: typeof prov?.['model'] === 'string' ? (prov['model'] as string) : null,
++    cliVersion: typeof p['cli_version'] === 'string' ? p['cli_version'] : null,
++  };
++}
++
++/**
++ * 按 `threadId` 在 `$CODEX_HOME/sessions/` 下定位会话文件。
++ *
++ * 文件名形如 `rollout-<时间戳>-<threadId>.jsonl`，而 `threadId` 正是
++ * `thread.started` 事件给出的那个——**逐字相同**（本步实测核对）。
++ * 因此关联不靠「取最新文件」：共享 HOME 下并发跑两轮就会串号，
++ * zcode 侧为这个踩过坑（P-14）。
++ *
++ * 目录按 `YYYY/MM/DD` 分层，跨零点的运行会落在第二天，所以逐层找而不是拼日期。
++ */
++export async function findSessionFile(codexHome: string, threadId: string): Promise<string | null> {
++  const root = path.join(codexHome, 'sessions');
++  const stack: string[] = [root];
++  while (stack.length > 0) {
++    const dir = stack.pop()!;
++    let names: string[];
++    try {
++      names = await fs.readdir(dir);
++    } catch {
++      continue;
++    }
++    for (const name of names) {
++      const full = path.join(dir, name);
++      if (name.includes(threadId) && name.endsWith('.jsonl')) return full;
++      // 不用 withFileTypes：Dirent 的泛型在本仓库 @types/node 版本下与 readdir
++      // 重载对不齐，而这里只需要「能不能继续往下走」，stat 失败即当文件跳过
++      try {
++        if ((await fs.stat(full)).isDirectory()) stack.push(full);
++      } catch {
++        /* competing cleanup 之类，跳过即可 */
++      }
++    }
++  }
++  return null;
++}
++
++/** 读会话文件并回读生效事实。文件不在或首行不是 session_meta 时全 null */
++export async function readSessionMeta(
++  codexHome: string,
++  threadId: string | null,
++): Promise<CodexSessionMeta> {
++  const empty: CodexSessionMeta = {
++    sessionId: null, modelProvider: null, modelEffective: null, cliVersion: null,
++  };
++  if (!threadId) return empty;
++  const file = await findSessionFile(codexHome, threadId);
++  if (!file) return empty;
++  try {
++    const text = await fs.readFile(file, 'utf8');
++    return parseCodexSessionMeta(text.split('\n')[0] ?? '');
++  } catch {
++    return empty;
++  }
++}
+diff --git a/src/trivium/adapters/codex.ts b/src/trivium/adapters/codex.ts
+new file mode 100644
+index 0000000..584bc0a
+--- /dev/null
++++ b/src/trivium/adapters/codex.ts
+@@ -0,0 +1,446 @@
++/**
++ * Codex 适配器（设计 §11.1 / §3.6，M8 第 3 步）。
++ *
++ * 与既有两家最要紧的差别不在参数，在**能力形状**：codex 读文件就是跑 shell，
++ * 路径只在命令文本里（P-C1），被沙箱拒绝的命令一条事件都不产生（P-C2）。
++ * 判定层已在第 2 步改为面向 `TraceCapability`，所以这里只声明能力、不特判。
++ *
++ * 铁律（原则 P7）：命令行**一律由 probe 结论构造**，不得硬编码设计文档里的示例。
++ */
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import type { CriticRequest, CriticResult, CodexCriticConfig } from '../types.js';
++import { run } from '../util/exec.js';
++import { ensureDir, exists, sha256File } from '../util/fsx.js';
++import { agentConfigOf } from '../config.js';
++import {
++  parseCodexEvents,
++  readSessionMeta,
++  succeededCommands,
++  traceCompleted,
++  type CodexSessionMeta,
++  type CodexTrace,
++} from './codex-trace.js';
++import { codexHomeOf, prepareCodexHome, type CodexHomePrep } from './codex-home.js';
++import {
++  classifyWriteCommands,
++  failedResult,
++  COMMAND_TRACE_CAPABILITY,
++  type AdapterContext,
++  type CriticAdapter,
++} from './base.js';
++
++export interface CodexInvokeOptions {
++  bin: string;
++  cwd: string;
++  /** 送审包全文。走 stdin，不进 argv */
++  prompt: string;
++  profile: string | null;
++  model: string | null;
++  effort: string | null;
++  /** 探针实测被接受的只读旗标（argv 形态） */
++  readonlyArgs: string[];
++  codexHome: string;
++  fakeHome: string;
++  timeoutMs: number;
++}
++
++/**
++ * argv 拼装。纯函数，与执行分离，让调用配方有回归测试。
++ *
++ * **prompt 走 stdin（末尾的 `-`）而不是 argv**：送审包是几十 KB 量级的文本，
++ * 塞进 argv 是在赌 `ARG_MAX`。`codex exec --help` 明载 `[PROMPT]` 支持 `-`
++ * 从 stdin 读，本步实测以 78 KB 跑通。
++ */
++export function buildCodexArgs(
++  opts: Pick<CodexInvokeOptions, 'profile' | 'model' | 'effort' | 'readonlyArgs' | 'cwd'>,
++): string[] {
++  return [
++    'exec',
++    ...(opts.profile ? ['-p', opts.profile] : []),
++    ...(opts.model ? ['-m', opts.model] : []),
++    ...(opts.effort ? ['-c', `model_reasoning_effort=${opts.effort}`] : []),
++    ...opts.readonlyArgs,
++    '--json',
++    '--skip-git-repo-check',
++    '-C', opts.cwd,
++    '-',
++  ];
++}
++
++/**
++ * 只读旗标由探针结论构造（P7）。
++ *
++ * 本机实测值是 `['-s','read-only']`，且该结论是**负对照挣来的**：探针让模型
++ * 在 cwd 建文件，文件没被创建才记这个值；创建成功则记空数组。
++ * 所以空数组的含义是「本机沙箱不可信」，此时该侧必须判不可用——
++ * 绝不能回落到一个「文档上写着应该管用」的默认值。
++ */
++export function readonlyArgsFromProbe(readonlyFlags: readonly string[]): string[] {
++  return [...readonlyFlags];
++}
++
++export interface CodexInvokeOutcome {
++  stdout: string;
++  stderr: string;
++  exitCode: number | null;
++  timedOut: boolean;
++  commandLine: string;
++  durationMs: number;
++}
++
++/** **唯一**执行 codex 的地方 */
++export async function invokeCodex(opts: CodexInvokeOptions): Promise<CodexInvokeOutcome> {
++  const args = buildCodexArgs(opts);
++  const r = await run(opts.bin, args, {
++    cwd: opts.cwd,
++    env: { CODEX_HOME: opts.codexHome, HOME: opts.fakeHome },
++    /*
++     * stdin 必须显式给：codex 在 argv 已带 prompt 时**仍然读 stdin**
++     * （stderr 恒打印 `Reading additional input from stdin...`）。
++     * 本步实测踩过——继承了一个不会 EOF 的 stdin，进程挂到超时被杀。
++     */
++    stdin: opts.prompt,
++    timeoutMs: opts.timeoutMs,
++    killTree: true,
++  });
++  return {
++    stdout: r.stdout,
++    stderr: r.stderr,
++    exitCode: r.code,
++    timedOut: r.timedOut,
++    commandLine: r.commandLine,
++    durationMs: r.durationMs,
++  };
++}
++
++/** 取 codex 的配置段。缺段或 vendor 不符时由 `agentConfigOf` 响亮失败 */
++function codexConfig(ctx: AdapterContext): CodexCriticConfig {
++  return agentConfigOf(ctx.cfg, 'codex', 'openai') as CodexCriticConfig;
++}
++
++/**
++ * 把一次运行的原始事实组装成 `CriticResult`。
++ *
++ * **抽成纯函数是为了能被变异验证打中**（M8 第 3 步）：这里有一条 AC-20 的硬判据——
++ * 「生效模型以回读为准、拿不到就记 `unverified`，绝不用 requested 冒充」——
++ * 而它原先埋在 `run()` 里，要真跑 codex 才走得到。跑一次 M4 变异
++ * （`meta.modelEffective ?? req.model`）证实了这一点：全量用例无一变红。
++ * 冒充的后果不是数字难看，是 AC-20 那条验收**永远通过、永远没有意义**。
++ */
++export function buildCodexResult(
++  trace: CodexTrace,
++  meta: CodexSessionMeta,
++  o: Pick<CodexInvokeOutcome, 'exitCode' | 'durationMs' | 'commandLine'>,
++  paths: { stdout: string; trace: string },
++  probe: { version: string | null; path_deny: { supported: boolean | null } },
++  projectRoot: string,
++): CriticResult {
++  /*
++   * 写判据在这里算，不从调用方传进来：判据与它产出的两个字段绑在一处，
++   * 才不会出现「算了一套、填了另一套」。入参只喂**成功执行**的命令，
++   * 而 `command_texts` 拿全集——两者论域不同，见 `classifyWriteCommands` 的契约。
++   */
++  const allCommands = trace.commands.map((c) => c.command);
++  const { writes, suspected } = classifyWriteCommands(succeededCommands(trace), projectRoot);
++
++  return {
++    critic: 'codex',
++    status: 'ok',
++    exit_code: o.exitCode,
++    duration_s: o.durationMs / 1000,
++    raw_stdout_path: paths.stdout,
++    trace_path: paths.trace,
++    review_json: null, // 由 parse 填充
++    raw_response_text: trace.finalText,
++    model_effective: meta.modelEffective,
++    /*
++     * 回读到就记 trace，回读不到记 unverified——**绝不用 requested 冒充**
++     * （与 zcode 侧同一条纪律）。AC-20 要核对「生效模型与指定一致」，
++     * 拿意图值冒充会让那条验收永远通过、永远没有意义。
++     */
++    model_effective_source: meta.modelEffective ? 'trace' : 'unverified',
++    model_route: 'config_copy',
++    tool_calls: { run_command: trace.commands.length },
++    /*
++     * **恒为空数组，且这是能说明理由的空**：codex 没有结构化读取路径字段
++     * （P-C1 实测），读取路径由判定层从 `command_texts` 回填
++     * （`effectiveReadPaths`，第 2 步落地）。空的含义是「该侧没有这种字段」，
++     * 不是「没采集」。
++     */
++    read_paths: [],
++    write_events: writes,
++    suspected_write_events: suspected,
++    command_texts: allCommands,
++    evidence_ok: false, // 由 guard 判定
++    fail_reason: null,
++    session_id: trace.threadId,
++    cli_version: meta.cliVersion ?? probe.version,
++    // 实测：codex 无路径级 deny 机制（`path_deny.supported === false`）
++    peer_deny_applied: probe.path_deny.supported === true,
++    command_line: o.commandLine,
++  };
++}
++
++export const codexAdapter: CriticAdapter = {
++  critic: 'codex',
++  /*
++   * 读即命令、被拒不留痕。两条都是 M6 实测（P-C1 / P-C2），
++   * 本步的隔离实测再次复现了后者：让模型写 /tmp，文件没建成，
++   * 而轨迹里连那条命令都没有。
++   */
++  capability: COMMAND_TRACE_CAPABILITY,
++
++  /**
++   * 探活。
++   *
++   * 指纹取本次 profile 的分层文件 + `auth.json`：这两处任一改动都会换掉凭据或 provider，
++   * 旧的「已认证」结论随即失效。基底 `config.toml` 不进指纹——它的大部分内容
++   * （plugins、mcp_servers、projects 信任表）与鉴权无关，且每次用 codex 都在变，
++   * 把它算进去等于让缓存永远失效。
++   *
++   * 最小调用走与真实审查**同一条隔离路径**（裁剪副本 + 双覆盖）：
++   * 探活若走宿主机配置而真实运行走副本，探到的「能用」证明不了副本里也能用——
++   * 那正是本步要防的失败形态（F-2 的退出就发生在副本里，宿主机上一切正常）。
++   */
++  authProbe(ctx: AdapterContext, projectRoot: string) {
++    const cfg = ctx.cfg;
++    const profile = codexConfig(ctx).profile;
++    return {
++      async fingerprint(): Promise<string | null> {
++        const home = codexHomeOf();
++        const parts: string[] = [];
++        for (const f of [profile ? `${profile}.config.toml` : null, 'auth.json']) {
++          if (!f) continue;
++          const p = path.join(home, f);
++          if (await exists(p)) parts.push((await sha256File(p)) ?? '');
++        }
++        return parts.length > 0 ? parts.join(':') : null;
++      },
++      async probe(): Promise<{ ok: boolean; detail: string }> {
++        const probe = cfg.probe.cli.codex;
++        const bin = codexConfig(ctx).bin ?? probe?.entrypoint ?? null;
++        if (!bin) return { ok: false, detail: 'codex 入口未记录' };
++
++        const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-codex-auth-'));
++        try {
++          const home = await prepareCodexHome(tmp, { profile, projectRoot });
++          const out = await invokeCodex({
++            bin,
++            cwd: projectRoot,
++            prompt: '只回复 OK 两个字母，不要调用任何工具。',
++            profile,
++            model: null, // 用 profile 的默认模型，探的是凭据不是模型路由
++            effort: null,
++            readonlyArgs: readonlyArgsFromProbe(probe?.readonly_flags ?? []),
++            codexHome: home.codexHome,
++            fakeHome: home.fakeHome,
++            timeoutMs: 120_000,
++          });
++          const trace = parseCodexEvents(out.stdout);
++          const ok = traceCompleted(trace, out.timedOut);
++          return {
++            ok,
++            detail: ok
++              ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
++              : `探活失败：${trace.errors.join('；') || out.stderr.slice(0, 200) || '(无错误消息)'}。\n` +
++                `  请确认 profile「${profile ?? '(未配置)'}」对应的 provider 凭据可用。`,
++          };
++        } finally {
++          await fs.rm(tmp, { recursive: true, force: true });
++        }
++      },
++    };
++  },
++
++  availability(ctx: AdapterContext) {
++    // 两态判据同另两家：以 probed_at 区分「没探过」与「探过没找到」
++    const p = ctx.cfg.probe.cli.codex;
++    if (!p?.probed_at) {
++      return { ok: false, reason: 'codex 尚未探测，请先运行 trivium doctor --only codex' };
++    }
++    if (!p.entrypoint) {
++      return { ok: false, reason: '探针未找到 codex 可执行文件，请先运行 trivium doctor' };
++    }
++    if (p.readonly_flags.length === 0) {
++      return {
++        ok: false,
++        reason:
++          '探针未实测到可用的只读旗标——**这包括只读沙箱负对照失败的情形**' +
++          '（read-only 下文件仍被创建时探针会把该字段清空）。无法保障审查员只读，该侧不可用。',
++      };
++    }
++    if (p.exec_headless_read_ok === false) {
++      return {
++        ok: false,
++        reason: 'codex exec headless 读不到文件，该侧无法作为审查员使用。请重跑 trivium doctor --only codex',
++      };
++    }
++    if (p.exec_headless_read_ok === null) {
++      return {
++        ok: false,
++        reason: '探针尚未实测 codex 的 headless 读取能力（上次探测没跑完），请重跑 trivium doctor --only codex',
++      };
++    }
++
++    /*
++     * provider 家族必须带得出凭据（J8 / AC-20 末条）。
++     *
++     * 判据落在**本次 profile** 上而不是「有任意一家可用」：家族由 profile 决定，
++     * 而未知 profile 会被 codex **静默回落**到基底配置（`unknown_profile_rejected`
++     * 实测为 false），所以这里不拦，用户就会以为跑的是 deepseek、实际跑的是别家。
++     */
++    const wanted = codexConfig(ctx).profile;
++    if (wanted !== null) {
++      const hit = p.providers.find((x) => x.profile === wanted);
++      if (!hit) {
++        const known = p.providers.map((x) => x.profile).join('、') || '（探针未发现任何 profile）';
++        return {
++          ok: false,
++          reason:
++            `配置的 codex profile「${wanted}」在本机不存在。已探测到的：${known}。\n` +
++            '  注意 codex 对未知 profile 不报错、而是静默回落基底配置，所以这道拦截由预检负责。',
++        };
++      }
++      if (!hit.credentialed) {
++        return {
++          ok: false,
++          reason:
++            `codex profile「${wanted}」对应的 provider「${hit.provider ?? '未知'}」没有可用凭据。\n` +
++            `  请在 ${'~/.codex'}/${wanted}.config.toml 或 config.toml 的 [model_providers.${hit.provider ?? '<家族>'}] 段配置凭据后重跑 doctor。\n` +
++            '  编排器不代写凭据、也不改你的全局配置（纪律 5）。',
++        };
++      }
++    }
++    return { ok: true };
++  },
++
++  async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
++    const probe = ctx.cfg.probe.cli.codex;
++    if (!probe?.probed_at) {
++      return failedResult('codex', {
++        status: 'failed',
++        reason: 'codex 尚未探测，请先运行 trivium doctor --only codex',
++      });
++    }
++    if (!probe.entrypoint) {
++      return failedResult('codex', { status: 'failed', reason: 'codex 入口未探测到' });
++    }
++
++    const cfg = codexConfig(ctx);
++    const bin = cfg.bin ?? probe.entrypoint;
++    await ensureDir(req.out_dir);
++    const stdoutPath = path.join(req.out_dir, 'stdout.jsonl');
++    const tracePath = path.join(req.out_dir, 'trace.json');
++
++    // 隔离：CODEX_HOME + HOME 双覆盖，配置按白名单裁剪（EV-08 + 本步实测）
++    let home: CodexHomePrep;
++    try {
++      home = await prepareCodexHome(path.dirname(req.out_dir), {
++        profile: cfg.profile,
++        projectRoot: req.project_root,
++      });
++    } catch (e) {
++      return failedResult('codex', {
++        status: 'failed',
++        reason: `准备 codex 隔离副本失败：${(e as Error).message}`,
++      });
++    }
++
++    let out: CodexInvokeOutcome;
++    try {
++      out = await invokeCodex({
++        bin,
++        cwd: req.project_root,
++        prompt: req.brief_text,
++        profile: cfg.profile,
++        model: req.model,
++        effort: req.effort ?? null,
++        readonlyArgs: readonlyArgsFromProbe(probe.readonly_flags),
++        codexHome: home.codexHome,
++        fakeHome: home.fakeHome,
++        timeoutMs: req.timeout_s * 1000,
++      });
++    } catch (e) {
++      return failedResult('codex', {
++        status: 'failed',
++        reason: `拉起 codex 失败：${(e as Error).message}`,
++      });
++    }
++
++    await fs.writeFile(stdoutPath, out.stdout, 'utf8');
++    const trace = parseCodexEvents(out.stdout);
++
++    if (out.timedOut) {
++      return failedResult('codex', {
++        status: 'timeout',
++        reason: `脚本级超时（${req.timeout_s}s）`,
++        exitCode: out.exitCode,
++        durationS: out.durationMs / 1000,
++        rawStdoutPath: stdoutPath,
++        cliVersion: probe.version,
++        commandLine: out.commandLine,
++        sessionId: trace.threadId,
++      });
++    }
++
++    if (!traceCompleted(trace, out.timedOut)) {
++      /*
++       * 没有最终回复即视为没跑成——退出码不足以判定（codex 在模型拒绝任务时也可能退 0）。
++       * 失败原因优先取事件流里的 error 消息：跨家族调用时那里写的是
++       * `Model not found: …`，而退出码只有一个 1。
++       */
++      const why = trace.errors.length > 0 ? trace.errors.join('；') : out.stderr.slice(0, 300);
++      return failedResult('codex', {
++        status: 'failed',
++        reason: `codex 未产出最终回复：${why || '(无错误消息)'}`,
++        exitCode: out.exitCode,
++        durationS: out.durationMs / 1000,
++        rawStdoutPath: stdoutPath,
++        cliVersion: probe.version,
++        commandLine: out.commandLine,
++        sessionId: trace.threadId,
++      });
++    }
++
++    // 生效模型回读：会话文件首行的 session_meta（事件流里没有 model 字段）
++    const meta = await readSessionMeta(home.codexHome, trace.threadId);
++
++    /*
++     * 写判定：只把**成功执行**的命令喂进分类器。
++     * `command_texts` 保留全集给措施 b——泄漏企图即便失败也要被扫到，两者论域不同。
++     */
++    const { writes, suspected } = classifyWriteCommands(
++      succeededCommands(trace),
++      req.project_root,
++    );
++
++    await fs.writeFile(
++      tracePath,
++      JSON.stringify(
++        {
++          threadId: trace.threadId,
++          eventTypes: trace.eventTypes,
++          itemTypes: trace.itemTypes,
++          commands: trace.commands,
++          errors: trace.errors,
++          writeEvents: writes,
++          suspectedWrites: suspected,
++          isolation: {
++            codexHome: home.codexHome,
++            strippedKeys: home.strippedKeys,
++            rewrittenPaths: home.rewrittenPaths,
++            copiedFiles: home.copiedFiles,
++            warnings: home.warnings,
++          },
++        },
++        null,
++        2,
++      ),
++      'utf8',
++    );
++
++    return buildCodexResult(trace, meta, out, { stdout: stdoutPath, trace: tracePath }, probe, req.project_root);
++  },
++};
+diff --git a/src/trivium/adapters/index.ts b/src/trivium/adapters/index.ts
+index d2af7fa..f5400ed 100644
+--- a/src/trivium/adapters/index.ts
++++ b/src/trivium/adapters/index.ts
+@@ -12,6 +12,7 @@
+  * 注册表回答**身份**，本表回答**由谁执行**。
+  */
+ import { agyAdapter } from './agy.js';
++import { codexAdapter } from './codex.js';
+ import { zcodeAdapter } from './zcode.js';
+ import type { AdapterTable } from './base.js';
+ import { CRITIC_AGENT_IDS, agentById } from '../agents/registry.js';
+@@ -24,6 +25,7 @@ import { CRITIC_AGENT_IDS, agentById } from '../agents/registry.js';
+  * 由下面的 `realAdapters()` 在启动时响亮报出，而不是等运行到一半才 undefined。
+  */
+ const WIRED: AdapterTable = {
++  codex: codexAdapter,
+   gemini: agyAdapter,
+   glm: zcodeAdapter,
+ };
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index 65af0df..f6b4485 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -17,7 +17,7 @@ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import type { CriticRequest, CriticResult } from '../types.js';
+ import { run } from '../util/exec.js';
+-import { ensureDir, exists } from '../util/fsx.js';
++import { ensureDir, exists, sha256File } from '../util/fsx.js';
+ import {
+   parseZcodeEnvelope,
+   parseZcodeRollout,
+@@ -189,6 +189,55 @@ export const zcodeAdapter: CriticAdapter = {
+    */
+   capability: TOOL_TRACE_CAPABILITY,
+ 
++  /**
++   * 目录比对前的 slug 归一（M8 第 3 步）。
++   *
++   * 配置里写短名 `GLM-5.3` 更易读，但实测传裸名会落到错误 provider（坑 P-06），
++   * 所以适配器传参时会补成 `<providerId>/<name>`。预检要拿「补全后的形态」去比目录，
++   * 否则短名恒判不在目录里。这条知识属于本侧，收敛后不再住在 `preflight` 里。
++   */
++  normalizeModelForCatalog(cfg, model) {
++    return qualifyZcodeModel(model, cfg.probe.cli.zcode?.model_id_form ?? null) ?? model;
++  },
++
++  /**
++   * 探活（M8 第 3 步从 `preflight` 搬来）。
++   *
++   * 指纹取 `~/.zcode/cli/config.json`：CLI 的 provider 配置**独立于桌面端**，
++   * 「桌面端已登录」不等于 CLI 可用（M0 实测），所以判据只认这个文件。
++   */
++  authProbe(ctx: AdapterContext, projectRoot: string) {
++    const cfg = ctx.cfg;
++    return {
++      async fingerprint() {
++        const f = path.join(os.homedir(), '.zcode/cli/config.json');
++        return (await exists(f)) ? sha256File(f) : null;
++      },
++      async probe() {
++        const entry = cfg.probe.cli.zcode?.entrypoint ?? null;
++        if (!entry) return { ok: false, detail: 'zcode 入口未记录' };
++        const out = await invokeZcode({
++          entry,
++          node: ctx.nodePath,
++          cwd: projectRoot,
++          prompt: '只回复 OK 两个字母，不要调用任何工具。',
++          readonlyArgs: readonlyArgsFromProbe(cfg.probe.cli.zcode?.readonly_flags ?? []),
++          homeDir: null,
++          timeoutMs: 120_000,
++        });
++        const ok = out.failureKind === 'none' && !out.timedOut && out.envelope !== null;
++        return {
++          ok,
++          detail: ok
++            ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
++            : out.failureKind === 'model_config_missing'
++              ? '缺 ~/.zcode/cli/config.json（CLI 的模型配置独立于桌面端，「已登录」不等于可用）'
++              : `探活失败（${out.failureKind}）：${out.stderr.slice(0, 200)}`,
++        };
++      },
++    };
++  },
++
+   availability(ctx: AdapterContext) {
+     // 同 agy：「未探过」与「探过但没找到」要分开答，判据用 probed_at 而非 `!p`（AGY-01）。
+     const p = ctx.cfg.probe.cli.zcode;
+diff --git a/src/trivium/agents/registry.ts b/src/trivium/agents/registry.ts
+index d362f50..49c24d9 100644
+--- a/src/trivium/agents/registry.ts
++++ b/src/trivium/agents/registry.ts
+@@ -18,9 +18,15 @@
+  *
+  * 本里程碑是**行为等价重构**：注册表登记四项，但 `criticEnabled` 只对
+  * gemini / glm 为真，`driverEnabled` 只对 claude 为真——与重构前可选集合
+- * 逐项相同。codex / claude 的审核者能力在 M8 / M9 随适配器一并启用，
+- * Driver 任意化在 M10。登记而不启用，是为了让注册表从第一天起就是完整的
++ * 逐项相同。登记而不启用，是为了让注册表从第一天起就是完整的
+  * 单一来源（审查意见 AGY-03②）。
++ *
++ * ## M8 第 3 步的变化
++ *
++ * codex 的 `criticEnabled` 翻为 true（适配器、探针、镜头、配置形状、模型路由五件齐备）。
++ * 同时新增 `defaultSelected`：**「能不能当审核者」与「不选时跑不跑它」自此是两件事**——
++ * 否则启用第三家就等于让每次审查的成本自动涨一档（决策 D-1）。
++ * claude 的审核者能力仍待 M9，Driver 任意化仍待 M10。
+  */
+ 
+ /** 已登记的 Agent。取值同时是归档后缀与配置键命名空间 */
+@@ -49,7 +55,9 @@ export interface AgentDescriptor {
+    * 「Critic-A / Critic-B」是主设计第 0 章术语表**钉死的称谓**（A = gemini、B = glm），
+    * 不是按运行期位置算出来的序号——所以它登记在这里，而不是渲染时数下标。
+    * 若按下标算，启用第三家后既有两侧的字母会跟着漂移，历史留痕的抬头就对不上了。
+-   * codex / claude 启用为审核者时（M8 / M9）字母由届时的设计裁定，现在不预留。
++   * codex 于 M8 第 3 步启用为审核者，字母裁定为 **C**（决策 D-2）：A/B 是术语表钉死的
++   * 称谓、不是按位置算的序号，所以新启用者取下一个未用字母，既有两侧不受影响。
++   * claude 启用时（M9）同理取 D。
+    */
+   label: string;
+   vendor: AgentVendor;
+@@ -89,6 +97,20 @@ export interface AgentDescriptor {
+   findingPrefix: string;
+   /** 可作为审核者被 headless 拉起 */
+   criticEnabled: boolean;
++  /**
++   * 缺省是否入选 —— 与 `criticEnabled` **分开的一件事**（M8 第 3 步）。
++   *
++   * `criticEnabled` 回答「这一家能不能当审核者」，本字段回答「不指定 `--critics` 时跑不跑它」。
++   * 此前二者合一：`review.default_critics` 由 `criticEnabled` 全集派生，于是
++   * **启用第三家的那一刻，每次审查的配额成本自动涨 1.5 倍**，而那是用户可见的行为变化，
++   * 不该由一次「接入」顺带决定（决策 D-1，2026-09-15 由项目负责人裁定：
++   * 默认两家，可通过配置改成 1 家或 3 家）。
++   *
++   * 拆成两个字段而不是在 `config.ts` 里写死 `['gemini','glm']`：后者会让
++   * 「默认跑哪几家」多出一个与注册表并列的事实源（纪律 7）。这样 `default_critics`
++   * 仍是纯派生值，用户要三审就显式 `--critics` 或改配置。
++   */
++  defaultSelected: boolean;
+   /** 可作为 Driver 发起四条命令 */
+   driverEnabled: boolean;
+   guardLevel: GuardLevel;
+@@ -112,6 +134,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
+     suffix: 'claude',
+     findingPrefix: 'CLAUDE',
+     criticEnabled: false, // M9 启用
++    defaultSelected: false,
+     driverEnabled: true,
+     guardLevel: 'L1',
+     instructionFiles: ['CLAUDE.md'],
+@@ -119,12 +142,13 @@ export const AGENTS: readonly AgentDescriptor[] = [
+   {
+     id: 'codex',
+     display: 'Codex',
+-    label: 'OpenAI Codex',
++    label: 'Critic-C · OpenAI Codex',
+     vendor: 'openai',
+     cliName: 'codex',
+     suffix: 'codex',
+     findingPrefix: 'CODEX',
+-    criticEnabled: false, // M8 启用
++    criticEnabled: true, // M8 第 3 步启用
++    defaultSelected: false, // D-1：启用后也不进默认集合，要三审须显式选
+     driverEnabled: false, // M10 启用
+     guardLevel: 'L2',
+     instructionFiles: ['AGENTS.md'],
+@@ -138,6 +162,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
+     suffix: 'gemini',
+     findingPrefix: 'AGY',
+     criticEnabled: true,
++    defaultSelected: true,
+     driverEnabled: false, // M10 启用
+     guardLevel: 'L2',
+     instructionFiles: ['GEMINI.md'],
+@@ -151,6 +176,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
+     suffix: 'glm',
+     findingPrefix: 'GLM',
+     criticEnabled: true,
++    defaultSelected: true,
+     driverEnabled: false, // M10 启用
+     guardLevel: 'L1',
+     instructionFiles: ['AGENTS.md'],
+@@ -187,6 +213,28 @@ export const CRITIC_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.criti
+   (a) => a.id,
+ );
+ 
++/**
++ * **缺省入选**的审核者（`review.default_critics` 的唯一来源，M8 第 3 步）。
++ *
++ * 与 `CRITIC_AGENT_IDS` 的差别就是 `defaultSelected` 那一个字段：
++ * 前者是「能选谁」，本集合是「不选时跑谁」。codex 启用后属于前者不属于后者——
++ * 三审要显式 `--critics`（决策 D-1）。
++ *
++ * 断言缺省集合是启用集合的子集：`defaultSelected` 为真而 `criticEnabled` 为假
++ * 会让缺省配置直接跑不起来（`critics.ts` 拒掉未启用的 id），
++ * 那种组合是登记错误，不该等到运行期才发现。
++ */
++export const DEFAULT_CRITIC_AGENT_IDS: readonly AgentId[] = (() => {
++  const bad = AGENTS.filter((a) => a.defaultSelected && !a.criticEnabled).map((a) => a.id);
++  if (bad.length > 0) {
++    throw new Error(
++      `注册表登记错误：${bad.join('、')} 标了 defaultSelected 却没有 criticEnabled。\n` +
++        '  缺省入选必须是已启用审核者的子集，否则默认配置一跑就被 critics.ts 拒掉。',
++    );
++  }
++  return AGENTS.filter((a) => a.defaultSelected).map((a) => a.id);
++})();
++
+ /** 当前可作为 Driver 的 Agent（M7a：claude） */
+ export const DRIVER_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.driverEnabled).map(
+   (a) => a.id,
+diff --git a/src/trivium/archive.ts b/src/trivium/archive.ts
+index ed5ba17..371f5a5 100644
+--- a/src/trivium/archive.ts
++++ b/src/trivium/archive.ts
+@@ -15,7 +15,7 @@
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
+-import { CRITICS, type CriticId, type Stage, type StageOrVerify } from './types.js';
++import { DEFAULT_CRITICS, type CriticId, type Stage, type StageOrVerify } from './types.js';
+ import {
+   buildArtifactName,
+   buildVerifyName,
+@@ -271,11 +271,14 @@ export async function checkStageArtifacts(
+   stage: Stage,
+   rerunIndex: number,
+   /**
+-   * 本轮实际入选的审核者。缺省当前启用集合，与重构前的字面两家逐项相同。
+-   * 写死后缀时，审核者集合一变 `gate --check-artifacts` 必报假缺件
+-   * （计划 §2.1 / B-3）。
++   * 本轮实际入选的审核者。写死后缀时，审核者集合一变
++   * `gate --check-artifacts` 必报假缺件（计划 §2.1 / B-3）。
++   *
++   * **回落值取缺省集合而非启用全集**（M8 第 3 步）：codex 启用后，
++   * 「能跑的」是三家而「默认跑的」是两家，按前者回落会对每一个两侧轮次报假缺口。
++   * 读不到记录时，最合理的猜测是「跑了默认那几家」。
+    */
+-  critics: readonly Role[] = CRITICS,
++  critics: readonly Role[] = DEFAULT_CRITICS,
+   /** 当轮 Driver：原稿与裁决件的后缀 */
+   driver: AgentId = DEFAULT_DRIVER,
+   /**
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index 561acf6..6777055 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -145,9 +145,12 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
+   trivium review --status <run_id> [--json]    只读一次状态，不等待
+   trivium review --cancel <run_id>             取消运行并回收主题锁
+ 
+-  trivium preflight --stage plan|code|bug|all [--json] [--skip-auth-check] [--refresh-auth]
++  trivium preflight --stage plan|code|bug|all [--json] [--critics <id,…>] [--skip-auth-check] [--refresh-auth]
+       启动预检（FR-18 / AC-16）。失败时**不产生任何工件**。
+       --stage all   命令 A 用：校验全部三阶段的模型 slug + 编译测试命令已配置
++      --critics <id,…>  本次要用哪几侧。只读能力、模型 slug、探活都只查这几侧；
++                        缺省取 review.default_critics。下一步 review --start 选了谁，
++                        这里就要传谁——否则那一侧的可用性在预检阶段不被检查
+       --profile <名称>  按该档位预检——要校验的是本次实际会用的模型
+       --refresh-auth  强制重新探活，穿透 TTL 缓存
+ 
+@@ -510,10 +513,27 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
+ 
+   const modelOverrides = collectModelOverrides(args);
+ 
++  /*
++   * **本次入选的审核者要传进预检**（M8 第 3 步）。
++   *
++   * 不传的后果：预检按 `default_critics` 检查，而用户下一步 `review --start --critics
++   * codex,glm` 选的是另一组——于是**被选中那一侧的可用性在预检阶段根本不被检查**，
++   * 要等运行期 `availability()` 才发现。AC-20 明写「家族未配置 ⇒ 预检即拒绝启动」，
++   * 拦不住就是那条验收不成立。
++   *
++   * 解析走 `resolveCriticSelection`——与 `topic resolve` / `review --start` 同一处判定，
++   * 不在这里再实现一遍（M7b 第 5 步的教训：两处各写一份，启用第三家时会先后不一致）。
++   */
++  const critics = resolveCriticSelection(ctx.config, {
++    critics: flagString(args, 'critics'),
++    only: flagString(args, 'only'),
++  });
++
+   const r = await runPreflight({
+     ctx,
+     scope,
+     modelOverrides,
++    critics,
+     skipAuthCheck: args.flags.get('skip-auth-check') === true,
+     refreshAuth: args.flags.get('refresh-auth') === true,
+   });
+diff --git a/src/trivium/config.ts b/src/trivium/config.ts
+index a50cffe..629e857 100644
+--- a/src/trivium/config.ts
++++ b/src/trivium/config.ts
+@@ -17,7 +17,7 @@ import type {
+   ProbeSection,
+   Stage,
+ } from './types.js';
+-import { CRITICS } from './types.js';
++import { DEFAULT_CRITICS } from './types.js';
+ import { ALL_CLI_NAMES } from './agents/registry.js';
+ import { EXIT, TriviumError, envError, swallowedTextHint } from './exit-codes.js';
+ import { exists, expandHome } from './util/fsx.js';
+@@ -91,6 +91,7 @@ export function defaultProbe(): ProbeSection {
+     profile_flag: null,
+     unknown_profile_rejected: null,
+     profiles: [],
++    providers: [],
+     config_override: null,
+     effort_validated: null,
+     model_catalog_path: null,
+@@ -213,11 +214,17 @@ export function defaultConfig(): Config {
+       failure_policy: 'strict',
+       allow_partial_flag: true,
+       /*
+-       * 默认审核者集合维持两家——与现状等价，成本不变（设计 13.1.1）。
+-       * 从注册表的 criticEnabled 派生而不是写死 `['gemini','glm']`：
+-       * 启用第三家时这里自动跟随，不必记得回来改（纪律 7）。
++       * 默认审核者集合：从注册表的 **defaultSelected** 派生（M8 第 3 步）。
++       *
++       * 此前派生自 `criticEnabled`，原注释写「启用第三家时这里自动跟随」——
++       * 跟随本身没错，错在跟随的是**另一个事实**：`criticEnabled` 回答「这一家能不能
++       * 当审核者」，而这里要的是「不指定时跑谁」。两者合一的后果是 codex 接入的那一刻，
++       * 每次审查的配额成本自动涨一档，而用户没做过任何决定（决策 D-1）。
++       *
++       * 仍是纯派生值、没有第二事实源（纪律 7），改的只是派生自哪个字段。
++       * 要三审就显式 `--critics`，或在配置里写 `review.default_critics`。
+        */
+-      default_critics: [...CRITICS],
++      default_critics: [...DEFAULT_CRITICS],
+       max_critics: 3,
+       timeout_s: { plan: 900, code: 1200, bug: 1200 },
+       /*
+@@ -259,6 +266,18 @@ export function defaultConfig(): Config {
+         ],
+       },
+       glm: { vendor: 'zcode', entry: null, max_turns: 40, unsupported_override: 'reject' },
++      /*
++       * codex 段（M8 第 3 步）。`profile` 是 R-6 的落点，也是「家族」的唯一判定依据——
++       * 本机实测 `model_provider` 随 `-p` 走。默认取 qwen：它是演进设计 §3.1 点名的家族之一，
++       * 且本机实测可用；没配这个 profile 的机器会在预检被拦下并拿到可粘贴的指引，
++       * 而不是静默回落到基底那家（`unknown_profile_rejected` 实测为 false）。
++       */
++      codex: {
++        vendor: 'openai',
++        bin: null,
++        profile: 'qwen',
++        effort: { plan: 'high', code: 'high', bug: 'high' },
++      },
+     },
+     // 两档的差异只在 GLM 侧用不用 Flash——gemini 侧两档相同。
+     // 不写 profile 级 effort：该字段无任何读取点，且 slug 自带后缀时 effort 本就不生效。
+@@ -266,10 +285,12 @@ export function defaultConfig(): Config {
+       default: {
+         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
+         glm: { plan: 'GLM-5.3', code: 'GLM-5.3', bug: 'GLM-5.3' },
++        codex: { plan: 'qwen3.8-max', code: 'qwen3.8-max', bug: 'qwen3.8-max' },
+       },
+       flash: {
+         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
+         glm: { plan: 'GLM-5.3-Flash', code: 'GLM-5.3-Flash', bug: 'GLM-5.3-Flash' },
++        codex: { plan: 'qwen3.8-flash', code: 'qwen3.8-flash', bug: 'qwen3.8-flash' },
+       },
+     },
+     active_profile: 'default',
+diff --git a/src/trivium/divergence.ts b/src/trivium/divergence.ts
+index 26e5ebc..076681d 100644
+--- a/src/trivium/divergence.ts
++++ b/src/trivium/divergence.ts
+@@ -11,7 +11,7 @@
+  * 而两侧明明有概念重叠（AGY-01 与 GLM-03 讲同一件事）。
+  */
+ import type { CriticId, Review } from './types.js';
+-import { CRITICS } from './types.js';
++import { DEFAULT_CRITICS } from './types.js';
+ 
+ export interface NormalizedLocation {
+   /** 文件相对路径，或章节标记（形如 `§3.2`） */
+@@ -121,7 +121,11 @@ export function measureDivergence(
+   a: Review | null,
+   b: Review | null,
+   threshold = 0.8,
+-  pair: { a: CriticId; b: CriticId } = { a: CRITICS[0]!, b: CRITICS[1] ?? CRITICS[0]! },
++  /*
++   * 默认配对取**缺省集合**的前两家（M8 第 3 步）：启用全集里 codex 排在最前，
++   * 而它默认不入选——按全集取会让「没传配对」时报出一对根本没跑的侧。
++   */
++  pair: { a: CriticId; b: CriticId } = { a: DEFAULT_CRITICS[0]!, b: DEFAULT_CRITICS[1] ?? DEFAULT_CRITICS[0]! },
+ ): DivergenceReport {
+   const la = dedupe((a?.findings ?? []).map((f) => normalizeLocation(f.location)));
+   const lb = dedupe((b?.findings ?? []).map((f) => normalizeLocation(f.location)));
+diff --git a/src/trivium/doctor.ts b/src/trivium/doctor.ts
+index 12d08cb..ad850bd 100644
+--- a/src/trivium/doctor.ts
++++ b/src/trivium/doctor.ts
+@@ -19,6 +19,8 @@ import { probeZcode } from './probes/zcode.js';
+ import { probeCodex } from './probes/codex.js';
+ import { probeClaude } from './probes/claude.js';
+ import type { ClaudeProbe, CodexProbe, Config, ProbeSection } from './types.js';
++import { realAdapters } from './adapters/index.js';
++import type { TraceCapability } from './adapters/base.js';
+ import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
+ import { say, step, warn } from './util/log.js';
+ 
+@@ -139,6 +141,65 @@ export function codexSeverity(
+   return [];
+ }
+ 
++/**
++ * **能力声明 ↔ 探针实测的对账**（M8 第 3 步，清偿 EV-06）。
++ *
++ * `CodexProbe.trace_path_structured` 与 `.rejected_command_in_trace` 两个字段的
++ * 类型注释里，登记的消费方就是「M8 第 3 步起：doctor 的能力对账」——
++ * 而第 2 步落地 `TraceCapability` 时明写「对账代码还不存在」。这里把它补上。
++ *
++ * ## 对账的是什么
++ *
++ * 适配器**声明**自己的轨迹形状（`capability`），探针**实测**这台机器上的真实行为。
++ * 两者本该一致；不一致意味着其一过时了——CLI 升级换了事件流，或声明抄错了。
++ * 判定层按声明分档，所以声明与事实脱节时，判定会**按一个不存在的事实**工作：
++ * 声明 `tool-trace` 而实际是命令轨迹 ⇒ 路径回填不发生、证据恒不达标；
++ * 声明 `rejectionRecorded: true` 而实际被拒不留痕 ⇒ 阴性结论被当成可信。
++ *
++ * ## 为什么是 note 而不是 blocker
++ *
++ * 对账不符**不代表这台机器不安全**，代表我们的登记该更新了。判 blocker 会让
++ * 一次 CLI 升级把所有人的 `doctor` 打红；判静默通过则让这个字段继续白登记。
++ * 所以点名，不阻断——与 `checkModelSlugs` 的「第三态」同一取向。
++ */
++export function capabilityParity(
++  probe: { trace_path_structured: boolean | null; rejected_command_in_trace: boolean | null },
++  cap: TraceCapability,
++  cliName: string,
++): SeverityLine[] {
++  const out: SeverityLine[] = [];
++
++  if (probe.trace_path_structured !== null) {
++    const declaredStructured = cap.traceShape === 'tool-trace';
++    if (probe.trace_path_structured !== declaredStructured) {
++      out.push({
++        level: 'note',
++        message:
++          `能力对账不符：适配器声明 ${cliName} 的轨迹形状为 ${cap.traceShape}` +
++          `（即读取路径${declaredStructured ? '有' : '没有'}结构化字段），` +
++          `而探针实测 trace_path_structured=${probe.trace_path_structured}。` +
++          '判定层按声明分档，声明过时会让证据核验按不存在的事实工作——请核对适配器声明或重跑探针。',
++      });
++    }
++  }
++
++  if (probe.rejected_command_in_trace !== null) {
++    if (probe.rejected_command_in_trace !== cap.rejectionRecorded) {
++      out.push({
++        level: 'note',
++        message:
++          `能力对账不符：适配器声明 ${cliName} 的 rejectionRecorded=${cap.rejectionRecorded}，` +
++          `而探针实测 rejected_command_in_trace=${probe.rejected_command_in_trace}。` +
++          (probe.rejected_command_in_trace === false
++            ? '实测更悲观：被拒的操作不留痕，阴性结论不可信，而声明说它可信。'
++            : '实测更乐观：被拒的操作会留痕，可以把降级标记去掉了。'),
++      });
++    }
++  }
++
++  return out;
++}
++
+ /**
+  * claude 探针结论 → 诊断严重度（与 `codexSeverity` 同构）。
+  *
+@@ -415,6 +476,17 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+     probe.cli.codex = r.probe;
+     notes.push(...r.notes.map((n) => `[codex] ${n}`));
+     await checkpoint('codex');
++    /*
++     * 能力对账（EV-06 的清偿）：只在该侧已接线时做——没有适配器就没有「声明」，
++     * 拿不存在的声明去对账只会产生噪音。
++     */
++    const codexAdapter = realAdapters()[agentByCliName('codex')?.id ?? 'codex'];
++    if (codexAdapter) {
++      for (const line of capabilityParity(r.probe, codexAdapter.capability, 'codex')) {
++        notes.push(`[codex] ${line.message}`);
++      }
++    }
++
+     for (const line of codexSeverity(r.probe, {
+       enabled: agentByCliName('codex')?.criticEnabled === true,
+       asked: only === 'codex',
+diff --git a/src/trivium/gate.ts b/src/trivium/gate.ts
+index d97d70a..c2fc0f2 100644
+--- a/src/trivium/gate.ts
++++ b/src/trivium/gate.ts
+@@ -8,7 +8,7 @@
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import { DEFAULT_DRIVER, findingPrefixAlternation, type AgentId } from './agents/registry.js';
+-import { CRITICS, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
++import { DEFAULT_CRITICS, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
+ import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
+ import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
+ import { dispositionKindForStage } from './naming.js';
+@@ -401,11 +401,14 @@ export function renderGateResult(r: GateCheckResult): string {
+  * v1 记录迁移成 v2 形状，其 `critics_selected` 正是由键集推导，因此旧归档的
+  * 判读结论保持不变（迁移不会把信息变多，见 `migrateRunMetaV1`）。
+  *
+- * run.json 读不到、或迁移后集合为空时回落到当前启用集合，保持旧归档可读。
++ * run.json 读不到、或迁移后集合为空时回落到**缺省**集合，保持旧归档可读。
++  * **回落值取缺省集合而非启用全集**（M8 第 3 步）：codex 启用后，
++  * 「能跑的」是三家而「默认跑的」是两家，按前者回落会对每一个两侧轮次报假缺口。
++  * 读不到记录时，最合理的猜测是「跑了默认那几家」。
+  */
+ function criticsOf(runMeta: RunMeta | null): readonly CriticId[] {
+   const selected = runMeta?.critics_selected ?? [];
+-  return selected.length > 0 ? selected : CRITICS;
++  return selected.length > 0 ? selected : DEFAULT_CRITICS;
+ }
+ 
+ /**
+diff --git a/src/trivium/preflight.ts b/src/trivium/preflight.ts
+index d8a2eb1..f4bd17f 100644
+--- a/src/trivium/preflight.ts
++++ b/src/trivium/preflight.ts
+@@ -12,17 +12,15 @@
+  * 届时配额已烧而探针一字未落盘。
+  */
+ import path from 'node:path';
+-import os from 'node:os';
+ import { promises as fs, constants as fsConstants } from 'node:fs';
+ import type { AuthCacheEntry, CommonProbe, Config, CriticId, Ctx, Stage } from './types.js';
+-import { CRITICS, STAGES } from './types.js';
++import { DEFAULT_CRITICS, STAGES } from './types.js';
+ import { EXIT, TriviumError } from './exit-codes.js';
+-import { agentConfigOf, patchProbe, probeIsFresh, staleCliProbes } from './config.js';
++import { patchProbe, probeIsFresh, staleCliProbes } from './config.js';
+ import { ALL_CLI_NAMES, agentById, agentByCliName } from './agents/registry.js';
+-import { invokeAgy } from './adapters/agy.js';
+-import { invokeZcode, qualifyZcodeModel } from './adapters/zcode.js';
+-import { routeModel } from './adapters/base.js';
+-import { exists, sha256File } from './util/fsx.js';
++import { realAdapters } from './adapters/index.js';
++import { routeModel, type AdapterContext, type CriticAdapter } from './adapters/base.js';
++import { exists } from './util/fsx.js';
+ import { isGitRepo } from './util/git.js';
+ import { run } from './util/exec.js';
+ import { step } from './util/log.js';
+@@ -72,21 +70,18 @@ export interface PreflightOptions {
+   skipAuthCheck?: boolean;
+   /** 强制重新探活，穿透 TTL 缓存（AGY-02） */
+   refreshAuth?: boolean;
++  /**
++   * 本次入选的审核者。缺省取配置的 `review.default_critics`（M8 第 3 步）。
++   *
++   * 只读能力、模型 slug、探活三项都按**这一集合**检查，不按注册表全集：
++   * 启用第三家之后，全集检查会让「本次压根没选它」的运行也因它环境未配而失败。
++   */
++  critics?: readonly CriticId[];
+ }
+ 
+ // ─────────────────────── 各项检查 ───────────────────────
+ 
+-/** 决定 agy 可用性的配置指纹：只读 Agent 定义文件（AGY-02） */
+-async function agyFingerprint(cfg: Config): Promise<string | null> {
+-  const p = path.join(os.homedir(), '.gemini/config/agents', agentConfigOf(cfg, 'gemini', 'antigravity').agent, 'agent.md');
+-  return (await exists(p)) ? sha256File(p) : null;
+-}
+ 
+-/** 决定 zcode 可用性的配置指纹：CLI 侧的 config.json（AGY-02 / 坑 P-08、P-10） */
+-async function zcodeFingerprint(): Promise<string | null> {
+-  const p = path.join(os.homedir(), '.zcode/cli/config.json');
+-  return (await exists(p)) ? sha256File(p) : null;
+-}
+ 
+ function authCacheValid(
+   entry: AuthCacheEntry | undefined,
+@@ -284,13 +279,14 @@ export function checkModelSlugs(
+   cfg: Config,
+   scope: PreflightScope,
+   overrides: Partial<Record<CriticId, string>> = {},
++  critics: readonly CriticId[] = DEFAULT_CRITICS,
+ ): CheckResult {
+   const bad: string[] = [];
+   /** 无法校验的侧：**不判失败，但必须说出来**（详见 checkModelAgainstCatalog） */
+   const unverifiable = new Set<string>();
+ 
+   for (const stage of scopeStages(scope)) {
+-    for (const critic of CRITICS) {
++    for (const critic of critics) {
+       const routed = routeModel(cfg, critic, stage, { cli: overrides[critic] ?? null });
+       if (!routed.model) {
+         bad.push(`${critic}/${stage}: profile「${cfg.active_profile}」未定义模型且无覆盖`);
+@@ -305,7 +301,8 @@ export function checkModelSlugs(
+   if (bad.length > 0) {
+     return { name: '模型 slug 合法', ok: false, exitCode: EXIT.USAGE, detail: bad.join('\n  ') };
+   }
+-  const scale = `已校验 ${scopeStages(scope).length} 个阶段 × ${CRITICS.length} 侧`;
++  // 报「实际校验了几侧」，用本次入选集合而不是全集——否则数字与实际做的事对不上
++  const scale = `已校验 ${scopeStages(scope).length} 个阶段 × ${critics.length} 侧`;
+   return {
+     name: '模型 slug 合法',
+     ok: true,
+@@ -347,55 +344,72 @@ type CatalogCheck =
+  * 所以取第三态：不拦，但把是哪几侧没校验写进预检输出。
+  */
+ function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string): CatalogCheck {
+-  const vendor = agentById(critic)?.vendor ?? null;
+-
+-  if (vendor === 'antigravity') {
+-    const models = cfg.probe.cli.agy?.models ?? [];
+-    if (models.length === 0) return { kind: 'unverifiable', why: '探针未记录 agy 模型目录' };
+-    // 未知 slug 会让 agy 直接非零退出，不会静默换模型——所以这里能硬校验
+-    return models.includes(model)
+-      ? { kind: 'ok' }
+-      : { kind: 'bad', detail: `slug「${model}」不在 agy models 中。可用值：${models.join(', ')}` };
++  /*
++   * **按 cliName 通用消费 `CommonProbe.models`**（M8 第 3 步收敛，计划双审 GLM-04）。
++   *
++   * 收敛前按 vendor 分派 antigravity / zcode 两支，其余落 `unverifiable` 并给一句
++   * 「厂商 X 没有模型目录探针」——那句话对 codex **是失实的**：`CodexProbe` 继承
++   * `CommonProbe`，`models` 一直都在，只是没人消费。
++   *
++   * 后果不止文案难看：codex **不校验 model 在不在目录里**（M6 C-2），本步实测拼错
++   * slug 的代价是 `Model not found` 重试五次、耗时数分钟才失败。预检不拦就是白烧。
++   *
++   * 厂商特有的 slug 归一（zcode 的短名补全）下沉到适配器的 `normalizeModelForCatalog`，
++   * 这里只做「目录里有没有」这一件通用的事。
++   */
++  const a = agentById(critic);
++  const cliName = a?.cliName ?? null;
++  // 文案用 display（用户看的是「ZCode」不是「zcode」），索引用 cliName
++  const label = a?.display ?? critic;
++  const models = (cliName ? cfg.probe.cli[cliName]?.models : null) ?? [];
++  if (models.length === 0) {
++    return { kind: 'unverifiable', why: `探针未记录 ${label} 模型目录` };
+   }
+ 
+-  if (vendor === 'zcode') {
+-    const models = cfg.probe.cli.zcode?.models ?? [];
+-    if (models.length === 0) return { kind: 'unverifiable', why: '探针未记录 ZCode 模型目录' };
+-    // ZCode 侧允许短名，适配层会按探针回读的 providerId 补全前缀（坑 P-06）
+-    const qualified = qualifyZcodeModel(model, cfg.probe.cli.zcode?.model_id_form ?? null);
+-    const short = (qualified ?? '').split('/').pop() ?? '';
+-    return models.some((m) => m === short || m === qualified)
+-      ? { kind: 'ok' }
+-      : {
+-          kind: 'bad',
+-          detail: `模型「${model}」不在 ZCode 模型目录中。可用值：${models.join(', ')}`,
+-        };
+-  }
++  const normalized = realAdapters()[critic]?.normalizeModelForCatalog?.(cfg, model) ?? model;
++  const short = normalized.includes('/') ? (normalized.split('/').pop() ?? normalized) : normalized;
+ 
+-  return { kind: 'unverifiable', why: `厂商 ${vendor ?? '未登记'} 没有模型目录探针` };
++  return models.some((m) => m === model || m === normalized || m === short)
++    ? { kind: 'ok' }
++    : {
++        kind: 'bad',
++        detail: `模型「${model}」不在 ${label} 模型目录中。可用值：${models.join(', ')}`,
++      };
+ }
+ 
+-/** 只读能力可用（§8.1）：ZCode 的 readonly_flags 非空 + Antigravity 的只读 Agent 存在 */
+-async function checkReadonlyCapability(cfg: Config): Promise<CheckResult> {
++/**
++ * 只读能力可用（§8.1）—— **遍历适配器自己的 `availability()`**（M8 第 3 步收敛）。
++ *
++ * 收敛前这里写死两家：查 zcode 的 `readonly_flags` 非空、查 agy 的 `agent.md` 存在。
++ * 两个问题：
++ *
++ * ① **第三家一律不被检查**（EV-05①），加一家就要在这里再写一支；
++ * ② **同一事实有两份判据且已经分叉**——`zcode.ts` 的 `availability()` 把
++ *    `--disallowed-tools` 当硬前置（`--mode plan` 拦不住 Bash，M0 实测），
++ *    而这里的版本不查那一条，于是预检放行、适配器拒绝，同一个问题两个答案。
++ *
++ * 计划双审两侧独立指到这里（AGY-03 ≡ GLM-06）。现在只剩一份判据，
++ * 住在「最知道自己怎么才算可用」的那个模块里。
++ */
++function checkReadonlyCapability(ctx: Ctx, critics: readonly CriticId[]): CheckResult {
++  const adapters = realAdapters();
++  const actx: AdapterContext = { cfg: ctx.config, nodePath: process.execPath };
+   const problems: string[] = [];
+-  const readonlyFlags = cfg.probe.cli.zcode?.readonly_flags ?? [];
+-  if (readonlyFlags.length === 0) {
+-    problems.push('探针未实测到任何可用的 ZCode 只读参数组合');
+-  }
+-  const agentPath = path.join(
+-    os.homedir(),
+-    '.gemini/config/agents',
+-    agentConfigOf(cfg, 'gemini', 'antigravity').agent,
+-    'agent.md',
+-  );
+-  if (!(await exists(agentPath))) {
+-    problems.push(
+-      `找不到只读审查 Agent 定义 ${agentPath}。` +
+-        '没有它 agy 会用完整工具集（含写工具），只读无从保障。请运行安装器。',
+-    );
++  const oks: string[] = [];
++
++  for (const id of critics) {
++    const a = adapters[id];
++    if (!a) {
++      problems.push(`${agentById(id)?.display ?? id}：注册表启用了它，但 adapters/index.ts 没有接线`);
++      continue;
++    }
++    const v = a.availability(actx);
++    if (v.ok) oks.push(agentById(id)?.display ?? id);
++    else problems.push(`${agentById(id)?.display ?? id}：${v.reason ?? '不可用（未给出原因）'}`);
+   }
++
+   return problems.length === 0
+-    ? { name: '只读能力可用', ok: true, detail: `ZCode 组合 ${readonlyFlags.join(' ')}` }
++    ? { name: '只读能力可用', ok: true, detail: `${oks.join('、')} 均报告可用` }
+     : { name: '只读能力可用', ok: false, exitCode: EXIT.ENV, detail: problems.join('\n  ') };
+ }
+ 
+@@ -445,133 +459,64 @@ function checkVerifyConfigured(cfg: Config, scope: PreflightScope): CheckResult
+ 
+ // ─────────────────────── 探活 ───────────────────────
+ 
+-interface AuthProbe {
++interface AuthOutcome {
+   critic: CriticId;
+   result: CheckResult;
+   /** 通过时待写入缓存的条目（失败时为 null——只缓存正结论，GLM-06） */
+   cache: AuthCacheEntry | null;
+ }
+ 
+-async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe> {
++/**
++ * 探活 —— **遍历适配器的 `authProbe()`**（M8 第 3 步收敛）。
++ *
++ * 收敛前是 `probeAgyAuth` / `probeZcodeAuth` 两个写死的函数，加一家就加一个。
++ * 现在切分是：**厂商知识在适配器**（指纹算哪个文件、最小调用怎么发、失败怎么说），
++ * **缓存策略在这里**（TTL、版本比对、只缓存正结论）。后者留在一处的理由是
++ * 它一旦被抄三份就会各自漂移，而它决定的是「要不要再烧一次配额」。
++ *
++ * 没实现 `authProbe` 的侧**如实报告为「没得探」**，不静默算通过——
++ * 「探过通过」与「压根没探」长得一样，是本项目反复出现的那类失真。
++ */
++async function probeAuth(
++  ctx: Ctx,
++  critic: CriticId,
++  adapter: CriticAdapter,
++  opts: PreflightOptions,
++): Promise<AuthOutcome> {
+   const cfg = ctx.config;
+-  const version = cfg.probe.cli.agy?.version ?? null;
+-  const fp = await agyFingerprint(cfg);
+-  const cached = cfg.probe.auth?.gemini;
+-
+-  if (!opts.refreshAuth) {
+-    const v = authCacheValid(cached, version, fp, cfg.preflight.auth_cache_ttl_h);
+-    if (v.valid) {
+-      return {
+-        critic: 'gemini',
+-        result: { name: 'Antigravity 已认证', ok: true, detail: v.reason },
+-        cache: null, // 缓存本来就有效，无需重写
+-      };
+-    }
+-    step(`[gemini] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
+-  }
+-
+-  const bin = cfg.probe.cli.agy?.entrypoint ?? null;
+-  if (!bin) {
++  const display = agentById(critic)?.display ?? critic;
++  const name = `${display} 已认证`;
++  const cliName = agentById(critic)?.cliName ?? null;
++  const version = (cliName ? cfg.probe.cli[cliName]?.version : null) ?? null;
++
++  const auth = adapter.authProbe?.(
++    { cfg, nodePath: process.execPath },
++    ctx.projectRoot,
++  );
++  if (!auth) {
+     return {
+-      critic: 'gemini',
+-      result: { name: 'Antigravity 已认证', ok: false, exitCode: EXIT.ENV, detail: 'agy 路径未记录' },
++      critic,
++      result: { name, ok: true, detail: '该侧未实现探活，本项未检查（不等于已通过）' },
+       cache: null,
+     };
+   }
+ 
+-  const out = await invokeAgy({
+-    bin,
+-    cwd: ctx.projectRoot,
+-    prompt: '只回复 OK 两个字母，不要调用任何工具。',
+-    model: cfg.probe.cli.agy?.models[0] ?? null,
+-    agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
+-    timeoutMs: 120_000,
+-    pty: cfg.probe.cli.agy?.pty_required === true,
+-  });
+-
+-  const ok = out.parsed.status === 'SUCCESS' && !out.timedOut;
+-  return {
+-    critic: 'gemini',
+-    result: ok
+-      ? { name: 'Antigravity 已认证', ok: true, detail: `探活通过（${Math.round(out.durationMs / 1000)}s）` }
+-      : {
+-          name: 'Antigravity 已认证',
+-          ok: false,
+-          exitCode: EXIT.ENV,
+-          detail:
+-            `探活失败（status=${out.parsed.status}）。请先交互登录一次：\`agy\` 然后完成登录流程。\n` +
+-            `  stderr: ${out.stderr.slice(0, 200)}`,
+-        },
+-    cache: ok ? { checked_at: new Date().toISOString(), cli_version: version, fingerprint: fp, ok: true } : null,
+-  };
+-}
+-
+-async function probeZcodeAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe> {
+-  const cfg = ctx.config;
+-  const version = cfg.probe.cli.zcode?.version ?? null;
+-  const fp = await zcodeFingerprint();
+-  const cached = cfg.probe.auth?.glm;
+-
++  const fp = await auth.fingerprint();
+   if (!opts.refreshAuth) {
+-    const v = authCacheValid(cached, version, fp, cfg.preflight.auth_cache_ttl_h);
+-    if (v.valid) {
+-      return {
+-        critic: 'glm',
+-        result: { name: 'ZCode 已认证', ok: true, detail: v.reason },
+-        cache: null,
+-      };
+-    }
+-    step(`[glm] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
+-  }
+-
+-  const entry = cfg.probe.cli.zcode?.entrypoint ?? null;
+-  if (!entry) {
+-    return {
+-      critic: 'glm',
+-      result: { name: 'ZCode 已认证', ok: false, exitCode: EXIT.ENV, detail: 'zcode 入口未记录' },
+-      cache: null,
+-    };
+-  }
+-  if (fp === null) {
+-    return {
+-      critic: 'glm',
+-      result: {
+-        name: 'ZCode 已认证',
+-        ok: false,
+-        exitCode: EXIT.ENV,
+-        detail:
+-          '找不到 ~/.zcode/cli/config.json。ZCode 的 **CLI 模型 provider 配置独立于桌面端**' +
+-          '（桌面端在 ~/.zcode/v2/config.json），凭据共享但配置不共享——' +
+-          '「已登录」不等于「可用」。请手工创建该文件（结构见 M0 探针报告 §6.3）。',
+-      },
+-      cache: null,
+-    };
++    const v = authCacheValid(cfg.probe.auth?.[critic], version, fp, cfg.preflight.auth_cache_ttl_h);
++    if (v.valid) return { critic, result: { name, ok: true, detail: v.reason }, cache: null };
++    step(`[${critic}] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
+   }
+ 
+-  const out = await invokeZcode({
+-    entry,
+-    node: cfg.runtime.node ?? process.execPath,
+-    cwd: ctx.projectRoot,
+-    prompt: '只回复 OK 两个字母，不要调用任何工具。',
+-    readonlyArgs: ['--mode', 'plan'],
+-    timeoutMs: 180_000,
+-  });
+-
+-  const ok = out.failureKind === 'none' && out.envelope !== null && !out.timedOut;
++  const r = await auth.probe();
+   return {
+-    critic: 'glm',
+-    result: ok
+-      ? { name: 'ZCode 已认证', ok: true, detail: `探活通过（${Math.round(out.durationMs / 1000)}s）` }
+-      : {
+-          name: 'ZCode 已认证',
+-          ok: false,
+-          exitCode: EXIT.ENV,
+-          detail:
+-            out.failureKind === 'provider_not_configured'
+-              ? 'provider 鉴权失败。检查 ~/.zcode/cli/config.json 里的 apiKey（格式 <id>.<secret>）。'
+-              : `探活失败（${out.failureKind}）：${out.stderr.slice(0, 200)}`,
+-        },
+-    cache: ok ? { checked_at: new Date().toISOString(), cli_version: version, fingerprint: fp, ok: true } : null,
++    critic,
++    result: r.ok
++      ? { name, ok: true, detail: r.detail }
++      : { name, ok: false, exitCode: EXIT.ENV, detail: r.detail },
++    cache: r.ok
++      ? { checked_at: new Date().toISOString(), cli_version: version, fingerprint: fp, ok: true }
++      : null,
+   };
+ }
+ 
+@@ -582,15 +527,21 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
+   const cfg = ctx.config;
+   const checks: CheckResult[] = [];
+   const pendingAuthCache: Partial<Record<CriticId, AuthCacheEntry>> = {};
++  /*
++   * 本次入选的审核者。只读能力、模型 slug、探活三项都按它检查，而不是按注册表全集：
++   * codex 启用之后，全集检查会让「本次没选它」的运行也因它环境未配而失败
++   * （而那正是 D-1 决定「默认不选它」时要避免的连带影响）。
++   */
++  const selected: readonly CriticId[] = opts.critics ?? cfg.review.default_critics;
+ 
+   // ① 探针新鲜度（过期即快速失败，不拉 doctor）
+   checks.push(checkProbeFreshness(cfg));
+   // ② ③ CLI 可调用且版本与探针一致
+   if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg)));
+   // ④ 只读能力
+-  if (checks.every((c) => c.ok)) checks.push(await checkReadonlyCapability(cfg));
++  if (checks.every((c) => c.ok)) checks.push(checkReadonlyCapability(ctx, selected));
+   // ⑤ 模型 slug（按本次实际生效值）
+-  if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides));
++  if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected));
+   // ⑥ 归档与 git（无残留探测）
+   if (checks.every((c) => c.ok)) checks.push(await checkArchiveAndGit(ctx));
+   // ⑦ 命令 A 的编译测试配置
+@@ -607,7 +558,12 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
+         detail: '⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。',
+       });
+     } else {
+-      const probes = await Promise.all([probeAgyAuth(ctx, opts), probeZcodeAuth(ctx, opts)]);
++      const adapters = realAdapters();
++      const probes = await Promise.all(
++        selected
++          .filter((id) => adapters[id])
++          .map((id) => probeAuth(ctx, id, adapters[id]!, opts)),
++      );
+       for (const p of probes) {
+         checks.push(p.result);
+         if (p.cache) pendingAuthCache[p.critic] = p.cache;
+diff --git a/src/trivium/probes/codex.ts b/src/trivium/probes/codex.ts
+index 5fa492b..2061bc7 100644
+--- a/src/trivium/probes/codex.ts
++++ b/src/trivium/probes/codex.ts
+@@ -27,7 +27,7 @@ import { run, tryRun } from '../util/exec.js';
+ import { exists } from '../util/fsx.js';
+ import { createFixture, SENTINEL_OPEN, type Fixture } from './fixture.js';
+ import { probeScratchPaths } from './agy.js';
+-import type { CodexProbe, PathDenyProbe, ProbeIsolation } from '../types.js';
++import type { CodexProbe, CodexProviderProbe, PathDenyProbe, ProbeIsolation } from '../types.js';
+ 
+ /**
+  * 探针**首选**模型：探的是能力不是质量，挑目录里最便宜的一档。
+@@ -93,6 +93,107 @@ export async function probeCodexProfiles(home: string): Promise<string[]> {
+   }
+ }
+ 
++/**
++ * 从 TOML 文本里取一个**顶层**字符串键（段头之前的部分）。
++ *
++ * 与 `adapters/codex-home.ts` 的裁剪同样按行处理、不引 TOML 解析库——
++ * 本项目只依赖 ajv 与 yaml，而打包产物必须是单文件。
++ */
++export function topLevelKey(text: string, key: string): string | null {
++  for (const line of text.split('\n')) {
++    const s = line.trim();
++    if (s.startsWith('[')) break; // 进入段区，顶层结束
++    const m = new RegExp(`^${key}\\s*=\\s*["'](.+?)["']`).exec(s);
++    if (m) return m[1]!;
++  }
++  return null;
++}
++
++/**
++ * 某个 provider 段是否**带得出凭据**（J8，M8 第 3 步）。
++ *
++ * **只判有无，绝不返回值**——与 `secrets.ts` 的既定口径一致：凭据不该流经
++ * 探针结论、留痕或任何会被渲染的地方。
++ *
++ * 认**三种**形态：
++ *
++ * 1. 明文 `experimental_bearer_token` / `api_key`——本机三家自定义 provider 都是这种，
++ *    也正是 J9 要补扫描规则的那一种（现有的 `generic-secret-assignment` 因 `\b`
++ *    词边界匹配不到 `experimental_bearer_token` 里的 `token`）；
++ * 2. `env_key = "XXX"` 指向环境变量，判据是那个变量在不在场；
++ * 3. **段根本不存在** ⇒ 这是 CLI 内置的官方 provider，凭据在 `auth.json` 里（OAuth 登录）。
++ *
++ * 第 3 种是本步真机跑出来的：本机 `gpt` profile 的 `model_provider = "openai"`
++ * 在任何 toml 里都没有对应段，按前两种形态判会得到 `false`——而它明明是可用的。
++ * 计划 §8 的 U5 当时写「本机只有一种形态、另一种无从实测」，实际有三种，
++ * 第三种就躺在本机配置里。**返回 `null` 表示「段不存在、要看 auth.json」**，
++ * 由调用方补上那一步——把文件系统访问留在纯函数外面，这样判据本身可单测。
++ */
++export function providerCredentialed(
++  text: string,
++  providerId: string,
++  env: NodeJS.ProcessEnv = process.env,
++): boolean | null {
++  const head = `[model_providers.${providerId}]`;
++  const start = text.indexOf(head);
++  if (start < 0) return null;
++  const rest = text.slice(start + head.length);
++  const end = rest.indexOf('\n[');
++  const body = end < 0 ? rest : rest.slice(0, end);
++
++  if (/^\s*(experimental_bearer_token|api_key)\s*=\s*["'].+["']/m.test(body)) return true;
++  const envKey = /^\s*env_key\s*=\s*["'](.+?)["']/m.exec(body);
++  if (envKey && env[envKey[1]!]) return true;
++  return false;
++}
++
++/**
++ * 逐 profile 的 provider 家族结论（J8）。
++ *
++ * **按 profile 组织**：`-p` 是用户实际能选的旋钮，而 0.154.0 的 profile 是文件分层，
++ * 一个 profile 恰好钉住一组「provider + 默认模型」。反过来按 provider 组织就得回答
++ * 「哪个 profile 能选到它」，那正是本步否决的那类猜测。
++ *
++ * provider 段可能写在 profile 文件里，也可能只写在基底 `config.toml` 里
++ * （文件分层是叠加而非替换），所以两处都查、任一命中即算有凭据。
++ */
++export async function probeCodexProviders(
++  home: string,
++  profiles: readonly string[],
++  env: NodeJS.ProcessEnv = process.env,
++): Promise<CodexProviderProbe[]> {
++  const readOr = async (f: string): Promise<string> => {
++    try {
++      return await fs.readFile(f, 'utf8');
++    } catch {
++      return '';
++    }
++  };
++  const baseText = await readOr(path.join(home, 'config.toml'));
++
++  const out: CodexProviderProbe[] = [];
++  for (const profile of profiles) {
++    const text = await readOr(path.join(home, `${profile}.config.toml`));
++    const provider = topLevelKey(text, 'model_provider') ?? topLevelKey(baseText, 'model_provider');
++    const model = topLevelKey(text, 'model') ?? topLevelKey(baseText, 'model');
++    /*
++     * 两份 toml 任一命中即算有凭据（文件分层是叠加而非替换）。
++     * 两份都返回 null（段不存在）时落到第 3 种形态：内置官方 provider，看 auth.json。
++     */
++    let credentialed = false;
++    if (provider) {
++      const hits = [
++        providerCredentialed(text, provider, env),
++        providerCredentialed(baseText, provider, env),
++      ];
++      if (hits.some((h) => h === true)) credentialed = true;
++      else if (hits.every((h) => h === null)) credentialed = await exists(path.join(home, 'auth.json'));
++    }
++    out.push({ profile, provider, model, credentialed });
++  }
++  return out;
++}
++
+ /**
+  * 模型目录：`codex debug models --json`。
+  *
+@@ -243,78 +344,27 @@ export async function probeCodexHeader(
+     stderr: r.stderr,
+   };
+ }
+-
+-/** 事件流里出现过的 item 类型 + 命令执行记录 */
+-export interface CodexTrace {
+-  /** 顶层事件类型（thread.started / turn.completed …） */
+-  eventTypes: string[];
+-  /** item 类型（command_execution / agent_message / error …） */
+-  itemTypes: string[];
+-  commands: { command: string; exitCode: number | null; output: string }[];
+-  finalText: string | null;
+-  /**
+-   * 已完成的 item 原始对象。
+-   *
+-   * 留着是为了让「读取路径有没有结构化字段」可以**真测**而不是写常量：
+-   * 判据要看除 `command` 外有没有别的字段装着路径（审查意见 GLM-04）。
+-   */
+-  rawItems: Record<string, unknown>[];
+-}
+-
+-/** 解析 `exec --json` 的 JSONL。坏行跳过而不是抛——真实输出里混过 stderr 噪声 */
+-export function parseCodexEvents(jsonl: string): CodexTrace {
+-  const eventTypes = new Set<string>();
+-  const itemTypes = new Set<string>();
+-  const commands: CodexTrace['commands'] = [];
+-  const rawItems: Record<string, unknown>[] = [];
+-  let finalText: string | null = null;
+-
+-  for (const line of jsonl.split('\n')) {
+-    const t = line.trim();
+-    if (!t.startsWith('{')) continue;
+-    let o: Record<string, unknown>;
+-    try {
+-      o = JSON.parse(t) as Record<string, unknown>;
+-    } catch {
+-      continue;
+-    }
+-    if (typeof o['type'] === 'string') eventTypes.add(o['type']);
+-    const item = o['item'] as Record<string, unknown> | undefined;
+-    if (!item) continue;
+-    const itemType = typeof item['type'] === 'string' ? item['type'] : null;
+-    if (itemType) itemTypes.add(itemType);
+-    if (o['type'] === 'item.completed') rawItems.push(item);
+-    if (itemType === 'command_execution' && item['status'] === 'completed') {
+-      commands.push({
+-        command: String(item['command'] ?? ''),
+-        exitCode: typeof item['exit_code'] === 'number' ? item['exit_code'] : null,
+-        output: String(item['aggregated_output'] ?? ''),
+-      });
+-    }
+-    if (itemType === 'agent_message' && typeof item['text'] === 'string') {
+-      finalText = item['text'];
+-    }
+-  }
+-  return {
+-    eventTypes: [...eventTypes].sort(),
+-    itemTypes: [...itemTypes].sort(),
+-    commands,
+-    finalText,
+-    rawItems,
+-  };
+-}
+-
+-/**
+- * 「这次探测跑完了没有」—— 三态判据的**共用前提**（审查意见 GLM-01 / GLM-05）。
++/*
++ * 事件流解析已搬到 `adapters/codex-trace.ts`（M8 第 3 步）。
+  *
+- * `run()` 超时**不抛错**、返回截断输出，所以只看解析结果的话，
+- * 一次网络抖动与一次真实的能力缺陷长得一模一样。
+- * 判据取「有没有最终回复」而不是退出码：codex 在模型拒绝任务时也可能退 0，
+- * 而那时同样没有可用结论。
++ * 搬家理由：适配器接入后同样要解析这份事件流，留在探针里就会出现第二份实现——
++ * 探针据一份下结论、适配器据另一份采证据，漂移了没人发现（纪律 7）。
++ * 这里原样重新导出，既有调用方与 `test/unit/codex-events.test.ts` 的 import 路径不变;
++ * 那份用例是本次搬家唯一的安全网，改它的 import 等于把安全网一起搬走。
+  */
+-export function traceCompleted(trace: CodexTrace, timedOut: boolean): boolean {
+-  return !timedOut && trace.finalText !== null;
+-}
++export {
++  parseCodexEvents,
++  traceCompleted,
++  type CodexTrace,
++  type CodexCommand,
++} from '../adapters/codex-trace.js';
++
++// 转发导出不把名字带进本模块作用域，探针自己还要用，所以再 import 一份
++import {
++  parseCodexEvents,
++  traceCompleted,
++  type CodexTrace,
++} from '../adapters/codex-trace.js';
+ 
+ /**
+  * 读文件能力的三态判定。**抽成纯函数是为了能被变异验证打中**：
+@@ -509,6 +559,7 @@ export async function probeCodex(
+         profile_flag: null,
+         unknown_profile_rejected: null,
+         profiles: [],
++        providers: [],
+         config_override: null,
+         effort_validated: null,
+         model_catalog_path: null,
+@@ -533,6 +584,17 @@ export async function probeCodex(
+       : '⚠️ 未找到任何 <name>.config.toml —— `-p` 无可用取值',
+   );
+ 
++  probe.providers = await probeCodexProviders(home, probe.profiles);
++  const ready = probe.providers.filter((x) => x.credentialed);
++  notes.push(
++    ready.length > 0
++      ? `provider 家族探活：${ready.map((x) => `${x.profile}→${x.provider}`).join('、')} 有可用凭据` +
++          (ready.length < probe.providers.length
++            ? `；未配置：${probe.providers.filter((x) => !x.credentialed).map((x) => x.profile).join('、')}`
++            : '')
++      : '⚠️ 没有任何 profile 带得出 provider 凭据 —— Codex 侧不可用于审查',
++  );
++
+   const catalog = await probeCodexModels(bin, null);
+   probe.models = catalog.models;
+   notes.push(
+@@ -674,6 +736,9 @@ export async function probeCodex(
+     if (probe.rejected_command_in_trace === false) {
+       notes.push(
+         '⚠️ 被沙箱拒绝的命令**不进事件流**（command_execution 为 0 条）——' +
++        '失效的只有**阴性**方向：没检出写事件时，排除不了「试过但被拒」。' +
++        '成功执行的写命令照常留痕，所以真失守时 write_events 非空仍是真阳性，' +
++        '§10.3 的判据对该侧照常成立（M8 第 2 步更正了「恒为假」这个过度推广）' +
+           '设计 §10.3「轨迹有写事件即判失守」对该侧恒为假，只读保障完全落在沙箱上',
+       );
+     }
+diff --git a/src/trivium/secrets.ts b/src/trivium/secrets.ts
+index 52ea423..b757012 100644
+--- a/src/trivium/secrets.ts
++++ b/src/trivium/secrets.ts
+@@ -87,6 +87,30 @@ const RULES: Rule[] = [
+     name: 'private-key-block',
+     re: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY(?: BLOCK)?-----/g,
+   },
++  {
++    /*
++     * TOML 里的 provider 凭据赋值（M8 第 3 步，J9）。
++     *
++     * **为什么兜底规则扫不到它**：下面那条 `generic-secret-assignment` 要求
++     * `\b(?:api_key|secret|token|…)\b`，而本机 codex 配置里的键名是
++     * `experimental_bearer_token`——`token` 前面是下划线，是 word 字符，
++     * **词边界不成立**，于是整条明文凭据对扫描器隐形。
++     *
++     * 这一条前移到本步而不是留到下一步（决策 D-3）：本步的 `prepareCodexHome`
++     * 会把带明文 token 的 config.toml 与 auth.json 拷进运行目录，
++     * 「产生风险的那一步」与「覆盖风险的那一步」之间不该隔着一轮双审。
++     *
++     * **规则名按凭据形态取，刻意避开 Agent id 字面**：`codex` 恰好既是 cliName
++     * 又是 AgentId，写进规则名会被 `registry-parity` 的字面量对账命中
++     * （`probes/codex.ts` 那条豁免的理由里预言过这种撞名）。而现有的
++     * `zcode-api-key` 不命中，是因为 `zcode` 是 cliName、对应的 AgentId 是 glm——
++     * codex 没有这个侥幸。按形态命名后，规则本身也更通用：任何 TOML provider
++     * 配置都适用，不限于某一家。
++     */
++    name: 'toml-bearer-token',
++    re: /\b[\w.]*(?:bearer_token|access_token|refresh_token|id_token)\b\s*[:=]\s*["']?([A-Za-z0-9_\-+/.]{16,})["']?/gi,
++    confirm: (m) => looksReal(m[1] ?? ''),
++  },
+   {
+     // 兜底：形如 api_key = "…" / token: '…' 的长随机串赋值
+     name: 'generic-secret-assignment',
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 41f49d7..c35c993 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -9,7 +9,13 @@
+  * Schema 是运行时真理来源（ajv 校验），本文件是编译期的同一份约定。改一处必须改另一处。
+  */
+ 
+-import { agentById, CRITIC_AGENT_IDS, type AgentId, type AgentVendor } from './agents/registry.js';
++import {
++  agentById,
++  CRITIC_AGENT_IDS,
++  DEFAULT_CRITIC_AGENT_IDS,
++  type AgentId,
++  type AgentVendor,
++} from './agents/registry.js';
+ 
+ export type { AgentId, AgentVendor };
+ 
+@@ -73,6 +79,16 @@ export const STAGES: readonly Stage[] = ['plan', 'code', 'bug'];
+ 
+ export const CRITICS: readonly CriticId[] = CRITIC_AGENT_IDS as readonly CriticId[];
+ 
++/**
++ * **缺省入选**的审核者集合（`review.default_critics` 的默认值来源，M8 第 3 步）。
++ *
++ * 与 `CRITICS` 的差别只在注册表的 `defaultSelected` 一个字段：
++ * `CRITICS` 是「能选谁」，本集合是「不选时跑谁」。两者曾是同一个集合，
++ * 于是启用第三家就等于让每次审查的成本自动涨一档——见注册表 `defaultSelected` 的说明。
++ */
++export const DEFAULT_CRITICS: readonly CriticId[] =
++  DEFAULT_CRITIC_AGENT_IDS as readonly CriticId[];
++
+ export const CRITIC_VENDOR: Record<CriticId, Vendor> = Object.fromEntries(
+   CRITICS.map((c) => [c, agentById(c)!.vendor]),
+ ) as Record<CriticId, Vendor>;
+@@ -213,6 +229,25 @@ export interface ZcodeProbe extends CommonProbe {
+  * 那条记的是 `instructionFiles` 登记了却没有任何读取方，于是「登记」被误读成「已生效」。
+  * 探针结论天然是给后续里程碑用的，但「M8 会用」和「没人会用」必须当场分得清。
+  */
++/**
++ * 一个 codex profile 的 provider 家族结论（M8 第 3 步，J8）。
++ *
++ * 为什么按 **profile** 而不是按 provider 组织：`-p` 是用户实际能选的旋钮，
++ * 而 0.154.0 的 profile 是**文件分层**（`$CODEX_HOME/<name>.config.toml` 整份叠在基底上），
++ * 一个 profile 恰好钉住一组「provider + 默认模型 + 模型目录」。
++ * 按 provider 组织则要反查「哪个 profile 能选到它」，那正是本步否决的那类猜测。
++ */
++export interface CodexProviderProbe {
++  /** profile 名，即 `-p` 的取值 */
++  profile: string;
++  /** 该 profile 生效的 provider 家族 id（`model_provider` 键） */
++  provider: string | null;
++  /** 该 provider 段带得出凭据（明文 token 或 env_key 指向的变量在场）。**不记值** */
++  credentialed: boolean;
++  /** 该 profile 声明的默认模型 slug */
++  model: string | null;
++}
++
+ export interface CodexProbe extends CommonProbe {
+   /**
+    * `codex exec` headless 下能否真的读到文件（哨兵首行回显命中）。
+@@ -310,6 +345,16 @@ export interface CodexProbe extends CommonProbe {
+    * 得像校验 model slug 一样自己校验。
+    */
+   effort_validated: boolean | null;
++  /**
++   * 逐 profile 的 provider 家族探活结论（J8，M8 第 3 步）。
++   *
++   * **消费方**：①适配器的 `availability()`——本次 profile 没有可用凭据即该侧不可用；
++   * ②`preflight`——选了 codex 而其 profile 所属家族未配置时**拒绝启动**并给可粘贴指引
++   * （AC-20 末条）；③`doctor` 的人读诊断。
++   *
++   * **只记「有没有」，不记凭据值**（与 `secrets.ts` 的既定口径一致）。
++   */
++  providers: CodexProviderProbe[];
+   /**
+    * 模型目录文件的来源路径（从配置的 `model_catalog_json` 读出，**不写死**）。
+    *
+@@ -563,6 +608,23 @@ export interface GeminiCriticConfig {
+   readonly_commands: string[];
+ }
+ 
++/**
++ * codex 的配置段（M8 第 3 步）。
++ *
++ * `profile` 是 R-6 的落点，也是**「家族」的唯一判定依据**——
++ * 本步实测确认 `model_provider` 随 `-p` 走（`-p qwen` ⇒ qwen、`-p deepseek` ⇒ deepseek），
++ * 所以家族由 profile 决定，**不按模型 slug 的前缀猜**：目录命名会漂移，
++ * 而 `unknown_profile_rejected` 实测为 false（未知 profile 静默回落基底），
++ * 猜错一次就是「以为跑的是 deepseek、实际跑的是基底那家」而毫无提示。
++ */
++export interface CodexCriticConfig {
++  vendor: 'openai';
++  bin: string | null;
++  /** 厂商 profile 名，对应 `$CODEX_HOME/<name>.config.toml`（0.154.0 的 `-p` 是文件分层） */
++  profile: string | null;
++  effort: Record<Stage, 'low' | 'medium' | 'high'>;
++}
++
+ export interface GlmCriticConfig {
+   vendor: 'zcode';
+   entry: string | null;
+@@ -582,7 +644,20 @@ export interface GlmCriticConfig {
+  * `agents.claude` 会被 schema 拒——那不是缺陷，而是「形状尚未定义」的如实反映：
+  * 设计 13.1.1 允许 Driver 段存在，但没说它长什么样，凭空放行等于承诺一个不存在的契约。
+  */
+-export type AgentConfig = GeminiCriticConfig | GlmCriticConfig;
++export type AgentConfig = GeminiCriticConfig | GlmCriticConfig | CodexCriticConfig;
++
++/**
++ * 一条判不实的写入线索（`CriticResult.suspected_write_events` 的元素）。
++ *
++ * 定义在本文件而不是 `adapters/base.ts`：它是**结果契约**的一部分，
++ * 而 `base.ts` 已经 import 本文件——反向 import 会成环。
++ */
++export interface SuspectedWrite {
++  /** 命令原文 */
++  command: string;
++  /** 为什么判不实（人读，进留痕） */
++  why: string;
++}
+ 
+ export interface GateConfig {
+   require_adjudication: boolean;
+@@ -888,6 +963,22 @@ export interface CriticResult {
+   read_paths: string[];
+   /** 轨迹中出现过的写工具/写命令事件，非空即 readonly_breach */
+   write_events: string[];
++  /**
++   * **疑似**写入：命中写形态但判不实的命令（M8 第 3 步）。
++   *
++   * **不驱动 `readonly_breach`**，只进留痕与 doctor 输出。
++   *
++   * ## 为什么要单列这一档
++   *
++   * 只读失守是安全指控，`judgeSide` 对它没有分级：`write_events` 非空即失守、整侧作废。
++   * 而 `command-trace` 族的写判定只能从命令文本推，三类形态推不实：
++   * 幂等空操作（`mkdir -p <已存在>` 退 0 却没写）、失败掩码（`… || true` 的整条退出码
++   * 与写段成功脱钩）、项目外目标。把它们塞进 `write_events` 会误杀正常审查；
++   * 丢弃则让排查失去线索——所以单列一档，如实记而不下判决。
++   *
++   * 可选字段：`tool-trace` 族（结构化写事件）不需要这一档，恒不填。
++   */
++  suspected_write_events?: SuspectedWrite[];
+   /**
+    * 轨迹中出现过的**命令原文**，措施 b（§10.1）的输入。
+    *
+diff --git a/test/fixtures/stub-agent-kit/overlay.ts b/test/fixtures/stub-agent-kit/overlay.ts
+index e8c694e..6dd5ece 100644
+--- a/test/fixtures/stub-agent-kit/overlay.ts
++++ b/test/fixtures/stub-agent-kit/overlay.ts
+@@ -213,6 +213,9 @@ export async function applyOverlay(dest: string): Promise<string[]> {
+     suffix: '${STUB_ID}',
+     findingPrefix: '${STUB_PREFIX}',
+     criticEnabled: true,
++    // 桩要参与默认三审场景，所以缺省入选也开着（M8 第 3 步新增的字段——
++    // 「能不能当审核者」与「不选时跑不跑它」自此是两件事）
++    defaultSelected: true,
+     driverEnabled: false,
+     guardLevel: 'L2',
+     instructionFiles: ['STUB.md'],
+diff --git a/test/integration/codex-wiring.test.ts b/test/integration/codex-wiring.test.ts
+new file mode 100644
+index 0000000..4ec88a0
+--- /dev/null
++++ b/test/integration/codex-wiring.test.ts
+@@ -0,0 +1,169 @@
++/**
++ * codex 接线的**端到端**判据（M8 第 3 步，计划双审 AGY-05）。
++ *
++ * ## 为什么必须走真实子进程
++ *
++ * 本步的两条完成判据是 CLI 级的：`doctor --only codex` 要给出确定结论、
++ * `preflight --critics codex,glm` 要真把 codex 检查一遍。而单元测试测的是
++ * `availability()` / `probeCodexProviders()` 这些函数——**函数对了不等于调用链对了**。
++ *
++ * M7b 第 5 步的原案就栽在这里：把 `opts.critics ?? …` 改成永远取配置默认值
++ * （模拟接线漏传），全量 873 条测试无一变红——`--critics` 的调用链当时是零覆盖的。
++ * 本步的 `preflight --critics` 透传是**同一形状的新接线**，所以它必须有这条用例守着。
++ *
++ * ## 不烧配额
++ *
++ * `doctor` 走 `--no-model-calls`，`preflight` 走 `--skip-auth-check`——
++ * 两者跳过的恰好是全部需要真实厂商调用的步骤。因此本文件不依赖本机是否装了 codex：
++ * 没装时探针记 `entrypoint: null`，判据照样成立（可用性为否，且理由说得出）。
++ */
++import { test, before } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import YAML from 'yaml';
++import { bundleMissing, bundleSkipReason, cli, makeFixture } from '../helpers/fixture.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++
++const TOPIC = 'codex接线';
++let root = '';
++
++before(async () => {
++  if (bundleMissing) return;
++  const fx = await makeFixture({ topic: TOPIC });
++  root = fx.root;
++});
++
++const FAKE_VERSION = '9.9.9';
++
++/**
++ * 往夹具的本机配置里塞一整份「已探过」的探针结论。
++ *
++ * **三侧都要塞**：预检第一步是探针新鲜度，缺任何一侧都会**快速失败**，
++ * 后面的检查根本不执行——那时断言「只读能力这一项在不在」验的就不是接线了。
++ * 假 CLI 用真文件：`checkCliVersions` 会 `exists()` 并真取一次版本，
++ * 写个不存在的路径会让预检死在版本检查而不是我们要测的那一项。
++ */
++async function seedProbes(over: Record<string, unknown> = {}): Promise<void> {
++  const fakeDir = path.join(root, 'fake');
++  await fs.mkdir(fakeDir, { recursive: true });
++  const fakeAgy = path.join(fakeDir, 'agy');
++  await fs.writeFile(fakeAgy, `#!/bin/sh\necho ${FAKE_VERSION}\n`, { mode: 0o755 });
++  const fakeZcode = path.join(fakeDir, 'zcode.js');
++  await fs.writeFile(fakeZcode, `console.log('zcode ${FAKE_VERSION}');\n`, 'utf8');
++  const fakeCodex = path.join(fakeDir, 'codex');
++  await fs.writeFile(fakeCodex, `#!/bin/sh\necho codex-cli ${FAKE_VERSION}\n`, { mode: 0o755 });
++
++  const now = new Date().toISOString();
++  const common = (entrypoint: string) => ({
++    entrypoint,
++    version: FAKE_VERSION,
++    probed_at: now,
++    path_deny: { supported: false, rule_syntax: null },
++    scratch_paths: [],
++    isolation: 'home_copy',
++  });
++
++  const p = path.join(root, '.trivium', 'config.local.yaml');
++  const raw = await fs.readFile(p, 'utf8').catch(() => '');
++  const doc = (YAML.parse(raw) ?? {}) as Record<string, any>;
++  doc['probe'] = {
++    generated_at: now,
++    cli: {
++      agy: {
++        ...common(fakeAgy),
++        version_probe: { runner: null, args: ['--version'], extract: null },
++        models: ['gemini-3.8-flash-high'],
++        headless_read_ok: true,
++        agent: 'trivium-critic',
++      },
++      zcode: {
++        ...common(fakeZcode),
++        version_probe: { runner: 'node', args: ['version'], extract: String.raw`(\d+\.\d+\.\d+)` },
++        models: ['GLM-5.3'],
++        readonly_flags: ['--mode plan', '--disallowed-tools Write,Edit'],
++        response_field: '.response',
++      },
++      codex: {
++        ...common(fakeCodex),
++        version_probe: { runner: null, args: ['--version'], extract: String.raw`(\d+\.\d+\.\d+)` },
++        models: ['qwen3.8-max'],
++        exec_headless_read_ok: true,
++        json_event_types: [],
++        json_item_types: [],
++        trace_path_structured: false,
++        rejected_command_in_trace: false,
++        readonly_flags: ['-s', 'read-only'],
++        profile_flag: true,
++        unknown_profile_rejected: false,
++        profiles: ['qwen'],
++        providers: [{ profile: 'qwen', provider: 'qwen', model: 'qwen3.8-max', credentialed: true }],
++        config_override: true,
++        effort_validated: false,
++        model_catalog_path: null,
++        ...over,
++      },
++    },
++  };
++  // 模型档位也得给 codex 配上，否则 routeModel 取不到值、slug 校验先失败
++  doc['profiles'] = {
++    default: {
++      gemini: { plan: 'gemini-3.8-flash-high' },
++      glm: { plan: 'GLM-5.3' },
++      codex: { plan: 'qwen3.8-max' },
++    },
++  };
++  await fs.writeFile(p, YAML.stringify(doc), 'utf8');
++}
++
++test('doctor --only codex 是合法取值，且给出确定结论', { skip: bundleMissing && bundleSkipReason }, async () => {
++  /*
++   * M6 第 1 步之前它退 64（「你的参数写错了」），而 codex 明明已在注册表登记。
++   * 本条守的是：这个取值合法、且跑完能落盘一份结论——不是「没探过」那种半截状态。
++   */
++  const r = await cli(root, ['doctor', '--only', 'codex', '--no-model-calls'], null, 180_000);
++  assert.ok(r.code === EXIT.OK || r.code === EXIT.ENV, `不该是参数错误，实得 ${r.code}：${r.stderr.slice(0, 200)}`);
++  assert.match(r.stdout + r.stderr, /codex/, '输出里要点名这一侧');
++});
++
++test('preflight --critics codex,glm：codex 侧真的被检查到', { skip: bundleMissing && bundleSkipReason }, async () => {
++  /*
++   * **这条守的是接线，不是判据**。`cmdPreflight` 若不把 `--critics` 传进
++   * `runPreflight`，预检会按 `default_critics`（两家，不含 codex）检查，
++   * 而用户下一步选的是 codex —— 被选中那一侧的可用性在预检阶段静默漏检。
++   * 漏传不会报错、不会退非零码，只是少查了一侧：正是 M7b 第 5 步那个形状。
++   */
++  await seedProbes();
++  const r = await cli(root, ['preflight', '--stage', 'plan', '--critics', 'codex,glm', '--skip-auth-check', '--json'], null, 180_000);
++  const out = JSON.parse(r.stdout) as { checks: { name: string; detail: string }[] };
++  const readonly = out.checks.find((c) => c.name === '只读能力可用');
++  assert.ok(readonly, '预检应当有只读能力这一项');
++  assert.match(readonly.detail, /Codex/, 'codex 入选却没在只读能力检查里露面 ⇒ --critics 没透传进预检');
++});
++
++test('preflight：没选 codex 时不因它的环境未配而失败', { skip: bundleMissing && bundleSkipReason }, async () => {
++  /*
++   * D-1 的连带保护：codex 启用为审核者之后，**没选它的运行不该被它拖累**。
++   * 按注册表全集检查就会——那正是把 `checkReadonlyCapability` 等三项
++   * 改成按入选集合检查的理由。
++   */
++  await seedProbes({ exec_headless_read_ok: false, readonly_flags: [] });
++  const r = await cli(root, ['preflight', '--stage', 'plan', '--skip-auth-check', '--json'], null, 180_000);
++  const out = JSON.parse(r.stdout) as { ok: boolean; checks: { name: string; detail: string }[] };
++  const readonly = out.checks.find((c) => c.name === '只读能力可用');
++  assert.ok(readonly, '预检应当有只读能力这一项');
++  assert.doesNotMatch(readonly.detail, /Codex/, '默认两家的运行里不该出现 codex——它没入选');
++});
++
++test('preflight --critics 选了环境未配的 codex → 如实拦下并说明原因', { skip: bundleMissing && bundleSkipReason }, async () => {
++  // AC-20 末条要的就是这个：家族未配置 ⇒ **预检即拒绝启动**，而不是跑到一半才失败
++  await seedProbes({
++    providers: [{ profile: 'qwen', provider: 'qwen', model: 'qwen3.8-max', credentialed: false }],
++  });
++  const r = await cli(root, ['preflight', '--stage', 'plan', '--critics', 'codex,glm', '--skip-auth-check', '--json'], null, 180_000);
++  const out = JSON.parse(r.stdout) as { ok: boolean; checks: { name: string; detail: string }[] };
++  assert.equal(out.ok, false, '凭据未配却放行，用户会在跑到一半时才发现');
++  const readonly = out.checks.find((c) => c.name === '只读能力可用');
++  assert.match(readonly!.detail, /凭据/, '要说清缺的是什么');
++  assert.match(readonly!.detail, /model_providers/, '要给出可粘贴的落点');
++});
+diff --git a/test/integration/stub-agent-kit.test.ts b/test/integration/stub-agent-kit.test.ts
+index 7c6ebb3..eb68ee4 100644
+--- a/test/integration/stub-agent-kit.test.ts
++++ b/test/integration/stub-agent-kit.test.ts
+@@ -403,6 +403,10 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
+       '      models:',
+       "        - 'gemini-3.8-flash-high'",
+       '      headless_read_ok: true',
++      // M8 第 3 步：只读能力检查改为遍历适配器 availability()，判据比原先严——
++      // agy 侧要求探针记下**当时实际验证过**的只读 Agent 名，zcode 侧要求
++      // --disallowed-tools 与 response_field 都在。夹具据此补齐。
++      `      agent: 'trivium-critic'`,
+       '    zcode:',
+       `      entrypoint: ${fakeZcode}`,
+       `      version: '${FAKE_CLI_VERSION}'`,
+@@ -415,8 +419,9 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
+       // 写 null 取全文会与 version 字段对不上，被误报成版本漂移。
+       "        extract: '(\\d+\\.\\d+\\.\\d+)'",
+       '      readonly_flags:',
+-      "        - '--mode'",
+-      "        - 'plan'",
++      "        - '--mode plan'",
++      "        - '--disallowed-tools Write,Edit'",
++      "      response_field: '.response'",
+       '      models:',
+       "        - 'GLM-5.3'",
+       '',
+diff --git a/test/unit/codex-adapter.test.ts b/test/unit/codex-adapter.test.ts
+new file mode 100644
+index 0000000..e0e5628
+--- /dev/null
++++ b/test/unit/codex-adapter.test.ts
+@@ -0,0 +1,385 @@
++/**
++ * codex 适配器：argv 构造、事件流解析、生效模型回读、隔离副本（M8 第 3 步）。
++ *
++ * 写判据单列在 `codex-write-verbs.test.ts`（它守的是误报方向，分量不同）。
++ */
++import assert from 'node:assert/strict';
++import test from 'node:test';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import { buildCodexArgs, buildCodexResult, codexAdapter, readonlyArgsFromProbe } from '../../src/trivium/adapters/codex.js';
++import { capabilityParity } from '../../src/trivium/doctor.js';
++import { defaultConfig } from '../../src/trivium/config.js';
++import type { Config } from '../../src/trivium/types.js';
++import {
++  parseCodexEvents,
++  parseCodexSessionMeta,
++  succeededCommands,
++} from '../../src/trivium/adapters/codex-trace.js';
++import { trimCodexToml, rewriteHomePaths, prepareCodexHome } from '../../src/trivium/adapters/codex-home.js';
++
++// ─────────────────────────── argv 构造 ───────────────────────────
++
++test('argv：只读旗标一律由探针结论构造，不写死', () => {
++  const args = buildCodexArgs({
++    profile: 'qwen', model: 'qwen3.8-max', effort: 'high',
++    readonlyArgs: readonlyArgsFromProbe(['-s', 'read-only']), cwd: '/proj',
++  });
++  assert.deepEqual(args, [
++    'exec', '-p', 'qwen', '-m', 'qwen3.8-max',
++    '-c', 'model_reasoning_effort=high',
++    '-s', 'read-only',
++    '--json', '--skip-git-repo-check', '-C', '/proj', '-',
++  ]);
++});
++
++test('argv：探针没给只读旗标时不凭空补一个默认值', () => {
++  /*
++   * 探针把 `readonly_flags` 清空的含义是「**负对照失败**：read-only 下文件仍被创建」，
++   * 不是「没测」。此时补一个「文档上写着应该管用」的默认值，等于在一台已知沙箱
++   * 不可信的机器上声称只读——该侧的不可用由 availability() 拦，argv 这里不兜底。
++   */
++  const args = buildCodexArgs({
++    profile: null, model: null, effort: null,
++    readonlyArgs: readonlyArgsFromProbe([]), cwd: '/proj',
++  });
++  assert.ok(!args.includes('read-only'), '探针没给就不能自己造一个只读旗标出来');
++});
++
++test('argv：prompt 走 stdin（末尾 `-`），不进 argv', () => {
++  const args = buildCodexArgs({
++    profile: null, model: null, effort: null, readonlyArgs: [], cwd: '/proj',
++  });
++  assert.equal(args.at(-1), '-', '送审包是几十 KB，塞 argv 是在赌 ARG_MAX');
++});
++
++// ─────────────────────────── 事件流 ───────────────────────────
++
++test('事件流：顶层 error 事件要被认出来（跨家族调用的唯一错误信息来源）', () => {
++  /*
++   * 实测形态：`-p qwen -m deepseek-flash` 时流里是
++   * `{"type":"error","message":"Reconnecting... 1/5 (… Model not found: deepseek-flash)"}`，
++   * 重试五次后退 1。不认这个类型，失败原因就只剩一个退出码。
++   */
++  const t = parseCodexEvents(
++    '{"type":"thread.started","thread_id":"T1"}\n' +
++      '{"type":"error","message":"Reconnecting... 1/5 (stream disconnected: Model not found: x)"}\n',
++  );
++  assert.equal(t.threadId, 'T1');
++  assert.deepEqual(t.errors, ['Reconnecting... 1/5 (stream disconnected: Model not found: x)']);
++});
++
++test('事件流：未知 item 类型跳过而不抛（reasoning 就是实测新出现的）', () => {
++  const t = parseCodexEvents(
++    '{"type":"item.completed","item":{"id":"i0","type":"reasoning","text":"…"}}\n' +
++      '{"type":"item.completed","item":{"id":"i1","type":"agent_message","text":"OK"}}\n',
++  );
++  assert.ok(t.itemTypes.includes('reasoning'), '新类型要进结论，否则「重录样本」这条口径触发不了');
++  assert.equal(t.finalText, 'OK');
++});
++
++test('事件流：只有成功执行的命令进写判据的入参', () => {
++  const t = parseCodexEvents(
++    '{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"ls"}}\n' +
++      '{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":1,"command":"cat nope"}}\n',
++  );
++  assert.deepEqual(succeededCommands(t), ['ls'], '失败的命令仍留在 command_texts 给措施 b，但不进写判据');
++  assert.equal(t.commands.length, 2, 'command_texts 那一侧要拿到全集');
++});
++
++// ─────────────────────────── 生效模型回读 ───────────────────────────
++
++test('回读：session_meta 给出家族与生效模型', () => {
++  // 形状取自本步真机录制（凭据与本机路径已替换）
++  const meta = parseCodexSessionMeta(
++    JSON.stringify({
++      type: 'session_meta',
++      payload: {
++        session_id: 'S1', cli_version: '0.154.0', cwd: '/proj',
++        model_provider: 'qwen',
++        base_instructions: { text: '', provenance: { type: 'model', model: 'qwen3.8-flash' } },
++      },
++    }),
++  );
++  assert.equal(meta.modelProvider, 'qwen');
++  assert.equal(meta.modelEffective, 'qwen3.8-flash', '实测它跟随 -m 覆盖，不是 profile 的意图值');
++  assert.equal(meta.cliVersion, '0.154.0');
++});
++
++test('回读：拿不到就是拿不到，不得回落成别的值', () => {
++  for (const bad of ['', 'not json', '{"type":"other"}', '{"type":"session_meta"}']) {
++    const m = parseCodexSessionMeta(bad);
++    assert.equal(m.modelEffective, null, `「${bad.slice(0, 20)}」应回读为 null`);
++  }
++});
++
++// ─────────────────────────── 隔离副本 ───────────────────────────
++
++const SAMPLE_TOML = `model = "qwen3.8-max"
++model_provider = "qwen"
++model_catalog_json = "~/.codex/models-qwen.json"
++notify = ["/usr/bin/say"]
++
++[projects."/Users/someone/secret-work"]
++trust_level = "trusted"
++
++[mcp_servers.node_repl]
++command = "node"
++
++[plugins."browser@bundled"]
++enabled = true
++
++[model_providers.qwen]
++name = "Qwen"
++base_url = "https://example.invalid/v1"
++`;
++
++test('裁剪：MCP、plugins、notify、他人项目信任表一律剥掉', () => {
++  const { kept, stripped } = trimCodexToml(SAMPLE_TOML);
++  assert.ok(!kept.includes('mcp_servers'), 'MCP 是独立进程通道，-s read-only 管不到它');
++  assert.ok(!kept.includes('plugins'), '');
++  assert.ok(!kept.includes('notify'), 'notify 是外部命令回调');
++  assert.ok(!kept.includes('secret-work'), '宿主机信任过哪些目录不该进审查会话');
++  assert.ok(stripped.some((k) => k.includes('mcp_servers')), '剥掉什么要逐条留痕，不能静默丢');
++});
++
++test('裁剪：模型相关键与 provider 段必须留下（否则副本跑不起来）', () => {
++  const { kept } = trimCodexToml(SAMPLE_TOML);
++  for (const need of ['model =', 'model_provider =', 'model_catalog_json =', '[model_providers.qwen]', 'base_url']) {
++    assert.ok(kept.includes(need), `${need} 是副本可用的必要条件`);
++  }
++});
++
++test('重写：~/ 路径改为副本内绝对路径，并把文件拷进来', async () => {
++  /*
++   * 这条守的是本步实测到的阻断项：`~` 由 **HOME** 展开，隔离 HOME 之后
++   * `~/.codex/models-qwen.json` 指向 fakehome 下不存在的文件，
++   * codex 直接 `Error: No such file or directory` 退出。
++   */
++  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-cx-'));
++  try {
++    const src = path.join(os.homedir(), '.trivium-test-catalog.json');
++    await fs.writeFile(src, '{}', 'utf8');
++    const f = path.join(dir, 'config.toml');
++    await fs.writeFile(f, 'model_catalog_json = "~/.trivium-test-catalog.json"\n', 'utf8');
++
++    const r = await rewriteHomePaths(f, dir);
++    const after = await fs.readFile(f, 'utf8');
++    assert.ok(after.includes(dir), '值必须指向副本内的绝对路径');
++    assert.ok(!after.includes('~/'), '重写后不得残留 ~ 写法');
++    assert.deepEqual(r.copied, ['.trivium-test-catalog.json']);
++    await fs.rm(src, { force: true });
++  } finally {
++    await fs.rm(dir, { recursive: true, force: true });
++  }
++});
++
++test('重写：目标不存在或不是普通文件时留痕跳过，不抛异常', async () => {
++  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-cx-'));
++  try {
++    const f = path.join(dir, 'config.toml');
++    await fs.writeFile(f, 'a = "~/definitely-not-here-xyz"\nb = "~/"\n', 'utf8');
++    const r = await rewriteHomePaths(f, dir);
++    assert.deepEqual(r.copied, []);
++    assert.ok(r.rewritten.every((x) => x.includes('跳过')), '逐条留痕，不静默');
++  } finally {
++    await fs.rm(dir, { recursive: true, force: true });
++  }
++});
++
++test('准备：产出独立 CODEX_HOME 与独立 HOME，凭据权限收紧到 600', async () => {
++  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-cx-'));
++  const fakeSrc = path.join(dir, 'src-home');
++  try {
++    await fs.mkdir(fakeSrc, { recursive: true });
++    await fs.writeFile(path.join(fakeSrc, 'config.toml'), SAMPLE_TOML, 'utf8');
++    await fs.writeFile(path.join(fakeSrc, 'auth.json'), '{"token":"x"}', 'utf8');
++
++    const prep = await prepareCodexHome(dir, {
++      profile: null, projectRoot: '/proj', sourceHome: fakeSrc,
++    });
++
++    assert.ok(prep.fakeHome.startsWith(prep.codexHome), 'HOME 也要被覆盖，否则 skill 指令面漏进来');
++    assert.ok(prep.copiedFiles.includes('auth.json'));
++    const mode = (await fs.stat(path.join(prep.codexHome, 'auth.json'))).mode & 0o777;
++    assert.equal(mode, 0o600, '凭据副本必须收紧权限');
++
++    const base = await fs.readFile(path.join(prep.codexHome, 'config.toml'), 'utf8');
++    assert.ok(base.includes('[projects."/proj"]'), '按当次项目根重建信任记录');
++    assert.ok(!base.includes('secret-work'), '不抄宿主机整张信任表');
++    assert.ok(prep.strippedKeys.length > 0, '剥离清单要能说出丢了什么');
++  } finally {
++    await fs.rm(dir, { recursive: true, force: true });
++  }
++});
++
++// ─────────────────────────── 能力声明 ───────────────────────────
++
++test('能力声明：codex 是 command-trace，且被拒操作不留痕', () => {
++  /*
++   * **这条是变异验证逼出来的。** M8 第 3 步跑 M1 变异（把声明改成 `tool-trace`）时，
++   * 全量用例无一变红——判定层按声明分档，而没有任何断言守着「声明的是什么」。
++   * 声明一旦错成 tool-trace：路径不再从命令文本回填，该侧证据恒不达标；
++   * rejectionRecorded 错成 true 则让「没检出写事件」被当成可信的阴性结论。
++   *
++   * 依据是 M6 实测 P-C1（读取路径没有结构化字段）与 P-C2（被拒命令不进事件流），
++   * 后者在本步的隔离实测里再次复现。改这两个值之前先去改探针报告。
++   */
++  assert.equal(codexAdapter.capability.traceShape, 'command-trace');
++  assert.equal(codexAdapter.capability.rejectionRecorded, false);
++});
++
++test('能力对账：声明与探针实测不符时必须被点名', () => {
++  // 探针说「有结构化路径」而适配器声明 command-trace —— 其一过时了，doctor 要说出来
++  const lines = capabilityParity(
++    { trace_path_structured: true, rejected_command_in_trace: false },
++    codexAdapter.capability,
++    'codex',
++  );
++  assert.equal(lines.length, 1, '不符却不点名，这个字段就白登记了（EV-06 的形状）');
++  assert.match(lines[0]!.message, /trace_path_structured/);
++
++  const clean = capabilityParity(
++    { trace_path_structured: false, rejected_command_in_trace: false },
++    codexAdapter.capability,
++    'codex',
++  );
++  assert.deepEqual(clean, [], '相符时不得报噪音');
++});
++
++test('能力对账：探针没测出结论（null）时不报不符', () => {
++  const lines = capabilityParity(
++    { trace_path_structured: null, rejected_command_in_trace: null },
++    codexAdapter.capability,
++    'codex',
++  );
++  assert.deepEqual(lines, [], '「没测过」不是「不符」——那是三态里的第三态');
++});
++
++// ─────────────────────────── 结果组装（AC-20 的硬判据） ───────────────────────────
++
++const OUTCOME = { exitCode: 0, durationMs: 1000, commandLine: 'codex exec …' };
++const PATHS = { stdout: '/run/stdout.jsonl', trace: '/run/trace.json' };
++const PROBE = { version: '0.154.0', path_deny: { supported: false } };
++const TRACE_OK = parseCodexEvents(
++  '{"type":"thread.started","thread_id":"T9"}\n' +
++    '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}\n',
++);
++
++test('组装：回读到生效模型 → 来源记 trace', () => {
++  const r = buildCodexResult(
++    TRACE_OK,
++    { sessionId: 'T9', modelProvider: 'qwen', modelEffective: 'qwen3.8-flash', cliVersion: '0.154.0' },
++    OUTCOME, PATHS, PROBE, '/proj',
++  );
++  assert.equal(r.model_effective, 'qwen3.8-flash');
++  assert.equal(r.model_effective_source, 'trace');
++});
++
++test('组装：回读不到 → 记 unverified，且 model_effective 保持 null', () => {
++  /*
++   * **这条是 AC-20 的硬判据**：「生效模型仍以回读为准、不采信 profile 意图」。
++   * 拿请求值冒充会让那条验收永远通过——M8 第 3 步的 M4 变异证实了缺守卫，
++   * 本条就是补上的那个守卫。与 zcode 侧「绝不用 requested 冒充」是同一条纪律。
++   */
++  const r = buildCodexResult(
++    TRACE_OK,
++    { sessionId: 'T9', modelProvider: null, modelEffective: null, cliVersion: null },
++    OUTCOME, PATHS, PROBE, '/proj',
++  );
++  assert.equal(r.model_effective, null, '拿不到就是拿不到，不得回落成请求值');
++  assert.equal(r.model_effective_source, 'unverified');
++});
++
++test('组装：read_paths 恒空且 command_texts 拿全集（含失败的命令）', () => {
++  const trace = parseCodexEvents(
++    '{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"grep -rn x src"}}\n' +
++      '{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":2,"command":"cat missing.ts"}}\n' +
++      '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}\n',
++  );
++  const r = buildCodexResult(
++    trace,
++    { sessionId: null, modelProvider: null, modelEffective: 'm', cliVersion: null },
++    OUTCOME, PATHS, PROBE, '/proj',
++  );
++  assert.deepEqual(r.read_paths, [], 'codex 没有结构化路径字段，由判定层从命令文本回填');
++  assert.equal(r.command_texts.length, 2, '措施 b 要扫全集：泄漏企图即便失败也要检出');
++  assert.deepEqual(r.write_events, [], '两条都是读命令');
++});
++
++test('组装：项目内的成功写入进 write_events，项目外进疑似档', () => {
++  const trace = parseCodexEvents(
++    '{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"echo x > src/a.ts"}}\n' +
++      '{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0,"command":"cp src/a.ts /tmp/b.ts"}}\n' +
++      '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}\n',
++  );
++  const r = buildCodexResult(
++    trace,
++    { sessionId: null, modelProvider: null, modelEffective: 'm', cliVersion: null },
++    OUTCOME, PATHS, PROBE, '/proj',
++  );
++  assert.deepEqual(r.write_events, ['echo x > src/a.ts']);
++  assert.equal(r.suspected_write_events?.length, 1);
++  assert.match(r.suspected_write_events![0]!.why, /项目外/);
++});
++
++// ─────────────────────────── 可用性判据 ───────────────────────────
++
++function probeWith(over: Record<string, unknown> = {}): Config {
++  const cfg = defaultConfig();
++  Object.assign(cfg.probe.cli.codex!, {
++    probed_at: new Date().toISOString(),
++    entrypoint: '/usr/local/bin/codex',
++    readonly_flags: ['-s', 'read-only'],
++    exec_headless_read_ok: true,
++    profiles: ['qwen'],
++    providers: [{ profile: 'qwen', provider: 'qwen', model: 'qwen3.8-max', credentialed: true }],
++    ...over,
++  });
++  return cfg;
++}
++const AVAIL_CTX = (cfg: Config) => ({ cfg, nodePath: process.execPath });
++
++test('可用性：五档不可用理由互不混淆', () => {
++  const cases: [string, Record<string, unknown>, RegExp][] = [
++    ['没探过', { probed_at: null }, /尚未探测/],
++    ['探过但没找到入口', { entrypoint: null }, /未找到 codex 可执行文件/],
++    ['沙箱负对照失败', { readonly_flags: [] }, /只读沙箱负对照失败的情形/],
++    ['headless 读不到', { exec_headless_read_ok: false }, /读不到文件/],
++    ['没测成（三态的第三态）', { exec_headless_read_ok: null }, /上次探测没跑完/],
++  ];
++  for (const [name, over, re] of cases) {
++    const v = codexAdapter.availability(AVAIL_CTX(probeWith(over)));
++    assert.equal(v.ok, false, `${name} 应判不可用`);
++    assert.match(v.reason!, re, `${name} 的理由不该与其它档混淆`);
++  }
++});
++
++test('可用性：配置的 profile 在本机不存在 → 拒，并列出已探到的', () => {
++  /*
++   * 这道拦截不能省：codex 对未知 profile **不报错、静默回落基底配置**
++   * （`unknown_profile_rejected` 实测为 false）。不拦，用户就会以为跑的是
++   * 自己写的那家、实际跑的是基底那家，而留痕里两者看不出差别。
++   */
++  const cfg = probeWith();
++  (cfg.agents.codex as { profile: string | null }).profile = 'no-such-profile';
++  const v = codexAdapter.availability(AVAIL_CTX(cfg));
++  assert.equal(v.ok, false);
++  assert.match(v.reason!, /no-such-profile/);
++  assert.match(v.reason!, /qwen/, '要列出已探到的可用值，别把用户引向下一个错误');
++});
++
++test('可用性：profile 存在但该家族没有凭据 → 拒，并给出可粘贴的落点', () => {
++  const cfg = probeWith({
++    providers: [{ profile: 'qwen', provider: 'qwen', model: 'm', credentialed: false }],
++  });
++  const v = codexAdapter.availability(AVAIL_CTX(cfg));
++  assert.equal(v.ok, false);
++  assert.match(v.reason!, /model_providers\.qwen/, '要说清凭据写在哪一段');
++  assert.match(v.reason!, /不代写/, '编排器不代填凭据、不改全局配置（纪律 5）');
++});
++
++test('可用性：探针齐备且家族有凭据 → 可用', () => {
++  assert.deepEqual(codexAdapter.availability(AVAIL_CTX(probeWith())), { ok: true });
++});
+diff --git a/test/unit/codex-write-verbs.test.ts b/test/unit/codex-write-verbs.test.ts
+new file mode 100644
+index 0000000..8509f3b
+--- /dev/null
++++ b/test/unit/codex-write-verbs.test.ts
+@@ -0,0 +1,141 @@
++/**
++ * `command-trace` 族的写命令判据（设计 §10.3 / §11.1，M8 第 3 步）。
++ *
++ * 本文件守的是**误报方向**——计划双审 GLM-02 指出：原测试计划四条变异
++ * 没有一条守这个方向，而 §3.3 自己写了「误判成写 ⇒ 整侧作废」，
++ * 代价更高的那一侧反而零覆盖。
++ *
++ * 误报的后果不是一条断言失败，是审查员被扣上「只读失守」并整侧作废，
++ * 所以这里的负断言与正断言同等重要。
++ */
++import assert from 'node:assert/strict';
++import test from 'node:test';
++import {
++  WRITE_VERBS_FOR_PARITY,
++  WRITE_TARGET_VERBS_FOR_PARITY,
++  classifyWriteCommands,
++} from '../../src/trivium/adapters/base.js';
++
++const ROOT = '/proj';
++
++function classify(...cmds: string[]) {
++  return classifyWriteCommands(cmds, ROOT);
++}
++
++// ───────────────────────── 两张表的对账 ─────────────────────────
++
++test('对账：cd / pushd 在参数位表里，但绝不在写动词集里', () => {
++  /*
++   * 这条用例是 M8 第 3 步计划双审那个 blocker 的守卫。
++   *
++   * `WRITE_VERB_TARGET` 回答「这个参数位算不算读证据」——`cd` 必须在其中，
++   * 它的参数是目录、不是被读的文件；`WRITE_VERBS` 回答「这是不是写操作」——
++   * `cd` 绝不能在其中，它不发生任何写系统调用。
++   *
++   * 两张表键集相似而语义不同，曾被计划稿以「防漂移」为由主张合并。
++   * 真要合并，这条用例会当场红。
++   */
++  for (const verb of ['cd', 'pushd']) {
++    assert.ok(
++      WRITE_TARGET_VERBS_FOR_PARITY.includes(verb),
++      `${verb} 应当在 WRITE_VERB_TARGET 里（它的参数是目录，不算读证据）`,
++    );
++    assert.ok(
++      !WRITE_VERBS_FOR_PARITY.includes(verb),
++      `${verb} 不得在写动词集里——它不发生写系统调用，判它为写会让正常审查整侧作废`,
++    );
++  }
++});
++
++// ───────────────────────── 误报方向（负断言） ─────────────────────────
++
++test('负断言：cd 不产生写事件——这是真机实测录到的第二条命令', () => {
++  // 本步隔离实测里模型实跑的形态，exit_code: 0、status: completed
++  const r = classify("/bin/zsh -lc 'cd . && echo ok; echo \"exit=$?\"'");
++  assert.deepEqual(r.writes, [], 'cd 被判成写事件 ⇒ 整侧以「只读失守」作废');
++  assert.deepEqual(r.suspected, []);
++});
++
++test('负断言：审查员开头 cd 再 grep 的常见形态完全干净', () => {
++  const r = classify('cd src/trivium && grep -rn foo .');
++  assert.deepEqual(r.writes, []);
++  assert.deepEqual(r.suspected, []);
++});
++
++test('负断言：读命令与设备重定向不进任何一档', () => {
++  const r = classify(
++    "/bin/zsh -lc 'ls -la; head -n 1 sample.txt'", // 实测录到的第一条命令
++    'find . 2>/dev/null',
++    'grep -rn x src > /dev/null',
++    'git log -p --stat',
++  );
++  assert.deepEqual(r.writes, []);
++  assert.deepEqual(r.suspected, []);
++});
++
++test('疑似档：幂等空操作不判失守', () => {
++  const r = classify('mkdir -p src/existing', 'rm -f src/gone.ts');
++  assert.deepEqual(r.writes, [], '幂等形态成功退出不等于发生了写入');
++  assert.equal(r.suspected.length, 2);
++  assert.ok(r.suspected.every((s) => s.why.includes('幂等')));
++});
++
++test('疑似档：掩码结构让整条退出码与写段成功脱钩', () => {
++  const r = classify('touch src/x.ts || true');
++  assert.deepEqual(r.writes, []);
++  assert.equal(r.suspected.length, 1);
++  assert.ok(r.suspected[0]!.why.includes('掩码'));
++});
++
++test('疑似档：项目外写入留痕但不判失守', () => {
++  /*
++   * 裁决依据是自洽性：codex 每次运行都往 $CODEX_HOME/sessions/ 写会话文件，
++   * 而生效模型的回读正是靠读它。项目外写入若算失守，这条流水线赖以工作的
++   * 那次写入自己就会把每一轮判成失守。
++   */
++  const r = classify('cp src/a.ts /tmp/leak.ts');
++  assert.deepEqual(r.writes, []);
++  assert.equal(r.suspected.length, 1);
++  assert.ok(r.suspected[0]!.why.includes('项目外'));
++});
++
++test('疑似档：命中写动词但目标提不出来', () => {
++  const r = classify('cp $SRC $DST');
++  assert.deepEqual(r.writes, []);
++  assert.equal(r.suspected.length, 1);
++  assert.ok(r.suspected[0]!.why.includes('提不出'));
++});
++
++// ───────────────────────── 漏报方向（正断言） ─────────────────────────
++
++test('正断言：项目内的真实写入必须判失守', () => {
++  const cases = [
++    'echo BREACH > src/x.ts',
++    "/bin/zsh -lc 'echo more >> src/a.ts'",
++    'cp /tmp/payload src/b.ts',
++    'tee src/out.txt',
++    'rm src/a.ts',
++    'mv src/a.ts src/b.ts',
++    'chmod +x scripts/build.sh',
++    'dd if=/dev/zero of=src/blob.bin',
++  ];
++  for (const c of cases) {
++    const r = classify(c);
++    assert.deepEqual(r.writes, [c], `这条应当判为写事件：${c}`);
++  }
++});
++
++test('正断言：ln 只把链接名当写入点，不把源当写入点', () => {
++  // `ln -s src/a.ts /tmp/link` 创建的是 /tmp/link，源在项目内不构成写入
++  const outward = classify('ln -s src/a.ts /tmp/link');
++  assert.deepEqual(outward.writes, []);
++  assert.ok(outward.suspected[0]!.why.includes('项目外'));
++
++  const inward = classify('ln -s /tmp/payload src/link.ts');
++  assert.deepEqual(inward.writes, ['ln -s /tmp/payload src/link.ts']);
++});
++
++test('同一条命令重复出现时不重复计数', () => {
++  const r = classify('echo x > src/a.ts', 'echo x > src/a.ts');
++  assert.equal(r.writes.length, 1);
++});
+diff --git a/test/unit/config-migrate.test.ts b/test/unit/config-migrate.test.ts
+index 5458cfb..7bf38fc 100644
+--- a/test/unit/config-migrate.test.ts
++++ b/test/unit/config-migrate.test.ts
+@@ -23,7 +23,8 @@ import {
+ } from '../../src/trivium/config.js';
+ import { validateConfig } from '../../src/trivium/schemas.js';
+ import { runInit } from '../../src/trivium/init.js';
+-import { CRITICS } from '../../src/trivium/types.js';
++import { CRITICS, DEFAULT_CRITICS } from '../../src/trivium/types.js';
++import { ALL_AGENT_IDS, agentById } from '../../src/trivium/agents/registry.js';
+ 
+ async function projectWith(files: Record<string, string>): Promise<string> {
+   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-mig-'));
+@@ -210,22 +211,23 @@ test('loadCtx：local 只覆盖单侧时，default_critics 仍是两家（不被
+   });
+   const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
+   assert.deepEqual(
+-    ctx.config.review.default_critics, [...CRITICS],
+-    '单侧本机覆盖不该缩小审查面——设计 13.1.1：默认值维持两家',
++    ctx.config.review.default_critics, [...DEFAULT_CRITICS],
++    '单侧本机覆盖不该缩小审查面——比的是「默认值」，M8 第 3 步起它派生自 defaultSelected',
+   );
+   const gemini = ctx.config.agents.gemini;
+   assert.ok(gemini && gemini.vendor === 'antigravity');
+   assert.equal(gemini.agent, 'my-critic', '覆盖本身要照常生效');
+ });
+ 
+-test('loadCtx：主配置只写一侧时，default_critics 同样保持全集', async () => {
++test('loadCtx：主配置只写一侧时，default_critics 同样保持缺省集合', async () => {
+   const raw = YAML.parse(v1Yaml());
+   delete raw.critics.glm;
+   const root = await projectWith({ 'config.yaml': YAML.stringify(raw) });
+   const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
+   assert.deepEqual(
+-    ctx.config.review.default_critics, [...CRITICS],
+-    'v1 的 critics 键集不是选侧机制，运行时本来就走全集——迁移不得改变这一点',
++    ctx.config.review.default_critics, [...DEFAULT_CRITICS],
++    'v1 的 critics 键集不是选侧机制——迁移不得据它缩小默认集合。' +
++      '（「全集」这个措辞随 M8 第 3 步作废：能选的是三家、默认跑的是两家）',
+   );
+ });
+ 
+@@ -260,10 +262,17 @@ test('校验：agents.<id>.vendor 与注册表不符 → 报错（路由错配
+  */
+ test('校验：登记但未启用为审核者的 Agent 出现在 default_critics → 报错，不静默忽略', () => {
+   const cfg = JSON.parse(JSON.stringify(defaultConfig()));
+-  cfg.review.default_critics = ['codex'];
++  /*
++   * 取一个**已登记但未启用为审核者**的 id。原先写死 'codex'，而 codex 于 M8 第 3 步
++   * 启用后这条用例的前提就消失了（它不再报错，断言随之失去意义）。
++   * 改从注册表现取，前提消失时由下面的 assert.ok 当场说出来。
++   */
++  const notEnabled = ALL_AGENT_IDS.find((id) => !agentById(id)!.criticEnabled);
++  assert.ok(notEnabled, '四家全部启用时本用例失去意义，届时改用别的夹具');
++  cfg.review.default_critics = [notEnabled];
+   const problems = validateConfig(cfg);
+   assert.ok(
+-    problems.some((p) => p.includes('codex')),
++    problems.some((p) => p.includes(notEnabled)),
+     `静默忽略会让用户以为第三家已经在跑了，实得：${problems.join('；')}`,
+   );
+ });
+@@ -297,7 +306,8 @@ test('校验：未登记 id 的报错要区分「当前可配置」与「已登
+ 
+ test('校验：default_critics 里的 Agent 在 agents 中没有配置段 → 报错', () => {
+   const cfg = JSON.parse(JSON.stringify(defaultConfig()));
+-  delete cfg.agents[CRITICS[0]!];
++  // 删的必须是**在 default_critics 里**的那一家，否则触发不到本条校验
++  delete cfg.agents[DEFAULT_CRITICS[0]!];
+   const problems = validateConfig(cfg);
+   assert.ok(problems.some((p) => p.includes('没有配置段')), problems.join('；'));
+ });
+diff --git a/test/unit/critics.test.ts b/test/unit/critics.test.ts
+index 4af5c15..c0e1127 100644
+--- a/test/unit/critics.test.ts
++++ b/test/unit/critics.test.ts
+@@ -11,7 +11,7 @@ import { resolveCriticSelection } from '../../src/trivium/critics.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import { DEFAULT_DRIVER, ALL_AGENT_IDS, agentById } from '../../src/trivium/agents/registry.js';
+-import { CRITICS, type Config } from '../../src/trivium/types.js';
++import { CRITICS, type Config, DEFAULT_CRITICS } from '../../src/trivium/types.js';
+ 
+ const cfg = (): Config => defaultConfig();
+ 
+@@ -27,7 +27,12 @@ function rejects(fn: () => unknown, ...patterns: RegExp[]): void {
+ // ─────────────────────────── 正常路径 ───────────────────────────
+ 
+ test('都不给 → 取 review.default_critics', () => {
+-  assert.deepEqual(resolveCriticSelection(cfg()), [...CRITICS]);
++  /*
++   * 比的是**缺省集合**而不是启用全集（M8 第 3 步）。
++   * 此前二者是同一个，codex 启用后分了家：能选三家、默认跑两家（决策 D-1）。
++   * 用例名一直写的就是「取 review.default_critics」——断言现在才与它一致。
++   */
++  assert.deepEqual(resolveCriticSelection(cfg()), [...DEFAULT_CRITICS]);
+ });
+ 
+ test('--critics 显式多选', () => {
+@@ -117,11 +122,20 @@ test('Driver 检查不依赖 criticEnabled 顺带生效（M9 之后仍要挡住
+ });
+ 
+ test('已登记但未启用为审核者 → 退 64，说明随后续里程碑接入', () => {
+-  const pending = ALL_AGENT_IDS.find(
+-    (id) => !agentById(id)!.criticEnabled && id !== DEFAULT_DRIVER,
+-  );
++  /*
++   * 找一个未启用为审核者的 id。**不再排除 DEFAULT_DRIVER**——codex 于 M8 第 3 步
++   * 启用后，未启用的只剩 claude，而它恰是缺省 Driver，原条件会筛成空集
++   * （用例自己预告过这一天：「届时改用别的夹具」）。
++   * 改法是显式换一个当轮 Driver，把 claude 从 Driver 位置挪开，
++   * 这样走到的就是「尚未启用」那条分支，而不是被 Driver 检查先拦下。
++   */
++  const pending = ALL_AGENT_IDS.find((id) => !agentById(id)!.criticEnabled);
+   assert.ok(pending, '四家全部启用时本用例失去意义，届时改用别的夹具');
+-  rejects(() => resolveCriticSelection(cfg(), { critics: pending }), /尚未启用/);
++  const otherDriver = CRITICS.find((c) => c !== pending)!;
++  rejects(
++    () => resolveCriticSelection(cfg(), { critics: pending, driver: otherDriver }),
++    /尚未启用/,
++  );
+ });
+ 
+ test('在 agents 段里没有配置条目 → 退 64（取不到调用参数）', () => {
+diff --git a/test/unit/preflight.test.ts b/test/unit/preflight.test.ts
+index afc2a4a..9df9f2f 100644
+--- a/test/unit/preflight.test.ts
++++ b/test/unit/preflight.test.ts
+@@ -28,6 +28,18 @@ function freshProbe(cfg: Config): void {
+   zcode.models = ['GLM-5.3', 'GLM-5.3-Flash', 'bigmodel/GLM-5.3', 'bigmodel/GLM-5.3-Flash'];
+   zcode.model_id_form = 'bigmodel/GLM-5.3';
+   zcode.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit'];
++  /*
++   * 下面两个字段是 M8 第 3 步补的：`checkReadonlyCapability` 改为遍历适配器自己的
++   * `availability()` 之后，判据比原先那个弱化版更严（原版不查 zcode 的
++   * `--disallowed-tools` 硬前置，也不查两家的 headless 能力）。
++   * 夹具跟着补齐，不是为了让断言变绿——**变严的是判据，而变严是对的**：
++   * 预检与适配器对「这一侧能不能用」曾给出两个答案（计划双审 GLM-06）。
++   */
++  agy.headless_read_ok = true;
++  // 探针**当时实际验证过**的只读 Agent 名。新判据查的是这个，而不是「agent.md 文件在不在」——
++  // 探针若以默认 Agent 探测，只读白名单就从未被验证过，那时说「可用」是失实的。
++  agy.agent = 'trivium-critic';
++  zcode.response_field = '.response';
+ }
+ 
+ async function fakeCtx(mutate?: (c: Config) => void): Promise<Ctx> {
+@@ -460,7 +472,14 @@ test('第三态③：extract 不是合法正则时点名，而不是抛 JS 原
+   const ctx = await fakeCtx((c) =>
+     probeWithVersionProbe(c, { runner: null, args: ['--version'], extract: '(' }),
+   );
+-  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
++  /*
++   * `critics: ['gemini']` 是 M8 第 3 步补的，表达本条用例**本来就有**的意图——
++   * `probeWithVersionProbe` 的注释写着「另一侧压成没探过，免得它的失败盖过本条要看的
++   * 检查项」。此前靠把 `probed_at` 压成 null 让它隐身，而只读能力检查收敛到适配器
++   * `availability()` 之后，**入选侧没探过 = 不可用**，预检会如实拦下（这是对的：
++   * 本次要用它，用必失败，快速失败优于中途失败）。所以改用「不选它」来表达不测它。
++   */
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'] });
+   const detail = coverageDetail(r);
+   assert.match(detail, /不是合法正则/);
+   assert.equal(r.ok, true, '盘上一个字段被改坏不该让整个预检以 JS 异常收场');
+diff --git a/test/unit/registry-parity.test.ts b/test/unit/registry-parity.test.ts
+index 47b171b..6dbdfae 100644
+--- a/test/unit/registry-parity.test.ts
++++ b/test/unit/registry-parity.test.ts
+@@ -143,6 +143,13 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
+   { file: 'adapters/index.ts', why: 'Agent id → 厂商适配器的唯一接线处；新增一家在此加一行（M7b 第 2 步把 review/run-protocol 两份字面表收敛到这里）' },
+   { file: 'adapters/agy.ts', why: '厂商专属适配器：文件本身即该 Agent 的命名空间' },
+   { file: 'adapters/zcode.ts', why: '厂商专属适配器：ZCode 调用与参数构造' },
++  {
++    file: 'adapters/codex.ts',
++    why:
++      '厂商专属适配器：codex 调用、隔离副本准备与写判据接线，与 adapters/agy.ts 同规格。' +
++      '同目录的 codex-trace.ts / codex-home.ts **不需要**豁免——它们只处理事件流与配置文件，' +
++      '不写 Agent id 字面量，文件名带 codex 不进扫描面',
++  },
+   { file: 'config.ts', why: '内置默认配置里各 Agent 的厂商专属配置段（agents.gemini / agents.glm 的 vendor、agent、entry、max_turns）与 profiles 的逐 Agent 模型档位。M7b 第 4 步迁成 agents.* 后**仍需要**：内置默认值本身就得指名道姓地写出每一家配什么，那不是硬编码而是默认值的定义处；新增一家时这里加一段，与注册表加一行是同一件事的两面' },
+   // 注意：`src/install.ts` 不在本对账的扫描范围（只扫 src/trivium/），
+   // 因此不需要、也不应该为它留白名单条目——留着只会误导读者以为它被扫过。
+@@ -169,7 +176,15 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
+       '上一条豁免的理由里预言过「接 claude 探针时会遇到同一件事」——本条就是它',
+   },
+   { file: 'doctor.ts', why: '逐侧探测的人读输出与厂商专属诊断话术' },
+-  { file: 'preflight.ts', why: '逐侧预检的人读输出，以及两处按 Agent id 取厂商配置段的指纹计算（agyFingerprint 读 agents.gemini 的只读 Agent 定义）。M7b 第 6 步已把 checkModelSlugs 的身份穷尽改成按 vendor 分派，那一条不再是豁免理由；剩下的是「哪一家的可用性由哪个文件决定」，属厂商专属事实' },
++  /*
++   * `preflight.ts` 的豁免于 2026-09-15（M8 第 3 步）删除——**它是被这条对账赶出去的**。
++   *
++   * 原理由是「逐侧预检的人读输出，以及两处按 Agent id 取厂商配置段的指纹计算」。
++   * 本步把三处按厂商分派全部收敛掉：只读能力改为遍历适配器 `availability()`、
++   * 探活改为遍历 `authProbe()`（指纹计算随之回到各适配器）、模型目录校验改为
++   * 按 cliName 通用消费 `CommonProbe.models`。收敛完成后该文件里一个 Agent 字面量都没有，
++   * 「不得留过期条目」这条当场把它标了出来——泛化是否真的做完，由机器说了算。
++   */
+   { file: 'selftest.ts', why: '自检场景里两侧桩的固定编排；M7b 增 N 侧场景' },
+   { file: 'types.ts', why: "Disposition.role 的字面 'claude'：裁决件的作者恒为当轮 Driver，而 Driver 任意化排在 M10。此前的豁免理由是 CriticId 的字面收窄，M7b 第 6 步已把它放开成注册表全集——理由换了，豁免仍需要，所以是改写而不是删除" },
+ ];
+diff --git a/test/unit/run-meta.test.ts b/test/unit/run-meta.test.ts
+index 8ee218b..d5ab06a 100644
+--- a/test/unit/run-meta.test.ts
++++ b/test/unit/run-meta.test.ts
+@@ -14,7 +14,7 @@ import { newRunMeta, migrateRunMetaV1, readRunMeta, writeRunMeta } from '../../s
+ import { validateRunMeta, validateRunMetaV1 } from '../../src/trivium/schemas.js';
+ import { checkStageArtifacts, metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
+ import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+-import { CRITICS, CRITIC_VENDOR, type CriticId, type RunMeta } from '../../src/trivium/types.js';
++import { CRITICS, CRITIC_VENDOR, type CriticId, type RunMeta, DEFAULT_CRITICS } from '../../src/trivium/types.js';
+ 
+ async function tmpLayout(): Promise<ArchiveLayout> {
+   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-runmeta-'));
+@@ -214,7 +214,14 @@ test('读侧：写进去的 v2 原样读回来', async () => {
+ 
+ test('读侧：历史 v1 读回来已是 v2 形状', async () => {
+   const l = await tmpLayout();
+-  const only = CRITICS[0]!;
++  /*
++   * 取**缺省集合**的第一家，不是启用全集的第一家（M8 第 3 步）。
++   *
++   * v1 是历史契约：它的 `critics` 只声明 gemini / glm 两个属性、`vendor` 只枚举两值
++   * （见 run.v1.json）。codex 到 M8 才启用，**不可能出现在任何历史 v1 记录里**，
++   * 拿它构造 v1 夹具会被 ajv 如实拒掉——那不是缺陷，是契约边界。
++   */
++  const only = DEFAULT_CRITICS[0]!;
+   await putRaw(l, 'RV1', v1Raw({ review_mode: 'single', critics: { [only]: sideMeta(only) } }));
+   const back = await readRunMeta(l, 'plan', 'RV1');
+   assert.equal(back?.schema, 'trivium.run.v2');

@@ -329,6 +329,14 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     nodePath: cfg.runtime.node ?? process.execPath,
   };
 
+  // ── 可用性检查：不可用就别开工，避免产生半套工件（AC-16 的精神）──
+  /*
+   * 入选集合：调用方给了就用它，没给就走同一个判定处取配置默认值。
+   *
+   * **不再回落到 `CRITICS` 全集**（M7b 第 5 步）——那是 v1 时代「配置不表达选侧」
+   * 留下的写法。现在 `review.default_critics` 才是默认值的所在。
+   */
+  const sides: CriticId[] = [...(opts.critics ?? resolveCriticSelection(cfg))];
   /*
    * ── slug 校验内嵌于此（审查意见 GLM-01）──
    *
@@ -336,21 +344,18 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    * 而 routeModel 只透传不校验。若不在这里校验，非法 slug 会漏到运行中段才
    * 以业务性失败暴露——白烧配额且 strict 下整次中止。
    * §7.3 承诺的「退 64 并列出可用值」正是在这一处才真正成立。
+   *
+   * **必须传 `sides`，而且必须排在它解析之后**（r9 双审 AGY-04）。
+   * 本调用曾在 `sides` 之前、只传三个参数，于是第四个参数落到缺省集合：
+   * `--critics <非默认侧> --model-<该侧> <非法 slug>` 完全不被校验，
+   * 而缺省侧的无效配置反过来会拦住一次压根没选它的运行。
+   * M8 第 3 步给这个函数加第四个参数时只改了 preflight 那处调用，漏了这里——
+   * 而这里才是真正决定烧不烧配额的地方。
    */
   {
-    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides);
+    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides);
     if (!slug.ok) throw usageError(`模型 slug 不合法：\n  ${slug.detail}`);
   }
-
-  // ── 可用性检查：不可用就别开工，避免产生半套工件（AC-16 的精神）──
-  /*
-   * 入选集合：调用方给了就用它，没给就走同一个判定处取配置默认值。
-   *
-   * **不再回落到 `CRITICS` 全集**（M7b 第 5 步）——那是 v1 时代「配置不表达选侧」
-   * 留下的写法。现在 `review.default_critics` 才是默认值的所在，
-   * 而它的内置默认恰好就是全集，所以对既有两侧行为逐字不变。
-   */
-  const sides: CriticId[] = [...(opts.critics ?? resolveCriticSelection(cfg))];
   /*
    * **空集合要在这里就失败**（审查意见 GLM-05）。
    *

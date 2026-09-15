@@ -24,7 +24,7 @@ import { loadRoundReviews } from './gate.js';
 import { parseDisposition } from './disposition.js';
 import { measureAllPairs, type DivergenceReport } from './divergence.js';
 import { summarizeVerify, type VerifyRecord } from './verify.js';
-import { CRITICS, STAGES, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';
+import { CRITICS, DEFAULT_CRITICS, STAGES, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';
 
 const SEVERITIES: readonly Severity[] = ['blocker', 'major', 'minor', 'nit'];
 const DISPOSALS: readonly Disposal[] = ['接受', '驳回', '暂缓'];
@@ -423,10 +423,23 @@ export function renderTopicReport(r: TopicReport): string {
   if (r.rounds.length === 0) {
     L.push('（无数据）', '');
   } else {
-    // 审核者列按当前启用集合生成，列数随之变化（M7b 的 N 侧聚合在此自然成立）
+    /*
+     * 审核者列取**本主题实际参与过的侧**（各轮 sides 的并集），而不是当前启用集合。
+     *
+     * 原写法用 `CRITICS`，注释说「列数随启用集合变化」——那句话在启用集合与
+     * 缺省集合同集时成立，而 M8 第 3 步把两者拆开了（codex 启用但默认不入选）：
+     * 此后每个默认两侧轮次都会多出一个恒为「—」的 codex 列，而「—」在本表里
+     * 已经用来表示「该侧没参与这一轮」，读者分不清是没入选还是没提意见（r9 双审 GLM-09）。
+     *
+     * 并集为空时回落到缺省集合，让空报告仍有表头。
+     */
+    const seen = new Set<CriticId>();
+    for (const d of r.rounds) for (const x of d.sides) seen.add(x.critic);
+    const cols: CriticId[] = seen.size > 0 ? CRITICS.filter((c) => seen.has(c)) : [...DEFAULT_CRITICS];
+
     L.push(
-      `| 阶段/轮 | ${CRITICS.join(' | ')} | blocker | major | minor | nit | 接受 | 驳回 | 暂缓 |`,
-      `| :--- ${CRITICS.map(() => '| :--- ').join('')}| :--- | :--- | :--- | :--- | :--- | :--- | :--- |`,
+      `| 阶段/轮 | ${cols.join(' | ')} | blocker | major | minor | nit | 接受 | 驳回 | 暂缓 |`,
+      `| :--- ${cols.map(() => '| :--- ').join('')}| :--- | :--- | :--- | :--- | :--- | :--- | :--- |`,
     );
     for (const d of r.rounds) {
       const side = (c: CriticId): string => {
@@ -438,7 +451,7 @@ export function renderTopicReport(r: TopicReport): string {
       };
       const dz = d.disposals;
       L.push(
-        `| ${d.stage} r${d.rerunIndex} | ${CRITICS.map(side).join(' | ')} | ` +
+        `| ${d.stage} r${d.rerunIndex} | ${cols.map(side).join(' | ')} | ` +
           SEVERITIES.map((s) => d.severity[s]).join(' | ') +
           ' | ' +
           (dz ? DISPOSALS.map((x) => dz[x]).join(' | ') : '— | — | —') +
