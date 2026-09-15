@@ -46,6 +46,10 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
 
 1. **适配层只读探针结论，绝不硬编码 CLI 旗标**——两家 CLI 行为与官方文档不符是常态。
    实测与设计冲突时改适配层并回补设计文档，不改外部产品、不改验收口径。
+   **每个适配器还要声明 `capability: TraceCapability`**（轨迹形态 + 被拒操作是否留痕）：
+   判定层按**能力**分档，不按 Agent id 分叉（纪律 7）。这一项**必须按实测填**——
+   填错不报错，只是证据核验按错误的形状进行（读经 shell 的一族若误声明为 `tool-trace`，
+   `project_reads` 恒 0、每轮误报证据不足）。详见设计 §11.1「轨迹能力与判定分档」。
 2. **`archive.ts` 是 `.reviews/` 的唯一写出口**：命名生成、`O_CREAT|O_EXCL` 防覆盖、
    `-r<N>` 抬升只在那一处实现。
 3. **Hook wrapper 两支语义**：检测不到 `.trivium/config.yaml` → exit 0（全局安装不误伤

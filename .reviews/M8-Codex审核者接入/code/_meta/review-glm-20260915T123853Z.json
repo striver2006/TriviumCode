@@ -1,0 +1,98 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险一条在归因扣除：`breachEvidence.includes(f)` 的裸子串匹配会把「路径恰为另一条证据路径尾段」的漂移文件误扣出 unattributed 桶，且该文件在 run.json 的两个文件清单里同时消失；实现同时偏离了 r6 应答件明文承诺的「扣除前先解析出路径」（GLM-01）。焦点一的答案：分段正则对**含空格**的引号段安全，**不含空格**的引号段剥壳后内部 `;`/`|` 变成活分隔符错切命令，`grep '};' src/a.ts` 整条漏提、路径落在动词位被无条件 skip（GLM-02）。焦点三的答案：集成测试真实咬住整条接线、断言字符串特异性足够、每用例重跑流水线与 gate-loop 的仓库惯例一致可接受；但五面留痕里**第四面（report guardFlags）零断言**，且新增的两条「其中 N 个无法归因」旗标必然并排——数值不重复计数、文案重复（GLM-03）。另：r6 应答 §1.5 承诺的虚报边界登记没有落进设计 §11.1，cd/-C/mkdir 目录目标仍是未登记的虚报源（GLM-04）；桩七条命令只有聚合断言咬住（GLM-05，nit）。r6 我侧 8 条中其余 7 条逐项核实落位；归因分流改用 input.capabilities、readonlyBreach 两档一律由写事件判定、措施 a 不吃回填均正确。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/guard.ts:318-331",
+      "problem": "归因扣除判据用 `breachEvidence` 事件串对 drift 文件路径做裸 `includes` 子串匹配，有两层问题。(a) 与 r6 应答件 §1.2 承诺的修法不一致：应答明写「`breachEvidence` 是事件描述串……**扣除前要先解析出路径**；解析不出的保守留在原桶」，实现没有做任何解析，直接子串包含。(b) 存在可复现的误扣面：drift 文件路径恰为另一条 evidence 内路径的尾部子串时被误扣——如根 `README.md` 漂移 + 证据 `write_to_file(/proj/sub/README.md)`，或 `src/a.ts` 对 `/proj/test/src/a.ts`。误扣方向下该文件被移出 unattributed 桶，而 anyReadonlyUnavailable 时 fingerprintChangedFiles 已整批置空、meta.snapshot.drift.files 同为空——该文件在 run.json 的两个文件清单里都消失，无法归因计数少一个（运行时漂移告警仍列全量 drift.files，人还看得见，故非完全不可见，severity 压在 minor）。",
+      "evidence": "guard.ts:327-331（breachedAll / attributedToBreach 的 `ev.includes(f)` 实现）与 guard.ts:318-325 注释自述「按串里是否出现该文件的路径做包含判定」；r6-response-claude.md §1.2 第 2 条原文「扣除前要先解析出路径」；漂移侧形态 freeze.ts:359-378（diffTrees 输出项目相对路径）；证据侧形态 agy-events.ts:172-176（`${toolName}(${t.path ?? JSON.stringify(parameters).slice(0,80)})`，嵌绝对路径）、zcode-trace.ts:182-186（`${toolName}(${e.path ?? ''})`）；review.ts:985-989（snapshot.drift.files = verdict.fingerprintChangedFiles，归因激活时为空数组）。",
+      "suggestion": "至少做边界敏感匹配（如 `ev.includes('/' + f)`——相对路径在绝对形态证据里恒被 `/` 包住，可杀掉尾段子串误扣），或按 r6 应答原案从证据串剥出路径再归一比对；agy 80 字符截断参数 JSON 造成的漏扣现状保守（留在原桶）可接受，但注释应改成如实描述「包含判定」，消除与应答件承诺的落差。补一条「尾段子串不相干文件」的负断言。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/adapters/base.ts:379-401",
+      "problem": "焦点一问「分段正则对嵌套引号内的分隔符是否安全」的答案：只对**含空格**的引号段安全。不含空格的引号段在 dequoted 阶段被剥掉引号、内容原样保留（` ${inner} `），其内部的 `;` `|` `&&` `(` `)` 随后成为**活分隔符**把命令错切。可复现反例 `grep '};' src/a.ts`（搜行尾 `};` 是代码审查的自然动作）：引号对 inner=`};` 无空白 → 保留 → 按 `;` 切段得 [`grep  }`, `  src/a.ts`] → 第二段唯一 token `src/a.ts` 落在动词位被 skip.add(0) 无条件跳过 → 提取结果为空，真实读取整条丢失。同族：`rg 'foo|' f.ts`、`$(< a.ts)`（`(` 切段 + `<` 切 token 后 a.ts 独占一段成动词）。这不是本轮引入（r6 的全局引号替换同样漏），但本轮重写正是收口时机，且文档块宣称引号穿透已与措施 b「同向」——实际 F-5 的穿透不产生这种错切。",
+      "evidence": "base.ts:390-392（replace 无空格分支原样保留 inner）、base.ts:395（split(/\\|\\||&&|[|;()]/)）、base.ts:327-329（动词位无条件 skip）；对 `grep '};' src/a.ts` 逐字符走查：输出为空数组；对照 guard-capability.test.ts 的 r6 反例锁例（`cat \"my notes/a.ts\"` 含空格分支）证实含空格分支安全、无空格分支无任何用例。",
+      "suggestion": "无空格分支若 inner 含段分隔符（`;&|()`）也整段丢弃——与含空格同判「宁可漏报」，一并防住假分段与路径落动词位两种后果；补 `grep '};' src/a.ts` 的负断言锁住。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/report.ts:248-289 与 test/integration/command-trace.test.ts",
+      "problem": "留痕五面里的**第四面（复盘报告 guardFlags）零判据**：集成测试四条用例名自标「第一/二/三/五面」，第四面缺席；report.test.ts:253-259 仍只断言旧的「漂移 1 个文件」。本轮 report.ts 三处新逻辑（合并展示算术、降级两行、unattributed 独立行）无任何断言，而其中恰有新引入的瑕疵：un>0 时 guardFlags 必然同时出现「漂移 N 个文件（policy，其中 un 个无法归因）」（report.ts:255-258）与「其中 un 个**无法归因**（只读核验不可用…）」（report.ts:285-289）——焦点三后半问的答案：**数值不重复计数**（shown = snapshot.drift.files.length + un，归因激活时前者恒 0），但同一信息两条旗标并排，是 r6 GLM-08 要防的那类人读噪音的轻量复发。另 report.ts:250 注释「整批移进了 unattributed_drift_files」不准确——确诊失守的文件被 attributedToBreach 扣除后并不进该桶，非「整批」。",
+      "evidence": "全仓 grep test/ 命「无法归因|guardFlags|verification_degraded」仅 test/integration/command-trace.test.ts:113-114（只断言字段存在）与 test/unit/report.test.ts:257（旧旗标）；report.ts:255-258 与 285-289 两段推送条件在 un>0 时同时为真（unattributed ⊂ changed ⊂ drift.files ⇒ drift.changed 恒真）；review.ts:985-989（snapshot.drift.files 取 fingerprintChangedFiles）。",
+      "suggestion": "report.test.ts 的 seedRound 补 verification_degraded / unattributed_drift_files 种子，断言合并行算术与降级两行；两条「其中 N 个无法归因」二选一（建议保留合并行内 suffix、删独立行，或独立行并入理由不重复计数）；同步修正「整批移进」注释为「扣除确诊失守后的余批」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md §11.1 与 src/trivium/adapters/base.ts:293-297",
+      "problem": "r6 应答件 §1.5 承诺「边界登记补虚报一侧……两者并列写进注释**与设计 §11.1**」只落了一半：设计 §11.1 本轮新增小节（1764-1814 行一带）没有任何虚报/漏报边界的登记段（全文档 grep「虚报|虚高|断尾」零命中），base.ts 文档块「已知漏报边界」仍只列漏报。而版本区间与带空格引号两类虚报修掉后，**仍有未登记的虚报源**：`cd src/x`、`git -C src/x log`、`mkdir -p dist/x` 的目录目标会被计入读证据（WRITE_VERB_TARGET 只有 cp/mv/tee/install/sed，cd/-C/mkdir 的目标位不是读取却无排除规则）——这些是审查员命令的高频形态，方向是让 command-trace 族 project_reads 虚高、AC-11 实际约束比设计口径松；另 URL 经 gitObj 正则剥出 `//example.com/x` 进入 effectiveReadPaths（projectReads 被 isUnder 过滤，仅污染派生视图与 consulted 核对面）。EV-14 同族：应答件承诺与落盘内容不一致。",
+      "evidence": "r6-response-claude.md §1.5 原文「两者并列写进注释与设计 §11.1」；设计文档 grep 虚报|虚高|断尾 零命中、§11.1 新增段（1798-1814 实读）无边界清单；base.ts:267-272（WRITE_VERB_TARGET 无 cd/mkdir）、base.ts:358-376（主循环对目录目标无排除）、base.ts:366（gitObj 正则可剥 https 形态）。",
+      "suggestion": "把「已知虚报边界」（cd/-C/mkdir 目录目标、URL 剥离）与既有漏报边界并列写进 base.ts 文档块与设计 §11.1；是否给 cd/mkdir 目标位加排除（同 cp 的 last 规则，改动很小）由 Driver 拍板——登记面必须先补齐，这是应答件已承诺的事项。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/stub.ts（command_trace 分支）与 test/integration/command-trace.test.ts",
+      "problem": "stub 注释「七条命令……断言在 test/integration/command-trace.test.ts」——该测试对命令清单只有**聚合**断言：evidence_ok=true 只要 7 条命令 ≥ min_tool_calls=5、提取出 ≥2 条项目路径即过。单条命令形态改坏（如把 `2>/dev/null` 换掉、把 `cp` 换成 `cat`）不会红。r6 GLM-07 的教训「让集成测试咬住清单，否则下次写错清单仍然不会红」只兑现了一半——清单与断言之间仍隔着聚合阈值，正是「写下覆盖声明时须指出断言在哪一行」纪律的边缘违例。",
+      "evidence": "stub.ts command_trace 分支注释与七条命令清单（本轮 diff 全文）；command-trace.test.ts 对 gemini 侧的全部断言为 evidence_ok / cli_version / verification_degraded / project 无关三类，无逐命令或计数断言；types.ts:708-710（RunMeta critics 段已有 project_reads 字段可承载精确断言）。",
+      "suggestion": "集成测试补一条精确计数断言：按七条命令走查，gemini 侧 project_reads 应为 6（a/b/c/d/e.ts + README.md；cp 目标被排除、../Other 逃逸被过滤）。落断言前实跑对一次该校正值，之后清单任何一条形态坏掉即红。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "r6 我侧 8 条中 7 条逐项核实落位：提取器四族反例（fd 前缀重定向、跨管道/分号动词、basename 动词、版本区间与带空格引号、~/＄HOME 展开）修法与 guard-capability.test.ts 的锁例一一对应，我逐字符走查确认；types.ts 消费方注释改「第 3 步起 · 仅预留」；0 下限不再反向抬升；折减系数论据改为设计预期并如实自认；README 升 v1.3.9 带演进摘要；AGY-06「三重降到两重」文案对齐。",
+    "归因分流改用 input.capabilities（r6 AGY-02b）修得对：超时侧不进 sides 也不影响 anyReadonlyUnavailable，guard-capability.test.ts 末条专门用真实 git 夹具锁住；fingerprintChangedFiles 置空的下游仅 meta.snapshot 与 report（全仓 grep 核实），gate 判定不受影响。",
+    "集成测试真实咬住整条接线：TRIVIUM_STUB_CRITIC 注入 command_trace 走真实 --start/--wait 子进程，evidence_ok=true 只在「适配器声明 → review.ts 从适配器表取值 → judgeRun 透传 → checkEvidence 回填分档」全通时成立；断言字符串特异性足够（`readonly_verification: unavailable` 只来自 front-matter 键、「gemini 侧只读核验不可用」带侧名前缀只来自 renderGuardWarnings）；每用例重跑完整流水线与 gate-loop.test.ts 十余用例各跑一次的仓库惯例一致、走桩不烧配额，开销可接受。",
+    "readonlyBreach 两档一律由写事件判定保持不动（guard.ts:135 无任何按 rejectionRecorded 压判定的分支），档位记能力恒态与真阳性正交，一正一负两条用例锁住——r2 blocker 的锁没松。",
+    "措施 a 不吃回填的接线（judgeSide 只喂 result.read_paths 原始值）与设计 §11.1 表④一致；回填是派生视图不回写 CriticResult 有专门断言。",
+    "EV-19 作为合成结论在 BACKLOG、设计 §10.1 末段、§11.1、PROTOCOL 四处落点齐全，本轮跨文档没有漏。"
+  ],
+  "not_covered": [
+    "未运行任何构建或测试（只读约束）：「既有 1030 条 + 新增用例全绿」未独立复核，extractPathTokens 全部行为结论基于逐字符走查而非实跑。",
+    "doctor.ts / gate.ts / run-protocol.ts / cli.ts 未逐行重读；command-trace.test.ts 依赖的 worker.log 落点依据测试内注释对 run-protocol.ts:293 的声明，未打开该文件核实。",
+    "设计 §16.1 / §24 台账与 PROTOCOL 的既有条目未逐条对账（只核了本轮新增落点）；registry-parity / known-forms-parity 是否仍绿未验证。",
+    "codex 真实轨迹（第 3 步才存在）下 SUBSHELL_RE 覆盖面、折减系数 1/2 的合理性、提取口径整体表现未验证——本审查以桩形态与 r6 反例族为准。",
+    "guard-capability.test.ts 与 command-trace.test.ts 的内容取自被审 diff 全文（两文件为本补丁新增，diff 即全量），未另行打开工作树副本逐行比对。"
+  ],
+  "consulted": [
+    ".reviews/M8-Codex审核者接入/code/_meta/changes-20260915T123853Z.diff",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r6-glm.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r6-response-claude.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/report.ts",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "src/trivium/meta.ts",
+    "test/unit/report.test.ts",
+    "test/unit/guard-capability.test.ts",
+    "test/integration/command-trace.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "skills/dual-critic/schema/run.v2.json"
+  ]
+}

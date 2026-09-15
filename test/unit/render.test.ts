@@ -250,6 +250,7 @@ test('只读失守的告警包含可执行的人工核对命令，且明确不�
     drift: { kind: 'none' },
     driftAction: 'ok',
     fingerprintChangedFiles: [],
+    unattributedDriftFiles: [],
     readonlyBreach: true,
     breachedFiles: ['write_to_file(/proj/src/x.ts)'],
     peerArtifactRead: false,

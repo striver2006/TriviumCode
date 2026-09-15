@@ -1,0 +1,1542 @@
+# trivium changes.diff
+# run_id: 20260915T115437Z
+# base: HEAD
+# head: 194ef0b7c59c53c7b3ecfe31e7bbdea950cfcb61
+# files: 19
+#   AGENTS.md
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/08_project/BACKLOG.md
+#   skills/dual-critic/schema/run.v2.json
+#   src/trivium/adapters/agy.ts
+#   src/trivium/adapters/base.ts
+#   src/trivium/adapters/stub.ts
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/guard.ts
+#   src/trivium/render.ts
+#   src/trivium/report.ts
+#   src/trivium/review.ts
+#   src/trivium/types.ts
+#   test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+#   test/unit/adapter-base.test.ts
+#   test/unit/guard-capability.test.ts
+#   test/unit/render.test.ts
+#   test/unit/runner.test.ts
+diff --git a/AGENTS.md b/AGENTS.md
+index 0e4ff81..2c50a2d 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -46,6 +46,10 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
+ 
+ 1. **适配层只读探针结论，绝不硬编码 CLI 旗标**——两家 CLI 行为与官方文档不符是常态。
+    实测与设计冲突时改适配层并回补设计文档，不改外部产品、不改验收口径。
++   **每个适配器还要声明 `capability: TraceCapability`**（轨迹形态 + 被拒操作是否留痕）：
++   判定层按**能力**分档，不按 Agent id 分叉（纪律 7）。这一项**必须按实测填**——
++   填错不报错，只是证据核验按错误的形状进行（读经 shell 的一族若误声明为 `tool-trace`，
++   `project_reads` 恒 0、每轮误报证据不足）。详见设计 §11.1「轨迹能力与判定分档」。
+ 2. **`archive.ts` 是 `.reviews/` 的唯一写出口**：命名生成、`O_CREAT|O_EXCL` 防覆盖、
+    `-r<N>` 抬升只在那一处实现。
+ 3. **Hook wrapper 两支语义**：检测不到 `.trivium/config.yaml` → exit 0（全局安装不误伤
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 5d73145..bef2c96 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.8
++> - **当前版本**：v1.3.9
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -300,8 +300,15 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参
+ 
+ - `trace_path_structured = false` ⇒ codex 侧的读取路径核验**只能**走 BACKLOG **EV-01**（命令文本字面扫描）。
+   EV-01 因此从「独立演进项」升为 **M8 的前置条件**。
+-- `rejected_command_in_trace = false` ⇒ 10.3 的「轨迹里有写事件 ⇒ 失守」判据对 codex **永久为假**。
+-  沙箱拒绝是**静默**的，事后核验看不到。
++- `rejected_command_in_trace = false` ⇒ codex 侧**「尝试写」的检测失效**：沙箱拒绝是**静默**的，
++  事后核验看不到那次尝试。
++  > **【M8 第 2 步更正】** 本条原写作「10.3 的『轨迹里有写事件 ⇒ 失守』判据对 codex **永久为假**」，
++  > 那是**过度推广**，M8 第 2 步的计划双审以 blocker 指出：P-C2 只证明了**被拒**的命令不留痕，
++  > 而 P-C1 的样本本身就是 `status:"completed"` 的 `command_execution`——**成功执行的命令照常留痕**。
++  > 所以沙箱一旦失守、写命令真的跑成了，`write_events` 非空是**真阳性**，该判据照常成立。
++  > 失效的只有**阴性方向**：没检出写事件时，排除不了「试过但被拒」。
++  > 若按原断言实现，codex 侧的真实失守会被直接丢弃，还会让漂移判定把审查员的写入
++  > 归因成开发者手改。判定与留痕见 11.1「轨迹能力与判定分档」。
+ 
+ **一处对 `isolation` 的覆盖面修正（M6 第 4 步补测）**：`home_copy` 这个取值字面成立，
+ 但它只覆盖**配置面**（`config.toml` / `auth.json` / model catalog）。**指令面不在其内**——
+@@ -1667,6 +1674,17 @@ Hook 行为约定：
+   它在 **codex 接入（M8 第 3 步）那一刻变活**——该侧读文件就是跑 shell，
+   而措施 b 是它唯一的核验手段。
+ 
++  **【已知限制 · M8 第 2 步登记】`command-trace` 族的 deny 核验只有一条通道。**
++  措施 a（读取路径比对 deny）对该族**恒不命中**：它的输入是结构化 `read_paths`，
++  而该族的路径只存在于命令文本里。回填出的路径**刻意不喂给措施 a**——
++  「跑了一条提到该文件的命令」不等于「读到了该文件」，掺进去会让措施 a
++  声称的文件系统级读取事实变成推测（详见 11.1「轨迹能力与判定分档」）。
++  于是该族的 deny 轨迹核验**仅剩措施 b**，而措施 b 承诺的是「已知形态必检」而非完备（R25）。
++  **结构化轨迹两家有 a、b 两条通道，该族只有一条**——这是接入 codex 时如实接受的能力差，
++  不是实现缺口。降级本身进留痕（`guard.verification_degraded.path`），
++  使「没法扫」在留痕里与「扫了没命中」分得开。
++  本条是 EV-01 / EV-16 / R25 各自局部事实的**合成结论**，BACKLOG 单列一行承载。
++
+   > **一处实测更正**：起草时把「变量拼接」整类记成了盲区，实测证明
+   > 整条赋值里带完整字面量（`P=<path>; cat $P`）**是能检出的**——字面量就在命令文本里，
+   > 只有**分段**拼接才真躲得过。B 表每一条盲区各有一条会红的负断言守着，
+@@ -1746,10 +1764,54 @@ flowchart LR
+ 
+ ### 11.1 统一契约
+ 
+-> **【待实施 · M8】适配层契约的 N 方化**：统一请求/结果结构在引入第三、四家 Agent 后的泛化
+-> （厂商旗标差异的收敛方式、事件流与轨迹解析的统一抽象、思考等级的透传形态），
+-> 细则见演进设计 §7。按 **16.2 纪律 6b**（特性契约类），须在 M8 **开工前**并入本节并升次版本。
+-> 下表是**当前真实生效**的两侧契约。
++> **【部分实施 · M8 第 2 步】适配层契约的 N 方化**：能力声明（`TraceCapability`）已落地，
++> 见下文「轨迹能力与判定分档」。厂商旗标差异的收敛方式、思考等级的透传形态仍待 M8 第 3 步，
++> 细则见演进设计 §7。下表是**当前真实生效**的契约。
++
++#### 轨迹能力与判定分档（M8 第 2 步 · §11.1 的 B-契约部分）
++
++判定层原先假定两件事：读取路径**结构化可取**、被拒的写操作**会留痕**。
++M6 实测（P-C1 / P-C2）推翻了它们对 codex 的适用性。契约因此增加一项**能力声明**，
++消费方只面对能力、不按 Agent id 分叉（纪律 7）：
++
++```ts
++interface TraceCapability {
++  traceShape: 'tool-trace' | 'command-trace';  // 读取路径有无独立字段
++  rejectionRecorded: boolean;                   // 被拒的操作是否留痕
++}
++```
++
++**挂载点是 `CriticAdapter`**（`readonly capability`），不是注册表也不是 `CriticResult`：
++它是该侧的固有能力而非单次运行结果；挂注册表则 `criticEnabled=false` 的家无法在
++集成测试里被走到，泛化就没有机器判据。
++
++**六个判定层消费点**（按字段名全仓 grep 得出，非按 Agent id）：
++
++| # | 消费点 | 吃什么 | `command-trace` 上的分档 |
++| :--- | :--- | :--- | :--- |
++| ① | `checkEvidence` 的 `toolTotal` | `tool_calls` | **计入 `run_command`**（该族读文件就是跑 shell） |
++| ② | `checkEvidence` 的 `projectReads` | `read_paths` | 吃 `effectiveReadPaths`；下限按折减系数下调 |
++| ③ | `checkEvidence` 的 `no_trace` | 两者 | 由 ① 覆盖，有命令即不触发 |
++| ④ | `checkPeerLeak`（措施 a） | `read_paths` | **不吃回填**，档位记 `path: unavailable` |
++| ⑤ | `judgeSide` 的 consulted 交叉核对 | `read_paths` | 吃 `effectiveReadPaths`，否则每轮误报 |
++| ⑥ | `judgeSide` 的 `readonlyBreach` | `write_events` | **两档一律由写事件判定**（见下） |
++
++**⑥ 的要点**：`rejectionRecorded=false` 的准确含义是「**尝试写**的检测失效」，
++**不是**「轨迹对写事件全盲」——P-C2 只断言被沙箱拒绝的命令不产生事件，
++成功执行的写命令照常留痕。所以沙箱一旦失守、写命令跑成了，`write_events` 非空是
++**真阳性**，必须判失守；该字段只修饰**阴性结论**的可信度。
++连带：「指纹变化但轨迹无写事件 ⇒ 开发者手改」这条归因对该族不成立，
++变更文件落 `unattributed_drift_files`（无法归因），不得记到开发者头上。
++
++**④ 的取舍**：回填路径的语义是「跑了一条提到该文件的命令」，不等于「读到了该文件」。
++并进措施 a 处置上零增益（措施 b 已让该侧作废）、排查上有损（两条通道要分得开）、
++语义上降级（措施 a 声称的是文件系统级读取事实）。代价是该族措施 a 恒不命中——
++**已知限制**：`command-trace` 族的 deny 轨迹核验仅剩措施 b 一条通道，
++且该通道只承诺已知形态（R25），比结构化轨迹两家弱一条通道。
++
++**降级留痕五面**：`run.v2` 的 `guard.verification_degraded`、审查文档 front-matter、
++正文横幅、复盘报告 `guardFlags`、运行时 CLI 告警。三态落在结构上：
++字段缺失 = 早于本次接线；某侧键缺失 = 那一侧没判过；值 = 该侧档位。
+ 
+ 适配层把两家差异收敛为一组请求/结果结构（下表为字段契约，不是实现代码）：
+ 
+@@ -2638,6 +2700,7 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
+ | **v1.3.5** | 2026-09-14 | **M7b 第 5 步代码双审的规格补充**（`20260914T061843Z`；两侧均 `request-changes`，各 1 major，11 条全部接受零驳回）。补三处规格、不改既定契约。**一、7.1 补「`--only` 的结果并入 `critics` 后，输出的 `only` 置 null」**——这是本轮 major（AGY-01 ≡ GLM-01，两侧第三次独立收敛）的修法。根因是**我在 skill 里写的一句断言**：「resolve 已经挡住了这种组合，照抄它的输出不会撞上」。`resolveCriticSelection` 挡的是**用户同时给两个旗标**，而这里是 **resolve 自己同时输出了两个字段**——我把前者的保证当成了后者的保证。后果不止一次报错：本节明写 `--only` **长期保留为别名**（理由是旧 skill 可能未同步升级），结果它在新 skill 上一条都跑不通，且报错说「你不能同时给两个」而用户根本没写 `--critics`。修法取两侧建议的并集：删 skill 的 `--only` 透传（治文档）**且**让输出的 `only` 置 null（治数据）——只改文档不够，文档会被抄错、会有未同步的旧副本。**二、7.1 补「命令 A 不接受 `--critics` / `--only`」**（GLM-02）：`NAMED_FLAGS` 不分 scope，于是 `/dual-run --critics glm` 解析成功却被 S2/S6 交接静默丢弃——**拼错的当场退 64，写对的反而无声消失**。不给命令 A 补透传而是明确拒绝，因为它一次跑两轮双审，「本轮选哪几侧」在那一层没有确定语义。**三、16.1 的 M10 行登记「两个选侧入口必须把当轮 Driver 传进判定处」**（GLM-07）：该参数目前只有测试在传，M10 若忘了接，「Driver 不得入选」这条检查会对着错误的 Agent 生效。**测试面的教训记此**：这个 major 能溜过去，是因为三条集成用例都是 `--start` **直调**——它们挡住了「接线漏传」，却挡不住「接线拼错」，而真实链路是 `resolve → Driver 拼装 → --start`。已补跨命令串联用例（拿 resolve 的真实输出按透传规则组装再启动，覆盖 `--critics` 与 `--only` 两种输入），并给 `skill-flag-parity` 补两条正文断言——它此前只校验「槽位存在」，而 major 恰恰出在正文。**另一条纪律补充（GLM-03，同形第三次）**：v1.3.2、v1.3.3 两次记过「改语义时凡断言该语义的文案都要一并过一遍」，本轮又在**实现新语义的同一个函数里**留下旧口径的提示（`--only + --allow-single` 仍说「降级本就必然发生」）。前两次的对策是「改键名先 grep 旧键名」，但**这次改的是语义而非名字，grep 不到**。补充为：改语义时先列出所有断言该语义的落点（代码文案、文档、测试名、报错串），逐个过一遍再动手。其余接受项：`legalList` 排除当轮 Driver（AGY-02，避免「第一个错误引向第二个错误」）、`prepareRun` 拒绝空入选集合（GLM-05，防「零侧审查成功过闸」的空真）、手册头部与 §4.7 按 `--critics` 已可用重写（GLM-04 ≡ AGY-04）、PRD 的 FR-29 行尾标记改拆分式与正文对齐（GLM-06）。 |
+ | **v1.3.7** | 2026-09-15 | **M6 事实回填：3.6 / 3.7 由【待实施 · 指针占位】翻为【已回填】，§24 台账两行转绿并补登第三行**（M6 四步的留痕见 `.reviews/探针扩展与事实回填/`，**五轮双审**）。本版是**事实回填**（纪律 6a），数据只能由 M6 自身产出，故并入本文是 M6 的完成判据而非准入条件——与 M0 → v1.2.1 同一做法。**一、3.6 Codex 事实表**按 `codex-cli 0.154.0` 实测回填，并**推翻演进设计 §3.1 的三条**：①`-p` 是**文件分层**（`$CODEX_HOME/<name>.config.toml` 整份叠加），不是 `config.toml` 内的 `[profiles.*]` 段——按后者写的探针与 preflight 校验**对象都不存在**；②effort 档位表全错，且 CLI 对 effort 与 model slug **根本不校验**、静默前移到服务端，`preflight` 必须自己校验；③模型目录路径名对不上。另记**两条决定 M8 可行性的硬事实**：`trace_path_structured = false`（读取经 shell，无结构化路径）使 **EV-01 从独立演进项升为 M8 前置条件**——它是 codex 侧路径核验的**唯一**手段；`rejected_command_in_trace = false`（沙箱拒绝**静默**、完全不进事件流）使 10.3 的「轨迹有写事件 ⇒ 失守」判据对 codex **永久为假**。**二、3.7 Claude headless 事实表**按 `claude 2.1.270` 实测回填，**修正演进设计 §3.2 一处**：路径级 deny 对 `Read` 可用、**对 `Grep` 不可用**（显式写 `Grep(./dir/**)` 仍被绕过），故 10.1 第 ③ 道屏蔽**不能**单靠 CLI 层，事后轨迹核验仍是必需项且必须覆盖 `Grep` 的 `path` 参数。*为什么*对 `Grep` 不生效**没有实测**，报告按假说而非结论记——起草时曾写成机制断言，被自己的第二轮实验证伪后降级。另记 `--strict-mcp-config` 为**硬前置**：不传它，用户已连接的 MCP 写工具（邮件发送、云盘创建与共享）进入审查会话工具面，且成本约 **24 倍**。**三、Driver 入口承载面**（第 4 步，原 §17.2 清单未列，本版补登）：四家入口**都是 SKILL.md 形态**（**agy 侧只有静态证据、待行为实测**，该实测已写进 16.1 的 M10 完成判据；§18.1 #16 据此**只记倾向、未拍板**），codex 的承载面是 **skills 而非演进设计写的 `prompts/`**（同一次运行里双哨兵对照，prompts 哨兵不进模型可见输入）；`CODEX_HOME` 副本**隔离不住指令面**（`$HOME/.agents/skills` 跟 `HOME` 走），M8 须双覆盖；zcode 的 user 级 command **盖过** project 级、而 skills 重名**完全不去重不告警**。这些结论**刻意不进机读 `ProbeSection`**——消费方是 M10 的设计决策而非运行期代码，塞字段就是第二个 EV-06。**四、zcode `effort_flag` 复测**：三条负对照确认 0.16.5 CLI 层仍无 effort 旗标，§11 的「三档用模型选择承载」不必改；但二进制里 `reasoning_effort` 命中 6 处、全在 provider 请求构造层，**这条线索未端到端验证**，与 `ZCODE_HOME`（字符串存在、对配置解析无效）同族风险，登记 EV-09。**五、代码双审（`20260914T235618Z`；Gemini `request-changes` 1 major + 3 minor + 2 nit、ZCode `request-changes` 3 minor，9 条全部接受零驳回）。三对独立收敛，其中两对指向同一个动作缺陷——我改了语义只改了一半落点**：把 EV-01 升为「M8 前置」时改了 BACKLOG 与 3.6，**漏了 16.1 的 M8 行与表末行、24.1 的措施 b 行**；把 §18.1 #16 的倾向改成「skills 优先」时改了报告与 24.1，**漏了 #16 那一行本身**（它仍写着相反的旧默认）。两处后果同形：同一份「唯一实现依据」对同一议题存下两个相反答案，而过期的那边恰是别人会去查的那边（M8 规划者读 16.1，查决策的人读 18.1）。**这是本项目第四次栽在这个形状上**（v1.3.5 记过一次）。难点在于它判不了——三张表的一致性是**语义**一致性而非结构一致性，grep 级契约测试判不出「这一行的定性与那一行矛盾」，故不假装本版解决，如实登记 **EV-14** 并写明可探索方向（给跨表议题建显式锚 + 断言三表同锚状态相容）。另有两条同族的措辞缺陷一并修：`CODEX_HOME` 那条原只有两条臂（隔离前/后），**排除不掉「HOME 变了导致配置缺失于是关掉全局根」的替代假说**，按 AGY-02 补了第三条臂——fakehome 下放哨兵 skill，**根移动过去并挂载、哨兵命中**，假说排除；同时按 GLM-01 把「指令根**只认** `HOME`」降为「**随** `HOME` 派生」（「只认」是排他性断言，需要像 C-12 那样穷举候选变量才配得上）。其余：`P-xx` 三处过期计数（「18 个坑」而实为 23 条）改为自维护写法、`doc/02_design/README.md` 版本对账、M0 报告头部标明「§7 是活台账、其余是历史快照」并登记 **EV-13**（M11 拆分）。**本版不改任何代码。** |
+ | **v1.3.8** | 2026-09-15 | **M8 第 1 步：措施 b（命令文本字面扫描）落地，10.1 该条与 §24.1 台账行由【提案 · 未排期】/【M8 前置】翻为【已实现】**（留痕见 `.reviews/M8-Codex审核者接入/`，计划双审 1 轮 14 条 + 代码双审 2 轮 25 条，全部接受零驳回）。**一、为什么它是 M8 的前置而不是并行项**：M6 第 2 步实测 codex 的 `trace_path_structured = false`——该侧读文件就是跑 shell，轨迹里只有命令文本，于是本措施从「通道②的唯一覆盖」变成「**该侧一切路径核验的唯一手段**」。**二、承诺面钉成闭集而非计数**（计划双审 GLM-07）：F-1～F-9 必检、B-1～B-5 明确不可检，两张表在**设计本节、`adapters/base.ts` 文档块、用例名**三处各司一职（对外承诺面 / 对内 / 可执行断言），由 `known-forms-parity` 做**双向对账**——改一处漏两处必红。起草时「五类形态」这个数字是从 `CLAUDE.md` 的 RV-B1（git commit 拦截）搬来的**无关计数**，已改为只写清单。**三、三轮审查逼出的实质修正**：①F-6（锚定前缀 `../<rel>`、`$VAR/<rel>`、内嵌 `..`）与 F-7（`~` / `$HOME` 写法）当初**全部漏检**，而 F-7 正是通道③的唯一覆盖；②F-6 的逃树兜底最初把 `../OtherProject/<rel>` 一并判命中，误报族集中在 `sensitive_globs` 派生的短名条目（`.env`/`id_rsa`）上，已收窄为「前置段仅由 `..`/`.` 组成」；③`~` 曾被误归入「不可静态解析」而一律判命中——`os.homedir()` 是静态已知事实，现改为展开后精确归一。**四、B-2 拍板不收窄**（EV-16，决策者 Chen Zhenbo）：裸 `git log -p` 与根递归 `grep` 保留在审核者的命令能力内，**B-2 成为纯接受项**（R25 对它没有缓解措施），代价是通道②在非指名形态上仍开着——M8 第 3 步**不得**因措施 b 已落地就把通道②整体标为收口，通道表记的「**F-3 字面形态**已收口」那个限定词是本决策的直接产物。**五、本版记下的方法教训**：三轮里反复出现同一个动作——**写下「保住了 / 会红 / 已覆盖」时没有核实它对应的断言存在**（r1 的 `known-forms` 守卫只断言测试内本地字面量、r1 的 `readonly_commands` 旋钮无消费方、r2 的应答件承诺 `~/.trivium` 判否而实现与测试都没有）。这与 v1.3.6 记的「注释宣称了不存在的覆盖」同形，已收紧为：**凡写下这类保证，当场指出对应断言在哪一行；指不出来就不许那样写**。另登记 EV-15（`readonly_commands` 无消费方而设计两处以它为前提）、EV-17（同 id 内的语义漂移 grep 级对账判不出），并把 EV-10（`parse_fallback` 根因）由「观察到一次」升为**可复现**——本主题两轮代码审里复现了一次。**六、r5 补记（共五轮代码双审，零阻断收口）**：r5 两侧对机制面三个焦点全判通过（闭合侧三字符够、进程替换不漏；删引号二次扫描未造新误报；「起点为 1」的收窄判得对），十条意见里**只有一条是实现缺陷**——`bashStillDenied` 喂的是 `probe.readonly_flags`（探针候选串的接受记录），而实际传参来自 `ZCODE_READONLY_DENYLIST` 常量，**两个独立的源**：从常量里删掉 `Bash`，探针记录不变、断言照旧通过、措施 b 在该侧静默失效。已改喂 `readonlyArgsFromProbe` 的返回值并补两条咬住真实常量与真实构造的断言，变异验证如实红在这两条上、五条镜像串用例全绿——**这是同一形状的第三次**：加了守卫不等于守卫被守着，守卫被守着也不等于守对了东西。其余九条全是留痕未跟上，且比前四轮的「漏了」更难看一层：**r4 的修复清单声称已改而树里没改**（「四条/四类」两处、「§10.2 → §10.1 全仓 12 处」实际全仓不止 12 处、死论证「删过四次才删干净」而第五处就在同一个补丁新增的测试注释里）。**因此把第五条的方法教训再推一格**：「保证」要指出断言在哪一行，**「已改完 / 已删干净 / 全仓 N 处」这类完成声明，落笔前必须跑一次 grep 并把结果贴出来；记不清改了几处就不要写数字，写「见下方清单」，让清单自己说话**——本主题已经证明，需要自觉的纪律守不住，判据必须带一个可执行动作。同步把散文计数纳入 `known-forms-parity`（`blindSpotCounts`），区间正则放宽到中文连接符与省前缀简写，对账论域扩到演进设计、ADR_002 与用例文件 |
++| **v1.3.9** | 2026-09-15 | **M8 第 2 步：适配层契约泛化落地，11.1 增「轨迹能力与判定分档」小节，§24.1 该行由【⏳ 未并入】翻为【◐ 部分并入】**（留痕见 `.reviews/M8-Codex审核者接入/`，计划双审 3 轮共 43 条，全部接受零驳回）。**一、契约增一项能力声明** `TraceCapability { traceShape, rejectionRecorded }`，挂在 **`CriticAdapter`** 上而非注册表或 `CriticResult`——挂注册表则 `criticEnabled=false` 的家在集成测试里走不到，泛化没有机器判据；挂结果则允许同一侧两次运行报出不同能力。判定层由此**只面对能力、不按 Agent id 分叉**（纪律 7），六个消费点逐一分档（见 11.1 表）。**二、一处被推翻的旧断言（本版的实质）**：3.6 原写「`rejected_command_in_trace = false` ⇒ 10.3 的『轨迹有写事件 ⇒ 失守』对 codex **永久为假**」——计划双审以 **blocker** 指出这是**过度推广**：P-C2 只证明**被拒**的命令不留痕，而 P-C1 的样本本身就是 `status:"completed"` 的 `command_execution`，**成功执行的写命令照常留痕**。故 `readonlyBreach` **两档一律由写事件判定**，`rejectionRecorded=false` 只修饰**阴性结论**的可信度。按原断言实现的后果是：codex 侧真实失守被直接丢弃，且漂移判定会把审查员的写入**归因成开发者手改**（方向正好反）——故连带新增 `unattributed_drift_files`，该档位下的指纹变化记为**无法归因**，既不判失守也不判手改。3.6 该条已就地更正并留下更正说明。**三、路径回填的口径与边界**：`command-trace` 族从命令原文提取路径供 `checkEvidence` 与 consulted 核对使用，四组口径写死（**剥离 `/bin/zsh -lc '…'` 子 shell 封装**、引号穿透、裸相对按项目根归一、写目标位不计入）。其中前两条是第二轮 blocker 的落点：初稿写「引号包裹整体算一个 token」，而 codex 的真实命令全包在单引号里，照此实现**路径一个都提不出来**；且初稿宣称与措施 b「同口径」，实际措施 b 的 `spellingsOf` 对裸相对是**按项目根派生并必检**（F-2），「只认纯回退层级」只是 F-6 锚定形态的处理——**引用了一个没读过实现的机制**。漏报边界（变量拼接、管道组合、`find -exec`）如实登记，`min_project_reads` 对该族**折减**并把生效值写进留痕。**四、措施 a 的主动收窄**：回填路径**不喂** `checkPeerLeak`——「跑了提到该文件的命令」不等于「读到了该文件」，并进去处置零增益（措施 b 已让该侧作废）、排查有损（两条通道要分得开）、语义降级。代价是该族措施 a 恒不命中，**已知限制**随之登记（见 11.1 与 BACKLOG）：`command-trace` 族的 deny 轨迹核验仅剩措施 b 一条通道且只承诺已知形态（R25），比结构化轨迹两家弱一条。**五、降级留痕五面**（`guard.verification_degraded` + front-matter + 正文横幅 + `guardFlags` + 运行时告警），两条通道（`readonly` / `path`）各自记档位，三态落在结构上。既有 `peer_deny_applied` 独缺运行时那一面，本版不重蹈。**六、既有两家行为逐字不变**：两家声明 `tool-trace` + `rejectionRecorded=true`，走与本版之前相同的分支；1030 条既有测试全绿，新增 17 条。**七、过程记录**：本主题连续两轮栽在同一形状上——第二轮是**起草前没读上一轮的裁决件**（四处已拍板结论被静默回退），第三轮是**引用一个机制却没打开它的实现**。两轮的「请重点看」都标对了风险位置却没去核实，故立两条硬前置：起草 `-rN-claude.md` 前必须读全同阶段裁决件并列出差异；引用已有机制作为新口径依据前必须先读其实现与文档块。 |
+ 
+ ---
+ 
+@@ -2725,7 +2788,7 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
+ | 8.6 gate 裁决校验 N 方化 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0 | 8.6 末段 |
+ | 9.3 镜头四键 | **B-契约** | **M8 / M9** | ⏳ 未并入（指针占位） | 9.3 引言块 |
+ | 10.1 / 10.2 deny 矩阵与检测收口 | A（登记）/ B（N 方泛化）/ **B-前置**（措施 b） | 第零步 / M7b / **M8（前置依赖）** | ✅ 通道清单已并入。**措施 a 路径侧 ✅ 已实现（M7a）**；N 方泛化 ⏳ M7b；**措施 b ✅ 已实现（M8 第 1 步，v1.3.8）**——2026-09-15 先由「独立项 · 未排期」升格为 M8 前置（依据是 M6 第 2 步实测 codex `trace_path_structured = false`，本项是该侧路径核验的唯一手段），同日落地。承诺面是 F-1～F-9 闭集、盲区 B-1～B-5，见 10.1 措施 b 与 BACKLOG EV-01 | 10.1 措施 b；16.1；EV-01 |
+-| 11.1 适配层契约泛化 | **B-契约** | **M8** | ⏳ 未并入 | — |
++| 11.1 适配层契约泛化 | **B-契约** | **M8** | ◐ 部分并入（能力声明与判定分档已落，M8 第 2 步）；厂商旗标收敛与思考等级透传待 M8 第 3 步 | 11.1「轨迹能力与判定分档」 |
+ | 11.5 档位路由 | **B-契约** | **M11** | ⏳ 未并入（指针占位） | 11.5 引言块 |
+ | 12.1 异常矩阵增行 | A | 第零步 | ✅ 已并入 v1.3.0 | 12.1「演进增补行」表 |
+ | 13.1 → config.v2 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0；**实现 ✅ 已落地（M7b 第 4 步，2026-09-14）** | **13.1.1**（并排追加，v1 基线保留）；`schema/config.v2.json`、`config.ts` 的 `migrateConfigV1` 与 `agentConfigOf`、`init.ts` 的一次性改写 |
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index 3817d11..85ee641 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -120,6 +120,14 @@ YAML 往返会丢注释，原注释保留在备份中）。三条跨字段规则
+ （键缺 = 该侧没扫 / `hit:false` = 扫过没命中）。
+ 承诺面是「已知形态必检」的闭集而非不可绕过，形态与盲区清单见设计 §10.1 措施 b。
+ 
++**两条通道不是对每一侧都成立**（M8 第 2 步）：读取路径只存在于命令文本里的一族
++（`traceShape: 'command-trace'`），措施 a 没有结构化输入可扫、**恒不命中**，
++deny 核验完全由措施 b 承担。这一降级逐侧记于 `guard.verification_degraded.path`——
++不记的话该侧的空命中清单与「扫过没命中」在留痕里完全同形。
++同一字段的 `readonly` 键记另一条通道：被拒的写操作是否留痕
++（`unavailable` 时「未检出写事件」不足以排除失守，但**检出了仍然判失守**）。
++已知限制的完整表述见 BACKLOG **EV-19**。
++
+ ---
+ 
+ ## 三、被审对象怎么确定
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 4a6de2f..55bbcb7 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -110,6 +110,7 @@
+ | EV-14 | todo | **`§16.1` / `§18.1` / `§24.1` 三张表的一致性没有机器判据，只能靠人记得**。主设计里同一个议题有三个落点：`§16.1` 里程碑表（验收口径）、`§18.1` 待拍板事项（决策清单）、`§24.1` 演进并入台账（回溯进度）。M6 第 4 步一次同时漏掉两组：把 EV-01 升为「M8 前置」时改了 BACKLOG 与 3.6，**没改 §16.1 的 M8 行与表末行、也没改 §24.1 的措施 b 行**；把 J3 的倾向改成「skills 优先」时改了报告与 §24.1，**没改 §18.1 #16**（那一行仍写着相反的旧默认）。两处都被 r5 双审两侧独立逮到（AGY-01 ≡ GLM-02、AGY-03 ≡ GLM-01）。**后果形状相同**：同一份「唯一实现依据」对同一议题存下两个**相反**的答案，而过期的那边恰好是别人会去查的那边——M8 规划者读 §16.1，查决策的人读 §18.1。这是本项目第四次栽在「改语义只改一半落点」上（v1.3.5 记过一次，见设计 §21）。**难点在于它判不了**：三张表的一致性是**语义一致性**而非结构一致性，`registry-parity` 那种 grep 级契约测试判不出「这一行的定性与那一行矛盾」。所以本项**不假装有现成修法**。可探索的方向：给每个跨表议题一个显式锚（如 `#16` / `EV-01`），要求三表引用同一个锚，再写一条契约测试断言「同一锚在三表中的状态取值相容」——代价是要先建立锚的登记面，而那本身是一次改造。在此之前唯一的对策仍是人工清单，**并如实承认它靠记性**（纪律 12 明确反对的形态，此处是已知例外而非遗漏）。来源：r5 AGY-01 ≡ GLM-02、AGY-03 ≡ GLM-01。**2026-09-15 第五次复发，且是同一行**（M8 主题 r2 双审 GLM-01）：措施 b 落地时正文、§16.1、BACKLOG 全翻成「已实现」，**§24.1 的措施 b 行仍写「⏳ M8 前置」**——而那正是上一轮（v1.3.7）刚从「未排期」改成「M8 前置」的同一行，连续两轮出问题、方向相反。版本号与 §21 变更条目同时漏掉。**这条复发把本项的定性改了**：不再是「偶发漏改」，而是「§24.1 与正文之间没有任何机器关联」的**固有后果**——同一行连错两轮，靠人记不住。**可探索方向补一条**（本轮新增）：`known-forms-parity` 证明了「文档表 ↔ 代码 ↔ 用例」的 grep 级对账做得成，而 §24.1 的状态列与正文的【已实现 · Mx】标记是**同族形状**，同样手法应该能用。**不在本轮实现**：它要先定义状态标记的机读格式（现在是自由散文），那是独立改造。**2026-09-15 第六次复发，形状又收窄了一格**（M8 主题 r3 双审 GLM-01 + AGY-02）：这次漏的是 **§16.1 的表末行（2268）与 §17.2（2389）**，而 §16.1 的 M8 行就在表末行**上面几行**、同一轮改过。**六次里有三次是「改了一行、漏了同一张表的邻行」**——所以可探索方向要再具体一格：不只是「三张表之间对账」，而是**同一张表内同一议题的多行状态一致性**（2268 与 2264 说的是同一件事、状态相反）。同轮 AGY-02 是同族的第四处：`doc/02_design/README.md` 的**版本号改了、正文演进摘要没改**，与 r2 那次「文档头升了版本、§21 没补条目」是同一个动作。另一处教训已落地：§16.1 的引注原写死「只有 M7a 已合入」，随 M6/M7b 推进过期两轮，本轮改为**按行内状态标记声明**的自维护写法——这类「写死当前进度」的句子本身就是靠记性 | 设计 `§16.1` / `§18.1` / `§24.1` / `§17.2`、`doc/02_design/README.md`；手法可借鉴 `test/unit/registry-parity.test.ts` 与 `test/unit/known-forms-parity.test.ts` |
+ | EV-17 | todo | **同一编号内的语义漂移，grep 级对账判不出**。`known-forms-parity` 守住的是「编号集合一致」：设计表、`base.ts` 文档块、用例名三处的 `F-n` / `B-n` 必须逐一对得上，少一个多一个都红。**它判不出的是同一编号内的描述变了**——比如有人把 F-4「目录级条目命中」的范围悄悄改宽，或把 B-2 的边界描述改窄，编号一个没动，对账全绿。这不是假想：**B-2 的范围本主题内就被改过两次**（r1 双审重划「一窄一宽」、EV-16 拍板后又随 R25 措辞改一次），两次都靠人读发现。发现于 M8 第 1 步 r2 双审（glm 在焦点四的答复里点出：「行数不是风险，风险在同 id 内的语义漂移」）。**修法方向未定**：要判它得比较**语义**而非编号，与 EV-14 同族——可能的路子是给每个 F/B 行配一条「代表性用例」并断言用例与描述的对应关系，但那本身又是一层需要人维护的映射。**本项登记的价值在于承认这个边界**：不要因为有了机器对账就以为清单不会漂。**2026-09-15 补一条实例与一次边界外推（r5 AGY-04 ≡ GLM-04）**：B-6 撤销后，`base.ts` 文档块整段旧口径（说 B-5 与 B-6「两者都不真收」，并把 B-2、B-5、B-6 一并列为非蓄意也会撞上的那几条）**原样留着**，而编号集合、区间字面量全都对齐——机器一声不吭，靠 gemini 逐行读才发现。gemini 点破了根因：**散文计数不在任何对账面上**。据此把「散文计数」这一小块从本项切出去做成了机器判据（`blindSpotCounts`：`N 条盲区` / `N 类不可检` 的 N 必须等于 B 表条目数，`每一条` 不算计数、倒装不认以免误伤子集陈述），第一次跑就在 `ADR_002` 撞出一处真实的称呼混用。**剩下的语义漂移仍是本项的论域**：计数可判，描述改宽改窄仍不可判 | `test/unit/known-forms-parity.test.ts`、`src/trivium/adapters/base.ts` 文档块、设计 §10.1 措施 b |
+ | EV-18 | todo | **焦点正文里的裸双引号会让 `topic resolve` 静默丢掉 `--topic`**。`--` 之后的内容被拼成一整串再重新分词，正文里出现 `"` 时边界判断被打乱，`--topic <主题>` 不再被识别为旗标——于是回落到**主题推断**。2026-09-15 实撞：焦点含 `~[^/\s"'` + 反引号 + `]+` 这个字符类，报的却是「主题名不合法：不得包含路径分隔符」——**报错指向的是推断结果，不是真正的原因**，逐字符二分才定位到 `"`。**危险的不是报错，是它先静默丢了 `--topic`**：这次因为推断出的主题恰好含 `/` 才炸出来，换个不含斜杠的正文就会**静默跑在错误主题下**——与 skill 反复警告的 `--base` / `--critics` 漏传是同一族缺口（不报错、审的不是用户以为的那个对象）。**skill 教的办法对这一族无解**：它说「正文含 `--` 开头的词时补字面双引号」，而正文本身含引号时，补的引号与正文里的引号对撞，实测仍失败。**当前绕法**（本轮用的）：`resolve` 用不含引号的简化正文取元数据，焦点原文直接传给 `review --start --focus`——第 3 步走标准 argv 解析，不经重新分词，FR-20 的逐字承诺不打折。修法方向：①`topic resolve` 改为**先抽取已知旗标再取正文**，而不是拼串后重新分词；或②正文里的引号做转义/剥离后再分词；无论哪条，**必须让「`--topic` 给了却没被识别」响亮失败而不是回落推断**。发现于 M8 第 1 步 r4 双审的启动环节 | `topic-args.ts` 的 `--` 后重新分词、`cli.ts` 的 `topic resolve` 分支、四条 review skill 的「补字面双引号」指引 |
++| EV-19 | **已接受**（2026-09-15，M8 第 2 步登记） | **`command-trace` 族的 deny 轨迹核验只有措施 b 一条通道，且只承诺已知形态。** 这是 EV-01（措施 b 的承诺边界）、EV-16（不收窄 git 通道）、R25（威胁模型不抵御蓄意规避）三条**局部事实的合成结论**——三者各自登记在案，但此前**没有任何一个条目承载合成后的那句话**，它只活在计划稿散文与 `base.ts` 的 B-2 注释里。**内容**：读取路径只存在于命令文本里的一族（现役唯一实例是 codex，M8 第 3 步接入），措施 a（读取路径比对 deny）**恒不命中**——它的输入是结构化 `read_paths`，该族恒空；而从命令原文回填出的路径**刻意不喂给措施 a**（「跑了提到该文件的命令」不等于「读到了该文件」，掺进去会把措施 a 的文件系统级断言变成推测）。于是**结构化轨迹两家有 a、b 两条通道，该族只有一条**。**为什么是接受项而非待办**：两条修法（路径级 deny、结构化路径字段）都在 CLI 能力之外，不是本项目能实现的；如实登记差距并让它在留痕里可见（`guard.verification_degraded.path`，使「没法扫」与「扫了没命中」分得开）是当前能做到的全部。**对 M8 第 3 步的约束**：不得因为「措施 b 已落地 + 降级已留痕」就把 codex 侧的 deny 核验标为与另两家等效——引用本条，不要重新发明一遍论证。来源：M8 第 2 步计划双审 r2（AGY-07 ≡ GLM-09）、r3 复核确认 | 设计 §10.1 措施 b 末段「已知限制」、§11.1「轨迹能力与判定分档」、`guard.ts` 的 `SideVerification`、M8 第 3 步 |
+ | EV-15 | todo | **`readonly_commands` 登记而无消费方，而设计称它是「既有旋钮」**。设计 §10.1 写着「既有配置 `readonly_commands` **即 paranoid 旋钮**——把 `git show` / `git log` 从白名单裁掉即收窄该通道」，§18.1 #21 也以它为由拒绝给命令文本命中加 `hard｜warn｜off` 开关（「裁 `readonly_commands` 已是更强的既有旋钮」）。**但全仓 grep 后只有三类命中**：`types.ts:545` 的类型声明、`config.ts:256` 的默认值、`.trivium/config.yaml` 的用户配置，外加几处**注释**提到它——**没有任何代码读这个字段**。这是 EV-06（`instructionFiles` 登记而无消费方）的同族形态，且比它更糟：EV-06 只是没接线，本项是**两处设计论证把不存在的机制当成了既有前提**。**当前不是活风险**：agy 的 `trivium-critic` 工具面里没有任何命令工具（`run_command` 出现即判失守），zcode 的只读组合全禁 `Bash`——两家现役审核者压根跑不了命令，白名单无处可用。**它在 M8 第 3 步变活**：codex 读文件就是跑 shell，届时「能跑哪些命令」第一次成为真问题。**修法要先回答一个没测过的问题**：codex 支不支持命令白名单？M6 第 2 步只探到它的只读是 `-s read-only` 沙箱 + `approval: never`，而**沙箱管的是写、不是「能跑哪些命令」**。若不支持，`readonly_commands` 对该侧就是**不可执行的**，那两处设计论证必须改写而不是补实现。发现于 M8 第 1 步（核 r1 双审 GLM-03 的建议时顺带查出，不在任何一条意见里） | `types.ts:545`、`config.ts:256`、设计 §10.1 与 §18.1 #21、M8 第 3 步的 codex 适配器 |
+ | EV-16 | **已拍板（2026-09-15）：不收窄** | **决策者 Chen Zhenbo。** 裸 `git log -p` 与根递归 `grep -rn .` **保留在审核者的命令能力内**，盲区 **B-2 作为已知残留风险接受**，不因它削减 bug 阶段的排查能力。**后果要说清，不能只记结论**：①B-2 从「待处置」变为**长期接受**，R25 的风险登记随之**不再有对应的缓解措施**——它是纯接受项；②M8 第 3 步 codex 接入后这条通道**真实可达**（该侧读文件就是跑 shell），届时措施 b 对它的覆盖面就是 F 清单那几条，**通道②在非指名形态上仍是开的**；③因此 M8 第 3 步**不得**因为「措施 b 已落地」就把通道②标为收口——设计 §10.1 通道表现在写的是「**F-3 字面形态**已收口」，这个限定词是本决策的直接产物，不能省。**本决策不解除 EV-15**：那是「设计把不存在的机制当既有前提」的独立缺陷，与用不用它无关——反而因为本决策，§18.1 #21 那句「裁 `readonly_commands` 已是更强的既有旋钮」同时失去了两个支点（旋钮不存在 + 已决定不用），措辞必须改。**原条目**：是否把裸 `git log -p` 与根递归 `grep -rn .` 挡在审核者的命令白名单外。这两条是措施 b 盲区 **B-2** 的主体：命令文本里**不出现**任何 deny 路径，而 `.reviews/` 进 Git（341 个文件在库）、HEAD 历史里就有对端产物，一条 `git log -p` 就整份 dump 出来。字面扫描对它**天然无效**——要挡只能在执行侧限制能跑哪些命令。**这是取舍不是缺陷**，所以不自行决定：收窄的代价是 **bug 阶段镜头能力受损**，而设计 §10.1 明说「`git log/blame/show` 是 bug 阶段镜头的重要能力（追溯引入提交、查作者意图），deny `.git` 会实质砍掉它」。**与 EV-15 绑定**：即便拍板收窄，也得先有消费方、且先确认 codex 那边拦得住。同样**当前不是活风险**，M8 第 3 步 codex 接入时变活。来源：r1 双审 GLM-03（该条的文档部分已在本步落地，处置部分即本项） | 设计 §10.1 与 §10.3、`agents.<id>.readonly_commands`、M8 第 3 步 |
+ | EV-12 | todo | **调用形态旗标没有机读落点，M9 / M10 只能在适配层硬编码**。`probe.cli.claude.readonly_flags` 装的是三个**安全不变量**（`--restricted` / `--strict-mcp-config` / `--tools <白名单>`），但**调用形态**旗标（`-p`、`--output-format stream-json`、`--verbose`、stdin 置空、`--json-schema` 收内联 JSON）一个都不在里面——它们只活在 `probes/claude.ts` 的文件头注释与报告散文里。于是 **P7 的字面**（「适配层绝不硬编码 CLI 旗标」）与 **zcode 先例**（机制类旗标写在适配层）在这里互相矛盾，M9 落地时两头都说不清。M6 第 3 步已把「adapters/ 不得 import probes/」做成了会红的契约测试（`registry-parity`），但那只挡住了「绕过探针直接复用函数」，没回答「这些旗标该归谁」。**这是个归属决策，不是缺陷**：要么明确承认机制类旗标属适配层（并把 P7 的措辞改准，因为现在的字面是绝对的），要么给探针加机读字段。M6 第 4 步**没有替 M9 拍这个板**——真实的调用形态要等 M9 接一遍才知道哪些是稳定的，现在定就是凭想象定契约。来源：r4 GLM-06 | `types.ts` `ClaudeProbe`、`adapters/` 的 M9 实现、设计 §11.1、原则 P7 的措辞 |
+diff --git a/skills/dual-critic/schema/run.v2.json b/skills/dual-critic/schema/run.v2.json
+index 5bfb664..fb237f9 100644
+--- a/skills/dual-critic/schema/run.v2.json
++++ b/skills/dual-critic/schema/run.v2.json
+@@ -90,6 +90,25 @@
+               "commands": { "type": "array", "items": { "type": "string" } }
+             }
+           }
++        },
++        "verification_degraded": {
++          "type": "object",
++          "description": "两条核验通道的降级档位与本次生效的证据阈值，**逐审核者**（键是 Agent id，与 critics 同构）。【已实现 · M8 第 2 步】`readonly`=unavailable 表示该侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守——**它记的是能力恒态，与本次是否检出写事件无关**：真阳性由 readonly_breach 表达，两者正交，档位为 unavailable 的侧一样可能 readonly_breach=true（写命令成功执行、照常留痕）。`path`=unavailable 表示该侧读取路径只存在于命令文本里、措施 a（读取路径比对 deny）无结构化输入可扫，deny 核验完全由措施 b 承担。`evidence_threshold` 记本次生效的 min_project_reads——command-trace 族按折减系数下调，不记的话同一个读数在两族间一过一不过会像 bug。三态落在结构上：整个字段缺失=该次运行早于 M8 第 2 步；字段在而某侧的键缺失=**那一侧没判过**（失败/超时被 judgeRun 跳过）；值=该侧实际档位。注意 path=unavailable 与既有的 peer_deny_applied=false 是两件事：后者说的是 CLI 级路径拦截是否注入生效（第 ③ 道 (c) 层），前者说的是事后轨迹核验有没有输入可扫",
++          "additionalProperties": {
++            "type": "object",
++            "required": ["readonly", "path", "evidence_threshold"],
++            "additionalProperties": false,
++            "properties": {
++              "readonly": { "enum": ["ok", "unavailable"] },
++              "path": { "enum": ["ok", "unavailable"] },
++              "evidence_threshold": { "type": "integer", "minimum": 0 }
++            }
++          }
++        },
++        "unattributed_drift_files": {
++          "type": "array",
++          "description": "指纹变化但**无法归因**的文件（§9.2 第 4 步 + §11.1）。【已实现 · M8 第 2 步】只在本轮有侧的 readonly 档位为 unavailable 时出现：「指纹变了但轨迹无写事件 ⇒ 开发者手改」这条推理的前提是轨迹能证明审查员没写，而该侧被拒的写不留痕，无写事件排除不了审查员写过。既不判失守（无正向证据）也不判开发者手改（阴性证据不可信），与 fingerprint 的已归因结论分开记——混进去等于用更强的断言掩盖证据缺口。字段缺失或空数组 = 无此情形",
++          "items": { "type": "string" }
+         }
+       }
+     },
+diff --git a/src/trivium/adapters/agy.ts b/src/trivium/adapters/agy.ts
+index 978fe56..a80ad5b 100644
+--- a/src/trivium/adapters/agy.ts
++++ b/src/trivium/adapters/agy.ts
+@@ -27,7 +27,12 @@ import {
+   commandTexts,
+   type AgyStreamResult,
+ } from './agy-events.js';
+-import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
++import {
++  failedResult,
++  TOOL_TRACE_CAPABILITY,
++  type AdapterContext,
++  type CriticAdapter,
++} from './base.js';
+ import { agentConfigOf } from '../config.js';
+ 
+ export interface AgyInvokeOptions {
+@@ -170,6 +175,12 @@ export function resolveAgyAgent(
+ 
+ export const agyAdapter: CriticAdapter = {
+   critic: 'gemini',
++  /*
++   * 专用读工具带独立路径字段，被拒操作留痕——与本步之前的判定行为逐字等价。
++   * 注意 `run_command` 在本侧**不是**读取手段：它根本不在 `AGY_WRITE_TOOLS`
++   * 之外的白名单里，出现即失守，所以 `toolTotal` 不计入它（见 checkEvidence 的分档）。
++   */
++  capability: TOOL_TRACE_CAPABILITY,
+ 
+   availability(ctx: AdapterContext) {
+     /*
+diff --git a/src/trivium/adapters/base.ts b/src/trivium/adapters/base.ts
+index c6ad95a..680c5d9 100644
+--- a/src/trivium/adapters/base.ts
++++ b/src/trivium/adapters/base.ts
+@@ -17,13 +17,62 @@ export interface AdapterContext {
+   nodePath: string;
+ }
+ 
++/**
++ * 该侧轨迹能提供什么形状的证据（设计 §11.1，M8 第 2 步）。
++ *
++ * ## 为什么需要它
++ *
++ * 判定层原先假定「读取路径是结构化拿到的」「被拒的写操作会留痕」。M6 实测
++ * （P-C1 / P-C2）推翻了这两条对 codex 的适用性：codex 读文件就是跑 shell，
++ * 路径只在命令文本里；被沙箱拒绝的命令一条事件都不产生。
++ *
++ * 消费方因此必须**面对能力而不是 Agent id**——按 id 分叉是纪律 7 明令禁止的，
++ * 而且 M9 的 claude 又是另一种组合，按 id 分叉会分出三支。
++ *
++ * ## 为什么挂在 `CriticAdapter` 上而不是注册表或 `CriticResult`
++ *
++ * 不挂 `CriticResult`：它是**该侧的固有能力**，不是单次运行的结果；挂结果上会让
++ * 每次运行都要重填一遍，且允许同一侧两次运行报出不同能力（r1 裁决 §2.3）。
++ *
++ * 不挂注册表：`criticEnabled=false` 的 Agent 选不进运行（`critics.ts` 抛 `EXIT.USAGE`），
++ * 而 M8 第 2 步不翻 codex 的开关——静态注册表方案下，桩的 `command-trace` 形态
++ * **在集成测试里根本走不到**，泛化就没有机器判据（r2 裁决 AGY-04）。
++ * 挂适配器则桩适配器可以声明自己的能力。
++ */
++export interface TraceCapability {
++  /**
++   * 轨迹形态：专用工具带结构化路径，还是 shell 命令。
++   *
++   * **消费方有两个**（缺一个就是 r2 那次「无消费方」的误判）：
++   * `effectiveReadPaths` 的路径提取、`checkEvidence` 的 `toolTotal` 计数。
++   */
++  traceShape: 'tool-trace' | 'command-trace';
++  /**
++   * 被拒的操作是否留痕。
++   *
++   * `false` ⇒ 该侧**「尝试写」的检测失效**——注意**不是**「轨迹对写事件全盲」：
++   * P-C2 只断言被沙箱拒绝的命令不产生事件，**成功执行的写命令照常留痕**
++   * （P-C1 的样本本身就是 `status:"completed"` 的命令事件）。
++   * 所以 `readonlyBreach` 仍由写事件判定，本字段只修饰**阴性结论**的可信度。
++   */
++  rejectionRecorded: boolean;
++}
++
+ export interface CriticAdapter {
+   readonly critic: CriticId;
++  /** 该侧轨迹的证据形状——判定层据此分档，不按 Agent id 分叉（§11.1） */
++  readonly capability: TraceCapability;
+   /** 该侧是否可用（探针结论决定）。不可用时给出人读原因 */
+   availability(ctx: AdapterContext): { ok: boolean; reason?: string };
+   run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult>;
+ }
+ 
++/** 结构化轨迹两家（gemini / glm）的能力：与本步之前的行为逐字等价 */
++export const TOOL_TRACE_CAPABILITY: TraceCapability = {
++  traceShape: 'tool-trace',
++  rejectionRecorded: true,
++};
++
+ /**
+  * Agent id → 适配器的查表结构。
+  *
+@@ -91,20 +140,43 @@ export interface EvidenceCheck {
+   reasons: string[];
+   /** 被审对象与送审包之外的项目文件读取次数（AC-11） */
+   projectReads: number;
++  /**
++   * 本次该侧**实际生效**的项目读取下限。
++   *
++   * 与配置值可能不同：`command-trace` 族按折减系数下调（见 `effectiveMinProjectReads`）。
++   * 单列出来是为了进留痕——不记的话，codex 侧 `project_reads=2` 通过、
++   * gemini 侧同样是 2 却不通过，事后复盘看起来像 bug。
++   */
++  minProjectReads: number;
+ }
+ 
+ export function checkEvidence(
+-  result: Pick<CriticResult, 'tool_calls' | 'read_paths' | 'trace_path'>,
++  result: Pick<CriticResult, 'tool_calls' | 'read_paths' | 'trace_path' | 'command_texts'>,
+   req: Pick<CriticRequest, 'min_tool_calls' | 'min_project_reads' | 'subject_path' | 'brief_path' | 'project_root'>,
+-  opts: { archiveRootAbs: string },
++  opts: { archiveRootAbs: string; capability?: TraceCapability },
+ ): EvidenceCheck {
+   const reasons: string[] = [];
++  const cap = opts.capability ?? TOOL_TRACE_CAPABILITY;
++  const commandTrace = cap.traceShape === 'command-trace';
+ 
+   const tc = result.tool_calls;
+-  const toolTotal = (tc.read ?? 0) + (tc.grep ?? 0) + (tc.glob ?? 0);
++  /*
++   * ② 的计数口径按轨迹形态分档。
++   *
++   * `command-trace` 族**必须**计入 `run_command`：该族读文件就是跑 shell，
++   * `read`/`grep`/`glob` 三者恒 0，不计就必然触发 `insufficient_evidence`——
++   * 这正是 r2 计划稿误判「`commandSemantics` 无消费方」时漏掉的那个消费方。
++   * 对 `tool-trace` 族不计入：那一族的 `run_command` 是写事件信号（agy 的白名单里
++   * 根本没有它），计进证据就是把失守信号当成读取证据。
++   */
++  const toolTotal =
++    (tc.read ?? 0) + (tc.grep ?? 0) + (tc.glob ?? 0) + (commandTrace ? (tc.run_command ?? 0) : 0);
++
++  // 判定层使用的有效读取路径：command-trace 族从命令文本回填（派生视图，不回写结果）
++  const effective = effectiveReadPaths(result, cap, req.project_root);
+ 
+   // ① 轨迹存在
+-  if (result.trace_path === null && result.read_paths.length === 0 && toolTotal === 0) {
++  if (result.trace_path === null && effective.length === 0 && toolTotal === 0) {
+     reasons.push('no_trace：拿不到任何工具调用轨迹');
+   }
+ 
+@@ -113,9 +185,20 @@ export function checkEvidence(
+     reasons.push(`insufficient_evidence：工具调用 ${toolTotal} 次 < 下限 ${req.min_tool_calls}`);
+   }
+ 
+-  // ③ 项目文件读取下限——防止「把 BRIEF 与被审文档反复读 N 遍」通过上一条
++  /*
++   * ③ 项目文件读取下限——防止「把 BRIEF 与被审文档反复读 N 遍」通过上一条。
++   *
++   * 下限对 `command-trace` 族**单独折减**（r1 裁决 §2.2 第 3 条）：该族的路径靠命令
++   * 文本提取，变量拼接、管道组合、`find -exec` 都提不出来，读数**系统性偏低**。
++   * 沿用为结构化轨迹定的那个数，等于给该族设了一道不可达的闸；
++   * 而按「下限不适用」处置又等于对该族放弃 AC-11——提取偏低但不为零
++   * （BRIEF 给的是绝对路径，模型据此读项目文件，提出来就是项目内绝对路径）。
++   * 生效值进留痕（`evidence_threshold`），否则同一个读数在两族间一过一不过会像 bug。
++   */
++  const minProjectReads = effectiveMinProjectReads(req.min_project_reads, cap);
++
+   const excluded = new Set([req.subject_path, req.brief_path].map((p) => normalizeAbs(p, req.project_root)));
+-  const projectReads = result.read_paths.filter((p) => {
++  const projectReads = effective.filter((p) => {
+     const abs = normalizeAbs(p, req.project_root);
+     if (excluded.has(abs)) return false;
+     // 归档根内的文件不算「项目上下文」——那是审查材料本身
+@@ -124,13 +207,177 @@ export function checkEvidence(
+     return isUnder(abs, req.project_root);
+   }).length;
+ 
+-  if (projectReads < req.min_project_reads) {
++  if (projectReads < minProjectReads) {
+     reasons.push(
+-      `no_project_context：被审对象与送审包之外的项目文件读取 ${projectReads} 次 < 下限 ${req.min_project_reads}`,
++      `no_project_context：被审对象与送审包之外的项目文件读取 ${projectReads} 次 < 下限 ${minProjectReads}`,
+     );
+   }
+ 
+-  return { ok: reasons.length === 0, reasons, projectReads };
++  return { ok: reasons.length === 0, reasons, projectReads, minProjectReads };
++}
++
++/**
++ * `command-trace` 族的项目读取下限折减系数。
++ *
++ * 取 1/2 并向上取整（默认 3 ⇒ 2）：提取漏报主要来自变量拼接与管道组合，
++ * 实测样本里直引形态占多数，折半是**保留判别力**与**承认系统性偏低**之间的取值。
++ * 它是一个可调参数而不是推导结论——改动它要连同 `evidence_threshold` 的留痕一起看。
++ */
++const COMMAND_TRACE_READS_DIVISOR = 2;
++
++/** 本次该侧实际生效的项目读取下限（进留痕，见 `verification_degraded.evidence_threshold`） */
++export function effectiveMinProjectReads(configured: number, cap: TraceCapability): number {
++  if (cap.traceShape !== 'command-trace') return configured;
++  return Math.max(1, Math.ceil(configured / COMMAND_TRACE_READS_DIVISOR));
++}
++
++/**
++ * 外层子 shell 封装的剥离。
++ *
++ * codex 跑命令的真实形态是 `/bin/zsh -lc '<真实命令>'`（M6 P-C1 录制样本 `read-sentinel.jsonl`）。
++ * **不剥这一层，整段子命令会塌成一个引号 token，路径一个都提不出来**——
++ * r3 计划稿写「引号包裹的整体算一个 token」，被 blocker 正是因为这个。
++ *
++ * 只剥最外层：嵌套子 shell 在审查场景里不出现，多剥一层不如让它留在文本里被 token 化。
++ */
++const SUBSHELL_RE = /^\s*\/?(?:[\w./-]*\/)?(?:zsh|bash|sh|dash)\s+-[a-zA-Z]*c\s+(['"])([\s\S]*)\1\s*$/;
++
++function unwrapSubshell(cmd: string): string {
++  const m = SUBSHELL_RE.exec(cmd);
++  return m ? m[2]! : cmd;
++}
++
++/** 写动词：这些命令的**目标位**是写入点，不是读取证据 */
++const WRITE_VERB_TARGET: Record<string, 'last' | 'all-after-flags'> = {
++  cp: 'last',
++  mv: 'last',
++  install: 'last',
++  tee: 'all-after-flags',
++};
++
++/**
++ * 从一条命令原文里提取**读取候选**路径 token（§11.1，M8 第 2 步）。
++ *
++ * ## 口径（四组，逐组由 r3 双审裁定）
++ *
++ * 1. **引号穿透**：剥掉外层子 shell 后，`'` / `"` 按分隔符处理。
++ *    与措施 b 的 F-5 / F-9 同向——措施 b 有专门的穿透处理，提取侧比它更弱就是漏报。
++ * 2. **裸相对路径按 `projectRoot` 归一后计入**（`cat src/a.ts`）。
++ *    措施 b 的 `spellingsOf` 对项目根下的条目显式派生 `rel` 与 `./rel` 两种拼写并必检
++ *    （F-2 是闭集成员），提取侧同口径。逃逸形态（`../Other/x.ts`）归一后落在项目根外，
++ *    由 `checkEvidence` 既有的 `isUnder` 过滤自然排除，不需要单独规则。
++ *    （r3 稿曾写「cwd 不可知保守不计」，把 F-6 锚定形态的处理误当成了总体口径。）
++ * 3. **`HEAD:<path>` 提取**（EV-01 已列的已知形态）；**通配不展开**——
++ *    展开需要文件系统状态，判定层不做 I/O。
++ * 4. **写目标位不计入**：输出重定向 `>` / `>>` 的右侧紧邻 token，以及写动词
++ *    （`cp`/`mv`/`tee`/`install`/`sed -i`）的目标位。
++ *    按 token 级而非命令级排除：命令级会把 `grep foo > out.txt` 里对 `foo` 的**真实读取**
++ *    一并丢弃（漏报）；只剔重定向目标又会把 `cp a b` 的 `b` 计成读证据（虚高）。
++ *
++ * ## 已知漏报边界（如实登记，不是缺陷）
++ *
++ * 变量拼接（`cat $F`）、命令替换、管道组合、`find -exec` 传递的路径都提不出来。
++ * `command-trace` 族的 `project_reads` 因此**系统性偏低**，下限相应折减
++ * （`effectiveMinProjectReads`）。承诺是「已知形态可提」，不是完备。
++ */
++export function extractPathTokens(rawCommand: string): string[] {
++  const cmd = unwrapSubshell(rawCommand);
++  // 引号按分隔符处理（口径 1）：先把引号换成空白，再按 shell 元字符切
++  const flattened = cmd.replace(/['"`]/g, ' ');
++  const rawTokens = flattened.split(/[\s|;&()<]+/).filter((t) => t.length > 0);
++
++  const out: string[] = [];
++  const skip = new Set<number>();
++
++  // 口径 4：`… > out.txt` 的分离写法，目标在下一个 token
++  // （`>out.txt` 紧贴写法由主循环的 `startsWith('>')` 跳过）
++  for (let i = 0; i < rawTokens.length; i++) {
++    const t = rawTokens[i]!;
++    if (t === '>' || t === '>>') skip.add(i + 1);
++  }
++
++  // 口径 4：写动词的目标位
++  const verb = rawTokens[0];
++  if (verb && WRITE_VERB_TARGET[verb]) {
++    const mode = WRITE_VERB_TARGET[verb];
++    if (mode === 'last') {
++      for (let i = rawTokens.length - 1; i > 0; i--) {
++        if (!rawTokens[i]!.startsWith('-')) { skip.add(i); break; }
++      }
++    } else {
++      for (let i = 1; i < rawTokens.length; i++) {
++        if (!rawTokens[i]!.startsWith('-')) skip.add(i);
++      }
++    }
++  }
++  if (verb === 'sed') {
++    /*
++     * `sed [旗标] <脚本> <文件…>`：第一个非旗标参数是**脚本**，不是路径。
++     * 不排它，`s/x/y/` 这种表达式会因为含 `/` 被「看起来像路径」的判据收进来，
++     * 虚构出一条根本不存在的读取证据。
++     */
++    for (let i = 1; i < rawTokens.length; i++) {
++      if (!rawTokens[i]!.startsWith('-')) { skip.add(i); break; }
++    }
++    // `-i` 就地改写：最后一个非旗标 token 是写目标
++    if (rawTokens.some((t) => t.startsWith('-i'))) {
++      for (let i = rawTokens.length - 1; i > 0; i--) {
++        if (!rawTokens[i]!.startsWith('-')) { skip.add(i); break; }
++      }
++    }
++  }
++
++  for (let i = 0; i < rawTokens.length; i++) {
++    if (skip.has(i)) continue;
++    let t = rawTokens[i]!;
++    if (t.startsWith('>')) continue;
++    if (t.startsWith('-')) continue; // 旗标不是路径
++    if (t.includes('*') || t.includes('?')) continue; // 口径 3：通配不展开
++
++    // 口径 3：git 对象语法 `HEAD:<path>` / `<sha>:<path>`
++    const gitObj = /^[A-Za-z0-9_./^~@{}-]+:(.+)$/.exec(t);
++    if (gitObj) t = gitObj[1]!;
++
++    // 只有「看起来像路径」的 token 才算：含分隔符，或带扩展名
++    if (!t.includes('/') && !/\.[A-Za-z0-9]+$/.test(t)) continue;
++    if (t.length === 0) continue;
++    out.push(t);
++  }
++  return out;
++}
++
++/**
++ * 判定层使用的**有效读取路径**（设计 §11.1）。
++ *
++ * `tool-trace`    ⇒ 就是 `read_paths`（现状，零行为变化）；
++ * `command-trace` ⇒ `read_paths` ∪ 从 `command_texts` 按上述口径提取的路径。
++ *
++ * **这是派生视图，绝不回写 `CriticResult`。** `CriticResult` 是诚实记录，
++ * 记的是适配器实际采到什么；把推导结果写回去，留痕就从「采到的」变成「推出来的」，
++ * 事后复盘再也分不清哪些是轨迹里真有的。
++ *
++ * **消费方只有三处**：`checkEvidence` 的 `no_trace` 与 `projectReads`、
++ * `judgeSide` 的 consulted 交叉核对。
++ * **措施 a（`checkPeerLeak`）不吃回填**——命令里提到某路径不等于读了它
++ * （`git log -p` 提到但未必读、`grep -l` 只列文件名）。并进去处置上零增益
++ * （措施 b 已让该侧作废）、排查上有损（`peerHits` 与 `peerCommandHits` 分列就是
++ * 为了看得出是哪条通道）、语义上降级（措施 a 声称的是文件系统级读取事实）。
++ */
++export function effectiveReadPaths(
++  result: Pick<CriticResult, 'read_paths' | 'command_texts'>,
++  cap: TraceCapability,
++  projectRoot: string,
++): string[] {
++  if (cap.traceShape !== 'command-trace') return [...result.read_paths];
++
++  const out = new Set<string>(result.read_paths);
++  for (const cmd of result.command_texts) {
++    for (const tok of extractPathTokens(cmd)) {
++      // 归一到绝对路径：裸相对按 projectRoot 解析（口径 2）
++      out.add(normalizeAbs(tok, projectRoot));
++    }
++  }
++  return [...out];
+ }
+ 
+ /** 轨迹核验：读取路径中是否命中禁读清单（§10.1 第 ③ 道 (c) 层 / AC-04） */
+diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts
+index fcc2d75..1b9ee8f 100644
+--- a/src/trivium/adapters/stub.ts
++++ b/src/trivium/adapters/stub.ts
+@@ -22,7 +22,13 @@
+  */
+ import { agentById } from '../agents/registry.js';
+ import { CRITICS, type CriticId, type CriticRequest, type CriticResult } from '../types.js';
+-import { failedResult, type AdapterContext, type AdapterTable, type CriticAdapter } from './base.js';
++import {
++  failedResult,
++  TOOL_TRACE_CAPABILITY,
++  type AdapterContext,
++  type AdapterTable,
++  type CriticAdapter,
++} from './base.js';
+ import { warn } from '../util/log.js';
+ 
+ export const STUB_ENV_VAR = 'TRIVIUM_STUB_CRITIC';
+@@ -66,6 +72,22 @@ export type StubMode =
+    * 接力是否成立的检验（审查意见 AGY-01 ≡ GLM-02）。
+    */
+   | 'wrong_prefix'
++  /**
++   * **「读即命令」形态**（§11.1，M8 第 2 步）：路径只存在于命令文本里，
++   * `read_paths` 恒空、`tool_calls` 只有 `run_command`，且被拒的写不留痕。
++   *
++   * 形态取自 M6 真实录制样本 `test/fixtures/codex-events/read-sentinel.jsonl`
++   * 的命令形状（`/bin/zsh -lc '…'` 子 shell 封装），但**路径改写到测试 projectRoot 之下**——
++   * 样本里的路径在探针临时目录 `/tmp/codex-probe-…` 下（项目外），逐字重放过不了
++   * `checkEvidence` 的 `isUnder(project_root)` 过滤，任何「证据达标」的断言都不可达。
++   * r1 裁决的措辞是「以真实录制样本为**蓝本**」，蓝本允许改写路径套形态，
++   * 不是字面重放（r3 裁决 GLM-01(b)）。
++   *
++   * **新增注入形态而非改 `baseResult`**：`read:6` 被全部既有模式共享，
++   * 全局替换会把 selftest 与故障注入的绿路径一并改形，与「既有判定逐项不变」冲突。
++   * 与 `peer_leak` / `peer_leak_via_command` 分列同理——每条形状要能单独触发。
++   */
++  | 'command_trace'
+   /** 进程级失败 */
+   | 'fail';
+ 
+@@ -165,6 +187,18 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
+ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter {
+   return {
+     critic,
++    /*
++     * 桩的能力**随注入形态变化**，这与「capability 是该侧固有能力」不矛盾：
++     * 桩适配器是一个**可配置的「侧」**——每次 `makeStubAdapter` 构造出的是一个
++     * 不同的侧，不是同一侧两次运行报出不同能力（后者才是挂 `CriticResult` 的毛病）。
++     *
++     * 这正是能力挂适配器而非注册表的价值：`criticEnabled=false` 锁死 codex 时，
++     * `command-trace` 形态仍然可以在集成测试里被真实走到。
++     */
++    capability:
++      spec.mode === 'command_trace'
++        ? { traceShape: 'command-trace', rejectionRecorded: false }
++        : TOOL_TRACE_CAPABILITY,
+     availability: () => ({ ok: true }),
+     async run(_ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
+       switch (spec.mode) {
+@@ -227,6 +261,31 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
+             tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 1 },
+             command_texts: req.deny_paths.map((p) => `git show HEAD:${p}`),
+           };
++        case 'command_trace': {
++          /*
++           * 借样本的命令形态、把路径改写到测试 projectRoot 之下（见 StubMode 的说明）。
++           *
++           * 六条命令覆盖提取器的各组口径，且条数足以过 `min_tool_calls`（默认 5）：
++           * 子 shell 封装、裸相对、绝对路径、`HEAD:<path>`、写目标位、逃逸相对。
++           * `read_paths` 恒空是本形态的**要害**——判定层拿不到结构化路径，
++           * 全靠 `command_texts` 回填，泛化是否真的成立就看这一条。
++           */
++          const cmds = [
++            `/bin/zsh -lc 'head -n 1 ${req.project_root}/src/a.ts'`,
++            `/bin/zsh -lc 'cat src/b.ts'`,
++            `sed -n '1,40p' ${req.project_root}/src/c.ts`,
++            `git show HEAD:README.md`,
++            `grep -rn foo src/d.ts`,
++            `/bin/zsh -lc 'wc -l src/e.ts'`,
++          ];
++          return {
++            ...baseResult(critic, req, spec),
++            // 读即命令：没有专用读工具，三类结构化计数恒 0
++            tool_calls: { read: 0, grep: 0, glob: 0, run_command: cmds.length },
++            read_paths: [],
++            command_texts: cmds,
++          };
++        }
+         case 'mutate_file': {
+           const { promises: fsp } = await import('node:fs');
+           const nodePath = await import('node:path');
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index 085cd08..65af0df 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -24,7 +24,12 @@ import {
+   parseZcodeTrace,
+   type ZcodeEnvelope,
+ } from './zcode-trace.js';
+-import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
++import {
++  failedResult,
++  TOOL_TRACE_CAPABILITY,
++  type AdapterContext,
++  type CriticAdapter,
++} from './base.js';
+ 
+ /**
+  * 把 profile 里的人类可读短名补全为 `<providerId>/<modelName>` 全限定形态。
+@@ -177,6 +182,12 @@ export async function prepareZcodeHome(
+ 
+ export const zcodeAdapter: CriticAdapter = {
+   critic: 'glm',
++  /*
++   * 专用读工具带独立路径字段，被拒操作留痕。本侧 `Bash` 全禁，`command_texts`
++   * 恒空（见本文件 §96 的说明），`command-trace` 的回填路径对它是空操作——
++   * 但仍如实声明为 `tool-trace`：能力说的是「轨迹是什么形状」，不是「本次采到了什么」。
++   */
++  capability: TOOL_TRACE_CAPABILITY,
+ 
+   availability(ctx: AdapterContext) {
+     // 同 agy：「未探过」与「探过但没找到」要分开答，判据用 probed_at 而非 `!p`（AGY-01）。
+diff --git a/src/trivium/guard.ts b/src/trivium/guard.ts
+index 2b1bd62..3960540 100644
+--- a/src/trivium/guard.ts
++++ b/src/trivium/guard.ts
+@@ -5,7 +5,14 @@
+  * 这样「检出」与「处置」分开，处置策略可配而检出逻辑恒定。
+  */
+ import type { Config, CriticId, CriticRequest, CriticResult, Review } from './types.js';
+-import { checkEvidence, checkPeerLeak, checkPeerLeakViaCommand } from './adapters/base.js';
++import {
++  checkEvidence,
++  checkPeerLeak,
++  checkPeerLeakViaCommand,
++  effectiveReadPaths,
++  TOOL_TRACE_CAPABILITY,
++  type TraceCapability,
++} from './adapters/base.js';
+ import { checkReviewIntegrity } from './parse.js';
+ import { judgeDrift, driftAction, type DriftVerdict, type Snapshot } from './freeze.js';
+ import { ALL_CLI_NAMES } from './agents/registry.js';
+@@ -36,6 +43,35 @@ export interface SideVerdict {
+   consultedUnverified: boolean;
+   /** 结构性问题（编号前缀错、重复编号等） */
+   integrityIssues: string[];
++  /**
++   * 该侧两条核验通道的可用档位（§11.1，M8 第 2 步）。
++   *
++   * **三态不得塌缩**：`readonlyBreach: false` 与 `peerHits: []` 各有两个来源——
++   * 「核验过、没命中」与「根本没法核验」。这两个档位就是把它们分开。
++   * 不记的话，`command-trace` 侧的空数组与「扫过没命中」在留痕里**完全同形**。
++   */
++  verification: SideVerification;
++}
++
++/** 单侧两条核验通道的档位与生效阈值 */
++export interface SideVerification {
++  /**
++   * 「尝试写」检测是否可用。`unavailable` ⟺ `rejectionRecorded === false`。
++   *
++   * **记的是能力恒态，与本次是否检出写事件无关**（r3 裁决 GLM-06）。
++   * 真阳性由 `readonlyBreach` 表达，两者正交：档位为 `unavailable` 的侧
++   * 一样可能 `readonlyBreach === true`（写命令成功执行、照常留痕）。
++   * 本档位只修饰**阴性结论**的可信度——「没检出写事件」在该侧不足以排除失守。
++   */
++  readonly: 'ok' | 'unavailable';
++  /**
++   * 措施 a（读取路径比对 deny）是否有结构化输入可扫。
++   * `unavailable` ⟺ `traceShape === 'command-trace'`——该族 `read_paths` 恒空，
++   * deny 核验只剩措施 b 一条通道（已知形态必检，非完备，R25）。
++   */
++  path: 'ok' | 'unavailable';
++  /** 本次生效的项目读取下限（`command-trace` 族折减后的值） */
++  evidenceThreshold: number;
+ }
+ 
+ /**
+@@ -50,9 +86,22 @@ export function judgeSide(
+   result: CriticResult,
+   review: Review | null,
+   req: CriticRequest,
+-  opts: { archiveRootAbs: string; projectRoot: string },
++  opts: { archiveRootAbs: string; projectRoot: string; capability?: TraceCapability },
+ ): SideVerdict {
+-  const ev = checkEvidence(result, req, { archiveRootAbs: opts.archiveRootAbs });
++  /*
++   * 未传能力声明时按结构化轨迹处理——那是本步之前的唯一形态，行为逐字等价。
++   * 这**不是**「默认放行」：`command-trace` 的侧由适配器显式声明，
++   * 漏传会让该侧按 tool-trace 判（证据恒不达标），响亮失败而非静默放行。
++   */
++  const cap = opts.capability ?? TOOL_TRACE_CAPABILITY;
++
++  const ev = checkEvidence(result, req, { archiveRootAbs: opts.archiveRootAbs, capability: cap });
++
++  /*
++   * 措施 a **只吃 `read_paths`，不吃回填**（r2/r3 双审两侧均确认）：
++   * 回填路径的语义是「跑了一条提到该文件的命令」，不等于「读到了该文件」。
++   * 命令通道由下面的措施 b 承担，两条分列才看得出泄漏走的是哪条。
++   */
+   const peer = checkPeerLeak(result.read_paths, req.deny_paths, opts.projectRoot);
+   /*
+    * 措施 b（§10.1 / EV-01）：命令原文的字面扫描。
+@@ -69,15 +118,28 @@ export function judgeSide(
+    */
+   const peerCmd = checkPeerLeakViaCommand(result.command_texts, req.deny_paths, opts.projectRoot);
+ 
+-  // 轨迹里出现写工具/写命令 = 审查员失守（§10.3 末段：轨迹有写事件的判为失守）
++  /*
++   * 轨迹里出现写事件 = 审查员失守（§10.3 末段）。
++   *
++   * **两档一律成立，与 `rejectionRecorded` 无关。** M6 的 P-C2 只断言
++   * 「被沙箱拒绝的命令不产生事件」；成功执行的命令照常留痕（P-C1 的样本本身
++   * 就是 `status:"completed"`、`exit_code:0` 的 `command_execution`）。
++   * 所以沙箱一旦失守、写命令真的跑成了，那是**正向确凿证据**，必须判失守——
++   * 把它压成 false 会让失守信号凭空消失，还会让下面的漂移判定把审查员的写入
++   * 归因成开发者手改（方向正好反）。
++   *
++   * `rejectionRecorded === false` 影响的只有**阴性结论**：没检出写事件时，
++   * 不足以排除「尝试过写但被拒、没留痕」，该侧只读保障从三重降到两重。
++   * 这一层由 `verification.readonly` 档位表达，不动本判定。
++   */
+   const readonlyBreach = result.write_events.length > 0;
+ 
+-  // consulted 与轨迹交叉核对
++  // consulted 与轨迹交叉核对——吃回填后的有效路径，否则 command-trace 侧每轮误报
+   let consultedUnverified = false;
+   const consulted = review?.consulted ?? [];
+   if (consulted.length > 0) {
+     const traceSet = new Set(
+-      result.read_paths.map((p) =>
++      effectiveReadPaths(result, cap, opts.projectRoot).map((p) =>
+         p.startsWith(opts.projectRoot) ? p.slice(opts.projectRoot.length).replace(/^\/+/, '') : p,
+       ),
+     );
+@@ -112,6 +174,11 @@ export function judgeSide(
+     peerCommandHits: peerCmd.hits,
+     consultedUnverified,
+     integrityIssues,
++    verification: {
++      readonly: cap.rejectionRecorded ? 'ok' : 'unavailable',
++      path: cap.traceShape === 'command-trace' ? 'unavailable' : 'ok',
++      evidenceThreshold: ev.minProjectReads,
++    },
+   };
+ }
+ 
+@@ -119,8 +186,23 @@ export interface RunVerdict {
+   sides: Partial<Record<CriticId, SideVerdict>>;
+   drift: DriftVerdict;
+   driftAction: 'ok' | 'warn' | 'fail';
+-  /** 指纹变化但轨迹无写事件 → 开发者手改，按漂移处置而非失守（§9.2 第 4 步） */
++  /**
++   * 指纹变化但轨迹无写事件 → 开发者手改，按漂移处置而非失守（§9.2 第 4 步）。
++   *
++   * **这个归因只对 `verification.readonly === 'ok'` 的侧成立。** 前提是
++   * 「轨迹无写事件」能证明「审查员没写」——而对 `rejectionRecorded=false` 的侧，
++   * 无写事件**不能**排除审查员写过（被拒的不留痕）。那种情形下文件落进
++   * `unattributedDriftFiles`，不得记到开发者头上。
++   */
+   fingerprintChangedFiles: string[];
++  /**
++   * 指纹变化、但本轮有侧的只读核验不可用 ⇒ **无法归因**（§11.1，M8 第 2 步）。
++   *
++   * 既不判审查员失守（没有正向证据），也不判开发者手改（阴性证据不可信）。
++   * 单列而不是并进 `fingerprintChangedFiles`：后者是一个**已归因**的结论，
++   * 把不可归因的混进去，等于用一个更强的断言掩盖证据的缺口。
++   */
++  unattributedDriftFiles: string[];
+   readonlyBreach: boolean;
+   breachedFiles: string[];
+   peerArtifactRead: boolean;
+@@ -141,6 +223,14 @@ export interface JudgeRunInput {
+   results: Partial<Record<CriticId, CriticResult>>;
+   reviews: Partial<Record<CriticId, Review | null>>;
+   requests: Partial<Record<CriticId, CriticRequest>>;
++  /**
++   * 逐侧的轨迹能力声明，取自适配器表（`ctx.adapters[critic].capability`）。
++   *
++   * **必须由调用方透传**：能力的唯一起源是适配器，`judgeRun` 自己取不到。
++   * 缺某一侧时该侧按 `tool-trace` 判——对结构化轨迹两家是正确默认，
++   * 对 `command-trace` 侧则会因证据恒不达标而响亮失败，不会静默放行。
++   */
++  capabilities?: Partial<Record<CriticId, TraceCapability>>;
+ }
+ 
+ /** 整次运行的判定 */
+@@ -190,23 +280,41 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
+      * 失败原因由 runner 的 fail_reason 与 decideMode 的 degraded_reason 负责。
+      */
+     if (r.status === 'timeout' || r.status === 'failed') continue;
++    const cap = input.capabilities?.[c];
+     sides[c] = judgeSide(cfg, c, r, reviews[c] ?? null, q, {
+       archiveRootAbs: input.archiveRootAbs,
+       projectRoot: input.projectRoot,
++      ...(cap ? { capability: cap } : {}),
+     });
+   }
+ 
+   const breachedFiles = Object.values(sides).flatMap((s) => s?.breachEvidence ?? []);
+   const fingerprintChangedFiles =
+     drift.kind === 'related' || drift.kind === 'unrelated' ? drift.files : [];
++  const changed = fingerprintChangedFiles.filter((f) => !matchesAnyGlob(f, scratchGlobs));
++
++  /*
++   * 归因分流（§9.2 第 4 步 + §11.1）。
++   *
++   * 「指纹变了但轨迹无写事件 ⇒ 开发者手改」这条推理的前提是**轨迹能证明审查员没写**。
++   * 对 `readonly: 'unavailable'` 的侧（`rejectionRecorded=false`）这个前提不成立：
++   * 被拒的写不留痕，无写事件排除不了审查员写过。只要本轮有任一侧处于该档位，
++   * 变更文件就落进 `unattributedDriftFiles` 而不是被记成开发者手改——
++   * 否则审查员的失守会被安到开发者头上，方向正好反。
++   *
++   * 取「任一侧」而不是逐侧分配：指纹是**整个工作树**的快照，看不出是哪一侧改的。
++   * 有一侧不可归因，这批文件的归因就不可靠。
++   */
++  const anyReadonlyUnavailable = Object.values(sides).some(
++    (s) => s?.verification.readonly === 'unavailable',
++  );
+ 
+   return {
+     sides,
+     drift,
+     driftAction: driftAction(cfg, drift),
+-    fingerprintChangedFiles: fingerprintChangedFiles.filter(
+-      (f) => !matchesAnyGlob(f, scratchGlobs),
+-    ),
++    fingerprintChangedFiles: anyReadonlyUnavailable ? [] : changed,
++    unattributedDriftFiles: anyReadonlyUnavailable ? changed : [],
+     readonlyBreach: Object.values(sides).some((s) => s?.readonlyBreach === true),
+     breachedFiles: [...new Set(breachedFiles)],
+     peerArtifactRead: Object.values(sides).some((s) => s?.peerArtifactRead === true),
+@@ -269,11 +377,40 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
+     case 'none':
+       break;
+   }
++  if (v.unattributedDriftFiles.length > 0) {
++    out.push(
++      '审查期间有文件变更，但本轮有侧的只读核验不可用，**无法归因**：\n' +
++        v.unattributedDriftFiles.map((f) => `    ${f}`).join('\n') +
++        '\n  既不能判为审查员失守（无正向证据），也不能判为开发者手改' +
++        '（该侧被拒的写不留痕，无写事件排除不了审查员写过）。请人工核对。',
++    );
++  }
++
+   for (const s of Object.values(v.sides)) {
+     if (!s) continue;
+     if (!s.evidenceOk) out.push(`${s.critic} 侧 Agent 执行证据不足：${s.evidenceReasons.join('；')}`);
+     if (s.integrityIssues.length > 0) out.push(`${s.critic} 侧结论结构问题：${s.integrityIssues.join('；')}`);
+     if (s.consultedUnverified) out.push(`${s.critic} 侧 consulted 无法与工具轨迹交叉核对`);
++
++    /*
++     * 降级档位的运行时告警——五面留痕的第五面（r1 裁决 §2.4 点名要补的那一面）。
++     *
++     * 既有的 `peer_deny_applied` 有四面留痕却独缺运行时这一面，新字段不重蹈：
++     * 降级如果只落在 run 元数据里，跑的人当场看不见，等到复盘才发现「这一侧
++     * 其实没核验过」已经晚了。
++     */
++    if (s.verification.readonly === 'unavailable') {
++      out.push(
++        `${s.critic} 侧只读核验不可用：该侧被拒的写操作不进轨迹，` +
++          '「未检出写事件」不足以排除失守（只读保障从三重降到两重，指纹比对仍有效）',
++      );
++    }
++    if (s.verification.path === 'unavailable') {
++      out.push(
++        `${s.critic} 侧路径核验无结构化输入：该侧读取路径只存在于命令文本里，` +
++          '措施 a 无通道可扫，deny 核验完全由措施 b 承担（已知形态必检，非完备）',
++      );
++    }
+   }
+   return out;
+ }
+diff --git a/src/trivium/render.ts b/src/trivium/render.ts
+index c37741e..7ddb79f 100644
+--- a/src/trivium/render.ts
++++ b/src/trivium/render.ts
+@@ -50,6 +50,11 @@ export interface RenderInput {
+   /** 路径级 deny 是否实际生效（§10.2 要求逐侧标注） */
+   peerDeny: boolean;
+   consultedUnverified: boolean;
++  /**
++   * 本侧两条核验通道的降级档位（§11.1，M8 第 2 步）。
++   * 省略时按「两条都可用」渲染——结构化轨迹两家的现状，行为等价。
++   */
++  verification?: { readonly: 'ok' | 'unavailable'; path: 'ok' | 'unavailable' };
+   heterogeneous: boolean;
+   overrideReason?: string | null;
+ }
+@@ -101,6 +106,12 @@ export function renderFrontMatter(input: RenderInput): string {
+     peer_deny: input.peerDeny,
+     drift: input.drift,
+     ...(input.consultedUnverified ? { consulted_unverified: true } : {}),
++    /*
++     * 降级档位只在**降级时**出现——与 `consulted_unverified` 同款条件展开。
++     * front-matter 是审计凭证，恒出现的 `ok` 会稀释真正要看见的那一行。
++     */
++    ...(input.verification?.readonly === 'unavailable' ? { readonly_verification: 'unavailable' } : {}),
++    ...(input.verification?.path === 'unavailable' ? { path_verification: 'unavailable' } : {}),
+     heterogeneous: input.heterogeneous,
+     ...(input.overrideReason ? { override_reason: input.overrideReason } : {}),
+     ...(input.result.session_id ? { session_id: input.result.session_id } : {}),
+@@ -160,6 +171,18 @@ export function renderReviewDoc(input: RenderInput): string {
+       '对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。',
+     );
+   }
++  if (input.verification?.readonly === 'unavailable') {
++    flags.push(
++      '**只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。' +
++        '只读保障从三重降到两重（指纹比对仍有效）。',
++    );
++  }
++  if (input.verification?.path === 'unavailable') {
++    flags.push(
++      '**路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，' +
++        '禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。',
++    );
++  }
+   if (!input.heterogeneous) {
+     flags.push(`**与主脑同源**：本侧使用了 Claude 系模型${input.overrideReason ? `（${input.overrideReason}）` : ''}。`);
+   }
+diff --git a/src/trivium/report.ts b/src/trivium/report.ts
+index 572a8e9..04971ec 100644
+--- a/src/trivium/report.ts
++++ b/src/trivium/report.ts
+@@ -254,6 +254,29 @@ async function buildRound(
+     }
+   }
+ 
++  /*
++   * 两条核验通道的降级（§11.1，M8 第 2 步）——留痕五面里的复盘面。
++   *
++   * 与上面的「路径级 deny 未生效」同格式但**不是同一件事**：那条说的是 CLI 级
++   * 拦截有没有注入生效，这两条说的是事后轨迹核验有没有能力/输入去核验。
++   */
++  const degraded = meta.guard.verification_degraded ?? {};
++  for (const c of Object.keys(degraded) as CriticId[]) {
++    const d = degraded[c];
++    if (!d) continue;
++    if (d.readonly === 'unavailable') {
++      base.guardFlags.push(`${c} 侧只读核验不可用（被拒的写不留痕，只剩指纹一重）`);
++    }
++    if (d.path === 'unavailable') {
++      base.guardFlags.push(`${c} 侧路径核验无结构化输入（措施 a 无通道，deny 核验只剩措施 b）`);
++    }
++  }
++  if ((meta.guard.unattributed_drift_files ?? []).length > 0) {
++    base.guardFlags.push(
++      `漂移 ${meta.guard.unattributed_drift_files!.length} 个文件**无法归因**（只读核验不可用，既非失守也非手改）`,
++    );
++  }
++
+   const disp = await loadDisposition(layout, stage, rerunIndex, notes);
+   if (disp) {
+     base.disposals = disp.disposals;
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index 5f03095..46d4783 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -861,6 +861,17 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+     // 「相关」= --context 指明的路径 **与 diff 涉及文件**（设计 §9.2 第 3.c 步，freeze.ts 注释同）
+     relatedPaths: [...opts.contextPaths, ...diffFiles],
+     results, reviews, requests,
++    /*
++     * 逐侧能力声明从适配器表取——**这是它唯一的起源**，`judgeRun` 自己拿不到。
++     * 漏传会让 `command-trace` 侧按结构化轨迹判定，证据恒不达标（响亮失败），
++     * 不会静默放行；但那种失败的原因与现象离得很远，所以这一行不能省。
++     */
++    capabilities: Object.fromEntries(
++      sides.flatMap((c) => {
++        const cap = adapters[c]?.capability;
++        return cap ? [[c, cap] as const] : [];
++      }),
++    ),
+   });
+ 
+   /*
+@@ -933,6 +944,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+       drift: verdict.drift.kind !== 'none',
+       peerDeny: r.peer_deny_applied,
+       consultedUnverified: side?.consultedUnverified ?? true,
++      ...(side ? { verification: { readonly: side.verification.readonly, path: side.verification.path } } : {}),
+       heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model),
+     });
+ 
+@@ -999,6 +1011,26 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+           commands: verdict.sides[c]!.peerCommandHits,
+         }]),
+     ),
++    /*
++     * 两条核验通道的降级档位（§11.1，M8 第 2 步）——留痕五面里的第一面。
++     *
++     * 三态与 `peer_leak_via_command` 同构地落在**结构**上：整个字段缺失 = 该次运行
++     * 早于本次接线；某侧的键缺失 = 那一侧失败/超时、根本没判过；值 = 该侧的实际档位。
++     * `evidence_threshold` 记本次生效的项目读取下限：`command-trace` 族折减过，
++     * 不记的话同一个读数在两族间一过一不过，复盘时看起来像 bug。
++     */
++    verification_degraded: Object.fromEntries(
++      sides
++        .filter((c) => verdict.sides[c] !== undefined)
++        .map((c) => [c, {
++          readonly: verdict.sides[c]!.verification.readonly,
++          path: verdict.sides[c]!.verification.path,
++          evidence_threshold: verdict.sides[c]!.verification.evidenceThreshold,
++        }]),
++    ),
++    ...(verdict.unattributedDriftFiles.length > 0
++      ? { unattributed_drift_files: verdict.unattributedDriftFiles }
++      : {}),
+   };
+   for (const c of sides) {
+     const r = results[c];
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index baefedd..19fff0f 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -238,17 +238,33 @@ export interface CodexProbe extends CommonProbe {
+    *
+    * 本机实测 **false**：codex 让模型跑 shell（`/bin/zsh -lc 'head -n 1 …'`），
+    * 路径只存在于 `command` 文本里，没有独立字段。
+-   * **消费方**：M8 的 `project_reads` 统计与禁读核验——false 时两者都只能走
+-   * 命令文本解析（BACKLOG EV-01 的措施 b，对 codex 是唯一手段而非补充）。
++   *
++   * **消费方（M8 第 2 步起）**：`doctor` 的能力对账——判定层已改为面向
++   * `TraceCapability.traceShape`（声明在适配器上），本字段是**实测侧的对照物**，
++   * 用来发现「声明与实测不符」。它不再直接驱动 `project_reads` 统计与禁读核验。
++   *
++   * 对账范围**仅 codex（及 M9 的 claude）**：`AgyProbe` / `ZcodeProbe` 没有对应字段，
++   * 那两家以适配器现状行为等价为据，不做机器对账（r2 裁决 GLM-07）。
+    */
+   trace_path_structured: boolean | null;
+   /**
+    * 被沙箱拒绝的命令是否留在轨迹里。
+    *
+-   * 本机实测 **false**：写入被拒时 `command_execution` 事件一条都不产生。
+-   * **消费方**：`guard` 的 `write_events` 判定——false 意味着设计 §10.3
+-   * 「轨迹有写事件即判失守」对该侧恒为假，只读保障完全落在沙箱上。
+-   * 这不是安全漏洞（写确实被挡住了），是**检测盲区**，必须如实记而不是留空。
++   * 本机实测 **false**：写入**被拒**时 `command_execution` 事件一条都不产生。
++   *
++   * **消费方（M8 第 2 步起）**：`doctor` 的能力对账，对照
++   * `TraceCapability.rejectionRecorded`（声明在适配器上）。
++   *
++   * ## 一处更正：它**不**意味着「轨迹有写事件即判失守」对该侧恒为假
++   *
++   * 本注释此前是这么写的，而那是错的——M8 第 2 步的计划审查（r2）以 blocker 指出：
++   * P-C2 只断言**被拒**的命令不留痕，**成功执行的命令照常产生事件**
++   * （P-C1 的样本本身就是 `status:"completed"`、`exit_code:0` 的 `command_execution`）。
++   * 所以沙箱一旦失守、写命令真的跑成了，`write_events` 非空是**真阳性**，必须判失守。
++   *
++   * false 的准确含义是「**尝试写**的检测失效」：没检出写事件时，排除不了
++   * 「试过但被拒、没留痕」。这是**阴性结论**的可信度问题，只读保障从三重降到两重
++   * （指纹比对仍有效），不是检测全盲。降级如实留痕在 `guard.verification_degraded.readonly`。
+    */
+   rejected_command_in_trace: boolean | null;
+   /**
+@@ -797,6 +813,31 @@ export interface RunMeta {
+      * `hit: false` = 扫过、没命中。
+      */
+     peer_leak_via_command?: Partial<Record<CriticId, { hit: boolean; commands: string[] }>>;
++    /**
++     * 两条核验通道的降级档位与本次生效的证据阈值（§11.1，M8 第 2 步）。
++     *
++     * `readonly`：「尝试写」检测是否可用（`unavailable` ⟺ 该侧被拒的写不留痕）。
++     * **记的是能力恒态**，与本次是否检出写事件无关——真阳性由 `readonly_breach` 表达。
++     * `path`：措施 a 是否有结构化输入可扫（`unavailable` ⟺ 读取路径只在命令文本里）。
++     * `evidence_threshold`：本次生效的 `min_project_reads`（command-trace 族折减过）。
++     *
++     * 三态同样落在结构上：字段缺失 = 早于 M8 第 2 步；某侧键缺失 = 那一侧没判过；
++     * 值 = 该侧实际档位。
++     */
++    verification_degraded?: Partial<
++      Record<
++        CriticId,
++        { readonly: 'ok' | 'unavailable'; path: 'ok' | 'unavailable'; evidence_threshold: number }
++      >
++    >;
++    /**
++     * 指纹变化但无法归因的文件（§9.2 + §11.1）。
++     *
++     * 只在本轮有侧的 `readonly` 档位为 `unavailable` 时出现：那种情形下
++     * 「无写事件 ⇒ 开发者手改」的推理前提不成立，既不能判失守也不能判手改。
++     * 与 `breached_files` 分开记——后者是有正向证据的失守。
++     */
++    unattributed_drift_files?: string[];
+   };
+   artifacts: { path: string; sha256: string }[];
+   gate: { adjudication_complete: boolean; state: string; warnings?: string[] };
+diff --git a/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt b/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+index de120b1..b225469 100644
+--- a/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
++++ b/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+@@ -22,7 +22,7 @@
+  * 接入真实的第三家才谈得上检验。这里能证明的只有一件事：
+  * **注册表追加 + 接入套件补丁 ⇒ 三审全链路可跑**。
+  */
+-import { type AdapterContext, type CriticAdapter } from './base.js';
++import { TOOL_TRACE_CAPABILITY, type AdapterContext, type CriticAdapter } from './base.js';
+ import { agentById } from '../agents/registry.js';
+ import { probeStub } from '../probes/stub.js';
+ import type { CriticRequest, CriticResult } from '../types.js';
+@@ -92,6 +92,15 @@ function stubReview(criticId: string, consulted: readonly string[]): string {
+ 
+ export const stubAgentAdapter: CriticAdapter = {
+   critic: CRITIC,
++  /*
++   * 轨迹能力声明（§11.1）。本桩用专用读工具产出结构化 `read_paths`，
++   * 且没有「被拒的写不留痕」这种沙箱行为，所以两项都取结构化轨迹的值。
++   *
++   * **接第三家时这一行必须按实测填**，不能照抄：它决定判定层如何解读该侧证据——
++   * 填错的后果不是报错，是证据核验按错误的形状进行（读经 shell 的一族
++   * 若误声明为 tool-trace，`project_reads` 恒 0、每轮误报证据不足）。
++   */
++  capability: TOOL_TRACE_CAPABILITY,
+   /*
+    * 恒可用：桩不依赖任何外部 CLI、凭据或探针结论。
+    *
+diff --git a/test/unit/adapter-base.test.ts b/test/unit/adapter-base.test.ts
+index 38da8d8..6bb6c76 100644
+--- a/test/unit/adapter-base.test.ts
++++ b/test/unit/adapter-base.test.ts
+@@ -25,6 +25,7 @@ test('项目文件读取只算项目根之内的：读 ~/ 下的无关文件不
+       tool_calls: { read: 6, grep: 2 },
+       read_paths: ['/Users/x/.zshrc', '/etc/hosts', '/proj/src/a.ts', './src/b.ts', REQ.subject_path],
+       trace_path: '/runs/trace.jsonl',
++      command_texts: [],
+     },
+     REQ,
+     OPTS,
+@@ -50,6 +51,7 @@ test('证据充分时通过', () => {
+       tool_calls: { read: 6, grep: 2 },
+       read_paths: ['/proj/src/a.ts', '/proj/src/b.ts', '/proj/doc/x.md', REQ.subject_path],
+       trace_path: '/runs/trace.jsonl',
++      command_texts: [],
+     },
+     REQ,
+     OPTS,
+@@ -59,14 +61,18 @@ test('证据充分时通过', () => {
+ });
+ 
+ test('零工具调用判 no_trace（Antigravity 软拒绝的表现，AC-05 落点）', () => {
+-  const r = checkEvidence({ tool_calls: {}, read_paths: [], trace_path: null }, REQ, OPTS);
++  const r = checkEvidence(
++    { tool_calls: {}, read_paths: [], trace_path: null, command_texts: [] },
++    REQ,
++    OPTS,
++  );
+   assert.equal(r.ok, false);
+   assert.ok(r.reasons.some((x) => x.startsWith('no_trace')));
+ });
+ 
+ test('工具调用数不足下限判 insufficient_evidence', () => {
+   const r = checkEvidence(
+-    { tool_calls: { read: 2 }, read_paths: ['/proj/src/a.ts'], trace_path: 't' },
++    { tool_calls: { read: 2 }, read_paths: ['/proj/src/a.ts'], trace_path: 't', command_texts: [] },
+     REQ,
+     OPTS,
+   );
+@@ -80,6 +86,7 @@ test('把 BRIEF 与被审对象反复读也过不了项目文件下限（AC-11 
+       tool_calls: { read: 10 },
+       read_paths: [REQ.subject_path, REQ.brief_path],
+       trace_path: 't',
++      command_texts: [],
+     },
+     REQ,
+     OPTS,
+@@ -99,6 +106,7 @@ test('归档根内的文件不计入项目上下文', () => {
+         '/proj/src/only-one.ts',
+       ],
+       trace_path: 't',
++      command_texts: [],
+     },
+     REQ,
+     OPTS,
+diff --git a/test/unit/render.test.ts b/test/unit/render.test.ts
+index cda6228..67c3d2f 100644
+--- a/test/unit/render.test.ts
++++ b/test/unit/render.test.ts
+@@ -250,6 +250,7 @@ test('只读失守的告警包含可执行的人工核对命令，且明确不
+     drift: { kind: 'none' },
+     driftAction: 'ok',
+     fingerprintChangedFiles: [],
++    unattributedDriftFiles: [],
+     readonlyBreach: true,
+     breachedFiles: ['write_to_file(/proj/src/x.ts)'],
+     peerArtifactRead: false,
+diff --git a/test/unit/runner.test.ts b/test/unit/runner.test.ts
+index 1839392..e5fea96 100644
+--- a/test/unit/runner.test.ts
++++ b/test/unit/runner.test.ts
+@@ -1,7 +1,12 @@
+ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+ import { isTransientFailure, decideMode, runBothSides } from '../../src/trivium/runner.js';
+-import { failedResult, type CriticAdapter, type AdapterContext } from '../../src/trivium/adapters/base.js';
++import {
++  failedResult,
++  TOOL_TRACE_CAPABILITY,
++  type CriticAdapter,
++  type AdapterContext,
++} from '../../src/trivium/adapters/base.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
+ import type { CriticId, CriticRequest, CriticResult } from '../../src/trivium/types.js';
+ 
+@@ -34,6 +39,7 @@ function stub(critic: CriticId, script: CriticResult[]): CriticAdapter & { brief
+   let i = 0;
+   return {
+     critic, briefs,
++    capability: TOOL_TRACE_CAPABILITY,
+     availability: () => ({ ok: true }),
+     async run(_ctx, r) {
+       briefs.push(r.brief_text);
+@@ -110,6 +116,7 @@ test('两侧真并行，一侧抛异常不连带丢掉另一侧（AC-06）', asy
+   const good = stub('gemini', [okResult('gemini')]);
+   const throwing: CriticAdapter = {
+     critic: 'glm',
++    capability: TOOL_TRACE_CAPABILITY,
+     availability: () => ({ ok: true }),
+     async run() { throw new Error('适配器内部炸了'); },
+   };
+diff --git a/test/unit/guard-capability.test.ts b/test/unit/guard-capability.test.ts
+new file mode 100644
+index 0000000..c01bb18
+--- /dev/null
++++ b/test/unit/guard-capability.test.ts
+@@ -0,0 +1,239 @@
++/**
++ * 适配层契约泛化：`TraceCapability` 的分档判定（M8 第 2 步 · 设计 §11.1）。
++ *
++ * 覆盖点对应 r3 裁决 §4.2：
++ *   - `effectiveReadPaths` 的四组提取口径（r3 双审 blocker 的落点）；
++ *   - `checkEvidence` 的 `toolTotal` 分档与 `min_project_reads` 折减；
++ *   - `readonlyBreach` **两档一律由写事件判定**（r2 blocker 的锁）；
++ *   - 措施 a 不吃回填（措施 b 独立承担命令通道）；
++ *   - 两条核验通道的档位记**能力恒态**；
++ *   - `CriticResult` 本体不被回填污染。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import {
++  checkEvidence,
++  effectiveReadPaths,
++  effectiveMinProjectReads,
++  extractPathTokens,
++  TOOL_TRACE_CAPABILITY,
++  type TraceCapability,
++} from '../../src/trivium/adapters/base.js';
++import { judgeSide } from '../../src/trivium/guard.js';
++import { defaultConfig } from '../../src/trivium/config.js';
++import type { CriticRequest, CriticResult, Review } from '../../src/trivium/types.js';
++
++const ROOT = '/proj';
++const COMMAND_TRACE: TraceCapability = { traceShape: 'command-trace', rejectionRecorded: false };
++
++const REQ: CriticRequest = {
++  critic: 'gemini',
++  stage: 'plan',
++  model: 'm',
++  timeout_s: 60,
++  min_tool_calls: 5,
++  min_project_reads: 3,
++  subject_path: `${ROOT}/.reviews/t/plan/2026-09-15-t-claude.md`,
++  brief_path: `${ROOT}/.reviews/t/plan/_meta/brief-gemini-R1.md`,
++  project_root: ROOT,
++  deny_paths: ['.reviews/t/plan/2026-09-15-t-glm.md'],
++  out_dir: '/runs/out',
++  brief_text: '',
++} as unknown as CriticRequest;
++
++const OPTS = { archiveRootAbs: `${ROOT}/.reviews` };
++
++function result(over: Partial<CriticResult> = {}): CriticResult {
++  return {
++    critic: 'gemini',
++    status: 'ok',
++    exit_code: 0,
++    duration_s: 1,
++    raw_stdout_path: '',
++    trace_path: 't',
++    review_json: null,
++    raw_response_text: null,
++    model_effective: 'm',
++    model_effective_source: 'envelope',
++    tool_calls: {},
++    read_paths: [],
++    write_events: [],
++    command_texts: [],
++    evidence_ok: false,
++    fail_reason: null,
++    session_id: null,
++    cli_version: null,
++    peer_deny_applied: false,
++    command_line: '',
++    ...over,
++  };
++}
++
++// ── 提取口径（r3 blocker 的四组裁定）────────────────────────────────
++
++test('提取：剥掉 /bin/zsh -lc 子 shell 封装后才拿得到路径（r3 blocker）', () => {
++  // 不剥这一层，整段子命令会塌成一个引号 token，路径一个都提不出来
++  assert.deepEqual(extractPathTokens(`/bin/zsh -lc 'head -n 1 ${ROOT}/src/a.ts'`), [`${ROOT}/src/a.ts`]);
++  assert.deepEqual(extractPathTokens(`/bin/bash -c "cat src/b.ts"`), ['src/b.ts']);
++});
++
++test('提取：裸项目相对路径计入，与措施 b 的 F-2 同口径（r3 blocker）', () => {
++  assert.deepEqual(extractPathTokens('cat src/a.ts'), ['src/a.ts']);
++  assert.deepEqual(extractPathTokens('cat ./src/b.ts'), ['./src/b.ts']);
++});
++
++test('提取：git 对象语法取出路径，通配不展开', () => {
++  assert.deepEqual(extractPathTokens('git show HEAD:README.md'), ['README.md']);
++  assert.deepEqual(extractPathTokens('cat src/*.ts'), [], '通配需要文件系统状态，判定层不做 I/O');
++});
++
++test('提取：写目标位不计入读证据，但同一条命令里的读取源保留', () => {
++  assert.deepEqual(extractPathTokens('echo hi > out.txt'), []);
++  assert.deepEqual(
++    extractPathTokens('grep foo src/a.ts > out.txt'),
++    ['src/a.ts'],
++    '命令级分类会把真实读取一并丢掉，所以按 token 级排除',
++  );
++  assert.deepEqual(extractPathTokens('cp src/a.ts src/b.ts'), ['src/a.ts'], 'cp 的目标位是写入点');
++  assert.deepEqual(extractPathTokens('sed -i s/x/y/ src/a.ts'), [], 'sed -i 就地改写，目标是写入点');
++});
++
++// ── effectiveReadPaths ────────────────────────────────────────────
++
++test('tool-trace 的有效路径逐项等于 read_paths（相等，不是包含）', () => {
++  const r = result({ read_paths: [`${ROOT}/src/a.ts`], command_texts: ['cat src/zzz.ts'] });
++  assert.deepEqual(
++    effectiveReadPaths(r, TOOL_TRACE_CAPABILITY, ROOT),
++    [`${ROOT}/src/a.ts`],
++    'tool-trace 侧不做回填，命令文本里的路径不得混进来',
++  );
++});
++
++test('command-trace 的有效路径 = read_paths ∪ 命令提取，裸相对按项目根归一', () => {
++  const r = result({ read_paths: [`${ROOT}/src/a.ts`], command_texts: ['cat src/b.ts'] });
++  const eff = effectiveReadPaths(r, COMMAND_TRACE, ROOT);
++  assert.ok(eff.includes(`${ROOT}/src/a.ts`), '原有结构化路径保留');
++  assert.ok(eff.includes(`${ROOT}/src/b.ts`), '裸相对按 projectRoot 归一后进入');
++});
++
++test('回填是派生视图，绝不回写 CriticResult（诚实记录不被污染）', () => {
++  const r = result({ read_paths: [], command_texts: ['cat src/a.ts'] });
++  effectiveReadPaths(r, COMMAND_TRACE, ROOT);
++  assert.deepEqual(r.read_paths, [], 'read_paths 记的是适配器实际采到什么，推导结果不得写回');
++});
++
++// ── checkEvidence 分档 ────────────────────────────────────────────
++
++test('toolTotal：command-trace 计入 run_command，tool-trace 不计', () => {
++  const r = result({
++    tool_calls: { read: 0, grep: 0, glob: 0, run_command: 6 },
++    command_texts: [`cat ${ROOT}/src/a.ts`, `cat ${ROOT}/src/b.ts`],
++  });
++
++  const cmd = checkEvidence(r, REQ, { ...OPTS, capability: COMMAND_TRACE });
++  assert.ok(
++    !cmd.reasons.some((x) => x.startsWith('insufficient_evidence')),
++    'command-trace 侧读文件就是跑 shell，不计 run_command 就必然误判证据不足',
++  );
++
++  const tool = checkEvidence(r, REQ, { ...OPTS, capability: TOOL_TRACE_CAPABILITY });
++  assert.ok(
++    tool.reasons.some((x) => x.startsWith('insufficient_evidence')),
++    'tool-trace 侧的 run_command 是写事件信号，计进证据就是把失守当读取',
++  );
++});
++
++test('min_project_reads 对 command-trace 族折减，并如实回报生效值', () => {
++  assert.equal(effectiveMinProjectReads(3, TOOL_TRACE_CAPABILITY), 3);
++  assert.equal(effectiveMinProjectReads(3, COMMAND_TRACE), 2, '提取系统性偏低，沿用原值等于设不可达的闸');
++
++  const r = result({
++    tool_calls: { run_command: 6 },
++    command_texts: [`cat ${ROOT}/src/a.ts`, `cat ${ROOT}/src/b.ts`],
++  });
++  const ev = checkEvidence(r, REQ, { ...OPTS, capability: COMMAND_TRACE });
++  assert.equal(ev.projectReads, 2);
++  assert.equal(ev.minProjectReads, 2, '生效阈值要能被留痕读到，否则两族一过一不过像 bug');
++  assert.ok(!ev.reasons.some((x) => x.startsWith('no_project_context')));
++});
++
++test('no_trace 由 toolTotal 分档覆盖：command-trace 侧有命令就不触发（r3 GLM-04）', () => {
++  const r = result({ trace_path: null, tool_calls: { run_command: 6 }, command_texts: [`cat ${ROOT}/src/a.ts`] });
++  const ev = checkEvidence(r, REQ, { ...OPTS, capability: COMMAND_TRACE });
++  assert.ok(!ev.reasons.some((x) => x.startsWith('no_trace')));
++});
++
++// ── judgeSide 的分档判定 ──────────────────────────────────────────
++
++const cfg = defaultConfig();
++
++function judge(over: Partial<CriticResult>, cap?: TraceCapability, review: Review | null = null) {
++  return judgeSide(cfg, 'gemini', result(over), review, REQ, {
++    archiveRootAbs: OPTS.archiveRootAbs,
++    projectRoot: ROOT,
++    ...(cap ? { capability: cap } : {}),
++  });
++}
++
++test('rejectionRecorded=false + 有写事件 ⇒ 仍判失守（r2 blocker 的锁）', () => {
++  const v = judge({ write_events: ['shell:rm -rf src'] }, COMMAND_TRACE);
++  assert.equal(
++    v.readonlyBreach,
++    true,
++    'P-C2 只说被拒的命令不留痕；成功执行的写命令照常留痕，那是真阳性，不得压成 false',
++  );
++  assert.equal(v.verification.readonly, 'unavailable', '档位记能力恒态，与本次是否检出写事件无关');
++});
++
++test('rejectionRecorded=false + 无写事件 ⇒ 不判失守，但档位为 unavailable', () => {
++  const v = judge({}, COMMAND_TRACE);
++  assert.equal(v.readonlyBreach, false);
++  assert.equal(v.verification.readonly, 'unavailable', '「没检出」在该侧排除不了「试过但被拒」');
++});
++
++test('结构化轨迹两家的档位与判定与本步之前逐字等价', () => {
++  const v = judge({ write_events: ['write_file(a)'] }, TOOL_TRACE_CAPABILITY);
++  assert.equal(v.readonlyBreach, true);
++  assert.equal(v.verification.readonly, 'ok');
++  assert.equal(v.verification.path, 'ok');
++});
++
++test('措施 a 不吃回填：只在命令里提到 deny 条目时，命中走措施 b 而非 a', () => {
++  const deny = REQ.deny_paths[0]!;
++  const v = judge({ command_texts: [`git show HEAD:${deny}`] }, COMMAND_TRACE);
++  assert.deepEqual(v.peerHits, [], '命令里提到不等于文件系统读到——掺进措施 a 会削弱它的断言');
++  assert.equal(v.peerCommandHits.length, 1, '命令通道由措施 b 独立承担');
++  assert.equal(v.peerArtifactRead, true, '两条通道同等处置：任一命中该侧即作废');
++});
++
++test('command-trace 侧的 path 档位为 unavailable（措施 a 无输入可扫）', () => {
++  const v = judge({}, COMMAND_TRACE);
++  assert.equal(
++    v.verification.path,
++    'unavailable',
++    'peerHits 恒空与「扫过没命中」在留痕里同形，必须靠档位分开',
++  );
++});
++
++test('consulted 交叉核对吃回填后的路径，否则 command-trace 侧每轮误报', () => {
++  const review = {
++    consulted: ['src/a.ts', 'src/b.ts'],
++    findings: [],
++    summary: '本轮无意见，已核对全部消费点。',
++    not_covered: ['未跑构建'],
++  } as unknown as Review;
++  const over = { command_texts: ['cat src/a.ts', 'cat src/b.ts'] };
++  assert.equal(judge(over, COMMAND_TRACE, review).consultedUnverified, false);
++  assert.equal(
++    judge(over, TOOL_TRACE_CAPABILITY, review).consultedUnverified,
++    true,
++    '不回填时 read_paths 恒空，如实填报的审查员反被判编造',
++  );
++});
++
++test('未传 capability 时按结构化轨迹判——本步之前的唯一形态，行为等价', () => {
++  const v = judge({ write_events: ['write_file(a)'] });
++  assert.equal(v.readonlyBreach, true);
++  assert.equal(v.verification.readonly, 'ok');
++  assert.equal(v.verification.path, 'ok');
++});

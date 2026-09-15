@@ -24,7 +24,12 @@ import {
   parseZcodeTrace,
   type ZcodeEnvelope,
 } from './zcode-trace.js';
-import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
+import {
+  failedResult,
+  TOOL_TRACE_CAPABILITY,
+  type AdapterContext,
+  type CriticAdapter,
+} from './base.js';
 
 /**
  * 把 profile 里的人类可读短名补全为 `<providerId>/<modelName>` 全限定形态。
@@ -177,6 +182,12 @@ export async function prepareZcodeHome(
 
 export const zcodeAdapter: CriticAdapter = {
   critic: 'glm',
+  /*
+   * 专用读工具带独立路径字段，被拒操作留痕。本侧 `Bash` 全禁，`command_texts`
+   * 恒空（见本文件 §96 的说明），`command-trace` 的回填路径对它是空操作——
+   * 但仍如实声明为 `tool-trace`：能力说的是「轨迹是什么形状」，不是「本次采到了什么」。
+   */
+  capability: TOOL_TRACE_CAPABILITY,
 
   availability(ctx: AdapterContext) {
     // 同 agy：「未探过」与「探过但没找到」要分开答，判据用 probed_at 而非 `!p`（AGY-01）。

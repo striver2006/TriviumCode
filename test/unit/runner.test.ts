@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isTransientFailure, decideMode, runBothSides } from '../../src/trivium/runner.js';
-import { failedResult, type CriticAdapter, type AdapterContext } from '../../src/trivium/adapters/base.js';
+import {
+  failedResult,
+  TOOL_TRACE_CAPABILITY,
+  type CriticAdapter,
+  type AdapterContext,
+} from '../../src/trivium/adapters/base.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import type { CriticId, CriticRequest, CriticResult } from '../../src/trivium/types.js';
 
@@ -34,6 +39,7 @@ function stub(critic: CriticId, script: CriticResult[]): CriticAdapter & { brief
   let i = 0;
   return {
     critic, briefs,
+    capability: TOOL_TRACE_CAPABILITY,
     availability: () => ({ ok: true }),
     async run(_ctx, r) {
       briefs.push(r.brief_text);
@@ -110,6 +116,7 @@ test('两侧真并行，一侧抛异常不连带丢掉另一侧（AC-06）', asy
   const good = stub('gemini', [okResult('gemini')]);
   const throwing: CriticAdapter = {
     critic: 'glm',
+    capability: TOOL_TRACE_CAPABILITY,
     availability: () => ({ ok: true }),
     async run() { throw new Error('适配器内部炸了'); },
   };

@@ -238,17 +238,35 @@ export interface CodexProbe extends CommonProbe {
    *
    * 本机实测 **false**：codex 让模型跑 shell（`/bin/zsh -lc 'head -n 1 …'`），
    * 路径只存在于 `command` 文本里，没有独立字段。
-   * **消费方**：M8 的 `project_reads` 统计与禁读核验——false 时两者都只能走
-   * 命令文本解析（BACKLOG EV-01 的措施 b，对 codex 是唯一手段而非补充）。
+   *
+   * **消费方（M8 第 3 步起，本步仅预留、尚未接线）**：`doctor` 的能力对账。
+   * 判定层已于第 2 步改为面向 `TraceCapability.traceShape`（声明在适配器上），
+   * 本字段是**实测侧的对照物**，用来发现「声明与实测不符」——
+   * 但**对账代码还不存在**（`doctor.ts` 目前对 capability 零引用）。
+   * 它已不再直接驱动 `project_reads` 统计与禁读核验。
+   *
+   * 对账范围**仅 codex（及 M9 的 claude）**：`AgyProbe` / `ZcodeProbe` 没有对应字段，
+   * 那两家以适配器现状行为等价为据，不做机器对账（r2 裁决 GLM-07）。
    */
   trace_path_structured: boolean | null;
   /**
    * 被沙箱拒绝的命令是否留在轨迹里。
    *
-   * 本机实测 **false**：写入被拒时 `command_execution` 事件一条都不产生。
-   * **消费方**：`guard` 的 `write_events` 判定——false 意味着设计 §10.3
-   * 「轨迹有写事件即判失守」对该侧恒为假，只读保障完全落在沙箱上。
-   * 这不是安全漏洞（写确实被挡住了），是**检测盲区**，必须如实记而不是留空。
+   * 本机实测 **false**：写入**被拒**时 `command_execution` 事件一条都不产生。
+   *
+   * **消费方（M8 第 3 步起，本步仅预留、尚未接线）**：`doctor` 的能力对账，
+   * 对照 `TraceCapability.rejectionRecorded`（声明在适配器上）。对账代码还不存在。
+   *
+   * ## 一处更正：它**不**意味着「轨迹有写事件即判失守」对该侧恒为假
+   *
+   * 本注释此前是这么写的，而那是错的——M8 第 2 步的计划审查（r2）以 blocker 指出：
+   * P-C2 只断言**被拒**的命令不留痕，**成功执行的命令照常产生事件**
+   * （P-C1 的样本本身就是 `status:"completed"`、`exit_code:0` 的 `command_execution`）。
+   * 所以沙箱一旦失守、写命令真的跑成了，`write_events` 非空是**真阳性**，必须判失守。
+   *
+   * false 的准确含义是「**尝试写**的检测失效」：没检出写事件时，排除不了
+   * 「试过但被拒、没留痕」。这是**阴性结论**的可信度问题，只读保障从三重降到两重
+   * （指纹比对仍有效），不是检测全盲。降级如实留痕在 `guard.verification_degraded.readonly`。
    */
   rejected_command_in_trace: boolean | null;
   /**
@@ -797,6 +815,31 @@ export interface RunMeta {
      * `hit: false` = 扫过、没命中。
      */
     peer_leak_via_command?: Partial<Record<CriticId, { hit: boolean; commands: string[] }>>;
+    /**
+     * 两条核验通道的降级档位与本次生效的证据阈值（§11.1，M8 第 2 步）。
+     *
+     * `readonly`：「尝试写」检测是否可用（`unavailable` ⟺ 该侧被拒的写不留痕）。
+     * **记的是能力恒态**，与本次是否检出写事件无关——真阳性由 `readonly_breach` 表达。
+     * `path`：措施 a 是否有结构化输入可扫（`unavailable` ⟺ 读取路径只在命令文本里）。
+     * `evidence_threshold`：本次生效的 `min_project_reads`（command-trace 族折减过）。
+     *
+     * 三态同样落在结构上：字段缺失 = 早于 M8 第 2 步；某侧键缺失 = 那一侧没判过；
+     * 值 = 该侧实际档位。
+     */
+    verification_degraded?: Partial<
+      Record<
+        CriticId,
+        { readonly: 'ok' | 'unavailable'; path: 'ok' | 'unavailable'; evidence_threshold: number }
+      >
+    >;
+    /**
+     * 指纹变化但无法归因的文件（§9.2 + §11.1）。
+     *
+     * 只在本轮有侧的 `readonly` 档位为 `unavailable` 时出现：那种情形下
+     * 「无写事件 ⇒ 开发者手改」的推理前提不成立，既不能判失守也不能判手改。
+     * 与 `breached_files` 分开记——后者是有正向证据的失守。
+     */
+    unattributed_drift_files?: string[];
   };
   artifacts: { path: string; sha256: string }[];
   gate: { adjudication_complete: boolean; state: string; warnings?: string[] };

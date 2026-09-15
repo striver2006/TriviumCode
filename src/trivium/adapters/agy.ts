@@ -27,7 +27,12 @@ import {
   commandTexts,
   type AgyStreamResult,
 } from './agy-events.js';
-import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
+import {
+  failedResult,
+  TOOL_TRACE_CAPABILITY,
+  type AdapterContext,
+  type CriticAdapter,
+} from './base.js';
 import { agentConfigOf } from '../config.js';
 
 export interface AgyInvokeOptions {
@@ -170,6 +175,12 @@ export function resolveAgyAgent(
 
 export const agyAdapter: CriticAdapter = {
   critic: 'gemini',
+  /*
+   * 专用读工具带独立路径字段，被拒操作留痕——与本步之前的判定行为逐字等价。
+   * 注意 `run_command` 在本侧**不是**读取手段：它根本不在 `AGY_WRITE_TOOLS`
+   * 之外的白名单里，出现即失守，所以 `toolTotal` 不计入它（见 checkEvidence 的分档）。
+   */
+  capability: TOOL_TRACE_CAPABILITY,
 
   availability(ctx: AdapterContext) {
     /*

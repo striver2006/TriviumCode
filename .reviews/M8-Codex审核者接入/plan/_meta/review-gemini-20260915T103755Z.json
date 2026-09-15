@@ -1,0 +1,129 @@
+{
+  "agreed": [
+    "赞同措施 a 不吃命令回填路径的主动收窄：命令文本提及不等于文件系统读取事实，强行回填会抹杀 peerHits 与 peerCommandHits 的通道归因，且措施 b 已具备同等阻断处置。",
+    "赞同能力声明与探针实测在架构上分离为「声明」与「对账」两个层级，符合项目对单一事实源与机器对账的设计哲学。",
+    "赞同派生函数 effectiveReadPaths 仅在判定层作为派生视图使用，不回写污染原始 CriticResult，保障了原始审计轨迹的诚实性。",
+    "赞同在消费方消除 Agent id 分支，让 guard 逻辑只面向能力声明，延续纪律 7 的零字面量约束。"
+  ],
+  "consulted": [
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r2-claude.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-claude.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-revised-claude.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-gemini.md",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/types.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/review.ts",
+    "src/trivium/report.ts",
+    "src/trivium/render.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/critics.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md",
+    "test/unit/adapter-base.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/codex-events.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "src/trivium/probes/codex.ts",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "阅读 .reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r2-claude.md §2.4 表格与 §4.2 单测用例：§2.4 规定 rejectionRecorded: false 时 readonlyBreach 恒 false，不由轨迹判定；§4.2 明确断言「rejectionRecorded: false + 有写事件 ⇒ readonlyBreach = false、readonlyVerificationUnavailable = true」。对照 src/trivium/guard.ts:73 的 readonlyBreach 判定。rejectionRecorded: false（P-C2 实测）的真实语义是「被沙箱拒绝的写操作不进事件流」，因此轨迹无写事件无法证明审查员未尝试写入（负向证明不可靠）；但一旦轨迹中实际出现了写事件（write_events.length > 0），已属于确凿的正向抓现行，无论沙箱是否记录被拒操作都已失守。计划将其强制判为 readonlyBreach = false 属于严重逻辑颠倒。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §2.4 与 §4.2",
+      "problem": "只读失守判定分档逻辑颠倒：将 rejectionRecorded: false 错误地定义为 readonlyBreach 恒 false，甚至在测试中强制断言「有写事件也判未失守」，将负向证明不可得（无法证实无写入）扭曲为包庇正向确凿证据（见写事件也判未失守）。",
+      "severity": "blocker",
+      "suggestion": "修正分档逻辑与断言：只要 write_events.length > 0，无论 rejectionRecorded 为何值，readonlyBreach 必须恒为 true；readonlyVerificationUnavailable 仅在 write_events.length === 0 且 rejectionRecorded === false 时置为 true（表示未检出写事件但无法据此排除失守）。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 src/trivium/adapters/base.ts:103-115：checkEvidence 的 toolTotal 严格计算为 (tc.read ?? 0) + (tc.grep ?? 0) + (tc.glob ?? 0)，排除了 tc.run_command。对照 src/trivium/types.ts:686-693（ToolCallCounts 已有 run_command）及 .reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-revised-claude.md §2.2 与 §2.3：作者此前已明确确认 toolTotal 是 command-trace / commandSemantics 的直接消费方。但在 r2-claude.md §1 与 §2.2 中作者遗漏了 toolTotal，误称「本轮无消费方」而暂缓登记，且 §3 未对 checkEvidence 的 toolTotal 改造做任何规划。这导致第 2 步 §4.3 的 read_mechanism 桩形态与第 3 步 codex 在 checkEvidence 处恒为 toolTotal = 0 < 5，必然触发 insufficient_evidence 造成返工。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §2.2 与 §1",
+      "problem": "commandSemantics 暂缓登记的理由（「本轮无消费方」）不成立：checkEvidence 计算工具调用下限 toolTotal 仍硬编码为 read+grep+glob，漏计 run_command，导致非结构化命令轨迹在第 2 步桩测试及第 3 步 codex 上恒报证据不足，必致返工。",
+      "severity": "major",
+      "suggestion": "恢复 r1 裁决所达成的共识，将 pathStructured 与 commandSemantics 合并为 traceShape 枚举（或在 TraceCapability 中保留 commandSemantics），并在 checkEvidence 中显式将 run_command 计入 command-trace 族的 toolTotal。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 r2-claude.md §2.3：作者承认收窄代价为「codex 侧措施 a 恒不命中」，并承诺「它必须进留痕（§2.5），否则看起来像『扫了没命中』」。但查阅 r2-claude.md §2.5 的三处落点（run.v2.json 的 readonly_verification、report.ts 的 guardFlags「只读核验不可用」、render.ts 正文保障档位），全部且仅针对只读失守核验（readonly_verification），完全遗漏了措施 a（读取路径禁读核验）无法执行的降级留痕。对照 src/trivium/review.ts:981 与 skills/dual-critic/schema/run.v2.json:74：peer_deny_applied 仅记录 CLI 级路径拦截是否生效，无法表达事后轨迹路径核验（措施 a）不可用。未设计留痕导致措施 a 恒为空数组，彻底陷入「扫了没命中」的误读。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §2.3 与 §2.5",
+      "problem": "措施 a 不吃命令回填路径收窄后，§2.5 遗漏了措施 a 恒不命中的留痕设计，导致该通道的「没法扫」在运行时和元数据中必然被误读为「扫了没命中」。",
+      "severity": "major",
+      "suggestion": "补齐措施 a 降级的专用留痕契约：在 run.v2.json 的 guard 段中补充路径核验可用状态（或在 peer_leak_via_command 邻域表达），并在 report.ts 和 render.ts 中明确提示「该侧无结构化读取轨迹，路径级核验（措施 a）不可用，禁读核验仅由措施 b 承担」。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 src/trivium/agents/registry.ts:133-158：gemini 与 glm 的 criticEnabled 为 true，codex 为 false。阅读 src/trivium/critics.ts:128-134：resolveCriticSelection 在 agent.criticEnabled 为 false 时抛 EXIT.USAGE 阻断运行。阅读 r2-claude.md §2.1 与 §6：作者规定 judgeSide 直接从 agentById(critic).traceCapability 读取能力，且在第 2 步中明确「不碰 criticEnabled」。因此，第 2 步中所有通过编排器执行的集成测试只能选择 gemini 或 glm；而两者在注册表中的 pathStructured 均为 true。导致 §4.3 的 read_mechanism 桩形态在集成测试中读到的 pathStructured 恒为 true，effectiveReadPaths 恒取空的 read_paths，§4.3 断言的「该形态下 evidence_ok 为真」在逻辑上根本无法跑通。",
+      "id": "AGY-04",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §2.1 与 §4.3",
+      "problem": "TraceCapability 硬编码绑定于 registry.ts 的静态描述符，导致 judgeSide 无法进行动态/测试注入，且因第 2 步禁止开启 criticEnabled，§4.3 的桩集成测试在逻辑上不可执行。",
+      "severity": "major",
+      "suggestion": "允许能力声明在适配器层面挂载（如继承 r1 的 CriticAdapter.capability）或在 judgeSide 参数中允许显式传入/桩覆盖，解耦 judgeSide 对 agentById 静态注册表的唯一硬编码依赖，确保测试桩模式能真实注入非结构化轨迹能力。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅项目实际代码库：扫描 test/unit/ 目录实有 49 个测试文件，根本不存在 test/unit/guard.test.ts；src/trivium/guard.ts 的 judgeSide 仅在 test/integration/fault-injection.test.ts 中有少量涉及，并无独立的单元测试文件。计划 §4.1 却宣称「现有 test/unit/guard.test.ts、adapter-base.test.ts 全套不改一行地通过……若有测试需要改，那说明行为变了，要当成缺陷查而不是改测试迁就」。将不存在的文件作为第一验收项属于虚构判据。",
+      "id": "AGY-05",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §4.1",
+      "problem": "§4.1 将不存在的 test/unit/guard.test.ts 列为第一验收项，属于幻觉引用的无效回归判据。",
+      "severity": "minor",
+      "suggestion": "修正 §4.1 的回归断言清单，移除虚构的 guard.test.ts，明确实际依赖的回归测试，并在新建的 guard-capability.test.ts 中补齐 judgeSide 的既有行为基线用例。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 src/trivium/run-protocol.ts：该模块仅负责长时运行进程通信（--start / --wait / --status / --cancel）与心跳锁，完全不涉及 meta.guard 或任何 guard 验证字段的读写。查阅 src/trivium/review.ts:978-1002 与 src/trivium/meta.ts:236：meta.guard（包括 readonly_breach、peer_deny_applied、peer_leak_via_command 等）是在 review.ts 中装配写入，在 meta.ts 中进行迁移反序列化的。",
+      "id": "AGY-06",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §3 改动清单",
+      "problem": "§3 改动清单将 readonly_verification 的读写错挂在 src/trivium/run-protocol.ts，实际应落于 src/trivium/review.ts 与 src/trivium/meta.ts。",
+      "severity": "minor",
+      "suggestion": "将 §3 改动清单中的落点修正为 src/trivium/review.ts 与 src/trivium/meta.ts，避免实施时找错模块。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 r2-claude.md §7 与 §2.3：第 2 步所做的契约泛化，核心改动之一就是将措施 a 在非结构化轨迹下主动收窄为空判定。这一决策的直接后果是：对于 pathStructured: false 的审核者，路径屏蔽（第 ③ 道）的轨迹核验完全依赖措施 b 的已知正则子串。设计文档 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md §10.1 与 src/trivium/adapters/base.ts 的契约正是在第 2 步被修改。若在此处不将此限制正式登记入设计与契约注释中，便制造了「第 2 步完成契约泛化，但契约中未载明只剩单通道限制」的文档脱节。",
+      "id": "AGY-07",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §7 与 §2.3",
+      "problem": "§7 自查指出「codex 侧 deny 核验只剩措施 b 一条通道且仅承诺已知形态」的严重安全降级，却推迟到第 3 步才登记为已知限制，导致第 2 步作为契约收口点未能显式声明这一安全边界。",
+      "severity": "minor",
+      "suggestion": "在第 2 步修订设计文档 §10.1 / §11.1 及 base.ts 时，即刻将「非结构化轨迹审核者的 deny 轨迹核验仅剩措施 b 一条通道，且仅覆盖已知形态」登记为正式已知限制与威胁模型边界，不拖延到第 3 步。"
+    }
+  ],
+  "not_covered": [
+    "未覆盖真实执行 Node.js / TypeScript 编译和端到端测试运行（严格遵守二次审查员只读与禁止写命令约束）。",
+    "未覆盖第三方真实 API（如 OpenAI / DeepSeek / Qwen）在线调用的配额消耗与响应耗时。",
+    "未覆盖 macOS 以外操作系统在路径规范化或环境隔离上的行为差异。",
+    "未覆盖 M9（Claude 审核者）与 M10（任意 Driver）相关后续里程碑的设计与契约实现。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最危险问题在 §2.4 与 §4.2：只读失守判定将 rejectionRecorded: false 错误定义为 readonlyBreach 恒 false，甚至在单测中断言「有写事件也判未失守」，将负向证明不可靠扭曲为包庇正向确凿失守。\n审查焦点一：commandSemantics 缓登记理由不成立，因 checkEvidence 计算 toolTotal 仍排除 run_command，直接导致第 2 步桩测试与第 3 步 codex 恒报证据不足，必致返工。\n审查焦点二：措施 a 不吃回填收窄虽在技术上可成立，但 §2.5 仅规划了只读失守留痕，完全遗漏了措施 a 恒不命中的留痕，无法达成防止误读为「扫了没命中」的承诺。\n审查焦点三：能力声明绑定注册表与探针对账时序虽概念成立，但因 criticEnabled: false 锁死 codex，第 2 步 read_mechanism 桩集成测试在静态注册表下逻辑不可跑。\n只读核验三态缺失「有正向写事件必失守」这一关键态；§7 自查限制须在本步入库；§4.1 存在虚构的 guard.test.ts 验收判据。\n总体裁决为 request-changes。",
+  "verdict": "request-changes"
+}

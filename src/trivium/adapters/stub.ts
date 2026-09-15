@@ -22,7 +22,13 @@
  */
 import { agentById } from '../agents/registry.js';
 import { CRITICS, type CriticId, type CriticRequest, type CriticResult } from '../types.js';
-import { failedResult, type AdapterContext, type AdapterTable, type CriticAdapter } from './base.js';
+import {
+  failedResult,
+  TOOL_TRACE_CAPABILITY,
+  type AdapterContext,
+  type AdapterTable,
+  type CriticAdapter,
+} from './base.js';
 import { warn } from '../util/log.js';
 
 export const STUB_ENV_VAR = 'TRIVIUM_STUB_CRITIC';
@@ -66,6 +72,22 @@ export type StubMode =
    * 接力是否成立的检验（审查意见 AGY-01 ≡ GLM-02）。
    */
   | 'wrong_prefix'
+  /**
+   * **「读即命令」形态**（§11.1，M8 第 2 步）：路径只存在于命令文本里，
+   * `read_paths` 恒空、`tool_calls` 只有 `run_command`，且被拒的写不留痕。
+   *
+   * 形态取自 M6 真实录制样本 `test/fixtures/codex-events/read-sentinel.jsonl`
+   * 的命令形状（`/bin/zsh -lc '…'` 子 shell 封装），但**路径改写到测试 projectRoot 之下**——
+   * 样本里的路径在探针临时目录 `/tmp/codex-probe-…` 下（项目外），逐字重放过不了
+   * `checkEvidence` 的 `isUnder(project_root)` 过滤，任何「证据达标」的断言都不可达。
+   * r1 裁决的措辞是「以真实录制样本为**蓝本**」，蓝本允许改写路径套形态，
+   * 不是字面重放（r3 裁决 GLM-01(b)）。
+   *
+   * **新增注入形态而非改 `baseResult`**：`read:6` 被全部既有模式共享，
+   * 全局替换会把 selftest 与故障注入的绿路径一并改形，与「既有判定逐项不变」冲突。
+   * 与 `peer_leak` / `peer_leak_via_command` 分列同理——每条形状要能单独触发。
+   */
+  | 'command_trace'
   /** 进程级失败 */
   | 'fail';
 
@@ -165,6 +187,18 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
 export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter {
   return {
     critic,
+    /*
+     * 桩的能力**随注入形态变化**，这与「capability 是该侧固有能力」不矛盾：
+     * 桩适配器是一个**可配置的「侧」**——每次 `makeStubAdapter` 构造出的是一个
+     * 不同的侧，不是同一侧两次运行报出不同能力（后者才是挂 `CriticResult` 的毛病）。
+     *
+     * 这正是能力挂适配器而非注册表的价值：`criticEnabled=false` 锁死 codex 时，
+     * `command-trace` 形态仍然可以在集成测试里被真实走到。
+     */
+    capability:
+      spec.mode === 'command_trace'
+        ? { traceShape: 'command-trace', rejectionRecorded: false }
+        : TOOL_TRACE_CAPABILITY,
     availability: () => ({ ok: true }),
     async run(_ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
       switch (spec.mode) {
@@ -227,6 +261,36 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
             tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 1 },
             command_texts: req.deny_paths.map((p) => `git show HEAD:${p}`),
           };
+        case 'command_trace': {
+          /*
+           * 借样本的命令形态、把路径改写到测试 projectRoot 之下（见 StubMode 的说明）。
+           *
+           * 七条命令逐条对应提取器的一组口径（**行尾注释标明是哪一组**），
+           * 条数也足以过 `min_tool_calls`（默认 5）。
+           * 断言在 `test/integration/command-trace.test.ts`——
+           * 上一版这里写着覆盖「写目标位、逃逸相对」而命令清单里两样都没有，
+           * 正因为没有任何断言咬住它，清单写错了也不会红（r6 双审 GLM-07 ≡ AGY-04）。
+           *
+           * `read_paths` 恒空是本形态的**要害**——判定层拿不到结构化路径，
+           * 全靠 `command_texts` 回填，泛化是否真的成立就看这一条。
+           */
+          const cmds = [
+            `/bin/zsh -lc 'head -n 1 ${req.project_root}/src/a.ts'`, // 子 shell + 绝对
+            `/bin/zsh -lc 'cat src/b.ts'`, //                          子 shell + 裸相对
+            `sed -n '1,40p' ${req.project_root}/src/c.ts`, //           sed 脚本参数排除
+            `git show HEAD:README.md`, //                              git 对象语法
+            `grep -rn foo src/d.ts 2>/dev/null`, //                     fd 前缀重定向排除
+            `cp src/e.ts ${req.project_root}/tmp/e.bak`, //             写动词目标位排除
+            `cat ../Other/outside.ts`, //                              逃逸相对（项目外，过滤掉）
+          ];
+          return {
+            ...baseResult(critic, req, spec),
+            // 读即命令：没有专用读工具，三类结构化计数恒 0
+            tool_calls: { read: 0, grep: 0, glob: 0, run_command: cmds.length },
+            read_paths: [],
+            command_texts: cmds,
+          };
+        }
         case 'mutate_file': {
           const { promises: fsp } = await import('node:fs');
           const nodePath = await import('node:path');

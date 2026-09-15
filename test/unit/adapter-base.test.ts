@@ -25,6 +25,7 @@ test('项目文件读取只算项目根之内的：读 ~/ 下的无关文件不�
       tool_calls: { read: 6, grep: 2 },
       read_paths: ['/Users/x/.zshrc', '/etc/hosts', '/proj/src/a.ts', './src/b.ts', REQ.subject_path],
       trace_path: '/runs/trace.jsonl',
+      command_texts: [],
     },
     REQ,
     OPTS,
@@ -50,6 +51,7 @@ test('证据充分时通过', () => {
       tool_calls: { read: 6, grep: 2 },
       read_paths: ['/proj/src/a.ts', '/proj/src/b.ts', '/proj/doc/x.md', REQ.subject_path],
       trace_path: '/runs/trace.jsonl',
+      command_texts: [],
     },
     REQ,
     OPTS,
@@ -59,14 +61,18 @@ test('证据充分时通过', () => {
 });
 
 test('零工具调用判 no_trace（Antigravity 软拒绝的表现，AC-05 落点）', () => {
-  const r = checkEvidence({ tool_calls: {}, read_paths: [], trace_path: null }, REQ, OPTS);
+  const r = checkEvidence(
+    { tool_calls: {}, read_paths: [], trace_path: null, command_texts: [] },
+    REQ,
+    OPTS,
+  );
   assert.equal(r.ok, false);
   assert.ok(r.reasons.some((x) => x.startsWith('no_trace')));
 });
 
 test('工具调用数不足下限判 insufficient_evidence', () => {
   const r = checkEvidence(
-    { tool_calls: { read: 2 }, read_paths: ['/proj/src/a.ts'], trace_path: 't' },
+    { tool_calls: { read: 2 }, read_paths: ['/proj/src/a.ts'], trace_path: 't', command_texts: [] },
     REQ,
     OPTS,
   );
@@ -80,6 +86,7 @@ test('把 BRIEF 与被审对象反复读也过不了项目文件下限（AC-11 �
       tool_calls: { read: 10 },
       read_paths: [REQ.subject_path, REQ.brief_path],
       trace_path: 't',
+      command_texts: [],
     },
     REQ,
     OPTS,
@@ -99,6 +106,7 @@ test('归档根内的文件不计入项目上下文', () => {
         '/proj/src/only-one.ts',
       ],
       trace_path: 't',
+      command_texts: [],
     },
     REQ,
     OPTS,

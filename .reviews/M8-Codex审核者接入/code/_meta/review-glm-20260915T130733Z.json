@@ -1,0 +1,72 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险一条在归因扣除（焦点三）：前置斜杠匹配只加了左边界，「斜杠对齐的后缀分量」误扣族仍然活着——漂移 README.md（项目根）+ 证据 write_to_file(/proj/sub/README.md) 时 /README.md 仍是子串，该文件从 run.json 两个清单同时消失；r7 应答件「这一条就能杀掉尾段子串误扣」只对无边界子串族成立，斜杠对齐族正是 r7 GLM-01 正文点名的第一组反例（GLM-01）。焦点一的更正成立：grep '};' src/a.ts 单段化后照常提出、单引号包住绝对路径走保留分支不误丢（逐字符走查 + guard-capability.test.ts:144 锁例）；但「② 类不付漏报代价、引号内本来就不是路径」是过度断言——引号内含分隔符的路径（cat 'report(1).ts'）同样被整段丢弃，漏报登记两侧都只列了含空格形态（GLM-02）。四条排除规则未发现过度排除（git -C 只扣紧邻参数、mkdir 与后续读取段级隔离、URL 判定顺序正确），但残留虚报登记只点名「目录型动词」，rm/chmod/echo 等非读取动词参数位同样虚报且类别标签覆盖不到（GLM-03，nit）。焦点四通过：六个用例共享 before 一次运行产物、消费方全只读（buildTopicReport 无写副作用），无隐式顺序依赖；硬编码 6 经独立走查复核一致，桩清单一改即红、红得可解释，是刻意哨兵而非脆弱断言。括号分支必要：agy/zcode 的 write 事件 path 可为相对路径，/f 匹配不到括号紧跟的相对形态。前两轮反例锁例逐条在树，未发现回退。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/guard.ts:329-343",
+      "problem": "归因扣除的边界匹配只加了左边界：ev.includes('/' + f) 区分不了「f 是证据路径的完整相对路径」与「f 恰是证据路径按 / 对齐的后缀分量」。可复现反例（r7 GLM-01 正文点名的第一组，本轮逐字符核实仍在）：漂移 README.md（项目根）+ 证据 write_to_file(/proj/sub/README.md)——/README.md 是该串子串，根 README.md 被误扣出 unattributed 桶；而 anyReadonlyUnavailable 时 fingerprintChangedFiles 已整批置空、meta.snapshot.drift.files 同为空，该文件在 run.json 的两个清单里同时消失，无法归因计数少一。同族：src/a.ts 对 /proj/test/src/a.ts。影响面收窄定 minor：运行时漂移告警仍列全量 v.drift.files（guard.ts:398-408），且共现需要「真实失守 + 巧合漂移」。但 guard.ts:329-330 的论证「相对路径在绝对形态中恒被 / 包住」只保证左边界、推不出匹配正确；r7 应答件 §1.2「这一条就能杀掉尾段子串误扣」对对齐族不成立；负断言（guard-capability.test.ts:331）只咬住无边界子串族（data.ts ⊂ metadata.ts）。",
+      "evidence": "guard.ts:339-343（breachedAll / attributedToBreach 的 ev.includes(`/${f}`) || ev.includes(`(${f})`) 实现）与 guard.ts:329-335（注释断言）；对 write_to_file(/proj/sub/README.md) 与 /README.md 做逐字符子串核实为真；review.ts:985-989（snapshot.drift.files 取 verdict.fingerprintChangedFiles，归因激活时为空数组）；guard.ts:398-408（运行时漂移告警列全量 drift.files，severity 定标用）；test/unit/guard-capability.test.ts:331-359（仅无边界族负断言，fixture 是 data.ts ⊂ metadata.ts）；.reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r7-response-claude.md §1.2（「这一条就能杀掉尾段子串误扣」的断言原文）与 r7-glm.md GLM-01（第一组反例即此形态）。",
+      "suggestion": "对 toolName(…) 形态的证据提取最外层括号内容、按 projectRoot 归一后与 join(projectRoot, f) 做相等比对（r6 应答原案「先解析出路径」的方向）；解析不出的形态（agy 80 字符截断的参数 JSON、shell: 前缀）保守留在原桶，维持现漏扣方向的保守性。至少要：补一条「斜杠对齐后缀不相干文件」负断言（根 README.md 对 sub/README.md），把该残留族写进已知限制，并将注释措辞从「恒被 / 包住」改为如实描述左边界匹配的覆盖面。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/base.ts:436-449（含文档块漏报清单）；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1820",
+      "problem": "焦点一要核验的更正本身成立，但支撑它的注释断言过度：「② 这一类没有付出漏报代价……丢掉的只是引号内的内容，而那里面本来就不是路径」只在引号内是模式/脚本的已测形态上成立。引号内是含段分隔符的路径时（cat 'report(1).ts'、cat 'src/a;b.ts'——文件名含 ( 或 ; 在 shell 里必须引号包裹，下载重名的 xxx(1).ext 是常见形态）同样整段丢弃、路径丢失，与 ① 类同付漏报代价。而漏报登记两侧——base.ts 文档块「引号内含空白的路径」与设计 §11.1 边界表漏报行——都只登记了含空格形态。该清单是第 3 步标定折减系数的依据，缺一族会让「读数系统性偏低」的口径少算一类。",
+      "evidence": "base.ts:447-449（dequote 实现：inner 命中 /[\\s;&|()]/ 即整段换空格）；对 cat 'report(1).ts' 逐字符走查：inner 含 ( → 整段丢弃 → 输出空数组；base.ts:470 前后文档块漏报清单原文只列「引号内含空白的路径（cat \"my notes/a.ts\"……）」；设计文档 §11.1 边界表（1820 行）漏报行与文档块同文；test/unit/guard-capability.test.ts:138 与 :144 的两条锁例断言的都是「引号内不是路径」的形态，无含分隔符路径的用例。",
+      "suggestion": "两侧登记补成「引号内含空白或段分隔符的路径」；「② 无漏报代价」改为限定表述（对已测的引号内模式/脚本形态无代价；引号内是含分隔符的路径时与 ① 同付漏报代价）。可选补一条 cat 'report(1).ts' → 空的漏报锁例，防将来有人改 dequote 判据时不知道这条边界。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/base.ts:274-283 与文档块「仍可能虚报的」；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1822",
+      "problem": "残留虚报的登记口径只点名「表外的目录型动词（pushd、rsync 目标位等）」，但实际残留不止这一类：表外非读取动词的参数位同样计入读证据——rm -rf dist/（rm 不在表内，dist/ 含 / 被收为一条项目内读取）、chmod +x build.sh、ln -s a b、echo src/a.ts。rm 尤其别扭：它是写动词，目标位计入读证据与口径 4「写目标位不计入」直接矛盾。现实可达性较低（codex 只读沙箱下 rm/chmod 属写、会被拦且不留痕；echo 带路径形态较罕见），故 nit；但登记类别标签与实际残留不一致，影响「已知虚报源已排除」这句承诺的覆盖面陈述。",
+      "evidence": "base.ts:274-283（WRITE_VERB_TARGET 仅 cp/mv/install/tee/cd/mkdir/rmdir/touch，无 rm/chmod/chown/ln）；对 rm -rf dist/ 走查：动词 rm 不在表 → dist/ 含 / 进主循环被 push 为读取候选；base.ts 文档块「仍可能虚报的：未登记的目录型动词（表外的 pushd、rsync 目标位等）」与设计 §11.1 边界表 1822 行「仍可能虚报｜表外的目录型动词」同口径。",
+      "suggestion": "二选一：把 rm/chmod/chown/ln 补进 WRITE_VERB_TARGET（all-after-flags 同款）；或把登记措辞放宽为「表外动词的目标/参数位（目录型与非读取型）」，如实承认类别不止目录型。echo 一类若认为不值得处置，也应在登记里点名而不是靠「等」字覆盖。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "焦点一核心更正成立：grep '};' src/a.ts 引号段变空格后命令回到单段、动词是 grep、src/a.ts 照常提出（逐字符走查 + guard-capability.test.ts:144-155 锁例）；单引号包住、不含空白与分隔符的绝对路径走保留分支原样提出，不误丢——r7 应答件对「代价是那条路径提不出来」这一预估的推翻是对的，实测结论与代码行为一致。",
+    "四条排除规则未发现过度排除：git -C src/x log -- README.md 仍提出 README.md（只扣 -C 的紧邻参数）；mkdir 与后续读取按段隔离互不影响；install/touch/rmdir 的目标位本就不是读取；URL 判定置于 gitObj 剥离之前、顺序正确（剥完就认不出原形态）；-C 扫描循环上界 length-1 不越界。",
+    "括号形态分支必要：agy-events.ts:175 与 zcode-trace.ts:184 的写事件都是 ${toolName}(${path}) 且 path 取自工具参数、可为项目相对路径——write_to_file(src/a.ts) 对漂移 src/a.ts 只有 (${f}) 分支匹配得到（/src/a.ts 匹配不到括号紧跟的相对路径）。删掉它会把正确的归因变漏扣。",
+    "焦点四通过：六个用例共享 before 一次运行产物，消费方全部只读（run.json/审查文档/worker.log 均为读取，buildTopicReport 在 report.ts 全文无 writeFile/mkdir），无隐式顺序依赖；EXPECTED_PROJECT_READS=6 按七条命令独立走查复核一致（a/b/c/d/e.ts + README.md 计入，cp 目标与 ../Other 逃逸不计），失败消息自带算术说明——桩清单一改即红、红得可解释，是刻意的哨兵断言而非脆弱断言。",
+    "前两轮反例无回退：r6/r7 锁例逐条在树（guard-capability.test.ts:138 含空格引号、:144 分隔符引号、:331 尾段子串、:382 超时侧按能力声明归因）；effectiveMinProjectReads(0) 双侧直通不反向抬升；report.ts 重复的「无法归因」独立行已删（285-291 只剩说明注释），集成测试有 unattributedLines.length <= 1 断言；归因判据取 input.capabilities 而非 sides，超时侧场景有真实 git 夹具锁住。",
+    "report.ts 合并展示算术正确：review.ts:985-989 的 snapshot.drift.files 取 verdict.fingerprintChangedFiles，归因激活时恒空，shown = 0 + un 不会重复计数。"
+  ],
+  "not_covered": [
+    "只读约束下未跑任何构建或测试：「1030 既有 + 17 新增全绿」沿用设计文档自述；extractPathTokens 与归因匹配的全部行为结论基于逐字符走查 + 树上锁例，非实跑。",
+    "codex 真实轨迹形态（第 3 步才存在）：SUBSHELL_RE 对非 /bin/zsh -lc 起头的封装（如 env 前缀）覆盖面、折减系数 1/2 的合理性、提取口径整体表现，本轮无法验证。",
+    "run-protocol.ts:293 的 worker.log 落点依据测试内注释声明，本轮未打开该文件核实；doctor.ts / gate.ts / cli.ts 未重读。",
+    "registry-parity / known-forms-parity 当前是否全绿未验证；设计 §16.1 / §24 台账除本轮涉及的行外未逐条对账。",
+    "措施 b（checkPeerLeakViaCommand）本轮零改动，未重验其 F/B 清单行为。另记一个低于意见门槛的边角：URL 前置判定会把 file:///abs 形态一并排除，curl file:///proj/src/a.ts 这类真实读取被丢（漏报方向、低频）。",
+    "doc-only hunks（AGENTS.md、PROTOCOL、设计 §21 版本条目）读过但未逐句与全文档其余章节交叉对账。"
+  ],
+  "consulted": [
+    ".reviews/M8-Codex审核者接入/code/_meta/changes-20260915T130733Z.diff",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r7-glm.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r7-response-claude.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/report.ts",
+    "src/trivium/review.ts",
+    "test/unit/guard-capability.test.ts",
+    "test/integration/command-trace.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "skills/dual-critic/SKILL.md"
+  ]
+}

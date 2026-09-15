@@ -50,6 +50,11 @@ export interface RenderInput {
   /** 路径级 deny 是否实际生效（§10.2 要求逐侧标注） */
   peerDeny: boolean;
   consultedUnverified: boolean;
+  /**
+   * 本侧两条核验通道的降级档位（§11.1，M8 第 2 步）。
+   * 省略时按「两条都可用」渲染——结构化轨迹两家的现状，行为等价。
+   */
+  verification?: { readonly: 'ok' | 'unavailable'; path: 'ok' | 'unavailable' };
   heterogeneous: boolean;
   overrideReason?: string | null;
 }
@@ -101,6 +106,12 @@ export function renderFrontMatter(input: RenderInput): string {
     peer_deny: input.peerDeny,
     drift: input.drift,
     ...(input.consultedUnverified ? { consulted_unverified: true } : {}),
+    /*
+     * 降级档位只在**降级时**出现——与 `consulted_unverified` 同款条件展开。
+     * front-matter 是审计凭证，恒出现的 `ok` 会稀释真正要看见的那一行。
+     */
+    ...(input.verification?.readonly === 'unavailable' ? { readonly_verification: 'unavailable' } : {}),
+    ...(input.verification?.path === 'unavailable' ? { path_verification: 'unavailable' } : {}),
     heterogeneous: input.heterogeneous,
     ...(input.overrideReason ? { override_reason: input.overrideReason } : {}),
     ...(input.result.session_id ? { session_id: input.result.session_id } : {}),
@@ -158,6 +169,18 @@ export function renderReviewDoc(input: RenderInput): string {
     flags.push(
       '**路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，' +
       '对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。',
+    );
+  }
+  if (input.verification?.readonly === 'unavailable') {
+    flags.push(
+      '**只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。' +
+        '只读保障从三重降到两重（指纹比对仍有效）。',
+    );
+  }
+  if (input.verification?.path === 'unavailable') {
+    flags.push(
+      '**路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，' +
+        '禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。',
     );
   }
   if (!input.heterogeneous) {

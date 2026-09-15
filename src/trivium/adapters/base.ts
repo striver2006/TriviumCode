@@ -17,12 +17,61 @@ export interface AdapterContext {
   nodePath: string;
 }
 
+/**
+ * 该侧轨迹能提供什么形状的证据（设计 §11.1，M8 第 2 步）。
+ *
+ * ## 为什么需要它
+ *
+ * 判定层原先假定「读取路径是结构化拿到的」「被拒的写操作会留痕」。M6 实测
+ * （P-C1 / P-C2）推翻了这两条对 codex 的适用性：codex 读文件就是跑 shell，
+ * 路径只在命令文本里；被沙箱拒绝的命令一条事件都不产生。
+ *
+ * 消费方因此必须**面对能力而不是 Agent id**——按 id 分叉是纪律 7 明令禁止的，
+ * 而且 M9 的 claude 又是另一种组合，按 id 分叉会分出三支。
+ *
+ * ## 为什么挂在 `CriticAdapter` 上而不是注册表或 `CriticResult`
+ *
+ * 不挂 `CriticResult`：它是**该侧的固有能力**，不是单次运行的结果；挂结果上会让
+ * 每次运行都要重填一遍，且允许同一侧两次运行报出不同能力（r1 裁决 §2.3）。
+ *
+ * 不挂注册表：`criticEnabled=false` 的 Agent 选不进运行（`critics.ts` 抛 `EXIT.USAGE`），
+ * 而 M8 第 2 步不翻 codex 的开关——静态注册表方案下，桩的 `command-trace` 形态
+ * **在集成测试里根本走不到**，泛化就没有机器判据（r2 裁决 AGY-04）。
+ * 挂适配器则桩适配器可以声明自己的能力。
+ */
+export interface TraceCapability {
+  /**
+   * 轨迹形态：专用工具带结构化路径，还是 shell 命令。
+   *
+   * **消费方有两个**（缺一个就是 r2 那次「无消费方」的误判）：
+   * `effectiveReadPaths` 的路径提取、`checkEvidence` 的 `toolTotal` 计数。
+   */
+  traceShape: 'tool-trace' | 'command-trace';
+  /**
+   * 被拒的操作是否留痕。
+   *
+   * `false` ⇒ 该侧**「尝试写」的检测失效**——注意**不是**「轨迹对写事件全盲」：
+   * P-C2 只断言被沙箱拒绝的命令不产生事件，**成功执行的写命令照常留痕**
+   * （P-C1 的样本本身就是 `status:"completed"` 的命令事件）。
+   * 所以 `readonlyBreach` 仍由写事件判定，本字段只修饰**阴性结论**的可信度。
+   */
+  rejectionRecorded: boolean;
+}
+
 export interface CriticAdapter {
   readonly critic: CriticId;
+  /** 该侧轨迹的证据形状——判定层据此分档，不按 Agent id 分叉（§11.1） */
+  readonly capability: TraceCapability;
   /** 该侧是否可用（探针结论决定）。不可用时给出人读原因 */
   availability(ctx: AdapterContext): { ok: boolean; reason?: string };
   run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult>;
 }
+
+/** 结构化轨迹两家（gemini / glm）的能力：与本步之前的行为逐字等价 */
+export const TOOL_TRACE_CAPABILITY: TraceCapability = {
+  traceShape: 'tool-trace',
+  rejectionRecorded: true,
+};
 
 /**
  * Agent id → 适配器的查表结构。
@@ -91,20 +140,43 @@ export interface EvidenceCheck {
   reasons: string[];
   /** 被审对象与送审包之外的项目文件读取次数（AC-11） */
   projectReads: number;
+  /**
+   * 本次该侧**实际生效**的项目读取下限。
+   *
+   * 与配置值可能不同：`command-trace` 族按折减系数下调（见 `effectiveMinProjectReads`）。
+   * 单列出来是为了进留痕——不记的话，codex 侧 `project_reads=2` 通过、
+   * gemini 侧同样是 2 却不通过，事后复盘看起来像 bug。
+   */
+  minProjectReads: number;
 }
 
 export function checkEvidence(
-  result: Pick<CriticResult, 'tool_calls' | 'read_paths' | 'trace_path'>,
+  result: Pick<CriticResult, 'tool_calls' | 'read_paths' | 'trace_path' | 'command_texts'>,
   req: Pick<CriticRequest, 'min_tool_calls' | 'min_project_reads' | 'subject_path' | 'brief_path' | 'project_root'>,
-  opts: { archiveRootAbs: string },
+  opts: { archiveRootAbs: string; capability?: TraceCapability },
 ): EvidenceCheck {
   const reasons: string[] = [];
+  const cap = opts.capability ?? TOOL_TRACE_CAPABILITY;
+  const commandTrace = cap.traceShape === 'command-trace';
 
   const tc = result.tool_calls;
-  const toolTotal = (tc.read ?? 0) + (tc.grep ?? 0) + (tc.glob ?? 0);
+  /*
+   * ② 的计数口径按轨迹形态分档。
+   *
+   * `command-trace` 族**必须**计入 `run_command`：该族读文件就是跑 shell，
+   * `read`/`grep`/`glob` 三者恒 0，不计就必然触发 `insufficient_evidence`——
+   * 这正是 r2 计划稿误判「`commandSemantics` 无消费方」时漏掉的那个消费方。
+   * 对 `tool-trace` 族不计入：那一族的 `run_command` 是写事件信号（agy 的白名单里
+   * 根本没有它），计进证据就是把失守信号当成读取证据。
+   */
+  const toolTotal =
+    (tc.read ?? 0) + (tc.grep ?? 0) + (tc.glob ?? 0) + (commandTrace ? (tc.run_command ?? 0) : 0);
+
+  // 判定层使用的有效读取路径：command-trace 族从命令文本回填（派生视图，不回写结果）
+  const effective = effectiveReadPaths(result, cap, req.project_root);
 
   // ① 轨迹存在
-  if (result.trace_path === null && result.read_paths.length === 0 && toolTotal === 0) {
+  if (result.trace_path === null && effective.length === 0 && toolTotal === 0) {
     reasons.push('no_trace：拿不到任何工具调用轨迹');
   }
 
@@ -113,9 +185,20 @@ export function checkEvidence(
     reasons.push(`insufficient_evidence：工具调用 ${toolTotal} 次 < 下限 ${req.min_tool_calls}`);
   }
 
-  // ③ 项目文件读取下限——防止「把 BRIEF 与被审文档反复读 N 遍」通过上一条
+  /*
+   * ③ 项目文件读取下限——防止「把 BRIEF 与被审文档反复读 N 遍」通过上一条。
+   *
+   * 下限对 `command-trace` 族**单独折减**（r1 裁决 §2.2 第 3 条）：该族的路径靠命令
+   * 文本提取，变量拼接、管道组合、`find -exec` 都提不出来，读数**系统性偏低**。
+   * 沿用为结构化轨迹定的那个数，等于给该族设了一道不可达的闸；
+   * 而按「下限不适用」处置又等于对该族放弃 AC-11——提取偏低但不为零
+   * （BRIEF 给的是绝对路径，模型据此读项目文件，提出来就是项目内绝对路径）。
+   * 生效值进留痕（`evidence_threshold`），否则同一个读数在两族间一过一不过会像 bug。
+   */
+  const minProjectReads = effectiveMinProjectReads(req.min_project_reads, cap);
+
   const excluded = new Set([req.subject_path, req.brief_path].map((p) => normalizeAbs(p, req.project_root)));
-  const projectReads = result.read_paths.filter((p) => {
+  const projectReads = effective.filter((p) => {
     const abs = normalizeAbs(p, req.project_root);
     if (excluded.has(abs)) return false;
     // 归档根内的文件不算「项目上下文」——那是审查材料本身
@@ -124,13 +207,334 @@ export function checkEvidence(
     return isUnder(abs, req.project_root);
   }).length;
 
-  if (projectReads < req.min_project_reads) {
+  if (projectReads < minProjectReads) {
     reasons.push(
-      `no_project_context：被审对象与送审包之外的项目文件读取 ${projectReads} 次 < 下限 ${req.min_project_reads}`,
+      `no_project_context：被审对象与送审包之外的项目文件读取 ${projectReads} 次 < 下限 ${minProjectReads}`,
     );
   }
 
-  return { ok: reasons.length === 0, reasons, projectReads };
+  return { ok: reasons.length === 0, reasons, projectReads, minProjectReads };
+}
+
+/**
+ * `command-trace` 族的项目读取下限折减系数。
+ *
+ * 取 1/2 并向上取整（默认 3 ⇒ 2）。**依据是设计预期，不是实测**：
+ * BRIEF 给审查员的是绝对路径，模型据此读项目文件，提取以直引绝对形态为主；
+ * 而变量拼接、管道组合、`find -exec` 提不出来，读数系统性偏低。
+ *
+ * > 本注释原写「实测样本里直引形态占多数」——那是**编的**：仓库内全部录制样本
+ * > 只有 1 条命令（`read-sentinel.jsonl`），n=1 谈不上「占多数」；
+ * > 而 r3 裁决 §1.2 刚判定该样本「是探针单次哨兵 fixture、不能用于标定审查全过程阈值」。
+ * > 引用一份自己刚判定不可用的材料当依据，与 r3 那次「引用没读过实现的机制」同形。
+ *
+ * 它是**可调参数**而非推导结论，系数值**待第 3 步真实 codex 轨迹回标**；
+ * 改动它要连同 `evidence_threshold` 的留痕一起看。
+ */
+const COMMAND_TRACE_READS_DIVISOR = 2;
+
+/** 本次该侧实际生效的项目读取下限（进留痕，见 `verification_degraded.evidence_threshold`） */
+export function effectiveMinProjectReads(configured: number, cap: TraceCapability): number {
+  if (cap.traceShape !== 'command-trace') return configured;
+  /*
+   * `configured <= 0` 原样返回：配置里的 0 是「**显式关闭下限**」
+   * （`config.v2.json` 对 `min_project_reads` 允许 `minimum: 0`）。
+   * 原实现的 `Math.max(1, …)` 唯一作用面恰好就是 0——`configured ≥ 1` 时
+   * `ceil(x/2) ≥ 1` 恒成立——于是它没做成任何兜底，只做成了「本意折减、
+   * 在零值边界反向抬升」，让同一份配置在两族间语义分叉（r6 双审 AGY-03 ≡ GLM-05）。
+   */
+  if (configured <= 0) return configured;
+  return Math.ceil(configured / COMMAND_TRACE_READS_DIVISOR);
+}
+
+/**
+ * 外层子 shell 封装的剥离。
+ *
+ * codex 跑命令的真实形态是 `/bin/zsh -lc '<真实命令>'`（M6 P-C1 录制样本 `read-sentinel.jsonl`）。
+ * **不剥这一层，整段子命令会塌成一个引号 token，路径一个都提不出来**——
+ * r3 计划稿写「引号包裹的整体算一个 token」，被 blocker 正是因为这个。
+ *
+ * 只剥最外层：嵌套子 shell 在审查场景里不出现，多剥一层不如让它留在文本里被 token 化。
+ */
+const SUBSHELL_RE = /^\s*\/?(?:[\w./-]*\/)?(?:zsh|bash|sh|dash)\s+-[a-zA-Z]*c\s+(['"])([\s\S]*)\1\s*$/;
+
+function unwrapSubshell(cmd: string): string {
+  const m = SUBSHELL_RE.exec(cmd);
+  return m ? m[2]! : cmd;
+}
+
+/**
+ * 这些命令的**目标位**不是读取证据。
+ *
+ * 两族合一张表：写入点（`cp`/`mv`/`install`/`tee` 的目标）与
+ * **目录目标**（`cd`/`mkdir` 的参数是目录，不是被读的文件）。
+ * 后者是 r7 双审 GLM-04 实测出的虚报源——`cd src/x`、`mkdir -p dist/x`
+ * 都会被「看起来像路径」的判据收成一条项目内读取，而它们一个字节都没读。
+ */
+const WRITE_VERB_TARGET: Record<string, 'last' | 'all-after-flags'> = {
+  // 写入点：目标位是被写的文件
+  cp: 'last',
+  mv: 'last',
+  install: 'last',
+  tee: 'all-after-flags',
+  // `ln` 两个参数都不读内容：源只是被记下路径，链接名是写入点——与 `cp` 不同族
+  ln: 'all-after-flags',
+  // 目录目标：参数是目录，不是被读的文件
+  cd: 'all-after-flags',
+  mkdir: 'all-after-flags',
+  rmdir: 'all-after-flags',
+  touch: 'all-after-flags',
+  pushd: 'all-after-flags',
+  // 非读取动词：参数位既不读也不是目录，但同样会被「像路径」判据收进来。
+  // `rm` 尤其别扭——它是写动词，目标位计成读证据与口径 4 直接矛盾（r8 GLM-03）
+  rm: 'all-after-flags',
+  chmod: 'all-after-flags',
+  chown: 'all-after-flags',
+};
+
+/**
+ * 从一条命令原文里提取**读取候选**路径 token（§11.1，M8 第 2 步）。
+ *
+ * ## 口径（四组，逐组由 r3 双审裁定）
+ *
+ * 1. **引号穿透**：剥掉外层子 shell 后，`'` / `"` 按分隔符处理。
+ *    与措施 b 的 F-5 / F-9 同向——措施 b 有专门的穿透处理，提取侧比它更弱就是漏报。
+ * 2. **裸相对路径按 `projectRoot` 归一后计入**（`cat src/a.ts`）。
+ *    措施 b 的 `spellingsOf` 对项目根下的条目显式派生 `rel` 与 `./rel` 两种拼写并必检
+ *    （F-2 是闭集成员），提取侧同口径。逃逸形态（`../Other/x.ts`）归一后落在项目根外，
+ *    由 `checkEvidence` 既有的 `isUnder` 过滤自然排除，不需要单独规则。
+ *    （r3 稿曾写「cwd 不可知保守不计」，把 F-6 锚定形态的处理误当成了总体口径。）
+ * 3. **`HEAD:<path>` 提取**（EV-01 已列的已知形态）；**通配不展开**——
+ *    展开需要文件系统状态，判定层不做 I/O。
+ * 4. **写目标位不计入**：输出重定向 `>` / `>>` 的右侧紧邻 token，以及写动词
+ *    （`cp`/`mv`/`tee`/`install`/`sed -i`）的目标位。
+ *    按 token 级而非命令级排除：命令级会把 `grep foo > out.txt` 里对 `foo` 的**真实读取**
+ *    一并丢弃（漏报）；只剔重定向目标又会把 `cp a b` 的 `b` 计成读证据（虚高）。
+ *
+ * ## 已知边界（如实登记，不是缺陷）
+ *
+ * **两个方向都要登记**——上一版只列了漏报一侧，而虚报的后果更重：
+ * 漏报只是少算一条证据，虚报是**凭空造出一条根本没发生的读取**，
+ * 让 AC-11 的约束力比设计口径松（r7 双审 GLM-04）。
+ *
+ * **漏报（提不出来，`project_reads` 系统性偏低）**：
+ * 变量拼接（`cat $F`）、命令替换、管道组合、`find -exec` 传递的路径；
+ * 引号内含**空白或段分隔符**的路径（`cat "my notes/a.ts"`、`cat 'report(1).ts'`
+ * ——丢整段，宁可漏也不产半截假路径）。下限相应折减（`effectiveMinProjectReads`）。
+ *
+ * **虚报（已收口的，留作回归清单）**：版本区间（`v1.3.8..v1.3.9`）、断尾路径、
+ * 目录目标（`cd` / `mkdir` / `git -C`）、URL（`https://…`）、
+ * git 范围与引用（`main..feat`、`origin/master`）、
+ * 非读取动词的参数位（`rm` / `chmod` / `ln`）——
+ * 各有排除规则与负断言。
+ *
+ * **仍可能虚报的**：`WRITE_VERB_TARGET` 表外动词的目标/参数位——
+ * 既包括目录型（`rsync`），也包括非读取型（`echo src/a.ts` 这种把路径当字面量的）。
+ * 类别不止一类，登记按「表外动词」而非「表外目录型动词」写（r8 双审 GLM-03）。
+ * 承诺是「已知形态可提、已知虚报源已排除」，不是完备。
+ */
+/** 重定向记号：可带 fd 前缀（`>`、`>>`、`2>`、`2>>`、`1>`） */
+const REDIRECT_RE = /^[0-9]*>>?/;
+
+/** 版本号/版本区间形态（`1.3.8`、`v1.3.8..v1.3.9`）——不含 `/`，不是路径 */
+const VERSION_LIKE_RE = /^v?\d+(\.\d+)+(\.\.+v?\d+(\.\d+)+)?$/;
+
+/**
+ * git 范围语法（`main..feat`、`origin/main..HEAD`、`HEAD~1...HEAD`）。
+ *
+ * 它们含 `/` 或带点尾缀，会直接通过「看起来像路径」的判据，归一后还落在项目根下——
+ * 虚构出一条根本不存在的读取（r8 双审 AGY-02 实测）。
+ * 只认**两点/三点区间**这个特征：单个分支名（`origin/master`）由下面的
+ * `GIT_REF_LIKE_RE` 另行处理，两者分开是因为后者的误伤面更大，判据要更保守。
+ */
+const GIT_RANGE_RE = /\.{2,3}/;
+
+/**
+ * 裸 git 引用形态（`origin/master`、`upstream/main`）。
+ *
+ * **只在 `git` 命令段内**启用这条排除：`origin/master` 与一个真实的
+ * `origin/master` 目录在字面上无从区分，脱离 git 上下文去排除会误伤真实读取。
+ */
+const GIT_REF_LIKE_RE = /^(origin|upstream|refs)\/[A-Za-z0-9._\-/]+$/;
+
+/**
+ * 一条命令段内的路径提取（段 = 被 `|` / `;` / `&&` / `||` 分开的单元）。
+ *
+ * **必须按段判定写动词**：整条展平后取首 token 当动词，会让
+ * `cat foo.ts | tee out.txt` 的 `tee` 不生效（写目标被计成读证据），
+ * 也会让 `cp a b; cat c` 的 `cp` 规则跳掉**第二条命令的真实读取**（漏报）。
+ * 一条命令里同时虚高与漏报，正是 r6 双审 GLM-02(b) 实测到的形态。
+ */
+function extractFromSegment(segTokens: string[], out: string[]): void {
+  if (segTokens.length === 0) return;
+  const skip = new Set<number>();
+
+  // 口径 4：`… 2> out.txt` 的分离写法，目标在下一个 token
+  for (let i = 0; i < segTokens.length; i++) {
+    const t = segTokens[i]!;
+    if (REDIRECT_RE.test(t) && t.replace(REDIRECT_RE, '') === '') skip.add(i + 1);
+  }
+
+  /*
+   * 口径 4：写动词的目标位。
+   * 动词取 **basename**——`/bin/cp` 与 `cp` 是同一件事，按全路径查表会整条漏掉。
+   */
+  const verbToken = segTokens[0]!;
+  const verb = verbToken.slice(verbToken.lastIndexOf('/') + 1);
+  skip.add(0); // 动词本身不是路径（`/bin/cp` 含 `/`，不排会被当成读取）
+
+  const mode = WRITE_VERB_TARGET[verb];
+  if (mode === 'last') {
+    for (let i = segTokens.length - 1; i > 0; i--) {
+      if (!segTokens[i]!.startsWith('-')) { skip.add(i); break; }
+    }
+  } else if (mode === 'all-after-flags') {
+    for (let i = 1; i < segTokens.length; i++) {
+      if (!segTokens[i]!.startsWith('-')) skip.add(i);
+    }
+  }
+
+  /*
+   * `git -C <dir>` / `-C <dir>`：`-C` 的参数是**工作目录**，不是被读的文件
+   * （`git -C src/x log` 一个字节都没读 `src/x`）。r7 双审 GLM-04 实测。
+   */
+  for (let i = 0; i < segTokens.length - 1; i++) {
+    if (segTokens[i] === '-C') skip.add(i + 1);
+  }
+
+  if (verb === 'sed') {
+    /*
+     * `sed [旗标] <脚本> <文件…>`：第一个非旗标参数是**脚本**，不是路径。
+     * 不排它，`s/x/y/` 会因为含 `/` 被「看起来像路径」的判据收进来。
+     */
+    for (let i = 1; i < segTokens.length; i++) {
+      if (!segTokens[i]!.startsWith('-')) { skip.add(i); break; }
+    }
+    // `-i` 就地改写：最后一个非旗标 token 是写目标
+    if (segTokens.some((t) => t.startsWith('-i'))) {
+      for (let i = segTokens.length - 1; i > 0; i--) {
+        if (!segTokens[i]!.startsWith('-')) { skip.add(i); break; }
+      }
+    }
+  }
+
+  for (let i = 0; i < segTokens.length; i++) {
+    if (skip.has(i)) continue;
+    let t = segTokens[i]!;
+    if (REDIRECT_RE.test(t)) continue;     // `2>out.txt` 紧贴写法
+    if (t.startsWith('-')) continue;        // 旗标不是路径
+    if (t.includes('*') || t.includes('?')) continue; // 口径 3：通配不展开
+
+    /*
+     * URL 不是路径：`curl https://example.com/x` 会被下面的 git 对象正则
+     * 剥成 `//example.com/x`，归一后落进项目根下，虚构一条读取（r7 GLM-04 实测）。
+     * 判定放在 gitObj 之前——剥完就认不出它原本是 URL 了。
+     */
+    if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(t) || t.startsWith('//')) continue;
+
+    // 口径 3：git 对象语法 `HEAD:<path>` / `<sha>:<path>`
+    const gitObj = /^[A-Za-z0-9_./^~@{}-]+:(.+)$/.exec(t);
+    if (gitObj) t = gitObj[1]!;
+
+    // 版本号与版本区间：`git log v1.3.8..v1.3.9` 的 `.9` 会命中扩展名判据
+    if (!t.includes('/') && VERSION_LIKE_RE.test(t)) continue;
+
+    /*
+     * git 范围与引用：`main..feat`、`origin/main..HEAD`、`origin/master`。
+     * 范围语法（含 `..`）无条件排除——真实路径里出现连续两点只能是 `../`，
+     * 而那个形态在这一步之前已经被 `normalizeAbs` 之外的逻辑保留成 `../x` 前缀，
+     * 不会是「中缀两点」。裸引用只在 git 段内排除，避免误伤同名真实目录。
+     */
+    if (GIT_RANGE_RE.test(t) && !t.startsWith('.') && !t.includes('/..')) continue;
+    if (verb === 'git' && GIT_REF_LIKE_RE.test(t)) continue;
+
+    // 只有「看起来像路径」的 token 才算：含分隔符，或带扩展名
+    if (!t.includes('/') && !/\.[A-Za-z0-9]+$/.test(t)) continue;
+    if (t.length === 0) continue;
+    out.push(t);
+  }
+}
+
+export function extractPathTokens(rawCommand: string): string[] {
+  const cmd = unwrapSubshell(rawCommand);
+
+  /*
+   * 口径 1：引号段在**分段之前**就地处置，内容含空白或段分隔符的整段丢弃。
+   *
+   * 两类必须丢的内容，理由不同但后果同向：
+   *
+   * ① **含空白**（`cat "my notes/a.ts"`）——按「替换成空格」的老办法会切成
+   *    `my` 与 `notes/a.ts`：真实路径丢失，断尾的 `notes/a.ts` 反被当成一条
+   *    项目内读取。**虚构证据比漏报更坏**（r6 双审 GLM-03 实测）。
+   *
+   * ② **含段分隔符 `;&|()`**（`grep '};' src/a.ts`、`sed -i 's/|/x/' f.ts`）——
+   *    引号内的分隔符若原样留到下一步，就和真分隔符再也分不开，命令被错切。
+   *    实测两种后果：`grep '};' src/a.ts` 整条漏提（`src/a.ts` 落到段首被当成动词
+   *    吞掉），`sed -i 's/|/x/' src/a.ts` 则**把写目标计成读取**——后者更坏，
+   *    因为上一轮刚给 `sed` 加的「首个非旗标参数是脚本」规则，
+   *    会连同动词上下文一起在错切中失效（r7 双审 AGY-01 ≡ GLM-02 实测）。
+   *
+   * **② 在引号内是模式/脚本时不付漏报代价**：引号段整体变成空格后，
+   * `grep '};' src/a.ts` 归约为 `grep   src/a.ts`——单段、动词是 `grep`、
+   * `src/a.ts` 仍是读取源，真实读取照常提得出。
+   *
+   * > 但这句话**不能推广成「引号内本来就不是路径」**（上一版就是那么写的，
+   * > 被 r8 双审 GLM-02 指出是过度断言）：`cat 'report(1).ts'`、`cat 'src/a;b.ts'`
+   * > 的引号内**就是路径**——文件名含 `(` 或 `;` 在 shell 里必须引号包裹，
+   * > 而「下载重名的 `xxx(1).ext`」是很常见的形态。这一族与 ① 同付漏报代价。
+   *
+   * 所以漏报登记里两类都要列：引号内含**空白**的路径、含**段分隔符**的路径。
+   *
+   * > **与措施 b 的 F-5/F-9 不是一回事**，此处不宣称「同向」：
+   * > 措施 b 在**整串**上搜 deny 字面量、不分段，所以引号怎么剥都不会错切；
+   * > 提取侧要切出命令段来判动词，引号与分段之间就必须有这道交接。
+   * > 上一版文档块写着「与 F-5/F-9 同向」，那是把两个不同的问题说成了一个。
+   */
+  const dequoted = cmd.replace(/(['"`])([\s\S]*?)\1/g, (_m, _q, inner: string) =>
+    /[\s;&|()]/.test(inner) ? ' ' : ` ${inner} `,
+  );
+
+  // 段边界：`|`、`;`、`&&`、`||`、子 shell 括号——每段各自判动词
+  const segments = dequoted.split(/\|\||&&|[|;()]/);
+  const out: string[] = [];
+  for (const seg of segments) {
+    extractFromSegment(seg.split(/[\s<]+/).filter((t) => t.length > 0), out);
+  }
+  return out;
+}
+
+/**
+ * 判定层使用的**有效读取路径**（设计 §11.1）。
+ *
+ * `tool-trace`    ⇒ 就是 `read_paths`（现状，零行为变化）；
+ * `command-trace` ⇒ `read_paths` ∪ 从 `command_texts` 按上述口径提取的路径。
+ *
+ * **这是派生视图，绝不回写 `CriticResult`。** `CriticResult` 是诚实记录，
+ * 记的是适配器实际采到什么；把推导结果写回去，留痕就从「采到的」变成「推出来的」，
+ * 事后复盘再也分不清哪些是轨迹里真有的。
+ *
+ * **消费方只有三处**：`checkEvidence` 的 `no_trace` 与 `projectReads`、
+ * `judgeSide` 的 consulted 交叉核对。
+ * **措施 a（`checkPeerLeak`）不吃回填**——命令里提到某路径不等于读了它
+ * （`git log -p` 提到但未必读、`grep -l` 只列文件名）。并进去处置上零增益
+ * （措施 b 已让该侧作废）、排查上有损（`peerHits` 与 `peerCommandHits` 分列就是
+ * 为了看得出是哪条通道）、语义上降级（措施 a 声称的是文件系统级读取事实）。
+ */
+export function effectiveReadPaths(
+  result: Pick<CriticResult, 'read_paths' | 'command_texts'>,
+  cap: TraceCapability,
+  projectRoot: string,
+): string[] {
+  if (cap.traceShape !== 'command-trace') return [...result.read_paths];
+
+  const out = new Set<string>(result.read_paths);
+  for (const cmd of result.command_texts) {
+    for (const tok of extractPathTokens(cmd)) {
+      // 归一到绝对路径：裸相对按 projectRoot 解析（口径 2）
+      out.add(normalizeAbs(expandHome(tok), projectRoot));
+    }
+  }
+  return [...out];
 }
 
 /** 轨迹核验：读取路径中是否命中禁读清单（§10.1 第 ③ 道 (c) 层 / AC-04） */
@@ -631,6 +1035,23 @@ export function checkPeerLeakViaCommand(
     (cmd) => scanOnce(cmd) || scanOnce(stripQuotes(cmd)),
   );
   return { leaked: hits.length > 0, hits: [...new Set(hits)] };
+}
+
+/**
+ * 展开前导 `~` / `$HOME` / `${HOME}`。
+ *
+ * **在 `normalizeAbs` 之前做**：`path.resolve` 把 `~/x` 当裸相对路径，
+ * 会解析成 `<projectRoot>/~/x`——那条路径既不存在、也与 consulted 里的写法对不上，
+ * 于是 `consultedUnverified` 误报（r6 双审 AGY-05 实测）。
+ * 与措施 b 的 `spellingsOf` 同口径：那里也把家目录的三种写法一并派生。
+ */
+function expandHome(p: string): string {
+  const home = os.homedir();
+  if (p === '~' || p === '$HOME' || p === '${HOME}') return home;
+  if (p.startsWith('~/')) return nodePath.join(home, p.slice(2));
+  if (p.startsWith('$HOME/')) return nodePath.join(home, p.slice('$HOME/'.length));
+  if (p.startsWith('${HOME}/')) return nodePath.join(home, p.slice('${HOME}/'.length));
+  return p;
 }
 
 /** 归一成绝对路径：解析 `./`、`..`，并抹平 macOS 的 /private 前缀 */

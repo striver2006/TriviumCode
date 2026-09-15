@@ -22,7 +22,7 @@
  * 接入真实的第三家才谈得上检验。这里能证明的只有一件事：
  * **注册表追加 + 接入套件补丁 ⇒ 三审全链路可跑**。
  */
-import { type AdapterContext, type CriticAdapter } from './base.js';
+import { TOOL_TRACE_CAPABILITY, type AdapterContext, type CriticAdapter } from './base.js';
 import { agentById } from '../agents/registry.js';
 import { probeStub } from '../probes/stub.js';
 import type { CriticRequest, CriticResult } from '../types.js';
@@ -92,6 +92,15 @@ function stubReview(criticId: string, consulted: readonly string[]): string {
 
 export const stubAgentAdapter: CriticAdapter = {
   critic: CRITIC,
+  /*
+   * 轨迹能力声明（§11.1）。本桩用专用读工具产出结构化 `read_paths`，
+   * 且没有「被拒的写不留痕」这种沙箱行为，所以两项都取结构化轨迹的值。
+   *
+   * **接第三家时这一行必须按实测填**，不能照抄：它决定判定层如何解读该侧证据——
+   * 填错的后果不是报错，是证据核验按错误的形状进行（读经 shell 的一族
+   * 若误声明为 tool-trace，`project_reads` 恒 0、每轮误报证据不足）。
+   */
+  capability: TOOL_TRACE_CAPABILITY,
   /*
    * 恒可用：桩不依赖任何外部 CLI、凭据或探针结论。
    *

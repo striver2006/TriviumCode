@@ -861,6 +861,17 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     // 「相关」= --context 指明的路径 **与 diff 涉及文件**（设计 §9.2 第 3.c 步，freeze.ts 注释同）
     relatedPaths: [...opts.contextPaths, ...diffFiles],
     results, reviews, requests,
+    /*
+     * 逐侧能力声明从适配器表取——**这是它唯一的起源**，`judgeRun` 自己拿不到。
+     * 漏传会让 `command-trace` 侧按结构化轨迹判定，证据恒不达标（响亮失败），
+     * 不会静默放行；但那种失败的原因与现象离得很远，所以这一行不能省。
+     */
+    capabilities: Object.fromEntries(
+      sides.flatMap((c) => {
+        const cap = adapters[c]?.capability;
+        return cap ? [[c, cap] as const] : [];
+      }),
+    ),
   });
 
   /*
@@ -933,6 +944,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       drift: verdict.drift.kind !== 'none',
       peerDeny: r.peer_deny_applied,
       consultedUnverified: side?.consultedUnverified ?? true,
+      ...(side ? { verification: { readonly: side.verification.readonly, path: side.verification.path } } : {}),
       heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model),
     });
 
@@ -999,6 +1011,26 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
           commands: verdict.sides[c]!.peerCommandHits,
         }]),
     ),
+    /*
+     * 两条核验通道的降级档位（§11.1，M8 第 2 步）——留痕五面里的第一面。
+     *
+     * 三态与 `peer_leak_via_command` 同构地落在**结构**上：整个字段缺失 = 该次运行
+     * 早于本次接线；某侧的键缺失 = 那一侧失败/超时、根本没判过；值 = 该侧的实际档位。
+     * `evidence_threshold` 记本次生效的项目读取下限：`command-trace` 族折减过，
+     * 不记的话同一个读数在两族间一过一不过，复盘时看起来像 bug。
+     */
+    verification_degraded: Object.fromEntries(
+      sides
+        .filter((c) => verdict.sides[c] !== undefined)
+        .map((c) => [c, {
+          readonly: verdict.sides[c]!.verification.readonly,
+          path: verdict.sides[c]!.verification.path,
+          evidence_threshold: verdict.sides[c]!.verification.evidenceThreshold,
+        }]),
+    ),
+    ...(verdict.unattributedDriftFiles.length > 0
+      ? { unattributed_drift_files: verdict.unattributedDriftFiles }
+      : {}),
   };
   for (const c of sides) {
     const r = results[c];

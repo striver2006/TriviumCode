@@ -1,0 +1,113 @@
+{
+  "agreed": [
+    "静态能力声明 TraceCapability 挂载在 CriticAdapter 上的架构已落地，既有两侧 TOOL_TRACE_CAPABILITY 保持等价。",
+    "归因分流从 sides 改为从 input.capabilities 计算，成功解决了不可用侧超时导致归因反转（将审查员失守归因成开发者手改）的恶劣边界。",
+    "上一轮反例中 fd 重定向（2> / 2>>）、动词 basename 取值（/bin/cp）、版本区间过滤（v1.3.8..v1.3.9）及 ~ 展开均已修复并补齐回归断言。",
+    "新增了跨进程的端到端集成测试 command-trace.test.ts，填补了全仓此前零集成测试的空白。"
+  ],
+  "consulted": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/08_project/BACKLOG.md",
+    "skills/dual-critic/schema/run.v2.json",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/review.ts",
+    "src/trivium/report.ts",
+    "src/trivium/types.ts",
+    "src/trivium/render.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/adapters/zcode.ts",
+    "test/integration/command-trace.test.ts",
+    "test/unit/guard-capability.test.ts",
+    "test/unit/adapter-base.test.ts",
+    "test/unit/report.test.ts",
+    "test/unit/render.test.ts",
+    "test/unit/runner.test.ts",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r6-response-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/adapters/base.ts:390-395 使用正则 cmd.replace(/(['\"`])([\\s\\S]*?)\\1/g, ...) 脱引号，对不含空格者直接原样放回文本，随后在 395 行以 split(/\\|\\||&&|[|;()]/) 切分命令段。实测：输入 'grep -e \\'|\\' src/a.ts' 时，命令被 '|' 切成两段，第二段仅剩 ['src/a.ts']，在 329 行被当成动词执行 skip.add(0) 吞掉，返回空数组；输入 'sed -i \\'s/|/x/\\' src/a.ts' 时，第二段动词丢失，写目标 src/a.ts 反被当成读取路径提取。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/adapters/base.ts:390-398",
+      "problem": "extractPathTokens 对无空格引号段直接脱壳并全局分段，导致引号内的管道与分号等控制符击穿保护并切碎命令，不仅使紧随其后的真实路径因被视为段首动词而漏判，更使写动词（如 sed -i）上下文丢失从而把写目标虚构成读取证据。",
+      "severity": "major",
+      "suggestion": "命令切段必须在引号感知（quote-aware）下进行，或在切段前对引号内的 shell 控制符进行保护性占位替换，不得在脱壳后直接用全局正则分割分段。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/report.ts 第 255-258 行已经在 drift.changed 块中将 unattributed 合并展示（如「漂移 2 个文件（warn，其中 2 个无法归因）」）；但在 285-289 行仍保留了独立的 if ((meta.guard.unattributed_drift_files ?? []).length > 0) base.guardFlags.push(`其中 ${meta.guard.unattributed_drift_files!.length} 个**无法归因**...`)。两者同时被 push 进 base.guardFlags，同屏双重输出。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/report.ts:255-258, 285-289",
+      "problem": "report.ts 漂移旗标合并展示后未删除原有的单独推送逻辑，导致无法归因漂移条目被重复计数并同屏展示两条。",
+      "severity": "minor",
+      "suggestion": "删除 report.ts 第 285-289 行的独立 push 逻辑，仅保留第 255-258 行合并后的展示文案。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/guard.ts:328-331: attributedToBreach 使用 breachedAll.some((ev) => ev.includes(f))。f 是相对路径（如 data.ts），若写事件包含 metadata.ts（write_file(/proj/src/metadata.ts)），ev.includes(\"data.ts\") 为 true，导致无辜手改文件被从 unattributed 扣除且不进 fingerprintChangedFiles，产生记录丢失；同时若写事件路径被截断（如 slice(0, 80)）或工作目录为子目录，ev.includes(\"src/a.ts\") 又会漏扣。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/guard.ts:328-331",
+      "problem": "attributedToBreach 采用纯子串 includes 匹配事件描述串，缺乏路径边界界定，存在将短文件名误扣（如 data.ts 匹配 metadata.ts）以及长路径截断漏扣的风险。",
+      "severity": "minor",
+      "suggestion": "将 f 转为绝对路径并对路径边界（/ 或行首尾）进行界定，或从 ev 中正则抽取路径 token 归一化后再做精确集合比对。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "test/integration/command-trace.test.ts 声明测试留痕，但全文仅有用例覆盖第一面（run.json）、第二面（front-matter）、第三面（正文横幅）和第五面（CLI 告警），完全没有调用 buildTopicReport 或断言第四面（复盘报告 guardFlags）；且用例 4（lines 156-168）对正文横幅只断言了 gemini 侧含有，未对 glm 侧进行 doesNotMatch 的反向断言。",
+      "id": "AGY-04",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/integration/command-trace.test.ts:156-168",
+      "problem": "command-trace.test.ts 漏掉了五面留痕中的第四面（复盘报告 guardFlags）断言，且正文横幅测试缺少未降级侧的反向断言。",
+      "severity": "minor",
+      "suggestion": "在集成测试中补上调用复盘报告渲染并核验 guardFlags 的断言，并在用例 4 中补齐对 glm 审查文档的正文反向断言。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "test/integration/command-trace.test.ts:91-106 仅断言 meta.critics.gemini?.evidence_ok === true。桩中命令包含写目标排除与逃逸相对排除，预期 project_reads 应为精确的 6；仅断言布尔值 evidence_ok 无法在写目标未排除（变成 7）或过度排除（变成 5）时报错，未能咬住承诺的排除口径。",
+      "id": "AGY-05",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/integration/command-trace.test.ts:91-106",
+      "problem": "command-trace.test.ts 未断言有效读取路径的精准计数值，导致桩中关于写动词与逃逸相对排除的断言出现假阳性放行。",
+      "severity": "minor",
+      "suggestion": "增加对 meta.critics.gemini.tool_calls.project_reads 的确切数值断言。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "test/integration/command-trace.test.ts 中的 5 个用例（行 95, 112, 136, 160, 174）各自独立调用一次 runCommandTrace()，重复执行 5 次完整的临时 Git 仓库初始化、进程派生与多轮 wait 轮询，累计派生 15+ 次子进程。",
+      "id": "AGY-06",
+      "kind": "performance",
+      "layer": "code",
+      "location": "test/integration/command-trace.test.ts:91-189",
+      "problem": "runCommandTrace 每个用例都重跑一次完整流水线带来了不必要的执行开销和片状超时风险。",
+      "severity": "nit",
+      "suggestion": "在 test.before 钩子中执行一次 runCommandTrace()，产物供 5 个用例共享断言。"
+    }
+  ],
+  "not_covered": [
+    "未在非 macOS 环境测试 shell 命令分段行为（项目基准为 macOS）",
+    "未覆盖 find -exec、xargs 等极深层嵌套的高级命令拼装形态"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本次复审聚焦 r6 修复后的完整补丁。最严重的问题在于 extractPathTokens 在脱引号后直接使用正则全局分段，导致引号内的控制符（如 grep '|' 或 sed 's/|/x/'）击穿引号打碎命令，使得后续路径变成段首动词被无条件吞掉（真实读取漏判），或者使写动词上下文丢失从而将写目标虚构成读取证据；此外，report.ts 存在复盘告警重复计数的遗留代码，guard.ts 的 breachEvidence includes 匹配缺乏路径边界判定存在误扣风险，集成测试亦漏测了第四面留痕且每个用例重复启动流水线开销过大。整体判定为 request-changes。",
+  "verdict": "request-changes"
+}

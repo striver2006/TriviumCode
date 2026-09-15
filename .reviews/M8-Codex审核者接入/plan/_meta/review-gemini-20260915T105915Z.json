@@ -1,0 +1,109 @@
+{
+  "agreed": [
+    "赞成 §0.2 将单字段调整为双通道结构化对象（verification_degraded: { critic: { readonly, path } }）：相较于散落的独立布尔，结构化对象可良好适配两通道降级，与 peer_leak_via_command 风格同构，且保持了三态不塌缩的契约性质。",
+    "赞成 §2.4 对 readonlyBreach 判定的修正：将 write_events.length > 0 统一作为只读失守的真阳性判定，而将 rejectionRecorded: false 严格限定为阴性结果的可信度修饰，彻底纠正了 r2 的 blocker 缺陷。",
+    "赞成 §1 的五处消费方盘点：经全仓 grep 验证，tool_calls、read_paths、write_events、command_texts 在判定层与报告层的直接消费方已完全穷尽，不存在第六处消费点。",
+    "赞成 §2.2 中对 HEAD:<path> 的提取与通配符 * 不展开/不计数的裁定：判定层保持纯计算、不做额外文件系统 I/O 符合项目一贯的确定性防线原则。",
+    "赞成将 TraceCapability 挂载在 CriticAdapter 上并由桩适配器动态声明，有效消解了静态注册表在 criticEnabled: false 下无法测试非结构化轨迹形态的逻辑死锁。"
+  ],
+  "consulted": [
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r3-claude.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r2-revised-claude.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-revised-claude.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r2-gemini.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/report.ts",
+    "src/trivium/render.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/types.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/adapters/stub.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/fixtures/codex-events/README.md",
+    "test/fixtures/codex-events/read-sentinel.jsonl",
+    "test/fixtures/codex-events/readonly-denied.jsonl",
+    "test/unit/codex-events.test.ts",
+    "test/unit/adapter-base.test.ts",
+    "CLAUDE.md",
+    "AGENTS.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "阅读 test/fixtures/codex-events/read-sentinel.jsonl 第 4-5 行与 test/fixtures/codex-events/README.md 第 25-28 行：codex 执行命令格式为 `/bin/zsh -lc 'head -n 1 /tmp/.../sentinel.txt'`，整条命令包含在单引号内。若按 plan §2.2「引号包裹的整体算一个 token」，整段子命令将成为单一 token，无法提取出路径；同时对照 src/trivium/adapters/base.ts:533-552 与 test/unit/adapter-base.test.ts:26：措施 b 中相对路径在 spellingsOf 下默认基于 projectRoot 归一比对，prefixIsOnlyDotHops 仅用于处理携带 `../` 的逃逸前缀，而非将所有相对路径因「cwd 不可知」全部排除。plan §2.2 与 §4.2 规定「相对路径 cwd 不可知保守不计入」，将导致常规 review 命令（如 `cat src/foo.ts`）在 codex 侧完全无法计入 project_reads，导致 AC-11 永久误报。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §2.2 与 §4.2",
+      "problem": "§2.2 的两项路径提取口径（「引号包裹的整体算一个 token」与「相对路径 cwd 不可知保守不计入」）存在致命逻辑缺陷，在真实 Codex 轨迹与常规审查命令下会导致 project_reads 恒为 0。",
+      "severity": "blocker",
+      "suggestion": "明确在提取路径前先解包 `/bin/(zsh|bash|sh) -[a-zA-Z]*c '...'` 子 shell 封装；常规相对路径（不含逃逸 `../`）按 project_root 归一化并计入项目读取，仅当路径逃出项目根时排除。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 .reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r2-revised-claude.md §1.1：作者明确承诺「readonlyVerificationUnavailable=true 的侧发生指纹变化时，归因不得直接走『开发者手改』分支，而应标注为无法归因」。但在 r3 稿中，§2.4 仅复述该结论，§5 #4 却承认「具体落到 RunVerdict 的哪个字段、fingerprintChangedFiles 是否要拆，本稿没写死」；改动清单 §3 与 skills/dual-critic/schema/run.v2.json 均未设计「无法归因」字段；§4.2 却列出用例断言「不判开发者手改」。对照 src/trivium/guard.ts:122-123 与 200-210，当前代码中「开发者手改」仅是一行注释，没有任何状态字段承载归因分类。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §2.4 与 §5 #4",
+      "problem": "§2.4 与 §5 #4 对 r2 GLM-02 裁决件承诺的「漂移归因链连带修正」未完成数据结构与契约设计，留下未决留白，无法落实「不直接判开发者手改、标注为无法归因并进留痕」。",
+      "severity": "major",
+      "suggestion": "在 RunVerdict 中补齐归因状态字段（例如为 drift 增加 attribution 枚举或在 RunVerdict 中明确 unattributedDriftFiles），写明其在 run.v2.json、report.ts 与 CLI 告警中的落点。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 plan §2.2 第 3 条、§2.5 与 skills/dual-critic/schema/run.v2.json：作者在 §2.2 声称「具体阈值在实现时按样本实测定，并把『该族阈值与两家不同』写进留痕」。但 test/fixtures/codex-events/read-sentinel.jsonl 仅是探针单次读取哨兵的 fixture，根本不能用于实测标定审查全过程的阈值；更严重的是，§2.5（留痕五面 × 两通道）与 schema 均未为「阈值不同」设计任何留痕通道；且配置接口 CriticRequest / Config 中均无对应分族阈值字段。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §2.2 与 §2.5",
+      "problem": "min_project_reads 取「单独阈值」的决策存在推迟决策与留痕缺口：阈值具体值被后推至实现时，且承诺的「该族阈值与两家不同写进留痕」在 §2.5、schema 与改动清单中零落点。",
+      "severity": "major",
+      "suggestion": "在计划中明确该阈值的取值或派生机制（如 TraceCapability 或 CriticRequest 中声明），并在 §2.5 中补齐该留痕在各面的具体承载方式。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "阅读 plan §2.2 表格第 4 行与 §4.2 单测表格：作者规定「写命令提到的路径（`echo > f`）不计入 project_reads」。但在缺少 shell 语法解析的情况下，按空白或元字符切分 token 无法分辨 token 是输入还是输出（如 `grep pattern file > out`）。若未给出可执行的简化语法判定，实施时极易发生语义分歧或过度复杂化。",
+      "id": "AGY-04",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §2.2",
+      "problem": "「写命令提到的路径不计入 project_reads」缺乏可执行的判定启发式规范，仅凭 `echo > f` 示例无法清晰界定语法边界。",
+      "severity": "minor",
+      "suggestion": "明确该口径的具体简化启发式（例如：明确仅将输出重定向符号 `>`、`>>` 右侧紧邻的 token 排除为写目标），避免引入复杂的 shell 语法分析。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "比对 .reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r2-revised-claude.md §0.2 裁决表与 r3 §0.1 对账表：r2 中裁定的 AGY-04（criticEnabled=false 下桩测试不可跑，挂载点回到 CriticAdapter）、GLM-03（恢复五面留痕）、GLM-06（四组未决口径写死）在 §0.1 表中未列入来源索引，对账覆盖不完整。",
+      "id": "AGY-05",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §0.1",
+      "problem": "§0.1 对账表遗漏了 r2 裁决表中的多项条目索引（如 AGY-04、GLM-03、GLM-06 等），未达成硬前置的逐条对账要求。",
+      "severity": "minor",
+      "suggestion": "在 §0.1 对账表中补齐 r2 裁决表全部对应条目的显式映射行。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 src/trivium/guard.ts:129-144 与 src/trivium/review.ts:852：JudgeRunInput 仅包含 cfg, projectRoot, results, reviews, requests 等，不包含 adapters 或 capabilities。而 capabilities 的唯一起源在 review.ts 的 ctx.adapters。plan §3 仅说明「guard.ts: judgeSide 取 capability」，未说明 JudgeRunInput 的接口变更与 review.ts 调用点的传参变更。",
+      "id": "AGY-06",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §3 改动清单",
+      "problem": "§3 改动清单遗漏了 JudgeRunInput 签名更新，导致 judgeRun 无法从 review.ts 获取 TraceCapability 传递给 judgeSide。",
+      "severity": "minor",
+      "suggestion": "在 §3 改动清单中明确将 capabilities 加入 JudgeRunInput 并在 review.ts:852 调用点透传。"
+    }
+  ],
+  "not_covered": [
+    "未覆盖第三方真实 API（如 OpenAI / DeepSeek / Qwen）在线调用的实际网络耗时与额度消耗。",
+    "未覆盖 macOS 以外操作系统在 shell 子进程启动及环境变量继承上的细微差异。",
+    "未覆盖 M9（Claude 审核者接入）后续里程碑的具体实现细节。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最危险问题在 §2.2 与 §4.2：路径提取口径「引号包裹算一个 token」与「相对路径 cwd 不可知保守不计入」存在致命逻辑缺陷，在真实 Codex 轨迹（/bin/zsh -lc '...' 外层单引号封装）与常规相对路径命令下将导致提取路径恒为 0，AC-11 永久误报。\n此外，§2.4 与 §5 #4 对 r2 GLM-02 承诺的「漂移归因链」未完成数据模型设计，承认留白；§2.2 的 min_project_reads 单独阈值决策被后推至实现时，且留痕承诺在 §2.5 零落点；§0.1 对账表遗漏了 r2 多项裁决索引。\n总体裁决为 request-changes。",
+  "verdict": "request-changes"
+}

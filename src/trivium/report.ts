@@ -246,13 +246,57 @@ async function buildRound(
   if (meta.guard.peer_artifact_read) base.guardFlags.push('读到对方产出');
   if (meta.guard.forged_role_file) base.guardFlags.push('角色后缀伪造');
   if (meta.snapshot.drift.changed) {
-    base.guardFlags.push(`漂移 ${meta.snapshot.drift.files.length} 个文件（${meta.snapshot.drift.policy}）`);
+    /*
+     * 两个桶合并展示。归因分流激活时 `drift.files` 恒空（**扣除确诊失守后的余批**
+     * 移进了 `unattributed_drift_files`），单看这一行会打出「漂移 0 个文件」，
+     * 而同屏还有「N 个无法归因」——并排读起来像计数 bug，
+     * 正是本步在 `evidence_threshold` 上专门防过的那类人读陷阱（r6 双审 GLM-08）。
+     */
+    const un = (meta.guard.unattributed_drift_files ?? []).length;
+    const shown = meta.snapshot.drift.files.length + un;
+    const suffix = un > 0 ? `，其中 ${un} 个无法归因` : '';
+    /*
+     * `shown === 0` 时不推这一行：全部漂移文件都已确诊失守（被 `attributedToBreach`
+     * 扣除）时两个桶都空，而 `drift.changed` 仍为真——照推就会打出
+     * 「漂移 0 个文件（warn）」，与同屏的「只读失守」旗标并排，是纯噪音（r8 AGY-01）。
+     * 那种情形下失守旗标已经把事说清了。
+     */
+    if (shown > 0) {
+      base.guardFlags.push(`漂移 ${shown} 个文件（${meta.snapshot.drift.policy}${suffix}）`);
+    }
   }
   for (const c of Object.keys(meta.guard.peer_deny_applied) as CriticId[]) {
     if (meta.guard.peer_deny_applied[c] === false) {
       base.guardFlags.push(`${c} 侧路径级 deny 未生效（第 ③ 道屏蔽降级）`);
     }
   }
+
+  /*
+   * 两条核验通道的降级（§11.1，M8 第 2 步）——留痕五面里的复盘面。
+   *
+   * 与上面的「路径级 deny 未生效」同格式但**不是同一件事**：那条说的是 CLI 级
+   * 拦截有没有注入生效，这两条说的是事后轨迹核验有没有能力/输入去核验。
+   */
+  const degraded = meta.guard.verification_degraded ?? {};
+  for (const c of Object.keys(degraded) as CriticId[]) {
+    const d = degraded[c];
+    if (!d) continue;
+    if (d.readonly === 'unavailable') {
+      base.guardFlags.push(
+        `${c} 侧只读核验不可用（被拒的写不留痕，只读保障从三重降到两重，指纹比对仍有效）`,
+      );
+    }
+    if (d.path === 'unavailable') {
+      base.guardFlags.push(`${c} 侧路径核验无结构化输入（措施 a 无通道，deny 核验只剩措施 b）`);
+    }
+  }
+  /*
+   * 「无法归因」**只在上面的漂移行内以 suffix 展示**，这里不再单独推一条。
+   *
+   * 两条并存时数值并不重复计数（`shown` 已把两个桶相加），但同一信息在
+   * `guardFlags` 里并排出现两次，正是 r6 GLM-08 要防的那类人读噪音——
+   * 它在 r7 复审里又被两侧同时抓到（AGY-02 ≡ GLM-03）。
+   */
 
   const disp = await loadDisposition(layout, stage, rerunIndex, notes);
   if (disp) {

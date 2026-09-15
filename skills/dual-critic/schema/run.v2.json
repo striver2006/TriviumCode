@@ -90,6 +90,25 @@
               "commands": { "type": "array", "items": { "type": "string" } }
             }
           }
+        },
+        "verification_degraded": {
+          "type": "object",
+          "description": "两条核验通道的降级档位与本次生效的证据阈值，**逐审核者**（键是 Agent id，与 critics 同构）。【已实现 · M8 第 2 步】`readonly`=unavailable 表示该侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守——**它记的是能力恒态，与本次是否检出写事件无关**：真阳性由 readonly_breach 表达，两者正交，档位为 unavailable 的侧一样可能 readonly_breach=true（写命令成功执行、照常留痕）。`path`=unavailable 表示该侧读取路径只存在于命令文本里、措施 a（读取路径比对 deny）无结构化输入可扫，deny 核验完全由措施 b 承担。`evidence_threshold` 记本次生效的 min_project_reads——command-trace 族按折减系数下调，不记的话同一个读数在两族间一过一不过会像 bug。三态落在结构上：整个字段缺失=该次运行早于 M8 第 2 步；字段在而某侧的键缺失=**那一侧没判过**（失败/超时被 judgeRun 跳过）；值=该侧实际档位。注意 path=unavailable 与既有的 peer_deny_applied=false 是两件事：后者说的是 CLI 级路径拦截是否注入生效（第 ③ 道 (c) 层），前者说的是事后轨迹核验有没有输入可扫",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["readonly", "path", "evidence_threshold"],
+            "additionalProperties": false,
+            "properties": {
+              "readonly": { "enum": ["ok", "unavailable"] },
+              "path": { "enum": ["ok", "unavailable"] },
+              "evidence_threshold": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "unattributed_drift_files": {
+          "type": "array",
+          "description": "指纹变化但**无法归因**的文件（§9.2 第 4 步 + §11.1）。【已实现 · M8 第 2 步】只在本轮有侧的 readonly 档位为 unavailable 时出现：「指纹变了但轨迹无写事件 ⇒ 开发者手改」这条推理的前提是轨迹能证明审查员没写，而该侧被拒的写不留痕，无写事件排除不了审查员写过。既不判失守（无正向证据）也不判开发者手改（阴性证据不可信），与 fingerprint 的已归因结论分开记——混进去等于用更强的断言掩盖证据缺口。字段缺失或空数组 = 无此情形",
+          "items": { "type": "string" }
         }
       }
     },
