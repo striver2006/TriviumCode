@@ -12,6 +12,7 @@
  * 注册表回答**身份**，本表回答**由谁执行**。
  */
 import { agyAdapter } from './agy.js';
+import { codexAdapter } from './codex.js';
 import { zcodeAdapter } from './zcode.js';
 import type { AdapterTable } from './base.js';
 import { CRITIC_AGENT_IDS, agentById } from '../agents/registry.js';
@@ -24,6 +25,7 @@ import { CRITIC_AGENT_IDS, agentById } from '../agents/registry.js';
  * 由下面的 `realAdapters()` 在启动时响亮报出，而不是等运行到一半才 undefined。
  */
 const WIRED: AdapterTable = {
+  codex: codexAdapter,
   gemini: agyAdapter,
   glm: zcodeAdapter,
 };

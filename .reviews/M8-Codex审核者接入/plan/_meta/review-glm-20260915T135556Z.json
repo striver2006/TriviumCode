@@ -1,0 +1,169 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一条在 §3.3：计划指定「写动词的识别复用 WRITE_VERB_TARGET 那张表的动词集」，而那张表的键含 cd/pushd/rm/chmod 等本就不是写动词的条目——cd 在只读沙箱下恒成功，审查员第一次跑 `cd src && grep …` 就会以「写动词 + exit 0」进 write_events，guard.ts:136 直接判「只读失守」、整侧作废；`mkdir -p <已存在>`、`rm -f <不存在>` 与 `|| true` 掩码是同类第三种解释，而 §6 测试计划没有一条误报方向的用例或变异（GLM-01/02）。其余重点：沙箱「全域拒写」只在 cwd 验过、/tmp 未证且「项目外写入算不算失守」未拍板（GLM-03）；§5.2 漏了 preflight 第四处按厂商分派点 checkModelAgainstCatalog，codex slug 将恒「无法校验」且文案失实（GLM-04）；`-p` 取值与「模型所属家族」的解析规则两处共用一份未写的映射（GLM-05）；checkReadonlyCapability 加 codex 分支与 §3.2「不动判定层」的自标准相抵，availability() 泛化路径已在库内（GLM-06）——§8 的 U 表相应缺这两行。F-1～F-4 四组新实测与仓库证据全部吻合、处置方向正确；D-1/D-2/D-3 的拍板理由均成立，D-3 的窗口论证我支持。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.3（对应 src/trivium/adapters/base.ts:274-293、src/trivium/guard.ts:136）",
+      "problem": "「status completed + exit_code 0 + 命令形态为写类 ⇒ 沙箱失守」的推理链至少有三种第三种解释，且第一种几乎必然触发：(a) §3.3 明写「写动词的识别复用措施 b 已有的资产（WRITE_VERB_TARGET 那张表的动词集）」，但那张表的键集混着四类条目——写入点（cp/mv/install/tee）、链接（ln）、目录目标（cd/mkdir/rmdir/touch/pushd）、非读取动词（rm/chmod/chown），后两类不是写动词：cd/pushd 是纯目录切换、无写系统调用，在只读沙箱下恒成功。审查员第一次 `cd src/trivium && grep …` 就会以「写动词 + exit 0」进 write_events。(b) 幂等空操作：`mkdir -p <已存在>` 不发写调用即退 0，`rm -f <不存在>` 按 POSIX 退 0——写动词在场、成功退出，但没有任何写入发生。(c) 失败掩码：`touch x || true`、`; true`、未执行的条件分支——整条命令的 exit 0 不代表写子命令成功，「未被拒则退非零码」只对单条简单命令成立。而 guard.ts:136 是 `write_events.length > 0` 即 readonlyBreach、无分级，误报直接坐实「只读失守」指控（代价按 §3.3 自己的表述是整侧作废）。「误报面极小」的结论不成立。",
+      "evidence": "src/trivium/adapters/base.ts:274-293（WRITE_VERB_TARGET 全键集，注释自证混着「目录目标」「非读取动词」两类非写入条目）；src/trivium/guard.ts:136-137（readonlyBreach = result.write_events.length > 0）与 guard.ts:375-381（「只读失守」告警文案、不自动回滚要人工核对）；被审计划 §3.3 原文「复用…那张表的动词集…不新起一张表」；src/trivium/probes/codex.ts:637-652（负对照唯一形态：cwd 创建 breach.txt——§3.3 推理链的实测基础只覆盖这一种）",
+      "suggestion": "§3.3 改为显式定义「写动词集」为该表键集的真子集（至少剔除 cd/pushd/ln，并单列 mkdir -p / rm -f 的幂等形态）；区分「整条命令 exit 0」与「写段成功」——按段判定，或对含 `||`/`;` 掩码结构的命中降级为「待人工核实」档而非直接失守；判定语义改动同步落进 §6 用例。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §6.1 codex-trace 行 / §6.2 变异表",
+      "problem": "测试计划全部是漏报方向：四条变异（M1 能力错声明、M2 旗标缺失、M3 白名单放行、M4 requested 冒充）没有一条守误报方向，§6.1 codex-trace 行也只写「事件解析 → command_texts / write_events」。而 §3.3 自己声明两种错法代价不对称、误判成写 ⇒ 整侧作废——恰好是代价更高的那个方向没有用例。GLM-01 列出的 `cd x && ls`、`mkdir -p <已存在>`、`touch x || true` 形态若不进用例，实现期发现不了，第一次暴露在第 4 步真机上。",
+      "evidence": "被审计划 §6.1 表 codex-trace 行与 §6.2 四条变异的逐条方向；skills/dual-critic/lenses.yaml:35（glm code 镜头明载「这条测试要怎样才会失败——如果它永远通过，它没有价值」）；src/trivium/guard.ts:136（误报的落点是安全指控，不是普通断言）",
+      "suggestion": "§6.1 补负断言用例：上述三类形态不得产生 write_events（或按 GLM-01 的分级只产生「疑似」档）；§6.2 补一条变异（如把 cd 加进写动词集必须红），与 M1-M4 同等对待。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.3 / §9.1（对应 src/trivium/probes/codex.ts:637-652）",
+      "problem": "「只读模式下写命令跑不成」的全域性没有实测支撑：负对照只让模型在被审 fixture 的 cwd 创建 breach.txt，/tmp、$TMPDIR、runDir 副本路径的写行为从未探过。若该版本沙箱对临时目录放行（seatbelt 族配置常见做法），一条写到 /tmp 的成功命令就会以「写动词 + exit 0」进 write_events——而「项目外路径的成功写入」算不算只读失守，计划没有口径（§9.1 自己提出了这个问题但未裁决）。这条该进 §8 的 U 表而目前只有 U3 笼统覆盖「误报面极小」。",
+      "evidence": "src/trivium/probes/codex.ts:637-652（负对照唯一形态：'请在当前目录创建文件 breach.txt'）；probes/codex.ts:651（readonly_flags 只记 ['-s','read-only']）；被审计划 §8 U3（自认推理未实测）与 §9.1（提出 /tmp 问题、未给答案）",
+      "suggestion": "把「cwd 之外路径（至少 /tmp 与 $TMPDIR）是否拒写」并进 U1 那次开工实测——同一次最小 exec 可带一条 /tmp 写探针，近零额外配额；并在计划里拍板「项目外写入」进 readonlyBreach 还是单独一档（进 guard 分级），不留到第 4 步真机撞上再裁。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §5.2 preflight 行（对应 src/trivium/preflight.ts:349-376）",
+      "problem": "§5.2 只登记了 EV-05 的三项（探活、checkReadonlyCapability、provider 家族校验），漏了 preflight 里第四处按厂商分派点：checkModelAgainstCatalog 只有 antigravity / zcode 两个分支，其余 vendor 落「unverifiable：厂商 … 没有模型目录探针」。codex 翻开关后两个后果：该文案对 codex 失实（CodexProbe 继承 CommonProbe.models，目录字段明明存在，只是分支不消费）；slug 校验静默缺失——探针实测 codex 不校验 model 是否在目录里，拼错 slug 预检不拦、运行中段静默失败烧配额，与 S2「诊断有确定结论」相抵。",
+      "evidence": "src/trivium/preflight.ts:349-376（antigravity/zcode 两分支 + 第 375 行 unverifiable 兜底文案）；src/trivium/types.ts:216-235（CodexProbe extends CommonProbe，models 在共有面）；src/trivium/probes/codex.ts:355-360（实测「codex 不校验 model 是否在目录里…静默失败」的原文）；被审计划 §5.2 表 preflight 行仅列三项",
+      "suggestion": "把这一处补进 §5.2 清单：加 openai 分支比对本家 models 目录，或把兜底改成按 cliName 通用消费 CommonProbe.models（零厂商分支，与第 2 步泛化同向）；顺带修兜底文案。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3.1 argv 形态 / §3.5 / §5.1 ⑥⑦",
+      "problem": "两处关键机制共用一份没写的映射：① buildCodexArgs 的 `[-p <profile>]` 取值来源未定——⑥ 只加 profiles.{default,flash}.codex（模型 slug），⑦ 的 CodexCriticConfig 字段集未定义，profile 由配置显式给还是从模型反查没有裁定；② §3.5 预检要判「本次模型所属家族未配置」，但「模型 slug → 家族」的解析规则无任何机制（按 slug 前缀猜会随目录命名漂移）。而 unknown_profile_rejected 实测为 false——映射错一次就是静默回落基底，恰是 §3.5 自己要防的事故。S2「逐家族结论」与 S3 的可测性都悬在这条规则上，§8 的 U 表也没有这一行。",
+      "evidence": "被审计划 §3.1（argv `[-p <profile>]` 方括号无来源说明）、§5.1 ⑥/⑦ 两行（配置面只有 slug 与「加 CodexCriticConfig」）、§3.5（「其本次模型所属家族」无解析规则）；.reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-claude.md:187（总计划也只有「逐家族探活」枚举、无映射机制）；src/trivium/probes/codex.ts:720-736（unknown_profile_rejected=false 的实测出处）",
+      "suggestion": "在计划里钉死单一来源：profile 由 CodexCriticConfig 显式配置（与 agents.gemini.agent 同位），或由探针结论反查「哪个 profile 的目录含该 slug」；§3.5 的家族判定复用同一条规则，避免两套映射各自漂移。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §5.2 checkReadonlyCapability 行（对应 src/trivium/preflight.ts:379-400、src/trivium/adapters/zcode.ts:192-228）",
+      "problem": "这一条是对任务书问题 6 的正面反例：checkReadonlyCapability 加 codex 判据后，「该侧只读能力是否可用」将有六个判定位（preflight 三分支 + 三家适配器 availability()），且 preflight 版是弱化版（不查 zcode 的 --disallowed-tools 硬前置）。泛化路径已在库内——base.ts 的 CriticAdapter.availability() 契约加 adapters/index.ts 的 realAdapters()（缺接线响亮报错），preflight 遍历调用即可，codex 侧零 preflight 改动。更重的是它与 §3.2 自己立的标准直接冲突：「若本步发现判定层仍需为 codex 改动，那是第 2 步泛化不彻底的证据，要如实记」——这一条就是该如实记的证据，不该按「固有成本」入表。",
+      "evidence": "src/trivium/preflight.ts:379-400（写死 zcode readonly_flags + agy agent.md 路径，无 --disallowed-tools 前置检查）；src/trivium/adapters/zcode.ts:199-218（availability 里更严的同主题判据，含 --disallowed-tools 硬前置——同一事实两处判据已经分叉）；src/trivium/adapters/agy.ts:185-215（同契约）；src/trivium/adapters/base.ts:61-68（availability 契约）；src/trivium/adapters/index.ts:39-59（realAdapters 的对齐报错）；被审计划 §3.2 与 §5.2",
+      "suggestion": "二选一并写进计划：本步把 checkReadonlyCapability 改为遍历 realAdapters() 调 availability()（探活项维持独立实现）；或在 §5.2 写明为什么不用 availability()——把「固有成本」的论证补齐，第 4 步回填 FR-31/EV-05 时才有据可查。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §3.4 / F-3 处置",
+      "problem": "白名单方向本身正确（泄漏不可见、功能丢失可见，安全上取白名单对），但「新版本把模型配置挪新段 ⇒ 静默丢功能」这个自认风险没有任何可见性机制兜底：剥离动作不留痕。已知会掉的键有现成例子——model_verbosity / model_context_window / model_max_output_tokens 这类模型相关顶层键都不在白名单四键里，本机没配不等于别的机器没配。同一次 prepareCodexHome 里，F-2 的 `~` 重写有「命中项逐条留痕」，剥离却没有，两套处置的留痕口径不一致。",
+      "evidence": "被审计划 §3.4/F-3（白名单仅 model / model_provider / model_reasoning_effort / model_catalog_json + [model_providers.*]；~ 重写段有留痕承诺）；§9.2 自认「白名单会静默丢功能」",
+      "suggestion": "prepareCodexHome 对被剥离的键/段同样逐条留痕进运行元数据（与 ~ 重写同一套口径），doctor/S4 输出可点名「副本丢弃了这些键」——把静默丢功能变成有痕丢功能，白名单取舍即可维持。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-08",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.4（F-2 处置）",
+      "problem": "「扫描并重写所有 ~/ 前缀值 + 把指向的文件一并拷进副本」有两处未写明的边界：① 顺序——必须先按 F-3 白名单裁剪、再对幸存键重写；若实现先全文件重写再裁剪，会为已剥掉的段（如 notify 的 ~/.codex/notify.sh）把目标文件也拷进副本，白扩敏感面。§3.4 的步骤编号暗示了顺序但没写成硬性规定。② 拷贝物口径——「一并拷进副本」的文件清单进不进留痕、J9 扫描（D-3 若通过）认不认得这些新增拷贝物，计划未写；§1.3 只提 auth.json 与 config.toml 两种形态。",
+      "evidence": "被审计划 §3.4 步骤 2/3（裁剪与重写的先后仅由编号暗示）；F-2 处置段「凡副本配置里以 ~/ 开头的值都会…重写…并把它指向的文件一并拷进副本」未限定幸存键；§1.3 D-3 的凭据形态枚举",
+      "suggestion": "§3.4 写死「裁剪 → 重写 → 拷贝」顺序与「重写只作用于白名单幸存键、判定取字符串值且以 ~/ 开头」；拷贝物清单进留痕；若 D-3 通过，J9 规则面覆盖副本内全部新增文件而非枚举两种。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-09",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §5.2 secrets.ts 行（对应 test/unit/registry-parity.test.ts:141-174）",
+      "problem": "给 secrets.ts 加「codex 凭据形态」会撞上 registry-parity 的字面量对账：secrets.ts 不在 LITERAL_ALLOWLIST，而 codex 的 cliName 恰等于自己的 AgentId——probes/codex.ts 那条豁免的理由原文就预言了这种撞名（「codex 与 claude 的 cliName 恰好等于自己的 AgentId，于是同形的写法会命中」）。规则名或注释里出现 'codex' 字样即红。可解（按凭据形态命名，或加豁免），但这是 §5.2 清单之外一笔实打实的成本，该入账——尤其这张表自称「如实登记」。",
+      "evidence": "test/unit/registry-parity.test.ts:141-174（LITERAL_ALLOWLIST 无 secrets.ts；probes/codex.ts 豁免条目明写 cliName==AgentId 的撞名不对称）；src/trivium/secrets.ts:50-96（现有规则名 zcode-api-key/anthropic-key/openai-key——'zcode' 是 cliName 非 AgentId，故现状不命中，codex 无此侥幸）",
+      "suggestion": "§5.2 secrets.ts 行补一句裁定：规则按凭据形态命名（避开 AgentId 字面），或如实新增 LITERAL_ALLOWLIST 豁免并写理由——后者要在第 4 步回填时如实计入 FR-31 反证。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-10",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §5.3（对应 skills/dual-critic/lenses.yaml）",
+      "problem": "提议的九条镜头里三条与既有两侧字面重合：plan 的「可回滚性」↔ gemini plan 的「迁移方案、回滚路径」；code 的「对既有调用方的兼容性」↔ gemini code 的「跨模块依赖与破坏性变更：谁会被这次改动打断」；bug 的「能否在干净环境复现」↔ glm bug 的「复现是否充分：步骤、环境、数据」。U4 只承诺事后用 Jaccard 看，但字面重合现在就能收窄——三审退化成同审的风险前置消除比事后告警便宜，且 Jaccard 提示按 lenses.yaml 自己的口径是「长期 > 0.8」才触发，一轮两轮看不出。",
+      "evidence": "skills/dual-critic/lenses.yaml:10-14（gemini plan 含「迁移方案、回滚路径」）、16-19（gemini code 含「谁会被这次改动打断」）、36-40（glm bug 复现充分含「环境」）；被审计划 §5.3 三条对应项与 §8 U4",
+      "suggestion": "把重合三条收窄到真正差异化的轴：如「可回滚性」限定为数据迁移与回滚的成本核算、「兼容性」限定到运行环境与依赖版本（而非调用方）、「复现」限定到时序与环境变量因素，保持第三视角与 A/B 两侧零字面交叠。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-11",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §1.2 S4 / §2 F-3 验证段",
+      "problem": "S4 判据「不含任何第三方 skill 与 MCP server」的机器判法在 F-3 里是三家字面量 grep（deliver / autoglm / node_repl）加 skill roots 列表。字面量 grep 只能证明「这三家不在」——换台机器、换一批第三方 skill，同样判据测不出泄漏。skill roots 一行（仅 <副本>/skills/.system）是结构性的，可以作为判据基础，但 S4 行只写了「怎么验：codex debug prompt-input」，没有钉机器判据。",
+      "evidence": "被审计划 §2 F-3 验证块（含 deliver 技能: False / 含 autoglm: False / 含 node_repl: False 与 skill roots 行）；§1.2 S4 行未写结构化断言",
+      "suggestion": "S4 的机器判据定为结构性：渲染输出里 skill roots 恰为 [<副本>/skills/.system]、MCP 工具段为空（或输入总长对基线 17098 设回归带宽），字面量 grep 降级为辅助断言。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "F-2、F-3 两条阻断级发现的实测与处置方向成立，且「两处置合在一起才成立」的判断正确；仓库旁证吻合——probes/codex.ts:809-824 的 readCatalogPath 证明 model_catalog_json 可落在 profile 文件层（~ 重写必须扫两份 toml），probeCodexIsolation 证明独立 CODEX_HOME 被采纳。",
+    "F-1 的回读方案成立：thread_id 与会话文件名精确关联优于「取最新」（zcode 侧坑 P-14 的教训用对了地方）；「取不到记 unverified、绝不用 requested 冒充」与 zcode.ts:359-360 既有纪律一致；fixture read-sentinel.jsonl 亲证事件流确无 model 字段。",
+    "「接得上 / 审得对」拆成两轮双审的切分，与 §7「S3 不等于真审了一次」的口径——引用 AC-22 先例自我设限，这是本项目最需要的表述。",
+    "D-3（J9 前移）理由成立：secrets.ts:93 的 generic-secret-assignment 因 \\b 边界匹配不到 experimental_bearer_token = \"…\" 形态，J9 确非伪需求；「产生风险与覆盖风险之间不留窗口」的论证我支持（补充一点精度：该扫描的实际作用面是归档时点，runDir 副本本身靠 0600 与禁读清单防护）。",
+    "D-1 的处理（产品默认自动跟随不动、本仓库显式钉两侧）是诚实的克制而非后门：config 值是用户面数据，不属纪律 10 的模块字面量管辖；max_critics 上限 3 容得下（config.v2.json:290-292 亲证）。",
+    "D-2 提议 Critic-C 与注册表 label 注释「届时裁定、现在不预留」的机制一致（registry.ts:47-54 亲证），A/B 是术语表钉死称谓而非序号的论据成立。",
+    "§3.2 的能力声明方案是第 2 步泛化的正确兑现方式；解析器搬家以 codex-events.test.ts 为唯一安全网、「先确认它现在就是绿的再动」的顺序正确（该测试文件实存）。",
+    "§6.3「逐条审视而非批量改绿」的纪律与 M7b default_critics 事故的引用恰当——config.ts:215-220 的 [...CRITICS] 派生与注释亲证无误。",
+    "§8 自查表的姿态诚实，U1 排在实现之前的处置正确；本条同意其「U1 是唯一会推翻方案的一条」的判断——我补的缺口（GLM-03/05）都在「会让方案返工」层级而非推翻层级。"
+  ],
+  "not_covered": [
+    ".trivium/ 在禁读清单内，仓库共享配置现状（能否直接写 default_critics、当前值是什么）未核实，D-1 落点以计划自述为据。",
+    "四组新实测（F-1～F-4）为计划起草期所做，本审查只读无法复跑；以计划自述与仓库内旁证（探针代码、夹具、M6 报告）的一致性代替复现。",
+    "M6 入口承载面报告（REPORT_2026-09-15）仅按需检索、未逐段重读；设计文档 §16.1 / §5.1.1 / §11.1 正文未逐段核对，以计划转述与 types.ts 消费方注释为据。",
+    "codex 0.154.0 沙箱对 /tmp 与 $TMPDIR 的真实写行为未实测（GLM-03 只指出证据缺口，未下结论）。",
+    "review / run-protocol / critics 运行期管线对第三家审核者的其余隐含期望值（多审退化配对数、错误文案枚举）未逐文件排查，以 §6.3 自列清单为据。",
+    "我上一轮（r3）输出被判 parse_fallback，其内容是否被 Driver 采信无从核对；本轮未读 r2 及更早的裁决件全文，避免重复的判断以 r3 亲述与 r4 现文为准。"
+  ],
+  "consulted": [
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r4-claude.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-claude.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r3-glm.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/secrets.ts",
+    "src/trivium/guard.ts",
+    "skills/dual-critic/lenses.yaml",
+    "skills/dual-critic/schema/config.v2.json",
+    "test/fixtures/codex-events/read-sentinel.jsonl",
+    "test/unit/registry-parity.test.ts",
+    "doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md"
+  ]
+}

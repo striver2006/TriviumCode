@@ -12,17 +12,15 @@
  * 届时配额已烧而探针一字未落盘。
  */
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs, constants as fsConstants } from 'node:fs';
 import type { AuthCacheEntry, CommonProbe, Config, CriticId, Ctx, Stage } from './types.js';
-import { CRITICS, STAGES } from './types.js';
+import { DEFAULT_CRITICS, STAGES } from './types.js';
 import { EXIT, TriviumError } from './exit-codes.js';
-import { agentConfigOf, patchProbe, probeIsFresh, staleCliProbes } from './config.js';
+import { patchProbe, probeIsFresh, staleCliProbes } from './config.js';
 import { ALL_CLI_NAMES, agentById, agentByCliName } from './agents/registry.js';
-import { invokeAgy } from './adapters/agy.js';
-import { invokeZcode, qualifyZcodeModel } from './adapters/zcode.js';
-import { routeModel } from './adapters/base.js';
-import { exists, sha256File } from './util/fsx.js';
+import { realAdapters } from './adapters/index.js';
+import { routeModel, type AdapterContext, type CriticAdapter } from './adapters/base.js';
+import { exists } from './util/fsx.js';
 import { isGitRepo } from './util/git.js';
 import { run } from './util/exec.js';
 import { step } from './util/log.js';
@@ -72,21 +70,18 @@ export interface PreflightOptions {
   skipAuthCheck?: boolean;
   /** 强制重新探活，穿透 TTL 缓存（AGY-02） */
   refreshAuth?: boolean;
+  /**
+   * 本次入选的审核者。缺省取配置的 `review.default_critics`（M8 第 3 步）。
+   *
+   * 只读能力、模型 slug、探活三项都按**这一集合**检查，不按注册表全集：
+   * 启用第三家之后，全集检查会让「本次压根没选它」的运行也因它环境未配而失败。
+   */
+  critics?: readonly CriticId[];
 }
 
 // ─────────────────────── 各项检查 ───────────────────────
 
-/** 决定 agy 可用性的配置指纹：只读 Agent 定义文件（AGY-02） */
-async function agyFingerprint(cfg: Config): Promise<string | null> {
-  const p = path.join(os.homedir(), '.gemini/config/agents', agentConfigOf(cfg, 'gemini', 'antigravity').agent, 'agent.md');
-  return (await exists(p)) ? sha256File(p) : null;
-}
 
-/** 决定 zcode 可用性的配置指纹：CLI 侧的 config.json（AGY-02 / 坑 P-08、P-10） */
-async function zcodeFingerprint(): Promise<string | null> {
-  const p = path.join(os.homedir(), '.zcode/cli/config.json');
-  return (await exists(p)) ? sha256File(p) : null;
-}
 
 function authCacheValid(
   entry: AuthCacheEntry | undefined,
@@ -284,13 +279,14 @@ export function checkModelSlugs(
   cfg: Config,
   scope: PreflightScope,
   overrides: Partial<Record<CriticId, string>> = {},
+  critics: readonly CriticId[] = DEFAULT_CRITICS,
 ): CheckResult {
   const bad: string[] = [];
   /** 无法校验的侧：**不判失败，但必须说出来**（详见 checkModelAgainstCatalog） */
   const unverifiable = new Set<string>();
 
   for (const stage of scopeStages(scope)) {
-    for (const critic of CRITICS) {
+    for (const critic of critics) {
       const routed = routeModel(cfg, critic, stage, { cli: overrides[critic] ?? null });
       if (!routed.model) {
         bad.push(`${critic}/${stage}: profile「${cfg.active_profile}」未定义模型且无覆盖`);
@@ -305,7 +301,8 @@ export function checkModelSlugs(
   if (bad.length > 0) {
     return { name: '模型 slug 合法', ok: false, exitCode: EXIT.USAGE, detail: bad.join('\n  ') };
   }
-  const scale = `已校验 ${scopeStages(scope).length} 个阶段 × ${CRITICS.length} 侧`;
+  // 报「实际校验了几侧」，用本次入选集合而不是全集——否则数字与实际做的事对不上
+  const scale = `已校验 ${scopeStages(scope).length} 个阶段 × ${critics.length} 侧`;
   return {
     name: '模型 slug 合法',
     ok: true,
@@ -347,55 +344,72 @@ type CatalogCheck =
  * 所以取第三态：不拦，但把是哪几侧没校验写进预检输出。
  */
 function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string): CatalogCheck {
-  const vendor = agentById(critic)?.vendor ?? null;
-
-  if (vendor === 'antigravity') {
-    const models = cfg.probe.cli.agy?.models ?? [];
-    if (models.length === 0) return { kind: 'unverifiable', why: '探针未记录 agy 模型目录' };
-    // 未知 slug 会让 agy 直接非零退出，不会静默换模型——所以这里能硬校验
-    return models.includes(model)
-      ? { kind: 'ok' }
-      : { kind: 'bad', detail: `slug「${model}」不在 agy models 中。可用值：${models.join(', ')}` };
+  /*
+   * **按 cliName 通用消费 `CommonProbe.models`**（M8 第 3 步收敛，计划双审 GLM-04）。
+   *
+   * 收敛前按 vendor 分派 antigravity / zcode 两支，其余落 `unverifiable` 并给一句
+   * 「厂商 X 没有模型目录探针」——那句话对 codex **是失实的**：`CodexProbe` 继承
+   * `CommonProbe`，`models` 一直都在，只是没人消费。
+   *
+   * 后果不止文案难看：codex **不校验 model 在不在目录里**（M6 C-2），本步实测拼错
+   * slug 的代价是 `Model not found` 重试五次、耗时数分钟才失败。预检不拦就是白烧。
+   *
+   * 厂商特有的 slug 归一（zcode 的短名补全）下沉到适配器的 `normalizeModelForCatalog`，
+   * 这里只做「目录里有没有」这一件通用的事。
+   */
+  const a = agentById(critic);
+  const cliName = a?.cliName ?? null;
+  // 文案用 display（用户看的是「ZCode」不是「zcode」），索引用 cliName
+  const label = a?.display ?? critic;
+  const models = (cliName ? cfg.probe.cli[cliName]?.models : null) ?? [];
+  if (models.length === 0) {
+    return { kind: 'unverifiable', why: `探针未记录 ${label} 模型目录` };
   }
 
-  if (vendor === 'zcode') {
-    const models = cfg.probe.cli.zcode?.models ?? [];
-    if (models.length === 0) return { kind: 'unverifiable', why: '探针未记录 ZCode 模型目录' };
-    // ZCode 侧允许短名，适配层会按探针回读的 providerId 补全前缀（坑 P-06）
-    const qualified = qualifyZcodeModel(model, cfg.probe.cli.zcode?.model_id_form ?? null);
-    const short = (qualified ?? '').split('/').pop() ?? '';
-    return models.some((m) => m === short || m === qualified)
-      ? { kind: 'ok' }
-      : {
-          kind: 'bad',
-          detail: `模型「${model}」不在 ZCode 模型目录中。可用值：${models.join(', ')}`,
-        };
-  }
+  const normalized = realAdapters()[critic]?.normalizeModelForCatalog?.(cfg, model) ?? model;
+  const short = normalized.includes('/') ? (normalized.split('/').pop() ?? normalized) : normalized;
 
-  return { kind: 'unverifiable', why: `厂商 ${vendor ?? '未登记'} 没有模型目录探针` };
+  return models.some((m) => m === model || m === normalized || m === short)
+    ? { kind: 'ok' }
+    : {
+        kind: 'bad',
+        detail: `模型「${model}」不在 ${label} 模型目录中。可用值：${models.join(', ')}`,
+      };
 }
 
-/** 只读能力可用（§8.1）：ZCode 的 readonly_flags 非空 + Antigravity 的只读 Agent 存在 */
-async function checkReadonlyCapability(cfg: Config): Promise<CheckResult> {
+/**
+ * 只读能力可用（§8.1）—— **遍历适配器自己的 `availability()`**（M8 第 3 步收敛）。
+ *
+ * 收敛前这里写死两家：查 zcode 的 `readonly_flags` 非空、查 agy 的 `agent.md` 存在。
+ * 两个问题：
+ *
+ * ① **第三家一律不被检查**（EV-05①），加一家就要在这里再写一支；
+ * ② **同一事实有两份判据且已经分叉**——`zcode.ts` 的 `availability()` 把
+ *    `--disallowed-tools` 当硬前置（`--mode plan` 拦不住 Bash，M0 实测），
+ *    而这里的版本不查那一条，于是预检放行、适配器拒绝，同一个问题两个答案。
+ *
+ * 计划双审两侧独立指到这里（AGY-03 ≡ GLM-06）。现在只剩一份判据，
+ * 住在「最知道自己怎么才算可用」的那个模块里。
+ */
+function checkReadonlyCapability(ctx: Ctx, critics: readonly CriticId[]): CheckResult {
+  const adapters = realAdapters();
+  const actx: AdapterContext = { cfg: ctx.config, nodePath: process.execPath };
   const problems: string[] = [];
-  const readonlyFlags = cfg.probe.cli.zcode?.readonly_flags ?? [];
-  if (readonlyFlags.length === 0) {
-    problems.push('探针未实测到任何可用的 ZCode 只读参数组合');
+  const oks: string[] = [];
+
+  for (const id of critics) {
+    const a = adapters[id];
+    if (!a) {
+      problems.push(`${agentById(id)?.display ?? id}：注册表启用了它，但 adapters/index.ts 没有接线`);
+      continue;
+    }
+    const v = a.availability(actx);
+    if (v.ok) oks.push(agentById(id)?.display ?? id);
+    else problems.push(`${agentById(id)?.display ?? id}：${v.reason ?? '不可用（未给出原因）'}`);
   }
-  const agentPath = path.join(
-    os.homedir(),
-    '.gemini/config/agents',
-    agentConfigOf(cfg, 'gemini', 'antigravity').agent,
-    'agent.md',
-  );
-  if (!(await exists(agentPath))) {
-    problems.push(
-      `找不到只读审查 Agent 定义 ${agentPath}。` +
-        '没有它 agy 会用完整工具集（含写工具），只读无从保障。请运行安装器。',
-    );
-  }
+
   return problems.length === 0
-    ? { name: '只读能力可用', ok: true, detail: `ZCode 组合 ${readonlyFlags.join(' ')}` }
+    ? { name: '只读能力可用', ok: true, detail: `${oks.join('、')} 均报告可用` }
     : { name: '只读能力可用', ok: false, exitCode: EXIT.ENV, detail: problems.join('\n  ') };
 }
 
@@ -445,133 +459,64 @@ function checkVerifyConfigured(cfg: Config, scope: PreflightScope): CheckResult 
 
 // ─────────────────────── 探活 ───────────────────────
 
-interface AuthProbe {
+interface AuthOutcome {
   critic: CriticId;
   result: CheckResult;
   /** 通过时待写入缓存的条目（失败时为 null——只缓存正结论，GLM-06） */
   cache: AuthCacheEntry | null;
 }
 
-async function probeAgyAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe> {
+/**
+ * 探活 —— **遍历适配器的 `authProbe()`**（M8 第 3 步收敛）。
+ *
+ * 收敛前是 `probeAgyAuth` / `probeZcodeAuth` 两个写死的函数，加一家就加一个。
+ * 现在切分是：**厂商知识在适配器**（指纹算哪个文件、最小调用怎么发、失败怎么说），
+ * **缓存策略在这里**（TTL、版本比对、只缓存正结论）。后者留在一处的理由是
+ * 它一旦被抄三份就会各自漂移，而它决定的是「要不要再烧一次配额」。
+ *
+ * 没实现 `authProbe` 的侧**如实报告为「没得探」**，不静默算通过——
+ * 「探过通过」与「压根没探」长得一样，是本项目反复出现的那类失真。
+ */
+async function probeAuth(
+  ctx: Ctx,
+  critic: CriticId,
+  adapter: CriticAdapter,
+  opts: PreflightOptions,
+): Promise<AuthOutcome> {
   const cfg = ctx.config;
-  const version = cfg.probe.cli.agy?.version ?? null;
-  const fp = await agyFingerprint(cfg);
-  const cached = cfg.probe.auth?.gemini;
+  const display = agentById(critic)?.display ?? critic;
+  const name = `${display} 已认证`;
+  const cliName = agentById(critic)?.cliName ?? null;
+  const version = (cliName ? cfg.probe.cli[cliName]?.version : null) ?? null;
 
+  const auth = adapter.authProbe?.(
+    { cfg, nodePath: process.execPath },
+    ctx.projectRoot,
+  );
+  if (!auth) {
+    return {
+      critic,
+      result: { name, ok: true, detail: '该侧未实现探活，本项未检查（不等于已通过）' },
+      cache: null,
+    };
+  }
+
+  const fp = await auth.fingerprint();
   if (!opts.refreshAuth) {
-    const v = authCacheValid(cached, version, fp, cfg.preflight.auth_cache_ttl_h);
-    if (v.valid) {
-      return {
-        critic: 'gemini',
-        result: { name: 'Antigravity 已认证', ok: true, detail: v.reason },
-        cache: null, // 缓存本来就有效，无需重写
-      };
-    }
-    step(`[gemini] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
+    const v = authCacheValid(cfg.probe.auth?.[critic], version, fp, cfg.preflight.auth_cache_ttl_h);
+    if (v.valid) return { critic, result: { name, ok: true, detail: v.reason }, cache: null };
+    step(`[${critic}] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
   }
 
-  const bin = cfg.probe.cli.agy?.entrypoint ?? null;
-  if (!bin) {
-    return {
-      critic: 'gemini',
-      result: { name: 'Antigravity 已认证', ok: false, exitCode: EXIT.ENV, detail: 'agy 路径未记录' },
-      cache: null,
-    };
-  }
-
-  const out = await invokeAgy({
-    bin,
-    cwd: ctx.projectRoot,
-    prompt: '只回复 OK 两个字母，不要调用任何工具。',
-    model: cfg.probe.cli.agy?.models[0] ?? null,
-    agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
-    timeoutMs: 120_000,
-    pty: cfg.probe.cli.agy?.pty_required === true,
-  });
-
-  const ok = out.parsed.status === 'SUCCESS' && !out.timedOut;
+  const r = await auth.probe();
   return {
-    critic: 'gemini',
-    result: ok
-      ? { name: 'Antigravity 已认证', ok: true, detail: `探活通过（${Math.round(out.durationMs / 1000)}s）` }
-      : {
-          name: 'Antigravity 已认证',
-          ok: false,
-          exitCode: EXIT.ENV,
-          detail:
-            `探活失败（status=${out.parsed.status}）。请先交互登录一次：\`agy\` 然后完成登录流程。\n` +
-            `  stderr: ${out.stderr.slice(0, 200)}`,
-        },
-    cache: ok ? { checked_at: new Date().toISOString(), cli_version: version, fingerprint: fp, ok: true } : null,
-  };
-}
-
-async function probeZcodeAuth(ctx: Ctx, opts: PreflightOptions): Promise<AuthProbe> {
-  const cfg = ctx.config;
-  const version = cfg.probe.cli.zcode?.version ?? null;
-  const fp = await zcodeFingerprint();
-  const cached = cfg.probe.auth?.glm;
-
-  if (!opts.refreshAuth) {
-    const v = authCacheValid(cached, version, fp, cfg.preflight.auth_cache_ttl_h);
-    if (v.valid) {
-      return {
-        critic: 'glm',
-        result: { name: 'ZCode 已认证', ok: true, detail: v.reason },
-        cache: null,
-      };
-    }
-    step(`[glm] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
-  }
-
-  const entry = cfg.probe.cli.zcode?.entrypoint ?? null;
-  if (!entry) {
-    return {
-      critic: 'glm',
-      result: { name: 'ZCode 已认证', ok: false, exitCode: EXIT.ENV, detail: 'zcode 入口未记录' },
-      cache: null,
-    };
-  }
-  if (fp === null) {
-    return {
-      critic: 'glm',
-      result: {
-        name: 'ZCode 已认证',
-        ok: false,
-        exitCode: EXIT.ENV,
-        detail:
-          '找不到 ~/.zcode/cli/config.json。ZCode 的 **CLI 模型 provider 配置独立于桌面端**' +
-          '（桌面端在 ~/.zcode/v2/config.json），凭据共享但配置不共享——' +
-          '「已登录」不等于「可用」。请手工创建该文件（结构见 M0 探针报告 §6.3）。',
-      },
-      cache: null,
-    };
-  }
-
-  const out = await invokeZcode({
-    entry,
-    node: cfg.runtime.node ?? process.execPath,
-    cwd: ctx.projectRoot,
-    prompt: '只回复 OK 两个字母，不要调用任何工具。',
-    readonlyArgs: ['--mode', 'plan'],
-    timeoutMs: 180_000,
-  });
-
-  const ok = out.failureKind === 'none' && out.envelope !== null && !out.timedOut;
-  return {
-    critic: 'glm',
-    result: ok
-      ? { name: 'ZCode 已认证', ok: true, detail: `探活通过（${Math.round(out.durationMs / 1000)}s）` }
-      : {
-          name: 'ZCode 已认证',
-          ok: false,
-          exitCode: EXIT.ENV,
-          detail:
-            out.failureKind === 'provider_not_configured'
-              ? 'provider 鉴权失败。检查 ~/.zcode/cli/config.json 里的 apiKey（格式 <id>.<secret>）。'
-              : `探活失败（${out.failureKind}）：${out.stderr.slice(0, 200)}`,
-        },
-    cache: ok ? { checked_at: new Date().toISOString(), cli_version: version, fingerprint: fp, ok: true } : null,
+    critic,
+    result: r.ok
+      ? { name, ok: true, detail: r.detail }
+      : { name, ok: false, exitCode: EXIT.ENV, detail: r.detail },
+    cache: r.ok
+      ? { checked_at: new Date().toISOString(), cli_version: version, fingerprint: fp, ok: true }
+      : null,
   };
 }
 
@@ -582,15 +527,21 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
   const cfg = ctx.config;
   const checks: CheckResult[] = [];
   const pendingAuthCache: Partial<Record<CriticId, AuthCacheEntry>> = {};
+  /*
+   * 本次入选的审核者。只读能力、模型 slug、探活三项都按它检查，而不是按注册表全集：
+   * codex 启用之后，全集检查会让「本次没选它」的运行也因它环境未配而失败
+   * （而那正是 D-1 决定「默认不选它」时要避免的连带影响）。
+   */
+  const selected: readonly CriticId[] = opts.critics ?? cfg.review.default_critics;
 
   // ① 探针新鲜度（过期即快速失败，不拉 doctor）
   checks.push(checkProbeFreshness(cfg));
   // ② ③ CLI 可调用且版本与探针一致
   if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg)));
   // ④ 只读能力
-  if (checks.every((c) => c.ok)) checks.push(await checkReadonlyCapability(cfg));
+  if (checks.every((c) => c.ok)) checks.push(checkReadonlyCapability(ctx, selected));
   // ⑤ 模型 slug（按本次实际生效值）
-  if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides));
+  if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected));
   // ⑥ 归档与 git（无残留探测）
   if (checks.every((c) => c.ok)) checks.push(await checkArchiveAndGit(ctx));
   // ⑦ 命令 A 的编译测试配置
@@ -607,7 +558,12 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
         detail: '⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。',
       });
     } else {
-      const probes = await Promise.all([probeAgyAuth(ctx, opts), probeZcodeAuth(ctx, opts)]);
+      const adapters = realAdapters();
+      const probes = await Promise.all(
+        selected
+          .filter((id) => adapters[id])
+          .map((id) => probeAuth(ctx, id, adapters[id]!, opts)),
+      );
       for (const p of probes) {
         checks.push(p.result);
         if (p.cache) pendingAuthCache[p.critic] = p.cache;

@@ -17,7 +17,7 @@ import type {
   ProbeSection,
   Stage,
 } from './types.js';
-import { CRITICS } from './types.js';
+import { DEFAULT_CRITICS } from './types.js';
 import { ALL_CLI_NAMES } from './agents/registry.js';
 import { EXIT, TriviumError, envError, swallowedTextHint } from './exit-codes.js';
 import { exists, expandHome } from './util/fsx.js';
@@ -91,6 +91,7 @@ export function defaultProbe(): ProbeSection {
     profile_flag: null,
     unknown_profile_rejected: null,
     profiles: [],
+    providers: [],
     config_override: null,
     effort_validated: null,
     model_catalog_path: null,
@@ -213,11 +214,17 @@ export function defaultConfig(): Config {
       failure_policy: 'strict',
       allow_partial_flag: true,
       /*
-       * 默认审核者集合维持两家——与现状等价，成本不变（设计 13.1.1）。
-       * 从注册表的 criticEnabled 派生而不是写死 `['gemini','glm']`：
-       * 启用第三家时这里自动跟随，不必记得回来改（纪律 7）。
+       * 默认审核者集合：从注册表的 **defaultSelected** 派生（M8 第 3 步）。
+       *
+       * 此前派生自 `criticEnabled`，原注释写「启用第三家时这里自动跟随」——
+       * 跟随本身没错，错在跟随的是**另一个事实**：`criticEnabled` 回答「这一家能不能
+       * 当审核者」，而这里要的是「不指定时跑谁」。两者合一的后果是 codex 接入的那一刻，
+       * 每次审查的配额成本自动涨一档，而用户没做过任何决定（决策 D-1）。
+       *
+       * 仍是纯派生值、没有第二事实源（纪律 7），改的只是派生自哪个字段。
+       * 要三审就显式 `--critics`，或在配置里写 `review.default_critics`。
        */
-      default_critics: [...CRITICS],
+      default_critics: [...DEFAULT_CRITICS],
       max_critics: 3,
       timeout_s: { plan: 900, code: 1200, bug: 1200 },
       /*
@@ -259,6 +266,18 @@ export function defaultConfig(): Config {
         ],
       },
       glm: { vendor: 'zcode', entry: null, max_turns: 40, unsupported_override: 'reject' },
+      /*
+       * codex 段（M8 第 3 步）。`profile` 是 R-6 的落点，也是「家族」的唯一判定依据——
+       * 本机实测 `model_provider` 随 `-p` 走。默认取 qwen：它是演进设计 §3.1 点名的家族之一，
+       * 且本机实测可用；没配这个 profile 的机器会在预检被拦下并拿到可粘贴的指引，
+       * 而不是静默回落到基底那家（`unknown_profile_rejected` 实测为 false）。
+       */
+      codex: {
+        vendor: 'openai',
+        bin: null,
+        profile: 'qwen',
+        effort: { plan: 'high', code: 'high', bug: 'high' },
+      },
     },
     // 两档的差异只在 GLM 侧用不用 Flash——gemini 侧两档相同。
     // 不写 profile 级 effort：该字段无任何读取点，且 slug 自带后缀时 effort 本就不生效。
@@ -266,10 +285,12 @@ export function defaultConfig(): Config {
       default: {
         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
         glm: { plan: 'GLM-5.3', code: 'GLM-5.3', bug: 'GLM-5.3' },
+        codex: { plan: 'qwen3.8-max', code: 'qwen3.8-max', bug: 'qwen3.8-max' },
       },
       flash: {
         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
         glm: { plan: 'GLM-5.3-Flash', code: 'GLM-5.3-Flash', bug: 'GLM-5.3-Flash' },
+        codex: { plan: 'qwen3.8-flash', code: 'qwen3.8-flash', bug: 'qwen3.8-flash' },
       },
     },
     active_profile: 'default',

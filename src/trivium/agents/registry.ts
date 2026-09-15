@@ -18,9 +18,15 @@
  *
  * 本里程碑是**行为等价重构**：注册表登记四项，但 `criticEnabled` 只对
  * gemini / glm 为真，`driverEnabled` 只对 claude 为真——与重构前可选集合
- * 逐项相同。codex / claude 的审核者能力在 M8 / M9 随适配器一并启用，
- * Driver 任意化在 M10。登记而不启用，是为了让注册表从第一天起就是完整的
+ * 逐项相同。登记而不启用，是为了让注册表从第一天起就是完整的
  * 单一来源（审查意见 AGY-03②）。
+ *
+ * ## M8 第 3 步的变化
+ *
+ * codex 的 `criticEnabled` 翻为 true（适配器、探针、镜头、配置形状、模型路由五件齐备）。
+ * 同时新增 `defaultSelected`：**「能不能当审核者」与「不选时跑不跑它」自此是两件事**——
+ * 否则启用第三家就等于让每次审查的成本自动涨一档（决策 D-1）。
+ * claude 的审核者能力仍待 M9，Driver 任意化仍待 M10。
  */
 
 /** 已登记的 Agent。取值同时是归档后缀与配置键命名空间 */
@@ -49,7 +55,9 @@ export interface AgentDescriptor {
    * 「Critic-A / Critic-B」是主设计第 0 章术语表**钉死的称谓**（A = gemini、B = glm），
    * 不是按运行期位置算出来的序号——所以它登记在这里，而不是渲染时数下标。
    * 若按下标算，启用第三家后既有两侧的字母会跟着漂移，历史留痕的抬头就对不上了。
-   * codex / claude 启用为审核者时（M8 / M9）字母由届时的设计裁定，现在不预留。
+   * codex 于 M8 第 3 步启用为审核者，字母裁定为 **C**（决策 D-2）：A/B 是术语表钉死的
+   * 称谓、不是按位置算的序号，所以新启用者取下一个未用字母，既有两侧不受影响。
+   * claude 启用时（M9）同理取 D。
    */
   label: string;
   vendor: AgentVendor;
@@ -89,6 +97,20 @@ export interface AgentDescriptor {
   findingPrefix: string;
   /** 可作为审核者被 headless 拉起 */
   criticEnabled: boolean;
+  /**
+   * 缺省是否入选 —— 与 `criticEnabled` **分开的一件事**（M8 第 3 步）。
+   *
+   * `criticEnabled` 回答「这一家能不能当审核者」，本字段回答「不指定 `--critics` 时跑不跑它」。
+   * 此前二者合一：`review.default_critics` 由 `criticEnabled` 全集派生，于是
+   * **启用第三家的那一刻，每次审查的配额成本自动涨 1.5 倍**，而那是用户可见的行为变化，
+   * 不该由一次「接入」顺带决定（决策 D-1，2026-09-15 由项目负责人裁定：
+   * 默认两家，可通过配置改成 1 家或 3 家）。
+   *
+   * 拆成两个字段而不是在 `config.ts` 里写死 `['gemini','glm']`：后者会让
+   * 「默认跑哪几家」多出一个与注册表并列的事实源（纪律 7）。这样 `default_critics`
+   * 仍是纯派生值，用户要三审就显式 `--critics` 或改配置。
+   */
+  defaultSelected: boolean;
   /** 可作为 Driver 发起四条命令 */
   driverEnabled: boolean;
   guardLevel: GuardLevel;
@@ -112,6 +134,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
     suffix: 'claude',
     findingPrefix: 'CLAUDE',
     criticEnabled: false, // M9 启用
+    defaultSelected: false,
     driverEnabled: true,
     guardLevel: 'L1',
     instructionFiles: ['CLAUDE.md'],
@@ -119,12 +142,13 @@ export const AGENTS: readonly AgentDescriptor[] = [
   {
     id: 'codex',
     display: 'Codex',
-    label: 'OpenAI Codex',
+    label: 'Critic-C · OpenAI Codex',
     vendor: 'openai',
     cliName: 'codex',
     suffix: 'codex',
     findingPrefix: 'CODEX',
-    criticEnabled: false, // M8 启用
+    criticEnabled: true, // M8 第 3 步启用
+    defaultSelected: false, // D-1：启用后也不进默认集合，要三审须显式选
     driverEnabled: false, // M10 启用
     guardLevel: 'L2',
     instructionFiles: ['AGENTS.md'],
@@ -138,6 +162,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
     suffix: 'gemini',
     findingPrefix: 'AGY',
     criticEnabled: true,
+    defaultSelected: true,
     driverEnabled: false, // M10 启用
     guardLevel: 'L2',
     instructionFiles: ['GEMINI.md'],
@@ -151,6 +176,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
     suffix: 'glm',
     findingPrefix: 'GLM',
     criticEnabled: true,
+    defaultSelected: true,
     driverEnabled: false, // M10 启用
     guardLevel: 'L1',
     instructionFiles: ['AGENTS.md'],
@@ -186,6 +212,28 @@ export function agentByCliName(cliName: string): AgentDescriptor | null {
 export const CRITIC_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.criticEnabled).map(
   (a) => a.id,
 );
+
+/**
+ * **缺省入选**的审核者（`review.default_critics` 的唯一来源，M8 第 3 步）。
+ *
+ * 与 `CRITIC_AGENT_IDS` 的差别就是 `defaultSelected` 那一个字段：
+ * 前者是「能选谁」，本集合是「不选时跑谁」。codex 启用后属于前者不属于后者——
+ * 三审要显式 `--critics`（决策 D-1）。
+ *
+ * 断言缺省集合是启用集合的子集：`defaultSelected` 为真而 `criticEnabled` 为假
+ * 会让缺省配置直接跑不起来（`critics.ts` 拒掉未启用的 id），
+ * 那种组合是登记错误，不该等到运行期才发现。
+ */
+export const DEFAULT_CRITIC_AGENT_IDS: readonly AgentId[] = (() => {
+  const bad = AGENTS.filter((a) => a.defaultSelected && !a.criticEnabled).map((a) => a.id);
+  if (bad.length > 0) {
+    throw new Error(
+      `注册表登记错误：${bad.join('、')} 标了 defaultSelected 却没有 criticEnabled。\n` +
+        '  缺省入选必须是已启用审核者的子集，否则默认配置一跑就被 critics.ts 拒掉。',
+    );
+  }
+  return AGENTS.filter((a) => a.defaultSelected).map((a) => a.id);
+})();
 
 /** 当前可作为 Driver 的 Agent（M7a：claude） */
 export const DRIVER_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.driverEnabled).map(

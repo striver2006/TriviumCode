@@ -1,0 +1,113 @@
+{
+  "agreed": [
+    "赞同 D-1 的折中方案：保留产品默认从注册表自动跟随语义，但在本仓库显式配置钉住两侧，既维护了纪律 7 的单一派生契约，又避免在真机验收前拿用户配额做未经测试的三审。",
+    "赞同 D-2 裁定抬头为 Critic-C · OpenAI Codex，与主设计术语表钉死称谓逻辑保持一致。",
+    "赞同 D-3 将 J9 密钥扫描增补前移至本步，消除了凭据副本产生与敏感信息扫描覆盖之间的安全窗口期。",
+    "赞同 §2 F-1 实测确立的会话文件首行 model 回读落点，为 AC-20 生效模型核验提供了可行路径。",
+    "赞同 §2 F-3 阻断性发现 MCP 独立进程通道泄漏，确立了必须对 config.toml 实施配置白名单裁剪的隔离方向。",
+    "赞同 §3.1 将 codex 事件解析器从探针搬出收敛为纯函数模块，消除第二事实源并以既有用例为安全网。"
+  ],
+  "consulted": [
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r4-claude.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r3-gemini.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r3-revised-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "package.json",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/secrets.ts",
+    "src/trivium/critics.ts",
+    "skills/dual-critic/lenses.yaml",
+    "skills/dual-critic/schema/config.v2.json",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md",
+    "doc/05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/adapters/base.ts:274-293，WRITE_VERB_TARGET 的类型为 Record<string, 'last' | 'all-after-flags'>，其注释明确指出是「两族合一张表：写入点与目录目标（cd/mkdir 的参数是目录，不是被读的文件）」，其设立目的是从读取候选提取中排除参数位，而非判定写命令；表中明确包含 cd、mkdir、pushd、rmdir。措施 b（base.ts:574-600）扫描的是 deny 字面量闭集，压根不使用此表。在 -s read-only 沙箱下，审查员执行 cd src 或 find . 2>/dev/null 均会成功执行（status: completed, exit_code: 0），按 plan §3.3「成功退出加动词在表中」的判据，将直接被误判为写事件（readonlyBreach: true），导致整侧审查永久误报失守并作废。此外，工作区外（/tmp）或标准设备（/dev/null）的成功重定向同样是只读审查中的常见行为，当前推理链完全忽视了工作树内外的边界区分。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §3.3",
+      "problem": "write_events 判据将用于路径排除的 WRITE_VERB_TARGET 全量作为写动词识别表，其中包含 cd、pushd 等纯目录切换命令；审查员在只读沙箱下正常执行 cd 成功退出将直接触发只读失守误报，且写向 /dev/null 等常见命令亦会被误杀，造成整侧作废的致命假阳性。",
+      "severity": "blocker",
+      "suggestion": "废除复用 WRITE_VERB_TARGET 作为写动词集的做法；独立定义严格的写动词闭集并剔除 cd、pushd 等目录切换命令；同时将输出重定向判定限制在项目根内，排除向标准设备（/dev/null、/dev/stderr）及工作区外的写入。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 package.json:20-29，项目仅依赖 ajv 与 yaml，无外部 TOML 解析库，所有打包必须为单文件 CJS。在 TOML 配置中，值可能指向目录（如 skills/cache 目录）、数组（paths = [\"~/a\"]）或内联表，且可能包含不存在的可选路径模板。若按全局行文本扫描并直接执行 fs.copyFile，遇到目录会抛出 EISDIR，遇到不存在文件会抛出 ENOENT。若在 F-3 白名单裁剪之前做，会扫描并拷贝宿主机大量无关文件；若在裁剪之后做，白名单内仅保留 model_catalog_json 等少数键，泛化为「所有 ~/ 扫描重写」却未在纯文本正则下给出安全解析与拷贝防护方案。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §2.2 与 §3.4",
+      "problem": "F-2「扫描并重写所有 ~/ 前缀值并拷贝文件」缺乏文件类型与存在性检查，遇到目录或不存在的路径将抛出 EISDIR/ENOENT 导致进程崩溃，且未界定在 F-3 裁剪前后执行，亦缺少无 TOML 库下的安全处理方案。",
+      "severity": "major",
+      "suggestion": "明确在 F-3 白名单裁剪后的干净结构上执行重写；对重写目标执行 stat 校验，仅对真实存在且为普通文件的路径执行拷贝，遇目录或不存在文件留痕跳过；并明确无外部 TOML 库时的轻量重写算法规范。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/preflight.ts:379-400 与 455-560，当前 checkReadonlyCapability 硬编码检查 cfg.probe.cli.zcode?.readonly_flags 与 .gemini/.../agent.md，探活硬编码了 probeAgyAuth 与 probeZcodeAuth。查阅 src/trivium/adapters/base.ts:61-68，CriticAdapter 契约已有 availability() 接口。plan §5.2 将在 preflight.ts 继续叠加 probeCodexAuth 与 codex 只读分支，不仅违反主设计 §16.2 纪律 7 与 10（除适配器自身外不得出现具体 Agent 分叉），而且将本该多态化的能力固化为「固有成本」，违背 FR-31 架构目标。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §5.2",
+      "problem": "§5.2 将 preflight.ts 核心的多处厂商硬编码（probe<Vendor>Auth 探活分支、checkReadonlyCapability 判据、provider 家族校验）固化为「接入套件外固有成本」，推卸架构泛化责任，违背 FR-31 设计目标。",
+      "severity": "major",
+      "suggestion": "将探活与只读前置条件收敛至适配器契约（如扩充 CriticAdapter 或适配层提供标准接口），preflight.ts 仅按入选审核者调用多态接口，避免在核心模块持续堆砌厂商 if/else 分支。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 skills/dual-critic/schema/config.v2.json:296-397，antigravity 与 zcode 均有严格的 required 属性和可辨识联合；查阅 src/trivium/types.ts:854-872，CriticRequest 仅有 critic, model, effort 等字段，不包含 profile。plan §5.1 声明新增 CodexCriticConfig 并加入 config.v2.json，但全文未定义该类型的字段列表与默认值；plan §3.1 声称 buildCodexArgs 构造 [-p <profile>]，却未说明 profile 是来自 agents.codex.profile 还是 routeModel。数据契约留白会导致配置校验与参数构造无法对齐。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §5.1 与 §3.1",
+      "problem": "CodexCriticConfig 的数据结构、字段契约与 buildCodexArgs 中 profile 参数的取值来源完全留白，数据模型未定稿。",
+      "severity": "major",
+      "suggestion": "在计划中补齐 CodexCriticConfig 的具体字段定义（如 vendor, bin, profile 等）及 defaultConfig 默认值，并在 §3.1 明确 profile 传递给 buildCodexArgs 的具体链路。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §1.2 与 §6.1，S2 要求 trivium doctor --only codex 给出确定结论，S3 要求 trivium review --start --critics codex,glm 预检通过并入选；但 §6.1 列出的用例全部位于 test/unit/，无一条集成测试。对照 AGENTS.md:90-95 与主设计 v1.3.4 历史记录：参数透传与 CLI 命令调用链的有效性只能由真实子进程集成测试守住，纯 unit 测试无法发现 cli.ts 或 review.ts 的接线与环境变量透传漏洞。",
+      "id": "AGY-05",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §6.1 与 §1.2",
+      "problem": "完成判据 S2（doctor --only codex）与 S3（review --start --critics codex,glm）在测试计划中缺乏集成测试覆盖，存在调用链接线漏传而测试全绿的风险。",
+      "severity": "minor",
+      "suggestion": "在 §6.1 中补齐针对 doctor --only codex 与 review --start --critics codex,... 的真实子进程集成测试用例，断言命令全链路接线正确。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查阅 plan §2 F-4，作者仅根据 codex exec --help 提到 [PROMPT] 支持 - 便提议走 stdin 传 BRIEF，未做过任何实际调用；在非交互 --json 模式下，stdin 传几十 KB 文本是否能正常 EOF 结束并触发执行未经验证。此外，若 profile 文件指定了不同的 model_catalog_json，§3.4 的单文件重写拷贝会导致 profile 层叠后崩溃；此类重大假设在 §8 自查中均未登记。",
+      "id": "AGY-06",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §2 F-4 与 §8",
+      "problem": "BRIEF 走 stdin 传递属未经实测的新断言，且 §8 自查中遗漏了关于非交互 stdin 管道完整性与多 profile catalog 覆盖的多项潜在推翻项。",
+      "severity": "minor",
+      "suggestion": "将「codex exec 经 stdin 管道接收几十 KB prompt 的执行行为」列入 §8 开工验证项，先做最小零配额实测确认；同时在隔离逻辑中完整处理 profile 级 catalog 文件的重写与拷贝。"
+    }
+  ],
+  "not_covered": [
+    "未覆盖真实第三方模型在非交互下的实际网络请求延迟与上游计费扣费情况。",
+    "未覆盖 macOS 以外操作系统在环境变量与 shell 子进程执行上的细微差异。",
+    "未覆盖 M9 里程碑中 Claude 审核者接入的详细实现与契约。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最危险问题在 §3.3：write_events 判据误将参数排除表 WRITE_VERB_TARGET 全量作为写动词识别表，其中包含 cd、pushd 等合法目录命令，沙箱放行 cd src 成功退出后将直接导致只读失守假阳性，整侧审查永久误作废。\nF-2「扫描并重写所有 ~/ 前缀值」缺乏目录与存在性保护，遇到目录或不存在路径会抛出 EISDIR/ENOENT 崩溃，且缺少无外部 TOML 库下的安全处理机制。\n§5.2 将 preflight.ts 核心的多处厂商硬编码分支固化为「固有成本」，推卸架构泛化责任，违背 FR-31 架构目标。\nCodexCriticConfig 数据结构契约与 profile 参数来源留白；测试计划缺少对 S2/S3 完成判据的集成测试覆盖。\n决策 D-1/D-2/D-3 理由均成立；除 U1 外，BRIEF 走 stdin 与多 profile catalog 覆盖亦需开工证实。总体裁决为 request-changes。",
+  "verdict": "request-changes"
+}

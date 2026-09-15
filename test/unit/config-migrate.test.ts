@@ -23,7 +23,8 @@ import {
 } from '../../src/trivium/config.js';
 import { validateConfig } from '../../src/trivium/schemas.js';
 import { runInit } from '../../src/trivium/init.js';
-import { CRITICS } from '../../src/trivium/types.js';
+import { CRITICS, DEFAULT_CRITICS } from '../../src/trivium/types.js';
+import { ALL_AGENT_IDS, agentById } from '../../src/trivium/agents/registry.js';
 
 async function projectWith(files: Record<string, string>): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-mig-'));
@@ -210,22 +211,23 @@ test('loadCtx：local 只覆盖单侧时，default_critics 仍是两家（不被
   });
   const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
   assert.deepEqual(
-    ctx.config.review.default_critics, [...CRITICS],
-    '单侧本机覆盖不该缩小审查面——设计 13.1.1：默认值维持两家',
+    ctx.config.review.default_critics, [...DEFAULT_CRITICS],
+    '单侧本机覆盖不该缩小审查面——比的是「默认值」，M8 第 3 步起它派生自 defaultSelected',
   );
   const gemini = ctx.config.agents.gemini;
   assert.ok(gemini && gemini.vendor === 'antigravity');
   assert.equal(gemini.agent, 'my-critic', '覆盖本身要照常生效');
 });
 
-test('loadCtx：主配置只写一侧时，default_critics 同样保持全集', async () => {
+test('loadCtx：主配置只写一侧时，default_critics 同样保持缺省集合', async () => {
   const raw = YAML.parse(v1Yaml());
   delete raw.critics.glm;
   const root = await projectWith({ 'config.yaml': YAML.stringify(raw) });
   const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
   assert.deepEqual(
-    ctx.config.review.default_critics, [...CRITICS],
-    'v1 的 critics 键集不是选侧机制，运行时本来就走全集——迁移不得改变这一点',
+    ctx.config.review.default_critics, [...DEFAULT_CRITICS],
+    'v1 的 critics 键集不是选侧机制——迁移不得据它缩小默认集合。' +
+      '（「全集」这个措辞随 M8 第 3 步作废：能选的是三家、默认跑的是两家）',
   );
 });
 
@@ -260,10 +262,17 @@ test('校验：agents.<id>.vendor 与注册表不符 → 报错（路由错配�
  */
 test('校验：登记但未启用为审核者的 Agent 出现在 default_critics → 报错，不静默忽略', () => {
   const cfg = JSON.parse(JSON.stringify(defaultConfig()));
-  cfg.review.default_critics = ['codex'];
+  /*
+   * 取一个**已登记但未启用为审核者**的 id。原先写死 'codex'，而 codex 于 M8 第 3 步
+   * 启用后这条用例的前提就消失了（它不再报错，断言随之失去意义）。
+   * 改从注册表现取，前提消失时由下面的 assert.ok 当场说出来。
+   */
+  const notEnabled = ALL_AGENT_IDS.find((id) => !agentById(id)!.criticEnabled);
+  assert.ok(notEnabled, '四家全部启用时本用例失去意义，届时改用别的夹具');
+  cfg.review.default_critics = [notEnabled];
   const problems = validateConfig(cfg);
   assert.ok(
-    problems.some((p) => p.includes('codex')),
+    problems.some((p) => p.includes(notEnabled)),
     `静默忽略会让用户以为第三家已经在跑了，实得：${problems.join('；')}`,
   );
 });
@@ -297,7 +306,8 @@ test('校验：未登记 id 的报错要区分「当前可配置」与「已登�
 
 test('校验：default_critics 里的 Agent 在 agents 中没有配置段 → 报错', () => {
   const cfg = JSON.parse(JSON.stringify(defaultConfig()));
-  delete cfg.agents[CRITICS[0]!];
+  // 删的必须是**在 default_critics 里**的那一家，否则触发不到本条校验
+  delete cfg.agents[DEFAULT_CRITICS[0]!];
   const problems = validateConfig(cfg);
   assert.ok(problems.some((p) => p.includes('没有配置段')), problems.join('；'));
 });

@@ -19,6 +19,8 @@ import { probeZcode } from './probes/zcode.js';
 import { probeCodex } from './probes/codex.js';
 import { probeClaude } from './probes/claude.js';
 import type { ClaudeProbe, CodexProbe, Config, ProbeSection } from './types.js';
+import { realAdapters } from './adapters/index.js';
+import type { TraceCapability } from './adapters/base.js';
 import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
 import { say, step, warn } from './util/log.js';
 
@@ -137,6 +139,65 @@ export function codexSeverity(
     ];
   }
   return [];
+}
+
+/**
+ * **能力声明 ↔ 探针实测的对账**（M8 第 3 步，清偿 EV-06）。
+ *
+ * `CodexProbe.trace_path_structured` 与 `.rejected_command_in_trace` 两个字段的
+ * 类型注释里，登记的消费方就是「M8 第 3 步起：doctor 的能力对账」——
+ * 而第 2 步落地 `TraceCapability` 时明写「对账代码还不存在」。这里把它补上。
+ *
+ * ## 对账的是什么
+ *
+ * 适配器**声明**自己的轨迹形状（`capability`），探针**实测**这台机器上的真实行为。
+ * 两者本该一致；不一致意味着其一过时了——CLI 升级换了事件流，或声明抄错了。
+ * 判定层按声明分档，所以声明与事实脱节时，判定会**按一个不存在的事实**工作：
+ * 声明 `tool-trace` 而实际是命令轨迹 ⇒ 路径回填不发生、证据恒不达标；
+ * 声明 `rejectionRecorded: true` 而实际被拒不留痕 ⇒ 阴性结论被当成可信。
+ *
+ * ## 为什么是 note 而不是 blocker
+ *
+ * 对账不符**不代表这台机器不安全**，代表我们的登记该更新了。判 blocker 会让
+ * 一次 CLI 升级把所有人的 `doctor` 打红；判静默通过则让这个字段继续白登记。
+ * 所以点名，不阻断——与 `checkModelSlugs` 的「第三态」同一取向。
+ */
+export function capabilityParity(
+  probe: { trace_path_structured: boolean | null; rejected_command_in_trace: boolean | null },
+  cap: TraceCapability,
+  cliName: string,
+): SeverityLine[] {
+  const out: SeverityLine[] = [];
+
+  if (probe.trace_path_structured !== null) {
+    const declaredStructured = cap.traceShape === 'tool-trace';
+    if (probe.trace_path_structured !== declaredStructured) {
+      out.push({
+        level: 'note',
+        message:
+          `能力对账不符：适配器声明 ${cliName} 的轨迹形状为 ${cap.traceShape}` +
+          `（即读取路径${declaredStructured ? '有' : '没有'}结构化字段），` +
+          `而探针实测 trace_path_structured=${probe.trace_path_structured}。` +
+          '判定层按声明分档，声明过时会让证据核验按不存在的事实工作——请核对适配器声明或重跑探针。',
+      });
+    }
+  }
+
+  if (probe.rejected_command_in_trace !== null) {
+    if (probe.rejected_command_in_trace !== cap.rejectionRecorded) {
+      out.push({
+        level: 'note',
+        message:
+          `能力对账不符：适配器声明 ${cliName} 的 rejectionRecorded=${cap.rejectionRecorded}，` +
+          `而探针实测 rejected_command_in_trace=${probe.rejected_command_in_trace}。` +
+          (probe.rejected_command_in_trace === false
+            ? '实测更悲观：被拒的操作不留痕，阴性结论不可信，而声明说它可信。'
+            : '实测更乐观：被拒的操作会留痕，可以把降级标记去掉了。'),
+      });
+    }
+  }
+
+  return out;
 }
 
 /**
@@ -415,6 +476,17 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     probe.cli.codex = r.probe;
     notes.push(...r.notes.map((n) => `[codex] ${n}`));
     await checkpoint('codex');
+    /*
+     * 能力对账（EV-06 的清偿）：只在该侧已接线时做——没有适配器就没有「声明」，
+     * 拿不存在的声明去对账只会产生噪音。
+     */
+    const codexAdapter = realAdapters()[agentByCliName('codex')?.id ?? 'codex'];
+    if (codexAdapter) {
+      for (const line of capabilityParity(r.probe, codexAdapter.capability, 'codex')) {
+        notes.push(`[codex] ${line.message}`);
+      }
+    }
+
     for (const line of codexSeverity(r.probe, {
       enabled: agentByCliName('codex')?.criticEnabled === true,
       asked: only === 'codex',

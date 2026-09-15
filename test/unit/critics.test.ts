@@ -11,7 +11,7 @@ import { resolveCriticSelection } from '../../src/trivium/critics.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { DEFAULT_DRIVER, ALL_AGENT_IDS, agentById } from '../../src/trivium/agents/registry.js';
-import { CRITICS, type Config } from '../../src/trivium/types.js';
+import { CRITICS, type Config, DEFAULT_CRITICS } from '../../src/trivium/types.js';
 
 const cfg = (): Config => defaultConfig();
 
@@ -27,7 +27,12 @@ function rejects(fn: () => unknown, ...patterns: RegExp[]): void {
 // ─────────────────────────── 正常路径 ───────────────────────────
 
 test('都不给 → 取 review.default_critics', () => {
-  assert.deepEqual(resolveCriticSelection(cfg()), [...CRITICS]);
+  /*
+   * 比的是**缺省集合**而不是启用全集（M8 第 3 步）。
+   * 此前二者是同一个，codex 启用后分了家：能选三家、默认跑两家（决策 D-1）。
+   * 用例名一直写的就是「取 review.default_critics」——断言现在才与它一致。
+   */
+  assert.deepEqual(resolveCriticSelection(cfg()), [...DEFAULT_CRITICS]);
 });
 
 test('--critics 显式多选', () => {
@@ -117,11 +122,20 @@ test('Driver 检查不依赖 criticEnabled 顺带生效（M9 之后仍要挡住�
 });
 
 test('已登记但未启用为审核者 → 退 64，说明随后续里程碑接入', () => {
-  const pending = ALL_AGENT_IDS.find(
-    (id) => !agentById(id)!.criticEnabled && id !== DEFAULT_DRIVER,
-  );
+  /*
+   * 找一个未启用为审核者的 id。**不再排除 DEFAULT_DRIVER**——codex 于 M8 第 3 步
+   * 启用后，未启用的只剩 claude，而它恰是缺省 Driver，原条件会筛成空集
+   * （用例自己预告过这一天：「届时改用别的夹具」）。
+   * 改法是显式换一个当轮 Driver，把 claude 从 Driver 位置挪开，
+   * 这样走到的就是「尚未启用」那条分支，而不是被 Driver 检查先拦下。
+   */
+  const pending = ALL_AGENT_IDS.find((id) => !agentById(id)!.criticEnabled);
   assert.ok(pending, '四家全部启用时本用例失去意义，届时改用别的夹具');
-  rejects(() => resolveCriticSelection(cfg(), { critics: pending }), /尚未启用/);
+  const otherDriver = CRITICS.find((c) => c !== pending)!;
+  rejects(
+    () => resolveCriticSelection(cfg(), { critics: pending, driver: otherDriver }),
+    /尚未启用/,
+  );
 });
 
 test('在 agents 段里没有配置条目 → 退 64（取不到调用参数）', () => {

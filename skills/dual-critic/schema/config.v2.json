@@ -296,7 +296,7 @@
     "agents": {
       "type": "object",
       "minProperties": 1,
-      "description": "逐 Agent 的配置段，键是注册表的 Agent id。键只要求「是已登记 Agent」，不要求 criticEnabled——Driver 自身也需要配置容身之处（设计 13.1.1）。键是否已登记、vendor 是否与注册表相符，由 schemas.ts 在 ajv 之后按注册表补校：Agent 身份的唯一来源是注册表（纪律 7），在 schema 里抄第二份，新增一家时改一漏二不会报错。值以 vendor 为判别式做可辨识联合——两家字段集合完全不同，压成同构 record 会让校验形同虚设。codex / claude 的形状随 M8 / M9 / M10 加入 oneOf。",
+      "description": "逐 Agent 的配置段，键是注册表的 Agent id。键只要求「是已登记 Agent」，不要求 criticEnabled——Driver 自身也需要配置容身之处（设计 13.1.1）。键是否已登记、vendor 是否与注册表相符，由 schemas.ts 在 ajv 之后按注册表补校：Agent 身份的唯一来源是注册表（纪律 7），在 schema 里抄第二份，新增一家时改一漏二不会报错。值以 vendor 为判别式做可辨识联合——两家字段集合完全不同，压成同构 record 会让校验形同虚设。codex 的形状已于 M8 第 3 步加入 oneOf；claude 随 M9 / M10 加入。",
       "additionalProperties": {
         "oneOf": [
           {
@@ -391,6 +391,66 @@
                   "reject",
                   "annotate"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "vendor",
+              "bin",
+              "profile",
+              "effort"
+            ],
+            "properties": {
+              "vendor": {
+                "const": "openai"
+              },
+              "bin": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "profile": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "厂商 profile 名，对应 $CODEX_HOME/<name>.config.toml（0.154.0 的 -p 是文件分层，不是 config.toml 里的 [profiles.*] 段）。它同时是「模型属于哪个 provider 家族」的唯一判定依据——实测 model_provider 随 -p 走，按模型 slug 前缀猜家族会随目录命名漂移。"
+              },
+              "effort": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "plan",
+                  "code",
+                  "bug"
+                ],
+                "properties": {
+                  "plan": {
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high"
+                    ]
+                  },
+                  "code": {
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high"
+                    ]
+                  },
+                  "bug": {
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high"
+                    ]
+                  }
+                }
               }
             }
           }

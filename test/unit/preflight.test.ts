@@ -28,6 +28,18 @@ function freshProbe(cfg: Config): void {
   zcode.models = ['GLM-5.3', 'GLM-5.3-Flash', 'bigmodel/GLM-5.3', 'bigmodel/GLM-5.3-Flash'];
   zcode.model_id_form = 'bigmodel/GLM-5.3';
   zcode.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit'];
+  /*
+   * 下面两个字段是 M8 第 3 步补的：`checkReadonlyCapability` 改为遍历适配器自己的
+   * `availability()` 之后，判据比原先那个弱化版更严（原版不查 zcode 的
+   * `--disallowed-tools` 硬前置，也不查两家的 headless 能力）。
+   * 夹具跟着补齐，不是为了让断言变绿——**变严的是判据，而变严是对的**：
+   * 预检与适配器对「这一侧能不能用」曾给出两个答案（计划双审 GLM-06）。
+   */
+  agy.headless_read_ok = true;
+  // 探针**当时实际验证过**的只读 Agent 名。新判据查的是这个，而不是「agent.md 文件在不在」——
+  // 探针若以默认 Agent 探测，只读白名单就从未被验证过，那时说「可用」是失实的。
+  agy.agent = 'trivium-critic';
+  zcode.response_field = '.response';
 }
 
 async function fakeCtx(mutate?: (c: Config) => void): Promise<Ctx> {
@@ -460,7 +472,14 @@ test('第三态③：extract 不是合法正则时点名，而不是抛 JS 原�
   const ctx = await fakeCtx((c) =>
     probeWithVersionProbe(c, { runner: null, args: ['--version'], extract: '(' }),
   );
-  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
+  /*
+   * `critics: ['gemini']` 是 M8 第 3 步补的，表达本条用例**本来就有**的意图——
+   * `probeWithVersionProbe` 的注释写着「另一侧压成没探过，免得它的失败盖过本条要看的
+   * 检查项」。此前靠把 `probed_at` 压成 null 让它隐身，而只读能力检查收敛到适配器
+   * `availability()` 之后，**入选侧没探过 = 不可用**，预检会如实拦下（这是对的：
+   * 本次要用它，用必失败，快速失败优于中途失败）。所以改用「不选它」来表达不测它。
+   */
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'] });
   const detail = coverageDetail(r);
   assert.match(detail, /不是合法正则/);
   assert.equal(r.ok, true, '盘上一个字段被改坏不该让整个预检以 JS 异常收场');

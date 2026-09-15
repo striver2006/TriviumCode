@@ -213,6 +213,9 @@ export async function applyOverlay(dest: string): Promise<string[]> {
     suffix: '${STUB_ID}',
     findingPrefix: '${STUB_PREFIX}',
     criticEnabled: true,
+    // 桩要参与默认三审场景，所以缺省入选也开着（M8 第 3 步新增的字段——
+    // 「能不能当审核者」与「不选时跑不跑它」自此是两件事）
+    defaultSelected: true,
     driverEnabled: false,
     guardLevel: 'L2',
     instructionFiles: ['STUB.md'],

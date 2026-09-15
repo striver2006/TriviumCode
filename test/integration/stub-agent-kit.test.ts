@@ -403,6 +403,10 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
       '      models:',
       "        - 'gemini-3.8-flash-high'",
       '      headless_read_ok: true',
+      // M8 第 3 步：只读能力检查改为遍历适配器 availability()，判据比原先严——
+      // agy 侧要求探针记下**当时实际验证过**的只读 Agent 名，zcode 侧要求
+      // --disallowed-tools 与 response_field 都在。夹具据此补齐。
+      `      agent: 'trivium-critic'`,
       '    zcode:',
       `      entrypoint: ${fakeZcode}`,
       `      version: '${FAKE_CLI_VERSION}'`,
@@ -415,8 +419,9 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
       // 写 null 取全文会与 version 字段对不上，被误报成版本漂移。
       "        extract: '(\\d+\\.\\d+\\.\\d+)'",
       '      readonly_flags:',
-      "        - '--mode'",
-      "        - 'plan'",
+      "        - '--mode plan'",
+      "        - '--disallowed-tools Write,Edit'",
+      "      response_field: '.response'",
       '      models:',
       "        - 'GLM-5.3'",
       '',

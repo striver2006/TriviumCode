@@ -143,6 +143,13 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
   { file: 'adapters/index.ts', why: 'Agent id → 厂商适配器的唯一接线处；新增一家在此加一行（M7b 第 2 步把 review/run-protocol 两份字面表收敛到这里）' },
   { file: 'adapters/agy.ts', why: '厂商专属适配器：文件本身即该 Agent 的命名空间' },
   { file: 'adapters/zcode.ts', why: '厂商专属适配器：ZCode 调用与参数构造' },
+  {
+    file: 'adapters/codex.ts',
+    why:
+      '厂商专属适配器：codex 调用、隔离副本准备与写判据接线，与 adapters/agy.ts 同规格。' +
+      '同目录的 codex-trace.ts / codex-home.ts **不需要**豁免——它们只处理事件流与配置文件，' +
+      '不写 Agent id 字面量，文件名带 codex 不进扫描面',
+  },
   { file: 'config.ts', why: '内置默认配置里各 Agent 的厂商专属配置段（agents.gemini / agents.glm 的 vendor、agent、entry、max_turns）与 profiles 的逐 Agent 模型档位。M7b 第 4 步迁成 agents.* 后**仍需要**：内置默认值本身就得指名道姓地写出每一家配什么，那不是硬编码而是默认值的定义处；新增一家时这里加一段，与注册表加一行是同一件事的两面' },
   // 注意：`src/install.ts` 不在本对账的扫描范围（只扫 src/trivium/），
   // 因此不需要、也不应该为它留白名单条目——留着只会误导读者以为它被扫过。
@@ -169,7 +176,15 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
       '上一条豁免的理由里预言过「接 claude 探针时会遇到同一件事」——本条就是它',
   },
   { file: 'doctor.ts', why: '逐侧探测的人读输出与厂商专属诊断话术' },
-  { file: 'preflight.ts', why: '逐侧预检的人读输出，以及两处按 Agent id 取厂商配置段的指纹计算（agyFingerprint 读 agents.gemini 的只读 Agent 定义）。M7b 第 6 步已把 checkModelSlugs 的身份穷尽改成按 vendor 分派，那一条不再是豁免理由；剩下的是「哪一家的可用性由哪个文件决定」，属厂商专属事实' },
+  /*
+   * `preflight.ts` 的豁免于 2026-09-15（M8 第 3 步）删除——**它是被这条对账赶出去的**。
+   *
+   * 原理由是「逐侧预检的人读输出，以及两处按 Agent id 取厂商配置段的指纹计算」。
+   * 本步把三处按厂商分派全部收敛掉：只读能力改为遍历适配器 `availability()`、
+   * 探活改为遍历 `authProbe()`（指纹计算随之回到各适配器）、模型目录校验改为
+   * 按 cliName 通用消费 `CommonProbe.models`。收敛完成后该文件里一个 Agent 字面量都没有，
+   * 「不得留过期条目」这条当场把它标了出来——泛化是否真的做完，由机器说了算。
+   */
   { file: 'selftest.ts', why: '自检场景里两侧桩的固定编排；M7b 增 N 侧场景' },
   { file: 'types.ts', why: "Disposition.role 的字面 'claude'：裁决件的作者恒为当轮 Driver，而 Driver 任意化排在 M10。此前的豁免理由是 CriticId 的字面收窄，M7b 第 6 步已把它放开成注册表全集——理由换了，豁免仍需要，所以是改写而不是删除" },
 ];

@@ -15,10 +15,11 @@
  *     所以超时判定必须靠编排器自己的墙钟计时，不能只看退出码（坑 P-07）。
  */
 import path from 'node:path';
+import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import type { CriticRequest, CriticResult } from '../types.js';
 import { run } from '../util/exec.js';
-import { ensureDir } from '../util/fsx.js';
+import { ensureDir, exists, sha256File } from '../util/fsx.js';
 import {
   parseAgyStream,
   readPaths,
@@ -181,6 +182,46 @@ export const agyAdapter: CriticAdapter = {
    * 之外的白名单里，出现即失守，所以 `toolTotal` 不计入它（见 checkEvidence 的分档）。
    */
   capability: TOOL_TRACE_CAPABILITY,
+
+  /**
+   * 探活（M8 第 3 步从 `preflight` 搬来）。
+   *
+   * 指纹取只读审查 Agent 的定义文件：那份 `agent.md` 一改，白名单就换了，
+   * 旧的「已认证」结论对新的工具面不再成立——所以它必须参与缓存失效判定。
+   */
+  authProbe(ctx: AdapterContext, projectRoot: string) {
+    const cfg = ctx.cfg;
+    return {
+      async fingerprint() {
+        const f = path.join(
+          os.homedir(), '.gemini/config/agents',
+          agentConfigOf(cfg, 'gemini', 'antigravity').agent, 'agent.md',
+        );
+        return (await exists(f)) ? sha256File(f) : null;
+      },
+      async probe() {
+        const bin = cfg.probe.cli.agy?.entrypoint ?? null;
+        if (!bin) return { ok: false, detail: 'agy 路径未记录' };
+        const out = await invokeAgy({
+          bin,
+          cwd: projectRoot,
+          prompt: '只回复 OK 两个字母，不要调用任何工具。',
+          model: cfg.probe.cli.agy?.models[0] ?? null,
+          agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
+          timeoutMs: 120_000,
+          pty: cfg.probe.cli.agy?.pty_required === true,
+        });
+        const ok = out.parsed.status === 'SUCCESS' && !out.timedOut;
+        return {
+          ok,
+          detail: ok
+            ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
+            : `探活失败（status=${out.parsed.status}）。请先交互登录一次：\`agy\` 然后完成登录流程。\n` +
+              `  stderr: ${out.stderr.slice(0, 200)}`,
+        };
+      },
+    };
+  },
 
   availability(ctx: AdapterContext) {
     /*

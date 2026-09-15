@@ -11,7 +11,7 @@
  * 而两侧明明有概念重叠（AGY-01 与 GLM-03 讲同一件事）。
  */
 import type { CriticId, Review } from './types.js';
-import { CRITICS } from './types.js';
+import { DEFAULT_CRITICS } from './types.js';
 
 export interface NormalizedLocation {
   /** 文件相对路径，或章节标记（形如 `§3.2`） */
@@ -121,7 +121,11 @@ export function measureDivergence(
   a: Review | null,
   b: Review | null,
   threshold = 0.8,
-  pair: { a: CriticId; b: CriticId } = { a: CRITICS[0]!, b: CRITICS[1] ?? CRITICS[0]! },
+  /*
+   * 默认配对取**缺省集合**的前两家（M8 第 3 步）：启用全集里 codex 排在最前，
+   * 而它默认不入选——按全集取会让「没传配对」时报出一对根本没跑的侧。
+   */
+  pair: { a: CriticId; b: CriticId } = { a: DEFAULT_CRITICS[0]!, b: DEFAULT_CRITICS[1] ?? DEFAULT_CRITICS[0]! },
 ): DivergenceReport {
   const la = dedupe((a?.findings ?? []).map((f) => normalizeLocation(f.location)));
   const lb = dedupe((b?.findings ?? []).map((f) => normalizeLocation(f.location)));

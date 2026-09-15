@@ -9,7 +9,13 @@
  * Schema 是运行时真理来源（ajv 校验），本文件是编译期的同一份约定。改一处必须改另一处。
  */
 
-import { agentById, CRITIC_AGENT_IDS, type AgentId, type AgentVendor } from './agents/registry.js';
+import {
+  agentById,
+  CRITIC_AGENT_IDS,
+  DEFAULT_CRITIC_AGENT_IDS,
+  type AgentId,
+  type AgentVendor,
+} from './agents/registry.js';
 
 export type { AgentId, AgentVendor };
 
@@ -72,6 +78,16 @@ export const STAGES: readonly Stage[] = ['plan', 'code', 'bug'];
  */
 
 export const CRITICS: readonly CriticId[] = CRITIC_AGENT_IDS as readonly CriticId[];
+
+/**
+ * **缺省入选**的审核者集合（`review.default_critics` 的默认值来源，M8 第 3 步）。
+ *
+ * 与 `CRITICS` 的差别只在注册表的 `defaultSelected` 一个字段：
+ * `CRITICS` 是「能选谁」，本集合是「不选时跑谁」。两者曾是同一个集合，
+ * 于是启用第三家就等于让每次审查的成本自动涨一档——见注册表 `defaultSelected` 的说明。
+ */
+export const DEFAULT_CRITICS: readonly CriticId[] =
+  DEFAULT_CRITIC_AGENT_IDS as readonly CriticId[];
 
 export const CRITIC_VENDOR: Record<CriticId, Vendor> = Object.fromEntries(
   CRITICS.map((c) => [c, agentById(c)!.vendor]),
@@ -213,6 +229,25 @@ export interface ZcodeProbe extends CommonProbe {
  * 那条记的是 `instructionFiles` 登记了却没有任何读取方，于是「登记」被误读成「已生效」。
  * 探针结论天然是给后续里程碑用的，但「M8 会用」和「没人会用」必须当场分得清。
  */
+/**
+ * 一个 codex profile 的 provider 家族结论（M8 第 3 步，J8）。
+ *
+ * 为什么按 **profile** 而不是按 provider 组织：`-p` 是用户实际能选的旋钮，
+ * 而 0.154.0 的 profile 是**文件分层**（`$CODEX_HOME/<name>.config.toml` 整份叠在基底上），
+ * 一个 profile 恰好钉住一组「provider + 默认模型 + 模型目录」。
+ * 按 provider 组织则要反查「哪个 profile 能选到它」，那正是本步否决的那类猜测。
+ */
+export interface CodexProviderProbe {
+  /** profile 名，即 `-p` 的取值 */
+  profile: string;
+  /** 该 profile 生效的 provider 家族 id（`model_provider` 键） */
+  provider: string | null;
+  /** 该 provider 段带得出凭据（明文 token 或 env_key 指向的变量在场）。**不记值** */
+  credentialed: boolean;
+  /** 该 profile 声明的默认模型 slug */
+  model: string | null;
+}
+
 export interface CodexProbe extends CommonProbe {
   /**
    * `codex exec` headless 下能否真的读到文件（哨兵首行回显命中）。
@@ -310,6 +345,16 @@ export interface CodexProbe extends CommonProbe {
    * 得像校验 model slug 一样自己校验。
    */
   effort_validated: boolean | null;
+  /**
+   * 逐 profile 的 provider 家族探活结论（J8，M8 第 3 步）。
+   *
+   * **消费方**：①适配器的 `availability()`——本次 profile 没有可用凭据即该侧不可用；
+   * ②`preflight`——选了 codex 而其 profile 所属家族未配置时**拒绝启动**并给可粘贴指引
+   * （AC-20 末条）；③`doctor` 的人读诊断。
+   *
+   * **只记「有没有」，不记凭据值**（与 `secrets.ts` 的既定口径一致）。
+   */
+  providers: CodexProviderProbe[];
   /**
    * 模型目录文件的来源路径（从配置的 `model_catalog_json` 读出，**不写死**）。
    *
@@ -563,6 +608,23 @@ export interface GeminiCriticConfig {
   readonly_commands: string[];
 }
 
+/**
+ * codex 的配置段（M8 第 3 步）。
+ *
+ * `profile` 是 R-6 的落点，也是**「家族」的唯一判定依据**——
+ * 本步实测确认 `model_provider` 随 `-p` 走（`-p qwen` ⇒ qwen、`-p deepseek` ⇒ deepseek），
+ * 所以家族由 profile 决定，**不按模型 slug 的前缀猜**：目录命名会漂移，
+ * 而 `unknown_profile_rejected` 实测为 false（未知 profile 静默回落基底），
+ * 猜错一次就是「以为跑的是 deepseek、实际跑的是基底那家」而毫无提示。
+ */
+export interface CodexCriticConfig {
+  vendor: 'openai';
+  bin: string | null;
+  /** 厂商 profile 名，对应 `$CODEX_HOME/<name>.config.toml`（0.154.0 的 `-p` 是文件分层） */
+  profile: string | null;
+  effort: Record<Stage, 'low' | 'medium' | 'high'>;
+}
+
 export interface GlmCriticConfig {
   vendor: 'zcode';
   entry: string | null;
@@ -582,7 +644,20 @@ export interface GlmCriticConfig {
  * `agents.claude` 会被 schema 拒——那不是缺陷，而是「形状尚未定义」的如实反映：
  * 设计 13.1.1 允许 Driver 段存在，但没说它长什么样，凭空放行等于承诺一个不存在的契约。
  */
-export type AgentConfig = GeminiCriticConfig | GlmCriticConfig;
+export type AgentConfig = GeminiCriticConfig | GlmCriticConfig | CodexCriticConfig;
+
+/**
+ * 一条判不实的写入线索（`CriticResult.suspected_write_events` 的元素）。
+ *
+ * 定义在本文件而不是 `adapters/base.ts`：它是**结果契约**的一部分，
+ * 而 `base.ts` 已经 import 本文件——反向 import 会成环。
+ */
+export interface SuspectedWrite {
+  /** 命令原文 */
+  command: string;
+  /** 为什么判不实（人读，进留痕） */
+  why: string;
+}
 
 export interface GateConfig {
   require_adjudication: boolean;
@@ -888,6 +963,22 @@ export interface CriticResult {
   read_paths: string[];
   /** 轨迹中出现过的写工具/写命令事件，非空即 readonly_breach */
   write_events: string[];
+  /**
+   * **疑似**写入：命中写形态但判不实的命令（M8 第 3 步）。
+   *
+   * **不驱动 `readonly_breach`**，只进留痕与 doctor 输出。
+   *
+   * ## 为什么要单列这一档
+   *
+   * 只读失守是安全指控，`judgeSide` 对它没有分级：`write_events` 非空即失守、整侧作废。
+   * 而 `command-trace` 族的写判定只能从命令文本推，三类形态推不实：
+   * 幂等空操作（`mkdir -p <已存在>` 退 0 却没写）、失败掩码（`… || true` 的整条退出码
+   * 与写段成功脱钩）、项目外目标。把它们塞进 `write_events` 会误杀正常审查；
+   * 丢弃则让排查失去线索——所以单列一档，如实记而不下判决。
+   *
+   * 可选字段：`tool-trace` 族（结构化写事件）不需要这一档，恒不填。
+   */
+  suspected_write_events?: SuspectedWrite[];
   /**
    * 轨迹中出现过的**命令原文**，措施 b（§10.1）的输入。
    *

@@ -8,7 +8,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { DEFAULT_DRIVER, findingPrefixAlternation, type AgentId } from './agents/registry.js';
-import { CRITICS, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
+import { DEFAULT_CRITICS, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
 import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
 import { dispositionKindForStage } from './naming.js';
@@ -401,11 +401,14 @@ export function renderGateResult(r: GateCheckResult): string {
  * v1 记录迁移成 v2 形状，其 `critics_selected` 正是由键集推导，因此旧归档的
  * 判读结论保持不变（迁移不会把信息变多，见 `migrateRunMetaV1`）。
  *
- * run.json 读不到、或迁移后集合为空时回落到当前启用集合，保持旧归档可读。
+ * run.json 读不到、或迁移后集合为空时回落到**缺省**集合，保持旧归档可读。
+  * **回落值取缺省集合而非启用全集**（M8 第 3 步）：codex 启用后，
+  * 「能跑的」是三家而「默认跑的」是两家，按前者回落会对每一个两侧轮次报假缺口。
+  * 读不到记录时，最合理的猜测是「跑了默认那几家」。
  */
 function criticsOf(runMeta: RunMeta | null): readonly CriticId[] {
   const selected = runMeta?.critics_selected ?? [];
-  return selected.length > 0 ? selected : CRITICS;
+  return selected.length > 0 ? selected : DEFAULT_CRITICS;
 }
 
 /**

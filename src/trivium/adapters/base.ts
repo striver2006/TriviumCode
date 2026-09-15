@@ -9,7 +9,9 @@
  */
 import nodePath from 'node:path';
 import os from 'node:os';
-import type { Config, CriticId, CriticRequest, CriticResult, Stage } from '../types.js';
+import type {
+  Config, CriticId, CriticRequest, CriticResult, Stage, SuspectedWrite,
+} from '../types.js';
 
 export interface AdapterContext {
   cfg: Config;
@@ -58,12 +60,48 @@ export interface TraceCapability {
   rejectionRecorded: boolean;
 }
 
+/**
+ * 探活能力（M8 第 3 步，收敛 `preflight` 的按厂商分派）。
+ *
+ * ## 切分口径
+ *
+ * **厂商知识回到适配器**：指纹从哪个文件算、最小调用怎么发、失败该怎么说。
+ * **通用逻辑留在 `preflight`**：TTL、版本比对、缓存读写、失败即不缓存。
+ *
+ * 这样新增一家只写自己那两件，而缓存策略不会被抄成三份各自漂移。
+ * 收敛前 `preflight` 里是 `probeAgyAuth` / `probeZcodeAuth` 两个写死分支，
+ * 计划双审两侧独立指出再加第三个就是第三次堆砌（AGY-03 ≡ GLM-06）。
+ */
+export interface AuthProbe {
+  /**
+   * 该侧凭据的指纹（通常是凭据文件的哈希），缓存失效判据之一。
+   * `null` = 无从计算，此时缓存只由 TTL 与 CLI 版本约束。
+   */
+  fingerprint(): Promise<string | null>;
+  /** 真跑一次最小 headless 调用。**这是预检里最贵的一步**，由调用方决定要不要跑 */
+  probe(): Promise<{ ok: boolean; detail: string }>;
+}
+
 export interface CriticAdapter {
   readonly critic: CriticId;
   /** 该侧轨迹的证据形状——判定层据此分档，不按 Agent id 分叉（§11.1） */
   readonly capability: TraceCapability;
   /** 该侧是否可用（探针结论决定）。不可用时给出人读原因 */
   availability(ctx: AdapterContext): { ok: boolean; reason?: string };
+  /**
+   * 模型 slug 在与探针目录比对**之前**的归一。**可选**：不需要归一的侧不实现。
+   *
+   * 存在的理由是 zcode：配置里写短名，实际传参要补 `<providerId>/` 前缀（坑 P-06），
+   * 而预检要比对的是**补全后**的形态。这条知识属于那一侧，不该住在 `preflight` 里
+   * ——它住在那里时，`checkModelAgainstCatalog` 就得按 vendor 分支，
+   * 于是第三家一律落「无法校验」（计划双审 GLM-04）。
+   */
+  normalizeModelForCatalog?(cfg: Config, model: string): string;
+  /**
+   * 探活。**可选**：没有凭据概念的侧（如桩）不实现，`preflight` 相应跳过并如实说明——
+   * 「没得探」与「探过通过」不能长得一样。
+   */
+  authProbe?(ctx: AdapterContext, projectRoot: string): AuthProbe;
   run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult>;
 }
 
@@ -535,6 +573,220 @@ export function effectiveReadPaths(
     }
   }
   return [...out];
+}
+
+/**
+ * `command-trace` 族的能力（M8 第 3 步）。
+ *
+ * `rejectionRecorded: false` 的依据是 M6 的 P-C2，并在本步的隔离实测里再次复现：
+ * 让模型尝试 `echo BREACH > /tmp/…`，文件未被创建、**而轨迹里连那条命令都没有**。
+ * 于是阴性结论（没检出写事件）排除不了「试过但被拒」，只读保障降到两重；
+ * 阳性方向不受影响——成功执行的命令照常留痕（P-C1）。
+ */
+export const COMMAND_TRACE_CAPABILITY: TraceCapability = {
+  traceShape: 'command-trace',
+  rejectionRecorded: false,
+};
+
+/**
+ * 写动词闭集 —— 回答「**这是不是写操作**」。
+ *
+ * ## 为什么不复用 `WRITE_VERB_TARGET`
+ *
+ * 那张表回答的是另一个问题：「这个参数位**算不算读证据**」。两张表的键集看着像，
+ * 语义不同，正确内容因此也不同——`cd` / `pushd` 必须在那张表里（它们的参数是目录、
+ * 不是被读的文件），却绝不能在这张表里（它们不发生任何写系统调用）。
+ *
+ * M8 第 3 步的计划稿曾写「复用那张表的动词集，不新起一张表——两张表会漂移」。
+ * 防漂移这个理由本身没错，**错在前提**：防漂移的前提是两张表语义相同。
+ * 计划双审两侧独立判它是 blocker（AGY-01 ≡ GLM-01），随后的隔离实测当场复现：
+ * 模型跑的第二条命令就是 `/bin/zsh -lc 'cd . && echo ok'`，`exit_code: 0`、
+ * `status: completed`，按那个判据会被记成写事件 ⇒ `guard.ts` 无分级地判只读失守
+ * ⇒ 整侧作废。审查员开头先 `cd` 再 grep 是最常见的形态，这不是边缘情形。
+ *
+ * 两张表的关系由 `test/unit/codex-write-verbs.test.ts` 的对账用例守着：
+ * `cd`/`pushd` 必须**在** `WRITE_VERB_TARGET`、**不在**本集合。
+ * 后来者若再想合并，那条用例会当场红。
+ */
+const WRITE_VERBS: ReadonlySet<string> = new Set([
+  'cp', 'mv', 'install', 'ln', 'tee',
+  'rm', 'rmdir', 'mkdir', 'touch',
+  'chmod', 'chown', 'truncate', 'dd',
+]);
+
+/**
+ * 各写动词的**写入位**（与 `WRITE_VERB_TARGET` 的「参数位」分开定义，理由同上）。
+ *
+ * `ln` 取 `last` 而不是 `all-after-flags`：`ln -s a b` 只创建 `b`，
+ * 把源 `a` 也当写入点会在「源在项目内、链接在项目外」时误判。
+ */
+const WRITE_VERB_SINK: Record<string, 'last' | 'all-after-flags'> = {
+  cp: 'last', mv: 'last', install: 'last', ln: 'last', truncate: 'last',
+  tee: 'all-after-flags',
+  rm: 'all-after-flags', rmdir: 'all-after-flags',
+  mkdir: 'all-after-flags', touch: 'all-after-flags',
+  chmod: 'all-after-flags', chown: 'all-after-flags',
+};
+
+/** 对账用例的读取面：两个集合都要能被测试拿到，才谈得上对账 */
+export const WRITE_VERBS_FOR_PARITY: readonly string[] = [...WRITE_VERBS].sort();
+export const WRITE_TARGET_VERBS_FOR_PARITY: readonly string[] = Object.keys(WRITE_VERB_TARGET).sort();
+
+export interface WriteCommandClassification {
+  /** 高置信写入：目标在项目内、无掩码、非幂等空操作。进 `write_events`，驱动只读失守 */
+  writes: string[];
+  /** 判不实的：目标在项目外/提不出、段含掩码、幂等形态。**不**驱动失守，只留痕 */
+  suspected: SuspectedWrite[];
+}
+
+/** 设备路径：写它不构成对项目或留痕的破坏，也不值得进疑似档 */
+function isDevicePath(p: string): boolean {
+  return p === '/dev/null' || p.startsWith('/dev/');
+}
+
+/** 看起来像路径才算写入目标——`chmod 644 f` 的 `644`、`ln -s` 的 `-s` 不是 */
+function looksLikePath(t: string): boolean {
+  return t.includes('/') || /\.[A-Za-z0-9]+$/.test(t);
+}
+
+/**
+ * 从一段命令里取出写入目标。段已去引号、已按分隔符切开。
+ */
+function writeSinksOfSegment(tokens: readonly string[]): string[] {
+  const sinks: string[] = [];
+
+  /*
+   * ① 输出重定向 —— 与动词无关的写形态，必须单列。
+   * `echo BREACH > file` 的动词是 `echo`，不在任何写动词表里，
+   * 只按动词判会把最常见的写入形态整个漏掉。
+   */
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!;
+    if (!REDIRECT_RE.test(t)) continue;
+    const glued = t.replace(REDIRECT_RE, '');
+    if (glued) sinks.push(glued);           // `>out.txt` 紧贴写法
+    else if (tokens[i + 1]) sinks.push(tokens[i + 1]!); // `> out.txt` 分离写法
+  }
+
+  // ② 写动词的写入位
+  const verb = tokens.find((t) => !t.includes('=')) ?? '';
+  const base = verb.split('/').pop() ?? verb;
+  if (WRITE_VERBS.has(base)) {
+    if (base === 'dd') {
+      // dd 的写入点是 `of=`，位置无关
+      for (const t of tokens) if (t.startsWith('of=')) sinks.push(t.slice(3));
+    } else {
+      const args = tokens.slice(tokens.indexOf(verb) + 1).filter((t) => !t.startsWith('-'));
+      const mode = WRITE_VERB_SINK[base];
+      if (mode === 'last') {
+        const last = args.at(-1);
+        if (last) sinks.push(last);
+      } else {
+        sinks.push(...args);
+      }
+    }
+  }
+
+  return sinks.filter(looksLikePath);
+}
+
+/**
+ * 把成功执行过的命令分成「写事件」与「疑似写」两档（设计 §10.3 / §11.1，M8 第 3 步）。
+ *
+ * ## 调用契约
+ *
+ * 入参 `succeededCommands` 必须**只含成功执行的命令**（`status: completed`
+ * 且 `exit_code === 0`），由适配器筛好再喂进来。本函数不看退出码——
+ * `command_texts` 那份全集要留给措施 b（泄漏企图即便失败也要扫），两者论域不同。
+ *
+ * ## 为什么要分两档
+ *
+ * 只读失守是**安全指控**，`guard.ts` 对它没有分级：`write_events` 非空即失守、
+ * 整侧作废。所以进这一档的必须是高置信形态，其余如实记成疑似——
+ * 丢弃它们会让排查失去线索，混进去则会让正常审查被误杀。
+ *
+ * 三类判不实的形态（计划双审 GLM-01 逐条列出，本实现逐条落地）：
+ *
+ * 1. **幂等空操作**：`mkdir -p <已存在>` 不发写调用即退 0，`rm -f <不存在>`
+ *    按 POSIX 退 0——写动词在场、成功退出，却没有任何写入发生。
+ * 2. **失败掩码**：`touch x || true`、`…; true`——整条命令的 exit 0
+ *    不代表写段成功。`&&` 不算掩码：`a && b` 退 0 意味着两段都成功。
+ * 3. **项目外目标**：见下。
+ *
+ * ## 「项目外写入不算失守」是本步的裁决，不是宽松
+ *
+ * 依据是自洽性：codex 每次运行都会往 `$CODEX_HOME/sessions/` 写会话文件，
+ * 而本步回读生效模型**正是靠读那个文件**（AC-20 的 J3 依赖它）。
+ * 若项目外写入算失守，那么这条流水线赖以工作的那次写入自己就会把每一轮判成失守。
+ * 只读承诺的保护对象是**被审项目与归档留痕**，不是「该进程一个字节都不许写」。
+ * 项目外写入仍进疑似档——它可能是把被审代码外泄到 `/tmp` 的前兆。
+ */
+export function classifyWriteCommands(
+  succeededCommands: readonly string[],
+  projectRoot: string,
+): WriteCommandClassification {
+  const writes: string[] = [];
+  const suspected: SuspectedWrite[] = [];
+
+  for (const raw of succeededCommands) {
+    const cmd = unwrapSubshell(raw);
+    const dequoted = cmd.replace(/(['"`])([\s\S]*?)\1/g, (_m, _q, inner: string) =>
+      /[\s;&|()]/.test(inner) ? ' ' : ` ${inner} `,
+    );
+
+    // 掩码结构：`||` 与 `;`（以及后台 `&`）让整条退出码与各段成功脱钩；`&&` 不算
+    const masked = /\|\||;|&(?!&)/.test(dequoted);
+
+    const segments = dequoted.split(/\|\||&&|[|;()]/);
+    let hitAny = false;
+
+    for (const seg of segments) {
+      const tokens = seg.split(/[\s<]+/).filter((t) => t.length > 0);
+      if (tokens.length === 0) continue;
+
+      const verb = (tokens.find((t) => !t.includes('=')) ?? '').split('/').pop() ?? '';
+      const idempotent =
+        (verb === 'mkdir' && tokens.some((t) => /^-\w*p/.test(t))) ||
+        (verb === 'rm' && tokens.some((t) => /^-\w*f/.test(t)));
+
+      for (const sink of writeSinksOfSegment(tokens)) {
+        if (isDevicePath(sink)) continue;
+        hitAny = true;
+        const abs = normalizeAbs(expandHome(sink), projectRoot);
+
+        if (!isUnder(abs, projectRoot)) {
+          suspected.push({ command: raw, why: `写入目标在项目外：${abs}` });
+          continue;
+        }
+        if (masked) {
+          suspected.push({ command: raw, why: '命令含 || 或 ; 掩码，整条退出码不代表写段成功' });
+          continue;
+        }
+        if (idempotent) {
+          suspected.push({ command: raw, why: `${verb} 的幂等形态，成功退出不等于发生了写入` });
+          continue;
+        }
+        writes.push(raw);
+      }
+    }
+
+    // 命中写动词却一个目标都提不出来（变量拼接、命令替换…）——判不出即疑似
+    if (!hitAny) {
+      const verbs = dequoted
+        .split(/\|\||&&|[|;()]/)
+        .map((s) => (s.trim().split(/\s+/)[0] ?? '').split('/').pop() ?? '');
+      if (verbs.some((v) => WRITE_VERBS.has(v))) {
+        suspected.push({ command: raw, why: '命中写动词但提不出写入目标（变量拼接或命令替换）' });
+      }
+    }
+  }
+
+  return {
+    writes: [...new Set(writes)],
+    suspected: suspected.filter(
+      (s, i, arr) => arr.findIndex((x) => x.command === s.command && x.why === s.why) === i,
+    ),
+  };
 }
 
 /** 轨迹核验：读取路径中是否命中禁读清单（§10.1 第 ③ 道 (c) 层 / AC-04） */

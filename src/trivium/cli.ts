@@ -145,9 +145,12 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
   trivium review --status <run_id> [--json]    只读一次状态，不等待
   trivium review --cancel <run_id>             取消运行并回收主题锁
 
-  trivium preflight --stage plan|code|bug|all [--json] [--skip-auth-check] [--refresh-auth]
+  trivium preflight --stage plan|code|bug|all [--json] [--critics <id,…>] [--skip-auth-check] [--refresh-auth]
       启动预检（FR-18 / AC-16）。失败时**不产生任何工件**。
       --stage all   命令 A 用：校验全部三阶段的模型 slug + 编译测试命令已配置
+      --critics <id,…>  本次要用哪几侧。只读能力、模型 slug、探活都只查这几侧；
+                        缺省取 review.default_critics。下一步 review --start 选了谁，
+                        这里就要传谁——否则那一侧的可用性在预检阶段不被检查
       --profile <名称>  按该档位预检——要校验的是本次实际会用的模型
       --refresh-auth  强制重新探活，穿透 TTL 缓存
 
@@ -510,10 +513,27 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
 
   const modelOverrides = collectModelOverrides(args);
 
+  /*
+   * **本次入选的审核者要传进预检**（M8 第 3 步）。
+   *
+   * 不传的后果：预检按 `default_critics` 检查，而用户下一步 `review --start --critics
+   * codex,glm` 选的是另一组——于是**被选中那一侧的可用性在预检阶段根本不被检查**，
+   * 要等运行期 `availability()` 才发现。AC-20 明写「家族未配置 ⇒ 预检即拒绝启动」，
+   * 拦不住就是那条验收不成立。
+   *
+   * 解析走 `resolveCriticSelection`——与 `topic resolve` / `review --start` 同一处判定，
+   * 不在这里再实现一遍（M7b 第 5 步的教训：两处各写一份，启用第三家时会先后不一致）。
+   */
+  const critics = resolveCriticSelection(ctx.config, {
+    critics: flagString(args, 'critics'),
+    only: flagString(args, 'only'),
+  });
+
   const r = await runPreflight({
     ctx,
     scope,
     modelOverrides,
+    critics,
     skipAuthCheck: args.flags.get('skip-auth-check') === true,
     refreshAuth: args.flags.get('refresh-auth') === true,
   });

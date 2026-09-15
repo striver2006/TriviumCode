@@ -17,7 +17,7 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import type { CriticRequest, CriticResult } from '../types.js';
 import { run } from '../util/exec.js';
-import { ensureDir, exists } from '../util/fsx.js';
+import { ensureDir, exists, sha256File } from '../util/fsx.js';
 import {
   parseZcodeEnvelope,
   parseZcodeRollout,
@@ -188,6 +188,55 @@ export const zcodeAdapter: CriticAdapter = {
    * 但仍如实声明为 `tool-trace`：能力说的是「轨迹是什么形状」，不是「本次采到了什么」。
    */
   capability: TOOL_TRACE_CAPABILITY,
+
+  /**
+   * 目录比对前的 slug 归一（M8 第 3 步）。
+   *
+   * 配置里写短名 `GLM-5.3` 更易读，但实测传裸名会落到错误 provider（坑 P-06），
+   * 所以适配器传参时会补成 `<providerId>/<name>`。预检要拿「补全后的形态」去比目录，
+   * 否则短名恒判不在目录里。这条知识属于本侧，收敛后不再住在 `preflight` 里。
+   */
+  normalizeModelForCatalog(cfg, model) {
+    return qualifyZcodeModel(model, cfg.probe.cli.zcode?.model_id_form ?? null) ?? model;
+  },
+
+  /**
+   * 探活（M8 第 3 步从 `preflight` 搬来）。
+   *
+   * 指纹取 `~/.zcode/cli/config.json`：CLI 的 provider 配置**独立于桌面端**，
+   * 「桌面端已登录」不等于 CLI 可用（M0 实测），所以判据只认这个文件。
+   */
+  authProbe(ctx: AdapterContext, projectRoot: string) {
+    const cfg = ctx.cfg;
+    return {
+      async fingerprint() {
+        const f = path.join(os.homedir(), '.zcode/cli/config.json');
+        return (await exists(f)) ? sha256File(f) : null;
+      },
+      async probe() {
+        const entry = cfg.probe.cli.zcode?.entrypoint ?? null;
+        if (!entry) return { ok: false, detail: 'zcode 入口未记录' };
+        const out = await invokeZcode({
+          entry,
+          node: ctx.nodePath,
+          cwd: projectRoot,
+          prompt: '只回复 OK 两个字母，不要调用任何工具。',
+          readonlyArgs: readonlyArgsFromProbe(cfg.probe.cli.zcode?.readonly_flags ?? []),
+          homeDir: null,
+          timeoutMs: 120_000,
+        });
+        const ok = out.failureKind === 'none' && !out.timedOut && out.envelope !== null;
+        return {
+          ok,
+          detail: ok
+            ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
+            : out.failureKind === 'model_config_missing'
+              ? '缺 ~/.zcode/cli/config.json（CLI 的模型配置独立于桌面端，「已登录」不等于可用）'
+              : `探活失败（${out.failureKind}）：${out.stderr.slice(0, 200)}`,
+        };
+      },
+    };
+  },
 
   availability(ctx: AdapterContext) {
     // 同 agy：「未探过」与「探过但没找到」要分开答，判据用 probed_at 而非 `!p`（AGY-01）。

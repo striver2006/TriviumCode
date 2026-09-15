@@ -88,6 +88,30 @@ const RULES: Rule[] = [
     re: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY(?: BLOCK)?-----/g,
   },
   {
+    /*
+     * TOML 里的 provider 凭据赋值（M8 第 3 步，J9）。
+     *
+     * **为什么兜底规则扫不到它**：下面那条 `generic-secret-assignment` 要求
+     * `\b(?:api_key|secret|token|…)\b`，而本机 codex 配置里的键名是
+     * `experimental_bearer_token`——`token` 前面是下划线，是 word 字符，
+     * **词边界不成立**，于是整条明文凭据对扫描器隐形。
+     *
+     * 这一条前移到本步而不是留到下一步（决策 D-3）：本步的 `prepareCodexHome`
+     * 会把带明文 token 的 config.toml 与 auth.json 拷进运行目录，
+     * 「产生风险的那一步」与「覆盖风险的那一步」之间不该隔着一轮双审。
+     *
+     * **规则名按凭据形态取，刻意避开 Agent id 字面**：`codex` 恰好既是 cliName
+     * 又是 AgentId，写进规则名会被 `registry-parity` 的字面量对账命中
+     * （`probes/codex.ts` 那条豁免的理由里预言过这种撞名）。而现有的
+     * `zcode-api-key` 不命中，是因为 `zcode` 是 cliName、对应的 AgentId 是 glm——
+     * codex 没有这个侥幸。按形态命名后，规则本身也更通用：任何 TOML provider
+     * 配置都适用，不限于某一家。
+     */
+    name: 'toml-bearer-token',
+    re: /\b[\w.]*(?:bearer_token|access_token|refresh_token|id_token)\b\s*[:=]\s*["']?([A-Za-z0-9_\-+/.]{16,})["']?/gi,
+    confirm: (m) => looksReal(m[1] ?? ''),
+  },
+  {
     // 兜底：形如 api_key = "…" / token: '…' 的长随机串赋值
     name: 'generic-secret-assignment',
     re: /\b(?:api[_-]?key|secret|token|password|passwd|credential)\b\s*[:=]\s*["']?([A-Za-z0-9_\-+/]{20,})["']?/gi,

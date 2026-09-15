@@ -15,7 +15,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
-import { CRITICS, type CriticId, type Stage, type StageOrVerify } from './types.js';
+import { DEFAULT_CRITICS, type CriticId, type Stage, type StageOrVerify } from './types.js';
 import {
   buildArtifactName,
   buildVerifyName,
@@ -271,11 +271,14 @@ export async function checkStageArtifacts(
   stage: Stage,
   rerunIndex: number,
   /**
-   * 本轮实际入选的审核者。缺省当前启用集合，与重构前的字面两家逐项相同。
-   * 写死后缀时，审核者集合一变 `gate --check-artifacts` 必报假缺件
-   * （计划 §2.1 / B-3）。
+   * 本轮实际入选的审核者。写死后缀时，审核者集合一变
+   * `gate --check-artifacts` 必报假缺件（计划 §2.1 / B-3）。
+   *
+   * **回落值取缺省集合而非启用全集**（M8 第 3 步）：codex 启用后，
+   * 「能跑的」是三家而「默认跑的」是两家，按前者回落会对每一个两侧轮次报假缺口。
+   * 读不到记录时，最合理的猜测是「跑了默认那几家」。
    */
-  critics: readonly Role[] = CRITICS,
+  critics: readonly Role[] = DEFAULT_CRITICS,
   /** 当轮 Driver：原稿与裁决件的后缀 */
   driver: AgentId = DEFAULT_DRIVER,
   /**

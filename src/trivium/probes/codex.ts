@@ -27,7 +27,7 @@ import { run, tryRun } from '../util/exec.js';
 import { exists } from '../util/fsx.js';
 import { createFixture, SENTINEL_OPEN, type Fixture } from './fixture.js';
 import { probeScratchPaths } from './agy.js';
-import type { CodexProbe, PathDenyProbe, ProbeIsolation } from '../types.js';
+import type { CodexProbe, CodexProviderProbe, PathDenyProbe, ProbeIsolation } from '../types.js';
 
 /**
  * 探针**首选**模型：探的是能力不是质量，挑目录里最便宜的一档。
@@ -91,6 +91,107 @@ export async function probeCodexProfiles(home: string): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * 从 TOML 文本里取一个**顶层**字符串键（段头之前的部分）。
+ *
+ * 与 `adapters/codex-home.ts` 的裁剪同样按行处理、不引 TOML 解析库——
+ * 本项目只依赖 ajv 与 yaml，而打包产物必须是单文件。
+ */
+export function topLevelKey(text: string, key: string): string | null {
+  for (const line of text.split('\n')) {
+    const s = line.trim();
+    if (s.startsWith('[')) break; // 进入段区，顶层结束
+    const m = new RegExp(`^${key}\\s*=\\s*["'](.+?)["']`).exec(s);
+    if (m) return m[1]!;
+  }
+  return null;
+}
+
+/**
+ * 某个 provider 段是否**带得出凭据**（J8，M8 第 3 步）。
+ *
+ * **只判有无，绝不返回值**——与 `secrets.ts` 的既定口径一致：凭据不该流经
+ * 探针结论、留痕或任何会被渲染的地方。
+ *
+ * 认**三种**形态：
+ *
+ * 1. 明文 `experimental_bearer_token` / `api_key`——本机三家自定义 provider 都是这种，
+ *    也正是 J9 要补扫描规则的那一种（现有的 `generic-secret-assignment` 因 `\b`
+ *    词边界匹配不到 `experimental_bearer_token` 里的 `token`）；
+ * 2. `env_key = "XXX"` 指向环境变量，判据是那个变量在不在场；
+ * 3. **段根本不存在** ⇒ 这是 CLI 内置的官方 provider，凭据在 `auth.json` 里（OAuth 登录）。
+ *
+ * 第 3 种是本步真机跑出来的：本机 `gpt` profile 的 `model_provider = "openai"`
+ * 在任何 toml 里都没有对应段，按前两种形态判会得到 `false`——而它明明是可用的。
+ * 计划 §8 的 U5 当时写「本机只有一种形态、另一种无从实测」，实际有三种，
+ * 第三种就躺在本机配置里。**返回 `null` 表示「段不存在、要看 auth.json」**，
+ * 由调用方补上那一步——把文件系统访问留在纯函数外面，这样判据本身可单测。
+ */
+export function providerCredentialed(
+  text: string,
+  providerId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean | null {
+  const head = `[model_providers.${providerId}]`;
+  const start = text.indexOf(head);
+  if (start < 0) return null;
+  const rest = text.slice(start + head.length);
+  const end = rest.indexOf('\n[');
+  const body = end < 0 ? rest : rest.slice(0, end);
+
+  if (/^\s*(experimental_bearer_token|api_key)\s*=\s*["'].+["']/m.test(body)) return true;
+  const envKey = /^\s*env_key\s*=\s*["'](.+?)["']/m.exec(body);
+  if (envKey && env[envKey[1]!]) return true;
+  return false;
+}
+
+/**
+ * 逐 profile 的 provider 家族结论（J8）。
+ *
+ * **按 profile 组织**：`-p` 是用户实际能选的旋钮，而 0.154.0 的 profile 是文件分层，
+ * 一个 profile 恰好钉住一组「provider + 默认模型」。反过来按 provider 组织就得回答
+ * 「哪个 profile 能选到它」，那正是本步否决的那类猜测。
+ *
+ * provider 段可能写在 profile 文件里，也可能只写在基底 `config.toml` 里
+ * （文件分层是叠加而非替换），所以两处都查、任一命中即算有凭据。
+ */
+export async function probeCodexProviders(
+  home: string,
+  profiles: readonly string[],
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<CodexProviderProbe[]> {
+  const readOr = async (f: string): Promise<string> => {
+    try {
+      return await fs.readFile(f, 'utf8');
+    } catch {
+      return '';
+    }
+  };
+  const baseText = await readOr(path.join(home, 'config.toml'));
+
+  const out: CodexProviderProbe[] = [];
+  for (const profile of profiles) {
+    const text = await readOr(path.join(home, `${profile}.config.toml`));
+    const provider = topLevelKey(text, 'model_provider') ?? topLevelKey(baseText, 'model_provider');
+    const model = topLevelKey(text, 'model') ?? topLevelKey(baseText, 'model');
+    /*
+     * 两份 toml 任一命中即算有凭据（文件分层是叠加而非替换）。
+     * 两份都返回 null（段不存在）时落到第 3 种形态：内置官方 provider，看 auth.json。
+     */
+    let credentialed = false;
+    if (provider) {
+      const hits = [
+        providerCredentialed(text, provider, env),
+        providerCredentialed(baseText, provider, env),
+      ];
+      if (hits.some((h) => h === true)) credentialed = true;
+      else if (hits.every((h) => h === null)) credentialed = await exists(path.join(home, 'auth.json'));
+    }
+    out.push({ profile, provider, model, credentialed });
+  }
+  return out;
 }
 
 /**
@@ -243,78 +344,27 @@ export async function probeCodexHeader(
     stderr: r.stderr,
   };
 }
-
-/** 事件流里出现过的 item 类型 + 命令执行记录 */
-export interface CodexTrace {
-  /** 顶层事件类型（thread.started / turn.completed …） */
-  eventTypes: string[];
-  /** item 类型（command_execution / agent_message / error …） */
-  itemTypes: string[];
-  commands: { command: string; exitCode: number | null; output: string }[];
-  finalText: string | null;
-  /**
-   * 已完成的 item 原始对象。
-   *
-   * 留着是为了让「读取路径有没有结构化字段」可以**真测**而不是写常量：
-   * 判据要看除 `command` 外有没有别的字段装着路径（审查意见 GLM-04）。
-   */
-  rawItems: Record<string, unknown>[];
-}
-
-/** 解析 `exec --json` 的 JSONL。坏行跳过而不是抛——真实输出里混过 stderr 噪声 */
-export function parseCodexEvents(jsonl: string): CodexTrace {
-  const eventTypes = new Set<string>();
-  const itemTypes = new Set<string>();
-  const commands: CodexTrace['commands'] = [];
-  const rawItems: Record<string, unknown>[] = [];
-  let finalText: string | null = null;
-
-  for (const line of jsonl.split('\n')) {
-    const t = line.trim();
-    if (!t.startsWith('{')) continue;
-    let o: Record<string, unknown>;
-    try {
-      o = JSON.parse(t) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
-    if (typeof o['type'] === 'string') eventTypes.add(o['type']);
-    const item = o['item'] as Record<string, unknown> | undefined;
-    if (!item) continue;
-    const itemType = typeof item['type'] === 'string' ? item['type'] : null;
-    if (itemType) itemTypes.add(itemType);
-    if (o['type'] === 'item.completed') rawItems.push(item);
-    if (itemType === 'command_execution' && item['status'] === 'completed') {
-      commands.push({
-        command: String(item['command'] ?? ''),
-        exitCode: typeof item['exit_code'] === 'number' ? item['exit_code'] : null,
-        output: String(item['aggregated_output'] ?? ''),
-      });
-    }
-    if (itemType === 'agent_message' && typeof item['text'] === 'string') {
-      finalText = item['text'];
-    }
-  }
-  return {
-    eventTypes: [...eventTypes].sort(),
-    itemTypes: [...itemTypes].sort(),
-    commands,
-    finalText,
-    rawItems,
-  };
-}
-
-/**
- * 「这次探测跑完了没有」—— 三态判据的**共用前提**（审查意见 GLM-01 / GLM-05）。
+/*
+ * 事件流解析已搬到 `adapters/codex-trace.ts`（M8 第 3 步）。
  *
- * `run()` 超时**不抛错**、返回截断输出，所以只看解析结果的话，
- * 一次网络抖动与一次真实的能力缺陷长得一模一样。
- * 判据取「有没有最终回复」而不是退出码：codex 在模型拒绝任务时也可能退 0，
- * 而那时同样没有可用结论。
+ * 搬家理由：适配器接入后同样要解析这份事件流，留在探针里就会出现第二份实现——
+ * 探针据一份下结论、适配器据另一份采证据，漂移了没人发现（纪律 7）。
+ * 这里原样重新导出，既有调用方与 `test/unit/codex-events.test.ts` 的 import 路径不变;
+ * 那份用例是本次搬家唯一的安全网，改它的 import 等于把安全网一起搬走。
  */
-export function traceCompleted(trace: CodexTrace, timedOut: boolean): boolean {
-  return !timedOut && trace.finalText !== null;
-}
+export {
+  parseCodexEvents,
+  traceCompleted,
+  type CodexTrace,
+  type CodexCommand,
+} from '../adapters/codex-trace.js';
+
+// 转发导出不把名字带进本模块作用域，探针自己还要用，所以再 import 一份
+import {
+  parseCodexEvents,
+  traceCompleted,
+  type CodexTrace,
+} from '../adapters/codex-trace.js';
 
 /**
  * 读文件能力的三态判定。**抽成纯函数是为了能被变异验证打中**：
@@ -509,6 +559,7 @@ export async function probeCodex(
         profile_flag: null,
         unknown_profile_rejected: null,
         profiles: [],
+        providers: [],
         config_override: null,
         effort_validated: null,
         model_catalog_path: null,
@@ -531,6 +582,17 @@ export async function probeCodex(
     probe.profiles.length > 0
       ? `profile 名单（$CODEX_HOME/<name>.config.toml）：${probe.profiles.join('、')}`
       : '⚠️ 未找到任何 <name>.config.toml —— `-p` 无可用取值',
+  );
+
+  probe.providers = await probeCodexProviders(home, probe.profiles);
+  const ready = probe.providers.filter((x) => x.credentialed);
+  notes.push(
+    ready.length > 0
+      ? `provider 家族探活：${ready.map((x) => `${x.profile}→${x.provider}`).join('、')} 有可用凭据` +
+          (ready.length < probe.providers.length
+            ? `；未配置：${probe.providers.filter((x) => !x.credentialed).map((x) => x.profile).join('、')}`
+            : '')
+      : '⚠️ 没有任何 profile 带得出 provider 凭据 —— Codex 侧不可用于审查',
   );
 
   const catalog = await probeCodexModels(bin, null);
@@ -674,6 +736,9 @@ export async function probeCodex(
     if (probe.rejected_command_in_trace === false) {
       notes.push(
         '⚠️ 被沙箱拒绝的命令**不进事件流**（command_execution 为 0 条）——' +
+        '失效的只有**阴性**方向：没检出写事件时，排除不了「试过但被拒」。' +
+        '成功执行的写命令照常留痕，所以真失守时 write_events 非空仍是真阳性，' +
+        '§10.3 的判据对该侧照常成立（M8 第 2 步更正了「恒为假」这个过度推广）' +
           '设计 §10.3「轨迹有写事件即判失守」对该侧恒为假，只读保障完全落在沙箱上',
       );
     }

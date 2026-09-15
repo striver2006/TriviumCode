@@ -1,0 +1,169 @@
+/**
+ * codex 接线的**端到端**判据（M8 第 3 步，计划双审 AGY-05）。
+ *
+ * ## 为什么必须走真实子进程
+ *
+ * 本步的两条完成判据是 CLI 级的：`doctor --only codex` 要给出确定结论、
+ * `preflight --critics codex,glm` 要真把 codex 检查一遍。而单元测试测的是
+ * `availability()` / `probeCodexProviders()` 这些函数——**函数对了不等于调用链对了**。
+ *
+ * M7b 第 5 步的原案就栽在这里：把 `opts.critics ?? …` 改成永远取配置默认值
+ * （模拟接线漏传），全量 873 条测试无一变红——`--critics` 的调用链当时是零覆盖的。
+ * 本步的 `preflight --critics` 透传是**同一形状的新接线**，所以它必须有这条用例守着。
+ *
+ * ## 不烧配额
+ *
+ * `doctor` 走 `--no-model-calls`，`preflight` 走 `--skip-auth-check`——
+ * 两者跳过的恰好是全部需要真实厂商调用的步骤。因此本文件不依赖本机是否装了 codex：
+ * 没装时探针记 `entrypoint: null`，判据照样成立（可用性为否，且理由说得出）。
+ */
+import { test, before } from 'node:test';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { promises as fs } from 'node:fs';
+import YAML from 'yaml';
+import { bundleMissing, bundleSkipReason, cli, makeFixture } from '../helpers/fixture.js';
+import { EXIT } from '../../src/trivium/exit-codes.js';
+
+const TOPIC = 'codex接线';
+let root = '';
+
+before(async () => {
+  if (bundleMissing) return;
+  const fx = await makeFixture({ topic: TOPIC });
+  root = fx.root;
+});
+
+const FAKE_VERSION = '9.9.9';
+
+/**
+ * 往夹具的本机配置里塞一整份「已探过」的探针结论。
+ *
+ * **三侧都要塞**：预检第一步是探针新鲜度，缺任何一侧都会**快速失败**，
+ * 后面的检查根本不执行——那时断言「只读能力这一项在不在」验的就不是接线了。
+ * 假 CLI 用真文件：`checkCliVersions` 会 `exists()` 并真取一次版本，
+ * 写个不存在的路径会让预检死在版本检查而不是我们要测的那一项。
+ */
+async function seedProbes(over: Record<string, unknown> = {}): Promise<void> {
+  const fakeDir = path.join(root, 'fake');
+  await fs.mkdir(fakeDir, { recursive: true });
+  const fakeAgy = path.join(fakeDir, 'agy');
+  await fs.writeFile(fakeAgy, `#!/bin/sh\necho ${FAKE_VERSION}\n`, { mode: 0o755 });
+  const fakeZcode = path.join(fakeDir, 'zcode.js');
+  await fs.writeFile(fakeZcode, `console.log('zcode ${FAKE_VERSION}');\n`, 'utf8');
+  const fakeCodex = path.join(fakeDir, 'codex');
+  await fs.writeFile(fakeCodex, `#!/bin/sh\necho codex-cli ${FAKE_VERSION}\n`, { mode: 0o755 });
+
+  const now = new Date().toISOString();
+  const common = (entrypoint: string) => ({
+    entrypoint,
+    version: FAKE_VERSION,
+    probed_at: now,
+    path_deny: { supported: false, rule_syntax: null },
+    scratch_paths: [],
+    isolation: 'home_copy',
+  });
+
+  const p = path.join(root, '.trivium', 'config.local.yaml');
+  const raw = await fs.readFile(p, 'utf8').catch(() => '');
+  const doc = (YAML.parse(raw) ?? {}) as Record<string, any>;
+  doc['probe'] = {
+    generated_at: now,
+    cli: {
+      agy: {
+        ...common(fakeAgy),
+        version_probe: { runner: null, args: ['--version'], extract: null },
+        models: ['gemini-3.8-flash-high'],
+        headless_read_ok: true,
+        agent: 'trivium-critic',
+      },
+      zcode: {
+        ...common(fakeZcode),
+        version_probe: { runner: 'node', args: ['version'], extract: String.raw`(\d+\.\d+\.\d+)` },
+        models: ['GLM-5.3'],
+        readonly_flags: ['--mode plan', '--disallowed-tools Write,Edit'],
+        response_field: '.response',
+      },
+      codex: {
+        ...common(fakeCodex),
+        version_probe: { runner: null, args: ['--version'], extract: String.raw`(\d+\.\d+\.\d+)` },
+        models: ['qwen3.8-max'],
+        exec_headless_read_ok: true,
+        json_event_types: [],
+        json_item_types: [],
+        trace_path_structured: false,
+        rejected_command_in_trace: false,
+        readonly_flags: ['-s', 'read-only'],
+        profile_flag: true,
+        unknown_profile_rejected: false,
+        profiles: ['qwen'],
+        providers: [{ profile: 'qwen', provider: 'qwen', model: 'qwen3.8-max', credentialed: true }],
+        config_override: true,
+        effort_validated: false,
+        model_catalog_path: null,
+        ...over,
+      },
+    },
+  };
+  // 模型档位也得给 codex 配上，否则 routeModel 取不到值、slug 校验先失败
+  doc['profiles'] = {
+    default: {
+      gemini: { plan: 'gemini-3.8-flash-high' },
+      glm: { plan: 'GLM-5.3' },
+      codex: { plan: 'qwen3.8-max' },
+    },
+  };
+  await fs.writeFile(p, YAML.stringify(doc), 'utf8');
+}
+
+test('doctor --only codex 是合法取值，且给出确定结论', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * M6 第 1 步之前它退 64（「你的参数写错了」），而 codex 明明已在注册表登记。
+   * 本条守的是：这个取值合法、且跑完能落盘一份结论——不是「没探过」那种半截状态。
+   */
+  const r = await cli(root, ['doctor', '--only', 'codex', '--no-model-calls'], null, 180_000);
+  assert.ok(r.code === EXIT.OK || r.code === EXIT.ENV, `不该是参数错误，实得 ${r.code}：${r.stderr.slice(0, 200)}`);
+  assert.match(r.stdout + r.stderr, /codex/, '输出里要点名这一侧');
+});
+
+test('preflight --critics codex,glm：codex 侧真的被检查到', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * **这条守的是接线，不是判据**。`cmdPreflight` 若不把 `--critics` 传进
+   * `runPreflight`，预检会按 `default_critics`（两家，不含 codex）检查，
+   * 而用户下一步选的是 codex —— 被选中那一侧的可用性在预检阶段静默漏检。
+   * 漏传不会报错、不会退非零码，只是少查了一侧：正是 M7b 第 5 步那个形状。
+   */
+  await seedProbes();
+  const r = await cli(root, ['preflight', '--stage', 'plan', '--critics', 'codex,glm', '--skip-auth-check', '--json'], null, 180_000);
+  const out = JSON.parse(r.stdout) as { checks: { name: string; detail: string }[] };
+  const readonly = out.checks.find((c) => c.name === '只读能力可用');
+  assert.ok(readonly, '预检应当有只读能力这一项');
+  assert.match(readonly.detail, /Codex/, 'codex 入选却没在只读能力检查里露面 ⇒ --critics 没透传进预检');
+});
+
+test('preflight：没选 codex 时不因它的环境未配而失败', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * D-1 的连带保护：codex 启用为审核者之后，**没选它的运行不该被它拖累**。
+   * 按注册表全集检查就会——那正是把 `checkReadonlyCapability` 等三项
+   * 改成按入选集合检查的理由。
+   */
+  await seedProbes({ exec_headless_read_ok: false, readonly_flags: [] });
+  const r = await cli(root, ['preflight', '--stage', 'plan', '--skip-auth-check', '--json'], null, 180_000);
+  const out = JSON.parse(r.stdout) as { ok: boolean; checks: { name: string; detail: string }[] };
+  const readonly = out.checks.find((c) => c.name === '只读能力可用');
+  assert.ok(readonly, '预检应当有只读能力这一项');
+  assert.doesNotMatch(readonly.detail, /Codex/, '默认两家的运行里不该出现 codex——它没入选');
+});
+
+test('preflight --critics 选了环境未配的 codex → 如实拦下并说明原因', { skip: bundleMissing && bundleSkipReason }, async () => {
+  // AC-20 末条要的就是这个：家族未配置 ⇒ **预检即拒绝启动**，而不是跑到一半才失败
+  await seedProbes({
+    providers: [{ profile: 'qwen', provider: 'qwen', model: 'qwen3.8-max', credentialed: false }],
+  });
+  const r = await cli(root, ['preflight', '--stage', 'plan', '--critics', 'codex,glm', '--skip-auth-check', '--json'], null, 180_000);
+  const out = JSON.parse(r.stdout) as { ok: boolean; checks: { name: string; detail: string }[] };
+  assert.equal(out.ok, false, '凭据未配却放行，用户会在跑到一半时才发现');
+  const readonly = out.checks.find((c) => c.name === '只读能力可用');
+  assert.match(readonly!.detail, /凭据/, '要说清缺的是什么');
+  assert.match(readonly!.detail, /model_providers/, '要给出可粘贴的落点');
+});

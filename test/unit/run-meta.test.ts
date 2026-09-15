@@ -14,7 +14,7 @@ import { newRunMeta, migrateRunMetaV1, readRunMeta, writeRunMeta } from '../../s
 import { validateRunMeta, validateRunMetaV1 } from '../../src/trivium/schemas.js';
 import { checkStageArtifacts, metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
-import { CRITICS, CRITIC_VENDOR, type CriticId, type RunMeta } from '../../src/trivium/types.js';
+import { CRITICS, CRITIC_VENDOR, type CriticId, type RunMeta, DEFAULT_CRITICS } from '../../src/trivium/types.js';
 
 async function tmpLayout(): Promise<ArchiveLayout> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-runmeta-'));
@@ -214,7 +214,14 @@ test('读侧：写进去的 v2 原样读回来', async () => {
 
 test('读侧：历史 v1 读回来已是 v2 形状', async () => {
   const l = await tmpLayout();
-  const only = CRITICS[0]!;
+  /*
+   * 取**缺省集合**的第一家，不是启用全集的第一家（M8 第 3 步）。
+   *
+   * v1 是历史契约：它的 `critics` 只声明 gemini / glm 两个属性、`vendor` 只枚举两值
+   * （见 run.v1.json）。codex 到 M8 才启用，**不可能出现在任何历史 v1 记录里**，
+   * 拿它构造 v1 夹具会被 ajv 如实拒掉——那不是缺陷，是契约边界。
+   */
+  const only = DEFAULT_CRITICS[0]!;
   await putRaw(l, 'RV1', v1Raw({ review_mode: 'single', critics: { [only]: sideMeta(only) } }));
   const back = await readRunMeta(l, 'plan', 'RV1');
   assert.equal(back?.schema, 'trivium.run.v2');
