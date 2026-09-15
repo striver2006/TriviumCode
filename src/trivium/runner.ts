@@ -188,6 +188,7 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
         tool_calls: {},
         read_paths: [],
         write_events: [],
+        command_texts: [],
         evidence_ok: false,
         fail_reason: `适配器异常：${String(s.reason)}`,
         session_id: null,

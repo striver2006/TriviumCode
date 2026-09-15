@@ -778,6 +778,25 @@ export interface RunMeta {
     peer_deny_applied: Partial<Record<CriticId, boolean>>;
     forged_role_file: boolean;
     breached_files?: string[];
+    /**
+     * 措施 b（§10.1 / EV-01）的命中记录：命令原文里出现了禁读条目。
+     *
+     * **逐审核者记，不是跨侧合并**（审查意见 GLM-06）。初版写成了
+     * `{ hit, commands }` 的合并形态，两个毛病：
+     * ①`commands` 用 `flatMap` 并成一串，**看不出是哪一侧跑的**；
+     * ②失败/超时侧会被 `judgeRun` 跳过、其 `command_texts` **从未被扫描**，
+     *   而合并后的 `hit: false` 按注释是「扫过、没命中」——**我用一个字段表达了两件事**，
+     *   正是这一轮自己在反对的塌缩。
+     * 逐侧 map 之后，「没扫」表现为**该侧的键不存在**，与 `hit: false` 分得开。
+     * 这也与 `run.v2` 把双侧字段改逐审核者 map 的既定原则一致
+     * （M8 马上引入第三家，现在不改，第三家来了要再改一次）。
+     *
+     * **整个字段可选是为了读旧留痕**（接线前落盘的 run.json 没有它）。
+     * 判读规则：字段缺失 = 该次运行早于 M8 第 1 步；
+     * 字段在而某侧的键缺失 = 那一侧没扫（失败/超时被跳过）；
+     * `hit: false` = 扫过、没命中。
+     */
+    peer_leak_via_command?: Partial<Record<CriticId, { hit: boolean; commands: string[] }>>;
   };
   artifacts: { path: string; sha256: string }[];
   gate: { adjudication_complete: boolean; state: string; warnings?: string[] };
@@ -826,6 +845,23 @@ export interface CriticResult {
   read_paths: string[];
   /** 轨迹中出现过的写工具/写命令事件，非空即 readonly_breach */
   write_events: string[];
+  /**
+   * 轨迹中出现过的**命令原文**，措施 b（§10.1）的输入。
+   *
+   * **消费方**：`checkPeerLeakViaCommand` —— 对每条命令做 deny 字面量子串匹配，
+   * 命中与路径命中同等处置（该侧作废）。
+   *
+   * **为什么它与 `write_events` 不是一回事**：`write_events` 记的是「这条命令属于写类」
+   * 这个**判定结果**，`command_texts` 记的是**原文**。agy 侧 `run_command` 本就在
+   * 写工具集里（出现即失守），所以两者重合；而 codex 侧读文件就是跑 shell，
+   * 命令原文是**正常证据**而非失守信号——`write_events` 表达不了它，
+   * 这正是本字段单列的理由（M6 P-C1）。
+   *
+   * 无 `run_command` 能力的侧（zcode 全禁 `Bash`）恒为空数组。
+   * **空数组的含义是「没有命令」，不是「没采集」**——采集不到要在 `fail_reason` 里说，
+   * 不能让两者都落空数组。
+   */
+  command_texts: string[];
   evidence_ok: boolean;
   fail_reason: string | null;
   session_id: string | null;

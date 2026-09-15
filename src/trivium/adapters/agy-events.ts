@@ -174,3 +174,37 @@ export function writeEvents(r: AgyStreamResult): string[] {
     .filter((t) => AGY_WRITE_TOOLS.has(t.toolName))
     .map((t) => `${t.toolName}(${t.path ?? JSON.stringify(t.parameters).slice(0, 80)})`);
 }
+
+/** agy 的 `run_command` 把命令放在这几个参数名里的任一个（实测形态，非文档） */
+const COMMAND_KEYS = ['Command', 'CommandLine', 'command'];
+
+/**
+ * 轨迹里的**命令原文**，供措施 b（§10.1 / EV-01）扫描。
+ *
+ * **agy 侧这个数组通常是空的，而这正是预期**：`trivium-critic` 的工具白名单里
+ * 没有 `run_command`，它出现即 `readonly_breach`（见 `AGY_WRITE_TOOLS`）。
+ * 本函数存在的意义是**万一出现就要能扫**——失守与泄漏是两件事，
+ * 一条既失守又读了对端产物的命令，两边都该记上。
+ *
+ * 取不到命令文本时**逐个收集 `parameters` 里的字符串值**，各自作为一条命令文本参与扫描。
+ *
+ * > 初版这里回落到 `JSON.stringify(parameters)`，注释写着「多带上下文只会让匹配
+ * > 更容易命中，不会造成误判」——**方向正好相反**（r4 双审 GLM-05）。
+ * > JSON 序列化把命令里的引号转义成 `\"`，而反斜杠**不在** `CMD_BOUNDARY`，
+ * > 也**不能**加进去（B-4 的负断言明确要求 `cat \.reviews/…` 判否）。
+ * > 于是带引号的 F-1 / F-5 形态在兜底路径上**反而漏检**。
+ * >
+ * > 触发条件窄（三个键都取不到才走兜底），但那正是兜底存在的意义场景：
+ * > agy 哪天改了参数名，检测面会无声退化——而注释还在保证它不会。
+ */
+export function commandTexts(r: AgyStreamResult): string[] {
+  return r.toolCalls
+    .filter((t) => t.toolName === 'run_command')
+    .flatMap((t) => {
+      for (const k of COMMAND_KEYS) {
+        const v = t.parameters[k];
+        if (typeof v === 'string' && v.length > 0) return [v];
+      }
+      return Object.values(t.parameters).filter((v): v is string => typeof v === 'string');
+    });
+}

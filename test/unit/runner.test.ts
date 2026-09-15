@@ -10,7 +10,7 @@ function okResult(critic: CriticId, over: Partial<CriticResult> = {}): CriticRes
     critic, status: 'ok', exit_code: 0, duration_s: 10,
     raw_stdout_path: '/runs/out', trace_path: '/runs/trace', review_json: null,
     raw_response_text: '{}', model_effective: 'M', model_effective_source: 'envelope',
-    tool_calls: { read: 6 }, read_paths: ['/proj/src/a.ts'], write_events: [],
+    tool_calls: { read: 6 }, read_paths: ['/proj/src/a.ts'], write_events: [], command_texts: [],
     evidence_ok: true, fail_reason: null, session_id: 'S', cli_version: '1',
     peer_deny_applied: false, command_line: 'x', ...over,
   };

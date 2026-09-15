@@ -1,0 +1,1459 @@
+# trivium changes.diff
+# run_id: 20260915T013027Z
+# base: HEAD
+# head: 7345b1e67d2e6f2f7b5208ef97d88ef9737ed74f
+# files: 19
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/08_project/BACKLOG.md
+#   skills/dual-critic/schema/run.v2.json
+#   src/trivium/adapters/agy-events.ts
+#   src/trivium/adapters/agy.ts
+#   src/trivium/adapters/base.ts
+#   src/trivium/adapters/base.ts.mutbak
+#   src/trivium/adapters/stub.ts
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/guard.ts
+#   src/trivium/guard.ts.mutbak
+#   src/trivium/review.ts
+#   src/trivium/runner.ts
+#   src/trivium/types.ts
+#   test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+#   test/integration/fault-injection.test.ts
+#   test/unit/peer-leak-command.test.ts
+#   test/unit/render.test.ts
+#   test/unit/runner.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 0d0de90..7c72025 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -948,9 +948,10 @@ addresses:               # 本件应答的审查文档（当前恒两份；【
+ > 读进内存时映射为本节的 v2 形状（映射规则见下方读侧分发）。6.7 的 v1 正文原样保留——
+ > 它仍是理解既有归档的唯一依据，不是过期文字。细则见演进设计 §6.2。
+ >
+-> **仍待实施的只剩表中标了里程碑的可选字段**：`guard.peer_leak_via_command`
+-> （【提案 · 未排期】，随 10.2 措施 b）与四个 effort/tier/profile 字段（【待实施 · M11】）。
+-> 两者已在 schema 留位但**写侧尚未接线**，故当前落盘的 run.json 里它们恒不出现。
++> **仍待实施的只剩四个 effort/tier/profile 字段**（【待实施 · M11】）：
++> schema 已留位而**写侧尚未接线**，故当前落盘的 run.json 里它们恒不出现。
++> `guard.peer_leak_via_command` 已于 **M8 第 1 步接线**（见 10.2 措施 b），
++> 写侧**恒写**——`hit: false` 表示「扫过、没命中」，字段**缺失**才是接线之前的旧留痕。
+ 
+ **为什么升 v2 而不原地扩展**：`critics` 由「恰两键」变为开放 map 属破坏性变更，
+ 原地扩会**放宽对历史工件的校验**——那些工件是 AC 的事实来源，校验不能变松。
+@@ -964,7 +965,7 @@ addresses:               # 本件应答的审查文档（当前恒两份；【
+ | `review_mode` | `full`（全部入选审核者 ok）\| `partial`（部分失败后降级续跑）。**取代 v1 的 `dual`/`single`** | 必备 | M7b |
+ | `critics` | 由「恰两键」改为**动态键**（键取自 `critics_selected`） | 必备 | M7b |
+ | `gate` / `guard` 内双侧字段（`peer_deny_applied` 等） | 改**逐审核者 map** | 必备 | M7b |
+-| `guard.peer_leak_via_command` | 命令文本通道命中（布尔 + 命中命令原文） | **可选** | 【提案 · 未排期】随 10.2 措施 b |
++| `guard.peer_leak_via_command` | 命令文本通道命中（`hit` + 命中的**命令原文**） | **可选**（为读旧留痕而留；写侧恒写） | 【已实现 · M8 第 1 步】见 10.2 措施 b |
+ | `critics.<id>.effort_requested` / `effort_effective` / `tier_source` / `profile` | 思考等级与档位的请求值 / 生效值 / 来源 / 厂商 profile | **可选** | 【待实施 · M11】 |
+ 
+ `effort_effective` 必须**回读**而非采信请求值：部分厂商存在请求值归并映射
+@@ -1583,7 +1584,7 @@ Hook 行为约定：
+ | # | 通道 | 现状 | 收口措施 | 状态 |
+ | :--- | :--- | :--- | :--- | :--- |
+ | ① | 工作树历史件（`*-<peer>.md`） | 三层屏蔽已覆盖（上表机制③） | — | 已实现 |
+-| ② | git 对象库（`git show HEAD:<归档内对方文件>` 不产生文件系统读取，命令文本不进轨迹的读取路径） | **检测盲区** | 措施 b（命令文本扫描） | 【提案 · 未排期】 |
++| ② | git 对象库（`git show HEAD:<归档内对方文件>` 不产生文件系统读取，命令文本不进轨迹的读取路径） | **已收口**（形态 F-3，见措施 b 的闭集） | 措施 b（命令文本扫描） | 【已实现 · M8 第 1 步】 |
+ | ③ | 运行目录 `~/.trivium/runs/`（对方**本轮**输出审查期间就写在那里；延迟落盘只保证项目树内没有） | **路径侧已收口**：运行目录与项目内 `.trivium/` 均已在 deny 机器集合 | 措施 a ✅ / 措施 b | 【已实现 · M7a】（`039bdc9`） |
+ | ④ | 归档 `_meta/` 下的结构化意见原文 `review-<peer>-<runId>.json` | **路径侧已收口**：`enumerateDenyPaths()` 已按文件名角色段枚举对端的结构化意见与 fallback 件 | 措施 a ✅ | 【已实现 · M7a】（`039bdc9`） |
+ 
+@@ -1595,8 +1596,36 @@ Hook 行为约定：
+   `checkPeerLeak`（支持目录前缀匹配），正例单测在 `test/unit/deny-matrix.test.ts`。
+   **仍待 M7b 的是 N 方泛化**：3 个审核者时禁读矩阵的两两展开与三审桩用例（AC-25）——
+   M7a 完成的是**两侧形态**下的路径侧收口，不是整条通道的全部工作。
+-- **措施 b**【提案 · 未排期】：`run_command` 命令文本字面扫描，命中与路径命中同等处置。
+-  已从 M7b 移出为独立演进项，在 [`BACKLOG.md`](../08_project/BACKLOG.md) 认领。
++- **措施 b**【已实现 · M8 第 1 步】：`run_command` 命令文本字面扫描，**命中与路径命中同等处置**
++  （任一命中即该侧作废；不设 `hard|warn|off` 开关，18.1 #8 已拍板）。
++  落点：`adapters/base.ts` 的 `checkPeerLeakViaCommand`、`guard.ts` 的 `judgeSide`、
++  `run.v2` 的 `guard.peer_leak_via_command`（**写侧恒写**：`hit: false` 表示「扫过、没命中」，
++  字段缺失才是接线之前的旧留痕）、`renderGuardWarnings` 的运行时告警行；
++  用例在 `test/unit/peer-leak-command.test.ts` 与 `test/integration/fault-injection.test.ts`。
++
++  **承诺面是下面这张闭集**（不写数量，写清单；改清单必须同步改用例，
++  `known-forms` 那条守卫会红）：
++
++  | # | 已知形态 · 必检 | 例 |
++  | :--- | :--- | :--- |
++  | F-1 | 绝对路径直引 | `cat /abs/proj/.reviews/t/code/x-<peer>.md` |
++  | F-2 | 项目相对路径直引 | `cat .reviews/…`、`./.reviews/…` |
++  | F-3 | **git 对象库取值** | `git show HEAD:<path>`、`git cat-file -p <sha>:<path>` |
++  | F-4 | 目录级条目命中 | deny 为目录时 `ls .trivium/` |
++  | F-5 | 引号/转义包裹 | `cat "…"`、`cat '…'` |
++
++  **F-3 是本措施存在的理由**：经 git 对象库取值**不产生文件系统读取**，
++  措施 a 对它的效力是零。
++
++  **明确检测不到**（威胁模型按本节末段定调，R25 已登记）：
++  B-1 分段拼接（完整字面量从不出现）、**B-2 目录级 git 读取**（`git log -p -- <目录>`
++  能 dump 出内容却不指名文件）、B-3 glob 展开、B-4 编码/间接。
++  **B-2 是四条里唯一非蓄意也会撞上的**，且正是下一条「git 通道保留能力而非封死」
++  那个取舍的代价所在——收窄它的旋钮是裁 `readonly_commands`，不是在检测侧加机制。
++
++  > **一处实测更正**：起草时把「变量拼接」整类记成了盲区，实测证明
++  > 整条赋值里带完整字面量（`P=<path>; cat $P`）**是能检出的**——字面量就在命令文本里，
++  > 只有**分段**拼接才真躲得过。盲区边界比原估的窄，四条盲区各有一条会红的断言守着。
+ - **威胁模型定调**：目标是「**防锚定污染、防非对抗穿透**」，即「泄漏必检 + 成本抬升」，
+   **不是**抵御蓄意规避。变量拼接路径、不带对方文件名的目录级 `git log -p` 等对抗形态
+   检测不到，按本定调接受并登记为风险（第 19 章 R25）。硬隔离路线（Seatbelt 沙箱 / 影子工作区）
+@@ -2157,7 +2186,12 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
+ | **AC-24** 新增 Agent 接入套件接入、核心流程零改动 · **【已达成 · M7b 第 6 步】** | 桩 Agent 夹具全链路 | 断言①overlay 脚本**实际触及的路径集** ⊆ 套件白名单（不是夹具树自比，那是同义反复；且自报清单须与**全树哈希差集**逐项相等，白名单每条还须被真正用到）；断言②`tsc --noEmit` → `preflight` → `topic resolve` → `review --start/--wait` → `gate --check` → `gate --check-artifacts` 在重打包产物上真实通过；断言③三侧产**三对**退化度。落点 `test/integration/stub-agent-kit.test.ts`。**证明边界**：桩不触发真实适配器路径（vendor 旗标、轨迹解析、effort 透传），也不触发第三家的探活与 CLI 版本校验（仍按厂商写死，EV-05），且**预检是以 `--skip-auth-check` 跑通的**，M8/M9 才是对真检验。**本条达成 ≠ FR-31 达成**：它以桩为口径，不足以完整验收 FR-31 的「核心流程零改动」 |
+ | **AC-25** N 方隔离与路径通道检测收口 · 【待实施 · M7b】 | 3 审中桩伪造读取 | 伪造**读取**另两方任一产物（含归档 `_meta/` 下的结构化意见、运行目录 `~/.trivium/**`）→ `peer_leak` 作废重跑 |
+ 
+-> **命令文本通道**的验收（原演进 AC-N6b）随 10.2 措施 b 的独立演进项，**暂不排 AC 号**。
++> **命令文本通道**的验收（原演进 AC-N6b）此前随措施 b 的独立演进项**暂不排 AC 号**。
++> **M8 第 1 步已实现措施 b**，验收落点为 `test/integration/fault-injection.test.ts` 的
++> 「命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中」一例（走 F-3 形态，
++> 即措施 a 看不见的那条通道）与 `test/unit/peer-leak-command.test.ts` 的形态闭集。
++> **仍不单排 AC 号**：AC 是对外验收口径，而本措施的承诺面是「已知形态必检」这个闭集、
++> 不是「不可绕过」，排成 AC 会让读者以为通道②已被完全封死——它没有（盲区 B-1～B-4）。
+ > 拆分理由：原条把路径通道与命令文本通道写在同一条，而措施 a 留在 M7b、措施 b 移出——
+ > 整条移出会连带取走措施 a 的验收锚点。
+ 
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index b2aaee0..9b2344d 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -95,7 +95,7 @@
+ 
+ | # | 状态 | 条目 | 位置 |
+ | :-- | :-- | :-- | :-- |
+-| EV-01 | todo | **隔离检测收口的措施 b：命令文本字面扫描**。对审查员轨迹中每条命令的**命令文本**做 deny 字面量子串匹配（含 `HEAD:<path>` 等写法变体），命中与路径命中同等处置。它是**泄漏通道②（git 对象库）与③（项目外运行目录）在检测侧的唯一覆盖**——经对象库取对端产物不产生文件系统读取，读取路径核验看不到。**从 M7b 的完成判据中移出为独立演进项**（2026-09-14，计划双审 AGY-02 / GLM-04：措施 b 涉及各家轨迹中命令事件的形态差异、需 M6 探针结论支撑，与措施 a 绑在同一里程碑会把 a 拖住）。相应地 `run.v2` 的 `guard.peer_leak_via_command` 声明为**可选字段**、其验收暂不排 AC 号。**在本项落地前，通道②处于「已登记但未覆盖」状态**——不得因为已写进设计就当作已解决。决策背景见 [`ADR_002_multicritic_isolation.md`](../02_design/ADR_002_multicritic_isolation.md)；措施 a 仍随 M7b 交付（AC-25）。**2026-09-15 升为 M8 的前置条件**（M6 第 2 步实测）：codex 的 `trace_path_structured` 实测为 **false**——它经 shell 读文件，轨迹里只有命令文本、没有任何结构化路径字段。于是本项从「**通道②的唯一覆盖**」变成「**codex 侧一切路径核验的唯一手段**」，覆盖面从一条泄漏通道扩到该侧的全部读取核验。登记时的定位（独立演进项、可与 M8 解耦）**因此不再成立**：M8 接入 codex 为审核者而本项未落地，AC-04 在该侧就没有任何实现 | `guard.ts`、设计 10.2 与 3.6、演进设计 §8.2 |
++| EV-01 | **done**（2026-09-15，M8 第 1 步） | **隔离检测收口的措施 b：命令文本字面扫描**。对审查员轨迹中每条命令的**命令文本**做 deny 字面量子串匹配（含 `HEAD:<path>` 等写法变体），命中与路径命中同等处置。它是**泄漏通道②（git 对象库）与③（项目外运行目录）在检测侧的唯一覆盖**——经对象库取对端产物不产生文件系统读取，读取路径核验看不到。**从 M7b 的完成判据中移出为独立演进项**（2026-09-14，计划双审 AGY-02 / GLM-04：措施 b 涉及各家轨迹中命令事件的形态差异、需 M6 探针结论支撑，与措施 a 绑在同一里程碑会把 a 拖住）。相应地 `run.v2` 的 `guard.peer_leak_via_command` 声明为**可选字段**、其验收暂不排 AC 号。**在本项落地前，通道②处于「已登记但未覆盖」状态**——不得因为已写进设计就当作已解决。决策背景见 [`ADR_002_multicritic_isolation.md`](../02_design/ADR_002_multicritic_isolation.md)；措施 a 仍随 M7b 交付（AC-25）。**2026-09-15 升为 M8 的前置条件**（M6 第 2 步实测）：codex 的 `trace_path_structured` 实测为 **false**——它经 shell 读文件，轨迹里只有命令文本、没有任何结构化路径字段。于是本项从「**通道②的唯一覆盖**」变成「**codex 侧一切路径核验的唯一手段**」，覆盖面从一条泄漏通道扩到该侧的全部读取核验。登记时的定位（独立演进项、可与 M8 解耦）**因此不再成立**：M8 接入 codex 为审核者而本项未落地，AC-04 在该侧就没有任何实现 **落地记要**：`checkPeerLeakViaCommand`（`adapters/base.ts`，含 F-1～F-5 已知形态闭集与 B-1～B-4 盲区，两者各有会红的断言）、`judgeSide` 接线（与路径命中**同等处置**）、`CriticResult.command_texts` 新字段、`run.v2` 的 `guard.peer_leak_via_command` 写侧恒写、`renderGuardWarnings` 增运行时告警行、桩新增 `peer_leak_via_command` 故障形态（与 `peer_leak` 分列，两条通道要能各自单独触发）。**三处变异逐一验证**，其中第三处（judgeSide 的 `|| peerCmd.leaked`）**第一次没红**——判据函数的单测再细也守不住接线，故补了故障注入用例，这是本项目第五次「绿测试证明不了任何事」。**另修一处实现缺陷**：`spellingsOf` 的 root 未做 `/private` 归一，临时目录下项目相对写法一个都派生不出来；单测用干净的 `/Users/x/proj` 恰好绕开，是故障注入在真实临时目录上逼出来的。**承诺面**：已知形态必检，**不是**不可绕过（威胁模型见设计 §10.1 末段，R25） | `guard.ts`、设计 10.2 与 3.6、演进设计 §8.2 |
+ | EV-03 | **done**（2026-09-14，M7b 第 3 步） | **`CRITIC_VENDOR` 派生处的 `as Vendor` 断言削弱编译期防错**。`types.ts` 的 `agentById(c)!.vendor as Vendor` 把 `AgentVendor`（四值，含 `'anthropic'`/`'openai'`）宽 union 断言成 `Vendor`（两值），**恒编译通过**。后果：M8 接入 codex 时 `'openai'` 会被静默塞进 `Record<CriticId, Vendor>` 的值位，直到落盘才被 run.v1 的 vendor 枚举校验拒掉——而 M7b 第 1 步的另外三处修法（`effortFor`、`checkModelSlugs` 的 `never` 分支、`CRITICS.includes`）都能在新增 `CriticId` 时**编译期**报错，唯独 vendor 链路拿不到，四处防错强度不一致。**本步刻意不动**：`Vendor` 是 run.v1 的线契约枚举，改它属数据契约层，是 M7b 第 3 步 run.v2 的范围。**落点**：第 3 步的 run.v2 设计清单里登记「vendor 枚举随注册表派生、派生处去 `as` 断言改类型约束」，使第三家接入时恢复同级防错。来源：2026-09-14 代码双审 GLM-03（`.reviews/配置v2与动态多审/code/`）。**收口形态**：`Vendor` 不再独立定义，直接取注册表的 `AgentVendor`，派生处的 `as` 断言删除；前提是 `run.v2` 的 `vendor` 不再枚举两值，故只能随第 3 步一起做。**顺带查出并修掉一处同形**：`render.ts` 的 `vendor === 'antigravity' ? 'agy' : 'zcode'` 在两值时恰好穷尽，放开后会把 codex / claude 静默记成 zcode——CLI 名已登记为注册表的 `cliName` | `types.ts` `CRITIC_VENDOR`、`review.ts` 落盘点、`render.ts` `agent_cli` |
+ | EV-04 | todo | **`readRunMeta` 零校验，畸形 run.json 会让调用方抛 TypeError**。`meta.ts` 的 `readRunMeta` 是 `JSON.parse` 直转、不过 ajv——「可解析但缺 `critics` 字段」的 run.json 会让 `cli.ts` 的 `Object.keys(artifactMeta.critics)` 直接 TypeError 退 1（`report.ts` 的同形用法亦然）。**风险敞口先于 M7b 存在、未因本次改动变化**，故 2026-09-14 代码双审中 ZCode 侧**刻意未列为意见**，只记在盲区里。此处登记是为了不让这条观察随留痕沉底。缓解现状：`writeRunMeta` 写前过 ajv 校验，历史写入方均含 `critics`，正常路径构造不出这种文件。修法方向：读侧按写侧同样的 schema 校验一次，失败时给出「留痕被动过」的明确错误而非裸 TypeError。来源：`.reviews/配置v2与动态多审/code/` r2 轮 glm 侧盲区记录。**2026-09-14 M7b 第 3 步部分收口**：`readRunMeta` 改为按 schema 精确分发，畸形文件返回 `null` 而不再把未校验对象交给调用方，裸 TypeError 的路径已断。**剩余部分**：它把「文件不存在」与「存在但被搅坏」**回落成同一个 `null`**，调用方一律报「读取失败」；`listRecordedRuns` 那条路径有 `unreadable` 标记能区分两者，`readRunMeta` 这条没有。本项保持 todo 直到这个区分补上 | `meta.ts` `readRunMeta`、`cli.ts` / `report.ts` 的消费点 |
+ | EV-02 | todo | **禁读集与必读清单无交叉校验**。两个集合目前各自生成、互不核对：理论上可能出现「某文件既在必读清单又在禁读集」的自相矛盾任务书，而审查员无论读不读都会被判违规。计划阶段自查发现，双审时 ZCode 侧明确同意另立任务。修法方向是在任务书渲染前做一次交集断言，交集非空即拒绝启动（宁可不跑，也不发自相矛盾的任务书） | `brief.ts`、`freeze.ts` |
+diff --git a/skills/dual-critic/schema/run.v2.json b/skills/dual-critic/schema/run.v2.json
+index adf7b8e..3dcd6d7 100644
+--- a/skills/dual-critic/schema/run.v2.json
++++ b/skills/dual-critic/schema/run.v2.json
+@@ -80,7 +80,9 @@
+         "breached_files": { "type": "array", "items": { "type": "string" } },
+         "peer_leak_via_command": {
+           "type": "object",
+-          "description": "命令文本通道（§10.2 措施 b）的命中记录。【提案 · 未排期】——schema 先留位，写侧尚未接线，故本字段目前恒不出现。字段在而值缺失不等于「未命中」，判读时先看它在不在",
++          "description": "命令文本通道（§10.2 措施 b / BACKLOG EV-01）的命中记录。【已实现 · M8 第 1 步】写侧恒写：hit=false 表示「扫过、没命中」；字段**缺失**只出现在接线之前落盘的旧留痕里，那时才是「没扫」。本字段仍为可选，只为读旧留痕。已知形态闭集（F-1～F-5）与盲区（B-1～B-4）见 adapters/base.ts 的 checkPeerLeakViaCommand 文档块与设计 §10.1 措施 b；承诺是「已知形态必检」而非不可绕过（威胁模型见 §10.1 末段，R25）",
++          "required": ["hit", "commands"],
++          "additionalProperties": false,
+           "properties": {
+             "hit": { "type": "boolean" },
+             "commands": { "type": "array", "items": { "type": "string" } }
+diff --git a/src/trivium/adapters/agy-events.ts b/src/trivium/adapters/agy-events.ts
+index 88f4a1c..43e1b92 100644
+--- a/src/trivium/adapters/agy-events.ts
++++ b/src/trivium/adapters/agy-events.ts
+@@ -174,3 +174,30 @@ export function writeEvents(r: AgyStreamResult): string[] {
+     .filter((t) => AGY_WRITE_TOOLS.has(t.toolName))
+     .map((t) => `${t.toolName}(${t.path ?? JSON.stringify(t.parameters).slice(0, 80)})`);
+ }
++
++/** agy 的 `run_command` 把命令放在这几个参数名里的任一个（实测形态，非文档） */
++const COMMAND_KEYS = ['Command', 'CommandLine', 'command'];
++
++/**
++ * 轨迹里的**命令原文**，供措施 b（§10.2 / EV-01）扫描。
++ *
++ * **agy 侧这个数组通常是空的，而这正是预期**：`trivium-critic` 的工具白名单里
++ * 没有 `run_command`，它出现即 `readonly_breach`（见 `AGY_WRITE_TOOLS`）。
++ * 本函数存在的意义是**万一出现就要能扫**——失守与泄漏是两件事，
++ * 一条既失守又读了对端产物的命令，两边都该记上。
++ *
++ * 取不到命令文本时回落到整份 `parameters` 的 JSON——**宁可多扫一点**：
++ * 措施 b 是字面量子串匹配，多带上下文只会让匹配更容易命中，不会造成误判
++ * （边界检查在 `checkPeerLeakViaCommand` 那侧做）。
++ */
++export function commandTexts(r: AgyStreamResult): string[] {
++  return r.toolCalls
++    .filter((t) => t.toolName === 'run_command')
++    .map((t) => {
++      for (const k of COMMAND_KEYS) {
++        const v = t.parameters[k];
++        if (typeof v === 'string' && v.length > 0) return v;
++      }
++      return JSON.stringify(t.parameters);
++    });
++}
+diff --git a/src/trivium/adapters/agy.ts b/src/trivium/adapters/agy.ts
+index 70292a0..978fe56 100644
+--- a/src/trivium/adapters/agy.ts
++++ b/src/trivium/adapters/agy.ts
+@@ -24,6 +24,7 @@ import {
+   readPaths,
+   successfulToolCalls,
+   writeEvents,
++  commandTexts,
+   type AgyStreamResult,
+ } from './agy-events.js';
+ import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
+@@ -322,6 +323,7 @@ export const agyAdapter: CriticAdapter = {
+       tool_calls: countTools(out.parsed),
+       read_paths: readPaths(out.parsed),
+       write_events: writeEvents(out.parsed),
++      command_texts: commandTexts(out.parsed),
+       evidence_ok: false, // 由 guard 判定
+       fail_reason: null,
+       session_id: out.parsed.conversationId,
+diff --git a/src/trivium/adapters/base.ts b/src/trivium/adapters/base.ts
+index c18c7ed..2f18ef1 100644
+--- a/src/trivium/adapters/base.ts
++++ b/src/trivium/adapters/base.ts
+@@ -69,6 +69,7 @@ export function failedResult(
+     tool_calls: {},
+     read_paths: [],
+     write_events: [],
++    command_texts: [],
+     evidence_ok: false,
+     fail_reason: fail.reason,
+     session_id: fail.sessionId ?? null,
+@@ -164,6 +165,127 @@ export function checkPeerLeak(
+   return { leaked: hits.length > 0, hits: [...new Set(hits)] };
+ }
+ 
++/*
++ * ──────────────────────────────────────────────────────────────────────────
++ * 措施 b（§10.2 / BACKLOG EV-01）：命令文本字面扫描
++ * ──────────────────────────────────────────────────────────────────────────
++ *
++ * **为什么路径侧不够**：`checkPeerLeak` 吃的是轨迹里的**读取路径**。经 git 对象库
++ * 取对端产物（`git show HEAD:<归档内文件>`）不产生文件系统读取，那条路径根本不出现；
++ * 而 codex 侧读文件本就是跑 shell，**全部**读取都只在命令文本里（M6 P-C1）。
++ * 对前者本措施是补充，对后者是唯一手段。
++ *
++ * ## 已知形态清单（本措施承诺必检的闭集）
++ *
++ * 计划双审 GLM-07 要求把论域钉死：不写数量，写清单。下面每一条都有对应用例，
++ * 用例名以 `[F-n]` 开头，改清单必须同时改用例，否则 `known-forms` 那条守卫会红。
++ *
++ * | # | 形态 | 例 |
++ * | :-- | :--- | :--- |
++ * | F-1 | 绝对路径直引 | `cat /abs/proj/.reviews/t/code/x-gemini.md` |
++ * | F-2 | 项目相对路径直引 | `cat .reviews/t/code/x-gemini.md`、`./.reviews/…` |
++ * | F-3 | git 对象库取值 | `git show HEAD:.reviews/…`、`git cat-file -p <sha>:<path>` |
++ * | F-4 | 目录级条目命中 | deny 里是目录时，`ls .trivium/`、`grep -r x .reviews/t/code/_meta/` |
++ * | F-5 | 引号/转义包裹 | `cat "/abs/…/x-gemini.md"`、`cat '…'` |
++ *
++ * ## 明确检测不到的（威胁模型按 §10.1 末段，R25 已登记）
++ *
++ * | 盲区 | 例 |
++ * | :--- | :--- |
++ * | B-1 **分段拼接**：完整字面量从不出现 | `P=.reviews/t; cat $P/code/x-<peer>.md` |
++ * | B-2 **目录级 git 读取**：能 dump 出内容却不指名文件 | `git log -p -- .reviews/t/code` |
++ * | B-3 glob 展开 | `cat .reviews/*​/code/*-<peer>.md` |
++ * | B-4 编码/间接（base64、xargs 取自文件…） | — |
++ *
++ * **B-2 是这四条里唯一非蓄意也会撞上的**：目录级 `git log -p` 是排查时的常用手法，
++ * 而它会把该目录下**全部**历史内容吐出来，包含对端产物。
++ * 它也是 §10.1「git 通道保留能力而非封死」那条取舍的代价所在——
++ * 收窄它的旋钮是裁 `readonly_commands`（把 `git log` 拿掉），不是在这里加机制。
++ *
++ * **一处反直觉、已实测**：整条赋值里带完整字面量（`P=.reviews/…/x-<peer>.md; cat $P`）
++ * **是能检出的**——字面量就在命令文本里。起草时我把「变量拼接」整类写成了盲区，
++ * 实测（三条形态逐条跑）证明只有**分段**拼接才真的躲得过。盲区的边界比我估的窄，
++ * 这个更正写在这里而不只写在测试里，是因为下一个读这段的人会照着它判断承诺面。
++ *
++ * 本措施的目标是「**泄漏必检 + 成本抬升**」，**不是**抵御蓄意规避——
++ * 承诺的是上表 F-1～F-5 必检，不是不可绕过。
++ */
++
++/** 命令文本里能合法紧邻路径两侧的字符——用于避免子串误命中 */
++const CMD_BOUNDARY = new Set([
++  ' ', '\t', '\n', '\r',
++  '"', "'", '`',
++  '=', ':', ';', '&', '|', '(', ')', '<', '>', ',',
++]);
++
++function boundaryOk(text: string, start: number, end: number): boolean {
++  const before = start === 0 ? '' : text[start - 1]!;
++  const after = end >= text.length ? '' : text[end]!;
++  // 左边界：行首或分隔符。防「/other/proj/.reviews/…」被项目相对写法误命中
++  if (before !== '' && !CMD_BOUNDARY.has(before)) return false;
++  // 右边界：行尾、分隔符，或 `/`（目录条目下的更深路径，F-4）
++  if (after !== '' && after !== nodePath.sep && !CMD_BOUNDARY.has(after)) return false;
++  return true;
++}
++
++/**
++ * 一个 deny 条目在命令文本里可能的写法（绝对、项目相对、`./` 前缀）。
++ *
++ * **两侧必须用同一套归一**：`normalizeAbs` 会剥掉 macOS 的 `/private` 前缀，
++ * 所以 root 也得剥。起草时这里直接用了 `nodePath.resolve(projectRoot)`，
++ * 于是临时目录（`/private/var/folders/…`）下 `abs.startsWith(root)` 恒假、
++ * **项目相对写法一个都派生不出来**——单测用的是干净的 `/Users/x/proj`，
++ * 恰好两边都不带 `/private`，17 条全绿也没照出来。
++ * 是故障注入用例在真实临时目录上把它逼出来的。
++ */
++function spellingsOf(denyPath: string, projectRoot: string): string[] {
++  const abs = normalizeAbs(denyPath, projectRoot);
++  const root = normalizeAbs('.', projectRoot);
++  const out = new Set<string>([abs]);
++  // 绝对写法也可能带 /private（命令是照 deny_paths 原样拼的），一并收
++  if (abs !== denyPath && nodePath.isAbsolute(denyPath)) out.add(denyPath);
++  if (abs === root) return [...out];
++  if (abs.startsWith(`${root}${nodePath.sep}`)) {
++    const rel = abs.slice(root.length + 1);
++    if (rel.length > 0) {
++      out.add(rel);
++      out.add(`.${nodePath.sep}${rel}`);
++    }
++  }
++  return [...out];
++}
++
++/**
++ * 措施 b 的判据：命令原文里是否出现了 deny 条目的字面量。
++ *
++ * 返回**命中的命令原文**（不是命中的路径）——处置时要让人看见「它跑了哪条命令」，
++ * 只报路径的话，`git show HEAD:<path>` 与 `cat <path>` 在留痕上无从区分，
++ * 而这两者的性质差别正是本措施存在的理由。
++ */
++export function checkPeerLeakViaCommand(
++  commandTexts: readonly string[],
++  denyPaths: readonly string[],
++  projectRoot: string,
++): { leaked: boolean; hits: string[] } {
++  if (commandTexts.length === 0 || denyPaths.length === 0) {
++    return { leaked: false, hits: [] };
++  }
++  const spellings = denyPaths.flatMap((d) => spellingsOf(d, projectRoot));
++
++  const hits = commandTexts.filter((cmd) =>
++    spellings.some((s) => {
++      let from = 0;
++      for (;;) {
++        const i = cmd.indexOf(s, from);
++        if (i < 0) return false;
++        if (boundaryOk(cmd, i, i + s.length)) return true;
++        from = i + 1;
++      }
++    }),
++  );
++  return { leaked: hits.length > 0, hits: [...new Set(hits)] };
++}
++
+ /** 归一成绝对路径：解析 `./`、`..`，并抹平 macOS 的 /private 前缀 */
+ function normalizeAbs(p: string, projectRoot: string): string {
+   const abs = nodePath.resolve(projectRoot, p);
+diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts
+index 91c9d74..5e81618 100644
+--- a/src/trivium/adapters/stub.ts
++++ b/src/trivium/adapters/stub.ts
+@@ -41,8 +41,16 @@ export type StubMode =
+   | 'no_project_reads'
+   /** 向项目写文件（对应「审查中写入业务文件」） */
+   | 'write_breach'
+-  /** 读取了禁读清单里的文件（对应「读到对方产出」） */
++  /** 读取了禁读清单里的文件（对应「读到对方产出」）——措施 a 的通道 */
+   | 'peer_leak'
++  /**
++   * **只**经命令文本提到禁读条目、文件系统上没有对应读取
++   * （`git show HEAD:<归档内文件>`）——措施 b 的通道（§10.2 / EV-01）。
++   *
++   * 与 `peer_leak` 分列而不是合并：两条通道要能各自单独触发，
++   * 否则「一条挂了另一条还在」的单边失效测不出来。
++   */
++  | 'peer_leak_via_command'
+   /**
+    * **真的**改动工作树里的一个文件（`note` = 项目相对路径，不存在则创建），
+    * 对应「审查期间开发者在别处继续改代码」——轨迹里没有写事件，只有指纹变化。
+@@ -143,6 +151,7 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
+       `${req.project_root}/README.md`,
+     ],
+     write_events: [],
++    command_texts: [],
+     evidence_ok: false, // 由 guard 判定
+     fail_reason: null,
+     session_id: 'stub-session',
+@@ -202,6 +211,22 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
+               ...req.deny_paths.map((p) => `${req.project_root}/${p}`),
+             ],
+           };
++        case 'peer_leak_via_command':
++          /*
++           * 措施 b 的故障注入（§10.2 / EV-01）：**只**经命令通道泄漏。
++           *
++           * 与 `peer_leak` 分成两个形态，而不是给它加个参数——这两条通道
++           * 要能各自单独触发。合成一个的话，「措施 a 挂了但 b 还在」这种
++           * 单边失效**测不出来**：两条通道同时注入时，只要有一条活着就全绿。
++           *
++           * 走 `git show HEAD:<path>` 形态（F-3）：这条正是措施 a 看不见的那种——
++           * 经 git 对象库取值不产生文件系统读取，`read_paths` 里什么都没有。
++           */
++          return {
++            ...baseResult(critic, req, spec),
++            tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 1 },
++            command_texts: req.deny_paths.map((p) => `git show HEAD:${p}`),
++          };
+         case 'mutate_file': {
+           const { promises: fsp } = await import('node:fs');
+           const nodePath = await import('node:path');
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index 2bec155..9e06e88 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -331,6 +331,16 @@ export const zcodeAdapter: CriticAdapter = {
+       tool_calls: toolCalls,
+       read_paths: readPathList,
+       write_events: writeEvents,
++      /*
++       * zcode 侧**恒为空数组**，而这是能说明理由的空：只读组合里 `Bash` 被整个禁掉
++       * （M0 的 C-10：`--mode plan` 单独不够，denylist 必须含 `Bash`），
++       * 该侧压根产生不了命令事件。
++       *
++       * 空数组在这里的含义是「**没有命令**」而不是「没采集」——
++       * 若哪天 `readonly_flags` 放开了 `Bash`，这一行要跟着改成真提取，
++       * 否则措施 b 会在该侧静默失效。`readonly_flags` 的实测组合见 `probe.cli.zcode`。
++       */
++      command_texts: [],
+       evidence_ok: false, // 由 guard 判定
+       fail_reason: null,
+       session_id: sessionId,
+diff --git a/src/trivium/guard.ts b/src/trivium/guard.ts
+index 78a7d60..3111f86 100644
+--- a/src/trivium/guard.ts
++++ b/src/trivium/guard.ts
+@@ -5,7 +5,7 @@
+  * 这样「检出」与「处置」分开，处置策略可配而检出逻辑恒定。
+  */
+ import type { Config, CriticId, CriticRequest, CriticResult, Review } from './types.js';
+-import { checkEvidence, checkPeerLeak } from './adapters/base.js';
++import { checkEvidence, checkPeerLeak, checkPeerLeakViaCommand } from './adapters/base.js';
+ import { checkReviewIntegrity } from './parse.js';
+ import { judgeDrift, driftAction, type DriftVerdict, type Snapshot } from './freeze.js';
+ import { ALL_CLI_NAMES } from './agents/registry.js';
+@@ -19,9 +19,19 @@ export interface SideVerdict {
+   /** 轨迹中出现写事件 → 审查员失守（比指纹变化更确定） */
+   readonlyBreach: boolean;
+   breachEvidence: string[];
+-  /** 轨迹读取路径命中禁读清单 */
++  /** 轨迹读取路径命中禁读清单，**或**命令原文里出现了禁读条目（措施 b） */
+   peerArtifactRead: boolean;
++  /** 命中的读取路径（措施 a） */
+   peerHits: string[];
++  /**
++   * 命中的**命令原文**（措施 b，§10.2）。
++   *
++   * 与 `peerHits` 分开记而不是并进同一个数组：两者的性质不同——
++   * 路径命中说明它**读了**那个文件，命令命中说明它**跑了**一条提到那个文件的命令
++   * （可能经 git 对象库，文件系统上根本没发生读取）。处置相同，但排查时
++   * 要看得出是哪条通道，否则「为什么 deny 生效了还漏」永远查不清。
++   */
++  peerCommandHits: string[];
+   /** consulted 与轨迹交叉核对未通过 */
+   consultedUnverified: boolean;
+   /** 结构性问题（编号前缀错、重复编号等） */
+@@ -44,6 +54,14 @@ export function judgeSide(
+ ): SideVerdict {
+   const ev = checkEvidence(result, req, { archiveRootAbs: opts.archiveRootAbs });
+   const peer = checkPeerLeak(result.read_paths, req.deny_paths, opts.projectRoot);
++  /*
++   * 措施 b（§10.2 / EV-01）：命令原文的字面扫描。
++   *
++   * 与措施 a **同等处置**——两者任一命中即该侧作废。不设权重也不设开关：
++   * §18.1 #8 已拍板「不提供 hard|warn|off 开关」，理由是开关会引入
++   * 「绕过检测」的合法路径；确需收窄 git 通道时裁 `readonly_commands` 已是更强的旋钮。
++   */
++  const peerCmd = checkPeerLeakViaCommand(result.command_texts, req.deny_paths, opts.projectRoot);
+ 
+   // 轨迹里出现写工具/写命令 = 审查员失守（§10.3 末段：轨迹有写事件的判为失守）
+   const readonlyBreach = result.write_events.length > 0;
+@@ -83,8 +101,9 @@ export function judgeSide(
+     projectReads: ev.projectReads,
+     readonlyBreach,
+     breachEvidence: result.write_events,
+-    peerArtifactRead: peer.leaked,
++    peerArtifactRead: peer.leaked || peerCmd.leaked,
+     peerHits: peer.hits,
++    peerCommandHits: peerCmd.hits,
+     consultedUnverified,
+     integrityIssues,
+   };
+@@ -205,9 +224,24 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
+ 
+   if (v.peerArtifactRead) {
+     for (const s of Object.values(v.sides)) {
+-      if (s?.peerArtifactRead) {
++      if (!s?.peerArtifactRead) continue;
++      /*
++       * 两条通道分开播报（措施 a / 措施 b）。
++       *
++       * 合并成一行会在**只有命令通道命中**时打出「读到了禁读清单内的文件：」后面跟空清单
++       * ——处置是对的（该侧照样作废），但人读留痕看起来像个 bug，排查的人会先去
++       * 怀疑检测器本身。两条通道的性质本来就不同：路径命中说明它读了那个文件，
++       * 命令命中说明它跑了一条提到那个文件的命令（可能经 git 对象库，文件系统上没发生读取）。
++       */
++      if (s.peerHits.length > 0) {
+         out.push(`${s.critic} 侧读到了禁读清单内的文件：${s.peerHits.join(', ')}——该侧结论作废`);
+       }
++      if (s.peerCommandHits.length > 0) {
++        out.push(
++          `${s.critic} 侧的命令里出现了禁读清单内的路径：${s.peerCommandHits.join(' ｜ ')}` +
++            '——该侧结论作废（措施 b：命令文本通道，可能经 git 对象库取值而不产生文件读取）',
++        );
++      }
+     }
+   }
+   switch (v.drift.kind) {
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index 51f5420..539cb1d 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -983,6 +983,16 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+     ),
+     forged_role_file: false,
+     breached_files: verdict.breachedFiles,
++    /*
++     * 措施 b（§10.2 / EV-01）的命中记录。**恒写**，不是命中才写——
++     * schema 原注释写着「字段在而值缺失不等于『未命中』，判读时先看它在不在」，
++     * 那是未接线时的权宜。现在接线了，就让「字段在且 hit=false」明确表示
++     * 「扫过、没命中」，把「没扫」这个第三态从字段缺失里赶出去。
++     */
++    peer_leak_via_command: {
++      hit: sides.some((c) => (verdict.sides[c]?.peerCommandHits.length ?? 0) > 0),
++      commands: sides.flatMap((c) => verdict.sides[c]?.peerCommandHits ?? []),
++    },
+   };
+   for (const c of sides) {
+     const r = results[c];
+diff --git a/src/trivium/runner.ts b/src/trivium/runner.ts
+index 801ea9d..e64b561 100644
+--- a/src/trivium/runner.ts
++++ b/src/trivium/runner.ts
+@@ -188,6 +188,7 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
+         tool_calls: {},
+         read_paths: [],
+         write_events: [],
++        command_texts: [],
+         evidence_ok: false,
+         fail_reason: `适配器异常：${String(s.reason)}`,
+         session_id: null,
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index d22d3bf..8465fc9 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -778,6 +778,14 @@ export interface RunMeta {
+     peer_deny_applied: Partial<Record<CriticId, boolean>>;
+     forged_role_file: boolean;
+     breached_files?: string[];
++    /**
++     * 措施 b（§10.2 / EV-01）的命中记录：命令原文里出现了禁读条目。
++     *
++     * **可选是为了读旧留痕**（接线前落盘的 run.json 没有这个字段），
++     * 写侧自 M8 第 1 步起**恒写**。于是判读规则是：
++     * 字段缺失 = 该次运行早于接线；`hit: false` = 扫过、没命中。
++     */
++    peer_leak_via_command?: { hit: boolean; commands: string[] };
+   };
+   artifacts: { path: string; sha256: string }[];
+   gate: { adjudication_complete: boolean; state: string; warnings?: string[] };
+@@ -826,6 +834,23 @@ export interface CriticResult {
+   read_paths: string[];
+   /** 轨迹中出现过的写工具/写命令事件，非空即 readonly_breach */
+   write_events: string[];
++  /**
++   * 轨迹中出现过的**命令原文**，措施 b（§10.2）的输入。
++   *
++   * **消费方**：`checkPeerLeakViaCommand` —— 对每条命令做 deny 字面量子串匹配，
++   * 命中与路径命中同等处置（该侧作废）。
++   *
++   * **为什么它与 `write_events` 不是一回事**：`write_events` 记的是「这条命令属于写类」
++   * 这个**判定结果**，`command_texts` 记的是**原文**。agy 侧 `run_command` 本就在
++   * 写工具集里（出现即失守），所以两者重合；而 codex 侧读文件就是跑 shell，
++   * 命令原文是**正常证据**而非失守信号——`write_events` 表达不了它，
++   * 这正是本字段单列的理由（M6 P-C1）。
++   *
++   * 无 `run_command` 能力的侧（zcode 全禁 `Bash`）恒为空数组。
++   * **空数组的含义是「没有命令」，不是「没采集」**——采集不到要在 `fail_reason` 里说，
++   * 不能让两者都落空数组。
++   */
++  command_texts: string[];
+   evidence_ok: boolean;
+   fail_reason: string | null;
+   session_id: string | null;
+diff --git a/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt b/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+index 8f79132..de120b1 100644
+--- a/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
++++ b/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+@@ -123,6 +123,15 @@ export const stubAgentAdapter: CriticAdapter = {
+       tool_calls: { read: toolCalls },
+       read_paths: reads,
+       write_events: [],
++      /*
++       * 本桩不跑任何命令，故恒为空数组——含义是「没有命令」而不是「没采集」。
++       *
++       * 这一行是 M8 第 1 步加的。它的出现本身说明了一件事：`command_texts` 是
++       * **核心契约**的新字段，不是某一家的私有物，所以每个适配器（含桩）都要填。
++       * 接入套件当时红在这里，是装置在正确地工作——它守的是「核心流程零改动」，
++       * 而这次改的恰恰是核心契约，红得应该。
++       */
++      command_texts: [],
+       evidence_ok: false, // 由 guard 判定，适配器不自我裁定
+       fail_reason: null,
+       session_id: `${CRITIC}-session`,
+diff --git a/test/integration/fault-injection.test.ts b/test/integration/fault-injection.test.ts
+index aed7242..929d114 100644
+--- a/test/integration/fault-injection.test.ts
++++ b/test/integration/fault-injection.test.ts
+@@ -211,8 +211,47 @@ test('读到禁读清单内的文件 → peer_artifact_read', { skip: bundleMiss
+   const { meta } = await runInjected({ gemini: { mode: 'peer_leak' }, glm: { mode: 'ok' } });
+   assert.ok(meta.deny_paths.length > 0, '夹具里的 .env 命中 sensitive_globs，禁读清单不该是空的');
+   assert.equal(meta.guard.peer_artifact_read, true);
++  assert.equal(
++    meta.guard.peer_leak_via_command?.hit, false,
++    '措施 a 命中时措施 b 不该跟着亮：两条通道要能分得开，否则单边失效看不出来',
++  );
+ });
+ 
++test(
++  '命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.2 / EV-01）',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    /*
++     * **这条用例是变异验证逼出来的。**
++     *
++     * 起草时我给 judgeSide 接了 `peer.leaked || peerCmd.leaked`，单测覆盖了
++     * `checkPeerLeakViaCommand` 本身，全量 1002 条也全绿。
++     * 然后把那个 `|| peerCmd.leaked` 删掉——**一条都没红**：接线处没有任何断言守着。
++     *
++     * 这是本项目第五次「绿测试证明不了任何事」。判据函数测得再细，
++     * 也不能替代「它真的被接上了」这条断言。
++     */
++    const { meta } = await runInjected({
++      gemini: { mode: 'peer_leak_via_command' },
++      glm: { mode: 'ok' },
++    });
++    assert.ok(meta.deny_paths.length > 0, '禁读清单不该是空的');
++    assert.equal(meta.guard.peer_leak_via_command?.hit, true, '命令通道必须命中');
++    assert.ok(
++      (meta.guard.peer_leak_via_command?.commands.length ?? 0) > 0,
++      '要留下命中的命令原文，否则排查时看不出是经哪条通道漏的',
++    );
++    assert.match(
++      meta.guard.peer_leak_via_command?.commands[0] ?? '', /^git show HEAD:/,
++      '桩走的是 git 对象库形态（F-3）——措施 a 看不见的那条',
++    );
++    assert.equal(
++      meta.guard.peer_artifact_read, true,
++      '与路径命中**同等处置**：措施 b 单独命中也要把该侧判作废',
++    );
++  },
++);
++
+ test('回读到的生效模型与请求不符时如实记录（AC-13）', { skip: bundleMissing && bundleSkipReason }, async () => {
+   const { meta } = await runInjected({
+     gemini: { mode: 'ok', modelEffective: '别的模型-不是请求的那个' },
+diff --git a/test/unit/render.test.ts b/test/unit/render.test.ts
+index c5ac4f5..cda6228 100644
+--- a/test/unit/render.test.ts
++++ b/test/unit/render.test.ts
+@@ -11,7 +11,7 @@ const RESULT: CriticResult = {
+   raw_stdout_path: '/runs/out', trace_path: '/runs/trace', review_json: null,
+   raw_response_text: '{}', model_effective: 'gemini-3.1-pro-high',
+   model_effective_source: 'envelope', tool_calls: { read: 27, grep: 9 },
+-  read_paths: [], write_events: [], evidence_ok: true, fail_reason: null,
++  read_paths: [], write_events: [], command_texts: [], evidence_ok: true, fail_reason: null,
+   session_id: 'conv-1', cli_version: '1.2.0', peer_deny_applied: false,
+   command_line: 'agy -p …',
+ };
+diff --git a/test/unit/runner.test.ts b/test/unit/runner.test.ts
+index 3d5bc65..1839392 100644
+--- a/test/unit/runner.test.ts
++++ b/test/unit/runner.test.ts
+@@ -10,7 +10,7 @@ function okResult(critic: CriticId, over: Partial<CriticResult> = {}): CriticRes
+     critic, status: 'ok', exit_code: 0, duration_s: 10,
+     raw_stdout_path: '/runs/out', trace_path: '/runs/trace', review_json: null,
+     raw_response_text: '{}', model_effective: 'M', model_effective_source: 'envelope',
+-    tool_calls: { read: 6 }, read_paths: ['/proj/src/a.ts'], write_events: [],
++    tool_calls: { read: 6 }, read_paths: ['/proj/src/a.ts'], write_events: [], command_texts: [],
+     evidence_ok: true, fail_reason: null, session_id: 'S', cli_version: '1',
+     peer_deny_applied: false, command_line: 'x', ...over,
+   };
+diff --git a/src/trivium/adapters/base.ts.mutbak b/src/trivium/adapters/base.ts.mutbak
+new file mode 100644
+index 0000000..8233763
+--- /dev/null
++++ b/src/trivium/adapters/base.ts.mutbak
+@@ -0,0 +1,308 @@
++/**
++ * 适配层统一契约（设计 §11.1）。
++ *
++ * 适配层是**唯一**允许调用厂商 CLI 的地方（§5.1）。它把两家的差异
++ * （参数、输出字段、模型指定方式、只读方式、轨迹来源）收敛为一组请求/结果结构，
++ * 上层的 runner / parse / guard 只面对这组结构。
++ *
++ * 铁律（原则 P7）：命令行**一律由 probe 结论构造**，不得硬编码设计文档里的示例。
++ */
++import nodePath from 'node:path';
++import type { Config, CriticId, CriticRequest, CriticResult, Stage } from '../types.js';
++
++export interface AdapterContext {
++  cfg: Config;
++  /** node 绝对路径（GUI 进程不读 .zshrc，§10.5） */
++  nodePath: string;
++}
++
++export interface CriticAdapter {
++  readonly critic: CriticId;
++  /** 该侧是否可用（探针结论决定）。不可用时给出人读原因 */
++  availability(ctx: AdapterContext): { ok: boolean; reason?: string };
++  run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult>;
++}
++
++/**
++ * Agent id → 适配器的查表结构。
++ *
++ * **是 `Partial`，而且必须是。** `CriticId` 在 M7b 第 6 步放开成注册表全集之后，
++ * `Record<CriticId, CriticAdapter>` 就成了一句谎话：它承诺**每一个已登记 Agent**
++ * 都有适配器，而 Driver（claude）与尚未接入的 codex 本来就没有、也不该有。
++ *
++ * 谎话的代价不是类型不好看，而是**取值处的 undefined 检查被类型系统免掉了**：
++ * `adapters[critic]` 恒被当成非空，真缺一个就在 `adapter.run` 上崩出一条
++ * 与原因无关的 TypeError。改成 Partial 后取值处必须显式判空，缺谁说得出名字。
++ *
++ * 「已启用为审核者的那几家一定在表里」这条保证由 `realAdapters()` 在取表时
++ * **运行期**兑现（缺接线即响亮失败），不靠类型硬编。
++ */
++export type AdapterTable = Partial<Record<CriticId, CriticAdapter>>;
++
++/** 失败结果的统一构造，避免各适配器自行拼字段时漏项 */
++export function failedResult(
++  critic: CriticId,
++  fail: {
++    status: 'timeout' | 'failed' | 'parse_fallback';
++    reason: string;
++    exitCode?: number | null;
++    durationS?: number;
++    rawStdoutPath?: string;
++    tracePath?: string | null;
++    rawText?: string | null;
++    cliVersion?: string | null;
++    commandLine?: string;
++    sessionId?: string | null;
++  },
++): CriticResult {
++  return {
++    critic,
++    status: fail.status,
++    exit_code: fail.exitCode ?? null,
++    duration_s: fail.durationS ?? 0,
++    raw_stdout_path: fail.rawStdoutPath ?? '',
++    trace_path: fail.tracePath ?? null,
++    review_json: null,
++    raw_response_text: fail.rawText ?? null,
++    model_effective: null,
++    model_effective_source: 'unverified',
++    tool_calls: {},
++    read_paths: [],
++    write_events: [],
++    command_texts: [],
++    evidence_ok: false,
++    fail_reason: fail.reason,
++    session_id: fail.sessionId ?? null,
++    cli_version: fail.cliVersion ?? null,
++    peer_deny_applied: false,
++    command_line: fail.commandLine ?? '',
++  };
++}
++
++/**
++ * 判定 Agent 执行证据是否达标（设计 §11.4，五项检查中的前三项）。
++ *
++ * 这不是可选项：Antigravity 的软拒绝会产生「exit 0 但零工具调用」的空审查，
++ * 因此工具轨迹下限是 AC-05 的强制落点。
++ */
++export interface EvidenceCheck {
++  ok: boolean;
++  reasons: string[];
++  /** 被审对象与送审包之外的项目文件读取次数（AC-11） */
++  projectReads: number;
++}
++
++export function checkEvidence(
++  result: Pick<CriticResult, 'tool_calls' | 'read_paths' | 'trace_path'>,
++  req: Pick<CriticRequest, 'min_tool_calls' | 'min_project_reads' | 'subject_path' | 'brief_path' | 'project_root'>,
++  opts: { archiveRootAbs: string },
++): EvidenceCheck {
++  const reasons: string[] = [];
++
++  const tc = result.tool_calls;
++  const toolTotal = (tc.read ?? 0) + (tc.grep ?? 0) + (tc.glob ?? 0);
++
++  // ① 轨迹存在
++  if (result.trace_path === null && result.read_paths.length === 0 && toolTotal === 0) {
++    reasons.push('no_trace：拿不到任何工具调用轨迹');
++  }
++
++  // ② 读文件次数下限
++  if (toolTotal < req.min_tool_calls) {
++    reasons.push(`insufficient_evidence：工具调用 ${toolTotal} 次 < 下限 ${req.min_tool_calls}`);
++  }
++
++  // ③ 项目文件读取下限——防止「把 BRIEF 与被审文档反复读 N 遍」通过上一条
++  const excluded = new Set([req.subject_path, req.brief_path].map((p) => normalizeAbs(p, req.project_root)));
++  const projectReads = result.read_paths.filter((p) => {
++    const abs = normalizeAbs(p, req.project_root);
++    if (excluded.has(abs)) return false;
++    // 归档根内的文件不算「项目上下文」——那是审查材料本身
++    if (isUnder(abs, opts.archiveRootAbs)) return false;
++    // 项目根之外的读取（~/ 下的无关文件）也不算：AC-11 要的是「结合整个项目评审」
++    return isUnder(abs, req.project_root);
++  }).length;
++
++  if (projectReads < req.min_project_reads) {
++    reasons.push(
++      `no_project_context：被审对象与送审包之外的项目文件读取 ${projectReads} 次 < 下限 ${req.min_project_reads}`,
++    );
++  }
++
++  return { ok: reasons.length === 0, reasons, projectReads };
++}
++
++/** 轨迹核验：读取路径中是否命中禁读清单（§10.1 第 ③ 道 (c) 层 / AC-04） */
++export function checkPeerLeak(
++  readPaths: readonly string[],
++  denyPaths: readonly string[],
++  projectRoot: string,
++): { leaked: boolean; hits: string[] } {
++  /*
++   * 两边都归一成绝对路径再比：轨迹里可能是 `./x`、`/abs/../abs/x`、macOS 的 `/private/var/…`
++   * 对 `/var/…`；原先纯字符串比对，任何写法差异都会让「读到对方产出」漏报，
++   * 而漏报的后果是本应作废的结论照常采纳。
++   */
++  const denyAbs = denyPaths.map((d) => normalizeAbs(d, projectRoot));
++  const denySet = new Set(denyAbs);
++
++  /*
++   * 目录形态的条目要按**前缀**命中（审查意见 GLM-03）。
++   *
++   * 纯 `Set.has()` 时，`.trivium` 这类目录条目永远等不到 `.trivium/state.json`
++   * 这样的实际读取路径——BRIEF 第 8 段向审查员承诺「读其中任何一个本次审查即作废」，
++   * 而机器核验对它的效力是零。那正是措施 a 要关闭的「提示语禁了一堆、核验只对
++   * 其中一部分」的错位，不能在这里再造一个。
++   *
++   * 判据用 `<条目>/` 前缀而非 `startsWith(条目)`：否则 `.trivium` 会误伤
++   * `.trivium-backup` 这类同前缀的兄弟路径。
++   */
++  const hits = readPaths.filter((p) => {
++    const abs = normalizeAbs(p, projectRoot);
++    if (denySet.has(abs)) return true;
++    return denyAbs.some((d) => abs.startsWith(`${d}${nodePath.sep}`));
++  });
++  return { leaked: hits.length > 0, hits: [...new Set(hits)] };
++}
++
++/*
++ * ──────────────────────────────────────────────────────────────────────────
++ * 措施 b（§10.2 / BACKLOG EV-01）：命令文本字面扫描
++ * ──────────────────────────────────────────────────────────────────────────
++ *
++ * **为什么路径侧不够**：`checkPeerLeak` 吃的是轨迹里的**读取路径**。经 git 对象库
++ * 取对端产物（`git show HEAD:<归档内文件>`）不产生文件系统读取，那条路径根本不出现；
++ * 而 codex 侧读文件本就是跑 shell，**全部**读取都只在命令文本里（M6 P-C1）。
++ * 对前者本措施是补充，对后者是唯一手段。
++ *
++ * ## 已知形态清单（本措施承诺必检的闭集）
++ *
++ * 计划双审 GLM-07 要求把论域钉死：不写数量，写清单。下面每一条都有对应用例，
++ * 用例名以 `[F-n]` 开头，改清单必须同时改用例，否则 `known-forms` 那条守卫会红。
++ *
++ * | # | 形态 | 例 |
++ * | :-- | :--- | :--- |
++ * | F-1 | 绝对路径直引 | `cat /abs/proj/.reviews/t/code/x-gemini.md` |
++ * | F-2 | 项目相对路径直引 | `cat .reviews/t/code/x-gemini.md`、`./.reviews/…` |
++ * | F-3 | git 对象库取值 | `git show HEAD:.reviews/…`、`git cat-file -p <sha>:<path>` |
++ * | F-4 | 目录级条目命中 | deny 里是目录时，`ls .trivium/`、`grep -r x .reviews/t/code/_meta/` |
++ * | F-5 | 引号/转义包裹 | `cat "/abs/…/x-gemini.md"`、`cat '…'` |
++ *
++ * ## 明确检测不到的（威胁模型按 §10.1 末段，R25 已登记）
++ *
++ * | 盲区 | 例 |
++ * | :--- | :--- |
++ * | B-1 **分段拼接**：完整字面量从不出现 | `P=.reviews/t; cat $P/code/x-<peer>.md` |
++ * | B-2 **目录级 git 读取**：能 dump 出内容却不指名文件 | `git log -p -- .reviews/t/code` |
++ * | B-3 glob 展开 | `cat .reviews/*​/code/*-<peer>.md` |
++ * | B-4 编码/间接（base64、xargs 取自文件…） | — |
++ *
++ * **B-2 是这四条里唯一非蓄意也会撞上的**：目录级 `git log -p` 是排查时的常用手法，
++ * 而它会把该目录下**全部**历史内容吐出来，包含对端产物。
++ * 它也是 §10.1「git 通道保留能力而非封死」那条取舍的代价所在——
++ * 收窄它的旋钮是裁 `readonly_commands`（把 `git log` 拿掉），不是在这里加机制。
++ *
++ * **一处反直觉、已实测**：整条赋值里带完整字面量（`P=.reviews/…/x-<peer>.md; cat $P`）
++ * **是能检出的**——字面量就在命令文本里。起草时我把「变量拼接」整类写成了盲区，
++ * 实测（三条形态逐条跑）证明只有**分段**拼接才真的躲得过。盲区的边界比我估的窄，
++ * 这个更正写在这里而不只写在测试里，是因为下一个读这段的人会照着它判断承诺面。
++ *
++ * 本措施的目标是「**泄漏必检 + 成本抬升**」，**不是**抵御蓄意规避——
++ * 承诺的是上表 F-1～F-5 必检，不是不可绕过。
++ */
++
++/** 命令文本里能合法紧邻路径两侧的字符——用于避免子串误命中 */
++const CMD_BOUNDARY = new Set([
++  ' ', '\t', '\n', '\r',
++  '"', "'", '`',
++  '=', ':', ';', '&', '|', '(', ')', '<', '>', ',',
++]);
++
++function boundaryOk(text: string, start: number, end: number): boolean {
++  const before = start === 0 ? '' : text[start - 1]!;
++  const after = end >= text.length ? '' : text[end]!;
++  // 左边界：行首或分隔符。防「/other/proj/.reviews/…」被项目相对写法误命中
++  if (before !== '' && !CMD_BOUNDARY.has(before)) return false;
++  // 右边界：行尾、分隔符，或 `/`（目录条目下的更深路径，F-4）
++  if (after !== '' && after !== nodePath.sep && !CMD_BOUNDARY.has(after)) return false;
++  return true;
++}
++
++/** 一个 deny 条目在命令文本里可能的写法（绝对、项目相对、`./` 前缀） */
++function spellingsOf(denyPath: string, projectRoot: string): string[] {
++  const abs = normalizeAbs(denyPath, projectRoot);
++  const out = new Set<string>([abs]);
++  const root = nodePath.resolve(projectRoot);
++  if (abs === root) return [...out];
++  if (abs.startsWith(`${root}${nodePath.sep}`)) {
++    const rel = abs.slice(root.length + 1);
++    if (rel.length > 0) {
++      out.add(rel);
++      out.add(`.${nodePath.sep}${rel}`);
++    }
++  }
++  return [...out];
++}
++
++/**
++ * 措施 b 的判据：命令原文里是否出现了 deny 条目的字面量。
++ *
++ * 返回**命中的命令原文**（不是命中的路径）——处置时要让人看见「它跑了哪条命令」，
++ * 只报路径的话，`git show HEAD:<path>` 与 `cat <path>` 在留痕上无从区分，
++ * 而这两者的性质差别正是本措施存在的理由。
++ */
++export function checkPeerLeakViaCommand(
++  commandTexts: readonly string[],
++  denyPaths: readonly string[],
++  projectRoot: string,
++): { leaked: boolean; hits: string[] } {
++  if (commandTexts.length === 0 || denyPaths.length === 0) {
++    return { leaked: false, hits: [] };
++  }
++  const spellings = denyPaths.flatMap((d) => spellingsOf(d, projectRoot));
++
++  const hits = commandTexts.filter((cmd) =>
++    spellings.some((s) => {
++      let from = 0;
++      for (;;) {
++        const i = cmd.indexOf(s, from);
++        if (i < 0) return false;
++        if (boundaryOk(cmd, i, i + s.length)) return true;
++        from = i + 1;
++      }
++    }),
++  );
++  return { leaked: hits.length > 0, hits: [...new Set(hits)] };
++}
++
++/** 归一成绝对路径：解析 `./`、`..`，并抹平 macOS 的 /private 前缀 */
++function normalizeAbs(p: string, projectRoot: string): string {
++  const abs = nodePath.resolve(projectRoot, p);
++  return abs.startsWith('/private/') ? abs.slice('/private'.length) : abs;
++}
++
++function isUnder(abs: string, root: string): boolean {
++  const r = root.startsWith('/private/') ? root.slice('/private'.length) : root;
++  return abs === r || abs.startsWith(r.endsWith('/') ? r : `${r}/`);
++}
++
++/** 模型路由：命令行参数 > 主题级覆盖 > profile > 阶段默认（设计 §11.5 四级） */
++export function routeModel(
++  cfg: Config,
++  critic: CriticId,
++  stage: Stage,
++  overrides: { cli?: string | null; topic?: string | null } = {},
++): { model: string | null; source: 'cli' | 'topic' | 'profile' | 'none' } {
++  if (overrides.cli) return { model: overrides.cli, source: 'cli' };
++  if (overrides.topic) return { model: overrides.topic, source: 'topic' };
++  const profile = cfg.profiles[cfg.active_profile];
++  const fromProfile = profile?.[critic]?.[stage];
++  if (fromProfile) return { model: fromProfile, source: 'profile' };
++  return { model: null, source: 'none' };
++}
++
++/** 是否与主脑异构（FR-17 / AC-18）：Claude 系模型即为同源 */
++export function isHeterogeneous(model: string | null): boolean {
++  if (!model) return true;
++  return !/claude/i.test(model);
++}
+diff --git a/src/trivium/guard.ts.mutbak b/src/trivium/guard.ts.mutbak
+new file mode 100644
+index 0000000..3111f86
+--- /dev/null
++++ b/src/trivium/guard.ts.mutbak
+@@ -0,0 +1,273 @@
++/**
++ * `guard`：只读失守、漂移、对方产出泄漏、Agent 证据下限的判定（设计 §10.3 / §11.4 / §9.2）。
++ *
++ * guard 只**判定**，不做中止决策——中止交给 `gate` 与失败策略。
++ * 这样「检出」与「处置」分开，处置策略可配而检出逻辑恒定。
++ */
++import type { Config, CriticId, CriticRequest, CriticResult, Review } from './types.js';
++import { checkEvidence, checkPeerLeak, checkPeerLeakViaCommand } from './adapters/base.js';
++import { checkReviewIntegrity } from './parse.js';
++import { judgeDrift, driftAction, type DriftVerdict, type Snapshot } from './freeze.js';
++import { ALL_CLI_NAMES } from './agents/registry.js';
++import { matchesAnyGlob } from './util/fsx.js';
++
++export interface SideVerdict {
++  critic: CriticId;
++  evidenceOk: boolean;
++  evidenceReasons: string[];
++  projectReads: number;
++  /** 轨迹中出现写事件 → 审查员失守（比指纹变化更确定） */
++  readonlyBreach: boolean;
++  breachEvidence: string[];
++  /** 轨迹读取路径命中禁读清单，**或**命令原文里出现了禁读条目（措施 b） */
++  peerArtifactRead: boolean;
++  /** 命中的读取路径（措施 a） */
++  peerHits: string[];
++  /**
++   * 命中的**命令原文**（措施 b，§10.2）。
++   *
++   * 与 `peerHits` 分开记而不是并进同一个数组：两者的性质不同——
++   * 路径命中说明它**读了**那个文件，命令命中说明它**跑了**一条提到那个文件的命令
++   * （可能经 git 对象库，文件系统上根本没发生读取）。处置相同，但排查时
++   * 要看得出是哪条通道，否则「为什么 deny 生效了还漏」永远查不清。
++   */
++  peerCommandHits: string[];
++  /** consulted 与轨迹交叉核对未通过 */
++  consultedUnverified: boolean;
++  /** 结构性问题（编号前缀错、重复编号等） */
++  integrityIssues: string[];
++}
++
++/**
++ * 单侧判定。
++ *
++ * `consulted` 交叉核对的阈值是 80%（§11.4）：允许少量路径写法差异，
++ * 但大面积对不上就说明是编造的。
++ */
++export function judgeSide(
++  cfg: Config,
++  critic: CriticId,
++  result: CriticResult,
++  review: Review | null,
++  req: CriticRequest,
++  opts: { archiveRootAbs: string; projectRoot: string },
++): SideVerdict {
++  const ev = checkEvidence(result, req, { archiveRootAbs: opts.archiveRootAbs });
++  const peer = checkPeerLeak(result.read_paths, req.deny_paths, opts.projectRoot);
++  /*
++   * 措施 b（§10.2 / EV-01）：命令原文的字面扫描。
++   *
++   * 与措施 a **同等处置**——两者任一命中即该侧作废。不设权重也不设开关：
++   * §18.1 #8 已拍板「不提供 hard|warn|off 开关」，理由是开关会引入
++   * 「绕过检测」的合法路径；确需收窄 git 通道时裁 `readonly_commands` 已是更强的旋钮。
++   */
++  const peerCmd = checkPeerLeakViaCommand(result.command_texts, req.deny_paths, opts.projectRoot);
++
++  // 轨迹里出现写工具/写命令 = 审查员失守（§10.3 末段：轨迹有写事件的判为失守）
++  const readonlyBreach = result.write_events.length > 0;
++
++  // consulted 与轨迹交叉核对
++  let consultedUnverified = false;
++  const consulted = review?.consulted ?? [];
++  if (consulted.length > 0) {
++    const traceSet = new Set(
++      result.read_paths.map((p) =>
++        p.startsWith(opts.projectRoot) ? p.slice(opts.projectRoot.length).replace(/^\/+/, '') : p,
++      ),
++    );
++    const matched = consulted.filter((c) => traceSet.has(c) || traceSet.has(`./${c}`)).length;
++    consultedUnverified = matched / consulted.length < 0.8;
++  } else if (review !== null) {
++    // 结构化成功但没填 consulted，无法核对
++    consultedUnverified = true;
++  }
++
++  const integrityIssues: string[] = [];
++  if (review) {
++    const i = checkReviewIntegrity(review, critic);
++    if (!i.prefixOk) integrityIssues.push(`编号前缀不属于本侧：${i.badIds.join(', ')}`);
++    if (i.duplicateIds.length > 0) integrityIssues.push(`编号重复：${i.duplicateIds.join(', ')}`);
++    if (i.evidenceNotInConsulted.length > 0) {
++      integrityIssues.push(`evidence 引用但未列入 consulted：${i.evidenceNotInConsulted.join(', ')}`);
++    }
++    if (i.emptyWithoutExplanation) integrityIssues.push('零意见但未说明检查了什么');
++  }
++
++  void cfg;
++  return {
++    critic,
++    evidenceOk: ev.ok,
++    evidenceReasons: ev.reasons,
++    projectReads: ev.projectReads,
++    readonlyBreach,
++    breachEvidence: result.write_events,
++    peerArtifactRead: peer.leaked || peerCmd.leaked,
++    peerHits: peer.hits,
++    peerCommandHits: peerCmd.hits,
++    consultedUnverified,
++    integrityIssues,
++  };
++}
++
++export interface RunVerdict {
++  sides: Partial<Record<CriticId, SideVerdict>>;
++  drift: DriftVerdict;
++  driftAction: 'ok' | 'warn' | 'fail';
++  /** 指纹变化但轨迹无写事件 → 开发者手改，按漂移处置而非失守（§9.2 第 4 步） */
++  fingerprintChangedFiles: string[];
++  readonlyBreach: boolean;
++  breachedFiles: string[];
++  peerArtifactRead: boolean;
++}
++
++export interface JudgeRunInput {
++  cfg: Config;
++  projectRoot: string;
++  archiveRootAbs: string;
++  /** 归档根的项目相对路径，漂移判定要整体排除它 */
++  archiveRootRel: string;
++  /** `.trivium/` 的项目相对路径，同样排除；缺省 `.trivium` */
++  triviumDirRel?: string;
++  before: Snapshot;
++  afterTreeHash: string;
++  afterSubjectSha256: string;
++  relatedPaths: string[];
++  results: Partial<Record<CriticId, CriticResult>>;
++  reviews: Partial<Record<CriticId, Review | null>>;
++  requests: Partial<Record<CriticId, CriticRequest>>;
++}
++
++/** 整次运行的判定 */
++export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
++  const { cfg, results, reviews, requests } = input;
++
++  /*
++   * 全部已探 CLI 的 scratch 白名单并集：这一步不能省，否则会把 Agent 自己的
++   * 会话缓存误判成「只读失守」（M0 实测本机两侧均为空，但别的机器上未必）。
++   *
++   * 遍历而不是写死两段（原文是 `[...cfg.probe.agy.scratch_paths, ...cfg.probe.zcode.scratch_paths]`）：
++   * 探针段 Partial 化之后那种写法在 `noUncheckedIndexedAccess` 下直接编译不过，
++   * 而若图省事强转，缺段时会变成运行期 TypeError——这是 guard 这条只读护栏的路径，
++   * 不能靠强转糊过去（审查意见 AGY-03）。取并集也天然对第三家成立。
++   *
++   * 按 `ALL_CLI_NAMES` 取键，**不按盘上实有键**（审查意见 GLM-08）：
++   * `Object.values(cfg.probe.cli)` 会把未登记的键也算进来，于是一个没人登记的段
++   * 能往只读失守的白名单里塞 glob——而 `preflight` / `doctor` 都按注册表遍历、
++   * 根本看不见它。`schemas.ts` 已补了「probe.cli 键 ⊆ 已登记 CLI」的校验把关，
++   * 这里同口径是第二道：即使有人直接改盘绕过校验，影响面也不会扩大。
++   */
++  const scratchGlobs = ALL_CLI_NAMES.flatMap((n) => cfg.probe.cli[n]?.scratch_paths ?? []);
++
++  const drift = await judgeDrift({
++    cfg,
++    projectRoot: input.projectRoot,
++    before: input.before,
++    afterTreeHash: input.afterTreeHash,
++    afterSubjectSha256: input.afterSubjectSha256,
++    relatedPaths: input.relatedPaths,
++    scratchGlobs,
++    archiveRootRel: input.archiveRootRel,
++    ...(input.triviumDirRel ? { triviumDirRel: input.triviumDirRel } : {}),
++  });
++
++  const sides: Partial<Record<CriticId, SideVerdict>> = {};
++  for (const c of Object.keys(results) as CriticId[]) {
++    const r = results[c];
++    const q = requests[c];
++    if (!r || !q) continue;
++    /*
++     * 已经失败或超时的一侧不再评判证据。
++     *
++     * 一个超时被 SIGTERM 掉的进程当然「零工具调用、零项目文件读取」——
++     * 再报一遍「证据不足」只会把真正的原因（超时）埋在噪音里。
++     * 真实运行中就出现过这种误导：glm 侧 900s 超时，人读输出却说它证据不足。
++     * 失败原因由 runner 的 fail_reason 与 decideMode 的 degraded_reason 负责。
++     */
++    if (r.status === 'timeout' || r.status === 'failed') continue;
++    sides[c] = judgeSide(cfg, c, r, reviews[c] ?? null, q, {
++      archiveRootAbs: input.archiveRootAbs,
++      projectRoot: input.projectRoot,
++    });
++  }
++
++  const breachedFiles = Object.values(sides).flatMap((s) => s?.breachEvidence ?? []);
++  const fingerprintChangedFiles =
++    drift.kind === 'related' || drift.kind === 'unrelated' ? drift.files : [];
++
++  return {
++    sides,
++    drift,
++    driftAction: driftAction(cfg, drift),
++    fingerprintChangedFiles: fingerprintChangedFiles.filter(
++      (f) => !matchesAnyGlob(f, scratchGlobs),
++    ),
++    readonlyBreach: Object.values(sides).some((s) => s?.readonlyBreach === true),
++    breachedFiles: [...new Set(breachedFiles)],
++    peerArtifactRead: Object.values(sides).some((s) => s?.peerArtifactRead === true),
++  };
++}
++
++/** 人读告警文本（命令输出用）。**绝不自动 git checkout 回滚**（§10.3） */
++export function renderGuardWarnings(v: RunVerdict): string[] {
++  const out: string[] = [];
++
++  if (v.readonlyBreach) {
++    out.push(
++      '只读失守：审查员的工具轨迹中出现了写事件。受影响的调用：\n' +
++        v.breachedFiles.map((f) => `    ${f}`).join('\n') +
++        '\n  编排器**不会**自动回滚。建议人工核对：\n' +
++        '    git status --porcelain -uall\n' +
++        '    git diff\n' +
++        '  确认无误后再决定是否 `git checkout --` 相关文件。',
++    );
++  }
++
++  if (v.peerArtifactRead) {
++    for (const s of Object.values(v.sides)) {
++      if (!s?.peerArtifactRead) continue;
++      /*
++       * 两条通道分开播报（措施 a / 措施 b）。
++       *
++       * 合并成一行会在**只有命令通道命中**时打出「读到了禁读清单内的文件：」后面跟空清单
++       * ——处置是对的（该侧照样作废），但人读留痕看起来像个 bug，排查的人会先去
++       * 怀疑检测器本身。两条通道的性质本来就不同：路径命中说明它读了那个文件，
++       * 命令命中说明它跑了一条提到那个文件的命令（可能经 git 对象库，文件系统上没发生读取）。
++       */
++      if (s.peerHits.length > 0) {
++        out.push(`${s.critic} 侧读到了禁读清单内的文件：${s.peerHits.join(', ')}——该侧结论作废`);
++      }
++      if (s.peerCommandHits.length > 0) {
++        out.push(
++          `${s.critic} 侧的命令里出现了禁读清单内的路径：${s.peerCommandHits.join(' ｜ ')}` +
++            '——该侧结论作废（措施 b：命令文本通道，可能经 git 对象库取值而不产生文件读取）',
++        );
++      }
++    }
++  }
++  switch (v.drift.kind) {
++    case 'subject_drift':
++      out.push('被审对象在审查期间被修改：本次结论已不对应送审的那份内容，整次运行作废');
++      break;
++    case 'related':
++      out.push(
++        `与被审范围相关的文件在审查期间被修改（策略 ${v.driftAction}）：\n` +
++          v.drift.files.map((f) => `    ${f}`).join('\n'),
++      );
++      break;
++    case 'unrelated':
++      out.push(
++        `审查期间有无关文件被修改（策略 ${v.driftAction}）：\n` +
++          v.drift.files.map((f) => `    ${f}`).join('\n'),
++      );
++      break;
++    case 'none':
++      break;
++  }
++  for (const s of Object.values(v.sides)) {
++    if (!s) continue;
++    if (!s.evidenceOk) out.push(`${s.critic} 侧 Agent 执行证据不足：${s.evidenceReasons.join('；')}`);
++    if (s.integrityIssues.length > 0) out.push(`${s.critic} 侧结论结构问题：${s.integrityIssues.join('；')}`);
++    if (s.consultedUnverified) out.push(`${s.critic} 侧 consulted 无法与工具轨迹交叉核对`);
++  }
++  return out;
++}
+diff --git a/test/unit/peer-leak-command.test.ts b/test/unit/peer-leak-command.test.ts
+new file mode 100644
+index 0000000..8e52fa7
+--- /dev/null
++++ b/test/unit/peer-leak-command.test.ts
+@@ -0,0 +1,190 @@
++/**
++ * 措施 b（设计 §10.2 / BACKLOG EV-01）：命令文本字面扫描。
++ *
++ * **用例名与 `adapters/base.ts` 的已知形态清单一一对应**（`[F-n]` 前缀）。
++ * 计划双审 GLM-07 要求把论域钉成可审计的闭集：不写数量，写清单；
++ * 清单改了这里必须跟着改，`known-forms` 那条守卫会红。
++ *
++ * 为什么不写「五类」这个数字：起草计划时我从 `CLAUDE.md` 里 **RV-B1**（git commit
++ * 的 Bash 拦截）搬了「五类形态」这个说法过来，那是**另一件事**的计数，
++ * 与本措施毫无关系。数字随清单长度自然得出，不再单独出现。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { checkPeerLeakViaCommand } from '../../src/trivium/adapters/base.js';
++
++const ROOT = '/Users/x/proj';
++/** 典型 deny 条目：一份对端产物（文件）与一个运行目录（目录） */
++const DENY = [
++  `${ROOT}/.reviews/t/code/2026-01-01-t-gemini.md`,
++  `${ROOT}/.trivium`,
++];
++
++function hit(cmd: string): boolean {
++  return checkPeerLeakViaCommand([cmd], DENY, ROOT).leaked;
++}
++
++/* ── 已知形态：必检 ────────────────────────────────────────────────── */
++
++test('[F-1] 绝对路径直引', () => {
++  assert.equal(hit(`cat ${ROOT}/.reviews/t/code/2026-01-01-t-gemini.md`), true);
++});
++
++test('[F-2] 项目相对路径直引（含 ./ 前缀）', () => {
++  assert.equal(hit('cat .reviews/t/code/2026-01-01-t-gemini.md'), true);
++  assert.equal(hit('head -1 ./.reviews/t/code/2026-01-01-t-gemini.md'), true);
++});
++
++test('[F-3] git 对象库取值 —— 措施 a 看不见的那条通道', () => {
++  /*
++   * 这一条是整个措施 b 的存在理由：`git show HEAD:<path>` **不产生文件系统读取**，
++   * 轨迹的 read_paths 里什么都没有，路径侧核验对它的效力是零。
++   */
++  assert.equal(hit('git show HEAD:.reviews/t/code/2026-01-01-t-gemini.md'), true);
++  assert.equal(hit('git cat-file -p 9f2a1c3:.reviews/t/code/2026-01-01-t-gemini.md'), true);
++});
++
++test('[F-4] 目录级条目命中：deny 里是目录，命令读它下面的文件', () => {
++  assert.equal(hit('ls -la .trivium/'), true);
++  assert.equal(hit(`cat ${ROOT}/.trivium/state.json`), true);
++});
++
++test('[F-5] 引号与转义包裹', () => {
++  assert.equal(hit(`cat "${ROOT}/.reviews/t/code/2026-01-01-t-gemini.md"`), true);
++  assert.equal(hit("cat '.reviews/t/code/2026-01-01-t-gemini.md'"), true);
++  assert.equal(hit('cat `echo .reviews/t/code/2026-01-01-t-gemini.md`'), true);
++});
++
++test('known-forms：清单里的每一类都有用例，且每一类都真的能命中', () => {
++  /*
++   * 这条守着「清单」与「实现」不分叉。它不是同义反复——上面五条各测各的形态，
++   * 这条测的是**集合**：任何一类被实现漏掉，这里会红在具体那一行上。
++   *
++   * 起草时我差点把它写成「用例数 === 5」——那种断言按构造恒真，
++   * 改坏实现不会红（本项目已四次栽在「绿测试证明不了任何事」上）。
++   */
++  const forms: Record<string, string> = {
++    'F-1 绝对路径': `cat ${ROOT}/.reviews/t/code/2026-01-01-t-gemini.md`,
++    'F-2 项目相对': 'cat .reviews/t/code/2026-01-01-t-gemini.md',
++    'F-3 git 对象库': 'git show HEAD:.reviews/t/code/2026-01-01-t-gemini.md',
++    'F-4 目录级': 'ls .trivium/',
++    'F-5 引号包裹': `cat "${ROOT}/.reviews/t/code/2026-01-01-t-gemini.md"`,
++  };
++  for (const [name, cmd] of Object.entries(forms)) {
++    assert.equal(hit(cmd), true, `${name} 应被检出：${cmd}`);
++  }
++});
++
++/* ── 边界：不得误命中 ──────────────────────────────────────────────── */
++
++test('【误报】同前缀的兄弟目录不得命中', () => {
++  /*
++   * `.trivium` 是 deny 条目，`.trivium-backup` 不是。纯 startsWith 会误伤，
++   * 而误伤的后果是一次本该采纳的审查被判作废——比漏报更容易被当成系统故障。
++   * 路径侧的 checkPeerLeak 早有同款守卫（其注释点名了这个坑），这里是命令侧的对应物。
++   */
++  assert.equal(hit('ls .trivium-backup/'), false);
++  assert.equal(hit(`cat ${ROOT}/.trivium-backup/config.yaml`), false);
++});
++
++test('【误报】同名文件在别的仓库里，不得因项目相对写法命中', () => {
++  assert.equal(hit('cat /Users/other/repo/.reviews/t/code/2026-01-01-t-gemini.md'), false);
++});
++
++test('【误报】文件名是更长路径的一段尾巴，不得命中', () => {
++  assert.equal(hit('cat /tmp/backup-.reviews/t/code/2026-01-01-t-gemini.md'), false);
++});
++
++test('读自己的产出不算泄漏', () => {
++  assert.equal(hit('cat .reviews/t/code/2026-01-01-t-claude.md'), false);
++  assert.equal(hit('git log --oneline -5'), false);
++});
++
++/* ── macOS 的 /private 前缀：两侧归一必须一致 ──────────────────────── */
++
++test('项目根带 /private 前缀时，项目相对写法仍要能命中', () => {
++  /*
++   * **这条是被故障注入用例逼出来的，不是我想到的。**
++   *
++   * `normalizeAbs` 会剥掉 macOS 的 `/private`（`/private/var/…` → `/var/…`），
++   * 而 `spellingsOf` 起初拿 `nodePath.resolve(projectRoot)` 的**原样**去比前缀，
++   * 于是在临时目录下 `startsWith` 恒假、项目相对写法一个都派生不出来。
++   *
++   * 上面那 17 条全绿——因为它们用的是干净的 `/Users/x/proj`，两边都不带 `/private`，
++   * 恰好绕开了差异。**测试数据的「干净」本身就能藏 bug。**
++   */
++  const privRoot = '/private/var/folders/ab/T/trivium-fx-XYZ';
++  const deny = ['.env', '.trivium'];
++  const cmds = deny.map((p) => `git show HEAD:${p}`);
++  const r = checkPeerLeakViaCommand(cmds, deny, privRoot);
++  assert.equal(r.leaked, true);
++  assert.equal(r.hits.length, 2);
++});
++
++test('deny 条目本身带 /private 的绝对路径，命令照原样写也要命中', () => {
++  const privRoot = '/private/var/folders/ab/T/trivium-fx-XYZ';
++  const denyAbs = `${privRoot}-runs`;
++  assert.equal(
++    checkPeerLeakViaCommand([`ls ${denyAbs}`], [denyAbs], privRoot).leaked, true,
++  );
++});
++
++/* ── 空集与返回形态 ───────────────────────────────────────────────── */
++
++test('没有命令、或没有禁读条目时，恒不命中且不抛', () => {
++  assert.deepEqual(checkPeerLeakViaCommand([], DENY, ROOT), { leaked: false, hits: [] });
++  assert.deepEqual(checkPeerLeakViaCommand(['cat x'], [], ROOT), { leaked: false, hits: [] });
++});
++
++test('返回的是**命令原文**而不是命中的路径', () => {
++  /*
++   * 这是刻意的：`git show HEAD:<path>` 与 `cat <path>` 在留痕上必须区分得开——
++   * 两者的性质差别正是措施 b 存在的理由。只报路径的话，排查的人看不出
++   * 「deny 生效了为什么还漏」。
++   */
++  const cmd = 'git show HEAD:.reviews/t/code/2026-01-01-t-gemini.md';
++  const r = checkPeerLeakViaCommand([cmd, 'ls'], DENY, ROOT);
++  assert.deepEqual(r.hits, [cmd]);
++});
++
++test('多条命令命中时去重', () => {
++  const cmd = 'cat .reviews/t/code/2026-01-01-t-gemini.md';
++  const r = checkPeerLeakViaCommand([cmd, cmd, 'ls .trivium/'], DENY, ROOT);
++  assert.equal(r.hits.length, 2);
++});
++
++/* ── 明确检测不到的：把边界锁成断言，而不是只写在文档里 ──────────── */
++
++/*
++ * 把盲区写成**会红的断言**而不是只写进注释：哪天有人「顺手」扩了匹配面，
++ * 这些会红，那时必须回到 §10.1 重新掂量承诺面，而不是默默扩大它。
++ *
++ * **起草这组时我写错了两条，实测才发现**——两个方向都错：
++ * 一是把「变量拼接」整类判成盲区（实际只有**分段**拼接躲得过，
++ * 整条赋值里带完整字面量是能检出的）；二是举 `git log -p -- .reviews` 当例子，
++ * 而 `.reviews` 根本不在 deny 里，那个例子什么都证明不了。
++ * 盲区写成断言的价值正在这里：**它会红在我的错误认知上**，散文不会。
++ */
++
++test('【已知盲区 B-1】分段拼接 —— 完整字面量从不出现', () => {
++  assert.equal(hit('P=.reviews/t; cat $P/code/2026-01-01-t-gemini.md'), false);
++});
++
++test('【非盲区】整条赋值里带完整字面量，是能检出的', () => {
++  // 与 B-1 的差别只在字面量完不完整；它在命令文本里就检得出，与变量无关
++  assert.equal(hit('P=.reviews/t/code/2026-01-01-t-gemini.md; cat $P'), true);
++});
++
++test('【已知盲区 B-2】目录级 git 读取 —— 四条里唯一非蓄意也会撞上的', () => {
++  /*
++   * `git log -p -- <目录>` 会把该目录下全部历史内容吐出来（含对端产物），
++   * 而命令文本里只有目录名、没有文件名。这是 §10.1「git 通道保留能力而非封死」
++   * 那条取舍的代价：收窄它的旋钮是裁 readonly_commands，不是在这里加机制。
++   */
++  assert.equal(hit('git log -p -- .reviews/t/code'), false, '覆盖到了该文件却不指名');
++  assert.equal(hit('git log -p -- .reviews/t/code/2026-01-01-t-gemini.md'), true, '指名了就命中');
++});
++
++test('【已知盲区 B-3】glob 展开检测不到', () => {
++  assert.equal(hit('cat .reviews/*/code/*-gemini.md'), false);
++});

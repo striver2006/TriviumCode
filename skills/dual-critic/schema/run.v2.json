@@ -80,10 +80,15 @@
         "breached_files": { "type": "array", "items": { "type": "string" } },
         "peer_leak_via_command": {
           "type": "object",
-          "description": "命令文本通道（§10.2 措施 b）的命中记录。【提案 · 未排期】——schema 先留位，写侧尚未接线，故本字段目前恒不出现。字段在而值缺失不等于「未命中」，判读时先看它在不在",
-          "properties": {
-            "hit": { "type": "boolean" },
-            "commands": { "type": "array", "items": { "type": "string" } }
+          "description": "命令文本通道（§10.1 措施 b / BACKLOG EV-01）的命中记录，**逐审核者**（键是 Agent id，与 critics 同构）。【已实现 · M8 第 1 步】三态落在结构上：整个字段缺失=该次运行早于接线；字段在而某侧的键缺失=**那一侧没扫**（失败/超时被 judgeRun 跳过）；hit=false=扫过、没命中。已知形态清单（F-1～F-9）与盲区（B-1～B-5）见 adapters/base.ts 的 checkPeerLeakViaCommand 文档块与设计 §10.1 措施 b，两处由 known-forms-parity 契约测试对账；承诺是「已知形态必检」而非不可绕过（威胁模型见 §10.1 末段，R25）",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["hit", "commands"],
+            "additionalProperties": false,
+            "properties": {
+              "hit": { "type": "boolean" },
+              "commands": { "type": "array", "items": { "type": "string" } }
+            }
           }
         }
       }

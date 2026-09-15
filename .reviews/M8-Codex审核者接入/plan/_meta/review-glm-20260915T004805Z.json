@@ -1,0 +1,142 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一条：§3.1「三个消费方」的枚举不完整——judgeSide 内还有 consulted 交叉核对这第四处 read_paths 消费方（就在计划自称 grep 过的 guard.ts 里），codex 侧将每轮误报「consulted 无法核对」。其次 checkEvidence 的泛化语义完全未指定：toolTotal 与 project_reads 在 codex 侧恒为 0，evidence_ok 恒 false（「本侧不得计为合格双审的一半」），J4 没有实现路径。commandSemantics 按现稿落地即无消费方的死字段，且与 pathStructured 在全部已知四家样本上完全共变。§3.3 降级留痕未定到 run.v2 schema 字段与人读告警，恰是 peer_deny_applied 先例里都有的那几面。EV-05 明确派给 M8 的预检泛化（checkReadonlyCapability、探活编排、model/effort/profile 自校验）在四步里没有落点，「预检过」会空洞成立。方向性判断——qwen+deepseek、先泛化再接入、⑤ 显式缓办、措施 b 先行——逐项核实均成立。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3.1 / §3.2（对应 src/trivium/guard.ts:54-65）",
+      "problem": "「三个消费方」的枚举漏了第四处：judgeSide 里的 consulted 交叉核对直接用 result.read_paths 建 traceSet（matched/consulted < 0.8 即 consultedUnverified）。codex 侧 read_paths 恒空 ⇒ 只要结论填了 consulted，每轮都误报「consulted 无法与工具轨迹交叉核对」——运行时告警（guard.ts:236）与 front-matter 标记（render.ts:103）双双命中，正是 guard.ts:160-167 注释里点名要防的「真原因被噪音埋掉」形态。§8 自查说 grep 过 guard.ts 与 base.ts，第四处就在 grep 过的文件里——说明计划里那个 grep 的关键词（按 critic/AgentId 分叉）找错了形状：漏的不是按 id 分叉的地方，是按「结构化路径可得性」分叉的地方。",
+      "evidence": "src/trivium/guard.ts:54-65（traceSet 由 result.read_paths 构建并算 80% 阈值）、guard.ts:236（renderGuardWarnings 输出该警告）、src/trivium/types.ts:825（read_paths 字段注释明写「供 deny_paths 核验与 consulted 交叉核对」）、src/trivium/render.ts:103（consulted_unverified 进 front-matter）、plan §3.1 只列 checkEvidence/checkPeerLeak/judgeSide(write_events) 三处。",
+      "suggestion": "第 2 步把 consulted 核对列为第四个消费方：pathStructured=false 时要么从 command_texts 提取路径做核对、要么引入「该侧无法核对」第三态并按 §3.3 同款留痕纪律处置（不得默认放行也不得恒报误警）。§8 计划的全仓 grep 清单除 critic/AgentId 外，必须加 read_paths / write_events / tool_calls / command_texts 的消费点。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4 第 2 步 / J4（对应 src/trivium/adapters/base.ts:94-132）",
+      "problem": "checkEvidence 的能力化语义未指定，而它有三条子检查：② min_tool_calls 的 toolTotal 只数 read+grep+glob，③ project_reads 只从 read_paths 统计。codex 侧两者皆空 ⇒ evidence_ok 恒 false，审查文档恒挂「Agent 执行证据不足：本侧不得计为合格双审的一半」横幅；J4「project_reads 达下限」按现稿没有实现路径，第 4 步验收时会撞墙。计划只给 deny 核验设计了命令文本判据（checkPeerLeakViaCommand），而 M6 早已把「project_reads 统计……只能走命令文本解析」写进 CodexProbe.trace_path_structured 的消费方注释——这部分口径在计划里消失了。",
+      "evidence": "src/trivium/adapters/base.ts:102（toolTotal = read+grep+glob，不含 run_command）、base.ts:116-123（projectReads 仅由 read_paths 过滤）、src/trivium/render.ts:155（evidence_ok=false 的横幅文案）、src/trivium/types.ts:241-243（「消费方：M8 的 project_reads 统计与禁读核验——false 时两者都只能走命令文本解析」）、doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md §二 P-C1 的后果段。",
+      "suggestion": "第 2 步明确 codex 的 project_reads 与 tool_calls 口径：是从命令文本提取项目内路径计数（若是，提取启发式与漏报边界要写清），还是 run_command 在「读即命令」语义下计入 toolTotal。这也直接影响 GLM-03 里 commandSemantics 能否挣到消费方。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3.2（TraceCapability）",
+      "problem": "对计划 §6.1 之问的直接回答：三个布尔在现有证据下确实是过度设计的一格——commandSemantics 与 pathStructured 在全部已知四家样本上完全共变（agy/zcode 及计划给 M9 claude 的组合 = true+'write-tool'，codex = false+'read-mechanism'），且计划全篇没有为 commandSemantics 点名任何消费方。这与项目自己的 EV-06 纪律冲突：CodexProbe 每个字段都被要求注明「谁消费、什么时候消费」，契约字段没有消费方就是下一个「登记而无消费方」。",
+      "evidence": "plan §3.2（TraceCapability 定义与 §4 第 2 步的消费方清单均未出现 commandSemantics 的用途）、src/trivium/adapters/agy-events.ts:59-66（run_command 归入 AGY_WRITE_TOOLS，写事件分类是适配器本地知识）、src/trivium/types.ts:686-693（ToolCallCounts 已有 run_command 键——若 toolTotal 计入它，才是 commandSemantics 的天然消费点）、src/trivium/types.ts:212-215（EV-06「每个字段都注明谁消费」的纪律先例）。",
+      "suggestion": "二选一并写进第 2 步设计：(a) 给 commandSemantics 点名消费方——GLM-02 的 toolTotal 计数是最自然候选；(b) 合并为单一 traceShape 枚举（'tool-trace' | 'command-trace'）+ rejectionRecorded，少一个可能被误用的自由度。若选 (a)，须在 §8 补做实测后复核共变假设是否仍成立。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3.3（对应 skills/dual-critic/schema/run.v2.json:68-90）",
+      "problem": "对计划 §6.2 之问的回答：留痕不够，而且对先例的描述不准。peer_deny_applied 实际有四面留痕——run.json（meta.guard）、front-matter（peer_deny）、审查文档正文横幅（「路径级 deny 未生效」）、复盘报告 guardFlags——唯独运行时 CLI 输出 renderGuardWarnings 没有。而「只剩两重」按现稿只落在 run.json 与文档两处：run.v2 的 guard.readonly_breach 是布尔，没有承载「该侧轨迹核验不可用」的字段，codex 侧 false 与「验证过没写」不可区分——恰是计划自己引的三态纪律要防的塌缩。新增 schema 字段还会触发改动同步清单（PROTOCOL/SKILL.md/AGENTS.md 契约面），第 2 步没列。",
+      "evidence": "skills/dual-critic/schema/run.v2.json:68-90（guard 段无「不可判定」字段）、src/trivium/report.ts:251-254（复盘 guardFlags 翻译 peer_deny_applied=false）、src/trivium/render.ts:157-162（正文横幅）、src/trivium/render.ts:100-101（front-matter peer_deny）、src/trivium/guard.ts:192-239（renderGuardWarnings 无降级告警线）、src/trivium/review.ts:978-986（meta.guard 写入面）、AGENTS.md「改动同步清单」表。",
+      "suggestion": "把留痕面钉死为契约决定：run.v2 guard 段新增逐侧「轨迹核验不可用」字段（走 schema 增量 + 同步清单连带），renderGuardWarnings 加一行运行时人读告警，render 正文横幅与 report guardFlags 对齐 peer_deny_applied 的四面待遇——比先例多补运行时那一面，而不是少两面。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "scope-drift",
+      "location": "plan §4 第 3 步 / J8（对应 src/trivium/preflight.ts:378-400, 446-575）",
+      "problem": "M8 的预检面在四步里没有落点。EV-05 明确写着「剩余 checkReadonlyCapability 与探活编排两项仍按厂商写死，要等 M8 / M9 接入真实第三家、有真实调用形状可依时一并做」；M6 报告的 M8 影响第②条也点名「预检必须自己拦未知 profile、校验 model 与 effort」。现况是：checkReadonlyCapability 只查 zcode+agy、探活编排只有两支、checkModelAgainstCatalog 对 openai 返回「无法校验」。计划第 3 步清单（五件+J8+J2）不含这些，验收「预检过」会在 codex 根本不被检查的形态下空洞成立——恰是 EV-05 登记时要防的「第三家不被检查」形态。",
+      "evidence": "doc/08_project/BACKLOG.md:102（EV-05 剩余两项派给 M8/M9）、src/trivium/preflight.ts:378-400（checkReadonlyCapability 硬绑 zcode readonly_flags 与 agy agent.md）、preflight.ts:446-575（探活编排仅 agyAuth/zcodeAuth）、preflight.ts:375（厂商 openai 落「无法校验」第三态）、doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md §三「另外两条」（model slug 与 effort 均不校验，「preflight 必须自己校验」）、src/trivium/types.ts:268-271（unknown_profile_rejected=false ⇒ 预检必须自己拦）。",
+      "suggestion": "第 3 步补一项「预检泛化」：checkReadonlyCapability 与探活编排的 N 方化、codex 模型目录/effort/未知 profile 的自校验（注意 models 随 profile 变，校验须对准活跃 profile 的目录）。若裁定本期不做，就把「EV-05 两项继续挂账」写成显式决定回填 BACKLOG——不能两头都不写。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §4 第 3 步（隔离）",
+      "problem": "EV-08 的修法方向包含「在 probe.cli.codex 上补一个能表达『指令面是否隔离』的字段——等 M8 有真实消费方时再加」，而 M8 搭隔离正是消费方到位的时刻。计划第 3 步只写「双覆盖」，没决定加不加该字段；不加则指令面隔离是否生效只是实现时的一次性事实，doctor 无法复核回归（codex 升级挪了指令根也无从发现）。",
+      "evidence": "doc/08_project/BACKLOG.md:105（EV-08 修法方向原文）、doc/05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md §1（三条臂实测）、plan §4 第 3 步仅「隔离按 J2 双覆盖（CODEX_HOME + HOME）」。",
+      "suggestion": "第 3 步对该字段做显式决定：加（连同 doctor 的复核断言），或不加但把理由写进裁决（例如隔离实现本身即当前唯一消费方、字段缓办至有第二个消费方），避免 EV-08 的修法方向与计划脱节。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4 第 1 步（五类负例）",
+      "problem": "「负例锁死五类形态」的「五类」自始至终未枚举，「已知形态必检」的论域因此没有定义——EV-01 原文只给了 HEAD:<path> 一类写法变体。论域不钉死，测试与 §10.1 条目各写各的，对不上时无判可依。",
+      "evidence": "plan §4 第 1 步与 §5.1（只提「五类」这个数字）、doc/08_project/BACKLOG.md:98（EV-01 仅列「含 HEAD:<path> 等写法变体」）。",
+      "suggestion": "实现第 1 步时把五类清单显式钉进 §10.1 措施 b 条目与测试用例名，使「已知形态」成为可审计的闭集；计划 §5.1 自己主张「边界不能只写在计划里」，同理「五类是哪五类」也不能只活在实现里。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-08",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §1.1 J7 与 §2.1 ⑤",
+      "problem": "J7 写「接入套件七件齐备」，而 §2.1 第 ⑤ 件显式不做——按字面 J7 不可满足。设计 §5.1.1 第 ⑤ 行自己就标注「当前无任何消费方」，所以实质是 J7 的措辞落后于计划的缓办决定。",
+      "evidence": "plan §1.1 J7 与 §2.1 表第 ⑤ 行、doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md §5.1.1 表（⑤：「当前无任何消费方，见下方『已知缺口』」）。",
+      "suggestion": "裁决时把 J7 改写为可判定形式（如「六件落地、⑤ 缓办且理由登记于 EV-06」），避免验收口径自相矛盾地留在判据表里。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§0 的动机判断属实：AGY_WRITE_TOOLS 确含 run_command（agy-events.ts:59-66），judgeSide 确实写死 readonlyBreach = write_events.length > 0（guard.ts:49）——「照搬到 codex 每读一次判一次失守」成立；P-C1/P-C2 与「只剩两重、指纹比对仍有效」逐句对得上 M6 报告 §二与设计 §3.6。",
+    "七件套盘点准确：① registry.ts:127 已登记且注释「M8 启用」、③ probes/codex.ts 全文无 providers_ok、④ lenses.yaml 只有 gemini/glm 两键、⑦ config.v2.json oneOf 仅两支且注释留位、② adapters/index.ts WIRED 两家——全部亲手复核。⑤ 显式不做与设计 §5.1.1「当前无任何消费方」一致，EV-06 的理由成立。",
+    "四步顺序正确：措施 b 先行（EV-01 已升为 M8 前置，BACKLOG 有案）；「criticEnabled 放最后翻」与 realAdapters() 缺接线即响亮失败的语义（index.ts:39-59）吻合。「先泛化再接入」我赞成，且风险比计划自陈的更小——M6 已把真实录制样本存进 test/fixtures/codex-events/ 并配了锁事实用例，建议第 2 步桩形态以这些样本为蓝本（注意报告 §四.6：样本哨兵与生产探针哨兵不同源，是已知瑕疵）。",
+    "§2.3 的 qwen+deepseek 成立：演进设计 §3.1 点名的就是 QWen 与 DeepSeek（R-1 已修订为多模型家族、两 provider 并列）；glm 与既有 zcode 侧同源（registry：glm→vendor zcode）。「换成同源的两个是偷偷放宽」的判断方向正确——严格说 glm+X 仍满足 AC-20 字面，但会削弱「跨家族路由」的证据力，计划取更严读法且把成本与确认请求交给用户，处理妥当（另注：qwen 线在本机从未真实调用过，M6 报告 §四.3，AC-20 将是它的首跑）。",
+    "§3.4 措施 b 的威胁模型口径与 R25 登记原文一致，「不扩大承诺」的边界处理正确；J1/J2 前置定性与 §16.1 M8 行、EV-08 三条臂证据吻合；J6「以回读为准」与 agy 侧 model_effective_source 的既有做法同构。",
+    "§8 的自查姿态正确且必要——本审查证实第四处消费方确实存在（GLM-01），计划把「推导 vs 实测」写进正文而非免责段的做法值得保留。"
+  ],
+  "not_covered": [
+    ".trivium/ 运行态在禁读清单内：§2.2「probe.cli.codex 已落盘且 TTL 内、preflight 四侧全绿」这类运行态断言无法核实。",
+    "未逐行读 test/integration/stub-agent-kit.test.ts 与 overlay 夹具，只核了设计 §5.1.1 的断言描述与 src/trivium/adapters/stub.ts 本体；第 2 步桩变体的具体接法留给实现审查。",
+    "J9 密钥扫描增补未核实扫描器现状（相应源码未读），设计 §10.5 原文未核。",
+    "src/trivium/adapters/zcode.ts 只读了前 120 行；src/trivium/probes/codex.ts 读了头部与关键段并做了全文件 grep（providers_ok 缺席据此确认），未逐行读完。",
+    "被审计划的内容哈希与工作树快照（tree:08e674d）未做 git 级核验，仅确认文件内容与任务书节选一致。",
+    "只读审查：未运行任何测试、构建或 doctor。"
+  ],
+  "consulted": [
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-claude.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md",
+    "doc/05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/guard.ts",
+    "src/trivium/types.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/render.ts",
+    "src/trivium/report.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/probes/codex.ts",
+    "skills/dual-critic/lenses.yaml",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/run.v2.json"
+  ]
+}

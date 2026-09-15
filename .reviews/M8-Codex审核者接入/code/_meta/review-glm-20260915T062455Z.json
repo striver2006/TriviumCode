@@ -1,0 +1,104 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "焦点四的答案：机制面这轮齐了，留痕面没齐——r4 应答件点名的修复有三处没落地或只落一半。最重的一族：应答 §2.3 修复清单明确列了「设计 1660（今 1672）四条盲区」，树里仍是「四条」（B 已是 5 条）；同一清单说「两处『唯一非蓄意』重写」，而 B-2 用例名仍断言「四条里唯一非蓄意」；v1.3.8 称 readonly_commands 死论证「删过四次才删干净」，test:328 还留着第五处。外加 base.ts 文档块 B-6 段落半改自相矛盾、bashStillDenied 断言接的是探针记录而非实际传参（目标漂移发生时永不响）。焦点一：闭合侧三字符够用，进程替换未找到漏检；焦点二：F-9 未在其它 deny 形态上造出现实误报族；焦点三：「起点为 1」收窄判得对，但它自己点名的计数词半边没有机制且有活例。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/adapters/base.ts:231-239（同文件 218-223 为 B-6 撤销注记、622 为 F-9 实现）",
+      "problem": "B-6 的撤销在本文件只改了一半，文档块内部自相矛盾。218-223 行的撤销注记说「B-6 已撤销…该族已改为真收，见 F-9」，但 231-234 行仍以现在时断言「两者都**不真收**——…B-6 要剥引号再回扫，而剥引号本身要处理嵌套与转义，是另一套穷举面」——这正是撤销注记自己定性为「论证上的偷换」并已删除的理由，原样保留；236 行仍写「**三条盲区**是非蓄意也会撞上的：B-2、B-5、B-6」，而设计正文已改为「两条：B-2 与 B-5」（B-6 已真收）。同一文档块、相距 13 行，对同一议题给出相反答案；读「对内承诺面」的维护者会以为删引号二次扫描从未承诺，而 622 行的 stripQuotes 就在同一文件里。",
+      "evidence": "实读 src/trivium/adapters/base.ts 全文：218-223（撤销注记）、231-234（「两者都不真收」+旧理由句）、236-239（「三条…B-2、B-5、B-6」与句尾「B-6 已于 r4 改为真收」并存）、622（stripQuotes）逐行核对；设计 §10.1 措施 b 正文「非蓄意也会撞上的有两条：B-2 与 B-5」经 changes diff 与 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1651 grep 双向核实。这是 EV-14/EV-17 家族在本补丁内的又一次复发：r4 修复更新了表与注记，漏了同节的叙述段。",
+      "suggestion": "把 231-239 段改成与设计一致的历史叙述（r3 时曾按「另一套穷举面」拒绝、r4 已撤销并改真收），或直接删去 233-234 的旧理由句与 236 行的「三条」列表；改完 grep 一遍「不真收」「三条盲区」确认无第二处。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1672；test/unit/peer-leak-command.test.ts:324",
+      "problem": "r4 应答件 §2.3 的修复表点名了这两处，但修复没有落地：①设计 1672 仍写「四条盲区各有一条会红的负断言守着」——B 表现为 B-1～B-5（5 条），且该行恰是应答表里「设计 1660｜**四条**盲区各有一条会红的负断言」那一格，修复清单第 6 项声称「『四条/四类』改述」已做；②B-2 用例名仍断言「四条里唯一非蓄意也会撞上的」——「唯一非蓄意」已被 r4 裁决（§2.3「B-5 与 B-6 按本项目自己的定性都是非对抗自然形态」）明确标为假并重写了设计/R25 两处，用例名是同一语义的第三个落点，不在修复清单里也无人过。应答件是 gate 的事实来源，「清单声称已修、树里没修」比单纯的过期计数更重。",
+      "evidence": "grep 实测设计全文：「四条盲区」唯一存活处即 1672（R25:2555 已正确写「五类不可检…B-1～B-5」「两类」，证明修复批量做过而漏了这处）；实读 test/unit/peer-leak-command.test.ts:324-332（用例名原文）；.reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r4-response-claude.md §2.3 表（「设计 1660｜四条盲区…」在 8 处清单内）与修复清单第 6 行（「『四条/四类』改述；两处『唯一非蓄意』重写」）。v1.3.5 纪律原文点名「测试名」属于改语义时必须逐个过的落点。",
+      "suggestion": "设计 1672 改为「五条盲区各有一条会红的负断言守着」或去计数改清单式表述；用例名改为「【已知盲区 B-2】目录级 git 读取——非蓄意也会撞上（已拍板不收窄，EV-16）」。建议 Driver 把 r4 修复清单逐项与树 diff 对一遍再收口——本轮三条（GLM-01/02/03）都是清单完成声明与树不符的实例。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "test/unit/peer-leak-command.test.ts:328（B-2 用例注释）",
+      "problem": "「收窄它的旋钮是裁 readonly_commands，不是在这里加机制」——这句死论证的第五处存活实例。v1.3.8 变更条与设计 §10.1 均声称「这句死论证我删过**四次**才删干净…r4 双审 AGY-03 逮到最后一处」，但本补丁新引入的 B-2 用例注释仍以现在时把它当真（EV-15 已确认该配置无任何消费方，EV-16 已拍板不收窄）。「删干净」这个完成声明本身就没核实——恰是 v1.3.8 同一段刚立的规矩「凡写下这类保证，当场指出对应断言在哪一行」的反例。",
+      "evidence": "grep 全仓 *.ts 实测 readonly_commands 存活处：peer-leak-command.test.ts:328 是唯一仍以肯定语气把该旋钮当收窄手段的（base.ts:229「三者都在 readonly_commands 白名单内」是较软的同族残留，base.ts:243 与 guard.ts:65 是正确的否定/历史叙述）；设计 §10.1「这句死论证我删过四次才删干净…AGY-03 逮到最后一处」经 changes diff 核实；EV-15/EV-16 见 doc/08_project/BACKLOG.md（diff 内核实）。",
+      "suggestion": "test:328 改述为「收窄它属执行侧限制（EV-16 已拍板不收窄；readonly_commands 本无消费方，EV-15）」或删去该半句；顺手把 base.ts:229 的「都在 readonly_commands 白名单内」一并过一遍。修完再 grep 一次 readonly_commands 确认剩余命中全部是否定/历史语气。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/known-forms-parity.test.ts（区间上界对账一节：rangeUpperBounds 与其动机注释）",
+      "problem": "焦点三：把对账收窄为「只认起点为 1 的区间」这个判据本身是对的——子区间（「F-6～F-8 是 r1 双审补的」）是准确的历史陈述，不该红，过严会逼人把正确的话改错。但该测试自己的动机注释把问题族写成「守不住散落在正文里的**区间写法**：B-1～B-4、F-1～F-5、**『四条』『四类』**」，而实现只对账区间——计数词这半没有任何机制，且本补丁内就有一处活例（设计 1672「四条盲区」，见 GLM-02）：区间这族用机器封住了，计数这族还会第八次、第九次复发。另注：论域六文件之外的 doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md 也提到措施 b（grep 实测），它若将来长出 F/B 区间字面量同样不在扫描面内。",
+      "evidence": "实读 known-forms-parity.test.ts 全文（经 changes diff 新文件整份）：动机注释与 rangeUpperBounds 的正则 `F-1\\s*[～~]\\s*F-(\\d+)`（只匹配起点为 1、只匹配区间）逐行核；RANGE_SCAN 六文件清单；设计 1672 的活例 grep 实测；doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md 含「措施 b」多处（grep 实测，未进 RANGE_SCAN）。",
+      "suggestion": "二选一：(a) 给计数词一条同量级对账——如断言设计措施 b 节内「N 条盲区／N 类不可检」的 N 与 maxB 相等（机械可判，与区间同手法）；(b) 在动机注释里明说「计数词不在守护范围、已知活例如 1672 待修」，不让读者以为这半也被守住了。若做 (a)，考虑把演进设计文件纳入 RANGE_SCAN 或注明豁免理由。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/adapters/zcode.ts:360-369（command_texts 的运行期断言）、:86-91（readonlyArgsFromProbe）、src/trivium/probes/zcode.ts:75、335",
+      "problem": "bashStillDenied 这个守卫检查的是错的源，它存在要抓的漂移发生时不会响。断言输入是 probe.readonly_flags——探针实验时「实际被接受」的候选串（probes/zcode.ts:75 的固定测试串，含 Bash）；而真正决定该侧能否跑命令的是实际传参：readonlyArgsFromProbe 只要探针接受过 `--disallowed-tools`，就**无条件**以 ZCODE_READONLY_DENYLIST 全量传参。于是两个失效方向：①真正的危险漂移——有人从 ZCODE_READONLY_DENYLIST 里去掉 Bash——探针记录不随之变化，断言照旧通过，command_texts 恒空、措施 b 在该侧静默失效，恰是这守卫号称要拦的场景；②探针候选串被改动（实际执行仍禁 Bash）——断言误炸，整侧无谓判 failed。zcode-bash-denied.test.ts 的正例用的是**镜像常量的字面量**而非常量本身，也守不住方向①。抛错路径本身是好的（per-side 收敛、响亮失败），问题只在接线的源。",
+      "evidence": "实读 zcode.ts:86-91（readonlyArgsFromProbe 无条件替换为 ZCODE_READONLY_DENYLIST）、:103-107（bashStillDenied 判据）、:360-369（断言以 probe.readonly_flags 为输入、失败抛错）；grep probes/zcode.ts:75（探针固定候选串 `['--disallowed-tools', 'Write,Edit,MultiEdit,ApplyPatch,Bash']`，与 ZCODE_READONLY_DENYLIST 是两个独立事实源——适配层禁 import 探针）、:335（readonly_flags = flags.accepted，记录的是接受性而非执行力）；实读 zcode-bash-denied.test.ts 全文（用例全部传字面量串，无一条断言 ZCODE_READONLY_DENYLIST 常量本身）。",
+      "suggestion": "把断言的输入换成实际构造的 readonlyArgs（readonlyArgsFromProbe 的返回值），或最小改法：在 zcode-bash-denied.test.ts 补一条 `bashStillDenied([ZCODE_READONLY_DENYLIST]) === true`（复用既有词级判据，改动一行，方向①从此有红灯）。运行期断言保持现状亦可，但注释应如实说明「检查的是探针记录，denylist 常量的漂移由测试侧那条断言守」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/base.ts:614-618（F-9 安全性注释）；test/unit/peer-leak-command.test.ts:378-380 同句",
+      "problem": "F-9 的安全性论证「删引号只会新增命中…而新增的那部分恰好落在 F-5 已经承诺的范围内」不精确。删引号二扫真正新增的命中有两族在 F-5 承诺之外：①词内引号切分形（`cat .trivium'/state.json'`——首扫无连续拼写、F-5 的边界判法看不见，二扫命中；这是**正确命中**，但不是 F-5 承诺过的），②单引号抑制展开形（`cat '$HOME'/<deny 后缀>`、`echo ~'root'/<后缀>`——shell 里单引号抑制变量/tilde 展开，实际读的是字面目录，不落 deny；二扫按可展开处理判命中，是保守误报）。方向安全（只增不减、代价与 UNRESOLVABLE 同族），机制不需要动，但这段「恰好落在承诺内」的理由与事实有偏差——本项目对「注释断言了不存在的事」一贯按缺陷记。",
+      "evidence": "base.ts:622（stripQuotes 只删 \" 与 '）与 hitsAt/tildeUserHit 的判定路径逐字符手推：`cat .trivium'/state.json'` 首扫 rel 拼写 indexOf 不命中（引号打断连续性）、剥引号后命中；`'$HOME'/x` 剥引号后 token 含 `$` 走 UNRESOLVABLE 保守命中；`~'root'/x` 剥引号后进 tildeUserHit 映射到本机 HOME。均未实机复现（本侧无命令通道）；F-5 用例（test:72-75）只覆盖整包引号形态，未覆盖这两族。",
+      "suggestion": "把「恰好落在 F-5 已承诺的范围内」改述为如实的双句：词内切分形是真读 deny 的正确新增；跨词粘连因空格保留而不可能；单引号抑制形是已接受的保守过扩（与 UNRESOLVABLE 同取舍）。或最低限度补一句「已知保守面见此」，别让论证比事实更强。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "焦点一的答案：闭合侧三字符（`)` `}` 反引号）够用。`$()`/`${}`/反引号/算术展开的闭合侧都在三字符内；进程替换 `<(...)` 的闭合侧也是 `)`，而其内容里的 deny 字面量以空白或边界字符为前邻、首扫直扫即中（`cat <(head -5 .env)`、`git show HEAD:…` 均核过）；引号闭合侧（`\"$VAR\"/rel`）由 F-9 二扫兜住且有用例。逐字符手推未找到漏检形态。",
+    "焦点二的答案：F-9 未在其它 deny 形态上造出现实的新误报族。删引号不删空格，跨词不可能粘连出连续拼写；新增命中只能来自词内切分（多为正确命中）；四条既有负例防线（兄弟目录、他库同名、他库同名+引号、路径尾巴）在剥引号后逐一复推仍判否，其中「他库同名 + 引号」已有显式用例。",
+    "r4 修复的主体全部落地且质量高：tildeUserHit 改由 CMD_BOUNDARY 派生并配①～⑤五类边界用例；F-6 闭合侧判法（test:175-193）把 `$(git rev-parse --show-toplevel)/.trivium/state.json` 这条教科书写法真收并有正例；F-9 实现与「反引号不动」的取舍正确。",
+    "措施 a/b 分列的 stub 故障形态与 fault-injection 的双向断言（b 命中时 a 的 hit:false 不被吞、对侧扫过没命中单独记键、单独命中也把 peer_artifact_read 抬真）——单边失效从此可测，这是 r1 变异验证教训的正确落地。",
+    "run.v2 的逐侧 map + 三态（键缺=没扫）与 judgeRun 跳过 failed/timeout 侧的写侧过滤一致；schema 用 additionalProperties 承载动态键、不枚举 Agent 身份，与纪律 12 一致。",
+    "区间上界对账是 EV-14 六次复发以来第一条可落地的机制，非空下限防「空集恒等」、论域六文件、「起点为 1」的收窄判据本身都正确（见 GLM-04 的边界补充）。",
+    "bashStillDenied 的词级判据与 `=`/逗号/空格/引号分隔用例本身正确，抛错发生在适配器 run() 内由 per-side catch 收敛、不炸整轮——问题只在断言输入的源（GLM-05）。"
+  ],
+  "not_covered": [
+    "只读审查，未运行任何构建/测试/typecheck；GLM-06 的两族边缘与焦点一/二的结论为逐字符手推，未实机复现（建议 Driver 用核实脚本跑一遍，r4 先例是实测复现后再裁决）。",
+    "codex 适配器本体不在本 diff（M8 第 2/3 步）：command_texts 在该侧的真实提取形态、F 清单对 codex 生成命令风格的实际覆盖率未核。",
+    "B-2/EV-16「不收窄」的拍板内容本身未质疑（只核了留痕三处一致）；R25 的风险表述按 r4 修正后的版本采信。",
+    "skills/dual-critic/SKILL.md、hooks、doctor --selftest、report 聚合只抽查；SKILL.md 经 grep 不含 peer_leak_via_command，判断无需同步，但未逐行核其 run.v2 字段描述。",
+    "性能面（命令数 × 拼写数的逐层 indexOf + 二扫翻倍）未评估，沿用 r4 判断为无虞；dist/ 与 skills/dual-critic/scripts/trivium.cjs 为生成物，未与源码比对。",
+    "另一位审查员的结论按背靠背约定未读、未引用；禁读清单内文件（.env.example、.trivium/、~/.trivium/runs、全部 gemini 侧留痕）一律未触碰。"
+  ],
+  "consulted": [
+    ".reviews/M8-Codex审核者接入/code/_meta/changes-20260915T062455Z.diff",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/probes/zcode.ts",
+    "test/unit/peer-leak-command.test.ts",
+    "test/unit/known-forms-parity.test.ts",
+    "test/unit/zcode-bash-denied.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r4-glm.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r4-response-claude.md"
+  ]
+}

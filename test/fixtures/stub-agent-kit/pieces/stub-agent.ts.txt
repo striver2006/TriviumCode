@@ -123,6 +123,15 @@ export const stubAgentAdapter: CriticAdapter = {
       tool_calls: { read: toolCalls },
       read_paths: reads,
       write_events: [],
+      /*
+       * 本桩不跑任何命令，故恒为空数组——含义是「没有命令」而不是「没采集」。
+       *
+       * 这一行是 M8 第 1 步加的。它的出现本身说明了一件事：`command_texts` 是
+       * **核心契约**的新字段，不是某一家的私有物，所以每个适配器（含桩）都要填。
+       * 接入套件当时红在这里，是装置在正确地工作——它守的是「核心流程零改动」，
+       * 而这次改的恰恰是核心契约，红得应该。
+       */
+      command_texts: [],
       evidence_ok: false, // 由 guard 判定，适配器不自我裁定
       fail_reason: null,
       session_id: `${CRITIC}-session`,

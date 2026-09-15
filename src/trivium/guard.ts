@@ -5,7 +5,7 @@
  * 这样「检出」与「处置」分开，处置策略可配而检出逻辑恒定。
  */
 import type { Config, CriticId, CriticRequest, CriticResult, Review } from './types.js';
-import { checkEvidence, checkPeerLeak } from './adapters/base.js';
+import { checkEvidence, checkPeerLeak, checkPeerLeakViaCommand } from './adapters/base.js';
 import { checkReviewIntegrity } from './parse.js';
 import { judgeDrift, driftAction, type DriftVerdict, type Snapshot } from './freeze.js';
 import { ALL_CLI_NAMES } from './agents/registry.js';
@@ -19,9 +19,19 @@ export interface SideVerdict {
   /** 轨迹中出现写事件 → 审查员失守（比指纹变化更确定） */
   readonlyBreach: boolean;
   breachEvidence: string[];
-  /** 轨迹读取路径命中禁读清单 */
+  /** 轨迹读取路径命中禁读清单，**或**命令原文里出现了禁读条目（措施 b） */
   peerArtifactRead: boolean;
+  /** 命中的读取路径（措施 a） */
   peerHits: string[];
+  /**
+   * 命中的**命令原文**（措施 b，§10.1）。
+   *
+   * 与 `peerHits` 分开记而不是并进同一个数组：两者的性质不同——
+   * 路径命中说明它**读了**那个文件，命令命中说明它**跑了**一条提到那个文件的命令
+   * （可能经 git 对象库，文件系统上根本没发生读取）。处置相同，但排查时
+   * 要看得出是哪条通道，否则「为什么 deny 生效了还漏」永远查不清。
+   */
+  peerCommandHits: string[];
   /** consulted 与轨迹交叉核对未通过 */
   consultedUnverified: boolean;
   /** 结构性问题（编号前缀错、重复编号等） */
@@ -44,6 +54,20 @@ export function judgeSide(
 ): SideVerdict {
   const ev = checkEvidence(result, req, { archiveRootAbs: opts.archiveRootAbs });
   const peer = checkPeerLeak(result.read_paths, req.deny_paths, opts.projectRoot);
+  /*
+   * 措施 b（§10.1 / EV-01）：命令原文的字面扫描。
+   *
+   * 与措施 a **同等处置**——两者任一命中即该侧作废。不设权重也不设开关：
+   * **§18.1 #21** 的默认值就是不提供 `hard|warn|off` 开关，理由是**开关会引入
+   * 「绕过检测」的合法路径**——这条理由独立成立，是拒绝开关的全部依据。
+   *
+   * > 初版这里写的是「§18.1 **#8**」（那是闸门期写锁的作用域，引错了），
+   * > 并接了一句「确需收窄 git 通道时裁 `readonly_commands` 已是更强的旋钮」——
+   * > 而**同一个补丁**刚以「拿一个不存在、且已决定不用的机制当拒绝理由，
+   * > 是把论证建在空处」为由把那句话从 §18.1 #21 删掉。一面删、一面写进新注释。
+   * > 该旋钮无消费方（BACKLOG **EV-15**），且已拍板不收窄（**EV-16**）。
+   */
+  const peerCmd = checkPeerLeakViaCommand(result.command_texts, req.deny_paths, opts.projectRoot);
 
   // 轨迹里出现写工具/写命令 = 审查员失守（§10.3 末段：轨迹有写事件的判为失守）
   const readonlyBreach = result.write_events.length > 0;
@@ -83,8 +107,9 @@ export function judgeSide(
     projectReads: ev.projectReads,
     readonlyBreach,
     breachEvidence: result.write_events,
-    peerArtifactRead: peer.leaked,
+    peerArtifactRead: peer.leaked || peerCmd.leaked,
     peerHits: peer.hits,
+    peerCommandHits: peerCmd.hits,
     consultedUnverified,
     integrityIssues,
   };
@@ -205,8 +230,23 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
 
   if (v.peerArtifactRead) {
     for (const s of Object.values(v.sides)) {
-      if (s?.peerArtifactRead) {
+      if (!s?.peerArtifactRead) continue;
+      /*
+       * 两条通道分开播报（措施 a / 措施 b）。
+       *
+       * 合并成一行会在**只有命令通道命中**时打出「读到了禁读清单内的文件：」后面跟空清单
+       * ——处置是对的（该侧照样作废），但人读留痕看起来像个 bug，排查的人会先去
+       * 怀疑检测器本身。两条通道的性质本来就不同：路径命中说明它读了那个文件，
+       * 命令命中说明它跑了一条提到那个文件的命令（可能经 git 对象库，文件系统上没发生读取）。
+       */
+      if (s.peerHits.length > 0) {
         out.push(`${s.critic} 侧读到了禁读清单内的文件：${s.peerHits.join(', ')}——该侧结论作废`);
+      }
+      if (s.peerCommandHits.length > 0) {
+        out.push(
+          `${s.critic} 侧的命令里出现了禁读清单内的路径：${s.peerCommandHits.join(' ｜ ')}` +
+            '——该侧结论作废（措施 b：命令文本通道，可能经 git 对象库取值而不产生文件读取）',
+        );
       }
     }
   }

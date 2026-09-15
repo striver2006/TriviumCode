@@ -983,6 +983,22 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     ),
     forged_role_file: false,
     breached_files: verdict.breachedFiles,
+    /*
+     * 措施 b（§10.1 / EV-01）的命中记录，**逐审核者**（审查意见 GLM-06）。
+     *
+     * 只给**真被判定过的侧**写键：`verdict.sides[c]` 不存在说明该侧失败/超时、
+     * 被 `judgeRun` 跳过，其 `command_texts` **从未扫过**——那种情形下写
+     * `hit: false` 就是在说「扫过没命中」，与事实不符。
+     * 三态因此落在结构上而不是值上：键缺 = 没扫，`hit:false` = 扫过没命中。
+     */
+    peer_leak_via_command: Object.fromEntries(
+      sides
+        .filter((c) => verdict.sides[c] !== undefined)
+        .map((c) => [c, {
+          hit: (verdict.sides[c]!.peerCommandHits.length) > 0,
+          commands: verdict.sides[c]!.peerCommandHits,
+        }]),
+    ),
   };
   for (const c of sides) {
     const r = results[c];

@@ -41,8 +41,16 @@ export type StubMode =
   | 'no_project_reads'
   /** 向项目写文件（对应「审查中写入业务文件」） */
   | 'write_breach'
-  /** 读取了禁读清单里的文件（对应「读到对方产出」） */
+  /** 读取了禁读清单里的文件（对应「读到对方产出」）——措施 a 的通道 */
   | 'peer_leak'
+  /**
+   * **只**经命令文本提到禁读条目、文件系统上没有对应读取
+   * （`git show HEAD:<归档内文件>`）——措施 b 的通道（§10.1 / EV-01）。
+   *
+   * 与 `peer_leak` 分列而不是合并：两条通道要能各自单独触发，
+   * 否则「一条挂了另一条还在」的单边失效测不出来。
+   */
+  | 'peer_leak_via_command'
   /**
    * **真的**改动工作树里的一个文件（`note` = 项目相对路径，不存在则创建），
    * 对应「审查期间开发者在别处继续改代码」——轨迹里没有写事件，只有指纹变化。
@@ -143,6 +151,7 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
       `${req.project_root}/README.md`,
     ],
     write_events: [],
+    command_texts: [],
     evidence_ok: false, // 由 guard 判定
     fail_reason: null,
     session_id: 'stub-session',
@@ -201,6 +210,22 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
               ...baseResult(critic, req, spec).read_paths,
               ...req.deny_paths.map((p) => `${req.project_root}/${p}`),
             ],
+          };
+        case 'peer_leak_via_command':
+          /*
+           * 措施 b 的故障注入（§10.1 / EV-01）：**只**经命令通道泄漏。
+           *
+           * 与 `peer_leak` 分成两个形态，而不是给它加个参数——这两条通道
+           * 要能各自单独触发。合成一个的话，「措施 a 挂了但 b 还在」这种
+           * 单边失效**测不出来**：两条通道同时注入时，只要有一条活着就全绿。
+           *
+           * 走 `git show HEAD:<path>` 形态（F-3）：这条正是措施 a 看不见的那种——
+           * 经 git 对象库取值不产生文件系统读取，`read_paths` 里什么都没有。
+           */
+          return {
+            ...baseResult(critic, req, spec),
+            tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 1 },
+            command_texts: req.deny_paths.map((p) => `git show HEAD:${p}`),
           };
         case 'mutate_file': {
           const { promises: fsp } = await import('node:fs');

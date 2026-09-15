@@ -24,6 +24,7 @@ import {
   readPaths,
   successfulToolCalls,
   writeEvents,
+  commandTexts,
   type AgyStreamResult,
 } from './agy-events.js';
 import { failedResult, type AdapterContext, type CriticAdapter } from './base.js';
@@ -322,6 +323,7 @@ export const agyAdapter: CriticAdapter = {
       tool_calls: countTools(out.parsed),
       read_paths: readPaths(out.parsed),
       write_events: writeEvents(out.parsed),
+      command_texts: commandTexts(out.parsed),
       evidence_ok: false, // 由 guard 判定
       fail_reason: null,
       session_id: out.parsed.conversationId,

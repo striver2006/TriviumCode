@@ -211,7 +211,52 @@ test('读到禁读清单内的文件 → peer_artifact_read', { skip: bundleMiss
   const { meta } = await runInjected({ gemini: { mode: 'peer_leak' }, glm: { mode: 'ok' } });
   assert.ok(meta.deny_paths.length > 0, '夹具里的 .env 命中 sensitive_globs，禁读清单不该是空的');
   assert.equal(meta.guard.peer_artifact_read, true);
+  assert.equal(
+    meta.guard.peer_leak_via_command?.gemini?.hit, false,
+    '措施 a 命中时措施 b 不该跟着亮：两条通道要能分得开，否则单边失效看不出来',
+  );
 });
+
+test(
+  '命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01）',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    /*
+     * **这条用例是变异验证逼出来的。**
+     *
+     * 起草时我给 judgeSide 接了 `peer.leaked || peerCmd.leaked`，单测覆盖了
+     * `checkPeerLeakViaCommand` 本身，全量 1002 条也全绿。
+     * 然后把那个 `|| peerCmd.leaked` 删掉——**一条都没红**：接线处没有任何断言守着。
+     *
+     * 这是本项目第五次「绿测试证明不了任何事」。判据函数测得再细，
+     * 也不能替代「它真的被接上了」这条断言。
+     */
+    const { meta } = await runInjected({
+      gemini: { mode: 'peer_leak_via_command' },
+      glm: { mode: 'ok' },
+    });
+    assert.ok(meta.deny_paths.length > 0, '禁读清单不该是空的');
+    const viaCmd = meta.guard.peer_leak_via_command;
+    assert.equal(viaCmd?.gemini?.hit, true, '命令通道必须命中');
+    assert.ok(
+      (viaCmd?.gemini?.commands.length ?? 0) > 0,
+      '要留下命中的命令原文，否则排查时看不出是经哪条通道漏的',
+    );
+    assert.match(
+      viaCmd?.gemini?.commands[0] ?? '', /^git show HEAD:/,
+      '桩走的是 git 对象库形态（F-3）——措施 a 看不见的那条',
+    );
+    /*
+     * 逐侧留痕（GLM-06）：另一侧正常跑完、扫过、没命中——它必须有自己的键且 hit=false。
+     * 合并成一个布尔时这条断言写不出来：两侧的结论会被压成一个值。
+     */
+    assert.equal(viaCmd?.glm?.hit, false, '对侧扫过没命中，要单独记而不是被合并掉');
+    assert.equal(
+      meta.guard.peer_artifact_read, true,
+      '与路径命中**同等处置**：措施 b 单独命中也要把该侧判作废',
+    );
+  },
+);
 
 test('回读到的生效模型与请求不符时如实记录（AC-13）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const { meta } = await runInjected({

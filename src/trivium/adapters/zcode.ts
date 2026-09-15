@@ -90,6 +90,26 @@ export function readonlyArgsFromProbe(readonlyFlags: readonly string[]): string[
   return out;
 }
 
+/**
+ * 一组只读参数里，`Bash` 是否仍被禁用。
+ *
+ * `command_texts` 在本侧恒记空数组，前提就是这一条——该侧跑不了命令。
+ * 前提一旦不成立而这里没跟着改，措施 b（§10.1）会在本侧**静默失效**：
+ * 命令照跑、扫描面却是空的。所以把它做成断言而不是注释（审查意见 GLM-05）。
+ *
+ * **要喂给它的是 `readonlyArgsFromProbe` 的返回值**（实际递给 CLI 的 argv），
+ * 不是 `probe.readonly_flags`（探针候选串的接受记录）。两者是独立的源，
+ * 拿后者当判据，`ZCODE_READONLY_DENYLIST` 的漂移就无人可察（r5 GLM-05）。
+ *
+ * 判据看 denylist 里有没有 `Bash` 这个**词**，而不是 `includes('Bash')` 子串——
+ * 后者会被 `BashOutput` 之类的兄弟工具名蒙混过去。
+ */
+export function bashStillDenied(readonlyFlags: readonly string[]): boolean {
+  // `=` 在前置集里：`--disallowed-tools=Bash` 是标准长参数写法，实测**认不出**（AGY-04）。
+  // `=Write,Bash` 因逗号边界侥幸认得出——这种侥幸比全错更危险，它让缺陷在一半样本上隐形。
+  return readonlyFlags.some((f) => /(^|[\s,"'=])Bash([\s,"']|$)/.test(f));
+}
+
 /** **唯一**执行 zcode 的地方 */
 export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvokeOutcome> {
   const args = buildZcodeArgs(opts);
@@ -331,6 +351,33 @@ export const zcodeAdapter: CriticAdapter = {
       tool_calls: toolCalls,
       read_paths: readPathList,
       write_events: writeEvents,
+      /*
+       * zcode 侧**恒为空数组**，而这是能说明理由的空：只读组合里 `Bash` 被整个禁掉
+       * （M0 的 C-10：`--mode plan` 单独不够，denylist 必须含 `Bash`），
+       * 该侧压根产生不了命令事件。空数组的含义是「**没有命令**」而不是「没采集」。
+       *
+       * **这个前提由 `bashStillDenied` 在运行期断言，不靠注释**（审查意见 GLM-05）：
+       * 初版这里写的是「若哪天放开了 `Bash`，这一行要跟着改」——
+       * 纯记性约定，而 AGENTS.md 纪律 12 明令这类纪律要换成不依赖记性的机制。
+       * 真放开了 `Bash` 而这里仍恒空，措施 b 会在该侧**静默失效**。
+       *
+       * 断言喂的是 `readonlyArgs`——**真正递给 CLI 的那串 argv**，不是
+       * `probe.readonly_flags`（r5 GLM-05）。后者只是探针那个固定候选串的
+       * 「被接受」记录，与实际传参是两个源：`readonlyArgsFromProbe` 无条件
+       * 把 `ZCODE_READONLY_DENYLIST` 推进 argv，所以从那个常量里删掉 `Bash`
+       * 不会让探针记录有任何变化——断言照旧通过，而措施 b 已经死了。
+       * 断言必须守着实际生效的东西，守候选记录等于没守。
+       */
+      command_texts: bashStillDenied(readonlyArgs)
+        ? []
+        : (() => {
+            throw new Error(
+              'zcode 实际递出的只读参数里不再禁用 Bash（readonlyArgs = ' +
+                `${JSON.stringify(readonlyArgs)}），而适配器仍把 command_texts 恒记为空。\n` +
+                '  该侧现在能跑命令了，措施 b（§10.1 命令文本扫描）会静默失效——\n' +
+                '  要么在这里真从轨迹提取命令原文，要么把 Bash 加回 ZCODE_READONLY_DENYLIST。',
+            );
+          })(),
       evidence_ok: false, // 由 guard 判定
       fail_reason: null,
       session_id: sessionId,

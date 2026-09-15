@@ -11,7 +11,7 @@ const RESULT: CriticResult = {
   raw_stdout_path: '/runs/out', trace_path: '/runs/trace', review_json: null,
   raw_response_text: '{}', model_effective: 'gemini-3.1-pro-high',
   model_effective_source: 'envelope', tool_calls: { read: 27, grep: 9 },
-  read_paths: [], write_events: [], evidence_ok: true, fail_reason: null,
+  read_paths: [], write_events: [], command_texts: [], evidence_ok: true, fail_reason: null,
   session_id: 'conv-1', cli_version: '1.2.0', peer_deny_applied: false,
   command_line: 'agy -p …',
 };
