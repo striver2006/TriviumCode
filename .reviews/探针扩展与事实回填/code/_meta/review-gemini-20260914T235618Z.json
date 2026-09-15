@@ -1,0 +1,103 @@
+{
+  "agreed": [
+    "对审查焦点二的判断：入口承载面探针结论「不进机读 ProbeSection」是极其清晰且合规的范围控制。M6 交付的是事实与待拍板项收敛，真实任意 Driver 接入排在 M10；在运行期尚无任何消费代码的情况下过早固化机读字段，完全符合 BACKLOG EV-06 批判的无消费方假契约模式，恪守了纪律。",
+    "严守零配额约束完成四家 CLI 入口承载面与 zcode effort 旗标的静态/本地探针评估，推翻了演进设计中关于 codex 承载面为 prompts 的不实预设，为 M10 统一采用 SKILL.md 单源渲染提供了极高价值的工程线索。",
+    "BACKLOG 中对 EV-08～EV-12 的问题提炼深刻且客观（尤其是 EV-08 指令面泄露风险与 EV-10/11 的 review 契约回退根因分析），为后续演进留下了坚实的技术债务台账。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-09-11_m0_probe.md",
+    "doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md",
+    "doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md",
+    "doc/05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/types.ts",
+    "src/trivium/probes/codex.ts",
+    ".reviews/探针扩展与事实回填/code/2026-09-15-探针扩展与事实回填-r4-gemini.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-15-探针扩展与事实回填-r4-response-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "在 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:300 与 doc/08_project/BACKLOG.md:98 中均明确写道「EV-01 因此从独立演进项升为 M8 的前置条件」。然而在同文档第 2198 行（§16.1 M8 里程碑内容及完成判据）完全未提及 EV-01，第 2202 行仍将措施 b 列为「（独立演进项 · 未排期）」，第 2207 行依赖图中 M8 前置亦未画出措施 b 分支，且第 2633 行（§24.1 台账）中措施 b 目标里程碑依然登记为「未排期 / 📋 独立项」。主设计内部规划发生脱节。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2198",
+      "problem": "主设计正文 3.6 与 BACKLOG 均将 EV-01（措施 b：命令文本字面扫描）升格为 M8 的前置依赖，但主设计 §16.1 里程碑表、依赖关系图以及 §24.1 演进台账未同步闭环，仍标为未排期独立项，造成里程碑定义与依赖链自相矛盾。",
+      "severity": "major",
+      "suggestion": "同步更新主设计 §16.1 与 §24.1：在 M8 交付内容及完成判据中明确纳入 EV-01；在依赖图中将 EV-01 连入 M8 的前置阻塞条件；将 §24.1 台账中措施 b 的目标里程碑从「未排期」修改为「M8（前置依赖）」。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 doc/05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md:54-66 中，负对照实验仅执行了 CODEX_HOME=<scratch>/cxhome HOME=<scratch>/fakehome codex debug prompt-input 并观测到原 r1 消失，并未在 fakehome 下实际创建 .agents/skills/sentinel 验证 codex 是否会将其作为新的 r1 挂载；但在正文、doc/05_testing/REPORT_2026-09-11_m0_probe.md:287（P-19）及 doc/08_project/BACKLOG.md:105（EV-08）中均直接下达因果定性：「指令根跟的是 HOME」。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "rca",
+      "location": "doc/05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md:65",
+      "problem": "CODEX_HOME 的负对照仅证明了「隔离 HOME 为空目录是原 r1 消失的必要条件」，直接断言「指令根跟的是 HOME」缺少正向哨兵验证（fakehome 下建 skill 确认被采纳），因果定性下得偏急，未排除 HOME 变化导致配置或认证缺失从而关闭全局插件等替代假说。",
+      "severity": "minor",
+      "suggestion": "在报告 §1、P-19 及 EV-08 中精准界定工程防御与寻址机制的表述边界：明确「同时覆盖 CODEX_HOME 与空 HOME 已足以在工程上切断宿主机指令面泄露」是已确证事实，而「指令根是否完全由 HOME 寻址」作为推论保留正向验证标记，待 M8 实测闭环。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 doc/05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md:229-236 与 331 中，报告明确指明 agy 承载面来自二进制字面量与帮助信息，缺乏行为实测，且明言「现在就改成默认值，等于把一条静态证据当成了结论」。但在 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2195（§16.1 状态列）将「收敛待拍板项 J3（建议改 skills 优先）」作为 M6 完成判据，并在 2621 行断言「四家入口均为 SKILL.md 形态（agy 侧待行为实测）」，演进设计 doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md:741 中的待拍板项 3（J3）实际并未形成闭环定案。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2195",
+      "problem": "agy 入口承载面全基于静态证据，主设计将其记为「收敛待拍板项 J3」且断言「四家入口均为 SKILL.md 形态」强度过高，容易给 M10 造成承载面已验证的假象，违背 P-05（旗标帮助不是能力证据）的教训。",
+      "severity": "minor",
+      "suggestion": "主设计中应将 J3 降级表述为「发现同构候选，调整备选优先级，待实测定案」；在 §16.1 的 M10 里程碑内容中显式追加「agy skills 真实加载行为实测」作为准入前置。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "doc/05_testing/REPORT_2026-09-11_m0_probe.md 文件名与标题均为「M0 探针本机实测报告」，依据为「里程碑 M0」，其 §1～§6 均为 M0 双侧基线实测；而其 §7 本机坑清单却跨里程碑持续追加了 M4/M5 的 P-16～P-18 以及 M6 第 4 步的 P-19～P-23。同时 doc/05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md §6 也因此无法自包含核心坑正文，只能以简表反向跳回 M0 报告。doc/05_testing/README.md 也呈现出阶段报告与全局坑清单并存的职能混乱。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "doc/05_testing/REPORT_2026-09-11_m0_probe.md:257",
+      "problem": "将持续演进的全局环境坑清单（P-xx）追加寄生在特定日期的历史里程碑测试报告（M0 报告）中，造成文档标题、元数据范围与实际内容严重名实不符，职责混淆。",
+      "severity": "minor",
+      "suggestion": "在 BACKLOG 登记演进维护项（排期在 M11 文档收口）：将 P-xx 全局坑清单从 M0 历史测试报告中解耦，提炼为独立的全局活动工程文档（如 doc/04_development/GUIDE_local_pitfalls.md），M0 报告恢复为里程碑归档快照。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "主设计 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:6 已升级版本号为 v1.3.7，但在 doc/02_design/README.md:24 中引用该文档时，版本号依然停留在 v1.3.6，本次 diff 遗漏了该处的版本对账更新。",
+      "id": "AGY-05",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "doc/02_design/README.md:24",
+      "problem": "设计目录入口索引 doc/02_design/README.md 未同步更新主设计文档版本号至 v1.3.7。",
+      "severity": "nit",
+      "suggestion": "将 doc/02_design/README.md 第 24 行中的主设计文档版本由 v1.3.6 修改为 v1.3.7。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:20 声明「实测依据：①REPORT_2026-09-11_m0_probe.md（M0 本机坑清单，18 个坑 P-01～P-18...）；④REPORT_2026-09-15_m6_driver_entry_probe.md（...新增坑 P-19～P-23）」。然而 P-19～P-23 事实上已被写入 ① 中，导致 ① 实际包含 23 个坑，与说明中的「18 个坑 P-01～P-18」自相矛盾。",
+      "id": "AGY-06",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:20",
+      "problem": "主设计头部实测依据对 M0 报告所含坑数量（18 个）与 M6 报告新增坑（P-19～P-23）物理归属的表述自相抵触。",
+      "severity": "nit",
+      "suggestion": "更新主设计头部的引用说明文案，准确反映 P-19～P-23 已经追加落盘于 M0 报告 §7 的现实。"
+    }
+  ],
+  "not_covered": [
+    "由于 M6 严格遵守零配额约束，未在真实模型调用下验证 agy/zcode 的 skills 展开与参数注入行为。",
+    "未在带有真实 .agents/skills 的隔离环境下端到端验证 codex 对 fakehome 的正向挂载行为。",
+    "未对 M8/M9 阶段将要实现的具体 CLI 命令拼接与沙箱适配代码进行可执行性验证（本轮无对应代码变更）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "审查焦点中：CODEX_HOME 的因果推断缺少正向哨兵验证，定性略急但隔离防御结论有效；入口承载面不入机读段是完全合规的范围控制；agy 静态证据支撑 J3 虽有价值但在主设计中宣称「已收敛」强度过高；P-19~P-23 寄生 M0 报告确实已名实不符。\n全项目对账中最关键的问题在于：正文与 BACKLOG 虽将 EV-01 升格为 M8 前置，但主设计 §16.1 里程碑表、依赖图与 §24.1 台账均未同步闭环，存在明显的契约脱节（AGY-01，major）。\n结论判为 request-changes，待文档内部规范链闭环后即可放行。",
+  "verdict": "request-changes"
+}

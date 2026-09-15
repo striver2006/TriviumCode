@@ -2,8 +2,11 @@
 
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 执行实测）
 > - **创建日期**：2026-09-11
-> - **当前版本**：v1.1.0
-> - **状态**：评审中(In-Review) —— **两侧探针全部完成**，均已由 `trivium doctor` 代码化复现
+> - **当前版本**：v1.2.0（v1.1.0 → v1.2.0：§7 坑清单追加 `P-19～P-23`，M6 第 4 步补录）
+> - **状态**：评审中(In-Review) —— **两侧探针全部完成**，均已由 `trivium doctor` 代码化复现。
+>   **注意本文有两种内容**：§1～§6、§8、§9 是 **M0 当时的里程碑快照**，不再更新；
+>   **§7 是跨里程碑持续追加的 `P-xx` 唯一落点**（见该节抬头）。两者职责不同，
+>   把活台账放在历史快照里是已知的结构问题，登记为 BACKLOG **EV-13**、排期 M11 文档收口
 > - **依据**：[设计 v1.2.0](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) §3.5 探针必测清单、§16.1 里程碑 M0
 > - **机读副本**：`.trivium/config.local.yaml` 的 `probe:` 段（不进 Git）
 
@@ -256,6 +259,14 @@ ZCode 的读路径有多条（`Read` / `Grep` / `Glob` / `ReadSessionContext` / 
 
 ## 7. 本机坑清单
 
+> **本节是 `P-xx` 编号的唯一落点，后续里程碑往这里追加**，不在各自报告里另起一套编号
+> ——同一事实两个落点就会分叉。既有先例：`P-16～P-18` 是 M4/M5 真实运行期补录，
+> **`P-19～P-23` 是 M6 第 4 步补录**（证据与负对照见
+> [`REPORT_2026-09-15_m6_driver_entry_probe.md`](./REPORT_2026-09-15_m6_driver_entry_probe.md)）。
+>
+> 注意 M6 第 2/3 步报告里的 `P-C1` / `P-C2` 与 `D-1`～`D-3` **不属于本命名空间**：
+> 那些是「该家族与另两家的能力差异」，不是「本机环境的坑」，两者消费方不同。
+
 | # | 坑 | 影响 | 对策 |
 | :--- | :--- | :--- | :--- |
 | **P-01** | 本机**无** `timeout` / `gtimeout`（macOS 不带 GNU coreutils） | 任何 shell 层超时方案都会失败 | 超时一律在 Node 内实现：定时器 → `SIGTERM` → 宽限期 → `SIGKILL`。已落地于 `src/trivium/util/exec.ts`，**禁止** shell out 到 `timeout` |
@@ -276,6 +287,11 @@ ZCode 的读路径有多条（`Read` / `Grep` / `Glob` / `ReadSessionContext` / 
 | **P-17** | agy headless 的 `-p` 进程**只存活约 10 秒**，随后工作转交给一个常驻 **hub 进程**（`agy --hub --hub-port=<n> --app_data_dir=antigravity --add-dir=<项目根>`）。该 hub 在本次运行之前**就已存在**（实测启动时间早于本次运行 8.5 小时） | 「运行期间 `ps` 能看到 agy 进程」这条验收判据按字面理解会失败；更重要的是：hub 跨运行复用，**独立 `HOME` 之类的隔离手段对它不生效** | 验收改看 hub 的 `--add-dir` 与 cwd；隔离结论以 `probe.agy.isolation` 为准，不要假设每次运行都有独立的 agy 进程空间 |
 | **P-18** | ZCode 的 headless 进程把进程名改成 **`zcode-cli`**（另有 `zcode-node-repl-mcp` 辅助进程），`ps`/`pgrep` 里**看不到 `zcode.cjs`** | `pgrep -f 'zcode\.cjs'` 恒为空，按它做存活检查或验收会误判「没跑起来」 | 认 `zcode-cli` 这个进程名；cwd 实测确为项目根（`lsof -a -d cwd`）|
 | **P-09** | `~/.zcode/v2/config.json` 内的 provider **apiKey 为明文**，且其中一个正是 `<id>.<secret>` 形态 | 该形态若混入归档就是安全事故 | 已作为 `archive` 密钥扫描器（§10.5）的真实用例；扫描器只存正则不存值。**另：已建议用户轮换该批 key** |
+| **P-19** | codex 的 `CODEX_HOME` 副本**隔离不住 skills 指令面**：隔离后 `debug prompt-input` 的 skill 根表里仍有 `$HOME/.agents/skills`（本机 14 份第三方 skill，全文描述已进模型可见的 developer 消息）。**三条臂**：①仅隔离 `CODEX_HOME` → 该根解析到真实 `$HOME`；②再叠加隔离 `HOME`（空目录）→ 该根消失；③`HOME` 隔离但 fakehome 下放哨兵 skill → **根移动到新 `HOME` 并挂载、哨兵命中**。第 ③ 条排除了「`HOME` 变了导致配置缺失从而关掉全局根」——**指令根随 `HOME` 派生**。与 ZCode 的 C-12 / C-08「配置根只认 `HOME`」是同一个坑的两半；措辞强度不同（C-12 做过候选变量穷举，本条没有，故不用「只认」） | M8 的隔离若只做 `CODEX_HOME`，宿主机任意第三方 skill 会进入审查会话。**边界**：沙箱只读仍挡得住**写**，挡不住**指令注入**，两件事不是一回事 | 隔离**同时**覆盖 `CODEX_HOME` 与 `HOME`。`probe.cli.codex.isolation` 的取值 `home_copy` 字面仍成立，错的是「它覆盖了什么」的理解，已写进设计 3.6 末段。登记 BACKLOG **EV-08** |
+| **P-20** | ZCode 的 **user 级 custom command 盖过 project 级**（实测：`<fakehome>/.zcode/commands/dup.md` 胜出，项目根与子目录两份均被忽略），方向与「项目配置覆盖全局配置」的常识**相反**。被盖的只产出一条 `diagnostics` 的 `custom_command_duplicate_name` warning | 入口命令装在项目里会被宿主机同名命令**静默顶替**，留痕上看不出来——warning 没人读 | 入口资产一律装 user 级；安装器先查重名，撞名**报错**而不是覆盖 |
+| **P-21** | ZCode 的 **skills 重名完全不去重、不告警**：本机 10 个 skill 同时存在于 `~/.zcode/skills` 与 `~/.agents/skills`，`skills list` 两份都列、`diagnostics` 为空数组。去重键是**文件路径**而非名字（commands 侧恰好相反，见 P-20） | 同名两份都在，模型实际加载哪一份**枚举面给不出答案** | 安装前查重；名字加 `dual-` 前缀降低碰撞面。**注意**：`skills list` 是枚举面不是加载面，加载优先级要真实调用才知道，M6 第 4 步**未测** |
+| **P-22** | `~/.agents/skills` 是 **codex 与 ZCode 共享的用户级技能根**（codex 的根表 `r1`、ZCode 的 `source: "agents"` 指的是同一个目录） | 一家装的 skill 会进另一家的上下文，跨厂商串味 | 知道即可；trivium 自己的入口资产**不要**落在这个根 |
+| **P-23** | codex 的模型可见承载面是 **skills 而非 `~/.codex/prompts/`**：同一次运行里造双哨兵，`skills/` 的进了 `debug prompt-input`，`prompts/` 的没进 | 演进设计 §3.1／§7.1 按 prompts 形态估的 M10 迁移成本失真 | 按 SKILL.md 形态渲染——与 Claude Code 几乎同形（含 `disable-model-invocation`），frontmatter 适配即可。**边界**：本条**没有**证伪 prompts，只证明它不是常驻面；它是否仍作 TUI 内 `/name` 触发面**未测** |
 
 ## 8. 与设计文档的冲突项
 

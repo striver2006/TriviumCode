@@ -387,7 +387,7 @@ trivium verify --topic 登录重构    # 真实执行配置里的编译测试命
 | [**快速上手**](./doc/07_manuals/QUICKSTART.md) | 15 分钟装好并跑通一条真实任务：前置条件、安装自检、探针实测、项目启用、第一条任务、三道护栏、排障 |
 | [协议与接口契约](./doc/03_api/PROTOCOL_dual_critic_relay.md) | 四份 JSON Schema、BRIEF 八段结构、快照与漂移算法、退出码、`--start`/`--wait` 分段协议、Hook 契约 |
 | [开发与调试指南](./doc/04_development/GUIDE_env_setup.md) | 面向修改本项目的人：工具链、产物布局、分层测试、九条实现纪律 |
-| [M0 本机坑清单](./doc/05_testing/REPORT_2026-09-11_m0_probe.md) | 两家 CLI 的实测行为，含 18 个坑与 12 条与厂商文档记载不符之处 |
+| [本机坑清单（`P-xx` 唯一落点）](./doc/05_testing/REPORT_2026-09-11_m0_probe.md) | 四家 CLI 的实测行为。§7 是 `P-xx` 坑清单的唯一落点、跨里程碑持续追加；另含 12 条与厂商文档记载不符之处 |
 | [文档中心索引](./doc/README.md) | 全部工程文档的分类与命名规范 |
 
 ---
