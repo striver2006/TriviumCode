@@ -712,6 +712,22 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
      * 真正要挡的是 `running`——那是**另一次运行**的护栏，不能被它清掉；
      * 加上 runId 比对，别的 run 的闸门也动不了。
      */
+    /*
+     * **本轮人已表态就不再立停点**——这是「校验/停点命令撤销人的审批」的
+     * 第二个入口：白名单里含三个终态，重跑一次 `--await-approval` 同样能把
+     * 已放行的闸门打回等待。与 `--check` 那两个分支是同一缺陷的三处落点，
+     * 判据同样以归档里的审批记录为正本。
+     */
+    const { humanDecidedThisRound } = await import('./approval.js');
+    if (await humanDecidedThisRound(ref.layout, stage, runId)) {
+      const msg =
+        `本轮（第 ${rerunIndex} 轮）已有人工审批记录，闸门状态保持不变。\n` +
+        `  要重新走停点，请先对本轮重新表态，或另起一轮审查。`;
+      if (isJsonMode()) emitJson({ ok: true, state: 'unchanged', stage, rerun_index: rerunIndex, message: msg });
+      else say(msg);
+      return EXIT.OK;
+    }
+
     const g = await setGateChecked({
       triviumDir: ctx.triviumDir, topic, stage, state: 'awaiting_approval',
       runId, rerunIndex,
@@ -799,7 +815,21 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    */
   const entry = result.ok ? (await readRunMeta(ref.layout, stage, runId))?.entry ?? null : null;
   const stopsForApproval = entry === 'B' || entry === 'C' || entry === 'D';
-  if (result.ok && stopsForApproval) {
+
+  /*
+   * 本轮人已经表过态了就**不推进状态**——`--check` 是校验命令，没资格撤销审批。
+   *
+   * 这条判断必须盖住**下面两个**迁移分支（B/C/D 推等待审批、A/无 entry 推 idle）：
+   * 两处都只带 `expect: { runId }`，只挂一个，重跑 `--check` 仍会把已放行的闸门
+   * 改写成 idle。判据以归档里的审批记录为正本，理由见 `humanDecidedThisRound`。
+   */
+  const { humanDecidedThisRound } = await import('./approval.js');
+  const alreadyDecided = result.ok ? await humanDecidedThisRound(ref.layout, stage, runId) : false;
+  if (alreadyDecided) {
+    say('· 本轮已有人工审批记录，闸门状态保持不变（校验命令不撤销审批）');
+  }
+
+  if (result.ok && stopsForApproval && !alreadyDecided) {
     const g = await setGateChecked({
       triviumDir: ctx.triviumDir, topic, stage, state: 'awaiting_approval',
       runId, rerunIndex,
@@ -829,12 +859,16 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    * 继续拦人，用户唯一的出路是去改配置关掉 Hook——护栏一旦开始误伤，
    * 第一个被关掉的就是它自己。
    */
-  if (result.ok) {
+  if (result.ok && !alreadyDecided) {
     /*
      * 只放行**本轮**的闸门（审查意见 GLM-r2-01 ①）。
      *
      * 无条件覆盖时，对旧一轮补完裁决跑 `--check`，会把已经接管的新一轮
      * `running` 覆写成 `idle`——新一轮审查期内的业务写锁就此静默失效。
+     *
+     * `!alreadyDecided`：本轮人已表态时同样不推进。这个分支容易被忘——
+     * 它把闸门推回 `idle` 而不是 `awaiting_approval`，症状是「审批记录还在、
+     * 闸门却成了无闸门」，比上一个分支更隐蔽。
      */
     const g = await setGateChecked({
       triviumDir: ctx.triviumDir, topic, stage, state: 'idle',

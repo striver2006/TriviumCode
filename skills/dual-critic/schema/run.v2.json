@@ -5,22 +5,72 @@
   "description": "每次运行的机读全量事实（设计 §6.7.1），落于归档 _meta/run-<run_id>.json。对应 NFR-05 / FR-24 / FR-29。v1 保留为历史契约（双读），本版为当前唯一写出的形状。",
   "type": "object",
   "required": [
-    "schema", "run_id", "topic", "stage", "rerun_index", "command",
-    "driver", "critics_selected",
-    "snapshot", "started_at", "review_mode", "critics", "deny_paths",
-    "guard", "artifacts", "gate", "status"
+    "schema",
+    "run_id",
+    "topic",
+    "stage",
+    "rerun_index",
+    "command",
+    "driver",
+    "critics_selected",
+    "snapshot",
+    "started_at",
+    "review_mode",
+    "critics",
+    "deny_paths",
+    "guard",
+    "artifacts",
+    "gate",
+    "status"
   ],
   "additionalProperties": true,
   "properties": {
-    "schema": { "const": "trivium.run.v2" },
-    "run_id": { "type": "string", "minLength": 1 },
-    "topic": { "type": "string", "minLength": 1 },
-    "stage": { "enum": ["plan", "code", "bug"] },
-    "rerun_index": { "type": "integer", "minimum": 1 },
-    "command": { "type": "string" },
-    "prompt_hint": { "type": ["string", "null"] },
-    "task_goal": { "type": ["string", "null"] },
-    "entry": { "enum": ["A", "B", "C", "D", null] },
+    "schema": {
+      "const": "trivium.run.v2"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "topic": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "enum": [
+        "plan",
+        "code",
+        "bug"
+      ]
+    },
+    "rerun_index": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "command": {
+      "type": "string"
+    },
+    "prompt_hint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "task_goal": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "entry": {
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D",
+        null
+      ]
+    },
     "driver": {
       "type": "string",
       "minLength": 1,
@@ -30,64 +80,148 @@
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "description": "本轮入选的审核者集合，基数 1～3（FR-29）。它区分「计划跑但失败了」与「压根没入选」——critics 的键集做不到这件事。选 1 个是配置意图而非降级：此时 review_mode 仍为 full 且无 degraded_reason（AC-22）"
     },
     "snapshot": {
       "type": "object",
-      "required": ["tree_hash", "subject_sha256", "drift"],
+      "required": [
+        "tree_hash",
+        "subject_sha256",
+        "drift"
+      ],
       "properties": {
-        "git_head": { "type": ["string", "null"] },
-        "tree_hash": { "type": "string" },
-        "dirty": { "type": "boolean" },
-        "subject_sha256": { "type": "string" },
+        "git_head": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tree_hash": {
+          "type": "string"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "subject_sha256": {
+          "type": "string"
+        },
         "drift": {
           "type": "object",
-          "required": ["changed", "files", "policy"],
+          "required": [
+            "changed",
+            "files",
+            "policy"
+          ],
           "properties": {
-            "changed": { "type": "boolean" },
-            "files": { "type": "array", "items": { "type": "string" } },
-            "policy": { "enum": ["warn", "fail"] }
+            "changed": {
+              "type": "boolean"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "policy": {
+              "enum": [
+                "warn",
+                "fail"
+              ]
+            }
           }
         }
       }
     },
-    "started_at": { "type": "string" },
-    "finished_at": { "type": ["string", "null"] },
+    "started_at": {
+      "type": "string"
+    },
+    "finished_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "review_mode": {
-      "enum": ["full", "partial"],
+      "enum": [
+        "full",
+        "partial"
+      ],
       "description": "full = 入选的审核者全部成功；partial = 部分入选者失败后降级续跑（必须同时有 degraded_reason）。取代 v1 的 dual/single——后者把「跑了几侧」与「是否降级」混成一个值，导致 --only 单侧成功被记为 dual（§2.1）"
     },
-    "degraded_reason": { "type": ["string", "null"] },
+    "degraded_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "critics": {
       "type": "object",
       "description": "逐审核者的运行事实，键取自 critics_selected。v1 在此处写死 gemini / glm 两键（additionalProperties: false），第三家入选即校验不过——这是本次升 v2 而非原地扩展的直接动因。键是否为已登记 Agent 不在 schema 里枚举：注册表是唯一来源（纪律 7），在 schema 里再抄一份等于制造第二个来源，新增一家时改一漏二不会报错。身份校验由 schemas.ts 的 validateRunMeta 在 ajv 之后按注册表补做",
-      "additionalProperties": { "$ref": "#/$defs/critic" }
+      "additionalProperties": {
+        "$ref": "#/$defs/critic"
+      }
     },
-    "deny_paths": { "type": "array", "items": { "type": "string" } },
+    "deny_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "guard": {
       "type": "object",
-      "required": ["readonly_breach", "peer_artifact_read", "peer_deny_applied", "forged_role_file"],
+      "required": [
+        "readonly_breach",
+        "peer_artifact_read",
+        "peer_deny_applied",
+        "forged_role_file"
+      ],
       "properties": {
-        "readonly_breach": { "type": "boolean" },
-        "peer_artifact_read": { "type": "boolean" },
+        "readonly_breach": {
+          "type": "boolean"
+        },
+        "peer_artifact_read": {
+          "type": "boolean"
+        },
         "peer_deny_applied": {
           "type": "object",
           "description": "逐侧记录路径级 deny 是否实际生效。本机两侧均为 false（M0 实测）",
-          "additionalProperties": { "type": "boolean" }
+          "additionalProperties": {
+            "type": "boolean"
+          }
         },
-        "forged_role_file": { "type": "boolean" },
-        "breached_files": { "type": "array", "items": { "type": "string" } },
+        "forged_role_file": {
+          "type": "boolean"
+        },
+        "breached_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "peer_leak_via_command": {
           "type": "object",
           "description": "命令文本通道（§10.1 措施 b / BACKLOG EV-01）的命中记录，**逐审核者**（键是 Agent id，与 critics 同构）。【已实现 · M8 第 1 步】三态落在结构上：整个字段缺失=该次运行早于接线；字段在而某侧的键缺失=**那一侧没扫**（失败/超时被 judgeRun 跳过）；hit=false=扫过、没命中。已知形态清单（F-1～F-9）与盲区（B-1～B-5）见 adapters/base.ts 的 checkPeerLeakViaCommand 文档块与设计 §10.1 措施 b，两处由 known-forms-parity 契约测试对账；承诺是「已知形态必检」而非不可绕过（威胁模型见 §10.1 末段，R25）",
           "additionalProperties": {
             "type": "object",
-            "required": ["hit", "commands"],
+            "required": [
+              "hit",
+              "commands"
+            ],
             "additionalProperties": false,
             "properties": {
-              "hit": { "type": "boolean" },
-              "commands": { "type": "array", "items": { "type": "string" } }
+              "hit": {
+                "type": "boolean"
+              },
+              "commands": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           }
         },
@@ -96,51 +230,182 @@
           "description": "两条核验通道的降级档位与本次生效的证据阈值，**逐审核者**（键是 Agent id，与 critics 同构）。【已实现 · M8 第 2 步】`readonly`=unavailable 表示该侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守——**它记的是能力恒态，与本次是否检出写事件无关**：真阳性由 readonly_breach 表达，两者正交，档位为 unavailable 的侧一样可能 readonly_breach=true（写命令成功执行、照常留痕）。`path`=unavailable 表示该侧读取路径只存在于命令文本里、措施 a（读取路径比对 deny）无结构化输入可扫，deny 核验完全由措施 b 承担。`evidence_threshold` 记本次生效的 min_project_reads——command-trace 族按折减系数下调，不记的话同一个读数在两族间一过一不过会像 bug。三态落在结构上：整个字段缺失=该次运行早于 M8 第 2 步；字段在而某侧的键缺失=**那一侧没判过**（失败/超时被 judgeRun 跳过）；值=该侧实际档位。注意 path=unavailable 与既有的 peer_deny_applied=false 是两件事：后者说的是 CLI 级路径拦截是否注入生效（第 ③ 道 (c) 层），前者说的是事后轨迹核验有没有输入可扫",
           "additionalProperties": {
             "type": "object",
-            "required": ["readonly", "path", "evidence_threshold"],
+            "required": [
+              "readonly",
+              "path",
+              "evidence_threshold"
+            ],
             "additionalProperties": false,
             "properties": {
-              "readonly": { "enum": ["ok", "unavailable"] },
-              "path": { "enum": ["ok", "unavailable"] },
-              "evidence_threshold": { "type": "integer", "minimum": 0 }
+              "readonly": {
+                "enum": [
+                  "ok",
+                  "unavailable"
+                ]
+              },
+              "path": {
+                "enum": [
+                  "ok",
+                  "partial",
+                  "unavailable"
+                ],
+                "description": "**partial（2026-09-16 新增）**：该侧有结构化轨迹，但「必然带路径」的读调用中出现了提不出路径的，即提取器相对厂商实际参数名已经退化。可无路径的搜索/列目录类调用不计入分母"
+              },
+              "evidence_threshold": {
+                "type": "integer",
+                "minimum": 0
+              }
             }
           }
         },
         "unattributed_drift_files": {
           "type": "array",
           "description": "指纹变化但**无法归因**的文件（§9.2 第 4 步 + §11.1）。【已实现 · M8 第 2 步】只在本轮有侧的 readonly 档位为 unavailable 时出现：「指纹变了但轨迹无写事件 ⇒ 开发者手改」这条推理的前提是轨迹能证明审查员没写，而该侧被拒的写不留痕，无写事件排除不了审查员写过。既不判失守（无正向证据）也不判开发者手改（阴性证据不可信），与 fingerprint 的已归因结论分开记——混进去等于用更强的断言掩盖证据缺口。字段缺失或空数组 = 无此情形",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
+        },
+        "peer_leak_via_path": {
+          "type": "object",
+          "description": "路径通道（§10.1 措施 a）的命中记录，**逐审核者**（键是 Agent id，与 critics 同构）。【已实现 · 2026-09-16】与 peer_leak_via_command 同构，三态同样落在结构上：整个字段缺失=该次运行早于接线；字段在而某侧的键缺失=**那一侧没扫**（失败/超时被 judgeRun 跳过）；hit=false=扫过、没命中。**命中逐条带类**（设计 §10.1.1 的四类分档）：同一侧一轮内可同时命中多类，处置取最重档，留痕须能复盘「这一侧到底碰了什么」。补这个字段之前，路径通道只有一个全局 OR 的布尔位 peer_artifact_read，命中明细一条不进",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "hit",
+              "hits"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "hit": {
+                "type": "boolean"
+              },
+              "hits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "category"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "enum": [
+                        "peer-artifact",
+                        "peer-run-output",
+                        "own-run-material",
+                        "orchestrator-state",
+                        "sensitive"
+                      ],
+                      "description": "设计 §10.1.1 的分档：peer-artifact/peer-run-output 判作废；own-run-material 是审查员自己的运行时材料，不判作废（运行根是混合树）；orchestrator-state 降告警级；sensitive 走安全告警线"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "joint_check": {
+          "type": "object",
+          "description": "共同阻断这一档的执行状态（设计 §6.6 规则 7 / §12.1）。【已实现 · 2026-09-16】被判作废的一侧不计入独立来源，排除后有效侧可能不足两家，而 findJointRejectedBlockers 恒返回空集——**阴性结论与「没做」不得落成同一个观测**。这是「作废侧重跑一次」就绪前的过渡处置：只保证失效可见，不恢复交叉验证",
+          "required": [
+            "state",
+            "effective_sides"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "checked-none",
+                "checked-found",
+                "skipped-insufficient-sides"
+              ],
+              "description": "checked-none=查过、无共同项；checked-found=查过、有共同项；skipped-insufficient-sides=有效侧不足两家、该项未做"
+            },
+            "effective_sides": {
+              "type": "integer",
+              "description": "排除作废侧之后参与判定的审核者数"
+            }
+          }
         }
-      }
+      },
+      "additionalProperties": false,
+      "description": "**本节点 additionalProperties: false（2026-09-16 收严）**：新增 guard 字段不同步 schema 时当场判错，而不是静默落盘一个机读面上不存在的字段。收严前实测本仓库 29 份 v2 留痕零差额"
     },
     "artifacts": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["path", "sha256"],
+        "required": [
+          "path",
+          "sha256"
+        ],
         "properties": {
-          "path": { "type": "string" },
-          "sha256": { "type": "string" }
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
         }
       }
     },
     "gate": {
       "type": "object",
-      "required": ["adjudication_complete", "state"],
+      "required": [
+        "adjudication_complete",
+        "state"
+      ],
       "properties": {
-        "adjudication_complete": { "type": "boolean" },
-        "state": { "type": "string" },
-        "warnings": { "type": "array", "items": { "type": "string" } }
+        "adjudication_complete": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
-    "status": { "enum": ["running", "success", "failed", "cancelled"] },
-    "skipped": { "type": "boolean" },
-    "skip_reason": { "type": ["string", "null"] },
-    "cache_hit": { "type": "boolean" }
+    "status": {
+      "enum": [
+        "running",
+        "success",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "skipped": {
+      "type": "boolean"
+    },
+    "skip_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cache_hit": {
+      "type": "boolean"
+    }
   },
   "$defs": {
     "critic": {
       "type": "object",
-      "required": ["vendor", "status", "duration_s", "tool_calls", "evidence_ok", "heterogeneous"],
+      "required": [
+        "vendor",
+        "status",
+        "duration_s",
+        "tool_calls",
+        "evidence_ok",
+        "heterogeneous"
+      ],
       "additionalProperties": true,
       "properties": {
         "vendor": {
@@ -148,59 +413,148 @@
           "minLength": 1,
           "description": "厂商标识，取自注册表的 vendor。与 critics 的键同理不在此枚举：v1 写死 antigravity / zcode 两值，第三家的 openai 会被判非法"
         },
-        "cli_version": { "type": ["string", "null"] },
-        "model_requested": { "type": ["string", "null"] },
+        "cli_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_requested": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "model_effective": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "回读得到的实际生效模型，不采信配置意图（AC-13）"
         },
-        "model_effective_source": { "enum": ["envelope", "trace", "requested", "unverified"] },
-        "model_route": { "enum": ["env", "config_copy", "global"] },
-        "effort": { "type": "string" },
+        "model_effective_source": {
+          "enum": [
+            "envelope",
+            "trace",
+            "requested",
+            "unverified"
+          ]
+        },
+        "model_route": {
+          "enum": [
+            "env",
+            "config_copy",
+            "global"
+          ]
+        },
+        "effort": {
+          "type": "string"
+        },
         "effort_requested": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "思考等级的请求值。【待实施 · M11】schema 先留位，写侧尚未接线"
         },
         "effort_effective": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "思考等级的生效值，必须回读而非采信请求值——部分厂商存在归并映射（如 medium/high/xhigh → high），「请求 medium 实际生效 high」。这是 AC-13「生效模型可核对」对 effort 的延伸。【待实施 · M11】"
         },
         "tier_source": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "档位的来源（命令行 / 档位表 / 默认）。【待实施 · M11】"
         },
         "profile_requested": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "本次请求的厂商 profile 名（codex 的 -p，即 agents.<id>.profile）。命名随 model_requested / effort_requested 的既有惯例：它是请求值，回读值是 model_provider。裸名 profile 留空不占——在本系统里那个词已经指档位（config.yaml 的 profiles / active_profile / CLI --profile），而本 schema 自己的档位词汇是 tier*。无厂商 profile 概念的族恒为 null。【已实现 · M8 第 4 步】"
         },
         "model_provider": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "回读得到的 provider 家族归属，与 model_effective 是两个维度的事实。实测 codex exec -p qwen -m deepseek-v4-pro 成功且回读 provider=qwen、model=deepseek-v4-pro——同一个模型名可以挂在两个 provider 下，故「两次 model_effective 不同即两个家族」不成立，AC-20 的互可区分要两个维度都看。无此事实的族恒为 null（能说明理由的空）。【已实现 · M8 第 4 步】"
         },
-        "status": { "enum": ["ok", "timeout", "failed", "parse_fallback"] },
-        "exit_code": { "type": ["integer", "null"] },
-        "duration_s": { "type": "number" },
+        "status": {
+          "enum": [
+            "ok",
+            "timeout",
+            "failed",
+            "parse_fallback"
+          ]
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "duration_s": {
+          "type": "number"
+        },
         "tool_calls": {
           "type": "object",
-          "additionalProperties": { "type": "integer" },
+          "additionalProperties": {
+            "type": "integer"
+          },
           "description": "project_reads = 被审对象与送审包之外的项目文件读取次数（§11.4）"
         },
-        "evidence_ok": { "type": "boolean" },
+        "evidence_ok": {
+          "type": "boolean"
+        },
         "usage": {
           "type": "object",
           "description": "厂商回读的原样 token 用量。实测 zcode 会混入字符串 source 字段，故值类型不限定为数字；report 汇总时只取数字",
-          "additionalProperties": { "type": ["number", "string", "boolean", "null"] }
+          "additionalProperties": {
+            "type": [
+              "number",
+              "string",
+              "boolean",
+              "null"
+            ]
+          }
         },
         "heterogeneous": {
           "type": "boolean",
           "description": "是否与主脑异构。false 时必须有 override_reason（AC-18）"
         },
-        "override_reason": { "type": ["string", "null"] },
-        "fail_reason": { "type": ["string", "null"] },
-        "empty_review": { "type": "boolean" },
-        "parse_fallback": { "type": "boolean" },
-        "session_id": { "type": ["string", "null"] },
-        "peer_deny_applied": { "type": "boolean" }
+        "override_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fail_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "empty_review": {
+          "type": "boolean"
+        },
+        "parse_fallback": {
+          "type": "boolean"
+        },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "peer_deny_applied": {
+          "type": "boolean"
+        }
       }
     }
   }

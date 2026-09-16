@@ -64,6 +64,32 @@ export type CriticId = AgentId;
  * BACKLOG EV-03 当初被判为「随 run.v2 一并处理」的理由。
  */
 export type Vendor = AgentVendor;
+/**
+ * 禁读集条目的四类分档（设计 §10.1.1）。
+ *
+ * 禁读集由性质完全不同的四类拼成，而此前它们共用一个布尔位 `peer_artifact_read`
+ * 与一句「该侧结论作废」。四次实测命中**全部落在 `orchestrator-state`**——
+ * 审查员读了自己的护栏配置或列了目录，与背靠背独立性毫无关系，却按泄漏对端产物处置。
+ *
+ * `own-run-material` 必须单列：运行根是**混合树**，对端本轮输出与审查员**自己的**
+ * 运行时材料（sandbox home、请求文件、工作日志）同处一棵。按整棵前缀匹配，
+ * 「读自己的运行目录」会被判成泄漏——把误伤换个地方制造一次。
+ */
+export type DenyCategory =
+  /** 对端历史审查件与其结构化原文 —— 判作废 */
+  | 'peer-artifact'
+  /** 运行根下**对端**本轮原始输出 —— 判作废 */
+  | 'peer-run-output'
+  /** 运行根下**己方**运行时材料 —— 不判作废 */
+  | 'own-run-material'
+  /** 编排器状态目录（护栏载体，非审查内容） —— 告警级 */
+  | 'orchestrator-state'
+  /** `sensitive_globs` 命中的凭据文件 —— 安全告警线 */
+  | 'sensitive';
+
+/** 会判该侧作废的类别（设计 §10.1.1 的第①②类） */
+export const VOIDING_DENY_CATEGORIES: readonly DenyCategory[] = ['peer-artifact', 'peer-run-output'];
+
 export type Severity = 'blocker' | 'major' | 'minor' | 'nit';
 export type Confidence = 'high' | 'medium' | 'low';
 export type Verdict = 'approve' | 'approve-with-nits' | 'request-changes' | 'block';
@@ -670,7 +696,6 @@ export interface ReviewConfig {
   on_drift: 'warn' | 'fail';
   on_drift_related: 'warn' | 'fail';
   sensitive_globs: string[];
-  block_severities: Severity[];
   skip_doc_only_review: boolean;
   skip_globs: string[];
   never_skip_globs: string[];
@@ -976,6 +1001,39 @@ export interface RunMeta {
      */
     peer_leak_via_command?: Partial<Record<CriticId, { hit: boolean; commands: string[] }>>;
     /**
+     * 措施 a（§10.1 路径通道）的命中记录，与上面的措施 b **同构**。
+     *
+     * 补它之前，路径通道只有 `peer_artifact_read` 一个**全局 OR** 的布尔位：
+     * 措施 b 按侧记命中与命令原文，措施 a 的命中明细一条不进。后果是
+     * 「哪一侧、碰了什么」事后只能手工复算原始轨迹，而运行目录到期即删——
+     * 2026-09-16 实测撞上一次：一侧确实命中而我看不见，据此在裁决件里写了错的处置表。
+     *
+     * **命中逐条带类**（设计 §10.1.1 的四类分档）：同一侧一轮内可同时命中多类
+     * （例如既读了对端审查件、又列了编排器目录），处置取**最重档**，
+     * 而留痕要能复盘每一条各属哪类——只记一个聚合的 category 会把这件事again 塌缩掉。
+     *
+     * 三态与措施 b 同构：字段缺失 = 早于接线；某侧键缺失 = 那一侧没扫；
+     * `hit: false` = 扫过、没命中。
+     */
+    peer_leak_via_path?: Partial<
+      Record<CriticId, { hit: boolean; hits: { path: string; category: DenyCategory }[] }>
+    >;
+    /**
+     * 共同阻断这一档的执行状态（§6.6 规则 7 / §12.1）。
+     *
+     * 被判作废的一侧不计入独立来源，排除后有效侧可能不足两家，
+     * 而 `findJointRejectedBlockers` 的判据是 `critics.size < 2`——**恒返回空集**。
+     * 若不记这个字段，「查过、没有共同项」与「有效侧不足、这一项根本没做」
+     * 在留痕里完全一样，三态纪律第四次复发。
+     *
+     * **这是过渡处置**：它只保证失效可见，不恢复交叉验证。
+     * 真正的补偿是设计 §12.1 那条「作废侧重跑一次」，尚待实施。
+     */
+    joint_check?: {
+      state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
+      effective_sides: number;
+    };
+    /**
      * 两条核验通道的降级档位与本次生效的证据阈值（§11.1，M8 第 2 步）。
      *
      * `readonly`：「尝试写」检测是否可用（`unavailable` ⟺ 该侧被拒的写不留痕）。
@@ -989,7 +1047,16 @@ export interface RunMeta {
     verification_degraded?: Partial<
       Record<
         CriticId,
-        { readonly: 'ok' | 'unavailable'; path: 'ok' | 'unavailable'; evidence_threshold: number }
+        {
+          readonly: 'ok' | 'unavailable';
+          /**
+           * `partial`（2026-09-16 新增）：该侧有结构化轨迹，但「必然带路径」的
+           * 读调用里出现了提不出路径的——即提取器相对厂商实际参数名已经退化。
+           * 可无路径的搜索/列目录类不计入分母：不带目录的搜索是合法形态。
+           */
+          path: 'ok' | 'partial' | 'unavailable';
+          evidence_threshold: number;
+        }
       >
     >;
     /**

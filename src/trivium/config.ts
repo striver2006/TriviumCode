@@ -246,7 +246,6 @@ export function defaultConfig(): Config {
       on_drift_related: 'fail',
       // `.env*` 只匹配根目录（glob 的 * 不跨 /），子目录里的 config/.env.production 要靠 **/.env*
       sensitive_globs: ['.env*', '**/.env*', '**/*.pem', '**/*.key', '**/id_rsa*'],
-      block_severities: ['blocker', 'major'],
       skip_doc_only_review: false,
       skip_globs: ['**/*.md', 'docs/**', '**/*.txt'],
       never_skip_globs: [

@@ -7,7 +7,8 @@
  */
 import type { Ctx, Stage } from './types.js';
 import { setGateChecked, getGate, type GateState } from './state.js';
-import { updateTask, type ApprovalRecord } from './meta.js';
+import { updateTask, readTaskStrict, type ApprovalRecord } from './meta.js';
+import type { ArchiveLayout } from './archive.js';
 import { resolveTopic } from './topic.js';
 import { resetStopBlockCount } from './lock.js';
 import { EXIT, TriviumError } from './exit-codes.js';
@@ -50,6 +51,61 @@ export interface ApprovalInput {
 const ABANDONABLE: readonly GateState[] = [
   'idle', 'review_done_awaiting_disposition', 'awaiting_approval', 'approved', 'rejected', 'abandoned',
 ];
+
+/**
+ * 人工审批的**终态**：这三种都表示「这一轮，人已经表过态了」。
+ *
+ * 只列 `approved` 是不够的——`setGateChecked` 的 `expect` 只比 `runId`，
+ * 对同一轮已 `rejected` / `abandoned` 的闸门照样会推进，
+ * 于是「校验命令撤销人的表态」这个缺陷换个终态原样重现。
+ */
+const HUMAN_DECIDED: readonly GateState[] = ['approved', 'rejected', 'abandoned'];
+
+/**
+ * 本轮是否已经过人工表态——**以 `task.json.approvals[]` 为正本**。
+ *
+ * ## 为什么需要它
+ *
+ * `gate --check` 是**校验**命令，它没有资格撤销人的审批。而现状是：校验通过后
+ * 按 `run.json.entry` 无条件推进闸门状态（B/C/D 推等待审批、A 推 idle），
+ * 两处都只带 `expect: { runId }`、不看当前状态。于是「审批后按裁决补修复、
+ * 改动涉及裁决件、顺手复校一次完整性」这条极常见的路径，会把已放行的闸门重新关上。
+ * 2026-09-16 实测撞上一次，撞上后连提交都做不了（Hook 按本机状态文件判写锁）。
+ *
+ * ## 为什么认 `task.json` 而不是本机状态文件
+ *
+ * 审批记录（`approvals[]`，含时间、决定与会话来源）只在这里，它是进 Git 的审计正本；
+ * 本机状态文件是运行时写锁载体、不进 Git。两份曾经分叉成互相矛盾的答案
+ * （正本记 `approved`、本机记 `awaiting_approval`），而校验命令只写了后者。
+ * 认正本即可判断，**不必让校验命令去写第二份状态**——那会引入跨文件写序与
+ * 半途失败的新问题（两者分属不同锁域，没有原子写）。
+ *
+ * ## fail-closed
+ *
+ * 正本**读不出来**时返回 true（视为已表态、不推进）。`readTaskStrict` 特意把
+ * `missing` 与 `unreadable` 分开，就是为了这里：走宽松读会把「锚被搅坏」当成
+ * 「没有审批记录」，于是已审批的闸门照旧被打回——**恰是本函数要修的缺陷，
+ * 换个触发条件重现**。`missing` 则是真的没有记录（新主题），返回 false。
+ */
+export async function humanDecidedThisRound(
+  layout: ArchiveLayout,
+  stage: Stage,
+  runId: string,
+): Promise<boolean> {
+  // 空 run_id 不能当通配：`recordApproval` 在 gate.run_id 为 null 时写的就是空串
+  if (!runId) return false;
+
+  const { task, state } = await readTaskStrict(layout);
+  if (state === 'unreadable') return true; // fail-closed，理由见上
+  if (state === 'missing') return false;
+
+  return (task.approvals ?? []).some(
+    (a) =>
+      a.stage === stage &&
+      a.run_id === runId &&
+      HUMAN_DECIDED.includes(a.decision as GateState),
+  );
+}
 
 export async function recordApproval(i: ApprovalInput): Promise<{ message: string }> {
   const { ctx } = i;
