@@ -93,6 +93,17 @@ export async function makeFixture(opts: FixtureOptions): Promise<Fixture> {
       'runtime:',
       `  run_root: ${root}-runs`,
       'review:',
+      /*
+       * **夹具显式钉两侧，不跟生产默认值漂移**（D4-4 翻 `defaultSelected` 时暴露）。
+       *
+       * 这些集成用例考的是闸门、工件落位、补丁冻结、漂移判定——**与几侧参审无关**。
+       * 而它们的桩注入写死了 `{gemini, glm}`，于是生产默认值一变成三侧，
+       * 103 条当场红在「codex 没有桩」上：测试对象没变，环境前提被别处的一行开关改了。
+       *
+       * 钉住之后，「默认跑几侧」这个决定归生产配置管，这些用例只管自己那件事。
+       * **三侧的默认路径另有覆盖**：接入套件验收（`stub-agent-kit.test.ts`）走的就是三审全链路。
+       */
+      '  default_critics: [gemini, glm]',
       '  timeout_s:',
       '    plan: 120',
       '    code: 120',

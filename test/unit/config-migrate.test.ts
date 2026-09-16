@@ -204,7 +204,7 @@ test('loadCtx：config.local.yaml 的 v1 覆盖片段同样生效', async () => 
  * 而 `deepMerge` 对数组是整体替换，另一家被静默清除。
  * 本步无消费端所以不影响运行，但错值已经在配置里；第 5 步接线后就是静默单审。
  */
-test('loadCtx：local 只覆盖单侧时，default_critics 仍是两家（不被片段顶掉）', async () => {
+test('loadCtx：local 只覆盖单侧时，default_critics 仍是缺省集合（不被片段顶掉）', async () => {
   const root = await projectWith({
     'config.yaml': v1Yaml(),
     'config.local.yaml': 'critics:\n  gemini:\n    agent: my-critic\n',
@@ -227,7 +227,50 @@ test('loadCtx：主配置只写一侧时，default_critics 同样保持缺省集
   assert.deepEqual(
     ctx.config.review.default_critics, [...DEFAULT_CRITICS],
     'v1 的 critics 键集不是选侧机制——迁移不得据它缩小默认集合。' +
-      '（「全集」这个措辞随 M8 第 3 步作废：能选的是三家、默认跑的是两家）',
+      '（「全集」这个措辞随 M8 第 3 步作废：能选的是启用集合，默认跑的是缺省集合）',
+  );
+});
+
+/*
+ * ── 缺省集合的生效边界（r12 CODEX-02）──
+ *
+ * `defaultSelected` 翻一个字段，效果分成**两类项目**：
+ *
+ *   · 配置里**没有** `default_critics` 的（v1 迁移路径故意不补该键）→ 翻转生效；
+ *   · 配置里**有**那一行的（`init` 落盘 `defaultConfig()` 整份，该键在里面）→ 翻转无效，
+ *     盘上那份字面量说了算。
+ *
+ * 同一份决策对两类项目效果相反，而没有任何提示会告诉用户自己属于哪一类。
+ * 下面两条把这个分叉钉住：**它不是缺陷，是需要被知道的行为**，
+ * 将来若改成「init 不落该键」，第二条会红，提醒改的人这是个语义变更。
+ */
+test('缺省集合的生效边界：盘上没有 default_critics 时，运行时取 DEFAULT_CRITICS', async () => {
+  const raw = YAML.parse(v1Yaml());
+  const root = await projectWith({ 'config.yaml': YAML.stringify(raw) });
+  const onDisk = YAML.parse(await fs.readFile(path.join(root, '.trivium/config.yaml'), 'utf8'));
+  assert.equal(
+    onDisk?.review?.default_critics,
+    undefined,
+    'v1 迁移路径不该给磁盘补上这个键——补了就等于把当时的缺省集合冻进 Git',
+  );
+
+  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
+  assert.deepEqual(
+    ctx.config.review.default_critics,
+    [...DEFAULT_CRITICS],
+    '盘上无该键 ⟹ 运行时入选集合完全由注册表的 defaultSelected 决定',
+  );
+});
+
+test('缺省集合的生效边界：盘上写死了 default_critics 时，注册表翻转不生效', async () => {
+  const raw = YAML.parse(v1Yaml());
+  raw.review = { ...(raw.review ?? {}), default_critics: ['gemini'] };
+  const root = await projectWith({ 'config.yaml': YAML.stringify(raw) });
+  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
+  assert.deepEqual(
+    ctx.config.review.default_critics,
+    ['gemini'],
+    '盘上的字面量优先于注册表——已 init 过的项目要改默认集合，得动那份 YAML 或重跑 init',
   );
 });
 
@@ -273,7 +316,7 @@ test('校验：登记但未启用为审核者的 Agent 出现在 default_critics
   const problems = validateConfig(cfg);
   assert.ok(
     problems.some((p) => p.includes(notEnabled)),
-    `静默忽略会让用户以为第三家已经在跑了，实得：${problems.join('；')}`,
+    `静默忽略会让用户以为那一侧已经在跑了，实得：${problems.join('；')}`,
   );
 });
 

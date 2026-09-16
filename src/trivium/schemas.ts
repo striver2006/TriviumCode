@@ -26,6 +26,7 @@ import {
   agentById,
   isAgentId,
 } from './agents/registry.js';
+import { DEFAULT_MAX_CRITICS } from './types.js';
 
 let ajv: Ajv2020 | undefined;
 const cache = new Map<string, ValidateFunction>();
@@ -189,7 +190,8 @@ function checkConfigAgents(data: unknown): string[] {
 
   const picked = c.review?.default_critics;
   if (Array.isArray(picked)) {
-    const max = typeof c.review?.max_critics === 'number' ? c.review.max_critics : 3;
+    const max =
+      typeof c.review?.max_critics === 'number' ? c.review.max_critics : DEFAULT_MAX_CRITICS;
     if (picked.length > max) {
       problems.push(`review.default_critics 有 ${picked.length} 项，超过 max_critics=${max}`);
     }

@@ -89,6 +89,13 @@ export const CRITICS: readonly CriticId[] = CRITIC_AGENT_IDS as readonly CriticI
 export const DEFAULT_CRITICS: readonly CriticId[] =
   DEFAULT_CRITIC_AGENT_IDS as readonly CriticId[];
 
+/**
+ * `review.max_critics` 的内置默认值，同时是缺省集合长度的上限。
+ *
+ * 唯一登记处在注册表（与 `defaultSelected` 的不变量同处一地），这里只转出。
+ */
+export { DEFAULT_MAX_CRITICS } from './agents/registry.js';
+
 export const CRITIC_VENDOR: Record<CriticId, Vendor> = Object.fromEntries(
   CRITICS.map((c) => [c, agentById(c)!.vendor]),
 ) as Record<CriticId, Vendor>;

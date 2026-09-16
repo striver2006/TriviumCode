@@ -1,0 +1,139 @@
+---
+schema: trivium.review.v1
+topic: M8-Codex审核者接入
+stage: code
+role: gemini
+vendor: antigravity
+agent_cli: agy/1.2.4
+model_requested: gemini-3.8-flash-high
+model_effective: gemini-3.8-flash-high
+model_effective_source: envelope
+effort: high
+run_id: 20260916T092815Z
+rerun_index: 12
+snapshot_hash: sha256:6b3d34872c8823d3c41525b5ee5d4ea231f202fde437f0709dbf27d0c4ffab97
+blind: true
+started_at: 2026-09-16T09:28:16.157Z
+finished_at: 2026-09-16T09:43:13.889Z
+duration_s: 412
+tool_calls:
+  read: 50
+  grep: 15
+  glob: 1
+  run_command: 0
+  project_reads: 25
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 1
+  minor: 1
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: a6cec380-eadb-4432-97bb-9faabeda762c
+---
+
+# 代码审查：M8-Codex审核者接入
+
+> Critic-A · Google Antigravity ｜ 模型 `gemini-3.8-flash-high`
+> ｜ 运行 `20260916T092815Z` ｜ 第 12 轮
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+1. test/unit/archive.test.ts:359 将专门测试「不传入选集合」的负例用例做反，误加了入选集合参数 TWO，破坏了回落锁护。
+2. src/trivium/selftest.ts:250 跟随缺省集合未改彻底，工件落盘断言仍硬编码只查两侧，遗漏了 codex。
+3. 决策 C（profile 与模型钉入共享配置）：AC-20 中 flash 耗时已达 1038s，若未显式指定模型而回落到 defaultConfig 的 qwen3.8-max，在 plan 阶段（默认超时 900s）极易发生超时；且硬性抬高了协作者环境门槛。
+4. 其余既有用例（fixture.ts、overlay.ts、stub-agent-kit.test.ts、run-meta.test.ts、divergence.test.ts）解耦考点与缺省集合的判断均准确无误。
+
+**结论**：`request-changes`
+
+## 审查意见（共 2 条：重要 1 ｜ 次要 1）
+
+### AGY-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/archive.test.ts:359` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：专门验证「不传入选集合时回落到缺省集合并报错」的负例用例被显式传入了入选集合参数 TWO，导致该用例丧失锁护测试目标（判断做反）
+
+**依据**：test/unit/archive.test.ts:352 测试名为「单侧轮次：不传入选集合就会回落到启用集合，并误报另一侧缺件」，注释明确说明「这是修复前的行为。留作负例，锁住『传与不传有差别』——否则上面的正例证明不了什么」。在 diff 中第 359 行被改写为 checkStageArtifacts(l, 'plan', 1, TWO)，使得原本专门测试「不传入选集合」的用例变成了「显式传入 TWO」，直接推翻了该负例用例的成立前提与锁护价值。且由于当前缺省集合 DEFAULT_CRITICS 包含 codex、gemini、glm，不传参数依然会因缺少 glm/codex 报缺件，该处替换纯属机械批量改写导致的判断做反。
+
+**建议**：恢复此处 checkStageArtifacts(l, 'plan', 1) 的缺省无第四参调用，保持该用例对「不传入选集合时回落至缺省集合」这一行为的有效验证。
+
+### AGY-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/selftest.ts:250` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：selftest 在断言工件落盘时仍硬编码检查 gemini 与 glm 两侧，未随 DEFAULT_CRITICS 完整泛化至全量缺省审核者（漏查 codex）
+
+**依据**：src/trivium/selftest.ts:250 依然硬编码写作 `const bothSides = docs.some((f) => f.endsWith('-gemini.md')) && docs.some((f) => f.endsWith('-glm.md'));` 以及 `record('两侧审查文档均已落盘', 0, 0, docs.join(', '), bothSides);`。尽管前后的 STUB、addresses 以及 disposition 表格均已按 DEFAULT_CRITICS 动态派生，此处却漏掉了对 codex 工件（-codex.md）落盘的断言。若 codex 侧在自检运行中未能正常落盘工件，该步骤依然会误判为通过。
+
+**建议**：将 bothSides 的硬编码判断改用 DEFAULT_CRITICS.every() 遍历匹配每侧的 suffix（如 `-${agentById(c)?.suffix ?? c}.md`），使断言与派生事实完全对齐。
+
+## 认为正确的部分
+
+- test/helpers/fixture.ts 显式钉住 default_critics: [gemini, glm] 判断正确：100 多条集成用例（闸门、补丁冻结、漂移）仅考状态机逻辑且只桩了两侧，钉住可阻断生产缺省集合漂移带来的误伤。
+- test/fixtures/stub-agent-kit/overlay.ts 将桩 Agent 的 defaultSelected 置为 false 判断正确：避免三侧缺省下叠加成四侧突破 max_critics，且契合新接入 Agent 默认不静默消耗配额的准则。
+- test/integration/stub-agent-kit.test.ts 显式钉住 default_critics: [gemini, glm, ${STUB_ID}] 判断正确：夹具未配 codex 探针，钉住可防止预检在与考点无关的 codex 探针检查上失败。
+- test/unit/run-meta.test.ts 将历史 v1 读回用例中的 only 写死为 'gemini' 判断正确：run.v1 历史契约仅枚举两值，当代 DEFAULT_CRITICS[0] 变成 codex 无法越界侵入历史夹具。
+- test/unit/divergence.test.ts 显式传入 pair: { a: 'gemini', b: 'glm' } 正确：断言验证的是配对身份输出格式（gemini × glm），而非缺省配对的第一、二家是谁。
+- src/trivium/selftest.ts 的 STUB、addresses 与 disposition 行全面按 DEFAULT_CRITICS 动态派生，方向正确，同时促成了 registry-parity 白名单死条目的健康清理。
+
+## 未覆盖范围（本侧盲区）
+
+- 送审任务书禁读清单中的所有文件（含 .trivium 目录树及各侧历史评审文件），未直接检视 .trivium/config.yaml 盘上物理文件。
+- 未在真实子进程环境下执行 npm test 或 doctor --selftest 命令（受审查员环境权限限制）。
+- 未对外部 OpenAI/Codex API 的实际网络交互与响应耗时进行实时探测。
+
+## 实际查阅的项目文件
+
+- `CLAUDE.md`
+- `AGENTS.md`
+- `doc/05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md`
+- `.reviews/M8-Codex审核者接入/code/2026-09-16-M8-Codex审核者接入-r11-response-claude.md`
+- `.reviews/M8-Codex审核者接入/code/2026-09-16-M8-Codex审核者接入-r10-response-claude.md`
+- `.reviews/M8-Codex审核者接入/code/_meta/changes-20260916T092815Z.diff`
+- `src/trivium/agents/registry.ts`
+- `src/trivium/config.ts`
+- `src/trivium/adapters/codex.ts`
+- `src/trivium/probes/codex.ts`
+- `src/trivium/selftest.ts`
+- `src/trivium/archive.ts`
+- `src/trivium/types.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/report.ts`
+- `src/trivium/gate.ts`
+- `src/trivium/preflight.ts`
+- `src/trivium/divergence.ts`
+- `test/helpers/fixture.ts`
+- `test/fixtures/stub-agent-kit/overlay.ts`
+- `test/integration/stub-agent-kit.test.ts`
+- `test/unit/archive.test.ts`
+- `test/unit/divergence.test.ts`
+- `test/unit/preflight.test.ts`
+- `test/unit/registry-parity.test.ts`
+- `test/unit/run-meta.test.ts`
+- `test/unit/config-schema.test.ts`
+- `test/unit/critics.test.ts`
+- `test/unit/config-migrate.test.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":50,"grep":15,"glob":1,"run_command":0,"project_reads":25}
+
+---
+
+*本文档由 TriviumCode 编排器从 `gemini` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

@@ -464,7 +464,7 @@ test('模型目录为空时不判失败，但必须在输出里点名是哪几�
 
 test('模型目录齐备时不出现「未实际校验」字样（避免恒真提示）', async () => {
   const ctx = await fakeCtx();
-  const r = checkModelSlugs(ctx.config, 'plan');
+  const r = checkModelSlugs(ctx.config, 'plan', {}, ['gemini', 'glm']);
   assert.equal(r.ok, true);
   assert.doesNotMatch(
     r.detail, /未实际校验/,

@@ -101,7 +101,8 @@ test('归一化把 0.00 的原始 Jaccard 救回真实重合度', () => {
 test('两侧看同一批地方 → 判多审退化', () => {
   const a = review(['src/a.ts:10', 'src/b.ts:20', 'src/c.ts:30']);
   const b = review(['src/a.ts:8-12', 'src/b.ts:20', 'src/c.ts:28-33']);
-  const d = measureDivergence(a, b);
+  // 显式传配对：本条考的是「配对身份出现在人读输出里」，不是缺省集合的前两家是谁
+  const d = measureDivergence(a, b, 0.8, { a: 'gemini', b: 'glm' });
   assert.equal(d.jaccard, 1);
   assert.equal(d.degenerate, true);
   assert.match(renderDivergence(d), /多审退化/);

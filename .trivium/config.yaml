@@ -78,6 +78,12 @@ profiles:
       plan: GLM-5.3
       code: GLM-5.3
       bug: GLM-5.3
+    # 用 flash 而非内置默认的 qwen3.8-max：max 在 effort=high 下撞满过 plan 阶段的
+    # 1500s 预算、零产出（2026-09-16 实测），flash 则 419s / 1038s 交卷。
+    codex:
+      plan: qwen3.8-flash
+      code: qwen3.8-flash
+      bug: qwen3.8-flash
   flash:
     gemini:
       plan: gemini-3.8-flash-high
@@ -87,6 +93,10 @@ profiles:
       plan: GLM-5.3-Flash
       code: GLM-5.3-Flash
       bug: GLM-5.3-Flash
+    codex:
+      plan: qwen3.8-flash
+      code: qwen3.8-flash
+      bug: qwen3.8-flash
 active_profile: default
 gate:
   require_adjudication: true
@@ -138,3 +148,14 @@ agents:
     entry: null
     max_turns: 40
     unsupported_override: reject
+  # 显式钉住，不靠代码内置默认兜底。gemini 与 glm 本来就是显式的，唯独 codex 此前
+  # 靠默认值——改一行代码默认就能悄悄改掉本仓库的审查模型，而本文件看起来什么都没发生。
+  # profile 决定 provider 家族，也决定模型目录（目录随 profile 分层，slug 猜不出家族）。
+  codex:
+    vendor: openai
+    bin: null
+    profile: qwen
+    effort:
+      plan: high
+      code: high
+      bug: high

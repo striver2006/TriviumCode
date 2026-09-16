@@ -122,8 +122,15 @@ export function measureDivergence(
   b: Review | null,
   threshold = 0.8,
   /*
-   * 默认配对取**缺省集合**的前两家（M8 第 3 步）：启用全集里 codex 排在最前，
-   * 而它默认不入选——按全集取会让「没传配对」时报出一对根本没跑的侧。
+   * 默认配对取**缺省集合**的前两家。
+   *
+   * M8 第 3 步这么定，当时的理由是「codex 在启用全集里排最前、却默认不入选，
+   * 按全集取会报出一对根本没跑的侧」。**D4-4 之后 codex 已进缺省集合**，
+   * 那个具体理由不再成立，但结论不变且更强：默认配对就该取**实际会跑的那几家**，
+   * 而缺省集合正是它。
+   *
+   * 真实调用一律显式传 `pair`（`report.ts` 逐对算），这个默认值只服务于
+   * 没有上下文的调用点与用例。
    */
   pair: { a: CriticId; b: CriticId } = { a: DEFAULT_CRITICS[0]!, b: DEFAULT_CRITICS[1] ?? DEFAULT_CRITICS[0]! },
 ): DivergenceReport {

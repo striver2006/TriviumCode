@@ -148,7 +148,44 @@ export const AGENTS: readonly AgentDescriptor[] = [
     suffix: 'codex',
     findingPrefix: 'CODEX',
     criticEnabled: true, // M8 第 3 步启用
-    defaultSelected: false, // D-1：启用后也不进默认集合，要三审须显式选
+    /*
+     * **D4-4（2026-09-16，决策者 Chen Zhenbo）：纳入默认集合。**
+     *
+     * M8 第 3 步的 D-1 当时定的是「启用后也不进默认集合」，理由是
+     * 「第 4 步之前这一侧一次真实审查都没跑过，让它默认参与每一轮是拿用户的配额做测试」。
+     * 那个理由**随 AC-20 达成而消失**：两个家族各真实审查一次，四个分量逐一有据，
+     * 耗时 293s / 1038s、`project_reads` 31 与 40、`evidence_ok` 均为真
+     * （见 `doc/05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md`）。
+     *
+     * **代价是用户可见的**：此后每次 `/dual-review-*` 默认三侧，配额 ×1.5，
+     * 墙钟取最慢侧。这是本项目里少数几个「改一行、每个人每次都感觉得到」的开关，
+     * 所以它由项目负责人拍板、不由实现顺带决定——翻回去同样是一行。
+     *
+     * **另一条代价要说在这里**：默认三侧意味着**预检会检查 codex 这一侧**，
+     * 于是一台没配置 codex profile 的机器将无法跑任何审查。
+     * 失败是响亮的（`availability()` 给可粘贴的配置指引，不静默回落），
+     * 但这条确实把本项目的环境门槛抬高了一档。
+     *
+     * ── 以下两条由 r12 代码双审补齐（CODEX-02 / CODEX-06），它们是这次翻转的
+     *    真实边界，先前只写了上面两条代价，读的人无从判断这一行改到了谁 ──
+     *
+     * **① 这一行只对「配置里没有显式写 `default_critics`」的项目生效。**
+     * `trivium init` 落盘的是 `defaultConfig()` 去掉 `probe` 的**整份** YAML，
+     * 而 `default_critics: [...DEFAULT_CRITICS]` 就在里面（`config.ts`）——
+     * 于是**任何已 init 过的项目都把当时的缺省集合冻进了进 Git 的配置文件**，
+     * 此后翻本字段对它们无效，得手工改那份 YAML 或重跑 init。
+     * 本仓库不受影响：它走的是 v1 迁移路径，而迁移**故意不补该键**，
+     * 所以 `.trivium/config.yaml` 里没有它、本次翻转在这里真实生效。
+     * 同一份决策对两类项目效果相反，而没有任何提示会告诉用户自己属于哪一类。
+     *
+     * **② 按内置默认超时档，本侧在 plan 阶段偏紧。**
+     * 内置默认是 `timeout_s: { plan: 900, code: 1200, bug: 1200 }`，
+     * 而 AC-20 实测本侧一次代码审耗时 **1038s**——已越过 plan 档，
+     * 距 code 档只剩约 14% 余量；`runner` 对超时**不重试**，`failure_policy` 默认 strict。
+     * 翻转前这只砸在显式选它的人身上，翻转后落在**每个人每次的默认路径**上。
+     * 本仓库把 `plan` 调到了 1500s 所以不吃紧，但内置默认是给别人用的。
+     */
+    defaultSelected: true,
     driverEnabled: false, // M10 启用
     guardLevel: 'L2',
     instructionFiles: ['AGENTS.md'],
@@ -224,16 +261,63 @@ export const CRITIC_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.criti
  * 会让缺省配置直接跑不起来（`critics.ts` 拒掉未启用的 id），
  * 那种组合是登记错误，不该等到运行期才发现。
  */
-export const DEFAULT_CRITIC_AGENT_IDS: readonly AgentId[] = (() => {
-  const bad = AGENTS.filter((a) => a.defaultSelected && !a.criticEnabled).map((a) => a.id);
+/**
+ * `review.max_critics` 的内置默认值，**同时是缺省集合长度的上限**。
+ *
+ * 这个 `3` 此前散在三处（`defaultConfig()`、v1 迁移补默认值、schema 校验兜底），
+ * 与缺省集合之间没有任何机器约束——而 D4-4 之后两者**正好相等**，零余量。
+ * 见 `deriveDefaultCritics` 的说明。
+ *
+ * **必须定义在 `DEFAULT_CRITIC_AGENT_IDS` 之前**：后者在模块加载期就调用
+ * `deriveDefaultCritics`，而这个常量是它的默认参数，写在后面会撞 TDZ
+ * （`const` 不像函数声明那样提升，整个 CLI 会起不来）。
+ */
+export const DEFAULT_MAX_CRITICS = 3;
+
+export const DEFAULT_CRITIC_AGENT_IDS: readonly AgentId[] = deriveDefaultCritics(AGENTS);
+
+/**
+ * 由注册表派生「缺省入选」集合，并在同一处校验两条不变量。
+ *
+ * 提成纯函数而不是内联 IIFE，是为了让这两条不变量**能被测到**：
+ * `DEFAULT_CRITIC_AGENT_IDS` 是模块加载期算出的常量，用例没法换一份注册表去试。
+ * 于是「加了守卫」与「守卫守对了东西」之间隔着一道没人验过的缝——
+ * 而本项目在 M8 里已经踩过一次同类的坑（r12 AGY-01：守卫还在，守的东西没了）。
+ *
+ * ## 不变量一：缺省集合 ⊆ 启用集合
+ *
+ * `defaultSelected` 为真而 `criticEnabled` 为假，会让默认配置直接跑不起来
+ * （`critics.ts` 拒掉未启用的 id）。那是登记错误，不该等到运行期才发现。
+ *
+ * ## 不变量二：缺省集合不得超过 `max_critics` 的内置默认
+ *
+ * 越界的现场**不在这里**，而是「每个项目 `init` 出来的配置变成非法配置」：
+ * `default_critics` 项数超过 `max_critics`，schema 当场判错，
+ * 而改的人在注册表里看不到任何警告（r12 CODEX-05）。
+ * 所以在这里就炸，逼着同一次改动把上限一起抬上去。
+ */
+export function deriveDefaultCritics(
+  agents: readonly AgentDescriptor[],
+  maxCritics: number = DEFAULT_MAX_CRITICS,
+): readonly AgentId[] {
+  const bad = agents.filter((a) => a.defaultSelected && !a.criticEnabled).map((a) => a.id);
   if (bad.length > 0) {
     throw new Error(
       `注册表登记错误：${bad.join('、')} 标了 defaultSelected 却没有 criticEnabled。\n` +
         '  缺省入选必须是已启用审核者的子集，否则默认配置一跑就被 critics.ts 拒掉。',
     );
   }
-  return AGENTS.filter((a) => a.defaultSelected).map((a) => a.id);
-})();
+  const picked = agents.filter((a) => a.defaultSelected).map((a) => a.id);
+  if (picked.length > maxCritics) {
+    throw new Error(
+      `注册表登记错误：缺省入选 ${picked.length} 家（${picked.join('、')}），` +
+        `超过内置上限 max_critics=${maxCritics}。\n` +
+        '  再纳入一家默认审核者时，必须同时抬高这个上限——否则每个项目 init 出来的\n' +
+        '  配置都会因 default_critics 超限而判错，且错误现场离改动点很远。',
+    );
+  }
+  return picked;
+}
 
 /** 当前可作为 Driver 的 Agent（M7a：claude） */
 export const DRIVER_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.driverEnabled).map(

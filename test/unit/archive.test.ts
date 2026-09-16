@@ -15,7 +15,7 @@ import {
   type ArchiveLayout,
 } from '../../src/trivium/archive.js';
 import { newRunMeta } from '../../src/trivium/meta.js';
-import { CRITICS, type StageOrVerify } from '../../src/trivium/types.js';
+import { CRITICS, DEFAULT_CRITICS, type StageOrVerify } from '../../src/trivium/types.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 
 async function tmpLayout(): Promise<ArchiveLayout> {
@@ -24,6 +24,15 @@ async function tmpLayout(): Promise<ArchiveLayout> {
 }
 
 const DATE = '2026-09-10';
+
+/**
+ * 本文件考的是**工件集语义**（缺什么、按轮次隔离、原稿不被覆盖），
+ * **不是「默认跑几侧」**。所以显式钉两侧，不随注册表的 `defaultSelected` 漂移——
+ * 用例摆的也正是两侧的文档。D4-4 把 codex 纳入缺省集合时，这里原本按缺省集合回落，
+ * 于是「四件套」变五件、一片红，而被考的语义一个字没变。
+ */
+const TWO = ['gemini', 'glm'] as const;
+
 
 test('首跑落盘：文件名无 -r 后缀，返回相对归档根的路径', async () => {
   const l = await tmpLayout();
@@ -153,19 +162,19 @@ test('验证记录不带角色后缀，重复写同样抬升轮次', async () =>
 
 test('阶段最低工件集：plan 缺件时报出缺什么', async () => {
   const l = await tmpLayout();
-  let c = await checkStageArtifacts(l, 'plan', 1);
+  let c = await checkStageArtifacts(l, 'plan', 1, TWO);
   assert.equal(c.ok, false);
   assert.equal(c.missing.length, 4, 'plan 四件套全缺');
 
   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', rerunIndex: 1, content: 'a', date: DATE });
   await writeArtifact({ layout: l, stage: 'plan', role: 'gemini', writer: 'gemini', rerunIndex: 1, content: 'b', date: DATE });
   await writeArtifact({ layout: l, stage: 'plan', role: 'glm', writer: 'glm', rerunIndex: 1, content: 'c', date: DATE });
-  c = await checkStageArtifacts(l, 'plan', 1);
+  c = await checkStageArtifacts(l, 'plan', 1, TWO);
   assert.equal(c.ok, false);
   assert.deepEqual(c.missing, ['裁决件 …-revised-claude.md']);
 
   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'd', date: DATE });
-  c = await checkStageArtifacts(l, 'plan', 1);
+  c = await checkStageArtifacts(l, 'plan', 1, TWO);
   assert.equal(c.ok, true, `仍缺：${c.missing.join(', ')}`);
 });
 
@@ -188,20 +197,20 @@ test('未登记的审查件被查出来：堵住「把伪审查件搬进阶段�
   );
 
   // 登记齐全时照常通过
-  let c = await checkStageArtifacts(l, 'plan', 1, undefined, undefined, recorded);
+  let c = await checkStageArtifacts(l, 'plan', 1, TWO, undefined, recorded);
   assert.equal(c.ok, true, `不该有缺口：${c.missing.join(', ')}`);
 
   // 手工塞一份没登记的审查件进阶段目录（模拟 cp -R 搬运）
   const smuggled = path.join(l.archiveRoot, l.topic, 'plan', `${DATE}-登录重构-r9-gemini.md`);
   await fs.writeFile(smuggled, '# 伪造的审查意见\n');
 
-  c = await checkStageArtifacts(l, 'plan', 1, undefined, undefined, recorded);
+  c = await checkStageArtifacts(l, 'plan', 1, TWO, undefined, recorded);
   assert.equal(c.ok, false, '未登记的审查件必须被查出来');
   assert.match(c.missing.join(' '), /未登记的审查件/);
   assert.match(c.missing.join(' '), /r9-gemini\.md/);
 
   // 不传登记清单时跳过该项（向后兼容）
-  const skipped = await checkStageArtifacts(l, 'plan', 1);
+  const skipped = await checkStageArtifacts(l, 'plan', 1, TWO);
   assert.equal(skipped.ok, true, '没提供登记清单就不该据此判失败');
 });
 
@@ -209,11 +218,11 @@ test('阶段最低工件集：code 三件套不含 -claude.md 原稿，裁决件
   const l = await tmpLayout();
   await writeArtifact({ layout: l, stage: 'code', role: 'gemini', writer: 'gemini', rerunIndex: 1, content: 'a', date: DATE });
   await writeArtifact({ layout: l, stage: 'code', role: 'glm', writer: 'glm', rerunIndex: 1, content: 'b', date: DATE });
-  let c = await checkStageArtifacts(l, 'code', 1);
+  let c = await checkStageArtifacts(l, 'code', 1, TWO);
   assert.deepEqual(c.missing, ['裁决件 …-response-claude.md']);
 
   await writeArtifact({ layout: l, stage: 'code', role: 'claude', writer: 'driver', kind: 'response', rerunIndex: 1, content: 'c', date: DATE });
-  c = await checkStageArtifacts(l, 'code', 1);
+  c = await checkStageArtifacts(l, 'code', 1, TWO);
   assert.equal(c.ok, true, `仍缺：${c.missing.join(', ')}`);
 });
 
@@ -224,8 +233,8 @@ test('工件集校验按轮次隔离：第二轮缺件不受第一轮齐备影�
   }
   await writeArtifact({ layout: l, stage: 'bug', role: 'claude', writer: 'driver', rerunIndex: 1, content: 'y', date: DATE });
   await writeArtifact({ layout: l, stage: 'bug', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'z', date: DATE });
-  assert.equal((await checkStageArtifacts(l, 'bug', 1)).ok, true);
-  assert.equal((await checkStageArtifacts(l, 'bug', 2)).ok, false, '第二轮尚未开始，应判缺件');
+  assert.equal((await checkStageArtifacts(l, 'bug', 1, TWO)).ok, true);
+  assert.equal((await checkStageArtifacts(l, 'bug', 2, TWO)).ok, false, '第二轮尚未开始，应判缺件');
 });
 
 test('不同主题的工件互不干扰', async () => {
@@ -281,7 +290,7 @@ test('回归：重跑时原稿留在第 1 轮，第 2 轮四件套仍应判齐�
     await writeArtifact({ layout: l, stage: 'plan', role, writer: role, rerunIndex: 1, content: 'x', date: DATE });
   }
   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'y', date: DATE });
-  assert.equal((await checkStageArtifacts(l, 'plan', 1)).ok, true);
+  assert.equal((await checkStageArtifacts(l, 'plan', 1, TWO)).ok, true);
 
   // 第 2 轮：只有两侧审查 + 裁决件，原稿**不重新生成**
   for (const role of ['gemini', 'glm'] as const) {
@@ -289,7 +298,7 @@ test('回归：重跑时原稿留在第 1 轮，第 2 轮四件套仍应判齐�
   }
   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 2, content: 'y2', date: DATE });
 
-  const c2 = await checkStageArtifacts(l, 'plan', 2);
+  const c2 = await checkStageArtifacts(l, 'plan', 2, TWO);
   assert.equal(c2.ok, true, `第 2 轮应判齐备，实际缺：${c2.missing.join(', ')}`);
 });
 
@@ -299,7 +308,7 @@ test('回归：真的没有原稿时仍要报缺（不能因跨轮次查找而�
     await writeArtifact({ layout: l, stage: 'plan', role, writer: role, rerunIndex: 1, content: 'x', date: DATE });
   }
   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'y', date: DATE });
-  const c = await checkStageArtifacts(l, 'plan', 1);
+  const c = await checkStageArtifacts(l, 'plan', 1, TWO);
   assert.equal(c.ok, false);
   assert.ok(c.missing.some((m) => m.includes('原稿')));
 });
@@ -312,7 +321,7 @@ test('回归：本轮审查缺失不受跨轮次查找影响', async () => {
   }
   // 第 2 轮只有 gemini
   await writeArtifact({ layout: l, stage: 'plan', role: 'gemini', writer: 'gemini', rerunIndex: 2, content: 'x2', date: DATE });
-  const c = await checkStageArtifacts(l, 'plan', 2);
+  const c = await checkStageArtifacts(l, 'plan', 2, TWO);
   assert.equal(c.ok, false);
   assert.ok(c.missing.some((m) => m.includes('glm')), '第 2 轮缺 glm 必须报出');
   assert.ok(!c.missing.some((m) => m.includes('原稿')), '原稿在第 1 轮存在，不得报缺');
@@ -340,19 +349,42 @@ test('单侧轮次：传入真实入选集合则不报缺件', async () => {
   assert.equal(c.ok, true, `单侧轮次不该缺件，实缺：${c.missing.join(', ')}`);
 });
 
-test('单侧轮次：不传入选集合就会回落到启用集合，并误报另一侧缺件', async () => {
-  // 这是修复前的行为。留作负例，锁住「传与不传有差别」——否则上面的正例证明不了什么
+test('单侧轮次：不传入选集合就会回落到缺省集合，并误报未入选侧缺件', async () => {
+  /*
+   * 这是修复前的行为。留作负例，锁住「传与不传有差别」——否则上面的正例证明不了什么。
+   *
+   * **本例必须不传第四参**：它考的就是那个缺省形参本身，而生产路径确实会走到它
+   * （`cli.ts` 读不到 run.json 时回落）。2026-09-16 r12 三侧独立指出，
+   * 我曾用正则把本例也批量改成显式传 `TWO`——调用形状对上了，用例意图没了：
+   * 回落分支从此零覆盖，把它改回启用全集也不会变红。
+   *
+   * 断言按 `DEFAULT_CRITICS` **派生**，不写死侧数：缺省集合再变一次，
+   * 本例仍然锁的是「回落取的是缺省集合」这件事，而不是「回落到了那两家」。
+   *
+   * **本例锁得住什么、锁不住什么（变异验证实测，别高估它）**：
+   *   · 锁得住「传与不传有差别」——把回落值退化成任一真子集（实测 `[DEFAULT_CRITICS[0]]`）当场红；
+   *   · **锁不住**「回落取的是缺省集合而非启用全集」——`CRITICS` 与 `DEFAULT_CRITICS`
+   *     当前恰好相等（都是三家），把回落值改成 `CRITICS` 实测**不红**，因为那个变异语义无变化。
+   *     等两个集合再次分叉（有 Agent 只 `criticEnabled` 不 `defaultSelected`）时，
+   *     本例会自动重新获得这份区分力——它派生自 `DEFAULT_CRITICS`，不必改。
+   */
   const l = await tmpLayout();
   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', rerunIndex: 1, content: 'a', date: DATE });
   await writeArtifact({ layout: l, stage: 'plan', role: 'gemini', writer: 'gemini', rerunIndex: 1, content: 'b', date: DATE });
   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'd', date: DATE });
 
   const c = await checkStageArtifacts(l, 'plan', 1);
-  assert.equal(c.ok, false, '回落到启用集合时应当报缺件——这正是被修掉的缺陷');
-  assert.ok(
-    c.missing.some((m) => m.includes('glm')),
-    `缺件应点名未入选的那一侧，实得：${c.missing.join(', ')}`,
-  );
+  assert.equal(c.ok, false, '回落到缺省集合时应当报缺件——这正是被修掉的缺陷');
+
+  // 夹具只摆了 gemini：缺省集合里其余各侧都该被点名，一个不少
+  const notStaged = DEFAULT_CRITICS.filter((c2) => c2 !== 'gemini');
+  assert.ok(notStaged.length > 0, '缺省集合至少要有一侧不是 gemini，否则本例证明不了回落取值');
+  for (const side of notStaged) {
+    assert.ok(
+      c.missing.some((m) => m.includes(side)),
+      `缺件应点名缺省集合里未摆工件的 ${side} 侧，实得：${c.missing.join(', ')}`,
+    );
+  }
 });
 
 // ─────────── 读侧按阶段精确分发（设计 §6.7.1，M7b 第 3 步）───────────

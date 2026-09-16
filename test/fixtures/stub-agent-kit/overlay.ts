@@ -213,9 +213,28 @@ export async function applyOverlay(dest: string): Promise<string[]> {
     suffix: '${STUB_ID}',
     findingPrefix: '${STUB_PREFIX}',
     criticEnabled: true,
-    // 桩要参与默认三审场景，所以缺省入选也开着（M8 第 3 步新增的字段——
-    // 「能不能当审核者」与「不选时跑不跑它」自此是两件事）
-    defaultSelected: true,
+    /*
+     * **缺省不入选**：本用例用 \`--critics gemini,glm,<桩>\` 显式选三侧，不依赖缺省集合。
+     *
+     * 原先开着，是因为当时缺省集合只有两家、加上桩恰好是三侧。
+     * D4-4 把 codex 纳入缺省之后，这里再开着就是四侧、越过 \`max_critics\`，
+     * 夹具在**配置校验**这一步就起不来——与「三审链路能不能跑通」毫无关系。
+     *
+     * 而且缺省不入选本就是新增 Agent 的**正确示范**：一家刚接进来的 Agent
+     * 不该悄悄让每个人每次审查都多烧一份配额（D-1 与 D4-4 讨论的正是这件事）。
+     *
+     * ── 要把一家新 Agent **纳入默认**时，改动是三件而不是一件（r12 CODEX-05）──
+     *
+     *   1. 本字段改 \`true\`；
+     *   2. 同时抬高 \`DEFAULT_MAX_CRITICS\`（注册表里那个常量）——否则
+     *      \`deriveDefaultCritics\` 在**模块加载期**就抛，整个 CLI 起不来；
+     *   3. 已 \`init\` 过的项目还得动它们盘上那份 \`default_critics\`，
+     *      因为 \`init\` 把当时的缺省集合冻进了进 Git 的配置（见注册表 codex 条目的说明）。
+     *
+     * 这三件的机器约束在 \`registry-parity.test.ts\` 的「缺省集合」一组用例里，
+     * 用构造的注册表逐条撞红过，不依赖本夹具去证明。
+     */
+    defaultSelected: false,
     driverEnabled: false,
     guardLevel: 'L2',
     instructionFiles: ['STUB.md'],

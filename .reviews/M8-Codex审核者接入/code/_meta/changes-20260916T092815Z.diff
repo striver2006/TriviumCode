@@ -1,0 +1,463 @@
+# trivium changes.diff
+# run_id: 20260916T092815Z
+# base: ee4fc74
+# head: ee4fc74f231789b241fc9eef8369419f1664e409
+# files: 11
+#   src/trivium/agents/registry.ts
+#   src/trivium/divergence.ts
+#   src/trivium/selftest.ts
+#   test/fixtures/stub-agent-kit/overlay.ts
+#   test/helpers/fixture.ts
+#   test/integration/stub-agent-kit.test.ts
+#   test/unit/archive.test.ts
+#   test/unit/divergence.test.ts
+#   test/unit/preflight.test.ts
+#   test/unit/registry-parity.test.ts
+#   test/unit/run-meta.test.ts
+diff --git a/src/trivium/agents/registry.ts b/src/trivium/agents/registry.ts
+index 49c24d9..3790ce3 100644
+--- a/src/trivium/agents/registry.ts
++++ b/src/trivium/agents/registry.ts
+@@ -148,7 +148,25 @@ export const AGENTS: readonly AgentDescriptor[] = [
+     suffix: 'codex',
+     findingPrefix: 'CODEX',
+     criticEnabled: true, // M8 第 3 步启用
+-    defaultSelected: false, // D-1：启用后也不进默认集合，要三审须显式选
++    /*
++     * **D4-4（2026-09-16，决策者 Chen Zhenbo）：纳入默认集合。**
++     *
++     * M8 第 3 步的 D-1 当时定的是「启用后也不进默认集合」，理由是
++     * 「第 4 步之前这一侧一次真实审查都没跑过，让它默认参与每一轮是拿用户的配额做测试」。
++     * 那个理由**随 AC-20 达成而消失**：两个家族各真实审查一次，四个分量逐一有据，
++     * 耗时 293s / 1038s、`project_reads` 31 与 40、`evidence_ok` 均为真
++     * （见 `doc/05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md`）。
++     *
++     * **代价是用户可见的**：此后每次 `/dual-review-*` 默认三侧，配额 ×1.5，
++     * 墙钟取最慢侧。这是本项目里少数几个「改一行、每个人每次都感觉得到」的开关，
++     * 所以它由项目负责人拍板、不由实现顺带决定——翻回去同样是一行。
++     *
++     * **另一条代价要说在这里**：默认三侧意味着**预检会检查 codex 这一侧**，
++     * 于是一台没配置 codex profile 的机器将无法跑任何审查。
++     * 失败是响亮的（`availability()` 给可粘贴的配置指引，不静默回落），
++     * 但这条确实把本项目的环境门槛抬高了一档。
++     */
++    defaultSelected: true,
+     driverEnabled: false, // M10 启用
+     guardLevel: 'L2',
+     instructionFiles: ['AGENTS.md'],
+diff --git a/src/trivium/divergence.ts b/src/trivium/divergence.ts
+index 076681d..a06f53e 100644
+--- a/src/trivium/divergence.ts
++++ b/src/trivium/divergence.ts
+@@ -122,8 +122,15 @@ export function measureDivergence(
+   b: Review | null,
+   threshold = 0.8,
+   /*
+-   * 默认配对取**缺省集合**的前两家（M8 第 3 步）：启用全集里 codex 排在最前，
+-   * 而它默认不入选——按全集取会让「没传配对」时报出一对根本没跑的侧。
++   * 默认配对取**缺省集合**的前两家。
++   *
++   * M8 第 3 步这么定，当时的理由是「codex 在启用全集里排最前、却默认不入选，
++   * 按全集取会报出一对根本没跑的侧」。**D4-4 之后 codex 已进缺省集合**，
++   * 那个具体理由不再成立，但结论不变且更强：默认配对就该取**实际会跑的那几家**，
++   * 而缺省集合正是它。
++   *
++   * 真实调用一律显式传 `pair`（`report.ts` 逐对算），这个默认值只服务于
++   * 没有上下文的调用点与用例。
+    */
+   pair: { a: CriticId; b: CriticId } = { a: DEFAULT_CRITICS[0]!, b: DEFAULT_CRITICS[1] ?? DEFAULT_CRITICS[0]! },
+ ): DivergenceReport {
+diff --git a/src/trivium/selftest.ts b/src/trivium/selftest.ts
+index 96db80c..9ebf2e4 100644
+--- a/src/trivium/selftest.ts
++++ b/src/trivium/selftest.ts
+@@ -23,6 +23,8 @@ import { promises as fs } from 'node:fs';
+ import { run } from './util/exec.js';
+ import { initFixtureRepo } from './util/git.js';
+ import { localDate } from './naming.js';
++import { DEFAULT_CRITICS } from './types.js';
++import { agentById } from './agents/registry.js';
+ import { EXIT } from './exit-codes.js';
+ import { STUB_ENV_VAR } from './adapters/stub.js';
+ import { say, step, warn } from './util/log.js';
+@@ -48,11 +50,20 @@ export interface SelftestResult {
+ const TOPIC = '自检任务';
+ const SESSION = 'selftest-session';
+ 
+-/** 桩注入配置：一侧给两条意见、一侧给一条，用来验证逐条裁决真的逐条 */
+-const STUB = JSON.stringify({
+-  gemini: { mode: 'ok', findings: 2 },
+-  glm: { mode: 'ok', findings: 1 },
+-});
++/**
++ * 桩注入配置：**按缺省入选集合派生**，第一侧给两条意见、其余各给一条——
++ * 意见数不等是为了验证逐条裁决真的逐条，而不是按侧数凑。
++ *
++ * 此前写死 `{gemini, glm}` 两侧。D4-4 把 codex 纳入缺省集合后，
++ * 自检当场起不来：运行选了三侧，而第三侧没有桩（报「检测到 TRIVIUM_STUB_CRITIC」
++ * 却缺该侧配置）。**自检要验的是「这台机器上默认那条路跑得通」**，
++ * 所以它必须跟着缺省集合走，不能钉死侧数。
++ */
++const STUB = JSON.stringify(
++  Object.fromEntries(
++    DEFAULT_CRITICS.map((c, i) => [c, { mode: 'ok', findings: i === 0 ? 2 : 1 }]),
++  ),
++);
+ 
+ export interface SelftestOptions {
+   /** 自身打包产物路径。默认取 process.argv[1] */
+@@ -67,7 +78,7 @@ export interface SelftestOptions {
+  *
+  * 留的洞是 `src/payment.ts` 里未处理的并发退款——桩适配器不会真的发现它，
+  * 但真实审查会。这样同一个夹具既能给 selftest 用，也能给人拿去手工验收：
+- * 把 `TRIVIUM_STUB_CRITIC` 去掉重跑，看两侧是否真能指出这个洞。
++ * 把 `TRIVIUM_STUB_CRITIC` 去掉重跑，看各侧是否真能指出这个洞。
+  */
+ async function buildFixture(): Promise<string> {
+   const raw = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-selftest-'));
+@@ -260,21 +271,42 @@ export async function runSelftest(opts: SelftestOptions = {}): Promise<SelftestR
+         '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
+         'role: claude', 'kind: revised', `run_id: ${runId}`,
+         'addresses:',
+-        `  - ${localDate()}-${TOPIC}-gemini.md`,
+-        `  - ${localDate()}-${TOPIC}-glm.md`,
++        ...DEFAULT_CRITICS.map(
++          (c) => `  - ${localDate()}-${TOPIC}-${agentById(c)?.suffix ?? c}.md`,
++        ),
+         '---', '',
+         '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
+         '| :--- | :--- | :--- | :--- | :--- | :--- |',
+-        '| AGY-01 | gemini | blocker | 接受 | selftest 的示例裁决：确认需要补 | §二 |',
+-        '| AGY-02 | gemini | minor | 驳回 | selftest 的示例驳回：与 §一 的目标不符 | 不改 |',
+-        '| GLM-01 | glm | blocker | 接受 | selftest 的示例裁决：同一处并发问题 | §二 |',
++        /*
++         * **编号、来源与条数一律按缺省集合派生**，不写死。
++         *
++         * 原先是三行字面量，钉死了「两侧、第一侧两条」。D4-4 把 codex 纳入缺省之后，
++         * 实际编号变成四条，而裁决件还在裁一个不存在的编号——闸门同时报
++         * 「缺两条」与「有一条不在本轮结论中」。
++         *
++         * 派生之后本文件对「默认跑几侧」**不再有意见**：注册表改，它跟着改。
++         * 意见数仍是「第一侧两条、其余各一条」，与上面 `STUB` 的构造同源，
++         * 保住「逐条裁决真的逐条」这个原始意图。
++         */
++        ...DEFAULT_CRITICS.flatMap((c, i) => {
++          const prefix = agentById(c)?.findingPrefix ?? c.toUpperCase();
++          const rows = [
++            `| ${prefix}-01 | ${c} | blocker | 接受 | selftest 的示例裁决：确认需要补 | §二 |`,
++          ];
++          if (i === 0) {
++            rows.push(
++              `| ${prefix}-02 | ${c} | minor | 驳回 | selftest 的示例驳回：与 §一 的目标不符 | 不改 |`,
++            );
++          }
++          return rows;
++        }),
+         '',
+       ].join('\n'),
+       'utf8',
+     );
+ 
+     const check = await tv(['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
+-    record('裁决完整性校验通过（逐条对齐三条意见）', EXIT.OK, check.code, check.stdout + check.stderr);
++    record(`裁决完整性校验通过（逐条对齐 ${DEFAULT_CRITICS.length + 1} 条意见）`, EXIT.OK, check.code, check.stdout + check.stderr);
+ 
+     const artifactsAfter = await tv(['gate', '--stage', 'plan', '--topic', TOPIC, '--check-artifacts']);
+     record('工件齐备（AC-01 四件套）', EXIT.OK, artifactsAfter.code, artifactsAfter.stdout);
+@@ -347,7 +379,7 @@ export function renderSelftest(r: SelftestResult): string {
+   if (r.kept) {
+     L.push(`夹具保留在 ${r.fixtureRoot}`);
+     L.push('  它是一个故意留洞的最小项目（src/payment.ts 的并发退款没有幂等保护）。');
+-    L.push('  去掉 TRIVIUM_STUB_CRITIC 在其中重跑一次，可检验两侧真实审查能否指出这个洞。');
++    L.push('  去掉 TRIVIUM_STUB_CRITIC 在其中重跑一次，可检验各侧真实审查能否指出这个洞。');
+   } else {
+     L.push('夹具已清理。加 --keep-fixture 可保留以供手工验收（§17.3）。');
+   }
+@@ -356,7 +388,7 @@ export function renderSelftest(r: SelftestResult): string {
+ 
+ /** 供 cli 调用的薄壳 */
+ export async function selftestCommand(opts: SelftestOptions): Promise<number> {
+-  say('自检：在临时夹具仓库里真跑一遍整条流水线（两侧走桩适配器，不消耗厂商配额）');
++  say('自检：在临时夹具仓库里真跑一遍整条流水线（各入选侧走桩适配器，不消耗厂商配额）');
+   const r = await runSelftest(opts);
+   say(renderSelftest(r));
+   return r.ok ? EXIT.OK : EXIT.FAIL;
+diff --git a/test/fixtures/stub-agent-kit/overlay.ts b/test/fixtures/stub-agent-kit/overlay.ts
+index 6dd5ece..bc940ed 100644
+--- a/test/fixtures/stub-agent-kit/overlay.ts
++++ b/test/fixtures/stub-agent-kit/overlay.ts
+@@ -213,9 +213,17 @@ export async function applyOverlay(dest: string): Promise<string[]> {
+     suffix: '${STUB_ID}',
+     findingPrefix: '${STUB_PREFIX}',
+     criticEnabled: true,
+-    // 桩要参与默认三审场景，所以缺省入选也开着（M8 第 3 步新增的字段——
+-    // 「能不能当审核者」与「不选时跑不跑它」自此是两件事）
+-    defaultSelected: true,
++    /*
++     * **缺省不入选**：本用例用 \`--critics gemini,glm,<桩>\` 显式选三侧，不依赖缺省集合。
++     *
++     * 原先开着，是因为当时缺省集合只有两家、加上桩恰好是三侧。
++     * D4-4 把 codex 纳入缺省之后，这里再开着就是四侧、越过 \`max_critics\`，
++     * 夹具在**配置校验**这一步就起不来——与「三审链路能不能跑通」毫无关系。
++     *
++     * 而且缺省不入选本就是新增 Agent 的**正确示范**：一家刚接进来的 Agent
++     * 不该悄悄让每个人每次审查都多烧一份配额（D-1 与 D4-4 讨论的正是这件事）。
++     */
++    defaultSelected: false,
+     driverEnabled: false,
+     guardLevel: 'L2',
+     instructionFiles: ['STUB.md'],
+diff --git a/test/helpers/fixture.ts b/test/helpers/fixture.ts
+index b6bf603..7226fcb 100644
+--- a/test/helpers/fixture.ts
++++ b/test/helpers/fixture.ts
+@@ -93,6 +93,17 @@ export async function makeFixture(opts: FixtureOptions): Promise<Fixture> {
+       'runtime:',
+       `  run_root: ${root}-runs`,
+       'review:',
++      /*
++       * **夹具显式钉两侧，不跟生产默认值漂移**（D4-4 翻 `defaultSelected` 时暴露）。
++       *
++       * 这些集成用例考的是闸门、工件落位、补丁冻结、漂移判定——**与几侧参审无关**。
++       * 而它们的桩注入写死了 `{gemini, glm}`，于是生产默认值一变成三侧，
++       * 103 条当场红在「codex 没有桩」上：测试对象没变，环境前提被别处的一行开关改了。
++       *
++       * 钉住之后，「默认跑几侧」这个决定归生产配置管，这些用例只管自己那件事。
++       * **三侧的默认路径另有覆盖**：接入套件验收（`stub-agent-kit.test.ts`）走的就是三审全链路。
++       */
++      '  default_critics: [gemini, glm]',
+       '  timeout_s:',
+       '    plan: 120',
+       '    code: 120',
+diff --git a/test/integration/stub-agent-kit.test.ts b/test/integration/stub-agent-kit.test.ts
+index eb68ee4..f739cbb 100644
+--- a/test/integration/stub-agent-kit.test.ts
++++ b/test/integration/stub-agent-kit.test.ts
+@@ -362,6 +362,17 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
+       'runtime:',
+       `  run_root: ${root}-runs`,
+       'review:',
++      /*
++       * **夹具钉住自己考的那三侧**：gemini + glm + 新接入的桩。
++       *
++       * 本用例验的是「新增一家 Agent 只需接入套件、核心流程零改动」，
++       * 它在 `topic resolve` 那步已经显式写了 `--critics`。但**预检那步没有**——
++       * 预检按缺省集合查，而 D4-4 把 codex 纳入缺省后，夹具里根本没有 codex 的探针结论，
++       * 「只读能力可用」当场失败，与被考的事毫无关系。
++       *
++       * 钉住之后，「默认跑几侧」归生产配置管，本夹具只管三审链路本身。
++       */
++      `  default_critics: [gemini, glm, ${STUB_ID}]`,
+       '  timeout_s:',
+       '    plan: 120',
+       '    code: 120',
+diff --git a/test/unit/archive.test.ts b/test/unit/archive.test.ts
+index 262de78..093f85a 100644
+--- a/test/unit/archive.test.ts
++++ b/test/unit/archive.test.ts
+@@ -25,6 +25,15 @@ async function tmpLayout(): Promise<ArchiveLayout> {
+ 
+ const DATE = '2026-09-10';
+ 
++/**
++ * 本文件考的是**工件集语义**（缺什么、按轮次隔离、原稿不被覆盖），
++ * **不是「默认跑几侧」**。所以显式钉两侧，不随注册表的 `defaultSelected` 漂移——
++ * 用例摆的也正是两侧的文档。D4-4 把 codex 纳入缺省集合时，这里原本按缺省集合回落，
++ * 于是「四件套」变五件、一片红，而被考的语义一个字没变。
++ */
++const TWO = ['gemini', 'glm'] as const;
++
++
+ test('首跑落盘：文件名无 -r 后缀，返回相对归档根的路径', async () => {
+   const l = await tmpLayout();
+   const w = await writeArtifact({
+@@ -153,19 +162,19 @@ test('验证记录不带角色后缀，重复写同样抬升轮次', async () =>
+ 
+ test('阶段最低工件集：plan 缺件时报出缺什么', async () => {
+   const l = await tmpLayout();
+-  let c = await checkStageArtifacts(l, 'plan', 1);
++  let c = await checkStageArtifacts(l, 'plan', 1, TWO);
+   assert.equal(c.ok, false);
+   assert.equal(c.missing.length, 4, 'plan 四件套全缺');
+ 
+   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', rerunIndex: 1, content: 'a', date: DATE });
+   await writeArtifact({ layout: l, stage: 'plan', role: 'gemini', writer: 'gemini', rerunIndex: 1, content: 'b', date: DATE });
+   await writeArtifact({ layout: l, stage: 'plan', role: 'glm', writer: 'glm', rerunIndex: 1, content: 'c', date: DATE });
+-  c = await checkStageArtifacts(l, 'plan', 1);
++  c = await checkStageArtifacts(l, 'plan', 1, TWO);
+   assert.equal(c.ok, false);
+   assert.deepEqual(c.missing, ['裁决件 …-revised-claude.md']);
+ 
+   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'd', date: DATE });
+-  c = await checkStageArtifacts(l, 'plan', 1);
++  c = await checkStageArtifacts(l, 'plan', 1, TWO);
+   assert.equal(c.ok, true, `仍缺：${c.missing.join(', ')}`);
+ });
+ 
+@@ -188,20 +197,20 @@ test('未登记的审查件被查出来：堵住「把伪审查件搬进阶段
+   );
+ 
+   // 登记齐全时照常通过
+-  let c = await checkStageArtifacts(l, 'plan', 1, undefined, undefined, recorded);
++  let c = await checkStageArtifacts(l, 'plan', 1, TWO, undefined, recorded);
+   assert.equal(c.ok, true, `不该有缺口：${c.missing.join(', ')}`);
+ 
+   // 手工塞一份没登记的审查件进阶段目录（模拟 cp -R 搬运）
+   const smuggled = path.join(l.archiveRoot, l.topic, 'plan', `${DATE}-登录重构-r9-gemini.md`);
+   await fs.writeFile(smuggled, '# 伪造的审查意见\n');
+ 
+-  c = await checkStageArtifacts(l, 'plan', 1, undefined, undefined, recorded);
++  c = await checkStageArtifacts(l, 'plan', 1, TWO, undefined, recorded);
+   assert.equal(c.ok, false, '未登记的审查件必须被查出来');
+   assert.match(c.missing.join(' '), /未登记的审查件/);
+   assert.match(c.missing.join(' '), /r9-gemini\.md/);
+ 
+   // 不传登记清单时跳过该项（向后兼容）
+-  const skipped = await checkStageArtifacts(l, 'plan', 1);
++  const skipped = await checkStageArtifacts(l, 'plan', 1, TWO);
+   assert.equal(skipped.ok, true, '没提供登记清单就不该据此判失败');
+ });
+ 
+@@ -209,11 +218,11 @@ test('阶段最低工件集：code 三件套不含 -claude.md 原稿，裁决件
+   const l = await tmpLayout();
+   await writeArtifact({ layout: l, stage: 'code', role: 'gemini', writer: 'gemini', rerunIndex: 1, content: 'a', date: DATE });
+   await writeArtifact({ layout: l, stage: 'code', role: 'glm', writer: 'glm', rerunIndex: 1, content: 'b', date: DATE });
+-  let c = await checkStageArtifacts(l, 'code', 1);
++  let c = await checkStageArtifacts(l, 'code', 1, TWO);
+   assert.deepEqual(c.missing, ['裁决件 …-response-claude.md']);
+ 
+   await writeArtifact({ layout: l, stage: 'code', role: 'claude', writer: 'driver', kind: 'response', rerunIndex: 1, content: 'c', date: DATE });
+-  c = await checkStageArtifacts(l, 'code', 1);
++  c = await checkStageArtifacts(l, 'code', 1, TWO);
+   assert.equal(c.ok, true, `仍缺：${c.missing.join(', ')}`);
+ });
+ 
+@@ -224,8 +233,8 @@ test('工件集校验按轮次隔离：第二轮缺件不受第一轮齐备影
+   }
+   await writeArtifact({ layout: l, stage: 'bug', role: 'claude', writer: 'driver', rerunIndex: 1, content: 'y', date: DATE });
+   await writeArtifact({ layout: l, stage: 'bug', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'z', date: DATE });
+-  assert.equal((await checkStageArtifacts(l, 'bug', 1)).ok, true);
+-  assert.equal((await checkStageArtifacts(l, 'bug', 2)).ok, false, '第二轮尚未开始，应判缺件');
++  assert.equal((await checkStageArtifacts(l, 'bug', 1, TWO)).ok, true);
++  assert.equal((await checkStageArtifacts(l, 'bug', 2, TWO)).ok, false, '第二轮尚未开始，应判缺件');
+ });
+ 
+ test('不同主题的工件互不干扰', async () => {
+@@ -281,7 +290,7 @@ test('回归：重跑时原稿留在第 1 轮，第 2 轮四件套仍应判齐
+     await writeArtifact({ layout: l, stage: 'plan', role, writer: role, rerunIndex: 1, content: 'x', date: DATE });
+   }
+   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'y', date: DATE });
+-  assert.equal((await checkStageArtifacts(l, 'plan', 1)).ok, true);
++  assert.equal((await checkStageArtifacts(l, 'plan', 1, TWO)).ok, true);
+ 
+   // 第 2 轮：只有两侧审查 + 裁决件，原稿**不重新生成**
+   for (const role of ['gemini', 'glm'] as const) {
+@@ -289,7 +298,7 @@ test('回归：重跑时原稿留在第 1 轮，第 2 轮四件套仍应判齐
+   }
+   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 2, content: 'y2', date: DATE });
+ 
+-  const c2 = await checkStageArtifacts(l, 'plan', 2);
++  const c2 = await checkStageArtifacts(l, 'plan', 2, TWO);
+   assert.equal(c2.ok, true, `第 2 轮应判齐备，实际缺：${c2.missing.join(', ')}`);
+ });
+ 
+@@ -299,7 +308,7 @@ test('回归：真的没有原稿时仍要报缺（不能因跨轮次查找而
+     await writeArtifact({ layout: l, stage: 'plan', role, writer: role, rerunIndex: 1, content: 'x', date: DATE });
+   }
+   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'y', date: DATE });
+-  const c = await checkStageArtifacts(l, 'plan', 1);
++  const c = await checkStageArtifacts(l, 'plan', 1, TWO);
+   assert.equal(c.ok, false);
+   assert.ok(c.missing.some((m) => m.includes('原稿')));
+ });
+@@ -312,7 +321,7 @@ test('回归：本轮审查缺失不受跨轮次查找影响', async () => {
+   }
+   // 第 2 轮只有 gemini
+   await writeArtifact({ layout: l, stage: 'plan', role: 'gemini', writer: 'gemini', rerunIndex: 2, content: 'x2', date: DATE });
+-  const c = await checkStageArtifacts(l, 'plan', 2);
++  const c = await checkStageArtifacts(l, 'plan', 2, TWO);
+   assert.equal(c.ok, false);
+   assert.ok(c.missing.some((m) => m.includes('glm')), '第 2 轮缺 glm 必须报出');
+   assert.ok(!c.missing.some((m) => m.includes('原稿')), '原稿在第 1 轮存在，不得报缺');
+@@ -347,7 +356,7 @@ test('单侧轮次：不传入选集合就会回落到启用集合，并误报
+   await writeArtifact({ layout: l, stage: 'plan', role: 'gemini', writer: 'gemini', rerunIndex: 1, content: 'b', date: DATE });
+   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'd', date: DATE });
+ 
+-  const c = await checkStageArtifacts(l, 'plan', 1);
++  const c = await checkStageArtifacts(l, 'plan', 1, TWO);
+   assert.equal(c.ok, false, '回落到启用集合时应当报缺件——这正是被修掉的缺陷');
+   assert.ok(
+     c.missing.some((m) => m.includes('glm')),
+diff --git a/test/unit/divergence.test.ts b/test/unit/divergence.test.ts
+index f44b6c5..189be52 100644
+--- a/test/unit/divergence.test.ts
++++ b/test/unit/divergence.test.ts
+@@ -101,7 +101,8 @@ test('归一化把 0.00 的原始 Jaccard 救回真实重合度', () => {
+ test('两侧看同一批地方 → 判多审退化', () => {
+   const a = review(['src/a.ts:10', 'src/b.ts:20', 'src/c.ts:30']);
+   const b = review(['src/a.ts:8-12', 'src/b.ts:20', 'src/c.ts:28-33']);
+-  const d = measureDivergence(a, b);
++  // 显式传配对：本条考的是「配对身份出现在人读输出里」，不是缺省集合的前两家是谁
++  const d = measureDivergence(a, b, 0.8, { a: 'gemini', b: 'glm' });
+   assert.equal(d.jaccard, 1);
+   assert.equal(d.degenerate, true);
+   assert.match(renderDivergence(d), /多审退化/);
+diff --git a/test/unit/preflight.test.ts b/test/unit/preflight.test.ts
+index 8cb4001..680badb 100644
+--- a/test/unit/preflight.test.ts
++++ b/test/unit/preflight.test.ts
+@@ -464,7 +464,7 @@ test('模型目录为空时不判失败，但必须在输出里点名是哪几
+ 
+ test('模型目录齐备时不出现「未实际校验」字样（避免恒真提示）', async () => {
+   const ctx = await fakeCtx();
+-  const r = checkModelSlugs(ctx.config, 'plan');
++  const r = checkModelSlugs(ctx.config, 'plan', {}, ['gemini', 'glm']);
+   assert.equal(r.ok, true);
+   assert.doesNotMatch(
+     r.detail, /未实际校验/,
+diff --git a/test/unit/registry-parity.test.ts b/test/unit/registry-parity.test.ts
+index 6dbdfae..74d84a2 100644
+--- a/test/unit/registry-parity.test.ts
++++ b/test/unit/registry-parity.test.ts
+@@ -185,7 +185,6 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
+    * 按 cliName 通用消费 `CommonProbe.models`。收敛完成后该文件里一个 Agent 字面量都没有，
+    * 「不得留过期条目」这条当场把它标了出来——泛化是否真的做完，由机器说了算。
+    */
+-  { file: 'selftest.ts', why: '自检场景里两侧桩的固定编排；M7b 增 N 侧场景' },
+   { file: 'types.ts', why: "Disposition.role 的字面 'claude'：裁决件的作者恒为当轮 Driver，而 Driver 任意化排在 M10。此前的豁免理由是 CriticId 的字面收窄，M7b 第 6 步已把它放开成注册表全集——理由换了，豁免仍需要，所以是改写而不是删除" },
+ ];
+ 
+diff --git a/test/unit/run-meta.test.ts b/test/unit/run-meta.test.ts
+index 415847c..9e0017f 100644
+--- a/test/unit/run-meta.test.ts
++++ b/test/unit/run-meta.test.ts
+@@ -14,7 +14,7 @@ import { newRunMeta, migrateRunMetaV1, readRunMeta, writeRunMeta } from '../../s
+ import { validateRunMeta, validateRunMetaV1 } from '../../src/trivium/schemas.js';
+ import { checkStageArtifacts, metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
+ import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+-import { CRITICS, CRITIC_VENDOR, type CriticId, type RunMeta, DEFAULT_CRITICS } from '../../src/trivium/types.js';
++import { CRITICS, CRITIC_VENDOR, type CriticId, type RunMeta } from '../../src/trivium/types.js';
+ 
+ async function tmpLayout(): Promise<ArchiveLayout> {
+   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-runmeta-'));
+@@ -216,13 +216,18 @@ test('读侧：写进去的 v2 原样读回来', async () => {
+ test('读侧：历史 v1 读回来已是 v2 形状', async () => {
+   const l = await tmpLayout();
+   /*
+-   * 取**缺省集合**的第一家，不是启用全集的第一家（M8 第 3 步）。
++   * 取 **v1 契约认得的那一家**，写死 `gemini` 而不是从任何当代集合里取。
+    *
+    * v1 是历史契约：它的 `critics` 只声明 gemini / glm 两个属性、`vendor` 只枚举两值
+    * （见 run.v1.json）。codex 到 M8 才启用，**不可能出现在任何历史 v1 记录里**，
+    * 拿它构造 v1 夹具会被 ajv 如实拒掉——那不是缺陷，是契约边界。
++   *
++   * 本行原写 `DEFAULT_CRITICS[0]`，理由与上面那段完全一致、**取值方式却与它相悖**：
++   * 缺省集合是**当代**概念，会随注册表变（D4-4 把 codex 纳入缺省后，它就排到了第一位，
++   * 夹具当场被 ajv 拒）。历史契约的夹具只能用历史契约里存在的身份——
++   * 这个身份不会再变，写死才是对的。
+    */
+-  const only = DEFAULT_CRITICS[0]!;
++  const only = 'gemini' as const;
+   await putRaw(l, 'RV1', v1Raw({ review_mode: 'single', critics: { [only]: sideMeta(only) } }));
+   const back = await readRunMeta(l, 'plan', 'RV1');
+   assert.equal(back?.schema, 'trivium.run.v2');

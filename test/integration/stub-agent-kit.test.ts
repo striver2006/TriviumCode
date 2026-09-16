@@ -362,6 +362,17 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
       'runtime:',
       `  run_root: ${root}-runs`,
       'review:',
+      /*
+       * **夹具钉住自己考的那三侧**：gemini + glm + 新接入的桩。
+       *
+       * 本用例验的是「新增一家 Agent 只需接入套件、核心流程零改动」，
+       * 它在 `topic resolve` 那步已经显式写了 `--critics`。但**预检那步没有**——
+       * 预检按缺省集合查，而 D4-4 把 codex 纳入缺省后，夹具里根本没有 codex 的探针结论，
+       * 「只读能力可用」当场失败，与被考的事毫无关系。
+       *
+       * 钉住之后，「默认跑几侧」归生产配置管，本夹具只管三审链路本身。
+       */
+      `  default_critics: [gemini, glm, ${STUB_ID}]`,
       '  timeout_s:',
       '    plan: 120',
       '    code: 120',

@@ -17,7 +17,7 @@ import type {
   ProbeSection,
   Stage,
 } from './types.js';
-import { DEFAULT_CRITICS } from './types.js';
+import { DEFAULT_CRITICS, DEFAULT_MAX_CRITICS } from './types.js';
 import { ALL_CLI_NAMES } from './agents/registry.js';
 import { EXIT, TriviumError, envError, swallowedTextHint } from './exit-codes.js';
 import { exists, expandHome } from './util/fsx.js';
@@ -228,7 +228,7 @@ export function defaultConfig(): Config {
        * 要三审就显式 `--critics`，或在配置里写 `review.default_critics`。
        */
       default_critics: [...DEFAULT_CRITICS],
-      max_critics: 3,
+      max_critics: DEFAULT_MAX_CRITICS,
       timeout_s: { plan: 900, code: 1200, bug: 1200 },
       /*
        * 每次 `--wait` 的窗口，同时也是**用户能收到进度的最小间隔**——Bash 工具在
@@ -516,7 +516,7 @@ export function migrateConfigV1(raw: unknown): { config: unknown; note: string |
    * 日后排查「这个值哪来的」会多绕一圈。
    */
   if (c['schema'] === CONFIG_SCHEMA_ID_V1 && review['max_critics'] === undefined) {
-    review['max_critics'] = 3;
+    review['max_critics'] = DEFAULT_MAX_CRITICS;
   }
   if (Object.keys(review).length > 0) c['review'] = review;
 

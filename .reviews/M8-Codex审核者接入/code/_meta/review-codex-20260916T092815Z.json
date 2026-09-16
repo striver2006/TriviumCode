@@ -1,0 +1,140 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "补丁方向我认同：`defaultSelected` 翻转本身一行、代价写在了唯一登记处，被带动的用例大体按「考的是工件集语义还是默认跑几侧」正确分流（run-meta 的 v1 夹具改用历史身份、divergence 显式传 pair、fixture 钉两侧都是对的）。但有三条我认为必须先处理：①设计文档 §13.1.1 / §18.1 #14 / 风险 R17 仍明文写着「codex `defaultSelected: false`、默认两家、三审须显式选择（2026-09-15 裁定）」，与本补丁直接对立，按 AGENTS.md 同步清单这是必做项而补丁里一个字没有；②`trivium init` 会把 `default_critics` 展开成字面列表写进**进 Git 的 config.yaml**，所以「默认三侧」对任何已 init 过的既有项目不成立，翻转只在未显式配置该键的项目上生效，且没有任何提示或测试能发现这件事；③archive.test 那条负例被改成显式传 TWO 之后，它宣称要锁的「不传参 ⟹ 回落」行为不再被任何用例经过，用例名与断言文案同时失实。另外 selftest 的落盘断言与「未覆盖边界」声明仍按两侧写，接入套件不再演示「新 Agent 纳入默认」而缺省集合已顶满 `max_critics`。决策 C 的 config.yaml 正文被 `.trivium` 排除规则结构性挡在补丁之外，本侧无法核实，已如实登记。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/agents/registry.ts:151-169（对照 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2195、2591、2682）",
+      "problem": "D4-4 只改了代码，未回补设计文档，而设计文档现在是**反着说**的：§13.1.1 的表行仍写「codex 自 M8 第 3 步起 criticEnabled: true 而 defaultSelected: false——默认仍是两家，三审须显式 --critics 或改配置（2026-09-15 项目负责人裁定）」；§18.1 待拍板表第 14 行仍写「default_critics: [gemini, glm]（成本与现状一致）」；风险表 R17 的缓解措施仍写「default_critics 维持 2；三审是显式选择」。AGENTS.md「改动同步清单」第一条规定：与设计文档不一致的行为，先回补修订设计文档并升补丁版本——设计文档是它自称的唯一实现依据。当前状态下，下一个照设计文档办事的人或 Agent 有充分理由把这一行翻回去，或把代码判为跑偏的实现。",
+      "evidence": "读了 registry.ts 全文该注册项与派生段（230-253）；对设计文档 grep 出 2195/2591/2682 三处原文（含「默认仍是两家」「2026-09-15 项目负责人裁定」字样，文档头当前版本 v1.3.11）；读了 AGENTS.md 的改动同步清单。被审补丁 files: 11 里没有任何 doc/ 文件。",
+      "suggestion": "升一版设计文档并在同一批里交付：§13.1.1 那句改写为 D4-4（含翻true 的理由、配额 ×1.5、墙钟取最慢侧、环境门槛抬高一档），§18.1 #14 标注已由 2026-09-16 裁定翻为三侧，R17 的缓解措辞改成「默认三侧 + 显式降回两侧的路径（--critics / default_critics）」；同时按 §16.1 台账格式补一行实现证据，别只留在代码注释里。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/agents/registry.ts:169 与 src/trivium/init.ts:358-380、src/trivium/config.ts:230、src/trivium/preflight.ts:595",
+      "problem": "注册表翻的只是**内置默认值**，而运行时读的是磁盘配置：`runPreflight` 与选侧逻辑取 `opts.critics ?? cfg.review.default_critics`，`loadCtx` 用 config.yaml 覆盖内置默认。关键在于 `trivium init` 新建 config.yaml 时是 `defaultConfig()` 去掉 probe 段整份 YAML 落盘——`review.default_critics` 是**被展开成字面列表写进那份进 Git 的共享文件**的。于是凡在本改动之前 init 过的项目（含本仓库自己），磁盘上仍写着 `[gemini, glm]`，「此后每次默认三侧」在那些项目上不成立；而走 v1 就地内存迁移的项目（config.ts:495 明确「迁移不补 default_critics」）又会自动跟随新注册表。同一份决策对两类项目效果相反，且没有任何测试、告警或迁移提示能暴露这个分叉。",
+      "evidence": "读 init.ts 的 runInit（`const base = defaultConfig(); const { probe: _probe, ...shared } = base; await writeAtomic(cfgPath, header + YAML.stringify(shareable))`）；读 config.ts:204-235 确认 default_critics 派生自 DEFAULT_CRITICS 且 max_critics=3；读 config.ts:495-519 确认 v1 迁移故意不补该键；读 preflight.ts:591-620 确认 selected 的来源；grep DEFAULT_CRITICS 全仓消费点。本仓库 config.yaml 的实际内容我无法核实（在禁读子树内，见 not_covered）。",
+      "suggestion": "把这件事挑明而不是留给巧合：在决策注释（或设计文档同一节）写清「本翻转只对未显式配置 default_critics 的配置生效，已 init 的项目需手工改 config.yaml / 重跑 init」；并补一条契约级断言——「磁盘配置不含该键时运行时入选集合 == DEFAULT_CRITICS」，或让 doctor/init 在两者不一致时给一次性提示（不自动改盘）。同时确认本仓库那份 config.yaml 是否已同步。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/archive.test.ts:352-365（用例「单侧轮次：不传入选集合就会回落到启用集合，并误报另一侧缺件」）",
+      "problem": "这条是本次「该跟随缺省集合」那一类，却被按「钉住自己考的事」处理了，结果是回归锚点失效。用例上方注释（330-341）明写「正负成对写…负例锁住的是『传与不传确实有差别』——修复本身才有防回退锚点」，锚的对象正是 `checkStageArtifacts` 的**默认回落参数**（archive.ts:281 = DEFAULT_CRITICS，生产路径在 cli.ts:654 读不到 run.json 时确实走这个回落）。改成显式传 `TWO` 之后，它与正例的差别只剩「传一家 vs 传两家」，默认参数不再被任何用例经过：把回落值改回启用全集 `CRITICS`（就是当初被修掉的那个缺陷）不会变红。而用例标题「不传入选集合就会回落到启用集合」和断言消息「回落到启用集合时应当报缺件」现在描述的是没有发生的事——读测试的人会以为这条还守着。",
+      "evidence": "读了 test/unit/archive.test.ts:330-365 全文、archive.ts:270-300 的参数默认值与其注释、cli.ts:620-660 的实际调用点（`roundCritics = artifactMeta ? artifactMeta.critics_selected : undefined` → undefined 时才回落）；对照被审补丁该用例的改动行。",
+      "suggestion": "这一条恢复成真正「不传参」的负例，并把断言写成与缺省集合长度无关的形式（例如：断言 missing 里点名了某个本轮夹具**没有摆放**、但属于当代缺省集合的侧），其余按工件集语义的用例继续钉 TWO；至少把用例标题与断言文案改成与调用一致，别让名称说谎。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/selftest.ts:13-17、165、230/237/246、250-251",
+      "problem": "selftest 的**产出侧**按 DEFAULT_CRITICS 派生了（STUB、addresses、裁决行），**断言侧与边界声明侧没跟上**：落盘检查仍只看 `-gemini.md` 与 `-glm.md`（变量名 `bothSides`、步骤名「两侧审查文档均已落盘」），`notCovered[0]` 仍只点名「Antigravity 与 ZCode 两家 CLI…两侧一律走桩适配器」。而现在自检实跑三侧、第三侧的桩就是 codex。后果正是这个文件自己的头注（13-17 行）警告的那类失实：用户把「自检通过」读成「这三家 CLI 都能用」，而输出里的边界声明漏掉了 Codex CLI 这一项——三家缺一家，声明只说两家。",
+      "evidence": "读了 selftest.ts 的 notCovered（163-168）、buildFixture 的配置与评审步骤（113-131、228-251）、以及被审补丁里 STUB/裁决件的派生段；确认该 config.yaml 不写 default_critics，因此自检的入选集合就是派生出的三侧，桩里含 codex。",
+      "suggestion": "断言同样按缺省集合派生（逐侧用 `agentById(c).suffix` 拼 `-${suffix}.md` 并断言全部在位），步骤名改「各入选侧」；`notCovered` 里被桩替换的 CLI 清单按注册表派生，别手点两家。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "test/fixtures/stub-agent-kit/overlay.ts:213-227 与 src/trivium/config.ts:230-231、src/trivium/agents/registry.ts:245-253",
+      "problem": "把桩的 `defaultSelected` 改 false 对症，但代价有两层没被说出来：①接入套件自此**不再演示「新增一家并纳入默认集合」**——而这恰好是 M8 刚刚手工走过的那条路，overlay 注释也说原值 true 是被 `max_critics` 拦下的；②内置默认的缺省集合现在正好 3 项 = `max_critics: 3`，零余量。注册表对 `defaultSelected ⇒ criticEnabled` 有机器断言，对「缺省集合是否超过 max_critics」却什么都没有：下一次再接一家默认入选的 Agent，会在配置校验那一步炸（schemas.ts:192-194 报「超过 max_critics」），而现场是**每个项目的 init 产物**都变成非法配置，不是在唯一登记处被拦。",
+      "evidence": "读 overlay.ts 改动处的注释与 grep 命中的行（220/226）、config.ts 的 default_critics/max_critics、registry.ts 的派生断言块、schemas.ts 里那条超限校验；grep test/integration/stub-agent-kit.test.ts 确认全仓已无任何「新 Agent 为默认入选」的用例（只有 375 行显式 default_critics）。",
+      "suggestion": "两件事分开做：①在注册表或 config 层加一条不变量（`DEFAULT_CRITICS.length <= review.max_critics`），让「再纳入一家默认」在唯一登记处就被拦并逼着同步抬上限；②接入套件保留一条「桩 defaultSelected: true + 配置里显式含桩并调整 max_critics」的用例，锁住这个字段真的被运行时消费——它是示范件，现在示范的方向和真实走过的路相反。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "performance",
+      "location": "src/trivium/agents/registry.ts:157-166（代价声明段）与 src/trivium/config.ts:236-238、src/trivium/runner.ts:19、doc/05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md:37",
+      "problem": "决策注释把代价写成「配额 ×1.5、墙钟取最慢侧」，但被引为根据的那份验收报告里，codex 单侧真实审查耗时 **1038s**——已超出内置默认的 plan 档单侧上限 900s，距 code 档 1200s 只有约 16% 余量；而 runner 对超时不重试（`timeout` 直接判定交给失败策略），`failure_policy` 默认 strict。D4-4 之前这条只砸在显式选 codex 的人身上，翻转后落在每个人每次的默认路径上，plan 阶段尤其吃紧。这不是说结论错，而是这条量化核对根本不在注释里，读的人无从判断余量。",
+      "evidence": "读 AC-20 报告第 1 章表格（家族一 1038s / 31 reads，运行标注为 code r11；家族二 293s）、config.ts 的 timeout_s 默认值与 failure_policy、runner.ts:19 的注释与 grep 到的 `timeout_s[stage]` 消费点（review.ts:575、runner.ts:115 单侧上限）。注：1038s 是 code 阶段实测，plan 阶段没有实测数据。",
+      "suggestion": "在这个开关的注释或设计文档同一节里补一行「实测单侧耗时 vs 各档超时上限」的核对，必要时上调 plan 档超时或引入 per-critic/per-vendor 超时；若本仓库 config.yaml 已覆写 timeout_s，请说明覆写值（该文件在禁读子树内，我没能核实）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "scope-drift",
+      "location": "被审补丁头部 `files: 11`（不含 .trivium/config.yaml）；src/trivium/code-stage.ts:105-111",
+      "problem": "任务目标的一半（决策 C：profile 与模型钉进共享 config.yaml、删掉本机覆盖）在这次审查里**结构性不可见**：`diffExcludePrefixes` 有意把 `.trivium` 整棵排除出送审补丁（排除理由本身成立——那份文件可能含凭据），而 `git status` 显示 `.trivium/config.yaml` 有 +21 行未入库的工作树改动。结果是闸门会照常放行一份「另一半天衣无缝」的变更，双审对 C 只能签字于未见之物。更具体的隐患：`.trivium/config.local.yaml` 是 `doctor` 回填 `probe:` 段的唯一落点（doctor.ts:558），而 codex 的 profile 存在性、逐 profile 模型目录全部依赖探针结论（adapters/codex.ts 的 `availability()` / `catalogModelsFor()`）——若被删的那份里含 probe 段，删除会让预检在 `checkProbeFreshness` 上硬失败直到重跑 doctor；若共享层钉死的 profile 名（内置默认已是 `qwen`）属于本机/本账号事实，把它写进进 Git 的共享文件又等于给每台机器立一个必须恰好在 `~/.codex/config.toml` 里存在的名字，而设计给这件事的逃生门正是被称作「冗余」删掉的那层。",
+      "evidence": "读 code-stage.ts 的排除规则与注释；用 `git status --porcelain` 与 `git diff --stat .trivium/config.yaml`（只看文件名与行数，未读内容）确认该文件已改 21 行却不在补丁里；读 .gitignore 确认「config.yaml 进 Git / config.local.yaml 不进 Git」的分层；读 config.ts:571-582 的分层加载与 doctor.ts:558、adapters/codex.ts:317-365 的探针依赖。**该文件内容我一行未读**（在禁读子树内）。",
+      "suggestion": "把 C 变成可审的东西，而不是靠闸门看不见：①将 config.yaml 相关 YAML 片段（凭据字段脱敏/只留键名）原文贴进裁决件或 AC 报告，让留痕里有第二份可读证据；②在决策注释里逐字写明被删的本机覆盖文件里有哪些键、是否含 `probe:` 段、删除后是否重跑过 `doctor` + `preflight` + `selftest`；③说明共享层与本机层的分工——若 profile 名是本机事实，考虑共享层只钉模型/effort、profile 留给 local 层（否则它与 config.ts 内置默认构成同一事实的两份来源）。",
+      "confidence": "low"
+    },
+    {
+      "id": "CODEX-08",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "test/unit/config-migrate.test.ts:207、230；README.md:33、314",
+      "problem": "同一批「两家」的口径散落在没被本补丁带动的地方，其中两处已经是失实陈述：①`config-migrate.test.ts:207` 的用例名仍是「default_critics 仍是两家（不被片段顶掉）」，而它断言的是 `[...DEFAULT_CRITICS]`（现在三家），名字与断言不再是同一件事；:230 的断言消息更写着「能选的是三家、默认跑的是两家」，这句话现在是错的；②README.md:314 说自检「两侧走桩适配器，所以证明不了两家 CLI 可用」，README.md:33 说「当前只有两家启用了审核者能力」——后者自 M8 第 3 步起就已过期（基线上即如此，不是本补丁引入），但它和 D4-4 一起让人读到的默认画像是「两家」。",
+      "evidence": "读了 config-migrate.test.ts 的 195-240 与 295-330 段（含该两条断言与文案），grep README.md 命中 33/314/322 三处原文，并与 registry.ts 的 criticEnabled/defaultSelected 实况对照。",
+      "suggestion": "把用例名与断言消息里表示**数量**的「两家」去掉或改成「缺省集合」（保留「不被片段顶掉」这个真意图）；README 两处随文档同步一并更正。这类数量词最好统一不写，改由引用缺省集合的说法表达，否则下一次翻转还得再来一轮。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "翻转放在注册表唯一登记处、并把决策者、日期、理由（AC-20 达成使原理由失效）与两条代价写在字段旁边——这是「改一行、每个人每次都感觉得到」的开关应有的记法；`availability()` 对未知 codex profile 的硬拦我也核实过（adapters/codex.ts 里比对本机探针 providers 并点名已探测到的 profile），注释说「不静默回落、给可粘贴指引」不是空话。",
+    "run-meta v1 夹具从 `DEFAULT_CRITICS[0]` 改为写死 `gemini`，并说清「历史契约的夹具只能用历史契约里存在的身份」——这是本补丁里判断最准的一处：当代派生值拿去构造历史形状，本身就是在用会漂移的东西当锚。",
+    "divergence.test 那条显式传 pair（它考的是配对身份出现在人读输出里），其余仍走默认值的用例保持不变——分流正确；`measureDivergence` 的真实生产入口是 `measureAllPairs` 逐对显式传 pair，默认值只服务无上下文调用点，注释的结论与代码一致。",
+    "test/helpers/fixture.ts 与 stub-agent-kit 夹具显式写 `default_critics`：闸门、工件落位、补丁冻结、漂移判定这些用例确实与几侧参审无关，让「默认跑几侧」归生产配置管是对的方向（我上面 CODEX-03 的意见只针对被顺手改掉的那条负例，不针对这条原则）。",
+    "selftest 的 STUB 与裁决件按 DEFAULT_CRITICS 派生这个方向对——自检要验的就是「这台机器默认那条路跑得通」，写死侧数会让它对注册表变更失明；registry-parity 里删掉 `selftest.ts` 豁免条目也是诚实的收敛（我实跑了该文件对应的编译产物：26 条全绿，含「不得留过期条目」守卫）。",
+    "divergence.ts 注释承认「那个具体理由不再成立、但结论不变且更强」，而不是把旧理由原样留着继续假装成立——这种自我更正值得保留。"
+  ],
+  "not_covered": [
+    "**决策 C 的配置正文**：`.trivium` 整棵子树在禁读清单内（且与必读清单第 8 项 `.trivium/config.yaml` 直接冲突，我按禁读优先，未读任何一份），所以钉进共享配置的到底是哪 21 行、被删的本机覆盖里还有什么，全部未核；我只用了 `git status` / `git diff --stat` 取文件名与行数。",
+    "**测试是否真的全绿**：沙箱禁写临时目录（mkdtemp EPERM），archive / config-migrate / preflight / run-meta 与全部集成用例、`trivium doctor --selftest` 14 步、`npm run typecheck` 我都没能执行；只有不依赖 tmpdir 的 registry-parity（26 pass）与 divergence（21 pass）实跑通过。「103 条红→修好后全绿」与「selftest 起不来」这两段现场我只采信补丁注释的陈述。",
+    "三侧默认带来的**运行期成本面**未逐项核：`--wait` 轮次/`computeMaxWaits`、`heartbeat_stale_s`、并行三个子进程的资源与收尾、report 的三列矩阵渲染。",
+    "`skills/` 提示词、`doc/03_api/PROTOCOL_dual_critic_relay.md`、CLI `USAGE` 里是否还有「两侧/两家」口径的对外承诺——我只抽查了 README.md、AGENTS.md 与设计文档三处。",
+    "M10（codex 当 Driver）相关面与 `isolation.peer_artifact_globs` 的注册表生成路径只做了「会不会因 D4-4 泄漏他人工件」的单点确认（freeze.ts 由 ALL_AGENT_IDS 生成，未泄漏），未展开评审。",
+    "另一位审查员的意见未读、未参考。"
+  ],
+  "consulted": [
+    "src/trivium/agents/registry.ts",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/init.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/selftest.ts",
+    "src/trivium/divergence.ts",
+    "src/trivium/code-stage.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/adapters/codex.ts",
+    "test/unit/archive.test.ts",
+    "test/unit/config-migrate.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/integration/stub-agent-kit.test.ts",
+    "test/fixtures/stub-agent-kit/overlay.ts",
+    "doc/05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "AGENTS.md",
+    "README.md",
+    ".gitignore",
+    ".reviews/M8-Codex审核者接入/code/_meta/changes-20260916T092815Z.diff"
+  ]
+}

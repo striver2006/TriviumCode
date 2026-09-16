@@ -19,7 +19,11 @@ import {
   ALL_AGENT_IDS,
   ALL_FINDING_PREFIXES,
   CRITIC_AGENT_IDS,
+  DEFAULT_CRITIC_AGENT_IDS,
   DEFAULT_DRIVER,
+  DEFAULT_MAX_CRITICS,
+  deriveDefaultCritics,
+  type AgentDescriptor,
   agentByFindingId,
   agentByFindingPrefix,
   agentById,
@@ -47,6 +51,71 @@ test('注册表：id / 后缀 / 前缀三者互不重复，且 suffix 恒等于 
   for (const a of AGENTS) {
     assert.equal(a.suffix, a.id, `${a.id} 的 suffix 必须等于 id`);
   }
+});
+
+/*
+ * ── 缺省入选集合的两条不变量（r12 CODEX-05）──
+ *
+ * 这两条守卫在 `deriveDefaultCritics` 里，而真实注册表**恰好都满足**它们——
+ * 于是「守卫在不在」与「守卫守得对不对」在生产路径上无法区分。
+ * 下面用构造的注册表逐条把它们撞红一次：这正是本项目「加了守卫不等于守卫守对了东西」
+ * 这条纪律要求的验证，也是 r12 AGY-01 那类失效（守卫还在、守的东西没了）的预防。
+ */
+const FAKE_AGENT = (over: Partial<AgentDescriptor>): AgentDescriptor => ({
+  id: 'claude',
+  display: 'x',
+  label: 'x',
+  vendor: 'anthropic',
+  cliName: 'x',
+  suffix: 'claude',
+  findingPrefix: 'X',
+  criticEnabled: true,
+  defaultSelected: true,
+  driverEnabled: false,
+  guardLevel: 'L2',
+  instructionFiles: [],
+  ...over,
+});
+
+test('缺省集合：defaultSelected 真被消费——标了就进集合，没标就不进', () => {
+  const picked = deriveDefaultCritics([
+    FAKE_AGENT({ id: 'claude', suffix: 'claude', defaultSelected: true }),
+    FAKE_AGENT({ id: 'codex', suffix: 'codex', defaultSelected: false }),
+    FAKE_AGENT({ id: 'gemini', suffix: 'gemini', defaultSelected: true }),
+  ]);
+  assert.deepEqual(
+    [...picked],
+    ['claude', 'gemini'],
+    'defaultSelected 必须是唯一判据——派生若改回按 criticEnabled 取，这里会多出 codex',
+  );
+});
+
+test('缺省集合：标了 defaultSelected 却没 criticEnabled → 加载期抛错', () => {
+  assert.throws(
+    () => deriveDefaultCritics([FAKE_AGENT({ criticEnabled: false, defaultSelected: true })]),
+    /defaultSelected 却没有 criticEnabled/,
+    '这种组合会让默认配置一跑就被 critics.ts 拒掉，必须在登记处拦下',
+  );
+});
+
+test('缺省集合：项数超过 max_critics 内置默认 → 加载期抛错', () => {
+  const four = (['claude', 'codex', 'gemini', 'glm'] as const).map((id) =>
+    FAKE_AGENT({ id, suffix: id, defaultSelected: true }),
+  );
+  assert.throws(
+    () => deriveDefaultCritics(four, DEFAULT_MAX_CRITICS),
+    /超过内置上限 max_critics=3/,
+    '越界现场本该在这里，而不是「每个项目 init 出来的配置都判错」',
+  );
+  // 同一份注册表，把上限抬上去就该通过——锁住「抬上限」确实是那条出路
+  assert.equal(deriveDefaultCritics(four, 4).length, 4, '抬高上限后应当放行');
+});
+
+test('缺省集合：真实注册表当前未顶满上限时，仍要留有明确记录', () => {
+  assert.ok(
+    DEFAULT_CRITIC_AGENT_IDS.length <= DEFAULT_MAX_CRITICS,
+    '真实注册表必须满足上限——这条是上面构造用例的生产侧对照',
+  );
 });
 
 test('注册表：意见前缀不得互为前缀', () => {
@@ -185,7 +254,6 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
    * 按 cliName 通用消费 `CommonProbe.models`。收敛完成后该文件里一个 Agent 字面量都没有，
    * 「不得留过期条目」这条当场把它标了出来——泛化是否真的做完，由机器说了算。
    */
-  { file: 'selftest.ts', why: '自检场景里两侧桩的固定编排；M7b 增 N 侧场景' },
   { file: 'types.ts', why: "Disposition.role 的字面 'claude'：裁决件的作者恒为当轮 Driver，而 Driver 任意化排在 M10。此前的豁免理由是 CriticId 的字面收窄，M7b 第 6 步已把它放开成注册表全集——理由换了，豁免仍需要，所以是改写而不是删除" },
 ];
 

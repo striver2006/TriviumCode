@@ -10,12 +10,16 @@
  * 走 plan 双审 → 闸门拦截 → 补裁决 → 闸门放行 → verify → report，
  * 逐步核对退出码与落盘结果。跑完即删。
  *
- * ## 两侧 Agent 用桩，且必须说清楚
+ * ## 各入选侧 Agent 用桩，且必须说清楚
  *
  * 经 `TRIVIUM_STUB_CRITIC` 注入桩适配器，因此**零配额消耗、不依赖网络**。
- * 代价是它**证明不了**两家 CLI 可用——那是 `doctor` 与 `preflight` 的职责。
- * 这条边界必须在输出里写明：把「selftest 通过」误读成「两侧能用」，
+ * 代价是它**证明不了**那几家 CLI 可用——那是 `doctor` 与 `preflight` 的职责。
+ * 这条边界必须在输出里写明：把「selftest 通过」误读成「那几侧能用」，
  * 会让人带着一个装不全的环境去跑真实任务。
+ *
+ * **本文件对「默认跑几侧」不持有意见**：桩集合、裁决表、落盘断言、边界声明
+ * 一律按 `DEFAULT_CRITICS` 派生，注册表改了它跟着改。手点侧数或写死后缀，
+ * 下一次缺省集合变动时会变成沉默的漏检——2026-09-16 r12 实际发生过一次。
  */
 import path from 'node:path';
 import os from 'node:os';
@@ -23,6 +27,8 @@ import { promises as fs } from 'node:fs';
 import { run } from './util/exec.js';
 import { initFixtureRepo } from './util/git.js';
 import { localDate } from './naming.js';
+import { DEFAULT_CRITICS } from './types.js';
+import { agentById } from './agents/registry.js';
 import { EXIT } from './exit-codes.js';
 import { STUB_ENV_VAR } from './adapters/stub.js';
 import { say, step, warn } from './util/log.js';
@@ -48,11 +54,20 @@ export interface SelftestResult {
 const TOPIC = '自检任务';
 const SESSION = 'selftest-session';
 
-/** 桩注入配置：一侧给两条意见、一侧给一条，用来验证逐条裁决真的逐条 */
-const STUB = JSON.stringify({
-  gemini: { mode: 'ok', findings: 2 },
-  glm: { mode: 'ok', findings: 1 },
-});
+/**
+ * 桩注入配置：**按缺省入选集合派生**，第一侧给两条意见、其余各给一条——
+ * 意见数不等是为了验证逐条裁决真的逐条，而不是按侧数凑。
+ *
+ * 此前写死 `{gemini, glm}` 两侧。D4-4 把 codex 纳入缺省集合后，
+ * 自检当场起不来：运行选了三侧，而第三侧没有桩（报「检测到 TRIVIUM_STUB_CRITIC」
+ * 却缺该侧配置）。**自检要验的是「这台机器上默认那条路跑得通」**，
+ * 所以它必须跟着缺省集合走，不能钉死侧数。
+ */
+const STUB = JSON.stringify(
+  Object.fromEntries(
+    DEFAULT_CRITICS.map((c, i) => [c, { mode: 'ok', findings: i === 0 ? 2 : 1 }]),
+  ),
+);
 
 export interface SelftestOptions {
   /** 自身打包产物路径。默认取 process.argv[1] */
@@ -67,7 +82,7 @@ export interface SelftestOptions {
  *
  * 留的洞是 `src/payment.ts` 里未处理的并发退款——桩适配器不会真的发现它，
  * 但真实审查会。这样同一个夹具既能给 selftest 用，也能给人拿去手工验收：
- * 把 `TRIVIUM_STUB_CRITIC` 去掉重跑，看两侧是否真能指出这个洞。
+ * 把 `TRIVIUM_STUB_CRITIC` 去掉重跑，看各侧是否真能指出这个洞。
  */
 async function buildFixture(): Promise<string> {
   const raw = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-selftest-'));
@@ -150,8 +165,16 @@ async function buildFixture(): Promise<string> {
 export async function runSelftest(opts: SelftestOptions = {}): Promise<SelftestResult> {
   const selfScript = opts.selfScript ?? process.argv[1];
   const steps: SelftestStep[] = [];
+  /*
+   * 第一条按缺省集合**派生**家数与厂商名，不手点。
+   *
+   * 这条边界声明的作用恰是告诉用户「自检证明不了哪几侧可用」——少说一家，
+   * 用户就会带着一个装不全的环境去跑真实任务，而这正是本文件头注警告的那类失实。
+   * 2026-09-16 r12：codex 进缺省集合后，此处仍只点名两家（CODEX-04 ≡ GLM-03）。
+   */
+  const stubbedClis = DEFAULT_CRITICS.map((c) => agentById(c)?.display ?? c).join('、');
   const notCovered = [
-    'Antigravity 与 ZCode 两家 CLI 是否可调用、是否已认证——两侧一律走桩适配器。' +
+    `${stubbedClis} 各家 CLI 是否可调用、是否已认证——各入选侧一律走桩适配器。` +
       '请另跑 `trivium doctor` 与 `trivium preflight`。',
     '真实模型的审查质量：桩产出的是固定假数据，不代表任何真实结论。',
     '路径级 deny 等隔离机制的厂商侧行为（M0 探针的职责）。',
@@ -236,8 +259,18 @@ export async function runSelftest(opts: SelftestOptions = {}): Promise<SelftestR
 
     const planDir = path.join(root, '.reviews', TOPIC, 'plan');
     const docs = await fs.readdir(planDir);
-    const bothSides = docs.some((f) => f.endsWith('-gemini.md')) && docs.some((f) => f.endsWith('-glm.md'));
-    record('两侧审查文档均已落盘', 0, 0, docs.join(', '), bothSides);
+    /*
+     * 按缺省集合**逐侧**核验，不写死后缀。
+     *
+     * 2026-09-16 r12 三侧独立指出：此处曾硬编码 `-gemini.md` 与 `-glm.md`，
+     * 而同一次改造已把产出侧（STUB、addresses、裁决表）全部按 `DEFAULT_CRITICS` 派生。
+     * 产出泛化、断言没跟上 = 缺省集合的首侧（codex）若没落盘，本步照样判通过——
+     * 「看起来已经泛化了」比没泛化更危险。
+     */
+    const missingDocs = DEFAULT_CRITICS.filter(
+      (c) => !docs.some((f) => f.endsWith(`-${agentById(c)?.suffix ?? c}.md`)),
+    );
+    record('各入选侧审查文档均已落盘', 0, 0, docs.join(', '), missingDocs.length === 0);
 
     // ② 裁决未齐备：工件校验与两个 Hook 都必须拦
     const artifactsBefore = await tv(['gate', '--stage', 'plan', '--topic', TOPIC, '--check-artifacts']);
@@ -260,24 +293,51 @@ export async function runSelftest(opts: SelftestOptions = {}): Promise<SelftestR
         '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
         'role: claude', 'kind: revised', `run_id: ${runId}`,
         'addresses:',
-        `  - ${localDate()}-${TOPIC}-gemini.md`,
-        `  - ${localDate()}-${TOPIC}-glm.md`,
+        ...DEFAULT_CRITICS.map(
+          (c) => `  - ${localDate()}-${TOPIC}-${agentById(c)?.suffix ?? c}.md`,
+        ),
         '---', '',
         '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
         '| :--- | :--- | :--- | :--- | :--- | :--- |',
-        '| AGY-01 | gemini | blocker | 接受 | selftest 的示例裁决：确认需要补 | §二 |',
-        '| AGY-02 | gemini | minor | 驳回 | selftest 的示例驳回：与 §一 的目标不符 | 不改 |',
-        '| GLM-01 | glm | blocker | 接受 | selftest 的示例裁决：同一处并发问题 | §二 |',
+        /*
+         * **编号、来源与条数一律按缺省集合派生**，不写死。
+         *
+         * 原先是三行字面量，钉死了「两侧、第一侧两条」。D4-4 把 codex 纳入缺省之后，
+         * 实际编号变成四条，而裁决件还在裁一个不存在的编号——闸门同时报
+         * 「缺两条」与「有一条不在本轮结论中」。
+         *
+         * 派生之后本文件对「默认跑几侧」**不再有意见**：注册表改，它跟着改。
+         * 意见数仍是「第一侧两条、其余各一条」，与上面 `STUB` 的构造同源，
+         * 保住「逐条裁决真的逐条」这个原始意图。
+         */
+        ...DEFAULT_CRITICS.flatMap((c, i) => {
+          const prefix = agentById(c)?.findingPrefix ?? c.toUpperCase();
+          const rows = [
+            `| ${prefix}-01 | ${c} | blocker | 接受 | selftest 的示例裁决：确认需要补 | §二 |`,
+          ];
+          if (i === 0) {
+            rows.push(
+              `| ${prefix}-02 | ${c} | minor | 驳回 | selftest 的示例驳回：与 §一 的目标不符 | 不改 |`,
+            );
+          }
+          return rows;
+        }),
         '',
       ].join('\n'),
       'utf8',
     );
 
     const check = await tv(['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
-    record('裁决完整性校验通过（逐条对齐三条意见）', EXIT.OK, check.code, check.stdout + check.stderr);
+    record(`裁决完整性校验通过（逐条对齐 ${DEFAULT_CRITICS.length + 1} 条意见）`, EXIT.OK, check.code, check.stdout + check.stderr);
 
     const artifactsAfter = await tv(['gate', '--stage', 'plan', '--topic', TOPIC, '--check-artifacts']);
-    record('工件齐备（AC-01 四件套）', EXIT.OK, artifactsAfter.code, artifactsAfter.stdout);
+    // 「四件套」是两侧时代的说法：最低工件集 = 原稿 + 各入选侧审查 + 裁决件，随缺省集合变
+    record(
+      `工件齐备（AC-01：原稿 + ${DEFAULT_CRITICS.length} 侧审查 + 裁决件，共 ${DEFAULT_CRITICS.length + 2} 件）`,
+      EXIT.OK,
+      artifactsAfter.code,
+      artifactsAfter.stdout,
+    );
 
     const preCommit2 = await tv(['gate', 'hook-pre-commit'], commitEvent);
     record('裁决齐备后放行提交', EXIT.OK, preCommit2.code, preCommit2.stderr);
@@ -347,7 +407,7 @@ export function renderSelftest(r: SelftestResult): string {
   if (r.kept) {
     L.push(`夹具保留在 ${r.fixtureRoot}`);
     L.push('  它是一个故意留洞的最小项目（src/payment.ts 的并发退款没有幂等保护）。');
-    L.push('  去掉 TRIVIUM_STUB_CRITIC 在其中重跑一次，可检验两侧真实审查能否指出这个洞。');
+    L.push('  去掉 TRIVIUM_STUB_CRITIC 在其中重跑一次，可检验各侧真实审查能否指出这个洞。');
   } else {
     L.push('夹具已清理。加 --keep-fixture 可保留以供手工验收（§17.3）。');
   }
@@ -356,7 +416,7 @@ export function renderSelftest(r: SelftestResult): string {
 
 /** 供 cli 调用的薄壳 */
 export async function selftestCommand(opts: SelftestOptions): Promise<number> {
-  say('自检：在临时夹具仓库里真跑一遍整条流水线（两侧走桩适配器，不消耗厂商配额）');
+  say('自检：在临时夹具仓库里真跑一遍整条流水线（各入选侧走桩适配器，不消耗厂商配额）');
   const r = await runSelftest(opts);
   say(renderSelftest(r));
   return r.ok ? EXIT.OK : EXIT.FAIL;
