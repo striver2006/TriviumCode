@@ -1159,6 +1159,22 @@ export interface CriticResult {
   tool_calls: ToolCallCounts;
   /** 轨迹中出现过的读取路径（项目相对），供 deny_paths 核验与 consulted 交叉核对 */
   read_paths: string[];
+  /**
+   * 「必然带路径」的读调用总数，与其中真的提出了路径的条数（设计 §10.1.1 第②层）。
+   *
+   * 两者不等 ⇒ 提取器相对厂商实际参数名**已经退化**——这是本项目唯一能在
+   * **下一轮运行时**发现厂商改参数名的信号。2026-09-16 之前它不存在，
+   * 于是某家 CLI 的搜索目录参数改名后，措施 a 对该通道恒盲而计数通道一切正常，
+   * 直到有人手工复算原始轨迹才发现。
+   *
+   * **分母只算「必然带路径」那一档**：搜索 / 列目录类允许无路径（不带目录的
+   * 搜索是合法形态），计进去会让降级档位变成稳态噪声、淹掉真信号。
+   *
+   * 两者都可选：`command-trace` 族结构性没有这个概念，旧留痕也没有。
+   * **缺失 ≠ 零**——缺失表示「该侧没报」，`guard` 据此记 `ok` 而不是谎报退化。
+   */
+  path_bearing_reads?: number;
+  path_bearing_reads_with_path?: number;
   /** 轨迹中出现过的写工具/写命令事件，非空即 readonly_breach */
   write_events: string[];
   /**

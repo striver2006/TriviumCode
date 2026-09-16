@@ -21,7 +21,7 @@ import {
   type TraceCapability,
 } from '../../src/trivium/adapters/base.js';
 import { judgeSide } from '../../src/trivium/guard.js';
-import { defaultConfig } from '../../src/trivium/config.js';
+import { TRIVIUM_DIR, defaultConfig } from '../../src/trivium/config.js';
 import type { CriticRequest, CriticResult, Review } from '../../src/trivium/types.js';
 
 const ROOT = '/proj';
@@ -265,6 +265,8 @@ function judge(over: Partial<CriticResult>, cap?: TraceCapability, review: Revie
   return judgeSide(cfg, 'gemini', result(over), review, REQ, {
     archiveRootAbs: OPTS.archiveRootAbs,
     projectRoot: ROOT,
+    triviumDir: `${ROOT}/${TRIVIUM_DIR}`,
+    runRoot: '/tmp/runs',
     ...(cap ? { capability: cap } : {}),
   });
 }

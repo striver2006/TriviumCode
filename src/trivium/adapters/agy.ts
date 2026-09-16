@@ -23,6 +23,7 @@ import { ensureDir, exists, sha256File } from '../util/fsx.js';
 import {
   parseAgyStream,
   readPaths,
+  pathCoverage,
   successfulToolCalls,
   writeEvents,
   commandTexts,
@@ -383,6 +384,9 @@ export const agyAdapter: CriticAdapter = {
       profile_requested: null,
       tool_calls: countTools(out.parsed),
       read_paths: readPaths(out.parsed),
+      // 路径提取覆盖率：两者不等即提取器已相对厂商参数名退化（设计 §10.1.1 第②层）
+      path_bearing_reads: pathCoverage(out.parsed).total,
+      path_bearing_reads_with_path: pathCoverage(out.parsed).withPath,
       write_events: writeEvents(out.parsed),
       command_texts: commandTexts(out.parsed),
       evidence_ok: false, // 由 guard 判定

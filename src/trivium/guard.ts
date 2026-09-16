@@ -5,7 +5,7 @@
  * 这样「检出」与「处置」分开，处置策略可配而检出逻辑恒定。
  */
 import nodePath from 'node:path';
-import type { Config, CriticId, CriticRequest, CriticResult, Review,
+import type { Config, CriticId, CriticRequest, CriticResult, DenyCategory, Review,
   SuspectedWrite,
 } from './types.js';
 import {
@@ -17,9 +17,18 @@ import {
   type TraceCapability,
 } from './adapters/base.js';
 import { checkReviewIntegrity } from './parse.js';
-import { judgeDrift, driftAction, type DriftVerdict, type Snapshot } from './freeze.js';
+import {
+  judgeDrift,
+  driftAction,
+  classifyDenyPath,
+  isVoidingCategory,
+  isOrchestratorReadable,
+  type DriftVerdict,
+  type Snapshot,
+} from './freeze.js';
 import { ALL_CLI_NAMES } from './agents/registry.js';
-import { matchesAnyGlob } from './util/fsx.js';
+import { expandHome, matchesAnyGlob } from './util/fsx.js';
+import { TRIVIUM_DIR } from './config.js';
 
 export interface SideVerdict {
   critic: CriticId;
@@ -42,6 +51,22 @@ export interface SideVerdict {
    * 要看得出是哪条通道，否则「为什么 deny 生效了还漏」永远查不清。
    */
   peerCommandHits: string[];
+  /**
+   * 命中的**非作废类**条目（编排器状态目录、凭据文件），以及它们的类别。
+   *
+   * 与 `peerHits` / `peerCommandHits` 分开记：那两个是「会让这一侧作废」的证据，
+   * 这里是「记下来、但不影响结论」的。合并记会让分类白做——
+   * 读的人看到一个非空数组，仍然不知道该不该采信这一侧。
+   */
+  notedCategories: DenyCategory[];
+  notedPaths: string[];
+  /**
+   * 命中路径逐条带类（供 `run.json` 的 `peer_leak_via_path` 落盘）。
+   *
+   * 同一侧一轮内可同时命中多类，处置取最重档而留痕要能复盘每一条各属哪类——
+   * 只记一个聚合的类别会把这件事再塌缩一次。
+   */
+  typedHits: { path: string; category: DenyCategory }[];
   /** consulted 与轨迹交叉核对未通过 */
   consultedUnverified: boolean;
   /** 结构性问题（编号前缀错、重复编号等） */
@@ -78,11 +103,18 @@ export interface SideVerification {
    */
   readonly: 'ok' | 'unavailable';
   /**
-   * 措施 a（读取路径比对 deny）是否有结构化输入可扫。
+   * 措施 a（读取路径比对 deny）的可用档位。
+   *
    * `unavailable` ⟺ `traceShape === 'command-trace'`——该族 `read_paths` 恒空，
    * deny 核验只剩措施 b 一条通道（已知形态必检，非完备，R25）。
+   *
+   * **`partial`（2026-09-16 新增）**：该侧有结构化轨迹，但「必然带路径」的读调用里
+   * 出现了提不出路径的——提取器相对厂商实际参数名已经退化。
+   * 补这一档之前，本字段**只看能力声明、不看实际拿到了什么**：
+   * 声明为 tool-trace 的侧交出空路径集，档位照样是 `ok`，而 `ok` 承诺的是
+   * 「路径核验有效」——那是把「没测到」说成了「测出来没有」。
    */
-  path: 'ok' | 'unavailable';
+  path: 'ok' | 'partial' | 'unavailable';
   /** 本次生效的项目读取下限（`command-trace` 族折减后的值） */
   evidenceThreshold: number;
 }
@@ -99,7 +131,15 @@ export function judgeSide(
   result: CriticResult,
   review: Review | null,
   req: CriticRequest,
-  opts: { archiveRootAbs: string; projectRoot: string; capability?: TraceCapability },
+  opts: {
+    archiveRootAbs: string;
+    projectRoot: string;
+    /** 编排器状态目录的绝对路径——分类与具名放行都要它（设计 §10.1.1） */
+    triviumDir: string;
+    /** 运行根的绝对路径。那是混合树，己方材料与对端输出都在里面 */
+    runRoot: string;
+    capability?: TraceCapability;
+  },
 ): SideVerdict {
   /*
    * 未传能力声明时按结构化轨迹处理——那是本步之前的唯一形态，行为逐字等价。
@@ -111,11 +151,47 @@ export function judgeSide(
   const ev = checkEvidence(result, req, { archiveRootAbs: opts.archiveRootAbs, capability: cap });
 
   /*
+   * ── 禁读集按类分组（设计 §10.1.1，2026-09-16）──
+   *
+   * 禁读集由四类性质完全不同的对象拼成，而此前它们共用一个布尔位与一句
+   * 「该侧结论作废」。四次实测命中**全部落在编排器状态目录那一类**——
+   * 审查员读了自己的护栏配置或列了目录，与背靠背独立性毫无关系。
+   *
+   * **分组在调用之前做，而不是在命中之后分**：两条通道的匹配逻辑（尤其措施 b
+   * 的 F-1～F-9 闭集）一行都不该为分类改动，而按类分好再传进去，
+   * 返回的命中天然带类。放行项根本不进集合，于是两条通道**自动一致**——
+   * 这正是 r3 三审要求的「三个消费面一致豁免」里最难的那一面。
+   */
+  const denyCtx = {
+    projectRoot: opts.projectRoot,
+    triviumDir: opts.triviumDir,
+    runRoot: opts.runRoot,
+    critic,
+    sensitiveGlobs: cfg.review.sensitive_globs,
+  };
+  const byCategory = new Map<DenyCategory, string[]>();
+  for (const d of req.deny_paths) {
+    // 具名放行：两条通道都不看它（设计 §10.1.1）
+    if (isOrchestratorReadable(d, opts)) continue;
+    const c = classifyDenyPath(d, denyCtx);
+    const list = byCategory.get(c) ?? [];
+    list.push(d);
+    byCategory.set(c, list);
+  }
+  /** 会让该侧作废的那几类条目（第①②类） */
+  const voidingPaths = [...byCategory.entries()]
+    .filter(([c]) => isVoidingCategory(c))
+    .flatMap(([, ps]) => ps);
+
+  /*
    * 措施 a **只吃 `read_paths`，不吃回填**（r2/r3 双审两侧均确认）：
    * 回填路径的语义是「跑了一条提到该文件的命令」，不等于「读到了该文件」。
    * 命令通道由下面的措施 b 承担，两条分列才看得出泄漏走的是哪条。
+   *
+   * 传 `voidingPaths` 而不是全集：非作废类的命中另行收集（见下面的 `noted`），
+   * 它们进留痕与告警，但不影响该侧结论。
    */
-  const peer = checkPeerLeak(result.read_paths, req.deny_paths, opts.projectRoot);
+  const peer = checkPeerLeak(result.read_paths, voidingPaths, opts.projectRoot);
   /*
    * 措施 b（§10.1 / EV-01）：命令原文的字面扫描。
    *
@@ -129,7 +205,28 @@ export function judgeSide(
    * > 是把论证建在空处」为由把那句话从 §18.1 #21 删掉。一面删、一面写进新注释。
    * > 该旋钮无消费方（BACKLOG **EV-15**），且已拍板不收窄（**EV-16**）。
    */
-  const peerCmd = checkPeerLeakViaCommand(result.command_texts, req.deny_paths, opts.projectRoot);
+  const peerCmd = checkPeerLeakViaCommand(result.command_texts, voidingPaths, opts.projectRoot);
+
+  /*
+   * 非作废类的命中（编排器状态目录、凭据文件）——**记，但不作废**。
+   *
+   * 这一族不是「不管」：它们照常进留痕与人读告警，只是不影响该侧结论。
+   * 四次实测命中全落在这里，其中两次是审查员**主动披露**的；
+   * 按旧口径它们会让一份完全有效的审查作废，而泄漏的是护栏配置本身。
+   *
+   * 两条通道都扫：只扫路径通道的话，一次目录列举仍会从命令通道漏成作废。
+   */
+  const notedCategories: DenyCategory[] = [];
+  const notedPaths: string[] = [];
+  for (const [cat, paths] of byCategory) {
+    if (isVoidingCategory(cat) || paths.length === 0) continue;
+    const viaPath = checkPeerLeak(result.read_paths, paths, opts.projectRoot);
+    const viaCmd = checkPeerLeakViaCommand(result.command_texts, paths, opts.projectRoot);
+    if (viaPath.leaked || viaCmd.leaked) {
+      notedCategories.push(cat);
+      notedPaths.push(...viaPath.hits);
+    }
+  }
 
   /*
    * 轨迹里出现写事件 = 审查员失守（§10.3 末段）。
@@ -185,15 +282,56 @@ export function judgeSide(
     peerArtifactRead: peer.leaked || peerCmd.leaked,
     peerHits: peer.hits,
     peerCommandHits: peerCmd.hits,
+    notedCategories,
+    notedPaths: [...new Set(notedPaths)],
+    typedHits: [
+      ...peer.hits.map((p) => ({ path: p, category: classifyDenyPath(p, denyCtx) })),
+      ...[...new Set(notedPaths)].map((p) => ({ path: p, category: classifyDenyPath(p, denyCtx) })),
+    ],
     consultedUnverified,
     integrityIssues,
     suspectedWrites: [...(result.suspected_write_events ?? [])],
     verification: {
       readonly: cap.rejectionRecorded ? 'ok' : 'unavailable',
-      path: cap.traceShape === 'command-trace' ? 'unavailable' : 'ok',
+      path: pathVerificationTier(result, cap),
       evidenceThreshold: ev.minProjectReads,
     },
   };
+}
+
+/**
+ * 路径核验的档位（设计 §10.1.1 第②层）。
+ *
+ * ## 为什么不能只看能力声明
+ *
+ * 原先这一行是 `cap.traceShape === 'command-trace' ? 'unavailable' : 'ok'`——
+ * **只看该侧声明了什么，不看本次实际拿到了什么**。声明为 `tool-trace` 的侧
+ * 只要交出空的或残缺的路径集，档位照样是 `ok`，而 `ok` 承诺的是「路径核验有效」。
+ *
+ * ## 分母按工具分两档
+ *
+ * 「必然带路径」的读调用（文件读类）提不出路径 = 提取器相对厂商实际参数名**已经退化**，
+ * 这就是改名探测器，近零假阳；而搜索 / 列目录类**允许**无路径——不带目录的搜索是
+ * 合法形态，无路径即无读取事实，把它们计进分母会让 `partial` 变成稳态噪声。
+ *
+ * ## 它防得住什么、防不住什么
+ *
+ * 防得住**参数改名**（工具名不变、`tool-trace` 族）：下一轮当场可见。
+ * 防不住**工具改名或新增读工具**——那时分母自己缩小、提取率仍是 100%，
+ * 盲区只是从「提不出路径」搬到「这条调用没被算进读类」。那一层要靠探针臂，
+ * 已登记待排。`command-trace` 族结构性无信号，恒 `unavailable`。
+ */
+function pathVerificationTier(
+  result: CriticResult,
+  cap: TraceCapability,
+): 'ok' | 'partial' | 'unavailable' {
+  if (cap.traceShape === 'command-trace') return 'unavailable';
+  const total = result.path_bearing_reads;
+  const withPath = result.path_bearing_reads_with_path;
+  // 该侧没报这两个计数（旧适配器 / 旧留痕）：不知道就别说「有效」，也别谎报退化
+  if (total === undefined || withPath === undefined) return 'ok';
+  if (total === 0) return 'ok';
+  return withPath < total ? 'partial' : 'ok';
 }
 
 export interface RunVerdict {
@@ -298,6 +436,13 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
     sides[c] = judgeSide(cfg, c, r, reviews[c] ?? null, q, {
       archiveRootAbs: input.archiveRootAbs,
       projectRoot: input.projectRoot,
+      /*
+       * 分类与具名放行要这两个根（设计 §10.1.1）。
+       * `triviumDirRel` 是可选的（旧调用没传），缺省按约定目录名拼——
+       * 拼错的后果是那一类命中被归成「对端产物」而判作废，方向保守。
+       */
+      triviumDir: nodePath.resolve(input.projectRoot, input.triviumDirRel ?? TRIVIUM_DIR),
+      runRoot: expandHome(cfg.runtime.run_root),
       ...(cap ? { capability: cap } : {}),
     });
   }

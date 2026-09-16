@@ -7,7 +7,7 @@
  */
 import YAML from 'yaml';
 import type {
-  CriticId, CriticResult, Review, Severity, Stage, Vendor,
+  CriticId, CriticResult, DenyCategory, Review, Severity, Stage, Vendor,
 } from './types.js';
 import { CRITIC_VENDOR } from './types.js';
 import { agentById } from './agents/registry.js';
@@ -54,7 +54,29 @@ export interface RenderInput {
    * 本侧两条核验通道的降级档位（§11.1，M8 第 2 步）。
    * 省略时按「两条都可用」渲染——结构化轨迹两家的现状，行为等价。
    */
-  verification?: { readonly: 'ok' | 'unavailable'; path: 'ok' | 'unavailable' };
+  verification?: { readonly: 'ok' | 'unavailable'; path: 'ok' | 'partial' | 'unavailable' };
+  /**
+   * 禁读核验的结论（设计 §10.1.1）。
+   *
+   * **与 `peerDeny` 正交**，不可混用：后者说的是「路径级 deny 这个机制有没有生效」
+   * （本机两家恒 false），本字段说的是「这一侧实际有没有碰到禁读面」。
+   * 此前 front-matter 与横幅里只有前者，于是「碰没碰」在文档上无处可查——
+   * 而那恰恰是裁决者最需要知道的一件事。
+   *
+   * `voiding` 决定横幅说哪一句：命中对端产物（第①②类）说「本侧结论作废」，
+   * 命中编排器状态或凭据文件说「记一笔、不影响结论」。
+   * 省略本字段 = 该侧没扫或没命中，两者都不渲染横幅。
+   */
+  peerLeak?: {
+    hit: boolean;
+    /** 走哪条通道命中的：读取路径、命令文本，还是两条都有 */
+    via: 'path' | 'command' | 'both';
+    /** 最重的那一类（同一侧一轮可命中多类，处置取最重档） */
+    category: DenyCategory;
+    /** 是否属于会让该侧结论作废的类别 */
+    voiding: boolean;
+    paths: string[];
+  };
   heterogeneous: boolean;
   overrideReason?: string | null;
 }
@@ -112,6 +134,22 @@ export function renderFrontMatter(input: RenderInput): string {
      */
     ...(input.verification?.readonly === 'unavailable' ? { readonly_verification: 'unavailable' } : {}),
     ...(input.verification?.path === 'unavailable' ? { path_verification: 'unavailable' } : {}),
+    ...(input.verification?.path === 'partial' ? { path_verification: 'partial' } : {}),
+    /*
+     * 禁读核验结论（设计 §6.5 / §10.1.1）。与 `peer_deny` **正交**——
+     * 后者只说「路径级 deny 有没有生效」，不说「有没有泄漏」；
+     * 此前 front-matter 里只有前者，于是「这一侧碰没碰禁读面」在文档上无处可查。
+     */
+    ...(input.peerLeak && input.peerLeak.hit
+      ? {
+          peer_leak: {
+            hit: true,
+            via: input.peerLeak.via,
+            category: input.peerLeak.category,
+            paths: input.peerLeak.paths,
+          },
+        }
+      : {}),
     heterogeneous: input.heterogeneous,
     ...(input.overrideReason ? { override_reason: input.overrideReason } : {}),
     ...(input.result.session_id ? { session_id: input.result.session_id } : {}),
@@ -171,6 +209,19 @@ export function renderReviewDoc(input: RenderInput): string {
       '对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。',
     );
   }
+  if (input.peerLeak?.hit && input.peerLeak.voiding) {
+    flags.push(
+      `**本侧结论作废**：轨迹中出现了对方产出（${input.peerLeak.via === 'command' ? '命令文本通道' : input.peerLeak.via === 'both' ? '读取路径与命令文本两条通道' : '读取路径通道'}）。` +
+        '它作为「第二只独立眼睛」的身份已不可采信——**这与它每条意见是否属实无关**：' +
+        '意见仍需逐条裁决，但不得以「另一侧也这么说」为由采信本侧结论，' +
+        '本侧也不计入共同阻断的独立来源。命中路径见 front-matter 的 `peer_leak`。',
+    );
+  } else if (input.peerLeak?.hit) {
+    flags.push(
+      '**读到了禁读清单内的文件，但不影响本侧结论**：命中的是编排器状态文件或凭据文件，' +
+        '不含任何审查意见，因此不损害背靠背独立性。记此一笔供审计，无需处置。',
+    );
+  }
   if (input.verification?.readonly === 'unavailable') {
     flags.push(
       '**只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。' +
@@ -181,6 +232,13 @@ export function renderReviewDoc(input: RenderInput): string {
     flags.push(
       '**路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，' +
         '禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。',
+    );
+  }
+  if (input.verification?.path === 'partial') {
+    flags.push(
+      '**路径提取不完整**：本侧「必然带路径」的读调用里，有一部分提不出路径——' +
+        '通常意味着厂商改了工具的参数名，而我们的提取器还没跟上。' +
+        '本侧的禁读核验因此**不完整**：没命中不等于没读过。请核对适配器的路径键名表。',
     );
   }
   if (!input.heterogeneous) {

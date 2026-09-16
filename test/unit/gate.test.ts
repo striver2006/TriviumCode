@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
-  checkAdjudication, findJointRejectedBlockers, isHollowReason, loadRoundReviews, renderGateResult,
+  checkAdjudication, findJointRejectedBlockers, jointCheckState, isHollowReason, loadRoundReviews, renderGateResult,
 } from '../../src/trivium/gate.js';
 import { newRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
 import { CRITICS } from '../../src/trivium/types.js';
@@ -356,6 +356,77 @@ test('位置不同的 blocker 不算共同（不做文本相似度，避免启�
     { id: 'GLM-01', source: 'glm' as const, severity: 'blocker' as const, disposal: '驳回' as const, reason: 'r', action: '' },
   ];
   assert.deepEqual(findJointRejectedBlockers(reviews, rows), []);
+});
+
+/*
+ * ── 作废侧不计入独立来源，以及「没做」必须与「做了没发现」分开 ──
+ *
+ * 不排除作废侧会出现方向完全相反的后果：**一个本应作废的审查员反而获得了
+ * 逼停流水线的否决权**——它提的 blocker 与另一侧凑成「共同」，Driver 驳回时闸门当场拦人。
+ *
+ * 而排除之后有效侧可能不足两家，`critics.size < 2` 让这一档恒返回空集。
+ * 若不记三态，「查过、没有共同项」与「有效侧不足、根本没做」在留痕里完全一样
+ * ——三态纪律在本主题内的第四次复发。
+ */
+
+const TWO_SIDED = {
+  gemini: review([{ id: 'AGY-01', severity: 'blocker' as const, location: 'src/a.ts:88' }]),
+  glm: review([{ id: 'GLM-01', severity: 'blocker' as const, location: 'src/a.ts:88' }]),
+};
+const TWO_ROWS = [
+  { id: 'AGY-01', source: 'gemini' as const, severity: 'blocker' as const, disposal: '驳回' as const, reason: 'r', action: '' },
+  { id: 'GLM-01', source: 'glm' as const, severity: 'blocker' as const, disposal: '驳回' as const, reason: 'r', action: '' },
+];
+
+test('作废侧不计入独立来源——否则它反而获得了逼停流水线的否决权', () => {
+  const joint = findJointRejectedBlockers(TWO_SIDED, TWO_ROWS, ['glm']);
+  assert.deepEqual(
+    joint,
+    [],
+    '排除 glm 后只剩一个独立来源，不构成「两家共同提出」——' +
+      '被判泄漏的一侧不该还能靠「另一侧也这么说」把闸门拦死',
+  );
+});
+
+test('三态：两家有效且有共同项 → checked-found', () => {
+  const joint = findJointRejectedBlockers(TWO_SIDED, TWO_ROWS);
+  const s = jointCheckState(TWO_SIDED, joint);
+  assert.equal(s.state, 'checked-found');
+  assert.equal(s.effective_sides, 2);
+});
+
+test('三态：两家有效但无共同项 → checked-none（查过、没发现）', () => {
+  const reviews = {
+    gemini: review([{ id: 'AGY-01', severity: 'blocker' as const, location: 'src/a.ts:88' }]),
+    glm: review([{ id: 'GLM-01', severity: 'blocker' as const, location: 'src/b.ts:1' }]),
+  };
+  const joint = findJointRejectedBlockers(reviews, TWO_ROWS);
+  const s = jointCheckState(reviews, joint);
+  assert.equal(s.state, 'checked-none');
+  assert.equal(s.effective_sides, 2);
+});
+
+test('三态：排除作废侧后不足两家 → skipped，与「查过没发现」分得开', () => {
+  const joint = findJointRejectedBlockers(TWO_SIDED, TWO_ROWS, ['glm']);
+  const s = jointCheckState(TWO_SIDED, joint, ['glm']);
+  assert.equal(
+    s.state,
+    'skipped-insufficient-sides',
+    '这一档根本没做。若与 checked-none 落成同一个观测，' +
+      '留痕里就看不出本轮少了一层防线——那正是本主题要修的病',
+  );
+  assert.equal(s.effective_sides, 1);
+});
+
+test('三态：阈值不随入选总数上调——三家里的两家仍是两个独立来源', () => {
+  const three = {
+    ...TWO_SIDED,
+    codex: review([{ id: 'CODEX-01', severity: 'minor' as const, location: 'src/z.ts:1' }]),
+  };
+  const joint = findJointRejectedBlockers(three, TWO_ROWS, ['codex']);
+  const s = jointCheckState(three, joint, ['codex']);
+  assert.equal(s.state, 'checked-found', '三家排除一家后仍有两个独立来源，这一档照常做');
+  assert.equal(s.effective_sides, 2);
 });
 
 test('共同 blocker 只要有一条被接受就不算「被驳回」', () => {

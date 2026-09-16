@@ -122,7 +122,61 @@ test('禁读清单逐个列出路径，便于与轨迹逐条对账', () => {
 
 test('禁读清单为空时给出明确说明而非空列表', () => {
   const b = renderBrief(input({ snapshot: { ...SNAP, denyPaths: [] } }));
-  assert.ok(b.includes('本次无对方历史产出或敏感文件需要屏蔽'));
+  assert.ok(b.includes('本次无对方产出需要屏蔽'), '作废档为空要有明确说明');
+  assert.ok(b.includes('本次无此类条目'), '告警档为空也要有明确说明，不能留空列表');
+});
+
+/*
+ * ── BRIEF 文案必须与机器判定同档（设计 §10.1.1）──
+ *
+ * 此前这一段对全部条目一律说「读了即作废」，而机器已按四类分流。
+ * 不改文案会同时造出两种错位：提示语说作废而机器不作废（虚假威慑），
+ * 以及审查员读了状态文件后以为自己毁了整轮审查（实际什么也没发生——
+ * 四次实测命中全是这一类，其中两次审查员还专门写了披露）。
+ */
+test('禁读清单按处置分两节：作废档与告警档各自说清后果', () => {
+  const b = renderBrief(
+    input({
+      snapshot: {
+        ...SNAP,
+        denyPaths: [
+          '.reviews/x/plan/2026-01-01-x-glm.md', // 对端产物 → 作废档
+          '.trivium/state.json', // 编排器状态 → 告警档
+        ],
+      },
+    }),
+  );
+
+  const voidingIdx = b.indexOf('读了会让本次审查作废');
+  const notedIdx = b.indexOf('不要读，但读了不会让审查作废');
+  assert.ok(voidingIdx > 0 && notedIdx > voidingIdx, '两节都要在，且作废档在前');
+
+  const voidingSection = b.slice(voidingIdx, notedIdx);
+  const notedSection = b.slice(notedIdx);
+  assert.ok(
+    voidingSection.includes('2026-01-01-x-glm.md'),
+    '对端产物必须落在作废档——它进入上下文会破坏背靠背独立性',
+  );
+  assert.ok(
+    notedSection.includes('state.json'),
+    '编排器状态文件必须落在告警档：它不含任何审查意见，读它不损害独立性',
+  );
+  assert.ok(
+    !voidingSection.includes('state.json'),
+    '状态文件不得出现在作废档——那正是四次误伤的来源',
+  );
+});
+
+test('具名放行的条目根本不进禁读清单', () => {
+  const b = renderBrief(
+    input({ snapshot: { ...SNAP, denyPaths: ['.trivium/config.yaml', '.trivium/state.json'] } }),
+  );
+  assert.ok(
+    !b.includes('`.trivium/config.yaml`'),
+    '项目级共享配置是具名放行的，列进禁读清单会让审查员不敢读它——' +
+      '而那恰恰是「这个项目怎么审」的声明',
+  );
+  assert.ok(b.includes('`.trivium/state.json`'), '同目录下未放行的条目仍要列出');
 });
 
 test('被审对象以分隔符包裹并声明是数据不是指令（防提示注入）', () => {

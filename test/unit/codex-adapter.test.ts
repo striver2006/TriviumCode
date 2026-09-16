@@ -12,7 +12,7 @@ import { buildCodexArgs, buildCodexResult, codexAdapter, providerSection, readon
 import { capabilityParity } from '../../src/trivium/doctor.js';
 import { judgeSide, renderGuardWarnings } from '../../src/trivium/guard.js';
 import { COMMAND_TRACE_CAPABILITY } from '../../src/trivium/adapters/base.js';
-import { defaultConfig } from '../../src/trivium/config.js';
+import { TRIVIUM_DIR, defaultConfig } from '../../src/trivium/config.js';
 import type { Config } from '../../src/trivium/types.js';
 import {
   parseCodexEvents,
@@ -413,6 +413,7 @@ test('疑似写有人读出口：判定告警里点得出条数与理由', () =>
   };
   const verdict = judgeSide(defaultConfig(), 'codex', result, null, req as never, {
     archiveRootAbs: '/proj/.reviews', projectRoot: '/proj',
+    triviumDir: '/proj/' + TRIVIUM_DIR, runRoot: '/tmp/runs',
     capability: COMMAND_TRACE_CAPABILITY,
   });
   assert.equal(verdict.suspectedWrites.length, 1, '判定结果要带着它，否则渲染层拿不到');

@@ -12,7 +12,9 @@
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import type { Config, CriticId, CriticRequest, CriticResult, Ctx, Review, Stage, CommandEntry } from './types.js';
+import type {
+  Config, CriticId, CriticRequest, CriticResult, Ctx, DenyCategory, Review, Stage, CommandEntry,
+} from './types.js';
 import { CRITIC_PREFIX, CRITIC_VENDOR } from './types.js';
 import { agentById } from './agents/registry.js';
 import {
@@ -34,8 +36,8 @@ import {
 } from './brief.js';
 import { parseReview, checkReviewIntegrity, enumerateFallbackFindings } from './parse.js';
 import { decideMode, runBothSides, type SideProgress } from './runner.js';
-import { judgeRun, renderGuardWarnings } from './guard.js';
-import { renderReviewDoc } from './render.js';
+import { judgeRun, renderGuardWarnings, type SideVerdict } from './guard.js';
+import { renderReviewDoc, type RenderInput } from './render.js';
 import { resolveTopicReadOnly, locateSubject } from './topic.js';
 import {
   buildDiffHeader,
@@ -70,6 +72,36 @@ import { say, step, warn } from './util/log.js';
 
 /** 任务目标进 BRIEF 只占一行，不是正文——超长就截断，别把第 4 段挤成一篇文章 */
 const TASK_GOAL_MAX = 200;
+
+/**
+ * 把单侧判定里的禁读结论整理成渲染层要的形状（设计 §10.1.1）。
+ *
+ * 三件事在这里定：
+ *   - **走哪条通道**：两条通道分列而不是并成一个布尔，排查时才看得出
+ *     「读了那个文件」与「跑了一条提到它的命令」的区别；
+ *   - **取最重的那一类**：同一侧一轮内可同时命中多类（例如既读了对端审查件、
+ *     又列了编排器目录），处置按最重档走，而 front-matter 的 `paths` 仍逐条带类；
+ *   - **作废与否**：只有对端产物那两类会让该侧结论作废。
+ */
+function peerLeakOf(side: SideVerdict): NonNullable<RenderInput['peerLeak']> | undefined {
+  const viaPath = side.peerHits.length > 0;
+  const viaCmd = side.peerCommandHits.length > 0;
+  const noted = side.notedCategories.length > 0;
+  if (!viaPath && !viaCmd && !noted) return undefined;
+
+  // 作废类优先：它决定横幅说哪一句
+  const category: DenyCategory =
+    viaPath || viaCmd ? 'peer-artifact' : (side.notedCategories[0] ?? 'orchestrator-state');
+  const voiding = viaPath || viaCmd;
+
+  return {
+    hit: true,
+    via: viaPath && viaCmd ? 'both' : viaCmd ? 'command' : 'path',
+    category,
+    voiding,
+    paths: voiding ? side.peerHits : side.notedPaths,
+  };
+}
 
 function clampGoal(raw: string | null | undefined): string | null {
   const t = (raw ?? '').replace(/\s+/g, ' ').trim();
@@ -949,6 +981,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       degraded: mode.degraded,
       drift: verdict.drift.kind !== 'none',
       peerDeny: r.peer_deny_applied,
+      /*
+       * 禁读核验结论——与上面的 `peerDeny` **正交**，两者都要传。
+       * 后者说「路径级 deny 这个机制有没有生效」，本字段说「这一侧实际碰没碰禁读面」。
+       * 只传前者的话，一份命中了对端产物的审查在文档上看不出任何异样。
+       */
+      ...(side ? { peerLeak: peerLeakOf(side) } : {}),
       consultedUnverified: side?.consultedUnverified ?? true,
       ...(side ? { verification: { readonly: side.verification.readonly, path: side.verification.path } } : {}),
       heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model),
@@ -1015,6 +1053,27 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
         .map((c) => [c, {
           hit: (verdict.sides[c]!.peerCommandHits.length) > 0,
           commands: verdict.sides[c]!.peerCommandHits,
+        }]),
+    ),
+    /*
+     * 路径通道的按侧留痕（2026-09-16），与上面的命令通道**同构**。
+     *
+     * 补它之前，措施 a 只有一个全局 OR 的布尔位 `peer_artifact_read`：
+     * 措施 b 按侧记命中与命令原文，措施 a 的命中明细一条不进。后果实测发生过——
+     * 一侧确实命中而看不见，据此在裁决件里写了错的处置表；要查只能手工复算
+     * 原始轨迹，而运行目录到期即删。
+     *
+     * 三态同样落在结构上：字段缺失=早于接线；某侧键缺失=那一侧没扫（失败/超时
+     * 被 judgeRun 跳过）；`hit: false`=扫过、没命中。
+     * **命中逐条带类**——同一侧一轮内可同时命中多类，处置取最重档，
+     * 而留痕要能复盘每一条各属哪类（设计 §10.1.1）。
+     */
+    peer_leak_via_path: Object.fromEntries(
+      sides
+        .filter((c) => verdict.sides[c] !== undefined)
+        .map((c) => [c, {
+          hit: verdict.sides[c]!.peerHits.length > 0,
+          hits: verdict.sides[c]!.typedHits,
         }]),
     ),
     /*

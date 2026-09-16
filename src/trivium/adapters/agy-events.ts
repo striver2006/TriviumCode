@@ -200,6 +200,27 @@ export function readPaths(r: AgyStreamResult): string[] {
   return [...set];
 }
 
+/**
+ * 路径提取的**覆盖率**：「必然带路径」的读调用有多少条、其中多少条真提出了路径。
+ *
+ * 两者不等即提取器已相对厂商实际参数名退化——这是本项目唯一能在**下一轮运行时**
+ * 发现厂商改参数名的信号（设计 §10.1.1 第②层）。补它之前，这类退化只能靠
+ * 人工复算原始轨迹发现，而运行目录到期即删。
+ *
+ * 分母只取 `AGY_MUST_HAVE_PATH` 那一档：搜索与列目录类允许无路径，
+ * 计进去会让降级档位变成稳态噪声。
+ */
+export function pathCoverage(r: AgyStreamResult): { total: number; withPath: number } {
+  let total = 0;
+  let withPath = 0;
+  for (const t of successfulToolCalls(r)) {
+    if (!AGY_MUST_HAVE_PATH.has(t.toolName)) continue;
+    total++;
+    if (t.path) withPath++;
+  }
+  return { total, withPath };
+}
+
 /** 轨迹中出现的写事件（无论成功与否——尝试写本身就是失守信号） */
 export function writeEvents(r: AgyStreamResult): string[] {
   return r.toolCalls

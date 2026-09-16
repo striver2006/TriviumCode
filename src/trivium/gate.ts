@@ -40,7 +40,13 @@ export interface GateFailure {
 }
 
 export interface GateWarning {
-  code: 'weak_reason' | 'joint_blocker_rejected' | 'parse_problem' | 'degraded_round';
+  code:
+    | 'weak_reason'
+    | 'joint_blocker_rejected'
+    | 'parse_problem'
+    | 'degraded_round'
+    /** 排除作废侧后有效侧不足两家，共同阻断这一档**未执行**（设计 §12.1 的过渡处置） */
+    | 'joint_check_degraded';
   message: string;
   ids?: string[];
 }
@@ -86,6 +92,17 @@ export interface GateCheckInput {
    */
   degraded: boolean;
   /**
+   * 本轮**被判作废**的侧（禁读命中第①②类，设计 §10.1.1）。
+   *
+   * 取自 run 元数据的 `guard.peer_leak_via_path` / `peer_leak_via_command`。
+   * 作用有二：作废侧不计入共同阻断的独立来源；有效侧不足两家时出具名告警。
+   *
+   * **缺省空数组是有意的**：旧留痕没有分类信息，那时的口径是「命中即作废」，
+   * 无从区分哪几侧因哪一类命中。对旧轮次按「无作废侧」处理 = 维持旧行为，
+   * 不追溯改判历史结论。
+   */
+  voidedSides?: readonly CriticId[];
+  /**
    * parse_fallback 侧落盘的待裁决单元编号（`<前缀>-F<n>`，来自 `.fallback-items.md`）。
    * 提供时**逐条要求**出现在裁决表里（§6.6 规则 8）；不提供则只校验出现的 fallback 行。
    */
@@ -103,6 +120,7 @@ export interface GateCheckInput {
 
 export async function checkAdjudication(input: GateCheckInput): Promise<GateCheckResult> {
   const { cfg, layout, stage, rerunIndex, reviews } = input;
+  const voidedSides = input.voidedSides ?? [];
   const failures: GateFailure[] = [];
   const warnings: GateWarning[] = [];
 
@@ -305,11 +323,16 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     }
   }
 
-  // 第 5 步 g：双方共同 blocker 被驳回
-  const joint = findJointRejectedBlockers(reviews, structuredRows);
+  /*
+   * 第 5 步 g：**至少两个独立来源**共同提出的 blocker 被驳回。
+   *
+   * 「双方」这个措辞随 N 审泛化为「两家」——阈值 2 的语义是「两个独立来源」，
+   * 与入选总数无关（设计 §6.6 规则 7）。被判作废的侧不计入独立来源。
+   */
+  const joint = findJointRejectedBlockers(reviews, structuredRows, voidedSides);
   if (joint.length > 0) {
     const msg =
-      '下列 blocker 被**双方**同时提出却被驳回：' +
+      '下列 blocker 被**两家**同时提出却被驳回：' +
       joint.map((j) => `${j.ids.join('+')}@${j.location}`).join('；');
     if (cfg.gate.joint_blocker_policy === 'hard') {
       failures.push({
@@ -324,6 +347,26 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
         ids: joint.flatMap((j) => j.ids),
       });
     }
+  }
+
+  /*
+   * 有效侧不足两家时，上面那一档**根本没做**——必须说出来，不能静默返回空集。
+   *
+   * 这正是本主题要修的那一族：阴性结论（查过、没有共同项）与「没做」
+   * 在留痕里落成同一个观测。告警而不是失败：作废本身已有各自的处置，
+   * 这里要表达的是「本轮不再享有共同阻断这一档的保护」，
+   * 让裁决者知道自己少了一层防线（设计 §12.1 的过渡处置）。
+   */
+  const jc = jointCheckState(reviews, joint, voidedSides);
+  if (jc.state === 'skipped-insufficient-sides') {
+    warnings.push({
+      code: 'joint_check_degraded',
+      message:
+        `共同阻断这一档**未执行**：排除作废侧后有效侧只剩 ${jc.effective_sides} 家（需要 2 家）。` +
+        '本轮不享有「两家同时提出的 blocker 被驳回即报」这层保护——' +
+        '这不是「查过、没发现」，是「没查」。',
+      ids: [],
+    });
   }
 
   return {
@@ -346,9 +389,23 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
 export function findJointRejectedBlockers(
   reviews: Partial<Record<CriticId, Review | null>>,
   rows: readonly DispositionRow[],
+  /**
+   * 被判作废的侧（设计 §10.1.1 第①②类命中）——**不计入独立来源**。
+   *
+   * 一侧读了对端产物，它作为「第二只独立眼睛」的身份就不可采信，
+   * 与它每条意见是否属实无关。不排除的话会出现方向完全相反的后果：
+   * **一个本应作废的审查员反而获得了逼停流水线的否决权**——它提的 blocker
+   * 与另一侧凑成「共同」，Driver 驳回时闸门当场拦人。
+   *
+   * 排除的代价见 `jointCheckState`：有效侧可能不足两家，那时这一档**不做**，
+   * 而「不做」必须与「做了、没发现」分开记。
+   */
+  voidedSides: readonly CriticId[] = [],
 ): { location: string; ids: string[] }[] {
+  const voided = new Set(voidedSides);
   const byLocation = new Map<string, { critic: CriticId; id: string }[]>();
   for (const c of Object.keys(reviews) as CriticId[]) {
+    if (voided.has(c)) continue;
     for (const f of reviews[c]?.findings ?? []) {
       if (f.severity !== 'blocker') continue;
       const key = f.location.trim();
@@ -361,12 +418,51 @@ export function findJointRejectedBlockers(
   const out: { location: string; ids: string[] }[] = [];
   for (const [location, list] of byLocation) {
     const critics = new Set(list.map((x) => x.critic));
-    if (critics.size < 2) continue; // 不是双方共同提的
+    if (critics.size < 2) continue; // 不足两个独立来源
     if (list.every((x) => rejected.has(x.id))) {
       out.push({ location, ids: list.map((x) => x.id) });
     }
   }
   return out;
+}
+
+/**
+ * 共同阻断这一档**到底做没做**（设计 §6.6 规则 7 / §12.1）。
+ *
+ * ## 为什么必须记
+ *
+ * 排除作废侧之后，有效侧可能不足两家，而 `findJointRejectedBlockers` 的判据是
+ * `critics.size < 2`——**恒返回空集**。于是「查过、没有共同项」与「有效侧不足、
+ * 这一项根本没做」在留痕里完全一样。这是本项目三态纪律
+ * （「没测到」≠「测出来没有」）在本主题内的第四次复发形态。
+ *
+ * ## 它是过渡处置，不是补偿
+ *
+ * 设计 §12.1 规定的补偿是「作废侧重跑一次」（补齐侧数），那一条尚待实施。
+ * 在它就绪之前，本字段**只保证失效可见，不恢复交叉验证**——
+ * 一侧被判泄漏时，本轮确实不再享有共同阻断这一档的保护，
+ * 而这件事必须让人看见，不能静默。
+ *
+ * ## 阈值为什么不随入选总数上调
+ *
+ * 阈值 2 的语义是「至少两个互相独立的来源指出同一处」，与总数无关：
+ * 三家里的两家仍然是两个独立来源。
+ */
+export function jointCheckState(
+  reviews: Partial<Record<CriticId, Review | null>>,
+  joint: readonly { location: string; ids: string[] }[],
+  voidedSides: readonly CriticId[] = [],
+): { state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides'; effective_sides: number } {
+  const voided = new Set(voidedSides);
+  const effective = (Object.keys(reviews) as CriticId[]).filter(
+    (c) => !voided.has(c) && reviews[c] !== undefined && reviews[c] !== null,
+  ).length;
+
+  if (effective < 2) return { state: 'skipped-insufficient-sides', effective_sides: effective };
+  return {
+    state: joint.length > 0 ? 'checked-found' : 'checked-none',
+    effective_sides: effective,
+  };
 }
 
 /** 人读渲染：失败时要能让 Driver 直接照着补（§8.6 第 6 步） */

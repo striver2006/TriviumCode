@@ -11,12 +11,118 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, isAgentId, type AgentId } from './agents/registry.js';
-import type { Config, CriticId, Stage } from './types.js';
+import type { Config, CriticId, DenyCategory, Stage } from './types.js';
+import { VOIDING_DENY_CATEGORIES } from './types.js';
 import { parseArtifactName, type DispositionKind, type Role } from './naming.js';
 import { parseFrontMatter } from './render.js';
 import { diffTrees, headSha, statusPorcelain, workTreeHash, diffAgainst } from './util/git.js';
 import { expandHome, matchesAnyGlob, sha256, sha256File } from './util/fsx.js';
 import { diffExcludePrefixes } from './code-stage.js';
+
+/**
+ * 编排器状态目录里**允许审查员读**的具名清单（设计 §10.1.1）。
+ *
+ * ## 为什么是「整棵禁 + 具名放行」而不是「把子树展开成文件清单」
+ *
+ * 后者是 fail-open：将来任何版本往那棵树里新写一个文件（日志、缓存、轨迹副本），
+ * 默认就可读，而没有任何机制会红。这与 16.2 纪律 11「禁止手工枚举禁读矩阵」冲突。
+ * 现在的形态是：deny 集里保留整棵目录条目，命中时**减去**这份放行前缀。
+ *
+ * ## 为什么只有这两项
+ *
+ * - 项目级共享配置：审查员有正当阅读理由（它就是「这个项目怎么审」的声明）。
+ * - `bin/` 下的 wrapper：无信息价值。
+ *
+ * **本机覆盖配置不在此列**：探针结论落在那里（共享配置在 `init` 写盘时显式剥掉
+ * `probe` 段），放行等于把本机绝对路径、各 CLI 入口与 provider 端点整份摊进
+ * 审查员上下文，而默认 `sensitive_globs` 的形态（`.env*` / `*.pem` / `*.key` /
+ * `id_rsa*`）挡不住它。审查员若确实需要探针结论，正解是由编排器把非敏感字段
+ * 摘进 BRIEF——暴露面由代码控制，而不是放开整个文件。
+ *
+ * 状态文件与锁目录同样继续挡：它们是编排器运行态（闸门进度、run_id、会话 id），
+ * 审查员没有读它的正当理由，泄的是运行时序信号。
+ */
+export const ORCHESTRATOR_READABLE: readonly string[] = ['config.yaml', 'bin'];
+
+/**
+ * 判定一条**被命中的**禁读路径属于哪一类（设计 §10.1.1）。
+ *
+ * ## 为什么是一个纯函数，而不是在 freeze 与 guard 各写一遍
+ *
+ * 分类要同时作用于两条判定通道（措施 a 读取路径、措施 b 命令文本）与三个消费面
+ * （机器判定、BRIEF 文案、审查文档 front-matter）。规则写两份必然漂移，
+ * 而漂移的症状恰恰是本批要修的那一族——「提示语说作废、机器做的是不算」。
+ *
+ * ## 为什么运行根必须细分
+ *
+ * 运行根是**混合树**：对端本轮原始输出与审查员**自己**的运行时材料
+ * （sandbox home、请求文件、工作日志）同处一棵。按整棵前缀匹配，
+ * 「读自己的运行目录」会被判成泄漏对端产物——把误伤换个地方制造一次。
+ * 2026-09-16 的计划双审里，一侧审查员以第一手证据指出这点：它自己的进程
+ * 就跑在那棵被禁的树下。
+ *
+ * 己方子路径的判据是 `<运行根>/…/<runId>/<自己的 id>/`——运行目录按
+ * `<项目槽>/<runId>/<侧>/` 布局，末段就是侧名。
+ */
+export function classifyDenyPath(
+  hitPath: string,
+  ctx: {
+    projectRoot: string;
+    triviumDir: string;
+    runRoot: string;
+    critic: CriticId;
+    sensitiveGlobs: readonly string[];
+  },
+): DenyCategory {
+  const abs = path.isAbsolute(hitPath) ? hitPath : path.join(ctx.projectRoot, hitPath);
+  const rel = path.relative(ctx.projectRoot, abs);
+
+  // 运行根：先分己方/对端，再谈处置
+  const runRel = path.relative(ctx.runRoot, abs);
+  if (runRel && !runRel.startsWith('..') && !path.isAbsolute(runRel)) {
+    /*
+     * 布局是 `<项目槽>/<runId>/<侧>/…`，取第三段与自己的 id 比。
+     * 段数不足（如只读到 runId 那一层）按对端处置——**保守方向**：
+     * 宁可多判一次作废让人来纠，也不要放过真的读对端输出。
+     */
+    const seg = runRel.split(path.sep);
+    if (seg.length >= 3 && seg[2] === ctx.critic) return 'own-run-material';
+    return 'peer-run-output';
+  }
+
+  // 编排器状态目录
+  const triviumRel = path.relative(ctx.triviumDir, abs);
+  if (triviumRel && !triviumRel.startsWith('..') && !path.isAbsolute(triviumRel)) {
+    return 'orchestrator-state';
+  }
+
+  // 凭据文件优先于「对端产物」判：它不在归档里，两者不会重叠
+  if (matchesAnyGlob(rel, ctx.sensitiveGlobs)) return 'sensitive';
+
+  return 'peer-artifact';
+}
+
+/** 该类是否会让这一侧的结论作废（设计 §10.1.1 的第①②类） */
+export function isVoidingCategory(c: DenyCategory): boolean {
+  return VOIDING_DENY_CATEGORIES.includes(c);
+}
+
+/**
+ * 命中的这条路径是否落在编排器目录的**具名放行清单**里。
+ *
+ * 两条通道（措施 a / 措施 b）都要调它——只在一条上豁免，就会出现
+ * 「路径通道放行、命令通道照样作废」这种自相矛盾的处置。
+ */
+export function isOrchestratorReadable(
+  hitPath: string,
+  ctx: { projectRoot: string; triviumDir: string },
+): boolean {
+  const abs = path.isAbsolute(hitPath) ? hitPath : path.join(ctx.projectRoot, hitPath);
+  const rel = path.relative(ctx.triviumDir, abs);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  const head = rel.split(path.sep)[0] ?? '';
+  return ORCHESTRATOR_READABLE.includes(head);
+}
 
 export interface Snapshot {
   gitHead: string | null;

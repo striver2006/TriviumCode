@@ -12,10 +12,16 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
-import type { Config, CriticId, Stage } from './types.js';
+import type { Config, CriticId, DenyCategory, Stage } from './types.js';
 import { CRITIC_PREFIX } from './types.js';
-import { exists } from './util/fsx.js';
-import type { Snapshot } from './freeze.js';
+import { exists, expandHome } from './util/fsx.js';
+import {
+  classifyDenyPath,
+  isVoidingCategory,
+  isOrchestratorReadable,
+  type Snapshot,
+} from './freeze.js';
+import { TRIVIUM_DIR } from './config.js';
 
 /**
  * `lenses.yaml` 的形状：**按审核者 id 键控**的镜头表。
@@ -207,18 +213,54 @@ ${lens.trim()}
 - 在 \`agreed\` 里写出你认为正确的部分——只挑刺的审查是低质量的审查。
 - 不要给出大段可粘贴的补丁。你是审查员，不是第二作者；指出方向即可。`);
 
-  // ── 8. 禁读与禁止事项（§10.1 第 ③ 道 (a) 层）──
-  const denyList = snapshot.denyPaths.length > 0
-    ? snapshot.denyPaths.map((p) => `- \`${p}\``).join('\n')
-    : '（本次无对方历史产出或敏感文件需要屏蔽）';
+  /*
+   * ── 8. 禁读与禁止事项（§10.1 第 ③ 道 (a) 层）──
+   *
+   * **文案必须与机器判定同档**（设计 §10.1.1）。此前这一段对全部条目一律说
+   * 「读了即作废」，而机器已按四类分流：只有对端产物那两类会作废，
+   * 编排器状态目录与凭据文件降为告警。不改文案的话，两种错位同时出现——
+   * 提示语说作废而机器不作废（虚假威慑），以及审查员读了状态目录后
+   * 以为自己毁了整轮审查（实际什么也没发生，四次实测命中全是这一类，
+   * 其中两次审查员还专门写了披露）。
+   */
+  const denyCtx = {
+    projectRoot,
+    triviumDir: path.join(projectRoot, TRIVIUM_DIR),
+    runRoot: expandHome(cfg.runtime.run_root),
+    critic,
+    sensitiveGlobs: cfg.review.sensitive_globs,
+  };
+  const classify = (p: string): DenyCategory => classifyDenyPath(p, denyCtx);
+  // 具名放行的条目根本不该出现在清单里——两条通道都不看它们
+  const denyEntries = snapshot.denyPaths.filter(
+    (p) => !isOrchestratorReadable(p, { projectRoot, triviumDir: denyCtx.triviumDir }),
+  );
+  const voiding = denyEntries.filter((p) => isVoidingCategory(classify(p)));
+  const noted = denyEntries.filter((p) => !isVoidingCategory(classify(p)));
+  const fmt = (xs: string[]): string => xs.map((p) => `- \`${p}\``).join('\n');
+
   parts.push(`## 8. 禁读清单与禁止事项
 
-下列文件**禁止读取**。它们是另一位审查员的产出或敏感凭据文件；
-**读取其中任何一个，本次审查即作废**（编排器会扫描你的工具调用轨迹逐条核对）：
+### 8.1 读了会让本次审查作废
 
-${denyList}
+下列是**另一位审查员的产出**（历史审查件、结构化原文，以及运行目录下对方本轮的
+原始输出）。它们进入你的上下文会破坏背靠背独立性——
+**读取其中任何一个，本次审查即作废**（编排器扫描你的工具调用轨迹与命令文本逐条核对）：
 
-清单里的目录条目按**整棵子树**生效：其中任何一个文件被读到都算命中。
+${voiding.length > 0 ? fmt(voiding) : '（本次无对方产出需要屏蔽）'}
+
+### 8.2 不要读，但读了不会让审查作废
+
+下列是编排器自身的状态文件与敏感凭据文件。它们**不含任何审查意见**，
+读它们不影响你这一侧结论的独立性，因此**不判作废**；
+但它们与被审对象无关（状态文件是护栏载体，凭据文件是安全面），编排器会记一条告警。
+
+${noted.length > 0 ? fmt(noted) : '（本次无此类条目）'}
+
+> 若你确实需要项目的共享配置来理解审查对象，**它不在上面的清单里**——
+> 项目级配置与 wrapper 是允许读的（具名放行）。
+
+两节的目录条目都按**整棵子树**生效：其中任何一个文件被读到都算命中。
 
 其它禁止事项：
 - 不得引用或猜测另一位审查员的结论；
