@@ -1,0 +1,142 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的是 GLM-01（blocker）：init 把含 block_severities 的默认配置写进每个项目（init.ts:362），而 config.v2.json 的 review 节点 additionalProperties:false 且该键在 required——按计划直接删除，每个已 init 项目升级后首次 trivium 调用即「配置不合法」硬失败，且按计划的测试清单（新 init 的夹具不含该键）测不出来，必须先定迁移。GLM-02：D-1「不构成改判、无需回补设计」与本稿 §6.4 自相矛盾，分类改了 §10.1③(c) 的触发条件、收窄改了措施 a 的 deny 组成，两处设计原文都要改写且按 AGENTS.md 须升补丁版本——版本升级未列。GLM-03：U2 的落点清单现在就能从代码落死——.trivium 下没有任何对端产物，须继续挡的是 state.json 与 lock/，§2.2「该子树里真正需要屏蔽的只有对方产出的落点」是错误前提。GLM-04：第②层计数器没有判别规则，合法无路径搜索使 partial 成稳态，改名信号被淹没。GLM-05：U4 在二审配置与降级三轮下会静默解除共同阻断，排除本身正确但降级信号必须本批定。分批切分本身合理，但第一批「无待决问题」被 GLM-01 证伪。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "blocker",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §5 / §6.2（block_severities 删除）",
+      "problem": "删除 block_severities 是对每个已 init 项目的破坏性变更，计划没有任何迁移步骤。链条完整：init 在 config.yaml 不存在时把 defaultConfig() 序列化写盘（init.ts:362-368），其中含 block_severities: ['blocker','major']（config.ts:249）；config.v2.json 的 review 节点 additionalProperties:false 且该键在 required 与 properties 中（config.v2.json:105/120/252）；loadCtx 合并磁盘配置后 validateConfig 硬失败（config.ts:657-664）。键从 schema 摘除后，磁盘上仍带该键的存量配置经 deepMerge 保留它，被 additionalProperties:false 判非法——每个存量项目升级编排器后的第一条 trivium 命令即抛「配置不合法」。更糟的是计划的测试清单测不出它：新 init 的夹具用新代码生成、天然不含该键，全绿通过，破坏只发生在真实存量项目上。Driver 的 r1 自己写过「删一个已写进每个项目配置文件的键迁移成本更高」，r2 推翻的只是「用户以为改它有效」这个前提，机械迁移成本被整段丢掉了。这也证伪 §8 第一批「无待决问题」的定性。",
+      "evidence": "src/trivium/init.ts:356-368（init 写 defaultConfig() 到 config.yaml）；src/trivium/config.ts:249（默认值含 block_severities）、:321-330（deepMerge 磁盘覆盖保留键）、:657-664（validateConfig 失败即抛）；skills/dual-critic/schema/config.v2.json:105（review additionalProperties:false）、:120（required 含 block_severities）、:252-262（属性定义）；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2117（§13.1 全量示例含该键）；.reviews/护栏判定的落地缺口/plan/2026-09-16-护栏判定的落地缺口-revised-claude.md §4（Driver 自认「已写进每个项目配置文件」）",
+      "suggestion": "删除前先定迁移，二选一：①读侧内存剥离——照 migrateConfigV1/migrateProbeSection 的既有范式（config.ts:441/136，磁盘不动、升级即可跑），在迁移层 delete 掉该键并告警一次；②保留键一个版本、schema 标 deprecated，下个主题再摘。无论哪种，§6.3 必须补一条「含 block_severities 的旧配置能正常加载」的用例——没有它，这个破坏对测试套件不可见。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §0 D-1 / §6.4",
+      "problem": "「本批不改设计口径……不构成改判、无需回补设计」这句判断只对 E 的处置本身成立，对分类与收窄不成立，且与本稿 §6.4 自相矛盾（§6.4 明明列着回补设计 §10.1）。设计原文两处被本批改动：§10.1③(c) 的触发条件写的是「命中 deny_paths 即判该侧作废……重跑一次，仍命中标 failed(peer_leak)」（:1608），分类之后只有第 1/2 类命中才作废——触发条件的字面语义变了；措施 a 的登记写的是「把运行目录与项目内 .trivium/ 一并纳入 deny_paths」（:1625-1626），通道③行还写着「运行目录与项目内 .trivium/ 均已在 deny 机器集合」（:1622），收窄之后这两句为假。按 AGENTS.md 同步清单第一行，行为与设计不一致须「先回补修订设计文档，升补丁版本」——§6.4 列了回补章节但没列版本升级（近期实践是回填设计必升版，如 v1.3.10）。§0 那句「无需回补设计」若被实施者当真，会直接跳过 §6.4 的设计回补；这正是 Driver 自己在 r1 教训一里立的规矩：改口径必须写明连带项。",
+      "evidence": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1608（③(c) 触发条件原文）、:1622（通道③行）、:1625-1626（措施 a 的 deny 组成原文）；plan §0 D-1（「无需回补设计」）与 §6.4（列设计 §10.1）互斥；AGENTS.md「改动同步清单」第一行（回补设计 + 升补丁版本）；.reviews/护栏判定的落地缺口/plan/2026-09-16-护栏判定的落地缺口-revised-claude.md §7 教训一（Driver 自己立的规矩）",
+      "suggestion": "把 D-1 的表述改成两段式：「E 的处置口径不变，非改判；但分类收窄了 ③(c) 的触发条件、收窄改了措施 a 的 deny 组成，属设计文字变更，须回补 §10.1 三处（③(c)、措施 a、通道③行）并升补丁版本」——版本升级作为独立条目写进 §6.4。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.2 / §7 U2",
+      "problem": "U2 要求的落点清单现在就能从代码落死，而 §2.2 的理由句是错的。.trivium 子树的全部内容经代码盘点为：config.yaml（init.ts:357）、config.local.yaml（doctor 回填，doctor.ts:558）、state.json（state.ts:77）、lock/**（hooks.ts:417 的 owned 清单）、bin/（cli.ts:173）——其中没有任何「对方本轮/历史产出的落点」：对端产物只落在 .reviews/（review .md 与 _meta/review-<peer>-*.json，freeze.ts:141-177）和 ~/.trivium/runs（freeze.ts:191），两类都原封不动。所以「收窄会不会漏掉对方产出」的答案是：只要第 1/2 类不动，不会。但 §2.2 写「该子树里真正需要屏蔽的只有对方本轮/历史产出的落点」——按这句话去实施的人在该子树下找不到对方产出，最自然的动作就是把整棵 .trivium 从 deny 集全摘掉（包括 state.json 与 lock/），而这两个才是真正该继续挡的落点：编排器运行态（gate 进度、run_id、rerun_index、Driver 会话 id，state.ts:47-68），审查员无正当需求（freeze.ts:182 自己写着），且泄的是运行时序信号。若这句原样回填进设计 §10.1，等于把一个错误前提钉进唯一实现依据。附带一个没说破的取舍：开放 config.yaml 同时开放了 sensitive_globs 的取值（凭据文件路径清单本身）。",
+      "evidence": "src/trivium/freeze.ts:141-191（对端产物两类落点 + out.add('.trivium') 裸条目 + :182 注释「护栏载体（state.json、lock、bin）」）；src/trivium/state.ts:47-77（state.json 内容：GateEntry 无任何对端信息）；src/trivium/meta.ts:100/258（task.json 与 run-<id>.json 都落在归档，不在 .trivium）；src/trivium/init.ts:356-357、doctor.ts:558、hooks.ts:417（子树清单闭合）；src/trivium/config.ts:248（sensitive_globs 取值在 config.yaml 内）",
+      "suggestion": "把收窄后的 deny 集合写成封闭清单：保留 .trivium/state.json 与 .trivium/lock/（bin、config.yaml、config.local.yaml 放开），§2.2 的理由句改为「该子树下没有对端产物落点，需继续挡的是编排器运行态」；负例各锁一条——state.json 命中仍挡、第 1/2 类路径命中仍挡。config.yaml 暴露 sensitive_globs 取值的取舍在计划里点一句。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3 第②层 / §6.1（verification.path 增 partial）",
+      "problem": "第②层照现在的写法确实只是把同一个盲区换了个计数器表达。致命处在分母不分性质：读类工具集里 grep_search/find_by_name/list_dir（agy-events.ts:56）与 zcode 的 Grep（zcode-trace.ts:221-222 注释自证「可能为 null，如 Grep 只给了 pattern」）都合法地可以不带路径，而计划 §3 自己承认「不带目录的搜索是合法形态」——于是任何一次全仓检索都会让「提不出路径的条数」>0，partial 成为稳态。厂商改键名把覆盖率从「偶尔缺」打到「几乎全缺」，在没有阈值定义的情况下，这两个状态在留痕里只差一个数，没人被判红——「下一轮当场可见」退化为「下一轮记了个数」。计划写的是「按实际覆盖率判定」，但没定：什么分数算 partial、partial 触发什么（renderGuardWarnings 一行告警？gate failure？只落 run.json？）。第②层能补的只剩工具名级塌缩（那已被 min_project_reads=3 的证据下限兜住，config.ts:244），键名级改名恰是需要判别规则的地方。",
+      "evidence": "src/trivium/adapters/zcode-trace.ts:215-222（ZCODE_PATH_KEYS 与「Grep 只给 pattern」注释）；src/trivium/adapters/agy-events.ts:53-56（PATH_KEYS 缺 SearchPath；读类含 grep_search/find_by_name/list_dir）、:163-168（无路径读调用被静默跳过）；src/trivium/guard.ts:70-88/483-488（verification.path 现两档、消费仅一条告警行）；src/trivium/config.ts:244（min_project_reads 已兜工具名级塌缩）；plan §3（「按实际覆盖率判定」无阈值无后果）",
+      "suggestion": "分母按工具分两档：「必带路径」的读调用（view_file/Read 类文件读）提不出路径即当场红——这就是改名探测器，近零假阳；「可无路径」的（搜索/glob/list 类）只计数不判。partial 的消费方在计划里定死（至少 renderGuardWarnings 一行 + run.json 落盘），别留「按实际覆盖率判定」这种未决策措辞。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.3 末行 / §7 U4 / §8 第二批",
+      "problem": "U4 不存在推翻方案的答案——排除作废侧这个方向本身是对的——但第二批把排除落地、又把补偿机制（重跑）推到另一批，期间的有效侧不足场景没有被定义，会静默解除共同阻断升级。具体：findJointRejectedBlockers 的判据是 critics.size < 2（gate.ts:364），而 default_critics 允许配 1～3 家（config.v2.json:278-287，minItems 1）。二审配置下作废一侧 → 有效侧 1 → 共同阻断恒为空集；缺省三家（registry.ts:188/202/216，D4-4 后）遇降级轮（一侧失败）再作废一侧 → 同样剩 1。今天被污染的那一票至少让机制活着，本批之后它静默消失，重跑又不存在。这属于本项目反复立规反对的「静默弱化」形态，且 gate 现有输出（:312 的「双方」措辞）也不会提示「本轮共同阻断因作废而降级」。",
+      "evidence": "src/trivium/gate.ts:346-370（critics.size < 2 判据）、:310-327（「双方」措辞与 warn/hard 两档）、:182-189（降级轮现仅一条 warning）；skills/dual-critic/schema/config.v2.json:278-287（default_critics minItems 1、max 3）；src/trivium/agents/registry.ts:188/202/216（缺省三家）；plan §7 U4（自认「未验……需要定」）与 §1/§8（第二批仍含「不进共同阻断」）",
+      "suggestion": "第二批落地排除时同步定降级语义：排除后有效侧 <2 时显式出一条具名告警（如 joint_check_degraded），说明本轮共同阻断不可判、待重跑机制补齐，而不是静默空集；「双方」措辞按 N 家改写；§6.4 写明「重跑机制（另批）落地前，该升级信号在有效侧不足时降级为告警」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §6.4（文档清单）",
+      "problem": "block_severities 删除的设计回补清单漏了两处活引用：§6.6 裁决规则写「不参与 block_severities 阻断判定」（设计 :927，把该机制当存在的判定面来引述）；§13.1 配置全量示例含 block_severities: [blocker, major]（设计 :2117，正是用户抄配置的母本）。§6.4 列的是 §10.1/§6.5/§8.4/§8.6/§13.1.1/§24.1 + MANUAL 两处 + LLD 一处——§6.6 与 §13.1 都不在。计划 §5 对 EV-15 说的那句「改它要连带改写设计措辞，不是本批能顺带做的」，对 block_severities 的这两处同样成立，而 block_severities 正是本批要删的。",
+      "evidence": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:927（§6.6 活引用）、:2117（§13.1 样例含该键）；doc/07_manuals/MANUAL_user.md:421/702、doc/02_design/LLD_orchestrator.md:547（计划已列的三处）；plan §6.4 清单原文、§5 对 EV-15 的同构义务自述",
+      "suggestion": "§6.4 补设计 §6.6（:927 措辞改写）与 §13.1（:2117 摘键）两处；§13.1 样例与 MANUAL 同批改，避免新用户照旧样例抄出即将非法的键（若 GLM-01 走保留 deprecated 一版则此处同步标注）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §6.1 / §6.2（EV-28② 的 schema 足迹）",
+      "problem": "verification.path 增 partial 档的契约足迹没列全，其中一处是运行期硬失败：run.v2.json 的 verification_degraded.path 枚举现只有 [\"ok\",\"unavailable\"]（run.v2.json:103），不加 partial，则 guard 判出 partial 的那侧在 writeRunMeta 落盘前就会被 validateRunMeta 拒掉并抛错（meta.ts:250-254「宁可在这里炸也不落盘」）——第一次真实 partial 轮次整份 run.json 写不出来。连带还有：render.ts:57 的 verification 类型与 :113-114 的 front-matter path_verification 条件渲染（§6.5 契约「不得随意增减」，render.ts:68）；以及 run.v2.json 的两处改动（peer_leak_via_path 与该枚举）都属 AGENTS.md 同步表里的「JSON Schema 变更」，连带 parse/gate/meta 校验、PROTOCOL、SKILL.md、AGENTS.md 契约面、registry-parity 盯防点——§6.4 只给 disposition.v1 列了这份连带，run.v2.json 一条没有。",
+      "evidence": "skills/dual-critic/schema/run.v2.json:94-107（verification_degraded.path 枚举两值）；src/trivium/meta.ts:245-260（writeRunMeta 写前校验、不合即抛）；src/trivium/render.ts:53-57（verification 类型）、:68（§6.5 逐一对应）、:113-114（path_verification 条件渲染）；src/trivium/types.ts:989-994（verification_degraded 类型同样要扩）；AGENTS.md「改动同步清单」JSON Schema 行；plan §6.2（run.v2.json 只列 peer_leak_via_path 与 additionalProperties 决策）、§6.4（连带清单仅 disposition.v1）",
+      "suggestion": "§6.2 显式列「run.v2.json verification_degraded.path 枚举扩 partial」；把 disposition.v1 那份连带清单（parse/schemas/PROTOCOL/SKILL.md/AGENTS.md）对 run.v2.json 的两处变更同样列上；§6.1 补 render.ts 的类型与 front-matter 渲染改动。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-08",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4（EV-29 前置判断）",
+      "problem": "EV-29 前置判断的两个边界没定。①task.json 不可读时的行为：meta.ts:119-145 专门区分了 missing 与 unreadable（「锚被搅坏」），前置判断若走宽松读（readTask），unreadable 被当成空 → 前置条件判「无终态记录」→ 已审批闸门照旧被打回——恰是本条要修的缺陷换个触发条件重现；应 fail-closed（unreadable 即不推进）。②「不推进」的覆盖面：--check 路径上有两个 setGateChecked 分支——entry B/C/D 推进 awaiting_approval（cli.ts:803-808）与 entry A/无 entry 放行回 idle（cli.ts:839-844），两个都只带 expect:{runId} 不看状态；前置判断若只挂在第一个分支，重跑 --check 仍会把同 run 的 approved 闸门改写成 idle。另 approvals 记录的 run_id 可能是空串（approval.ts:90，gate.run_id 为 null 时），按 run_id 匹配时别把空串当通配。",
+      "evidence": "src/trivium/cli.ts:800-854（两个 setGateChecked 分支均 expect:{runId}）；src/trivium/meta.ts:119-150（readTaskStrict 的三态与存在语义）；src/trivium/approval.ts:87-94（ApprovalRecord.run_id 可为空串）；plan §4（前置判断读 approvals[]，未定义损坏时行为与分支覆盖）",
+      "suggestion": "§4 写明：前置判断用 readTaskStrict、unreadable 视为不推进；「不推进」覆盖 --check 的两个迁移分支而不只是推进分支；run_id 匹配排除空串。§6.3 幂等用例补「task.json 损坏」一条。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "四类分类作为 D-1 前置与代码事实相符：enumerateDenyPaths 的禁读集确由四类拼成（freeze.ts:97-104 注释与实现逐一对上），分类信息在生成时免费可得、现被 peerArtifactRead 塌缩（guard.ts:185）——r2 把它立为前置步骤是对的",
+    "E 为设计已定口径的认定属实：设计 §10.1③(c)（:1608）明写「作废重跑一次、仍命中 failed(peer_leak)」，r1 把已定事项包装成开放问题确是错误，r2 归位正确",
+    "peer_leak_via_path 与既有 peer_leak_via_command 同构的设计正确：types.ts:977 已有按侧、恒写、三态落结构不落值的先例（review.ts:1005-1019 的写法），照抄该范式不会走样",
+    "按行知情要求可行：裁决表「来源」列确已逐行解析（disposition.ts:45-47 列别名、:233-246 逐行解析含 inferSource 兜底），gate 不需要新 schema 就能按行定位作废侧的意见",
+    "作废侧不进 findJointRejectedBlockers 的方向正确（堵反噬），PATH_KEYS 缺 SearchPath 属实（agy-events.ts:53），zcode 侧不需改的降格判断与 ZCODE_PATH_KEYS（zcode-trace.ts:215）及「pattern 不是路径键」的事实相符",
+    "EV-29 的两处入口认定全部核实为真：--await-approval 的 expect.state 白名单含三个终态（cli.ts:721），--check 推进只带 expect:{runId}（cli.ts:808）；「gate --check 已在写 task.json（disputed）」的事实更正也对（cli.ts:776-782）",
+    "第①层「只防自己退化」的定性、合成夹具替代真实轨迹、具名盲区清单照 known-forms 范式——三层拆分里第①层的定位写死了，是 r1 假承诺的正确回收",
+    "分批落盘的思路（已决项不被未决项按住、拍板与实施分离）合理；U2 自列为最高风险并要求实施前列清单，方向对——本审查已把这份清单提前做完（GLM-03）"
+  ],
+  "not_covered": [
+    "运行目录（~/.trivium/runs 与 .trivium，均禁读）内的一切实盘数字与 r12 命中细节无法独立复核，全部采信计划与 Driver 裁决件的自述",
+    "未读取任何真实项目的 .trivium/config.yaml（禁读）——GLM-01 的迁移影响由 init.ts 写盘代码 + 设计 §13.1 样例 + Driver r1 自述「已写进每个项目配置文件」三方推定，非实盘取证",
+    "M0/M6 探针报告未亲自复读（U1 降格的原始依据），采信 r1 裁决的转述并与 ZCODE_PATH_KEYS 代码交叉印证",
+    "lock.ts 心跳文件的具体字段未逐行审读，.trivium 子树清单一面依据 freeze.ts:182/hooks.ts:417 的 owned 注释与各写入点调用面推定",
+    "brief.ts 第 8 段渲染与 checkPeerLeak 机器集合「同一来源」的声明未逐行核对（采信 freeze.ts:107 注释）",
+    "纯静态只读审查，未执行任何命令、未跑任何测试；registry-parity 对账的既有实现细节未复读",
+    "另一位审查员的任何产出未读、未引用、未推测"
+  ],
+  "consulted": [
+    ".reviews/护栏判定的落地缺口/plan/2026-09-16-护栏判定的落地缺口-r2-claude.md",
+    ".reviews/护栏判定的落地缺口/plan/2026-09-16-护栏判定的落地缺口-glm.md",
+    ".reviews/护栏判定的落地缺口/plan/2026-09-16-护栏判定的落地缺口-revised-claude.md",
+    "skills/dual-critic/schema/review.v1.json",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "src/trivium/freeze.ts",
+    "src/trivium/state.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/config.ts",
+    "src/trivium/types.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/render.ts",
+    "src/trivium/review.ts",
+    "src/trivium/disposition.ts",
+    "src/trivium/init.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/install.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/07_manuals/MANUAL_user.md"
+  ]
+}

@@ -544,7 +544,7 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 | 缺口 | 证据 | 影响 |
 | :--- | :--- | :--- |
 | **`task.json.disputes[]` 无任何写入点** | 全仓仅 `meta.ts:88`（类型）、`meta.ts:105`（初始化为 `[]`）、`report.ts:441`（读取），无一处 push | 只有 `disputed` 布尔位被写（`cli.ts:701`）。`report` 的「争议项：编号——说明」分支**永远打印不出具体编号** |
-| **`block_severities` 无消费方** | 类型（`types.ts:158`）、默认值（`config.ts:93`）、schema 校验齐全，业务逻辑零引用 | 死配置。用户改它不会有任何效果 |
+| ~~**`block_severities` 无消费方**~~ | ~~类型、默认值、schema 校验齐全，业务逻辑零引用~~ | **已解决（2026-09-16）**：该键连同 schema 定义一并删除，不做历史兼容（项目负责人明示接受）。防复发机制见配置键与消费方的对账测试 |
 | **`cancelRun` 不回写 `run.json`** | 函数体内 `writeRunMeta` 零出现 | 被取消的运行其 `run-<id>.json` 永远停在 `status:'running'`；`RunStatus` 的 `'cancelled'` 从未被写入 |
 | **协议片段无升级路径** | `appendSnippet`（`init.ts:63-66`）见标记即跳过，与 hooks 的「按名替换」不一致 | 已初始化项目的协议片段永不更新。实测某项目落后 18 行 |
 | **人工审批无机械边界** | `recordApproval`（`approval.ts:54-86`）无任何调用者身份校验；skill 的 `allowed-tools` 预批准了 `Bash(.trivium/bin/trivium:*)` | Driver 自己一条命令就能关掉等人工审批的闸门。曾加过一次性确认码，因明文经 stdout 由 Driver 转述、构不成边界而**主动移除**——「虚假的安全感比没有护栏更糟」。真解需要宿主提供不经过模型的带外通道 |

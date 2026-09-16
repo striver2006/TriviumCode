@@ -1,0 +1,89 @@
+{
+  "agreed": [
+    "计划果断放弃了 r1 中有破坏性阻断扩张风险的 block_severities 接线方案，改为删除该死配置并建立防新增契约对账，边界清晰、规避了对存量项目的非预期阻断。",
+    "EV-29 改走「以 task.json.approvals[] 为正本判据」的窄修方案，并将幂等条件完整扩展至同 run 的任一终态（approved / rejected / abandoned），准确定位并闭合了 --check 与 --await-approval 的复核打回漏洞。",
+    "EV-28 中精确定位到 agy-events.ts 的 PATH_KEYS 遗漏 SearchPath 并予以补齐，彻底修复了 grep_search 路径提取的静默丢失缺陷。",
+    "实施顺序中将 PATH_KEYS 补齐、EV-29 窄修与 block_severities 清理切分为第一批先行落盘，在工程节奏上实现了低风险已决项与高风险复杂项的解耦。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "src/trivium/freeze.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/render.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/init.ts",
+    "skills/dual-critic/protocol/gitignore.snippet",
+    "skills/dual-critic/schema/review.v1.json",
+    ".reviews/护栏判定的落地缺口/plan/2026-09-16-护栏判定的落地缺口-gemini.md",
+    ".reviews/护栏判定的落地缺口/plan/2026-09-16-护栏判定的落地缺口-revised-claude.md",
+    ".reviews/护栏判定的落地缺口/plan/2026-09-16-护栏判定的落地缺口-r2-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "设计 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1608 §10.1(c) 明确规定：「命中 deny_paths 即判该侧作废（peer_artifact_read: true）重跑一次，仍命中则该侧标 failed(peer_leak)；strict 下整次中止」；:1625-1628 明确规定将 .trivium/ 纳入 deny_paths；:1754 明确定义可读范围。而被审计划 §0 D-1 宣称「本批不改设计口径，只补 E 缺的前置，因此不构成改判、无需回补设计」，同时在 §1 明确将「该侧重跑一次」拆出另立，在 §2.3 要求 Driver 对作废侧逐行裁决并加注复核依据。这在运行时导致：无重跑机制、作废侧意见全量送入裁决表、Driver 仅加注理由即放行，实质落地行为与 r1 被拒的 Option A 完全一致。且计划 §6.4 自身已写着「设计 §10.1 须更新」，前后矛盾。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §0 D-1, §1 EV-26, §2.3, §6.4",
+      "problem": "D-1 宣称「不改设计口径、不构成改判、无需回补设计」不成立。计划将 deny_paths 四分类与 .trivium 免于作废已经改变了设计 §10.1 与 §10.2 的既有语义；且在把 E 的核心处置机制（重跑与二次失败中止）剥离到未来批次后，本批实际落地的是被包装成「按行知情」的 Option A 翻版，违反 AGENTS.md 纪律 5 与 8。",
+      "severity": "blocker",
+      "suggestion": "推翻「不改设计、无需回补」的论断，如实将命中分类、收窄及当前无重跑能力时的过渡裁决口径作为设计增补，回补主设计 §10.1 与 §10.2 并升补丁版；明确在重跑机制落地前，泄漏侧究竟是标记 failed 降级还是受控采纳，不得以「前置准备」为名绕过设计回补。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "核查全仓产物落点：对端历史审查件存放于 .reviews/<topic>/<stage>/（freeze.ts:141-177）；对端当轮实时输出存放于项目树外的 expandHome(cfg.runtime.run_root)（通常为 ~/.trivium/runs/，freeze.ts:191、review.ts:9）；项目根下的 <projectRoot>/.trivium/ 仅有 config.yaml、config.local.yaml、bin/trivium、state.json、lock/ 等编排器管理文件（init.ts:227、state.ts:77、lock.ts:42、gitignore.snippet）。freeze.ts:182 明确说明纳入它是因「审查员无读它的正当理由」，其下根本不存在对端审查产出。计划 §2.2 称「该子树里真正需要屏蔽的只有对方本轮/历史产出的落点」以及 §7 U2 称「收过头就是真的漏掉对方产出」，属于将项目根 .trivium 与运行根 ~/.trivium/runs 混淆的事实错误。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §2.2, §7 U2",
+      "problem": "计划 U2 将项目根目录下的编排器状态子树 .trivium 与存放对端实时输出的运行根 ~/.trivium/runs 发生概念混淆，误断该子树内有「对方产出」。项目根 .trivium 内无任何对端产出，收窄该子树根本不存在漏掉对端产出的风险，但必须彻底分清哪些落点属于真正包含对端实时输出的严防对象。",
+      "severity": "major",
+      "suggestion": "在计划中澄清项目根 .trivium 与 ~/.trivium/runs 的物理与逻辑边界，逐个定性项目根 .trivium 下落点：config.yaml 必须开放查阅，state.json/lock/bin 属编排器状态而非审查工件，不应触发 peer_leak；明确唯一真正包含对端本轮产出且必须无条件死守的落点是 expandHome(cfg.runtime.run_root)（无论是默认家目录还是被自定义至项目内），彻底消除对 U2 风险的误判。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "zcode-trace.ts:221 注释明确指出「从 input 中提取出的路径可能为 null，如 Grep 只给了 pattern」；且 agy 全仓检索等工具不指定 path 亦属合法调用。计划 §3 第②层声称运行期覆盖率落盘提不出路径条数与 partial 档位能让「厂商改名在下一轮当场可见」。但计划未给出 partial 的触发算法：若有未提取即判 partial，合法全局检索将导致日常运行常态化假阳性告警；若只在全零时触发，则 view_file 提取的路径会完全掩盖 grep_search 的参数名失效（如 view_file 成功 10 次、grep_search 提不出 0 次，总数非零）。且 partial 仅为留痕告警并不阻断，真正能确证参数名变更的唯有计划中被推迟的第③层探针臂（probes/agy.ts）。",
+      "id": "AGY-03",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §3, §6.1",
+      "problem": "§3 第②层运行期覆盖率档位未定义有效数学判据与合法无路径调用的排除规则，既无法保证厂商改名当场可见，又会在正常全局检索上产生持续假警报，属于把无法确证的盲区换成模糊计数器的过度包装。",
+      "severity": "major",
+      "suggestion": "在计划中补齐 partial 判定的形式化算法与对合法无路径调用的过滤规则；修正对其能力的定性声明，明确第②层为「运行期异常监控/可观测性指标」，而非确定性防线；对于真正能截断参数名漂移的第③层探针臂，应给出明确的前置或同步交付时间表。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "计划 §2.3 提出：「知情要求做成按行的结构性判据，不是正文句子匹配... 对作废侧按行要求：裁决表已解析出来源列，逐行知道意见来自哪一侧，要求作废侧那些行的理由带复核依据，缺行即失败」。但 gate.ts 目前仅有基于空洞词表的 isWeakReason 弱检，计划未给出 checkAdjudication 如何在算法层面判定理由是否「带复核依据」的具体规则。若采用关键词匹配，Driver 只需在行尾追加「（已复核）」即可通过，完全沦为行级模板复制；若无具体判据，gate.ts 校验无法编写。",
+      "id": "AGY-04",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §2.3, §6.1, §6.3",
+      "problem": "§2.3「对作废侧按行要求：理由带复核依据」缺乏可机读、可校验的形式化判据，未定义怎样的理由文本构成「复核依据」，实施时必将退化为行级模板抄写或无据可循的自由裁量。",
+      "severity": "major",
+      "suggestion": "在计划中给出 checkAdjudication 校验作废侧行理由的明确算法判据（例如是否校验引用的代码符号/路径，或仅强化长度与特定结构标记），明确其机器边界，避免将无法形式化机读的内容包装为强约束闸门。"
+    }
+  ],
+  "not_covered": [
+    "未通过运行子进程实际执行带有 peer_leak 故障注入的端到端双审流程（严格遵守审查员只读与进程隔离约束）",
+    "未对 Codex 在各种复杂 shell 管道嵌套下的参数提取行为进行动态跟踪（留待真实轨迹回标与测试套件验证）"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "总判断：最危险的是 D-1 裁决宣称「不改设计口径、不构成改判、无需回补设计」在机制上不成立。计划将命中分类与收窄包装为纯前置，同时把 E 核心的重跑机制剥离，实质落地的是已被三侧否决的 Option A（强制逐条裁决 + 补充复核理由）且未修订设计 §10.1；其次，计划 U2 混淆了项目根 .trivium 与用户家目录运行根 ~/.trivium/runs，项目根子树内并无对端产出，真正需严防死守的唯有 expandHome(run_root)；再者，第②层运行期覆盖率缺乏明确判据与无路径调用过滤，无法真正确证厂商改名；此外「按行复核依据」缺乏形式化校验规则，易退化为行级抄模板。批次切分基本合理，U4 不会推翻方案。综合判定须修改方案。",
+  "verdict": "request-changes"
+}

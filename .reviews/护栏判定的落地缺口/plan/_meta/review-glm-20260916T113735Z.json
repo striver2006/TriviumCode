@@ -1,0 +1,145 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的是 GLM-02：被计划称为「本批最重要」的 §4.5 反向对账，其断言在 zcode 侧存在合法假红——Grep 的 path 参数本就可选（zcode-trace.ts:222 注释自证「可能为 null，如 Grep 只给了 pattern」），且静态测试样本防不住未来厂商改参数名，开发者焦点 3 的疑虑（把覆盖假设换个地方写）部分成立。其次 GLM-01（U2 论据只证明「结论可采信」，证明不了「独立性完好」）与 GLM-03（EV-29 修复边界只堵 approved 一个终态，且漏掉 --await-approval 这个同样能打回已审批闸门的入口）。四条缺口的代码事实我逐条独立核实全部为真，D-1 建议选 A 优于 C/D 的核心论证成立；但按现计划直接实施，上述三处会返工。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3 D-1 / §5 U2",
+      "problem": "U2 用「审查员读了禁读文件，与它指出的缺陷是否成立在逻辑上无关」支撑 D-1 选 A（仅强制知情、保留泄漏侧全部效力）。该论据只覆盖「结论正确性」，不覆盖「双审独立性」。checkPeerLeak 判的是 read_paths 与整份 deny_paths 的交集（base.ts:938-968），而 deny_paths 由 enumerateDenyPaths 混合生成（freeze.ts:28 注释「对方历史产出等禁读文件」），既含对方审查产出也含 .trivium 等敏感条目——r12 glm 命中的恰是后者。当泄漏对象是对方产出时，该侧意见与对方不再是独立样本，「双方共同 blocker」这个升级信号失真（两票实为一票）；A 保留泄漏侧在 findJointRejectedBlockers 里的阻断力，等于把可能受污染的一票继续当独立票用。计划搁置 B 的理由（「削弱闸门」）只在泄漏敏感配置的场景成立，在泄漏对方产出的场景反过来说——受污染的共同信号本来就不该有阻断力。",
+      "evidence": "src/trivium/adapters/base.ts:938-968（checkPeerLeak 对 denyPaths 不分类）；src/trivium/freeze.ts:28、281-288（denyPaths 混合「对方历史产出等禁读文件」）；src/trivium/guard.ts:411（播报只说「禁读清单内的文件」）；src/trivium/gate.ts:346-370（joint blocker 以「双方共同」为升级信号）；src/trivium/review.ts:515 注释（禁读清单逐侧不同、屏蔽对方历史产出）。",
+      "suggestion": "不推翻 A，但补两件事：① D-1 拍板材料里明确「泄漏对象是否为对方产出」这个变量，把 B 的适用范围缩到该场景（读对方产出→不参与共同阻断；读敏感配置→保留）；② §4.2 的按侧落盘（peer_leak_via_path 的 paths）现在就把命中条目按 deny 来源分类记下——数据判定时免费可得，现在不记，未来 B 决策时既没有历史数据可用，又要回头改留痕格式。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.5（反向对账）/ §5 U1",
+      "problem": "反向对账断言「每个被判为读工具的 DONE 调用都提得出至少一个路径」把「提不出路径」一律当检测退化，但存在合法的无路径调用形态：ZCode 的 Grep 工具 path 参数可选（不传即当前目录全仓搜），zcode-trace.ts:222 的注释自己写着「可能为 null，如 Grep 只给了 pattern」。断言在 zcode 侧会合法假红——r12 那 14 次 Grep 只要有一次不带 path，测试就红，而那不是缺陷。同时它防不住声称要防的东西：测试夹具是从 r12 取的固定轨迹，厂商未来改参数名后新轨迹不进夹具、测试照绿，检测面照旧静默空转，直到有人手动换样本——覆盖假设只是从 PATH_KEYS 挪进了夹具，这正是焦点 3 所问「同一个假设换个地方写」。",
+      "evidence": "src/trivium/adapters/zcode-trace.ts:215（ZCODE_PATH_KEYS）、222（注释自证 Grep 可无路径）；src/trivium/adapters/agy-events.ts:53（PATH_KEYS 缺 SearchPath）、163-169（path 为 null 的读调用被静默跳过）；doc/02_design/README.md v1.3.7 记载（路径级 deny 对 Grep 不可用是已实测登记的事实）；plan §4.5 自称「本批最重要的一条」并称能防住「厂商下次改参数名」。",
+      "suggestion": "① 断言改形：DONE 的读调用提不出路径时，必须落在「该工具允许无路径调用」的白名单内（如 zcode 的 Grep）才算过，否则红；② 把「防静默退化」的机制放到运行期而不是测试期——guard 判定层按侧统计「读工具 DONE 调用数 vs 提出路径数」并落进留痕（与既有 verification 档位同思路），每次真实运行都对账，厂商改名的下一次运行当场显形；③ U1 的核实清单里加一项「r12 的 14 次 Grep 里有多少次本来就无 path」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.3 / §3 D-3（窄）",
+      "problem": "D-3 窄修法的前置条件只写「闸门已是 approved 且 run_id 相同」，但 --check 推进的 expect 只有 { runId }（cli.ts:808），对同一 run 已处于 rejected、abandoned 终态的闸门同样会推进到 awaiting_approval——同一缺陷换个终态重现，按窄修实施后撞上 rejected 场景还要再修一轮。且同一缺陷还有第二个入口：显式 --await-approval 的 expect.state 白名单明确包含 approved/rejected/abandoned（cli.ts:721），重跑它一样能把已审批闸门打回。只修 --check 不动 --await-approval，缝还在。",
+      "evidence": "src/trivium/cli.ts:800-822（--check 分流的 setGateChecked 只带 expect:{runId}）；src/trivium/cli.ts:715-725（--await-approval 的 expect.state 含三个终态）；src/trivium/state.ts:179-201（expect 语义：只比 runId 时不限制状态迁移）；src/trivium/approval.ts:50-52、101-112（approved/rejected/abandoned 都是可长期留存的终态）。",
+      "suggestion": "窄修法的「不推进」条件定义为「同 run 的任一终态（approved/rejected/abandoned）」，而不是只列 approved；同时审视 --await-approval 的状态白名单为何包含终态——要么一并收紧，要么在计划里写明为什么留着它（若有合法复跑场景，需要给出防打回的配套）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "scope-drift",
+      "location": "plan §0 / §3 D-3 / §5 U3",
+      "problem": "四条同批的合并理由是病根相同（判定层做对了、消费层没接住），但病根相同不等于改动耦合：EV-26、EV-28、block_severities 三条是判定/提取/配置的消费接线，纯增量、已想清；EV-29 宽修法要动 state.ts 与 approval.ts 的写入边界，计划自己在 U3 承认「合并写入的顺序与失败回滚需要单独设计」——把一个还没做完设计的改动与三条已想清的改动绑在一批，若 U3 的设计在实施中推翻（例如发现要改锁模型），整批的提交与代码双审都被拖住。回答焦点 2：该拆出去单走的是 EV-29。",
+      "evidence": "plan §5 U3（「未验……需要单独设计」）；src/trivium/state.ts:104-125（state.json 走全局锁）与 src/trivium/approval.ts:120-124（task.json 走 updateTask/taskLock，两套锁域）；src/trivium/cli.ts:776-782（--check 已有写 task.json 的先例，写入边界不止一处）。",
+      "suggestion": "EV-29 单独成批（窄修或宽修自定），其余三条先行；或本批先落窄修（按 GLM-03 修正后的完整终态集），宽修法随 U3 的设计单独立项。D-1/D-2/D-3 的拍板仍可同轮做，拆的只是实施与验收。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "concurrency",
+      "location": "plan §3 D-3（宽）/ §4.3",
+      "problem": "宽修法说「同步写 task.json，消掉能分叉的缝」，但 state.json（全局锁内读改写）与 task.json（主题锁）是两个文件，不存在跨文件原子写：先写任一侧后进程崩溃，分叉窗口仍在。宽修法的真实上限是把「结构性永久分叉」缩成「瞬时窗口分叉 + 重跑 --check 可收敛」，这依赖幂等（§4.5 已列幂等用例，好）。按「消掉缝」的表述实施，容易以「缝没了」为由跳过崩溃恢复与兜底设计。",
+      "evidence": "src/trivium/state.ts:111-125（state.json 全局锁原子替换，单文件）；src/trivium/approval.ts:101-124（先 setGateChecked 写 state.json、后 updateTask 写 task.json，两步非原子）；plan §3 D-3 原文「消掉能分叉的缝」。",
+      "suggestion": "把宽修法的目标从「消除分叉」改述为「分叉可收敛」：写序固定 + --check 幂等重跑收敛；另加一条读侧兜底——status/report 对账两份留痕、不一致时显式报警，让任何残余分叉可见而不是静默。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §4.3 / §4.6",
+      "problem": "A 选项要求「gate --check 要求裁决件里对该侧有一句明示」，而机器校验正文句子只能按字面匹配，Driver 抄一句模板话即可通过——「漏看变成不可能」的卖点退化为「必写一句话」。对正文的语义校验不是闸门该做的事（checkAdjudication 的既有校验全是结构化的：front-matter、表格、编号差集）。对等做法是裁决件 front-matter 加结构化字段（如 voided_sides），但那是 trivium.disposition.v1 的 schema 变更，按 AGENTS.md 改动同步清单要连带 parse/schemas、PROTOCOL 文档、SKILL.md、AGENTS.md 契约面，§4.6 的文档清单没列这些。",
+      "evidence": "src/trivium/gate.ts:104-204（checkAdjudication 的既有校验形态：front-matter、行级、差集，无正文语义匹配）；plan §4.3（「要求裁决件里有明示句」）；AGENTS.md 改动同步清单（JSON Schema 变更的连带项）。",
+      "suggestion": "裁决件侧用 front-matter 结构化字段承载「本侧作废、裁决基于独立复核」，机器校验字段存在与侧别匹配；若采纳，§4.6 补齐 disposition.v1 变更的全部连带同步项。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4.3 / §4.6",
+      "problem": "两处引用与仓库不符：① §4.3 写「gate.ts：checkDisposition 读 run.json 的泄漏标记」——src/ 全仓不存在 checkDisposition 函数，闸门裁决校验的实际入口是 gate.ts:104 的 checkAdjudication（--check 调用点在 cli.ts:751）；② §4.6 写「设计 §12（闸门状态机的写入边界）」，而设计 §12 是「异常、超时、降级与重试」，闸门状态机在 §8.4（state.ts 头注释、gate.ts 头注释均指 §8.4/§8.6）。实施者照单找锚点会找错位置。",
+      "evidence": "src/trivium/gate.ts:104（export async function checkAdjudication）；src/trivium/cli.ts:751（--check 的实际调用）；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2001（「## 12. 异常、超时、降级与重试」）；src/trivium/state.ts:2（「设计 §8.4 第 1 层」）。",
+      "suggestion": "改正函数名与章节指向；§4.6 的设计回补锚点按实际章节（§8.4 写入边界、§8.6 校验算法）落。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-08",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §2.4 / §3 D-2 / §4.6",
+      "problem": "block_severities 的「死配置」状态已在三处用户可见的登记里写着：doc/07_manuals/MANUAL_user.md:421（配置表「⚠️ 死配置，无任何消费方，改它不会有效果」）与 :702（故障排查表）、doc/02_design/LLD_orchestrator.md:547（现状缺口表）。D-2 无论接线还是删除，这些登记都必须同步——接线后手册那句警告变成假话，删除则两行要摘。§4.6 只列了设计 §13.1.1/§24.1/BACKLOG，漏了手册与 LLD；接线时 config.v2.json schema 里该键的 description 若描述了效力也要一并核对。",
+      "evidence": "doc/07_manuals/MANUAL_user.md:421、702（grep 命中原文）；doc/02_design/LLD_orchestrator.md:547（「死配置。用户改它不会有任何效果」）；plan §4.6 的文档清单无上述文件。",
+      "suggestion": "§4.6 增补：MANUAL_user.md 两处、LLD_orchestrator.md 现状缺口表、config schema description；另「删一个已写进每个项目配置文件的键迁移成本更高」的论据需重新掂量——手册已告知用户它无效，「用户以为改它有效」的前提被削弱，两个选项的差距比计划描述的小。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-09",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "security",
+      "location": "plan §6",
+      "problem": "脱敏前置只有纪律表述（「逐份核验不含凭据」「grep 目标键名禁止整份打印」），没有可验收的完成判据：grep 哪些键名（无清单）、样本脱敏后放哪（test/ 下进 Git？）、路径与被审内容片段是否改写、谁复核，全部未定。真实轨迹含绝对路径与被审内容摘录，进 Git 是持久暴露面；CLAUDE.md 记录的 2026-09-16 凭据事故说明这类核验靠「记得规矩」不可靠，需要机器可查的判据。附带一提：样本内容若含 .trivium 等字面量，会加剧未来全仓检索对禁读路径的误触（本次审查我自己的一次全仓 grep 就这样扫到过 .trivium 一行）。",
+      "evidence": "plan §6 全文；CLAUDE.md:50-61（凭据文件 grep 键名纪律与 2026-09-16 事故记录）；test/ 目录现状（夹具均在仓库内，样本一旦放入即进版本历史）。",
+      "suggestion": "§6 落成清单化判据：待 grep 的凭据键名表、样本路径改写规则（如仓库绝对路径→占位符）、样本落位路径与命名、复核方式（最好是一条脚本化检查进 §4.5，与反向对账同批落地）。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "四条缺口的代码事实逐条独立核实全部为真：EV-26 的四个消费点确全为展示（guard.ts:399-418 的文字、meta.ts:380 的人读行、report.ts:246 的 guardFlags、review.ts:998 的全局布尔位）；EV-28 的 PATH_KEYS 确缺 SearchPath（agy-events.ts:53）且 grep_search 提不出路径时被静默跳过（agy-events.ts:163-169）；EV-29 的 --check 推进确只带 expect:{runId} 不看当前状态（cli.ts:803-809）；block_severities 全仓仅 types.ts:673 与 config.ts:249 两处、findJointRejectedBlockers 硬编码 blocker（gate.ts:354）。",
+    "D-1 建议选 A 优于 C/D 的核心论证成立：泄漏与缺陷真伪逻辑无关、r12 codex 八条独立复核全部成立是实证，C/D 丢弃已花配额的有效产出代价实打实；「本轮真正的失败是不知道 glm 也命中了」的问题定位准确，A 的命中必落盘+必上横幅直接治它。",
+    "§4.2 与既有 peer_leak_via_command 同构、按侧恒写、三态落结构不落值的留痕设计（review.ts:1005-1010 的口径）正确，peerDeny 参数误用（review.ts:951）的定位也准确。",
+    "§6 的脱敏意识与 §7 的执行顺序（双审-裁决-审批后才动业务文件）正确；对 EV-26 初版登记错误的主动更正、每条注明复算数字，是高质量的计划卫生。",
+    "变异验证三条（peerHits 改回全局 OR 必红、PATH_KEYS 去 SearchPath 必红、前置判断去掉必红）设计合理，U1 列为实施前必查也是对的。"
+  ],
+  "not_covered": [
+    "r12 运行目录的全部数字（glm 侧 read_paths 26 条、gemini 15 次 grep_search 零提取、zcode 14 次 Grep、task/state 分叉时间戳、898s 时长、codex 八条意见的复核结论）无法独立复算——运行目录在禁读清单（/Users/chenzhenbo/.trivium/runs 与 .trivium），全部采信计划自述。",
+    "如实披露：一次未限定路径的全仓 grep（block_severities）无意间扫到禁读子树 .trivium/config.yaml 的一行匹配文本，非有意读取、此后所有检索已限定路径；未读取该子树任何文件内容。请编排器在轨迹核验时按此情节裁量。",
+    "hooks.ts 与 run-protocol.ts 中 setGateChecked 的其余调用点未逐一审读（只审了 cli.ts、approval.ts、state.ts、review.ts 的调用点）。",
+    "U4 的全配置项零消费对账未执行；但检索中注意到 readonly_commands 的零消费已在 base.ts:1050 注释与 BACKLOG EV-15 登记，即「第五个死配置」至少已知一个。",
+    "zcode rollout 中 Grep input 的实际参数形态未用真实轨迹验证（运行目录禁读），GLM-02 中「path 可选」的判断基于 zcode-trace.ts:222 代码注释与工具契约推断。",
+    "未涉及另一位审查员的任何产出与结论。"
+  ],
+  "consulted": [
+    ".reviews/护栏判定的落地缺口/plan/2026-09-16-护栏判定的落地缺口-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "src/trivium/guard.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts",
+    "src/trivium/render.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/state.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/adapters/base.ts"
+  ]
+}

@@ -418,7 +418,6 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `review.skip_doc_only_review` | `false` | 改 `true` 则纯文档变更跳过 code 审 |
 | `review.skip_globs` | `**/*.md`, `docs/**`, `**/*.txt` | 算「纯文档」的模式 |
 | `review.never_skip_globs` | `package.json`, `Dockerfile`, `.github/**`, `.claude/**`, `.trivium/**` 等 | 这些即便是配置文件也绝不跳过 |
-| `review.block_severities` | `['blocker','major']` | **⚠️ 死配置，无任何消费方，改它不会有效果** |
 
 > `.env*` 的 glob 不跨 `/`，所以只匹配根目录——子目录里的 `config/.env.production` 要靠 `**/.env*` 那条。两条都要留。
 
@@ -699,7 +698,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | **人工审批无机械边界** | 见 §8.2 | 需宿主提供带外通道 |
 | **Bash 拦截有已知误拦** | 见 §8.1 | 刻意接受的取舍 |
 | **配置与协议片段不会自动升级** | 见 §3.6 | 需手工同步 |
-| **`block_severities` 是死配置** | 定义了但无消费方 | 改它不会有效果 |
+| ~~**`block_severities` 是死配置**~~ | 已于 2026-09-16 删除 | 该键不再存在；若你的配置文件里还留着它，删掉那三行（保留会被 schema 判为未知键） |
 | **报告的「争议项」无法显示编号** | `disputes[]` 无写入点 | 只有布尔标记生效 |
 | **`doctor` 必须在终端跑** | 2~4 分钟，会击穿 Bash 工具 600s 超时 | 预检刻意不自动拉起它 |
 
