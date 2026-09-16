@@ -185,6 +185,13 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
         raw_response_text: null,
         model_effective: null,
         model_effective_source: 'unverified',
+        model_provider: null,
+        /*
+         * 回读值确实没走到；**请求值从镜像取**（代码双审 CODEX-01）。
+         * 恒写 null 会把「该族没有 profile 概念」与「这次抛异常没采到」
+         * 压成同一个观测——正是该字段声明「必填而非可选」要避免的那一格。
+         */
+        profile_requested: input.requests[critic]?.profile_requested ?? null,
         tool_calls: {},
         read_paths: [],
         write_events: [],

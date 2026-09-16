@@ -56,6 +56,8 @@ function result(over: Partial<CriticResult> = {}): CriticResult {
     raw_response_text: null,
     model_effective: 'm',
     model_effective_source: 'envelope',
+    model_provider: null,
+    profile_requested: null,
     tool_calls: {},
     read_paths: [],
     write_events: [],

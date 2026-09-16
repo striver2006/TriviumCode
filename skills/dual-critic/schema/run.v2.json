@@ -169,9 +169,13 @@
           "type": ["string", "null"],
           "description": "档位的来源（命令行 / 档位表 / 默认）。【待实施 · M11】"
         },
-        "profile": {
+        "profile_requested": {
           "type": ["string", "null"],
-          "description": "厂商侧 profile 名。【待实施 · M11】"
+          "description": "本次请求的厂商 profile 名（codex 的 -p，即 agents.<id>.profile）。命名随 model_requested / effort_requested 的既有惯例：它是请求值，回读值是 model_provider。裸名 profile 留空不占——在本系统里那个词已经指档位（config.yaml 的 profiles / active_profile / CLI --profile），而本 schema 自己的档位词汇是 tier*。无厂商 profile 概念的族恒为 null。【已实现 · M8 第 4 步】"
+        },
+        "model_provider": {
+          "type": ["string", "null"],
+          "description": "回读得到的 provider 家族归属，与 model_effective 是两个维度的事实。实测 codex exec -p qwen -m deepseek-v4-pro 成功且回读 provider=qwen、model=deepseek-v4-pro——同一个模型名可以挂在两个 provider 下，故「两次 model_effective 不同即两个家族」不成立，AC-20 的互可区分要两个维度都看。无此事实的族恒为 null（能说明理由的空）。【已实现 · M8 第 4 步】"
         },
         "status": { "enum": ["ok", "timeout", "failed", "parse_fallback"] },
         "exit_code": { "type": ["integer", "null"] },

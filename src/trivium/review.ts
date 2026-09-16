@@ -53,7 +53,7 @@ import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeM
 import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
 import { acquireLock } from './lock.js';
 import { measureAllPairs, renderDivergence } from './divergence.js';
-import { agentConfigOf, runRoot } from './config.js';
+import { agentConfigOf, runRoot, vendorProfileOf } from './config.js';
 import { resolveCriticSelection } from './critics.js';
 import { setGateChecked } from './state.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
@@ -576,6 +576,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       schema_path: schemaPath,
       min_tool_calls: cfg.review.min_tool_calls[stage],
       min_project_reads: cfg.review.min_project_reads[stage],
+      profile_requested: vendorProfileOf(cfg, critic),
     };
   }
 
@@ -1059,6 +1060,16 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       model_requested: requests[c]!.model,
       model_effective: r.model_effective,
       model_effective_source: r.model_effective_source,
+      /*
+       * 两个字段**恒写**（含 null），不走 `...(x ? {} : {})` 的条件展开。
+       *
+       * 条件展开会让「该族没有这种事实」与「本轮没采到」再次落成同一个观测——
+       * 字段缺失既可能是旧留痕、也可能是新缺陷，事后分不开。
+       * 这与措施 b 的 `peer_leak_via_command` 恒写、`hit:false` 表示「扫过没命中」
+       * 是同一条口径（6.7.1 写侧说明）。
+       */
+      profile_requested: r.profile_requested,
+      model_provider: r.model_provider,
       ...(r.model_route ? { model_route: r.model_route } : {}),
       ...(requests[c]!.effort ? { effort: requests[c]!.effort! } : {}),
       status: r.status,

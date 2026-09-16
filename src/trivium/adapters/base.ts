@@ -98,12 +98,47 @@ export interface CriticAdapter {
    */
   normalizeModelForCatalog?(cfg: Config, model: string): string;
   /**
+   * **本次配置下实际生效的模型目录**。**可选**：目录不随配置分层的侧不实现。
+   *
+   * 存在的理由是 codex：它的模型目录随 `-p` **分层**
+   * （`<profile>.config.toml` 可自带 `model_catalog_json`，取不到才回落基底），
+   * 于是 `probe.models` 那张**单一**列表拿去校验任何非基底 profile 两个方向都会错——
+   * 误杀该 profile 自己的默认模型、误放只在基底目录里的 slug（计划双审 CODEX-05）。
+   *
+   * 这条知识属于那一侧，与 `normalizeModelForCatalog` 同理不住在 `preflight` 里。
+   *
+   * **四种返回值语义互不相同，一个都不能合并**（代码双审 CODEX-01 把原先的三态又拆开一格）：
+   *
+   * | kind | 含义 | 调用方该做什么 |
+   * | :--- | :--- | :--- |
+   * | `null` | 该族没有比 `probe.models` 更准的来源 | 回落探针那份，既有行为不变 |
+   * | `catalog` | 采到了这一份目录 | 用它校验；**它为空就是「确实空」**，记无法校验并说明 |
+   * | `fallback` | **采集失败**，不知道目录里有什么 | 回落 `probe.models` 校验，**并把原因说出来** |
+   * | `unverifiable` | 确认渲染不出目录（该机没配 `model_catalog_json`） | 记无法校验并说明 |
+   *
+   * `fallback` 与 `unverifiable` 的区别是本契约的要害：前者是「没测到」，后者是「测出来没有」。
+   * 上一版把两者合成同一个空清单，于是一次子进程失败会被读成「确认没有目录」从而**放行**——
+   * 把刚建起来的拦截静默降级成 fail-open，而给出的原因还是编的。
+   */
+  catalogModelsFor?(cfg: Config): CatalogSource | null;
+  /**
    * 探活。**可选**：没有凭据概念的侧（如桩）不实现，`preflight` 相应跳过并如实说明——
    * 「没得探」与「探过通过」不能长得一样。
    */
   authProbe?(ctx: AdapterContext, projectRoot: string): AuthProbe;
   run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult>;
 }
+
+/**
+ * 「本次配置下生效的模型目录」的四种答案，见 `CriticAdapter.catalogModelsFor`。
+ *
+ * 分四格而不是「一个可空清单」，是因为它们要求调用方做**四件不同的事**；
+ * 合并任意两格都会让某个「没测到」被当成「测出来没有」。
+ */
+export type CatalogSource =
+  | { kind: 'catalog'; models: string[]; source: string }
+  | { kind: 'fallback'; why: string }
+  | { kind: 'unverifiable'; why: string };
 
 /** 结构化轨迹两家（gemini / glm）的能力：与本步之前的行为逐字等价 */
 export const TOOL_TRACE_CAPABILITY: TraceCapability = {
@@ -141,6 +176,16 @@ export function failedResult(
     cliVersion?: string | null;
     commandLine?: string;
     sessionId?: string | null;
+    /**
+     * 本次请求的厂商 profile。**失败出口同样要如实写**（代码双审 CODEX-03 ≡ GLM-02）。
+     *
+     * 上一版这里恒写 null，理由是「两者都没走到」——那句话对**回读值**成立，
+     * 对**请求值**不成立：profile 来自静态配置、`-p` 早已进 argv，不需要运行成功才「走到」。
+     * 而同一份 run.json 里同为请求值的 `model_requested` 对失败侧照常有值，
+     * 于是「该族没有厂商 profile 概念」与「这次超时没采到」又长成了同一个观测——
+     * 恰是这个字段声明「必填而非可选」时要避免的那一格。
+     */
+    profileRequested?: string | null;
   },
 ): CriticResult {
   return {
@@ -154,6 +199,9 @@ export function failedResult(
     raw_response_text: fail.rawText ?? null,
     model_effective: null,
     model_effective_source: 'unverified',
+    // 回读值确实没走到，如实记 null；请求值是配置事实，调用方给了就照写
+    model_provider: null,
+    profile_requested: fail.profileRequested ?? null,
     tool_calls: {},
     read_paths: [],
     write_events: [],

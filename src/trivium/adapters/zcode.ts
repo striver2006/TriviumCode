@@ -412,6 +412,13 @@ export const zcodeAdapter: CriticAdapter = {
       model_effective: modelEffective,
       // envelope 没有 model 字段，因此来源只能是 trace 或 unverified，绝不用 requested 冒充
       model_effective_source: modelEffective ? 'trace' : 'unverified',
+      /*
+       * 同 agy：本族无这两种事实，恒 null 且说得出理由。
+       * zcode 的模型 id 自带 `bigmodel-coding-plan/` 前缀，那是**套餐**不是 provider 家族；
+       * 配置段 `GlmCriticConfig` 也没有 `profile` 键。
+       */
+      model_provider: null,
+      profile_requested: null,
       model_route: home.route,
       tool_calls: toolCalls,
       read_paths: readPathList,

@@ -246,6 +246,27 @@ export interface CodexProviderProbe {
   credentialed: boolean;
   /** 该 profile 声明的默认模型 slug */
   model: string | null;
+  /**
+   * 该 provider 段 `base_url` 的 **host**（已归一，不是原串）。
+   *
+   * **只留 host 是刻意的**：判据只需要「两侧 endpoint 是否同一个」，
+   * 而 URL 的 userinfo（`https://user:token@host/v1`）与 query 都是承载凭据的常见形态——
+   * 原串入库等于把凭据面扩到 `config.local.yaml` 与 doctor 输出
+   * （代码双审 CODEX-06）。归一在采集处做，落盘的就已经是 host。
+   *
+   * AC-20 要「至少两个模型家族」，而 provider **id** 互异证明不了 endpoint 互异：
+   * 两个不同的 `[model_providers.X]` 段完全可以指向同一个 base_url 与同一套凭据，
+   * 此时两次运行的 `model_provider` 字符串不同、模型不同、判据全绿，
+   * 打的却是同一个端点（计划双审 CODEX-03）。判据因此要看到这一层。
+   *
+   * 取不到记 `null`。**`null` 的验收语义是「该分量无法校验」，不是「该分量不参与」**
+   * （代码双审 CODEX-03）：AC-20 分量④要的是「两侧 host 互不相同」，任一侧为 `null` 时
+   * 这句话无从判断——按「不参与」读，「两次都采不到 host」与「两 host 确证互异」
+   * 在验收侧就长成同一个通过，正是本版反复消灭的那个形状。
+   * 本机 `gpt` profile 的 `base_url` 就是 `null`（内置 provider 无段），不是构造形态。
+   * 口径同 `checkModelAgainstCatalog` 的 `unverifiable` 第三态：说不出来要说出来，不假装通过。
+   */
+  base_url: string | null;
 }
 
 export interface CodexProbe extends CommonProbe {
@@ -367,8 +388,56 @@ export interface CodexProbe extends CommonProbe {
    * `<name>.config.toml` 同样能设这个键，只读基底会记错活跃档位下的目录
    * （审查意见 GLM-09）。
    * **消费方**：人读诊断与 `doctor` 报告。
+   *
+   * ⚠️ **它与同段的 `models` 取自不同的层，两者不可当成一对读**：
+   * `models` 走 `probeCodexModels(bin, null)` 即**基底** `config.toml` 的目录，
+   * 而本字段取的是**本次探针 profile**（`profiles` 字典序里第一个目录非空的那个）的路径。
+   * 起草 M8 第 4 步计划时我就是把这一对当同源读，写出过一句失实断言。
+   * 逐 profile 的准确结论在下面的 `models_by_profile`。
    */
   model_catalog_path: string | null;
+  /**
+   * **逐 profile 的可见模型清单**（M8 第 4 步，计划双审 CODEX-05 的落点）。
+   *
+   * ## 为什么必须逐 profile 存
+   *
+   * 模型目录是**分层**的：`<profile>.config.toml` 可以自带 `model_catalog_json`，
+   * 取不到才回落基底。于是「哪些 slug 合法」这件事**随 `-p` 变**，
+   * 而 `models`（单一列表、取自基底）拿去校验任何非基底 profile 都是错的，
+   * 两个方向都会错：
+   *
+   * - **误杀**：`profile: deepseek` + 它自己的默认模型 `deepseek-flash`——
+   *   在 deepseek 目录里，却不在基底目录里，预检拒掉一个本可跑通的配置；
+   * - **误放**：某个 slug 在基底目录里而不在该 profile 的目录里，预检放行，
+   *   到 `turn.failed` 才被端点拒——而预检存在的全部理由就是把这类失败挡在花钱之前（AC-16）。
+   *
+   * 存的是**可见项**，理由见 `probeCodexModels` 的文档块（端点名单 ＝ 可见项，n=1 实测）。
+   *
+   * **消费方**：`checkModelAgainstCatalog` 经适配器钩子 `catalogModelsFor`。
+   * 旧留痕没有本字段（M8 第 4 步之前落盘的 `config.local.yaml`）——那时记 `{}`，
+   * 消费方据此返回 `fallback`：**照常用基底目录校验（不 fail-open），但把回落这件事说出来**。
+   * 本句原写「记为 `unverifiable`、不静默通过」，而实现返回的是 `null`（静默回落）——
+   * 承诺与实现对不上，代码双审 CODEX-05 指出后按**实现侧**修：改成 `fallback` 两头都顾。
+   */
+  models_by_profile: Record<string, string[]>;
+  /**
+   * **基底目录**的可见 slug（`models` 的可见子集）。
+   *
+   * 没有它时，未配 profile 的形态（codex 的默认形态）会回落到含隐藏项的 `models` 全集——
+   * 而 `probeCodexModels` 的文档块自己写着「拿全集当判据会放行隐藏项」。
+   * 于是修复只覆盖了配了 profile 的那一半，默认形态上误放原样存在
+   * （代码双审 GLM-03）。
+   */
+  models_visible: string[];
+  /**
+   * 逐 profile 的**采集失败原因**（profile → 人读原因）。键在即表示那次采集失败。
+   *
+   * **它与 `models_by_profile` 的空数组是两件事**：后者表示「采到了，而且目录确实为空」，
+   * 本字段表示「没采到，不知道目录里有什么」。合流的后果是 fail-open——
+   * 一次子进程失败会被消费方读成「确认没有目录」从而放行
+   * （代码双审 CODEX-01）。
+   */
+  models_by_profile_errors: Record<string, string>;
 }
 
 /**
@@ -791,6 +860,15 @@ export interface CriticRunMeta {
   model_requested: string | null;
   model_effective: string | null;
   model_effective_source?: 'envelope' | 'trace' | 'requested' | 'unverified';
+  /**
+   * 本次请求的厂商 profile（请求值）与实际走到的 provider 家族（回读值）。
+   *
+   * **必填而非可选**，与 `CriticResult` 同源同理由：可选会让「该族没有这种事实」
+   * 与「本轮没采到」落成同一个观测。无此概念的族写 `null`。
+   * AC-20 的「互可区分」要同时看 `model_provider` 与 `model_effective` 两个维度。
+   */
+  profile_requested: string | null;
+  model_provider: string | null;
   model_route?: 'env' | 'config_copy' | 'global';
   effort?: string;
   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
@@ -944,6 +1022,19 @@ export interface CriticRequest {
   schema_path: string;
   min_tool_calls: number;
   min_project_reads: number;
+  /**
+   * 本次请求的厂商 profile 的**镜像**（编排器侧可读）。
+   *
+   * 适配器读自己的配置段就够了，这个镜像是给**编排器的兜底出口**用的：
+   * `runner` 在适配器抛异常时要组装一个 `CriticResult`，那里拿不到厂商知识，
+   * 而按 Agent 身份去取配置会把 Agent 字面量带进编排器（纪律 7 禁止）。
+   * 于是由 `review.ts` 在组装请求时算一次，兜底处直接取镜像
+   * （代码双审 CODEX-01：上一版那一格恒写 null，
+   * 把「该族没有 profile 概念」与「这次没采到」压成同一个观测）。
+   *
+   * **同一次计算、同一个来源**：镜像与适配器读的是同一份配置段，不会漂。
+   */
+  profile_requested: string | null;
 }
 
 export interface CriticResult {
@@ -958,6 +1049,39 @@ export interface CriticResult {
   model_effective: string | null;
   model_effective_source: 'envelope' | 'trace' | 'requested' | 'unverified';
   model_route?: 'env' | 'config_copy' | 'global';
+  /**
+   * 该侧**实际走到的 provider 家族**（回读值）。
+   *
+   * ## 为什么它必须与 `model_effective` 并列，而不是由后者推出来
+   *
+   * 本步实测：`codex exec -p qwen -m deepseek-v4-pro` **成功退 0**，
+   * 回读得到 `model_provider=qwen`、`model=deepseek-v4-pro`——
+   * **同一个模型名可以挂在两个 provider 下**，codex 不校验两者的对应关系。
+   * 于是「两次运行的 `model_effective` 不同 ⇒ 跑了两个模型家族」这个推断不成立，
+   * 而 AC-20 的「至少两个模型家族各一次」正是靠它验收的（计划双审 GLM-01 / CODEX-03）。
+   *
+   * **必填而非可选**：没有这个事实的族要显式写 `null`，
+   * 那是**能说明理由的空**（agy / zcode 的 CLI 不暴露 provider 归属），
+   * 与 `read_paths` 对 `command-trace` 族的处理同构。可选字段会让「没采集」
+   * 与「没有这种事实」再次落成同一个观测。
+   */
+  model_provider: string | null;
+  /**
+   * 本次**请求**的厂商 profile 名（`agents.<id>.profile`，codex 的 `-p`）。
+   *
+   * ## 命名
+   *
+   * 随 `model_requested` / `effort_requested` 的既有惯例（计划双审 CODEX-10）：
+   * 它是请求值，不是回读值，回读值是上面的 `model_provider`。
+   * **裸名 `profile` 留空不占**——这个词在本系统里已经指「档位」
+   * （`config.yaml` 的 `profiles` / `active_profile` / CLI `--profile`），
+   * 而 `run.v2` 自己的档位词汇是 `tier*`。同一类事实两套命名惯例，
+   * 与同一个词两个意思是同一个病。
+   *
+   * **绝不参与 `model_effective` 的判定**：请求值一旦渗回生效值，
+   * AC-20 末句「生效模型仍以回读为准、不采信 profile 意图」就失效了。
+   */
+  profile_requested: string | null;
   tool_calls: ToolCallCounts;
   /** 轨迹中出现过的读取路径（项目相对），供 deny_paths 核验与 consulted 交叉核对 */
   read_paths: string[];

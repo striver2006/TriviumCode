@@ -1,0 +1,149 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一条：AC-20 的正对照判据在同一变更内存了两套相反的答案——PRD 第 20 条与设计 §15.3 仍写「允许写路径的 B 写入必须成功/存在」，而同一份 diff 的 §3.6 更正、M6 报告更正、v1.3.11 台账与 sandbox 脚本已实测证明该形态在 -s read-only 下恒不存在、并换成「写命令进轨迹且输出显示被拒」。按 PRD/§15.3 字面跑 J5 将恒不可满足（GLM-01，major）。其余：失败出口把 profile_requested 也记 null，与同为请求值的 model_requested 口径不一致（GLM-02）；无 profile 路径的目录校验仍用含 hide 项的全集、且 visible 过滤无测试锁例（GLM-03/04）；PRD 头部版本分叉缺变更说明、设计 README 版本对账行停在 v1.3.9、变更日志行序错位（GLM-05/06/07）；EV-20 凭据副本未排期而真机验收每次都会铸造新副本（GLM-08）；计划裁定的「实时读盘」改为探针快照未在设计侧记偏离（GLM-09）。实现主体（成对字段入契约、catalogModelsFor 三态、providerBaseUrl 单键提取、正对照脚本）质量高，与 r5/r6 计划落点对应良好。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "requirement",
+      "kind": "contract",
+      "location": "doc/01_requirements/PRD_driver_dual_critic.md 第 20 条 AC-20；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md §15.3 AC-20 行",
+      "problem": "AC-20 的沙箱正对照判据在同一变更内存在两套相反表述。PRD AC-20 写「且同一次调用里对允许写路径的写入必须成功（正对照）」，设计 §15.3 该行写「项目内哨兵 A 缺席且允许写路径的 B 存在」——都是 r6 计划 CODEX-01 的原始修法（路径 B）。而同一份 diff 内，设计 §3.6「M8 第 4 步再更正」、M6 探针报告的适用范围更正（doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md:121-124「不必……另找一个『允许写的路径』（-s read-only 下整个文件系统只读，那种路径根本不存在，实跑已证）」）、v1.3.11 变更台账以及 scripts/codex-sandbox-control.mjs 的实现，全部采用「写命令确实进了轨迹且其输出显示被拒」这一实测成立的形态。同一份「唯一实现依据」对 J5 判据存下两个答案（EV-14 反复记的形态），且这次直接长在验收条款上：按 PRD/§15.3 字面执行 J5 恒不可满足，执行者只能自行换口径——验收的严肃性就没了。",
+      "evidence": "读 changes-20260916T040240Z.diff（PRD 与设计 §15.3 的新措辞、§3.6 更正、v1.3.11 台账四处对照）、doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md:95-124（更正段明写 B 路形态不存在、落点是 sandbox 脚本）、scripts/codex-sandbox-control.mjs（正对照=writeCmds 进轨迹且 output 含失败标记）、doc/01_requirements/PRD_driver_dual_critic.md 与设计文档（grep 核对现行文本）。",
+      "suggestion": "把 PRD 第 20 条与设计 §15.3 的正对照措辞改写为实测成立的形态（同一次调用里：写命令确实进轨迹、其输出显示写入被拒、哨兵 A 未创建），并就地注明「允许写路径 B」形态已被本步实跑证伪；两处是验收执行者会去查的地方，不能只留在 §3.6 与报告更正里。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/adapters/base.ts:175-177（failedResult）；src/trivium/review.ts:1059/1070",
+      "problem": "失败/超时出口把 profile_requested 也记 null，注释理由「两者都没走到」对请求值不成立——profile 来自静态配置，`-p` 已进 argv（buildCodexArgs），不需要运行成功才「走到」。同一个 meta 里，同为请求值的 model_requested 在失败时仍如实记录（review.ts:1059 取 requests[c].model），两个请求值口径不一致。后果：失败的 codex 运行落盘 profile_requested=null，与「该族没有厂商 profile 概念」的既定语义（types.ts 文档块、run.v2 描述）混成同一观测——这正是该字段「必填而非可选」要避免的混淆，AC-20 真机验收中失败轮次的排查会被它误导。",
+      "evidence": "src/trivium/adapters/base.ts:163-189（failedResult 全文与注释）；src/trivium/review.ts:1040-1079（meta 组装：model_requested 取 requests、profile_requested 取 r.profile_requested）；src/trivium/adapters/codex.ts:464-503（三个失败 return 均走 failedResult，profile 已在 cfg 中可得）。",
+      "suggestion": "失败出口也如实写本次配置的 profile：给 failedResult 的 fail 入参增一个可选 profileRequested（由 codexAdapter 的失败分支传 cfg.profile），或最低限度修正 base.ts:175 的注释理由并登记该边界（失败轮次的 profile_requested 不具判读力）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/codex.ts:654-655；src/trivium/adapters/codex.ts:392-393；src/trivium/preflight.ts:395",
+      "problem": "visible/全集拆分只对「配了 profile」的路径生效：probe.models 仍存含 hide 项的全集（catalog.models），而 codex 未配 profile 时 catalogModelsFor 直接返回 null（「没配 profile ⇒ 基底目录即生效目录」），preflight 随即回落 probe.models——hide 项（如 gpt-reserve、codex-auto-review）照放。这是 probeCodexModels 文档块自己写的「拿全集当判据会放行隐藏项、复制 E-4 的误放」，在无 profile（codex 的默认形态）路径上原样存在：slug 放行后要到端点 turn.failed 才失败，正是 AC-16「挡在花钱之前」要防的形态。",
+      "evidence": "src/trivium/probes/codex.ts:654-655（probe.models = catalog.models，全集）、:672-676（models_by_profile 存 c.visible）；src/trivium/adapters/codex.ts:390-393（!profile ⇒ null）；src/trivium/preflight.ts:391-398（scoped?.models ?? probe.models 回落）；probes/codex.ts:238-248 文档块自述全集判据的危害。",
+      "suggestion": "探针把基底目录的 visible 一并存下（probe.models 维持人读全集），catalogModelsFor 在 profile 为 null 时返回基底 visible 供校验；若有意保留全集（例如对「端点名单＝可见项」这条 n=1 等式在基底端点上未验证），请在文档块写明这个不对称的理由。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/probes/codex.ts:250-283（probeCodexModels 的 visible 过滤）；test/unit/codex-adapter.test.ts:445-569",
+      "problem": "probeCodexModels 的 visible 拆分——P-25 缓解的核心机制——没有任何测试咬住。现有新测试全部测 catalogModelsFor（消费已拆好的数据）与 providerBaseUrl；把 `m.visibility !== 'hide'` 删掉或写错（models_by_profile 回落存全集）不会红任何用例，而后果恰好是 GLM-03 的误放形态、静默发生。v1.3.11 记的 M3 变异守的是 catalogModelsFor 的取表分支，守不到提取侧。这与本项目反复记的「加了守卫不等于守卫被守着」同形。",
+      "evidence": "grep 全 test/ 目录：probeCodexModels 零命中，models_by_profile/visibility 仅命中 codex-adapter.test.ts 的 cfgWith（构造数据，不经提取逻辑）；src/trivium/probes/codex.ts:270-278（过滤逻辑本体）。",
+      "suggestion": "抽一个纯解析函数（JSON 文本 → {models, visible, efforts}）或用假 bin（echo 预置 JSON 的可执行脚本）补一条锁例：含 visibility:\"hide\" 的 slug 进 models、不进 visible；字段缺失按可见处理的分支一并锁住。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "requirement",
+      "kind": "maintainability",
+      "location": "doc/01_requirements/PRD_driver_dual_critic.md:5-8、:23",
+      "problem": "PRD 头部两处未随本次升版跟上：第 5 行「当前版本：v1.4.5」而第 8 行「文档版本：v1.4.4」分叉（改动前两者同为 v1.4.4）；且「变更说明」（第 23 行起）没有 v1.4.5 条目——该文件自身的惯例是每次升版在变更说明头部记一条（v1.4.1～v1.4.4 皆然，本版实际改了 AC-20 判据、实现状态段与追溯矩阵，却无变更记录）。",
+      "evidence": "doc/01_requirements/PRD_driver_dual_critic.md:1-34（头部全文：版本行分叉、变更说明最新条目为 v1.4.4）；changes diff 第 60-68 行（仅 bump 当前版本，文档版本行未动）。",
+      "suggestion": "文档版本行同步 v1.4.5，并在变更说明头部补一条 v1.4.5（内容：AC-20 判据逐分量化与达成边界、实现状态段与追溯矩阵的口径更新）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "requirement",
+      "kind": "maintainability",
+      "location": "doc/02_design/README.md:24-25",
+      "problem": "设计文档索引的版本对账行停在「v1.3.9……依据 PRD v1.4.4」——v1.3.10（已随 3812f4c 提交）与本变更的 v1.3.11 两版都没更。v1.3.8 曾把这条行当作专项修过（设计 v1.3.8 台账明记「doc/02_design/README.md 版本对账」），而 v1.3.11 §六刚把「文档头」单列为回填清单独立项、声称堵住这类遗漏——这个索引行是同类落点的又一次复发，读者会据此把 v1.3.9 当现行唯一实现依据。",
+      "evidence": "grep doc/02_design/README.md 命中 :24（v1.3.9 / PRD v1.4.4）；changes diff 文件清单不含 doc/02_design/README.md；设计文档 :6（当前版本 v1.3.11）。",
+      "suggestion": "把该行更新为 v1.3.11（演进历程补 v1.3.10 第 3 步与 v1.3.11 第 4 步两段、PRD 版本引 v1.4.5）；并考虑把「索引 README 的版本对账行」并进 v1.3.11 新立的回填清单，而不是等下次复发。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2776-2794",
+      "problem": "变更日志表本为时间升序（…v1.3.7→v1.3.8→v1.3.9→…→v1.3.10 在表尾），本版把 v1.3.11 行插在 v1.3.9 与 v1.3.10 之间，时序错位；同日两版（v1.3.10/v1.3.11 均 2026-09-16）更依赖行序表达先后。",
+      "evidence": "grep 该文档 `^| **v1.3.(9|10|11)**` 命中行号：v1.3.9=2776、v1.3.11=2777、v1.3.10=2794。",
+      "suggestion": "把 v1.3.11 行移到 v1.3.10 之后（表尾）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-08",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "security",
+      "location": "doc/08_project/BACKLOG.md:117（EV-20）；src/trivium/adapters/codex-home.ts:200-236",
+      "problem": "EV-20 如实登记了真实缺口：prepareCodexHome 把含明文 experimental_bearer_token 的 config.toml/<profile>.config.toml 与 auth.json 拷进 ~/.trivium/runs/<run>/codex/codexhome/，retention 30 天，而 scanSecrets 的论域只有归档侧、不覆盖运行目录。但它是 open-ended todo。本步剩余目标（AC-20 两家族真机审查）每一次运行都会铸造新的明文凭据副本——登记时点在真机验收之前，处置却不挂钩；本次 CLAUDE.md 记录的 cat 事故正说明这些副本是真实会被打开的文件。",
+      "evidence": "doc/08_project/BACKLOG.md:117（EV-20 全文：修法方向已写明、无排期）；src/trivium/adapters/codex-home.ts:210-236（裁剪保留 model_providers 段即保留凭据、auth.json 原样拷入、0600）；CLAUDE.md:50-61（事故记录）。",
+      "suggestion": "把 EV-20 的缓解排到 AC-20 真机验收之前或同批落地：运行结束后抹掉副本中的凭据键、保留其余结构与 sessions/（修法方向 EV-20 已写），至少先收窄 codexhome 副本的 retention；不要让「登记」成为真机跑起来前的最后一步防护。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-09",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "scope-drift",
+      "location": "src/trivium/adapters/codex.ts:379-405；src/trivium/probes/codex.ts:662-676；plan/2026-09-16-…-r6-revised-claude.md 落点 16 / §2.1 C″",
+      "problem": "r6-revised 计划对 CODEX-04 的裁定是预检侧「复用 probeCodexModels(bin, <该 profile 目录路径>)」并「写明为何这条可实时读盘」（零配额、与端点同源）；实现改为探针期快照 models_by_profile + TTL 7 天。偏离的理由（同一件事不出现两份判据两个时点）只写在 codex.ts 代码注释里，设计 v1.3.11 把快照法当作 C″ 的实现陈述、未标注与计划裁定机制的偏离；而 P-27 恰好证明目录文件会在 TTL 窗口内变动（checkProbeFreshness 判时间不判内容），「目录改了但 doctor 没重跑」期间预检按旧名单误杀/误放。",
+      "evidence": "plan/2026-09-16-M8-Codex审核者接入-r6-revised-claude.md §0 裁决表 CODEX-04 行与 §6 落点 16；src/trivium/adapters/codex.ts:381-384（「不实时读盘」注释）；doc/05_testing/REPORT_2026-09-11_m0_probe.md §7 P-27（目录文件是活的、TTL 拦不住）。",
+      "suggestion": "在设计 §11.1「生效目录随配置分层」或 v1.3.11 台账补一句：与 r6 计划裁定的「实时读盘」偏离、改为探针快照的理由，以及过期边界（模型目录文件改动后须重跑 doctor 才生效）；若认为快照代价不可接受，则按计划改回实时读盘。二选一，但要把这个决定落在设计侧而非只活在代码注释里。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "model_provider（回读）与 profile_requested（请求）成对进 CriticResult 与 run.v2，必填而非可选、恒写不走条件展开，「能说明理由的空」与措施 b 的 peer_leak_via_command 同口径——agy/zcode/stub/runner 失败位/桩夹具的显式 null 齐全，没有遗漏的写侧。",
+    "buildCodexResult 把 profileRequested 走入参、请求值与回读值在同一纯函数成对产出，三条组装测试用本步真机回读值做夹具（qwen/deepseek-v4-pro 错配形态）并锁「互不渗透、回读不到不冒充」——这是 M8 第 3 步 M4 变异教训的正确延续。",
+    "catalogModelsFor 的三态语义（null 回落 / 非空校验 / 空清单 unverifiable 且把 why 说出来）边界清晰；「旧留痕整表为空回落基底、绝不降级成放行」对 RV-B1 fail-open 形态的防御判断正确，四条目录用例（按 profile 取/无 profile 回落/旧留痕/渲染不出）覆盖到位。",
+    "providerBaseUrl 只取 base_url 一个键、providerSectionBody 抽公共段避免两份实现漂移、测试占位 token 按 secrets 扫描白名单书写（且如实记录了第一版被自家扫描器拦下的事故）——「凭据只判有无、不进探针结论」的纪律执行到位。",
+    "沙箱对照脚本的正对照设计（写命令确实进轨迹 + 输出带失败痕迹 + 哨兵未创建 + 反证标记）优于原 CODEX-01 的「路径 B」修法，且 P-C2 适用范围更正（codex 审批层不留痕 vs 沙箱 syscall 层留痕）有钉死命令形态的实跑证据支撑；「机制直证只看键名与段名、副本内容一律不打印」与凭据纪律同源。",
+    "review.ts:356 的 checkModelSlugs 运行期调用已排在 sides 解析之后并传第四参（r9 AGY-04 的修复在位），新的 catalogModelsFor 钩子经 checkModelAgainstCatalog 同时作用于预检与运行期两个入口，没有重演「只改一个调用点」。",
+    "CLAUDE.md 新增「含凭据文件一律 grep 键名、禁止整份打印」如实写了代价与不可撤销性；EV-20～EV-24（尤其 EV-20 的自我暴露与 EV-24 的实撞记录）登记质量高。",
+    "run.v2.json 未把两个新字段加进 required——核实后确认与 model_effective 等既有字段的处理一致（schema 保持最小核心集，写侧由 TS 必填 + 恒写保证），不构成契约漂移。"
+  ],
+  "not_covered": [
+    "只读约束下未运行任何构建/测试：v1.3.11 §七的三条变异验证与「还原后全量 1130 通过」未独立复核。",
+    "codex-trace.ts / readSessionMeta 的实现本轮未重读（M8 第 3 步已审、本步未改）；guard/gate/doctor/archive 消费侧与 lenses.yaml codex 键亦未读。",
+    "test/unit/{guard-capability,render,report,run-meta,runner}.test.ts 与 stub-agent 夹具的改动只核对了 diff 形状，未逐行评估断言有效性。",
+    "scripts/codex-sandbox-control.mjs 未实跑（需真机与配额），其「正对照成立」的结论以设计文档与 M6 报告的记载为准，未独立验证。",
+    "AC-20 两家族真机验收本身尚未执行，本审只覆盖判据与实现的落地质量；J3/J4/J6 的真机表现不在本轮论域。",
+    "README.md / doc/README.md / doc/01_requirements/README.md 为通用索引，未逐字通读（与本变更无直接耦合）。"
+  ],
+  "consulted": [
+    ".reviews/M8-Codex审核者接入/code/_meta/changes-20260916T040240Z.diff",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/config.v2.json",
+    "scripts/codex-sandbox-control.mjs",
+    "test/unit/codex-adapter.test.ts",
+    "CLAUDE.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/README.md",
+    "doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md",
+    "doc/05_testing/REPORT_2026-09-11_m0_probe.md",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-16-M8-Codex审核者接入-r5-claude.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-16-M8-Codex审核者接入-r5-revised-claude.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-16-M8-Codex审核者接入-r6-revised-claude.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-16-M8-Codex审核者接入-r9-response-claude.md"
+  ]
+}

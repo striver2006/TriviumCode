@@ -1,0 +1,265 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260916T040240Z",
+  "topic": "M8-Codex审核者接入",
+  "stage": "code",
+  "rerun_index": 10,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "结合计划文档对代码进行审查，发现潜在问题，提出优化建议",
+  "task_goal": "完成 M8 第 4 步的 AC-20 真机验收：两个家族各真实审查一次、沙箱负对照、厂商 profile 请求值与 provider 回读值双双入档，并回填设计与 PRD 的里程碑状态",
+  "entry": "C",
+  "driver": "claude",
+  "critics_selected": [
+    "glm",
+    "codex"
+  ],
+  "snapshot": {
+    "git_head": "42fb0c0bb325da20d777a6bbb33a9385fa02bdbc",
+    "tree_hash": "91d5a4bda90bf3396b2ed4aecdc00ff0c4effac5",
+    "dirty": true,
+    "subject_sha256": "22830bef9dc071bf8c7cea45152d22abba871a9f979677a751b81d41b9a1e680",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-16T04:02:41.335Z",
+  "finished_at": "2026-09-16T04:23:04.050Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1222.552,
+      "tool_calls": {
+        "read": 20,
+        "grep": 6,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 15,
+        "inputTokens": 1932748,
+        "outputTokens": 46226,
+        "totalTokens": 1978974,
+        "cacheReadTokens": 1754496,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_52e964c2-0b83-4914-8d3d-ddb9b6a1a072",
+      "peer_deny_applied": false
+    },
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.154.0",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 293.11,
+      "tool_calls": {
+        "run_command": 82,
+        "project_reads": 40
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0a861-9182-7e10-b535-4c0fcf5459db",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/Agent注册表与多审泛化/code/2026-09-13-Agent注册表与多审泛化-gemini.md",
+    ".reviews/Agent注册表与多审泛化/code/_meta/review-gemini-20260913T121713Z.json",
+    ".reviews/Agent注册表与多审泛化/plan/2026-09-13-Agent注册表与多审泛化-gemini.md",
+    ".reviews/Agent注册表与多审泛化/plan/_meta/review-gemini-20260913T115435Z.json",
+    ".reviews/C命令base透传修复/code/2026-09-12-C命令base透传修复-gemini.md",
+    ".reviews/C命令base透传修复/code/_meta/review-gemini-20260911T155806Z.json",
+    ".reviews/M2-skills与闸门/plan/2026-09-11-M2-skills与闸门-r2-gemini.md",
+    ".reviews/M2-skills与闸门/plan/_meta/review-gemini-20260910T221346Z.fallback-items.md",
+    ".reviews/M2-skills与闸门/plan/_meta/review-gemini-20260910T221346Z.json",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-gemini.md",
+    ".reviews/M3-隔离证据与预检/plan/2026-09-11-M3-隔离证据与预检-r2-gemini.md",
+    ".reviews/M3-隔离证据与预检/plan/_meta/review-gemini-20260910T232427Z.json",
+    ".reviews/M3-隔离证据与预检/plan/_meta/review-gemini-20260910T234258Z.json",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r2-gemini.md",
+    ".reviews/M4-M5实现/code/2026-09-11-M4-M5实现-r3-gemini.md",
+    ".reviews/M4-M5实现/code/_meta/review-gemini-20260911T020826Z.failed.json",
+    ".reviews/M4-M5实现/code/_meta/review-gemini-20260911T023232Z.json",
+    ".reviews/M4-M5实现/code/_meta/review-gemini-20260911T025329Z.fallback-items.md",
+    ".reviews/M4-M5实现/code/_meta/review-gemini-20260911T025329Z.json",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-gemini.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r2-gemini.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r3-gemini.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r4-gemini.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r5-gemini.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r6-gemini.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r7-gemini.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-15-M8-Codex审核者接入-r8-gemini.md",
+    ".reviews/M8-Codex审核者接入/code/2026-09-16-M8-Codex审核者接入-r9-gemini.md",
+    ".reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T013027Z.json",
+    ".reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T024740Z.json",
+    ".reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T032600Z.json",
+    ".reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T053643Z.json",
+    ".reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T062455Z.json",
+    ".reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T115437Z.json",
+    ".reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T123853Z.json",
+    ".reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T130733Z.json",
+    ".reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T153603Z.json",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-gemini.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r2-gemini.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r3-gemini.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-15-M8-Codex审核者接入-r4-gemini.md",
+    ".reviews/M8-Codex审核者接入/plan/2026-09-16-M8-Codex审核者接入-r6-codex.md",
+    ".reviews/M8-Codex审核者接入/plan/_meta/review-codex-20260915T235850Z.failed.json",
+    ".reviews/M8-Codex审核者接入/plan/_meta/review-codex-20260916T004756Z.json",
+    ".reviews/M8-Codex审核者接入/plan/_meta/review-gemini-20260915T004805Z.json",
+    ".reviews/M8-Codex审核者接入/plan/_meta/review-gemini-20260915T103755Z.json",
+    ".reviews/M8-Codex审核者接入/plan/_meta/review-gemini-20260915T105915Z.json",
+    ".reviews/M8-Codex审核者接入/plan/_meta/review-gemini-20260915T135556Z.json",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-gemini.md",
+    ".reviews/RV-B1-commit豁免/code/2026-09-12-RV-B1-commit豁免-r2-gemini.md",
+    ".reviews/RV-B1-commit豁免/code/_meta/review-gemini-20260912T130433Z.json",
+    ".reviews/RV-B1-commit豁免/code/_meta/review-gemini-20260912T134136Z.json",
+    ".reviews/S9-闸门与留痕加固/code/2026-09-11-S9-闸门与留痕加固-gemini.md",
+    ".reviews/S9-闸门与留痕加固/code/_meta/review-gemini-20260911T063947Z.json",
+    ".reviews/双审进度反馈/code/2026-09-12-双审进度反馈-gemini.md",
+    ".reviews/双审进度反馈/code/_meta/review-gemini-20260912T150433Z.json",
+    ".reviews/双审进度反馈/plan/2026-09-12-双审进度反馈-gemini.md",
+    ".reviews/双审进度反馈/plan/_meta/review-gemini-20260912T144811Z.json",
+    ".reviews/审核修复/code/2026-09-12-审核修复-gemini.md",
+    ".reviews/审核修复/code/_meta/review-gemini-20260912T060013Z.json",
+    ".reviews/护栏判定范围收窄/code/2026-09-14-护栏判定范围收窄-gemini.md",
+    ".reviews/护栏判定范围收窄/code/_meta/review-gemini-20260913T164857Z.json",
+    ".reviews/护栏判定范围收窄/plan/2026-09-14-护栏判定范围收窄-gemini.md",
+    ".reviews/护栏判定范围收窄/plan/2026-09-14-护栏判定范围收窄-r2-gemini.md",
+    ".reviews/护栏判定范围收窄/plan/_meta/review-gemini-20260913T160012Z.json",
+    ".reviews/护栏判定范围收窄/plan/_meta/review-gemini-20260913T162911Z.json",
+    ".reviews/探针扩展与事实回填/code/2026-09-14-探针扩展与事实回填-gemini.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-14-探针扩展与事实回填-r2-gemini.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-15-探针扩展与事实回填-r3-gemini.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-15-探针扩展与事实回填-r4-gemini.md",
+    ".reviews/探针扩展与事实回填/code/2026-09-15-探针扩展与事实回填-r5-gemini.md",
+    ".reviews/探针扩展与事实回填/code/_meta/review-gemini-20260914T134654Z.json",
+    ".reviews/探针扩展与事实回填/code/_meta/review-gemini-20260914T144553Z.json",
+    ".reviews/探针扩展与事实回填/code/_meta/review-gemini-20260914T154909Z.json",
+    ".reviews/探针扩展与事实回填/code/_meta/review-gemini-20260914T222706Z.json",
+    ".reviews/探针扩展与事实回填/code/_meta/review-gemini-20260914T235618Z.json",
+    ".reviews/探针扩展与事实回填/plan/2026-09-14-探针扩展与事实回填-gemini.md",
+    ".reviews/探针扩展与事实回填/plan/_meta/review-gemini-20260914T123601Z.json",
+    ".reviews/演进设计定稿与回溯/code/2026-09-14-演进设计定稿与回溯-gemini.md",
+    ".reviews/演进设计定稿与回溯/code/_meta/review-gemini-20260913T234949Z.json",
+    ".reviews/演进设计定稿与回溯/plan/2026-09-14-演进设计定稿与回溯-gemini.md",
+    ".reviews/演进设计定稿与回溯/plan/_meta/review-gemini-20260913T232505Z.json",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-gemini.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r2-gemini.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r3-gemini.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r4-gemini.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r5-gemini.md",
+    ".reviews/配置v2与动态多审/code/2026-09-14-配置v2与动态多审-r6-gemini.md",
+    ".reviews/配置v2与动态多审/code/_meta/review-gemini-20260914T010621Z.json",
+    ".reviews/配置v2与动态多审/code/_meta/review-gemini-20260914T021531Z.json",
+    ".reviews/配置v2与动态多审/code/_meta/review-gemini-20260914T032508Z.json",
+    ".reviews/配置v2与动态多审/code/_meta/review-gemini-20260914T050404Z.json",
+    ".reviews/配置v2与动态多审/code/_meta/review-gemini-20260914T061843Z.json",
+    ".reviews/配置v2与动态多审/code/_meta/review-gemini-20260914T102535Z.json",
+    ".reviews/配置v2与动态多审/plan/2026-09-14-配置v2与动态多审-r2-gemini.md",
+    ".reviews/配置v2与动态多审/plan/_meta/review-gemini-20260913T172119Z.failed.json",
+    ".reviews/配置v2与动态多审/plan/_meta/review-gemini-20260913T223700Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "glm": false,
+      "codex": false
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "glm": {
+        "hit": false,
+        "commands": []
+      },
+      "codex": {
+        "hit": false,
+        "commands": []
+      }
+    },
+    "verification_degraded": {
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "evidence_threshold": 2
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M8-Codex审核者接入/code/_meta/changes-20260916T040240Z.diff",
+      "sha256": "22830bef9dc071bf8c7cea45152d22abba871a9f979677a751b81d41b9a1e680"
+    },
+    {
+      "path": "M8-Codex审核者接入/code/_meta/brief-glm-20260916T040240Z.md",
+      "sha256": "9c0bc69f56115d24c2a14c60b3d0ee4942779e083b97585f3035da3a65f3a59f"
+    },
+    {
+      "path": "M8-Codex审核者接入/code/_meta/brief-codex-20260916T040240Z.md",
+      "sha256": "9f5be4f51f6af712b5a7e2bd9b9492ed3b77ab557bef774f45527ae6ba0c2f2d"
+    },
+    {
+      "path": "M8-Codex审核者接入/code/_meta/review-glm-20260916T040240Z.json",
+      "sha256": "e392be5fcdc5b270d7df863567adf1ed0526c57a613f925d12e97d6d00055d2d"
+    },
+    {
+      "path": "M8-Codex审核者接入/code/_meta/review-codex-20260916T040240Z.json",
+      "sha256": "ea733d4a2e312a33430f2d0bb3f674c5b99a4729261ae810dc2a72b176e54ad7"
+    },
+    {
+      "path": "M8-Codex审核者接入/code/2026-09-16-M8-Codex审核者接入-r10-glm.md",
+      "sha256": "506f44da4b7e2be96a43f179973600dd8152cde7f4bc6ebb6acb8f9caad0304b"
+    },
+    {
+      "path": "M8-Codex审核者接入/code/2026-09-16-M8-Codex审核者接入-r10-codex.md",
+      "sha256": "c22f8f4bca0e26eb4a09d6b1e3f1a33240e77ef2da45c4bbf26c6bb48367325c"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

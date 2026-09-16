@@ -129,6 +129,13 @@ export const stubAgentAdapter: CriticAdapter = {
       raw_response_text: stubReview(req.critic, reads.map((p) => nodePath.relative(req.project_root, p))),
       model_effective: req.model,
       model_effective_source: 'envelope',
+      /*
+       * 契约要求每一侧都**显式回答**这两个事实，没有就写 null——
+       * 「该族没有这种事实」与「本轮没采到」不能长得一样（`CriticResult` 文档块）。
+       * 桩没有厂商 profile，也不经 provider 路由。
+       */
+      model_provider: null,
+      profile_requested: null,
       tool_calls: { read: toolCalls },
       read_paths: reads,
       write_events: [],

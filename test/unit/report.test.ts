@@ -79,7 +79,8 @@ async function seedRound(
     if (c === 'glm' && opts.glmFailed) {
       meta.critics.glm = {
         vendor: 'zcode', cli_version: null, model_requested: 'GLM-x', model_effective: null,
-        model_effective_source: 'unverified', status: 'timeout', exit_code: null, duration_s: 900,
+        model_effective_source: 'unverified', profile_requested: null, model_provider: null,
+        status: 'timeout', exit_code: null, duration_s: 900,
         tool_calls: {}, evidence_ok: false, heterogeneous: true, fail_reason: '脚本级超时（900s）',
       };
       await writeMeta(l, 'plan', `review-glm-${opts.runId}.failed.json`,
@@ -91,7 +92,8 @@ async function seedRound(
     if (!rv) continue;
     meta.critics[c] = {
       vendor: c === 'gemini' ? 'antigravity' : 'zcode',
-      cli_version: '1.0', model_requested: c === 'gemini' ? 'gemini-x' : 'GLM-x',
+      cli_version: '1.0', profile_requested: null, model_provider: null,
+      model_requested: c === 'gemini' ? 'gemini-x' : 'GLM-x',
       model_effective: c === 'gemini' ? 'gemini-x' : 'provider/GLM-x',
       model_effective_source: 'envelope', status: 'ok', exit_code: 0, duration_s: c === 'gemini' ? 100 : 200,
       tool_calls: { read: 9 }, evidence_ok: true, heterogeneous: true,

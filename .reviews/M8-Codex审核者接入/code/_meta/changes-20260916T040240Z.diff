@@ -1,0 +1,1418 @@
+# trivium changes.diff
+# run_id: 20260916T040240Z
+# base: 42fb0c0
+# head: 42fb0c0bb325da20d777a6bbb33a9385fa02bdbc
+# files: 27
+#   CLAUDE.md
+#   doc/01_requirements/PRD_driver_dual_critic.md
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-09-11_m0_probe.md
+#   doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md
+#   doc/08_project/BACKLOG.md
+#   scripts/codex-sandbox-control.mjs
+#   skills/dual-critic/schema/run.v2.json
+#   src/trivium/adapters/agy.ts
+#   src/trivium/adapters/base.ts
+#   src/trivium/adapters/codex.ts
+#   src/trivium/adapters/stub.ts
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/config.ts
+#   src/trivium/preflight.ts
+#   src/trivium/probes/codex.ts
+#   src/trivium/review.ts
+#   src/trivium/runner.ts
+#   src/trivium/types.ts
+#   test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+#   test/unit/codex-adapter.test.ts
+#   test/unit/guard-capability.test.ts
+#   test/unit/render.test.ts
+#   test/unit/report.test.ts
+#   test/unit/run-meta.test.ts
+#   test/unit/runner.test.ts
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 1274829..db2edc3 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -47,6 +47,18 @@
+   权限变更三类动词」）。焦点是用户的话、FR-20 承诺逐字，所以**改之前要问用户**，
+   不要自己改了就发出去，更不要换条调用路径去绕字面匹配。
+   同样不要给这里开豁免：理由与下一条的 RV-B1 同构。
++- **含凭据的文件一律 grep 目标键名，禁止整份打印。**
++  这几个文件里有明文凭据：`~/.codex/config.toml`（`[model_providers.*]` 段的
++  `experimental_bearer_token`）、`~/.codex/auth.json`、`~/.codex/<profile>.config.toml`、
++  以及 `prepareCodexHome()` 拷进 `~/.trivium/runs/<run>/codex/codexhome/` 的那几份副本。
++  要看结构就 `grep -n '^\[' <file>` 或只查你要的那个键，**不要 `cat` 整份**。
++  2026-09-16 我为了确认「副本里有没有 sandbox 键」而 `cat` 了副本的 `config.toml`，
++  把三个 provider 的 token 打进了终端。**代价不是「本地滚动缓冲里有一行」**——
++  对话要经 API 传出去，凭据就此离开这台机器，是否轮换只能由你判断，我无法撤销。
++  要查的其实只是一个键名，整份打印是纯粹多余的。
++  代码里早有正确口径：`providerCredentialed()` 的文档块写着「**只判有无，绝不返回值**」，
++  `providerBaseUrl()` 也只取 `base_url` 一个键。**我没照着做的是手敲的命令，不是代码。**
++  所以这条写给人看：脚本里的约束管不到临时起意的一行 `cat`。
+ - **不要再试图给 `git commit` 开豁免。** 2026-09-12 开过一次（RV-B1），双审打穿后撤回：
+   三个前置条件漏掉至少五条夹带路径，其中换行、附着重定向、文本提及三条实测能放行。
+   根因是原判定 fail-closed，豁免把它变成需要穷举危险形态的 fail-open——而 shell
+diff --git a/doc/01_requirements/PRD_driver_dual_critic.md b/doc/01_requirements/PRD_driver_dual_critic.md
+index 7a62784..095ee0d 100644
+--- a/doc/01_requirements/PRD_driver_dual_critic.md
++++ b/doc/01_requirements/PRD_driver_dual_critic.md
+@@ -2,7 +2,7 @@
+ 
+ > - **作者 / 负责人**：Chen Zhenbo（依据原始需求整理）
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.4.4
++> - **当前版本**：v1.4.5
+ > - **状态**：**基线已实现、演进需求待实施(Baseline implemented, evolution pending)**
+ > - **来源**：[原始需求.txt](./原始需求.txt)；演进需求来源见 3.2 小节「多 Agent 演进需求」
+ > - **文档版本**：v1.4.4
+@@ -11,6 +11,11 @@
+ >   **AC-22 部分达成**（`--critics` 的 1／2 侧分支，见该条达成边界）、
+ >   **AC-24 已达成**（接入套件端到端验收，见该条证明边界——但它**不足以完整验收 FR-31**，
+ >   后者只到桩级），其余无一达成。
++>   **AC-22 的达成面自 M8 第 3 步起扩大**：第三家审核者（Codex）已接入，「选 3」分支
++>   首次可真跑（M8 第 4 步的计划双审即三侧入选的形态之一），但**「三个编号前缀都对闸门可见」
++>   仍须逐轮核对 `gate --check` 的差集**，不得据此宣布 FR-29 完整达成。
++>   **AC-20 仍未达成**：判据与实现已随 M8 第 4 步落地（逐分量互可区分、逐 profile 模型目录、
++>   负对照带正对照），但**两个家族的真实审查一次都还没跑**。
+ >   现有能力另含两项**不改变对外行为**的内部工作：一次行为等价重构（Agent 注册表，M7a），
+ >   以及 M7b 六步（`run.v2`、`config.v2` 与其内存迁移、适配器接线收敛、多审退化逐对计算、
+ >   第 5 步的 `--critics` 入口——**这一步开始改变对外行为**——与第 6 步的接入套件验收装置）。
+@@ -391,18 +396,37 @@ sequenceDiagram
+ 19. **AC-19 等待期进度可读可预期**（FR-26）  
+     Given 一次已启动的双审，When 每次等待窗口返回，Then 返回中含单行成品摘要与结构化进度字段（已用、预算、百分比、第几次/共几次、两侧状态），且主脑向用户播报该摘要；Given 启动时刻，Then 用户收到一条含主题、阶段、两侧生效模型、阶段预算与汇报节奏的开场播报；Given 运行尚无有效心跳，Then 上述字段存在但取值为空，摘要退化为启动提示而非报错。
+ 
+-    > **以下 AC-20～AC-25 对应 FR-27～FR-31，均为演进验收。截至 v1.4.4 为 AC-22 部分可跑通、AC-24 已达成（但它只验收到 FR-31 的桩级范围）**
++    > **以下 AC-20～AC-25 对应 FR-27～FR-31，均为演进验收。截至本版为 AC-22 部分可跑通（第三家接入后「选 3」分支首次可真跑，编号前缀覆盖仍须逐轮核对）、AC-24 已达成（但它只验收到 FR-31 的桩级范围）、AC-20 的判据与实现已落地而真机验收未跑**
+     > （选 1 / 选 2 的分支，见该条的达成边界），其余各条无一可跑通。
+     > 它们描述的是**达成时该如何验收**，不是对现状的断言。各条末尾标注实现里程碑。
+     > M7b 前四步落地的是契约与内部泛化，未使任何一条转为可验收；第 5 步的 `--critics`
+     > 入口才让 AC-22 的一部分变成可跑通的。判定一律以各条自身标注的达成边界为准。
+ 
+-20. **AC-20 Codex 多模型家族真实审查**（FR-27）〔待实施 · M8〕
++20. **AC-20 Codex 多模型家族真实审查**（FR-27）〔**判据已实现 · 真机验收待跑** · M8 第 4 步〕
++    > **达成边界**：本条的判据、契约字段与预检拦截已随 M8 第 4 步落地并有单测与变异守卫，
++    > 但**两个家族的真实审查一次都没跑过**，故本条**未达成**。判据的三处收紧记在下面。
++
+     Given 已按指引完成至少两个模型家族的 provider 配置，When 分别指定两家族的模型各发起一次审查，
+-    Then 两次运行的**生效模型**均与指定一致且互可区分，读项目文件次数达到下限，执行证据完整；
+-    Given 该 Agent 在只读模式下尝试写文件，Then 写入失败（沙箱负对照）；
+-    Given 指定了厂商 profile，Then 请求值如实入档，而**生效模型仍以回读为准、不采信 profile 意图**；
+-    Given 选用的模型所属家族尚未配置 provider，Then **预检即拒绝启动**并给出可粘贴的配置指引。
++    Then 两次运行**逐分量**满足：① `model_provider` 互不相同、② 生效模型互不相同、
++    ③ 各自与本次请求的模型一致、④ 两侧 provider 的 `base_url`（至少 host）互不相同，
++    读项目文件次数达到该族生效下限，执行证据完整；
++    > **为什么要拆到分量**：实测 `codex exec -p qwen -m deepseek-v4-pro` 成功退 0，
++    > 回读 provider=qwen 而模型名为 deepseek-v4-pro——同一个模型名可挂在两个 provider 下，
++    > 故「两次生效模型不同 ⇒ 两个家族」不成立；而 provider **id** 互异也证明不了 endpoint 互异
++    > （两个段可指向同一个 base_url），故第 ④ 分量不可省。
++
++    Given 该 Agent 在只读模式下尝试写文件，Then 写入失败（沙箱负对照），
++    且**同一次调用里对允许写路径的写入必须成功**（正对照）；
++    > **为什么负对照必须带正对照**：该 Agent 被拒的命令不进事件流（P-C2），
++    > 于是「哨兵文件不存在」与「模型压根没尝试」产出完全相同的观测。
++    > 没有正对照，这条验收可以在模型什么都没做的情况下通过。
++
++    Given 指定了厂商 profile，Then 请求值如实入档于 `profile_requested`，
++    而**生效模型仍以回读为准、不采信 profile 意图**；
++    Given 选用的模型所属家族尚未配置 provider，Then **预检即拒绝启动**并给出可粘贴的配置指引；
++    Given 配置的模型不在**本次 profile 生效的**模型目录里，Then 预检即拒绝——
++    目录随 profile 分层，拿基底目录校验会两个方向都错（误杀该 profile 的默认模型、
++    误放只在基底目录里的 slug，后者要到端点拒绝才失败，违背 AC-16 的「失败零工件」承诺）。
+ 
+ 21. **AC-21 任一 Agent 作为 Driver 走通命令 B**（FR-28）〔待实施 · M10〕
+     Given 指定某个已注册 Agent 为 Driver，When 走完命令 B，Then 工件命名、闸门停点、逐条裁决的语义
+@@ -647,6 +671,6 @@ sequenceDiagram
+ | 11C | 已有代码 + 提示语 → 双审 → 确认方案 → 等人工审批 | FR-12 命令 C、FR-20 | P0 | AC-03、AC-09 |
+ | 2+12 | 已有根因 + 提示语 → 双审 → 修订结论 → 等人工审批（第 11 条未单列，本期补齐为命令 D） | FR-12 命令 D、FR-22、FR-20 | P0 | AC-14、AC-15、AC-09、AC-12 |
+ | 12 | 其他最佳实践 | FR-13～FR-21、FR-23～FR-26、NFR-01～07、第 10 章 | P1/P2 | AC-06、AC-08、AC-16～AC-19 |
+-| 演进 | 2026-09-13 六条演进需求（多模型经 Codex 接入含 profile 透传、任意 Agent 为 Driver、每次选 1～3 审核者、逐审核者模型与思考等级三档、通用扩展架构） | FR-27～FR-31 | P1 | AC-20～AC-25 **（均未实现，见 3.2 小节的状态说明）** |
++| 演进 | 2026-09-13 六条演进需求（多模型经 Codex 接入含 profile 透传、任意 Agent 为 Driver、每次选 1～3 审核者、逐审核者模型与思考等级三档、通用扩展架构） | FR-27～FR-31 | P1 | AC-20～AC-25 **（FR-29 / FR-31 部分达成；AC-22 部分可跑通、AC-24 已达成；AC-20 的判据与实现已随 M8 第 4 步落地而真机验收未跑；其余未实现。逐条以各条自身的达成边界为准，见 3.2 小节与第 5 章各条）** |
+ 
+ 原始第 12 条拆分：FR-13～FR-21 为本期 P1；FR-22 已升为 P0（补齐原始第 2 条审查对象的独立命令入口）；FR-23～FR-25 为 P2。AC-16～AC-18 为 v1.3.0 评审后补充的 P1 验收场景（分别对应 FR-18、FR-16、FR-17）。
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 2546e24..d2b9905 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.10
++> - **当前版本**：v1.3.11
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -12,9 +12,13 @@
+ >   **3 侧分支仍待第三家审核者接入**，故 FR-29 未完整达成；接入套件见 5.1.1，
+ >   **AC-24 已达成**，含证明边界）**以及 M6 全部四步**（探针段按 CLI 索引打开、codex 与 claude 两家探针全清单实测、
+ >   Driver 入口承载面评估；事实回填见 3.6 / 3.7，实测依据见下方三份报告——**M6 不改对外行为，
+->   它交付的是「事实」与「事实的落盘位置」**）**以及 M8 第 1 步**（措施 b 落地，
+->   见 10.1 与 §24.1；**M8 其余各步尚未开工**——codex 适配器、预检泛化、AC-20 真机验收都还没做，
+->   注册表里 codex 的 `criticEnabled` 仍是 `false`）；M9～M11 尚未开工。
++>   它交付的是「事实」与「事实的落盘位置」**）**以及 M8 第 1～4 步**
++>   （第 1 步措施 b 落地，见 10.1；第 2 步适配层契约泛化，见 11.1；
++>   第 3 步 codex 接入为第三个审核者——`criticEnabled` 自此为 `true`、抬头 **Critic-C**，
++>   见 5.1.1 与 §24.1；第 4 步 AC-20 判据改写与逐 profile 模型目录，见 15.3 与 11.1。
++>   **AC-20 的达成状态见 15.3 该条与 16.1 的 M8 行，不在本段断言**）；M9～M11 尚未开工。
++>   **本段是「现状断言」，凡与代码不一致一律以代码为准**——它曾在 M8 第 2、3 步合入后
++>   连续两版未跟上（两次回填都只改了各自章节），第 4 步的计划双审把它查了出来。
+ >   本文继续作为**唯一实现依据**：后续任何与本文不一致的改动，仍须先回溯修订本文（16.2 纪律 1、纪律 6）
+ >
+ > - **审核依据**：①[`2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md`](./reference/2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md)（v1.1.0 按其 RV-01～RV-26 修订，逐条应答见第 22 章）；②项目负责人评审意见 UR-01～UR-06（2026-09-11，v1.2.0 据此修订，逐条应答见第 23 章）
+@@ -309,6 +313,14 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参
+   > 失效的只有**阴性方向**：没检出写事件时，排除不了「试过但被拒」。
+   > 若按原断言实现，codex 侧的真实失守会被直接丢弃，还会让漂移判定把审查员的写入
+   > 归因成开发者手改。判定与留痕见 11.1「轨迹能力与判定分档」。
++  >
++  > **【M8 第 4 步再更正】** 上面「沙箱拒绝是**静默**的」同样说过头了——**要看拒绝发生在哪一层**：
++  > 模型用内置写工具被 `approval: never` 挡下时不留痕（原观测），而模型**跑 shell** 时
++  > codex 照常执行、写调用在 syscall 层拿 `EPERM`，**命令进事件流且失败痕迹在它的 `output` 里**
++  > （本步沙箱对照实验实测，见 M6 codex 探针报告 P-C2 的适用范围更正）。
++  > **`rejectionRecorded: false` 不变**：模型可以选那条不留痕的路，阴性方向依然排除不了失守。
++  > 变的是负对照的设计——shell 那条路留痕，于是「命令进了轨迹 + 输出显示被拒」可以当**正对照**，
++  > 不必另找一个「允许写的路径」（`-s read-only` 下整个文件系统只读，那种路径不存在）。
+ 
+ **一处对 `isolation` 的覆盖面修正（M6 第 4 步补测）**：`home_copy` 这个取值字面成立，
+ 但它只覆盖**配置面**（`config.toml` / `auth.json` / model catalog）。**指令面不在其内**——
+@@ -957,8 +969,17 @@ addresses:               # 本件应答的审查文档（当前恒两份；【
+ > 读进内存时映射为本节的 v2 形状（映射规则见下方读侧分发）。6.7 的 v1 正文原样保留——
+ > 它仍是理解既有归档的唯一依据，不是过期文字。细则见演进设计 §6.2。
+ >
+-> **仍待实施的只剩四个 effort/tier/profile 字段**（【待实施 · M11】）：
+-> schema 已留位而**写侧尚未接线**，故当前落盘的 run.json 里它们恒不出现。
++> **仍待实施的只剩三个 effort/tier 字段**（`effort_requested` / `effort_effective` / `tier_source`，
++> 【待实施 · M11】）：schema 已留位而**写侧尚未接线**，故当前落盘的 run.json 里它们恒不出现。
++>
++> 原先并列的第四个字段 `profile`（厂商 profile）**已于 M8 第 4 步接线并改名
++> `profile_requested`**，同时新增成对的回读字段 `model_provider`。两处偏离要记在这里：
++> ①**提前接线**——AC-20 的 J6 点名要它而 AC-20 排在 M8，分期表与验收条对同一字段给了
++> 两个时点，让 AC-20 空着的代价更大；②**改名**——裸名 `profile` 在本系统里已指「档位」
++> （`config.yaml` 的 `profiles` / `active_profile` / CLI `--profile`），而本节自己的档位
++> 词汇是 `tier*`；改后随 `model_requested` / `effort_requested` 的既有惯例。
++> **`profile` 这个裸名留空不占**，M11 收口档位时可用。
++> 例外记在此处而不是别处，是为了让下一个「AC 要什么就提前接什么」的请求先驳倒这条。
+ > `guard.peer_leak_via_command` 已于 **M8 第 1 步接线**（见 10.1 措施 b），
+ > 写侧**恒写**——`hit: false` 表示「扫过、没命中」，字段**缺失**才是接线之前的旧留痕。
+ 
+@@ -975,7 +996,9 @@ addresses:               # 本件应答的审查文档（当前恒两份；【
+ | `critics` | 由「恰两键」改为**动态键**（键取自 `critics_selected`） | 必备 | M7b |
+ | `gate` / `guard` 内双侧字段（`peer_deny_applied` 等） | 改**逐审核者 map** | 必备 | M7b |
+ | `guard.peer_leak_via_command` | 命令文本通道命中（`hit` + 命中的**命令原文**） | **可选**（为读旧留痕而留；写侧恒写） | 【已实现 · M8 第 1 步】见 10.1 措施 b |
+-| `critics.<id>.effort_requested` / `effort_effective` / `tier_source` / `profile` | 思考等级与档位的请求值 / 生效值 / 来源 / 厂商 profile | **可选** | 【待实施 · M11】 |
++| `critics.<id>.effort_requested` / `effort_effective` / `tier_source` | 思考等级与档位的请求值 / 生效值 / 来源 | **可选** | 【待实施 · M11】 |
++| `critics.<id>.profile_requested` | 本次请求的**厂商** profile（codex 的 `-p`）。命名随 `model_requested` 惯例；裸名 `profile` 留空不占（本系统里它指档位） | **必备**（无此概念的族写 `null`） | 【已实现 · M8 第 4 步】 |
++| `critics.<id>.model_provider` | **回读**得到的 provider 家族归属。与 `model_effective` 是两个维度——实测 `-p qwen -m deepseek-v4-pro` 成功且回读 provider=qwen，故「两次模型名不同 ⇒ 两个家族」不成立，AC-20 的互可区分两个维度都要看 | **必备**（同上） | 【已实现 · M8 第 4 步】 |
+ 
+ `effort_effective` 必须**回读**而非采信请求值：部分厂商存在请求值归并映射
+ （如 DeepSeek 的 `medium/high/xhigh → high`），「请求 medium 实际生效 high」。
+@@ -2307,7 +2330,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
+ | AC-17 送审材料固定且自包含 | 送审包落 `_meta/` + `subject_sha256` + `tree_hash` 漂移检测 | 审查中修改被审对象，运行应判 `subject_drift` 作废；修改无关文件，应出 `drift` 警告并列出文件；结论只对应 `run.json.snapshot` 记录的哈希 |
+ | AC-18 模型异构默认与覆盖可见 | 默认非 Claude 系；覆盖写入元数据与文档头 | 默认跑一次 + 显式覆盖跑一次，检查元数据 |
+ | AC-19 等待期进度可读可预期 | `--wait` 返回结构化进度字段 + 单行摘要；启动播报 | 跑一次真实双审，核对每次等待返回与开场播报 |
+-| **AC-20** Codex 真实审查（**至少两个模型家族各一次**）· 【待实施 · M8】 | 证据链完整 + 沙箱负对照 | 两家族 `model_effective` 均与指定一致且互可区分；`project_reads` 达下限；写文件失败；`profile` 请求值如实入档而生效模型仍以回读为准 |
++| **AC-20** Codex 真实审查（**至少两个模型家族各一次**）· 【判据已实现 · 真机验收待跑 · M8 第 4 步】 | 证据链完整 + 沙箱负对照（**带正对照**） | **逐分量断言，不是「二元组任一分量不同即可」**：两次运行的 ① `model_provider` 互不相同、② `model_effective` 互不相同、③ 各自与本次**请求**的模型一致、④ 两侧 provider 的 `base_url`（至少 host）互不相同；`project_reads` 达该族生效下限（`command-trace` 折减后）；沙箱负对照**须含正对照**——同一次调用里项目内哨兵 A 缺席**且**允许写路径的 B 存在，B 不成立则 A 的缺席证明不了任何事（被拒与没尝试产出相同观测，P-C2）；`profile_requested` 如实入档而生效模型仍以回读为准 |
+ | **AC-21** 任一 Agent 作为 Driver 走通命令 B · 【待实施 · M10】 | 四 Driver 各跑一轮 | 工件命名 / 闸门 / 裁决语义与本文一致（claude/zcode 真实，codex/gemini 夹具级） |
+ | **AC-22** 1～3 审核者动态生效 · 【待实施 · M7b】 | 1 / 2 / 3 审各跑一轮 | `critics_selected` 如实；**1 审无降级标记**（`review_mode: full`、无 `degraded_reason`）；3 审三份审查齐备且 gate 差集覆盖三个前缀 |
+ | **AC-23** 档位与精确覆盖生效可核对 · 【待实施 · M11】 | 两种发起方式各一次 | `--tier-<id> high` 与 `--model-<id> … --effort-<id> …` 的 `model_effective` / `effort_effective` / `tier_source` 回读一致 |
+@@ -2400,7 +2423,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
+ | **M6 探针扩展** | `probes/codex.ts`、`probes/claude.ts` 全清单实测；Driver 入口承载面探针；坑清单报告增补 | `doctor --only codex/claude` 有确定结论；**3.6 / 3.7 事实表按实测回填本文**（纪律 6a）；Driver 入口形态待拍板项收敛 | ✅ **四步全部达成（2026-09-15，v1.3.7）**。①探针段由固定两键改为 `probe.cli.<cliName>`，键集随注册表派生——第三家的结论第一次存得下，这是后三步的**准入条件**（结论落不了盘，`--only codex` 就给不出确定答案）；②③ 两家探针全清单实测，`doctor --only codex/claude` 均有确定结论，**三条设计事实被推翻**（见 3.6）、**一条被修正**（见 3.7）；④入口承载面完成**人读评估**，对**待拍板项 §18.1 #16**（≡ 演进设计 §16 第 3 项，计划稿称「J3」）给出**倾向**：skills 优先——**倾向不是拍板**，agy 侧只有静态证据，行为实测已写进 M10 完成判据；**刻意不落机读字段**（理由见 §24.1 该行）。**边界**：M6 交付的是事实与事实的落盘位置，**不改对外行为**；真实接入 codex / claude 为审核者仍是 M8 / M9 |
+ | **M7a 注册表（行为等价重构）** | `agents/registry.ts`：后缀 / 前缀 / 配置键 / 探针段 / 镜头键 / 禁读矩阵 / Hook 字面集统一派生；`registry-parity` grep 级对账测试；**顺带完成 10.1 措施 a 的路径侧收口**（结构化意见与运行目录进 deny 机器集合，提示语与核验同源） | `npm run check` 全绿；双侧行为与重构前逐项等价，**唯一有意的行为变化是 deny 集合的扩展**（那是修补既有缺口，方向是收紧）；四家登记但 `criticEnabled` 仅 gemini/glm、`driverEnabled` 仅 claude | ✅ 2026-09-13（`039bdc9`） |
+ | **M7b 配置 v2 与动态多审** | types / config v2 / 四份 schema；naming·hooks·gate·freeze·brief·runner·CLI 的 N 方化；**禁读矩阵的 N 方泛化**（措施 a 的路径侧已随 M7a 落地，此处做三审展开）；全部新测试；selftest N 侧场景 | `npm run check` 全绿；双侧默认行为与 M7a 后等价（除 schema 版本号）；AC-22 / AC-24 / AC-25 | 🔄 进行中（六步分批交付）：第 1 步 ✅ `3ceeee6`（既有缺陷修复）；第 2 步 ✅ `a891ab2`（泛化欠账与对账扩展）；第 3 步 ✅ `5b83e4b`（**run.v2 与读侧按阶段分发**，6.7.1）；第 4 步 ✅ `2f08018`（**config v2 与内存迁移**，13.1.1）；第 5 步 ✅ **`--critics` 入口与 `default_critics` 接线**（7.1；**AC-22 的 1／2 侧分支自此可验收，3 侧待第三家接入**）；第 6 步 ✅ **接入套件验收装置**（5.1.1；桩 Agent overlay + 三审全链路实跑，**AC-24 达成**含证明边界；**FR-31 记部分达成**——真实接入仍需改 `ProbeSection` 与 preflight 三项）。**M7b 六步全部合入。** 第 6 步顺带清掉三笔泛化欠账（`CriticId` 字面收窄放开、`effortFor` 与 `checkModelSlugs` 的身份穷尽改按 vendor 分派、`--model-<id>` 旗标白名单按注册表派生），并修掉一条实缺陷：`review.v1.json` 把意见编号前缀写死成 `^(AGY|GLM)-`，第三家的合法结论会被 ajv 拒掉退化成 `parse_fallback`（6.5） |
+-| **M8 Codex（多模型）审核者** | `adapters/codex.ts` + 探针接线（含逐家族 provider 探活）+ 镜头 codex 键 + 密钥扫描增补 | AC-20（两家族各真实审查一次）；沙箱负对照通过；**两条 M6 实测带来的前置**：①**EV-01（命令文本字面扫描）已落地**——codex 的 `trace_path_structured` 实测为 false，它是该侧路径核验的**唯一**手段，不落地则 AC-04 在 codex 侧没有任何实现（见 3.6、BACKLOG EV-01）；②**隔离同时覆盖 `CODEX_HOME` 与 `HOME`**——前者管配置面、指令面随 `HOME` 派生（见 3.6 末段、BACKLOG EV-08）。**一条已拍板的残留风险要带进本里程碑**：措施 b 的盲区 **B-2**（未指名 deny 路径的内容转储——裸 `git log -p`、根递归 `grep`）**决定不收窄**（2026-09-15，EV-16），而 codex 侧读文件就是跑 shell，**这条通道在该侧真实可达**。本里程碑**不得**因措施 b 已落地就把通道②整体标为收口 | ⏳ 未开始 |
++| **M8 Codex（多模型）审核者** | `adapters/codex.ts` + 探针接线（含逐家族 provider 探活）+ 镜头 codex 键 + 密钥扫描增补 | AC-20（两家族各真实审查一次）；沙箱负对照通过；**两条 M6 实测带来的前置**：①**EV-01（命令文本字面扫描）已落地**——codex 的 `trace_path_structured` 实测为 false，它是该侧路径核验的**唯一**手段，不落地则 AC-04 在 codex 侧没有任何实现（见 3.6、BACKLOG EV-01）；②**隔离同时覆盖 `CODEX_HOME` 与 `HOME`**——前者管配置面、指令面随 `HOME` 派生（见 3.6 末段、BACKLOG EV-08）。**一条已拍板的残留风险要带进本里程碑**：措施 b 的盲区 **B-2**（未指名 deny 路径的内容转储——裸 `git log -p`、根递归 `grep`）**决定不收窄**（2026-09-15，EV-16），而 codex 侧读文件就是跑 shell，**这条通道在该侧真实可达**。本里程碑**不得**因措施 b 已落地就把通道②整体标为收口 | 🔄 进行中（四步分批交付）：第 1 步 ✅ `194ef0b`（措施 b 落地）；第 2 步 ✅ `9d511a6`（适配层契约泛化）；第 3 步 ✅ `a8c7595` + `3812f4c`（codex 接入为第三个审核者，抬头 Critic-C）；**第 4 步 ◐ 判据与实现已落、AC-20 真机验收待跑**——`model_provider` 与 `profile_requested` 进契约、模型目录改按**逐 profile** 校验（`models_by_profile`）、沙箱负对照补正对照。**J3～J6 尚无真机数据，AC-20 未达成** |
+ | **M9 Claude Code 审核者** | `adapters/claude.ts` + 审查员身份片段 + `critic_enabled` 开关 | 真实审查一次，`consulted` 交叉核对通过 | ⏳ 未开始 |
+ | **M10 任意 Driver** | 四家入口资产与单源渲染；install 多目标；`hooks --agent`；`approve` 前置复核；协议片段两段式；**两个选侧入口（`topic resolve` 与 `review --start`）必须把当轮 Driver 传进 `resolveCriticSelection`** | AC-21 + 兼容验收；ZCode/Codex Driver 夹具跑通；**「当轮 Driver 不得入选」对非缺省 Driver 生效**（有用例）；**前置：agy skills 真实加载行为实测通过**——M6 第 4 步对 agy 承载面只拿到静态证据（内嵌迁移表 + 旗标帮助），据此定入口形态就是把静态证据当结论（P-05 的教训），实测通过才能拍板 §18.1 #16 | ⏳ 未开始 |
+ | **M11 档位全链路与文档收口** | tiers 四侧配齐 + `--tier-*` 全链 + report 按 Driver/审核者聚合；`profiles` 放开 `{tier}` 形态；§17 剩余批 B 条目收口 | AC-23；**§24 台账全绿**；文档对账零冲突（禁两套规范并行）；全量手工验收剧本 | ⏳ 未开始 |
+@@ -2751,6 +2774,23 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
+ | **v1.3.7** | 2026-09-15 | **M6 事实回填：3.6 / 3.7 由【待实施 · 指针占位】翻为【已回填】，§24 台账两行转绿并补登第三行**（M6 四步的留痕见 `.reviews/探针扩展与事实回填/`，**五轮双审**）。本版是**事实回填**（纪律 6a），数据只能由 M6 自身产出，故并入本文是 M6 的完成判据而非准入条件——与 M0 → v1.2.1 同一做法。**一、3.6 Codex 事实表**按 `codex-cli 0.154.0` 实测回填，并**推翻演进设计 §3.1 的三条**：①`-p` 是**文件分层**（`$CODEX_HOME/<name>.config.toml` 整份叠加），不是 `config.toml` 内的 `[profiles.*]` 段——按后者写的探针与 preflight 校验**对象都不存在**；②effort 档位表全错，且 CLI 对 effort 与 model slug **根本不校验**、静默前移到服务端，`preflight` 必须自己校验；③模型目录路径名对不上。另记**两条决定 M8 可行性的硬事实**：`trace_path_structured = false`（读取经 shell，无结构化路径）使 **EV-01 从独立演进项升为 M8 前置条件**——它是 codex 侧路径核验的**唯一**手段；`rejected_command_in_trace = false`（沙箱拒绝**静默**、完全不进事件流）使 10.3 的「轨迹有写事件 ⇒ 失守」判据对 codex **永久为假**。**二、3.7 Claude headless 事实表**按 `claude 2.1.270` 实测回填，**修正演进设计 §3.2 一处**：路径级 deny 对 `Read` 可用、**对 `Grep` 不可用**（显式写 `Grep(./dir/**)` 仍被绕过），故 10.1 第 ③ 道屏蔽**不能**单靠 CLI 层，事后轨迹核验仍是必需项且必须覆盖 `Grep` 的 `path` 参数。*为什么*对 `Grep` 不生效**没有实测**，报告按假说而非结论记——起草时曾写成机制断言，被自己的第二轮实验证伪后降级。另记 `--strict-mcp-config` 为**硬前置**：不传它，用户已连接的 MCP 写工具（邮件发送、云盘创建与共享）进入审查会话工具面，且成本约 **24 倍**。**三、Driver 入口承载面**（第 4 步，原 §17.2 清单未列，本版补登）：四家入口**都是 SKILL.md 形态**（**agy 侧只有静态证据、待行为实测**，该实测已写进 16.1 的 M10 完成判据；§18.1 #16 据此**只记倾向、未拍板**），codex 的承载面是 **skills 而非演进设计写的 `prompts/`**（同一次运行里双哨兵对照，prompts 哨兵不进模型可见输入）；`CODEX_HOME` 副本**隔离不住指令面**（`$HOME/.agents/skills` 跟 `HOME` 走），M8 须双覆盖；zcode 的 user 级 command **盖过** project 级、而 skills 重名**完全不去重不告警**。这些结论**刻意不进机读 `ProbeSection`**——消费方是 M10 的设计决策而非运行期代码，塞字段就是第二个 EV-06。**四、zcode `effort_flag` 复测**：三条负对照确认 0.16.5 CLI 层仍无 effort 旗标，§11 的「三档用模型选择承载」不必改；但二进制里 `reasoning_effort` 命中 6 处、全在 provider 请求构造层，**这条线索未端到端验证**，与 `ZCODE_HOME`（字符串存在、对配置解析无效）同族风险，登记 EV-09。**五、代码双审（`20260914T235618Z`；Gemini `request-changes` 1 major + 3 minor + 2 nit、ZCode `request-changes` 3 minor，9 条全部接受零驳回）。三对独立收敛，其中两对指向同一个动作缺陷——我改了语义只改了一半落点**：把 EV-01 升为「M8 前置」时改了 BACKLOG 与 3.6，**漏了 16.1 的 M8 行与表末行、24.1 的措施 b 行**；把 §18.1 #16 的倾向改成「skills 优先」时改了报告与 24.1，**漏了 #16 那一行本身**（它仍写着相反的旧默认）。两处后果同形：同一份「唯一实现依据」对同一议题存下两个相反答案，而过期的那边恰是别人会去查的那边（M8 规划者读 16.1，查决策的人读 18.1）。**这是本项目第四次栽在这个形状上**（v1.3.5 记过一次）。难点在于它判不了——三张表的一致性是**语义**一致性而非结构一致性，grep 级契约测试判不出「这一行的定性与那一行矛盾」，故不假装本版解决，如实登记 **EV-14** 并写明可探索方向（给跨表议题建显式锚 + 断言三表同锚状态相容）。另有两条同族的措辞缺陷一并修：`CODEX_HOME` 那条原只有两条臂（隔离前/后），**排除不掉「HOME 变了导致配置缺失于是关掉全局根」的替代假说**，按 AGY-02 补了第三条臂——fakehome 下放哨兵 skill，**根移动过去并挂载、哨兵命中**，假说排除；同时按 GLM-01 把「指令根**只认** `HOME`」降为「**随** `HOME` 派生」（「只认」是排他性断言，需要像 C-12 那样穷举候选变量才配得上）。其余：`P-xx` 三处过期计数（「18 个坑」而实为 23 条）改为自维护写法、`doc/02_design/README.md` 版本对账、M0 报告头部标明「§7 是活台账、其余是历史快照」并登记 **EV-13**（M11 拆分）。**本版不改任何代码。** |
+ | **v1.3.8** | 2026-09-15 | **M8 第 1 步：措施 b（命令文本字面扫描）落地，10.1 该条与 §24.1 台账行由【提案 · 未排期】/【M8 前置】翻为【已实现】**（留痕见 `.reviews/M8-Codex审核者接入/`，计划双审 1 轮 14 条 + 代码双审 2 轮 25 条，全部接受零驳回）。**一、为什么它是 M8 的前置而不是并行项**：M6 第 2 步实测 codex 的 `trace_path_structured = false`——该侧读文件就是跑 shell，轨迹里只有命令文本，于是本措施从「通道②的唯一覆盖」变成「**该侧一切路径核验的唯一手段**」。**二、承诺面钉成闭集而非计数**（计划双审 GLM-07）：F-1～F-9 必检、B-1～B-5 明确不可检，两张表在**设计本节、`adapters/base.ts` 文档块、用例名**三处各司一职（对外承诺面 / 对内 / 可执行断言），由 `known-forms-parity` 做**双向对账**——改一处漏两处必红。起草时「五类形态」这个数字是从 `CLAUDE.md` 的 RV-B1（git commit 拦截）搬来的**无关计数**，已改为只写清单。**三、三轮审查逼出的实质修正**：①F-6（锚定前缀 `../<rel>`、`$VAR/<rel>`、内嵌 `..`）与 F-7（`~` / `$HOME` 写法）当初**全部漏检**，而 F-7 正是通道③的唯一覆盖；②F-6 的逃树兜底最初把 `../OtherProject/<rel>` 一并判命中，误报族集中在 `sensitive_globs` 派生的短名条目（`.env`/`id_rsa`）上，已收窄为「前置段仅由 `..`/`.` 组成」；③`~` 曾被误归入「不可静态解析」而一律判命中——`os.homedir()` 是静态已知事实，现改为展开后精确归一。**四、B-2 拍板不收窄**（EV-16，决策者 Chen Zhenbo）：裸 `git log -p` 与根递归 `grep` 保留在审核者的命令能力内，**B-2 成为纯接受项**（R25 对它没有缓解措施），代价是通道②在非指名形态上仍开着——M8 第 3 步**不得**因措施 b 已落地就把通道②整体标为收口，通道表记的「**F-3 字面形态**已收口」那个限定词是本决策的直接产物。**五、本版记下的方法教训**：三轮里反复出现同一个动作——**写下「保住了 / 会红 / 已覆盖」时没有核实它对应的断言存在**（r1 的 `known-forms` 守卫只断言测试内本地字面量、r1 的 `readonly_commands` 旋钮无消费方、r2 的应答件承诺 `~/.trivium` 判否而实现与测试都没有）。这与 v1.3.6 记的「注释宣称了不存在的覆盖」同形，已收紧为：**凡写下这类保证，当场指出对应断言在哪一行；指不出来就不许那样写**。另登记 EV-15（`readonly_commands` 无消费方而设计两处以它为前提）、EV-17（同 id 内的语义漂移 grep 级对账判不出），并把 EV-10（`parse_fallback` 根因）由「观察到一次」升为**可复现**——本主题两轮代码审里复现了一次。**六、r5 补记（共五轮代码双审，零阻断收口）**：r5 两侧对机制面三个焦点全判通过（闭合侧三字符够、进程替换不漏；删引号二次扫描未造新误报；「起点为 1」的收窄判得对），十条意见里**只有一条是实现缺陷**——`bashStillDenied` 喂的是 `probe.readonly_flags`（探针候选串的接受记录），而实际传参来自 `ZCODE_READONLY_DENYLIST` 常量，**两个独立的源**：从常量里删掉 `Bash`，探针记录不变、断言照旧通过、措施 b 在该侧静默失效。已改喂 `readonlyArgsFromProbe` 的返回值并补两条咬住真实常量与真实构造的断言，变异验证如实红在这两条上、五条镜像串用例全绿——**这是同一形状的第三次**：加了守卫不等于守卫被守着，守卫被守着也不等于守对了东西。其余九条全是留痕未跟上，且比前四轮的「漏了」更难看一层：**r4 的修复清单声称已改而树里没改**（「四条/四类」两处、「§10.2 → §10.1 全仓 12 处」实际全仓不止 12 处、死论证「删过四次才删干净」而第五处就在同一个补丁新增的测试注释里）。**因此把第五条的方法教训再推一格**：「保证」要指出断言在哪一行，**「已改完 / 已删干净 / 全仓 N 处」这类完成声明，落笔前必须跑一次 grep 并把结果贴出来；记不清改了几处就不要写数字，写「见下方清单」，让清单自己说话**——本主题已经证明，需要自觉的纪律守不住，判据必须带一个可执行动作。同步把散文计数纳入 `known-forms-parity`（`blindSpotCounts`），区间正则放宽到中文连接符与省前缀简写，对账论域扩到演进设计、ADR_002 与用例文件 |
+ | **v1.3.9** | 2026-09-15 | **M8 第 2 步：适配层契约泛化落地，11.1 增「轨迹能力与判定分档」小节，§24.1 该行由【⏳ 未并入】翻为【◐ 部分并入】**（留痕见 `.reviews/M8-Codex审核者接入/`，计划双审 3 轮共 43 条，全部接受零驳回）。**一、契约增一项能力声明** `TraceCapability { traceShape, rejectionRecorded }`，挂在 **`CriticAdapter`** 上而非注册表或 `CriticResult`——挂注册表则 `criticEnabled=false` 的家在集成测试里走不到，泛化没有机器判据；挂结果则允许同一侧两次运行报出不同能力。判定层由此**只面对能力、不按 Agent id 分叉**（纪律 7），六个消费点逐一分档（见 11.1 表）。**二、一处被推翻的旧断言（本版的实质）**：3.6 原写「`rejected_command_in_trace = false` ⇒ 10.3 的『轨迹有写事件 ⇒ 失守』对 codex **永久为假**」——计划双审以 **blocker** 指出这是**过度推广**：P-C2 只证明**被拒**的命令不留痕，而 P-C1 的样本本身就是 `status:"completed"` 的 `command_execution`，**成功执行的写命令照常留痕**。故 `readonlyBreach` **两档一律由写事件判定**，`rejectionRecorded=false` 只修饰**阴性结论**的可信度。按原断言实现的后果是：codex 侧真实失守被直接丢弃，且漂移判定会把审查员的写入**归因成开发者手改**（方向正好反）——故连带新增 `unattributed_drift_files`，该档位下的指纹变化记为**无法归因**，既不判失守也不判手改。3.6 该条已就地更正并留下更正说明。**三、路径回填的口径与边界**：`command-trace` 族从命令原文提取路径供 `checkEvidence` 与 consulted 核对使用，四组口径写死（**剥离 `/bin/zsh -lc '…'` 子 shell 封装**、引号穿透、裸相对按项目根归一、写目标位不计入）。其中前两条是第二轮 blocker 的落点：初稿写「引号包裹整体算一个 token」，而 codex 的真实命令全包在单引号里，照此实现**路径一个都提不出来**；且初稿宣称与措施 b「同口径」，实际措施 b 的 `spellingsOf` 对裸相对是**按项目根派生并必检**（F-2），「只认纯回退层级」只是 F-6 锚定形态的处理——**引用了一个没读过实现的机制**。漏报边界（变量拼接、管道组合、`find -exec`）如实登记，`min_project_reads` 对该族**折减**并把生效值写进留痕。**四、措施 a 的主动收窄**：回填路径**不喂** `checkPeerLeak`——「跑了提到该文件的命令」不等于「读到了该文件」，并进去处置零增益（措施 b 已让该侧作废）、排查有损（两条通道要分得开）、语义降级。代价是该族措施 a 恒不命中，**已知限制**随之登记（见 11.1 与 BACKLOG）：`command-trace` 族的 deny 轨迹核验仅剩措施 b 一条通道且只承诺已知形态（R25），比结构化轨迹两家弱一条。**五、降级留痕五面**（`guard.verification_degraded` + front-matter + 正文横幅 + `guardFlags` + 运行时告警），两条通道（`readonly` / `path`）各自记档位，三态落在结构上。既有 `peer_deny_applied` 独缺运行时那一面，本版不重蹈。**六、既有两家行为逐字不变**：两家声明 `tool-trace` + `rejectionRecorded=true`，走与本版之前相同的分支；1030 条既有测试全绿，新增 17 条。**七、过程记录**：本主题连续两轮栽在同一形状上——第二轮是**起草前没读上一轮的裁决件**（四处已拍板结论被静默回退），第三轮是**引用一个机制却没打开它的实现**。两轮的「请重点看」都标对了风险位置却没去核实，故立两条硬前置：起草 `-rN-claude.md` 前必须读全同阶段裁决件并列出差异；引用已有机制作为新口径依据前必须先读其实现与文档块。 |
++| **v1.3.11** | 2026-09-16 | **M8 第 4 步：AC-20 判据逐分量化、模型目录改按逐 profile 校验、沙箱负对照补正对照；文档头与 16.1 的失实现状断言改正**（留痕见 `.reviews/M8-Codex审核者接入/`，计划双审两轮：r5 glm 9 条、r6 codex 11 条含 1 阻断，20 条全部接受零驳回）。**AC-20 本身仍未达成——判据与实现落地，两个家族的真实审查一次都还没跑。**
++
++**一、AC-20 的「互可区分」原本可以通过而无意义。** 起草期实测 `codex exec -p qwen -m deepseek-v4-pro` **成功退 0**，回读 `model_provider=qwen` 而模型名为 `deepseek-v4-pro`——codex 不校验 `-m` 与 `-p` 的对应关系，**同一个模型名可以挂在两个 provider 下**。于是「两次生效模型不同 ⇒ 跑了两个模型家族」这个推断不成立。而 `parseCodexSessionMeta` **一直解析着 `model_provider`**，`buildCodexResult` 却把它丢了，全仓零消费方——采了、丢了。处置：`model_provider`（回读）与 `profile_requested`（请求）双双进 `CriticResult` 与 `run.v2`，**必填而非可选**（无此事实的族显式写 `null`，与 `read_paths` 对 `command-trace` 族同构）。
++
++**二、判据从「二元组」再收紧为逐分量（r5 GLM-01）。** 我把判据从「只看模型」改成「二元组」，仍是同一个毛病——只是从一个维度滑到了「两个维度里随便哪个」：`(qwen, X)` 与 `(deepseek, X)` 两次运行 provider 互异、模型相同，判据全绿而模型维度完全没验。**答案就在我自己的实验记录里**，我写下它时只提取了「模型名证明不了家族」，没提取「同一个模型名可挂两个 provider」。r6 codex 又加一层（CODEX-03）：provider **id** 互异也证明不了 endpoint 互异——两个段可指向同一个 `base_url`。故 `CodexProviderProbe` 增 `base_url`（**只取这一个键**，段里还有凭据），AC-20 改为四分量断言。
++
++**三、预检比对的是错的那份模型目录（r6 CODEX-05，本版最实的一处修复）。** 模型目录**逐 profile 分层**，而探针把两层各取一半并排记着：`probe.models` 走 `probeCodexModels(bin, null)` 即基底目录，`model_catalog_path` 取的却是探针 profile 的路径。**起草计划时我就是把这一对当同源读的**，据此写出过一句失实断言。而目录不是展示面是**强制面**：实测 `-p deepseek -m qwen3.8-max` 被端点拒绝并逐字列出该家族合法名单。于是通用判据在该侧**两个方向都错**——误杀该 profile 自己的默认模型 `deepseek-flash`、误放只在基底目录里的 slug（后者要到 `turn.failed` 才失败，而预检存在的全部理由就是把这类失败挡在花钱之前，AC-16）。处置（项目负责人裁定 **C″**）：探针增 `models_by_profile`（逐 profile 的**可见**清单），预检经新增的适配器钩子 `catalogModelsFor` 按本次 profile 校验；钩子缺席即回落，既有两家逐字不变。**两个方向都实测验过**：`deepseek-flash` 从拒变通过、`qwen3.8-max` 从放行变预检即拒且列出合法名单。
++
++**四、一条被实跑打穿的审查建议，以及由此更正的既有事实。** r6 的阻断项 CODEX-01 指出沙箱负对照可以**空洞通过**——三条负向断言（哨兵缺席 / `write_events` 空 / 指纹不变）**共用**「模型确实尝试了写入」这个前提，而该前提没有任何证据；更难看的是**现有探针的负对照就是一行 `exists(breachPath)`**，全函数没有一处断言那条命令被执行过。它给的修法是「再写一个允许写的路径 B」——**实跑打穿了它**：`-s read-only` 把整个文件系统置为只读，临时目录同样写不进，B 恒不存在。实跑同时给出更好的一条：`-s read-only` 下 codex **不拒绝执行命令**，它让 shell 跑、写调用在 syscall 层失败，命令带着 `status: completed` 进轨迹且**失败痕迹在它的 `output` 里**（`zsh:1: operation not permitted`）。故正对照改为「该写命令确实进了轨迹 **且** 其输出显示被拒」。**据此更正 P-C2 的适用范围**：「被拒的命令完全不进事件流」只对 **codex 审批层**拒绝成立，**沙箱 syscall 层**拒绝照常留痕；原次实测里模型自报「试过两条途径」、报的两句错误恰好各对应一种——**证据当时就在手里，是归纳说过头了**。`rejectionRecorded: false` **不变**（模型可以选那条不留痕的路）。
++
++**五、`profile` 字段提前接线并改名（r6 CODEX-10，裁定 A′）。** AC-20 的 J6 点名要它而它被排在 M11，分期表与验收条对同一字段给了两个时点。裁定：本步只接这一个、另三个不动，**并改名 `profile_requested`** 随 `model_requested` / `effort_requested` 的既有惯例。**裸名 `profile` 留空不占**——它在本系统里已经指「档位」（`config.yaml` 的 `profiles` / `active_profile` / CLI `--profile`），而 `run.v2` 自己的档位词汇是 `tier*`。改名窗口是免费的：扫过 54 份历史 `run.json`，`"profile"` 命中 **0** 份。例外就地记在 §6.7.1 分期表所在处，让下一个「AC 要什么就提前接什么」的请求先驳倒它。
++
++**六、失实的现状断言改正了两处，其中一处被漏填两次。** 文档头「实现状态基线」到本版之前还写着「**M8 其余各步尚未开工**……注册表里 codex 的 `criticEnabled` 仍是 `false`」，§16.1 的 M8 行还是 `⏳ 未开始`——而第 2、3 步早已合入。v1.3.9 / v1.3.10 两次回填**都只改了各自的章节**。这是 v1.3.0 记过那条教训的复发形态，方向相反：当时防的是「把已收口的写成盲区」，这次是「把已做完的写成未开工」。据此把「文档头」在回填清单里**单列为独立项**——它被漏掉两次，说明它不在任何人的检查清单上。另按 r5 GLM-04 / r6 CODEX-09 补两类此前不在清单上的落点：PRD 的文档头「⚠️ 实现状态」段与第 5 章 AC-20～25 前言；以及 **`P-xx` 本机坑台账**（`doc/05_testing/README.md` 白纸黑字写着 M0 报告 §7 是它的唯一落点，而我的清单里没有它）——新增 P-24～P-27。
++
++**七、三条变异逐一验证，全部如实变红**：M1 丢弃回读值（红 2 条）、M2 用回读冒充请求（红 3 条，含接入套件类型层）、M3 目录拦截改读基底目录（红 2 条——**这条变异就是被修的缺陷本身**）。还原后全量 1130 通过。
++
++**八、本版记下的方法教训**，接在 v1.3.8、v1.3.10 那两条之后：①**凡在「请审查者重点看」里提出一个问题，落笔前先自己回答一遍并把答案写在问题旁边**——r5 的七个自问里有三个被审查者答出了实质内容，而我只提问没作答，其中一问的答案就在同一份文档的实验记录里；②**列出一组断言时，先写出它们共用的前提，并为那个前提单独找一条证据**——断言之间的强弱分级是在前提成立之后才有意义的，前提不成立时再多条断言也只是同一个盲点的多次复述，**合取不会变强，只会看起来变强**。另记一条**操作事故**：为确认副本里有没有某个键，我 `cat` 了整份含凭据的配置，把多个 provider 的明文 token 打进终端——而代码里早有正确口径（`providerCredentialed()` 「只判有无，绝不返回值」）。已写进 `CLAUDE.md`：含凭据的文件一律 grep 目标键名，禁止整份打印。 |
+ | **v1.3.10** | 2026-09-16 | **M8 第 3 步：codex 接入为第三个审核者，8.1 判据行改写、11.1 增「`command-trace` 族的写判据两档」、13.1.1 的 `default_critics` 改按 `defaultSelected` 派生、§24.1 的 11.1 行翻为「写判据两档与厂商旗标收敛已落」**（留痕见 `.reviews/M8-Codex审核者接入/`，计划双审 1 轮 17 条、代码双审 1 轮 15 个单元，全部接受零驳回）。**一、接入套件五件齐备**：`adapters/codex.ts` + `codex-trace.ts` + `codex-home.ts`、探针补逐 profile 的 provider 探活、镜头 codex 键、`config.v2` 的 `openai` 分支、`profiles.*.codex`；注册表 `criticEnabled` 翻真、抬头定为 **Critic-C**（字母裁定见注册表 `label` 的说明）。**二、开工前实测推翻两条 M6 未覆盖的前提**：①配置里的 `~` 路径跟 **HOME** 走，隔离 `HOME` 之后 `model_catalog_json` 指向 fakehome 下不存在的文件、codex 直接以 `No such file or directory` 退出——只隔离 `CODEX_HOME` 反而正常，M6 第 4 步的三条臂恰好错过；②不裁剪配置直接隔离，等于把宿主机的 `mcp_servers`（一个 JS REPL）与约 25 份第三方 skill 描述带进审查会话，而 **MCP 是独立进程通道、`-s read-only` 管不到它**。两条处置（白名单裁剪 + `~` 路径重写）**合在一起才成立**：只裁剪不重写则退出，只重写不裁剪则泄漏。隔离负对照用生产代码产出的副本复验：skill roots 只剩副本自带的 `.system`、MCP 零提及、模型可见输入从数倍长降到 17 KB。**三、生效模型的回读落点**：`exec --json` 的事件流里**没有任何 model 字段**，回读只能取会话文件首行的 `session_meta`（`model_provider` + `base_instructions.provenance.model`），文件名含 `thread.started` 给出的 `thread_id`、精确关联而非「取最新」（zcode 侧坑 P-14 的教训）。三组调用验证它**跟随 `-m` 覆盖**而非复读 profile 意图；回读不到即记 `unverified`，**绝不用 requested 冒充**——该判据原先埋在 `run()` 里无守卫，变异验证证实后抽成 `buildCodexResult` 纯函数并补锁例。**四、preflight 三处厂商分派收敛**（代码双审 AGY-03 ≡ GLM-06、GLM-04）：只读能力改为遍历适配器 `availability()`、探活改为遍历新增的 `CriticAdapter.authProbe()`（厂商知识归位、缓存策略留在预检单点）、模型目录校验改为按 `cliName` 通用消费 `CommonProbe.models`。收敛后该文件一个 Agent 字面量都没有，字面量对账当场把它的白名单豁免标为**过期条目**——泛化做没做完由机器判据说了算。**五、代码双审两侧独立判出的那个缺陷值得单记**：掩码判据写作 `&(?!&)`，而负向前瞻只看后一个字符——`&&` 的第二个 `&` 后面是空格，断言通过、命中，`2>&1` 同样命中。于是代码注释写着「`&&` 不算掩码」，实现却把所有 `&&` 链与 `2>&1` 后缀的真实写入全部降档成疑似：**在写命令后加个 `2>&1` 就能绕过只读失守判定**，而本步隔离实测录到的真实命令形态正是 `cd . && echo ok`。同轮另查出：`looksLikePath` 把无扩展名的裸文件名（`Makefile` / `LICENSE`）整族滤掉导致 `echo bad > Makefile` **两档都不进**；幂等判定不认 `--parents` / `--force` 长旗标（误杀方向）；`chmod` / `chown` 的 mode / owner 被当成写入目标；`ln` 单操作数与 `-t <dir>` 两种形态的目标取错。**六、第五处回落**（AGY-04，与 glm 的结论相反、经核实以 gemini 为准）：`review.ts` 的 `checkModelSlugs` 调用排在 `sides` 解析**之前**且不传第四个参数——给该函数加参数时只改了预检那一处调用，漏了运行期这一处，而运行期才是决定烧不烧配额的地方。**七、本版记下的方法教训**：v1.3.8 记过「凡写下『保住了 / 会红 / 已覆盖』，当场指出对应断言在哪一行」，M8 第 3 步的计划双审又加了「凡写下『复用 X』，同句写出 X 的取值或键集」。这一轮说明两条的适用面都定窄了——它们只管「声称覆盖」与「声称复用」，而本轮栽的是**声称行为**：注释说「`&&` 不算掩码」没有用例断言、契约注释说「进 doctor 输出」而全仓零消费方、收敛注释自称要消灭「同一个问题两个答案」却在同一个文件里造了新的（`process.execPath` 与 `cfg.runtime.node` 两种口径）。三条统一为一条：**注释里任何形如「X 会 / 不会 Y」的断言，落笔时必须同时指出断言它的那一行用例；指不出来就不许那样写。** 另记一条流程事实：本步的代码**先提交后补审**（`a8c7595`），与既定闭环「实现 → 双审 → 裁决 → 审批 → 提交」相反；补审查出 1 个 blocker 与 14 条其他意见，修复走新 commit。 |
+ 
+ ---
+@@ -2837,9 +2877,9 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
+ | 7.1 / 7.4 命令旗标与四家入口 | **B-契约** | **M10 / M7b** | ✅ `--critics` 已并入（M7b 第 5 步）；`--tier-*` / `--effort-*` / 四家入口 ⏳ 待 M10 / M11 | 7.1 引言块 |
+ | 8.4 / 8.5 Hook `--agent` 与多目标 | **B-契约** | **M10** | ⏳ 未并入（指针占位 + 护栏分级表已并入） | 8.5 引言块 |
+ | 8.6 gate 裁决校验 N 方化 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0 | 8.6 末段 |
+-| 9.3 镜头四键 | **B-契约** | **M8 / M9** | ⏳ 未并入（指针占位） | 9.3 引言块 |
++| 9.3 镜头四键 | **B-契约** | **M8 / M9** | ◐ 部分并入：**codex 键已落**（M8 第 3 步，三条轴与 A/B 两侧零字面交叠）；**claude 键仍缺**，随 M9。**不得整行标已完成**——四键里只到三键 | 9.3 引言块 + `lenses.yaml` 的 `codex` 段 |
+ | 10.1 / 10.2 deny 矩阵与检测收口 | A（登记）/ B（N 方泛化）/ **B-前置**（措施 b） | 第零步 / M7b / **M8（前置依赖）** | ✅ 通道清单已并入。**措施 a 路径侧 ✅ 已实现（M7a）**；N 方泛化 ⏳ M7b；**措施 b ✅ 已实现（M8 第 1 步，v1.3.8）**——2026-09-15 先由「独立项 · 未排期」升格为 M8 前置（依据是 M6 第 2 步实测 codex `trace_path_structured = false`，本项是该侧路径核验的唯一手段），同日落地。承诺面是 F-1～F-9 闭集、盲区 B-1～B-5，见 10.1 措施 b 与 BACKLOG EV-01 | 10.1 措施 b；16.1；EV-01 |
+-| 11.1 适配层契约泛化 | **B-契约** | **M8** | ◐ 部分并入（能力声明与判定分档，M8 第 2 步；**写判据两档与厂商旗标收敛，M8 第 3 步**）；思考等级透传待 M11 | 11.1「轨迹能力与判定分档」「`command-trace` 族的写判据两档」 |
++| 11.1 适配层契约泛化 | **B-契约** | **M8** | ◐ 部分并入（能力声明与判定分档，M8 第 2 步；**写判据两档与厂商旗标收敛，M8 第 3 步**；**`model_provider` / `profile_requested` 进结果契约、模型目录钩子 `catalogModelsFor` 按逐 profile 校验，M8 第 4 步**）；思考等级透传待 M11 | 11.1「轨迹能力与判定分档」「`command-trace` 族的写判据两档」「生效目录随配置分层」 |
+ | 11.5 档位路由 | **B-契约** | **M11** | ⏳ 未并入（指针占位） | 11.5 引言块 |
+ | 12.1 异常矩阵增行 | A | 第零步 | ✅ 已并入 v1.3.0 | 12.1「演进增补行」表 |
+ | 13.1 → config.v2 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0；**实现 ✅ 已落地（M7b 第 4 步，2026-09-14）** | **13.1.1**（并排追加，v1 基线保留）；`schema/config.v2.json`、`config.ts` 的 `migrateConfigV1` 与 `agentConfigOf`、`init.ts` 的一次性改写 |
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index 022971b..4ad77c0 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -25,7 +25,7 @@
+ 
+ - [`CASE_manual_acceptance.md`](./CASE_manual_acceptance.md)：人工验收剧本（PRD 场景 S1～S5 / 设计 §17.3）。自动化测试与 `doctor --selftest` 覆盖不到的部分——需要人在 Claude Code 窗口里操作，或必须真实消耗两侧厂商配额。
+ - [`REPORT_2026-09-11_manual_acceptance.md`](./REPORT_2026-09-11_manual_acceptance.md)：人工验收执行结果。剧本 2/4/5 通过，1/3 的 skill 层留给使用者；记录本次真实运行逮到的 6 个缺陷与一次真实代码双审的结果。
+-- [`REPORT_2026-09-11_m0_probe.md`](./REPORT_2026-09-11_m0_probe.md)：M0 探针本机实测报告。**其 §7 是 `P-xx` 本机坑清单的唯一落点**，跨里程碑持续追加（`P-16～P-18` 系 M4/M5 补录、`P-19～P-23` 系 M6 第 4 步补录）；§1～§6 / §8 / §9 是 M0 当时的里程碑快照，含 12 条与厂商文档记载不符之处 C-01～C-12。活台账寄生在历史快照里是已知的结构问题，登记 BACKLOG **EV-13**、排期 M11。
++- [`REPORT_2026-09-11_m0_probe.md`](./REPORT_2026-09-11_m0_probe.md)：M0 探针本机实测报告。**其 §7 是 `P-xx` 本机坑清单的唯一落点**，跨里程碑持续追加（`P-16～P-18` 系 M4/M5 补录、`P-19～P-23` 系 M6 第 4 步补录、**`P-24～P-27` 系 M8 第 4 步补录**——codex 不校验 `-m` 与 `-p` 的对应、模型目录逐 profile 分层且端点只认可见项、`debug models` 不接受 `--json`、本机目录文件是活的）；§1～§6 / §8 / §9 是 M0 当时的里程碑快照，含 12 条与厂商文档记载不符之处 C-01～C-12。活台账寄生在历史快照里是已知的结构问题，登记 BACKLOG **EV-13**、排期 M11。
+ - [`REPORT_2026-09-14_m6_codex_probe.md`](./REPORT_2026-09-14_m6_codex_probe.md)：M6 第 2 步 · Codex 探针实测（`codex-cli 0.154.0`）。**推翻三条设计事实**（`-p` 是文件分层而非 `[profiles.*]` 段、effort 档位表全错且 CLI 不校验、模型目录路径名对不上），并记两条决定 M8 可行性的硬事实（读取无结构化路径 ⇒ EV-01 升为 M8 前置；沙箱拒绝静默不进事件流 ⇒ 「轨迹有写事件 ⇒ 失守」对该侧永久为假）。**设计 3.6 的数据来源。**
+ - [`REPORT_2026-09-14_m6_claude_probe.md`](./REPORT_2026-09-14_m6_claude_probe.md)：M6 第 3 步 · Claude Code headless 探针实测（`claude 2.1.270`）。`--strict-mcp-config` 是硬前置（不传则 MCP 写工具进入工具面、成本 ×24）；路径级 deny **对 `Read` 可用、对 `Grep` 不可用**，故第 ③ 道屏蔽不能单靠 CLI 层。**设计 3.7 的数据来源。**
+ - [`REPORT_2026-09-15_m6_driver_entry_probe.md`](./REPORT_2026-09-15_m6_driver_entry_probe.md)：M6 第 4 步 · Driver 入口承载面与 zcode 复测（零配额）。新增坑 **P-19～P-23**：`CODEX_HOME` 隔离不住指令面、zcode 的 user 级 command 盖过 project 级、skills 重名不去重不告警、`~/.agents/skills` 被两家共享、codex 的承载面是 skills 而非 `prompts/`。结论**刻意不进机读段**，理由见该报告 §0。
+diff --git a/doc/05_testing/REPORT_2026-09-11_m0_probe.md b/doc/05_testing/REPORT_2026-09-11_m0_probe.md
+index 856ce39..16b3f57 100644
+--- a/doc/05_testing/REPORT_2026-09-11_m0_probe.md
++++ b/doc/05_testing/REPORT_2026-09-11_m0_probe.md
+@@ -292,6 +292,10 @@ ZCode 的读路径有多条（`Read` / `Grep` / `Glob` / `ReadSessionContext` /
+ | **P-21** | ZCode 的 **skills 重名完全不去重、不告警**：本机 10 个 skill 同时存在于 `~/.zcode/skills` 与 `~/.agents/skills`，`skills list` 两份都列、`diagnostics` 为空数组。去重键是**文件路径**而非名字（commands 侧恰好相反，见 P-20） | 同名两份都在，模型实际加载哪一份**枚举面给不出答案** | 安装前查重；名字加 `dual-` 前缀降低碰撞面。**注意**：`skills list` 是枚举面不是加载面，加载优先级要真实调用才知道，M6 第 4 步**未测** |
+ | **P-22** | `~/.agents/skills` 是 **codex 与 ZCode 共享的用户级技能根**（codex 的根表 `r1`、ZCode 的 `source: "agents"` 指的是同一个目录） | 一家装的 skill 会进另一家的上下文，跨厂商串味 | 知道即可；trivium 自己的入口资产**不要**落在这个根 |
+ | **P-23** | codex 的模型可见承载面是 **skills 而非 `~/.codex/prompts/`**：同一次运行里造双哨兵，`skills/` 的进了 `debug prompt-input`，`prompts/` 的没进 | 演进设计 §3.1／§7.1 按 prompts 形态估的 M10 迁移成本失真 | 按 SKILL.md 形态渲染——与 Claude Code 几乎同形（含 `disable-model-invocation`），frontmatter 适配即可。**边界**：本条**没有**证伪 prompts，只证明它不是常驻面；它是否仍作 TUI 内 `/name` 触发面**未测** |
++| **P-24** | **codex 不校验 `-m` 与 `-p` 的对应关系**：`codex exec -p qwen -m deepseek-v4-pro` **成功退 0**，会话文件回读到 `model_provider=qwen` 而 `base_instructions.provenance.model=deepseek-v4-pro`——同一个模型名可以挂在两个 provider 下，两者矛盾时不报错 | 「两次生效模型不同 ⇒ 跑了两个模型家族」这个推断**不成立**，AC-20 按它验收会**通过而无意义** | 互可区分改为**逐分量**断言：provider、模型、与请求值一致、provider 的 `base_url` 互异。**只能事后记录、无法预检拦截**——模型目录没有家族归属字段，按 slug 前缀猜家族会随目录命名漂移 |
++| **P-25** | **模型目录逐 profile 分层**：`<profile>.config.toml` 可自带 `model_catalog_json`，取不到才回落基底。而 `codex debug models` 的输出**含 `visibility: "hide"` 项**（本机基底 7 条里 2 条是 hide），**端点的合法名单只认可见项**——实测 `-p deepseek -m qwen3.8-max` 被端点拒绝并逐字列出「deepseek-flash, deepseek-v4-pro」，恰是该目录的可见项 | 拿单一列表校验任何非基底 profile **两个方向都错**：误杀该 profile 自己的默认模型、误放只在基底目录里的 slug（后者到 `turn.failed` 才失败，而预检存在的理由就是挡在花钱之前） | 探针改存 `models_by_profile`（逐 profile 的**可见**清单），预检经适配器钩子按本次 profile 校验。**「端点名单 ＝ 可见项」这条等式来自 n=1 实测，不是厂商承诺**，只用于收紧不用于放行 |
++| **P-26** | `codex debug models` **不接受 `--json`**（0.154.0 报 `unexpected argument '--json' found`），该子命令本就输出 JSON。探针代码一直没传，只有文档块那样写着 | 照文档块手工复现会当场失败，误以为探针坏了 | 文档块已更正。教训同 P-xx 一贯口径：**注释里的命令要能逐字跑通**，不能是「大概这么调」 |
++| **P-27** | **本机模型目录文件是活的**：`models-qwen.json` 在 M8 第 4 步期间被改小（10 条 → 7 条，`deepseek-v4-pro` / `deepseek-v4-flash-0731` / `glm-5.2` 被移除），而探针结论仍是旧的 10 条 | 任何「两份目录恰好有交集」的方案都靠不住——AC-20 家族二原本依赖 `deepseek-v4-pro` 同时在两份目录里，这次改动后该交集**只剩两个隐藏项**，按原方案会当场无 slug 可用 | 不依赖交集：按本次 profile 的目录校验（P-25）。探针 TTL（7 天）拦不住这种改动，`checkProbeFreshness` 判的是时间不是内容 |
+ 
+ ## 8. 与设计文档的冲突项
+ 
+diff --git a/doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md b/doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md
+index bb31ace..589bc0b 100644
+--- a/doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md
++++ b/doc/05_testing/REPORT_2026-09-14_m6_codex_probe.md
+@@ -92,6 +92,37 @@ codex 读文件不是调专用工具，而是**让模型跑 shell**：
+ 丢的是「审查员尝试过写入」这个**行为信号**：设计 §10.3
+ 「轨迹有写事件即判失守」对 codex 侧**恒为假**。
+ 
++> **🔧 适用范围更正（2026-09-16，M8 第 4 步实测）**
++>
++> 上面写的「**完全**不进事件流」**说过头了**：它只对**一种**拒绝机制成立。
++> 本步的沙箱对照实验把命令形态钉死（prompt 要求逐字执行一条 shell 命令），
++> 结果是命令**照常进事件流**：
++>
++> ```text
++> 命令: /bin/zsh -lc "printf 'BREACH' > BREACH_A.txt && echo ALIVE || echo DENIED"
++> status: completed   exit: 0
++> 输出: zsh:1: operation not permitted: BREACH_A.txt
++>       TRIVIUM_WRITE_DENIED
++> ```
++>
++> **两种机制要分开说**：
++>
++> | 拒绝发生在哪 | 触发形态 | 进不进事件流 |
++> | :--- | :--- | :--- |
++> | **codex 审批层** | 模型用内置写工具（apply_patch 等），被 `approval: never` 挡下 | **不进**——本节原观测 |
++> | **沙箱 syscall 层** | 模型跑 shell，写调用得到 `EPERM` | **进**，且失败痕迹在该命令的 `output` 里 |
++>
++> 本节原次实测里模型自己说「试过两条途径」，报的两句错误
++> （`operation not permitted` 与 `rejected by user approval settings`）
++> 恰好各对应一种——**证据当时就在手里，是归纳说过头了**。
++>
++> **判定层不用改，`rejectionRecorded: false` 仍是对的**：模型**可以**选那条不留痕的路，
++> 所以「没检出写事件」依然排除不了失守。变的是**负对照怎么设计**——
++> 既然 shell 那条路留痕，就能拿「命令进了轨迹 + 输出显示被拒」当**正对照**，
++> 而不必像计划双审 CODEX-01 提的那样另找一个「允许写的路径」
++> （`-s read-only` 下整个文件系统只读，那种路径根本不存在，实跑已证）。
++> 落点：`scripts/codex-sandbox-control.mjs`。
++
+ 三重叠加（工具白名单 + deny 兜底 + 指纹比对与轨迹核验）对 codex 只剩两重；
+ 第三重里「指纹比对」仍有效（真改了文件会被发现），失效的是「轨迹核验」那一半。
+ 两份录制样本已存入 `test/fixtures/codex-events/`，并有一条**锁事实**的用例守着：
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 55bbcb7..a41ee62 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -114,6 +114,11 @@
+ | EV-15 | todo | **`readonly_commands` 登记而无消费方，而设计称它是「既有旋钮」**。设计 §10.1 写着「既有配置 `readonly_commands` **即 paranoid 旋钮**——把 `git show` / `git log` 从白名单裁掉即收窄该通道」，§18.1 #21 也以它为由拒绝给命令文本命中加 `hard｜warn｜off` 开关（「裁 `readonly_commands` 已是更强的既有旋钮」）。**但全仓 grep 后只有三类命中**：`types.ts:545` 的类型声明、`config.ts:256` 的默认值、`.trivium/config.yaml` 的用户配置，外加几处**注释**提到它——**没有任何代码读这个字段**。这是 EV-06（`instructionFiles` 登记而无消费方）的同族形态，且比它更糟：EV-06 只是没接线，本项是**两处设计论证把不存在的机制当成了既有前提**。**当前不是活风险**：agy 的 `trivium-critic` 工具面里没有任何命令工具（`run_command` 出现即判失守），zcode 的只读组合全禁 `Bash`——两家现役审核者压根跑不了命令，白名单无处可用。**它在 M8 第 3 步变活**：codex 读文件就是跑 shell，届时「能跑哪些命令」第一次成为真问题。**修法要先回答一个没测过的问题**：codex 支不支持命令白名单？M6 第 2 步只探到它的只读是 `-s read-only` 沙箱 + `approval: never`，而**沙箱管的是写、不是「能跑哪些命令」**。若不支持，`readonly_commands` 对该侧就是**不可执行的**，那两处设计论证必须改写而不是补实现。发现于 M8 第 1 步（核 r1 双审 GLM-03 的建议时顺带查出，不在任何一条意见里） | `types.ts:545`、`config.ts:256`、设计 §10.1 与 §18.1 #21、M8 第 3 步的 codex 适配器 |
+ | EV-16 | **已拍板（2026-09-15）：不收窄** | **决策者 Chen Zhenbo。** 裸 `git log -p` 与根递归 `grep -rn .` **保留在审核者的命令能力内**，盲区 **B-2 作为已知残留风险接受**，不因它削减 bug 阶段的排查能力。**后果要说清，不能只记结论**：①B-2 从「待处置」变为**长期接受**，R25 的风险登记随之**不再有对应的缓解措施**——它是纯接受项；②M8 第 3 步 codex 接入后这条通道**真实可达**（该侧读文件就是跑 shell），届时措施 b 对它的覆盖面就是 F 清单那几条，**通道②在非指名形态上仍是开的**；③因此 M8 第 3 步**不得**因为「措施 b 已落地」就把通道②标为收口——设计 §10.1 通道表现在写的是「**F-3 字面形态**已收口」，这个限定词是本决策的直接产物，不能省。**本决策不解除 EV-15**：那是「设计把不存在的机制当既有前提」的独立缺陷，与用不用它无关——反而因为本决策，§18.1 #21 那句「裁 `readonly_commands` 已是更强的既有旋钮」同时失去了两个支点（旋钮不存在 + 已决定不用），措辞必须改。**原条目**：是否把裸 `git log -p` 与根递归 `grep -rn .` 挡在审核者的命令白名单外。这两条是措施 b 盲区 **B-2** 的主体：命令文本里**不出现**任何 deny 路径，而 `.reviews/` 进 Git（341 个文件在库）、HEAD 历史里就有对端产物，一条 `git log -p` 就整份 dump 出来。字面扫描对它**天然无效**——要挡只能在执行侧限制能跑哪些命令。**这是取舍不是缺陷**，所以不自行决定：收窄的代价是 **bug 阶段镜头能力受损**，而设计 §10.1 明说「`git log/blame/show` 是 bug 阶段镜头的重要能力（追溯引入提交、查作者意图），deny `.git` 会实质砍掉它」。**与 EV-15 绑定**：即便拍板收窄，也得先有消费方、且先确认 codex 那边拦得住。同样**当前不是活风险**，M8 第 3 步 codex 接入时变活。来源：r1 双审 GLM-03（该条的文档部分已在本步落地，处置部分即本项） | 设计 §10.1 与 §10.3、`agents.<id>.readonly_commands`、M8 第 3 步 |
+ | EV-12 | todo | **调用形态旗标没有机读落点，M9 / M10 只能在适配层硬编码**。`probe.cli.claude.readonly_flags` 装的是三个**安全不变量**（`--restricted` / `--strict-mcp-config` / `--tools <白名单>`），但**调用形态**旗标（`-p`、`--output-format stream-json`、`--verbose`、stdin 置空、`--json-schema` 收内联 JSON）一个都不在里面——它们只活在 `probes/claude.ts` 的文件头注释与报告散文里。于是 **P7 的字面**（「适配层绝不硬编码 CLI 旗标」）与 **zcode 先例**（机制类旗标写在适配层）在这里互相矛盾，M9 落地时两头都说不清。M6 第 3 步已把「adapters/ 不得 import probes/」做成了会红的契约测试（`registry-parity`），但那只挡住了「绕过探针直接复用函数」，没回答「这些旗标该归谁」。**这是个归属决策，不是缺陷**：要么明确承认机制类旗标属适配层（并把 P7 的措辞改准，因为现在的字面是绝对的），要么给探针加机读字段。M6 第 4 步**没有替 M9 拍这个板**——真实的调用形态要等 M9 接一遍才知道哪些是稳定的，现在定就是凭想象定契约。来源：r4 GLM-06 | `types.ts` `ClaudeProbe`、`adapters/` 的 M9 实现、设计 §11.1、原则 P7 的措辞 |
++| EV-20 | todo | **凭据副本留在运行目录 30 天，而密钥扫描不覆盖那里。** `prepareCodexHome()` 必须把 `~/.codex/config.toml`（含多个 provider 的明文 `experimental_bearer_token`）、`<profile>.config.toml` 与 `auth.json` 拷进 `~/.trivium/runs/<run>/codex/codexhome/`——codex 要凭据才调得动 API，**这一步无法省**。已做的是把副本权限收到属主可读写；**没做的是运行结束后清理**，而 `retention.run_dir_days: 30` 让副本留一个月。**J9 的覆盖面在这里有缺口**：`scanSecrets` 只挂在 `archive.ts`（归档落盘那一侧），`~/.trivium/runs/**` 不在它的论域里——而 J9 当初从第 4 步**前移到第 3 步**的理由，逐字就是「`prepareCodexHome()` 会把凭据拷进运行目录，凭据副本从本步开始存在」。**理由说的是运行目录，落地只做到了归档侧。** 发现于 2026-09-16 M8 第 4 步：我为查一个键而整份打印了一份副本，把多个 provider 的 token 打进终端（据此新增了 `CLAUDE.md` 的「含凭据的文件一律 grep 键名」那条）。**修法方向**：运行成功后抹掉副本里的凭据、保留其余结构——`sessions/` 是事后排查的依据（本步查 codex 超时全靠它），整目录删掉代价太大。**动的是留存策略，属新范围，不自行实施** | `adapters/codex-home.ts`、`archive.ts` 的 `scanSecrets`、`retention.run_dir_days`、设计 §10.5 |
++| EV-21 | todo | **模型与 provider 家族的错配只能事后记录，预检拦不住。** 实测 `codex exec -p qwen -m deepseek-v4-pro` **成功退 0**，回读 `model_provider=qwen` 而模型名为 `deepseek-v4-pro`——codex 不校验两者的对应关系。**边界要写准**（计划双审 CODEX-06 / GLM-03 各自指出过原措辞说过头）：**按 profile 的分层目录拦得住**「模型不属于本 profile」（M8 第 4 步 D4-1 = C″ 已落地，误杀误放双向实测已验）；**拦不住**的是「profile 与模型跨家族错配、而两家族目录恰有交集」——E-1 那次实测正是后者。**按 slug 前缀猜家族仍然否决**：`config.v2` schema 注释写明它会随目录命名漂移。当前处置是如实入档（`model_provider` 与 `profile_requested` 成对进 `run.v2`），由 AC-20 的逐分量判据在事后核对 | `preflight.ts` 的 `checkModelAgainstCatalog`、`adapters/codex.ts` 的 `catalogModelsFor`、设计 §15.3 AC-20 |
++| EV-22 | todo | **厂商 profile 没有单次覆盖入口，「换家族」要改配置。** `agents.<id>.profile` 是配置级字段，没有对应旗标；而 `review --profile` 是**档位**（`config.yaml` 的 `profiles`），同名不同物——档位表现在只装模型 slug，装不下厂商 profile。于是 AC-20 要的「分别指定两家族各发起一次审查」在当前实现下是「改一次配置、跑一次、改回来、再跑一次」。**不在 M8 加半截旗标**：厂商 profile 是 R-6 的落点，而 R-6 的完整形态（逐审核者模型 + 思考等级 + 三档组合）属 M11，现在加一个，M11 要么推翻要么带着兼容包袱。**建议的形态不是新旗标，而是让档位表装得下它**（`profiles.<档位>.codex: { profile, plan, code, bug }`），那样「换家族」就等于「换档位」，一个 `--profile` 搞定，而不是记住要同时改两处；schema 注释里「`{model, effort}` 形态 M11 收口」本就留了这个口子 | `config.v2` 的 `profiles`、`cli.ts` 的 `--profile`、设计 §11.5 档位路由、M11 |
++| EV-23 | todo | **`probe.models` 与 `model_catalog_path` 取自不同的层，并排躺着且无标注。** 前者走 `probeCodexModels(bin, null)` 即**基底** `config.toml` 的目录；后者取**探针 profile**（`probe.profiles` 字典序里第一个目录非空的那个）的路径。两者同段相邻，读者会当成一对——**起草 M8 第 4 步计划时我就是这么读的**，据此写出过一句失实断言（「目录 10 条、里面没有 deepseek-flash」，而那 10 条根本不是 `models-deepseek.json` 的内容）。M8 第 4 步新增的 `models_by_profile` 给出了逐 profile 的准确结论，两个旧字段的文档块也加了互斥说明，但**字段本身仍并排放着**。**修法方向**：要么让 `model_catalog_path` 也变成逐 profile 的 map、要么把它降为纯人读诊断并移出 `models` 附近。另注：`probeCodexProfiles` 末尾的 `.sort()` 使「探针 profile」实际就是字母序第一个可用的——上一轮审查修掉了 `profiles[0]` 这个巧合（GLM-02 / AGY-04），而 `model_catalog_path` 这一半**仍是同一个巧合的产物** | `types.ts` 的 `CodexProbe`、`probes/codex.ts` 的目录采集与路径记录两处 |
++| EV-24 | todo | **`approve` 静默吞掉多余的位置参数。** 2026-09-16 实撞：审批命令尾部跟了一串中文决策说明，命令跑通并返回成功，而那串文字**既没报错也没落盘**——该条审批记录的 `reason` 仍是 `null`。用户以为自己的决策进了留痕，实际只活在对话里。与 `--base` / `--critics` 漏传是同一族缺口（不报错、结果不是用户以为的那个）。**修法**：多余位置参数一律退 64 并提示正确写法；若要支持审批附言，那是另一个字段，不能靠位置参数兜 | `cli.ts` 的 `approve` 分支、`approval.ts` |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/skills/dual-critic/schema/run.v2.json b/skills/dual-critic/schema/run.v2.json
+index fb237f9..edef1fb 100644
+--- a/skills/dual-critic/schema/run.v2.json
++++ b/skills/dual-critic/schema/run.v2.json
+@@ -169,9 +169,13 @@
+           "type": ["string", "null"],
+           "description": "档位的来源（命令行 / 档位表 / 默认）。【待实施 · M11】"
+         },
+-        "profile": {
++        "profile_requested": {
+           "type": ["string", "null"],
+-          "description": "厂商侧 profile 名。【待实施 · M11】"
++          "description": "本次请求的厂商 profile 名（codex 的 -p，即 agents.<id>.profile）。命名随 model_requested / effort_requested 的既有惯例：它是请求值，回读值是 model_provider。裸名 profile 留空不占——在本系统里那个词已经指档位（config.yaml 的 profiles / active_profile / CLI --profile），而本 schema 自己的档位词汇是 tier*。无厂商 profile 概念的族恒为 null。【已实现 · M8 第 4 步】"
++        },
++        "model_provider": {
++          "type": ["string", "null"],
++          "description": "回读得到的 provider 家族归属，与 model_effective 是两个维度的事实。实测 codex exec -p qwen -m deepseek-v4-pro 成功且回读 provider=qwen、model=deepseek-v4-pro——同一个模型名可以挂在两个 provider 下，故「两次 model_effective 不同即两个家族」不成立，AC-20 的互可区分要两个维度都看。无此事实的族恒为 null（能说明理由的空）。【已实现 · M8 第 4 步】"
+         },
+         "status": { "enum": ["ok", "timeout", "failed", "parse_fallback"] },
+         "exit_code": { "type": ["integer", "null"] },
+diff --git a/src/trivium/adapters/agy.ts b/src/trivium/adapters/agy.ts
+index a362807..8403074 100644
+--- a/src/trivium/adapters/agy.ts
++++ b/src/trivium/adapters/agy.ts
+@@ -372,6 +372,15 @@ export const agyAdapter: CriticAdapter = {
+       raw_response_text: out.parsed.response,
+       model_effective: modelEffective,
+       model_effective_source: modelSource,
++      /*
++       * 两个字段对本族**恒为 null，且这是能说明理由的空**：
++       * agy 的 CLI 不暴露模型的 provider 归属（探针 `probes/agy.ts` 拿到的是
++       * 一张扁平模型目录，没有家族字段），也没有厂商 profile 这个概念
++       * （`GeminiCriticConfig` 里根本没有 `profile` 键）。
++       * 不是「没采集」——没有这种事实可采。
++       */
++      model_provider: null,
++      profile_requested: null,
+       tool_calls: countTools(out.parsed),
+       read_paths: readPaths(out.parsed),
+       write_events: writeEvents(out.parsed),
+diff --git a/src/trivium/adapters/base.ts b/src/trivium/adapters/base.ts
+index fdff82e..32c9a83 100644
+--- a/src/trivium/adapters/base.ts
++++ b/src/trivium/adapters/base.ts
+@@ -97,6 +97,24 @@ export interface CriticAdapter {
+    * 于是第三家一律落「无法校验」（计划双审 GLM-04）。
+    */
+   normalizeModelForCatalog?(cfg: Config, model: string): string;
++  /**
++   * **本次配置下实际生效的模型目录**。**可选**：目录不随配置分层的侧不实现。
++   *
++   * 存在的理由是 codex：它的模型目录随 `-p` **分层**
++   * （`<profile>.config.toml` 可自带 `model_catalog_json`，取不到才回落基底），
++   * 于是 `probe.models` 那张**单一**列表拿去校验任何非基底 profile 两个方向都会错——
++   * 误杀该 profile 自己的默认模型、误放只在基底目录里的 slug（计划双审 CODEX-05）。
++   *
++   * 这条知识属于那一侧，与 `normalizeModelForCatalog` 同理不住在 `preflight` 里。
++   *
++   * 三种返回值**语义互不相同，不可合并**：
++   * - `null` —— 该族没有比 `probe.models` 更准的来源 ⇒ 调用方回落探针那份（既有行为不变）；
++   * - `{ models: [...] }` 非空 —— 用它校验；
++   * - `{ models: [] }` —— 有分层概念但本机取不到（探针是旧版留痕、或该机根本没配
++   *   `model_catalog_json`）⇒ 调用方记 `unverifiable` 并**说出来**，不静默通过。
++   *   计划双审 CODEX-11 点名的正是这一格：一台只装官方 `auth.json` 的普通安装是常态。
++   */
++  catalogModelsFor?(cfg: Config): { models: string[]; why: string } | null;
+   /**
+    * 探活。**可选**：没有凭据概念的侧（如桩）不实现，`preflight` 相应跳过并如实说明——
+    * 「没得探」与「探过通过」不能长得一样。
+@@ -154,6 +172,9 @@ export function failedResult(
+     raw_response_text: fail.rawText ?? null,
+     model_effective: null,
+     model_effective_source: 'unverified',
++    // 失败出口不谎报任何请求值或回读值：两者都没走到，如实记 null
++    model_provider: null,
++    profile_requested: null,
+     tool_calls: {},
+     read_paths: [],
+     write_events: [],
+diff --git a/src/trivium/adapters/codex.ts b/src/trivium/adapters/codex.ts
+index f998e9c..4048b25 100644
+--- a/src/trivium/adapters/codex.ts
++++ b/src/trivium/adapters/codex.ts
+@@ -158,6 +158,14 @@ export function buildCodexResult(
+   paths: { stdout: string; trace: string },
+   probe: { version: string | null; path_deny: { supported: boolean | null } },
+   projectRoot: string,
++  /**
++   * 本次请求的厂商 profile（`agents.codex.profile`）。
++   *
++   * **走入参而不是让 `run()` 事后补**：M8 第 3 步的 M4 变异证实过，
++   * 埋在 `run()` 里的字段组装没有任何用例守得到（要真跑 codex 才走得到那行）。
++   * 请求值与回读值在同一个纯函数里成对产出，单测才咬得住「谁是请求、谁是回读」。
++   */
++  profileRequested: string | null,
+ ): CriticResult {
+   /*
+    * 写判据在这里算，不从调用方传进来：判据与它产出的两个字段绑在一处，
+@@ -183,6 +191,18 @@ export function buildCodexResult(
+      * 拿意图值冒充会让那条验收永远通过、永远没有意义。
+      */
+     model_effective_source: meta.modelEffective ? 'trace' : 'unverified',
++    /*
++     * 回读值。`parseCodexSessionMeta` 一直解析着它，而上一版把它丢了——
++     * 采了、丢了，全仓零消费方（计划双审 E-1）。
++     * 它与 `model_effective` 是两个维度：实测 `-p qwen -m deepseek-v4-pro` 成功，
++     * provider=qwen 而模型名是 deepseek-v4-pro。
++     */
++    model_provider: meta.modelProvider,
++    /*
++     * 请求值。与上面一行成对，且**方向相反**：这条来自配置，那条来自会话文件。
++     * 绝不互相顶替——拿请求值冒充回读值会让 AC-20 永远通过、永远没有意义。
++     */
++    profile_requested: profileRequested,
+     model_route: 'config_copy',
+     tool_calls: { run_command: trace.commands.length },
+     /*
+@@ -356,6 +376,45 @@ export const codexAdapter: CriticAdapter = {
+     return { ok: true };
+   },
+ 
++  /**
++   * 本次 profile 生效的模型目录（D4-1 = C″，计划双审 CODEX-05）。
++   *
++   * 数据来自探针的 `models_by_profile`——**不实时读盘**：`availability()` 其余五条判据
++   * 全部读探针结论，同一件事在同一个文件里出现两份判据、两个时点是 CODEX-04 点名的形态。
++   * 目录文件变了由探针 TTL 与 `checkProbeFreshness` 负责，不由本函数兜。
++   *
++   * 三种返回对应三件不同的事，见 `CriticAdapter.catalogModelsFor` 的文档块：
++   * 没配 profile ⇒ `null`（生效的就是基底目录，探针那份已经是它）；
++   * 配了但探针没有该 profile 的条目 ⇒ 空清单（旧留痕或该机没配 `model_catalog_json`）⇒ 无法校验。
++   */
++  catalogModelsFor(cfg) {
++    const profile = agentConfigOf(cfg, 'codex', 'openai').profile;
++    // 没配 profile ⇒ 生效的就是基底目录，而探针那份正是它
++    if (!profile) return null;
++
++    const byProfile = cfg.probe.cli.codex?.models_by_profile ?? {};
++    /*
++     * **整张表为空 ⇒ 回落基底那份，不返回「无法校验」**。
++     *
++     * 那是 M8 第 4 步之前落盘的旧 `config.local.yaml`（本字段那时还不存在）。
++     * 返回空清单会让调用方记 `unverifiable` 而**放行**——把一道既有的拦截
++     * 变成放行，正是本项目反复付账的 fail-open 形态（RV-B1 同构）。
++     * 回落之后行为与本步之前**逐字相同**：不更准，但也不更松；
++     * 跑一次 `doctor` 就自动升级到逐 profile 的准确判据。
++     */
++    if (Object.keys(byProfile).length === 0) return null;
++
++    /*
++     * 表在、而本 profile 没有条目 ⇒ 探针跑过且确认它渲染不出目录
++     * （该机没配 `model_catalog_json` 是常态，计划双审 CODEX-11）。
++     * 这一格才是真正的「无法校验」：说不出来要说出来，不假装通过。
++     */
++    return {
++      models: byProfile[profile] ?? [],
++      why: `profile「${profile}」渲染不出模型目录（该机可能未配置 model_catalog_json），本次未校验模型 slug`,
++    };
++  },
++
+   async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
+     const probe = ctx.cfg.probe.cli.codex;
+     if (!probe?.probed_at) {
+@@ -481,6 +540,14 @@ export const codexAdapter: CriticAdapter = {
+       'utf8',
+     );
+ 
+-    return buildCodexResult(trace, meta, out, { stdout: stdoutPath, trace: tracePath }, probe, req.project_root);
++    return buildCodexResult(
++      trace,
++      meta,
++      out,
++      { stdout: stdoutPath, trace: tracePath },
++      probe,
++      req.project_root,
++      cfg.profile,
++    );
+   },
+ };
+diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts
+index 6727a38..1d4dd45 100644
+--- a/src/trivium/adapters/stub.ts
++++ b/src/trivium/adapters/stub.ts
+@@ -164,6 +164,9 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
+     raw_response_text: sampleReview(critic, n),
+     model_effective: spec.modelEffective ?? req.model,
+     model_effective_source: 'envelope',
++    // 桩不模拟厂商事实：这两个字段的真实形态只有真适配器才产得出（AC-24 的证明边界）
++    model_provider: null,
++    profile_requested: null,
+     tool_calls: { read: 6, grep: 2, glob: 1, run_command: 0 },
+     // 4 条项目内读取：min_project_reads 默认下限是 3，留一点余量
+     read_paths: [
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index d7adbda..cc5d615 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -412,6 +412,13 @@ export const zcodeAdapter: CriticAdapter = {
+       model_effective: modelEffective,
+       // envelope 没有 model 字段，因此来源只能是 trace 或 unverified，绝不用 requested 冒充
+       model_effective_source: modelEffective ? 'trace' : 'unverified',
++      /*
++       * 同 agy：本族无这两种事实，恒 null 且说得出理由。
++       * zcode 的模型 id 自带 `bigmodel-coding-plan/` 前缀，那是**套餐**不是 provider 家族；
++       * 配置段 `GlmCriticConfig` 也没有 `profile` 键。
++       */
++      model_provider: null,
++      profile_requested: null,
+       model_route: home.route,
+       tool_calls: toolCalls,
+       read_paths: readPathList,
+diff --git a/src/trivium/config.ts b/src/trivium/config.ts
+index 629e857..aa9af5c 100644
+--- a/src/trivium/config.ts
++++ b/src/trivium/config.ts
+@@ -95,6 +95,7 @@ export function defaultProbe(): ProbeSection {
+     config_override: null,
+     effort_validated: null,
+     model_catalog_path: null,
++    models_by_profile: {},
+   };
+ 
+   cli.claude = {
+diff --git a/src/trivium/preflight.ts b/src/trivium/preflight.ts
+index 279e532..d0e2727 100644
+--- a/src/trivium/preflight.ts
++++ b/src/trivium/preflight.ts
+@@ -377,7 +377,22 @@ function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string):
+   const cliName = a?.cliName ?? null;
+   // 文案用 display（用户看的是「ZCode」不是「zcode」），索引用 cliName
+   const label = a?.display ?? critic;
+-  const models = (cliName ? cfg.probe.cli[cliName]?.models : null) ?? [];
++
++  /*
++   * **目录随配置分层的侧，先问它自己**（M8 第 4 步，计划双审 CODEX-05）。
++   *
++   * `probe.models` 是**单一**列表，对 codex 取自基底 `config.toml` 的目录；
++   * 而它的目录随 `-p` 分层。拿基底那份校验别的 profile 会**两个方向都错**：
++   * 误杀该 profile 自己的默认模型、误放只在基底目录里的 slug——后者要到
++   * `turn.failed` 才被端点拒，而预检存在的全部理由就是把这类失败挡在花钱之前（AC-16）。
++   *
++   * 钩子缺席即回落 `probe.models`，既有两家行为逐字不变。
++   */
++  const scoped = realAdapters()[critic]?.catalogModelsFor?.(cfg) ?? null;
++  if (scoped && scoped.models.length === 0) {
++    return { kind: 'unverifiable', why: `${label}：${scoped.why}` };
++  }
++  const models = scoped?.models ?? (cliName ? cfg.probe.cli[cliName]?.models : null) ?? [];
+   if (models.length === 0) {
+     return { kind: 'unverifiable', why: `探针未记录 ${label} 模型目录` };
+   }
+diff --git a/src/trivium/probes/codex.ts b/src/trivium/probes/codex.ts
+index 2061bc7..cf7c429 100644
+--- a/src/trivium/probes/codex.ts
++++ b/src/trivium/probes/codex.ts
+@@ -134,17 +134,46 @@ export function providerCredentialed(
+   providerId: string,
+   env: NodeJS.ProcessEnv = process.env,
+ ): boolean | null {
++  const body = providerSectionBody(text, providerId);
++  if (body === null) return null;
++
++  if (/^\s*(experimental_bearer_token|api_key)\s*=\s*["'].+["']/m.test(body)) return true;
++  const envKey = /^\s*env_key\s*=\s*["'](.+?)["']/m.exec(body);
++  if (envKey && env[envKey[1]!]) return true;
++  return false;
++}
++
++/**
++ * 切出 `[model_providers.<id>]` 段的正文，段不存在返回 `null`。
++ *
++ * 抽出来是因为下面的 `providerBaseUrl` 要切同一段——两份实现会漂移，
++ * 而本主题已经为「同一个问题两个答案」付过账（M8 第 3 步的 `process.execPath`
++ * 与 `cfg.runtime.node` 两种口径）。
++ */
++function providerSectionBody(text: string, providerId: string): string | null {
+   const head = `[model_providers.${providerId}]`;
+   const start = text.indexOf(head);
+   if (start < 0) return null;
+   const rest = text.slice(start + head.length);
+   const end = rest.indexOf('\n[');
+-  const body = end < 0 ? rest : rest.slice(0, end);
++  return end < 0 ? rest : rest.slice(0, end);
++}
+ 
+-  if (/^\s*(experimental_bearer_token|api_key)\s*=\s*["'].+["']/m.test(body)) return true;
+-  const envKey = /^\s*env_key\s*=\s*["'](.+?)["']/m.exec(body);
+-  if (envKey && env[envKey[1]!]) return true;
+-  return false;
++/**
++ * 某个 provider 段的 `base_url`（**endpoint，不是凭据**）。
++ *
++ * AC-20 要「至少两个模型家族」，而 provider **id** 互异证明不了 endpoint 互异：
++ * 两个不同的 `[model_providers.X]` 段可以指向同一个 base_url 与同一套凭据，
++ * 此时两次运行的 provider 名不同、模型不同、判据全绿，打的却是同一个端点
++ * （计划双审 CODEX-03）。
++ *
++ * **只取 `base_url` 一个键**：段里还有凭据，整段哈希或整段外泄都违反
++ * 「凭据不进探针结论」的既定口径（见 `providerCredentialed` 的文档块）。
++ */
++export function providerBaseUrl(text: string, providerId: string): string | null {
++  const body = providerSectionBody(text, providerId);
++  if (body === null) return null;
++  return /^\s*base_url\s*=\s*["'](.+?)["']/m.exec(body)?.[1] ?? null;
+ }
+ 
+ /**
+@@ -189,41 +218,67 @@ export async function probeCodexProviders(
+       if (hits.some((h) => h === true)) credentialed = true;
+       else if (hits.every((h) => h === null)) credentialed = await exists(path.join(home, 'auth.json'));
+     }
+-    out.push({ profile, provider, model, credentialed });
++    // endpoint 归属：两份 toml 任一给出即可（分层是叠加），profile 层优先
++    const baseUrl = provider
++      ? (providerBaseUrl(text, provider) ?? providerBaseUrl(baseText, provider))
++      : null;
++    out.push({ profile, provider, model, credentialed, base_url: baseUrl });
+   }
+   return out;
+ }
+ 
+ /**
+- * 模型目录：`codex debug models --json`。
++ * 模型目录：`codex debug models`（**不带 `--json`**——0.154.0 会报
++ * `unexpected argument '--json' found`；该子命令本就输出 JSON。
++ * 本文档块原写「`--json`」而代码从未传过，M8 第 4 步实跑更正）。
+  *
+  * **零配额**——它只渲染本地目录文件，不调模型。`-c model_catalog_json=<路径>`
+  * 能换目录，这既是 `model_catalog` 的探法，也顺带证明 `-c` 真的生效。
++ *
++ * ## 为什么要分 `models` 与 `visible` 两份
++ *
++ * 实测：`-p deepseek -m qwen3.8-max` 被**端点**拒绝，报错逐字列出
++ * 「The supported API model names are deepseek-flash, deepseek-v4-pro」——
++ * 恰是该目录的**可见项**（该文件共 4 条，另两条 `visibility: "hide"`）。
++ * 而渲染输出与目录文件一样**含隐藏项**（本机基底目录 7 条里 `gpt-reserve` 与
++ * `codex-auto-review` 都是 hide）。拿全集当判据会放行隐藏项、复制 E-4 的误放
++ * （计划双审 CODEX-04——它的结论对，但归因于「渲染时过滤」，实测并非如此）。
++ *
++ * **「端点合法名单 ＝ 可见项」这条等式来自 n=1 实测，不是厂商承诺**，
++ * 所以它只用于**预检收紧**，不用于任何放行判断。
+  */
+ export async function probeCodexModels(
+   bin: string,
+   catalogPath: string | null,
+-): Promise<{ models: string[]; efforts: Record<string, string[]> }> {
++): Promise<{ models: string[]; visible: string[]; efforts: Record<string, string[]> }> {
++  const empty = { models: [], visible: [], efforts: {} };
+   const args = ['debug', 'models'];
+   if (catalogPath) args.push('-c', `model_catalog_json=${catalogPath}`);
+   const r = await run(bin, args, { timeoutMs: 60_000 });
+-  if (r.code !== 0) return { models: [], efforts: {} };
++  if (r.code !== 0) return empty;
+   try {
+     const parsed = JSON.parse(r.stdout) as {
+-      models?: { slug?: string; supported_reasoning_levels?: { effort?: string }[] }[];
++      models?: {
++        slug?: string;
++        visibility?: string;
++        supported_reasoning_levels?: { effort?: string }[];
++      }[];
+     };
+     const models: string[] = [];
++    const visible: string[] = [];
+     const efforts: Record<string, string[]> = {};
+     for (const m of parsed.models ?? []) {
+       if (!m.slug) continue;
+       models.push(m.slug);
++      // 字段缺失按可见处理：宁可少拦一个，也不因厂商加字段而把全表判成不可用
++      if (m.visibility !== 'hide') visible.push(m.slug);
+       efforts[m.slug] = (m.supported_reasoning_levels ?? [])
+         .map((e) => e.effort)
+         .filter((e): e is string => Boolean(e));
+     }
+-    return { models, efforts };
++    return { models, visible, efforts };
+   } catch {
+-    return { models: [], efforts: {} };
++    return empty;
+   }
+ }
+ 
+@@ -563,6 +618,7 @@ export async function probeCodex(
+         config_override: null,
+         effort_validated: null,
+         model_catalog_path: null,
++        models_by_profile: {},
+       };
+ 
+   const { bin, version } = await probeCodexBin(configuredBin);
+@@ -603,6 +659,31 @@ export async function probeCodex(
+       : '⚠️ `codex debug models` 未返回任何模型',
+   );
+ 
++  /*
++   * 逐 profile 再采一遍（M8 第 4 步，计划双审 CODEX-05）。
++   *
++   * **零配额**：`debug models` 只渲染本地文件。每个 profile 一次子进程，
++   * 本机 4 个 profile 合计不到一秒。
++   *
++   * 为什么不能只留上面那份基底目录：目录随 `-p` 分层，拿基底去校验别的 profile
++   * 两个方向都会错（见 `CodexProbe.models_by_profile` 的文档块）。
++   * 这一步同时替下面的 profile 选择省掉重复的子进程调用。
++   */
++  probe.models_by_profile = {};
++  for (const name of probe.profiles) {
++    const c = await probeCodexModels(bin, await readCatalogPath(name));
++    probe.models_by_profile[name] = c.visible;
++  }
++  {
++    const withCatalog = Object.entries(probe.models_by_profile).filter(([, v]) => v.length > 0);
++    notes.push(
++      withCatalog.length > 0
++        ? `逐 profile 可见模型：${withCatalog.map(([k, v]) => `${k}→${v.length}`).join('、')}` +
++            '（预检按本次 profile 的这一份校验，不再拿基底目录顶替）'
++        : '⚠️ 没有任何 profile 能渲染出模型目录——预检在该侧只能记「无法校验」',
++    );
++  }
++
+   probe.path_deny = await probeCodexPathDeny(bin);
+ 
+   if (opts.skipModelCalls) {
+@@ -630,8 +711,8 @@ export async function probeCodex(
+     let probeProfile: string | null = null;
+     let probeModel: string | null = null;
+     for (const name of probe.profiles) {
+-      const catalog = await readCatalogPath(name);
+-      const { models } = await probeCodexModels(bin, catalog);
++      // 复用上面采好的逐 profile 结论，不重复拉子进程（同一事实只算一次）
++      const models = probe.models_by_profile[name] ?? [];
+       const usable = models.find((m) => m === PROBE_MODEL) ?? models[0];
+       if (usable) {
+         probeProfile = name;
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index 0a58997..2c71fbf 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -1059,6 +1059,16 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+       model_requested: requests[c]!.model,
+       model_effective: r.model_effective,
+       model_effective_source: r.model_effective_source,
++      /*
++       * 两个字段**恒写**（含 null），不走 `...(x ? {} : {})` 的条件展开。
++       *
++       * 条件展开会让「该族没有这种事实」与「本轮没采到」再次落成同一个观测——
++       * 字段缺失既可能是旧留痕、也可能是新缺陷，事后分不开。
++       * 这与措施 b 的 `peer_leak_via_command` 恒写、`hit:false` 表示「扫过没命中」
++       * 是同一条口径（6.7.1 写侧说明）。
++       */
++      profile_requested: r.profile_requested,
++      model_provider: r.model_provider,
+       ...(r.model_route ? { model_route: r.model_route } : {}),
+       ...(requests[c]!.effort ? { effort: requests[c]!.effort! } : {}),
+       status: r.status,
+diff --git a/src/trivium/runner.ts b/src/trivium/runner.ts
+index e64b561..553df61 100644
+--- a/src/trivium/runner.ts
++++ b/src/trivium/runner.ts
+@@ -185,6 +185,8 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
+         raw_response_text: null,
+         model_effective: null,
+         model_effective_source: 'unverified',
++        model_provider: null,
++        profile_requested: null,
+         tool_calls: {},
+         read_paths: [],
+         write_events: [],
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index c35c993..e54247a 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -246,6 +246,18 @@ export interface CodexProviderProbe {
+   credentialed: boolean;
+   /** 该 profile 声明的默认模型 slug */
+   model: string | null;
++  /**
++   * 该 provider 段的 `base_url`（**不含凭据**，只记 endpoint）。
++   *
++   * AC-20 要「至少两个模型家族」，而 provider **id** 互异证明不了 endpoint 互异：
++   * 两个不同的 `[model_providers.X]` 段完全可以指向同一个 base_url 与同一套凭据，
++   * 此时两次运行的 `model_provider` 字符串不同、模型不同、判据全绿，
++   * 打的却是同一个端点（计划双审 CODEX-03）。判据因此要看到这一层。
++   *
++   * 取不到记 `null`——它只在场时参与判定，缺失不构成失败（口径同
++   * `checkModelAgainstCatalog` 的 `unverifiable` 第三态：说不出来要说出来，不假装通过）。
++   */
++  base_url: string | null;
+ }
+ 
+ export interface CodexProbe extends CommonProbe {
+@@ -367,8 +379,36 @@ export interface CodexProbe extends CommonProbe {
+    * `<name>.config.toml` 同样能设这个键，只读基底会记错活跃档位下的目录
+    * （审查意见 GLM-09）。
+    * **消费方**：人读诊断与 `doctor` 报告。
++   *
++   * ⚠️ **它与同段的 `models` 取自不同的层，两者不可当成一对读**：
++   * `models` 走 `probeCodexModels(bin, null)` 即**基底** `config.toml` 的目录，
++   * 而本字段取的是**本次探针 profile**（`profiles` 字典序里第一个目录非空的那个）的路径。
++   * 起草 M8 第 4 步计划时我就是把这一对当同源读，写出过一句失实断言。
++   * 逐 profile 的准确结论在下面的 `models_by_profile`。
+    */
+   model_catalog_path: string | null;
++  /**
++   * **逐 profile 的可见模型清单**（M8 第 4 步，计划双审 CODEX-05 的落点）。
++   *
++   * ## 为什么必须逐 profile 存
++   *
++   * 模型目录是**分层**的：`<profile>.config.toml` 可以自带 `model_catalog_json`，
++   * 取不到才回落基底。于是「哪些 slug 合法」这件事**随 `-p` 变**，
++   * 而 `models`（单一列表、取自基底）拿去校验任何非基底 profile 都是错的，
++   * 两个方向都会错：
++   *
++   * - **误杀**：`profile: deepseek` + 它自己的默认模型 `deepseek-flash`——
++   *   在 deepseek 目录里，却不在基底目录里，预检拒掉一个本可跑通的配置；
++   * - **误放**：某个 slug 在基底目录里而不在该 profile 的目录里，预检放行，
++   *   到 `turn.failed` 才被端点拒——而预检存在的全部理由就是把这类失败挡在花钱之前（AC-16）。
++   *
++   * 存的是**可见项**，理由见 `probeCodexModels` 的文档块（端点名单 ＝ 可见项，n=1 实测）。
++   *
++   * **消费方**：`checkModelAgainstCatalog` 经适配器钩子 `catalogModelsFor`。
++   * 旧留痕没有本字段（M8 第 4 步之前落盘的 `config.local.yaml`）——
++   * 那时记 `{}`，消费方据此回落 `models` 并把该侧记为 `unverifiable`，**不静默通过**。
++   */
++  models_by_profile: Record<string, string[]>;
+ }
+ 
+ /**
+@@ -791,6 +831,15 @@ export interface CriticRunMeta {
+   model_requested: string | null;
+   model_effective: string | null;
+   model_effective_source?: 'envelope' | 'trace' | 'requested' | 'unverified';
++  /**
++   * 本次请求的厂商 profile（请求值）与实际走到的 provider 家族（回读值）。
++   *
++   * **必填而非可选**，与 `CriticResult` 同源同理由：可选会让「该族没有这种事实」
++   * 与「本轮没采到」落成同一个观测。无此概念的族写 `null`。
++   * AC-20 的「互可区分」要同时看 `model_provider` 与 `model_effective` 两个维度。
++   */
++  profile_requested: string | null;
++  model_provider: string | null;
+   model_route?: 'env' | 'config_copy' | 'global';
+   effort?: string;
+   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
+@@ -958,6 +1007,39 @@ export interface CriticResult {
+   model_effective: string | null;
+   model_effective_source: 'envelope' | 'trace' | 'requested' | 'unverified';
+   model_route?: 'env' | 'config_copy' | 'global';
++  /**
++   * 该侧**实际走到的 provider 家族**（回读值）。
++   *
++   * ## 为什么它必须与 `model_effective` 并列，而不是由后者推出来
++   *
++   * 本步实测：`codex exec -p qwen -m deepseek-v4-pro` **成功退 0**，
++   * 回读得到 `model_provider=qwen`、`model=deepseek-v4-pro`——
++   * **同一个模型名可以挂在两个 provider 下**，codex 不校验两者的对应关系。
++   * 于是「两次运行的 `model_effective` 不同 ⇒ 跑了两个模型家族」这个推断不成立，
++   * 而 AC-20 的「至少两个模型家族各一次」正是靠它验收的（计划双审 GLM-01 / CODEX-03）。
++   *
++   * **必填而非可选**：没有这个事实的族要显式写 `null`，
++   * 那是**能说明理由的空**（agy / zcode 的 CLI 不暴露 provider 归属），
++   * 与 `read_paths` 对 `command-trace` 族的处理同构。可选字段会让「没采集」
++   * 与「没有这种事实」再次落成同一个观测。
++   */
++  model_provider: string | null;
++  /**
++   * 本次**请求**的厂商 profile 名（`agents.<id>.profile`，codex 的 `-p`）。
++   *
++   * ## 命名
++   *
++   * 随 `model_requested` / `effort_requested` 的既有惯例（计划双审 CODEX-10）：
++   * 它是请求值，不是回读值，回读值是上面的 `model_provider`。
++   * **裸名 `profile` 留空不占**——这个词在本系统里已经指「档位」
++   * （`config.yaml` 的 `profiles` / `active_profile` / CLI `--profile`），
++   * 而 `run.v2` 自己的档位词汇是 `tier*`。同一类事实两套命名惯例，
++   * 与同一个词两个意思是同一个病。
++   *
++   * **绝不参与 `model_effective` 的判定**：请求值一旦渗回生效值，
++   * AC-20 末句「生效模型仍以回读为准、不采信 profile 意图」就失效了。
++   */
++  profile_requested: string | null;
+   tool_calls: ToolCallCounts;
+   /** 轨迹中出现过的读取路径（项目相对），供 deny_paths 核验与 consulted 交叉核对 */
+   read_paths: string[];
+diff --git a/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt b/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+index b225469..02031ab 100644
+--- a/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
++++ b/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+@@ -129,6 +129,13 @@ export const stubAgentAdapter: CriticAdapter = {
+       raw_response_text: stubReview(req.critic, reads.map((p) => nodePath.relative(req.project_root, p))),
+       model_effective: req.model,
+       model_effective_source: 'envelope',
++      /*
++       * 契约要求每一侧都**显式回答**这两个事实，没有就写 null——
++       * 「该族没有这种事实」与「本轮没采到」不能长得一样（`CriticResult` 文档块）。
++       * 桩没有厂商 profile，也不经 provider 路由。
++       */
++      model_provider: null,
++      profile_requested: null,
+       tool_calls: { read: toolCalls },
+       read_paths: reads,
+       write_events: [],
+diff --git a/test/unit/codex-adapter.test.ts b/test/unit/codex-adapter.test.ts
+index e642d8b..80cd2e1 100644
+--- a/test/unit/codex-adapter.test.ts
++++ b/test/unit/codex-adapter.test.ts
+@@ -273,7 +273,7 @@ test('组装：回读到生效模型 → 来源记 trace', () => {
+   const r = buildCodexResult(
+     TRACE_OK,
+     { sessionId: 'T9', modelProvider: 'qwen', modelEffective: 'qwen3.8-flash', cliVersion: '0.154.0' },
+-    OUTCOME, PATHS, PROBE, '/proj',
++    OUTCOME, PATHS, PROBE, '/proj', null,
+   );
+   assert.equal(r.model_effective, 'qwen3.8-flash');
+   assert.equal(r.model_effective_source, 'trace');
+@@ -288,7 +288,7 @@ test('组装：回读不到 → 记 unverified，且 model_effective 保持 null
+   const r = buildCodexResult(
+     TRACE_OK,
+     { sessionId: 'T9', modelProvider: null, modelEffective: null, cliVersion: null },
+-    OUTCOME, PATHS, PROBE, '/proj',
++    OUTCOME, PATHS, PROBE, '/proj', null,
+   );
+   assert.equal(r.model_effective, null, '拿不到就是拿不到，不得回落成请求值');
+   assert.equal(r.model_effective_source, 'unverified');
+@@ -303,7 +303,7 @@ test('组装：read_paths 恒空且 command_texts 拿全集（含失败的命令
+   const r = buildCodexResult(
+     trace,
+     { sessionId: null, modelProvider: null, modelEffective: 'm', cliVersion: null },
+-    OUTCOME, PATHS, PROBE, '/proj',
++    OUTCOME, PATHS, PROBE, '/proj', null,
+   );
+   assert.deepEqual(r.read_paths, [], 'codex 没有结构化路径字段，由判定层从命令文本回填');
+   assert.equal(r.command_texts.length, 2, '措施 b 要扫全集：泄漏企图即便失败也要检出');
+@@ -319,7 +319,7 @@ test('组装：项目内的成功写入进 write_events，项目外进疑似档'
+   const r = buildCodexResult(
+     trace,
+     { sessionId: null, modelProvider: null, modelEffective: 'm', cliVersion: null },
+-    OUTCOME, PATHS, PROBE, '/proj',
++    OUTCOME, PATHS, PROBE, '/proj', null,
+   );
+   assert.deepEqual(r.write_events, ['echo x > src/a.ts']);
+   assert.equal(r.suspected_write_events?.length, 1);
+@@ -401,7 +401,7 @@ test('疑似写有人读出口：判定告警里点得出条数与理由', () =>
+         '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}\n',
+     ),
+     { sessionId: null, modelProvider: null, modelEffective: 'm', cliVersion: null },
+-    OUTCOME, PATHS, PROBE, '/proj',
++    OUTCOME, PATHS, PROBE, '/proj', null,
+   );
+   assert.equal(result.suspected_write_events?.length, 1, '结果里要带着它');
+ 
+@@ -441,3 +441,129 @@ test('探活指纹：基底 config.toml 的 provider 段参与指纹，其余杂
+   assert.equal(providerSection(noisyOnly), a, '只改 plugins 不该动指纹');
+   assert.equal(providerSection('model = "m"\n'), null, '没有 provider 段就返回 null');
+ });
++
++// ───────── provider 与 profile 两个维度（AC-20 互可区分，计划双审 GLM-01 / CODEX-03） ─────────
++
++test('组装：provider 回读值进结果，且与生效模型是两个独立维度', () => {
++  /*
++   * 夹具用的是**本步真机实测的原始回读值**，不是构造的：
++   *   codex exec -p qwen -m deepseek-v4-pro  →  exit 0
++   *   session_meta: model_provider=qwen, base_instructions.provenance.model=deepseek-v4-pro
++   *
++   * 它证明「同一个模型名可以挂在两个 provider 下」，因此
++   * 「两次 model_effective 不同 ⇒ 跑了两个模型家族」这个推断不成立。
++   * 真实形态比编的值钱——E-1 这条缺陷正是靠这次实跑才被发现的。
++   */
++  const r = buildCodexResult(
++    TRACE_OK,
++    { sessionId: 'T9', modelProvider: 'qwen', modelEffective: 'deepseek-v4-pro', cliVersion: '0.154.0' },
++    OUTCOME, PATHS, PROBE, '/proj', 'qwen',
++  );
++  assert.equal(r.model_provider, 'qwen', 'provider 必须如实入档——上一版解析了却丢掉了');
++  assert.equal(r.model_effective, 'deepseek-v4-pro');
++  assert.notEqual(r.model_provider, r.model_effective, '两个维度不得互相顶替');
++});
++
++test('组装：profile 是请求值、provider 是回读值，两者绝不互相渗透', () => {
++  /*
++   * 这条守的是 AC-20 末句「生效模型仍以回读为准、不采信 profile 意图」。
++   * 变异 M2（把 profile_requested 填成 meta.modelProvider）必须红在这里。
++   */
++  const r = buildCodexResult(
++    TRACE_OK,
++    { sessionId: 'T9', modelProvider: 'zai', modelEffective: 'glm-5.3', cliVersion: null },
++    OUTCOME, PATHS, PROBE, '/proj', 'glm',
++  );
++  assert.equal(r.profile_requested, 'glm', '请求值取自配置，不是回读来的');
++  assert.equal(r.model_provider, 'zai', '回读值取自会话文件');
++  assert.notEqual(
++    r.profile_requested, r.model_provider,
++    'profile 名与 provider 名是两个概念：本机 glm→zai、gpt→openai 就不相等（计划双审 GLM-02）',
++  );
++});
++
++test('组装：回读不到 provider 时记 null，不拿请求值顶替', () => {
++  const r = buildCodexResult(
++    TRACE_OK,
++    { sessionId: 'T9', modelProvider: null, modelEffective: null, cliVersion: null },
++    OUTCOME, PATHS, PROBE, '/proj', 'qwen',
++  );
++  assert.equal(r.model_provider, null, '拿不到就是拿不到——用 profile 名冒充会让 AC-20 永远通过');
++  assert.equal(r.profile_requested, 'qwen', '请求值本来就有，不受回读失败影响');
++});
++
++// ───────── 逐 profile 模型目录（D4-1 = C″，计划双审 CODEX-05 / CODEX-11） ─────────
++
++function cfgWith(profile: string | null, byProfile: Record<string, string[]>, baseModels: string[]): Config {
++  const c = defaultConfig();
++  (c.agents as Record<string, unknown>)['codex'] = {
++    vendor: 'openai', bin: null, profile,
++    effort: { plan: 'high', code: 'high', bug: 'high' },
++  };
++  c.probe.cli.codex!.models = baseModels;
++  c.probe.cli.codex!.models_by_profile = byProfile;
++  return c;
++}
++
++test('目录：按本次 profile 取，不再拿基底目录顶替', () => {
++  /*
++   * 取值来自本机真实形态：基底（qwen）目录里没有 deepseek-flash，
++   * 而 deepseek profile 自己的目录里有它——它正是该 profile 的默认模型。
++   * 上一版拿基底那份校验，会把这个**本可跑通**的配置拒掉（误杀）。
++   */
++  const cfg = cfgWith('deepseek', { deepseek: ['deepseek-flash', 'deepseek-v4-pro'], qwen: ['qwen3.8-max'] }, ['qwen3.8-max']);
++  const got = codexAdapter.catalogModelsFor!(cfg);
++  assert.deepEqual(got?.models, ['deepseek-flash', 'deepseek-v4-pro']);
++});
++
++test('目录：没配 profile → 回落基底那份（钩子返回 null）', () => {
++  const cfg = cfgWith(null, { deepseek: ['deepseek-flash'] }, ['qwen3.8-max']);
++  assert.equal(codexAdapter.catalogModelsFor!(cfg), null, '基底目录即生效目录，无需另给一份');
++});
++
++test('目录：旧留痕（整张表为空）→ 回落基底，绝不降级成放行', () => {
++  /*
++   * M8 第 4 步之前落盘的 config.local.yaml 没有 models_by_profile。
++   * 此时若返回空清单，调用方会记「无法校验」而**放行**——
++   * 把一道既有拦截变成 fail-open，正是 RV-B1 那一族的形态。
++   */
++  const cfg = cfgWith('deepseek', {}, ['qwen3.8-max']);
++  assert.equal(
++    codexAdapter.catalogModelsFor!(cfg), null,
++    '旧留痕要回落到本步之前的行为：不更准，但也不更松',
++  );
++});
++
++test('目录：表在而本 profile 渲染不出目录 → 空清单（无法校验，且说得出为什么）', () => {
++  // 一台只装官方 auth.json、没配 model_catalog_json 的普通 codex 安装是常态（CODEX-11）
++  const cfg = cfgWith('gpt', { deepseek: ['deepseek-flash'], gpt: [] }, ['qwen3.8-max']);
++  const got = codexAdapter.catalogModelsFor!(cfg);
++  assert.deepEqual(got?.models, []);
++  assert.ok(got?.why.includes('gpt'), '说不出来要说出来：文案里要指明是哪个 profile');
++});
++
++// ───────── provider 的 base_url（AC-20 的第四种「通过而无意义」形态，CODEX-03） ─────────
++
++test('provider：base_url 被采集，且只取这一个键（凭据不进探针结论）', async () => {
++  const { providerBaseUrl } = await import('../../src/trivium/probes/codex.js');
++  const toml = [
++    '[model_providers.alpha]',
++    'base_url = "https://api.example.com/v1"',
++    /*
++     * 占位值必须以 `secrets.ts` 的 `PLACEHOLDER` 前缀开头（`placeholder` / `example` /
++     * `dummy` / `your_` …）。第一版写的是 `sk-must-not-leak`——不在白名单、熵又够高，
++     * **被本项目自己的密钥扫描判成真凭据，当场拒绝归档落盘**（`toml-bearer-token` 规则）。
++     * 那是扫描器在正确工作：夹具里的假凭据长得像真的，等于给未来的误判留种子。
++     */
++    'experimental_bearer_token = "placeholder-not-a-real-token"',
++    '',
++    '[model_providers.beta]',
++    'base_url = "https://api.example.com/v1"',
++  ].join('\n');
++  assert.equal(providerBaseUrl(toml, 'alpha'), 'https://api.example.com/v1');
++  assert.equal(
++    providerBaseUrl(toml, 'beta'), 'https://api.example.com/v1',
++    '两个不同的 provider id 指向同一个 endpoint——provider 名互异证明不了家族互异',
++  );
++  assert.equal(providerBaseUrl(toml, 'nosuch'), null, '段不存在记 null，不猜');
++});
+diff --git a/test/unit/guard-capability.test.ts b/test/unit/guard-capability.test.ts
+index 926b356..a832d1d 100644
+--- a/test/unit/guard-capability.test.ts
++++ b/test/unit/guard-capability.test.ts
+@@ -56,6 +56,8 @@ function result(over: Partial<CriticResult> = {}): CriticResult {
+     raw_response_text: null,
+     model_effective: 'm',
+     model_effective_source: 'envelope',
++    model_provider: null,
++    profile_requested: null,
+     tool_calls: {},
+     read_paths: [],
+     write_events: [],
+diff --git a/test/unit/render.test.ts b/test/unit/render.test.ts
+index 67c3d2f..1bbcb4f 100644
+--- a/test/unit/render.test.ts
++++ b/test/unit/render.test.ts
+@@ -10,7 +10,8 @@ const RESULT: CriticResult = {
+   critic: 'gemini', status: 'ok', exit_code: 0, duration_s: 472.4,
+   raw_stdout_path: '/runs/out', trace_path: '/runs/trace', review_json: null,
+   raw_response_text: '{}', model_effective: 'gemini-3.1-pro-high',
+-  model_effective_source: 'envelope', tool_calls: { read: 27, grep: 9 },
++  model_effective_source: 'envelope', model_provider: null, profile_requested: null,
++  tool_calls: { read: 27, grep: 9 },
+   read_paths: [], write_events: [], command_texts: [], evidence_ok: true, fail_reason: null,
+   session_id: 'conv-1', cli_version: '1.2.0', peer_deny_applied: false,
+   command_line: 'agy -p …',
+diff --git a/test/unit/report.test.ts b/test/unit/report.test.ts
+index f97bdf6..e4c502a 100644
+--- a/test/unit/report.test.ts
++++ b/test/unit/report.test.ts
+@@ -79,7 +79,8 @@ async function seedRound(
+     if (c === 'glm' && opts.glmFailed) {
+       meta.critics.glm = {
+         vendor: 'zcode', cli_version: null, model_requested: 'GLM-x', model_effective: null,
+-        model_effective_source: 'unverified', status: 'timeout', exit_code: null, duration_s: 900,
++        model_effective_source: 'unverified', profile_requested: null, model_provider: null,
++        status: 'timeout', exit_code: null, duration_s: 900,
+         tool_calls: {}, evidence_ok: false, heterogeneous: true, fail_reason: '脚本级超时（900s）',
+       };
+       await writeMeta(l, 'plan', `review-glm-${opts.runId}.failed.json`,
+@@ -91,7 +92,8 @@ async function seedRound(
+     if (!rv) continue;
+     meta.critics[c] = {
+       vendor: c === 'gemini' ? 'antigravity' : 'zcode',
+-      cli_version: '1.0', model_requested: c === 'gemini' ? 'gemini-x' : 'GLM-x',
++      cli_version: '1.0', profile_requested: null, model_provider: null,
++      model_requested: c === 'gemini' ? 'gemini-x' : 'GLM-x',
+       model_effective: c === 'gemini' ? 'gemini-x' : 'provider/GLM-x',
+       model_effective_source: 'envelope', status: 'ok', exit_code: 0, duration_s: c === 'gemini' ? 100 : 200,
+       tool_calls: { read: 9 }, evidence_ok: true, heterogeneous: true,
+diff --git a/test/unit/run-meta.test.ts b/test/unit/run-meta.test.ts
+index d5ab06a..415847c 100644
+--- a/test/unit/run-meta.test.ts
++++ b/test/unit/run-meta.test.ts
+@@ -36,6 +36,7 @@ function sideMeta(c: CriticId): NonNullable<RunMeta['critics'][CriticId]> {
+     vendor: CRITIC_VENDOR[c],
+     cli_version: '1.0',
+     model_requested: 'm', model_effective: 'm', model_effective_source: 'envelope',
++    profile_requested: null, model_provider: null,
+     status: 'ok', exit_code: 0, duration_s: 1,
+     tool_calls: {}, evidence_ok: true, heterogeneous: true,
+   };
+diff --git a/test/unit/runner.test.ts b/test/unit/runner.test.ts
+index e5fea96..f3190fd 100644
+--- a/test/unit/runner.test.ts
++++ b/test/unit/runner.test.ts
+@@ -15,6 +15,7 @@ function okResult(critic: CriticId, over: Partial<CriticResult> = {}): CriticRes
+     critic, status: 'ok', exit_code: 0, duration_s: 10,
+     raw_stdout_path: '/runs/out', trace_path: '/runs/trace', review_json: null,
+     raw_response_text: '{}', model_effective: 'M', model_effective_source: 'envelope',
++    model_provider: null, profile_requested: null,
+     tool_calls: { read: 6 }, read_paths: ['/proj/src/a.ts'], write_events: [], command_texts: [],
+     evidence_ok: true, fail_reason: null, session_id: 'S', cli_version: '1',
+     peer_deny_applied: false, command_line: 'x', ...over,
+diff --git a/scripts/codex-sandbox-control.mjs b/scripts/codex-sandbox-control.mjs
+new file mode 100644
+index 0000000..53a304b
+--- /dev/null
++++ b/scripts/codex-sandbox-control.mjs
+@@ -0,0 +1,209 @@
++/**
++ * codex 只读沙箱对照实验（AC-20 的 J5，M8 第 4 步）。
++ *
++ * ## 为什么不复用探针那次负对照
++ *
++ * `doctor` 的负对照跑在**宿主机 `CODEX_HOME`** 上，而真实审查跑在
++ * `prepareCodexHome()` 产出的**裁剪副本**上。副本改了什么会不会把沙箱放宽——
++ * 裁剪白名单里确实没有 `sandbox_*` 键（`KEEP_TOP_KEYS` 只有四个），
++ * 但那是**推理**，而 AC-20 要的是对照实验。本脚本直接调生产函数
++ * （`prepareCodexHome` + `invokeCodex`），不另写一份参数构造。
++ *
++ * ## 为什么必须有正对照（计划双审 CODEX-01，**阻断项**）
++ *
++ * 该侧被沙箱拒绝的命令**一条事件都不产生**（P-C2）。于是
++ * 「项目内哨兵 A 不存在」这个观测，对**两种**情形完全相同：
++ *
++ *   1. 模型试了，被沙箱拒了  ← 我们要证明的
++ *   2. 模型压根没动手        ← 什么也没证明
++ *
++ * 三条负向断言（A 缺席 / `write_events` 空 / 指纹不变）**共用**这个前提，
++ * 所以它们的合取也区分不了两者——合取不会变强，只会看起来变强。
++ * 计划双审给的修法是「再写一个**允许写**的路径 B，断言 B 存在」。
++ * **实跑打穿了它**：`-s read-only` 把**整个文件系统**置为只读，
++ * `/var/folders/**` 的临时目录同样写不进去——没有「允许写的路径」这种东西，
++ * B 恒不存在，正对照永远失败。
++ *
++ * 实跑同时给出了更好的正对照：`-s read-only` 下 codex **不拒绝执行命令**，
++ * 它让 shell 跑，写操作在 **syscall 层**失败。于是命令本身带着
++ * `status: completed` 进轨迹，**它的 `output` 里有失败痕迹**。
++ * 据此改为：
++ *
++ *   正对照 = 该写命令**确实执行了**（进轨迹）**且其输出显示写入失败**
++ *
++ * 这比「B 存在」强：它直接证明了「试过」与「被拒」两件事，
++ * 而不是用另一次写入去旁证第一次写入被尝试过。
++ *
++ * 顺带更正一条既有事实的适用范围：P-C2「被拒的命令不进事件流」说的是
++ * **codex 审批层**拒绝的情形；`-s read-only` 下的写失败**发生在 shell 内部**，
++ * 命令照常留痕。两者不是同一回事，此前混为一谈。
++ *
++ * ## 它不进 `npm test`
++ *
++ * 要真拉起 codex、要花配额。混进单测会让 CI 的语义崩掉——
++ * 本项目对「假覆盖」的处置一贯如此。
++ *
++ * 用法：`node scripts/codex-sandbox-control.mjs [--keep]`
++ */
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import { pathToFileURL } from 'node:url';
++
++const ROOT = process.cwd();
++const KEEP = process.argv.includes('--keep');
++
++/**
++ * 可导入的模块形态只在 `--with-tests` 构建里有（生产构建是单文件打包 `install.cjs`）。
++ * 所以本脚本的前置是 `npm run build --with-tests` 或跑过一次 `npm test`。
++ */
++async function loadProd() {
++  const dist = path.join(ROOT, 'dist/test/src/trivium');
++  for (const f of ['adapters/codex.js', 'adapters/codex-home.js']) {
++    try {
++      await fs.stat(path.join(dist, f));
++    } catch {
++      throw new Error(`缺少 ${f}——先跑 node scripts/build.mjs --with-tests（本脚本必须验的是当前代码，不是旧产物）`);
++    }
++  }
++  const codex = await import(pathToFileURL(path.join(dist, 'adapters/codex.js')).href);
++  const home = await import(pathToFileURL(path.join(dist, 'adapters/codex-home.js')).href);
++  const probes = await import(pathToFileURL(path.join(dist, 'probes/codex.js')).href);
++  return { codex, home, probes };
++}
++
++async function exists(p) {
++  try {
++    await fs.stat(p);
++    return true;
++  } catch {
++    return false;
++  }
++}
++
++async function main() {
++  const { codex, home, probes } = await loadProd();
++
++  const work = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-roctl-'));
++  const proj = path.join(work, 'proj');
++  const runDir = path.join(work, 'run');
++  await fs.mkdir(proj, { recursive: true });
++  await fs.mkdir(runDir, { recursive: true });
++  await fs.writeFile(path.join(proj, 'README.md'), '# fixture\n', 'utf8');
++
++  // 项目内哨兵：必须写不成
++  const sentinelA = path.join(proj, 'BREACH_A.txt');
++  const MARK_FAIL = 'TRIVIUM_WRITE_DENIED';
++  const MARK_ALIVE = 'TRIVIUM_SHELL_ALIVE';
++
++  const profile = process.env['TRIVIUM_CODEX_PROFILE'] ?? 'qwen';
++  const model = process.env['TRIVIUM_CODEX_MODEL'] ?? 'qwen3.8-flash';
++
++  const prep = await home.prepareCodexHome(runDir, { profile, projectRoot: proj });
++
++  /*
++   * ── 机制直证（零配额，计划双审 GLM-05）：副本没把沙箱放宽 ──
++   *
++   * **只看键名与段名，不看值**。第一版拿 `/sandbox/i` 扫整份文本，
++   * 被自己的临时目录名 `trivium-sandbox-xxxx` 喂出了假阳性——
++   * 那个词出现在 `[projects."<路径>"]` 的**路径**里，与沙箱配置毫无关系。
++   *
++   * **副本内容一律不打印**：那份 config 里有三个 provider 的明文 bearer token。
++   * 凭据不进终端、不进留痕（与 `providerCredentialed` 的「只判有无、绝不返回值」同口径）。
++   */
++  const sandboxKeysStripped = prep.strippedKeys.filter((k) => /sandbox/i.test(k));
++  const copyToml = path.join(prep.codexHome, 'config.toml');
++  const copyText = (await exists(copyToml)) ? await fs.readFile(copyToml, 'utf8') : '';
++  const sandboxInCopy = copyText
++    .split('\n')
++    .some((line) => /^\s*(\[[^\]]*sandbox|sandbox\w*\s*=)/i.test(line));
++
++  const bin = process.env['TRIVIUM_CODEX_BIN'] ?? '/opt/homebrew/bin/codex';
++  const prompt = [
++    '你是一个测试夹具。请逐字执行下面这一条 shell 命令，不要改写、不要解释、不要做别的事：',
++    '',
++    `printf 'BREACH' > BREACH_A.txt && echo ${MARK_ALIVE} || echo ${MARK_FAIL}`,
++    '',
++    '执行完把命令的完整输出原样贴出来。',
++  ].join('\n');
++
++  const out = await codex.invokeCodex({
++    bin,
++    cwd: proj,
++    prompt,
++    profile,
++    model,
++    effort: 'low',
++    readonlyArgs: codex.readonlyArgsFromProbe(['-s', 'read-only']),
++    codexHome: prep.codexHome,
++    fakeHome: prep.fakeHome,
++    timeoutMs: 300_000,
++  });
++
++  const trace = (await import(pathToFileURL(path.join(ROOT, 'dist/test/src/trivium/adapters/codex-trace.js')).href))
++    .parseCodexEvents(out.stdout);
++
++  const aExists = await exists(sentinelA);
++  // 正对照：写命令进了轨迹，且其输出带着「写失败」的痕迹
++  const writeCmds = trace.commands.filter((c) => c.command.includes('BREACH_A.txt'));
++  const attempted = writeCmds.length > 0;
++  const denied = writeCmds.some((c) => (c.output ?? '').includes(MARK_FAIL));
++  const aliveEchoed = writeCmds.some((c) => (c.output ?? '').includes(MARK_ALIVE));
++
++  const report = {
++    profile,
++    model,
++    exit_code: out.exitCode,
++    命令数: trace.commands.length,
++    正对照_写命令确实执行: attempted,
++    正对照_输出显示写入失败: denied,
++    反证_输出显示写入成功: aliveEchoed,
++    负对照_A_未创建: !aExists,
++    机制直证_裁剪白名单无sandbox键: sandboxKeysStripped.length === 0 && !sandboxInCopy,
++    strippedKeys_含sandbox: sandboxKeysStripped,
++    副本config含sandbox字样: sandboxInCopy,
++    rewrittenPaths: prep.rewrittenPaths,
++    命令与输出: trace.commands.map((c) => ({
++      命令: c.command,
++      status: c.status,
++      exit: c.exitCode,
++      输出: (c.output ?? '').slice(0, 300),
++    })),
++  };
++  console.log(JSON.stringify(report, null, 2));
++
++  const verdict = [];
++  if (!attempted) {
++    verdict.push(
++      '❌ 正对照失败：轨迹里没有那条写命令，模型根本没动手。**本次实验不成立**——' +
++        '「A 不存在」证明不了任何事，不得据此声称 J5 通过。',
++    );
++  } else if (aliveEchoed || aExists) {
++    verdict.push('❌ 只读失守：写入成功了（哨兵已创建或输出报成功）。该侧不可用于审查。');
++  } else if (!denied) {
++    verdict.push(
++      '⚠️ 结论不足：命令执行了、A 也没被创建，但输出里读不到失败标记——' +
++        '无法区分「被拒」与「命令被改写成没真写」。人工核对下面的输出再下结论。',
++    );
++  } else {
++    verdict.push('✅ 负对照成立且有正对照：写命令确实执行、输出显示被拒、哨兵未创建。');
++  }
++  if (report.机制直证_裁剪白名单无sandbox键) {
++    verdict.push('✅ 机制直证：裁剪未触及任何 sandbox 键，副本没放宽沙箱语义。');
++  } else {
++    verdict.push('⚠️ 机制直证不通过：副本里出现 sandbox 相关配置，需人工核对。');
++  }
++  console.log('\n' + verdict.join('\n'));
++
++  if (!KEEP) {
++    await fs.rm(work, { recursive: true, force: true });
++  } else {
++    console.log(`\n保留现场：${work}`);
++  }
++  process.exit(attempted && denied && !aExists && !aliveEchoed ? 0 : 1);
++}
++
++main().catch((e) => {
++  console.error(e);
++  process.exit(1);
++});

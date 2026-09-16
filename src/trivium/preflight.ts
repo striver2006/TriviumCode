@@ -300,6 +300,14 @@ export function checkModelSlugs(
   const bad: string[] = [];
   /** 无法校验的侧：**不判失败，但必须说出来**（详见 checkModelAgainstCatalog） */
   const unverifiable = new Set<string>();
+  /**
+   * **校验了、但用的不是本该用的那份目录**的侧。
+   *
+   * 与 `unverifiable` 分开记：那个是「没比对」，这个是「比对了，只是比的是回落来源」。
+   * 两者都不判失败，但都不能静默——一次目录采集失败若无声无息地回落，
+   * 用户看到的是一模一样的「✓ 模型 slug 合法」（代码双审 CODEX-01）。
+   */
+  const fellBack = new Set<string>();
 
   for (const stage of scopeStages(scope)) {
     for (const critic of critics) {
@@ -311,6 +319,7 @@ export function checkModelSlugs(
       const r = checkModelAgainstCatalog(cfg, critic, routed.model);
       if (r.kind === 'bad') bad.push(`${critic}/${stage}: ${r.detail}`);
       else if (r.kind === 'unverifiable') unverifiable.add(`${critic}（${r.why}）`);
+      else if (r.note) fellBack.add(r.note);
     }
   }
 
@@ -322,16 +331,20 @@ export function checkModelSlugs(
   return {
     name: '模型 slug 合法',
     ok: true,
-    detail:
-      unverifiable.size === 0
-        ? scale
-        : `${scale}\n  ⚠️ 其中无模型目录可比对、未实际校验：${[...unverifiable].join('、')}`,
+    detail: [
+      scale,
+      ...(unverifiable.size > 0
+        ? [`  ⚠️ 其中无模型目录可比对、未实际校验：${[...unverifiable].join('、')}`]
+        : []),
+      ...(fellBack.size > 0 ? [`  ⚠️ 其中已回落到基底目录校验：${[...fellBack].join('、')}`] : []),
+    ].join('\n'),
   };
 }
 
 /** 单侧模型 slug 的比对结论。三态，**「无法校验」与「通过」分开记** */
 type CatalogCheck =
-  | { kind: 'ok' }
+  /** `note` 非空表示「校验过了，但用的不是本该用的那份目录」——回落要说出来，不能静默 */
+  | { kind: 'ok'; note?: string | undefined }
   | { kind: 'bad'; detail: string }
   | { kind: 'unverifiable'; why: string };
 
@@ -377,19 +390,54 @@ function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string):
   const cliName = a?.cliName ?? null;
   // 文案用 display（用户看的是「ZCode」不是「zcode」），索引用 cliName
   const label = a?.display ?? critic;
-  const models = (cliName ? cfg.probe.cli[cliName]?.models : null) ?? [];
+
+  /*
+   * **目录随配置分层的侧，先问它自己**（M8 第 4 步，计划双审 CODEX-05）。
+   *
+   * `probe.models` 是**单一**列表，对 codex 取自基底 `config.toml` 的目录；
+   * 而它的目录随 `-p` 分层。拿基底那份校验别的 profile 会**两个方向都错**：
+   * 误杀该 profile 自己的默认模型、误放只在基底目录里的 slug——后者要到
+   * `turn.failed` 才被端点拒，而预检存在的全部理由就是把这类失败挡在花钱之前（AC-16）。
+   *
+   * 钩子缺席即回落 `probe.models`，既有两家行为逐字不变。
+   */
+  const scoped = realAdapters()[critic]?.catalogModelsFor?.(cfg) ?? null;
+  if (scoped?.kind === 'unverifiable') {
+    return { kind: 'unverifiable', why: `${label}：${scoped.why}` };
+  }
+  /*
+   * `fallback` 与 `unverifiable` **必须分开处置**（代码双审 CODEX-01）：
+   * 前者是「没测到」——回落基底目录**照常校验**，只是把回落这件事说出来；
+   * 后者是「测出来没有」——没有可比对的东西，如实记无法校验。
+   * 合成一格的后果是一次子进程失败静默变成放行。
+   */
+  const probeModels = (cliName ? cfg.probe.cli[cliName]?.models : null) ?? [];
+  const models = scoped?.kind === 'catalog' ? scoped.models : probeModels;
   if (models.length === 0) {
-    return { kind: 'unverifiable', why: `探针未记录 ${label} 模型目录` };
+    return {
+      kind: 'unverifiable',
+      why: scoped?.kind === 'fallback' ? `${label}：${scoped.why}，而基底目录也是空的` : `探针未记录 ${label} 模型目录`,
+    };
   }
 
   const normalized = realAdapters()[critic]?.normalizeModelForCatalog?.(cfg, model) ?? model;
   const short = normalized.includes('/') ? (normalized.split('/').pop() ?? normalized) : normalized;
 
+  const where = scoped?.kind === 'catalog' ? scoped.source : `${label} 模型目录`;
+  // 前面留一个空格：既有断言按「不在 ZCode 模型目录中」的原文匹配，去掉会静默破坏它
   return models.some((m) => m === model || m === normalized || m === short)
-    ? { kind: 'ok' }
+    ? { kind: 'ok', note: scoped?.kind === 'fallback' ? `${label}：${scoped.why}` : undefined }
     : {
         kind: 'bad',
-        detail: `模型「${model}」不在 ${label} 模型目录中。可用值：${models.join(', ')}`,
+        /*
+         * **回落时要在报错里说清楚**（代码双审 CODEX-08）：
+         * 上一版这一路只写「不在 <label> 模型目录中，可用值：…」并列出**基底**名单，
+         * 只字不提「本该用该 profile 的目录而采集失败」。用户照报错去基底名单里挑模型，
+         * 而端点实际执行的是 profile 目录——误杀方向的新误导。
+         */
+        detail:
+          (scoped?.kind === 'fallback' ? `${scoped.why}；` : '') +
+          `模型「${model}」不在 ${where}中。可用值：${models.join(', ')}`,
       };
 }
 

@@ -164,6 +164,9 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
     raw_response_text: sampleReview(critic, n),
     model_effective: spec.modelEffective ?? req.model,
     model_effective_source: 'envelope',
+    // 桩不模拟厂商事实：这两个字段的真实形态只有真适配器才产得出（AC-24 的证明边界）
+    model_provider: null,
+    profile_requested: null,
     tool_calls: { read: 6, grep: 2, glob: 1, run_command: 0 },
     // 4 条项目内读取：min_project_reads 默认下限是 3，留一点余量
     read_paths: [

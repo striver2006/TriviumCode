@@ -114,6 +114,83 @@ test('模型清单为空时不误判（探针未采集到就跳过该项）', as
   assert.equal(checkModelSlugs(ctx.config, 'plan', { gemini: 'anything' }).ok, true);
 });
 
+// ───────── 预检怎么**消费**逐 profile 目录（代码双审 CODEX-04：此前零断言） ─────────
+
+/**
+ * 上一版只锁了适配器钩子本身，**没锁预检有没有用上它**：
+ * 把 `preflight.ts` 里调用 `catalogModelsFor` 的那两行删掉，全部用例照样绿——
+ * 变异报红的那两条红在适配器侧。「钩子对」有锁，「钩子被用上」没锁。
+ */
+function codexCtxWith(
+  profile: string | null,
+  byProfile: Record<string, string[]>,
+  baseModels: string[],
+  errors: Record<string, string> = {},
+) {
+  return async () => {
+    const ctx = await fakeCtx((c) => {
+      (c.agents as Record<string, unknown>)['codex'] = {
+        vendor: 'openai', bin: null, profile,
+        effort: { plan: 'high', code: 'high', bug: 'high' },
+      };
+      c.probe.cli.codex!.models = baseModels;
+      c.probe.cli.codex!.models_visible = baseModels;
+      c.probe.cli.codex!.models_by_profile = byProfile;
+      c.probe.cli.codex!.models_by_profile_errors = errors;
+    });
+    return ctx;
+  };
+}
+
+test('预检：只在基底目录里的 slug，按本 profile 的目录判非法并点名', async () => {
+  /*
+   * 这正是 E-4 的「误放」：`qwen3.8-max` 在基底目录里，但 deepseek 端点不供它——
+   * 上一版预检放行，到 turn.failed 才失败，违背 AC-16「把失败挡在花钱之前」。
+   */
+  const ctx = await codexCtxWith('deepseek', { deepseek: ['deepseek-flash'] }, ['qwen3.8-max'])();
+  const r = checkModelSlugs(ctx.config, 'plan', { codex: 'qwen3.8-max' }, ['codex']);
+  assert.equal(r.ok, false, '预检必须拦住它，而不是留给端点拒');
+  assert.match(r.detail, /deepseek/, '报错要指名是按哪个 profile 的目录判的');
+});
+
+test('预检：该 profile 自己的默认模型必须放行（误杀方向）', async () => {
+  // deepseek-flash 不在基底（qwen）目录里——上一版会把这个本可跑通的配置拒掉
+  const ctx = await codexCtxWith('deepseek', { deepseek: ['deepseek-flash'] }, ['qwen3.8-max'])();
+  assert.equal(checkModelSlugs(ctx.config, 'plan', { codex: 'deepseek-flash' }, ['codex']).ok, true);
+});
+
+test('预检：目录采集失败 → 回落基底校验，且把回落这件事说出来', async () => {
+  /*
+   * 代码双审 CODEX-01 的预检侧锁例：失败不得静默变成放行，
+   * 也不得静默变成「按基底判」——两者都要在输出里看得见。
+   */
+  const ctx = await codexCtxWith('deepseek', {}, ['qwen3.8-max'], { deepseek: 'debug models 退 1' })();
+  const r = checkModelSlugs(ctx.config, 'plan', { codex: 'qwen3.8-max' }, ['codex']);
+  assert.equal(r.ok, true, '回落之后基底目录里有它，照常通过');
+  assert.match(r.detail, /回落/, '回落必须出现在预检输出里，不能静默');
+  assert.match(r.detail, /退 1/, '要带上真实原因');
+});
+
+test('预检：回落后仍判非法时，报错要说清是回落（bad × fallback 组合）', async () => {
+  /*
+   * 代码双审 CODEX-08：上一版这一路只写「不在 <label> 模型目录中，可用值：…」并列出**基底**名单，
+   * 只字不提「本该用该 profile 的目录而采集失败」。用户照报错去基底名单里挑模型，
+   * 而端点执行的是 profile 目录——误杀方向的新误导。四条新锁例都走 ok/unverifiable，
+   * 这一格此前无用例。
+   */
+  const ctx = await codexCtxWith('deepseek', {}, ['qwen3.8-max'], { deepseek: 'debug models 退 1' })();
+  const r = checkModelSlugs(ctx.config, 'plan', { codex: 'nope-not-there' }, ['codex']);
+  assert.equal(r.ok, false);
+  assert.match(r.detail, /退 1/, '报错要先说清本次是回落，再说不在名单里');
+});
+
+test('预检：该 profile 渲染不出目录 → 记「未实际校验」，与回落分开表述', async () => {
+  const ctx = await codexCtxWith('gpt', { gpt: [], qwen: ['qwen3.8-max'] }, ['qwen3.8-max'])();
+  const r = checkModelSlugs(ctx.config, 'plan', { codex: 'anything' }, ['codex']);
+  assert.equal(r.ok, true);
+  assert.match(r.detail, /未实际校验/);
+});
+
 test('profile 缺该阶段模型时报不合格', async () => {
   const ctx = await fakeCtx((c) => {
     c.profiles['bare'] = { gemini: {} };

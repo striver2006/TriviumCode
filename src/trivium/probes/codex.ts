@@ -134,17 +134,65 @@ export function providerCredentialed(
   providerId: string,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean | null {
-  const head = `[model_providers.${providerId}]`;
-  const start = text.indexOf(head);
-  if (start < 0) return null;
-  const rest = text.slice(start + head.length);
-  const end = rest.indexOf('\n[');
-  const body = end < 0 ? rest : rest.slice(0, end);
+  const body = providerSectionBody(text, providerId);
+  if (body === null) return null;
 
   if (/^\s*(experimental_bearer_token|api_key)\s*=\s*["'].+["']/m.test(body)) return true;
   const envKey = /^\s*env_key\s*=\s*["'](.+?)["']/m.exec(body);
   if (envKey && env[envKey[1]!]) return true;
   return false;
+}
+
+/**
+ * 切出 `[model_providers.<id>]` 段的正文，段不存在返回 `null`。
+ *
+ * 抽出来是因为下面的 `providerBaseUrl` 要切同一段——两份实现会漂移，
+ * 而本主题已经为「同一个问题两个答案」付过账（M8 第 3 步的 `process.execPath`
+ * 与 `cfg.runtime.node` 两种口径）。
+ */
+function providerSectionBody(text: string, providerId: string): string | null {
+  const head = `[model_providers.${providerId}]`;
+  const start = text.indexOf(head);
+  if (start < 0) return null;
+  const rest = text.slice(start + head.length);
+  const end = rest.indexOf('\n[');
+  return end < 0 ? rest : rest.slice(0, end);
+}
+
+/**
+ * 某个 provider 段的 `base_url`（**endpoint，不是凭据**）。
+ *
+ * AC-20 要「至少两个模型家族」，而 provider **id** 互异证明不了 endpoint 互异：
+ * 两个不同的 `[model_providers.X]` 段可以指向同一个 base_url 与同一套凭据，
+ * 此时两次运行的 provider 名不同、模型不同、判据全绿，打的却是同一个端点
+ * （计划双审 CODEX-03）。
+ *
+ * **只取 `base_url` 一个键**：段里还有凭据，整段哈希或整段外泄都违反
+ * 「凭据不进探针结论」的既定口径（见 `providerCredentialed` 的文档块）。
+ */
+export function providerBaseUrl(text: string, providerId: string): string | null {
+  const body = providerSectionBody(text, providerId);
+  if (body === null) return null;
+  const raw = /^\s*base_url\s*=\s*["'](.+?)["']/m.exec(body)?.[1] ?? null;
+  return raw === null ? null : baseUrlHost(raw);
+}
+
+/**
+ * 把 `base_url` 归一到 **host**，落盘的就已经是归一后的值。
+ *
+ * 判据只需要「两侧 endpoint 是不是同一个」，而 URL 的 userinfo
+ * （`https://user:token@host/v1`）与 query 都是承载凭据的常见形态——
+ * 原串入库等于把凭据面扩到 `config.local.yaml` 与 doctor 输出（代码双审 CODEX-06）。
+ *
+ * 解析不了就**整串丢弃返回 null**，不做「尽力截一段」：判不出 host 时
+ * 留一段来路不明的原串，既无消费方又把刚收窄的凭据面重新打开。
+ */
+export function baseUrlHost(raw: string): string | null {
+  try {
+    return new URL(raw).host || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -189,42 +237,111 @@ export async function probeCodexProviders(
       if (hits.some((h) => h === true)) credentialed = true;
       else if (hits.every((h) => h === null)) credentialed = await exists(path.join(home, 'auth.json'));
     }
-    out.push({ profile, provider, model, credentialed });
+    // endpoint 归属：两份 toml 任一给出即可（分层是叠加），profile 层优先
+    const baseUrl = provider
+      ? (providerBaseUrl(text, provider) ?? providerBaseUrl(baseText, provider))
+      : null;
+    out.push({ profile, provider, model, credentialed, base_url: baseUrl });
   }
   return out;
 }
 
 /**
- * 模型目录：`codex debug models --json`。
+ * 模型目录：`codex debug models`（**不带 `--json`**——0.154.0 会报
+ * `unexpected argument '--json' found`；该子命令本就输出 JSON。
+ * 本文档块原写「`--json`」而代码从未传过，M8 第 4 步实跑更正）。
  *
  * **零配额**——它只渲染本地目录文件，不调模型。`-c model_catalog_json=<路径>`
  * 能换目录，这既是 `model_catalog` 的探法，也顺带证明 `-c` 真的生效。
+ *
+ * ## 为什么要分 `models` 与 `visible` 两份
+ *
+ * 实测：`-p deepseek -m qwen3.8-max` 被**端点**拒绝，报错逐字列出
+ * 「The supported API model names are deepseek-flash, deepseek-v4-pro」——
+ * 恰是该目录的**可见项**（该文件共 4 条，另两条 `visibility: "hide"`）。
+ * 而渲染输出与目录文件一样**含隐藏项**（本机基底目录 7 条里 `gpt-reserve` 与
+ * `codex-auto-review` 都是 hide）。拿全集当判据会放行隐藏项、复制 E-4 的误放
+ * （计划双审 CODEX-04——它的结论对，但归因于「渲染时过滤」，实测并非如此）。
+ *
+ * **「端点合法名单 ＝ 可见项」这条等式来自 n=1 实测，不是厂商承诺**，
+ * 所以它只用于**预检收紧**，不用于任何放行判断。
  */
+export interface CodexCatalogLists {
+  /** 目录里的全部 slug（**含隐藏项**），人读与既有消费面用 */
+  models: string[];
+  /** 其中 `visibility !== 'hide'` 的部分——端点合法名单的近似，判据用 */
+  visible: string[];
+  efforts: Record<string, string[]>;
+}
+
+/**
+ * 目录 JSON 文本 → 三份清单。**纯函数，与子进程分离**。
+ *
+ * 抽出来是因为 `visibility` 过滤是 P-25 缓解的核心机制，而它此前**没有任何用例咬得住**：
+ * 新增用例全部经构造好的数据进消费方，删掉这一行过滤不会红任何一条
+ * （代码双审 GLM-04——「加了守卫不等于守卫被守着」的又一实例）。
+ * 现在它可单测。
+ *
+ * 解析不了返回 `null`——**与「解析出来是空目录」不是一回事**，调用方必须分开处置。
+ */
+export function parseCodexModelCatalog(stdout: string): CodexCatalogLists | null {
+  let parsed: {
+    models?: {
+      slug?: string;
+      visibility?: string;
+      supported_reasoning_levels?: { effort?: string }[];
+    }[];
+  };
+  try {
+    parsed = JSON.parse(stdout) as typeof parsed;
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+
+  const models: string[] = [];
+  const visible: string[] = [];
+  const efforts: Record<string, string[]> = {};
+  for (const m of parsed.models ?? []) {
+    if (!m.slug) continue;
+    models.push(m.slug);
+    // 字段缺失按可见处理：宁可少拦一个，也不因厂商加字段而把全表判成不可用
+    if (m.visibility !== 'hide') visible.push(m.slug);
+    efforts[m.slug] = (m.supported_reasoning_levels ?? [])
+      .map((e) => e.effort)
+      .filter((e): e is string => Boolean(e));
+  }
+  return { models, visible, efforts };
+}
+
+/**
+ * 一次目录采集的结果。**「采集失败」与「采集到一份空目录」是两件事**。
+ *
+ * 上一版对三种情形返回同一个空对象（子进程非零退出 / stdout 不可解析 / 目录确实为空），
+ * 消费方把这个空读成「确认没有目录」→ 记「无法校验」→ **放行**。
+ * 于是一次 `debug models` 失败（超时、CLI 升级、目录文件被改——P-27 已证它是活的）
+ * 就把刚建起来的 slug 拦截静默降级成 fail-open，**而给出的原因还是编的**
+ * （文案断言「该机可能未配置 model_catalog_json」，数据支撑不了）。
+ * 代码双审 CODEX-01 指出这一点；本类型是它的落点。
+ */
+export type CodexCatalogProbe =
+  | ({ ok: true } & CodexCatalogLists)
+  | { ok: false; why: string };
+
 export async function probeCodexModels(
   bin: string,
   catalogPath: string | null,
-): Promise<{ models: string[]; efforts: Record<string, string[]> }> {
+): Promise<CodexCatalogProbe> {
   const args = ['debug', 'models'];
   if (catalogPath) args.push('-c', `model_catalog_json=${catalogPath}`);
   const r = await run(bin, args, { timeoutMs: 60_000 });
-  if (r.code !== 0) return { models: [], efforts: {} };
-  try {
-    const parsed = JSON.parse(r.stdout) as {
-      models?: { slug?: string; supported_reasoning_levels?: { effort?: string }[] }[];
-    };
-    const models: string[] = [];
-    const efforts: Record<string, string[]> = {};
-    for (const m of parsed.models ?? []) {
-      if (!m.slug) continue;
-      models.push(m.slug);
-      efforts[m.slug] = (m.supported_reasoning_levels ?? [])
-        .map((e) => e.effort)
-        .filter((e): e is string => Boolean(e));
-    }
-    return { models, efforts };
-  } catch {
-    return { models: [], efforts: {} };
+  if (r.code !== 0) {
+    const tail = (r.stderr || r.stdout || '').trim().split('\n').pop() ?? '';
+    return { ok: false, why: `codex debug models 退 ${r.code}${tail ? `：${tail.slice(0, 120)}` : ''}` };
   }
+  const lists = parseCodexModelCatalog(r.stdout);
+  if (!lists) return { ok: false, why: 'codex debug models 的输出不是可解析的 JSON' };
+  return { ok: true, ...lists };
 }
 
 /**
@@ -563,6 +680,9 @@ export async function probeCodex(
         config_override: null,
         effort_validated: null,
         model_catalog_path: null,
+        models_by_profile: {},
+        models_visible: [],
+        models_by_profile_errors: {},
       };
 
   const { bin, version } = await probeCodexBin(configuredBin);
@@ -596,12 +716,51 @@ export async function probeCodex(
   );
 
   const catalog = await probeCodexModels(bin, null);
-  probe.models = catalog.models;
-  notes.push(
-    catalog.models.length > 0
-      ? `模型目录 ${catalog.models.length} 个：${catalog.models.slice(0, 6).join('、')}…`
-      : '⚠️ `codex debug models` 未返回任何模型',
-  );
+  if (catalog.ok) {
+    probe.models = catalog.models;
+    probe.models_visible = catalog.visible;
+    notes.push(
+      catalog.models.length > 0
+        ? `模型目录 ${catalog.models.length} 个（可见 ${catalog.visible.length} 个）：` +
+            `${catalog.visible.slice(0, 6).join('、')}…`
+        : '⚠️ `codex debug models` 渲染成功但目录为空',
+    );
+  } else {
+    // 采集失败 ≠ 目录为空：不动既有结论，并且**说出来**（代码双审 CODEX-01）
+    notes.push(`⚠️ 基底模型目录采集失败，保留上一次结论：${catalog.why}`);
+  }
+
+  /*
+   * 逐 profile 再采一遍（M8 第 4 步，计划双审 CODEX-05）。
+   *
+   * **零配额**：`debug models` 只渲染本地文件。每个 profile 一次子进程，
+   * 本机 4 个 profile 合计不到一秒。
+   *
+   * 为什么不能只留上面那份基底目录：目录随 `-p` 分层，拿基底去校验别的 profile
+   * 两个方向都会错（见 `CodexProbe.models_by_profile` 的文档块）。
+   * 这一步同时替下面的 profile 选择省掉重复的子进程调用。
+   */
+  probe.models_by_profile = {};
+  probe.models_by_profile_errors = {};
+  for (const name of probe.profiles) {
+    const c = await probeCodexModels(bin, await readCatalogPath(name));
+    if (c.ok) probe.models_by_profile[name] = c.visible;
+    else probe.models_by_profile_errors[name] = c.why;
+  }
+  {
+    const okList = Object.entries(probe.models_by_profile);
+    const failed = Object.entries(probe.models_by_profile_errors);
+    notes.push(
+      okList.length > 0
+        ? `逐 profile 可见模型：${okList.map(([k, v]) => `${k}→${v.length}`).join('、')}` +
+            '（预检按本次 profile 的这一份校验，不再拿基底目录顶替）'
+        : '⚠️ 没有任何 profile 渲染出模型目录',
+    );
+    // **逐个点名**：单个 profile 采集失败此前一声不吭，而它会让该 profile 的 slug 校验回落
+    for (const [name, why] of failed) {
+      notes.push(`⚠️ profile「${name}」的模型目录采集失败：${why}（该 profile 的 slug 校验将回落基底目录）`);
+    }
+  }
 
   probe.path_deny = await probeCodexPathDeny(bin);
 
@@ -630,8 +789,9 @@ export async function probeCodex(
     let probeProfile: string | null = null;
     let probeModel: string | null = null;
     for (const name of probe.profiles) {
-      const catalog = await readCatalogPath(name);
-      const { models } = await probeCodexModels(bin, catalog);
+      // 复用上面采好的逐 profile 结论，不重复拉子进程（同一事实只算一次）。
+      // 采集失败的 profile 在这张表里没有条目 ⇒ 自然跳过，与「目录为空」同样不可用
+      const models = probe.models_by_profile[name] ?? [];
       const usable = models.find((m) => m === PROBE_MODEL) ?? models[0];
       if (usable) {
         probeProfile = name;
@@ -883,7 +1043,23 @@ async function readCatalogPath(profile: string | null): Promise<string | null> {
   };
   if (profile) {
     const fromProfile = await readKey(path.join(home, `${profile}.config.toml`));
-    if (fromProfile) return fromProfile;
+    if (fromProfile) return expandHome(fromProfile);
   }
-  return readKey(path.join(home, 'config.toml'));
+  const base = await readKey(path.join(home, 'config.toml'));
+  return base === null ? null : expandHome(base);
+}
+
+/**
+ * 展开前导 `~/`。
+ *
+ * 这些路径会原样进 `-c model_catalog_json=<路径>`。**实测 codex 会展开它**——
+ * 依据是本机四个 profile 渲染出互不相同的清单（2 / 3 / 4 / 5 条），
+ * 而基底目录是 7 条：若 `~` 没被展开、全部回落默认渲染，四份应当一模一样
+ * （代码双审 CODEX-06 担心的正是这个失效形态，该数据是它的反证）。
+ *
+ * 仍然显式展开：那条行为没有厂商文档背书，我们等于在依赖一个未记录的实现细节，
+ * 而展开既不花钱也把这层依赖去掉了。
+ */
+function expandHome(p: string): string {
+  return p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p;
 }

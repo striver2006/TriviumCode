@@ -3,7 +3,7 @@
   "topic": "M8-Codex审核者接入",
   "goal": "让适配层契约能表达「读即命令」这一族能力形状，使证据下限核验、consulted 交叉核对、只读失守判定三个消费方只面对能力声明而非 Agent id，为第 3 步 codex 接入扫清契约障碍；既有两家判定结果逐项不变",
   "created_at": "2026-09-15T00:48:06.019Z",
-  "updated_at": "2026-09-15T16:10:13.970Z",
+  "updated_at": "2026-09-16T08:06:06.033Z",
   "runs": [
     {
       "run_id": "20260915T004805Z",
@@ -108,13 +108,45 @@
       "status": "success",
       "review_mode": "full",
       "started_at": "2026-09-15T15:36:03.769Z"
+    },
+    {
+      "run_id": "20260915T235850Z",
+      "stage": "plan",
+      "rerun_index": 5,
+      "status": "success",
+      "review_mode": "partial",
+      "started_at": "2026-09-15T23:58:51.083Z"
+    },
+    {
+      "run_id": "20260916T004756Z",
+      "stage": "plan",
+      "rerun_index": 6,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-16T00:47:57.232Z"
+    },
+    {
+      "run_id": "20260916T040240Z",
+      "stage": "code",
+      "rerun_index": 10,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-16T04:02:41.335Z"
+    },
+    {
+      "run_id": "20260916T054957Z",
+      "stage": "code",
+      "rerun_index": 11,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-16T05:49:57.422Z"
     }
   ],
   "gate": {
     "stage": "code",
     "state": "approved",
-    "since": "2026-09-15T16:10:13.962Z",
-    "run_id": "20260915T153603Z"
+    "since": "2026-09-16T08:06:06.025Z",
+    "run_id": "20260916T054957Z"
   },
   "approvals": [
     {
@@ -220,9 +252,48 @@
       "decision": "approved",
       "reason": null,
       "session_id": null
+    },
+    {
+      "at": "2026-09-16T00:45:54.715Z",
+      "stage": "plan",
+      "run_id": "20260915T235850Z",
+      "decision": "approved",
+      "reason": null,
+      "session_id": null
+    },
+    {
+      "at": "2026-09-16T01:14:57.834Z",
+      "stage": "plan",
+      "run_id": "20260916T004756Z",
+      "decision": "approved",
+      "reason": null,
+      "session_id": null
+    },
+    {
+      "at": "2026-09-16T05:09:23.120Z",
+      "stage": "code",
+      "run_id": "20260916T040240Z",
+      "decision": "approved",
+      "reason": null,
+      "session_id": null
+    },
+    {
+      "at": "2026-09-16T08:06:06.025Z",
+      "stage": "code",
+      "run_id": "20260916T054957Z",
+      "decision": "approved",
+      "reason": null,
+      "session_id": null
     }
   ],
-  "degradations": [],
+  "degradations": [
+    {
+      "run_id": "20260915T235850Z",
+      "stage": "plan",
+      "reason": "codex: timeout（脚本级超时（1500s））",
+      "at": "2026-09-16T00:23:51.434Z"
+    }
+  ],
   "disputed": false,
   "disputes": []
 }

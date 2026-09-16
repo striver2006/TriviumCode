@@ -92,6 +92,37 @@ codex 读文件不是调专用工具，而是**让模型跑 shell**：
 丢的是「审查员尝试过写入」这个**行为信号**：设计 §10.3
 「轨迹有写事件即判失守」对 codex 侧**恒为假**。
 
+> **🔧 适用范围更正（2026-09-16，M8 第 4 步实测）**
+>
+> 上面写的「**完全**不进事件流」**说过头了**：它只对**一种**拒绝机制成立。
+> 本步的沙箱对照实验把命令形态钉死（prompt 要求逐字执行一条 shell 命令），
+> 结果是命令**照常进事件流**：
+>
+> ```text
+> 命令: /bin/zsh -lc "printf 'BREACH' > BREACH_A.txt && echo ALIVE || echo DENIED"
+> status: completed   exit: 0
+> 输出: zsh:1: operation not permitted: BREACH_A.txt
+>       TRIVIUM_WRITE_DENIED
+> ```
+>
+> **两种机制要分开说**：
+>
+> | 拒绝发生在哪 | 触发形态 | 进不进事件流 |
+> | :--- | :--- | :--- |
+> | **codex 审批层** | 模型用内置写工具（apply_patch 等），被 `approval: never` 挡下 | **不进**——本节原观测 |
+> | **沙箱 syscall 层** | 模型跑 shell，写调用得到 `EPERM` | **进**，且失败痕迹在该命令的 `output` 里 |
+>
+> 本节原次实测里模型自己说「试过两条途径」，报的两句错误
+> （`operation not permitted` 与 `rejected by user approval settings`）
+> 恰好各对应一种——**证据当时就在手里，是归纳说过头了**。
+>
+> **判定层不用改，`rejectionRecorded: false` 仍是对的**：模型**可以**选那条不留痕的路，
+> 所以「没检出写事件」依然排除不了失守。变的是**负对照怎么设计**——
+> 既然 shell 那条路留痕，就能拿「命令进了轨迹 + 输出显示被拒」当**正对照**，
+> 而不必像计划双审 CODEX-01 提的那样另找一个「允许写的路径」
+> （`-s read-only` 下整个文件系统只读，那种路径根本不存在，实跑已证）。
+> 落点：`scripts/codex-sandbox-control.mjs`。
+
 三重叠加（工具白名单 + deny 兜底 + 指纹比对与轨迹核验）对 codex 只剩两重；
 第三重里「指纹比对」仍有效（真改了文件会被发现），失效的是「轨迹核验」那一半。
 两份录制样本已存入 `test/fixtures/codex-events/`，并有一条**锁事实**的用例守着：

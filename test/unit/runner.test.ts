@@ -15,6 +15,7 @@ function okResult(critic: CriticId, over: Partial<CriticResult> = {}): CriticRes
     critic, status: 'ok', exit_code: 0, duration_s: 10,
     raw_stdout_path: '/runs/out', trace_path: '/runs/trace', review_json: null,
     raw_response_text: '{}', model_effective: 'M', model_effective_source: 'envelope',
+    model_provider: null, profile_requested: null,
     tool_calls: { read: 6 }, read_paths: ['/proj/src/a.ts'], write_events: [], command_texts: [],
     evidence_ok: true, fail_reason: null, session_id: 'S', cli_version: '1',
     peer_deny_applied: false, command_line: 'x', ...over,
@@ -29,7 +30,7 @@ function req(critic: CriticId): CriticRequest {
     project_root: '/proj', subject_path: '/proj/s.md', deny_paths: [],
     out_dir: '/runs/x', brief_path: '/proj/b.md', brief_text: 'BRIEF',
     model: 'M', timeout_s: 900, schema_path: '/s.json',
-    min_tool_calls: 5, min_project_reads: 3,
+    min_tool_calls: 5, profile_requested: null, min_project_reads: 3,
   };
 }
 
@@ -340,4 +341,29 @@ test('入选了某侧却没有它的适配器 → 该侧记 failed 并点名，�
     /glm/,
     '报错必须点名是哪一侧缺适配器——否则排障时看到的只是一条 TypeError',
   );
+});
+
+test('兜底：适配器抛异常时，请求值仍如实入档（不得压成 null）', async () => {
+  /*
+   * 代码双审 CODEX-01：上一版这一格恒写 profile_requested: null，
+   * 把「该族没有厂商 profile 概念」与「这次抛异常没采到」压成同一个观测——
+   * 正是该字段声明「必填而非可选」要避免的那一格。
+   * 请求值来自静态配置，不需要运行成功才「走到」。
+   */
+  const throwing = {
+    critic: 'gemini' as const,
+    capability: TOOL_TRACE_CAPABILITY,
+    availability: () => ({ ok: true }),
+    run: async () => {
+      throw new Error('boom');
+    },
+  };
+  const out = await runBothSides({
+    ctx: CTX,
+    adapters: { gemini: throwing } as never,
+    requests: { gemini: { ...req('gemini'), profile_requested: 'qwen' } },
+    maxTransientRetries: 0,
+  });
+  assert.equal(out.results.gemini?.profile_requested, 'qwen', '兜底出口要从请求镜像取，不能恒 null');
+  assert.equal(out.results.gemini?.model_provider, null, '回读值确实没走到，这个该是 null');
 });

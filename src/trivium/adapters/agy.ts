@@ -372,6 +372,15 @@ export const agyAdapter: CriticAdapter = {
       raw_response_text: out.parsed.response,
       model_effective: modelEffective,
       model_effective_source: modelSource,
+      /*
+       * 两个字段对本族**恒为 null，且这是能说明理由的空**：
+       * agy 的 CLI 不暴露模型的 provider 归属（探针 `probes/agy.ts` 拿到的是
+       * 一张扁平模型目录，没有家族字段），也没有厂商 profile 这个概念
+       * （`GeminiCriticConfig` 里根本没有 `profile` 键）。
+       * 不是「没采集」——没有这种事实可采。
+       */
+      model_provider: null,
+      profile_requested: null,
       tool_calls: countTools(out.parsed),
       read_paths: readPaths(out.parsed),
       write_events: writeEvents(out.parsed),

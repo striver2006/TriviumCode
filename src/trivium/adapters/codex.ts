@@ -158,6 +158,14 @@ export function buildCodexResult(
   paths: { stdout: string; trace: string },
   probe: { version: string | null; path_deny: { supported: boolean | null } },
   projectRoot: string,
+  /**
+   * 本次请求的厂商 profile（`agents.codex.profile`）。
+   *
+   * **走入参而不是让 `run()` 事后补**：M8 第 3 步的 M4 变异证实过，
+   * 埋在 `run()` 里的字段组装没有任何用例守得到（要真跑 codex 才走得到那行）。
+   * 请求值与回读值在同一个纯函数里成对产出，单测才咬得住「谁是请求、谁是回读」。
+   */
+  profileRequested: string | null,
 ): CriticResult {
   /*
    * 写判据在这里算，不从调用方传进来：判据与它产出的两个字段绑在一处，
@@ -183,6 +191,18 @@ export function buildCodexResult(
      * 拿意图值冒充会让那条验收永远通过、永远没有意义。
      */
     model_effective_source: meta.modelEffective ? 'trace' : 'unverified',
+    /*
+     * 回读值。`parseCodexSessionMeta` 一直解析着它，而上一版把它丢了——
+     * 采了、丢了，全仓零消费方（计划双审 E-1）。
+     * 它与 `model_effective` 是两个维度：实测 `-p qwen -m deepseek-v4-pro` 成功，
+     * provider=qwen 而模型名是 deepseek-v4-pro。
+     */
+    model_provider: meta.modelProvider,
+    /*
+     * 请求值。与上面一行成对，且**方向相反**：这条来自配置，那条来自会话文件。
+     * 绝不互相顶替——拿请求值冒充回读值会让 AC-20 永远通过、永远没有意义。
+     */
+    profile_requested: profileRequested,
     model_route: 'config_copy',
     tool_calls: { run_command: trace.commands.length },
     /*
@@ -356,16 +376,108 @@ export const codexAdapter: CriticAdapter = {
     return { ok: true };
   },
 
+  /**
+   * 本次 profile 生效的模型目录（D4-1 = C″，计划双审 CODEX-05）。
+   *
+   * 数据来自探针的 `models_by_profile`——**不实时读盘**：`availability()` 其余五条判据
+   * 全部读探针结论，同一件事在同一个文件里出现两份判据、两个时点是 CODEX-04 点名的形态。
+   * 目录文件变了由探针 TTL 与 `checkProbeFreshness` 负责，不由本函数兜。
+   *
+   * **四种返回的语义以 `CriticAdapter.catalogModelsFor` 的契约表为准，此处不复述**——
+   * 上一版在这里复述成「三种」且把 `fallback` 那一支写成了「无法校验」，
+   * 与同文件的实现和它自己的锁例直接矛盾（代码双审 CODEX-04）。
+   * 复述两处正是「同一个问题两个答案」，而它已经漂过一次。
+   */
+  catalogModelsFor(cfg) {
+    const profile = agentConfigOf(cfg, 'codex', 'openai').profile;
+    const p = cfg.probe.cli.codex;
+
+    /*
+     * 没配 profile ⇒ 生效的就是基底目录。**用它的可见子集校验，不是 `models` 全集**：
+     * 全集含 `visibility: "hide"` 的条目（本机基底 7 条里有 2 条），
+     * 而端点的合法名单只认可见项——拿全集当判据会放行隐藏项、复制 E-4 的误放，
+     * 而这正是 `probeCodexModels` 文档块自己写着要防的（代码双审 GLM-03：
+     * 上一版只在配了 profile 的那一半做了过滤，默认形态原样漏着）。
+     */
+    if (!profile) {
+      const visible = p?.models_visible ?? [];
+      return visible.length > 0
+        ? { kind: 'catalog' as const, models: visible, source: '基底模型目录（可见项）' }
+        : null; // 旧留痕没有这个字段 ⇒ 回落 `probe.models`，行为与本步之前逐字相同
+    }
+
+    /*
+     * 采集**失败**（子进程非零退出、输出不可解析）——不知道目录里有什么。
+     * 这一格必须与「确认没有目录」分开：合流会让一次子进程失败静默变成放行
+     * （代码双审 CODEX-01）。
+     */
+    const failed = p?.models_by_profile_errors?.[profile];
+    if (failed) {
+      return {
+        kind: 'fallback' as const,
+        why: `profile「${profile}」的模型目录采集失败（${failed}），本次改用基底目录校验`,
+      };
+    }
+
+    const byProfile = p?.models_by_profile ?? {};
+    /*
+     * 整张表为空 ⇒ M8 第 4 步之前落盘的旧 `config.local.yaml`（那时还没有这个字段）。
+     *
+     * **回落基底、但要说出来**（代码双审 CODEX-05）。上一版这里返回 `null`，
+     * 于是预检**静默**拿含隐藏项的基底全集校验——与修复前逐字相同的行为，
+     * 而 `types.ts` 那边的契约文字却承诺「记为 unverifiable、不静默通过」，
+     * 承诺与实现对不上。走 `fallback` 两头都顾：不 fail-open（照常校验），
+     * 且「回落要说出来」的纪律覆盖到这一格。
+     */
+    if (Object.keys(byProfile).length === 0) {
+      return {
+        kind: 'fallback' as const,
+        why: '探针结论早于逐 profile 模型目录，本次按基底目录校验，请重跑 doctor --only codex',
+      };
+    }
+
+    const models = byProfile[profile];
+    /*
+     * 表在、没有失败记录、却也没有本 profile 的条目 ⇒ 探针跑过但该 profile 不在名单里
+     * （配置里写了一个 `$CODEX_HOME` 下不存在的 profile）。这不是「目录为空」，
+     * 交给 `availability()` 的 profile 存在性检查去拦，本函数如实报「没测过」。
+     */
+    if (models === undefined) {
+      return {
+        kind: 'fallback' as const,
+        why: `探针没有 profile「${profile}」的模型目录结论（该 profile 可能不存在），本次改用基底目录校验`,
+      };
+    }
+    /*
+     * 采到了、而且确实是空的 ⇒ 该机没配 `model_catalog_json`（只装官方 `auth.json`
+     * 的普通安装是常态，计划双审 CODEX-11）。这一格才是真正的「无法校验」。
+     */
+    if (models.length === 0) {
+      return {
+        kind: 'unverifiable' as const,
+        why: `profile「${profile}」渲染出的模型目录为空（该机可能未配置 model_catalog_json）`,
+      };
+    }
+    return { kind: 'catalog' as const, models, source: `profile「${profile}」的模型目录` };
+  },
+
   async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
+    // 先取配置：失败出口也要写得出请求值（CODEX-03 ≡ GLM-02）
+    const cfgEarly = codexConfig(ctx);
     const probe = ctx.cfg.probe.cli.codex;
     if (!probe?.probed_at) {
       return failedResult('codex', {
         status: 'failed',
         reason: 'codex 尚未探测，请先运行 trivium doctor --only codex',
+        profileRequested: cfgEarly.profile,
       });
     }
     if (!probe.entrypoint) {
-      return failedResult('codex', { status: 'failed', reason: 'codex 入口未探测到' });
+      return failedResult('codex', {
+        status: 'failed',
+        reason: 'codex 入口未探测到',
+        profileRequested: cfgEarly.profile,
+      });
     }
 
     const cfg = codexConfig(ctx);
@@ -385,6 +497,7 @@ export const codexAdapter: CriticAdapter = {
       return failedResult('codex', {
         status: 'failed',
         reason: `准备 codex 隔离副本失败：${(e as Error).message}`,
+        profileRequested: cfg.profile,
       });
     }
 
@@ -406,6 +519,7 @@ export const codexAdapter: CriticAdapter = {
       return failedResult('codex', {
         status: 'failed',
         reason: `拉起 codex 失败：${(e as Error).message}`,
+        profileRequested: cfg.profile,
       });
     }
 
@@ -422,6 +536,7 @@ export const codexAdapter: CriticAdapter = {
         cliVersion: probe.version,
         commandLine: out.commandLine,
         sessionId: trace.threadId,
+        profileRequested: cfg.profile,
       });
     }
 
@@ -441,6 +556,7 @@ export const codexAdapter: CriticAdapter = {
         cliVersion: probe.version,
         commandLine: out.commandLine,
         sessionId: trace.threadId,
+        profileRequested: cfg.profile,
       });
     }
 
@@ -481,6 +597,14 @@ export const codexAdapter: CriticAdapter = {
       'utf8',
     );
 
-    return buildCodexResult(trace, meta, out, { stdout: stdoutPath, trace: tracePath }, probe, req.project_root);
+    return buildCodexResult(
+      trace,
+      meta,
+      out,
+      { stdout: stdoutPath, trace: tracePath },
+      probe,
+      req.project_root,
+      cfg.profile,
+    );
   },
 };

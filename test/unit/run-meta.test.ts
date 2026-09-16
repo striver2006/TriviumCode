@@ -36,6 +36,7 @@ function sideMeta(c: CriticId): NonNullable<RunMeta['critics'][CriticId]> {
     vendor: CRITIC_VENDOR[c],
     cli_version: '1.0',
     model_requested: 'm', model_effective: 'm', model_effective_source: 'envelope',
+    profile_requested: null, model_provider: null,
     status: 'ok', exit_code: 0, duration_s: 1,
     tool_calls: {}, evidence_ok: true, heterogeneous: true,
   };

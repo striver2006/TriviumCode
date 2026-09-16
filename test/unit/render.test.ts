@@ -10,7 +10,8 @@ const RESULT: CriticResult = {
   critic: 'gemini', status: 'ok', exit_code: 0, duration_s: 472.4,
   raw_stdout_path: '/runs/out', trace_path: '/runs/trace', review_json: null,
   raw_response_text: '{}', model_effective: 'gemini-3.1-pro-high',
-  model_effective_source: 'envelope', tool_calls: { read: 27, grep: 9 },
+  model_effective_source: 'envelope', model_provider: null, profile_requested: null,
+  tool_calls: { read: 27, grep: 9 },
   read_paths: [], write_events: [], command_texts: [], evidence_ok: true, fail_reason: null,
   session_id: 'conv-1', cli_version: '1.2.0', peer_deny_applied: false,
   command_line: 'agy -p …',
@@ -213,6 +214,7 @@ test('回归：超时的一侧不产生证据不足告警，避免把真正原�
     project_root: dir, subject_path: path.join(dir, 'a.ts'), deny_paths: [],
     out_dir: '/x', brief_path: '/b', brief_text: 'B', model: 'M',
     timeout_s: 900, schema_path: '/s', min_tool_calls: 5, min_project_reads: 3,
+    profile_requested: null,
   };
 
   const v = await judgeRun({

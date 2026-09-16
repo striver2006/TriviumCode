@@ -47,6 +47,18 @@
   权限变更三类动词」）。焦点是用户的话、FR-20 承诺逐字，所以**改之前要问用户**，
   不要自己改了就发出去，更不要换条调用路径去绕字面匹配。
   同样不要给这里开豁免：理由与下一条的 RV-B1 同构。
+- **含凭据的文件一律 grep 目标键名，禁止整份打印。**
+  这几个文件里有明文凭据：`~/.codex/config.toml`（`[model_providers.*]` 段的
+  `experimental_bearer_token`）、`~/.codex/auth.json`、`~/.codex/<profile>.config.toml`、
+  以及 `prepareCodexHome()` 拷进 `~/.trivium/runs/<run>/codex/codexhome/` 的那几份副本。
+  要看结构就 `grep -n '^\[' <file>` 或只查你要的那个键，**不要 `cat` 整份**。
+  2026-09-16 我为了确认「副本里有没有 sandbox 键」而 `cat` 了副本的 `config.toml`，
+  把三个 provider 的 token 打进了终端。**代价不是「本地滚动缓冲里有一行」**——
+  对话要经 API 传出去，凭据就此离开这台机器，是否轮换只能由你判断，我无法撤销。
+  要查的其实只是一个键名，整份打印是纯粹多余的。
+  代码里早有正确口径：`providerCredentialed()` 的文档块写着「**只判有无，绝不返回值**」，
+  `providerBaseUrl()` 也只取 `base_url` 一个键。**我没照着做的是手敲的命令，不是代码。**
+  所以这条写给人看：脚本里的约束管不到临时起意的一行 `cat`。
 - **不要再试图给 `git commit` 开豁免。** 2026-09-12 开过一次（RV-B1），双审打穿后撤回：
   三个前置条件漏掉至少五条夹带路径，其中换行、附着重定向、文本提及三条实测能放行。
   根因是原判定 fail-closed，豁免把它变成需要穷举危险形态的 fail-open——而 shell

@@ -95,6 +95,9 @@ export function defaultProbe(): ProbeSection {
     config_override: null,
     effort_validated: null,
     model_catalog_path: null,
+    models_by_profile: {},
+    models_visible: [],
+    models_by_profile_errors: {},
   };
 
   cli.claude = {
@@ -383,6 +386,19 @@ export function applyProfileOverride(cfg: Config, name: string | null | undefine
  * 本函数把两件事一起做掉：**缺段就地失败并说清是哪一段**，vendor 不符也失败
  * ——后者是路由错配，会把请求发给错误的 CLI（与 `run.v2` 的 vendor 逐值比对同一纪律）。
  */
+/**
+ * 该 Agent 配置段里的**厂商 profile**，没有这个概念的 vendor 返回 `null`。
+ *
+ * **按字段存在性取，不按 Agent 身份分叉**（纪律 7）：`profile` 只出现在
+ * `openai` 分支，将来若有别家也有同名概念，这里自动跟随，不必改。
+ * 消费方是编排器的兜底出口——它要在适配器抛异常时也如实记下请求值，
+ * 而那里不该拥有厂商知识。
+ */
+export function vendorProfileOf(cfg: Config, id: AgentId): string | null {
+  const seg = cfg.agents[id] as { profile?: string | null } | undefined;
+  return seg && 'profile' in seg ? (seg.profile ?? null) : null;
+}
+
 export function agentConfigOf<V extends AgentConfig['vendor']>(
   cfg: Config,
   id: AgentId,
