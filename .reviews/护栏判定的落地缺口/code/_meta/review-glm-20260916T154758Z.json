@@ -1,0 +1,124 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一条：四类分档与具名放行在生产路径上整段失效——分类按 deny 条目做，而生产 deny 集对这两棵树只有目录级条目（裸 .trivium、整棵运行根），条目自身走 fallthrough 全被归进「会作废」的 peer-artifact，于是 BRIEF 明确邀请审查员读的项目共享配置照旧让该侧作废，②′/③ 豁免与放行清单一次都不会生效，BRIEF 第 8 节还因此自相矛盾（GLM-01）。gate 侧同形：voidedSides 没有任何生产调用方传入、guard.joint_check 没有写侧，设计声称「已实现、写侧恒写」的共同阻断三态整段未接线，被作废的侧仍握有共同阻断的否决权（GLM-03）。另有四条：request.json/worker.log 落在共享层、按 hit 分类也恒判对端（GLM-02）；partial 档分母只含 view_file，恰盖不住刚补过的 grep 通道（GLM-04）；zcode 侧不产 path_bearing_reads、档位恒记 ok（GLM-05）；两条留痕缺口（GLM-06/07）。审批前置判断三处入口核实齐备、判据与 fail-closed 成立。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "blocker",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/guard.ts:172",
+      "problem": "分档与具名放行接在了错误的粒度上：judgeSide 按 deny 条目分类后再喂给两条通道（guard.ts:172-184），而生产 deny 集对这两棵树只有目录级条目——enumerateDenyPaths 加的是裸 `.trivium` 与整棵运行根（freeze.ts:296-297）。classifyDenyPath 对条目自身求值时，`.trivium` 的 triviumRel 是空串（freeze.ts:95 的 `if (triviumRel && …)` 不成立）、运行根的 runRel 也是空串（freeze.ts:82 同理），双双落到 fallthrough 判成 `peer-artifact`（freeze.ts:102）进入作废集；isOrchestratorReadable 同样只对条目调用（guard.ts:175），裸 `.trivium` 因 rel 为空串返回 false（freeze.ts:122）。checkPeerLeak 按目录前缀命中（base.ts:962-966）后 peerArtifactRead 直接为 true（guard.ts:282）——审查员读 `.trivium/config.yaml`（BRIEF §8.2 末尾明确邀请：「项目级配置与 wrapper 是允许读的（具名放行）」，brief.ts:260-261）或读自己运行树下的材料，该侧照样作废。设计 §10.1.1 写明「放行清单随 Snapshot 下发，两条通道都实现**匹配时豁免**」（设计:1681），实现却选了表达不了「目录减子树」的条目级排除。BRIEF 同一节自相矛盾：§8.1 把 `.trivium` 整棵列进「读取即作废」（brief.ts:238 按 classify('.trivium')='peer-artifact' 归 voiding），§8.2 引导语却说 config.yaml 不在清单里。本批要修的四次实测误伤（全部③类）原样保留，且 run.json 留痕自证矛盾：typedHits 按 hit 路径分类会记 category:'orchestrator-state'/'own-run-material'（guard.ts:288-289），而该侧正是被这些命中作废的。测试面全部走不到生产形态：deny-category.test.ts 只测纯函数（文件级路径），brief.test.ts:142-144 用文件级 `.trivium/state.json` 构造 denyPaths——enumerateDenyPaths 从不产出这种形状。",
+      "evidence": "逐行读了 src/trivium/guard.ts（分组循环 172-184、checkPeerLeak 194、peerArtifactRead 282）、src/trivium/freeze.ts（classifyDenyPath 67-103、isOrchestratorReadable 116-125、enumerateDenyPaths 296-297）、src/trivium/adapters/base.ts（checkPeerLeak 938-968，纯前缀匹配无分类钩子）、src/trivium/brief.ts（§8 渲染 226-263）、src/trivium/review.ts:601（req.deny_paths=snap.denyPaths）、test/unit/deny-category.test.ts 与 test/unit/brief.test.ts（构造形态）、设计 §10.1.1（:1656、:1681）。每一环都有直接代码证据，无推测环节。",
+      "suggestion": "把分类与放行移到**命中时**按 hit 路径判：两条通道的匹配结果里对每条命中调 classifyDenyPath/isOrchestratorReadable，己方运行材料（②′）与放行前缀的命中从作废判定中剔除（即设计 1681 行的原话口径）；或让 deny 集对这两棵树产出「目录 − 豁免子树」的可表达条目。并补一条用 enumerateDenyPaths 真实输出喂 judgeSide 的用例——现有测试的条目形状生产走不到，正是本项目反复记录的「测试绿、生产路径走不到」形态。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/freeze.ts:88",
+      "problem": "②′ 的三件典型材料里有两件在 hit 级分类上结构性恒判「对端输出」：运行目录布局是 `<runRoot>/<repoId>/<runId>/`，request.json、worker.pid、worker.log 都落在这一共享层（run-protocol.ts:39-44），相对运行根只有两段；classifyDenyPath 的己方判据要求 `seg.length >= 3 && seg[2] === critic`（freeze.ts:88-89），段数不足一律返回 `peer-run-output`（作废类）。设计 §10.1.1 ②′ 明文点名「自身 sandbox home、request.json、worker.log」（设计:1656）为不作废的己方材料——sandbox home 在侧子树下能正确豁免，request.json/worker.log 则永远不能。即使修好 GLM-01 的条目粒度问题，这两个文件的命中（尤其经措施 b 的命令字面通道，命令里只要出现运行根前缀即命中）仍会独立造成误伤。",
+      "evidence": "src/trivium/run-protocol.ts:39-44（runDirFor=runRoot/repoId/runId；requestPath/workerLogPath 挂在 runDir 层）、src/trivium/review.ts:536（runDirBase 同层）、src/trivium/freeze.ts:81-91、设计:1656。",
+      "suggestion": "把 ②′ 判据扩为「该 runId 目录下的编排器材料（request.json/worker.pid/worker.log）与己方侧子树」都算己方；或在设计 §10.1.1 明记这一层按对端处置的取舍——现在设计与代码两头对不上，而设计侧的清单是本批自己写的。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "blocker",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/cli.ts:767",
+      "problem": "gate 侧的作废排除与共同阻断三态双双未接线，设计却已声称「已实现」。① checkAdjudication 的 voidedSides 参数（gate.ts:104，文档注明「取自 run 元数据的 guard.peer_leak_via_path / peer_leak_via_command」）全仓只有两个生产调用点——cli.ts:693（--await-approval）与 cli.ts:767（--check）——都不传。于是 findJointRejectedBlockers 的作废侧排除（gate.ts:405-408）从未在生产生效：因禁读命中被作废的侧照样作为独立来源参与共同阻断，gate.ts:390-401 注释自己写明要防的「本应作废的审查员反而获得逼停流水线的否决权」是活的（叠加 GLM-01，读了共享配置的侧就会被作废，概率不低）；`joint_check_degraded` 告警（gate.ts:360-370）从生产与测试两侧都不可达。② 写侧 review.ts 的 meta.guard（review.ts:1034-1099）不含 joint_check——设计 6.7.1 分期表（设计:1011）声称该字段「可选（写侧恒写）｜【已实现 · 2026-09-16】」、§12.1 承诺「run.json 与审查文档头部同时可见」，两处都不成立（render.ts front-matter 亦无该字段）。schema 与 types 都已声明该字段，唯独没有写侧与读侧接线——「判定层判对了、消费层没接住」在本批自己的交付里复发。",
+      "evidence": "src/trivium/cli.ts:691-697、764-771（两处调用的参数表无 voidedSides）；src/trivium/gate.ts:95-108、332、360-370、405-408；src/trivium/review.ts:1034-1099（meta.guard 字面量逐项核对无 joint_check）；src/trivium/types.ts:1032-1035；skills/dual-critic/schema/run.v2.json；设计:1011；grep test/unit/gate.test.ts 全部 21 处 checkAdjudication 调用均未传 voidedSides（jointCheckState 只有纯函数单测 393-427）。",
+      "suggestion": "三件一起接：cli.ts 从 run 元数据 guard.peer_leak_via_path / peer_leak_via_command 的 hit 布尔派生 voidedSides 传入两处 checkAdjudication；review.ts 在 meta.guard 落 jointCheckState 三态；render.ts front-matter 补该字段（或把设计的「同时可见」承诺收窄到 gate 输出）。另补一条守 cli 传参的契约用例——纯函数单测守不住「参数没接上」这一形态。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/adapters/agy-events.ts:88",
+      "problem": "路径核验中间档 `partial` 的分母只含 AGY_MUST_HAVE_PATH={'view_file'} 一个工具（agy-events.ts:88，pathCoverage:213-222），grep_search/find_by_name/list_dir 都不进分母。guard.ts:312-322 的注释宣称该档「防得住**参数改名**（工具名不变、tool-trace 族）：下一轮当场可见」——实际只对 view_file 成立；而本批刚因 EV-28 给 grep_search 补了 SearchPath 键名，说明 grep 恰是已知绕过通道且参数名变过一次，厂商下次再改它的参数名时提取退化、partial 档零信号，档位照记 'ok'。另外 total=0（该轮没有 view_file 调用）时恒 'ok'，纯 grep 轮次完全没有探测面。注释承诺面与实际覆盖面相反，正是 v1.3.8 立的「凡写下防得住、当场指出断言在哪一行」纪律要拦的形态。",
+      "evidence": "src/trivium/adapters/agy-events.ts:68-88、213-222（集合定义与分母口径）；src/trivium/guard.ts:302-335（注释承诺与实现）；test/unit/guard-capability.test.ts:260-335（无 partial 分母形态的用例）。",
+      "suggestion": "要么把「带目录参数的搜索调用」纳入可检面（调用带了 SearchPath/SearchDirectory 类键却取不出值才算退化），要么把注释与设计 10.1.1 第②层的承诺如实收窄到「view_file 的参数改名」，不要让留痕声称一个不存在的覆盖。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "major",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/guard.ts:331",
+      "problem": "path_bearing_reads / path_bearing_reads_with_path 全仓只有 agy 适配器生产（agy.ts:388-389），zcode 适配器不设。pathVerificationTier 对 undefined 一律返回 'ok'（guard.ts:331-332），注释说该分支面向「旧适配器 / 旧留痕」——zcode 是现役适配器，不是旧留痕。结果 glm 侧 verification.path 恒 'ok'，而 run.v2 的档位语义（run.v2.json:252）写明 ok 表示路径核验有效——这一侧的「有效」没有任何输入支撑。这是 guard.ts:114-116 注释自己定义的那类错误（「把没测到说成测出来没有」）在新增中间档时的换侧复发，且该侧行注释「不知道就别说『有效』」与 `return 'ok'` 的实现直接相反。",
+      "evidence": "grep 全仓 path_bearing_reads 仅 src/trivium/adapters/agy.ts:388-389 生产；src/trivium/guard.ts:329-335；skills/dual-critic/schema/run.v2.json:246-253。",
+      "suggestion": "zcode-trace 补同构的 coverage 计数（它的 read_paths 同样是参数提取所得，同样会退化）；在接上之前，对该侧要么如实记「未知」形态、要么在档位描述里声明该侧暂不评估——三态纪律不允许拿 'ok' 填「不知道」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/guard.ts:227",
+      "problem": "非作废类（③/④）的命中留痕只收路径通道明细：noted 循环里 `notedPaths.push(...viaPath.hits)`，viaCmd 的命中命令原文只参与 leaked 判定后被丢弃。某类只被命令通道命中时（例如 `ls .trivium/` 式目录列举），留痕仅有 notedCategories 一个类别、notedPaths 为空、命令原文一条不进——违反设计 §10.1.1「留痕须能复盘这一侧到底碰了什么」。作废类是双通道分列（peerHits/peerCommandHits，review.ts:1050-1078 各自落盘），非作废类单通道，不对称。",
+      "evidence": "src/trivium/guard.ts:219-229；对照 src/trivium/review.ts:1050-1078。",
+      "suggestion": "非作废命中也区分通道落明细（类别 + 命中路径或命令原文），至少让 run.json 看得出该类命中走的哪条通道、碰的具体是什么。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/review.ts:93",
+      "problem": "peerLeakOf 在 voiding 通道命中时把 front-matter 的 category 硬编码为 'peer-artifact'（`viaPath || viaCmd ? 'peer-artifact' : …`），不取 typedHits 的实际类别：命中②类（peer-run-output）时 front-matter 报①类。注释说「作废类优先：取最重档」，但实现是布尔短路的字面量兜底而非从实际命中取最重，与「命中逐条带类」的留痕口径不一致；在 GLM-01 的生产形态下更会出现 front-matter 报①类、typedHits 记③类的自相矛盾。",
+      "evidence": "src/trivium/review.ts:86-104；src/trivium/render.ts:145-150（front-matter 直接消费该 category）。",
+      "suggestion": "category 从 typedHits 的实际类别集合里取（作废类优先的）最重档，而不是字面量；若多类并存的语义说不清，考虑改为类别数组。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "审批前置判断的三处入口核实齐备：--check 的 B/C/D 分支（cli.ts:832）、回 idle 分支（cli.ts:862）都挂了 `!alreadyDecided`，--await-approval 在置闸门前先查 humanDecidedThisRound（cli.ts:721-729）；判据以 task.json.approvals 为正本、unreadable 时 fail-closed、HUMAN_DECIDED 含 rejected/abandoned 三终态（approval.ts:50-108），approval.test.ts 覆盖了 fail-closed、空串与跨轮/跨阶段边界。其余 setGateChecked 调用点（review.ts:714/772/1188/1277、hooks.ts:1210、run-protocol.ts:376/760）均带 expect:{state:['running']} 或只作用于新 runId，结构上动不了已表态状态。",
+    "classifyDenyPath 的第三段判据对真实布局成立：runDirBase=runRoot/repoId/runId（review.ts:536、run-protocol.ts:39-40），侧目录再挂一层，seg[2] 恰是侧 id；「段数不足按对端处置」的方向在注释与用例里如实声明，且那层目录确实同时含对端子树，保守可辩护——问题只在于这个正确判据没被接到作废决策上（GLM-01/02）。",
+    "两条通道吃同一份按类分好的集合、集合构造在通道间没有第二次分叉的机会——「分组后再调用」确实让通道一致，一致性的实现思路成立；问题在集合内容本身（GLM-01）。",
+    "block_severities 删除干净（src 与 skills 下零残留），且补上了真正的防复发机制：config-consumers 对账测试的 KNOWN_DEAD「只许缩短」约束第一次运行就抓出七条存量（EV-30），判据的已知边界（解构赋值漏报）如实写进头注释。",
+    "run-meta-strict 用本仓库真实归档做回归锁、收严前先对 29 份 v2 留痕实测零差额，并把「新增 guard 字段必须同步 schema」变成会红的断言，做法扎实。",
+    "PATH_KEYS 补 SearchPath 接上了 grep 通道的路径提取（第一层防线），注释如实标注了它防的是「自己改坏」而非「厂商改名」，边界没有说过头。"
+  ],
+  "not_covered": [
+    "只读审查：未运行 npm test、未起真实子进程验证 GLM-01 的端到端触发；结论基于生产 deny 集形状与调用链的直接代码证据，每一步均有行号支撑。",
+    "codex 适配器（adapters/codex.ts、codex-trace.ts、codex-home.ts）未深读——command-trace 族 path 档恒 unavailable，不在本次四焦点内；codex-home 的白名单裁剪逻辑未复核。",
+    "zcode-trace.ts 未逐行核对（只确认它不生产 path_bearing_reads）；EV-28 登记的「zcode 侧 Grep 是否同样丢参数」仍无人对账，本次也未覆盖。",
+    "设计文档只核对了 §6.7.1/§10.1.1/§12.1 的相关行；v1.3.13 台账叙事与其余章节、LLD/MANUAL/BACKLOG 的行文未逐行比对（仅发现 joint_check「已实现」与实现不符这一处，未穷尽同类失实）。",
+    "审查焦点六（放行清单只有两项是否误挡正当需求）：两项的选择本身论证成立（state/lock 是运行态信号、本机覆盖含探针数据），真正的误挡来自 GLM-01 的机制失效，故未单独成条；「审查员是否还需要 .trivium 下其它文件」未深评。",
+    "hooks wrapper 行为、retention、selftest、report/status 的展示面改动未审；diff 中 codex-adapter.test.ts 与 config.v2.json 的删段按 grep 结果采信，未逐行读。"
+  ],
+  "consulted": [
+    "src/trivium/guard.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/review.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/render.ts",
+    "src/trivium/types.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/config.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "test/unit/deny-category.test.ts",
+    "test/unit/brief.test.ts",
+    "test/unit/guard-capability.test.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/approval.test.ts",
+    "test/unit/config-consumers.test.ts",
+    "skills/dual-critic/schema/run.v2.json"
+  ]
+}

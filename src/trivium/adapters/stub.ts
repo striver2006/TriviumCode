@@ -175,6 +175,18 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
       `${req.project_root}/src/c.ts`,
       `${req.project_root}/README.md`,
     ],
+    /*
+     * 路径提取覆盖率（设计 10.1.1 第②层）：**四条读取全都提出了路径**。
+     *
+     * 桩模拟的是「结构化轨迹族的正常形态」，而真适配器两家现在都报这两个计数；
+     * 不报的话，桩侧会落到「该侧没报数 → unavailable」那一支——
+     * 那一支留给旧留痕，拿它当结构化轨迹侧的常态会让端到端用例测在别的分支上。
+     *
+     * 要模拟**提取器退化**（`partial` 档）时把 `with_path` 调小即可，
+     * 目前没有哪条用例需要，故不另设 `StubMode`。
+     */
+    path_bearing_reads: 4,
+    path_bearing_reads_with_path: 4,
     write_events: [],
     command_texts: [],
     evidence_ok: false, // 由 guard 判定

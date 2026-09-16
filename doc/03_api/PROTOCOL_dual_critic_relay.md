@@ -257,8 +257,18 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 
 `gate --check` 通过后**按 `run.json` 的 `entry` 分流**：entry = B/C/D 直接立起
 `awaiting_approval`（这三条命令的停点就是人工审批）；entry = A 或无 entry 才回 `idle`
-（命令 A 不设人工闸门）。两种去向都必须发生——若 B/C/D 也放回 idle，停点就被丢掉；
+（命令 A 不设人工闸门）。这两种去向都必须发生——若 B/C/D 也放回 idle，停点就被丢掉；
 若 A 也停在 awaiting_approval，补齐裁决的人反被拦住，唯一出路是关掉 Hook。
+
+**还有第三种去向：什么都不做（2026-09-16 起）。** 本轮若已有人工审批记录
+（归档 `task.json.approvals[]` 里有该 run_id 的 approved / rejected / abandoned），
+`gate --check` **不推进任何状态**，只输出校验结论。理由是它是**校验**命令，
+没有资格撤销人的审批——而此前它无条件推进，于是「审批后按裁决补修复 →
+改动涉及裁决件 → 顺手复校一次完整性」这条常见路径会把已放行的闸门重新关上，
+撞上之后连提交都做不了。同样的前置判断也挂在 `--await-approval` 上（那是第二个入口）。
+
+判据以归档里的审批记录为**正本**，读不出来时 fail-closed（视为已表态、不推进）：
+把「锚被搅坏」当成「没有审批记录」，就是同一个缺陷换个触发条件重现。
 
 `hook-pre-commit` 曾依赖 `if: Bash(git commit:*)` 做第一道过滤，但那是**前缀**匹配：
 `sh -c 'git commit -m x'` 不以 `git commit` 开头，Hook 根本不触发。现已删去 `if`，改为挂

@@ -72,7 +72,7 @@ const KNOWN_DEAD: { key: string; why: string }[] = [
   {
     key: 'max_check_retries',
     why:
-      'EV-30：**四条里最该优先处理的**——skill 文档正拿它当真实行为向 Driver 承诺' +
+      'EV-30：**七条里最该优先处理的**——skill 文档正拿它当真实行为向 Driver 承诺' +
       '（「最多重试 max_check_retries（默认 3）次」），而代码里没有任何重试计数。' +
       '这不只是死配置，是一句写在流程文档里的假承诺',
   },

@@ -379,6 +379,11 @@ export const zcodeAdapter: CriticAdapter = {
 
     // rollout：工具参数（路径）与 model.source。读取路径**只能**从这里取
     let readPathList: string[] = [];
+    /*
+     * 路径提取覆盖率（设计 10.1.1 第②层）。`null` = 该轮没读到 rollout，
+     * 与「读到了但分母为 0」是两件事——前者该记未知，后者说明本轮没有必带路径的调用。
+     */
+    let coverage: { total: number; withPath: number } | null = null;
     let modelFromRollout: string | null = null;
     if (sessionId) {
       // 文件名是 `model-io-` + sessionId，sessionId 自带 sess_ 前缀（坑 P-14）
@@ -386,6 +391,7 @@ export const zcodeAdapter: CriticAdapter = {
       if (await exists(rolloutFile)) {
         const ro = parseZcodeRollout(await fs.readFile(rolloutFile, 'utf8'));
         readPathList = ro.readPaths;
+        coverage = ro.pathCoverage;
         modelFromRollout = ro.modelEffective;
         writeEvents = [...new Set([...writeEvents, ...ro.writeEvents])];
         await fs.copyFile(rolloutFile, path.join(req.out_dir, 'rollout.jsonl'));
@@ -422,6 +428,13 @@ export const zcodeAdapter: CriticAdapter = {
       model_route: home.route,
       tool_calls: toolCalls,
       read_paths: readPathList,
+      // 覆盖率两项：读不到 rollout 时整体省略，让判定层记「未知」而不是谎报有效
+      ...(coverage
+        ? {
+            path_bearing_reads: coverage.total,
+            path_bearing_reads_with_path: coverage.withPath,
+          }
+        : {}),
       write_events: writeEvents,
       /*
        * zcode 侧**恒为空数组**，而这是能说明理由的空：只读组合里 `Bash` 被整个禁掉

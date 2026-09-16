@@ -14,6 +14,8 @@ import type { Finding, Review } from '../../src/trivium/types.js';
 
 const DATE = '2026-09-10';
 const TOPIC = '登录重构';
+/** 编排器状态文件名（`state.ts` 的落点），用作「告警档」分类的样本路径 */
+const STATE_FILE = 'state.json';
 
 async function layout(): Promise<ArchiveLayout> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-gate-'));
@@ -526,6 +528,64 @@ test('非降级轮次不得凭空冒出 degraded_round 警告', async () => {
   });
   assert.equal(r.ok, true, renderGateResult(r));
   assert.ok(!r.warnings.some((w) => w.code === 'degraded_round'));
+});
+
+/*
+ * ── voidedSides 必须由 loadRoundReviews 从 run 元数据派生 ──
+ *
+ * 它初版是 `checkAdjudication` 的一个**可选参数**，而两个生产调用点都没传，
+ * 于是「作废侧不计入共同阻断」整段从未生效——**而纯函数单测全绿**：
+ * 可选参数的默认值让漏传静默成功。r1 三侧独立判为阻断，其中一侧的原话是
+ * 「纯函数单测守不住『参数没接上』这一形态」。
+ *
+ * 所以判据改成在 `loadRoundReviews` 里派生（调用方想漏都漏不掉），
+ * 而本用例守的就是那次派生——把派生删掉，它必须红。
+ */
+test('voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）', async () => {
+  const base = {
+    topic: TOPIC, stage: 'plan' as const, rerunIndex: 1, command: 'x',
+    promptHint: null, taskGoal: null, criticsSelected: CRITICS,
+    treeHash: 'h', gitHead: null, dirty: false,
+    subjectSha256: 's', denyPaths: [], driftPolicy: 'warn' as const,
+  };
+
+  // ① 路径通道命中**作废类** → 该侧进 voidedSides
+  const l1 = await layout();
+  const m1 = newRunMeta({ ...base, runId: 'RV1' });
+  m1.guard.peer_leak_via_path = {
+    gemini: { hit: true, hits: [{ path: '.reviews/t/plan/x-glm.md', category: 'peer-artifact' }] },
+    glm: { hit: false, hits: [] },
+  };
+  await writeRunMeta(l1, 'plan', m1);
+  assert.deepEqual((await loadRoundReviews(l1, 'plan', 'RV1')).voidedSides, ['gemini']);
+
+  // ② 路径通道只命中**告警类** → 不作废
+  const l2 = await layout();
+  const m2 = newRunMeta({ ...base, runId: 'RV2' });
+  m2.guard.peer_leak_via_path = {
+    gemini: {
+      hit: true,
+      hits: [{ path: `.trivium/${STATE_FILE}`, category: 'orchestrator-state' }],
+    },
+  };
+  await writeRunMeta(l2, 'plan', m2);
+  assert.deepEqual(
+    (await loadRoundReviews(l2, 'plan', 'RV2')).voidedSides,
+    [],
+    '读编排器状态文件不损害独立性——这一族正是四次实测误伤的全部',
+  );
+
+  // ③ 命令通道命中 → 作废（该通道没有类别信息，命中即算）
+  const l3 = await layout();
+  const m3 = newRunMeta({ ...base, runId: 'RV3' });
+  m3.guard.peer_leak_via_command = { glm: { hit: true, commands: ['cat .reviews/peer-review.md'] } };
+  await writeRunMeta(l3, 'plan', m3);
+  assert.deepEqual((await loadRoundReviews(l3, 'plan', 'RV3')).voidedSides, ['glm']);
+
+  // ④ 旧留痕（两条通道都没有）→ 空数组，维持旧行为、不追溯改判
+  const l4 = await layout();
+  await writeRunMeta(l4, 'plan', newRunMeta({ ...base, runId: 'RV4' }));
+  assert.deepEqual((await loadRoundReviews(l4, 'plan', 'RV4')).voidedSides, []);
 });
 
 test('loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推', async () => {

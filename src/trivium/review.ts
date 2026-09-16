@@ -15,7 +15,7 @@ import { promises as fs } from 'node:fs';
 import type {
   Config, CriticId, CriticRequest, CriticResult, Ctx, DenyCategory, Review, Stage, CommandEntry,
 } from './types.js';
-import { CRITIC_PREFIX, CRITIC_VENDOR } from './types.js';
+import { CRITIC_PREFIX, CRITIC_VENDOR, VOIDING_DENY_CATEGORIES } from './types.js';
 import { agentById } from './agents/registry.js';
 import {
   isHeterogeneous,
@@ -89,10 +89,35 @@ function peerLeakOf(side: SideVerdict): NonNullable<RenderInput['peerLeak']> | u
   const noted = side.notedCategories.length > 0;
   if (!viaPath && !viaCmd && !noted) return undefined;
 
-  // 作废类优先：它决定横幅说哪一句
-  const category: DenyCategory =
-    viaPath || viaCmd ? 'peer-artifact' : (side.notedCategories[0] ?? 'orchestrator-state');
+  /*
+   * 类别取**实际命中里最重的那一个**，不是写死的字面量（r1 三侧独立指出）。
+   *
+   * 初版写的是 `viaPath || viaCmd ? 'peer-artifact' : notedCategories[0]`：
+   * 命中第②类（运行根下对端输出）时 front-matter 仍报第①类，
+   * 而同一条留痕里 `paths` 又是逐条带类的——**头档不带类、路径带类，自相矛盾**；
+   * 非作废侧取数组第一个（Map 插入序）同样失真，「取最重档」在两条路径上都没实现。
+   */
+  const severity = (c: DenyCategory): number => {
+    switch (c) {
+      case 'peer-artifact': return 4;
+      case 'peer-run-output': return 3;
+      case 'sensitive': return 2;
+      case 'orchestrator-state': return 1;
+      case 'own-run-material': return 0;
+    }
+  };
   const voiding = viaPath || viaCmd;
+  const pool: DenyCategory[] = voiding
+    ? side.typedHits.filter((h) => VOIDING_DENY_CATEGORIES.includes(h.category)).map((h) => h.category)
+    : [...side.notedCategories];
+  /*
+   * 只有命令通道命中时 `typedHits` 可能为空（那一档没有路径明细），
+   * 此时回落到「对端产物」——命令通道命中的作废类只可能是这一族。
+   */
+  const category: DenyCategory =
+    pool.length > 0
+      ? pool.reduce((a, b) => (severity(b) > severity(a) ? b : a))
+      : (voiding ? 'peer-artifact' : 'orchestrator-state');
 
   return {
     hit: true,
@@ -100,6 +125,8 @@ function peerLeakOf(side: SideVerdict): NonNullable<RenderInput['peerLeak']> | u
     category,
     voiding,
     paths: voiding ? side.peerHits : side.notedPaths,
+    // 命令通道的命中原文——作废与告警两档都要能复盘「到底碰了什么」
+    commands: voiding ? side.peerCommandHits : side.notedCommands,
   };
 }
 
@@ -1072,7 +1099,15 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       sides
         .filter((c) => verdict.sides[c] !== undefined)
         .map((c) => [c, {
-          hit: verdict.sides[c]!.peerHits.length > 0,
+          /*
+           * `hit` 的语义是「路径通道**扫到了东西**」，不是「这一侧作废了」——
+           * 后者由 `peer_artifact_read` 表达，两者不可互相顶替。
+           *
+           * 初版把它挂在 `peerHits`（只含作废类）上，于是告警档的命中
+           * 落盘成 `hit: false` + 非空 `hits`：同一条留痕里自相矛盾，
+           * 而「读了凭据文件」这类事实在机读面上直接消失。
+           */
+          hit: verdict.sides[c]!.typedHits.length > 0,
           hits: verdict.sides[c]!.typedHits,
         }]),
     ),
@@ -1084,6 +1119,30 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
      * `evidence_threshold` 记本次生效的项目读取下限：`command-trace` 族折减过，
      * 不记的话同一个读数在两族间一过一不过，复盘时看起来像 bug。
      */
+    /*
+     * 共同阻断这一档的执行状态（设计 §12.1）。
+     *
+     * **写在这里而不是 gate 里**：gate 是校验命令、可以反复跑，而 run.json 是
+     * 这一轮的运行事实，只写一次。字段的语义是「本轮这一档做没做」，
+     * 属于运行事实而非校验结论。
+     *
+     * 初版设计与 schema 都声明了这个字段、`gate` 也算了三态，**唯独没有写侧**——
+     * 于是留痕里它恒缺失，而设计写着「写侧恒写 · 已实现」。
+     * 「声明了但没有代码让它成真」在本批自己的交付里复发了一次（r1 三侧独立指出）。
+     *
+     * 这里只能给出「有效侧够不够」这一半：真正的共同项要等裁决表齐备才算得出，
+     * 那是 `gate --check` 的事。所以本字段在运行时先落 `effective_sides` 与
+     * 「够/不够」，`checked-found` 与 `checked-none` 的区分由 gate 的告警补充——
+     * **这个边界要写明，否则下一个人会以为 run.json 里的 state 是最终结论**。
+     */
+    joint_check: (() => {
+      const effective = sides.filter(
+        (c) => verdict.sides[c] !== undefined && !verdict.sides[c]!.peerArtifactRead,
+      ).length;
+      return effective < 2
+        ? { state: 'skipped-insufficient-sides' as const, effective_sides: effective }
+        : { state: 'checked-none' as const, effective_sides: effective };
+    })(),
     verification_degraded: Object.fromEntries(
       sides
         .filter((c) => verdict.sides[c] !== undefined)

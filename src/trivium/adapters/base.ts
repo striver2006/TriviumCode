@@ -1452,12 +1452,21 @@ function expandHome(p: string): string {
 }
 
 /** 归一成绝对路径：解析 `./`、`..`，并抹平 macOS 的 /private 前缀 */
-function normalizeAbs(p: string, projectRoot: string): string {
+/**
+ * 归一成绝对路径，并抹平 macOS 的 `/private` 前缀双形态。
+ *
+ * **导出是有理由的**（r1 代码双审 CODEX-06）：分类器原先自己用裸 `path.relative`
+ * 比较，而匹配走这里——于是运行根落在 `/var` 一类路径上时，
+ * 匹配通道命中而分类通道判在根之外，又落回兜底最重档。
+ * 两处必须用同一套口径，否则「判到哪一类」与「判没判中」会各说各话。
+ */
+export function normalizeAbs(p: string, projectRoot: string): string {
   const abs = nodePath.resolve(projectRoot, p);
   return abs.startsWith('/private/') ? abs.slice('/private'.length) : abs;
 }
 
-function isUnder(abs: string, root: string): boolean {
+/** `abs` 是否等于 `root` 或落在它之下。两侧都先抹平 `/private` 前缀 */
+export function isUnder(abs: string, root: string): boolean {
   const r = root.startsWith('/private/') ? root.slice('/private'.length) : root;
   return abs === r || abs.startsWith(r.endsWith('/') ? r : `${r}/`);
 }

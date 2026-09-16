@@ -18,6 +18,7 @@ import { parseFrontMatter } from './render.js';
 import { diffTrees, headSha, statusPorcelain, workTreeHash, diffAgainst } from './util/git.js';
 import { expandHome, matchesAnyGlob, sha256, sha256File } from './util/fsx.js';
 import { diffExcludePrefixes } from './code-stage.js';
+import { normalizeAbs, isUnder } from './adapters/base.js';
 
 /**
  * 编排器状态目录里**允许审查员读**的具名清单（设计 §10.1.1）。
@@ -74,25 +75,54 @@ export function classifyDenyPath(
     sensitiveGlobs: readonly string[];
   },
 ): DenyCategory {
-  const abs = path.isAbsolute(hitPath) ? hitPath : path.join(ctx.projectRoot, hitPath);
-  const rel = path.relative(ctx.projectRoot, abs);
+  /*
+   * 归一化走 `normalizeAbs`，与 `checkPeerLeak` **同一套口径**（r1 CODEX-06）。
+   * 初版这里用裸 `path.relative`，而匹配侧抹平了 macOS 的 `/private` 前缀——
+   * 运行根落在 `/var` 一类路径上时，匹配通道命中而分类通道判在根之外，
+   * 于是落回兜底最重档：两条通道对同一次命中给出不同的判断。
+   */
+  const abs = normalizeAbs(hitPath, ctx.projectRoot);
+  const rel = path.relative(normalizeAbs(ctx.projectRoot, ctx.projectRoot), abs);
 
-  // 运行根：先分己方/对端，再谈处置
-  const runRel = path.relative(ctx.runRoot, abs);
-  if (runRel && !runRel.startsWith('..') && !path.isAbsolute(runRel)) {
+  /*
+   * ── 运行根：先分己方/对端，再谈处置 ──
+   *
+   * **`isUnder` 而不是 `relative(...)` 非空**（r1 三侧独立收敛的阻断一）：
+   * 初版判据是 `if (runRel && …)`，而 `path.relative(根, 根)` 返回**空串**——
+   * 空串 falsy，于是**根本身**跳过全部分类、一路落到兜底 `peer-artifact`。
+   * 而禁读集里存的恰恰是整棵目录条目（见 `enumerateDenyPaths`），
+   * 于是四类分档、具名放行、己方豁免**三项一次都不生效**。
+   * 单测当时全绿，因为喂的是叶子路径——生产喂进来的是根。
+   */
+  if (isUnder(abs, normalizeAbs(ctx.runRoot, ctx.projectRoot))) {
+    const runRel = path.relative(normalizeAbs(ctx.runRoot, ctx.projectRoot), abs);
+    const seg = runRel === '' ? [] : runRel.split(path.sep);
+
     /*
-     * 布局是 `<项目槽>/<runId>/<侧>/…`，取第三段与自己的 id 比。
-     * 段数不足（如只读到 runId 那一层）按对端处置——**保守方向**：
-     * 宁可多判一次作废让人来纠，也不要放过真的读对端输出。
+     * 布局是 `<项目槽>/<runId>/<侧>/…`（见 `run-protocol.ts` 的 `runDirFor`）。
+     *
+     * **第三段是侧名还是编排器自己的运行时文件，要分开判**（r1 三侧收敛）：
+     * `request.json` / `worker.log` / `worker.pid` / `status.json` 就写在
+     * `<项目槽>/<runId>/` 这一层，第三段是**文件名**，永不等于侧名——
+     * 初版一律判 `peer-run-output`（作废），而设计 §10.1.1 的 ②′ 行
+     * **逐字点名**这两个文件属「己方运行时材料，不判作废」。
+     * 实现与设计对同一份材料给了相反的处置，且「保守」在这里保护不了什么：
+     * 真正的对端输出在 `<侧>/` 子树里，靠第三段就认得出来。
      */
-    const seg = runRel.split(path.sep);
-    if (seg.length >= 3 && seg[2] === ctx.critic) return 'own-run-material';
+    if (seg.length >= 3) {
+      if (seg[2] === ctx.critic) return 'own-run-material';
+      if (RUN_META_FILES.has(seg[2]!)) return 'own-run-material';
+      return 'peer-run-output';
+    }
+    /*
+     * 段数不足（根本身、项目槽、runId 那几层）：这些层**同时含**对端子树，
+     * 按对端处置——保守方向，宁可多判一次让人来纠。
+     */
     return 'peer-run-output';
   }
 
-  // 编排器状态目录
-  const triviumRel = path.relative(ctx.triviumDir, abs);
-  if (triviumRel && !triviumRel.startsWith('..') && !path.isAbsolute(triviumRel)) {
+  // 编排器状态目录。同样用 isUnder：目录条目自身是这里最常见的形态
+  if (isUnder(abs, normalizeAbs(ctx.triviumDir, ctx.projectRoot))) {
     return 'orchestrator-state';
   }
 
@@ -101,6 +131,15 @@ export function classifyDenyPath(
 
   return 'peer-artifact';
 }
+
+/**
+ * 运行目录 `<项目槽>/<runId>/` 这一层上编排器自己写的文件。
+ *
+ * 它们与某一侧无关（是本次运行的公共材料），审查员读到自己那轮的这些文件
+ * 不损害任何独立性——设计 §10.1.1 的 ②′ 行点名了前两个。
+ * 落点见 `run-protocol.ts`：请求包、工作进程日志与 pid、状态文件。
+ */
+const RUN_META_FILES = new Set(['request.json', 'worker.log', 'worker.pid', 'status.json']);
 
 /** 该类是否会让这一侧的结论作废（设计 §10.1.1 的第①②类） */
 export function isVoidingCategory(c: DenyCategory): boolean {
@@ -117,9 +156,16 @@ export function isOrchestratorReadable(
   hitPath: string,
   ctx: { projectRoot: string; triviumDir: string },
 ): boolean {
-  const abs = path.isAbsolute(hitPath) ? hitPath : path.join(ctx.projectRoot, hitPath);
-  const rel = path.relative(ctx.triviumDir, abs);
-  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  const abs = normalizeAbs(hitPath, ctx.projectRoot);
+  const dir = normalizeAbs(ctx.triviumDir, ctx.projectRoot);
+  if (!isUnder(abs, dir)) return false;
+  const rel = path.relative(dir, abs);
+  /*
+   * 目录**自身**不放行：它代表整棵子树，而子树里绝大多数条目要继续挡。
+   * （这一行的 `rel === ''` 分支是显式写出来的——初版靠 `!rel` 的 falsy 落到
+   * 同一结果，但那是巧合而非意图：`classifyDenyPath` 里同样的写法就判错了。）
+   */
+  if (rel === '') return false;
   const head = rel.split(path.sep)[0] ?? '';
   return ORCHESTRATOR_READABLE.includes(head);
 }

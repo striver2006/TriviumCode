@@ -77,6 +77,17 @@ export function parseZcodeEnvelope(stdout: string): ZcodeEnvelope | null {
  * WebFetch / WebSearch 不在其列：出网不是「读项目」，把被审代码发到外部端点不该计入 AC-11 的证据。
  */
 export const ZCODE_READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'ReadSessionContext']);
+/**
+ * 读类工具里**必然带路径**的那一档（设计 10.1.1 第②层的覆盖率分母）。
+ *
+ * **只有 `Read`，与 agy 侧的四个不同**——这不是口径不统一，是厂商契约的差异：
+ * 本侧 `Grep` / `Glob` 的 `path` 参数是**可选**的（不传即从当前目录搜），
+ * 见下方 `ZcodeRolloutToolCall.path` 的注释；把它们计进分母会让降级档位
+ * 变成稳态噪声，淹掉真信号。
+ *
+ * 两家分母不同这件事本身要写明，否则下一个人会以为其中一侧漏配了。
+ */
+export const ZCODE_MUST_HAVE_PATH = new Set(['Read']);
 /** 写类工具与 shell：出现即 readonly_breach（FR-15 / AC-08） */
 export const ZCODE_WRITE_TOOLS = new Set([
   'Write', 'Edit', 'MultiEdit', 'ApplyPatch', 'NotebookEdit', 'Bash',
@@ -233,6 +244,15 @@ export interface ZcodeRollout {
    * 实测取值 `config` —— 印证 `model_override = config_copy`。
    */
   modelSource: string | null;
+  /**
+   * 路径提取的覆盖率（设计 10.1.1 第②层），与 agy 侧同构。
+   *
+   * 分母只含 `ZCODE_MUST_HAVE_PATH`——本侧只有 `Read` 必带路径。
+   * 补这两个计数之前，该侧的 `verification.path` 档位**恒为 ok**：
+   * 判定函数对 undefined 一律返回 ok，而注释写的是「不知道就别说有效」——
+   * 注释与实现直接相反，等于拿 ok 填「不知道」（r1 三侧独立指出）。
+   */
+  pathCoverage: { total: number; withPath: number };
 }
 
 function extractZcodePath(input: Record<string, unknown>): string | null {
@@ -248,6 +268,8 @@ export function parseZcodeRollout(jsonl: string): ZcodeRollout {
   const toolCalls: ZcodeRolloutToolCall[] = [];
   const readPaths = new Set<string>();
   const writeEvents: string[] = [];
+  let coverTotal = 0;
+  let coverWithPath = 0;
   let modelEffective: string | null = null;
   let modelSource: string | null = null;
 
@@ -284,6 +306,11 @@ export function parseZcodeRollout(jsonl: string): ZcodeRollout {
         path: p,
       });
       if (ZCODE_READ_TOOLS.has(name) && p) readPaths.add(p);
+      // 覆盖率分母：只算必带路径的那一档（设计 10.1.1 第②层）
+      if (ZCODE_MUST_HAVE_PATH.has(name)) {
+        coverTotal++;
+        if (p) coverWithPath++;
+      }
       if (ZCODE_WRITE_TOOLS.has(name)) {
         writeEvents.push(`${name}(${p ?? JSON.stringify(input).slice(0, 80)})`);
       }
@@ -296,5 +323,6 @@ export function parseZcodeRollout(jsonl: string): ZcodeRollout {
     writeEvents: [...new Set(writeEvents)],
     modelEffective,
     modelSource,
+    pathCoverage: { total: coverTotal, withPath: coverWithPath },
   };
 }

@@ -60,6 +60,13 @@ function result(over: Partial<CriticResult> = {}): CriticResult {
     profile_requested: null,
     tool_calls: {},
     read_paths: [],
+    /*
+     * 覆盖率两项：**结构化轨迹的两家适配器现在都报它**（设计 10.1.1 第②层）。
+     * 夹具跟着报，否则走的是「该侧没报数」那一支、档位落 unavailable——
+     * 那一支现在只留给旧留痕，拿它当结构化轨迹侧的常态会把用例测在别的分支上。
+     */
+    path_bearing_reads: 1,
+    path_bearing_reads_with_path: 1,
     write_events: [],
     command_texts: [],
     evidence_ok: false,
@@ -517,4 +524,46 @@ test('归因扣除：斜杠对齐后缀与右端开放两族都不得误扣（r8
     '只加左边界时 "/README.md" 仍是 "…/sub/README.md" 的子串——根 README.md 被误扣，' +
       '而 fingerprintChangedFiles 已整批置空，它会从 run.json 两个清单里同时消失',
   );
+});
+
+/*
+ * ── 路径核验档位的三态（设计 10.1.1 第②层）──
+ *
+ * 这一档初版只有 ok / unavailable 两态，且**只看能力声明、不看实际拿到了什么**：
+ * 声明为结构化轨迹的侧交出空的或残缺的路径集，档位照样是 ok，
+ * 而 ok 在契约里的语义是「路径核验有效」。
+ */
+
+test('path 档位：必带路径的调用全都提出了路径 → ok', () => {
+  const v = judge({ path_bearing_reads: 3, path_bearing_reads_with_path: 3 });
+  assert.equal(v.verification.path, 'ok');
+});
+
+test('path 档位：有提不出路径的 → partial（提取器相对厂商参数名退化了）', () => {
+  const v = judge({ path_bearing_reads: 3, path_bearing_reads_with_path: 1 });
+  assert.equal(
+    v.verification.path,
+    'partial',
+    '这是本项目唯一能在下一轮运行时发现厂商改参数名的信号',
+  );
+});
+
+test('path 档位：该侧没报计数 → unavailable，不得记 ok', () => {
+  /*
+   * 「不知道提取器有没有退化」与「核验过、有效」是两件事。
+   * 初版这一支 `return 'ok'`，而同一行注释写着「不知道就别说有效」——
+   * 注释与实现直接相反，等于拿 ok 填「不知道」（r1 三侧独立指出）。
+   */
+  const v = judge({ path_bearing_reads: undefined, path_bearing_reads_with_path: undefined });
+  assert.equal(v.verification.path, 'unavailable');
+});
+
+test('path 档位：分母为 0（本轮没有必带路径的调用）→ unavailable', () => {
+  /*
+   * 「一次都没调用过那类工具」与「调用了且全部提出路径」都会让比值看起来完美，
+   * 但只有后者配叫「核验有效」。初版把前者也记 ok，于是纯搜索轮次看起来通过、
+   * 实际探测面为零。
+   */
+  const v = judge({ path_bearing_reads: 0, path_bearing_reads_with_path: 0 });
+  assert.equal(v.verification.path, 'unavailable');
 });

@@ -8,7 +8,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { DEFAULT_DRIVER, findingPrefixAlternation, type AgentId } from './agents/registry.js';
-import { DEFAULT_CRITICS, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
+import { DEFAULT_CRITICS, VOIDING_DENY_CATEGORIES, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
 import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
 import { dispositionKindForStage } from './naming.js';
@@ -362,7 +362,14 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     warnings.push({
       code: 'joint_check_degraded',
       message:
-        `共同阻断这一档**未执行**：排除作废侧后有效侧只剩 ${jc.effective_sides} 家（需要 2 家）。` +
+        `共同阻断这一档**未执行**：有效侧只剩 ${jc.effective_sides} 家（需要 2 家）` +
+        `——${
+          jc.reason === 'voided'
+            ? '有侧因禁读命中被判作废'
+            : jc.reason === 'both'
+              ? '既有侧被判作废，也有侧未产出结构化结论'
+              : '有侧未产出结构化结论（解析降级或失败）'
+        }。` +
         '本轮不享有「两家同时提出的 blocker 被驳回即报」这层保护——' +
         '这不是「查过、没发现」，是「没查」。',
       ids: [],
@@ -452,17 +459,42 @@ export function jointCheckState(
   reviews: Partial<Record<CriticId, Review | null>>,
   joint: readonly { location: string; ids: string[] }[],
   voidedSides: readonly CriticId[] = [],
-): { state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides'; effective_sides: number } {
+): {
+  state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
+  effective_sides: number;
+  /**
+   * 有效侧不足时**为什么**不足（r1 AGY-06）。
+   *
+   * 初版的告警文案一律写「排除作废侧后…」，而有效侧也可能是因为某侧
+   * `parse_fallback`（没有结构化结论）而不足——把「违反独立性被作废」
+   * 与「解析降级」混为一谈，审计时会指向错误的根因。
+   */
+  reason?: 'voided' | 'no-structured-review' | 'both';
+} {
   const voided = new Set(voidedSides);
   const effective = (Object.keys(reviews) as CriticId[]).filter(
     (c) => !voided.has(c) && reviews[c] !== undefined && reviews[c] !== null,
   ).length;
 
-  if (effective < 2) return { state: 'skipped-insufficient-sides', effective_sides: effective };
+  if (effective < 2) {
+    return { state: 'skipped-insufficient-sides', effective_sides: effective, reason: whyInsufficient(reviews, voided) };
+  }
   return {
     state: joint.length > 0 ? 'checked-found' : 'checked-none',
     effective_sides: effective,
   };
+}
+
+/** 有效侧不足的成因：作废排除、无结构化结论，还是两者都有 */
+function whyInsufficient(
+  reviews: Partial<Record<CriticId, Review | null>>,
+  voided: Set<CriticId>,
+): 'voided' | 'no-structured-review' | 'both' {
+  const ids = Object.keys(reviews) as CriticId[];
+  const hasVoided = ids.some((c) => voided.has(c));
+  const hasNoReview = ids.some((c) => !voided.has(c) && (reviews[c] === null || reviews[c] === undefined));
+  if (hasVoided && hasNoReview) return 'both';
+  return hasVoided ? 'voided' : 'no-structured-review';
 }
 
 /** 人读渲染：失败时要能让 Driver 直接照着补（§8.6 第 6 步） */
@@ -526,6 +558,13 @@ export async function loadRoundReviews(
   expectedFallbackIds: string[];
   /** run.json 记录已产出结论、结构化结论却读不到的一侧 */
   missingSides: CriticId[];
+  /**
+   * 本轮被判作废的侧（禁读命中第①②类，设计 10.1.1）。
+   *
+   * 在这里派生而不是让调用方传：它初版是 `checkAdjudication` 的可选参数，
+   * 两个生产调用点都没传，于是整段没生效而纯函数单测全绿。
+   */
+  voidedSides: CriticId[];
   /**
    * 本轮是否为降级轮次，读自 run 元数据的 `degraded_reason`。
    *
@@ -602,7 +641,29 @@ export async function loadRoundReviews(
    * 不需要再叠一层猜测。
    */
   const degraded = runMeta?.degraded_reason != null;
-  return { reviews, notes, expectedFallbackIds, missingSides, degraded };
+
+  /*
+   * 本轮被判作废的侧（设计 10.1.1 的第①②类命中）。
+   *
+   * 从 run 元数据的两条泄漏通道派生，而不是让调用方各自去算：
+   * `voidedSides` 初版是 `checkAdjudication` 的一个可选参数，**两个生产调用点
+   * 都没传**，于是「作废侧不计入共同阻断」整段从未生效，而纯函数单测全绿——
+   * 可选参数的默认值让漏传静默成功（r1 三侧独立判为阻断）。
+   * 在这里派生，调用方想漏都漏不掉。
+   *
+   * 读不到 run 元数据时返回空数组：那是旧归档，当时的口径是「命中即作废」、
+   * 无从区分哪几侧因哪一类命中，按「无作废侧」处理即维持旧行为，不追溯改判。
+   */
+  const voidedSides: CriticId[] = [];
+  for (const c of criticsOf(runMeta)) {
+    const viaPath = runMeta?.guard?.peer_leak_via_path?.[c]?.hits ?? [];
+    const viaCmd = runMeta?.guard?.peer_leak_via_command?.[c];
+    // 路径通道逐条带类，只有作废类才算；命令通道没有类别信息，命中即算
+    const pathVoiding = viaPath.some((h) => VOIDING_DENY_CATEGORIES.includes(h.category));
+    if (pathVoiding || viaCmd?.hit === true) voidedSides.push(c);
+  }
+
+  return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides };
 }
 
 /** 从 `.fallback-items.md` 读回编排器编好号的待裁决单元（每行 `- <前缀>-F<n>: …`） */

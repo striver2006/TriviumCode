@@ -76,6 +76,8 @@ export interface RenderInput {
     /** 是否属于会让该侧结论作废的类别 */
     voiding: boolean;
     paths: string[];
+    /** 命令通道的命中原文。`command-trace` 一族只有这一项，`paths` 恒空 */
+    commands: string[];
   };
   heterogeneous: boolean;
   overrideReason?: string | null;
@@ -147,6 +149,7 @@ export function renderFrontMatter(input: RenderInput): string {
             via: input.peerLeak.via,
             category: input.peerLeak.category,
             paths: input.peerLeak.paths,
+            ...(input.peerLeak.commands.length > 0 ? { commands: input.peerLeak.commands } : {}),
           },
         }
       : {}),

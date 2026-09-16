@@ -78,14 +78,29 @@ const PATH_KEYS = [
 /**
  * 只读工具集：出现在轨迹里表示「读了东西」。
  *
- * 分两档（设计 10.1.1 第②层覆盖率判定用）：`MUST_HAVE_PATH` 的调用提不出路径
- * 即为提取退化的确凿信号；其余（搜索 / 列目录类）允许无路径——不带目录的搜索
- * 是合法形态，无路径即无读取事实。
+ * 本侧四个读工具的目录参数**都是必填的**，所以它们同时也构成
+ * `AGY_MUST_HAVE_PATH`（设计 10.1.1 第②层的覆盖率分母）。
  */
 export const AGY_READ_TOOLS = new Set(['view_file', 'grep_search', 'find_by_name', 'list_dir']);
 
-/** 读类工具里**必然带路径**的那一档：提不出路径就是提取器坏了，不是合法形态 */
-export const AGY_MUST_HAVE_PATH = new Set(['view_file']);
+/**
+ * 读类工具里**必然带路径**的那一档：提不出路径就是提取器坏了，不是合法形态。
+ *
+ * **四个都在**（r1 三侧独立指出）。初版只放了 `view_file`，理由是「搜索类允许
+ * 无路径」——那个理由对**搜索词**成立，对**搜索目录**不成立：
+ * `grep_search` 有 `SearchPath`、`find_by_name` 有 `SearchDirectory`、
+ * `list_dir` 有 `DirectoryPath`，三者都是必填的目录参数。
+ *
+ * 排除它们的后果恰恰最坏：**EV-28 的历史根因就是 `grep_search` 提出 0 条路径**，
+ * 而按初版口径，那次退化落在分母之外、档位照记「有效」——
+ * 探测器对**唯一发生过的真实退化形态**失灵。
+ */
+export const AGY_MUST_HAVE_PATH = new Set([
+  'view_file',
+  'grep_search',
+  'find_by_name',
+  'list_dir',
+]);
 
 /** 写类工具/命令：出现在轨迹里即 readonly_breach（FR-15 / AC-08） */
 export const AGY_WRITE_TOOLS = new Set([
@@ -207,8 +222,9 @@ export function readPaths(r: AgyStreamResult): string[] {
  * 发现厂商改参数名的信号（设计 §10.1.1 第②层）。补它之前，这类退化只能靠
  * 人工复算原始轨迹发现，而运行目录到期即删。
  *
- * 分母只取 `AGY_MUST_HAVE_PATH` 那一档：搜索与列目录类允许无路径，
- * 计进去会让降级档位变成稳态噪声。
+ * 分母取 `AGY_MUST_HAVE_PATH`——**四个读工具都在里面**。
+ * 它们各自的目录参数都是必填的（文件路径 / 搜索目录 / 查找目录 / 列出目录），
+ * 提不出来就是提取器相对厂商参数名退化了，不存在「合法的无路径调用」。
  */
 export function pathCoverage(r: AgyStreamResult): { total: number; withPath: number } {
   let total = 0;

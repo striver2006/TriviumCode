@@ -61,6 +61,15 @@ export interface SideVerdict {
   notedCategories: DenyCategory[];
   notedPaths: string[];
   /**
+   * 告警档命中的**命令原文**（措施 b）。
+   *
+   * 与 `notedPaths` 分列，理由同作废类的 `peerHits` / `peerCommandHits`：
+   * 路径命中说明它读了那个文件，命令命中说明它跑了一条提到那个文件的命令。
+   * 初版漏了这一项，于是 `command-trace` 一族（只有命令通道）的告警档命中
+   * 恒无证据——留痕说「命中了」却拿不出任何一条（r1 三侧独立指出）。
+   */
+  notedCommands: string[];
+  /**
    * 命中路径逐条带类（供 `run.json` 的 `peer_leak_via_path` 落盘）。
    *
    * 同一侧一轮内可同时命中多类，处置取最重档而留痕要能复盘每一条各属哪类——
@@ -151,16 +160,25 @@ export function judgeSide(
   const ev = checkEvidence(result, req, { archiveRootAbs: opts.archiveRootAbs, capability: cap });
 
   /*
-   * ── 禁读集按类分组（设计 §10.1.1，2026-09-16）──
+   * ── 分类作用在**命中**上，不是在 deny 条目上（设计 §10.1.1）──
    *
-   * 禁读集由四类性质完全不同的对象拼成，而此前它们共用一个布尔位与一句
+   * 禁读集由四类性质完全不同的对象拼成，而它们曾共用一个布尔位与一句
    * 「该侧结论作废」。四次实测命中**全部落在编排器状态目录那一类**——
    * 审查员读了自己的护栏配置或列了目录，与背靠背独立性毫无关系。
    *
-   * **分组在调用之前做，而不是在命中之后分**：两条通道的匹配逻辑（尤其措施 b
-   * 的 F-1～F-9 闭集）一行都不该为分类改动，而按类分好再传进去，
-   * 返回的命中天然带类。放行项根本不进集合，于是两条通道**自动一致**——
-   * 这正是 r3 三审要求的「三个消费面一致豁免」里最难的那一面。
+   * ## 为什么必须按命中判，而不是先把条目分组
+   *
+   * 初版（2026-09-16）是「按条目预分组，再把各组分别喂给两条通道」，
+   * 三侧代码双审独立判为阻断：**禁读集对这两棵树只有整棵目录条目**
+   * （`enumerateDenyPaths` 加的是裸目录），而条目自身在分类器里落到兜底最重档，
+   * 于是整棵进作废集合、前缀匹配下读任何子文件都作废——
+   * **分档、放行、己方豁免三项一次都不生效，要修的误伤逐字保留**。
+   *
+   * 根因不只是那个空串判据：**目录条目表达不了「整棵禁、其中几个放行」**。
+   * 设计 §10.1.1 的原话就是「两条通道都实现**匹配时豁免**」——
+   * 即先按全集匹配、再对每条命中判类与放行。现在照它做。
+   *
+   * 代价是两条通道各自要过一遍分类，但那是 O(命中数)，而命中通常是 0。
    */
   const denyCtx = {
     projectRoot: opts.projectRoot,
@@ -169,29 +187,21 @@ export function judgeSide(
     critic,
     sensitiveGlobs: cfg.review.sensitive_globs,
   };
-  const byCategory = new Map<DenyCategory, string[]>();
-  for (const d of req.deny_paths) {
-    // 具名放行：两条通道都不看它（设计 §10.1.1）
-    if (isOrchestratorReadable(d, opts)) continue;
-    const c = classifyDenyPath(d, denyCtx);
-    const list = byCategory.get(c) ?? [];
-    list.push(d);
-    byCategory.set(c, list);
-  }
-  /** 会让该侧作废的那几类条目（第①②类） */
-  const voidingPaths = [...byCategory.entries()]
-    .filter(([c]) => isVoidingCategory(c))
-    .flatMap(([, ps]) => ps);
+  /** 一条命中该怎么处置：放行 → 丢弃；作废类 → 计入作废；其余 → 记告警 */
+  const dispose = (hit: string): { category: DenyCategory; voiding: boolean } | null => {
+    if (isOrchestratorReadable(hit, opts)) return null;
+    const category = classifyDenyPath(hit, denyCtx);
+    return { category, voiding: isVoidingCategory(category) };
+  };
 
   /*
    * 措施 a **只吃 `read_paths`，不吃回填**（r2/r3 双审两侧均确认）：
    * 回填路径的语义是「跑了一条提到该文件的命令」，不等于「读到了该文件」。
    * 命令通道由下面的措施 b 承担，两条分列才看得出泄漏走的是哪条。
    *
-   * 传 `voidingPaths` 而不是全集：非作废类的命中另行收集（见下面的 `noted`），
-   * 它们进留痕与告警，但不影响该侧结论。
+   * 按**全集**匹配，分类在命中之后做——见上面的说明。
    */
-  const peer = checkPeerLeak(result.read_paths, voidingPaths, opts.projectRoot);
+  const peerRaw = checkPeerLeak(result.read_paths, req.deny_paths, opts.projectRoot);
   /*
    * 措施 b（§10.1 / EV-01）：命令原文的字面扫描。
    *
@@ -205,26 +215,67 @@ export function judgeSide(
    * > 是把论证建在空处」为由把那句话从 §18.1 #21 删掉。一面删、一面写进新注释。
    * > 该旋钮无消费方（BACKLOG **EV-15**），且已拍板不收窄（**EV-16**）。
    */
-  const peerCmd = checkPeerLeakViaCommand(result.command_texts, voidingPaths, opts.projectRoot);
 
   /*
-   * 非作废类的命中（编排器状态目录、凭据文件）——**记，但不作废**。
+   * ── 逐条命中分流：作废 / 记一笔 / 放行 ──
    *
-   * 这一族不是「不管」：它们照常进留痕与人读告警，只是不影响该侧结论。
-   * 四次实测命中全落在这里，其中两次是审查员**主动披露**的；
-   * 按旧口径它们会让一份完全有效的审查作废，而泄漏的是护栏配置本身。
-   *
-   * 两条通道都扫：只扫路径通道的话，一次目录列举仍会从命令通道漏成作废。
+   * 路径通道的命中是**路径**，直接判类。
+   * 命令通道的命中是**命令原文**，判不了类——一条命令可能提到多个条目。
+   * 对它的处置见下面 `cmdDisposition` 的说明。
    */
-  const notedCategories: DenyCategory[] = [];
+  const typedHits: { path: string; category: DenyCategory }[] = [];
+  const peerHits: string[] = [];
   const notedPaths: string[] = [];
-  for (const [cat, paths] of byCategory) {
-    if (isVoidingCategory(cat) || paths.length === 0) continue;
-    const viaPath = checkPeerLeak(result.read_paths, paths, opts.projectRoot);
-    const viaCmd = checkPeerLeakViaCommand(result.command_texts, paths, opts.projectRoot);
-    if (viaPath.leaked || viaCmd.leaked) {
-      notedCategories.push(cat);
-      notedPaths.push(...viaPath.hits);
+  const notedCategories: DenyCategory[] = [];
+
+  for (const hit of peerRaw.hits) {
+    const d = dispose(hit);
+    if (!d) continue; // 具名放行：当没命中
+    typedHits.push({ path: hit, category: d.category });
+    if (d.voiding) peerHits.push(hit);
+    else {
+      notedPaths.push(hit);
+      if (!notedCategories.includes(d.category)) notedCategories.push(d.category);
+    }
+  }
+
+  /*
+   * 命令通道：判据是「命令文本里出现了某个禁读条目的拼写」，
+   * 而返回的是**命令原文**——没有「这条命令碰的是哪个条目」这一信息。
+   *
+   * 所以这里按**最重档**处置：只要该侧有命令命中，就看它有没有可能撞上作废类。
+   * 判法是拿作废类条目单独再扫一遍（复用同一个 `checkPeerLeakViaCommand`，
+   * 不另写匹配逻辑）——扫中了算作废，没扫中则这条命中属告警档。
+   *
+   * 这一步不能省（r1 CODEX-03）：命令通道是 `command-trace` 一族的**唯一**通道，
+   * 省掉它等于对那一族完全不做禁读核验；而把命令命中一律当作废，
+   * 又会让「一次目录列举」重新把该侧判掉——那正是四次误伤里的两次形态。
+   */
+  const voidingEntries = req.deny_paths.filter((d) => {
+    const x = dispose(d);
+    return x !== null && x.voiding;
+  });
+  const notedEntries = req.deny_paths.filter((d) => {
+    const x = dispose(d);
+    return x !== null && !x.voiding;
+  });
+  const cmdVoiding = checkPeerLeakViaCommand(
+    result.command_texts,
+    voidingEntries,
+    opts.projectRoot,
+  );
+  const cmdNoted = checkPeerLeakViaCommand(result.command_texts, notedEntries, opts.projectRoot);
+
+  /*
+   * 命令通道的告警档命中也要落明细（r1 AGY-05 ≡ GLM-06 ≡ CODEX-03）。
+   * 初版只收路径通道的 hits，于是 `command-trace` 一族——它**只有**命令通道——
+   * 的告警档命中恒无证据：留痕说「命中了、属告警档」，一条证据都拿不出来。
+   */
+  const notedCommands = cmdNoted.hits;
+  if (notedCommands.length > 0) {
+    for (const d of notedEntries) {
+      const x = dispose(d);
+      if (x && !notedCategories.includes(x.category)) notedCategories.push(x.category);
     }
   }
 
@@ -279,15 +330,18 @@ export function judgeSide(
     projectReads: ev.projectReads,
     readonlyBreach,
     breachEvidence: result.write_events,
-    peerArtifactRead: peer.leaked || peerCmd.leaked,
-    peerHits: peer.hits,
-    peerCommandHits: peerCmd.hits,
+    /*
+     * **只有作废类的命中才置真**（r1 三侧阻断）。
+     * 初版用两条通道的原始 leaked 做或运算，于是告警档命中一样让该侧作废——
+     * 分档等于没做。现在它等价于「过滤掉放行与告警档之后还剩命中」。
+     */
+    peerArtifactRead: peerHits.length > 0 || cmdVoiding.hits.length > 0,
+    peerHits,
+    peerCommandHits: cmdVoiding.hits,
     notedCategories,
     notedPaths: [...new Set(notedPaths)],
-    typedHits: [
-      ...peer.hits.map((p) => ({ path: p, category: classifyDenyPath(p, denyCtx) })),
-      ...[...new Set(notedPaths)].map((p) => ({ path: p, category: classifyDenyPath(p, denyCtx) })),
-    ],
+    notedCommands,
+    typedHits,
     consultedUnverified,
     integrityIssues,
     suspectedWrites: [...(result.suspected_write_events ?? [])],
@@ -328,9 +382,28 @@ function pathVerificationTier(
   if (cap.traceShape === 'command-trace') return 'unavailable';
   const total = result.path_bearing_reads;
   const withPath = result.path_bearing_reads_with_path;
-  // 该侧没报这两个计数（旧适配器 / 旧留痕）：不知道就别说「有效」，也别谎报退化
-  if (total === undefined || withPath === undefined) return 'ok';
-  if (total === 0) return 'ok';
+
+  /*
+   * **该侧没报这两个计数 → `unavailable`，不是 `ok`**（r1 三侧独立指出）。
+   *
+   * 初版这里 `return 'ok'`，而同一行的注释写的是「不知道就别说『有效』」——
+   * 注释与实现直接相反，等于拿 `ok` 填「不知道」。而 `ok` 在 run.v2 的语义是
+   * 「路径核验有效」：没有任何输入支撑的「有效」，正是本主题一路在修的三态塌缩
+   * （「没测到」被说成「测出来没有」）。
+   *
+   * 这一支现在只剩旧留痕会走到——两家结构化轨迹的适配器都已对称采集。
+   */
+  if (total === undefined || withPath === undefined) return 'unavailable';
+
+  /*
+   * 分母为 0（本轮没有「必带路径」的调用）同样记 `unavailable`。
+   *
+   * 「一次都没调用过那类工具」与「调用了且全部提出了路径」是两件事，
+   * 而只有后者才配叫「核验有效」。初版把前者也记 `ok`，于是**纯搜索轮次**
+   * （一次文件读都没有）看起来核验通过，实际探测面为零。
+   */
+  if (total === 0) return 'unavailable';
+
   return withPath < total ? 'partial' : 'ok';
 }
 

@@ -39,11 +39,19 @@ async function runInjected(
   stub: StubConfig,
   extraArgs: string[] = [],
   extraReview: string[] = [],
+  /**
+   * 在 `--start` **之前**往夹具里补文件。
+   *
+   * 禁读集在冻结送审包时枚举一次，之后不再变——要让某份文件进 deny_paths，
+   * 只能在这一步放。`makeFixture` 之后、`--start` 之前是唯一的窗口。
+   */
+  seed?: (root: string) => Promise<void>,
 ): Promise<{ root: string; stageDir: string; exitCode: number; meta: RunMeta; waitOut: string }> {
   const { root, stageDir } = await makeFixture({
     topic: TOPIC,
     ...(extraReview.length > 0 ? { extraReview } : {}),
   });
+  if (seed) await seed(root);
 
   const started = await cli(
     root,
@@ -207,15 +215,93 @@ test('审查中写项目文件 → readonly_breach', { skip: bundleMissing && bu
   assert.equal(meta.guard.readonly_breach, true, '审查员写文件必须被判只读违规');
 });
 
-test('读到禁读清单内的文件 → peer_artifact_read', { skip: bundleMissing && bundleSkipReason }, async () => {
-  const { meta } = await runInjected({ gemini: { mode: 'peer_leak' }, glm: { mode: 'ok' } });
-  assert.ok(meta.deny_paths.length > 0, '夹具里的 .env 命中 sensitive_globs，禁读清单不该是空的');
-  assert.equal(meta.guard.peer_artifact_read, true);
-  assert.equal(
-    meta.guard.peer_leak_via_command?.gemini?.hit, false,
-    '措施 a 命中时措施 b 不该跟着亮：两条通道要能分得开，否则单边失效看不出来',
-  );
-});
+/*
+ * ── 分档后的两条端到端用例（设计 §10.1.1）──
+ *
+ * 这条用例原先只有一个断言：「读到禁读清单内任何文件 → 作废」。
+ * 而夹具的禁读集里只有 `.env`（凭据类），于是它实际测的是
+ * **「读凭据文件 → 作废」**——那正是本批要改掉的口径：
+ * 凭据文件不含任何审查意见，读它不损害背靠背独立性。
+ *
+ * 拆成两条，各测一档。两条都是**端到端**的（经真实 CLI 与落盘的 run.json），
+ * 不是纯函数——r1 代码双审的阻断一正是「纯函数测对了、接线处错了」，
+ * 而纯函数测试天然看不见接线。
+ */
+
+test(
+  '读到凭据文件 → 记一笔，但**不判作废**（分档：安全告警线）',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    const { meta } = await runInjected({ gemini: { mode: 'peer_leak' }, glm: { mode: 'ok' } });
+    assert.ok(meta.deny_paths.length > 0, '夹具里的 .env 命中 sensitive_globs，禁读清单不该是空的');
+
+    assert.equal(
+      meta.guard.peer_artifact_read,
+      false,
+      '凭据文件不含审查意见，读它不损害独立性——按旧口径这里会作废，那是本批要修的误伤',
+    );
+    const viaPath = meta.guard.peer_leak_via_path?.gemini;
+    assert.equal(viaPath?.hit, true, '不作废不等于不记：命中仍要进留痕');
+    assert.ok(
+      viaPath?.hits.some((h) => h.category === 'sensitive'),
+      `命中要逐条带类，实得：${JSON.stringify(viaPath?.hits)}`,
+    );
+    assert.equal(
+      meta.guard.peer_leak_via_command?.gemini?.hit, false,
+      '措施 a 命中时措施 b 不该跟着亮：两条通道要能分得开，否则单边失效看不出来',
+    );
+  },
+);
+
+test(
+  '读到对端审查产出 → 判作废（分档：会作废的那一档）',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    /*
+     * 往夹具里放一份**对端**的历史审查件，它才是「读了就该作废」的那一类。
+     * 桩的 `peer_leak` 模式读禁读集里的全部条目，于是这一份会被读到。
+     *
+     * 这份文件必须在 `--start` **之前**就位：禁读集在冻结送审包时枚举一次，
+     * 之后不再变。放晚了它不会进 deny_paths，用例会以「命中里没有对端产物」失败——
+     * 那种失败看起来像判定坏了，其实是夹具没摆好，排查起来很费时间。
+     */
+    const { meta } = await runInjected(
+      { gemini: { mode: 'peer_leak' }, glm: { mode: 'ok' } },
+      [],
+      [],
+      async (root) => {
+        const dir = path.join(root, '.reviews', TOPIC, 'plan');
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(
+          path.join(dir, `2026-01-01-${TOPIC}-glm.md`),
+          [
+            '---',
+            'schema: trivium.review.v1',
+            `topic: ${TOPIC}`,
+            'stage: plan',
+            'role: glm',
+            'verdict: request-changes',
+            '---',
+            '',
+            '# 上一轮 glm 侧的审查意见（对端产出，本侧禁读）',
+          ].join('\n'),
+          'utf8',
+        );
+      },
+    );
+
+    assert.equal(
+      meta.guard.peer_artifact_read,
+      true,
+      '读到对端产出必须作废——这一档是三层屏蔽的存在理由',
+    );
+    const viaPath = meta.guard.peer_leak_via_path?.gemini;
+    assert.ok(
+      viaPath?.hits.some((h) => h.category === 'peer-artifact'),
+      `命中里必须有对端产物那一类，实得：${JSON.stringify(viaPath?.hits)}`,
+    );
+  },
+);
 
 test(
   '命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01）',
