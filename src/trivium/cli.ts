@@ -46,26 +46,46 @@ interface ParsedArgs {
   sub: string[];
   flags: Map<string, string | boolean>;
   /**
-   * `--` 之后的全部内容，原样拼回一个字符串。
+   * `--` 之后的全部 argv **原样保留为数组**，不拼串。
    *
-   * 存在的理由：`topic resolve` 要接收 skill 的整串 `$ARGUMENTS`，而它本身以
-   * `--topic …` 开头。用 `--args <值>` 传会被下面的「值不能以 -- 开头」规则误判成
-   * 布尔标志——真跑时踩过。`--` 终止符让这种值可以无歧义地传进来。
+   * 存在的理由：`topic resolve` 要接收 skill 的 `$ARGUMENTS`，而它本身以 `--topic …`
+   * 开头，不用 `--` 终止符就会被下面的旗标规则吃掉。
+   *
+   * **不再 `join(' ')`**（BACKLOG EV-18）：拼串会丢掉 shell 已经切好的 token 边界，
+   * 下游只能再分一次词——而自写的分词器遇到正文里一个裸引号就把其后的 `--topic X`
+   * 粘进同一 token，主题静默回落推断。shell 切一次、这里直接用，第二跳连同它的缺陷一起消失。
    */
-  trailing: string;
+  trailing: string[];
 }
+
+/**
+ * 布尔旗标：**永不吞下一个 token**，`=` 传值只认 true/false 字面（BACKLOG EV-24）。
+ *
+ * `parseArgs` 原本按位置猜：下一个 token 不以 `--` 开头就当值。于是
+ * `approve --reject 理由文字` 让 `reject` 拿到字符串，`=== true` 判假——
+ * **拒绝静默变成通过**；`--json 附言` 静默关掉 JSON 模式。同族的 `--reject=true`
+ * 走 `=` 分支存字符串 `'true'`，同样判假（计划双审 CODEX-07 ≡ AGY-07 ≡ GLM-04）。
+ *
+ * 这份集合与源码里所有「取旗标后与 true 严格相等」的判据由 `test/contract/boolean-flags-parity`
+ * 对账：新增布尔旗标忘记登记这里，测试当场红，而不是回到静默吞值。
+ */
+const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
+  'allow-single', 'await-approval', 'check-artifacts', 'dry-run', 'help', 'json',
+  'keep-fixture', 'no-model-calls', 'quiet', 'refresh-auth', 'reject', 'selftest',
+  'skip-auth-check', 'start', 'suggest-verify', 'version',
+]);
 
 function parseArgs(argv: string[]): ParsedArgs {
   const flags = new Map<string, string | boolean>();
   const positional: string[] = [];
-  let trailing = '';
+  let trailing: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
 
     // `--` 之后的一切都不再解析，整体作为 trailing
     if (a === '--') {
-      trailing = argv.slice(i + 1).join(' ');
+      trailing = argv.slice(i + 1);
       break;
     }
 
@@ -75,10 +95,24 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
     const eq = a.indexOf('=');
     if (eq !== -1) {
-      flags.set(a.slice(2, eq), a.slice(eq + 1));
+      const name = a.slice(2, eq);
+      const raw = a.slice(eq + 1);
+      if (BOOLEAN_FLAGS.has(name)) {
+        const v = raw.trim().toLowerCase();
+        if (v === 'true' || v === '1') flags.set(name, true);
+        else if (v !== 'false' && v !== '0') {
+          throw usageError(`--${name} 是布尔旗标，只接受 true/false，收到：${raw}`);
+        }
+        continue;
+      }
+      flags.set(name, raw);
       continue;
     }
     const name = a.slice(2);
+    if (BOOLEAN_FLAGS.has(name)) {
+      flags.set(name, true); // 后面的 token 留给位置参数——多余的会在分发层退 64
+      continue;
+    }
     const next = argv[i + 1];
     if (next !== undefined && !next.startsWith('--')) {
       flags.set(name, next);
@@ -89,6 +123,48 @@ function parseArgs(argv: string[]): ParsedArgs {
   }
 
   return { command: positional[0] ?? '', sub: positional.slice(1), flags, trailing };
+}
+
+/**
+ * 各子命令能接受的位置参数个数（BACKLOG EV-24）。
+ *
+ * 缺省 0 是 fail-closed：十一条命令里只有 `topic resolve` 与 `gate hook-<name>` 合法地
+ * 读 `sub[0]`，其余一律不读——多出来的位置参数此前被无声丢弃。2026-09-16 实撞：
+ * 审批命令尾部跟了一串中文决策说明，命令退 0，那串文字既没报错也没落盘。
+ * `help` / `version` 在分发前短路、从不看 `sub`，显式豁免（CODEX-11）。
+ */
+const POSITIONAL_LIMIT: Readonly<Record<string, number>> = {
+  topic: 1,
+  gate: 1,
+  help: Number.POSITIVE_INFINITY,
+  version: Number.POSITIVE_INFINITY,
+};
+
+/** 多余位置参数的写法提示，按命令给最可能的正确形态 */
+function positionalHint(command: string): string {
+  switch (command) {
+    case 'approve':
+    case 'abandon':
+      return (
+        '  审批附言请写 `--reason <文本>`（含空格时整段加引号），它会写进审批记录的 reason 字段；\n' +
+        '  `--reject` 不接受值，拒绝理由同样走 --reason。'
+      );
+    case 'topic':
+      return '  原始参数请放在 `--` 之后：trivium topic resolve --stage <s> -- <正文> --topic <主题>';
+    default:
+      return `  用法见 trivium --help`;
+  }
+}
+
+function rejectExtraPositionals(args: ParsedArgs): void {
+  const limit = POSITIONAL_LIMIT[args.command] ?? 0;
+  if (args.sub.length <= limit) return;
+  const extra = args.sub.slice(limit);
+  throw usageError(
+    `${args.command} 不接受多余的位置参数，收到：${extra.map((t) => `「${t}」`).join(' ')}\n` +
+      '  这些内容没有落到任何字段上——与其静默丢掉，不如在这里停下。\n' +
+      positionalHint(args.command),
+  );
 }
 
 const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编排器
@@ -154,9 +230,10 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --profile <名称>  按该档位预检——要校验的是本次实际会用的模型
       --refresh-auth  强制重新探活，穿透 TTL 缓存
 
-  trivium topic resolve --stage <s> -- <整串 $ARGUMENTS>   [--json]
+  trivium topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]   [--json]
       解析主题、提示语、被审对象与模型覆盖。**纯只读**，不创建任何目录。
-      用 -- 终止符传原始参数串：它本身以 --topic 开头，用 --args <值> 会有歧义。
+      -- 之后按 argv 逐个 token 解析、不再分词：正文整段放进一个单引号参数，
+      旗标放在引号之外。正文里的引号、$、反引号、--xxx 都逐字进入焦点。
 
   trivium verify --topic <主题> [--only build|test] [--timeout <秒>] [--json]
       执行 .trivium/config.yaml 中 verify.build / verify.test **显式声明**的命令，
@@ -187,10 +264,11 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       Claude Code Hook 入口，从 stdin 读事件。**不应由人直接调用。**
       退出码：0 放行或判定不了 ｜ 2 明确判定拦截 ｜ 1 程序缺陷（非阻断）
 
-  trivium approve --topic <主题> --stage <s> [--reject --reason <理由>]
+  trivium approve --topic <主题> --stage <s> [--reason <附言>] [--reject --reason <理由>]
   trivium abandon --topic <主题> [--stage <s>] [--reason <理由>]
       人工审批 / 放弃闸门。三种结论均解除业务写锁，工件一律保留。
       通过必须带 --stage（一次放行哪一道要说清楚）；拒绝与放弃可以省略。
+      审批附言一律走 --reason（写进审批记录）；多余的位置参数退 64，不会静默丢掉。
       **审批不校验调用来源**：它靠提示词约束，审批记录里留会话来源供事后对账。
 
   trivium status [--topic <主题>] [--json]
@@ -219,8 +297,23 @@ function collectModelOverrides(args: ParsedArgs): Partial<Record<CriticId, strin
   return out;
 }
 
+/**
+ * 取一个**取值旗标**的值。
+ *
+ * 值为 `true` 说明 `parseArgs` 没能给它取到值——要么后面什么都没有，要么下一个 token 以 `--` 开头
+ * 被当成了另一个旗标。此前这种情形返回 null，于是命令照常退 0 而字段为空：
+ * `approve --reason '--focus 的默认取值说明不准'` 的附言就此消失，而 `dual-approve` 的指引
+ * 恰恰教用户把原文整段传给 `--reason`（代码双审 r2 CODEX-03）。这是 EV-24 同一族的第三格，
+ * 与多余位置参数、布尔旗标吞值一样，一律响亮失败。
+ */
 function flagString(args: ParsedArgs, name: string): string | null {
   const v = args.flags.get(name);
+  if (v === true) {
+    throw usageError(
+      `--${name} 需要一个值，但它后面跟的是另一个旗标（或什么都没有）。\n` +
+        `  值本身以 -- 开头时，写成 --${name}=<值>；含空格时整段加引号。`,
+    );
+  }
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
@@ -560,14 +653,15 @@ async function cmdTopic(args: ParsedArgs): Promise<number> {
   const ctx = await loadCtx();
   const scope = parsePreflightScope(flagString(args, 'stage'));
   /*
-   * 三种传法都支持，优先级：`--` 终止符 > `--args=<值>` > `--args <值>`。
-   * skill 用 `--` 形式最稳——整串 $ARGUMENTS 以 `--topic` 开头时另两种会歧义。
+   * 只认 `--` 终止符之后的 argv，逐个 token 交给解析器（EV-18）。
+   * `--args <值>` 传法已删：它是「整串再切」的另一个入口，全仓只有本文件自己提过它。
    */
-  const rawArgs = args.trailing || flagString(args, 'args') || '';
+  const rawArgs = args.trailing;
   if (rawArgs.length === 0) {
     throw usageError(
-      'topic resolve 需要原始参数串。推荐写法：\n' +
-        '  trivium topic resolve --stage plan -- <整串 $ARGUMENTS>',
+      'topic resolve 需要 -- 之后的原始参数。推荐写法：\n' +
+        "  trivium topic resolve --stage plan -- '<正文>' --topic <主题> [其余旗标]\n" +
+        '  正文整段放进一个单引号参数，旗标放在引号之外。',
     );
   }
 
@@ -746,7 +840,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     }
     const msg =
       `已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
-      `  通过：/dual-approve --topic ${topic} --stage ${stage}\n` +
+      `  通过：/dual-approve --topic ${topic} --stage ${stage} [--reason <附言>]\n` +
       `  拒绝：/dual-approve --topic ${topic} --stage ${stage} --reject --reason <理由>\n` +
       `  放弃：/dual-abandon --topic ${topic}\n` +
       `  在此期间不得修改业务文件（Hook 会拦下）。`;
@@ -1193,6 +1287,7 @@ export async function main(argv: string[]): Promise<number> {
     say(USAGE);
     return EXIT.OK;
   }
+  rejectExtraPositionals(args);
 
   switch (args.command) {
     case 'doctor':

@@ -3,12 +3,22 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { splitArguments, inferTopic, resolveTopicArgs } from '../../src/trivium/topic-args.js';
+import {
+  splitArguments, inferTopic, resolveTopicArgs, findSwallowedFlags, findLiteralQuoteWrapped,
+} from '../../src/trivium/topic-args.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { CRITICS, type Ctx } from '../../src/trivium/types.js';
 import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
+
+/*
+ * ── 入参是 argv 数组，不是字符串（EV-18）──
+ *
+ * 每个元素就是 shell 交付的一个 token。**本文件刻意不写「按空白切字符串」的 helper**：
+ * 那等于把刚删掉的分词器搬进测试——用例看起来在测新契约，实际又在测旧的。
+ * 带空格的正文写成一个元素，就像用户在 shell 里用单引号包住它一样。
+ */
 
 async function fakeCtx(): Promise<Ctx> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-args-'));
@@ -26,40 +36,40 @@ async function fakeCtx(): Promise<Ctx> {
 // ── 参数切分 ──
 
 test('切出具名参数，其余为提示语', () => {
-  const r = splitArguments('重点看并发与回滚 --topic 登录重构 --context src,doc');
+  const r = splitArguments(['重点看并发与回滚', '--topic', '登录重构', '--context', 'src,doc']);
   assert.equal(r.named['topic'], '登录重构');
   assert.equal(r.named['context'], 'src,doc');
   assert.equal(r.rest, '重点看并发与回滚');
 });
 
 test('支持 --k=v 形式', () => {
-  const r = splitArguments('--topic=登录重构 --model-glm=GLM-5.3 看并发');
+  const r = splitArguments(['--topic=登录重构', '--model-glm=GLM-5.3', '看并发']);
   assert.equal(r.named['topic'], '登录重构');
   assert.equal(r.named['model-glm'], 'GLM-5.3');
   assert.equal(r.rest, '看并发');
 });
 
-test('引号内的空格被保留', () => {
-  const r = splitArguments('--topic "登录 重构" --focus "重点看 A 与 B"');
+test('单个 argv token 内的空格原样保留（shell 引号已经把它包成一个参数）', () => {
+  const r = splitArguments(['--topic', '登录 重构', '--focus', '重点看 A 与 B']);
   assert.equal(r.named['topic'], '登录 重构');
   assert.equal(r.named['focus'], '重点看 A 与 B');
 });
 
 test('提示语正文里出现 -- 不会被误当参数（关键用例）', () => {
-  const r = splitArguments('注意 --dangerously-skip-permissions 这个参数绝不能用 --topic X');
+  const r = splitArguments(['注意', '--dangerously-skip-permissions', '这个参数绝不能用', '--topic', 'X']);
   assert.equal(r.named['topic'], 'X');
   assert.match(r.rest, /--dangerously-skip-permissions/);
   assert.equal(r.named['dangerously-skip-permissions' as 'topic'], undefined);
 });
 
 test('参数名后紧跟另一个已知参数时，值为空而不吞掉下一个', () => {
-  const r = splitArguments('--topic --focus 看并发');
+  const r = splitArguments(['--topic', '--focus', '看并发']);
   assert.equal(r.named['topic'], '');
   assert.equal(r.named['focus'], '看并发');
 });
 
 test('中文提示语与中文主题都正常', () => {
-  const r = splitArguments('--topic 登录重构 重点审查并发安全与回滚路径');
+  const r = splitArguments(['--topic', '登录重构', '重点审查并发安全与回滚路径']);
   assert.equal(r.named['topic'], '登录重构');
   assert.equal(r.rest, '重点审查并发安全与回滚路径');
 });
@@ -68,6 +78,109 @@ test('主题推导：去标点、连字符化、截断', () => {
   assert.equal(inferTopic('把登录改造为 OIDC，并补充回滚', 64), '把登录改造为-OIDC-并补充回滚');
   assert.equal(inferTopic('', 64), '未命名主题');
   assert.ok(inferTopic('x'.repeat(100), 64).length <= 32);
+});
+
+/*
+ * ── EV-18 的实撞形态：正文含裸引号 ──
+ *
+ * 2026-09-15 的焦点含 `~[^/\s"'` + 反引号 + `]+` 这个字符类。旧分词器遇到 `"` 进入引号态、
+ * 此后所有空白失效，`--topic X` 被粘进同一 token 落进正文，主题回落推断，
+ * 报的却是推断结果「不得包含路径分隔符」。现在 token 由 shell 切好，引号只是字符。
+ */
+const CHAR_CLASS_FOCUS = '焦点含 ~[^/\\s"\'`]+ 这个字符类，重点看它会不会打乱边界';
+
+test('EV-18：正文含裸双引号与单引号时，--topic 仍被识别，正文逐字保留', async () => {
+  const ctx = await fakeCtx();
+  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: [CHAR_CLASS_FOCUS, '--topic', '安全主题'] });
+  assert.equal(r.topic, '安全主题');
+  assert.equal(r.topic_inferred, false, '主题是显式给的，不得回落推断');
+  assert.equal(r.task_goal, CHAR_CLASS_FOCUS, 'FR-20：正文逐字，引号一个不丢');
+});
+
+test('EV-18：--focus 的值含裸引号同样逐字进 prompt_hint', () => {
+  const r = splitArguments(['--topic', 'T', '--focus', CHAR_CLASS_FOCUS]);
+  assert.equal(r.named['focus'], CHAR_CLASS_FOCUS);
+  assert.equal(r.named['topic'], 'T');
+});
+
+// ── 响亮失败：给了 --topic 却被包进了同一个参数 ──
+
+test('EV-18：--topic 被包进正文参数且未显式给主题 → 退 64，不回落推断', async () => {
+  const ctx = await fakeCtx();
+  await assert.rejects(
+    resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['重点看 X --topic 主题甲'] }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.USAGE);
+      assert.match(e.message, /--topic 字样/);
+      assert.match(e.message, /引号之外/, '要告诉用户正确写法');
+      return true;
+    },
+  );
+});
+
+test('GLM-03：--topic 被包进 --focus 的值里也要退 64（贪婪旗标的值同样是「同一个 shell 参数」）', async () => {
+  const ctx = await fakeCtx();
+  await assert.rejects(
+    resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['--focus', '重点核实 --topic 透传是否准确'] }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.USAGE);
+      assert.match(e.message, /focus/, '要说出字样落在哪个字段里');
+      return true;
+    },
+  );
+});
+
+test('显式给了 --topic 时，正文里谈论 --topic 是合法的，逐字保留且不报错', async () => {
+  const ctx = await fakeCtx();
+  const focus = '重点核实 --topic 透传是否准确';
+  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['--topic', 'T', '--focus', focus] });
+  assert.equal(r.topic, 'T');
+  assert.equal(r.prompt_hint, focus);
+  assert.ok(!r.notes.some((n) => n.includes('--topic 字样')), '显式给了就不该再提醒');
+});
+
+test('CODEX-09：其余已知旗标被包进正文时进 notes，不退 64', async () => {
+  const ctx = await fakeCtx();
+  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['--topic', 'T', '看 --base 与 --critics 的透传'] });
+  assert.equal(r.task_goal, '看 --base 与 --critics 的透传', '正文逐字');
+  assert.ok(r.notes.some((n) => n.includes('--base 字样')), JSON.stringify(r.notes));
+  assert.ok(r.notes.some((n) => n.includes('--critics 字样')), JSON.stringify(r.notes));
+});
+
+test('GLM-04：旗标字样与中文黏连时同样检得出（承诺写的是「字样」，不是「空白界定的字样」）', async () => {
+  const ctx = await fakeCtx();
+  await assert.rejects(
+    resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['重点看--topic 主题甲 的解析'] }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.USAGE);
+      assert.match(e.message, /--topic 字样/);
+      return true;
+    },
+  );
+  // 更长的旗标名不得被误伤：`--topic-x` 不是 `--topic`
+  const ok = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['谈论 --topic-x 这个不存在的旗标', '--topic', 'T'] });
+  assert.equal(ok.topic, 'T');
+  assert.ok(!ok.notes.some((n) => n.includes('--topic 字样')), '--topic-x 不该被当成 --topic');
+});
+
+test('findSwallowedFlags：论域是 rest 与两个贪婪旗标的值，已显式给的不算', () => {
+  // 正文放在贪婪旗标之前：`--goal` 会贪婪吃到下一个已知旗标为止，放后面就成了它的值
+  const b = splitArguments(['正文提 --critics', '--topic', 'T', '--focus', '看 --base', '--goal', '让 --profile 生效']);
+  const hits = findSwallowedFlags(b).map((s) => `${s.flag}@${s.where}`).sort();
+  assert.deepEqual(hits, ['base@focus', 'critics@rest', 'profile@goal']);
+  assert.equal(b.named['goal'], '让 --profile 生效', '前提：正文没被 --goal 贪婪吃掉');
+  assert.ok(!hits.some((h) => h.startsWith('topic@')), 'topic 已显式给出');
+});
+
+// ── 旧写法指纹：首尾成对字面引号（CODEX-08）──
+
+test('CODEX-08：token 首尾带成对字面引号时给 note，不退 64、不剥引号', async () => {
+  const ctx = await fakeCtx();
+  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['"让 --base 真正进入冻结"', '--topic', 'T'] });
+  assert.equal(r.task_goal, '"让 --base 真正进入冻结"', '新解析器不剥引号：逐字');
+  assert.ok(r.notes.some((n) => n.includes('字面引号')), JSON.stringify(r.notes));
+  assert.deepEqual(findLiteralQuoteWrapped(splitArguments(["'x'", 'y', '"z"'])), ["'x'", '"z"']);
+  assert.deepEqual(findLiteralQuoteWrapped(splitArguments(['"', 'a"b', '"a\''])), []);
 });
 
 // ── 按 stage 的输出契约（AGY-04）──
@@ -79,7 +192,7 @@ test('plan 阶段：定位到原稿', async () => {
   await fs.writeFile(path.join(dir, '2026-09-10-登录重构-claude.md'), '# 计划\n');
 
   const r = await resolveTopicArgs({
-    ctx, scope: 'plan', rawArgs: '--topic 登录重构 --focus 重点看并发',
+    ctx, scope: 'plan', rawArgs: ['--topic', '登录重构', '--focus', '重点看并发'],
   });
   assert.equal(r.topic, '登录重构');
   assert.equal(r.prompt_hint, '重点看并发');
@@ -90,7 +203,7 @@ test('plan 阶段：定位到原稿', async () => {
 test('plan 阶段：找不到原稿退 65 并列出目录现状', async () => {
   const ctx = await fakeCtx();
   await assert.rejects(
-    resolveTopicArgs({ ctx, scope: 'plan', rawArgs: '--topic 不存在 --focus x' }),
+    resolveTopicArgs({ ctx, scope: 'plan', rawArgs: ['--topic', '不存在', '--focus', 'x'] }),
     (e: { code?: number; message: string }) => {
       assert.equal(e.code, EXIT.MISSING_ARTIFACT);
       assert.match(e.message, /找不到主题/);
@@ -102,7 +215,7 @@ test('plan 阶段：找不到原稿退 65 并列出目录现状', async () => {
 test('all 阶段（命令 A）：subject_path 为 null，不因原稿不存在而报错', async () => {
   const ctx = await fakeCtx();
   const r = await resolveTopicArgs({
-    ctx, scope: 'all', rawArgs: '--topic 新功能 把登录改造为 OIDC',
+    ctx, scope: 'all', rawArgs: ['--topic', '新功能', '把登录改造为 OIDC'],
   });
   assert.equal(r.subject_path, null);
   assert.ok(r.notes.some((n) => n.includes('S1')));
@@ -112,7 +225,7 @@ test('code 阶段：subject_path 为 null，输出 base 与 diff_available', asy
   const ctx = await fakeCtx();
   // 造一个未提交的改动，让 diff 非空
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
-  const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: '--topic 登录重构 --focus 看安全' });
+  const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['--topic', '登录重构', '--focus', '看安全'] });
   assert.equal(r.subject_path, null);
   assert.equal(r.base, 'HEAD');
   assert.equal(r.diff_available, true);
@@ -121,7 +234,7 @@ test('code 阶段：subject_path 为 null，输出 base 与 diff_available', asy
 test('code 阶段：无变更时退 65', async () => {
   const ctx = await fakeCtx();
   await assert.rejects(
-    resolveTopicArgs({ ctx, scope: 'code', rawArgs: '--topic t --focus 看安全' }),
+    resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['--topic', 't', '--focus', '看安全'] }),
     (e: { code?: number; message: string }) => {
       assert.equal(e.code, EXIT.MISSING_ARTIFACT);
       assert.match(e.message, /无代码变更可审/);
@@ -136,7 +249,7 @@ test('关键用例：resolve 新主题后 .reviews/ 下无任何新增', async (
   const ctx = await fakeCtx();
   const before = await fs.readdir(ctx.projectRoot);
   // all 阶段不需要原稿，是最容易被实现成「顺手建目录」的路径
-  await resolveTopicArgs({ ctx, scope: 'all', rawArgs: '--topic 全新主题 做点什么' });
+  await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['--topic', '全新主题', '做点什么'] });
   const after = await fs.readdir(ctx.projectRoot);
   assert.deepEqual(after.sort(), before.sort(), 'topic resolve 必须是纯只读');
   await assert.rejects(fs.access(ctx.archiveRoot), '不得创建归档根');
@@ -145,7 +258,7 @@ test('关键用例：resolve 新主题后 .reviews/ 下无任何新增', async (
 test('非法主题名退 64 并给出修正建议', async () => {
   const ctx = await fakeCtx();
   await assert.rejects(
-    resolveTopicArgs({ ctx, scope: 'all', rawArgs: '--topic 登录重构-r2 x' }),
+    resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['--topic', '登录重构-r2', 'x'] }),
     (e: { code?: number; message: string }) => {
       assert.equal(e.code, EXIT.USAGE);
       assert.match(e.message, /保留后缀/);
@@ -157,7 +270,7 @@ test('非法主题名退 64 并给出修正建议', async () => {
 
 test('主题缺省时推导并标记 topic_inferred，便于 skill 回显确认', async () => {
   const ctx = await fakeCtx();
-  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: '把登录改造为 OIDC' });
+  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC'] });
   assert.equal(r.topic_inferred, true);
   assert.ok(r.topic.length > 0);
   assert.ok(r.notes.some((n) => n.includes('请向用户回显确认')));
@@ -165,7 +278,7 @@ test('主题缺省时推导并标记 topic_inferred，便于 skill 回显确认'
 
 test('--focus 与 prompt_hint 的对应统一（AGY-04）', async () => {
   const ctx = await fakeCtx();
-  const a = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: '--topic T --focus 看并发' });
+  const a = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['--topic', 'T', '--focus', '看并发'] });
   assert.equal(a.prompt_hint, '看并发');
 });
 
@@ -186,11 +299,11 @@ test('--focus 与 prompt_hint 的对应统一（AGY-04）', async () => {
  * 然后被 S2/S6 的交接说明静默丢弃（那里只交代 focus / context / models / profile）。
  * **拼错的当场退 64，写对的反而无声消失**——「错的报错、对的消失」。
  */
-for (const flag of ['--critics glm', '--only glm']) {
-  test(`命令 A 拒绝 ${flag.split(' ')[0]}：明确报错，不静默丢弃`, async () => {
+for (const flag of [['--critics', 'glm'], ['--only', 'glm']]) {
+  test(`命令 A 拒绝 ${flag[0]}：明确报错，不静默丢弃`, async () => {
     const ctx = await fakeCtx();
     await assert.rejects(
-      resolveTopicArgs({ ctx, scope: 'all', rawArgs: `把登录改造为 OIDC ${flag}` }),
+      resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', ...flag] }),
       (e: { code?: number; message: string }) => {
         assert.equal(e.code, EXIT.USAGE);
         assert.match(e.message, /命令 A/);
@@ -204,14 +317,14 @@ for (const flag of ['--critics glm', '--only glm']) {
 test('B/C/D 不受影响：同样的旗标在这里照常生效', async () => {
   const ctx = await fakeCtx();
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 9;\n');
-  const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: '看并发 --topic T --critics glm' });
+  const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['看并发', '--topic', 'T', '--critics', 'glm'] });
   assert.deepEqual(r.critics, ['glm']);
 });
 
 test('命令 A：正文是任务目标，--focus 是可选补充', async () => {
   const ctx = await fakeCtx();
   const r = await resolveTopicArgs({
-    ctx, scope: 'all', rawArgs: '--topic T 把登录改造为 OIDC --focus 重点看会话固定',
+    ctx, scope: 'all', rawArgs: ['--topic', 'T', '把登录改造为 OIDC', '--focus', '重点看会话固定'],
   });
   assert.equal(r.task_goal, '把登录改造为 OIDC');
   assert.equal(r.prompt_hint, '重点看会话固定');
@@ -221,7 +334,7 @@ test('命令 A：正文是任务目标，--focus 是可选补充', async () => {
 test('B/C/D：正文就是审查焦点，用户不必区分目标与焦点', async () => {
   const ctx = await fakeCtx();
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
-  const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: '--topic T 重点看并发安全与回滚路径' });
+  const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['--topic', 'T', '重点看并发安全与回滚路径'] });
   assert.equal(r.prompt_hint, '重点看并发安全与回滚路径');
   assert.equal(r.task_goal, null, '目标缺省，交给编排器回退 task.json / plan 原稿');
 });
@@ -230,7 +343,7 @@ test('B/C/D：显式 --goal 是已知旗标且贪婪取值，不会被吞进焦�
   const ctx = await fakeCtx();
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
   const r = await resolveTopicArgs({
-    ctx, scope: 'code', rawArgs: '--topic T 重点看并发 --goal 把登录改造为 OIDC 并补回滚',
+    ctx, scope: 'code', rawArgs: ['--topic', 'T', '重点看并发', '--goal', '把登录改造为', 'OIDC', '并补回滚'],
   });
   assert.equal(r.prompt_hint, '重点看并发');
   assert.equal(r.task_goal, '把登录改造为 OIDC 并补回滚');
@@ -240,7 +353,7 @@ test('B/C/D：兼容显式写法 <任务目标> --focus <焦点>——给了 --f
   const ctx = await fakeCtx();
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
   const r = await resolveTopicArgs({
-    ctx, scope: 'code', rawArgs: '--topic T 把登录改造为 OIDC --focus 重点看会话固定',
+    ctx, scope: 'code', rawArgs: ['--topic', 'T', '把登录改造为 OIDC', '--focus', '重点看会话固定'],
   });
   assert.equal(r.task_goal, '把登录改造为 OIDC');
   assert.equal(r.prompt_hint, '重点看会话固定');
@@ -249,7 +362,7 @@ test('B/C/D：兼容显式写法 <任务目标> --focus <焦点>——给了 --f
 test('B/C/D：主题缺省时从焦点推导，note 说明来源', async () => {
   const ctx = await fakeCtx();
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
-  const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: '重点看并发安全' });
+  const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['重点看并发安全'] });
   assert.equal(r.topic_inferred, true);
   assert.ok(r.notes.some((n) => n.includes('由审查焦点推导')), JSON.stringify(r.notes));
 });
@@ -260,7 +373,7 @@ test('焦点里出现白名单旗标字样不再被静默吞掉', async () => {
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
   const focus = '核实 --base 透传说明是否准确';
   const r = await resolveTopicArgs({
-    ctx, scope: 'code', rawArgs: `--topic T --focus "${focus}" --base HEAD`,
+    ctx, scope: 'code', rawArgs: ['--topic', 'T', '--focus', focus, '--base', 'HEAD'],
   });
   assert.equal(r.prompt_hint, focus, '焦点被 --base 截断——FR-20 的逐字承诺落空');
   assert.equal(r.base, 'HEAD', '焦点里的 --base 字样不该影响真正的 --base');
@@ -269,19 +382,20 @@ test('焦点里出现白名单旗标字样不再被静默吞掉', async () => {
 /*
  * ── 边界契约：贪婪取值解决的是「空格」，不是「旗标字样」──
  *
- * 焦点里出现 `--base` 这类**已知旗标名**时，贪婪循环仍会在那里停住，
- * 必须靠字面引号保护。这是命令行固有的歧义，不是缺陷：不加引号就无法
- * 区分「用户在谈论 --base」和「用户在传 --base」。
+ * 焦点里出现 `--base` 这类**已知旗标名**、且它在 argv 里**裸露**（是独立的一个 token）时，
+ * 贪婪循环仍会在那里停住。这是命令行固有的语义，不是缺陷：一个独立的 `--base` token
+ * 无法区分「用户在谈论 --base」和「用户在传 --base」。
  *
- * 固定成用例是为了别让后人把它当 bug「修」掉——真正的防线是
- * SKILL.md 要求执行者给自由文本加引号，以及下游校验（坏 base / 坏档位
- * / 非法 slug 都退 64）兜住大部分误吞。
+ * 固定成用例是为了别让后人把它当 bug「修」掉——真正的防线是 SKILL.md 要求执行者
+ * 把整段正文放进**一个** shell 参数（单引号包住），以及下游校验（坏 base / 坏档位
+ * / 非法 slug 都退 64）兜住大部分误吞。EV-18 之后引号不再由本模块处理：
+ * 它们在 shell 那一层就把正文包成了一个 token。
  */
 test('主题被推成单字时给出「疑似被旗标截断」的提示', async () => {
   const ctx = await fakeCtx();
-  // 「让 --base 真正进入冻结」未加引号：--base 吞掉「真正进入冻结」，正文只剩「让」
+  // 「让 --base 真正进入冻结」没包成一个参数：--base 吞掉「真正进入冻结」，正文只剩「让」
   const r = await resolveTopicArgs({
-    ctx, scope: 'all', rawArgs: '让 --base 真正进入冻结 --focus 看看还有没有同类缺口',
+    ctx, scope: 'all', rawArgs: ['让', '--base', '真正进入冻结', '--focus', '看看还有没有同类缺口'],
   });
   assert.equal(r.topic, '让', '前提：截断后主题确实被推成了单字');
   assert.ok(
@@ -293,17 +407,17 @@ test('主题被推成单字时给出「疑似被旗标截断」的提示', async
 test('正常长度的推导主题不触发该提示', async () => {
   const ctx = await fakeCtx();
   const r = await resolveTopicArgs({
-    ctx, scope: 'all', rawArgs: '把登录改造为 OIDC --focus 看会话固定',
+    ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', '--focus', '看会话固定'],
   });
   assert.ok(!r.notes.some((n) => n.includes('异常短')), '不该对正常主题误报');
 });
 
-test('不加引号时焦点仍会在旗标字样处截断——这是预期行为，靠引号解决', async () => {
+test('argv 里裸露的已知旗标就是真旗标——这是预期行为，靠 shell 引号把正文包成一个参数', async () => {
   const ctx = await fakeCtx();
   const r = await resolveTopicArgs({
-    ctx, scope: 'all', rawArgs: '--topic T 目标 --focus 核实 --base 透传是否准确',
+    ctx, scope: 'all', rawArgs: ['--topic', 'T', '目标', '--focus', '核实', '--base', '透传是否准确'],
   });
-  assert.equal(r.prompt_hint, '核实', '没有引号保护时，--base 就是真旗标');
+  assert.equal(r.prompt_hint, '核实', '没有引号包裹时，--base 就是真旗标');
   assert.equal(
     r.task_goal, '目标',
     '「透传是否准确」既没进焦点也没回到正文——它成了 --base 的值，' +
@@ -311,10 +425,10 @@ test('不加引号时焦点仍会在旗标字样处截断——这是预期行�
   );
 });
 
-test('--focus 贪婪取到下一个已知旗标为止，带空格无需引号', async () => {
+test('--focus 贪婪取到下一个已知旗标为止，多个 token 用空格相连', async () => {
   const ctx = await fakeCtx();
   const r = await resolveTopicArgs({
-    ctx, scope: 'all', rawArgs: '--topic T --focus 重点看 并发 与 会话安全 --model-glm GLM-5.3',
+    ctx, scope: 'all', rawArgs: ['--topic', 'T', '--focus', '重点看', '并发', '与', '会话安全', '--model-glm', 'GLM-5.3'],
   });
   assert.equal(r.prompt_hint, '重点看 并发 与 会话安全');
   assert.equal(r.models.glm, 'GLM-5.3');
@@ -323,7 +437,7 @@ test('--focus 贪婪取到下一个已知旗标为止，带空格无需引号', 
 test('B/C/D 什么都没写（无正文、无 --focus）才退 64（FR-20）', async () => {
   const ctx = await fakeCtx();
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
-  for (const raw of ['--topic T', '--topic T --goal 只给了目标']) {
+  for (const raw of [['--topic', 'T'], ['--topic', 'T', '--goal', '只给了目标']]) {
     await assert.rejects(
       resolveTopicArgs({ ctx, scope: 'code', rawArgs: raw }),
       (e: { code?: number; message: string }) => {
@@ -338,7 +452,7 @@ test('B/C/D 什么都没写（无正文、无 --focus）才退 64（FR-20）', a
 
 test('命令 A 不要求 --focus：它的焦点本就是可选补充', async () => {
   const ctx = await fakeCtx();
-  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: '--topic T 把登录改造为 OIDC' });
+  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['--topic', 'T', '把登录改造为 OIDC'] });
   assert.equal(r.prompt_hint, null);
   assert.equal(r.task_goal, '把登录改造为 OIDC');
 });
@@ -346,7 +460,7 @@ test('命令 A 不要求 --focus：它的焦点本就是可选补充', async () 
 // ── AGY-04：only / allow-single / session-id 曾不在白名单里 ──
 
 test('AGY-04：三个旗标被识别，不再被当成正文吞进审查焦点', () => {
-  const r = splitArguments('重点看并发 --only glm --allow-single --session-id S-1 --topic T');
+  const r = splitArguments(['重点看并发', '--only', 'glm', '--allow-single', '--session-id', 'S-1', '--topic', 'T']);
   assert.equal(r.rest, '重点看并发', '旗标不得残留在正文里');
   assert.equal(r.named['only'], 'glm');
   assert.equal(r.named['session-id'], 'S-1');
@@ -358,18 +472,18 @@ test('AGY-04：--allow-single 是布尔旗标，绝不能吃掉后面的正文',
    * 若让它走「取下一个 token 当值」的默认路径，补白名单反倒制造出一个
    * 新的静默截断——焦点会变成空，而用户看不到任何报错。
    */
-  const r = splitArguments('--allow-single 重点看并发安全');
+  const r = splitArguments(['--allow-single', '重点看并发安全']);
   assert.ok(r.booleans.has('allow-single'));
   assert.equal(r.rest, '重点看并发安全');
 
   // 贪婪旗标也要在它面前停下
-  const g = splitArguments('--focus 重点看并发 --allow-single --topic T');
+  const g = splitArguments(['--focus', '重点看并发', '--allow-single', '--topic', 'T']);
   assert.equal(g.named['focus'], '重点看并发');
   assert.ok(g.booleans.has('allow-single'));
   assert.equal(g.named['topic'], 'T');
 
   // 显式否定
-  assert.ok(!splitArguments('--allow-single=false x').booleans.has('allow-single'));
+  assert.ok(!splitArguments(['--allow-single=false', 'x']).booleans.has('allow-single'));
 });
 
 test('AGY-04：resolveTopicArgs 把三者输出，不静默丢弃', async () => {
@@ -377,7 +491,7 @@ test('AGY-04：resolveTopicArgs 把三者输出，不静默丢弃', async () => 
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 3;\n');
   const r = await resolveTopicArgs({
     ctx, scope: 'code',
-    rawArgs: '重点看并发 --topic T --only gemini --allow-single --session-id S-9',
+    rawArgs: ['重点看并发', '--topic', 'T', '--only', 'gemini', '--allow-single', '--session-id', 'S-9'],
   });
   assert.equal(r.prompt_hint, '重点看并发');
   assert.equal(r.allow_single, true);
@@ -397,7 +511,7 @@ test('AGY-04：resolveTopicArgs 把三者输出，不静默丢弃', async () => 
 test('AGY-04：--only 取值当场校验，拼错不必等到 review --start', async () => {
   const ctx = await fakeCtx();
   await assert.rejects(
-    resolveTopicArgs({ ctx, scope: 'code', rawArgs: '重点看并发 --topic T --only gemmini' }),
+    resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['重点看并发', '--topic', 'T', '--only', 'gemmini'] }),
     (e: { code?: number; message: string }) => {
       assert.equal(e.code, EXIT.USAGE);
       /*
@@ -425,7 +539,7 @@ test('AGY-04：--only 取值当场校验，拼错不必等到 review --start', a
  */
 test('模型覆盖旗标的白名单按注册表派生，不是写死两条', () => {
   for (const id of ALL_AGENT_IDS) {
-    const r = splitArguments(`看并发 --model-${id} m-1 --topic T`);
+    const r = splitArguments(['看并发', `--model-${id}`, 'm-1', '--topic', 'T']);
     assert.equal(
       r.named[`model-${id}` as 'model-gemini'], 'm-1',
       `--model-${id} 必须被识别为旗标——漏一家就意味着那家的模型覆盖会被静默吞进正文`,
@@ -447,7 +561,7 @@ test('给非审核者指定模型 → 退 64 并列出当前可用，而不是�
   assert.ok(driverSide, '注册表里应当至少有一个未启用为审核者的 Agent（当前是 claude / codex）');
 
   await assert.rejects(
-    resolveTopicArgs({ ctx, scope: 'code', rawArgs: `看并发 --topic T --model-${driverSide} m-9` }),
+    resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['看并发', '--topic', 'T', `--model-${driverSide}`, 'm-9'] }),
     (e: { code?: number; message: string }) => {
       assert.equal(e.code, EXIT.USAGE, '参数错误一律退 64');
       assert.match(e.message, new RegExp(`model-${driverSide}`), '报错要点名是哪个旗标');
@@ -464,7 +578,7 @@ test('可用审核者的模型覆盖照常生效（上一条不得误伤正常�
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 5;\n');
   const side = CRITICS[0]!;
   const r = await resolveTopicArgs({
-    ctx, scope: 'code', rawArgs: `看并发 --topic T --model-${side} m-7`,
+    ctx, scope: 'code', rawArgs: ['看并发', '--topic', 'T', `--model-${side}`, 'm-7'],
   });
   assert.equal(r.models[side], 'm-7');
 });

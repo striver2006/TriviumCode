@@ -322,13 +322,13 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 | `doctor` | 逐项实测设计 §3.5 的本机能力探针清单，回填 `probe:` 段 |
 | `doctor --selftest` | 临时夹具里真跑整条流水线，14 步核对（桩适配器，零配额） |
 | `preflight --stage plan\|code\|bug\|all [--critics <id,…>]` | 设计 §8.1 的启动预检，fail-fast，失败零工件。`--critics` 指定本次要用哪几侧——只读能力、模型 slug、探活都只查这几侧，缺省取 `review.default_critics`（M8 第 3 步）。**四条 skill 的第 1 步不传它**：那时 `topic resolve` 还没跑、选侧尚未解析出来。选了非缺省侧时，该侧的可用性由 `review --start` 在拉起 CLI 之前的 `availability()` 兜住（AC-20 末条的落点），`--critics` 供用户显式预检时用 |
-| `topic resolve --stage <s> -- <$ARGUMENTS>` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。`--stage` 也接受 `all`（命令 A 用） |
+| `topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。`--stage` 也接受 `all`（命令 A 用）。`--` 之后按 argv 逐个 token 解析、不再分词（EV-18）：正文整段放进一个单引号参数，旗标放在引号之外；`--topic` 字样被包进正文而未显式给主题时退 64。`--args` 传法已删 |
 | `review --stage <s>` | 同步跑一次双审（手工调试用） |
 | `review --start / --wait / --status / --cancel` | 分段协议 |
 | `review --worker <run_id>` | 工作进程入口，由 `--start` 派生。**不应由人直接调用** |
 | `gate --check` / `--check-artifacts` / `--await-approval` | 裁决完整性 / 最低工件集 / 置人工闸门 |
 | `gate hook-*` | Hook 入口，从 stdin 读事件。**不应由人直接调用** |
-| `approve` / `abandon` | 人工审批 / 放弃闸门 |
+| `approve` / `abandon` | 人工审批 / 放弃闸门。审批附言走 `--reason`；多余的位置参数退 64（EV-24），布尔旗标（`--reject` 等）不吞下一个 token、`=` 传值只认 true/false |
 | `verify --topic <t>` | 执行显式配置的编译测试命令并落盘记录 |
 | `report --topic <t>` | 主题级复盘 |
 | `status` | 闸门、运行、降级与争议 |

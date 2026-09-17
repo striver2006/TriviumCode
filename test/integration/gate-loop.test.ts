@@ -294,6 +294,87 @@ test('AGY-05：通过审批必须显式指定 --stage，不能批量放行', { s
   assert.equal(a.code, EXIT.OK, `${a.stdout}${a.stderr}`);
 });
 
+/*
+ * ── EV-24：审批命令不再静默吞掉多余的位置参数与布尔旗标的值 ──
+ *
+ * 2026-09-16 实撞：`approve … 这是一串决策说明` 退 0，那串文字既没报错也没落盘，
+ * 审批记录的 reason 仍是 null。同族：`--reject 理由` 让 reject 拿到字符串、`=== true` 判假，
+ * 拒绝静默变通过；`--reject=true` 走 `=` 分支同样判假（计划双审 CODEX-07 ≡ AGY-07 ≡ GLM-04）。
+ */
+test('EV-24：多余位置参数 / --reject 带值 → 退 64 并指向 --reason；附言经 --reason 落盘', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root, 'C');
+  await writeDisposition(fx.stageDir, runId);
+  await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
+
+  const extra = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '决策：按推荐项执行', '附言第二段']);
+  assert.equal(extra.code, EXIT.USAGE, `多余位置参数应退 64：\n${extra.stdout}${extra.stderr}`);
+  assert.match(extra.stdout + extra.stderr, /多余的位置参数/);
+  assert.match(extra.stdout + extra.stderr, /决策：按推荐项执行/, '要把被丢的内容原样列出来');
+  assert.match(extra.stdout + extra.stderr, /--reason/, '要指向正确写法');
+
+  const rejectValue = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--reject', '理由文字']);
+  assert.equal(rejectValue.code, EXIT.USAGE, `--reject 不吃后面的 token，「理由文字」落成多余位置参数退 64：\n${rejectValue.stdout}${rejectValue.stderr}`);
+
+  const rejectEq = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--reject=true']);
+  assert.equal(rejectEq.code, EXIT.USAGE);
+  assert.match(rejectEq.stdout + rejectEq.stderr, /拒绝审批必须给出 --reason/, '--reject=true 必须被识别成拒绝——退 64 的理由得是「缺 reason」而不是被当成通过');
+
+  const badBool = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--reject=maybe']);
+  assert.equal(badBool.code, EXIT.USAGE);
+  assert.match(badBool.stdout + badBool.stderr, /只接受 true\/false/);
+
+  /*
+   * 同族第三格（代码双审 r2 CODEX-03）：附言本身以 `--` 开头时，此前 `--reason` 被静默降级成
+   * 布尔 true、`flagString` 返回 null、命令退 0 而 reason 落 null——而 skill 正教用户把原文整段
+   * 传给 `--reason`，本项目的附言极可能在谈论某个旗标。
+   */
+  const dashValue = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--reason', '--focus 的默认取值说明不准']);
+  assert.equal(dashValue.code, EXIT.USAGE, `值以 -- 开头不得静默丢弃：\n${dashValue.stdout}${dashValue.stderr}`);
+  assert.match(dashValue.stdout + dashValue.stderr, /--reason=<值>/, '要给出可用的写法');
+
+
+  // 闸门此刻仍在等待：上面几条都没有放行
+  const state = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
+    gates: Record<string, { state: string }>;
+  };
+  assert.equal(state.gates[`${TOPIC}/plan`]?.state, 'awaiting_approval');
+
+  const okRun = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--reason', '决策：按推荐项执行', '--session-id', SESSION]);
+  assert.equal(okRun.code, EXIT.OK, `${okRun.stdout}${okRun.stderr}`);
+  const task = JSON.parse(await fs.readFile(path.join(fx.archiveRoot, TOPIC, 'task.json'), 'utf8')) as {
+    approvals: { decision: string; reason: string | null }[];
+  };
+  assert.equal(task.approvals.at(-1)?.decision, 'approved');
+  assert.equal(task.approvals.at(-1)?.reason, '决策：按推荐项执行', '附言必须进留痕');
+});
+
+test('EV-24：--reason=<值> 是那条报错给的出口，必须真能用且原样落盘（CODEX-03）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root, 'C');
+  await writeDisposition(fx.stageDir, runId);
+  await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
+
+  const reason = '--focus 的默认取值说明不准';
+  const r = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', `--reason=${reason}`, '--session-id', SESSION]);
+  assert.equal(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+  const task = JSON.parse(await fs.readFile(path.join(fx.archiveRoot, TOPIC, 'task.json'), 'utf8')) as {
+    approvals: { reason: string | null }[];
+  };
+  assert.equal(task.approvals.at(-1)?.reason, reason, '以 -- 开头的附言要逐字落盘');
+});
+
+test('EV-24：help / version 豁免上限表；topic 与 gate 各接受恰好一个位置参数（CODEX-11）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  assert.equal((await cli(fx.root, ['help', 'topic'])).code, EXIT.OK);
+  assert.equal((await cli(fx.root, ['version', 'whatever'])).code, EXIT.OK);
+  const t = await cli(fx.root, ['topic', 'resolve', 'extra', '--stage', 'plan', '--', 'x']);
+  assert.equal(t.code, EXIT.USAGE);
+  assert.match(t.stdout + t.stderr, /多余的位置参数/);
+  const s = await cli(fx.root, ['status', 'extra']);
+  assert.equal(s.code, EXIT.USAGE);
+});
+
 test('裁决件不完整 → 校验不放行，闸门保持拦截', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   const runId = await runPlan(fx.root);
@@ -551,7 +632,17 @@ test('--cancel 旧 run 不清掉新一轮的闸门', { skip: bundleMissing && bu
   st.gates[`${TOPIC}/plan`]!.run_id = 'R-NEW';
   await fs.writeFile(statePath, JSON.stringify(st, null, 2));
 
+  // 凭据抹除的挂载点 ③（EV-20）：--cancel 是 SIGKILL 的唯一入口，runner 的 finally 跑不到
+  const runDir = (JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_dir: string }).run_dir;
+  const leakLog = path.join(runDir, 'glm', 'out', 'stdout.json');
+  const FAKE_CRED = ['Qx7mZp2L', 'k9Rt4Wv1', 'Ab3Cd5Ef', '7Gh9Jk2M'].join(''); // 运行时拼接：本文件会进送审包
+  await fs.mkdir(path.dirname(leakLog), { recursive: true });
+  await fs.writeFile(leakLog, `{"r":"api_key = \\"${FAKE_CRED}${FAKE_CRED}\\""}`, 'utf8');
+
   await cli(fx.root, ['review', '--cancel', js.run_id]);
+
+  assert.ok(!(await fs.readFile(leakLog, 'utf8')).includes(FAKE_CRED), '--cancel 之后该运行目录必须已抹');
+  await fs.access(path.join(runDir, 'glm', 'scrub.json'));
 
   const after = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
     gates: Record<string, { state: string; run_id: string }>;
@@ -566,6 +657,45 @@ test('--cancel 旧 run 不清掉新一轮的闸门', { skip: bundleMissing && bu
 
 // ── worker 异常路径回收闸门（审查意见 GLM-r2-02 ≡ AGY-01）──
 
+test('心跳过期但进程仍在的 worker_lost：不做不可逆抹除，留给会话启动清扫（代码双审 r1 CODEX-01）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * `heartbeat_stale` 这一档的语义是「进程活着但心跳过期」——它可能只是被同步段堵住，
+   * codex/zcode 子进程还在用那份副本。用 SIGSTOP 把 worker 冻在 running 中途（心跳随之停），
+   * stale 阈值压到 2s，于是 --wait 必判 heartbeat_stale 而进程确实还在：此时副本必须原样留着。
+   */
+  const fx = await makeFixture({ topic: TOPIC, extraReview: ['heartbeat_stale_s: 2'] });
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    { gemini: { mode: 'timeout' }, glm: { mode: 'timeout' } },
+  );
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string; worker_pid: number; run_dir: string };
+  // 等 worker 把 phase 写成 running（status 还没落盘时 --wait 会判「启动中」而不是失联），随即冻住它
+  for (let i = 0; i < 100; i++) {
+    const st = await fs.readFile(path.join(js.run_dir, 'status.json'), 'utf8').then((s) => JSON.parse(s) as { phase: string }).catch(() => null);
+    if (st?.phase === 'running') break;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  process.kill(js.worker_pid, 'SIGSTOP');
+  const leakLog = path.join(js.run_dir, 'glm', 'out', 'stdout.json');
+  const FAKE_CRED = ['Qx7mZp2L', 'k9Rt4Wv1', 'Ab3Cd5Ef', '7Gh9Jk2M'].join('');
+  await fs.mkdir(path.dirname(leakLog), { recursive: true });
+  await fs.writeFile(leakLog, `{"r":"api_key = \\"${FAKE_CRED}${FAKE_CRED}\\""}`, 'utf8');
+  await new Promise((r) => setTimeout(r, 2500));
+  try {
+    const w = await cli(fx.root, ['review', '--wait', js.run_id, '--timeout', '10'], null, 60_000);
+    assert.notEqual(w.code, EXIT.OK);
+    assert.match(w.stdout + w.stderr, /heartbeat_stale/, `前提：判的是心跳过期：\n${w.stdout}${w.stderr}`);
+    assert.match(w.stdout + w.stderr, /凭据副本未抹.*仍在/, '要说明为什么没抹');
+    assert.ok((await fs.readFile(leakLog, 'utf8')).includes(FAKE_CRED), '进程还活着，不得动它的副本');
+    await assert.rejects(fs.access(path.join(js.run_dir, 'glm', 'scrub.json')), '不该写哨兵');
+  } finally {
+    const { killProcessTree } = await import('../../src/trivium/util/exec.js');
+    try { process.kill(js.worker_pid, 'SIGCONT'); } catch { /* 已不在 */ }
+    killProcessTree(js.worker_pid, 'SIGKILL');
+  }
+});
+
 test('worker 被杀后 --wait 判 worker_lost，并回收 running 闸门', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   const started = await cli(
@@ -575,7 +705,7 @@ test('worker 被杀后 --wait 判 worker_lost，并回收 running 闸门', { ski
     { gemini: { mode: 'timeout' }, glm: { mode: 'timeout' } },
   );
   const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as {
-    run_id: string; worker_pid: number;
+    run_id: string; worker_pid: number; run_dir: string;
   };
 
   const statePath = path.join(fx.root, '.trivium/state.json');
@@ -583,6 +713,17 @@ test('worker 被杀后 --wait 判 worker_lost，并回收 running 闸门', { ski
     gates: Record<string, { state: string }>;
   };
   assert.equal(before.gates[`${TOPIC}/plan`]?.state, 'running');
+
+  /*
+   * 凭据抹除的挂载点 ②（EV-20，计划双审 AGY-02）：worker 没了，runner 的 finally 也就没跑，
+   * 副本只能靠 `--wait` 判 worker_lost 时就地抹。往 glm 侧目录放一份带 token 的日志，
+   * 强杀后看它有没有被脱敏、哨兵有没有落盘。
+   */
+  const sideDir = path.join(js.run_dir, 'glm');
+  const leakLog = path.join(sideDir, 'out', 'stdout.json');
+  const FAKE_CRED = ['Qx7mZp2L', 'k9Rt4Wv1', 'Ab3Cd5Ef', '7Gh9Jk2M'].join(''); // 运行时拼接：本文件会进送审包
+  await fs.mkdir(path.dirname(leakLog), { recursive: true });
+  await fs.writeFile(leakLog, `{"r":"api_key = \\"${FAKE_CRED}${FAKE_CRED}\\""}`, 'utf8');
 
   // 硬杀整个进程组，模拟崩溃/断电——不给 worker 任何收尾机会
   const { killProcessTree } = await import('../../src/trivium/util/exec.js');
@@ -592,6 +733,10 @@ test('worker 被杀后 --wait 判 worker_lost，并回收 running 闸门', { ski
   const w = await cli(fx.root, ['review', '--wait', js.run_id, '--timeout', '20'], null, 60_000);
   assert.notEqual(w.code, EXIT.OK);
   assert.match(w.stdout + w.stderr, /失联|worker_lost/);
+
+  assert.ok(!(await fs.readFile(leakLog, 'utf8')).includes(FAKE_CRED), 'worker_lost 分支必须就地抹该运行目录（AGY-02）');
+  const sentinel = JSON.parse(await fs.readFile(path.join(sideDir, 'scrub.json'), 'utf8')) as { ok: boolean };
+  assert.equal(sentinel.ok, true);
 
   const after = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
     gates: Record<string, { state: string }>;

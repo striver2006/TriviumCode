@@ -27,6 +27,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { ensureDir, exists } from '../util/fsx.js';
+import { scanAndRemoveSecrets } from '../scrub.js';
+import type { CarrierScrub } from './base.js';
 
 /**
  * 副本 `config.toml` 保留的顶层键。
@@ -66,6 +68,64 @@ export interface CodexHomePrep {
 /** `$CODEX_HOME`，未设时回落官方默认 */
 export function codexHomeOf(env: NodeJS.ProcessEnv = process.env): string {
   return env['CODEX_HOME'] ?? path.join(os.homedir(), '.codex');
+}
+
+/** 副本 `CODEX_HOME` 在该侧运行目录下的位置——准备与抹除共用同一个拼法 */
+export const codexHomeUnder = (runDir: string): string => path.join(runDir, 'codexhome');
+
+/**
+ * 模型 I/O 日志：生效模型的回读来源（`codex-trace.ts` 的 `findSessionFile`）、逐字含送审包全文。
+ * 命中**不删、就地脱敏**——删了丢回读来源与排障证据，夹具密钥又会让它误命中（代码双审 r1 CODEX-05）。
+ */
+const REDACT_AFTER_RUN: readonly string[] = ['sessions'];
+/** 厂商缓存：插件目录（实测 21 MB）、插件本体。编排器与排障都不需要，不扫 */
+const SKIP_AFTER_RUN: readonly string[] = ['cache', 'plugins'];
+
+/** 副本里的凭据载体：`prepareCodexHome` 写进去的那几份，按名认 */
+const isCredentialCarrier = (name: string): boolean =>
+  name === 'config.toml' || name.endsWith('.config.toml') || name === 'auth.json';
+
+/**
+ * 抹掉副本里的凭据（BACKLOG EV-20）。
+ *
+ * 三份载体**整份删除**：`config.toml`、`<profile>.config.toml`、`auth.json`——跑后没有任何
+ * 代码回读它们（唯一被回读的是 `sessions/`），而「脱敏保留骨架」要维护一份「哪些键是凭据」
+ * 的黑名单，漏一个键就是静默残留，正是上面 `KEEP_TOP_KEYS` 选白名单的同一个理由。
+ * 其余普通文件（`models-*.json` 副本、`fakehome/` 里 codex 可能写的东西）过一遍扫描器，
+ * 命中即删。`sessions/` 排除：它含送审包全文，扫描器对被审代码里的夹具密钥有误报面。
+ *
+ * 幂等：文件不在就跳过。目录不存在返回空结果，不抛。
+ */
+export async function scrubCodexHome(codexHome: string, opts: { sizeCap?: number } = {}): Promise<CarrierScrub> {
+  const out: CarrierScrub = { deleted: [], scanned: 0, removedOnHit: [], redacted: {}, warnings: [], skipped: 0, errors: [] };
+  if (!(await exists(codexHome))) return out;
+  const dirName = path.basename(codexHome);
+  let names: string[];
+  try {
+    names = await fs.readdir(codexHome);
+  } catch (e) {
+    out.errors.push(`读副本目录失败：${(e as Error).message}`);
+    return out;
+  }
+  for (const name of names) {
+    if (!isCredentialCarrier(name)) continue;
+    try {
+      await fs.rm(path.join(codexHome, name), { force: true });
+      out.deleted.push(path.join(dirName, name));
+    } catch (e) {
+      out.errors.push(`删不掉 ${name}：${(e as Error).message}`);
+    }
+  }
+  const scan = await scanAndRemoveSecrets(codexHome, {
+    exclude: SKIP_AFTER_RUN, redactUnder: REDACT_AFTER_RUN, sizeCap: opts.sizeCap,
+  });
+  out.scanned = scan.scanned;
+  out.removedOnHit = scan.removed.map((p) => path.join(dirName, p));
+  for (const [rel, n] of Object.entries(scan.redacted)) out.redacted[path.join(dirName, rel)] = n;
+  out.warnings.push(...scan.warnings);
+  out.skipped = scan.skipped;
+  out.errors.push(...scan.errors);
+  return out;
 }
 
 /**
@@ -188,7 +248,7 @@ export async function prepareCodexHome(
   opts: { profile: string | null; projectRoot: string; sourceHome?: string },
 ): Promise<CodexHomePrep> {
   const src = opts.sourceHome ?? codexHomeOf();
-  const codexHome = path.join(runDir, 'codexhome');
+  const codexHome = codexHomeUnder(runDir);
   const fakeHome = path.join(codexHome, 'fakehome');
   await ensureDir(codexHome);
   await ensureDir(fakeHome);

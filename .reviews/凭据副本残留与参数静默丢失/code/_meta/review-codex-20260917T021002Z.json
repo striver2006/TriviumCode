@@ -1,0 +1,131 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "四处焦点逐一核过。总体成立：runner 的 try/finally 确实覆盖成功/超时/无最终回复/抛异常/重试五类出口，哨兵「每次尝试开跑前删」的时序在主流程上是自洽的；argv 逐个解析后 --topic 吞没退 64 与旧引号指纹的判据边界（(^|\\s) 前置、=|\\s|$ 后置）做得克制，未见对正常中文焦点的系统性误伤；布尔旗标与位置参数的双向对账（boolean-flags-parity、POSITIONAL_LIMIT 缺省 0）是 fail-closed 的。但生命周期面上有三个实质问题：②挂载点（waitRun 的 worker_lost）在 worker 仍存活、仅心跳过期的判定下也执行不可逆抹除；8MB 扫描上限把「跳过」混进 errors，使超时长跑的目录在 30 天里每次会话启动都误报「凭据仍在盘上」且那份日志实际未被脱敏；就地脱敏对 PEM 私钥只抹 BEGIN 标记、密钥正文原样留存。另有若干可见性与不对称的次要问题。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "concurrency",
+      "location": "src/trivium/run-protocol.ts 的 waitRun worker_lost 分支（约 581-607 行）；src/trivium/status.ts 的 interpretStatus（188-195 行）",
+      "problem": "挂载点②在「进程活着但心跳过期」的 worker_lost（reason='heartbeat_stale'，status.ts 注释明说 worker 仍存活）下也会执行 scrubRunDir——对一份可能还活着的运行做不可逆的载体删除与自有目录扫描。worker_lost 分支不复核进程存活就抹；原先该分支只做状态与闸门回收（可逆），本版把不可逆动作挂上去了。若 worker 其实活着（磁盘抖动、事件循环被同步段堵住超过 heartbeat_stale_s=120s），codex/zcode 子进程还在跑，config 副本被中途删掉，症状会变成该侧以莫名的鉴权/配置错误失败，与真实原因对不上号。",
+      "evidence": "src/trivium/status.ts:194-195「进程活着但心跳过期 → 也算失联」；src/trivium/run-protocol.ts:582-600 worker_lost 分支直接 patch failed + releaseRunningGate + scrubRunDir(runDir, wiredAdapter)，对 reason==='heartbeat_stale' 与 'pid_gone' 不加区分；retention.ts 的④路径则显式核对了 processAlive/sameProcess 后才判 eligible——同一动作两个挂载点严紧不一。",
+      "suggestion": "②在动手抹除前按④的口径复核一次（status.worker_pid 现势 processAlive 不活才抹；heartbeat_stale 且进程仍在则只记待办、留给④），或至少只在 reason!=='heartbeat_stale' 时抹。方向：不可逆动作的准入判据应与 retention 的严判据同源。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/scrub.ts 的 SCAN_SIZE_CAP 段（scanAndRemoveSecrets 与 redactLogs 对超限文件的处置）",
+      "problem": "超过 8MB 的文件在扫描侧记 warning、在日志侧记 error，两者都并进 out.errors → ok:false。后果有两个：(a) codex 侧 stdout.jsonl 是 900s 级别审查的完整事件流，超时/大仓库轮次超过 8MB 完全现实——这样的运行目录哨兵永远 ok:false，④每轮会话启动重扫再失败，hooks 每次都渲染「凭据副本抹除失败……副本仍在盘上」，而载体其实早已删净：待办区被一条持续 30 天的误导性告警占住（正好违反本版自己声明的「失败必须看得见」——看得见的是假失败）；(b) 真正的问题被这个假信号盖住：超限的 stdout.jsonl/trace.json 从未被脱敏，明文 token 若在其中会一路躺到 TTL 整删，EV-32 只登记了 sessions/，没登记这条。",
+      "evidence": "src/trivium/scrub.ts：redactLogs 里「${rel} 超过扫描上限（…），未脱敏」push 进 errors；scanAndRemoveSecrets 的「跳过超大文件」warnings 经 scrubSideDir 的 out.errors.push(...r.warnings) 同样并入；scrubSideDir 的 out.ok = out.errors.length === 0；retention.ts 把 !o.ok 一律计入 scrubFailed；hooks.ts:1070-1075 渲染「副本仍在盘上，下次会话启动会重试」。",
+      "suggestion": "把「载体没抹掉」与「日志没脱敏/没扫到」分成两档严重度：前者才配「副本仍在盘上」与人读失败，后者降为独立告警（并可考虑对超限日志分块流式脱敏，或至少整文件删除兜底——它不是回读来源）。否则④的重试语义与 hooks 文案都在说一件没发生的事。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/secrets.ts 的 private-key-block 规则 × redactSecrets 的替换路径",
+      "problem": "「就地脱敏只换值、留键名与结构」对 PEM 私钥这一族不成立：private-key-block 的匹配只是 BEGIN 标记行，redactSecrets 把标记替换成首尾预览后，其后整段 base64 私钥正文一字不动地留在 stdout.jsonl / trace.json 里，且哨兵记 ok:true、redacted 计数为正——留痕宣称「已脱敏」，实际密钥主体完好。规则集中没有任何一条命中裸 base64 密钥正文行（其它规则都要求前缀形态或键名）。",
+      "evidence": "src/trivium/secrets.ts：RULES 里 private-key-block 的 re 只匹配 -----BEGIN … PRIVATE KEY-----；redactSecrets 对无 secretGroup 的规则做 redact(whole)——whole 即标记本身；scanSecrets 同形。归档侧命中即拒所以无害，运行目录侧走的是 redact 路径，正是本补丁新开的口子。",
+      "suggestion": "要么给 private-key-block 增加「连正文一起处理」的脱敏形态（如从 BEGIN 到 END 整段替换占位），要么对命中该规则的日志文件改「脱敏」为「整删」（它同属排障依据的话，如实记 EV-32 同族的登记项）。至少不得让 ok:true 为「私钥已被抹」背书。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/hooks.ts 的会话启动段（1034-1078 行）与 PruneResult.unknown 的渲染",
+      "problem": "焦点三所问的「人读输出与失败可见性」有一个缺口：unknown（status 读不到、因此跳过不可逆抹除的目录，即最可能残留凭据的那类）只在 scrubbed>0 的那一行里作后缀渲染；若本轮没有任何目录被成功抹除而只有 unknown>0，且其余条件全空，早退条件（1058-1061 行不含 unknown）直接 return ALLOW——一个字都不说。「严判据跳过并计数」的计数在最常见的场景（崩溃目录恰恰 status 撕裂/缺失）不可见。",
+      "evidence": "src/trivium/hooks.ts：早退条件 pruned===0 && scrubbed===0 && scrubFailed.length===0 && retentionError===null；unknown 仅在 `if (scrubbed > 0)` 块内作插值。src/trivium/retention.ts 的 PruneResult 注释自述 unknown 是「没做不可逆抹除的目录」。",
+      "suggestion": "unknown>0 单列一行（「N 个运行目录状态读不到、凭据副本未处理——可 TRIVIUM_DEBUG 查看」并入早退条件），与 CODEX-10 那族的「不得静默」口径对齐。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/adapters/zcode.ts 的 scrubZcodeHome（179 行）对比 src/trivium/adapters/codex-home.ts 的 scrubCodexHome（KEEP_AFTER_RUN=['sessions']）",
+      "problem": "焦点二问「误报面会不会扩大到误删自有目录里的正常文件」——会，且两侧不对称：codex 以「含送审包全文、looksReal 对夹具密钥有误报面」为由排除了 sessions/；zcode 的 home/ 下 CLI 自写的 log/ 与 rollout/ 同样逐字含送审包（BRIEF 里的被审代码常带假 sk-…/高熵 token 夹具），却零排除地过命中即删。JSON 转义规则补认后，这些 JSONL 里的 `token = \\\"…\\\"` 形态从隐形变为可命中，命中的代价是整文件删除。out/rollout.jsonl 的拷贝缓和了取证损失，但「同样的内容、一侧留一侧删」说明排除判据没有按内容性质派生。",
+      "evidence": "src/trivium/adapters/zcode.ts:166-184（scanAndRemoveSecrets(homeDir) 无 exclude）；src/trivium/adapters/codex-home.ts:80-118 与 KEEP_AFTER_RUN 的注释理由；src/trivium/secrets.ts 的 Q 常量注释（本轮补认转义引号的动机正是 JSONL）；scrubSideDir 对 removedOnHit 记入哨兵。",
+      "suggestion": "把「凡逐字含送审包全文的 CLI 自写目录」作为统一的排除口径（zcode 的 .zcode/cli/log 与 rollout 一并排除或降为告警不删），或反向论证两侧都该删并同步改 codex 的理由注释——现在是一句理由两侧各说一半。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/runner.ts 的 runOneSide：`await clearScrubSentinel(sideDir).catch(() => {})`",
+      "problem": "焦点一问「准备前删哨兵的时序有没有漏洞」：主路径没有——force:true 使①本身不依赖哨兵，删哨兵只服务④。唯一残余是删哨兵静默失败时：第一次尝试的 ok:true 哨兵残留，第二次尝试若在准备后、finally 前被杀，④见哨兵即跳过——恰是 CODEX-02 ≡ GLM-02 要修的形态在这条窄路径上复活。catch 空转使这一刻意留痕的失效不可见。",
+      "evidence": "src/trivium/runner.ts:136（.catch(() => {})）；src/trivium/scrub.ts 头注释「① 每次尝试都无条件跑，且 runner 在调 adapter.run 之前删旧哨兵」与 scrubSideDir 非 force 的 already-scrubbed 跳过路径。",
+      "suggestion": "删失败 warn 一句（不改变流程），让这条被设计点名防守的路径在失败时至少留下痕迹。",
+      "confidence": "low"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/secrets.ts 的 Q = String.raw`(?:\\\\?[\"'])?`",
+      "problem": "转义补认只覆盖一层：`\\\\\"`（JSON 字符串里再嵌一段 JSON，如 trace.json 把 stdout.jsonl 的一行整体作为字符串字段写入）仍会让整条凭据隐形——与本轮修掉的「落进 JSONL 整条隐形」是同一形状、深一层。redactLogs 处理 trace.json 时这类嵌套形态是否出现取决于适配器写法，未逐一验证，故只登记方向。",
+      "evidence": "src/trivium/secrets.ts Q 的定义与注释（只处理 `\\\"`）；scrub.ts 第③层承诺「命中处就地脱敏」。",
+      "suggestion": "值侧引号允许 `\\\\*` 前缀，或 redactSecrets 循环执行至不再命中的收敛式脱敏（规则集有限、可证终止性），二选一并补一条两层转义的用例。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "抹除挂在 runner 每次尝试的 finally、四处挂载一份实现（scrub.ts 头表）的骨架是对的：成功/超时/无最终回复/准备中途抛异常/重试各轮都实证走到 finally（test/unit/runner-scrub.test.ts 对四种出口 + 哨兵时序的断言覆盖了 CODEX-02 变异点），适配器只回答「我放了什么载体」、agy 无副本的分层符合纪律 7。",
+    "哨兵只在 ③④ 起作用、① force 无条件跑，使「删哨兵失败」不影响主覆盖（残余面见 CODEX-06，窄）。",
+    "retention 的严判据（status 读不到即跳过并计数、starting 跳过、run_dir_days:0 只关整删不关抹除、wiredAdapter 不抛取表）逐条有用例钉住，且与整删解耦的论证成立。",
+    "topic resolve 改为 argv 逐个 token、删除 tokenize/--args 后，findSwallowedFlags 的边界正则（前 (^|\\s)、后 (=|\\s|$)）不会误伤「--topic-x」「参数--topic」这类连写形态；--topic 退 64、其余进 notes 的分级符合误判代价排序；findLiteralQuoteWrapped 只给 note 不阻断，方向正确。",
+    "cli.ts 的 BOOLEAN_FLAGS 与 parseArgs 两条路径（不吞 token、= 只认 true/false）配 boolean-flags-parity 双向对账（漏登记→红、死条目→红），POSITIONAL_LIMIT 缺省 0 是 fail-closed；help/version 在分发前短路与豁免一致。",
+    "redactSecrets 对赋值形态「只换值留键名」、脱敏后 JSON 仍可解析，有 secrets.test.ts:108 的用例钉住。"
+  ],
+  "not_covered": [
+    "未运行 npm run check / 任何测试（只读环境），全部结论基于静态阅读与既有测试名的对照。",
+    "未逐行读 test/integration/gate-loop / stub-agent-kit / fault-injection 的改动内容，只核了它们与新契约的接口形态。",
+    "codex / zcode CLI 在会话中途是否还会重读 config 副本（CODEX-01 的实害强度）未实测，按「可能在」定级。",
+    "探针（probes/）、agents/registry、guard/meta/report 等未改动模块与本轮变更的交互只做方向性推断。",
+    "命令文本里旗标吞没（swallowedTextHint）的措辞与真实 argv 形态的匹配度未穷举。"
+  ],
+  "consulted": [
+    "src/trivium/scrub.ts",
+    "src/trivium/secrets.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/review.ts",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/types.ts",
+    "test/contract/boolean-flags-parity.test.ts",
+    "test/contract/skill-quoting.test.ts",
+    "test/unit/credential-scrub.test.ts",
+    "test/unit/retention.test.ts",
+    "test/unit/secrets.test.ts",
+    "test/unit/runner-scrub.test.ts",
+    "test/integration/codex-scrub.test.ts",
+    "skills/dual-approve/SKILL.md",
+    "skills/dual-review-bug/SKILL.md",
+    "skills/dual-review-code/SKILL.md",
+    "doc/08_project/BACKLOG.md",
+    "AGENTS.md"
+  ]
+}

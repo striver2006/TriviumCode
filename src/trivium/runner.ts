@@ -4,8 +4,10 @@
  * 只负责「把两侧跑起来并收回结果」。只读校验、漂移判定、证据下限一律不在这里
  * ——那是 `guard` 的职责。
  */
+import path from 'node:path';
 import type { AdapterTable, AdapterContext } from './adapters/base.js';
-import type { CriticId, CriticRequest, CriticResult, ReviewMode } from './types.js';
+import type { CriticId, CriticRequest, CriticResult, ReviewMode, ScrubOutcome } from './types.js';
+import { clearScrubSentinel, describeScrubFailure, scrubSideDir } from './scrub.js';
 import { step, warn } from './util/log.js';
 
 /**
@@ -110,12 +112,51 @@ async function runOneSide(
   let attempts = 0;
   let last: CriticResult;
 
+  /*
+   * 凭据抹除的挂载点 ①（BACKLOG EV-20，`scrub.ts` 文件头）。
+   *
+   * 该侧目录 = `path.dirname(req.out_dir)`：适配器把凭据副本写在那一层
+   * （codex 的 `codexhome/`、zcode 的 `home/`）。挂在这里而不在各适配器里，
+   * 是为了让 `adapter.run` **整个**被 `finally` 包住——含准备副本中途失败的早退
+   * （GLM-05）与适配器抛异常的路径；且每次重试各抹一次，而重试会重新准备副本，
+   * 所以跑之前先删旧哨兵（CODEX-02 ≡ GLM-02）。
+   *
+   * 抹除失败不判该侧失败：结果已产出、配额已烧。失败挂到结果的 `scrub` 上，
+   * 由 worker 写进 status.json 的侧 note，`--wait` 会渲染出来（CODEX-10 ≡ AGY-06）。
+   */
+  const sideDir = path.dirname(req.out_dir);
+
   for (;;) {
     attempts++;
     step(`[${critic}] 第 ${attempts} 次尝试，模型 ${req.model}，上限 ${req.timeout_s}s`);
     // 尝试开始：让等待中的用户看见「第几次尝试」，重试尤其要看得见
     emitProgress(input, critic, { state: 'running', attempt: attempts, elapsed_s: elapsed() });
-    last = await adapter.run(input.ctx, req);
+    // 删失败不改变流程（① 走 force 不看哨兵），但要留痕：残留的旧 ok 哨兵会让 ④ 跳过本轮的新副本（CODEX-06）
+    await clearScrubSentinel(sideDir).catch((e: unknown) => {
+      warn(`[${critic}] 旧哨兵删不掉：${(e as Error).message}——本轮若被强杀，会话启动清扫可能误判已抹`);
+    });
+    let thrown: unknown;
+    let hasThrown = false;
+    let attemptResult: CriticResult | undefined;
+    try {
+      attemptResult = await adapter.run(input.ctx, req);
+    } catch (e) {
+      thrown = e;
+      hasThrown = true;
+    }
+    const scrub: ScrubOutcome = await scrubSideDir(adapter, sideDir, { force: true });
+    const failure = describeScrubFailure(scrub);
+    if (failure) {
+      warn(`[${critic}] ${failure}`);
+      emitProgress(input, critic, { note: failure });
+    }
+    if (hasThrown) {
+      // 适配器抛异常这条出口上，抹除结果也要跟着结果走到终态 message（代码双审 r1 GLM-04）
+      const err = thrown instanceof Error ? thrown : new Error(String(thrown));
+      throw Object.assign(err, { scrub });
+    }
+    last = attemptResult!;
+    last.scrub = scrub;
 
     if (last.status === 'ok') {
       // 本侧收口：另一侧还在跑时，这一刻的「已完成」正是用户最想看到的变化
@@ -202,6 +243,8 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
         cli_version: null,
         peer_deny_applied: false,
         command_line: '',
+        // runOneSide 把本次尝试的抹除结果挂在异常上带出来（GLM-04）
+        ...((s.reason as { scrub?: ScrubOutcome } | null)?.scrub ? { scrub: (s.reason as { scrub: ScrubOutcome }).scrub } : {}),
       };
       attempts[critic] = 1;
     }

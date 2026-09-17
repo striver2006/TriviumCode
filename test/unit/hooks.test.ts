@@ -656,6 +656,21 @@ test('有运行中的双审时提醒先 --wait', async () => {
   assert.match(String(j['additionalContext']), /review --wait R9/);
 });
 
+test('状态读不到的运行目录单独成行，不因没抹别的目录而静默（代码双审 r1 CODEX-04 ≡ GLM-02）', async () => {
+  const ctx = await fakeCtx();
+  const { repoId } = await import('../../src/trivium/review.js');
+  ctx.config.runtime.run_root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-hook-runs-'));
+  const dir = path.join(ctx.config.runtime.run_root, repoId(ctx.projectRoot), 'R-nostatus');
+  // 有侧目录、没有 status.json：清扫不做不可逆抹除，只计数——计数必须被人看见
+  await fs.mkdir(path.join(dir, 'glm', 'out'), { recursive: true });
+  const r = await hookSessionStart(ctx);
+  const j = r.json?.['hookSpecificOutput'] as Record<string, unknown>;
+  assert.ok(j, '只有 unknown 也要注入待办，不能早退成静默');
+  assert.match(String(j['additionalContext']), /状态读不到/);
+  assert.match(String(j['additionalContext']), /R-nostatus/, '要给出路径，人才知道去查哪儿');
+  assert.equal(r.exitCode, EXIT.OK, 'session-start 永不阻断');
+});
+
 // ── 三档退出码（GLM-07 / AGY-02）──
 
 test('config.yaml 缺失 → exit 0（no-op 覆盖「判定不了」）', async () => {

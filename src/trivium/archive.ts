@@ -185,7 +185,7 @@ export async function writeMeta(
   stage: StageOrVerify,
   fileName: string,
   content: string,
-  opts: { scanSecrets?: boolean } = {},
+  opts: { scanSecrets?: boolean; scan?: 'full' | 'added-lines' } = {},
 ): Promise<{ absPath: string; relPath: string; sha256: string }> {
   if (looksLikeRoleArtifact(fileName)) {
     throw new Error(
@@ -196,7 +196,7 @@ export async function writeMeta(
   const dir = metaDir(layout, stage);
   await ensureDir(dir);
   if (opts.scanSecrets !== false) {
-    assertNoSecrets(content, `${layout.topic}/${stage}/_meta/${fileName}`);
+    assertNoSecrets(content, `${layout.topic}/${stage}/_meta/${fileName}`, opts.scan ?? 'full');
   }
   const absPath = path.join(dir, fileName);
   await writeAtomic(absPath, content);

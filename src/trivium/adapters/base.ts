@@ -127,6 +127,39 @@ export interface CriticAdapter {
    */
   authProbe?(ctx: AdapterContext, projectRoot: string): AuthProbe;
   run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult>;
+  /**
+   * 抹掉该侧在运行目录里留下的**凭据载体**（BACKLOG EV-20）。**可选**：
+   * 凭据走 CLI 自身登录态、运行目录里没有副本的侧（agy、桩）不实现，
+   * 清扫如实记「该侧无载体」——「没得抹」与「抹过了」不能长得一样，与 `authProbe?` 同一口径。
+   *
+   * 存在的理由：哪一侧往运行目录放了什么，是**那一侧的知识**——codex 放的是
+   * `codexhome/` 下的三份 toml/json，zcode 放的是 `home/.zcode/cli/config.json`
+   * （计划双审三侧同时逮到的阻断：原稿以为只有 codex 有副本）。写在 `retention.ts` 里
+   * 就得按 Agent id 分叉，第三家接入时改一漏二不会报错（纪律 10）。
+   *
+   * 入参是该侧目录 `<运行目录>/<侧>/`，即 `path.dirname(req.out_dir)`。
+   * 目录不存在时**不得抛**：返回空结果即可。
+   * 编排器自写日志（`stdout.*` / `trace.json`）的脱敏不在这里做，由 `scrub.ts` 统一处理。
+   */
+  scrubRunDir?(sideDir: string, opts?: { sizeCap?: number }): Promise<CarrierScrub>;
+}
+
+/** `scrubRunDir` 的返回：删了什么、扫了多少、扫到什么 */
+export interface CarrierScrub {
+  /** 整份删除的凭据载体（相对该侧目录） */
+  deleted: string[];
+  /** 自有目录里过了扫描器的普通文件数 */
+  scanned: number;
+  /** 扫描命中而删除的文件（相对该侧目录） */
+  removedOnHit: string[];
+  /** 模型 I/O 日志里就地脱敏的文件 → 命中处数（相对该侧目录） */
+  redacted: Record<string, number>;
+  /** 告警：跳过的超大文件等，不影响 ok */
+  warnings: string[];
+  /** 跳过（超大、二进制、读不了）的文件数——它们仍未脱敏，清扫据此判「这一侧还没扫完」 */
+  skipped: number;
+  /** 错误：载体删不掉、命中却处理不了——ok:false，清扫会重试 */
+  errors: string[];
 }
 
 /**

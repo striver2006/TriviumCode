@@ -1144,6 +1144,47 @@ export interface CriticRequest {
   profile_requested: string | null;
 }
 
+/**
+ * 一侧运行目录的凭据抹除结果（`scrub.ts`，BACKLOG EV-20）。
+ *
+ * 落两处：`<侧>/scrub.json` 哨兵（供清扫路径判「已抹过」与事后对账），
+ * 以及 `CriticResult.scrub`（供 worker 把失败写进 `status.json` 的侧 note，
+ * 让 `--wait` 的人看得见——哨兵在无人读的目录里，光写哨兵等于换个方式静默，
+ * 计划双审 CODEX-10 ≡ AGY-06）。
+ */
+export interface ScrubOutcome {
+  ok: boolean;
+  at: string;
+  /**
+   * 这次调用其实没做事的原因：侧目录不存在（runner 单测的假路径、该侧未拉起），
+   * 或清扫路径发现哨兵已记 ok（不重复扫）。runner 的 `finally` 走 `force`，不会命中后者。
+   */
+  skipped?: 'no-side-dir' | 'already-scrubbed';
+  /** 该侧适配器有没有「凭据载体」这个概念；没有（agy / 桩）就如实记 false，不冒充抹过 */
+  adapter_scrub: boolean;
+  /** 整份删除的凭据载体（相对该侧目录） */
+  carriers_deleted: string[];
+  /** 该侧自有目录里过了扫描器的普通文件数 */
+  scanned_files: number;
+  /** 扫描命中而被删除的文件（相对该侧目录）——载体之外「本轮没想到」的东西 */
+  removed_on_hit: string[];
+  /** 就地脱敏计数（编排器自写日志与模型 I/O 日志）：相对该侧目录的路径 → 命中处数 */
+  logs_redacted: Record<string, number>;
+  /** 告警：超过扫描上限而跳过的文件等——**不影响 `ok`**，只进哨兵（代码双审 r1 CODEX-02） */
+  warnings: string[];
+  /**
+   * 这次有没有**跳过**任何目标（超大、二进制、读不了）。
+   *
+   * 与 `ok` 分开是因为两个问题不同（代码双审 r1 CODEX-02 与 r2 AGY-02 各要一半）：
+   * `ok` 回答「有没有出错」——跳过一个 21 MB 的插件缓存不是出错，不该在待办里报失败；
+   * `complete` 回答「扫完了没有」——跳过意味着**那份文件仍未脱敏**，所以清扫不能据此
+   * 认定「已处理」而永久跳过。`ok && complete` 才是「这一侧不用再看了」。
+   */
+  complete: boolean;
+  /** 错误：载体删不掉、命中却处理不了、哨兵写不下去——`ok:false`，人读报失败、清扫重试 */
+  errors: string[];
+}
+
 export interface CriticResult {
   critic: CriticId;
   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
@@ -1261,4 +1302,10 @@ export interface CriticResult {
   cli_version: string | null;
   peer_deny_applied: boolean;
   command_line: string;
+  /**
+   * 本次尝试结束后对该侧运行目录的凭据抹除结果。由 `runner` 在 `adapter.run` 的
+   * `finally` 里挂上，适配器自己**不填**。`run.json` 不落这个字段（`meta.critics[c]`
+   * 逐字段构造，不展开整个结果）；它的可见落点是 `status.json` 的侧 note。
+   */
+  scrub?: ScrubOutcome;
 }

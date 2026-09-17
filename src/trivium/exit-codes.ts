@@ -48,8 +48,8 @@ export const envError = (m: string, d?: unknown) => new TriviumError(EXIT.ENV, m
 /**
  * 旗标值看起来像是从自由文本里误吞来的，就补一句解释。
  *
- * `topic resolve` 把 `--` 之后的内容拼成一整串再重新分词，于是任务目标或焦点里
- * 出现的 `--base`、`--profile` 这类词会被当成真旗标，连同后一个 token 一起被抠走。
+ * `topic resolve` 按 argv 逐个 token 解析（EV-18 之后不再拼串重切），于是正文里
+ * **裸露**的 `--base`、`--profile` 这类词会被当成真旗标，连同后一个 token 一起被抠走。
  * 被抠走的那截几乎必然撞上下游校验（坏 ref / 坏档位 / 非法 slug），但原先的文案
  * 只说「你写错了」——而用户的真实情况往往是**压根没想传这个参数**。
  *
@@ -62,6 +62,6 @@ export function swallowedTextHint(value: string): string {
   return (
     '\n  这段文字像是任务目标或焦点的一部分——它前面的 `--xxx` 被当成了旗标，' +
     '把它当值吞了进去。\n' +
-    '  请把整段用双引号包起来，例如：`"让 --base 真正进入冻结" --focus <焦点>`。'
+    "  请把整段正文放进**一个**单引号参数，旗标放在引号之外，例如：`-- '让 --base 真正进入冻结' --focus <焦点>`。"
   );
 }

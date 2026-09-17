@@ -1,0 +1,127 @@
+{
+  "agreed": [
+    "凭据抹除挂载在 runner 的 finally 及异常出口上，确保了超时、拉起失败及重试等多出口覆盖",
+    "补丁扫描放宽至仅扫新增行（scanDiffSecrets）设计站得住脚，有效解决了删除/轮换旧密钥时被归档闸误拒的悖论",
+    "模型 I/O 日志改就地脱敏保留了 sessions/ 等关键排障与生效模型回读来源，首行 session_meta 的回读解析未受破坏",
+    "命令行参数按 argv 数组传递并拒绝多余位置参数，彻底消除了拼接重新分词导致的静默回落推断隐患"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "src/trivium/secrets.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/scrub.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/codex-trace.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/util/fsx.ts",
+    "test/unit/secrets.test.ts",
+    "test/unit/credential-scrub.test.ts",
+    "test/unit/runner-scrub.test.ts",
+    "test/unit/retention.test.ts",
+    "test/integration/codex-scrub.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/contract/orchestrator-logs-parity.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "核对 src/trivium/run-protocol.ts:582-615 与 src/trivium/retention.ts:76-103、src/trivium/status.ts:136-137 及 test/integration/gate-loop.test.ts:635-671。",
+      "id": "AGY-01",
+      "kind": "concurrency",
+      "layer": "code",
+      "location": "src/trivium/retention.ts:76",
+      "problem": "worker_lost 复核存活的判据与会话启动清扫未真正同源。waitRun 在 heartbeat_stale 判定 worker_lost 时将状态落盘为 phase='failed'（isTerminal 成立），复核进程仍存活则跳过抹除并提示留给清扫；然而 retention.ts 的 pruneRunDirs 仅在 !isTerminal 时才调用 processAlive，导致对已置 failed 的目录跳过存活检查直接抹除，从而将正在运行或暂停的子进程凭据副本提前抹除。此外 run-protocol.ts:605 仅从 meta0 取 pid，缺少 fallbackPid 回落。",
+      "severity": "major",
+      "suggestion": "在 retention.ts 中只要 status.worker_pid 存在，即使 phase 为终态（特别是 failed）也必须复核 processAlive，存活则跳过抹除；同时在 run-protocol.ts:605 增加对 fallbackPid 的回落检查。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "核对 src/trivium/scrub.ts:166-169、src/trivium/scrub.ts:193-195、src/trivium/scrub.ts:239-247、src/trivium/scrub.ts:267-269 及 src/trivium/retention.ts:106。",
+      "id": "AGY-02",
+      "kind": "security",
+      "layer": "code",
+      "location": "src/trivium/scrub.ts:240",
+      "problem": "超大日志跳过仅记告警导致凭据残留却报 ok，且哨兵 ok:true 导致后续清扫彻底放弃重试。redactLogs 遇到超过 32MB 的日志文件时仅向 warnings 推送跳过信息，未脱敏日志留在盘上，但整个 scrubSideDir 仍返回 ok:true 并写入哨兵。这导致 retention.ts 认为 already-scrubbed 而永久跳过，敏感凭据无法被后续会话清理。同理 scanAndRemoveSecrets 中 readdir/readFile 失败仅记 warning 也存在相同残留隐患。",
+      "severity": "major",
+      "suggestion": "对编排器日志等关键目标跳过脱敏时不得判定 ok:true，或在哨兵中记录未完成状态，使后续清扫流程保持重试能力。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "核对 src/trivium/adapters/zcode.ts:170-178 与 src/trivium/util/fsx.ts:16-23。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/adapters/zcode.ts:171",
+      "problem": "scrubZcodeHome 中使用 if (await exists(carrier)) 门禁，当遭遇权限限制或损坏软链导致 fs.access 抛错时，exists() 返回 false，使得 fs.rm 不被执行且未向 errors 记录错误，导致载体未删除却报告 ok:true。",
+      "severity": "minor",
+      "suggestion": "移除 exists 门禁，直接依赖 fs.rm(carrier, { force: true }) 的幂等删除能力，捕获并记录真正的异常。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "核对 src/trivium/secrets.ts:55、src/trivium/secrets.ts:180-196 及 test/unit/secrets.test.ts:213-218。",
+      "id": "AGY-04",
+      "kind": "contract",
+      "layer": "code",
+      "location": "src/trivium/secrets.ts:191",
+      "problem": "generic-secret-assignment 与 toml-bearer-token 规则的转义引号 Q 仅加在值侧，键名仍要求 \\\\b...\\\\b\\\\s*[:=]，在标准 JSON 对象格式如 '{\\\"api_key\\\": \\\"...\\\"}' 中，键名后的引号阻碍了 \\\\s*[:=] 匹配，导致规则对标准 JSON 属性键值对失效。",
+      "severity": "minor",
+      "suggestion": "在键名两侧同样适配可选引号模式，支持形如 {\\\"token\\\": \\\"...\\\"} 的标准 JSON 属性名匹配。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "核对 test/contract/orchestrator-logs-parity.test.ts:26-52 与 src/trivium/adapters/stub.ts:174-175。",
+      "id": "AGY-05",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/contract/orchestrator-logs-parity.test.ts:31",
+      "problem": "契约测试使用严格的单引号字面量正则 path.join(req.out_dir, '...') 匹配适配器写入点，若开发者改用双引号、模板字符串或变量别名，将无法识别写入文件，导致脱敏清单对账被绕过。",
+      "severity": "minor",
+      "suggestion": "扩展对账正则以兼顾双引号与无插值模板字面量，并在适配器规范中约束写入路径的书写范式。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "核对 src/trivium/secrets.ts:74-89 及 src/trivium/secrets.ts:153-158。",
+      "id": "AGY-06",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/secrets.ts:153",
+      "problem": "PEM 判据中的 PEM_BODY 仅要求 [A-Za-z0-9+/]{40} 且无 confirm 校验，若审查员在正文中讨论 PEM 并在 400 字符内引用了 40 字符的 Git commit SHA 或随机 ID，会再次引发误报阻断归档。同时若 PEM 正文每行按 32/36 字符换行，也会因缺少连续 40 字符导致漏报。",
+      "severity": "nit",
+      "suggestion": "为 private-key-block 增加轻量 confirm 校验排除全十六进制 commit 串，并放宽换行符在 Base64 块内的容错。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "核对 test/unit/secrets.test.ts:190-203 与 test/unit/credential-scrub.test.ts:19-23。",
+      "id": "AGY-07",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/unit/secrets.test.ts:190",
+      "problem": "测试夹具运行时拼接的防扫描约定属于开发者自觉纪律，全仓缺乏静态检查或契约测试以防止未来在 test/ 目录下直接写入高熵静态假凭据。",
+      "severity": "nit",
+      "suggestion": "增加测试用例反向扫描 test/ 目录，确保不存在未拼接的高熵假凭据字面量。"
+    }
+  ],
+  "not_covered": [
+    "非 macOS 平台的进程存活与文件系统行为差异",
+    "真实 Codex/ZCode CLI 耗时大任务下的实际日志生成量与极值内存压力",
+    "除 Bash 外的其它潜在出网/写入工具组合的实际行为"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最危险的一条：waitRun 在 heartbeat_stale 下将状态标记为 failed 并承诺将活进程留给清扫，但 retention 清扫仅对非终态检查 processAlive，导致启动清扫会直接抹除仍存活工作进程的凭据副本。\n此外，超大日志跳过仅记告警却返回 ok:true 并落盘哨兵，导致凭据残留且被永久阻断清扫重试；zcode 载体删除前的 exists 检查存在权限异常下的静默放行漏洞；正则对账与 JSON 键名匹配存在遗漏形态。补丁只扫新增行设计站得住脚，但上述并发与安全状态漏洞需修订。",
+  "verdict": "request-changes"
+}

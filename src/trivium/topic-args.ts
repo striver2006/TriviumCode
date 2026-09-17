@@ -68,21 +68,28 @@ export interface ParsedArgsBundle {
   named: Partial<Record<NamedFlag, string>>;
   /** 出现过的布尔旗标 */
   booleans: Set<string>;
-  /** 去掉具名参数后剩下的正文 */
+  /** 去掉具名参数后剩下的正文（各 token 以单个空格相连） */
   rest: string;
+  /** 正文的逐 token 形态——旧写法指纹（首尾成对字面引号）要按 token 看 */
+  restTokens: string[];
 }
 
 /**
- * 切分 `$ARGUMENTS`。
+ * 切分 `--` 之后的 argv。
  *
- * 支持 `--k v`、`--k=v`、以及带引号的值。**提示语正文里出现 `--` 不会被误当参数**
- * ——只有出现在白名单里的 `--<name>` 才按参数处理。
+ * **入参是 token 数组，不是字符串**（BACKLOG EV-18）。此前这里收一整串再自行分词，
+ * 分词器遇到正文里一个裸引号就进入引号态、此后所有空白失效，`--topic X` 被粘进同一
+ * token 落进正文，主题静默回落推断。shell 已经把边界切好了，第二跳连同它的缺陷一起删掉：
+ * 每个 argv 元素就是一个 token，正文里的引号、`$`、反引号都只是字符。
+ *
+ * 支持 `--k v`、`--k=v`。**提示语正文里出现 `--` 不会被误当参数**
+ * ——只有出现在白名单里的 `--<name>` 才按参数处理。裸露在 argv 里的已知旗标
+ * 就是真旗标（这是命令行固有的语义，靠 shell 引号把正文包成一个参数来消歧）。
  */
-export function splitArguments(raw: string): ParsedArgsBundle {
+export function splitArguments(tokens: readonly string[]): ParsedArgsBundle {
   const named: Partial<Record<NamedFlag, string>> = {};
   const booleans = new Set<string>();
   const restParts: string[] = [];
-  const tokens = tokenize(raw);
 
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
@@ -129,7 +136,7 @@ export function splitArguments(raw: string): ParsedArgsBundle {
       named[name] = '';
     }
   }
-  return { named, booleans, rest: restParts.join(' ').trim() };
+  return { named, booleans, rest: restParts.join(' ').trim(), restTokens: restParts };
 }
 
 function isKnownFlag(token: string): boolean {
@@ -139,32 +146,55 @@ function isKnownFlag(token: string): boolean {
   return (NAMED_FLAGS as readonly string[]).includes(name);
 }
 
-/** 简易 shell 风格分词：支持单双引号，保留引号内的空格 */
-function tokenize(raw: string): string[] {
-  const out: string[] = [];
-  let cur = '';
-  let quote: '"' | "'" | null = null;
-  for (const ch of raw) {
-    if (quote) {
-      if (ch === quote) quote = null;
-      else cur += ch;
-      continue;
+/** 一条被包进正文的旗标字样：出现在哪个字段里 */
+export interface SwallowedFlag {
+  flag: string;
+  where: 'rest' | 'focus' | 'goal';
+}
+
+/**
+ * 找出**被包进同一个 shell 参数里**、因此没被识别为旗标的已知旗标字样（EV-18 的响亮失败）。
+ *
+ * 论域是正文与两个贪婪旗标的值——`--focus '重点核实 --topic 透传'` 这种写法里，
+ * `--topic` 落在 `named.focus` 而不在 rest，只扫 rest 会漏（计划双审 GLM-03）。
+ * 该旗标已显式给出时不算：那时正文里的字样只是在谈论它。
+ * 对 `--topic` 调用方退 64（它决定审查落在哪个目录，误判代价最高），其余进 notes（CODEX-09）。
+ */
+export function findSwallowedFlags(b: ParsedArgsBundle): SwallowedFlag[] {
+  const fields: [SwallowedFlag['where'], string][] = [
+    ['rest', b.rest],
+    ['focus', b.named['focus'] ?? ''],
+    ['goal', b.named['goal'] ?? ''],
+  ];
+  const out: SwallowedFlag[] = [];
+  for (const name of NAMED_FLAGS) {
+    const given = BOOLEAN_FLAGS.has(name) ? b.booleans.has(name) : b.named[name] !== undefined;
+    if (given) continue;
+    /*
+     * 前后界用「不是旗标名成分」而不是「空白」：`重点看--topic 主题甲` 这类中文与旗标黏连的写法里
+     * 字样确实在正文内，用 `(^|\s)` 界定就检不出来，主题照样静默回落推断——正是 EV-18 的原始危害
+     * （代码双审 r2 GLM-04）。后界同理，且仍不会误伤 `--topic-x` 这种更长的旗标名。
+     */
+    const re = new RegExp(`(?<![A-Za-z0-9_-])--${name}(?![A-Za-z0-9_-])`);
+    for (const [where, text] of fields) {
+      if (text && re.test(text)) out.push({ flag: name, where });
     }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      continue;
-    }
-    if (/\s/.test(ch)) {
-      if (cur.length > 0) {
-        out.push(cur);
-        cur = '';
-      }
-      continue;
-    }
-    cur += ch;
   }
-  if (cur.length > 0) out.push(cur);
   return out;
+}
+
+/**
+ * 旧写法的指纹：某个 token 首尾是成对的字面引号。
+ *
+ * 旧 SKILL.md 教 Driver 给正文补字面双引号（那是给已删除的分词器准备的）。新解析器不剥引号，
+ * 补了就会原样进 BRIEF，FR-20 的「逐字」被一对多余的引号污染而无任何报错
+ * （计划双审 CODEX-08）。不退 64——正文本身以引号起止是合法内容——只提醒。
+ */
+export function findLiteralQuoteWrapped(b: ParsedArgsBundle): string[] {
+  const candidates = [...b.restTokens, b.named['focus'] ?? '', b.named['goal'] ?? ''];
+  return candidates.filter(
+    (t) => t.length >= 2 && (t[0] === '"' || t[0] === "'") && t[t.length - 1] === t[0],
+  );
 }
 
 export interface TopicResolution {
@@ -228,13 +258,39 @@ export function inferTopic(text: string, maxLen: number): string {
 export interface ResolveInput {
   ctx: Ctx;
   scope: PreflightScope;
-  rawArgs: string;
+  /** `--` 之后的 argv，逐个 token（EV-18：不再收整串） */
+  rawArgs: readonly string[];
 }
 
 export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolution> {
   const { ctx, scope, rawArgs } = input;
-  const { named, booleans, rest } = splitArguments(rawArgs);
+  const bundle = splitArguments(rawArgs);
+  const { named, booleans, rest } = bundle;
   const notes: string[] = [];
+
+  /*
+   * ── 「给了却没被识别」要响亮失败，不回落推断（EV-18 的验收句）──
+   *
+   * 已知旗标字样被包进了某个 shell 参数（正文或 --focus/--goal 的值）而该旗标又没显式给：
+   * 对 `--topic` 退 64——它决定审查落在哪个 `.reviews/<主题>/`，回落推断就是审在错误主题下；
+   * 其余旗标进 notes（`--base` 在 code 阶段有下游校验兜底，`--focus`/`--goal` 只会少一段）。
+   */
+  const swallowed = findSwallowedFlags(bundle);
+  const topicSwallowed = swallowed.find((s) => s.flag === 'topic');
+  if (topicSwallowed) {
+    throw new TriviumError(
+      EXIT.USAGE,
+      `检测到 --topic 字样，但它被包进了同一个 shell 参数里（${topicSwallowed.where}），未被识别为旗标。\n` +
+        '  要指定主题，把 --topic <主题> 放在引号之外；\n' +
+        '  若它只是焦点正文的一部分，请同时显式传 --topic 以消歧——否则主题会回落推断、审在错误的目录下。',
+    );
+  }
+  for (const s of swallowed) {
+    notes.push(`正文含 --${s.flag} 字样（在 ${s.where} 里）但未识别为旗标：若你本想传它，请把它放在引号之外`);
+  }
+  for (const t of findLiteralQuoteWrapped(bundle)) {
+    notes.push(`「${t.slice(0, 24)}${t.length > 24 ? '…' : ''}」首尾带字面引号：新版解析器不剥引号，这对引号会原样进入焦点；不需要补字面引号，去掉即可`);
+  }
 
   /*
    * `--only` 的取值在这里就校验（审查意见 AGY-04）。
@@ -365,8 +421,8 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
      */
     if (topicRaw.length <= 2) {
       notes.push(
-        `主题「${topicRaw}」异常短：通常意味着正文被 \`--xxx\` 旗标截断（未加引号），` +
-          '请核对用户原始输入，必要时把整段用双引号包起来重传',
+        `主题「${topicRaw}」异常短：通常意味着正文被裸露的 \`--xxx\` 旗标截断，` +
+          '请核对用户原始输入，必要时把整段正文放进一个单引号参数重传',
       );
     }
   }

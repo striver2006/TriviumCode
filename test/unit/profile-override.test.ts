@@ -74,7 +74,8 @@ test('档位值像是自由文本时，报错要点破「它被旗标吞了」',
     (e: { message: string }) => {
       assert.match(e.message, /任务目标或焦点的一部分/,
         '只说「档位不存在」时，用户以为自己填错了档位名——实情是他压根没想传这个参数');
-      assert.match(e.message, /双引号/, '要给出可操作的修法');
+      // EV-18 之后的修法是「整段放进一个单引号参数」，不再教补字面双引号
+      assert.match(e.message, /单引号/, '要给出可操作的修法');
       return true;
     },
   );

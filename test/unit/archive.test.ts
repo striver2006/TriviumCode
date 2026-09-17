@@ -124,9 +124,27 @@ test('角色后缀硬约束：Driver 不得产 gemini/glm，审查员不得产 c
   );
 });
 
+test('writeMeta 的 added-lines 模式：补丁上下文行不拦、新增行照拦', async () => {
+  const l = await tmpLayout();
+  const fake = ['sk-', 'ant-api03-', 'AbCdEfGhIjKlMnOp', 'QrStUvWxYz0123456789'].join('');
+  const ctxOnly = ['@@ -1 +1 @@', `-const old = "${fake}";`, ' const keep = 1;'].join('\n');
+  await assert.doesNotReject(
+    writeMeta(l, 'code', 'changes-R1.diff', ctxOnly, { scan: 'added-lines' }),
+    '删除行与上下文行是 HEAD 已有内容，不该拦——否则删除凭据的提交送不进审查',
+  );
+  await assert.rejects(writeMeta(l, 'code', 'full-R1.diff', ctxOnly), /拒绝落盘/, '默认仍是整份扫');
+  await assert.rejects(
+    writeMeta(l, 'code', 'added-R1.diff', ['@@ -1 +1 @@', `+const now = "${fake}";`].join('\n'), { scan: 'added-lines' }),
+    /拒绝落盘/,
+    '新增行里的凭据照拦',
+  );
+});
+
 test('落盘前密钥扫描：命中即拒绝写入，且文件不存在', async () => {
   const l = await tmpLayout();
-  const poisoned = '# 审查\n发现硬编码凭据 sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789\n';
+  // 假凭据运行时拼接：静态文本里出现完整形态，本文件自己就会被归档闸拦下（见 test/contract/fixture-credentials）
+  const fake = ['sk-', 'ant-api03-', 'AbCdEfGhIjKlMnOp', 'QrStUvWxYz0123456789'].join('');
+  const poisoned = `# 审查\n发现硬编码凭据 ${fake}\n`;
   await assert.rejects(
     writeArtifact({ layout: l, stage: 'plan', role: 'gemini', writer: 'gemini', rerunIndex: 1, content: poisoned, date: DATE }),
     /拒绝落盘/,

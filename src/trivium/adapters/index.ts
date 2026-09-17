@@ -14,7 +14,7 @@
 import { agyAdapter } from './agy.js';
 import { codexAdapter } from './codex.js';
 import { zcodeAdapter } from './zcode.js';
-import type { AdapterTable } from './base.js';
+import type { AdapterTable, CriticAdapter } from './base.js';
 import { CRITIC_AGENT_IDS, agentById } from '../agents/registry.js';
 
 /**
@@ -38,6 +38,19 @@ const WIRED: AdapterTable = {
  * `adapters[c]` 为 undefined 的形态炸在半路（那时送审包已渲染、配额已烧），
  * 不如在取表的这一刻就失败。
  */
+/**
+ * 逐侧取接线，**缺了返回 undefined 而不抛**。
+ *
+ * 给运行目录清扫用（`scrub.ts` / `retention.ts` / `run-protocol.ts` 的 `--cancel` 与 `worker_lost`）。
+ * 那些路径要的是「这一侧有没有载体抹除器」，不是「全部启用侧是否都接了线」——
+ * 拿 `realAdapters()` 去查，注册表多登记一家未接线的 Agent 就会整体抛，
+ * 而会话启动钩子的 catch 只在 DEBUG 下打印，于是**连今天正常工作的磁盘清理也一起静默不跑**
+ * （计划双审 CODEX-06）。
+ */
+export function wiredAdapter(id: string): CriticAdapter | undefined {
+  return (WIRED as Record<string, CriticAdapter | undefined>)[id];
+}
+
 export function realAdapters(): AdapterTable {
   const out: AdapterTable = {};
   const missing: string[] = [];

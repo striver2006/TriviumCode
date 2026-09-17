@@ -572,11 +572,15 @@ test('缺省（不给 --critics）：仍按 default_critics 跑满两侧',
  * skill 又让 Driver 两个都传，于是 `--only` 场景**整条链路必退 64**。
  * 当时全量测试无一变红——这一段从未被覆盖过。
  */
-async function resolveThenStart(userArgs: string): Promise<{ code: number | null; out: string }> {
+/*
+ * `userArgs` 是 `--` 之后的 argv **数组**（EV-18 之后 resolve 不再拼串重切）：
+ * 正文是一个元素（用户在 shell 里用单引号包住它），旗标各自独立。
+ */
+async function resolveThenStart(userArgs: string[]): Promise<{ code: number | null; out: string }> {
   const { root } = await makeFixture({ topic: TOPIC });
   const stub = { gemini: { mode: 'ok' as const }, glm: { mode: 'ok' as const } };
 
-  const r = await cli(root, ['topic', 'resolve', '--stage', 'plan', '--json', '--', userArgs], stub);
+  const r = await cli(root, ['topic', 'resolve', '--stage', 'plan', '--json', '--', ...userArgs], stub);
   assert.equal(r.code, EXIT.OK, `resolve 应成功：\n${r.stdout}\n${r.stderr}`);
   const cand = extractJsonCandidate(r.stdout);
   assert.ok(cand, `resolve --json 未产出可解析 JSON：\n${r.stdout}`);
@@ -603,7 +607,7 @@ async function resolveThenStart(userArgs: string): Promise<{ code: number | null
 
 test('跨命令：resolve(--critics) 的输出照抄进 --start 能启动',
   { skip: bundleMissing && bundleSkipReason }, async () => {
-    const { code, out } = await resolveThenStart(`看并发 --topic ${TOPIC} --critics glm`);
+    const { code, out } = await resolveThenStart(['看并发', '--topic', TOPIC, '--critics', 'glm']);
     assert.equal(code, EXIT.OK, `照抄 resolve 输出不该失败：\n${out}`);
   });
 
@@ -613,7 +617,7 @@ test('跨命令：resolve(--only) 的输出照抄进 --start 也能启动（旧�
      * 设计 7.1 承诺 `--only` **长期保留为别名**，理由是旧 SKILL.md 可能未同步升级。
      * 修复前这条必退 64，且报错说「你不能同时给两个」——而用户根本没写 `--critics`。
      */
-    const { code, out } = await resolveThenStart(`看并发 --topic ${TOPIC} --only glm`);
+    const { code, out } = await resolveThenStart(['看并发', '--topic', TOPIC, '--only', 'glm']);
     assert.equal(code, EXIT.OK, `旧别名经 resolve 后必须仍能走通：\n${out}`);
   });
 

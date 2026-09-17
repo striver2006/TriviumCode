@@ -18,7 +18,7 @@ import { RUN_DIR_FILES } from './run-files.js';
 import { acquireLock, inspectLock, reclaimStaleLock } from './lock.js';
 import {
   computeMaxWaits, interpretStatus, newStatus, patchStatus, readStatus,
-  renderProgress, renderProgressBrief, progressViewOf, writeStatus,
+  renderProgress, renderProgressBrief, progressViewOf, workerConfirmedGone, writeStatus,
   type ProgressBudget, type ProgressView, type RunStatus,
 } from './status.js';
 import {
@@ -29,7 +29,8 @@ import { readRunMeta } from './meta.js';
 import { setGateChecked } from './state.js';
 import type { AdapterContext } from './adapters/base.js';
 import { resolveAdapters } from './adapters/stub.js';
-import { realAdapters } from './adapters/index.js';
+import { realAdapters, wiredAdapter } from './adapters/index.js';
+import { scrubRunDir } from './scrub.js';
 import { ensureDir, exists } from './util/fsx.js';
 import { killProcessTree, processAlive, processStartTime, spawnDetached } from './util/exec.js';
 import { fail, say, step, warn } from './util/log.js';
@@ -590,10 +591,30 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
        */
       const meta0 = await readStatus(runDir);
       await releaseRunningGate(ctx, runId, meta0?.topic ?? last?.topic, meta0?.stage ?? last?.stage);
+      /*
+       * 凭据抹除的挂载点 ②（EV-20，计划双审 AGY-02）：worker 没了，runner 的 finally 也就没跑，
+       * 副本会一直躺到下次会话启动的清扫。这里是同会话内唯一知道「它死了」的时刻。
+       *
+       * **动手前复核进程确实不在**（代码双审 r1 CODEX-01）：`heartbeat_stale` 这一档的语义是
+       * 「进程活着但心跳过期」——它可能只是被同步段堵住了，codex/zcode 子进程还在用那份副本，
+       * 此刻整删载体会让该侧以莫名的鉴权错误失败。不可逆动作的准入判据与 ④ 清扫同源：
+       * pid 现势不活（或已非同一进程）才抹；否则只记一句，留给会话启动清扫。
+       * 失败不改变本分支的结论（本来就是失联），只在报错里附一句。
+       */
+      let scrubNote = '';
+      // 准入判据与会话启动清扫同源；pid 取不到时回落 worker.pid，两者都没有就不抹（代码双审 r2）
+      const gone = await workerConfirmedGone(meta0, fallbackPid);
+      if (!gone.gone) {
+        scrubNote = `\n  凭据副本未抹：${gone.why}（${reading.reason}），留给会话启动清扫`;
+      } else {
+        const scrubbed = await scrubRunDir(runDir, wiredAdapter).catch(() => ({}));
+        const scrubFailed = Object.values(scrubbed).filter((o) => o && !o.ok).length;
+        if (scrubFailed > 0) scrubNote = `\n  另：${scrubFailed} 侧的凭据副本抹除失败，见该侧目录的哨兵；下次会话启动会重试`;
+      }
       throw new TriviumError(
         EXIT.FAIL,
         `运行 ${runId} 的工作进程失联（${reading.reason}）。` +
-          `\n  日志：${workerLogPath(runDir)}`,
+          `\n  日志：${workerLogPath(runDir)}` + scrubNote,
       );
     }
     if (reading.kind === 'running') last = reading.status;
@@ -734,6 +755,21 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
     } else {
       step(`工作进程 ${pid} 已不存在，仅做状态与锁的清理`);
     }
+  }
+
+  /*
+   * 凭据抹除的挂载点 ③（EV-20）：`--cancel` 是 SIGKILL 的唯一入口，runner 的 finally
+   * 在这条路上跑不到。准入判据与另两处同源——SIGKILL 之后再确认一次，没确认到就不抹
+   * （进程组里可能还有没收到信号的后代，代码双审 r2）。
+   */
+  const goneNow = await workerConfirmedGone(await readStatus(runDir), pid);
+  if (goneNow.gone) {
+    const scrubbed = await scrubRunDir(runDir, wiredAdapter).catch(() => ({}));
+    for (const [side, o] of Object.entries(scrubbed)) {
+      if (o && !o.ok) warn(`${side} 侧凭据副本抹除失败：${o.errors[0] ?? '原因未记录'}（下次会话启动会重试）`);
+    }
+  } else {
+    warn(`凭据副本未抹：${goneNow.why}——留给会话启动清扫`);
   }
 
   const patched = await patchStatus(runDir, (st) => {

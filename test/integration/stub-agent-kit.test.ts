@@ -220,9 +220,10 @@ test('接入套件 ②：三审全链路在重打包产物上跑通', { timeout:
   );
 
   // ── 环节 2/5：topic resolve ──
+  // `--` 之后按 argv 逐个 token 解析（EV-18）：旗标各自独立，正文是一个元素
   const res = await cliIn(k, fx, [
     'topic', 'resolve', '--stage', 'code', '--json',
-    '--', `--topic ${TOPIC} --critics gemini,glm,${STUB_ID} 看三审链路`,
+    '--', '--topic', TOPIC, '--critics', `gemini,glm,${STUB_ID}`, '看三审链路',
   ]);
   assert.equal(res.code, EXIT.OK, `topic resolve 未通过：\n${res.stdout}\n${res.stderr}`);
   const resolved = JSON.parse(extractJson(res.stdout)) as { critics: string[]; prompt_hint: string };

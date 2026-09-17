@@ -136,6 +136,47 @@ export async function patchStatus(
 export const TERMINAL_PHASES: readonly RunPhase[] = ['success', 'failed', 'cancelled'];
 export const isTerminal = (p: RunPhase): boolean => TERMINAL_PHASES.includes(p);
 
+/**
+ * 「工作进程确认已经不在了」——**不可逆动作的唯一准入判据**（BACKLOG EV-20）。
+ *
+ * 抹除凭据副本是不可逆的：抹早了，正在跑的那一侧会以莫名的鉴权错误失败。所以判据必须是
+ * **确认不在**，而不是「没看到它在」。三处调用点（`waitRun` 的 `worker_lost`、`cancelRun`、
+ * 会话启动清扫）共用这一个函数——代码双审 r2 三侧各自从不同角度指出它们此前**并不同源**：
+ *
+ * - 终态（`phase: failed` 等）此前被直接当作「已死」。而 `waitRun` 判 `heartbeat_stale` 时
+ *   正是**把活着的进程写成 failed**，于是「留给会话启动清扫」这句承诺反过来变成了
+ *   「下次会话启动无条件抹」（AGY-01）。终态同样要看进程。
+ * - `status.json` 读不到、或里面没有 pid 时，此前有的地方当「已死」直接抹、有的地方跳过
+ *   （CODEX-05 ≡ GLM-02）。没有 pid 就是**没有证据**，一律不抹。
+ * - `starting` 是副本正在写下的窗口，任何情况下都不抹。
+ *
+ * `fallbackPid` 是 `worker.pid` 文件——`interpretStatus` 自己就用它兜底，这里同源复用。
+ */
+export async function workerConfirmedGone(
+  status: RunStatus | null,
+  fallbackPid: number | null = null,
+): Promise<{ gone: boolean; why: string }> {
+  if (!status) return { gone: false, why: 'status.json 读不到：没有任何证据' };
+  if (status.phase === 'starting') {
+    return { gone: false, why: '运行处于 starting：副本可能正在写下' };
+  }
+  const pid = status.worker_pid ?? fallbackPid;
+  if (pid !== null && pid !== undefined) {
+    const live = await processAlive(pid, status.worker_started_at ?? null);
+    if (live.alive && live.sameProcess) return { gone: false, why: `工作进程 ${pid} 仍在` };
+    return { gone: true, why: `工作进程 ${pid} 已不存在` };
+  }
+  /*
+   * 拿不到 pid：只有**终态**才敢下「已经不在」的结论。
+   *
+   * 终态且从未记下 pid ⇒ worker 压根没起来（`--start` 早退），没有活进程会用那份副本。
+   * 非终态（running / parsing / archiving）而 pid 不见了 ⇒ 它可能正在跑，只是 pid 没落盘——
+   * 这一档没有证据，不抹（代码双审 r2 CODEX-05 ≡ GLM-02）。
+   */
+  if (isTerminal(status.phase)) return { gone: true, why: '运行已终态且从未记下 worker_pid' };
+  return { gone: false, why: `运行处于 ${status.phase} 却拿不到 worker_pid：判不了` };
+}
+
 export type StatusReading =
   /** 已完成（成功或失败），可以收工 */
   | { kind: 'terminal'; status: RunStatus }

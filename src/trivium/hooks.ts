@@ -1033,10 +1033,25 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
    * pull 式时机；失败不影响会话（目录清不掉只是占空间）。
    */
   let pruned = 0;
+  let scrubbed = 0;
+  let scrubFailed: { dir: string; reason: string }[] = [];
+  let unknown = 0;
+  let unknownDirs: string[] = [];
+  let incomplete: string[] = [];
+  /** 清扫本身抛了：原先只在 DEBUG 下打印，新职责（凭据抹除）挂上来之后不能再静默（CODEX-06） */
+  let retentionError: string | null = null;
   try {
     const { pruneRunDirs } = await import('./retention.js');
-    pruned = (await pruneRunDirs(ctx.config, ctx.projectRoot)).removed.length;
+    const { wiredAdapter } = await import('./adapters/index.js');
+    const r = await pruneRunDirs(ctx.config, ctx.projectRoot, { adapters: wiredAdapter });
+    pruned = r.removed.length;
+    scrubbed = r.scrubbed.length;
+    scrubFailed = r.scrubFailed;
+    unknown = r.unknown.length;
+    unknownDirs = r.unknown;
+    incomplete = r.incomplete;
   } catch (e) {
+    retentionError = (e as Error).message;
     if (process.env['TRIVIUM_DEBUG']) console.error('[retention]', e);
   }
 
@@ -1044,11 +1059,48 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
   const running = await findRunningRuns(ctx);
 
   const reportable = open.filter((g) => g.state !== 'running');
-  if (reportable.length === 0 && running.length === 0 && swept.length === 0 && pruned === 0) return ALLOW;
+  if (
+    reportable.length === 0 && running.length === 0 && swept.length === 0 &&
+    pruned === 0 && scrubbed === 0 && scrubFailed.length === 0 && unknown === 0 &&
+    incomplete.length === 0 && retentionError === null
+  ) return ALLOW;
 
   const lines: string[] = ['TriviumCode 待办：'];
   if (pruned > 0) {
     lines.push(`  · 已清理 ${pruned} 个超过 ${ctx.config.retention.run_dir_days} 天的运行目录（retention.run_dir_days）`);
+  }
+  if (scrubbed > 0) {
+    lines.push(`  · 已抹除 ${scrubbed} 个运行目录的凭据副本`);
+  }
+  if (unknown > 0) {
+    /*
+     * 单独一行且纳入早退条件（代码双审 r1 CODEX-04 ≡ GLM-02）：status 读不到的目录**不会自愈**、
+     * 不会被重试，副本可能一直躺到整删——只在「顺便抹了别的目录」时作为从句出现，等于静默。
+     */
+    lines.push(
+      `  · ${unknown} 个运行目录的状态读不到（缺失或损坏），凭据副本未处理也不会自动重试——` +
+        `请人工检查后删除，首个：${unknownDirs[0]}`,
+    );
+  }
+  if (incomplete.length > 0) {
+    /*
+     * 「抹了但没扫完」是第三档：载体已删（不报失败），但有文件因超大/二进制被跳过、仍未脱敏。
+     * 只记哨兵等于静默——哨兵在无人读的目录里（代码双审 r2 AGY-02）。
+     */
+    lines.push(
+      `  · ${incomplete.length} 个运行目录抹除后仍有文件未扫描（超大或二进制），那几份未脱敏——` +
+        `详见该侧的 scrub.json，首个：${incomplete[0]}`,
+    );
+  }
+  if (scrubFailed.length > 0) {
+    const first = scrubFailed[0]!;
+    lines.push(
+      `  · ${scrubFailed.length} 个运行目录的凭据副本抹除失败（首个：${first.reason}，哨兵在 ${first.dir}）——` +
+        '副本仍在盘上，下次会话启动会重试',
+    );
+  }
+  if (retentionError) {
+    lines.push(`  · 运行目录清扫本身失败：${retentionError}——过期目录与凭据副本本次都没处理`);
   }
   for (const s of swept) {
     lines.push(`  · 已回收 ${s} 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁`);

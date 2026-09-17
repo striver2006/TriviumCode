@@ -724,7 +724,11 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const metaArtifacts: { path: string; sha256: string }[] = [];
   // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前
   if (pendingDiff) {
-    const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text);
+    /*
+     * 补丁按**新增行**扫密钥（`scanDiffSecrets` 的文件头写了理由）：删除行与上下文行的内容
+     * 已经在 HEAD 里，扫它们只会让路过密钥夹具的改动送不进审查、让删除凭据的提交过不了检查。
+     */
+    const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text, { scan: 'added-lines' });
     metaPaths.push(w.absPath);
     metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
     /*
@@ -732,11 +736,16 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
      * 它**不进保护集**：它只是指向最新一轮的便利副本，会被下一轮覆盖，
      * 受保护的是上面那份带 run_id 的。补丁头部自带 run_id，不会认错是哪一轮。
      */
-    const alias = await writeMeta(ref.layout, stage, 'changes.diff', pendingDiff.text);
+    const alias = await writeMeta(ref.layout, stage, 'changes.diff', pendingDiff.text, { scan: 'added-lines' });
     metaPaths.push(alias.absPath);
   }
   for (const b of pendingBriefs) {
-    const w = await writeMeta(ref.layout, stage, b.fileName, b.text);
+    /*
+     * BRIEF 把补丁节选逐字嵌在散文中间，所以同样按 hunk 分档扫（散文整份扫、hunk 内只看新增行）。
+     * 少了这一条，放宽只是把拒绝点从补丁搬到 BRIEF——报错还指向一个开发者没亲手写过的文件，
+     * 而且此时补丁已经落盘，留下半套 `_meta` 工件（代码双审 r2 CODEX-07）。
+     */
+    const w = await writeMeta(ref.layout, stage, b.fileName, b.text, { scan: 'added-lines' });
     metaPaths.push(w.absPath);
     metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
   }
@@ -1015,6 +1024,15 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     opts.allowSingle && cfg.review.allow_partial_flag ? 'degrade' : cfg.review.failure_policy;
   const mode = decideMode(results, effectivePolicy, sides);
   const warnings = renderGuardWarnings(verdict);
+  /*
+   * 凭据副本抹除失败要进 warnings（EV-20）：它随 `ReviewOutcome.warnings` 落进
+   * `status.json.message`，`--wait` 的终态返回会原样透出——哨兵在无人读的目录里，
+   * 光写哨兵等于换个方式静默（计划双审 CODEX-10 ≡ AGY-06）。不改变 exitCode。
+   */
+  for (const c of sides) {
+    const s = results[c]?.scrub;
+    if (s && !s.ok) warnings.push(`${c} 侧凭据副本抹除失败：${s.errors[0] ?? '原因未记录'}（下次会话启动会重试）`);
+  }
 
   // ── 两侧齐备后同时落盘（§10.1 第 ② 道）──
   /*

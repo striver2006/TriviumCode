@@ -290,15 +290,19 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 换了 `--focus` 必定触发重审——它是审查焦点，不是描述。
 
-### 4.6 自由文本里含 `--` 时要加引号
+### 4.6 自由文本里含 `--` 时不必加引号
 
-如果你的提示语里出现以 `--` 开头的词，需要用字面双引号包起来：
+提示语正文里出现以 `--` 开头的词，**不需要你加引号**：Driver 构造命令时会把正文整段放进一个
+单引号参数、旗标放在引号之外，正文里的 `--plan-file`、引号、`$`、`*` 都逐字进入焦点（EV-18 之后
+`topic resolve` 按 argv 逐个 token 解析，不再自行分词）。真正要传的旗标写在正文之后即可：
 
 ```
-/dual-review-plan "重点核实 --plan-file 透传说明是否准确" --topic 文档修正
+/dual-review-plan 重点核实 --plan-file 透传说明是否准确 --topic 文档修正
 ```
 
-漏了引号，`--plan-file` 会被当成真旗标，连同后一个词一起被抠走。若解析器提示「主题异常短」，多半就是这里漏了引号。
+若 `--topic` 被包进了正文而主题没显式给出，`topic resolve` 会退 64 并指出来（回落推断就是审在
+错误的目录下）；其余旗标字样被包进正文只会在 `notes` 里提醒，Driver 会转述。若解析器提示
+「主题异常短」，多半是正文没被包成一个参数、被裸露的旗标截断了。
 
 ### 4.7 `--critics`（选审核者）与 `--allow-single`（降级）
 
@@ -328,7 +332,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 ### 4.8 三条辅助命令
 
 ```
-/dual-approve --topic <主题> --stage plan|code|bug [--reject --reason <理由>]
+/dual-approve --topic <主题> --stage plan|code|bug [--reason <附言>] [--reject --reason <理由>]
 /dual-abandon --topic <主题> [--stage <阶段>] [--reason <理由>]
 /dual-status  [--topic <主题>]
 ```
@@ -369,7 +373,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `topic.forbid_chars` | `/ \ .. 空格` | 主题名要做文件名，禁路径分隔符 |
 | `runtime.node` | `null` | 派生 worker 用的 node；null 取当前进程 |
 | `runtime.run_root` | `~/.trivium/runs` | **原始输出落在项目外**，这是背靠背隔离的第二道 |
-| `retention.run_dir_days` | 30 | 运行目录保留期，会话开始时清理 |
+| `retention.run_dir_days` | 30 | 运行目录保留期，会话开始时清理。**凭据副本不等这 30 天**：codex / zcode 为模型覆盖与隔离拷进运行目录的配置副本在该侧跑完即抹除，会话开始时对未到期的终态目录再兜底一次；此项设 0 只关整删、不关抹除 |
 
 主题名不能以 `-r<数字>` / `-revised` / `-response` / `-verify` 结尾——否则无法区分「主题 X 的第 2 轮」与「主题 X-r2 的首轮」。
 

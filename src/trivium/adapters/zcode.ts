@@ -28,8 +28,10 @@ import {
   failedResult,
   TOOL_TRACE_CAPABILITY,
   type AdapterContext,
+  type CarrierScrub,
   type CriticAdapter,
 } from './base.js';
+import { scanAndRemoveSecrets } from '../scrub.js';
 
 /**
  * 把 profile 里的人类可读短名补全为 `<providerId>/<modelName>` 全限定形态。
@@ -150,6 +152,54 @@ export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvoke
  * 从用户的 `~/.zcode/cli/config.json` 拷一份到运行目录下的临时 HOME，
  * 只改 `model.main` 为本次要用的模型。**绝不改用户的全局配置**（§16.2 纪律 5）。
  */
+/** 副本 HOME 在该侧运行目录下的位置——准备与抹除共用同一个拼法 */
+export const zcodeHomeUnder = (runDir: string): string => path.join(runDir, 'home');
+const ZCODE_CLI_SUBDIR = '.zcode/cli';
+
+/**
+ * 抹掉副本里的凭据（BACKLOG EV-20；计划双审三侧同时逮到的阻断——原稿以为只有 codex 有副本）。
+ *
+ * 载体只有一份：`home/.zcode/cli/config.json`，是 `prepareZcodeHome` 从宿主机整份抄来
+ * 只改 `model` 的那份，provider 段的 apiKey 原样在里面。跑后没有任何代码回读它
+ * （返回值只喂本次 `invokeZcode`），整份删。`home/` 下其余文件过扫描器，命中即删。
+ */
+export async function scrubZcodeHome(homeDir: string, opts: { sizeCap?: number } = {}): Promise<CarrierScrub> {
+  const out: CarrierScrub = { deleted: [], scanned: 0, removedOnHit: [], redacted: {}, warnings: [], skipped: 0, errors: [] };
+  if (!(await exists(homeDir))) return out;
+  const dirName = path.basename(homeDir);
+  /*
+   * 不用 `exists()` 当门禁：它内部是 `fs.access`，**权限异常或软链损坏时同样返回 false**，
+   * 于是「删不掉」会被读成「本来就没有」，载体留在盘上而结果报 ok（代码双审 r2 AGY-03）。
+   * `fs.rm({ force: true })` 本身对不存在就是静默成功，直接依赖它的幂等性，只捕真异常。
+   */
+  const carrier = path.join(homeDir, ZCODE_CLI_SUBDIR, 'config.json');
+  const carrierExisted = await exists(carrier);
+  try {
+    await fs.rm(carrier, { force: true });
+    if (carrierExisted) out.deleted.push(path.join(dirName, ZCODE_CLI_SUBDIR, 'config.json'));
+  } catch (e) {
+    out.errors.push(`删不掉 config.json 副本：${(e as Error).message}`);
+  }
+  /*
+   * 与 codex 侧同一口径（代码双审 r1 GLM-03 ≡ CODEX-05）：
+   * `rollout/` 与 `log/` 是模型 I/O 日志——逐字含送审包全文，夹具密钥会误命中，且 rollout 是本侧
+   * 工具参数与生效模型的回读来源——命中不删、就地脱敏；`plugins/`（实测含数千个 node_modules 文件
+   * 与 16 MB 动态库）与 `db/`（sqlite）不扫。
+   */
+  const scan = await scanAndRemoveSecrets(homeDir, {
+    exclude: [`${ZCODE_CLI_SUBDIR}/plugins`, `${ZCODE_CLI_SUBDIR}/db`],
+    redactUnder: [`${ZCODE_CLI_SUBDIR}/rollout`, `${ZCODE_CLI_SUBDIR}/log`],
+    sizeCap: opts.sizeCap,
+  });
+  out.scanned = scan.scanned;
+  out.removedOnHit = scan.removed.map((p) => path.join(dirName, p));
+  for (const [rel, n] of Object.entries(scan.redacted)) out.redacted[path.join(dirName, rel)] = n;
+  out.warnings.push(...scan.warnings);
+  out.skipped = scan.skipped;
+  out.errors.push(...scan.errors);
+  return out;
+}
+
 export async function prepareZcodeHome(
   runDir: string,
   model: string | null,
@@ -164,8 +214,8 @@ export async function prepareZcodeHome(
   }
   if (!model) return { homeDir: null, route: 'global', reason: '本次未指定模型' };
 
-  const homeDir = path.join(runDir, 'home');
-  const dstDir = path.join(homeDir, '.zcode/cli');
+  const homeDir = zcodeHomeUnder(runDir);
+  const dstDir = path.join(homeDir, ZCODE_CLI_SUBDIR);
   await ensureDir(dstDir);
 
   const raw = await fs.readFile(srcConfig, 'utf8');
@@ -279,6 +329,11 @@ export const zcodeAdapter: CriticAdapter = {
       };
     }
     return { ok: true };
+  },
+
+  /** 凭据载体在 `<侧>/home/.zcode/cli/config.json`，由 `prepareZcodeHome` 写入；抹除见 `scrubZcodeHome` */
+  async scrubRunDir(sideDir: string, opts?: { sizeCap?: number }) {
+    return scrubZcodeHome(zcodeHomeUnder(sideDir), opts);
   },
 
   async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {

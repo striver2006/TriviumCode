@@ -23,7 +23,9 @@ import {
   type CodexSessionMeta,
   type CodexTrace,
 } from './codex-trace.js';
-import { codexHomeOf, prepareCodexHome, type CodexHomePrep } from './codex-home.js';
+import {
+  codexHomeOf, codexHomeUnder, prepareCodexHome, scrubCodexHome, type CodexHomePrep,
+} from './codex-home.js';
 import {
   classifyWriteCommands,
   failedResult,
@@ -459,6 +461,14 @@ export const codexAdapter: CriticAdapter = {
       };
     }
     return { kind: 'catalog' as const, models, source: `profile「${profile}」的模型目录` };
+  },
+
+  /**
+   * 凭据载体在 `<侧>/codexhome/`，由 `prepareCodexHome` 写入；抹除见 `scrubCodexHome`。
+   * 调用方是 `runner` 的 `finally` 与三处清扫路径，不在本适配器内自调（`scrub.ts` 文件头）。
+   */
+  async scrubRunDir(sideDir: string, opts?: { sizeCap?: number }) {
+    return scrubCodexHome(codexHomeUnder(sideDir), opts);
   },
 
   async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {

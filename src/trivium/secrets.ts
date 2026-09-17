@@ -24,7 +24,99 @@ interface Rule {
   re: RegExp;
   /** 命中后的额外判定，用于压低误报 */
   confirm?: (m: RegExpExecArray) => boolean;
+  /**
+   * 脱敏时只换这一组（值），保留键名与引号——供 `redactSecrets` 用。
+   * 不设则整个匹配替换（那些规则的匹配本身就是凭据，如 JWT、`sk-…`）。
+   */
+  secretGroup?: number;
+  /**
+   * 跨行规则：在**全文**上扫一次，行号按匹配起点算。
+   *
+   * 逐行扫对 PEM 私钥这一族不够用——标记行与正文分处不同行，只看一行就无法区分
+   * 「贴了私钥」与「在谈论私钥」。
+   */
+  document?: boolean;
+  /**
+   * 脱敏时改用这条正则（检出只需定位，脱敏要吃掉整段正文）。
+   * 不设则脱敏与检出同一条。
+   */
+  redactRe?: RegExp;
+  /** 用 `redactRe` 时的替换串。整段抹掉后 `redact()` 的首尾预览已无意义，换成可读的占位 */
+  redactWith?: string;
 }
+
+/**
+ * 赋值形态里值两侧的引号：允许 JSON 转义过的 `\"`。
+ *
+ * 运行目录里的 `stdout.jsonl` / `trace.json` 是 JSON，模型输出里的 `token = "…"` 落进去
+ * 会变成 `token = \"…\"`——原正则的 `["']?` 遇到反斜杠就断了，整条凭据对扫描器隐形
+ * （本轮用例第一次跑就抓到）。归档侧的 `_meta/*.json` 同形。
+ */
+const Q = String.raw`(?:\\*["'])?`; // `\\*`：允许任意层转义——JSON 里再嵌一段 JSON 会变成 `\\"`（代码双审 r1 CODEX-07）
+
+/**
+ * 赋值形态的键名两侧同样允许引号。
+ *
+ * 上一版只给**值**侧加了引号容差，于是标准 JSON 对象 `{"api_key": "…"}` 整条隐形——
+ * 键名后面是 `"` 再 `:`，`\s*[:=]` 直接断掉（代码双审 r2 实测：TOML 形态命中、JSON 形态零命中）。
+ * 而运行目录里的 `stdout.json`、`trace.json`、`auth.json` 全是标准 JSON。
+ */
+const KEY = (names: string) => String.raw`${Q}\b(?:${names})\b${Q}\s*[:=]\s*${Q}`;
+
+/*
+ * ── PEM 私钥：判据是「标记 + 正文」，不是「标记」──
+ *
+ * 上一版只认 BEGIN 标记行，两个方向都不对：
+ *
+ * **误报**（代码双审 r2 的实撞）：任何**谈论** PEM 的文本都命中——审查员读了本文件的
+ * PEM 处理代码，在结论里引用一句标记行，整份审查文档就被归档闸拒绝落盘。三侧 23/12/6 分钟
+ * 的配额烧完、结论全丢，而其中一条恰恰是下面这个漏报的发现。「提到锁」不等于「把钥匙贴出来」。
+ *
+ * **漏报**：标签写死枚举 `RSA|EC|DSA|OPENSSH|PGP`，于是 `-----BEGIN ENCRYPTED PRIVATE KEY-----`
+ * （pkcs8 加密私钥，openssl 默认产物之一）对「命中即删」与归档闸**完全隐形**。
+ *
+ * 改成：标签通配（`BEGIN … PRIVATE KEY`），**且**其后必须出现一段 40+ 的连续 base64——
+ * 那是密钥材料本身，真私钥必然带它，讨论性引用必然不带。这不是放宽：它同时堵上了枚举漏洞。
+ *
+ * 换行既可能是真换行，也可能是 JSON 字符串里的字面 `\n`（反斜杠 + n），两种都要跨得过去。
+ */
+const PEM_LABEL = String.raw`-----BEGIN[^\n-]{0,40}PRIVATE KEY[^\n-]{0,20}-----`;
+const PEM_END = String.raw`-----END[^\n-]{0,40}PRIVATE KEY[^\n-]{0,20}-----`;
+/** 换行：真换行，或 JSON 字符串里的字面 `\n`（可能被嵌套转义成 `\\n`） */
+const NL = String.raw`(?:\\+[rn]|[\r\n])`;
+/**
+ * 标记与正文之间**只允许**换行与 PEM 头部行（`Proc-Type:` / `DEK-Info:`），不允许跨任意内容。
+ *
+ * 上一版用 `[\s\S]{0,400}?` 当窗口，等于「标记之后 400 字符内任意位置有一段长串」——
+ * 而本项目的留痕里 `sha256:`/`tree:` 哈希密度极高，于是**谈论 PEM 的审查文档照旧被拒**
+ * （三侧独立实测复现：标记 + 一个 sha256 即命中）。窗口换成正文起点，误报面收回到「真的贴了正文」。
+ */
+const PEM_GAP = String.raw`(?:[ \t]*${NL}+(?:[A-Za-z][A-Za-z-]{2,20}:[^\r\n]{0,80}${NL}+)*)`;
+/**
+ * 密钥材料：40+ 连续 base64，**且其中至少有一个非十六进制字符**。
+ *
+ * 纯 hex 的 40/64 位串是 git SHA-1 与 SHA-256，本项目到处都是；真 base64 密钥材料
+ * 前 40 个字符全部落在 `[0-9a-fA-F]` 的概率是 4^-40，排除它几乎不损失检出面。
+ */
+const PEM_BODY = String.raw`(?=[A-Za-z0-9+/]{40})[A-Za-z0-9+/]{0,39}[g-zG-Z+/][A-Za-z0-9+/]*`;
+/** 检出：标记本身（lookahead 不吞正文，preview 只暴露标记） */
+const PEM_DETECT = new RegExp(`${PEM_LABEL}(?=${PEM_GAP}${PEM_BODY})`, 'g');
+/**
+ * 脱敏：从标记吃到正文末尾（有 END 就连 END 一起）。
+ *
+ * 尾部**不**用 `$` 兜底：私钥被截断时用 `$` 会把文件后半段一并抹掉。
+ * 正文段只吃 base64 与换行——**不吃引号与逗号**：上一版的 `[\s\S]` 窗口会把相邻的 JSON
+ * 字段整个吞进占位串（实测：一个 `"hash"` 字段凭空消失，而 JSON 仍然合法，于是无人发现）。
+ */
+const PEM_REDACT = new RegExp(
+  `${PEM_LABEL}${PEM_GAP}${PEM_BODY}[A-Za-z0-9+/=]*(?:${NL}+[A-Za-z0-9+/=]+)*(?:${NL}*${PEM_END})?`,
+  'g',
+);
+/**
+ * 占位串。**刻意不含密钥材料**，于是它自身不再命中上面的判据——
+ * 脱敏后的日志再进扫描不会被二次命中，本文件的源码也能正常进送审包。
+ */
+const PEM_PLACEHOLDER = '-----BEGIN PRIVATE KEY----- <redacted> -----END PRIVATE KEY-----';
 
 /** 熵检测：过低熵的「密钥样子」的字符串多半是占位符（your_key_here、xxxxxxxx） */
 function shannonEntropy(s: string): number {
@@ -85,7 +177,10 @@ const RULES: Rule[] = [
   },
   {
     name: 'private-key-block',
-    re: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY(?: BLOCK)?-----/g,
+    re: PEM_DETECT,
+    document: true,
+    redactRe: PEM_REDACT,
+    redactWith: PEM_PLACEHOLDER,
   },
   {
     /*
@@ -108,14 +203,22 @@ const RULES: Rule[] = [
      * 配置都适用，不限于某一家。
      */
     name: 'toml-bearer-token',
-    re: /\b[\w.]*(?:bearer_token|access_token|refresh_token|id_token)\b\s*[:=]\s*["']?([A-Za-z0-9_\-+/.]{16,})["']?/gi,
+    re: new RegExp(
+      String.raw`${Q}\b[\w.]*(?:bearer_token|access_token|refresh_token|id_token)\b${Q}\s*[:=]\s*${Q}([A-Za-z0-9_\-+/.]{16,})${Q}`,
+      'gi',
+    ),
     confirm: (m) => looksReal(m[1] ?? ''),
+    secretGroup: 1,
   },
   {
-    // 兜底：形如 api_key = "…" / token: '…' 的长随机串赋值
+    // 兜底：形如 api_key = "…" / token: '…' / {"api_key": "…"} 的长随机串赋值
     name: 'generic-secret-assignment',
-    re: /\b(?:api[_-]?key|secret|token|password|passwd|credential)\b\s*[:=]\s*["']?([A-Za-z0-9_\-+/]{20,})["']?/gi,
+    re: new RegExp(
+      `${KEY('api[_-]?key|secret|token|password|passwd|credential')}([A-Za-z0-9_\\-+/]{20,})${Q}`,
+      'gi',
+    ),
     confirm: (m) => looksReal(m[1] ?? ''),
+    secretGroup: 1,
   },
 ];
 
@@ -136,6 +239,7 @@ export function scanSecrets(content: string): SecretFinding[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     for (const rule of RULES) {
+      if (rule.document) continue; // 跨行规则在下面对全文扫一次
       rule.re.lastIndex = 0;
       let m: RegExpExecArray | null;
       while ((m = rule.re.exec(line)) !== null) {
@@ -145,12 +249,141 @@ export function scanSecrets(content: string): SecretFinding[] {
       }
     }
   }
-  return findings;
+
+  // 跨行规则：行号由匹配起点之前的换行数算出，与逐行扫的行号口径一致
+  for (const rule of RULES) {
+    if (!rule.document) continue;
+    rule.re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = rule.re.exec(content)) !== null) {
+      if (m[0].length === 0) {
+        rule.re.lastIndex++;
+        continue;
+      }
+      if (rule.confirm && !rule.confirm(m)) continue;
+      const line = content.slice(0, m.index).split('\n').length;
+      findings.push({ rule: rule.name, line, preview: redact(m[0]) });
+    }
+  }
+  return findings.sort((a, b) => a.line - b.line);
 }
 
-/** 供 archive 使用：命中即抛，附可读的定位信息（不含密钥原文） */
-export function assertNoSecrets(content: string, whatItIs: string): void {
-  const hits = scanSecrets(content);
+/**
+ * 就地脱敏：把命中处换成 `redact()` 的首尾预览，其余内容一字不动。
+ *
+ * 供运行目录里**编排器自写的日志**用（`<侧>/stdout.jsonl`、`stdout.json`、`trace.json`，
+ * 见 `scrub.ts`）。它们是排障依据、不能删，但模型若在沙箱里读了自己的配置副本，
+ * 明文凭据就会随命令输出逐字落在这里——2026-09-16 那次泄露的留痕正是这个形态
+ * （计划双审 CODEX-03）。
+ *
+ * 与 `assertNoSecrets` 的分工：那边守的是**要进 Git 的归档**，命中即拒绝落盘；
+ * 这边守的是**项目外的运行目录**，文件已经在盘上，能做的只有把值抹掉。
+ * 规则集共用，`confirm` 判定共用——不另起一套「哪些算密钥」的口径。
+ */
+export function redactSecrets(content: string): { content: string; count: number } {
+  let count = 0;
+  let out = content;
+  for (const rule of RULES) {
+    /*
+     * 脱敏用 `redactRe`（有的话）：检出只需定位标记，脱敏要连正文一起吃掉——
+     * 只换标记等于什么都没抹，正文 base64 原样留下（代码双审 r1 CODEX-03）。
+     */
+    if (rule.redactRe) {
+      const with_ = rule.redactWith ?? '<redacted>';
+      rule.redactRe.lastIndex = 0;
+      out = out.replace(rule.redactRe, () => {
+        count++;
+        return with_;
+      });
+      continue;
+    }
+    rule.re.lastIndex = 0;
+    out = out.replace(rule.re, (...args: unknown[]) => {
+      const whole = args[0] as string;
+      // replace 回调的参数形态与 exec 结果不同，按 exec 的形态重建一次（末两项是 offset 与全文）
+      const m = [whole, ...(args.slice(1, -2) as string[])] as unknown as RegExpExecArray;
+      if (rule.confirm && !rule.confirm(m)) return whole;
+      count++;
+      // 赋值形态只换值、留键名与引号：日志还得能读；其余规则整个匹配就是凭据
+      const g = rule.secretGroup !== undefined ? m[rule.secretGroup] : undefined;
+      return g ? whole.replace(g, redact(g)) : redact(whole);
+    });
+  }
+  return { content: out, count };
+}
+
+/**
+ * 扫一段**可能内嵌 unified diff** 的文本：diff hunk 内只看新增行，hunk 外整份扫。
+ * 行号按原文行号报，便于直接定位。
+ *
+ * ## 为什么补丁不能整份扫
+ *
+ * 补丁落盘要防的是「**这次改动**把凭据带进仓库」。而删除行与上下文行的内容**已经在 HEAD 里**，
+ * 扫它们拦不住任何已经发生的泄露，只会拦住路过的人。两个具体后果，本轮都撞到了：
+ *
+ * - 动一下测试夹具文件（它必须与真凭据同形，否则测不了扫描器），既有夹具就作为上下文行进补丁，
+ *   于是**涉及密钥模块的改动一律送不进审查**；
+ * - 更反过来的一例：**删掉一个真泄露的凭据**，那一行进删除侧 → 补丁被拒 → 安全修复本身过不了安全检查。
+ *
+ * 新增行仍然整份扫：那才是这次要写进 Git 的东西。所以这不是放宽判据，是把判据对准它要防的事。
+ *
+ * ## 为什么按 hunk 判而不是按行首字符判
+ *
+ * 上一版用 `startsWith('+') && !startsWith('+++')` 区分新增行与文件头，把**原始内容以 `++` 开头**的
+ * 新增行（`++i;`、markdown 的 `++ins++`）一并排除——那类行整行退出扫描论域（代码双审 r2 实测漏扫）。
+ * `+++ b/<path>` 只出现在 `@@` 之前的文件头里，按 hunk 位置判就不会与内容混淆。
+ *
+ * 同一判据也用于 BRIEF：它把补丁节选逐字嵌在散文中间，hunk 外的散文必须整份扫，
+ * 否则放宽只是把拒绝点从补丁搬到 BRIEF（代码双审 r2 CODEX-07）。
+ *
+ * 不连续的新增行会被拼成一段再扫，跨行规则（PEM）因此可能在两段不相邻的新增内容上凑出匹配——
+ * 方向是多拦，不是漏拦。
+ */
+export function scanDiffSecrets(text: string): SecretFinding[] {
+  const lines = text.split('\n');
+  const kept: string[] = [];
+  const lineNoOf: number[] = [];
+  let inHunk = false;
+  const keep = (s: string, i: number) => {
+    kept.push(s);
+    lineNoOf.push(i + 1);
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]!;
+    if (l.startsWith('@@ ')) {
+      inHunk = true;
+      continue; // hunk 头只有行号信息
+    }
+    if (!inHunk) {
+      // 文件头的路径行不是内容；其余（BRIEF 的散文）整份扫
+      if (/^(?:diff --git |index |--- |\+\+\+ |new file mode |deleted file mode |similarity index |rename )/.test(l)) continue;
+      keep(l, i);
+      continue;
+    }
+    // hunk 内：首字符是 diff 前缀
+    if (l.startsWith('+')) {
+      keep(l.slice(1), i);
+      continue;
+    }
+    if (l.startsWith('-') || l.startsWith(' ') || l.startsWith('\\') || l === '') continue;
+    // 不带前缀的行说明 hunk 结束（BRIEF 里补丁节选之后的散文）
+    inHunk = false;
+    keep(l, i);
+  }
+  return scanSecrets(kept.join('\n')).map((f) => ({ ...f, line: lineNoOf[f.line - 1] ?? f.line }));
+}
+
+/**
+ * 供 archive 使用：命中即抛，附可读的定位信息（不含密钥原文）。
+ * `mode: 'added-lines'` 用于 unified diff，判据见 `scanDiffSecrets`。
+ */
+export function assertNoSecrets(
+  content: string,
+  whatItIs: string,
+  mode: 'full' | 'added-lines' = 'full',
+): void {
+  const hits = mode === 'added-lines' ? scanDiffSecrets(content) : scanSecrets(content);
   if (hits.length === 0) return;
   const detail = hits
     .map((h) => `  ${whatItIs}:${h.line}  [${h.rule}]  ${h.preview}`)
