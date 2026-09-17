@@ -164,7 +164,10 @@ const ZCODE_CLI_SUBDIR = '.zcode/cli';
  * （返回值只喂本次 `invokeZcode`），整份删。`home/` 下其余文件过扫描器，命中即删。
  */
 export async function scrubZcodeHome(homeDir: string, opts: { sizeCap?: number } = {}): Promise<CarrierScrub> {
-  const out: CarrierScrub = { deleted: [], scanned: 0, removedOnHit: [], redacted: {}, warnings: [], skipped: 0, errors: [] };
+  const out: CarrierScrub = {
+    deleted: [], unscannableDeleted: [], scanned: 0, removedOnHit: [],
+    redacted: {}, warnings: [], skipped: 0, errors: [],
+  };
   if (!(await exists(homeDir))) return out;
   const dirName = path.basename(homeDir);
   /*
@@ -193,6 +196,13 @@ export async function scrubZcodeHome(homeDir: string, opts: { sizeCap?: number }
   });
   out.scanned = scan.scanned;
   out.removedOnHit = scan.removed.map((p) => path.join(dirName, p));
+  /*
+   * 论域内扫不进去的二进制整删（EV-36）。本侧自己的 sqlite 在 `db/` 下、已按前缀排除，
+   * 这一格接的是**操作系统写进假 HOME 的副产品**——实测 `Library/Caches/com.apple.python 下的 .pyc`
+   * （36 份 Xcode 自带 Python 框架的字节码，HOME 被重定向后由系统写入）。
+   * 它们此前让该侧 `complete` 恒为 false：一条永不收工、也无动作可消除的待办。
+   */
+  out.unscannableDeleted = scan.unscannableRemoved.map((p) => path.join(dirName, p));
   for (const [rel, n] of Object.entries(scan.redacted)) out.redacted[path.join(dirName, rel)] = n;
   out.warnings.push(...scan.warnings);
   out.skipped = scan.skipped;

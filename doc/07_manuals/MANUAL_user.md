@@ -353,7 +353,14 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 .trivium/bin/trivium report --topic <主题> [--out <路径>]
 .trivium/bin/trivium review --status <run_id>
 .trivium/bin/trivium review --cancel <run_id>
+.trivium/bin/trivium scrub [--dry-run]
 ```
+
+`scrub` 对**整个运行根**做一次凭据清扫：遍历全部项目桶、**只抹凭据、一个目录都不删**。
+会话启动的自动清扫只管本项目那个桶，别的仓库遗留的副本要等它自己再开一次会话——
+不再回到那个仓库时，副本会一直躺到 `run_dir_days` 整删。这条命令补那一格。
+`--dry-run` 只预测**侧层**（运行目录那一层没有哨兵、每轮都复查）。退出码恒 `0`：
+它是随手可跑的运维命令，判成败读输出而不是退出码。分档含义见 RUNBOOK「跨仓清扫」一节。
 
 ---
 

@@ -8,7 +8,7 @@ import path from 'node:path';
 import { exists } from './util/fsx.js';
 import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
-import { applyProfileOverride, loadCtx } from './config.js';
+import { applyProfileOverride, loadCtx, runRoot } from './config.js';
 import {
   runDoctor,
   renderDoctorReport,
@@ -36,6 +36,8 @@ import {
 } from './preflight.js';
 import { resolveTopicArgs } from './topic-args.js';
 import { resolveCriticSelection } from './critics.js';
+import { scrubAllRunRoot } from './retention.js';
+import { wiredAdapter } from './adapters/index.js';
 import { COMMAND_ENTRIES, CRITICS, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
 import { emitJson, fail, isJsonMode, say, setOutputMode, step, warn } from './util/log.js';
 
@@ -273,6 +275,17 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
 
   trivium status [--topic <主题>] [--json]
       打印闸门、运行、降级与争议。
+
+  trivium scrub [--dry-run] [--json]
+      对**整个运行根**做一次凭据清扫：只抹凭据、**不删任何目录**（BACKLOG EV-33）。
+      会话启动清扫只覆盖本项目的桶，别的仓库遗留的副本要等它自己再开一次会话；
+      不再回到那个仓库时，副本会一直躺到 retention.run_dir_days 整删。这条命令补那一格。
+      --dry-run  列出「侧层本会抹哪些运行目录」，不动盘上任何文件。
+                 **只预测侧层**：运行目录那一层（request.json 等）没有哨兵、每轮都复查，
+                 有没有活取决于正文是否命中密钥，不读正文答不了——预览不该为此整份读它们。
+      判据与会话启动清扫同源：worker 现势活着的不动，status.json 读不到的一律跳过并计数
+      （抹除不可逆，读不到状态就没有证据说它已经跑完）；准入未过而状态读得到的单列一格，
+      不让任何一类看过的目录哪一格都不进。
 
   trivium --version
   trivium --help
@@ -1275,6 +1288,87 @@ async function cmdStatus(args: ParsedArgs): Promise<number> {
   return EXIT.OK;
 }
 
+/**
+ * 跨仓凭据清扫（BACKLOG EV-33）。判定全在 `retention.ts`，这里只负责出参与人读渲染。
+ *
+ * **退出码取 0 而不是按「有没有残留」分档**：这条命令的职责是「把能抹的抹掉」，
+ * 抹不动的两类（status 读不到、扫不完）都要人工看一眼，用非零码把它们说成失败，
+ * 会让它在任何 `set -e` 的脚本里变成阻断——而它本该是可以随手跑的运维命令。
+ * 真出错（抹除失败）走 `scrubFailed`，人读与 JSON 都报得出来。
+ */
+async function cmdScrub(args: ParsedArgs): Promise<number> {
+  const ctx = await loadCtx();
+  const dryRun = args.flags.get('dry-run') === true;
+  const r = await scrubAllRunRoot(ctx.config, { adapters: wiredAdapter, dryRun });
+
+  if (isJsonMode()) {
+    emitJson({
+      ok: r.scrubFailed.length === 0,
+      dry_run: dryRun,
+      buckets: r.buckets,
+      visited: r.visited,
+      alive: r.alive,
+      eligible: r.eligible,
+      settled: r.settled,
+      scrubbed: r.scrubbed,
+      run_dir_redacted: r.runDirRedacted,
+      scrub_failed: r.scrubFailed,
+      unknown: r.unknown,
+      deferred: r.deferred,
+      incomplete: r.incomplete,
+      unreadable_buckets: r.unreadableBuckets,
+    });
+    return EXIT.OK;
+  }
+
+  say(`运行根：${runRoot(ctx.config)}`);
+  say(`项目桶 ${r.buckets.length} 个 ｜ 运行目录 ${r.visited} 个 ｜ 进行中跳过 ${r.alive} 个`);
+  /*
+   * 「侧层」这个限定词不能省（代码双审 CODEX-03 ≡ AGY-01）：运行目录那一层没有哨兵、
+   * 每轮都复查，所以「真跑会跳过」只对侧层成立。省掉限定词就是第二个「真跑不成立的数」。
+   */
+  say(`  · 侧层已收工 ${r.settled} 个（哨兵已记完成；运行目录层仍会复查，那层不写哨兵）`);
+  if (dryRun) {
+    say(`  · 侧层本会抹 ${r.eligible.length} 个运行目录（--dry-run，盘上什么都没动）`);
+    for (const d of r.eligible.slice(0, 10)) say(`      ${d}`);
+    if (r.eligible.length > 10) say(`      …另 ${r.eligible.length - 10} 个`);
+    say('    预览只预测侧层：运行目录层是否有活取决于交接包正文是否命中，不读正文答不了');
+  } else {
+    if (r.scrubbed.length > 0) say(`  · 已抹除 ${r.scrubbed.length} 个运行目录的凭据副本`);
+    else say('  · 没有需要抹的凭据副本');
+    // 一份载体都没抹、只脱敏了交接包的单列一格，否则「已抹除凭据副本」话比事实强（GLM-06）
+    if (r.runDirRedacted.length > 0) {
+      say(`  · 另 ${r.runDirRedacted.length} 个运行目录只做了交接包脱敏（未发现待抹的凭据副本）`);
+    }
+  }
+  if (r.deferred.length > 0) {
+    say(
+      `  · ${r.deferred.length} 个运行目录准入未过（正在启动／状态判不了／进程仍在），未动——` +
+        `多为瞬态，下次再跑会重判；持续出现请人工检查，首个：${r.deferred[0]}`,
+    );
+  }
+  if (r.unknown.length > 0) {
+    say(
+      `  · ${r.unknown.length} 个运行目录的状态读不到（缺失或损坏），未处理——` +
+        `抹除不可逆，读不到状态就没有证据说它已跑完；请人工检查后删除，首个：${r.unknown[0]}`,
+    );
+  }
+  if (r.incomplete.length > 0) {
+    // 取证路径按成因分流：运行目录层不写哨兵，指着 scrub.json 会一无所获（CODEX-04 ≡ AGY-02 ≡ GLM-03）
+    const first = r.incomplete[0]!;
+    say(
+      `  · ${r.incomplete.length} 个运行目录抹除后仍有文件未扫描，那几份未脱敏——首个：${first.dir}` +
+        (first.detail ? `（运行目录层：${first.detail}；该层不写哨兵）` : '（详见该侧的 scrub.json）'),
+    );
+  }
+  for (const b of r.unreadableBuckets) {
+    // 整桶没进论域＝其中未抹的副本不出现在任何一格，而命令照常报 ok（CODEX-01）
+    say(`  · 项目桶读不了，整棵未清扫：${b.bucket}——${b.reason}`);
+  }
+  for (const f of r.scrubFailed) say(`  · 抹除失败：${f.dir}——${f.reason}`);
+  return EXIT.OK;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   setOutputMode({ json: args.flags.get('json') === true, quiet: args.flags.get('quiet') === true });
@@ -1312,6 +1406,8 @@ export async function main(argv: string[]): Promise<number> {
       return cmdReport(args);
     case 'status':
       return cmdStatus(args);
+    case 'scrub':
+      return cmdScrub(args);
     default:
       throw usageError(`未知子命令：${args.command}\n\n${USAGE}`);
   }

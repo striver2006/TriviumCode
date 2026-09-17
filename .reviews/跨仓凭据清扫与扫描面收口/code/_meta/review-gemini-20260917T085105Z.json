@@ -1,0 +1,77 @@
+{
+  "agreed": [
+    "跨仓清扫（scrubAllRunRoot）与会话启动清扫（pruneRunDirs）的准入判据严格同源，均依赖 admitScrub 和 workerStillAlive，底层统一由 workerConfirmedGone 裁决，未引入第二份判定逻辑。",
+    "二进制文件清理边界定义清晰：通过 scanAndRemoveSecrets 统一部署，exclude 目录（cache/plugins/db）提前排除不触碰，redactUnder 保护回读来源（sessions/rollout/log）中的二进制跳过而不删除，仅删除论域内（沙箱 home/codexhome）未被排除的二进制文件，不会误伤回读数据。",
+    "哨兵完成态判据（complete === true）设计严密，旧版遗留的缺失 complete 字段的哨兵能够自然被判定为未收工并触发二次自愈清扫，补全扫描与二进制清除。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/scrub.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/types.ts",
+    "src/trivium/status.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/review.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/adapters/zcode.ts",
+    "test/unit/credential-scrub.test.ts",
+    "test/unit/retention.test.ts",
+    "test/unit/runner-scrub.test.ts",
+    "test/contract/boolean-flags-parity.test.ts",
+    "test/contract/orchestrator-logs-parity.test.ts",
+    "skills/dual-critic/schema/review.v1.json"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "阅读 src/trivium/retention.ts:569-573 及 578-591：sideLayerPending 实现仅遍历 runDir 下的 side 子目录，若无 side 则返回 false；此时 out.settled++ 且不会加入 out.eligible。然而在第 578 行 if (!opts.dryRun) 中，循环遍历的是 allRuns 中的所有 dir，对该 dir 调用 applyScrub(dir, ...)，applyScrub 会对 runDir/request.json 执行脱敏，若命中 secret 则推入 out.scrubbed。导致 --dry-run 报告无待处理项（settled 增加），而真跑却实际执行了脱敏并记入 scrubbed。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "code",
+      "location": "src/trivium/retention.ts:569",
+      "problem": "scrubAllRunRoot 预演（--dry-run）与真跑在零侧运行（或仅 runDir 层未抹）目录上的统计与动作不一致。sideLayerPending 仅检查子目录中的 side 层哨兵；当目录无 side 目录时返回 false，导致该目录在预演中被计入 settled（终端展示为「侧层已收工（哨兵已记完成，真跑会跳过）」），但真跑分支并没有跳过，依然对该目录执行 applyScrub 并擦除 request.json，将其计入 scrubbed。",
+      "severity": "minor",
+      "suggestion": "在 sideLayerPending 中增加对 runDir 层（如 request.json 是否已被脱敏或超出大小限制等）的判定，或者统一 dryRun 与真跑的准入过滤，仅对判定为待清扫（eligible）的目录执行 applyScrub，避免预演显示跳过但真跑实际执行修改。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 src/trivium/cli.ts:283 与 src/trivium/retention.ts:503-505。当 runDir/request.json 大于 32MB 被跳过时，applyScrub 汇总结果 r.incomplete 为 true，但各 side 目录下的 scrub.json 哨兵记录的 complete 均为 true。cli 提示用户查看「该侧的 scrub.json」，用户在侧层 scrub.json 中无法查到跳过原因。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/cli.ts:283",
+      "problem": "trivium scrub 输出中的 incomplete 提示文案假定未完成仅由侧层未扫描引起（「详见该侧的 scrub.json」），未考虑 runDir 层（如 request.json 超过 sizeCap）导致 incomplete 的情况。",
+      "severity": "nit",
+      "suggestion": "若 r.runDir.skipped > 0，在 CLI 提示中指明是运行根目录文件（如 request.json）超限被跳过，而非仅引导查看各侧的 scrub.json。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 src/trivium/adapters/codex-home.ts:117 及 src/trivium/scrub.ts。变更差异中已移除了 isVendorStateDb，改为由 scanAndRemoveSecrets 依据 isBinaryFile 统一切断并删除未在 exclude/redactUnder 中的二进制文件。codex-home.ts:117 仍保留已失效的函数名注释。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/adapters/codex-home.ts:117",
+      "problem": "EV-36 重构后注释残留了已废弃函数的引用。注释中描述「见 isVendorStateDb」，但该函数已被移除并泛化为通用的二进制文件删除机制。",
+      "severity": "nit",
+      "suggestion": "清理或更新 doc 注释，移除对 isVendorStateDb 的引用，更新为引用 scanAndRemoveSecrets 的二进制清扫策略。"
+    }
+  ],
+  "not_covered": [
+    "未在 Linux 和 Windows 真实运行环境下测试路径规范化与文件删除行为（当前仅基于 macOS/POSIX 静态核对）。",
+    "未压力测试当 ~/.trivium/runs 存在数万级超大规模目录时 scrubAllRunRoot 的内存占用与遍历性能。",
+    "未测试多个 trivium scrub 实例并发执行在同一运行根目录时的文件锁竞争场景。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "结论为 approve-with-nits。准入判据严格同源、二进制删除边界隔离完备、旧哨兵自愈机制正确有效。\n发现 1 个 minor 合约不一致问题（AGY-01）：scrubAllRunRoot 在零侧运行目录上，--dry-run 会因 sideLayerPending 为 false 将其误计为 settled，但真跑仍会对该目录执行 applyScrub 并脱敏 request.json。\n发现 2 个 nit 维护性问题：CLI 提示 incomplete 时未区分 runDir 层（AGY-02），以及注释残留已删除的 isVendorStateDb 引用（AGY-03）。\n焦点一（准入判据同源性）：admitScrub 与 workerStillAlive 被 pruneRunDirs 与 scrubAllRunRoot 严格共用，底层统一由 workerConfirmedGone 裁决，无分叉。\n焦点二（二进制处置边界）：scanAndRemoveSecrets 严格区分 exclude 与 redactUnder，读回源二进制仅跳过不删除，仅在论域内删除未排除二进制，未发生误伤。\n焦点三（哨兵判据）：sentinelSettled 严格要求 complete === true，旧版缺少 complete 字段的哨兵可正确触发自愈重扫。",
+  "verdict": "approve-with-nits"
+}

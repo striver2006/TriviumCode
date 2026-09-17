@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { pruneRunDirs } from '../../src/trivium/retention.js';
+import { pruneRunDirs, scrubAllRunRoot } from '../../src/trivium/retention.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { repoId } from '../../src/trivium/review.js';
 import { newStatus, writeStatus } from '../../src/trivium/status.js';
@@ -233,4 +233,180 @@ test('抹除失败进 scrubFailed 并带原因；dryRun 与不传 adapters 都�
   assert.equal(r.scrubFailed[0]?.dir, d);
   assert.match(r.scrubFailed[0]!.reason, /EPERM 模拟/);
   assert.equal((await readScrubSentinel(path.join(d, 'glm')))?.ok, false, 'ok:false 让下次清扫重试');
+});
+
+// ── 跨仓清扫（BACKLOG EV-33）──
+
+/**
+ * 造一个含两个项目桶的运行根。EV-33 的整条缺口就长在「桶」这一级上：
+ * 会话启动清扫只进本项目那一个桶，别的桶要等它自己再开一次会话。
+ */
+async function twoBuckets() {
+  const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-sweep-'));
+  const cfg = defaultConfig();
+  cfg.runtime.run_root = runRoot;
+  const mine = path.join(runRoot, repoId('/tmp/project-a'));
+  const other = path.join(runRoot, repoId('/tmp/project-b'));
+  for (const b of [mine, other]) await fs.mkdir(b, { recursive: true });
+  return { cfg, runRoot, mine, other, projectRoot: '/tmp/project-a' };
+}
+
+test('scrubAllRunRoot：别的项目桶里的凭据副本也抹，而会话启动清扫碰不到它们（EV-33）', async () => {
+  const { cfg, mine, other, projectRoot } = await twoBuckets();
+  const a = await runDirWith(mine, 'R-a', 'success');
+  const b = await runDirWith(other, 'R-b', 'success');
+
+  // 先复现缺口本身：本项目的清扫只抹自己桶里的那份
+  const pruned = await pruneRunDirs(cfg, projectRoot, { adapters: wiredAdapter });
+  assert.deepEqual(pruned.scrubbed, [a.d]);
+  await fs.access(b.carrier);
+
+  const r = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
+
+  assert.deepEqual(r.scrubbed, [b.d], 'a 的哨兵已记 ok，本轮只剩 b 要抹');
+  await assert.rejects(fs.access(b.carrier), '别的仓库遗留的载体要被抹掉');
+  assert.equal(r.buckets.length, 2);
+  assert.equal(r.visited, 2);
+  assert.deepEqual(r.scrubFailed, []);
+  await fs.access(a.d);
+  await fs.access(b.d);
+});
+
+test('scrubAllRunRoot：只抹凭据，一个目录都不删——整删是 run_dir_days 的职责且按项目划界', async () => {
+  const { cfg, mine, other } = await twoBuckets();
+  const a = await runDirWith(mine, 'R-a', 'success');
+  const b = await runDirWith(other, 'R-b', 'success');
+  // 造成「早就该整删」的年纪：本函数仍不得删它
+  for (const d of [a.d, b.d]) await age(d, 400);
+
+  await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
+
+  await fs.access(a.d);
+  await fs.access(b.d);
+});
+
+test('scrubAllRunRoot：status 读不到的目录跳过并计数，不做不可逆抹除', async () => {
+  const { cfg, other } = await twoBuckets();
+  const { d, carrier } = await runDirWith(other, 'R-nostatus', null);
+
+  const r = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
+
+  assert.deepEqual(r.unknown, [d], '读不到状态就没有证据说它已跑完，而抹除不可逆');
+  assert.deepEqual(r.scrubbed, []);
+  await fs.access(carrier);
+});
+
+test('scrubAllRunRoot：worker 现势活着的运行不动', async () => {
+  const { cfg, other } = await twoBuckets();
+  const { carrier } = await runDirWith(other, 'R-live', 'running', process.pid);
+
+  const r = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
+
+  assert.equal(r.alive, 1);
+  assert.deepEqual(r.scrubbed, []);
+  await fs.access(carrier);
+});
+
+test('scrubAllRunRoot：--dry-run 列出「本会抹」但盘上什么都不动', async () => {
+  const { cfg, mine, other } = await twoBuckets();
+  const a = await runDirWith(mine, 'R-a', 'success');
+  const b = await runDirWith(other, 'R-b', 'success');
+  const nostatus = await runDirWith(other, 'R-nostatus', null);
+
+  const r = await scrubAllRunRoot(cfg, { adapters: wiredAdapter, dryRun: true });
+
+  assert.deepEqual([...r.eligible].sort(), [a.d, b.d].sort());
+  assert.deepEqual(r.unknown, [nostatus.d], '预览也走一遍准入判据，读不到状态的不能算进「本会抹」');
+  assert.deepEqual(r.scrubbed, []);
+  for (const c of [a.carrier, b.carrier, nostatus.carrier]) await fs.access(c);
+});
+
+test('pruneRunDirs：运行目录那一层跳过了文件，也要计入 incomplete', async () => {
+  const { cfg, projectRoot, b } = await bucket();
+  const { d } = await runDirWith(b, 'R-big', 'success');
+  // 交接包大到过不了扫描上限：那一层没有哨兵，不在这里报就没有第二次机会
+  await fs.writeFile(path.join(d, 'request.json'), `{"x":"${'y'.repeat(4096)}"}`, 'utf8');
+
+  const r = await pruneRunDirs(cfg, projectRoot, { adapters: wiredAdapter, sizeCap: 1024 });
+
+  assert.deepEqual(r.incomplete.map((x) => x.dir), [d]);
+  // 那一层不写哨兵，指着 scrub.json 会一无所获——所以取证细节必须随计数一起带出来
+  assert.match(r.incomplete[0]!.detail!, /request\.json/);
+});
+
+test('scrubAllRunRoot：预览的「本会抹」与真跑的跳过判据同源，不把已收工的目录算进去', async () => {
+  const { cfg, mine, other } = await twoBuckets();
+  const done = await runDirWith(mine, 'R-done', 'success');
+  const todo = await runDirWith(other, 'R-todo', 'success');
+  // 先把 done 抹掉一轮，让它的侧层哨兵收工
+  await scrubAllRunRoot(cfg, { adapters: wiredAdapter, dryRun: false, sizeCap: undefined });
+  await assert.rejects(fs.access(done.carrier));
+  await assert.rejects(fs.access(todo.carrier));
+
+  // 再造一份新的待抹载体，只在 todo 那一侧
+  await fs.writeFile(todo.carrier, '{"provider":{"k":{"apiKey":"fake"}}}');
+  await fs.rm(path.join(todo.d, 'glm', 'scrub.json'), { force: true });
+
+  const preview = await scrubAllRunRoot(cfg, { adapters: wiredAdapter, dryRun: true });
+  assert.deepEqual(preview.eligible, [todo.d], '已收工的不能算进「本会抹」——那会让预览报一个真跑不成立的数');
+  assert.equal(preview.settled, 1);
+
+  const real = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
+  assert.deepEqual(real.scrubbed, [todo.d], '真跑抹的正是预览列出的那一批');
+  assert.deepEqual(real.eligible, preview.eligible, '两条路径填同一格，取的是同一条判据');
+});
+
+// ── 代码双审 r1 修复：分档闭合与桶级记账 ──
+
+test('scrubAllRunRoot：准入未过而 status 读得到的目录进 deferred，不再哪一格都不进（GLM-04）', async () => {
+  const { cfg, other } = await twoBuckets();
+  // starting：worker_pid 尚为 null 的拉起瞬间，副本可能正在写下
+  const { d, carrier } = await runDirWith(other, 'R-starting', 'starting');
+
+  const r = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
+
+  assert.deepEqual(r.deferred, [d], 'starting 类此前不计 alive、不计 unknown、也不进 eligible/settled');
+  assert.deepEqual(r.unknown, [], 'status 读得到，不该混进「读不到」那一格');
+  assert.equal(r.alive, 0);
+  assert.deepEqual(r.scrubbed, []);
+  await fs.access(carrier, );
+  // 账目闭合：看过的每个目录都落进恰好一格
+  assert.equal(r.visited, r.alive + r.deferred.length + r.unknown.length + r.eligible.length + r.settled);
+});
+
+test('scrubAllRunRoot：项目桶读不了要记账，不能整棵静默跳过（CODEX-01）', async () => {
+  const { cfg, runRoot, mine } = await twoBuckets();
+  await runDirWith(mine, 'R-a', 'success');
+  // 桶位置上放一个普通文件：readdir 会 ENOTDIR，走的正是那条 catch
+  const brokenBucket = path.join(runRoot, 'broken-bucket');
+  await fs.mkdir(brokenBucket);
+  await fs.chmod(brokenBucket, 0o000);
+
+  const r = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
+
+  try {
+    assert.deepEqual(r.unreadableBuckets.map((x) => x.bucket), ['broken-bucket']);
+    assert.ok(r.unreadableBuckets[0]!.reason.length > 0, '要带上原因，否则人读行没法排查');
+    assert.ok(!r.buckets.includes('broken-bucket'), '没进论域的桶不该算进「扫过的桶」');
+  } finally {
+    await fs.chmod(brokenBucket, 0o700); // 让临时目录还能被清掉
+  }
+});
+
+test('scrubAllRunRoot：只脱敏了交接包的目录进 runDirRedacted 而非 scrubbed（GLM-06）', async () => {
+  const { cfg, other } = await twoBuckets();
+  const { d, carrier } = await runDirWith(other, 'R-onlyreq', 'success');
+  // 先抹一轮，让侧层哨兵收工、载体清零
+  await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
+  await assert.rejects(fs.access(carrier));
+
+  // 再往运行目录那一层放一份含凭据的交接包：那层没有哨兵，每轮都复查
+  await fs.writeFile(path.join(d, 'request.json'), '{"brief_text":"apiKey = \\"' + 'Qx7mZp2Lk9Rt4Wv1Ab3Cd5Ef7Gh9Jk2M' + '\\""}', 'utf8');
+
+  const r = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
+
+  assert.deepEqual(r.scrubbed, [], '一份凭据载体都没抹，不能报成「已抹除凭据副本」');
+  assert.deepEqual(r.runDirRedacted, [d]);
+  assert.equal(r.settled, 1, '侧层确实已收工');
+  assert.ok(!(await fs.readFile(path.join(d, 'request.json'), 'utf8')).includes('Qx7mZp2L'), '交接包仍要被脱敏');
 });

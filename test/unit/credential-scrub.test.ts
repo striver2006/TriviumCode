@@ -13,7 +13,7 @@ import { scrubZcodeHome } from '../../src/trivium/adapters/zcode.js';
 import { TOOL_TRACE_CAPABILITY, failedResult, type CriticAdapter } from '../../src/trivium/adapters/base.js';
 import {
   SCRUB_SENTINEL, clearScrubSentinel, describeScrubFailure, readScrubSentinel,
-  scanAndRemoveSecrets, scrubDidWork, scrubRunDir, scrubSideDir,
+  scanAndRemoveSecrets, scrubDidWork, scrubRunDir, scrubSideDir, sentinelSettled,
 } from '../../src/trivium/scrub.js';
 
 /**
@@ -82,7 +82,10 @@ test('scrubCodexHome：三份载体整删；sessions/ 就地脱敏不删；cache
 
 test('scrubCodexHome：目录不存在返回空结果，不抛', async () => {
   const r = await scrubCodexHome(path.join(await tmp(), 'nope'));
-  assert.deepEqual(r, { deleted: [], scanned: 0, removedOnHit: [], redacted: {}, warnings: [], skipped: 0, errors: [] });
+  assert.deepEqual(r, {
+    deleted: [], unscannableDeleted: [], scanned: 0, removedOnHit: [],
+    redacted: {}, warnings: [], skipped: 0, errors: [],
+  });
 });
 
 // ── zcode 侧（计划双审三侧同时逮到的阻断：这一侧原稿以为没有副本）──
@@ -117,20 +120,41 @@ test('scrubZcodeHome：config.json 副本整删；rollout/ log/ 就地脱敏；p
 
 // ── 通用扫描 ──
 
-test('scanAndRemoveSecrets：exclude 按相对路径前缀排除，软链与二进制不读', async () => {
+test('scanAndRemoveSecrets：exclude 按相对路径前缀排除，软链不读，论域内的二进制整删（EV-36）', async () => {
   const root = await tmp();
+  const blob = Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(`token = "${FAKE_CRED}"`)]);
   await write(path.join(root, 'keep/x.txt'), `token = "${FAKE_CRED}"`);
+  await write(path.join(root, 'keep/kept.bin'), blob);
   await write(path.join(root, 'scan/y.txt'), `token = "${FAKE_CRED}"`);
   await write(path.join(root, 'clean.txt'), 'nothing here');
-  await write(path.join(root, 'blob.bin'), Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(`token = "${FAKE_CRED}"`)]));
+  await write(path.join(root, 'blob.bin'), blob);
   await fs.symlink(path.join(root, 'scan/y.txt'), path.join(root, 'link.txt'));
+
   const r = await scanAndRemoveSecrets(root, { exclude: ['keep'] });
+
   await kept(path.join(root, 'keep/x.txt'));
+  await kept(path.join(root, 'keep/kept.bin'), );
   await gone(path.join(root, 'scan/y.txt'));
   await kept(path.join(root, 'clean.txt'));
-  await kept(path.join(root, 'blob.bin'));
+  // 论域本就是「命中即删」，对判不了的东西保留是自相矛盾——按 fail-closed 删
+  await gone(path.join(root, 'blob.bin'));
   assert.deepEqual(r.removed, [path.join('scan', 'y.txt')]);
+  assert.deepEqual(r.unscannableRemoved, ['blob.bin'], '扫不进去而删的记在另一格，与「命中而删」分开');
   assert.equal(r.scanned, 2, '软链与二进制不计入扫描');
+  assert.equal(r.skipped, 0, '删掉了就不是「跳过」——否则 complete 永远为假');
+  assert.deepEqual(r.warnings, []);
+});
+
+test('scanAndRemoveSecrets：redactUnder 下的二进制仍只跳过不删——那几棵是回读来源', async () => {
+  const root = await tmp();
+  await write(path.join(root, 'io/blob.bin'), Buffer.concat([Buffer.from([0, 1]), Buffer.from('x')]));
+
+  const r = await scanAndRemoveSecrets(root, { redactUnder: ['io'] });
+
+  await kept(path.join(root, 'io/blob.bin'), );
+  assert.deepEqual(r.unscannableRemoved, []);
+  assert.equal(r.skipped, 1, '仍未脱敏，仍不能据此收工');
+  assert.ok(r.warnings.some((w) => w.includes('回读面')), `要说清为什么不删：${JSON.stringify(r.warnings)}`);
 });
 
 test('scanAndRemoveSecrets：超过上限的文件只记告警不记错误（CODEX-02）；redactUnder 下命中改脱敏', async () => {
@@ -176,7 +200,7 @@ test('scrubSideDir：载体 + 日志脱敏（含 out/ 与 rollout.jsonl）+ 哨�
       const carrier = path.join(dir, 'home/creds.json');
       const had = await fs.access(carrier).then(() => true, () => false);
       await fs.rm(carrier, { force: true });
-      return { deleted: had ? ['home/creds.json'] : [], scanned: 0, removedOnHit: [], redacted: {}, warnings: [], skipped: 0, errors: [] };
+      return { deleted: had ? ['home/creds.json'] : [], unscannableDeleted: [], scanned: 0, removedOnHit: [], redacted: {}, warnings: [], skipped: 0, errors: [] };
     },
   });
 
@@ -249,18 +273,23 @@ test('scrubSideDir：跳过了目标就不算扫完——complete:false 让清�
   assert.equal((await scrubSideDir(stubAdapter(), clean2)).skipped, 'already-scrubbed');
 });
 
-test('scrubSideDir：二进制跳过与超大文件同档记告警，不再静默（GLM-05）', async () => {
+test('scrubSideDir：论域内的二进制被整删，complete 因此为真（GLM-05 的告警口径经 EV-36 升级）', async () => {
   const side = await tmp();
   await write(path.join(side, 'home/blob.bin'), Buffer.concat([Buffer.from([0, 1]), Buffer.from(`token = "${FAKE_CRED}"`)]));
   const r = await scrubSideDir(stubAdapter({
     async scrubRunDir(dir) {
       const scan = await scanAndRemoveSecrets(path.join(dir, 'home'));
-      return { deleted: [], scanned: scan.scanned, removedOnHit: scan.removed, redacted: {}, warnings: scan.warnings, skipped: scan.skipped, errors: scan.errors };
+      return {
+        deleted: [], unscannableDeleted: scan.unscannableRemoved, scanned: scan.scanned,
+        removedOnHit: scan.removed, redacted: {}, warnings: scan.warnings, skipped: scan.skipped, errors: scan.errors,
+      };
     },
   }), side, { force: true });
-  assert.ok(r.warnings.some((w) => w.includes('二进制')), `二进制跳过要留痕：${JSON.stringify(r.warnings)}`);
-  assert.equal(r.complete, false, '跳过就是没扫完');
-  assert.equal(r.ok, true, '但不是错误');
+  await gone(path.join(side, 'home/blob.bin'));
+  assert.deepEqual(r.unscannable_deleted, ['blob.bin']);
+  assert.equal(r.complete, true, '没有跳过任何目标，这一侧才真的扫完了');
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.warnings, [], 'GLM-05 加告警是为了让没扫的看得见；删掉之后没有「没扫的」可看');
 });
 
 test('scrubSideDir：告警不影响 ok，错误才 ok:false（CODEX-02）', async () => {
@@ -268,7 +297,7 @@ test('scrubSideDir：告警不影响 ok，错误才 ok:false（CODEX-02）', asy
   await write(path.join(side, 'out/stdout.jsonl'), 'x'.repeat(4096));
   const warned = await scrubSideDir(stubAdapter({
     async scrubRunDir() {
-      return { deleted: [], scanned: 0, removedOnHit: [], redacted: {}, warnings: ['跳过超大文件 cache/big（模拟）'], skipped: 1, errors: [] };
+      return { deleted: [], unscannableDeleted: [], scanned: 0, removedOnHit: [], redacted: {}, warnings: ['跳过超大文件 cache/big（模拟）'], skipped: 1, errors: [] };
     },
   }), side, { force: true, sizeCap: 1024 });
   assert.equal(warned.ok, true, '超大文件跳过是告警：载体早已删净，不能报成「副本仍在盘上」');
@@ -277,7 +306,7 @@ test('scrubSideDir：告警不影响 ok，错误才 ok:false（CODEX-02）', asy
 
   const errored = await scrubSideDir(stubAdapter({
     async scrubRunDir() {
-      return { deleted: [], scanned: 0, removedOnHit: [], redacted: {}, warnings: [], skipped: 0, errors: ['删不掉 config.json 副本：EPERM（模拟）'] };
+      return { deleted: [], unscannableDeleted: [], scanned: 0, removedOnHit: [], redacted: {}, warnings: [], skipped: 0, errors: ['删不掉 config.json 副本：EPERM（模拟）'] };
     },
   }), side, { force: true });
   assert.equal(errored.ok, false);
@@ -310,10 +339,148 @@ test('scrubRunDir：只认注册表 id 命名的侧子目录，缺接线的侧�
     seen.push(id);
     return id === 'glm' ? stubAdapter() : undefined;
   });
-  assert.deepEqual(Object.keys(r).sort(), ['gemini', 'glm']);
-  assert.equal(r.glm?.logs_redacted[path.join('out', 'stdout.json')], 1);
-  assert.equal(r.gemini?.adapter_scrub, false);
-  assert.ok(!scrubDidWork(r.gemini!), 'gemini 侧什么都没抹');
+  assert.deepEqual(Object.keys(r.sides).sort(), ['gemini', 'glm']);
+  assert.equal(r.sides.glm?.logs_redacted[path.join('out', 'stdout.json')], 1);
+  assert.equal(r.sides.gemini?.adapter_scrub, false);
+  assert.ok(!scrubDidWork(r.sides.gemini!), 'gemini 侧什么都没抹');
   assert.ok((await fs.readFile(path.join(run, 'unknown-side/out/stdout.jsonl'), 'utf8')).includes(FAKE_CRED), '非侧目录不碰');
   assert.ok(seen.includes('gemini') && seen.includes('glm'));
+});
+
+// ── codex 自有二进制：整删而不是留一份永远扫不完的面 ──
+
+test('scrubCodexHome：自有 sqlite 状态库整删且单列一格，skills/.system 整棵不扫', async () => {
+  const dir = await tmp();
+  const home = path.join(dir, 'codexhome');
+  const blob = Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(`token = "${FAKE_CRED}"`)]);
+  await write(path.join(home, 'config.toml'), TOML);
+  // codex 跑起来自己生成的状态库，散在副本根这一层，`-shm` / `-wal` 边车同类
+  for (const n of ['goals_1.sqlite', 'state_5.sqlite-shm', 'thread_history_1.sqlite-wal']) {
+    await write(path.join(home, n), blob);
+  }
+  // 随 CLI 分发的系统技能树：每份技能带一个 PNG 图标
+  await write(path.join(home, 'skills/.system/imagegen/assets/imagegen.png'), blob);
+  // 模型自己装的技能不在 .system 下——那是「本轮没想到的文件」，仍要扫
+  await write(path.join(home, 'skills/mine/notes.txt'), `token = "${FAKE_CRED}"`);
+  await write(path.join(home, 'sessions/s.jsonl'), IO_LINE);
+
+  const r = await scrubCodexHome(home);
+
+  assert.deepEqual(r.deleted, [path.join('codexhome', 'config.toml')], '凭据载体只此一份，另两类不能混进来');
+  assert.deepEqual(
+    [...r.unscannableDeleted].sort(),
+    ['goals_1.sqlite', 'state_5.sqlite-shm', 'thread_history_1.sqlite-wal']
+      .map((n) => path.join('codexhome', n)).sort(),
+    'sqlite 记在另一格：删除理由与凭据载体不同，混在一起哨兵就说了假话',
+  );
+  for (const n of ['goals_1.sqlite', 'state_5.sqlite-shm', 'thread_history_1.sqlite-wal']) {
+    await gone(path.join(home, n));
+  }
+  await kept(path.join(home, 'skills/.system/imagegen/assets/imagegen.png'));
+  await gone(path.join(home, 'skills/mine/notes.txt'));
+  await clean(path.join(home, 'sessions/s.jsonl'));
+  assert.equal(r.skipped, 0, '这两类正是此前唯一的跳过来源，处理掉之后该侧扫得完');
+  assert.deepEqual(r.warnings, [], '扫得完就不该再有「跳过二进制」的告警');
+});
+
+test('scrubSideDir：codex 侧扫得完 → complete 为真 → 非 force 的下一次清扫直接跳过', async () => {
+  const side = await tmp();
+  const home = path.join(side, 'codexhome');
+  await write(path.join(home, 'config.toml'), TOML);
+  await write(path.join(home, 'goals_1.sqlite'), Buffer.from([0, 1, 2, 3]));
+  const { codexAdapter } = await import('../../src/trivium/adapters/codex.js');
+
+  const first = await scrubSideDir(codexAdapter, side, { force: true });
+  assert.equal(first.complete, true, 'sqlite 已整删，没有跳过项');
+  assert.deepEqual(first.unscannable_deleted, [path.join('codexhome', 'goals_1.sqlite')]);
+  assert.equal(first.ok, true);
+
+  const again = await scrubSideDir(codexAdapter, side);
+  assert.equal(again.skipped, 'already-scrubbed', 'complete 为真才让哨兵真正收工，否则每次会话重扫同一批');
+});
+
+// ── 运行目录那一层：没有哨兵，不上报就等于静默 ──
+
+test('scrubRunDir：运行目录层的脱敏结果要上报，不能像此前那样整个丢弃', async () => {
+  const run = await tmp();
+  await write(path.join(run, 'request.json'), `{"brief_text":"experimental_bearer_token = \\"${FAKE_CRED}\\""}`);
+  await write(path.join(run, 'glm/out/stdout.json'), '{}');
+
+  const r = await scrubRunDir(run, () => undefined);
+
+  assert.equal(r.runDir.redacted['request.json'], 1, '交接包逐字含整份送审包，必须脱敏并计数');
+  await clean(path.join(run, 'request.json'));
+  assert.deepEqual(r.runDir.errors, []);
+  assert.equal(r.runDir.skipped, 0);
+  assert.ok('glm' in r.sides, '侧层照常返回');
+});
+
+test('scrubRunDir：运行目录层跳过超大文件要报出来——那一层没有哨兵可留', async () => {
+  const run = await tmp();
+  await write(path.join(run, 'request.json'), `{"x":"${'y'.repeat(4096)}"}`);
+
+  const r = await scrubRunDir(run, () => undefined, { sizeCap: 1024 });
+
+  assert.equal(r.runDir.skipped, 1);
+  assert.ok(r.runDir.warnings.some((w) => w.includes('request.json')), `跳过要指名道姓：${JSON.stringify(r.runDir.warnings)}`);
+  assert.deepEqual(r.runDir.errors, [], '跳过是告警不是错误，与侧层同档');
+});
+
+test('scrubRunDir：运行目录读不了时不再静默返回空——那意味着一侧都没抹', async () => {
+  const dir = await tmp();
+  const notADir = path.join(dir, 'not-a-dir');
+  await write(notADir, 'x');
+
+  const r = await scrubRunDir(notADir, () => undefined);
+
+  assert.deepEqual(r.sides, {});
+  assert.equal(r.runDir.errors.length, 1, '此前是 `return {}`：调用方三个计数全不增长，该目录在待办里完全不出现');
+  assert.match(r.runDir.errors[0]!, /读运行目录失败/);
+});
+
+test('sentinelSettled：`complete` 字段加进来之前的旧哨兵不算收工，会被重扫一次并自愈', async () => {
+  const side = await tmp();
+  const home = path.join(side, 'codexhome');
+  await write(path.join(home, 'goals_1.sqlite'), Buffer.from([0, 1, 2, 3]));
+  // 旧版哨兵：那时还没有 `complete` 这个字段
+  await write(path.join(side, SCRUB_SENTINEL), JSON.stringify({
+    ok: true, at: '2026-09-01T00:00:00.000Z', adapter_scrub: true,
+    carriers_deleted: [], scanned_files: 3, removed_on_hit: [], logs_redacted: {}, warnings: [], errors: [],
+  }));
+
+  assert.equal(sentinelSettled(await readScrubSentinel(side)), false, '「不知道扫没扫完」不能长得像「扫完了」');
+
+  const { codexAdapter } = await import('../../src/trivium/adapters/codex.js');
+  const r = await scrubSideDir(codexAdapter, side);
+  assert.equal(r.skipped, undefined, '旧哨兵不该让这一侧被跳过');
+  await gone(path.join(home, 'goals_1.sqlite'));
+  assert.equal(sentinelSettled(await readScrubSentinel(side)), true, '重扫一次即写上新字段，自愈');
+});
+
+test('sentinelSettled：complete 为 false 或 ok 为 false 都不算收工', async () => {
+  const base = {
+    at: '2026-09-17T00:00:00.000Z', adapter_scrub: true, carriers_deleted: [], unscannable_deleted: [],
+    scanned_files: 0, removed_on_hit: [], logs_redacted: {}, warnings: [], errors: [],
+  };
+  assert.equal(sentinelSettled(null), false);
+  assert.equal(sentinelSettled({ ...base, ok: true, complete: true }), true);
+  assert.equal(sentinelSettled({ ...base, ok: true, complete: false }), false);
+  assert.equal(sentinelSettled({ ...base, ok: false, complete: true }), false);
+});
+
+test('scanAndRemoveSecrets：超过上限的二进制仍只跳过、不被整删——锁住两段判定的顺序（GLM-05）', async () => {
+  const root = await tmp();
+  // 前 8 KB 含 NUL（二进制）且超过 sizeCap：两个条件同时成立，结果只能由判定顺序决定
+  await write(path.join(root, 'huge.bin'), Buffer.concat([Buffer.from([0, 1, 2]), Buffer.alloc(4096, 0x41)]));
+
+  const r = await scanAndRemoveSecrets(root, { sizeCap: 1024 });
+
+  await kept(path.join(root, 'huge.bin'));
+  assert.deepEqual(r.unscannableRemoved, [], '超大是「我们选择不读」，不是「读不了」——不该走整删');
+  assert.equal(r.skipped, 1);
+  assert.ok(
+    r.warnings.some((w) => w.includes('超大文件') && w.includes('huge.bin')),
+    `要报成超大而不是二进制：${JSON.stringify(r.warnings)}`,
+  );
+  // 把 sizeCap 判定挪到二进制判定之后，这份文件会从「跳过」变成「整删」，而本断言会红
 });

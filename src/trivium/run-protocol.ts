@@ -607,9 +607,12 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
       if (!gone.gone) {
         scrubNote = `\n  凭据副本未抹：${gone.why}（${reading.reason}），留给会话启动清扫`;
       } else {
-        const scrubbed = await scrubRunDir(runDir, wiredAdapter).catch(() => ({}));
-        const scrubFailed = Object.values(scrubbed).filter((o) => o && !o.ok).length;
+        const scrubbed = await scrubRunDir(runDir, wiredAdapter).catch(() => null);
+        const scrubFailed = Object.values(scrubbed?.sides ?? {}).filter((o) => o && !o.ok).length;
         if (scrubFailed > 0) scrubNote = `\n  另：${scrubFailed} 侧的凭据副本抹除失败，见该侧目录的哨兵；下次会话启动会重试`;
+        // 运行目录那一层没有哨兵，不在这里报就没有第二次机会（`request.json` 含整份送审包）
+        const layerErr = scrubbed?.runDir.errors[0];
+        if (layerErr !== undefined) scrubNote += `\n  另：运行目录层脱敏失败：${layerErr}`;
       }
       throw new TriviumError(
         EXIT.FAIL,
@@ -764,10 +767,12 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
    */
   const goneNow = await workerConfirmedGone(await readStatus(runDir), pid);
   if (goneNow.gone) {
-    const scrubbed = await scrubRunDir(runDir, wiredAdapter).catch(() => ({}));
-    for (const [side, o] of Object.entries(scrubbed)) {
+    const scrubbed = await scrubRunDir(runDir, wiredAdapter).catch(() => null);
+    for (const [side, o] of Object.entries(scrubbed?.sides ?? {})) {
       if (o && !o.ok) warn(`${side} 侧凭据副本抹除失败：${o.errors[0] ?? '原因未记录'}（下次会话启动会重试）`);
     }
+    // 运行目录那一层没有哨兵可留，不在这里报就是三条通道全灭
+    for (const e of scrubbed?.runDir.errors ?? []) warn(`运行目录层脱敏失败：${e}`);
   } else {
     warn(`凭据副本未抹：${goneNow.why}——留给会话启动清扫`);
   }

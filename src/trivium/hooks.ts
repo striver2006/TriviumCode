@@ -1034,10 +1034,12 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
    */
   let pruned = 0;
   let scrubbed = 0;
+  let runDirRedacted = 0;
   let scrubFailed: { dir: string; reason: string }[] = [];
   let unknown = 0;
   let unknownDirs: string[] = [];
-  let incomplete: string[] = [];
+  let deferred: string[] = [];
+  let incomplete: { dir: string; detail?: string }[] = [];
   /** 清扫本身抛了：原先只在 DEBUG 下打印，新职责（凭据抹除）挂上来之后不能再静默（CODEX-06） */
   let retentionError: string | null = null;
   try {
@@ -1046,9 +1048,11 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
     const r = await pruneRunDirs(ctx.config, ctx.projectRoot, { adapters: wiredAdapter });
     pruned = r.removed.length;
     scrubbed = r.scrubbed.length;
+    runDirRedacted = r.runDirRedacted.length;
     scrubFailed = r.scrubFailed;
     unknown = r.unknown.length;
     unknownDirs = r.unknown;
+    deferred = r.deferred;
     incomplete = r.incomplete;
   } catch (e) {
     retentionError = (e as Error).message;
@@ -1061,8 +1065,8 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
   const reportable = open.filter((g) => g.state !== 'running');
   if (
     reportable.length === 0 && running.length === 0 && swept.length === 0 &&
-    pruned === 0 && scrubbed === 0 && scrubFailed.length === 0 && unknown === 0 &&
-    incomplete.length === 0 && retentionError === null
+    pruned === 0 && scrubbed === 0 && runDirRedacted === 0 && scrubFailed.length === 0 &&
+    unknown === 0 && deferred.length === 0 && incomplete.length === 0 && retentionError === null
   ) return ALLOW;
 
   const lines: string[] = ['TriviumCode 待办：'];
@@ -1071,6 +1075,13 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
   }
   if (scrubbed > 0) {
     lines.push(`  · 已抹除 ${scrubbed} 个运行目录的凭据副本`);
+  }
+  if (runDirRedacted > 0) {
+    /*
+     * 与上一行分开：这一格一份凭据载体都没抹，只是把运行目录那一层的交接包脱敏了。
+     * 并进「已抹除凭据副本」会让话比事实强（代码双审 GLM-06）。
+     */
+    lines.push(`  · 另 ${runDirRedacted} 个运行目录只做了交接包脱敏（未发现待抹的凭据副本）`);
   }
   if (unknown > 0) {
     /*
@@ -1082,14 +1093,28 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
         `请人工检查后删除，首个：${unknownDirs[0]}`,
     );
   }
-  if (incomplete.length > 0) {
+  if (deferred.length > 0) {
     /*
-     * 「抹了但没扫完」是第三档：载体已删（不报失败），但有文件因超大/二进制被跳过、仍未脱敏。
-     * 只记哨兵等于静默——哨兵在无人读的目录里（代码双审 r2 AGY-02）。
+     * 准入未过而 status 读得到的三类（starting / 拿不到 pid / 终态但进程仍活）。
+     * 不抹是既定安全决策，但此前它们哪一格都不进——其中 starting 类可能已经写下了
+     * 凭据副本（准备阶段崩溃），对所有入口都不可见地躺到 TTL（代码双审 GLM-04）。
      */
     lines.push(
-      `  · ${incomplete.length} 个运行目录抹除后仍有文件未扫描（超大或二进制），那几份未脱敏——` +
-        `详见该侧的 scrub.json，首个：${incomplete[0]}`,
+      `  · ${deferred.length} 个运行目录准入未过（正在启动／状态判不了／进程仍在），未动——` +
+        `多为瞬态，下次会话会再判一次；持续出现请人工检查，首个：${deferred[0]}`,
+    );
+  }
+  if (incomplete.length > 0) {
+    /*
+     * 「抹了但没扫完」是第三档：载体已删（不报失败），但有文件因超大/回读面下的二进制被跳过、仍未脱敏。
+     * 只记哨兵等于静默——哨兵在无人读的目录里（代码双审 r2 AGY-02）。
+     * **取证路径按成因分流**：运行目录那一层根本不写哨兵，指着 scrub.json 会一无所获，
+     * 所以那一档直接把告警原文带出来（代码双审 CODEX-04 ≡ AGY-02 ≡ GLM-03）。
+     */
+    const first = incomplete[0]!;
+    lines.push(
+      `  · ${incomplete.length} 个运行目录抹除后仍有文件未扫描，那几份未脱敏——首个：${first.dir}` +
+        (first.detail ? `（运行目录层：${first.detail}；该层不写哨兵）` : '（详见该侧的 scrub.json）'),
     );
   }
   if (scrubFailed.length > 0) {

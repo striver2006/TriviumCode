@@ -1164,6 +1164,12 @@ export interface ScrubOutcome {
   adapter_scrub: boolean;
   /** 整份删除的凭据载体（相对该侧目录） */
   carriers_deleted: string[];
+  /**
+   * 整份删除的**扫不动的自有二进制**（相对该侧目录）——见 `CarrierScrub.unscannableDeleted`。
+   * 与 `carriers_deleted` 分两格：删除理由不同，合并会让哨兵把「该侧 CLI 自己生成的状态库」
+   * 说成「编排器写进去的凭据载体」。
+   */
+  unscannable_deleted: string[];
   /** 该侧自有目录里过了扫描器的普通文件数 */
   scanned_files: number;
   /** 扫描命中而被删除的文件（相对该侧目录）——载体之外「本轮没想到」的东西 */

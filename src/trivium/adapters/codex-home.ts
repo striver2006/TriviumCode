@@ -78,12 +78,31 @@ export const codexHomeUnder = (runDir: string): string => path.join(runDir, 'cod
  * 命中**不删、就地脱敏**——删了丢回读来源与排障证据，夹具密钥又会让它误命中（代码双审 r1 CODEX-05）。
  */
 const REDACT_AFTER_RUN: readonly string[] = ['sessions'];
-/** 厂商缓存：插件目录（实测 21 MB）、插件本体。编排器与排障都不需要，不扫 */
-const SKIP_AFTER_RUN: readonly string[] = ['cache', 'plugins'];
+/**
+ * 不扫的整棵目录：厂商缓存（插件目录实测 21 MB）、插件本体，以及随 CLI 分发的
+ * **系统技能树** `skills/.system/`——它是 codex 自带的只读资产（`imagegen`、`openai-docs`、
+ * `skill-creator` …），编排器与排障都不需要，而它每份技能带一个 PNG 图标，
+ * 实测让 12 个运行目录各多出 5 条「跳过二进制」告警、`complete` 因此恒 false。
+ *
+ * **只排 `.system/`、不排整个 `skills/`**：模型在沙箱里自己装的技能落在 `skills/` 下别处，
+ * 那是「本轮没想到的文件」、正是后验扫描要覆盖的面。
+ */
+const SKIP_AFTER_RUN: readonly string[] = ['cache', 'plugins', 'skills/.system'];
 
 /** 副本里的凭据载体：`prepareCodexHome` 写进去的那几份，按名认 */
 const isCredentialCarrier = (name: string): boolean =>
   name === 'config.toml' || name.endsWith('.config.toml') || name === 'auth.json';
+
+/*
+ * codex 跑起来会在副本根上留下自己的 sqlite 状态库（`goals_*` / `logs_*` / `memories_*` /
+ * `queue_*` / `state_*` / `thread_history_*` 及 `-shm` / `-wal` 边车）。它们**不在这里按名处理**：
+ * 扫描器对「论域内扫不进去的二进制」统一整删（`scanAndRemoveSecrets`，BACKLOG EV-36），
+ * 这批文件正好落在那条通用规则下。按名再写一份判据就是同一件事的第二个实现——
+ * 那正是 BACKLOG 顶部「重复实现」那几条记的形态。
+ *
+ * 为什么删得安全：跑后回读 codex 的只有 `codex-trace.ts` 的 `findSessionFile`，读的是 `sessions/`，
+ * 而 `sessions/` 在 `REDACT_AFTER_RUN` 上、不在删除面内。
+ */
 
 /**
  * 抹掉副本里的凭据（BACKLOG EV-20）。
@@ -94,10 +113,18 @@ const isCredentialCarrier = (name: string): boolean =>
  * 其余普通文件（`models-*.json` 副本、`fakehome/` 里 codex 可能写的东西）过一遍扫描器，
  * 命中即删。`sessions/` 排除：它含送审包全文，扫描器对被审代码里的夹具密钥有误报面。
  *
+ * codex 自有的 sqlite 状态库同样**整删**，但**不在本函数里按名认**——它们是二进制，
+ * 由 `scanAndRemoveSecrets` 的「论域内扫不进去的二进制整删」通用规则覆盖（EV-36），
+ * 结果记在另一格 `unscannableDeleted`：删除理由与凭据载体不同，混进 `deleted` 会让哨兵说假话。
+ * 详见上方 `SKIP_AFTER_RUN` 一段的说明与 `scrub.ts` 的 `scanAndRemoveSecrets`。
+ *
  * 幂等：文件不在就跳过。目录不存在返回空结果，不抛。
  */
 export async function scrubCodexHome(codexHome: string, opts: { sizeCap?: number } = {}): Promise<CarrierScrub> {
-  const out: CarrierScrub = { deleted: [], scanned: 0, removedOnHit: [], redacted: {}, warnings: [], skipped: 0, errors: [] };
+  const out: CarrierScrub = {
+    deleted: [], unscannableDeleted: [], scanned: 0, removedOnHit: [],
+    redacted: {}, warnings: [], skipped: 0, errors: [],
+  };
   if (!(await exists(codexHome))) return out;
   const dirName = path.basename(codexHome);
   let names: string[];
@@ -121,6 +148,7 @@ export async function scrubCodexHome(codexHome: string, opts: { sizeCap?: number
   });
   out.scanned = scan.scanned;
   out.removedOnHit = scan.removed.map((p) => path.join(dirName, p));
+  out.unscannableDeleted = scan.unscannableRemoved.map((p) => path.join(dirName, p));
   for (const [rel, n] of Object.entries(scan.redacted)) out.redacted[path.join(dirName, rel)] = n;
   out.warnings.push(...scan.warnings);
   out.skipped = scan.skipped;

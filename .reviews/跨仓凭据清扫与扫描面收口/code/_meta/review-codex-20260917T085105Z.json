@@ -1,0 +1,108 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "三个焦点方向整体成立：准入判据确实同源（admitScrub/applyScrub/sentinelSettled 各只有一处实现，pruneRunDirs 与 scrubAllRunRoot 共用，预览与真跑走同一谓词）；complete===true 的旧哨兵自愈逻辑成立（重扫一次即写回新字段）；论域边界核对无误——回读来源走 redactUnder 不删、厂商缓存与 skills/.system 走 exclude、sessions/ 回读面未被误伤。最重的一条是跨仓清扫里整桶读失败被静默 continue，恰与本补丁在运行目录层刚修掉的『readdir 失败静默 return』同形，却漏修在桶这一级；其余为留痕失实类：scrubCodexHome 文档块引用了已撤销的 isVendorStateDb、settled 行的『真跑会跳过』与运行目录层复查行为矛盾、incomplete 行把运行目录层的跳过指向不存在的 scrub.json、『complete 从此没有永不收工的成因』对 redactUnder 下的二进制与超大文件仍然不成立。均不阻断合入。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/retention.ts（scrubAllRunRoot 的桶级 try/catch）",
+      "problem": "跨仓清扫对单个项目桶的 stat/readdir 失败静默 `continue`：该桶整棵不进论域，其中未抹的凭据副本不出现在 scrubbed/unknown/incomplete/scrubFailed 任何一格，命令照常报 ok:true 与「没有需要抹的凭据副本」。这与本补丁在 scrubRunDir 里刚修掉的『运行目录 readdir 失败静默 return {}、三个计数全不增长』是同一形状的缺口，只是挪到了桶这一级；并发整删（另一会话的 pruneRunDirs 删目录）时撞上也不报错。",
+      "evidence": "读了 src/trivium/retention.ts：桶循环 `try { if (!isDirectory) continue; entries = await readdir } catch { continue }`，catch 分支不向 out 记任何东西；同文件 scrubRunDir 的新注释明确写着「读不了运行目录 = 一侧都没抹……调用方的三个计数全不增长、该目录在待办里完全不出现」并为此加了 errors 上报（src/trivium/scrub.ts），而桶级没有等价处置。test/unit/retention.test.ts 的 scrubAllRunRoot 用例也没有桶读失败一格的断言。",
+      "suggestion": "给 SweepResult 加一格（如 unreadable_buckets: string[]）或在现有 warnings 通道记账并渲染进人读输出，与会话启动待办的分档可见性口径对齐；补一条桶读失败仍上报的用例。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/codex-home.ts（scrubCodexHome 的文档块）",
+      "problem": "文档块写「codex 自有的 sqlite 状态库同样整删……见 isVendorStateDb」，但 isVendorStateDb 已随 EV-36「撤掉按名认 sqlite 判据」被删除，全仓 grep 仅此一处提及、无任何定义；且该段与紧上方注释块（「它们不在这里按名处理……落在那条通用规则下」）互相矛盾。留痕指向一个不存在的标识符，正是本项目反复登记的『注释宣称了不存在的机制』形态。",
+      "evidence": "读了 src/trivium/adapters/codex-home.ts 全文，并 grep -rn isVendorStateDb src/ test/ —— 唯一命中是第 117 行的文档引用，无定义、无测试。对照 doc/08_project/BACKLOG.md EV-36 行「连带撤掉刚加的 codex 按名认 sqlite 那份判据」与同文件注释块「不在这里按名处理」。",
+      "suggestion": "删去或改写该段：sqlite 的整删应表述为「由 scanAndRemoveSecrets 的论域内二进制整删规则覆盖，记入 unscannableDeleted」，与注释块口径归一。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/cli.ts（cmdScrub 的 settled 行）与 src/trivium/retention.ts（scrubAllRunRoot）",
+      "problem": "人读行「侧层已收工 N 个（哨兵已记完成，真跑会跳过）」失实：settled 目录在非 dry-run 下仍逐一遍历 applyScrub——运行目录那一层没有哨兵，request.json / status.json / worker.log 每轮都复查并可能就地脱敏；retention.ts 自己的注释（「侧层没活也要真跑」）与 SweepResult.settled 的文档都说的是「仍会复查」。连带地，--dry-run 的「本会抹 N 个」只按侧层待工算 eligible，不预测 settled 目录运行目录层的脱敏动作，与「预览判据与真跑同源」的承诺在该层只覆盖了侧层一半。",
+      "evidence": "读了 src/trivium/cli.ts cmdScrub、src/trivium/retention.ts scrubAllRunRoot（eligible/settled 判定之后无条件 `if (!opts.dryRun) await applyScrub(...)`）、src/trivium/scrub.ts scrubRunDir（runDir 层 redactLogs 无条件执行）。三处互相对照后确认「真跑会跳过」只对 scrubSideDir 的侧层成立。",
+      "suggestion": "文案限定为「侧层真跑会跳过，运行目录层仍复查」；或给 settled 行补一句该层可能产生的改动量。dry-run 的语义承诺（USAGE 与 retention.ts 文档块）也应写明它只预测侧层。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/hooks.ts（incomplete 待办行）与 src/trivium/cli.ts（cmdScrub 的 incomplete 行）",
+      "problem": "incomplete 行的取证指引「详见该侧的 scrub.json」对本轮新增的成因失效：applyScrub 现在因 `r.runDir.skipped > 0` 也把目录记进 incomplete，而运行目录那一层刻意不写哨兵——按该指引去翻各侧 scrub.json 会一无所获，人读输出也没有把 runDir.warnings（哪份文件超大被跳过）透出来。新增用例「pruneRunDirs：运行目录那一层跳过了文件，也要计入 incomplete」走的正是这条无盘上留痕的路径。",
+      "evidence": "读了 src/trivium/retention.ts applyScrub（incomplete 条件含 `|| r.runDir.skipped > 0`）、src/trivium/scrub.ts RunDirLayerScrub 文档（「这一层没有哨兵……只能由调用方上报」）、src/trivium/hooks.ts 1088 行附近的待办渲染与 src/trivium/cli.ts cmdScrub 的同款文案——两处都只说「详见该侧的 scrub.json」，runDir.warnings 在两处渲染里都没有出口。",
+      "suggestion": "区分两成因的文案（侧层→scrub.json；运行目录层→把 runDir.warnings 的前若干条直接带上），或在待办行按来源分行。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "requirement",
+      "kind": "contract",
+      "location": "doc/02_design/…设计.md v1.3.16 第四条（及 §10.5 凭据行）",
+      "problem": "「一条规则同时覆盖两侧与将来的第三家，`complete` 从此没有永不收工的成因」是对行为的全称断言，而不成立：`redactUnder` 面（codex `sessions/`、zcode `rollout/` 与 `log/`）下的二进制仍记 skipped（scrub.ts 明确保留该分支），超大文件两侧都仍跳过，`complete = skipped === 0` 因此仍可为 false——「哨兵永不收工、每次会话重扫同一批」的形态在回读面与超大文件上原样保留。EV-32 的残留行只登记了超大日志，没登记 redactUnder 下的二进制这一格。",
+      "evidence": "读了 src/trivium/scrub.ts（redactUnder 二进制分支：warning + skipped++，测试也断言「仍未脱敏，仍不能据此收工」；scrubSideDir 的 `out.complete = skipped === 0`）、doc/08_project/BACKLOG.md EV-32/EV-36 行。设计断言与代码保留分支直接对照后为过度推广——这与本项目「凡写下『不会再有』必须指出对应排除面」的纪律同域。",
+      "suggestion": "把设计措辞收窄为「论域内（非回读面、非上限内）的二进制不再有收工成因」，并在 EV-32 或新 EV 里补登 redactUnder 二进制这一残留成因。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "concurrency",
+      "location": "src/trivium/retention.ts（admitScrub）与 src/trivium/status.ts（workerConfirmedGone）",
+      "problem": "准入判据只核对 worker 进程本身；审查 CLI 子进程由 exec.ts 以 detached 进程组拉起，若 worker 被外部 SIGKILL/崩溃且未走超时杀组的收尾路径，孤儿子进程可能仍存活并继续往 codexhome/ 写，而清扫按「pid 已不在」放行整删。这是 EV-20 以来的既有限制，但 `trivium scrub` 把触发面从本仓扩到全部桶、且是任意时刻人工发起，撞上别仓在跑运行中孤儿子的窗口变大了。",
+      "evidence": "读了 src/trivium/status.ts workerConfirmedGone（仅 processAlive(worker_pid) + 终态判定）、src/trivium/util/exec.ts（killTree 走负 pid 进程组，但仅在超时/正常取消链路执行）、src/trivium/retention.ts scrubAllRunRoot。未在任何位置找到对孙进程层的复核。方向性判断，未实测构造孤儿场景。",
+      "suggestion": "至少在文档边界处登记该限制（跨仓清扫同样信任 workerConfirmedGone 的证据强度）；若要加固，可在哨兵/状态里记录 CLI 子进程 pid 并在准入时一并复核——不必本轮实施。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "焦点一：准入判据同源属实——admitScrub、applyScrub、workerStillAlive、sentinelSettled、sideLayerPending 各只有一处实现，pruneRunDirs 与 scrubAllRunRoot 全部经它们判定，全仓 grep 未见第二套 status/worker 判据；预览与真跑共用 sentinelSettled 并有测试填同一格对账。",
+    "焦点二：论域边界核对无误——sessions/ 与 zcode rollout/log 在 redactUnder 下二进制只跳过不删（有专门用例断言），cache/plugins/skills/.system 在 exclude 下不碰，只排 .system 不排整个 skills/，软链与非普通文件经 lstat 不进删除面；models-*.json 等文本照常过扫描器。",
+    "焦点三：complete === true 的改判在 preview（sideLayerPending）、真跑跳过（scrubSideDir 非 force）两处走同一谓词，旧哨兵（undefined）重扫一次即写回新字段自愈，runner 的 force 路径不受影响，与三处兜底挂载点一致。",
+    "scrubRunDir 返回形状升为 { sides, runDir } 后，三个调用方（retention.applyScrub、run-protocol 的 waitRun/cancelRun）全部改接且把 runDir 的 errors/redacted 接入上报链，waitRun 里 catch(() => ({})) 吞结果的旧病一并修掉。",
+    "trivium scrub 只抹不删的越权边界、退出码取 0 的运维理由、以及 EV-33/EV-35/EV-36 的 BACKLOG 收口叙述与代码行为一致（除上述措辞条目外）。"
+  ],
+  "not_covered": [
+    "未执行 npm run check / 构建与测试（沙箱只读，且改码后需重装才生效，dist 可能过期），因此「全绿」为基线信任，未一手验证。",
+    "未实测 ~/.trivium/runs 真机数据（禁读运行根对端子树，且本轮无必要）；BACKLOG 里 88 目录/194 告警等实测数字未复核。",
+    "未审 skills/dual-critic 的 SKILL.md 与 PROTOCOL 文档是否需要同步登记新子命令 scrub（AGENTS.md 同步清单要求 CLI 变更同步相关 SKILL.md；本命令是否属于 skill 教的面未逐字核对）。",
+    "未覆盖 Windows/非 macOS 路径形态（toRel 的 '/'→path.sep 处理、skills/.system 字面量），项目声明仅支持 macOS，未展开。",
+    "未审 zcode/codex 适配器内部对 unscannableDeleted 之外的载体清单是否有漂移（本轮未改动那些清单）。"
+  ],
+  "consulted": [
+    "src/trivium/retention.ts",
+    "src/trivium/scrub.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/types.ts",
+    "src/trivium/status.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/config.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/adapters/zcode.ts",
+    "test/unit/credential-scrub.test.ts",
+    "test/unit/retention.test.ts",
+    "test/unit/runner-scrub.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "AGENTS.md",
+    ".reviews/跨仓凭据清扫与扫描面收口/code/_meta/changes-20260917T085105Z.diff"
+  ]
+}

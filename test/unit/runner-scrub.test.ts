@@ -63,7 +63,7 @@ function preparing(script: (CriticResult | Error)[], opts: { scrubThrows?: boole
       if (opts.scrubThrows) throw new Error('抹不掉（模拟）');
       state.scrubbed++;
       await fs.rm(path.join(sideDir, 'home', 'config.json'), { force: true });
-      return { deleted: ['home/config.json'], scanned: 0, removedOnHit: [], redacted: {}, warnings: [], skipped: 0, errors: [] };
+      return { deleted: ['home/config.json'], unscannableDeleted: [], scanned: 0, removedOnHit: [], redacted: {}, warnings: [], skipped: 0, errors: [] };
     },
   };
   return { adapter, state };
