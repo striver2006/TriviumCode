@@ -54,7 +54,12 @@ export interface RenderInput {
    * 本侧两条核验通道的降级档位（§11.1，M8 第 2 步）。
    * 省略时按「两条都可用」渲染——结构化轨迹两家的现状，行为等价。
    */
-  verification?: { readonly: 'ok' | 'unavailable'; path: 'ok' | 'partial' | 'unavailable' };
+  verification?: {
+    readonly: 'ok' | 'unavailable';
+    path: 'ok' | 'partial' | 'unavailable';
+    /** `unavailable` 的成因——三种成因的横幅文案各不相同，见下方渲染处 */
+    pathCause?: 'command-trace' | 'no-counts' | 'no-path-bearing-calls';
+  };
   /**
    * 禁读核验的结论（设计 §10.1.1）。
    *
@@ -78,6 +83,17 @@ export interface RenderInput {
     paths: string[];
     /** 命令通道的命中原文。`command-trace` 一族只有这一项，`paths` 恒空 */
     commands: string[];
+  };
+  /**
+   * 共同阻断这一档本轮的执行状态（§6.6 规则 7 / §12.1）。
+   *
+   * 渲染发生在运行结束时，那时裁决表还没写——所以这里只可能是
+   * `pending`（够两家、等裁决表）或 `skipped-insufficient-sides`（不够、这一档不做）。
+   * 只有后者进 front-matter：它意味着裁决者本轮少一层防线，必须看得见。
+   */
+  jointCheck?: {
+    state: 'pending' | 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
+    effective_sides: number;
   };
   heterogeneous: boolean;
   overrideReason?: string | null;
@@ -153,6 +169,25 @@ export function renderFrontMatter(input: RenderInput): string {
           },
         }
       : {}),
+    /*
+     * 共同阻断这一档本轮做没做（设计 §6.6 规则 7 / §12.1）。
+     *
+     * **上一轮承诺补、没补**——裁决件写着「已加」而代码里只加了 `commands`。
+     * 补的理由：裁决者读的是这份单侧文档，而「本轮有效侧不足、这一档没做」
+     * 直接决定他还剩几层防线。它在 run.json 里有、在人读面上没有，
+     * 等于要求裁决者去翻机读留痕才知道自己少了什么。
+     *
+     * 只在**不是常态**时渲染：`pending`（够两家、等裁决表）是正常路径，
+     * 恒出现会稀释真正要看见的那一行——与上面两个 `verification` 档位同口径。
+     */
+    ...(input.jointCheck && input.jointCheck.state !== 'pending'
+      ? {
+          joint_check: {
+            state: input.jointCheck.state,
+            effective_sides: input.jointCheck.effective_sides,
+          },
+        }
+      : {}),
     heterogeneous: input.heterogeneous,
     ...(input.overrideReason ? { override_reason: input.overrideReason } : {}),
     ...(input.result.session_id ? { session_id: input.result.session_id } : {}),
@@ -213,15 +248,31 @@ export function renderReviewDoc(input: RenderInput): string {
     );
   }
   if (input.peerLeak?.hit && input.peerLeak.voiding) {
+    /*
+     * **命令通道说「提到」，不说「读到」**（r2 代码双审 GLM-06 ≡ CODEX-06）。
+     *
+     * 措施 b 的判据是「命令原文里出现了禁读条目的拼写」——`git show HEAD:<file>`
+     * 走 git 对象库，文件系统上根本没有发生读取；命令也可能失败、被拒、
+     * 或那个路径只是作为参数被提及。处置相同（提到即作废，因为证明不了没读到），
+     * 但**留痕不能把判据说成比它实际更强的事实**：
+     * 事后复盘的人据此写裁决，而「读到了」与「提到了」是两个不同的断言。
+     */
+    const viaText =
+      input.peerLeak.via === 'command'
+        ? '命令文本里**提到**了对方产出（措施 b：提到即作废——经 git 对象库等方式取值不留文件系统读取痕迹，证明不了没读到）'
+        : input.peerLeak.via === 'both'
+          ? '轨迹中**读到**了对方产出，命令文本里也提到了（两条通道同时命中）'
+          : '轨迹中**读到**了对方产出（措施 a：读取路径通道）';
     flags.push(
-      `**本侧结论作废**：轨迹中出现了对方产出（${input.peerLeak.via === 'command' ? '命令文本通道' : input.peerLeak.via === 'both' ? '读取路径与命令文本两条通道' : '读取路径通道'}）。` +
+      `**本侧结论作废**：${viaText}。` +
         '它作为「第二只独立眼睛」的身份已不可采信——**这与它每条意见是否属实无关**：' +
         '意见仍需逐条裁决，但不得以「另一侧也这么说」为由采信本侧结论，' +
-        '本侧也不计入共同阻断的独立来源。命中路径见 front-matter 的 `peer_leak`。',
+        '本侧也不计入共同阻断的独立来源。命中明细见 front-matter 的 `peer_leak`。',
     );
   } else if (input.peerLeak?.hit) {
+    const verb = input.peerLeak.via === 'command' ? '命令文本里提到了' : '读到了';
     flags.push(
-      '**读到了禁读清单内的文件，但不影响本侧结论**：命中的是编排器状态文件或凭据文件，' +
+      `**${verb}禁读清单内的文件，但不影响本侧结论**：命中的是编排器状态文件或凭据文件，` +
         '不含任何审查意见，因此不损害背靠背独立性。记此一笔供审计，无需处置。',
     );
   }
@@ -232,9 +283,24 @@ export function renderReviewDoc(input: RenderInput): string {
     );
   }
   if (input.verification?.path === 'unavailable') {
+    /*
+     * **三种成因各说各的**（r2 代码双审 GLM-03 ≡ CODEX-07）。
+     *
+     * 上一版只有一句话，写的是 `command-trace` 那一种的成因（「读取路径只存在于
+     * 命令文本里」），而另外两种走到这里会读到一句与自己无关的解释：
+     * 适配器没采集计数、以及本轮压根没有必带路径的调用。
+     * 前者要修代码、后者根本不是缺陷——同一句话把三件事说成了一件。
+     */
     flags.push(
-      '**路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，' +
-        '禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。',
+      input.verification.pathCause === 'no-counts'
+        ? '**路径核验档位不可判**：本侧没有报出「必带路径的读调用」计数——' +
+            '要么这份留痕早于该计数接线，要么该侧适配器没采集。' +
+            '这不是「核验通过」也不是「核验失败」，是**没测**：请核对该侧适配器的覆盖率采集。'
+        : input.verification.pathCause === 'no-path-bearing-calls'
+          ? '**路径核验本轮无探测面**：本侧一次「必然带路径」的读调用都没有（纯搜索/列目录轮次），' +
+            '措施 a 没有可核验的对象。**这不是缺陷**——但也不能算核验通过：没测到不等于测出来没有。'
+          : '**路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，' +
+            '禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。',
     );
   }
   if (input.verification?.path === 'partial') {

@@ -22,6 +22,40 @@ import {
   type Snapshot,
 } from './freeze.js';
 import { TRIVIUM_DIR } from './config.js';
+import { normalizeAbs, isUnder } from './adapters/base.js';
+import { RUN_DIR_FILE_NAMES } from './run-files.js';
+
+/**
+ * 运行根是一棵**混合树**：对端本轮输出与审查员**自己**的运行材料同处一棵，
+ * 而禁读集对它只有一个整棵目录条目（`enumerateDenyPaths` 加的是裸目录）。
+ *
+ * 于是 8.1 那份按条目分档的清单会把整棵列进「读了即作废」——
+ * 而机器是**按命中**分档的：己方子树与编排器运行时文件根本不算命中。
+ * 不补这段说明，文案就比机器更严，审查员会不敢读编排器**要求它读**的请求包；
+ * 这正是本主题一路在修的那类错位，只不过方向反了过来。
+ *
+ * 没有混合树条目（本轮 deny 里没有运行根）时返回空串，不凭空造一段话。
+ */
+function mixedTreeNote(
+  voiding: readonly string[],
+  ctx: { runRoot: string },
+  projectRoot: string,
+  critic: CriticId,
+): string {
+  const runRootAbs = normalizeAbs(ctx.runRoot, projectRoot);
+  const hit = voiding.some((p) => {
+    const abs = normalizeAbs(p, projectRoot);
+    // 条目本身就是运行根，或者是它的某一层祖先（两种都把整棵罩进去）
+    return abs === runRootAbs || isUnder(runRootAbs, abs);
+  });
+  if (!hit) return '';
+  return `
+> **其中的运行目录是一棵混合树，你自己那一份也在里面。** 属于你的部分**不算命中**：
+> \`<本次 runId>/${critic}/\` 子树，以及运行目录那一层编排器自己写的运行时文件
+> （${RUN_DIR_FILE_NAMES.map((n) => '`' + n + '`').join(' / ')}）。
+> 编排器交给你的材料就在那儿——读它们是本次审查的正常动作，不是泄漏。
+> 会作废的是**别人那一份**：同一层下其它侧的子目录。`;
+}
 
 /**
  * `lenses.yaml` 的形状：**按审核者 id 键控**的镜头表。
@@ -248,6 +282,7 @@ ${lens.trim()}
 **读取其中任何一个，本次审查即作废**（编排器扫描你的工具调用轨迹与命令文本逐条核对）：
 
 ${voiding.length > 0 ? fmt(voiding) : '（本次无对方产出需要屏蔽）'}
+${mixedTreeNote(voiding, denyCtx, projectRoot, critic)}
 
 ### 8.2 不要读，但读了不会让审查作废
 
@@ -260,7 +295,7 @@ ${noted.length > 0 ? fmt(noted) : '（本次无此类条目）'}
 > 若你确实需要项目的共享配置来理解审查对象，**它不在上面的清单里**——
 > 项目级配置与 wrapper 是允许读的（具名放行）。
 
-两节的目录条目都按**整棵子树**生效：其中任何一个文件被读到都算命中。
+两节的目录条目都按**整棵子树**生效：除上面点名豁免的之外，其中任何一个文件被读到都算命中。
 
 其它禁止事项：
 - 不得引用或猜测另一位审查员的结论；

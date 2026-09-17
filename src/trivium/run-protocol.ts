@@ -14,6 +14,7 @@ import { promises as fs } from 'node:fs';
 import type { Config, CriticId, CriticRequest, Ctx, Stage, CommandEntry } from './types.js';
 import { EXIT, TriviumError, envError, missingArtifact } from './exit-codes.js';
 import { runRoot } from './config.js';
+import { RUN_DIR_FILES } from './run-files.js';
 import { acquireLock, inspectLock, reclaimStaleLock } from './lock.js';
 import {
   computeMaxWaits, interpretStatus, newStatus, patchStatus, readStatus,
@@ -39,9 +40,14 @@ const HEARTBEAT_MS = 30_000;
 export const runDirFor = (cfg: Config, projectRoot: string, runId: string): string =>
   path.join(runRoot(cfg), repoId(projectRoot), runId);
 
-const requestPath = (runDir: string): string => path.join(runDir, 'request.json');
-const workerPidPath = (runDir: string): string => path.join(runDir, 'worker.pid');
-const workerLogPath = (runDir: string): string => path.join(runDir, 'worker.log');
+/*
+ * 文件名取自 `run-files.ts`，不写字面量：禁读分类要靠同一份清单认出「己方运行时材料」，
+ * 而依赖方向让它引不到本模块——两处各抄一份，改名时不会报错，只会让审查员
+ * 读自己那轮的材料时被判作废（r2 AGY-05 ≡ GLM-07）。
+ */
+const requestPath = (runDir: string): string => path.join(runDir, RUN_DIR_FILES.request);
+const workerPidPath = (runDir: string): string => path.join(runDir, RUN_DIR_FILES.workerPid);
+const workerLogPath = (runDir: string): string => path.join(runDir, RUN_DIR_FILES.workerLog);
 
 // ─────────────────────── 交接结构 ───────────────────────
 

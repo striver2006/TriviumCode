@@ -112,11 +112,74 @@ test('双方共同 blocker 被驳回 → task.json 记 disputed，status 显示�
   assert.equal(g.code, EXIT.OK, `默认 warn 策略下不阻断：\n${g.stdout}${g.stderr}`);
   assert.match(g.stdout, /joint_blocker_rejected/);
 
-  const task = JSON.parse(await fs.readFile(path.join(fx.archiveRoot, TOPIC, 'task.json'), 'utf8')) as { disputed: boolean };
+  const task = JSON.parse(await fs.readFile(path.join(fx.archiveRoot, TOPIC, 'task.json'), 'utf8')) as {
+    disputed: boolean;
+    joint_checks?: { run_id: string; state: string; effective_sides: number }[];
+  };
   assert.equal(task.disputed, true, '设计明文要求记 disputed: true，原先从未写入');
+
+  /*
+   * 共同阻断三态的**持久面**（r2 代码双审 GLM-02 ≡ CODEX-04）。
+   *
+   * `checked-found` 只可能在这里出现：run.json 落的是 `pending`（运行期读不到裁决表）。
+   * 没有这个落点时，这一态永久只存在于 `gate --check` 的进程内存里——
+   * 留痕面上三态塌回两态，而这一档的全部意义就是三态。
+   */
+  const jc = task.joint_checks?.find((x) => x.run_id === runId);
+  assert.equal(jc?.state, 'checked-found', `查过、确有共同项——实得：${JSON.stringify(jc)}`);
+  assert.equal(jc?.effective_sides, 2);
 
   const st = await cli(fx.root, ['status', '--topic', TOPIC, '--json']);
   assert.match(st.stdout, /"disputed":\s*true/);
+});
+
+test('无共同驳回 → 三态落 checked-none；run.json 那一侧只到 pending', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * 与上一条互为对照，守的是**三态没有再塌缩**：
+   * 「查过、没有共同项」必须与「查过、有共同项」「没查」各占一个取值。
+   *
+   * 同时咬住运行期那一半：run.json 里这一档只能是 `pending`——
+   * 运行结束时裁决表还没写，写 `checked-none` 就是一句给不出的断言
+   * （上一版正是这么写的，而它读起来像是查过了）。
+   */
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root);
+  await fs.writeFile(
+    path.join(fx.stageDir, `${today()}-${TOPIC}-revised-claude.md`),
+    [
+      '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
+      'role: claude', 'kind: revised', `run_id: ${runId}`,
+      'addresses:', `  - ${today()}-${TOPIC}-gemini.md`, `  - ${today()}-${TOPIC}-glm.md`,
+      '---', '',
+      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- |',
+      '| AGY-01 | gemini | blocker | 接受 | 确实是缺陷 | src/a.ts:10 |',
+      '| GLM-01 | glm | blocker | 驳回 | 上游已处理 | |',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  const g = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
+  assert.equal(g.code, EXIT.OK, `${g.stdout}${g.stderr}`);
+
+  const task = JSON.parse(await fs.readFile(path.join(fx.archiveRoot, TOPIC, 'task.json'), 'utf8')) as {
+    joint_checks?: { run_id: string; state: string }[];
+  };
+  assert.equal(
+    task.joint_checks?.find((x) => x.run_id === runId)?.state,
+    'checked-none',
+    '两条共同 blocker 里有一条被接受 → 不成立共同驳回，但这一档确实查过了',
+  );
+
+  const runMeta = JSON.parse(
+    await fs.readFile(path.join(fx.stageDir, '_meta', `run-${runId}.json`), 'utf8'),
+  ) as { guard: { joint_check?: { state: string; effective_sides: number } } };
+  assert.equal(
+    runMeta.guard.joint_check?.state,
+    'pending',
+    '运行期给不出最终结论：判据的一半在裁决件里，而那时它还没写',
+  );
+  assert.equal(runMeta.guard.joint_check?.effective_sides, 2);
 });
 
 test('review 必须把闸门写进 state.json，否则四个 Hook 全都无事可判', { skip: bundleMissing && bundleSkipReason }, async () => {

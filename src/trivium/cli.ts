@@ -791,11 +791,41 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    * 「输出警告**并在 task.json 记 disputed: true**」。原先只 push 进 warnings，
    * disputed 初始化为 false 后再无写入点，status / report 的「有争议项」永不触发。
    */
+  /*
+   * 共同阻断三态落持久面（r2 代码双审 GLM-02 ≡ CODEX-04）。
+   *
+   * run.json 只到 `pending`——运行期读不到裁决表。最终结论在这里产生，
+   * 不落盘的话 `checked-found` 永久只存在于本次进程的内存里。
+   *
+   * 与下面的 `disputed` 分开写：那一条只在「共同项被驳回」时才写，
+   * 而三态**每次 check 都要写**——「查过、没有共同项」同样是要留的结论。
+   */
+  const { updateTask } = await import('./meta.js');
+  const taskOpts = {
+    triviumDir: ctx.triviumDir,
+    heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+  };
+  const jc = result.jointCheck;
+  if (jc) {
+    await updateTask(ref.layout, (t) => {
+      const entry = {
+        run_id: runId,
+        stage,
+        rerun_index: rerunIndex,
+        state: jc.state,
+        effective_sides: jc.effective_sides,
+        ...(jc.reason ? { reason: jc.reason } : {}),
+        at: new Date().toISOString(),
+      };
+      // 同一轮重跑 --check 覆盖，不堆积
+      t.joint_checks = [...(t.joint_checks ?? []).filter((x) => x.run_id !== runId), entry];
+    }, taskOpts);
+  }
+
   if (result.warnings.some((w) => w.code === 'joint_blocker_rejected')) {
-    const { updateTask } = await import('./meta.js');
     await updateTask(ref.layout, (t) => {
       t.disputed = true;
-    }, { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 });
+    }, taskOpts);
     warn('双方共同提出的 blocker 被驳回：已在 task.json 记为有争议项（disputed），status / report 会显示');
   }
 
@@ -829,6 +859,43 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   const alreadyDecided = result.ok ? await humanDecidedThisRound(ref.layout, stage, runId) : false;
   if (alreadyDecided) {
     say('· 本轮已有人工审批记录，闸门状态保持不变（校验命令不撤销审批）');
+    /*
+     * **对账本机状态，不一致就如实报告**（上一轮裁决件 §2.2 #12 承诺、未兑现，
+     * 这一轮由 CODEX-11 逐条对账查出来）。
+     *
+     * 归档里的审批记录是正本，`state.json` 的闸门是本机副本。两者会分叉——
+     * 审批在另一台机器/另一个克隆上做的，或本机 `state.json` 被删被改。
+     * 分叉时上面那句「闸门状态保持不变」是**误导**：它让人以为本机护栏
+     * 已经按审批结果就位，而实际可能仍拦着（Hook 照拦，人查不出为什么），
+     * 或早已放行（审批其实是拒绝，而本机什么都不拦）。
+     *
+     * 只报告不修复：这里是校验命令，没资格改闸门——那正是上面那条纪律。
+     */
+    const { readState, gateKey } = await import('./state.js');
+    const local = (await readState(ctx.triviumDir)).gates[gateKey(topic, stage)];
+    if (!local) {
+      warn(
+        `归档记着本轮已审批，但本机 state.json 里没有 ${topic} / ${stage} 的闸门——` +
+        '可能是审批在别处做的，或本机状态被清过。Hook 据本机状态判，请人工确认护栏是否如你所想。',
+      );
+    } else if (local.run_id !== runId) {
+      warn(
+        `归档记着本轮（${runId}）已审批，而本机闸门指向另一次运行（${local.run_id ?? '无'}）。` +
+        '两者不是同一轮，本机护栏的状态与本轮审批无关，请人工核对。',
+      );
+    } else if (
+      /*
+       * 审批之后闸门的正常去向：`approved` / `rejected` / `abandoned`（人表过态了），
+       * 或 `idle`（`/dual-run` 一族本就不设人工闸门，放行后回落）。
+       * 其余取值都意味着本机还停在审批**之前**的某一步。
+       */
+      !['idle', 'approved', 'rejected', 'abandoned'].includes(local.state)
+    ) {
+      warn(
+        `归档记着本轮已审批，而本机闸门仍是 ${local.state}。` +
+        'Hook 按本机状态判，因此写入可能仍被拦着；这是状态分叉，不是审批没生效。',
+      );
+    }
   }
 
   if (result.ok && stopsForApproval && !alreadyDecided) {

@@ -76,6 +76,18 @@ export interface SideVerdict {
    * 只记一个聚合的类别会把这件事再塌缩一次。
    */
   typedHits: { path: string; category: DenyCategory }[];
+  /**
+   * 命令通道的命中逐条带类（供 `run.json` 的 `peer_leak_via_command` 落盘）。
+   *
+   * 与 `typedHits` 同构（r2 代码双审 AGY-04 ≡ GLM-05）：上一版命令通道只落命令原文，
+   * 分档结果一个字都没进留痕，于是同一份分档在两条通道上**可读性不对等**——
+   * 路径通道能复盘「碰的是哪一档」，命令通道只能看到一行命令。
+   * 对 `command-trace` 一族尤其要紧：命令通道是它**唯一**的通道。
+   *
+   * `path` 是分类实际用的那个目标：命令里那个路径 token（能静态解析时），
+   * 否则是禁读条目本身。
+   */
+  typedCommandHits: { command: string; path: string; category: DenyCategory }[];
   /** consulted 与轨迹交叉核对未通过 */
   consultedUnverified: boolean;
   /** 结构性问题（编号前缀错、重复编号等） */
@@ -124,6 +136,21 @@ export interface SideVerification {
    * 「路径核验有效」——那是把「没测到」说成了「测出来没有」。
    */
   path: 'ok' | 'partial' | 'unavailable';
+  /**
+   * `unavailable` 的**成因**（r2 代码双审 GLM-03 ≡ CODEX-07）。
+   *
+   * 三种成因的处置完全不同，而上一版把它们压成同一个值，
+   * 横幅也只有一句话——读的人无从知道该去修什么：
+   *
+   * | 成因 | 含义 | 该怎么办 |
+   * | :--- | :--- | :--- |
+   * | `command-trace` | 该族结构性无信号，`read_paths` 恒空 | 没法修，deny 核验只剩措施 b |
+   * | `no-counts` | 该侧没报计数（旧留痕，或适配器没采集） | 修适配器 |
+   * | `no-path-bearing-calls` | 本轮一次「必带路径」的读调用都没有 | 不是缺陷，探测面为零而已 |
+   *
+   * 只在 `path === 'unavailable'` 时有值。
+   */
+  pathCause?: 'command-trace' | 'no-counts' | 'no-path-bearing-calls';
   /** 本次生效的项目读取下限（`command-trace` 族折减后的值） */
   evidenceThreshold: number;
 }
@@ -187,10 +214,20 @@ export function judgeSide(
     critic,
     sensitiveGlobs: cfg.review.sensitive_globs,
   };
-  /** 一条命中该怎么处置：放行 → 丢弃；作废类 → 计入作废；其余 → 记告警 */
+  /**
+   * 一条命中该怎么处置：放行 → 丢弃（返回 `null`）；作废类 → 计入作废；其余 → 记告警。
+   *
+   * **己方运行材料与具名放行同处置——整个不算命中**（r2 代码双审 GLM-04 ≡ CODEX-05）。
+   * 上一版把它留在告警档里「记一笔」，理由是「记下来无害」。那个理由不成立：
+   * 审查员读自己这一侧的 `request.json` 是**编排器要求它做的事**，
+   * 把必经动作记成「碰了禁读集」，留痕上与真实泄漏同形，读的人分不出哪条要紧——
+   * 告警档一旦被常态噪声填满，它就不再是告警。设计 §10.1.1 给 `own-run-material`
+   * 的定性是「②′ 己方材料」，与「不得读」平级的是**对端**那两类。
+   */
   const dispose = (hit: string): { category: DenyCategory; voiding: boolean } | null => {
     if (isOrchestratorReadable(hit, opts)) return null;
     const category = classifyDenyPath(hit, denyCtx);
+    if (category === 'own-run-material') return null;
     return { category, voiding: isVoidingCategory(category) };
   };
 
@@ -240,44 +277,55 @@ export function judgeSide(
   }
 
   /*
-   * 命令通道：判据是「命令文本里出现了某个禁读条目的拼写」，
-   * 而返回的是**命令原文**——没有「这条命令碰的是哪个条目」这一信息。
+   * 命令通道：**与路径通道同一个谓词**（r2 代码双审 AGY-01 ≡ GLM-01 ≡ CODEX-01，阻断）。
    *
-   * 所以这里按**最重档**处置：只要该侧有命令命中，就看它有没有可能撞上作废类。
-   * 判法是拿作废类条目单独再扫一遍（复用同一个 `checkPeerLeakViaCommand`，
-   * 不另写匹配逻辑）——扫中了算作废，没扫中则这条命中属告警档。
+   * 匹配层现在给出每条命中命令撞上的条目，以及命令里那个路径 token 归一后的绝对路径。
+   * 分类喂给它的是 `resolved`（碰的是哪个文件），只有静态解析不了时才退回 `entry`
+   * （碰的是哪棵树）——后者必然落在更重的档上，是保守方向。
+   *
+   * 上一版走的是另一条路：把作废类条目挑出来单独再扫一遍，扫中算作废。
+   * 那个做法**对条目分类、不对命中分类**，与路径通道不是同一件事——
+   * 整棵运行根在路径通道里按命中的子文件分档（己方材料放行），
+   * 在命令通道里按根自己分档（一律对端输出、一律作废）。同一次泄漏、两条通道、
+   * 相反结论，而两条通道本就是同一判定的两个观察面。
    *
    * 这一步不能省（r1 CODEX-03）：命令通道是 `command-trace` 一族的**唯一**通道，
    * 省掉它等于对那一族完全不做禁读核验；而把命令命中一律当作废，
    * 又会让「一次目录列举」重新把该侧判掉——那正是四次误伤里的两次形态。
    */
-  const voidingEntries = req.deny_paths.filter((d) => {
-    const x = dispose(d);
-    return x !== null && x.voiding;
-  });
-  const notedEntries = req.deny_paths.filter((d) => {
-    const x = dispose(d);
-    return x !== null && !x.voiding;
-  });
-  const cmdVoiding = checkPeerLeakViaCommand(
-    result.command_texts,
-    voidingEntries,
-    opts.projectRoot,
-  );
-  const cmdNoted = checkPeerLeakViaCommand(result.command_texts, notedEntries, opts.projectRoot);
+  const cmdRaw = checkPeerLeakViaCommand(result.command_texts, req.deny_paths, opts.projectRoot);
+  const cmdVoidingHits: string[] = [];
+  const cmdNotedHits: string[] = [];
+  /** 命令通道的命中明细：哪条命令、碰了哪个条目、判在哪一档 */
+  const cmdTypedHits: { command: string; path: string; category: DenyCategory }[] = [];
 
-  /*
-   * 命令通道的告警档命中也要落明细（r1 AGY-05 ≡ GLM-06 ≡ CODEX-03）。
-   * 初版只收路径通道的 hits，于是 `command-trace` 一族——它**只有**命令通道——
-   * 的告警档命中恒无证据：留痕说「命中了、属告警档」，一条证据都拿不出来。
-   */
-  const notedCommands = cmdNoted.hits;
-  if (notedCommands.length > 0) {
-    for (const d of notedEntries) {
-      const x = dispose(d);
-      if (x && !notedCategories.includes(x.category)) notedCategories.push(x.category);
+  for (const m of cmdRaw.matches) {
+    const typed: DenyCategory[] = [];
+    for (const h of m.hits) {
+      const target = h.resolved ?? h.entry;
+      const d = dispose(target);
+      if (!d) continue; // 具名放行 / 己方材料：当没命中
+      typed.push(d.category);
+      cmdTypedHits.push({ command: m.command, path: target, category: d.category });
+    }
+    if (typed.length === 0) continue;
+    /*
+     * 一条命令可以同时撞上多个条目（`diff <己方材料> <对端产出>`），
+     * 按**最重档**处置那条命令：有一个作废类就作废。
+     */
+    if (typed.some((c) => isVoidingCategory(c))) cmdVoidingHits.push(m.command);
+    else {
+      cmdNotedHits.push(m.command);
+      /*
+       * 命令通道的告警档命中也要落明细（r1 AGY-05 ≡ GLM-06 ≡ CODEX-03）。
+       * 初版只收路径通道的 hits，于是 `command-trace` 一族——它**只有**命令通道——
+       * 的告警档命中恒无证据：留痕说「命中了、属告警档」，一条证据都拿不出来。
+       */
+      for (const c of typed) if (!notedCategories.includes(c)) notedCategories.push(c);
     }
   }
+  const cmdVoiding = { leaked: cmdVoidingHits.length > 0, hits: cmdVoidingHits };
+  const notedCommands = cmdNotedHits;
 
   /*
    * 轨迹里出现写事件 = 审查员失守（§10.3 末段）。
@@ -342,14 +390,19 @@ export function judgeSide(
     notedPaths: [...new Set(notedPaths)],
     notedCommands,
     typedHits,
+    typedCommandHits: cmdTypedHits,
     consultedUnverified,
     integrityIssues,
     suspectedWrites: [...(result.suspected_write_events ?? [])],
-    verification: {
-      readonly: cap.rejectionRecorded ? 'ok' : 'unavailable',
-      path: pathVerificationTier(result, cap),
-      evidenceThreshold: ev.minProjectReads,
-    },
+    verification: (() => {
+      const pv = pathVerificationTier(result, cap);
+      return {
+        readonly: cap.rejectionRecorded ? 'ok' : 'unavailable',
+        path: pv.tier,
+        ...(pv.cause ? { pathCause: pv.cause } : {}),
+        evidenceThreshold: ev.minProjectReads,
+      };
+    })(),
   };
 }
 
@@ -378,8 +431,10 @@ export function judgeSide(
 function pathVerificationTier(
   result: CriticResult,
   cap: TraceCapability,
-): 'ok' | 'partial' | 'unavailable' {
-  if (cap.traceShape === 'command-trace') return 'unavailable';
+): { tier: 'ok' | 'partial' | 'unavailable'; cause?: SideVerification['pathCause'] } {
+  if (cap.traceShape === 'command-trace') {
+    return { tier: 'unavailable', cause: 'command-trace' };
+  }
   const total = result.path_bearing_reads;
   const withPath = result.path_bearing_reads_with_path;
 
@@ -393,7 +448,14 @@ function pathVerificationTier(
    *
    * 这一支现在只剩旧留痕会走到——两家结构化轨迹的适配器都已对称采集。
    */
-  if (total === undefined || withPath === undefined) return 'unavailable';
+  /*
+   * `== null` **同时盖住 `undefined` 与 `null`**：前者是「该族没有这个概念，
+   * 或留痕早于本字段」，后者是「本族有、这次没采到」（zcode 读不到 rollout）。
+   * 两者的成因表述不同（契约见 `CriticResult`），但判定相同——都是「没测」。
+   */
+  if (total == null || withPath == null) {
+    return { tier: 'unavailable', cause: 'no-counts' };
+  }
 
   /*
    * 分母为 0（本轮没有「必带路径」的调用）同样记 `unavailable`。
@@ -402,9 +464,9 @@ function pathVerificationTier(
    * 而只有后者才配叫「核验有效」。初版把前者也记 `ok`，于是**纯搜索轮次**
    * （一次文件读都没有）看起来核验通过，实际探测面为零。
    */
-  if (total === 0) return 'unavailable';
+  if (total === 0) return { tier: 'unavailable', cause: 'no-path-bearing-calls' };
 
-  return withPath < total ? 'partial' : 'ok';
+  return { tier: withPath < total ? 'partial' : 'ok' };
 }
 
 export interface RunVerdict {

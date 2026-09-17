@@ -19,6 +19,7 @@ import { diffTrees, headSha, statusPorcelain, workTreeHash, diffAgainst } from '
 import { expandHome, matchesAnyGlob, sha256, sha256File } from './util/fsx.js';
 import { diffExcludePrefixes } from './code-stage.js';
 import { normalizeAbs, isUnder } from './adapters/base.js';
+import { isRunDirFile } from './run-files.js';
 
 /**
  * 编排器状态目录里**允许审查员读**的具名清单（设计 §10.1.1）。
@@ -111,7 +112,7 @@ export function classifyDenyPath(
      */
     if (seg.length >= 3) {
       if (seg[2] === ctx.critic) return 'own-run-material';
-      if (RUN_META_FILES.has(seg[2]!)) return 'own-run-material';
+      if (isRunDirFile(seg[2]!)) return 'own-run-material';
       return 'peer-run-output';
     }
     /*
@@ -132,14 +133,17 @@ export function classifyDenyPath(
   return 'peer-artifact';
 }
 
-/**
- * 运行目录 `<项目槽>/<runId>/` 这一层上编排器自己写的文件。
+/*
+ * 运行目录那一层的编排器文件：**从写入点共用的常量派生**，不再手抄字面量。
  *
- * 它们与某一侧无关（是本次运行的公共材料），审查员读到自己那轮的这些文件
- * 不损害任何独立性——设计 §10.1.1 的 ②′ 行点名了前两个。
- * 落点见 `run-protocol.ts`：请求包、工作进程日志与 pid、状态文件。
+ * 上一版在这里写了一份四元素的字面量集合，与真正的写入点（`run-protocol.ts` /
+ * `status.ts`）没有任何机器联系——那边新增一个运行时文件或改名，这里不会报错，
+ * 只会让审查员读自己那轮的材料时被判作废（r2 代码双审 AGY-05 ≡ GLM-07）。
+ *
+ * `isRunDirFile` 还认原子写的临时态（`status.json.tmp-<pid>-<ms>`）：
+ * 心跳每次落盘都会在运行目录里短暂出现一个，一次目录列举撞上它，
+ * 按纯文件名匹配的白名单认不出来——那是个与内容无关、与时机有关的随机误伤。
  */
-const RUN_META_FILES = new Set(['request.json', 'worker.log', 'worker.pid', 'status.json']);
 
 /** 该类是否会让这一侧的结论作废（设计 §10.1.1 的第①②类） */
 export function isVoidingCategory(c: DenyCategory): boolean {

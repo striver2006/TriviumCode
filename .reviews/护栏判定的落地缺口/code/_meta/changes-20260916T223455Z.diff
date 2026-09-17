@@ -1,0 +1,1166 @@
+# trivium changes.diff
+# run_id: 20260916T223455Z
+# base: 79e0e42
+# head: f2bc7635a996a4a8c8eb85abc070df56eb1ea35e
+# files: 16
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   src/trivium/adapters/agy-events.ts
+#   src/trivium/adapters/base.ts
+#   src/trivium/adapters/stub.ts
+#   src/trivium/adapters/zcode-trace.ts
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/cli.ts
+#   src/trivium/freeze.ts
+#   src/trivium/gate.ts
+#   src/trivium/guard.ts
+#   src/trivium/render.ts
+#   src/trivium/review.ts
+#   test/integration/fault-injection.test.ts
+#   test/unit/config-consumers.test.ts
+#   test/unit/gate.test.ts
+#   test/unit/guard-capability.test.ts
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index eb8d017..9c13c1f 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -257,9 +257,19 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一
+ 
+ `gate --check` 通过后**按 `run.json` 的 `entry` 分流**：entry = B/C/D 直接立起
+ `awaiting_approval`（这三条命令的停点就是人工审批）；entry = A 或无 entry 才回 `idle`
+-（命令 A 不设人工闸门）。两种去向都必须发生——若 B/C/D 也放回 idle，停点就被丢掉；
++（命令 A 不设人工闸门）。这两种去向都必须发生——若 B/C/D 也放回 idle，停点就被丢掉；
+ 若 A 也停在 awaiting_approval，补齐裁决的人反被拦住，唯一出路是关掉 Hook。
+ 
++**还有第三种去向：什么都不做（2026-09-16 起）。** 本轮若已有人工审批记录
++（归档 `task.json.approvals[]` 里有该 run_id 的 approved / rejected / abandoned），
++`gate --check` **不推进任何状态**，只输出校验结论。理由是它是**校验**命令，
++没有资格撤销人的审批——而此前它无条件推进，于是「审批后按裁决补修复 →
++改动涉及裁决件 → 顺手复校一次完整性」这条常见路径会把已放行的闸门重新关上，
++撞上之后连提交都做不了。同样的前置判断也挂在 `--await-approval` 上（那是第二个入口）。
++
++判据以归档里的审批记录为**正本**，读不出来时 fail-closed（视为已表态、不推进）：
++把「锚被搅坏」当成「没有审批记录」，就是同一个缺陷换个触发条件重现。
++
+ `hook-pre-commit` 曾依赖 `if: Bash(git commit:*)` 做第一道过滤，但那是**前缀**匹配：
+ `sh -c 'git commit -m x'` 不以 `git commit` 开头，Hook 根本不触发。现已删去 `if`，改为挂
+ 全部 Bash 事件、在进程内自行解析 git 子命令：跳过全局选项后取第一个非选项词（用
+diff --git a/src/trivium/adapters/agy-events.ts b/src/trivium/adapters/agy-events.ts
+index 75e5fec..406da93 100644
+--- a/src/trivium/adapters/agy-events.ts
++++ b/src/trivium/adapters/agy-events.ts
+@@ -78,14 +78,29 @@ const PATH_KEYS = [
+ /**
+  * 只读工具集：出现在轨迹里表示「读了东西」。
+  *
+- * 分两档（设计 10.1.1 第②层覆盖率判定用）：`MUST_HAVE_PATH` 的调用提不出路径
+- * 即为提取退化的确凿信号；其余（搜索 / 列目录类）允许无路径——不带目录的搜索
+- * 是合法形态，无路径即无读取事实。
++ * 本侧四个读工具的目录参数**都是必填的**，所以它们同时也构成
++ * `AGY_MUST_HAVE_PATH`（设计 10.1.1 第②层的覆盖率分母）。
+  */
+ export const AGY_READ_TOOLS = new Set(['view_file', 'grep_search', 'find_by_name', 'list_dir']);
+ 
+-/** 读类工具里**必然带路径**的那一档：提不出路径就是提取器坏了，不是合法形态 */
+-export const AGY_MUST_HAVE_PATH = new Set(['view_file']);
++/**
++ * 读类工具里**必然带路径**的那一档：提不出路径就是提取器坏了，不是合法形态。
++ *
++ * **四个都在**（r1 三侧独立指出）。初版只放了 `view_file`，理由是「搜索类允许
++ * 无路径」——那个理由对**搜索词**成立，对**搜索目录**不成立：
++ * `grep_search` 有 `SearchPath`、`find_by_name` 有 `SearchDirectory`、
++ * `list_dir` 有 `DirectoryPath`，三者都是必填的目录参数。
++ *
++ * 排除它们的后果恰恰最坏：**EV-28 的历史根因就是 `grep_search` 提出 0 条路径**，
++ * 而按初版口径，那次退化落在分母之外、档位照记「有效」——
++ * 探测器对**唯一发生过的真实退化形态**失灵。
++ */
++export const AGY_MUST_HAVE_PATH = new Set([
++  'view_file',
++  'grep_search',
++  'find_by_name',
++  'list_dir',
++]);
+ 
+ /** 写类工具/命令：出现在轨迹里即 readonly_breach（FR-15 / AC-08） */
+ export const AGY_WRITE_TOOLS = new Set([
+@@ -207,8 +222,9 @@ export function readPaths(r: AgyStreamResult): string[] {
+  * 发现厂商改参数名的信号（设计 §10.1.1 第②层）。补它之前，这类退化只能靠
+  * 人工复算原始轨迹发现，而运行目录到期即删。
+  *
+- * 分母只取 `AGY_MUST_HAVE_PATH` 那一档：搜索与列目录类允许无路径，
+- * 计进去会让降级档位变成稳态噪声。
++ * 分母取 `AGY_MUST_HAVE_PATH`——**四个读工具都在里面**。
++ * 它们各自的目录参数都是必填的（文件路径 / 搜索目录 / 查找目录 / 列出目录），
++ * 提不出来就是提取器相对厂商参数名退化了，不存在「合法的无路径调用」。
+  */
+ export function pathCoverage(r: AgyStreamResult): { total: number; withPath: number } {
+   let total = 0;
+diff --git a/src/trivium/adapters/base.ts b/src/trivium/adapters/base.ts
+index e5dbd18..4fc6cfc 100644
+--- a/src/trivium/adapters/base.ts
++++ b/src/trivium/adapters/base.ts
+@@ -1452,12 +1452,21 @@ function expandHome(p: string): string {
+ }
+ 
+ /** 归一成绝对路径：解析 `./`、`..`，并抹平 macOS 的 /private 前缀 */
+-function normalizeAbs(p: string, projectRoot: string): string {
++/**
++ * 归一成绝对路径，并抹平 macOS 的 `/private` 前缀双形态。
++ *
++ * **导出是有理由的**（r1 代码双审 CODEX-06）：分类器原先自己用裸 `path.relative`
++ * 比较，而匹配走这里——于是运行根落在 `/var` 一类路径上时，
++ * 匹配通道命中而分类通道判在根之外，又落回兜底最重档。
++ * 两处必须用同一套口径，否则「判到哪一类」与「判没判中」会各说各话。
++ */
++export function normalizeAbs(p: string, projectRoot: string): string {
+   const abs = nodePath.resolve(projectRoot, p);
+   return abs.startsWith('/private/') ? abs.slice('/private'.length) : abs;
+ }
+ 
+-function isUnder(abs: string, root: string): boolean {
++/** `abs` 是否等于 `root` 或落在它之下。两侧都先抹平 `/private` 前缀 */
++export function isUnder(abs: string, root: string): boolean {
+   const r = root.startsWith('/private/') ? root.slice('/private'.length) : root;
+   return abs === r || abs.startsWith(r.endsWith('/') ? r : `${r}/`);
+ }
+diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts
+index 1d4dd45..7751c67 100644
+--- a/src/trivium/adapters/stub.ts
++++ b/src/trivium/adapters/stub.ts
+@@ -175,6 +175,18 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
+       `${req.project_root}/src/c.ts`,
+       `${req.project_root}/README.md`,
+     ],
++    /*
++     * 路径提取覆盖率（设计 10.1.1 第②层）：**四条读取全都提出了路径**。
++     *
++     * 桩模拟的是「结构化轨迹族的正常形态」，而真适配器两家现在都报这两个计数；
++     * 不报的话，桩侧会落到「该侧没报数 → unavailable」那一支——
++     * 那一支留给旧留痕，拿它当结构化轨迹侧的常态会让端到端用例测在别的分支上。
++     *
++     * 要模拟**提取器退化**（`partial` 档）时把 `with_path` 调小即可，
++     * 目前没有哪条用例需要，故不另设 `StubMode`。
++     */
++    path_bearing_reads: 4,
++    path_bearing_reads_with_path: 4,
+     write_events: [],
+     command_texts: [],
+     evidence_ok: false, // 由 guard 判定
+diff --git a/src/trivium/adapters/zcode-trace.ts b/src/trivium/adapters/zcode-trace.ts
+index 855ebf6..2c74e5f 100644
+--- a/src/trivium/adapters/zcode-trace.ts
++++ b/src/trivium/adapters/zcode-trace.ts
+@@ -77,6 +77,17 @@ export function parseZcodeEnvelope(stdout: string): ZcodeEnvelope | null {
+  * WebFetch / WebSearch 不在其列：出网不是「读项目」，把被审代码发到外部端点不该计入 AC-11 的证据。
+  */
+ export const ZCODE_READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'ReadSessionContext']);
++/**
++ * 读类工具里**必然带路径**的那一档（设计 10.1.1 第②层的覆盖率分母）。
++ *
++ * **只有 `Read`，与 agy 侧的四个不同**——这不是口径不统一，是厂商契约的差异：
++ * 本侧 `Grep` / `Glob` 的 `path` 参数是**可选**的（不传即从当前目录搜），
++ * 见下方 `ZcodeRolloutToolCall.path` 的注释；把它们计进分母会让降级档位
++ * 变成稳态噪声，淹掉真信号。
++ *
++ * 两家分母不同这件事本身要写明，否则下一个人会以为其中一侧漏配了。
++ */
++export const ZCODE_MUST_HAVE_PATH = new Set(['Read']);
+ /** 写类工具与 shell：出现即 readonly_breach（FR-15 / AC-08） */
+ export const ZCODE_WRITE_TOOLS = new Set([
+   'Write', 'Edit', 'MultiEdit', 'ApplyPatch', 'NotebookEdit', 'Bash',
+@@ -233,6 +244,15 @@ export interface ZcodeRollout {
+    * 实测取值 `config` —— 印证 `model_override = config_copy`。
+    */
+   modelSource: string | null;
++  /**
++   * 路径提取的覆盖率（设计 10.1.1 第②层），与 agy 侧同构。
++   *
++   * 分母只含 `ZCODE_MUST_HAVE_PATH`——本侧只有 `Read` 必带路径。
++   * 补这两个计数之前，该侧的 `verification.path` 档位**恒为 ok**：
++   * 判定函数对 undefined 一律返回 ok，而注释写的是「不知道就别说有效」——
++   * 注释与实现直接相反，等于拿 ok 填「不知道」（r1 三侧独立指出）。
++   */
++  pathCoverage: { total: number; withPath: number };
+ }
+ 
+ function extractZcodePath(input: Record<string, unknown>): string | null {
+@@ -248,6 +268,8 @@ export function parseZcodeRollout(jsonl: string): ZcodeRollout {
+   const toolCalls: ZcodeRolloutToolCall[] = [];
+   const readPaths = new Set<string>();
+   const writeEvents: string[] = [];
++  let coverTotal = 0;
++  let coverWithPath = 0;
+   let modelEffective: string | null = null;
+   let modelSource: string | null = null;
+ 
+@@ -284,6 +306,11 @@ export function parseZcodeRollout(jsonl: string): ZcodeRollout {
+         path: p,
+       });
+       if (ZCODE_READ_TOOLS.has(name) && p) readPaths.add(p);
++      // 覆盖率分母：只算必带路径的那一档（设计 10.1.1 第②层）
++      if (ZCODE_MUST_HAVE_PATH.has(name)) {
++        coverTotal++;
++        if (p) coverWithPath++;
++      }
+       if (ZCODE_WRITE_TOOLS.has(name)) {
+         writeEvents.push(`${name}(${p ?? JSON.stringify(input).slice(0, 80)})`);
+       }
+@@ -296,5 +323,6 @@ export function parseZcodeRollout(jsonl: string): ZcodeRollout {
+     writeEvents: [...new Set(writeEvents)],
+     modelEffective,
+     modelSource,
++    pathCoverage: { total: coverTotal, withPath: coverWithPath },
+   };
+ }
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index cc5d615..b7a9bc3 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -379,6 +379,11 @@ export const zcodeAdapter: CriticAdapter = {
+ 
+     // rollout：工具参数（路径）与 model.source。读取路径**只能**从这里取
+     let readPathList: string[] = [];
++    /*
++     * 路径提取覆盖率（设计 10.1.1 第②层）。`null` = 该轮没读到 rollout，
++     * 与「读到了但分母为 0」是两件事——前者该记未知，后者说明本轮没有必带路径的调用。
++     */
++    let coverage: { total: number; withPath: number } | null = null;
+     let modelFromRollout: string | null = null;
+     if (sessionId) {
+       // 文件名是 `model-io-` + sessionId，sessionId 自带 sess_ 前缀（坑 P-14）
+@@ -386,6 +391,7 @@ export const zcodeAdapter: CriticAdapter = {
+       if (await exists(rolloutFile)) {
+         const ro = parseZcodeRollout(await fs.readFile(rolloutFile, 'utf8'));
+         readPathList = ro.readPaths;
++        coverage = ro.pathCoverage;
+         modelFromRollout = ro.modelEffective;
+         writeEvents = [...new Set([...writeEvents, ...ro.writeEvents])];
+         await fs.copyFile(rolloutFile, path.join(req.out_dir, 'rollout.jsonl'));
+@@ -422,6 +428,13 @@ export const zcodeAdapter: CriticAdapter = {
+       model_route: home.route,
+       tool_calls: toolCalls,
+       read_paths: readPathList,
++      // 覆盖率两项：读不到 rollout 时整体省略，让判定层记「未知」而不是谎报有效
++      ...(coverage
++        ? {
++            path_bearing_reads: coverage.total,
++            path_bearing_reads_with_path: coverage.withPath,
++          }
++        : {}),
+       write_events: writeEvents,
+       /*
+        * zcode 侧**恒为空数组**，而这是能说明理由的空：只读组合里 `Bash` 被整个禁掉
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index ccc769c..ed8c3f1 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -689,10 +689,11 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+       );
+     }
+     {
+-      const { reviews, expectedFallbackIds, missingSides, degraded } = await loadRoundReviews(ref.layout, stage, runId);
++      const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides } =
++        await loadRoundReviews(ref.layout, stage, runId);
+       const pre = await checkAdjudication({
+         cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
+-        degraded,
++        degraded, voidedSides,
+         expectedFallbackIds, missingSides, runId,
+       });
+       if (!pre.ok) {
+@@ -761,12 +762,13 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+       `找不到 ${stage} 阶段第 ${rerunIndex} 轮的 run_id。请先跑一次双审，或用 --run-id 指定。`,
+     );
+   }
+-  const { reviews, notes, expectedFallbackIds, missingSides, degraded } = await loadRoundReviews(ref.layout, stage, runId);
++  const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides } =
++    await loadRoundReviews(ref.layout, stage, runId);
+   for (const n of notes) step(n);
+ 
+   const result = await checkAdjudication({
+     cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
+-    degraded,
++    degraded, voidedSides,
+     expectedFallbackIds, missingSides, runId,
+   });
+ 
+diff --git a/src/trivium/freeze.ts b/src/trivium/freeze.ts
+index 3c09eda..8d2b58a 100644
+--- a/src/trivium/freeze.ts
++++ b/src/trivium/freeze.ts
+@@ -18,6 +18,7 @@ import { parseFrontMatter } from './render.js';
+ import { diffTrees, headSha, statusPorcelain, workTreeHash, diffAgainst } from './util/git.js';
+ import { expandHome, matchesAnyGlob, sha256, sha256File } from './util/fsx.js';
+ import { diffExcludePrefixes } from './code-stage.js';
++import { normalizeAbs, isUnder } from './adapters/base.js';
+ 
+ /**
+  * 编排器状态目录里**允许审查员读**的具名清单（设计 §10.1.1）。
+@@ -74,25 +75,54 @@ export function classifyDenyPath(
+     sensitiveGlobs: readonly string[];
+   },
+ ): DenyCategory {
+-  const abs = path.isAbsolute(hitPath) ? hitPath : path.join(ctx.projectRoot, hitPath);
+-  const rel = path.relative(ctx.projectRoot, abs);
++  /*
++   * 归一化走 `normalizeAbs`，与 `checkPeerLeak` **同一套口径**（r1 CODEX-06）。
++   * 初版这里用裸 `path.relative`，而匹配侧抹平了 macOS 的 `/private` 前缀——
++   * 运行根落在 `/var` 一类路径上时，匹配通道命中而分类通道判在根之外，
++   * 于是落回兜底最重档：两条通道对同一次命中给出不同的判断。
++   */
++  const abs = normalizeAbs(hitPath, ctx.projectRoot);
++  const rel = path.relative(normalizeAbs(ctx.projectRoot, ctx.projectRoot), abs);
++
++  /*
++   * ── 运行根：先分己方/对端，再谈处置 ──
++   *
++   * **`isUnder` 而不是 `relative(...)` 非空**（r1 三侧独立收敛的阻断一）：
++   * 初版判据是 `if (runRel && …)`，而 `path.relative(根, 根)` 返回**空串**——
++   * 空串 falsy，于是**根本身**跳过全部分类、一路落到兜底 `peer-artifact`。
++   * 而禁读集里存的恰恰是整棵目录条目（见 `enumerateDenyPaths`），
++   * 于是四类分档、具名放行、己方豁免**三项一次都不生效**。
++   * 单测当时全绿，因为喂的是叶子路径——生产喂进来的是根。
++   */
++  if (isUnder(abs, normalizeAbs(ctx.runRoot, ctx.projectRoot))) {
++    const runRel = path.relative(normalizeAbs(ctx.runRoot, ctx.projectRoot), abs);
++    const seg = runRel === '' ? [] : runRel.split(path.sep);
+ 
+-  // 运行根：先分己方/对端，再谈处置
+-  const runRel = path.relative(ctx.runRoot, abs);
+-  if (runRel && !runRel.startsWith('..') && !path.isAbsolute(runRel)) {
+     /*
+-     * 布局是 `<项目槽>/<runId>/<侧>/…`，取第三段与自己的 id 比。
+-     * 段数不足（如只读到 runId 那一层）按对端处置——**保守方向**：
+-     * 宁可多判一次作废让人来纠，也不要放过真的读对端输出。
++     * 布局是 `<项目槽>/<runId>/<侧>/…`（见 `run-protocol.ts` 的 `runDirFor`）。
++     *
++     * **第三段是侧名还是编排器自己的运行时文件，要分开判**（r1 三侧收敛）：
++     * `request.json` / `worker.log` / `worker.pid` / `status.json` 就写在
++     * `<项目槽>/<runId>/` 这一层，第三段是**文件名**，永不等于侧名——
++     * 初版一律判 `peer-run-output`（作废），而设计 §10.1.1 的 ②′ 行
++     * **逐字点名**这两个文件属「己方运行时材料，不判作废」。
++     * 实现与设计对同一份材料给了相反的处置，且「保守」在这里保护不了什么：
++     * 真正的对端输出在 `<侧>/` 子树里，靠第三段就认得出来。
++     */
++    if (seg.length >= 3) {
++      if (seg[2] === ctx.critic) return 'own-run-material';
++      if (RUN_META_FILES.has(seg[2]!)) return 'own-run-material';
++      return 'peer-run-output';
++    }
++    /*
++     * 段数不足（根本身、项目槽、runId 那几层）：这些层**同时含**对端子树，
++     * 按对端处置——保守方向，宁可多判一次让人来纠。
+      */
+-    const seg = runRel.split(path.sep);
+-    if (seg.length >= 3 && seg[2] === ctx.critic) return 'own-run-material';
+     return 'peer-run-output';
+   }
+ 
+-  // 编排器状态目录
+-  const triviumRel = path.relative(ctx.triviumDir, abs);
+-  if (triviumRel && !triviumRel.startsWith('..') && !path.isAbsolute(triviumRel)) {
++  // 编排器状态目录。同样用 isUnder：目录条目自身是这里最常见的形态
++  if (isUnder(abs, normalizeAbs(ctx.triviumDir, ctx.projectRoot))) {
+     return 'orchestrator-state';
+   }
+ 
+@@ -102,6 +132,15 @@ export function classifyDenyPath(
+   return 'peer-artifact';
+ }
+ 
++/**
++ * 运行目录 `<项目槽>/<runId>/` 这一层上编排器自己写的文件。
++ *
++ * 它们与某一侧无关（是本次运行的公共材料），审查员读到自己那轮的这些文件
++ * 不损害任何独立性——设计 §10.1.1 的 ②′ 行点名了前两个。
++ * 落点见 `run-protocol.ts`：请求包、工作进程日志与 pid、状态文件。
++ */
++const RUN_META_FILES = new Set(['request.json', 'worker.log', 'worker.pid', 'status.json']);
++
+ /** 该类是否会让这一侧的结论作废（设计 §10.1.1 的第①②类） */
+ export function isVoidingCategory(c: DenyCategory): boolean {
+   return VOIDING_DENY_CATEGORIES.includes(c);
+@@ -117,9 +156,16 @@ export function isOrchestratorReadable(
+   hitPath: string,
+   ctx: { projectRoot: string; triviumDir: string },
+ ): boolean {
+-  const abs = path.isAbsolute(hitPath) ? hitPath : path.join(ctx.projectRoot, hitPath);
+-  const rel = path.relative(ctx.triviumDir, abs);
+-  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return false;
++  const abs = normalizeAbs(hitPath, ctx.projectRoot);
++  const dir = normalizeAbs(ctx.triviumDir, ctx.projectRoot);
++  if (!isUnder(abs, dir)) return false;
++  const rel = path.relative(dir, abs);
++  /*
++   * 目录**自身**不放行：它代表整棵子树，而子树里绝大多数条目要继续挡。
++   * （这一行的 `rel === ''` 分支是显式写出来的——初版靠 `!rel` 的 falsy 落到
++   * 同一结果，但那是巧合而非意图：`classifyDenyPath` 里同样的写法就判错了。）
++   */
++  if (rel === '') return false;
+   const head = rel.split(path.sep)[0] ?? '';
+   return ORCHESTRATOR_READABLE.includes(head);
+ }
+diff --git a/src/trivium/gate.ts b/src/trivium/gate.ts
+index 9460506..cc57c77 100644
+--- a/src/trivium/gate.ts
++++ b/src/trivium/gate.ts
+@@ -8,7 +8,7 @@
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import { DEFAULT_DRIVER, findingPrefixAlternation, type AgentId } from './agents/registry.js';
+-import { DEFAULT_CRITICS, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
++import { DEFAULT_CRITICS, VOIDING_DENY_CATEGORIES, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
+ import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
+ import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
+ import { dispositionKindForStage } from './naming.js';
+@@ -362,7 +362,14 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
+     warnings.push({
+       code: 'joint_check_degraded',
+       message:
+-        `共同阻断这一档**未执行**：排除作废侧后有效侧只剩 ${jc.effective_sides} 家（需要 2 家）。` +
++        `共同阻断这一档**未执行**：有效侧只剩 ${jc.effective_sides} 家（需要 2 家）` +
++        `——${
++          jc.reason === 'voided'
++            ? '有侧因禁读命中被判作废'
++            : jc.reason === 'both'
++              ? '既有侧被判作废，也有侧未产出结构化结论'
++              : '有侧未产出结构化结论（解析降级或失败）'
++        }。` +
+         '本轮不享有「两家同时提出的 blocker 被驳回即报」这层保护——' +
+         '这不是「查过、没发现」，是「没查」。',
+       ids: [],
+@@ -452,19 +459,44 @@ export function jointCheckState(
+   reviews: Partial<Record<CriticId, Review | null>>,
+   joint: readonly { location: string; ids: string[] }[],
+   voidedSides: readonly CriticId[] = [],
+-): { state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides'; effective_sides: number } {
++): {
++  state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
++  effective_sides: number;
++  /**
++   * 有效侧不足时**为什么**不足（r1 AGY-06）。
++   *
++   * 初版的告警文案一律写「排除作废侧后…」，而有效侧也可能是因为某侧
++   * `parse_fallback`（没有结构化结论）而不足——把「违反独立性被作废」
++   * 与「解析降级」混为一谈，审计时会指向错误的根因。
++   */
++  reason?: 'voided' | 'no-structured-review' | 'both';
++} {
+   const voided = new Set(voidedSides);
+   const effective = (Object.keys(reviews) as CriticId[]).filter(
+     (c) => !voided.has(c) && reviews[c] !== undefined && reviews[c] !== null,
+   ).length;
+ 
+-  if (effective < 2) return { state: 'skipped-insufficient-sides', effective_sides: effective };
++  if (effective < 2) {
++    return { state: 'skipped-insufficient-sides', effective_sides: effective, reason: whyInsufficient(reviews, voided) };
++  }
+   return {
+     state: joint.length > 0 ? 'checked-found' : 'checked-none',
+     effective_sides: effective,
+   };
+ }
+ 
++/** 有效侧不足的成因：作废排除、无结构化结论，还是两者都有 */
++function whyInsufficient(
++  reviews: Partial<Record<CriticId, Review | null>>,
++  voided: Set<CriticId>,
++): 'voided' | 'no-structured-review' | 'both' {
++  const ids = Object.keys(reviews) as CriticId[];
++  const hasVoided = ids.some((c) => voided.has(c));
++  const hasNoReview = ids.some((c) => !voided.has(c) && (reviews[c] === null || reviews[c] === undefined));
++  if (hasVoided && hasNoReview) return 'both';
++  return hasVoided ? 'voided' : 'no-structured-review';
++}
++
+ /** 人读渲染：失败时要能让 Driver 直接照着补（§8.6 第 6 步） */
+ export function renderGateResult(r: GateCheckResult): string {
+   const lines: string[] = [];
+@@ -526,6 +558,13 @@ export async function loadRoundReviews(
+   expectedFallbackIds: string[];
+   /** run.json 记录已产出结论、结构化结论却读不到的一侧 */
+   missingSides: CriticId[];
++  /**
++   * 本轮被判作废的侧（禁读命中第①②类，设计 10.1.1）。
++   *
++   * 在这里派生而不是让调用方传：它初版是 `checkAdjudication` 的可选参数，
++   * 两个生产调用点都没传，于是整段没生效而纯函数单测全绿。
++   */
++  voidedSides: CriticId[];
+   /**
+    * 本轮是否为降级轮次，读自 run 元数据的 `degraded_reason`。
+    *
+@@ -602,7 +641,29 @@ export async function loadRoundReviews(
+    * 不需要再叠一层猜测。
+    */
+   const degraded = runMeta?.degraded_reason != null;
+-  return { reviews, notes, expectedFallbackIds, missingSides, degraded };
++
++  /*
++   * 本轮被判作废的侧（设计 10.1.1 的第①②类命中）。
++   *
++   * 从 run 元数据的两条泄漏通道派生，而不是让调用方各自去算：
++   * `voidedSides` 初版是 `checkAdjudication` 的一个可选参数，**两个生产调用点
++   * 都没传**，于是「作废侧不计入共同阻断」整段从未生效，而纯函数单测全绿——
++   * 可选参数的默认值让漏传静默成功（r1 三侧独立判为阻断）。
++   * 在这里派生，调用方想漏都漏不掉。
++   *
++   * 读不到 run 元数据时返回空数组：那是旧归档，当时的口径是「命中即作废」、
++   * 无从区分哪几侧因哪一类命中，按「无作废侧」处理即维持旧行为，不追溯改判。
++   */
++  const voidedSides: CriticId[] = [];
++  for (const c of criticsOf(runMeta)) {
++    const viaPath = runMeta?.guard?.peer_leak_via_path?.[c]?.hits ?? [];
++    const viaCmd = runMeta?.guard?.peer_leak_via_command?.[c];
++    // 路径通道逐条带类，只有作废类才算；命令通道没有类别信息，命中即算
++    const pathVoiding = viaPath.some((h) => VOIDING_DENY_CATEGORIES.includes(h.category));
++    if (pathVoiding || viaCmd?.hit === true) voidedSides.push(c);
++  }
++
++  return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides };
+ }
+ 
+ /** 从 `.fallback-items.md` 读回编排器编好号的待裁决单元（每行 `- <前缀>-F<n>: …`） */
+diff --git a/src/trivium/guard.ts b/src/trivium/guard.ts
+index af4b36d..fcc41af 100644
+--- a/src/trivium/guard.ts
++++ b/src/trivium/guard.ts
+@@ -60,6 +60,15 @@ export interface SideVerdict {
+    */
+   notedCategories: DenyCategory[];
+   notedPaths: string[];
++  /**
++   * 告警档命中的**命令原文**（措施 b）。
++   *
++   * 与 `notedPaths` 分列，理由同作废类的 `peerHits` / `peerCommandHits`：
++   * 路径命中说明它读了那个文件，命令命中说明它跑了一条提到那个文件的命令。
++   * 初版漏了这一项，于是 `command-trace` 一族（只有命令通道）的告警档命中
++   * 恒无证据——留痕说「命中了」却拿不出任何一条（r1 三侧独立指出）。
++   */
++  notedCommands: string[];
+   /**
+    * 命中路径逐条带类（供 `run.json` 的 `peer_leak_via_path` 落盘）。
+    *
+@@ -151,16 +160,25 @@ export function judgeSide(
+   const ev = checkEvidence(result, req, { archiveRootAbs: opts.archiveRootAbs, capability: cap });
+ 
+   /*
+-   * ── 禁读集按类分组（设计 §10.1.1，2026-09-16）──
++   * ── 分类作用在**命中**上，不是在 deny 条目上（设计 §10.1.1）──
+    *
+-   * 禁读集由四类性质完全不同的对象拼成，而此前它们共用一个布尔位与一句
++   * 禁读集由四类性质完全不同的对象拼成，而它们曾共用一个布尔位与一句
+    * 「该侧结论作废」。四次实测命中**全部落在编排器状态目录那一类**——
+    * 审查员读了自己的护栏配置或列了目录，与背靠背独立性毫无关系。
+    *
+-   * **分组在调用之前做，而不是在命中之后分**：两条通道的匹配逻辑（尤其措施 b
+-   * 的 F-1～F-9 闭集）一行都不该为分类改动，而按类分好再传进去，
+-   * 返回的命中天然带类。放行项根本不进集合，于是两条通道**自动一致**——
+-   * 这正是 r3 三审要求的「三个消费面一致豁免」里最难的那一面。
++   * ## 为什么必须按命中判，而不是先把条目分组
++   *
++   * 初版（2026-09-16）是「按条目预分组，再把各组分别喂给两条通道」，
++   * 三侧代码双审独立判为阻断：**禁读集对这两棵树只有整棵目录条目**
++   * （`enumerateDenyPaths` 加的是裸目录），而条目自身在分类器里落到兜底最重档，
++   * 于是整棵进作废集合、前缀匹配下读任何子文件都作废——
++   * **分档、放行、己方豁免三项一次都不生效，要修的误伤逐字保留**。
++   *
++   * 根因不只是那个空串判据：**目录条目表达不了「整棵禁、其中几个放行」**。
++   * 设计 §10.1.1 的原话就是「两条通道都实现**匹配时豁免**」——
++   * 即先按全集匹配、再对每条命中判类与放行。现在照它做。
++   *
++   * 代价是两条通道各自要过一遍分类，但那是 O(命中数)，而命中通常是 0。
+    */
+   const denyCtx = {
+     projectRoot: opts.projectRoot,
+@@ -169,29 +187,21 @@ export function judgeSide(
+     critic,
+     sensitiveGlobs: cfg.review.sensitive_globs,
+   };
+-  const byCategory = new Map<DenyCategory, string[]>();
+-  for (const d of req.deny_paths) {
+-    // 具名放行：两条通道都不看它（设计 §10.1.1）
+-    if (isOrchestratorReadable(d, opts)) continue;
+-    const c = classifyDenyPath(d, denyCtx);
+-    const list = byCategory.get(c) ?? [];
+-    list.push(d);
+-    byCategory.set(c, list);
+-  }
+-  /** 会让该侧作废的那几类条目（第①②类） */
+-  const voidingPaths = [...byCategory.entries()]
+-    .filter(([c]) => isVoidingCategory(c))
+-    .flatMap(([, ps]) => ps);
++  /** 一条命中该怎么处置：放行 → 丢弃；作废类 → 计入作废；其余 → 记告警 */
++  const dispose = (hit: string): { category: DenyCategory; voiding: boolean } | null => {
++    if (isOrchestratorReadable(hit, opts)) return null;
++    const category = classifyDenyPath(hit, denyCtx);
++    return { category, voiding: isVoidingCategory(category) };
++  };
+ 
+   /*
+    * 措施 a **只吃 `read_paths`，不吃回填**（r2/r3 双审两侧均确认）：
+    * 回填路径的语义是「跑了一条提到该文件的命令」，不等于「读到了该文件」。
+    * 命令通道由下面的措施 b 承担，两条分列才看得出泄漏走的是哪条。
+    *
+-   * 传 `voidingPaths` 而不是全集：非作废类的命中另行收集（见下面的 `noted`），
+-   * 它们进留痕与告警，但不影响该侧结论。
++   * 按**全集**匹配，分类在命中之后做——见上面的说明。
+    */
+-  const peer = checkPeerLeak(result.read_paths, voidingPaths, opts.projectRoot);
++  const peerRaw = checkPeerLeak(result.read_paths, req.deny_paths, opts.projectRoot);
+   /*
+    * 措施 b（§10.1 / EV-01）：命令原文的字面扫描。
+    *
+@@ -205,26 +215,67 @@ export function judgeSide(
+    * > 是把论证建在空处」为由把那句话从 §18.1 #21 删掉。一面删、一面写进新注释。
+    * > 该旋钮无消费方（BACKLOG **EV-15**），且已拍板不收窄（**EV-16**）。
+    */
+-  const peerCmd = checkPeerLeakViaCommand(result.command_texts, voidingPaths, opts.projectRoot);
+ 
+   /*
+-   * 非作废类的命中（编排器状态目录、凭据文件）——**记，但不作废**。
++   * ── 逐条命中分流：作废 / 记一笔 / 放行 ──
+    *
+-   * 这一族不是「不管」：它们照常进留痕与人读告警，只是不影响该侧结论。
+-   * 四次实测命中全落在这里，其中两次是审查员**主动披露**的；
+-   * 按旧口径它们会让一份完全有效的审查作废，而泄漏的是护栏配置本身。
+-   *
+-   * 两条通道都扫：只扫路径通道的话，一次目录列举仍会从命令通道漏成作废。
++   * 路径通道的命中是**路径**，直接判类。
++   * 命令通道的命中是**命令原文**，判不了类——一条命令可能提到多个条目。
++   * 对它的处置见下面 `cmdDisposition` 的说明。
+    */
+-  const notedCategories: DenyCategory[] = [];
++  const typedHits: { path: string; category: DenyCategory }[] = [];
++  const peerHits: string[] = [];
+   const notedPaths: string[] = [];
+-  for (const [cat, paths] of byCategory) {
+-    if (isVoidingCategory(cat) || paths.length === 0) continue;
+-    const viaPath = checkPeerLeak(result.read_paths, paths, opts.projectRoot);
+-    const viaCmd = checkPeerLeakViaCommand(result.command_texts, paths, opts.projectRoot);
+-    if (viaPath.leaked || viaCmd.leaked) {
+-      notedCategories.push(cat);
+-      notedPaths.push(...viaPath.hits);
++  const notedCategories: DenyCategory[] = [];
++
++  for (const hit of peerRaw.hits) {
++    const d = dispose(hit);
++    if (!d) continue; // 具名放行：当没命中
++    typedHits.push({ path: hit, category: d.category });
++    if (d.voiding) peerHits.push(hit);
++    else {
++      notedPaths.push(hit);
++      if (!notedCategories.includes(d.category)) notedCategories.push(d.category);
++    }
++  }
++
++  /*
++   * 命令通道：判据是「命令文本里出现了某个禁读条目的拼写」，
++   * 而返回的是**命令原文**——没有「这条命令碰的是哪个条目」这一信息。
++   *
++   * 所以这里按**最重档**处置：只要该侧有命令命中，就看它有没有可能撞上作废类。
++   * 判法是拿作废类条目单独再扫一遍（复用同一个 `checkPeerLeakViaCommand`，
++   * 不另写匹配逻辑）——扫中了算作废，没扫中则这条命中属告警档。
++   *
++   * 这一步不能省（r1 CODEX-03）：命令通道是 `command-trace` 一族的**唯一**通道，
++   * 省掉它等于对那一族完全不做禁读核验；而把命令命中一律当作废，
++   * 又会让「一次目录列举」重新把该侧判掉——那正是四次误伤里的两次形态。
++   */
++  const voidingEntries = req.deny_paths.filter((d) => {
++    const x = dispose(d);
++    return x !== null && x.voiding;
++  });
++  const notedEntries = req.deny_paths.filter((d) => {
++    const x = dispose(d);
++    return x !== null && !x.voiding;
++  });
++  const cmdVoiding = checkPeerLeakViaCommand(
++    result.command_texts,
++    voidingEntries,
++    opts.projectRoot,
++  );
++  const cmdNoted = checkPeerLeakViaCommand(result.command_texts, notedEntries, opts.projectRoot);
++
++  /*
++   * 命令通道的告警档命中也要落明细（r1 AGY-05 ≡ GLM-06 ≡ CODEX-03）。
++   * 初版只收路径通道的 hits，于是 `command-trace` 一族——它**只有**命令通道——
++   * 的告警档命中恒无证据：留痕说「命中了、属告警档」，一条证据都拿不出来。
++   */
++  const notedCommands = cmdNoted.hits;
++  if (notedCommands.length > 0) {
++    for (const d of notedEntries) {
++      const x = dispose(d);
++      if (x && !notedCategories.includes(x.category)) notedCategories.push(x.category);
+     }
+   }
+ 
+@@ -279,15 +330,18 @@ export function judgeSide(
+     projectReads: ev.projectReads,
+     readonlyBreach,
+     breachEvidence: result.write_events,
+-    peerArtifactRead: peer.leaked || peerCmd.leaked,
+-    peerHits: peer.hits,
+-    peerCommandHits: peerCmd.hits,
++    /*
++     * **只有作废类的命中才置真**（r1 三侧阻断）。
++     * 初版用两条通道的原始 leaked 做或运算，于是告警档命中一样让该侧作废——
++     * 分档等于没做。现在它等价于「过滤掉放行与告警档之后还剩命中」。
++     */
++    peerArtifactRead: peerHits.length > 0 || cmdVoiding.hits.length > 0,
++    peerHits,
++    peerCommandHits: cmdVoiding.hits,
+     notedCategories,
+     notedPaths: [...new Set(notedPaths)],
+-    typedHits: [
+-      ...peer.hits.map((p) => ({ path: p, category: classifyDenyPath(p, denyCtx) })),
+-      ...[...new Set(notedPaths)].map((p) => ({ path: p, category: classifyDenyPath(p, denyCtx) })),
+-    ],
++    notedCommands,
++    typedHits,
+     consultedUnverified,
+     integrityIssues,
+     suspectedWrites: [...(result.suspected_write_events ?? [])],
+@@ -328,9 +382,28 @@ function pathVerificationTier(
+   if (cap.traceShape === 'command-trace') return 'unavailable';
+   const total = result.path_bearing_reads;
+   const withPath = result.path_bearing_reads_with_path;
+-  // 该侧没报这两个计数（旧适配器 / 旧留痕）：不知道就别说「有效」，也别谎报退化
+-  if (total === undefined || withPath === undefined) return 'ok';
+-  if (total === 0) return 'ok';
++
++  /*
++   * **该侧没报这两个计数 → `unavailable`，不是 `ok`**（r1 三侧独立指出）。
++   *
++   * 初版这里 `return 'ok'`，而同一行的注释写的是「不知道就别说『有效』」——
++   * 注释与实现直接相反，等于拿 `ok` 填「不知道」。而 `ok` 在 run.v2 的语义是
++   * 「路径核验有效」：没有任何输入支撑的「有效」，正是本主题一路在修的三态塌缩
++   * （「没测到」被说成「测出来没有」）。
++   *
++   * 这一支现在只剩旧留痕会走到——两家结构化轨迹的适配器都已对称采集。
++   */
++  if (total === undefined || withPath === undefined) return 'unavailable';
++
++  /*
++   * 分母为 0（本轮没有「必带路径」的调用）同样记 `unavailable`。
++   *
++   * 「一次都没调用过那类工具」与「调用了且全部提出了路径」是两件事，
++   * 而只有后者才配叫「核验有效」。初版把前者也记 `ok`，于是**纯搜索轮次**
++   * （一次文件读都没有）看起来核验通过，实际探测面为零。
++   */
++  if (total === 0) return 'unavailable';
++
+   return withPath < total ? 'partial' : 'ok';
+ }
+ 
+diff --git a/src/trivium/render.ts b/src/trivium/render.ts
+index 9891235..2817af9 100644
+--- a/src/trivium/render.ts
++++ b/src/trivium/render.ts
+@@ -76,6 +76,8 @@ export interface RenderInput {
+     /** 是否属于会让该侧结论作废的类别 */
+     voiding: boolean;
+     paths: string[];
++    /** 命令通道的命中原文。`command-trace` 一族只有这一项，`paths` 恒空 */
++    commands: string[];
+   };
+   heterogeneous: boolean;
+   overrideReason?: string | null;
+@@ -147,6 +149,7 @@ export function renderFrontMatter(input: RenderInput): string {
+             via: input.peerLeak.via,
+             category: input.peerLeak.category,
+             paths: input.peerLeak.paths,
++            ...(input.peerLeak.commands.length > 0 ? { commands: input.peerLeak.commands } : {}),
+           },
+         }
+       : {}),
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index 438e5c9..70b19f9 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -15,7 +15,7 @@ import { promises as fs } from 'node:fs';
+ import type {
+   Config, CriticId, CriticRequest, CriticResult, Ctx, DenyCategory, Review, Stage, CommandEntry,
+ } from './types.js';
+-import { CRITIC_PREFIX, CRITIC_VENDOR } from './types.js';
++import { CRITIC_PREFIX, CRITIC_VENDOR, VOIDING_DENY_CATEGORIES } from './types.js';
+ import { agentById } from './agents/registry.js';
+ import {
+   isHeterogeneous,
+@@ -89,10 +89,35 @@ function peerLeakOf(side: SideVerdict): NonNullable<RenderInput['peerLeak']> | u
+   const noted = side.notedCategories.length > 0;
+   if (!viaPath && !viaCmd && !noted) return undefined;
+ 
+-  // 作废类优先：它决定横幅说哪一句
+-  const category: DenyCategory =
+-    viaPath || viaCmd ? 'peer-artifact' : (side.notedCategories[0] ?? 'orchestrator-state');
++  /*
++   * 类别取**实际命中里最重的那一个**，不是写死的字面量（r1 三侧独立指出）。
++   *
++   * 初版写的是 `viaPath || viaCmd ? 'peer-artifact' : notedCategories[0]`：
++   * 命中第②类（运行根下对端输出）时 front-matter 仍报第①类，
++   * 而同一条留痕里 `paths` 又是逐条带类的——**头档不带类、路径带类，自相矛盾**；
++   * 非作废侧取数组第一个（Map 插入序）同样失真，「取最重档」在两条路径上都没实现。
++   */
++  const severity = (c: DenyCategory): number => {
++    switch (c) {
++      case 'peer-artifact': return 4;
++      case 'peer-run-output': return 3;
++      case 'sensitive': return 2;
++      case 'orchestrator-state': return 1;
++      case 'own-run-material': return 0;
++    }
++  };
+   const voiding = viaPath || viaCmd;
++  const pool: DenyCategory[] = voiding
++    ? side.typedHits.filter((h) => VOIDING_DENY_CATEGORIES.includes(h.category)).map((h) => h.category)
++    : [...side.notedCategories];
++  /*
++   * 只有命令通道命中时 `typedHits` 可能为空（那一档没有路径明细），
++   * 此时回落到「对端产物」——命令通道命中的作废类只可能是这一族。
++   */
++  const category: DenyCategory =
++    pool.length > 0
++      ? pool.reduce((a, b) => (severity(b) > severity(a) ? b : a))
++      : (voiding ? 'peer-artifact' : 'orchestrator-state');
+ 
+   return {
+     hit: true,
+@@ -100,6 +125,8 @@ function peerLeakOf(side: SideVerdict): NonNullable<RenderInput['peerLeak']> | u
+     category,
+     voiding,
+     paths: voiding ? side.peerHits : side.notedPaths,
++    // 命令通道的命中原文——作废与告警两档都要能复盘「到底碰了什么」
++    commands: voiding ? side.peerCommandHits : side.notedCommands,
+   };
+ }
+ 
+@@ -1072,7 +1099,15 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+       sides
+         .filter((c) => verdict.sides[c] !== undefined)
+         .map((c) => [c, {
+-          hit: verdict.sides[c]!.peerHits.length > 0,
++          /*
++           * `hit` 的语义是「路径通道**扫到了东西**」，不是「这一侧作废了」——
++           * 后者由 `peer_artifact_read` 表达，两者不可互相顶替。
++           *
++           * 初版把它挂在 `peerHits`（只含作废类）上，于是告警档的命中
++           * 落盘成 `hit: false` + 非空 `hits`：同一条留痕里自相矛盾，
++           * 而「读了凭据文件」这类事实在机读面上直接消失。
++           */
++          hit: verdict.sides[c]!.typedHits.length > 0,
+           hits: verdict.sides[c]!.typedHits,
+         }]),
+     ),
+@@ -1084,6 +1119,30 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+      * `evidence_threshold` 记本次生效的项目读取下限：`command-trace` 族折减过，
+      * 不记的话同一个读数在两族间一过一不过，复盘时看起来像 bug。
+      */
++    /*
++     * 共同阻断这一档的执行状态（设计 §12.1）。
++     *
++     * **写在这里而不是 gate 里**：gate 是校验命令、可以反复跑，而 run.json 是
++     * 这一轮的运行事实，只写一次。字段的语义是「本轮这一档做没做」，
++     * 属于运行事实而非校验结论。
++     *
++     * 初版设计与 schema 都声明了这个字段、`gate` 也算了三态，**唯独没有写侧**——
++     * 于是留痕里它恒缺失，而设计写着「写侧恒写 · 已实现」。
++     * 「声明了但没有代码让它成真」在本批自己的交付里复发了一次（r1 三侧独立指出）。
++     *
++     * 这里只能给出「有效侧够不够」这一半：真正的共同项要等裁决表齐备才算得出，
++     * 那是 `gate --check` 的事。所以本字段在运行时先落 `effective_sides` 与
++     * 「够/不够」，`checked-found` 与 `checked-none` 的区分由 gate 的告警补充——
++     * **这个边界要写明，否则下一个人会以为 run.json 里的 state 是最终结论**。
++     */
++    joint_check: (() => {
++      const effective = sides.filter(
++        (c) => verdict.sides[c] !== undefined && !verdict.sides[c]!.peerArtifactRead,
++      ).length;
++      return effective < 2
++        ? { state: 'skipped-insufficient-sides' as const, effective_sides: effective }
++        : { state: 'checked-none' as const, effective_sides: effective };
++    })(),
+     verification_degraded: Object.fromEntries(
+       sides
+         .filter((c) => verdict.sides[c] !== undefined)
+diff --git a/test/integration/fault-injection.test.ts b/test/integration/fault-injection.test.ts
+index 2f56d97..484a80b 100644
+--- a/test/integration/fault-injection.test.ts
++++ b/test/integration/fault-injection.test.ts
+@@ -39,11 +39,19 @@ async function runInjected(
+   stub: StubConfig,
+   extraArgs: string[] = [],
+   extraReview: string[] = [],
++  /**
++   * 在 `--start` **之前**往夹具里补文件。
++   *
++   * 禁读集在冻结送审包时枚举一次，之后不再变——要让某份文件进 deny_paths，
++   * 只能在这一步放。`makeFixture` 之后、`--start` 之前是唯一的窗口。
++   */
++  seed?: (root: string) => Promise<void>,
+ ): Promise<{ root: string; stageDir: string; exitCode: number; meta: RunMeta; waitOut: string }> {
+   const { root, stageDir } = await makeFixture({
+     topic: TOPIC,
+     ...(extraReview.length > 0 ? { extraReview } : {}),
+   });
++  if (seed) await seed(root);
+ 
+   const started = await cli(
+     root,
+@@ -207,15 +215,93 @@ test('审查中写项目文件 → readonly_breach', { skip: bundleMissing && bu
+   assert.equal(meta.guard.readonly_breach, true, '审查员写文件必须被判只读违规');
+ });
+ 
+-test('读到禁读清单内的文件 → peer_artifact_read', { skip: bundleMissing && bundleSkipReason }, async () => {
+-  const { meta } = await runInjected({ gemini: { mode: 'peer_leak' }, glm: { mode: 'ok' } });
+-  assert.ok(meta.deny_paths.length > 0, '夹具里的 .env 命中 sensitive_globs，禁读清单不该是空的');
+-  assert.equal(meta.guard.peer_artifact_read, true);
+-  assert.equal(
+-    meta.guard.peer_leak_via_command?.gemini?.hit, false,
+-    '措施 a 命中时措施 b 不该跟着亮：两条通道要能分得开，否则单边失效看不出来',
+-  );
+-});
++/*
++ * ── 分档后的两条端到端用例（设计 §10.1.1）──
++ *
++ * 这条用例原先只有一个断言：「读到禁读清单内任何文件 → 作废」。
++ * 而夹具的禁读集里只有 `.env`（凭据类），于是它实际测的是
++ * **「读凭据文件 → 作废」**——那正是本批要改掉的口径：
++ * 凭据文件不含任何审查意见，读它不损害背靠背独立性。
++ *
++ * 拆成两条，各测一档。两条都是**端到端**的（经真实 CLI 与落盘的 run.json），
++ * 不是纯函数——r1 代码双审的阻断一正是「纯函数测对了、接线处错了」，
++ * 而纯函数测试天然看不见接线。
++ */
++
++test(
++  '读到凭据文件 → 记一笔，但**不判作废**（分档：安全告警线）',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { meta } = await runInjected({ gemini: { mode: 'peer_leak' }, glm: { mode: 'ok' } });
++    assert.ok(meta.deny_paths.length > 0, '夹具里的 .env 命中 sensitive_globs，禁读清单不该是空的');
++
++    assert.equal(
++      meta.guard.peer_artifact_read,
++      false,
++      '凭据文件不含审查意见，读它不损害独立性——按旧口径这里会作废，那是本批要修的误伤',
++    );
++    const viaPath = meta.guard.peer_leak_via_path?.gemini;
++    assert.equal(viaPath?.hit, true, '不作废不等于不记：命中仍要进留痕');
++    assert.ok(
++      viaPath?.hits.some((h) => h.category === 'sensitive'),
++      `命中要逐条带类，实得：${JSON.stringify(viaPath?.hits)}`,
++    );
++    assert.equal(
++      meta.guard.peer_leak_via_command?.gemini?.hit, false,
++      '措施 a 命中时措施 b 不该跟着亮：两条通道要能分得开，否则单边失效看不出来',
++    );
++  },
++);
++
++test(
++  '读到对端审查产出 → 判作废（分档：会作废的那一档）',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    /*
++     * 往夹具里放一份**对端**的历史审查件，它才是「读了就该作废」的那一类。
++     * 桩的 `peer_leak` 模式读禁读集里的全部条目，于是这一份会被读到。
++     *
++     * 这份文件必须在 `--start` **之前**就位：禁读集在冻结送审包时枚举一次，
++     * 之后不再变。放晚了它不会进 deny_paths，用例会以「命中里没有对端产物」失败——
++     * 那种失败看起来像判定坏了，其实是夹具没摆好，排查起来很费时间。
++     */
++    const { meta } = await runInjected(
++      { gemini: { mode: 'peer_leak' }, glm: { mode: 'ok' } },
++      [],
++      [],
++      async (root) => {
++        const dir = path.join(root, '.reviews', TOPIC, 'plan');
++        await fs.mkdir(dir, { recursive: true });
++        await fs.writeFile(
++          path.join(dir, `2026-01-01-${TOPIC}-glm.md`),
++          [
++            '---',
++            'schema: trivium.review.v1',
++            `topic: ${TOPIC}`,
++            'stage: plan',
++            'role: glm',
++            'verdict: request-changes',
++            '---',
++            '',
++            '# 上一轮 glm 侧的审查意见（对端产出，本侧禁读）',
++          ].join('\n'),
++          'utf8',
++        );
++      },
++    );
++
++    assert.equal(
++      meta.guard.peer_artifact_read,
++      true,
++      '读到对端产出必须作废——这一档是三层屏蔽的存在理由',
++    );
++    const viaPath = meta.guard.peer_leak_via_path?.gemini;
++    assert.ok(
++      viaPath?.hits.some((h) => h.category === 'peer-artifact'),
++      `命中里必须有对端产物那一类，实得：${JSON.stringify(viaPath?.hits)}`,
++    );
++  },
++);
+ 
+ test(
+   '命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01）',
+diff --git a/test/unit/config-consumers.test.ts b/test/unit/config-consumers.test.ts
+index 90eec03..0ae2e92 100644
+--- a/test/unit/config-consumers.test.ts
++++ b/test/unit/config-consumers.test.ts
+@@ -72,7 +72,7 @@ const KNOWN_DEAD: { key: string; why: string }[] = [
+   {
+     key: 'max_check_retries',
+     why:
+-      'EV-30：**四条里最该优先处理的**——skill 文档正拿它当真实行为向 Driver 承诺' +
++      'EV-30：**七条里最该优先处理的**——skill 文档正拿它当真实行为向 Driver 承诺' +
+       '（「最多重试 max_check_retries（默认 3）次」），而代码里没有任何重试计数。' +
+       '这不只是死配置，是一句写在流程文档里的假承诺',
+   },
+diff --git a/test/unit/gate.test.ts b/test/unit/gate.test.ts
+index 542061a..cd477bc 100644
+--- a/test/unit/gate.test.ts
++++ b/test/unit/gate.test.ts
+@@ -14,6 +14,8 @@ import type { Finding, Review } from '../../src/trivium/types.js';
+ 
+ const DATE = '2026-09-10';
+ const TOPIC = '登录重构';
++/** 编排器状态文件名（`state.ts` 的落点），用作「告警档」分类的样本路径 */
++const STATE_FILE = 'state.json';
+ 
+ async function layout(): Promise<ArchiveLayout> {
+   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-gate-'));
+@@ -528,6 +530,64 @@ test('非降级轮次不得凭空冒出 degraded_round 警告', async () => {
+   assert.ok(!r.warnings.some((w) => w.code === 'degraded_round'));
+ });
+ 
++/*
++ * ── voidedSides 必须由 loadRoundReviews 从 run 元数据派生 ──
++ *
++ * 它初版是 `checkAdjudication` 的一个**可选参数**，而两个生产调用点都没传，
++ * 于是「作废侧不计入共同阻断」整段从未生效——**而纯函数单测全绿**：
++ * 可选参数的默认值让漏传静默成功。r1 三侧独立判为阻断，其中一侧的原话是
++ * 「纯函数单测守不住『参数没接上』这一形态」。
++ *
++ * 所以判据改成在 `loadRoundReviews` 里派生（调用方想漏都漏不掉），
++ * 而本用例守的就是那次派生——把派生删掉，它必须红。
++ */
++test('voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）', async () => {
++  const base = {
++    topic: TOPIC, stage: 'plan' as const, rerunIndex: 1, command: 'x',
++    promptHint: null, taskGoal: null, criticsSelected: CRITICS,
++    treeHash: 'h', gitHead: null, dirty: false,
++    subjectSha256: 's', denyPaths: [], driftPolicy: 'warn' as const,
++  };
++
++  // ① 路径通道命中**作废类** → 该侧进 voidedSides
++  const l1 = await layout();
++  const m1 = newRunMeta({ ...base, runId: 'RV1' });
++  m1.guard.peer_leak_via_path = {
++    gemini: { hit: true, hits: [{ path: '.reviews/t/plan/x-glm.md', category: 'peer-artifact' }] },
++    glm: { hit: false, hits: [] },
++  };
++  await writeRunMeta(l1, 'plan', m1);
++  assert.deepEqual((await loadRoundReviews(l1, 'plan', 'RV1')).voidedSides, ['gemini']);
++
++  // ② 路径通道只命中**告警类** → 不作废
++  const l2 = await layout();
++  const m2 = newRunMeta({ ...base, runId: 'RV2' });
++  m2.guard.peer_leak_via_path = {
++    gemini: {
++      hit: true,
++      hits: [{ path: `.trivium/${STATE_FILE}`, category: 'orchestrator-state' }],
++    },
++  };
++  await writeRunMeta(l2, 'plan', m2);
++  assert.deepEqual(
++    (await loadRoundReviews(l2, 'plan', 'RV2')).voidedSides,
++    [],
++    '读编排器状态文件不损害独立性——这一族正是四次实测误伤的全部',
++  );
++
++  // ③ 命令通道命中 → 作废（该通道没有类别信息，命中即算）
++  const l3 = await layout();
++  const m3 = newRunMeta({ ...base, runId: 'RV3' });
++  m3.guard.peer_leak_via_command = { glm: { hit: true, commands: ['cat .reviews/peer-review.md'] } };
++  await writeRunMeta(l3, 'plan', m3);
++  assert.deepEqual((await loadRoundReviews(l3, 'plan', 'RV3')).voidedSides, ['glm']);
++
++  // ④ 旧留痕（两条通道都没有）→ 空数组，维持旧行为、不追溯改判
++  const l4 = await layout();
++  await writeRunMeta(l4, 'plan', newRunMeta({ ...base, runId: 'RV4' }));
++  assert.deepEqual((await loadRoundReviews(l4, 'plan', 'RV4')).voidedSides, []);
++});
++
+ test('loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推', async () => {
+   const base = {
+     topic: TOPIC, stage: 'plan' as const, rerunIndex: 1, command: 'x',
+diff --git a/test/unit/guard-capability.test.ts b/test/unit/guard-capability.test.ts
+index ef73d1b..6ca9c8e 100644
+--- a/test/unit/guard-capability.test.ts
++++ b/test/unit/guard-capability.test.ts
+@@ -60,6 +60,13 @@ function result(over: Partial<CriticResult> = {}): CriticResult {
+     profile_requested: null,
+     tool_calls: {},
+     read_paths: [],
++    /*
++     * 覆盖率两项：**结构化轨迹的两家适配器现在都报它**（设计 10.1.1 第②层）。
++     * 夹具跟着报，否则走的是「该侧没报数」那一支、档位落 unavailable——
++     * 那一支现在只留给旧留痕，拿它当结构化轨迹侧的常态会把用例测在别的分支上。
++     */
++    path_bearing_reads: 1,
++    path_bearing_reads_with_path: 1,
+     write_events: [],
+     command_texts: [],
+     evidence_ok: false,
+@@ -518,3 +525,45 @@ test('归因扣除：斜杠对齐后缀与右端开放两族都不得误扣（r8
+       '而 fingerprintChangedFiles 已整批置空，它会从 run.json 两个清单里同时消失',
+   );
+ });
++
++/*
++ * ── 路径核验档位的三态（设计 10.1.1 第②层）──
++ *
++ * 这一档初版只有 ok / unavailable 两态，且**只看能力声明、不看实际拿到了什么**：
++ * 声明为结构化轨迹的侧交出空的或残缺的路径集，档位照样是 ok，
++ * 而 ok 在契约里的语义是「路径核验有效」。
++ */
++
++test('path 档位：必带路径的调用全都提出了路径 → ok', () => {
++  const v = judge({ path_bearing_reads: 3, path_bearing_reads_with_path: 3 });
++  assert.equal(v.verification.path, 'ok');
++});
++
++test('path 档位：有提不出路径的 → partial（提取器相对厂商参数名退化了）', () => {
++  const v = judge({ path_bearing_reads: 3, path_bearing_reads_with_path: 1 });
++  assert.equal(
++    v.verification.path,
++    'partial',
++    '这是本项目唯一能在下一轮运行时发现厂商改参数名的信号',
++  );
++});
++
++test('path 档位：该侧没报计数 → unavailable，不得记 ok', () => {
++  /*
++   * 「不知道提取器有没有退化」与「核验过、有效」是两件事。
++   * 初版这一支 `return 'ok'`，而同一行注释写着「不知道就别说有效」——
++   * 注释与实现直接相反，等于拿 ok 填「不知道」（r1 三侧独立指出）。
++   */
++  const v = judge({ path_bearing_reads: undefined, path_bearing_reads_with_path: undefined });
++  assert.equal(v.verification.path, 'unavailable');
++});
++
++test('path 档位：分母为 0（本轮没有必带路径的调用）→ unavailable', () => {
++  /*
++   * 「一次都没调用过那类工具」与「调用了且全部提出路径」都会让比值看起来完美，
++   * 但只有后者配叫「核验有效」。初版把前者也记 ok，于是纯搜索轮次看起来通过、
++   * 实际探测面为零。
++   */
++  const v = judge({ path_bearing_reads: 0, path_bearing_reads_with_path: 0 });
++  assert.equal(v.verification.path, 'unavailable');
++});

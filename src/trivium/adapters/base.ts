@@ -1228,22 +1228,47 @@ function spellingsOf(denyPath: string, projectRoot: string): string[] {
 }
 
 /**
- * 措施 b 的判据：命令原文里是否出现了 deny 条目的字面量。
+ * 措施 b 的单条目扫描：命令原文里是否出现了**这一个** deny 条目的字面量。
  *
- * 返回**命中的命令原文**（不是命中的路径）——处置时要让人看见「它跑了哪条命令」，
- * 只报路径的话，`git show HEAD:<path>` 与 `cat <path>` 在留痕上无从区分，
- * 而这两者的性质差别正是本措施存在的理由。
+ * 返回命中的命令原文。按条目逐一扫描而不是把全集拼成一张拼写表，
+ * 是为了让调用方知道**命中的是哪个条目**——见 `checkPeerLeakViaCommand` 的说明。
  */
-export function checkPeerLeakViaCommand(
+function scanCommandsForEntry(
   commandTexts: readonly string[],
-  denyPaths: readonly string[],
+  denyPath: string,
   projectRoot: string,
-): { leaked: boolean; hits: string[] } {
-  if (commandTexts.length === 0 || denyPaths.length === 0) {
-    return { leaked: false, hits: [] };
-  }
-  const denyAbs = denyPaths.map((d) => normalizeAbs(d, projectRoot));
-  const spellings = denyPaths.flatMap((d) => spellingsOf(d, projectRoot));
+): { command: string; resolved: string | null }[] {
+  const denyAbs = [normalizeAbs(denyPath, projectRoot)];
+  const spellings = spellingsOf(denyPath, projectRoot);
+
+  /**
+   * 命中处那个路径 token 的静态解析结果：归一后的绝对路径，或 `null`（解析不了）。
+   *
+   * 这是命令通道能与路径通道共用同一分类谓词的**全部凭据**：分档看的是
+   * 「碰的是哪个文件」，而条目本身只说明「碰的是哪棵树」。
+   * `~/.trivium/runs/<id>/<本侧>/out.json` 与 `…/<对端>/out.json` 撞的是同一个条目
+   * （整棵运行根），分属己方材料与对端输出两档——只拿条目分类的话，
+   * 两者都会落到最重档，要修的误伤原样保留。
+   *
+   * `hitAt` 是 deny 拼写在 token 内的偏移：token 前面可能挂着 `../` 一类的锚。
+   */
+  const resolveFrom = (token: string, hitAt: number): string | null => {
+    if (UNRESOLVABLE.test(token)) return null;
+    const expanded = expandTilde(token);
+    if (expanded === null) return null;
+    if (nodePath.isAbsolute(expanded)) return normalizeAbs(expanded, projectRoot);
+    const asProjectRel = normalizeAbs(expanded, projectRoot);
+    if (denyAbs.some((d) => asProjectRel === d || asProjectRel.startsWith(`${d}/`))) {
+      return asProjectRel;
+    }
+    /*
+     * 纯回退层级（`../<rel>`）：cwd 未知，而本分支的整个假设就是它指回项目根——
+     * 那就按这个假设把 deny 拼写起的那一段归一到项目根下。
+     * 猜错的方向是把某个更深的路径记成项目内路径，分类只会更轻不会更重，
+     * 而「更重」那一侧由下面 `resolved === null` 的保守回退兜着。
+     */
+    return normalizeAbs(token.slice(hitAt), projectRoot);
+  };
 
   /** 归一后的 token 是否就是某个 deny 条目、或落在它之下 */
   const resolvesIntoDeny = (token: string): boolean => {
@@ -1251,12 +1276,15 @@ export function checkPeerLeakViaCommand(
     return denyAbs.some((d) => a === d || a.startsWith(`${d}/`));
   };
 
-  const hitsAt = (cmd: string, s: string, i: number): boolean => {
+  const hitsAt = (cmd: string, s: string, i: number): { resolved: string | null } | null => {
     const end = i + s.length;
-    if (!rightBoundaryOk(cmd, end)) return false;
+    if (!rightBoundaryOk(cmd, end)) return null;
 
     const before = i === 0 ? '' : cmd[i - 1]!;
-    if (before === '' || CMD_BOUNDARY.has(before)) return true; // F-1～F-9
+    if (before === '' || CMD_BOUNDARY.has(before)) {
+      // F-1～F-9：左边就是分隔符，命中位置即 token 起点
+      return { resolved: resolveFrom(pathTokenAround(cmd, i, end).token, 0) };
+    }
 
     /*
      * ── F-6：完整字面量在场，但前面挂了个锚 ──────────────────────────
@@ -1279,7 +1307,7 @@ export function checkPeerLeakViaCommand(
      * 它走的本来就是 `/` 分支。`.` 在 Unix 里不是路径分隔符，
      * 当初把它放进来是把「文件名里的点」误当成了「路径层级」。
      */
-    if (before !== '/') return false;
+    if (before !== '/') return null;
     const { token, hitAt } = pathTokenAround(cmd, i, end);
 
     /*
@@ -1291,7 +1319,7 @@ export function checkPeerLeakViaCommand(
      *
      * `~` **不在此列**：它可静态展开（见 `UNRESOLVABLE` 的注释），走下面的精确归一。
      */
-    if (UNRESOLVABLE.test(token)) return true;
+    if (UNRESOLVABLE.test(token)) return { resolved: null };
 
     /*
      * **替换标记的外壳被回扫切掉了**（r4 双审 GLM-02，实测复现四条）。
@@ -1315,11 +1343,11 @@ export function checkPeerLeakViaCommand(
      */
     const tokenStart = i - hitAt;
     const shell = tokenStart === 0 ? '' : cmd[tokenStart - 1]!;
-    if (shell === ')' || shell === '}' || shell === '`') return true;
+    if (shell === ')' || shell === '}' || shell === '`') return { resolved: null };
 
     const expanded = expandTilde(token);
     // `~user/…`：是家目录写法但解析不了指向谁 ⇒ 保守命中（同 UNRESOLVABLE 的取舍）
-    if (expanded === null) return true;
+    if (expanded === null) return { resolved: null };
 
     /*
      * 能静态解析的绝对 token：归一后落在 deny 之下才算。
@@ -1329,7 +1357,9 @@ export function checkPeerLeakViaCommand(
      * 也判否（**这正是 r1 应答承诺过、而初版没做到的那条**，AGY-02 ≡ GLM-02）。
      * 至于 `~/.trivium/runs/<runId>`：它落在 run-root deny 之下，照常命中。
      */
-    if (nodePath.isAbsolute(expanded)) return resolvesIntoDeny(expanded);
+    if (nodePath.isAbsolute(expanded)) {
+      return resolvesIntoDeny(expanded) ? { resolved: normalizeAbs(expanded, projectRoot) } : null;
+    }
 
     /*
      * 相对 token（`../<rel>` 一类）：cwd 未知——审查员**可能**在子目录里。
@@ -1349,8 +1379,10 @@ export function checkPeerLeakViaCommand(
      * 误报族集中在 `sensitive_globs` 派生的短名条目上（`.env` / `id_rsa`）：
      * 那类通用名会作为**别的项目**的文件名逐字出现，run-id 档案名则几乎撞不上。
      */
-    if (resolvesIntoDeny(expanded)) return true;
-    return prefixIsOnlyDotHops(token, hitAt);
+    if (resolvesIntoDeny(expanded)) return { resolved: normalizeAbs(expanded, projectRoot) };
+    return prefixIsOnlyDotHops(token, hitAt)
+      ? { resolved: normalizeAbs(token.slice(hitAt), projectRoot) }
+      : null;
   };
 
   /*
@@ -1388,26 +1420,39 @@ export function checkPeerLeakViaCommand(
     `(?:^|[${CMD_BOUNDARY_CLASS}])~[^/$${CMD_BOUNDARY_CLASS}]*(/[^${CMD_BOUNDARY_CLASS}]*)`,
     'g',
   );
-  const tildeUserHit = (cmd: string): boolean => {
+  const tildeUserHit = (cmd: string): { resolved: string | null } | null => {
     for (const m of cmd.matchAll(TILDE_USER)) {
       const suffix = m[1]!;
       const asIfHome = normalizeAbs(`${homeAbs}${suffix}`, projectRoot);
-      if (denyAbs.some((d) => asIfHome === d || asIfHome.startsWith(`${d}/`))) return true;
+      if (denyAbs.some((d) => asIfHome === d || asIfHome.startsWith(`${d}/`))) {
+        /*
+         * `~someone` 指向谁解析不了，但**后缀的层级是确定的**，而分档看的正是层级：
+         * `~someone/.trivium/runs/<id>/<本侧>` 照样是己方材料的形状。
+         * 所以给出按本机 HOME 归一的那条路径，而不是 `null`——
+         * 判「是不是 deny」时它已经这么比过了（就是上面那个 `some`），
+         * 判「属哪一档」时换个更重的口径没有依据。
+         */
+        return { resolved: asIfHome };
+      }
     }
-    return false;
+    return null;
   };
 
-  const scanOnce = (cmd: string): boolean =>
-    tildeUserHit(cmd) ||
-    spellings.some((s) => {
+  const scanOnce = (cmd: string): { resolved: string | null } | null => {
+    const tilde = tildeUserHit(cmd);
+    if (tilde) return tilde;
+    for (const s of spellings) {
       let from = 0;
       for (;;) {
         const i = cmd.indexOf(s, from);
-        if (i < 0) return false;
-        if (hitsAt(cmd, s, i)) return true;
+        if (i < 0) break;
+        const hit = hitsAt(cmd, s, i);
+        if (hit) return hit;
         from = i + 1;
       }
-    });
+    }
+    return null;
+  };
 
   /*
    * **F-9：删掉引号再扫一遍**（r4 双审 GLM-03）。
@@ -1428,10 +1473,73 @@ export function checkPeerLeakViaCommand(
    */
   const stripQuotes = (cmd: string): string => cmd.replace(/["']/g, '');
 
-  const hits = commandTexts.filter(
-    (cmd) => scanOnce(cmd) || scanOnce(stripQuotes(cmd)),
-  );
-  return { leaked: hits.length > 0, hits: [...new Set(hits)] };
+  const out: { command: string; resolved: string | null }[] = [];
+  for (const cmd of new Set(commandTexts)) {
+    const hit = scanOnce(cmd) ?? scanOnce(stripQuotes(cmd));
+    if (hit) out.push({ command: cmd, resolved: hit.resolved });
+  }
+  return out;
+}
+
+/** 一条命令命中了哪些禁读条目 */
+export interface CommandDenyMatch {
+  /** 命中的命令原文 */
+  command: string;
+  /**
+   * 这条命令撞上的禁读条目，至少一个。
+   *
+   * - `entry`：禁读集里的那个条目（原样，未归一）——说明「撞的是哪棵树」。
+   * - `resolved`：命令里那个路径 token 归一后的绝对路径，`null` 表示静态解析不了
+   *   （变量、命令替换、通配）。分类**优先用它**，为 `null` 时才退回 `entry`。
+   */
+  hits: { entry: string; resolved: string | null }[];
+}
+
+/**
+ * 措施 b 的判据：命令原文里是否出现了 deny 条目的字面量。
+ *
+ * 返回**两样都给**：
+ *
+ * - `hits`：命中的**命令原文**。处置时要让人看见「它跑了哪条命令」——
+ *   只报路径的话，`git show HEAD:<path>` 与 `cat <path>` 在留痕上无从区分，
+ *   而这两者的性质差别正是本措施存在的理由。
+ * - `matches`：每条命中的命令**撞上了哪些条目**。这是 r2 代码双审阻断一逼出来的：
+ *   没有它，调用方判不了「这条命令碰的是哪一档」，只能退而求其次——
+ *   拿作废类条目整体再扫一遍，用两次全集扫描的差值去猜。那个做法与路径通道
+ *   **不是同一个谓词**：路径通道逐条命中判类，命令通道判的是「条目本身」，
+ *   于是同一棵目录在两条通道上会得出相反结论（整棵运行根在路径通道里按命中的
+ *   子文件分档，在命令通道里按根自己分档）。现在两条通道都拿到「命中的条目」，
+ *   用同一个 `dispose` 处置。
+ *
+ * 一条命令可以同时撞上多个条目（`diff <己方材料> <对端产出>`），所以 `entries`
+ * 是数组而不是单值——调用方按**最重档**处置那条命令。
+ */
+export function checkPeerLeakViaCommand(
+  commandTexts: readonly string[],
+  denyPaths: readonly string[],
+  projectRoot: string,
+): { leaked: boolean; hits: string[]; matches: CommandDenyMatch[] } {
+  if (commandTexts.length === 0 || denyPaths.length === 0) {
+    return { leaked: false, hits: [], matches: [] };
+  }
+  /*
+   * 按命令聚合，顺序随 `commandTexts`——留痕里命令的先后是可读的信息，
+   * 按条目聚合会把同一条命令拆到多处。
+   */
+  const byCommand = new Map<string, { entry: string; resolved: string | null }[]>();
+  for (const d of denyPaths) {
+    for (const { command, resolved } of scanCommandsForEntry(commandTexts, d, projectRoot)) {
+      const cur = byCommand.get(command);
+      if (cur) cur.push({ entry: d, resolved });
+      else byCommand.set(command, [{ entry: d, resolved }]);
+    }
+  }
+  const matches: CommandDenyMatch[] = [];
+  for (const cmd of new Set(commandTexts)) {
+    const hits = byCommand.get(cmd);
+    if (hits && hits.length > 0) matches.push({ command: cmd, hits });
+  }
+  return { leaked: matches.length > 0, hits: matches.map((m) => m.command), matches };
 }
 
 /**

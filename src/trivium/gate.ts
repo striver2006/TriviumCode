@@ -60,6 +60,21 @@ export interface GateCheckResult {
   fallbackIds: string[];
   dispositionPath: string | null;
   rows: DispositionRow[];
+  /**
+   * 共同阻断这一档的**最终三态**（§6.6 规则 7 / §12.1）。
+   *
+   * 返回给调用方是为了让它落进 `task.json.joint_checks`：run.json 只到 `pending`
+   * （运行期读不到裁决表），这一档的结论若不落盘，`checked-found` 永久只存在于
+   * 本次进程的内存里——留痕面上三态塌回两态，而这一档的全部意义就是三态。
+   *
+   * **可缺席**：裁决件都还没有时这一档无从谈起，三个取值一个都对不上，
+   * 那就不给——调用方据此也不往 `task.json` 里写。
+   */
+  jointCheck?: {
+    state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
+    effective_sides: number;
+    reason?: 'voided' | 'no-structured-review' | 'both';
+  };
 }
 
 /** 空洞理由词表（§6.6 规则 5）。命中且无其它内容才算空洞 */
@@ -153,6 +168,14 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
       fallbackIds: [],
       dispositionPath: null,
       rows: [],
+      /*
+       * 裁决件还没有，这一档**无从谈起**——判据的一半（哪些被驳回）就在那份文件里。
+       * 三个取值里没有一个能表达这件事：`checked-none` 是「做了、没发现」，
+       * `skipped-insufficient-sides` 是「侧数不够」，而这里两者都不是。
+       *
+       * 所以**不给结论**，让字段整个缺席，调用方也就不会往 `task.json` 里写。
+       * 这正是三态纪律本身：说不出口的时候就别说，而不是挑个最近的取值填上。
+       */
     };
   }
   const dispositionPath = path.join(layout.archiveRoot, layout.topic, stage, hit.fileName);
@@ -384,6 +407,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     fallbackIds,
     dispositionPath,
     rows,
+    jointCheck: jc,
   };
 }
 

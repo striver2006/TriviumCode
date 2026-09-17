@@ -204,7 +204,7 @@
         },
         "peer_leak_via_command": {
           "type": "object",
-          "description": "命令文本通道（§10.1 措施 b / BACKLOG EV-01）的命中记录，**逐审核者**（键是 Agent id，与 critics 同构）。【已实现 · M8 第 1 步】三态落在结构上：整个字段缺失=该次运行早于接线；字段在而某侧的键缺失=**那一侧没扫**（失败/超时被 judgeRun 跳过）；hit=false=扫过、没命中。已知形态清单（F-1～F-9）与盲区（B-1～B-5）见 adapters/base.ts 的 checkPeerLeakViaCommand 文档块与设计 §10.1 措施 b，两处由 known-forms-parity 契约测试对账；承诺是「已知形态必检」而非不可绕过（威胁模型见 §10.1 末段，R25）",
+          "description": "命令文本通道（§10.1 措施 b / BACKLOG EV-01）的命中记录，**逐审核者**（键是 Agent id，与 critics 同构）。【已实现 · M8 第 1 步；命中带类 2026-09-17 补】三态落在结构上：整个字段缺失=该次运行早于接线；字段在而某侧的键缺失=**那一侧没扫**（失败/超时被 judgeRun 跳过）；hit=false=扫过、没命中。hit 的语义是「扫到了东西」而非「这一侧作废了」——后者看 peer_artifact_read，告警档的命中同样置 hit=true。已知形态清单（F-1～F-9）与盲区（B-1～B-5）见 adapters/base.ts 的 checkPeerLeakViaCommand 文档块与设计 §10.1 措施 b，两处由 known-forms-parity 契约测试对账；承诺是「已知形态必检」而非不可绕过（威胁模型见 §10.1 末段，R25）",
           "additionalProperties": {
             "type": "object",
             "required": [
@@ -220,6 +220,37 @@
                 "type": "array",
                 "items": {
                   "type": "string"
+                }
+              },
+              "hits": {
+                "type": "array",
+                "description": "命中逐条带类，与 peer_leak_via_path.hits 同构（2026-09-17 补）。在此之前命令通道只落命令原文，分档结果一个字都没进留痕，于是同一份分档在两条通道上可读性不对等——而命令通道是 command-trace 一族**唯一**的通道。字段缺失=那次运行早于本次接线，不是「没有命中明细」",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "command",
+                    "path",
+                    "category"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "command": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string",
+                      "description": "分类实际用的目标：命令里那个路径 token 归一后的绝对路径；静态解析不了（变量、命令替换、通配）时退回禁读条目本身——那必然落在更重的档上，是保守方向"
+                    },
+                    "category": {
+                      "enum": [
+                        "peer-artifact",
+                        "peer-run-output",
+                        "own-run-material",
+                        "orchestrator-state",
+                        "sensitive"
+                      ]
+                    }
+                  }
                 }
               }
             }
@@ -249,7 +280,15 @@
                   "partial",
                   "unavailable"
                 ],
-                "description": "**partial（2026-09-16 新增）**：该侧有结构化轨迹，但「必然带路径」的读调用中出现了提不出路径的，即提取器相对厂商实际参数名已经退化。可无路径的搜索/列目录类调用不计入分母"
+                "description": "**partial（2026-09-16 新增）**：该侧有结构化轨迹，但「必然带路径」的读调用中出现了提不出路径的，即提取器相对厂商实际参数名已经退化。分母是**文件读类**工具的调用数（该类工具的路径/目录参数是厂商契约里的必填项）；可无路径的搜索、列目录类不计入——不带目录的搜索是合法形态，把它们算进分母会让 partial 变成稳态噪声。分母按厂商契约逐家取，两家的读工具集不同，差异写在各自适配器里。unavailable 的三种成因见 path_cause"
+              },
+              "path_cause": {
+                "enum": [
+                  "command-trace",
+                  "no-counts",
+                  "no-path-bearing-calls"
+                ],
+                "description": "path=unavailable 的成因（2026-09-17 新增）。三者处置完全不同：command-trace=该族结构性无信号（read_paths 恒空），没法修，deny 核验只剩措施 b；no-counts=该侧没报这两个计数（旧留痕，或适配器没采集），要修适配器；no-path-bearing-calls=本轮一次「必带路径」的读调用都没有，不是缺陷、只是探测面为零。缺失=该档位不是 unavailable，或那次运行早于本字段"
               },
               "evidence_threshold": {
                 "type": "integer",
@@ -300,7 +339,7 @@
                         "orchestrator-state",
                         "sensitive"
                       ],
-                      "description": "设计 §10.1.1 的分档：peer-artifact/peer-run-output 判作废；own-run-material 是审查员自己的运行时材料，不判作废（运行根是混合树）；orchestrator-state 降告警级；sensitive 走安全告警线"
+                      "description": "设计 §10.1.1 的分档：peer-artifact/peer-run-output 判作废；orchestrator-state 降告警级；sensitive 走安全告警线。own-run-material（审查员自己那一侧的运行时材料，运行根是混合树）**2026-09-17 起整个不进命中集**——读它是编排器要求审查员做的事，记成「碰了禁读集」会让告警档被必经动作填满、不再是告警；枚举里保留该值只为读回旧留痕"
                     }
                   }
                 }
@@ -310,7 +349,7 @@
         },
         "joint_check": {
           "type": "object",
-          "description": "共同阻断这一档的执行状态（设计 §6.6 规则 7 / §12.1）。【已实现 · 2026-09-16】被判作废的一侧不计入独立来源，排除后有效侧可能不足两家，而 findJointRejectedBlockers 恒返回空集——**阴性结论与「没做」不得落成同一个观测**。这是「作废侧重跑一次」就绪前的过渡处置：只保证失效可见，不恢复交叉验证",
+          "description": "共同阻断这一档的执行状态（设计 §6.6 规则 7 / §12.1）。【已实现 · 2026-09-16；2026-09-17 改为运行期只到 pending】被判作废的一侧不计入独立来源，排除后有效侧可能不足两家，而 findJointRejectedBlockers 恒返回空集——**阴性结论与「没做」不得落成同一个观测**。这是「作废侧重跑一次」就绪前的过渡处置：只保证失效可见，不恢复交叉验证。**运行期给不出最终结论**：判据的一半（哪些共同 blocker 被驳回）在裁决件里，而裁决件在运行结束之后才写——run.json 能断言的只有「够不够两家」。最终三态落在 task.json.joint_checks，由 gate --check 写",
           "required": [
             "state",
             "effective_sides"
@@ -319,15 +358,16 @@
           "properties": {
             "state": {
               "enum": [
+                "pending",
                 "checked-none",
                 "checked-found",
                 "skipped-insufficient-sides"
               ],
-              "description": "checked-none=查过、无共同项；checked-found=查过、有共同项；skipped-insufficient-sides=有效侧不足两家、该项未做"
+              "description": "pending=有效侧够两家、等裁决表齐备后由 gate --check 判（2026-09-17 起运行期只会落这个或 skipped-*）；skipped-insufficient-sides=有效侧不足两家、该项未做；checked-none=查过、无共同项，checked-found=查过、有共同项——后两个在 run.json 里只出现于 2026-09-17 之前的留痕（那时运行期把 checked-none 当默认值写，而那一档当时根本还没查），新留痕的这两态看 task.json.joint_checks"
             },
             "effective_sides": {
               "type": "integer",
-              "description": "排除作废侧之后参与判定的审核者数"
+              "description": "参与判定的审核者数：排除**被判作废的侧**与**没有结构化结论的侧**（解析降级/失败）之后还剩几家。分母与 gate 的 jointCheckState 一致——2026-09-17 之前这里只排作废侧，于是同一个数在 run.json 与告警文案里可能不同"
             }
           }
         }

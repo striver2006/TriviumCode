@@ -15,6 +15,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type { CriticId, Stage } from './types.js';
 import { writeAtomic, exists } from './util/fsx.js';
+import { RUN_DIR_FILES } from './run-files.js';
 import { processAlive } from './util/exec.js';
 
 export type RunPhase =
@@ -54,7 +55,7 @@ export interface RunStatus {
   message: string | null;
 }
 
-export const statusPath = (runDir: string): string => path.join(runDir, 'status.json');
+export const statusPath = (runDir: string): string => path.join(runDir, RUN_DIR_FILES.status);
 
 export function newStatus(i: {
   runId: string;

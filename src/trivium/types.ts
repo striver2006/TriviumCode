@@ -999,7 +999,23 @@ export interface RunMeta {
      * 字段在而某侧的键缺失 = 那一侧没扫（失败/超时被跳过）；
      * `hit: false` = 扫过、没命中。
      */
-    peer_leak_via_command?: Partial<Record<CriticId, { hit: boolean; commands: string[] }>>;
+    peer_leak_via_command?: Partial<
+      Record<
+        CriticId,
+        {
+          hit: boolean;
+          commands: string[];
+          /**
+           * 命中逐条带类，与 `peer_leak_via_path.hits` 同构。
+           * `path` 是分类实际用的目标：命令里那个路径 token，静态解析不了时是条目本身。
+           *
+           * **可选是为了读旧留痕**：2026-09-17 之前落盘的 run.json 只有 `commands`，
+           * 分档结果一个字都没进去。缺失 = 那次运行早于本次接线，不是「没有命中明细」。
+           */
+          hits?: { command: string; path: string; category: DenyCategory }[];
+        }
+      >
+    >;
     /**
      * 措施 a（§10.1 路径通道）的命中记录，与上面的措施 b **同构**。
      *
@@ -1010,7 +1026,7 @@ export interface RunMeta {
      *
      * **命中逐条带类**（设计 §10.1.1 的四类分档）：同一侧一轮内可同时命中多类
      * （例如既读了对端审查件、又列了编排器目录），处置取**最重档**，
-     * 而留痕要能复盘每一条各属哪类——只记一个聚合的 category 会把这件事again 塌缩掉。
+     * 而留痕要能复盘每一条各属哪类——只记一个聚合的 category 会把这件事再塌缩一次。
      *
      * 三态与措施 b 同构：字段缺失 = 早于接线；某侧键缺失 = 那一侧没扫；
      * `hit: false` = 扫过、没命中。
@@ -1030,7 +1046,15 @@ export interface RunMeta {
      * 真正的补偿是设计 §12.1 那条「作废侧重跑一次」，尚待实施。
      */
     joint_check?: {
-      state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
+      /**
+       * **运行期只到 `pending` 为止**：这一档的判据要读裁决表，而裁决表在运行结束
+       * 之后才写。run.json 能断言的只有「排除作废与无结构化结论的侧之后够不够两家」。
+       *
+       * 最终三态（含 `checked-found`）由 `gate --check` 判，落在
+       * `task.json.joint_checks`。`checked-none` / `checked-found` 仍在这个联合里，
+       * 只为读回 2026-09-17 之前那批把伪阴性写进 run.json 的留痕。
+       */
+      state: 'pending' | 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
       effective_sides: number;
     };
     /**
@@ -1055,6 +1079,15 @@ export interface RunMeta {
            * 可无路径的搜索/列目录类不计入分母：不带目录的搜索是合法形态。
            */
           path: 'ok' | 'partial' | 'unavailable';
+          /**
+           * `unavailable` 的成因（2026-09-17 新增）。三种成因处置完全不同：
+           * `command-trace` = 该族结构性无信号，没法修，deny 核验只剩措施 b；
+           * `no-counts` = 该侧没报计数（旧留痕或适配器没采集），要修适配器；
+           * `no-path-bearing-calls` = 本轮一次「必带路径」的读调用都没有，不是缺陷。
+           *
+           * 缺失 = 该档位不是 `unavailable`，或那次运行早于本字段。
+           */
+          path_cause?: 'command-trace' | 'no-counts' | 'no-path-bearing-calls';
           evidence_threshold: number;
         }
       >
@@ -1170,11 +1203,22 @@ export interface CriticResult {
    * **分母只算「必然带路径」那一档**：搜索 / 列目录类允许无路径（不带目录的
    * 搜索是合法形态），计进去会让降级档位变成稳态噪声、淹掉真信号。
    *
-   * 两者都可选：`command-trace` 族结构性没有这个概念，旧留痕也没有。
-   * **缺失 ≠ 零**——缺失表示「该侧没报」，`guard` 据此记 `ok` 而不是谎报退化。
+   * ## 三种「没有数」要分得开
+   *
+   * - **字段缺失**：`command-trace` 族结构性没有这个概念，或那份留痕早于本字段；
+   * - **`null`**：该侧**这次**没能算出覆盖率（轨迹文件读不到、解析失败）——
+   *   与「缺失」分开，是为了让「本次采集失败」不被读成「这个族没有这个概念」；
+   * - **`0`**：算出来了，本轮一次「必带路径」的调用都没有。
+   *
+   * **前两者都不是零，也都不是 `ok`**：`guard` 据此记 `unavailable`
+   * （成因分别为 `no-counts`），而不是拿「有效」去填「不知道」。
+   *
+   * > 这一行的上一版注释写的是「`guard` 据此记 `ok` 而不是谎报退化」——
+   * > 那句话在 2026-09-16 判定改成 `unavailable` 之后就不再成立，
+   * > 而它还在这儿指着一个相反的行为。契约注释与实现相反比没有注释更坏。
    */
-  path_bearing_reads?: number;
-  path_bearing_reads_with_path?: number;
+  path_bearing_reads?: number | null;
+  path_bearing_reads_with_path?: number | null;
   /** 轨迹中出现过的写工具/写命令事件，非空即 readonly_breach */
   write_events: string[];
   /**

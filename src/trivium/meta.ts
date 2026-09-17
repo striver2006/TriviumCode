@@ -95,6 +95,29 @@ export interface TaskMeta {
   /** 双方共同 blocker 被驳回等争议项（§6.6 规则 7） */
   disputed: boolean;
   disputes: { run_id: string; finding_ids: string[]; note: string }[];
+  /**
+   * 共同阻断这一档的**最终三态**，由 `gate --check` 落（§6.6 规则 7 / §12.1）。
+   *
+   * **为什么不写回 run.json**：那份是运行事实、只写一次，而这一档要等裁决表齐备
+   * 才判得了——run.json 落的是 `pending`。两者分工是「运行期记它能知道的，
+   * 校验期记它才知道的」，不是同一个字段的两次写。
+   *
+   * 没有这个持久面时，`checked-found`（查过、确有共同项）**永久不可达**：
+   * 它只在 `gate --check` 的内存里存在过，任何事后读留痕的人都看不到它。
+   * 三态于是在留痕面上塌回两态——而这一档的全部意义就是三态。
+   *
+   * 每轮一条，按 `run_id` 覆盖：`--check` 可以反复跑，同一轮的结论以最后一次为准。
+   */
+  joint_checks?: {
+    run_id: string;
+    stage: Stage;
+    rerun_index: number;
+    state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
+    effective_sides: number;
+    /** 有效侧不足时的成因（作废排除 / 无结构化结论 / 两者） */
+    reason?: 'voided' | 'no-structured-review' | 'both';
+    at: string;
+  }[];
 }
 
 const taskPath = (l: ArchiveLayout): string => path.join(topicDir(l), 'task.json');

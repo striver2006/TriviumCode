@@ -1,0 +1,126 @@
+{
+  "agreed": [
+    "AGY_MUST_HAVE_PATH 扩充为四个必填参数读工具（view_file、grep_search、find_by_name、list_dir）并与 zcode 仅保留 Read 的差异化策略立论扎实，参数约束严格，不会对正常轨迹产生假阳性，并彻底补齐了 EV-28 历史退化形态的探测死角。",
+    "gate.ts 与 cli.ts 解决 voidedSides 漏传缺陷，改由 loadRoundReviews 统一从 run 元数据派生，并细化了 jointCheckState 有效侧不足的成因归因（区分作废排除与解析降级），杜绝了纯函数单测全绿而生产不接线的静默失效。",
+    "PROTOCOL_dual_critic_relay.md 补全了 gate --check 在已有人工审批记录时「什么都不做（不推进任何状态）」的第三种去向及 fail-closed 语义，锁住了校验命令撤销人类裁决的破坏路径。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    ".reviews/护栏判定的落地缺口/code/_meta/changes-20260916T223455Z.diff",
+    ".reviews/护栏判定的落地缺口/code/2026-09-17-护栏判定的落地缺口-gemini.md",
+    ".reviews/护栏判定的落地缺口/code/2026-09-17-护栏判定的落地缺口-response-claude.md",
+    "src/trivium/guard.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/review.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/render.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/report.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/deny-category.test.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/guard-capability.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/helpers/fixture.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/guard.ts 第 254-267 行与 src/trivium/freeze.ts 第 324-357 行。req.deny_paths 包含整棵目录条目 run_root 与 .trivium。guard.ts 构造 voidingEntries 与 notedEntries 时直接对目录条目自身调用 dispose(d)：run_root 因相对路径为空串在 classifyDenyPath 中落入 seg.length < 3 兜底分支返回 peer-run-output，被推入 voidingEntries；而 .trivium 归入 notedEntries。在下游 checkPeerLeakViaCommand 执行前缀匹配时：1) 审查员执行读取自身运行材料命令（如 cat .../request.json、worker.log 或 ls 自身目录），在路径通道被 classifyDenyPath 依据 seg[2] 判为 own-run-material 不作废；但在命令通道因命中 voidingEntries 中的 run_root 前缀，触发 cmdVoiding 导致 peerArtifactRead: true 直接作废！2) 审查员执行读取放行配置或 wrapper 命令（如 cat .trivium/config.yaml 或 ./.trivium/bin/trivium），在路径通道经 isOrchestratorReadable 判定为具名放行完全豁免；但在命令通道因命中 notedEntries 中的 .trivium，触发 cmdNoted 导致记录 notedCommands 与 orchestrator-state 泄漏告警！两条核验通道对同一操作给出直接相反的判定。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/guard.ts:254",
+      "problem": "命令通道使用粗粒度目录条目预过滤生成 voidingEntries 与 notedEntries，导致运行根（run_root）整棵误入作废集合、编排器目录（.trivium）整棵误入告警集合。凡命令触及自身运行时材料（request.json、worker.log）均被误判作废，凡命令触及具名放行文件（config.yaml、bin/trivium）均被误报泄漏，两条通道对同一命令形态给出直接相反的结论。",
+      "severity": "blocker",
+      "suggestion": "命令通道禁止直接对粗粒度目录条目预分组。应由 checkPeerLeakViaCommand 扫描提取命令中的具体路径 token，再调用 dispose 执行逐条分类与放行，确保与路径通道逐条判定的逻辑完全一致。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/review.ts 第 859-881 行与 skills/dual-critic/schema/run.v2.json 第 311-335 行。schema 定义 joint_check.state 三态含义为：checked-none（两家均未提出 blocker 或共同提出的未被驳回）、checked-found（发现两家同时提出的 blocker 均被驳回并已报警）、skipped-insufficient-sides（有效侧不足两家未执行）。然而在 review.ts 的 executeRun 时点，审查刚结束、Driver 尚未给出裁决，是否存在被驳回的共同 blocker 尚未发生，代码却将 effective >= 2 硬编码写为 state: 'checked-none'。后续 Driver 驳回共同 blocker 且 gate --check 报出 checked-found 时，gate 命令从不回写 run.json。这导致落盘的 run.json 恒为 checked-none，向机读审计面给出「未发现共同 blocker 被驳回」的虚假陈述，且 checked-found 在留痕中永久不可达。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "code",
+      "location": "src/trivium/review.ts:874",
+      "problem": "run.json 在双审结束时将共同阻断状态 hardcode 为 checked-none，在裁决尚未起草前即向机读留痕谎报「未发现共同 blocker 被驳回」；且后续 gate --check 查出 checked-found 时从不更新 run.json，使 checked-found 状态在留痕中永久缺失，造成确定性审计失真。",
+      "severity": "blocker",
+      "suggestion": "运行期 run.json 仅如实记录有效侧数量与共同阻断执行资格（如 effective_sides），不得预支属于裁决后校验阶段的 checked-none/checked-found 结论；共同阻断的三态核验结果应收敛至裁决校验与任务状态更新链路中。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/guard.ts 第 231-240 行与 src/trivium/freeze.ts 第 346-348 行。在 freeze.ts 中，request.json、worker.log 等已知元文件及审查员自身目录（seg[2] === ctx.critic）被分类为 own-run-material。因为 isVoidingCategory('own-run-material') 为 false，guard.ts 执行 else 分支将其推入 notedPaths 与 notedCategories。随后在 review.ts:790 中，peerLeakOf 检查发现 notedCategories 非空，设置 hit: true 并将 own-run-material 渲染为 front-matter 中的 peer_leak 告警。这直接违反了设计 §10.1.1、第 1656 行与第 2076 行的保证：「②′ 己方运行时材料：不判作废；不计入泄漏；匹配时豁免」。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/guard.ts:236",
+      "problem": "路径通道将 classifyDenyPath 判为 own-run-material（设计 §10.1.1 的 ②′ 类）的自身运行材料推入 notedPaths 与 notedCategories，导致审查员读取自身沙箱或编排器日志被当做「对端泄漏告警」渲染至文档头部并记入机读留痕。",
+      "severity": "major",
+      "suggestion": "在 guard.ts 中将 own-run-material 视同具名放行项处理（从命中集合剔除），确保读取自身正常运行时材料不被记入 notedCategories 与 notedPaths。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/guard.ts 第 274-280 行：notedCommands = cmdNoted.hits; if (notedCommands.length > 0) { for (const d of notedEntries) { const x = dispose(d); if (x && !notedCategories.includes(x.category)) notedCategories.push(x.category); } }。当审查员运行的命令仅命中某个特定告警项（如 cat .env，仅属 sensitive）时，notedCommands 非空，代码遍历整个 notedEntries 列表，将包含 .trivium（orchestrator-state）在内的所有告警类别一股脑推入 notedCategories，导致留痕虚假记录审查员触碰了编排器状态。",
+      "id": "AGY-04",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/guard.ts:275",
+      "problem": "命令通道命中告警档时，代码无条件将 notedEntries 中全部条目的分类推入 notedCategories，导致审查员仅提及敏感凭据时被虚假指控为同时读取了编排器状态目录。",
+      "severity": "major",
+      "suggestion": "在记录命令通道告警类别时，必须根据触发命中的具体条目（或提取出的 token）反查其所属分类，严禁将整个 notedEntries 的类别无条件推入。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/review.ts 第 1077-1084 行与第 1101-1112 行。peer_leak_via_path 的 hit 为 typedHits.length > 0 并包含分类；而 peer_leak_via_command 的 hit 却写死为 peerCommandHits.length > 0，commands 仅录入作废类命令。当 command-trace 族审查员运行提及 .env 的命令时，notedCommands 虽被采集，但在写 run.json 时被彻底抛弃，落盘为 hit: false、commands: []。这不仅违背了 CODEX-03 裁决承诺的运行期出口，而且导致 gate.ts:517 中 viaCmd?.hit === true 只能依赖「命令字段不含告警命令」这一脆弱且未在 Schema 中声明的隐式巧合运作。",
+      "id": "AGY-05",
+      "kind": "contract",
+      "layer": "code",
+      "location": "src/trivium/review.ts:1081",
+      "problem": "meta.guard.peer_leak_via_command 仅落盘作废类命令命中 peerCommandHits，丢失告警类命令命中 notedCommands，导致命令通道的凭据触碰等告警事实在机读元数据中彻底消失，且与 peer_leak_via_path 存在口径分裂。",
+      "severity": "major",
+      "suggestion": "统一两条通道在 run.json 中的留痕结构，将命令通道的告警命中及分类同样完整保存至元数据，消除两通道字段语义不一致。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/report.ts 第 280-292 行。report.ts 遍历 verification_degraded 时仅检查了 readonly === 'unavailable' 与 path === 'unavailable'。而在 guard.ts:378 与 render.ts:240 中已正式引入 path: 'partial' 档位（表征提取器退化）。当退化发生时，Markdown 前言已能警告，但 trivium report 的复盘汇总却对此完全静默，破坏了留痕五面的一致性。",
+      "id": "AGY-06",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/report.ts:289",
+      "problem": "report.ts 在读取 verification_degraded 时漏掉了 path: 'partial' 档位，导致提取器退化信号在复盘报告中被静默吞没。",
+      "severity": "minor",
+      "suggestion": "在 report.ts 中补充对 d.path === 'partial' 档位的判断与展示，保持复盘面与渲染面的告警对齐。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/adapters/stub.ts 第 260 行与 test/integration/fault-injection.test.ts 第 939 行。stub 在 peer_leak 模式下拼接 ${req.project_root}/${p}。当 p 为绝对路径 run_root 时，产生了类似 /proj//var/.../root-runs 的路径，经 normalizeAbs 解析后变成 /proj/var/.../root-runs，与 denyAbs 中的 /var/.../root-runs 永远无法匹配，导致测试实际上从未真正覆盖针对真实 run_root 的读取判定。",
+      "id": "AGY-07",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/integration/fault-injection.test.ts:935",
+      "problem": "集成测试桩适配器在 peer_leak 模式下对绝对路径的拼接存在错误，导致分档测试从未真正覆盖对真实 run_root 的读取核验。",
+      "severity": "minor",
+      "suggestion": "修正 stub.ts 中 peer_leak 路径构造逻辑，当 p 为绝对路径时直接使用，避免前缀错误拼接导致测试脱靶。"
+    }
+  ],
+  "not_covered": [
+    "未在具有真实厂商凭据的真实 macOS 宿主环境中拉起真实 Agent CLI 子进程执行全量端到端审查。",
+    "未测试高并发多任务场景下跨进程状态锁与 status.json 写入的时序竞争。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本次修复解决了审批前置判断与分档派生等多处关键接线问题，但新引入的命令通道预过滤机制存在严重判定穿透：\n由于对目录条目粗粒度判类，命令通道将 run_root 与 .trivium 整棵归入作废/告警集合，导致审查员执行读取自身运行材料（request.json 等）在命令通道被误判作废，触碰放行配置（config.yaml 等）被误判泄漏，与路径通道直接对立；\n同时 run.json 在双审结束时即向 joint_check 预支 checked-none，后续发现共同 blocker 被驳回也不回写，向机读审计面给出虚假陈述；且自身运行材料（own-run-material）在路径通道仍被作为泄漏告警推入元数据。\n鉴于存在 2 条阻断与多条重要缺陷，整体判定为 request-changes。",
+  "verdict": "request-changes"
+}

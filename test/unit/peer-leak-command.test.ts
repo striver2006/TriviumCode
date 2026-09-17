@@ -282,8 +282,36 @@ test('deny 条目本身带 /private 的绝对路径，命令照原样写也要�
 /* ── 空集与返回形态 ───────────────────────────────────────────────── */
 
 test('没有命令、或没有禁读条目时，恒不命中且不抛', () => {
-  assert.deepEqual(checkPeerLeakViaCommand([], DENY, ROOT), { leaked: false, hits: [] });
-  assert.deepEqual(checkPeerLeakViaCommand(['cat x'], [], ROOT), { leaked: false, hits: [] });
+  assert.deepEqual(checkPeerLeakViaCommand([], DENY, ROOT), {
+    leaked: false,
+    hits: [],
+    matches: [],
+  });
+  assert.deepEqual(checkPeerLeakViaCommand(['cat x'], [], ROOT), {
+    leaked: false,
+    hits: [],
+    matches: [],
+  });
+});
+
+test('命中要带上**是哪个条目、命令里那个路径归一到哪**', () => {
+  /*
+   * r2 代码双审的阻断一：只返回命令原文的话，调用方判不了这条命令碰的是哪一档，
+   * 只能拿条目本身分类——而条目是整棵树，与路径通道逐条命中分类**不是同一个谓词**。
+   *
+   * 这里咬住的正是那份信息：`entry` 说撞的是哪棵树，`resolved` 说碰的是哪个文件。
+   * 分档用后者：同一棵运行根下，己方材料与对端输出分属两档。
+   */
+  const cmd = 'git show HEAD:.reviews/t/code/2026-01-01-t-gemini.md';
+  const { matches } = checkPeerLeakViaCommand([cmd, 'ls'], DENY, ROOT);
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]!.command, cmd);
+  assert.equal(matches[0]!.hits.length, 1);
+  assert.equal(
+    matches[0]!.hits[0]!.resolved,
+    `${ROOT}/.reviews/t/code/2026-01-01-t-gemini.md`,
+    'resolved 要是命令里那个路径本身，不是条目',
+  );
 });
 
 test('返回的是**命令原文**而不是命中的路径', () => {

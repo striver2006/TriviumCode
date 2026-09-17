@@ -13,6 +13,7 @@ import {
 } from '../../src/trivium/brief.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import type { Snapshot } from '../../src/trivium/freeze.js';
+import { expandHome } from '../../src/trivium/util/fsx.js';
 
 const LENSES: Lenses = {
   gemini: { plan: '- 需求覆盖是否有遗漏\n- 不可逆决策是否写明' },
@@ -165,6 +166,40 @@ test('禁读清单按处置分两节：作废档与告警档各自说清后果',
     !voidingSection.includes('state.json'),
     '状态文件不得出现在作废档——那正是四次误伤的来源',
   );
+});
+
+test('运行根这棵混合树要点明「你自己那一份不算命中」', () => {
+  /*
+   * BRIEF 的清单是按**条目**分档的，而判定是按**命中**分档的——运行根整棵条目
+   * 落在作废档，可读它下面自己那一份并不作废（设计 §10.1.1 的 ②′）。
+   *
+   * 不补这段说明，文案就比机器更严：审查员会不敢读编排器**要求它读**的请求包。
+   * 这与 2026-09-16 那次错位同族，只是方向反了过来——那次是文案说作废、机器不作废。
+   */
+  const runRoot = expandHome(defaultConfig().runtime.run_root);
+  const b = renderBrief(
+    input({ snapshot: { ...SNAP, denyPaths: ['.reviews/x/plan/2026-01-01-x-glm.md', runRoot] } }),
+  );
+  const voidingIdx = b.indexOf('读了会让本次审查作废');
+  const notedIdx = b.indexOf('不要读，但读了不会让审查作废');
+  const voidingSection = b.slice(voidingIdx, notedIdx);
+
+  assert.match(voidingSection, /混合树/, '运行根列进作废档时必须同时点明己方那一份的豁免');
+  assert.ok(
+    voidingSection.includes('gemini/'),
+    '要指名道姓地告诉这一侧：属于你的是哪个子目录',
+  );
+  assert.ok(
+    voidingSection.includes('request.json'),
+    '运行目录那一层的编排器运行时文件也要点名——它们同样不算命中',
+  );
+});
+
+test('禁读集里没有运行根时，不凭空造一段混合树说明', () => {
+  const b = renderBrief(
+    input({ snapshot: { ...SNAP, denyPaths: ['.reviews/x/plan/2026-01-01-x-glm.md'] } }),
+  );
+  assert.doesNotMatch(b, /混合树/, '说明只在真有那棵树时出现，否则是凭空多出的噪音');
 });
 
 test('具名放行的条目根本不进禁读清单', () => {

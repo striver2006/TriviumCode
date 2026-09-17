@@ -428,13 +428,18 @@ export const zcodeAdapter: CriticAdapter = {
       model_route: home.route,
       tool_calls: toolCalls,
       read_paths: readPathList,
-      // 覆盖率两项：读不到 rollout 时整体省略，让判定层记「未知」而不是谎报有效
-      ...(coverage
-        ? {
-            path_bearing_reads: coverage.total,
-            path_bearing_reads_with_path: coverage.withPath,
-          }
-        : {}),
+      /*
+       * 覆盖率两项**恒写**（r2 代码双审 GLM-08 ≡ CODEX-10）。
+       *
+       * 上一版在读不到 rollout 时整体省略这两个键，判定层据此记 `unavailable`——
+       * 结论是对的，可**成因丢了**：字段缺失在契约里的含义是「该族没有这个概念，
+       * 或这份留痕早于本字段」，而这里的真相是「本族有这个概念、这次没采到」。
+       * 两者的处置完全不同：前者没法修，后者是该查轨迹文件为什么读不到。
+       *
+       * 写 `null` 把这件事说清楚，判定层仍记 `unavailable`（成因 `no-counts`）。
+       */
+      path_bearing_reads: coverage ? coverage.total : null,
+      path_bearing_reads_with_path: coverage ? coverage.withPath : null,
       write_events: writeEvents,
       /*
        * zcode 侧**恒为空数组**，而这是能说明理由的空：只读组合里 `Bash` 被整个禁掉

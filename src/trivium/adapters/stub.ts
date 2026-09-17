@@ -20,6 +20,7 @@
  * 生产路径若检测到这个变量会打**醒目告警**——它能伪造「审查通过」，
  * 绝不能在真实审查里生效而无人知晓。
  */
+import path from 'node:path';
 import { agentById } from '../agents/registry.js';
 import { CRITICS, type CriticId, type CriticRequest, type CriticResult } from '../types.js';
 import {
@@ -47,8 +48,20 @@ export type StubMode =
   | 'no_project_reads'
   /** 向项目写文件（对应「审查中写入业务文件」） */
   | 'write_breach'
-  /** 读取了禁读清单里的文件（对应「读到对方产出」）——措施 a 的通道 */
+  /**
+   * 读取了禁读清单里的文件（对应「读到对方产出」）——措施 a 的通道。
+   *
+   * `note` 为条目筛选子串（缺省读全部条目，筛空则该侧失败）。
+   */
   | 'peer_leak'
+  /**
+   * 读运行根这棵**混合树**下的具体文件——`note: 'own'`（缺省）读本侧那一份与
+   * 编排器的运行时文件，`note: 'peer'` 读对端那一份。
+   *
+   * 两者撞的是**同一个** deny 条目（整棵运行根），处置却分属「不算命中」与
+   * 「判作废」两档。`peer_leak` 的条目筛选分不开它们，所以单列一个形态。
+   */
+  | 'run_material_leak'
   /**
    * **只**经命令文本提到禁读条目、文件系统上没有对应读取
    * （`git show HEAD:<归档内文件>`）——措施 b 的通道（§10.1 / EV-01）。
@@ -252,14 +265,76 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
             ...baseResult(critic, req, spec),
             write_events: [`write_to_file(${req.project_root}/src/injected.ts)`],
           };
-        case 'peer_leak':
+        case 'peer_leak': {
+          /*
+           * **`note` 给了就只读拼写里含该子串的条目**，缺省读全部。
+           *
+           * 修好下面那个路径拼接之后，「读全部」意味着**必定**读到运行根——
+           * 而运行根整棵是对端输出那一档，于是任何用 `peer_leak` 的用例都作废，
+           * 分档里其余三类再也测不到。这不是判定错了（读运行根该作废），
+           * 是夹具把五类混成了一次注入：要测「读凭据不作废」，
+           * 注入就得只做「读凭据」这一件事（r2 CODEX-02 的落地说明）。
+           *
+           * 筛空即失败，不静默放过：筛选条件写错时，这条用例会读到 0 个禁读条目、
+           * 然后以「没命中」为由绿着通过——那正是本主题一路在修的形态。
+           */
+          const targets = spec.note
+            ? req.deny_paths.filter((p) => p.includes(spec.note!))
+            : req.deny_paths;
+          if (targets.length === 0) {
+            return failedResult(critic, {
+              status: 'failed',
+              reason: `桩的 peer_leak 筛选 note=${JSON.stringify(spec.note)} 没匹配到任何禁读条目`,
+              exitCode: 1,
+            });
+          }
           return {
             ...baseResult(critic, req, spec),
             read_paths: [
               ...baseResult(critic, req, spec).read_paths,
-              ...req.deny_paths.map((p) => `${req.project_root}/${p}`),
+              /*
+               * **绝对路径直接用，只有相对路径才拼前缀**（r2 AGY-07 ≡ CODEX-02）。
+               *
+               * 禁读集里混着两种形态：归档内的条目是项目相对路径，而运行根是
+               * **绝对路径**。初版一律拼 `${project_root}/${p}`，于是运行根被拼成
+               * `/proj//var/…`、归一化成 `/proj/var/…`——**与真实运行根永远匹配不上**。
+               *
+               * 后果不是「少测一条」，而是**整条端到端用例是空的**：
+               * 它声称覆盖「读到禁读清单内的文件」，而其中最要紧的那棵树（运行根）
+               * 的命中从未发生过。上一轮我拿这条用例当「分档真正生效」的证据写进裁决件，
+               * 而它证明不了任何事。
+               */
+              ...targets.map((p) => (path.isAbsolute(p) ? p : path.join(req.project_root, p))),
             ],
           };
+        }
+        case 'run_material_leak': {
+          /*
+           * 运行根这棵**混合树**的两侧（设计 §10.1.1 的 ②′ 与 ②）。
+           *
+           * 与 `peer_leak` 分列的理由同前：这两条路径都在**同一个** deny 条目
+           * （整棵运行根）之下，靠筛条目分不开——要分开只能给出具体的叶子路径。
+           * 而这正是分档的要害所在：同一棵树、两个子目录、两种处置。
+           *
+           * `out_dir` 是 `<运行根>/<项目槽>/<runId>/<本侧>/out`（`review.ts` 的
+           * `path.join(runDirBase, critic, 'out')`），所以运行目录那一层——
+           * 编排器的 `request.json` 一类写在那儿——要**退两级**。
+           * 起草时只退了一级，于是「对端」路径落进了自己那棵子树、被己方材料放行，
+           * 用例当场红：夹具把两个子树指到了同一处，而这两条用例的全部意义
+           * 就是它们分属不同子树。
+           */
+          const runDir = path.dirname(path.dirname(req.out_dir));
+          const peer = CRITICS.find((c) => c !== critic) ?? critic;
+          const which = spec.note ?? 'own';
+          const extra =
+            which === 'peer'
+              ? [path.join(runDir, peer, 'out', 'result.json')]
+              : [path.join(req.out_dir, 'result.json'), path.join(runDir, 'request.json')];
+          return {
+            ...baseResult(critic, req, spec),
+            read_paths: [...baseResult(critic, req, spec).read_paths, ...extra],
+          };
+        }
         case 'peer_leak_via_command':
           /*
            * 措施 b 的故障注入（§10.1 / EV-01）：**只**经命令通道泄漏。
@@ -271,6 +346,22 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
            * 走 `git show HEAD:<path>` 形态（F-3）：这条正是措施 a 看不见的那种——
            * 经 git 对象库取值不产生文件系统读取，`read_paths` 里什么都没有。
            */
+          /*
+           * `note: 'own-run'` 时改发一条**提到己方运行材料具体路径**的命令。
+           *
+           * 这条形态是命令通道与路径通道「同一个谓词」的检验点：分类喂的若是
+           * **条目**（整棵运行根），它必然落到对端输出那一档、该侧作废；
+           * 喂的是**命令里那个路径**，才认得出它属己方材料。
+           * 两条通道对同一次泄漏给出相反结论，正是 r2 阻断一的形态。
+           */
+          if (spec.note === 'own-run') {
+            return {
+              ...baseResult(critic, req, spec),
+              tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 1 },
+              read_paths: [],
+              command_texts: [`cat ${path.join(req.out_dir, 'result.json')}`],
+            };
+          }
           return {
             ...baseResult(critic, req, spec),
             tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 1 },

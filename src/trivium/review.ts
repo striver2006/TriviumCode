@@ -83,6 +83,54 @@ const TASK_GOAL_MAX = 200;
  *     又列了编排器目录），处置按最重档走，而 front-matter 的 `paths` 仍逐条带类；
  *   - **作废与否**：只有对端产物那两类会让该侧结论作废。
  */
+/**
+ * 共同阻断这一档的**运行期事实**（设计 §6.6 规则 7 / §12.1）。
+ *
+ * ## 运行期只到 `pending`
+ *
+ * 这一档的判据是「两侧同时提出的 blocker 被 Driver 驳回」——而裁决表要到运行
+ * 结束之后才写。运行期知道的只有一件事：排除作废侧与无结构化结论的侧之后，
+ * **还够不够两家**。
+ *
+ * 上一版在够两家时落 `checked-none`（「查过、没有共同项」），那是一句运行期给不出
+ * 的断言：这一档当时根本还没查。三态里最要紧的那一态被一句伪阴性顶掉了——
+ * 正是本主题一路在修的形态，而这次它出现在**本主题自己的交付物**里。
+ *
+ * 最终三态由 `gate --check` 判、落 `task.json.joint_checks`。
+ *
+ * ## 为什么独立成函数
+ *
+ * `run.json` 与单侧审查文档的 front-matter 都要用它。上一版只有前者，
+ * 补 front-matter 时若各算各的，两处的分母会漂——而这个数正是「还剩几层防线」，
+ * 两份留痕给出不同的数，对账时无从判断哪个算数。
+ */
+function jointCheckRunState(
+  sides: readonly CriticId[],
+  verdict: { sides: Partial<Record<CriticId, SideVerdict>> },
+  reviews: Partial<Record<CriticId, Review | null>>,
+): { state: 'pending' | 'skipped-insufficient-sides'; effective_sides: number } {
+  const effective = sides.filter(
+    (c) =>
+      verdict.sides[c] !== undefined &&
+      !verdict.sides[c]!.peerArtifactRead &&
+      /*
+       * 分母与 `jointCheckState` **对齐**：那边数的是「未作废且有结构化结论」的侧，
+       * 判据是 `reviews[c]` 非空——`gate` 拿到的正是这张表。
+       *
+       * 上一版这里只排作废，于是同一个 `effective_sides` 在 run.json 与告警文案里
+       * 可以是两个数。起草这次对齐时我先用了 `results[c].review_json`：
+       * 那个字段在运行期恒为 null（`CriticResult` 的注释就写着「由 parse 填充」，
+       * 而填的是 `reviews`，不是回写结果对象），于是两侧全被排除、
+       * 这一档恒记「有效侧不足」——把要修的三态塌缩换了个方向再犯一次。
+       * 是新补的那条端到端用例当场逮住的。
+       */
+      reviews[c] != null,
+  ).length;
+  return effective < 2
+    ? { state: 'skipped-insufficient-sides', effective_sides: effective }
+    : { state: 'pending', effective_sides: effective };
+}
+
 function peerLeakOf(side: SideVerdict): NonNullable<RenderInput['peerLeak']> | undefined {
   const viaPath = side.peerHits.length > 0;
   const viaCmd = side.peerCommandHits.length > 0;
@@ -107,26 +155,46 @@ function peerLeakOf(side: SideVerdict): NonNullable<RenderInput['peerLeak']> | u
     }
   };
   const voiding = viaPath || viaCmd;
+  /*
+   * 两条通道的命中**都**进 pool（r2 代码双审 AGY-04）。
+   *
+   * 上一版只取 `typedHits`（路径通道），命令通道单独命中时 pool 为空、
+   * 回落到写死的 `peer-artifact`——而命令通道现在也逐条带类，
+   * 它命中的可能是第②类（运行根下的对端输出）。回落等于把第②类报成第①类，
+   * 与「类别取实际命中里最重的那一个」这条刚立的规矩直接冲突。
+   */
   const pool: DenyCategory[] = voiding
-    ? side.typedHits.filter((h) => VOIDING_DENY_CATEGORIES.includes(h.category)).map((h) => h.category)
+    ? [...side.typedHits, ...side.typedCommandHits]
+        .filter((h) => VOIDING_DENY_CATEGORIES.includes(h.category))
+        .map((h) => h.category)
     : [...side.notedCategories];
   /*
-   * 只有命令通道命中时 `typedHits` 可能为空（那一档没有路径明细），
-   * 此时回落到「对端产物」——命令通道命中的作废类只可能是这一族。
+   * 兜底只在「命中了但一条明细都没有」时触发——接线正确时不可达。
+   * 保留它是为了不让渲染层因为空数组抛异常，不是为了填一个像样的值。
    */
   const category: DenyCategory =
     pool.length > 0
       ? pool.reduce((a, b) => (severity(b) > severity(a) ? b : a))
       : (voiding ? 'peer-artifact' : 'orchestrator-state');
 
+  /*
+   * **`via` 按实际渲染的那一档取**（r2 代码双审 GLM-06 ≡ CODEX-06）。
+   *
+   * 上一版只看作废类的两个数组，于是告警档（只记一笔那一档）恒报 `via: 'path'`——
+   * 哪怕命中完全来自命令通道。留痕里「经哪条通道漏的」是排查的起点，
+   * 而这个字段在告警档上一直是个常量。
+   */
+  const paths = voiding ? side.peerHits : side.notedPaths;
+  const commands = voiding ? side.peerCommandHits : side.notedCommands;
+
   return {
     hit: true,
-    via: viaPath && viaCmd ? 'both' : viaCmd ? 'command' : 'path',
+    via: paths.length > 0 && commands.length > 0 ? 'both' : commands.length > 0 ? 'command' : 'path',
     category,
     voiding,
-    paths: voiding ? side.peerHits : side.notedPaths,
+    paths,
     // 命令通道的命中原文——作废与告警两档都要能复盘「到底碰了什么」
-    commands: voiding ? side.peerCommandHits : side.notedCommands,
+    commands,
   };
 }
 
@@ -967,6 +1035,11 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
    * 把它改成 `findings: []` 就能让空裁决表过闸，且提交时无人核对。
    */
   const protectedMeta: { path: string; sha256: string }[] = [];
+  /*
+   * 共同阻断这一档的**运行期事实**，渲染与 `run.json` 共用同一份计算
+   * （分成两处算过一次，两边的分母就漂了——见下面落盘处的说明）。
+   */
+  const jointCheckRun = jointCheckRunState(sides, verdict, reviews);
   for (const c of sides) {
     const hints = retryHints[c];
     if (hints && hints.length > 0) {
@@ -1015,7 +1088,20 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
        */
       ...(side ? { peerLeak: peerLeakOf(side) } : {}),
       consultedUnverified: side?.consultedUnverified ?? true,
-      ...(side ? { verification: { readonly: side.verification.readonly, path: side.verification.path } } : {}),
+      ...(side
+        ? {
+            verification: {
+              readonly: side.verification.readonly,
+              path: side.verification.path,
+              ...(side.verification.pathCause ? { pathCause: side.verification.pathCause } : {}),
+            },
+          }
+        : {}),
+      /*
+       * 本轮共同阻断这一档做不做得成——上一轮承诺补进 front-matter、没补。
+       * 裁决者读的是这份单侧文档，「有效侧不足、这一档没做」直接决定他还剩几层防线。
+       */
+      jointCheck: jointCheckRun,
       heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model),
     });
 
@@ -1078,8 +1164,20 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       sides
         .filter((c) => verdict.sides[c] !== undefined)
         .map((c) => [c, {
-          hit: (verdict.sides[c]!.peerCommandHits.length) > 0,
-          commands: verdict.sides[c]!.peerCommandHits,
+          /*
+           * `hit` 的语义是「命令通道**扫到了东西**」，不是「这一侧作废了」——
+           * 与路径通道同口径（那边是 r1 修的同一个毛病）。挂在只含作废类的
+           * `peerCommandHits` 上，会让告警档的命令命中落盘成 `hit:false` + 非空明细。
+           */
+          hit: verdict.sides[c]!.typedCommandHits.length > 0,
+          commands: [
+            ...new Set(verdict.sides[c]!.typedCommandHits.map((h) => h.command)),
+          ],
+          /*
+           * **命中逐条带类**，与 `peer_leak_via_path.hits` 同构（r2 AGY-04 ≡ GLM-05）。
+           * `path` 是分类实际用的目标：命令里那个路径 token，静态解析不了时是条目本身。
+           */
+          hits: verdict.sides[c]!.typedCommandHits,
         }]),
     ),
     /*
@@ -1135,20 +1233,21 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
      * 「够/不够」，`checked-found` 与 `checked-none` 的区分由 gate 的告警补充——
      * **这个边界要写明，否则下一个人会以为 run.json 里的 state 是最终结论**。
      */
-    joint_check: (() => {
-      const effective = sides.filter(
-        (c) => verdict.sides[c] !== undefined && !verdict.sides[c]!.peerArtifactRead,
-      ).length;
-      return effective < 2
-        ? { state: 'skipped-insufficient-sides' as const, effective_sides: effective }
-        : { state: 'checked-none' as const, effective_sides: effective };
-    })(),
+    joint_check: jointCheckRun,
     verification_degraded: Object.fromEntries(
       sides
         .filter((c) => verdict.sides[c] !== undefined)
         .map((c) => [c, {
           readonly: verdict.sides[c]!.verification.readonly,
           path: verdict.sides[c]!.verification.path,
+          /*
+           * `unavailable` 的成因（r2 GLM-03 ≡ CODEX-07）：三种成因的处置完全不同
+           * ——结构性无信号（没法修）、该侧没报计数（修适配器）、本轮零必带路径调用
+           * （不是缺陷）。压成一个值，读留痕的人无从判断该去修什么。
+           */
+          ...(verdict.sides[c]!.verification.pathCause
+            ? { path_cause: verdict.sides[c]!.verification.pathCause }
+            : {}),
           evidence_threshold: verdict.sides[c]!.verification.evidenceThreshold,
         }]),
     ),

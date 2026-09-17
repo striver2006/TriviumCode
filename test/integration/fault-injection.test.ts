@@ -216,23 +216,31 @@ test('审查中写项目文件 → readonly_breach', { skip: bundleMissing && bu
 });
 
 /*
- * ── 分档后的两条端到端用例（设计 §10.1.1）──
+ * ── 分档后的端到端用例（设计 §10.1.1）──
  *
- * 这条用例原先只有一个断言：「读到禁读清单内任何文件 → 作废」。
+ * 这组用例原先只有一个断言：「读到禁读清单内任何文件 → 作废」。
  * 而夹具的禁读集里只有 `.env`（凭据类），于是它实际测的是
  * **「读凭据文件 → 作废」**——那正是本批要改掉的口径：
  * 凭据文件不含任何审查意见，读它不损害背靠背独立性。
  *
- * 拆成两条，各测一档。两条都是**端到端**的（经真实 CLI 与落盘的 run.json），
+ * 拆成四条，各测一档。四条都是**端到端**的（经真实 CLI 与落盘的 run.json），
  * 不是纯函数——r1 代码双审的阻断一正是「纯函数测对了、接线处错了」，
  * 而纯函数测试天然看不见接线。
+ *
+ * **每条注入都只做一件事**（`peer_leak` 的条目筛选 / `run_material_leak` 的两侧）。
+ * 上一版让桩「读禁读集里的全部条目」，而修好路径拼接之后那必定包含整棵运行根
+ * ——最重的那一档——于是四档一律作废，其余三档再也测不到。
+ * 一次注入混多类，等于让最重的那一档吃掉全部信息。
  */
 
 test(
   '读到凭据文件 → 记一笔，但**不判作废**（分档：安全告警线）',
   { skip: bundleMissing && bundleSkipReason },
   async () => {
-    const { meta } = await runInjected({ gemini: { mode: 'peer_leak' }, glm: { mode: 'ok' } });
+    const { meta } = await runInjected({
+      gemini: { mode: 'peer_leak', note: '.env' },
+      glm: { mode: 'ok' },
+    });
     assert.ok(meta.deny_paths.length > 0, '夹具里的 .env 命中 sensitive_globs，禁读清单不该是空的');
 
     assert.equal(
@@ -259,14 +267,15 @@ test(
   async () => {
     /*
      * 往夹具里放一份**对端**的历史审查件，它才是「读了就该作废」的那一类。
-     * 桩的 `peer_leak` 模式读禁读集里的全部条目，于是这一份会被读到。
+     * 注入按文件名后缀筛，于是**只有**这一份会被读到——不筛的话，
+     * 运行根（同属作废档）也会命中，`peer_artifact_read` 为真就不再能归因到这一份。
      *
      * 这份文件必须在 `--start` **之前**就位：禁读集在冻结送审包时枚举一次，
      * 之后不再变。放晚了它不会进 deny_paths，用例会以「命中里没有对端产物」失败——
      * 那种失败看起来像判定坏了，其实是夹具没摆好，排查起来很费时间。
      */
     const { meta } = await runInjected(
-      { gemini: { mode: 'peer_leak' }, glm: { mode: 'ok' } },
+      { gemini: { mode: 'peer_leak', note: '-glm.md' }, glm: { mode: 'ok' } },
       [],
       [],
       async (root) => {
@@ -299,6 +308,60 @@ test(
     assert.ok(
       viaPath?.hits.some((h) => h.category === 'peer-artifact'),
       `命中里必须有对端产物那一类，实得：${JSON.stringify(viaPath?.hits)}`,
+    );
+  },
+);
+
+/*
+ * ── 运行根这棵混合树的两侧（设计 §10.1.1 的 ②′ 与 ②）──
+ *
+ * 这两条是**同一个 deny 条目**（整棵运行根）下的两个子树，处置相反。
+ * 它们咬住的正是 r1 与 r2 两轮阻断反复复发的那个点：分档要在**命中**上做，
+ * 不是在**条目**上做。只要哪天分类退回按条目判，第一条当场红——
+ * 整棵运行根按根自己分类必然落到「对端输出」。
+ */
+
+test(
+  '读自己那一侧的运行材料 → 完全不算命中（分档：②′ 己方材料）',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    const { meta } = await runInjected({
+      gemini: { mode: 'run_material_leak', note: 'own' },
+      glm: { mode: 'ok' },
+    });
+    assert.equal(
+      meta.guard.peer_artifact_read,
+      false,
+      '读自己那份产出与编排器的 request 包是编排器要求它做的事，判作废是纯误伤',
+    );
+    const viaPath = meta.guard.peer_leak_via_path?.gemini;
+    assert.equal(
+      viaPath?.hit,
+      false,
+      `己方材料连「记一笔」都不该有——必经动作填满告警档，告警就不再是告警。实得：${
+        JSON.stringify(viaPath?.hits)
+      }`,
+    );
+  },
+);
+
+test(
+  '读对端那一侧的运行输出 → 判作废（分档：② 对端输出）',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    const { meta } = await runInjected({
+      gemini: { mode: 'run_material_leak', note: 'peer' },
+      glm: { mode: 'ok' },
+    });
+    assert.equal(
+      meta.guard.peer_artifact_read,
+      true,
+      '对方本轮的原始输出实时写在运行目录里，读到它就是背靠背失效',
+    );
+    const viaPath = meta.guard.peer_leak_via_path?.gemini;
+    assert.ok(
+      viaPath?.hits.some((h) => h.category === 'peer-run-output'),
+      `命中要落在对端运行输出那一类，实得：${JSON.stringify(viaPath?.hits)}`,
     );
   },
 );
@@ -340,6 +403,47 @@ test(
     assert.equal(
       meta.guard.peer_artifact_read, true,
       '与路径命中**同等处置**：措施 b 单独命中也要把该侧判作废',
+    );
+    /*
+     * 命中逐条带类，与路径通道同构（r2 AGY-04 ≡ GLM-05）。
+     * 补这个之前，命令通道只落命令原文：分档结果一个字都不进留痕，
+     * 而命令通道是 `command-trace` 一族**唯一**的通道。
+     */
+    assert.ok(
+      (viaCmd?.gemini?.hits?.length ?? 0) > 0,
+      `命令通道的命中也要带类，实得：${JSON.stringify(viaCmd?.gemini?.hits)}`,
+    );
+  },
+);
+
+test(
+  '命令里提到的是**自己那一侧**的运行材料 → 不作废（两条通道同一个谓词）',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    /*
+     * 这条守的是 r2 阻断一：命令通道的分类要喂**命令里那个路径**，
+     * 不是被撞上的那个条目。
+     *
+     * 命令提到的路径在整棵运行根（一个 deny 条目）之下，而它属己方材料。
+     * 按条目分类的话，运行根整棵是「对端输出」——该侧当场作废，
+     * 且与路径通道对同一份材料的结论正好相反。
+     */
+    const { meta } = await runInjected({
+      gemini: { mode: 'peer_leak_via_command', note: 'own-run' },
+      glm: { mode: 'ok' },
+    });
+    const viaCmd = meta.guard.peer_leak_via_command;
+    assert.equal(
+      meta.guard.peer_artifact_read,
+      false,
+      '审查员读自己那份产出是编排器要求它做的事，经命令通道碰到同样不该作废',
+    );
+    assert.equal(
+      viaCmd?.gemini?.hit,
+      false,
+      `己方材料不进命中集，命令通道与路径通道同口径。实得：${
+        JSON.stringify(viaCmd?.gemini?.hits)
+      }`,
     );
   },
 );
