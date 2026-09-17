@@ -1,0 +1,117 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "四焦点逐一实测核过：焦点四干净落地——probeArgs 展开的 READONLY_INVARIANTS 与 HEAD 版内联字面量逐元素同序同值，readonly_flags 落盘仍写 [...READONLY_INVARIANTS]，探针 argv 与落盘均逐字不变。焦点一的七处改写全部落实且同口径；焦点二的第三类有代价声明、json_schema_ok 兜底与 EV-40 待办，不是后门；焦点三的六 token 零命中/均有出处静态核过，登记与实现主体一致。最重一条（GLM-01）：双锚点 grep 存在第三类漏网措辞——「由/从探针结论构造」族，锚点二只认 依据/按/只读 三种前缀，types.ts:153 与 :363 两处仍在以无限定形态转述 P7（:363 恰在 M8/M9 实现者要读的 readonly_flags 字段注释上），且改写后的 README:325 自己也已逃出锚点网。其余为契约测试 token 边界（值连写漏检 + codex.ts:333 险误伤）、归档计划仍写「两处硬伤」、台账「第四类」与正文「第三类」编号互抵等留痕问题。无阻断。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/types.ts:153（另 src/trivium/types.ts:363）；锚点命令在 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md §11.1 判据三",
+      "problem": "焦点一：落点清单的双锚点 grep 存在第三类漏网措辞。锚点二的前缀集只有「依据/按/只读探针结论」，而「由探针结论构造 / 从探针结论构造」一族两个锚点都抓不到。实测该族在仓库里有活体：types.ts:153「存在的理由是 P7 的直接应用：**命令行由探针结论构造**，不由读侧按家分支猜」与 types.ts:363（CodexProbe.readonly_flags 字段注释）「**消费方**：M8 适配器构造命令行（P7：命令行由探针结论构造）」——两处仍在以无「本文列出的/只读保障」限定的加强形态转述 P7，:363 恰在 M8/M9 实现者必读的字段文档上，正是 EV-12 栽过的那种凭转述不回原文的入口。另两个旁证说明锚点网覆盖不了将来：本轮改写后的 README.md:325「由适配层**从探针结论**取」自己就逃出两个锚点（复跑记录在案的命令连本轮已修的这处都找不回来）；且锚点一未排除 reference/ 而锚点二排除了，两条命令的论域不对称（reference/ 有 5 处噪声命中）。设计 11.1 声称「落点清单由 grep 生成、命令可复跑」——生成是真的，但锚点集不完备，「两个锚点缺一不可」应读作「这两个锚点必要而不充分」。",
+      "evidence": "亲自复跑两条锚点 grep（-rn '硬编码' 82 命中；-rn -E '依据探针结论|按探针结论|只读探针结论' 13 命中），另以广撒网 '探针结论'（101 命中）比对出差集，差集里确认 types.ts:153/:363、adapters/zcode.ts:90、test/unit/codex-adapter.test.ts:26（后两处带「只读参数」语境限定，不改也成立）与 README.md:325（改写后的新文本）均不在两锚点命中集内；读 src/trivium/types.ts:143-172 与 :355-372 核对两处原文语境；README.md:325 现行文本经 grep 内容行核对。",
+      "suggestion": "把锚点二的前缀集扩到「由/从/取自」（或补第三条锚点 `探针结论构造`），同步改设计 11.1 判据三记录在案的命令并复跑一次；types.ts:153 与 :363 两处 P7 注释按 11.1 口径补「只读保障/本文列出的」限定；顺手统一两条命令的 --exclude-dir（reference 要排都排）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/registry-parity.test.ts:1170（quotedTokens 精确比对）",
+      "problem": "焦点三：第一腿按空白切分后做**整 token 精确相等**比对，边界处理双向都不利。漏的方向：值连写 `'--tools=Read,Grep,Glob'` 与标点黏连 `'--restricted,'`、`'（read-only'` 都是不可再切分的单 token，比对不过——值连写不是理论形态，本仓库自己的 zcode 适配器就明写「`=` 是标准长参数写法」（zcode.ts:115 的 bashStillDenied 注释），且它不在六类不覆盖形态表里。误伤的方向：adapters/ 里任何**报错文案**含裸 token 即红——现网就有险例，adapters/codex.ts:333 的 reason 串「（read-only 下文件仍被创建时…」仅因全角括号与 read-only 黏连才未被计为独立 token，一旦有人把文案改写成 read-only 开头的空白分隔形态，registry-parity 当场红，而 EV-39 自己已预言这种误伤最可能的修法是「往黑名单删条目」（削弱守卫）而非加豁免。",
+      "evidence": "读 test/unit/registry-parity.test.ts:1119-1173（quotedTokens 实现 + 第一腿逐行精确比对）与 :455-493（collectSourceFiles/剥离器）；grep src/trivium/adapters 全目录六个 token，代码命中仅 codex.ts:333（黏连形态）与两处 JSDoc（剥注释后不可见）；读 src/trivium/adapters/codex.ts:328-335 确认 :333 是 availability 的 reason 字符串；读 src/trivium/adapters/zcode.ts:114-117 确认「= 是标准长参数写法」的既有事实；设计 11.1 六类不覆盖表（diff :231-238）不含值连写/黏连形态。",
+      "suggestion": "比对前对 token 做边界归一（剥两端非旗标字符如 = 、，、（），或按 `--?[\\w-]+(=[\\w,.]*)?` 形态提取后再比），两个方向一起收；若不改实现，至少把「值连写与标点黏连」补进六类不覆盖表、并在 EV-39 里补一句「文案裸 token 误伤」的处置预案（加豁免而非删条目）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "doc/08_project/EV-12-实施计划.md §落点「§7.2 模板作废的两条」",
+      "problem": "随仓新归档的实施计划与设计 3.7.1 对同一事实的计数口径不一致。计划 §落点 仍写「**显式记 §7.2 模板作废的两条**」「有两处会让 M9 当场失守」且只列两条（--allowed-tools、缺 --restricted/--strict-mcp-config）；而设计 3.7.1 本轮已按 GLM-04（r1）改为不带数字的清单并补入第三条更硬的（--json-schema 传文件路径实测被拒）。该计划是本补丁新增进仓库的文件，且本轮已选择性更新过它的两处（行号时效声明、验证节变异步骤），独独漏掉这处计数——v1.3.18 第七条只写了「计划的变异步骤与行号引用」，与本补丁实际要修的面不符。这正是新落地的 claude 镜头 bug 轴第二条「同一份事实在几处被写下，它们现在还同口径吗」的现成实例，也是 v1.3.8「不写数字、让清单说话」规矩在本改动面内的残留复发。",
+      "evidence": "读 doc/08_project/EV-12-实施计划.md 全文（经被审 diff :736-745，「两条/两处」原文与两条清单）；对照设计 3.7.1 现行文本（diff :98-115，无数字清单含第三条 --json-schema 传路径被拒）；v1.3.18 台账第七条（diff :274）所列计划修面为「变异步骤与行号引用」；计划文件内已更新的行号声明与验证节更正注（diff :727-728、:810-814）证明该文件本轮确被选择性修订、并非冻结件。",
+      "suggestion": "计划 §落点 该两处改为清单式表述（或补一句「硬伤实为三条，见设计 3.7.1，本表为起草时认知」的更正注），与 v1.3.8 规矩及设计正文对齐。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md §21 v1.3.18 行（「新增第四类」）",
+      "problem": "同一补丁内对该新类的编号自相矛盾：设计 11.1 正文写「**第三类**不是给自己留后门」（表内该行也是第三行），3.7.1 写「形态属判据一**第三类**」，BACKLOG EV-40 写「判据一**第三类**」；而 §21 v1.3.18 台账写「**新增第四类**『厂商依赖关系与参数形态』」。按表内位置读台账的人会把「第四类」映射到尺度类那一行。按 v1.3.8 自己立的规矩（记不清计数就不写数字），这里是同一毛病的小号复发。",
+      "evidence": "设计 11.1 正文与四行表（diff :187-197）、3.7.1 表格行（diff :87）、BACKLOG EV-40 行（diff :429）与 v1.3.18 台账行（diff :274）逐字比对，编号字面分别为「第三类/第三类/第三类/第四类」。",
+      "suggestion": "台账句改为「新增一类（表内第三行）」或「新增『厂商依赖关系与参数形态』一类」，去掉与正文冲突的序数。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/registry-parity.test.ts:1210（第二腿整文件喂入 vs 第一腿 :1169 逐行切）",
+      "problem": "两条腿的扫描粒度不对称，且第二腿的出处计数与事实不符。①粒度：第一腿对剥离结果逐行调 quotedTokens（:1169），第二腿把整个文件一次喂入（:1210），而剥离器明言模板字面量可跨行（:392 注释「模板字面量可以，故排除它」）——多行模板字面量内的 token 第二腿看得见、第一腿看不见；六类不覆盖表登记的是「模板插值分段」，多行模板整形态未登记。②计数：第二腿注释称 read-only「两处出处（探针 argv + 负对照落盘）」，实测 probes/codex.ts 剥离后可见出处至少三处（:531 argv、:873 负对照落盘、:874 的 notes 串里 `read-only` 是独立空白分隔 token），枚举不实——「只改其一不会红」的方向结论仍成立（出处更多只会更不灵敏），但注释写「落地时逐项核过」而枚举漏了一处，与它自己「留痕不得把判据说成比实现更强/更细」的立意相抵。",
+      "evidence": "读 test/unit/registry-parity.test.ts:1159-1173（第一腿逐行）与 :1205-1211（第二腿整文件）、:389-406（剥离器对模板字面量跨行的处理）；grep src/trivium/probes 六 token 全量命中后逐处判定：codex.ts:531/:873/:874 三处均为字符串字面量、:890 在正则内（剥离器跳过、不计），:871 因全角冒号黏连不计。",
+      "suggestion": "两腿统一粒度（第一腿也整文件喂，或第二腿同样逐行并在注释登记差异）；read-only 的出处枚举改为「见 grep 清单」并把 :874 计入，与 v1.3.8「让清单自己说话」对齐。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md §11.1 判据一「两问式」",
+      "problem": "焦点二的残留：两问式第①问的箭头写「它是否被接受、传了有没有这个副作用 → 那是厂商事实，**探针记**」，而新类的落点恰恰是「**无机读字段**（实测报告 + 本节表格）」——以本轮自己的旗舰例子 --verbose 绑定论，按①归探针记、按表又不进机读字段，判据句与第三类落点之间差一句「暂无机读字段时须登记待办」的接口。这不是后门（代价有声明、--json-schema 有 json_schema_ok 兜底、--verbose 登记了 EV-40），但读者单看两问式会写出「probe 里应该有这个字段」的假设代码，EV-40 落地前该预期落空。",
+      "evidence": "设计 11.1 两问式原文与四行表第三行（diff :176-191）、「第三类不是给自己留后门」段的兜底说明（diff :194-197）、EV-40 行（diff :429）；probes/claude.ts:494/:727-737 核实 json_schema_ok 存在且是 claude 专属、--verbose 绑定确无对应机读字段。",
+      "suggestion": "第①问箭头补成「→ 厂商事实，探针记；暂无落点的按第三类登记待办（如 EV-40）」，让两问式与四类表闭合。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "焦点四干净落地：probeArgs 展开的 READONLY_INVARIANTS 与 HEAD 版内联字面量逐元素同序同值（-p / --output-format / [--verbose] / --restricted / --strict-mcp-config / --tools / Read,Grep,Glob / --max-budget-usd … / --model …），readonly_flags 落盘仍写 [...READONLY_INVARIANTS]（probes/claude.ts:610）且常量本体未动——探针 argv 与落盘内容均逐字不变；顺带让第二腿对前三个 token 的「改常量即红」真实成立（probes/ 内这三个 token 剥注释后唯一代码出处就是常量本体，已逐处核过）。",
+    "焦点一的七处改写全部落实且与 11.1 同口径（AGENTS.md:47、README.md:187 与 :325、LLD_orchestrator.md:471 标题、QUICKSTART.md:75、RUNBOOK:260、doc/02_design/README.md:44，逐一 grep 现行文本核对）；adapters/base.ts:8 与 codex.ts:8 的铁律注释确带「设计文档里的示例」限定、doctor.ts:5 带「设计文档里的」限定，判不改正确；m0 报告 :15 与主设计 :124/:162 的限定措辞核实与 P7 原文一致。",
+    "「转述源头是多点」的修正有据且三处（设计 11.1 更正块、BACKLOG EV-12、M6 报告更正块）同口径落齐；M6 报告头部更正索引 + §四.9 删除线保原文 + §五⑤ 补「按 codex 透传写」指向，同报告内口径已一致（⑤ 现行文本核对过）。",
+    "焦点二：两问式确实拆开了 --verbose 的原矛盾（副作用=厂商事实 vs 要不要传=编排器需求），第三类有代价声明与「不是被消解、是被判为可接受地留在散文里」的如实表述，--json-schema 指向已有字段 json_schema_ok、--verbose 登记 EV-40、黑名单按厂商归属暂缓为 EV-39 且触发条件写明——不是后门，是显式登记的接受项；尺度类按现状改准（CriticRequest 仅 model/effort/timeout_s）。",
+    "焦点三主体：六 token 在 adapters/ 剥注释后零命中、在 probes/ 均有出处（静态核对，测试应绿）；「复合串也算」「--tools 精确 token 不误伤 --disallowed-tools」「剥离器对正则整段跳过且 probes/codex.ts:890 是现网实例」三条断言与实现逐一相符；论域改用递归 collectSourceFiles 修掉了拆子目录静默漏扫（我 r1 的 GLM-07）；判据二事实底座复核无误（zcode 前缀形态 zcode.ts:93-98、codex 纯透传、agy 传文件路径 agy.ts:98）。",
+    "3.7.1 对演进设计 §7.2 模板的三条硬伤断言与模板原文（:383-388）逐条对得上，第三条（--json-schema 传路径实测被拒）比前两条更硬的定性成立；「不写条数让清单自己说话」在 3.7.1 落实。",
+    "lenses.yaml 四键齐备，claude 键三轴与另三家人工目检无关键短语交叠，选「规范链与断言的自洽」视角对症本项目实际失误分布；BACKLOG EV-39/EV-40 两条新登记内容与触发条件如实。"
+  ],
+  "not_covered": [
+    "未实际运行 npm run check / registry-parity / 两条变异验证（审查全程只读、且构建会写 dist/）——测试当前绿否是静态核对结论（六 token 在 adapters/ 剥注释后零命中、probes/ 均有出处），GLM-02 的值连写逃逸与 codex.ts:333 险例也是静态推演、未构造变异实跑。",
+    "SKILL.md 四份、PROTOCOL_dual_critic_relay.md、hooks 契约面未查（本轮改动未触及 CLI 参数与 schema）；lenses「零关键短语交叠」为人工目检，无机器判据（既有口径如此）。",
+    "doc/05_testing/REPORT_2026-09-11_m0_probe.md 与演进设计只读了被引用的行与 §7.2 模板区，全文未重读；reference/ 三个竞标文档仅经锚点 grep 扫过行级内容，未整读（判定为冻结历史件、非落点）。",
+    "GUIDE_env_setup.md §四纪律 2-12 未逐条重读（只核纪律 1 改动段与 :127-128）；CLAUDE.md 已读、与四焦点无交集。"
+  ],
+  "consulted": [
+    ".reviews/EV-12-归属裁定与配套改动/code/_meta/changes-20260917T102504Z.diff",
+    ".reviews/EV-12-归属裁定与配套改动/code/2026-09-17-EV-12-归属裁定与配套改动-glm.md",
+    ".reviews/EV-12-归属裁定与配套改动/code/2026-09-17-EV-12-归属裁定与配套改动-response-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/README.md",
+    "doc/04_development/GUIDE_env_setup.md",
+    "doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/07_manuals/QUICKSTART.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/EV-12-实施计划.md",
+    "skills/dual-critic/lenses.yaml",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/types.ts",
+    "test/unit/registry-parity.test.ts"
+  ]
+}

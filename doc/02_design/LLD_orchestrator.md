@@ -468,9 +468,12 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
 
 改代码前先读这一节。每条都附「栽过的实例」。
 
-### 5.1 只读探针结论，绝不硬编码两侧命令行
+### 5.1 取值必须靠实测才知道的旗标，一律读探针结论
 
-两家 CLI 的参数与行为随版本漂移。`adapters/base.ts:8` 是铁律。实例：
+两家 CLI 的参数与行为随版本漂移。`adapters/base.ts` 文件头的铁律是本节的代码侧落点，
+**分档判据见设计 §11.1「旗标归属判据」**——本节管的是「取值必须靠实测才知道」那一族；
+机制类旗标（输出格式、cwd、颜色）归适配层硬编码，三家的 `buildXxxArgs` 本来就是这么写的。
+实例：
 
 - agy 的 `--effort` **只在模型 slug 没自带档位时传** ——`--model gemini-3.8-flash-high --effort medium` 会被直接拒绝、白烧一次调用（坑 P-16）
 - ZCode 传裸模型名会落到错误 provider 报 "Model provider is missing an API key"，必须用探针回读的 `model_id_form` 补全前缀（坑 P-06）

@@ -32,6 +32,10 @@ import {
   suffixAlternation,
 } from '../../src/trivium/agents/registry.js';
 import { CRITICS, CRITIC_PREFIX, CRITIC_VENDOR } from '../../src/trivium/types.js';
+// 第 5 条的 import 禁令只管 `adapters/` 不得引用 `probes/`，不管测试——
+// 反向对账必须拿到探针的常量本体，否则「黑名单跟不上探针新增项」这个方向守不住。
+import { READONLY_INVARIANTS } from '../../src/trivium/probes/claude.js';
+import { CODEX_READONLY_INVARIANTS } from '../../src/trivium/probes/codex.js';
 import { validateRunMeta } from '../../src/trivium/schemas.js';
 import { looksLikeRoleArtifact, parseArtifactName } from '../../src/trivium/naming.js';
 import { isFallbackId } from '../../src/trivium/disposition.js';
@@ -1092,5 +1096,294 @@ test('架构契约：adapters/ 不得 import probes/', async () => {
       '\n  适配层应当读 probe.<cli>.readonly_flags 自己构造命令行' +
       '（见 adapters/zcode.ts 的 readonlyArgsFromProbe）。' +
       '探针的参数构造带着探针尺度的默认值，逐字复用会在运行时被掐断。',
+  );
+});
+
+
+// ───────── 6. 适配层不得字面重建探针落盘的 argv 片段（M9 工前，BACKLOG EV-12）─────────
+
+/**
+ * 黑名单**按出处分两族**，因为两族的「防空转」判据根本不同（代码双审 r2 CODEX-05）。
+ *
+ * 初版把六个 token 摊成一个扁平数组，防空转一律判「该 token 还在 `probes/` 出现」。
+ * 那对 `--allowed-tools` 是错的：它是为防「抄那份已作废的 §7.2 调用模板」而加的，
+ * 而它在探针侧的地位是**刻意保留的负向候选**（M0 实测被 CLI 拒）。将来谁清理那条
+ * 已知不成立的候选——完全合理的动作——第二腿当场红，而红之后最省事的修法就是
+ * 往黑名单里删条目：被削掉的恰恰是「抄作废模板」那一半，且删除者会以为自己在修空转。
+ */
+const PROBE_RECIPE_TOKENS: readonly string[] = [
+  // claude：READONLY_INVARIANTS 的四项（probes/claude.ts）
+  '--restricted',
+  '--strict-mcp-config',
+  '--tools',
+  'Read,Grep,Glob',
+  // codex：CODEX_READONLY_INVARIANTS 的值（旗标名 -s 太短，锁它必然误伤）
+  'read-only',
+];
+
+/** 已作废的演进设计 §7.2 模板所写的旗标名——不依赖探针，防空转判据另设（见第二腿） */
+const DEPRECATED_TEMPLATE_TOKENS: readonly string[] = ['--allowed-tools'];
+
+const BANNED_PROBE_TOKENS: readonly string[] = [
+  ...PROBE_RECIPE_TOKENS,
+  ...DEPRECATED_TEMPLATE_TOKENS,
+];
+
+/**
+ * 取出源码里所有带引号字面量的内容，按空白切成 token，并**归一 token 边界**。
+ *
+ * 归一是双向的（代码双审 r2 GLM-02）：
+ *   - 漏的方向：`'--tools=Read,Grep,Glob'` 值连写是不可再切的单 token，
+ *     而本仓 `zcode.ts` 自己就写明「`=` 是标准长参数写法」；
+ *   - 误伤的方向：中文报错文案里旗标名常黏着标点（`adapters/codex.ts` 的
+ *     `（read-only 下文件仍被创建…`），只因全角括号才幸免。
+ *
+ * **在全文上跑、由偏移反算行号**，不逐行切：剥离器保证模板字面量可跨行，
+ * 逐行切会让跨行串的中间行取不到成对引号而静默返回空集（r2 AGY-01 ≡ CODEX-04 ≡ GLM-05）。
+ */
+function quotedTokens(src: string): Array<{ token: string; line: number }> {
+  const out: Array<{ token: string; line: number }> = [];
+  const re = /(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
+  for (let m = re.exec(src); m !== null; m = re.exec(src)) {
+    const line = src.slice(0, m.index).split('\n').length;
+    for (const raw of (m[2] ?? '').split(/\s+/)) {
+      if (!raw) continue;
+      // 两端剥非旗标字符（中英文标点、括号），再把 `--flag=value` 切成两半
+      const trimmed = raw.replace(/^[^\w-]+/u, '').replace(/[^\w,./-]+$/u, '');
+      if (!trimmed) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq > 0) {
+        out.push({ token: trimmed.slice(0, eq), line });
+        const val = trimmed.slice(eq + 1);
+        if (val) out.push({ token: val, line });
+      } else {
+        out.push({ token: trimmed, line });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * **文案豁免**：按 `file → token → 理由` 具名登记，形态沿用本文件的 `LITERAL_ALLOWLIST`。
+ *
+ * 为什么要有这一层：边界归一（剥两端标点）把漏的方向收住了，代价是**误伤的方向张开了**
+ * ——中文报错文案里旗标名常黏着全角标点，剥掉之后就是一个裸 token。
+ * 代码双审 r2 GLM-02 预言了这一格，BACKLOG EV-39 更写明：
+ * **「误伤时最可能的修法是往黑名单里删条目（削弱守卫），而不是加豁免」**。
+ * 这里就是那个豁免口，加在这里比删 `BANNED_PROBE_TOKENS` 便宜得多、也安全得多。
+ *
+ * 准入很窄：**只收 `availability()` / 报错文案这类用户可见字符串**，
+ * 即「该 token 出现在这里不是为了拼 argv」。凡是进 argv 的一律不豁免。
+ */
+const PROSE_EXCEPTIONS: ReadonlyArray<{ file: string; token: string; why: string }> = [
+  {
+    file: 'src/trivium/adapters/codex.ts',
+    token: 'read-only',
+    why: 'availability() 的不可用理由文案：「（read-only 下文件仍被创建时探针会把该字段清空）」。'
+      + '这是讲给用户听的成因说明，不进 argv；只读旗标本身仍由 readonlyArgsFromProbe 透传。',
+  },
+];
+
+function isProseException(relFile: string, token: string): boolean {
+  return PROSE_EXCEPTIONS.some((e) => e.file === relFile && e.token === token);
+}
+
+test('文案豁免纪律：每条都要写明理由，且不得豁免已经不存在的命中', async () => {
+  // 与 LITERAL_ALLOWLIST 的两条纪律同构：豁免必须有理由，且必须**仍然被需要**——
+  // 否则它会沉淀成一张没人敢动的清单，下一次真误伤时反而被当成先例扩大。
+  for (const e of PROSE_EXCEPTIONS) {
+    assert.ok(e.why.trim().length > 20, `豁免 ${e.file}/${e.token} 没写明理由`);
+  }
+  const banned = new Set(BANNED_PROBE_TOKENS);
+  for (const e of PROSE_EXCEPTIONS) {
+    const raw = await fs.readFile(path.join(REPO_ROOT, e.file), 'utf8');
+    const hit = quotedTokens(stripCommentsKeepStrings(raw))
+      .some((t) => t.token === e.token && banned.has(t.token));
+    assert.ok(hit, `豁免 ${e.file}/${e.token} 已经不被需要（该文件里不再有这个命中），请删掉它`);
+  }
+});
+
+test('架构契约：adapters/ 不得字面重建探针的安全不变量', async () => {
+  /*
+   * 设计 11.1「旗标归属判据」判据二：`readonly_flags` 装的若是**可直接使用的
+   * argv 片段**（claude 的 `READONLY_INVARIANTS`、codex 的 `CODEX_READONLY_INVARIANTS`），
+   * 适配层必须**原样透传**，不得自己拼字面量。
+   *
+   * 为什么：这些值是**负对照挣来的实测结论**——探针让模型真去写文件、文件没被创建
+   * 才记下它们。适配层一旦字面重建，就把「本机实测证明它管用」偷换成
+   * 「文档上写着它应该管用」；而 codex 侧空数组的正确含义是「本机沙箱不可信、
+   * 该侧判不可用」，不是「回落到默认值」。claude 侧更硬：漏掉 `--strict-mcp-config`
+   * 会让 MCP 的写工具进入审查会话工具面，那是能越出项目边界的失守面，且成本约 24 倍。
+   *
+   * **不扫 zcode 的 `--mode` / `--disallowed-tools`**：那家的 readonly_flags 装的是
+   * **候选串的接受记录**而非可用 argv，旗标名出现在适配层是设计如此。
+   *
+   * ## 覆盖面：已知形态，不是完备（设计 11.1 判据三有同一张表）
+   *
+   * 守住的是「引号包裹的字面量内容、按空白切分并归一边界后命中黑名单」。
+   * 覆盖复合串（`'--a --b'.split(' ')`）、跨行模板串、值连写（`--tools=X`）、
+   * 标点黏连。**追不到**的形态见下方 `不覆盖形态` 夹具——每一类都有一条
+   * 期望**不红**的用例锁着，而不是只在散文里声明（r2 CODEX-04）。
+   */
+  const adapterFiles = await collectSourceFiles(path.join(REPO_ROOT, 'src/trivium/adapters'));
+  assert.ok(adapterFiles.length > 0, '适配层目录不该是空的——扫描范围写错了会让本条永绿');
+
+  const banned = new Set(BANNED_PROBE_TOKENS);
+  const offenders: string[] = [];
+  for (const abs of adapterFiles) {
+    const raw = await fs.readFile(abs, 'utf8');
+    const rel = path.relative(REPO_ROOT, abs);
+    for (const { token, line } of quotedTokens(stripCommentsKeepStrings(raw))) {
+      if (!banned.has(token)) continue;
+      if (isProseException(rel, token)) continue;
+      offenders.push(`${rel}:${line}  ${token}`);
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    '适配层字面重建了探针落盘的安全不变量，违反 11.1 旗标归属判据二：\n' +
+      offenders.join('\n') +
+      '\n  这些值必须经 readonlyArgsFromProbe 从 probe.<cli>.readonly_flags 原样取用。' +
+      '字面重建等于把「实测证明它管用」换成「文档上写着它应该管用」。',
+  );
+});
+
+test('架构契约：黑名单两族各自的防空转判据', async () => {
+  /*
+   * 防空转分两条，因为两族 token 的「还算数吗」判据不同（r2 CODEX-05）。
+   *
+   * 另有**反向对账**（r2 CODEX-03）：初版只防「token 被从探针删掉」这一个方向，
+   * 没有防「探针新增一条硬前置而黑名单不跟」——而 `--strict-mcp-config` 本身
+   * 就是实测后才升为硬前置的，这条路走过一次。缺了反向对账，M9 适配器字面重建
+   * 那条新旗标同样不红，而注释却写着「任一项即判红」。
+   */
+  // ── 反向对账：探针的配方常量 ⊆ 黑名单 ──
+  const recipe = new Set(PROBE_RECIPE_TOKENS);
+  const uncovered = [...READONLY_INVARIANTS, ...CODEX_READONLY_INVARIANTS]
+    // `-s` 刻意放过：两字符旗标名锁了必然误伤（设计 11.1 判据三「不覆盖形态」表）
+    .filter((t) => t !== '-s')
+    .filter((t) => !recipe.has(t));
+  assert.deepEqual(
+    uncovered,
+    [],
+    '探针的只读不变量新增了项，但 PROBE_RECIPE_TOKENS 没跟上：\n  ' +
+      uncovered.join('、') +
+      '\n  适配层字面重建这些新项不会被打红。加常量项时必须同步本表。',
+  );
+
+  // ── 正向防空转（配方族）：token 必须还是探针代码在用的字面量 ──
+  const probeFiles = await collectSourceFiles(path.join(REPO_ROOT, 'src/trivium/probes'));
+  assert.ok(probeFiles.length > 0, '探针目录不该是空的——扫描范围写错了会让本腿永绿');
+  const seen = new Set<string>();
+  for (const abs of probeFiles) {
+    const raw = await fs.readFile(abs, 'utf8');
+    for (const { token } of quotedTokens(stripCommentsKeepStrings(raw))) seen.add(token);
+  }
+  const stale = PROBE_RECIPE_TOKENS.filter((t) => !seen.has(t));
+  assert.deepEqual(
+    stale,
+    [],
+    '配方族 token 已不在 probes/ 出现，上半条对它已退化为空转：\n  ' +
+      stale.join('、') +
+      '\n  探针不再使用该旗标时，必须同步更新 PROBE_RECIPE_TOKENS 并复核 11.1 判据二。',
+  );
+
+  /*
+   * ── 作废模板族：判据是「它仍被设计正文列为作废旗标」，**不依赖探针** ──
+   *
+   * 这一族的立条理由是「防抄 §7.2 那份已作废的模板」，与探针是否还在试它无关。
+   * 把判据挂到探针上（初版的做法）会让「清理探针里的死候选」这个合理动作
+   * 把守卫削掉一半。
+   */
+  const designPath = path.join(
+    REPO_ROOT,
+    'doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md',
+  );
+  const design = await fs.readFile(designPath, 'utf8');
+  const unlisted = DEPRECATED_TEMPLATE_TOKENS.filter((t) => !design.includes(t));
+  assert.deepEqual(
+    unlisted,
+    [],
+    '作废模板族 token 已不在设计 3.7.1 的作废清单里，本族已退化为空转：\n  ' +
+      unlisted.join('、') +
+      '\n  该族不依赖探针，判据是设计正文仍把它列为作废旗标。',
+  );
+});
+
+test('不覆盖形态：六类逐条锁住「确实扫不到」，不留散文断言', () => {
+  /*
+   * 设计 11.1 判据三登记了若干「追不到」的形态。此前它们只是散文，
+   * 没有一条锁住「这些确实扫不到」——于是实现改动后，登记表可能悄悄变得比实现保守
+   * 或比实现激进，两个方向都没人发现（r2 CODEX-04）。
+   *
+   * 下面每一条都**期望不命中**。哪天实现变强了，这里会红——那是好事，
+   * 提示去把登记表那一行删掉，而不是反过来。
+   */
+  const banned = new Set(BANNED_PROBE_TOKENS);
+  const hits = (src: string) => quotedTokens(src).filter((t) => banned.has(t.token)).map((t) => t.token);
+
+  // ① 字符串拼接
+  assert.deepEqual(hits(`const a = '--' + 'restricted';`), [], '拼接：登记为不覆盖');
+  // ② 模板插值分段
+  assert.deepEqual(hits('const a = `--restricted${x}`;'), [], '模板插值：登记为不覆盖');
+  // ③ 数组拼装
+  assert.deepEqual(hits(`const a = ['-','-restricted'].join('');`), [], '数组拼装：登记为不覆盖');
+  // ④ 正则字面量内（剥离器整段跳过；probes/codex.ts 有现网实例）
+  assert.deepEqual(
+    quotedTokens(stripCommentsKeepStrings('const re = /read-only|sandbox/i;'))
+      .filter((t) => banned.has(t.token)),
+    [],
+    '正则内：剥离器整段跳过，登记为不覆盖',
+  );
+  // ⑤ 短旗标名 -s（只锁值，不锁名）
+  assert.deepEqual(hits(`const a = ['-s', probeValue];`), [], '短旗标名：刻意放过');
+  // ⑥ 跨文件常量中转（此处只锁「本文件看不见」这一事实）
+  assert.deepEqual(hits(`import { FLAGS } from './elsewhere.js'; const a = [...FLAGS];`), [], '跨文件中转：登记为不覆盖');
+
+  // ── 反面：这些**必须**命中，否则上面六条的「不命中」没有意义 ──
+  assert.deepEqual(hits(`const a = '--restricted';`), ['--restricted'], '裸字面量必须命中');
+  assert.deepEqual(
+    hits(`const a = '--restricted --strict-mcp-config'.split(' ');`),
+    ['--restricted', '--strict-mcp-config'],
+    '复合串必须命中',
+  );
+  assert.deepEqual(hits(`const a = '--tools=Read,Grep,Glob';`), ['--tools', 'Read,Grep,Glob'], '值连写必须命中');
+  assert.deepEqual(hits('const a = `\n  --restricted\n`;'), ['--restricted'], '跨行模板串必须命中');
+  assert.deepEqual(hits(`throw new Error('缺少 --restricted，请重跑 doctor');`), ['--restricted'], '标点黏连必须命中');
+});
+
+test('镜头键对账：lenses.yaml 顶层键必须是注册表里的 Agent id', async () => {
+  /*
+   * 「四键齐备」是设计 §9.3 写下的承诺，但缺键的失败模式是**静默降级**
+   * （`brief.ts` 的 `lenses[critic]?.[stage] ?? 通用提示`）——键名写成 `claud:`
+   * 或将来注册表改 id，那一侧就悄悄失去差异化视角，而这正是 §9.3 开头声明要防的
+   * 「多审退化成同审」。`report` 的 Jaccard 提示按 lenses.yaml 自己的口径
+   * 「长期 > 0.8」才触发，一两轮看不出来（r2 CODEX-08）。
+   *
+   * 纪律 10 把镜头键列为注册表派生项；同文件里对该纪律的其它派生项都有 grep 级用例，
+   * 独缺这一条。
+   */
+  const raw = await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/lenses.yaml'), 'utf8');
+  const keys = [...raw.matchAll(/^([a-z][\w-]*):\s*$/gm)].map((m) => m[1] as string);
+  assert.ok(keys.length > 0, '一个顶层键都没解析到——正则写错了会让本条永绿');
+
+  const known = new Set<string>(AGENTS.map((a) => a.id));
+  const unknown = keys.filter((k) => !known.has(k));
+  assert.deepEqual(
+    unknown,
+    [],
+    'lenses.yaml 有注册表里不存在的顶层键（拼写漂移会让那一侧静默降级为通用镜头）：\n  ' +
+      unknown.join('、'),
+  );
+
+  const enabled = AGENTS.filter((a) => a.criticEnabled).map((a) => a.id);
+  const missing = enabled.filter((id) => !keys.includes(id));
+  assert.deepEqual(
+    missing,
+    [],
+    '已启用为审核者的 Agent 缺镜头键，该侧会静默按通用标准审：\n  ' + missing.join('、'),
   );
 });

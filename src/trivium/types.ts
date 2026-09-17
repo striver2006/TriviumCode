@@ -150,7 +150,8 @@ export type ProbeIsolation = 'home_copy' | 'settings_path' | 'env' | 'shared';
 /**
  * 复现「取版本」这一步所需的调用方式，由探针落盘、`preflight` 复用。
  *
- * 存在的理由是 P7 的直接应用：**命令行由探针结论构造，不由读侧按家分支猜**。
+ * 存在的理由是 P7 的直接应用：**这条命令的取法必须靠实测才知道，故由探针落盘、
+ * 不由读侧按家分支猜**（分层判据见设计 §11.1；机制类旗标不在此列）。
  * 两家的取法真的不同——agy 是 `agy --version` 取全文，
  * zcode 是 `node zcode.cjs version` 再正则抠三段号。原先这条知识写死在
  * `checkCliVersions` 的两个分支里，于是第三家的版本漂移一律不被检查
@@ -227,7 +228,8 @@ export interface AgyProbe extends CommonProbe {
   read_strategy?: 'default' | 'allow_settings' | 'pty' | 'add_dir' | null;
   /**
    * 探针**实际用来验证**的只读 Agent 名：agent.md 存在时为配置的名字，不存在时探针
-   * 改用默认 Agent 探测、此处为 null。适配层一律用这个值（P7：命令行由探针结论构造）——
+   * 改用默认 Agent 探测、此处为 null。适配层一律用这个值——该名字属只读保障面，
+   * 取值必须靠实测才知道，按 P7 与设计 §11.1 判据一归探针——
    * 原先适配层取配置里的名字，与探针验证过的配置不是同一个，agent.md 缺失时只读白名单失效。
    * 旧探针结论没有该字段（undefined）：适配层回退到配置名。
    */
@@ -360,7 +362,8 @@ export interface CodexProbe extends CommonProbe {
   rejected_command_in_trace: boolean | null;
   /**
    * 实测**实际被接受**的只读参数组合。
-   * **消费方**：M8 适配器构造命令行（P7：命令行由探针结论构造）。
+   * **消费方**：M8 适配器构造命令行——只读保障这一族取值必须靠实测才知道，
+   * 故归探针（P7 与设计 §11.1 判据一；机制类旗标归适配层，不在此字段）。
    */
   readonly_flags: string[];
   /**

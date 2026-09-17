@@ -57,22 +57,31 @@ const READONLY_TOOLS = 'Read,Grep,Glob';
  *
  * ## M9 该怎么做
  *
- * 读 `probe.readonly_flags` 自己构造（原则 P7：适配层只读探针结论）。
- * `adapters/zcode.ts` 就是现成先例：`readonlyArgsFromProbe` + 对关键旗标的前置校验。
- * **这条路已被审查员核实走得通**，M9 照做即可，连同 `--strict-mcp-config` 的前置校验。
+ * 读 `probe.readonly_flags` 自己构造（原则 P7：取值必须靠实测才知道的旗标不硬编码）。
+ * **按 `adapters/codex.ts` 的纯透传形态写，不是按 zcode 写**（设计 11.1 判据二）：
+ * claude 的 `readonly_flags` 装的是**可直接使用的 argv 片段**，与 codex 同族；
+ * zcode 那份是「候选串的接受记录」，才需要取旗标名、值另给全集常量。
+ * 两家先例都只证明「从探针结论构造」这条路走得通，取法照各自的落盘形态定。
+ * M9 照做即可，连同 `--strict-mcp-config` 的前置校验。
  *
  * 「不要 import」现在**有机制守着**：`registry-parity` 里一条 grep 级契约禁止
  * `adapters/` 引用 `probes/`。此前它只是这段注释里的一句话——
  * 而 AGENTS.md 纪律 12 说的正是「靠记性的纪律要换成不依赖记性的机制」。
  *
- * ## 仍待定的一件事
+ * ## 调用形态旗标的归属（已裁定）
  *
  * 调用形态旗标（`-p`、`--output-format`、`--verbose`、stdin 置空、
- * `--json-schema` 收内联）只活在本文件头部注释与实测报告里，
- * `readonly_flags` 一个都不含——M9 只能在适配层硬编码它们，
- * 而 P7 的字面是「适配层绝不硬编码 CLI 旗标」。
- * **归属待 M6 第 4 步回填设计时定**（要么承认机制类旗标属适配层、如 zcode 先例，
- * 要么给探针加机读字段），本步不擅自决定。
+ * `--json-schema` 收内联）只活在本文件头部注释与实测报告里，`readonly_flags`
+ * 一个都不含。**这不是缺口，是分层**：见设计 11.1「旗标归属判据」（v1.3.17，
+ * BACKLOG EV-12 结案）——**机制类旗标属适配层**，取值由编排器自己的需求决定
+ * （要事件流才要 `stream-json`），不是厂商能力事实，探针记它没有信息量；
+ * `readonly_flags` 只装**必须靠实测才知道**的安全不变量。
+ *
+ * 该边界由 `test/unit/registry-parity.test.ts` 的架构契约守，不靠这段注释：
+ * 适配层字面重建 `READONLY_INVARIANTS` 里的任一项即判红。
+ *
+ * （此前这里写着「P7 的字面是『适配层绝不硬编码 CLI 旗标』」——那句是加强转述，
+ * 不是 P7 原文，已随 v1.3.17 一并更正。）
  */
 function probeArgs(opts: {
   prompt: string;
@@ -89,9 +98,10 @@ function probeArgs(opts: {
     // stream-json 要靠 --verbose 才吐全量事件；两者是绑定的
     ...(fmt === 'stream-json' ? ['--verbose'] : []),
     // ── 安全不变量：探针与 M9 共有，缺一即失守 ──
-    '--restricted',
-    '--strict-mcp-config',
-    '--tools', READONLY_TOOLS,
+    // **展开常量而不是再抄一遍字面量**：此前这里与 READONLY_INVARIANTS 各存一份，
+    // 于是「改常量」并不能让 registry-parity 的防空转腿变红（代码双审 AGY-05 / GLM-02）。
+    // 一处事实一个来源，那条契约才真正对准这个常量。
+    ...READONLY_INVARIANTS,
     // ── 探针尺度：M9 自有一套，不从这里取 ──
     '--max-budget-usd', PROBE_BUDGET_USD,
     '--model', PROBE_MODEL,

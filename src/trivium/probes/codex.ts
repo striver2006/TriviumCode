@@ -38,6 +38,19 @@ import type { CodexProbe, CodexProviderProbe, PathDenyProbe, ProbeIsolation } fr
  */
 const PROBE_MODEL = 'deepseek-flash';
 const PROBE_EFFORT = 'low';
+
+/**
+ * codex 的只读**安全不变量** —— 探针与 M8/M9 适配层共有的那部分。
+ *
+ * 单独导出的理由与 claude 的 `READONLY_INVARIANTS` 同构：让「探针测的配方」与
+ * 「探针记的配方」不可能分叉，并给 `registry-parity` 第 6 条的**反向对账**一个
+ * 可 import 的事实源（此前这两处各存一份内联字面量，代码双审 CODEX-03）。
+ *
+ * 该值是**负对照挣来的**：探针让模型在 cwd 建文件，文件没被创建才记它；
+ * 创建成功则 `readonly_flags` 落空数组，含义是「本机沙箱不可信、该侧不可用」，
+ * **绝不是**回落到一个「文档上写着应该管用」的默认值。
+ */
+export const CODEX_READONLY_INVARIANTS: readonly string[] = ['-s', 'read-only'];
 const PROBE_TIMEOUT_MS = 180_000;
 
 /** `$CODEX_HOME`，未设时回落官方默认 */
@@ -528,7 +541,7 @@ async function execProbe(
       ...(profile ? ['-p', profile] : []),
       '-m', model,
       '-c', `model_reasoning_effort=${PROBE_EFFORT}`,
-      '-s', 'read-only',
+      ...CODEX_READONLY_INVARIANTS,
       '--json',
       '--skip-git-repo-check',
       '-C', fx.root,
@@ -870,7 +883,7 @@ export async function probeCodex(
       probe.readonly_flags = [];
       notes.push('⚠️ 只读沙箱负对照**失败**：read-only 下文件仍被创建，该侧不可用于审查');
     } else {
-      probe.readonly_flags = ['-s', 'read-only'];
+      probe.readonly_flags = [...CODEX_READONLY_INVARIANTS];
       notes.push('只读负对照成立：-s read-only 下写入被拒，breach.txt 未创建');
     }
     /*

@@ -257,7 +257,7 @@ trivium doctor --only agy       # 只探一侧，省配额
 
 | 现象 | 处置 |
 | :--- | :--- |
-| 厂商 CLI 升级后行为变了 | 重跑 `trivium doctor`。实现代码只读探针结论、不硬编码命令行（设计原则 P7），所以重探通常就够 |
+| 厂商 CLI 升级后行为变了 | 重跑 `trivium doctor`。实现代码只读探针结论、不硬编码设计文档列出的命令行（设计原则 P7），所以重探通常就够 |
 | 配额打满 | 换模型档位，或 `--allow-single` 单侧跑（记为降级） |
 | 未认证 | 按厂商自己的登录流程处理。**凭据不经编排器**，配置里只放模型 slug 与路径 |
 | 探针结论过期 | `.trivium/config.local.yaml` 的 `probe.generated_at`，重跑 `doctor` 刷新 |

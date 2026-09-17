@@ -72,8 +72,8 @@ cd <你的项目>
 node ~/.claude/skills/dual-critic/scripts/trivium.cjs doctor
 ```
 
-两家 CLI 的参数与行为随版本漂移，所以实现代码**只读探针结论，绝不硬编码命令行**
-（设计原则 P7）。`doctor` 逐项实测设计 §3.5 的探针清单，把结论写进 `.trivium/config.local.yaml`
+两家 CLI 的参数与行为随版本漂移，所以实现代码**只读探针结论，不硬编码设计文档列出的
+命令行**（设计原则 P7）。`doctor` 逐项实测设计 §3.5 的探针清单，把结论写进 `.trivium/config.local.yaml`
 的 `probe:` 段（不进 Git，因为它随机器而异）。
 
 想先不烧配额，可以 `doctor --no-model-calls` 只做静态探测；但模型调用相关的结论
