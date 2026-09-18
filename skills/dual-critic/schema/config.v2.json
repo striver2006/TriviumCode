@@ -284,7 +284,7 @@
     "agents": {
       "type": "object",
       "minProperties": 1,
-      "description": "逐 Agent 的配置段，键是注册表的 Agent id。键只要求「是已登记 Agent」，不要求 criticEnabled——Driver 自身也需要配置容身之处（设计 13.1.1）。键是否已登记、vendor 是否与注册表相符，由 schemas.ts 在 ajv 之后按注册表补校：Agent 身份的唯一来源是注册表（纪律 7），在 schema 里抄第二份，新增一家时改一漏二不会报错。值以 vendor 为判别式做可辨识联合——两家字段集合完全不同，压成同构 record 会让校验形同虚设。codex 的形状已于 M8 第 3 步加入 oneOf；claude 随 M9 / M10 加入。",
+      "description": "逐 Agent 的配置段，键是注册表的 Agent id。键只要求「是已登记 Agent」，不要求 criticEnabled——Driver 自身也需要配置容身之处（设计 13.1.1）。键是否已登记、vendor 是否与注册表相符，由 schemas.ts 在 ajv 之后按注册表补校：Agent 身份的唯一来源是注册表（纪律 7），在 schema 里抄第二份，新增一家时改一漏二不会报错。值以 vendor 为判别式做可辨识联合——两家字段集合完全不同，压成同构 record 会让校验形同虚设。codex 的形状于 M8 第 3 步加入 oneOf，claude 于 M9 第 4 步加入——四家至此全部就位。**副作用**：schemas.ts 的 configurableVendors() 从本处现取判别式，四支齐备后「已登记但形状未定义」变成空集，那条报错分支随之不可达。",
       "additionalProperties": {
         "oneOf": [
           {
@@ -441,6 +441,19 @@
                 }
               }
             }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "vendor"
+            ],
+            "properties": {
+              "vendor": {
+                "const": "anthropic"
+              }
+            },
+            "description": "claude 的配置段（M9 第 4 步）。**只有判别式，没有其它字段**——这是刻意的不对称，不是漏写。另三家段里的入口覆盖（gemini/codex 的 bin、glm 的 entry）都有真实消费方（doctor.ts 传给各自探针、adapters/codex.ts 取 cfg.bin ?? probe.entrypoint）；claude 侧的入口由探针独占——适配器的 run 与 authProbe 都读 probe.cli.claude.entrypoint，doctor 调 probeClaude 时第一个参数逐字传 null。加 bin 即加死字段，而本仓已有两条「登记而无消费方」的未结条目（EV-06 / EV-15），其危害是让后来者以为该字段已经生效。effort 同理不加：claude 侧没有对应的 CLI 旗标。真需要本机入口覆盖时再放宽本支是向后兼容的，反向删字段不是。"
           }
         ]
       }

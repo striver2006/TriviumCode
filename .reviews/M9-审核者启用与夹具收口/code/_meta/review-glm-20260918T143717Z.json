@@ -1,0 +1,90 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "三处焦点落法整体成立，未发现正确性/安全级问题；四条意见全部 minor/nit。最重一条（GLM-01）：「default_critics 含未启用家」用例被 skip 后，validateConfig 这条报错路径的负例覆盖当前为零——而该分支对未登记 id（如 default_critics: ['nobody']，schema 对 items 无枚举约束）今天仍可达，skip 消息「本分支当前不可达」还正是计划修订 §2.2.3 明令弃用的措辞。GLM-03：识别集 ⊇ 保护集的不等式用例只以缺省 Driver 调用，criticRoleSuffixes 声明为「M10 接口」的 driver 参数零覆盖，且新判据今天与旧 CRITICS 判据取值逐字相同、静默回退不会红。GLM-02/04 分别是夹具文档锚点计数失实与一处恢复时机才显形的文案口径分叉。计划双审裁决的关键落点（legalList 线程化、SELECTABLE 共享夹具、Hook 三处同源、EV-55 登记）已逐一核实落地。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/config-migrate.test.ts:328（另见 src/trivium/schemas.ts:217）",
+      "problem": "被 skip 的「校验：登记但未启用为审核者的 Agent 出现在 default_critics → 报错」把前提写成「本分支当前不可达」，但它守的分支（schemas.ts:217 的 !CRITIC_AGENT_IDS.includes(id)）对未登记 id 今天仍可达：config.v2.json 对 default_critics 的 items 只约束 type/minLength，default_critics: ['nobody'] 仍会触发「不是当前可用的审核者」。三个后果：①该报错路径在 validateConfig 层的负例覆盖当前为零（critics.test.ts:295 只盖运行时层 resolveCriticSelection，config-schema.test.ts 无任何 default_critics 用例）；②一条今天就能跑、且恰好守住「报错而非静默忽略」这一定性的未登记 id 夹具，随真正取不到的「已登记未启用」那一格一并放掉了；③skip 消息「本分支当前不可达」正是计划修订 §2.2.3（CODEX-02b 裁决）明令改掉的措辞——用例上方注释块写对了子情形，但输出里可见的消息回退了。",
+      "evidence": "读 src/trivium/schemas.ts:200-228（分支与报错文案）、skills/dual-critic/schema/config.v2.json:266-275（items 无枚举/pattern）、test/unit/config-migrate.test.ts:320-340（skip 实现与消息逐字），并 grep 确认 config-migrate.test.ts 与 config-schema.test.ts 均无「default_critics 含未登记 id」的其它负例；裁决出处为 .reviews/M9-审核者启用与夹具收口/plan/2026-09-18-M9-审核者启用与夹具收口-revised-claude.md §1.2 与 §2.2 第 3 点。",
+      "suggestion": "skip 消息改为「『已登记未启用』这一子情形当前不可达」的计划口径；并补（或改为）一条今天可运行的夹具——default_critics 填一个未登记 id，断言报错发生且点名——拿回该路径「必须报错、不静默忽略」的覆盖；skip 条件保持现状，第五家登记未启用时再回到原夹具。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "test/helpers/critic-fixtures.ts:25-28",
+      "problem": "夹具的风险论证声称「当轮 Driver 不得入选」这条生产规则有三重独立锚看着、都不经本夹具，但列出的第三重（assertSelectableUsable）既不看这条生产规则、也不在本夹具之外：SELECTABLE 由夹具自己从 CRITICS 减 DEFAULT_DRIVER 算出，critics.ts 的 Driver 排除检查若被删掉，它不会红（它只断言 SELECTABLE.length >= min，守的是夹具自身前提）；且该函数就定义在本文件里，「都不经本夹具」对它两处不成立。论证实际只立在 critics.test.ts:113 与 :120 两条负例上。这段注释的全部意义就是论证「代价可接受」，锚数虚报会让下一个人低估真实的安全余量。",
+      "evidence": "读 test/helpers/critic-fixtures.ts 全文（assertSelectableUsable 的断言体只含 length 检查）、test/unit/critics.test.ts:113-131（真正锚住该规则的两条负例：缺省 Driver 拒绝 + 显式传 driver 的拒绝）。",
+      "suggestion": "把注释块的锚清单改为两重（critics.test.ts 的两条 Driver 负例），或将第三条改述为「夹具前提自检，不看生产规则」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/hooks.test.ts:76-99（另见 src/trivium/hooks.ts:116-141）",
+      "problem": "「识别集 ⊇ 保护集，差集恰是当轮 Driver」这条用例的全部断言都建立在以缺省 Driver 调用的 criticRoleSuffixes() 上。问题有二：①该函数的 driver 参数——文档块自称「M10 的接口」——全仓零测试覆盖，参数被忽略或删掉今天不会红；②由于四家 criticEnabled 全真且 claude 恰是 Driver，新判据「全集减当轮 Driver」与被替换的旧判据「CRITICS」取值逐字相同，判据被静默改回 CRITICS 派生同样全绿——现用例要到第五家未启用者登记那天才碰得到差集。顺带一个文档准确性问题：两个真实消费者都在模块加载期烙死缺省值（hasCriticRoleSuffix 不收 driver 参数；ROLE_SUFFIX_ANYWHERE 是模块级 const），M10 那句「改调用方传值即可」比实际口径窄。用例名里的「当轮」从未被换过值，恰是本条焦点问的「不等式用例够不够强」的短板。",
+      "evidence": "读 src/trivium/hooks.ts:116-141（driver 参数及其 M10 文档）、hooks.ts:529（ROLE_SUFFIX_ANYWHERE 为模块级常量，构造时不传 driver）、test/unit/hooks.test.ts:76-99（用例仅无参调用 criticRoleSuffixes()），并 grep 确认 test/ 下无任何对 criticRoleSuffixes 传非缺省 Driver 的调用。",
+      "suggestion": "在该用例内补一段换 Driver 的断言：criticRoleSuffixes(<某非缺省已登记 id>) 之后差集翻转为该 id、原 Driver 进入保护集且仍被识别集认出——同时钉住参数契约与「全集减当轮 Driver」的派生方式，防静默回退到 CRITICS 派生。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/topic-args.ts:455（另见 test/unit/topic-args.test.ts:611）",
+      "problem": "翻开关后，同一个词「当前可用」在本仓有两套派生：legalList（critics.ts:52，CRITICS 减当轮 Driver 减无段者）与模型旗标报错处的 CRITICS.join('、')（含 Driver claude）。该消息今天不可达，但 EV-52 登记的触发条件（第五家登记未启用）会让分支与被 skip 的用例同批恢复——届时用例里 for (const c of CRITICS) 的子断言会把一条「指引用户去选 claude」的文案钉死：用户照着写 --critics claude 就撞 Driver 拒绝，正是 critics.ts:47-50 立规要防的「第一个错误把用户引向第二个错误」。计划 §1.2 裁的只是「子断言今天不需要改」，没有覆盖恢复时刻才显形的这层口径分叉；它与 EV-53 相邻但不同物（EV-53 跟踪的是被悄悄丢弃的模型覆盖）。",
+      "evidence": "读 src/trivium/topic-args.ts:448-459（报错文案逐字用 CRITICS.join）、src/trivium/critics.ts:44-68（legalList 排除 Driver 及其立项理由）、test/unit/topic-args.test.ts:589-618（skip 后保留的 CRITICS 子断言）。",
+      "suggestion": "在 EV-52 或 EV-53 的触发条件里补一句：恢复时该消息论域与 legalList 对齐（减当轮 Driver），子断言同步改；或留到第 5 步 --driver 落地时一并收口。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "criticRoleSuffixes 判据由 CRITICS 改为「全部已登记角色减当轮 Driver」，必须改的理由（否则 Driver 写不了自己的裁决件、流水线锁死）与「今天行为等价、换的是理由」的论证均成立；Write 侧、Bash 侧 ROLE_SUFFIX_ANYWHERE、拒绝文案三处同源，计划裁决的枚举补全（原句漏 -codex.md）已在 hooks.ts:635 落成注册表派生。",
+    "跨时间/当轮语义不对称已如实写进 hasCriticRoleSuffix 文档块并登记 EV-55；我独立核查该函数消费者确只有 isForgedRoleFile 与 immutableChangeReason 两处，Bash 侧与 isForgedRoleFile 同为当轮语义，无未登记的第三消费者漏网。",
+    "resolveCriticSelection 的 descriptors 注入口实现完整：lookup 与 legalList 双双跟随注入表（后者是计划 §2.2 第 4 点的裁决，已按「不取可接受取舍那条」落实）；生产不传 descriptors 时路径逐字不变，且全仓无生产调用方传入。",
+    "SELECTABLE 移入共享 helper（GLM-04 裁决）、补「原 Driver 换 Driver 后可单选」正例（AGY-03 裁决）、registry-parity 的 run.v2 形状断言改为遍历全部已登记 id（除 Driver 互斥）——三处都比原版更强，且自适应断言把「夹具前提」从注释变成了会红的断言。",
+    "config.ts 的三个 claude slug 与实测报告逐字一致（claude-sonnet-5、claude-haiku-4-5-20251001 均有 system/init 或 M6 探针回读记录），「真实审查尺度未测」的边界写在取值旁；flash 档取 haiku 避免了与 default 同值的退化。",
+    "config-schema.test.ts 新增的「schema oneOf 覆盖注册表全部厂商」自适应断言，把「第五家登记而形状未定义」从静默前提变成提醒装置，与 skip 的运行期判据配套，恢复路径完整。",
+    "CLAUDE.md 与 hooks.ts 文案同批按新判据改写，消除了翻开关当日的自我矛盾，且明示「不要照抄括号里的枚举」。",
+    "realAdapters 的消费面逐一核过（preflight/review/run-protocol 均按入选集合索引），claude 入表对预检与模型路由无行为连带。"
+  ],
+  "not_covered": [
+    "未实跑 npm run typecheck / npm test（审查只读约束；全部结论基于源码与用例文本的静态核对，构建产物未验证）。",
+    "V4 的「本仓 .trivium/config.yaml 真实加载」与 V8 的「翻开关后全量 trivium doctor 输出对照」属一次性人工验证，仓库内无从核对是否执行；.trivium/ 按任务书 §8.2 未读。",
+    "skills/dual-critic/ 下 SKILL.md、protocol 与 test/integration 的 gate-loop（V2 断言落点）未读当前实现，按计划与 hooks.ts 注释采信。",
+    "adapters/claude.ts、probes/claude.ts、scripts/claude-admission-control.mjs 非本步 diff 文件（第 3 步产物、已历三轮双审），未逐行复核。",
+    "另一位审查员的本轮结论按背靠背约束未读、未推测。"
+  ],
+  "consulted": [
+    ".reviews/M9-审核者启用与夹具收口/code/_meta/changes-20260918T143717Z.diff",
+    ".reviews/M9-审核者启用与夹具收口/plan/2026-09-18-M9-审核者启用与夹具收口-revised-claude.md",
+    ".reviews/M9-审核者启用与夹具收口/plan/2026-09-18-M9-审核者启用与夹具收口-claude.md",
+    "src/trivium/critics.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/types.ts",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/preflight.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "test/helpers/critic-fixtures.ts",
+    "test/unit/critics.test.ts",
+    "test/unit/topic-args.test.ts",
+    "test/unit/config-migrate.test.ts",
+    "test/unit/hooks.test.ts",
+    "doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md"
+  ]
+}

@@ -5,9 +5,11 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   hookPreWrite, hookPreBash, hookPreCommit, hookStop, hookSessionStart, runHook, looksLikeWriteCommand,
-  extractTargetPath, isForgedRoleFile, hasCriticRoleSuffix, isInsideArchive, isOrchestratorOwned,
+  extractTargetPath, isForgedRoleFile, hasCriticRoleSuffix, criticRoleSuffixes, isInsideArchive, isOrchestratorOwned,
   type HookInput,
 } from '../../src/trivium/hooks.js';
+import { looksLikeRoleArtifact } from '../../src/trivium/naming.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
 import { exists } from '../../src/trivium/util/fsx.js';
 import { setGate } from '../../src/trivium/state.js';
 import { defaultConfig } from '../../src/trivium/config.js';
@@ -50,9 +52,100 @@ test('纯后缀检查：只问形态，不问位置', () => {
   // 提交锚（immutableChangeReason）用的就是这一支，传进来的是 basename
   assert.equal(hasCriticRoleSuffix('2026-09-10-t-gemini.md'), true);
   assert.equal(hasCriticRoleSuffix('2026-09-10-t-glm.md'), true);
+  /*
+   * 后两条**结论不变、理由已改写**（M9 第 4 步）。
+   *
+   * 旧理由是「`-claude.md` 不是审核者角色」——那句话在 claude 的 `criticEnabled`
+   * 翻为 true 的那一刻就成了假的，而断言会照样绿（判据换了集合，取值恰好还相同），
+   * 于是注释会静默地变成谎话。
+   *
+   * 新理由：**`-claude.md` 是当轮 Driver 自己的产出**。判据是「全部已登记角色
+   * 减当轮 Driver」，与「谁能当审核者」无关——见 `criticRoleSuffixes()` 的文档块。
+   */
   assert.equal(hasCriticRoleSuffix('2026-09-10-t-claude.md'), false);
   assert.equal(hasCriticRoleSuffix('2026-09-10-t-revised-claude.md'), false);
   assert.equal(hasCriticRoleSuffix('src/gemini.md'), false, '文件名必须以 -gemini.md 结尾');
+});
+
+/*
+ * **识别集 ⊇ 保护集**，差集恰是当轮 Driver（M9 第 4 步，计划双审 AGY-02 ≡ CODEX-04 的连带 3）。
+ *
+ * 两者此前**相等**（`naming` 用全量后缀、Hook 用 `CRITICS`，而 claude 恰好未启用），
+ * 所以这层关系从来没被写下来过。改判据之后它们不再相等，而不等的方向是有讲究的：
+ * 识别得出来（`looksLikeRoleArtifact` 认得 Driver 的产出是角色工件，归档要靠它排序轮次）
+ * 但不保护（Driver 要能写自己的裁决件）。
+ *
+ * 反过来若保护集大于识别集，就是「拦得住却认不出」——Driver 交不了卷，
+ * 而归档还以为那份文件不存在。
+ *
+ * ## 这条用例**证伪不了什么**，要说清楚（代码双审 CODEX-04 ≡ GLM-03 ≡ AGY-04）
+ *
+ * 上一版这里写着「这条用例今天恒成立，两侧任一改错都当场红」——**那两句自相矛盾**，
+ * 而且后半句是假的：
+ *   · 差集那条断言是**重言式**：`diff` 与 `criticRoleSuffixes()` 同源于 `ALL_AGENT_IDS`，
+ *     只要 `DEFAULT_DRIVER` 已登记，`diff === [DEFAULT_DRIVER]` 恒真；
+ *   · 把实现换回被替换掉的旧判据（`CRITIC_AGENT_IDS` 减 Driver）**也不会红**：
+ *     四家全启用时两个集合取值逐字相同。
+ *
+ * 也就是说「保护集的来源是**身份全集**而不是**启用集合**」这一层，
+ * 今天没有任何观测能区分——要到注册表登记第五家（且它未启用为审核者）那天才有。
+ * 本用例真正能证伪的是下面那段**换 Driver** 的断言：它锁住参数契约与差集的动态性。
+ */
+test('识别集 ⊇ 保护集，差集恰是当轮 Driver', () => {
+  const protectedIds = criticRoleSuffixes();
+
+  for (const id of protectedIds) {
+    const f = `2026-09-10-t-${id}.md`;
+    assert.equal(hasCriticRoleSuffix(f), true, `${id} 应在保护集内`);
+    assert.equal(looksLikeRoleArtifact(f), true, `保护集成员 ${id} 必须也被识别集认出`);
+  }
+
+  const diff = ALL_AGENT_IDS.filter((id) => !protectedIds.includes(id));
+  assert.deepEqual(
+    diff, [DEFAULT_DRIVER],
+    '识别集与保护集的差集必须恰是当轮 Driver——多一个就是有角色的产出没人保护，少一个就是 Driver 交不了卷',
+  );
+
+  // 差集成员：识别得出来，但不受保护
+  const driverFile = `2026-09-10-t-${DEFAULT_DRIVER}.md`;
+  assert.equal(looksLikeRoleArtifact(driverFile), true, 'Driver 的产出仍是角色工件，归档要靠它算轮次');
+  assert.equal(hasCriticRoleSuffix(driverFile), false, 'Driver 的产出不受保护，否则它写不了自己的裁决件');
+});
+
+/*
+ * **换一个当轮 Driver，保护集必须跟着翻转**（代码双审 AGY-04 ≡ GLM-03 ≡ CODEX-04）。
+ *
+ * `criticRoleSuffixes(driver)` 的 `driver` 参数自称是「M10 的接口」，
+ * 而上一版全仓**零覆盖**：把它忽略掉、或把函数体写死成 `!== DEFAULT_DRIVER`，
+ * 今天一条用例都不会红。一个没有断言的预留接口，到 M10 才发现它没接上就太晚了——
+ * 那时它要承载的是「谁的产出不该由 Driver 手写」这条安全判据。
+ *
+ * 这条断言不是重言式：它让同一个函数在两个不同入参下产出**不同**的集合，
+ * 并检查翻转的方向对不对。
+ */
+test('换当轮 Driver：保护集与差集一起翻转（criticRoleSuffixes 的参数契约）', () => {
+  const other = ALL_AGENT_IDS.find((id) => id !== DEFAULT_DRIVER)!;
+  const swapped = criticRoleSuffixes(other);
+
+  assert.ok(
+    !swapped.includes(other),
+    `换 Driver 之后 ${other} 应退出保护集——它成了执笔者，要能写自己的产出`,
+  );
+  assert.ok(
+    swapped.includes(DEFAULT_DRIVER),
+    `换 Driver 之后原 Driver ${DEFAULT_DRIVER} 应进入保护集——它此刻是审查员，产出只能由编排器落盘`,
+  );
+
+  const swappedDiff = ALL_AGENT_IDS.filter((id) => !swapped.includes(id));
+  assert.deepEqual(swappedDiff, [other], '差集必须跟着当轮 Driver 走，而不是钉死在缺省值上');
+
+  // 识别集不随 Driver 变：它问的是「像不像角色工件」，与谁执笔无关
+  for (const id of [DEFAULT_DRIVER, other]) {
+    assert.equal(
+      looksLikeRoleArtifact(`2026-09-10-t-${id}.md`), true,
+      `识别集与当轮 Driver 无关，${id} 的产出始终是角色工件`,
+    );
+  }
 });
 
 test('识别伪造审查文件：形态像 + 落在归档内', () => {

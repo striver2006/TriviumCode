@@ -11,6 +11,7 @@ import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { CRITICS, type Ctx } from '../../src/trivium/types.js';
 import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
+import { SELECTABLE } from '../helpers/critic-fixtures.js';
 
 /*
  * ── 入参是 argv 数组，不是字符串（EV-18）──
@@ -521,7 +522,19 @@ test('AGY-04：--only 取值当场校验，拼错不必等到 review --start', a
        * 原先逐字匹配措辞的断言会为一次纯文案调整变红——那是脆断言。
        */
       assert.match(e.message, /gemmini/, '要点名拼错的那个值');
-      for (const c of CRITICS) {
+      /*
+       * **锚在 `SELECTABLE` 而不是 `CRITICS`**（M9 第 4 步）。
+       *
+       * 这条路径走 `resolveCriticSelection`，其报错文案由 `legalList` 拼，
+       * 而 `legalList` **排除当轮 Driver**（「第一个错误不得把用户引向第二个错误」）。
+       * 翻开关后 `CRITICS` 含 claude 而文案里没有它——用 `CRITICS` 遍历会红，
+       * 且红得莫名其妙：断言要的正是那条文案**不该**列出的值。
+       *
+       * 注意与本文件下方「给非审核者指定模型」那条的区别：那条的文案由
+       * `topic-args.ts` 自己用 `CRITICS.join('、')` 拼、**不经 `legalList`**，
+       * 所以它遍历 `CRITICS` 是对的，不要跟着一起改。
+       */
+      for (const c of SELECTABLE) {
         assert.match(e.message, new RegExp(c), `要列出合法值 ${c}，否则用户不知道该写什么`);
       }
       return true;
@@ -548,17 +561,47 @@ test('模型覆盖旗标的白名单按注册表派生，不是写死两条', ()
   }
 });
 
-test('给非审核者指定模型 → 退 64 并列出当前可用，而不是解析成功后被悄悄丢弃', async () => {
+const MODEL_FLAG_PENDING = ALL_AGENT_IDS.filter(
+  (id) => !(CRITICS as readonly string[]).includes(id),
+);
+
+/*
+ * **M9 第 4 步：本分支在真实注册表下不可达了**（计划双审 CODEX-02）。
+ *
+ * 这条校验在 `topic-args.ts` 里直读模块级 `CRITICS`
+ * （`for (const id of ALL_AGENT_IDS) … if (!CRITICS.includes(id))`），
+ * **不经 `resolveCriticSelection`**——`critics.test.ts` 那个 descriptors 注入口
+ * 对它无效。而四家全启用后，「全部已登记」减「可用审核者」是空集，
+ * 没有任何合法输入能走到这条报错。
+ *
+ * 我起初把夹具换成了当轮 Driver，**那是错的**：`--model-claude` 现在完全合法，
+ * 因为 claude 确实是可用审核者。实跑打回后改成本形态。
+ *
+ * ## 它顺带暴露了一个真实缺口（已登记 BACKLOG，属第 5 步范围）
+ *
+ * `--model-claude` 今天能解析成功，而 claude **永远不会入选**
+ * （`critics.ts` 的「当轮 Driver 不得入选」恒拒）。于是用户显式指定的模型
+ * 会一路走到「解析成功、随后被悄悄丢弃」——**正是这条用例当初要防的那个形状**，
+ * 只是触发它的不再是「未启用的第三家」，而是「已启用但当不了本轮审核者的 Driver」。
+ * 修法要等 `--driver` 落地（第 5 步）：那时「谁能当审核者」才成为逐次运行的事实，
+ * 本条校验也才有正确的判据可依。
+ */
+test(
+  '给非审核者指定模型 → 退 64 并列出当前可用，而不是解析成功后被悄悄丢弃',
+  {
+    skip: MODEL_FLAG_PENDING.length === 0
+      ? '注册表四家均为可用审核者，本分支当前不可达（见上方说明；Driver 那一格的缺口已登记，属第 5 步）'
+      : false,
+  },
+  async () => {
   const ctx = await fakeCtx();
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 4;\n');
   /*
    * 白名单的论域是「全部已登记 Agent」，取值的论域是「当前可用审核者」。
-   * 两者之差（Driver 自身、尚未启用的第三家）必须当场报错：
-   * 放任它走到「解析成功、随后被丢弃」，留痕里就看不出用户指定过模型——
-   * 这正是 `--base` 漏传那一族的形状。
+   * 两者之差必须当场报错：放任它走到「解析成功、随后被丢弃」，
+   * 留痕里就看不出用户指定过模型——这正是 `--base` 漏传那一族的形状。
    */
-  const driverSide = ALL_AGENT_IDS.find((id) => !(CRITICS as readonly string[]).includes(id));
-  assert.ok(driverSide, '注册表里应当至少有一个未启用为审核者的 Agent（当前是 claude / codex）');
+  const driverSide = MODEL_FLAG_PENDING[0]!;
 
   await assert.rejects(
     resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['看并发', '--topic', 'T', `--model-${driverSide}`, 'm-9'] }),
@@ -571,12 +614,29 @@ test('给非审核者指定模型 → 退 64 并列出当前可用，而不是�
       return true;
     },
   );
-});
+  },
+);
 
 test('可用审核者的模型覆盖照常生效（上一条不得误伤正常路径）', async () => {
   const ctx = await fakeCtx();
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 5;\n');
-  const side = CRITICS[0]!;
+  /*
+   * **采样取 `SELECTABLE[0]`，不是 `CRITICS[0]`**（代码双审 AGY-03 ≡ CODEX-09）。
+   *
+   * 两件事要分开：
+   *   · 白名单的**论域**确实是「可用审核者」全集（含当轮 Driver），这一点没变；
+   *   · 但本条用例的名字是「**正常路径**不得被误伤」，而 `CRITICS[0]` 是 claude——
+   *     M9 之后**唯一永不能入选**的一家（`critics.ts` 的 Driver 检查恒拒）。
+   *
+   * 拿它当「正常路径」，验的其实是一次**解析成功后必然被丢弃**的覆盖（BACKLOG EV-53
+   * 登记的正是这个缺口），而对「拒绝分支写得过宽、把所有非入选者一起拒掉」这种误伤
+   * 没有任何分辨力——那恰恰是第 5 步按「本轮实际能入选谁」收口白名单时最可能引入的形态。
+   *
+   * （上一版这里写着「取 `CRITICS[0]` 是对的，不要跟着 SELECTABLE 一起改」，
+   * 与 `critic-fixtures.ts` 里「凡是需要一个合法审核者的地方一律取这里」**直接冲突**，
+   * 同一个仓库给出两条相反的指引。以本条为准：论域看 `CRITICS`，采样取 `SELECTABLE`。）
+   */
+  const side = SELECTABLE[0]!;
   const r = await resolveTopicArgs({
     ctx, scope: 'code', rawArgs: ['看并发', '--topic', 'T', `--model-${side}`, 'm-7'],
   });

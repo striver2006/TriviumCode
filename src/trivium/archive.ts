@@ -45,7 +45,9 @@ export const metaDir = (l: ArchiveLayout, stage: StageOrVerify): string =>
 /**
  * 计算本次运行应使用的重跑轮次（§12.5）。
  *
- * **只看审查工件**（`-gemini.md` / `-glm.md`），不看 Driver 的原稿。
+ * **只看审查工件**（带角色后缀、且该角色不是当轮 Driver 的那些），不看 Driver 的原稿。
+ * 判据在下面按 `i.parsed.role === driver` 逐条算，**此处不重抄一份后缀枚举**：
+ * 抄的那份会随注册表漂移（同族的三处今天就已漏过 `-codex.md`）。
  * 依据设计 §6.2 的目录示例：重跑时原稿**不重新生成**，停留在第 1 轮，
  * 只有两侧审查与裁决件带 `-r<N>`：
  *

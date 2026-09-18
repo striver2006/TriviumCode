@@ -146,9 +146,20 @@ test('可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家
   /*
    * 反向：注册表里登记、但 schema 没给形状的厂商，配置段必须被**明确**拒绝，
    * 且报错要说清是「形状尚未定义」而不是别的——用户照着这条话才知道该等哪个里程碑。
+   *
+   * ## M9 第 4 步起这一格**常态为空**（计划双审 CODEX-01）
+   *
+   * claude 的 anthropic 分支加进 `oneOf` 之后，四家形状全部就位，
+   * `pending` 变成空集——上一版那句 `assert.ok(pending.length > 0)` 会当场红，
+   * 而它红的理由与本用例要测的东西（「现取，不手写」）毫无关系。
+   *
+   * **不是删掉反向断言**：那等于把「形状未定义要说清楚」这条规则的负例一起删掉，
+   * 而它在引入第五家、或任何一家的形状被临时摘掉时立刻重新可达。
+   * 改成两段：真有 pending 就照旧逐个查（真实数据优先）；没有就用一个
+   * **构造出来的未声明厂商**验同一条报错路径。
    */
   const pending = AGENTS.filter((a) => !declared.includes(a.vendor));
-  assert.ok(pending.length > 0, '注册表里应当至少有一个形状未定义的 Agent（当前是 claude / codex）');
+
   /*
    * **逐个**查，不是查第一个。只查 `find()` 的话，这条断言只覆盖 AGENTS 里最靠前的
    * 那一家——往手写集合里错加一个别的厂商，它照样全绿。实测确认过：
@@ -164,6 +175,52 @@ test('可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家
       `agents.${agent.id} 的报错要说清真实原因（形状尚未定义），实际是：\n${problems.join('\n')}`,
     );
   }
+
+  /*
+   * ## `pending` 为空时**没有替代夹具**——这是如实登记，不是偷懒
+   *
+   * 起初我在这里补了一段「构造一个未声明的 vendor 走同一条判定」的兜底。
+   * **那段基于一个错误前提，实跑打回**：`checkConfigAgents` 判「形状尚未定义」时读的是
+   * **注册表登记的 vendor**（`agentById(id)!.vendor`），不是配置里写的那个。
+   * 拿 `agents.claude = { vendor: 'no-such-vendor' }` 去试，走到的是再下一条
+   * 「vendor 与注册表不符」，报错里根本没有「形状尚未定义」。
+   *
+   * 也就是说：这条分支的可达性**完全由注册表决定**，而
+   * `checkConfigAgents(data)` 只收 data、注册表是模块级绑定，**没有注入口**。
+   * 要给它造负例，就得给校验层开一个注入口——那是生产改动，
+   * 按本步的范围边界（「夹具收口」）不做，与 `critics.test.ts` 里
+   * 「登记但未启用」那条的处置同一口径，已一并登记 BACKLOG。
+   *
+   * 所以正向断言（上面的 `for (const vendor of declared)`）是本用例当前的实质覆盖；
+   * 反向分支等注册表再登记一家、形状尚未跟上时自动恢复——
+   * 下一条用例就是那一天的提醒装置。
+   */
+});
+
+/*
+ * **自适应断言：schema 的 oneOf 是不是已经覆盖了注册表的全部厂商**（M9 第 4 步）。
+ *
+ * 上一条用例里那句 `pending.length > 0` 曾经同时干两件事：测反向报错、
+ * 顺便记录「当前还有家没定义形状」。两件事绑在一个断言上，于是 M9 补齐第四家时
+ * 它以一种与用例主张无关的方式红掉。这里把**记录**那一半单独拎出来：
+ * 它是一条关于当前进度的事实，值得被断言看着，但不该决定别的用例红不红。
+ */
+test('schema 的 agents.oneOf 已覆盖注册表全部厂商——新增一家未定义形状的 Agent 时本条会红', async () => {
+  const schema = JSON.parse(
+    await fs.readFile(
+      path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'), 'utf8',
+    ),
+  ) as { properties: { agents: { additionalProperties: { oneOf: { properties: { vendor: { const: string } } }[] } } } };
+  const declared = schema.properties.agents.additionalProperties.oneOf
+    .map((b) => b.properties.vendor.const);
+
+  const undeclared = AGENTS.filter((a) => !declared.includes(a.vendor)).map((a) => a.id);
+  assert.deepEqual(
+    undeclared, [],
+    `注册表里有 Agent 的 vendor 未在 config.v2.json 的 agents.oneOf 中声明：${undeclared.join('、')}。\n` +
+      '  这不一定是错误（新登记一家、形状随后续里程碑定义，是正常节奏）。\n' +
+      '  它提醒的是：上一条用例的反向分支此刻有真实数据覆盖，构造夹具那一段可以不走。',
+  );
 });
 
 /*

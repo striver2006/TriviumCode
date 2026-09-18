@@ -899,17 +899,53 @@ export interface GlmCriticConfig {
 }
 
 /**
+ * claude 的配置段（M9 第 4 步）。
+ *
+ * ## 只有判别式，**没有任何其它字段**——这是刻意的不对称
+ *
+ * 另三家的段里都装着入口覆盖（gemini/codex 的 `bin`、glm 的 `entry`），
+ * 于是「照先例给 claude 也加一个 `bin`」看起来天经地义。**核过之后不是这样**：
+ * 那三个字段**都有真实消费方**——`doctor.ts` 把 `agents.gemini.bin` 传进 `probeAgy`、
+ * 把 `agents.glm.entry` 传进 `probeZcode`，`adapters/codex.ts` 两处入口取值都是
+ * `cfg.bin ?? probe.entrypoint`。**先例是「有消费方才登记」，不是「每家都有 bin」。**
+ *
+ * claude 侧没有这个消费方：适配器的 `run` 与 `authProbe` 都从
+ * `probe.cli.claude.entrypoint` 取入口，`doctor.ts` 调 `probeClaude` 时第一个参数
+ * 逐字传 `null`。**入口由探针独占。** 加一个 `bin` 就是加一个死字段——
+ * 本仓已有两条「登记而无消费方」的未结 BACKLOG（EV-06 的 `instructionFiles`、
+ * EV-15 的 `readonly_commands`），它们的危害正是**让后来者以为那个字段已经生效**。
+ *
+ * **不要为了「补齐」把 `bin` 加回来。** 真需要本机入口覆盖时，
+ * 再放宽这一支的 schema 是向后兼容的；反过来删一个已经进过用户配置的字段则不是。
+ *
+ * `effort` 同理不加：claude 侧没有对应的 CLI 旗标（探针未记录任何 effort 旗标）。
+ */
+export interface ClaudeCriticConfig {
+  vendor: 'anthropic';
+}
+
+/**
  * 单个 Agent 的配置段（`config.v2` 的 `agents.<id>`）。
  *
  * **以 `vendor` 为判别式的可辨识联合，不是同构 record**：两家的字段集合完全不同
  * （antigravity 要 `agent` 与 `effort`，zcode 要 `entry` 与 `max_turns`），
  * 硬压成同一个形状只会得到一堆互相不适用的可选字段，校验也就形同虚设。
  *
- * codex / claude 的形状随 M8 / M9 / M10 加入本联合。在那之前，配置里写
- * `agents.claude` 会被 schema 拒——那不是缺陷，而是「形状尚未定义」的如实反映：
- * 设计 13.1.1 允许 Driver 段存在，但没说它长什么样，凭空放行等于承诺一个不存在的契约。
+ * **四家形状自 M9 第 4 步起全部就位**（codex 随 M8 第 3 步、claude 随本步）。
+ * 此前配置里写 `agents.claude` 会被 schema 拒，那不是缺陷而是「形状尚未定义」
+ * 的如实反映——设计 13.1.1 允许 Driver 段存在，但没说它长什么样，
+ * 凭空放行等于承诺一个不存在的契约。
+ *
+ * **副作用要知道**：`schemas.ts` 的 `configurableVendors()` 从 schema 现取判别式，
+ * 四支齐备后「已登记但形状未定义」这一格**变成空集**，那条报错分支随之不可达。
+ * 三条依赖该格的用例已在本步一并处置（见 `config-schema.test.ts` /
+ * `config-migrate.test.ts` 里对应的说明）。
  */
-export type AgentConfig = GeminiCriticConfig | GlmCriticConfig | CodexCriticConfig;
+export type AgentConfig =
+  | GeminiCriticConfig
+  | GlmCriticConfig
+  | CodexCriticConfig
+  | ClaudeCriticConfig;
 
 /**
  * 一条判不实的写入线索（`CriticResult.suspected_write_events` 的元素）。

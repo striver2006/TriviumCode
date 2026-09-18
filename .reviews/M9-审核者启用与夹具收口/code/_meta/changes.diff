@@ -1,0 +1,1435 @@
+# trivium changes.diff
+# run_id: 20260918T143717Z
+# base: HEAD
+# head: 69700641cc130806943a3935ea03a0a562e4457f
+# files: 19
+#   CLAUDE.md
+#   doc/08_project/BACKLOG.md
+#   skills/dual-critic/schema/config.v2.json
+#   src/trivium/adapters/index.ts
+#   src/trivium/agents/registry.ts
+#   src/trivium/archive.ts
+#   src/trivium/config.ts
+#   src/trivium/critics.ts
+#   src/trivium/hooks.ts
+#   src/trivium/schemas.ts
+#   src/trivium/types.ts
+#   test/helpers/critic-fixtures.ts
+#   test/unit/adapter-base.test.ts
+#   test/unit/config-migrate.test.ts
+#   test/unit/config-schema.test.ts
+#   test/unit/critics.test.ts
+#   test/unit/hooks.test.ts
+#   test/unit/registry-parity.test.ts
+#   test/unit/topic-args.test.ts
+diff --git a/CLAUDE.md b/CLAUDE.md
+index db2edc3..2573f46 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -9,8 +9,12 @@
+ - 四条命令是唯一入口：`/dual-run`（全流程）、`/dual-review-plan`、
+   `/dual-review-code`、`/dual-review-bug`。**不要自行调用 `agy` 或 `zcode`**——
+   并行、超时、指纹核验、防覆盖命名都在编排器内，绕过它会失去全部保障。
+-- **禁止在归档根（`.reviews/`）内产出 `*-gemini.md` 或 `*-glm.md`。** 那是审查员的角色后缀，
+-  Hook 会拦下你的写入。你的产出后缀是 `-claude`。
++- **禁止在归档根（`.reviews/`）内产出带审查员角色后缀的文件。** 受保护的后缀是
++  **除当轮 Driver 之外的全部已登记角色**（今天即 `*-codex.md` / `*-gemini.md` / `*-glm.md`；
++  权威判据是 `hooks.ts` 的 `criticRoleSuffixes()`，**不要照抄这里的括号**——
++  这句括号在 M8 接入 codex 后就漏过一次）。Hook 会拦下你的写入。
++  你的产出后缀是 `-claude`，它恰恰**不在**保护集里：判据是「全集减当轮 Driver」，
++  而不是「启用的审核者」——后者在 M9 翻开 claude 的审核者开关那一刻会把你自己的裁决件一并锁死。
+   归档根**之外**的同形态文件不拦（`doc/` 下的设计稿等）——它们不进入 `gate` 的读取面，
+   拦它只有误锁成本。判定按词法路径与 realpath 真实路径的并集算，软链两个方向都拦得住。
+ - 审查意见必须**逐条**裁决（接受 / 驳回 / 暂缓 + 理由，接受要写落点）。
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 29343c3..f0ea6ac 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -138,7 +138,7 @@
+ | EV-41 | **done**（2026-09-17，M9 第 1 步）：三种 prompt 载入形态在 `claude 2.1.273` 上**全部成立**。A（无位置参数、prompt 走管道）与 B（位置参数 `-`，codex 同款）均实测吃下 **31,913 字节**送审包（5~6s、约 $0.044/次），判据是「答出文档**最后一个**二级小节的标题」——整包送达且读到末尾才答得出；C（argv 直传）机制上同样成立。**没有做也不需要做分片或截断**：`getconf ARG_MAX` = 1048576，原条目「待定的是形态不是尺寸」经复核成立。**两处如实登记**：①形态 C 那次模型**拒绝回显哨兵**、判它是提示注入，故 C 的证据强度低于 A/B（只证明了送达，没正面完成任务），大包判据因此换掉；②**本步没有能区分「`-` 是 stdin 标记」与「`-` 被忽略而管道本来就会被读」的实验**，两次观测等价，取舍留给 `adapters/claude.ts`。证据见 `REPORT_2026-09-17_m9_claude_entry_probe.md` §1 | **M9 准入项：claude 的 `-p` 能否从 stdin 收 prompt 未实测。** 送审包是几十 KB 量级，适配层若把它整段放进 argv，就依赖一个没验过的形态。codex 侧走的是 `exec … -`（实测 78 KB 跑通），claude 侧同不同源不知道。**待定的是形态，不是尺寸**——本机 `getconf ARG_MAX` = 1048576，几十 KB 离上限差一个数量级，代码双审实测单个 1,000,000 字节的 argv 项 exec 成功，故设计 3.7.1 初稿「是在赌 ARG_MAX」的说法已撤（那会让 M9 先去做分片/截断，而该做的是先验 `… -`）。**触发条件：M9 写 `adapters/claude.ts` 之前先验这一条**；若不支持 stdin，则 BRIEF 内联进 argv 的尺寸上限要有明确判据，不能默认够用。来源：代码双审 r2 CODEX-07（接受；此前只活在 3.7.1 散文里，按本项目「登记才算承诺边界」的口径补登） | 设计 3.7.1、`adapters/claude.ts`（M9） |
+ | EV-42 | done | **`rule_syntax` 的形状与 `deny_paths` 不同，等价性未验。** claude 侧落盘的 `path_deny.rule_syntax` 是**目录 glob**（`Read(./<dir>/**)`，探针拿 `fx.peerRelPath` 所在目录测的），而 M9 适配层要注入的 `CriticRequest.deny_paths` 是**逐文件清单**。按字面把逐文件路径套进那个形状，第 ③ 道屏蔽可能根本不成立，而 `run.json.guard.peer_deny_applied` 仍会记 true——三家适配器现在都只看 `path_deny.supported`。**`coverage_complete` 不覆盖这个问题**：那一格管的是「规则对哪些**读工具**生效」，这一条问的是「规则对哪种**路径形状**生效」。**触发条件：M9 第 3 步**——**编写适配器之前**先补这次实测，不是「编码时顺手做」（与 `types.ts` 该字段注释对齐；代码双审 r3 AGY-02 指出两处口径曾分叉）。**结案判据**：逐文件形态实测，走 §3.7 声明的两条腿——注入 `Read(<具体文件>)` 后**哨兵未泄漏**且**该次记入 `permission_denials`**，两条都成立才算结案。**安全默认已改为结构保证，不再是纪律（代码双审 r4 CODEX-03）**：`PathDenyProbe` 新增**必填三态** `file_shape_verified`（`null` = 没验过），三家适配器的 `peer_deny_applied` 改读这一格而非 `supported`——claude 侧 `supported` 为 true 而该格为 `null`，`=== true` 判不过，**结构上不可能把一件没测过的事记成 true**。另有一条契约用例锁住「别换回读 `supported`」（变异验证过：换回去当场红）。原先那句「未结案前不得记 true」只是 BACKLOG 里的一句话，而三家适配器逐字就是 `peer_deny_applied: probe.path_deny.supported === true`，第 3 步照抄那一行当场违反且不会红。**否定结案路径（代码双审 r4 AGY-03）**：若实测确认逐文件形态**不生效**，以**否定结论结案**——`file_shape_verified` 记 `false`，`peer_deny_applied` 因此永久为 false，并把该限制记进 §3.7 与限制清单；**不要因为「结案判据只写了正向条件」就让它悬着**。来源：代码双审 r2 CODEX-04（本条此前只活在设计 §3.7 表格的一句话里，按「登记才算承诺边界」补登） **【2026-09-18 done · M9 第 3 步】正向结案：`file_shape_verified: true`。** 逐文件注入后**哨兵未泄漏且记入 `permission_denials`**，两条腿都成立；项目相对目录形态同样成立； 项目外绝对路径条目**规则语法被接受**（退 0、stderr 为空）——本条担心的「CLI 因该条目拒绝整份 `--settings`」**没有发生**。 结论由**探针第三臂**产出（与既有 Grep 负对照臂同构，判据抽成纯函数 `judgeFileShape`），不是手工回填：`probes/claude.ts` 对 `path_deny` 是整体赋值，回填值会在下一次 doctor 被覆盖回 null。 每次 doctor 因此多一次调用（约 +$0.008），刻意的取舍——合进主臂会把刚拆开的 `coverage_complete` 与本格又并回去。 **两个独立装置同结论**（准入脚本走 stdin+自建夹具、探针第三臂走 argv+探针夹具）。 边界：项目外绝对路径的**拦截效果不可单独验证**（`--restricted` 已把文件工具限制在工作目录内，两者效果不可区分），本次只证明了语法被接受。 证据见 `doc/05_testing/REPORT_2026-09-18_m9_claude_admission.md` §1。 | `src/trivium/types.ts` 的 `PathDenyProbe.rule_syntax`、设计 §3.7、`adapters/claude.ts`（M9 第 3 步） |
+ | EV-43 | done | **设计 §3.7 各格均在探针的 argv 形态下测得，stdin 形态未验。** `probeArgs` 把 prompt 放 argv 末位，所以本节每一格都是 argv 形态下的结论；而 EV-41 实测 A/B 两种 stdin 形态可用、**M9 适配层将走 stdin**。**EV-40 那格尤其要复验**（「不带 `--verbose` 即被拒」是参数校验行为，两种形态下未必同结论，尤其形态 B 的位置参数 `-` 会与 prompt 位置参数冲突）。**复验由准入阶段的独立测试夹具 / 脚本执行**，用与适配层一致的 stdin 传参结构——**不在生产 `adapters/claude.ts` 内实现探测逻辑**（代码双审 r4 AGY-03：上一版措辞会把准入复验装置与适配器职责混为一谈）。`adapters/` 不得 import `probes/`，探针那份配方用不上；上一版曾给 `probeArgs` 加过 `promptVia` 分支想省这一步，实为死路（零调用方 + `execProbe` 硬编码 `stdin: ''`），已删。**触发条件：M9 第 3 步**。**复验面是闭集，不是「逐格重测」那种开放集合**（代码双审 r3 CODEX-08）：**闭集以 §3.7 表行为论域逐格标注，不留未分类格**（代码双审 r4 CODEX-04 ≡ GLM-01：上一版只覆盖 13 行里的 9 行，且「形态无关」里混进了根本不是表行的 `version`，可见清单不是从表行集推导的）。**形态相关（须复验，共 8 格）**：`stream_json_requires_verbose`、`json_schema_ok`、`path_deny`、`denied_tool_in_trace`、`trace_path_structured`、**`headless_read_ok`**、**`readonly_breach`**、**`project_memory_blocked`**——中间两格是 r4 补进来的，理由最硬：**它们的整格语义就是「模型收到并执行了这条 prompt」**，改走 stdin 后最可能变结论的恰恰是它们；且 `readonly_breach` 与 `denied_tool_in_trace` **出自同一次 write 探针调用**，同源的格必须同类，否则复验结果会自相矛盾。末一格是 EV-44 的配套新字段，与 `headless_read_ok` 同族（整格语义同样是「模型收到并按 prompt 作答」），故同归此类。**形态无关（不必重测，共 13 项）**：`entrypoint`、`version`、`scratch_paths`、`trust_prompt_required`、`session_id_source`、`readonly_flags`、`tool_surface_checked`、`model_flag`、`strict_mcp_config_applied`、**`version_probe`**、**`probed_at`**、**`models`**、**`isolation`**（`tool_surface_checked` 等四格取自 `system/init` 回读或对落盘组合的判定，与 prompt 怎么送进去无关；末四项来自 `CommonProbe`、**本就不在 §3.7 表里**，不显式归类就会被对账用例逼出来）。**格数账要闭合**：8 + 13 = 21 = `ClaudeProbe` 全部顶层键（`CommonProbe` 8 + 自有 12 + EV-44 新格 1）；`entrypoint` 与 `version` **必须拆成两项**，复合写作 `entrypoint/version` 会与从源码 grep 出的键集全等比对失败（M9 第 3 步计划双审 AGY-02）。**另加一条对账用例**断言两清单**不相交**且**并集 === `ClaudeProbe` 全部键**（键集从 `types.ts` 源码 grep，不手抄），且每格带一句「为什么归这类」的理由字符串并设长度下限（同 `LITERAL_ALLOWLIST` 纪律），否则清单会随新增字段继续脱漏。（**上一版写「形态相关共 7 格 / 形态无关共 6 格」，后者与它自列的 8 项自相矛盾**，且 7+6=13 与 §3.7 表的 15 行对不上——正是「清单不是从表行集推导的」这条毛病的复发，M9 第 3 步计划双审 §1.2 三侧独立核实。）**结论回写落点**：回填设计 §3.7 对应行的行内标注；**若 stdin 形态与 argv 形态分叉**，升一条新 BACKLOG 条目，并把探针判据的适用域**收窄为 argv 形态**（代码双审 r3 GLM-05：`stream_json_requires_verbose` 是探针落盘字段，而探针不跑 stdin 形态、适配器又不该写探针结论——不指定落点，分叉结论只能活在散文里，正是 EV-41 登记理由要防的形态）。**任一格复验不通过**：不接入，或该格记 null 并登记新条目，二选一写进当轮留痕。来源：代码双审 r2 CODEX-03（r1 提出）+ CODEX-01（r2 否掉了那条捷径） **【2026-09-18 done · M9 第 3 步】7 格 argv/stdin 双臂复验，零分叉、零没测到。** 改跑**双臂**而非单臂，是因为本机 CLI 已从 2.1.273 漂到 2.1.276 而 §3.7 基准产自旧版——单臂比对**形态与版本两个变量同时在变，分叉不可归因**。 两臂复用同一份 `buildClaudeArgs` 产出，唯一差别是 prompt 走 argv 末位还是 stdin；判据一律 import 探针导出的 `judge*` 纯函数，不在脚本里重写。 装置是 `scripts/claude-admission-control.mjs`（形态仿 `codex-sandbox-control.mjs`，**import 生产的 argv/exec 封装**——本条那句「不在生产 `adapters/claude.ts` 内实现探测逻辑」管的是探测装置的归属，不禁止脚本调用适配器封装；这样做优于「脚本自建配方+对账用例」：后者给漂移加守卫，前者消除漂移）。 **两条边界**：①闭集 8 格里第 8 格 `project_memory_blocked` **没有进脚本的双臂 parity 装置**；它的 argv 形态**已有探针（`doctor`）单装置的实测**——`probeArgs` 把 prompt 放 argv 末位、对照臂同样显式给空 stdin，所以那次落盘（`project_memory_blocked: true`）本身就是一次 argv 形态、含对照臂的观测。**缺的是同装置的双臂对照，不是「argv 完全未知」**（本条上一版写「只在 stdin 形态下测过、argv 形态未验」，**与实测报告 §4 自家的证据直接相抵**——照那个措辞后人会去补一个已经存在的观测，代码双审 r1 GLM-05）；另记：`denied_tool_in_trace` 那格的判据是**脚本内联**的、与探针落盘判据问的不是同一个问题，其「同结论」应读作「同判据内两臂一致」而非与 §3.7 argv 基线同口径（代码双审 r1 GLM-02，同源化登记 EV-47）； ②脚本夹具是非 git 仓库而探针夹具是，条件差异未做对照。证据见实测报告 §2。 | 设计 §3.7 / §3.7.1、`adapters/claude.ts`（M9 第 3 步） |
+-| EV-44 | done | **接入套件第 ⑤ 件对 claude 侧做不做，待裁定。** M9 第 1 步单变量对照实测：**`--restricted` 会连项目记忆 `CLAUDE.md` 一起阻断**（同目录同提示词、两次均零工具调用，只差这一个旗标，一次答 `NO-PROJECT-MEMORY`、一次答出哨兵）。这**否证了 M9 交底给第 ⑤ 件的理由**（「审查员会读到 Driver 协议、那正好是反指令」——反指令根本进不来），**并连同它给的处置一并否证**（审查员身份片段若注入 `CLAUDE.md`，会被同一个旗标挡掉，做出来是一件永远读不到的死件）。倾向「显式不做 + 写明理由 + 写明翻转条件」，与 M8 对 codex 第 ⑤ 件的处置同形；身份声明只靠 BRIEF 首段（既有手法）。**翻转条件（已改挂因变量，代码双审 r3 CODEX-03）**：给探针新增一格三态判据「`--restricted` 下项目记忆是否仍被阻断」（复用报告 §2.3 那条单变量对照：夹具根目录放一份带哨兵的 `CLAUDE.md`，比对回显），**只有实测 `false` 的那天**本条结论作废；**`null` 维持原裁定**并记「无从证实，待复测」（代码双审 r4 CODEX-05：上一版把 `null` 与 `false` 并列为作废触发器，而 `null` 是「没测到」——**把没测到当证据，正是本主题连修四轮的那个形状**；且同族的记忆回显判据依赖模型配合，`null` 将是常态——`denied_tool_in_trace` 三次观测两次落 `null`）。**建这一格本身要有排期**：无论第 3 步裁定做不做第 ⑤ 件，「落该三态探针格（`types.ts` 字段 + 探针判据 + §3.7 行）」都是该步的**配套交付物**，否则翻转条件停留在对一个不存在字段的引用上、永远是死条件（r4 AGY-02 ≡ GLM-02 ≡ CODEX-05 前半）。**上一版把翻转条件挂在 `probe.readonly_flags` 上，那是错的**：那个数组要么等于整份常量、要么被三个**与厂商无关**的清空点清成 `[]`（工具面读回为空 / 工具面脏 / 只读负对照落文件）——那一刻 `--restricted` 照样在传、项目记忆照样被挡，条件却字面满足 ⇒ **误翻转**；反过来厂商真改掉该旗标的语义时，旗标还在数组里 ⇒ **不翻转**。两个方向都不可信。**「数组被清空」不等于「旗标消失」**——这层区分要留着，否则下一个读者还会拿空数组去判翻转。**触发条件：M9 第 3 步接入时裁定。**来源：代码双审 r2 CODEX-04（此前只活在 §16.1 里程碑表的状态列里） **【2026-09-18 done · M9 第 3 步】裁定：第 ⑤ 件对 claude 侧显式不做；翻转条件已落成字段。** 在 **2.1.276** 上复现了单变量对照：受限臂**零工具调用**且未见记忆哨兵，对照臂见到哨兵 ⇒ `project_memory_blocked = true`。 零工具调用排除了「模型是去读文件才知道的」通道。于是第 ⑤ 件的理由仍成立——审查员读不到 `CLAUDE.md`，身份片段注进去是**永远读不到的死件**； 身份声明只靠 BRIEF 首段（既有手法）。**配套交付物已落**：`ClaudeProbe.project_memory_blocked`（必填三态）+ 纯函数 `judgeProjectMemoryBlocked` + 对照臂 argv 的唯一构造点 `projectMemoryControlArgs`（与 `verboseNegativeControlArgs` 同一条纪律：旋钮被守着、拨没拨也要有人守，**删掉调用点那行会被源序用例打红**）+ **独立夹具** `createMemoryFixture`（不与主夹具共用：今天 `--restricted` 挡得住所以看不出差别，而这一格存在的全部意义就是有朝一日它挡不住，那天共用夹具会同时污染其余各格）。 **`true` 臂必须有对照**，否则「CLI 压根不加载 CLAUDE.md」会被记成「`--restricted` 挡住了」，字段名就在撒谎、翻转条件永不触发。 只有实测 **`false`** 的那天本条结论作废；`null` 维持原裁定（依赖模型配合，`null` 将是常态）。证据见实测报告 §3。 | 设计 §16.1 M9 行、`skills/dual-critic/protocol/`、`REPORT_2026-09-17_m9_claude_entry_probe.md` §2.3 |
++| EV-44 | done | **接入套件第 ⑤ 件对 claude 侧：已裁定「显式不做」（M9 第 3 步结案，第 4 步复核仍成立）。** 下文保留登记时的推导过程与「倾向」措辞作为依据链，**裁定本身不再是待决项**（2026-09-18 第 4 步按计划双审 GLM-07 改此句：状态列早已是 done，而正文开头仍写「待裁定」，先读 BACKLOG 的人会把它误读成未决事项，与 `types.ts` 的字段文档形成第二事实源）。 M9 第 1 步单变量对照实测：**`--restricted` 会连项目记忆 `CLAUDE.md` 一起阻断**（同目录同提示词、两次均零工具调用，只差这一个旗标，一次答 `NO-PROJECT-MEMORY`、一次答出哨兵）。这**否证了 M9 交底给第 ⑤ 件的理由**（「审查员会读到 Driver 协议、那正好是反指令」——反指令根本进不来），**并连同它给的处置一并否证**（审查员身份片段若注入 `CLAUDE.md`，会被同一个旗标挡掉，做出来是一件永远读不到的死件）。倾向「显式不做 + 写明理由 + 写明翻转条件」，与 M8 对 codex 第 ⑤ 件的处置同形；身份声明只靠 BRIEF 首段（既有手法）。**翻转条件（已改挂因变量，代码双审 r3 CODEX-03）**：给探针新增一格三态判据「`--restricted` 下项目记忆是否仍被阻断」（复用报告 §2.3 那条单变量对照：夹具根目录放一份带哨兵的 `CLAUDE.md`，比对回显），**只有实测 `false` 的那天**本条结论作废；**`null` 维持原裁定**并记「无从证实，待复测」（代码双审 r4 CODEX-05：上一版把 `null` 与 `false` 并列为作废触发器，而 `null` 是「没测到」——**把没测到当证据，正是本主题连修四轮的那个形状**；且同族的记忆回显判据依赖模型配合，`null` 将是常态——`denied_tool_in_trace` 三次观测两次落 `null`）。**建这一格本身要有排期**：无论第 3 步裁定做不做第 ⑤ 件，「落该三态探针格（`types.ts` 字段 + 探针判据 + §3.7 行）」都是该步的**配套交付物**，否则翻转条件停留在对一个不存在字段的引用上、永远是死条件（r4 AGY-02 ≡ GLM-02 ≡ CODEX-05 前半）。**上一版把翻转条件挂在 `probe.readonly_flags` 上，那是错的**：那个数组要么等于整份常量、要么被三个**与厂商无关**的清空点清成 `[]`（工具面读回为空 / 工具面脏 / 只读负对照落文件）——那一刻 `--restricted` 照样在传、项目记忆照样被挡，条件却字面满足 ⇒ **误翻转**；反过来厂商真改掉该旗标的语义时，旗标还在数组里 ⇒ **不翻转**。两个方向都不可信。**「数组被清空」不等于「旗标消失」**——这层区分要留着，否则下一个读者还会拿空数组去判翻转。**触发条件：M9 第 3 步接入时裁定。**来源：代码双审 r2 CODEX-04（此前只活在 §16.1 里程碑表的状态列里） **【2026-09-18 done · M9 第 3 步】裁定：第 ⑤ 件对 claude 侧显式不做；翻转条件已落成字段。** 在 **2.1.276** 上复现了单变量对照：受限臂**零工具调用**且未见记忆哨兵，对照臂见到哨兵 ⇒ `project_memory_blocked = true`。 零工具调用排除了「模型是去读文件才知道的」通道。于是第 ⑤ 件的理由仍成立——审查员读不到 `CLAUDE.md`，身份片段注进去是**永远读不到的死件**； 身份声明只靠 BRIEF 首段（既有手法）。**配套交付物已落**：`ClaudeProbe.project_memory_blocked`（必填三态）+ 纯函数 `judgeProjectMemoryBlocked` + 对照臂 argv 的唯一构造点 `projectMemoryControlArgs`（与 `verboseNegativeControlArgs` 同一条纪律：旋钮被守着、拨没拨也要有人守，**删掉调用点那行会被源序用例打红**）+ **独立夹具** `createMemoryFixture`（不与主夹具共用：今天 `--restricted` 挡得住所以看不出差别，而这一格存在的全部意义就是有朝一日它挡不住，那天共用夹具会同时污染其余各格）。 **`true` 臂必须有对照**，否则「CLI 压根不加载 CLAUDE.md」会被记成「`--restricted` 挡住了」，字段名就在撒谎、翻转条件永不触发。 只有实测 **`false`** 的那天本条结论作废；`null` 维持原裁定（依赖模型配合，`null` 将是常态）。证据见实测报告 §3。 | 设计 §16.1 M9 行、`skills/dual-critic/protocol/`、`REPORT_2026-09-17_m9_claude_entry_probe.md` §2.3 |
+ | EV-45 | todo | **`PROSE_EXCEPTIONS` 的豁免颗粒度是「文件 + token」，不是那一处命中。** `isProseException(relFile, token)` 一旦登记，该文件里该 token 的**所有**出现全部放行；而「豁免仍然被需要」那条腿的判据是 `.some(...)`，只要文件里还剩至少一处命中就通过。于是 `adapters/codex.ts` 那条 `read-only` 文案豁免，明天可以顺带覆盖**新增的 argv 字面量**——用例照样全绿，甚至把原本那处文案删掉也仍绿（新字面量自己就满足了「仍然被需要」）。注释里那句「准入很窄：只收 `availability()` / 报错文案这类用户可见字符串，凡是进 argv 的一律不豁免」**是散文，没有任何机器判据**；而 EV-39 立条的理由正是「误伤时最省事的修法是削弱守卫」。**修法**：把豁免绑到命中本身——登记时给出期望命中数（或行号/所在函数名）并断言相等；或要求命中必须落在文案函数体内（源码范围断言）。再照本仓惯例补一条「期望必须红」的反面夹具：给已豁免的文件加一个 argv 字面量，用例必须红。**触发条件：下一次给 `PROSE_EXCEPTIONS` 加条目时，或 M10 接入第五家时。** **本轮暂缓的理由**：当前唯一一条豁免合规、无现行故障，而改动触及豁免机制本身，不宜与本轮三处安全修法混批。来源：代码双审 r1 CODEX-04 | `test/unit/registry-parity.test.ts` 的 `PROSE_EXCEPTIONS` 段 |
+ | EV-46 | todo | **EV-44 对照臂的完整 argv 是手抄的，共三份副本。** `projectMemoryControlArgs` 只返回**只读旗标那一段**，而对照臂的机制旗标（`-p` / `--output-format` / `--verbose` / `--max-budget-usd` / `--model`）是在调用点**手抄了一遍 `probeArgs` 的配方**拼起来的，顺序还不同；准入脚本里还有第三份（自己 filter 一个字面量）。它的同族 `verboseNegativeControlArgs()` 是**整条 argv 走 `probeArgs`**，两者并不「逐字同构」——而 BACKLOG EV-44 与实测报告都写着「对照臂 argv 的唯一构造点」。**后果**：`probeArgs` 日后增删或改序一个机制旗标，对照臂不会跟着变，而「两臂逐字相同、只差一条旗标」这个**单变量前提没有任何用例守着**（现存源序用例只断言调用点用了那个 filter 函数）。**修法**：给 `probeArgs` 加只读旗标覆盖参数（或抽 `probeArgsWithFlags`），两臂共享同一条构造路径，并补一条断言「对照臂 argv === 受限臂 argv 去掉那一条旗标」。**触发条件：下一次改 `probeArgs` 签名时**——r4 刚收敛过它（删掉过一个接不通的 `promptVia` 分支），不宜连改两轮。**失效方向是保守的**：两臂分叉只会让判据落 `null`，不会产出假 `true`。来源：代码双审 r1 CODEX-07 ≡ GLM-07 | `src/trivium/probes/claude.ts` 的 `projectMemoryControlArgs` 与 EV-44 探测臂调用点 |
+ | EV-48 | todo | **禁读集的扫描论域是「主题名精确串」，同一条工作换过名就漏。** `enumerateDenyPaths` 按 `.reviews/<topic>/` 剪枝，而 `<topic>` 是**当轮主题名的字面串**，不是「同一被审对象」。于是同一份工作只要换过主题名，前一个目录下的对端意见**同时**从机器集合（`checkPeerLeak`）与 BRIEF §8.1 提示语里消失（两者同源于 `snapshot.denyPaths`，**没有第二张网**），而该函数注释给的理由是「那是**另一个任务**的意见」——该前提在「同一里程碑换名」时**不成立**。**本仓就是实例**：`.reviews/M9-ClaudeCode审核者接入/`（第 1～2 步）与 `.reviews/M9-适配器本体与准入收口/`（第 3 步）是同一条工作的两处目录，实测 r1 的 270 条里有 **20 条**属于前者，r2 剪枝后**归零**——审查员去读它在本轮既不在提示语里、也不进 `peer_artifact_read`，属**静默放宽**（剪枝前这种读取至少会被机器核验拦住）。**这是修 r1 CODEX-01（补 `topic` 剪枝）时引入的新缺口**，取舍本身仍然正确（剪枝修掉了跨 20 个无关主题的误伤面）。**修法**：把扫描论域换成与被审对象对齐的键（主题前缀 / 显式登记的同族主题组）。**触发条件：下一次改 `enumerateDenyPaths` 的扫描论域时**——那会改变**所有主题**的禁读集，比 topic 剪枝本身更大，不宜在同一轮里对同一处连做两次。**本轮已落的**：该限制写进设计限制清单与函数契约注释，不再只是一句解释性文字。来源：代码双审 r2 CODEX-03 | `src/trivium/freeze.ts` 的 `scanRoot`、`src/trivium/review.ts` 的唯一调用点 |
+@@ -146,6 +146,11 @@
+ | EV-50 | done | **裁决件承诺的落点现在有机器判据了**（代码双审 r3 落地）。r2 逐条回核 r1 应答件发现**三条承诺只写了没做**，遂登记本条，修法写的是「下一轮开跑前手工比对一遍」。**r3 的事实是：这道闸从登记之后一次都没被执行过**，而 r3 回核 r2 查出的是**四条**——数字在涨。成因不是判据错，是**对策本身又是一句靠记性的纪律**：本仓这一年补的全部是「把纪律换成机器判据」，唯独在「我写的承诺」这个论域上给的一直是纪律。**已落地**：`test/unit/promise-landing.test.ts` 进 `npm test`——裁决件里写一行 `<!-- 落点核验: +串 -串 -->` 声明改完后必须成立的 grep 事实，用例逐条与工作树比对。**它判不了「改对了没有」**（不可判定），只判「声称要改的地方，串到底在不在」——是**下界不是上界**；但 r2 那四条里有三条（`deny_bytes` 零出现、探针侧旧口径仍在、设计里「复算为」零出现）**都会被它当场抓住**。两条实现边界已写进用例文档块：`-串` 必须精确到**断言形态**（裸关键词会把「引述旧措辞说明它错在哪」的新注释也算成断言，r3 首跑两条 `-` 全是这么误报的）；搜索论域排除 `.reviews/`、用例自身与打包产物（`trivium.cjs` 比源码旧，首跑误报过一次）。**不再保留「记得手工跑一遍」那句话**——已实证它不起作用。来源：代码双审 r2 GLM-01 / GLM-02 / GLM-03，r3 GLM-01 ≡ CODEX-02 等四条 | `test/unit/promise-landing.test.ts`、`.reviews/<主题>/<阶段>/*-response-claude.md` |
+ | EV-51 | todo | **deny 规则方言还有两格没测出来。** EV-49 的四条实测臂结了两格（逗号、空格：规则照常生效，已放行），剩下两格各有各的未决：①**星号判不出**——实测观测是「哨兵未泄漏、也没进 `permission_denials`、但模型确实发起过调用」，三种可能（规则生效但未记名 / 模型读了别的东西 / Read 因别的原因失败）**现有判据区分不了**，眼下维持挡靠的是 r2 立的**过匹配**理由（`fix*` 扩成一批同前缀目录、连坐审查员合法读取的己方历史），那条独立成立，但「星号到底 fail-open 还是过匹配」仍是未知；②**反斜杠完全没排臂**——从主题名不可达（`validateTopic` 显式挡 `\`），只能从 `walkSensitive` 的文件系统派生路径来，在把它当转义符的方言里会改变匹配。**没拿逗号/空格的结论替它背书**，如实记为未测。**修法**：给星号设计一个能区分三种可能的判据（例如同时放一个同前缀的兄弟目录，看它有没有被连坐——那同时回答了过匹配问题），反斜杠补一条常规臂。**触发条件：下一次跑 `deny-dialect` 用例时**，或语法门的字符集再次被审查意见要求改动时。来源：代码双审 r3 CODEX-05 ≡ GLM-06 的实测结案 | `scripts/claude-admission-control.mjs` 的 `caseDenyDialect`、`src/trivium/adapters/claude.ts` 的 `denyPathRepresentable` |
+ | EV-47 | todo | **两处「长期装置只验生产的一个真子集」。** ①**EV-42 第三臂**自建 exact-only 规则（`<Tool>(./<file>)`），而生产 `buildDenySettings` 对每条路径**同时下精确与子树两条**。也就是说 `peer_deny_applied` 所依据的那个**每次 doctor 都跑**的复验装置，长期只验证生产注入集的一个真子集；`<file>/**` 这类成员只有准入脚本在 2.1.276 上**一次性**测过。CLI 将来若对某种子形态改判非法，探针照旧落 `true` 而生产每次注入都带着未复验的成员——这与本步主旨「消除两份配方漂移，而不是给它加守卫」相悖。**修法**：第三臂改从 `adapters/claude.js` import `denyRuleShapeOf` + `buildDenySettings`，使长期复验与生产注入**逐字同源**（探针反向 import 适配层是既定方向，该文件已在这么做）。②**`denied_tool_in_trace` 的配对判据没有导出为纯函数**，于是准入脚本那一格是内联重写，且与探针问的不是同一个问题（脚本测「发起过白名单外调用」，探针测「被拒的尝试留了痕」）。**修法**：抽成导出纯函数（含 pairable 三分），脚本与探针共用。**触发条件：本轮 CODEX-02 的路径形状校验落地之后**——①改的正是 `buildDenySettings`，同一轮改两次会让变异验证说不清咬的是哪一版。**本轮已落的边界声明**：第三臂注释与 EV-42 done 段已写明「该臂形状 ⊊ 生产形状」，不让读者以为两者同构。来源：代码双审 r1 GLM-01 + GLM-02 | `src/trivium/probes/claude.ts` 的 `probeClaudePathDeny` 第三臂、`scripts/claude-admission-control.mjs` 的 stdin-parity 用例 |
++| EV-52 | todo | **三条校验分支在四家全启用后不可达，负例覆盖已丢失。** M9 第 4 步把 claude 的 `criticEnabled` 与 anthropic 形状一并补齐后，三格同时变成空集：①`checkConfigAgents` 的「已登记但形状未定义」（判据读**注册表登记的 vendor**，不是配置里写的那个——实跑确认过，拿 `vendor: 'no-such-vendor'` 去试会走到再下一条「vendor 与注册表不符」）；②同函数的「`default_critics` 含未启用为审核者的家」；③`topic-args.ts` 的「给非审核者指定 `--model-<id>`」。三条用例已改为 `skip` **并写明原因**（不是删，也不是提前 `return` 让它显示为通过）。**为什么不开注入口**：那三个函数都只收 data、注册表是模块级绑定，要造负例就得给校验层加参数——那是生产改动，要连它自己的双审成本一起算，超出本步「夹具收口」的范围（计划双审 AGY-02 ≡ GLM-01 ≡ CODEX-02 三侧同判）。对照：`resolveCriticSelection` 本步**已开** `descriptors` 注入口（仿 `deriveDefaultCritics` 先例），所以「登记但未启用」那条在 `critics.test.ts` 里有真覆盖——三条 skip 的是**另外三个**函数。**触发条件**：注册表登记第五家而其 `criticEnabled` 或 vendor 形状未跟上时，三条各自自动恢复执行（skip 判据是运行期算的）。**修法方向**：给三处校验各开一个与 `deriveDefaultCritics` 同构的可选入参。 | `src/trivium/schemas.ts` 的 `checkConfigAgents`、`src/trivium/topic-args.ts` 的模型旗标校验段、三处对应用例 |
++| EV-53 | todo | **`--model-claude` 能解析成功，而 claude 永远不会入选——「解析成功后被悄悄丢弃」在 Driver 这一格真实存在。** `topic-args.ts` 的 `--model-<id>` 白名单判据是 `CRITICS.includes(id)`，M9 第 4 步翻开关后 claude 进了这个集合，于是 `--model-claude X` 合法通过；但 `critics.ts` 的「当轮 Driver 不得入选」恒拒 claude，那个模型覆盖一路走到被丢弃，**留痕里看不出用户曾经指定过**。这正是该用例当初要防的形态（与 `--base` 漏传同族），只是触发它的从「尚未启用的第三家」换成了「已启用但当不了本轮审核者的 Driver」。**本步不修**：正确判据是「本轮**实际**能入选谁」，而那要等 `--driver` 落地（M9 第 5 步）才成为逐次运行的事实；现在按 `CRITICS` 减缺省 Driver 硬编码一版，第 5 步就要推翻。**触发条件：M9 第 5 步 `--driver` 全链路落地时**，与白名单判据一并收口。来源：计划双审 CODEX-02 的连带发现 | `src/trivium/topic-args.ts` 的模型旗标校验段、`src/trivium/critics.ts` 的 Driver 检查 |
++| EV-54 | todo | **`override_reason` 无写入方，`heterogeneous: false` 的机器判据也只是 description。** `isHeterogeneous` 对 Claude 系模型返回 false（`adapters/base.ts`，只看模型串），而 `run.v2.json` 的 description 写着「false 时必须有 `override_reason`（AC-18）」——**那句没有任何 `if/then` 机器判据**，且 `override_reason` 全仓只有 `render.ts` 三处（类型声明、条件渲染、人读 flag），`review.ts` 两个 `heterogeneous` 写点**都不传它**。**口径要分两层**（计划双审 GLM-06）：PRD AC-18 只背书「覆盖后的模型可见」，而 `model_effective` 本就落 run.json 与 front-matter，**那一句已经成立**；「false ⇒ 必须有 `override_reason`」是 `run.v2` 自己加强的契约，不是需求原文——权衡时别把 schema 散文的约束力当成需求约束力。**M9 第 4 步刻意不做**（裁定由「本步补写入方」改为「推后」，计划双审 CODEX-04）：本步 claude 一次也选不上（`--critics claude` 必退 64），补的写入方**没有任何路径能端到端验证**，只能验到「传参接通」。**缺口今天已存在，且与翻开关无关**：`--model-gemini claude-*` 这条路今天就能落出同一个自相矛盾的 run.json。**触发条件：M9 第 5/6 步**，与 claude 真能入选的那一刻对齐。 | `src/trivium/review.ts` 的两个 heterogeneous 写点、`src/trivium/render.ts`、`skills/dual-critic/schema/run.v2.json` 的 `heterogeneous` |
++| EV-55 | todo | **提交锚的角色后缀判据是跨时间的，却绑在当轮 Driver 上。** M9 第 4 步把 Hook 的保护集从 `CRITICS`（启用集合）改成 `criticRoleSuffixes()`（全集减当轮 Driver）——**必须改**，否则翻开关那一刻 Driver 自己的产出后缀进保护集，它写不了自己的裁决件，整条流水线锁死（实测：归档内写入由退 0 变退 2）。但 `hasCriticRoleSuffix` 有**两个判据含义不同的消费者**：`isForgedRoleFile` 是「形态 + 位置、当轮语境」，改动对它成立；`immutableChangeReason`（提交锚）是**纯 basename、跨时间**判定，那里没有「当轮 Driver」这个概念。现在等于把一个跨时间的保护面绑在一个当轮的值上。**M9 代价为零**（只有一个 Driver，历史与当轮同值），**M10 第一次换 Driver 就会显形**：历史工件会集体变成「可改」，或反过来新 Driver 的原稿被判伪造。**纯词法后缀检查区分不了「Driver 自身原稿」与「同名历史审查件」，M9 不假装能分。** **修法方向**（计划双审 CODEX-04 提出）：提交锚改按 run 元数据的 artifacts 登记判不可变，而不是按文件名形态——那是安全关键面的重写。**触发条件：M10 第一次换 Driver 之前必须先落它。** | `src/trivium/hooks.ts` 的 `criticRoleSuffixes` / `hasCriticRoleSuffix` / `immutableChangeReason` |
++| EV-56 | todo | **审查员在 JSON 前多写一句引言就会整份降级，7 条意见塌缩成 2 个兜底编号。** M9 第 4 步计划双审，codex 侧输出以一句自然语言引言开头、随后是完整且合法的 ```json 块，编排器判 `parse_fallback: true`，7 条编号意见（含 2 条 major，其中一条推翻了计划的中心事实）被切成两个不可分单元：那句引言一个、整个 JSON 块一个。**代价不是「少了结构化字段」**：`gate --check` 按兜底编号校验，裁决者若不逐条读原文，那 2 条 major 会整体失效——本轮是人工拆开逐条裁决才没丢。与 EV-10 同族但**成因不同**（EV-10 是结论 JSON 多带 front-matter 字段撞 `additionalProperties: false`，这次是 JSON 块**之前**有自然语言前缀）。**修法方向**：解析器容忍代码围栏前的自然语言前缀（按围栏定位而不是要求整份即 JSON）；**需先确认这不会放宽「必须产出结构化结论」的判据**——容忍前缀与容忍「没有 JSON」是两回事。 | 编排器的结论解析层、本主题 plan 阶段的降级留痕件 |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/skills/dual-critic/schema/config.v2.json b/skills/dual-critic/schema/config.v2.json
+index e7605b4..d8d02c7 100644
+--- a/skills/dual-critic/schema/config.v2.json
++++ b/skills/dual-critic/schema/config.v2.json
+@@ -284,7 +284,7 @@
+     "agents": {
+       "type": "object",
+       "minProperties": 1,
+-      "description": "逐 Agent 的配置段，键是注册表的 Agent id。键只要求「是已登记 Agent」，不要求 criticEnabled——Driver 自身也需要配置容身之处（设计 13.1.1）。键是否已登记、vendor 是否与注册表相符，由 schemas.ts 在 ajv 之后按注册表补校：Agent 身份的唯一来源是注册表（纪律 7），在 schema 里抄第二份，新增一家时改一漏二不会报错。值以 vendor 为判别式做可辨识联合——两家字段集合完全不同，压成同构 record 会让校验形同虚设。codex 的形状已于 M8 第 3 步加入 oneOf；claude 随 M9 / M10 加入。",
++      "description": "逐 Agent 的配置段，键是注册表的 Agent id。键只要求「是已登记 Agent」，不要求 criticEnabled——Driver 自身也需要配置容身之处（设计 13.1.1）。键是否已登记、vendor 是否与注册表相符，由 schemas.ts 在 ajv 之后按注册表补校：Agent 身份的唯一来源是注册表（纪律 7），在 schema 里抄第二份，新增一家时改一漏二不会报错。值以 vendor 为判别式做可辨识联合——两家字段集合完全不同，压成同构 record 会让校验形同虚设。codex 的形状于 M8 第 3 步加入 oneOf，claude 于 M9 第 4 步加入——四家至此全部就位。**副作用**：schemas.ts 的 configurableVendors() 从本处现取判别式，四支齐备后「已登记但形状未定义」变成空集，那条报错分支随之不可达。",
+       "additionalProperties": {
+         "oneOf": [
+           {
+@@ -441,6 +441,19 @@
+                 }
+               }
+             }
++          },
++          {
++            "type": "object",
++            "additionalProperties": false,
++            "required": [
++              "vendor"
++            ],
++            "properties": {
++              "vendor": {
++                "const": "anthropic"
++              }
++            },
++            "description": "claude 的配置段（M9 第 4 步）。**只有判别式，没有其它字段**——这是刻意的不对称，不是漏写。另三家段里的入口覆盖（gemini/codex 的 bin、glm 的 entry）都有真实消费方（doctor.ts 传给各自探针、adapters/codex.ts 取 cfg.bin ?? probe.entrypoint）；claude 侧的入口由探针独占——适配器的 run 与 authProbe 都读 probe.cli.claude.entrypoint，doctor 调 probeClaude 时第一个参数逐字传 null。加 bin 即加死字段，而本仓已有两条「登记而无消费方」的未结条目（EV-06 / EV-15），其危害是让后来者以为该字段已经生效。effort 同理不加：claude 侧没有对应的 CLI 旗标。真需要本机入口覆盖时再放宽本支是向后兼容的，反向删字段不是。"
+           }
+         ]
+       }
+diff --git a/src/trivium/adapters/index.ts b/src/trivium/adapters/index.ts
+index 0bdc8c1..9a57d7a 100644
+--- a/src/trivium/adapters/index.ts
++++ b/src/trivium/adapters/index.ts
+@@ -27,11 +27,11 @@ import { CRITIC_AGENT_IDS, agentById } from '../agents/registry.js';
+  */
+ const WIRED: AdapterTable = {
+   /*
+-   * claude 在这里而 `criticEnabled` 仍为 false（M9 第 3 步）。
++   * claude 自 M9 第 4 步起 `criticEnabled: true`，四家全部接线。
+    *
+-   * 这不是矛盾：`realAdapters()` 只遍历 `CRITIC_AGENT_IDS`（criticEnabled 的那些），
+-   * 所以多这一个键不触发任何启动期断言；而 `wiredAdapter('claude')` 能取到它，
+-   * 让准入脚本与单测走真实实现。**翻开关是第 4 步的事**，本步只把实现接上。
++   * （第 3 步这里曾有一段「接了线但开关还没翻，这不是矛盾」的说明——
++   * 开关翻过之后它就失实了，故删除而不是留着。**注释过期比没有注释更坏**：
++   * 它会让读者以为自己看到的是当前状态。）
+    */
+   claude: claudeAdapter,
+   codex: codexAdapter,
+diff --git a/src/trivium/agents/registry.ts b/src/trivium/agents/registry.ts
+index 9d9cd70..8083618 100644
+--- a/src/trivium/agents/registry.ts
++++ b/src/trivium/agents/registry.ts
+@@ -128,12 +128,27 @@ export const AGENTS: readonly AgentDescriptor[] = [
+   {
+     id: 'claude',
+     display: 'Claude Code',
+-    label: 'Anthropic Claude Code',
++    // 字母取 D：A/B 是术语表钉死的称谓，新启用者取下一个未用字母（决策 D-2，本字段文档块）
++    label: 'Critic-D · Anthropic Claude Code',
+     vendor: 'anthropic',
+     cliName: 'claude',
+     suffix: 'claude',
+     findingPrefix: 'CLAUDE',
+-    criticEnabled: false, // M9 启用
++    criticEnabled: true, // M9 第 4 步启用
++    /*
++     * **`defaultSelected` 保持 false，而且不能翻**（M9 第 4 步）。
++     *
++     * 两个理由，第二个是硬的：
++     * ①翻了等于让每次审查的成本自动涨一档——`criticEnabled` 回答「能不能选」，
++     *   本字段回答「不选时跑不跑」，这正是 M8 第 3 步把二者分家的理由；
++     * ②`deriveDefaultCritics` 的**上限不变量**会在模块加载期抛：缺省集合现为
++     *   codex/gemini/glm 三家，已经顶满内置 `max_critics = 3`，再加一家即 4 > 3。
++     *   错误现场离改动点很远（每个项目 init 出来的配置都会判错），所以它在注册表就炸。
++     *
++     * claude 与另三家的**真正区别**在这里：它是当轮 Driver，
++     * 而「当轮 Driver 不得入选」是 `critics.ts` 的独立检查——本字段为 false
++     * 只是不默认选它，挡住自审的是那条检查，不是这一行。
++     */
+     defaultSelected: false,
+     driverEnabled: true,
+     guardLevel: 'L1',
+diff --git a/src/trivium/archive.ts b/src/trivium/archive.ts
+index 4abc502..c7c4bf8 100644
+--- a/src/trivium/archive.ts
++++ b/src/trivium/archive.ts
+@@ -45,7 +45,9 @@ export const metaDir = (l: ArchiveLayout, stage: StageOrVerify): string =>
+ /**
+  * 计算本次运行应使用的重跑轮次（§12.5）。
+  *
+- * **只看审查工件**（`-gemini.md` / `-glm.md`），不看 Driver 的原稿。
++ * **只看审查工件**（带角色后缀、且该角色不是当轮 Driver 的那些），不看 Driver 的原稿。
++ * 判据在下面按 `i.parsed.role === driver` 逐条算，**此处不重抄一份后缀枚举**：
++ * 抄的那份会随注册表漂移（同族的三处今天就已漏过 `-codex.md`）。
+  * 依据设计 §6.2 的目录示例：重跑时原稿**不重新生成**，停留在第 1 轮，
+  * 只有两侧审查与裁决件带 `-r<N>`：
+  *
+diff --git a/src/trivium/config.ts b/src/trivium/config.ts
+index 124daaf..d3b8b87 100644
+--- a/src/trivium/config.ts
++++ b/src/trivium/config.ts
+@@ -304,6 +304,16 @@ export function defaultConfig(): Config {
+         profile: 'qwen',
+         effort: { plan: 'high', code: 'high', bug: 'high' },
+       },
++      /*
++       * claude 段（M9 第 4 步）。**只有判别式，没有其它字段**——
++       * 理由见 `types.ts` 的 `ClaudeCriticConfig`：另三家的入口覆盖都有真实消费方，
++       * claude 侧的入口由探针独占（`probe.cli.claude.entrypoint`），
++       * 加 `bin` 就是加死字段。不要为了「和别家长得一样」补回来。
++       *
++       * 段本身必须在：`resolveCriticSelection` 把「入选审核者在 agents 段有条目」
++       * 当作统一前置条件，缺段则退 64。
++       */
++      claude: { vendor: 'anthropic' },
+     },
+     // 两档的差异只在 GLM 侧用不用 Flash——gemini 侧两档相同。
+     // 不写 profile 级 effort：该字段无任何读取点，且 slug 自带后缀时 effort 本就不生效。
+@@ -312,11 +322,41 @@ export function defaultConfig(): Config {
+         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
+         glm: { plan: 'GLM-5.3', code: 'GLM-5.3', bug: 'GLM-5.3' },
+         codex: { plan: 'qwen3.8-max', code: 'qwen3.8-max', bug: 'qwen3.8-max' },
++        /*
++         * claude 档（M9 第 4 步）。三个 slug 都是**回读挣来的**，不是文档推断：
++         * `probe.cli.claude.models` 为 `[]`，`checkModelAgainstCatalog` 对它落
++         * `unverifiable` 而不判失败——**猜错一个 slug 预检拦不下来**，
++         * 会一路跑到厂商端点才报错。所以只用 `system/init` 回读过的值
++         * （M9 第 1 步报告 §4：sonnet-5 $0.0102、opus-5 $0.0295，比约 1:2.9）。
++         *
++         * **真实审查尺度的耗时与成本至今未测**（第 6 步验收才会有第一份数据）。
++         * 这句话必须挂在取值旁：下一个人很容易把「未测」读成「已定」。
++         */
++        claude: { plan: 'claude-sonnet-5', code: 'claude-sonnet-5', bug: 'claude-sonnet-5' },
+       },
+       flash: {
+         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
+         glm: { plan: 'GLM-5.3-Flash', code: 'GLM-5.3-Flash', bug: 'GLM-5.3-Flash' },
+         codex: { plan: 'qwen3.8-flash', code: 'qwen3.8-flash', bug: 'qwen3.8-flash' },
++        /*
++         * flash 档取 **haiku**（计划双审 CODEX-05）。
++         *
++         * 计划原稿写的是「两档都取 sonnet」，依据是「只有这两个 slug 回读过」——
++         * **那句话是错的**：`probes/claude.ts` 的 `PROBE_MODEL` 逐字就是
++         * `claude-haiku-4-5-20251001`，M6 探针一直在用它，回读记录早就有
++         * （第 1 步报告 §4 的括号自己写着「haiku 已由 M6 探针证过，作正对照，不重复烧」）。
++         *
++         * 两档同值的后果很具体：**flash 档在 claude 侧会退化成与 default 完全相同**，
++         * 而另两家的 flash 行都是真换了更便宜的一档。这个默认还会被 `trivium init`
++         * 整份冻进每个新项目的配置文件，日后再改对存量项目无效。
++         *
++         * 边界：回读在 CLI 2.1.273 / 2.1.276 上取得；**审查尺度下够不够用未测**。
++         */
++        claude: {
++          plan: 'claude-haiku-4-5-20251001',
++          code: 'claude-haiku-4-5-20251001',
++          bug: 'claude-haiku-4-5-20251001',
++        },
+       },
+     },
+     active_profile: 'default',
+diff --git a/src/trivium/critics.ts b/src/trivium/critics.ts
+index 51ae6eb..1b26efe 100644
+--- a/src/trivium/critics.ts
++++ b/src/trivium/critics.ts
+@@ -9,7 +9,7 @@
+  * 判定只依赖配置与注册表，不碰文件系统，可直接单测。
+  */
+ import { CRITICS, type Config, type CriticId } from './types.js';
+-import { DEFAULT_DRIVER, agentById, type AgentId } from './agents/registry.js';
++import { DEFAULT_DRIVER, agentById, type AgentDescriptor, type AgentId } from './agents/registry.js';
+ import { EXIT, TriviumError, swallowedTextHint } from './exit-codes.js';
+ 
+ export interface CriticSelectionInput {
+@@ -19,6 +19,26 @@ export interface CriticSelectionInput {
+   only?: string | null;
+   /** 当轮 Driver。默认取注册表缺省值（M7b 恒为 claude） */
+   driver?: AgentId;
++  /**
++   * **测试注入口**：换一份 Agent 登记表来判定（M9 第 4 步）。生产恒不传。
++   *
++   * ## 为什么要开这个口
++   *
++   * 「已登记但尚未启用为审核者」那条分支的负例，此前靠
++   * `ALL_AGENT_IDS.find(id => !criticEnabled)` 从**真实注册表**里现取一家未启用的。
++   * M9 把第四家也启用之后取不到值，用例自己预告过这一天
++   * （「四家全部启用时本用例失去意义，届时改用别的夹具」）——但它只写了 assert 消息，
++   * 于是那天到来时是**静默失效**：注册表里恰好还有没启用的家，覆盖才存在。
++   * **一条规则的负例覆盖，不该取决于生产数据碰巧长什么样。**
++   *
++   * ## 这不是「只为测试存在的注入口」
++   *
++   * `deriveDefaultCritics(agents, maxCritics)`（`agents/registry.ts`）是同一形态的
++   * 既有先例，`registry-parity` 的四条用例正是靠换一份 agents 数组去测它的不变量。
++   * 本参数与它同构：判定逻辑本就只依赖「登记表 + 配置」，把登记表参数化
++   * 是把隐式的模块级依赖显式化，生产路径一个字不变。
++   */
++  descriptors?: readonly AgentDescriptor[];
+ }
+ 
+ /**
+@@ -29,8 +49,21 @@ export interface CriticSelectionInput {
+  * 「当前可用」，就成了第一个错误把用户引向第二个错误——上一轮 GLM-04 的同形。
+  * 当前 claude 未进 `CRITICS`，这层过滤不改变任何现有输出。
+  */
+-function legalList(cfg: Config, driver?: AgentId): string {
+-  const usable = CRITICS.filter((c) => cfg.agents[c] !== undefined && c !== driver);
++function legalList(cfg: Config, driver?: AgentId, descriptors?: readonly AgentDescriptor[]): string {
++  /*
++   * **论域跟着注入表走**（计划双审 GLM-05）。
++   *
++   * 这里此前读的是模块级 `CRITICS`，而判定读的是注入表。两者不一致时，
++   * 报错会按真实注册表列出「当前可用」，与本次判定实际采信的论域对不上——
++   * 「第一个错误把用户引向第二个错误」，正是本文件自己立规矩要防的形态。
++   * 夹具语境下它同样有害：排障的人会照着一个错误的清单找问题。
++   */
++  const enabled = descriptors
++    ? descriptors.filter((a) => a.criticEnabled).map((a) => a.id)
++    : CRITICS;
++  const usable = enabled.filter(
++    (c) => cfg.agents[c as CriticId] !== undefined && c !== driver,
++  );
+   return usable.length > 0 ? usable.join(' | ') : '（配置里没有任何可用审核者）';
+ }
+ 
+@@ -43,6 +76,8 @@ function legalList(cfg: Config, driver?: AgentId): string {
+  */
+ export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput = {}): CriticId[] {
+   const driver = input.driver ?? DEFAULT_DRIVER;
++  const lookup = (id: string): AgentDescriptor | null =>
++    input.descriptors ? (input.descriptors.find((a) => a.id === id) ?? null) : agentById(id);
+   const criticsRaw = input.critics?.trim() ?? '';
+   const onlyRaw = input.only?.trim() ?? '';
+ 
+@@ -77,7 +112,7 @@ export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput
+   if (picked.length === 0) {
+     throw new TriviumError(
+       EXIT.USAGE,
+-      `${source} 解析后是空集合：一次审查至少要有一个审核者。\n  可用：${legalList(cfg, driver)}`,
++      `${source} 解析后是空集合：一次审查至少要有一个审核者。\n  可用：${legalList(cfg, driver, input.descriptors)}`,
+     );
+   }
+ 
+@@ -95,18 +130,18 @@ export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput
+         EXIT.USAGE,
+         `${source} 里「${id}」出现了多次。一侧只会跑一次，重复多半是笔误——` +
+           '静默去重会把它悄悄变成更少的侧数，所以这里直接报错。\n' +
+-          `  当前可用：${legalList(cfg, driver)}`,
++          `  当前可用：${legalList(cfg, driver, input.descriptors)}`,
+       );
+     }
+     seen.add(id);
+   }
+ 
+   for (const id of picked) {
+-    const agent = agentById(id);
++    const agent = lookup(id);
+     if (!agent) {
+       throw new TriviumError(
+         EXIT.USAGE,
+-        `${source} 含未登记的 Agent「${id}」。可用：${legalList(cfg, driver)}` + swallowedTextHint(id),
++        `${source} 含未登记的 Agent「${id}」。可用：${legalList(cfg, driver, input.descriptors)}` + swallowedTextHint(id),
+       );
+     }
+     /*
+@@ -122,14 +157,14 @@ export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput
+         EXIT.USAGE,
+         `${source} 含当轮 Driver「${id}」：它是本次运行的执笔者，不能同时充当独立审查员。\n` +
+           '  自己审自己不构成二次审查——这条流水线存在的理由就是避免它。\n' +
+-          `  当前可用：${legalList(cfg, driver)}`,
++          `  当前可用：${legalList(cfg, driver, input.descriptors)}`,
+       );
+     }
+     if (!agent.criticEnabled) {
+       throw new TriviumError(
+         EXIT.USAGE,
+         `${source} 的「${id}」已登记但尚未启用为审核者（适配器随后续里程碑接入）。\n` +
+-          `  当前可用：${legalList(cfg, driver)}`,
++          `  当前可用：${legalList(cfg, driver, input.descriptors)}`,
+       );
+     }
+     /*
+@@ -149,7 +184,7 @@ export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput
+         EXIT.USAGE,
+         `${source} 的「${id}」在配置的 agents 段里没有条目。\n` +
+           '  入选审核者必须在 agents 段有条目（统一前置条件；antigravity 形状另需从这里取 agent 与 effort）。\n' +
+-          `  当前可用：${legalList(cfg, driver)}`,
++          `  当前可用：${legalList(cfg, driver, input.descriptors)}`,
+       );
+     }
+   }
+diff --git a/src/trivium/hooks.ts b/src/trivium/hooks.ts
+index 57d1ac4..aa779ee 100644
+--- a/src/trivium/hooks.ts
++++ b/src/trivium/hooks.ts
+@@ -28,7 +28,8 @@
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import fsSync from 'node:fs';
+-import { CRITICS, type Ctx, type Stage } from './types.js';
++import { type Ctx, type Stage } from './types.js';
++import { ALL_AGENT_IDS, DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
+ import { EXIT } from './exit-codes.js';
+ import { listOpenGates, readState, shouldLockWrites, StateCorruptError } from './state.js';
+ import { bumpStopBlockCount } from './lock.js';
+@@ -84,12 +85,59 @@ export function isInsideArchive(targetPath: string, projectRoot: string, archive
+ }
+ 
+ /**
+- * 文件名是不是审核者角色工件的形态。**只问形态，不问位置。**
++ * **保护集**：哪些角色后缀属于「只能由编排器落盘的审查件」（M9 第 4 步）。
++ *
++ * ## 为什么不是 `CRITICS`
++ *
++ * 此前这里用的是 `CRITICS`（`criticEnabled` 派生集合）。那在 claude 未启用为
++ * 审核者时**恰好**等于「全集减 Driver」，于是判据看起来对、理由却是错的——
++ * M9 翻开 claude 的 `criticEnabled` 的那一刻，`-claude.md` 会进入保护集，
++ * 而它正是 **Driver 自己交卷的文件名**：归档内写裁决件会被 `isForgedRoleFile`
++ * 判成伪造件而退 2，整条流水线锁死（实测：`gate-loop` 的「归档内的写入不受闸门
++ * 写锁约束」一条由退 0 变退 2）。仓库根 `CLAUDE.md` 那句「你的产出后缀是 `-claude`」
++ * 与 Hook 的拦截承诺，会从翻开关当日起互相矛盾。
++ *
++ * 正确判据是**「全部已登记角色」减「当轮 Driver」**：谁能当审核者是 `criticEnabled`
++ * 的事，而谁的产出**不该由 Driver 手写**是身份的事，两者不同源。
++ * 今天两者取值逐字相同（`CRITICS` 恰是 codex/gemini/glm），所以本次改动
++ * **行为等价**——换的是理由，为的是翻开关那一刻不失守。
++ *
++ * ## 与识别集的不等式
++ *
++ * `naming.looksLikeRoleArtifact` 用的是**全量**后缀（`suffixAlternation()`）。
++ * 改动后两者不再相等：**识别集 ⊇ 保护集**，差集恰是当轮 Driver。
++ * 这层不等式由 `hooks.test.ts` 的专门用例锁住——它今天恒成立，改错了当场红。
++ *
++ * ## M10 的接口
++ *
++ * `driver` 参数留着是为了 M10 按**会话 Driver** 取值。M9 只有一个 Driver，
++ * 默认参数即注册表缺省值；到那时改调用方传值，本函数不必再动。
++ */
++export function criticRoleSuffixes(driver: AgentId = DEFAULT_DRIVER): readonly string[] {
++  return ALL_AGENT_IDS.filter((id) => id !== driver);
++}
++
++/**
++ * 文件名是不是**受保护的**角色工件形态。**只问形态，不问位置。**
+  *
+  * 后缀集由 Agent 注册表派生，不写死字面量（`registry-parity` 的 grep 对账守着）。
++ *
++ * **两个消费者的判据含义不同，这层不对称是有意留下的**（M9 第 4 步，计划双审
++ * AGY-02 ≡ CODEX-04）：
++ *
++ *   · `isForgedRoleFile`——形态 + 位置，**当轮**语境。「减当轮 Driver」在这里成立。
++ *   · `immutableChangeReason`——纯 basename、**跨时间**判定。那里没有「当轮 Driver」
++ *     这个概念：一份三个月前由别的 Driver 落的 `-claude.md`，今天该不该拦？
++ *     纯词法后缀检查**区分不了**「Driver 自身原稿」与「同名历史审查件」。
++ *
++ * **M9 不假装能分。** 现状是把一个**跨时间**的保护面绑在一个**当轮**的值上，
++ * 代价在 M9 为零（只有一个 Driver，历史与当轮同值），M10 第一次换 Driver 就会显形：
++ * 届时历史 `-claude.md` 会集体变成「可改」，或反过来新 Driver 的原稿被判伪造。
++ * 提交锚判据的重构（按 `run.json` 的 artifacts 登记判不可变）是安全关键面的重写，
++ * **触发时点是 M10 换 Driver**，已登记 BACKLOG，不在本步做。
+  */
+ export function hasCriticRoleSuffix(fileName: string): boolean {
+-  return new RegExp(`-(?:${CRITICS.join('|')})\\.md$`).test(path.basename(fileName));
++  return new RegExp(`-(?:${criticRoleSuffixes().join('|')})\\.md$`).test(path.basename(fileName));
+ }
+ 
+ /**
+@@ -265,7 +313,10 @@ async function immutableChangeReason(projectRoot: string, relFromRoot: string):
+  * 写入前拦截（设计 §8.4 第 3 层）。
+  *
+  * 两条独立规则：
+- *   1. **伪造审查文件**：写 `*-gemini.md` / `*-glm.md` 一律拒绝。
++ *   1. **伪造审查文件**：写归档内带**受保护角色后缀**的文件一律拒绝。
++ *      后缀集见 `criticRoleSuffixes()`（全部已登记角色减当轮 Driver）——
++ *      **不在这里重抄一份枚举**：抄的那份会随注册表漂移，而它今天就已经漏过
++ *      `-codex.md`（M8 起 codex 已在保护集内，这句话却只列了两家）。
+  *      主脑不得自己编一份审查（PRD 6.3）——该规则**不受**会话与 TTL 限制。
+  *   2. **闸门写锁**：本会话触发的未审批闸门期间，禁止写归档根之外的文件。
+  */
+@@ -470,8 +521,12 @@ const SEGMENT_SPLIT = /(?:&&|\|\||[;&|\n\r])/;
+  * 角色后缀字面量（宽口径：词边界，不锚定行尾，不看 basename）。
+  *
+  * 出现在命令文本任何位置都拦——见下方「为什么 Bash 侧不做收窄」。
++ *
++ * 后缀集与 Write/Edit 侧**同源**（`criticRoleSuffixes()`，即全集减当轮 Driver），
++ * 理由见该函数的文档块。两侧若各写一份派生，翻开关时会一边失守一边不失守，
++ * 而那种半拉子状态最难排查。
+  */
+-const ROLE_SUFFIX_ANYWHERE = new RegExp(`-(?:${CRITICS.join('|')})\\.md\\b`);
++const ROLE_SUFFIX_ANYWHERE = new RegExp(`-(?:${criticRoleSuffixes().join('|')})\\.md\\b`);
+ 
+ /*
+  * ## 为什么 Bash 侧不做收窄（2026-09-14，代码双审后撤回）
+@@ -577,7 +632,7 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
+         '  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\n' +
+         '    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n' +
+         '      （删掉或改坏 bin/ 会让 .claude/settings.json 里每条 Hook 的守卫永真放行）\n' +
+-        '    · 审查文档的角色后缀（-gemini.md / -glm.md）\n' +
++        `    · 审查文档的角色后缀（${criticRoleSuffixes().map((s) => `-${s}.md`).join(' / ')}）\n` +
+         '  只能由编排器维护（FR-25 / P5）。\n' +
+         '\n' +
+         '  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\n' +
+diff --git a/src/trivium/schemas.ts b/src/trivium/schemas.ts
+index a4014a3..7658a7e 100644
+--- a/src/trivium/schemas.ts
++++ b/src/trivium/schemas.ts
+@@ -93,7 +93,13 @@ export function validateConfig(data: unknown): string[] {
+  * 判别式 `vendor: { const }` 本就是 schema 里**允许**出现的形态（它是形状判别式，
+  * 不是身份枚举——见 registry-parity 对两者的区分），所以现取即可，不必再抄。
+  */
+-function configurableVendors(): ReadonlySet<string> {
++/**
++ * **导出是为了对账**（M9 第 4 步）：`config-migrate.test.ts` 要判断
++ * 「当前还有没有『已登记但形状未定义』的家」，才能决定那条条件拼接的尾句该不该出现。
++ * 测试若自己再从 schema 里取一遍判别式，就成了第三个事实源——本函数的文档块
++ * 反对的正是这件事。
++ */
++export function configurableVendors(): ReadonlySet<string> {
+   const shapes = (configSchema as {
+     properties?: { agents?: { additionalProperties?: { oneOf?: { properties?: { vendor?: { const?: unknown } } }[] } } };
+   }).properties?.agents?.additionalProperties?.oneOf ?? [];
+@@ -159,8 +165,11 @@ function checkConfigAgents(data: unknown): string[] {
+        * 列出已登记 id 时要顺带说明**哪些现在还配不了**（审查意见 GLM-04）。
+        *
+        * 不说的话这条错误会把用户引向下一个错误：他看到「已登记：claude、codex、
+-       * gemini、glm」就照着改成 `claude`，而 `claude` 的配置形状要等 M9 / M10 才定义，
+-       * ajv 的 `oneOf` 会用一条机读错误拒掉它——用户完全看不出真正的原因。
++       * gemini、glm」就照着改成一个形状尚未定义的 id，ajv 的 `oneOf` 会用一条
++       * 机读错误拒掉它——用户完全看不出真正的原因。
++       *
++       * **四家形状自 M9 第 4 步起全部就位**，所以这个尾句当前不会拼出；
++       * 它留着是为了下一家登记时（形状必然晚于登记）仍有这层解释。
+        */
+       const vendors = configurableVendors();
+       const configurable = ALL_AGENT_IDS.filter((x) => vendors.has(agentById(x)!.vendor));
+@@ -168,14 +177,14 @@ function checkConfigAgents(data: unknown): string[] {
+       problems.push(
+         `agents.${id} 不是已登记的 Agent id。当前可配置：${configurable.join('、')}` +
+           (pending.length > 0
+-            ? `；${pending.join('、')} 虽已登记，但配置形状尚未定义（随 M8 / M9 / M10），现在还不能配`
++            ? `；${pending.join('、')} 虽已登记，但配置形状尚未定义，现在还不能配`
+             : ''),
+       );
+       continue;
+     }
+     if (!configurableVendors().has(agent.vendor)) {
+       problems.push(
+-        `agents.${id} 的配置形状尚未定义（随 M8 / M9 / M10 加入），当前版本不能配置它。` +
++        `agents.${id} 的配置形状尚未定义，当前版本不能配置它。` +
+           '登记在注册表里只表示「这家存在」，不表示「它已经能被配置」',
+       );
+       continue;
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 93d64fd..6f8cc8f 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -898,6 +898,32 @@ export interface GlmCriticConfig {
+   unsupported_override: 'reject' | 'annotate';
+ }
+ 
++/**
++ * claude 的配置段（M9 第 4 步）。
++ *
++ * ## 只有判别式，**没有任何其它字段**——这是刻意的不对称
++ *
++ * 另三家的段里都装着入口覆盖（gemini/codex 的 `bin`、glm 的 `entry`），
++ * 于是「照先例给 claude 也加一个 `bin`」看起来天经地义。**核过之后不是这样**：
++ * 那三个字段**都有真实消费方**——`doctor.ts` 把 `agents.gemini.bin` 传进 `probeAgy`、
++ * 把 `agents.glm.entry` 传进 `probeZcode`，`adapters/codex.ts` 两处入口取值都是
++ * `cfg.bin ?? probe.entrypoint`。**先例是「有消费方才登记」，不是「每家都有 bin」。**
++ *
++ * claude 侧没有这个消费方：适配器的 `run` 与 `authProbe` 都从
++ * `probe.cli.claude.entrypoint` 取入口，`doctor.ts` 调 `probeClaude` 时第一个参数
++ * 逐字传 `null`。**入口由探针独占。** 加一个 `bin` 就是加一个死字段——
++ * 本仓已有两条「登记而无消费方」的未结 BACKLOG（EV-06 的 `instructionFiles`、
++ * EV-15 的 `readonly_commands`），它们的危害正是**让后来者以为那个字段已经生效**。
++ *
++ * **不要为了「补齐」把 `bin` 加回来。** 真需要本机入口覆盖时，
++ * 再放宽这一支的 schema 是向后兼容的；反过来删一个已经进过用户配置的字段则不是。
++ *
++ * `effort` 同理不加：claude 侧没有对应的 CLI 旗标（探针未记录任何 effort 旗标）。
++ */
++export interface ClaudeCriticConfig {
++  vendor: 'anthropic';
++}
++
+ /**
+  * 单个 Agent 的配置段（`config.v2` 的 `agents.<id>`）。
+  *
+@@ -905,11 +931,21 @@ export interface GlmCriticConfig {
+  * （antigravity 要 `agent` 与 `effort`，zcode 要 `entry` 与 `max_turns`），
+  * 硬压成同一个形状只会得到一堆互相不适用的可选字段，校验也就形同虚设。
+  *
+- * codex / claude 的形状随 M8 / M9 / M10 加入本联合。在那之前，配置里写
+- * `agents.claude` 会被 schema 拒——那不是缺陷，而是「形状尚未定义」的如实反映：
+- * 设计 13.1.1 允许 Driver 段存在，但没说它长什么样，凭空放行等于承诺一个不存在的契约。
++ * **四家形状自 M9 第 4 步起全部就位**（codex 随 M8 第 3 步、claude 随本步）。
++ * 此前配置里写 `agents.claude` 会被 schema 拒，那不是缺陷而是「形状尚未定义」
++ * 的如实反映——设计 13.1.1 允许 Driver 段存在，但没说它长什么样，
++ * 凭空放行等于承诺一个不存在的契约。
++ *
++ * **副作用要知道**：`schemas.ts` 的 `configurableVendors()` 从 schema 现取判别式，
++ * 四支齐备后「已登记但形状未定义」这一格**变成空集**，那条报错分支随之不可达。
++ * 三条依赖该格的用例已在本步一并处置（见 `config-schema.test.ts` /
++ * `config-migrate.test.ts` 里对应的说明）。
+  */
+-export type AgentConfig = GeminiCriticConfig | GlmCriticConfig | CodexCriticConfig;
++export type AgentConfig =
++  | GeminiCriticConfig
++  | GlmCriticConfig
++  | CodexCriticConfig
++  | ClaudeCriticConfig;
+ 
+ /**
+  * 一条判不实的写入线索（`CriticResult.suspected_write_events` 的元素）。
+diff --git a/test/unit/adapter-base.test.ts b/test/unit/adapter-base.test.ts
+index 6bb6c76..bf20336 100644
+--- a/test/unit/adapter-base.test.ts
++++ b/test/unit/adapter-base.test.ts
+@@ -9,6 +9,7 @@ import {
+   failedResult,
+ } from '../../src/trivium/adapters/base.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
++import { DEFAULT_CRITICS } from '../../src/trivium/types.js';
+ 
+ const REQ = {
+   min_tool_calls: 5,
+@@ -166,15 +167,66 @@ test('异构判定：Claude 系为同源，需显式标记（FR-17 / AC-18）',
+   assert.equal(isHeterogeneous(null), true);
+ });
+ 
+-test('默认 profile 两侧互不相同且均为非 Claude 系（AC-18）', () => {
++/*
++ * **锚到 `DEFAULT_CRITICS`，不再硬写 gemini / glm 两家**（M9 第 4 步，计划 §5.2）。
++ *
++ * AC-18 的原文锚点是「未显式覆盖时，**两边所用模型**均与主脑不同源」——
++ * 主语是「本次实际会跑的那几侧」，也就是缺省入选集合，不是 profile 表里有哪些键。
++ * 本步给 `profiles.*` 加了 `claude` 键（它恒为 Claude 系），硬写两家的旧断言
++ * 恰好照常绿，于是用例名会开始说谎：默认 profile 从此有四个键、其中一个同源。
++ *
++ * 改锚是**加强**：`DEFAULT_CRITICS` 由注册表 `defaultSelected` 派生，
++ * 哪天有人把 claude 标成缺省入选，这条当场红——而那正是 AC-18 要防的事。
++ * 旧写法对那次改动完全失明。
++ *
++ * 缺省集合当前是 **codex / gemini / glm 三家**（`defaultSelected: true` 三处）。
++ * 计划原稿曾写成「gemini / glm 两家」——那是一处失实断言，本步一并改正：
++ * 三家都非 Claude 系，AC-18 第一句继续成立。
++ */
++test('缺省入选的各侧默认模型互不相同且均为非 Claude 系（AC-18）', () => {
++  const cfg = defaultConfig();
++  assert.ok(DEFAULT_CRITICS.length >= 2, '缺省集合至少两家，否则「两边」无从谈起');
++
++  for (const stage of ['plan', 'code', 'bug'] as const) {
++    const models = DEFAULT_CRITICS.map((c) => {
++      const m = routeModel(cfg, c, stage).model;
++      assert.ok(m, `${stage} 的 ${c} 侧应有默认模型——取不到会在 review.ts 直接抛 envError`);
++      assert.equal(
++        isHeterogeneous(m), true,
++        `${stage} 的 ${c} 侧是 Claude 系（${m}）：缺省入选里出现与主脑同源的模型即违反 AC-18`,
++      );
++      return m;
++    });
++    assert.equal(
++      new Set(models).size, models.length,
++      `${stage} 的缺省各侧默认模型不应相同——相同模型 + 相同镜头只是把成本乘二；实得 ${models.join('、')}`,
++    );
++  }
++});
++
++/*
++ * **claude 侧的模型路由取得到值**（M9 第 4 步，计划 §7 的 V5）。
++ *
++ * 它不在上一条的论域里（`defaultSelected: false`，不进缺省集合），
++ * 但第 5 步 `--driver` 落地后它就会被真跑。`routeModel` 取不到值时
++ * `review.ts:686` 直接抛 `envError`，而那要等到运行时才现形——
++ * 第 ⑥ 件（模型路由）漏配的后果就是这个，所以在这里先钉住。
++ *
++ * 顺带锁住 default 与 flash **不同**：两档同值会让 flash 在 claude 侧形同虚设
++ * （计划双审 CODEX-05）。
++ */
++test('claude 侧三阶段在两档下都有模型，且两档取值不同（第 ⑥ 件）', () => {
+   const cfg = defaultConfig();
+   for (const stage of ['plan', 'code', 'bug'] as const) {
+-    const g = routeModel(cfg, 'gemini', stage).model;
+-    const z = routeModel(cfg, 'glm', stage).model;
+-    assert.ok(g && z, `${stage} 两侧都应有默认模型`);
+-    assert.notEqual(g, z, `${stage} 两侧默认模型不应相同——相同模型 + 相同镜头只是把成本乘二`);
+-    assert.equal(isHeterogeneous(g), true, `${stage} gemini 侧应为非 Claude 系`);
+-    assert.equal(isHeterogeneous(z), true, `${stage} glm 侧应为非 Claude 系`);
++    cfg.active_profile = 'default';
++    const d = routeModel(cfg, 'claude', stage).model;
++    cfg.active_profile = 'flash';
++    const f = routeModel(cfg, 'claude', stage).model;
++    assert.ok(d && f, `${stage}：两档都要取得到值，否则 review.ts 会在运行时抛 envError`);
++    assert.notEqual(
++      d, f,
++      `${stage}：flash 档与 default 档取值相同，flash 在 claude 侧就形同虚设（另两家都真换了一档）`,
++    );
+   }
+ });
+ 
+diff --git a/test/unit/config-migrate.test.ts b/test/unit/config-migrate.test.ts
+index 1af44d0..b68dde2 100644
+--- a/test/unit/config-migrate.test.ts
++++ b/test/unit/config-migrate.test.ts
+@@ -21,9 +21,10 @@ import {
+   loadCtx,
+   migrateConfigV1,
+ } from '../../src/trivium/config.js';
+-import { validateConfig } from '../../src/trivium/schemas.js';
++import { validateConfig, configurableVendors } from '../../src/trivium/schemas.js';
+ import { runInit } from '../../src/trivium/init.js';
+ import { CRITICS, DEFAULT_CRITICS } from '../../src/trivium/types.js';
++import { AGENTS } from '../../src/trivium/agents/registry.js';
+ import { ALL_AGENT_IDS, agentById } from '../../src/trivium/agents/registry.js';
+ 
+ async function projectWith(files: Record<string, string>): Promise<string> {
+@@ -303,22 +304,44 @@ test('校验：agents.<id>.vendor 与注册表不符 → 报错（路由错配
+  * Driver 自身也需要配置容身之处。M7b 计划稿 §3.2 写的是「agents 的键必须 criticEnabled」，
+  * 那条会把未来的 Driver 段一并拒掉，已按设计纠正。
+  */
+-test('校验：登记但未启用为审核者的 Agent 出现在 default_critics → 报错，不静默忽略', () => {
++const CRITIC_PENDING = ALL_AGENT_IDS.filter((id) => !agentById(id)!.criticEnabled);
++
++/*
++ * **M9 第 4 步：本分支在真实注册表下不可达了**（计划双审 AGY-02 ≡ GLM-01 ≡ CODEX-02）。
++ *
++ * 四家 `criticEnabled` 全为真之后，「已登记但未启用」这一格是空的。
++ * 而 `validateConfig(data)` / `checkConfigAgents(data)` 都只收 data、
++ * 注册表是模块级绑定——**没有注入口**，手写一份 descriptors 到不了这条分支
++ * （`critics.test.ts` 那个注入口只对 `resolveCriticSelection` 有效）。
++ *
++ * 按本步范围边界处置：**保留用例、`skip` 并写明原因，覆盖缺口登记 BACKLOG**。
++ * 不为它给校验层开注入口——那是生产改动，要连它自己的双审成本一起算。
++ *
++ * **要守的规则一个字没改**：`default_critics` 里出现未启用的家必须报错，
++ * 不能静默忽略（静默会让用户以为那一侧已经在跑了）。引入第五家而它未启用时，
++ * 本条自动恢复执行。
++ *
++ * 注意与相邻那条的区别：那条是「vendor 形状未定义」，这条是「未启用为审核者」，
++ * 两格由不同字段决定，**会在不同的日子重新可达**，所以各自独立 skip、不合并。
++ */
++test(
++  '校验：登记但未启用为审核者的 Agent 出现在 default_critics → 报错，不静默忽略',
++  {
++    skip: CRITIC_PENDING.length === 0
++      ? '注册表四家的 criticEnabled 均为真，本分支当前不可达（见上方说明）'
++      : false,
++  },
++  () => {
+   const cfg = JSON.parse(JSON.stringify(defaultConfig()));
+-  /*
+-   * 取一个**已登记但未启用为审核者**的 id。原先写死 'codex'，而 codex 于 M8 第 3 步
+-   * 启用后这条用例的前提就消失了（它不再报错，断言随之失去意义）。
+-   * 改从注册表现取，前提消失时由下面的 assert.ok 当场说出来。
+-   */
+-  const notEnabled = ALL_AGENT_IDS.find((id) => !agentById(id)!.criticEnabled);
+-  assert.ok(notEnabled, '四家全部启用时本用例失去意义，届时改用别的夹具');
++  const notEnabled = CRITIC_PENDING[0]!;
+   cfg.review.default_critics = [notEnabled];
+   const problems = validateConfig(cfg);
+   assert.ok(
+     problems.some((p) => p.includes(notEnabled)),
+     `静默忽略会让用户以为那一侧已经在跑了，实得：${problems.join('；')}`,
+   );
+-});
++  },
++);
+ 
+ /*
+  * 「已登记」不等于「能配置」（审查意见 GLM-04）。
+@@ -327,13 +350,63 @@ test('校验：登记但未启用为审核者的 Agent 出现在 default_critics
+  * gemini、glm」，照着改成 claude，却撞上 ajv oneOf 的机读错误——真正的原因
+  * （形状要等 M9/M10 才定义）一个字都没说。
+  */
+-test('校验：配了已登记但形状未定义的 Agent → 说清「形状尚未定义」，不是机读错误', () => {
++/*
++ * **M9 第 4 步：这条用例的样本失效了**（计划双审 CODEX-01）。
++ *
++ * 它原来用 `agents.claude = { vendor: 'anthropic' }` 当「形状未定义」的样本。
++ * 本步把 anthropic 分支加进 `config.v2.json` 的 `oneOf` 之后，那个样本**变成合法配置**——
++ * 用例红的不是规则，是它挑的对象已经不属于那一格了。
++ *
++ * **换不掉样本**：判据 `!configurableVendors().has(agent.vendor)` 读的是
++ * **注册表登记的 vendor**，不是配置里写的那个（拿 `vendor: 'no-such-vendor'` 去试，
++ * 走到的是再下一条「vendor 与注册表不符」——实跑确认过）。四家 vendor 全部有形状
++ * 之后，这条分支的可达性完全由注册表决定，而 `checkConfigAgents(data)` 只收 data、
++ * 注册表是模块级绑定，没有注入口。
++ *
++ * 于是按本步的范围边界处置：**保留用例、条件执行，并如实登记覆盖缺口**。
++ * 不为它给校验层开注入口（那是生产改动，与 `critics.test.ts` 里「登记但未启用」
++ * 那条同一口径，已一并登记 BACKLOG）。规则本身一个字没改，
++ * 下一家登记而形状未跟上时，它自动恢复执行。
++ */
++const SHAPE_PENDING = AGENTS.filter((a) => !configurableVendors().has(a.vendor));
++
++test(
++  '校验：配了已登记但形状未定义的 Agent → 说清「形状尚未定义」，不是机读错误',
++  {
++    /*
++     * **用 skip 而不是提前 return**：`return` 会让这条用例在输出里显示为**通过**，
++     * 而它其实什么都没验——那正是本仓反复反对的「绿测试证明不了任何事」。
++     * `skip` 带原因，跳过这件事本身会出现在 `npm test` 的统计与逐行输出里。
++     */
++    skip: SHAPE_PENDING.length === 0
++      ? '注册表四家的 vendor 形状均已在 config.v2.json 定义，本分支当前不可达（见上方说明）'
++      : false,
++  },
++  () => {
++    const victim = SHAPE_PENDING[0]!;
++    const cfg = defaultConfig() as unknown as { agents: Record<string, unknown> };
++    cfg.agents[victim.id] = { vendor: victim.vendor };
++    const problems = validateConfig(cfg);
++    assert.ok(
++      problems.some((p) => p.includes(victim.id) && p.includes('形状尚未定义')),
++      `要让用户看懂为什么不能配，实得：${problems.join('；')}`,
++    );
++  },
++);
++
++/*
++ * 反过来的一条（M9 第 4 步新增）：**claude 的合法段现在必须被放行。**
++ *
++ * 上一条改夹具之后，「`agents.claude` 配对了会怎样」就没有任何用例看着了。
++ * 而那恰恰是本步交付的东西——第 ⑦ 件的全部意义就是让这一段能被配。
++ * 缺了它，把 anthropic 分支从 schema 里删掉，上一条照样绿。
++ */
++test('校验：agents.claude 的合法段（只有 vendor 判别式）必须被放行', () => {
+   const cfg = defaultConfig() as unknown as { agents: Record<string, unknown> };
+   cfg.agents['claude'] = { vendor: 'anthropic' };
+-  const problems = validateConfig(cfg);
+-  assert.ok(
+-    problems.some((p) => p.includes('claude') && p.includes('形状尚未定义')),
+-    `要让用户看懂为什么不能配，实得：${problems.join('；')}`,
++  assert.deepEqual(
++    validateConfig(cfg), [],
++    'claude 段的形状自 M9 第 4 步起已定义，合法配置不该被拒',
+   );
+ });
+ 
+@@ -344,7 +417,27 @@ test('校验：未登记 id 的报错要区分「当前可配置」与「已登
+   const hit = problems.find((p) => p.includes('nobody'));
+   assert.ok(hit, problems.join('；'));
+   assert.match(hit, /当前可配置/, '只列「已登记」会把用户引向下一个错误');
+-  assert.match(hit, /尚未定义/, '要点明哪几家虽已登记但还配不了');
++
++  /*
++   * **尾句是条件拼的，断言也要条件化**（M9 第 4 步，计划双审 CODEX-01）。
++   *
++   * 「…虽已登记，但配置形状尚未定义」这半句在 `schemas.ts` 里只有
++   * `pending.length > 0` 时才拼出。四家形状于本步全部就位后 `pending` 为空，
++   * 尾句**正确地**消失了——而上一版这里是无条件 `assert.match(hit, /尚未定义/)`，
++   * 于是一条正确行为把用例判红。
++   *
++   * 要守的规则没变：**只要还有「已登记却配不了」的家，就必须点名**，
++   * 否则用户会照着「已登记」那张表去配，撞上第二个错误。
++   */
++  const pending = AGENTS.filter((a) => !configurableVendors().has(a.vendor));
++  if (pending.length > 0) {
++    assert.match(hit, /尚未定义/, '要点明哪几家虽已登记但还配不了');
++  } else {
++    assert.doesNotMatch(
++      hit, /尚未定义/,
++      '四家形状齐备时不该再提「有家配不了」——那会让用户去找一个不存在的待定项',
++    );
++  }
+ });
+ 
+ test('校验：default_critics 里的 Agent 在 agents 中没有配置段 → 报错', () => {
+diff --git a/test/unit/config-schema.test.ts b/test/unit/config-schema.test.ts
+index b38079e..62264f0 100644
+--- a/test/unit/config-schema.test.ts
++++ b/test/unit/config-schema.test.ts
+@@ -146,9 +146,20 @@ test('可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家
+   /*
+    * 反向：注册表里登记、但 schema 没给形状的厂商，配置段必须被**明确**拒绝，
+    * 且报错要说清是「形状尚未定义」而不是别的——用户照着这条话才知道该等哪个里程碑。
++   *
++   * ## M9 第 4 步起这一格**常态为空**（计划双审 CODEX-01）
++   *
++   * claude 的 anthropic 分支加进 `oneOf` 之后，四家形状全部就位，
++   * `pending` 变成空集——上一版那句 `assert.ok(pending.length > 0)` 会当场红，
++   * 而它红的理由与本用例要测的东西（「现取，不手写」）毫无关系。
++   *
++   * **不是删掉反向断言**：那等于把「形状未定义要说清楚」这条规则的负例一起删掉，
++   * 而它在引入第五家、或任何一家的形状被临时摘掉时立刻重新可达。
++   * 改成两段：真有 pending 就照旧逐个查（真实数据优先）；没有就用一个
++   * **构造出来的未声明厂商**验同一条报错路径。
+    */
+   const pending = AGENTS.filter((a) => !declared.includes(a.vendor));
+-  assert.ok(pending.length > 0, '注册表里应当至少有一个形状未定义的 Agent（当前是 claude / codex）');
++
+   /*
+    * **逐个**查，不是查第一个。只查 `find()` 的话，这条断言只覆盖 AGENTS 里最靠前的
+    * 那一家——往手写集合里错加一个别的厂商，它照样全绿。实测确认过：
+@@ -164,6 +175,52 @@ test('可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家
+       `agents.${agent.id} 的报错要说清真实原因（形状尚未定义），实际是：\n${problems.join('\n')}`,
+     );
+   }
++
++  /*
++   * ## `pending` 为空时**没有替代夹具**——这是如实登记，不是偷懒
++   *
++   * 起初我在这里补了一段「构造一个未声明的 vendor 走同一条判定」的兜底。
++   * **那段基于一个错误前提，实跑打回**：`checkConfigAgents` 判「形状尚未定义」时读的是
++   * **注册表登记的 vendor**（`agentById(id)!.vendor`），不是配置里写的那个。
++   * 拿 `agents.claude = { vendor: 'no-such-vendor' }` 去试，走到的是再下一条
++   * 「vendor 与注册表不符」，报错里根本没有「形状尚未定义」。
++   *
++   * 也就是说：这条分支的可达性**完全由注册表决定**，而
++   * `checkConfigAgents(data)` 只收 data、注册表是模块级绑定，**没有注入口**。
++   * 要给它造负例，就得给校验层开一个注入口——那是生产改动，
++   * 按本步的范围边界（「夹具收口」）不做，与 `critics.test.ts` 里
++   * 「登记但未启用」那条的处置同一口径，已一并登记 BACKLOG。
++   *
++   * 所以正向断言（上面的 `for (const vendor of declared)`）是本用例当前的实质覆盖；
++   * 反向分支等注册表再登记一家、形状尚未跟上时自动恢复——
++   * 下一条用例就是那一天的提醒装置。
++   */
++});
++
++/*
++ * **自适应断言：schema 的 oneOf 是不是已经覆盖了注册表的全部厂商**（M9 第 4 步）。
++ *
++ * 上一条用例里那句 `pending.length > 0` 曾经同时干两件事：测反向报错、
++ * 顺便记录「当前还有家没定义形状」。两件事绑在一个断言上，于是 M9 补齐第四家时
++ * 它以一种与用例主张无关的方式红掉。这里把**记录**那一半单独拎出来：
++ * 它是一条关于当前进度的事实，值得被断言看着，但不该决定别的用例红不红。
++ */
++test('schema 的 agents.oneOf 已覆盖注册表全部厂商——新增一家未定义形状的 Agent 时本条会红', async () => {
++  const schema = JSON.parse(
++    await fs.readFile(
++      path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'), 'utf8',
++    ),
++  ) as { properties: { agents: { additionalProperties: { oneOf: { properties: { vendor: { const: string } } }[] } } } };
++  const declared = schema.properties.agents.additionalProperties.oneOf
++    .map((b) => b.properties.vendor.const);
++
++  const undeclared = AGENTS.filter((a) => !declared.includes(a.vendor)).map((a) => a.id);
++  assert.deepEqual(
++    undeclared, [],
++    `注册表里有 Agent 的 vendor 未在 config.v2.json 的 agents.oneOf 中声明：${undeclared.join('、')}。\n` +
++      '  这不一定是错误（新登记一家、形状随后续里程碑定义，是正常节奏）。\n' +
++      '  它提醒的是：上一条用例的反向分支此刻有真实数据覆盖，构造夹具那一段可以不走。',
++  );
+ });
+ 
+ /*
+diff --git a/test/unit/critics.test.ts b/test/unit/critics.test.ts
+index c0e1127..b3559a5 100644
+--- a/test/unit/critics.test.ts
++++ b/test/unit/critics.test.ts
+@@ -10,8 +10,9 @@ import assert from 'node:assert/strict';
+ import { resolveCriticSelection } from '../../src/trivium/critics.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+-import { DEFAULT_DRIVER, ALL_AGENT_IDS, agentById } from '../../src/trivium/agents/registry.js';
++import { AGENTS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+ import { CRITICS, type Config, DEFAULT_CRITICS } from '../../src/trivium/types.js';
++import { SELECTABLE, assertSelectableUsable } from '../helpers/critic-fixtures.js';
+ 
+ const cfg = (): Config => defaultConfig();
+ 
+@@ -36,29 +37,34 @@ test('都不给 → 取 review.default_critics', () => {
+ });
+ 
+ test('--critics 显式多选', () => {
+-  const [a, b] = [CRITICS[0]!, CRITICS[1]!];
++  assertSelectableUsable(2);
++  const [a, b] = [SELECTABLE[0]!, SELECTABLE[1]!];
+   assert.deepEqual(resolveCriticSelection(cfg(), { critics: `${a},${b}` }), [a, b]);
+ });
+ 
+ test('--critics 选一个：合法，且顺序按用户写的来', () => {
+-  const only = CRITICS[1]!;
++  assertSelectableUsable();
++  const only = SELECTABLE[1] ?? SELECTABLE[0]!;
+   assert.deepEqual(resolveCriticSelection(cfg(), { critics: only }), [only]);
+ });
+ 
+ test('--critics 容忍空格与尾随逗号', () => {
+-  const [a, b] = [CRITICS[0]!, CRITICS[1]!];
++  assertSelectableUsable(2);
++  const [a, b] = [SELECTABLE[0]!, SELECTABLE[1]!];
+   assert.deepEqual(resolveCriticSelection(cfg(), { critics: ` ${a} , ${b} , ` }), [a, b]);
+ });
+ 
+ test('--only 是 --critics 的单元素旧写法', () => {
+-  const only = CRITICS[0]!;
++  assertSelectableUsable();
++  const only = SELECTABLE[0]!;
+   assert.deepEqual(resolveCriticSelection(cfg(), { only }), [only]);
+ });
+ 
+ test('配置改了 default_critics → 缺省跟着变', () => {
+   const c = cfg();
+-  c.review.default_critics = [CRITICS[1]!];
+-  assert.deepEqual(resolveCriticSelection(c), [CRITICS[1]!]);
++  const pick = SELECTABLE[1] ?? SELECTABLE[0]!;
++  c.review.default_critics = [pick];
++  assert.deepEqual(resolveCriticSelection(c), [pick]);
+ });
+ 
+ // ─────────────────────────── 拒绝规则 ───────────────────────────
+@@ -69,12 +75,14 @@ test('配置改了 default_critics → 缺省跟着变', () => {
+  * 正是这一族缺口最常见的形态（`--base` 漏传、`--only` 丢失都是它）。
+  */
+ test('--critics 与 --only 同时给 → 退 64（不静默取其一）', () => {
+-  const [a, b] = [CRITICS[0]!, CRITICS[1]!];
++  assertSelectableUsable(2);
++  const [a, b] = [SELECTABLE[0]!, SELECTABLE[1]!];
+   rejects(() => resolveCriticSelection(cfg(), { critics: a, only: b }), /不能同时给/);
+ });
+ 
+ test('即便两者取值相同也拒绝：语义重复本身就该被指出', () => {
+-  const a = CRITICS[0]!;
++  assertSelectableUsable();
++  const a = SELECTABLE[0]!;
+   rejects(() => resolveCriticSelection(cfg(), { critics: a, only: a }), /不能同时给/);
+ });
+ 
+@@ -83,14 +91,15 @@ test('即便两者取值相同也拒绝：语义重复本身就该被指出', ()
+  * 静默去重会把它变成一次更少侧的审查，而用户以为自己要了两侧。
+  */
+ test('重复项 → 退 64（静默去重会悄悄减少侧数）', () => {
+-  const a = CRITICS[0]!;
++  assertSelectableUsable();
++  const a = SELECTABLE[0]!;
+   rejects(() => resolveCriticSelection(cfg(), { critics: `${a},${a}` }), /出现了多次/);
+ });
+ 
+ test('未登记的 id → 退 64 并列出可用值', () => {
+   rejects(
+     () => resolveCriticSelection(cfg(), { critics: 'gemmini' }),
+-    /未登记/, new RegExp(CRITICS[0]!),
++    /未登记/, new RegExp(SELECTABLE[0]!),
+   );
+ });
+ 
+@@ -123,24 +132,57 @@ test('Driver 检查不依赖 criticEnabled 顺带生效（M9 之后仍要挡住
+ 
+ test('已登记但未启用为审核者 → 退 64，说明随后续里程碑接入', () => {
+   /*
+-   * 找一个未启用为审核者的 id。**不再排除 DEFAULT_DRIVER**——codex 于 M8 第 3 步
+-   * 启用后，未启用的只剩 claude，而它恰是缺省 Driver，原条件会筛成空集
+-   * （用例自己预告过这一天：「届时改用别的夹具」）。
+-   * 改法是显式换一个当轮 Driver，把 claude 从 Driver 位置挪开，
+-   * 这样走到的就是「尚未启用」那条分支，而不是被 Driver 检查先拦下。
++   * **改用注入表，不再从真实注册表现取**（M9 第 4 步，计划双审 AGY-02 ≡ GLM-01 ≡ CODEX-02）。
++   *
++   * 上一版靠 `ALL_AGENT_IDS.find(id => !criticEnabled)` 取夹具，并在 assert 消息里
++   * 预告「四家全部启用时本用例失去意义」。M9 把第四家启用之后那天就到了——
++   * 而预告写在**消息**里，不是写在**断言**里，所以它是静默失效的：
++   * 覆盖存不存在，取决于生产数据碰巧长什么样。
++   *
++   * 现在把登记表参数化（`deriveDefaultCritics` 的同款先例），这条分支有了
++   * 不依赖注册表状态的真覆盖。**紧接其后的那条用例**是配套的自适应断言：
++   * 将来真引入未启用的第五家时它会红，提醒这里可以回到真实注册表。
+    */
+-  const pending = ALL_AGENT_IDS.find((id) => !agentById(id)!.criticEnabled);
+-  assert.ok(pending, '四家全部启用时本用例失去意义，届时改用别的夹具');
+-  const otherDriver = CRITICS.find((c) => c !== pending)!;
++  assertSelectableUsable();
++  const notEnabled = SELECTABLE[0]!;
++  /*
++   * 注入表里**只有 `notEnabled` 那一家未启用**，其余（含 Driver）全部启用。
++   * 这样目标 id 既不是当轮 Driver（否则被 Driver 检查先拦、走不到这条分支），
++   * 也确实处在「已登记、未启用」这一格。
++   */
++  const registry = AGENTS.map((a) => ({ ...a, criticEnabled: a.id !== notEnabled }));
+   rejects(
+-    () => resolveCriticSelection(cfg(), { critics: pending, driver: otherDriver }),
++    () => resolveCriticSelection(cfg(), {
++      critics: notEnabled,
++      driver: DEFAULT_DRIVER,
++      descriptors: registry,
++    }),
+     /尚未启用/,
+   );
+ });
+ 
++/*
++ * **自适应断言：真实注册表当前是不是全部启用**（M9 第 4 步）。
++ *
++ * 上一条用注入表拿回了覆盖，但「真实注册表里还有没有未启用的家」这个事实
++ * 本身也值得被断言看着——它决定上一条的注入表是不是仍然必要。
++ *
++ * **写成断言而不是注释**：注释里的「当前四家全部启用」会随注册表变化而失真，
++ * 且没有任何机制提醒。断言会在引入第五家（未启用）时红，提示回去看上一条。
++ */
++test('真实注册表当前全部启用为审核者——引入未启用的第五家时，上一条可回到真实注册表', () => {
++  const notEnabled = AGENTS.filter((a) => !a.criticEnabled).map((a) => a.id);
++  assert.deepEqual(
++    notEnabled, [],
++    `注册表出现了未启用为审核者的 Agent（${notEnabled.join('、')}）。\n` +
++      '  这不是错误：上一条用例的 descriptors 注入表可以改回从真实注册表现取，\n' +
++      '  「登记但未启用」那条分支于是重新有了真实数据的覆盖。',
++  );
++});
++
+ test('在 agents 段里没有配置条目 → 退 64（取不到调用参数）', () => {
+   const c = cfg();
+-  const victim = CRITICS[0]!;
++  const victim = SELECTABLE[0]!;
+   delete c.agents[victim];
+   rejects(() => resolveCriticSelection(c, { critics: victim }), /没有条目/);
+ });
+@@ -149,7 +191,7 @@ test('超过 max_critics → 退 64 并报出上限', () => {
+   const c = cfg();
+   c.review.max_critics = 1;
+   rejects(
+-    () => resolveCriticSelection(c, { critics: CRITICS.join(',') }),
++    () => resolveCriticSelection(c, { critics: SELECTABLE.join(',') }),
+     /超过/, /max_critics=1/,
+   );
+ });
+@@ -173,9 +215,9 @@ test('配置的 default_critics 为空 → 同样退 64，不静默回落到全
+  */
+ test('拒绝信息一律带上当前可用值，用户不必去翻文档', () => {
+   const c = cfg();
+-  for (const bad of ['nobody', DEFAULT_DRIVER, `${CRITICS[0]!},${CRITICS[0]!}`]) {
++  for (const bad of ['nobody', DEFAULT_DRIVER, `${SELECTABLE[0]!},${SELECTABLE[0]!}`]) {
+     assert.throws(() => resolveCriticSelection(c, { critics: bad }), (e: { message: string }) => {
+-      assert.match(e.message, new RegExp(CRITICS[0]!), `「${bad}」的报错没列出可用值`);
++      assert.match(e.message, new RegExp(SELECTABLE[0]!), `「${bad}」的报错没列出可用值`);
+       return true;
+     });
+   }
+@@ -192,7 +234,8 @@ test('拒绝信息一律带上当前可用值，用户不必去翻文档', () =>
+  * **单元素集合是合法返回值，不该被当成异常**。
+  */
+ test('单元素集合是合法结果——降级与否由 runner 按「入选的都成了吗」判，与基数无关', () => {
+-  for (const c of CRITICS) {
++  assertSelectableUsable();
++  for (const c of SELECTABLE) {
+     assert.deepEqual(
+       resolveCriticSelection(cfg(), { critics: c }), [c],
+       '把「只选一侧」当异常挡在这里，AC-22 就永远跑不起来',
+@@ -200,6 +243,29 @@ test('单元素集合是合法结果——降级与否由 runner 按「入选的
+   }
+ });
+ 
++/*
++ * **缺省 Driver 那一家的单选合法性**（M9 第 4 步，计划双审 AGY-03）。
++ *
++ * 上一条改用 `SELECTABLE` 之后，缺省 Driver 那一家就再也不会走到「单选成功」这条路径——
++ * 它每次都在 Driver 检查处被拒。**而那恰恰是第 5 步落 `--driver` 之后要走的路径**：
++ * 把 Driver 换成别人，claude 就该像任何一家一样能被单独选中。
++ *
++ * 今天它已经能通过（`resolveCriticSelection` 的 driver 是参数化的，
++ * 只是**没有调用方传值**——见计划 §2.3）。所以这条用例今天就该在：
++ * 第 5 步接上 `--driver` 时，它能回答「新做对了，还是本来就对」。
++ * 缺了它，那一步只有负例（V6）没有正例，等于只验证了「拦得住」，
++ * 没验证「换掉 Driver 之后拦对了人」。
++ */
++test('把 Driver 换成别人之后，原 Driver 那一家可以被单独选中（第 5 步 --driver 的正例）', () => {
++  assertSelectableUsable();
++  const otherDriver = SELECTABLE[0]!;
++  assert.deepEqual(
++    resolveCriticSelection(cfg(), { critics: DEFAULT_DRIVER, driver: otherDriver }),
++    [DEFAULT_DRIVER],
++    `${DEFAULT_DRIVER} 不当 Driver 时就是普通审核者，不该还被 Driver 检查拦下`,
++  );
++});
++
+ /*
+  * 「你不能选 Driver」的报错里，**不该把 Driver 自己列进可用值**
+  * （审查意见 AGY-02）。当前 claude 未进 `CRITICS`，这层过滤不改变现有输出；
+@@ -207,7 +273,7 @@ test('单元素集合是合法结果——降级与否由 runner 按「入选的
+  * 上一轮 GLM-04「第一个错误把用户引向第二个错误」的形态。
+  */
+ test('Driver 拒绝信息里不得把 Driver 自己列为「当前可用」', () => {
+-  const asDriver = CRITICS[0]!;
++  const asDriver = SELECTABLE[0]!;
+   assert.throws(
+     () => resolveCriticSelection(cfg(), { critics: asDriver, driver: asDriver }),
+     (e: { message: string }) => {
+diff --git a/test/unit/hooks.test.ts b/test/unit/hooks.test.ts
+index 39c6793..021b9b5 100644
+--- a/test/unit/hooks.test.ts
++++ b/test/unit/hooks.test.ts
+@@ -5,9 +5,11 @@ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import {
+   hookPreWrite, hookPreBash, hookPreCommit, hookStop, hookSessionStart, runHook, looksLikeWriteCommand,
+-  extractTargetPath, isForgedRoleFile, hasCriticRoleSuffix, isInsideArchive, isOrchestratorOwned,
++  extractTargetPath, isForgedRoleFile, hasCriticRoleSuffix, criticRoleSuffixes, isInsideArchive, isOrchestratorOwned,
+   type HookInput,
+ } from '../../src/trivium/hooks.js';
++import { looksLikeRoleArtifact } from '../../src/trivium/naming.js';
++import { ALL_AGENT_IDS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+ import { exists } from '../../src/trivium/util/fsx.js';
+ import { setGate } from '../../src/trivium/state.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
+@@ -50,11 +52,53 @@ test('纯后缀检查：只问形态，不问位置', () => {
+   // 提交锚（immutableChangeReason）用的就是这一支，传进来的是 basename
+   assert.equal(hasCriticRoleSuffix('2026-09-10-t-gemini.md'), true);
+   assert.equal(hasCriticRoleSuffix('2026-09-10-t-glm.md'), true);
++  /*
++   * 后两条**结论不变、理由已改写**（M9 第 4 步）。
++   *
++   * 旧理由是「`-claude.md` 不是审核者角色」——那句话在 claude 的 `criticEnabled`
++   * 翻为 true 的那一刻就成了假的，而断言会照样绿（判据换了集合，取值恰好还相同），
++   * 于是注释会静默地变成谎话。
++   *
++   * 新理由：**`-claude.md` 是当轮 Driver 自己的产出**。判据是「全部已登记角色
++   * 减当轮 Driver」，与「谁能当审核者」无关——见 `criticRoleSuffixes()` 的文档块。
++   */
+   assert.equal(hasCriticRoleSuffix('2026-09-10-t-claude.md'), false);
+   assert.equal(hasCriticRoleSuffix('2026-09-10-t-revised-claude.md'), false);
+   assert.equal(hasCriticRoleSuffix('src/gemini.md'), false, '文件名必须以 -gemini.md 结尾');
+ });
+ 
++/*
++ * **识别集 ⊇ 保护集**，差集恰是当轮 Driver（M9 第 4 步，计划双审 AGY-02 ≡ CODEX-04 的连带 3）。
++ *
++ * 两者此前**相等**（`naming` 用全量后缀、Hook 用 `CRITICS`，而 claude 恰好未启用），
++ * 所以这层关系从来没被写下来过。改判据之后它们不再相等，而不等的方向是有讲究的：
++ * 识别得出来（`looksLikeRoleArtifact` 认得 `-claude.md` 是角色工件，归档要靠它排序轮次）
++ * 但不保护（Driver 要能写自己的裁决件）。
++ *
++ * 反过来若保护集大于识别集，就是「拦得住却认不出」——Driver 交不了卷，
++ * 而归档还以为那份文件不存在。这条用例今天恒成立，两侧任一改错都当场红。
++ */
++test('识别集 ⊇ 保护集，差集恰是当轮 Driver', () => {
++  const protectedIds = criticRoleSuffixes();
++
++  for (const id of protectedIds) {
++    const f = `2026-09-10-t-${id}.md`;
++    assert.equal(hasCriticRoleSuffix(f), true, `${id} 应在保护集内`);
++    assert.equal(looksLikeRoleArtifact(f), true, `保护集成员 ${id} 必须也被识别集认出`);
++  }
++
++  const diff = ALL_AGENT_IDS.filter((id) => !protectedIds.includes(id));
++  assert.deepEqual(
++    diff, [DEFAULT_DRIVER],
++    '识别集与保护集的差集必须恰是当轮 Driver——多一个就是有角色的产出没人保护，少一个就是 Driver 交不了卷',
++  );
++
++  // 差集成员：识别得出来，但不受保护
++  const driverFile = `2026-09-10-t-${DEFAULT_DRIVER}.md`;
++  assert.equal(looksLikeRoleArtifact(driverFile), true, 'Driver 的产出仍是角色工件，归档要靠它算轮次');
++  assert.equal(hasCriticRoleSuffix(driverFile), false, 'Driver 的产出不受保护，否则它写不了自己的裁决件');
++});
++
+ test('识别伪造审查文件：形态像 + 落在归档内', () => {
+   const root = '/p';
+   const archive = '/p/.reviews';
+diff --git a/test/unit/registry-parity.test.ts b/test/unit/registry-parity.test.ts
+index 68d75b4..3996bad 100644
+--- a/test/unit/registry-parity.test.ts
++++ b/test/unit/registry-parity.test.ts
+@@ -808,9 +808,24 @@ test('config.v2 schema：身份字段不得枚举 Agent id（但形状判别式
+  * 两条一起才完整：结构断言防「加回 enum」，行为断言防「换个写法把枚举塞回去」
+  * （`const`、`pattern`、`oneOf` 都能达到同样效果而绕开对 `enum` 的检查）。
+  */
+-test('run.v2 校验：未启用但已登记的 Agent 出现在入选集合里，形状上必须被接受', () => {
+-  const spare = ALL_AGENT_IDS.find((id) => !CRITIC_AGENT_IDS.includes(id));
+-  assert.ok(spare, '四家全部启用为审核者时本用例失去意义，届时改用别的夹具');
++/*
++ * **M9 第 4 步：改为遍历全部已登记 id**（计划双审 GLM-01）。
++ *
++ * 上一版取「一个已登记但未启用为审核者的 id」当夹具，四家全启用后取不到值，
++ * 而它只把这件事写进 assert 消息（「届时改用别的夹具」）——那是静默失效的形态。
++ *
++ * 换成遍历全集比原来**更强**，不只是「能跑了」：
++ *   · 原来只验一家（而且是 `find()` 撞上的那一家），现在每一家都验；
++ *   · 断言的主张本就与 `criticEnabled` 无关——run.v2 的形状论域是
++ *     「已登记的 Agent」，而不是「当前启用的审核者」。拿启用状态当夹具来源，
++ *     等于把一条恒真的形状约束绑在一个会变的运行期布尔上。
++ *
++ * 唯一要排除的是 `driver` 那一格：`critics_selected` 含当轮 Driver 会触发
++ * 身份补校的互斥规则，那是**另一条**规则的正确行为，不该在这里被当成形状失败。
++ */
++test('run.v2 校验：每一个已登记 Agent 出现在入选集合里，形状上都必须被接受', () => {
++  for (const spare of ALL_AGENT_IDS) {
++    if (spare === DEFAULT_DRIVER) continue; // 见上：Driver 互斥是另一条规则
+ 
+   const agent = agentById(spare)!;
+   const meta = {
+@@ -843,6 +858,7 @@ test('run.v2 校验：未启用但已登记的 Agent 出现在入选集合里，
+     `${spare} 是已登记 Agent，run.v2 不该在形状上拒绝它——` +
+       '拒绝即说明枚举被塞回了 schema（可能不是用 enum 写的）',
+   );
++  }
+ });
+ 
+ /*
+diff --git a/test/unit/topic-args.test.ts b/test/unit/topic-args.test.ts
+index c90502e..085321c 100644
+--- a/test/unit/topic-args.test.ts
++++ b/test/unit/topic-args.test.ts
+@@ -11,6 +11,7 @@ import { initFixtureRepo } from '../../src/trivium/util/git.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import { CRITICS, type Ctx } from '../../src/trivium/types.js';
+ import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
++import { SELECTABLE } from '../helpers/critic-fixtures.js';
+ 
+ /*
+  * ── 入参是 argv 数组，不是字符串（EV-18）──
+@@ -521,7 +522,19 @@ test('AGY-04：--only 取值当场校验，拼错不必等到 review --start', a
+        * 原先逐字匹配措辞的断言会为一次纯文案调整变红——那是脆断言。
+        */
+       assert.match(e.message, /gemmini/, '要点名拼错的那个值');
+-      for (const c of CRITICS) {
++      /*
++       * **锚在 `SELECTABLE` 而不是 `CRITICS`**（M9 第 4 步）。
++       *
++       * 这条路径走 `resolveCriticSelection`，其报错文案由 `legalList` 拼，
++       * 而 `legalList` **排除当轮 Driver**（「第一个错误不得把用户引向第二个错误」）。
++       * 翻开关后 `CRITICS` 含 claude 而文案里没有它——用 `CRITICS` 遍历会红，
++       * 且红得莫名其妙：断言要的正是那条文案**不该**列出的值。
++       *
++       * 注意与本文件下方「给非审核者指定模型」那条的区别：那条的文案由
++       * `topic-args.ts` 自己用 `CRITICS.join('、')` 拼、**不经 `legalList`**，
++       * 所以它遍历 `CRITICS` 是对的，不要跟着一起改。
++       */
++      for (const c of SELECTABLE) {
+         assert.match(e.message, new RegExp(c), `要列出合法值 ${c}，否则用户不知道该写什么`);
+       }
+       return true;
+@@ -548,17 +561,47 @@ test('模型覆盖旗标的白名单按注册表派生，不是写死两条', ()
+   }
+ });
+ 
+-test('给非审核者指定模型 → 退 64 并列出当前可用，而不是解析成功后被悄悄丢弃', async () => {
++const MODEL_FLAG_PENDING = ALL_AGENT_IDS.filter(
++  (id) => !(CRITICS as readonly string[]).includes(id),
++);
++
++/*
++ * **M9 第 4 步：本分支在真实注册表下不可达了**（计划双审 CODEX-02）。
++ *
++ * 这条校验在 `topic-args.ts` 里直读模块级 `CRITICS`
++ * （`for (const id of ALL_AGENT_IDS) … if (!CRITICS.includes(id))`），
++ * **不经 `resolveCriticSelection`**——`critics.test.ts` 那个 descriptors 注入口
++ * 对它无效。而四家全启用后，「全部已登记」减「可用审核者」是空集，
++ * 没有任何合法输入能走到这条报错。
++ *
++ * 我起初把夹具换成了当轮 Driver，**那是错的**：`--model-claude` 现在完全合法，
++ * 因为 claude 确实是可用审核者。实跑打回后改成本形态。
++ *
++ * ## 它顺带暴露了一个真实缺口（已登记 BACKLOG，属第 5 步范围）
++ *
++ * `--model-claude` 今天能解析成功，而 claude **永远不会入选**
++ * （`critics.ts` 的「当轮 Driver 不得入选」恒拒）。于是用户显式指定的模型
++ * 会一路走到「解析成功、随后被悄悄丢弃」——**正是这条用例当初要防的那个形状**，
++ * 只是触发它的不再是「未启用的第三家」，而是「已启用但当不了本轮审核者的 Driver」。
++ * 修法要等 `--driver` 落地（第 5 步）：那时「谁能当审核者」才成为逐次运行的事实，
++ * 本条校验也才有正确的判据可依。
++ */
++test(
++  '给非审核者指定模型 → 退 64 并列出当前可用，而不是解析成功后被悄悄丢弃',
++  {
++    skip: MODEL_FLAG_PENDING.length === 0
++      ? '注册表四家均为可用审核者，本分支当前不可达（见上方说明；Driver 那一格的缺口已登记，属第 5 步）'
++      : false,
++  },
++  async () => {
+   const ctx = await fakeCtx();
+   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 4;\n');
+   /*
+    * 白名单的论域是「全部已登记 Agent」，取值的论域是「当前可用审核者」。
+-   * 两者之差（Driver 自身、尚未启用的第三家）必须当场报错：
+-   * 放任它走到「解析成功、随后被丢弃」，留痕里就看不出用户指定过模型——
+-   * 这正是 `--base` 漏传那一族的形状。
++   * 两者之差必须当场报错：放任它走到「解析成功、随后被丢弃」，
++   * 留痕里就看不出用户指定过模型——这正是 `--base` 漏传那一族的形状。
+    */
+-  const driverSide = ALL_AGENT_IDS.find((id) => !(CRITICS as readonly string[]).includes(id));
+-  assert.ok(driverSide, '注册表里应当至少有一个未启用为审核者的 Agent（当前是 claude / codex）');
++  const driverSide = MODEL_FLAG_PENDING[0]!;
+ 
+   await assert.rejects(
+     resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['看并发', '--topic', 'T', `--model-${driverSide}`, 'm-9'] }),
+@@ -571,11 +614,17 @@ test('给非审核者指定模型 → 退 64 并列出当前可用，而不是
+       return true;
+     },
+   );
+-});
++  },
++);
+ 
+ test('可用审核者的模型覆盖照常生效（上一条不得误伤正常路径）', async () => {
+   const ctx = await fakeCtx();
+   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 5;\n');
++  /*
++   * 这里取 `CRITICS[0]` 是**对的**，不要跟着 SELECTABLE 一起改：
++   * 本条测的是 `--model-<id>` 白名单，其论域就是「可用审核者」全集，
++   * 与「本轮能不能入选」无关（后者是 `resolveCriticSelection` 的事）。
++   */
+   const side = CRITICS[0]!;
+   const r = await resolveTopicArgs({
+     ctx, scope: 'code', rawArgs: ['看并发', '--topic', 'T', `--model-${side}`, 'm-7'],
+diff --git a/test/helpers/critic-fixtures.ts b/test/helpers/critic-fixtures.ts
+new file mode 100644
+index 0000000..625895e
+--- /dev/null
++++ b/test/helpers/critic-fixtures.ts
+@@ -0,0 +1,63 @@
++/**
++ * 「审核者集合」类用例的共享夹具（M9 第 4 步，计划双审 GLM-04 + AGY-03）。
++ *
++ * ## 为什么需要它
++ *
++ * 多条用例要取「随便一个合法审核者」。此前的写法是 `CRITICS[0]`——
++ * 那个下标里藏着一个**没写出来的前提**：「注册表第一家恰好不是 Driver」。
++ * M9 翻开 claude 的 `criticEnabled` 之后前提失效（注册表顺序是 claude 打头），
++ * 九条用例同时红，而红的理由与用例本身要测的东西毫无关系。
++ *
++ * **修法不是把 `CRITICS[0]` 换成 `CRITICS[1]`**——那只是把同一个隐式前提
++ * 挪到下一个下标上，注册表一重排又红，且红法一模一样。修法是**把前提写成代码**。
++ *
++ * ## 一处定义，两个文件导入
++ *
++ * `critics.test.ts` 与 `topic-args.test.ts` 都要它。各写一份会让两份同义派生
++ * 各自漂移（M10 按「当轮 Driver」重定义时改一处漏一处），而那正是本项目
++ * 反复反对的「同一事实两处手写」。
++ *
++ * ## 一条自觉的取舍
++ *
++ * 本夹具把「Driver 不得入选」这条**生产规则**编进了测试侧。代价是：
++ * 若该规则的实现错了（比如漏掉排除），夹具会跟着一起错、用例照样绿。
++ *
++ * 这个代价是**有意接受**的，因为该规则另有三重独立的锚看着，都不经本夹具：
++ *   · `critics.test.ts` 里两条显式传 `driver` 的 Driver 负例；
++ *   · 「`--critics claude` 仍退 64」的 V6 负例；
++ *   · 下面 `assertSelectableUsable()` 的自适应断言。
++ * 备选方案（硬写 `['codex','gemini','glm']` 再配一条对账断言）反而是
++ * `registry-parity` 明确反对的**第二事实源**形态。
++ */
++import assert from 'node:assert/strict';
++import { CRITICS, type CriticId } from '../../src/trivium/types.js';
++import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
++
++/**
++ * 本轮**可真正入选**的审核者 —— 启用集合减缺省 Driver。
++ *
++ * 用例里凡是需要「一个合法审核者」的地方一律取这里，**不要再用 `CRITICS[0]`**。
++ *
++ * M10 放开 `--driver` 之后，这里的 `DEFAULT_DRIVER` 要改成「当轮 Driver」，
++ * 届时**只改这一处**。
++ */
++export const SELECTABLE: readonly CriticId[] = CRITICS.filter((c) => c !== DEFAULT_DRIVER);
++
++/**
++ * 断言夹具前提仍然成立。**在用到 `SELECTABLE` 的用例开头调用。**
++ *
++ * `min` 默认 1；需要多选的用例传 2。
++ *
++ * 前提破裂时（比如某天只剩一家非 Driver 审核者）要红在这里、并说清
++ * **该改夹具而不是改用例**——否则下一个人会看到一堆「断言值对不上」的失败，
++ * 顺手把断言改宽，把覆盖面一起改没了。上一版夹具（`ALL_AGENT_IDS.find(未启用)`）
++ * 自己预告过这一天却没有断言，于是 M9 翻开关时它是**静默**失效的。
++ */
++export function assertSelectableUsable(min = 1): void {
++  assert.ok(
++    SELECTABLE.length >= min,
++    `夹具前提失效：可入选审核者只剩 ${SELECTABLE.length} 家（需要 ${min}），` +
++      `启用集合=${CRITICS.join('、')}、缺省 Driver=${DEFAULT_DRIVER}。\n` +
++      '  请改夹具（换一个当轮 Driver，或补一家审核者），不要改用例的断言。',
++  );
++}

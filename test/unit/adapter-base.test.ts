@@ -9,6 +9,7 @@ import {
   failedResult,
 } from '../../src/trivium/adapters/base.js';
 import { defaultConfig } from '../../src/trivium/config.js';
+import { DEFAULT_CRITICS } from '../../src/trivium/types.js';
 
 const REQ = {
   min_tool_calls: 5,
@@ -166,15 +167,66 @@ test('异构判定：Claude 系为同源，需显式标记（FR-17 / AC-18）', 
   assert.equal(isHeterogeneous(null), true);
 });
 
-test('默认 profile 两侧互不相同且均为非 Claude 系（AC-18）', () => {
+/*
+ * **锚到 `DEFAULT_CRITICS`，不再硬写 gemini / glm 两家**（M9 第 4 步，计划 §5.2）。
+ *
+ * AC-18 的原文锚点是「未显式覆盖时，**两边所用模型**均与主脑不同源」——
+ * 主语是「本次实际会跑的那几侧」，也就是缺省入选集合，不是 profile 表里有哪些键。
+ * 本步给 `profiles.*` 加了 `claude` 键（它恒为 Claude 系），硬写两家的旧断言
+ * 恰好照常绿，于是用例名会开始说谎：默认 profile 从此有四个键、其中一个同源。
+ *
+ * 改锚是**加强**：`DEFAULT_CRITICS` 由注册表 `defaultSelected` 派生，
+ * 哪天有人把 claude 标成缺省入选，这条当场红——而那正是 AC-18 要防的事。
+ * 旧写法对那次改动完全失明。
+ *
+ * 缺省集合当前是 **codex / gemini / glm 三家**（`defaultSelected: true` 三处）。
+ * 计划原稿曾写成「gemini / glm 两家」——那是一处失实断言，本步一并改正：
+ * 三家都非 Claude 系，AC-18 第一句继续成立。
+ */
+test('缺省入选的各侧默认模型互不相同且均为非 Claude 系（AC-18）', () => {
+  const cfg = defaultConfig();
+  assert.ok(DEFAULT_CRITICS.length >= 2, '缺省集合至少两家，否则「两边」无从谈起');
+
+  for (const stage of ['plan', 'code', 'bug'] as const) {
+    const models = DEFAULT_CRITICS.map((c) => {
+      const m = routeModel(cfg, c, stage).model;
+      assert.ok(m, `${stage} 的 ${c} 侧应有默认模型——取不到会在 review.ts 直接抛 envError`);
+      assert.equal(
+        isHeterogeneous(m), true,
+        `${stage} 的 ${c} 侧是 Claude 系（${m}）：缺省入选里出现与主脑同源的模型即违反 AC-18`,
+      );
+      return m;
+    });
+    assert.equal(
+      new Set(models).size, models.length,
+      `${stage} 的缺省各侧默认模型不应相同——相同模型 + 相同镜头只是把成本乘二；实得 ${models.join('、')}`,
+    );
+  }
+});
+
+/*
+ * **claude 侧的模型路由取得到值**（M9 第 4 步，计划 §7 的 V5）。
+ *
+ * 它不在上一条的论域里（`defaultSelected: false`，不进缺省集合），
+ * 但第 5 步 `--driver` 落地后它就会被真跑。`routeModel` 取不到值时
+ * `review.ts:686` 直接抛 `envError`，而那要等到运行时才现形——
+ * 第 ⑥ 件（模型路由）漏配的后果就是这个，所以在这里先钉住。
+ *
+ * 顺带锁住 default 与 flash **不同**：两档同值会让 flash 在 claude 侧形同虚设
+ * （计划双审 CODEX-05）。
+ */
+test('claude 侧三阶段在两档下都有模型，且两档取值不同（第 ⑥ 件）', () => {
   const cfg = defaultConfig();
   for (const stage of ['plan', 'code', 'bug'] as const) {
-    const g = routeModel(cfg, 'gemini', stage).model;
-    const z = routeModel(cfg, 'glm', stage).model;
-    assert.ok(g && z, `${stage} 两侧都应有默认模型`);
-    assert.notEqual(g, z, `${stage} 两侧默认模型不应相同——相同模型 + 相同镜头只是把成本乘二`);
-    assert.equal(isHeterogeneous(g), true, `${stage} gemini 侧应为非 Claude 系`);
-    assert.equal(isHeterogeneous(z), true, `${stage} glm 侧应为非 Claude 系`);
+    cfg.active_profile = 'default';
+    const d = routeModel(cfg, 'claude', stage).model;
+    cfg.active_profile = 'flash';
+    const f = routeModel(cfg, 'claude', stage).model;
+    assert.ok(d && f, `${stage}：两档都要取得到值，否则 review.ts 会在运行时抛 envError`);
+    assert.notEqual(
+      d, f,
+      `${stage}：flash 档与 default 档取值相同，flash 在 claude 侧就形同虚设（另两家都真换了一档）`,
+    );
   }
 });
 

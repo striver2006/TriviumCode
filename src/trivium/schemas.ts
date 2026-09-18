@@ -93,7 +93,13 @@ export function validateConfig(data: unknown): string[] {
  * 判别式 `vendor: { const }` 本就是 schema 里**允许**出现的形态（它是形状判别式，
  * 不是身份枚举——见 registry-parity 对两者的区分），所以现取即可，不必再抄。
  */
-function configurableVendors(): ReadonlySet<string> {
+/**
+ * **导出是为了对账**（M9 第 4 步）：`config-migrate.test.ts` 要判断
+ * 「当前还有没有『已登记但形状未定义』的家」，才能决定那条条件拼接的尾句该不该出现。
+ * 测试若自己再从 schema 里取一遍判别式，就成了第三个事实源——本函数的文档块
+ * 反对的正是这件事。
+ */
+export function configurableVendors(): ReadonlySet<string> {
   const shapes = (configSchema as {
     properties?: { agents?: { additionalProperties?: { oneOf?: { properties?: { vendor?: { const?: unknown } } }[] } } };
   }).properties?.agents?.additionalProperties?.oneOf ?? [];
@@ -159,8 +165,11 @@ function checkConfigAgents(data: unknown): string[] {
        * 列出已登记 id 时要顺带说明**哪些现在还配不了**（审查意见 GLM-04）。
        *
        * 不说的话这条错误会把用户引向下一个错误：他看到「已登记：claude、codex、
-       * gemini、glm」就照着改成 `claude`，而 `claude` 的配置形状要等 M9 / M10 才定义，
-       * ajv 的 `oneOf` 会用一条机读错误拒掉它——用户完全看不出真正的原因。
+       * gemini、glm」就照着改成一个形状尚未定义的 id，ajv 的 `oneOf` 会用一条
+       * 机读错误拒掉它——用户完全看不出真正的原因。
+       *
+       * **四家形状自 M9 第 4 步起全部就位**，所以这个尾句当前不会拼出；
+       * 它留着是为了下一家登记时（形状必然晚于登记）仍有这层解释。
        */
       const vendors = configurableVendors();
       const configurable = ALL_AGENT_IDS.filter((x) => vendors.has(agentById(x)!.vendor));
@@ -168,14 +177,14 @@ function checkConfigAgents(data: unknown): string[] {
       problems.push(
         `agents.${id} 不是已登记的 Agent id。当前可配置：${configurable.join('、')}` +
           (pending.length > 0
-            ? `；${pending.join('、')} 虽已登记，但配置形状尚未定义（随 M8 / M9 / M10），现在还不能配`
+            ? `；${pending.join('、')} 虽已登记，但配置形状尚未定义，现在还不能配`
             : ''),
       );
       continue;
     }
     if (!configurableVendors().has(agent.vendor)) {
       problems.push(
-        `agents.${id} 的配置形状尚未定义（随 M8 / M9 / M10 加入），当前版本不能配置它。` +
+        `agents.${id} 的配置形状尚未定义，当前版本不能配置它。` +
           '登记在注册表里只表示「这家存在」，不表示「它已经能被配置」',
       );
       continue;

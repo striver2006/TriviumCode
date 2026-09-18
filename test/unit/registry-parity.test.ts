@@ -808,9 +808,24 @@ test('config.v2 schema：身份字段不得枚举 Agent id（但形状判别式�
  * 两条一起才完整：结构断言防「加回 enum」，行为断言防「换个写法把枚举塞回去」
  * （`const`、`pattern`、`oneOf` 都能达到同样效果而绕开对 `enum` 的检查）。
  */
-test('run.v2 校验：未启用但已登记的 Agent 出现在入选集合里，形状上必须被接受', () => {
-  const spare = ALL_AGENT_IDS.find((id) => !CRITIC_AGENT_IDS.includes(id));
-  assert.ok(spare, '四家全部启用为审核者时本用例失去意义，届时改用别的夹具');
+/*
+ * **M9 第 4 步：改为遍历全部已登记 id**（计划双审 GLM-01）。
+ *
+ * 上一版取「一个已登记但未启用为审核者的 id」当夹具，四家全启用后取不到值，
+ * 而它只把这件事写进 assert 消息（「届时改用别的夹具」）——那是静默失效的形态。
+ *
+ * 换成遍历全集比原来**更强**，不只是「能跑了」：
+ *   · 原来只验一家（而且是 `find()` 撞上的那一家），现在每一家都验；
+ *   · 断言的主张本就与 `criticEnabled` 无关——run.v2 的形状论域是
+ *     「已登记的 Agent」，而不是「当前启用的审核者」。拿启用状态当夹具来源，
+ *     等于把一条恒真的形状约束绑在一个会变的运行期布尔上。
+ *
+ * 唯一要排除的是 `driver` 那一格：`critics_selected` 含当轮 Driver 会触发
+ * 身份补校的互斥规则，那是**另一条**规则的正确行为，不该在这里被当成形状失败。
+ */
+test('run.v2 校验：每一个已登记 Agent 出现在入选集合里，形状上都必须被接受', () => {
+  for (const spare of ALL_AGENT_IDS) {
+    if (spare === DEFAULT_DRIVER) continue; // 见上：Driver 互斥是另一条规则
 
   const agent = agentById(spare)!;
   const meta = {
@@ -843,6 +858,7 @@ test('run.v2 校验：未启用但已登记的 Agent 出现在入选集合里，
     `${spare} 是已登记 Agent，run.v2 不该在形状上拒绝它——` +
       '拒绝即说明枚举被塞回了 schema（可能不是用 enum 写的）',
   );
+  }
 });
 
 /*

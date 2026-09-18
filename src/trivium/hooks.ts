@@ -28,7 +28,8 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
-import { CRITICS, type Ctx, type Stage } from './types.js';
+import { type Ctx, type Stage } from './types.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
 import { EXIT } from './exit-codes.js';
 import { listOpenGates, readState, shouldLockWrites, StateCorruptError } from './state.js';
 import { bumpStopBlockCount } from './lock.js';
@@ -84,12 +85,75 @@ export function isInsideArchive(targetPath: string, projectRoot: string, archive
 }
 
 /**
- * 文件名是不是审核者角色工件的形态。**只问形态，不问位置。**
+ * **保护集**：哪些角色后缀属于「只能由编排器落盘的审查件」（M9 第 4 步）。
+ *
+ * ## 为什么不是 `CRITICS`
+ *
+ * 此前这里用的是 `CRITICS`（`criticEnabled` 派生集合）。那在 claude 未启用为
+ * 审核者时**恰好**等于「全集减 Driver」，于是判据看起来对、理由却是错的——
+ * M9 翻开 claude 的 `criticEnabled` 的那一刻，`-claude.md` 会进入保护集，
+ * 而它正是 **Driver 自己交卷的文件名**：归档内写裁决件会被 `isForgedRoleFile`
+ * 判成伪造件而退 2，整条流水线锁死（实测：`gate-loop` 的「归档内的写入不受闸门
+ * 写锁约束」一条由退 0 变退 2）。仓库根 `CLAUDE.md` 那句「你的产出后缀是 `-claude`」
+ * 与 Hook 的拦截承诺，会从翻开关当日起互相矛盾。
+ *
+ * 正确判据是**「全部已登记角色」减「当轮 Driver」**：谁能当审核者是 `criticEnabled`
+ * 的事，而谁的产出**不该由 Driver 手写**是身份的事，两者不同源。
+ * **翻开关之前**两者取值恰好相同（那时 `CRITICS` 是 codex/gemini/glm），
+ * 所以本次改判据**行为等价**——换的是理由，为的是翻开关那一刻不失守。
+ * **翻开关之后两者不再相同**（`CRITICS` 四家、本函数三家），而这正是本改动的目的：
+ * 谁能当审核者与谁的产出不该由 Driver 手写，从此各走各的判据。
+ *
+ * ## 与识别集的不等式
+ *
+ * `naming.looksLikeRoleArtifact` 用的是**全量**后缀（`suffixAlternation()`）。
+ * 改动后两者不再相等：**识别集 ⊇ 保护集**，差集恰是当轮 Driver。
+ * 这层不等式由 `hooks.test.ts` 的专门用例锁住——它今天恒成立，改错了当场红。
+ *
+ * ## M10 的接口
+ *
+ * `driver` 参数留着是为了 M10 按**会话 Driver** 取值。M9 只有一个 Driver，
+ * 默认参数即注册表缺省值。
+ *
+ * **但「到那时改调用方传值即可」这句口径太窄**（代码双审 GLM-03）：两处消费点
+ * 都在**模块加载期**烙死缺省值——`hasCriticRoleSuffix` 根本不收 `driver` 参数，
+ * `ROLE_SUFFIX_ANYWHERE` 是模块级 `const`、构造时就把正则固化了。
+ * M10 要让它随会话 Driver 变，这两处都得改造（传参或改惰性求值），不是只改调用方。
+ */
+export function criticRoleSuffixes(driver: AgentId = DEFAULT_DRIVER): readonly string[] {
+  return ALL_AGENT_IDS.filter((id) => id !== driver);
+}
+
+/**
+ * 文件名是不是**受保护的**角色工件形态。**只问形态，不问位置。**
  *
  * 后缀集由 Agent 注册表派生，不写死字面量（`registry-parity` 的 grep 对账守着）。
+ *
+ * **消费者的判据含义不同，这层不对称是有意留下的**（M9 第 4 步，计划双审
+ * AGY-02 ≡ CODEX-04；消费点计数由代码双审 CODEX-03 改准）。
+ *
+ * `criticRoleSuffixes()` 有**两处派生、三处语义**——上一版这里写「两个消费者」，
+ * 漏了 Bash 侧那一处：
+ *
+ *   · `hasCriticRoleSuffix`（本函数）再分两个消费者：
+ *       - `isForgedRoleFile`——形态 + 位置，**当轮**语境。「减当轮 Driver」在这里成立。
+ *       - `immutableChangeReason`（提交锚）——纯 basename、**跨时间**判定。那里没有
+ *         「当轮 Driver」这个概念：一份三个月前由别的 Driver 落的同名文件，今天该不该拦？
+ *         纯词法后缀检查**区分不了**「Driver 自身原稿」与「同名历史审查件」。
+ *   · `ROLE_SUFFIX_ANYWHERE` → `bashTargetsProtected`——同样是**跨时间**面：
+ *     它无条件按命令文本里的字面后缀拦，不看位置、不看是不是本轮的文件、
+ *     不受闸门与 TTL 限制。**它与提交锚不同源**：Bash 侧拿不到 run 上下文，
+ *     所以 EV-55 给提交锚的修法方向（按 run 元数据的 artifacts 登记判不可变）
+ *     **覆盖不到这一处**，需要单独决定。
+ *
+ * **M9 不假装能分。** 现状是把一个**跨时间**的保护面绑在一个**当轮**的值上，
+ * 代价在 M9 为零（只有一个 Driver，历史与当轮同值），M10 第一次换 Driver 就会显形：
+ * 届时历史 `-claude.md` 会集体变成「可改」，或反过来新 Driver 的原稿被判伪造。
+ * 提交锚判据的重构（按 `run.json` 的 artifacts 登记判不可变）是安全关键面的重写，
+ * **触发时点是 M10 换 Driver**，已登记 BACKLOG，不在本步做。
  */
 export function hasCriticRoleSuffix(fileName: string): boolean {
-  return new RegExp(`-(?:${CRITICS.join('|')})\\.md$`).test(path.basename(fileName));
+  return new RegExp(`-(?:${criticRoleSuffixes().join('|')})\\.md$`).test(path.basename(fileName));
 }
 
 /**
@@ -265,7 +329,10 @@ async function immutableChangeReason(projectRoot: string, relFromRoot: string): 
  * 写入前拦截（设计 §8.4 第 3 层）。
  *
  * 两条独立规则：
- *   1. **伪造审查文件**：写 `*-gemini.md` / `*-glm.md` 一律拒绝。
+ *   1. **伪造审查文件**：写归档内带**受保护角色后缀**的文件一律拒绝。
+ *      后缀集见 `criticRoleSuffixes()`（全部已登记角色减当轮 Driver）——
+ *      **不在这里重抄一份枚举**：抄的那份会随注册表漂移，而它今天就已经漏过
+ *      `-codex.md`（M8 起 codex 已在保护集内，这句话却只列了两家）。
  *      主脑不得自己编一份审查（PRD 6.3）——该规则**不受**会话与 TTL 限制。
  *   2. **闸门写锁**：本会话触发的未审批闸门期间，禁止写归档根之外的文件。
  */
@@ -470,8 +537,12 @@ const SEGMENT_SPLIT = /(?:&&|\|\||[;&|\n\r])/;
  * 角色后缀字面量（宽口径：词边界，不锚定行尾，不看 basename）。
  *
  * 出现在命令文本任何位置都拦——见下方「为什么 Bash 侧不做收窄」。
+ *
+ * 后缀集与 Write/Edit 侧**同源**（`criticRoleSuffixes()`，即全集减当轮 Driver），
+ * 理由见该函数的文档块。两侧若各写一份派生，翻开关时会一边失守一边不失守，
+ * 而那种半拉子状态最难排查。
  */
-const ROLE_SUFFIX_ANYWHERE = new RegExp(`-(?:${CRITICS.join('|')})\\.md\\b`);
+const ROLE_SUFFIX_ANYWHERE = new RegExp(`-(?:${criticRoleSuffixes().join('|')})\\.md\\b`);
 
 /*
  * ## 为什么 Bash 侧不做收窄（2026-09-14，代码双审后撤回）
@@ -577,7 +648,7 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
         '  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\n' +
         '    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n' +
         '      （删掉或改坏 bin/ 会让 .claude/settings.json 里每条 Hook 的守卫永真放行）\n' +
-        '    · 审查文档的角色后缀（-gemini.md / -glm.md）\n' +
+        `    · 审查文档的角色后缀（${criticRoleSuffixes().map((s) => `-${s}.md`).join(' / ')}）\n` +
         '  只能由编排器维护（FR-25 / P5）。\n' +
         '\n' +
         '  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\n' +

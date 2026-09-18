@@ -85,6 +85,13 @@ profiles:
       plan: deepseek-flash
       code: deepseek-flash
       bug: deepseek-flash
+    # claude 档（M9 第 4 步）。slug 由 system/init 回读挣来（第 1 步报告 §4），
+    # 不是文档推断——probe.cli.claude.models 为 []，猜错 slug 预检拦不下来。
+    # 真实审查尺度的耗时与成本未测，第 6 步验收才会有第一份数据。
+    claude:
+      plan: claude-sonnet-5
+      code: claude-sonnet-5
+      bug: claude-sonnet-5
   flash:
     gemini:
       plan: gemini-3.8-flash-high
@@ -102,6 +109,13 @@ profiles:
       plan: deepseek-flash
       code: deepseek-flash
       bug: deepseek-flash
+    # flash 档取 haiku，不跟 default 同值（计划双审 CODEX-05）：
+    # haiku 是 probes/claude.ts 的 PROBE_MODEL、M6 起一直在用，回读记录早有。
+    # 两档同值会让 flash 在 claude 侧形同虚设，而另两家的 flash 行都是真换了一档。
+    claude:
+      plan: claude-haiku-4-5-20251001
+      code: claude-haiku-4-5-20251001
+      bug: claude-haiku-4-5-20251001
 active_profile: default
 gate:
   require_adjudication: true
@@ -164,3 +178,8 @@ agents:
       plan: high
       code: high
       bug: high
+  # claude 段（M9 第 4 步）。只有判别式，没有其它字段——这是刻意的不对称：
+  # 另三家的入口覆盖都有真实消费方，而 claude 的入口由探针独占
+  # （probe.cli.claude.entrypoint），加 bin 就是加一个死字段。
+  claude:
+    vendor: anthropic

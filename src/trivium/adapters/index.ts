@@ -27,11 +27,11 @@ import { CRITIC_AGENT_IDS, agentById } from '../agents/registry.js';
  */
 const WIRED: AdapterTable = {
   /*
-   * claude 在这里而 `criticEnabled` 仍为 false（M9 第 3 步）。
+   * claude 自 M9 第 4 步起 `criticEnabled: true`，四家全部接线。
    *
-   * 这不是矛盾：`realAdapters()` 只遍历 `CRITIC_AGENT_IDS`（criticEnabled 的那些），
-   * 所以多这一个键不触发任何启动期断言；而 `wiredAdapter('claude')` 能取到它，
-   * 让准入脚本与单测走真实实现。**翻开关是第 4 步的事**，本步只把实现接上。
+   * （第 3 步这里曾有一段「接了线但开关还没翻，这不是矛盾」的说明——
+   * 开关翻过之后它就失实了，故删除而不是留着。**注释过期比没有注释更坏**：
+   * 它会让读者以为自己看到的是当前状态。）
    */
   claude: claudeAdapter,
   codex: codexAdapter,

@@ -21,9 +21,10 @@ import {
   loadCtx,
   migrateConfigV1,
 } from '../../src/trivium/config.js';
-import { validateConfig } from '../../src/trivium/schemas.js';
+import { validateConfig, configurableVendors } from '../../src/trivium/schemas.js';
 import { runInit } from '../../src/trivium/init.js';
 import { CRITICS, DEFAULT_CRITICS } from '../../src/trivium/types.js';
+import { AGENTS, CRITIC_AGENT_IDS } from '../../src/trivium/agents/registry.js';
 import { ALL_AGENT_IDS, agentById } from '../../src/trivium/agents/registry.js';
 
 async function projectWith(files: Record<string, string>): Promise<string> {
@@ -303,22 +304,79 @@ test('校验：agents.<id>.vendor 与注册表不符 → 报错（路由错配�
  * Driver 自身也需要配置容身之处。M7b 计划稿 §3.2 写的是「agents 的键必须 criticEnabled」，
  * 那条会把未来的 Driver 段一并拒掉，已按设计纠正。
  */
-test('校验：登记但未启用为审核者的 Agent 出现在 default_critics → 报错，不静默忽略', () => {
-  const cfg = JSON.parse(JSON.stringify(defaultConfig()));
+const CRITIC_PENDING = ALL_AGENT_IDS.filter((id) => !agentById(id)!.criticEnabled);
+
+/*
+ * ## 这条校验按**规则**写两条用例，不按「哪一种输入」写一条
+ *
+ * `schemas.ts` 那条分支的判据是 `!CRITIC_AGENT_IDS.includes(id)`，
+ * 它同时承担**两类**输入：未登记的 id、已登记但未启用为审核者的 id。
+ *
+ * **M9 第 4 步一度把整条用例 skip 掉了，那是错的**（代码双审 AGY-01 ≡ GLM-01 ≡ CODEX-01
+ * 三侧独立收敛）。四家 `criticEnabled` 全真之后消失的只是**第二类输入**，
+ * 分支本身对第一类照旧可达——而全仓没有第二条用例覆盖它
+ * （`critics.test.ts` 里那个 `'nobody'` 走的是 `resolveCriticSelection`，
+ * 不是 `validateConfig`），于是这条报错路径在校验层一度**零覆盖**。
+ *
+ * 更要记的是：**这一点在计划双审里被逐字警告过**（CODEX-02b：「『本分支在真实注册表下
+ * 不可达』这句断言写不得」），裁决接受了，注释也写对了，**而判据与 skip 消息
+ * 按错的那版落了地**。注释写对了不算改对——判据与对外可见的消息才是代码说的话。
+ */
+test('校验：default_critics 含未登记 id → 报错并点名，不静默忽略', () => {
   /*
-   * 取一个**已登记但未启用为审核者**的 id。原先写死 'codex'，而 codex 于 M8 第 3 步
-   * 启用后这条用例的前提就消失了（它不再报错，断言随之失去意义）。
-   * 改从注册表现取，前提消失时由下面的 assert.ok 当场说出来。
+   * 第一类输入，**今天就可达**。ajv 不会先把它拒掉：`config.v2.json` 的
+   * `default_critics.items` 只约束 `type: string` / `minLength: 1`，没有枚举
+   * （纪律 7：Agent 身份不在 schema 里抄第二份），所以两段式校验里
+   * `checkConfigAgents` 照常评估这条分支。
    */
-  const notEnabled = ALL_AGENT_IDS.find((id) => !agentById(id)!.criticEnabled);
-  assert.ok(notEnabled, '四家全部启用时本用例失去意义，届时改用别的夹具');
+  const cfg = JSON.parse(JSON.stringify(defaultConfig()));
+  cfg.review.default_critics = ['nobody'];
+  const problems = validateConfig(cfg);
+  const hit = problems.find((p) => p.includes('nobody'));
+  assert.ok(hit, `未登记 id 必须被点名，实得：${problems.join('；')}`);
+  assert.match(
+    hit, /不是当前可用的审核者/,
+    '要说清它为什么不能用，而不是只说「有问题」',
+  );
+  assert.ok(
+    CRITIC_AGENT_IDS.some((c) => hit.includes(c)),
+    `报错要列出当前可用集合，否则用户不知道该改成什么：${hit}`,
+  );
+});
+
+/*
+ * 第二类输入：**已登记但未启用为审核者**。四家全启用后这一格为空。
+ *
+ * 与上一条**同一条分支、同一条报错**，所以分支覆盖不因本条 skip 而丢失——
+ * 这正是上一版的错处：它把两类输入写成一条用例，于是第二类消失时
+ * 第一类的覆盖被一起带走了。
+ *
+ * 不为它给校验层开注入口：`validateConfig(data)` / `checkConfigAgents(data)`
+ * 都只收 data、注册表是模块级绑定，要造负例就得给生产函数加参数——
+ * 那要连它自己的双审成本一起算，与本步对 `criticRoleSuffixes` 的口径一致。
+ *
+ * 注意与相邻那条的区别：那条是「vendor 形状未定义」，这条是「未启用为审核者」，
+ * 两格由不同字段决定，**会在不同的日子重新可达**，所以各自独立 skip、不合并。
+ */
+test(
+  '校验：登记但未启用为审核者的 Agent 出现在 default_critics → 报错，不静默忽略',
+  {
+    skip: CRITIC_PENDING.length === 0
+      ? '「已登记但未启用」这一子情形当前不可达（注册表四家 criticEnabled 均为真）；' +
+        '该分支对未登记 id 仍然可达，由上一条用例覆盖'
+      : false,
+  },
+  () => {
+  const cfg = JSON.parse(JSON.stringify(defaultConfig()));
+  const notEnabled = CRITIC_PENDING[0]!;
   cfg.review.default_critics = [notEnabled];
   const problems = validateConfig(cfg);
   assert.ok(
     problems.some((p) => p.includes(notEnabled)),
     `静默忽略会让用户以为那一侧已经在跑了，实得：${problems.join('；')}`,
   );
-});
+  },
+);
 
 /*
  * 「已登记」不等于「能配置」（审查意见 GLM-04）。
@@ -327,13 +385,63 @@ test('校验：登记但未启用为审核者的 Agent 出现在 default_critics
  * gemini、glm」，照着改成 claude，却撞上 ajv oneOf 的机读错误——真正的原因
  * （形状要等 M9/M10 才定义）一个字都没说。
  */
-test('校验：配了已登记但形状未定义的 Agent → 说清「形状尚未定义」，不是机读错误', () => {
+/*
+ * **M9 第 4 步：这条用例的样本失效了**（计划双审 CODEX-01）。
+ *
+ * 它原来用 `agents.claude = { vendor: 'anthropic' }` 当「形状未定义」的样本。
+ * 本步把 anthropic 分支加进 `config.v2.json` 的 `oneOf` 之后，那个样本**变成合法配置**——
+ * 用例红的不是规则，是它挑的对象已经不属于那一格了。
+ *
+ * **换不掉样本**：判据 `!configurableVendors().has(agent.vendor)` 读的是
+ * **注册表登记的 vendor**，不是配置里写的那个（拿 `vendor: 'no-such-vendor'` 去试，
+ * 走到的是再下一条「vendor 与注册表不符」——实跑确认过）。四家 vendor 全部有形状
+ * 之后，这条分支的可达性完全由注册表决定，而 `checkConfigAgents(data)` 只收 data、
+ * 注册表是模块级绑定，没有注入口。
+ *
+ * 于是按本步的范围边界处置：**保留用例、条件执行，并如实登记覆盖缺口**。
+ * 不为它给校验层开注入口（那是生产改动，与 `critics.test.ts` 里「登记但未启用」
+ * 那条同一口径，已一并登记 BACKLOG）。规则本身一个字没改，
+ * 下一家登记而形状未跟上时，它自动恢复执行。
+ */
+const SHAPE_PENDING = AGENTS.filter((a) => !configurableVendors().has(a.vendor));
+
+test(
+  '校验：配了已登记但形状未定义的 Agent → 说清「形状尚未定义」，不是机读错误',
+  {
+    /*
+     * **用 skip 而不是提前 return**：`return` 会让这条用例在输出里显示为**通过**，
+     * 而它其实什么都没验——那正是本仓反复反对的「绿测试证明不了任何事」。
+     * `skip` 带原因，跳过这件事本身会出现在 `npm test` 的统计与逐行输出里。
+     */
+    skip: SHAPE_PENDING.length === 0
+      ? '注册表四家的 vendor 形状均已在 config.v2.json 定义，本分支当前不可达（见上方说明）'
+      : false,
+  },
+  () => {
+    const victim = SHAPE_PENDING[0]!;
+    const cfg = defaultConfig() as unknown as { agents: Record<string, unknown> };
+    cfg.agents[victim.id] = { vendor: victim.vendor };
+    const problems = validateConfig(cfg);
+    assert.ok(
+      problems.some((p) => p.includes(victim.id) && p.includes('形状尚未定义')),
+      `要让用户看懂为什么不能配，实得：${problems.join('；')}`,
+    );
+  },
+);
+
+/*
+ * 反过来的一条（M9 第 4 步新增）：**claude 的合法段现在必须被放行。**
+ *
+ * 上一条改夹具之后，「`agents.claude` 配对了会怎样」就没有任何用例看着了。
+ * 而那恰恰是本步交付的东西——第 ⑦ 件的全部意义就是让这一段能被配。
+ * 缺了它，把 anthropic 分支从 schema 里删掉，上一条照样绿。
+ */
+test('校验：agents.claude 的合法段（只有 vendor 判别式）必须被放行', () => {
   const cfg = defaultConfig() as unknown as { agents: Record<string, unknown> };
   cfg.agents['claude'] = { vendor: 'anthropic' };
-  const problems = validateConfig(cfg);
-  assert.ok(
-    problems.some((p) => p.includes('claude') && p.includes('形状尚未定义')),
-    `要让用户看懂为什么不能配，实得：${problems.join('；')}`,
+  assert.deepEqual(
+    validateConfig(cfg), [],
+    'claude 段的形状自 M9 第 4 步起已定义，合法配置不该被拒',
   );
 });
 
@@ -344,7 +452,27 @@ test('校验：未登记 id 的报错要区分「当前可配置」与「已登�
   const hit = problems.find((p) => p.includes('nobody'));
   assert.ok(hit, problems.join('；'));
   assert.match(hit, /当前可配置/, '只列「已登记」会把用户引向下一个错误');
-  assert.match(hit, /尚未定义/, '要点明哪几家虽已登记但还配不了');
+
+  /*
+   * **尾句是条件拼的，断言也要条件化**（M9 第 4 步，计划双审 CODEX-01）。
+   *
+   * 「…虽已登记，但配置形状尚未定义」这半句在 `schemas.ts` 里只有
+   * `pending.length > 0` 时才拼出。四家形状于本步全部就位后 `pending` 为空，
+   * 尾句**正确地**消失了——而上一版这里是无条件 `assert.match(hit, /尚未定义/)`，
+   * 于是一条正确行为把用例判红。
+   *
+   * 要守的规则没变：**只要还有「已登记却配不了」的家，就必须点名**，
+   * 否则用户会照着「已登记」那张表去配，撞上第二个错误。
+   */
+  const pending = AGENTS.filter((a) => !configurableVendors().has(a.vendor));
+  if (pending.length > 0) {
+    assert.match(hit, /尚未定义/, '要点明哪几家虽已登记但还配不了');
+  } else {
+    assert.doesNotMatch(
+      hit, /尚未定义/,
+      '四家形状齐备时不该再提「有家配不了」——那会让用户去找一个不存在的待定项',
+    );
+  }
 });
 
 test('校验：default_critics 里的 Agent 在 agents 中没有配置段 → 报错', () => {

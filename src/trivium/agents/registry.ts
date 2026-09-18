@@ -128,12 +128,27 @@ export const AGENTS: readonly AgentDescriptor[] = [
   {
     id: 'claude',
     display: 'Claude Code',
-    label: 'Anthropic Claude Code',
+    // 字母取 D：A/B 是术语表钉死的称谓，新启用者取下一个未用字母（决策 D-2，本字段文档块）
+    label: 'Critic-D · Anthropic Claude Code',
     vendor: 'anthropic',
     cliName: 'claude',
     suffix: 'claude',
     findingPrefix: 'CLAUDE',
-    criticEnabled: false, // M9 启用
+    criticEnabled: true, // M9 第 4 步启用
+    /*
+     * **`defaultSelected` 保持 false，而且不能翻**（M9 第 4 步）。
+     *
+     * 两个理由，第二个是硬的：
+     * ①翻了等于让每次审查的成本自动涨一档——`criticEnabled` 回答「能不能选」，
+     *   本字段回答「不选时跑不跑」，这正是 M8 第 3 步把二者分家的理由；
+     * ②`deriveDefaultCritics` 的**上限不变量**会在模块加载期抛：缺省集合现为
+     *   codex/gemini/glm 三家，已经顶满内置 `max_critics = 3`，再加一家即 4 > 3。
+     *   错误现场离改动点很远（每个项目 init 出来的配置都会判错），所以它在注册表就炸。
+     *
+     * claude 与另三家的**真正区别**在这里：它是当轮 Driver，
+     * 而「当轮 Driver 不得入选」是 `critics.ts` 的独立检查——本字段为 false
+     * 只是不默认选它，挡住自审的是那条检查，不是这一行。
+     */
     defaultSelected: false,
     driverEnabled: true,
     guardLevel: 'L1',

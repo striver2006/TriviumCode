@@ -304,6 +304,16 @@ export function defaultConfig(): Config {
         profile: 'qwen',
         effort: { plan: 'high', code: 'high', bug: 'high' },
       },
+      /*
+       * claude 段（M9 第 4 步）。**只有判别式，没有其它字段**——
+       * 理由见 `types.ts` 的 `ClaudeCriticConfig`：另三家的入口覆盖都有真实消费方，
+       * claude 侧的入口由探针独占（`probe.cli.claude.entrypoint`），
+       * 加 `bin` 就是加死字段。不要为了「和别家长得一样」补回来。
+       *
+       * 段本身必须在：`resolveCriticSelection` 把「入选审核者在 agents 段有条目」
+       * 当作统一前置条件，缺段则退 64。
+       */
+      claude: { vendor: 'anthropic' },
     },
     // 两档的差异只在 GLM 侧用不用 Flash——gemini 侧两档相同。
     // 不写 profile 级 effort：该字段无任何读取点，且 slug 自带后缀时 effort 本就不生效。
@@ -312,11 +322,41 @@ export function defaultConfig(): Config {
         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
         glm: { plan: 'GLM-5.3', code: 'GLM-5.3', bug: 'GLM-5.3' },
         codex: { plan: 'qwen3.8-max', code: 'qwen3.8-max', bug: 'qwen3.8-max' },
+        /*
+         * claude 档（M9 第 4 步）。三个 slug 都是**回读挣来的**，不是文档推断：
+         * `probe.cli.claude.models` 为 `[]`，`checkModelAgainstCatalog` 对它落
+         * `unverifiable` 而不判失败——**猜错一个 slug 预检拦不下来**，
+         * 会一路跑到厂商端点才报错。所以只用 `system/init` 回读过的值
+         * （M9 第 1 步报告 §4：sonnet-5 $0.0102、opus-5 $0.0295，比约 1:2.9）。
+         *
+         * **真实审查尺度的耗时与成本至今未测**（第 6 步验收才会有第一份数据）。
+         * 这句话必须挂在取值旁：下一个人很容易把「未测」读成「已定」。
+         */
+        claude: { plan: 'claude-sonnet-5', code: 'claude-sonnet-5', bug: 'claude-sonnet-5' },
       },
       flash: {
         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
         glm: { plan: 'GLM-5.3-Flash', code: 'GLM-5.3-Flash', bug: 'GLM-5.3-Flash' },
         codex: { plan: 'qwen3.8-flash', code: 'qwen3.8-flash', bug: 'qwen3.8-flash' },
+        /*
+         * flash 档取 **haiku**（计划双审 CODEX-05）。
+         *
+         * 计划原稿写的是「两档都取 sonnet」，依据是「只有这两个 slug 回读过」——
+         * **那句话是错的**：`probes/claude.ts` 的 `PROBE_MODEL` 逐字就是
+         * `claude-haiku-4-5-20251001`，M6 探针一直在用它，回读记录早就有
+         * （第 1 步报告 §4 的括号自己写着「haiku 已由 M6 探针证过，作正对照，不重复烧」）。
+         *
+         * 两档同值的后果很具体：**flash 档在 claude 侧会退化成与 default 完全相同**，
+         * 而另两家的 flash 行都是真换了更便宜的一档。这个默认还会被 `trivium init`
+         * 整份冻进每个新项目的配置文件，日后再改对存量项目无效。
+         *
+         * 边界：回读在 CLI 2.1.273 / 2.1.276 上取得；**审查尺度下够不够用未测**。
+         */
+        claude: {
+          plan: 'claude-haiku-4-5-20251001',
+          code: 'claude-haiku-4-5-20251001',
+          bug: 'claude-haiku-4-5-20251001',
+        },
       },
     },
     active_profile: 'default',

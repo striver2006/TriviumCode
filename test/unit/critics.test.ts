@@ -10,8 +10,9 @@ import assert from 'node:assert/strict';
 import { resolveCriticSelection } from '../../src/trivium/critics.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
-import { DEFAULT_DRIVER, ALL_AGENT_IDS, agentById } from '../../src/trivium/agents/registry.js';
+import { AGENTS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
 import { CRITICS, type Config, DEFAULT_CRITICS } from '../../src/trivium/types.js';
+import { SELECTABLE, assertSelectableUsable } from '../helpers/critic-fixtures.js';
 
 const cfg = (): Config => defaultConfig();
 
@@ -36,29 +37,34 @@ test('都不给 → 取 review.default_critics', () => {
 });
 
 test('--critics 显式多选', () => {
-  const [a, b] = [CRITICS[0]!, CRITICS[1]!];
+  assertSelectableUsable(2);
+  const [a, b] = [SELECTABLE[0]!, SELECTABLE[1]!];
   assert.deepEqual(resolveCriticSelection(cfg(), { critics: `${a},${b}` }), [a, b]);
 });
 
 test('--critics 选一个：合法，且顺序按用户写的来', () => {
-  const only = CRITICS[1]!;
+  assertSelectableUsable();
+  const only = SELECTABLE[1] ?? SELECTABLE[0]!;
   assert.deepEqual(resolveCriticSelection(cfg(), { critics: only }), [only]);
 });
 
 test('--critics 容忍空格与尾随逗号', () => {
-  const [a, b] = [CRITICS[0]!, CRITICS[1]!];
+  assertSelectableUsable(2);
+  const [a, b] = [SELECTABLE[0]!, SELECTABLE[1]!];
   assert.deepEqual(resolveCriticSelection(cfg(), { critics: ` ${a} , ${b} , ` }), [a, b]);
 });
 
 test('--only 是 --critics 的单元素旧写法', () => {
-  const only = CRITICS[0]!;
+  assertSelectableUsable();
+  const only = SELECTABLE[0]!;
   assert.deepEqual(resolveCriticSelection(cfg(), { only }), [only]);
 });
 
 test('配置改了 default_critics → 缺省跟着变', () => {
   const c = cfg();
-  c.review.default_critics = [CRITICS[1]!];
-  assert.deepEqual(resolveCriticSelection(c), [CRITICS[1]!]);
+  const pick = SELECTABLE[1] ?? SELECTABLE[0]!;
+  c.review.default_critics = [pick];
+  assert.deepEqual(resolveCriticSelection(c), [pick]);
 });
 
 // ─────────────────────────── 拒绝规则 ───────────────────────────
@@ -69,12 +75,14 @@ test('配置改了 default_critics → 缺省跟着变', () => {
  * 正是这一族缺口最常见的形态（`--base` 漏传、`--only` 丢失都是它）。
  */
 test('--critics 与 --only 同时给 → 退 64（不静默取其一）', () => {
-  const [a, b] = [CRITICS[0]!, CRITICS[1]!];
+  assertSelectableUsable(2);
+  const [a, b] = [SELECTABLE[0]!, SELECTABLE[1]!];
   rejects(() => resolveCriticSelection(cfg(), { critics: a, only: b }), /不能同时给/);
 });
 
 test('即便两者取值相同也拒绝：语义重复本身就该被指出', () => {
-  const a = CRITICS[0]!;
+  assertSelectableUsable();
+  const a = SELECTABLE[0]!;
   rejects(() => resolveCriticSelection(cfg(), { critics: a, only: a }), /不能同时给/);
 });
 
@@ -83,14 +91,15 @@ test('即便两者取值相同也拒绝：语义重复本身就该被指出', ()
  * 静默去重会把它变成一次更少侧的审查，而用户以为自己要了两侧。
  */
 test('重复项 → 退 64（静默去重会悄悄减少侧数）', () => {
-  const a = CRITICS[0]!;
+  assertSelectableUsable();
+  const a = SELECTABLE[0]!;
   rejects(() => resolveCriticSelection(cfg(), { critics: `${a},${a}` }), /出现了多次/);
 });
 
 test('未登记的 id → 退 64 并列出可用值', () => {
   rejects(
     () => resolveCriticSelection(cfg(), { critics: 'gemmini' }),
-    /未登记/, new RegExp(CRITICS[0]!),
+    /未登记/, new RegExp(SELECTABLE[0]!),
   );
 });
 
@@ -123,24 +132,90 @@ test('Driver 检查不依赖 criticEnabled 顺带生效（M9 之后仍要挡住�
 
 test('已登记但未启用为审核者 → 退 64，说明随后续里程碑接入', () => {
   /*
-   * 找一个未启用为审核者的 id。**不再排除 DEFAULT_DRIVER**——codex 于 M8 第 3 步
-   * 启用后，未启用的只剩 claude，而它恰是缺省 Driver，原条件会筛成空集
-   * （用例自己预告过这一天：「届时改用别的夹具」）。
-   * 改法是显式换一个当轮 Driver，把 claude 从 Driver 位置挪开，
-   * 这样走到的就是「尚未启用」那条分支，而不是被 Driver 检查先拦下。
+   * **改用注入表，不再从真实注册表现取**（M9 第 4 步，计划双审 AGY-02 ≡ GLM-01 ≡ CODEX-02）。
+   *
+   * 上一版靠 `ALL_AGENT_IDS.find(id => !criticEnabled)` 取夹具，并在 assert 消息里
+   * 预告「四家全部启用时本用例失去意义」。M9 把第四家启用之后那天就到了——
+   * 而预告写在**消息**里，不是写在**断言**里，所以它是静默失效的：
+   * 覆盖存不存在，取决于生产数据碰巧长什么样。
+   *
+   * 现在把登记表参数化（`deriveDefaultCritics` 的同款先例），这条分支有了
+   * 不依赖注册表状态的真覆盖。**紧接其后的那条用例**是配套的自适应断言：
+   * 将来真引入未启用的第五家时它会红，提醒这里可以回到真实注册表。
    */
-  const pending = ALL_AGENT_IDS.find((id) => !agentById(id)!.criticEnabled);
-  assert.ok(pending, '四家全部启用时本用例失去意义，届时改用别的夹具');
-  const otherDriver = CRITICS.find((c) => c !== pending)!;
+  assertSelectableUsable();
+  const notEnabled = SELECTABLE[0]!;
+  /*
+   * 注入表里**只有 `notEnabled` 那一家未启用**，其余（含 Driver）全部启用。
+   * 这样目标 id 既不是当轮 Driver（否则被 Driver 检查先拦、走不到这条分支），
+   * 也确实处在「已登记、未启用」这一格。
+   */
+  const registry = AGENTS.map((a) => ({ ...a, criticEnabled: a.id !== notEnabled }));
   rejects(
-    () => resolveCriticSelection(cfg(), { critics: pending, driver: otherDriver }),
+    () => resolveCriticSelection(cfg(), {
+      critics: notEnabled,
+      driver: DEFAULT_DRIVER,
+      descriptors: registry,
+    }),
     /尚未启用/,
+  );
+
+  /*
+   * **「当前可用」清单必须来自注入表**（代码双审 AGY-02 ≡ CODEX-02）。
+   *
+   * 上一版这条用例只断言 `/尚未启用/`，不看报错尾部那段清单——于是
+   * `legalList` 的注入表线程化（计划双审 GLM-05 的裁决）**没有任何锁例**：
+   * 把三处调用点改回 `legalList(cfg, driver)`、丢掉 descriptors，全部用例照样绿。
+   * 一条改动没有能证伪它的断言，等于没有改。
+   *
+   * 两种派生**确实不同**，所以这条断言区分得开（实算核过）：
+   *   · 注入表派生：`gemini | glm`（notEnabled 被关掉）
+   *   · 真实注册表派生：`codex | gemini | glm`
+   * 都不含 `claude`——那是 `c !== driver` 排掉的，与注入表无关。
+   *
+   * （codex 侧原以为两份清单逐字相同、需要「在注入表里再关掉一家」才能制造差异；
+   * 实算否证了那个前提：`legalList` 只排除 driver，**不排除正在报错的那个 id**。
+   * 所以这条更省的断言就够用。）
+   */
+  assert.throws(
+    () => resolveCriticSelection(cfg(), {
+      critics: notEnabled,
+      driver: DEFAULT_DRIVER,
+      descriptors: registry,
+    }),
+    (e: { message: string }) => {
+      const tail = e.message.slice(e.message.indexOf('当前可用'));
+      assert.doesNotMatch(
+        tail, new RegExp(notEnabled),
+        `「当前可用」列出了注入表里已关掉的 ${notEnabled}——说明 legalList 读的是真实注册表而不是注入表：${tail}`,
+      );
+      return true;
+    },
+  );
+});
+
+/*
+ * **自适应断言：真实注册表当前是不是全部启用**（M9 第 4 步）。
+ *
+ * 上一条用注入表拿回了覆盖，但「真实注册表里还有没有未启用的家」这个事实
+ * 本身也值得被断言看着——它决定上一条的注入表是不是仍然必要。
+ *
+ * **写成断言而不是注释**：注释里的「当前四家全部启用」会随注册表变化而失真，
+ * 且没有任何机制提醒。断言会在引入第五家（未启用）时红，提示回去看上一条。
+ */
+test('真实注册表当前全部启用为审核者——引入未启用的第五家时，上一条可回到真实注册表', () => {
+  const notEnabled = AGENTS.filter((a) => !a.criticEnabled).map((a) => a.id);
+  assert.deepEqual(
+    notEnabled, [],
+    `注册表出现了未启用为审核者的 Agent（${notEnabled.join('、')}）。\n` +
+      '  这不是错误：上一条用例的 descriptors 注入表可以改回从真实注册表现取，\n' +
+      '  「登记但未启用」那条分支于是重新有了真实数据的覆盖。',
   );
 });
 
 test('在 agents 段里没有配置条目 → 退 64（取不到调用参数）', () => {
   const c = cfg();
-  const victim = CRITICS[0]!;
+  const victim = SELECTABLE[0]!;
   delete c.agents[victim];
   rejects(() => resolveCriticSelection(c, { critics: victim }), /没有条目/);
 });
@@ -149,7 +224,7 @@ test('超过 max_critics → 退 64 并报出上限', () => {
   const c = cfg();
   c.review.max_critics = 1;
   rejects(
-    () => resolveCriticSelection(c, { critics: CRITICS.join(',') }),
+    () => resolveCriticSelection(c, { critics: SELECTABLE.join(',') }),
     /超过/, /max_critics=1/,
   );
 });
@@ -173,9 +248,9 @@ test('配置的 default_critics 为空 → 同样退 64，不静默回落到全�
  */
 test('拒绝信息一律带上当前可用值，用户不必去翻文档', () => {
   const c = cfg();
-  for (const bad of ['nobody', DEFAULT_DRIVER, `${CRITICS[0]!},${CRITICS[0]!}`]) {
+  for (const bad of ['nobody', DEFAULT_DRIVER, `${SELECTABLE[0]!},${SELECTABLE[0]!}`]) {
     assert.throws(() => resolveCriticSelection(c, { critics: bad }), (e: { message: string }) => {
-      assert.match(e.message, new RegExp(CRITICS[0]!), `「${bad}」的报错没列出可用值`);
+      assert.match(e.message, new RegExp(SELECTABLE[0]!), `「${bad}」的报错没列出可用值`);
       return true;
     });
   }
@@ -192,12 +267,36 @@ test('拒绝信息一律带上当前可用值，用户不必去翻文档', () =>
  * **单元素集合是合法返回值，不该被当成异常**。
  */
 test('单元素集合是合法结果——降级与否由 runner 按「入选的都成了吗」判，与基数无关', () => {
-  for (const c of CRITICS) {
+  assertSelectableUsable();
+  for (const c of SELECTABLE) {
     assert.deepEqual(
       resolveCriticSelection(cfg(), { critics: c }), [c],
       '把「只选一侧」当异常挡在这里，AC-22 就永远跑不起来',
     );
   }
+});
+
+/*
+ * **缺省 Driver 那一家的单选合法性**（M9 第 4 步，计划双审 AGY-03）。
+ *
+ * 上一条改用 `SELECTABLE` 之后，缺省 Driver 那一家就再也不会走到「单选成功」这条路径——
+ * 它每次都在 Driver 检查处被拒。**而那恰恰是第 5 步落 `--driver` 之后要走的路径**：
+ * 把 Driver 换成别人，claude 就该像任何一家一样能被单独选中。
+ *
+ * 今天它已经能通过（`resolveCriticSelection` 的 driver 是参数化的，
+ * 只是**没有调用方传值**——见计划 §2.3）。所以这条用例今天就该在：
+ * 第 5 步接上 `--driver` 时，它能回答「新做对了，还是本来就对」。
+ * 缺了它，那一步只有负例（V6）没有正例，等于只验证了「拦得住」，
+ * 没验证「换掉 Driver 之后拦对了人」。
+ */
+test('把 Driver 换成别人之后，原 Driver 那一家可以被单独选中（第 5 步 --driver 的正例）', () => {
+  assertSelectableUsable();
+  const otherDriver = SELECTABLE[0]!;
+  assert.deepEqual(
+    resolveCriticSelection(cfg(), { critics: DEFAULT_DRIVER, driver: otherDriver }),
+    [DEFAULT_DRIVER],
+    `${DEFAULT_DRIVER} 不当 Driver 时就是普通审核者，不该还被 Driver 检查拦下`,
+  );
 });
 
 /*
@@ -207,7 +306,7 @@ test('单元素集合是合法结果——降级与否由 runner 按「入选的
  * 上一轮 GLM-04「第一个错误把用户引向第二个错误」的形态。
  */
 test('Driver 拒绝信息里不得把 Driver 自己列为「当前可用」', () => {
-  const asDriver = CRITICS[0]!;
+  const asDriver = SELECTABLE[0]!;
   assert.throws(
     () => resolveCriticSelection(cfg(), { critics: asDriver, driver: asDriver }),
     (e: { message: string }) => {

@@ -1,0 +1,88 @@
+{
+  "agreed": [
+    "§3 失败面分类准确无误：翻开关实测的 19 条失败按成因 A（Hook 误判 Driver 产出，6 条）、成因 B（夹具 CRITICS[0] 撞 Driver 检查，9 条）、成因 C（夹具依赖未启用 Agent 假设失效，4 条）的归类完全符合源码实际执行路径。",
+    "§3.2 夹具 SELECTABLE 方案可行且合理：通过 SELECTABLE = CRITICS.filter(c => c !== DEFAULT_DRIVER) 派生有效入选集合，既遵循纪律 7 避免硬编码 Agent 字面量，又不会导致掩盖「Driver 不得入选」规则，因 critics.test.ts 拥有多条独立的负例用例直接守卫该检查。",
+    "§5.1 override_reason 裁定选择方案 ① 正确：本步在 review.ts 补齐 heterogeneous: false 时的机器原因写入（满足 AC-18），而将 run.v2.json 的 ajv 条件强约束（if/then）登记至 BACKLOG，有效控制本步数据契约变更面。",
+    "§7 V7 对 registry-parity.test.ts 其余对账腿的影响核实完毕：逐腿排查全部 30 余条测试，除第 811 行因未启用 Agent 耗尽抛错外，字面量扫描、前缀对账、派生一致性、架构 import 限制等其余全部对账腿均不受翻开关影响。",
+    "§2.1 EV-44 裁定核对一致：对照 doc/08_project/BACKLOG.md 第 141 行，接入套件第 ⑤ 件显式不做且翻转条件定为 project_memory_blocked: false，与计划引用的字段文档完全吻合。"
+  ],
+  "consulted": [
+    ".reviews/M9-审核者启用与夹具收口/plan/2026-09-18-M9-审核者启用与夹具收口-claude.md",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/render.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/claude.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/lenses.yaml",
+    "test/unit/critics.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/topic-args.test.ts",
+    "test/unit/config-migrate.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md",
+    "doc/05_testing/REPORT_2026-09-18_m9_claude_admission.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/adapters/codex.ts:312, 521 确认 codexConfig(ctx).bin ?? probe?.entrypoint 真实消费 bin；src/trivium/doctor.ts:474 消费 agentConfigOf(opts.config, 'gemini', 'antigravity').bin；src/trivium/probes/claude.ts:498-502 的 probeClaudeBin 将 configured 作为第一候选。此前 doctor.ts:543 传 null 仅因 agents.claude 尚未接入 schema，并非无消费逻辑。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4.2",
+      "problem": "§4.2 认定 bin 与 effort 同构「零消费方」并倾向剔除不符合源码事实。codex 与 gemini 侧均真实消费配置中的 bin 作为自定义路径覆盖，且 claude 探针实现已有对 configured 参数的消费链路。丢弃 bin 会破坏多 Agent 配置的对称性，并剥夺用户指定非标准 claude 二进制路径的能力。",
+      "severity": "minor",
+      "suggestion": "在 ClaudeAgentConfig 与 config.v2.json 中保留 bin: string | null，默认置 null。在 doctor.ts 与 adapters/claude.ts 中补齐对接逻辑（读取 cfg.agents.claude.bin ?? probe.entrypoint），彻底闭合消费链。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/schemas.ts:208，validateConfig 校验 default_critics 时直接执行 if (!CRITIC_AGENT_IDS.includes(id as never))，依赖模块静态导入的常量；其签名 validateConfig(raw: unknown) 并不接受外部 descriptors 注入。四家全启用后，真实注册表在运行时已无未启用 Agent。",
+      "id": "AGY-02",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §3.3",
+      "problem": "§3.3 对第 18 条（config-migrate.test.ts:306）的处置方案无法直接成立：validateConfig 直接使用静态导出的 CRITIC_AGENT_IDS，不经 resolveCriticSelection 且无入参重载，无法仅在测试中手写 descriptors 数组来测试「登记但未启用」的分支。",
+      "severity": "minor",
+      "suggestion": "为 validateConfig 提供可选入参 validCritics?: readonly string[]（默认取 CRITIC_AGENT_IDS）以支持测试注入口；或调整用例断言逻辑，自适应检测当前全启用状态并针对非法 id 断言报错。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 test/unit/critics.test.ts:195-200，原用例遍历 CRITICS 验证单元素合法性。改用 SELECTABLE 后，因 DEFAULT_DRIVER（claude）被过滤，导致 claude 从未作为单元素审核者被执行测试。",
+      "id": "AGY-03",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §3.2",
+      "problem": "第 14 条测试（单元素集合是合法结果）若仅遍历过滤后的 SELECTABLE，会导致 claude 自身作为单审核者的合法解析路径在全套用例中完全失测。",
+      "severity": "nit",
+      "suggestion": "在遍历 SELECTABLE 之外，显式补充一条用例针对 DEFAULT_DRIVER（claude）传入外部 driver（如 driver: 'gemini'）断言单选成功，闭合 claude 自身的单元素合法性覆盖。"
+    }
+  ],
+  "not_covered": [
+    "因受只读约束，未在本地执行命令重跑测试套件验证修复效果。",
+    "未实测 claude 真实作为审核者拉起时的端到端耗时与 API 费用（属步骤表第 6 步范畴）。",
+    "未深入评估 M10 动态 Driver 引入后提交锚判据（immutableChangeReason）跨时间不对称性重构的完整设计。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "整体评估通过（approve-with-nits）。\n焦点一：实测 19 条用例失败分类为 A(6)/B(9)/C(4) 完全准确；SELECTABLE 夹具方案合理且不掩盖规则。\n焦点二：§4.2 称 bin 零消费方与事实不符，codex/gemini 均有消费且探针已预留，建议保留 bin 并补齐消费接线。\n焦点三：§5.1 override_reason 采纳方案 ① 恰当；§7 V7 经逐腿核实，registry-parity 确仅红第 811 行一条。\n补充建议：完善 validateConfig 负例测试注入通道，并在单选测试中显式覆盖 claude 在非 driver 下的单选合法性。",
+  "verdict": "approve-with-nits"
+}

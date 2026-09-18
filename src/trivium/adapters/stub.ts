@@ -21,7 +21,7 @@
  * 绝不能在真实审查里生效而无人知晓。
  */
 import path from 'node:path';
-import { agentById } from '../agents/registry.js';
+import { agentById, DEFAULT_DRIVER } from '../agents/registry.js';
 import { CRITICS, type CriticId, type CriticRequest, type CriticResult } from '../types.js';
 import {
   failedResult,
@@ -417,8 +417,18 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
            * 缺省冒用「另一侧」的前缀：那是最危险的形态——未登记前缀会在闸门处
            * 以「缺裁决」现形（虽然报错指向错误原因），而冒名前缀会被 gate 的
            * Set 去重与对侧合并，裁决一次即过闸，**静默**碰撞。
+           *
+           * **排除当轮 Driver**（M9 第 4 步，代码双审 CODEX-08）：`CRITICS` 的顺序
+           * 即注册表顺序，claude 打头。翻开关后 `others[0]` 由 codex 变成 claude，
+           * 于是注入的是**当轮 Driver 的前缀**——而 Driver 根本不会作为审查侧出现，
+           * 「冒用真正在场的对侧」这个故障就不再被模拟了。用例只断言
+           * `status === 'parse_fallback'` 与前缀归属报错，所以这次退化**不会红**：
+           * 属于「故障注入夹具不再注入它声称的那个故障」。
+           *
+           * **边界**：跨侧编号碰撞（冒名前缀被 gate 合并、裁决一次即过闸）这一层
+           * 当前**没有机器判据**——上面那段描述的是设计意图，不是被断言守着的行为。
            */
-          const others = CRITICS.filter((c) => c !== critic);
+          const others = CRITICS.filter((c) => c !== critic && c !== DEFAULT_DRIVER);
           const fallbackPrefix = others[0] ? (agentById(others[0])?.findingPrefix ?? 'OTHER') : 'OTHER';
           return {
             ...baseResult(critic, req, spec),
