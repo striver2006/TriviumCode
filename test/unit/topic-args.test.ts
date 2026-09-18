@@ -9,9 +9,10 @@ import {
 import { defaultConfig } from '../../src/trivium/config.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
-import { CRITICS, type Ctx } from '../../src/trivium/types.js';
-import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
-import { SELECTABLE } from '../helpers/critic-fixtures.js';
+import type { Ctx } from '../../src/trivium/types.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+import { selectableCritics } from '../../src/trivium/critics.js';
+import { SELECTABLE, assertSelectableUsable } from '../helpers/critic-fixtures.js';
 
 /*
  * ── 入参是 argv 数组，不是字符串（EV-18）──
@@ -561,61 +562,179 @@ test('模型覆盖旗标的白名单按注册表派生，不是写死两条', ()
   }
 });
 
-const MODEL_FLAG_PENDING = ALL_AGENT_IDS.filter(
-  (id) => !(CRITICS as readonly string[]).includes(id),
-);
-
 /*
- * **M9 第 4 步：本分支在真实注册表下不可达了**（计划双审 CODEX-02）。
+ * **M9 第 5 步：本分支重新可达了**（EV-53 收口）。
  *
- * 这条校验在 `topic-args.ts` 里直读模块级 `CRITICS`
- * （`for (const id of ALL_AGENT_IDS) … if (!CRITICS.includes(id))`），
- * **不经 `resolveCriticSelection`**——`critics.test.ts` 那个 descriptors 注入口
- * 对它无效。而四家全启用后，「全部已登记」减「可用审核者」是空集，
- * 没有任何合法输入能走到这条报错。
+ * 判据从「已登记 − **启用集合**」改成「已登记 − **本轮实际能入选谁**」。
+ * 前者在四家全启用后是空集（M9 第 4 步起本条一直 skip）；后者永远至少含
+ * 当轮 Driver ——它已登记、也已启用为审核者，但「自己不能审自己」让它
+ * 在本轮**当不了审核者**，给它指定模型就是那条要防的「解析成功、随后被丢弃」。
  *
- * 我起初把夹具换成了当轮 Driver，**那是错的**：`--model-claude` 现在完全合法，
- * 因为 claude 确实是可用审核者。实跑打回后改成本形态。
- *
- * ## 它顺带暴露了一个真实缺口（已登记 BACKLOG，属第 5 步范围）
- *
- * `--model-claude` 今天能解析成功，而 claude **永远不会入选**
- * （`critics.ts` 的「当轮 Driver 不得入选」恒拒）。于是用户显式指定的模型
- * 会一路走到「解析成功、随后被悄悄丢弃」——**正是这条用例当初要防的那个形状**，
- * 只是触发它的不再是「未启用的第三家」，而是「已启用但当不了本轮审核者的 Driver」。
- * 修法要等 `--driver` 落地（第 5 步）：那时「谁能当审核者」才成为逐次运行的事实，
- * 本条校验也才有正确的判据可依。
+ * 这也是 EV-53 真正的修法：`topic-args.ts` 的白名单此前直读模块级 `CRITICS`，
+ * 与 `critics.ts` 的 `legalList`（减 Driver）是两套派生。第 5 步把 driver 接进
+ * 选侧之后，同一条命令里两段「当前可用」会互相矛盾——所以两处现在共用
+ * `selectableCritics` 这一个派生。
  */
+const MODEL_FLAG_PENDING = ALL_AGENT_IDS.filter(
+  (id) => !(selectableCritics(defaultConfig()) as readonly string[]).includes(id),
+);
 test(
   '给非审核者指定模型 → 退 64 并列出当前可用，而不是解析成功后被悄悄丢弃',
   {
     skip: MODEL_FLAG_PENDING.length === 0
-      ? '注册表四家均为可用审核者，本分支当前不可达（见上方说明；Driver 那一格的缺口已登记，属第 5 步）'
+      ? '「已登记」与「本轮可入选」之差为空集，本分支不可达'
       : false,
   },
   async () => {
   const ctx = await fakeCtx();
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 4;\n');
   /*
-   * 白名单的论域是「全部已登记 Agent」，取值的论域是「当前可用审核者」。
+   * 白名单的论域是「全部已登记 Agent」，取值的论域是「**本轮实际能入选谁**」。
    * 两者之差必须当场报错：放任它走到「解析成功、随后被丢弃」，
    * 留痕里就看不出用户指定过模型——这正是 `--base` 漏传那一族的形状。
    */
   const driverSide = MODEL_FLAG_PENDING[0]!;
+  const legal = selectableCritics(defaultConfig());
 
   await assert.rejects(
     resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['看并发', '--topic', 'T', `--model-${driverSide}`, 'm-9'] }),
     (e: { code?: number; message: string }) => {
       assert.equal(e.code, EXIT.USAGE, '参数错误一律退 64');
       assert.match(e.message, new RegExp(`model-${driverSide}`), '报错要点名是哪个旗标');
-      for (const c of CRITICS) {
-        assert.match(e.message, new RegExp(c), '要列出当前可用的审核者，别让用户再猜一次');
+      for (const c of legal) {
+        assert.match(e.message, new RegExp(c), '要列出本轮可用的审核者，别让用户再猜一次');
       }
+      /*
+       * **报错里不得出现被拒的那一家**（EV-53 ③）。
+       *
+       * 此前文案读 `CRITICS.join('、')`（含当轮 Driver），而判据读减 Driver 的那份：
+       * 用户照着「当前可用」里列出的 claude 去写 `--critics claude`，
+       * 会一头撞进「当轮 Driver 不得入选」——**第一个错误把用户引向第二个错误**。
+       */
+      /*
+       * 锚点命中先断言（第 2 轮 GLM-03）：`indexOf` 不中时返回 −1，
+       * `slice(-1)` 只剩一个字符，下面那条 `doesNotMatch` 会静默恒过。
+       * 这不是假想——本步改判据时这处文案就从「当前可用」变过一次，
+       * 现在两层统一回 `legalList`（见 critics.ts 的 assertModelOverrideKeys）。
+       */
+      const at = e.message.indexOf('当前可用');
+      assert.ok(at >= 0, `报错里没有「当前可用」这个锚点，下面那条负例会静默恒过：${e.message}`);
+      const tail = e.message.slice(at);
+      assert.doesNotMatch(
+        tail, new RegExp(driverSide),
+        `「当前可用」里仍列着 ${driverSide}，而它正是刚被拒的那一个：${tail}`,
+      );
       return true;
     },
   );
   },
 );
+
+/*
+ * ───────── CODEX-07 的只读那一半（M9 第 5 步，T-5a）─────────
+ *
+ * `topic-args.ts` 的 `locateSubjectReadOnly` 与 `topic.ts` 的 `locateSubject`
+ * 判据逐项同形，**必须同改**。两处各有用例：只改一处时另一处会静默漏判。
+ * `topic.test.ts` 那组覆盖的是真实审查路径，这一组覆盖的是 `topic resolve`。
+ */
+test('topic resolve：顶着 Driver 后缀的审查件不得被当原稿（与 locateSubject 同形）', async () => {
+  const ctx = await fakeCtx();
+  const dir = path.join(ctx.archiveRoot, 'T', 'plan');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, '2026-09-10-T-claude.md'), '# 我才是原稿\n');
+  await fs.writeFile(
+    path.join(dir, '2026-09-12-T-claude.md'),
+    '---\nschema: trivium.review.v1\nrole: claude\n---\n\n# 计划审查\n',
+  );
+  const r = await resolveTopicArgs({ ctx, scope: 'plan', rawArgs: ['看并发', '--topic', 'T'] });
+  assert.equal(
+    path.basename(r.subject_path!), '2026-09-10-T-claude.md',
+    '日期更晚的那份是审查件，应被剔除——只改了 topic.ts 一处时本条会红',
+  );
+});
+
+test('topic resolve：显式指定审查件 → 退 65 并说明是审查件', async () => {
+  const ctx = await fakeCtx();
+  const dir = path.join(ctx.archiveRoot, 'T', 'plan');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, '2026-09-10-T-claude.md'), '# 原稿\n');
+  const bad = path.join(dir, '2026-09-12-T-gemini.md');
+  await fs.writeFile(bad, '---\nschema: trivium.review.v1\n---\n\n# 计划审查\n');
+  await assert.rejects(
+    resolveTopicArgs({ ctx, scope: 'plan', rawArgs: ['看并发', '--topic', 'T', '--plan-file', bad] }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.MISSING_ARTIFACT);
+      assert.match(e.message, /审查件/);
+      return true;
+    },
+  );
+});
+
+test('topic resolve：--driver 非缺省时回显，未启用为 Driver 时进 notes', async () => {
+  assertSelectableUsable();
+  const other = SELECTABLE[0]!;
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 7;\n');
+  const r = await resolveTopicArgs({
+    ctx, scope: 'code',
+    rawArgs: ['看并发', '--topic', 'T', '--driver', other, '--critics', DEFAULT_DRIVER],
+  });
+  assert.equal(r.driver, other);
+  /*
+   * M9 只校验「已登记」，`driverEnabled === false` 照样放行——校验它第 6 步就跑不成。
+   * 放行的代价必须看得见：这里一条 notes，预检一行提示，留痕一个 driver_enabled。
+   */
+  assert.equal(r.driver_enabled, false, `${other} 目前尚未启用为 Driver（registry 里是 false）`);
+  assert.ok(
+    r.notes.some((n) => n.includes(other) && n.includes('尚未启用为 Driver')),
+    `notes 里没有标注「${other} 尚未启用为 Driver」：放行而不留痕就是静默降低了门槛`,
+  );
+});
+
+test('topic resolve：命令 A 不接受 --driver（接受即静默丢弃）', async () => {
+  const ctx = await fakeCtx();
+  await assert.rejects(
+    resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--driver', 'codex'] }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.USAGE);
+      assert.match(e.message, /--driver/);
+      // 理由要与 --critics/--only 那条同构：不进 skill 交接说明，收下会被丢弃
+      assert.match(e.message, /静默丢弃|交接说明/);
+      return true;
+    },
+  );
+});
+
+test('EV-53：换掉 Driver 之后，原 Driver 那一家的模型覆盖就合法了', async () => {
+  /*
+   * 上一条的**正例**，钉的是「新判据是逐次运行的事实，不是又一个写死清单」。
+   *
+   * 第 5 步之前 `--model-claude` 恒合法（判据读启用集合），之后恒非法（判据减 Driver）——
+   * 两种写死都不对。正确行为是：**跟着当轮 Driver 变**。
+   * 把 Driver 换成别家，claude 就是个普通审核者，给它指定模型天经地义。
+   *
+   * 缺了这一条，把拒绝分支写得过宽（比如「非缺省 Driver 的都拒」）也能让上一条全绿。
+   */
+  assertSelectableUsable();
+  const otherDriver = SELECTABLE[0]!;
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 6;\n');
+  /*
+   * 要显式给 `--critics`：配置的 `review.default_critics` 里含 `otherDriver`，
+   * 不给的话会先撞上「默认集合含当轮 Driver」而退 64，验不到本条要验的东西。
+   * 这里选 `DEFAULT_DRIVER` 当审核者，正好就是 M9 第 6 步验收的真实形态。
+   */
+  const r = await resolveTopicArgs({
+    ctx, scope: 'code',
+    rawArgs: [
+      '看并发', '--topic', 'T', '--driver', otherDriver,
+      '--critics', DEFAULT_DRIVER, `--model-${DEFAULT_DRIVER}`, 'm-1',
+    ],
+  });
+  assert.equal(r.models[DEFAULT_DRIVER], 'm-1', `${DEFAULT_DRIVER} 不当 Driver 时，给它指定模型应当放行`);
+  assert.equal(r.driver, otherDriver, '解析结果要回显本轮采信的 Driver');
+  assert.deepEqual(r.critics, [DEFAULT_DRIVER], `换掉 Driver 之后 ${DEFAULT_DRIVER} 就是个普通审核者`);
+});
 
 test('可用审核者的模型覆盖照常生效（上一条不得误伤正常路径）', async () => {
   const ctx = await fakeCtx();

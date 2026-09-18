@@ -1,0 +1,153 @@
+---
+schema: trivium.review.v1
+topic: M9-Driver旗标全链路与选侧收口
+stage: code
+role: glm
+vendor: zcode
+agent_cli: zcode/0.16.5
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260918T191610Z
+rerun_index: 2
+snapshot_hash: sha256:82696b2ec10200b317894eba1a86d208bc605a590894d7f096774e5719c8809f
+blind: true
+started_at: 2026-09-18T19:16:11.089Z
+finished_at: 2026-09-18T19:25:10.382Z
+duration_s: 539
+tool_calls:
+  read: 12
+  grep: 7
+  glob: 1
+  run_command: 0
+  project_reads: 11
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 2
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+heterogeneous: true
+session_id: sess_322d5361-e885-44f3-8587-ad88041b35df
+---
+
+# 代码审查：M9-Driver旗标全链路与选侧收口
+
+> Critic-B · 智谱 ZCode ｜ 模型 `bigmodel-coding-plan/GLM-5.3`
+> ｜ 运行 `20260918T191610Z` ｜ 第 2 轮
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+最危险的一条：「扫到但全读不出」的硬失败报错指了一条结构上走不通的自救路（--run-id 在该场景必被前置抛出拦截），且未来契约/注册表演进锁死老主题目前只有纪律没有机械护栏——今天全量实测 81 份审查阶段留痕（28 v1 + 53 v2）全部可读、vendor 与注册表零失配，没有任何历史主题会落入该态。焦点二（EV-66 锁断言不改契约）成立：C4 判据原文只钉「定位对 + 不误报」，两格均已由 T-11 断言通过，偏离 r1 裁决第 4 步是显式且有记录的。焦点三：多行与「既有调用点改中间变量」都不会安静变绿（后者计数变红、fail-closed），真正会绿的是字符串字面量不剥、新增调用点封闭世界不可见、值来源判据只覆盖 2/13 处——今天逐块核过均为潜伏面。无阻断、无重要级缺陷。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 3 条：次要 2 ｜ 吹毛求疵 1）
+
+### GLM-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/cli.ts:787-794` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：「扫到 N 份、全读不出」的硬失败文案说「或用 --run-id 指定一份可读的运行」，但该场景的定义就是一份都读不出：用户传任何 --run-id 都会先撞上 cli.ts:763-769 的 pinned 抛出（readRunMeta 同样返回 null），这条出口结构上不存在。同句的「请修复或移除这些文件」也可能与留痕不可变纪律（P6、提交时 checkRunManifests）相抵——即该状态下用户没有任何 CLI 自救手段，而文案让他去试一条必败的路。触发条件是未来契约/注册表演进（给 run.v2 加 required、改注册表 vendor/id）使老留痕集体失校；目前对「演进不得锁死老主题」只有纪律和 driver_enabled 一个字段的回归锁，没有覆盖真实语料的机械护栏。
+
+**依据**：读 src/trivium/cli.ts:761-794（pinned 先抛在硬失败之前，两处文案互相矛盾地假设 --run-id 可用）、src/trivium/meta.ts:396-442（latestRunMeta 的 unreadable/scanned 语义与 readRunMeta 两段式校验）、src/trivium/schemas.ts:242-297（validateRunMeta = ajv + checkAgentIdentities，vendor/driver 均对注册表比对）、skills/dual-critic/schema/run.v2.json（driver_enabled 未进 required）。并用只读脚本实测 .reviews 全部 86 份 run-*.json：审查阶段 81 份（28 v1 + 53 v2）按两份契约的 required 逐份核对零缺失，driver 全为 claude、critics_selected ⊆ {codex,gemini,glm} 均已登记，critics.*.vendor 与注册表现值零失配——今天没有任何主题会落入硬失败态；仅有的 7 处缺失字段集中在一份 verify 阶段记录（.reviews/M4-M5实现/verify/_meta/），不在 latestRunMeta（只收 plan/code/bug）论域内。
+
+**建议**：①按分档修文案：scan.unreadable.length === scan.scanned 时删掉「--run-id 指定一份可读的运行」那句（该场景下不存在可读的），如实说明唯一处置是修复留痕本身；顺带核一下「移除文件」是否会撞提交侧核对，若会则一并改。②把「契约演进不得锁死老主题」从纪律换成机制：加一条对 .reviews 真实语料的回归用例——全部审查阶段 run 元数据必须能被当前 readRunMeta 读回，任何未来收紧（required、vendor、注册表变动）在合入当场红，与本仓「靠记性的纪律换成不依赖记性的机制」（AGENTS.md 纪律 12 注）同构。
+
+### GLM-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/driver-wiring.test.ts:43-78` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：焦点三所问的三条判据共同盲区。先答不成立的两个：多行写法被锚点的 \s* 覆盖；既有调用点改成中间变量会让锚点计数变红（fail-closed），都不会安静变绿。真正会绿的是三处：①stripComments 只剥注释不剥字符串/模板字面量——实参块里出现含 driver 字样的字符串（错误文案、命令回显、内联 warn）即满足 hasProperty，无需真实传值；argBlockAt 还把字符串内的括号计入深度（未配对 '(' 使块越截越长、假绿面变宽，未配对 ')' 使块提前截断、产生假红），四条自测覆盖了注释与词边界、没有一条覆盖字符串。②枚举是封闭世界：锚点+期望条数只守「形状与今天一致」的调用点——新增调用点（新文件，或同文件传预构造对象，如 resolveCriticSelection(ctx.config, opts)，锚点要求 ',\s*{' 不会命中）不改变任何计数，全绿放行，而这正是「实参经中间变量转手」会在新增侧发生的形态。③值来源判据只收紧在两处 checkAdjudication（driver: gateDriver），其余目标对 driver: DEFAULT_DRIVER 这种「形对值错」照样绿——CODEX-05 的教训只被应用到闸门两个点，计划 §10 变异表对其余目标也只列了删除、没列值替换。
+
+**依据**：读 test/unit/driver-wiring.test.ts 全文：stripComments(43-47) 无字符串处理且文档自认「不识别字符串字面量」、hasProperty(61-64) 词边界、argBlockAt(67-78) 深度计数不过字符串、TARGETS(101-202) 锚点全部要求字面形状、自测四条(353-429)无字符串用例；grep src/ 对 resolveCriticSelection/newRunMeta/locateSubject/resolveRerunIndex/locateSubjectReadOnly/checkStageArtifacts/checkAdjudication 全部调用点与 TARGETS 逐一对账（cli.ts:479,649,806,844,894,976；review.ts:274,524,641,692,866；topic-args.ts:370,532）——今天枚举完备、11 个目标实参块内均无含 driver 的字符串，故三处均为潜伏面而非现行失效。
+
+**建议**：①自测补字符串形态（如 "warn('driver 未传')" 不得满足判据），并在 hasProperty 前把 '…'/"…"/`…` 内容替换为占位符，或至少在扩大扫描面时先加固（文件头已知边界注释说的就是这个，把它变成被测约束）。②给每个被扫函数加「全局调用计数」对账：src/ 内该函数名出现总数 == 各 TARGET 计数之和 + 声明处——把「新增调用点」从不可见变成当场红，与 deny-matrix 的「唯一调用计数」骨架同族、论域升到全 src。③值来源按目标逐个收紧（如 newRunMeta 块要求 driver:\s*driver\b），或在 TARGETS 条目注明该点只证「在场」不证「取值」，让边界可读。
+
+### GLM-03 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/integration/driver-flag.test.ts:59-62` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：J8 的负例断言用 out.indexOf('当前可用') 截取后再 doesNotMatch：一旦报错文案改写导致锚点词不在（indexOf 返回 -1，slice(-1) 只剩最后一个字符），负例静默恒过，「第一个错误不得把用户引向第二个错误」这条护栏无声消失。锚点词漂移并非假想——critics.ts 的报错用「当前可用」（211/238/245/265 四处），而 topic-args.ts 本步的新文案已改用「本轮可用」，同一论域两层措辞已经分叉。
+
+**依据**：读 test/integration/driver-flag.test.ts:60（slice(indexOf('当前可用')) 无命中前置断言）、src/trivium/critics.ts:211-265（legalList 消费处均写「当前可用」）、src/trivium/topic-args.ts 模型旗标报错与 test/unit/topic-args.test.ts 新增断言（均写「本轮可用」）。
+
+**建议**：断言锚点命中在前（assert.ok(out.includes('当前可用')) 再截取），或直接断言「当前可用：」后的清单等于 legalList 期望集；顺带决定两层文案是否统一为一个词，避免下一个改文案的人触发本条。
+
+## 认为正确的部分
+
+- 焦点一主体成立：latestRunMeta 返回扫描事实（scanned/unreadable）、逐份 warn 点名、仅全读不出才硬失败、三条子命令同口径——形态正确；且全量实测归档 81 份审查阶段留痕全部可读、vendor 零失配，硬失败不会误伤任何历史主题，driver_enabled 不进 required 并配「删字段仍须读得回」的回归锁是本步唯一不可逆选择的正确处理。
+- 焦点二处置成立：r3 计划 §2.3 的 C4 原文钉的是「定位 -revised-<真Driver>.md 且裁决件未写出时不误报」，两格均已由 T-11 断言覆盖；EV-66 边界锁成「修好当场红」的断言并配 BACKLOG 硬触发（第 6 步验收必撞），对 r1 裁决 §2.2 第 4 步（补齐后应退 0）的偏离在测试注释里写明了原因——偏离是显式的。disposition.v1 的 role const 与纪律 7 相抵属实，但其修法按改动同步清单波及 gate 解析与三份 skill 模板，不在第 5 步落点表内，推后正确。
+- 「全链路」不名不副实：计划 §2.1 行 A 界定的链路（解析→选侧→原稿定位→freeze→运行元数据）确实全部接通，且扫描+运行期双护栏；唯「非缺省 Driver 闸门整体通过」在 EV-66 修复前不成立，测试注释与 EV-66 均如实写明——前提是后续提交信息与收口叙述不得宣称「闭环已通」。
+- driver-wiring.test.ts 把判据写成可执行代码并逐条配自测，是对 r1「裸子串判据被注释字样点亮」教训的正确消化；锚点逐个钉、期望条数按文件写明、checkAdjudication 两处收紧为「取值来自 gateDriver」、EV-54 写点要求共用 overrideReasonFor 派生——判据自身也被审，这个做法值得保持。
+- isReviewArtifact 把模块加载挪出 try（CODEX-07 落地）、handoffDriver 回落取 meta.driver 并告警而非猜缺省、prepareRun 对直传 critics 的 Driver 排除兜底（安全不变式延伸到绕过判定处的路径）、EV-53 判据与文案共用 selectableCritics 单点派生并配互为镜像的正负例——均核实成立。
+- T-11 与 T-2 的桩配置显式点名 claude（R-8 配额纪律）；J8 同族负例「当前可用里不得再列刚被拒的那家」方向正确（本侧仅指出锚点强度问题，见 GLM-03）。
+
+## 未覆盖范围（本侧盲区）
+
+- 未实跑任何测试（审查约束为只读，未构建未执行 npm run check）；T-11、T-1/T-2「当前全绿」是静态推断——锚点与断言同真实源码逐条对账一致，但无运行期确认。
+- 未审 23 个被改文件之外的下游：adapters/ 各家、hooks.ts 的 Driver 感知（计划 §2.2 明确不在第 5 步、EV-55 已登记）、render.ts parseFrontMatter 的实现细节（只按其文档块口径采信）。
+- disposition.v1 修法的影响面（三份 skill 裁决件模板说明、PROTOCOL 文档）只确认了 schema 本体与 gate.ts 校验路径，未逐份核对模板文本。
+- .reviews/M4-M5实现/verify/_meta 那份缺 7 个字段的 v1 形状记录：不在 latestRunMeta 论域，但未深究 archive.ts listRecordedRuns 的 verify 分支对它今天是否仍读得回（非本批改动面，仅记录）。
+- 另一位审查员的角度（背靠背约束，未接触其任何产出）。
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-Driver旗标全链路与选侧收口/code/_meta/changes-20260918T191610Z.diff`
+- `.reviews/M9-Driver旗标全链路与选侧收口/code/2026-09-19-M9-Driver旗标全链路与选侧收口-response-claude.md`
+- `.reviews/M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-r3-claude.md`
+- `src/trivium/cli.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/schemas.ts`
+- `src/trivium/gate.ts`
+- `src/trivium/critics.ts`
+- `src/trivium/agents/registry.ts`
+- `skills/dual-critic/schema/run.v2.json`
+- `skills/dual-critic/schema/disposition.v1.json`
+- `test/unit/driver-wiring.test.ts`
+- `test/integration/driver-flag.test.ts`
+- `src/trivium/archive.ts`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/topic.ts`
+- `src/trivium/topic-args.ts`
+- `src/trivium/review.ts`
+- `src/trivium/state.ts`
+- `src/trivium/types.ts`
+- `src/trivium/preflight.ts`
+- `test/integration/gate-loop.test.ts`
+- `test/unit/run-meta.test.ts`
+- `test/unit/topic-args.test.ts`
+- `test/unit/topic.test.ts`
+- `test/unit/critics.test.ts`
+- `test/unit/preflight.test.ts`
+- `test/unit/deny-matrix.test.ts`
+- `doc/08_project/BACKLOG.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":12,"grep":7,"glob":1,"run_command":0,"project_reads":11}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

@@ -1,0 +1,99 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "三条焦点逐一核过：①gate 新增的 role 与当轮 Driver 比对未发现误拒路径——比对与裁决件定位用的是同一个 gateDriver，--run-id 钉住时 driver/轮次/runId 三者同源自 pinned，跨轮复用被 (role,kind,rerunIndex) 定位键与 fm.run_id 比对挡住，存量留痕（driver 全 claude、v1 迁移恒置缺省）全部照过，非缺省 Driver 的三条失败路各自落在 EV-66 锁住的位置。②扫描器已知残余「) 之后不剥」实为一族：] 与 } 之后同样不剥（REGEX_PREV 只含开括号）；另有两个多剥幻影形态（后缀 ++/-- 与属性名撞 REGEX_KEYWORD 的同行双除法），今天语料均零命中、属潜伏面。③EV-67 的取舍方向（本步不收口为拒绝、日后补告警）成立，但所记理由失实：被引的那条正例采样 SELECTABLE[0]，落在 DEFAULT_CRITICS=[codex,gemini,glm] 之内，「实际入选+缺省回落」实现下它不会红，且三个入口的 critics 均在 assertModelOverrideKeys 之前就已解析——推迟是设计选择而非接线约束或测试冲突。无阻断、无重要级缺陷。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/08_project/BACKLOG.md EV-67；test/integration/driver-flag.test.ts（EV-53 用例的「论域边界」注释段）；test/unit/topic-args.test.ts:739-763",
+      "problem": "「模型白名单只收到能入选、没收口到实际入选」这一取舍的**结论**成立，但登记的**理由**不成立。EV-67 与 driver-flag.test.ts 的注释都写「收紧到实际入选会与『--model-<side> 不带 --critics 必须放行』那条既有正例直接冲突」：该正例（topic-args.test.ts:739）采样 SELECTABLE[0]，而 SELECTABLE = CRITICS − DEFAULT_DRIVER = [codex,gemini,glm]，与注册表派生的 DEFAULT_CRITICS 完全同集——在「实际入选 + 缺省回落」的实现下它照样通过；只有「无显式 --critics 即全拒」这种稻草人变体才会撞它，而那恰是 EV-67 自己列出的第二条修法（回落时机提前）所规避的。且三个入口（topic resolve / review --start / preflight）都在 assertModelOverrideKeys 之前调了 resolveCriticSelection，解析后的入选集在判定点手边——推迟不是接线约束。真正的开放问题只有「用户显式 --critics 排除的那一家，其模型覆盖该拒还是该警」，EV-67 的告警修法方向已是对的。留一句失实的冲突叙述，会让 M10 实现者绕开一个不存在的约束、偏向更重的方案，也违背本仓「留痕里的失实断言先改再提交」的口径。",
+      "evidence": "读 test/unit/topic-args.test.ts:739-763（正例采样与断言）、test/helpers/critic-fixtures.ts:52（SELECTABLE 定义）、src/trivium/agents/registry.ts 137-153/203-204/217-218/231-232/290-292（criticEnabled 四家、defaultSelected 除 claude 全真、DEFAULT_MAX_CRITICS=3、DEFAULT_CRITIC_AGENT_IDS 派生）、src/trivium/config.ts:254-255（default_critics 取该派生）、src/trivium/critics.ts 的 assertModelOverrideKeys、src/trivium/topic-args.ts 与 src/trivium/cli.ts 三入口（critics 解析先于 assertModelOverrideKeys）、doc/08_project/BACKLOG.md EV-67、test/integration/driver-flag.test.ts 的 EV-53 注释段（经被审 diff 全文核对）。",
+      "suggestion": "只改叙述不改行为：EV-67 与 driver-flag.test.ts 那段注释把理由改准——正例采样在缺省入选集内、两种合理实现都不会让它红；真正的张力是「显式排除侧的覆盖该拒该警」与「不带 --critics 时按缺省集合判是否会误伤『先预检模型、后显式选侧』的流程」。后续实现时优先按已在手的 resolveCriticSelection 结果做告警。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/driver-wiring.test.ts（stripNonCode 的 REGEX_PREV / REGEX_KEYWORD 定义，约 :69-72）",
+      "problem": "已知残余「正则跟在右圆括号之后会被当除号、于是不剥」实为一族，且边界清单只列了三分之一：REGEX_PREV = '([{,;:=!&|?+-*%~^<>' 只含开括号不含闭括号，所以正则字面量出现在 **]** 与 **}** 之后（含其换行后——空白不更新 prevSig）同样判为除号、正文留在剥离结果里。少剥的假绿条件：正则体含被 watch 的词（driver/gateDriver/DEFAULT_DRIVER）且恰好落在被 watch 的实参块内；更现实的是污染 RECONCILE 的 \\bfn\\s*\\( 计数造成假红。今天 src/ 语料无此形态（grep [)\\]}]\\s*/[^/*\\s] 的命中全是除法与模板 ${}/路径字面量），属潜伏面——但该文件的全部立意就是把这类边界写成受测事实，清单本身漏了同族两格。",
+      "evidence": "读 driver-wiring.test.ts（经被审 diff 全文）：REGEX_PREV 字符集定义、stripNonCode 主循环 / 分支的三个前置条件与 emit 的 prevSig 语义、空白 emit 空 sig 不重置上下文；grep src/trivium 全目录复核语料分布（无正则紧随 )/]/} 的实例）。",
+      "suggestion": "把「值后位置（)、]、}）一律按除号」作为同族边界写进 REGEX_PREV 上方注释，并各补一条自测（如 `arr[0]\\n/driver/.test(s)` 与 `if(x){} /driver/.test(s)` 不得让 hasProperty 为真）；若日后真要剥，再谈启发式，不现在扩。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/driver-wiring.test.ts（stripNonCode 的正则识别分支与 REGEX_KEYWORD）",
+      "problem": "多剥（幻影正则）的两个形态：/ 直接跟在 REGEX_PREV 运算符后而实为除法、且同行还有第二个 / 时，内层扫描会把中段真代码整体换成 \"<re>\" 占位。语法上合法的触发形态：①后缀自增/自减——`a++ / b / c`（prevSig 落在 '+' 上）；②属性访问撞关键字——`o.in / a / b`（REGEX_KEYWORD 的 [^\\w$] 会匹配成员访问的 `.`，把 `o.in` 当成 in 表达式结尾，`o.of`/`x.return` 同理）。后果以**假红**为主：锚点计数变少、吞噬跨括号文本时 argBlockAt 判 null（fail-closed）；唯一假绿方向（L9 的 DEFAULT_DRIVER 负断言靠被吞的真值变绿）现实中构造不出来。语料 grep（\\+\\+\\s*/ 与 \\.(in|of|do|return|typeof|case|else|yield|await)\\s*/）零命中，潜伏面。",
+      "evidence": "读 driver-wiring.test.ts 的 regex 分支闭合判据（遇 / 即 closed，无除法上下文二次确认）与 REGEX_KEYWORD 定义；两条 grep 在 src/ 下零命中。",
+      "suggestion": "与 GLM-02 同一处把这两格补进边界注释与自测即可；若要加固：prevSig 为 +/- 时回看一格区分 ++/-- 与二元运算，REGEX_KEYWORD 排除 `.` 前缀（属性访问）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/gate.ts:156-165（missing_disposition 文案）；对照 src/trivium/cli.ts:902-908 与 cli.ts:1015-1018",
+      "problem": "同一排障场景的三个出口口径不一致：最新一次运行是 worker 中途崩溃的骨架或已取消轮时（本步起轮次取最新运行的意图轮次，cli.ts 注释明说这一格），`gate --check` 落在 missing_disposition，而该文案只说「必须产出裁决件」，不提示可用 --run-id 指回更早的完整轮次；--check-artifacts 的缺件文案（L13 落点）与「找不到运行元数据」两处都给了这个出口。L13 的落地注释自称「--check 那条早有同款提示」，实际指的是 run_id 找不到那条，不含 missing_disposition 这条——会把「其实想验上一轮」的人引去补一份不必要的裁决件。",
+      "evidence": "读 src/trivium/cli.ts cmdGate 全段（rerunIndex 取 latest.rerun_index 的骨架注释、--check-artifacts 分档文案、--check 的 no-runId 抛错）与 src/trivium/gate.ts checkAdjudication 第 2 步的 missing_disposition 文案。",
+      "suggestion": "missing_disposition 文案在「未给 --run-id」时补一句与 --check-artifacts 同款的提示（给了 --run-id 时不再出现，避免 CODEX-06 指出的「劝人用已用过的旗标」）。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "焦点一结论：role 与当轮 Driver 的一致性比对在三类被点名的格上均无误拒——降级轮次与 role 检查无交互（degraded/voidedSides/fallbackIds 走各自通道）；跨轮复用被 (parsed.role===driver, kind, rerunIndex) 定位键与 fm.run_id 比对双重挡住；run_id 不符走既有那条 mismatch 规则；比对用的 driver 与定位裁决件用的是同一个 gateDriver（cli.ts:838/946/1026 三处一致），不存在「定位用 A、比对用 B」的分叉；--run-id 钉住时 driver/rerunIndex/runId 同源自 pinned。",
+    "存量留痕零误伤：81 份审查阶段运行元数据 driver 全为 claude（上一轮本侧实测），migrateRunMetaV1 恒置 driver=DEFAULT_DRIVER（meta.ts:328），disposition.v1 的 role const=claude 与之恒等——历史主题的 gate 照常可过；非缺省 Driver 的三条失败路各自落在说得清的位置（EV-66），由 T-11 两格断言锁住、修好当场红。",
+    "latestRunMeta 直读取代后缀反推、cmdGate 不加 --driver/--force 覆盖旗标（事实来源是留痕不是旗标）、「有但全读不出」三子命令同口径硬失败且出口改为走得通的「重跑」、T-12 把出口口径钉成断言（含 --run-id 在该格必败的实证）——逐项读实现成立。",
+    "L7-L10 的落地质量核过成立：argBlockAt fail-closed（配不平返回 null）并首次配了自测；字符串/模板占位符化且模板 ${} 保留为代码；DEFAULT_DRIVER 负断言把豁免写成 defaultOk 数据而不是注释；RECONCILE 全 src 调用计数对账用 fn 字段精确匹配、避开了 locateSubjectReadOnly 前缀陷阱。driver-flag/topic-args 的锚点负例都补了「indexOf 命中先断言」（L12）。",
+    "deny-matrix 对 freeze 调用点的简化剥离器（不剥字符串）是冗余的第二道弱判据：freeze 块「传值在场」另有 driver-wiring 自测用强剥离器看着（定位不到 freeze 调用即红），无净缺口。",
+    "prepareRun 对直传 critics 的 Driver 排除兜底（不变式延伸到绕过判定处的路径）、handoffDriver 回落取 meta.driver 并告警、overrideReasonFor 两写点单点派生且 isHeterogeneous(null)=true 不会在无模型时编造成因、driver_enabled 恒写但不进 required 并配 .reviews 真实语料回归（L11）——均核实成立。"
+  ],
+  "not_covered": [
+    "未实跑任何测试与剥离器：本会话无命令执行工具，全部结论为静态代码核对 + grep 语料复核；扫描器边界（GLM-02/GLM-03）的机制由 REGEX_PREV/REGEX_KEYWORD 定义直接推出，未用构造样例实际运行 stripNonCode 验证。",
+    "T-11/T-12 与 driver-flag 集成用例的运行期行为未实跑（断言与源码逐条静态对账一致，含桩配置点名 claude 的配额防线）；npm run check 的当前绿灯是静态推断。",
+    "adapters/ 各家、hooks.ts 的 Driver 感知（EV-55 登记不在第 5 步）、render.ts parseFrontMatter 的实现细节（按其文档块口径采信，EV-63 已登记残余）未深审。",
+    "disposition 资产面（disposition.md.template、三份 SKILL.md、templates/README.md）沿用上一轮核过的结论（仍写 role: claude / -revised-claude.md），本轮未逐份重读全文。",
+    "另一位审查员的角度（背靠背约束，未接触其任何产出）。"
+  ],
+  "consulted": [
+    ".reviews/M9-Driver旗标全链路与选侧收口/code/_meta/changes-20260918T231928Z.diff",
+    ".reviews/M9-Driver旗标全链路与选侧收口/code/2026-09-19-M9-Driver旗标全链路与选侧收口-r2-glm.md",
+    ".reviews/M9-Driver旗标全链路与选侧收口/code/2026-09-19-M9-Driver旗标全链路与选侧收口-r2-response-claude.md",
+    "src/trivium/gate.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/state.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/adapters/base.ts",
+    "skills/dual-critic/schema/disposition.v1.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/driver-wiring.test.ts",
+    "test/unit/topic-args.test.ts",
+    "test/unit/critics.test.ts",
+    "test/unit/deny-matrix.test.ts",
+    "test/unit/run-meta.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/topic.test.ts",
+    "test/integration/driver-flag.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/helpers/critic-fixtures.ts",
+    "doc/08_project/BACKLOG.md"
+  ]
+}

@@ -7,10 +7,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveCriticSelection } from '../../src/trivium/critics.js';
+import { resolveCriticSelection, resolveDriver, selectableCritics } from '../../src/trivium/critics.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
-import { AGENTS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+import { AGENTS, ALL_AGENT_IDS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
 import { CRITICS, type Config, DEFAULT_CRITICS } from '../../src/trivium/types.js';
 import { SELECTABLE, assertSelectableUsable } from '../helpers/critic-fixtures.js';
 
@@ -327,4 +327,84 @@ test('报错点名是哪个旗标出的问题（--critics 与 --only 要区分�
   const c = cfg();
   c.review.default_critics = ['nobody' as never];
   rejects(() => resolveCriticSelection(c), /review\.default_critics/);
+});
+
+// ───────────── resolveDriver：`--driver` 的唯一判定处（M9 第 5 步）─────────────
+
+test('resolveDriver：不给就是缺省 Driver，且 enabledAsDriver 是查表得来不是写死 true', () => {
+  for (const raw of [null, undefined, '', '   ']) {
+    const r = resolveDriver(raw);
+    assert.equal(r.driver, DEFAULT_DRIVER, `取值 ${JSON.stringify(raw)} 应回落缺省 Driver`);
+    assert.equal(r.enabledAsDriver, true);
+  }
+});
+
+test('resolveDriver：未登记的取值退 64，并列出**全部已登记**（不是已启用为 Driver 的）', () => {
+  assert.throws(
+    () => resolveDriver('nobody'),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.USAGE, '参数错误一律退 64');
+      /*
+       * 文案论域必须是 `ALL_AGENT_IDS`。判据是「已登记」，而 `DRIVER_AGENT_IDS`
+       * 今天只含缺省 Driver 一家——拿它当清单，报错列出的可用值会与实际接受的
+       * 取值不一致，又是一次「第一个错误把用户引向第二个错误」。
+       */
+      for (const id of ALL_AGENT_IDS) {
+        assert.match(e.message, new RegExp(id), `报错里要列出 ${id}：它是合法取值`);
+      }
+      return true;
+    },
+  );
+});
+
+test('resolveDriver：已登记但尚未启用为 Driver → **不抛**，只把 enabledAsDriver 置 false', () => {
+  /*
+   * M9 刻意只校验「已登记」。校验 `driverEnabled` 会形成死循环：当前只有缺省
+   * Driver 一家启用，而第 6 步验收恰恰要让它当审核者、由别家当 Driver——
+   * 那时 `--driver <别家>` 会被拒，验收永远跑不成。
+   * 取舍是「放行 + 如实标注」，M10 再收紧成校验。
+   */
+  assertSelectableUsable();
+  const other = SELECTABLE[0]!;
+  const r = resolveDriver(other);
+  assert.equal(r.driver, other);
+  assert.equal(r.enabledAsDriver, false, `${other} 在注册表里是 driverEnabled: false`);
+});
+
+test('resolveDriver：非缺省**且已启用**那一臂——靠注入表构造，不留「今天验不了」的空当', () => {
+  /*
+   * 真实注册表里 `driverEnabled: true` 只有缺省 Driver 一家，所以这一臂
+   * **今天构造不出来**。上一版计划把它写成一条用例却没给注入口，
+   * 实现者只能临场造夹具绕注册表——那正是「留给临场发明」的口子。
+   *
+   * 注入口与 `CriticSelectionInput.descriptors` 同构：判定本就只依赖
+   * 「登记表 + 配置」，把登记表参数化是把隐式依赖显式化，生产路径一个字不变。
+   */
+  assertSelectableUsable();
+  const other = SELECTABLE[0]!;
+  const registry = AGENTS.map((a) => ({ ...a, driverEnabled: a.id === other ? true : a.driverEnabled }));
+  const r = resolveDriver(other, registry);
+  assert.equal(r.driver, other);
+  assert.equal(r.enabledAsDriver, true, '注入表里它已启用为 Driver，判定要跟着注入表走');
+});
+
+test('selectableCritics：论域是「启用 ∩ 有配置条目 − 当轮 Driver」，且跟着注入表走', () => {
+  /*
+   * EV-53 的源头。此前这份论域有两套实现（critics.ts 减 Driver、topic-args.ts 不减），
+   * driver 接进选侧之后，同一条命令里两段「当前可用」会互相矛盾。
+   */
+  assertSelectableUsable();
+  const other = SELECTABLE[0]!;
+  assert.deepEqual(
+    selectableCritics(cfg(), DEFAULT_DRIVER), [...SELECTABLE],
+    '缺省 Driver 下应当正好是 SELECTABLE',
+  );
+  assert.ok(
+    selectableCritics(cfg(), other).includes(DEFAULT_DRIVER),
+    `把 Driver 换成 ${other} 之后，${DEFAULT_DRIVER} 就是个普通审核者`,
+  );
+  assert.ok(
+    !selectableCritics(cfg(), other).includes(other),
+    '当轮 Driver 永远不在自己的可入选集合里',
+  );
 });

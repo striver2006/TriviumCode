@@ -127,6 +127,17 @@ export interface GateCheckInput {
   /** 本轮 run_id：裁决件 front-matter 的 run_id 必须与之一致，否则把上一轮的裁决件抄过来也能过 */
   runId?: string;
   /**
+   * 本轮轮次是否由用户用 `--run-id` **钉住**（第 3 轮 GLM-04）。
+   *
+   * 只影响 `missing_disposition` 的文案分档：没钉住时，轮次取自「最新一次运行」，
+   * 而那可能是一份 worker 崩溃前落下的、什么裁决件都不会有的骨架——此时该提示
+   * 用 `--run-id` 指回更早的完整轮次，否则会把「其实想验上一轮」的人
+   * 引去补一份不必要的裁决件。**钉住了就不提**：那时 rerunIndex 恰恰来自
+   * 他给的那份留痕，再劝他用同一个旗标是把人推向已经用过的路
+   * （第 2 轮 CODEX-06 的同款）。
+   */
+  runIdPinned?: boolean;
+  /**
    * 当轮 Driver。裁决件后缀与它一致（计划 §9.1）。
    * 缺省 `claude` 与重构前行为逐项相同，为 M10 的 Driver 任意化预留。
    */
@@ -160,7 +171,11 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
           code: 'missing_disposition',
           message:
             `找不到第 ${rerunIndex} 轮的裁决件（应为 …-${rerunIndex > 1 ? `r${rerunIndex}-` : ''}${kind}-${driver}.md）。` +
-            `${stage === 'code' ? '代码审' : '计划/根因审'}必须产出裁决件，即使全部驳回也要写明「无修改及原因」（§6.6 规则 6）。`,
+            `${stage === 'code' ? '代码审' : '计划/根因审'}必须产出裁决件，即使全部驳回也要写明「无修改及原因」（§6.6 规则 6）。` +
+            (input.runIdPinned
+              ? ''
+              : '\n  轮次取自最新一次运行。若那一轮尚未产出工件（例如 worker 中途崩溃），' +
+                '可用 --run-id <id> 指回更早的完整轮次，而不是在这一轮补一份裁决件。'),
         },
       ],
       warnings,
@@ -193,6 +208,34 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     if (fm.topic !== layout.topic) mismatches.push(`topic=${fm.topic}（应为 ${layout.topic}）`);
     if (fm.stage !== stage) mismatches.push(`stage=${fm.stage}（应为 ${stage}）`);
     if (fm.kind !== kind) mismatches.push(`kind=${fm.kind}（${stage} 阶段应为 ${kind}）`);
+    /*
+     * ── role 必须与当轮 Driver 一致（第 2 轮 CODEX-04）──
+     *
+     * 「这份裁决件是谁写的」此前有**两个互不校验的来源**：
+     *   · 文件名后缀 —— `listStageArtifacts` 解析出 parsed.role，上面第 2 步按 driver 定位；
+     *   · front-matter 的 role —— 只过 validateDispositionFrontMatter。
+     *
+     * 两者之间没有任何机器判据，于是「文件名 -revised-codex.md + front-matter
+     * role: claude」这份**自相矛盾**的件会通过闸门，且没有一处会发现。这不是构造
+     * 出来的形态：资产面今天写死的正是 role: claude（disposition.md.template），
+     * 三份 SKILL.md 与 templates/README.md 也仍写 …-revised-claude.md，所以非缺省
+     * Driver 下照着资产写、再把文件名改对，得到的恰好就是这一份。
+     *
+     * 补上这条之后，非缺省 Driver 的三条路各自失败在**说得清**的地方：
+     *   · 照资产写（名与 role 都是 claude）→ 第 2 步定位不到，报 missing_disposition；
+     *   · 改名不改 role（谎报）        → 本条当场判红；
+     *   · 诚实写 role: <当轮 Driver>   → 卡在 disposition.v1.json 的 role const（EV-66）。
+     *
+     * 本条**不改契约**：schema 仍把 role 钉成 claude，缺省 Driver 下两者恒等，
+     * 所以对今天的全部留痕零影响。EV-66 修好（role 放宽为 string + 注册表身份校验）
+     * 之后，这条会自动变成「文件名与 front-matter 必须同指一个 Driver」的那道锁。
+     */
+    if (fm.role !== driver) {
+      mismatches.push(
+        `role=${String(fm.role)}（当轮 Driver 是 ${driver}；` +
+          '文件名后缀与 front-matter 的 role 必须同指一人，否则这份留痕的作者身份自相矛盾）',
+      );
+    }
     if (input.runId && fm.run_id !== input.runId) {
       mismatches.push(`run_id=${String(fm.run_id)}（本轮应为 ${input.runId}；不得复用上一轮的裁决件）`);
     }
@@ -721,6 +764,17 @@ async function fileExists(p: string): Promise<boolean> {
  * 跳过的是**当轮 Driver 的产出**（原稿与裁决件不带审查侧的 run_id），
  * 而不是字面的 claude（计划 §2.1 / B-4）——Claude 作为审核者时，
  * 写死跳过会让反查恒返回 null。
+ */
+/**
+ * @deprecated M9 第 5 步起**闸门区不再用它**，改为 `meta.latestRunMeta` 直读留痕。
+ *
+ * 它按工件后缀反推 run_id，而「跳过当轮 Driver 的产出」这一步**需要先知道 driver**——
+ * driver 又只记在运行元数据里，于是构成循环依赖。非缺省 Driver 且 `--critics claude`
+ * 时本轮审查件全是 `-claude.md`，按缺省 Driver 推会整批跳过并返回 null，
+ * 闸门以「请先跑一次双审」硬失败（计划双审 r2 AGY-01，判阻断）。
+ *
+ * 现无生产消费方。保留仅为不扩大本步改动面；**不要在新代码里用它**，
+ * 需要 run_id / driver / 轮次一律走 `latestRunMeta`。删除登记为 EV-64。
  */
 export async function inferLatestRunId(
   layout: ArchiveLayout,

@@ -17,7 +17,7 @@ import type { AuthCacheEntry, CommonProbe, Config, CriticId, Ctx, Stage } from '
 import { DEFAULT_CRITICS, STAGES } from './types.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { patchProbe, probeIsFresh, staleCliProbes } from './config.js';
-import { ALL_CLI_NAMES, agentById, agentByCliName } from './agents/registry.js';
+import { ALL_CLI_NAMES, DEFAULT_DRIVER, agentById, agentByCliName, type AgentId } from './agents/registry.js';
 import { realAdapters } from './adapters/index.js';
 import { routeModel, type AdapterContext, type CriticAdapter } from './adapters/base.js';
 import { exists } from './util/fsx.js';
@@ -77,6 +77,18 @@ export interface PreflightOptions {
    * 启用第三家之后，全集检查会让「本次压根没选它」的运行也因它环境未配而失败。
    */
   critics?: readonly CriticId[];
+  /** 当轮 Driver（M9 第 5 步）。缺省即注册表缺省值，此时不打提示 */
+  driver?: AgentId;
+  /**
+   * 该 Driver 是否已启用为 Driver；**只有显式 `true` 才按「已启用」呈现**。
+   *
+   * 缺省取**保守**的一侧（第 3 轮 CODEX-04）：这个字段的存在理由就是
+   * 「M9 只校验已登记，放行但如实标注」，而那条口径只能靠留痕与提示兜住。
+   * 上一版把 `undefined` 与 `true` 一并当作「已启用」，于是任何新调用方
+   * 传了 `driver` 却忘了 `driverEnabled`，那半句保留话术会**静默消失**——
+   * 而「少说一句」正是这个字段最不该有的失败方式。
+   */
+  driverEnabled?: boolean;
 }
 
 // ─────────────────────── 各项检查 ───────────────────────
@@ -599,6 +611,30 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
    * （而那正是 D-1 决定「默认不选它」时要避免的连带影响）。
    */
   const selected: readonly CriticId[] = opts.critics ?? cfg.review.default_critics;
+
+  /*
+   * ⓪ 当轮 Driver 非缺省时打一行可见提示（M9 第 5 步）。
+   *
+   * **必须 `ok: true`**：下面多处用 `checks.every((c) => c.ok)` 做短路，
+   * `exitCode` 又由 `find((c) => !c.ok)` 决定——判 false 会把一条**提示**
+   * 变成一次**失败**，而且是在探针检查之前就把整个预检短路掉。
+   *
+   * 做成 `CheckResult` 而不是单独打印，是因为 `--json` 与人读两条输出路径
+   * 都消费 `r.checks`：单独 print 只有人读那条看得见。
+   *
+   * 缺省 Driver 时不推：那是绝大多数运行的形态，每次都打一行等于没打。
+   */
+  const driver = opts.driver ?? DEFAULT_DRIVER;
+  if (driver !== DEFAULT_DRIVER) {
+    checks.push({
+      name: '当轮 Driver',
+      ok: true,
+      // 缺省走保守侧：不是显式 true 就带上保留话术（第 3 轮 CODEX-04）
+      detail: opts.driverEnabled === true
+        ? driver
+        : `${driver}（本次声明的 Driver 尚未启用为 Driver，该值仅用于选侧判定）`,
+    });
+  }
 
   // ① 探针新鲜度（过期即快速失败，不拉 doctor）
   checks.push(checkProbeFreshness(cfg));

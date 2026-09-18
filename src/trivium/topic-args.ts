@@ -12,11 +12,12 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
-import { CRITICS, type CriticId, type Ctx, type Stage } from './types.js';
-import { resolveCriticSelection } from './critics.js';
+import type { CriticId, Ctx, Stage } from './types.js';
+import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
 import { validateTopic, parseArtifactName } from './naming.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { exists } from './util/fsx.js';
+import { isReviewArtifact } from './archive.js';
 import { diffExcludePrefixes } from './code-stage.js';
 import type { PreflightScope } from './preflight.js';
 
@@ -32,6 +33,8 @@ const STATIC_FLAGS = [
   'topic', 'context', 'plan-file', 'rca-file', 'base',
   'profile', 'focus', 'goal',
   'only', 'allow-single', 'session-id', 'critics',
+  // M9 第 5 步：不认识它就会被当正文压进 restParts，与 `--base` 那次同形
+  'driver',
 ] as const;
 type StaticFlag = (typeof STATIC_FLAGS)[number];
 
@@ -235,6 +238,20 @@ export interface TopicResolution {
   /** 一侧失败时不中止，产出单审结果并留痕（§12.4） */
   allow_single: boolean;
   /**
+   * 当轮 Driver（`--driver <id>`，M9 第 5 步）。缺省即注册表缺省值。
+   *
+   * 它决定两件事：**谁不得入选**（自己不能审自己）、**原稿是谁的后缀**。
+   * 回显出来是让上层能看见本次采信的是哪一个——静默取缺省正是这一族缺口的形状。
+   */
+  driver: AgentId;
+  /**
+   * 本次声明的 Driver 是否**已启用为 Driver**。
+   *
+   * false 不阻断（M9 只校验「已登记」，见 `resolveDriver`），但要让调用方看得见：
+   * notes 里会有一条，预检也会打一行。
+   */
+  driver_enabled: boolean;
+  /**
    * 调用方传进来的会话 id。
    *
    * 它不该由用户手打（宿主注入或 CLI 从环境取），但整串 `$ARGUMENTS` 里出现时
@@ -325,9 +342,35 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     );
   }
 
+  /*
+   * **命令 A 同样不接受 `--driver`**（M9 第 5 步，计划双审 D3）。
+   *
+   * 理由与上面那条逐字同构：`--driver` 本轮只作 CLI / 编排器内部旗标落地，
+   * 不进 skill、不进 argument-hint（步骤表 §2.14）。于是命令 A 收下它之后
+   * 没有任何交接说明会把它带下去——**接受即静默丢弃**，正是「错的报错、对的消失」。
+   */
+  if (scope === 'all' && named['driver']) {
+    throw new TriviumError(
+      EXIT.USAGE,
+      '命令 A（全流程）不接受 --driver：它本轮只作编排器内部旗标，不进 skill 交接说明，' +
+        '在这一层收下会被静默丢弃。\n' +
+        '  需要指定当轮 Driver 请改用 /dual-review-plan、/dual-review-code 或 /dual-review-bug。',
+    );
+  }
+
+  // 当轮 Driver 先解析：选侧与被审对象定位都要用它（判定处在 critics.ts，此处只取值）
+  const { driver, enabledAsDriver } = resolveDriver(named['driver'] ?? null);
+  if (!enabledAsDriver) {
+    // 放行但如实标注（见 resolveDriver 的文档块）。留痕要让事后对得上账
+    notes.push(
+      `本次声明的 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`,
+    );
+  }
+
   const critics = resolveCriticSelection(ctx.config, {
     critics: named['critics'] ?? null,
     only: onlyRaw || null,
+    driver,
   });
   /*
    * **入选来自 `--only` 时，输出的 `only` 置 null**（审查意见 AGY-01 ≡ GLM-01，两侧判 major）。
@@ -440,23 +483,31 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
    * 逐审核者取 `--model-<id>`，不再写死两个旗标名。
    * 旗标名对既有两侧逐字不变（id 即 gemini / glm），第三家启用后自动可用。
    *
-   * 白名单的论域是**全部已登记 Agent**，取值的论域是**当前可用审核者**——
-   * 两者之差（登记了但未启用为审核者，如 Driver 自身）必须当场报错。
+   * 白名单的论域是**全部已登记 Agent**，取值的论域是**本轮实际能入选谁**——
+   * 两者之差（登记了但本轮当不了审核者，含当轮 Driver 自身）必须当场报错。
    * 不报的话它会落进「解析成功、随后被丢弃」：留痕里看不出用户指定过模型，
    * 而这正是 `--base` 漏传那一族的形状。
+   *
+   * ## 判据从 `CRITICS` 换成 `selectableCritics` 的理由（EV-53）
+   *
+   * 原判据是「在不在**启用集合**里」，与当轮 Driver 无关。M9 第 4 步把 claude
+   * 启用为审核者之后，`--model-claude X` 从此合法通过——而 `critics.ts` 的
+   * 「当轮 Driver 不得入选」恒拒 claude，那个模型覆盖**一路走到被丢弃**，
+   * 正是这段注释自己要防的形态，只是触发它的从「未启用的第三家」
+   * 变成了「已启用但当不了本轮审核者的 Driver」。
+   *
+   * 正确判据是「本轮**实际**能入选谁」，而那要等 `--driver` 落地才成为逐次运行的事实。
+   * **判据与文案共用同一份派生**：此前文案读 `CRITICS`（含 Driver）而 `legalList`
+   * 读减 Driver 的那份，同一条命令里两段「当前可用」会互相矛盾。
+   *
+   * **判定本身搬去了 `critics.ts`**（第 2 轮 CODEX-05）：`review --start` 也要用同一条，
+   * 而把它在这里再实现一遍正是 EV-53 自己的形态——上一次收口只落在本文件一个入口，
+   * 另一个入口原样留着丢参数。共用 `assertModelOverrideKeys` 之后，文案也随之与
+   * 「不能选 Driver」那几条统一成「当前可用」。
    */
-  for (const id of ALL_AGENT_IDS) {
-    const v = named[`model-${id}`];
-    if (!v) continue;
-    if (!(CRITICS as readonly string[]).includes(id)) {
-      throw new TriviumError(
-        EXIT.USAGE,
-        `--model-${id}：${id} 当前不是可用审核者，不能为它指定模型。\n` +
-          `  当前可用：${CRITICS.join('、')}`,
-      );
-    }
-    models[id] = v;
-  }
+  const written = ALL_AGENT_IDS.filter((id) => named[`model-${id}`]);
+  assertModelOverrideKeys(ctx.config, driver, written);
+  for (const id of written) models[id] = named[`model-${id}`]!;
 
   const contextPaths = (named['context'] ?? '')
     .split(',')
@@ -470,7 +521,7 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
 
   if (scope === 'plan' || scope === 'bug') {
     const explicit = scope === 'plan' ? named['plan-file'] : named['rca-file'];
-    subjectPath = await locateSubjectReadOnly(ctx, topic, scope, explicit ?? null);
+    subjectPath = await locateSubjectReadOnly(ctx, topic, scope, explicit ?? null, driver);
   } else if (scope === 'code') {
     base = named['base'] ?? 'HEAD';
     const { diffAgainst } = await import('./util/git.js');
@@ -505,6 +556,8 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     only,
     critics,
     allow_single: allowSingle,
+    driver,
+    driver_enabled: enabledAsDriver,
     session_id: named['session-id']?.trim() || null,
     topic_inferred: inferred,
     notes,
@@ -536,6 +589,16 @@ async function locateSubjectReadOnly(
     if (!(await exists(abs))) {
       throw new TriviumError(EXIT.MISSING_ARTIFACT, `指定的被审对象不存在：${explicit}`);
     }
+    // 与 `topic.locateSubject` 同款硬拒：显式路径没有「下一个候选」可退，
+    // 静默换成别的就是「解析成功、随后被悄悄替换」那一族缺口
+    if (await isReviewArtifact(abs)) {
+      throw new TriviumError(
+        EXIT.MISSING_ARTIFACT,
+        `指定的被审对象是一份**审查件**，不是原稿：${explicit}\n` +
+          '  它的 front-matter 是 schema: trivium.review.v1，由编排器从审查员的结构化输出渲染而成。\n' +
+          '  拿它当被审对象会让这一轮审的是「对意见的意见」。请指向原稿。',
+      );
+    }
     return abs;
   }
 
@@ -563,12 +626,24 @@ async function locateSubjectReadOnly(
     )
     .sort((a, b) => b.parsed!.rerunIndex - a.parsed!.rerunIndex || b.fileName.localeCompare(a.fileName));
 
-  if (candidates.length === 0) {
+  // 剔掉审查件而非硬拒：理由与 `topic.locateSubject` 同款（换过 Driver 的主题里，
+  // 别家当 Driver 时产出的审查件顶着这一家的后缀且日期更晚，会排在真原稿前面）
+  const kept: typeof candidates = [];
+  const dropped: string[] = [];
+  for (const c of candidates) {
+    if (await isReviewArtifact(path.join(stageDir, c.fileName))) dropped.push(c.fileName);
+    else kept.push(c);
+  }
+
+  if (kept.length === 0) {
+    const why = dropped.length > 0
+      ? `\n  已排除（是审查件而非原稿）：${dropped.join(', ')}`
+      : '';
     throw new TriviumError(
       EXIT.MISSING_ARTIFACT,
-      `在 ${path.relative(ctx.projectRoot, stageDir)} 下找不到原稿（形如 <日期>-${topic}-${driver}.md）。\n` +
+      `在 ${path.relative(ctx.projectRoot, stageDir)} 下找不到原稿（形如 <日期>-${topic}-${driver}.md）。${why}\n` +
         `  该目录下现有：${entries.length > 0 ? entries.join(', ') : '（空）'}`,
     );
   }
-  return path.join(stageDir, candidates[0]!.fileName);
+  return path.join(stageDir, kept[0]!.fileName);
 }

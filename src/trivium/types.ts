@@ -1110,6 +1110,17 @@ export interface CriticRunMeta {
   evidence_ok: boolean;
   usage?: Record<string, number>;
   heterogeneous: boolean;
+  /**
+   * `heterogeneous === false` 时的成因（EV-54，M9 第 5 步补上写入方）。
+   *
+   * `run.v2` 的散文契约要求 false 时必须有它。承接侧早就接通、一直没有写入方，
+   * 因为在 claude 能被选为审核者之前，补了也没有路径能端到端验证。
+   * 取值由 `review.ts` 的 `overrideReasonFor` 单点派生，两个写点共用。
+   *
+   * **可选**：true 时为 null，早于本步的留痕则整个字段缺失。
+   * 不给 schema 加 `if/then`——那会让历史留痕集体读不回。
+   */
+  override_reason?: string | null;
   fail_reason?: string | null;
   empty_review?: boolean;
   parse_fallback?: boolean;
@@ -1172,9 +1183,19 @@ export interface RunMeta {
    * **当轮发起方**的 Agent id（§6.7.1）。与归档后缀（产出方）正交：
    * 同一 Agent 在不同运行里可能是 Driver 也可能是审核者，
    * 这条正交性正是禁读矩阵不能按后缀差集生成的根本原因。
-   * M7b 起恒为 `claude`，M10 放开 `--driver` 后才会变。
+   * M7b 起恒为 `claude`；**M9 第 5 步放开 `--driver` 之后开始会变**
+   * （上一版这里写的是「M10 放开后才会变」——放开它的是 M9 第 5 步，不是 M10）。
    */
   driver: AgentId;
+  /**
+   * 当轮 Driver 在这次运行时是否**已启用为 Driver**（M9 第 5 步）。
+   *
+   * **可选**：早于本步的留痕没有这个字段，缺失即「无从得知」，不等于 false。
+   * M9 的 `--driver` 只校验「已登记」，于是归档里会出现 `driver_enabled: false`
+   * 的合法留痕；M10 把校验收紧之后那些留痕**仍要读得回**，
+   * 所以它不进 `required`、不加 `if/then`。这是本步唯一不可逆的选择。
+   */
+  driver_enabled?: boolean;
   /**
    * 本轮**入选**的审核者集合（基数 1～3，FR-29）。
    *

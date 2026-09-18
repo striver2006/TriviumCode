@@ -9,6 +9,7 @@ import { exists } from './util/fsx.js';
 import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
 import { applyProfileOverride, loadCtx, runRoot } from './config.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER } from './agents/registry.js';
 import {
   runDoctor,
   renderDoctorReport,
@@ -22,23 +23,23 @@ import { collectCommands, runVerify, summarizeVerify } from './verify.js';
 import { buildTopicReport, renderTopicReport } from './report.js';
 import { cancelRun, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
 import {
-  checkAdjudication, inferLatestRunId, loadRoundReviews, renderGateResult,
+  checkAdjudication, loadRoundReviews, renderGateResult,
 } from './gate.js';
 import { checkStageArtifacts, listRecordedRuns, resolveRerunIndex } from './archive.js';
 import { readHookInput, runHook, type HookName } from './hooks.js';
 import { listOpenGates, setGateChecked } from './state.js';
 import { recordApproval } from './approval.js';
 import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
-import { newRunId, readTask, readRunMeta } from './meta.js';
+import { latestRunMeta, newRunId, readTask, readRunMeta } from './meta.js';
 import { runInit, renderInitReport } from './init.js';
 import {
   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
 } from './preflight.js';
 import { resolveTopicArgs } from './topic-args.js';
-import { resolveCriticSelection } from './critics.js';
+import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
 import { scrubAllRunRoot } from './retention.js';
 import { wiredAdapter } from './adapters/index.js';
-import { COMMAND_ENTRIES, CRITICS, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
+import { COMMAND_ENTRIES, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
 import { emitJson, fail, isJsonMode, say, setOutputMode, step, warn } from './util/log.js';
 
 const VERSION = '0.1.0';
@@ -209,6 +210,10 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                   缺省取 review.default_critics。选 1 个是配置意图、不标降级；
                   含当轮 Driver、含未启用为审核者的 Agent、或重复项一律退 64
       --only gemini|glm  仅跑一侧。**--critics 的单元素旧写法**，两者不能同时给
+      --driver <id>  当轮 Driver（执笔者），缺省 ${DEFAULT_DRIVER}。
+                  取值论域是**全部已登记 Agent**（${ALL_AGENT_IDS.join(' | ')}）——
+                  只校验「已登记」，尚未启用为 Driver 的也放行，但会在预检与留痕里标注。
+                  它决定谁不得入选（自己不能审自己）与原稿是谁的后缀
       --allow-single  一侧失败时不中止，产出单审结果并留痕（§12.4）。
                       受配置 review.allow_partial_flag 约束（旧名 allow_single_flag 仍可用）；默认 strict
 
@@ -230,6 +235,8 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                         缺省取 review.default_critics。下一步 review --start 选了谁，
                         这里就要传谁——否则那一侧的可用性在预检阶段不被检查
       --profile <名称>  按该档位预检——要校验的是本次实际会用的模型
+      --driver <id>  当轮 Driver，缺省 ${DEFAULT_DRIVER}。与 review --start 传同一个值：
+                  它参与选侧判定，非缺省时预检会多打一行标注
       --refresh-auth  强制重新探活，穿透 TTL 缓存
 
   trivium topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]   [--json]
@@ -295,17 +302,30 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
 `;
 
 /**
- * 逐审核者的模型覆盖：`--model-<id>`，`<id>` 取自注册表派生的可用审核者集合。
+ * 逐 Agent 的模型覆盖：`--model-<id>`，`<id>` 的**收集面是全部已登记 Agent**。
  *
  * 此前只解析 `--model-gemini` / `--model-glm` 两个写死的旗标，第三家**无法覆盖模型**。
  * 泛化后旗标名对既有两侧**逐字不变**（id 就是 `gemini` / `glm`，
  * 拼出来还是同样两个名字），因此不需要别名表，也不存在兼容断点。
+ *
+ * ## 收集面为什么是 `ALL_AGENT_IDS` 而不是 `CRITICS`（第 3 轮 CODEX-03）
+ *
+ * 上一版遍历 `CRITICS`（已启用为审核者的那几家），而 `topic-args.ts` 遍历
+ * `ALL_AGENT_IDS`（全部已登记）。判定虽然收口成了一份（`assertModelOverrideKeys`），
+ * **收集面却仍是两份**：「已登记但未启用为审核者」的 `--model-<id>` 在这条路上
+ * 根本进不了返回值，判定函数看不见它 → 不退 64、不留痕、不告警——
+ * 正是 EV-53 原文的症状，而当时的注释还宣称两个入口已同口径。
+ *
+ * 今天不可达（四家全启用 ⇒ 两个集合元素相同），**登记第五家而暂不启用它时立刻可达**，
+ * 且症状无声。所以口径统一成：**收集＝全部已登记，判定＝本轮实际能入选谁。**
+ * 返回值因此用宽类型，收窄交给判定函数——调用方在 `assertModelOverrideKeys`
+ * 通过之后才把它当审核者键集使用。
  */
-function collectModelOverrides(args: ParsedArgs): Partial<Record<CriticId, string>> {
-  const out: Partial<Record<CriticId, string>> = {};
-  for (const c of CRITICS) {
-    const v = flagString(args, `model-${c}`);
-    if (v) out[c] = v;
+function collectModelOverrides(args: ParsedArgs): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const id of ALL_AGENT_IDS) {
+    const v = flagString(args, `model-${id}`);
+    if (v) out[id] = v;
   }
   return out;
 }
@@ -467,15 +487,37 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
    * 启用第三家时这边会**先于**那边拒掉合法取值，而错误信息还振振有词地只列两家。
    * 校验逻辑分两处实现是改一漏二的典型形态，M7b 第 5 步收敛成一处。
    */
+  // 当轮 Driver 先解析：选侧要用它（判定处同样只有一个，在 critics.ts）
+  const { driver, enabledAsDriver } = resolveDriver(flagString(args, 'driver'));
   const critics = resolveCriticSelection(ctx.config, {
     critics: flagString(args, 'critics'),
     only: onlyRaw,
+    driver,
   });
+  if (!enabledAsDriver) {
+    // 放行但如实标注：留痕落 driver_enabled，这里再给人读一行
+    warn(`当轮 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`);
+  }
 
   const contextRaw = flagString(args, 'context');
   // 任务目标与审查焦点分开传（RV-19）：前者说「要达成什么」，后者说「这次重点看什么」
   const goal = flagString(args, 'goal');
   const modelOverrides = collectModelOverrides(args);
+  /*
+   * `--model-<id>` 的键必须是本轮实际能入选的那几家（EV-53，第 2 轮 CODEX-05）。
+   *
+   * 这一条此前**只落在 `topic resolve`**，而本入口才是真正烧配额的那条：
+   * `collectModelOverrides` 的论域是 `CRITICS`（M9 第 4 步后四家全在内），
+   * 下游 `checkModelSlugs` 只遍历入选侧，于是 `--critics gemini --model-glm X`
+   * 与 `--model-claude X` 在这里仍是**解析成功后被悄悄丢弃**——留痕与告警
+   * 都看不出用户指定过模型。技能侧因先走 `topic resolve` 而被挡住，
+   * 暴露面是手工 CLI，但 EV-53 的「已收口」当时并不成立。
+   *
+   * 判定共用 `critics.ts` 的那一份，不在此处复制。
+   */
+  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides));
+  // 判定通过 ⇒ 键集必然是本轮可入选的审核者，这里才收窄（收集面见 collectModelOverrides）
+  const models = modelOverrides as Partial<Record<CriticId, string>>;
 
   const reviewOpts = {
     ctx,
@@ -487,9 +529,10 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     contextPaths: contextRaw ? contextRaw.split(',').map((c) => c.trim()).filter(Boolean) : [],
     subjectFile: flagString(args, 'plan-file') ?? flagString(args, 'rca-file'),
     diffBase: flagString(args, 'base'),
-    modelOverrides,
+    modelOverrides: models,
     command: `trivium review --stage ${stage}`,
     critics,
+    driver,
     // 闸门写锁默认按会话作用域（RV-05）。拿不到会话 id 时闸门记 null，
     // 写锁按「本会话」保守处理（state.ts GateEntry.session_id）
     sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
@@ -630,16 +673,28 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
    * 解析走 `resolveCriticSelection`——与 `topic resolve` / `review --start` 同一处判定，
    * 不在这里再实现一遍（M7b 第 5 步的教训：两处各写一份，启用第三家时会先后不一致）。
    */
+  const { driver, enabledAsDriver } = resolveDriver(flagString(args, 'driver'));
   const critics = resolveCriticSelection(ctx.config, {
     critics: flagString(args, 'critics'),
     only: flagString(args, 'only'),
+    driver,
   });
+  /*
+   * 同一条判定也要落在这个入口（第 2 轮 CODEX-05 的同族）。
+   * 意见点名的是 `review --start`，但 `runPreflight` 内部同样只遍历传进去的
+   * `critics`——只修一个入口，剩下那个就是下一次的「改一漏二」。
+   */
+  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides));
+  // 判定通过 ⇒ 键集必然是本轮可入选的审核者，这里才收窄（收集面见 collectModelOverrides）
+  const models = modelOverrides as Partial<Record<CriticId, string>>;
 
   const r = await runPreflight({
     ctx,
     scope,
-    modelOverrides,
+    modelOverrides: models,
     critics,
+    driver,
+    driverEnabled: enabledAsDriver,
     skipAuthCheck: args.flags.get('skip-auth-check') === true,
     refreshAuth: args.flags.get('refresh-auth') === true,
   });
@@ -727,9 +782,94 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   if (!topic) throw usageError('gate 需要 --topic');
   const ref = await resolveTopic(ctx, topic, stage);
 
-  // 本轮轮次：已产出审查工件的最新一轮，即 resolveRerunIndex - 1
-  const nextIndex = await resolveRerunIndex(ref.layout, stage);
-  const rerunIndex = Math.max(1, nextIndex - 1);
+  /*
+   * ── 当轮 Driver 与轮次：**直读运行元数据**，不从工件后缀反推（M9 第 5 步）──
+   *
+   * 后缀反推有循环依赖：`inferLatestRunId` / `resolveRerunIndex` 都要先知道 driver
+   * 才能跳过 Driver 自己的产出，而 driver 只记在留痕里。非缺省 Driver 且
+   * `--critics claude` 时，本轮审查件全是 `-claude.md`，按缺省 Driver 推会把它们
+   * 整批跳过——`gate --check` 以「请先跑一次双审」硬失败，而双审明明跑完了。
+   *
+   * `latestRunMeta` 直接给出权威的 `driver` 与 `rerun_index`（run.v2 里两者都必填），
+   * 一次到位。`cmdGate` **不加 `--driver` 旗标**：事实来源是留痕不是旗标，
+   * 与下面「事实来源是 critics_selected 不是键集」同一条原则。
+   */
+  const pinnedId = flagString(args, 'run-id');
+  const pinned = pinnedId ? await readRunMeta(ref.layout, stage, pinnedId) : null;
+  if (pinnedId && !pinned) {
+    // 不静默回落：--run-id 是用户显式指定的，读不出来要说清是哪一种，别按缺省继续
+    throw missingArtifactError(
+      `--run-id ${pinnedId} 的运行元数据读不出来（文件缺失、内容损坏，或 schema 不识）。\n` +
+        `  请确认该 run_id 属于主题「${topic}」的 ${stage} 阶段。`,
+    );
+  }
+  const scan = pinned
+    ? { meta: pinned, scanned: 1, unreadable: [] as string[] }
+    : await latestRunMeta(ref.layout, stage);
+  const latest = scan.meta;
+
+  /*
+   * ── 留痕读不出来时的分档（代码双审 AGY-01 / CODEX-01 / GLM-02）──
+   *
+   * 「一份都没有」与「有但全读不出」是两回事，三条子命令必须同一个口径：
+   * 前者是正常的「还没跑过」，后者说明留痕被搅坏——**静默按缺省 Driver 继续，
+   * 正是本批改动要消灭的形态**（plan/bug 阶段会把 `…-claude.md` 当缺件点名，
+   * 而真 Driver 的原稿就躺在目录里，人读与 --json 两条输出都没有迹象）。
+   *
+   * 上一版只有 `--check` 与 `--await-approval` 硬失败，`--check-artifacts`
+   * 这一格漏了；而且这里的注释写着「一条留痕都没有时才退回旧口径」，
+   * 与 `latestRunMeta` 文档块的承诺互相矛盾——两句都是同一次改动写的。
+   */
+  if (!latest && scan.scanned > 0) {
+    /*
+     * ── 出口必须是走得通的那条（第 2 轮 CODEX-03 ≡ AGY-01 ≡ GLM-01）──
+     *
+     * 上一版这句写的是「请修复或移除这些文件，或用 --run-id 指定一份可读的运行」。
+     * 两条路**在本状态的定义下都不成立**：
+     *
+     *   1. `--run-id` 同样走 `readRunMeta`（见上面 :762），而本状态的定义就是
+     *      「扫到的全都读不出」——它必然返回 null 并撞上 pinned 那条硬失败。
+     *      按构造不可实现。
+     *   2. 「修复或移除」会撞上本仓自己的提交锚：`run-*.json` 一经 `registerRun`
+     *      即不可删（`checkRunManifests` 报 manifest_missing），已提交版本也不可改
+     *      （`hooks.ts` 的 `immutableChangeReason`：「运行清单是留痕核对的锚，
+     *      改锚即可整枝绕过」）。照做会把提交永久拦下。
+     *
+     * 真正可用的那条是**重跑该阶段**：`prepareRun` 会先落一份 status: running 的
+     * 骨架，其 run_id 最新，`latestRunMeta` 取首个可读项即返回它，闸门当场恢复。
+     *
+     * `cmdGate` 依然**不加** `--driver` / `--force` 覆盖旗标（第 2 轮 AGY-01 的建议
+     * 未采纳）：允许人工声明一个与留痕不符的 Driver，闸门就失去了它唯一的事实锚，
+     * 那正是本批改动要消灭的形态。与下面「事实来源是 critics_selected 不是键集」同源。
+     */
+    throw missingArtifactError(
+      `${stage} 阶段扫到 ${scan.scanned} 份运行元数据，但**一份都读不出来**` +
+        `（文件损坏、schema 不识，或不合 run.v1/v2 契约）：${scan.unreadable.join('、')}\n` +
+        '  无法确定当轮 Driver 与轮次，不能按缺省 Driver 继续——那会把「留痕坏了」判成「按 claude 判」。\n' +
+        `  出口是**重跑一次 ${stage} 阶段双审**：新运行会落一份可读的运行元数据，闸门随即恢复。\n` +
+        '  不要删除或改写这些 run-*.json——它们是提交时留痕核对的锚，动了会让 git commit 被拦下。\n' +
+        '  （--run-id 在这一格没有用：它读的是同一批文件，同样读不出来。）',
+    );
+  }
+
+  const gateDriver = latest?.driver ?? DEFAULT_DRIVER;
+  /*
+   * 轮次优先取留痕的 `rerun_index`。注意它是**最新一次运行声明的轮次**，
+   * 不是「工件实际落在第几轮」（代码双审 GLM-03）：`prepareRun` 会先落一份
+   * `status: running` 的骨架，worker 在产出任何工件前崩溃时那份骨架就是 latest，
+   * 记的是**意图轮次**。指向最新一次运行本身说得通，但别把它说成工件事实。
+   *
+   * 扫到 0 份时才退回「`resolveRerunIndex - 1`」这个旧口径——那时确实没有更好的依据。
+   */
+  const rerunIndex = latest?.rerun_index
+    ?? Math.max(1, (await resolveRerunIndex(ref.layout, stage, gateDriver)) - 1);
+  if (!latest) {
+    // 扫到 0 份：可以继续，但要让人看见 driver 与轮次是按缺省算的
+    warn(
+      `${stage} 阶段没有任何运行元数据：当轮 Driver 按缺省「${gateDriver}」、` +
+        `轮次按工件反推为第 ${rerunIndex} 轮。若这不是你要的，请先跑一次双审或用 --run-id 指定。`,
+    );
+  }
 
   // ── --check-artifacts ──
   if (args.flags.get('check-artifacts') === true) {
@@ -756,23 +896,41 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
      * 只有同时知道「本该跑谁」和「跑出了什么」才能两头都判对。
      * 历史 v1 记录经 `readRunMeta` 迁移后，该字段正是由键集推导，判读结论不变。
      */
-    const artifactRunId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
-    const artifactMeta = artifactRunId ? await readRunMeta(ref.layout, stage, artifactRunId) : null;
+    // 上面已经直读到留痕；`latest` 就是这一轮的权威记录，不必再按后缀反推一次
+    const artifactMeta = latest;
     const roundCritics = artifactMeta ? artifactMeta.critics_selected : undefined;
-    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, roundCritics, undefined, recorded);
+    // driver 位补上：它决定去找谁的原稿与谁的裁决件（此前空着，非缺省 Driver 下必判缺件）
+    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, roundCritics, gateDriver, recorded);
     if (isJsonMode()) {
       emitJson({ ok: c.ok, stage, rerun_index: rerunIndex, present: c.present, missing: c.missing });
     } else if (c.ok) {
       say(`✓ ${stage} 阶段第 ${rerunIndex} 轮工件齐备：${c.present.join(' / ')}`);
     } else {
-      fail(`${stage} 阶段第 ${rerunIndex} 轮缺件：${c.missing.join(' / ')}`);
+      /*
+       * 给出 `--run-id` 出口（代码双审 GLM-03）：轮次取自「最新一次运行」，
+       * 而那可能是一份 worker 崩溃前落下的、什么工件都没有的骨架——
+       * 此时更早的完整轮次仍在目录里，用户需要知道怎么指到它。
+       * `--check` 那条早有同款提示，这一条此前漏了。
+       *
+       * 按 `--run-id` 是否给过分两句（第 2 轮 CODEX-06）：给了的时候 rerunIndex
+       * 恰恰来自那份被钉住的留痕，再劝他「可用 --run-id 指定更早的轮次」与事实相反，
+       * 会把排障的人推去用已经用过的旗标。
+       */
+      fail(
+        `${stage} 阶段第 ${rerunIndex} 轮缺件：${c.missing.join(' / ')}\n` +
+          (pinnedId
+            ? `  轮次取自 --run-id 指定的运行 ${pinnedId}。换一个 run_id 可查看别的轮次。`
+            : '  轮次取自最新一次运行。若那一轮尚未产出工件（例如 worker 中途崩溃），' +
+              '可用 --run-id <id> 指定更早的完整轮次。'),
+      );
     }
     return c.ok ? EXIT.OK : EXIT.MISSING_ARTIFACT;
   }
 
   // ── --await-approval ──
   if (args.flags.get('await-approval') === true) {
-    const runId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
+    // 同样直读：`latest.run_id` 就是这一轮的 run_id，不必按后缀反推
+    const runId = latest?.run_id ?? null;
 
     /*
      * ── 先校验裁决完整性，再置闸门（审查意见 AGY-02）──
@@ -800,6 +958,10 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
         await loadRoundReviews(ref.layout, stage, runId);
       const pre = await checkAdjudication({
         cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
+        // driver 位补上：裁决件是 `-revised-<当轮 Driver>.md`，按缺省找会在
+        // 非缺省 Driver 下必报 missing_disposition（计划双审 r2 GLM-03，阻断）
+        driver: gateDriver,
+        runIdPinned: Boolean(pinnedId),
         degraded, voidedSides,
         expectedFallbackIds, missingSides, runId,
       });
@@ -839,6 +1001,8 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     const g = await setGateChecked({
       triviumDir: ctx.triviumDir, topic, stage, state: 'awaiting_approval',
       runId, rerunIndex,
+      // 设计 §5.2 / §9.2 的三处留痕面之一，只记不读（代码双审 CODEX-06）
+      driver: gateDriver,
       sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
       heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
       expect: {
@@ -863,10 +1027,12 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   }
 
   // ── --check（默认）──
-  const runId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
+  // 直读留痕：这条路径最常用，也正是「裁决件尚未写出」的那一格——
+  // 按后缀反推时第一趟恒为 null，整条命令会以「请先跑一次双审」硬失败
+  const runId = latest?.run_id ?? null;
   if (!runId) {
     throw missingArtifactError(
-      `找不到 ${stage} 阶段第 ${rerunIndex} 轮的 run_id。请先跑一次双审，或用 --run-id 指定。`,
+      `找不到 ${stage} 阶段的运行元数据。请先跑一次双审，或用 --run-id 指定。`,
     );
   }
   const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides } =
@@ -875,6 +1041,8 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
 
   const result = await checkAdjudication({
     cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
+    driver: gateDriver,
+    runIdPinned: Boolean(pinnedId),
     degraded, voidedSides,
     expectedFallbackIds, missingSides, runId,
   });
@@ -1009,6 +1177,8 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     const g = await setGateChecked({
       triviumDir: ctx.triviumDir, topic, stage, state: 'awaiting_approval',
       runId, rerunIndex,
+      // 设计 §5.2 / §9.2 的三处留痕面之一，只记不读（代码双审 CODEX-06）
+      driver: gateDriver,
       sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
       heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
       expect: { runId },

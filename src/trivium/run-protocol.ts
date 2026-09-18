@@ -26,6 +26,7 @@ import {
 } from './review.js';
 import { resolveTopic } from './topic.js';
 import { readRunMeta } from './meta.js';
+import { type AgentId } from './agents/registry.js';
 import { setGateChecked } from './state.js';
 import type { AdapterContext } from './adapters/base.js';
 import { resolveAdapters } from './adapters/stub.js';
@@ -83,6 +84,18 @@ interface Handoff {
     /** 会话 id 与临时降级开关必须一起交接：worker 是另一个进程，读不到 --start 的 argv */
     sessionId: string | null;
     allowSingle: boolean;
+    /**
+     * 当轮 Driver（M9 第 5 步）。**必填**——与 `critics` / `sessionId` / `allowSingle` 同列。
+     *
+     * 声明成必填而不是可选，是为了让「类型上加了、`writeHandoff` 里忘了写值」
+     * 这条静默路径在**编译期**就不可达：`ReviewOptions.driver` 本身是可选的，
+     * 若这里也可选，漏写两处都过 typecheck，只能靠测试去兜。
+     *
+     * 注意这道保险**只在同版本进程内成立**：`rebuildContext` 读的是
+     * `JSON.parse(...) as Handoff`，旧版写出的交接文件没有这个字段，
+     * 类型必填而运行期 undefined——所以那里另有一道运行期校验。
+     */
+    driver: AgentId;
     /** 发起命令（A/B/C/D）同样只有 --start 知道，要随交接文件带给 worker */
     entry?: CommandEntry | null;
   };
@@ -110,11 +123,48 @@ async function writeHandoff(rc: RunContext): Promise<void> {
       critics: [...rc.sides],
       sessionId: rc.opts.sessionId ?? null,
       allowSingle: rc.opts.allowSingle === true,
+      /*
+       * 取值来自**运行元数据**，不是在这里重算一遍 `rc.opts.driver ?? DEFAULT_DRIVER`。
+       *
+       * 上一版就是那么写的。今天两者恒等（`prepareRun` 算的也是这个式子），
+       * 所以不是 bug——但它是**同一个派生的第二份实现**：`rc.opts` 是未归一化的原始入参，
+       * 一旦 `prepareRun` 的归一化口径变了（比如 driver 改从别处取），交接文件会
+       * 无声地分叉，而 worker 是另一个进程，分叉了也没人看得见。
+       *
+       * `rc.meta.driver` 是这一轮已经落盘的权威值，与下面 `handoffDriver` 的回落
+       * 口径同源（那段注释写的就是「回落取 meta.driver 而不是 DEFAULT_DRIVER」）。
+       *
+       * 这一处是扫描判据加上「实参块里不得出现 DEFAULT_DRIVER」之后浮出来的
+       * （第 2 轮 CODEX-01 ≡ GLM-02③）——那条判据要防的正是「形对值错」。
+       */
+      driver: rc.meta.driver,
       entry: rc.opts.entry ?? null,
       ...(rc.opts.assetRoot ? { assetRoot: rc.opts.assetRoot } : {}),
     },
   };
   await fs.writeFile(requestPath(rc.runDirBase), JSON.stringify(h, null, 2) + '\n', 'utf8');
+}
+
+/**
+ * 交接文件里的当轮 Driver，缺失时回落并**打一条可见告警**。
+ *
+ * `Handoff.options.driver` 在类型上是必填的，但 `rebuildContext` 读的是
+ * `JSON.parse(...) as Handoff`——那是**断言，不是校验**。用
+ * `review --worker <runId>` 恢复一份**旧版写出的**交接文件时，类型必填而运行期
+ * 是 undefined：静默回落缺省 Driver 会让非缺省 Driver 的那一轮被按 claude 重跑，
+ * 产物后缀与轮次都记错，且全程不报错。
+ *
+ * 回落取 `meta.driver` 而**不是** `DEFAULT_DRIVER`：运行元数据是这一轮 Driver 的
+ * 权威记录，而且它就在调用处手边——没有理由去猜一个可能错的值。
+ */
+function handoffDriver(h: Handoff, meta: { driver: AgentId }, runId: string): AgentId {
+  const v = h.options.driver as AgentId | undefined;
+  if (v) return v;
+  warn(
+    `运行 ${runId} 的交接文件没有 driver 字段（早于 M9 第 5 步写出）：` +
+      `按运行元数据记录的「${meta.driver}」继续`,
+  );
+  return meta.driver;
 }
 
 /** 工作进程侧：从交接文件重建执行上下文 */
@@ -151,6 +201,7 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
       critics: h.options.critics,
       sessionId: h.options.sessionId ?? null,
       allowSingle: h.options.allowSingle === true,
+      driver: handoffDriver(h, meta, runId),
       entry: h.options.entry ?? null,
       ...(h.options.assetRoot ? { assetRoot: h.options.assetRoot } : {}),
     } satisfies ReviewOptions,

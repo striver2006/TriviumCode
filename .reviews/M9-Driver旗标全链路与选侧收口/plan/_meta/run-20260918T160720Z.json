@@ -1,0 +1,261 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260918T160720Z",
+  "topic": "M9-Driver旗标全链路与选侧收口",
+  "stage": "plan",
+  "rerun_index": 2,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "这一轮重点看三处，都是本轮新改形状的地方，也都是计划 §11 我自己标出来的薄弱点：\n\n一、判据换底是否站得住。§6.9 把「候选是不是审查件」的判据从「登记反推」改成了「文件自身 front-matter」，复用 freeze.ts 既有的 classifyArtifact。但我没有核它在 front-matter 缺失 / 损坏 / 非 UTF-8 / 空文件这些边界上返回什么，也没核它是否只在 freeze 语境下成立。请判这是不是把一个已知问题换成了未知问题。\n\n二、§6.7 闸门区的取值链解法。「先按缺省推一次 run_id，读到元数据后用 meta.driver 复算一次，不一致则以元数据为准」是我现场设计的，无先例可抄，是本轮唯一纯新增的控制流。请推演它会不会震荡，或在归档被人工改动过的主题上出错。\n\n三、§4.2 的三条判据约束（剥注释、锁调用点、区分两个相似键名）仍然只是散文，我没把它写成可执行的匹配器再自测一遍。上一轮的教训就是「判据看起来对、实际永绿」。请特别核变异表最后一行（专测剥注释）能否真的区分开注释里的那个词与属性位上的那个词。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "8ff9fc303e1a2e44d638e7bd36be667f071719a3",
+    "tree_hash": "ec2732ff244de0b27f491d4ddf74e71fc76ba56f",
+    "dirty": true,
+    "subject_sha256": "f3a3735c9d0707cf1ca87699f44c6bd7efcf3403b9e86007d93ebcd4756d2eb0",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-18T16:07:20.704Z",
+  "finished_at": "2026-09-18T16:21:48.551Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.0",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 391.617,
+      "tool_calls": {
+        "run_command": 63,
+        "project_reads": 44
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0b545-ba8e-75a1-960d-0b1c7f23a0a2",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.6",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 276.086,
+      "tool_calls": {
+        "read": 34,
+        "grep": 5,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 300616,
+        "output_tokens": 33768,
+        "thinking_tokens": 28250,
+        "cache_read_tokens": 3070354,
+        "total_tokens": 334384
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "ad3b72ec-3462-48e1-b170-bec559889864",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 867.524,
+      "tool_calls": {
+        "read": 23,
+        "grep": 10,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 19,
+        "inputTokens": 1672933,
+        "outputTokens": 52292,
+        "totalTokens": 1725225,
+        "cacheReadTokens": 1539008,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_ee88bb7b-226d-4461-87d4-d8be0a96191d",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-gemini.md",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-glm.md",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/_meta/review-gemini-20260918T154204Z.json",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/_meta/review-glm-20260918T154204Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/brief-codex-20260918T160720Z.md",
+      "sha256": "1347521adbf95f86252f8f7cec0c69127ffb4d4ee49dca8b7a62240a1ed6a306"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/brief-gemini-20260918T160720Z.md",
+      "sha256": "337983115ae703eb3615d130a7c7236cb18d8bf65daa8e87759500b014d67840"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/brief-glm-20260918T160720Z.md",
+      "sha256": "f1a41024f45256295210baf0347108990b33bc6316c63babd69796c5b349f086"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/review-codex-20260918T160720Z.json",
+      "sha256": "563ebe0b6caac4eaa4137ebca78cf750f2617ac13c3309625c4282f3720f5976"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/review-gemini-20260918T160720Z.json",
+      "sha256": "f8653526d06ab9db8cdd61a187d72fa4b05edae18837767f4b75995af132837e"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/review-glm-20260918T160720Z.json",
+      "sha256": "54a5b7056af3071ca5aa864b2e32d03e5241231bb776000f39e998a408180224"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-r2-codex.md",
+      "sha256": "daa2d0020692cb5cc52f8fb35afc543e83c72a0b52ff20719bcb99c2068d15cb"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-r2-gemini.md",
+      "sha256": "a5c70718837bd7be34569c262937b37ed7b402cb714a8218308151b50d3a9d9f"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-r2-glm.md",
+      "sha256": "1dd738289741681a514cf700805dbcf16b45e706f110e889bba0068f50a7a7f0"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

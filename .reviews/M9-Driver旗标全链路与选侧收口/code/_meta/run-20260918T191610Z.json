@@ -1,0 +1,273 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260918T191610Z",
+  "topic": "M9-Driver旗标全链路与选侧收口",
+  "stage": "code",
+  "rerun_index": 2,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "这次重点看三处，都是上一轮裁决落地后新产生、还没被审过的面：一、闸门直读运行元数据后的三态回落。cmdGate 现在分「一份都没扫到」「扫到但全都解析不出」「正常」三态，中间那态改成了硬失败。请判这条硬失败会不会误伤历史主题——归档里更早期的运行元数据若因契约演进而解析不过，是否会把那些老主题的闸门整个锁死，而用户没有自救出口。二、EV-66 我用反向断言锁住的那个边界。裁决件契约把 role 钉成字面量 claude，于是非缺省 Driver 下闸门定位对了、文件却过不了校验。我选择不在本步改契约，只把失败锁成一条断言。请判这个处置是否成立，还是说它已经让本步宣称的「全链路」名不副实。三、接线扫描判据自身的可靠性。判据现在靠剥注释、词边界、按调用点锚定实参块三条，每条都配了自测。请找这三条的共同盲区——真实代码写成多行、或实参经中间变量转手时，判据会不会安静地变绿。",
+  "task_goal": "M9 第 5 步 · `--driver` 全链路与选侧收口 实施计划（第 3 轮）",
+  "entry": "C",
+  "driver": "claude",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "8ff9fc303e1a2e44d638e7bd36be667f071719a3",
+    "tree_hash": "527e18806c5a2a3c4e8e617cd2e5ba5d0421bca2",
+    "dirty": true,
+    "subject_sha256": "82696b2ec10200b317894eba1a86d208bc605a590894d7f096774e5719c8809f",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-18T19:16:10.947Z",
+  "finished_at": "2026-09-18T19:25:10.382Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.0",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 404.049,
+      "tool_calls": {
+        "run_command": 93,
+        "project_reads": 43
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0b5f2-9d3b-72d1-96bc-21a1c2985ca1",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.6",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 202.253,
+      "tool_calls": {
+        "read": 27,
+        "grep": 7,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 10
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 750917,
+        "output_tokens": 30494,
+        "thinking_tokens": 22481,
+        "cache_read_tokens": 2839305,
+        "total_tokens": 781411
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "787bbea3-2497-4de3-92fe-14fffa4e8457",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 539.148,
+      "tool_calls": {
+        "read": 12,
+        "grep": 7,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 11
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 14,
+        "inputTokens": 1664256,
+        "outputTokens": 38675,
+        "totalTokens": 1702931,
+        "cacheReadTokens": 1511680,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_322d5361-e885-44f3-8587-ad88041b35df",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M9-Driver旗标全链路与选侧收口/code/2026-09-19-M9-Driver旗标全链路与选侧收口-gemini.md",
+    ".reviews/M9-Driver旗标全链路与选侧收口/code/2026-09-19-M9-Driver旗标全链路与选侧收口-glm.md",
+    ".reviews/M9-Driver旗标全链路与选侧收口/code/_meta/review-gemini-20260918T165302Z.json",
+    ".reviews/M9-Driver旗标全链路与选侧收口/code/_meta/review-glm-20260918T165302Z.json",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-gemini.md",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-glm.md",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-r2-gemini.md",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-r2-glm.md",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/_meta/review-gemini-20260918T154204Z.json",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/_meta/review-gemini-20260918T160720Z.json",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/_meta/review-glm-20260918T154204Z.json",
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/_meta/review-glm-20260918T160720Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/code/_meta/changes-20260918T191610Z.diff",
+      "sha256": "82696b2ec10200b317894eba1a86d208bc605a590894d7f096774e5719c8809f"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/code/_meta/brief-codex-20260918T191610Z.md",
+      "sha256": "0a82d164b0a9241d6be2122cf9215c62e6b9ed2c93fa06c191f779be4ad683c5"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/code/_meta/brief-gemini-20260918T191610Z.md",
+      "sha256": "1130811991d52fa3a0f30497eb05c0b8857414613bf7af5370629d2353f3b1c4"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/code/_meta/brief-glm-20260918T191610Z.md",
+      "sha256": "fb9ece75f3aa560477b160dac31e1be3f2688bb383cd5621c4f32bcc2d1c3f5f"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/code/_meta/review-codex-20260918T191610Z.json",
+      "sha256": "6073518ce02337563df0c6171424306e0191bad5b6f587955d1bd7e2f260c9d4"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/code/_meta/review-gemini-20260918T191610Z.json",
+      "sha256": "770a1e8dae59ea003012091e621a924c4583a2e5cafd40d6da89bd4e06a4990d"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/code/_meta/review-glm-20260918T191610Z.json",
+      "sha256": "0b3c3e6ba09abb51a69b872bb8e3db2ec5a9152f196542ce354245636c6629cf"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/code/2026-09-19-M9-Driver旗标全链路与选侧收口-r2-codex.md",
+      "sha256": "1aec71fd00ddd9a5b1cb4bccce3bc9a68395eba237b4ff53e8b46689f9563427"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/code/2026-09-19-M9-Driver旗标全链路与选侧收口-r2-gemini.md",
+      "sha256": "a859feaec614db051f5d43a2a43a436c703be3d8115866c9a4b5cd2b89344b06"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/code/2026-09-19-M9-Driver旗标全链路与选侧收口-r2-glm.md",
+      "sha256": "74fbf3d8376b4316fad816fa4568ab259ad21a22fb6b036625be3e14d03314b3"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

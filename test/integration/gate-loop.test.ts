@@ -1156,3 +1156,279 @@ test('worker 还活着时 hook-session-start 绝不回收', { skip: bundleMissin
   const { killProcessTree } = await import('../../src/trivium/util/exec.js');
   killProcessTree(js.worker_pid, 'SIGKILL');
 });
+
+/*
+ * ───────── T-11：非缺省 Driver 的闸门闭环（M9 第 5 步，完成判据 C4 / V9）─────────
+ *
+ * ## 为什么必须是运行期用例
+ *
+ * 本步的存在理由就是计划第 2 轮的阻断：非缺省 Driver 且 `--critics claude` 时，
+ * 闸门按工件后缀反推 driver，把本轮的 `-claude.md` 审查件整批跳过，
+ * 以「请先跑一次双审」硬失败——而双审明明跑完了。
+ *
+ * `driver-wiring.test.ts` 对闸门区只做源码扫描。它抓得住「接线被字面删除」，
+ * **抓不住语义级回归**：`latestRunMeta` 选错来源、pinned 与 latest 的优先级颠倒、
+ * gateDriver 与 rerun_index 的组合错位——扫描全绿时这些照样可以坏
+ * （代码双审 GLM-01 / AGY-02 / CODEX-05，三侧一致判必须补）。
+ *
+ * ## 桩配置必须点名 claude
+ *
+ * `resolveAdapters` 只替换 `Object.keys(stub)` 里点到的侧，没点到的照旧落到真适配器。
+ * 本文件顶部的 `STUB` 是 `{gemini, glm}`，而这条用例选的是 claude——
+ * 不点名就会在每次 `npm run check` 里真拉一次 Claude CLI，
+ * 而且只有**调用之后**才由指纹断言暴露：钱已经花了（R-8 / CODEX-08）。
+ */
+const DRIVER_TOPIC = '闸门闭环-非缺省Driver';
+
+test(
+  'T-11：非缺省 Driver 下 gate --check 找的是 -revised-<真Driver>.md，不是缺省的',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    const { SELECTABLE, assertSelectableUsable } = await import('../helpers/critic-fixtures.js');
+    const { DEFAULT_DRIVER } = await import('../../src/trivium/agents/registry.js');
+    assertSelectableUsable();
+    const driver = SELECTABLE[0]!;
+    // 桩点名本轮入选的每一侧——这里入选的是缺省 Driver 那一家
+    const stub: StubConfig = { [DEFAULT_DRIVER]: { mode: 'ok' } };
+
+    const fx = await makeFixture({ topic: DRIVER_TOPIC });
+    const stageDir = path.join(fx.root, '.reviews', DRIVER_TOPIC, 'plan');
+    await fs.mkdir(stageDir, { recursive: true });
+    /*
+     * 先删掉夹具预置的缺省 Driver 后缀原稿。
+     *
+     * 它与 **claude 作为审核者**产出的审查件**同名**（都是
+     * `<日期>-<主题>-claude.md`）：留着它，`writeArtifact` 的 `O_EXCL` 会把整轮
+     * 顶到 r2，本用例要验的东西就被轮次噪声盖住了。
+     * 这不是缺陷，是「Driver 换人之后，同一后缀在两种角色间复用」的正常后果——
+     * R-1 那条逃生门要防的也正是这个形态。
+     */
+    await fs.rm(path.join(stageDir, `${today()}-${DRIVER_TOPIC}-${DEFAULT_DRIVER}.md`), { force: true });
+    // 原稿要带当轮 Driver 的后缀——driver 不只决定谁能入选，也决定原稿是谁的
+    await fs.writeFile(path.join(stageDir, `${today()}-${DRIVER_TOPIC}-${driver}.md`), '# 原稿\n', 'utf8');
+
+    const started = await cli(
+      fx.root,
+      [
+        'review', '--start', '--entry', 'B', '--stage', 'plan', '--topic', DRIVER_TOPIC,
+        '--focus', 'x', '--driver', driver, '--critics', DEFAULT_DRIVER,
+        '--session-id', SESSION, '--json',
+      ],
+      stub,
+    );
+    assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
+    const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string };
+    let code: number = EXIT.STILL_RUNNING;
+    for (let i = 0; i < 12 && code === EXIT.STILL_RUNNING; i++) {
+      const w = await cli(fx.root, ['review', '--wait', js.run_id, '--timeout', '20'], stub, 60_000);
+      code = w.code ?? EXIT.FAIL;
+    }
+    assert.equal(code, EXIT.OK, '非缺省 Driver 的一轮应当正常跑完');
+
+    /*
+     * 第 1 格：**裁决件尚未写出**——这正是计划第 2 轮阻断的那一格。
+     * 旧实现在这里会以「请先跑一次双审」硬失败；正确行为是报缺裁决件，
+     * 且文案要点名 `-revised-<真Driver>.md` 而不是缺省 Driver 的那份。
+     */
+    const before = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', DRIVER_TOPIC, '--check'], stub);
+    const out = before.stdout + before.stderr;
+    assert.notEqual(before.code, EXIT.OK, '裁决件还没写，不该通过');
+    assert.doesNotMatch(
+      out, /请先跑一次双审/,
+      '双审明明跑完了却说没跑——这正是 r2 判为阻断的那个症状（按后缀反推 run_id 失败）',
+    );
+    assert.match(
+      out, new RegExp(`revised-${driver}`),
+      `缺件文案要点名 -revised-${driver}.md；点成缺省 Driver 那份说明 driver 没传到 checkAdjudication`,
+    );
+    /*
+     * 缺裁决件的文案要按**轮次是否被钉住**分档（第 3 轮 GLM-04）。
+     *
+     * 没钉住时轮次取自「最新一次运行」，而那可能是一份 worker 崩溃前落下的、
+     * 什么裁决件都不会有的骨架——此时该提示用 `--run-id` 指回更早的完整轮次，
+     * 否则会把「其实想验上一轮」的人引去补一份不必要的裁决件。
+     */
+    assert.match(
+      out, /--run-id/,
+      '未钉住轮次时，缺裁决件的文案要给出 --run-id 这条出口——' +
+        '否则遇上崩溃骨架的人只会去补一份不该补的裁决件',
+    );
+    /*
+     * 反过来：钉住了就**不许再提**。那时 rerunIndex 恰恰来自他给的那份留痕，
+     * 再劝他用同一个旗标是把人推向已经用过的路（第 2 轮 CODEX-06 的同款）。
+     */
+    const pinnedBefore = await cli(
+      fx.root,
+      ['gate', '--stage', 'plan', '--topic', DRIVER_TOPIC, '--check', '--run-id', js.run_id],
+      stub,
+    );
+    const pinnedOut = pinnedBefore.stdout + pinnedBefore.stderr;
+    assert.notEqual(pinnedBefore.code, EXIT.OK, '裁决件还没写，钉住轮次也不该通过');
+    assert.doesNotMatch(
+      pinnedOut, /--run-id/,
+      '已经给了 --run-id，文案却还在劝用 --run-id：轮次本来就取自他钉的那份留痕。\n' +
+        `  实际输出：${pinnedOut}`,
+    );
+
+    /*
+     * 第 2 格：**谎报件不得静默通过**（第 2 轮 CODEX-04）。
+     *
+     * 「这份裁决件是谁写的」有两个来源——文件名后缀（闸门按它定位）与
+     * front-matter 的 `role`（只过 schema 的 `const: claude`）。补这条判据之前，
+     * 两者之间**没有任何机器判据**，于是下面这份自相矛盾的件会通过闸门，
+     * 且没有一处会发现。
+     *
+     * 而它恰恰是照今天的资产面写出来的那一份：`disposition.md.template` 写死
+     * `role: claude`，三份 SKILL 与 `templates/README.md` 也仍写 `-revised-claude.md`。
+     * 非缺省 Driver 的人照着模板写、再把文件名改对，得到的就是这个。
+     *
+     * 所以 EV-66 原先记的那一格（「非缺省 Driver 写不出合法裁决件」）是记错了：
+     * 写得出来，只是**必须是谎报的**。
+     */
+    const dispositionPath = path.join(stageDir, `${today()}-${DRIVER_TOPIC}-revised-${driver}.md`);
+    const dispositionBody = (role: string): string => [
+      '---', 'schema: trivium.disposition.v1', `topic: ${DRIVER_TOPIC}`, 'stage: plan',
+      `role: ${role}`, 'kind: revised', `run_id: ${js.run_id}`,
+      'addresses:', `  - ${today()}-${DRIVER_TOPIC}-${DEFAULT_DRIVER}.md`,
+      '---', '',
+      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- |',
+      `| ${DEFAULT_DRIVER.toUpperCase()}-01 | ${DEFAULT_DRIVER} | blocker | 接受 | 确实漏了这一处 | §1 |`,
+      '',
+    ].join('\n');
+
+    await fs.writeFile(dispositionPath, dispositionBody(DEFAULT_DRIVER), 'utf8');
+    const lied = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', DRIVER_TOPIC, '--check', '--json'], stub);
+    const lieOut = lied.stdout + lied.stderr;
+    assert.notEqual(
+      lied.code, EXIT.OK,
+      '文件名说是 ' + driver + ' 写的、front-matter 说是 ' + DEFAULT_DRIVER + ' 写的，' +
+        '这份自相矛盾的裁决件通过了闸门——作者身份没有任何机器判据在看着',
+    );
+    assert.match(
+      lieOut, /role=/,
+      '失败原因里没点名 role：本格要证的正是「文件名后缀与 front-matter 的 role 必须同指一人」，' +
+        `失败在别的地方说明这一格没被真正验到。\n  实际输出：${lieOut}`,
+    );
+
+    // 第 3 格：补齐**诚实**的裁决件（front-matter 的 run_id 要对得上）
+    await fs.writeFile(dispositionPath, dispositionBody(driver), 'utf8');
+    const after = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', DRIVER_TOPIC, '--check', '--json'], stub);
+    /*
+     * ## 这里锁的是一条**已知边界**，不是期望行为（EV-66）
+     *
+     * 闸门现在**定位对了**——上面两条断言已经证明它找的是 `-revised-<真Driver>.md`
+     * 而不是缺省 Driver 那份，计划的完成判据 C4 说的就是这两件事，都成立。
+     *
+     * 但整条链路还走不通：`disposition.v1.json` 把 `role` 钉死成
+     * `{ "const": "claude" }`，于是**诚实写 role 的那份过不了 schema**——
+     * 文件名对了，front-matter 的 role 不合契约。
+     *
+     * 连同上一格，非缺省 Driver 的三条路现在**各自失败在说得清的地方**：
+     *   · 照资产写（名与 role 都是缺省 Driver）→ 定位不到，报 missing_disposition；
+     *   · 改名不改 role（谎报）              → 上一格的 role 比对判红；
+     *   · 诚实写 role                        → 卡在本格，即 EV-66。
+     *
+     * 对照 `run.v2.json` 的 `driver`：那里是 `type: string` 不枚举，
+     * 身份校验交给代码按注册表做，并明写「此处不枚举」。同一件事两套处理。
+     *
+     * **本步不改**：那是契约变更，不在第 5 步的落点表里。这条断言把边界锁成可见事实——
+     * 等 EV-66 修好，它会当场红，提醒改的人把本用例升级成「补齐后应当通过」。
+     * 本用例是 T-11 第一次真跑时抓到它的；换成源码扫描永远碰不到这一格。
+     */
+    assert.notEqual(after.code, EXIT.OK, 'EV-66 若已修复，请把本断言改成期望通过');
+    assert.match(
+      after.stdout + after.stderr, /bad_front_matter|role/,
+      '预期失败在 disposition schema 的 role 常量上；换成别的失败说明边界变了，要重新核',
+    );
+  },
+);
+
+/*
+ * ───────── T-12：「扫到留痕，但一份都读不出」那一格 ─────────
+ * （第 2 轮 CODEX-03 ≡ AGY-01 ≡ GLM-01）
+ *
+ * 三侧同时打中同一处：这条硬失败的方向对，但它给的两条自救路**在该状态的定义下
+ * 都走不通**——`--run-id` 读的是同一批文件（同样读不出），而「修复或移除」会撞上
+ * 提交锚（运行清单一经登记即不可删、已提交的不可改）。
+ *
+ * 这条分支此前**全仓零覆盖**：codex 实测 grep 那句文案只命中 src/。
+ * 一条既无出路又无测试的新失败路径是本步引入的——所以补这一条。
+ *
+ * 触发面不是假想：本仓把 schema 收严当常规动作，一旦某阶段的历史留痕集体失校，
+ * 那个主题的 gate 三条子命令会一起锁死。`run-meta.test.ts` 的「真实语料回归」
+ * 守的是「不要让它发生」，本条守的是「真发生时，话得说对」。
+ */
+const CORRUPT_TOPIC = '留痕全坏-闸门话术';
+
+test(
+  'T-12：留痕全部读不出时，硬失败的文案必须给出走得通的出口',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    const { metaDir } = await import('../../src/trivium/archive.js');
+    const fx = await makeFixture({ topic: CORRUPT_TOPIC });
+    const dir = metaDir(
+      { archiveRoot: path.join(fx.root, '.reviews'), topic: CORRUPT_TOPIC },
+      'plan',
+    );
+    await fs.mkdir(dir, { recursive: true });
+
+    // 两份「扫得到、读不出」的留痕：schema 不识 + 内容损坏，各一种
+    await fs.writeFile(
+      path.join(dir, 'run-20260101T000000Z.json'),
+      JSON.stringify({ schema: 'trivium.run.v99', run_id: '20260101T000000Z' }), 'utf8',
+    );
+    await fs.writeFile(path.join(dir, 'run-20260102T000000Z.json'), '{ 这不是 JSON', 'utf8');
+
+    const r = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', CORRUPT_TOPIC, '--check'], STUB);
+    const out = r.stdout + r.stderr;
+
+    assert.equal(r.code, EXIT.MISSING_ARTIFACT, `应当硬失败而不是按缺省 Driver 继续：${out}`);
+    assert.match(out, /一份都读不出来/, '要说清是「有但读不出」，不是「还没跑过」');
+    assert.match(out, /20260101T000000Z/, '要点名读不出的是哪几份，否则用户无从下手');
+
+    /*
+     * 核心：**不得再把用户推向 `--run-id`**。
+     *
+     * 该状态的定义就是「扫到的全都读不出」，而 `--run-id` 走同一个 readRunMeta，
+     * 必然返回 null 并撞上另一条硬失败——按构造不可实现。
+     * 文案里可以说明它「没有用」，但不能把它当成出口来建议。
+     */
+    assert.doesNotMatch(
+      out, /用 --run-id 指定一份可读的运行/,
+      '文案又在建议 --run-id 了：这一格里它读的是同一批文件，必然也读不出——' +
+        '把排障的人推去试一条按构造必败的路',
+    );
+    assert.match(
+      out, /重跑/,
+      '没给出走得通的出口：新运行会落一份可读的运行元数据（prepareRun 先写骨架），闸门随即恢复',
+    );
+    assert.match(
+      out, /不要删除或改写|提交/,
+      '没提醒「别动那几份运行清单」：它们是提交时留痕核对的锚，删改会让 git commit 被拦下',
+    );
+
+    // 同一口径要覆盖三条子命令，不能只在 --check 上说对
+    for (const sub of ['--check-artifacts', '--await-approval']) {
+      const r2 = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', CORRUPT_TOPIC, sub], STUB);
+      const o2 = r2.stdout + r2.stderr;
+      assert.equal(r2.code, EXIT.MISSING_ARTIFACT, `${sub} 没有同款硬失败：${o2}`);
+      assert.match(o2, /一份都读不出来/, `${sub} 的文案与 --check 不同口径`);
+    }
+
+    /*
+     * 并且钉死「--run-id 在这一格确实没用」——这是上面那条 doesNotMatch 的理由。
+     * 光说不练的话，下一个人会觉得删掉那句建议只是无谓的谨慎。
+     */
+    const pinned = await cli(
+      fx.root,
+      ['gate', '--stage', 'plan', '--topic', CORRUPT_TOPIC, '--check', '--run-id', '20260101T000000Z'],
+      STUB,
+    );
+    assert.equal(pinned.code, EXIT.MISSING_ARTIFACT, '--run-id 指到一份读不出的留痕，同样要硬失败');
+    assert.match(
+      pinned.stdout + pinned.stderr, /读不出来/,
+      '--run-id 这条路的失败理由也要说清，不能静默按缺省继续',
+    );
+  },
+);

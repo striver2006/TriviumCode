@@ -1,0 +1,257 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260918T154204Z",
+  "topic": "M9-Driver旗标全链路与选侧收口",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "这次重点看三处，都是计划第 11 节我自己标出来的薄弱点：\n\n一、CODEX-07 的判据推导是否可靠。计划 5.6 要新增「候选文件若已出现在某次运行登记的\n产物清单里就判定为审查件、不得当原稿」这条规则，依据是三条实读：登记的写入方只有\nreview.ts 一处、writeArtifact 全仓只在 review.ts:1147 被调、role 恒为 critic。但由此\n推出的「带角色后缀且 kind 为空的登记条目必定是审查件」是推导不是实测。请找有没有\n漏掉的第四条写入路径——漏一条就会把合法原稿判死，而用户无自救出口。\n\n二、本计划对步骤表范围的两处扩张是否成立。步骤表 2.1 是第 5 步的权威定义，我超出了\n两处：补进 review.ts:559 的轮次解析（那张表没列这一项），以及把 EV-54 纳入本步（触发\n条件写的是第 5/6 步，选在第 5 步是判断）。请判我给的理由撑不撑得住，还是该退回去。\n\n三、接线的测试判据会不会是假证明。本步要防的形态是「函数签名支持 Driver 参数、真实\n调用点不传」，而扫源码的断言极易写成永绿：正则没匹配上却不报错、定位实参块的结尾找\n错位置、断言了键在场而不是值传了。请核 T-3 扩写的那条与 T-4 新增的几条，会不会自己\n就是假的。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "8ff9fc303e1a2e44d638e7bd36be667f071719a3",
+    "tree_hash": "870e63f0c5ec34b0d6162d81bc225eab067bca25",
+    "dirty": true,
+    "subject_sha256": "72f22a72d59b96304c2f2f8a8c79f282dfc78342b01cb7f2021922f9c1508053",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-18T15:42:05.146Z",
+  "finished_at": "2026-09-18T16:01:42.671Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.0",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 399.701,
+      "tool_calls": {
+        "run_command": 72,
+        "project_reads": 42
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0b52e-9a62-70e0-b884-3afeb59f36fa",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.6",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 452.779,
+      "tool_calls": {
+        "read": 47,
+        "grep": 17,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 22
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 568741,
+        "output_tokens": 50059,
+        "thinking_tokens": 42342,
+        "cache_read_tokens": 6910295,
+        "total_tokens": 618800
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "e601b816-1a21-4c32-aee2-d7668b0570b2",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1177.115,
+      "tool_calls": {
+        "read": 0,
+        "grep": 0,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 29
+      },
+      "evidence_ok": false,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 22,
+        "inputTokens": 2726179,
+        "outputTokens": 60946,
+        "totalTokens": 2787125,
+        "cacheReadTokens": 2541376,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_4ee6f8ff-cdbf-44f4-bd31-e9240461a1a0",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/brief-codex-20260918T154204Z.md",
+      "sha256": "f9fa09795717722eb6d3bca5f58e61ded15020de5e27c0292d25b1d91030582c"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/brief-gemini-20260918T154204Z.md",
+      "sha256": "a00685dfb4e36563872bdcda7866bd14ea2111849ed621812b969d889f6dd942"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/brief-glm-20260918T154204Z.md",
+      "sha256": "9068b3e155056eac871b2a4c6049241d0602b868f4ca903cb94a3c48a82142b9"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/review-codex-20260918T154204Z.json",
+      "sha256": "3dd0c2f03a55ab2aca2cffa04138f751196e242d314fc385bce16652a50c4c37"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/review-gemini-20260918T154204Z.json",
+      "sha256": "affc905f8ad1de15c94fba960306bd3875ed68034b821923bed078909b1e9469"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/_meta/review-glm-20260918T154204Z.json",
+      "sha256": "35ac53d1c0718bfa7c0660bff591c537e62f561cc68e8df422ed99ce062b2528"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-codex.md",
+      "sha256": "5ddceec92c505c4e77424cb50c7dfc22d3a5694addbadc6e97b1506d178503f0"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-gemini.md",
+      "sha256": "554ecd897a9af7ab21073ad4bfcdde500fa0f8cc5930eaf4ab30af4f2b3e3fae"
+    },
+    {
+      "path": "M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-glm.md",
+      "sha256": "202174a1e6e336cc8b79223bd7a6c0255bda62696636997e4e36f27c95b64d18"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

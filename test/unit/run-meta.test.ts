@@ -10,11 +10,12 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { newRunMeta, migrateRunMetaV1, readRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
+import { latestRunMeta, newRunMeta, migrateRunMetaV1, readRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
 import { validateRunMeta, validateRunMetaV1 } from '../../src/trivium/schemas.js';
 import { checkStageArtifacts, metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
 import { CRITICS, CRITIC_VENDOR, type CriticId, type RunMeta } from '../../src/trivium/types.js';
+import { REPO_ROOT } from '../helpers/fixture.js';
 
 async function tmpLayout(): Promise<ArchiveLayout> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-runmeta-'));
@@ -54,6 +55,106 @@ test('骨架写的是 run.v2，且带上 driver 与入选集合', () => {
 
 test('骨架的完成度是 full：此刻还没有任何一侧失败', () => {
   assert.equal(skeleton().review_mode, 'full');
+});
+
+// ── driver_enabled：M9 第 5 步「放行但如实标注」的留痕落点（T-8）──
+
+test('driver_enabled 恒写：缺省 Driver 那一路也要有值', () => {
+  /*
+   * 恒写而不是条件展开。缺失时既可能是旧留痕、也可能是本步漏传，事后分不开——
+   * 与 `profile_requested` / `model_provider` 恒写是同一条口径。
+   */
+  assert.equal(skeleton().driver_enabled, true);
+  assert.deepEqual(validateRunMeta(skeleton()), []);
+});
+
+test('driver_enabled: false 是合法留痕——M9 只校验「已登记」，不校验 driverEnabled', () => {
+  /*
+   * 这正是本步刻意接受的形态：校验 `driverEnabled` 会让第 6 步验收跑不成
+   * （当前只有 claude 启用为 Driver，而验收恰恰要 claude 当审核者）。
+   * 放行的代价由这个字段兜住，所以它必须能通过校验、而不是被判成坏留痕。
+   */
+  const meta = skeleton({ driver: 'gemini', driverEnabled: false, criticsSelected: ['glm'] });
+  assert.equal(meta.driver, 'gemini');
+  assert.equal(meta.driver_enabled, false);
+  assert.deepEqual(validateRunMeta(meta), [], 'driver_enabled: false 必须是合法留痕');
+});
+
+// ── latestRunMeta：闸门区 driver 与轮次的权威来源（M9 第 5 步）──
+
+test('latestRunMeta：按 run_id 取最新一条，字典序即时序是构造保证', async () => {
+  /*
+   * `newRunId()` 是 `toISOString()` 去掉分隔符与毫秒，即 `YYYYMMDDTHHMMSSZ`——
+   * **定宽 UTC**，所以字典序即时序：没有时区、没有变长、没有前导零问题。
+   * 这是构造保证而非经验规律，所以这里可以放心按字符串排序取最新。
+   */
+  const layout = await tmpLayout();
+  for (const [id, driver] of [
+    ['20260101T000000Z', DEFAULT_DRIVER],
+    ['20260918T160720Z', 'gemini'],
+    ['20260301T120000Z', 'glm'],
+  ] as const) {
+    await writeRunMeta(layout, 'plan', skeleton({ runId: id, driver, criticsSelected: ['codex'] }));
+  }
+  const r = await latestRunMeta(layout, 'plan');
+  assert.equal(r.meta?.run_id, '20260918T160720Z', '取的应当是时间最晚的那一条');
+  assert.equal(r.meta?.driver, 'gemini', 'driver 要由留痕权威给出，而不是按后缀反推');
+  assert.equal(r.scanned, 3);
+  assert.deepEqual(r.unreadable, [], '三份都读得出来，不该有跳过记录');
+});
+
+test('latestRunMeta：读不出来的那条往下跳，不是整个返回 null', async () => {
+  const layout = await tmpLayout();
+  await writeRunMeta(layout, 'plan', skeleton({ runId: '20260101T000000Z', criticsSelected: ['codex'] }));
+  // 搅坏最新那一份：契约不认（不是合法 run.v2/v1）
+  await fs.writeFile(path.join(metaDir(layout, 'plan'), 'run-20260918T160720Z.json'), '{"schema":"???"}');
+  const r = await latestRunMeta(layout, 'plan');
+  assert.equal(
+    r.meta?.run_id, '20260101T000000Z',
+    '最新那条读不出来时应当往下试，而不是让整个闸门失去依据',
+  );
+  /*
+   * **跳过要留下痕迹**（代码双审 CODEX-02）：静默跳过会让闸门把轮次与 run_id
+   * 一并变旧，若上一轮本就裁决齐备，--check 会返回 ok，而最新一轮落盘的审查件
+   * 从未被裁决检查过——人看到的只是「第 N-1 轮通过了」。
+   */
+  assert.deepEqual(r.unreadable, ['20260918T160720Z'], '被跳过的那份要能被调用方看见');
+});
+
+test('latestRunMeta：区分「一份都没有」与「有但全读不出」', async () => {
+  /*
+   * 两者压成同一个 null 时，调用方只能给出同一句「请先跑一次双审」，
+   * 而 `--check-artifacts` 更是直接按缺省 Driver 继续——回落把「留痕坏了」
+   * 悄悄变成「按 claude 判」（代码双审 AGY-01 / GLM-02）。
+   */
+  const empty = await tmpLayout();
+  const a = await latestRunMeta(empty, 'plan');
+  assert.deepEqual(
+    { meta: a.meta, scanned: a.scanned }, { meta: null, scanned: 0 },
+    '目录不存在 = 还没跑过，属正常',
+  );
+
+  const broken = await tmpLayout();
+  await writeRunMeta(broken, 'plan', skeleton({ runId: '20260101T000000Z', criticsSelected: ['codex'] }));
+  await fs.writeFile(path.join(metaDir(broken, 'plan'), 'run-20260101T000000Z.json'), '{"schema":"???"}');
+  const b = await latestRunMeta(broken, 'plan');
+  assert.equal(b.meta, null);
+  assert.equal(b.scanned, 1, '扫到过文件——调用方据此硬失败，而不是按「还没跑过」处理');
+  assert.deepEqual(b.unreadable, ['20260101T000000Z']);
+});
+
+test('历史留痕没有 driver_enabled 也必须读得回（M10 收紧校验之后仍要成立）', () => {
+  /*
+   * **本步唯一真正不可逆的选择**：归档里会出现 `driver_enabled: false` 的留痕。
+   * 反过来，早于本步的留痕整个字段缺失——缺失即「无从得知」，不等于 false。
+   * 所以它不进 `required`、不加 `if/then`；这条用例是那个决定的回归锁。
+   */
+  const meta = skeleton() as unknown as Record<string, unknown>;
+  delete meta['driver_enabled'];
+  assert.deepEqual(
+    validateRunMeta(meta), [],
+    'driver_enabled 一旦被当成必填，全部历史留痕会集体读不回',
+  );
 });
 
 test('入选集合按传入值落盘，不回落到当前启用集合', () => {
@@ -307,5 +408,71 @@ test('键集口径（第 2 步的旧依据）：同一轮次里失联侧的缺�
   assert.ok(
     !c.missing.some((m) => m.includes(b)),
     '旧口径下失联侧压根不进校验——这正是被修掉的漏判',
+  );
+});
+
+/**
+ * 真实语料回归：**归档里已有的运行元数据必须都还读得回**（第 2 轮 GLM-01②）。
+ *
+ * ## 为什么要有这一条
+ *
+ * `cmdGate` 现在把「扫到但一份都读不出」判成硬失败——方向是对的，但它的代价是：
+ * 某个阶段的历史留痕一旦集体失校，那个主题的三条子命令会**一起锁死**，
+ * 而用户手上没有任何合法自救手段（改或删 run-*.json 会撞提交锚）。
+ *
+ * 触发条件不是假想：本仓把 schema 收严当常规动作（给 run.v2 加 required、
+ * 改注册表的 vendor / id、调 `checkAgentIdentities`），每一次都可能让老留痕失校。
+ * 而在这条用例之前，对「契约演进不得锁死老主题」只有**纪律**和 `driver_enabled`
+ * 一个字段的回归锁——覆盖面远不够。
+ *
+ * 本条把纪律换成机制：任何未来的收紧，在合入当场就红，而不是等到某个老主题
+ * 的闸门被锁死时才发现。这与本仓「靠记性的纪律换成不依赖记性的机制」同源。
+ *
+ * ## 论域
+ *
+ * 只收 plan / code / bug 三个阶段——那正是 `latestRunMeta` 读的那三个。
+ * verify 阶段不在其内（归档里已知有一份 v1 形状的记录缺 7 个字段，
+ * 它不进 `latestRunMeta`，锁它只会把无关的历史包袱变成红灯）。
+ */
+test('真实语料：归档里 plan/code/bug 三阶段的运行元数据必须都还读得回', async () => {
+  const archiveRoot = path.join(REPO_ROOT, '.reviews');
+  let topics: string[];
+  try {
+    topics = (await fs.readdir(archiveRoot, { withFileTypes: true }))
+      .filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return; // 全新仓库还没有归档，本条无语料可测
+  }
+
+  const bad: string[] = [];
+  let scanned = 0;
+  for (const topic of topics) {
+    const l: ArchiveLayout = { archiveRoot, topic };
+    for (const stage of ['plan', 'code', 'bug'] as const) {
+      let files: string[];
+      try {
+        files = await fs.readdir(metaDir(l, stage));
+      } catch {
+        continue;
+      }
+      for (const f of files) {
+        const id = /^run-(.+)\.json$/.exec(f)?.[1];
+        if (!id) continue;
+        scanned++;
+        if (!(await readRunMeta(l, stage, id))) bad.push(`${topic}/${stage}/${id}`);
+      }
+    }
+  }
+
+  assert.ok(scanned > 0, `.reviews 下一份运行元数据都没扫到（${topics.length} 个主题）——本条失去语料`);
+  assert.deepEqual(
+    bad, [],
+    '下列历史留痕按当前契约读不回来了。\n' +
+      '  这不是「那些文件坏了」，而是**契约收紧把老主题锁死了**：\n' +
+      '  cmdGate 对「扫到但全读不出」是硬失败，那几个主题的 gate 三条子命令会一起失效，\n' +
+      '  而用户改不得也删不得（run-*.json 是提交时的完整性锚）。\n' +
+      '  要么让新契约兼容旧形状（加可选字段、不进 required、不加 enum），\n' +
+      '  要么给一条显式迁移；不要直接放宽本条。\n' +
+      `  读不回的：${bad.join('、')}`,
   );
 });

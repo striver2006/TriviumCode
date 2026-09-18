@@ -11,7 +11,7 @@ import type { Ctx, Stage } from './types.js';
 import { validateTopic, parseArtifactName } from './naming.js';
 import { missingArtifact, usageError } from './exit-codes.js';
 import { ensureDir, exists } from './util/fsx.js';
-import { stageDir, topicDir, type ArchiveLayout } from './archive.js';
+import { isReviewArtifact, stageDir, topicDir, type ArchiveLayout } from './archive.js';
 
 export interface TopicRef {
   topic: string;
@@ -84,6 +84,24 @@ export async function locateSubject(
     if (!(await exists(abs))) {
       throw missingArtifact(`指定的被审对象不存在：${explicitPath}`);
     }
+    /*
+     * 显式指定也要挡审查件——**这里是硬拒，不是过滤**。
+     *
+     * 自动候选那条路可以「剔掉再选下一个」，显式路径没有下一个：用户点名了这一份，
+     * 静默换成别的就是那族「解析成功、随后被悄悄替换」的缺口。而把一份审查意见
+     * 当原稿送审，产出的是「对意见的意见」，留痕上看不出审错了东西。
+     *
+     * 判据只认 `trivium.review.v1`（见 `isReviewArtifact`）：没有 front-matter 的
+     * 手写原稿、以及 Driver 的裁决件，一律放行。后者是有意的——用户显式指定裁决件
+     * 属明确意图，而自动候选按 `kind === null` 过滤，裁决件本就选不上。
+     */
+    if (await isReviewArtifact(abs)) {
+      throw missingArtifact(
+        `指定的被审对象是一份**审查件**，不是原稿：${explicitPath}\n` +
+          '  它的 front-matter 是 schema: trivium.review.v1，由编排器从审查员的结构化输出渲染而成。\n' +
+          '  拿它当被审对象会让这一轮审的是「对意见的意见」。请指向原稿。',
+      );
+    }
     return abs;
   }
 
@@ -108,14 +126,32 @@ export async function locateSubject(
     // 同主题同阶段可能有多轮原稿，取轮次最大者
     .sort((a, b) => b.parsed!.rerunIndex - a.parsed!.rerunIndex || b.fileName.localeCompare(a.fileName));
 
-  if (candidates.length === 0) {
+  /*
+   * **剔掉审查件，而不是一律硬拒**（计划双审 r1 D4 / R-1）。
+   *
+   * 换过 Driver 的主题里，上一轮别家当 Driver 时产出的审查件恰好顶着这一家的后缀，
+   * 且日期更晚——按上面的排序它会排在真原稿前面。一律硬拒会把一条合法工作流
+   * 永久锁死（改名就破坏文件名解析，用户没有自救手段）；剔掉它再往下取就没事。
+   */
+  const kept: typeof candidates = [];
+  const dropped: string[] = [];
+  for (const c of candidates) {
+    if (await isReviewArtifact(path.join(ref.stageDirAbs, c.fileName))) dropped.push(c.fileName);
+    else kept.push(c);
+  }
+
+  if (kept.length === 0) {
     const all = entries.length > 0 ? `\n  该目录下现有文件：${entries.join(', ')}` : '';
+    // 被剔掉的要点名：否则「明明有一份同名文件却说找不到」会把人引去查文件名规则
+    const why = dropped.length > 0
+      ? `\n  已排除（是审查件而非原稿）：${dropped.join(', ')}`
+      : '';
     throw missingArtifact(
       `在 ${ref.stageDirAbs} 下找不到主题「${ref.topic}」的原稿` +
-        `（形如 <日期>-${ref.topic}-${driver}.md）。请先落盘原稿，或用 --plan-file / --rca-file 显式指定。${all}`,
+        `（形如 <日期>-${ref.topic}-${driver}.md）。请先落盘原稿，或用 --plan-file / --rca-file 显式指定。${why}${all}`,
     );
   }
-  return path.join(ref.stageDirAbs, candidates[0]!.fileName);
+  return path.join(ref.stageDirAbs, kept[0]!.fileName);
 }
 
 /** 主题目录是否已存在（预检用：失败时不得创建主题目录，AC-16） */

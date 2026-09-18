@@ -1,0 +1,2758 @@
+# trivium changes.diff
+# run_id: 20260918T191610Z
+# base: HEAD
+# head: 8ff9fc303e1a2e44d638e7bd36be667f071719a3
+# files: 23
+#   doc/08_project/BACKLOG.md
+#   skills/dual-critic/schema/run.v2.json
+#   src/trivium/archive.ts
+#   src/trivium/cli.ts
+#   src/trivium/critics.ts
+#   src/trivium/gate.ts
+#   src/trivium/meta.ts
+#   src/trivium/preflight.ts
+#   src/trivium/review.ts
+#   src/trivium/run-protocol.ts
+#   src/trivium/state.ts
+#   src/trivium/topic-args.ts
+#   src/trivium/topic.ts
+#   src/trivium/types.ts
+#   test/integration/driver-flag.test.ts
+#   test/integration/gate-loop.test.ts
+#   test/unit/critics.test.ts
+#   test/unit/deny-matrix.test.ts
+#   test/unit/driver-wiring.test.ts
+#   test/unit/preflight.test.ts
+#   test/unit/run-meta.test.ts
+#   test/unit/topic-args.test.ts
+#   test/unit/topic.test.ts
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 1405c22..616cd92 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -147,11 +147,20 @@
+ | EV-51 | todo | **deny 规则方言还有两格没测出来。** EV-49 的四条实测臂结了两格（逗号、空格：规则照常生效，已放行），剩下两格各有各的未决：①**星号判不出**——实测观测是「哨兵未泄漏、也没进 `permission_denials`、但模型确实发起过调用」，三种可能（规则生效但未记名 / 模型读了别的东西 / Read 因别的原因失败）**现有判据区分不了**，眼下维持挡靠的是 r2 立的**过匹配**理由（`fix*` 扩成一批同前缀目录、连坐审查员合法读取的己方历史），那条独立成立，但「星号到底 fail-open 还是过匹配」仍是未知；②**反斜杠完全没排臂**——从主题名不可达（`validateTopic` 显式挡 `\`），只能从 `walkSensitive` 的文件系统派生路径来，在把它当转义符的方言里会改变匹配。**没拿逗号/空格的结论替它背书**，如实记为未测。**修法**：给星号设计一个能区分三种可能的判据（例如同时放一个同前缀的兄弟目录，看它有没有被连坐——那同时回答了过匹配问题），反斜杠补一条常规臂。**触发条件：下一次跑 `deny-dialect` 用例时**，或语法门的字符集再次被审查意见要求改动时。来源：代码双审 r3 CODEX-05 ≡ GLM-06 的实测结案 | `scripts/claude-admission-control.mjs` 的 `caseDenyDialect`、`src/trivium/adapters/claude.ts` 的 `denyPathRepresentable` |
+ | EV-47 | todo | **两处「长期装置只验生产的一个真子集」。** ①**EV-42 第三臂**自建 exact-only 规则（`<Tool>(./<file>)`），而生产 `buildDenySettings` 对每条路径**同时下精确与子树两条**。也就是说 `peer_deny_applied` 所依据的那个**每次 doctor 都跑**的复验装置，长期只验证生产注入集的一个真子集；`<file>/**` 这类成员只有准入脚本在 2.1.276 上**一次性**测过。CLI 将来若对某种子形态改判非法，探针照旧落 `true` 而生产每次注入都带着未复验的成员——这与本步主旨「消除两份配方漂移，而不是给它加守卫」相悖。**修法**：第三臂改从 `adapters/claude.js` import `denyRuleShapeOf` + `buildDenySettings`，使长期复验与生产注入**逐字同源**（探针反向 import 适配层是既定方向，该文件已在这么做）。②**`denied_tool_in_trace` 的配对判据没有导出为纯函数**，于是准入脚本那一格是内联重写，且与探针问的不是同一个问题（脚本测「发起过白名单外调用」，探针测「被拒的尝试留了痕」）。**修法**：抽成导出纯函数（含 pairable 三分），脚本与探针共用。**触发条件：本轮 CODEX-02 的路径形状校验落地之后**——①改的正是 `buildDenySettings`，同一轮改两次会让变异验证说不清咬的是哪一版。**本轮已落的边界声明**：第三臂注释与 EV-42 done 段已写明「该臂形状 ⊊ 生产形状」，不让读者以为两者同构。来源：代码双审 r1 GLM-01 + GLM-02 | `src/trivium/probes/claude.ts` 的 `probeClaudePathDeny` 第三臂、`scripts/claude-admission-control.mjs` 的 stdin-parity 用例 |
+ | EV-52 | todo | **两条校验分支在四家全启用后不可达（原写三条，代码双审改准）。** M9 第 4 步把 claude 的 `criticEnabled` 与 anthropic 形状一并补齐后，两格变成空集：①`checkConfigAgents` 的「已登记但形状未定义」（判据读**注册表登记的 vendor**，不是配置里写的那个——实跑确认过，拿 `vendor: 'no-such-vendor'` 去试会走到再下一条「vendor 与注册表不符」）；②`topic-args.ts` 的「给非审核者指定 `--model-<id>`」。两条用例已改为 `skip` **并写明原因**（不是删，也不是提前 `return` 让它显示为通过）。**③原列的第三条是误判、已修正**（代码双审 AGY-01 ≡ GLM-01 ≡ CODEX-01 三侧独立收敛）：`default_critics` 那条的判据是 `!CRITIC_AGENT_IDS.includes(id)`，它同时承担**两类**输入，四家全启用后消失的只是「已登记但未启用」这一类，**分支对未登记 id 照旧可达**（`config.v2.json` 的 `default_critics.items` 无枚举，ajv 不会先拒 `'nobody'`），而当时全仓没有第二条覆盖它——**一条仍可达分支的唯一覆盖被一并放掉了**。现已按「规则」而非「那一种输入」拆成两条用例：未登记 id 那条今天就跑（变异验证：删掉 `schemas.ts` 那条校验即当场红），「已登记但未启用」那条保留 skip 且消息按子情形措辞。**这一点在计划双审里被逐字警告过**（CODEX-02b），裁决接受了、注释也写对了，而判据与 skip 消息按错的那版落了地——**注释写对了不算改对**。**为什么不开注入口**：那三个函数都只收 data、注册表是模块级绑定，要造负例就得给校验层加参数——那是生产改动，要连它自己的双审成本一起算，超出本步「夹具收口」的范围（计划双审 AGY-02 ≡ GLM-01 ≡ CODEX-02 三侧同判）。对照：`resolveCriticSelection` 本步**已开** `descriptors` 注入口（仿 `deriveDefaultCritics` 先例），所以「登记但未启用」那条在 `critics.test.ts` 里有真覆盖——三条 skip 的是**另外三个**函数。**触发条件**：注册表登记第五家而其 `criticEnabled` 或 vendor 形状未跟上时，三条各自自动恢复执行（skip 判据是运行期算的）。**修法方向**：给三处校验各开一个与 `deriveDefaultCritics` 同构的可选入参。 | `src/trivium/schemas.ts` 的 `checkConfigAgents`、`src/trivium/topic-args.ts` 的模型旗标校验段、三处对应用例 |
+-| EV-53 | todo | **`--model-claude` 能解析成功，而 claude 永远不会入选——「解析成功后被悄悄丢弃」在 Driver 这一格真实存在。** `topic-args.ts` 的 `--model-<id>` 白名单判据是 `CRITICS.includes(id)`，M9 第 4 步翻开关后 claude 进了这个集合，于是 `--model-claude X` 合法通过；但 `critics.ts` 的「当轮 Driver 不得入选」恒拒 claude，那个模型覆盖一路走到被丢弃，**留痕里看不出用户曾经指定过**。这正是该用例当初要防的形态（与 `--base` 漏传同族），只是触发它的从「尚未启用的第三家」换成了「已启用但当不了本轮审核者的 Driver」。**本步不修**：正确判据是「本轮**实际**能入选谁」，而那要等 `--driver` 落地（M9 第 5 步）才成为逐次运行的事实；现在按 `CRITICS` 减缺省 Driver 硬编码一版，第 5 步就要推翻。**触发条件：M9 第 5 步 `--driver` 全链路落地时**，与白名单判据一并收口。来源：计划双审 CODEX-02 的连带发现。**代码双审补记三条**（AGY-03 ≡ CODEX-09 + GLM-04）：①该分支**当前恒假、已成死代码**（`ALL_AGENT_IDS` 与 `CRITICS` 元素相同），本步**不删**——正确判据要等 `--driver`，现在删掉等于放弃一条马上要用的校验；②正例用例的采样已从 `CRITICS[0]`（= claude，永不能入选）改为 `SELECTABLE[0]`，否则它锁定的「正常路径」其实是一次必然被丢弃的覆盖，在测试层反向加固本缺口；③**恢复时的口径分叉**：该处报错文案用 `CRITICS.join('、')`（含 Driver），与 `legalList`（减 Driver）是两套派生，恢复执行时子断言会钉死一条「指引用户去选 claude」的文案，而用户照着写 `--critics claude` 就撞 Driver 拒绝——正是 `critics.ts` 立规要防的「第一个错误把用户引向第二个错误」。第 5 步收口时两处论域要对齐。 | `src/trivium/topic-args.ts` 的模型旗标校验段、`src/trivium/critics.ts` 的 Driver 检查 |
+-| EV-54 | todo | **`override_reason` 无写入方，`heterogeneous: false` 的机器判据也只是 description。** `isHeterogeneous` 对 Claude 系模型返回 false（`adapters/base.ts`，只看模型串），而 `run.v2.json` 的 description 写着「false 时必须有 `override_reason`（AC-18）」——**那句没有任何 `if/then` 机器判据**，且 `override_reason` 全仓只有 `render.ts` 三处（类型声明、条件渲染、人读 flag），`review.ts` 两个 `heterogeneous` 写点**都不传它**。**口径要分两层**（计划双审 GLM-06）：PRD AC-18 只背书「覆盖后的模型可见」，而 `model_effective` 本就落 run.json 与 front-matter，**那一句已经成立**；「false ⇒ 必须有 `override_reason`」是 `run.v2` 自己加强的契约，不是需求原文——权衡时别把 schema 散文的约束力当成需求约束力。**M9 第 4 步刻意不做**（裁定由「本步补写入方」改为「推后」，计划双审 CODEX-04）：本步 claude 一次也选不上（`--critics claude` 必退 64），补的写入方**没有任何路径能端到端验证**，只能验到「传参接通」。**缺口今天已存在，且与翻开关无关**：`--model-gemini claude-*` 这条路今天就能落出同一个自相矛盾的 run.json。**触发条件：M9 第 5/6 步**，与 claude 真能入选的那一刻对齐。 | `src/trivium/review.ts` 的两个 heterogeneous 写点、`src/trivium/render.ts`、`skills/dual-critic/schema/run.v2.json` 的 `heterogeneous` |
++| EV-53 | **done**（2026-09-19，M9 第 5 步） | **落地记要**：判据由 `CRITICS.includes(id)`（启用集合）改为 `selectableCritics(cfg, driver)`（本轮实际能入选谁），判据与文案**共用同一份派生**——`legalList` 也改调它，两套论域合一。`topic-args.ts` 对 `CRITICS` 的 import 随之删除（全集论域在该文件已无消费方，这是收口到位的信号）。测试侧：`MODEL_FLAG_PENDING` 的 skip 判据同步改写，该用例**由 skip 恢复执行**（全仓跳过数 3→2），并新增两条互为镜像的断言——负例「报错文案里不得出现当轮 Driver」（EV-53 ③ 的口径分叉）、正例「换掉 Driver 之后原 Driver 那一家的模型覆盖就合法」（钉住「论域跟着当轮 Driver 变」，防止拒绝分支写过宽）。原始条目如下 —— **`--model-claude` 能解析成功，而 claude 永远不会入选——「解析成功后被悄悄丢弃」在 Driver 这一格真实存在。** `topic-args.ts` 的 `--model-<id>` 白名单判据是 `CRITICS.includes(id)`，M9 第 4 步翻开关后 claude 进了这个集合，于是 `--model-claude X` 合法通过；但 `critics.ts` 的「当轮 Driver 不得入选」恒拒 claude，那个模型覆盖一路走到被丢弃，**留痕里看不出用户曾经指定过**。这正是该用例当初要防的形态（与 `--base` 漏传同族），只是触发它的从「尚未启用的第三家」换成了「已启用但当不了本轮审核者的 Driver」。**本步不修**：正确判据是「本轮**实际**能入选谁」，而那要等 `--driver` 落地（M9 第 5 步）才成为逐次运行的事实；现在按 `CRITICS` 减缺省 Driver 硬编码一版，第 5 步就要推翻。**触发条件：M9 第 5 步 `--driver` 全链路落地时**，与白名单判据一并收口。来源：计划双审 CODEX-02 的连带发现。**代码双审补记三条**（AGY-03 ≡ CODEX-09 + GLM-04）：①该分支**当前恒假、已成死代码**（`ALL_AGENT_IDS` 与 `CRITICS` 元素相同），本步**不删**——正确判据要等 `--driver`，现在删掉等于放弃一条马上要用的校验；②正例用例的采样已从 `CRITICS[0]`（= claude，永不能入选）改为 `SELECTABLE[0]`，否则它锁定的「正常路径」其实是一次必然被丢弃的覆盖，在测试层反向加固本缺口；③**恢复时的口径分叉**：该处报错文案用 `CRITICS.join('、')`（含 Driver），与 `legalList`（减 Driver）是两套派生，恢复执行时子断言会钉死一条「指引用户去选 claude」的文案，而用户照着写 `--critics claude` 就撞 Driver 拒绝——正是 `critics.ts` 立规要防的「第一个错误把用户引向第二个错误」。第 5 步收口时两处论域要对齐。 | `src/trivium/topic-args.ts` 的模型旗标校验段、`src/trivium/critics.ts` 的 Driver 检查 |
++| EV-54 | **done**（2026-09-19，M9 第 5 步） | **落地记要**：`review.ts` 两个 `heterogeneous` 写点（渲染入参与运行元数据）旁补 `overrideReasonFor` 传值，**两处共用同一个派生函数**——各写一份文案会当场踩破「两处同值」这条判据自身。取值只有两种成因：用户经 `--model-<id>` 显式指定 claude 系模型、或档位默认落在 claude 系。**只补写入方，不给 schema 加 `if/then`**（加了历史留痕集体读不回，与 `driver_enabled` 同一条口径）。判据：`driver-wiring.test.ts` 扫两个写点的实参块必须含 `overrideReason`**且**取值来自 `overrideReasonFor(`。原始条目如下 —— **`override_reason` 无写入方，`heterogeneous: false` 的机器判据也只是 description。** `isHeterogeneous` 对 Claude 系模型返回 false（`adapters/base.ts`，只看模型串），而 `run.v2.json` 的 description 写着「false 时必须有 `override_reason`（AC-18）」——**那句没有任何 `if/then` 机器判据**，且 `override_reason` 全仓只有 `render.ts` 三处（类型声明、条件渲染、人读 flag），`review.ts` 两个 `heterogeneous` 写点**都不传它**。**口径要分两层**（计划双审 GLM-06）：PRD AC-18 只背书「覆盖后的模型可见」，而 `model_effective` 本就落 run.json 与 front-matter，**那一句已经成立**；「false ⇒ 必须有 `override_reason`」是 `run.v2` 自己加强的契约，不是需求原文——权衡时别把 schema 散文的约束力当成需求约束力。**M9 第 4 步刻意不做**（裁定由「本步补写入方」改为「推后」，计划双审 CODEX-04）：本步 claude 一次也选不上（`--critics claude` 必退 64），补的写入方**没有任何路径能端到端验证**，只能验到「传参接通」。**缺口今天已存在，且与翻开关无关**：`--model-gemini claude-*` 这条路今天就能落出同一个自相矛盾的 run.json。**触发条件：M9 第 5/6 步**，与 claude 真能入选的那一刻对齐。 | `src/trivium/review.ts` 的两个 heterogeneous 写点、`src/trivium/render.ts`、`skills/dual-critic/schema/run.v2.json` 的 `heterogeneous` |
+ | EV-55 | todo | **提交锚的角色后缀判据是跨时间的，却绑在当轮 Driver 上。** M9 第 4 步把 Hook 的保护集从 `CRITICS`（启用集合）改成 `criticRoleSuffixes()`（全集减当轮 Driver）——**必须改**，否则翻开关那一刻 Driver 自己的产出后缀进保护集，它写不了自己的裁决件，整条流水线锁死（实测：归档内写入由退 0 变退 2）。但 `hasCriticRoleSuffix` 有**两个判据含义不同的消费者**：`isForgedRoleFile` 是「形态 + 位置、当轮语境」，改动对它成立；`immutableChangeReason`（提交锚）是**纯 basename、跨时间**判定，那里没有「当轮 Driver」这个概念。现在等于把一个跨时间的保护面绑在一个当轮的值上。**M9 代价为零**（只有一个 Driver，历史与当轮同值），**M10 第一次换 Driver 就会显形**：历史工件会集体变成「可改」，或反过来新 Driver 的原稿被判伪造。**纯词法后缀检查区分不了「Driver 自身原稿」与「同名历史审查件」，M9 不假装能分。** **修法方向**（计划双审 CODEX-04 提出）：提交锚改按 run 元数据的 artifacts 登记判不可变，而不是按文件名形态——那是安全关键面的重写。**触发条件：M10 第一次换 Driver 之前必须先落它。** **补记（代码双审 CODEX-03）：实质消费是两处派生、三处语义，本条原只登记了两处。** 漏掉的是 Bash 侧 `ROLE_SUFFIX_ANYWHERE` → `bashTargetsProtected`：它无条件按命令文本里的字面后缀拦，不看位置、不看是不是本轮的文件、不受闸门与 TTL 限制，**同样属跨时间面**（另一侧审查员判它是「当轮语义」，核过判错）。**关键：它与提交锚不同源，上面那条修法方向覆盖不到它**——Bash 侧拿不到 run 上下文，按 artifacts 登记判不可变在那里无从实施，需要单独决定「历史后缀在文本层面是否一律保护、当轮 Driver 的文件如何豁免」。M10 换 Driver 后若只修提交锚，新 Driver 后缀的历史审查件会同时从两处掉出去，**原地改**（非删除）这类已提交工件不再被任何一处拦下（删除仍被 git 锚兜住）。 | `src/trivium/hooks.ts` 的 `criticRoleSuffixes` / `hasCriticRoleSuffix` / `immutableChangeReason` / `ROLE_SUFFIX_ANYWHERE` 与 `bashTargetsProtected` |
+ | EV-56 | todo | **审查员在 JSON 前多写一句引言就会整份降级，7 条意见塌缩成 2 个兜底编号。** M9 第 4 步计划双审，codex 侧输出以一句自然语言引言开头、随后是完整且合法的 ```json 块，编排器判 `parse_fallback: true`，7 条编号意见（含 2 条 major，其中一条推翻了计划的中心事实）被切成两个不可分单元：那句引言一个、整个 JSON 块一个。**代价不是「少了结构化字段」**：`gate --check` 按兜底编号校验，裁决者若不逐条读原文，那 2 条 major 会整体失效——本轮是人工拆开逐条裁决才没丢。与 EV-10 同族但**成因不同**（EV-10 是结论 JSON 多带 front-matter 字段撞 `additionalProperties: false`，这次是 JSON 块**之前**有自然语言前缀）。**修法方向**：解析器容忍代码围栏前的自然语言前缀（按围栏定位而不是要求整份即 JSON）；**需先确认这不会放宽「必须产出结构化结论」的判据**——容忍前缀与容忍「没有 JSON」是两回事。 | 编排器的结论解析层、本主题 plan 阶段的降级留痕件 |
+ | EV-57 | todo | **M9 第 4 步的完整纪律 6 回溯待第 7 步，本条是那条偏离的显式登记。** 本步改了对外行为（`criticEnabled` 翻真、`agents.claude` 可配、Hook 保护集改判据），而步骤表把「回溯与留痕」排在**第 7 步**，计划 §1.2 已列为本步范围外。代码双审 CODEX-07 指出设计文档未同步，核实成立——**处置取它给的第二条出路并加严**：本步**只**回补会当场失实的两处现状断言（文档抬头的「`criticEnabled` 仍为 false，claude 尚未启用为审核者」、§16.1 M9 行的状态位与第 4 步叙述），理由是本仓纪律「归档件里的失实断言先改再提交」——那两句在合入的一刻就在**唯一实现依据**里变成假的，不能等。**仍欠第 7 步的**：§21 版本台账行、§24 演进并入台账、PRD 侧 AC 状态、`doc/05_testing` 的实测报告、以及纪律 6 清单的其余项。**触发条件：M9 第 7 步开工时**——届时对照本条逐项补齐，不要只看设计文档已经改过就以为回溯做完了（本步只改了两处，是刻意的最小回补）。 | `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md` §21 / §24、`doc/01_requirements/PRD_driver_dual_critic.md`、`doc/05_testing/` |
++| EV-58 | **已关闭**（2026-09-19，M9 第 5 步） | **闸门区的 driver 位空着，取值链存在「先有鸡还是先有蛋」。** 登记时的形态：`cli.ts` 的 `resolveRerunIndex` 与三处 `inferLatestRunId` 都按缺省 Driver 算，而要算对得先知道 driver、driver 又在留痕里。计划 r2 一度想用「先按缺省猜一次、读到元数据后复算」解，被代码前的计划双审判为**阻断**（AGY-01）：裁决件尚未写出时第一趟恒为 null，而那正是 `gate --check` 最常用的状态；glm 另构造出可触发的 2-循环。**关闭理由**：第 5 步改为 `latestRunMeta` 直读运行元数据（run_id 即文件名，`driver` 与 `rerun_index` 在 run.v2 里都必填），循环依赖**整体消失**，本条描述的那一格不再存在。`inferLatestRunId` 随之无生产消费方，标 `@deprecated` 待删（见 EV-64） | `src/trivium/cli.ts` `cmdGate`、`src/trivium/meta.ts` `latestRunMeta` |
++| EV-59 | todo | **测试注释声称存在一条落盘层的互斥规则，实核不存在。** `test/unit/registry-parity.test.ts` 的「run.v2 校验：每一个已登记 Agent 出现在入选集合里，形状上都必须被接受」用例里，`if (spare === DEFAULT_DRIVER) continue;` 的理由写着「`critics_selected` 含当轮 Driver 会触发身份补校的互斥规则，那是**另一条**规则的正确行为」。实读 `schemas.ts` 的 `checkAgentIdentities` 只有三条规则（`driver` 是已登记 id、`critics_selected` 元素已登记、`critics` 键的 vendor 与注册表一致且 ⊆ `critics_selected`），**没有 Driver 互斥那条**。**排除本身无害**（那一格本来就会通过），真正的代价是注释会让读的人以为落盘层有第二道防线——而实际只有 `resolveCriticSelection` 一道上游拦截，且 M9 第 5 步起 driver 第一次由外部输入决定。**两件事要分开**：注释失实必须修（本仓纪律「留痕里的失实断言先改再提交」）；要不要真补那条规则属设计决策。来源：M9 第 5 步计划双审 r1，Driver 自核 | `test/unit/registry-parity.test.ts` 的排除注释、`src/trivium/schemas.ts` `checkAgentIdentities` |
++| EV-60 | todo | **zcode 侧出现「`project_reads` 有值而工具计数全 0」的轨迹分叉，触发 `insufficient_evidence` 误判。** M9 第 5 步计划双审 r1：glm 侧 `read/grep/glob/run_command` 全为 0 而 `project_reads: 29`，编排器据下限判 `evidence_ok: false` 并打「本侧不得计为合格双审的一半」。但人工逐条回原文复核了它的三条载重断言（`gate.ts` 的裁决件定位、`review.ts:1065-1069` 的防分叉、`verify.ts` 的第二写入方），**三条全部属实**，其中两条指出的是 Driver 自己计划里的失实——臆测不会精确命中这种东西。**r2 与代码审均未复现**（r2 `read: 23`/`grep: 10`，code 阶段 `read: 15`/`grep: 9`），故形态记为**偶发，非稳定复现**。**两个方向都危险**：合格的一侧被误判为不合格会让人去补一次不必要的重跑；反向（真没读却计数正常）则直接击穿证据门槛。触发条件：下次该形态复现时抓现场，或复核 zcode 适配器的工具事件计数口径 | `src/trivium/adapters/` zcode 侧的轨迹解析、`guard.ts` 的证据门槛 |
++| EV-61 | todo | **`--model-*` 的帮助文本写死两家，而代码接受四家。** `cli.ts` 的 USAGE 段里 `--model-gemini / --model-glm` 是字面量，而 `collectModelOverrides` 与 `topic-args.ts` 的白名单都按 `ALL_AGENT_IDS` 派生——第三、第四家启用后帮助文本不会跟着变。与 M9 第 5 步给 `--driver` 立的口径（取值清单用插值、与判定处的接受集同源）是同一族，只是那一处做了、这一处没做。**本步不改**：它不在第 5 步的落点表里，且改动面是纯文案。触发条件：下次改 USAGE 段，或 M10 的「四家入口资产与单源渲染」。来源：M9 第 5 步计划双审 r1 CODEX-09 的附带项 | `src/trivium/cli.ts` USAGE 段的 `--model-*` 行 |
++| EV-62 | todo | **`isHeterogeneous` 不感知当轮 Driver，非缺省 Driver 下语义失效。** 它只判模型串含不含 `claude`（`adapters/base.ts`），据此写出 `heterogeneous`。M9 第 5 步放开 `--driver` 之后这条判据在两个方向上都不对：Driver 为 gemini、审核者用 claude 时，它判 `false`（「与主脑同源」）而**主脑根本不是 claude**，实际是异构；反过来 Driver 为 claude 而审核者用别家的 claude 系模型时判据才真正成立。**本步不改**：改它要重新定义「同源」的判据（按当轮 Driver 的厂商/模型族比对），属设计决策，且会连带影响 `override_reason` 的取值语义。**代价先记在这里**：第 6 步验收（`--driver <非 claude> --critics claude`）产出的留痕会带一个语义上不准确的 `heterogeneous: false`，读台账的人要知道那不是缺陷而是已登记的判据边界。触发条件：M10 换 Driver，或第 6 步验收留痕需要解释时。来源：M9 第 5 步计划双审 r2 AGY-02 后半 | `src/trivium/adapters/base.ts` `isHeterogeneous`、`src/trivium/review.ts` 的两个写点 |
++| EV-63 | todo | **`isReviewArtifact` 对「front-matter 被剥掉或改坏的审查件」判 false，按原稿放行。** M9 第 5 步把「候选是不是审查件」的判据换成文件自身 front-matter（`schema === trivium.review.v1`）。换底解决了主路径：登记反推靠的是**调用点清单**而非不变式（`roleIsAllowedForWriter` 本就允许 `writer === 'driver'` 产出角色工件，哪天 Driver 原稿也走 `writeArtifact`，登记判据就会把合法原稿判死）。**但这一格比登记判据弱**：登记反推对「被剥掉 front-matter 的真审查件」是可靠的（只是不完备——原稿与裁决件不在登记里），内容判据则会放行。**所以「扛得住明天」只对未损坏的留痕成立**，不要把它当成防伪造的防线。修法方向：主题内出现「后缀等于当轮 Driver、却读不出任何已知 schema」的文件时，在 `locateSubject` 出一条**可见告警**而不是静默当原稿。触发条件：下次往选原稿路径加判据时，或真实撞到一次被改坏的审查件。来源：M9 第 5 步计划双审 r2 CODEX-07 | `src/trivium/archive.ts` `isReviewArtifact`、`src/trivium/topic.ts` 与 `topic-args.ts` 的候选过滤 |
++| EV-64 | todo | **`inferLatestRunId` 已无生产消费方，待删。** M9 第 5 步把闸门区三处调用全部换成 `latestRunMeta` 直读之后，该函数在 `src/` 下只剩定义（测试侧亦无引用）。**本步不删只标 `@deprecated`**：删除公开导出会扩大本步改动面，而本步已经是三处形状改动。**必须标注的理由**：它体现的正是那条有循环依赖的老路（要先知道 driver 才能跳过 Driver 的产出，而 driver 在留痕里），留一个不加说明的死函数等于给下一个人留一个陷阱——M9 第 5 步的阻断就是这么来的。触发条件：下次清理 `gate.ts`，或 M10 收口闸门区时一并删 | `src/trivium/gate.ts` `inferLatestRunId` |
++| EV-65 | todo | **「谁算原稿」有两份实现，一致靠复制品维持、无对账。** `topic.ts` 的 `locateSubject` 与 `topic-args.ts` 的 `locateSubjectReadOnly` 各有一套候选过滤（`topic` 匹配 + `role === driver` + `kind === null`）、排序、审查件剔除循环、显式路径硬拒与那段三段式错误文案——代码审三侧逐行核过，**今天确实逐项一致**，但改一处另一处不会红（用例也分处两个文件）。本仓对「同一事实两份实现」的既有对策是 grep 级对账（`registry-parity`、`deny-matrix`），这两处没有。**本轮先加 parity 用例**（同一夹具分别过两个入口、断同一结果），**抽共用函数推后**：那会改动两处调用结构，属于要重新过一轮审查的改动面，放在收尾阶段做不划算。修法方向：把「候选过滤 + 剔审查件 + 取最新」连同显式路径的 `assertNotReviewArtifact` 一起抽进 `archive.ts`，让「谁算原稿」只有一个答案——与 `critics.ts` 的 `selectableCritics` 单点派生同构。触发条件：下次改这两个函数中的任意一个。来源：M9 第 5 步代码双审 CODEX-04 | `src/trivium/topic.ts` `locateSubject`、`src/trivium/topic-args.ts` `locateSubjectReadOnly` |
++| EV-66 | todo | **裁决件 schema 把 `role` 钉死成 `claude`，非缺省 Driver 写不出合法裁决件。** `skills/dual-critic/schema/disposition.v1.json` 的 `"role": { "const": "claude" }`。M9 第 5 步让闸门按当轮 Driver 去找 `-revised-<真Driver>.md`（这一半已通），但那份文件的 front-matter 过不了校验——`gate --check` 报 `bad_front_matter: role must be equal to constant`，于是非缺省 Driver 的闸门链路**仍然走不通**，只是失败点从「找不到裁决件」挪到了「裁决件不合契约」。**与 run.v2 的处理不一致**：那里 `driver` 是 `type: string` 不枚举，并明写「取值是否为已登记 Agent 由代码层按注册表校验——此处不枚举」；`role` 这里却在 schema 层写死了一个 Agent id，与纪律 7（Agent id 的唯一来源是注册表）相抵。**修法方向**：`role` 改为 `type: string` + 代码层按注册表校验（与 `checkAgentIdentities` 校 `driver` 同款），而不是在 schema 里再抄一份 id。**本步不改**：契约变更不在第 5 步落点表里，且它会同时影响 `gate.ts` 的裁决件解析与三份 skill 的裁决件模板说明。**发现方式值得记**：这是 T-11（非缺省 Driver 的闸门闭环集成用例）**第一次真跑时**抓到的——代码双审三侧都坚持要补这条用例，而它替代方案（源码扫描）永远碰不到这一格。边界已锁成断言（`gate-loop.test.ts` 的 T-11 第 2 格），修好时会当场红。**触发条件：M9 第 6 步验收之前**——验收剧本要产出裁决件，届时必撞 | `skills/dual-critic/schema/disposition.v1.json` 的 `role`、`src/trivium/gate.ts` 的裁决件校验 |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/skills/dual-critic/schema/run.v2.json b/skills/dual-critic/schema/run.v2.json
+index 47f24f2..ce85c69 100644
+--- a/skills/dual-critic/schema/run.v2.json
++++ b/skills/dual-critic/schema/run.v2.json
+@@ -74,7 +74,11 @@
+     "driver": {
+       "type": "string",
+       "minLength": 1,
+-      "description": "当轮发起方的 Agent id。与归档后缀（产出方）正交：同一 Agent 在不同运行中可能是 Driver 也可能是审核者。M7b 起恒为 claude，M10 起可变。取值是否为已登记 Agent 由代码层按注册表校验——此处不枚举，见下方 critics 的说明"
++      "description": "当轮发起方的 Agent id。与归档后缀（产出方）正交：同一 Agent 在不同运行中可能是 Driver 也可能是审核者。M7b 起恒为 claude，M9 第 5 步放开 --driver 后可变。取值是否为已登记 Agent 由代码层按注册表校验——此处不枚举，见下方 critics 的说明"
++    },
++    "driver_enabled": {
++      "type": "boolean",
++      "description": "当轮 Driver 在这次运行时是否已启用为 Driver（M9 第 5 步）。可选：早于该步的留痕没有此字段，缺失即「无从得知」，不等于 false。M9 的 --driver 只校验「已登记」，因此归档里会出现 driver_enabled: false 的合法留痕；M10 把校验收紧之后那些留痕仍要读得回，所以它不进 required，也不加 if/then"
+     },
+     "critics_selected": {
+       "type": "array",
+diff --git a/src/trivium/archive.ts b/src/trivium/archive.ts
+index c7c4bf8..4bbe99f 100644
+--- a/src/trivium/archive.ts
++++ b/src/trivium/archive.ts
+@@ -109,6 +109,62 @@ export async function firstFreeRerunIndex(
+   throw new Error(`从第 ${startAt} 轮起 ${MAX_BUMP} 个轮次都被占用：${dir}`);
+ }
+ 
++/**
++ * 这份文件是不是**审查件**（M9 第 5 步，计划双审 CODEX-07）。
++ *
++ * ## 判据为什么落在文件内容上
++ *
++ * 被审对象的候选按「后缀等于当轮 Driver 且无裁决中缀」筛。换过 Driver 的主题里，
++ * 上一轮由别家当 Driver 时，**这一家的后缀正是审查件的后缀**——候选排序按
++ * `rerunIndex desc, fileName desc`，日期更晚的那份审查件会排在真原稿前面，
++ * 于是编排器会拿一份审查意见当计划原稿送去再审。
++ *
++ * 曾经考虑过按 `run.json.artifacts[]` 的登记反推（登记过 ⇒ 编排器产出的审查件）。
++ * 那条在今天的归档上成立（实测 84 份运行元数据、162 条带角色后缀的登记条目，
++ * **162/162 含 `trivium.review.v1`**），但它靠的是**调用点清单**而不是不变式：
++ * `roleIsAllowedForWriter` 本就允许 `writer === 'driver'` 产出角色工件，
++ * 哪天 Driver 的原稿也走 `writeArtifact`，那条判据就会把合法原稿判死。
++ *
++ * ## 为什么不复用 freeze.ts 的 classifyArtifact
++ *
++ * 那个函数是**三值**的（`peer-review | own-or-driver | indeterminate`）、为禁读矩阵
++ * 设计、fail-closed，而且它的文档块明写「**fail-closed 只用在这里，不外扩**」。
++ * 把它搬进选原稿语境会：①造成 `topic.ts → freeze.ts` 的分层倒置；
++ * ②让显式指定的、没有 front-matter 的手写原稿被判 `indeterminate` 进而误拒——
++ * 而那正是本判据自己要留的逃生门。它还是模块私有的，「复用」本身就落不了地。
++ *
++ * 所以这里是**二值**谓词：只回答「是不是审查件」，不做安全判决。
++ *
++ * ## 边界
++ *
++ * `parseFrontMatter` 对「不以 `---` 开头 / 没有闭合 `---` / YAML 解析失败」一律返回
++ * null 且不抛；读文件失败也吞掉。于是 front-matter 缺失、损坏、非 UTF-8、空文件
++ * **四类形态全部坍缩为「不是审查件」**——放行，不误拒。
++ *
++ * 残余风险（EV-63）：front-matter 被剥掉或改坏的**真审查件**会被当原稿放行。
++ * 登记判据在这一格反而可靠（只是不完备）。**所以本谓词只对未损坏的留痕成立**，
++ * 不要把它当成防伪造的防线。
++ */
++export async function isReviewArtifact(absPath: string): Promise<boolean> {
++  /*
++   * **模块加载放在 try 之外**（代码双审 CODEX-07）。
++   *
++   * 上一版把它和 readFile/parse 一起包进 try，于是模块加载失败也走 `return false`——
++   * 谓词恒假，显式路径的硬拒与自动候选的过滤**同时变成空操作**，
++   * 而「拿审查意见当原稿」原样回来，且没有任何用例能发现（用例调的是同一个函数）。
++   * 这里没有需要回避的循环依赖：`render.ts` 只静态 import `types.js` 与 `agents/registry.js`。
++   */
++  const { parseFrontMatter } = await import('./render.js');
++  let fm: Record<string, unknown> | null = null;
++  try {
++    // try 只兜这两步——它们的失败才是文档块里写明要吞的那四类
++    fm = parseFrontMatter(await fs.readFile(absPath, 'utf8'));
++  } catch {
++    return false;
++  }
++  return fm?.['schema'] === 'trivium.review.v1';
++}
++
+ export interface WriteArtifactInput {
+   layout: ArchiveLayout;
+   stage: Stage;
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index 991399c..5105451 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -9,6 +9,7 @@ import { exists } from './util/fsx.js';
+ import { promises as fsp } from 'node:fs';
+ import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
+ import { applyProfileOverride, loadCtx, runRoot } from './config.js';
++import { ALL_AGENT_IDS, DEFAULT_DRIVER } from './agents/registry.js';
+ import {
+   runDoctor,
+   renderDoctorReport,
+@@ -22,20 +23,20 @@ import { collectCommands, runVerify, summarizeVerify } from './verify.js';
+ import { buildTopicReport, renderTopicReport } from './report.js';
+ import { cancelRun, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
+ import {
+-  checkAdjudication, inferLatestRunId, loadRoundReviews, renderGateResult,
++  checkAdjudication, loadRoundReviews, renderGateResult,
+ } from './gate.js';
+ import { checkStageArtifacts, listRecordedRuns, resolveRerunIndex } from './archive.js';
+ import { readHookInput, runHook, type HookName } from './hooks.js';
+ import { listOpenGates, setGateChecked } from './state.js';
+ import { recordApproval } from './approval.js';
+ import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
+-import { newRunId, readTask, readRunMeta } from './meta.js';
++import { latestRunMeta, newRunId, readTask, readRunMeta } from './meta.js';
+ import { runInit, renderInitReport } from './init.js';
+ import {
+   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
+ } from './preflight.js';
+ import { resolveTopicArgs } from './topic-args.js';
+-import { resolveCriticSelection } from './critics.js';
++import { resolveCriticSelection, resolveDriver } from './critics.js';
+ import { scrubAllRunRoot } from './retention.js';
+ import { wiredAdapter } from './adapters/index.js';
+ import { COMMAND_ENTRIES, CRITICS, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
+@@ -209,6 +210,10 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
+                   缺省取 review.default_critics。选 1 个是配置意图、不标降级；
+                   含当轮 Driver、含未启用为审核者的 Agent、或重复项一律退 64
+       --only gemini|glm  仅跑一侧。**--critics 的单元素旧写法**，两者不能同时给
++      --driver <id>  当轮 Driver（执笔者），缺省 ${DEFAULT_DRIVER}。
++                  取值论域是**全部已登记 Agent**（${ALL_AGENT_IDS.join(' | ')}）——
++                  只校验「已登记」，尚未启用为 Driver 的也放行，但会在预检与留痕里标注。
++                  它决定谁不得入选（自己不能审自己）与原稿是谁的后缀
+       --allow-single  一侧失败时不中止，产出单审结果并留痕（§12.4）。
+                       受配置 review.allow_partial_flag 约束（旧名 allow_single_flag 仍可用）；默认 strict
+ 
+@@ -230,6 +235,8 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
+                         缺省取 review.default_critics。下一步 review --start 选了谁，
+                         这里就要传谁——否则那一侧的可用性在预检阶段不被检查
+       --profile <名称>  按该档位预检——要校验的是本次实际会用的模型
++      --driver <id>  当轮 Driver，缺省 ${DEFAULT_DRIVER}。与 review --start 传同一个值：
++                  它参与选侧判定，非缺省时预检会多打一行标注
+       --refresh-auth  强制重新探活，穿透 TTL 缓存
+ 
+   trivium topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]   [--json]
+@@ -467,10 +474,17 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
+    * 启用第三家时这边会**先于**那边拒掉合法取值，而错误信息还振振有词地只列两家。
+    * 校验逻辑分两处实现是改一漏二的典型形态，M7b 第 5 步收敛成一处。
+    */
++  // 当轮 Driver 先解析：选侧要用它（判定处同样只有一个，在 critics.ts）
++  const { driver, enabledAsDriver } = resolveDriver(flagString(args, 'driver'));
+   const critics = resolveCriticSelection(ctx.config, {
+     critics: flagString(args, 'critics'),
+     only: onlyRaw,
++    driver,
+   });
++  if (!enabledAsDriver) {
++    // 放行但如实标注：留痕落 driver_enabled，这里再给人读一行
++    warn(`当轮 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`);
++  }
+ 
+   const contextRaw = flagString(args, 'context');
+   // 任务目标与审查焦点分开传（RV-19）：前者说「要达成什么」，后者说「这次重点看什么」
+@@ -490,6 +504,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
+     modelOverrides,
+     command: `trivium review --stage ${stage}`,
+     critics,
++    driver,
+     // 闸门写锁默认按会话作用域（RV-05）。拿不到会话 id 时闸门记 null，
+     // 写锁按「本会话」保守处理（state.ts GateEntry.session_id）
+     sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
+@@ -630,9 +645,11 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
+    * 解析走 `resolveCriticSelection`——与 `topic resolve` / `review --start` 同一处判定，
+    * 不在这里再实现一遍（M7b 第 5 步的教训：两处各写一份，启用第三家时会先后不一致）。
+    */
++  const { driver, enabledAsDriver } = resolveDriver(flagString(args, 'driver'));
+   const critics = resolveCriticSelection(ctx.config, {
+     critics: flagString(args, 'critics'),
+     only: flagString(args, 'only'),
++    driver,
+   });
+ 
+   const r = await runPreflight({
+@@ -640,6 +657,8 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
+     scope,
+     modelOverrides,
+     critics,
++    driver,
++    driverEnabled: enabledAsDriver,
+     skipAuthCheck: args.flags.get('skip-auth-check') === true,
+     refreshAuth: args.flags.get('refresh-auth') === true,
+   });
+@@ -727,9 +746,71 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+   if (!topic) throw usageError('gate 需要 --topic');
+   const ref = await resolveTopic(ctx, topic, stage);
+ 
+-  // 本轮轮次：已产出审查工件的最新一轮，即 resolveRerunIndex - 1
+-  const nextIndex = await resolveRerunIndex(ref.layout, stage);
+-  const rerunIndex = Math.max(1, nextIndex - 1);
++  /*
++   * ── 当轮 Driver 与轮次：**直读运行元数据**，不从工件后缀反推（M9 第 5 步）──
++   *
++   * 后缀反推有循环依赖：`inferLatestRunId` / `resolveRerunIndex` 都要先知道 driver
++   * 才能跳过 Driver 自己的产出，而 driver 只记在留痕里。非缺省 Driver 且
++   * `--critics claude` 时，本轮审查件全是 `-claude.md`，按缺省 Driver 推会把它们
++   * 整批跳过——`gate --check` 以「请先跑一次双审」硬失败，而双审明明跑完了。
++   *
++   * `latestRunMeta` 直接给出权威的 `driver` 与 `rerun_index`（run.v2 里两者都必填），
++   * 一次到位。`cmdGate` **不加 `--driver` 旗标**：事实来源是留痕不是旗标，
++   * 与下面「事实来源是 critics_selected 不是键集」同一条原则。
++   */
++  const pinnedId = flagString(args, 'run-id');
++  const pinned = pinnedId ? await readRunMeta(ref.layout, stage, pinnedId) : null;
++  if (pinnedId && !pinned) {
++    // 不静默回落：--run-id 是用户显式指定的，读不出来要说清是哪一种，别按缺省继续
++    throw missingArtifactError(
++      `--run-id ${pinnedId} 的运行元数据读不出来（文件缺失、内容损坏，或 schema 不识）。\n` +
++        `  请确认该 run_id 属于主题「${topic}」的 ${stage} 阶段。`,
++    );
++  }
++  const scan = pinned
++    ? { meta: pinned, scanned: 1, unreadable: [] as string[] }
++    : await latestRunMeta(ref.layout, stage);
++  const latest = scan.meta;
++
++  /*
++   * ── 留痕读不出来时的分档（代码双审 AGY-01 / CODEX-01 / GLM-02）──
++   *
++   * 「一份都没有」与「有但全读不出」是两回事，三条子命令必须同一个口径：
++   * 前者是正常的「还没跑过」，后者说明留痕被搅坏——**静默按缺省 Driver 继续，
++   * 正是本批改动要消灭的形态**（plan/bug 阶段会把 `…-claude.md` 当缺件点名，
++   * 而真 Driver 的原稿就躺在目录里，人读与 --json 两条输出都没有迹象）。
++   *
++   * 上一版只有 `--check` 与 `--await-approval` 硬失败，`--check-artifacts`
++   * 这一格漏了；而且这里的注释写着「一条留痕都没有时才退回旧口径」，
++   * 与 `latestRunMeta` 文档块的承诺互相矛盾——两句都是同一次改动写的。
++   */
++  if (!latest && scan.scanned > 0) {
++    throw missingArtifactError(
++      `${stage} 阶段扫到 ${scan.scanned} 份运行元数据，但**一份都读不出来**` +
++        `（文件损坏、schema 不识，或不合 run.v1/v2 契约）：${scan.unreadable.join('、')}\n` +
++        '  无法确定当轮 Driver 与轮次，不能按缺省 Driver 继续——那会把「留痕坏了」判成「按 claude 判」。\n' +
++        '  请修复或移除这些文件，或用 --run-id 指定一份可读的运行。',
++    );
++  }
++
++  const gateDriver = latest?.driver ?? DEFAULT_DRIVER;
++  /*
++   * 轮次优先取留痕的 `rerun_index`。注意它是**最新一次运行声明的轮次**，
++   * 不是「工件实际落在第几轮」（代码双审 GLM-03）：`prepareRun` 会先落一份
++   * `status: running` 的骨架，worker 在产出任何工件前崩溃时那份骨架就是 latest，
++   * 记的是**意图轮次**。指向最新一次运行本身说得通，但别把它说成工件事实。
++   *
++   * 扫到 0 份时才退回「`resolveRerunIndex - 1`」这个旧口径——那时确实没有更好的依据。
++   */
++  const rerunIndex = latest?.rerun_index
++    ?? Math.max(1, (await resolveRerunIndex(ref.layout, stage, gateDriver)) - 1);
++  if (!latest) {
++    // 扫到 0 份：可以继续，但要让人看见 driver 与轮次是按缺省算的
++    warn(
++      `${stage} 阶段没有任何运行元数据：当轮 Driver 按缺省「${gateDriver}」、` +
++        `轮次按工件反推为第 ${rerunIndex} 轮。若这不是你要的，请先跑一次双审或用 --run-id 指定。`,
++    );
++  }
+ 
+   // ── --check-artifacts ──
+   if (args.flags.get('check-artifacts') === true) {
+@@ -756,23 +837,35 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+      * 只有同时知道「本该跑谁」和「跑出了什么」才能两头都判对。
+      * 历史 v1 记录经 `readRunMeta` 迁移后，该字段正是由键集推导，判读结论不变。
+      */
+-    const artifactRunId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
+-    const artifactMeta = artifactRunId ? await readRunMeta(ref.layout, stage, artifactRunId) : null;
++    // 上面已经直读到留痕；`latest` 就是这一轮的权威记录，不必再按后缀反推一次
++    const artifactMeta = latest;
+     const roundCritics = artifactMeta ? artifactMeta.critics_selected : undefined;
+-    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, roundCritics, undefined, recorded);
++    // driver 位补上：它决定去找谁的原稿与谁的裁决件（此前空着，非缺省 Driver 下必判缺件）
++    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, roundCritics, gateDriver, recorded);
+     if (isJsonMode()) {
+       emitJson({ ok: c.ok, stage, rerun_index: rerunIndex, present: c.present, missing: c.missing });
+     } else if (c.ok) {
+       say(`✓ ${stage} 阶段第 ${rerunIndex} 轮工件齐备：${c.present.join(' / ')}`);
+     } else {
+-      fail(`${stage} 阶段第 ${rerunIndex} 轮缺件：${c.missing.join(' / ')}`);
++      /*
++       * 给出 `--run-id` 出口（代码双审 GLM-03）：轮次取自「最新一次运行」，
++       * 而那可能是一份 worker 崩溃前落下的、什么工件都没有的骨架——
++       * 此时更早的完整轮次仍在目录里，用户需要知道怎么指到它。
++       * `--check` 那条早有同款提示，这一条此前漏了。
++       */
++      fail(
++        `${stage} 阶段第 ${rerunIndex} 轮缺件：${c.missing.join(' / ')}\n` +
++          '  轮次取自最新一次运行。若那一轮尚未产出工件（例如 worker 中途崩溃），' +
++          '可用 --run-id <id> 指定更早的完整轮次。',
++      );
+     }
+     return c.ok ? EXIT.OK : EXIT.MISSING_ARTIFACT;
+   }
+ 
+   // ── --await-approval ──
+   if (args.flags.get('await-approval') === true) {
+-    const runId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
++    // 同样直读：`latest.run_id` 就是这一轮的 run_id，不必按后缀反推
++    const runId = latest?.run_id ?? null;
+ 
+     /*
+      * ── 先校验裁决完整性，再置闸门（审查意见 AGY-02）──
+@@ -800,6 +893,9 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+         await loadRoundReviews(ref.layout, stage, runId);
+       const pre = await checkAdjudication({
+         cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
++        // driver 位补上：裁决件是 `-revised-<当轮 Driver>.md`，按缺省找会在
++        // 非缺省 Driver 下必报 missing_disposition（计划双审 r2 GLM-03，阻断）
++        driver: gateDriver,
+         degraded, voidedSides,
+         expectedFallbackIds, missingSides, runId,
+       });
+@@ -839,6 +935,8 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+     const g = await setGateChecked({
+       triviumDir: ctx.triviumDir, topic, stage, state: 'awaiting_approval',
+       runId, rerunIndex,
++      // 设计 §5.2 / §9.2 的三处留痕面之一，只记不读（代码双审 CODEX-06）
++      driver: gateDriver,
+       sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
+       heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+       expect: {
+@@ -863,10 +961,12 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+   }
+ 
+   // ── --check（默认）──
+-  const runId = flagString(args, 'run-id') ?? (await inferLatestRunId(ref.layout, stage, rerunIndex));
++  // 直读留痕：这条路径最常用，也正是「裁决件尚未写出」的那一格——
++  // 按后缀反推时第一趟恒为 null，整条命令会以「请先跑一次双审」硬失败
++  const runId = latest?.run_id ?? null;
+   if (!runId) {
+     throw missingArtifactError(
+-      `找不到 ${stage} 阶段第 ${rerunIndex} 轮的 run_id。请先跑一次双审，或用 --run-id 指定。`,
++      `找不到 ${stage} 阶段的运行元数据。请先跑一次双审，或用 --run-id 指定。`,
+     );
+   }
+   const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides } =
+@@ -875,6 +975,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+ 
+   const result = await checkAdjudication({
+     cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
++    driver: gateDriver,
+     degraded, voidedSides,
+     expectedFallbackIds, missingSides, runId,
+   });
+@@ -1009,6 +1110,8 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+     const g = await setGateChecked({
+       triviumDir: ctx.triviumDir, topic, stage, state: 'awaiting_approval',
+       runId, rerunIndex,
++      // 设计 §5.2 / §9.2 的三处留痕面之一，只记不读（代码双审 CODEX-06）
++      driver: gateDriver,
+       sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
+       heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+       expect: { runId },
+diff --git a/src/trivium/critics.ts b/src/trivium/critics.ts
+index a1fcfbc..16b82c7 100644
+--- a/src/trivium/critics.ts
++++ b/src/trivium/critics.ts
+@@ -9,7 +9,7 @@
+  * 判定只依赖配置与注册表，不碰文件系统，可直接单测。
+  */
+ import { CRITICS, type Config, type CriticId } from './types.js';
+-import { DEFAULT_DRIVER, agentById, type AgentDescriptor, type AgentId } from './agents/registry.js';
++import { ALL_AGENT_IDS, DEFAULT_DRIVER, agentById, type AgentDescriptor, type AgentId } from './agents/registry.js';
+ import { EXIT, TriviumError, swallowedTextHint } from './exit-codes.js';
+ 
+ export interface CriticSelectionInput {
+@@ -54,22 +54,95 @@ export interface CriticSelectionInput {
+  * 现有输出」——那句话被翻开关这一步当场证伪，而它就在本函数的文档块里，
+  * 是同一次改动的上下文行；代码双审 CODEX-05。）
+  */
+-function legalList(cfg: Config, driver?: AgentId, descriptors?: readonly AgentDescriptor[]): string {
+-  /*
+-   * **论域跟着注入表走**（计划双审 GLM-05）。
+-   *
+-   * 这里此前读的是模块级 `CRITICS`，而判定读的是注入表。两者不一致时，
+-   * 报错会按真实注册表列出「当前可用」，与本次判定实际采信的论域对不上——
+-   * 「第一个错误把用户引向第二个错误」，正是本文件自己立规矩要防的形态。
+-   * 夹具语境下它同样有害：排障的人会照着一个错误的清单找问题。
+-   */
++function legalList(cfg: Config, driver: AgentId, descriptors?: readonly AgentDescriptor[]): string {
++  const usable = selectableCritics(cfg, driver, descriptors);
++  return usable.length > 0 ? usable.join(' | ') : '（配置里没有任何可用审核者）';
++}
++
++/**
++ * 本轮**实际能入选**的审核者 —— 启用集合 ∩ 有配置条目 − 当轮 Driver。
++ *
++ * ## 为什么要有这个导出（M9 第 5 步，EV-53）
++ *
++ * 这份论域此前有**两套实现**：本文件的 `legalList` 减 Driver，而 `topic-args.ts`
++ * 的 `--model-<id>` 白名单读模块级 `CRITICS` **全集、不减**。M9 第 4 步把 claude
++ * 启用为审核者之后，`--model-claude X` 在那边合法通过，却被这边的「当轮 Driver
++ * 不得入选」恒拒——用户显式指定的模型一路走到被丢弃，**留痕里看不出他指定过**。
++ *
++ * 第 5 步把 driver 接进选侧之后，两套论域会在**同一条命令**里给出互相矛盾的
++ * 「当前可用」。所以这里不是「顺手抽个函数」：把两处合到一个派生上，
++ * 才是让「谁能入选」只有一个答案。**抄一份 filter 过去只会把今天的缺口
++ * 原样复制到明天**——那正是本文件开头那段文档在讲的事。
++ *
++ * **论域跟着注入表走**（计划双审 GLM-05）：判定读注入表而报错读真实注册表时，
++ * 「当前可用」会与本次判定实际采信的论域对不上——第一个错误把用户引向第二个错误。
++ */
++export function selectableCritics(
++  cfg: Config,
++  driver: AgentId = DEFAULT_DRIVER,
++  descriptors?: readonly AgentDescriptor[],
++): CriticId[] {
+   const enabled = descriptors
+     ? descriptors.filter((a) => a.criticEnabled).map((a) => a.id)
+     : CRITICS;
+-  const usable = enabled.filter(
++  return enabled.filter(
+     (c) => cfg.agents[c as CriticId] !== undefined && c !== driver,
+-  );
+-  return usable.length > 0 ? usable.join(' | ') : '（配置里没有任何可用审核者）';
++  ) as CriticId[];
++}
++
++/** `resolveDriver` 的结果：当轮 Driver，以及它是否已被启用为 Driver */
++export interface DriverResolution {
++  driver: AgentId;
++  /**
++   * 该 Agent 的 `driverEnabled`。**false 不阻断**——M9 只校验「已登记」。
++   *
++   * 校验 `driverEnabled` 会让 M9 第 6 步跑不成：当前只有 claude 启用为 Driver，
++   * 而验收恰恰要让 claude 当审核者、由别家当 Driver（`--driver codex` 会被拒 ⇒ 死循环）。
++   * 取舍是「放行但如实标注」：预检打一行可见提示，`run.json` 落 `driver_enabled`。
++   * 理由与 `approve` 同构——这条防线靠调用方守规矩，而留痕要让事后对得上账。
++   * M10 收口时把它收紧成 `driverEnabled` 校验。
++   */
++  enabledAsDriver: boolean;
++}
++
++/**
++ * 解析 `--driver` 的取值（M9 第 5 步）。
++ *
++ * **判定只此一处**，三个调用点共用（`cmdReview` / `cmdPreflight` / `topic resolve`）。
++ * 理由见本文件开头：同一条校验实现两遍，就是改一漏二——`--only` 那次已经演过一回。
++ *
++ * 错误文案的论域用 **`ALL_AGENT_IDS`（全部已登记）而不是 `DRIVER_AGENT_IDS`**：
++ * 判据是「已登记」，而后者今天只含 claude。用它当清单会让报错列出的可用值
++ * 与实际接受的取值不一致，又是一次「第一个错误引向第二个错误」。
++ *
++ * `descriptors` 是与 {@link CriticSelectionInput.descriptors} 同构的测试注入口：
++ * 注册表里 `driverEnabled: true` 只有缺省 Driver 一家，没有它，
++ * 「非缺省且已启用」这一臂的用例**今天根本构造不出来**（计划双审 r2 GLM-05）。
++ */
++export function resolveDriver(
++  raw: string | null | undefined,
++  descriptors?: readonly AgentDescriptor[],
++): DriverResolution {
++  const lookup = (x: string): AgentDescriptor | null =>
++    descriptors ? (descriptors.find((a) => a.id === x) ?? null) : agentById(x);
++
++  const id = raw?.trim() ?? '';
++  if (!id) {
++    // 没给就是缺省 Driver；它的 driverEnabled 同样**查表得来**，不写死 true
++    return { driver: DEFAULT_DRIVER, enabledAsDriver: lookup(DEFAULT_DRIVER)?.driverEnabled ?? true };
++  }
++
++  const agent = lookup(id);
++  if (!agent) {
++    const known = descriptors ? descriptors.map((a) => a.id) : ALL_AGENT_IDS;
++    throw new TriviumError(
++      EXIT.USAGE,
++      `--driver 的取值「${id}」不是已登记的 Agent。\n` +
++        `  已登记：${known.join(' | ')}` +
++        swallowedTextHint(id),
++    );
++  }
++  return { driver: agent.id, enabledAsDriver: agent.driverEnabled };
+ }
+ 
+ /**
+diff --git a/src/trivium/gate.ts b/src/trivium/gate.ts
+index 6920fa8..d36e149 100644
+--- a/src/trivium/gate.ts
++++ b/src/trivium/gate.ts
+@@ -722,6 +722,17 @@ async function fileExists(p: string): Promise<boolean> {
+  * 而不是字面的 claude（计划 §2.1 / B-4）——Claude 作为审核者时，
+  * 写死跳过会让反查恒返回 null。
+  */
++/**
++ * @deprecated M9 第 5 步起**闸门区不再用它**，改为 `meta.latestRunMeta` 直读留痕。
++ *
++ * 它按工件后缀反推 run_id，而「跳过当轮 Driver 的产出」这一步**需要先知道 driver**——
++ * driver 又只记在运行元数据里，于是构成循环依赖。非缺省 Driver 且 `--critics claude`
++ * 时本轮审查件全是 `-claude.md`，按缺省 Driver 推会整批跳过并返回 null，
++ * 闸门以「请先跑一次双审」硬失败（计划双审 r2 AGY-01，判阻断）。
++ *
++ * 现无生产消费方。保留仅为不扩大本步改动面；**不要在新代码里用它**，
++ * 需要 run_id / driver / 轮次一律走 `latestRunMeta`。删除登记为 EV-64。
++ */
+ export async function inferLatestRunId(
+   layout: ArchiveLayout,
+   stage: Stage,
+diff --git a/src/trivium/meta.ts b/src/trivium/meta.ts
+index 54f59a1..8b8a184 100644
+--- a/src/trivium/meta.ts
++++ b/src/trivium/meta.ts
+@@ -15,6 +15,7 @@ import { topicDir, type ArchiveLayout } from './archive.js';
+ import { withTopicLock } from './lock.js';
+ import { validateRunMeta, validateRunMetaV1 } from './schemas.js';
+ import { DEFAULT_DRIVER } from './agents/registry.js';
++import { warn } from './util/log.js';
+ 
+ /** `updateTask` 的短临界区参数 */
+ export interface TaskLock {
+@@ -86,6 +87,14 @@ export interface TaskMeta {
+      */
+     review_mode: RunMeta['review_mode'] | LegacyReviewMode;
+     started_at: string;
++    /**
++     * 当轮 Driver（M9 第 5 步）。**可选**：早于该步的记录没有这个字段。
++     *
++     * 设计 §5.2 把 `--driver` 的留痕面写成三处——`run.json.driver`、
++     * `task.json.runs[]`、`state.json` 闸门项。第 5 步一开始只落了第一处，
++     * 代码双审 CODEX-06 按设计原文核出偏离；这里补齐第二处。
++     */
++    driver?: AgentId;
+   }[];
+   /** 当前闸门状态 */
+   gate: { stage: Stage | null; state: string; since: string | null; run_id: string | null };
+@@ -210,8 +219,18 @@ export interface NewRunMetaInput {
+   taskGoal: string | null;
+   /** 发起本次运行的斜杠命令（A/B/C/D），手工调用为 null */
+   entry?: CommandEntry | null;
+-  /** 当轮发起方。省略时取注册表的 `DEFAULT_DRIVER`（M7b 恒为 claude） */
++  /** 当轮发起方。省略时取注册表的 `DEFAULT_DRIVER` */
+   driver?: AgentId;
++  /**
++   * 该 Driver 当时是否**已启用为 Driver**（M9 第 5 步）。
++   *
++   * M9 的 `--driver` 只校验「已登记」，`driverEnabled === false` 照样放行——
++   * 校验它会让第 6 步验收跑不成（当前只有 claude 启用为 Driver，而验收恰恰要
++   * claude 当审核者）。放行的代价由这个字段兜住：事后能对出「这一轮声明的
++   * Driver 当时还没启用」。M10 收紧成校验之后，历史留痕仍要能读回，
++   * 所以它是**可选**字段、不进 `required`、不加 `if/then`。
++   */
++  driverEnabled?: boolean;
+   /** 本轮入选的审核者集合。**必填**：它是「本该跑几侧」的唯一事实来源 */
+   criticsSelected: readonly CriticId[];
+   treeHash: string;
+@@ -235,6 +254,9 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
+     task_goal: i.taskGoal,
+     entry: i.entry ?? null,
+     driver: i.driver ?? DEFAULT_DRIVER,
++    // 恒写：缺省 Driver 那一路也要有值，否则「字段缺失」既可能是旧留痕、
++    // 也可能是本步漏传，事后分不开（口径与 profile_requested / model_provider 同源）
++    driver_enabled: i.driverEnabled ?? true,
+     critics_selected: [...i.criticsSelected],
+     snapshot: {
+       git_head: i.gitHead,
+@@ -322,6 +344,80 @@ export function migrateRunMetaV1(raw: unknown): RunMeta {
+  * 它的分支在 `archive.ts` 的 `listRecordedRuns` 里——那条分支写错会让归档中
+  * 全部 verify 历史记录被判不可读，进而**永久拦死本仓库的每一次提交**（§6.7.1 的方框）。
+  */
++/**
++ * 该阶段**最新一轮**的运行元数据 —— 当轮 Driver 与轮次的**权威来源**（M9 第 5 步）。
++ *
++ * ## 为什么需要它：后缀反推有循环依赖
++ *
++ * 闸门区此前靠 `inferLatestRunId` / `resolveRerunIndex` 从**工件后缀**反推，
++ * 而两者都要先知道当轮 Driver 才能「跳过 Driver 自己的产出」——
++ * driver 又只记在运行元数据里。于是形成死循环：
++ * 非缺省 Driver 且 `--critics claude` 时，本轮审查件全是 `-claude.md`，
++ * 按缺省 Driver 推会把它们**整批跳过**，`inferLatestRunId` 返回 null，
++ * 命令以「请先跑一次双审」硬失败——而双审明明已经跑完。
++ *
++ * 曾经想过「先按缺省猜一次、读到元数据后再复算」，那只是把循环包了一层：
++ * 裁决件尚未写出时第一趟就断了（而那恰是 `gate --check` 最常用的状态），
++ * 且存在可构造的 2-循环。
++ *
++ * **正解是根本不反推**：run_id 就是文件名，而 `run.v2` 把 `driver` 与
++ * `rerun_index` 列为必填。直读即可，一次到位。
++ *
++ * ## 排序依据
++ *
++ * `newRunId()` 是 `toISOString()` 去掉分隔符与毫秒，即 `YYYYMMDDTHHMMSSZ`——
++ * **定宽 UTC**，所以字典序即时序，这是构造保证而非经验规律
++ * （无时区、无变长、无前导零问题）。实测归档内 84 份留痕全部符合该形态。
++ *
++ * ## 读不出来的怎么办
++ *
++ * 逐个往下试，直到拿到一份合契约的，**并把跳过的逐个 warn 点名**
++ * （代码双审 CODEX-02）：跳过本身是合理的兜底，但静默跳过不是——
++ * 最新那条坏掉时闸门会据此把轮次与 run_id 一并变旧，若上一轮本就裁决齐备，
++ * `--check` 会返回 ok 而**最新一轮落盘的审查件从未被裁决检查过**。
++ * 提交时 `checkRunManifests` 会拦下这种归档（所以不是静默放行），
++ * 但闸门自身不留痕迹的话，人看到的只是「第 N-1 轮通过了」。
++ *
++ * **「一份都没有」与「有但全读不出」是两回事**（代码双审 AGY-01 / GLM-02）：
++ * 前者是正常的「还没跑过」，后者是留痕被搅坏。上一版把两者压成同一个 `null`，
++ * 于是调用方只能给出同一句「请先跑一次双审」，而 `--check-artifacts` 那一格
++ * 更是直接按缺省 Driver 继续——**回落把「留痕坏了」悄悄变成「按 claude 判」，
++ * 正是本函数要消灭的形态在自己身上留的一个角**。所以返回体要带上扫描事实。
++ */
++export interface LatestRunMetaResult {
++  /** 最新一份**可读**的运行元数据；一份都读不出来时为 null */
++  meta: RunMeta | null;
++  /** 该阶段 `_meta/` 下扫到的 `run-*.json` 总数（含读不出来的） */
++  scanned: number;
++  /** 读不出来的 run_id，按字典序倒序（即从新到旧） */
++  unreadable: string[];
++}
++
++export async function latestRunMeta(l: ArchiveLayout, stage: Stage): Promise<LatestRunMetaResult> {
++  const { metaDir } = await import('./archive.js');
++  let files: string[];
++  try {
++    files = await fs.readdir(metaDir(l, stage));
++  } catch {
++    // 目录不存在 = 这个阶段还没跑过，属正常，不是异常
++    return { meta: null, scanned: 0, unreadable: [] };
++  }
++  const ids = files
++    .map((f) => /^run-(.+)\.json$/.exec(f)?.[1])
++    .filter((x): x is string => x !== undefined)
++    .sort()
++    .reverse();
++  const unreadable: string[] = [];
++  for (const id of ids) {
++    const m = await readRunMeta(l, stage, id);
++    if (m) return { meta: m, scanned: ids.length, unreadable };
++    unreadable.push(id);
++    // 点名而不是静默跳过：与 run-protocol 的 handoffDriver 同构
++    warn(`运行元数据 ${id}（${stage} 阶段）读不出来，已跳过——留痕可能被改坏或不合契约`);
++  }
++  return { meta: null, scanned: ids.length, unreadable };
++}
++
+ export async function readRunMeta(
+   l: ArchiveLayout,
+   stage: Stage,
+@@ -355,6 +451,8 @@ export async function registerRun(l: ArchiveLayout, meta: RunMeta, lock: TaskLoc
+       status: meta.status,
+       review_mode: meta.review_mode,
+       started_at: meta.started_at,
++      // 与 run.json.driver 同源：设计 §5.2 要求这一处也记（代码双审 CODEX-06）
++      driver: meta.driver,
+     };
+     const at = t.runs.findIndex((r) => r.run_id === meta.run_id);
+     if (at === -1) t.runs.push(entry);
+diff --git a/src/trivium/preflight.ts b/src/trivium/preflight.ts
+index aa246ae..185c303 100644
+--- a/src/trivium/preflight.ts
++++ b/src/trivium/preflight.ts
+@@ -17,7 +17,7 @@ import type { AuthCacheEntry, CommonProbe, Config, CriticId, Ctx, Stage } from '
+ import { DEFAULT_CRITICS, STAGES } from './types.js';
+ import { EXIT, TriviumError } from './exit-codes.js';
+ import { patchProbe, probeIsFresh, staleCliProbes } from './config.js';
+-import { ALL_CLI_NAMES, agentById, agentByCliName } from './agents/registry.js';
++import { ALL_CLI_NAMES, DEFAULT_DRIVER, agentById, agentByCliName, type AgentId } from './agents/registry.js';
+ import { realAdapters } from './adapters/index.js';
+ import { routeModel, type AdapterContext, type CriticAdapter } from './adapters/base.js';
+ import { exists } from './util/fsx.js';
+@@ -77,6 +77,10 @@ export interface PreflightOptions {
+    * 启用第三家之后，全集检查会让「本次压根没选它」的运行也因它环境未配而失败。
+    */
+   critics?: readonly CriticId[];
++  /** 当轮 Driver（M9 第 5 步）。缺省即注册表缺省值，此时不打提示 */
++  driver?: AgentId;
++  /** 该 Driver 是否已启用为 Driver；false 时提示里要说清「仅用于选侧判定」 */
++  driverEnabled?: boolean;
+ }
+ 
+ // ─────────────────────── 各项检查 ───────────────────────
+@@ -600,6 +604,29 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
+    */
+   const selected: readonly CriticId[] = opts.critics ?? cfg.review.default_critics;
+ 
++  /*
++   * ⓪ 当轮 Driver 非缺省时打一行可见提示（M9 第 5 步）。
++   *
++   * **必须 `ok: true`**：下面多处用 `checks.every((c) => c.ok)` 做短路，
++   * `exitCode` 又由 `find((c) => !c.ok)` 决定——判 false 会把一条**提示**
++   * 变成一次**失败**，而且是在探针检查之前就把整个预检短路掉。
++   *
++   * 做成 `CheckResult` 而不是单独打印，是因为 `--json` 与人读两条输出路径
++   * 都消费 `r.checks`：单独 print 只有人读那条看得见。
++   *
++   * 缺省 Driver 时不推：那是绝大多数运行的形态，每次都打一行等于没打。
++   */
++  const driver = opts.driver ?? DEFAULT_DRIVER;
++  if (driver !== DEFAULT_DRIVER) {
++    checks.push({
++      name: '当轮 Driver',
++      ok: true,
++      detail: opts.driverEnabled === false
++        ? `${driver}（本次声明的 Driver 尚未启用为 Driver，该值仅用于选侧判定）`
++        : driver,
++    });
++  }
++
+   // ① 探针新鲜度（过期即快速失败，不拉 doctor）
+   checks.push(checkProbeFreshness(cfg));
+   // ② ③ CLI 可调用且版本与探针一致
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index 757de2c..aa16c10 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -16,7 +16,7 @@ import type {
+   Config, CriticId, CriticRequest, CriticResult, Ctx, DenyCategory, Review, Stage, CommandEntry,
+ } from './types.js';
+ import { CRITIC_PREFIX, CRITIC_VENDOR, VOIDING_DENY_CATEGORIES } from './types.js';
+-import { agentById } from './agents/registry.js';
++import { DEFAULT_DRIVER, agentById, type AgentId } from './agents/registry.js';
+ import {
+   isHeterogeneous,
+   routeModel,
+@@ -243,7 +243,7 @@ function goalFromPlanDoc(text: string): string | null {
+  * 两侧共用同一个结果——和「补丁只算一次」同理，否则两位审查员可能看到不同的目标。
+  */
+ export async function resolveTaskGoal(
+-  opts: Pick<ReviewOptions, 'taskGoal' | 'stage' | 'subjectFile'>,
++  opts: Pick<ReviewOptions, 'taskGoal' | 'stage' | 'subjectFile' | 'driver'>,
+   ref: { topic: string; layout: ArchiveLayout },
+   projectRoot: string,
+ ): Promise<string | null> {
+@@ -263,7 +263,15 @@ export async function resolveTaskGoal(
+     const planRef = { topic: ref.topic, layout: ref.layout, stage: 'plan' as const,
+       stageDirAbs: stageDir(ref.layout, 'plan') };
+     // 显式 subjectFile 是给当前阶段的，不能拿来定位 plan 原稿
+-    const planPath = await locateSubject(planRef, null, projectRoot);
++    /*
++     * **driver 必须传**（M9 第 5 步，计划双审 r2 CODEX-03）。这是 `locateSubject`
++     * 的第三处调用，也是最容易漏的一处——整段包在 try/catch 里，漏了不报错。
++     *
++     * 漏传的后果分两种，都不进留痕：非缺省 Driver 下按缺省后缀找 plan 原稿，
++     * 要么找不到（任务目标**无声消失**，BRIEF 第 4 段空着），
++     * 要么找到的是**别人的审查件**，把对计划的意见当成计划本身来提目标。
++     */
++    const planPath = await locateSubject(planRef, null, projectRoot, opts.driver ?? DEFAULT_DRIVER);
+     return goalFromPlanDoc(await fs.readFile(planPath, 'utf8'));
+   } catch {
+     // 纯 code 主题没有 plan 目录，属正常情况——静默跳过，不是错误
+@@ -271,6 +279,38 @@ export async function resolveTaskGoal(
+   }
+ }
+ 
++/**
++ * `heterogeneous: false` 那一格的成因说明（EV-54）。
++ *
++ * ## 为什么必须有写入方
++ *
++ * `run.v2` 的散文契约写着「false 时必须有 `override_reason`」，而承接侧
++ * （`render.ts` 的声明、落盘、渲染三处）**早就接通了，一直没有人传值**。
++ * M9 第 4 步推后它的理由是「claude 一次也选不上，补的写入方没有任何路径能端到端
++ * 验证」——那条理由被第 5 步的 `--driver` 当场消灭：`--driver <非 claude> --critics claude`
++ * 之后 claude 真能入选，而 `isHeterogeneous` 对 claude 系模型**恒返回 false**。
++ * 不补的话，第 6 步验收产出的那份留痕必然自相矛盾，而它要作为达成证据进台账。
++ *
++ * ## 取值来源写死在这里，不留给调用点各写一份
++ *
++ * 只有两种成因：用户显式指定，或档位默认落在了 Claude 系。两个写点
++ * （审查文档 front-matter 与运行元数据）**共用本函数**——各写一份文案就会
++ * 踩破「两处同值」这条判据本身。
++ *
++ * **只补写入方，不升 schema 的 `if/then` 机器判据**：那会让历史留痕集体读不回。
++ */
++function overrideReasonFor(
++  c: CriticId,
++  model: string | null,
++  modelOverrides: Partial<Record<CriticId, string>>,
++  profileRequested: string | null,
++): string | null {
++  if (isHeterogeneous(model)) return null;
++  return modelOverrides[c]
++    ? `用户经 --model-${c} 显式指定了 Claude 系模型`
++    : `档位 ${profileRequested ?? '（缺省）'} 的默认模型落在 Claude 系`;
++}
++
+ /** 运行目录按仓库路径哈希分桶，避免不同项目互相覆盖 */
+ export function repoId(projectRoot: string): string {
+   return `${path.basename(projectRoot)}-${sha256(projectRoot).slice(0, 8)}`;
+@@ -307,6 +347,14 @@ export interface ReviewOptions {
+    * 使手工构造 `ReviewOptions` 的调用点（测试、selftest）不必逐个补这个字段。
+    */
+   critics?: readonly CriticId[] | null;
++  /**
++   * 当轮 Driver（M9 第 5 步）。省略即注册表缺省值。
++   *
++   * 它在本模块决定四件事：轮次怎么算（`resolveRerunIndex`）、原稿是谁的后缀
++   * （`locateSubject`）、禁读集怎么剪（`freeze`）、以及留痕里记的发起方（`newRunMeta`）。
++   * **四个消费方都在 `prepareRun`，即 `--start` 侧**；`executeRun` 今天不读它。
++   */
++  driver?: AgentId;
+   /** 覆盖 skill 资产根（默认取安装位置） */
+   assetRoot?: string;
+   /** code 阶段的 diff 基线，默认 HEAD */
+@@ -463,7 +511,17 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+    * **不再回落到 `CRITICS` 全集**（M7b 第 5 步）——那是 v1 时代「配置不表达选侧」
+    * 留下的写法。现在 `review.default_critics` 才是默认值的所在。
+    */
+-  const sides: CriticId[] = [...(opts.critics ?? resolveCriticSelection(cfg))];
++  /*
++   * 当轮 Driver：本函数里四个消费方（轮次、原稿定位、禁读剪枝、留痕）都用它。
++   * `driverEnabled` **就地由注册表派生**，不进 ReviewOptions 也不进交接文件——
++   * 它是 id 的属性，不是调用方的选择；让它随参数传递就多了一个能传错的地方。
++   */
++  const driver: AgentId = opts.driver ?? DEFAULT_DRIVER;
++  const driverEnabled = agentById(driver)?.driverEnabled ?? false;
++
++  // 回落分支也要传 driver：否则「没给 critics」这条路上 Driver 排除按缺省判，
++  // 非缺省 Driver 会被漏放进入选集合（计划双审 r2 CODEX-11）
++  const sides: CriticId[] = [...(opts.critics ?? resolveCriticSelection(cfg, { driver }))];
+   /*
+    * ── slug 校验内嵌于此（审查意见 GLM-01）──
+    *
+@@ -497,6 +555,22 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+   if (sides.length === 0) {
+     throw usageError('入选审核者集合为空：一次审查至少要有一个审核者。');
+   }
++  /*
++   * **Driver 不得在入选集合里**——与上面那条空集合兜底同构、同理由。
++   *
++   * 判定处（`resolveCriticSelection`）已经拦过一道，但 `opts.critics` 一旦给了值
++   * 就**整个绕过判定处**：worker 从交接文件拷贝、测试与 selftest 手工构造，三条都能绕。
++   * 「自己审自己」是比空集合更硬的安全不变量（P1：独立二次审查），
++   * 判定处的不变式同样要延伸到直传参数的路径。
++   *
++   * 这里只兜「直传 critics」这一种形态——没给 critics 的回落分支上面已经传了 driver。
++   */
++  if (sides.includes(driver)) {
++    throw usageError(
++      `入选审核者里含当轮 Driver「${driver}」：它是本次运行的执笔者，不能同时充当独立审查员。\n` +
++        '  自己审自己不构成二次审查——这条流水线存在的理由就是避免它。',
++    );
++  }
+   for (const c of sides) {
+     const adapter = adapters[c];
+     /*
+@@ -556,7 +630,15 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+    * 现在改为：全部计算在内存里完成，只有都成功了才开始落盘。
+    */
+   const ref = await resolveTopicReadOnly(ctx, opts.topic, stage);
+-  const rerunIndex = await resolveRerunIndex(ref.layout, stage);
++  /*
++   * 轮次也要按当轮 Driver 算（M9 第 5 步补漏——步骤表的落点表没列这一处）。
++   *
++   * 漏传时它按缺省 Driver 跳过产出：非缺省 Driver 下本轮的 `-claude.md` 审查件
++   * 会被当成 Driver 自己的产出跳过，max 偏小。代价不是「元数据与文件名分叉」
++   * （`firstFreeRerunIndex` 抬升时会同步改写 `meta.rerun_index`，两者始终一致），
++   * 而是骨架运行元数据短暂记错轮次 + 必然触发一次抬升告警。
++   */
++  const rerunIndex = await resolveRerunIndex(ref.layout, stage, driver);
+   const runId = newRunId();
+ 
+   /*
+@@ -607,7 +689,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+     // FR-23：判定由程序做，不由模型做（§6.4）
+     skipVerdict = classifyDiff(cfg, files);
+   } else {
+-    subjectPath = await locateSubject(ref, opts.subjectFile, ctx.projectRoot);
++    subjectPath = await locateSubject(ref, opts.subjectFile, ctx.projectRoot, driver);
+     subjectText = await fs.readFile(subjectPath, 'utf8');
+   }
+ 
+@@ -674,6 +756,14 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+        * 而不是又一条只测被调函数的用例。
+        */
+       topic: ref.topic,
++      /*
++       * 这就是上面注释里说的「第一次」：`enumerateDenyPaths` 加了 driver 参数，
++       * 而这个唯一调用入口一直没传——M9 第 5 步补上。
++       *
++       * 漏传时禁读集按缺省 Driver 剪：非 Claude Driver 的原稿会整批进禁读集，
++       * 审核者正常读取即判 peer_leak、整次运行作废重跑。
++       */
++      driver,
+       subjectPath,
+       ...(opts.diffBase ? { base: opts.diffBase } : {}),
+       ...(frozenDiffText !== null ? { diffText: frozenDiffText } : {}),
+@@ -784,6 +874,15 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+      * 两者分开记，`gate` 才能把「入选但失败」与「压根没入选」判成两回事（§6.7.1）。
+      */
+     criticsSelected: sides,
++    /*
++     * 发起方与它的启用状态一起落盘（M9 第 5 步）。
++     *
++     * `driver_enabled: false` 是 M9 刻意接受的形态：本步只校验「已登记」，
++     * 不校验 `driverEnabled`（校验了第 6 步就跑不成，见 `resolveDriver`）。
++     * 放行的代价必须由留痕兜住——事后要能对出「这一轮声明的 Driver 当时还没启用」。
++     */
++    driver,
++    driverEnabled,
+     treeHash: primarySnap.treeHash,
+     gitHead: primarySnap.gitHead,
+     dirty: primarySnap.dirty,
+@@ -1142,6 +1241,9 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+        */
+       jointCheck: jointCheckRun,
+       heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model),
++      overrideReason: overrideReasonFor(
++        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested,
++      ),
+     });
+ 
+     const written = await writeArtifact({
+@@ -1339,6 +1441,11 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+       evidence_ok: side?.evidenceOk ?? false,
+       ...(r.usage ? { usage: r.usage } : {}),
+       heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model),
++      // 与上面渲染侧**共用同一个派生函数**：两处各写一份文案就会踩破
++      // 「front-matter 与运行元数据两处同值」这条自己要守的判据（EV-54）
++      override_reason: overrideReasonFor(
++        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested,
++      ),
+       fail_reason: r.fail_reason,
+       empty_review: (reviews[c]?.findings.length ?? -1) === 0,
+       parse_fallback: r.status === 'parse_fallback',
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index 60b3d16..c623ee3 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -26,6 +26,7 @@ import {
+ } from './review.js';
+ import { resolveTopic } from './topic.js';
+ import { readRunMeta } from './meta.js';
++import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
+ import { setGateChecked } from './state.js';
+ import type { AdapterContext } from './adapters/base.js';
+ import { resolveAdapters } from './adapters/stub.js';
+@@ -83,6 +84,18 @@ interface Handoff {
+     /** 会话 id 与临时降级开关必须一起交接：worker 是另一个进程，读不到 --start 的 argv */
+     sessionId: string | null;
+     allowSingle: boolean;
++    /**
++     * 当轮 Driver（M9 第 5 步）。**必填**——与 `critics` / `sessionId` / `allowSingle` 同列。
++     *
++     * 声明成必填而不是可选，是为了让「类型上加了、`writeHandoff` 里忘了写值」
++     * 这条静默路径在**编译期**就不可达：`ReviewOptions.driver` 本身是可选的，
++     * 若这里也可选，漏写两处都过 typecheck，只能靠测试去兜。
++     *
++     * 注意这道保险**只在同版本进程内成立**：`rebuildContext` 读的是
++     * `JSON.parse(...) as Handoff`，旧版写出的交接文件没有这个字段，
++     * 类型必填而运行期 undefined——所以那里另有一道运行期校验。
++     */
++    driver: AgentId;
+     /** 发起命令（A/B/C/D）同样只有 --start 知道，要随交接文件带给 worker */
+     entry?: CommandEntry | null;
+   };
+@@ -110,6 +123,7 @@ async function writeHandoff(rc: RunContext): Promise<void> {
+       critics: [...rc.sides],
+       sessionId: rc.opts.sessionId ?? null,
+       allowSingle: rc.opts.allowSingle === true,
++      driver: rc.opts.driver ?? DEFAULT_DRIVER,
+       entry: rc.opts.entry ?? null,
+       ...(rc.opts.assetRoot ? { assetRoot: rc.opts.assetRoot } : {}),
+     },
+@@ -117,6 +131,28 @@ async function writeHandoff(rc: RunContext): Promise<void> {
+   await fs.writeFile(requestPath(rc.runDirBase), JSON.stringify(h, null, 2) + '\n', 'utf8');
+ }
+ 
++/**
++ * 交接文件里的当轮 Driver，缺失时回落并**打一条可见告警**。
++ *
++ * `Handoff.options.driver` 在类型上是必填的，但 `rebuildContext` 读的是
++ * `JSON.parse(...) as Handoff`——那是**断言，不是校验**。用
++ * `review --worker <runId>` 恢复一份**旧版写出的**交接文件时，类型必填而运行期
++ * 是 undefined：静默回落缺省 Driver 会让非缺省 Driver 的那一轮被按 claude 重跑，
++ * 产物后缀与轮次都记错，且全程不报错。
++ *
++ * 回落取 `meta.driver` 而**不是** `DEFAULT_DRIVER`：运行元数据是这一轮 Driver 的
++ * 权威记录，而且它就在调用处手边——没有理由去猜一个可能错的值。
++ */
++function handoffDriver(h: Handoff, meta: { driver: AgentId }, runId: string): AgentId {
++  const v = h.options.driver as AgentId | undefined;
++  if (v) return v;
++  warn(
++    `运行 ${runId} 的交接文件没有 driver 字段（早于 M9 第 5 步写出）：` +
++      `按运行元数据记录的「${meta.driver}」继续`,
++  );
++  return meta.driver;
++}
++
+ /** 工作进程侧：从交接文件重建执行上下文 */
+ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
+   const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
+@@ -151,6 +187,7 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
+       critics: h.options.critics,
+       sessionId: h.options.sessionId ?? null,
+       allowSingle: h.options.allowSingle === true,
++      driver: handoffDriver(h, meta, runId),
+       entry: h.options.entry ?? null,
+       ...(h.options.assetRoot ? { assetRoot: h.options.assetRoot } : {}),
+     } satisfies ReviewOptions,
+diff --git a/src/trivium/state.ts b/src/trivium/state.ts
+index 8a206a5..5ede1a3 100644
+--- a/src/trivium/state.ts
++++ b/src/trivium/state.ts
+@@ -11,6 +11,7 @@
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import type { Stage } from './types.js';
++import type { AgentId } from './agents/registry.js';
+ import { withGlobalLock } from './lock.js';
+ import { writeAtomic } from './util/fsx.js';
+ import { EXIT, TriviumError } from './exit-codes.js';
+@@ -51,6 +52,17 @@ export interface GateEntry {
+   run_id: string | null;
+   rerun_index: number;
+   since: string;
++  /**
++   * 当轮 Driver（M9 第 5 步）。**可选**：早于该步立起的闸门项没有这个字段，
++   * 缺失即「无从得知」，不等于缺省 Driver。
++   *
++   * 设计 §5.2 / §9.2 把它列为 `--driver` 三处留痕面之一（另两处是
++   * `run.json.driver` 与 `task.json.runs[]`）。**本步只记不读**——
++   * Hook 的 Driver 感知按计划 §2.2 不在第 5 步范围（见 EV-55），
++   * 但记录面先落齐，免得实现与唯一实现依据对同一件事各说一套
++   * （代码双审 CODEX-06）。
++   */
++  driver?: AgentId;
+   /**
+    * 触发该闸门的 Claude Code 会话 id。
+    *
+@@ -132,6 +144,8 @@ export interface SetGateInput {
+   runId?: string | null;
+   rerunIndex?: number;
+   sessionId?: string | null;
++  /** 当轮 Driver（M9 第 5 步）。只记不读，见 GateEntry.driver */
++  driver?: AgentId;
+   heartbeatStaleMs: number;
+   /**
+    * 条件迁移：只有当前闸门满足 `expect` 时才写入（审查意见 GLM-r2-01）。
+@@ -209,6 +223,8 @@ export async function setGateChecked(i: SetGateInput): Promise<SetGateResult> {
+       since: new Date().toISOString(),
+       // 会话 id 一旦记下就不因后续状态变化而丢——写锁的作用域判定要用它
+       session_id: i.sessionId ?? prev?.session_id ?? null,
++      // driver 同理：记下就不丢，后续状态迁移沿用前一条的值
++      ...((i.driver ?? prev?.driver) ? { driver: (i.driver ?? prev?.driver)! } : {}),
+     };
+     s.gates[key] = entry;
+     result = { applied: true, entry };
+diff --git a/src/trivium/topic-args.ts b/src/trivium/topic-args.ts
+index 1bbe4e3..eb4aa30 100644
+--- a/src/trivium/topic-args.ts
++++ b/src/trivium/topic-args.ts
+@@ -12,11 +12,12 @@
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import { ALL_AGENT_IDS, DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
+-import { CRITICS, type CriticId, type Ctx, type Stage } from './types.js';
+-import { resolveCriticSelection } from './critics.js';
++import type { CriticId, Ctx, Stage } from './types.js';
++import { resolveCriticSelection, resolveDriver, selectableCritics } from './critics.js';
+ import { validateTopic, parseArtifactName } from './naming.js';
+ import { EXIT, TriviumError } from './exit-codes.js';
+ import { exists } from './util/fsx.js';
++import { isReviewArtifact } from './archive.js';
+ import { diffExcludePrefixes } from './code-stage.js';
+ import type { PreflightScope } from './preflight.js';
+ 
+@@ -32,6 +33,8 @@ const STATIC_FLAGS = [
+   'topic', 'context', 'plan-file', 'rca-file', 'base',
+   'profile', 'focus', 'goal',
+   'only', 'allow-single', 'session-id', 'critics',
++  // M9 第 5 步：不认识它就会被当正文压进 restParts，与 `--base` 那次同形
++  'driver',
+ ] as const;
+ type StaticFlag = (typeof STATIC_FLAGS)[number];
+ 
+@@ -234,6 +237,20 @@ export interface TopicResolution {
+   critics: CriticId[];
+   /** 一侧失败时不中止，产出单审结果并留痕（§12.4） */
+   allow_single: boolean;
++  /**
++   * 当轮 Driver（`--driver <id>`，M9 第 5 步）。缺省即注册表缺省值。
++   *
++   * 它决定两件事：**谁不得入选**（自己不能审自己）、**原稿是谁的后缀**。
++   * 回显出来是让上层能看见本次采信的是哪一个——静默取缺省正是这一族缺口的形状。
++   */
++  driver: AgentId;
++  /**
++   * 本次声明的 Driver 是否**已启用为 Driver**。
++   *
++   * false 不阻断（M9 只校验「已登记」，见 `resolveDriver`），但要让调用方看得见：
++   * notes 里会有一条，预检也会打一行。
++   */
++  driver_enabled: boolean;
+   /**
+    * 调用方传进来的会话 id。
+    *
+@@ -325,9 +342,35 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
+     );
+   }
+ 
++  /*
++   * **命令 A 同样不接受 `--driver`**（M9 第 5 步，计划双审 D3）。
++   *
++   * 理由与上面那条逐字同构：`--driver` 本轮只作 CLI / 编排器内部旗标落地，
++   * 不进 skill、不进 argument-hint（步骤表 §2.14）。于是命令 A 收下它之后
++   * 没有任何交接说明会把它带下去——**接受即静默丢弃**，正是「错的报错、对的消失」。
++   */
++  if (scope === 'all' && named['driver']) {
++    throw new TriviumError(
++      EXIT.USAGE,
++      '命令 A（全流程）不接受 --driver：它本轮只作编排器内部旗标，不进 skill 交接说明，' +
++        '在这一层收下会被静默丢弃。\n' +
++        '  需要指定当轮 Driver 请改用 /dual-review-plan、/dual-review-code 或 /dual-review-bug。',
++    );
++  }
++
++  // 当轮 Driver 先解析：选侧与被审对象定位都要用它（判定处在 critics.ts，此处只取值）
++  const { driver, enabledAsDriver } = resolveDriver(named['driver'] ?? null);
++  if (!enabledAsDriver) {
++    // 放行但如实标注（见 resolveDriver 的文档块）。留痕要让事后对得上账
++    notes.push(
++      `本次声明的 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`,
++    );
++  }
++
+   const critics = resolveCriticSelection(ctx.config, {
+     critics: named['critics'] ?? null,
+     only: onlyRaw || null,
++    driver,
+   });
+   /*
+    * **入选来自 `--only` 时，输出的 `only` 置 null**（审查意见 AGY-01 ≡ GLM-01，两侧判 major）。
+@@ -440,19 +483,35 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
+    * 逐审核者取 `--model-<id>`，不再写死两个旗标名。
+    * 旗标名对既有两侧逐字不变（id 即 gemini / glm），第三家启用后自动可用。
+    *
+-   * 白名单的论域是**全部已登记 Agent**，取值的论域是**当前可用审核者**——
+-   * 两者之差（登记了但未启用为审核者，如 Driver 自身）必须当场报错。
++   * 白名单的论域是**全部已登记 Agent**，取值的论域是**本轮实际能入选谁**——
++   * 两者之差（登记了但本轮当不了审核者，含当轮 Driver 自身）必须当场报错。
+    * 不报的话它会落进「解析成功、随后被丢弃」：留痕里看不出用户指定过模型，
+    * 而这正是 `--base` 漏传那一族的形状。
++   *
++   * ## 判据从 `CRITICS` 换成 `selectableCritics` 的理由（EV-53）
++   *
++   * 原判据是「在不在**启用集合**里」，与当轮 Driver 无关。M9 第 4 步把 claude
++   * 启用为审核者之后，`--model-claude X` 从此合法通过——而 `critics.ts` 的
++   * 「当轮 Driver 不得入选」恒拒 claude，那个模型覆盖**一路走到被丢弃**，
++   * 正是这段注释自己要防的形态，只是触发它的从「未启用的第三家」
++   * 变成了「已启用但当不了本轮审核者的 Driver」。
++   *
++   * 正确判据是「本轮**实际**能入选谁」，而那要等 `--driver` 落地才成为逐次运行的事实。
++   * **判据与文案共用同一份派生**：此前文案读 `CRITICS`（含 Driver）而 `legalList`
++   * 读减 Driver 的那份，同一条命令里两段「当前可用」会互相矛盾。
+    */
++  const selectable = selectableCritics(ctx.config, driver);
+   for (const id of ALL_AGENT_IDS) {
+     const v = named[`model-${id}`];
+     if (!v) continue;
+-    if (!(CRITICS as readonly string[]).includes(id)) {
++    if (!(selectable as readonly string[]).includes(id)) {
++      const why = id === driver
++        ? `它是本轮的 Driver（执笔者），不能同时充当审核者`
++        : `${id} 本轮不是可用审核者`;
+       throw new TriviumError(
+         EXIT.USAGE,
+-        `--model-${id}：${id} 当前不是可用审核者，不能为它指定模型。\n` +
+-          `  当前可用：${CRITICS.join('、')}`,
++        `--model-${id}：${why}，不能为它指定模型。\n` +
++          `  本轮可用：${selectable.length > 0 ? selectable.join('、') : '（没有任何可用审核者）'}`,
+       );
+     }
+     models[id] = v;
+@@ -470,7 +529,7 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
+ 
+   if (scope === 'plan' || scope === 'bug') {
+     const explicit = scope === 'plan' ? named['plan-file'] : named['rca-file'];
+-    subjectPath = await locateSubjectReadOnly(ctx, topic, scope, explicit ?? null);
++    subjectPath = await locateSubjectReadOnly(ctx, topic, scope, explicit ?? null, driver);
+   } else if (scope === 'code') {
+     base = named['base'] ?? 'HEAD';
+     const { diffAgainst } = await import('./util/git.js');
+@@ -505,6 +564,8 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
+     only,
+     critics,
+     allow_single: allowSingle,
++    driver,
++    driver_enabled: enabledAsDriver,
+     session_id: named['session-id']?.trim() || null,
+     topic_inferred: inferred,
+     notes,
+@@ -536,6 +597,16 @@ async function locateSubjectReadOnly(
+     if (!(await exists(abs))) {
+       throw new TriviumError(EXIT.MISSING_ARTIFACT, `指定的被审对象不存在：${explicit}`);
+     }
++    // 与 `topic.locateSubject` 同款硬拒：显式路径没有「下一个候选」可退，
++    // 静默换成别的就是「解析成功、随后被悄悄替换」那一族缺口
++    if (await isReviewArtifact(abs)) {
++      throw new TriviumError(
++        EXIT.MISSING_ARTIFACT,
++        `指定的被审对象是一份**审查件**，不是原稿：${explicit}\n` +
++          '  它的 front-matter 是 schema: trivium.review.v1，由编排器从审查员的结构化输出渲染而成。\n' +
++          '  拿它当被审对象会让这一轮审的是「对意见的意见」。请指向原稿。',
++      );
++    }
+     return abs;
+   }
+ 
+@@ -563,12 +634,24 @@ async function locateSubjectReadOnly(
+     )
+     .sort((a, b) => b.parsed!.rerunIndex - a.parsed!.rerunIndex || b.fileName.localeCompare(a.fileName));
+ 
+-  if (candidates.length === 0) {
++  // 剔掉审查件而非硬拒：理由与 `topic.locateSubject` 同款（换过 Driver 的主题里，
++  // 别家当 Driver 时产出的审查件顶着这一家的后缀且日期更晚，会排在真原稿前面）
++  const kept: typeof candidates = [];
++  const dropped: string[] = [];
++  for (const c of candidates) {
++    if (await isReviewArtifact(path.join(stageDir, c.fileName))) dropped.push(c.fileName);
++    else kept.push(c);
++  }
++
++  if (kept.length === 0) {
++    const why = dropped.length > 0
++      ? `\n  已排除（是审查件而非原稿）：${dropped.join(', ')}`
++      : '';
+     throw new TriviumError(
+       EXIT.MISSING_ARTIFACT,
+-      `在 ${path.relative(ctx.projectRoot, stageDir)} 下找不到原稿（形如 <日期>-${topic}-${driver}.md）。\n` +
++      `在 ${path.relative(ctx.projectRoot, stageDir)} 下找不到原稿（形如 <日期>-${topic}-${driver}.md）。${why}\n` +
+         `  该目录下现有：${entries.length > 0 ? entries.join(', ') : '（空）'}`,
+     );
+   }
+-  return path.join(stageDir, candidates[0]!.fileName);
++  return path.join(stageDir, kept[0]!.fileName);
+ }
+diff --git a/src/trivium/topic.ts b/src/trivium/topic.ts
+index 568bdca..d8e75d2 100644
+--- a/src/trivium/topic.ts
++++ b/src/trivium/topic.ts
+@@ -11,7 +11,7 @@ import type { Ctx, Stage } from './types.js';
+ import { validateTopic, parseArtifactName } from './naming.js';
+ import { missingArtifact, usageError } from './exit-codes.js';
+ import { ensureDir, exists } from './util/fsx.js';
+-import { stageDir, topicDir, type ArchiveLayout } from './archive.js';
++import { isReviewArtifact, stageDir, topicDir, type ArchiveLayout } from './archive.js';
+ 
+ export interface TopicRef {
+   topic: string;
+@@ -84,6 +84,24 @@ export async function locateSubject(
+     if (!(await exists(abs))) {
+       throw missingArtifact(`指定的被审对象不存在：${explicitPath}`);
+     }
++    /*
++     * 显式指定也要挡审查件——**这里是硬拒，不是过滤**。
++     *
++     * 自动候选那条路可以「剔掉再选下一个」，显式路径没有下一个：用户点名了这一份，
++     * 静默换成别的就是那族「解析成功、随后被悄悄替换」的缺口。而把一份审查意见
++     * 当原稿送审，产出的是「对意见的意见」，留痕上看不出审错了东西。
++     *
++     * 判据只认 `trivium.review.v1`（见 `isReviewArtifact`）：没有 front-matter 的
++     * 手写原稿、以及 Driver 的裁决件，一律放行。后者是有意的——用户显式指定裁决件
++     * 属明确意图，而自动候选按 `kind === null` 过滤，裁决件本就选不上。
++     */
++    if (await isReviewArtifact(abs)) {
++      throw missingArtifact(
++        `指定的被审对象是一份**审查件**，不是原稿：${explicitPath}\n` +
++          '  它的 front-matter 是 schema: trivium.review.v1，由编排器从审查员的结构化输出渲染而成。\n' +
++          '  拿它当被审对象会让这一轮审的是「对意见的意见」。请指向原稿。',
++      );
++    }
+     return abs;
+   }
+ 
+@@ -108,14 +126,32 @@ export async function locateSubject(
+     // 同主题同阶段可能有多轮原稿，取轮次最大者
+     .sort((a, b) => b.parsed!.rerunIndex - a.parsed!.rerunIndex || b.fileName.localeCompare(a.fileName));
+ 
+-  if (candidates.length === 0) {
++  /*
++   * **剔掉审查件，而不是一律硬拒**（计划双审 r1 D4 / R-1）。
++   *
++   * 换过 Driver 的主题里，上一轮别家当 Driver 时产出的审查件恰好顶着这一家的后缀，
++   * 且日期更晚——按上面的排序它会排在真原稿前面。一律硬拒会把一条合法工作流
++   * 永久锁死（改名就破坏文件名解析，用户没有自救手段）；剔掉它再往下取就没事。
++   */
++  const kept: typeof candidates = [];
++  const dropped: string[] = [];
++  for (const c of candidates) {
++    if (await isReviewArtifact(path.join(ref.stageDirAbs, c.fileName))) dropped.push(c.fileName);
++    else kept.push(c);
++  }
++
++  if (kept.length === 0) {
+     const all = entries.length > 0 ? `\n  该目录下现有文件：${entries.join(', ')}` : '';
++    // 被剔掉的要点名：否则「明明有一份同名文件却说找不到」会把人引去查文件名规则
++    const why = dropped.length > 0
++      ? `\n  已排除（是审查件而非原稿）：${dropped.join(', ')}`
++      : '';
+     throw missingArtifact(
+       `在 ${ref.stageDirAbs} 下找不到主题「${ref.topic}」的原稿` +
+-        `（形如 <日期>-${ref.topic}-${driver}.md）。请先落盘原稿，或用 --plan-file / --rca-file 显式指定。${all}`,
++        `（形如 <日期>-${ref.topic}-${driver}.md）。请先落盘原稿，或用 --plan-file / --rca-file 显式指定。${why}${all}`,
+     );
+   }
+-  return path.join(ref.stageDirAbs, candidates[0]!.fileName);
++  return path.join(ref.stageDirAbs, kept[0]!.fileName);
+ }
+ 
+ /** 主题目录是否已存在（预检用：失败时不得创建主题目录，AC-16） */
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 6f8cc8f..ffeefe1 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -1110,6 +1110,17 @@ export interface CriticRunMeta {
+   evidence_ok: boolean;
+   usage?: Record<string, number>;
+   heterogeneous: boolean;
++  /**
++   * `heterogeneous === false` 时的成因（EV-54，M9 第 5 步补上写入方）。
++   *
++   * `run.v2` 的散文契约要求 false 时必须有它。承接侧早就接通、一直没有写入方，
++   * 因为在 claude 能被选为审核者之前，补了也没有路径能端到端验证。
++   * 取值由 `review.ts` 的 `overrideReasonFor` 单点派生，两个写点共用。
++   *
++   * **可选**：true 时为 null，早于本步的留痕则整个字段缺失。
++   * 不给 schema 加 `if/then`——那会让历史留痕集体读不回。
++   */
++  override_reason?: string | null;
+   fail_reason?: string | null;
+   empty_review?: boolean;
+   parse_fallback?: boolean;
+@@ -1172,9 +1183,19 @@ export interface RunMeta {
+    * **当轮发起方**的 Agent id（§6.7.1）。与归档后缀（产出方）正交：
+    * 同一 Agent 在不同运行里可能是 Driver 也可能是审核者，
+    * 这条正交性正是禁读矩阵不能按后缀差集生成的根本原因。
+-   * M7b 起恒为 `claude`，M10 放开 `--driver` 后才会变。
++   * M7b 起恒为 `claude`；**M9 第 5 步放开 `--driver` 之后开始会变**
++   * （上一版这里写的是「M10 放开后才会变」——放开它的是 M9 第 5 步，不是 M10）。
+    */
+   driver: AgentId;
++  /**
++   * 当轮 Driver 在这次运行时是否**已启用为 Driver**（M9 第 5 步）。
++   *
++   * **可选**：早于本步的留痕没有这个字段，缺失即「无从得知」，不等于 false。
++   * M9 的 `--driver` 只校验「已登记」，于是归档里会出现 `driver_enabled: false`
++   * 的合法留痕；M10 把校验收紧之后那些留痕**仍要读得回**，
++   * 所以它不进 `required`、不加 `if/then`。这是本步唯一不可逆的选择。
++   */
++  driver_enabled?: boolean;
+   /**
+    * 本轮**入选**的审核者集合（基数 1～3，FR-29）。
+    *
+diff --git a/test/integration/gate-loop.test.ts b/test/integration/gate-loop.test.ts
+index db26278..9afe8f2 100644
+--- a/test/integration/gate-loop.test.ts
++++ b/test/integration/gate-loop.test.ts
+@@ -1156,3 +1156,129 @@ test('worker 还活着时 hook-session-start 绝不回收', { skip: bundleMissin
+   const { killProcessTree } = await import('../../src/trivium/util/exec.js');
+   killProcessTree(js.worker_pid, 'SIGKILL');
+ });
++
++/*
++ * ───────── T-11：非缺省 Driver 的闸门闭环（M9 第 5 步，完成判据 C4 / V9）─────────
++ *
++ * ## 为什么必须是运行期用例
++ *
++ * 本步的存在理由就是计划第 2 轮的阻断：非缺省 Driver 且 `--critics claude` 时，
++ * 闸门按工件后缀反推 driver，把本轮的 `-claude.md` 审查件整批跳过，
++ * 以「请先跑一次双审」硬失败——而双审明明跑完了。
++ *
++ * `driver-wiring.test.ts` 对闸门区只做源码扫描。它抓得住「接线被字面删除」，
++ * **抓不住语义级回归**：`latestRunMeta` 选错来源、pinned 与 latest 的优先级颠倒、
++ * gateDriver 与 rerun_index 的组合错位——扫描全绿时这些照样可以坏
++ * （代码双审 GLM-01 / AGY-02 / CODEX-05，三侧一致判必须补）。
++ *
++ * ## 桩配置必须点名 claude
++ *
++ * `resolveAdapters` 只替换 `Object.keys(stub)` 里点到的侧，没点到的照旧落到真适配器。
++ * 本文件顶部的 `STUB` 是 `{gemini, glm}`，而这条用例选的是 claude——
++ * 不点名就会在每次 `npm run check` 里真拉一次 Claude CLI，
++ * 而且只有**调用之后**才由指纹断言暴露：钱已经花了（R-8 / CODEX-08）。
++ */
++const DRIVER_TOPIC = '闸门闭环-非缺省Driver';
++
++test(
++  'T-11：非缺省 Driver 下 gate --check 找的是 -revised-<真Driver>.md，不是缺省的',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { SELECTABLE, assertSelectableUsable } = await import('../helpers/critic-fixtures.js');
++    const { DEFAULT_DRIVER } = await import('../../src/trivium/agents/registry.js');
++    assertSelectableUsable();
++    const driver = SELECTABLE[0]!;
++    // 桩点名本轮入选的每一侧——这里入选的是缺省 Driver 那一家
++    const stub: StubConfig = { [DEFAULT_DRIVER]: { mode: 'ok' } };
++
++    const fx = await makeFixture({ topic: DRIVER_TOPIC });
++    const stageDir = path.join(fx.root, '.reviews', DRIVER_TOPIC, 'plan');
++    await fs.mkdir(stageDir, { recursive: true });
++    /*
++     * 先删掉夹具预置的缺省 Driver 后缀原稿。
++     *
++     * 它与 **claude 作为审核者**产出的审查件**同名**（都是
++     * `<日期>-<主题>-claude.md`）：留着它，`writeArtifact` 的 `O_EXCL` 会把整轮
++     * 顶到 r2，本用例要验的东西就被轮次噪声盖住了。
++     * 这不是缺陷，是「Driver 换人之后，同一后缀在两种角色间复用」的正常后果——
++     * R-1 那条逃生门要防的也正是这个形态。
++     */
++    await fs.rm(path.join(stageDir, `${today()}-${DRIVER_TOPIC}-${DEFAULT_DRIVER}.md`), { force: true });
++    // 原稿要带当轮 Driver 的后缀——driver 不只决定谁能入选，也决定原稿是谁的
++    await fs.writeFile(path.join(stageDir, `${today()}-${DRIVER_TOPIC}-${driver}.md`), '# 原稿\n', 'utf8');
++
++    const started = await cli(
++      fx.root,
++      [
++        'review', '--start', '--entry', 'B', '--stage', 'plan', '--topic', DRIVER_TOPIC,
++        '--focus', 'x', '--driver', driver, '--critics', DEFAULT_DRIVER,
++        '--session-id', SESSION, '--json',
++      ],
++      stub,
++    );
++    assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
++    const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string };
++    let code: number = EXIT.STILL_RUNNING;
++    for (let i = 0; i < 12 && code === EXIT.STILL_RUNNING; i++) {
++      const w = await cli(fx.root, ['review', '--wait', js.run_id, '--timeout', '20'], stub, 60_000);
++      code = w.code ?? EXIT.FAIL;
++    }
++    assert.equal(code, EXIT.OK, '非缺省 Driver 的一轮应当正常跑完');
++
++    /*
++     * 第 1 格：**裁决件尚未写出**——这正是计划第 2 轮阻断的那一格。
++     * 旧实现在这里会以「请先跑一次双审」硬失败；正确行为是报缺裁决件，
++     * 且文案要点名 `-revised-<真Driver>.md` 而不是缺省 Driver 的那份。
++     */
++    const before = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', DRIVER_TOPIC, '--check'], stub);
++    const out = before.stdout + before.stderr;
++    assert.notEqual(before.code, EXIT.OK, '裁决件还没写，不该通过');
++    assert.doesNotMatch(
++      out, /请先跑一次双审/,
++      '双审明明跑完了却说没跑——这正是 r2 判为阻断的那个症状（按后缀反推 run_id 失败）',
++    );
++    assert.match(
++      out, new RegExp(`revised-${driver}`),
++      `缺件文案要点名 -revised-${driver}.md；点成缺省 Driver 那份说明 driver 没传到 checkAdjudication`,
++    );
++
++    // 第 2 格：补齐裁决件（front-matter 的 run_id 要对得上）后同一条命令应当通过
++    await fs.writeFile(
++      path.join(stageDir, `${today()}-${DRIVER_TOPIC}-revised-${driver}.md`),
++      [
++        '---', 'schema: trivium.disposition.v1', `topic: ${DRIVER_TOPIC}`, 'stage: plan',
++        `role: ${driver}`, 'kind: revised', `run_id: ${js.run_id}`,
++        'addresses:', `  - ${today()}-${DRIVER_TOPIC}-${DEFAULT_DRIVER}.md`,
++        '---', '',
++        '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
++        '| :--- | :--- | :--- | :--- | :--- | :--- |',
++        `| ${DEFAULT_DRIVER.toUpperCase()}-01 | ${DEFAULT_DRIVER} | blocker | 接受 | 确实漏了这一处 | §1 |`,
++        '',
++      ].join('\n'),
++      'utf8',
++    );
++    const after = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', DRIVER_TOPIC, '--check', '--json'], stub);
++    /*
++     * ## 这里锁的是一条**已知边界**，不是期望行为（EV-66）
++     *
++     * 闸门现在**定位对了**——上面两条断言已经证明它找的是 `-revised-<真Driver>.md`
++     * 而不是缺省 Driver 那份，计划的完成判据 C4 说的就是这两件事，都成立。
++     *
++     * 但整条链路还走不通：`disposition.v1.json` 把 `role` 钉死成
++     * `{ "const": "claude" }`，于是**非缺省 Driver 根本写不出合法裁决件**——
++     * 文件名对了，front-matter 的 role 过不了 schema。
++     *
++     * 对照 `run.v2.json` 的 `driver`：那里是 `type: string` 不枚举，
++     * 身份校验交给代码按注册表做，并明写「此处不枚举」。同一件事两套处理。
++     *
++     * **本步不改**：那是契约变更，不在第 5 步的落点表里。这条断言把边界锁成可见事实——
++     * 等 EV-66 修好，它会当场红，提醒改的人把本用例升级成「补齐后应当通过」。
++     * 本用例是 T-11 第一次真跑时抓到它的；换成源码扫描永远碰不到这一格。
++     */
++    assert.notEqual(after.code, EXIT.OK, 'EV-66 若已修复，请把本断言改成期望通过');
++    assert.match(
++      after.stdout + after.stderr, /bad_front_matter|role/,
++      '预期失败在 disposition schema 的 role 常量上；换成别的失败说明边界变了，要重新核',
++    );
++  },
++);
+diff --git a/test/unit/critics.test.ts b/test/unit/critics.test.ts
+index e915fff..27b1b5e 100644
+--- a/test/unit/critics.test.ts
++++ b/test/unit/critics.test.ts
+@@ -7,10 +7,10 @@
+  */
+ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+-import { resolveCriticSelection } from '../../src/trivium/critics.js';
++import { resolveCriticSelection, resolveDriver, selectableCritics } from '../../src/trivium/critics.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+-import { AGENTS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
++import { AGENTS, ALL_AGENT_IDS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+ import { CRITICS, type Config, DEFAULT_CRITICS } from '../../src/trivium/types.js';
+ import { SELECTABLE, assertSelectableUsable } from '../helpers/critic-fixtures.js';
+ 
+@@ -328,3 +328,83 @@ test('报错点名是哪个旗标出的问题（--critics 与 --only 要区分
+   c.review.default_critics = ['nobody' as never];
+   rejects(() => resolveCriticSelection(c), /review\.default_critics/);
+ });
++
++// ───────────── resolveDriver：`--driver` 的唯一判定处（M9 第 5 步）─────────────
++
++test('resolveDriver：不给就是缺省 Driver，且 enabledAsDriver 是查表得来不是写死 true', () => {
++  for (const raw of [null, undefined, '', '   ']) {
++    const r = resolveDriver(raw);
++    assert.equal(r.driver, DEFAULT_DRIVER, `取值 ${JSON.stringify(raw)} 应回落缺省 Driver`);
++    assert.equal(r.enabledAsDriver, true);
++  }
++});
++
++test('resolveDriver：未登记的取值退 64，并列出**全部已登记**（不是已启用为 Driver 的）', () => {
++  assert.throws(
++    () => resolveDriver('nobody'),
++    (e: { code?: number; message: string }) => {
++      assert.equal(e.code, EXIT.USAGE, '参数错误一律退 64');
++      /*
++       * 文案论域必须是 `ALL_AGENT_IDS`。判据是「已登记」，而 `DRIVER_AGENT_IDS`
++       * 今天只含缺省 Driver 一家——拿它当清单，报错列出的可用值会与实际接受的
++       * 取值不一致，又是一次「第一个错误把用户引向第二个错误」。
++       */
++      for (const id of ALL_AGENT_IDS) {
++        assert.match(e.message, new RegExp(id), `报错里要列出 ${id}：它是合法取值`);
++      }
++      return true;
++    },
++  );
++});
++
++test('resolveDriver：已登记但尚未启用为 Driver → **不抛**，只把 enabledAsDriver 置 false', () => {
++  /*
++   * M9 刻意只校验「已登记」。校验 `driverEnabled` 会形成死循环：当前只有缺省
++   * Driver 一家启用，而第 6 步验收恰恰要让它当审核者、由别家当 Driver——
++   * 那时 `--driver <别家>` 会被拒，验收永远跑不成。
++   * 取舍是「放行 + 如实标注」，M10 再收紧成校验。
++   */
++  assertSelectableUsable();
++  const other = SELECTABLE[0]!;
++  const r = resolveDriver(other);
++  assert.equal(r.driver, other);
++  assert.equal(r.enabledAsDriver, false, `${other} 在注册表里是 driverEnabled: false`);
++});
++
++test('resolveDriver：非缺省**且已启用**那一臂——靠注入表构造，不留「今天验不了」的空当', () => {
++  /*
++   * 真实注册表里 `driverEnabled: true` 只有缺省 Driver 一家，所以这一臂
++   * **今天构造不出来**。上一版计划把它写成一条用例却没给注入口，
++   * 实现者只能临场造夹具绕注册表——那正是「留给临场发明」的口子。
++   *
++   * 注入口与 `CriticSelectionInput.descriptors` 同构：判定本就只依赖
++   * 「登记表 + 配置」，把登记表参数化是把隐式依赖显式化，生产路径一个字不变。
++   */
++  assertSelectableUsable();
++  const other = SELECTABLE[0]!;
++  const registry = AGENTS.map((a) => ({ ...a, driverEnabled: a.id === other ? true : a.driverEnabled }));
++  const r = resolveDriver(other, registry);
++  assert.equal(r.driver, other);
++  assert.equal(r.enabledAsDriver, true, '注入表里它已启用为 Driver，判定要跟着注入表走');
++});
++
++test('selectableCritics：论域是「启用 ∩ 有配置条目 − 当轮 Driver」，且跟着注入表走', () => {
++  /*
++   * EV-53 的源头。此前这份论域有两套实现（critics.ts 减 Driver、topic-args.ts 不减），
++   * driver 接进选侧之后，同一条命令里两段「当前可用」会互相矛盾。
++   */
++  assertSelectableUsable();
++  const other = SELECTABLE[0]!;
++  assert.deepEqual(
++    selectableCritics(cfg(), DEFAULT_DRIVER), [...SELECTABLE],
++    '缺省 Driver 下应当正好是 SELECTABLE',
++  );
++  assert.ok(
++    selectableCritics(cfg(), other).includes(DEFAULT_DRIVER),
++    `把 Driver 换成 ${other} 之后，${DEFAULT_DRIVER} 就是个普通审核者`,
++  );
++  assert.ok(
++    !selectableCritics(cfg(), other).includes(other),
++    '当轮 Driver 永远不在自己的可入选集合里',
++  );
++});
+diff --git a/test/unit/deny-matrix.test.ts b/test/unit/deny-matrix.test.ts
+index 817e6b2..c20ef21 100644
+--- a/test/unit/deny-matrix.test.ts
++++ b/test/unit/deny-matrix.test.ts
+@@ -409,4 +409,25 @@ test('调用链：freeze() 的真实调用点必须传 topic（不只是函数
+           : '该字段是必需的'),
+     );
+   }
++
++  /*
++   * ── driver 同样要传（M9 第 5 步）──
++   *
++   * 这就是上面那段注释里说的「第一次」：`enumerateDenyPaths` 加了 driver 参数，
++   * 而这个唯一调用入口一直没传。漏传时禁读集按缺省 Driver 剪，
++   * 非 Claude Driver 的原稿整批进禁读集，审核者正常读取即判 peer_leak、整轮作废。
++   *
++   * **判据必须先剥注释**：本实参块里恰好有一行注释含 `driver` 字样
++   * （「下面 `driver` 字段的注释记的就是第一次」），裸子串判据在传值之前就是绿的——
++   * 计划第 1 轮我写的就是那种，三侧审查员同时指了出来。
++   * 剥注释与属性位匹配的完整实现及其自测在 `driver-wiring.test.ts`。
++   */
++  const noComments = argBlock
++    .replace(/\/\*[\s\S]*?\*\//g, ' ')
++    .replace(/\/\/[^\n]*/g, ' ');
++  assert.ok(
++    /\bdriver\b/.test(noComments),
++    'freeze() 的实参块里没有真实传值的 driver（注释里的不算）——' +
++      '禁读集会按缺省 Driver 剪枝，非 Claude Driver 的被审原稿进禁读集即 peer_leak 作废重跑',
++  );
+ });
+diff --git a/test/unit/preflight.test.ts b/test/unit/preflight.test.ts
+index 2231586..49d8037 100644
+--- a/test/unit/preflight.test.ts
++++ b/test/unit/preflight.test.ts
+@@ -232,6 +232,59 @@ test('探针过期 → 退 69 并指引手动执行', async () => {
+   assert.match(r.checks.find((x) => !x.ok)!.detail, /已全部过期/);
+ });
+ 
++// ── 当轮 Driver 提示（M9 第 5 步，T-10）──
++
++test('预检：--driver 非缺省时多打一行提示，且它是 ok:true 不是一次失败', async () => {
++  const ctx = await fakeCtx();
++  const r = await runPreflight({
++    ctx, scope: 'plan', skipAuthCheck: true,
++    driver: 'gemini', driverEnabled: false,
++  });
++  const hint = r.checks.find((c) => c.name === '当轮 Driver');
++  assert.ok(hint, '非缺省 Driver 时应当有一行可见提示');
++  /*
++   * **必须 `ok: true`**。`runPreflight` 里多处用 `checks.every((c) => c.ok)` 做短路、
++   * `exitCode` 由 `find((c) => !c.ok)` 决定——判 false 会把一条**提示**变成一次
++   * **失败**，而且因为它排在最前面，会把后面所有检查一起短路掉。
++   */
++  assert.equal(hint.ok, true, '提示判成失败会把整个预检短路掉');
++  assert.match(hint.detail, /gemini/);
++  assert.match(
++    hint.detail, /仅用于选侧判定/,
++    'driverEnabled 为 false 时要说清「该值仅用于选侧判定」——放行而不说明就是静默降低门槛',
++  );
++  // 提示不参与成败：本次失败与否应当只由真正的检查项决定
++  assert.equal(
++    r.checks.filter((c) => !c.ok).some((c) => c.name === '当轮 Driver'), false,
++  );
++});
++
++test('预检：--driver 已启用为 Driver 时，提示里不带「仅用于选侧判定」那句', async () => {
++  /*
++   * 「非缺省**且已启用**」这一臂在真实注册表下今天构造不出来——`driverEnabled: true`
++   * 只有缺省 Driver 一家（其余三家都是 `// M10 启用`）。
++   * 预检这一层接受的是布尔入参，所以可以直接构造；`resolveDriver` 那一层
++   * 则另开了 `descriptors` 注入口（见 critics.test.ts），两处都不留「今天验不了」的臂。
++   */
++  const ctx = await fakeCtx();
++  const r = await runPreflight({
++    ctx, scope: 'plan', skipAuthCheck: true,
++    driver: 'codex', driverEnabled: true,
++  });
++  const hint = r.checks.find((c) => c.name === '当轮 Driver')!;
++  assert.equal(hint.ok, true);
++  assert.equal(hint.detail, 'codex');
++});
++
++test('预检：缺省 Driver 不打这行提示（每次都打等于没打）', async () => {
++  const ctx = await fakeCtx();
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
++  assert.equal(
++    r.checks.some((c) => c.name === '当轮 Driver'), false,
++    '绝大多数运行都是缺省 Driver；每次多打一行会把真正的异常淹掉',
++  );
++});
++
+ test('探针过期时后续检查不再执行（快速失败，不白烧配额）', async () => {
+   const ctx = await fakeCtx((c) => {
+     c.probe.generated_at = null;
+diff --git a/test/unit/run-meta.test.ts b/test/unit/run-meta.test.ts
+index 9e0017f..4a494ba 100644
+--- a/test/unit/run-meta.test.ts
++++ b/test/unit/run-meta.test.ts
+@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
+ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+-import { newRunMeta, migrateRunMetaV1, readRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
++import { latestRunMeta, newRunMeta, migrateRunMetaV1, readRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
+ import { validateRunMeta, validateRunMetaV1 } from '../../src/trivium/schemas.js';
+ import { checkStageArtifacts, metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
+ import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+@@ -56,6 +56,106 @@ test('骨架的完成度是 full：此刻还没有任何一侧失败', () => {
+   assert.equal(skeleton().review_mode, 'full');
+ });
+ 
++// ── driver_enabled：M9 第 5 步「放行但如实标注」的留痕落点（T-8）──
++
++test('driver_enabled 恒写：缺省 Driver 那一路也要有值', () => {
++  /*
++   * 恒写而不是条件展开。缺失时既可能是旧留痕、也可能是本步漏传，事后分不开——
++   * 与 `profile_requested` / `model_provider` 恒写是同一条口径。
++   */
++  assert.equal(skeleton().driver_enabled, true);
++  assert.deepEqual(validateRunMeta(skeleton()), []);
++});
++
++test('driver_enabled: false 是合法留痕——M9 只校验「已登记」，不校验 driverEnabled', () => {
++  /*
++   * 这正是本步刻意接受的形态：校验 `driverEnabled` 会让第 6 步验收跑不成
++   * （当前只有 claude 启用为 Driver，而验收恰恰要 claude 当审核者）。
++   * 放行的代价由这个字段兜住，所以它必须能通过校验、而不是被判成坏留痕。
++   */
++  const meta = skeleton({ driver: 'gemini', driverEnabled: false, criticsSelected: ['glm'] });
++  assert.equal(meta.driver, 'gemini');
++  assert.equal(meta.driver_enabled, false);
++  assert.deepEqual(validateRunMeta(meta), [], 'driver_enabled: false 必须是合法留痕');
++});
++
++// ── latestRunMeta：闸门区 driver 与轮次的权威来源（M9 第 5 步）──
++
++test('latestRunMeta：按 run_id 取最新一条，字典序即时序是构造保证', async () => {
++  /*
++   * `newRunId()` 是 `toISOString()` 去掉分隔符与毫秒，即 `YYYYMMDDTHHMMSSZ`——
++   * **定宽 UTC**，所以字典序即时序：没有时区、没有变长、没有前导零问题。
++   * 这是构造保证而非经验规律，所以这里可以放心按字符串排序取最新。
++   */
++  const layout = await tmpLayout();
++  for (const [id, driver] of [
++    ['20260101T000000Z', DEFAULT_DRIVER],
++    ['20260918T160720Z', 'gemini'],
++    ['20260301T120000Z', 'glm'],
++  ] as const) {
++    await writeRunMeta(layout, 'plan', skeleton({ runId: id, driver, criticsSelected: ['codex'] }));
++  }
++  const r = await latestRunMeta(layout, 'plan');
++  assert.equal(r.meta?.run_id, '20260918T160720Z', '取的应当是时间最晚的那一条');
++  assert.equal(r.meta?.driver, 'gemini', 'driver 要由留痕权威给出，而不是按后缀反推');
++  assert.equal(r.scanned, 3);
++  assert.deepEqual(r.unreadable, [], '三份都读得出来，不该有跳过记录');
++});
++
++test('latestRunMeta：读不出来的那条往下跳，不是整个返回 null', async () => {
++  const layout = await tmpLayout();
++  await writeRunMeta(layout, 'plan', skeleton({ runId: '20260101T000000Z', criticsSelected: ['codex'] }));
++  // 搅坏最新那一份：契约不认（不是合法 run.v2/v1）
++  await fs.writeFile(path.join(metaDir(layout, 'plan'), 'run-20260918T160720Z.json'), '{"schema":"???"}');
++  const r = await latestRunMeta(layout, 'plan');
++  assert.equal(
++    r.meta?.run_id, '20260101T000000Z',
++    '最新那条读不出来时应当往下试，而不是让整个闸门失去依据',
++  );
++  /*
++   * **跳过要留下痕迹**（代码双审 CODEX-02）：静默跳过会让闸门把轮次与 run_id
++   * 一并变旧，若上一轮本就裁决齐备，--check 会返回 ok，而最新一轮落盘的审查件
++   * 从未被裁决检查过——人看到的只是「第 N-1 轮通过了」。
++   */
++  assert.deepEqual(r.unreadable, ['20260918T160720Z'], '被跳过的那份要能被调用方看见');
++});
++
++test('latestRunMeta：区分「一份都没有」与「有但全读不出」', async () => {
++  /*
++   * 两者压成同一个 null 时，调用方只能给出同一句「请先跑一次双审」，
++   * 而 `--check-artifacts` 更是直接按缺省 Driver 继续——回落把「留痕坏了」
++   * 悄悄变成「按 claude 判」（代码双审 AGY-01 / GLM-02）。
++   */
++  const empty = await tmpLayout();
++  const a = await latestRunMeta(empty, 'plan');
++  assert.deepEqual(
++    { meta: a.meta, scanned: a.scanned }, { meta: null, scanned: 0 },
++    '目录不存在 = 还没跑过，属正常',
++  );
++
++  const broken = await tmpLayout();
++  await writeRunMeta(broken, 'plan', skeleton({ runId: '20260101T000000Z', criticsSelected: ['codex'] }));
++  await fs.writeFile(path.join(metaDir(broken, 'plan'), 'run-20260101T000000Z.json'), '{"schema":"???"}');
++  const b = await latestRunMeta(broken, 'plan');
++  assert.equal(b.meta, null);
++  assert.equal(b.scanned, 1, '扫到过文件——调用方据此硬失败，而不是按「还没跑过」处理');
++  assert.deepEqual(b.unreadable, ['20260101T000000Z']);
++});
++
++test('历史留痕没有 driver_enabled 也必须读得回（M10 收紧校验之后仍要成立）', () => {
++  /*
++   * **本步唯一真正不可逆的选择**：归档里会出现 `driver_enabled: false` 的留痕。
++   * 反过来，早于本步的留痕整个字段缺失——缺失即「无从得知」，不等于 false。
++   * 所以它不进 `required`、不加 `if/then`；这条用例是那个决定的回归锁。
++   */
++  const meta = skeleton() as unknown as Record<string, unknown>;
++  delete meta['driver_enabled'];
++  assert.deepEqual(
++    validateRunMeta(meta), [],
++    'driver_enabled 一旦被当成必填，全部历史留痕会集体读不回',
++  );
++});
++
+ test('入选集合按传入值落盘，不回落到当前启用集合', () => {
+   const only = CRITICS[0]!;
+   const meta = skeleton({ criticsSelected: [only] });
+diff --git a/test/unit/topic-args.test.ts b/test/unit/topic-args.test.ts
+index 51e639a..d6a1f36 100644
+--- a/test/unit/topic-args.test.ts
++++ b/test/unit/topic-args.test.ts
+@@ -9,9 +9,10 @@ import {
+ import { defaultConfig } from '../../src/trivium/config.js';
+ import { initFixtureRepo } from '../../src/trivium/util/git.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+-import { CRITICS, type Ctx } from '../../src/trivium/types.js';
+-import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
+-import { SELECTABLE } from '../helpers/critic-fixtures.js';
++import type { Ctx } from '../../src/trivium/types.js';
++import { ALL_AGENT_IDS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
++import { selectableCritics } from '../../src/trivium/critics.js';
++import { SELECTABLE, assertSelectableUsable } from '../helpers/critic-fixtures.js';
+ 
+ /*
+  * ── 入参是 argv 数组，不是字符串（EV-18）──
+@@ -561,62 +562,172 @@ test('模型覆盖旗标的白名单按注册表派生，不是写死两条', ()
+   }
+ });
+ 
+-const MODEL_FLAG_PENDING = ALL_AGENT_IDS.filter(
+-  (id) => !(CRITICS as readonly string[]).includes(id),
+-);
+-
+ /*
+- * **M9 第 4 步：本分支在真实注册表下不可达了**（计划双审 CODEX-02）。
+- *
+- * 这条校验在 `topic-args.ts` 里直读模块级 `CRITICS`
+- * （`for (const id of ALL_AGENT_IDS) … if (!CRITICS.includes(id))`），
+- * **不经 `resolveCriticSelection`**——`critics.test.ts` 那个 descriptors 注入口
+- * 对它无效。而四家全启用后，「全部已登记」减「可用审核者」是空集，
+- * 没有任何合法输入能走到这条报错。
++ * **M9 第 5 步：本分支重新可达了**（EV-53 收口）。
+  *
+- * 我起初把夹具换成了当轮 Driver，**那是错的**：`--model-claude` 现在完全合法，
+- * 因为 claude 确实是可用审核者。实跑打回后改成本形态。
++ * 判据从「已登记 − **启用集合**」改成「已登记 − **本轮实际能入选谁**」。
++ * 前者在四家全启用后是空集（M9 第 4 步起本条一直 skip）；后者永远至少含
++ * 当轮 Driver ——它已登记、也已启用为审核者，但「自己不能审自己」让它
++ * 在本轮**当不了审核者**，给它指定模型就是那条要防的「解析成功、随后被丢弃」。
+  *
+- * ## 它顺带暴露了一个真实缺口（已登记 BACKLOG，属第 5 步范围）
+- *
+- * `--model-claude` 今天能解析成功，而 claude **永远不会入选**
+- * （`critics.ts` 的「当轮 Driver 不得入选」恒拒）。于是用户显式指定的模型
+- * 会一路走到「解析成功、随后被悄悄丢弃」——**正是这条用例当初要防的那个形状**，
+- * 只是触发它的不再是「未启用的第三家」，而是「已启用但当不了本轮审核者的 Driver」。
+- * 修法要等 `--driver` 落地（第 5 步）：那时「谁能当审核者」才成为逐次运行的事实，
+- * 本条校验也才有正确的判据可依。
++ * 这也是 EV-53 真正的修法：`topic-args.ts` 的白名单此前直读模块级 `CRITICS`，
++ * 与 `critics.ts` 的 `legalList`（减 Driver）是两套派生。第 5 步把 driver 接进
++ * 选侧之后，同一条命令里两段「当前可用」会互相矛盾——所以两处现在共用
++ * `selectableCritics` 这一个派生。
+  */
++const MODEL_FLAG_PENDING = ALL_AGENT_IDS.filter(
++  (id) => !(selectableCritics(defaultConfig()) as readonly string[]).includes(id),
++);
+ test(
+   '给非审核者指定模型 → 退 64 并列出当前可用，而不是解析成功后被悄悄丢弃',
+   {
+     skip: MODEL_FLAG_PENDING.length === 0
+-      ? '注册表四家均为可用审核者，本分支当前不可达（见上方说明；Driver 那一格的缺口已登记，属第 5 步）'
++      ? '「已登记」与「本轮可入选」之差为空集，本分支不可达'
+       : false,
+   },
+   async () => {
+   const ctx = await fakeCtx();
+   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 4;\n');
+   /*
+-   * 白名单的论域是「全部已登记 Agent」，取值的论域是「当前可用审核者」。
++   * 白名单的论域是「全部已登记 Agent」，取值的论域是「**本轮实际能入选谁**」。
+    * 两者之差必须当场报错：放任它走到「解析成功、随后被丢弃」，
+    * 留痕里就看不出用户指定过模型——这正是 `--base` 漏传那一族的形状。
+    */
+   const driverSide = MODEL_FLAG_PENDING[0]!;
++  const legal = selectableCritics(defaultConfig());
+ 
+   await assert.rejects(
+     resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['看并发', '--topic', 'T', `--model-${driverSide}`, 'm-9'] }),
+     (e: { code?: number; message: string }) => {
+       assert.equal(e.code, EXIT.USAGE, '参数错误一律退 64');
+       assert.match(e.message, new RegExp(`model-${driverSide}`), '报错要点名是哪个旗标');
+-      for (const c of CRITICS) {
+-        assert.match(e.message, new RegExp(c), '要列出当前可用的审核者，别让用户再猜一次');
++      for (const c of legal) {
++        assert.match(e.message, new RegExp(c), '要列出本轮可用的审核者，别让用户再猜一次');
+       }
++      /*
++       * **报错里不得出现被拒的那一家**（EV-53 ③）。
++       *
++       * 此前文案读 `CRITICS.join('、')`（含当轮 Driver），而判据读减 Driver 的那份：
++       * 用户照着「当前可用」里列出的 claude 去写 `--critics claude`，
++       * 会一头撞进「当轮 Driver 不得入选」——**第一个错误把用户引向第二个错误**。
++       */
++      const tail = e.message.slice(e.message.indexOf('本轮可用'));
++      assert.doesNotMatch(
++        tail, new RegExp(driverSide),
++        `「本轮可用」里仍列着 ${driverSide}，而它正是刚被拒的那一个：${tail}`,
++      );
+       return true;
+     },
+   );
+   },
+ );
+ 
++/*
++ * ───────── CODEX-07 的只读那一半（M9 第 5 步，T-5a）─────────
++ *
++ * `topic-args.ts` 的 `locateSubjectReadOnly` 与 `topic.ts` 的 `locateSubject`
++ * 判据逐项同形，**必须同改**。两处各有用例：只改一处时另一处会静默漏判。
++ * `topic.test.ts` 那组覆盖的是真实审查路径，这一组覆盖的是 `topic resolve`。
++ */
++test('topic resolve：顶着 Driver 后缀的审查件不得被当原稿（与 locateSubject 同形）', async () => {
++  const ctx = await fakeCtx();
++  const dir = path.join(ctx.archiveRoot, 'T', 'plan');
++  await fs.mkdir(dir, { recursive: true });
++  await fs.writeFile(path.join(dir, '2026-09-10-T-claude.md'), '# 我才是原稿\n');
++  await fs.writeFile(
++    path.join(dir, '2026-09-12-T-claude.md'),
++    '---\nschema: trivium.review.v1\nrole: claude\n---\n\n# 计划审查\n',
++  );
++  const r = await resolveTopicArgs({ ctx, scope: 'plan', rawArgs: ['看并发', '--topic', 'T'] });
++  assert.equal(
++    path.basename(r.subject_path!), '2026-09-10-T-claude.md',
++    '日期更晚的那份是审查件，应被剔除——只改了 topic.ts 一处时本条会红',
++  );
++});
++
++test('topic resolve：显式指定审查件 → 退 65 并说明是审查件', async () => {
++  const ctx = await fakeCtx();
++  const dir = path.join(ctx.archiveRoot, 'T', 'plan');
++  await fs.mkdir(dir, { recursive: true });
++  await fs.writeFile(path.join(dir, '2026-09-10-T-claude.md'), '# 原稿\n');
++  const bad = path.join(dir, '2026-09-12-T-gemini.md');
++  await fs.writeFile(bad, '---\nschema: trivium.review.v1\n---\n\n# 计划审查\n');
++  await assert.rejects(
++    resolveTopicArgs({ ctx, scope: 'plan', rawArgs: ['看并发', '--topic', 'T', '--plan-file', bad] }),
++    (e: { code?: number; message: string }) => {
++      assert.equal(e.code, EXIT.MISSING_ARTIFACT);
++      assert.match(e.message, /审查件/);
++      return true;
++    },
++  );
++});
++
++test('topic resolve：--driver 非缺省时回显，未启用为 Driver 时进 notes', async () => {
++  assertSelectableUsable();
++  const other = SELECTABLE[0]!;
++  const ctx = await fakeCtx();
++  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 7;\n');
++  const r = await resolveTopicArgs({
++    ctx, scope: 'code',
++    rawArgs: ['看并发', '--topic', 'T', '--driver', other, '--critics', DEFAULT_DRIVER],
++  });
++  assert.equal(r.driver, other);
++  /*
++   * M9 只校验「已登记」，`driverEnabled === false` 照样放行——校验它第 6 步就跑不成。
++   * 放行的代价必须看得见：这里一条 notes，预检一行提示，留痕一个 driver_enabled。
++   */
++  assert.equal(r.driver_enabled, false, `${other} 目前尚未启用为 Driver（registry 里是 false）`);
++  assert.ok(
++    r.notes.some((n) => n.includes(other) && n.includes('尚未启用为 Driver')),
++    `notes 里没有标注「${other} 尚未启用为 Driver」：放行而不留痕就是静默降低了门槛`,
++  );
++});
++
++test('topic resolve：命令 A 不接受 --driver（接受即静默丢弃）', async () => {
++  const ctx = await fakeCtx();
++  await assert.rejects(
++    resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--driver', 'codex'] }),
++    (e: { code?: number; message: string }) => {
++      assert.equal(e.code, EXIT.USAGE);
++      assert.match(e.message, /--driver/);
++      // 理由要与 --critics/--only 那条同构：不进 skill 交接说明，收下会被丢弃
++      assert.match(e.message, /静默丢弃|交接说明/);
++      return true;
++    },
++  );
++});
++
++test('EV-53：换掉 Driver 之后，原 Driver 那一家的模型覆盖就合法了', async () => {
++  /*
++   * 上一条的**正例**，钉的是「新判据是逐次运行的事实，不是又一个写死清单」。
++   *
++   * 第 5 步之前 `--model-claude` 恒合法（判据读启用集合），之后恒非法（判据减 Driver）——
++   * 两种写死都不对。正确行为是：**跟着当轮 Driver 变**。
++   * 把 Driver 换成别家，claude 就是个普通审核者，给它指定模型天经地义。
++   *
++   * 缺了这一条，把拒绝分支写得过宽（比如「非缺省 Driver 的都拒」）也能让上一条全绿。
++   */
++  assertSelectableUsable();
++  const otherDriver = SELECTABLE[0]!;
++  const ctx = await fakeCtx();
++  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 6;\n');
++  /*
++   * 要显式给 `--critics`：配置的 `review.default_critics` 里含 `otherDriver`，
++   * 不给的话会先撞上「默认集合含当轮 Driver」而退 64，验不到本条要验的东西。
++   * 这里选 `DEFAULT_DRIVER` 当审核者，正好就是 M9 第 6 步验收的真实形态。
++   */
++  const r = await resolveTopicArgs({
++    ctx, scope: 'code',
++    rawArgs: [
++      '看并发', '--topic', 'T', '--driver', otherDriver,
++      '--critics', DEFAULT_DRIVER, `--model-${DEFAULT_DRIVER}`, 'm-1',
++    ],
++  });
++  assert.equal(r.models[DEFAULT_DRIVER], 'm-1', `${DEFAULT_DRIVER} 不当 Driver 时，给它指定模型应当放行`);
++  assert.equal(r.driver, otherDriver, '解析结果要回显本轮采信的 Driver');
++  assert.deepEqual(r.critics, [DEFAULT_DRIVER], `换掉 Driver 之后 ${DEFAULT_DRIVER} 就是个普通审核者`);
++});
++
+ test('可用审核者的模型覆盖照常生效（上一条不得误伤正常路径）', async () => {
+   const ctx = await fakeCtx();
+   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 5;\n');
+diff --git a/test/unit/topic.test.ts b/test/unit/topic.test.ts
+index c11cfd1..20f8c5e 100644
+--- a/test/unit/topic.test.ts
++++ b/test/unit/topic.test.ts
+@@ -65,6 +65,104 @@ test('locateSubject：取轮次最大的原稿，忽略裁决件、别的主题
+   assert.equal(path.basename(await locateSubject(ref, null, ctx.projectRoot)), '2026-09-11-t-r2-claude.md');
+ });
+ 
++/*
++ * ───────── CODEX-07：审查件不得被当成原稿（M9 第 5 步，T-5b）─────────
++ *
++ * 这一组钉的是 `topic.ts` 的 `locateSubject`——**`review --start` 真实走的那条**。
++ * `topic-args.ts` 里另有一个同形的 `locateSubjectReadOnly`（命令 A 与 topic resolve 走它），
++ * 两处判据逐项同形、必须同改，各自都有用例：只改一处时另一处会静默漏判，
++ * 而「只覆盖了只读那条」恰好是计划第 2 轮被指出来的形态。
++ */
++const REVIEW_FM = '---\nschema: trivium.review.v1\nrole: claude\n---\n\n# 计划审查\n';
++
++test('locateSubject：换过 Driver 的主题里，顶着 Driver 后缀的审查件不得被当原稿', async () => {
++  const ctx = await fakeCtx();
++  const ref = await resolveTopic(ctx, 't', 'plan');
++  /*
++   * 真实场景：上一轮由 gemini 当 Driver、claude 当审核者，于是归档里留下一份
++   * **顶着 `-claude.md` 后缀的审查件**，而且日期更晚。
++   * 候选排序是 `rerunIndex desc, fileName desc`——它会排在真原稿前面。
++   */
++  await fs.writeFile(path.join(ref.stageDirAbs, '2026-09-10-t-claude.md'), '# 我才是原稿\n');
++  await fs.writeFile(path.join(ref.stageDirAbs, '2026-09-12-t-claude.md'), REVIEW_FM);
++
++  assert.equal(
++    path.basename(await locateSubject(ref, null, ctx.projectRoot)),
++    '2026-09-10-t-claude.md',
++    '日期更晚的那份是审查件（front-matter 为 trivium.review.v1），应被剔除；' +
++      '选中它会让这一轮审的是「对意见的意见」',
++  );
++});
++
++test('locateSubject：剔到没有候选时退 65，并点名被剔掉的是哪些', async () => {
++  const ctx = await fakeCtx();
++  const ref = await resolveTopic(ctx, 't', 'plan');
++  await fs.writeFile(path.join(ref.stageDirAbs, '2026-09-12-t-claude.md'), REVIEW_FM);
++  await assert.rejects(locateSubject(ref, null, ctx.projectRoot), (e: { code?: number; message: string }) => {
++    assert.equal(e.code, EXIT.MISSING_ARTIFACT);
++    // 不点名的话，「明明有一份同名文件却说找不到」会把人引去查文件名规则
++    assert.match(e.message, /已排除/, '要说明有候选被剔除了');
++    assert.match(e.message, /2026-09-12-t-claude\.md/, '要点名是哪一份');
++    return true;
++  });
++});
++
++test('locateSubject：显式指定一份审查件 → 硬拒，不静默换成别的', async () => {
++  const ctx = await fakeCtx();
++  const ref = await resolveTopic(ctx, 't', 'plan');
++  await fs.writeFile(path.join(ref.stageDirAbs, '2026-09-10-t-claude.md'), '# 我才是原稿\n');
++  const bad = path.join(ref.stageDirAbs, '2026-09-12-t-gemini.md');
++  await fs.writeFile(bad, REVIEW_FM);
++  /*
++   * 显式路径**没有「下一个候选」可退**：静默换成别的就是「解析成功、随后被悄悄替换」
++   * 那一族缺口。所以这一路是硬拒，不是过滤。
++   */
++  await assert.rejects(locateSubject(ref, bad, ctx.projectRoot), (e: { code?: number; message: string }) => {
++    assert.equal(e.code, EXIT.MISSING_ARTIFACT);
++    assert.match(e.message, /审查件/, '要说清拒的理由是「它是审查件」，不是「文件不存在」');
++    return true;
++  });
++});
++
++test('locateSubject：显式指定旧 Driver 后缀的**原稿**必须放行（R-1 的逃生门）', async () => {
++  const ctx = await fakeCtx();
++  const ref = await resolveTopic(ctx, 't', 'plan');
++  /*
++   * **判据只认 `trivium.review.v1`，不是「后缀对不上就拒」**。
++   *
++   * 这条钉的是把判据写过宽的那种实现：沿用 freeze 侧 fail-closed 的直觉
++   * （「不是当轮 Driver 的产出就拒」）会把这份合法原稿判死——
++   * 而换过 Driver 的主题上，用 --plan-file 指向旧 Driver 后缀的原稿
++   * 正是 R-1 给用户留的唯一自救出口（改名会破坏文件名解析）。
++   */
++  const oldDraft = path.join(ref.stageDirAbs, '2026-09-01-t-gemini.md');
++  await fs.writeFile(oldDraft, '# 上一轮由 gemini 执笔时的原稿，没有 front-matter\n');
++  assert.equal(await locateSubject(ref, oldDraft, ctx.projectRoot), oldDraft);
++});
++
++test('locateSubject：front-matter 缺失/损坏/空文件一律按原稿放行，不抛错', async () => {
++  const ctx = await fakeCtx();
++  const ref = await resolveTopic(ctx, 't', 'plan');
++  /*
++   * 四类损坏形态在 `parseFrontMatter` 里全部坍缩为「没有可辨识的 schema」且不抛异常
++   * （不以 `---` 开头 / 没有闭合 `---` / YAML 解析失败 / 空文件）。
++   * 计划第 2 轮我担心的是「换底会不会把已知问题换成未知问题」——
++   * 答案是不会炸，代价在别处（见 EV-63：被剥掉 front-matter 的真审查件会被当原稿）。
++   */
++  for (const [name, body] of [
++    ['2026-09-02-t-claude.md', ''],
++    ['2026-09-03-t-claude.md', '---\nschema: trivium.review.v1\n'],   // 没有闭合 ---
++    ['2026-09-04-t-claude.md', '---\n: : :\n---\n'],                   // YAML 坏
++  ] as const) {
++    await fs.writeFile(path.join(ref.stageDirAbs, name), body);
++  }
++  // 三份都不是「可辨识的审查件」，按轮次/日期取最新那份，且不抛
++  assert.equal(
++    path.basename(await locateSubject(ref, null, ctx.projectRoot)),
++    '2026-09-04-t-claude.md',
++  );
++});
++
+ test('locateSubject：同轮多份按文件名倒序取最新日期', async () => {
+   const ctx = await fakeCtx();
+   const ref = await resolveTopic(ctx, 't', 'bug');
+diff --git a/test/integration/driver-flag.test.ts b/test/integration/driver-flag.test.ts
+new file mode 100644
+index 0000000..c902d60
+--- /dev/null
++++ b/test/integration/driver-flag.test.ts
+@@ -0,0 +1,146 @@
++/**
++ * `--driver` 的端到端契约（M9 第 5 步，T-1 / T-2）。
++ *
++ * ## 为什么必须走真实子进程
++ *
++ * 本步要证的是「**CLI 把 driver 传下去了**」，而不是「判定函数本身对不对」。
++ * 后者在 `critics.test.ts` 已有正例与负例，而且它们在接线缺失时**照样是绿的**——
++ * 那两条用例自己构造入参调 `resolveCriticSelection`，根本走不到 CLI 那一跳。
++ *
++ * 步骤表 §2.14 把 J4 / J8 的「经完整编排链路」限定为**手工 CLI 路径**
++ * （`--driver` 本轮不进 skill），所以这里就是那条链路的落点。
++ *
++ * ## 配额
++ *
++ * T-1 在**选侧阶段**就退 64，一次适配器都不拉起，零成本、也没有工件可做指纹断言。
++ * T-2 要走到产出，**必须注入桩，且桩配置必须点名本轮入选的每一侧**：
++ * `resolveAdapters` 只替换 `Object.keys(stub)` 里点到的侧，没点到的照旧落到真适配器。
++ * 既有集成夹具的桩写死 `{gemini, glm}`，而本文件选的是 claude——
++ * 不点名就会在每次 `npm run check` 里真拉一次 Claude CLI，而且只有**调用之后**
++ * 才由指纹断言暴露：钱已经花了。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { bundleMissing, bundleSkipReason, cli, makeFixture } from '../helpers/fixture.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++import { extractJsonCandidate } from '../../src/trivium/parse.js';
++import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
++import { SELECTABLE, assertSelectableUsable } from '../helpers/critic-fixtures.js';
++
++const TOPIC = 'Driver旗标端到端';
++
++test(
++  'J8：--driver 与 --critics 指向同一家 → 退 64（自己不能审自己）',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC });
++    /*
++     * 缺省 Driver 那一格：不给 `--driver` 也应当拒——这是 M9 第 4 步就成立的不变量，
++     * 本步接线不得把它弄丢。
++     */
++    const a = await cli(root, [
++      'review', '--start', '--entry', 'B', '--stage', 'plan',
++      '--topic', TOPIC, '--focus', '看边界', '--critics', DEFAULT_DRIVER,
++    ]);
++    assert.equal(a.code, EXIT.USAGE, `${a.stdout}${a.stderr}`);
++
++    // 显式写出同一家：接线之后这条走的是「用户给的 driver」，不是缺省值
++    const b = await cli(root, [
++      'review', '--start', '--entry', 'B', '--stage', 'plan',
++      '--topic', TOPIC, '--focus', '看边界',
++      '--driver', DEFAULT_DRIVER, '--critics', DEFAULT_DRIVER,
++    ]);
++    assert.equal(b.code, EXIT.USAGE, `${b.stdout}${b.stderr}`);
++    const out = b.stdout + b.stderr;
++    assert.match(out, /Driver/);
++    assert.match(out, /二次审查/, '报错要说清拒的理由，不是泛泛的参数错误');
++    assert.doesNotMatch(
++      out.slice(out.indexOf('当前可用')), new RegExp(DEFAULT_DRIVER),
++      '「当前可用」里不得再列出刚被拒的那一家——第一个错误不该把用户引向第二个',
++    );
++  },
++);
++
++test(
++  'J8 的反面：把 Driver 换成别家之后，原 Driver 那一家可以入选（选侧走得通）',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    assertSelectableUsable();
++    const other = SELECTABLE[0]!;
++    const { root } = await makeFixture({ topic: TOPIC });
++    /*
++     * 夹具只带缺省 Driver 后缀的原稿，所以换了 Driver 就要补一份它的。
++     *
++     * **这件事本身就是接线生效的证据**：driver 不只决定谁能入选，
++     * 还决定「原稿是谁的后缀」。第一版没补这份文件时，本条红在
++     * 「找不到 <日期>-<主题>-codex.md」——那说明 driver 确实一路传到了
++     * 被审对象定位，而不是在中途被静默换回缺省值。
++     */
++    const draft = path.join(root, '.reviews', TOPIC, 'plan', `2026-01-01-${TOPIC}-${other}.md`);
++    await fs.writeFile(draft, `# ${other} 执笔的原稿\n`, 'utf8');
++
++    /*
++     * 走 `topic resolve`：它是**纯只读**的选侧入口，一次适配器都不拉起，
++     * 却经过与 `review --start` 完全相同的判定处。用它证「选侧走得通」
++     * 既到位又零配额——真正要烧配额的产出路径由带桩的用例覆盖。
++     */
++    const r = await cli(root, [
++      'topic', 'resolve', '--stage', 'plan', '--json', '--',
++      '看边界', '--topic', TOPIC, '--driver', other, '--critics', DEFAULT_DRIVER,
++    ]);
++    assert.equal(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
++    const json = JSON.parse(extractJsonCandidate(r.stdout)!.json) as {
++      critics: string[]; driver: string; driver_enabled: boolean;
++      notes: string[]; subject_path: string;
++    };
++    assert.deepEqual(json.critics, [DEFAULT_DRIVER], `换掉 Driver 之后 ${DEFAULT_DRIVER} 就是普通审核者`);
++    assert.equal(json.driver, other, '解析结果要回显本轮采信的 Driver');
++    // driver 不只影响选侧，也决定原稿是谁的后缀——这一条钉的是后半段
++    assert.equal(
++      path.basename(json.subject_path), `2026-01-01-${TOPIC}-${other}.md`,
++      '被审对象应当是当轮 Driver 的原稿，而不是缺省 Driver 的那一份',
++    );
++    /*
++     * M9 只校验「已登记」，不校验 `driverEnabled`——校验了第 6 步就跑不成。
++     * 放行的代价必须看得见：这条 note 就是「如实标注」那一半。
++     */
++    assert.equal(json.driver_enabled, false);
++    assert.ok(
++      json.notes.some((n) => n.includes('尚未启用为 Driver')),
++      `notes 里没有标注「${other} 尚未启用为 Driver」：${JSON.stringify(json.notes)}`,
++    );
++  },
++);
++
++test(
++  '--driver 取值未登记 → 退 64，并列出全部已登记（不是「已启用为 Driver」的那几家）',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC });
++    const r = await cli(root, [
++      'topic', 'resolve', '--stage', 'plan', '--json', '--',
++      '看边界', '--topic', TOPIC, '--driver', 'nobody',
++    ]);
++    assert.equal(r.code, EXIT.USAGE, `${r.stdout}${r.stderr}`);
++    const out = r.stdout + r.stderr;
++    assert.match(out, /nobody/);
++    // 论域是「已登记」，所以尚未启用为 Driver 的那几家也要列出来——它们是合法取值
++    assertSelectableUsable();
++    assert.match(out, new RegExp(SELECTABLE[0]!));
++  },
++);
++
++test(
++  '命令 A 不接受 --driver（接受即静默丢弃）',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC });
++    const r = await cli(root, [
++      'topic', 'resolve', '--stage', 'all', '--json', '--', '做个功能', '--driver', 'codex',
++    ]);
++    assert.equal(r.code, EXIT.USAGE, `${r.stdout}${r.stderr}`);
++    assert.match(r.stdout + r.stderr, /--driver/);
++  },
++);
+diff --git a/test/unit/driver-wiring.test.ts b/test/unit/driver-wiring.test.ts
+new file mode 100644
+index 0000000..577f739
+--- /dev/null
++++ b/test/unit/driver-wiring.test.ts
+@@ -0,0 +1,429 @@
++/**
++ * `--driver` 的**调用链**判据（M9 第 5 步，T-4）。
++ *
++ * ## 为什么这一族用例扫的是源码，而不是调用函数
++ *
++ * 本步要防的缺口形态是「**函数签名支持了 driver，真实调用点没传**」。
++ * 这类缺口在本仓已经发生过至少三次（`enumerateDenyPaths` → `freeze`、
++ * `freeze` 的 `topic`、`locateSubjectReadOnly` 的第 5 形参），每一次的共同点是：
++ * 被调函数的单测全绿，因为那些用例**自己构造入参**去调它。
++ * 任何「自己传 driver 进去看它对不对」的用例，在这个缺口上**必然是绿的**。
++ *
++ * 所以判据只能是扫真实调用点的源码。`deny-matrix.test.ts` 的同类用例
++ * （「freeze() 的真实调用点必须传 topic」）是先例，本文件沿用它的三件套骨架：
++ * **唯一调用计数 → 实参块定位断言 → 值表达式在场**。
++ *
++ * ## 上一轮的教训：判据本身会是假证明
++ *
++ * 计划第 1 轮我写的判据在当时的 HEAD 上**就已经全绿**——`review.ts` 的 freeze
++ * 实参块里有一行注释含 `driver` 字样，裸子串判据当场为真。
++ * 第 2 轮我改成「剥注释后按属性位匹配」，审查员**按我的字面规则实现了一个剥离器
++ * 实测**：`/* driver, *​/` 这种**单行块注释**既不以 `*` 开头、也不含 `//`，
++ * 剥不掉，判据照样命中。
++ *
++ * 于是本文件把三条约束写成可执行的代码，并且**给每条约束配一条自测**
++ * （见文件末尾「判据自身的自测」一节）——判据是本步的被审对象之一，
++ * 它自己也要有人看着。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { REPO_ROOT } from '../helpers/fixture.js';
++
++/**
++ * 剥掉注释：**整块** `/* … *​/`（含单行、行尾、跨行三种形态）与 `//` 行尾。
++ *
++ * 约束 1。上一版只去掉「`*` 开头的行」与「`//` 之后」，漏掉单行块注释——
++ * 而单行块注释在本仓是常用写法。
++ *
++ * 已知边界：它不识别字符串字面量，所以正文里若有 `'http://…'` 会被从 `//` 起截断。
++ * 本文件扫的都是我们自己的实参块，不含 URL；真要扩大扫描面时这条要先加固。
++ */
++function stripComments(src: string): string {
++  return src
++    .replace(/\/\*[\s\S]*?\*\//g, ' ')
++    .replace(/\/\/[^\n]*/g, ' ');
++}
++
++/**
++ * 键/实参是否**以完整标识符的形态**出现在这段代码里。
++ *
++ * 约束 3。判据是**词边界**，不是「属性位后面跟逗号冒号」：
++ * 后者套不住位置实参（`locateSubject(planRef, null, root, opts.driver ?? X)`
++ * 里 `opts.driver` 后面跟的是 `??`），把两种形态各写一套匹配器又会多一个能写错的地方。
++ *
++ * 词边界足以守住本步真正要防的那一格：`driverEnabled,` **不**满足 `driver`
++ * （`driver` 之后是 `E`，是词字符，边界不成立），而「只加了 driverEnabled、
++ * 漏了 driver」正是 `newRunMeta` 那个实参块的失败形态——两者要写在同一个块里。
++ * 同理 `gateDriver` 也不会被误当成 `driver`。
++ */
++function hasProperty(block: string, key: string): boolean {
++  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
++  return new RegExp(`\\b${escaped}\\b`).test(block);
++}
++
++/** 从 `from` 起取配对括号内的文本（先剥注释，故不受注释里的括号干扰） */
++function argBlockAt(src: string, from: number): string {
++  let depth = 0;
++  for (let i = from; i < src.length; i++) {
++    const ch = src[i];
++    if (ch === '(' || ch === '{') depth++;
++    else if (ch === ')' || ch === '}') {
++      depth--;
++      if (depth === 0) return src.slice(from, i + 1);
++    }
++  }
++  return src.slice(from);
++}
++
++const cache = new Map<string, string>();
++/** 读源码并剥注释；同一文件只读一次 */
++async function stripped(rel: string): Promise<string> {
++  const hit = cache.get(rel);
++  if (hit !== undefined) return hit;
++  // 用 REPO_ROOT 而不是 import.meta.url 的 pathname：后者是百分号编码的 URL 片段
++  const v = stripComments(await fs.readFile(path.join(REPO_ROOT, rel), 'utf8'));
++  cache.set(rel, v);
++  return v;
++}
++
++/**
++ * 逐目标的锚点。
++ *
++ * 约束 2。**不再「一律 `await <fn>(`」**——那条在七个目标里只对两个成立：
++ * `newRunMeta` 与 `resolveCriticSelection` 都是同步函数，调用点写作 `= <fn>(`，
++ * 用 await 去数必然 0 命中；而退回裸 `<fn>(` 又会命中函数声明本身
++ * （`critics.ts` 与 `meta.ts` 里各有一处），那正是要防的假绿。
++ *
++ * 所以锚点逐个钉，且**期望条数按文件写明**：数错了就红。
++ */
++const TARGETS: {
++  what: string;
++  file: string;
++  anchor: RegExp;
++  count: number;
++  key: string;
++  why: string;
++}[] = [
++  {
++    what: 'review.ts → newRunMeta',
++    file: 'src/trivium/review.ts',
++    anchor: /=\s*newRunMeta\(\{/g,
++    count: 1,
++    key: 'driver',
++    why: '留痕里的发起方会恒记缺省 Driver，事后对不出这一轮实际由谁执笔',
++  },
++  {
++    what: 'review.ts → locateSubject（被审对象）',
++    file: 'src/trivium/review.ts',
++    anchor: /await\s+locateSubject\(ref,/g,
++    count: 1,
++    key: 'driver',
++    why: '非缺省 Driver 下按缺省后缀找原稿，第一步就退 65',
++  },
++  {
++    what: 'review.ts → locateSubject（resolveTaskGoal 内）',
++    file: 'src/trivium/review.ts',
++    anchor: /await\s+locateSubject\(planRef,/g,
++    count: 1,
++    key: 'opts.driver',
++    why: '整段包在 try/catch 里，漏传不报错：任务目标无声消失，或把审查意见当计划原稿提目标',
++  },
++  {
++    /*
++     * 计划 §3.1 花了整整一节论证「步骤表漏掉了这一处」，而上一版的扫描清单
++     * 偏偏没把它纳进来——**本步花最多笔墨论证的高频漏传点，自己没进护栏**
++     * （代码双审 AGY-03）。
++     */
++    what: 'review.ts → resolveRerunIndex（轮次）',
++    file: 'src/trivium/review.ts',
++    anchor: /await\s+resolveRerunIndex\(/g,
++    count: 1,
++    key: 'driver',
++    why: '非缺省 Driver 下本轮审查件会被当成 Driver 自己的产出跳过，轮次偏小',
++  },
++  {
++    what: 'cli.ts → resolveRerunIndex（闸门区回落）',
++    file: 'src/trivium/cli.ts',
++    anchor: /await\s+resolveRerunIndex\(/g,
++    count: 1,
++    key: 'gateDriver',
++    why: '扫到 0 份留痕时的旧口径回落，漏传会按缺省 Driver 算轮次',
++  },
++  {
++    what: 'review.ts → resolveCriticSelection（回落分支）',
++    file: 'src/trivium/review.ts',
++    anchor: /resolveCriticSelection\(cfg,\s*\{/g,
++    count: 1,
++    key: 'driver',
++    why: '没给 critics 的那条路上 Driver 排除按缺省判，非缺省 Driver 会被漏放进入选集合',
++  },
++  {
++    what: 'cli.ts → resolveCriticSelection（两个入口）',
++    file: 'src/trivium/cli.ts',
++    anchor: /resolveCriticSelection\(ctx\.config,\s*\{/g,
++    count: 2,
++    key: 'driver',
++    why: 'cmdReview 与 cmdPreflight 各一处，漏哪个都会让选侧按缺省 Driver 判',
++  },
++  {
++    what: 'topic-args.ts → resolveCriticSelection',
++    file: 'src/trivium/topic-args.ts',
++    anchor: /resolveCriticSelection\(ctx\.config,\s*\{/g,
++    count: 1,
++    key: 'driver',
++    why: '第三个选侧入口。漏传时 topic resolve 的选侧不减 Driver，而现有用例不红',
++  },
++  {
++    what: 'topic-args.ts → locateSubjectReadOnly',
++    file: 'src/trivium/topic-args.ts',
++    anchor: /await\s+locateSubjectReadOnly\(/g,
++    count: 1,
++    key: 'driver',
++    why: '这一处曾经漏改过一次，还被 registry-parity 的白名单无理由豁免掉了',
++  },
++  {
++    what: 'run-protocol.ts → writeHandoff 的 options 字面量',
++    file: 'src/trivium/run-protocol.ts',
++    anchor: /const h: Handoff = \{/g,
++    count: 1,
++    key: 'driver',
++    why: 'worker 是另一个进程，读不到 --start 的 argv；类型必填拦不住「忘了写值」以外的形态',
++  },
++  {
++    what: 'run-protocol.ts → rebuildContext 的 opts 重建',
++    file: 'src/trivium/run-protocol.ts',
++    anchor: /opts: \{/g,
++    count: 1,
++    key: 'driver',
++    why: '写进去了但读不回来，等于没传',
++  },
++];
++
++for (const t of TARGETS) {
++  test(`调用链：${t.what} 必须传 driver（扫真实调用点，不是调函数）`, async () => {
++    const src = await stripped(t.file);
++    const hits = [...src.matchAll(t.anchor)];
++    assert.equal(
++      hits.length, t.count,
++      `${t.file} 里 ${t.what} 的调用点应当有 ${t.count} 处，实得 ${hits.length} 处。\n` +
++        '  条数对不上说明代码结构变了，本条的锚点要跟着改——不要直接把期望值调成实测值，' +
++        '那会把一处新增的漏传调用悄悄纳入豁免。',
++    );
++    for (const h of hits) {
++      const block = argBlockAt(src, h.index!);
++      assert.ok(
++        block.length > 0 && block.length < src.length,
++        `定位不到 ${t.what} 的实参块——扫描写错了会让本条永绿`,
++      );
++      assert.ok(
++        hasProperty(block, t.key),
++        `${t.what} 的实参块里没有属性位上的 \`${t.key}\`：${t.why}。\n` +
++          `  实参块：${block.slice(0, 300)}`,
++      );
++    }
++  });
++}
++
++test('闸门区：driver 与轮次一律直读留痕，不从工件后缀反推', async () => {
++  /*
++   * 计划第 2 轮的**阻断**：`inferLatestRunId` 要先知道 driver 才能跳过 Driver 自己的
++   * 产出，而 driver 只记在留痕里——循环依赖。非缺省 Driver 且 `--critics claude` 时，
++   * 本轮审查件全是 `-claude.md`，按缺省 Driver 推会把它们整批跳过并返回 null，
++   * `gate --check` 以「请先跑一次双审」硬失败，而双审明明跑完了。
++   *
++   * 修法是根本不反推。所以本条钉两件事：**闸门区不再调那个反推函数**，
++   * 且两处 `checkAdjudication` 都把 driver 传下去（此前空着，非缺省 Driver 下
++   * 必报 missing_disposition——那正是阻断的表现面）。
++   */
++  const src = await stripped('src/trivium/cli.ts');
++  assert.equal(
++    /\binferLatestRunId\s*\(/.test(src), false,
++    'cli.ts 又在调 inferLatestRunId 了：它按工件后缀反推 run_id，' +
++      '而「跳过当轮 Driver 的产出」需要先知道 driver——循环依赖会让闸门在' +
++      '「裁决件尚未写出」这一格硬失败。需要 run_id / driver / 轮次一律走 latestRunMeta',
++  );
++  assert.ok(
++    /\blatestRunMeta\s*\(/.test(src),
++    'cli.ts 没有直读留痕：driver 与 rerun_index 的权威来源是运行元数据，不是后缀',
++  );
++
++  const calls = [...src.matchAll(/await\s+checkAdjudication\(\{/g)];
++  assert.equal(calls.length, 2, `cmdGate 里应当有 2 处 checkAdjudication，实得 ${calls.length} 处`);
++  for (const c of calls) {
++    const block = argBlockAt(src, c.index!);
++    /*
++     * **判据是「取值来自 gateDriver」，不是「出现了 driver 这个词」**
++     * （代码双审 CODEX-05）。上一版判的是 `hasProperty(block, 'driver')`，
++     * 于是 `driver: DEFAULT_DRIVER`——形对值错、正是要防的那一格——**照样绿**。
++     * 而计划 §10 变异表写的恰恰是「把 checkAdjudication 的 driver 改回缺省 → 必须红」，
++     * 我当时是靠**删掉**属性验的，那条变异从没真正验到。
++     */
++    assert.ok(
++      /driver:\s*gateDriver\b/.test(block),
++      'checkAdjudication 的 driver 取值不是 gateDriver：裁决件是 `-revised-<当轮 Driver>.md`，' +
++        '按缺省找会在非缺省 Driver 下必报 missing_disposition（计划双审 r2 判阻断）。\n' +
++        `  实参块：${block.slice(0, 240)}`,
++    );
++  }
++
++  const artifacts = [...src.matchAll(/await\s+checkStageArtifacts\(/g)];
++  assert.equal(artifacts.length, 1, `cmdGate 里应当有 1 处 checkStageArtifacts，实得 ${artifacts.length} 处`);
++  const ablock = argBlockAt(src, artifacts[0]!.index!);
++  assert.ok(
++    /gateDriver/.test(ablock),
++    'checkStageArtifacts 的 driver 位仍空着（此前是 undefined）：' +
++      '它决定去找谁的原稿与谁的裁决件，空着就会在非缺省 Driver 下必判缺件',
++  );
++});
++
++test('调用链：isHeterogeneous 的两个写点都要配 override_reason（EV-54）', async () => {
++  const src = await stripped('src/trivium/review.ts');
++  const hits = [...src.matchAll(/heterogeneous: isHeterogeneous\(/g)];
++  assert.equal(hits.length, 2, `review.ts 里 heterogeneous 的写点应当有 2 处，实得 ${hits.length} 处`);
++  /*
++   * 判据落在**同一行之后的一小段**上：两个写点分别在渲染入参与运行元数据里，
++   * 键名一个是 camelCase 一个是 snake_case，取值必须来自同一个派生函数。
++   */
++  for (const h of hits) {
++    const after = src.slice(h.index!, h.index! + 400);
++    assert.ok(
++      /overrideReason|override_reason/.test(after),
++      'heterogeneous 旁边没有 override_reason：run.v2 的契约要求 false 时必须有它，' +
++        '而第 6 步验收（--critics claude）产出的必然是 false 那一格——' +
++        '不补写入方，那份留痕会自相矛盾地进台账',
++    );
++    assert.ok(
++      /overrideReasonFor\(/.test(after),
++      '两个写点必须共用 overrideReasonFor 派生：各写一份文案会踩破「两处同值」这条判据自身',
++    );
++  }
++});
++
++test('对账：两个「谁算原稿」的入口对同一夹具给出同一答案（EV-65）', async () => {
++  /*
++   * `topic.ts` 的 `locateSubject`（`review --start` 走它）与 `topic-args.ts` 的
++   * `locateSubjectReadOnly`（`topic resolve` 走它）各有一套候选过滤、排序、
++   * 审查件剔除与显式硬拒——**四份复制品**。代码审三侧逐行核过今天确实一致，
++   * 但改一处另一处不会红，而且它们的用例分处两个文件。
++   *
++   * 本仓对「同一事实两份实现」的既有对策是 grep 级对账（`registry-parity`、
++   * `deny-matrix`）。这一条是同族：同一夹具分别过两个入口，断同一结果。
++   * **抽成共用函数是更好的修法**（登记 EV-65），在那之前由本条看着。
++   */
++  const os = await import('node:os');
++  const { locateSubject, resolveTopicReadOnly } = await import('../../src/trivium/topic.js');
++  const { resolveTopicArgs } = await import('../../src/trivium/topic-args.js');
++  const { defaultConfig } = await import('../../src/trivium/config.js');
++
++  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-parity-'));
++  const ctx = {
++    config: defaultConfig(), projectRoot: root,
++    archiveRoot: path.join(root, '.reviews'),
++    triviumDir: path.join(root, '.trivium'), sources: ['<test>'],
++  };
++  const dir = path.join(ctx.archiveRoot, 'T', 'plan');
++  await fs.mkdir(dir, { recursive: true });
++  // 真原稿在前、顶着同一后缀的审查件在后（日期更晚，排序上会排在前面）
++  await fs.writeFile(path.join(dir, '2026-09-10-T-claude.md'), '# 我才是原稿\n');
++  await fs.writeFile(
++    path.join(dir, '2026-09-12-T-claude.md'),
++    '---\nschema: trivium.review.v1\n---\n\n# 计划审查\n',
++  );
++
++  const viaTopic = await locateSubject(
++    await resolveTopicReadOnly(ctx, 'T', 'plan'), null, ctx.projectRoot,
++  );
++  const viaArgs = await resolveTopicArgs({ ctx, scope: 'plan', rawArgs: ['看边界', '--topic', 'T'] });
++
++  assert.equal(
++    path.basename(viaTopic), path.basename(viaArgs.subject_path!),
++    '两个入口对同一夹具选出了不同的原稿——「谁算原稿」有两个答案了',
++  );
++  assert.equal(path.basename(viaTopic), '2026-09-10-T-claude.md');
++});
++
++// ───────────────────── 判据自身的自测 ─────────────────────
++/*
++ * 上一轮的教训是「判据看起来对、实际永绿」，而那次正是**没有**把判据写成
++ * 可执行的东西再验一遍。下面三条验的是本文件的三条约束本身。
++ */
++
++test('判据自测：约束 1 剥得掉单行块注释（上一轮就是在这里漏的）', () => {
++  /*
++   * 四种形态都**不该**命中。前两种是上一轮判据的实际失效点：单行块注释
++   * 既不以 `*` 开头、也不含 `//`，按「去掉 `*` 开头与 `//` 之后」的规则剥不掉。
++   *
++   * 第四个用的是**完整**块注释，不是裸的 ` * driver,` 片段——真实代码里
++   * 那种续行只存在于 `/* … *​/` 之内，整块会被一起剥掉；拿裸片段当夹具
++   * 是在测一个现实中不存在的输入。
++   */
++  const cases = [
++    '/* driver, */',
++    '/* driver: 当轮 */',
++    '// driver,',
++    '/*\n   * 下面 driver 字段的注释记的就是第一次\n   */',
++  ];
++  for (const s of cases) {
++    assert.equal(
++      hasProperty(stripComments(s), 'driver'), false,
++      `注释里的 driver 被当成了真实传值：${JSON.stringify(s)}——这正是上一轮判据失效的形态`,
++    );
++  }
++});
++
++test('判据自测：剥注释之后，review.ts 的 freeze 实参块里那行注释不再命中', async () => {
++  /*
++   * 这条钉的是**真实语料**，不是构造的字符串：`review.ts` 的 freeze 实参块里
++   * 确有一行注释含 `driver` 字样（「下面 `driver` 字段的注释记的就是第一次」），
++   * 计划第 1 轮的裸子串判据就是被它当场变绿的。
++   *
++   * 做法：把真实实参块里的**属性位** `driver,` 抠掉，只留注释，再断言判据为假。
++   * 这样验的是「剥注释真的起作用」，而不是「属性位在不在」。
++   */
++  const src = await stripped('src/trivium/review.ts');
++  const raw = await fs.readFile(path.join(REPO_ROOT, 'src/trivium/review.ts'), 'utf8');
++  const at = raw.indexOf('await freeze({');
++  assert.ok(at > 0, '定位不到 freeze 调用——本条的语料没了');
++  const rawBlock = argBlockAt(raw, at);
++  assert.ok(/driver/.test(rawBlock), '真实实参块里连 driver 字样都没有，本条失去语料');
++
++  // 未剥注释时：注释里的 driver 让裸判据为真（上一轮的失效形态）
++  const withoutProperty = rawBlock.replace(/^\s*driver,\s*$/m, '');
++  assert.ok(
++    /\bdriver\b/.test(withoutProperty),
++    '把属性位抠掉之后，原文里应当仍有注释中的 driver 字样——否则本条证不出剥注释的价值',
++  );
++  // 剥注释后：应当为假
++  assert.equal(
++    hasProperty(stripComments(withoutProperty), 'driver'), false,
++    '剥注释没起作用：freeze 实参块的注释里那个 driver 仍被当成真实传值，' +
++      '本文件全部调用链判据都会退化成永绿',
++  );
++  // 完整实参块（含属性位）则必须为真
++  assert.equal(hasProperty(src.slice(src.indexOf('await freeze({')), 'driver'), true);
++});
++
++test('判据自测：约束 1 不得误伤「属性位与逗号之间夹注释」这种合法写法', () => {
++  assert.equal(
++    hasProperty(stripComments('driver /* 当轮 */,'), 'driver'), true,
++    '一个正确的实现被判红了。误红比漏判更危险：实现者会有动机把判据放松回裸词，' +
++      '那就退回上一轮的假证明',
++  );
++});
++
++test('判据自测：约束 3 区分得开 driver 与 driverEnabled / gateDriver', () => {
++  for (const ok of ['driver,', 'driver: driver,', 'driver }', 'opts.driver ?? X', 'driver)']) {
++    assert.equal(hasProperty(ok, 'driver'), true, `合法形态被判漏：${ok}`);
++  }
++  assert.equal(
++    hasProperty('driverEnabled,', 'driver'), false,
++    '`driverEnabled` 满足了 `driver` 的判据——而「只加了 driverEnabled、漏了 driver」' +
++      '正是 newRunMeta 那个实参块的失败形态（两者要写在同一个块里）',
++  );
++  assert.equal(
++    hasProperty('gateDriver,', 'driver'), false,
++    '`gateDriver` 满足了 `driver` 的判据——词边界没起作用',
++  );
++});

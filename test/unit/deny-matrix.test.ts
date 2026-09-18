@@ -409,4 +409,25 @@ test('调用链：freeze() 的真实调用点必须传 topic（不只是函数�
           : '该字段是必需的'),
     );
   }
+
+  /*
+   * ── driver 同样要传（M9 第 5 步）──
+   *
+   * 这就是上面那段注释里说的「第一次」：`enumerateDenyPaths` 加了 driver 参数，
+   * 而这个唯一调用入口一直没传。漏传时禁读集按缺省 Driver 剪，
+   * 非 Claude Driver 的原稿整批进禁读集，审核者正常读取即判 peer_leak、整轮作废。
+   *
+   * **判据必须先剥注释**：本实参块里恰好有一行注释含 `driver` 字样
+   * （「下面 `driver` 字段的注释记的就是第一次」），裸子串判据在传值之前就是绿的——
+   * 计划第 1 轮我写的就是那种，三侧审查员同时指了出来。
+   * 剥注释与属性位匹配的完整实现及其自测在 `driver-wiring.test.ts`。
+   */
+  const noComments = argBlock
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ');
+  assert.ok(
+    /\bdriver\b/.test(noComments),
+    'freeze() 的实参块里没有真实传值的 driver（注释里的不算）——' +
+      '禁读集会按缺省 Driver 剪枝，非 Claude Driver 的被审原稿进禁读集即 peer_leak 作废重跑',
+  );
 });

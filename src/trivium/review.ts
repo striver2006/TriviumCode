@@ -16,7 +16,7 @@ import type {
   Config, CriticId, CriticRequest, CriticResult, Ctx, DenyCategory, Review, Stage, CommandEntry,
 } from './types.js';
 import { CRITIC_PREFIX, CRITIC_VENDOR, VOIDING_DENY_CATEGORIES } from './types.js';
-import { agentById } from './agents/registry.js';
+import { DEFAULT_DRIVER, agentById, type AgentId } from './agents/registry.js';
 import {
   isHeterogeneous,
   routeModel,
@@ -243,7 +243,7 @@ function goalFromPlanDoc(text: string): string | null {
  * 两侧共用同一个结果——和「补丁只算一次」同理，否则两位审查员可能看到不同的目标。
  */
 export async function resolveTaskGoal(
-  opts: Pick<ReviewOptions, 'taskGoal' | 'stage' | 'subjectFile'>,
+  opts: Pick<ReviewOptions, 'taskGoal' | 'stage' | 'subjectFile' | 'driver'>,
   ref: { topic: string; layout: ArchiveLayout },
   projectRoot: string,
 ): Promise<string | null> {
@@ -263,12 +263,52 @@ export async function resolveTaskGoal(
     const planRef = { topic: ref.topic, layout: ref.layout, stage: 'plan' as const,
       stageDirAbs: stageDir(ref.layout, 'plan') };
     // 显式 subjectFile 是给当前阶段的，不能拿来定位 plan 原稿
-    const planPath = await locateSubject(planRef, null, projectRoot);
+    /*
+     * **driver 必须传**（M9 第 5 步，计划双审 r2 CODEX-03）。这是 `locateSubject`
+     * 的第三处调用，也是最容易漏的一处——整段包在 try/catch 里，漏了不报错。
+     *
+     * 漏传的后果分两种，都不进留痕：非缺省 Driver 下按缺省后缀找 plan 原稿，
+     * 要么找不到（任务目标**无声消失**，BRIEF 第 4 段空着），
+     * 要么找到的是**别人的审查件**，把对计划的意见当成计划本身来提目标。
+     */
+    const planPath = await locateSubject(planRef, null, projectRoot, opts.driver ?? DEFAULT_DRIVER);
     return goalFromPlanDoc(await fs.readFile(planPath, 'utf8'));
   } catch {
     // 纯 code 主题没有 plan 目录，属正常情况——静默跳过，不是错误
     return null;
   }
+}
+
+/**
+ * `heterogeneous: false` 那一格的成因说明（EV-54）。
+ *
+ * ## 为什么必须有写入方
+ *
+ * `run.v2` 的散文契约写着「false 时必须有 `override_reason`」，而承接侧
+ * （`render.ts` 的声明、落盘、渲染三处）**早就接通了，一直没有人传值**。
+ * M9 第 4 步推后它的理由是「claude 一次也选不上，补的写入方没有任何路径能端到端
+ * 验证」——那条理由被第 5 步的 `--driver` 当场消灭：`--driver <非 claude> --critics claude`
+ * 之后 claude 真能入选，而 `isHeterogeneous` 对 claude 系模型**恒返回 false**。
+ * 不补的话，第 6 步验收产出的那份留痕必然自相矛盾，而它要作为达成证据进台账。
+ *
+ * ## 取值来源写死在这里，不留给调用点各写一份
+ *
+ * 只有两种成因：用户显式指定，或档位默认落在了 Claude 系。两个写点
+ * （审查文档 front-matter 与运行元数据）**共用本函数**——各写一份文案就会
+ * 踩破「两处同值」这条判据本身。
+ *
+ * **只补写入方，不升 schema 的 `if/then` 机器判据**：那会让历史留痕集体读不回。
+ */
+function overrideReasonFor(
+  c: CriticId,
+  model: string | null,
+  modelOverrides: Partial<Record<CriticId, string>>,
+  profileRequested: string | null,
+): string | null {
+  if (isHeterogeneous(model)) return null;
+  return modelOverrides[c]
+    ? `用户经 --model-${c} 显式指定了 Claude 系模型`
+    : `档位 ${profileRequested ?? '（缺省）'} 的默认模型落在 Claude 系`;
 }
 
 /** 运行目录按仓库路径哈希分桶，避免不同项目互相覆盖 */
@@ -307,6 +347,14 @@ export interface ReviewOptions {
    * 使手工构造 `ReviewOptions` 的调用点（测试、selftest）不必逐个补这个字段。
    */
   critics?: readonly CriticId[] | null;
+  /**
+   * 当轮 Driver（M9 第 5 步）。省略即注册表缺省值。
+   *
+   * 它在本模块决定四件事：轮次怎么算（`resolveRerunIndex`）、原稿是谁的后缀
+   * （`locateSubject`）、禁读集怎么剪（`freeze`）、以及留痕里记的发起方（`newRunMeta`）。
+   * **四个消费方都在 `prepareRun`，即 `--start` 侧**；`executeRun` 今天不读它。
+   */
+  driver?: AgentId;
   /** 覆盖 skill 资产根（默认取安装位置） */
   assetRoot?: string;
   /** code 阶段的 diff 基线，默认 HEAD */
@@ -463,7 +511,17 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    * **不再回落到 `CRITICS` 全集**（M7b 第 5 步）——那是 v1 时代「配置不表达选侧」
    * 留下的写法。现在 `review.default_critics` 才是默认值的所在。
    */
-  const sides: CriticId[] = [...(opts.critics ?? resolveCriticSelection(cfg))];
+  /*
+   * 当轮 Driver：本函数里四个消费方（轮次、原稿定位、禁读剪枝、留痕）都用它。
+   * `driverEnabled` **就地由注册表派生**，不进 ReviewOptions 也不进交接文件——
+   * 它是 id 的属性，不是调用方的选择；让它随参数传递就多了一个能传错的地方。
+   */
+  const driver: AgentId = opts.driver ?? DEFAULT_DRIVER;
+  const driverEnabled = agentById(driver)?.driverEnabled ?? false;
+
+  // 回落分支也要传 driver：否则「没给 critics」这条路上 Driver 排除按缺省判，
+  // 非缺省 Driver 会被漏放进入选集合（计划双审 r2 CODEX-11）
+  const sides: CriticId[] = [...(opts.critics ?? resolveCriticSelection(cfg, { driver }))];
   /*
    * ── slug 校验内嵌于此（审查意见 GLM-01）──
    *
@@ -496,6 +554,22 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    */
   if (sides.length === 0) {
     throw usageError('入选审核者集合为空：一次审查至少要有一个审核者。');
+  }
+  /*
+   * **Driver 不得在入选集合里**——与上面那条空集合兜底同构、同理由。
+   *
+   * 判定处（`resolveCriticSelection`）已经拦过一道，但 `opts.critics` 一旦给了值
+   * 就**整个绕过判定处**：worker 从交接文件拷贝、测试与 selftest 手工构造，三条都能绕。
+   * 「自己审自己」是比空集合更硬的安全不变量（P1：独立二次审查），
+   * 判定处的不变式同样要延伸到直传参数的路径。
+   *
+   * 这里只兜「直传 critics」这一种形态——没给 critics 的回落分支上面已经传了 driver。
+   */
+  if (sides.includes(driver)) {
+    throw usageError(
+      `入选审核者里含当轮 Driver「${driver}」：它是本次运行的执笔者，不能同时充当独立审查员。\n` +
+        '  自己审自己不构成二次审查——这条流水线存在的理由就是避免它。',
+    );
   }
   for (const c of sides) {
     const adapter = adapters[c];
@@ -556,7 +630,15 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    * 现在改为：全部计算在内存里完成，只有都成功了才开始落盘。
    */
   const ref = await resolveTopicReadOnly(ctx, opts.topic, stage);
-  const rerunIndex = await resolveRerunIndex(ref.layout, stage);
+  /*
+   * 轮次也要按当轮 Driver 算（M9 第 5 步补漏——步骤表的落点表没列这一处）。
+   *
+   * 漏传时它按缺省 Driver 跳过产出：非缺省 Driver 下本轮的 `-claude.md` 审查件
+   * 会被当成 Driver 自己的产出跳过，max 偏小。代价不是「元数据与文件名分叉」
+   * （`firstFreeRerunIndex` 抬升时会同步改写 `meta.rerun_index`，两者始终一致），
+   * 而是骨架运行元数据短暂记错轮次 + 必然触发一次抬升告警。
+   */
+  const rerunIndex = await resolveRerunIndex(ref.layout, stage, driver);
   const runId = newRunId();
 
   /*
@@ -607,7 +689,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     // FR-23：判定由程序做，不由模型做（§6.4）
     skipVerdict = classifyDiff(cfg, files);
   } else {
-    subjectPath = await locateSubject(ref, opts.subjectFile, ctx.projectRoot);
+    subjectPath = await locateSubject(ref, opts.subjectFile, ctx.projectRoot, driver);
     subjectText = await fs.readFile(subjectPath, 'utf8');
   }
 
@@ -674,6 +756,14 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
        * 而不是又一条只测被调函数的用例。
        */
       topic: ref.topic,
+      /*
+       * 这就是上面注释里说的「第一次」：`enumerateDenyPaths` 加了 driver 参数，
+       * 而这个唯一调用入口一直没传——M9 第 5 步补上。
+       *
+       * 漏传时禁读集按缺省 Driver 剪：非 Claude Driver 的原稿会整批进禁读集，
+       * 审核者正常读取即判 peer_leak、整次运行作废重跑。
+       */
+      driver,
       subjectPath,
       ...(opts.diffBase ? { base: opts.diffBase } : {}),
       ...(frozenDiffText !== null ? { diffText: frozenDiffText } : {}),
@@ -784,6 +874,15 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
      * 两者分开记，`gate` 才能把「入选但失败」与「压根没入选」判成两回事（§6.7.1）。
      */
     criticsSelected: sides,
+    /*
+     * 发起方与它的启用状态一起落盘（M9 第 5 步）。
+     *
+     * `driver_enabled: false` 是 M9 刻意接受的形态：本步只校验「已登记」，
+     * 不校验 `driverEnabled`（校验了第 6 步就跑不成，见 `resolveDriver`）。
+     * 放行的代价必须由留痕兜住——事后要能对出「这一轮声明的 Driver 当时还没启用」。
+     */
+    driver,
+    driverEnabled,
     treeHash: primarySnap.treeHash,
     gitHead: primarySnap.gitHead,
     dirty: primarySnap.dirty,
@@ -1142,6 +1241,9 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
        */
       jointCheck: jointCheckRun,
       heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model),
+      overrideReason: overrideReasonFor(
+        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested,
+      ),
     });
 
     const written = await writeArtifact({
@@ -1339,6 +1441,11 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       evidence_ok: side?.evidenceOk ?? false,
       ...(r.usage ? { usage: r.usage } : {}),
       heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model),
+      // 与上面渲染侧**共用同一个派生函数**：两处各写一份文案就会踩破
+      // 「front-matter 与运行元数据两处同值」这条自己要守的判据（EV-54）
+      override_reason: overrideReasonFor(
+        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested,
+      ),
       fail_reason: r.fail_reason,
       empty_review: (reviews[c]?.findings.length ?? -1) === 0,
       parse_fallback: r.status === 'parse_fallback',

@@ -1,0 +1,144 @@
+---
+schema: trivium.review.v1
+topic: M9-Driver旗标全链路与选侧收口
+stage: plan
+role: gemini
+vendor: antigravity
+agent_cli: agy/1.2.6
+model_requested: gemini-3.8-flash-high
+model_effective: gemini-3.8-flash-high
+model_effective_source: envelope
+effort: high
+run_id: 20260918T154204Z
+rerun_index: 1
+snapshot_hash: sha256:72f22a72d59b96304c2f2f8a8c79f282dfc78342b01cb7f2021922f9c1508053
+blind: true
+started_at: 2026-09-18T15:42:05.305Z
+finished_at: 2026-09-18T16:01:42.671Z
+duration_s: 453
+tool_calls:
+  read: 47
+  grep: 17
+  glob: 0
+  run_command: 0
+  project_reads: 22
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 2
+  minor: 1
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: e601b816-1a21-4c32-aee2-d7668b0570b2
+---
+
+# 计划审查：M9-Driver旗标全链路与选侧收口
+
+> Critic-A · Google Antigravity ｜ 模型 `gemini-3.8-flash-high`
+> ｜ 运行 `20260918T154204Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+【最危险】T-3 与 T-4 拟扩写的源码扫描测试在 HEAD 当前状态下即可永绿通过（如 review.ts:670 注释已含 driver、topic-args.ts:520 函数签名已含 driver 形参、Handoff.options 仅校接口键集），接线防空转断言本身沦为假证明。
+EV-54 纳入第 5 步时机合理，但 §5.8 传值逻辑未定，且依赖的 isHeterogeneous 仍硬编码 Claude 为主脑，在非 Claude Driver 下自相矛盾。
+CODEX-07 依据的审查件无第 4 条写入路径推导完全成立，但 recordedArtifactPaths 的相对路径格式与 locateSubject 入参归一化未界定。
+综上，计划在测试断言有效性与 EV-54 闭环上尚有硬伤，需修订完善后再行实施，结论判为 request-changes。
+
+**结论**：`request-changes`
+
+## 审查意见（共 3 条：重要 2 ｜ 次要 1）
+
+### AGY-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.2 (T-3, T-4) & §10` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：接线扫描测试判据存在三处「假证明（永绿）」漏洞：T-3 扫描 freeze 实参块极易命中 :670 行既有注释里的 driver 字样，当前 HEAD 未改代码即可全绿；T-4 扫 topic-args.ts 的 locateSubjectReadOnly 若未锁定调用点 await 前缀，会命中 :520 的函数声明（已带第 5 形参）；T-4 仅断言 run-protocol.ts 的 Handoff.options 类型键集，不覆盖 writeHandoff 与 rebuildContext 的运行时传值，变异测试中漏传依然全绿。
+
+**依据**：实读 src/trivium/review.ts:650-680，第 670 行注释已含「下面 driver 字段的注释」字样，位于 freeze 实参块内部，test/unit/deny-matrix.test.ts:402 风格的子串匹配在当前 HEAD 上即可直接命中；实读 src/trivium/topic-args.ts:520，函数声明自身已含第 5 形参 driver: AgentId = DEFAULT_DRIVER；实读 src/trivium/run-protocol.ts:74 与 :104、:142，Handoff.options 仅为 interface 类型定义，不覆盖运行时序列化与反序列化。
+
+**建议**：T-3 必须在剥除注释后断言「行首/缩进结构的值表达式在场（如 driver, 或 driver: driver）」；T-4 扫描 locateSubjectReadOnly 必须明确匹配调用点（如 await locateSubjectReadOnly(）；T-4 针对交接文件必须改为断言 writeHandoff 实参块及 rebuildContext 赋值块中的 driver 运行时传递，不能只测 Handoff.options 的 interface 键。
+
+### AGY-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5.8 & §5` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：EV-54 纳入本步的传值方案不完备，且底层 isHeterogeneous 存在假设失效：§5.8 未给出 review.ts 传给 overrideReason 的具体计算规则（来自 CLI 显式覆盖、默认值还是 profile？）；且 isHeterogeneous 仍硬编码认为 Claude 系模型即为主脑同源，在第 6 步验收以 Gemini 为 Driver、Claude 为审核者时，Claude 仍会被误判为与主脑同源（heterogeneous: false）并强行要求 override_reason，这与异构多审的定义直接冲突。
+
+**依据**：实读 src/trivium/review.ts:1144 与 :1341，计划 §5.8 仅提及「两处补传值」，未指定具体取值逻辑与参数来源；实读 src/trivium/adapters/base.ts:1670-1673，isHeterogeneous(model) 仅判断 !/claude/i.test(model)，将 Claude 模型与「主脑同源」等同，未感知当轮 driver；实读 doc/08_project/BACKLOG.md:151 (EV-54)。
+
+**建议**：在 §5.8 中明确 override_reason 的具体派生来源与空/非空规则；同时须评估并明确 isHeterogeneous 在非 Claude Driver 下的判定口径（或显式澄清其为何仍沿用旧模型串判据并在留痕中说明），不能让第 6 步验收凭据在未定义逻辑下生成。
+
+### AGY-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5.6` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：CODEX-07 的 recordedArtifactPaths 集合与 locateSubject 存在路径格式未归一化风险，且 unreadable 处理行为模糊：run.json 中登记的 artifacts[].path 包含 topic/stage 前缀，若直接以 fileName 或绝对路径在 Set 中查询会永远判定未命中（判据失效）；此外，locateSubject 签名只返回 string、无 notes 出口，若遇到 unreadable 运行元数据直接抛错，会导致历史脏留痕阻断正常原稿选定（DoS）。
+
+**依据**：实读 src/trivium/archive.ts:142-177 与 :185-210，以及 src/trivium/review.ts:1373，写入 artifacts[] 的路径格式均为相对 archiveRoot（即 <topic>/<stage>/<file>）；实读 src/trivium/topic.ts:90-118，locateSubject 遍历的是目录条目（文件名），explicitPath 可能是绝对或相对项目根路径。
+
+**建议**：在 §5.6 中明确路径归一化规范（统一转为相对于 archiveRoot 的规范化路径或绝对路径后再查 Set）；明确 locateSubject 与 locateSubjectReadOnly 对 unreadable 的差异化处置策略，避免非阻塞性的元数据读取异常误杀合法原稿定位。
+
+## 认为正确的部分
+
+- 认可 5.0 resolveDriver 集中在 critics.ts 单一判定处，避免 cli.ts 与 topic-args.ts 改一漏二。
+- 认可对步骤表落点表遗漏 review.ts:559（resolveRerunIndex）的实读核实与补入，切分 cli.ts:731 归入 EV-58 的理由充分。
+- 认可 CODEX-07 对原稿候选采取「自动候选命中登记则剔除、显式指定命中登记则硬拒」的双轨设计（D4/R-1），妥善避免了同一主题切换 Driver 时的历史误杀。
+- 认可 EV-53 源头合一的设计方向：从 critics.ts 导出 selectableCritics 供 legalList 与 topic-args 共同消费，消灭论域分叉。
+- 认可留痕字段 driver_enabled 设为可选顶层字段、保持 additionalProperties: true、不加 if/then 机器校验的不可逆决策（R-6），守住了旧留痕读回兼容性。
+
+## 未覆盖范围（本侧盲区）
+
+- 未对实际运行环境中各类 Agent 适配器的真实 CLI 进程启动与退出状态码做黑盒联调（本步为计划审查，无执行写权限）。
+- 未覆盖配置中多 profile 继承在非缺省 Driver 下对各阶段模型路由覆盖的边缘解析情况。
+- 未在 Windows 环境下验证路径分隔符（正斜杠与反斜杠）在 Set 查询与规范化过程中的跨平台表现。
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-Driver旗标全链路与选侧收口/plan/2026-09-18-M9-Driver旗标全链路与选侧收口-claude.md`
+- `.reviews/M9-ClaudeCode审核者接入/plan/2026-09-17-M9-ClaudeCode审核者接入-revised-claude.md`
+- `CLAUDE.md`
+- `AGENTS.md`
+- `src/trivium/critics.ts`
+- `src/trivium/topic-args.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/review.ts`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/archive.ts`
+- `src/trivium/topic.ts`
+- `src/trivium/agents/registry.ts`
+- `src/trivium/naming.ts`
+- `src/trivium/freeze.ts`
+- `src/trivium/verify.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/render.ts`
+- `src/trivium/adapters/base.ts`
+- `test/unit/deny-matrix.test.ts`
+- `test/unit/topic.test.ts`
+- `doc/08_project/BACKLOG.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":47,"grep":17,"glob":0,"run_command":0,"project_reads":22}
+
+---
+
+*本文档由 TriviumCode 编排器从 `gemini` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

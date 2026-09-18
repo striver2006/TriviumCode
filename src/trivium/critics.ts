@@ -9,7 +9,7 @@
  * 判定只依赖配置与注册表，不碰文件系统，可直接单测。
  */
 import { CRITICS, type Config, type CriticId } from './types.js';
-import { DEFAULT_DRIVER, agentById, type AgentDescriptor, type AgentId } from './agents/registry.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER, agentById, type AgentDescriptor, type AgentId } from './agents/registry.js';
 import { EXIT, TriviumError, swallowedTextHint } from './exit-codes.js';
 
 export interface CriticSelectionInput {
@@ -54,22 +54,140 @@ export interface CriticSelectionInput {
  * 现有输出」——那句话被翻开关这一步当场证伪，而它就在本函数的文档块里，
  * 是同一次改动的上下文行；代码双审 CODEX-05。）
  */
-function legalList(cfg: Config, driver?: AgentId, descriptors?: readonly AgentDescriptor[]): string {
-  /*
-   * **论域跟着注入表走**（计划双审 GLM-05）。
-   *
-   * 这里此前读的是模块级 `CRITICS`，而判定读的是注入表。两者不一致时，
-   * 报错会按真实注册表列出「当前可用」，与本次判定实际采信的论域对不上——
-   * 「第一个错误把用户引向第二个错误」，正是本文件自己立规矩要防的形态。
-   * 夹具语境下它同样有害：排障的人会照着一个错误的清单找问题。
-   */
+function legalList(cfg: Config, driver: AgentId, descriptors?: readonly AgentDescriptor[]): string {
+  const usable = selectableCritics(cfg, driver, descriptors);
+  return usable.length > 0 ? usable.join(' | ') : '（配置里没有任何可用审核者）';
+}
+
+/**
+ * 本轮**实际能入选**的审核者 —— 启用集合 ∩ 有配置条目 − 当轮 Driver。
+ *
+ * ## 为什么要有这个导出（M9 第 5 步，EV-53）
+ *
+ * 这份论域此前有**两套实现**：本文件的 `legalList` 减 Driver，而 `topic-args.ts`
+ * 的 `--model-<id>` 白名单读模块级 `CRITICS` **全集、不减**。M9 第 4 步把 claude
+ * 启用为审核者之后，`--model-claude X` 在那边合法通过，却被这边的「当轮 Driver
+ * 不得入选」恒拒——用户显式指定的模型一路走到被丢弃，**留痕里看不出他指定过**。
+ *
+ * 第 5 步把 driver 接进选侧之后，两套论域会在**同一条命令**里给出互相矛盾的
+ * 「当前可用」。所以这里不是「顺手抽个函数」：把两处合到一个派生上，
+ * 才是让「谁能入选」只有一个答案。**抄一份 filter 过去只会把今天的缺口
+ * 原样复制到明天**——那正是本文件开头那段文档在讲的事。
+ *
+ * **论域跟着注入表走**（计划双审 GLM-05）：判定读注入表而报错读真实注册表时，
+ * 「当前可用」会与本次判定实际采信的论域对不上——第一个错误把用户引向第二个错误。
+ */
+export function selectableCritics(
+  cfg: Config,
+  driver: AgentId = DEFAULT_DRIVER,
+  descriptors?: readonly AgentDescriptor[],
+): CriticId[] {
   const enabled = descriptors
     ? descriptors.filter((a) => a.criticEnabled).map((a) => a.id)
     : CRITICS;
-  const usable = enabled.filter(
+  return enabled.filter(
     (c) => cfg.agents[c as CriticId] !== undefined && c !== driver,
-  );
-  return usable.length > 0 ? usable.join(' | ') : '（配置里没有任何可用审核者）';
+  ) as CriticId[];
+}
+
+/**
+ * `--model-<id>` 的键必须是**本轮实际能入选的审核者**（EV-53）。
+ *
+ * ## 为什么判定在这里，而不是在两个入口各写一遍
+ *
+ * EV-53 第一次收口时只改了 `topic resolve`（`topic-args.ts`），`review --start`
+ * 那条路原样留着——而后者才是**真正烧配额**的入口：`collectModelOverrides` 的论域是
+ * `CRITICS`（启用全集，M9 第 4 步之后四家都在内），下游 `checkModelSlugs` 只遍历
+ * **入选侧**，于是「为本轮当不了审核者的一家指定模型」在那条路上仍是
+ * **解析成功后被悄悄丢弃**，run.json 与告警里都不留痕——正是 EV-53 原文的症状。
+ * 技能侧因为先走 `topic resolve` 被挡住了，暴露面是手工 CLI，但台账上那句
+ * 「EV-53 已收口」当时并不成立（第 2 轮代码双审 CODEX-05）。
+ *
+ * 这与 `--only` 那次、以及 `resolveCriticSelection` 本身是同一条教训：
+ * **同一个判定有两个入口时，判定必须只有一份。** 所以它和 `legalList`、
+ * `resolveCriticSelection` 一起放在本文件，共用 `selectableCritics` 这一份派生。
+ *
+ * 错误文案一律走 `legalList`，因此与「不能选 Driver」那几条报错逐字同词
+ * （都是「当前可用」）——此前 `topic-args.ts` 那处自己拼了一句「本轮可用」，
+ * 同一论域两层措辞分叉，而集成用例正拿「当前可用」当锚点截字符串
+ * （第 2 轮 GLM-03）。
+ *
+ * @param ids 用户实际写出来的 `--model-<id>` 里的 `<id>`，不含没写的
+ */
+export function assertModelOverrideKeys(
+  cfg: Config,
+  driver: AgentId,
+  ids: readonly string[],
+  descriptors?: readonly AgentDescriptor[],
+): void {
+  const selectable = selectableCritics(cfg, driver, descriptors) as readonly string[];
+  for (const id of ids) {
+    if (selectable.includes(id)) continue;
+    const why =
+      id === driver
+        ? '它是本轮的 Driver（执笔者），不能同时充当审核者'
+        : `${id} 本轮不是可用审核者`;
+    throw new TriviumError(
+      EXIT.USAGE,
+      `--model-${id}：${why}，不能为它指定模型。\n` +
+        `  当前可用：${legalList(cfg, driver, descriptors)}`,
+    );
+  }
+}
+
+/** `resolveDriver` 的结果：当轮 Driver，以及它是否已被启用为 Driver */
+export interface DriverResolution {
+  driver: AgentId;
+  /**
+   * 该 Agent 的 `driverEnabled`。**false 不阻断**——M9 只校验「已登记」。
+   *
+   * 校验 `driverEnabled` 会让 M9 第 6 步跑不成：当前只有 claude 启用为 Driver，
+   * 而验收恰恰要让 claude 当审核者、由别家当 Driver（`--driver codex` 会被拒 ⇒ 死循环）。
+   * 取舍是「放行但如实标注」：预检打一行可见提示，`run.json` 落 `driver_enabled`。
+   * 理由与 `approve` 同构——这条防线靠调用方守规矩，而留痕要让事后对得上账。
+   * M10 收口时把它收紧成 `driverEnabled` 校验。
+   */
+  enabledAsDriver: boolean;
+}
+
+/**
+ * 解析 `--driver` 的取值（M9 第 5 步）。
+ *
+ * **判定只此一处**，三个调用点共用（`cmdReview` / `cmdPreflight` / `topic resolve`）。
+ * 理由见本文件开头：同一条校验实现两遍，就是改一漏二——`--only` 那次已经演过一回。
+ *
+ * 错误文案的论域用 **`ALL_AGENT_IDS`（全部已登记）而不是 `DRIVER_AGENT_IDS`**：
+ * 判据是「已登记」，而后者今天只含 claude。用它当清单会让报错列出的可用值
+ * 与实际接受的取值不一致，又是一次「第一个错误引向第二个错误」。
+ *
+ * `descriptors` 是与 {@link CriticSelectionInput.descriptors} 同构的测试注入口：
+ * 注册表里 `driverEnabled: true` 只有缺省 Driver 一家，没有它，
+ * 「非缺省且已启用」这一臂的用例**今天根本构造不出来**（计划双审 r2 GLM-05）。
+ */
+export function resolveDriver(
+  raw: string | null | undefined,
+  descriptors?: readonly AgentDescriptor[],
+): DriverResolution {
+  const lookup = (x: string): AgentDescriptor | null =>
+    descriptors ? (descriptors.find((a) => a.id === x) ?? null) : agentById(x);
+
+  const id = raw?.trim() ?? '';
+  if (!id) {
+    // 没给就是缺省 Driver；它的 driverEnabled 同样**查表得来**，不写死 true
+    return { driver: DEFAULT_DRIVER, enabledAsDriver: lookup(DEFAULT_DRIVER)?.driverEnabled ?? true };
+  }
+
+  const agent = lookup(id);
+  if (!agent) {
+    const known = descriptors ? descriptors.map((a) => a.id) : ALL_AGENT_IDS;
+    throw new TriviumError(
+      EXIT.USAGE,
+      `--driver 的取值「${id}」不是已登记的 Agent。\n` +
+        `  已登记：${known.join(' | ')}` +
+        swallowedTextHint(id),
+    );
+  }
+  return { driver: agent.id, enabledAsDriver: agent.driverEnabled };
 }
 
 /**

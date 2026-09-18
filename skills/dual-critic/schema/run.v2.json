@@ -74,7 +74,11 @@
     "driver": {
       "type": "string",
       "minLength": 1,
-      "description": "当轮发起方的 Agent id。与归档后缀（产出方）正交：同一 Agent 在不同运行中可能是 Driver 也可能是审核者。M7b 起恒为 claude，M10 起可变。取值是否为已登记 Agent 由代码层按注册表校验——此处不枚举，见下方 critics 的说明"
+      "description": "当轮发起方的 Agent id。与归档后缀（产出方）正交：同一 Agent 在不同运行中可能是 Driver 也可能是审核者。M7b 起恒为 claude，M9 第 5 步放开 --driver 后可变。取值是否为已登记 Agent 由代码层按注册表校验——此处不枚举，见下方 critics 的说明"
+    },
+    "driver_enabled": {
+      "type": "boolean",
+      "description": "当轮 Driver 在这次运行时是否已启用为 Driver（M9 第 5 步）。可选：早于该步的留痕没有此字段，缺失即「无从得知」，不等于 false。M9 的 --driver 只校验「已登记」，因此归档里会出现 driver_enabled: false 的合法留痕；M10 把校验收紧之后那些留痕仍要读得回，所以它不进 required，也不加 if/then"
     },
     "critics_selected": {
       "type": "array",

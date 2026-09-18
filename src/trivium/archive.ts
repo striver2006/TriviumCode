@@ -109,6 +109,62 @@ export async function firstFreeRerunIndex(
   throw new Error(`从第 ${startAt} 轮起 ${MAX_BUMP} 个轮次都被占用：${dir}`);
 }
 
+/**
+ * 这份文件是不是**审查件**（M9 第 5 步，计划双审 CODEX-07）。
+ *
+ * ## 判据为什么落在文件内容上
+ *
+ * 被审对象的候选按「后缀等于当轮 Driver 且无裁决中缀」筛。换过 Driver 的主题里，
+ * 上一轮由别家当 Driver 时，**这一家的后缀正是审查件的后缀**——候选排序按
+ * `rerunIndex desc, fileName desc`，日期更晚的那份审查件会排在真原稿前面，
+ * 于是编排器会拿一份审查意见当计划原稿送去再审。
+ *
+ * 曾经考虑过按 `run.json.artifacts[]` 的登记反推（登记过 ⇒ 编排器产出的审查件）。
+ * 那条在今天的归档上成立（实测 84 份运行元数据、162 条带角色后缀的登记条目，
+ * **162/162 含 `trivium.review.v1`**），但它靠的是**调用点清单**而不是不变式：
+ * `roleIsAllowedForWriter` 本就允许 `writer === 'driver'` 产出角色工件，
+ * 哪天 Driver 的原稿也走 `writeArtifact`，那条判据就会把合法原稿判死。
+ *
+ * ## 为什么不复用 freeze.ts 的 classifyArtifact
+ *
+ * 那个函数是**三值**的（`peer-review | own-or-driver | indeterminate`）、为禁读矩阵
+ * 设计、fail-closed，而且它的文档块明写「**fail-closed 只用在这里，不外扩**」。
+ * 把它搬进选原稿语境会：①造成 `topic.ts → freeze.ts` 的分层倒置；
+ * ②让显式指定的、没有 front-matter 的手写原稿被判 `indeterminate` 进而误拒——
+ * 而那正是本判据自己要留的逃生门。它还是模块私有的，「复用」本身就落不了地。
+ *
+ * 所以这里是**二值**谓词：只回答「是不是审查件」，不做安全判决。
+ *
+ * ## 边界
+ *
+ * `parseFrontMatter` 对「不以 `---` 开头 / 没有闭合 `---` / YAML 解析失败」一律返回
+ * null 且不抛；读文件失败也吞掉。于是 front-matter 缺失、损坏、非 UTF-8、空文件
+ * **四类形态全部坍缩为「不是审查件」**——放行，不误拒。
+ *
+ * 残余风险（EV-63）：front-matter 被剥掉或改坏的**真审查件**会被当原稿放行。
+ * 登记判据在这一格反而可靠（只是不完备）。**所以本谓词只对未损坏的留痕成立**，
+ * 不要把它当成防伪造的防线。
+ */
+export async function isReviewArtifact(absPath: string): Promise<boolean> {
+  /*
+   * **模块加载放在 try 之外**（代码双审 CODEX-07）。
+   *
+   * 上一版把它和 readFile/parse 一起包进 try，于是模块加载失败也走 `return false`——
+   * 谓词恒假，显式路径的硬拒与自动候选的过滤**同时变成空操作**，
+   * 而「拿审查意见当原稿」原样回来，且没有任何用例能发现（用例调的是同一个函数）。
+   * 这里没有需要回避的循环依赖：`render.ts` 只静态 import `types.js` 与 `agents/registry.js`。
+   */
+  const { parseFrontMatter } = await import('./render.js');
+  let fm: Record<string, unknown> | null = null;
+  try {
+    // try 只兜这两步——它们的失败才是文档块里写明要吞的那四类
+    fm = parseFrontMatter(await fs.readFile(absPath, 'utf8'));
+  } catch {
+    return false;
+  }
+  return fm?.['schema'] === 'trivium.review.v1';
+}
+
 export interface WriteArtifactInput {
   layout: ArchiveLayout;
   stage: Stage;

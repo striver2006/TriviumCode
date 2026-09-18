@@ -232,6 +232,59 @@ test('探针过期 → 退 69 并指引手动执行', async () => {
   assert.match(r.checks.find((x) => !x.ok)!.detail, /已全部过期/);
 });
 
+// ── 当轮 Driver 提示（M9 第 5 步，T-10）──
+
+test('预检：--driver 非缺省时多打一行提示，且它是 ok:true 不是一次失败', async () => {
+  const ctx = await fakeCtx();
+  const r = await runPreflight({
+    ctx, scope: 'plan', skipAuthCheck: true,
+    driver: 'gemini', driverEnabled: false,
+  });
+  const hint = r.checks.find((c) => c.name === '当轮 Driver');
+  assert.ok(hint, '非缺省 Driver 时应当有一行可见提示');
+  /*
+   * **必须 `ok: true`**。`runPreflight` 里多处用 `checks.every((c) => c.ok)` 做短路、
+   * `exitCode` 由 `find((c) => !c.ok)` 决定——判 false 会把一条**提示**变成一次
+   * **失败**，而且因为它排在最前面，会把后面所有检查一起短路掉。
+   */
+  assert.equal(hint.ok, true, '提示判成失败会把整个预检短路掉');
+  assert.match(hint.detail, /gemini/);
+  assert.match(
+    hint.detail, /仅用于选侧判定/,
+    'driverEnabled 为 false 时要说清「该值仅用于选侧判定」——放行而不说明就是静默降低门槛',
+  );
+  // 提示不参与成败：本次失败与否应当只由真正的检查项决定
+  assert.equal(
+    r.checks.filter((c) => !c.ok).some((c) => c.name === '当轮 Driver'), false,
+  );
+});
+
+test('预检：--driver 已启用为 Driver 时，提示里不带「仅用于选侧判定」那句', async () => {
+  /*
+   * 「非缺省**且已启用**」这一臂在真实注册表下今天构造不出来——`driverEnabled: true`
+   * 只有缺省 Driver 一家（其余三家都是 `// M10 启用`）。
+   * 预检这一层接受的是布尔入参，所以可以直接构造；`resolveDriver` 那一层
+   * 则另开了 `descriptors` 注入口（见 critics.test.ts），两处都不留「今天验不了」的臂。
+   */
+  const ctx = await fakeCtx();
+  const r = await runPreflight({
+    ctx, scope: 'plan', skipAuthCheck: true,
+    driver: 'codex', driverEnabled: true,
+  });
+  const hint = r.checks.find((c) => c.name === '当轮 Driver')!;
+  assert.equal(hint.ok, true);
+  assert.equal(hint.detail, 'codex');
+});
+
+test('预检：缺省 Driver 不打这行提示（每次都打等于没打）', async () => {
+  const ctx = await fakeCtx();
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
+  assert.equal(
+    r.checks.some((c) => c.name === '当轮 Driver'), false,
+    '绝大多数运行都是缺省 Driver；每次多打一行会把真正的异常淹掉',
+  );
+});
+
 test('探针过期时后续检查不再执行（快速失败，不白烧配额）', async () => {
   const ctx = await fakeCtx((c) => {
     c.probe.generated_at = null;

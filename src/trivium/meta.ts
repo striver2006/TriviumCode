@@ -15,6 +15,7 @@ import { topicDir, type ArchiveLayout } from './archive.js';
 import { withTopicLock } from './lock.js';
 import { validateRunMeta, validateRunMetaV1 } from './schemas.js';
 import { DEFAULT_DRIVER } from './agents/registry.js';
+import { warn } from './util/log.js';
 
 /** `updateTask` 的短临界区参数 */
 export interface TaskLock {
@@ -86,6 +87,14 @@ export interface TaskMeta {
      */
     review_mode: RunMeta['review_mode'] | LegacyReviewMode;
     started_at: string;
+    /**
+     * 当轮 Driver（M9 第 5 步）。**可选**：早于该步的记录没有这个字段。
+     *
+     * 设计 §5.2 把 `--driver` 的留痕面写成三处——`run.json.driver`、
+     * `task.json.runs[]`、`state.json` 闸门项。第 5 步一开始只落了第一处，
+     * 代码双审 CODEX-06 按设计原文核出偏离；这里补齐第二处。
+     */
+    driver?: AgentId;
   }[];
   /** 当前闸门状态 */
   gate: { stage: Stage | null; state: string; since: string | null; run_id: string | null };
@@ -210,8 +219,18 @@ export interface NewRunMetaInput {
   taskGoal: string | null;
   /** 发起本次运行的斜杠命令（A/B/C/D），手工调用为 null */
   entry?: CommandEntry | null;
-  /** 当轮发起方。省略时取注册表的 `DEFAULT_DRIVER`（M7b 恒为 claude） */
+  /** 当轮发起方。省略时取注册表的 `DEFAULT_DRIVER` */
   driver?: AgentId;
+  /**
+   * 该 Driver 当时是否**已启用为 Driver**（M9 第 5 步）。
+   *
+   * M9 的 `--driver` 只校验「已登记」，`driverEnabled === false` 照样放行——
+   * 校验它会让第 6 步验收跑不成（当前只有 claude 启用为 Driver，而验收恰恰要
+   * claude 当审核者）。放行的代价由这个字段兜住：事后能对出「这一轮声明的
+   * Driver 当时还没启用」。M10 收紧成校验之后，历史留痕仍要能读回，
+   * 所以它是**可选**字段、不进 `required`、不加 `if/then`。
+   */
+  driverEnabled?: boolean;
   /** 本轮入选的审核者集合。**必填**：它是「本该跑几侧」的唯一事实来源 */
   criticsSelected: readonly CriticId[];
   treeHash: string;
@@ -235,6 +254,9 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     task_goal: i.taskGoal,
     entry: i.entry ?? null,
     driver: i.driver ?? DEFAULT_DRIVER,
+    // 恒写：缺省 Driver 那一路也要有值，否则「字段缺失」既可能是旧留痕、
+    // 也可能是本步漏传，事后分不开（口径与 profile_requested / model_provider 同源）
+    driver_enabled: i.driverEnabled ?? true,
     critics_selected: [...i.criticsSelected],
     snapshot: {
       git_head: i.gitHead,
@@ -322,6 +344,80 @@ export function migrateRunMetaV1(raw: unknown): RunMeta {
  * 它的分支在 `archive.ts` 的 `listRecordedRuns` 里——那条分支写错会让归档中
  * 全部 verify 历史记录被判不可读，进而**永久拦死本仓库的每一次提交**（§6.7.1 的方框）。
  */
+/**
+ * 该阶段**最新一轮**的运行元数据 —— 当轮 Driver 与轮次的**权威来源**（M9 第 5 步）。
+ *
+ * ## 为什么需要它：后缀反推有循环依赖
+ *
+ * 闸门区此前靠 `inferLatestRunId` / `resolveRerunIndex` 从**工件后缀**反推，
+ * 而两者都要先知道当轮 Driver 才能「跳过 Driver 自己的产出」——
+ * driver 又只记在运行元数据里。于是形成死循环：
+ * 非缺省 Driver 且 `--critics claude` 时，本轮审查件全是 `-claude.md`，
+ * 按缺省 Driver 推会把它们**整批跳过**，`inferLatestRunId` 返回 null，
+ * 命令以「请先跑一次双审」硬失败——而双审明明已经跑完。
+ *
+ * 曾经想过「先按缺省猜一次、读到元数据后再复算」，那只是把循环包了一层：
+ * 裁决件尚未写出时第一趟就断了（而那恰是 `gate --check` 最常用的状态），
+ * 且存在可构造的 2-循环。
+ *
+ * **正解是根本不反推**：run_id 就是文件名，而 `run.v2` 把 `driver` 与
+ * `rerun_index` 列为必填。直读即可，一次到位。
+ *
+ * ## 排序依据
+ *
+ * `newRunId()` 是 `toISOString()` 去掉分隔符与毫秒，即 `YYYYMMDDTHHMMSSZ`——
+ * **定宽 UTC**，所以字典序即时序，这是构造保证而非经验规律
+ * （无时区、无变长、无前导零问题）。实测归档内 84 份留痕全部符合该形态。
+ *
+ * ## 读不出来的怎么办
+ *
+ * 逐个往下试，直到拿到一份合契约的，**并把跳过的逐个 warn 点名**
+ * （代码双审 CODEX-02）：跳过本身是合理的兜底，但静默跳过不是——
+ * 最新那条坏掉时闸门会据此把轮次与 run_id 一并变旧，若上一轮本就裁决齐备，
+ * `--check` 会返回 ok 而**最新一轮落盘的审查件从未被裁决检查过**。
+ * 提交时 `checkRunManifests` 会拦下这种归档（所以不是静默放行），
+ * 但闸门自身不留痕迹的话，人看到的只是「第 N-1 轮通过了」。
+ *
+ * **「一份都没有」与「有但全读不出」是两回事**（代码双审 AGY-01 / GLM-02）：
+ * 前者是正常的「还没跑过」，后者是留痕被搅坏。上一版把两者压成同一个 `null`，
+ * 于是调用方只能给出同一句「请先跑一次双审」，而 `--check-artifacts` 那一格
+ * 更是直接按缺省 Driver 继续——**回落把「留痕坏了」悄悄变成「按 claude 判」，
+ * 正是本函数要消灭的形态在自己身上留的一个角**。所以返回体要带上扫描事实。
+ */
+export interface LatestRunMetaResult {
+  /** 最新一份**可读**的运行元数据；一份都读不出来时为 null */
+  meta: RunMeta | null;
+  /** 该阶段 `_meta/` 下扫到的 `run-*.json` 总数（含读不出来的） */
+  scanned: number;
+  /** 读不出来的 run_id，按字典序倒序（即从新到旧） */
+  unreadable: string[];
+}
+
+export async function latestRunMeta(l: ArchiveLayout, stage: Stage): Promise<LatestRunMetaResult> {
+  const { metaDir } = await import('./archive.js');
+  let files: string[];
+  try {
+    files = await fs.readdir(metaDir(l, stage));
+  } catch {
+    // 目录不存在 = 这个阶段还没跑过，属正常，不是异常
+    return { meta: null, scanned: 0, unreadable: [] };
+  }
+  const ids = files
+    .map((f) => /^run-(.+)\.json$/.exec(f)?.[1])
+    .filter((x): x is string => x !== undefined)
+    .sort()
+    .reverse();
+  const unreadable: string[] = [];
+  for (const id of ids) {
+    const m = await readRunMeta(l, stage, id);
+    if (m) return { meta: m, scanned: ids.length, unreadable };
+    unreadable.push(id);
+    // 点名而不是静默跳过：与 run-protocol 的 handoffDriver 同构
+    warn(`运行元数据 ${id}（${stage} 阶段）读不出来，已跳过——留痕可能被改坏或不合契约`);
+  }
+  return { meta: null, scanned: ids.length, unreadable };
+}
+
 export async function readRunMeta(
   l: ArchiveLayout,
   stage: Stage,
@@ -355,6 +451,8 @@ export async function registerRun(l: ArchiveLayout, meta: RunMeta, lock: TaskLoc
       status: meta.status,
       review_mode: meta.review_mode,
       started_at: meta.started_at,
+      // 与 run.json.driver 同源：设计 §5.2 要求这一处也记（代码双审 CODEX-06）
+      driver: meta.driver,
     };
     const at = t.runs.findIndex((r) => r.run_id === meta.run_id);
     if (at === -1) t.runs.push(entry);

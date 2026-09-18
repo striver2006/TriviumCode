@@ -1,0 +1,153 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "本轮三处改形状的地方，两处站不住、一处半站得住。最危险的是 §6.7 闸门取值链：它的第一趟用缺省 Driver 推 run_id，而 §3.4 自己已经证明「本轮唯一带 run_id 的工件是 claude 后缀审查件时推不出来」——那正是 `--critics claude` 的形态。于是在**裁决件尚未写出**（也就是你最需要 `gate --check` 的那个状态）第一趟恒为 null、第二趟无从触发，命令退 65 并提示「请先跑一次双审」，照提示做就是重烧一次配额；而 C4/T-11 的夹具若带着裁决件，判据会在唯一不出问题的状态下变绿。同一段还有一处静默漏裁风险：「两次不一致就以元数据为准」有「取 meta.rerun_index」与「取复算结果」两种读法，前者的后果是按**上一轮**裁决件判 ok、`gate --check` 报通过、本轮意见无人裁决。§6.9 的判据换底方向是对的（编排器写出的审查件必定以 `---` 开头，主路径确实被关掉），但「复用既有 classifyArtifact」照字面落不了地（它是 private），且它的 fail-closed 分支在候选路径上不可达、显式路径的极性与判决口径没写；残余风险那一格（损坏的审查件仍被当原稿）比 r1 的登记判据更弱。§4.2 三条约束里，约束 3 确实能区分 driver 与 driverEnabled（我实测了），但约束 2 对 T-4 自己的扫描集多数目标不成立（那些调用是同步的、没有 await），约束 1 的剥离规则漏掉单行块注释——变异表最后一行用 `/* driver, */` 写就会保持绿。另有两条漏点：`resolveTaskGoal` 里 `locateSubject` 的第三处调用没在清单里；以及桩只替换点名的侧，T-2 若不点名 claude 会真烧一次配额。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §6.7（闸门区取值链）/ cli.ts:731,759,775,866、gate.ts:725-741、archive.ts:65-83",
+      "problem": "取值链第一趟按缺省 Driver 推 run_id，而 §3.4 自己已证明：本轮唯一携带 run_id 的工件是 claude 后缀审查件时，`inferLatestRunId` 会把它们全部跳过。于是「先推一次、读到元数据再复算」这条链在**裁决件尚未写出**的状态下第一趟恒为 null、第二趟无从触发——而那正是 `gate --check` 最常用的状态（用它查还缺哪几条裁决）。此时命令硬失败并提示「请先跑一次双审，或用 --run-id 指定」，把一次已经跑完的双审当成没跑；照提示重跑就是白烧一整轮真配额。§6.7 把这一格划给 EV-58（推迟），但 §2.3 的 C4 与 T-11 会因夹具里带着裁决件而变绿——判据落在不会出问题的那个状态上，真正会出问题的状态无人覆盖。",
+      "evidence": "读 gate.ts:725-741：`if (i.parsed.role === driver) continue;` 之后才读 front-matter 取 run_id，即被跳过的正是 claude 侧的审查件；archive.ts:65-83 的 `resolveRerunIndex` 同样按 `role === driver` 跳过；cli.ts:731/759/775/866 三处调用都只传三参，driver 落到 `DEFAULT_DRIVER`；cli.ts:866-871 与 :791-797 的失败文案是「请先跑一次双审」。另读 skills/dual-critic/schema/disposition.v1.json：`run_id` 在 required 里，所以「有裁决件」与「没裁决件」是两种行为，而 §3.4 用「恒推不出 run_id」把两者混为一谈（裁决件的 role ≠ 缺省 Driver，因而**不会**被跳过）。被审对象 §3.4 与 §6.7。",
+      "suggestion": "把 driver 的来源换成不需要猜的口径：本轮 run 的 `_meta/run-*.json` 文件名即 run_id，run.v2 又把 `driver` 与 `rerun_index` 列为必填，而 `listRecordedRuns` 已经在这棵树上用过（cli.ts:741），读它再校验工件即可，不必经后缀反推。若坚持推后，请在 §2.3 把 C4 收窄成「带 `--run-id` 时可定位」，并让 T-11 覆盖「裁决件尚未写出」这一格。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §6.7「两次结果不一致就以元数据为准」/ archive.ts:79、gate.ts:150-180,731-739",
+      "problem": "同一段在多轮主题上会先落到**上一轮**：第一趟用缺省 Driver 时，本轮的审查件（`-r<N>-claude.md`）被整批跳过，轮次 max 只看 Driver 自己的 r1 原稿与裁决件，算出的 rerunIndex 比真值小 1；接着第一趟的 `inferLatestRunId` 读到的是上一轮裁决件的 run_id（该函数不按 kind 过滤）。而「以元数据为准」有两种读法：读成「取 meta.rerun_index」，复算出的正确轮次会被丢掉，最终按上一轮判——`checkAdjudication` 能在归档里找到上一轮的裁决件并判 ok，`gate --check` 报通过、`--await-approval` 立起上一轮的停点，**本轮意见静默漏裁**；读成「以复算为准」则结果正确（因为复算用的是正确的 driver）。此外「第一趟有值、第二趟为 null」的混合格完全没有定义。",
+      "evidence": "按第 2 轮的真实文件名集合推演（`…-gemini.md` 原稿 r1、`…-claude.md` r1、`…-revised-gemini.md` r1、`…-r2-claude.md` r2）：archive.ts:79 在 driver=claude 下跳过 r2 的 claude 审查件，max 停在 1 → rerunIndex=1；driver=gemini 时为 2。gate.ts:731-739 的跳过条件只看 role、不看 kind，故 §6.9 那句「原稿与裁决件不带审查侧的 run_id」与 disposition.v1 的 required 相抵——裁决件恰是第一趟唯一能读到的 run_id 来源。另读 gate.ts:150-180：裁决件命中条件是 role+kind+rerunIndex，上一轮的裁决件满足。",
+      "suggestion": "把这句拆成两条可判定的规则：①复算一律用 `meta.driver` 走 `resolveRerunIndex`，而不是取 `meta.rerun_index`；②第二趟推断落空时不得回落到第一趟结果，按「推不出 run_id」硬失败。补一条用例覆盖「本轮审查件已落盘、裁决件未写出、Driver 非缺省」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §6.6 落点表 / review.ts:245-272（`resolveTaskGoal` 内的 locateSubject 调用）",
+      "problem": "§6.6 只列了 `:610` 的 `locateSubject`，但 `review.ts:266` 还有第三处调用：code/bug 阶段从 plan 原稿里提取 BRIEF 第 4 段的任务目标，同样不传 driver，且整段包在 try/catch 里静默失败。非缺省 Driver 下这里按缺省后缀找原稿：换底之后若目录里那份 `-claude.md` 是审查件就被剔除，函数抛 65 被吞掉 → **任务目标无声消失**；换底之前则会把对端对计划的**审查意见**当成计划原稿来提目标。两种结局都不报错、不进留痕。§3.1 刚以「落点表漏了 resolveRerunIndex」立过案，这是同一形态的第二处。",
+      "evidence": "读 review.ts:245-272（`stage === 'plan'` 直接 return null，否则 `locateSubject(planRef, null, projectRoot)` 包在 try/catch 内）；topic.ts:76-119（候选过滤为 `c.parsed.role === driver`）；`.reviews/M9-ClaudeCode审核者接入/plan/2026-09-17-M9-ClaudeCode审核者接入-revised-claude.md` §2.1 的落点表同样只写 `locateSubject（:610）`。",
+      "suggestion": "把 driver 补进 `resolveTaskGoal` 的入参并在 §6.6 具名，或说明它为何保持缺省；变异表补一行「删 :266 的 driver 传值 → 哪条红」，否则这条路径既不在实现清单里也不在任何判据里。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §6.9 / §0 差分 A（「复用既有 classifyArtifact」）",
+      "problem": "`classifyArtifact` 是 freeze.ts 的模块内私有函数（仅一个调用点），照字面「复用」落不了地：要么给它加导出，要么把判据抄进 topic.ts / topic-args.ts——后者让「什么算审查件」变成三份事实源，与纪律 10/12 相抵。更关键的是极性：它的契约是「这份文件能不能给这一侧看」（deny 侧判决，`role !== driver` 且无 schema 时 fail-closed 判 indeterminate），搬到「这份候选是不是被审对象」时，自动候选那一路已先按 `role === driver` 过滤，`indeterminate` 分支不可达，真正起作用的只有「front-matter 是不是 review schema」；而显式路径那一路（文件名可能根本 parse 不出角色）按什么判，计划没写。若实现者照 deny 侧极性写「不是 own-or-driver 就拒」，没有 front-matter 的手写原稿会被硬拒——现有用例（topic.test.ts:50-56 内容 `# x`）恰好挡得住，但那是运气。",
+      "evidence": "读 freeze.ts:212-248（`async function classifyArtifact`，无 export；:229 kind≠null 短路、:239/:240 schema 分支、:247 fallback）、freeze.ts:329（唯一调用点）、render.ts:394-403（parseFrontMatter 要求以 `---` 开头）、topic.ts:97-107 与 topic-args.ts:555-563（两条候选过滤都先断言 role===driver）、test/unit/topic.test.ts:50-56。",
+      "suggestion": "在 §6.9 写死两件事：①判据的单一实现在哪（导出 `classifyArtifact`，或抽一个只读 front-matter 的 `isReviewArtifact(abs)` 供三处共用）；②显式路径的判定是「`schema === trivium.review.v1` 即拒」，不是「verdict ≠ own-or-driver 即拒」，并给显式路径补一条反向用例（无 front-matter 的手写原稿必须放行）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.2 约束 2 / T-4 扫描集",
+      "problem": "「一律匹配 `await <fn>(` 形态」在 T-4 自己的扫描集里对多数目标不成立：`newRunMeta` 是同步函数，调用点写作 `const meta = newRunMeta({`；`resolveCriticSelection` 同样是同步的，三个调用点全是 `const critics = resolveCriticSelection(ctx.config, {`。用 `await <fn>(` 去数它们必然 0 命中，改用裸 `fn(` 又会同时命中声明（critics.ts:82、meta.ts:226），于是「锁调用点」这条约束在最需要它的三处失效——而 T-4 的「唯一调用计数」也没按文件写明条数（三处调用分散在两个文件，现有骨架只扫单文件）。实现者现场只能自己发明判据，这正是 §4.1 记下的 r1 失效形态。",
+      "evidence": "读 meta.ts:226（`export function newRunMeta(...)` 定义）与 review.ts:776（`const meta = newRunMeta({`，无 await）、critics.ts:82（定义）与 cli.ts:470 / cli.ts:633 / topic-args.ts:328（三处 `const critics = resolveCriticSelection(ctx.config, {`）、test/unit/deny-matrix.test.ts:386-393（现有骨架 `matchAll(/await freeze\\(\\{/g)` + 单文件计数）。",
+      "suggestion": "按目标逐个定锚：同步调用锚在 `= <fn>(` 而不是 `await`，并把每条期望条数按文件写明（如「review.ts 恰好 1 处 `= newRunMeta({`」），让计数错了就红。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan 变异表最后一行 / §4.2 约束 1",
+      "problem": "「剥注释行（去掉 `*` 开头与 `//` 之后的内容）」不是完整的注释剥离：单行块注释既不以 `*` 开头、也不含 `//`，会原样留在待匹配文本里。我按这条规则实现剥离器实测：残留 `/* driver, */` 与 `/* driver: 当轮 Driver */` 都判为**命中**——即变异行「只留注释、删掉 driver 属性位」若用单行块注释书写，T-3 会保持绿，恰好证不出约束 1；而单行块注释在本仓是常用写法（review.ts 16 行、freeze.ts 12 行、gate.ts 12 行）。反向也有一处脆：属性位与逗号之间夹一句行内注释（`driver /* 当轮 */,`）判为**不命中**，一个正确实现反而显红，实现者有动机把判据放松回裸词——那就回到 r1。",
+      "evidence": "用 node 按 §4.2 字面规则实现剥离器、复用现有骨架抽取 review.ts:650-680 的 freeze 实参块实测：`driver,`→命中、`// driver,`→不命中、`* driver,`→不命中、`/* driver, */`→**命中**、`/* driver: … */`→**命中**、`driverEnabled,`→不命中、`driver /* 当轮 */,`→不命中。行数来自 `grep -cE '^\\s*/\\*.*\\*/\\s*$' src/trivium/*.ts`。",
+      "suggestion": "在变异表里把残留物的形态钉死（例如「留一行 `/* driver, */`」而不是「只留注释」），并把剥离规则补成覆盖整块注释（含单行与行内、行尾块注释）；同时把「属性位与逗号之间夹注释」列为合法形态，免得正确实现被误红后把判据放松。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §6.9「内容级判据…扛得住明天」/ freeze.ts:242-247",
+      "problem": "换底确实关掉了主路径，但它对同一威胁的另一种形态比 r1 的登记判据**更弱**：front-matter 缺失/损坏/被改动过的审查件，在 `role === driver` 时按设计被判为原稿（fail-closed 那一支只对 `role !== driver` 生效）——而 freeze.ts 自己的注释写明 deny 矩阵要兜的正是「留痕被误放或被动过」的文件。r1 的登记反推在这格是**可靠**的（登记过 ⇒ 编排器产出的审查件），只是不完备（原稿/裁决件不在登记里）。所以「两种判据今天等价、内容级扛得住明天」说过了：对损坏文件两者并不同强，而这条判据正是本节唯一的形状改动。",
+      "evidence": "读 freeze.ts:212-248（:233 readFile 包在 try 内、parseFrontMatter 失败即 null；:247 `role === driver ? 'own-or-driver' : 'indeterminate'` 是唯一 fail-closed 分支）、freeze.ts:219-227（「文件名零成本可伪造」「留痕被被动过」的威胁模型）、render.ts:108-192（编排器写出的审查件必以 `---` 开头，正常形态可靠）、review.ts:1147-1155（审查件进 run.json.artifacts 登记）。",
+      "suggestion": "把这一格写成「接受的残余风险 + 触发条件」并登记 EV：例如当主题内出现「后缀等于当轮 Driver、却读不出 review/disposition schema」的文件时，至少在 `locateSubject` 出一条可见告警而不是静默当原稿；同时把「扛得住明天」收窄为「对未损坏的留痕扛得住」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-08",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan R-8 / T-2（`--driver <SELECTABLE[0]> --critics claude`）",
+      "problem": "桩只替换注入配置里**点名**的那几侧，未点名的侧照旧落到真适配器。既有集成夹具的桩配置是 `{ gemini, glm }`，而 C1/T-2 选的是 claude——配置里没有 claude 就会去拉一次真实 Claude CLI：每次 `npm run check` 烧一次配额，而且只在**调用之后**才由桩指纹断言暴露（钱已经花了）。另，R-8 对 T-1 也要求「断言桩指纹」，但 T-1 在选侧阶段就退 64、不产出任何工件，没有可断言的指纹。",
+      "evidence": "读 adapters/stub.ts:452-470（`resolveAdapters` 只对 `Object.keys(stub)` 逐侧换桩，其余保持 real）、stub.ts:118-130（解析失败即视为未注入）、test/integration/gate-loop.test.ts:29（`const STUB: StubConfig = { gemini: {…}, glm: {…} }`）与 :30-36（hook 调用显式清空该变量）。",
+      "suggestion": "在 R-8 旁边写死「桩配置必须点名本轮入选的每一侧」并要求 T-2 配置含 `claude`；T-1 那格改为只断退码与文案（无工件可指纹），桩指纹断言留给会产出工件的 T-2/T-11。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-09",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §4.3/§6.6（Handoff.options.driver 必填）/ run-protocol.ts:121-156",
+      "problem": "「必填」只锁住我们自己写的 writer；读侧是 `JSON.parse(...) as Handoff`，没有任何运行期校验。崩溃后用 `review --worker <runId>` 恢复（workerMain → rebuildContext，cli.ts:378-379 是真实公开入口）时，如果那份交接文件是改动前写的（没有 driver），类型上是必填、运行期却是 undefined，`prepareRun` 静默回落缺省 Driver：非缺省 Driver 的那一轮会被按 claude 重新执行，产物后缀与名次都会记错。§4.3 说的「编译期不可达」只在同版本进程内成立。",
+      "evidence": "读 run-protocol.ts:61-89（Handoff.options 字段表）、:104-115（writeHandoff 逐键拷贝）、:121-156（`JSON.parse(...) as Handoff` 后直接读 `h.options.*`）、:403-415（workerMain → rebuildContext）；cli.ts:378-379（`--worker` 路由）。",
+      "suggestion": "在 `rebuildContext` 对 `h.options.driver` 做一次显式校验：缺失即按旧语义取缺省**并**打一条可见告警（或直接退错），否则「必填」在恢复路径上等于没有。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§6.9 的判据换底方向正确：编排器写出的审查件必定以 `---` 开头（render.ts:216-217 用 renderFrontMatter，后者返回 `---\\n…\\n---`），162/162 的等价性结论与 freeze.ts:238-240 的实现一致；它也真的消掉了路径归一化与 stage 论域两个 r1 遗留问题。",
+    "§4.1 对 r1 判据「今天即绿」的判定属实：我按同一手法抽取 freeze 实参块验证，裸词判据今天为真（review.ts:670 的注释就在块内），而属性位判据今天为假——这是一份诚实的自证。",
+    "§4.2 约束 3（属性位 + 词边界）确实能区分两个相似键名：实测 `driver,` / `driver: driver,` / `driver }` 命中，`driverEnabled,` 不命中；属性位加词边界比裸子串强，这条约束可以照用。",
+    "§4.3「机制优先于测试」是对的，Handoff.options.driver 必填确实把它自己的写者锁在编译期（读侧的问题见 CODEX-09，但方向正确）。",
+    "§3.1（resolveRerunIndex 漏传 driver）、§3.2（EV-53 是硬依赖）、§3.3（resolveDriver 不存在、DRIVER_AGENT_IDS 零消费方）逐条回原文核实成立；§6.9 对「verify.ts 是第二个写 artifacts[] 的地方」也属实。",
+    "§6.7「事实来源是留痕不是旗标、cmdGate 不加 --driver」与 cli.ts:745-757 的既有一致性原则同源，方向正确；问题只在取值链的兜底（CODEX-01/02）。",
+    "§5 把 6.2（源头合一）排在 driver 接线之前、从而把矛盾窗口降为零，比 r1 的「记得别过夜」强，符合「靠记性的纪律换成机制」。",
+    "R-8 的配额提醒本身成立：T-1/T-2/T-11 确实是每次 `npm run check` 都跑的真子进程用例（gate-loop.test.ts 已用桩跑真实 CLI），必须注入桩——补充见 CODEX-08。"
+  ],
+  "not_covered": [
+    "未读 CLAUDE.md 全文、README.md、doc/ 下的设计文档与 PRD（只读了 doc/08_project/BACKLOG.md 的相关条目），因此未覆盖「计划与设计文档/需求的一致性」这一面。",
+    "全程只读沙箱、未实跑任何流水线：§6.7 的取值链是静态推演（逐分支读代码 + 手推第 2 轮的文件名集合），§4.2/§4.2 的匹配器只做了一次 node 模拟（剥离注释 + 属性位匹配），没有在真实归档上跑 gate/review；未执行也未尝试执行 npm run build/test。",
+    "未读本轮另一位审查员的任何产物（禁读清单内），也未读运行目录下其它侧的子目录。",
+    "未评估 §6.8（EV-54 override_reason 写入方与来源链）、§6.4 预检提示的实现细节，以及 T-8/T-9/T-10 的取值断言；未核 EV-61/EV-62 的登记描述是否准确。",
+    "未核 `--driver` 进 STATIC_FLAGS 后与既有命令正文的歧义面（R-7 自认高危语料），我没有构造自然语言语料实测「吞掉下一个 token」的触发条件。",
+    "未判断 report.ts / naming.ts / hooks.ts 的 driver 消费面被具名推迟（§2.2 / R-3）之后是否需要各登记一条 EV；R-3 未给触发条件这一点我只记录、未下结论。",
+    "未核 §6.1 的 `swallowedTextHint` 复用与 USAGE 取值清单同源（ALL_AGENT_IDS）的文案细节，也未核 §6.5 第 2 条（scope === 'all' 拒绝 --driver）与既有拒绝分支的逐字同构。"
+  ],
+  "consulted": [
+    ".reviews/M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-r2-claude.md",
+    ".reviews/M9-ClaudeCode审核者接入/plan/2026-09-17-M9-ClaudeCode审核者接入-revised-claude.md",
+    "src/trivium/freeze.ts",
+    "src/trivium/render.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/review.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/verify.ts",
+    "src/trivium/util/log.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/adapters/index.ts",
+    "skills/dual-critic/schema/disposition.v1.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/deny-matrix.test.ts",
+    "test/unit/topic.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "CLAUDE.md",
+    "/Users/chenzhenbo/.claude/skills/dual-critic/schema/review.v1.json"
+  ]
+}

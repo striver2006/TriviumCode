@@ -1,0 +1,244 @@
+---
+schema: trivium.review.v1
+topic: M9-Driver旗标全链路与选侧收口
+stage: plan
+role: glm
+vendor: zcode
+agent_cli: zcode/0.16.5
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260918T154204Z
+rerun_index: 1
+snapshot_hash: sha256:72f22a72d59b96304c2f2f8a8c79f282dfc78342b01cb7f2021922f9c1508053
+blind: true
+started_at: 2026-09-18T15:42:05.305Z
+finished_at: 2026-09-18T16:01:42.671Z
+duration_s: 1177
+tool_calls:
+  read: 0
+  grep: 0
+  glob: 0
+  run_command: 0
+  project_reads: 29
+evidence_ok: false
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 3
+  minor: 4
+  nit: 2
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: sess_4ee6f8ff-cdbf-44f4-bd31-e9240461a1a0
+---
+
+# 计划审查：M9-Driver旗标全链路与选侧收口
+
+> Critic-B · 智谱 ZCode ｜ 模型 `bigmodel-coding-plan/GLM-5.3`
+> ｜ 运行 `20260918T154204Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **Agent 执行证据不足**：本侧不得计为合格双审的一半。
+>
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+最危险的一条在验收判据自身：T-4 对 run-protocol 只查 Handoff.options 类型键集，writeHandoff/rebuildContext 两个值传递点与 topic-args.ts:328 第三个选侧入口无断言、无变异行，V3 可在 worker 链路断开时全绿（GLM-01）；T-3 要断言的「driver: 值表达式」与 §5.5 计划的简写 driver, 形态冲突，且 freeze() 实参块注释今天就含「driver」字样，朴素断言在接线前即绿（GLM-02）。其次 EV-58「M10 第一次换 Driver 会显形」与本计划自设的第 6 步 --critics claude 剧本冲突：非缺省 Driver 下 gate --check 的裁决件定位按缺省 Driver 找 -revised-claude.md（gate.ts:151-153，cli.ts 两处调用不传 driver，无 CLI 出口），第一轮起即硬失败，不是 M10 才显形（GLM-03）。CODEX-07 的三条推导依据逐一实读属实、未发现第四条写入路径（verify.ts 的 artifacts[] 不带角色后缀、不进候选论域）；review.ts:559 与 EV-54 两处范围扩张均成立，但 EV-54 只定了补写入方、未定取值内容（GLM-04）。计划的事实密度很高，以上均为计划级修订即可收敛的问题。
+
+**结论**：`request-changes`
+
+## 审查意见（共 9 条：重要 3 ｜ 次要 4 ｜ 吹毛求疵 2）
+
+### GLM-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.2 T-4（对应 §5.5 run-protocol 三处改动）` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：T-4 自称「唯一能拦住『函数支持了、调用点没传』的判据」，但它对 run-protocol 的断言只到 Handoff.options 的类型键集（⊇ {critics, sessionId, allowSingle, entry, driver}）。§5.5 实际要改三处：类型、writeHandoff 的写入、rebuildContext 的读侧映射。若实现只改类型（driver 声明为可选）而 writeHandoff 漏写值，或 rebuildContext 漏掉 driver: h.options.driver 的映射，两者都能通过 typecheck（ReviewOptions.driver 本就是可选字段），T-4 仍绿——这正是本步要防的形态在测试自己身上复发。§10 变异表只有「删 Handoff.options.driver」一行（那行本来就会先被 typecheck 拦下，轮不到 T-4），两个值传递点均无变异行。另外 T-4 的扫描集漏了 topic-args.ts:328 的 resolveCriticSelection 调用（§5.3 第 3 项要传 driver 的第三个选侧入口），该处漏传时 topic resolve 的选侧不减 Driver，现有用例不红。
+
+**依据**：src/trivium/run-protocol.ts:74-88（Handoff.options 类型）、:104-115（writeHandoff 的 options 对象字面量）、:141-156（rebuildContext 的 opts 重建，satisfies ReviewOptions）；src/trivium/review.ts:279-328（ReviewOptions 各字段均可选的形态）；src/trivium/topic-args.ts:328-331（第三个选侧调用点，现不传 driver）；被审计划 §4.2 T-4 与 §10 变异验证表。
+
+**建议**：T-4 对 run-protocol 增加两处值表达式断言（判据形态同 deny-matrix.test.ts:402 的『topic: ref.topic』式）：writeHandoff 的 options 对象内 driver 的值表达式、rebuildContext 的 opts 对象内 driver 的映射表达式；把 Handoff.options.driver 声明为必填（与 sessionId/allowSingle 同列），让「类型可选＋漏写」这条静默路径在编译期就不可达；把 topic-args.ts:328 纳入扫描集并补对应变异行。
+
+### GLM-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.2 T-3（对应 §5.5 freeze 补 driver）` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：T-3 说「补断言 driver: 的值表达式」，而 §5.5 对 freeze 落点写的是补简写 `driver,`。两者形态不一致：若按长衡键断言（includes('driver:')）会对着计划中的简写实参直接红，逼实现者临场改断言；若退成裸词 includes('driver')，则 review.ts:650-680 那个实参块内的注释（:670「下面 `driver` 字段的注释记的就是第一次」）今天就含「driver」字样——断言在接线之前就是绿的。§10 变异行「删 review.ts:650 freeze({ … driver }) → T-3 红」只有在匹配器能区分『属性位』与『注释提及』时才成立，计划没有钉死这一点。
+
+**依据**：src/trivium/review.ts:650-680（freeze() 实参块，:669-674 的注释含 driver 字样）；test/unit/deny-matrix.test.ts:362-412（被扩写的既有用例：:387 唯一调用计数断言、:391-392 实参块结尾定位断言、:402 值表达式判据 'topic: ref.topic'）；被审计划 §4.2 T-3、§5.5、§10。
+
+**建议**：在计划里钉死 T-3 的判据形态：要么规定代码侧写全 `driver: <表达式>` 并按该表达式断言；要么对简写属性用带边界的匹配（断言实参块内存在属性位形态的 driver，如 `driver,` / `driver }`，而非裸词），并沿用既有用例的三件套骨架（唯一调用计数、结尾定位断言、值表达式）。变异行照此重跑确认红。
+
+### GLM-03 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §8 EV-58 / §5.7（对应 cli.ts 闸门区）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：EV-58 把闸门区 driver 位的显形时点写成「M10 第一次换 Driver」，与本计划自己的依赖直接冲突：§5 论证 EV-54 时明说「第 6 步的验收剧本正是 --critics claude」，而 --critics claude 只能在 driver ≠ claude 时成立——即 M9 第 6 步就在跑非缺省 Driver 的完整链路。实读闸门区后果比「显形」更重：checkAdjudication 按 `input.driver ?? DEFAULT_DRIVER` 定位裁决件（找 -revised-claude.md），cli.ts 两处调用（:801、:876）不传 driver 且 cmdGate 无旗标可传，实际裁决件是 -revised-<真Driver>.md → 「找不到裁决件」硬失败，--run-id 也救不了这一半；inferLatestRunId（自带 driver 形参、跳过 role === driver，cli.ts:759/:775/:866 不传）在 critics 含 claude 时恒推不出 run_id。另 §5.7 只补了 checkStageArtifacts 的 driver 位，且其来源 artifactMeta 依赖 inferLatestRunId——在非缺省 Driver 下不传 --run-id 时恒为 null，5.7 的修复在该场景整段失效。离修复只差一步：checkAdjudication 已接受 driver 入参，cmdGate 拿到 runId 后读 run 元数据即可同款传入。
+
+**依据**：src/trivium/gate.ts:151-153（裁决件按缺省 Driver 定位）、:725-741（inferLatestRunId 的 driver 跳过）；src/trivium/cli.ts:731-732、:759-762、:775、:801-805、:866-880（全部不传 driver，cmdGate 无 --driver 旗标）；src/trivium/archive.ts:283-290（checkStageArtifacts 的 DEFAULT_CRITICS/driver 回落）；被审计划 §5（第 6 步剧本 --critics claude 的自述）、§5.7、§8 EV-58。
+
+**建议**：二选一并写进计划：①把 5.7 的模式扩一行——cmdGate 两处 checkAdjudication 调用从已读到的 run 元数据传 meta.driver（并在 EV-58 里如实改写显形时点为「M9 第 6 步即部分显形」）；②维持推后，但必须在计划里给第 6 步立显式边界（非缺省 Driver 的验收止于 review 完成、不进 gate 环节，或先落 EV-58 的 meta.rerun_index 修法），否则第 6 步会撞上一处无 CLI 出口的硬失败并误判为「缺裁决件」。
+
+### GLM-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5.8（EV-54 写入方）` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：EV-54 只定了「补写入方」，全计划没有任何一处定义 override_reason 的取值内容与来源。T-9 断言「heterogeneous === false 时 override_reason 非空、front-matter 与运行元数据两处同值」——「非空」会把取值决策推迟到写测试那一刻由实现者临场发明，两处（renderReviewDoc 传参与 meta.critics 写点）还可能被发明出两份不同文案，恰好踩破 T-9 自己要守的「两处同值」。
+
+**依据**：被审计划 §5.8、§1.1 EV-54 行、§4.2 T-9（三处均无取值定义）；src/trivium/render.ts:99/:192/:314（承接侧只渲染传入值）；skills/dual-critic/schema/run.v2.json:577/:579（「false 时必须有」的散文契约与字段声明）；doc/08_project/BACKLOG.md:151（EV-54 原文亦未定取值）。
+
+**建议**：在 §5.8 一句话定死取值来源：例如由模型覆盖的来源链派生（用户经 --model-<id> 显式指定 claude 系模型 / 档位默认落到 claude 系），两处共用同一派生函数；T-9 按该来源断言内容而不仅是非空。
+
+### GLM-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5.6 第 3 条（CODEX-07 · unreadable 分流）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：「有 unreadable 时在错误 / notes 里点名」没有区分两条路径。自动候选路径上，一份被搅坏的 run.json 会让它登记的审查件从过滤集里消失——CODEX-07 要堵的洞被重新打开，而行为只是往 notes 里加一行；prepareRun 的 locateSubject（烧配额前的最后一道）同样按不完整登记集放行。这与 archive.ts 既有口径（hooks 见 unreadable 即 GATE_BLOCK，「此后每次 git commit 都被拦死」）的保守姿态不一致：提交被硬拦，选原稿却放行。
+
+**依据**：src/trivium/archive.ts:520-535（unreadable 不静默跳过、但只单列标记）、:466-469（hooks 侧对 unreadable 的硬拦口径注释）；src/trivium/topic.ts:97-118、src/trivium/topic-args.ts:555-573（两条自动候选路径）；被审计划 §5.6 规则第 3 条。
+
+**建议**：§5.6 明确分流：resolve（只读预检）可仅 notes；prepareRun 的 locateSubject 在清单存在 unreadable 时硬失败（与 hooks 姿态一致），或至少在「过滤后仍有候选存活 且 存在 unreadable」时硬失败，把「搅坏一份 run.json 绕过判据」的代价从一行提示抬到一次阻断。
+
+### GLM-06 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5.5（run-protocol 三处接线的必要性论证）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：§5.5 给 Handoff.options 补 driver 的理由是「worker 侧的 opts.driver 静默为 undefined——而 worker 才是真正跑审查的那一侧」。实读不支持这句：driver 的全部消费方（resolveRerunIndex、locateSubject、freeze、newRunMeta、resolveCriticSelection）都在 prepareRun（--start 侧）执行，executeRun 对 opts 的消费只有 contextPaths / diffBase / allowSingle / sessionId / entry，今天没有任何一处读 opts.driver。接线本身无害且向前正确（与 critics/sessionId/entry 同构），但理由是外推的——按本仓「留痕里的失实断言先改再提交」的纪律，这句落进代码注释就是又一处失实。
+
+**依据**：src/trivium/review.ts:559、:610、:650、:776（driver 消费方全在 prepareRun）、:877-881 与 :951/:1025/:1045/:1409（executeRun 的 opts 消费面，无 driver）；src/trivium/run-protocol.ts:141-184（rebuildContext 的 opts 只喂 executeRun）。
+
+**建议**：§5.5 把该句改准：要么指出 worker 侧既有的具体消费方，要么如实标注「为 worker 侧未来消费预留、与 critics/sessionId/entry 同构保持交接完整性」；接线照做，理由别写成已成立的危害。
+
+### GLM-07 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3（5.3 与 5.4 的顺序、「不得留过夜中间态」）` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§11.2 自己标了「『5.1～5.4 不得留过夜』是我判的，没有机器判据看着它」。把 5.4 提到 5.3 之前可以整条消掉这个人工约束：先落 selectableCritics 导出并让 legalList 改调它（行为等价、不产生新矛盾），再在 5.3 一并把 driver 接进 resolveCriticSelection 与 --model 判据——矛盾窗口为零，不再依赖「记得别过夜」。这符合本仓「靠记性的纪律要换成不依赖记性的机制」的既有原则（AGENTS.md 架构纪律 12 的换写说明）。
+
+**依据**：被审计划 §3 顺序表与 §11.2；src/trivium/critics.ts:57-73（legalList，改调 selectableCritics 后行为不变）；src/trivium/topic-args.ts:448-459（--model 判据，5.4 先落时不受影响）。
+
+**建议**：§3 把 5.3 与 5.4 互换，并删去「不得留过夜」的人工约束；若保留现顺序，则在计划里写明为何接受一条无机器判据的纪律。
+
+### GLM-08 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5.6 依据 2（artifacts[] 写入方）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：「artifacts[] 的写入方只有 review.ts（:794、:1369-1378）」不精确：verify.ts:216-219 也写 artifacts[]（trivium.verify-run.v1，登记验证记录与 verify 元数据两份）。结论不受影响——verify 记录名不带角色后缀（buildVerifyName）且落在 verify/ 阶段目录，进不了 plan/bug 的候选论域——但「写入方唯一」是这条推导的支点之一，应点破这一支，免得后人按「唯一」做扩展时踩空。
+
+**依据**：src/trivium/verify.ts:194-224（verify run 元数据的 artifacts 写入）；src/trivium/archive.ts:492-499（listRecordedRuns 含 verify 阶段，recordedArtifactPaths 的论域来源）；src/trivium/naming.ts:119-124（verify 名不带角色后缀）。
+
+**建议**：§5.6 依据 2 补一句：verify-run 的 artifacts[] 由 verify.ts 写入，但均无角色后缀且在 verify/ 目录，不进候选论域；判据结论不变。
+
+### GLM-09 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §2.1 末段与 R-2（漏传 resolveRerunIndex 的后果）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：「轮次抬升后运行元数据与文件名分叉（review.ts:1065-1069 只 warn 不阻断）」与所引代码相反：那几行正是防分叉的——sharedIndex 抬升时 meta.rerun_index 被同步改写（:1068），最终 writeRunMeta 落的是与文件名一致的值。漏传的真实代价是：骨架 run.json 短暂记错轮次（崩溃取证面）+ 必然触发一次抬升告警，且只在 driver ≠ 缺省且 critics 恰为 [claude] 且已到第二轮时发生（其余组合里非 claude 后缀的审查件/裁决件会让缺省算法碰巧算对）。结论「该补」不变，但 D5 裁定应基于准确的代价核算。
+
+**依据**：src/trivium/review.ts:1065-1069（抬升时 meta.rerun_index = sharedIndex）、:1396（最终落盘）；src/trivium/archive.ts:93-110（firstFreeRerunIndex 保证两侧共用 N）、:142-177（O_EXCL 抬升不覆盖）；被审计划 §2.1、R-2。
+
+**建议**：把 §2.1 末段与 R-2 的后果改准（骨架短暂失真 + 告警 + 触发条件收窄），去掉「运行元数据与文件名分叉」这句与所引代码相反的表述。
+
+## 认为正确的部分
+
+- §5.6 判据推导的三条依据逐一实读属实：writeArtifact 生产调用点全仓唯一（review.ts:1147，role 恒为 critic、kind 恒 null）；原稿与裁决件不经编排器落盘、从不登记；两个定位函数只扫阶段目录根（fs.readdir + parseArtifactName 过滤），_meta/ 子树不进候选（topic.ts:97-107、topic-args.ts:555-563）。未发现能把合法原稿判死的第四条写入路径。
+- R-1 的处置（显式指定硬拒、自动候选先滤后拒）成立：换过 Driver 的主题里日期更晚的登记审查件会排到真原稿前（rerunIndex desc、fileName desc 同排序实读确认），过滤而非硬拒保住了这条合法工作流。
+- §2.1「步骤表漏了 resolveRerunIndex」属实：revised-claude §2.1 落点表确未列它，archive.ts:65-83 签名带 driver 而 review.ts:559 / cli.ts:731 两处只传两参。把 review.ts:559 补进本步是对的（写侧与落点表已列的 locateSubject/freeze/newRunMeta 同链）；D5 的切分方向成立，但时点表述见 GLM-03。
+- §2.2 EV-53 是硬依赖的论证成立：critics.ts:57-73（启用 ∩ 有配置条目 减 driver）与 topic-args.ts:448-459（CRITICS 全集、不减）两套论域实读确认；§5.4 的 selectableCritics 源头合一（而非把 filter 抄两遍）是正确做法。
+- EV-54 纳入本步的论证成立：BACKLOG.md:151 触发条件逐字「M9 第 5/6 步」；isHeterogeneous 对 claude 系恒 false（base.ts:1669-1673 实读确认）；承接侧 render.ts:99/:192/:314 完整、全仓 grep 确认无写入方。「只补写入方、不升 if/then 机器判据」的边界与 R-6 一致。
+- §2.3 两条实读断言属实：resolveDriver 全仓零命中；DRIVER_AGENT_IDS（registry.ts:338）零消费方，本步不消费它、错误文案论域用 ALL_AGENT_IDS 的判断正确。
+- R-5 / EV-59 属实：schemas.ts:255-297 的 checkAgentIdentities 无 Driver 互斥规则；registry-parity.test.ts:823-824 的注释确在声称存在该规则（失实），排除本身无害。
+- §4.1「不再自构入参调 resolveCriticSelection 写用例」的原则正确；deny-matrix.test.ts:362 既有用例的三件套骨架（唯一调用计数、实参块结尾定位断言、值表达式判据）正是 T-3/T-4 应沿用的形态，需按 GLM-01/02 钉死细节。
+- §5.2 预检提示必须 ok: true 的论证属实（preflight.ts:604-640 的 every 短路与 find(!ok) 结构实读确认）；§5.5 在 :497 旁补 sides.includes(driver) 防御正确（:466 的 opts.critics 旁路分析属实，worker/测试/selftest 都能绕过判定处）。
+- §4.3 对三条 skip 的复查结论属实：config-migrate.test.ts:364/:416 的 skip 判据（CRITIC_PENDING/SHAPE_PENDING）与 --driver 无关，不恢复是对的。D3 倾向同款拒绝：与 --critics/--only 的拒绝理由（「解析成功却被交接说明静默丢弃」）逐字同构，接受即静默丢弃。
+
+## 未覆盖范围（本侧盲区）
+
+- 全程只读、零命令执行：所有行为结论（含 GLM-03 的闸门失效机理）来自源码推演，未实跑流水线或变异验证复核。
+- J1～J8 验收判据原文（M9-ClaudeCode审核者接入 plan 的 §1.1）与 §6.1 提案原文未逐条核对，GLM-03 对第 6 步是否进 gate 环节的判断据此留了置信余量。
+- doc/02_design 设计文档与 PRD 原文未读（只读了 BACKLOG 与 .reviews 步骤表）；doc/README、01_requirements、02_design 的 README 未读。
+- gate.ts 的 checkAdjudication 只读了裁决件定位段（:136-170），裁决表逐条核对逻辑、loadRoundReviews、hooks.ts、gate/report/naming 其余 driver 消费面（R-3 所列）未逐行核。
+- test/integration/topic-resolve.test.ts 与 gate-loop.test.ts 的既有用例、adapters/stub.ts、skills/ 下的 SKILL.md 与 hooks 资产未读。
+- 另一侧审查员的任何产出按禁读约束一律未读、未引用。
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-Driver旗标全链路与选侧收口/plan/2026-09-18-M9-Driver旗标全链路与选侧收口-claude.md`
+- `.reviews/M9-ClaudeCode审核者接入/plan/2026-09-17-M9-ClaudeCode审核者接入-revised-claude.md`
+- `src/trivium/archive.ts`
+- `src/trivium/critics.ts`
+- `src/trivium/review.ts`
+- `src/trivium/topic.ts`
+- `src/trivium/topic-args.ts`
+- `src/trivium/naming.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/render.ts`
+- `src/trivium/freeze.ts`
+- `src/trivium/preflight.ts`
+- `src/trivium/schemas.ts`
+- `src/trivium/gate.ts`
+- `src/trivium/verify.ts`
+- `src/trivium/adapters/base.ts`
+- `src/trivium/agents/registry.ts`
+- `src/trivium/types.ts`
+- `src/trivium/exit-codes.ts`
+- `src/trivium/doctor.ts`
+- `skills/dual-critic/schema/run.v2.json`
+- `doc/08_project/BACKLOG.md`
+- `test/unit/deny-matrix.test.ts`
+- `test/unit/topic-args.test.ts`
+- `test/unit/critics.test.ts`
+- `test/unit/registry-parity.test.ts`
+- `test/unit/config-migrate.test.ts`
+- `test/helpers/critic-fixtures.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":0,"grep":0,"glob":0,"run_command":0,"project_reads":29}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

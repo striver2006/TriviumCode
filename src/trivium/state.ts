@@ -11,6 +11,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type { Stage } from './types.js';
+import type { AgentId } from './agents/registry.js';
 import { withGlobalLock } from './lock.js';
 import { writeAtomic } from './util/fsx.js';
 import { EXIT, TriviumError } from './exit-codes.js';
@@ -51,6 +52,17 @@ export interface GateEntry {
   run_id: string | null;
   rerun_index: number;
   since: string;
+  /**
+   * 当轮 Driver（M9 第 5 步）。**可选**：早于该步立起的闸门项没有这个字段，
+   * 缺失即「无从得知」，不等于缺省 Driver。
+   *
+   * 设计 §5.2 / §9.2 把它列为 `--driver` 三处留痕面之一（另两处是
+   * `run.json.driver` 与 `task.json.runs[]`）。**本步只记不读**——
+   * Hook 的 Driver 感知按计划 §2.2 不在第 5 步范围（见 EV-55），
+   * 但记录面先落齐，免得实现与唯一实现依据对同一件事各说一套
+   * （代码双审 CODEX-06）。
+   */
+  driver?: AgentId;
   /**
    * 触发该闸门的 Claude Code 会话 id。
    *
@@ -132,6 +144,8 @@ export interface SetGateInput {
   runId?: string | null;
   rerunIndex?: number;
   sessionId?: string | null;
+  /** 当轮 Driver（M9 第 5 步）。只记不读，见 GateEntry.driver */
+  driver?: AgentId;
   heartbeatStaleMs: number;
   /**
    * 条件迁移：只有当前闸门满足 `expect` 时才写入（审查意见 GLM-r2-01）。
@@ -209,6 +223,8 @@ export async function setGateChecked(i: SetGateInput): Promise<SetGateResult> {
       since: new Date().toISOString(),
       // 会话 id 一旦记下就不因后续状态变化而丢——写锁的作用域判定要用它
       session_id: i.sessionId ?? prev?.session_id ?? null,
+      // driver 同理：记下就不丢，后续状态迁移沿用前一条的值
+      ...((i.driver ?? prev?.driver) ? { driver: (i.driver ?? prev?.driver)! } : {}),
     };
     s.gates[key] = entry;
     result = { applied: true, entry };

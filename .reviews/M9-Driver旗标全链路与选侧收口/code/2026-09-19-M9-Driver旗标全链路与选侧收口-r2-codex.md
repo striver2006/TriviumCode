@@ -1,0 +1,205 @@
+---
+schema: trivium.review.v1
+topic: M9-Driver旗标全链路与选侧收口
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.155.0
+model_requested: deepseek-flash
+model_effective: deepseek-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260918T191610Z
+rerun_index: 2
+snapshot_hash: sha256:82696b2ec10200b317894eba1a86d208bc605a590894d7f096774e5719c8809f
+blind: true
+started_at: 2026-09-18T19:16:11.089Z
+finished_at: 2026-09-18T19:25:10.382Z
+duration_s: 404
+tool_calls:
+  run_command: 93
+  project_reads: 43
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 3
+  minor: 2
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0b5f2-9d3b-72d1-96bc-21a1c2985ca1
+---
+
+# 代码审查：M9-Driver旗标全链路与选侧收口
+
+> Critic-C · OpenAI Codex ｜ 模型 `deepseek-flash`
+> ｜ 运行 `20260918T191610Z` ｜ 第 2 轮
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+三处焦点没有一处能判「无问题」。①中间态硬失败的方向对，但它给的两条自救路在该状态里按构造都走不通：--run-id 需要一份可读留痕，而该状态的定义就是「扫到的全都不可读」；「修复或移除这些文件」会撞上本仓自己的提交锚（run-*.json 一经登记即不可删不可改），照做会把提交永久拦下（major）。②EV-66 的边界记错了一格：非缺省 Driver 的裁决件不是「写不出来」，而是「必须谎报 role 才过得了闸门」——front-matter 的 role 与当轮 driver 之间没有任何机器判据，而资产面（模板与三份 SKILL）仍写死 claude，第 6 步验收会撞在一条没人提到的失败点上（major）。③接线判据实测到两处盲区：结构化实参点上「形对值错」静默变绿（上一轮已接受的同类只在一处收紧），块定位过跑时那条守卫恒不可触发（minor×2）。④另记：EV-53 的 done 只覆盖 topic resolve，review --start 仍会静默丢弃 --model-<id>（major）。无 blocker；直读留痕取代后缀反推、三态分档、isReviewArtifact 的边界声明与 driver_enabled 的「可选、不进 required、不加 if/then」口径我逐项核过，成立。
+
+**结论**：`request-changes`
+
+## 审查意见（共 6 条：重要 3 ｜ 次要 2 ｜ 吹毛求疵 1）
+
+### CODEX-03 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/cli.ts:761-794（文案在 :787-794）` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：「一份都没扫到」与「扫到但全都解析不出」分档本身是对的，但中间态这条硬失败给出的两条自救路，**在该状态的定义下都走不通**：①「用 --run-id 指定一份可读的运行」——该状态就是「扫到的全都不可读」，而 --run-id 也走 readRunMeta（:762），必然返回 null 并落到另一条硬失败（:763-769），按构造不可实现；②「请修复或移除这些文件」——.reviews/ 被本仓自己的提交锚守着：run-*.json 一经登记即不可删（prepareRun 写完骨架当场 registerRun，review.ts:900-902 → task.json.runs[] → checkRunManifests 报 manifest_missing → hook-pre-commit 拦提交），已提交版本也不可改（immutableChangeReason 明写「运行清单是留痕核对的锚，改锚即可整枝绕过」）。真正可用的第三条路（重跑该阶段，让 latestRunMeta 取到一份新的可读骨架）没写。触发面不是假想：本仓把 schema 收严当常规动作（run.v2.json:387-388 自己记着 guard 节点 2026-09-16 收严、对策是「实测 29 份留痕零差额」），一旦某阶段的历史留痕因收严集体不可读，该主题的 gate 三条子命令会一起锁死；而「读不出」并不等于「坏了」——实测归档里 verify 阶段的留痕 5/5 都落在 unreadable 一侧，那是另一种合法契约而非损坏。
+
+**依据**：读 src/trivium/cli.ts:761-794、src/trivium/meta.ts:390-425（latestRunMeta 与 readRunMeta 的 schema 分发）、src/trivium/archive.ts:609-640（checkRunManifests）、src/trivium/hooks.ts:292-324 与 :978-1015（immutableChangeReason / checkArchiveIntegrity）、src/trivium/review.ts:864-902（骨架写盘后立即 registerRun）、skills/dual-critic/schema/run.v2.json:387-388。实测：`node --input-type=module -e` 调 dist/test/src/trivium/meta.js 的 latestRunMeta 扫全仓 .reviews（86 份留痕）——plan/bug/code 的 unreadable 全为空；verify 阶段 5 个主题 5/5 落到 unreadable。该分支在全仓没有任何测试覆盖（grep「一份都读不出来」只命中 src/）。
+
+**建议**：把文案换成可执行的两条：重跑该阶段即可落一份新的可读留痕、并使闸门恢复；并明确「不要删/改 run-*.json，那会触发提交锚」。若确实要保留「同一批全坏即锁死」，请给一条显式旁路（如 --accept-corrupt-metadata）并补一条集成用例覆盖这一格（含 --run-id 走不通这一点），否则这将是本步唯一既无出路又无测试的新失败路径。
+
+### CODEX-04 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/gate.ts:152, 185-215；skills/dual-critic/schema/disposition.v1.json:12；skills/dual-critic/templates/disposition.md.template:4` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：EV-66 把边界记成「非缺省 Driver 根本写不出合法裁决件」，实况是**写得出来，但必须是谎报的**。「这份裁决件是谁写的」有两个来源：文件名后缀（listStageArtifacts 解析出的 parsed.role，gate.ts:152 用它按 driver 定位）与 front-matter 的 role（只过 validateDispositionFrontMatter，const claude）。checkAdjudication 的一致性比对（:185-215）里**没有 role 与 driver 那一条**，于是「文件名 -revised-codex.md + front-matter role: claude」这份自相矛盾的件会**通过**闸门，且没有任何一处会发现。这不是构造出来的形态：资产面今天写死的正是 role: claude（disposition.md.template:4），三份 SKILL.md 与 templates/README.md 也仍写 …-revised-claude.md（dual-review-plan/SKILL.md:158、templates/README.md:9）。于是非缺省 Driver 下两条路都不成立：照资产写 → 定位不到、报 missing_disposition（失败点与 EV-66 记的那一格根本不同）；照代码改写文件名而保留 role: claude → 静默通过，产出一份作者身份自相矛盾的留痕。T-11 锁的第三格（诚实写 role: <当轮 Driver>）只是其中一格，而 M9 第 6 步验收要产出的恰恰是这份留痕。
+
+**依据**：读 src/trivium/gate.ts:145-215（定位判据 + 逐条比对，确认 mismatch 列表里没有 role）、src/trivium/schemas.ts:312-315、skills/dual-critic/schema/disposition.v1.json、skills/dual-critic/templates/disposition.md.template 与 response.md.template、skills/dual-review-plan/SKILL.md:158、skills/dual-critic/templates/README.md:9、test/integration/gate-loop.test.ts 的 T-11（它自己写 `role: ${driver}` 与 `-revised-${driver}.md`，恰好绕开资产面）。此格为静态核对得出（本环境只读、跑不了集成用例）。
+
+**建议**：要么在 checkAdjudication 补一条 fm.role 与 driver 的一致性比对——不改契约、今天就能落，且会把「谎报件」当场判红；要么把 T-11 的边界断言扩成两格（诚实件失败 / 谎报件也不得通过）并把 EV-66 的描述改准。无论哪条，EV-66 里都要写明资产面（三份 SKILL + 两份模板 + templates/README）仍写死 claude，否则第 6 步验收会撞在一条连登记条目都没提到的失败点上。
+
+### CODEX-05 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/cli.ts:305-318, 474-492；src/trivium/topic-args.ts:503-518` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：EV-53 标 done，但收口只落在 topic resolve 一个入口。review --start（真正烧配额那条）用 collectModelOverrides 收 --model-<id>，论域是 CRITICS（启用全集，今天四家都在内），而下游 checkModelSlugs 只遍历**入选侧**——于是「为本轮当不了审核者的一家指定模型」在这条路上仍是**解析成功后被悄悄丢弃**，run.json 与告警里都不留痕，正是 EV-53 原文的症状。本步刚把 driver 接进 cli.ts，判据（selectableCritics）现成，却只接到另一个入口。复现形态：`review --start --stage plan --topic T --critics gemini --model-glm X`，或 `--model-claude X`（claude 的 defaultSelected 为 false，缺省 --driver claude 下不可入选）。技能侧因先走 topic resolve 而被挡住，暴露面是手工 CLI，但「EV-53 done」这句话在台账层面已不成立，第 6 步验收若手工敲这类命令会丢参数而看不出来。
+
+**依据**：读 src/trivium/cli.ts:305-318（collectModelOverrides 迭代 CRITICS）、:474-492（cmdReview 不校验 model 旗标键的可用性）、src/trivium/review.ts:540-543（checkModelSlugs 只收到 sides）、src/trivium/preflight.ts:298-330（内部只遍历传入的 critics）、src/trivium/topic-args.ts:483-518（全仓唯一的 selectableCritics 判据在此）、src/trivium/types.ts:106 与 src/trivium/agents/registry.ts（四家 criticEnabled 均为 true）。
+
+**建议**：把同一条派生接到 review --start：在 sides 解析之后对 modelOverrides 的键做一次 selectableCritics 校验（或让 collectModelOverrides 收下 driver 派生论域）；并把 EV-53 的 done 记要改成「两个入口都收口」，或显式登记未覆盖的那一个入口。
+
+### CODEX-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/driver-wiring.test.ts:101-224（另同族 :285-296）` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：TARGETS 那一族的判据是「实参块里出现了这个**词元**」，不是「取值来自 driver」。对结构化实参（`driver: …` 与简写 `driver,`）的调用点，`hasProperty(block,'driver')` 只认属性名——把取值改回 `DEFAULT_DRIVER`（形对值错，正是要防的那一格）判据照样绿。上一轮 CODEX-05 已被接受，但只在 `checkAdjudication` 一处升级成「取值来自 gateDriver」，同类缺口在其余调用点原样留着；plan §10 的变异表也只写了「删实参」，所以这一格从未被真正变异验证。补一句题面要的答案：**实参经中间变量转手**在本判据下会响亮失败（锚点+条数对不上），真正安静的是「同一个变量名绑到了错误的来源」——`const driver = DEFAULT_DRIVER;` 再 `{ …, driver }` 传下去，实参块一字不变，判据为绿。
+
+**依据**：读 test/unit/driver-wiring.test.ts:101-224（TARGETS 表与通用断言）、:285-296（heterogeneous 那条用「后 400 字符里含 overrideReasonFor(」兜底，同族但稍强）；读 src/trivium/cli.ts:474-492、src/trivium/topic-args.ts:503 附近的真实调用点。实测：把 src/trivium/cli.ts 的真实文本喂给该文件自己的 stripComments/argBlockAt/hasProperty，将 `resolveCriticSelection(ctx.config,{…})` 里的简写 `driver,` 换成 `driver: DEFAULT_DRIVER,`，复算得 hasProperty === true（判据为绿）。另跑 `node --test dist/test/test/unit/driver-wiring.test.js`：17 条通过、1 条因沙箱拒绝 mkdtemp 失败（EPERM），确认现行判据本身是绿的。
+
+**建议**：给该族判据补一条「取值形态」约束（如实参块里必须出现 driver 标识符 / opts.driver / gateDriver 之一，出现 DEFAULT_DRIVER 即判红），或在注释里把口径写清「这族只守删实参、不守值」；不要只把 checkAdjudication 一处加严就把同类算作已收口。
+
+### CODEX-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/driver-wiring.test.ts:67-78, 215-224` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：`argBlockAt` 是纯文本括号配平，不认字符串与正则：实参块里只要出现一个未配对的 `(`（中文正文串、`/(x/` 之类写法），块会一路吃到文件尾，`hasProperty` 随即在文件后半段命中同名标识符——**判据安静变绿**。而同一处专门用来兜这个的守卫 `block.length > 0 && block.length < src.length` **在那一格恒成立**：兜底路径返回的正是 `src.slice(from)`，长度恰为 `src.length - from`，永远小于 `src.length`，所以它想抓的失效形态恰好是它唯一抓不到的。四条「判据自身的自测」只覆盖 stripComments/hasProperty，**没有一条碰过定位函数**，因此这条失效无法被自测暴露。当前 12 个真实实参块都正常闭合（实测），属潜在失效而非现况。
+
+**依据**：读 test/unit/driver-wiring.test.ts:60-97（argBlockAt 实现与「先剥注释，故不受注释里的括号干扰」的注释）与 :210-224（守卫与断言文案「定位不到实参块——扫描写错了会让本条永绿」）。实测（用该文件自己的三个函数复算）：构造一个块内含两个未配对 `(` 的调用 → 块长等于 src.length - from（吃到文件尾）、守卫通过、而真实块里没有 driver 却 hasProperty 返回 true；再对本文件全部 12 个真实目标点实算，ranToEof 全为 false（今日无假绿）。
+
+**建议**：让 argBlockAt 在括号未闭合时报错或返回 null（不要回落成 slice(from)），并把守卫换成能真正触发的判据（例如「块以 ) 收尾」或 `block.length < src.length - from`）；同时给定位函数补一条自测，别让三条约束里唯一没被自测覆盖的那个函数继续裸奔。
+
+### CODEX-06 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/cli.ts:849-860` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：--check-artifacts 的缺件文案在用户**已经**传了 --run-id 时仍说「轮次取自最新一次运行……可用 --run-id <id> 指定更早的完整轮次」。给了 --run-id 时 rerunIndex 恰恰来自那份被钉住的留痕，文案与事实相反，会把排障者推去用已经用过的旗标。
+
+**依据**：读 src/trivium/cli.ts:761-773（pinned 优先）与 :805-806（rerunIndex 取自 latest）、:849-860（fail 文案）。
+
+**建议**：文案按「是否给了 --run-id」分两句，或只在 pinnedId 为空时附加那句提示。
+
+## 认为正确的部分
+
+- 「弃后缀反推、直读运行元数据」的方向与落点成立；cmdGate 不加 --driver（事实来源是留痕不是旗标）与「事实来源是 critics_selected 不是键集」同一条原则，是对的。
+- latestRunMeta 的排序依据（run_id 定宽 UTC、字典序即时序）我在真实归档上核过：86/86 全部匹配 ^[0-9]{8}T[0-9]{6}Z$，无一例外——plan §11 第 1 问可以结案。
+- 「扫到 0 份」与「扫到但全不可读」分档、以及 --run-id 显式指定时读不出即硬失败不静默回落（cli.ts:763-769）：方向正确，比压成同一个 null 强。
+- isReviewArtifact 的四类失败一律坍缩为「不是审查件」（放行、不误拒）、显式路径硬拒 / 自动候选过滤的不对称、以及不复用 freeze.ts 三值 fail-closed 版（分层倒置 + 逃生门 + 模块私有）的理由，我逐条核过成立；EV-63 对残余风险的登记也准确。
+- driver_enabled 可选、不进 required、不加 if/then，并配一条「删字段仍须读得回」的回归锁：与本仓「历史留痕必须读得回」的口径一致，是正确的不可逆选择。
+- driver / driverEnabled 在 prepareRun 一处解析、随骨架一起落盘（review.ts:866-902），交接文件用「类型必填 + 运行期 handoffDriver 回落取 meta.driver 并告警」两层防线：这两处是本步做得最干净的接线。
+- 把判据写成可执行代码并配自测这一做法本身是对的（我实跑该文件：17 通过 / 1 因沙箱 mkdtemp 被拒），T-11 用运行期用例补源码扫描的语义盲区也是对的取向——EV-65 的 parity 用例方向同样正确。
+- plan §11 第 2 问（显式指定一份裁决件会被放行当原稿）我同意上一轮的裁断：显式路径本就能指向任意文件，只对 trivium.review.v1 设线是可接受的边界。
+
+## 未覆盖范围（本侧盲区）
+
+- 本环境文件系统只读：任何写动作（含测试夹具目录）都被拒，因此 T-11、driver-flag 等集成用例、以及 driver-wiring 的 EV-65 parity 用例跑不起来（mkdtemp EPERM）。CODEX-04 里「role: claude + 改名会通过」这一格是静态核对得出，未实跑。
+- 未覆盖真实拉起四家 CLI 的行为面（配额、版本漂移、轨迹能力判定、适配层与探针），本轮只读编排器侧代码。
+- 未逐条追踪 T-11 失败路径的子进程与夹具收尾（worker 是否被 killProcessTree 收掉、夹具是否清理）——其失败形态与同文件既有 idiom 一致，故未作为意见提出，但它确实没有 try/finally。
+- 未构造超大 / 非 UTF-8 / 二进制候选文件去压 isReviewArtifact，只读了它的实现与文档块；get 到 fs.readFile 失败会坍缩为 false 这一层。
+- 未展开 locale 相关面：locateSubject / locateSubjectReadOnly 用 fileName.localeCompare 排序（既存代码，非本步引入），我只确认本步新增的两处排序没有引入新的 locale 依赖。
+- 未读另一侧审查员的任何产出，也未读 plan 阶段的 _meta 结构化结论；本轮独立结论只基于被审 diff、工作树源码、测试与 Driver 的应答件。
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-Driver旗标全链路与选侧收口/code/_meta/changes-20260918T191610Z.diff`
+- `.reviews/M9-Driver旗标全链路与选侧收口/code/2026-09-19-M9-Driver旗标全链路与选侧收口-response-claude.md`
+- `.reviews/M9-Driver旗标全链路与选侧收口/plan/2026-09-19-M9-Driver旗标全链路与选侧收口-r3-claude.md`
+- `src/trivium/cli.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/critics.ts`
+- `src/trivium/archive.ts`
+- `src/trivium/gate.ts`
+- `src/trivium/topic.ts`
+- `src/trivium/topic-args.ts`
+- `src/trivium/review.ts`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/state.ts`
+- `src/trivium/types.ts`
+- `src/trivium/preflight.ts`
+- `src/trivium/hooks.ts`
+- `src/trivium/schemas.ts`
+- `src/trivium/util/log.ts`
+- `src/trivium/agents/registry.ts`
+- `skills/dual-critic/schema/run.v2.json`
+- `skills/dual-critic/schema/disposition.v1.json`
+- `skills/dual-critic/templates/disposition.md.template`
+- `skills/dual-critic/templates/response.md.template`
+- `skills/dual-critic/templates/README.md`
+- `skills/dual-review-plan/SKILL.md`
+- `skills/dual-run/SKILL.md`
+- `skills/dual-critic/scripts/trivium.cjs`
+- `test/unit/driver-wiring.test.ts`
+- `test/unit/run-meta.test.ts`
+- `test/integration/gate-loop.test.ts`
+- `test/integration/driver-flag.test.ts`
+- `test/helpers/fixture.ts`
+- `doc/08_project/BACKLOG.md`
+- `/Users/chenzhenbo/.claude/skills/dual-critic/schema/review.v1.json`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":93,"project_reads":43}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*
