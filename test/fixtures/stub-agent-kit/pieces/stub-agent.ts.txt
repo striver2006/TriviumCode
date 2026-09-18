@@ -153,6 +153,10 @@ export const stubAgentAdapter: CriticAdapter = {
       session_id: `${CRITIC}-session`,
       cli_version: probe.version,
       peer_deny_applied: false,
+      // 该侧不注入 --settings，三格恒 0——含义是「没有这种概念」，不是「注入了没跳过」
+      deny_skipped: 0,
+      deny_rule_count: 0,
+      deny_bytes: 0,
       command_line: `<${CRITIC} agent stub, no CLI invoked>`,
     };
   },

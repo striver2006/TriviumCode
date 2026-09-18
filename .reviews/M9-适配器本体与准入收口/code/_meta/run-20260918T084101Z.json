@@ -1,0 +1,268 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260918T084101Z",
+  "topic": "M9-适配器本体与准入收口",
+  "stage": "code",
+  "rerun_index": 2,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点核三处：一、给冻结环节补上主题剪枝之后，禁读集与误伤面的实际变化——我只复算没实跑，请核那个约三十倍的缩小是否属实，以及剪枝会不会反过来漏掉本该禁读的东西；二、两处新判据的边界划得对不对——路径语法门挡圆括号与换行、放行非 ASCII 与逗号星号，分解形论域从单个主文件扩到全部适配器文件，这两个取舍会不会挡错或漏挡；三、变异装置那五道闸是不是真能防住它声称防住的三类失败（同名备份互相覆盖、构建失败被吞掉、坏基线被当成干净基线），以及它自己有没有一条「声称强于事实」——这正是本轮被打中三次的那个形状",
+  "task_goal": "M9 第 3 步 · 适配器本体与四条准入项收口 实施计划",
+  "entry": "C",
+  "driver": "claude",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "f6c58669e0974481cab72f2a68432e6db1731c32",
+    "tree_hash": "842c1d165ef0f7a5ddf3f717fd8659e43f701a2d",
+    "dirty": true,
+    "subject_sha256": "5693d6bd160b4605a3c5caf84ba3abb842587eb049d90142442cc8fb15257681",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-18T08:41:01.919Z",
+  "finished_at": "2026-09-18T09:00:13.397Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.0",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 483.465,
+      "tool_calls": {
+        "run_command": 80,
+        "project_reads": 41
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0b3ad-1e47-71c0-8b4a-372084b79d84",
+      "peer_deny_applied": false
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.6",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 847.791,
+      "tool_calls": {
+        "read": 28,
+        "grep": 11,
+        "glob": 4,
+        "run_command": 0,
+        "project_reads": 18
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 2189309,
+        "output_tokens": 38008,
+        "thinking_tokens": 30268,
+        "cache_read_tokens": 3612871,
+        "total_tokens": 2227317
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "70a5360f-8784-4e85-ad0e-72fd1c7b87a2",
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1151.039,
+      "tool_calls": {
+        "read": 15,
+        "grep": 15,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 18
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 19,
+        "inputTokens": 3060065,
+        "outputTokens": 63522,
+        "totalTokens": 3123587,
+        "cacheReadTokens": 2841472,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_d40b504e-1030-44eb-84a6-70145680b84c",
+      "peer_deny_applied": false
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M9-适配器本体与准入收口/code/2026-09-18-M9-适配器本体与准入收口-gemini.md",
+    ".reviews/M9-适配器本体与准入收口/code/2026-09-18-M9-适配器本体与准入收口-glm.md",
+    ".reviews/M9-适配器本体与准入收口/code/_meta/review-gemini-20260918T075505Z.json",
+    ".reviews/M9-适配器本体与准入收口/code/_meta/review-glm-20260918T075505Z.json",
+    ".reviews/M9-适配器本体与准入收口/plan/2026-09-18-M9-适配器本体与准入收口-gemini.md",
+    ".reviews/M9-适配器本体与准入收口/plan/2026-09-18-M9-适配器本体与准入收口-glm.md",
+    ".reviews/M9-适配器本体与准入收口/plan/_meta/review-gemini-20260918T053125Z.json",
+    ".reviews/M9-适配器本体与准入收口/plan/_meta/review-glm-20260918T053125Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": true,
+        "commands": [
+          "/bin/zsh -lc \"cd /Users/chenzhenbo/Work/TriviumCode && node --input-type=module -e \\\"\nconst {validateTopic} = await import('./dist/test/src/trivium/naming.js');\nconst {buildDenySettings, denyRuleShapeOf, readonlyToolsFromProbe} = await import('./dist/test/src/trivium/adapters/claude.js');\nconst {READONLY_INVARIANTS} = await import('./dist/test/src/trivium/probes/claude.js');\nfor (const t of ['M9(收口)','a,b','fix*','M9[3]','M9 收口','ok-topic']) console.log(JSON.stringify(t), JSON.stringify(validateTopic(t)));\nconst tools = readonlyToolsFromProbe(READONLY_INVARIANTS);\nconst shape = denyRuleShapeOf('Read(./x/**)');\nconst paths = ['.reviews/M9(收口)/code/2026-01-01-M9(收口)-gemini.md', '.reviews/M9(收口)/plan/2026-01-01-M9(收口)-glm.md', '.env.example', '.trivium'];\nconst b = buildDenySettings(paths, tools, shape);\nconsole.log('skipped:', JSON.stringify(b.skipped), 'rules:', b.ruleCount, 'bytes:', b.bytes);\nconst c = buildDenySettings(['.reviews/fix*/code/a.md'], tools, shape);\nconsole.log('star rule sample:', JSON.parse(c.json).permissions.deny.slice(0,2));\nconst d = buildDenySettings(['.reviews/M9[3]/code/a.md'], tools, shape);\nconsole.log('bracket rule sample:', JSON.parse(d.json).permissions.deny.slice(0,2), 'skipped:', JSON.stringify(d.skipped));\n\\\" 2>&1 | tail -12\""
+        ],
+        "hits": [
+          {
+            "command": "/bin/zsh -lc \"cd /Users/chenzhenbo/Work/TriviumCode && node --input-type=module -e \\\"\nconst {validateTopic} = await import('./dist/test/src/trivium/naming.js');\nconst {buildDenySettings, denyRuleShapeOf, readonlyToolsFromProbe} = await import('./dist/test/src/trivium/adapters/claude.js');\nconst {READONLY_INVARIANTS} = await import('./dist/test/src/trivium/probes/claude.js');\nfor (const t of ['M9(收口)','a,b','fix*','M9[3]','M9 收口','ok-topic']) console.log(JSON.stringify(t), JSON.stringify(validateTopic(t)));\nconst tools = readonlyToolsFromProbe(READONLY_INVARIANTS);\nconst shape = denyRuleShapeOf('Read(./x/**)');\nconst paths = ['.reviews/M9(收口)/code/2026-01-01-M9(收口)-gemini.md', '.reviews/M9(收口)/plan/2026-01-01-M9(收口)-glm.md', '.env.example', '.trivium'];\nconst b = buildDenySettings(paths, tools, shape);\nconsole.log('skipped:', JSON.stringify(b.skipped), 'rules:', b.ruleCount, 'bytes:', b.bytes);\nconst c = buildDenySettings(['.reviews/fix*/code/a.md'], tools, shape);\nconsole.log('star rule sample:', JSON.parse(c.json).permissions.deny.slice(0,2));\nconst d = buildDenySettings(['.reviews/M9[3]/code/a.md'], tools, shape);\nconsole.log('bracket rule sample:', JSON.parse(d.json).permissions.deny.slice(0,2), 'skipped:', JSON.stringify(d.skipped));\n\\\" 2>&1 | tail -12\"",
+            "path": "/Users/chenzhenbo/Work/TriviumCode/.env.example",
+            "category": "sensitive"
+          },
+          {
+            "command": "/bin/zsh -lc \"cd /Users/chenzhenbo/Work/TriviumCode && node --input-type=module -e \\\"\nconst {validateTopic} = await import('./dist/test/src/trivium/naming.js');\nconst {buildDenySettings, denyRuleShapeOf, readonlyToolsFromProbe} = await import('./dist/test/src/trivium/adapters/claude.js');\nconst {READONLY_INVARIANTS} = await import('./dist/test/src/trivium/probes/claude.js');\nfor (const t of ['M9(收口)','a,b','fix*','M9[3]','M9 收口','ok-topic']) console.log(JSON.stringify(t), JSON.stringify(validateTopic(t)));\nconst tools = readonlyToolsFromProbe(READONLY_INVARIANTS);\nconst shape = denyRuleShapeOf('Read(./x/**)');\nconst paths = ['.reviews/M9(收口)/code/2026-01-01-M9(收口)-gemini.md', '.reviews/M9(收口)/plan/2026-01-01-M9(收口)-glm.md', '.env.example', '.trivium'];\nconst b = buildDenySettings(paths, tools, shape);\nconsole.log('skipped:', JSON.stringify(b.skipped), 'rules:', b.ruleCount, 'bytes:', b.bytes);\nconst c = buildDenySettings(['.reviews/fix*/code/a.md'], tools, shape);\nconsole.log('star rule sample:', JSON.parse(c.json).permissions.deny.slice(0,2));\nconst d = buildDenySettings(['.reviews/M9[3]/code/a.md'], tools, shape);\nconsole.log('bracket rule sample:', JSON.parse(d.json).permissions.deny.slice(0,2), 'skipped:', JSON.stringify(d.skipped));\n\\\" 2>&1 | tail -12\"",
+            "path": "/Users/chenzhenbo/Work/TriviumCode/.trivium",
+            "category": "orchestrator-state"
+          }
+        ]
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M9-适配器本体与准入收口/code/_meta/changes-20260918T084101Z.diff",
+      "sha256": "5693d6bd160b4605a3c5caf84ba3abb842587eb049d90142442cc8fb15257681"
+    },
+    {
+      "path": "M9-适配器本体与准入收口/code/_meta/brief-codex-20260918T084101Z.md",
+      "sha256": "2651f285da458d4cd79b9043eb9034915a25b1d4e7be90487fade23fa4cf6c23"
+    },
+    {
+      "path": "M9-适配器本体与准入收口/code/_meta/brief-gemini-20260918T084101Z.md",
+      "sha256": "bc0056425a302c0d9e5a7203bcfc4bf30d1319857cffe83eaad52964697a656e"
+    },
+    {
+      "path": "M9-适配器本体与准入收口/code/_meta/brief-glm-20260918T084101Z.md",
+      "sha256": "55fddeeda2ab913960f116091df5f2b9fd1043503e630049c89012b4756725fd"
+    },
+    {
+      "path": "M9-适配器本体与准入收口/code/_meta/review-codex-20260918T084101Z.json",
+      "sha256": "5faf92ff70f8b9e692832093ee70f5e62a991f88ebe1643a6845415c96e85400"
+    },
+    {
+      "path": "M9-适配器本体与准入收口/code/_meta/review-gemini-20260918T084101Z.json",
+      "sha256": "67784312fa20231954f6aa5bd799fc6eb07510190d4d9c4a25f61d8f85b739af"
+    },
+    {
+      "path": "M9-适配器本体与准入收口/code/_meta/review-glm-20260918T084101Z.json",
+      "sha256": "fe252963f547d518183729354b60f18018f9b2835e74587862a1d49ac5cb9a06"
+    },
+    {
+      "path": "M9-适配器本体与准入收口/code/2026-09-18-M9-适配器本体与准入收口-r2-codex.md",
+      "sha256": "ddf00a4cd61131e2ddb2920222d3442aa71cc1dda1ef70f9f83d1e8aff3e934c"
+    },
+    {
+      "path": "M9-适配器本体与准入收口/code/2026-09-18-M9-适配器本体与准入收口-r2-gemini.md",
+      "sha256": "9ecf2e5c0bd6710bc0640c2df8c4521eecc9cdc5ef2c0b4dfe20217ba7bba421"
+    },
+    {
+      "path": "M9-适配器本体与准入收口/code/2026-09-18-M9-适配器本体与准入收口-r2-glm.md",
+      "sha256": "951d3c81b5fb3d841fa4e2a793bd6051ff82cc54bca0d2ca6cdab6d44a438ae2"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

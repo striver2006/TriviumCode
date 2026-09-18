@@ -1,0 +1,71 @@
+{
+  "agreed": [
+    "review.ts 补齐 topic: ref.topic 实参，彻底关闭了真实流水线上 enumerateDenyPaths 剪枝未生效的漏洞，将 deny_paths 从全归档扫描收敛至当轮主题目录。经复算，规则数与 payload 从 1620 条 / 202,785 字节（19.3% ARG_MAX）降至约 36~60 条 / 约 6.7 KB（0.64% ARG_MAX），约 30 倍的体积与开销缩减完全属实，且彻底消除了全仓历史原稿被误判为 indeterminate 导致的非预期 peer_leak 误伤。",
+    "deny 集合剪枝未造成任何当禁文件的漏挡：当轮主题下所有历史审查件（.md 与 _meta/review-*.json）、实时运行目录（~/.trivium/runs）、编排器状态目录（.trivium）与敏感文件凭据均保持闭环收录。跨主题审查件属于既往已完结任务，排除出禁读集符合设计初衷。",
+    "路径语法门 denyPathRepresentable 取舍精准：精准过滤会破坏 <Tool>(<path>) 规则语法结构的圆括号 () 与换行符，放行在当前工程中占 99% 的非 ASCII 中文字符以及标准 glob 中的星号与逗号；对被跳过路径提供降级日志与 trace.json 留痕，且事后轨迹核验依然兜底，保障了输入安全性与业务可用性的平衡。",
+    "分解形判据论域扩展兼顾严密性与扩展性：从单一主文件拓展至「所有适配器文件 − 分类器文件（-trace/-events）」，并将分解集合扩大为全厂商并集，辅以 decomposedSubsetOwner 子集与重排判定，彻底补死了此前 codex 适配器分解集合为空导致的裸工具名漏检盲区。",
+    "mutation-check.mjs 的五道闸与 finally 清理机制从结构上成功防住了同名文件备份覆盖、构建错误吞没以及脏基线误判这三类历史典型故障。"
+  ],
+  "consulted": [
+    ".reviews/M9-适配器本体与准入收口/code/_meta/changes-20260918T084101Z.diff",
+    ".reviews/M9-适配器本体与准入收口/code/2026-09-18-M9-适配器本体与准入收口-gemini.md",
+    ".reviews/M9-适配器本体与准入收口/code/2026-09-18-M9-适配器本体与准入收口-response-claude.md",
+    "src/trivium/review.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/naming.ts",
+    "test/unit/deny-matrix.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/claude-adapter.test.ts",
+    "test/unit/coverage-wiring.test.ts",
+    "test/unit/claude-trace.test.ts",
+    "doc/05_testing/REPORT_2026-09-18_m9_claude_admission.md",
+    "scripts/mutation-check.mjs",
+    "scripts/build.mjs"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "scripts/mutation-check.mjs 第 26、29、124 行注释与文档均声称「变异后断言产物确实变了」、「用指纹证明身份（codex 建议的形态：产物哈希在变异前后必须不同）」，但阅读第 126 行代码：nowHash = await sha(abs)，其中 abs 是源文件绝对路径（path.join(ROOT, c.file)），比对的是源文件修改后的哈希是否与 baseHash[c.file] 相同。这只能证明源码 replace 发生了变更，未真正校验构建产物（如 dist/ 产物）是否发生更新，属于典型的「声称强于事实」。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "code",
+      "location": "scripts/mutation-check.mjs:124-129",
+      "problem": "变异检测装置闸 4 声称断言「产物确实变了」，但实现仅比对了源文件自身的哈希，未核验构建产物哈希。",
+      "severity": "minor",
+      "suggestion": "要么将闸 4 的断言目标落到构建产物（如 dist/test/... 编译出的目标 js 文件），要么修正注释与错误提示文案，如实陈述为「断言源文件修改确实生效（非 no-op），防止 replace 未命中」。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 scripts/mutation-check.mjs 的 main 函数：Gate 1 仅对 spec.targets 列表遍历备份并记录 baseHash；在运行 spec.cases 循环时，若某条用例配置的 c.file 不在 spec.targets 中，运行至第 140 行 copyFile 恢复时会触发 ENOENT 报错退出，且 finally 块中仅恢复 spec.targets，导致未在 targets 中的 c.file 被永久修改、污染工作区。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "scripts/mutation-check.mjs:97-101",
+      "problem": "mutation-check.mjs 未对 spec.cases 与 spec.targets 进行包含关系前置校验，漏列 targets 会导致恢复失败并残留脏工作区。",
+      "severity": "minor",
+      "suggestion": "在脚本前置检查中增加校验，断言 spec.cases 涉及的所有 c.file 均包含在 spec.targets 内，或直接在运行时从 spec.cases 动态聚合推导出 targets 集合。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "src/trivium/adapters/claude-trace.ts 第 25-27 行注释声明：「M9 第 3 步新增的『分解形加强判据』只对 adapters/<cli>.ts 精确匹配生效，不及于 <cli>-trace.ts / <cli>-events.ts 这一族」。但在 r1 审查后，test/unit/registry-parity.test.ts:1207 已将论域从 <cli>.ts 扩展为「所有适配器文件 − 分类文件豁免表（isClassifierFile）」。此处注释未同步更新。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/adapters/claude-trace.ts:25-27",
+      "problem": "claude-trace.ts 中关于分解形判据论域的说明文字落后于最新实现，残留了旧版「仅匹配 <cli>.ts」的过时陈述。",
+      "severity": "nit",
+      "suggestion": "更新该段注释，将其对齐至 registry-parity.test.ts 的实际实现（即覆盖除 -trace/-events 之外的全部适配层文件）。"
+    }
+  ],
+  "not_covered": [
+    "真实生产环境高并发调用 Claude 3.7/Sonnet API 时的限流（Rate Limit）与 Token 上限边界行为。",
+    "Windows 等大小写不敏感或 UNC 路径规范下的路径字符转义与匹配行为。",
+    "node --test 在极端内存受限环境下的 IPC 通信或 maxBuffer 溢出表现。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "【总体结论】M9 第 3 步准入收口与适配器本体代码变更质量优秀，针对 r1 审查指出的 19 条意见进行了彻底且规范的修复，给予 approve-with-nits。\n【重点一复核】冻结环节补上 topic: ref.topic 后，deny_paths 从全仓 270 条降至本主题约 8 条，payload 缩小约 30.26 倍属实，且彻底消除了跨主题误伤；所有必要禁读项（当轮审查件、运行目录、编排器目录、凭据）均完整受控，零漏禁。\n【重点二复核】路径语法门（挡 ()/\\n/\\r、放行非 ASCII 与 ,/*）与分解形判据扩展（全厂商并集、子集/重排判定、排除分类器文件）边界划分准确，兼顾了安全性与业务可用性。\n【重点三复核】变异装置五道闸成功防住了三类历史事故；但闸 4 声称「断言产物确实变了」，实际代码仅校验了「源文件哈希」，再次出现了「声称强于事实」的痕迹，建议对齐修正。",
+  "verdict": "approve-with-nits"
+}

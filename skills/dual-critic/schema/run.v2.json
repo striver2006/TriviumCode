@@ -193,6 +193,14 @@
             "type": "boolean"
           }
         },
+        "deny_skipped": {
+          "type": "object",
+          "description": "逐侧记录本次注入时被跳过的禁读路径条数（拼不出一条能字面匹配的规则）。与 peer_deny_applied 成对读：那一格答「本机曾实测该形状可拦」（探针格、与本次规则无关），这一格答「本次有没有路径拼不出规则」。只看前者会把「主题名带一个括号或 glob 元字符 ⇒ 这一次每条对端产出都被跳过」读成「屏蔽正常」（代码双审 r2 CODEX-01）。**这是聚合 map（object）**，消费方是 report 的降级旗标；同名的 critics.<id>.deny_skipped 是该侧的整数事实，另有 deny_rule_count / deny_bytes 两格只在逐侧段",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
         "forged_role_file": {
           "type": "boolean"
         },
@@ -594,6 +602,21 @@
         },
         "peer_deny_applied": {
           "type": "boolean"
+        },
+        "deny_skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "该侧本次注入时被跳过的禁读路径条数；不注入 --settings 的侧恒为 0。注意与 meta.guard.deny_skipped 区分：那一格是**逐侧聚合 map**（object），report 据它推降级旗标；这一格是本侧的整数事实。两处同名不同形，是刻意的分工，不是重复"
+        },
+        "deny_rule_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "该侧本次实际注入的 deny 规则条数；与 deny_skipped、deny_bytes 三格成对读。guard 段没有对应格"
+        },
+        "deny_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "该侧本次注入的 --settings 字节数；不注入的侧恒为 0。整份 settings 进单个 argv 项，越界即 spawn 失败（E2BIG），而条数看不出规模——字节数才是 ARG_MAX 预算的主要消费者。guard 段没有对应格"
         }
       }
     }

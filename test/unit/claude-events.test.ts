@@ -20,8 +20,26 @@ import {
   judgeStrictMcpConfig,
   judgeToolSurface,
   judgeVerboseBinding,
-  parseClaudeEvents,
+  judgeHeadlessRead,
+  judgeTracePathStructured,
+  judgeJsonSchema,
+  judgeReadonlyBreach,
+  judgeFileShape,
+  judgeProjectMemoryBlocked,
+  projectMemoryControlArgs,
 } from '../../src/trivium/probes/claude.js';
+/*
+ * **解析器改从适配层取**（M9 第 3 步搬家）：`parseClaudeEvents` 与 `ClaudeTrace`
+ * 已移到 `adapters/claude-trace.ts`，探针反向 import 它。
+ *
+ * 判据（`judge*`）仍在探针侧——它们是探针的结论产出，不是轨迹解析。
+ * 这条 import 分成两行正是为了让这个分工在用例文件里也看得见。
+ *
+ * 本文件保留的是**搬家前就存在的那些用例**，它们逐字不变地继续跑：
+ * 搬家零行为变化的安全网，就是「同一批断言搬家前绿、搬家后仍绿」。
+ * 新增的提取/计数用例在 `claude-trace.test.ts`。
+ */
+import { parseClaudeEvents } from '../../src/trivium/adapters/claude-trace.js';
 import { emptyPathDeny } from '../../src/trivium/config.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 
@@ -766,7 +784,8 @@ test('EV-42 安全默认：peer_deny_applied 必须读 file_shape_verified，不
    * **第 3 步照抄那一行当场违反，且没有任何东西会红**。
    *
    * 现在字段与读法都换了，这条守住「别换回去」：
-   * claude 侧 `supported` 是 true 而 `file_shape_verified` 是 null，
+   * 立这条契约时 claude 侧 `supported` 是 true 而 `file_shape_verified` 是 null
+   * （EV-42 已于 M9 第 3 步结案、该格现为 true，但**本契约要守的是读哪一格、不是它的当前取值**），
    * 读错哪一格，落盘的 peer_deny_applied 就会把一件没测过的事记成 true。
    */
   const dir = path.join(REPO_ROOT, 'src/trivium/adapters');
@@ -786,9 +805,187 @@ test('EV-42 安全默认：peer_deny_applied 必须读 file_shape_verified，不
       if (!/file_shape_verified/.test(line)) offenders.push(`adapters/${f}:${i + 1}  ${line.trim()}`);
     }
   }
-  assert.ok(seen >= 3, `只扫到 ${seen} 处 peer_deny_applied（现况三家各一处）——论域缩了，本条已退化`);
+  assert.ok(
+    seen >= 4,
+    `只扫到 ${seen} 处 peer_deny_applied（现况**四家**各一处，claude 随 M9 第 3 步接入）——论域缩了，本条已退化`,
+  );
   assert.deepEqual(
     offenders, [],
     'peer_deny_applied 读错了字段（读 supported 会把「没验过」记成 true）：\n  ' + offenders.join('\n  '),
+  );
+});
+
+// ───── 四个曾经内联的判据：三态（M9 第 3 步，计划双审 CODEX-04）─────
+
+test('judgeHeadlessRead 三态：没跑完是 null，不是「读不到」', () => {
+  assert.equal(judgeHeadlessRead({ completed: true, finalText: 'xx SENT yy', sentinel: 'SENT' }), true);
+  assert.equal(judgeHeadlessRead({ completed: true, finalText: 'nothing', sentinel: 'SENT' }), false);
+  assert.equal(judgeHeadlessRead({ completed: true, finalText: null, sentinel: 'SENT' }), false);
+  assert.equal(
+    judgeHeadlessRead({ completed: false, finalText: null, sentinel: 'SENT' }),
+    null,
+    '超时/错误 result ⇒ 那一轮没得出结论，不得塌缩成确定否定',
+  );
+});
+
+test('judgeTracePathStructured 三态：按 basename 比对，没跑完是 null', () => {
+  const uses = [{ input: { file_path: '/private/tmp/x/a.ts' } }];
+  assert.equal(judgeTracePathStructured({ completed: true, toolUses: uses, wantBasename: 'a.ts' }), true);
+  // macOS 软链：夹具给 /tmp/… 而事件里是 /private/tmp/…，按 basename 才不会假阴性
+  assert.equal(judgeTracePathStructured({ completed: true, toolUses: uses, wantBasename: 'b.ts' }), false);
+  assert.equal(judgeTracePathStructured({ completed: true, toolUses: [], wantBasename: 'a.ts' }), false);
+  assert.equal(judgeTracePathStructured({ completed: false, toolUses: [], wantBasename: 'a.ts' }), null);
+});
+
+test('judgeJsonSchema 三态：parse 失败是 false，没跑完是 null', () => {
+  assert.equal(judgeJsonSchema({ completed: true, finalText: '{"first_line":"x"}', requiredKey: 'first_line' }), true);
+  assert.equal(judgeJsonSchema({ completed: true, finalText: '{"other":1}', requiredKey: 'first_line' }), false);
+  assert.equal(
+    judgeJsonSchema({ completed: true, finalText: 'not json', requiredKey: 'first_line' }),
+    false,
+    '跑完了但输出不是 JSON ⇒ 确实没按 schema 出，这是真结论',
+  );
+  assert.equal(
+    judgeJsonSchema({ completed: false, finalText: null, requiredKey: 'first_line' }),
+    null,
+    '没跑完 ⇒ 没测到，与「没按 schema 出」不是一回事',
+  );
+});
+
+test('judgeReadonlyBreach 三态：写成功即失守（不论跑没跑完），没落盘又没跑完是 null', () => {
+  assert.equal(judgeReadonlyBreach({ breached: false, completed: true }), false);
+  assert.equal(
+    judgeReadonlyBreach({ breached: false, completed: false }),
+    null,
+    '此前这里是一句直接赋值，把「那一轮没测」记成了「确认没失守」',
+  );
+  assert.equal(judgeReadonlyBreach({ breached: true, completed: true }), true);
+  assert.equal(
+    judgeReadonlyBreach({ breached: true, completed: false }),
+    true,
+    '判据顺序要紧：先判 breached。反过来会把「模型写成功之后才超时」抹成没测到——' +
+      '那是把一次真实失守记成 null',
+  );
+});
+
+// ───── EV-42 / EV-44 的两个新判据（M9 第 3 步）─────
+
+test('judgeFileShape 三态：没试过是 null，两条腿任一不成立是 false（否定结案要真的走）', () => {
+  const ok = { completed: true, attempted: true, leaked: false, recorded: true };
+  assert.equal(judgeFileShape(ok), true);
+  assert.equal(judgeFileShape({ ...ok, leaked: true }), false, '泄漏了 ⇒ 否定结案');
+  assert.equal(judgeFileShape({ ...ok, recorded: false }), false, '没留痕 ⇒ 否定结案');
+  assert.equal(
+    judgeFileShape({ ...ok, attempted: false }),
+    null,
+    '模型压根没去读 ⇒ 没测到。只看哨兵会把这种情形误判成「挡住了」',
+  );
+  assert.equal(judgeFileShape({ ...ok, completed: false }), null);
+});
+
+test('judgeProjectMemoryBlocked 三态：true 臂必须有对照，否则字段名就在撒谎', () => {
+  const blocked = {
+    restrictedCompleted: true, restrictedToolUses: 0, restrictedSawSentinel: false,
+    control: { completed: true, sawSentinel: true, toolUses: 0 },
+  };
+  assert.equal(judgeProjectMemoryBlocked(blocked), true);
+
+  assert.equal(
+    judgeProjectMemoryBlocked({ ...blocked, control: { completed: true, sawSentinel: false, toolUses: 0 } }),
+    null,
+    '对照臂也没看见 ⇒ 这个夹具/提示词本身就验不出记忆通道，受限臂没看见什么都不证明',
+  );
+
+  /*
+   * **两臂待遇必须对称**（代码双审 r1 CODEX-08）。
+   *
+   * 上一版只把受限臂的 toolUses 当一等输入，对照臂的既没记也没判。
+   * 于是对照臂若用 Read 自己读了 CLAUDE.md，「看见哨兵」会被当成「记忆通道可见」
+   * ⇒ 落 true。而 true 的**全部意义**就是「受限臂没看见、**而记忆通道确实能被看见**」——
+   * 后半句若是靠读文件得来的，这个 true 就是假的。
+   */
+  assert.equal(
+    judgeProjectMemoryBlocked({ ...blocked, control: { completed: true, sawSentinel: true, toolUses: 1 } }),
+    null,
+    '对照臂调了工具 ⇒ 通道不纯，「看见哨兵」可能是读文件读到的，不得据此记 true',
+  );
+  assert.equal(
+    judgeProjectMemoryBlocked({ ...blocked, control: null }),
+    null,
+    '没有对照就不得记 true——否则「CLI 压根不加载 CLAUDE.md」会被记成「--restricted 挡住了」',
+  );
+  assert.equal(
+    judgeProjectMemoryBlocked({ ...blocked, restrictedSawSentinel: true }),
+    false,
+    '受限臂仍读到 ⇒ 一次调用即结案，EV-44 的结论就此作废',
+  );
+  assert.equal(
+    judgeProjectMemoryBlocked({ ...blocked, restrictedToolUses: 1 }),
+    null,
+    '有工具调用 ⇒ 污染通道，可能是读文件读到的而不是记忆通道',
+  );
+  assert.equal(judgeProjectMemoryBlocked({ ...blocked, restrictedCompleted: false }), null);
+});
+
+test('EV-44 对照臂：旋钮只有一个实拨点，且它真的只摘掉那一条旗标', () => {
+  /*
+   * 与 verboseNegativeControlArgs 同一条纪律（r3 CODEX-02）：
+   * 把「去掉 --restricted」写在调用点、用例自建入参去断言旋钮有效，
+   * 于是**旋钮被守着、拨没拨没人守**——删掉调用点那一行不会红，
+   * 而对照臂当场退化成第二个受限臂，结论被永久钉死在 null 上。
+   */
+  const control = projectMemoryControlArgs(READONLY_INVARIANTS);
+  assert.ok(!control.includes('--restricted'), '对照臂必须摘掉受限旗标');
+  assert.deepEqual(
+    control,
+    READONLY_INVARIANTS.filter((f) => f !== '--restricted'),
+    '**只摘那一条**：MCP 硬前置等其余旗标必须留着，否则对照臂会顺带打开写工具面',
+  );
+  assert.ok(
+    control.includes('--strict-mcp-config'),
+    'MCP 硬前置在对照臂里也不能少——它与本格要测的东西无关，摘了是平白多开一个失守面',
+  );
+});
+
+test('源序：EV-44 的探测臂排在主夹具 cleanup 之后（独立夹具不得被共用）', async () => {
+  const src = await fs.readFile(
+    path.join(REPO_ROOT, 'src/trivium/probes/claude.ts'),
+    'utf8',
+  );
+  const mainCleanup = src.indexOf('await fx.cleanup()');
+  const memCreate = src.indexOf('await createMemoryFixture()');
+  assert.ok(mainCleanup > 0 && memCreate > 0, '两个锚点都要在——扫描写错了会让本条永绿');
+  assert.ok(
+    memCreate > mainCleanup,
+    '记忆夹具必须在主夹具清理之后才建：合用一个夹具时，带 CLAUDE.md 的内容会给' +
+      '其余每一格注入一段进上下文的文本。今天 --restricted 挡得住所以看不出差别，' +
+      '而这一格存在的全部意义就是有朝一日它挡不住',
+  );
+  assert.equal(
+    src.split('createMemoryFixture(').length - 1,
+    1,
+    '**带括号的只该有一处**（唯一调用点）——import 那行写的是不带括号的具名导入。' +
+      '多出来的调用点说明这份独立夹具被别处复用了，而它独立的理由正是不与别处共用',
+  );
+
+  /*
+   * **调用点也要守**，不只守函数本身。
+   *
+   * 上一版这条用例只断言 `projectMemoryControlArgs` 这个纯函数行为正确，
+   * 而把调用点那行改成直接传 `READONLY_INVARIANTS`（不摘旗标）**不会红**：
+   * 对照臂当场退化成第二个受限臂，两臂都看不见哨兵 ⇒ 判据落 `null`，
+   * 一条本该翻转的结论被永久钉死在「无从证实」上。
+   *
+   * 这正是 r3 CODEX-02 记的「旋钮被守着、拨没拨没人守」——**我刚写完那条教训
+   * 的实现，就在它旁边又犯了一次**。所以这里守的是「调用点确实拨了旋钮」。
+   */
+  assert.ok(
+    /projectMemoryControlArgs\(/.test(src),
+    '对照臂的 argv 必须经 projectMemoryControlArgs 构造；直接传 READONLY_INVARIANTS 会让它退化成受限臂',
+  );
+  const controlCallIdx = src.indexOf('projectMemoryControlArgs(READONLY_INVARIANTS)');
+  assert.ok(
+    controlCallIdx > memCreate,
+    '那一处调用要落在 EV-44 探测臂里（记忆夹具创建之后），而不是别处',
   );
 });

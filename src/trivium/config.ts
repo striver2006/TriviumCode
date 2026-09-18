@@ -135,6 +135,7 @@ export function defaultProbe(): ProbeSection {
     trust_prompt_required: null,
     stream_json_requires_verbose: null,
     strict_mcp_config_applied: null,
+    project_memory_blocked: null,
   };
 
   return {

@@ -1,0 +1,80 @@
+{
+  "agreed": [
+    "焦点一（EV-39 语义）：取「两者的交 + 归属分治」完全成立。计划准确识别了 BACKLOG（只防自家）与裁决件 §2.5（只防别家）按字面执行时的互补缺陷，取交集既守住了设计 §11.1 判据二（防止自家硬编码不变量），又阻断了跨厂商错用配方，同时将文案豁免收敛在自家文件内，逻辑严密自洽。",
+    "焦点二（EV-43 双臂对照）：形态复验采用 argv/stdin 双臂消除版本变量完全成立。本机 CLI 从 2.1.273 漂移至 2.1.276 导致存在双重变量，单臂对比必定无法归因；同一版本下双臂对照是科学排查环境混淆的唯一途径，且调用预算完全受控。",
+    "焦点三（适配器上下半身切分）：准入脚本 import 生产参数构建与执行封装完全不算违反「不在生产适配器内实现探测逻辑」。生产封装仅提供纯参数拼装与执行能力，探测提示词、哨兵断言与三态判定全部留在准入脚本与探针侧，符合 scripts/codex-sandbox-control.mjs 先例，且严格落实了「消除漂移而非留给记得写对」。",
+    "EV-44 裁定与配套交付：第 ⑤ 件显式不做的实测依据充分；将翻转条件从易误翻转的只读数组改挂为因变量三态探针格 project_memory_blocked 完全正确；采用独立夹具避免 CLAUDE.md 指令污染其余探针格的考量非常周密。",
+    "前序教训与契约测试吸收：全面吸收了 M8 及 M9 第 2 步连修四轮的深层教训，包括 file_shape_verified 改必填三态、契约用例防空转按文件设下限、coverage-wiring 及时补录 claude 等，变异测试矩阵设计周密扎实。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/types.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/guard.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/claude-events.test.ts",
+    "test/unit/codex-adapter.test.ts",
+    "test/unit/coverage-wiring.test.ts",
+    "scripts/codex-sandbox-control.mjs",
+    ".reviews/M9-适配器本体与准入收口/plan/2026-09-18-M9-适配器本体与准入收口-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "计划 §8.1 提出将 Read,Grep,Glob 切分为分解形并在归属家适配器上判红；计划 §7.1 定义 ownsAdapterFile 包含 startsWith('<cliName>-')，使 adapters/claude-trace.ts 被判定为归属文件；而计划 §6.1 行 343 明确规定 adapters/claude-trace.ts 须导出 CLAUDE_MUST_HAVE_PATH = new Set(['Read']) 且 countTools 需匹配 toolUse.name === 'Read' 等。这导致 registry-parity.test.ts 契约测试 6 扫描时，claude-trace.ts 必定命中分解形 token 'Read' 被判红，触发「字面重建安全不变量」错误，且无法按纪律走 PROSE_EXCEPTIONS 豁免（见 test/unit/registry-parity.test.ts:1179-1186）。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §8.1 / §7.1 / §6.1",
+      "problem": "§8.1 的「分解形 token 加强判据」与 §7.1 的 ownsAdapterFile 组合后，会误杀纯事件流解析器 adapters/claude-trace.ts 中的合法工具名统计与覆盖率常量。",
+      "severity": "major",
+      "suggestion": "将 §8.1 分解形 token 的适用范围收窄为仅针对 argv 构造入口（即 adapters/<cliName>.ts），或在 ownsAdapterFile 校验分解形 token 时显式排除 *-trace.ts 与 *-events.ts。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "计划 §4.1 列举形态无关 12 项时将 entrypoint 与 version 复合写作 entrypoint/version；但计划 §4.4 明确规定新增对账用例断言「清单并集 === ClaudeProbe 全部键（从 types.ts 源码 grep）」。查阅 src/trivium/types.ts:264-286，CommonProbe 中 entrypoint 与 version 是两个独立的顶级键名。若测试从源码直接提取键集，包含 entrypoint/version 的清单在并集全等比对时必将报错。加上 EV-44 的 project_memory_blocked（形态相关，共 8 格）后，ClaudeProbe 共有 21 个键，形态无关项应为 13 项。",
+      "id": "AGY-02",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §1.2 / §4.1 / §4.4",
+      "problem": "EV-43 形态无关清单中的复合条目 entrypoint/version 与 types.ts 导出的真实键集粒度脱节，会导致对账用例断言失败。",
+      "severity": "minor",
+      "suggestion": "在 §4.1 与对账用例清单中将 entrypoint 与 version 分别作为独立项展开（形态无关项调整为 13 项），确保与 types.ts 提取出的键集合 1:1 精确匹配。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "计划 §6.2 行 390 规定 --settings 注入条件为「supported !== true 或外壳解析不出 ⇒ 不传并记原因」，未检查 file_shape_verified；而计划 §3.4 与 §6.3 行 425（及契约测试 A14）明确规定否定结案时 file_shape_verified 为 false 且 peer_deny_applied 必须读 file_shape_verified === true（见 test/unit/claude-events.test.ts:761）。若 EV-42 发生否定结案（逐文件规则不生效），supported 仍可能为 true（目录 glob 生效），按 §6.2 会依然强行注入单文件 deny 规则，造成参数注入行为与安全判定状态割裂。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §6.2 行 390 / §3.4",
+      "problem": "buildClaudeArgs 中 --settings 的注入前置条件仅判断 supported，未与 file_shape_verified 联动，在逐文件否定结案路径下行为割裂。",
+      "severity": "minor",
+      "suggestion": "在 §6.2 中明确 --settings 的注入前置须为 supported === true 且 file_shape_verified === true，在逐文件未验（null）或否定结案（false）时同属不注入分支。"
+    }
+  ],
+  "not_covered": [
+    "准入探测脚本 scripts/claude-admission-control.mjs 在本机实际运行时的网络时延与 Anthropic API 偶发抖动不在静态审查范围内。",
+    "Claude Code 远期版本（如 3.x）是否会对 --restricted 或 -p 管道逻辑发生非兼容变更不在本次范围。",
+    "除已接入的四家 CLI 之外，未来第五家 Agent 是否存在更复杂的参数边界未做跨版本完备性验证。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最关键的问题是计划 §8.1 的分解形 token 加强判据会误杀 adapters/claude-trace.ts 中的事件流解析代码。\n送审任务书指定的三个核心焦点（EV-39 取交集与归属分治、EV-43 双臂对照消除版本混淆、适配器切分复用不违反前置）均完全成立且论证周密。\nEV-44 第 ⑤ 件显式不做及独立夹具设计严谨，对前序多轮历史教训与防御契约的吸纳极为深刻。\n另有两处细节缺口：EV-43 形态无关清单中的复合条目与类型键集脱节；--settings 注入条件应与 file_shape_verified 对齐。\n方案整体架构设计极为扎实，修正上述三处后即可稳妥开工。",
+  "verdict": "request-changes"
+}

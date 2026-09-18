@@ -74,6 +74,9 @@ function result(over: Partial<CriticResult> = {}): CriticResult {
     session_id: null,
     cli_version: null,
     peer_deny_applied: false,
+    deny_skipped: 0,
+    deny_rule_count: 0,
+    deny_bytes: 0,
     command_line: '',
     ...over,
   };

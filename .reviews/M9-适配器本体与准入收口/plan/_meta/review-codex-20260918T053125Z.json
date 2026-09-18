@@ -1,0 +1,142 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "三处焦点都回原文核过，三条焦点的结论分别是：(1) EV-39「取交 + 归属分治」的落地语义正确、且比现状更严，无安全风险；但计划对它的概括失实——裁决件 §2.5 三条合起来本身就是「双侧都红 + 文案分治」，不存在「互为补集」，而计划 §7.5 打算把「互为补集」写进 BACKLOG 正文，会新增一条失实陈述。(2) 双臂消版本变量的选择对（单臂与 2.1.273 旧结论比确实归因不了），但 8 格里至少 4 格的结论取决于模型是否配合，单次观测区分不了「形态分叉」与「模型没配合」，而 §4.4 的分叉处置是要写进设计正文的持久收窄，需先加重测/控制臂再落文档。(3) 脚本 import 生产的 argv/exec 封装不违反 EV-43 的触发条件（与 scripts/codex-sandbox-control.mjs 逐字同构，已核源码），但被切到「下半身」的 deny 规则构造是 EV-42 存在的理由本身，且三种 deny 条目形状（含生产每条 deny 集都带的项目外绝对路径）的失败处置没有闭环。另查出 §8.1 新腿会打红计划自己 §6.1 的 claude-trace.ts、腿 5d 与 EV-39 前提冲突、预算与 --max-calls 默认不自洽三条。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §1.1 / §7.5",
+      "problem": "§1.1 断言 BACKLOG EV-39 与裁决件 §2.5「互为补集，不是强弱关系」，并据此把 EV-39 正文重写成「本条原文与裁决件 §2.5 互为补集、都不可单独实现」。回原文看，这个前提不成立：裁决件那一节是三条并列——①`PROBE_RECIPE_TOKENS` → 按归属厂商判红；②`DEPRECATED_TEMPLATE_TOKENS` 保持对全部适配层生效；③跨厂商错用继续盯，判据改为排他式「token 归属某厂商 ⇒ 只允许出现在该厂商的适配器，出现在别家同样判红」。①+③ 的合取就是计划 §7.2 的两侧都红；同一节还明写「EV-39 原本担心的『报错文案复述旗标』由既有 `PROSE_EXCEPTIONS` 承接」——若按计划所称「§2.5 字面实现会让 claude.ts 里的 `--restricted` 变绿」，那自家文件的误伤根本不需要豁免，PROSE_EXCEPTIONS 承接之说就落空。所以 §2.5 是更强的那一份，EV-39 原句才是弱的那一版。计划取交的落地结论没错，但把它描述成「两份互为补集、任一字面都会反向失效」是错读，而这句话正要被写进 BACKLOG 正文（§7.5 逐字写明）。",
+      "evidence": "读 .reviews/M9-ClaudeCode审核者接入/plan/2026-09-17-M9-ClaudeCode审核者接入-revised-claude.md:163-174（裁决件 §2.5 三条原文与 PROSE_EXCEPTIONS 承接那句）；读 doc/08_project/BACKLOG.md EV-39 行（原文「只对该厂商自己的适配器判红」，确认它确是弱的那一版）；读 test/unit/registry-parity.test.ts:1103-1340（现有 PROBE_RECIPE_TOKENS/DEPRECATED_TEMPLATE_TOKENS 两族与 PROSE_EXCEPTIONS，确认现状＝任一适配器出现任一 token 即红，故 §2.5 的「按归属厂商判红」必须与跨家判红合取才自洽）。",
+      "suggestion": "落地语义（§7.2/§7.3）一字不改，只改正叙述与将写入 BACKLOG 的那句：把「互为补集、都不可单独实现」改成「EV-39 原句是弱的一版（跨厂商错用会漏），裁决件 §2.5 已把它改成双侧都红、豁免只对归属家开放，本步按 §2.5 落地」；§1.1 的表格改成「弱的那份已作废」而不是「互补」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §8.1 / §6.1 / §7.1",
+      "problem": "§8.1 的加强判据（把含逗号的 token 按 `,` 切开、各段也登记为该家 token，「只在归属家自己的适配器文件上启用」）会打红计划自己 §6.1 要落的文件。§7.1 定义的 `ownsAdapterFile` 是 `basename === '<cli>.ts' || basename.startsWith('<cli>-')`，因此 `adapters/claude-trace.ts` 属于「claude 自己的适配器文件」；而 §6.1 的导出表逐字写着 `CLAUDE_MUST_HAVE_PATH = new Set(['Read'])` 就住在 claude-trace.ts（对位 zcode-trace.ts:90 的同形写法）。claude 的分解形里恰有 `Read`，于是这条腿一启用，第 2 步刚建的 claude-trace.ts 在第 9 步变红。§6.1 的收尾只说它「不需要 LITERAL_ALLOWLIST 条目」（那是 Agent 字面量扫描，不是本条黑名单），§6.2 的「绝不出现在本文件里的字面量」清单也只列 `Read,Grep,Glob` 全形、不含裸 `Read`——两处都没有为这条腿留下说明。M7 变异期望「空集兜底 `['Read','Grep','Glob']` 会同时触发 §8.1 的分解形腿」，正说明这条腿的意图就是咬住归属家文件里的裸读工具名。",
+      "evidence": "读 plan §8.1、§7.1、§6.1、§6.2 与 §10 的 M7 行；读 src/trivium/adapters/zcode-trace.ts:78-91（`ZCODE_MUST_HAVE_PATH = new Set(['Read'])`，计划 §6.1 明写对位这一行）；读 src/trivium/probes/claude.ts:160-165（READONLY_INVARIANTS 含 'Read,Grep,Glob'，故分解形含 Read）；读 test/unit/registry-parity.test.ts:1144-1165（quotedTokens 按空白与 `=` 切分，故分解形确实逃出全形黑名单）。",
+      "suggestion": "任选其一并写进文件：把加强腿的文件面收窄为 `<cli>.ts` 精确匹配（trace 文件名族不适用，M7 变异仍咬得住），或在 `不覆盖形态` 夹具里具名登记「trace 文件名族里的裸读工具名」并写明理由。不要留给实施时临场决定——那一刻最省事的做法会是加豁免或放宽这条腿。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.2 / §4.4",
+      "problem": "双臂（argv/stdin）确实是消版本变量的正确对照——单臂只跑 stdin、拿它与 2.1.273 的 argv 基准比，任何差异都同时是「形态」与「版本」两个变量。但 8 格里有 4 格（`headless_read_ok`、`trace_path_structured`、`readonly_breach`+`denied_tool_in_trace`、`project_memory_blocked`）的结论取决于模型是否配合，而 §4.2 给的判据是单次观测的二值（如 `headless_read_ok`＝「finalText 含哨兵」）。模型拒答或没去读时，两臂会呈现「一真一假」，被读成 stdin 形态分叉——EV-41 的形态 C 就发生过模型拒答哨兵、判据当场换掉的历史。而 §4.4 对分叉的处置不是「记一笔」，是「升 BACKLOG + 把探针判据适用域收窄为 argv 形态」，即把一条持久结论写进设计正文与限制清单，事后要翻正只能靠追加更正。",
+      "evidence": "读 plan §4.2 逐格装置表与 §4.4 处置；读 doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md §1.3（形态 C 模型拒答哨兵、判据改换）、§2.2 边界（本机/2.1.273/haiku/非 git 夹具）、§7.4（denied_tool_in_trace 同批又落回 null）；读 src/trivium/probes/claude.ts:818-822（headless_read_ok 在探针里是 `completed ? … : null`，行为不配合时是 null 而不是 false）。",
+      "suggestion": "在 §4.2 定一条通则：凡结论依赖模型行为（或探针判据本身有 null 出口）的格，双臂都按「没测到 ⇒ null」记，且判为分叉前必须先重测一次（§12 已留 6 次余量就是为这个）；只有 argv/stdin 两次都稳定给出相反结论时才落 §4.4 的文档级收窄。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.2",
+      "problem": "§4.2 声明「判据一律复用 `probes/claude.ts` 导出的纯函数」，并只点了 `judgeVerboseBinding`/`judgeToolSurface`/`judgeDenyCoverage` 三个。这句做不到：`headless_read_ok`、`json_schema_ok`、`trace_path_structured`、`readonly_breach`/`denied_tool_in_trace` 在探针里都不是导出的纯函数，而是内联三元（带 `completed ? … : null` 门），而 §4.2 的散文判据（「判 finalText 含哨兵」「判 result 再 parse 一次得到字段」）恰好把这道门漏掉了。脚本按这份散文重写，就正好复刻本仓连修四轮的那个塌缩：把「没测到」写成确定否定，而它随后会被当成形态分叉。",
+      "evidence": "读 src/trivium/probes/claude.ts:202/220/246/543（只有这四个 judge* 是 export），:818-822 与 :1041-1058（headless_read_ok 与 json_schema_ok 为内联 `completed ? … : null`），:837-842（trace_path_structured 同为内联）；读 plan §4.2 的判据描述列。",
+      "suggestion": "要么把这几格也抽成导出的判据函数（与新增的 `judgeFileShape` 同批，正合报告 §12 对策 1），要么在 §4.2 每一格显式写明 `completed === false ⇒ null` 这一分支；两条都要落成文字，不靠实施时记得。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "security",
+      "location": "plan §3.2 / §3.4 / §6.2",
+      "problem": "§3.2 认出 deny 集是混合集（项目相对文件 / 项目相对目录 / 项目外绝对路径）并要求三种各跑一次，但计划没有给「测出问题以后适配器怎么办」的闭环。生产侧这两格不是边缘情况：`enumerateDenyPaths` 1b 段无条件把 `.trivium`（项目相对目录）与 `expandHome(cfg.runtime.run_root)`（项目外绝对路径，即 `~/.trivium/runs`）加进集合，所以每一次真实运行的 `req.deny_paths` 都含这两种从未测过的形状。§6.2 的注入条件只写「`supported !== true` 或外壳解析不出 ⇒ 不传」，没有任何分支覆盖「CLI 因该条目报错/拒绝整份 `--settings`」（§3.2 自己就写了这个可能：「也可能让规则语法当场报错」），也没有说 §3.4 的否定结案之后逐文件规则还要不要继续注入——那种情形下适配器会持续注入一批已知无效的规则而没有任何落点记录这件事。",
+      "evidence": "读 src/trivium/freeze.ts 的 `enumerateDenyPaths`（walk 之后 1b 段 `out.add('.trivium'); out.add(expandHome(cfg.runtime.run_root));`，无条件）；读 plan §3.2 表、§3.4、§6.2 的 `--settings` 行与 `buildDenySettings` 签名；读 src/trivium/types.ts:136-212（`PathDenyProbe` 三个字段语义，`file_shape_verified` 只表达「逐文件形状有没有验过」）。",
+      "suggestion": "在 §3.2 的三种形状旁边各写一句落地决定（例如：项目外绝对路径按原样注入 / 丢弃并记原因 / 只有同项目根前缀才注入；目录条目是否展平成逐文件），并明确「§3.4 否定结案时仍不仍注入」的二选一；任何一条「不注入」的理由都要落机读落点，而不是只进散文。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §7.4 (腿 5d) / §7.1",
+      "problem": "腿 5d 断言「token 归属不得重叠」，而 EV-39 的立条前提恰恰是「M10/M11 接入的家若也用 `--tools`/`read-only` 这类通用名」——那一刻 `ownersOf('--tools')` 有两个家，5d 当场红，而「必须显式裁定」在 `PROBE_RECIPE_BY_CLI`（单值映射）里无处登记：唯一出路是改断言、或把该 token 塞进 `IGNORED_TOKENS`/删条目，即 EV-39 明写要防的那种削弱。归属本来就是多值的集合关系，单值化是不必要的收窄。",
+      "evidence": "读 doc/08_project/BACKLOG.md EV-39 行（通用名共享是它的前提）；读 plan §7.1（`PROBE_RECIPE_BY_CLI` 为 ReadonlyMap<string, readonly string[]>，值即常量本体，唯一所有权）与 §7.4 腿 5d；读 test/unit/registry-parity.test.ts:1103-1140（现状扁平表，`-s` 已用 `IGNORED_TOKENS` 式放过一格，说明「削弱」是这条路上最省事的出口）。",
+      "suggestion": "把归属改成集合语义（`ownersOf` 可返回多家；排他判据定义为「出现在任一 owner 的适配器文件即按该家判红，文案列出全部 owner」），并给重叠情形一个具名登记位（例如映射里显式的 `shared` 字段），而不是用断言把未来那一步堵死。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "performance",
+      "location": "plan §12 / §4.2 / §5.2",
+      "problem": "调用预算自相矛盾且刹车默认值会掐断主用例：(a) §12 写「脚本内置调用计数器，超 `--max-calls`（默认 12）直接退出」，而同节 EV-43 的账是「八格 × 双臂 = 14」，§4.2 单臂合计 7~8 次 ⇒ 双臂 14~16 ⇒ 默认上限 12 会让 stdin-parity 用例跑到一半退出，留下半张证据表并白烧十余次配额；(b) 表格重复计数——`path_deny` 的 2 次既算在 EV-42 的 6 里（§4.2 明写与 deny-shape 合并）又算在 EV-43 的 14 里，`project_memory_blocked` 同时进 EV-43 的 8 格与 EV-44 的 2 臂，净差 2~4 次；(c) 「doctor 2 轮 ≈ 16」隐含每轮 8 次，但 §3.3 的第三臂把每轮从 6 抬到 7，§5.2 预期路径（判 `true`）还要跑受限臂 + 对照臂 ⇒ 每轮 9 次、两轮 18，与其后各项相加约 52，超出项目负责人核定的 50。",
+      "evidence": "读 plan §12 全表与刹车段、§4.2 逐格调用数、§5.2 判据表（`true` 需要对照臂答出哨兵）、§3.3 的「现 6 → 7」；读 src/trivium/probes/claude.ts 的模型调用点（:618 Read 臂、:639 Grep 臂、:816 读臂、:959 写臂、:1041 结构臂、verbose 正/负对照）核对每轮基数。",
+      "suggestion": "把 `--max-calls` 默认值改成按用例给（或默认 ≥ 单用例最大格数），并在 §12 标明哪些格与哪一节合并计、EV-44 探针臂每轮几次；重算后与 50 的上限对一次账（或把上限按实值上调）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-08",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §6.2 / §9 A4 / §10 M3",
+      "problem": "`buildClaudeArgs` 的形态没定死：§6.2 头部写 `buildClaudeArgs(opts): string[] // 纯函数`，同一张表的 `--json-schema` 行写「值 = `await fs.readFile(req.schema_path)`」——读文件就不能是纯函数；而 A4 与 M3（「值改成 `req.schema_path`」）都要求函数体内同时有 path 与内容。实施时随手选一种会让 A1–A20 的写法与「纯函数」这条理由分叉。",
+      "evidence": "读 plan §6.2 的签名块与 `--json-schema` 行、§9 的 A4、§10 的 M3。",
+      "suggestion": "在 §6.2 明写签名与来源：schema 内容由调用方读入后传入（保持纯函数），或函数为 async 并明确串行读文件；A4/M3 按同一选择改写。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "焦点 3 的结论成立：EV-43 那句「不在生产 `adapters/claude.ts` 内实现探测逻辑」管的是探测装置（夹具、哨兵、判词）的归属，脚本 import 生产的 argv/exec 封装不违反它。已核 scripts/codex-sandbox-control.mjs:65-75 与 :194-207 —— 它 import 的正是生产的 `invokeCodex` / `readonlyArgsFromProbe` / `prepareCodexHome`，夹具与判词全在脚本里，`adapters/codex.ts` 内无一行探测逻辑，逐字同构。",
+    "§1.2 的格数核对全部成立：§3.7 表确为 15 行；EV-43 形态相关列 7 项、形态无关列 8 项（写作「共 6 格」）；`version_probe`/`probed_at`/`models`/`isolation` 确在 types.ts:264-286 的 `CommonProbe` 里而不在表中；EV-44 新格与 `headless_read_ok` 同族，归形态相关是对的。按更正后两清单并集恰覆盖 `ClaudeProbe` 全部 21 个顶层键（`entrypoint`/`version` 合成一项），对账用例可判。",
+    "§1.3 属实：设计 §3.7.1 的 stdin 行仍写「复验要在 `adapters/claude.ts` 内自建 stdin 配方」，与 BACKLOG EV-43 的「由准入阶段的独立夹具/脚本执行」相反；把它列为开工第一个动作是对的。",
+    "§1.4/§1.5 的落盘事实逐条核过 .trivium/config.local.yaml：version 2.1.276、probed_at 2026-09-18T04:38:27Z、path_deny.supported true / coverage_complete false / file_shape_verified null / rule_syntax `Read(./.reviews/probe-topic/plan/**)`（确为目录 glob）、denied_tool_in_trace null、stream_json_requires_verbose true、strict_mcp_config_applied true。版本漂移确与 2.1.273 的报告结论错开一代，双臂是消这个变量的正确装置。",
+    "§3.2 认出的三种 deny 条目形状真的存在且是混合集：freeze.ts 的 `enumerateDenyPaths` walk 出项目相对文件，1b 段无条件加 `.trivium` 与 `expandHome(cfg.runtime.run_root)`。这条是本计划相对既有留痕最实的增量之一。",
+    "§3.3 选 A（新增独立第三臂）的理由成立：types.ts:136-212 已把 `coverage_complete`（哪些读工具生效）与 `file_shape_verified`（哪种路径形状生效）拆成两格，B 方案会把刚拆开的两格并回去。",
+    "§6.3/§6.4 引用的现况基本准确：`TOOL_TRACE_CAPABILITY` 确为 tool-trace + rejectionRecorded true（base.ts:186-194）；`model_effective_source` 的取值集含 'envelope'（types.ts:1328）；`WIRED`/`realAdapters()`/`wiredAdapter()` 的语义与 §6.3 描述一致（adapters/index.ts:27-74，`realAdapters` 只遍历 `CRITIC_AGENT_IDS`，claude 的 `criticEnabled: false` 在 registry.ts:136）；`peer_deny_applied` 契约用例确在 claude-events.test.ts:761 且 `seen >= 3` 在 :789、改 4 是必改；`coverage-wiring.test.ts:32` 确为 `['agy.ts','zcode.ts']`。",
+    "§8.2 自己找出的「白名单派生与 `judgeToolSurface` 没有对账」是真的：probes/claude.ts:254 用 `READONLY_TOOLS.split(',')` 作期望集，与适配器侧派生各存一份口径，补一条一行对账切中要害；这条正是防止焦点 3 里「脚本用生产函数测生产函数」退化成循环论证的关键一环。",
+    "§6.3 对新增必填探针字段的落点清单与 step 2 的先例一致（`strict_mcp_config_applied` 当时的落点涵盖 types/probes/config/doctor/tests），且必填让 `tsc` 兜住漏填，符合报告 §12 对策 1。",
+    "§11 的验证纪律可执行：`npm run install:local` 与 `node scripts/build.mjs --with-tests` 两个命令都存在（package.json scripts、scripts/build.mjs:25），步骤表把 4~6 排在 8 之前、并在第 9 步前不动 WIRED 的顺序自洽。"
+  ],
+  "not_covered": [
+    "未跑任何代码或命令（沙箱只读）：不跑 `npm run check`、不跑 `trivium doctor`、不发起任何 claude 调用，因此本报告中关于探针与适配器行为的判断全部来自源码/注释/既有报告，未独立复现。",
+    "未独立复验 2.1.276 上只读旗标、`--json-schema` 内联、`--settings` 内联与规则语法的可接受性——那正是本计划第 4~7 步要测的东西；我只核了落盘值与版本事实。",
+    "未评估 EV-44「对 claude 侧显式不做第 ⑤ 件」这个产品裁定本身的优劣（只核了它要求的三态字段与装置是否自洽），也未核「身份声明只靠 BRIEF 首段」是否足够承载原第 ⑤ 件的目的。",
+    "未审 `test/unit/registry-parity.test.ts` 全文：只读了 :1-60、:190-320、:1055-1340，§7 引用的 1229-1291/1294-1313/1316-1356 三段只从相邻代码推断；`test/helpers/fixture.ts`（独立夹具与 git 仓库夹具的落地细节）未读。",
+    "未核 `scripts/claude-admission-control.mjs` 的取证落盘位置（脚本是否写文件、写到哪里）与 `dist/test` 构建产物路径细节；只按 codex 先例确认了「import 生产的 dist 产物」这条路可行。",
+    "为定位计划所引「裁决件 §2.5」的原文，我读了 .reviews/M9-ClaudeCode审核者接入/plan/ 下 driver 自撰的 -revised-claude.md（:150-200）与同名 -codex.md 的极窄 grep 命中行（一行）。同一目录下 -gemini.md / -glm.md 与 code/、_meta/ 下的对侧审查件按禁读清单一律未读。"
+  ],
+  "consulted": [
+    ".reviews/M9-适配器本体与准入收口/plan/2026-09-18-M9-适配器本体与准入收口-claude.md",
+    ".reviews/M9-ClaudeCode审核者接入/plan/2026-09-17-M9-ClaudeCode审核者接入-revised-claude.md",
+    ".reviews/M9-ClaudeCode审核者接入/plan/2026-09-17-M9-ClaudeCode审核者接入-codex.md",
+    ".trivium/config.local.yaml",
+    "AGENTS.md",
+    "package.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md",
+    "scripts/build.mjs",
+    "scripts/codex-sandbox-control.mjs",
+    "src/trivium/types.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/zcode.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/claude-events.test.ts",
+    "test/unit/coverage-wiring.test.ts"
+  ]
+}

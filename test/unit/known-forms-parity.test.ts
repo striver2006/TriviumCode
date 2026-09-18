@@ -259,3 +259,49 @@ test('设计 §10.1 的 F 清单与 base.ts 一致——承诺面不能只活在
       `  base.ts：${inDoc.join(', ')}`,
   );
 });
+
+test('run.v2.json 逐侧段的 deny_* 字段都必须有产出点（r3 AGY-03 ≡ GLM-03）', () => {
+  /*
+   * **schema 宣告了一个永不出现的字段**，是本仓 EV-06 / guard.ts 反复登记的形态，
+   * 而 r3 在同一处又犯了一次：`run.v2.json` 的逐侧段声明了 `deny_skipped` /
+   * `deny_rule_count`，`review.ts` 组装 `meta.critics[c]` 时**一个都没写**。
+   *
+   * 它不会报错——逐侧段的 `required` 不含这两个键、`additionalProperties` 为 true，
+   * 缺写完全静默。于是读 schema 的后来者会到 `run.json` 的逐侧记录里找一个
+   * 永远不存在的字段，而它与 `guard` 段**同名不同形**（integer vs object），
+   * 混淆面比单纯缺字段更大。
+   *
+   * 判据取「声明面 ⊆ 产出面」而非相等：产出点多写一个字段只是 schema 没跟上
+   * （下次校验会点出来），而声明了没人写是**对外撒谎**，两者不对称。
+   */
+  const schemaSrc = readFileSync(
+    path.join(REPO_ROOT, 'skills/dual-critic/schema/run.v2.json'),
+    'utf8',
+  );
+  const schema = JSON.parse(schemaSrc) as Record<string, unknown>;
+  const critic = ((schema.$defs ?? {}) as Record<string, { properties?: Record<string, unknown> }>)
+    .critic;
+  const declared = Object.keys(critic?.properties ?? {})
+    .filter((k) => k.startsWith('deny_'))
+    .sort();
+  assert.ok(
+    declared.length > 0,
+    '逐侧段一个 deny_* 都没声明——扫不到就不是「都有产出点」，是判据指错了地方',
+  );
+
+  const reviewSrc = readFileSync(path.join(REPO_ROOT, 'src/trivium/review.ts'), 'utf8');
+  /*
+   * 只认**值表达式在场**的写法（`deny_bytes: r.deny_bytes`），不认裸键名：
+   * 后者对 `deny_bytes: undefined` 照样绿，而那正是它要守的那一格
+   * （与 deny-matrix 那条 `topic: ref.topic` 的判据同一条口径，r2 CODEX-09）。
+   */
+  const missing = declared.filter(
+    (k) => !new RegExp(`\\b${k}:\\s*r\\.${k}\\b`).test(reviewSrc),
+  );
+  assert.deepEqual(
+    missing,
+    [],
+    'run.v2.json 逐侧段声明了这些字段，但 review.ts 的逐侧记录没有对应的产出点——\n' +
+      '  机读契约宣告了不存在的落点。要么补写产出点，要么从 schema 删掉声明。',
+  );
+});

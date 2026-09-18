@@ -701,6 +701,46 @@ export interface ClaudeProbe extends CommonProbe {
    * **消费方**：M9 适配器的 `availability()`、`claudeSeverity`。`null` = 未测。
    */
   strict_mcp_config_applied: boolean | null;
+
+  /**
+   * **`--restricted` 在场时，项目记忆文件（`CLAUDE.md`）是否仍被阻断进入上下文。**
+   *
+   * `true` = 仍被阻断（现状）；`false` = **不再被阻断**；`null` = 无从证实。
+   *
+   * ## 它是 BACKLOG EV-44 的**翻转条件载体**，不是一个诊断项
+   *
+   * EV-44 裁定「接入套件第 ⑤ 件（审查员身份片段）对 claude 侧**显式不做**」，
+   * 理由是实测级的：`--restricted` 会连项目记忆一起阻断，于是
+   * ①交底担心的「审查员读到 Driver 协议这个反指令」根本进不来；
+   * ②片段若注入 `CLAUDE.md`，**会被同一个旗标挡掉**，做出来是一件永远读不到的死件。
+   *
+   * 这条结论**有翻转的一天**——厂商改掉该旗标的语义时。本字段就是那天的探测器：
+   * **只有实测 `false` 的那天本条结论作废**，第 ⑤ 件要重开。
+   *
+   * ## `null` 维持原裁定，不作废
+   *
+   * `null` 是「没测到」，不是「不再阻断」。把没测到当证据，正是本主题连修四轮的
+   * 那个形状（代码双审 r4 CODEX-05 在这条 BACKLOG 文本上又抓到过一次）。
+   * 而本格的判据依赖模型配合作答，**`null` 将是常态**——同族的
+   * `denied_tool_in_trace` 四次观测里三次落 `null`。
+   *
+   * ## 为什么不挂在 `readonly_flags` 上
+   *
+   * 上一版 EV-44 把翻转条件挂在「`readonly_flags` 里还有没有那个旗标」上，**两个方向都不可信**：
+   * 那个数组会被三个**与厂商无关**的清空点清成 `[]`（工具面读回为空 / 工具面脏 /
+   * 只读负对照落文件），那一刻旗标照样在传、记忆照样被挡，条件却字面满足 ⇒ **误翻转**；
+   * 反过来厂商真改掉语义时旗标还在数组里 ⇒ **不翻转**。
+   * **「数组被清空」不等于「旗标消失」**——这层区分要留着。
+   *
+   * ## 命名
+   *
+   * 不叫 `project_memory_loaded`（正向命名会让 `null` 读起来像「没加载」）；
+   * 不叫 `restricted_blocks_memory`（把旗标名写进字段名，厂商改名即失真）。
+   *
+   * **消费方**：BACKLOG EV-44 的翻转判定、设计 §16.1 M9 行的第 ⑤ 件取舍。
+   * 与 `probed_at` 以及「本轮是否真跑过模型段」一并读——见 `strict_mcp_config_applied`。
+   */
+  project_memory_blocked: boolean | null;
 }
 
 export interface AuthCacheEntry {
@@ -1039,6 +1079,21 @@ export interface CriticRunMeta {
   parse_fallback?: boolean;
   session_id?: string | null;
   peer_deny_applied?: boolean;
+  /**
+   * 本次该侧被跳过的禁读路径条数 / 注入的规则条数 / 注入的字节数。
+   *
+   * **三格恒写（含 0）**，与本接口其余「恒写」字段同一条口径：
+   * 条件展开会让「该族没有这种事实」与「本轮没采到」落成同一个观测。
+   *
+   * r3 AGY-03 ≡ GLM-03：`run.v2.json` 的逐侧段已声明 `deny_skipped` /
+   * `deny_rule_count`，而 `review.ts` 组装逐侧记录时**一个都没写**——
+   * 机读契约宣告了不存在的产出点，读 schema 的人会到 `run.json` 的逐侧记录里
+   * 找一个永不出现的字段。真实落盘此前只有 `guard.deny_skipped`（聚合 map），
+   * 与逐侧段**同名不同形**（object vs integer），混淆面更大。
+   */
+  deny_skipped?: number;
+  deny_rule_count?: number;
+  deny_bytes?: number;
 }
 
 export interface SnapshotMeta {
@@ -1103,6 +1158,17 @@ export interface RunMeta {
     readonly_breach: boolean;
     peer_artifact_read: boolean;
     peer_deny_applied: Partial<Record<CriticId, boolean>>;
+    /**
+     * 本次注入时被跳过的禁读路径条数，逐审核者（代码双审 r2 CODEX-01）。
+     *
+     * 与 `peer_deny_applied` 成对读：那一格答「本机曾实测该形状可拦」（探针格），
+     * 这一格答「**本次**有没有路径拼不出规则」。只有两格都看，才知道第 ③ 道屏蔽
+     * 这一次到底覆盖了多少——单看前者会把「主题名带括号导致对端产出整批跳过」
+     * 读成「屏蔽正常」。
+     *
+     * 字段缺失 = 早于本轮；某侧键缺失 = 那一侧没有这种概念（不注入 `--settings`）。
+     */
+    deny_skipped?: Partial<Record<CriticId, number>>;
     forged_role_file: boolean;
     breached_files?: string[];
     /**
@@ -1431,6 +1497,46 @@ export interface CriticResult {
   usage?: Record<string, number>;
   cli_version: string | null;
   peer_deny_applied: boolean;
+  /**
+   * 本次注入时**被跳过的禁读路径条数**（拼不出一条能字面匹配的规则）。
+   *
+   * ## 为什么必须进判定面，而不是只躺在 `trace.json`
+   *
+   * `peer_deny_applied` 读的是**探针格**（`file_shape_verified`，探针夹具里的单条
+   * ASCII 路径），它对**本次**注入的那批规则一无所知。于是「某些路径被跳过」这件事
+   * 在判定面上**完全看不见**：落盘仍 `peer_deny_applied: true`，
+   * 而 `report.ts` 的第 ③ 道屏蔽降级旗标只在它为 `false` 时推。
+   *
+   * 后果是有条件但真实的：禁读条目的路径前缀就是 `.reviews/<topic>/…`，
+   * **只要主题名带一个圆括号或 glob 元字符，这一次运行里每一条对端产出都带它**
+   * ⇒ CLI 层屏蔽对「对端产出」整批失效，只剩提示语与事后轨迹核验，
+   * **而没有任何一处会说出来**（代码双审 r2 CODEX-01）。
+   *
+   * 此前唯一的记录在 `trace.json` 的 `denySettings.skippedPaths`，而**全仓没有消费方**；
+   * 更糟的是两条失败出口（超时、未产出最终回复）在写 `trace.json` **之前**就 return，
+   * 连那份记录都没有。`guard.ts` 自己写过这条纪律：
+   * 「之所以要让它出现在判定结果里而不是只躺在 `trace.json`：**宣称了不存在的消费方**
+   * 正是 EV-06 记的那个形态」。
+   *
+   * **消费方**：`report.ts` 在 `> 0` 时推一条与 `peer_deny_applied === false` 同档的降级旗标。
+   * 没有这种概念的侧（agy / zcode / codex：不注入 `--settings`）恒为 0。
+   */
+  deny_skipped: number;
+  /** 本次实际注入的 deny 规则条数；不注入的侧恒为 0（与 `deny_skipped` 成对读） */
+  deny_rule_count: number;
+  /**
+   * 本次注入的 `--settings` 字节数；不注入的侧恒为 0。
+   *
+   * **为什么它必须与另两格同路进判定面**（代码双审 r3 GLM-08 ≡ CODEX-03）：
+   * 整份 settings 进**单个 argv 项**，越界就是 spawn 失败（E2BIG），
+   * 而**条数看不出规模**——`DENY_SETTINGS_SOFT_CAP_BYTES` 的注释自己说的。
+   * 字节数才是 ARG_MAX 预算的主要消费者，是三格里最该被看见的一格。
+   *
+   * r2 §2.2 的承诺原文三格并列（`deny_rule_count` / `deny_bytes` / `deny_skipped`），
+   * 实际只落了两格：字节数此前只活在 `trace.json` 的 `denySettings.bytes` 里，
+   * 而那份记录在两条失败出口上**根本不写**——于是超软上限的情形在 `run.json` 层不可见。
+   */
+  deny_bytes: number;
   command_line: string;
   /**
    * 本次尝试结束后对该侧运行目录的凭据抹除结果。由 `runner` 在 `adapter.run` 的

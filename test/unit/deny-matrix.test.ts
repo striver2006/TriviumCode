@@ -19,6 +19,7 @@ import { execFileSync } from 'node:child_process';
 import { enumerateDenyPaths, freeze } from '../../src/trivium/freeze.js';
 import { checkPeerLeak } from '../../src/trivium/adapters/base.js';
 import { defaultConfig } from '../../src/trivium/config.js';
+import { REPO_ROOT } from '../helpers/fixture.js';
 
 /** 一份合格的审查件：front-matter 带 review schema，这是角色判定的主判据 */
 function reviewDoc(role: string): string {
@@ -355,5 +356,57 @@ test('Driver 换成 ZCode 时：glm 原稿放行，claude 审查件对 gemini �
     );
   } finally {
     await f.cleanup();
+  }
+});
+
+test('调用链：freeze() 的真实调用点必须传 topic（不只是函数支持它）', async () => {
+  /*
+   * ## 为什么这条用例扫的是**源码**而不是调用函数
+   *
+   * `FreezeInput.topic` 的注释写着「不给就退回全归档扫描——只为兼容尚未传参的
+   * 旧调用，新代码一律传」，而 `review.ts` 那个**唯一**调用点一直没传。
+   * 于是主题剪枝在真实流水线上**从未生效**：本主题 code 阶段实测禁读集 270 条，
+   * 只有 4 条属于本主题（代码双审 r1 CODEX-01）。
+   *
+   * **这是同一个错误的第二次**：`FreezeInput.driver` 的注释记着第一次——
+   * `enumerateDenyPaths` 加了 driver 参数，唯一调用入口没跟着加。
+   *
+   * 那次的对策**确实落成了用例**（上方「调用链：freeze() 透传 driver」那条），
+   * 而它**仍然没拦住这一次**——原因值得记下来：**那条用例覆盖的是
+   * 「`freeze` → `enumerateDenyPaths`」这一段，它自己调 `freeze({… topic: '某主题' …})`
+   * 时把 topic 传了**，于是更上游的「`review.ts` → `freeze`」那一段照样是断的。
+   *
+   * 所以「测试要覆盖调用链」这条对策本身有边界：**它覆盖的是你想到的那一段**。
+   * 本条补的是最上游那一段，判据因此只能是**扫真实调用点的源码**——
+   * 任何「自己构造入参去调 freeze」的用例，在这个缺口上都必然是绿的。
+   */
+  // 用 REPO_ROOT 而不是 import.meta.url 的 pathname：后者是百分号编码的 URL 片段，
+  // 仓库路径含空格或非 ASCII 时会解析失败（代码双审 r1 CODEX-09 在准入脚本里点过同一个坑）
+  const src = await fs.readFile(path.join(REPO_ROOT, 'src/trivium/review.ts'), 'utf8');
+  const calls = [...src.matchAll(/await freeze\(\{/g)];
+  assert.equal(calls.length, 1, `review.ts 里应当只有一处 freeze() 调用，实得 ${calls.length} 处——多出来的那处也要单独核`);
+
+  // 取该调用的实参块（到配对的 `});` 为止，按缩进定位足够稳）
+  const start = calls[0]!.index!;
+  const end = src.indexOf('\n    });', start);
+  assert.ok(end > start, '定位不到 freeze() 实参块的结尾——扫描写错了会让本条永绿');
+  const argBlock = src.slice(start, end);
+
+  /*
+   * **判据是「值表达式在场」，不是「键在场」**（代码双审 r2 CODEX-09）。
+   *
+   * 上一版判的是子串 `topic:`，于是 `topic: undefined`（或传一个可为 undefined
+   * 的变量）**照样绿**——而它的失效后果恰恰就是剪枝再次静默失效，
+   * 正是这条用例要守的那一格。
+   */
+  for (const key of ['topic: ref.topic', 'stage', 'critic']) {
+    assert.ok(
+      argBlock.includes(key),
+      `freeze() 的实参块里没有 ${key}——` +
+        (key.startsWith('topic')
+          ? '主题剪枝会退回全归档扫描，禁读集放大一个数量级且误伤面敞开。' +
+            '注意本条要的是**值表达式**：只写 `topic:` 而值是 undefined 同样不行'
+          : '该字段是必需的'),
+    );
   }
 });

@@ -215,6 +215,12 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
   { file: 'agents/registry.ts', why: '唯一登记处，字面量的来源本身' },
   { file: 'adapters/index.ts', why: 'Agent id → 厂商适配器的唯一接线处；新增一家在此加一行（M7b 第 2 步把 review/run-protocol 两份字面表收敛到这里）' },
   { file: 'adapters/agy.ts', why: '厂商专属适配器：文件本身即该 Agent 的命名空间' },
+  {
+    file: 'adapters/claude.ts',
+    why:
+      '厂商专属适配器：claude 调用与参数构造，与 adapters/agy.ts 同规格。' +
+      '同目录的 claude-trace.ts **不需要**本表条目——它只处理事件流，不写 Agent id 字面量（同 codex-trace.ts）',
+  },
   { file: 'adapters/zcode.ts', why: '厂商专属适配器：ZCode 调用与参数构造' },
   {
     file: 'adapters/codex.ts',
@@ -1111,15 +1117,150 @@ test('架构契约：adapters/ 不得 import probes/', async () => {
  * 已知不成立的候选——完全合理的动作——第二腿当场红，而红之后最省事的修法就是
  * 往黑名单里删条目：被削掉的恰恰是「抄作废模板」那一半，且删除者会以为自己在修空转。
  */
+/**
+ * **token → 归属厂商**的映射（BACKLOG EV-39，M9 第 3 步落地）。
+ *
+ * ## 为什么值是 import 进来的常量本体，不是手抄一份
+ *
+ * 上一版是把六个 token 手抄成一个扁平数组。手抄的那份与探针那份是两处事实，
+ * 改一处另一处还在，而「反向对账」腿正是为了盯这个——但对账本身也要有人写对。
+ * 这里改成**直接引用常量本体**，于是漏同步在结构上不可能发生：
+ * 探针加一项，这里自动跟着有。
+ *
+ * ## 归属怎么派生而不手工枚举
+ *
+ * 键取 **cliName**（= 探针文件的 basename，也是注册表里那一家的 CLI 名）。
+ * 手工写的只剩「哪个常量属于哪个 cliName」这两行，而**漏写一行会被腿 5c 打红**
+ * （它扫 `probes/` 下所有以 `READONLY_INVARIANTS` 结尾的导出常量，
+ * 要求每个都在本表里登记）。这就是 EV-39 要的「由探针字段派生」的可落地版本。
+ */
+const PROBE_RECIPE_BY_CLI: ReadonlyMap<string, readonly string[]> = new Map([
+  ['claude', READONLY_INVARIANTS],
+  ['codex', CODEX_READONLY_INVARIANTS],
+]);
+
+/**
+ * 刻意放过的 token：两字符旗标名，锁它必然误伤
+ * （设计 §11.1 判据三的「不覆盖形态」表里具名登记过）。
+ */
+const IGNORED_TOKENS: ReadonlySet<string> = new Set(['-s']);
+
+/** 展开成扁平集合供分词器比对用（归属判定另走 `ownersOf`） */
 const PROBE_RECIPE_TOKENS: readonly string[] = [
-  // claude：READONLY_INVARIANTS 的四项（probes/claude.ts）
-  '--restricted',
-  '--strict-mcp-config',
-  '--tools',
-  'Read,Grep,Glob',
-  // codex：CODEX_READONLY_INVARIANTS 的值（旗标名 -s 太短，锁它必然误伤）
-  'read-only',
+  ...new Set(
+    [...PROBE_RECIPE_BY_CLI.values()].flat().filter((t) => !IGNORED_TOKENS.has(t)),
+  ),
 ];
+
+/**
+ * 一个 token 归属哪几家。**返回集合而不是单值**（计划双审 CODEX-06）。
+ *
+ * EV-39 的立条前提逐字写着「M10/M11 接入的家**若也用**这类通用名」——
+ * 归属天然是多值的。上一版设计过一条「归属不得重叠」的断言，那与立条前提直接冲突：
+ * 重叠发生的那天它当场红，而唯一出路是改断言或把 token 塞进 `IGNORED_TOKENS`，
+ * **即 EV-39 明写要防的那种削弱**。
+ */
+function ownersOf(token: string): string[] {
+  return [...PROBE_RECIPE_BY_CLI.entries()]
+    .filter(([, tokens]) => tokens.includes(token))
+    .map(([cli]) => cli);
+}
+
+/**
+ * 某个适配器文件是不是这家自己的。
+ *
+ * 判据是**文件名前缀**：`<cli>.ts` 或 `<cli>-*.ts`。这条派生真的成立、不是巧合——
+ * 现存 `agy.ts`/`agy-events.ts`、`zcode.ts`/`zcode-trace.ts`、
+ * `codex.ts`/`codex-trace.ts`/`codex-home.ts`、`claude.ts`/`claude-trace.ts`
+ * 四家的 cliName 与文件名前缀逐一对上，而 `base.ts`/`index.ts`/`stub.ts` 不归任何家。
+ */
+function ownsAdapterFile(cli: string, relFile: string): boolean {
+  const b = path.basename(relFile, '.ts');
+  return b === cli || b.startsWith(`${cli}-`);
+}
+
+/**
+ * 分解形加强判据：把逗号连写的 token 拆开，**并按集合判子集**。
+ *
+ * 缺它会漏掉一种最自然的规避：黑名单里的是**逗号连写**的工具列表，
+ * 而 `quotedTokens` 按空白切分——写成三个独立字面量时三段都不在黑名单里，**全绿**。
+ * 那正是白名单派生被绕过后最省事的写法。
+ *
+ * ## 三处漏检，代码双审 r1 三侧各指出一个（CODEX-05 ≡ AGY-01 ≡ GLM-04）
+ *
+ * 上一版的门是 `cliOfFile && basename === cliOfFile`，即**只对归属家自己的
+ * `<cli>.ts` 生效**，且分解形集合只取该家自己的。三个后果：
+ *
+ * 1. **跨厂商文件整段 no-op**（CODEX-05，证据最硬）：
+ *    `CODEX_READONLY_INVARIANTS = ['-s','read-only']` **没有逗号项**，
+ *    于是 `decomposedTokensOf('codex')` 是**空集**。把 claude 的三个裸工具名
+ *    写进 `adapters/codex.ts`，全形黑名单（逗号连写）与分解形（空集）
+ *    **两腿都不命中 ⇒ 全绿**。而③跨厂商错用腿立条的理由逐字是
+ *    「别家文件里出现这个 token 几乎一定是抄错了配方」——同一个错误换个写法就漏了。
+ * 2. **逗号子集 / 重排漏检**（AGY-01）：`'Read,Grep'` 既不等于完整配方串、
+ *    也不匹配任何单项，**两头不沾**。
+ * 3. **实现排除的比理由宽**（GLM-04）：理由只排除 trace/events 族，
+ *    而实现把自家名下**全部非主文件**都排除了；未来重构出 `<cli>-args.ts`
+ *    并在里面拆散工具列表，可同时逃过两腿——守卫随一次重构静默收窄。
+ *
+ * ## 现在的判据
+ *
+ * 论域 = **所有适配器文件 − 分类文件豁免表**（`<cli>-trace.ts` / `<cli>-events.ts`
+ * 一族，它们按职责就要出现裸工具名做事件分类，`zcode-trace.ts` 的
+ * `ZCODE_READ_TOOLS` 是现成先例）。token 取**全部家的并集**，不再按文件归属挑。
+ */
+const DECOMPOSED_EXEMPT_SUFFIXES: readonly string[] = ['-trace', '-events'];
+
+/** 该文件是不是「按职责需要裸工具名」的分类文件 */
+function isClassifierFile(relFile: string): boolean {
+  const b = path.basename(relFile, '.ts');
+  return DECOMPOSED_EXEMPT_SUFFIXES.some((suf) => b.endsWith(suf));
+}
+
+/**
+ * 全部家的分解形 token 并集（去空白归一）。
+ *
+ * **归一要去空白**（CODEX-05 的第二半）：`'Read, Grep, Glob'` 按 `,` 切出来的是
+ * `Read` / ` Grep` / ` Glob`，不 trim 就对不上。
+ */
+function allDecomposedTokens(): Set<string> {
+  const out = new Set<string>();
+  for (const tokens of PROBE_RECIPE_BY_CLI.values()) {
+    for (const t of tokens) {
+      if (!t.includes(',')) continue;
+      for (const part of t.split(',')) {
+        const v = part.trim();
+        if (v && !IGNORED_TOKENS.has(v)) out.add(v);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * 一个带引号的字面量是不是「某家配方的逗号子集或重排」。
+ *
+ * 判据：按 `,` 切开、去空白、去空项之后，**元素数 ≥ 2 且全部属于同一家的分解形集合**。
+ * 于是 `'Read,Grep'`（子集）、`'Glob,Read,Grep'`（重排）、`'Read, Grep, Glob'`（带空格）
+ * 都会被认出来，而普通的逗号串（如 `'a,b'`）不会。
+ */
+function decomposedSubsetOwner(raw: string): string | null {
+  if (!raw.includes(',')) return null;
+  const parts = raw.split(',').map((x) => x.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  for (const [cli, tokens] of PROBE_RECIPE_BY_CLI.entries()) {
+    const own = new Set<string>();
+    for (const t of tokens) {
+      if (!t.includes(',')) continue;
+      for (const part of t.split(',')) {
+        const v = part.trim();
+        if (v) own.add(v);
+      }
+    }
+    if (own.size > 0 && parts.every((x) => own.has(x))) return cli;
+  }
+  return null;
+}
 
 /** 已作废的演进设计 §7.2 模板所写的旗标名——不依赖探针，防空转判据另设（见第二腿） */
 const DEPRECATED_TEMPLATE_TOKENS: readonly string[] = ['--allowed-tools'];
@@ -1141,23 +1282,26 @@ const BANNED_PROBE_TOKENS: readonly string[] = [
  * **在全文上跑、由偏移反算行号**，不逐行切：剥离器保证模板字面量可跨行，
  * 逐行切会让跨行串的中间行取不到成对引号而静默返回空集（r2 AGY-01 ≡ CODEX-04 ≡ GLM-05）。
  */
-function quotedTokens(src: string): Array<{ token: string; line: number }> {
-  const out: Array<{ token: string; line: number }> = [];
+function quotedTokens(src: string): Array<{ token: string; line: number; whole: string }> {
+  const out: Array<{ token: string; line: number; whole: string }> = [];
   const re = /(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
   for (let m = re.exec(src); m !== null; m = re.exec(src)) {
     const line = src.slice(0, m.index).split('\n').length;
-    for (const raw of (m[2] ?? '').split(/\s+/)) {
+    // `whole` 是这条字面量的**完整内容**（不含引号）。④-a 判整体、④-b 判切片，
+    // 两者判据不同却共用一次扫描——所以两样都要带出去（r3 CODEX-06）
+    const whole = m[2] ?? '';
+    for (const raw of whole.split(/\s+/)) {
       if (!raw) continue;
       // 两端剥非旗标字符（中英文标点、括号），再把 `--flag=value` 切成两半
       const trimmed = raw.replace(/^[^\w-]+/u, '').replace(/[^\w,./-]+$/u, '');
       if (!trimmed) continue;
       const eq = trimmed.indexOf('=');
       if (eq > 0) {
-        out.push({ token: trimmed.slice(0, eq), line });
+        out.push({ token: trimmed.slice(0, eq), line, whole });
         const val = trimmed.slice(eq + 1);
-        if (val) out.push({ token: val, line });
+        if (val) out.push({ token: val, line, whole });
       } else {
-        out.push({ token: trimmed, line });
+        out.push({ token: trimmed, line, whole });
       }
     }
   }
@@ -1176,6 +1320,34 @@ function quotedTokens(src: string): Array<{ token: string; line: number }> {
  * 准入很窄：**只收 `availability()` / 报错文案这类用户可见字符串**，
  * 即「该 token 出现在这里不是为了拼 argv」。凡是进 argv 的一律不豁免。
  */
+/**
+ * ④-a / ④-b 的判据本体，**主扫与反面夹具共用同一份**。
+ *
+ * 抽出来的理由是 CODEX-06 要的那条反面夹具：夹具若自己重写一遍判据，
+ * 就成了「两份手写判据」，会随措辞漂移而无物报警——本仓对这个形状的定性
+ * 一贯比缺陷本身更重（见准入脚本「判据一律 import 探针 judge*」那条）。
+ *
+ * 返回 offender 描述串，空数组即这份源码没有分解形规避。
+ */
+function decomposedOffendersIn(rel: string, raw: string): string[] {
+  const out: string[] = [];
+  const decomposed = allDecomposedTokens();
+  for (const { token, line, whole } of quotedTokens(stripCommentsKeepStrings(raw))) {
+    if (isProseException(rel, token)) continue;
+    // ④-a 单项分解形：`'Read'` 这类**独占整条字面量**的裸工具名
+    if (decomposed.has(token) && whole.replace(/\s+/g, '') === token) {
+      out.push(`${rel}:${line}  ${token}  [分解形：把逗号连写的安全不变量拆开写，逃过了全形黑名单]`);
+      continue;
+    }
+    // ④-b 逗号子集 / 重排 / 带空格：`'Read,Grep'`、`'Glob,Read,Grep'`、`'Read, Grep, Glob'`
+    const owner = decomposedSubsetOwner(token);
+    if (owner) {
+      out.push(`${rel}:${line}  ${token}  [分解形子集/重排：${owner} 家配方的一个子集，两头不沾全形黑名单]`);
+    }
+  }
+  return out;
+}
+
 const PROSE_EXCEPTIONS: ReadonlyArray<{ file: string; token: string; why: string }> = [
   {
     file: 'src/trivium/adapters/codex.ts',
@@ -1201,6 +1373,28 @@ test('文案豁免纪律：每条都要写明理由，且不得豁免已经不�
     const hit = quotedTokens(stripCommentsKeepStrings(raw))
       .some((t) => t.token === e.token && banned.has(t.token));
     assert.ok(hit, `豁免 ${e.file}/${e.token} 已经不被需要（该文件里不再有这个命中），请删掉它`);
+  }
+
+  /*
+   * **排他：豁免只能开给 token 归属家自己的文件**（BACKLOG EV-39 的真正堵口）。
+   *
+   * 这才是「比现状更严」的那一半。现状是任一适配器出现任一 token 即红，
+   * 而误伤时最省事的修法是**往黑名单里删条目**——EV-39 逐字写明要防这个。
+   * 加了归属分治之后，误伤只能从**自家**豁免；跨家想豁免直接不允许，
+   * 因为别家文件里出现这个 token 几乎一定是抄错了配方，那正是要盯的东西。
+   *
+   * 现存唯一一条豁免（read-only @ adapters/codex.ts）恰好合规：改动零行为、
+   * 新增一条不可绕过的边界。
+   */
+  for (const e of PROSE_EXCEPTIONS) {
+    const owners = ownersOf(e.token);
+    if (owners.length === 0) continue; // 作废模板族不按厂商分，不受本条约束
+    const rel = e.file.replace(/^src\/trivium\//, '');
+    assert.ok(
+      owners.some((c) => ownsAdapterFile(c, rel)),
+      `豁免 ${e.file}/${e.token} 跨了厂商：该 token 归属 ${owners.join('、')}，` +
+        '别家文件里出现它是跨厂商错用，不得用文案豁免放行',
+    );
   }
 });
 
@@ -1229,25 +1423,81 @@ test('架构契约：adapters/ 不得字面重建探针的安全不变量', asyn
   const adapterFiles = await collectSourceFiles(path.join(REPO_ROOT, 'src/trivium/adapters'));
   assert.ok(adapterFiles.length > 0, '适配层目录不该是空的——扫描范围写错了会让本条永绿');
 
-  const banned = new Set(BANNED_PROBE_TOKENS);
+  /*
+   * **判定分三格，不是二格**（BACKLOG EV-39，M9 第 3 步）。
+   *
+   * 两份上游文字互为补充，**按任一字面单独实现都会让主守卫反向失效**：
+   *   - BACKLOG EV-39 原句「只对该厂商自己的适配器判红」⇒ 跨厂商错用漏检；
+   *   - 裁决件 §2.5 bullet 3「只允许出现在该厂商的适配器」若被**孤立**读成判绿规则
+   *     ⇒ 自家字面重建漏检，直接违反判据二。
+   * 而 §2.5 的 bullet 1 逐字是「按归属厂商判红」——①+③ 的合取才是完整语义，
+   * 落地取那个合取：**两种情形都红，但归因分开、豁免面按归属收窄**。
+   */
+  const deprecated = new Set(DEPRECATED_TEMPLATE_TOKENS);
+  const recipe = new Set(PROBE_RECIPE_TOKENS);
   const offenders: string[] = [];
   for (const abs of adapterFiles) {
     const raw = await fs.readFile(abs, 'utf8');
     const rel = path.relative(REPO_ROOT, abs);
+    const cliOfFile = [...PROBE_RECIPE_BY_CLI.keys()].find((c) => ownsAdapterFile(c, rel)) ?? null;
+
     for (const { token, line } of quotedTokens(stripCommentsKeepStrings(raw))) {
-      if (!banned.has(token)) continue;
       if (isProseException(rel, token)) continue;
-      offenders.push(`${rel}:${line}  ${token}`);
+
+      // ① 作废模板族：全局生效，不按厂商——该族的威胁模型与抄进哪家无关
+      if (deprecated.has(token)) {
+        offenders.push(`${rel}:${line}  ${token}  [抄了已作废的演进设计 §7.2 模板]`);
+        continue;
+      }
+      if (!recipe.has(token)) continue;
+
+      const owners = ownersOf(token);
+      if (cliOfFile && owners.includes(cliOfFile)) {
+        // ② 自家字面重建：违反判据二
+        offenders.push(`${rel}:${line}  ${token}  [字面重建自家安全不变量 → 改用 readonlyArgsFromProbe 透传]`);
+      } else {
+        // ③ 跨厂商错用：该 token 不归这个文件的家（含 base/index/stub 这类不归任何家的文件）
+        offenders.push(
+          `${rel}:${line}  ${token}  [跨厂商错用：该 token 归属 ${owners.join('、') || '(无)'}]`,
+        );
+      }
+    }
+
+    /*
+     * ④ **分解形加强判据**：论域是**所有适配器文件 − 分类文件**（trace/events 族）。
+     *
+     * 不再只对归属家的 `<cli>.ts` 生效——那样会让跨厂商文件整段 no-op
+     * （codex 家配方无逗号项 ⇒ 集合为空），而③立条的理由正是要盯跨厂商错用
+     * （代码双审 r1 CODEX-05 ≡ AGY-01 ≡ GLM-04）。
+     */
+    if (!isClassifierFile(rel)) {
+      /*
+       * ④-a 判**整条字面量**，不判切出来的片段（代码双审 r3 CODEX-06）。
+       *
+       * r2 §2.10 承诺过「去空白后**整体等于**某个分解形 token」，理由是扩域
+       * （从「归属家的 <cli>.ts」扩到「所有非分类适配器文件」）会把散文也卷进来：
+       * `'Read tool unavailable'` 这种字符串按空白切开后，片段 `Read` 当场命中，
+       * 唯一出口是 `PROSE_EXCEPTIONS`——而它的粒度已自记为过粗（EV-45）。
+       *
+       * **那条承诺没落地**：实现与 r1 逐字相同，扩域做了、扩域的副作用收口没做。
+       * 当前仓里恰好没有这样的字符串，所以它一直是绿的——
+       * 典型的「先绿着、等下一次真实文案出现」。
+       *
+       * 现在按承诺实现：整条字面量去空白后整体等于某个 token 才算规避。
+       * 逗号连写形态（`'Read,Grep'`）由 ④-b 覆盖，两者不重叠。
+       */
+      offenders.push(...decomposedOffendersIn(rel, raw));
     }
   }
 
   assert.deepEqual(
     offenders,
     [],
-    '适配层字面重建了探针落盘的安全不变量，违反 11.1 旗标归属判据二：\n' +
+    '适配层出现了不该出现的 argv token（违反 11.1 旗标归属判据二 / EV-39 排他判据）：\n' +
       offenders.join('\n') +
-      '\n  这些值必须经 readonlyArgsFromProbe 从 probe.<cli>.readonly_flags 原样取用。' +
-      '字面重建等于把「实测证明它管用」换成「文档上写着它应该管用」。',
+      '\n  自家的：必须经 readonlyArgsFromProbe 从 probe.<cli>.readonly_flags 原样取用——' +
+      '字面重建等于把「实测证明它管用」换成「文档上写着它应该管用」。' +
+      '\n  别家的：几乎一定是抄错了配方，那正是跨厂商错用要盯的东西。',
   );
 });
 
@@ -1260,19 +1510,81 @@ test('架构契约：黑名单两族各自的防空转判据', async () => {
    * 就是实测后才升为硬前置的，这条路走过一次。缺了反向对账，M9 适配器字面重建
    * 那条新旗标同样不红，而注释却写着「任一项即判红」。
    */
-  // ── 反向对账：探针的配方常量 ⊆ 黑名单 ──
-  const recipe = new Set(PROBE_RECIPE_TOKENS);
-  const uncovered = [...READONLY_INVARIANTS, ...CODEX_READONLY_INVARIANTS]
-    // `-s` 刻意放过：两字符旗标名锁了必然误伤（设计 11.1 判据三「不覆盖形态」表）
-    .filter((t) => t !== '-s')
-    .filter((t) => !recipe.has(t));
-  assert.deepEqual(
-    uncovered,
-    [],
-    '探针的只读不变量新增了项，但 PROBE_RECIPE_TOKENS 没跟上：\n  ' +
-      uncovered.join('、') +
-      '\n  适配层字面重建这些新项不会被打红。加常量项时必须同步本表。',
+  /*
+   * ── 腿 5：**派生关系没被绕过**（EV-39 换掉了已退化的反向对账）──
+   *
+   * 旧的反向对账断言「探针常量 ⊆ 黑名单」。那在手抄年代有意义，而 M9 第 3 步
+   * 把 `PROBE_RECIPE_TOKENS` 改成**从常量本体派生**之后，它**恒真** ⇒ 就是空转。
+   * 留着一条恒真的断言比没有更糟：它看起来在守，实际什么都不守。
+   *
+   * 换成四条真能红的：
+   */
+  // 5a：映射的键必须是注册表里真实存在的 cliName
+  const knownClis = new Set(AGENTS.map((a) => a.cliName));
+  for (const cli of PROBE_RECIPE_BY_CLI.keys()) {
+    assert.ok(knownClis.has(cli), `PROBE_RECIPE_BY_CLI 的键「${cli}」不是注册表里的 cliName`);
+  }
+
+  /*
+   * 5b：映射的值必须与 import 进来的常量**同一份**，不许就地抄一份。
+   *
+   * **判据是引用相等，不是 `deepEqual`**（代码双审 r1 GLM-03）：
+   * `deepEqual` 只比内容，把 `['claude', READONLY_INVARIANTS]` 改成
+   * `['claude', [...READONLY_INVARIANTS]]` 这类就地抄本**照样绿**。
+   * 此后探针常量再新增硬前置项时不会流进映射，而现役各腿全都不响——
+   * 5c 只按文件名查登记，正向防空转腿只抓「token 从探针消失」的**删除**方向，
+   * 抓不到「新增项没进黑名单」的**添加**方向。
+   *
+   * 也就是说 EV-39 最重要的收益（派生关系结构性成立）有一半靠这条腿守着，
+   * 而上一版的它**守不住自己声称守的编辑形态**——那正是本轮被三侧打中三次的
+   * 「声称强于事实」。
+   */
+  assert.ok(
+    PROBE_RECIPE_BY_CLI.get('claude') === READONLY_INVARIANTS,
+    'claude 的映射值不是 READONLY_INVARIANTS 本身——就地抄一份会让新增项不流进黑名单',
   );
+  assert.ok(
+    PROBE_RECIPE_BY_CLI.get('codex') === CODEX_READONLY_INVARIANTS,
+    'codex 的映射值不是 CODEX_READONLY_INVARIANTS 本身',
+  );
+
+  /*
+   * 5c：**probes/ 下每个只读不变量常量都要在本表里登记**。
+   *
+   * 这是 EV-39 要的「归属由探针字段派生而不手工枚举」的可落地版本：
+   * 手工写的那两行仍在，但**第五家探针加了常量而映射没跟上，这里当场红**。
+   */
+  const probeSrcFiles = await fs.readdir(path.join(REPO_ROOT, 'src/trivium/probes'));
+  const unregistered: string[] = [];
+  for (const f of probeSrcFiles.filter((x) => x.endsWith('.ts'))) {
+    const raw = await fs.readFile(path.join(REPO_ROOT, 'src/trivium/probes', f), 'utf8');
+    if (!/export const \w*READONLY_INVARIANTS\b/.test(raw)) continue;
+    const cli = path.basename(f, '.ts');
+    if (!PROBE_RECIPE_BY_CLI.has(cli)) unregistered.push(f);
+  }
+  assert.deepEqual(
+    unregistered,
+    [],
+    'probes/ 下有只读不变量常量，但 PROBE_RECIPE_BY_CLI 没登记它的归属：\n  ' +
+      unregistered.join('、') +
+      '\n  不登记的话，那一家的 token 在任何适配器里都不会被判红。',
+  );
+
+  /*
+   * 5d（原腿 4）：**某家有配方 token，却没有它的适配器文件 ⇒ 归属判据对它生效于空集**。
+   *
+   * 这条正是 EV-39 当初暂缓的那句话的机器化版本——「现在把 claude 的三个 token
+   * 限定到该文件，等于让它们对空集生效」。文件一建就绿，**理由消失这件事因此
+   * 变成可核的，而不是靠人记得**。
+   */
+  const adapterRels = (await collectSourceFiles(path.join(REPO_ROOT, 'src/trivium/adapters')))
+    .map((abs) => path.relative(REPO_ROOT, abs));
+  for (const cli of PROBE_RECIPE_BY_CLI.keys()) {
+    assert.ok(
+      adapterRels.some((rel) => ownsAdapterFile(cli, rel)),
+      `${cli} 的配方 token 已登记，但 adapters/ 下没有它的文件——归属判据对它生效于空集`,
+    );
+  }
 
   // ── 正向防空转（配方族）：token 必须还是探针代码在用的字面量 ──
   const probeFiles = await collectSourceFiles(path.join(REPO_ROOT, 'src/trivium/probes'));
@@ -1385,5 +1697,43 @@ test('镜头键对账：lenses.yaml 顶层键必须是注册表里的 Agent id',
     missing,
     [],
     '已启用为审核者的 Agent 缺镜头键，该侧会静默按通用标准审：\n  ' + missing.join('、'),
+  );
+});
+
+test('④-a 反面夹具：散文里的工具名不得误伤，独占字面量必须抓住（r3 CODEX-06）', () => {
+  /*
+   * codex 要这条夹具的理由逐字是：「现在这条会红，夹具能让这个差异**无法靠措辞含混过去**」。
+   *
+   * 扩域（r1 CODEX-05）把论域从「归属家的 <cli>.ts」扩到「所有非分类适配器文件」，
+   * 于是任何**带引号字符串**里出现独立的工具名词都会被判规避——包括讲给用户听的散文。
+   * r2 §2.10 承诺连同扩域一起收口，**承诺没落地**（判据与 r1 逐字相同）。
+   *
+   * 两个方向都要锁：只锁「不误伤」会让判据退化成恒不报；
+   * 只锁「抓得住」则回到 r1 那个误伤面。
+   */
+  const tool = [...allDecomposedTokens()][0];
+  assert.ok(tool, '分解形 token 集合为空——判据指错了地方，下面两条都会恒真');
+
+  const FAKE = 'src/trivium/adapters/__fixture__.ts';
+
+  // 方向一：散文**不得**误伤。这正是扩域带来、而 r2 承诺收口却没收的那一面
+  assert.deepEqual(
+    decomposedOffendersIn(FAKE, `const msg = '${tool} tool unavailable';`),
+    [],
+    '散文里提到工具名不是「分解形规避」——把它判红只会逼出一条粒度过粗的豁免（EV-45）',
+  );
+
+  // 方向二：独占整条字面量的裸工具名**必须**抓住，这是 ④-a 存在的全部理由
+  assert.equal(
+    decomposedOffendersIn(FAKE, `const t = '${tool}';`).length,
+    1,
+    '裸工具名独占一条字面量，就是把逗号连写的安全不变量拆开写——必须报',
+  );
+
+  // 方向二之二：前后空白不算脱身（承诺原文是「**去空白后**整体等于」）
+  assert.equal(
+    decomposedOffendersIn(FAKE, `const t = '  ${tool}  ';`).length,
+    1,
+    '加几个空格不该让它逃掉——判据是去空白后整体相等',
   );
 });

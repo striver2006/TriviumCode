@@ -542,14 +542,24 @@ export const zcodeAdapter: CriticAdapter = {
       /*
        * **读 `file_shape_verified`，不读 `supported`**（BACKLOG EV-42，代码双审 r4 CODEX-03）。
        *
-       * `supported` 回答「这家 CLI 有没有路径级 deny 机制」；这里要断言的是
-       * **「本次注入的那些逐文件路径真的挡住了」**——两件事。claude 侧
-       * `supported` 为 true，而实测用的是**目录 glob**、`deny_paths` 是**逐文件清单**，
-       * 等价性未验；照读 `supported` 就会把一件没测过的事记成 true。
+       * `supported` 回答「这家 CLI 有没有路径级 deny 机制」；这一格回答的是
+       * **「本机曾实测该逐文件形状可拦」**——两件事。
+       *
+       * **措辞要准**（代码双审 r2 GLM-01）：上一版这里写的是「本次注入的那些逐文件
+       * 路径真的挡住了」，那**比字段能知道的更多**——它的取值来自探针夹具里的
+       * 单条 ASCII 路径，对**本次**注入的那批规则（可能含被跳过的、含 glob 元字符的）
+       * 一无所知。逐条结果看 `trace.json` 的 `denySettings.skippedPaths`。
        *
        * 三态在这里天然安全：`null`（没验过）与 `false` 都判不过 `=== true`。
        */
       peer_deny_applied: probe.path_deny.file_shape_verified === true,
+      /*
+       * 该侧不注入 `--settings`（无路径级 deny 机制），**恒为 0 且这是能说明理由的零**：
+       * 含义是「没有这种概念」，不是「注入了但一条都没跳过」。
+       */
+      deny_skipped: 0,
+      deny_rule_count: 0,
+    deny_bytes: 0,
       command_line: out.commandLine,
     };
   },

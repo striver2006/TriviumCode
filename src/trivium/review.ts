@@ -653,6 +653,27 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       archiveRoot: ctx.archiveRoot,
       stage,
       critic,
+      /*
+       * **`topic` 必须传**（代码双审 r1 CODEX-01）。
+       *
+       * 漏传它，`enumerateDenyPaths` 的主题剪枝就退回**全归档扫描**——
+       * 而这正是本文件唯一的 `freeze()` 调用入口，于是那条剪枝在真实流水线上
+       * **从未生效过**。本主题 code 阶段实测：禁读集 270 条，**只有 4 条属于本主题**，
+       * 其余 266 条是别的主题的历史产出。
+       *
+       * 后果两重：①注入侧——claude 的 `--settings` 按这个集合逐条生成，
+       * 规模放大一个数量级（实测 1620 条规则 / 202,785 字节 / 占 ARG_MAX 的 19.3%）；
+       * ②隔离侧——`freeze.ts` 自己写明剪枝的理由是「非 Claude Driver 下，全仓其它主题的
+       * `-claude.md` 原稿整批进禁读集，审核者正常读取即 peer_leak 作废重跑」，
+       * 那条被点名要防的**误伤面此刻是敞开的**。
+       *
+       * **这是同一个错误的第二次**：下面 `driver` 字段的注释记的就是第一次
+       * （`enumerateDenyPaths` 加了参数而唯一调用入口没跟着加）。那次立的对策
+       * 「测试要覆盖调用链，不只是函数」没拦住这一次——所以本次补的是
+       * `test/unit/deny-matrix.test.ts` 里一条**扫调用点源码**的用例，
+       * 而不是又一条只测被调函数的用例。
+       */
+      topic: ref.topic,
       subjectPath,
       ...(opts.diffBase ? { base: opts.diffBase } : {}),
       ...(frozenDiffText !== null ? { diffText: frozenDiffText } : {}),
@@ -1168,6 +1189,10 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     peer_deny_applied: Object.fromEntries(
       sides.map((c) => [c, results[c]?.peer_deny_applied ?? false]),
     ),
+    // 逐侧的跳过条数进 run.json，report 据此推降级旗标（代码双审 r2 CODEX-01）
+    deny_skipped: Object.fromEntries(
+      sides.map((c) => [c, results[c]?.deny_skipped ?? 0]),
+    ),
     forged_role_file: false,
     breached_files: verdict.breachedFiles,
     /*
@@ -1319,6 +1344,22 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       parse_fallback: r.status === 'parse_fallback',
       session_id: r.session_id,
       peer_deny_applied: r.peer_deny_applied,
+      /*
+       * **三格恒写**，与上方 `profile_requested` / `model_provider` 同一条口径
+       * （条件展开会让「该族没有这种事实」与「本轮没采到」落成同一个观测）。
+       *
+       * 代码双审 r3 AGY-03 ≡ GLM-03：`run.v2.json` 的逐侧段已声明
+       * `deny_skipped` / `deny_rule_count`，而这里**一个都没写**——
+       * 机读契约宣告了不存在的产出点（本仓 EV-06 反复登记的形态），
+       * 读 schema 的人会到逐侧记录里找一个永不出现的字段。
+       *
+       * 真实落盘此前只有 `meta.guard.deny_skipped`，那是**聚合 map**：
+       * 与逐侧段同名不同形（object vs integer），混淆面比缺字段更大。
+       * 两段各司其职——聚合面给 `report.ts` 推旗标，逐侧面留逐侧事实。
+       */
+      deny_skipped: r.deny_skipped,
+      deny_rule_count: r.deny_rule_count,
+      deny_bytes: r.deny_bytes,
     };
   }
   /*

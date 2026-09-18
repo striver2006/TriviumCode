@@ -28,8 +28,10 @@ import { ZCODE_MUST_HAVE_PATH } from '../../src/trivium/adapters/zcode-trace.js'
 const ADAPTERS = path.join(REPO_ROOT, 'src/trivium/adapters');
 const read = (f: string): string => readFileSync(path.join(ADAPTERS, f), 'utf8');
 
-test('两家结构化轨迹的适配器都把覆盖率填进了结果', () => {
-  for (const f of ['agy.ts', 'zcode.ts']) {
+test('结构化轨迹的适配器都把覆盖率填进了结果', () => {
+  // claude 随 M9 第 3 步加入：不加这一行，删掉它那两行填值没有任何用例会红，
+  // 而该侧的 verification.path 档位会恒为 unavailable(no-counts)
+  for (const f of ['agy.ts', 'zcode.ts', 'claude.ts']) {
     const src = read(f);
     assert.match(
       src,

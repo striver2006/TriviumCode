@@ -1,0 +1,153 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "三处重点都实跑/实测核过：①主题剪枝确实生效——本次运行 run.json 的 deny_paths 恰为 11 条，我用同一函数复算「省略 topic / 给定 topic」得 274 → 11（payload 156,320 → 6,119 字节，同一时刻约 25 倍；「约 30 倍」量级属实、两个乘数自洽），但剪枝的论域是主题名字面串，同一份工作换过名的那份对端意见就此不再入集（本仓 M9 正是两处目录）。②路径语法门只防「破坏语法」不防「改变语义」：`[…]` 生成的规则与它自己的字面路径不匹配（静默失效、连 skipped 都不记），`*` 静默扩大 deny 面。③五道闸里第四道声称强于事实（注释说「产物」、实现比源文件，且 r1 已接受的「产物哈希」断言没落地也没登记偏差），恢复面还漏了 case.file ∉ targets 这一格（会让变异残留在工作树里）。最危险的一条是①的连带：路径里含括号时（主题名 `M9(收口)` 实测过 validateTopic，HOME/项目路径带括号同理）对端产出的禁读规则整批跳过，而落盘仍记 peer_deny_applied=true、报告不推任何降级旗标，唯一记录躺在无消费方的 trace.json 里，超时/失败出口连它都不写。无 blocker；本步不改对外行为、criticEnabled 仍 false，故按 request-changes。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/adapters/claude.ts:262-300（denyPathRepresentable / buildDenySettings）、:686-696、:760-782、:483；src/trivium/report.ts:268-271；src/trivium/naming.ts:40-80",
+      "problem": "含 `(` 或 `)` 的路径被判「无法表示成规则」后**只是跳过**（记进 skipped 继续），不是 fail-closed。而禁读条目的路径前缀就是 `.reviews/<topic>/…`，所以只要主题名带括号（或 HOME/项目路径带括号使绝对路径条目带括号），这一次运行里**每一条对端产出**都带括号 ⇒ 第③道屏蔽（CLI 层 permissions.deny）对「对端产出」整批失效，只剩提示语与事后轨迹核验。更糟的是判定面看不出来：`peer_deny_applied` 读的是探针格（`file_shape_verified === true`，与本次注入的规则无关）⇒ 落盘仍 true，report.ts 的「第③道屏蔽降级」只在它为 false 时推。唯一记录是 trace.json 的 degradations/denySettings.skippedPaths，而全仓没有任何消费方读它（guard.ts:99 自己写着这类东西「要出现在判定结果里而不是只躺在 trace.json」）；两条失败出口（超时、未产出最终回复）在写 trace.json **之前** return，连这份记录都没有。",
+      "evidence": "只读实测（用仓库现成 dist 产物复算）：validateTopic('M9(收口)') → {ok:true}；buildDenySettings(['.reviews/M9(收口)/code/x-gemini.md','.reviews/M9(收口)/plan/y-glm.md','.env.example','.trivium'], tools, shape) ⇒ 两条带括号路径逐条进 skipped、其余照常产规则（ruleCount=12/bytes=296）。本次运行 .reviews/M9-适配器本体与准入收口/code/_meta/run-20260918T084101Z.json 的 deny_paths 共 11 条，其中 8 条是本主题对端产出（全部共用同一主题前缀，主题名一带括号会整批进 skipped），另 3 条是 .env.example / .trivium / 运行根。读过 src/trivium/naming.ts:40-80（只挡空白、分隔符、`..`、控制符、前导点；括号/逗号/星号/方括号全放行）、src/trivium/adapters/claude.ts:262-300、686-696、760-782、483、src/trivium/report.ts:268-271、src/trivium/guard.ts:95-105、test/unit/claude-adapter.test.ts:226-265（A21 只断言「跳过并逐条记名」，没有断言跳过之后判定面如何）。",
+      "suggestion": "让「跳过」在判定面可见：①把本次注入规模与跳过条数（ruleCount / bytes / skipped.length）回传进 CriticResult（或并入 guard），report 在 skipped>0 时推一条与 `peer_deny_applied===false` 同档的降级旗标；②或在 validateTopic 处就挡掉括号（主题名是归档目录名，`(`/`)` 是可达的路径字符，拒之比事后静默跳过便宜）。两条不必都做，但至少要有一条。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/adapters/claude.ts:238-263；src/trivium/naming.ts:40-80",
+      "problem": "这道门的判据是「会不会破坏规则语法」，但规则体是 **glob**（探针实测落盘的 rule_syntax 里带 `**`，那只有在被当 glob 解读时才有意义），所以真正决定挡不挡得住的是**语义**。放行的 `* ? [ ]` 会改变匹配集合：`[3]` 在 glob 里匹配单个字符 `3`，于是 `.reviews/M9[3]/…` 生成的 `Read(./.reviews/M9[3]/code/a.md)` **不匹配它自己那条路径**——规则生成了、skipped 为空、判定面完全看不出来，而该路径实际上没被挡（fail-open）；反方向 `fix*` 会把 `.reviews/fix*/…` 扩成一批同前缀目录，超出 `deny_paths` 的字面集合（可能连带挡掉审查员按 §9.4 合法读取的己方历史）。这两类字符都不属于注释里「必须放行」的那一类（270 条里 267 条是**非 ASCII** 的中文主题名，与 `* ? [ ]` 无关），所以挡它们零代价。",
+      "evidence": "读 src/trivium/adapters/claude.ts:238-263 与 src/trivium/naming.ts:40-80；只读实测 validateTopic 对 'fix*'、'M9[3]' 均 ok=true；buildDenySettings 对 '.reviews/M9[3]/code/a.md' 产出 `Read(./.reviews/M9[3]/code/a.md)` 且 skipped=[]（对照：含括号的同类路径进 skipped）。glob 语义的根据是同一次实测落盘的 doc/05_testing/REPORT_2026-09-18_m9_claude_admission.md:163 的 `Read(./.reviews/probe-topic/plan/**)`。",
+      "suggestion": "把门的判据从「是否破坏语法」改成「是否仍能**字面**匹配」：将 `* ? [ ] { } !` 也列入不可表示集合，走同一条「跳过并逐条记名」通道（并接上 CODEX-01 提的判定面告警）。若不愿直接收紧，至少在准入脚本里补一组含这些字符的路径臂，把 CLI 的实际接受与匹配行为测出来再定取舍——目前这一格没有任何实测，而注释只承诺了「CLI 会不会接受它」未测。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/freeze.ts:265-285（scanRoot）；src/trivium/review.ts:650-690（唯一调用点）；src/trivium/brief.ts:269-277",
+      "problem": "剪枝的判据是「文件是否落在 `.reviews/<topic>/` 下」，而 `<topic>` 是**当轮主题名的精确串**，不是「同一被审对象」。于是同一份工作只要换过一个主题名，前一个主题目录下的对端意见就**同时**从机器集合（checkPeerLeak）与 BRIEF §8.1 提示语里消失（两者同源于这一份 snapshot.denyPaths，没有第二张网），而 enumerateDenyPaths 注释给的理由是「那是**另一个任务**的意见」——该前提在「同一里程碑换名」这种情形下不成立。本仓正是这种形态：`.reviews/M9-ClaudeCode审核者接入/`（第 1～2 步）与 `.reviews/M9-适配器本体与准入收口/`（第 3 步）是同一条工作的两处目录，前者含 `-gemini.md`/`-glm.md`。审查员去读它在本轮既不在提示语里、也不进 peer_artifact_read，属静默放宽（剪枝前这种读取至少会被机器核验拦住）。",
+      "evidence": "只读实测：以同一份 freeze 逻辑调用 enumerateDenyPaths（省略 topic → 274 条，跨 **20** 个主题目录；给定 topic → 11 条），跨主题目录清单里没有 M9-ClaudeCode审核者接入。读 src/trivium/freeze.ts:265-330（scanRoot 与理由注释）、src/trivium/brief.ts:269-277（提示语与机器集合同源）、src/trivium/guard.ts:241（checkPeerLeak 吃 req.deny_paths）；`.reviews/` 下两份 M9 目录并存，doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2827 的 M9 行同时引用两处留痕。",
+      "suggestion": "这是取舍题，请 Driver 裁决并落进持久面：要么把扫描论域从「主题名字面串」换成与被审对象对齐的键（主题前缀 / 显式登记的同族主题组），要么把「跨主题（含同一工作换名）对端意见不再入集」写进限制清单——现在它只写在函数注释里，属解释性文字而非承诺边界。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "scripts/mutation-check.mjs:20-32（五道闸表第 4 行）、:114-131",
+      "problem": "脚本头把第四道闸写成「变异后断言**产物确实变了**」，实现比的是**被改源文件**的 sha256（`sha(abs)` 与 `baseHash[file]` 比）。两者不等价：源文件变了而产物没变（文件没进 build 图、产物被缓存、构建静默降级）时这道闸判「变异生效」，随后「没红」会被归因成「该守卫对这条变异无效」，而真因是变异没进被测产物——正是这道闸声称要买的东西。设计 v1.3.26 与报告 §5.2 的措辞都是「源文件哈希」（准确），只有脚本头这一句更强；且我 r1 的 CODEX-06 被接受时的落点写的是「补一条『变异确实进了产物』的断言（产物哈希在变异前后必须不同）」，落地改成源文件哈希，这个偏差没有在留痕里显式登记。",
+      "evidence": "读 scripts/mutation-check.mjs:20-32、:114-131；doc/05_testing/REPORT_2026-09-18_m9_claude_admission.md:222-231（报告表写「源文件哈希确实变了」）；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:3180（v1.3.26 第六条同）；.reviews/M9-适配器本体与准入收口/code/2026-09-18-M9-适配器本体与准入收口-response-claude.md §2.5 第 3 条（r1 的接受落点写的是产物哈希）。",
+      "suggestion": "二选一并留痕：①补真正的产物断言（变异后断言构建产物哈希与基线不同，或把变异哨兵写进源码再在产物里 grep 到——本仓 TRIVIUM_STUB_CRITIC 桩指纹是先例）；②把脚本头那一行改准为「源文件哈希」，并显式记「r1 的产物哈希断言未落地，理由是 buildTests 每次 rm -rf 后全量重建，源文件哈希已等价」。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "scripts/mutation-check.mjs:56、:96-101、:114-150",
+      "problem": "恢复面的论域是 `spec.targets`，变异面的论域是 `cases[].file`，两者之间**没有断言相等**。若某条 case 的 file 不在 targets：闸 4 退化为空转（`baseHash[c.file]` 是 undefined，任何哈希都 ≠ undefined ⇒ 一律判「变了」）、闸 5 的 `fs.copyFile(bak/backupKey(c.file))` 抛 ENOENT（报错把「规格写漏了」说成「恢复失败」），而 `finally` 的恢复循环只遍历 targets ⇒ **被改过的源文件留在工作树里**——脚本头声称的「finally 原子清理：异常/中断退出时也把文件恢复回去」在这一格不成立，形态与本轮要防的「残留变异版被当成下一轮干净基线」完全同构。另：`backupKey` 把 `/` 扁平成 `_`，映射非单射（`a/b_c.ts` 与 `a_b/c.ts` 同名），恢复/清理会把另一份文件的内容写进对方（闸 5 的哈希比对随后会抛错，但 finally 已经写进去了）。",
+      "evidence": "读 scripts/mutation-check.mjs:56（backupKey）、:96-101（只对 targets 备份与取基线哈希）、:114-131（case 的 file 直接参与、无成员断言）、:140-149（恢复只按 targets）；对照 doc/05_testing/REPORT_2026-09-18_m9_claude_admission.md:231 把「finally 原子清理」列为装置能力。",
+      "suggestion": "开跑前断言 `spec.targets ⊇ cases.map(c => c.file)`（或干脆从 cases 派生 targets），让恢复面与变异面共用一个集合；backupKey 保留目录结构（或加序号）保证单射；把还原收窄到「本 case 真改过的文件」，避免 finally 无差别覆盖。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "scripts/mutation-check.mjs:20-32、:102-113",
+      "problem": "脚本头把闸 3 写成「防：坏基线被当成干净基线（失败 3）」，而实际判据只是「`spec.suites` 有没有 fail」，即**测得出的**坏基线。工作树若在开跑前残留一个「测试测不出来」的变异（恰是那些判「没红」的变异，或本装置在 CODEX-05 那格留下的残留），闸 3 照样放行，于是本轮所有「咬住/没红」都相对被污染过的基线算出，备份还把污染一路带着。报告 §5.3 立第 3 条纪律时写的是「建基线之前先确认工作树干净」，但它没有进装置（装置里只有「基线全绿」）。",
+      "evidence": "读 scripts/mutation-check.mjs:20-32、:102-113；doc/05_testing/REPORT_2026-09-18_m9_claude_admission.md:230（闸 3 行）、:263-264（§5.3 第 3 条对策仍是人工步骤）。",
+      "suggestion": "加一条前置闸而不是纪律：对 `spec.targets` 做基线一致性检查（`git status --porcelain -- <targets>` 非空即打印脏文件名并要求显式确认，或记录开跑前的 diff 摘要），把「干净基线」变成装置默认行为。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "doc/08_project/BACKLOG.md:136（EV-39 done 段）；src/trivium/adapters/claude-trace.ts:22-30",
+      "problem": "两处**现行描述**都写着分解形判据「只对 `<cli>.ts` 精确匹配生效」且「文件面收窄」，而落地的是反向的：④ 对**所有适配器文件 − `-trace`/`-events` 族**生效（含 base.ts / stub.ts / `*-home.ts`）。三处（BACKLOG、claude-trace.ts 头、设计 v1.3.26）互不一致，其中设计那条是对的——r1 的 CODEX-05 ≡ AGY-01 ≡ GLM-04 正是要求把论域从「单个主文件」扩到全域。后果不是美观：下一个接入厂商的人照 BACKLOG 或 claude-trace.ts 去「对齐实现」，最省事的动作就是把 ④ 收窄回 `<cli>.ts`，直接削掉 r1 刚补齐的跨厂商能力，正是 EV-39 自己担心的「漏检时顺手削弱守卫」。",
+      "evidence": "读 test/unit/registry-parity.test.ts:1442-1460（④ 的论域为 `if (!isClassifierFile(rel))`，isClassifierFile 只认 `-trace`/`-events` 后缀）、src/trivium/adapters/claude-trace.ts:22-30、doc/08_project/BACKLOG.md:136（「另加一条只对 `<cli>.ts` 精确匹配生效的分解形判据……文件面收窄」）、doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:3180（v1.3.26「论域改为『**所有**适配器文件 − 分类文件族』」）。",
+      "suggestion": "把 BACKLOG EV-39 done 段与 claude-trace.ts 头注释改成与实现一致（「全域 − 分类文件族」，并写明 trace 族为何豁免），并指向设计 v1.3.26 为权威措辞。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-08",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/registry-parity.test.ts:1281-1300、:1442-1452",
+      "problem": "④-a 判的是「**按空白切分后的片段**是否等于某个分解形 token」，于是任何提到工具名的**用户可见文案**（如 'claude 的 Read 工具不可用' 或英文 'Read tool unavailable'）在任意非分类适配器文件里都会命中；唯一出口是 PROSE_EXCEPTIONS 的「文件 + token」粒度（EV-45 已登记其过粗：一登记就豁免该文件里该 token 的所有出现）。论域扩到全部适配器文件之后，这个误伤面随之变大——而 EV-39 立条的理由正是「误伤时最省事的修法是往黑名单里删条目」。这条不是新缺陷，是扩域的副作用，应当与扩域一起被看见。",
+      "evidence": "读 test/unit/registry-parity.test.ts:1281-1300（quotedTokens 按 `\\s+` 切分）、:1447-1450（decomposed.has(token)）、:1345-1360（PROSE_EXCEPTIONS 粒度）；doc/08_project/BACKLOG.md:141（EV-45 登记该粒度问题）。",
+      "suggestion": "让 ④-a 判「字面量整体」而非片段：要求去空白后整体等于某个 token，或整串按 `,` 切开后元素全在分解形集合内（后者已由 ④-b 覆盖）。这样单独写的 `'Read'` 仍被抓，散文里的 `Read` 不误伤。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-09",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/deny-matrix.test.ts:358-399",
+      "problem": "新加的「真实调用点必须传 topic」用例判的是实参块里有没有子串 `topic:`，因此 `topic: undefined`（或在别处算好再传一个可为 undefined 的变量）照样绿——而它的失效后果就是剪枝再次静默失效，正是它要守的那一格。",
+      "evidence": "读 test/unit/deny-matrix.test.ts:395-398（`argBlock.includes('topic:')`）、src/trivium/review.ts:655-680（真实实参是 `topic: ref.topic`）。",
+      "suggestion": "把判据从「键在场」提成「值表达式在场」：例如断言实参块出现 `topic: ref.topic`，或断言 `topic:` 之后不是 null/undefined 字面量。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "主题剪枝确实生效，且我用两条独立路径核过：本次运行 run-20260918T084101Z.json 的 deny_paths 恰为 11 条（8 条本主题对端产出 + .env.example + .trivium + 运行根），与我用同一函数复算「省略 topic → 274 条、给定 topic → 11 条」完全对上。路径比 24.9×；同一时刻两端的 payload 为 156,320 → 6,119 字节 = 25.5×。「约三十倍」量级属实：两个乘数自洽（270 路径 × 3 工具 × 2 形状 = 1620 条规则；202,785 / 6,700 ≈ 30），只是它是 r1 那次状态两端相除，同一时刻复算约 25 倍——数字口径不改也无妨，但同状态复算值在此备查。",
+    "deny 规则侧的几个小修都落对了：去重、逐条语法门放在 buildDenySettings 内部（单源，不在调用点）、跳过项记名、JSON 字节数与 ARG_MAX 软闸告警、把「没注入」与「注入被拒」之外补出第三格语义。",
+    "分解形判据的扩域方向（所有适配器文件 − 分类文件族、token 取全家并集、子集判定 + 去空白归一）与 5a–5d 四条腿是对的路子；把已退化的反向对账删掉（恒真不如没有）也对；PROSE_EXCEPTIONS 只能开给 token 归属家自己的文件，确实比旧的扁平黑名单更严。",
+    "变异装置把「构建失败即中止」「全路径备份」「每条恢复后逐字节比对」「finally 清理」落成默认行为，方向正确；M22 那次「报没红 → 查出是变异规格写错」正是第四道闸该买的东西，报告如实记了第一批结果全部作废也值得记。",
+    "claude-trace.ts 解析器搬家 + 探针反向 import、只搬解析器不搬 READONLY_INVARIANTS/READONLY_TOOLS（避免第 6 条两腿同时红）的选择与四家先例一致。",
+    "四个内联判据抽成导出纯函数并补三态用例（尤其 judgeReadonlyBreach 先判 breached、judgeFileShape 的 attempted 前置）与 project_memory_blocked「true 臂必须有对照 + 两臂同权判 null」是本轮少见的正面样板。"
+  ],
+  "not_covered": [
+    "没有实跑任何 claude 调用（无配额）：EV-42/43/44 的实测结论（file_shape_verified: true、7 格 argv/stdin 双臂零分叉、约 26 次调用/约 $0.52）我只做了读侧核对与算术/装置复核，未独立复现。",
+    "未跑 npm run check / npm test（只读环境，构建会写盘）。所有复算用的是仓库现成 dist 产物，其时间戳早于本次 review 开始，我没有逐字节确认它与工作树一致（topic 剪枝在该产物里可用，说明它已含 r1 修复）。",
+    "变异验证 M1–M22 是否真逐一咬住**无法复核**：装置要求外部规格 JSON（`node scripts/mutation-check.mjs <spec.json>`），而它没有进仓库，22 条只以散文表存在于报告 §5.1。因此我审的是装置本身，不是它跑过的那批变异。",
+    "未实测 CLI 对含 `*` / `[]` / `,` 路径的实际接受与匹配行为（CODEX-02 的 glob 语义是从探针落盘 rule_syntax 的 `**` 推出的）；也未实测括号路径下 CLI 是拒整份 --settings 还是逐条丢弃（两者都导向同一处置）。",
+    "未评估真实审查尺度的成本/耗时；未通读 agy/zcode/codex 三家适配器全文（只读了它们的 peer_deny_applied 一行与注册表对账用例）。",
+    "按任务书禁读要求，未读另一位审查员的任何产出（gemini/glm 的 plan 与 code 留痕、其结构化原文、运行目录他人子树）。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    ".reviews/M9-适配器本体与准入收口/code/_meta/changes-20260918T084101Z.diff",
+    ".reviews/M9-适配器本体与准入收口/code/_meta/run-20260918T084101Z.json",
+    ".reviews/M9-适配器本体与准入收口/code/2026-09-18-M9-适配器本体与准入收口-codex.md",
+    ".reviews/M9-适配器本体与准入收口/code/2026-09-18-M9-适配器本体与准入收口-response-claude.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-09-18_m9_claude_admission.md",
+    "doc/08_project/BACKLOG.md",
+    "scripts/build.mjs",
+    "scripts/claude-admission-control.mjs",
+    "scripts/mutation-check.mjs",
+    "skills/dual-critic/schema/review.v1.json",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/report.ts",
+    "src/trivium/review.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/types.ts",
+    "test/unit/claude-adapter.test.ts",
+    "test/unit/deny-matrix.test.ts",
+    "test/unit/registry-parity.test.ts"
+  ]
+}

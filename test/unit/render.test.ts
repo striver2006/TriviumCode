@@ -14,6 +14,7 @@ const RESULT: CriticResult = {
   tool_calls: { read: 27, grep: 9 },
   read_paths: [], write_events: [], command_texts: [], evidence_ok: true, fail_reason: null,
   session_id: 'conv-1', cli_version: '1.2.0', peer_deny_applied: false,
+  deny_skipped: 0, deny_rule_count: 0, deny_bytes: 0,
   command_line: 'agy -p …',
 };
 

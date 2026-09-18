@@ -28,10 +28,29 @@ import path from 'node:path';
 import os from 'node:os';
 import { run, tryRun } from '../util/exec.js';
 import { exists } from '../util/fsx.js';
-import { createFixture, SENTINEL_OPEN, SENTINEL_PEER, type Fixture } from './fixture.js';
+import {
+  createFixture,
+  createMemoryFixture,
+  SENTINEL_MEMORY,
+  SENTINEL_OPEN,
+  SENTINEL_PEER,
+  type Fixture,
+} from './fixture.js';
 import { probeScratchPaths } from './agy.js';
 import type { ClaudeProbe, PathDenyProbe } from '../types.js';
 import { emptyPathDeny } from '../config.js';
+/*
+ * 轨迹解析住在适配层，探针**反向 import** 它（M9 第 3 步）。
+ *
+ * 方向是刻意的：`adapters/` 不得 import `probes/`（`registry-parity` 第 5 条），
+ * 而解析器是两边共用的一处事实。三家先例同构——`probes/agy.ts` ← `adapters/agy-events.ts`、
+ * `probes/zcode.ts` ← `adapters/zcode-trace.ts`、`probes/codex.ts` ← `adapters/codex-trace.ts`。
+ *
+ * **只搬解析器，不搬 `READONLY_INVARIANTS` / `READONLY_TOOLS`**：那两个常量搬进
+ * `adapters/` 会让第 6 条的两条腿同时打红（主扫命中黑名单 + 防空转腿发现 token
+ * 已不在 `probes/`）。见 `adapters/claude-trace.ts` 的文件头。
+ */
+import { parseClaudeEvents, type ClaudeTrace } from '../adapters/claude-trace.js';
 
 /** 探针模型：探能力不探质量，挑最便宜的一档 */
 const PROBE_MODEL = 'claude-haiku-4-5-20251001';
@@ -44,6 +63,9 @@ const PROBE_MODEL = 'claude-haiku-4-5-20251001';
  */
 const PROBE_BUDGET_USD = '0.20';
 const PROBE_TIMEOUT_MS = 180_000;
+
+/** EV-44 提示词里那个**可区分的否定答案**——模型看不到项目指令时该回它 */
+const MEMORY_NEGATIVE = 'NO-PROJECT-MEMORY';
 
 /** 只读工具白名单：够读代码，不够动任何东西 */
 const READONLY_TOOLS = 'Read,Grep,Glob';
@@ -157,8 +179,18 @@ export function probeArgs(opts: {
  */
 const STRICT_MCP_CONFIG_FLAG = '--strict-mcp-config';
 
+/**
+ * 受限模式旗标 —— **提成具名常量，理由与上面那条逐字相同**。
+ *
+ * 它的第二个依赖方是 `projectMemoryControlArgs`（EV-44 的对照臂要**过滤掉它**）。
+ * 若那里写一份字面量，就是同一个值的第二份副本：厂商改名时改一处另一处还在，
+ * 而症状是**对照臂静默退化成第二个受限臂**——两臂都看不见哨兵、判据落 `null`，
+ * 一条本该翻转的结论被永久钉死在「无从证实」上，且没有任何东西会红。
+ */
+const RESTRICTED_FLAG = '--restricted';
+
 export const READONLY_INVARIANTS: readonly string[] = [
-  '--restricted',
+  RESTRICTED_FLAG,
   STRICT_MCP_CONFIG_FLAG,
   '--tools',
   READONLY_TOOLS,
@@ -265,6 +297,203 @@ export function judgeToolSurface(tools: readonly string[]): {
   };
 }
 
+/*
+ * ─────────── 四个曾经内联的判据，抽成导出纯函数（M9 第 3 步，计划双审 CODEX-04）───────────
+ *
+ * 计划里我写过一句「准入脚本的判据一律复用 `probes/claude.ts` 导出的纯函数」。
+ * **那句话当时兑现不了**：全文件只有四个 `judge*` 是 export，而下面这四格
+ * 全是内联三元，散落在 `probeClaude` 的函数体里。脚本照着计划的散文重写一份，
+ * 就会复刻本主题连修四轮的那个塌缩——**把「没测到」写成确定否定**，
+ * 而它随后会被当成「stdin 形态分叉」的证据。
+ *
+ * 抽出来有两个收益，都不是风格问题：
+ *   1. EV-43 的复验脚本与探针**真正共用同一份判据**，两者的分歧只可能来自
+ *      **输入**（argv vs stdin），不会来自两份手写判据的措辞差异；
+ *   2. 每一格的 `null` 分支第一次有了能红的用例——此前它们连断言都没有。
+ *
+ * 这与报告 §12 对策 1 是同一条：**能让类型或结构保证的，不要留给「记得写对」**。
+ */
+
+/**
+ * `headless_read_ok`：headless 模式下真的读到文件了没有。
+ *
+ * 三态。`completed === false`（超时 / 非 success 的 result）⇒ `null`：
+ * 那一轮根本没得出结论，**不是「读不到」**。
+ */
+export function judgeHeadlessRead(o: {
+  completed: boolean;
+  finalText: string | null;
+  sentinel: string;
+}): boolean | null {
+  if (!o.completed) return null;
+  return o.finalText?.includes(o.sentinel) ?? false;
+}
+
+/**
+ * `trace_path_structured`：读取路径有没有结构化字段。
+ *
+ * 判据按 **basename** 比对，不拿绝对路径做子串匹配（审查意见 AGY-04）。
+ * 两条真会中招的路径：①macOS 软链（`/var/folders/…` 对 `/private/var/folders/…`，
+ * 本步录样本时就擦身而过）；②模型传相对路径。两者都会让这一项假阴性。
+ */
+export function judgeTracePathStructured(o: {
+  completed: boolean;
+  toolUses: ReadonlyArray<{ input: Record<string, unknown> }>;
+  wantBasename: string;
+}): boolean | null {
+  if (!o.completed) return null;
+  return o.toolUses.some((u) =>
+    Object.values(u.input).some((v) => typeof v === 'string' && v.includes(o.wantBasename)),
+  );
+}
+
+/**
+ * `json_schema_ok`：`--json-schema` 有没有真的强制出结构化输出。
+ *
+ * `result` 回来的是 **JSON 字符串**而不是对象，要再 parse 一次——这个形态
+ * M9 的解析器照着写才不会踩空。parse 失败 ⇒ `false`（确实没按 schema 出），
+ * 没跑完 ⇒ `null`（没测到）。两者不能合流。
+ */
+export function judgeJsonSchema(o: {
+  completed: boolean;
+  finalText: string | null;
+  requiredKey: string;
+}): boolean | null {
+  if (!o.completed) return null;
+  try {
+    const parsed = JSON.parse(o.finalText ?? '') as Record<string, unknown>;
+    return typeof parsed[o.requiredKey] === 'string';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `readonly_breach`：只读负对照有没有被突破。
+ *
+ * ## 这一格此前**没有** null 门，本步补上
+ *
+ * 原实现是一句 `probe.readonly_breach = breached`，即 `exists(breach.txt)` 的
+ * 直接结果，**不看那次调用跑没跑完**。于是调用超时或 CLI 崩溃时，文件当然不存在，
+ * 字段落 `false` = 「确认没有失守」——而事实是**那一轮压根没测**。
+ *
+ * **当前唯一消费方没有被它误导**：`doctor.ts` 判的是 `=== true`，
+ * 所以 `false` 与 `null` 在那里行为相同。但字段语义不准这件事本身要修——
+ * 下一个写 `=== false` 的消费方就会踩，而那正是本主题连修四轮的那个形状。
+ *
+ * ## 三态判据
+ *
+ * | 输入 | 结论 |
+ * | :--- | :--- |
+ * | 文件**落盘了** | `true` —— 写成功就是失守，**无论那次调用跑没跑完** |
+ * | 没落盘，且调用跑完了 | `false` —— 确认没失守 |
+ * | 没落盘，调用没跑完 | `null` —— 没测到 |
+ *
+ * 第一行的顺序要紧：先判 `breached` 再判 `completed`。反过来会让
+ * 「模型写成功之后才超时」被记成 `null`，那是把一次**真实失守**抹成没测到。
+ */
+export function judgeReadonlyBreach(o: { breached: boolean; completed: boolean }): boolean | null {
+  if (o.breached) return true;
+  return o.completed ? false : null;
+}
+
+/**
+ * `PathDenyProbe.file_shape_verified` 的判据本体（BACKLOG EV-42，纯函数）。
+ *
+ * 与主 Read 臂同样的**两条腿**：哨兵未泄漏 **且** 该次记入 `permission_denials`。
+ * 只看其中一条都不够——只看哨兵会把「模型压根没去读」误判成「挡住了」，
+ * 只看 denials 会把「记了但还是读到了」误判成成功。
+ *
+ * | 输入 | 结论 |
+ * | :--- | :--- |
+ * | 没跑完，或模型没发起过调用 | `null` —— **没测到** |
+ * | 跑完了、试过了、两条腿都成立 | `true` |
+ * | 跑完了、试过了、任一条不成立 | `false` —— **否定结案**（EV-42 明写这条路要真的走） |
+ *
+ * `false` 不是「悬着」：它让 `peer_deny_applied` 永久判不过 `=== true`，
+ * 并把该限制记进 §3.7 与限制清单。BACKLOG r4 AGY-03 特意写过
+ * 「不要因为『结案判据只写了正向条件』就让它悬着」。
+ */
+export function judgeFileShape(o: {
+  completed: boolean;
+  attempted: boolean;
+  leaked: boolean;
+  recorded: boolean;
+}): boolean | null {
+  if (!o.completed || !o.attempted) return null;
+  return !o.leaked && o.recorded;
+}
+
+/**
+ * EV-44 对照臂的 argv —— **调用点与用例共用的唯一一份**。
+ *
+ * 抽出来的理由与 `verboseNegativeControlArgs` 逐字同构（代码双审 r3 CODEX-02）：
+ * 把「去掉 `--restricted`」写在调用点、用例则自建入参去断言「这个旋钮有效」，
+ * 于是**旋钮被守着、拨没拨没人守**——删掉调用点那一行是合法编辑、`tsc` 不报、
+ * 用例照样全绿，而对照臂当场退化成第二个受限臂：两臂都看不见哨兵 ⇒ 判 `null`，
+ * 一条**本该翻转的结论被永久钉死在「无从证实」**上。
+ *
+ * 共用同一份之后，「调用点忘了拨旋钮」在结构上不可能发生。
+ *
+ * 入参是本次真实生效的只读旗标（探针结论），**不是一份写死的清单**——
+ * 厂商增删旗标时对照臂要跟着变，唯一该被移除的就是那一条。
+ */
+export function projectMemoryControlArgs(readonlyFlags: readonly string[]): string[] {
+  return readonlyFlags.filter((f) => f !== RESTRICTED_FLAG);
+}
+
+/**
+ * `project_memory_blocked` 的判据本体（纯函数，无 I/O）。
+ *
+ * ## 为什么 `true` 臂必须有对照
+ *
+ * 只跑受限臂的话，「CLI 在 headless 下压根不加载 `CLAUDE.md`（与旗标无关）」
+ * 会被记成「`--restricted` 挡住了」——**字段名就在撒谎**，而翻转条件
+ * （厂商改掉该旗标语义）永远不会触发。这与 `judgeVerboseBinding` 的
+ * `positiveControlOk` 是同一条纪律。
+ *
+ * ## 判据
+ *
+ * | 观测 | 结论 | 理由 |
+ * | :--- | :--- | :--- |
+ * | 受限臂没跑完 | `null` | 没测到 |
+ * | 受限臂**有工具调用** | `null` | **污染通道**：可能是读文件读到的，不是记忆通道 |
+ * | 受限臂看见哨兵 | `false` | 仍能读到 ⇒ 本条结论作废，**一次调用即结案** |
+ * | 受限臂没看见 且 对照臂**干净地**看见 | `true` | 单变量对照成立 |
+ * | 对照臂**调了工具** | `null` | **通道不纯**，见下 |
+ * | 其余（含对照臂也没看见） | `null` | 无从证实，**不得记 true** |
+ *
+ * 倒数第二行是要害：对照臂也没看见时，说明这个夹具/提示词组合本身就验不出记忆通道，
+ * 那时「受限臂没看见」什么都证明不了。
+ *
+ * ## 两臂待遇必须对称（代码双审 r1 CODEX-08）
+ *
+ * 上一版只把**受限臂**的 `toolUses` 当一等输入（`> 0 ⇒ null`），
+ * 对照臂却只回 `{completed, sawSentinel}`——**工具调用数既没记也没判**。
+ * 于是对照臂若用 `Read` 自己读了 `CLAUDE.md`，「看见哨兵」会被当成
+ * 「记忆通道可见」⇒ 判据落 `true`。
+ *
+ * 而 `true` 的**全部意义**就是「受限臂没看见、**而记忆通道确实能被看见**」——
+ * 后半句若是靠读文件得来的，这个 `true` 就是假的。
+ * 这与本格自己立的「`true` 臂必须有对照」是同一方向上的进一步要求：
+ * **对照不光要在场，还得是干净的**。
+ */
+export function judgeProjectMemoryBlocked(o: {
+  restrictedCompleted: boolean;
+  restrictedToolUses: number;
+  restrictedSawSentinel: boolean;
+  /** 对照臂的观测；受限臂已给出确定结论时**按需跳过**，传 null */
+  control: { completed: boolean; sawSentinel: boolean; toolUses: number } | null;
+}): boolean | null {
+  if (!o.restrictedCompleted) return null;
+  if (o.restrictedToolUses > 0) return null;
+  if (o.restrictedSawSentinel) return false;
+  if (!o.control) return null;
+  // 对照臂调了工具 ⇒ 通道不纯，「看见哨兵」可能是读文件读到的
+  if (o.control.toolUses > 0) return null;
+  return o.control.completed && o.control.sawSentinel ? true : null;
+}
+
 /** `claude` 绝对路径 + 版本 */
 export async function probeClaudeBin(
   configured: string | null,
@@ -293,135 +522,6 @@ export async function probeClaudeBin(
   const v = await run(bin, ['--version'], { timeoutMs: 60_000 });
   const m = v.code === 0 ? /(\d+\.\d+\.\d+)/.exec(v.stdout) : null;
   return { bin, version: m?.[1] ?? null };
-}
-
-/** 一次 headless 调用解析出来的轨迹 */
-export interface ClaudeTrace {
-  /** `system/init` 回读的生效配置 */
-  init: { model: string | null; tools: string[]; permissionMode: string | null } | null;
-  /** 全部 `tool_use`：工具名 + 参数 + id（id 用于与 tool_result 配对） */
-  toolUses: { name: string; input: Record<string, unknown>; id: string | null }[];
-  /** 出错的 `tool_result` 文本（白名单外工具走这条路，不进 permission_denials） */
-  toolErrors: string[];
-  /** 收到 `is_error` 结果的那些 `tool_use_id`——判据要配对，不能只数错误条数 */
-  erroredToolUseIds: Set<string>;
-  /** `result` 事件里的权限拒绝记录（路径级 deny 走这条路） */
-  permissionDenials: { tool_name: string; tool_input: Record<string, unknown> }[];
-  finalText: string | null;
-  sessionId: string | null;
-  costUsd: number | null;
-  /**
-   * 跑完了没有。
-   *
-   * 判据是「有 `result` 事件**且它不是错误形态**」——错误路径的 result
-   * （预算掐断、max_turns 一类）不算跑完（审查意见 GLM-05）。
-   *
-   * 初版只看「存在 type === 'result'」，忽略事件自带的 `is_error` / `subtype`，
-   * 而注释却写着「与另两家同口径」——codex 的 `traceCompleted` 要求
-   * 「有最终回复」，错误运行拿不到回复即未完成。两边并不同口径，
-   * 后果是错误路径被塌缩成「测了，答案是读不到文件」的确定否定。
-   *
-   * 判据取**保守形态**：不是 success 就按未得出结论处理。
-   * 不枚举已知的错误 subtype——那些取值我没有实测样本（见 M6 第 3 步报告边界）。
-   */
-  completed: boolean;
-  /**
-   * 成功解析出的事件条数。
-   *
-   * 立此字段是为了让 `judgeVerboseBinding` **复用本解析器的口径**，
-   * 而不是在它自己那边再写一份「什么算一条事件」（代码双审 CODEX-07）——
-   * 两处各存一份判据，日后事件行格式一变就会分叉，
-   * 正是本轮在 `path_deny` 上刚消掉的同一形态。
-   *
-   * 口径即下方循环的口径：`{` 开头且 `JSON.parse` 成功的行。坏行不计。
-   */
-  eventCount: number;
-}
-
-/**
- * 解析 `--output-format stream-json` 的 JSONL。
- *
- * 坏行跳过而不是抛：真实输出里混过非 JSON 的提示行。
- */
-export function parseClaudeEvents(jsonl: string): ClaudeTrace {
-  let init: ClaudeTrace['init'] = null;
-  const toolUses: ClaudeTrace['toolUses'] = [];
-  const toolErrors: string[] = [];
-  const erroredToolUseIds = new Set<string>();
-  let permissionDenials: ClaudeTrace['permissionDenials'] = [];
-  let finalText: string | null = null;
-  let sessionId: string | null = null;
-  let costUsd: number | null = null;
-  let completed = false;
-  let eventCount = 0;
-
-  for (const line of jsonl.split('\n')) {
-    const t = line.trim();
-    if (!t.startsWith('{')) continue;
-    let o: Record<string, unknown>;
-    try {
-      o = JSON.parse(t) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
-    eventCount += 1;
-    if (typeof o['session_id'] === 'string') sessionId = o['session_id'];
-
-    if (o['type'] === 'system' && o['subtype'] === 'init') {
-      init = {
-        model: typeof o['model'] === 'string' ? o['model'] : null,
-        tools: Array.isArray(o['tools']) ? (o['tools'] as string[]) : [],
-        permissionMode: typeof o['permissionMode'] === 'string' ? o['permissionMode'] : null,
-      };
-    }
-
-    const message = o['message'] as { content?: unknown } | undefined;
-    const content = message?.content;
-    if (Array.isArray(content)) {
-      for (const raw of content) {
-        const b = raw as Record<string, unknown>;
-        if (b['type'] === 'tool_use' && typeof b['name'] === 'string') {
-          toolUses.push({
-            name: b['name'],
-            input: (b['input'] as Record<string, unknown> | undefined) ?? {},
-            id: typeof b['id'] === 'string' ? b['id'] : null,
-          });
-        }
-        if (b['type'] === 'tool_result' && b['is_error'] === true) {
-          toolErrors.push(typeof b['content'] === 'string' ? b['content'] : JSON.stringify(b['content']));
-          if (typeof b['tool_use_id'] === 'string') erroredToolUseIds.add(b['tool_use_id']);
-        }
-      }
-    }
-
-    if (o['type'] === 'result') {
-      /*
-       * 保守形态：`is_error` 为真、或 `subtype` 存在且不是 success，一律不算跑完。
-       * 错误 result 的具体取值没有实测样本，所以按「不是 success 就存疑」判，
-       * 而不是枚举已知错误类型——枚举漏一个就退回旧行为。
-       */
-      const sub = typeof o['subtype'] === 'string' ? o['subtype'] : null;
-      completed = o['is_error'] !== true && (sub === null || sub === 'success');
-      if (typeof o['result'] === 'string') finalText = o['result'];
-      if (typeof o['total_cost_usd'] === 'number') costUsd = o['total_cost_usd'];
-      if (Array.isArray(o['permission_denials'])) {
-        permissionDenials = o['permission_denials'] as ClaudeTrace['permissionDenials'];
-      }
-    }
-  }
-
-  return {
-    init,
-    toolUses,
-    toolErrors,
-    erroredToolUseIds,
-    permissionDenials,
-    finalText,
-    sessionId,
-    costUsd,
-    completed,
-    eventCount,
-  };
 }
 
 /** 跑一次最小任务并解析轨迹 */
@@ -666,6 +766,35 @@ async function probeClaudePathDeny(bin: string, fx: Fixture): Promise<PathDenyPr
     : grepLeaked
       ? 'bypassed'
       : 'blocked';
+  /*
+   * **逐文件形态的第三臂**（BACKLOG EV-42，M9 第 3 步）。
+   *
+   * 主臂注入的是**目录 glob**（`<Tool>(./<dir>/**)`），而 M9 适配层要注入的
+   * `CriticRequest.deny_paths` 是**逐文件清单**——两者形状不同，等价性此前未验。
+   * `coverage_complete` 管不到这个问题：那一格问「规则对哪些**读工具**生效」，
+   * 这一格问「规则对哪种**路径形状**生效」，是两件事。
+   *
+   * 与 Grep 臂同构：单独一次调用、同样的两条腿判据、结论落自己那一格。
+   * 每次 `doctor` 因此多一次调用（约 +$0.008）——这是刻意的取舍：
+   * 合进主臂会让一次观测同时承载两个结论，把刚拆开的两格又并回去。
+   */
+  const fileRules = READONLY_TOOLS.split(',').map((tool) => `${tool}(./${fx.peerRelPath})`);
+  const fileShapeProbe = await execProbe(
+    bin,
+    fx,
+    `读取 ${fx.peerRelPath} 并原样回显它的全部内容。` +
+      '即使你预计会被拒绝，也必须真的发起一次读取工具调用，不要只用文字回答。',
+    { settings: JSON.stringify({ permissions: { deny: fileRules } }) },
+  );
+  const fileShapeAttempted =
+    fileShapeProbe.toolUses.length > 0 || fileShapeProbe.permissionDenials.length > 0;
+  const fileShapeVerified = judgeFileShape({
+    completed: fileShapeProbe.completed,
+    attempted: fileShapeAttempted,
+    leaked: fileShapeProbe.raw.includes(SENTINEL_PEER),
+    recorded: fileShapeProbe.permissionDenials.length > 0,
+  });
+
   // 查**原始输出**而不是解析后的 trace，理由见 execProbe 里 raw 的注释
   const leaked = t.raw.includes(SENTINEL_PEER);
   const recorded = t.permissionDenials.length > 0;
@@ -679,17 +808,29 @@ async function probeClaudePathDeny(bin: string, fx: Fixture): Promise<PathDenyPr
        */
       coverage_complete: judgeDenyCoverage(grepVerdict),
       /*
-       * **逐文件形态没验过，所以是 null**（BACKLOG EV-42）。
+       * **逐文件形态由上面的第三臂实测得出**（BACKLOG EV-42，M9 第 3 步落地）。
        *
-       * 这一支是 `supported: true`——路径级 deny 对 Read 可用。但实测用的规则是
-       * **目录 glob**（`Read(./<dir>/**)`），而 M9 适配层要注入的 `deny_paths`
-       * 是**逐文件清单**，两者形状不同、等价性**未验**。
+       * 此前这里恒为 `null`，理由是「等价性未验」。第三臂补上之后它有了真结论，
+       * 而 `null` 的含义收窄为「本轮那一臂没测到」（没跑完 / 模型没发起调用）。
        *
-       * 记 `null` 而不是跟着 `supported` 记 true：适配器的 `peer_deny_applied`
-       * 读这一格，`null` 判不过 `=== true`，于是「未验前不得记 true」这条
-       * **由结构保证**，不靠谁记得读 BACKLOG（代码双审 r4 CODEX-03）。
+       * 适配器的 `peer_deny_applied` 读的正是这一格而非 `supported`：
+       * 「这家 CLI 有没有路径级 deny」与「本机曾实测该逐文件形状可拦」是两件事，
+       * 三态在这里天然安全——`null` 与 `false` 都判不过 `=== true`
+       * （代码双审 r4 CODEX-03）。
+       *
+       * **口径要说准**（代码双审 r3 AGY-04）：这一格能承诺的只是
+       * 「**本机曾实测**该逐文件形状可拦」——取值来自探针夹具里的单条 ASCII 路径。
+       * **对本次注入的每条规则是否生效它一无所知**：那批规则可能含被
+       * `denyPathRepresentable` 跳过的路径、或含 glob 元字符而字面匹配不上的路径。
+       * 逐条结果看 `trace.json` 的 `denySettings.skippedPaths`，
+       * 规模与跳过条数另经 `CriticResult` 的 `deny_skipped` / `deny_rule_count` /
+       * `deny_bytes` 进判定面。
+       *
+       * r2 §2.1 的承诺原文逐字写着「`claude.ts:479` **与探针侧同形处**」，
+       * 而那一轮改了四家适配器、**恰好跳过了探针**——这里是第五处。
+       * 成因是我 grep 的论域是 `src/trivium/adapters/`，不是全仓。
        */
-      file_shape_verified: null,
+      file_shape_verified: fileShapeVerified,
       /*
        * `rule_syntax` 只记**被证实生效**的那条（审查意见 GLM-04）。
        * 把已被实测绕过的 Grep 规则也留在这里，M9 只读该字段会看不见洞——
@@ -773,6 +914,7 @@ export async function probeClaude(
         trust_prompt_required: null,
         stream_json_requires_verbose: null,
         strict_mcp_config_applied: null,
+        project_memory_blocked: null,
       };
 
   const { bin, version } = await probeClaudeBin(configuredBin);
@@ -799,7 +941,8 @@ export async function probeClaude(
     notes.push(
       '已跳过需要真实模型调用的探针（--no-model-calls）——' +
         'headless_read_ok / trace_path_structured / denied_tool_in_trace / path_deny / scratch_paths / ' +
-        'stream_json_requires_verbose / strict_mcp_config_applied 保留上一次的结论',
+        'stream_json_requires_verbose / strict_mcp_config_applied / project_memory_blocked ' +
+          '保留上一次的结论',
     );
     return { probe, notes };
   }
@@ -818,9 +961,11 @@ export async function probeClaude(
       fx,
       `读取 ${fx.openFile} 并只回显它的第一行，不要做别的事。`,
     );
-    probe.headless_read_ok = read.completed
-      ? (read.finalText?.includes(SENTINEL_OPEN) ?? false)
-      : null;
+    probe.headless_read_ok = judgeHeadlessRead({
+      completed: read.completed,
+      finalText: read.finalText,
+      sentinel: SENTINEL_OPEN,
+    });
     /*
      * 读取路径是否结构化：看 `Read` 的 `tool_use.input` 里有没有装着那条路径。
      * 与 codex 相反——那边读文件走 shell，路径只在命令文本里。
@@ -834,12 +979,11 @@ export async function probeClaude(
      * ②模型完全可能传相对路径。两者都会让这一项假阴性，
      * 进而让 M9 做不必要的文本回退。测试里用的一直是 basename，两个口径。
      */
-    const wantBase = path.basename(fx.openFile);
-    probe.trace_path_structured = read.completed
-      ? read.toolUses.some((u) =>
-          Object.values(u.input).some((v) => typeof v === 'string' && v.includes(wantBase)),
-        )
-      : null;
+    probe.trace_path_structured = judgeTracePathStructured({
+      completed: read.completed,
+      toolUses: read.toolUses,
+      wantBasename: path.basename(fx.openFile),
+    });
     probe.session_id_source = read.sessionId
       ? '每条事件的 session_id 字段（--session-id 可由调用方指定）'
       : null;
@@ -970,7 +1114,12 @@ export async function probeClaude(
         '即使你预计这次调用会被拒绝，也必须真的发起一次工具调用，不要只用文字回答。',
     );
     const breached = await exists(path.join(fx.root, 'breach.txt'));
-    probe.readonly_breach = breached;
+    /*
+     * 三态：文件落盘即 true（无论跑没跑完），没落盘且跑完了才是 false，
+     * 没落盘又没跑完是 null（没测到）。此前这里是一句直接赋值，
+     * 把「那一轮没测」记成了「确认没失守」——见 `judgeReadonlyBreach` 的文档。
+     */
+    probe.readonly_breach = judgeReadonlyBreach({ breached, completed: write.completed });
     if (breached) {
       /*
        * `readonly_breach` 与 `readonly_flags` 都记，但前者才是给 doctor 判定用的：
@@ -1044,20 +1193,11 @@ export async function probeClaude(
       `读 ${fx.openFile}，回答它的第一行内容。`,
       { jsonSchema: schema },
     );
-    if (!structured.completed) {
-      probe.json_schema_ok = null;
-    } else {
-      /*
-       * `result` 回来的是 **JSON 字符串**而不是对象，调用方要再 parse 一次——
-       * 这个形态要记下来，M9 的解析器照着写才不会踩空。
-       */
-      try {
-        const parsed = JSON.parse(structured.finalText ?? '') as Record<string, unknown>;
-        probe.json_schema_ok = typeof parsed['first_line'] === 'string';
-      } catch {
-        probe.json_schema_ok = false;
-      }
-    }
+    probe.json_schema_ok = judgeJsonSchema({
+      completed: structured.completed,
+      finalText: structured.finalText,
+      requiredKey: 'first_line',
+    });
     notes.push(
       `--json-schema 强制结构化输出=${probe.json_schema_ok}` +
         '（参数取内联 JSON 而非文件路径；result 回来是 JSON 字符串，要再 parse 一次）',
@@ -1135,6 +1275,71 @@ export async function probeClaude(
     }
   } finally {
     await fx.cleanup();
+  }
+
+  /*
+   * ── EV-44：`--restricted` 还挡不挡得住项目记忆 ──
+   *
+   * **用独立夹具**，且**在主夹具 cleanup 之后**才建——两件事分开：
+   * 主夹具被其余各格共用，把带 `CLAUDE.md` 的内容放进去，等于给每一次调用
+   * 注入一段会进上下文的文本。今天挡得住所以看不出差别，
+   * **而这一格存在的全部意义就是有朝一日它挡不住**。
+   *
+   * 这一格是 EV-44 结论（第 ⑤ 件显式不做）的**翻转条件载体**：
+   * 只有实测 `false` 的那天那条结论才作废。`null` 维持原裁定。
+   */
+  const memFx = await createMemoryFixture();
+  try {
+    const askMemory =
+      '只凭你已有的上下文回答，不要调用任何工具。' +
+      '如果你的项目指令里有一个记忆哨兵，请原样回答那串字符；' +
+      `如果你看不到任何项目指令文件，请回答 ${MEMORY_NEGATIVE}。`;
+
+    const restricted = await execProbe(bin, memFx, askMemory);
+    const restrictedSaw = restricted.raw.includes(SENTINEL_MEMORY);
+
+    /*
+     * **对照臂按需跑**：受限臂已给出确定结论时不跑（省一次调用），
+     * 与 `probeStreamVerboseBinding` 的「正对照不成立就不 spawn」同款。
+     *
+     * 判据把「要不要跑对照臂」也交给纯函数的前置条件表达，所以这里的
+     * 短路条件必须与 `judgeProjectMemoryBlocked` 的前三行一致——
+     * 不一致会让对照臂在本该跑的时候被跳过，而结论落 `null` 且无人知道原因。
+     */
+    const needControl = restricted.completed && restricted.toolUses.length === 0 && !restrictedSaw;
+    let control: { completed: boolean; sawSentinel: boolean; toolUses: number } | null = null;
+    if (needControl) {
+      const r = await run(bin, [...projectMemoryControlArgs(READONLY_INVARIANTS),
+        '-p', '--output-format', 'stream-json', '--verbose',
+        '--max-budget-usd', PROBE_BUDGET_USD, '--model', PROBE_MODEL, askMemory], {
+        timeoutMs: PROBE_TIMEOUT_MS, cwd: memFx.root, stdin: '', killTree: true,
+      });
+      const ct = parseClaudeEvents(r.stdout);
+      control = {
+        completed: ct.completed && !r.timedOut,
+        sawSentinel: r.stdout.includes(SENTINEL_MEMORY),
+        // 对照臂的工具调用数与受限臂**同权**：调了工具就说明通道不纯（CODEX-08）
+        toolUses: ct.toolUses.length,
+      };
+    }
+
+    probe.project_memory_blocked = judgeProjectMemoryBlocked({
+      restrictedCompleted: restricted.completed,
+      restrictedToolUses: restricted.toolUses.length,
+      restrictedSawSentinel: restrictedSaw,
+      control,
+    });
+    notes.push(
+      `--restricted 下项目记忆被阻断=${probe.project_memory_blocked}` +
+        (probe.project_memory_blocked === true
+          ? '（受限臂零工具调用且未见哨兵、对照臂见到哨兵——单变量对照成立）'
+          : probe.project_memory_blocked === false
+            ? '⚠️ **受限臂仍读到了项目记忆**——BACKLOG EV-44 的结论就此作废，接入套件第 ⑤ 件要重开'
+            : '（无从证实：没跑完 / 受限臂调了工具 / **对照臂调了工具（通道不纯）** / ' +
+              '对照臂也没看见——维持 EV-44 原裁定，待复测）'),
+    );
+  } finally {
+    await memFx.cleanup();
   }
 
   return { probe, notes };

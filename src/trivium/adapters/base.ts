@@ -235,6 +235,21 @@ export function failedResult(
      * 恰是这个字段声明「必填而非可选」时要避免的那一格。
      */
     profileRequested?: string | null;
+    /**
+     * 本次**已经构造并注入**的 deny 载荷。**注入过就必须传**（代码双审 r3 GLM-04 ≡ CODEX-04）。
+     *
+     * 上一版这三格在这里硬编码成 0，注释写的是「该侧不注入 `--settings`、恒为 0，
+     * 含义是『没有这种概念』」——那句话对 agy / zcode / codex / stub 成立，
+     * **对 claude 的两条失败出口不成立**：deny 在拉起 CLI **之前**就建好并注入了
+     * （`claude.ts` 的 `buildDenySettings` 先于超时与「未产出最终回复」两条 return），
+     * 规则可能已注入、路径可能确有跳过，`run.json` 却记 0。
+     *
+     * 那是**说明不了理由的零**——而同一文件上方刚为 `profileRequested` 立过
+     * 「请求值 / 已发生的事实照写」的规矩，这里违反的正是同一条。
+     *
+     * 不传即视为该侧没有这种概念（另四家），三格落 0。
+     */
+    deny?: { skipped: number; ruleCount: number; bytes: number };
   },
 ): CriticResult {
   return {
@@ -260,6 +275,14 @@ export function failedResult(
     session_id: fail.sessionId ?? null,
     cli_version: fail.cliVersion ?? null,
     peer_deny_applied: false,
+    /*
+     * 三格的零只在**没传 `deny`** 时出现，那才是「能说明理由的零」：
+     * 含义是「该侧没有这种概念」（不注入 `--settings`），不是「注入了但一条都没跳过」。
+     * 注入过的侧必须把真实值传进来——见 `fail.deny` 的文档块。
+     */
+    deny_skipped: fail.deny?.skipped ?? 0,
+    deny_rule_count: fail.deny?.ruleCount ?? 0,
+    deny_bytes: fail.deny?.bytes ?? 0,
     command_line: fail.commandLine ?? '',
   };
 }

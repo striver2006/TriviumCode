@@ -207,6 +207,13 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
     session_id: 'stub-session',
     cli_version: 'stub/0.0.0',
     peer_deny_applied: false,
+    /*
+    * 该侧不注入 `--settings`（无路径级 deny 机制），**恒为 0 且这是能说明理由的零**：
+    * 含义是「没有这种概念」，不是「注入了但一条都没跳过」。
+    */
+    deny_skipped: 0,
+    deny_rule_count: 0,
+    deny_bytes: 0,
     command_line: `<stub ${critic} mode=${spec.mode}>`,
   };
 }

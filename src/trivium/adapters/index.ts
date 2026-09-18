@@ -12,6 +12,7 @@
  * 注册表回答**身份**，本表回答**由谁执行**。
  */
 import { agyAdapter } from './agy.js';
+import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
 import { zcodeAdapter } from './zcode.js';
 import type { AdapterTable, CriticAdapter } from './base.js';
@@ -25,6 +26,14 @@ import { CRITIC_AGENT_IDS, agentById } from '../agents/registry.js';
  * 由下面的 `realAdapters()` 在启动时响亮报出，而不是等运行到一半才 undefined。
  */
 const WIRED: AdapterTable = {
+  /*
+   * claude 在这里而 `criticEnabled` 仍为 false（M9 第 3 步）。
+   *
+   * 这不是矛盾：`realAdapters()` 只遍历 `CRITIC_AGENT_IDS`（criticEnabled 的那些），
+   * 所以多这一个键不触发任何启动期断言；而 `wiredAdapter('claude')` 能取到它，
+   * 让准入脚本与单测走真实实现。**翻开关是第 4 步的事**，本步只把实现接上。
+   */
+  claude: claudeAdapter,
   codex: codexAdapter,
   gemini: agyAdapter,
   glm: zcodeAdapter,

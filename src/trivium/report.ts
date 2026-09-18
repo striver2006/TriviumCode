@@ -270,6 +270,24 @@ async function buildRound(
       base.guardFlags.push(`${c} 侧路径级 deny 未生效（第 ③ 道屏蔽降级）`);
     }
   }
+  /*
+   * **跳过项与「未生效」同档**（代码双审 r2 CODEX-01）。
+   *
+   * `peer_deny_applied` 读的是探针格，对本次注入的规则一无所知。于是
+   * 「主题名带一个括号 ⇒ 这一次每一条对端产出都被跳过」这种情形，
+   * 在上面那个循环里**完全看不见**：它仍是 true，不推任何旗标。
+   * 而那一刻 CLI 层屏蔽对「对端产出」已经整批失效，只剩提示语与事后轨迹核验。
+   *
+   * 此前唯一的记录在 `trace.json` 且全仓无消费方——`guard.ts` 自己写过
+   * 「宣称了不存在的消费方正是 EV-06 记的那个形态」。这里就是那个消费方。
+   */
+  for (const [c, n] of Object.entries(meta.guard.deny_skipped ?? {}) as [CriticId, number][]) {
+    if (n > 0) {
+      base.guardFlags.push(
+        `${c} 侧有 ${n} 条禁读路径拼不出规则、已跳过（第 ③ 道屏蔽对这些路径降级）`,
+      );
+    }
+  }
 
   /*
    * 两条核验通道的降级（§11.1，M8 第 2 步）——留痕五面里的复盘面。

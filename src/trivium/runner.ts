@@ -242,6 +242,13 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
         session_id: null,
         cli_version: null,
         peer_deny_applied: false,
+        /*
+        * 该侧不注入 `--settings`（无路径级 deny 机制），**恒为 0 且这是能说明理由的零**：
+        * 含义是「没有这种概念」，不是「注入了但一条都没跳过」。
+        */
+        deny_skipped: 0,
+        deny_rule_count: 0,
+        deny_bytes: 0,
         command_line: '',
         // runOneSide 把本次尝试的抹除结果挂在异常上带出来（GLM-04）
         ...((s.reason as { scrub?: ScrubOutcome } | null)?.scrub ? { scrub: (s.reason as { scrub: ScrubOutcome }).scrub } : {}),
