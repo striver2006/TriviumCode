@@ -75,12 +75,16 @@ profiles:
       plan: GLM-5.3
       code: GLM-5.3
       bug: GLM-5.3
-    # 用 flash 而非内置默认的 qwen3.8-max：max 在 effort=high 下撞满过 plan 阶段的
-    # 1500s 预算、零产出（2026-09-16 实测），flash 则 419s / 1038s 交卷。
+    # 2026-09-18 由 qwen 家族改为 deepseek：M9 第 1～2 步的代码双审四轮里 codex 侧
+    # 耗时 8m36s → 56m → 62m → 118m53s，最后一轮离 code 阶段 7200s 预算只剩 66 秒。
+    # 换家族是对「快撞预算」的处置，不推翻下面这条 qwen 内部的结论——它仍然成立，
+    # 只是本仓库不再走 qwen 这一侧：用 flash 而非内置默认的 qwen3.8-max，因为
+    # max 在 effort=high 下撞满过 plan 阶段的 1500s 预算、零产出（2026-09-16 实测），
+    # 而 qwen3.8-flash 则 419s / 1038s 交卷。
     codex:
-      plan: qwen3.8-flash
-      code: qwen3.8-flash
-      bug: qwen3.8-flash
+      plan: deepseek-flash
+      code: deepseek-flash
+      bug: deepseek-flash
   flash:
     gemini:
       plan: gemini-3.8-flash-high
@@ -90,10 +94,14 @@ profiles:
       plan: GLM-5.3-Flash
       code: GLM-5.3-Flash
       bug: GLM-5.3-Flash
+    # 必须跟着 agents.codex.profile 一起换家族：模型槽与 `-p` 是两个维度，
+    # 留成 qwen3.8-flash 就会组成 `-p deepseek -m qwen3.8-flash`，实测被端点直接拒绝
+    # （见 probes/codex.ts 的跨家族记录）。deepseek 目录下只有 flash 与 v4-pro 两档，
+    # flash 档与 default 取值相同是结果，不是漏改。
     codex:
-      plan: qwen3.8-flash
-      code: qwen3.8-flash
-      bug: qwen3.8-flash
+      plan: deepseek-flash
+      code: deepseek-flash
+      bug: deepseek-flash
 active_profile: default
 gate:
   require_adjudication: true
@@ -151,7 +159,7 @@ agents:
   codex:
     vendor: openai
     bin: null
-    profile: qwen
+    profile: deepseek
     effort:
       plan: high
       code: high
