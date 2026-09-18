@@ -136,12 +136,80 @@ export const CRITIC_PREFIX: Record<CriticId, string> = Object.fromEntries(
 export interface PathDenyProbe {
   /** null = 尚未探测；false = 本机确认不支持，第 ③ 道屏蔽退化为禁读清单 + 轨迹核验 */
   supported: boolean | null;
-  /** 可复用的规则写法，供适配层注入 deny_paths。不支持时为 null */
+  /**
+   * 可复用的规则写法。不支持时为 null。
+   *
+   * **它记的是实测被证生效的那一条的形状，不是「什么都能往里套」的模板**
+   * （代码双审 CODEX-04）。claude 侧落盘的是**目录 glob**（`Read(./<dir>/**)`），
+   * 而 M9 要注入的 `CriticRequest.deny_paths` 是**逐文件清单**——
+   * **两者形状不同，等价性未验**（M6 与 M9 两份报告都把它登记为未验）。
+   *
+   * 照字面把逐文件路径套进这个形状，第 ③ 道屏蔽可能根本不成立，
+   * 而 `run.json.guard.peer_deny_applied` 仍会记 true（三家适配器都只看 `supported`）。
+   * **`coverage_complete` 不覆盖这个问题**：那一格管的是「规则对哪些**读工具**生效」，
+   * 这一条问的是「规则对哪种**路径形状**生效」，是两件事。
+   *
+   * M9 第 3 步接适配器**之前**要补一次逐文件形态的实测。
+   */
   rule_syntax: string | null;
   /** 该结论是怎么测出来的（人读，写进坑清单） */
   method?: string | null;
   /** 已尝试但不成立的注入点，避免下次重复试 */
   attempts?: string[];
+  /**
+   * 主判据之外**另行实测过的**读工具，同一批规则是否同样生效（BACKLOG EV-40）。
+   *
+   * `true` = 另测的通道也被挡住；`false` = **存在已实测的绕过通道**；
+   * `null` / 缺省 = 没另测过（**不等于覆盖完整**）。
+   *
+   * **`true` 的含义是「已实测的通道都挡住了」，不是「覆盖全部读工具」。**
+   * claude 侧另测的只有 `Grep`（实测绕得过 ⇒ false），`Glob` 至今未验
+   * （M6 报告 §四.7 已登记为已披露缺口）。把它读成「覆盖完整」会免掉事后轨迹核验，
+   * 而那是这个洞唯一的兜底（设计 §3.7）。
+   *
+   * 立此字段是为了替掉 `method` 中文自由文本的 `includes` 反解——
+   * 厂商或我们自己改一句话，反解就静默失效，而失效的方向是**放松**。
+   *
+   * **消费方**：`doctor` 的结论文案；M9 适配器判「第 ③ 道屏蔽能不能单独成立」。
+   */
+  /*
+   * **必填，不是可选**（代码双审 r3 CODEX-01 ≡ GLM-01）。
+   *
+   * 上一版写成 `?:`，理由是「不给也能编译」。那正是问题所在：不给也能编译，
+   * 于是 agy / zcode / codex 三家**真实产出**的 `path_deny`（赋值形与 return 形）
+   * 一格都没补，而我以为自己修了——我改到的只是它们的**初值空壳**。
+   * 配套那条 grep 契约又只认属性形，把属性形全改成 `emptyPathDeny()` 之后
+   * 它扫到的是**空集**，`offenders` 恒为 `[]`，测试 vacuous 通过。
+   *
+   * 改必填之后，`tsc` 会在每一个产出点当场报错，由写的人显式给 `null`。
+   * **扫描器要靠我写对正则，类型检查不用**——这一族缺陷我已经连错三轮，
+   * 换成结构上不可能写错的做法，而不是再加一层需要写对的判据。
+   */
+  coverage_complete: boolean | null;
+
+  /**
+   * **逐文件形态的 deny 规则验没验过**（BACKLOG EV-42，代码双审 r4 CODEX-03）。
+   *
+   * `true` = 逐文件注入实测通过（两条腿：哨兵未泄漏 **且** 该次记入 `permission_denials`）；
+   * `false` = 实测确认逐文件形态**不生效**；`null` = **没验过**。
+   *
+   * ## 为什么要立这一格，而不是把它写在 BACKLOG 里
+   *
+   * EV-42 的安全默认原本是一句话：「等价性未验前 `peer_deny_applied` 不得记 true」。
+   * 但三家适配器逐字都是 `peer_deny_applied: probe.path_deny.supported === true`——
+   * **第 3 步最省力的做法（照抄那一行）当场违反该默认，而没有任何东西会红**。
+   * 那条默认实质仍是「靠记性的纪律」，与本轮刚换成的「让结构去保证」自相矛盾。
+   *
+   * 立成**必填**三态之后，`peer_deny_applied` 改读这一格：没验过就是 `null`，
+   * `=== true` 判不过，**结构上不可能把一件没测过的事记成 true**。
+   *
+   * ## 它与 `coverage_complete` 是两件事
+   *
+   * 那一格问「规则对哪些**读工具**生效」（claude 侧：Read 挡得住、Grep 绕得过）；
+   * 这一格问「规则对哪种**路径形状**生效」——落盘的 `rule_syntax` 是**目录 glob**，
+   * 而 `CriticRequest.deny_paths` 是**逐文件清单**，两者形状不同、等价性未验。
+   */
+  file_shape_verified: boolean | null;
 }
 
 /** 隔离手段。探针实测「独立 HOME / 独立 settings 路径 / 仅环境变量 / 共享」中首个可用者 */
@@ -580,6 +648,59 @@ export interface ClaudeProbe extends CommonProbe {
    * **消费方**：M9 的可用性判定与用户文档。
    */
   trust_prompt_required: boolean | null;
+  /**
+   * `--output-format stream-json` 是否**必须**配 `--verbose`（BACKLOG EV-40）。
+   *
+   * 2026-09-17 实测（2.1.273）：**不是「少吐事件」，是 CLI 硬拒绝**——
+   * 不带 `--verbose` 时进程退 1、零事件、**零 API 调用**，stderr 为
+   * `When using --print, --output-format=stream-json requires --verbose`。
+   * EV-40 原拟的判据「同一任务跑两次数事件条数」建立在「会降级」这个假设上，
+   * **已被实测否证**；现判据是**负对照进程是否被干净拒绝**——更强，且负对照不花钱。
+   *
+   * `true` = 硬前置成立（现状）；`false` = 不带也能跑，绑定已解除；`null` = 未测。
+   *
+   * **消费方是漂移可见性，不是参数构造**：适配层仍按机制类旗标硬编码 `--verbose`
+   * （设计 §11.1 判据一第二类）。本字段的作用是让「CLI 改成默认全量或换旗标名」
+   * 这件事被探针看见，而不是让 M9 白跑一次才发现。
+   */
+  stream_json_requires_verbose: boolean | null;
+  /**
+   * 探针落盘的 `readonly_flags` 里**含不含那条 MCP 硬前置旗标**。
+   *
+   * 存在的理由是一处真实的张力：适配层必须校验该硬前置在场，
+   * 而 `registry-parity` 第 6 条禁止 `adapters/` 出现那个字面量（设计 §11.1 判据二）。
+   * 于是判定放在探针侧——字面量本来就住在这里——适配层只读这个布尔。
+   *
+   * **不与 `readonly_flags.length > 0` 等价，而且两者并不同真同假。**
+   * 上一版在这里写过「今天两者恰好同真同假」——那句是错的，三侧独立打中
+   * （代码双审 r2 AGY-02 ≡ GLM-r2-05 ≡ CODEX-05），两条现实路径各是一个反例：
+   *
+   *   · `system/init` 的 `tools` 读回为空 ⇒ 该分支**同时**置 `checked=false` 与清空数组
+   *     ⇒ 本字段 `null`、`length > 0` 为 `false`——一个 null 一个 false，不等价；
+   *   · `existing` 带着上一轮的完整清单、本轮拿不到 `init` ⇒ 数组**非空**而本字段 `null`。
+   *
+   * 可核的陈述是这样：
+   *
+   *   · `false` **当且仅当**已核对，且组合内确无该旗标（含 breach 与工具面脏两种清空）；
+   *   · `null` **当且仅当**本轮没核对成（此时数组可能仍带着上一轮的值）。
+   *
+   * **以上两条的前提是「本轮真跑到了终态派生」**（代码双审 r3 CODEX-05 补出的第三条路径）。
+   * 未找到可执行文件、或 `--no-model-calls` 时，`probeClaude` 早退，派生根本不执行，
+   * 字段保留的是**上一轮的值**——可能是一个 stale `true`。
+   * 所以**消费方不得把它当本轮读数**：`availability()` 要与 `probed_at` 一并读——
+   * 而 `probed_at` 现在**只在模型段真跑过时才打戳**（代码双审 r4 CODEX-06：
+   * 上一版它写在两条早退之前，于是「模型段没跑」在它上面看不出来，
+   * 我指的这个信号被实现自己抹平了；现已挪到早退之后，两者才对得上）。`claudeSeverity` 的 ②' 用 `!skipModelCalls` 挡住了
+   * 这一格，但那是判定层的保护，**不是字段语义**。
+   *
+   * 所以取值必须读本字段，不能用长度替代：`readonly_flags` 的契约是
+   * 「**实际被接受**的组合」、允许是子集，真出现子集时只看长度会放行一个缺硬前置的组合，
+   * 而漏掉它的代价是 MCP 的写工具（发信、云盘创建与共享）进入审查会话工具面，
+   * 且单次成本约 24 倍。
+   *
+   * **消费方**：M9 适配器的 `availability()`、`claudeSeverity`。`null` = 未测。
+   */
+  strict_mcp_config_applied: boolean | null;
 }
 
 export interface AuthCacheEntry {

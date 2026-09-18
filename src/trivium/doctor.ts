@@ -265,6 +265,46 @@ export function claudeSeverity(
   }
 
   /*
+   * ②' MCP 硬前置缺席：**已核实的失守**，与 ② 同档，排在一切「没测到」之前。
+   *
+   * 与 ② 的分工：② 问「工具面脏不脏」，这条问「落盘的只读组合里那条硬前置在不在」。
+   * `readonly_flags` 的契约允许是**子集**（见 `ClaudeProbe.strict_mcp_config_applied`），
+   * 真出现子集时只有这条拦得住。
+   *
+   * ## 三道前置缺一不可（代码双审 AGY-01 ≡ GLM-01 ≡ CODEX-01）
+   *
+   * 初版只判 `=== false`，于是**什么都没测到**的机器（未登录、断网、spawn 报错）
+   * 被判成已核实的安全失守、恒 blocker，还把下面 ③ 的信任提示整条截住，
+   * 而给出的建议（「请重跑 doctor」）**必然复现**。根因在产出侧
+   * （`[].includes(x)` 算出 `false`），已随 `judgeStrictMcpConfig` 修掉；
+   * 这里同步把门关严，**不靠上游一处正确**：
+   *
+   *   · `!skipModelCalls`：跳过模型调用时这一项保留上一轮结论，不据此判失守（同 ②）；
+   *   · `tool_surface_checked === true`：没核对成就不是「已核实」，归 ⑥（同 ②）；
+   *   · `readonly_flags.length > 0`：**只判真子集**。数组为空有三个更硬的成因
+   *     （breach → ①、工具面脏 → ②、读回为空 → ⑥），各自的诊断更准；
+   *     让 ②' 也去认领它们，只会把成因说错。
+   *
+   * `null` 同样不走这条：那是「没测到」，归 ⑤/⑥ 的泛化 note。
+   */
+  if (
+    !ctx.skipModelCalls &&
+    probe.tool_surface_checked === true &&
+    probe.readonly_flags.length > 0 &&
+    probe.strict_mcp_config_applied === false
+  ) {
+    return [
+      {
+        level: 'blocker',
+        message:
+          'claude 落盘的只读组合里缺 MCP 硬前置旗标：MCP 的写工具（发信、云盘创建与共享）' +
+          '会进入审查会话工具面——那是能越出项目边界的失守面，且单次成本约 24 倍。' +
+          '请重跑 `trivium doctor --only claude`；在修好之前不要把它接入审查链路。',
+      },
+    ];
+  }
+
+  /*
    * ③ 信任提示：**特化**诊断，必须排在泛化的 null 之前。
    *
    * 它的产出前提正是 `!read.completed`，而那时 `headless_read_ok` 必为 null——

@@ -20,6 +20,7 @@ import { readPaths } from '../adapters/agy-events.js';
 import { invokeAgy, type AgyInvokeOutcome } from '../adapters/agy.js';
 import { createFixture, SENTINEL_OPEN, SENTINEL_PEER, type Fixture } from './fixture.js';
 import type { AgyProbe } from '../types.js';
+import { emptyPathDeny } from '../config.js';
 
 /** 探针用的模型：挑最便宜的，探的是能力不是质量 */
 const PROBE_MODEL = 'gemini-3.8-flash-low';
@@ -275,7 +276,7 @@ export async function probeAgy(
         headless_read_ok: null,
         json_schema_ok: null,
         pty_required: null,
-        path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
+        path_deny: emptyPathDeny(),
         scratch_paths: [],
         isolation: 'shared',
         read_strategy: null,
@@ -338,6 +339,13 @@ export async function probeAgy(
         rule_syntax: deny.ruleSyntax,
         method: deny.method,
         attempts: deny.attempts,
+        /*
+         * 本族没有「主判据之外另测一个读工具」这回事——M0 实测 `supported` 为 false，
+         * 覆盖面无从谈起。`null` 是如实的「没另测过」，不是「覆盖不完整」。
+         */
+        coverage_complete: null,
+        // 逐文件形态未验（本族 supported 为 false，这个问题不成立）
+        file_shape_verified: null,
       };
       notes.push(`path_deny.supported=${deny.supported}：${deny.method}`);
     } else {

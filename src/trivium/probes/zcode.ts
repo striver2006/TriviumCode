@@ -25,6 +25,7 @@ import {
   type ZcodeRollout,
 } from '../adapters/zcode-trace.js';
 import type { ZcodeProbe } from '../types.js';
+import { emptyPathDeny } from '../config.js';
 
 const ENTRY_CANDIDATES = [
   '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs',
@@ -273,7 +274,7 @@ export async function probeZcode(
         model_override: null,
         trace_source: null,
         response_field: null,
-        path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
+        path_deny: emptyPathDeny(),
         scratch_paths: [],
         isolation: 'shared',
         model_id_form: null,
@@ -412,6 +413,10 @@ export async function probeZcode(
       rule_syntax: deny.ruleSyntax,
       method: deny.method,
       attempts: deny.attempts,
+      // 同 agy：本族 supported 为 false，没有「另测的读工具」可谈，如实记未测
+      coverage_complete: null,
+      // 逐文件形态未验（本族 supported 为 false，这个问题不成立）
+      file_shape_verified: null,
     };
     notes.push(`path_deny.supported=${deny.supported}：${deny.method}`);
 

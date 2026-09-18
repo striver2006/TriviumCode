@@ -1,0 +1,244 @@
+---
+schema: trivium.review.v1
+topic: M9-ClaudeCode审核者接入
+stage: plan
+role: codex
+vendor: openai
+agent_cli: codex/0.154.0
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260917T140800Z
+rerun_index: 1
+snapshot_hash: sha256:e0acedd83a6764a17876f0571865ee9853b27ace57be9d43cd969a0ec5fc606e
+blind: true
+started_at: 2026-09-17T14:08:00.742Z
+finished_at: 2026-09-17T14:23:07.273Z
+duration_s: 899
+tool_calls:
+  run_command: 43
+  project_reads: 23
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 0
+  nit: 0
+degraded: false
+parse_fallback: true
+peer_deny: false
+drift: false
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0afb2-1dee-7be0-81a2-e8f371d0fa3f
+---
+
+# 计划审查：M9-ClaudeCode审核者接入
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20260917T140800Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **解析降级**：本侧输出未能解析为结构化结论，下方为原文。该侧不参与阻断判定。
+>
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 原始输出（未能结构化解析）
+
+```
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "先说最危险的一条：第 6 步验收的前提不成立——临时项目里那段被审代码同样是本会话（claude）写的，`--driver <非 claude>` 只是把一个**声明值**当成事实，J4/J5 因此是自我审查买来的绿灯（CODEX-01）。\n\n§0.3 四条阻塞**逐条核过，全部成立**（B-1 cli.ts 零命中 driver、B-2 hooks.ts:91/474 由 CRITICS 派生、B-3 config.ts:286-297 profiles 无 claude 键、B-4 DEFAULT_MAX_CRITICS=3 已满），步骤划分不必重排，这部分我认可。\n\n但 B-2 的判据语义改动有**没写进计划的连带面**：`hasCriticRoleSuffix` 的第二个消费者是 git 提交锚（纯 basename、跨时间），换 Driver 后会把前任 Driver 的历史原稿判成伪造件（CODEX-04）；更根本的是「同一家既是 Driver 又是审核者」造成审查件与原稿**同名形态**，而 resolveRerunIndex 与未登记检查对 role 的处理互相矛盾（CODEX-05）——计划刻意用 code 阶段验收，恰好绕开唯一能测到它的场景。\n\n`--driver` 提前落地的口径问题：它到不了真实调用方（skill 层），却在 plan/bug 阶段新开一条「把审核者的审查件当原稿」的静默错认路径（CODEX-06/07）。EV-39 收窄会把两族一起收窄并放弃跨厂商抄用的盯防（CODEX-03）。全篇没有一处成本核算与尝试上限（CODEX-08）。第⑤件的注入路径修了标记冲突，但存量项目永远拿不到新片段，J2 的成立范围比判据字面窄（CODEX-02）。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "blocker",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §7.1 / §7.2（第 6 步验收：为什么不在本仓库跑）",
+      "problem": "验收的独立性论据建立在一句不成立的事实陈述上。§7.1 写「那里的执笔者确实不是本会话」，但 §7.2 第 1 条是这个会话去「建临时项目、放一段真实可审的小代码」——被审对象仍由 claude（本会话）落盘，再由 claude 出审查结论。用一个 `--driver <非 claude>` 的声明值把「谁执笔」改写成「不是 claude」，正是 critics.ts 那条防线要防的形态，而不是绕开它的合法办法。后果：J4/J5/J6 三项验收结论都是自审买来的绿灯，而 §8.1 的文档回溯会把它写成「真实审查一次已完成」。",
+      "evidence": "读 `src/trivium/critics.ts:112-128`（「自己审自己不构成二次审查——这条流水线存在的理由就是避免它」，判定输入是 `input.driver`，一个可由调用方任意填的值）；读 `src/trivium/topic-args.ts:532-570`（原稿定位同样只认声明的 driver）；被审计划 §7.1「claude 是本会话的 Driver……所以验收在独立的临时项目里跑：那里的执笔者确实不是本会话」与 §7.2 第 1 条「建临时项目（scratchpad 下），trivium init，放一段真实可审的小代码」互相矛盾。",
+      "suggestion": "让被审对象在事实上不由本会话产生，而不是靠旗标声明：取仓库里早于本次会话就已提交的历史文件、或第三方源码、或由另一家 Agent 先落一份夹具，验收前在报告里写明「被审代码的产生者」并给出可核对的凭据（如 git 提交的作者与时间）。若做不到，就把 J4 的表述降格为「链路连通性实跑，不构成独立二次审查」，别让它进 §16.1 与 §24 台账当作达成证据。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划 §5.1（B-5 处置）与 J2",
+      "problem": "B-5 的处置（把审查员身份段并进 CLAUDE.md.snippet 同一块标记）只解决了「第二块追加不进去」，没解决另一半：`appendSnippet` 的幂等判据只看标记在不在，**不看内容**。于是所有已经 init 过的项目（也就是 M9 之前的全部用户，含本仓库）永远拿不到新段落，M9 落地时该段的真实覆盖率接近 0%，只有全新 init 才生效。计划把「已含标记 ⇒ 跳过」这件事只当成一个要绕过的障碍，并只给本仓库开了「手工同步」这一条出口，没有把同一条推广到全体存量项目，也没说明谁负责补发。J2 判据「其注入路径真的会生效」的成立范围因此比字面窄。",
+      "evidence": "读 `src/trivium/init.ts:50-70`：`if (existing.includes(MARKER_BEGIN)) { report.skipped.push(...); return; }` —— 没有任何内容比对、版本戳或更新分支；文件头注释「全部操作幂等：重复运行不重复追加、不覆盖用户内容」。读被审计划 §5.1 连带段：只写「本仓库自己的 CLAUDE.md 已含标记块……新段落要手工同步」。",
+      "suggestion": "二选一并写进计划：①本轮就给片段加一个「按片段内容哈希（或片段版本号）判定是否需要替换块内内容」的更新路径，同时明确用户手工改过块内内容时怎么办；②不改代码，但把 J2 改写为「仅对新 init 生效」，在 §8.1 的回溯落点里补 `.reviews/README.md` / USAGE / PROTOCOL 三处「存量项目的片段是旧版」的显式声明，并把补发登记成 BACKLOG 条目挂在 M10 的单源渲染上。现在不说，M10 之后没人知道这条防线在老仓库里根本不在场。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "security",
+      "location": "计划 §4.4（EV-39 黑名单按厂商归属）",
+      "problem": "收窄方案有两处覆盖面退化，计划都没登记：①它说「把 `BANNED_PROBE_TOKENS` 的扁平数组改成 token → 归属厂商的映射」，但那个数组是**两族拼起来的**——`PROBE_RECIPE_TOKENS`（探针实测挣来的安全不变量）与 `DEPRECATED_TEMPLATE_TOKENS`（已作废的 §7.2 调用模板旗标名）。后一族按测试自己的注释「不依赖探针」，它的威胁模型是「任何人抄那份作废模板」，**与抄进哪家适配器无关**；按厂商收窄后，把 `--allowed-tools` 抄进 codex/agy/zcode 的适配器就不再报红。②现在的判据是「全部适配层文件 × 全部 token」交叉扫，收窄后「把 claude 的 `--restricted` 抄进 codex.ts」这类跨厂商错用（旗标名恰好是别家实测挣来的）也不再命中。计划补的那条新腿（厂商有 token 却无适配器文件 ⇒ 红）盯的是空转，补不上这两条。",
+      "evidence": "读 `test/unit/registry-parity.test.ts:1105-1131`（两族定义 + 注释「初版把六个 token 摊成一个扁平数组，防空转一律判『该 token 还在 probes/ 出现』。那对 --allowed-tools 是错的」）与 `:1207-1235`（扫描是 `collectSourceFiles(adapters/)` 全文件 × `BANNED_PROBE_TOKENS` 全集，无厂商维度）；读 `doc/08_project/BACKLOG.md` EV-39 行：其建议只把 **claude 的三个 token** 限定到该文件，威胁描述是「误伤」，不是「取消跨厂商交叉扫」。",
+      "suggestion": "在 §4.4 里显式区分两族：只有 `PROBE_RECIPE_TOKENS` 按归属厂商判红，`DEPRECATED_TEMPLATE_TOKENS` 一族保持「对全部适配层生效」；并说明**为什么放弃**（或如何保留）跨厂商错用的盯防——例如「token 归属某厂商 ⇒ 只允许出现在该厂商适配器，出现在别家适配器同样判红」，这是一条几乎不增加误伤的排他判据。这条改动与建 `adapters/claude.ts` 同批落地，事后补的代价是要重跑代码双审。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §5.2（B-2 的判据语义改动）",
+      "problem": "「两处派生、今天行为逐字不变、M10 换 Driver 时语义天然跟随」这个论证漏了 `hasCriticRoleSuffix` 的**第二个消费者**：git 提交锚 `immutableChangeReason`。它是纯 basename 判定、无位置判定、且天然是**跨时间**的（比对已跟踪文件的改动），在那里「当轮 Driver」根本没有定义。判据改成「产出方不是我」之后，M10 一旦把 Driver 换成非 claude，本仓库 `.reviews/` 里几十份已跟踪的 `-claude.md` 原稿与 `-revised-claude.md` / `-response-claude.md` 裁决件会立刻变成「审查文档只能由编排器落盘，改动即伪造」——任何触碰它们的重命名、目录整理、错字修正都提交不了，报错文案还会指着一个历史原稿说这是伪造审查件。此外，改完之后「识别集」（naming 用全量后缀，registry-parity 明确断言必须认全部已登记后缀）与「保护集」（全量减 Driver）不再相等，这层不一致在设计 §10.4 里没有任何落点。",
+      "evidence": "读 `src/trivium/hooks.ts:88-93`（hasCriticRoleSuffix 由 CRITICS 派生）、`src/trivium/hooks.ts:189-198`（isForgedRoleFile = 形态 + 归档内）、`src/trivium/hooks.ts:226-243`（同一个 hasCriticRoleSuffix 喂 immutableChangeReason，注释明写「这里用纯后缀检查，不做位置判定……传进来的是 basename」）；`test/unit/hooks.test.ts:51-56` 与 `:58-66` 分别锁两支；`test/unit/registry-parity.test.ts:160-166` 断言识别集必须覆盖全部已登记后缀；`git ls-files '.reviews/**/*-claude.md'` 实际列出多份已跟踪的原稿与裁决件（如 `.../plan/2026-09-13-Agent注册表与多审泛化-claude.md`、`.../code/...-response-claude.md`）。",
+      "suggestion": "别把两个消费者共用的判据一起改。方向上把「保护什么」按**工件类别**而不是按角色后缀表达：原稿/裁决件形态（`-revised` / `-response` 与 kind=null 的 Driver 产出）与编排器独占的审查件要能分开；对提交锚这一支，判据应当是「已登记在 run.json artifacts 内的审查件不可改」这类路径/登记信号，而不是「后缀等于某个非当值 Agent」。同时把「识别集 ⊇ 保护集」这条不等式写成一条用例或至少在 §10.4 里点名，避免 M10 换 Driver 时靠现场排障发现。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §5 第①件（「M9 第一次出现同一家既是 Driver 又是可选审核者」）与 §7.2 剧本第 2 条",
+      "problem": "这条被计划自己点出来、却没被任何一步处置的事实，还有第三层连带面：**角色后缀 = Agent id**，而 Driver 的原稿与审查件的命名形态完全同形（都是 `<日期>-<主题>-<id>.md`）。一旦某家既是某轮的原稿产出方、又是另一轮的入选审核者，同一个阶段目录里两类文件无法靠名字区分，而三处判定对它的处理互相冲突：writeArtifact 命中 EEXIST 只会抬升 `-r<N>`（于是 claude 的审查件被抬到 r2）；resolveRerunIndex 明确 `if (parsed.role === driver) continue`，即「role 等于 Driver 的文件不决定轮次」，这条会把该目录里**所有** claude 后缀文件（含它作为审核者挣来的那份）一并跳过；checkStageArtifacts 的未登记检查又是 `if (!critics.includes(parsed.role)) continue`，会把 Driver 那份原稿判成「未登记的审查件」而报假缺件。计划把验收刻意安排在 code 阶段（唯一**没有原稿**的阶段），恰好让这条链路在 M9 全程不可达，也就永不被测。",
+      "evidence": "读 `src/trivium/naming.ts:106-116`（buildArtifactName：kind 为 null 时审查件与原稿同名，仅 kind 非空才受限）与 `:152-172`（roleIsAllowedForWriter 只约束「谁能写谁的后缀」，driver 形参默认 DEFAULT_DRIVER）；`src/trivium/archive.ts:63-80`（resolveRerunIndex 跳过 role===driver）、`:138-176`（writeArtifact 的 EEXIST 抬升）、`:269-345`（checkStageArtifacts 的 required 与 unregistered 两支对同一 role 的相反期望）；`src/trivium/cli.ts:737-762`（调用点 `checkStageArtifacts(..., roundCritics, undefined, recorded)`，driver 位仍是 undefined ⇒ 恒取 DEFAULT_DRIVER）；`src/trivium/topic-args.ts:549-566`（原稿候选按 role===driver && kind===null 筛，并按 rerunIndex **降序**取第一个 ⇒ 抬到 r2 的审查件会盖掉真原稿）。被审计划 §5 第①件与 §7.2 第 2 条。",
+      "suggestion": "在 §0.3 增补为第五条阻塞，或在 §5 明确一段结论加用例：论证「因 critics.ts 恒拒『入选 = 当轮 Driver』，同一轮内 Driver 与审核者同后缀不可达」是否也覆盖**跨轮次/历史目录**这一情形（不同轮声明不同 Driver 时目录会累积），并给 gate 的 `原稿（任一轮次）` 与 `未登记的审查件` 两支补一条「同一目录内 role 既是历史 Driver 又是本轮审核者」的用例。不处置也行，但要把这条不可达性写下来——否则 M10 换 Driver 的第一次运行就会撞上。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "scope-drift",
+      "location": "计划 §6（`--driver` 提前落地的范围）与 §1.2 不在本轮范围",
+      "problem": "`--driver` 只加在 `topic-args.ts` / `cli.ts` 两个解析点上，落不到真实调用方。日常路径是 skill：三个 dual-review skill 的 `argument-hint` 与第 3 步 `TV review --start` 模板里都没有 `--driver`，而且 SKILL.md 明写「把 resolve 输出的 critics 数组用逗号连接后无条件传给 --critics」——选侧在 resolve 那一层就已按 `driver=claude` 定死。于是 M9 之后这个旗标只有手工 CLI 能用，J8 与 J4 都只测手工路径；B-1 修的是「入口不传 driver」，用户实际走的那条入口仍然不传。同时 test/contract/skill-flag-parity 的约束方向是「argument-hint 里声明的旗标必须在 --start 模板有槽位」：要在 skill 层开口，必须 argument-hint 与模板同批改，否则契约测试红。计划既没说要做，也没说不做。",
+      "evidence": "读 `skills/dual-review-code/SKILL.md:4`（argument-hint 无 --driver）与 `:69`（`TV review --start --entry C --stage code ... [同上选项] --json` 模板）、`:91-99`（critics 数组无条件透传、不要传 --only 的指令）；`skills/dual-review-plan/SKILL.md:4` 与 `skills/dual-review-bug/SKILL.md:4` 同形态；`test/contract/skill-flag-parity.test.ts:8-18,72-81`；`src/trivium/topic-args.ts:328`（resolve 处的 resolveCriticSelection 调用）。",
+      "suggestion": "在 §6 或 §1.2 里明确一行口径：`--driver` 本轮只作为 CLI/编排器内部旗标落地（不进 skill、不进 argument-hint），并据此把 J4/J8 的「经完整编排链路」限定为手工 CLI 路径；或者把 skill 三处（argument-hint + 第 2 步 resolve 调用 + 第 3 步模板）一起纳入第 5 步的改动清单与 §8.1 落点表。含混过去的话，最可能的结果是 M10 才发现「提前落地的那一行」在真实路径上是死的。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §6 第一条（--driver 同时传进 locateSubjectReadOnly）配合 §6.1 提案（只校验已登记）",
+      "problem": "把 `--driver` 一并传进 locateSubjectReadOnly，在 §6.1「只校验已登记、不校验 driverEnabled」的口径下新开出一条静默错认：`--driver gemini --stage plan` 会让原稿定位去找 `<日期>-<主题>-gemini.md`，而那正是编排器落盘的 **gemini 侧审查件**（kind=null，形态与原稿同形，见 CODEX-05），且它确实在同一个阶段目录里。于是被审对象变成一份审查意见，同时 gemini 因「等于当轮 Driver」被从审核者里排除——一份文档由它的作者审它，全程零警告。M9 之前 driver 恒为 claude、claude 又未启用为审核者，这条路径不可达；两个改动一叠加就可达了。",
+      "evidence": "读 `src/trivium/topic-args.ts:549-570`（candidates 过滤条件只有 `parsed.role === driver && parsed.kind === null`，没有任何「是否为已登记审查件」的判别）；`src/trivium/archive.ts:158`（审查件就是按同一 buildArtifactName 形态落进同一阶段目录）；`src/trivium/critics.ts:112-119`（id === driver 即拒选）；被审计划 §6.1 提案：「校验『已登记』即可」。",
+      "suggestion": "要么在提前落地这一步只把 driver 传进选侧、**不**传进 locateSubjectReadOnly（本轮唯一需要的就是选侧那条，把它算作 M10 的一半更贴合 §1.2 的自我限定）；要么传，但加一道「命中的候选若出现在任一 run.json 的审查件登记内就拒绝并说明」的判据，并为 `--driver` 取值非缺省时在预检里打一行可见提示。现在这条组合是「计划自己新增的可达路径，且没有任何一条用例盯」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-08",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "performance",
+      "location": "计划 §2（第 1 步全部实测）、§3（第 2 步 doctor 重跑）、§7（第 6 步验收）、§9 R-3/R-5",
+      "problem": "全篇没有一处成本核算：没有任何一步写明「预计烧几次、单次预计多久、失败重跑几次封顶」。粗算本次至少 12~16 次真实 claude 调用（EV-41 三形态 × 小包+大包 = 6 次；P-a/P-b 各 1；P-c「候选 slug 各跑一次」而候选清单未定义 ⇒ 无上界；第 2 步带/不带 --verbose 各 1 + `doctor --only claude` 重跑；第 6 步验收 1 次以上）。而 §7.4 自己承认 claude 与 Driver **共用同一账号**、极端情况会把 Driver 卡住——只登记了风险，没设刹车（尝试上限、中断条件、失败后是否停手）。另三家接入是留有实测数据的（codex 那次写明 293s/1038s 与 project_reads），本里程碑连一次预算数字都没有，失败模式（超时 1200s 后 runner 不重试、strict 策略整轮失败）会把已烧的配额直接作废再重来一遍。",
+      "evidence": "读被审计划 §2.1「三种形态各跑一次……再各跑一次真实量级」、§2.2 P-c「拿候选 slug 各跑一次最小调用」（候选数量与上界未定义）、§3「同一任务跑两次（带/不带 --verbose）」+「trivium doctor --only claude 重跑」、§7.3、§9 R-3/R-5；读 `src/trivium/probes/claude.ts:40-41`（探针自带 `PROBE_BUDGET_USD = '0.20'` 与 180s 上限，说明「给每次调用上硬闸」在探针侧已是既有做法）与 `:48-60`（AGY-03 ≡ GLM-06 那段：探针的 budgetUsd 一次都没真传过）；读 `src/trivium/agents/registry.ts:156-176`（codex 的 D4-4 注释就是按「实测 293s/1038s + 配额 ×1.5」的口径写的，可作对照标准）。",
+      "suggestion": "在第 1/2/6 步各补一行「调用次数上限 + 单次尺度（模型档、--max-budget-usd 额度、超时）+ 累计上限」，并给验收定一条明确的刹车：同一验收最多 N 次尝试，仍不过即按边界如实登记、不再重试（因为重试是拿 Driver 自己的配额做实验）。另外 §2.1 有更便宜的等价路径：三种形态都要跑「真实量级」大包，但「尺寸」这一维计划自己就写了已有单条 1,000,000 字节 argv 项 exec 成功的实测结论，C 形态的大包可直接省；A/B 在小包过关后各一次大包即够。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-09",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §7.3 表的 J6 行（负对照放在验收实跑里）",
+      "problem": "J6（让它试写：文件未落且尝试留痕）与第 1 步的 P-b 是同一个观测，却被排在第 6 步再验一次：为观察一次工具被拒，要跑一整轮几十分钟、烧共用账号配额的完整审查，且触发方式是「在 BRIEF 里布置一次写尝试」——依赖模型自愿去调那个写工具。模型不理会提示时这一项既没验成也不算失败（静默空转），模型真落盘时临时项目还会被污染一次。而 P-b 用的是「强制发起 Write」的定向写法，成本低、判定确定。",
+      "evidence": "被审计划 §2.2 P-b 与 §7.3 J6 行判据一致（`tool_use` 留痕 + 文件未落）；读 `src/trivium/probes/claude.ts:86-106`（probeArgs 形态，探针侧本就按最小调用组织）；读 `src/trivium/adapters/base.ts:191-196`（TOOL_TRACE_CAPABILITY 的 rejectionRecorded 就是这一项的机读结论，消费方是 guard 而非编排链路）。",
+      "suggestion": "把 J6 的主证据明确定在第 1 步 P-b（定向强制 + 只读旗标 + 最小调用），§7.3 那一格改成「在完整链路里顺带观察，若模型不配合则不据此下结论、也不重跑」，并说明它只是复证。这样 J6 不会因为一次不确定的模型行为而卡住整个里程碑的收口。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-10",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划 §8.1 目标文档表（回溯落点清单）",
+      "problem": "§8.1 的落点表缺 AGENTS.md「改动同步清单」点名的三项：本轮改了 CLI 参数（新增 `--driver`）与 JSON Schema（config.v2.json 新增分支），按要求必须同步 `cli.ts` 的 USAGE 字符串、`doc/03_api/PROTOCOL_dual_critic_relay.md`、相关 SKILL.md——三项一条都没在表里。顺带一条已在的债：USAGE 里 `--only gemini|glm` 自 M8 第 3 步 codex 启用起就已过期（`--only codex` 是合法取值），M9 是顺手修正它的自然时点，再拖就是过期两轮（和 §8.1 自己吐槽 `.reviews/README.md`「已经过期两轮了」同形）。",
+      "evidence": "读 `AGENTS.md`「改动同步清单」表（CLI 参数或退出码 → USAGE 字符串、PROTOCOL 文档、相关 SKILL.md；JSON Schema → parse/gate/meta 校验 + PROTOCOL + SKILL.md + 本文件契约面描述 + registry-parity 盯防点）；读 `src/trivium/cli.ts:174-215`（USAGE 块，含 `--critics` / `--only gemini|glm` 的文案）；读 `src/trivium/agents/registry.ts:148-190`（codex 已于 M8 启用，故该文案确实过期）。",
+      "suggestion": "把 USAGE 字符串、PROTOCOL 文档、三处 dual-review SKILL.md 补进 §8.1 的落点表（哪怕结论是「本次无需改，理由 X」），并把 `--only gemini|glm` 这类文案改成由注册表派生或至少写成「取值随启用集合扩展」；§8.2 的 grep 锚点集里也补一条 `--only` / `gemini|glm` 形态的措辞锚。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-11",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §5.3 三条路中的第 2 条（「要存根就得开一个只为测试存在的注入口，那是为测试改生产形状」）",
+      "problem": "这条代价论证与仓内既有先例冲突，会让交给双审的裁定建立在缺一格的信息上。`deriveDefaultCritics` 正是为了让「模块加载期算出的常量」可测，而被提成**接受外部注册表数组**的纯函数，注释把这条理由写得非常清楚（「提成纯函数而不是内联 IIFE，是为了让这两条不变量能被子测到——否则『加了守卫』与『守卫守对了东西』之间隔着一道没人验过的缝」）。同一个手法对 `resolveCriticSelection` 的「未启用」分支同样适用（可选的 descriptors 入参、生产默认走真实注册表），并不新创设「只为测试存在的注入口」这一形状。",
+      "evidence": "读 `src/trivium/agents/registry.ts:277-320`（deriveDefaultCritics(agents, maxCritics) 的签名与其上注释）；读 `test/unit/registry-parity.test.ts:84-118`（四条缺省集合用例正是换一份 agents 数组去测不变量的先例）；读 `src/trivium/critics.ts:44,126-133` 与 `test/unit/critics.test.ts:124-140`（该分支与夹具现状）。",
+      "suggestion": "裁定前把「复用 deriveDefaultCritics 那套『纯函数收外部列表』的既有先例」列为第 4 条选项并给出代价比较；若仍选 3，请把「M11 之后新增第五家时该用例自动重新生效」这句话写成一条可执行的断言，而不是注释——否则它和 §5.2 里被批评的那类「注释宣称了不存在的覆盖」是同一形态。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-12",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "requirement",
+      "location": "计划 §0.3 B-4 与 §5 第①件（defaultSelected 保持 false）的理由",
+      "problem": "B-4 只处理到「别在加载期抛」，但四家启用后的**用户可见限制**没有任何落点：`review.max_critics` 在 schema 里被钉死 `maximum: 3`（FR-29：1~3），于是「gemini + glm + codex + claude」四侧并存永远退 64，而 `legalList` 的报错文案会一次列出四家「当前可用」——第一个错误把用户引向第二个错误，正是 critics.ts 注释里那条 AGY-02 的教训形态。计划给「defaultSelected 保持 false」列了两条理由（配额、D-1 先例），没列这一条，也没写这条限制该在哪个文档里对用户交代。",
+      "evidence": "读 `skills/dual-critic/schema/config.v2.json:276-281`（max_critics: minimum 1 / maximum 3，描述「FR-29：1～3」）；读 `src/trivium/agents/registry.ts:270-320`（DEFAULT_MAX_CRITICS=3 与不变量二的现场说明）；读 `src/trivium/critics.ts:26-35`（legalList 排除当轮 Driver 的理由正是「第一个错误把用户引向第二个错误」）与 `:139-147`（超限报错）。",
+      "suggestion": "在 §0.3/§5 里把「四选三」写成一条显式边界，并指定交代落点（USAGE 的 `--critics` 那段 + PROTOCOL + `.reviews/README.md`），同时决定 `legalList` 是否在启用家数 > max_critics 时附一句「至多同时选 N 家」。要不要抬上限属于产品决策，不属于本轮，但「不抬」这件事本身要被记下来。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§0.3 的四条阻塞我逐条按行号回原文核过，**全部成立**，不构成误判：B-1（`grep -n driver src/trivium/cli.ts` 我这边同样零命中；`critics.ts:45` 的 `input.driver ?? DEFAULT_DRIVER` 与 `DEFAULT_DRIVER = 'claude'`（registry.ts:333）⇒ 翻开 criticEnabled 后 `--critics claude` 必退 64）；B-2（`hooks.ts:92`/`hooks.ts:474` 确由 `CRITICS` 派生，`test/unit/hooks.test.ts:53-54` 确在锁「-claude.md 不是角色工件」）；B-3（`config.ts:286-297` 的 profiles.default / profiles.flash 三家键齐、无 claude；overlay.ts:63-79 的 KIT_WHITELIST 六条 + 第⑥件另述，与计划描述一致）；B-4（`DEFAULT_MAX_CRITICS = 3` 且 codex/gemini/glm 的 defaultSelected 已顶满，claude 再标 true 会撞 deriveDefaultCritics 不变量二 ⇒ 加载期抛）。步骤划分不必因此重排。",
+    "§0.2 关于 `denied_tool_in_trace` 本机为 null 与设计表转述不一致这一条，处置方向正确：按纪律 1「capability 必须按实测填」，第 1 步补正向实测、不在计划里当它已经是 true，是对的取舍。",
+    "§1.2 把成本闸门/轮数排除本轮范围的理由经核实：`CriticRequest`（types.ts:1117-1146）确实只有 `model` / `effort` / `timeout_s` / `schema_path` / `min_*` 等，无预算与轮数字段，「要用须先补接口字段」成立；如实登记 BACKLOG 而不是顺手做，符合本仓纪律。",
+    "§4.1 把轨迹解析器移到 `adapters/claude-trace.ts`、由探针反向 import（对齐 agy/zcode 先例），同时把 `READONLY_INVARIANTS` / `READONLY_TOOLS` 留在 probes 侧以不弄空 registry-parity 的防空转腿——这一处方向与理由都成立。",
+    "§2.2 P-c 的要害抓得准：claude 侧 `models: []`、`checkModelAgainstCatalog`（preflight.ts:301,375）落 unverifiable 不判失败，「猜错不会被拦下」属实，靠 system/init 回读挣 slug 是正确口径。",
+    "§7.2 用 code 阶段验收以避开「由 Driver 代笔别人的稿子」这个别扭，动机是好的（但见 CODEX-05：它同时把唯一能暴露命名冲突的场景绕开了）。",
+    "§8.2 关于「锚点集本身也是手写清单、必须跑广撒网差集自检」的自我设防，与本仓 EV-12 的教训一致，我认同保留。"
+  ],
+  "not_covered": [
+    "没读 `doc/02_design/` 主设计的 §3.7 / §3.7.1 / §5.1.1 / §9.3 / §10.1.1 / §10.3 / §11.1 / §16.1 正文，因此所有「计划与设计是否一致」的判断（含 §0.1 那张核对表、J1~J8 是否照抄未放宽、§11.1 三类判据的说法）都只核到实现与 BACKLOG 一侧，未核设计原文。",
+    "没读 `doc/README.md`、`doc/01_requirements/README.md`、`doc/03_api/PROTOCOL_dual_critic_relay.md`、`README.md`，也没读 `src/trivium/adapters/codex.ts` 与 `adapters/agy.ts`/`zcode.ts` 全文；「与 codex 同族透传」「三家先例方向」这类断言我只核到 registry-parity 的注释与 base.ts，未逐行比对适配器实现。",
+    "未做任何真实 claude CLI 调用（沙箱只读、无网络），§2 整步的形态判据、P-a/P-b/P-c 结论、`--max-budget-usd` 与 `--json-schema` 的厂商行为一律未独立复现，只采信计划与探针文件的书面记录。",
+    "没跑 `npm run check` 或任何单个测试（只读沙箱），「基线 1300 通过 / 0 失败」未核实；§10 第 4 条的三条变异验证只做了静态推演（见 CODEX-03）。",
+    "§4.3 的 read_paths / tool_calls / guard 证据面（project_reads、path_bearing_reads 覆盖率、consulted 80% 阈值）与 `peer_deny_applied` 的三个读点（review.ts:1101/1168/1321）本轮未逐一打开核对，R-4 的实际风险未评估。",
+    "§4.4 的 EV-39 重构我只覆盖了「收窄带来的覆盖面退化」这一面（CODEX-03），未评估实现细节与新增用例的写法是否可达。",
+    "config.v2.json 新增 anthropic 分支对 `schemas.ts` 的 checkConfigAgents / `.trivium/config.yaml` v1→v2 迁移路径的影响未核（纪律 12 的两段式身份校验是否需要同步改动，未看代码）。",
+    "回滚成本只做粗略判断：翻回 `criticEnabled: false` 时，历史 run.json 的 `critics_selected` 含 claude 的轮次在重跑（`-r<N>`）时会不会被「尚未启用」那条拒掉、以及用户配置里已写下的 `agents.claude` 段变成误导——这两条未追代码验证，故未立案。"
+  ],
+  "consulted": [
+    ".reviews/M9-ClaudeCode审核者接入/plan/2026-09-17-M9-ClaudeCode审核者接入-claude.md",
+    "AGENTS.md",
+    "src/trivium/critics.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/init.ts",
+    "src/trivium/config.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/types.ts",
+    "test/unit/critics.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/contract/skill-flag-parity.test.ts",
+    "test/contract/boolean-flags-parity.test.ts",
+    "test/fixtures/stub-agent-kit/overlay.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-review-code/SKILL.md",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-review-bug/SKILL.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md"
+  ]
+}
+```

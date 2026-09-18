@@ -161,7 +161,11 @@ export function buildCodexResult(
   meta: CodexSessionMeta,
   o: Pick<CodexInvokeOutcome, 'exitCode' | 'durationMs' | 'commandLine'>,
   paths: { stdout: string; trace: string },
-  probe: { version: string | null; path_deny: { supported: boolean | null } },
+  /*
+   * `path_deny` 取 `file_shape_verified` 那一格（EV-42）：入参类型跟着收，
+   * 免得窄化结构体把新字段挡在外面、又得回头改一次。
+   */
+  probe: { version: string | null; path_deny: { file_shape_verified: boolean | null } },
   projectRoot: string,
   /**
    * 本次请求的厂商 profile（`agents.codex.profile`）。
@@ -225,7 +229,17 @@ export function buildCodexResult(
     session_id: trace.threadId,
     cli_version: meta.cliVersion ?? probe.version,
     // 实测：codex 无路径级 deny 机制（`path_deny.supported === false`）
-    peer_deny_applied: probe.path_deny.supported === true,
+    /*
+     * **读 `file_shape_verified`，不读 `supported`**（BACKLOG EV-42，代码双审 r4 CODEX-03）。
+     *
+     * `supported` 回答「这家 CLI 有没有路径级 deny 机制」；这里要断言的是
+     * **「本次注入的那些逐文件路径真的挡住了」**——两件事。claude 侧
+     * `supported` 为 true，而实测用的是**目录 glob**、`deny_paths` 是**逐文件清单**，
+     * 等价性未验；照读 `supported` 就会把一件没测过的事记成 true。
+     *
+     * 三态在这里天然安全：`null`（没验过）与 `false` 都判不过 `=== true`。
+     */
+    peer_deny_applied: probe.path_deny.file_shape_verified === true,
     command_line: o.commandLine,
   };
 }

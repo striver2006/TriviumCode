@@ -1,0 +1,168 @@
+---
+schema: trivium.review.v1
+topic: M9-ClaudeCode审核者接入
+stage: code
+role: glm
+vendor: zcode
+agent_cli: zcode/0.16.5
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260917T231200Z
+rerun_index: 3
+snapshot_hash: sha256:5b6186766db7736d4e8739eef29309fbe32694506d88bfa16609dc885b7880fc
+blind: true
+started_at: 2026-09-17T23:12:01.406Z
+finished_at: 2026-09-18T00:14:51.469Z
+duration_s: 434
+tool_calls:
+  read: 11
+  grep: 6
+  glob: 0
+  run_command: 0
+  project_reads: 10
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 3
+  nit: 2
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+heterogeneous: true
+session_id: sess_c1289093-baf0-44cb-b712-a1e9edb82d93
+---
+
+# 代码审查：M9-ClaudeCode审核者接入
+
+> Critic-B · 智谱 ZCode ｜ 模型 `bigmodel-coding-plan/GLM-5.3`
+> ｜ 运行 `20260917T231200Z` ｜ 第 3 轮
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+r2 的 16 条修复逐项核实成立，本轮零阻断。四个焦点：①死分支删干净——源码树 grep 仅剩两处『上一版加过、已删』的记叙注释（probes/claude.ts:106、claude-events.test.ts:475），设计 3.7.1 该句已改准并保留更正记，另有测试把『prompt 恒在 argv 末位』钉住，无残留活分支。②『同真同假』的替代陈述（types.ts 的 iff 句 + 两条反例对账用例）与我沿代码逐条推演的全部现实路径对上：tools 读回为空（checked=false+清空 ⇒ null）、existing 带旧清单本轮无 init（数组非空而 null）、breach/工具面脏清空（checked=true ⇒ false，由 ②' 的 length>0 前置排除）、正常核对（true）——且探针异常路径安全（run 全失败形态返回结果对象不抛；runDoctor 对 probeClaude 无 catch，异常时整段不落盘，矛盾组合不会落盘）。③三条新守卫：omitVerbose 两条断言与源序断言各自闭合无空转（源序锚点失效会红不会永绿；同写法新增清空点会被 lastIndexOf 天然抓到）；emptyPathDeny 的 grep 契约有一处实质缺口——config.ts 注释宣称的对账用例没有落地，且行级正则对多行写法漏检（GLM-01）。④EV-42/43/44 的触发条件文字本身都指向明确时点（创建 adapters/claude.ts 那一步 / M9 第 3 步），但 16.1 里程碑表未沿用 M8 把前置钉进范围栏的先例（GLM-02），EV-44 的裁定时点在 16.1 与 BACKLOG 两处不同步（GLM-03）。5 条意见：3 minor + 2 nit，无阻断。
+
+**结论**：`request-changes`
+
+## 审查意见（共 5 条：次要 3 ｜ 吹毛求疵 2）
+
+### GLM-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/config.ts:45 与 test/unit/claude-events.test.ts:553-579` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：emptyPathDeny 的守卫宣称与落地是两个判据。config.ts:45 注释宣称『加上契约用例「真实产出的键集 ⊇ 空壳键集」』，但落地的用例是另一回事：(a) claude-events.test.ts:571 的行级正则 /path_deny:\s*\{\s*supported/ 逐行匹配（src.split('\n') 后按行 test），多行写法的手写空壳（path_deny: { 换行 supported: …）整个逃逸，与 :561 注释『对新增第五家也成立——那才是纪律 12 要的「不靠记性」』的声称不符；(b) 该正则只匹配带 path_deny: 属性名前缀的空壳形态，而真实产出侧 probeClaudePathDeny 的四个返回分支（claude.ts:610/658/688/708）返回的就是 PathDenyProbe 本体、不带该前缀——将来新增第五个返回分支漏写 coverage_complete，没有任何测试会红。『真实产出的键集 ⊇ 空壳键集』这条被宣称的对账在两个方向上都不存在。这正是 v1.3.8 记过的『注释宣称了不存在的覆盖』，也是本 diff 自己在 §9.2 引的『守卫被守着不等于守对了东西』——r2 CODEX-06 修的是『空壳有键而真实产出没有』，守卫护住的却只有空壳那一半方向。
+
+**依据**：实读 src/trivium/config.ts:33-49（注释宣称句在 :45，emptyPathDeny 本体 :47-49）；实读 test/unit/claude-events.test.ts:553-579（grep 契约用例全文，:567-571 为逐行扫描与正则，:578 反向腿只断言 emptyPathDeny 自带 coverage_complete）；实读 src/trivium/probes/claude.ts:590-715（probeClaudePathDeny 四个返回分支：早退 :609-614 用 ...emptyPathDeny()、supported:true :658-685 显式含 coverage_complete、leaked :687-696、无从证实 :708-714——当前四分支键全齐，缺的是守卫）。
+
+**建议**：三选一，按代价递增：(1) 改 config.ts 注释，如实描述现有守卫的覆盖面（只防空壳手写、不防产出分支漏键、行级匹配），不宣称未落地的对账；(2) 把宣称的对账落地——对 claude.ts 源文本断言 probeClaudePathDeny 的每个 return 分支都含 coverage_complete 键（源序断言同款手法），或把各分支返回形状抽成可静态枚举的形态;(3) 正则改全文匹配（对整个 src 而非逐行）以覆盖多行写法。至少做 (1)，建议 (1)+(2)。
+
+### GLM-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2821（§16.1 M9 行）` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：EV-42/43/44（连同既有的 EV-39）四个第 3 步前置没有进 16.1 M9 行的『范围』栏——该栏仍只写『adapters/claude.ts + 审查员身份片段 + critic_enabled 开关』三件套。M8 行的先例是把前置显式钉进范围栏（『两条 M6 实测带来的前置：①EV-01……②EV-08……』），EV-01 当初也经历『BACKLOG todo → 升格为里程碑前置 → 同日落地』。v1.3.21 台账自己承认这三条『此前只活在表格与状态列里』，补登进了 BACKLOG，但 16.1 作为开工会话最先读的现状断言没有跟着收口。后果具体：接手第 3 步的会话以 16.1 为入口，EV-42（逐文件 deny 形态等价性）不在任何开工必读路径上（3.7 表格那句话与 types.ts 注释都不是入口），漏做它而直接写适配器，peer_deny_applied 仍会记 true 而第 ③ 道屏蔽可能不成立——这正是 EV-42 正文写的失守形态。
+
+**依据**：实读设计文档 :2821（M9 行：范围栏三件套、状态列仅提第 ⑤ 件待裁定）；对比同文件 M8 行（v1.3.7 起 EV-01/EV-08 以『两条 M6 实测带来的前置』写入范围栏的先例，见本 diff 与台账 v1.3.8 行）；实读 doc/08_project/BACKLOG.md:139-141（EV-42/43/44 触发条件均为『创建 adapters/claude.ts 的那一步』或『M9 第 3 步』）；实读 v1.3.21 台账行（设计 :3172，自称三者为『第 3 步前置』）。
+
+**建议**：在 16.1 M9 行的范围栏补一句前置清单（M8 同形）：『第 3 步开工前置：EV-39（黑名单分厂商）/ EV-42（rule_syntax 逐文件等价性补测）/ EV-43（stdin 形态逐格复验）/ EV-44（第 ⑤ 件裁定）』，或在状态列末尾加『第 3 步前置见 BACKLOG EV-39/42/43/44』的显式指针。
+
+### GLM-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2821 与 doc/08_project/BACKLOG.md:141（EV-44）` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：EV-44 的裁定时点在同一份规范链上两个落点不同步：16.1 M9 行（v1.3.20 写入）说『第 ⑤ 件对 claude 侧的取舍待代码双审裁定』，BACKLOG EV-44（v1.3.21 登记）说『触发条件：M9 第 3 步接入时裁定』。r2 代码双审已经发生（EV-44 的来源正是 r2 CODEX-04）且选择登记而非裁定——『待代码双审裁定』字面上已被满足过一次却没有产出裁定，说明该句已过时；v1.3.21 补登 EV-44 时未回改 16.1。两处并存会让接手者不确定该在本轮双审裁定还是等第 3 步，EV-44 的触发条件因此变软——这正是焦点『触发条件写得够不够硬』的直接落点。设计文档是『唯一实现依据』（16.2 纪律 1），同一事项两个时点表述属于规范链内自相矛盾。
+
+**依据**：实读设计 :2821（『第 ⑤ 件对 claude 侧的取舍待代码双审裁定』，v1.3.20 引入，v1.3.21 未改动该句——v1.3.21 的变更清单见 :3172，无 16.1 M9 行条目）；实读 BACKLOG.md:141（『触发条件：M9 第 3 步接入时裁定』）；实读 .reviews/M9-ClaudeCode审核者接入/code/2026-09-18-…-r2-response-claude.md 裁决表（CODEX-04 的落点是『补三条 EV』即登记，未做裁定）。
+
+**建议**：随下一次设计修订把 16.1 该句与 EV-44 对齐，例如改为『第 ⑤ 件对 claude 侧的取舍待 M9 第 3 步接入时裁定（BACKLOG EV-44，含翻转条件）』；或若确要本轮双审裁定，则裁定后同步改 EV-44 的触发条件。两处只允许一个时点。
+
+### GLM-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/claude-events.test.ts:442` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：『硬前置：核对过才谈得上有无』用例里 judgeStrictMcpConfig(true, []) 的断言消息写『此时 false 让 types.ts 那句「与 length > 0 同真同假」为真』——引用的是本次已删除且被判错的旧句，而 types.ts 现行立场是『不与 readonly_flags.length > 0 等价，而且两者并不同真同假』（仅在引述旧错时保留这四个字）。全仓 grep『同真同假』会同时得到 types.ts 的否定句、claude.ts JSDoc 的『不要再写』禁令、本文件 :534 对账用例的否定标题，与 :442 这句肯定式转述——四个口径三种立场。想表达的意思（breach/工具面脏清空时 false 与长度判据恰好一致，这是旧句当初显得成立的路径）是对的，但表述成『让 types.ts 那句……为真』会让后来者以为 types.ts 还有那句且它在此成立。
+
+**依据**：grep test/unit/claude-events.test.ts 确认 :442 原文；实读 src/trivium/types.ts:637-655（现行 iff 陈述与『上一版在这里写过……那句是错的』记叙）；实读 src/trivium/probes/claude.ts:197-200（JSDoc 的『不要再写「与 readonly_flags.length > 0 同真同假」』）；同文件 :534-549 为对账用例（标题即『**不**同真同假』）。
+
+**建议**：断言消息改为明确指向被删旧句，例如『breach 与工具面脏会把数组清空——在被删掉的旧句「同真同假」下这条路径恰好成立，这正是它当初漏检反例的原因』，与 :534 对账用例的口径统一。
+
+### GLM-05 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/08_project/BACKLOG.md:140（EV-43）` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：EV-43 的触发条件（M9 第 3 步）与复验方式（在 adapters/claude.ts 内自建 stdin 配方）都明确，但复验**结论**没有指定回写落点：EV-40 那格的机读字段 stream_json_requires_verbose 是探针落盘的，而探针不跑 stdin 形态、适配器又不该写探针结论——若第 3 步复验发现 stdin 形态下结论与 argv 形态分叉（EV-43 自己判断『未必同结论』），这个发现只能活在适配器注释或双审留痕的散文里。EV-41 的登记理由（也是 EV-43 转引的理由）正是『只活在散文里的待定项会随留痕沉底』，分叉结论若无落点就是这个形态的复发。
+
+**依据**：实读 BACKLOG.md:140（EV-43 全文：触发条件与复验方式明确，落点列只写『设计 §3.7 / §3.7.1、adapters/claude.ts』即改动落点，无结论回写处）；实读 src/trivium/types.ts:614-629（stream_json_requires_verbose 属 ClaudeProbe 即探针落盘字段，消费方为漂移可见性）；实读 src/trivium/probes/claude.ts:103-118（probeArgs 注释确认探针恒为 argv 形态）。
+
+**建议**：给 EV-43 补一句结论落点，例如『复验结论回填设计 §3.7 对应行；若与 argv 形态分叉，升 BACKLOG 新条目并把探针判据的适用域收窄为 argv 形态』——让复验产出物有确定的去处，不留散文沉底面。
+
+## 认为正确的部分
+
+- 焦点一核实通过：promptVia 死分支删干净——src/ 与 test/ 全量 grep 仅余两处记叙性注释（probes/claude.ts:106、claude-events.test.ts:475，均为『上一版加过、已删』的说明而非活代码）；设计 3.7.1（:410）已改准为『复验要在 adapters/claude.ts 内自建 stdin 配方』并保留失实保证的更正记；测试另以『prompt 恒在 argv 末位』断言把形态现状钉住。
+- 焦点二核实通过：types.ts 的替代 iff 陈述与全部现实路径逐条对上（tools 读回为空 ⇒ null 对 length-false；existing 带旧清单本轮无 init ⇒ 数组非空而 null；breach/工具面脏 ⇒ checked=true 下 false，由 doctor ②' 的 length>0 前置正确认领；正常 ⇒ true），对账用例（claude-events.test.ts:534-549）把两条反例各锁一格；探针侧异常路径安全——run 全部失败形态（spawn error、信号、超时）都返回结果对象不抛（util/exec.ts:193-206），runDoctor 对 probeClaude 无 catch（doctor.ts:541-549），异常时该段整段不落盘，『终态派生』声称的矛盾组合不会经异常路径落盘。
+- 三条新守卫中的两条无空转面：omitVerbose 两条断言闭合（单变量对照 + filter 差集 deepEqual，失效必红）；源序断言自洽（锚点找不到时 lastClear>0 / assign>0 前置断言先红，不会永绿；lastIndexOf 天然抓到同写法新增清空点）。EV-40 正对照『时序紧邻』落实——probeStreamVerboseBinding 调用点已挪到读探针紧邻其后（claude.ts:893，r2 GLM-r2-02 的修法），与报告 §9.4 的陈述一致，且不成立时短路不 spawn（GLM-r2-06 落实）。
+- claude-severity 夹具重构方向正确：healthy() 先合并再推导（默认清单单源化为 [...READONLY_INVARIANTS]、?? 抹平消除），unmeasured()/pinned() 分工明确，【纵深】用例用 pinned() 注入上游坏值把修好后走不到的第二层在自己的论域验到——我 r2 的 GLM-r2-01/02/03/04/06 与同批 gemini/codex 意见的修复全部按裁决落实，无一走样。
+- EV-42/43/44 的登记本体质量高：各自写明问题域、与相邻字段的边界（EV-42 明确『coverage_complete 不覆盖这个问题』）、来源与翻转条件（EV-44 的翻转条件写实了）；BACKLOG EV-40/41 转 done 时把被实测否证的原拟判据原样保留而非改写成成功叙事，留痕可信。
+
+## 未覆盖范围（本侧盲区）
+
+- 只读审查：未运行 typecheck/build/test（构建为写操作）；报告 §8.2/§9.3 所称的各次变异验证按用例文本静态核对，未复跑。
+- 实测数字（31,913 字节、$0.044/次、24 倍、2.1.273、11 条事件、三次 denied_tool_in_trace 观测）与 config.local.yaml 落盘值无法独立复现，按报告与 BACKLOG 采信。
+- probeClaude 的 I/O 全流程（真实 claude 调用、existing 与盘上旧结论的逐字段合并、旧盘 path_deny 缺 coverage_complete 键时的读侧行为）为逐行推演，未实跑 doctor 复现。
+- M9 计划稿（plan/ 目录）未对照——该目录含禁读文件，整目录未进；本审查对『第 ⑤ 件』的理解全部来自 16.1、EV-44 与报告 §2.3 的公开转述。
+- gemini/codex 两侧本轮产出未读（背靠背约束），本轮意见若与其重合属独立收敛；dist/ 与 skills/ 下生成物未核对与源码一致性。
+- doctor --selftest 桩路径下新字段与 ②' 的行为未验证。
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-ClaudeCode审核者接入/code/_meta/changes-20260917T231200Z.diff`
+- `src/trivium/probes/claude.ts`
+- `src/trivium/types.ts`
+- `src/trivium/doctor.ts`
+- `src/trivium/config.ts`
+- `src/trivium/util/exec.ts`
+- `test/unit/claude-events.test.ts`
+- `test/unit/claude-severity.test.ts`
+- `src/trivium/probes/agy.ts`
+- `src/trivium/probes/codex.ts`
+- `src/trivium/probes/zcode.ts`
+- `doc/08_project/BACKLOG.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md`
+- `.reviews/M9-ClaudeCode审核者接入/code/2026-09-18-M9-ClaudeCode审核者接入-r2-glm.md`
+- `.reviews/M9-ClaudeCode审核者接入/code/2026-09-18-M9-ClaudeCode审核者接入-r2-response-claude.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":11,"grep":6,"glob":0,"run_command":0,"project_reads":10}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

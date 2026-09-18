@@ -1,0 +1,74 @@
+{
+  "agreed": [
+    "coverage_complete 改为必填项的设计方向正确，依托 TypeScript 编译期强类型约束覆盖了四家探针及 emptyPathDeny() 的全部 7 处真实产出点与测试夹具，杜绝了可选字段导致的属性静默遗漏。",
+    "verboseNegativeControlArgs() 抽取彻底，将 EV-40 负对照调用的 argv 构造单源化，探针执行点与测试用例共用同一实现，消除了调用点遗漏 omitVerbose 导致负对照退化为正对照的风险。",
+    "doctor.ts 中 claudeSeverity 的 MCP 硬前置分支（②'）增加了 !ctx.skipModelCalls、tool_surface_checked === true 与 readonly_flags.length > 0 三道独立前置门禁，彻底收敛了未登录/断网等未测机器被误判为安全失守并截断信任提示的问题。",
+    "judgeStrictMcpConfig、judgeDenyCoverage、judgeVerboseBinding 等纯函数的三态映射完备严谨，且判据均配有变异验证与针对两头皆空静默失败的纵深用例。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/probes/codex.ts",
+    "test/unit/claude-events.test.ts",
+    "test/unit/claude-severity.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/integration/codex-wiring.test.ts",
+    "skills/dual-critic/schema/config.v2.json"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查看 test/unit/claude-events.test.ts:604 的正则 const SHAPES = /(?:path_deny\\s*[:=]\\s*|return\\s+)\\{([^{}]*supported[^{}]*)\\}/gs 以及 src/trivium/probes/codex.ts:570-612。在 codex.ts 中，probeCodexPathDeny 的 3 处 return 语句分别包含 `${r.code}`（575行）、`${hits.join('、')}`（593行）和 `${suspects.join(' / ')}`（603行）。因字符集 [^{}]* 排除了 { 与 }，当扫描器遇到 ${...} 中的 { 时便无法跨越并匹配失败。虽然用例中的 assert.ok(scanned > 0) 因 agy.ts、zcode.ts 和 claude.ts 贡献了 5 处匹配而通过，但对 codex.ts 的匹配数为 0，与用例注释声称的「覆盖 return 形 return { supported… }（probeCodexPathDeny / probeClaudePathDeny）」不符。若 codex.ts 未来漏填或写错字段，该契约测试无法捕获。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/unit/claude-events.test.ts:604",
+      "problem": "重写后的 PathDenyProbe 契约测试正则 SHAPES 使用 [^{}]*，导致含有模板插值 ${...} 的对象字面量全部匹配失败；probeCodexPathDeny 在 codex.ts 中的全部 3 处 return 产出均含有 ${...}，实际在 codex.ts 中扫到的是空集（scanned = 0），契约防线对该文件处于静默失效状态。",
+      "severity": "major",
+      "suggestion": "避免使用 [^{}]* 正则直接匹配可能包含模板字符串 ${...} 的 JS/TS 对象字面量。可在正则扫描前对模板字符串进行脱敏/替换，或使用词法分词/括号计数器提取对象；同时将防空转断言强化为各探针文件粒度（例如断言 codex.ts 匹配数 >= 3），并在反面夹具中增加包含 `method: ${var}` 的测试用例防止同形退化。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 doc/08_project/BACKLOG.md:141（EV-44）、src/trivium/types.ts:624（ClaudeProbe）以及 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2821（§16.1）。当前 ClaudeProbe 仅有 stream_json_requires_verbose 与 strict_mcp_config_applied 等字段，并无项目记忆阻断判据。若第 3 步仅裁定「显式不做」而不加探针逻辑，则「该格落 false/null 的那天」因字段不存在而永远无法触发。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "doc/08_project/BACKLOG.md:141",
+      "problem": "EV-44 的翻转条件描述为「给探针新增一格三态判据『--restricted 下项目记忆是否仍被阻断』...该格落 false / null 的那天本条结论作废」，但当前 ClaudeProbe 与 probes/claude.ts 并无该机读字段，且设计 §16.1 M9 第 3 步范围栏仅列「取舍裁定」而未包含探针字段改造与 doctor 预算扩展，导致该翻转条件缺少落地支撑、无法通过机器自动执行。",
+      "severity": "minor",
+      "suggestion": "明确 EV-44 的交付边界：若翻转条件需机器机读化，需在 M9 第 3 步范围栏明确追加探针判据与真机探针预算；若不打算在每次 doctor 中常态化烧调用探测该项，则应将翻转条件表述为基准复测/手工复验或厂商 Release Notes 驱动的外部翻转条件。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 doc/08_project/BACKLOG.md:139-140（EV-42 与 EV-43）。EV-42 写着「注入 Read(<具体文件>) 后哨兵未泄漏且该次记入 permission_denials，两条都成立才算结案」，若实验确定不支持，条目按字面规则将无法以否定结论结案；EV-43 将 5 项探针能力的复验要求写为「要在 adapters/claude.ts 内自建 stdin 配方」，而 adapters/claude.ts 职责是实现 CriticAdapter 供流水线调用，不应承担探针负对照或能力探测。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "doc/08_project/BACKLOG.md:139",
+      "problem": "EV-42 结案判据仅界定了正向通过条件（「两条都成立才算结案」），未对「实测证实不支持逐文件 deny」给出闭环结案路径；EV-43 措辞「复验要在 adapters/claude.ts 内自建 stdin 配方」将适配器业务模块与准入复验装置混淆，容易误导实现者将探针复验逻辑写入生产适配层。",
+      "severity": "minor",
+      "suggestion": "EV-42 补齐否定实测结果的结案指引（若确定不支持逐文件规则，则以否定结论结案，peer_deny_applied 永久置 false 并记入限制清单）；EV-43 调整措辞，明确复验由准入阶段的独立测试夹具/测试脚本使用与适配层一致的 stdin 命令行传参结构执行，而非在生产代码 adapters/claude.ts 内部实现探测逻辑。"
+    }
+  ],
+  "not_covered": [
+    "未执行真实的 Claude Code CLI 运行时（包括 claude 2.1.273 真机调用与网络请求），未实际执行子进程或消耗 API 配额。",
+    "尚未启动的 M9 第 3 步及后续代码实现（src/trivium/adapters/claude.ts 尚未创建）。",
+    "trivium doctor --selftest 与全量集成测试的真实运行时状态机。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "1. 契约测试 test/unit/claude-events.test.ts 的 SHAPES 正则因使用 [^{}]* 而被 codex.ts 中 3 处包含模板插值 ${...} 的 return 语句击穿，在 codex.ts 中实际匹配 0 处，形成局部空集漏检盲区（AGY-01）。\n2. EV-44 翻转条件假设存在「探针新增一格判据」，但该字段未在类型与探针中实现，且未列入 M9 第 3 步交付物，导致机器判据悬空（AGY-02）。\n3. EV-42 缺少否定实验结果下的结案路径，EV-43 存在将复验代码位置与生产适配器混淆的语病（AGY-03）。\n4. 运行期构造路径校验完备，coverage_complete 必填化后全量 7 处产出点已全部补齐。\n5. verboseNegativeControlArgs 抽取彻底，负对照调用面保持唯一。\n6. 整体机制可靠，建议修复契约测试正则与条目描述后推进。",
+  "verdict": "request-changes"
+}

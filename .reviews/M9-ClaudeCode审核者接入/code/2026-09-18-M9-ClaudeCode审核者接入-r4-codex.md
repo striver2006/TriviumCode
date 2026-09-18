@@ -1,0 +1,228 @@
+---
+schema: trivium.review.v1
+topic: M9-ClaudeCode审核者接入
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.154.0
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260918T020530Z
+rerun_index: 4
+snapshot_hash: sha256:3e1102a287b2855385273c916a1fe953df3d16bf300515823a3794b16c330344
+blind: true
+started_at: 2026-09-18T02:05:31.575Z
+finished_at: 2026-09-18T04:04:24.350Z
+duration_s: 7133
+tool_calls:
+  run_command: 89
+  project_reads: 56
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 4
+  minor: 3
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0b243-0560-7ae3-b1e4-f47ab88a0c2f
+---
+
+# 代码审查：M9-ClaudeCode审核者接入
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20260918T020530Z` ｜ 第 4 轮
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+四个焦点逐一核过。最危险的一条：r3 换的『让结构去保证』这条路，在 codex 那一侧**仍然没够到它点名的对象**——我实跑了新契约的正则，`SHAPES` 用 `[^{}]*` 描述对象正文，而 `probeCodexPathDeny` 的三处 return 形里 `method` 全是模板插值（`${r.code}` 等自带花括号），匹配当场卡断，命中 0；把这三处 `coverage_complete` 全删，`offenders` 仍是 `[]`，而 `scanned > 0` 的防空转腿因别的文件命中 5 处而照样通过。反面夹具用的是**无插值的合成串**，所以它证明的是简化形会抓、不是现场形状会抓——台账 v1.3.22 与报告 §10.2「覆盖属性形/赋值形/return 形三种写形」为失实（主闸门 tsc 必填确实兜住了，故不是 blocker）。必填改造本身在编译期是干净的：我核到反序列化那条路径由 `loadCtx` 的 `deepMerge` 把缺键补回默认壳（实跑验证），所以磁盘旧数据不构成第四态。EV 收口三条里有两条不可执行：EV-42 的安全默认没有机读落点（三家适配器现写法 `peer_deny_applied = path_deny.supported === true` 照抄即违反且不会红）；EV-43 的『闭集』漏掉了 §3.7 表里最依赖 prompt 送达的两格；EV-44 的翻转条件挂在一格尚未创建、也无排期的探针判据上，且把 `null`（没测到）与 `false` 并列为作废触发器，与本轮自己立的三态纪律相反。另有三条小项。整体方向我判对：三态不压二值、正对照短路不 spawn、夹具改推导——都成立。
+
+**结论**：`request-changes`
+
+## 审查意见（共 8 条：重要 4 ｜ 次要 3 ｜ 吹毛求疵 1）
+
+### CODEX-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/claude-events.test.ts:592-635（对账点 src/trivium/probes/codex.ts:571-609）` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：重写后的契约对 codex 的三处 return 形产出点仍是**空集**，因而对它是静默通过的：正则 `/(?:path_deny\s*[:=]\s*|return\s+)\{([^{}]*supported[^{}]*)\}/gs` 的正文类 `[^{}]*` 不允许出现花括号，而 `probeCodexPathDeny` 三个 return 的 `method` 分别是 `` `…${r.code}…` ``、`` `…${hits.join('、')}…` ``、`` `…${suspects.join(' / ')}…` ``，插值自带 `{}`，整段匹配失败。结果是『论域非空』这条防空转腿被 agy/zcode/claude 的 5 处命中撑起、永远通过，而 r3 被点名的那一族（codex 的 return 形）一处都没进论域。报告 §10.2 与台账 v1.3.22 的「覆盖属性形 / 赋值形 / return 形三种写形」是失实完成声明。
+
+**依据**：我用被测文件里那条正则原样跑了 `src/trivium/probes/*.ts`：agy.ts:337、claude.ts:673/703/723、zcode.ts:411 命中，**codex.ts 命中数 0**；把 codex 源码里三行 `coverage_complete: null,` 删掉后再跑，该文件 scanned/offenders = 0/0（变异不红），同一段剥掉 `${…}` 插值后命中数变成 3——证明漏检原因就是插值花括号。另核 `assert.ok(scanned > 0, …)`（test/unit/claude-events.test.ts:626）只断全局计数，无按文件下限；反面夹具第 644 行的样本 `return { supported: null, rule_syntax: null };` 不含插值。读过的文件：test/unit/claude-events.test.ts、src/trivium/probes/codex.ts、doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md §10.2。
+
+**建议**：方向是把『我写对了正则』这个负担去掉，而不是再补一条判据：①匹配前先剥注释与 `${…}` 插值（`stripComments` 那类装置 registry-parity 已有）；或改按类型/键集对账（扫 `Promise<PathDenyProbe>` 的函数返回值，或直接对产出对象做 `Object.keys ⊇ emptyPathDeny 键集` 的运行期断言）。②防空转腿从『全局 scanned>0』改成『按文件命中下限』，下限由现况写死（codex ≥ 3），与源序断言里 `writes.length >= 4` 同一条手法。③反面夹具补一条**含 `${}` 插值的真实形状**，让它期望必须红——现在的四条样本抓不到这一族。④台账/报告里那句「覆盖三种写形」按实跑结果改准。
+
+### CODEX-03 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/08_project/BACKLOG.md:139（EV-42）、src/trivium/adapters/agy.ts:401 / codex.ts:228 / zcode.ts:542` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：EV-42 的『未结案期间的安全默认（写死在此，不留给临场判断）：等价性未验前 `run.json.guard.peer_deny_applied` 不得记 true』没有可执行的落点：这个判定要求『逐文件形状是否等价』是一个可读取的事实，但 `PathDenyProbe` 里没有任何一格承载它（条目自己也写明『coverage_complete 不覆盖这个问题』），而三家适配器的现成写法逐字就是 `peer_deny_applied: probe.path_deny.supported === true`。M9 第 3 步最省力的做法——照抄那一行——当场违反该默认，而没有任何类型、用例或契约会用例会红。这条默认实质仍是『靠记性的纪律』，与本轮在 `coverage_complete` 上刚换成的『让结构去保证』自相矛盾。
+
+**依据**：核了三家适配器的取数行（adapters/agy.ts:401、adapters/codex.ts:228、adapters/zcode.ts:542，全部只读 `path_deny.supported`）；核 `PathDenyProbe` 键集（src/trivium/types.ts:136-188：supported / rule_syntax / method / attempts / coverage_complete，无形状等价性格）；核 skills/dual-critic/schema/run.v2.json 的 `guard.peer_deny_applied` 只是 `additionalProperties: boolean`，不承载形状事实；EV-42 全文见 doc/08_project/BACKLOG.md:139。
+
+**建议**：复用本轮自己立的手法：在 `PathDenyProbe` 升一格**必填**三态（例如 `file_shape_verified: boolean | null`，`null` = 没验过），结案件的 = 探针在同一次 path_deny 实测里顺手跑一臂逐文件注入（现成的两条腿判据可直接复用），适配器的 `peer_deny_applied` 改读这一格而不是读 `supported`。这样『未结案不得记 true』是结构上不可能写错，而不是等人读 BACKLOG。§16.1 M9 行与 §3.7 该行随之改准。
+
+### CODEX-04 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/08_project/BACKLOG.md:140（EV-43）、doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:359-376（§3.7 表）` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：EV-43 声称把复验面收成『闭集，不是「逐格重测」那种开放集合』，但清单不闭：§3.7 表 15 行里只点了 9 格，未归类的至少包括 `headless_read_ok`、`readonly_breach`、`model_flag`、`strict_mcp_config_applied`、`tool_surface_checked`/`readonly_flags`。其中 `headless_read_ok`（哨兵首行回显命中）与 `readonly_breach`（模型真去调 Write）**整格语义就是『模型收到并执行了这条 prompt』**——EV-41 的大包判据本身就是这类观测，改成 stdin 送包后最可能变结论的恰恰是这两格，却两头都不在清单内。第 3 步照单办事会漏掉最要害的一格，而这正是条目自称已经消掉的『开放集合』毛病。
+
+**依据**：逐行核对了 §3.7 表（doc/02_design/…设计.md:361-376）与 EV-43 的两份清单文本（BACKLOG.md:140），未列出上述键；并核 `ClaudeProbe` 键集（src/trivium/types.ts:536-642 的 12 个专属键）与判据出处（src/trivium/probes/claude.ts:786-815 的 `headless_read_ok`、929-985 的 `readonly_breach`/`denied_tool_in_trace`，后两格出自**同一次** write 探针调用，却被分到相关/未列两侧）。
+
+**建议**：以 §3.7 表行（或直接以 `ClaudeProbe` 键集）为论域逐格标『形态相关 / 形态无关』，无遗漏；再加一条对账用例断言清单覆盖全部键（照 registry-parity 的 grep 级对账手法），否则清单会随新增字段继续脱漏。同一次调用产出的多格必须同类（`readonly_breach` 与 `denied_tool_in_trace` 同源），否则复验结果自相矛盾。
+
+### CODEX-05 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/08_project/BACKLOG.md:141（EV-44 翻转条件）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：EV-44 的翻转条件两处不可执行：①它挂在『给探针新增一格三态判据「`--restricted` 下项目记忆是否仍被阻断」』上，但那格在 `ClaudeProbe`/探针里都不存在，而条目自己的触发条件是『M9 第 3 步接入时裁定』——**建格这件事本身没有任何排期与落点**（不建格则条件永不可求值，结论永不翻转，等于把一条待裁定项标成已收口）。②它把 `null` 与 `false` 并列为『本条结论作废』的触发器：按本轮反复立的三态纪律（`coverage_complete` 的『null = 没测过，不等于覆盖完整』、`judgeDenyCoverage` 的 unverified→null、`judgeStrictMcpConfig` 的空数组→null），`null` 是『没测到』，不该推翻一次有实测背书的裁定；把没测到当证据正是本主题连修三轮的那个形状。
+
+**依据**：核 EV-44 全文与翻转条件原文（doc/08_project/BACKLOG.md:141）；核 `ClaudeProbe` 键集里没有任何记忆/项目记忆相关格（src/trivium/types.ts:536-642）与 §16.1 M9 行的四条前置清单（设计文档 2818-2824 段，未含建格排期）；核该族判据的不稳定性：同一份实测报告对模型行为依赖的 `denied_tool_in_trace` 三次观测两次落 `null`（doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md §7.4、§9.4、§10.1『判据一个字没改，三次差别全在模型去没去调写工具』），而同族的记忆回显判据同样依赖模型配合，落 null 将是常态。
+
+**建议**：①把『新增该格』拆成一条独立待办并写明三处落点（types.ts 字段 + 探针判据 + doctor/§3.7 行），或直接把它并进 §16.1 M9 行的第 3 步前置清单；②翻转条件改成只有实测 `false` 触发，`null` = 维持原裁定 + 记『无从证实，待复测』（与该格其余三态写法同构）。若第 3 步不想建格，就把翻转条件写成人可复核的一次性对照实验（报告 §2.3 那条），并写明复验周期。
+
+### CODEX-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/claude-events.test.ts:604 与 :638` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：同一条 `SHAPES` 字面量存了两份：正向契约用例一份，『期望必须红』的反面夹具另一份。反面夹具调的是自己那份副本的 `hit()`，所以它守的是副本、不是生产扫描用的那条正则——哪天有人只改窄 604 行那份（或只改其一），夹具照样全绿。这正是同一份补丁在 `STRICT_MCP_CONFIG_FLAG` / `READONLY_INVARIANTS` 上立论要消掉的毛病（『同一个字面量存两份，改一份另一份还在，依赖它的判据就对漂移不灵敏』）。
+
+**依据**：读 test/unit/claude-events.test.ts 全文，确认 604 与 638 各有一份逐字符相同的 `const SHAPES = /(?:path_deny\s*[:=]\s*|return\s+)\{([^{}]*supported[^{}]*)\}/gs;`，且 640 行的 `hit` 用的是 638 那份；601-604 行注释与 src/trivium/probes/claude.ts:152-157（`STRICT_MCP_CONFIG_FLAG` 提成具名常量的理由）用的是同一套论证。
+
+**建议**：把扫描逻辑抽成一处（模块级常量，或直接导出一个 `scanPathDenyProductions(src): {body, index}[]` 纯函数），正向用例与反面夹具共用同一份；这条与 CODEX-01 的修法可以合并做。
+
+### CODEX-06 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/types.ts:644-660（`strict_mcp_config_applied` 字段文档）、src/trivium/probes/claude.ts:763-780` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：字段文档给消费方（M9 的 `availability()`）指定的新鲜度信号不可用：它写着『所以消费方不得把它当本轮读数：`availability()` 要与 `probed_at` 以及「本轮是否真跑过探针」一并读』。但 `probeClaude` 在 `!bin` 早退**之前**就执行了 `probe.probed_at = new Date().toISOString()`（774 行的 `skipModelCalls` 早退同样在此之后），于是『本轮没跑到终态派生』这个状态在 `probed_at` 上完全看不出来；`cliProbeIsFresh()` 还会把整段判为新鲜（TTL 7 天内不再重探）。指引后来者去读一个被实现主动抹平的信号，与同一段刚落笔的『那是判定层的保护，不是字段语义』是同一个诉求，却没落到可用信号上。
+
+**依据**：读 src/trivium/probes/claude.ts:733-780 确认 `entrypoint`/`version`/`probed_at`/`version_probe` 四个赋值全部在两条早退 return 之前；读 src/trivium/config.ts:767-797 确认 `withinTtl`/`cliProbeIsFresh` 只看 `probed_at`；读 src/trivium/types.ts 该字段文档原文与 src/trivium/doctor.ts:266-306（②' 用 `!skipModelCalls` 挡住了判定层，但 `availability()` 那半还没有实现可依）。
+
+**建议**：两条选一：早退路径不刷 `probed_at`（它语义是『这一键探到过』，模型段没跑就不该代表模型段）；或另记一格『模型段本轮是否真跑过』（或模型段专属时间戳），并把 types.ts 那句指引改指这个能真的区分两者的信号。M9 第 3 步写 `availability()` 前定下来即可，不必现在实现。
+
+### CODEX-07 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/claude.ts:90-101、455-467` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：`verboseNegativeControlArgs` 抽出后调用面确实唯一（生产侧只有 `probeStreamVerboseBinding` 一处、其余是用例），但条目写的『「调用点忘了拨旋钮」在结构上不可能发生』只对了一半：`probeArgs` 现在带 `omitVerbose?` 被**导出**，任何新调用点都可以自拼一份不含 `--verbose` 的 stream-json argv，绕过这个具名函数；没有任何断言把『负对照 argv 只有一个来源』钉住。保证是现在成立的事实，不是结构。
+
+**依据**：grep `verboseNegativeControlArgs|omitVerbose` 全仓：src 内 `probeArgs` 的 `omitVerbose` 只在 claude.ts:101（声明）、125（拼接）、466（唯一实拨）出现，生产调用点唯一在 claude.ts:512；测试侧 test/unit/claude-events.test.ts:466 另有 `probeArgs({ prompt: 'p', omitVerbose: true })` 自建一份。`probeArgs` 于 claude.ts:90 已改为 `export function`。
+
+**建议**：低成本补一条 grep 级断言：`omitVerbose:` 这个实拨形态在 `src/` 里出现次数 == 1（且必须在 `verboseNegativeControlArgs` 体内），或反向断言 `probeStreamVerboseBinding` 里 spawn 的实参就是 `verboseNegativeControlArgs()`。这样『调用面唯一』由机器判据给出，而不是靠下一个读者去 grep。
+
+### CODEX-08 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/config.ts:33-49` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：`emptyPathDeny` 插在 `emptyCommonProbe` 原有注释与函数之间，导致第 33 行那句「共有事实的空值。各家的专属字段在各自的 default 里补」成了悬空注释（现在紧挨着的是 `emptyPathDeny` 的 JSDoc），而 `emptyCommonProbe` 反而没有了说明。两段相邻 JSDoc 也会被后来的编辑误认为都在讲新函数。
+
+**依据**：读 src/trivium/config.ts:30-60 确认三者的实际顺序；diff 的上下文行显示第 33 行注释是既有行、新块是插在它之后。
+
+**建议**：把第 33 行那句移回 `emptyCommonProbe` 上方；或如果它本来就是讲 `path_deny` 空壳的，就直接删掉避免重复。另可顺手考虑：`emptyPathDeny` 是探针形状工厂，放 `types.ts`（纯类型层，无 YAML/ajv 依赖）比留在配置加载器里更贴合分层——但这条属口味，不必现在改。
+
+## 认为正确的部分
+
+- 死分支（`promptVia`）删净了：`src/trivium/probes/claude.ts` 与 §3.7.1 的叙述一致，且新增了一条把『prompt 恒在 argv 末位』钉住的用例（claude-events.test.ts:486-494），并把保证改成『第 3 步在 adapters/claude.ts 内自建 stdin 配方』——这条改法是诚实的。
+- `judgeStrictMcpConfig` 的三态（没核对成一律 `null`，绝不从空数组反算『确认缺失』）+ 判定侧 ②' 的三道前置 + `pinned()` 纵深用例，是正确的两层防御：我核了 `unmeasured()` 夹具喂的确实是生产形状（checked=false + flags=[]），而不是合成的 null。
+- `judgeVerboseBinding` 五格里『超时 / 拿不到退出码 / 正对照不成立 / 两头皆空』都倒向 null、不猜；且正对照不成立时**直接 return 不 spawn**（claude.ts:505-508）——这条把最坏 180s 与一次真实调用挡在不健康机器之外，方向和『不烧无用配额』一致。
+- `verboseNegativeControlArgs()` 的生产调用面唯一（claude.ts:512 一处），用例与调用点共用同一份 argv，`deepEqual(withV.filter≠verbose, noV)` 锁住了单变量性。
+- 必填改造在编译期是干净的：我实跑 `tsc --noEmit` 无错，并核了四家探针的真实产出（agy.ts:337-346、zcode.ts:411-419、codex.ts:571-609、claude.ts:673-731）逐处显式给了 `coverage_complete`。
+- 运行期的反序列化边界我单独验过不构成第四态：`loadCtx` 用 `deepMerge(defaultConfig(), 盘上文档)` 做递归合并，旧 `config.local.yaml` 里缺 `coverage_complete` 的 `path_deny` 会被默认壳补成 `null`（我用打包产物实跑 `deepMerge` 确认 `in` 为真、值为 `null`），所以『null/缺省 = 没另测过』在回读路径上仍成立。
+- §3.7 实测环境的分层标注（2.1.270 与 2.1.273 混表 + 『探针原记 2.1.272 是回读前落盘值』那条另注）判为必要且到位；EV-40 原拟判据被实测否证这件事留在台账里、并写下『「无信息量」这个准入理由，在没测过的事实上说不出口』，是这一轮最有价值的方法记录。
+- `npm test` 侧我跑了三个受影响的单元文件：claude-events 34/34、claude-severity 与 registry-parity 合计 57/57 全绿（preflight 集成部分因本机沙箱禁写临时目录无法执行，见 not_covered）。
+
+## 未覆盖范围（本侧盲区）
+
+- 没有真机跑 `claude` / 任何厂商 CLI：§3.7 各格、EV-40/41 的实测数值、2.1.273 的行为断言一律只能按留痕采信，未独立复证。
+- 没跑 `npm run check` 全量与集成测试：本机沙箱只读，`preflight.test.ts` 里 `mkdtemp` 那几条报 EPERM（环境限制，不是代码问题），因此 preflight/runner 全链路我未验证。
+- `adapters/claude.ts` 尚不存在，M9 第 3 步的 `availability()`/`peer_deny_applied` 取数我只能按现有三家适配器的写法推断（CODEX-03、CODEX-06 都与此相关），未审到实际实现。
+- EV-39（`registry-parity` 黑名单按厂商归属）本次未展开——它排在第 3 步建适配器那一步一起做，我只确认了 claude 的三个 token 目前在 `BANNED_PROBE_TOKENS`/`PROBE_RECIPE_TOKENS` 里且具名豁免仍被需要。
+- 没审 `skills/dual-critic/scripts/trivium.cjs` 与 `dist/`（生成物），也未复核 r1～r3 三份应答件/裁决件的逐条与留痕一致性（只读了我自己 r3 那份与本轮 diff 内引用的段落）。
+- §11.1 判据三、§24 台账其余行与本次代码的非焦点部分（如 lens 键对账、hook 字面集）未逐条重扫——上一轮已判通过，本轮只看焦点相关处。
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-ClaudeCode审核者接入/code/_meta/changes-20260918T020530Z.diff`
+- `src/trivium/probes/claude.ts`
+- `src/trivium/probes/codex.ts`
+- `src/trivium/probes/agy.ts`
+- `src/trivium/probes/zcode.ts`
+- `src/trivium/types.ts`
+- `src/trivium/config.ts`
+- `src/trivium/doctor.ts`
+- `src/trivium/preflight.ts`
+- `src/trivium/schemas.ts`
+- `src/trivium/util/exec.ts`
+- `src/trivium/adapters/agy.ts`
+- `src/trivium/adapters/codex.ts`
+- `src/trivium/adapters/zcode.ts`
+- `src/trivium/adapters/base.ts`
+- `test/unit/claude-events.test.ts`
+- `test/unit/claude-severity.test.ts`
+- `test/unit/preflight.test.ts`
+- `test/unit/registry-parity.test.ts`
+- `test/unit/config-migrate.test.ts`
+- `test/unit/config-schema.test.ts`
+- `test/integration/codex-wiring.test.ts`
+- `doc/08_project/BACKLOG.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md`
+- `doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md`
+- `skills/dual-critic/schema/config.v2.json`
+- `skills/dual-critic/schema/run.v2.json`
+- `.reviews/M9-ClaudeCode审核者接入/code/2026-09-18-M9-ClaudeCode审核者接入-r3-codex.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":89,"project_reads":56}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

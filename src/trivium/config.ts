@@ -13,6 +13,7 @@ import type {
   CommonProbe,
   Config,
   Ctx,
+  PathDenyProbe,
   ProbeByCli,
   ProbeSection,
   Stage,
@@ -29,6 +30,26 @@ export const CONFIG_SCHEMA_ID = 'trivium.config.v2' as const;
 export const CONFIG_SCHEMA_ID_V1 = 'trivium.config.v1' as const;
 export const TRIVIUM_DIR = '.trivium';
 
+/**
+ * `path_deny` 的空壳 —— **唯一构造处**（代码双审 r2 CODEX-06）。
+ *
+ * 上一版只给 `emptyCommonProbe` 补了 `coverage_complete`，理由写的是
+ * 「不给会让空壳与探针真实产出的形状不一致」。**方向反了**：真实产出那一侧没同步——
+ * claude 的 `path_deny` 早退分支、agy / zcode / codex 三家探针里各自手写的那份，
+ * 都不带这一格。于是改完之后恰恰是**真实产出**在多数路径上缺它，而空壳有。
+ *
+ * 可选字段（`?:`）意味着读侧分不清「没有这一格」与「没测到」，
+ * 所以形状必须在**所有**产出路径上一致，而不是靠各处记得补。
+ * 收敛成一个函数，加上契约用例「真实产出的键集 ⊇ 空壳键集」——
+ * 与纪律 12「兜底扫描、不靠记性」同一手法。
+ */
+export function emptyPathDeny(): PathDenyProbe {
+  return {
+    supported: null, rule_syntax: null, method: null, attempts: [],
+    coverage_complete: null, file_shape_verified: null,
+  };
+}
+
 /** 共有事实的空值。各家的专属字段在各自的 default 里补 */
 function emptyCommonProbe(): CommonProbe {
   return {
@@ -37,7 +58,7 @@ function emptyCommonProbe(): CommonProbe {
     version_probe: null,
     probed_at: null,
     models: [],
-    path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
+    path_deny: emptyPathDeny(),
     scratch_paths: [],
     isolation: 'shared',
   };
@@ -112,6 +133,8 @@ export function defaultProbe(): ProbeSection {
     json_schema_ok: null,
     session_id_source: null,
     trust_prompt_required: null,
+    stream_json_requires_verbose: null,
+    strict_mcp_config_applied: null,
   };
 
   return {

@@ -9,21 +9,57 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { claudeSeverity } from '../../src/trivium/doctor.js';
 import { defaultProbe } from '../../src/trivium/config.js';
+import { READONLY_INVARIANTS, judgeStrictMcpConfig } from '../../src/trivium/probes/claude.js';
 import type { ClaudeProbe } from '../../src/trivium/types.js';
 
 function healthy(over: Partial<ClaudeProbe> = {}): ClaudeProbe {
-  return {
+  /*
+   * ── 先合并，再推导 ────────────────────────────────────────────
+   *
+   * 顺序是判据的一部分（代码双审 r2 CODEX-03 ≡ GLM-r2-04 ≡ AGY-01）。上一版：
+   *
+   *   · 推导读的是 `over`，于是默认值要在推导里**再写一份**——
+   *     基座的 readonly_flags 与推导的 fallback 逐字重复。改其中一份、
+   *     另一份不跟，夹具就静默落出 `{flags: 不含硬前置, strict: true}`
+   *     的矛盾组合，而没有任何对账用例会发现。
+   *     **这正是同一个 diff 在 `probes/claude.ts` 自己引的「同一个字面量存两份」。**
+   *   · 那个 fallback 用的是 `?? true`，而 `??` 对 `null` 与 `undefined` 一视同仁——
+   *     `healthy({ tool_surface_checked: null })` 会被推成 `true`，
+   *     造出 `{checked: null, strict: true}` 这个现实中不存在的组合。
+   *
+   * 改成「先合出终态 `base`，再由 `base` 推导」：默认清单只剩一份，
+   * `??` 消失，三态不被抹平。JSDoc 那句「夹具代表的机器与探针真会产出的值再也分不开」
+   * 到这一版才真正成立——**上一版是先写下承诺、后兑现的，顺序反了，记一笔。**
+   */
+  const base: ClaudeProbe = {
     ...(defaultProbe().cli.claude as ClaudeProbe),
     entrypoint: '/Users/x/.local/bin/claude',
-    version: '2.1.270',
+    version: '2.1.273',
     probed_at: new Date().toISOString(),
-    readonly_flags: ['--restricted', '--strict-mcp-config', '--tools', 'Read,Grep,Glob'],
+    // 默认清单**只此一份**，且直接用探针导出的常量，与 claude-events 那组用例同源
+    readonly_flags: [...READONLY_INVARIANTS],
     tool_surface_checked: true,
     readonly_breach: false,
     headless_read_ok: true,
     trust_prompt_required: false,
     ...over,
   };
+  return {
+    ...base,
+    // 与探针用的是同一个函数，入参取**合并后**的终态
+    strict_mcp_config_applied: judgeStrictMcpConfig(base.tool_surface_checked, base.readonly_flags),
+  };
+}
+
+/**
+ * 直接钉住某个字段值的夹具 —— **只给「专测判定侧单点行为」的用例用**。
+ *
+ * 与 `healthy()` 的分工：那个代表「一台真实机器」、字段由生产侧判据推导；
+ * 这个代表「假如判定函数收到这个值」，用于锁 `claudeSeverity` 自己的分支语义
+ * （典型用途：注入「上游退化后会送来的坏值」，验第二层防御）。
+ */
+function pinned(over: Partial<ClaudeProbe>): ClaudeProbe {
+  return { ...healthy(), ...over };
 }
 
 const LIVE = { enabled: false, asked: false, skipModelCalls: false };
@@ -206,4 +242,162 @@ test('信任提示排在泛化 null 之前，否则永远被截住', () => {
   );
   assert.equal(lines.length, 1);
   assert.match(lines[0]!.message, /新克隆/, '特化诊断要盖过泛化的「请重跑」');
+});
+
+/*
+ * ── MCP 硬前置（M9 第 2 步，`strict_mcp_config_applied`）────────────────
+ *
+ * 这个字段存在的**唯一**理由是给适配层一个不必写出旗标字面量的判据
+ * （`registry-parity` 第 6 条禁止 `adapters/` 出现它）。若没有消费方，
+ * 它就是「只有定义处的新字段」——claude 镜头 code 轴第三条点名的形态。
+ * 下面三条把 doctor 这个消费方钉住。
+ */
+
+/**
+ * **探针在「什么都没测到」时真实产出的形状。**
+ *
+ * 这个夹具是代码双审三侧共同要求的（AGY-01 ≡ GLM-01 ≡ CODEX-01）：
+ * 上一版四条新用例全走 `healthy()`，而我在同一个改动里刚给 `healthy()` 补了
+ * `strict_mcp_config_applied: true`——于是**没有任何一条用例覆盖生产侧真会产出的组合**，
+ * 一个会把未登录机器判成安全失守的 blocker 就此全绿通过。
+ *
+ * 成因：未登录、断网、spawn 报错 ⇒ 读探针拿不到 `system/init` ⇒
+ * `tool_surface_checked=false`、`readonly_flags` 停在初始 `[]`。
+ */
+function unmeasured(over: Partial<ClaudeProbe> = {}): ClaudeProbe {
+  return healthy({
+    tool_surface_checked: false,
+    readonly_flags: [],
+    headless_read_ok: null,
+    trust_prompt_required: null,
+    ...over,
+  });
+}
+
+test('【安全】落盘组合**非空但缺**硬前置 → blocker，且理由点明越界与成本', () => {
+  /*
+   * 这是 ②' 真正要认领的那一格：工具面核对过、数组非空、其中没有硬前置。
+   * 空数组不归它——那有三个更硬的成因，各归 ①/②/⑥。
+   */
+  const lines = claudeSeverity(
+    healthy({ readonly_flags: ['--restricted', '--tools', 'Read,Grep,Glob'] }),
+    LIVE,
+  );
+  assert.equal(lines[0]!.level, 'blocker');
+  assert.match(lines[0]!.message, /24 倍/);
+  assert.match(lines[0]!.message, /越出项目边界/);
+});
+
+test('【回归】探针什么都没测到时，不得判安全失守', () => {
+  /*
+   * 代码双审三侧独立打中的那条阻断（AGY-01 ≡ GLM-01 ≡ CODEX-01），
+   * codex 用构建产物复现过。**这条用例锁的是那个真实组合，不是一个合成的 null。**
+   */
+  const lines = claudeSeverity(unmeasured(), LIVE);
+  assert.equal(
+    lines.every((l) => l.level !== 'blocker'),
+    true,
+    `什么都没测到却报了 blocker：${JSON.stringify(lines)}`,
+  );
+  assert.match(lines[0]!.message, /未得出结论|未核对/, '该说的是「没测到，请重跑」');
+});
+
+test('【回归】没测到 + 需人工信任时，信任提示不得被硬前置那条截住', () => {
+  /*
+   * 阻断的第二半：②' 排在 ③ 之前，于是需要人工信任的机器拿到的是一条
+   * 失实的失守指控 + 一句必然复现的「请重跑」，而真实原因永不出现。
+   */
+  const lines = claudeSeverity(unmeasured({ trust_prompt_required: true }), LIVE);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0]!.message, /新克隆/);
+});
+
+test('【回归】空数组 + 已核对（breach / 工具面脏）由 ①② 认领，不落到 ②\'', () => {
+  /*
+   * judgeStrictMcpConfig 对这两种清空返回 false（数组确实不含硬前置），
+   * 于是 `=== false` 那道门会命中——靠 ②' 自己的 `length > 0` 排除掉，
+   * 而不是靠「① 排在前面」侥幸。两条各验一次。
+   */
+  const breach = claudeSeverity(
+    healthy({ readonly_breach: true, readonly_flags: [] }),
+    LIVE,
+  );
+  assert.match(breach[0]!.message, /负对照失败/);
+
+  const dirty = claudeSeverity(
+    healthy({ readonly_flags: [] }),
+    LIVE,
+  );
+  assert.match(dirty[0]!.message, /只读保障不成立/, '工具面脏该由 ② 说，不由 ②\' 说');
+});
+
+test('【纵深】探针侧即便退化送来「确认缺失」，判定侧也不得判失守', () => {
+  /*
+   * 这条锁的是 ②' **自己的**两道前置（`tool_surface_checked === true` 与
+   * `readonly_flags.length > 0`），不是上游的判据。
+   *
+   * 为什么需要单独锁：修好 `judgeStrictMcpConfig` 之后，「什么都没测到」产出的是
+   * `null`，于是 ②' 那两道前置**再也走不到**——去掉它们，全部用例照样绿。
+   * 一道走不到的守卫等于没有守卫，而它恰恰是**上游再退化一次时**的最后一层。
+   *
+   * 所以这里用 `pinned()` 直接注入「初版探针会送来的那个坏值」
+   * （`tool_surface_checked:false` 却带 `strict_mcp_config_applied:false`），
+   * 让第二层在自己的论域里被验到。
+   */
+  const lines = claudeSeverity(
+    pinned({
+      tool_surface_checked: false,
+      readonly_flags: [],
+      strict_mcp_config_applied: false, // ← 上游退化后的产物，现实中不该出现
+      headless_read_ok: null,
+      trust_prompt_required: null,
+    }),
+    LIVE,
+  );
+  assert.equal(
+    lines.every((l) => l.level !== 'blocker'),
+    true,
+    `判定侧没能独立挡住上游的坏值：${JSON.stringify(lines)}`,
+  );
+});
+
+test('硬前置为 null 是「没测到」，不得当失守', () => {
+  /*
+   * 与本文件其余分支同一条口径：把未测说成失守，是本仓已经踩过三次的塌缩
+   * （flags 空集双义、path_deny 落 false、denied_tool_in_trace 二态化）。
+   */
+  assert.deepEqual(
+    claudeSeverity(pinned({ strict_mcp_config_applied: null }), LIVE),
+    [],
+    'null 不该产生任何诊断——它归 ⑤/⑥ 的泛化 note，而本夹具其余项都正常',
+  );
+});
+
+test('--no-model-calls 下不判硬前置（与工具面那条同口径）', () => {
+  /*
+   * 跳过模型调用时这一项保留上一轮结论，可能是任意值；拿它去判失守，
+   * 等于让一个**没跑**的探针产出安全指控。②（工具面）早就是这个口径。
+   */
+  assert.deepEqual(
+    claudeSeverity(
+      healthy({
+        readonly_flags: ['--restricted', '--tools', 'Read,Grep,Glob'],
+      }),
+      { ...LIVE, skipModelCalls: true },
+    ),
+    [],
+  );
+});
+
+test('已核实的失守排在硬前置之前：负对照落了文件时报的是那条', () => {
+  /*
+   * 顺序判据（本函数注释的「确证的事实排在推断之前」）：两条都成立时，
+   * 该报的是「文件真被创建了」——它是文件系统事实，比「组合里缺一项」更硬。
+   */
+  const lines = claudeSeverity(
+    healthy({ readonly_breach: true, readonly_flags: [] }),
+    LIVE,
+  );
+  assert.equal(lines.length, 1);
+  assert.match(lines[0]!.message, /负对照失败/);
 });

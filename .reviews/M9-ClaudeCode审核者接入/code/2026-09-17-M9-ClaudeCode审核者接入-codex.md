@@ -1,0 +1,197 @@
+---
+schema: trivium.review.v1
+topic: M9-ClaudeCode审核者接入
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.154.0
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260917T151624Z
+rerun_index: 1
+snapshot_hash: sha256:a0015ec1bc42e355743eb642f1498aa8d519bd745bcbc84178ae7bb33b52212f
+blind: true
+started_at: 2026-09-17T15:16:25.629Z
+finished_at: 2026-09-17T15:28:47.771Z
+duration_s: 515
+tool_calls:
+  run_command: 37
+  project_reads: 31
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 1
+  major: 3
+  minor: 2
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0aff0-c004-7e10-af71-ebed0f29e258
+---
+
+# 代码审查：M9-ClaudeCode审核者接入
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20260917T151624Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+三个新字段里，`strict_mcp_config_applied` 有一条可复现的**塌缩**：探针在「读探针没拿到 system/init」时把 `readonly_flags` 留成 `[]` 再算出 `false`，于是 doctor 新增的 ②' 分支在**未登录 / 断网 / 新目录首跑**这类「没测到」场景直接产出恒为 blocker 的「已核实失守」，并且顺带把 r4 刚修好的 ③ 信任提示分支重新截住——这正是本分支注释自称在防的那件事，我用构建产物复现了。EV-40 的判据改动方向上确实更严，但 `true` 那一臂**无归因**：任何非零退出 + 零 stdout（含 `exec.ts` 的 `[spawn error]` → `code:null`）都被记成「实测确证硬前置成立」，与同文件 `judgeToolSurface` 明确拒绝 vacuous pass 的口径不一致。`coverage_complete` 有活消费方（notes 三态），但它和另两个字段都没有进设计 §3.7 的字段索引表，`defaultProbe` 的 claude `path_deny` 初值也没带它。另有一条越出焦点但更要紧：设计 §3.7.1 的 `--settings` 行把「值按 `CriticRequest.deny_paths` 拼」写成已定，而实测过的只有目录 glob、逐文件形态两份报告都登记为未验——按 `rule_syntax` 原样套到逐文件清单，第 ③ 道屏蔽可能静默不成立而仍记 `peer_deny_applied:true`。此外探针仍用 argv 位置传 prompt，EV-41 结案的是 stdin 形态，两者是否等价没有测过。
+
+**结论**：`request-changes`
+
+## 审查意见（共 7 条：阻断 1 ｜ 重要 3 ｜ 次要 2 ｜ 吹毛求疵 1）
+
+### CODEX-01 · 阻断（blocker）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/claude.ts:672-692（`else { probe.tool_surface_checked = false; … }` 未重置 `readonly_flags`）与 :741（`probe.strict_mcp_config_applied = probe.readonly_flags.includes(…)`）；消费方 src/trivium/doctor.ts:265-291（新增 ②' 分支）` |
+| 类别 | security ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：新增的 ②'「MCP 硬前置缺席」blocker 会在**什么都没测到**的情况下触发，且它排在 ③④⑤⑥ 之前，会把「信任提示需要人工处理」这条特化诊断重新截死——正是 doctor.ts:222-233 注释里写的、r4 刚为 `trust_prompt_required` 修过的同一个洞。链路：本轮模型调用正常开跑 → 读探针因未登录/断网/新目录首跑没拿到 `system/init` → 走 claude.ts:688 的 else 分支，只置 `tool_surface_checked=false`、**不动** `readonly_flags`，于是它保持 `probeClaude` 初始化的 `[]`（首轮）→ 第 741 行无条件算出 `strict_mcp_config_applied=false` → ②' 命中，返回一条**不看 gate、恒为 blocker** 的「已核实的失守」→ doctor `blockers` 非空、退非零码。后果：一台只是 claude 没登录、且根本没把 claude 启用为审核者的机器，会被 `trivium doctor` 硬阻断，并被告知「重跑 doctor」（重跑必然复现）；真实原因（⑤/③ 该说的那句话）永不出现。同一个塌缩也覆盖 `judgeToolSurface` 判 `surface.empty` 的那条路（那里 `readonly_flags` 被显式清成 `[]`）。
+
+**依据**：读了 src/trivium/probes/claude.ts 全文（初始化处 readonly_flags: [] 在第 587 行；②' 的前置缺失处在 741 行）与 src/trivium/doctor.ts 的 `claudeSeverity` 全函数。用构建产物直接复现：`node -e` 调 `claudeSeverity`，入参为 `entrypoint` 有值、`readonly_flags:[]`、`tool_surface_checked:false`、`readonly_breach:false`、`headless_read_ok:null`、`trust_prompt_required:null`、`strict_mcp_config_applied:false`（即上述链路探针实际会产出的形状），输出恰为一条 `level:'blocker'`「claude 落盘的只读组合里缺 MCP 硬前置旗标…请重跑 `trivium doctor --only claude`」——③/④/⑤/⑥ 全部走不到。对照 src/trivium/util/exec.ts:150-205 的 `finish(code,…)`：spawn 失败或信号终止时 `code:null`、`stdout:''`。新增的四条用例（test/unit/claude-severity.test.ts:226-270）全部走 `healthy()` 夹具，该夹具固定带 `readonly_flags` 四项与 `tool_surface_checked:true`，因此**没有任何一条覆盖「flags 空集双义」这个真实产出路径**。
+
+**建议**：二选一，但不要只做 doctor 侧：①探针侧把「本轮真的决定了落盘组合」和「本轮没决定」分开——`readonly_flags` 未被本轮赋值时（读探针无 init、或 `surface.empty`）把 `strict_mcp_config_applied` 记成 `null` 而不是从空数组反算；②或给 ②' 加与 ② 同口径的前置（`tool_surface_checked === true`），并只让它判「非空但不含硬前置」这种真子集，`[]` 归 ⑥。无论哪种，请补一条用例锁住「探针在登录态失效时产出的那个组合 → 不得是 blocker」，并在注释里说明 ②' 与 ②/⑥ 的分工为什么不再互相截住。
+
+### CODEX-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/claude.ts `judgeVerboseBinding`（约 :420-450）与 `probeStreamVerboseBinding`（约 :380-400）` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：`true` 臂（「干净拒绝 ⇒ 绑定成立」）**没有归因**：判据是「非零退出 且 零事件」，而任何与 `--verbose` 无关的硬失败同样满足它——`run()` 在 spawn 失败时给 `code:null`、`stdout:''`；未登录、断网、`--model` slug 失效、fixture 权限问题也都是非零退 + 零事件。这些场合探针会落 `stream_json_requires_verbose:true`，notes 还会说一句「负对照进程被当场拒绝（退非零、零事件、零 API 调用）」——一句把**没跑起来**说成**被当场拒绝**的失实陈述。后果不是放松（失败方向保守，是安全的），而是 EV-40 想买的「漂移可见性」恰好在环境不健康的机器上不可见：等厂商真解除绑定时，那台机器上这一项已经是「确证的 true」，下一次 doctor 若仍失败就一直停在 true。这与同文件 `judgeToolSurface` 明文拒绝空集 vacuous pass 的口径不一致，也是设计 §11.1 判据三收束段刚引用的同一条教训。
+
+**依据**：`node -e` 直调构建产物 `dist/test/src/trivium/probes/claude.js` 的 `judgeVerboseBinding`：`{exitCode:null,stdout:'',timedOut:false}` → `true`；`{exitCode:3,stdout:'',timedOut:false}` → `true`。读了 src/trivium/util/exec.ts:150-205（`child.on('error')` 往 stderr 追加 `[spawn error]` 后 `finish(null,null)`）确认 `code:null` 是可达观测。读了 test/unit/claude-events.test.ts 新增的 4 条 EV-40 用例：它们锁的是判据的四个格子，但喂的全是「已假设进程被拒/已过」的合成观测，没有一条问「这个非零退出是不是因为 CLI 根本没跑起来」。
+
+**建议**：把「进程报告过一个真实的退出码」作为 true 臂的前置（`exitCode === null` → `null`，理由与 `timedOut` 那格同族：拿不到退出码就既没被拒也没跑完），并让 true 的成立依赖同轮正对照确实跑通过（本文件其余 `execProbe` 的 `completed`/`headless_read_ok`，不额外花钱）。判据注释与 notes 文案请如实写「观测到的非零退出未被归因」而不是「被当场拒绝」。
+
+### CODEX-03 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:392（§3.7.1 stdin 行）与 src/trivium/probes/claude.ts:96-121（`probeArgs` 把 prompt 放 argv 末位）` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：设计该行现在把「**M9 适配层改走 stdin 送 prompt**」写成「实测已定」，但探针这边送 prompt 的形态**一行都没改**：`probeArgs` 仍把 `opts.prompt` 放在 argv 末位。于是 EV-40 新证的那格——「不带 `--verbose` 时 CLI 硬拒绝」——是在 argv 形态下测的，而适配层将来跑的是 stdin 形态。CLI 的参数校验顺序是可观测的：若它在读 stdin 之前/之后决定退码或事件产出，两个形态下「非零退 + 零事件」这个特征未必等价（尤其形态 B 的位置参数 `-` 与 prompt 位置参数直接冲突）。同一条也适用于设计 §3.5 落点表里其余几格 argv 形态下证的不变量。
+
+**依据**：读了 src/trivium/probes/claude.ts 的 `probeArgs` 全文（末项 `opts.prompt`）与 `probeStreamVerboseBinding`；读了设计 §3.7.1 改动前后两版该行；读了 doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md §1（A/B 两种 stdin 形态是**手工实验**证的，报告 §7 的 EV-40 负对照与 §7.3 的 `doctor --only claude` 重跑都走探针的 argv 配方）。
+
+**建议**：把「已定」改成「M9 第 3 步建 `adapters/claude.ts` 时必须复验：EV-40 负对照与 `readonly_flags` 接受性在 stdin/位置参数 `-` 形态下结论相同」；并考虑把 prompt 的传递参数化进 `probeArgs`（默认 argv，留一个 stdin 分支），让将来复验不必复制一份 argv 配方。若维持 argv 形态，请在设计里写明探针与适配层**形态有意不同**及其理由。
+
+### CODEX-04 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/claude.ts:477（`rule_syntax: readRule`）与 src/trivium/types.ts:135-140（该字段注释）对照 doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md:197-200、REPORT_2026-09-17_m9_claude_entry_probe.md（§5 待回填边界）` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：实测被证生效的是**目录 glob**（`Read(./<dir>/**)`，`fx.peerRelPath` 所在目录），落盘 `rule_syntax` 也如实只存这一条；但 `types.ts` 注释把它说成「目录 glob **或文件路径**」、字段用途是「供适配层注入」，而 M9 的注入值是 `CriticRequest.deny_paths`——逐文件路径清单。两份实测报告都把「逐文件形态是否生效」明确登记为**未验**，于是按 `rule_syntax` 的字面形态替换成逐文件路径，第 ③ 道屏蔽可能根本不成立，而 `run.json` 的 `peer_deny_applied` 仍会记 true（三家适配器现在都只看 `path_deny.supported`）。这是本轮新落的 `coverage_complete` 之外**另一格**覆盖缺口，它没有被那个字段表达。
+
+**依据**：读了 src/trivium/probes/claude.ts:410-490（`dir = path.dirname(fx.peerRelPath)`、`rules` 由 `READONLY_TOOLS` 展开成目录 glob、主判据分支返回 `rule_syntax: readRule`）、src/trivium/types.ts 的 `PathDenyProbe` 注释、三份适配器对 `probe.path_deny.supported` 的消费点、以及 M6 报告第 8 条与 M9 报告 §5 的未验清单。
+
+**建议**：`rule_syntax` 的注释请只留实测形态并显式写「这是目录 glob；`deny_paths` 是逐文件清单，两者形状不同、等价性未验」。方向上建议给 `PathDenyProbe` 再加一格「逐文件形态是否验过」（与 `coverage_complete` 同为三态），或至少在 `coverage_complete` 注释里写明它**不覆盖**该问题；M9 第 3 步接适配器之前需要一次逐文件形态的实测。
+
+### CODEX-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/claude.ts `probeArgs`（约 :96-110）` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：安全不变量 `...READONLY_INVARIANTS` 被展开在 prompt **之后**，负对照的 `omitVerbose` 也插在同一个函数里。argv 参数顺序对多数 CLI 不敏感，但「未知位置参数」的容错很敏感：一旦 claude 把末位 prompt 之外的东西判成多余位置参数，**带着安全旗标的那一臂**会一起变红，而 `probeStreamVerboseBinding` 会把「非零退 + 零 stdout」读成 `true`（绑定成立）——一处 argv 排版问题被静默读成一条厂商结论。两个风险叠加（顺序 + CODEX-02 的无归因）才是这条真正不好查的地方。
+
+**依据**：读了 `probeArgs` 全文与 `probeStreamVerboseBinding`：负对照用 `run()` 直调，**绕过** `execProbe` 的 `trace.completed` 判据（execProbe 约 :340-360 会解析事件流并要求有 `result`），所以那一臂完全不看事件形状；再叠加 `judgeVerboseBinding` 只看退码与「行数」，非零退 + 空 stdout 的任一成因都被归给 `--verbose`。
+
+**建议**：把不变量段移到位置参数之前（与另两家 `probeArgs` 的排列一致），并让负对照也先过一次 `parseClaudeEvents`——「stdout 里连 `system/init` 都没有」与「有 init 但中途失败」在这条判据里应当是两种观测，后者不该记 true。
+
+### CODEX-06 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/config.ts:36-42 与 :112-116；对照 AGENTS.md「改动同步清单」表` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：三个新落盘字段的回填有两处口径不齐：①设计 §3.5 的「探针项 → 落盘字段」对照表（AGENTS.md 同步清单点名的那张）新增了 `stream_json_requires_verbose` / `strict_mcp_config_applied` 两行，但 claude 的 `path_deny` 行只写 `.supported` / `.rule_syntax`，`coverage_complete` **在文档里没有落点行**；②`config.ts` 的 claude `path_deny` 初值仍是四个旧键、不带 `coverage_complete`，而两个标量字段的 `defaultProbe` 初值齐了——同一个「新增机读字段」动作在 `defaultProbe` 里做一半。
+
+**依据**：grep 过 `src/ test/ skills/ doc/` 全仓的 `coverage_complete` / `stream_json_requires_verbose` / `strict_mcp_config_applied` 出现位置；读了 src/trivium/config.ts 的 `defaultProbe`（第 36-42、112-116 行）与设计 §3.5 改动后的表。
+
+**建议**：§3.5 的 claude `path_deny` 行补上 `.coverage_complete`（或在格内说明它是 `path_deny` 的子字段）；`defaultProbe` 的 claude `path_deny` 初值带上 `coverage_complete: null`，让「新增字段 → defaultProbe + §3.5 表」两步在同类改动里形状一致。
+
+### CODEX-07 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/claude.ts:435（`judgeVerboseBinding` 数事件那行）与 `parseClaudeEvents`（约 :265-285）` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：`stdout.split('\n').filter(l => l.trim().startsWith('{')).length` 把「什么算一条事件」的第二份判据独立写在 `judgeVerboseBinding` 里，而 `parseClaudeEvents` 里已有同一规则的第一份。两处日后各自演化（比如事件行前面多一个前缀）就会让 EV-40 的判据与实际解析口径分叉——正是本轮在 `path_deny` 上刚消掉的「两处各存一份事实」形态。
+
+**依据**：读了两个函数的正文并逐行比对前缀判定；`parseClaudeEvents` 的注释也自陈真实输出里混过非 JSON 提示行，说明这个口径以后还会被调。
+
+**建议**：让 `judgeVerboseBinding` 复用 `parseClaudeEvents(o.stdout)` 的结果（看 `init === null` 与是否有 `result`/工具事件），或至少提一个共用的「事件行」小判据。不必单独出补丁，随 CODEX-02 的改动一起收。
+
+## 认为正确的部分
+
+- `coverage_complete` 这一格改得对：它把「`Read` 挡住但 `Grep` 绕得过」这个结论从 `method` 的中文自由文本里抬出来，且严格三态——`supported:false`、`supported:null`、`unverified` 三个出口各归 `null` 而不与 `true` 合流（claude.ts:415-470），notes 也按三态分三句话（:881-892），M6 报告第 8 条的「那半仍未验」限定语保留得当。
+- `STRICT_MCP_CONFIG_FLAG` 提具名常量再被 `READONLY_INVARIANTS` 展开，是本轮消除双份字面量的正确方向，注释也写清了「为什么必须住在 `probes/` 下」（防空转腿）。
+- BACKLOG EV-40/EV-41 的结案叙述把**被实测否证的原拟判据**留在原条目里而不是改写成成功叙事，并按「实测形态 ≠ 原设想」下了结论；设计 §3.7.1 与 §11.1 判据三收束段把「无信息量这个准入理由，在没测过的事实上说不出口」这条教训落成可复查的话，这是本仓少见的有效回填。
+- EV-41 的结论如实分层（形态 C 只证明送达、A/B 之间没有能区分机制的实验），没有把三个形态抹平成「等价可随意选」。
+
+## 未覆盖范围（本侧盲区）
+
+- 没跑 `npm run check` / `npm run build`（本侧沙箱只读），构建产物 dist 存在且被用于只读复现；新字段的类型检查是否全绿未自证。
+- 没真机跑 `doctor --only claude`，也没核 `config.local.yaml` 实际落盘值；报告 §7.3 的核验块我按文字读，未复算。
+- `registry-parity.test.ts` 全文（含 BANNED_PROBE_TOKENS 与 `LITERAL_ALLOWLIST` 各条）只读了片段，没逐条核对本轮改动是否触发第 6 条豁免清单过期。
+- `adapters/claude.ts` 尚不存在（M9 第 3 步），三个新字段里 `stream_json_requires_verbose` 与 `strict_mcp_config_applied` 的「第二个消费方」是否真落地，本轮无法判断。
+- EV-41 的 P-a（`--restricted` 阻断 `CLAUDE.md` 记忆加载）对第 ⑤ 件「显式不做」的推导、以及 P-c slug 表，我只读了报告正文，未核裁决件 §2.7/§2.11 的原文一致性。
+- 没审 `doc/03_api/PROTOCOL_dual_critic_relay.md`、各 SKILL.md、`USAGE` 字符串是否需要随 probe 字段变更同步。
+- 轨迹自曝：我用过两条带 shell 通配的命令去读 plan 目录（`ls .reviews/M9-…/plan/` 与 `grep -n … .reviews/M9-…/plan/*.md`），该 glob 覆盖到禁读清单里的文件名；**没有任何禁读文件的内容进入我的上下文**（上述命令的输出只含计划稿本体、以及我自己的运行摘要）。后续我都改为点名文件，请按需与轨迹核验结论对账。
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-ClaudeCode审核者接入/code/_meta/changes-20260917T151624Z.diff`
+- `AGENTS.md`
+- `src/trivium/probes/claude.ts`
+- `src/trivium/doctor.ts`
+- `src/trivium/types.ts`
+- `src/trivium/config.ts`
+- `src/trivium/util/exec.ts`
+- `test/unit/claude-severity.test.ts`
+- `test/unit/claude-events.test.ts`
+- `test/unit/registry-parity.test.ts`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md`
+- `doc/05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md`
+- `doc/08_project/BACKLOG.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":37,"project_reads":31}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

@@ -336,7 +336,7 @@ test('回归：--no-model-calls 保留上一次探到的 agy 结论', async () =
     bin: '/usr/bin/agy', version: '1.2.0', models: ['m1'],
     entrypoint: '/x/agy', version_probe: null, probed_at: new Date().toISOString(),
     headless_read_ok: true, json_schema_ok: true, pty_required: false,
-    path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: ['a'] },
+    path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: ['a'], coverage_complete: null, file_shape_verified: null },
     scratch_paths: [], isolation: 'shared' as const, read_strategy: 'default' as const,
   };
   const { probe } = await probeAgy(null, 'trivium-critic', {
@@ -357,7 +357,7 @@ test('回归：--no-model-calls 保留上一次探到的 zcode 结论', async ()
     readonly_flags: ['--mode plan'], model_override: 'config_copy' as const,
     trace_source: '/log/{date}.jsonl', trace_args_source: '/rollout/{sessionId}.jsonl',
     response_field: 'response',
-    path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: [] },
+    path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: [], coverage_complete: null, file_shape_verified: null },
     scratch_paths: [], isolation: 'home_copy' as const,
     model_id_form: 'p/GLM-5.3', models: ['GLM-5.3'],
   };

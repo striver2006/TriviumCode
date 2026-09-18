@@ -539,7 +539,17 @@ export const zcodeAdapter: CriticAdapter = {
       usage: out.envelope.usage,
       cli_version: probe.version,
       // M0 实测：denylist 是工具级而非路径级，此项恒为 false
-      peer_deny_applied: probe.path_deny.supported === true,
+      /*
+       * **读 `file_shape_verified`，不读 `supported`**（BACKLOG EV-42，代码双审 r4 CODEX-03）。
+       *
+       * `supported` 回答「这家 CLI 有没有路径级 deny 机制」；这里要断言的是
+       * **「本次注入的那些逐文件路径真的挡住了」**——两件事。claude 侧
+       * `supported` 为 true，而实测用的是**目录 glob**、`deny_paths` 是**逐文件清单**，
+       * 等价性未验；照读 `supported` 就会把一件没测过的事记成 true。
+       *
+       * 三态在这里天然安全：`null`（没验过）与 `false` 都判不过 `=== true`。
+       */
+      peer_deny_applied: probe.path_deny.file_shape_verified === true,
       command_line: out.commandLine,
     };
   },

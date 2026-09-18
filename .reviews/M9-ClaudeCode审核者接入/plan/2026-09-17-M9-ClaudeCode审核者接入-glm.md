@@ -1,0 +1,207 @@
+---
+schema: trivium.review.v1
+topic: M9-ClaudeCode审核者接入
+stage: plan
+role: glm
+vendor: zcode
+agent_cli: zcode/0.16.5
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260917T140800Z
+rerun_index: 1
+snapshot_hash: sha256:e0acedd83a6764a17876f0571865ee9853b27ace57be9d43cd969a0ec5fc606e
+blind: true
+started_at: 2026-09-17T14:08:00.742Z
+finished_at: 2026-09-17T14:23:07.273Z
+duration_s: 906
+tool_calls:
+  read: 28
+  grep: 18
+  glob: 1
+  run_command: 0
+  project_reads: 27
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 1
+  minor: 4
+  nit: 2
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: sess_85933a41-6baa-43b2-9253-a7ef4a94be50
+---
+
+# 计划审查：M9-ClaudeCode审核者接入
+
+> Critic-B · 智谱 ZCode ｜ 模型 `bigmodel-coding-plan/GLM-5.3`
+> ｜ 运行 `20260917T140800Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+先说结论：§0.3 的四条阻塞我逐条对码核实，全部成立，证据行号准确（B-1：critics.ts:45 的 input.driver ?? DEFAULT_DRIVER 配 cli.ts:470/633、topic-args.ts:328 三处均不传 driver，且 cli.ts 全文无 --driver 旗标；B-2：hooks.ts:92 与 :474 均由 CRITICS（=criticEnabled 全集）派生，hooks.test.ts:53-54 正锁着「-claude.md 不是角色工件」；B-3：config.ts:286-297 两档 profiles 均无 claude 键，overlay.ts:73-78 与设计 §5.1.1 互证第⑥件漏了即 routeModel 取不到、退 69；B-4：registry.ts:275 DEFAULT_MAX_CRITICS=3，DEFAULT_CRITIC_AGENT_IDS 模块加载期经 deriveDefaultCritics 校验，defaultSelected 已满三家，claude 再标 true 当场抛）。最危险的一条是 GLM-01：--driver 提前落地的接线清单接不完 §6.1 自己的承诺——run.json 标注与 freeze 禁读矩阵都需要 driver 流到 startReview 之后的路径，而那些路径今天全部取 DEFAULT_DRIVER。§5.2 的判据语义改法已验证今天行为逐字等价、方向正确，但其回溯网与枚举连带面有盲区（GLM-02/GLM-07）。验收剧本的独立性声明缺机制支撑（GLM-03）。计划四处请裁定项的意见见 agreed。
+
+**结论**：`request-changes`
+
+## 审查意见（共 7 条：重要 1 ｜ 次要 4 ｜ 吹毛求疵 2）
+
+### GLM-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §6 / §6.1（对应 src/trivium/freeze.ts:442、src/trivium/meta.ts:237、src/trivium/review.ts:610）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§6 把提前落地的范围声明为「只提前那一行」并只列了两类接线（topic-args.ts 的 --driver 解析、cli.ts 两处 resolveCriticSelection 补 driver），但 §6.1 自己提出的「在 run.json 里如实标注『本次声明的 Driver 尚未启用为 Driver』」需要 driver 值流到 run 清单与冻结快照——这些路径今天全部落在 DEFAULT_DRIVER 上，按 §6 的清单实现，承诺兑现不了，验收场景（--driver codex）的留痕会自相矛盾：run.json.driver 记 claude、禁读矩阵按 claude 派生，而选侧判定按 codex。
+
+**依据**：src/trivium/freeze.ts:387-393 的注释正是这个失效形态的先例（「freeze() 没跟着加 driver，于是真实流水线上 driver 恒为缺省值——整个按角色判定的 deny 矩阵在 M10 到来时会静默失效」），:442 实现仍是 input.driver ?? DEFAULT_DRIVER；src/trivium/review.ts 全文没有任何 driver 引用（grep 仅命中 peer_deny 三行），startReview 不接 driver；src/trivium/meta.ts:213-237 的 RunMetaInput.driver 缺省 DEFAULT_DRIVER；另 gate.ts:151、topic.ts:80 两个消费点同样在缺省上。计划的步骤清单（plan §6）只覆盖选侧入口。
+
+**建议**：二选一并写进 §6：要么把 driver 随 startReview 最小下传（run.json.driver 与 freeze 的 enumerateDenyPaths 两处是 §6.1 承诺的硬需求），要么收缩 §6.1 的承诺为「只在预检输出标注」并把 run.json 一侧明确留给 M10。不要保留「范围只有那一行」与「run.json 如实标注」并存的表述。
+
+### GLM-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §8.2（对应 skills/dual-critic/protocol/CLAUDE.md.snippet:6、:11）` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§8.2 的落点 grep 用 --include="*.md" --include="*.ts"，而 ⑤ 要改的片段源文件后缀是 .snippet（CLAUDE.md.snippet / AGENTS.md.snippet），fnmatch 按后缀匹配不命中——本里程碑亲手改动的资产恰好逃出锚点 grep 与广撒网差集自检。片段内部还带着已过期的角色枚举（「Antigravity 与 ZCode 只做只读审查」漏了 M8 已启用的 codex；「禁止产出 *-gemini.md 或 *-glm.md」在 M9 后的非 claude-Driver 项目还该含 claude），若只改仓库根 AGENTS.md/CLAUDE.md 的渲染结果而不改片段源，重跑 trivium init 会把旧枚举再渲染出来。
+
+**依据**：skills/dual-critic/protocol/CLAUDE.md.snippet:6 与 :11 的枚举原文；§8.1 目标文档表只列 AGENTS.md / CLAUDE.md（仓库根），未点名 skills/dual-critic/protocol/ 下的两个源文件；§8.2 四条 grep 命令的 include 集不含 .snippet。
+
+**建议**：给 §8.2 的四条 grep 补 --include="*.snippet"（或在 §8.1 具名列出两个片段源），并把片段内角色枚举的更新并进 ⑤ 的改动范围。
+
+### GLM-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §7.1–§7.2` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：验收剧本没有钉死临时项目里「真实可审的小代码」由谁产出。「那里的执笔者确实不是本会话」是 J4 独立性论证的承重墙，但按剧本字面，最可能的执行者就是本会话（M9 实施者）自己放代码——那样无论 --driver 填什么，claude 审的仍是本会话的产物，§7.1 用来排除本仓库的那句话（「无论 --driver 写成什么，实质都是自己审自己」）在临时项目同样成立，验收报告的独立性陈述立不住。
+
+**依据**：plan §7.2 步骤 1 只写「放一段真实可审的小代码」，未写作者；§7.1 的排除论证完全依赖「执笔者不是本会话」这一未经机制保证的前提；R-6 仅覆盖 --driver 旗标本身的自律性，未覆盖被审对象的作者归属。
+
+**建议**：剧本写明代码来源为非本会话产物（开发者人工放置、或取既有外部样本），并把该来源记进验收报告的达成边界；若做不到，如实降格 J4 的表述而不是维持独立性声明。
+
+### GLM-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.1（对应 test/unit/registry-parity.test.ts:1207-1252、:1277-1292）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§4.1 说把 READONLY_INVARIANTS / READONLY_TOOLS 搬进 adapters/ 会让防空转「上半条静默永绿」——机理说反了。实际是响亮失败：主扫（adapters/ 任意文件出现黑名单 token 即 offenders 非空判红）与正向防空转腿（token 必须仍在 probes/ 出现，否则 stale 非空判红）都会当场红。结论（常量留在探针侧）是对的，但支撑它的行为断言与实现相反，恰是 §16.1 那条「注释里任何行为断言必须指得出断言它的那一行用例」纪律要防的形态。
+
+**依据**：test/unit/registry-parity.test.ts:1229-1251 主扫对 adapters/ 全目录收集并断言 offenders 为空；:1278-1292 正向防空转腿收集 probes/ 的 quotedTokens 并断言 PROBE_RECIPE_TOKENS 无 stale 项——常量离开 probes/ 必然触发后者，出现在 adapters/ 必然触发前者。
+
+**建议**：按真实机理改写该段（搬动会被两条腿同时打红，故常量必须留在探针侧、由探针展开），并给出对应用例行号；结论与做法不变。
+
+### GLM-07 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §8.1（对应 AGENTS.md「改动同步清单」）` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：本轮两类改动都触发 AGENTS.md 改动同步清单的硬要求，但 §8.1 的目标文档表没有它们：①新增 --driver 旗标属「CLI 参数」→ 须同步 USAGE 字符串、PROTOCOL 文档、相关 SKILL.md；②config.v2.json 的 agents oneOf 新增 anthropic 分支属「JSON Schema」→ 须同步 PROTOCOL_dual_critic_relay.md、SKILL.md、AGENTS.md 的契约面描述。§8.2 的 grep 锚点是为找「过期措辞」设的，兜不住「新旗标/新分支漏文档」这一方向。
+
+**依据**：AGENTS.md 改动同步清单两行原文（CLI 参数或退出码 / JSON Schema 的必须同步列）；plan §8.1 表只含主设计、.reviews/README.md、AGENTS.md/CLAUDE.md、BACKLOG。
+
+**建议**：§8.1 补上 USAGE、doc/03_api/PROTOCOL_dual_critic_relay.md、相关 SKILL.md 三行（--driver 与 schema 分支各标注归属），契约层的 argument-hint 对账测试可作机器兜底。
+
+### GLM-05 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.3 write_events 行（对应 src/trivium/probes/claude.ts:684-685）` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：§4.3 的 write_events 判定写「轨迹里出现白名单外工具的 tool_use 即算」，但没写白名单从哪来：字面量被第 6 条黑名单禁止出现在 adapters/claude.ts（EV-39 收窄后 claude 系 token 恰好只对该文件判红），探针常量又在 probes/ 不能 import，来源只剩运行时从 probe.readonly_flags 派生（'--tools' 的值）——这一步临场拍板容易拍错方向。
+
+**依据**：plan §4.2 的「绝不出现」清单含 Read,Grep,Glob；探针侧同款判定用的是 probes/claude.ts:684 的 READONLY_TOOLS.split(',')；§4.3 未指定适配层等价物的来源。
+
+**建议**：在 §4.3 写明白名单运行时从 probe.readonly_flags 派生，与只读旗标同源，避免实现期引入第二事实源。
+
+### GLM-06 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §2.2 P-b（对应 src/trivium/probes/claude.ts:641-649）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：P-b 把「提示词强制发起一次 Write 调用」描述成待补的加固（比照 probeClaudePathDeny 给 Grep 的写法），但只读负对照的提示词已经带这段强制措辞（GLM-07① 的产物），且该处注释明说「强制发起能压低『没试』的概率，但消不掉」——单次重跑就把 null 变确定值的把握，没有 P-b 的语气那么足。
+
+**依据**：src/trivium/probes/claude.ts:641-649 现有提示词原文「即使你预计这次调用会被拒绝，也必须真的发起一次工具调用」，:645-647 注释「强制发起能压低『没试』的概率，但消不掉，所以 null 口径要保留」。
+
+**建议**：P-b 改述为「重跑既有负对照并可能多次」，把「仍可能落 null」写进判据，与 §4.3 已有的兜底口径对齐。
+
+## 认为正确的部分
+
+- §0.3 四条阻塞全部成立，证据行号逐条核对无误；critics.test.ts:132-133 的夹具自曝也如实（assert.ok 的文案自己预告过 M9）。
+- §0.2 的出入是真的：设计 :352 写 true/null 两态，而 probes/claude.ts:696-709 里 null 是「模型没去调／id 无从配对」的正常落点——先补正向实测、不拿设计表转述当实测的处置正确。
+- §5.2 的判据语义改法：已验证今天行为逐字不变（CRITICS=[codex,gemini,glm] 恰等于 ALL_AGENT_IDS 减 claude，两处正则串相同），且优于给 claude 后缀开具名豁免（EV-39 的理由成立）；hooks.ts 内 hasCriticRoleSuffix 的两个消费点（isForgedRoleFile:196、immutableChangeReason:241）共用一处定义，改它即全覆盖；archive.ts/naming.ts 用的是全集 suffixAlternation()、语义不同，不受 CRITICS 翻转影响——§5.2 点名的两处就是全部派生点，这点计划是对的。
+- 步骤排序正确：先实测后写适配器与 BACKLOG EV-41 的触发条件（「M9 写 adapters/claude.ts 之前先验这一条」）一致；P-c 指出 claude 侧无模型目录兜底（probes/claude.ts:483 models: []）确是要害。
+- B-5 核实正确：init.ts:63 的幂等判据是 existing.includes(MARKER_BEGIN) 即整段跳过，本仓 CLAUDE.md 已含标记，第二块片段永远进不去；并块 + 手工同步的处置对。
+- §5.3 倾向方案 3 合理（与「覆盖面按实现真相写」同口径）；若想保住 critics.ts:128 分支的覆盖，可另在 stub-agent-kit 式夹具里登记一家 criticEnabled:false 的第五家做集成层覆盖，不必为测试改生产形状。
+- §6.1「校验已登记 + 如实标注」的方向对（与 approve 的自律性防线同构）；但标注要落进 run.json 的前提见 GLM-01。
+- §4.3 在 P-b 拿不到正向证据时不声明 rejectionRecorded: true 的底线对；建议具体化为声明 false（保守档）加边界注记——guard.ts:340 起该档只影响阴性结论的解读，代价可接受且可随实测升级。
+- §5.1 第⑤件的理由等 P-a 实测定稿、不照抄交底推断——对；若实测 --restricted 下 CLAUDE.md 不加载，J2 的措辞应随之为「经 BRIEF 首段声明生效」而非坚持片段注入路径。
+
+## 未覆盖范围（本侧盲区）
+
+- 未读 .trivium/config.local.yaml（任务书 §8.2 告警区），§0.2「本机落盘为 null」未直接对盘，仅以设计原文与探针代码语义旁证。
+- 纯静态只读审查：未实跑任何 claude CLI 行为、测试或构建；P-a/P-b/P-c 的可答性、三种 prompt 载入形态、--settings 逐文件 deny 是否生效均未验证。
+- 必读清单中 README.md、doc/README.md、doc/01_requirements/README.md、doc/02_design/README.md、src/trivium/adapters/codex.ts 未读；设计文档只精读 §16.1/§5.1.1 与 grep 命中行，§11.1 判据表、§3.7 全文未逐字核。
+- review.ts / meta.ts / gate.ts / disposition.ts / cli.ts 只读了与 driver、peer_deny、CRITICS 相关的节选，未全文过；lenses.yaml 仅确认 claude 键存在，三轴镜头内容质量未评。
+- schema 变更（⑦ 的 anthropic 分支）对各校验点（parse/gate/meta）的具体影响面未逐点核对。
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-ClaudeCode审核者接入/plan/2026-09-17-M9-ClaudeCode审核者接入-claude.md`
+- `AGENTS.md`
+- `src/trivium/critics.ts`
+- `src/trivium/hooks.ts`
+- `src/trivium/agents/registry.ts`
+- `src/trivium/naming.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/topic-args.ts`
+- `src/trivium/config.ts`
+- `src/trivium/disposition.ts`
+- `src/trivium/probes/claude.ts`
+- `src/trivium/freeze.ts`
+- `src/trivium/guard.ts`
+- `src/trivium/adapters/index.ts`
+- `src/trivium/init.ts`
+- `test/unit/registry-parity.test.ts`
+- `test/unit/hooks.test.ts`
+- `test/unit/critics.test.ts`
+- `test/fixtures/stub-agent-kit/overlay.ts`
+- `doc/08_project/BACKLOG.md`
+- `doc/05_testing/REPORT_2026-09-14_m6_claude_probe.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `skills/dual-critic/protocol/AGENTS.md.snippet`
+- `skills/dual-critic/protocol/CLAUDE.md.snippet`
+- `skills/dual-critic/lenses.yaml`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":28,"grep":18,"glob":1,"run_command":0,"project_reads":27}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

@@ -263,7 +263,8 @@ test('能力对账：探针没测出结论（null）时不报不符', () => {
 
 const OUTCOME = { exitCode: 0, durationMs: 1000, commandLine: 'codex exec …' };
 const PATHS = { stdout: '/run/stdout.jsonl', trace: '/run/trace.json' };
-const PROBE = { version: '0.154.0', path_deny: { supported: false } };
+// codex 无路径级 deny 机制，「逐文件形态验没验过」这个问题在本族不成立 ⇒ null（EV-42）
+const PROBE = { version: '0.154.0', path_deny: { file_shape_verified: null } };
 const TRACE_OK = parseCodexEvents(
   '{"type":"thread.started","thread_id":"T9"}\n' +
     '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}\n',

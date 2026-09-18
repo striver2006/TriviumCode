@@ -14,9 +14,15 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import {
   READONLY_INVARIANTS,
+  judgeDenyCoverage,
+  probeArgs,
+  verboseNegativeControlArgs,
+  judgeStrictMcpConfig,
   judgeToolSurface,
+  judgeVerboseBinding,
   parseClaudeEvents,
 } from '../../src/trivium/probes/claude.js';
+import { emptyPathDeny } from '../../src/trivium/config.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 
 // `.jsonl` 是源码资产不是构建产物，esbuild 不搬进 dist/——按产物目录解析会 ENOENT
@@ -297,4 +303,492 @@ test('解析器：tool_use 缺 id 时不当作「配对失败」', () => {
   );
   assert.equal(t.toolUses.length, 1);
   assert.equal(t.toolUses[0]!.id, null, 'id 缺失要如实记 null，不能编一个');
+});
+
+/*
+ * ── EV-40：stream-json 与 --verbose 的绑定判据 ─────────────────────────
+ *
+ * **这一组锁的是判据，不是厂商行为**（厂商行为由探针每次重跑去看）。
+ * 判据必须是三态：两个误判方向的代价不同，但都不轻——
+ * 说成 true 会掩盖厂商漂移，说成 false 会让人以为绑定解除了而去删适配层的 --verbose。
+ */
+
+/**
+ * 默认带正对照成立、且 stderr 有输出（= 参数拒绝的真实形态）。
+ *
+ * **只有**专门测归因的那两条用例才把这两维翻掉——它们是 true 臂的两道归因门，
+ * 混在别的用例里一起变会让「这条到底在测什么」说不清。
+ */
+const ok = (o: { exitCode: number | null; stdout: string; timedOut: boolean }) =>
+  judgeVerboseBinding({ ...o, stderrHasOutput: true, positiveControlOk: true });
+
+test('EV-40：非零退出 + 零事件 + 正对照成立 = 干净拒绝 ⇒ 绑定成立', () => {
+  /*
+   * 这就是 2026-09-17 在 2.1.273 上实测到的形态：exit 1、stdout 空、
+   * stderr 为 `When using --print, --output-format=stream-json requires --verbose`。
+   * **判据刻意不看 stderr 文案**——厂商改一句话，字面匹配就静默失效，
+   * 而失效方向是放松（本仓 path_deny 的 includes 反解刚栽过同一跤）。
+   */
+  assert.equal(ok({ exitCode: 1, stdout: '', timedOut: false }), true);
+  assert.equal(ok({ exitCode: 1, stdout: '\n  \n', timedOut: false }), true, '空白行不算事件');
+  assert.equal(
+    ok({ exitCode: 1, stdout: '{ 不是合法 JSON', timedOut: false }),
+    true,
+    '坏行也不算事件——口径与 parseClaudeEvents 一致（它同样跳过 parse 失败的行）',
+  );
+});
+
+test('EV-40：零退出 + 有事件 = 干净通过 ⇒ 绑定已解除', () => {
+  assert.equal(
+    ok({
+      exitCode: 0,
+      stdout: '{"type":"system","subtype":"init"}\n{"type":"result"}',
+      timedOut: false,
+    }),
+    false,
+  );
+});
+
+test('EV-40：超时记未测，不往任一侧倒', () => {
+  assert.equal(ok({ exitCode: null, stdout: '', timedOut: true }), null);
+  assert.equal(
+    ok({ exitCode: 1, stdout: '', timedOut: true }),
+    null,
+    '超时优先于退出码：被杀掉的进程那个非零码不代表「被拒绝」',
+  );
+});
+
+test('EV-40：拿不到退出码记未测（spawn 失败 / 信号致死）', () => {
+  /*
+   * 代码双审 CODEX-02 ≡ GLM-03 打中的那一格：初版判据是 `exitCode !== 0`，
+   * 而 `null !== 0` 为真——`util/exec.ts` 在 spawn 失败时给的正是 `code: null`、
+   * `stdout: ''`，于是**进程根本没跑起来**被记成「实测确证硬前置成立」。
+   * 与 timedOut 同族：拿不到退出码就既没被拒也没跑完。
+   */
+  assert.equal(ok({ exitCode: null, stdout: '', timedOut: false }), null);
+});
+
+test('EV-40：正对照不成立时一律记未测（true 臂必须有归因）', () => {
+  /*
+   * 未登录 / 断网 / slug 失效的机器上，负对照同样是「非零退 + 零事件」——
+   * 但那个非零退出**归因不到 --verbose**。不设这道前置，EV-40 想买的
+   * 「漂移可见性」恰好在环境不健康的机器上不可见：等厂商真解除绑定时，
+   * 那台机器上这一项已经是「确证的 true」（代码双审 CODEX-02）。
+   */
+  assert.equal(
+    judgeVerboseBinding({
+      exitCode: 1, stdout: '', stderrHasOutput: true, timedOut: false, positiveControlOk: false,
+    }),
+    null,
+    '同一组观测，仅正对照翻假 ⇒ 结论必须从 true 退回 null',
+  );
+  assert.equal(
+    ok({ exitCode: 1, stdout: '', timedOut: false }),
+    true,
+    '对照组：正对照成立时同一观测才算数',
+  );
+});
+
+test('EV-40：两种不干净的形态都记未测，不猜', () => {
+  assert.equal(
+    ok({ exitCode: 0, stdout: '', timedOut: false }),
+    null,
+    '退 0 却一条事件都没有：既不是拒绝也不是通过',
+  );
+  assert.equal(
+    ok({ exitCode: 1, stdout: '{"type":"system"}', timedOut: false }),
+    null,
+    '非零退出却吐了事件：可能是跑到一半才失败，不能算「被拒绝」',
+  );
+});
+
+/*
+ * ── coverage_complete 的三态映射（代码双审 AGY-04）──────────────────
+ *
+ * 抽成纯函数才有防退化守卫。三个入值各有各的代价，`unverified` 尤其：
+ * 记 false 是把「没测到」说成「确认绕得过」，记 true 会免掉事后轨迹核验。
+ */
+test('coverage_complete：三态一一对应，unverified 必须是 null', () => {
+  assert.equal(judgeDenyCoverage('blocked'), true);
+  assert.equal(judgeDenyCoverage('bypassed'), false);
+  assert.equal(judgeDenyCoverage('unverified'), null, '没测到不得与任一确定结论合流');
+});
+
+/*
+ * ── MCP 硬前置的判据本体（代码双审 AGY-01 ≡ GLM-01 ≡ CODEX-01）─────────
+ *
+ * 这一组锁的是**「没测到」不得被算成「确认没有」**。
+ * 初版把它写成一句 `readonly_flags.includes(...)`，而 `[].includes(x)` 是 false。
+ */
+test('硬前置：没核对成一律 null，绝不从空数组反算出「确认缺失」', () => {
+  assert.equal(judgeStrictMcpConfig(false, []), null, '拿不到 system/init：没测到');
+  assert.equal(judgeStrictMcpConfig(null, []), null, '压根没跑到这一步：也是没测到');
+  assert.equal(
+    judgeStrictMcpConfig(false, READONLY_INVARIANTS),
+    null,
+    '数组里即便有值，没核对成就仍是没测到——前置优先于内容',
+  );
+});
+
+test('硬前置：核对过才谈得上有无', () => {
+  assert.equal(judgeStrictMcpConfig(true, READONLY_INVARIANTS), true);
+  assert.equal(
+    judgeStrictMcpConfig(true, ['--restricted', '--tools', 'Read,Grep,Glob']),
+    false,
+    '真子集：其余旗标在、独缺硬前置',
+  );
+  assert.equal(
+    judgeStrictMcpConfig(true, []),
+    false,
+    'breach 与工具面脏会把数组清空——在**已被删掉**的旧句「同真同假」下这条路径恰好成立，\n' +
+      '而那正是它当初漏检另外两条反例的原因（见下方「**不**同真同假」那条对账用例）',
+  );
+});
+
+/*
+ * ── 修法本体的守卫（代码双审 r2 GLM-r2-01 / GLM-r2-03）───────────────
+ *
+ * 上一轮我给三个**判据**都抽了纯函数配了用例，却给**修法本体**留了两处裸奔：
+ * `probeArgs` 里 EV-40 负对照的唯一输入开关，以及「strict 赋值必须在清空点之后」
+ * 这个位置约定。两者都不体现在任何返回值里，退化时没有一条用例会红。
+ *
+ * 「加了守卫不等于守卫被守着」——v1.3.8 记过一次，本轮在同一个 diff 里又照了一次。
+ */
+
+test('EV-40 输入开关：omitVerbose 决定 --verbose 在不在 argv 里', () => {
+  /*
+   * 它是负对照的**唯一**输入侧开关。若在重构中失效（--verbose 恒被拼入），
+   * 负对照就变成正对照：进程正常跑完、退 0 且有事件 ⇒ judgeVerboseBinding 落 false
+   * ⇒ 一条「厂商已解除绑定」的**假警报**，还会触发「设计 §3.7.1 该行要复核」。
+   * EV-40 买的就是漂移可见性，而它自己的开关漂移时无人看见。
+   */
+  const withV = probeArgs({ prompt: 'p' });
+  const noV = probeArgs({ prompt: 'p', omitVerbose: true });
+  /*
+   * **被测对象是负对照实际会用的那一份**（代码双审 r3 CODEX-02）。
+   * 上一版只自建入参测「旋钮有效」，于是删掉调用点那个 `omitVerbose: true`
+   * 照样全绿、负对照悄悄退化成正对照。现在调用点与这里共用同一个函数。
+   */
+  assert.ok(
+    !verboseNegativeControlArgs().includes('--verbose'),
+    '负对照实际发出的 argv 必须不含 --verbose——这条守的是「拨了旋钮」，不是「旋钮有效」',
+  );
+  assert.ok(withV.includes('--verbose'), '正常探测必须带 --verbose，否则 CLI 当场拒绝');
+  assert.ok(!noV.includes('--verbose'), 'omitVerbose 必须真的把它拿掉——负对照全靠这一下');
+  assert.deepEqual(
+    withV.filter((a) => a !== '--verbose'), noV,
+    '两者只该差这一个旗标：负对照要单变量，别的跟着变就不是对照了',
+  );
+});
+
+test('EV-40 输入开关：prompt 恒在 argv 末位（本文件全部结论都是 argv 形态下的）', () => {
+  /*
+   * 上一版为「第 3 步在 stdin 形态复验」加过 promptVia 分支，那是条死路
+   * （零调用方、execProbe 硬编码 stdin: ''、adapters 禁 import probes），已删。
+   * 这条断言把**现状**钉住：探针就是 argv 形态，所以 EV-40 那格的结论也只在 argv 形态下成立。
+   * 哪天真给探针加了 stdin 形态，这条会红——那时该做的是同时回填设计 §3.7.1 与 EV-43。
+   */
+  const args = probeArgs({ prompt: 'SENTINEL-PROMPT' });
+  assert.equal(args.at(-1), 'SENTINEL-PROMPT');
+});
+
+test('修法源序：strict 派生必须晚于对 readonly_flags 的**任何**写入', async () => {
+  /*
+   * r1 GLM-02 的修法本体是「位置」，而位置不体现在返回值里，所以要一条源序断言。
+   *
+   * **上一版锚点太窄**（代码双审 r3 CODEX-04）：它用精确字面量 `probe.readonly_flags = []`
+   * 取 `lastIndexOf`，只认「清空」这一种写法。可真正的不变式是
+   * **「派生点必须晚于任何一次对该数组的写入」**——`= [...READONLY_INVARIANTS]`
+   * 那一处也是写入，它哪天被挪到派生点之后，上一版不会红。
+   *
+   * 两条一起上：锚点放宽到任何写入 + 锚点**计数下限**（写法换了、或写入搬去别的文件，
+   * 命中数会掉，本条会红而不是静默少扫一处）。
+   */
+  const src = await fs.readFile(
+    path.join(REPO_ROOT, 'src/trivium/probes/claude.ts'), 'utf8',
+  );
+  const writes = [...src.matchAll(/probe\.readonly_flags\s*=\s*\[/g)];
+  const assign = src.indexOf('probe.strict_mcp_config_applied = judgeStrictMcpConfig(');
+
+  assert.ok(assign > 0, '找不到派生点——扫描锚点写错了会让本条永绿');
+  /*
+   * 计数下限：现况 4 处写入（三处清空 + 一处赋整份常量）。
+   * 少于这个数说明有写入换了写法或搬走了，那时本条的覆盖已经不完整——
+   * 这正是上一版「只认一种写法」栽的地方，所以下限本身也要被断言。
+   */
+  assert.ok(
+    writes.length >= 4,
+    `对 readonly_flags 的写入只扫到 ${writes.length} 处（现况应为 4）——` +
+      '有写法变了或搬去了别的文件，本条已不再覆盖全部写入',
+  );
+
+  const lastWrite = writes.at(-1)!.index;
+  assert.ok(
+    assign > lastWrite,
+    '派生点排到了某次写入之前：落盘会出现 {readonly_flags: [], strict: true} 的矛盾组合',
+  );
+});
+
+test('EV-40：非零退出但 stdout 与 stderr 两头皆空 ⇒ 记未测', () => {
+  /*
+   * true 臂的第四道门（代码双审 r2 CODEX-02）。「非零退出 + 零事件」不止参数拒绝
+   * 一种成因：配额闸门掐断、CLI 自身崩溃、外部信号带退出码终止，全都长这样。
+   * 它们在正对照成立时会被记成「实测确证硬前置成立」——而误判方向恰是本字段
+   * 要买的东西的反面：**厂商真解除绑定那天，若负对照同时因别的原因失败，
+   * 字段落 true，漂移永久不可见。**
+   *
+   * 参数拒绝必然往 stderr 写一行，所以这是**有无**判据。
+   * 仍然不匹配任何文案——那条纪律没松（失效方向是放松，与 includes 反解同形）。
+   */
+  assert.equal(
+    judgeVerboseBinding({
+      exitCode: 1, stdout: '', stderrHasOutput: false, timedOut: false, positiveControlOk: true,
+    }),
+    null,
+    '两头皆空的静默失败归因不到 --verbose',
+  );
+  assert.equal(
+    judgeVerboseBinding({
+      exitCode: 1, stdout: '', stderrHasOutput: true, timedOut: false, positiveControlOk: true,
+    }),
+    true,
+    '对照组：CLI 确实说了话，才算干净拒绝',
+  );
+});
+
+test('硬前置：与 readonly_flags.length > 0 **不**同真同假（两条反例各一格）', () => {
+  /*
+   * 对账用例（代码双审 r2 AGY-02 ≡ GLM-r2-05 ≡ CODEX-05）。
+   * 上一版在 types.ts 与探针注释里都写过「今天两者恰好同真同假」——那是错的。
+   * 三侧给的两条反例是不同路径，这里各锁一格，免得那句话以任何形式回来。
+   */
+  // 反例①：tools 读回为空 ⇒ 同时置 checked=false 并清空 ⇒ null 对 false
+  assert.equal(judgeStrictMcpConfig(false, []), null);
+  assert.equal([].length > 0, false, '同一组输入下长度判据给的是 false，不是 null');
+
+  // 反例②：existing 带着上一轮完整清单、本轮拿不到 init ⇒ 数组非空而字段 null
+  assert.equal(
+    judgeStrictMcpConfig(false, READONLY_INVARIANTS),
+    null,
+    'GLM-r2-05 举的 existing 路径：数组非空，字段仍必须是 null',
+  );
+  assert.ok(READONLY_INVARIANTS.length > 0, '而长度判据在这里为真——两者就此分叉');
+});
+
+/**
+ * `PathDenyProbe` 产出点的扫描器 —— **单源**（代码双审 r4 GLM-03 ≡ CODEX-02）。
+ *
+ * 上一版把同一条正则在主用例与反面夹具里各写了一份，于是**夹具守的是它自己那份副本**：
+ * 只改其中一处，夹具照样全绿。这正是本仓在 `STRICT_MCP_CONFIG_FLAG` 与 `eventCount`
+ * 上刚消掉的形态，我在同一次改动里一边消一边造。现在两边共用这一个函数。
+ *
+ * ## 为什么要先剥 `${…}`（r4 AGY-01 ≡ CODEX-01）
+ *
+ * 上一版正文类写成 `[^{}]*`，跨不过模板插值自带的花括号。而 `probeCodexPathDeny`
+ * 三处 `return` 的 `method` **全是模板插值**，于是 `codex.ts` 命中数为 **0**——
+ * 恰恰是 r3 点名的那一族一处都没进论域。codex 侧实跑验证：把那三行
+ * `coverage_complete` 删掉，`offenders` 仍为 `[]`、**变异不红**。
+ *
+ * 所以这里先把 `${…}` 与注释替换成空白再匹配，**不让「我写对正则」成为前提**。
+ *
+ * ## 不覆盖的形态（具名登记，照 `registry-parity` 先例，r4 GLM-04）
+ *
+ * | 形态 | 例 | 谁兜底 |
+ * | :--- | :--- | :--- |
+ * | 正文含**嵌套对象**字面量 | `{ supported: x, meta: { a: 1 } }` | `tsc` 必填（剥插值后仍跨不过真花括号） |
+ * | **中间变量**构造 | `const pd: PathDenyProbe = {…}; probe.path_deny = pd;` | `tsc` 必填（带类型标注时） |
+ * | `supported` **子串**误命中 | 正文出现 `unsupportedX` | 无兜底——误报方向，需人工 |
+ *
+ * **主闸门是 `coverage_complete` 的必填类型，不是本函数**；本函数是第二道，
+ * 盯的是类型够不到的那一面（键名写错、或将来又被改回可选）。
+ */
+function scanPathDenyProductions(src: string): { body: string; line: number }[] {
+  const neutral = neutralize(src);
+  const out: { body: string; line: number }[] = [];
+
+  /*
+   * ① 属性形与赋值形：`path_deny: {…}` / `probe.path_deny = {…}`。
+   *    这两种自带「这是 path_deny」的标记，在哪儿都算。
+   */
+  const TAGGED = /path_deny\s*[:=]\s*\{([^{}]*)\}/g;
+  for (const m of neutral.matchAll(TAGGED)) {
+    out.push({ body: m[1]!, line: neutral.slice(0, m.index).split('\n').length });
+  }
+
+  /*
+   * ② return 形：**只在签名声明返回 `PathDenyProbe` 的函数体内扫**。
+   *
+   * 上一版只按 `return {` + 正文含 `supported` 匹配，于是抓到了 `agy.ts` / `zcode.ts`
+   * 里 `probePathDeny` 的返回——那是各自的**内部中间类型**（camelCase `ruleSyntax`），
+   * 根本不是 `PathDenyProbe`，属**误报**。判据改挂函数签名这个真实标记
+   * （codex 给的方向：扫 `Promise<PathDenyProbe>` 的函数返回值）。
+   */
+  const SIG = /:\s*Promise<PathDenyProbe>\s*\{/g;
+  for (const sig of neutral.matchAll(SIG)) {
+    // 从函数体起点到下一个顶格 `}` 为止——探针里这些函数都在顶层
+    const bodyStart = sig.index! + sig[0].length;
+    const bodyEnd = neutral.indexOf('\n}', bodyStart);
+    const body = neutral.slice(bodyStart, bodyEnd < 0 ? undefined : bodyEnd);
+    for (const m of body.matchAll(/return\s+\{([^{}]*)\}/g)) {
+      out.push({
+        body: m[1]!,
+        line: neutral.slice(0, bodyStart + m.index!).split('\n').length,
+      });
+    }
+  }
+  return out;
+}
+
+/** 注释与模板插值替换成等长空白（保住行号）——两处扫描共用 */
+function neutralize(src: string): string {
+  const blank = (m: string) => m.replace(/[^\n]/g, ' ');
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, blank)
+    .replace(/\/\/[^\n]*/g, blank)
+    .replace(/\$\{[^{}]*\}/g, blank);
+}
+
+/**
+ * 每个探针文件的命中下限 —— **按文件，不是全局**（代码双审 r4 CODEX-01）。
+ *
+ * 上一版防空转腿是 `scanned > 0` 这个**全局计数**，于是 `codex.ts` 命中 0
+ * 被另三家的 5 处撑了过去——**全局计数挡不住逐文件的盲区**。
+ * 下限由现况写死：少于它说明有产出点换了写法或搬走了，本条会红而不是静默少扫一处。
+ * 手法与源序断言的 `writes.length >= 4` 同源——那条是我同一天写的，当时没用到这里。
+ */
+const PATH_DENY_MIN_HITS: Readonly<Record<string, number>> = {
+  // claude：1 处属性形（probeClaude 初值）+ 3 处 return 形（probeClaudePathDeny 四分支之一走展开）
+  'claude.ts': 3,
+  // agy / zcode：各 1 处赋值形（真实产出）。它们的 probePathDeny 返回的是内部中间类型，不计
+  'agy.ts': 1,
+  'zcode.ts': 1,
+  // codex：probeCodexPathDeny 的 3 处 return 形——**r4 漏掉的正是这一族**
+  'codex.ts': 3,
+};
+
+test('契约：PathDenyProbe 的每一处产出都带齐键（三种写形，按文件下限）', async () => {
+  const dir = path.join(REPO_ROOT, 'src/trivium/probes');
+  const wantKeys = Object.keys(emptyPathDeny());
+  assert.ok(wantKeys.includes('coverage_complete'), '空壳本身得带着那一格，否则下面扫的是空承诺');
+
+  const offenders: string[] = [];
+  const hits: Record<string, number> = {};
+  for (const f of Object.keys(PATH_DENY_MIN_HITS)) {
+    const src = await fs.readFile(path.join(dir, f), 'utf8');
+    const found = scanPathDenyProductions(src);
+    hits[f] = found.length;
+    for (const { body, line } of found) {
+      const missing = wantKeys.filter((k) => !new RegExp(`\\b${k}\\b`).test(body));
+      if (missing.length > 0) offenders.push(`probes/${f}:${line} 缺 ${missing.join('、')}`);
+    }
+  }
+
+  // 防空转：**逐文件**核下限，不是全局计数
+  for (const [f, min] of Object.entries(PATH_DENY_MIN_HITS)) {
+    assert.ok(
+      hits[f]! >= min,
+      `probes/${f} 只扫到 ${hits[f]} 处产出点（下限 ${min}）——` +
+        '有写法变了或搬走了，本条对该文件已退化为空转（r4 就是这么漏掉 codex.ts 的）',
+    );
+  }
+  assert.deepEqual(
+    offenders, [],
+    'PathDenyProbe 的产出点漏键（主闸门是类型必填，走到这里说明键名写错了）：\n  ' +
+      offenders.join('\n  '),
+  );
+});
+
+test('契约自检：扫描器对「漏键」确实会红，且抓得到带插值的真实形状', () => {
+  /*
+   * v1.3.19 立的规矩：光有正向扫描不算守着，得有一条期望**必须红**的反面夹具。
+   * r4 补上最要紧的一条：**含 `${}` 插值的真实形状**——上一版四条样本全是
+   * 无插值的合成串，所以它证明的是「简化形会抓」，不是「现场形状会抓」。
+   */
+  const miss = (src: string) =>
+    scanPathDenyProductions(src).filter((h) => !/\bcoverage_complete\b/.test(h.body)).length;
+
+  assert.equal(miss('const x = { path_deny: { supported: null, attempts: [] } };'), 1, '属性形');
+  assert.equal(miss('probe.path_deny = { supported: false, method: "m" };'), 1, '赋值形');
+
+  /*
+   * return 形的样本必须**带上函数签名**——判据就挂在它上面。
+   * 收紧前只按 `return {` + 正文含 supported 匹配，抓到了 agy/zcode 里
+   * `probePathDeny` 返回的**内部中间类型**（camelCase `ruleSyntax`），那是误报。
+   */
+  const inFn = (body: string) => `async function f(): Promise<PathDenyProbe> {\n  ${body}\n}\n`;
+  assert.equal(miss(inFn('return { supported: null, rule_syntax: null };')), 1, 'return 形');
+  assert.equal(
+    miss(inFn('return { supported: null, method: `失败（退出码 ${r.code}）`, attempts: [] };')),
+    1,
+    '**带模板插值的真实形状**——上一版正是在这里对 codex.ts 整个失明',
+  );
+  assert.equal(
+    miss(inFn('return { supported: null, method: `码 ${r.code}`, coverage_complete: null };')),
+    0,
+    '键齐的不该报——否则这条会误伤到没人敢动',
+  );
+  assert.equal(
+    miss('async function g() {\n  return { supported: false, ruleSyntax: null };\n}\n'),
+    0,
+    '**签名不是 PathDenyProbe 的 return 不算产出点**——agy/zcode 的内部中间类型就长这样，抓它是误报',
+  );
+});
+
+test('契约：omitVerbose 的实拨点唯一（负对照 argv 只有一个来源）', async () => {
+  /*
+   * 代码双审 r4 CODEX-07：`verboseNegativeControlArgs` 抽出后调用面确实唯一，
+   * 但那是**现在成立的事实，不是结构**——`probeArgs` 带 `omitVerbose?` 是导出的，
+   * 任何新调用点都能自拼一份不含 `--verbose` 的 stream-json argv 绕过具名函数。
+   * 把「唯一」交给机器判据，而不是留给下一个读者去 grep。
+   */
+  const src = await fs.readFile(
+    path.join(REPO_ROOT, 'src/trivium/probes/claude.ts'), 'utf8',
+  );
+  // **先中和注释**：文件里有两处注释在讲「omitVerbose: true 写在调用点」，
+  // 上一版直接扫原文把它们也算成了实拨（3 !== 1 那次红就是这么来的）
+  const code = neutralize(src);
+  const pulls = [...code.matchAll(/omitVerbose:\s*true/g)];
+  assert.equal(
+    pulls.length, 1,
+    `src 里「实拨 omitVerbose」出现了 ${pulls.length} 次，应当只有 1 次（在 verboseNegativeControlArgs 体内）`,
+  );
+  const fnStart = code.indexOf('export function verboseNegativeControlArgs(');
+  const fnEnd = code.indexOf('\n}', fnStart);
+  assert.ok(fnStart > 0 && pulls[0]!.index! > fnStart && pulls[0]!.index! < fnEnd,
+    '唯一那次实拨必须在 verboseNegativeControlArgs 体内');
+});
+
+test('EV-42 安全默认：peer_deny_applied 必须读 file_shape_verified，不得读 supported', async () => {
+  /*
+   * 代码双审 r4 CODEX-03 的落点。EV-42 的安全默认原本只是 BACKLOG 里一句话
+   * 「等价性未验前 peer_deny_applied 不得记 true」，而三家适配器逐字都是
+   * `peer_deny_applied: probe.path_deny.supported === true`——
+   * **第 3 步照抄那一行当场违反，且没有任何东西会红**。
+   *
+   * 现在字段与读法都换了，这条守住「别换回去」：
+   * claude 侧 `supported` 是 true 而 `file_shape_verified` 是 null，
+   * 读错哪一格，落盘的 peer_deny_applied 就会把一件没测过的事记成 true。
+   */
+  const dir = path.join(REPO_ROOT, 'src/trivium/adapters');
+  const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.ts'));
+  const offenders: string[] = [];
+  let seen = 0;
+  for (const f of files) {
+    const src = await fs.readFile(path.join(dir, f), 'utf8');
+    for (const [i, line] of neutralize(src).split('\n').entries()) {
+      /*
+       * 只看**从探针结论取数**的那些行。`base.ts` 的失败出口与桩适配器写的是
+       * 字面 `false`（该侧没跑过、或压根没有这个概念），它们不读任何字段，
+       * 把它们算进来是误报——判据要贴着「它在读什么」写，不是「它叫什么」。
+       */
+      if (!/peer_deny_applied\s*:.*path_deny/.test(line)) continue;
+      seen += 1;
+      if (!/file_shape_verified/.test(line)) offenders.push(`adapters/${f}:${i + 1}  ${line.trim()}`);
+    }
+  }
+  assert.ok(seen >= 3, `只扫到 ${seen} 处 peer_deny_applied（现况三家各一处）——论域缩了，本条已退化`);
+  assert.deepEqual(
+    offenders, [],
+    'peer_deny_applied 读错了字段（读 supported 会把「没验过」记成 true）：\n  ' + offenders.join('\n  '),
+  );
 });

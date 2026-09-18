@@ -3,7 +3,10 @@
  *
  * 本机实测（`2.1.270`）确立的调用配方，M9 适配层必须复用：
  *   1. `-p --output-format stream-json --verbose`：headless + 事件流。
- *      `--verbose` 不是可选项——`stream-json` 要靠它才吐全量事件。
+ *      **`--verbose` 不是可选项，而且不是「吐得少」——不带它 CLI 直接拒绝**
+ *      （2.1.273 实测：退 1、零事件、零 API 调用）。此前这里写的是「要靠它才吐全量事件」，
+ *      那个说法已被 M9 第 2 步的负对照否证，判据与字段见
+ *      `ClaudeProbe.stream_json_requires_verbose`。
  *   2. `--restricted`：移除执行命令/代码的内建工具与 WebFetch，
  *      **并忽略 user / project / local 配置文件**（managed settings 与 `--settings` 仍生效），
  *      同时把文件工具限制在工作目录内、拒绝 bypassPermissions。
@@ -28,6 +31,7 @@ import { exists } from '../util/fsx.js';
 import { createFixture, SENTINEL_OPEN, SENTINEL_PEER, type Fixture } from './fixture.js';
 import { probeScratchPaths } from './agy.js';
 import type { ClaudeProbe, PathDenyProbe } from '../types.js';
+import { emptyPathDeny } from '../config.js';
 
 /** 探针模型：探能力不探质量，挑最便宜的一档 */
 const PROBE_MODEL = 'claude-haiku-4-5-20251001';
@@ -83,20 +87,42 @@ const READONLY_TOOLS = 'Read,Grep,Glob';
  * （此前这里写着「P7 的字面是『适配层绝不硬编码 CLI 旗标』」——那句是加强转述，
  * 不是 P7 原文，已随 v1.3.17 一并更正。）
  */
-function probeArgs(opts: {
+export function probeArgs(opts: {
   prompt: string;
   /** 内联 JSON Schema（**不是文件路径**——实测该旗标只收内联 JSON） */
   jsonSchema?: string;
   /** 内联 settings JSON，用于注入 permissions.deny */
   settings?: string;
   outputFormat?: 'text' | 'json' | 'stream-json';
+  /**
+   * **只给 EV-40 的负对照用**：刻意不传 `--verbose`，看 CLI 认不认。
+   * 正常探测一律不传本项——不传 `--verbose` 的 stream-json 会被当场拒掉。
+   */
+  omitVerbose?: boolean;
 }): string[] {
+  /*
+   * **这里刻意没有 stdin 形态的分支**（代码双审 r2 CODEX-01）。
+   *
+   * 上一版加过一个 `promptVia: 'argv' | 'stdin'`，本意是给「M9 第 3 步在 stdin 形态
+   * 复验 EV-40」留一条路，还把它写进设计 §3.7.1 当保证。三件事叠起来它是条**死路**：
+   * 全仓零调用方；唯一的执行封装 `execProbe` 硬编码 `stdin: ''`，即便传了
+   * prompt 也送不进去（等于发一次没有 prompt 的调用）；而 `adapters/` 本就
+   * 不得 import `probes/`，M9 适配层根本用不到这个函数。
+   *
+   * 于是它既是没有消费方的分支，又是一句会把第 3 步引向死路的失实保证。
+   * **复验要在 `adapters/claude.ts` 内自建 stdin 配方**，按 EV-41 登记的边界逐格重测——
+   * 这条已改写进设计 §3.7.1 并登记为 EV-43，不再靠这里留个接不通的口子。
+   *
+   * 连带要记的事实：`probeArgs` 把 prompt 放 argv 末位，所以**本文件测出的每一格
+   * 都是 argv 形态下的结论**，EV-40 那格尤其。
+   */
   const fmt = opts.outputFormat ?? 'stream-json';
   return [
     '-p',
     '--output-format', fmt,
-    // stream-json 要靠 --verbose 才吐全量事件；两者是绑定的
-    ...(fmt === 'stream-json' ? ['--verbose'] : []),
+    // stream-json **必须**配 --verbose：不配时 CLI 直接拒绝（2.1.273 实测，
+    // 见 ClaudeProbe.stream_json_requires_verbose）。负对照靠 omitVerbose 绕开这一行
+    ...(fmt === 'stream-json' && !opts.omitVerbose ? ['--verbose'] : []),
     // ── 安全不变量：探针与 M9 共有，缺一即失守 ──
     // **展开常量而不是再抄一遍字面量**：此前这里与 READONLY_INVARIANTS 各存一份，
     // 于是「改常量」并不能让 registry-parity 的防空转腿变红（代码双审 AGY-05 / GLM-02）。
@@ -118,12 +144,85 @@ function probeArgs(opts: {
  * 缺任何一个都当场失守（`--strict-mcp-config` 漏掉时 MCP 的写操作工具会混进来，
  * 且成本约 24 倍）。它同时是 `probe.readonly_flags` 落盘的内容。
  */
+/**
+ * MCP 硬前置旗标 —— **提成具名常量，不在 `READONLY_INVARIANTS` 里再抄一遍**。
+ *
+ * 理由与 `probeArgs` 展开该常量是同一条（代码双审 AGY-05 / GLM-02）：
+ * 同一个字面量存两份时，改一份另一份还在，依赖它的判据就对漂移不灵敏。
+ * 这里的依赖方是 `ClaudeProbe.strict_mcp_config_applied`——它要回答
+ * 「这条旗标在不在落盘的组合里」，若拿另一份字面量去比，比的就不是同一件事。
+ *
+ * **字面量必须留在 `probes/` 下**：`registry-parity` 的防空转腿判据是
+ * 「该 token 彻底不在 probes/ 出现即判黑名单已空转」，搬进 `adapters/` 两条腿会同时红。
+ */
+const STRICT_MCP_CONFIG_FLAG = '--strict-mcp-config';
+
 export const READONLY_INVARIANTS: readonly string[] = [
   '--restricted',
-  '--strict-mcp-config',
+  STRICT_MCP_CONFIG_FLAG,
   '--tools',
   READONLY_TOOLS,
 ];
+
+/**
+ * `ClaudeProbe.strict_mcp_config_applied` 的判据本体（纯函数，无 I/O）。
+ *
+ * ## 为什么不是一句 `readonly_flags.includes(...)`
+ *
+ * 因为 **`[].includes(x)` 是 `false`，而这里需要的是 `null`**。
+ *
+ * 初版就是那一句，写在 `probeClaude` 里**无条件**执行。于是「读探针没拿到
+ * `system/init`」（未登录、断网、spawn 报错）这类**什么都没测到**的机器上，
+ * 数组还是初始 `[]`，反算出 `false` = 「确认缺失硬前置」，
+ * 再被 `claudeSeverity` 的 ②' 读成**已核实的安全失守**、恒 blocker，
+ * 并把 ③ 信任提示那条特化诊断一并截住——代码双审三侧独立打中
+ * （AGY-01 ≡ GLM-01 ≡ CODEX-01），codex 用构建产物复现。
+ *
+ * **这是本仓同形塌缩的第四次**（前三次：`readonly_flags` 空集双义、`path_deny`
+ * 落 false、`denied_tool_in_trace` 二态化），而且是在清理第二次的尾巴（EV-40）时
+ * 新造的。共同结构永远是同一个：**「没测到」被一个求值表达式算成了「确认没有」**。
+ *
+ * ## 判据
+ *
+ * | 输入 | 结论 | 含义 |
+ * | :--- | :--- | :--- |
+ * | `toolSurfaceChecked !== true` | `null` | **本轮压根没决定过这个数组**，反算它毫无意义 |
+ * | 已核对，数组含该旗标 | `true` | 硬前置在落盘组合里 |
+ * | 已核对，数组不含（含被清空的情形） | `false` | 确认不在 |
+ *
+ * 末行把 breach 与「工具面脏」两种清空也算 `false`：它们**已核对过**，
+ * 数组确实不含该旗标。这两种情形各有更硬的判据先 fire（`claudeSeverity` 的 ① 与 ②），
+ * 所以 `false` 在那里不会被误读成「缺硬前置」——**但 ②' 仍显式排除它们**，不靠顺序侥幸。
+ *
+ * > **不要再写「与 `readonly_flags.length > 0` 同真同假」。** 上一版这么写过，
+ * > 三侧独立打中（r2 AGY-02 ≡ GLM-r2-05 ≡ CODEX-05）：`tools` 读回为空那条路
+ * > 两者是 `null` 对 `false`；`existing` 保留旧清单那条路是「数组非空而字段 null」。
+ * > 精确陈述见 `types.ts` 的字段文档。
+ */
+export function judgeStrictMcpConfig(
+  toolSurfaceChecked: boolean | null,
+  readonlyFlags: readonly string[],
+): boolean | null {
+  if (toolSurfaceChecked !== true) return null;
+  return readonlyFlags.includes(STRICT_MCP_CONFIG_FLAG);
+}
+
+/**
+ * `PathDenyProbe.coverage_complete` 的三态映射（纯函数，无 I/O）。
+ *
+ * 抽出来的理由与 `judgeVerboseBinding` 逐字相同（代码双审 AGY-04）：
+ * 内联在带 I/O 的 `probeClaudePathDeny` 里就没有防退化守卫，
+ * 而同一轮我给 `judgeVerboseBinding` 抽了纯函数并配了四格用例——同一个理由只做了一半。
+ *
+ * `unverified`（模型没去发起 Grep）必须落 `null`：记 `false` 是把「没测到」
+ * 说成「确认绕得过」，记 `true` 更糟——那会免掉 §3.7 声明必需的事后轨迹核验。
+ */
+export function judgeDenyCoverage(
+  grepVerdict: 'blocked' | 'bypassed' | 'unverified',
+): boolean | null {
+  if (grepVerdict === 'unverified') return null;
+  return grepVerdict === 'blocked';
+}
 
 /**
  * 工具面核对：既看**多出来的**，也看**读回是不是空的**。
@@ -226,6 +325,17 @@ export interface ClaudeTrace {
    * 不枚举已知的错误 subtype——那些取值我没有实测样本（见 M6 第 3 步报告边界）。
    */
   completed: boolean;
+  /**
+   * 成功解析出的事件条数。
+   *
+   * 立此字段是为了让 `judgeVerboseBinding` **复用本解析器的口径**，
+   * 而不是在它自己那边再写一份「什么算一条事件」（代码双审 CODEX-07）——
+   * 两处各存一份判据，日后事件行格式一变就会分叉，
+   * 正是本轮在 `path_deny` 上刚消掉的同一形态。
+   *
+   * 口径即下方循环的口径：`{` 开头且 `JSON.parse` 成功的行。坏行不计。
+   */
+  eventCount: number;
 }
 
 /**
@@ -243,6 +353,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
   let sessionId: string | null = null;
   let costUsd: number | null = null;
   let completed = false;
+  let eventCount = 0;
 
   for (const line of jsonl.split('\n')) {
     const t = line.trim();
@@ -253,6 +364,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
     } catch {
       continue;
     }
+    eventCount += 1;
     if (typeof o['session_id'] === 'string') sessionId = o['session_id'];
 
     if (o['type'] === 'system' && o['subtype'] === 'init') {
@@ -308,6 +420,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
     sessionId,
     costUsd,
     completed,
+    eventCount,
   };
 }
 
@@ -334,6 +447,149 @@ async function execProbe(
    */
   // 超时一定不算跑完，即使输出里恰好已有 result（那是截断的）
   return { ...trace, completed: trace.completed && !r.timedOut, timedOut: r.timedOut, raw: r.stdout };
+}
+
+/**
+ * EV-40 负对照那一次调用的 argv —— **调用点与用例共用的唯一一份**。
+ *
+ * 抽出来的理由（代码双审 r3 CODEX-02）：上一版把 `omitVerbose: true` 写在调用点，
+ * 用例则自建入参去断言「这个旋钮有效」。于是**旋钮被守着、拨没拨没人守**——
+ * 删掉调用点那个 `omitVerbose: true` 是合法编辑（可选参数，`tsc` 不报），
+ * 两条用例照样全绿，而负对照当场退化成正对照：CLI 正常跑完、退 0 且有事件
+ * ⇒ `judgeVerboseBinding` 落 `false` ⇒ 一条「厂商已解除绑定」的**假警报**。
+ *
+ * 共用同一份之后，「调用点忘了拨旋钮」在结构上不可能发生——
+ * 与把 `coverage_complete` 改必填同一条思路：**能让类型或结构保证的，
+ * 就不要留给「记得写对」**。这一族我在 r1～r3 连错三轮。
+ */
+export function verboseNegativeControlArgs(): string[] {
+  return probeArgs({ prompt: '只回复 OK 两个字母，不要调用任何工具。', omitVerbose: true });
+}
+
+/**
+ * `stream-json` 与 `--verbose` 的绑定关系（BACKLOG EV-40）。
+ *
+ * ## 判据是「负对照被干净拒绝」，不是「数事件条数」
+ *
+ * EV-40 登记时拟的是「同一任务跑两次（带 / 不带 `--verbose`）数事件条数」，
+ * 那建立在**「不带就降级成少吐事件」**这个假设上。2026-09-17 实测（2.1.273）否证了它：
+ * 不带时 CLI **直接拒绝**——退 1、stdout 零事件、**一次 API 调用都没发生**。
+ * 于是真判据更强也更便宜：负对照那一臂不花钱。
+ *
+ * ## 为什么不认 stderr 的文案
+ *
+ * 判据取「非零退出 **且** 零事件」这个**行为**特征，不去匹配
+ * `requires --verbose` 之类的字串。本仓刚为同一个毛病付过代价：
+ * `path_deny` 的 Grep 结论一度只活在中文自由文本里、靠 `includes` 反解，
+ * 厂商或我们自己改一句话它就静默失效，而失效方向是**放松**。
+ *
+ * ## 正对照不单跑
+ *
+ * 本文件其余每一次 `execProbe` 都带 `--verbose` 且确实拿到了事件流——
+ * 正向那一半已经由它们证着，再花一次调用去重复它没有信息量。
+ *
+ * 返回：`true` 硬前置成立 / `false` 不带也能跑 / `null` 无从证实。
+ */
+async function probeStreamVerboseBinding(
+  bin: string,
+  fx: Fixture,
+  /**
+   * 同轮**正对照**成立了没有。调用方传本轮读探针是否真的产出了事件流——
+   * 那一次本来就带 `--verbose`，所以正对照**不额外花钱**（代码双审 CODEX-02）。
+   */
+  positiveControlOk: boolean,
+): Promise<boolean | null> {
+  /*
+   * 正对照不成立就**直接返回，不 spawn**（代码双审 r2 GLM-r2-06 ≡ CODEX-08）。
+   *
+   * 上一版无条件先跑再判，而 `judgeVerboseBinding` 在解析 stdout 之前就按这道门
+   * 返回 null——那次调用的结果必被丢弃。代价不只是白等：最坏吃满 `PROBE_TIMEOUT_MS`，
+   * 而且恰好发生在**最不健康的机器上**（未登录 / 断网），与本里程碑
+   * 「不烧无用调用」的预算口径相悖。
+   */
+  if (!positiveControlOk) return null;
+
+  const r = await run(bin, verboseNegativeControlArgs(), {
+    timeoutMs: PROBE_TIMEOUT_MS, cwd: fx.root, stdin: '', killTree: true,
+  });
+  return judgeVerboseBinding({
+    exitCode: r.code,
+    stdout: r.stdout,
+    stderrHasOutput: r.stderr.trim().length > 0,
+    timedOut: r.timedOut,
+    positiveControlOk,
+  });
+}
+
+/**
+ * EV-40 负对照的**判据本体**（纯函数，无 I/O）。
+ *
+ * 抽出来是为了能被变异验证打中——埋在 `probeStreamVerboseBinding` 里要真跑
+ * `claude` 才走得到，那就等于没有断言守着（与 `judgeToolSurface` 同一条理由）。
+ *
+ * 四格，**三态**：
+ *
+ * | 观测 | 结论 | 含义 |
+ * | :--- | :--- | :--- |
+ * | 超时 | `null` | 进程既没被拒也没跑完，两个方向都推不出来 |
+ * | 非零退出 **且** 零事件 | `true` | 干净拒绝 ⇒ 绑定成立 |
+ * | 零退出 **且** 有事件 | `false` | 干净通过 ⇒ 绑定已解除 |
+ * | 其余（退 0 却零事件 / 非零却吐了事件） | `null` | **记未测，不猜** |
+ *
+ * 末一格与 `denied_tool_in_trace` 的 null 同族：二态化会把「没测出来」说成确定结论，
+ * 而这里**两个**误判方向都会误导 M9——说成 true 会掩盖厂商漂移，
+ * 说成 false 会让人以为绑定解除了而去删适配层的 `--verbose`。
+ */
+export function judgeVerboseBinding(o: {
+  exitCode: number | null;
+  stdout: string;
+  /**
+   * 负对照的 stderr 有没有内容 —— **有无判据，不是文案匹配**（代码双审 r2 CODEX-02）。
+   *
+   * 「刻意不匹配 `requires --verbose` 字串」那条纪律原样保留：厂商改一句话，
+   * 字面匹配就静默失效、失效方向是放松。这里问的只是「CLI 有没有说话」。
+   */
+  stderrHasOutput: boolean;
+  timedOut: boolean;
+  /**
+   * 同轮**正对照**成立了没有：本轮带 `--verbose` 的探测确实产出过事件流。
+   *
+   * 不成立时一律 `null`。理由见下方「为什么 true 臂需要归因」。
+   */
+  positiveControlOk: boolean;
+}): boolean | null {
+  if (o.timedOut) return null;
+  /*
+   * 拿不到退出码（spawn 失败、被信号杀死——`util/exec.ts` 那时给 `code: null`）
+   * 与超时同族：进程**既没被拒也没跑完**，两个方向都推不出来（代码双审 GLM-03）。
+   * 初版判据是 `exitCode !== 0`，而 `null !== 0` 为真，于是 spawn 失败落 `true`。
+   */
+  if (typeof o.exitCode !== 'number') return null;
+  /*
+   * 正对照不成立 ⇒ 这台机器本轮根本没跑通过任何一次调用（未登录、断网、slug 失效），
+   * 负对照那次非零退出**无从归因**到 `--verbose`。记未测。
+   */
+  if (!o.positiveControlOk) return null;
+
+  const trace = parseClaudeEvents(o.stdout);
+  const emitted = trace.eventCount;
+  /*
+   * true 臂的**第四道门**：CLI 得真说了点什么（代码双审 r2 CODEX-02）。
+   *
+   * 「非零退出 + stdout 零事件」不止参数拒绝一种成因——配额闸门掐断、CLI 自身崩溃、
+   * 外部原因带退出码终止，全都长这样。它们在正对照成立时会被记成
+   * 「实测确证硬前置成立」，而误判方向恰好是本字段要买的东西的反面：
+   * **厂商真解除绑定那天，若负对照同时因别的原因失败，字段落 true，漂移永久不可见。**
+   * 参数拒绝必然往 stderr 写一行；两头皆空的静默失败记未测。
+   */
+  if (o.exitCode !== 0 && emitted === 0 && !o.stderrHasOutput) return null;
+  if (o.exitCode !== 0 && emitted === 0) return true;
+  if (o.exitCode === 0 && emitted > 0) return false;
+  /*
+   * 既不是干净拒绝也不是干净通过（退 0 却零事件、或非零退出却吐了事件——
+   * 后者多半是跑到一半才失败）。**记未测，不猜。**
+   */
+  return null;
 }
 
 /**
@@ -367,10 +623,8 @@ async function probeClaudePathDeny(bin: string, fx: Fixture): Promise<PathDenyPr
   );
   if (!t.completed) {
     return {
-      supported: null,
-      rule_syntax: null,
+      ...emptyPathDeny(),
       method: '路径级 deny 探测未跑完（超时或进程报错），未得出结论',
-      attempts: [],
     };
   }
 
@@ -419,6 +673,24 @@ async function probeClaudePathDeny(bin: string, fx: Fixture): Promise<PathDenyPr
     return {
       supported: true,
       /*
+       * 覆盖面升成机读字段（BACKLOG EV-40）。三态与 `grepVerdict` 一一对应，
+       * **不压成二值**：`unverified`（模型没去发起 Grep）若被记成 false，
+       * 就把「没测到」说成了「确认绕得过」；记成 true 则更糟——那会免掉事后轨迹核验。
+       */
+      coverage_complete: judgeDenyCoverage(grepVerdict),
+      /*
+       * **逐文件形态没验过，所以是 null**（BACKLOG EV-42）。
+       *
+       * 这一支是 `supported: true`——路径级 deny 对 Read 可用。但实测用的规则是
+       * **目录 glob**（`Read(./<dir>/**)`），而 M9 适配层要注入的 `deny_paths`
+       * 是**逐文件清单**，两者形状不同、等价性**未验**。
+       *
+       * 记 `null` 而不是跟着 `supported` 记 true：适配器的 `peer_deny_applied`
+       * 读这一格，`null` 判不过 `=== true`，于是「未验前不得记 true」这条
+       * **由结构保证**，不靠谁记得读 BACKLOG（代码双审 r4 CODEX-03）。
+       */
+      file_shape_verified: null,
+      /*
        * `rule_syntax` 只记**被证实生效**的那条（审查意见 GLM-04）。
        * 把已被实测绕过的 Grep 规则也留在这里，M9 只读该字段会看不见洞——
        * 而这个字段的契约是「**可复用**的规则写法，供适配层注入」。
@@ -445,6 +717,9 @@ async function probeClaudePathDeny(bin: string, fx: Fixture): Promise<PathDenyPr
       rule_syntax: null,
       method: '注入 permissions.deny 后哨兵仍出现在原始事件流里——规则没挡住',
       attempts: [rule],
+      // 主判据都没成立，「另测的通道覆盖得怎样」与「逐文件形态」都无从谈起
+      coverage_complete: null,
+      file_shape_verified: null,
     };
   }
   /*
@@ -463,6 +738,8 @@ async function probeClaudePathDeny(bin: string, fx: Fixture): Promise<PathDenyPr
     rule_syntax: null,
     method: '哨兵未出现，但该次尝试也没记入 permission_denials——挡没挡住无从证实（多半是模型没去读）',
     attempts: [],
+    coverage_complete: null,
+    file_shape_verified: null,
   };
 }
 
@@ -481,7 +758,7 @@ export async function probeClaude(
         version_probe: null,
         probed_at: null,
         models: [],
-        path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
+        path_deny: emptyPathDeny(),
         scratch_paths: [],
         isolation: 'shared',
         headless_read_ok: null,
@@ -494,12 +771,24 @@ export async function probeClaude(
         json_schema_ok: null,
         session_id_source: null,
         trust_prompt_required: null,
+        stream_json_requires_verbose: null,
+        strict_mcp_config_applied: null,
       };
 
   const { bin, version } = await probeClaudeBin(configuredBin);
   probe.entrypoint = bin;
   probe.version = version;
-  probe.probed_at = new Date().toISOString();
+  /*
+   * **`probed_at` 移到两条早退之后**（代码双审 r4 CODEX-06）。
+   *
+   * 它的语义是「这一键探到过」。上一版把它写在这里——也就是 `!bin` 与
+   * `skipModelCalls` 两条早退**之前**——于是「模型段本轮根本没跑」这个状态
+   * 在它上面完全看不出来，`cliProbeIsFresh()` 还会把整段判为新鲜（TTL 7 天内不再重探）。
+   *
+   * 而 `strict_mcp_config_applied` 的字段文档正指引消费方
+   * 「要与 `probed_at` 以及『本轮是否真跑过探针』一并读」——
+   * **我指的那个新鲜度信号被实现自己抹平了**。挪到早退之后，两者才对得上。
+   */
   probe.version_probe = { runner: null, args: ['--version'], extract: String.raw`(\d+\.\d+\.\d+)` };
   if (!bin) {
     notes.push('未找到 claude 可执行文件，Claude 侧不可用');
@@ -509,10 +798,17 @@ export async function probeClaude(
   if (opts.skipModelCalls) {
     notes.push(
       '已跳过需要真实模型调用的探针（--no-model-calls）——' +
-        'headless_read_ok / trace_path_structured / denied_tool_in_trace / path_deny / scratch_paths 保留上一次的结论',
+        'headless_read_ok / trace_path_structured / denied_tool_in_trace / path_deny / scratch_paths / ' +
+        'stream_json_requires_verbose / strict_mcp_config_applied 保留上一次的结论',
     );
     return { probe, notes };
   }
+
+  /*
+   * 走到这里才算「模型段真跑过」，`probed_at` 在此刻打戳（见上方注释）。
+   * 两条早退路径不刷它——它们没跑模型段，不该代表模型段。
+   */
+  probe.probed_at = new Date().toISOString();
 
   const fx = await createFixture();
   try {
@@ -632,6 +928,31 @@ export async function probeClaude(
       probe.headless_read_ok
         ? `headless 读文件通过（哨兵命中）；本次成本 $${read.costUsd ?? '?'}`
         : '⚠️ headless 未读到哨兵文件',
+    );
+
+    // ── stream-json 与 --verbose 的绑定（EV-40）──────────────────
+    /*
+     * 正对照取本轮读探针：它带 `--verbose` 且要求真读到文件，
+     * `completed` 为真即说明这台机器本轮跑通过一次完整调用。
+     * 不另外发调用——正对照白送（代码双审 CODEX-02）。
+     */
+    probe.stream_json_requires_verbose = await probeStreamVerboseBinding(bin, fx, read.completed);
+    notes.push(
+      probe.stream_json_requires_verbose === true
+        ? 'stream-json **必须**配 --verbose：负对照退非零且零事件，而同轮正对照跑通。' +
+          '（本机 2.1.273 实测：被拒即不产生 API 调用——本判据的观测面里没有用量，这一句是那次实测的外推）'
+        : probe.stream_json_requires_verbose === false
+          ? '⚠️ stream-json **不再**需要 --verbose——厂商行为已漂移，' +
+            '适配层那条「两者绑定」的注释与设计 §3.7.1 该行都要复核'
+          : /*
+             * 文案改准（代码双审 CODEX-02）：初版无论哪种 null 都说「既非干净拒绝
+             * 也非干净通过」，而 null 的成因还有「正对照没跑通」与「拿不到退出码」。
+             * 把**没跑起来**说成**被拒绝**是失实陈述，这里逐因分述。
+             */
+            '⚠️ stream-json 与 --verbose 的绑定**无从证实**：' +
+            (read.completed
+              ? '负对照的非零退出未被归因（既非干净拒绝也非干净通过，或拿不到退出码）'
+              : '本轮正对照未跑通（未登录 / 断网 / slug 失效时，负对照的失败无从归因到 --verbose）'),
     );
 
     // ── 只读负对照：白名单外的工具必须用不了 ──────────────────────
@@ -756,14 +1077,24 @@ export async function probeClaude(
      * 「不必退化」那句话因此必须删掉——它会让 M9 据此免做事后轨迹核验，
      * 而那道核验恰恰是这个洞唯一的兜底。
      */
-    const grepBypass = probe.path_deny.method?.includes('Grep 绕得过') === true;
+    /*
+     * 覆盖面读**字段**，不再从 `method` 的中文自由文本 `includes` 反解（BACKLOG EV-40）。
+     *
+     * 反解那一版的毛病不是难看：它的失效方向是**放松**——改一句文案，
+     * `grepBypass` 就恒为 false，于是「覆盖不完整」的警告消失，
+     * 而读的人会以为第 ③ 道屏蔽单独成立。三态各有各的话术，null 不得与 true 合流。
+     */
+    const coverage = probe.path_deny.coverage_complete;
     notes.push(
       probe.path_deny.supported === true
         ? `路径级 deny 对 Read **可用**（三家唯一）：${probe.path_deny.rule_syntax}。` +
-          (grepBypass
+          (coverage === false
             ? '⚠️ **但覆盖不完整**：同一规则下 Grep 仍能从被拒目录取到内容（显式写 Grep 规则也拦不住）——' +
               '第 ③ 道屏蔽**不能**只靠它，事后轨迹核验仍是必需的'
-            : 'Grep 负对照同样未泄漏')
+            : coverage === true
+              ? 'Grep 负对照同样未泄漏——但 Glob 通道**至今未验**，' +
+                '「已实测的通道都挡住了」不等于「覆盖全部读工具」'
+              : '⚠️ Grep 通道**无从证实**（模型没去发起 Grep）——不能据此说规则覆盖了 Grep')
         : `路径级 deny 不可用或未证实：${probe.path_deny.method}`,
     );
 
@@ -774,6 +1105,34 @@ export async function probeClaude(
         ? 'scratch_paths=[]：claude 在项目根零污染'
         : `scratch_paths=${JSON.stringify(probe.scratch_paths)}`,
     );
+
+    /*
+     * ── MCP 硬前置：**终态派生，放在 fixture 块的最后** ──────────────
+     *
+     * r1 把它从「breach 清空之前」挪到了「三个清空点之后」，而那只是一个**位置约定**：
+     * 注释写着「位置是判据的一部分」，却没有任何东西守着这个位置——纯函数用例只看见
+     * `(checked, flags)` 的取值、看不见求值时机，把它挪回去不会红（代码双审 r2 GLM-r2-03）。
+     *
+     * 所以改成**从最终 probe 状态一次性派生**：不再依赖「排在谁之后」，
+     * 而是依赖「这时候 probe 已经是终态」这个结构事实。
+     * 另有一条源序断言在 `test/unit/claude-events.test.ts` 里守着调用点确实在
+     * 最后一处 `readonly_flags` 清空之后——结构 + 断言两条，不靠记性。
+     */
+    probe.strict_mcp_config_applied = judgeStrictMcpConfig(
+      probe.tool_surface_checked,
+      probe.readonly_flags,
+    );
+    if (probe.strict_mcp_config_applied === false && probe.readonly_flags.length > 0) {
+      /*
+       * 只对**真子集**报这句话：数组非空却不含硬前置。
+       * 数组为空有三个更硬的成因（上面那三个清空点），各自已经有自己的 note，
+       * 再补一句「没有硬前置」是把同一件事说两遍，且会把读的人引向错误的成因。
+       */
+      notes.push(
+        '⚠️ 落盘的只读组合非空、但其中没有 MCP 硬前置旗标——不加它时 MCP 的写工具' +
+          '（发信、云盘创建与共享）会进入审查会话工具面，且单次成本约 24 倍。该侧不可用于审查',
+      );
+    }
   } finally {
     await fx.cleanup();
   }

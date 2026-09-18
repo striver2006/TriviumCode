@@ -28,6 +28,7 @@ import { exists } from '../util/fsx.js';
 import { createFixture, SENTINEL_OPEN, type Fixture } from './fixture.js';
 import { probeScratchPaths } from './agy.js';
 import type { CodexProbe, CodexProviderProbe, PathDenyProbe, ProbeIsolation } from '../types.js';
+import { emptyPathDeny } from '../config.js';
 
 /**
  * 探针**首选**模型：探的是能力不是质量，挑目录里最便宜的一档。
@@ -573,6 +574,8 @@ export async function probeCodexPathDeny(bin: string): Promise<PathDenyProbe> {
       rule_syntax: null,
       method: `codex exec --help 执行失败（退出码 ${r.code}），未能判定`,
       attempts: [],
+      coverage_complete: null, // 主判据都没得出结论，覆盖面无从谈起
+      file_shape_verified: null,
     };
   }
   const help = r.stdout + r.stderr;
@@ -590,6 +593,8 @@ export async function probeCodexPathDeny(bin: string): Promise<PathDenyProbe> {
       rule_syntax: null,
       method: `codex exec --help 出现疑似路径级 deny 的关键字：${hits.join('、')}——需人工确认语义`,
       attempts: [],
+      coverage_complete: null, // 同上：supported 记 null 时不谈覆盖面
+      file_shape_verified: null,
     };
   }
   const hasSandboxPermissions = help.includes('sandbox_permissions');
@@ -602,6 +607,9 @@ export async function probeCodexPathDeny(bin: string): Promise<PathDenyProbe> {
     attempts: hasSandboxPermissions
       ? ['sandbox_permissions：取值为 disk-full-read-access 一类的粗粒度放宽档，方向相反，不能用来收紧']
       : [],
+    // 本机确认无路径级 deny 机制，「另测的读工具覆盖面」与「逐文件形态」两个问题都不成立
+    coverage_complete: null,
+    file_shape_verified: null,
   };
 }
 
@@ -677,7 +685,7 @@ export async function probeCodex(
         version_probe: null,
         probed_at: null,
         models: [],
-        path_deny: { supported: null, rule_syntax: null, method: null, attempts: [] },
+        path_deny: emptyPathDeny(),
         scratch_paths: [],
         isolation: 'shared',
         exec_headless_read_ok: null,
