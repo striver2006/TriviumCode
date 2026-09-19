@@ -29,7 +29,8 @@ export type GateFailureCode =
   | 'empty_reason'
   | 'missing_action'
   | 'joint_blocker_rejected'
-  | 'missing_review_json';
+  | 'missing_review_json'
+  | 'readonly_breach';
 
 export interface GateFailure {
   code: GateFailureCode;
@@ -142,6 +143,22 @@ export interface GateCheckInput {
    * 缺省 `claude` 与重构前行为逐项相同，为 M10 的 Driver 任意化预留。
    */
   driver?: AgentId;
+  /**
+   * 本轮是否检出**只读失守**（run 元数据 `guard.readonly_breach`）及受影响文件。
+   *
+   * 由 `loadRoundReviews` 一并带出（与 `voidedSides` 同理：可选参数让漏传静默成功）。
+   * 此前这一格只有渲染面（`summarizeRun` / `report` / console 告警），没有任何
+   * 失败面消费它——真失守与假失守走同一条路，闸门都绿（M9 第 6 步验收留痕实证；
+   * 代码双审 CODEX-02 ≡ AGY-02 ≡ GLM-02）。设计 §1.2 与 AD-06 写的落点就是这里。
+   *
+   * **只看轨迹确诊的阳性**（`write_events` 非空）：指纹漂移那类「无法归因」的疑似
+   * 本来就不进这个布尔位，仍走告警。
+   *
+   * 该字段在 run.v1 / run.v2 两版契约里都**必填**，`readRunMeta` 校验不过即 null——
+   * 所以不存在「旧留痕缺字段」这一格（第 2 轮 CODEX-F01-②）：历史轮次按当年刻下的布尔判；
+   * 留痕整份读不出时 `missingSides` 先行兜底。漏传本参数才按不拦处理，接线由 cli 两处调用点负责。
+   */
+  readonlyBreach?: { hit: boolean; files: string[] };
 }
 
 export async function checkAdjudication(input: GateCheckInput): Promise<GateCheckResult> {
@@ -284,6 +301,32 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
    * 当成完整双审。出 warning 而不是 failure：降级是关于**运行**的事实，
    * 不是 Driver 改裁决件能修的东西，报 failure 会变成无法满足的闸门。
    */
+  /*
+   * 只读失守 = 审查员写了工作树（AD-06：主仓库被写入即中止并列出受影响文件）。
+   * 它是关于**运行**的事实，Driver 改裁决件修不了——但与 `degraded_round` 不同，
+   * 这里必须是 failure 而不是 warning：失守侧的结论不可采信，放它进审批等于
+   * 让一份可能被自己改过的代码通过闸门。处置是清理工作区后重跑审查。
+   */
+  if (input.readonlyBreach?.hit) {
+    const files = input.readonlyBreach.files;
+    /*
+     * 文案与判据对齐（第 2 轮 CODEX-F01-①）：判据是「轨迹里出现白名单外的工具调用」，
+     * 不是「工作区确有改动」——两者要分开说。`breached_files` 装的是 `工具名(参数)` 形式的
+     * 调用记录，不是文件路径；该判据有过误报（M9 第 6 步 run 20260919T120643Z：
+     * 五条记录全是 `StructuredOutput(...)`，`snapshot.drift.changed: false`），
+     * 所以处置分两步：先看 `snapshot.drift` 与工作区，确有改动才谈清理，没有就按误报登记。
+     * 整跑布尔说不出是哪一侧（EV-75②），这里不暗示可以按侧清理。
+     */
+    failures.push({
+      code: 'readonly_breach',
+      message:
+        '本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），裁决不得进入审批。' +
+        '处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查；' +
+        '没有改动则是写事件判据误报，按 BACKLOG EV-75 登记后重跑。调用记录（非文件路径）：' +
+        (files.length > 0 ? files.slice(0, 8).join('、') + (files.length > 8 ? '…' : '') : '（run 元数据未记录）'),
+    });
+  }
+
   if (input.degraded) {
     warnings.push({
       code: 'degraded_round',
@@ -661,6 +704,14 @@ export async function loadRoundReviews(
    * 各自用 `Object.values(reviews).some((r) => r === undefined)` 推，恒为 false。
    */
   degraded: boolean;
+  /**
+   * 只读失守（run 元数据 `guard.readonly_breach` + `breached_files`）。
+   * 在这里带出而不是让调用方读：理由同 `voidedSides`——两个 `--check` 调用点
+   * 各自去读就会各自漏。字段在两版契约里必填，读得出来的留痕都带它；
+   * 留痕整份读不出（`runMeta` 为 null）时给 `{ hit: false, files: [] }`，
+   * 那一格由 `missingSides` 判失败，不靠这里。
+   */
+  readonlyBreach: { hit: boolean; files: string[] };
 }> {
   const reviews: Partial<Record<CriticId, Review | null>> = {};
   const notes: string[] = [];
@@ -751,7 +802,12 @@ export async function loadRoundReviews(
     if (pathVoiding || viaCmd?.hit === true) voidedSides.push(c);
   }
 
-  return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides };
+  const readonlyBreach = {
+    hit: runMeta?.guard?.readonly_breach === true,
+    files: [...(runMeta?.guard?.breached_files ?? [])],
+  };
+
+  return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach };
 }
 
 /** 从 `.fallback-items.md` 读回编排器编好号的待裁决单元（每行 `- <前缀>-F<n>: …`） */

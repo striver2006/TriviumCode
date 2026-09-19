@@ -954,7 +954,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       );
     }
     {
-      const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides } =
+      const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach } =
         await loadRoundReviews(ref.layout, stage, runId);
       const pre = await checkAdjudication({
         cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
@@ -962,7 +962,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
         // 非缺省 Driver 下必报 missing_disposition（计划双审 r2 GLM-03，阻断）
         driver: gateDriver,
         runIdPinned: Boolean(pinnedId),
-        degraded, voidedSides,
+        degraded, voidedSides, readonlyBreach,
         expectedFallbackIds, missingSides, runId,
       });
       if (!pre.ok) {
@@ -1035,7 +1035,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       `找不到 ${stage} 阶段的运行元数据。请先跑一次双审，或用 --run-id 指定。`,
     );
   }
-  const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides } =
+  const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach } =
     await loadRoundReviews(ref.layout, stage, runId);
   for (const n of notes) step(n);
 
@@ -1043,7 +1043,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
     driver: gateDriver,
     runIdPinned: Boolean(pinnedId),
-    degraded, voidedSides,
+    degraded, voidedSides, readonlyBreach,
     expectedFallbackIds, missingSides, runId,
   });
 

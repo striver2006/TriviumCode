@@ -8,6 +8,7 @@ import {
   cli,
   listFiles,
   makeFixture,
+  today,
 } from '../helpers/fixture.js';
 import { type StubConfig } from '../../src/trivium/adapters/stub.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
@@ -210,9 +211,47 @@ test('审查期间 --context 涉及的文件被改 → related，默认 fail', {
   assert.deepEqual(meta.snapshot.drift.files, ['src/a.ts']);
 });
 
-test('审查中写项目文件 → readonly_breach', { skip: bundleMissing && bundleSkipReason }, async () => {
-  const { meta } = await runInjected({ gemini: { mode: 'write_breach' }, glm: { mode: 'ok' } });
+test('审查中写项目文件 → readonly_breach，且 gate --check 判失败（接线端到端）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { root, stageDir, meta } = await runInjected({ gemini: { mode: 'write_breach' }, glm: { mode: 'ok' } });
   assert.equal(meta.guard.readonly_breach, true, '审查员写文件必须被判只读违规');
+
+  /*
+   * 续到闸门（M9 第 6 步代码双审第 2 轮 GLM-02）：gate.test 只测 loadRoundReviews 与
+   * checkAdjudication 两个纯环节，cli.ts 的「解构→透传」段被变异时全仓照绿——
+   * 正是本文件上面总结过的「纯函数测对了、接线处错了」。这里经真实 CLI 走一遍：
+   * 先落一份把桩产出的编号全部裁决掉的合规裁决件（否则 missing_disposition 早退，
+   * 走不到 readonly_breach 那一格——顺带锁住这个顺序事实），再断言失败码在场。
+   */
+  const metaDir = path.join(stageDir, '_meta');
+  const ids: { id: string; side: string }[] = [];
+  for (const f of await fs.readdir(metaDir)) {
+    const m = /^review-(gemini|glm)-.*\.json$/.exec(f);
+    if (!m) continue;
+    const r = JSON.parse(await fs.readFile(path.join(metaDir, f), 'utf8')) as { findings?: { id: string }[] };
+    for (const x of r.findings ?? []) ids.push({ id: x.id, side: m[1]! });
+  }
+  assert.ok(ids.length > 0, '桩至少产出一条意见，否则裁决表为空、本用例测不到闸门主路径');
+  await fs.writeFile(
+    path.join(stageDir, `${today()}-${TOPIC}-revised-claude.md`),
+    [
+      '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
+      'role: claude', 'kind: revised', `run_id: ${meta.run_id}`,
+      'addresses:', `  - ${today()}-${TOPIC}-gemini.md`, `  - ${today()}-${TOPIC}-glm.md`,
+      '---', '',
+      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- |',
+      ...ids.map((x) => `| ${x.id} | ${x.side} | minor | 接受 | 用例只为走到失守那一格，逐条接受 | §1 |`),
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  const g = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
+  assert.notEqual(g.code, EXIT.OK, `只读失守必须让 gate --check 失败：\n${g.stdout}${g.stderr}`);
+  const out = JSON.parse(extractJsonCandidate(g.stdout)!.json) as { ok: boolean; failures: { code: string; message: string }[] };
+  assert.equal(out.ok, false);
+  const f = out.failures.find((x) => x.code === 'readonly_breach');
+  assert.ok(f, `失败面必须含 readonly_breach，实得：${JSON.stringify(out.failures)}`);
+  assert.doesNotMatch(out.failures.map((x) => x.code).join(','), /missing_disposition/, '裁决件已落，失败必须来自失守本身而不是缺件早退');
 });
 
 /*

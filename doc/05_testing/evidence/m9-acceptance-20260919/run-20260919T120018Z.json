@@ -1,0 +1,106 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260919T120018Z",
+  "topic": "M9-验收-3812f4c",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "这是 M9 第 6 步验收：被审对象是历史提交 3812f4c 的 src 与 test 差异。重点看 adapters/base.ts 的只读失守判定改动是否仍有绕过形态，以及 preflight.ts 的泛化是否漏掉了某一侧",
+  "task_goal": null,
+  "entry": "C",
+  "driver": "codex",
+  "driver_enabled": false,
+  "critics_selected": [
+    "claude"
+  ],
+  "snapshot": {
+    "git_head": "1b556c505832dd174a83ec239dd1141207495390",
+    "tree_hash": "2775be383d37b6e0d31008e1eb6240af57f3ceb9",
+    "dirty": true,
+    "subject_sha256": "4532eba535e9bbb0d21a215104c65ac3343d0aacd3ca9bff7c412c79986ade48",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-19T12:00:19.110Z",
+  "finished_at": "2026-09-19T12:00:20.753Z",
+  "review_mode": "partial",
+  "degraded_reason": "claude: failed（claude 未产出最终回复：Error: --json-schema is not a valid JSON Schema: no schema with key or ref \"https://json-schema.org/draft/2020-12/schema\"\n）",
+  "critics": {
+    "claude": {
+      "vendor": "anthropic",
+      "cli_version": "2.1.277",
+      "model_requested": "claude-sonnet-5",
+      "model_effective": null,
+      "model_effective_source": "unverified",
+      "profile_requested": null,
+      "model_provider": null,
+      "status": "failed",
+      "exit_code": 1,
+      "duration_s": 0.704,
+      "tool_calls": {
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "heterogeneous": false,
+      "override_reason": "档位 （缺省） 的默认模型落在 Claude 系",
+      "fail_reason": "claude 未产出最终回复：Error: --json-schema is not a valid JSON Schema: no schema with key or ref \"https://json-schema.org/draft/2020-12/schema\"\n",
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": null,
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 18,
+      "deny_bytes": 545
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "claude": false
+    },
+    "deny_skipped": {
+      "claude": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {},
+    "peer_leak_via_path": {},
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 0
+    },
+    "verification_degraded": {}
+  },
+  "artifacts": [
+    {
+      "path": "M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff",
+      "sha256": "4532eba535e9bbb0d21a215104c65ac3343d0aacd3ca9bff7c412c79986ade48"
+    },
+    {
+      "path": "M9-验收-3812f4c/code/_meta/brief-claude-20260919T120018Z.md",
+      "sha256": "a2c0d43b2173b1295c5c7b8d718d827f4a9c1198cb4831f1f93838deb22f7f37"
+    },
+    {
+      "path": "M9-验收-3812f4c/code/_meta/brief-claude-20260919T120018Z.retry.md",
+      "sha256": "08e779ae4470d88be42eb43149f03179bdae592ddc45d5266e2d1521dcdf9d8f"
+    },
+    {
+      "path": "M9-验收-3812f4c/code/_meta/review-claude-20260919T120018Z.failed.json",
+      "sha256": "f2ed07eb5c9e688b13d99298fa0cf6254a45e7950edfa24bbca820459e993dce"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed"
+}

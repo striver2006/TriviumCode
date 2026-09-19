@@ -186,6 +186,22 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
 export const CLAUDE_READ_TOOLS = new Set(['Read', 'Grep', 'Glob']);
 
 /**
+ * CLI 自己注入的**输出通道**工具——既不是读，也不是写。
+ *
+ * **实测依据（2026-09-19，M9 第 6 步验收 run `20260919T120643Z`，claude 2.1.277）**：
+ * 带 `--json-schema` 时 `system/init` 的 `tools` 为 `Glob、Grep、Read、StructuredOutput`，
+ * 模型通过调用 `StructuredOutput` 交付最终 JSON（本次调了 5 次，前 4 次形态不对被 CLI 打回）。
+ * 它不在 `--tools` 白名单里（白名单是 `Read,Grep,Glob`），按「白名单外即写事件」的判据
+ * 会被算成 5 次写、`readonly_breach: true`——而它一个字节都没落盘。
+ *
+ * 探针没拦住：`json_schema_ok` 那一臂与工具面 / 写事件两臂是**分开跑**的，
+ * 工具面核对时没带 `--json-schema`，从未见过这个工具名（BACKLOG EV-75）。
+ *
+ * 只豁免这一个名字。它出现在轨迹里是**结构化输出生效**的正向证据，不是失守。
+ */
+export const CLAUDE_OUTPUT_TOOLS = new Set(['StructuredOutput']);
+
+/**
  * 读类工具里**必然带路径**的那一档（设计 §10.1.1 第②层的覆盖率分母）。
  *
  * **只有 `Read`，与 agy 侧的四个不同**——这不是口径不统一，是厂商契约的差异：

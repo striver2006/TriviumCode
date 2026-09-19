@@ -11,6 +11,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import { ASSET_ROOT, REPO_ROOT } from '../helpers/fixture.js';
 import {
   buildClaudeArgs,
   buildClaudeResult,
@@ -19,9 +21,11 @@ import {
   denyRuleShapeOf,
   readonlyArgsFromProbe,
   readonlyToolsFromProbe,
+  readSchemaJson,
+  stripMetaSchemaRef,
 } from '../../src/trivium/adapters/claude.js';
 import { READONLY_INVARIANTS, judgeToolSurface } from '../../src/trivium/probes/claude.js';
-import { parseClaudeEvents } from '../../src/trivium/adapters/claude-trace.js';
+import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents } from '../../src/trivium/adapters/claude-trace.js';
 
 /** 一组最小入参，各用例按需覆盖 */
 const base = {
@@ -137,6 +141,47 @@ test('A6b 同源对账：适配层派生的白名单与探针自己的期望集�
   assert.deepEqual(v.missing, [], '适配层派生漏掉了探针期望内的工具');
   assert.equal(v.empty, false);
   assert.equal(v.clean, true, '两套口径必须同源，否则 write_events 判据与探针结论会分叉');
+});
+
+test('A6c 同源对账：探针期望集 = 白名单 ∪ 输出通道——带 --json-schema 的真实工具面判 clean', () => {
+  /*
+   * M9 第 6 步代码双审 CODEX-01 ≡ AGY-01 ≡ GLM-01：适配器豁免了 StructuredOutput，
+   * 探针的 judgeToolSurface 不认它，EV-75 的两臂合并一落地就会把该侧判不可用。
+   * 这里喂的是验收 run 20260919T120643Z 的真实 init.tools。
+   */
+  const realInitTools = [...readonlyToolsFromProbe(READONLY_INVARIANTS), ...CLAUDE_OUTPUT_TOOLS];
+  const v = judgeToolSurface(realInitTools);
+  assert.equal(v.clean, true, '输出通道不得被判成白名单外工具');
+  assert.deepEqual(v.extra, []);
+  assert.deepEqual(v.outputChannel, [...CLAUDE_OUTPUT_TOOLS].sort(), '放行的是哪个通道要说出来，不能悄悄抹掉');
+  assert.deepEqual(v.missing, []);
+});
+
+test('A6d 同源对账：豁免只对输出通道——真写工具仍进 extra（变异守卫）', () => {
+  const v = judgeToolSurface([...readonlyToolsFromProbe(READONLY_INVARIANTS), ...CLAUDE_OUTPUT_TOOLS, 'Write']);
+  assert.equal(v.clean, false, '把「输出通道」写成「白名单外一律放行」会让这条红');
+  assert.deepEqual(v.extra, ['Write']);
+  assert.deepEqual(v.outputChannel, [...CLAUDE_OUTPUT_TOOLS].sort());
+});
+
+test('A6e 同源对账（grep 级）：输出通道的名字只能来自 claude-trace 的 import，探针与适配器不得自写一份', async () => {
+  /*
+   * 第 2 轮 CODEX-F01-④ ≡ AGY-02 ≡ GLM-01：把 import 换成同内容的本地 `new Set(['StructuredOutput'])`，
+   * A6c/A6d/A29/A30 全绿——同源只靠「探针只 import」这条纪律。本仓对这类纪律的既定对策是
+   * grep 级对账（registry-parity 先例）。判据：除定义处外，源码里不得出现该名字的字面量。
+   * 注释里提到它是允许的——扫的是引号包住的字面串。
+   */
+  const { readFile } = await import('node:fs/promises');
+  const defined = path.join(REPO_ROOT, 'src/trivium/adapters/claude-trace.ts');
+  const consumers = ['src/trivium/probes/claude.ts', 'src/trivium/adapters/claude.ts'].map((p) => path.join(REPO_ROOT, p));
+  for (const name of CLAUDE_OUTPUT_TOOLS) {
+    // 只扫单/双引号字面串：注释里用反引号提到它是允许的（那是说它，不是写它）
+    const literal = new RegExp(`['"]${name}['"]`);
+    assert.match(await readFile(defined, 'utf8'), literal, `定义处必须以字面量登记 ${name}`);
+    for (const f of consumers) {
+      assert.doesNotMatch(await readFile(f, 'utf8'), literal, `${path.basename(f)} 自写了 ${name} 的字面量——事实只能从 claude-trace import`);
+    }
+  }
 });
 
 test('A7 派生：空输入得空集（fail-closed 的前半，绝不回落默认工具集）', () => {
@@ -541,4 +586,146 @@ test('A25 判定面：跳过条数与规则数进 CriticResult（不再只躺在
     true,
     '前提：peer_deny_applied 仍是 true——正因如此才需要另一格把「本次跳过了」说出来',
   );
+});
+
+// ═══════════════════════ schema 头部：$schema 剥离（M9 第 6 步验收，EV-74）═══════════════════════
+
+/**
+ * 真实契约文件——用例必须喂它，不许再造一份迷你 schema（探针正是这么漏的）。
+ * 路径走 `ASSET_ROOT`（`fileURLToPath` + 向上找 package.json），与其它 schema 用例同源；
+ * `URL.pathname` 是百分号编码片段，仓库路径带中文即 ENOENT（代码双审 CODEX-05）。
+ */
+const REVIEW_SCHEMA_PATH = path.join(ASSET_ROOT, 'schema/review.v1.json');
+
+test('A26 schema：真实 review.v1.json 带 2020-12 的 $schema，剥离后只少这一键', async () => {
+  const raw = await (await import('node:fs/promises')).readFile(REVIEW_SCHEMA_PATH, 'utf8');
+  const before = JSON.parse(raw) as Record<string, unknown>;
+  assert.equal(
+    before['$schema'],
+    'https://json-schema.org/draft/2020-12/schema',
+    '前提：契约文件头部就是这条引用——它正是 claude 2.1.277 拒绝的那一句',
+  );
+  const after = JSON.parse(stripMetaSchemaRef(raw)) as Record<string, unknown>;
+  assert.ok(!('$schema' in after), '顶层 $schema 必须被剥掉，否则 CLI 当场拒绝、零 API 调用');
+  assert.equal(after['$id'], before['$id'], '$id 保留：实测只去 $id 不去 $schema 仍拒，去 $schema 留 $id 可过');
+  const { $schema: _s, ...rest } = before;
+  assert.deepEqual(after, rest, '除 $schema 外一字不动：契约内容不归本层改');
+});
+
+test('A27 schema：没有 $schema 的输入原样返回；非 JSON 也原样返回、不替 CLI 改写错误形态', () => {
+  const plain = '{"type":"object","properties":{"first_line":{"type":"string"}}}';
+  assert.equal(stripMetaSchemaRef(plain), plain, '探针那份迷你 schema 本来就过得了，不该被改动');
+  const broken = '{not json';
+  assert.equal(stripMetaSchemaRef(broken), broken, '坏 JSON 交给 CLI 自己报 is not valid JSON');
+  assert.equal(stripMetaSchemaRef('[1,2]'), '[1,2]', '非对象顶层不碰');
+});
+
+// ═══════════════════════ 写事件：StructuredOutput 是输出通道，不是写（EV-75）═══════════════════════
+
+test('A29 写事件：StructuredOutput 不算写——它是 --json-schema 下 CLI 注入的交付通道', () => {
+  /*
+   * M9 第 6 步验收 run 20260919T120643Z：init.tools 为 Glob/Grep/Read/StructuredOutput，
+   * 模型调了 5 次 StructuredOutput 交付 JSON，被算成 5 次写、readonly_breach: true，
+   * 而它一个字节都没落盘。
+   */
+  // 遍历常量构造，不写字面量：适配器内部若退化成 `u.name !== 'StructuredOutput'` 硬编码，
+  // 常量再加一个名字时这里会红（第 2 轮 AGY-02）
+  assert.ok(CLAUDE_OUTPUT_TOOLS.size > 0, '前提：常量非空，否则下面的遍历是空转');
+  const uses = [
+    { type: 'tool_use', id: 'r1', name: 'Read', input: { file_path: '/p/a.ts' } },
+    ...[...CLAUDE_OUTPUT_TOOLS].flatMap((name, i) => [
+      { type: 'tool_use', id: `s${i}a`, name, input: { schema: '{"verdict":"approve"}' } },
+      { type: 'tool_use', id: `s${i}b`, name, input: { schema: 'trivium.review.v1', verdict: 'approve' } },
+    ]),
+  ];
+  const r = buildClaudeResult(traceOf({ uses }), OUT, PATHS, PROBE_OK, TOOLS, NO_DENY);
+  assert.deepEqual(r.write_events, [], '输出通道的调用不得进 write_events');
+});
+
+test('A30 写事件：豁免只对那一个名字——真写工具照旧算失守（变异守卫）', () => {
+  const uses = [
+    { type: 'tool_use', id: 's1', name: 'StructuredOutput', input: { verdict: 'approve' } },
+    { type: 'tool_use', id: 'w1', name: 'Write', input: { file_path: '/p/breach.txt', content: 'x' } },
+  ];
+  const r = buildClaudeResult(traceOf({ uses }), OUT, PATHS, PROBE_OK, TOOLS, NO_DENY);
+  assert.equal(r.write_events.length, 1, '把豁免写成「白名单外一律不算」会让这条红');
+  assert.match(r.write_events[0]!, /^Write\(/);
+});
+
+test('A28 schema：readSchemaJson 读真实文件后已剥离——调用方拿到的就是能进 --json-schema 的那一份', async () => {
+  const s = await readSchemaJson(REVIEW_SCHEMA_PATH);
+  assert.ok(!s.includes('json-schema.org/draft/2020-12'), '读侧出口不得再带元 schema 引用');
+  // 正向锚点（第 2 轮 CODEX-F01-③）：否定式断言对空串同样成立，出口那份必须仍是真契约
+  const parsed = JSON.parse(s) as { required?: string[]; properties?: Record<string, unknown> };
+  assert.ok(Array.isArray(parsed.required) && parsed.required.length > 0, '出口产物退化成空对象时这条要红');
+  assert.ok(parsed.properties && 'findings' in parsed.properties, '契约核心键 findings 必须还在');
+  const args = buildClaudeArgs({ ...base, schemaJson: s });
+  assert.equal(args[args.indexOf('--json-schema') + 1], s, '与 A4 同一条路：内容进 argv，不是路径');
+});
+
+test('A28b schema：buildClaudeArgs 是唯一出口——绕过 readSchemaJson 的调用方同样被剥（CODEX-03）', () => {
+  const raw = '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}';
+  const args = buildClaudeArgs({ ...base, schemaJson: raw });
+  const sent = args[args.indexOf('--json-schema') + 1]!;
+  assert.ok(!sent.includes('json-schema.org/draft/2020-12'), '探针与准入脚本不走 readSchemaJson，出口处必须再剥一次');
+  assert.equal(JSON.parse(sent).type, 'object');
+});
+
+/**
+ * 2020-12 独有的关键字（draft-07 没有）。剥掉 $schema 后 CLI 按自己的方言校验，
+ * 这些键会被静默忽略或直接拒——留痕分不出哪种（代码双审 CODEX-04 ≡ GLM-03）。
+ *
+ * **守卫论域是单向的**（第 2 轮 CODEX-F01-⑤ / GLM-03）：只查 2020-12 独有键。
+ * draft-07 独有或跨方言语义变化的键——`dependencies`、tuple 形 `items`、布尔 `exclusiveMinimum`、
+ * 以及 `$ref` 的兄弟键（draft-07 忽略、2020-12 应用）——不在这里，改契约时人工核。
+ * 后者的可见症状是 parse 侧（Ajv2020）更严 → parse_fallback，吵而不静默，所以只记边界。
+ */
+const DRAFT_2020_ONLY_KEYWORDS = [
+  '$defs', 'prefixItems', 'unevaluatedProperties', 'unevaluatedItems',
+  'dependentSchemas', 'dependentRequired', '$anchor', '$dynamicRef', '$dynamicAnchor',
+  '$recursiveRef', '$recursiveAnchor', 'minContains', 'maxContains', '$vocabulary',
+];
+
+function keywordsUsed(node: unknown, out = new Set<string>()): Set<string> {
+  if (Array.isArray(node)) { for (const v of node) keywordsUsed(v, out); return out; }
+  if (node === null || typeof node !== 'object') return out;
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+    out.add(k);
+    // `properties` / `patternProperties` 的子键是属性名，不是关键字——不往集合里加，但要往下走
+    if (k === 'properties' || k === 'patternProperties' || k === 'dependentSchemas' || k === '$defs') {
+      if (v && typeof v === 'object') for (const sub of Object.values(v as Record<string, unknown>)) keywordsUsed(sub, out);
+    } else {
+      keywordsUsed(v, out);
+    }
+  }
+  return out;
+}
+
+test('A31 契约金丝雀：送给 claude 的 review.v1.json 不用 2020-12 独有关键字', async () => {
+  const sent = await readSchemaJson(REVIEW_SCHEMA_PATH);
+  const doc = JSON.parse(sent) as Record<string, unknown>;
+  const used = keywordsUsed(doc);
+  /*
+   * 正向锚点先行（第 2 轮 CODEX-F01-③ ≡ AGY-01）：下面的「不含」断言对空集恒真，
+   * 出口产物退化成 `{}` 时会 vacuous 通过。先钉住被扫的确是那份真契约。
+   */
+  for (const k of ['type', 'properties', 'required']) assert.ok(used.has(k), `被扫产物缺少核心关键字 ${k}——不是真契约`);
+  assert.ok(
+    doc.properties && typeof doc.properties === 'object' && 'findings' in (doc.properties as object),
+    '契约核心键 findings 必须在场',
+  );
+  const offending = DRAFT_2020_ONLY_KEYWORDS.filter((k) => used.has(k));
+  assert.deepEqual(
+    offending,
+    [],
+    `review.v1.json 用了 2020-12 独有关键字 ${offending.join('、')}：剥掉 $schema 后 claude CLI 会静默忽略或拒绝它，` +
+      '生成侧约束与 parse 侧 Ajv2020 从此分叉。要么别用，要么同步改适配层策略（设计 §3.7 json_schema_ok 行）',
+  );
+  // 自证一：在**真实产物**的深拷贝里注入，扫描器必须报出来（不再用脱机小对象自证）
+  const injected = JSON.parse(sent) as { properties: Record<string, Record<string, unknown>> };
+  injected.properties['findings'] = { ...injected.properties['findings'], $defs: { x: { type: 'string' } } };
+  assert.ok(DRAFT_2020_ONLY_KEYWORDS.filter((k) => keywordsUsed(injected).has(k)).includes('$defs'), '往真实契约里塞 $defs 必须被抓到');
+  // 自证二：数组位也要下降（第 2 轮 GLM-03）——items / allOf / anyOf 里的关键字不能漏
+  assert.ok(keywordsUsed({ allOf: [{ $anchor: 'x' }] }).has('$anchor'), '扫描器必须下降到数组位');
+  assert.ok(keywordsUsed({ items: [{ prefixItems: [] }] }).has('prefixItems'));
 });

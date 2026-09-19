@@ -50,7 +50,15 @@ import { emptyPathDeny } from '../config.js';
  * `adapters/` 会让第 6 条的两条腿同时打红（主扫命中黑名单 + 防空转腿发现 token
  * 已不在 `probes/`）。见 `adapters/claude-trace.ts` 的文件头。
  */
-import { parseClaudeEvents, type ClaudeTrace } from '../adapters/claude-trace.js';
+import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents, type ClaudeTrace } from '../adapters/claude-trace.js';
+/*
+ * 送 CLI 的 schema 只有一份变换（代码双审 CODEX-03）：适配器、探针、准入脚本三处造
+ * `--json-schema` 的值，此前只有适配器那处剥 2020-12 的 `$schema` 头。探针今天的迷你 schema
+ * 不带该头、这里是空操作——但 EV-74 要把探针改喂真实 `review.v1.json`，那时不经同一份变换
+ * 就会撞第 1 跑的拒绝形态，`json_schema_ok` 落 null 而不是 false，静默回归。
+ * 方向 probes → adapters 与 `claude-trace` 的先例相同；反向（adapters → probes）仍禁止。
+ */
+import { stripMetaSchemaRef } from '../adapters/claude.js';
 
 /** 探针模型：探能力不探质量，挑最便宜的一档 */
 const PROBE_MODEL = 'claude-haiku-4-5-20251001';
@@ -282,10 +290,20 @@ export function judgeToolSurface(tools: readonly string[]): {
   mcpCount: number;
   /** 读回为空：不是「干净」，是**没读到**（审查意见 GLM-02） */
   empty: boolean;
+  /**
+   * CLI 自己注入的输出通道（`CLAUDE_OUTPUT_TOOLS`），**不算 extra、不算失守**。
+   *
+   * 事实取自适配器的同一份常量，不在这里另抄一份清单（M9 第 6 步代码双审
+   * CODEX-01 ≡ AGY-01 ≡ GLM-01：适配器豁免了 `StructuredOutput`，探针不认，
+   * EV-75 的两臂合并一落地就会把该侧判不可用）。单独列出是为了留痕能说出
+   * 「放行的是输出通道」，而不是把它悄悄从 extra 里抹掉。
+   */
+  outputChannel: string[];
 } {
   const expected = READONLY_TOOLS.split(',');
   const sorted = [...tools].sort();
-  const extra = sorted.filter((t) => !expected.includes(t));
+  const outputChannel = sorted.filter((t) => CLAUDE_OUTPUT_TOOLS.has(t));
+  const extra = sorted.filter((t) => !expected.includes(t) && !CLAUDE_OUTPUT_TOOLS.has(t));
   const missing = expected.filter((t) => !sorted.includes(t)).sort();
   return {
     // 空集**不算干净**：那是 vacuous 通过，见上方注释
@@ -294,6 +312,7 @@ export function judgeToolSurface(tools: readonly string[]): {
     missing,
     mcpCount: extra.filter((t) => t.startsWith('mcp__')).length,
     empty: tools.length === 0,
+    outputChannel,
   };
 }
 
@@ -1054,6 +1073,9 @@ export async function probeClaude(
          */
         notes.push(
           `工具面干净、无未授权工具：${[...read.init.tools].sort().join('、')}` +
+            (surface.outputChannel.length > 0
+              ? `（放行 CLI 注入的输出通道：${surface.outputChannel.join('、')}）`
+              : '') +
             (surface.missing.length > 0
               ? `；⚠️ 但缺少 ${surface.missing.join('、')}——该侧可能读不了代码，接入前要确认`
               : ''),
@@ -1181,12 +1203,14 @@ export async function probeClaude(
     }
 
     // ── 结构化输出 ───────────────────────────────────────────────
-    const schema = JSON.stringify({
+    // 经适配层同一份变换送出（CODEX-03）；今天这份没有 $schema 头，变换是空操作——
+    // 但 EV-74 改喂真实契约文件时，不走这条路会把拒绝形态记成 null
+    const schema = stripMetaSchemaRef(JSON.stringify({
       type: 'object',
       properties: { first_line: { type: 'string' } },
       required: ['first_line'],
       additionalProperties: false,
-    });
+    }));
     const structured = await execProbe(
       bin,
       fx,

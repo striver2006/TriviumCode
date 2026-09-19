@@ -1,0 +1,136 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260919T120643Z",
+  "topic": "M9-验收-3812f4c",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "这是 M9 第 6 步验收：被审对象是历史提交 3812f4c 的 src 与 test 差异。重点看 adapters/base.ts 的只读失守判定改动是否仍有绕过形态，以及 preflight.ts 的泛化是否漏掉了某一侧",
+  "task_goal": null,
+  "entry": "C",
+  "driver": "codex",
+  "driver_enabled": false,
+  "critics_selected": [
+    "claude"
+  ],
+  "snapshot": {
+    "git_head": "1b556c505832dd174a83ec239dd1141207495390",
+    "tree_hash": "a40ea109b823d54b5c10e6f37f1f303f5e32d28a",
+    "dirty": true,
+    "subject_sha256": "74df08e0153af9f5cd88e32cf72c2fdfd58cb25af6db0edcff083654d138dda4",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-19T12:06:43.239Z",
+  "finished_at": "2026-09-19T12:15:28.369Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "claude": {
+      "vendor": "anthropic",
+      "cli_version": "2.1.277",
+      "model_requested": "claude-sonnet-5",
+      "model_effective": "claude-sonnet-5",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 524.974,
+      "tool_calls": {
+        "read": 10,
+        "grep": 9,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 14
+      },
+      "evidence_ok": true,
+      "usage": {
+        "cost_usd": 1.5848338000000002
+      },
+      "heterogeneous": false,
+      "override_reason": "档位 （缺省） 的默认模型落在 Claude 系",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4",
+      "peer_deny_applied": true,
+      "deny_skipped": 0,
+      "deny_rule_count": 18,
+      "deny_bytes": 545
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": true,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "claude": true
+    },
+    "deny_skipped": {
+      "claude": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [
+      "StructuredOutput({\"schema\":\"{\\\"schema\\\":\\\"trivium.review.v1\\\",\\\"verdict\\\":\\\"request-changes\\\",\\\"s)",
+      "StructuredOutput({\"schema\":\"{\\\"schema\\\": \\\"trivium.review.v1\\\", \\\"verdict\\\": \\\"request-changes\\\",)",
+      "StructuredOutput({\"schema\":\"{\\\"schema\\\": \\\"trivium.review.v1\\\", \\\"verdict\\\": \\\"approve-with-nits\\)",
+      "StructuredOutput({\"schema\":\"{\\\"schema\\\":\\\"trivium.review.v1\\\",\\\"verdict\\\":\\\"approve-with-nits\\\",\\)",
+      "StructuredOutput({\"schema\":\"trivium.review.v1\",\"verdict\":\"request-changes\",\"summary\":\"最值得关注的是 bas)"
+    ],
+    "peer_leak_via_command": {
+      "claude": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "claude": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1
+    },
+    "verification_degraded": {
+      "claude": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff",
+      "sha256": "74df08e0153af9f5cd88e32cf72c2fdfd58cb25af6db0edcff083654d138dda4"
+    },
+    {
+      "path": "M9-验收-3812f4c/code/_meta/brief-claude-20260919T120643Z.md",
+      "sha256": "3823ab143e53bd459f9c50402b72c147d5cb2889237df78501475871a824f012"
+    },
+    {
+      "path": "M9-验收-3812f4c/code/_meta/review-claude-20260919T120643Z.json",
+      "sha256": "379c56537fa13bfa1812212180875252f50a27b5b5a1fc0c7ddbd4802b449c5f"
+    },
+    {
+      "path": "M9-验收-3812f4c/code/2026-09-19-M9-验收-3812f4c-claude.md",
+      "sha256": "c9eb8cbb00618bc42a79b06b71f9f8ee323422c058d97f02487ea2859c50631c"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

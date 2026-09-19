@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "trivium.review.v1",
   "title": "TriviumCode 审查结论",
-  "description": "两侧审查员共用的输出契约（设计 §6.5）。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。",
+  "description": "两侧审查员共用的输出契约（设计 §6.5）。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。claude 侧同样以 --json-schema 内联送出，但会剥掉顶层 $schema（该 CLI 不认 2020-12 元 schema 引用），此后由它按自己的方言校验——所以本文件不用 2020-12 独有关键字（$defs / prefixItems / unevaluated* / dependent* 等，由 test/unit/claude-adapter.test.ts 的 A31 守）；draft-07 独有或跨方言语义变化的键（dependencies、tuple 形 items、布尔 exclusiveMinimum、$ref 的兄弟键）不在守卫论域，改本文件时人工核。",
   "type": "object",
   "required": ["schema", "verdict", "summary", "findings"],
   "additionalProperties": false,

@@ -1,0 +1,77 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "第 2 轮三处焦点逐一实核：接线本体全部接实——judgeToolSurface 与适配器写过滤 import 同一个 CLAUDE_OUTPUT_TOOLS（真同源非拷贝）；cli.ts 两处 checkAdjudication 调用点（--await-approval 前置与 --check 默认路径）都透传 readonlyBreach，旧留痕缺字段与漏传均不误拦（gate.test ②③）；A31 主断言不 vacuous（实读 schema 逐键核对、扫描器真下降、不被 description 文案里的禁用词误伤）。三条意见都是「锁没锁全」而非「线没接」：A6c/A6d 只咬清单变窄方向、加宽方向无锁（GLM-01）；cli 接线段被变异时全仓测试照绿，fault-injection 的 write_breach 用例离失败面差最后一步（GLM-02）；A31 自证只证 properties 嵌套、$ref 兄弟键语义不在论域（GLM-03）。上轮我 5 条全部被接受，本轮核实修复物（A6c/A6d、闸门正反例、hook-and-gate-outputs.md）逐项落地。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "test/unit/claude-adapter.test.ts:146-165（A6c/A6d）；src/trivium/probes/claude.ts:53、305-306；src/trivium/adapters/claude.ts:527-528；doc/08_project/BACKLOG.md EV-75①",
+      "problem": "同源本体成立：judgeToolSurface 与适配器写过滤引用同一份 CLAUDE_OUTPUT_TOOLS（claude-trace.ts:202 唯一定义点），不是两份等值拷贝。但 A6c/A6d 对「两处各写一份清单」的咬合是单向的：A6c 的输入由适配器常量构造，探针清单若**窄于**适配器（漏认豁免名）→ 该名落 extra → clean:false → 红；反之探针清单**宽于**适配器（多认一个适配器不豁免的名字）→ 输入里没有那个名字，A6c 照绿，A6d 的哨兵是 'Write'、只在该清单宽到包含 Write 时才红。而「探针宽于适配器」方向的失效恰是 EV-75 原样复发：探针判工具面干净，适配器把该名算成写事件 → readonly_breach 假阳性硬失败，要到真实跑才现形。今天单源靠「探针只 import、不自建」这条纪律维持，而本仓对这类纪律的既定对策是 grep 级对账（registry-parity 先例），不是记性。另注：探针文件里还有第三份「allowed 工具」推导——probes/claude.ts:1176 的 denied_tool_in_trace 臂用 READONLY_TOOLS.split(',') 且不豁免输出通道；该臂不带 --json-schema 跑、今天咬不到 StructuredOutput，语义也不同（它要的就是白名单外调用以证留痕能力），不构成缺陷，但接手 EV-75① 合臂的人要知道这三处的存在与分工。",
+      "evidence": "实读 probes/claude.ts 的 import（:53）与 judgeToolSurface（:303-316，outputChannel 与 extra 均按 CLAUDE_OUTPUT_TOOLS.has 过滤）、adapters/claude.ts 写事件过滤（:527-528）、adapters/claude-trace.ts:186-202（常量唯一定义点）；实读 claude-adapter.test.ts A6b-A6d（:129-165）逐条推演两方向的输入构造与断言outcome；grep probes/claude.ts 内 READONLY_TOOLS 全部消费点，确认 :1176 是第三份推导、该臂的 execProbe 调用（:1125-1137）不带 jsonSchema 选项。",
+      "suggestion": "二选一：照 registry-parity 先例给 A6 族补一条 grep 级对账腿（断言 probes/claude.ts 内不得出现输出通道集合的字面构造、事实只能来自 import）；或最低成本在 EV-75①「合并前不得再各写一份清单」句后补一句「清单加宽方向无人咬住、单源靠 import 维持」，把锁的边界写给接手的人。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/cli.ts:957-967 与 1038-1048；test/unit/gate.test.ts:657-707；test/integration/fault-injection.test.ts:213-216",
+      "problem": "焦点二的三个子问验证通过：两处调用点（--await-approval 前置 957-967、--check 默认路径 1038-1048）实读都解构并透传 readonlyBreach；旧留痕缺字段经 runMeta?.guard?.readonly_breach === true 判 false 不误拦（gate.test ②）；漏传经可选参数缺省不拦（gate.test ③）。但整条接线没有端到端锁：gate.test 分别测 loadRoundReviews 与 checkAdjudication 两个纯环节，cli.ts 的「解构→透传」段被变异（任一处删掉 readonlyBreach）时全仓测试照绿——fault-injection 的 write_breach 用例（:213-216）停在 meta.guard.readonly_breach === true 的 run 级断言，离失败面差最后一步；gate-loop 的 gate --check 用例全部基于干净留痕。fault-injection.test.ts:227 本仓自己总结过教训「纯函数测对了、接线处错了，而纯函数测试天然看不见接线」，本批接线是该形态的新实例。readonlyBreach 是 EV-69 登记的「GateCheckInput 可选参数漏传静默成功」家族新成员（与 driver 同形），本批既没加锁也没扩 EV-69。附带一处注释失实：gate.test ② 注释写「旧留痕（无字段）」，但 newRunMeta 恒写 guard.readonly_breach: false（meta.ts:279），夹具实际测的是「字段在场且为 false」，真正缺字段的留痕从未被喂过（行为等价——判据是 === true——但注释声称的覆盖面大于实际）。",
+      "evidence": "实读 cli.ts 两处调用点（:957-967、:1038-1048）确认透传在场；实读 gate.ts:306-315（失败面压栈）与 :790-795（loadRoundReviews 派生）、gate.ts:751（runMeta 读不到时 missingSides 兜底）；grep 全 test/ 目录 readonly_breach|readonlyBreach 落点，确认除 gate.test 纯函数级外仅 fault-injection:213-216 的 run 级断言；实读 fault-injection.test.ts:150-260 确认 write_breach 用例止于 meta 断言、不跑 gate；实读 meta.ts:270-283 确认 newRunMeta 恒写 false。",
+      "suggestion": "fault-injection 的 write_breach 用例续两步：写一份最小合法裁决件、跑 gate --check 断言非零退出且 failure code 为 readonly_breach——这同时锁住该失败在 missing_disposition 早退之后仍可达的顺序事实。或最低成本：把 EV-69 的触发条件从 driver 扩成「GateCheckInput 任一可选参数出现新调用点」，登记在案。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/claude-adapter.test.ts:649-683（A31）；skills/dual-critic/schema/review.v1.json",
+      "problem": "A31 主断言不 vacuous：实读 review.v1.json 全文，在用关键字（type/required/additionalProperties/properties/const/enum/minLength/pattern/items，均为对象形 items）全在 draft-07 与 2020-12 公共子集；扫描按对象键名收集，不被新加的 description 文案里出现的「$defs / prefixItems / unevaluated*」字样误伤；自证样例覆盖了最可能被改浅的 properties 下降分支。两个残余盲区：①自证只证 properties 嵌套一种形态——keywordsUsed 若被重构得不下降数组（items/anyOf 位的关键字），自证照绿、主断言随之 vacuous；今天文件里没有 schema 数组位，属未来形态，自证补一行数组样例即可钉死。②论域止于「关键字子集」：$ref 是两版公共关键字但兄弟键语义分叉（draft-07 忽略兄弟键、2020-12 应用兄弟键），将来往 schema 加带兄弟键的 $ref 时金丝雀照绿而两层校验语义已分叉；今天文件无 $ref（实读确认），且该分叉的可见症状是 parse 侧更严（Ajv2020 应用兄弟、CLI 忽略 → parse_fallback 降级，吵而不静默），故仅记边界。",
+      "evidence": "实读 claude-adapter.test.ts:649-683（DRAFT_2020_ONLY_KEYWORDS 闭集、keywordsUsed 的递归与 properties/patternProperties/dependentSchemas/$defs 特判分支、自证样例仅 properties 一种）；实读 review.v1.json 全文逐键核对关键字集合与 items 形态，确认无 $ref、无任何 schema 数组位。",
+      "suggestion": "自证补一行数组形态（如断言 keywordsUsed({allOf:[{$anchor:{}}]}) 含 $anchor）；$ref 兄弟键边界写进 DRAFT_2020_ONLY_KEYWORDS 旁的注释，或直接把「$ref 不得带兄弟键」并入 A31 论域。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "焦点一同源属实：judgeToolSurface（probes/claude.ts:305-306）与适配器写过滤（adapters/claude.ts:528）引用同一个 CLAUDE_OUTPUT_TOOLS（claude-trace.ts:202 唯一定义点，两处分别 import），不是两份等值拷贝；outputChannel 单列留痕而非悄悄从 extra 抹掉，与我上轮 GLM-01 建议的形态一致。",
+    "焦点二接线本体正确：两处调用点都传了；checkAdjudication 判 failure 而非 warning 的理由（与 degraded_round「运行事实 Driver 修不了」的区分）成立；missing_disposition 早退发生在该失败之前，两种情形闸门都不放行；runMeta 整份读不到时 missingSides 按「留痕被动过」兜底（gate.ts:751），breach 信息丢失不会造成静默放行。",
+    "焦点三主断言非 vacuous：扫描器对当前 schema 的每一层嵌套（properties→findings.items→properties）都真下降；本批新加的 schema description 恰好把 $defs / prefixItems 等禁用名写进文案，按键名扫描对此免疫——这条设计选对了。",
+    "stripMetaSchemaRef 的出口归一接得干净：buildClaudeArgs:123 一处变换覆盖绕过 readSchemaJson 的调用方（探针臂已接，A28/A28b 双路锁定），幂等性是「无 $schema 时返回原字符串本身」而非重新序列化，A28 的全等断言因此成立。",
+    "hook-and-gate-outputs.md 落地有实物：刻 A/刻 B 的退出码与拦截文案、J8 输出照录（实读前三节），我上轮 GLM-05 指出的「照录承诺不存在的东西」已修复；worker 日志改名 .log.txt 入库。",
+    "BACKLOG EV-74/EV-75 的「已做」段与工作树逐项对得上：A6c/A6d、A29/A30、gate.test 正反例、探针结构化输出臂经同一变换，本侧逐项核实无虚报。",
+    "gate.test ③ 显式把「漏传不误拦」记为设计选择并注明「接线由 cli 侧两处调用点负责」——与 voidedSides 先例同构，取舍写明了而不是含糊带过。"
+  ],
+  "not_covered": [
+    "未实跑 npm run check 与变异脚本：本批用例「能变红」与「接线变异不红」均为静态推演（后者以全 test/ 目录 grep 穷尽 readonly_breach 落点佐证）；报告自述 tests 1483 / pass 1481 / skip 2 未独立复核。",
+    "被审 diff 尾段（验收跑的嵌套 BRIEF、3812f4c 的内层 diff、两跑 run/review/trace 工件）只作抽样比对：上轮已逐格复核同类工件，本轮实读了 hook-and-gate-outputs.md 前三节，§4 的 EV-66 三次 gate 输出未逐字核对。",
+    "doctor.ts 对 readonly_breach / readonly_flags 的消费面只确认存在（:240），未逐行读；outputChannel 不落 ProbeSection、无 doctor 消费面——该判断基于 types.ts 字段清单与 grep，未读 doctor 全文。",
+    "scripts/claude-admission-control.mjs 未读：EV-74 登记的第二处自造 schema 属未做项、不在本批范围，其是否经 buildClaudeArgs 出口获得同一变换未直接核实（出口归一的设计已由 A28b 锁定）。",
+    "EV-76 三条出路与 consulted 匹配器（CODEX-07 的归一化前置）不在本轮三焦点内，未复核其登记文本与代码的一致性。",
+    "gate --check --json 输出中 readonly_breach 失败的呈现未实测，仅静态确认 emitJson 透传 failures 数组（cli.ts:1050-1059）。"
+  ],
+  "consulted": [
+    ".reviews/M9-验收实跑/code/_meta/changes-20260919T133957Z.diff",
+    ".reviews/M9-验收实跑/code/2026-09-19-M9-验收实跑-glm.md",
+    ".reviews/M9-验收实跑/code/2026-09-19-M9-验收实跑-response-claude.md",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/hooks.ts",
+    "test/unit/claude-adapter.test.ts",
+    "test/unit/gate.test.ts",
+    "test/helpers/fixture.ts",
+    "test/integration/fault-injection.test.ts",
+    "skills/dual-critic/schema/review.v1.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/evidence/m9-acceptance-20260919/hook-and-gate-outputs.md"
+  ]
+}

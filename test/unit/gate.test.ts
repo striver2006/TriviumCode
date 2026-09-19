@@ -654,6 +654,61 @@ test('非降级轮次不得凭空冒出 degraded_round 警告', async () => {
  * 所以判据改成在 `loadRoundReviews` 里派生（调用方想漏都漏不掉），
  * 而本用例守的就是那次派生——把派生删掉，它必须红。
  */
+test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-06；M9 第 6 步代码双审 CODEX-02 ≡ AGY-02 ≡ GLM-02）', async () => {
+  /*
+   * 此前这一格只有渲染面：M9 第 6 步验收 run 20260919T120643Z 的 guard.readonly_breach
+   * 为 true，同一轮 gate --check 照样 ok:true——真失守与假失守走同一条路。
+   */
+  const base = {
+    topic: TOPIC, stage: 'plan' as const, rerunIndex: 1, command: 'x',
+    promptHint: null, taskGoal: null, criticsSelected: CRITICS,
+    treeHash: 'h', gitHead: null, dirty: false,
+    subjectSha256: 's', denyPaths: [], driftPolicy: 'warn' as const,
+  };
+  const table = `${HEAD}
+| AGY-01 | gemini | major | 接受 | 成立 | §3 |`;
+
+  // ① 失守为 true → loadRoundReviews 带出文件清单；checkAdjudication 判 failure 并列文件
+  const l1 = await layout();
+  const m1 = newRunMeta({ ...base, runId: 'RB1' });
+  m1.guard.readonly_breach = true;
+  m1.guard.breached_files = ['Write(/p/breach.txt)'];
+  await writeRunMeta(l1, 'plan', m1);
+  const rb1 = (await loadRoundReviews(l1, 'plan', 'RB1')).readonlyBreach;
+  assert.deepEqual(rb1, { hit: true, files: ['Write(/p/breach.txt)'] });
+  await putDisposition(l1, table);
+  const r1 = await checkAdjudication({
+    cfg: defaultConfig(), layout: l1, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, readonlyBreach: rb1,
+  });
+  assert.equal(r1.ok, false, '只读失守必须是 failure，不是 warning——失守侧的结论不可采信');
+  const f = r1.failures.find((x) => x.code === 'readonly_breach');
+  assert.ok(f, renderGateResult(r1));
+  assert.match(f!.message, /breach\.txt/, '按 AD-06 列出受影响文件');
+
+  // ② 字段在场且为 false（newRunMeta 缺省）→ hit:false，闸门不失败。
+  //    注意这**不是**「旧留痕无字段」：该字段两版契约必填，writeRunMeta 写前按 run.v2 校验、
+  //    readRunMeta 校验不过即 null——「无字段」那格不可达（第 2 轮 CODEX-F01-②）；
+  //    读不出的留痕由 missingSides 用例守，不在这里。
+  const l2 = await layout();
+  await writeRunMeta(l2, 'plan', newRunMeta({ ...base, runId: 'RB2' }));
+  const rb2 = (await loadRoundReviews(l2, 'plan', 'RB2')).readonlyBreach;
+  assert.deepEqual(rb2, { hit: false, files: [] });
+  await putDisposition(l2, table);
+  const r2 = await checkAdjudication({
+    cfg: defaultConfig(), layout: l2, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, readonlyBreach: rb2,
+  });
+  assert.equal(r2.ok, true, renderGateResult(r2));
+
+  // ③ 漏传（可选参数缺省）→ 与 ② 同：守的是「缺省不误拦」，接线由 cli 侧两处调用点负责
+  const r3 = await checkAdjudication({
+    cfg: defaultConfig(), layout: l2, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
+  });
+  assert.equal(r3.ok, true);
+});
+
 test('voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）', async () => {
   const base = {
     topic: TOPIC, stage: 'plan' as const, rerunIndex: 1, command: 'x',

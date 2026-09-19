@@ -36,6 +36,7 @@ import type { CriticRequest, CriticResult } from '../types.js';
 import { run } from '../util/exec.js';
 import { ensureDir } from '../util/fsx.js';
 import {
+  CLAUDE_OUTPUT_TOOLS,
   countTools,
   extractClaudePath,
   finalReviewText,
@@ -119,7 +120,13 @@ export function buildClaudeArgs(
     // 只读旗标：探针实测挣来的安全不变量，**原样透传**（判据二，与 codex 同族）
     ...opts.readonlyArgs,
     ...(opts.model ? ['--model', opts.model] : []),
-    ...(opts.schemaJson ? ['--json-schema', opts.schemaJson] : []),
+    /*
+     * 「送 CLI 的那一份 schema」的唯一出口（代码双审 CODEX-03）：无论调用方从哪读来，
+     * 都在这里做幂等归一，剥掉 CLI 不认的 2020-12 `$schema` 头。`readSchemaJson` 也剥，
+     * 两处叠加是幂等的；放在这里是为了让绕过 `readSchemaJson` 的调用方（探针、准入脚本）
+     * 走同一份变换，而不是各自记着要剥。
+     */
+    ...(opts.schemaJson ? ['--json-schema', stripMetaSchemaRef(opts.schemaJson)] : []),
     ...(opts.settingsJson ? ['--settings', opts.settingsJson] : []),
     ...(opts.maxBudgetUsd ? ['--max-budget-usd', opts.maxBudgetUsd] : []),
   ];
@@ -414,7 +421,46 @@ export async function invokeClaude(opts: ClaudeInvokeOptions): Promise<ClaudeInv
 
 /** 读 schema 文件内容供 `buildClaudeArgs` 使用——**读文件留在这里，不进纯函数** */
 export async function readSchemaJson(schemaPath: string): Promise<string> {
-  return fs.readFile(schemaPath, 'utf8');
+  return stripMetaSchemaRef(await fs.readFile(schemaPath, 'utf8'));
+}
+
+/**
+ * 去掉顶层 `$schema` 键，其余原样保留（含 `$id`）。
+ *
+ * **实测依据（2026-09-19，M9 第 6 步验收，claude 2.1.277）**：`review.v1.json` 头部的
+ * `"$schema": "https://json-schema.org/draft/2020-12/schema"` 让 CLI 当场拒绝——
+ * `--json-schema is not a valid JSON Schema: no schema with key or ref "https://json-schema.org/draft/2020-12/schema"`，
+ * 两次尝试同一错误、零 API 调用。同一文件去掉 `$schema`、或改 draft-07 的 `$schema`，均被接受；
+ * 只去 `$id` 不去 `$schema` 仍拒。所以只剥这一个键，不动别的：契约文件本身不改——
+ * 不只是因为 agy 侧传文件路径且接受 2020-12；更硬的理由是本仓 `parse.ts` / `schemas.ts`
+ * 用的 `Ajv2020` 对 draft-07 头当场抛 `no schema with key or ref`（代码双审 CODEX-04，已实跑），
+ * 把契约改成 draft-07 不是取舍，是加载期崩溃。
+ *
+ * **剥壳之后 CLI 按它自己的方言校验**，契约里若出现 2020-12 独有关键字（`$defs`、
+ * `prefixItems`、`unevaluated*`、`dependent*` …）会被静默忽略或直接拒，留痕分不出哪种。
+ * 今天 `review.v1.json` 不含 2020-12 独有键，这件事由契约用例 A31 守着，不靠记性；
+ * A31 是单向黑名单——draft-07 独有或跨方言语义变化的键（`dependencies`、tuple 形 `items`、
+ * `$ref` 兄弟键等）不在论域，改契约时人工核（第 2 轮 CODEX-F01-⑤）。
+ *
+ * **探针为什么没拦住**：`probes/claude.ts` 的 `json_schema_ok` 用的是一个不带 `$schema` 的
+ * 迷你 schema，从未喂过真实契约文件——那一格答的是「旗标收内联 JSON」，不是「收本仓的 schema」。
+ * 该盲区登记 BACKLOG EV-74，探针改喂真实文件是它的修法，不在本层。
+ *
+ * 纯函数、不碰文件系统，理由同 `buildClaudeArgs`。输入不是合法 JSON 时原样返回：
+ * 那种情形 CLI 会用自己的报错拒掉，本层不替它改写错误形态。
+ */
+export function stripMetaSchemaRef(schemaJson: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(schemaJson);
+  } catch {
+    return schemaJson;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return schemaJson;
+  const obj = parsed as Record<string, unknown>;
+  if (!('$schema' in obj)) return schemaJson;
+  const { $schema: _dropped, ...rest } = obj;
+  return JSON.stringify(rest);
 }
 
 // ═══════════════════════ 上半身：claudeAdapter 各成员（第 8 步）═══════════════════════
@@ -475,9 +521,13 @@ export function buildClaudeResult(
    * **判据扫工具名，不看 `permission_denials`**：白名单外的工具走「工具不存在」
    * 路径，实测那次 denials 是**空数组**而拒绝信息在 `tool_result` 里
    * （M9 第 1 步报告 §3.1 第 2 条）。扫错地方会让这条判据恒为空。
+   *
+   * **`CLAUDE_OUTPUT_TOOLS` 例外**：`--json-schema` 下 CLI 自己注入 `StructuredOutput`
+   * 作为交付通道，它不在 `--tools` 白名单里、也不落盘。M9 第 6 步验收第 2 跑把它算成
+   * 5 次写事件、整轮判 `readonly_breach: true`（run `20260919T120643Z`）。只豁免那一个名字。
    */
   const writes = trace.toolUses
-    .filter((u) => !readonlyTools.includes(u.name))
+    .filter((u) => !readonlyTools.includes(u.name) && !CLAUDE_OUTPUT_TOOLS.has(u.name))
     .map((u) => `${u.name}(${extractClaudePath(u.input) ?? JSON.stringify(u.input).slice(0, 80)})`);
 
   return {

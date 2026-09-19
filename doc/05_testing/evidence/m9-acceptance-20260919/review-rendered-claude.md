@@ -1,0 +1,128 @@
+---
+schema: trivium.review.v1
+topic: M9-验收-3812f4c
+stage: code
+role: claude
+vendor: anthropic
+agent_cli: claude/2.1.277
+model_requested: claude-sonnet-5
+model_effective: claude-sonnet-5
+model_effective_source: envelope
+run_id: 20260919T120643Z
+rerun_index: 1
+snapshot_hash: sha256:74df08e0153af9f5cd88e32cf72c2fdfd58cb25af6db0edcff083654d138dda4
+blind: true
+started_at: 2026-09-19T12:06:43.371Z
+finished_at: 2026-09-19T12:15:28.369Z
+duration_s: 525
+tool_calls:
+  read: 10
+  grep: 9
+  glob: 0
+  run_command: 0
+  project_reads: 14
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 1
+  minor: 1
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: true
+drift: false
+consulted_unverified: true
+joint_check:
+  state: skipped-insufficient-sides
+  effective_sides: 1
+heterogeneous: false
+override_reason: 档位 （缺省） 的默认模型落在 Claude 系
+session_id: 6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4
+---
+
+# 代码审查：M9-验收-3812f4c
+
+> Critic-D · Anthropic Claude Code ｜ 模型 `claude-sonnet-5`
+> ｜ 运行 `20260919T120643Z`
+> ｜ 本轮审核者 claude
+
+> ⚠️ **与主脑同源**：本侧使用了 Claude 系模型（档位 （缺省） 的默认模型落在 Claude 系）。
+
+## 总判断
+
+最值得关注的是 base.ts 里 WRITE_VERBS 闭集仍遗漏 sed -i / perl -i / patch / git apply 等原地编辑动词——这类命令成功写入后既不进 writes 也不进 suspected，与紧邻的 COMMAND_TRACE_CAPABILITY 注释「成功执行的写命令照常留痕」的承诺相悖；唯一兜底是全局 git 指纹漂移（降级为「无法归因」而非确凿判决），项目自己的 Driver Hook 文档早就把 sed -i 列为常见写旁路，说明这不是假想威胁。SEGMENT_SPLIT_RE 对 |& 的处理依赖环视副作用而非显式分支，暂无可观察错误但缺测试锁定，属隐患。preflight.ts 对 checkCliVersions/checkReadonlyCapability/checkModelSlugs 三处的 selected 集合泛化是对称、一致的，未发现漏侧。review.ts 的 sides 排序修复与 guard.ts 的 suspectedWrites 接线均核实无误。
+
+**结论**：`request-changes`
+
+## 审查意见（共 2 条：重要 1 ｜ 次要 1）
+
+### CLAUDE-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/base.ts:578-589（COMMAND_TRACE_CAPABILITY 契约声明）与 611-887（WRITE_VERBS 闭集与 classifyWriteCommands）` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：WRITE_VERBS 闭集只有 13 个动词（cp/mv/install/ln/tee/rm/rmdir/mkdir/touch/chmod/chown/truncate/dd），不含 sed -i / perl -i / patch / git apply 等原地编辑类命令。classifyWriteCommands 的主逻辑与 hitAny 兜底（提不出目标时仍要疑似）都只查这张表，于是像 sed -i 's/blocker/nit/' src/report.ts 这样真实成功执行的写命令，既不进 writes，也不进 suspected_write_events——彻底不在判定层的视野内。这与紧邻上方 COMMAND_TRACE_CAPABILITY 的文档承诺直接冲突：rejectionRecorded: false 的注释写着『该侧「尝试写」的检测失效——不是轨迹对写事件全盲……成功执行的写命令照常留痕』。项目自己并非不知道 sed -i 是常见写旁路：CLAUDE.md 第 24-26 行、doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 都把它列为 Driver 侧 Hook 要专门堵的旁路形态，唯独 codex 审查员的写判据没有覆盖。唯一的兜底是 guard.ts 里独立的 git 指纹漂移检测：当某侧 rejectionRecorded===false（codex 正是）时，任何实际文件变化都会落进 unattributedDriftFiles（『无法归因，请人工核对』），而不是本补丁着力要给出的确凿 readonlyBreach 或 suspected 判决——把一个本该由写判据直接坐实的问题，退化成了需要人工翻 git diff 才能发现的弱信号。
+
+**依据**：读 src/trivium/adapters/base.ts 578-589（rejectionRecorded 文档承诺『成功执行的写命令照常留痕』）、611-632（WRITE_VERBS 定义）、797-887（classifyWriteCommands 主循环与 hitAny 兜底均只判 WRITE_VERBS.has(v)），确认 sed 从未出现在这张集合里（另用 Grep 在 src/trivium 全目录搜 sed/WRITE_VERBS，命中的三处 sed 引用全在 extractFromSegment 的读取路径提取逻辑里，与写判据无关）；读 src/trivium/guard.ts 305-382（judgeRun 里 anyReadonlyUnavailable 为真时，改动文件落进 unattributedDriftFiles 而非 readonlyBreach）；读 CLAUDE.md 24-26 行与用 Grep 核实 doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 均把 sed -i 列为已知写旁路。
+
+**建议**：要么把 WRITE_VERBS 扩到覆盖常见原地编辑命令（至少 sed -i / perl -i，patch/git apply 视优先级），要么把 rejectionRecorded 文档里『成功执行的写命令照常留痕』的措辞收窄为『闭集内动词才留痕』，避免契约比实现宽。
+
+### CLAUDE-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/base.ts:642-654（SEGMENT_SPLIT_RE）` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：新分隔符正则的文档详尽列举了 2>&1/>&2/&>file 三种 fd 重定向形态并各给了测试，但没有提到 bash 的 |&（等价于 2>&1 |，常见于『同时看 stdout 与 stderr』的写法）。实测其处理完全是环视副作用的偶然结果：| 因后瞻『后一个字符不能是 &』而拒绝匹配、拆分退回给前一段；紧邻的单个 & 因前后顾都满足反而被当成分隔符——于是那个 | 字符原样残留成前一段末尾的一个 token，会被 writeSinksOfSegment 当作候选 sink（isResolvablePath('|') 为真）。目前因为该段恰好总是落进『掩码降级为 suspected』分支、又被后续按 (command, why) 去重的逻辑吞掉了这条伪造 sink 产生的重复项，暂无可观察的错误输出；但这是一段未声明、无测试锁定的隐式行为——下次对这条正则做任何看似无关的微调，都可能在没有测试变红的情况下让 |& 场景真正漏判或产生脏数据。
+
+**依据**：读 src/trivium/adapters/base.ts 642-654（SEGMENT_SPLIT_RE 与其只列 2>&1/>&2/&> 三种形态的注释）、689-763（writeSinksOfSegment 对 args 的过滤只挡 - 前缀，不挡孤立的 |）、814-867（masked 判定与最终的按 command+why 去重逻辑）；用 Grep 在 test/unit/codex-write-verbs.test.ts 中搜索 |&，只命中文档注释里的一处历史描述，没有任何断言 |& 实际行为的用例。
+
+**建议**：在 SEGMENT_SPLIT_RE 里显式加一条 |& 分支（视同 | 处理），并补一条 |& 场景的用例，把当前『靠环视副作用凑巧安全』的行为改成显式声明的规则。
+
+## 认为正确的部分
+
+- 本补丁准确定位并修复了原 &(?!&) 负向前瞻同时命中 && 第二个字符与 2>&1 里 & 的问题，新 SEGMENT_SPLIT_RE 用前后各排除 >/& 的写法堵住了「加个 2>&1 就能绕过只读失守」这个具体 blocker，且补了对应用例。
+- checkCliVersions 新增的 critics 参数与 checkReadonlyCapability / checkModelSlugs 已有的 selected 口径完全对齐，preflight.ts 里三处按入选侧生效失败、全体生效提示的分工写得清楚且互相一致，没有发现遗漏某一侧的生成缺口。
+- review.ts 把 sides 解析提到 checkModelSlugs 调用之前，修复了此前非默认侧非法 slug 漏校验的问题，且补了走真实子进程的集成测试锁例，是恰当的修复方式。
+- guard.ts 对 suspectedWrites 的接线很克制：只加了一个字段、一段渲染逻辑，有真实消费方（renderGuardWarnings）且有单测覆盖判定层到渲染层的完整链路，没有『宣称了不存在的消费方』的问题。
+- codex.ts 的 providerSection() 实现简单直接，对 provider 段的抽取、轮换指纹变化、噪声字段不变、无 provider 段返回 null 四种情形都有对应测试。
+
+## 未覆盖范围（本侧盲区）
+
+- 未执行 npm run typecheck / npm test，只做了静态阅读，没有实证验证测试是否真的通过（无 Bash 工具可用）。
+- zcode.ts 180s 超时改动『与搬家前的值一致』的说法未做 git blame 核实，只读了当前代码，未确认历史提交里的具体数值。
+- report.ts 的表格列回退逻辑（DEFAULT_CRITICS 兜底）只看了 diff 本身，没有交叉核对 gate.ts / archive.ts 里 rounds.sides 的产出是否总能满足非空前提。
+- providerSection() 是否会对 codex 真实 TOML schema 里某个恰好以 [model_providers 为前缀但语义不同的顶层键产生误判，未做实证核实，只是代码层面的可能性推演，故未单独列为 finding。
+- SEGMENT_SPLIT_RE 与嵌套子 shell、多重转义引号组合的边界情形未逐一穷举，只验证了 brief 点名的 2>&1/&&/|& 相关路径。
+- 没有审查 codex-trace.ts 内 succeededCommands() 的完整实现，只确认了它被 classifyWriteCommands 调用这一层契约。
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff`
+- `src/trivium/adapters/base.ts`
+- `src/trivium/preflight.ts`
+- `src/trivium/adapters/codex.ts`
+- `src/trivium/critics.ts`
+- `src/trivium/guard.ts`
+- `src/trivium/review.ts`
+- `src/trivium/agents/registry.ts`
+- `test/unit/preflight.test.ts`
+- `test/unit/codex-write-verbs.test.ts`
+- `CLAUDE.md`
+- `AGENTS.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `doc/05_testing/CASE_manual_acceptance.md`
+- `doc/02_design/LLD_orchestrator.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":10,"grep":9,"glob":0,"run_command":0,"project_reads":14}
+
+---
+
+*本文档由 TriviumCode 编排器从 `claude` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

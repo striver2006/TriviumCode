@@ -1,0 +1,131 @@
+# TriviumCode 本机配置（不进 Git）
+# probe: 段由 `trivium doctor` 实测回填，请勿手工编辑（设计 §3.5 / §13.1）。
+# 其它字段可覆盖 config.yaml 中的任意配置项。
+
+probe:
+  generated_at: 2026-09-19T10:19:26.957Z
+  verify_suggestion:
+    build:
+      - npm run build
+    test:
+      - npm run test
+  cli:
+    claude:
+      entrypoint: /Users/chenzhenbo/.local/bin/claude
+      version: 2.1.277
+      version_probe:
+        runner: null
+        args:
+          - --version
+        extract: (\d+\.\d+\.\d+)
+      probed_at: 2026-09-19T10:18:24.284Z
+      models: []
+      path_deny:
+        supported: true
+        coverage_complete: false
+        file_shape_verified: true
+        rule_syntax: Read(./.reviews/probe-topic/plan/**)
+        method: 经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的
+        attempts: []
+      scratch_paths: []
+      isolation: shared
+      headless_read_ok: true
+      trace_path_structured: true
+      denied_tool_in_trace: true
+      readonly_breach: false
+      tool_surface_checked: true
+      readonly_flags:
+        - --restricted
+        - --strict-mcp-config
+        - --tools
+        - Read,Grep,Glob
+      model_flag: true
+      json_schema_ok: true
+      session_id_source: 每条事件的 session_id 字段（--session-id 可由调用方指定）
+      trust_prompt_required: false
+      stream_json_requires_verbose: true
+      strict_mcp_config_applied: true
+      project_memory_blocked: true
+    codex:
+      entrypoint: null
+      version: null
+      version_probe: null
+      probed_at: null
+      models: []
+      path_deny:
+        supported: null
+        rule_syntax: null
+        method: null
+        attempts: []
+        coverage_complete: null
+        file_shape_verified: null
+      scratch_paths: []
+      isolation: shared
+      exec_headless_read_ok: null
+      json_event_types: []
+      json_item_types: []
+      trace_path_structured: null
+      rejected_command_in_trace: null
+      readonly_flags: []
+      profile_flag: null
+      unknown_profile_rejected: null
+      profiles: []
+      providers: []
+      config_override: null
+      effort_validated: null
+      model_catalog_path: null
+      models_by_profile: {}
+      models_visible: []
+      models_by_profile_errors: {}
+    agy:
+      entrypoint: null
+      version: null
+      version_probe: null
+      probed_at: null
+      models: []
+      path_deny:
+        supported: null
+        rule_syntax: null
+        method: null
+        attempts: []
+        coverage_complete: null
+        file_shape_verified: null
+      scratch_paths: []
+      isolation: shared
+      headless_read_ok: null
+      json_schema_ok: null
+      pty_required: null
+      read_strategy: null
+      agent: null
+    zcode:
+      entrypoint: null
+      version: null
+      version_probe: null
+      probed_at: null
+      models: []
+      path_deny:
+        supported: null
+        rule_syntax: null
+        method: null
+        attempts: []
+        coverage_complete: null
+        file_shape_verified: null
+      scratch_paths: []
+      isolation: shared
+      readonly_flags: []
+      model_override: null
+      trace_source: null
+      trace_args_source: null
+      response_field: null
+      model_id_form: null
+  auth:
+    claude:
+      checked_at: 2026-09-19T10:19:30.904Z
+      cli_version: 2.1.277
+      fingerprint: null
+      ok: true
+  host:
+    platform: darwin 27.0.0
+    arch: arm64
+    has_timeout_bin: false
+    git_version: 2.54.0 (Apple Git-157)
