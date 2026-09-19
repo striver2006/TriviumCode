@@ -1,0 +1,265 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260919T025314Z",
+  "topic": "M9-裁决件角色契约放宽",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "这次重点看三处，都是计划第九节我自己标出来的裁定点：一、放宽之后作者身份只剩一道锁。今天 role 被 schema 钉死是第一道、gate 里 role 与当轮 Driver 的比对是第二道；放宽之后只剩后者，而它是上一个主题第三轮才写的，只被三格断言验过，写它的人没有对放宽后的形状做过任何验证。请独立核这一道够不够、有没有绕过它的路径——降级轮次、用 run-id 钉住轮次、跨轮次复用、解析回退，以及定位不到裁决件时那条早退分支。二、资产面那六处写死的角色名没有任何机器判据看着，改漏一处症状是无声的：非缺省 Driver 照着旧文本写、产出找不到裁决件，而全量测试照样绿。我倾向补一条扫描判据，但上一个主题的教训恰恰是扫描判据自己可能是假证明。请判该不该加，以及这条判据会不会又是假的。三、注册表身份校验该放在校验函数内部还是调用方。我选了前者，理由是与运行元数据那个校验器同构、且全仓唯一调用方只有一个。请判这个归属合不合理，会不会让「schema 过了但身份没过」这一格在将来多一个调用方时被漏掉。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "368605803c5dcc3129f4c870541115e7e641415e",
+    "tree_hash": "e1e62e1c4f8fb46b3389582f9cc52eb730c74b70",
+    "dirty": true,
+    "subject_sha256": "4a02eea11df902017ce7458ba3cea51fe6315064ed24574f3a262ea624d389aa",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-19T02:53:14.690Z",
+  "finished_at": "2026-09-19T03:00:12.925Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.0",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "parse_fallback",
+      "exit_code": 0,
+      "duration_s": 371.022,
+      "tool_calls": {
+        "run_command": 77,
+        "project_reads": 82
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "JSON 语法错误：Bad escaped character in JSON at position 5600 (line 35 column 596)",
+      "empty_review": false,
+      "parse_fallback": true,
+      "session_id": "01a0b795-114e-70c0-8abf-3a8dfc8c21fe",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.6",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 320.878,
+      "tool_calls": {
+        "read": 50,
+        "grep": 16,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 33
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 772424,
+        "output_tokens": 47280,
+        "thinking_tokens": 39471,
+        "cache_read_tokens": 5442384,
+        "total_tokens": 819704
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "ca1c00a9-04db-45d2-a0bd-33421c9a909a",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 417.959,
+      "tool_calls": {
+        "read": 16,
+        "grep": 9,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 18
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 14,
+        "inputTokens": 933478,
+        "outputTokens": 27977,
+        "totalTokens": 961455,
+        "cacheReadTokens": 845312,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_8963edf3-bfea-4015-95fb-a84fbef95201",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M9-裁决件角色契约放宽/plan/_meta/brief-codex-20260919T025314Z.md",
+      "sha256": "35f870349e6187fdcd05e73cdb6b4e2dbd7a72a3bd934548d46d80dde6d2f065"
+    },
+    {
+      "path": "M9-裁决件角色契约放宽/plan/_meta/brief-gemini-20260919T025314Z.md",
+      "sha256": "6d4b97da8662a5c6902a0669029a2ef208b0a74c29306ff800330e4eb783fdfd"
+    },
+    {
+      "path": "M9-裁决件角色契约放宽/plan/_meta/brief-glm-20260919T025314Z.md",
+      "sha256": "adbed64f4ce23df45a40f638d0772ce216583550274fe2828174cf432e1b9cb0"
+    },
+    {
+      "path": "M9-裁决件角色契约放宽/plan/_meta/review-codex-20260919T025314Z.json",
+      "sha256": "bed50a3dc89d12a8df01fcecebb30f801dacc47533a42300fc8f3b5e3e078e85"
+    },
+    {
+      "path": "M9-裁决件角色契约放宽/plan/_meta/review-codex-20260919T025314Z.fallback-items.md",
+      "sha256": "76853430a76f7f9b67d6f8b4eac8d0346fe64e8199eae4d035d3875a06b0ba01"
+    },
+    {
+      "path": "M9-裁决件角色契约放宽/plan/_meta/review-gemini-20260919T025314Z.json",
+      "sha256": "df189cbddf1f5ef310f2d7e8dc4b819d3b805b40c9a8f8cf94b68cc93d73c846"
+    },
+    {
+      "path": "M9-裁决件角色契约放宽/plan/_meta/review-glm-20260919T025314Z.json",
+      "sha256": "6176b70ef5a000d74a9335e43c33101a0ddef57ed016612503866481ddc2a0c3"
+    },
+    {
+      "path": "M9-裁决件角色契约放宽/plan/2026-09-19-M9-裁决件角色契约放宽-codex.md",
+      "sha256": "9646530d4f75ecbf9fcf33d172e7784fc7c68f3980dff8ca6600fee863480b06"
+    },
+    {
+      "path": "M9-裁决件角色契约放宽/plan/2026-09-19-M9-裁决件角色契约放宽-gemini.md",
+      "sha256": "903d55de54037f0b3bb78dc828f9a4f623435ae03d09715057987410c8a5e347"
+    },
+    {
+      "path": "M9-裁决件角色契约放宽/plan/2026-09-19-M9-裁决件角色契约放宽-glm.md",
+      "sha256": "d243d9d431ff7cddc2140c8a78e52d3e18a83e2e1e604f9ec147c5b644f57515"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

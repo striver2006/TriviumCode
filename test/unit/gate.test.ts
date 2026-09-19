@@ -332,6 +332,119 @@ ${HEAD}
   assert.match(f!.message, /addresses 为空/);
 });
 
+/*
+ * ───────── N-2：放宽 role 之后，作者身份只剩这一道判据 ─────────
+ *
+ * EV-66 把 `disposition.v1.json` 的 `role` 从 `const: "claude"` 放宽成
+ * 「任意已登记 Agent」。放宽前后各有一句容易说错的话，先把它们摆正：
+ *
+ *   · **不是「两道锁变一道」。** schema 的 `const` 从来不证明作者是谁——
+ *     它只是逼非缺省 Driver 谎报。放宽后「声明的作者 == 当轮 Driver」
+ *     这条性质完整保留（`gate.ts` 的 role↔driver 比对），并新增了
+ *     「声明的作者必须是已登记 Agent」（`validateDispositionFrontMatter`）。
+ *   · **真正变了的是验证覆盖。** 那条比对是上一个主题第 3 轮才写的，
+ *     此前只被 T-11 一条集成用例验过，本文件 30 余条用例**无一条传 `driver`**
+ *     （全走缺省回落，缺省下 role 恒等于 driver，比对永远成立）。
+ *     所以下面两格补的是**验证缺口**，不是补一道消失的锁（计划双审 CODEX-F01 第 1 条附带纠正）。
+ *
+ * 两格都**显式传 `driver`**：`GateCheckInput.driver` 今天仍是可选项、缺省回落
+ * 缺省 Driver，依赖回落会让本用例在「判据没跑」时照样绿（同文件 `voidedSides`
+ * 那次教训的形状）。可选参数本身已登记 BACKLOG，这里先不依赖它。
+ */
+
+/**
+ * 直写一份裁决件，**文件名后缀与 front-matter 的 role 分别可控**。
+ *
+ * 不走 `writeArtifact`：它按 `roleIsAllowedForWriter` 校后缀，而那个判据的
+ * `driver` 参数在 `archive.ts` 的调用点没传、恒取缺省值，落不出 `-revised-codex.md`
+ * （EV-55 族，不在本步范围）。T-11 出于同样的原因也是直写。
+ */
+async function putDispositionAs(
+  l: ArchiveLayout,
+  opts: { suffix: string; fmRole: string; table: string; runId?: string },
+): Promise<void> {
+  const dir = path.join(l.archiveRoot, l.topic, 'plan');
+  await fs.mkdir(dir, { recursive: true });
+  const md = `---
+schema: trivium.disposition.v1
+topic: ${TOPIC}
+stage: plan
+role: ${opts.fmRole}
+kind: revised
+run_id: ${opts.runId ?? 'R1'}
+addresses:
+  - ${DATE}-${TOPIC}-gemini.md
+---
+
+# 修订计划
+
+${opts.table}
+`;
+  await fs.writeFile(path.join(dir, `${DATE}-${TOPIC}-revised-${opts.suffix}.md`), md, 'utf8');
+}
+
+const ROW_OK = `| AGY-01 | gemini | major | 接受 | 成立 | §3 |`;
+
+test('N-2：文件名后缀是当轮 Driver、front-matter 的 role 是另一个已登记 id → bad_front_matter', async () => {
+  const l = await layout();
+  await putDispositionAs(l, { suffix: 'codex', fmRole: 'glm', table: `${HEAD}\n${ROW_OK}` });
+  const r = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
+    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
+  });
+  const f = r.failures.find((x) => x.code === 'bad_front_matter');
+  assert.ok(
+    f,
+    '这份裁决件的文件名说是 codex 写的、front-matter 说是 glm 写的，作者身份自相矛盾却通过了闸门。' +
+      `放宽 role 之后这是唯一在看这件事的判据。\n${renderGateResult(r)}`,
+  );
+  assert.match(
+    f!.message, /role=glm/,
+    '失败原因里没点名 role：本格要证的正是作者身份这一格被验到了，失败在别处等于没验到',
+  );
+});
+
+test('N-2 正例：非缺省 Driver 诚实写自己的 id → 通过（EV-66 的全部目的）', async () => {
+  const l = await layout();
+  await putDispositionAs(l, { suffix: 'codex', fmRole: 'codex', table: `${HEAD}\n${ROW_OK}` });
+  const r = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
+    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
+  });
+  assert.deepEqual(
+    r.failures, [],
+    '非缺省 Driver 诚实写出的裁决件必须过闸门。过不了就说明放宽没落到实处——' +
+      `它只剩谎报或产出定位不到两条路，而闸门闭环一次都跑不完。\n${renderGateResult(r)}`,
+  );
+});
+
+/*
+ * 这一格锁的是「闸门对未登记 id 仍 fail-closed」，**不是「注册表校验跑了」**。
+ *
+ * 区别是**双向实测**出来的，两次变异各跑一遍：
+ *   · 删掉 `checkDispositionRole` → N-1 两格红，**本格绿**（role↔driver 比对拦的）；
+ *   · 删掉 `gate.ts` 的 role↔driver 比对 → N-2 第一格与 T-11 第 2 格红，**本格还是绿**
+ *     （`checkDispositionRole` 拦的）。
+ * 也就是说未登记 id 这条路径上**两道判据完全冗余**，删任何一道本格都绿。
+ * 它因此证不了任何**单一**机制在工作——只证得了「两道之中至少还有一道活着」。
+ *
+ * 那它还有没有价值？有，但要如实说清：它守的是**结果**（未登记 id 进不了闸门），
+ * 而不是**机制**（哪一道拦的）。机制那一格由 `config-schema.test.ts` 的 N-1 守，
+ * 那里直接调校验函数、没有 driver 比对在旁边。
+ * 写成「本格证明注册表校验生效」就是把断言的适用范围悄悄扩大了。
+ */
+test('N-2 边界：role 是未登记的 id → bad_front_matter（闸门层 fail-closed，不区分是哪道判据拦的）', async () => {
+  const l = await layout();
+  await putDispositionAs(l, { suffix: 'codex', fmRole: 'nobody', table: `${HEAD}\n${ROW_OK}` });
+  const r = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
+    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
+  });
+  const f = r.failures.find((x) => x.code === 'bad_front_matter');
+  assert.ok(f, `role 写了个注册表里没有的名字，仍然过闸门——契约就是净放松的\n${renderGateResult(r)}`);
+  assert.match(f!.message, /role/, f!.message);
+});
+
 // ── 共同 blocker（§6.6 规则 7）──
 
 test('双方共同 blocker 被驳回：默认只 warn，且只用 location 精确相同判定', () => {

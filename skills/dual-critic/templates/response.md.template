@@ -2,7 +2,7 @@
 schema: trivium.disposition.v1
 topic: {{TOPIC}}
 stage: code
-role: claude
+role: {{ROLE}}
 kind: response
 run_id: {{RUN_ID}}
 addresses:
@@ -13,7 +13,10 @@ addresses:
 
 <!--
 代码应答件模板（FR-05 / AC-01）。落盘位置：
-  .reviews/{{TOPIC}}/code/{{DATE}}-{{TOPIC}}-response-claude.md
+  .reviews/{{TOPIC}}/code/{{DATE}}-{{TOPIC}}-response-{{ROLE}}.md
+
+`{{ROLE}}` = **当轮 Driver 的 Agent id**，与 front-matter 的 role 同值。
+两者必须同指一人，否则闸门判 `bad_front_matter`。不是固定的 claude。
 
 与计划修订件（revised）的区别只在后缀与语气：这里不重写代码，
 而是对每条意见表态，并说明**接下来打算怎么改**。

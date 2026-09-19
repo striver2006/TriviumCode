@@ -309,7 +309,53 @@ export function validateRunMetaV1(data: unknown): string[] {
   return v(data) ? [] : formatErrors(v.errors);
 }
 
+/**
+ * 校验裁决件 front-matter（`trivium.disposition.v1`）。
+ *
+ * **两段式**：ajv 校形状，注册表校 `role` 的身份。后半段不能塞进 schema——
+ * `role` 是**当轮 Driver 的 Agent id**，而 Agent id 的唯一来源是
+ * `agents/registry.ts`（§16.2 纪律 7）。此前这里把 id 抄进了 schema
+ * （`role: {"const": "claude"}`），既与纪律 7 相抵，也让非缺省 Driver
+ * **写不出诚实的裁决件**——它只剩谎报或产出定位不到两条路（EV-66）。
+ *
+ * **形态与 `validateConfig` 同构，不是 `validateRunMeta`**（计划双审 GLM-01 ≡ AGY-02）：
+ * ajv 失败时**追加**身份检查的结果，而不是短路返回。两段式的天然断档就在这里——
+ * 一份 `role` 未登记、`addresses` 又为空的件，短路形态下只报得出 `addresses`，
+ * 「作者是谁」这一格的错误要等下一轮才看得见。裁决件多处同时错是常态，
+ * 一趟看全比少一行输出要紧。
+ *
+ * 只放宽不补校验＝净放松契约（`role: 随便写点什么` 会当场合法），
+ * 而「谁写的」是留痕的作者身份，正是审计系统最不该松的那一格。
+ * 注意本函数只管**声明的作者是不是已登记 Agent**；「声明的作者是不是当轮 Driver」
+ * 由 `gate.ts` 按 run 元数据比对——那里才有「当轮」这个概念。
+ */
 export function validateDispositionFrontMatter(data: unknown): string[] {
   const v = compile('disposition', dispositionSchema as object);
-  return v(data) ? [] : formatErrors(v.errors);
+  if (!v(data)) return [...formatErrors(v.errors), ...checkDispositionRole(data)];
+  return checkDispositionRole(data);
+}
+
+/**
+ * ajv 之后的注册表身份校验：裁决件的 `role` 是不是已登记 Agent。
+ *
+ * **照 `checkAgentIdentities` 的形状新写，不复用那个函数本体**——它校的是 run 元数据的
+ * `driver` / `critics_selected` / `critics`，直接套在裁决件上会恒报 `driver` 缺失。
+ */
+function checkDispositionRole(data: unknown): string[] {
+  const role = (data as { role?: unknown } | null | undefined)?.role;
+  /*
+   * 形状问题一律交给 ajv，这里只管身份，免得同一处错误出两行：
+   *   · 缺失     → ajv 的 `required`；
+   *   · 非字符串 → ajv 的 `type`；
+   *   · **空串** → ajv 的 `minLength: 1`。
+   *
+   * 空串这一格是代码双审三侧共同抓到的（CODEX-05 ≡ AGY-03 ≡ GLM-05）：初版判据写的是
+   * `typeof role !== 'string' || isAgentId(role)`，而 `''` 是字符串、又必然不是已登记 id，
+   * 于是 ajv 与这里各报一行——上一句注释当场自食其言。
+   *
+   * **不用 `trim()`**：`' '` 是长度 1 的字符串，ajv 的 `minLength` 放行它，
+   * 而它确实不是已登记 id，那一格该由身份校验报出来。`trim()` 会把它一并静默掉。
+   */
+  if (typeof role !== 'string' || role.length === 0 || isAgentId(role)) return [];
+  return [`role 不是已登记的 Agent id：${JSON.stringify(role)}`];
 }

@@ -49,10 +49,25 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { parseArtifactName } from '../../src/trivium/naming.js';
 
 const MARKER = /<!--\s*落点核验:\s*([^>]*?)\s*-->/g;
 
-/** 递归找 `.reviews/` 下所有 `*-response-claude.md` */
+/**
+ * 递归找 `.reviews/` 下所有**应答件**（code 阶段的裁决件）。
+ *
+ * **后缀走 `parseArtifactName`，不再字面匹配 `-response-claude.md`**（EV-66）。
+ *
+ * 原来那行是一条**正在生效的假证明**：它把「谁写的」写死成缺省 Driver，
+ * 于是非缺省 Driver 的 `-response-<别家>.md` 一律扫不到。配上本文件末尾
+ * 「不断言 checked > 0」那条口径，结果是**论域清空、用例照常全绿**——
+ * 这正是本仓记过四次的形状（「论域悄悄缩小、测试照常全绿」）。
+ *
+ * M9 第 5 步放开 `--driver`、EV-66 放宽裁决件的 `role` 之后，
+ * 它会是第一个静默失效的既有判据，所以随那一步一起改掉，而不是等撞上。
+ * 命名规则只有 `naming.ts` 一份，这里解析而不是另写正则——
+ * 再写一份就是第二事实源，下次改命名时必漏其一。
+ */
 async function responseFiles(dir: string): Promise<string[]> {
   let entries: import('node:fs').Dirent[];
   try {
@@ -64,7 +79,7 @@ async function responseFiles(dir: string): Promise<string[]> {
   for (const e of entries) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) out.push(...(await responseFiles(full)));
-    else if (e.name.endsWith('-response-claude.md')) out.push(full);
+    else if (parseArtifactName(e.name)?.kind === 'response') out.push(full);
   }
   return out;
 }
@@ -140,6 +155,17 @@ test('裁决件声明的落点核验串，逐条与工作树比对（EV-50）', 
    * **不断言 `checked > 0`**：本条的论域是「自愿加严的裁决件」，一份都没有是合法状态
    * （旧归档件不追溯）。但要把数报出来，免得它悄悄退化成永远扫不到东西的空转——
    * 「恒真的断言比没有更糟」是本仓 r2 删掉旧反向对账时立的口径。
+   *
+   * **但 `files.length` 是有下限的**，这两件事不一样（EV-66）：
+   * `checked` 取决于有没有人自愿写落点标记，`files.length` 取决于**发现式还能不能
+   * 找到应答件**。上面那行字面匹配 `-response-claude.md` 的写法失效时，
+   * 症状恰恰是 `files.length` 归零——而没有这条断言的话，它归零也是绿的。
+   * 归档里已有几十份应答件，扫到 0 份只可能是发现式坏了。
    */
+  assert.ok(
+    files.length > 0,
+    '一份应答件都没扫到——多半是文件名解析或归档路径变了，' +
+      '本条判据此刻正在空论域上全绿（本仓已记过四次这个形状）',
+  );
   console.log(`  [EV-50] 本次核验了 ${checked} 条落点声明，覆盖 ${files.length} 份裁决件`);
 });

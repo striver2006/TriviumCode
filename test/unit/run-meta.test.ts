@@ -11,8 +11,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { latestRunMeta, newRunMeta, migrateRunMetaV1, readRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
-import { validateRunMeta, validateRunMetaV1 } from '../../src/trivium/schemas.js';
+import { validateRunMeta, validateRunMetaV1, validateDispositionFrontMatter } from '../../src/trivium/schemas.js';
 import { checkStageArtifacts, metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
+import { parseArtifactName } from '../../src/trivium/naming.js';
+import { parseDisposition } from '../../src/trivium/disposition.js';
 import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
 import { CRITICS, CRITIC_VENDOR, type CriticId, type RunMeta } from '../../src/trivium/types.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
@@ -474,5 +476,76 @@ test('真实语料：归档里 plan/code/bug 三阶段的运行元数据必须�
       '  要么让新契约兼容旧形状（加可选字段、不进 required、不加 enum），\n' +
       '  要么给一条显式迁移；不要直接放宽本条。\n' +
       `  读不回的：${bad.join('、')}`,
+  );
+});
+
+/*
+ * ───────── N-3：契约放宽也不得让存量留痕失校（EV-66）─────────
+ *
+ * 上一条守的是运行元数据，这条守裁决件的 front-matter，形状同构、理由同源。
+ *
+ * 触发它的是一次**放松**（`role` 由 `const: "claude"` 改为「任意已登记 Agent」），
+ * 而放松方向按说不会让老件失校。那为什么还要锁？因为放宽的同时**补了一段新校验**
+ * （注册表身份检查）——净效果不是纯放松，而是「换了一格守法」。
+ * 归档里每一份裁决件的 `role` 都是 `claude`，它必须仍然是已登记 Agent；
+ * 哪天有人从注册表里摘掉一家（或改了 id 的拼法），这些历史留痕会集体失校，
+ * 而症状与上一条一样：那些主题的闸门锁死，用户改不得也删不得。
+ *
+ * **两条断言，少一条都不成立**（计划双审 CODEX-F01 第 6 条）：
+ *   · `scanned > 0` —— 论域下限。发现式写错、归档改名或移动，都会让扫描
+ *     零命中而用例照常绿。本仓已经记过四次「论域悄悄缩小、测试照常全绿」。
+ *   · 后缀 == `fm.role` —— 这才是作者身份那道锁在**全量历史**上的投影。
+ *     只校 schema 的话，一份「文件名 -revised-codex.md + front-matter role: claude」
+ *     的自相矛盾件在这里看不出来，而那正是「作者身份自相矛盾」的定义。
+ *     后缀一律走 `parseArtifactName` 解析，不另写正则——那会变成第二份命名规则。
+ */
+test('真实语料：归档里全部裁决件的 front-matter 仍过 disposition.v1（含作者身份）', async () => {
+  const archiveRoot = path.join(REPO_ROOT, '.reviews');
+  let topics: string[];
+  try {
+    topics = (await fs.readdir(archiveRoot, { withFileTypes: true }))
+      .filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return; // 全新仓库还没有归档，本条无语料可测
+  }
+
+  const bad: string[] = [];
+  let scanned = 0;
+  for (const topic of topics) {
+    for (const stage of ['plan', 'code', 'bug'] as const) {
+      const dir = path.join(archiveRoot, topic, stage);
+      let files: string[];
+      try {
+        files = await fs.readdir(dir);
+      } catch {
+        continue;
+      }
+      for (const f of files) {
+        const parsed = parseArtifactName(f);
+        if (!parsed || parsed.kind === null) continue; // 只收裁决件（revised / response）
+        scanned++;
+        const md = await fs.readFile(path.join(dir, f), 'utf8');
+        const fm = parseDisposition(md).frontMatter;
+        if (!fm) {
+          bad.push(`${topic}/${stage}/${f}：front-matter 解析不出`);
+          continue;
+        }
+        const problems = validateDispositionFrontMatter(fm);
+        if (problems.length > 0) bad.push(`${topic}/${stage}/${f}：${problems.join('；')}`);
+        if (fm.role !== parsed.role) {
+          bad.push(`${topic}/${stage}/${f}：文件名后缀是 ${parsed.role}、front-matter 的 role 是 ${String(fm.role)}`);
+        }
+      }
+    }
+  }
+
+  assert.ok(scanned > 0, `.reviews 下一份裁决件都没扫到（${topics.length} 个主题）——本条失去语料`);
+  assert.deepEqual(
+    bad, [],
+    '下列历史裁决件按当前契约不再合法。\n' +
+      '  归档是不可变工件：契约演进不得让老主题的闸门读不回自己的留痕。\n' +
+      '  若是身份校验判的，先确认注册表里是不是摘掉/改名了某一家；\n' +
+      '  若是后缀与 role 不符，那份件的作者身份本身就是矛盾的，要查它是怎么落盘的。\n' +
+      `  ${bad.join('\n  ')}`,
   );
 });

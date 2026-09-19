@@ -264,7 +264,15 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
    * 按 cliName 通用消费 `CommonProbe.models`。收敛完成后该文件里一个 Agent 字面量都没有，
    * 「不得留过期条目」这条当场把它标了出来——泛化是否真的做完，由机器说了算。
    */
-  { file: 'types.ts', why: "Disposition.role 的字面 'claude'：裁决件的作者恒为当轮 Driver，而 Driver 任意化排在 M10。此前的豁免理由是 CriticId 的字面收窄，M7b 第 6 步已把它放开成注册表全集——理由换了，豁免仍需要，所以是改写而不是删除" },
+  /*
+   * 本条的理由**改写过两次**，两次都是「字面还在、但为什么在」变了：
+   *   · 第一版：CriticId 的字面收窄 —— M7b 第 6 步放开成注册表全集后作废；
+   *   · 第二版：Disposition.role 的字面 'claude'（「Driver 任意化排在 M10」）——
+   *     EV-66 在 M9 第 6 步前就把 role 放开成 AgentId 了，那句预言本身失效，
+   *     再留着就是一条**失实的留痕**（而上面那条守卫只查字面在不在，查不出理由过期）。
+   * 现在的理由是探针键，与裁决件契约无关。下一个动这行的人请照样如实改写，别顺手删。
+   */
+  { file: 'types.ts', why: "ClaudeProbe 等探针结果的按 Agent id 命名的可选键（如 :778 的 claude?: ClaudeProbe）：探针形状逐家不同，键名即 Agent id，泛化要等各家探针结构收敛" },
 ];
 
 test('白名单纪律：每一项都要写明理由，且不得豁免不存在的文件', async () => {
@@ -909,16 +917,19 @@ test('全部机读 schema：任何校验关键字都不得枚举 Agent id 或意
    * 前者豁免面是一条可数的路径且必须写下理由，后者是整片论域悄悄消失。
    * 这与白名单纪律同构（豁免要写理由、要被守着不能过期）。
    */
-  const NAMED_EXEMPTIONS: readonly { file: string; at: string; why: string }[] = [
-    {
-      file: 'disposition.v1.json',
-      at: 'properties.role.const',
-      why:
-        '裁决件的作者恒为**当轮 Driver**，而 Driver 任意化排在 M10——在那之前它事实上只有一个取值。' +
-        '泛化它要同时改 gate 的消费点与 Driver 自己的产出模板，属 M10 范围，本轮只登记不改（BACKLOG EV-07）。' +
-        '`types.ts` 的 Disposition.role 有同源豁免，两处理由一致。',
-    },
-  ];
+  /*
+   * **本清单当前为空，这是正确状态，不是漏写。**
+   *
+   * 唯一的条目（`disposition.v1.json#properties.role.const`）随 EV-66 一起删除：
+   * 那条豁免的理由是「Driver 任意化排在 M10，在那之前 role 事实上只有一个取值」，
+   * 而 M9 第 5 步放开 `--driver` 之后它就不成立了——schema 里那份抄来的 id
+   * 成了非缺省 Driver **写不出诚实裁决件**的唯一阻碍。放开 role 之后豁免无物可挡，
+   * 下方「豁免仍然被需要」的守卫会把它当空头支票判红，**正确处置是删条目**，
+   * 不是把 role 塞进别的豁免面把用例修绿。
+   *
+   * 再加条目前先想清楚：每一条都是在 schema 里给「抄第二份 id」开一次口子。
+   */
+  const NAMED_EXEMPTIONS: readonly { file: string; at: string; why: string }[] = [];
   /** 被豁免挡下的命中，用来守「豁免仍然被需要」——空头支票要当场现形 */
   const suppressed = new Set<string>();
   const exempt = (file: string, at: string): boolean => {

@@ -3,7 +3,7 @@
 > 依据 [设计 v1.3.6](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.4](../01_requirements/PRD_driver_dual_critic.md)。
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
 >
-> **⚠️ 本文描述的是当前真实生效的契约**（**`config.v2`** / **`run.v2`** / 两侧审核者 / 固定 Claude Code Driver）。
+> **⚠️ 本文描述的是当前真实生效的契约**（**`config.v2`** / **`run.v2`** / 两侧审核者 / `--driver <id>`）。
 > `run.v2`（含 `driver` / `critics_selected` / `review_mode: full|partial`）于 M7b 第 3 步生效，规范见设计 6.7.1；
 > `config.v2`（`critics.*` → `agents.*`、`allow_single_flag` → `allow_partial_flag`、
 > 新增 `review.default_critics` / `max_critics`）于第 4 步生效，规范见设计 13.1.1。
@@ -13,8 +13,19 @@
 > 缺省取 `review.default_critics`，校验不过退 64 且零工件；`--only` 是它的单元素旧写法，
 > **两者同时给即拒**。选 1 侧记 `review_mode: full`、不写 `degraded_reason`——
 > 配置意图不是降级。规则细则见设计 7.1。
-> 其余多 Agent 演进带来的契约变更——意见编号前缀扩为四值、裁决件 `role` 扩为四值与
-> `addresses` 基数 1～3、`--tier-*` / `--effort-*` 等旗标——**均尚未生效**，随各里程碑并入本文。
+> **`--driver <id>` 自 M9 第 5 步起生效**：缺省 `claude`，取值须为已登记 Agent。
+> 它决定本轮谁是 Driver，进而决定**原稿与裁决件的后缀**（`locateSubject` 按它定位
+> 被审对象，写错后缀在 `review --start` 就退 65）、闸门按谁定位裁决件、以及留痕里
+> 记的发起方。规则细则见设计 §7.1。
+>
+> **裁决件 `role` 自 M9 第 6 步前置（EV-66）起放宽**：取值是**当轮 Driver 的 Agent id**，
+> schema 不枚举（`type: string`），「是否已登记」由代码层按注册表校验——与 `run.v2` 的
+> `driver` 同口径。**不是「enum 四值」**：那等于在 schema 里抄第二份 id，第五家登记时必漏改。
+> 文件名后缀与 `role` 必须同指一人，闸门两头都比对，不一致即 `bad_front_matter`。
+>
+> **`addresses` 基数 1～3 已随 M7b 的 `--critics` 生效**（`minItems: 1`，上限即入选审核者数）。
+> 其余多 Agent 演进带来的契约变更——意见编号前缀扩为四值、`--tier-*` / `--effort-*`
+> 等旗标——**均尚未生效**，随各里程碑并入本文。
 > 注意 `--critics` 当前实际可选的只有两家：第三家的审核者能力随 M8 / M9 接入。
 > **按本文实现的客户端不会被演进破坏**：读侧双读、旧形态长期兼容。
 

@@ -202,7 +202,19 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
   if (!fm) {
     failures.push({ code: 'bad_front_matter', message: '裁决件缺少可解析的 front-matter' });
   } else {
-    // 先过 trivium.disposition.v1（形状与必填），再做本轮特有的一致性比对
+    /*
+     * 先过 `trivium.disposition.v1`（形状与必填），再做本轮特有的一致性比对。
+     *
+     * **`schema` 与 `addresses` 两格与 ajv 有意重叠**，这是闸门层的双重防御，
+     * 不是漏改（代码双审 AGY-05 要求标注、GLM-05 判「存量、本步不必处理」）：
+     * ajv 那边报的是机读路径（`schema must be equal to constant`），
+     * 这边报的是「哪一格不对、应该是什么」，闸门的失败消息要能让 Driver 直接照着补。
+     * 代价是一份两处都错的件会各出一行。
+     *
+     * 同族的一处记在 `schemas.ts` 的 `checkDispositionRole`：`role` 的空串曾经也双报，
+     * 那一处**改掉了**（交给 ajv 的 `minLength` 独占）——区别在于那里没有「点名哪一格」
+     * 的额外价值，纯冗余；这里有。清理这两格属存量重构，不在 EV-66 范围。
+     */
     const mismatches: string[] = [...validateDispositionFrontMatter(fm)];
     if (fm.schema !== 'trivium.disposition.v1') mismatches.push(`schema=${fm.schema}`);
     if (fm.topic !== layout.topic) mismatches.push(`topic=${fm.topic}（应为 ${layout.topic}）`);
@@ -216,19 +228,28 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
      *   · front-matter 的 role —— 只过 validateDispositionFrontMatter。
      *
      * 两者之间没有任何机器判据，于是「文件名 -revised-codex.md + front-matter
-     * role: claude」这份**自相矛盾**的件会通过闸门，且没有一处会发现。这不是构造
-     * 出来的形态：资产面今天写死的正是 role: claude（disposition.md.template），
-     * 三份 SKILL.md 与 templates/README.md 也仍写 …-revised-claude.md，所以非缺省
-     * Driver 下照着资产写、再把文件名改对，得到的恰好就是这一份。
+     * role: claude」这份**自相矛盾**的件会通过闸门，且没有一处会发现。
      *
-     * 补上这条之后，非缺省 Driver 的三条路各自失败在**说得清**的地方：
-     *   · 照资产写（名与 role 都是 claude）→ 第 2 步定位不到，报 missing_disposition；
-     *   · 改名不改 role（谎报）        → 本条当场判红；
-     *   · 诚实写 role: <当轮 Driver>   → 卡在 disposition.v1.json 的 role const（EV-66）。
+     * 那不是构造出来的形态：**EV-66 落地之前**，资产面写死的正是 `role: claude`
+     * （`disposition.md.template`），三份 SKILL.md 与 `templates/README.md` 也都写
+     * `…-revised-claude.md`，所以非缺省 Driver 照着资产写、再把文件名改对，
+     * 得到的恰好就是这一份。
      *
-     * 本条**不改契约**：schema 仍把 role 钉成 claude，缺省 Driver 下两者恒等，
-     * 所以对今天的全部留痕零影响。EV-66 修好（role 放宽为 string + 注册表身份校验）
-     * 之后，这条会自动变成「文件名与 front-matter 必须同指一个 Driver」的那道锁。
+     * ## 本条的地位在 EV-66 之后变了（M9 第 6 步前置，2026-09-19）
+     *
+     * 那一步把 `role` 从 `{"const":"claude"}` 放宽成「任意已登记 Agent」并补了注册表
+     * 身份校验，资产面也改成了按当轮 Driver 取后缀。于是三条路的结局是：
+     *   · 照资产写（名与 role 都是缺省 Driver）→ 第 2 步定位不到，报 missing_disposition；
+     *   · 改名不改 role（谎报）              → 本条当场判红；
+     *   · 诚实写 role: <当轮 Driver>          → **通过**（EV-66 之前卡在 schema 的 const）。
+     *
+     * 本条一个字都没改，却从「三道里的一道」变成了**作者身份唯一的判据**——
+     * schema 的 const 从来不证明作者是谁，它只是逼非缺省 Driver 谎报。
+     * 独立单测见 `gate.test.ts` 的 N-2 三格（删掉本条，N-2 第一格与 T-11 第 2 格同时红）。
+     *
+     * 上一版注释以现在时写着「资产面今天写死的正是 role: claude」「schema 仍把 role
+     * 钉成 claude」——EV-66 落地后那两句成了失实留痕，本次一并改为过去时
+     * （代码双审 GLM-01：删断言时立的「不留不存在的边界」原则，对注释同样成立）。
      */
     if (fm.role !== driver) {
       mismatches.push(

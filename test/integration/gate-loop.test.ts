@@ -1274,16 +1274,23 @@ test(
      * 第 2 格：**谎报件不得静默通过**（第 2 轮 CODEX-04）。
      *
      * 「这份裁决件是谁写的」有两个来源——文件名后缀（闸门按它定位）与
-     * front-matter 的 `role`（只过 schema 的 `const: claude`）。补这条判据之前，
-     * 两者之间**没有任何机器判据**，于是下面这份自相矛盾的件会通过闸门，
-     * 且没有一处会发现。
+     * front-matter 的 `role`。补这条判据之前，两者之间**没有任何机器判据**，
+     * 于是下面这份自相矛盾的件会通过闸门，且没有一处会发现。
      *
-     * 而它恰恰是照今天的资产面写出来的那一份：`disposition.md.template` 写死
-     * `role: claude`，三份 SKILL 与 `templates/README.md` 也仍写 `-revised-claude.md`。
-     * 非缺省 Driver 的人照着模板写、再把文件名改对，得到的就是这个。
+     * 而它恰恰是**照 EV-66 落地前的资产面**写出来的那一份：那时
+     * `disposition.md.template` 写死 `role: claude`，三份 SKILL 与
+     * `templates/README.md` 也都写 `-revised-claude.md`（schema 那边的 `role`
+     * 还钉着 `const: claude`）。非缺省 Driver 的人照着模板写、再把文件名改对，
+     * 得到的就是这个。
      *
      * 所以 EV-66 原先记的那一格（「非缺省 Driver 写不出合法裁决件」）是记错了：
      * 写得出来，只是**必须是谎报的**。
+     *
+     * **本格在 EV-66 之后一字未改，地位却升了**：schema 的 const 不再挡着，
+     * 它成了作者身份唯一的判据。下一格（第 3 格）那句「非缺省 Driver 的闸门闭环
+     * 第一次真正走通」能成立，靠的正是本格仍然判红——能过的只有诚实的那一份。
+     * 上一版这段以现在时写「资产面今天写死的正是 role: claude」，EV-66 落地后
+     * 成了失实留痕，本次改为过去时（代码双审 GLM-01）。
      */
     const dispositionPath = path.join(stageDir, `${today()}-${DRIVER_TOPIC}-revised-${driver}.md`);
     const dispositionBody = (role: string): string => [
@@ -1315,31 +1322,29 @@ test(
     await fs.writeFile(dispositionPath, dispositionBody(driver), 'utf8');
     const after = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', DRIVER_TOPIC, '--check', '--json'], stub);
     /*
-     * ## 这里锁的是一条**已知边界**，不是期望行为（EV-66）
+     * ## 非缺省 Driver 的闸门闭环，这是它第一次真正走通（EV-66 已结案）
      *
-     * 闸门现在**定位对了**——上面两条断言已经证明它找的是 `-revised-<真Driver>.md`
-     * 而不是缺省 Driver 那份，计划的完成判据 C4 说的就是这两件事，都成立。
+     * 本格此前锁的是一条**已知边界**：`disposition.v1.json` 把 `role` 钉死成
+     * `{ "const": "claude" }`，于是诚实写自己 id 的那份过不了 schema——
+     * 文件名对了，front-matter 的 role 不合契约。上一版的断言是 `notEqual(OK)`
+     * 外加一句「EV-66 若已修复，请把本断言改成期望通过」。**现在就是那一刻。**
      *
-     * 但整条链路还走不通：`disposition.v1.json` 把 `role` 钉死成
-     * `{ "const": "claude" }`，于是**诚实写 role 的那份过不了 schema**——
-     * 文件名对了，front-matter 的 role 不合契约。
+     * 放宽之后三条路的结局变了，值得逐条对照着看：
+     *   · 照资产写（名与 role 都是缺省 Driver）→ 仍然定位不到，`missing_disposition`；
+     *   · 改名不改 role（谎报）              → 仍然被上一格的 role 比对判红；
+     *   · 诚实写 role                        → **通过**（本格）。
+     * 前两格一个字没动，正说明放宽没有顺手松掉别的东西：能过的只有诚实的那一份。
      *
-     * 连同上一格，非缺省 Driver 的三条路现在**各自失败在说得清的地方**：
-     *   · 照资产写（名与 role 都是缺省 Driver）→ 定位不到，报 missing_disposition；
-     *   · 改名不改 role（谎报）              → 上一格的 role 比对判红；
-     *   · 诚实写 role                        → 卡在本格，即 EV-66。
+     * 那条 `/bad_front_matter|role/` 断言**已删除**——它描述的是被修掉的失败形态，
+     * 留着只会在下一次有人读这段时把人引向一个不存在的边界。
      *
-     * 对照 `run.v2.json` 的 `driver`：那里是 `type: string` 不枚举，
-     * 身份校验交给代码按注册表做，并明写「此处不枚举」。同一件事两套处理。
-     *
-     * **本步不改**：那是契约变更，不在第 5 步的落点表里。这条断言把边界锁成可见事实——
-     * 等 EV-66 修好，它会当场红，提醒改的人把本用例升级成「补齐后应当通过」。
-     * 本用例是 T-11 第一次真跑时抓到它的；换成源码扫描永远碰不到这一格。
+     * 反向的变异验证在别处：把 `role` 改回 const 会让本格当场红，
+     * 删掉 `gate.ts` 的 role↔driver 比对会让上一格与 `gate.test.ts` 的 N-2 同时红。
      */
-    assert.notEqual(after.code, EXIT.OK, 'EV-66 若已修复，请把本断言改成期望通过');
-    assert.match(
-      after.stdout + after.stderr, /bad_front_matter|role/,
-      '预期失败在 disposition schema 的 role 常量上；换成别的失败说明边界变了，要重新核',
+    assert.equal(
+      after.code, EXIT.OK,
+      '非缺省 Driver 诚实写出的裁决件仍然过不了闸门——EV-66 的全部目的就是这一格。\n' +
+        `  实际输出：${after.stdout + after.stderr}`,
     );
   },
 );

@@ -1,0 +1,1097 @@
+# trivium changes.diff
+# run_id: 20260919T045154Z
+# base: HEAD
+# head: 368605803c5dcc3129f4c870541115e7e641415e
+# files: 21
+#   AGENTS.md
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/08_project/BACKLOG.md
+#   skills/dual-critic/schema/disposition.v1.json
+#   skills/dual-critic/templates/README.md
+#   skills/dual-critic/templates/disposition.md.template
+#   skills/dual-critic/templates/response.md.template
+#   skills/dual-review-bug/SKILL.md
+#   skills/dual-review-code/SKILL.md
+#   skills/dual-review-plan/SKILL.md
+#   skills/dual-run/SKILL.md
+#   src/trivium/schemas.ts
+#   src/trivium/types.ts
+#   test/contract/disposition-role-assets.test.ts
+#   test/integration/gate-loop.test.ts
+#   test/unit/config-schema.test.ts
+#   test/unit/gate.test.ts
+#   test/unit/promise-landing.test.ts
+#   test/unit/registry-parity.test.ts
+#   test/unit/run-meta.test.ts
+diff --git a/AGENTS.md b/AGENTS.md
+index e255e5e..f201853 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -76,10 +76,26 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
+     「有哪几家、各叫什么、前缀归谁」的唯一来源是 `agents/registry.ts`（纪律 7）。
+     schema 里抄第二份，新增一家时改一漏二不会报错，症状要到运行期才现形。
+     身份一律走**两段式**：ajv 校形状 → 注册表校身份
+-    （`schemas.ts` 的 `checkAgentIdentities` / `checkConfigAgents`、
++    （`schemas.ts` 的 `checkAgentIdentities` / `checkConfigAgents` / `checkDispositionRole`、
+     `parse.ts` 的 `checkReviewIntegrity`）。
+     唯一的例外是**形状判别式** `vendor: {const: …}`——可辨识联合靠它工作，必须留着。
+ 
++    > **`disposition.v1` 的 `role` 是这条纪律的第五次现形（EV-66，M9 第 6 步前置）。**
++    > 它原本写作 `{"const":"claude"}`，即在 schema 里抄了一份 Agent id。
++    > 症状不是「新增一家时漏改」那么温和：M9 第 5 步放开 `--driver` 之后，
++    > **非缺省 Driver 写不出诚实的裁决件**——谎报 `role: claude` 会被闸门的 role↔driver
++    > 比对判红，诚实写自己的 id 过不了 schema，于是闸门闭环一次都跑不完。
++    > 现已放宽为 `type: string` + `checkDispositionRole` 按注册表校验。
++    > **两段式在这里取「追加」而非「短路」形态**（同 `validateConfig`）：
++    > 一份形状与身份同时错的件，短路形态下只报得出形状那一半。
++    >
++    > **两段式不负责「当轮」语义。** `checkDispositionRole` 只判「声明的作者是不是
++    > 已登记 Agent」；「声明的作者是不是**当轮** Driver」由 `gate.ts` 按 run 元数据比对——
++    > 只有那里才有「当轮」这个概念。放宽 `role` 之后，那条比对是作者身份**唯一**的判据，
++    > 独立单测见 `gate.test.ts` 的 N-2 三格。
++    >
++    > ──────────
++    >
+     > 这条纪律**换过写法**。原文是「schema 的枚举与前缀集必须与注册表 parity，
+     > 新增机读契约时对账要跟着建」——那是要求人记得同步两份事实源，而它守不住：
+     > 同一形状已经漏过四次（白名单过期条目 → `run.v2` → `config.v2` → `review.v1`），
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index be3034b..6ba7df7 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.28
++> - **当前版本**：v1.3.29
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -984,7 +984,7 @@ Driver 的三类裁决件（计划修订 `-revised`、代码应答 `-response`
+ schema: trivium.disposition.v1
+ topic: 登录重构
+ stage: plan
+-role: claude            # = 当轮 Driver 的后缀。【待实施 · M10】起 enum 扩为四值
++role: claude            # = 当轮 Driver 的 Agent id，与文件名后缀同指一人（M9 第 6 步起可变，示例仍用缺省 Driver）
+ kind: revised            # revised | response
+ run_id: 20260910T142310Z
+ addresses:               # 本件应答的审查文档（当前恒两份；【待实施 · M7b】起 1～3 份，随入选审核者数）
+@@ -993,6 +993,23 @@ addresses:               # 本件应答的审查文档（当前恒两份；【
+ ---
+ ```
+ 
++> **`role` 的取值契约（M9 第 6 步前置，EV-66 结案）**
++>
++> `role` 是**当轮 Driver 的 Agent id**，schema 里 `{"type":"string","minLength":1}` **不枚举**，
++> 「是否为已登记 Agent」由代码层按注册表校验（`validateDispositionFrontMatter`），
++> 与 `run.v2` 的 `driver` 同源同口径。
++>
++> **为什么不是「enum 四值」**（演进设计 §4 表第 9 行与 §6.2 表的原口径）：
++> 那等于在 schema 里再抄一份 Agent id，与 §16.2 纪律 7「id 的唯一来源是注册表」相抵；
++> 且第五家登记时必漏改——**而漏改的症状就是 EV-66 本身**（非缺省 Driver 写不出诚实的裁决件）。
++> 演进设计自 v1.0.0 冻结正文，故该口径的修正只落本文，**以本文为准**，
++> 与 7.6「五件套 → 七件」、3.6 Codex 事实表同一机制。
++>
++> 作者身份由**两处共同**钉住，缺一不可：文件名后缀（闸门按当轮 Driver 定位这份件）
++> 与 front-matter 的 `role`（闸门再比对一次）。两者不一致即 `bad_front_matter`——
++> 那份留痕的作者身份自相矛盾。注意 schema 的 `const` 从来不证明作者是谁：
++> 放宽前它只是**逼非缺省 Driver 谎报**，放宽后「声明的作者 == 当轮 Driver」这条性质完整保留。
++
+ 正文必须包含一张裁决表（列名固定，供解析）：
+ 
+ | 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 落点 |
+@@ -3128,6 +3145,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.29** | 2026-09-19 | **M9 第 6 步前置：裁决件 `role` 契约放宽（EV-66 结案，计划双审 14 条：接受 13、驳回 0、暂缓 1）。** 留痕见 `.reviews/M9-裁决件角色契约放宽/plan/`。**一、契约本身**：`disposition.v1.json` 的 `role` 由 `{"const":"claude"}` 改 `{"type":"string","minLength":1}`，身份校验落到代码层（`validateDispositionFrontMatter` 两段式 + `checkDispositionRole`）。**修正演进设计 §4 表第 9 行与 §6.2 表的「enum 四值」口径**——enum 等于在 schema 里抄第二份 Agent id，与纪律 7 相抵，且第五家登记时必漏改；**而漏改的症状正是 EV-66 本身**。演进设计自 v1.0.0 冻结正文，修正只落本文 6.6 引文块，与 7.6「五件套 → 七件」同一机制。**二、这一步是 M9 第 6 步验收的必要（不是充分）前置**：EV-66 只解除三条阻碍中的 schema 这一条；另两条——Hook 当轮保护集烙死缺省 Driver（`hasCriticRoleSuffix` 不收 `driver`，非缺省 Driver 写自己的 `-<id>.md` 会被判伪造件，而同轮 claude 作为审核者的 `-claude.md` 反而不受保护）、四家入口资产尚未落地——**未解除前验收同样跑不完**，已登记 BACKLOG 并修正 EV-55 的论域记载（原文只覆盖跨时间面，当轮面无人跟）。**三、两处「计划照做就会当场打红自家验收标准」的遗漏，由双审三侧独立命中**：①`registry-parity` 给 `properties.role.const` 立的具名豁免，配「没被用到的豁免就是空头支票」的守卫——删 const 即红，正确处置是删条目而非扩豁免面；`types.ts` 的 `Disposition.role: 'claude'` 与其字面白名单条目同源（理由「Driver 任意化排在 M10」在本步之后即成失实留痕，已改写为探针键）。②计划 §3.2 声明「与 `validateRunMeta` 逐字同构」（**短路**形态）而 §3.4 的负例保留 `addresses: []`，ajv 必败 ⇒ 身份校验不可达 ⇒ 新断言红在「校验器没跑到」。**改取 `validateConfig` 的追加形态**（ajv 失败也跑身份检查，与该函数 GLM-04 那次同源），并把负例按「一条只测一件事」拆开。**四、资产面第一次有机器判据**（`test/contract/disposition-role-assets.test.ts`）：`skills/` 下指挥产出裁决件的祈使句不得写死角色名。判据按四维写——论域 glob 自动扩展（不用人工清单：计划那份「实测 6 处」的清单实测是 9 文件 17 行）、字面从 `DEFAULT_DRIVER` 派生（否则扫描器自己成第二事实源）、命中下限、正向 + 变异自测。**如实标注边界**：只证「旧字面不复发」，证不到「新指引语义正确」，那一格只能靠第 6 步实跑。同批改掉 `promise-landing.test.ts` 的假证明——它靠字面 `-response-claude.md` 找裁决件且明写不断言命中数，是**本步之后第一个会静默失效**的既有判据，改为 `parseArtifactName` 解析并补论域下限。**五、T-11 第 3 格由「期望失败」翻为「期望通过」**：非缺省 Driver 的闸门闭环第一次真正走通；前两格一字未动（定位不到 / 谎报判红），正说明放宽没顺手松掉别的。全量 1459 tests / 1457 pass / 0 fail / 2 skip（跳过数未增加；计划原稿把 HEAD 基线的 **tests 总数** 1449 误记为「通过数」，实际 HEAD 为 1449 tests = 1447 pass + 2 skip）。 |
+ | v1.0.0 | 2026-09-10 | 首版。依据 PRD v1.3.0、5 份参考方案与 2026-09-10 联网调研，确定分层架构、组件划分、工件契约、四条命令流程、隔离与只读机制、模型路由、异常矩阵、追溯矩阵与实施路线。 |
+ | v1.1.0 | 2026-09-10 | 按审核意见 RV-01～RV-26 修订（第 22 章逐条应答）：AD-03 改为 `review --start/--wait` 分段协议并新增 7.5、R12；AD-05/10.2 把 `in-place` 规格化为完整备选并立 ADR-001；3.5 新增 `home_isolation`、`isolation.cost` 探针，11.2/11.3 配置隔离改由探针决定；12.3 缓存键加 `brief_hash` 且默认关闭；8.4 闸门写锁限同会话 + TTL，新增 `/dual-abandon`；5.3/18.2 补 `.gitignore` 白名单；7.4 改用 `.trivium/bin/trivium`；3.1/8.5 修正 `MultiEdit`、Stop 阻断输出契约、8 次硬上限，新增 AD-13（commands vs skills）；6.6/8.6 裁决词对齐 FR-14，空洞理由与共同 blocker 默认 warning，新增 parse_fallback 侧规则；6.1 保留后缀；14.1 只执行显式配置；8.1 认证缓存；12.6 主题锁；6.4 简化为路径判定；AD-12 下限 3.9；术语「覆盖三档 / 路由四级」统一；18.1 新增 4 项待拍板；18.2 补 PRD 回填项。 |
+ | v1.2.0 | 2026-09-11 | 按项目负责人评审意见 UR-01～UR-06 修订（第 23 章逐条应答）：**就地审查为唯一隔离模式**（AD-05、ADR-001 Accepted；删除 `mirror`、`link_globs`、`isolation.cost`、`_review/` 目录；运行目录移至项目外 `~/.trivium/runs/`；10.1 改为「延迟落盘 + 历史产出三层屏蔽 + 只读指纹」；9.2 改为快照与漂移检测算法；10.3 文件系统层改为无、事后核验加轨迹写事件；3.5 新增 `path_deny`、`scratch_paths` 探针，`home_isolation` 降为按需）；**结合全项目评审加固**（9.4 新增必读清单段、7.1 新增 `--context`、6.5 新增 `consulted`、11.4 新增 `project_reads` 下限与交叉核对、R15）；**实现语言改为 Node.js + TypeScript 单文件打包**（AD-12、5.2、3.5 `node` 探针、17.1 `node:test`）；**命令载体改为用户级 skills、脚本随核心 skill 分发**（AD-13、3.1 skills 事实、5.2/5.3 目录、7.4 SKILL.md、8.5 skill hooks 说明、16.3 交付物）；8.5 `running` 期间 Driver 禁写；12.1 新增漂移行；13.1 新增 `runtime`、`min_project_reads`、`on_drift*`、`sensitive_globs`；15.1/15.3 追溯更新；18.1 #1/#9 已拍板、新增 #12/#13；18.2 删 PRD FR-07 回填项；R10/R13/R14 改写。 |
+@@ -3278,7 +3296,7 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
+ | **7.6 通用性验证（桩 Agent 夹具）** | A | 第零步（规格）/ **M7b 第 6 步**（实现） | ✅ **已并入 v1.3.6**，并**修正演进设计的口径**：演进设计 §7.6 / §225 / AC-N5 写的是「**五件套**」，实测为**七件**（补模型路由与配置形状）。演进设计自 v1.0.0 冻结正文，故修正只落本文 5.1.1 与 PRD v1.4.4——**以本文为准**，这正是冻结 + 台账机制要处理的情形 | **5.1.1**；`test/integration/stub-agent-kit.test.ts`、`test/fixtures/stub-agent-kit/` |
+ | 6.2 角色枚举 | A | 第零步 | ✅ 已并入 v1.3.0（**拆两级标记**） | 6.2 |
+ | 6.5 意见前缀 | A | 第零步 | ✅ 已并入 v1.3.0（**拆两级标记**） | 6.5 |
+-| 6.6 role 与 addresses | A | 第零步 | ✅ 已并入 v1.3.0 | 6.6 |
++| 6.6 role 与 addresses | A（规格）/ **B-契约**（role 实现） | 第零步 / **M9 第 6 步前置** | ✅ 规格已并入 v1.3.0；**`role` 契约 ✅ 已落地（EV-66，v1.3.29）**，并**修正演进设计 §4 表第 9 行与 §6.2 表的口径**：不取「enum 四值」而取 `string` + 代码层注册表校验（理由见 6.6 引文块：enum 等于在 schema 里抄第二份 id，与纪律 7 相抵且第五家登记必漏改）。`addresses` 基数 1～3 已随 M7b `--critics` 落地 | **6.6** 引文块；`schema/disposition.v1.json`、`schemas.ts` 的 `validateDispositionFrontMatter` + `checkDispositionRole`、`gate.ts` 的 role↔driver 比对；`test/contract/disposition-role-assets.test.ts` |
+ | 6.7 → run.v2 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0；**实现 ✅ 已落地（M7b 第 3 步，2026-09-14）** | **6.7.1**（并排追加，v1 基线保留）；`schema/run.v2.json`、`meta.ts` 写侧与 `migrateRunMetaV1`、`archive.ts` 的 `runManifestProblem` |
+ | 7.1 / 7.4 命令旗标与四家入口 | **B-契约** | **M10 / M7b** | ✅ `--critics` 已并入（M7b 第 5 步）；`--tier-*` / `--effort-*` / 四家入口 ⏳ 待 M10 / M11 | 7.1 引言块 |
+ | 8.4 / 8.5 Hook `--agent` 与多目标 | **B-契约** | **M10** | ⏳ 未并入（指针占位 + 护栏分级表已并入） | 8.5 引言块 |
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index 240d2dd..6fc0385 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -13,8 +13,12 @@
+ > 缺省取 `review.default_critics`，校验不过退 64 且零工件；`--only` 是它的单元素旧写法，
+ > **两者同时给即拒**。选 1 侧记 `review_mode: full`、不写 `degraded_reason`——
+ > 配置意图不是降级。规则细则见设计 7.1。
+-> 其余多 Agent 演进带来的契约变更——意见编号前缀扩为四值、裁决件 `role` 扩为四值与
+-> `addresses` 基数 1～3、`--tier-*` / `--effort-*` 等旗标——**均尚未生效**，随各里程碑并入本文。
++> **裁决件 `role` 自 M9 第 6 步前置（EV-66）起放宽**：取值是**当轮 Driver 的 Agent id**，
++> schema 不枚举（`type: string`），「是否已登记」由代码层按注册表校验——与 `run.v2` 的
++> `driver` 同口径。**不是「enum 四值」**：那等于在 schema 里抄第二份 id，第五家登记时必漏改。
++> 文件名后缀与 `role` 必须同指一人，闸门两头都比对，不一致即 `bad_front_matter`。
++> 其余多 Agent 演进带来的契约变更——意见编号前缀扩为四值、`addresses` 基数 1～3、
++> `--tier-*` / `--effort-*` 等旗标——**均尚未生效**，随各里程碑并入本文。
+ > 注意 `--critics` 当前实际可选的只有两家：第三家的审核者能力随 M8 / M9 接入。
+ > **按本文实现的客户端不会被演进破坏**：读侧双读、旧形态长期兼容。
+ 
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 860ebbf..fc48d43 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -149,7 +149,7 @@
+ | EV-52 | todo | **两条校验分支在四家全启用后不可达（原写三条，代码双审改准）。** M9 第 4 步把 claude 的 `criticEnabled` 与 anthropic 形状一并补齐后，两格变成空集：①`checkConfigAgents` 的「已登记但形状未定义」（判据读**注册表登记的 vendor**，不是配置里写的那个——实跑确认过，拿 `vendor: 'no-such-vendor'` 去试会走到再下一条「vendor 与注册表不符」）；②`topic-args.ts` 的「给非审核者指定 `--model-<id>`」。两条用例已改为 `skip` **并写明原因**（不是删，也不是提前 `return` 让它显示为通过）。**③原列的第三条是误判、已修正**（代码双审 AGY-01 ≡ GLM-01 ≡ CODEX-01 三侧独立收敛）：`default_critics` 那条的判据是 `!CRITIC_AGENT_IDS.includes(id)`，它同时承担**两类**输入，四家全启用后消失的只是「已登记但未启用」这一类，**分支对未登记 id 照旧可达**（`config.v2.json` 的 `default_critics.items` 无枚举，ajv 不会先拒 `'nobody'`），而当时全仓没有第二条覆盖它——**一条仍可达分支的唯一覆盖被一并放掉了**。现已按「规则」而非「那一种输入」拆成两条用例：未登记 id 那条今天就跑（变异验证：删掉 `schemas.ts` 那条校验即当场红），「已登记但未启用」那条保留 skip 且消息按子情形措辞。**这一点在计划双审里被逐字警告过**（CODEX-02b），裁决接受了、注释也写对了，而判据与 skip 消息按错的那版落了地——**注释写对了不算改对**。**为什么不开注入口**：那三个函数都只收 data、注册表是模块级绑定，要造负例就得给校验层加参数——那是生产改动，要连它自己的双审成本一起算，超出本步「夹具收口」的范围（计划双审 AGY-02 ≡ GLM-01 ≡ CODEX-02 三侧同判）。对照：`resolveCriticSelection` 本步**已开** `descriptors` 注入口（仿 `deriveDefaultCritics` 先例），所以「登记但未启用」那条在 `critics.test.ts` 里有真覆盖——三条 skip 的是**另外三个**函数。**触发条件**：注册表登记第五家而其 `criticEnabled` 或 vendor 形状未跟上时，三条各自自动恢复执行（skip 判据是运行期算的）。**修法方向**：给三处校验各开一个与 `deriveDefaultCritics` 同构的可选入参。 | `src/trivium/schemas.ts` 的 `checkConfigAgents`、`src/trivium/topic-args.ts` 的模型旗标校验段、三处对应用例 |
+ | EV-53 | **done**（2026-09-19，M9 第 5 步 r2 补齐） | **落地记要（第 2 轮订正）**：第一版只收了 `topic resolve` **一个入口**，而 `review --start`（真正烧配额那条）与 `preflight` 原样留着——`collectModelOverrides` 的论域是 `CRITICS`（四家全在内），下游 `checkModelSlugs` 只遍历入选侧，于是 `--model-<本轮当不了审核者的一家>` 在那两条路上**仍是解析成功后被悄悄丢弃**，正是本条原文的症状。技能侧因先走 `topic resolve` 被挡住，暴露面是手工 CLI，但当时那句「已收口」并不成立（第 2 轮代码双审 CODEX-05）。订正做法：判定抽成 `critics.ts` 的 `assertModelOverrideKeys`，**三个入口共用一份**（`topic resolve` / `review --start` / `preflight`），文案统一走 `legalList`（「当前可用」），`topic-args.ts` 自拼的那句「本轮可用」随之消失——同一论域两层措辞分叉曾让一条集成负例的锚点落空（见 EV-53 同批的 GLM-03 落点）。残余缺口见 **EV-67**。**第一版落地记要**：判据由 `CRITICS.includes(id)`（启用集合）改为 `selectableCritics(cfg, driver)`（本轮实际能入选谁），判据与文案**共用同一份派生**——`legalList` 也改调它，两套论域合一。`topic-args.ts` 对 `CRITICS` 的 import 随之删除（全集论域在该文件已无消费方，这是收口到位的信号）。测试侧：`MODEL_FLAG_PENDING` 的 skip 判据同步改写，该用例**由 skip 恢复执行**（全仓跳过数 3→2），并新增两条互为镜像的断言——负例「报错文案里不得出现当轮 Driver」（EV-53 ③ 的口径分叉）、正例「换掉 Driver 之后原 Driver 那一家的模型覆盖就合法」（钉住「论域跟着当轮 Driver 变」，防止拒绝分支写过宽）。原始条目如下 —— **`--model-claude` 能解析成功，而 claude 永远不会入选——「解析成功后被悄悄丢弃」在 Driver 这一格真实存在。** `topic-args.ts` 的 `--model-<id>` 白名单判据是 `CRITICS.includes(id)`，M9 第 4 步翻开关后 claude 进了这个集合，于是 `--model-claude X` 合法通过；但 `critics.ts` 的「当轮 Driver 不得入选」恒拒 claude，那个模型覆盖一路走到被丢弃，**留痕里看不出用户曾经指定过**。这正是该用例当初要防的形态（与 `--base` 漏传同族），只是触发它的从「尚未启用的第三家」换成了「已启用但当不了本轮审核者的 Driver」。**本步不修**：正确判据是「本轮**实际**能入选谁」，而那要等 `--driver` 落地（M9 第 5 步）才成为逐次运行的事实；现在按 `CRITICS` 减缺省 Driver 硬编码一版，第 5 步就要推翻。**触发条件：M9 第 5 步 `--driver` 全链路落地时**，与白名单判据一并收口。来源：计划双审 CODEX-02 的连带发现。**代码双审补记三条**（AGY-03 ≡ CODEX-09 + GLM-04）：①该分支**当前恒假、已成死代码**（`ALL_AGENT_IDS` 与 `CRITICS` 元素相同），本步**不删**——正确判据要等 `--driver`，现在删掉等于放弃一条马上要用的校验；②正例用例的采样已从 `CRITICS[0]`（= claude，永不能入选）改为 `SELECTABLE[0]`，否则它锁定的「正常路径」其实是一次必然被丢弃的覆盖，在测试层反向加固本缺口；③**恢复时的口径分叉**：该处报错文案用 `CRITICS.join('、')`（含 Driver），与 `legalList`（减 Driver）是两套派生，恢复执行时子断言会钉死一条「指引用户去选 claude」的文案，而用户照着写 `--critics claude` 就撞 Driver 拒绝——正是 `critics.ts` 立规要防的「第一个错误把用户引向第二个错误」。第 5 步收口时两处论域要对齐。 | `src/trivium/topic-args.ts` 的模型旗标校验段、`src/trivium/critics.ts` 的 Driver 检查 |
+ | EV-54 | **done**（2026-09-19，M9 第 5 步） | **落地记要**：`review.ts` 两个 `heterogeneous` 写点（渲染入参与运行元数据）旁补 `overrideReasonFor` 传值，**两处共用同一个派生函数**——各写一份文案会当场踩破「两处同值」这条判据自身。取值只有两种成因：用户经 `--model-<id>` 显式指定 claude 系模型、或档位默认落在 claude 系。**只补写入方，不给 schema 加 `if/then`**（加了历史留痕集体读不回，与 `driver_enabled` 同一条口径）。判据：`driver-wiring.test.ts` 扫两个写点的实参块必须含 `overrideReason`**且**取值来自 `overrideReasonFor(`。原始条目如下 —— **`override_reason` 无写入方，`heterogeneous: false` 的机器判据也只是 description。** `isHeterogeneous` 对 Claude 系模型返回 false（`adapters/base.ts`，只看模型串），而 `run.v2.json` 的 description 写着「false 时必须有 `override_reason`（AC-18）」——**那句没有任何 `if/then` 机器判据**，且 `override_reason` 全仓只有 `render.ts` 三处（类型声明、条件渲染、人读 flag），`review.ts` 两个 `heterogeneous` 写点**都不传它**。**口径要分两层**（计划双审 GLM-06）：PRD AC-18 只背书「覆盖后的模型可见」，而 `model_effective` 本就落 run.json 与 front-matter，**那一句已经成立**；「false ⇒ 必须有 `override_reason`」是 `run.v2` 自己加强的契约，不是需求原文——权衡时别把 schema 散文的约束力当成需求约束力。**M9 第 4 步刻意不做**（裁定由「本步补写入方」改为「推后」，计划双审 CODEX-04）：本步 claude 一次也选不上（`--critics claude` 必退 64），补的写入方**没有任何路径能端到端验证**，只能验到「传参接通」。**缺口今天已存在，且与翻开关无关**：`--model-gemini claude-*` 这条路今天就能落出同一个自相矛盾的 run.json。**触发条件：M9 第 5/6 步**，与 claude 真能入选的那一刻对齐。 | `src/trivium/review.ts` 的两个 heterogeneous 写点、`src/trivium/render.ts`、`skills/dual-critic/schema/run.v2.json` 的 `heterogeneous` |
+-| EV-55 | todo | **提交锚的角色后缀判据是跨时间的，却绑在当轮 Driver 上。** M9 第 4 步把 Hook 的保护集从 `CRITICS`（启用集合）改成 `criticRoleSuffixes()`（全集减当轮 Driver）——**必须改**，否则翻开关那一刻 Driver 自己的产出后缀进保护集，它写不了自己的裁决件，整条流水线锁死（实测：归档内写入由退 0 变退 2）。但 `hasCriticRoleSuffix` 有**两个判据含义不同的消费者**：`isForgedRoleFile` 是「形态 + 位置、当轮语境」，改动对它成立；`immutableChangeReason`（提交锚）是**纯 basename、跨时间**判定，那里没有「当轮 Driver」这个概念。现在等于把一个跨时间的保护面绑在一个当轮的值上。**M9 代价为零**（只有一个 Driver，历史与当轮同值），**M10 第一次换 Driver 就会显形**：历史工件会集体变成「可改」，或反过来新 Driver 的原稿被判伪造。**纯词法后缀检查区分不了「Driver 自身原稿」与「同名历史审查件」，M9 不假装能分。** **修法方向**（计划双审 CODEX-04 提出）：提交锚改按 run 元数据的 artifacts 登记判不可变，而不是按文件名形态——那是安全关键面的重写。**触发条件：M10 第一次换 Driver 之前必须先落它。** **补记（代码双审 CODEX-03）：实质消费是两处派生、三处语义，本条原只登记了两处。** 漏掉的是 Bash 侧 `ROLE_SUFFIX_ANYWHERE` → `bashTargetsProtected`：它无条件按命令文本里的字面后缀拦，不看位置、不看是不是本轮的文件、不受闸门与 TTL 限制，**同样属跨时间面**（另一侧审查员判它是「当轮语义」，核过判错）。**关键：它与提交锚不同源，上面那条修法方向覆盖不到它**——Bash 侧拿不到 run 上下文，按 artifacts 登记判不可变在那里无从实施，需要单独决定「历史后缀在文本层面是否一律保护、当轮 Driver 的文件如何豁免」。M10 换 Driver 后若只修提交锚，新 Driver 后缀的历史审查件会同时从两处掉出去，**原地改**（非删除）这类已提交工件不再被任何一处拦下（删除仍被 git 锚兜住）。 | `src/trivium/hooks.ts` 的 `criticRoleSuffixes` / `hasCriticRoleSuffix` / `immutableChangeReason` / `ROLE_SUFFIX_ANYWHERE` 与 `bashTargetsProtected` |
++| EV-55 | todo | **提交锚的角色后缀判据是跨时间的，却绑在当轮 Driver 上。** M9 第 4 步把 Hook 的保护集从 `CRITICS`（启用集合）改成 `criticRoleSuffixes()`（全集减当轮 Driver）——**必须改**，否则翻开关那一刻 Driver 自己的产出后缀进保护集，它写不了自己的裁决件，整条流水线锁死（实测：归档内写入由退 0 变退 2）。但 `hasCriticRoleSuffix` 有**两个判据含义不同的消费者**：`isForgedRoleFile` 是「形态 + 位置、当轮语境」，改动对它成立；`immutableChangeReason`（提交锚）是**纯 basename、跨时间**判定，那里没有「当轮 Driver」这个概念。现在等于把一个跨时间的保护面绑在一个当轮的值上。**M9 代价为零**（只有一个 Driver，历史与当轮同值），**M10 第一次换 Driver 就会显形**：历史工件会集体变成「可改」，或反过来新 Driver 的原稿被判伪造。**纯词法后缀检查区分不了「Driver 自身原稿」与「同名历史审查件」，M9 不假装能分。** **修法方向**（计划双审 CODEX-04 提出）：提交锚改按 run 元数据的 artifacts 登记判不可变，而不是按文件名形态——那是安全关键面的重写。**触发条件：M10 第一次换 Driver 之前必须先落它。** **论域修正（2026-09-19，EV-66 计划双审 CODEX-F01 第 1 条）**：本条原文写「`isForgedRoleFile` 是当轮语境，改动对它成立」，这句话让读的人以为**当轮面无需处理**——实况是当轮面同样有缺口，只是形态不同：`hasCriticRoleSuffix` **根本不收 `driver` 参数**，保护集在模块加载期就烙死成缺省 Driver 的补集，于是非缺省 Driver 轮次里 `isForgedRoleFile` 算的是**错的那个当轮**。该缺口已单独登记 **EV-68**，**触发时点是 M9 第 6 步验收、不是 M10**（`hooks.ts` 的注释写的也是 M10，那句记载随 EV-68 一并改）。本条自身的论域维持不变：提交锚与 Bash 侧两处**跨时间**面。 **补记（代码双审 CODEX-03）：实质消费是两处派生、三处语义，本条原只登记了两处。** 漏掉的是 Bash 侧 `ROLE_SUFFIX_ANYWHERE` → `bashTargetsProtected`：它无条件按命令文本里的字面后缀拦，不看位置、不看是不是本轮的文件、不受闸门与 TTL 限制，**同样属跨时间面**（另一侧审查员判它是「当轮语义」，核过判错）。**关键：它与提交锚不同源，上面那条修法方向覆盖不到它**——Bash 侧拿不到 run 上下文，按 artifacts 登记判不可变在那里无从实施，需要单独决定「历史后缀在文本层面是否一律保护、当轮 Driver 的文件如何豁免」。M10 换 Driver 后若只修提交锚，新 Driver 后缀的历史审查件会同时从两处掉出去，**原地改**（非删除）这类已提交工件不再被任何一处拦下（删除仍被 git 锚兜住）。 | `src/trivium/hooks.ts` 的 `criticRoleSuffixes` / `hasCriticRoleSuffix` / `immutableChangeReason` / `ROLE_SUFFIX_ANYWHERE` 与 `bashTargetsProtected` |
+ | EV-56 | todo | **审查员在 JSON 前多写一句引言就会整份降级，7 条意见塌缩成 2 个兜底编号。** M9 第 4 步计划双审，codex 侧输出以一句自然语言引言开头、随后是完整且合法的 ```json 块，编排器判 `parse_fallback: true`，7 条编号意见（含 2 条 major，其中一条推翻了计划的中心事实）被切成两个不可分单元：那句引言一个、整个 JSON 块一个。**代价不是「少了结构化字段」**：`gate --check` 按兜底编号校验，裁决者若不逐条读原文，那 2 条 major 会整体失效——本轮是人工拆开逐条裁决才没丢。与 EV-10 同族但**成因不同**（EV-10 是结论 JSON 多带 front-matter 字段撞 `additionalProperties: false`，这次是 JSON 块**之前**有自然语言前缀）。**修法方向**：解析器容忍代码围栏前的自然语言前缀（按围栏定位而不是要求整份即 JSON）；**需先确认这不会放宽「必须产出结构化结论」的判据**——容忍前缀与容忍「没有 JSON」是两回事。 | 编排器的结论解析层、本主题 plan 阶段的降级留痕件 |
+ | EV-57 | todo | **M9 第 4 步的完整纪律 6 回溯待第 7 步，本条是那条偏离的显式登记。** 本步改了对外行为（`criticEnabled` 翻真、`agents.claude` 可配、Hook 保护集改判据），而步骤表把「回溯与留痕」排在**第 7 步**，计划 §1.2 已列为本步范围外。代码双审 CODEX-07 指出设计文档未同步，核实成立——**处置取它给的第二条出路并加严**：本步**只**回补会当场失实的两处现状断言（文档抬头的「`criticEnabled` 仍为 false，claude 尚未启用为审核者」、§16.1 M9 行的状态位与第 4 步叙述），理由是本仓纪律「归档件里的失实断言先改再提交」——那两句在合入的一刻就在**唯一实现依据**里变成假的，不能等。**仍欠第 7 步的**：§21 版本台账行、§24 演进并入台账、PRD 侧 AC 状态、`doc/05_testing` 的实测报告、以及纪律 6 清单的其余项。**触发条件：M9 第 7 步开工时**——届时对照本条逐项补齐，不要只看设计文档已经改过就以为回溯做完了（本步只改了两处，是刻意的最小回补）。 | `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md` §21 / §24、`doc/01_requirements/PRD_driver_dual_critic.md`、`doc/05_testing/` |
+ | EV-58 | **已关闭**（2026-09-19，M9 第 5 步） | **闸门区的 driver 位空着，取值链存在「先有鸡还是先有蛋」。** 登记时的形态：`cli.ts` 的 `resolveRerunIndex` 与三处 `inferLatestRunId` 都按缺省 Driver 算，而要算对得先知道 driver、driver 又在留痕里。计划 r2 一度想用「先按缺省猜一次、读到元数据后复算」解，被代码前的计划双审判为**阻断**（AGY-01）：裁决件尚未写出时第一趟恒为 null，而那正是 `gate --check` 最常用的状态；glm 另构造出可触发的 2-循环。**关闭理由**：第 5 步改为 `latestRunMeta` 直读运行元数据（run_id 即文件名，`driver` 与 `rerun_index` 在 run.v2 里都必填），循环依赖**整体消失**，本条描述的那一格不再存在。`inferLatestRunId` 随之无生产消费方，标 `@deprecated` 待删（见 EV-64） | `src/trivium/cli.ts` `cmdGate`、`src/trivium/meta.ts` `latestRunMeta` |
+@@ -160,8 +160,10 @@
+ | EV-63 | todo | **`isReviewArtifact` 对「front-matter 被剥掉或改坏的审查件」判 false，按原稿放行。** M9 第 5 步把「候选是不是审查件」的判据换成文件自身 front-matter（`schema === trivium.review.v1`）。换底解决了主路径：登记反推靠的是**调用点清单**而非不变式（`roleIsAllowedForWriter` 本就允许 `writer === 'driver'` 产出角色工件，哪天 Driver 原稿也走 `writeArtifact`，登记判据就会把合法原稿判死）。**但这一格比登记判据弱**：登记反推对「被剥掉 front-matter 的真审查件」是可靠的（只是不完备——原稿与裁决件不在登记里），内容判据则会放行。**所以「扛得住明天」只对未损坏的留痕成立**，不要把它当成防伪造的防线。修法方向：主题内出现「后缀等于当轮 Driver、却读不出任何已知 schema」的文件时，在 `locateSubject` 出一条**可见告警**而不是静默当原稿。触发条件：下次往选原稿路径加判据时，或真实撞到一次被改坏的审查件。来源：M9 第 5 步计划双审 r2 CODEX-07 | `src/trivium/archive.ts` `isReviewArtifact`、`src/trivium/topic.ts` 与 `topic-args.ts` 的候选过滤 |
+ | EV-64 | todo | **`inferLatestRunId` 已无生产消费方，待删。** M9 第 5 步把闸门区三处调用全部换成 `latestRunMeta` 直读之后，该函数在 `src/` 下只剩定义（测试侧亦无引用）。**本步不删只标 `@deprecated`**：删除公开导出会扩大本步改动面，而本步已经是三处形状改动。**必须标注的理由**：它体现的正是那条有循环依赖的老路（要先知道 driver 才能跳过 Driver 的产出，而 driver 在留痕里），留一个不加说明的死函数等于给下一个人留一个陷阱——M9 第 5 步的阻断就是这么来的。触发条件：下次清理 `gate.ts`，或 M10 收口闸门区时一并删 | `src/trivium/gate.ts` `inferLatestRunId` |
+ | EV-65 | todo | **「谁算原稿」有两份实现，一致靠复制品维持、无对账。** `topic.ts` 的 `locateSubject` 与 `topic-args.ts` 的 `locateSubjectReadOnly` 各有一套候选过滤（`topic` 匹配 + `role === driver` + `kind === null`）、排序、审查件剔除循环、显式路径硬拒与那段三段式错误文案——代码审三侧逐行核过，**今天确实逐项一致**，但改一处另一处不会红（用例也分处两个文件）。本仓对「同一事实两份实现」的既有对策是 grep 级对账（`registry-parity`、`deny-matrix`），这两处没有。**本轮先加 parity 用例**（同一夹具分别过两个入口、断同一结果），**抽共用函数推后**：那会改动两处调用结构，属于要重新过一轮审查的改动面，放在收尾阶段做不划算。修法方向：把「候选过滤 + 剔审查件 + 取最新」连同显式路径的 `assertNotReviewArtifact` 一起抽进 `archive.ts`，让「谁算原稿」只有一个答案——与 `critics.ts` 的 `selectableCritics` 单点派生同构。触发条件：下次改这两个函数中的任意一个。来源：M9 第 5 步代码双审 CODEX-04 | `src/trivium/topic.ts` `locateSubject`、`src/trivium/topic-args.ts` `locateSubjectReadOnly` |
+-| EV-66 | todo | **裁决件 schema 把 `role` 钉死成 `claude`，非缺省 Driver 的裁决件三条路各自失败。** `skills/dual-critic/schema/disposition.v1.json` 的 `"role": { "const": "claude" }`。**第 2 轮订正了本条的描述（CODEX-04）**：原文记的是「非缺省 Driver 写不出合法裁决件」，实况是**写得出来，但必须是谎报的**——「这份件是谁写的」有两个来源（文件名后缀，闸门按它定位；front-matter 的 `role`，只过 schema 的 const），而 `checkAdjudication` 当时**没有**把两者对起来。于是「文件名 `-revised-codex.md` + `role: claude`」这份自相矛盾的件会通过闸门且无人发现——而那恰恰是照今天的资产面写出来的那一份（`disposition.md.template` 写死 `role: claude`，三份 SKILL.md 与 `templates/README.md` 仍写 `…-revised-claude.md`）。第 2 轮已补上 `role` 与 `driver` 的一致性比对（**不改契约**，缺省 Driver 下两者恒等、对存量留痕零影响），于是三条路现在**各自失败在说得清的地方**：①照资产写 → 定位不到，报 `missing_disposition`；②改名不改 role（谎报）→ 新判据当场判红；③诚实写 `role: <当轮 Driver>` → 卡在本条，`gate --check` 报 `bad_front_matter: role must be equal to constant`。非缺省 Driver 的闸门链路**仍然走不通**。**资产面同步清单**（修本条时要一起改，漏一处就会在验收时撞上）：`schema/disposition.v1.json`、`templates/disposition.md.template`、`templates/response.md.template`、`templates/README.md`、`skills/dual-review-{plan,code,bug}/SKILL.md`。**与 run.v2 的处理不一致**：那里 `driver` 是 `type: string` 不枚举，并明写「取值是否为已登记 Agent 由代码层按注册表校验——此处不枚举」；`role` 这里却在 schema 层写死了一个 Agent id，与纪律 7（Agent id 的唯一来源是注册表）相抵。**修法方向**：`role` 改为 `type: string` + 代码层按注册表校验（与 `checkAgentIdentities` 校 `driver` 同款），而不是在 schema 里再抄一份 id。**本步不改**：契约变更不在第 5 步落点表里，且它会同时影响 `gate.ts` 的裁决件解析与三份 skill 的裁决件模板说明。**发现方式值得记**：这是 T-11（非缺省 Driver 的闸门闭环集成用例）**第一次真跑时**抓到的——代码双审三侧都坚持要补这条用例，而它替代方案（源码扫描）永远碰不到这一格。边界已锁成断言（`gate-loop.test.ts` 的 T-11 **第 3 格**；第 2 格锁的是「谎报件不得静默通过」），修好时会当场红。**触发条件：M9 第 6 步验收之前**——验收剧本要产出裁决件，届时必撞 | `skills/dual-critic/schema/disposition.v1.json` 的 `role`、`src/trivium/gate.ts` 的裁决件校验 |
++| EV-66 | **已关闭**（2026-09-19，M9 第 6 步前置） | **裁决件 schema 把 `role` 钉死成 `claude`，非缺省 Driver 的裁决件三条路各自失败。** `skills/dual-critic/schema/disposition.v1.json` 的 `"role": { "const": "claude" }`。**第 2 轮订正了本条的描述（CODEX-04）**：原文记的是「非缺省 Driver 写不出合法裁决件」，实况是**写得出来，但必须是谎报的**——「这份件是谁写的」有两个来源（文件名后缀，闸门按它定位；front-matter 的 `role`，只过 schema 的 const），而 `checkAdjudication` 当时**没有**把两者对起来。于是「文件名 `-revised-codex.md` + `role: claude`」这份自相矛盾的件会通过闸门且无人发现——而那恰恰是照今天的资产面写出来的那一份（`disposition.md.template` 写死 `role: claude`，三份 SKILL.md 与 `templates/README.md` 仍写 `…-revised-claude.md`）。第 2 轮已补上 `role` 与 `driver` 的一致性比对（**不改契约**，缺省 Driver 下两者恒等、对存量留痕零影响），于是三条路现在**各自失败在说得清的地方**：①照资产写 → 定位不到，报 `missing_disposition`；②改名不改 role（谎报）→ 新判据当场判红；③诚实写 `role: <当轮 Driver>` → 卡在本条，`gate --check` 报 `bad_front_matter: role must be equal to constant`。非缺省 Driver 的闸门链路**仍然走不通**。**资产面同步清单**（修本条时要一起改，漏一处就会在验收时撞上）：`schema/disposition.v1.json`、`templates/disposition.md.template`、`templates/response.md.template`、`templates/README.md`、`skills/dual-review-{plan,code,bug}/SKILL.md`。**与 run.v2 的处理不一致**：那里 `driver` 是 `type: string` 不枚举，并明写「取值是否为已登记 Agent 由代码层按注册表校验——此处不枚举」；`role` 这里却在 schema 层写死了一个 Agent id，与纪律 7（Agent id 的唯一来源是注册表）相抵。**修法方向**：`role` 改为 `type: string` + 代码层按注册表校验（与 `checkAgentIdentities` 校 `driver` 同款），而不是在 schema 里再抄一份 id。**本步不改**：契约变更不在第 5 步落点表里，且它会同时影响 `gate.ts` 的裁决件解析与三份 skill 的裁决件模板说明。**发现方式值得记**：这是 T-11（非缺省 Driver 的闸门闭环集成用例）**第一次真跑时**抓到的——代码双审三侧都坚持要补这条用例，而它替代方案（源码扫描）永远碰不到这一格。边界已锁成断言（`gate-loop.test.ts` 的 T-11 **第 3 格**；第 2 格锁的是「谎报件不得静默通过」），修好时会当场红。**触发条件：M9 第 6 步验收之前**——验收剧本要产出裁决件，届时必撞。 **关闭记录（2026-09-19，计划双审 14 条：接受 13 / 驳回 0 / 暂缓 1）**：`role` 改 `type: string` + `checkDispositionRole` 按注册表校验（两段式取**追加**形态，同 `validateConfig`——短路形态下形状错会盖住身份错）；T-11 第 3 格由「期望失败」翻为「期望通过」，**非缺省 Driver 的闸门闭环第一次真正走通**，前两格一字未动。 **本条登记的「资产面同步清单」实测不完备**：它列 7 个文件，实测 `skills/` 下角色名字面为 **9 个文件 17 行**（漏 `plan.md.template`、`rca.md.template`、`templates/README.md` 三行、`dual-run/SKILL.md:53`、`disposition.md.template:29`）——清单是计划从本条抄下去的，两边同漏。现已按判据重建并配机器判据 `test/contract/disposition-role-assets.test.ts`（论域 glob 自动扩展、字面从 `DEFAULT_DRIVER` 派生、命中下限、正向 + 变异自测），**资产面第一次有机器判据看着**。同批修掉 `promise-landing.test.ts` 的同形假证明（靠字面 `-response-claude.md` 找裁决件且不断言命中数，本步之后会第一个静默失效）。 **注意本条不等于「第 6 步验收跑得通」**：它只解除三条阻碍中的 schema 这一条，另两条见 EV-68 与入口资产（现状差距 #17）。 | `skills/dual-critic/schema/disposition.v1.json` 的 `role`、`src/trivium/gate.ts` 的裁决件校验 |
+ | EV-67 | todo | **「能入选但本轮没入选」的那一家，模型覆盖仍会被静默丢弃。** EV-53 的判据论域是 `selectableCritics`（本轮**能**入选谁），不是 `sides`（本轮**实际**入选了谁）。于是 `review --start --critics gemini --model-glm X` 这类写法仍然是解析成功 → `checkModelSlugs` 只遍历入选侧 → 覆盖被丢弃，留痕与告警都不留痕迹（与 `--base` 漏传同族）。**本步不收紧。理由在第 3 轮被三侧同时证伪，已据实改写（CODEX-02 ≡ AGY-03 ≡ GLM-01）**：原文写的是「收紧会与 `topic-args.test.ts` 那条『`--model-<side>` 不带 `--critics` 必须放行』的既有正例直接冲突」——**这句是错的**。实测 `SELECTABLE[0] = codex`，而 `--critics` 的缺省回落就是含 codex 的 `DEFAULT_CRITICS = [codex,gemini,glm]`，所以收紧到「已解析出的入选集合」之后那条正例**照样通过**；只有「无显式 `--critics` 即全拒」这种稻草人变体才会撞它，而那恰是本条第二条修法（回落时机提前）所规避的。另一条自辩「不带 `--critics` 时语义未定」同样不成立：三个入口（`topic resolve` / `review --start` / `preflight`）都在 `assertModelOverrideKeys` **之前**就调了 `resolveCriticSelection`，入选集在判定点手边——**推迟是设计选择，不是接线约束，也不是被测试挡住**。真正的代价是**行为变化**：一批今天静默生效的写法（用户显式 `--critics` 排除掉某家、却仍为它指定模型）会当场退 64，需要单独一轮验证。真正的开放问题也只剩这一个：**显式排除侧的模型覆盖该拒还是该警。****修法方向**：要么在 `sides` 解析完成之后补一条**告警**（不是拒绝）点名「这几个模型覆盖本轮没用上」，要么把 `--critics` 缺省回落的时机提前到白名单判定之前。触发条件：下次改选侧语义，或用户实际被这一格坑到时。来源：M9 第 5 步第 2 轮代码双审 CODEX-05 的复现清单（该条其余部分已随 EV-53 收口） | `src/trivium/cli.ts` `cmdReview`、`src/trivium/critics.ts` `assertModelOverrideKeys` |
++| EV-68 | todo | **Hook 的「当轮」保护集烙死缺省 Driver，两个方向都错。** `criticRoleSuffixes(driver = DEFAULT_DRIVER)` 的语义是「全集减当轮 Driver」，但唯一的消费者 `hasCriticRoleSuffix` **不收 `driver` 参数**（`ROLE_SUFFIX_ANYWHERE` 更是模块级 `const`，构造时就把正则固化了），于是保护集恒为 `{codex, gemini, glm}`，与当轮是谁无关。后果是**双向**的：①非缺省 Driver 写自己的 `-<id>.md` 原稿与 `-revised-<id>.md` 裁决件落在归档根内，会被 `isForgedRoleFile` 判成伪造件（退 2）——**它写不出自己的交卷文件**；②反过来，M9 第 4 步已把 claude 翻成审核者，它那一轮的 `-claude.md` **不在**保护集里，即「Driver 不得伪造审核者产出」这条对 claude 失守。**与 EV-55 的分工**：EV-55 管提交锚与 Bash 侧两处**跨时间**面（修法是按 run 元数据的 artifacts 登记判不可变），本条管**当轮**面（修法是让判据真的拿到当轮 driver：传参或改惰性求值）。两条都要做，且**修法不同源**。**触发时点是 M9 第 6 步验收，不是 M10**——`hooks.ts:113-121` 的注释与 EV-55 原文都写着 M10，那是 M9 第 5 步放开 `--driver` 之前的判断，已过期。**影响面带一个条件**：只在有 Hook 的会话（Claude Code）里成立；验收若让别家当 Driver 在自己的 CLI 会话里跑，Hook 不生效、撞不上这一格。**所以第 6 步开跑前必须先定「非缺省 Driver 以何种会话载体运行」并实测一次写事件**，否则这条阻碍是明是暗都说不清 | `src/trivium/hooks.ts` 的 `criticRoleSuffixes` / `hasCriticRoleSuffix` / `ROLE_SUFFIX_ANYWHERE`、`skills/dual-critic/hooks/hooks.json`（四条拦截命令都不带 driver 参数）、`src/trivium/init.ts` 的 `writeWrapper` |
++| EV-69 | todo | **`GateCheckInput.driver` 仍是可选参数，而它现在是作者身份契约的一半。** `gate.ts` 的 `const driver = input.driver ?? DEFAULT_DRIVER`。EV-66 之前 `driver` 只用来定位裁决件，漏传的症状是「找不到件」；EV-66 之后它还参与 `fm.role !== driver` 的作者身份比对，**漏传会静默退回「缺省 Driver 语义」**，而症状仍表现为 `missing_disposition`——排查方向会被带偏到「文件名不对」，看不出「身份判据根本没按当轮跑」。同文件 `voidedSides` 那段注释记着同形教训的原话：「初版是 `checkAdjudication` 的一个可选参数，两个生产调用点都没传，于是整段从未生效，而纯函数单测全绿——可选参数的默认值让漏传静默成功」。**今天不是缺陷**：两个生产调用点都传了值，`gate.test.ts` 的 N-2 三格也显式传 `driver` 不依赖回落。**修法**：设为必填（或入口处断言它来自 run 元数据的权威值），让「新调用点忘了传」变成编译期错误。**当时暂缓的理由是范围**：改必填要动 `gate.test.ts` 全部 30 余条用例（无一条传 `driver`），远超那一步「可执行代码 10 行以内」的体量，混进去会把一次契约放宽变成签名重构。**触发条件：`GateCheckInput` 出现第三个调用点时**（来源：EV-66 计划双审 CODEX-F01 第 7 条，nit） | `src/trivium/gate.ts` 的 `GateCheckInput.driver` 与 `checkAdjudication` |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/skills/dual-critic/schema/disposition.v1.json b/skills/dual-critic/schema/disposition.v1.json
+index 14c74a7..108c0f1 100644
+--- a/skills/dual-critic/schema/disposition.v1.json
++++ b/skills/dual-critic/schema/disposition.v1.json
+@@ -10,7 +10,11 @@
+     "schema": { "const": "trivium.disposition.v1" },
+     "topic": { "type": "string", "minLength": 1 },
+     "stage": { "enum": ["plan", "code", "bug"] },
+-    "role": { "const": "claude" },
++    "role": {
++      "type": "string",
++      "minLength": 1,
++      "description": "裁决件的执笔方（当轮 Driver）的 Agent id。取值是否为已登记 Agent 由代码层按注册表校验——此处不枚举，与 run.v2 的 driver 同源。M9 第 5 步之前恒为 claude"
++    },
+     "kind": {
+       "enum": ["revised", "response"],
+       "description": "plan/bug 用 revised，code 用 response"
+diff --git a/skills/dual-critic/templates/README.md b/skills/dual-critic/templates/README.md
+index 9f6a463..40b8117 100644
+--- a/skills/dual-critic/templates/README.md
++++ b/skills/dual-critic/templates/README.md
+@@ -6,8 +6,8 @@
+ | :--- | :--- | :--- |
+ | [`plan.md.template`](./plan.md.template) | `plan/<日期>-<主题>-claude.md` 计划原稿 | 计划审 |
+ | [`rca.md.template`](./rca.md.template) | `bug/<日期>-<主题>-claude.md` 根因原稿 | 根因审 |
+-| [`disposition.md.template`](./disposition.md.template) | `<阶段>/<日期>-<主题>-revised-claude.md` 修订件（含逐条裁决） | 计划审 / 根因审 |
+-| [`response.md.template`](./response.md.template) | `code/<日期>-<主题>-response-claude.md` 应答件 | 代码审 |
++| [`disposition.md.template`](./disposition.md.template) | `<阶段>/<日期>-<主题>-revised-<当轮 Driver>.md` 修订件（含逐条裁决） | 计划审 / 根因审 |
++| [`response.md.template`](./response.md.template) | `code/<日期>-<主题>-response-<当轮 Driver>.md` 应答件 | 代码审 |
+ 
+ ## 第五类「验证记录」为什么没有模板
+ 
+@@ -24,4 +24,12 @@
+ **不要手工创建审查文档**（`-gemini.md` / `-glm.md`）——那是编排器从审查员的结构化
+ 输出渲染的，Claude Code Hook 会拦下主脑对这两类文件的写入（AC-07）。
+ 
+-本目录的模板只对应 `-claude.md` 后缀的工件，即 Driver 自己的产出。
++本目录的模板只对应 **Driver 自己产出**的工件，不含审查文档。
++
++后缀取**当轮 Driver 的 Agent id**，不是固定的 `claude`：裁决件（`revised` / `response`）
++的文件名后缀与 front-matter 的 `role` 必须同指一人，闸门两头都比对（EV-66）。
++
++> **已知缺口**：上表两份**原稿**模板（`plan` / `rca`）的落盘示例仍写死 `-claude.md`。
++> 原稿命名这一面尚未随 Driver 变（EV-55 族），非缺省 Driver 照抄会产出
++> `-claude.md` 原稿——它不进闸门的裁决件定位，所以不会当场报错。
++> 这是**已登记的已知边界**，不是这份 README 写漏了。
+diff --git a/skills/dual-critic/templates/disposition.md.template b/skills/dual-critic/templates/disposition.md.template
+index 392e74c..904d584 100644
+--- a/skills/dual-critic/templates/disposition.md.template
++++ b/skills/dual-critic/templates/disposition.md.template
+@@ -2,13 +2,22 @@
+ schema: trivium.disposition.v1
+ topic: {{TOPIC}}
+ stage: {{STAGE}}
+-role: claude
++role: {{ROLE}}
+ kind: {{KIND}}
+ run_id: {{RUN_ID}}
+ addresses:
+ {{ADDRESSES}}
+ ---
+ 
++<!--
++落盘位置：`<阶段>/<日期>-<主题>[-r<N>]-revised-{{ROLE}}.md`
++
++`{{ROLE}}` = **当轮 Driver 的 Agent id**，文件名后缀与 front-matter 的 role 必须
++**同指一人**：闸门按当轮 Driver 定位这份件，再比对 front-matter 的 role，
++两者不一致会判 `bad_front_matter`（那份留痕的作者身份自相矛盾）。
++取值不是固定的 `claude`——谁是本轮 Driver 就填谁，且必须是已登记 Agent。
++-->
++
+ # {{TITLE}}
+ 
+ ## 0. 裁决总览
+@@ -26,6 +35,6 @@ addresses:
+ ## 2. 修订内容
+ 
+ <!-- plan / bug 阶段：这里是修订后的正文，不要丢弃原稿重写——原稿保留在
+-     同目录的 -claude.md 里，本件只写「改了什么、为什么」。
++     同目录的原稿件里，本件只写「改了什么、为什么」。
+      code 阶段：这里写每条接受项对应的修改计划与落点文件。
+      即使全部驳回，也必须写明「无修改及原因」（§6.6 规则 6）。 -->
+diff --git a/skills/dual-critic/templates/response.md.template b/skills/dual-critic/templates/response.md.template
+index 6a7705d..5c667ce 100644
+--- a/skills/dual-critic/templates/response.md.template
++++ b/skills/dual-critic/templates/response.md.template
+@@ -2,7 +2,7 @@
+ schema: trivium.disposition.v1
+ topic: {{TOPIC}}
+ stage: code
+-role: claude
++role: {{ROLE}}
+ kind: response
+ run_id: {{RUN_ID}}
+ addresses:
+@@ -13,7 +13,10 @@ addresses:
+ 
+ <!--
+ 代码应答件模板（FR-05 / AC-01）。落盘位置：
+-  .reviews/{{TOPIC}}/code/{{DATE}}-{{TOPIC}}-response-claude.md
++  .reviews/{{TOPIC}}/code/{{DATE}}-{{TOPIC}}-response-{{ROLE}}.md
++
++`{{ROLE}}` = **当轮 Driver 的 Agent id**，与 front-matter 的 role 同值。
++两者必须同指一人，否则闸门判 `bad_front_matter`。不是固定的 claude。
+ 
+ 与计划修订件（revised）的区别只在后缀与语气：这里不重写代码，
+ 而是对每条意见表态，并说明**接下来打算怎么改**。
+diff --git a/skills/dual-review-bug/SKILL.md b/skills/dual-review-bug/SKILL.md
+index 0945b82..908b144 100644
+--- a/skills/dual-review-bug/SKILL.md
++++ b/skills/dual-review-bug/SKILL.md
+@@ -155,7 +155,8 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 
+ ### 5. 写裁决件
+ 
+-依 `trivium.disposition.v1` 写出 `…-revised-claude.md`：
++依 `trivium.disposition.v1` 写出 `…-revised-<当轮 Driver>.md`（后缀是**你自己的 Agent id**，
++不是固定的 `claude`；`role` 字段填同一个值，两者不一致闸门会判 `bad_front_matter`）：
+ 
+ - front-matter 含 `schema` / `topic` / `stage` / `role` / `kind` / `run_id` / `addresses`；
+ - 正文含一张裁决表，列名固定：意见编号 ｜ 来源 ｜ 严重度 ｜ 裁决 ｜ 理由 ｜ 落点；
+diff --git a/skills/dual-review-code/SKILL.md b/skills/dual-review-code/SKILL.md
+index 9570a2f..e38134f 100644
+--- a/skills/dual-review-code/SKILL.md
++++ b/skills/dual-review-code/SKILL.md
+@@ -157,7 +157,8 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 
+ ### 5. 写裁决件
+ 
+-依 `trivium.disposition.v1` 写出 `…-response-claude.md`：
++依 `trivium.disposition.v1` 写出 `…-response-<当轮 Driver>.md`（后缀是**你自己的 Agent id**，
++不是固定的 `claude`；`role` 字段填同一个值，两者不一致闸门会判 `bad_front_matter`）：
+ 
+ - front-matter 含 `schema` / `topic` / `stage` / `role` / `kind` / `run_id` / `addresses`；
+ - 正文含一张裁决表，列名固定：意见编号 ｜ 来源 ｜ 严重度 ｜ 裁决 ｜ 理由 ｜ 落点；
+diff --git a/skills/dual-review-plan/SKILL.md b/skills/dual-review-plan/SKILL.md
+index e11c0fa..536152f 100644
+--- a/skills/dual-review-plan/SKILL.md
++++ b/skills/dual-review-plan/SKILL.md
+@@ -155,7 +155,8 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 
+ ### 5. 写裁决件
+ 
+-依 `trivium.disposition.v1` 写出 `…-revised-claude.md`：
++依 `trivium.disposition.v1` 写出 `…-revised-<当轮 Driver>.md`（后缀是**你自己的 Agent id**，
++不是固定的 `claude`；`role` 字段填同一个值，两者不一致闸门会判 `bad_front_matter`）：
+ 
+ - front-matter 含 `schema` / `topic` / `stage` / `role` / `kind` / `run_id` / `addresses`；
+ - 正文含一张裁决表，列名固定：意见编号 ｜ 来源 ｜ 严重度 ｜ 裁决 ｜ 理由 ｜ 落点；
+diff --git a/skills/dual-run/SKILL.md b/skills/dual-run/SKILL.md
+index 3ba8b03..f330ed8 100644
+--- a/skills/dual-run/SKILL.md
++++ b/skills/dual-run/SKILL.md
+@@ -71,7 +71,8 @@ Bash 按写命令形态启发式拦截（重定向、`tee`、`sed -i`、`rm/mv/c
+ 配置里的 `active_profile`，留痕里记的是回退后的模型，事后看不出用户曾经指定过。
+ 
+ ### S3 修订计划
+-读两份审查全文，写 `…-revised-claude.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
++读两份审查全文，写 `…-revised-<当轮 Driver>.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
++后缀与 front-matter 的 `role` 都填**你自己的 Agent id**，不是固定的 `claude`。
+ 
+ ### S4 裁决校验
+ `TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐，最多 3 次。
+@@ -86,7 +87,8 @@ Bash 按写命令形态启发式拦截（重定向、`tee`、`sed -i`、`rm/mv/c
+ 要按 `/dual-review-code` 第 3 步的说明显式给出 `--base`，否则补丁为空会退 65。
+ 
+ ### S7 应答确认
+-写 `…-response-claude.md`，逐条「接受/驳回/暂缓 + 理由 + 修改计划」。
++写 `…-response-<当轮 Driver>.md`（后缀与 `role` 都填你自己的 Agent id），
++逐条「接受/驳回/暂缓 + 理由 + 修改计划」。
+ 
+ ### S8 裁决校验
+ `TV gate --stage code --topic <主题> --check --json`。有缺口回到 S7。
+diff --git a/src/trivium/schemas.ts b/src/trivium/schemas.ts
+index 7658a7e..21a207a 100644
+--- a/src/trivium/schemas.ts
++++ b/src/trivium/schemas.ts
+@@ -309,7 +309,44 @@ export function validateRunMetaV1(data: unknown): string[] {
+   return v(data) ? [] : formatErrors(v.errors);
+ }
+ 
++/**
++ * 校验裁决件 front-matter（`trivium.disposition.v1`）。
++ *
++ * **两段式**：ajv 校形状，注册表校 `role` 的身份。后半段不能塞进 schema——
++ * `role` 是**当轮 Driver 的 Agent id**，而 Agent id 的唯一来源是
++ * `agents/registry.ts`（§16.2 纪律 7）。此前这里把 id 抄进了 schema
++ * （`role: {"const": "claude"}`），既与纪律 7 相抵，也让非缺省 Driver
++ * **写不出诚实的裁决件**——它只剩谎报或产出定位不到两条路（EV-66）。
++ *
++ * **形态与 `validateConfig` 同构，不是 `validateRunMeta`**（计划双审 GLM-01 ≡ AGY-02）：
++ * ajv 失败时**追加**身份检查的结果，而不是短路返回。两段式的天然断档就在这里——
++ * 一份 `role` 未登记、`addresses` 又为空的件，短路形态下只报得出 `addresses`，
++ * 「作者是谁」这一格的错误要等下一轮才看得见。裁决件多处同时错是常态，
++ * 一趟看全比少一行输出要紧。
++ *
++ * 只放宽不补校验＝净放松契约（`role: 随便写点什么` 会当场合法），
++ * 而「谁写的」是留痕的作者身份，正是审计系统最不该松的那一格。
++ * 注意本函数只管**声明的作者是不是已登记 Agent**；「声明的作者是不是当轮 Driver」
++ * 由 `gate.ts` 按 run 元数据比对——那里才有「当轮」这个概念。
++ */
+ export function validateDispositionFrontMatter(data: unknown): string[] {
+   const v = compile('disposition', dispositionSchema as object);
+-  return v(data) ? [] : formatErrors(v.errors);
++  if (!v(data)) return [...formatErrors(v.errors), ...checkDispositionRole(data)];
++  return checkDispositionRole(data);
++}
++
++/**
++ * ajv 之后的注册表身份校验：裁决件的 `role` 是不是已登记 Agent。
++ *
++ * **照 `checkAgentIdentities` 的形状新写，不复用那个函数本体**——它校的是 run 元数据的
++ * `driver` / `critics_selected` / `critics`，直接套在裁决件上会恒报 `driver` 缺失。
++ */
++function checkDispositionRole(data: unknown): string[] {
++  const role = (data as { role?: unknown } | null | undefined)?.role;
++  /*
++   * `role` 缺失或不是字符串交给 ajv 报（`required` + `type`）——那是形状问题。
++   * 这里只管「是个字符串但不是已登记 Agent」，免得同一处错误出两行。
++   */
++  if (typeof role !== 'string' || isAgentId(role)) return [];
++  return [`role 不是已登记的 Agent id：${JSON.stringify(role)}`];
+ }
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index ffeefe1..a0bbe6c 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -1068,7 +1068,15 @@ export interface Disposition {
+   schema: 'trivium.disposition.v1';
+   topic: string;
+   stage: Stage;
+-  role: 'claude';
++  /**
++   * 执笔方（当轮 Driver）的 Agent id。
++   *
++   * M9 第 6 步之前这里写死 `'claude'`，与 `disposition.v1.json` 的
++   * `role: {"const": "claude"}` 同源——两处各抄了一份 id。EV-66 把 schema
++   * 拉回注册表口径时，这里必须一起放开：留着 `'claude'` 会让类型层对契约
++   * 做出**失实声明**，而非缺省 Driver 的裁决件在类型上根本构造不出来。
++   */
++  role: AgentId;
+   kind: 'revised' | 'response';
+   run_id: string;
+   addresses: string[];
+diff --git a/test/integration/gate-loop.test.ts b/test/integration/gate-loop.test.ts
+index e6ce79b..8aa7da5 100644
+--- a/test/integration/gate-loop.test.ts
++++ b/test/integration/gate-loop.test.ts
+@@ -1315,31 +1315,29 @@ test(
+     await fs.writeFile(dispositionPath, dispositionBody(driver), 'utf8');
+     const after = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', DRIVER_TOPIC, '--check', '--json'], stub);
+     /*
+-     * ## 这里锁的是一条**已知边界**，不是期望行为（EV-66）
++     * ## 非缺省 Driver 的闸门闭环，这是它第一次真正走通（EV-66 已结案）
+      *
+-     * 闸门现在**定位对了**——上面两条断言已经证明它找的是 `-revised-<真Driver>.md`
+-     * 而不是缺省 Driver 那份，计划的完成判据 C4 说的就是这两件事，都成立。
++     * 本格此前锁的是一条**已知边界**：`disposition.v1.json` 把 `role` 钉死成
++     * `{ "const": "claude" }`，于是诚实写自己 id 的那份过不了 schema——
++     * 文件名对了，front-matter 的 role 不合契约。上一版的断言是 `notEqual(OK)`
++     * 外加一句「EV-66 若已修复，请把本断言改成期望通过」。**现在就是那一刻。**
+      *
+-     * 但整条链路还走不通：`disposition.v1.json` 把 `role` 钉死成
+-     * `{ "const": "claude" }`，于是**诚实写 role 的那份过不了 schema**——
+-     * 文件名对了，front-matter 的 role 不合契约。
++     * 放宽之后三条路的结局变了，值得逐条对照着看：
++     *   · 照资产写（名与 role 都是缺省 Driver）→ 仍然定位不到，`missing_disposition`；
++     *   · 改名不改 role（谎报）              → 仍然被上一格的 role 比对判红；
++     *   · 诚实写 role                        → **通过**（本格）。
++     * 前两格一个字没动，正说明放宽没有顺手松掉别的东西：能过的只有诚实的那一份。
+      *
+-     * 连同上一格，非缺省 Driver 的三条路现在**各自失败在说得清的地方**：
+-     *   · 照资产写（名与 role 都是缺省 Driver）→ 定位不到，报 missing_disposition；
+-     *   · 改名不改 role（谎报）              → 上一格的 role 比对判红；
+-     *   · 诚实写 role                        → 卡在本格，即 EV-66。
++     * 那条 `/bad_front_matter|role/` 断言**已删除**——它描述的是被修掉的失败形态，
++     * 留着只会在下一次有人读这段时把人引向一个不存在的边界。
+      *
+-     * 对照 `run.v2.json` 的 `driver`：那里是 `type: string` 不枚举，
+-     * 身份校验交给代码按注册表做，并明写「此处不枚举」。同一件事两套处理。
+-     *
+-     * **本步不改**：那是契约变更，不在第 5 步的落点表里。这条断言把边界锁成可见事实——
+-     * 等 EV-66 修好，它会当场红，提醒改的人把本用例升级成「补齐后应当通过」。
+-     * 本用例是 T-11 第一次真跑时抓到它的；换成源码扫描永远碰不到这一格。
++     * 反向的变异验证在别处：把 `role` 改回 const 会让本格当场红，
++     * 删掉 `gate.ts` 的 role↔driver 比对会让上一格与 `gate.test.ts` 的 N-2 同时红。
+      */
+-    assert.notEqual(after.code, EXIT.OK, 'EV-66 若已修复，请把本断言改成期望通过');
+-    assert.match(
+-      after.stdout + after.stderr, /bad_front_matter|role/,
+-      '预期失败在 disposition schema 的 role 常量上；换成别的失败说明边界变了，要重新核',
++    assert.equal(
++      after.code, EXIT.OK,
++      '非缺省 Driver 诚实写出的裁决件仍然过不了闸门——EV-66 的全部目的就是这一格。\n' +
++        `  实际输出：${after.stdout + after.stderr}`,
+     );
+   },
+ );
+diff --git a/test/unit/config-schema.test.ts b/test/unit/config-schema.test.ts
+index 62264f0..13e831e 100644
+--- a/test/unit/config-schema.test.ts
++++ b/test/unit/config-schema.test.ts
+@@ -7,7 +7,7 @@ import { defaultConfig, loadCtx } from '../../src/trivium/config.js';
+ import { validateConfig, validateRunMeta, validateDispositionFrontMatter } from '../../src/trivium/schemas.js';
+ import { newRunMeta } from '../../src/trivium/meta.js';
+ import { CRITICS } from '../../src/trivium/types.js';
+-import { AGENTS } from '../../src/trivium/agents/registry.js';
++import { AGENTS, ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
+ import { REPO_ROOT } from '../helpers/fixture.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ 
+@@ -98,12 +98,59 @@ test('newRunMeta 产出的骨架符合 trivium.run.v2', () => {
+   assert.ok(validateRunMeta({ ...meta, status: 'weird' }).length > 0);
+ });
+ 
++/** 一份合法裁决件 front-matter，按需覆写字段 */
++const fm = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
++  schema: 'trivium.disposition.v1', topic: 't', stage: 'plan', role: 'claude',
++  kind: 'revised', run_id: 'R1', addresses: ['a'], ...over,
++});
++
+ test('裁决件 front-matter 按 disposition.v1 校验', () => {
+-  assert.deepEqual(validateDispositionFrontMatter({
+-    schema: 'trivium.disposition.v1', topic: 't', stage: 'plan', role: 'claude', kind: 'revised', run_id: 'R1', addresses: ['a'],
+-  }), []);
+-  const bad = validateDispositionFrontMatter({ schema: 'trivium.disposition.v1', topic: 't', stage: 'plan', role: 'gemini', kind: 'revised', run_id: 'R1', addresses: [] });
+-  assert.ok(bad.some((m) => m.includes('role')), JSON.stringify(bad));
++  assert.deepEqual(validateDispositionFrontMatter(fm()), []);
++  const bad = validateDispositionFrontMatter(fm({ addresses: [] }));
++  assert.ok(bad.some((m) => m.includes('addresses')), JSON.stringify(bad));
++});
++
++/*
++ * ── role 是「已登记 Agent」，不是「claude」（EV-66 / N-1）──
++ *
++ * schema 此前把 id 抄了一份（`role: {"const":"claude"}`），于是非缺省 Driver
++ * 只剩两条路：谎报 `role: claude`（gate 判红），或诚实写自己的 id（schema 判红）。
++ * 放宽成 `string` + 注册表校验之后，**守的那一格换了人**：
++ * 不再是「必须是 claude」，而是「必须是注册表里有的那几家」。
++ *
++ * **这一组负例的写法本身是被双审改过的**（计划双审 GLM-01 ≡ AGY-02）：
++ * 原用例把 `role` 与 `addresses` 两处错误塞进同一个对象，而两段式校验
++ * 若取短路形态（ajv 失败即 return），身份检查压根不可达——role 那条断言
++ * 会红在「校验器没跑到」，而不是「校验器判错了」。现在两处各自独立成例，
++ * 且 `validateDispositionFrontMatter` 取的是**追加**形态，两头都不依赖对方。
++ */
++test('裁决件 role：未登记的 id 必须被拒（放宽之后守的是这一格）', () => {
++  const bad = validateDispositionFrontMatter(fm({ role: 'nobody' }));
++  assert.ok(
++    bad.some((m) => m.includes('role')),
++    `未登记的 role 必须被拒，否则契约就是净放松——留痕的作者身份可以随便写：${JSON.stringify(bad)}`,
++  );
++});
++
++test('裁决件 role：每一个已登记 Agent 都必须被接受', () => {
++  for (const id of ALL_AGENT_IDS) {
++    assert.deepEqual(
++      validateDispositionFrontMatter(fm({ role: id })),
++      [],
++      `${id} 是已登记 Agent，当它是 Driver 时必须写得出合法裁决件（EV-66 的全部目的）`,
++    );
++  }
++});
++
++/*
++ * 两段式**不得短路**：ajv 与身份检查各报各的，一趟看全（GLM-01）。
++ *
++ * 短路形态下这份件只报得出 addresses，「作者是谁」那一格要等下一轮才显形。
++ * 裁决件多处同时错是常态，所以这里锁的是**同时报**，不是「报了就行」。
++ */
++test('裁决件 front-matter：形状错与身份错同时存在时，两类错误都要报出来', () => {
++  const bad = validateDispositionFrontMatter(fm({ role: 'nobody', addresses: [] }));
++  assert.ok(bad.some((m) => m.includes('role')), `身份错被形状错盖住了：${JSON.stringify(bad)}`);
+   assert.ok(bad.some((m) => m.includes('addresses')), JSON.stringify(bad));
+ });
+ 
+diff --git a/test/unit/gate.test.ts b/test/unit/gate.test.ts
+index cd477bc..ee7ba04 100644
+--- a/test/unit/gate.test.ts
++++ b/test/unit/gate.test.ts
+@@ -332,6 +332,119 @@ ${HEAD}
+   assert.match(f!.message, /addresses 为空/);
+ });
+ 
++/*
++ * ───────── N-2：放宽 role 之后，作者身份只剩这一道判据 ─────────
++ *
++ * EV-66 把 `disposition.v1.json` 的 `role` 从 `const: "claude"` 放宽成
++ * 「任意已登记 Agent」。放宽前后各有一句容易说错的话，先把它们摆正：
++ *
++ *   · **不是「两道锁变一道」。** schema 的 `const` 从来不证明作者是谁——
++ *     它只是逼非缺省 Driver 谎报。放宽后「声明的作者 == 当轮 Driver」
++ *     这条性质完整保留（`gate.ts` 的 role↔driver 比对），并新增了
++ *     「声明的作者必须是已登记 Agent」（`validateDispositionFrontMatter`）。
++ *   · **真正变了的是验证覆盖。** 那条比对是上一个主题第 3 轮才写的，
++ *     此前只被 T-11 一条集成用例验过，本文件 30 余条用例**无一条传 `driver`**
++ *     （全走缺省回落，缺省下 role 恒等于 driver，比对永远成立）。
++ *     所以下面两格补的是**验证缺口**，不是补一道消失的锁（计划双审 CODEX-F01 第 1 条附带纠正）。
++ *
++ * 两格都**显式传 `driver`**：`GateCheckInput.driver` 今天仍是可选项、缺省回落
++ * 缺省 Driver，依赖回落会让本用例在「判据没跑」时照样绿（同文件 `voidedSides`
++ * 那次教训的形状）。可选参数本身已登记 BACKLOG，这里先不依赖它。
++ */
++
++/**
++ * 直写一份裁决件，**文件名后缀与 front-matter 的 role 分别可控**。
++ *
++ * 不走 `writeArtifact`：它按 `roleIsAllowedForWriter` 校后缀，而那个判据的
++ * `driver` 参数在 `archive.ts` 的调用点没传、恒取缺省值，落不出 `-revised-codex.md`
++ * （EV-55 族，不在本步范围）。T-11 出于同样的原因也是直写。
++ */
++async function putDispositionAs(
++  l: ArchiveLayout,
++  opts: { suffix: string; fmRole: string; table: string; runId?: string },
++): Promise<void> {
++  const dir = path.join(l.archiveRoot, l.topic, 'plan');
++  await fs.mkdir(dir, { recursive: true });
++  const md = `---
++schema: trivium.disposition.v1
++topic: ${TOPIC}
++stage: plan
++role: ${opts.fmRole}
++kind: revised
++run_id: ${opts.runId ?? 'R1'}
++addresses:
++  - ${DATE}-${TOPIC}-gemini.md
++---
++
++# 修订计划
++
++${opts.table}
++`;
++  await fs.writeFile(path.join(dir, `${DATE}-${TOPIC}-revised-${opts.suffix}.md`), md, 'utf8');
++}
++
++const ROW_OK = `| AGY-01 | gemini | major | 接受 | 成立 | §3 |`;
++
++test('N-2：文件名后缀是当轮 Driver、front-matter 的 role 是另一个已登记 id → bad_front_matter', async () => {
++  const l = await layout();
++  await putDispositionAs(l, { suffix: 'codex', fmRole: 'glm', table: `${HEAD}\n${ROW_OK}` });
++  const r = await checkAdjudication({
++    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
++    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
++  });
++  const f = r.failures.find((x) => x.code === 'bad_front_matter');
++  assert.ok(
++    f,
++    '这份裁决件的文件名说是 codex 写的、front-matter 说是 glm 写的，作者身份自相矛盾却通过了闸门。' +
++      `放宽 role 之后这是唯一在看这件事的判据。\n${renderGateResult(r)}`,
++  );
++  assert.match(
++    f!.message, /role=glm/,
++    '失败原因里没点名 role：本格要证的正是作者身份这一格被验到了，失败在别处等于没验到',
++  );
++});
++
++test('N-2 正例：非缺省 Driver 诚实写自己的 id → 通过（EV-66 的全部目的）', async () => {
++  const l = await layout();
++  await putDispositionAs(l, { suffix: 'codex', fmRole: 'codex', table: `${HEAD}\n${ROW_OK}` });
++  const r = await checkAdjudication({
++    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
++    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
++  });
++  assert.deepEqual(
++    r.failures, [],
++    '非缺省 Driver 诚实写出的裁决件必须过闸门。过不了就说明放宽没落到实处——' +
++      `它只剩谎报或产出定位不到两条路，而闸门闭环一次都跑不完。\n${renderGateResult(r)}`,
++  );
++});
++
++/*
++ * 这一格锁的是「闸门对未登记 id 仍 fail-closed」，**不是「注册表校验跑了」**。
++ *
++ * 区别是**双向实测**出来的，两次变异各跑一遍：
++ *   · 删掉 `checkDispositionRole` → N-1 两格红，**本格绿**（role↔driver 比对拦的）；
++ *   · 删掉 `gate.ts` 的 role↔driver 比对 → N-2 第一格与 T-11 第 2 格红，**本格还是绿**
++ *     （`checkDispositionRole` 拦的）。
++ * 也就是说未登记 id 这条路径上**两道判据完全冗余**，删任何一道本格都绿。
++ * 它因此证不了任何**单一**机制在工作——只证得了「两道之中至少还有一道活着」。
++ *
++ * 那它还有没有价值？有，但要如实说清：它守的是**结果**（未登记 id 进不了闸门），
++ * 而不是**机制**（哪一道拦的）。机制那一格由 `config-schema.test.ts` 的 N-1 守，
++ * 那里直接调校验函数、没有 driver 比对在旁边。
++ * 写成「本格证明注册表校验生效」就是把断言的适用范围悄悄扩大了。
++ */
++test('N-2 边界：role 是未登记的 id → bad_front_matter（闸门层 fail-closed，不区分是哪道判据拦的）', async () => {
++  const l = await layout();
++  await putDispositionAs(l, { suffix: 'codex', fmRole: 'nobody', table: `${HEAD}\n${ROW_OK}` });
++  const r = await checkAdjudication({
++    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
++    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
++  });
++  const f = r.failures.find((x) => x.code === 'bad_front_matter');
++  assert.ok(f, `role 写了个注册表里没有的名字，仍然过闸门——契约就是净放松的\n${renderGateResult(r)}`);
++  assert.match(f!.message, /role/, f!.message);
++});
++
+ // ── 共同 blocker（§6.6 规则 7）──
+ 
+ test('双方共同 blocker 被驳回：默认只 warn，且只用 location 精确相同判定', () => {
+diff --git a/test/unit/promise-landing.test.ts b/test/unit/promise-landing.test.ts
+index d6f0b0d..d71ac0a 100644
+--- a/test/unit/promise-landing.test.ts
++++ b/test/unit/promise-landing.test.ts
+@@ -49,10 +49,25 @@ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import { spawnSync } from 'node:child_process';
+ import { REPO_ROOT } from '../helpers/fixture.js';
++import { parseArtifactName } from '../../src/trivium/naming.js';
+ 
+ const MARKER = /<!--\s*落点核验:\s*([^>]*?)\s*-->/g;
+ 
+-/** 递归找 `.reviews/` 下所有 `*-response-claude.md` */
++/**
++ * 递归找 `.reviews/` 下所有**应答件**（code 阶段的裁决件）。
++ *
++ * **后缀走 `parseArtifactName`，不再字面匹配 `-response-claude.md`**（EV-66）。
++ *
++ * 原来那行是一条**正在生效的假证明**：它把「谁写的」写死成缺省 Driver，
++ * 于是非缺省 Driver 的 `-response-<别家>.md` 一律扫不到。配上本文件末尾
++ * 「不断言 checked > 0」那条口径，结果是**论域清空、用例照常全绿**——
++ * 这正是本仓记过四次的形状（「论域悄悄缩小、测试照常全绿」）。
++ *
++ * M9 第 5 步放开 `--driver`、EV-66 放宽裁决件的 `role` 之后，
++ * 它会是第一个静默失效的既有判据，所以随那一步一起改掉，而不是等撞上。
++ * 命名规则只有 `naming.ts` 一份，这里解析而不是另写正则——
++ * 再写一份就是第二事实源，下次改命名时必漏其一。
++ */
+ async function responseFiles(dir: string): Promise<string[]> {
+   let entries: import('node:fs').Dirent[];
+   try {
+@@ -64,7 +79,7 @@ async function responseFiles(dir: string): Promise<string[]> {
+   for (const e of entries) {
+     const full = path.join(dir, e.name);
+     if (e.isDirectory()) out.push(...(await responseFiles(full)));
+-    else if (e.name.endsWith('-response-claude.md')) out.push(full);
++    else if (parseArtifactName(e.name)?.kind === 'response') out.push(full);
+   }
+   return out;
+ }
+@@ -140,6 +155,17 @@ test('裁决件声明的落点核验串，逐条与工作树比对（EV-50）',
+    * **不断言 `checked > 0`**：本条的论域是「自愿加严的裁决件」，一份都没有是合法状态
+    * （旧归档件不追溯）。但要把数报出来，免得它悄悄退化成永远扫不到东西的空转——
+    * 「恒真的断言比没有更糟」是本仓 r2 删掉旧反向对账时立的口径。
++   *
++   * **但 `files.length` 是有下限的**，这两件事不一样（EV-66）：
++   * `checked` 取决于有没有人自愿写落点标记，`files.length` 取决于**发现式还能不能
++   * 找到应答件**。上面那行字面匹配 `-response-claude.md` 的写法失效时，
++   * 症状恰恰是 `files.length` 归零——而没有这条断言的话，它归零也是绿的。
++   * 归档里已有几十份应答件，扫到 0 份只可能是发现式坏了。
+    */
++  assert.ok(
++    files.length > 0,
++    '一份应答件都没扫到——多半是文件名解析或归档路径变了，' +
++      '本条判据此刻正在空论域上全绿（本仓已记过四次这个形状）',
++  );
+   console.log(`  [EV-50] 本次核验了 ${checked} 条落点声明，覆盖 ${files.length} 份裁决件`);
+ });
+diff --git a/test/unit/registry-parity.test.ts b/test/unit/registry-parity.test.ts
+index 3996bad..5335a12 100644
+--- a/test/unit/registry-parity.test.ts
++++ b/test/unit/registry-parity.test.ts
+@@ -264,7 +264,15 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
+    * 按 cliName 通用消费 `CommonProbe.models`。收敛完成后该文件里一个 Agent 字面量都没有，
+    * 「不得留过期条目」这条当场把它标了出来——泛化是否真的做完，由机器说了算。
+    */
+-  { file: 'types.ts', why: "Disposition.role 的字面 'claude'：裁决件的作者恒为当轮 Driver，而 Driver 任意化排在 M10。此前的豁免理由是 CriticId 的字面收窄，M7b 第 6 步已把它放开成注册表全集——理由换了，豁免仍需要，所以是改写而不是删除" },
++  /*
++   * 本条的理由**改写过两次**，两次都是「字面还在、但为什么在」变了：
++   *   · 第一版：CriticId 的字面收窄 —— M7b 第 6 步放开成注册表全集后作废；
++   *   · 第二版：Disposition.role 的字面 'claude'（「Driver 任意化排在 M10」）——
++   *     EV-66 在 M9 第 6 步前就把 role 放开成 AgentId 了，那句预言本身失效，
++   *     再留着就是一条**失实的留痕**（而上面那条守卫只查字面在不在，查不出理由过期）。
++   * 现在的理由是探针键，与裁决件契约无关。下一个动这行的人请照样如实改写，别顺手删。
++   */
++  { file: 'types.ts', why: "ClaudeProbe 等探针结果的按 Agent id 命名的可选键（如 :778 的 claude?: ClaudeProbe）：探针形状逐家不同，键名即 Agent id，泛化要等各家探针结构收敛" },
+ ];
+ 
+ test('白名单纪律：每一项都要写明理由，且不得豁免不存在的文件', async () => {
+@@ -909,16 +917,19 @@ test('全部机读 schema：任何校验关键字都不得枚举 Agent id 或意
+    * 前者豁免面是一条可数的路径且必须写下理由，后者是整片论域悄悄消失。
+    * 这与白名单纪律同构（豁免要写理由、要被守着不能过期）。
+    */
+-  const NAMED_EXEMPTIONS: readonly { file: string; at: string; why: string }[] = [
+-    {
+-      file: 'disposition.v1.json',
+-      at: 'properties.role.const',
+-      why:
+-        '裁决件的作者恒为**当轮 Driver**，而 Driver 任意化排在 M10——在那之前它事实上只有一个取值。' +
+-        '泛化它要同时改 gate 的消费点与 Driver 自己的产出模板，属 M10 范围，本轮只登记不改（BACKLOG EV-07）。' +
+-        '`types.ts` 的 Disposition.role 有同源豁免，两处理由一致。',
+-    },
+-  ];
++  /*
++   * **本清单当前为空，这是正确状态，不是漏写。**
++   *
++   * 唯一的条目（`disposition.v1.json#properties.role.const`）随 EV-66 一起删除：
++   * 那条豁免的理由是「Driver 任意化排在 M10，在那之前 role 事实上只有一个取值」，
++   * 而 M9 第 5 步放开 `--driver` 之后它就不成立了——schema 里那份抄来的 id
++   * 成了非缺省 Driver **写不出诚实裁决件**的唯一阻碍。放开 role 之后豁免无物可挡，
++   * 下方「豁免仍然被需要」的守卫会把它当空头支票判红，**正确处置是删条目**，
++   * 不是把 role 塞进别的豁免面把用例修绿。
++   *
++   * 再加条目前先想清楚：每一条都是在 schema 里给「抄第二份 id」开一次口子。
++   */
++  const NAMED_EXEMPTIONS: readonly { file: string; at: string; why: string }[] = [];
+   /** 被豁免挡下的命中，用来守「豁免仍然被需要」——空头支票要当场现形 */
+   const suppressed = new Set<string>();
+   const exempt = (file: string, at: string): boolean => {
+diff --git a/test/unit/run-meta.test.ts b/test/unit/run-meta.test.ts
+index 1572e99..6cb3cb4 100644
+--- a/test/unit/run-meta.test.ts
++++ b/test/unit/run-meta.test.ts
+@@ -11,8 +11,10 @@ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import { latestRunMeta, newRunMeta, migrateRunMetaV1, readRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
+-import { validateRunMeta, validateRunMetaV1 } from '../../src/trivium/schemas.js';
++import { validateRunMeta, validateRunMetaV1, validateDispositionFrontMatter } from '../../src/trivium/schemas.js';
+ import { checkStageArtifacts, metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
++import { parseArtifactName } from '../../src/trivium/naming.js';
++import { parseDisposition } from '../../src/trivium/disposition.js';
+ import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+ import { CRITICS, CRITIC_VENDOR, type CriticId, type RunMeta } from '../../src/trivium/types.js';
+ import { REPO_ROOT } from '../helpers/fixture.js';
+@@ -476,3 +478,74 @@ test('真实语料：归档里 plan/code/bug 三阶段的运行元数据必须
+       `  读不回的：${bad.join('、')}`,
+   );
+ });
++
++/*
++ * ───────── N-3：契约放宽也不得让存量留痕失校（EV-66）─────────
++ *
++ * 上一条守的是运行元数据，这条守裁决件的 front-matter，形状同构、理由同源。
++ *
++ * 触发它的是一次**放松**（`role` 由 `const: "claude"` 改为「任意已登记 Agent」），
++ * 而放松方向按说不会让老件失校。那为什么还要锁？因为放宽的同时**补了一段新校验**
++ * （注册表身份检查）——净效果不是纯放松，而是「换了一格守法」。
++ * 归档里每一份裁决件的 `role` 都是 `claude`，它必须仍然是已登记 Agent；
++ * 哪天有人从注册表里摘掉一家（或改了 id 的拼法），这些历史留痕会集体失校，
++ * 而症状与上一条一样：那些主题的闸门锁死，用户改不得也删不得。
++ *
++ * **两条断言，少一条都不成立**（计划双审 CODEX-F01 第 6 条）：
++ *   · `scanned > 0` —— 论域下限。发现式写错、归档改名或移动，都会让扫描
++ *     零命中而用例照常绿。本仓已经记过四次「论域悄悄缩小、测试照常全绿」。
++ *   · 后缀 == `fm.role` —— 这才是作者身份那道锁在**全量历史**上的投影。
++ *     只校 schema 的话，一份「文件名 -revised-codex.md + front-matter role: claude」
++ *     的自相矛盾件在这里看不出来，而那正是「作者身份自相矛盾」的定义。
++ *     后缀一律走 `parseArtifactName` 解析，不另写正则——那会变成第二份命名规则。
++ */
++test('真实语料：归档里全部裁决件的 front-matter 仍过 disposition.v1（含作者身份）', async () => {
++  const archiveRoot = path.join(REPO_ROOT, '.reviews');
++  let topics: string[];
++  try {
++    topics = (await fs.readdir(archiveRoot, { withFileTypes: true }))
++      .filter((e) => e.isDirectory()).map((e) => e.name);
++  } catch {
++    return; // 全新仓库还没有归档，本条无语料可测
++  }
++
++  const bad: string[] = [];
++  let scanned = 0;
++  for (const topic of topics) {
++    for (const stage of ['plan', 'code', 'bug'] as const) {
++      const dir = path.join(archiveRoot, topic, stage);
++      let files: string[];
++      try {
++        files = await fs.readdir(dir);
++      } catch {
++        continue;
++      }
++      for (const f of files) {
++        const parsed = parseArtifactName(f);
++        if (!parsed || parsed.kind === null) continue; // 只收裁决件（revised / response）
++        scanned++;
++        const md = await fs.readFile(path.join(dir, f), 'utf8');
++        const fm = parseDisposition(md).frontMatter;
++        if (!fm) {
++          bad.push(`${topic}/${stage}/${f}：front-matter 解析不出`);
++          continue;
++        }
++        const problems = validateDispositionFrontMatter(fm);
++        if (problems.length > 0) bad.push(`${topic}/${stage}/${f}：${problems.join('；')}`);
++        if (fm.role !== parsed.role) {
++          bad.push(`${topic}/${stage}/${f}：文件名后缀是 ${parsed.role}、front-matter 的 role 是 ${String(fm.role)}`);
++        }
++      }
++    }
++  }
++
++  assert.ok(scanned > 0, `.reviews 下一份裁决件都没扫到（${topics.length} 个主题）——本条失去语料`);
++  assert.deepEqual(
++    bad, [],
++    '下列历史裁决件按当前契约不再合法。\n' +
++      '  归档是不可变工件：契约演进不得让老主题的闸门读不回自己的留痕。\n' +
++      '  若是身份校验判的，先确认注册表里是不是摘掉/改名了某一家；\n' +
++      '  若是后缀与 role 不符，那份件的作者身份本身就是矛盾的，要查它是怎么落盘的。\n' +
++      `  ${bad.join('\n  ')}`,
++  );
++});
+diff --git a/test/contract/disposition-role-assets.test.ts b/test/contract/disposition-role-assets.test.ts
+new file mode 100644
+index 0000000..79f1198
+--- /dev/null
++++ b/test/contract/disposition-role-assets.test.ts
+@@ -0,0 +1,226 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import { REPO_ROOT } from '../helpers/fixture.js';
++import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
++
++/**
++ * 资产契约：**指挥 Driver 产出裁决件的那些祈使句，不得把角色名写死。**
++ *
++ * ## 这条判据在防什么
++ *
++ * `skills/` 下的 SKILL.md 与模板是**祈使句**——它们在指挥 Driver 用什么文件名、
++ * 往 `role` 里填什么。EV-66 放宽 schema 之后，非缺省 Driver 终于写得出合法裁决件了，
++ * 但只要这些文本还写着 `-revised-claude.md` / `role: claude`，它就会**照着旧文本写**，
++ * 产出一份闸门定位不到的件（`missing_disposition`）。
++ *
++ * 这个漏的症状是**无声的**：改漏一处，全量测试照样绿——因为没有任何机器判据在看资产面
++ * （`registry-parity` 的论域只有 `src/trivium`，其注释也自认「散文/文案形态不覆盖」）。
++ * 只有真换一个 Driver 跑一遍才会撞上，而那要到 M9 第 6 步。
++ *
++ * ## 这条判据自己会不会是假证明
++ *
++ * 会——如果照着一份**人工清单**建论域。计划原稿里那份「实测 6 处」的清单，实测是
++ * 9 个文件 17 行；按它建判据，判据出生就带着同一个漏（计划双审 CODEX-F01 第 3/4 条、
++ * GLM-02、AGY-03 三侧共同指出）。本仓已经有一条活着的同形假证明可对照：
++ * `promise-landing.test.ts` 靠文件名字面 `-response-claude.md` 找裁决件，
++ * 非缺省 Driver 的产出一律扫不到，而它明写不断言命中数，于是论域清空、用例照常全绿。
++ *
++ * 所以这条判据按四个维度写，缺一条就会退化成假证明：
++ *
++ *   1. **论域自动扩展**：`skills/` 下全部 `.md` / `.template` 递归收，不用文件清单。
++ *      新加一份 SKILL.md 自动进论域。
++ *   2. **字面从注册表派生**：扫的是 `DEFAULT_DRIVER`，不是硬编码的 `'claude'`——
++ *      否则这个扫描器自己就成了第二事实源（纪律 7 要治的正是这个）。
++ *   3. **命中下限**：论域文件数有下限断言。发现式写错、目录改名、glob 失配，
++ *      都会让扫描零命中而用例照常绿（本仓记过四次这个形状）。
++ *   4. **正向 + 变异**：不只查「旧字面不复发」，还查「新指引确实在」（正向），
++ *      并且自测「注入一条违例时判据真的会报」（变异）。
++ *
++ * ## 它证不到什么（如实标注，别当验收替代品）
++ *
++ * 只证「**旧的角色名字面不复发**」。证不到「新指引语义正确」——
++ * 把文本改成「填缺省 Driver 的角色名」这种语义错误，它一个字都抓不到，
++ * 因为那里面没有任何角色名字面。那一格只能靠第 6 步真换 Driver 跑一遍。
++ */
++
++const SKILLS_ROOT = path.join(REPO_ROOT, 'skills');
++
++/**
++ * 论域**不含原稿命名面**，这是有意的边界，不是漏。
++ *
++ * `plan.md.template:5`、`rca.md.template:5`、`templates/README.md:7,8`、
++ * `dual-run/SKILL.md:53` 这几处写的是裸后缀 `-claude.md`（计划/根因**原稿**），
++ * 下面的 pattern 只匹配 `-revised-` / `-response-` 与 `role:` 取值，天然收不到它们。
++ *
++ * 为什么不把判据扩到裸后缀：原稿不参与闸门的裁决件定位，非缺省 Driver 照抄不会
++ * 当场失败；那一面归 EV-55 族（命名与 Hook 保护集恒取缺省 Driver），触发时点是
++ * M9 第 6 步验收，已单独登记。扩过去只会让这条判据同时背上两件事，
++ * 还要配一份长豁免清单——而豁免清单本身就是论域漏空的主要来源。
++ *
++ * **第一版确实写了 6 条豁免覆盖那几处，当场被下方「豁免仍然被需要」的守卫判红**：
++ * 判据根本匹配不到它们，豁免无物可挡，是彻头彻尾的空头支票。
++ * 正确处置是删条目、把边界写在这里，而不是扩判据面把用例修绿。
++ *
++ * 清单当前为空。再加条目前先确认：那一行真的会被下面的 pattern 命中吗？
++ */
++const EXEMPTIONS: readonly { file: string; line: number; why: string }[] = [];
++
++/** 递归收 `skills/` 下的 Markdown 与模板，返回相对 `skills/` 的路径 */
++async function collectAssets(dir: string, base = ''): Promise<string[]> {
++  const out: string[] = [];
++  for (const e of await fs.readdir(dir, { withFileTypes: true })) {
++    const rel = base ? `${base}/${e.name}` : e.name;
++    if (e.isDirectory()) {
++      out.push(...(await collectAssets(path.join(dir, e.name), rel)));
++    } else if (e.name.endsWith('.md') || e.name.endsWith('.template')) {
++      out.push(rel);
++    }
++  }
++  return out;
++}
++
++/**
++ * 角色名写死的形态。**字面由注册表派生**，不写 `'claude'`。
++ *
++ * 三种形态分别对应三处会真的害到人的地方：裁决件后缀（闸门定位不到）、
++ * front-matter 取值（作者身份判红）、以及裸后缀（两者的来源）。
++ */
++function hardcodedRolePatterns(): RegExp[] {
++  const d = DEFAULT_DRIVER;
++  return [
++    new RegExp(`-(?:revised|response)-${d}\\.md`),
++    new RegExp(`role:\\s*${d}\\b`),
++  ];
++}
++
++const isExempt = (file: string, line: number): boolean =>
++  EXEMPTIONS.some((e) => e.file === file && e.line === line);
++
++test('资产契约：指挥产出裁决件的祈使句不得写死角色名', async () => {
++  const files = await collectAssets(SKILLS_ROOT);
++  const patterns = hardcodedRolePatterns();
++
++  /*
++   * 论域下限。数字取得比实际宽松——它防的是「glob 失配、目录改名、发现式写错」
++   * 这种论域塌成空集的形态，不是用来精确记账的（那会让每加一份文档都要改这里）。
++   */
++  assert.ok(
++    files.length >= 8,
++    `skills/ 下只收到 ${files.length} 份资产，论域塌了——本条判据会在空论域上全绿`,
++  );
++
++  const hits: string[] = [];
++  const usedExemptions = new Set<string>();
++  for (const rel of files) {
++    const src = await fs.readFile(path.join(SKILLS_ROOT, rel), 'utf8');
++    src.split('\n').forEach((text, i) => {
++      const lineNo = i + 1;
++      if (!patterns.some((p) => p.test(text))) return;
++      if (isExempt(rel, lineNo)) {
++        usedExemptions.add(`${rel}:${lineNo}`);
++        return;
++      }
++      hits.push(`${rel}:${lineNo}  ${text.trim()}`);
++    });
++  }
++
++  assert.deepEqual(
++    hits, [],
++    '下列资产面文本把裁决件的角色名写死了。\n' +
++      '  它们是**祈使句**——非缺省 Driver 会照着写，产出一份闸门定位不到的裁决件\n' +
++      '  （missing_disposition），而全量测试照样绿，只有真换 Driver 跑一遍才撞得上。\n' +
++      '  改法：后缀写 `<当轮 Driver>`，模板的 front-matter 用 {{ROLE}} 占位符。\n' +
++      '  确实不该改的（如原稿命名面），加进 EXEMPTIONS 并写明理由。\n' +
++      `  ${hits.join('\n  ')}`,
++  );
++
++  /*
++   * 豁免也要被守着：没被用到的豁免就是空头支票。
++   * 与 `registry-parity` 的「不得留过期条目」同一条纪律——少了它，
++   * EXEMPTIONS 可以随便变长而无人察觉，论域就此一点点漏空。
++   */
++  const stale = EXEMPTIONS.filter((e) => !usedExemptions.has(`${e.file}:${e.line}`))
++    .map((e) => `${e.file}:${e.line}`);
++  assert.deepEqual(
++    stale, [],
++    '这些豁免条目一次都没挡下命中——多半是那一行已经改掉或移位了，条目应当删除或改准：\n  ' +
++      stale.join('\n  '),
++  );
++
++  for (const e of EXEMPTIONS) {
++    assert.ok(e.why.trim().length >= 6, `豁免 ${e.file}:${e.line} 没写明理由`);
++  }
++});
++
++/*
++ * 正向那一半：只查「旧字面不复发」是不够的（计划双审 AGY-03）。
++ *
++ * 占位符写错、或者有人把整句指引删掉，消极扫描照样全绿——因为它只会看到
++ * 「没有 claude 字面」。所以还要查**新指引确实在**。
++ */
++test('资产契约：裁决件模板必须留出角色占位符，SKILL 必须指明当轮 Driver', async () => {
++  const mustHavePlaceholder = [
++    'dual-critic/templates/disposition.md.template',
++    'dual-critic/templates/response.md.template',
++  ];
++  for (const rel of mustHavePlaceholder) {
++    const src = await fs.readFile(path.join(SKILLS_ROOT, rel), 'utf8');
++    assert.match(
++      src, /^role:\s*\{\{ROLE\}\}\s*$/m,
++      `${rel} 的 front-matter 没有 role 占位符——Driver 照抄时不知道该填什么，` +
++        '而消极扫描看不出这件事（那里确实没有写死的角色名）',
++    );
++  }
++
++  const mustMentionDriver = [
++    'dual-review-plan/SKILL.md',
++    'dual-review-bug/SKILL.md',
++    'dual-review-code/SKILL.md',
++    'dual-run/SKILL.md',
++  ];
++  for (const rel of mustMentionDriver) {
++    const src = await fs.readFile(path.join(SKILLS_ROOT, rel), 'utf8');
++    assert.match(
++      src, /-(?:revised|response)-<当轮 Driver>\.md/,
++      `${rel} 没有告诉 Driver 裁决件的后缀取自己的 Agent id——` +
++        '删掉写死的 claude 只完成一半，指引缺位时 Driver 只能猜',
++    );
++  }
++});
++
++/*
++ * 变异自测：判据自己得会报。
++ *
++ * 这条用例存在的理由与 `registry-parity` 那个坏正则的教训同源——那次剥离器把
++ * 真硬编码吞了，于是一个本该受监控的文件脱离了监控，而用例全绿。
++ * 判据的正则写坏、或者匹配形态漂移，这里会当场现形。
++ */
++test('资产契约：判据自测——注入一条写死的角色名，必须被抓住', () => {
++  const patterns = hardcodedRolePatterns();
++  const violations = [
++    '依 `trivium.disposition.v1` 写出 `…-revised-claude.md`：',
++    'role: claude',
++    '| [`response.md.template`](./x) | `code/<日期>-<主题>-response-claude.md` 应答件 |',
++  ];
++  for (const v of violations) {
++    assert.ok(
++      patterns.some((p) => p.test(v)),
++      `判据漏掉了这条违例，它已经不是有效判据了：${v}`,
++    );
++  }
++
++  /* 反向：正确写法不得被误伤，否则判据会逼出一份膨胀的豁免清单 */
++  const legit = [
++    '依 `trivium.disposition.v1` 写出 `…-revised-<当轮 Driver>.md`：',
++    'role: {{ROLE}}',
++    '本目录的模板只对应 **Driver 自己产出**的工件，不含审查文档。',
++  ];
++  for (const l of legit) {
++    assert.ok(
++      !patterns.some((p) => p.test(l)),
++      `判据误伤了正确写法，会逼出多余的豁免：${l}`,
++    );
++  }
++});

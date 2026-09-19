@@ -1,0 +1,99 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "结论：approve-with-nits。契约放宽本体核实无误：schema 放宽 + checkDispositionRole 追加形态两段式 + gate 的 role↔driver 比对 + T-11 第 3 格翻正，链路成立。四问直答：①五维里『变异自测』半纸面（只测正则、不测扫描管线），且论域不含 .snippet 面——那一面已有实际漂移；②N-2 冗余注释与代码结构一致、该格值得留，未发现其它未标注的同形冗余；③错误面总体干净，唯 role 空串同一字段出两行；④留痕与文档同步逐条属实，『闸门闭环第一次走通』不算说过头。最该处理：gate.ts:219-231 与 T-11 第 2 格注释仍以现在时描述本步刚废除的资产面/schema const——正是 Driver 自己在第 3 格删断言时立下『不留不存在边界』原则的漏网（GLM-01）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/gate.ts:219-231（连带 test/integration/gate-loop.test.ts:1277-1287）",
+      "problem": "本次改动使两处注释成为失实留痕。gate.ts 的 role↔driver 比对注释仍以现在时断言：『资产面今天写死的正是 role: claude（disposition.md.template），三份 SKILL.md 与 templates/README.md 也仍写 …-revised-claude.md』（219-222）、『诚实写 role → 卡在 disposition.v1.json 的 role const（EV-66）』（227）、『本条不改契约：schema 仍把 role 钉成 claude……EV-66 修好之后……』（229-231）——这三句描述的边界恰是本步废除的。T-11 第 2 格注释（1277-1287）同样写着『它恰恰是照今天的资产面写出来的那一份：disposition.md.template 写死 role: claude，三份 SKILL 与 templates/README.md 也仍写 -revised-claude.md』。Driver 在第 3 格删旧断言时自述的理由——『留着只会在下一次有人读这段时把人引向一个不存在的边界』（gate-loop.test.ts:1331-1332）——对这两处同样成立，却只删了断言没改注释。本仓纪律『归档件里的失实断言先改再提交』（EV-57 的处置先例）覆盖同一情形。",
+      "evidence": "直读 src/trivium/gate.ts:211-238（三段现在时断言在案）与 test/integration/gate-loop.test.ts:1273-1343；grep skills/**/*.{md,template} 于 `-(revised|response)-claude\\.md|role:\\s*claude` 零命中，且 disposition/response 模板经补丁改为 {{ROLE}}、三份 dual-review SKILL 与 dual-run 改为 <当轮 Driver>——注释所述『今天仍写死』与资产现状逐条对不上。",
+      "suggestion": "把两处以『今天/仍』口吻描述资产面与 schema const 的句子改为过去时并标注『EV-66 落地前如此』，与第 3 格新注释同一口径。纯注释修改，不动行为。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/contract/disposition-role-assets.test.ts:77 与 :51-67",
+      "problem": "判据论域只收 .md / .template，skills/dual-critic/protocol/ 下的 .snippet 资产结构性进不来，而那正是指挥 Driver 的祈使句所在面：CLAUDE.md.snippet:11-12 写着『禁止产出 *-gemini.md 或 *-glm.md……你的产出后缀是 -claude』——角色名写死，且保护集漏了 codex（M8 第 3 步起 -codex.md 已受保护）。本仓根 CLAUDE.md 同段（12-19）已更新并自记『这句括号在 M8 接入 codex 后就漏过一次』，而随 trivium init 分发给新项目的 snippet 资产仍是旧文——该面已在实际漂移、无任何机器判据可见。测试边界注释枚举『论域不含原稿命名面』时只列 plan/rca 模板、README 7,8、dual-run:53 四处，给人完备印象，未提 protocol 面；EV-66 关闭记录『资产面第一次有机器判据看着』按此应读窄为『.md/.template 面』。M10 按演进设计 §7.5 泛化四家 snippet 时，若渲染产物仍落 .snippet，判据照旧看不见。",
+      "evidence": "直读 test/contract/disposition-role-assets.test.ts:71-99（collectAssets 扩展名过滤 + EXEMPTIONS 边界注释）；Glob skills/dual-critic/protocol/* 得 gitignore/CLAUDE.md/AGENTS.md 三个 .snippet；直读 skills/dual-critic/protocol/CLAUDE.md.snippet:11-12 与根 CLAUDE.md:12-19（两文本分叉在案）；src/trivium/init.ts:385-396（snippet 经 init 并入项目）；grep 演进设计 2026-09-13 §4 第 17 项『入口 skill 只装 Claude』与 §7.5『现 CLAUDE.md.snippet 内容泛化』（M10）。",
+      "suggestion": "二选一：把 .snippet 收进 collectAssets 的扩展名集（实测两个 pattern 对 snippet 现有文本零命中，收编不会红）；或在边界注释与 templates/README.md 已知缺口块把 protocol 面补进枚举、注明由演进设计 §4 #17 / M10 跟踪。snippet 保护集漏 codex 建议顺手修或登记 BACKLOG。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/contract/disposition-role-assets.test.ts:200-226",
+      "problem": "『变异自测』只对 hardcodedRolePatterns() 的返回值做字符串匹配，不经过第一条用例的扫描管线（collect → 逐行 → 豁免 → hits）。若管线本身写坏——匹配守卫写反、豁免行号错位、hits 永不入队——第三条用例照绿，第一条在零命中上恒绿，判据整体失效而无红。这正是四问之一『变异自测哪一条是纸面的』的答案：它测的是正则，不是『注入违例后判据真的会报』。另：violations 样本缺 YAML 引号形态（role: \"claude\"），pattern 2 的 role:\\s*claude 对引号写法不命中。",
+      "evidence": "直读 test/contract/disposition-role-assets.test.ts:200-226（直接调 patterns.test，不经 collectAssets 与 hits 装配）与 :101-137（扫描管线只被零命中断言覆盖，无注入式红证）。",
+      "suggestion": "把『逐文件扫描』抽成纯函数（内容 + patterns + EXEMPTIONS → hits），变异用例喂合成文件断言 hits 非空——无需向 skills/ 写任何文件；violations 补一条 role: \"claude\" 并决定 pattern 是否吃引号。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/contract/disposition-role-assets.test.ts:90-96",
+      "problem": "判据意图是『不得把角色名写死』，实现只从 DEFAULT_DRIVER 派生字面——一份指引若写死别家 id（如『写出 …-revised-codex.md』『role: gemini』），两个 pattern 都不命中。扫描器不会因此成为第二事实源的反面论据只覆盖了『不写死 claude』这一半；写死任何单个已登记 id 同样会把非该家 Driver 引向 missing_disposition。",
+      "evidence": "直读 :90-96（patterns 仅用 DEFAULT_DRIVER）；grep `-(revised|response)-(codex|gemini|glm)\\.md|role:\\s*(codex|gemini|glm)\\b` 于 skills/**/*.{md,template} 零命中——扩到全部已登记 id 今天不会误伤。",
+      "suggestion": "patterns 改从 ALL_AGENT_IDS 派生（后缀与 role: 两形态各一组），仍是注册表单源、不违纪律 7；变异用例同步补别家 id 样本。若将来误伤再配豁免，豁免本就有『仍被需要』守卫兜着。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/schemas.ts:344-352",
+      "problem": "role 为空串（''）时同一字段出两行：ajv 报 minLength，checkDispositionRole 又报『role 不是已登记的 Agent id：\"\"』——与函数注释『免得同一处错误出两行』的自述在 这一格不一致（缺失与非字符串两格确实单报）。顺带说明：同一段 mismatches 里既有的 schema 双报（ajv const + gate.ts:207 手工 schema=）是同形存量实例，本步未触碰、不必本步处理。",
+      "evidence": "直读 src/trivium/schemas.ts:332-352（typeof 守卫放行非字符串、'' 是字符串且必然不是已登记 id）与 src/trivium/gate.ts:205-250（mismatches 聚合后 join('；') 进同一条 bad_front_matter）。",
+      "suggestion": "空串也交 ajv 单报（role === '' 早退返回 []）即可；存量 schema 双报知悉即可。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "两段式追加形态与错误面（四问之三）：validateDispositionFrontMatter 与 validateConfig 同构、ajv 失败也跑身份检查属实（schemas.ts:332-336）；role 缺失或非字符串不会被两边各报一次（checkDispositionRole 对非字符串返回 []）；裁决件多处同时错时全部进同一条 bad_front_matter、分号分隔，可读。",
+    "N-2 冗余（四问之二）：按 gate.ts:206（validateDispositionFrontMatter 含 checkDispositionRole）与 :233（role↔driver 比对）的结构推演，两个方向的单删确实都让『N-2 边界』格保持绿、分别由 config-schema 的 N-1 直调两格与 N-2 第一格/T-11 第 2 格接住——注释的双向实测描述与代码一致。这一格值得留：它是未登记 id 路径上唯一的结果级守卫，两道机制被未来重构同时改掉时只有它红。除注释已标注的这处与 GLM-05 附带的存量 schema 双报外，未发现其它同形冗余。",
+    "资产面判据五维（四问之一）：论域递归自动扩展（限 .md/.template，实测 17 份 ≥ 下限 8）、字面由 DEFAULT_DRIVER 派生、论域下限、正向占位符检验（模板 role: {{ROLE}} + 四份 SKILL 的 -<当轮 Driver>.md）四维是实的，今天论域内两 pattern 零命中、判据真绿；『豁免必须仍被需要』守卫 + 空清单 + 边界入注释的处置自洽。原稿命名面只写在注释里：判可接受——README 已知缺口块、测试边界注释、EV-55/68 三处登记且触发点明确，符合本仓『先登记后修』口径；漏的是 protocol 面（GLM-02）。",
+    "留痕与文档同步（四问之四）逐条属实：设计文档 v1.3.28→v1.3.29、§21 新行、§24 6.6 行、6.6 引文块、PROTOCOL 的 role 待并入项销除、AGENTS.md 纪律 12 新增两段、BACKLOG EV-66 关闭记录 + EV-55 论域修正 + EV-68/EV-69 新增、『现状差距 #17』引用实存（演进设计 §4 第 17 项）。『非缺省 Driver 的闸门闭环第一次真正走通』不算说过头：T-11 第 3 格由测试直写裁决件驱动 gate --check，不经技能文本与 Hook，且同一处立即列出另两条未解除的阻碍；技能文本装全局与否不影响该句的适用范围。",
+    "同批两处配套属实：promise-landing 改 parseArtifactName 解析 kind==='response' 并补 files.length>0 下限，消除了字面匹配的空论域假证明（naming.ts 的 NAME_RE 按注册表后缀派生，非第二份命名规则）；run-meta N-3 的双断言（scanned>0 + 后缀==fm.role 的全量历史投影）落地，护住『摘掉一家注册项导致历史裁决件集体失校』那一格。",
+    "registry-parity 的处置正确：schema 全目录扫描里 properties.role.const 的具名豁免随 const 一起删除、NAMED_EXEMPTIONS 置空并留『为何为空』注释，与『豁免必须仍被需要』守卫（unused 检查）配套；types.ts 的 LITERAL_ALLOWLIST 条目改写为探针键理由后与 types.ts:774-779 的实际内容相符。"
+  ],
+  "not_covered": [
+    "未运行任何构建/测试（审查员只读约束）：全量 1459 tests / 1457 pass / 2 skip 的计数、『跳过数未增加』、以及 N-2 注释所述两次变异实测，均基于代码结构推演（与开发者自述一致），未独立复跑。",
+    "必读清单中的 README.md、doc/README.md、doc/01_requirements/README.md、doc/02_design/README.md 未读（与被审 diff 无直接交叠的概览文档）；两份设计文档只读了 diff 涉及段落与 §21/§24/6.6/§4/§7.5 邻域，未通读。",
+    "EV-68（hooks.ts 当轮保护集烙死缺省 Driver）只核了 BACKLOG 记载、init.ts 合并点与 snippet 现状，未逐行重验 hooks.ts——它是登记在案的下一步阻碍，非本步改动面。",
+    "~/.claude/skills 下已安装副本与仓库资产是否一致未抽查（技能文本装全局那一步是否做过，只能以开发者自述为准）。",
+    "plan.md.template / rca.md.template 本体未直读，其裸后缀现状经 README 已知缺口块、diff 与全论域 grep 间接核对。"
+  ],
+  "consulted": [
+    ".reviews/M9-裁决件角色契约放宽/code/_meta/changes-20260919T045154Z.diff",
+    "src/trivium/schemas.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/types.ts",
+    "src/trivium/disposition.ts",
+    "src/trivium/init.ts",
+    "test/contract/disposition-role-assets.test.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "skills/dual-critic/schema/disposition.v1.json",
+    "skills/dual-critic/schema/review.v1.json",
+    "skills/dual-critic/protocol/CLAUDE.md.snippet",
+    "skills/dual-critic/protocol/AGENTS.md.snippet",
+    "skills/dual-run/SKILL.md",
+    "CLAUDE.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md"
+  ]
+}

@@ -157,7 +157,8 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 
 ### 5. 写裁决件
 
-依 `trivium.disposition.v1` 写出 `…-response-claude.md`：
+依 `trivium.disposition.v1` 写出 `…-response-<当轮 Driver>.md`（后缀是**你自己的 Agent id**，
+不是固定的 `claude`；`role` 字段填同一个值，两者不一致闸门会判 `bad_front_matter`）：
 
 - front-matter 含 `schema` / `topic` / `stage` / `role` / `kind` / `run_id` / `addresses`；
 - 正文含一张裁决表，列名固定：意见编号 ｜ 来源 ｜ 严重度 ｜ 裁决 ｜ 理由 ｜ 落点；

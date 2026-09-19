@@ -76,10 +76,26 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
     「有哪几家、各叫什么、前缀归谁」的唯一来源是 `agents/registry.ts`（纪律 7）。
     schema 里抄第二份，新增一家时改一漏二不会报错，症状要到运行期才现形。
     身份一律走**两段式**：ajv 校形状 → 注册表校身份
-    （`schemas.ts` 的 `checkAgentIdentities` / `checkConfigAgents`、
+    （`schemas.ts` 的 `checkAgentIdentities` / `checkConfigAgents` / `checkDispositionRole`、
     `parse.ts` 的 `checkReviewIntegrity`）。
     唯一的例外是**形状判别式** `vendor: {const: …}`——可辨识联合靠它工作，必须留着。
 
+    > **`disposition.v1` 的 `role` 是这条纪律的第五次现形（EV-66，M9 第 6 步前置）。**
+    > 它原本写作 `{"const":"claude"}`，即在 schema 里抄了一份 Agent id。
+    > 症状不是「新增一家时漏改」那么温和：M9 第 5 步放开 `--driver` 之后，
+    > **非缺省 Driver 写不出诚实的裁决件**——谎报 `role: claude` 会被闸门的 role↔driver
+    > 比对判红，诚实写自己的 id 过不了 schema，于是闸门闭环一次都跑不完。
+    > 现已放宽为 `type: string` + `checkDispositionRole` 按注册表校验。
+    > **两段式在这里取「追加」而非「短路」形态**（同 `validateConfig`）：
+    > 一份形状与身份同时错的件，短路形态下只报得出形状那一半。
+    >
+    > **两段式不负责「当轮」语义。** `checkDispositionRole` 只判「声明的作者是不是
+    > 已登记 Agent」；「声明的作者是不是**当轮** Driver」由 `gate.ts` 按 run 元数据比对——
+    > 只有那里才有「当轮」这个概念。放宽 `role` 之后，那条比对是作者身份**唯一**的判据，
+    > 独立单测见 `gate.test.ts` 的 N-2 三格。
+    >
+    > ──────────
+    >
     > 这条纪律**换过写法**。原文是「schema 的枚举与前缀集必须与注册表 parity，
     > 新增机读契约时对账要跟着建」——那是要求人记得同步两份事实源，而它守不住：
     > 同一形状已经漏过四次（白名单过期条目 → `run.v2` → `config.v2` → `review.v1`），

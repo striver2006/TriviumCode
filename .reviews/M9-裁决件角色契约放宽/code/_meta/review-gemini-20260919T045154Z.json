@@ -1,0 +1,106 @@
+{
+  "agreed": [
+    "disposition.v1.json 将 role 由 const claude 放宽为 string，代码层 validateDispositionFrontMatter + checkDispositionRole 采用追加形态，避免形状错误掩盖身份错误，符合纪律 12。",
+    "test/unit/config-schema.test.ts 补齐了放宽 role 后的已登记 id 遍历接受、未登记 id 拦截与形状/身份并存报错的独立单测，解开了原有测试中单对象多重失败的耦合。",
+    "test/unit/promise-landing.test.ts 将字面硬编码 -response-claude.md 重构为 parseArtifactName 解析并补充 files.length > 0 下限断言，有效杜绝了潜在假证明。",
+    "test/unit/run-meta.test.ts 补充了全量历史裁决件对放宽后契约及「作者身份与文件名后缀一致性」的真实语料回归扫描。",
+    "src/trivium/types.ts 中的 Disposition.role 同步放开为 AgentId，消除类型层虚假声明并如实改写了 registry-parity 的豁免理由。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "skills/dual-critic/schema/disposition.v1.json",
+    "src/trivium/schemas.ts",
+    "src/trivium/types.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/topic.ts",
+    "test/contract/disposition-role-assets.test.ts",
+    "test/unit/config-schema.test.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/run-meta.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/promise-landing.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "skills/dual-critic/templates/disposition.md.template",
+    "skills/dual-critic/templates/response.md.template",
+    "skills/dual-critic/templates/README.md",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-review-code/SKILL.md",
+    "skills/dual-review-bug/SKILL.md",
+    "skills/dual-run/SKILL.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/M9-裁决件角色契约放宽/code/_meta/changes-20260919T045154Z.diff"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 skills/dual-run/SKILL.md:53 仍写死「把方案写成 .reviews/<主题>/plan/<日期>-<主题>-claude.md」；查阅 src/trivium/topic.ts:123，locateSubject 寻找原稿候选时严格过滤 c.parsed.role === driver。若非缺省 Driver 遵照技能指引产出 -claude.md，定位原稿时必定匹配失败抛出 65 异常。test/contract/disposition-role-assets.test.ts:57 与 skills/dual-critic/templates/README.md:34 断言「原稿照抄不会当场失败」仅对 gate 校验裁决件成立，对上游流水线 locateSubject 完全失实。",
+      "id": "AGY-01",
+      "kind": "scope-drift",
+      "layer": "code",
+      "location": "skills/dual-run/SKILL.md:53",
+      "problem": "原稿命名面彻底脱离机器判据监视，且 skills/dual-run/SKILL.md:53 仍写死产出 -claude.md 原稿。注释与 README 称「原稿照抄不会当场失败」失实：topic.ts 的 locateSubject 严格要求 c.parsed.role === driver，非缺省 Driver 遵照指引必在 locateSubject 抛 65 异常退出。",
+      "severity": "major",
+      "suggestion": "将 skills/dual-run/SKILL.md:53 示例改为 -<当轮 Driver>.md；纠正 README 与测试注释中关于原稿照抄后果的失实描述；将原稿祈使句纳入资产监控或在 topic.ts 中提供精准定位告警。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 test/contract/disposition-role-assets.test.ts：第 88 行注释称「三种形态...以及裸后缀」，但第 90-96 行 hardcodedRolePatterns 仅返回 2 个正则，缺失裸后缀；第 1074-1076 行变异测试违例列表直接硬编码字面 'claude'，未像第 91 行通过 DEFAULT_DRIVER 派生；测试 2 的 mustHavePlaceholder 与 mustMentionDriver 为写死数组，新增资产时无法自动扩展；测试 3 仅断言内存中两个正则的 test 结果，未变异执行 collectAssets 与 isExempt 扫描链路。",
+      "id": "AGY-02",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/contract/disposition-role-assets.test.ts:88-96",
+      "problem": "资产面判据自身五项承诺存在部分纸面化：变异自测硬编码字面 'claude' 未从注册表派生、未对扫描与豁免主逻辑进行变异自测；正向测试采用硬编码文件列表未自动扩展；注释声称的三形态在实现中缺失裸后缀正则。",
+      "severity": "minor",
+      "suggestion": "校准第 88 行注释为两种形态；测试 3 的违例样本通过 DEFAULT_DRIVER 动态派生；对正向占位符与扫描主链补齐有效自测。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/schemas.ts:350，checkDispositionRole 判定条件为 typeof role !== 'string' || isAgentId(role)。当 role 为空字符串 '' 时，属于字符串且不是已登记 ID，函数返回报错；同时 disposition.v1.json 声明 minLength: 1，ajv 亦报长度不足错误，导致对同一空字符串字段输出两行错误，违背了第 348 行「免得同一处错误出两行」的初衷。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "code",
+      "location": "src/trivium/schemas.ts:350",
+      "problem": "checkDispositionRole 对空字符串 role: '' 未做判空跳过，导致空字符串时 ajv 的 minLength 校验与注册表身份校验双重报错，破坏了「同一处错误不出两行」的设计承诺。",
+      "severity": "minor",
+      "suggestion": "在 checkDispositionRole 中增加 role.length === 0 或 role.trim().length === 0 的前置保护，将长度为 0 的纯形状错误交由 ajv 单一处理。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 doc/03_api/PROTOCOL_dual_critic_relay.md:136，本次修改后仍将「addresses 基数 1～3」列在「均尚未生效」清单中。然而查阅 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:3299（§24 表第 6.6 条），明确记载「addresses 基数 1～3 已随 M7b --critics 落地」；且 disposition.v1.json 仅声明 minItems: 1，实际已支持 1～3 份审查文档。",
+      "id": "AGY-04",
+      "kind": "contract",
+      "layer": "requirement",
+      "location": "doc/03_api/PROTOCOL_dual_critic_relay.md:136",
+      "problem": "PROTOCOL 协议文档中仍将 addresses 基数 1～3 标注为「均尚未生效」，与设计文档 §24 并入台账及 schema 实际状态直接冲突。",
+      "severity": "minor",
+      "suggestion": "修订 PROTOCOL_dual_critic_relay.md，将 addresses 基数 1～3 从尚未生效清单中移除，与设计台账及 schema 现状保持对齐。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查阅 src/trivium/gate.ts:207 的 fm.schema !== 'trivium.disposition.v1' 与第 242 行的 !Array.isArray(fm.addresses) || fm.addresses.length === 0，它们与 disposition.v1.json 的 ajv 校验（schema const 与 addresses minItems: 1）完全重叠。在裁决件多处出错时，mismatches 会将 ajv 的机读英文与 gate 的中文错误并列拼接。",
+      "id": "AGY-05",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/gate.ts:207,242",
+      "problem": "checkAdjudication 中对 schema 与 addresses 的手工比对与 validateDispositionFrontMatter 存在未标注的完全冗余，导致多处同时出错时出现双重报错与输出冗长。",
+      "severity": "nit",
+      "suggestion": "在注释中如实说明 schema 与 addresses 为空判据在闸门层的双重防御意图，或清理多余手工检查交由两段式统一报告。"
+    }
+  ],
+  "not_covered": [
+    "未对除 Claude Code 外的其他真实 Agent CLI 运行时（如真机安装 Antigravity / ZCode / Codex CLI）执行跨进程真实会话写入测试。",
+    "未发起真实的外部模型 API 网络调用或消耗模型配额。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最危险的一条是原稿命名断裂未被资产判据覆盖：dual-run/SKILL.md:53 仍写死 -claude.md 原稿，而 topic.ts 的 locateSubject 严格匹配 c.parsed.role === driver，导致非缺省 Driver 照做必在 locateSubject 抛 65 异常退出；相关注释称「照抄不会当场失败」失实。\n「非缺省 Driver 闸门闭环第一次走通」仅在单测 T-11 人工绕过生产链路（避开 Hook 与技能原稿硬编码）时成立，定性为整体闭环走通明显说过头。\n资产判据五项承诺中，变异自测硬编码字面量、正向测试写死文件列表，存在部分纸面化；checkDispositionRole 对空字符串存在双重报错；PROTOCOL 文档 addresses 口径与设计台账冲突。\n整体裁决：request-changes。",
+  "verdict": "request-changes"
+}

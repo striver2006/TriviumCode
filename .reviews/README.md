@@ -35,21 +35,28 @@
 <YYYY-MM-DD>-<主题字段>-<角色>.md
 
 主题字段 = <主题>[-r<N>][-revised|-response]
-角色     = claude | gemini | glm          # 当前生效；取值即 Agent id，由注册表统一派生
-         → claude | codex | gemini | glm  # 【待实施 · M8/M9】codex 与 claude 启用为审核者后
+角色     = claude | codex | gemini | glm  # 取值即 Agent id，由注册表统一派生（权威来源见 agents/registry.ts）
 ```
 
 | 片段 | 含义 |
 | :--- | :--- |
 | `<YYYY-MM-DD>` | 该文件**首次生成**当日的本地日期 |
 | `-r<N>` | 同一主题同一阶段**重跑**时出现，`N` 从 2 起递增（首跑无后缀）。同一次运行内两侧审查与裁决件共用同一 `N` |
-| `-revised` | 计划修订件 / 根因修订件专用，只出现在 `plan/`、`bug/` 的 `claude` 文件 |
-| `-response` | 代码应答件专用，只出现在 `code/` 的 `claude` 文件 |
-| `claude` | Driver（Claude Code）产出——起草与裁决 |
-| `gemini` | Critic-A（Google Antigravity）产出——独立审查 |
-| `glm` | Critic-B（智谱 ZCode）产出——独立审查 |
+| `-revised` | 计划修订件 / 根因修订件专用，只出现在 `plan/`、`bug/` 下**当轮 Driver 后缀**的文件 |
+| `-response` | 代码应答件专用，只出现在 `code/` 下**当轮 Driver 后缀**的文件 |
+| `claude` | Claude Code 产出 |
+| `codex` | OpenAI Codex 产出 |
+| `gemini` | Google Antigravity 产出 |
+| `glm` | 智谱 ZCode 产出 |
 
-**角色后缀是硬约束**：审查员不得产出 Driver 的后缀，Driver 不得产出审核者的后缀（由 Claude Code Hook 与 `archive` 双重拦截）。当前即「审查员不得产出 `claude`，Driver 不得产出 `gemini` / `glm`」。
+**同一个 Agent 在不同运行里既可能是 Driver 也可能是审核者**，后缀只说「这份是谁产出的」，
+不说它当时是什么身份——身份看同一轮 `_meta/run-*.json` 的 `driver` 与 `critics_selected`。
+Driver 产出起草件与裁决件（原稿、`-revised`、`-response`），审核者产出审查文档。
+
+**角色后缀是硬约束**：审查员不得产出 Driver 的后缀，Driver 不得产出审核者的后缀
+（由 Claude Code Hook 与 `archive` 双重拦截）。受保护的后缀集是**全部已登记角色减当轮 Driver**，
+权威判据是 `hooks.ts` 的 `criticRoleSuffixes()`——**不要在这里枚举**，枚举过的地方
+在 M8 接入 codex 时漏过一次。
 
 > **后缀标识产出方，不标识发起方**。发起方（当轮 Driver）记在运行元数据里，两者**正交**——
 > 【待实施 · M10】任意 Agent 可为 Driver 之后，同一个后缀在不同运行中既可能是 Driver 也可能是审核者。

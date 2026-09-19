@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.28
+> - **当前版本**：v1.3.29
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -984,7 +984,7 @@ Driver 的三类裁决件（计划修订 `-revised`、代码应答 `-response`�
 schema: trivium.disposition.v1
 topic: 登录重构
 stage: plan
-role: claude            # = 当轮 Driver 的后缀。【待实施 · M10】起 enum 扩为四值
+role: claude            # = 当轮 Driver 的 Agent id，与文件名后缀同指一人（M9 第 6 步起可变，示例仍用缺省 Driver）
 kind: revised            # revised | response
 run_id: 20260910T142310Z
 addresses:               # 本件应答的审查文档（当前恒两份；【待实施 · M7b】起 1～3 份，随入选审核者数）
@@ -992,6 +992,23 @@ addresses:               # 本件应答的审查文档（当前恒两份；【�
   - 2026-09-10-登录重构-glm.md
 ---
 ```
+
+> **`role` 的取值契约（M9 第 6 步前置，EV-66 结案）**
+>
+> `role` 是**当轮 Driver 的 Agent id**，schema 里 `{"type":"string","minLength":1}` **不枚举**，
+> 「是否为已登记 Agent」由代码层按注册表校验（`validateDispositionFrontMatter`），
+> 与 `run.v2` 的 `driver` 同源同口径。
+>
+> **为什么不是「enum 四值」**（演进设计 §4 表第 9 行与 §6.2 表的原口径）：
+> 那等于在 schema 里再抄一份 Agent id，与 §16.2 纪律 7「id 的唯一来源是注册表」相抵；
+> 且第五家登记时必漏改——**而漏改的症状就是 EV-66 本身**（非缺省 Driver 写不出诚实的裁决件）。
+> 演进设计自 v1.0.0 冻结正文，故该口径的修正只落本文，**以本文为准**，
+> 与 7.6「五件套 → 七件」、3.6 Codex 事实表同一机制。
+>
+> 作者身份由**两处共同**钉住，缺一不可：文件名后缀（闸门按当轮 Driver 定位这份件）
+> 与 front-matter 的 `role`（闸门再比对一次）。两者不一致即 `bad_front_matter`——
+> 那份留痕的作者身份自相矛盾。注意 schema 的 `const` 从来不证明作者是谁：
+> 放宽前它只是**逼非缺省 Driver 谎报**，放宽后「声明的作者 == 当轮 Driver」这条性质完整保留。
 
 正文必须包含一张裁决表（列名固定，供解析）：
 
@@ -3128,6 +3145,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.29** | 2026-09-19 | **M9 第 6 步前置：裁决件 `role` 契约放宽（EV-66 结案，计划双审 14 条：接受 13、驳回 0、暂缓 1）。** 留痕见 `.reviews/M9-裁决件角色契约放宽/plan/`。**一、契约本身**：`disposition.v1.json` 的 `role` 由 `{"const":"claude"}` 改 `{"type":"string","minLength":1}`，身份校验落到代码层（`validateDispositionFrontMatter` 两段式 + `checkDispositionRole`）。**修正演进设计 §4 表第 9 行与 §6.2 表的「enum 四值」口径**——enum 等于在 schema 里抄第二份 Agent id，与纪律 7 相抵，且第五家登记时必漏改；**而漏改的症状正是 EV-66 本身**。演进设计自 v1.0.0 冻结正文，修正只落本文 6.6 引文块，与 7.6「五件套 → 七件」同一机制。**二、这一步是 M9 第 6 步验收的必要（不是充分）前置**：EV-66 只解除三条阻碍中的 schema 这一条；另两条——Hook 当轮保护集烙死缺省 Driver（`hasCriticRoleSuffix` 不收 `driver`，非缺省 Driver 写自己的 `-<id>.md` 会被判伪造件，而同轮 claude 作为审核者的 `-claude.md` 反而不受保护）、四家入口资产尚未落地——**未解除前验收同样跑不完**，已登记 BACKLOG 并修正 EV-55 的论域记载（原文只覆盖跨时间面，当轮面无人跟）。**三、两处「计划照做就会当场打红自家验收标准」的遗漏，由双审三侧独立命中**：①`registry-parity` 给 `properties.role.const` 立的具名豁免，配「没被用到的豁免就是空头支票」的守卫——删 const 即红，正确处置是删条目而非扩豁免面；`types.ts` 的 `Disposition.role: 'claude'` 与其字面白名单条目同源（理由「Driver 任意化排在 M10」在本步之后即成失实留痕，已改写为探针键）。②计划 §3.2 声明「与 `validateRunMeta` 逐字同构」（**短路**形态）而 §3.4 的负例保留 `addresses: []`，ajv 必败 ⇒ 身份校验不可达 ⇒ 新断言红在「校验器没跑到」。**改取 `validateConfig` 的追加形态**（ajv 失败也跑身份检查，与该函数 GLM-04 那次同源），并把负例按「一条只测一件事」拆开。**四、资产面第一次有机器判据**（`test/contract/disposition-role-assets.test.ts`）：`skills/` 下指挥产出裁决件的祈使句不得写死角色名。判据按四维写——论域 glob 自动扩展（不用人工清单：计划那份「实测 6 处」的清单实测是 9 文件 17 行）、字面从 `DEFAULT_DRIVER` 派生（否则扫描器自己成第二事实源）、命中下限、正向 + 变异自测。**如实标注边界**：只证「旧字面不复发」，证不到「新指引语义正确」，那一格只能靠第 6 步实跑。同批改掉 `promise-landing.test.ts` 的假证明——它靠字面 `-response-claude.md` 找裁决件且明写不断言命中数，是**本步之后第一个会静默失效**的既有判据，改为 `parseArtifactName` 解析并补论域下限。**五、T-11 第 3 格由「期望失败」翻为「期望通过」**：非缺省 Driver 的闸门闭环第一次真正走通；前两格一字未动（定位不到 / 谎报判红），正说明放宽没顺手松掉别的。**口径限定（代码双审 CODEX-07）**：该格跑的是 T-11 夹具——工作树产物 + `TRIVIUM_ASSET_ROOT` 指向工作树 skills + 桩审核者，**裁决件由测试直写**；schema 经 `import ... with { type: "json" }` **构建期内联**进 bundle，真实会话须重新构建并装到全局后才同效（未重装前用户侧 `gate --check` 仍按旧的 `const: claude` 判）。该格也**不覆盖**「非缺省 Driver 照资产自己写出这份件」那一步——那一步见 EV-68。全量 1459 tests / 1457 pass / 0 fail / 2 skip（跳过数未增加；计划原稿把 HEAD 基线的 **tests 总数** 1449 误记为「通过数」，实际 HEAD 为 1449 tests = 1447 pass + 2 skip）。 |
 | v1.0.0 | 2026-09-10 | 首版。依据 PRD v1.3.0、5 份参考方案与 2026-09-10 联网调研，确定分层架构、组件划分、工件契约、四条命令流程、隔离与只读机制、模型路由、异常矩阵、追溯矩阵与实施路线。 |
 | v1.1.0 | 2026-09-10 | 按审核意见 RV-01～RV-26 修订（第 22 章逐条应答）：AD-03 改为 `review --start/--wait` 分段协议并新增 7.5、R12；AD-05/10.2 把 `in-place` 规格化为完整备选并立 ADR-001；3.5 新增 `home_isolation`、`isolation.cost` 探针，11.2/11.3 配置隔离改由探针决定；12.3 缓存键加 `brief_hash` 且默认关闭；8.4 闸门写锁限同会话 + TTL，新增 `/dual-abandon`；5.3/18.2 补 `.gitignore` 白名单；7.4 改用 `.trivium/bin/trivium`；3.1/8.5 修正 `MultiEdit`、Stop 阻断输出契约、8 次硬上限，新增 AD-13（commands vs skills）；6.6/8.6 裁决词对齐 FR-14，空洞理由与共同 blocker 默认 warning，新增 parse_fallback 侧规则；6.1 保留后缀；14.1 只执行显式配置；8.1 认证缓存；12.6 主题锁；6.4 简化为路径判定；AD-12 下限 3.9；术语「覆盖三档 / 路由四级」统一；18.1 新增 4 项待拍板；18.2 补 PRD 回填项。 |
 | v1.2.0 | 2026-09-11 | 按项目负责人评审意见 UR-01～UR-06 修订（第 23 章逐条应答）：**就地审查为唯一隔离模式**（AD-05、ADR-001 Accepted；删除 `mirror`、`link_globs`、`isolation.cost`、`_review/` 目录；运行目录移至项目外 `~/.trivium/runs/`；10.1 改为「延迟落盘 + 历史产出三层屏蔽 + 只读指纹」；9.2 改为快照与漂移检测算法；10.3 文件系统层改为无、事后核验加轨迹写事件；3.5 新增 `path_deny`、`scratch_paths` 探针，`home_isolation` 降为按需）；**结合全项目评审加固**（9.4 新增必读清单段、7.1 新增 `--context`、6.5 新增 `consulted`、11.4 新增 `project_reads` 下限与交叉核对、R15）；**实现语言改为 Node.js + TypeScript 单文件打包**（AD-12、5.2、3.5 `node` 探针、17.1 `node:test`）；**命令载体改为用户级 skills、脚本随核心 skill 分发**（AD-13、3.1 skills 事实、5.2/5.3 目录、7.4 SKILL.md、8.5 skill hooks 说明、16.3 交付物）；8.5 `running` 期间 Driver 禁写；12.1 新增漂移行；13.1 新增 `runtime`、`min_project_reads`、`on_drift*`、`sensitive_globs`；15.1/15.3 追溯更新；18.1 #1/#9 已拍板、新增 #12/#13；18.2 删 PRD FR-07 回填项；R10/R13/R14 改写。 |
@@ -3278,7 +3296,7 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
 | **7.6 通用性验证（桩 Agent 夹具）** | A | 第零步（规格）/ **M7b 第 6 步**（实现） | ✅ **已并入 v1.3.6**，并**修正演进设计的口径**：演进设计 §7.6 / §225 / AC-N5 写的是「**五件套**」，实测为**七件**（补模型路由与配置形状）。演进设计自 v1.0.0 冻结正文，故修正只落本文 5.1.1 与 PRD v1.4.4——**以本文为准**，这正是冻结 + 台账机制要处理的情形 | **5.1.1**；`test/integration/stub-agent-kit.test.ts`、`test/fixtures/stub-agent-kit/` |
 | 6.2 角色枚举 | A | 第零步 | ✅ 已并入 v1.3.0（**拆两级标记**） | 6.2 |
 | 6.5 意见前缀 | A | 第零步 | ✅ 已并入 v1.3.0（**拆两级标记**） | 6.5 |
-| 6.6 role 与 addresses | A | 第零步 | ✅ 已并入 v1.3.0 | 6.6 |
+| 6.6 role 与 addresses | A（规格）/ **B-契约**（role 实现） | 第零步 / **M9 第 6 步前置** | ✅ 规格已并入 v1.3.0；**`role` 契约 ✅ 已落地（EV-66，v1.3.29）**，并**修正演进设计 §4 表第 9 行与 §6.2 表的口径**：不取「enum 四值」而取 `string` + 代码层注册表校验（理由见 6.6 引文块：enum 等于在 schema 里抄第二份 id，与纪律 7 相抵且第五家登记必漏改）。`addresses` 基数 1～3 已随 M7b `--critics` 落地 | **6.6** 引文块；`schema/disposition.v1.json`、`schemas.ts` 的 `validateDispositionFrontMatter` + `checkDispositionRole`、`gate.ts` 的 role↔driver 比对；`test/contract/disposition-role-assets.test.ts` |
 | 6.7 → run.v2 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0；**实现 ✅ 已落地（M7b 第 3 步，2026-09-14）** | **6.7.1**（并排追加，v1 基线保留）；`schema/run.v2.json`、`meta.ts` 写侧与 `migrateRunMetaV1`、`archive.ts` 的 `runManifestProblem` |
 | 7.1 / 7.4 命令旗标与四家入口 | **B-契约** | **M10 / M7b** | ✅ `--critics` 已并入（M7b 第 5 步）；`--tier-*` / `--effort-*` / 四家入口 ⏳ 待 M10 / M11 | 7.1 引言块 |
 | 8.4 / 8.5 Hook `--agent` 与多目标 | **B-契约** | **M10** | ⏳ 未并入（指针占位 + 护栏分级表已并入） | 8.5 引言块 |

@@ -2,12 +2,21 @@
 schema: trivium.disposition.v1
 topic: {{TOPIC}}
 stage: {{STAGE}}
-role: claude
+role: {{ROLE}}
 kind: {{KIND}}
 run_id: {{RUN_ID}}
 addresses:
 {{ADDRESSES}}
 ---
+
+<!--
+落盘位置：`<阶段>/<日期>-<主题>[-r<N>]-revised-{{ROLE}}.md`
+
+`{{ROLE}}` = **当轮 Driver 的 Agent id**，文件名后缀与 front-matter 的 role 必须
+**同指一人**：闸门按当轮 Driver 定位这份件，再比对 front-matter 的 role，
+两者不一致会判 `bad_front_matter`（那份留痕的作者身份自相矛盾）。
+取值不是固定的 `claude`——谁是本轮 Driver 就填谁，且必须是已登记 Agent。
+-->
 
 # {{TITLE}}
 
@@ -26,6 +35,6 @@ addresses:
 ## 2. 修订内容
 
 <!-- plan / bug 阶段：这里是修订后的正文，不要丢弃原稿重写——原稿保留在
-     同目录的 -claude.md 里，本件只写「改了什么、为什么」。
+     同目录的原稿件里，本件只写「改了什么、为什么」。
      code 阶段：这里写每条接受项对应的修改计划与落点文件。
      即使全部驳回，也必须写明「无修改及原因」（§6.6 规则 6）。 -->

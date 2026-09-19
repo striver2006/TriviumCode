@@ -1068,7 +1068,21 @@ export interface Disposition {
   schema: 'trivium.disposition.v1';
   topic: string;
   stage: Stage;
-  role: 'claude';
+  /**
+   * 执笔方（当轮 Driver）的 Agent id。
+   *
+   * M9 第 6 步之前这里写死 `'claude'`，与 `disposition.v1.json` 的
+   * `role: {"const": "claude"}` 同源——两处各抄了一份 id。EV-66 把 schema
+   * 拉回注册表口径时这里一起放开，理由是**不在类型层留第二份 Agent id**
+   * （纪律 7），而不是别的：
+   *
+   * **本接口当前没有任何消费方**（代码双审 CODEX-06 实核：全仓无 `: Disposition`
+   * 与 `as Disposition`）。裁决件 front-matter 的真实解析形状是 `disposition.ts` 的
+   * `DispositionFrontMatter`（`role: string`）。所以改它不影响任何类型检查——
+   * 初版注释写的「非缺省 Driver 的裁决件在类型上根本构造不出来」是编的，
+   * 那条约束从来不存在。两个类型的合一见 BACKLOG EV-70。
+   */
+  role: AgentId;
   kind: 'revised' | 'response';
   run_id: string;
   addresses: string[];

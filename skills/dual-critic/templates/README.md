@@ -4,10 +4,10 @@
 
 | 模板 | 产出工件 | 阶段 |
 | :--- | :--- | :--- |
-| [`plan.md.template`](./plan.md.template) | `plan/<日期>-<主题>-claude.md` 计划原稿 | 计划审 |
-| [`rca.md.template`](./rca.md.template) | `bug/<日期>-<主题>-claude.md` 根因原稿 | 根因审 |
-| [`disposition.md.template`](./disposition.md.template) | `<阶段>/<日期>-<主题>-revised-claude.md` 修订件（含逐条裁决） | 计划审 / 根因审 |
-| [`response.md.template`](./response.md.template) | `code/<日期>-<主题>-response-claude.md` 应答件 | 代码审 |
+| [`plan.md.template`](./plan.md.template) | `plan/<日期>-<主题>-<当轮 Driver>.md` 计划原稿 | 计划审 |
+| [`rca.md.template`](./rca.md.template) | `bug/<日期>-<主题>-<当轮 Driver>.md` 根因原稿 | 根因审 |
+| [`disposition.md.template`](./disposition.md.template) | `<阶段>/<日期>-<主题>-revised-<当轮 Driver>.md` 修订件（含逐条裁决） | 计划审 / 根因审 |
+| [`response.md.template`](./response.md.template) | `code/<日期>-<主题>-response-<当轮 Driver>.md` 应答件 | 代码审 |
 
 ## 第五类「验证记录」为什么没有模板
 
@@ -21,7 +21,21 @@
 
 ## 命名与落盘
 
-**不要手工创建审查文档**（`-gemini.md` / `-glm.md`）——那是编排器从审查员的结构化
-输出渲染的，Claude Code Hook 会拦下主脑对这两类文件的写入（AC-07）。
+**不要手工创建审查文档**——那是编排器从审查员的结构化输出渲染的，
+Claude Code Hook 会拦下 Driver 对它们的写入（AC-07）。
+受保护的后缀是**除当轮 Driver 之外的全部已登记角色**，权威判据是 `hooks.ts` 的
+`criticRoleSuffixes()`——**不要在这里枚举**：上一版枚举了 `-gemini.md` / `-glm.md` 两个，
+M8 接入 codex 之后就漏了一个，而漏掉的那一格没有任何判据看得见。
 
-本目录的模板只对应 `-claude.md` 后缀的工件，即 Driver 自己的产出。
+本目录的模板只对应 **Driver 自己产出**的工件，不含审查文档。
+
+后缀取**当轮 Driver 的 Agent id**，不是固定的 `claude`：裁决件（`revised` / `response`）
+的文件名后缀与 front-matter 的 `role` 必须同指一人，闸门两头都比对（EV-66）。
+
+> **原稿的后缀同样随当轮 Driver 变**，别把它当成「只有裁决件才讲究」的事。
+>
+> 这句话上一版写反过：原稿模板曾写死 `-claude.md`，理由是「原稿不进闸门的裁决件定位，
+> 所以照抄不会当场报错」。**那个理由是错的**（代码双审 CODEX-02 ≡ AGY-01）——
+> 原稿后缀进的是**被审对象**定位：`locateSubject` 按 `parsed.role === 当轮 Driver` 过滤，
+> 照旧文本写会在 `review --start` 的第一步退 65，比闸门报得还早。
+> 留着这句写反的理由，会让下一个人以为这一面无关紧要。

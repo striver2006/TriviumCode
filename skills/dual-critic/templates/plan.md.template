@@ -2,7 +2,11 @@
 
 <!--
 计划原稿模板（设计交付物 6）。落盘位置：
-  .reviews/{{TOPIC}}/plan/{{DATE}}-{{TOPIC}}-claude.md
+  .reviews/{{TOPIC}}/plan/{{DATE}}-{{TOPIC}}-{{ROLE}}.md
+
+{{ROLE}} = **当轮 Driver 的 Agent id**，不是固定的 claude。
+原稿的后缀也按当轮 Driver 定位：`review --start` 找被审对象时按它过滤，
+写错后缀会在**第一步**就退 65（找不到被审对象），比闸门报得还早。
 
 这份文件是**送审对象**。冻结后其 sha256 写进 BRIEF 与 run.json，
 审查期间若被改动，整次运行会判 subject_drift 作废——所以写完再送审。

@@ -1,0 +1,80 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险一条：§3.2 指定的实现形态与 §3.4(a)/N-1 的负例断言互斥——按「与 validateRunMeta 逐字同构」实现，身份校验在 ajv 失败时被短路，而负例的 addresses: [] 恰使 ajv 必败，N-1 落地即红，且正落在 Q1 预言的「红了顺手删断言」诱发点上（GLM-01）。D1 独立核完：计划列出的六条绕过路径全部 fail-closed，gate.ts:233 作为放宽后唯一作者身份锁在现有两个生产调用点上完备，N-2 充分且 gate.test.ts 现有 helper 可直接构造。D3 裁内部归属正确（全仓先例无一放调用方；放调用方才会漏——voidedSides 可选参数两调用点都没传的教训就在 gate.ts 注释里自记）。D2 裁「该加」，但计划未写论域 glob、字面派生、豁免边界三个决定真伪的设计点；且 §3.3 自称完备的资产清单漏了原稿命名字面与 selftest 桩两族同类字面，会直接传染判据设计（GLM-02/03）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.2 与 §3.4(a)（对应 src/trivium/schemas.ts:242-246 与 test/unit/config-schema.test.ts:105-107）",
+      "problem": "§3.2 把新校验指明为「与 validateRunMeta 的既有形态逐字同构」——那是短路形态：ajv 失败直接 return formatErrors，注册表身份校验只在 ajv 通过后才可达（schemas.ts:242-246）。而 §3.4(a) 的负例只换 role 值、其余字段原样保留，其中 addresses: [] 违反 minItems=1，ajv 必然失败；'nobody' 本身满足放宽后 role 的 type/minLength，ajv 对它无错。短路形态下身份校验不跑，返回的错误里没有任何含 role 的条目——N-1 的第一条断言（bad.some(m => m.includes('role'))）落地即红。红的原因是计划两节互相矛盾，不是校验写错；而 Q1 预言的「红了之后顺手删断言」正是这一幕的诱发场景。",
+      "evidence": "读 src/trivium/schemas.ts:242-246：validateRunMeta 为 if (!v(data)) return formatErrors(v.errors); checkAgentIdentities 在其后才可达。读同文件 :64-79：validateConfig 在 ajv 失败时也追加 checkConfigAgents 的结果，注释明写这是为「错误可读性」修过的形态（审查意见 GLM-04）。读 test/unit/config-schema.test.ts:105-107：负例现状 role: 'gemini' + addresses: []，两条断言分别要求 role 与 addresses 的错。逐字推演：换 'nobody' 后 ajv 仅因 addresses 失败而短路，身份校验不可达。",
+      "suggestion": "二选一并写进计划，消除两节的互斥：①负例只保留 role 一处错误（addresses 等其余字段给合法值），让身份拒绝独立成断言；②§3.2 改为与 validateConfig 同构（ajv 失败也补身份检查）。倾向②：本仓对同款可读性问题已有先例，且真实裁决件多处同时错时一趟就能看全错误。这不影响 D3 的归属裁定（仍在函数内部），只改同构对象。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §八 Q2 / §九 D2 / 验收标准 5 第 5 条",
+      "problem": "D2 裁定：该加，但计划没写决定这条判据真伪的三个设计点，按现状直接落地恰会复现「假证明」：(1) 论域不得用文件清单——§3.3 那份 7 文件表正是纪律 11 打掉的形态，新 SKILL 不进清单即漏报，应 glob 自动扩展（如 skills/**/*.md；构建产物 trivium.cjs 非 .md 自然排除）；(2) 判据字面须从注册表派生（如 -revised-${DEFAULT_DRIVER}.md），不得再抄 'claude' 字面，否则扫描器自己成为第二事实源；(3) 论域外同类字面的豁免边界要预先写明——同类字面还存在于 src/trivium/selftest.ts:291/294（selftest 桩场景恒缺省 Driver，写死自洽、不该改）、src 注释（gate.ts:219-221、report.ts:128）与 GLM-03 所列资产，不划界就会以误报收场、逼出一份膨胀的豁免清单。另：验收标准 5 第 5 条（资产面改回写死 → 当场红）当前悬空——不加判据它永绿，加对了它才成立。同时要如实标注证明边界：负向扫描只证「旧字面不复发」，不证「新指引正确」（模板占位符写错只有 N-1/T-11 的校验能拦，但那是 fail-loud）；它防的形态（资产回退 → 非缺省 Driver 照写 → missing_disposition 而全量测试全绿）确实只有它能抓。",
+      "evidence": "grep skills/ 全目录：role: claude 与 -revised-claude/-response-claude 命中 7 个资产文件（与 §3.3 表一致）外加构建产物 skills/dual-critic/scripts/trivium.cjs:29515/29521（源头即 src/trivium/selftest.ts:291/294）。读 test/unit/registry-parity.test.ts:568-620 确认其论域仅 src/trivium，且注释自认「散文/文案」形态明确不覆盖——资产面今天确无任何机器判据，Q2 的事实判断属实。",
+      "suggestion": "在计划里把 Q2 从「倾向加」落成「加」，并写死三点：论域用 glob 自动扩展、判据字面从注册表/DEFAULT_DRIVER 派生、豁免边界（selftest 桩、src 注释、原稿命名字面）逐条具名；把验收标准 5 第 5 条挂到它名下，使其不再悬空。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.3（对应 skills/dual-run/SKILL.md:53、skills/dual-critic/templates/README.md:7-8 与 27、CLAUDE.md:16、src/trivium/selftest.ts:291-294）",
+      "problem": "§3.3 自称实测清单、入表判据是「祈使句」，但同类祈使句还有：dual-run/SKILL.md:53「把方案写成 …<日期>-<主题>-claude.md。用 Write 落盘」（指挥 Driver 写原稿）、templates/README.md:7/8/27（原稿命名说明与「本目录的模板只对应 -claude.md 后缀」）、CLAUDE.md:16「你的产出后缀是 -claude」。它们不在 EV-66 裁决件范围内、可以不改，但计划既未列入也未写明豁免理由——而「清单完备」的错觉会直接传导给 D2 的扫描判据设计。非缺省 Driver 照 53 行写原稿会被 Write Hook 当场拦下（claude 属保护集「全集减当轮 Driver」，hooks.ts:123-125），症状响亮 fail-closed，不构成审计静默风险，故不判更重。另 §一.C/§六 写「资产面 6 处 / 资产 6」，§3.3 表实为 7 个文件，计数含糊。",
+      "evidence": "grep skills/**/*.md 中 claude 的宽匹配得上述全部行；读 src/trivium/hooks.ts:123-125（criticRoleSuffixes = ALL_AGENT_IDS.filter(id !== driver)）确认非缺省 Driver 轮次 -claude.md 落在保护集；读 CLAUDE.md:12-17；读 src/trivium/selftest.ts:289-299（桩裁决件写死 revised-claude.md + role: claude，其场景 run 元数据 driver 恒为缺省，自洽）。",
+      "suggestion": "在 §3.3 或「不做」表补一行：原稿命名字面（dual-run/SKILL.md:53、templates/README.md:7/8/27、CLAUDE.md:16）与 selftest 桩字面明确豁免并写明理由（原稿面归 EV-55/Q4 族；selftest 恒缺省 Driver），同时把「6 处」改成与表一致的计数。这既是清单诚实性，也是 GLM-02 那条判据的论域输入。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "D1 独立核查结论（开发者重点一）：六条绕过路径逐一核过，全部 fail-closed，gate.ts:233 作为放宽后唯一作者身份锁在现有两个生产调用点上完备——降级轮次只出 warning 不影响比对（gate.ts:266-273）；--run-id 钉住时 driver/runId/rerunIndex 同源自同一份留痕、钉住的 run 读不出即硬失败（cli.ts:797-809）；跨轮次复用被 fm.run_id 比对拦住且两调用点都传 runId、--await-approval 推断不出 runId 时拒绝跳过校验（gate.ts:239、cli.ts:949-967）；front-matter 解析不出走 bad_front_matter（gate.ts:203）；定位不到裁决件走 missing_disposition 且早退分支不可能返回 ok（gate.ts:166-195）；driver 事实源直读运行元数据、cmdGate 无覆盖旗标、留痕全坏时硬失败不静默回落（cli.ts:823-855）。文件名与 front-matter 双源都必须等于 driver（gate.ts:163-164 定位 + 233 比对），谎报件无通道。",
+    "N-2 计划充分且可行：gate.test.ts:43-63 的 putDisposition helper 已把文件名后缀（writeArtifact 的 role 参数）与 front-matter（fmOver 覆写）分开可控，构造「后缀=driver、fm.role=另一已登记 id」无需改 helper。",
+    "D3 裁定（开发者重点三）：放 validateDispositionFrontMatter 内部正确。全仓既有先例（validateRunMeta、validateConfig）无一放调用方；「将来多一个调用方漏掉身份校验」的风险恰是内部归属要消灭的形态——放调用方才会漏（voidedSides 初版可选参数两个调用点都没传的教训，gate.ts:716 注释自记）。",
+    "根因定性正确：role 在 schema 抄一份 id 与纪律 7 相抵，拉回 run.v2 的 driver 口径（type+minLength+代码层注册表校验）是消除偏离而非发明新做法；disposition.v1.json:13 与 run.v2.json driver 段现状均已核实与计划描述一致。",
+    "「不做」清单逐条成立：gate.ts:233 一字不改即自动接管；report.ts/freeze.ts 等消费的确实是文件名后缀 parsed.role（report.ts:103/139 实读核对），与 front-matter 无关；hooks.ts 的 criticRoleSuffixes 按注册表派生，与 front-matter 契约正交，跨时间面归 EV-55 的划分正确。",
+    "§二「三条路各自撞墙」三分表与代码逐格对上（gate.ts:164/233、disposition.v1.json:13）；T-11 第 3 格现状（gate-loop.test.ts:1339-1343）与翻转改法（翻成期望通过、删失败形态断言、前两格不动）正确，第 2 格确会成为放宽后的集成锚。",
+    "N-3 与 run-meta.test.ts:437 真实语料回归同构，落点与形态可行；「契约变更不得让存量失校」的回归锁方向与既有实践一致。变异验证 1-3 条（role 改回 const / 删身份校验 / 删 gate.ts:233）设计正确。",
+    "R-2/R-3 的不可逆定性（只放宽到已登记 id；install:local 必做并 sha256 对账）与仓内已知坑记录一致；§五 放弃方案四条理由（尤其 enum 抄 id、净放松两条）站得住。"
+  ],
+  "not_covered": [
+    "未执行任何构建/测试（审查只读），验收标准 1 的「基线 1449 通过 / 0 失败 / 2 跳过」未实测复核。",
+    "未逐份复核归档 72 份裁决件的 role 与文件名一致性（采信计划所引第 2/3 轮两侧独立核对，本侧仅核校验路径与用例构造面）。",
+    "未读 doc/02_design §6.6/§8.6/§16.2 全文与 BACKLOG EV-55/EV-66/EV-67 原文，相关引用采信计划转述。",
+    "未核 install.cjs 的 sha256 对账实现细节；doctor --selftest 在放宽后的行为仅按其恒缺省 Driver 场景推演（selftest.ts 桩字面自洽），未实跑。",
+    "另一位审查员负责的镜头未尝试覆盖（任务书声明两侧镜头不同）；性能面与配置迁移面本侧未审。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "src/trivium/gate.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/report.ts",
+    "src/trivium/selftest.ts",
+    "src/trivium/hooks.ts",
+    "skills/dual-critic/schema/disposition.v1.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/templates/disposition.md.template",
+    "skills/dual-critic/templates/README.md",
+    "skills/dual-run/SKILL.md",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-review-bug/SKILL.md",
+    "skills/dual-review-code/SKILL.md",
+    "test/unit/config-schema.test.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/run-meta.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/integration/gate-loop.test.ts"
+  ]
+}

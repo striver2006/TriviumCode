@@ -2,7 +2,10 @@
 
 <!--
 根因原稿模板（命令 D，FR-22）。落盘位置：
-  .reviews/{{TOPIC}}/bug/{{DATE}}-{{TOPIC}}-claude.md
+  .reviews/{{TOPIC}}/bug/{{DATE}}-{{TOPIC}}-{{ROLE}}.md
+
+{{ROLE}} = **当轮 Driver 的 Agent id**，不是固定的 claude。
+写错后缀会在 `review --start` 定位被审对象时退 65，比闸门报得还早。
 
 根因审**不得**由计划审或代码审代替。它审的不是代码好坏，
 而是「这个结论站不站得住」——见 prompts/bug-review.md。

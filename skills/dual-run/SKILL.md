@@ -50,7 +50,9 @@ Bash 按写命令形态启发式拦截（重定向、`tee`、`sed -i`、`rm/mv/c
 不包引号，正文里的 `--base` 就会被当成真旗标吞掉后一个词。
 
 ### S1 起草计划
-把方案写成 `.reviews/<主题>/plan/<日期>-<主题>-claude.md`。用 Write 落盘。
+把方案写成 `.reviews/<主题>/plan/<日期>-<主题>-<当轮 Driver>.md`。用 Write 落盘。
+后缀是**你自己的 Agent id**，不是固定的 `claude`——S2 定位被审对象时按当轮 Driver 过滤，
+写错后缀会在那一步退 65（找不到被审对象），比闸门报得还早。
 
 ### S2 计划双审
 按 `/dual-review-plan` 的第 3 步执行 `--start` / `--wait` 循环，但：
@@ -71,7 +73,8 @@ Bash 按写命令形态启发式拦截（重定向、`tee`、`sed -i`、`rm/mv/c
 配置里的 `active_profile`，留痕里记的是回退后的模型，事后看不出用户曾经指定过。
 
 ### S3 修订计划
-读两份审查全文，写 `…-revised-claude.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
+读两份审查全文，写 `…-revised-<当轮 Driver>.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
+后缀与 front-matter 的 `role` 都填**你自己的 Agent id**，不是固定的 `claude`。
 
 ### S4 裁决校验
 `TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐，最多 3 次。
@@ -86,7 +89,8 @@ Bash 按写命令形态启发式拦截（重定向、`tee`、`sed -i`、`rm/mv/c
 要按 `/dual-review-code` 第 3 步的说明显式给出 `--base`，否则补丁为空会退 65。
 
 ### S7 应答确认
-写 `…-response-claude.md`，逐条「接受/驳回/暂缓 + 理由 + 修改计划」。
+写 `…-response-<当轮 Driver>.md`（后缀与 `role` 都填你自己的 Agent id），
+逐条「接受/驳回/暂缓 + 理由 + 修改计划」。
 
 ### S8 裁决校验
 `TV gate --stage code --topic <主题> --check --json`。有缺口回到 S7。

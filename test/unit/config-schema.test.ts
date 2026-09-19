@@ -7,7 +7,7 @@ import { defaultConfig, loadCtx } from '../../src/trivium/config.js';
 import { validateConfig, validateRunMeta, validateDispositionFrontMatter } from '../../src/trivium/schemas.js';
 import { newRunMeta } from '../../src/trivium/meta.js';
 import { CRITICS } from '../../src/trivium/types.js';
-import { AGENTS } from '../../src/trivium/agents/registry.js';
+import { AGENTS, ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 
@@ -98,12 +98,59 @@ test('newRunMeta 产出的骨架符合 trivium.run.v2', () => {
   assert.ok(validateRunMeta({ ...meta, status: 'weird' }).length > 0);
 });
 
+/** 一份合法裁决件 front-matter，按需覆写字段 */
+const fm = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+  schema: 'trivium.disposition.v1', topic: 't', stage: 'plan', role: 'claude',
+  kind: 'revised', run_id: 'R1', addresses: ['a'], ...over,
+});
+
 test('裁决件 front-matter 按 disposition.v1 校验', () => {
-  assert.deepEqual(validateDispositionFrontMatter({
-    schema: 'trivium.disposition.v1', topic: 't', stage: 'plan', role: 'claude', kind: 'revised', run_id: 'R1', addresses: ['a'],
-  }), []);
-  const bad = validateDispositionFrontMatter({ schema: 'trivium.disposition.v1', topic: 't', stage: 'plan', role: 'gemini', kind: 'revised', run_id: 'R1', addresses: [] });
-  assert.ok(bad.some((m) => m.includes('role')), JSON.stringify(bad));
+  assert.deepEqual(validateDispositionFrontMatter(fm()), []);
+  const bad = validateDispositionFrontMatter(fm({ addresses: [] }));
+  assert.ok(bad.some((m) => m.includes('addresses')), JSON.stringify(bad));
+});
+
+/*
+ * ── role 是「已登记 Agent」，不是「claude」（EV-66 / N-1）──
+ *
+ * schema 此前把 id 抄了一份（`role: {"const":"claude"}`），于是非缺省 Driver
+ * 只剩两条路：谎报 `role: claude`（gate 判红），或诚实写自己的 id（schema 判红）。
+ * 放宽成 `string` + 注册表校验之后，**守的那一格换了人**：
+ * 不再是「必须是 claude」，而是「必须是注册表里有的那几家」。
+ *
+ * **这一组负例的写法本身是被双审改过的**（计划双审 GLM-01 ≡ AGY-02）：
+ * 原用例把 `role` 与 `addresses` 两处错误塞进同一个对象，而两段式校验
+ * 若取短路形态（ajv 失败即 return），身份检查压根不可达——role 那条断言
+ * 会红在「校验器没跑到」，而不是「校验器判错了」。现在两处各自独立成例，
+ * 且 `validateDispositionFrontMatter` 取的是**追加**形态，两头都不依赖对方。
+ */
+test('裁决件 role：未登记的 id 必须被拒（放宽之后守的是这一格）', () => {
+  const bad = validateDispositionFrontMatter(fm({ role: 'nobody' }));
+  assert.ok(
+    bad.some((m) => m.includes('role')),
+    `未登记的 role 必须被拒，否则契约就是净放松——留痕的作者身份可以随便写：${JSON.stringify(bad)}`,
+  );
+});
+
+test('裁决件 role：每一个已登记 Agent 都必须被接受', () => {
+  for (const id of ALL_AGENT_IDS) {
+    assert.deepEqual(
+      validateDispositionFrontMatter(fm({ role: id })),
+      [],
+      `${id} 是已登记 Agent，当它是 Driver 时必须写得出合法裁决件（EV-66 的全部目的）`,
+    );
+  }
+});
+
+/*
+ * 两段式**不得短路**：ajv 与身份检查各报各的，一趟看全（GLM-01）。
+ *
+ * 短路形态下这份件只报得出 addresses，「作者是谁」那一格要等下一轮才显形。
+ * 裁决件多处同时错是常态，所以这里锁的是**同时报**，不是「报了就行」。
+ */
+test('裁决件 front-matter：形状错与身份错同时存在时，两类错误都要报出来', () => {
+  const bad = validateDispositionFrontMatter(fm({ role: 'nobody', addresses: [] }));
+  assert.ok(bad.some((m) => m.includes('role')), `身份错被形状错盖住了：${JSON.stringify(bad)}`);
   assert.ok(bad.some((m) => m.includes('addresses')), JSON.stringify(bad));
 });
 
