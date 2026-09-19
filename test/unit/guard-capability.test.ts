@@ -60,6 +60,7 @@ function result(over: Partial<CriticResult> = {}): CriticResult {
     profile_requested: null,
     tool_calls: {},
     read_paths: [],
+    search_hit_paths: null,
     /*
      * 覆盖率两项：**结构化轨迹的两家适配器现在都报它**（设计 10.1.1 第②层）。
      * 夹具跟着报，否则走的是「该侧没报数」那一支、档位落 unavailable——

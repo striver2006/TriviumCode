@@ -221,6 +221,13 @@ export function buildCodexResult(
      * 不是「没采集」。
      */
     read_paths: [],
+    /*
+     * **未采集**，不是「无此事实」（代码双审 CODEX-01）：命令 stdout 就在轨迹里
+     * （`codex-trace.ts` 把 `aggregated_output` 收进 `commands[].output`，run() 原样落 trace.json），
+     * 只是适配器没对它做搜索命中解析——解析任意 shell 输出另是一档代价（EV-19 族）。
+     * 记 null 表示「本侧没有采集这项事实」；要做时从 trace.json 的 `commands[].output` 起步。
+     */
+    search_hit_paths: null,
     write_events: writes,
     suspected_write_events: suspected,
     command_texts: allCommands,

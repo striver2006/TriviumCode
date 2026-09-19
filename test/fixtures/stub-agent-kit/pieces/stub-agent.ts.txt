@@ -138,6 +138,8 @@ export const stubAgentAdapter: CriticAdapter = {
       profile_requested: null,
       tool_calls: { read: toolCalls },
       read_paths: reads,
+      // 桩没有搜索工具输出这种事实：null（与 model_provider 同款三态）
+      search_hit_paths: null,
       write_events: [],
       /*
        * 本桩不跑任何命令，故恒为空数组——含义是「没有命令」而不是「没采集」。

@@ -1,0 +1,192 @@
+---
+schema: trivium.review.v1
+topic: M9-Grep命中计入读取面
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.155.1
+model_requested: deepseek-flash
+model_effective: deepseek-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260919T154710Z
+rerun_index: 2
+snapshot_hash: sha256:84d7f2483d7a4941996aa63b47de9670ab783d9980edaae53c9049ef9008d654
+blind: true
+started_at: 2026-09-19T15:47:11.850Z
+finished_at: 2026-09-19T15:54:27.779Z
+duration_s: 436
+tool_calls:
+  run_command: 93
+  project_reads: 62
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 1
+  minor: 2
+  nit: 2
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0ba59-a4b6-7e60-b0a3-31ef7a5b4367
+---
+
+# 代码审查：M9-Grep命中计入读取面
+
+> Critic-C · OpenAI Codex ｜ 模型 `deepseek-flash`
+> ｜ 运行 `20260919T154710Z` ｜ 第 2 轮
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+两把新锁本身成立：措施 a 的并集、dispose 四格分派、T13 的 realpath 别名、T7 的 10/15→15/15 我逐格复算过；按你的焦点我另外实跑探针验证——项目外/运行根路径没有被 toLogicalForm 弄丢（同一 deny 条目下，对端侧命中判 peer-run-output 作废，己方侧命中判 own-run-material 后整体放行），T12③ 锁的是「命中后被放行」而非「没命中」。要改的是措辞与一处锁的强度：焦点第三问的答案是「不一致」——本补丁在 §10.1 写明 codex 的 null 是「未采集」，却在同一文档的 §10.1.1 consulted 行与 types.ts 新字段注释里仍写 codex「无此事实 / 不进轨迹」，这是上一轮已接受项（CODEX-01）的残留。另：项目外路径的正对照缺一条断言，若 toLogicalForm 后续改成丢弃外部路径，T12 四格与 T13 全绿而 run-root 一类在措施 a 里静默变盲。外加两条 nit（验收证据件与夹具逐字节同一、guard.ts 的一段 JSDoc 被新注释挤开）。全量与变异在本沙箱跑不了（只读：需 mkdtemp 的用例一律 EPERM），只跑通 grep-hits 11/11。
+
+**结论**：`request-changes`
+
+## 审查意见（共 5 条：重要 1 ｜ 次要 2 ｜ 吹毛求疵 2）
+
+### CODEX-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2388（§10.1.1 的 consulted 行）与同文件 §10.1 新增段 1756–1764 行` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：同一份设计文档（AGENTS.md 称其为「唯一实现依据」）在同一批变更里对 codex 的成因自相矛盾：§10.1 新增段写「codex 的命令输出在轨迹里但未做命中解析（未采集）…同一个 null 背后是两种原因」，而 §10.1.1 被本补丁改写的 consulted 行括号里把 codex 与 agy/zcode 并列成「agy / zcode / codex 无此事实」。危害在决策面而不在运行期：读到「codex 无此事实」的人会认定该侧的 null 属结构性不可修，从而不再考虑「解析 commands[].output」这条路——与 EV-76 注记「要做时另立条目」以及本补丁要确立的三态纪律（「没采集」≠「没有这种事实」）正好相反。这也是上一轮已接受项 CODEX-01 的残留：当时列的三处落点里没有 §10.1.1 这一行，而它恰恰被本补丁改过。
+
+**依据**：读 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1757-1764（未采集）与 2388（无此事实）；读 src/trivium/adapters/codex.ts:225-230（注释写「未采集：命令 stdout 就在轨迹里」）与 619-627（trace.json 落 commands: trace.commands）；读 src/trivium/adapters/codex-trace.ts:88-92（output: String(item['aggregated_output'] ?? '')）；读 doc/08_project/BACKLOG.md:115（EV-16 注记）与 173（EV-76，写「未采集，不是无此事实——代码双审 CODEX-01 纠正」）；读 src/trivium/guard.ts:281；读 .reviews/M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-response-claude.md 的 CODEX-01 行（其修改计划只列 codex.ts 注释、设计 §10.1、BACKLOG 两处，未含 §10.1.1 行）。
+
+**建议**：把 §10.1.1 那一行的括号改成与 §10.1 同口径（例如「claude 侧已解析；agy / zcode 的流无工具输出；codex 的输出在轨迹里但未采集」），或干脆只写「claude 侧有该事实」，不对其余三家的成因下断言——「同一个 null 两种原因」这句话只能在一个地方定义，别处引用它。
+
+### CODEX-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/types.ts:1503-1514（CriticResult.search_hit_paths 的文档块，具体在 1507 行）` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：新字段的权威注释把 codex 的成因写成「codex 的命令输出不进轨迹」——这是事实错误，恰好就是上一轮 CODEX-01 认定要消除的那个错标（输出逐字在 trace.json 的 commands[].output 里，只是适配器没有解析）。字段注释是三态纪律的第一读者：它把「没采集」说成「没有这种事实」，正与同段下一句「可选字段会让『没采集』与『没有这种事实』落成同一个观测」自相矛盾。
+
+**依据**：读 src/trivium/types.ts:1503-1514；对照 src/trivium/adapters/codex.ts:225-230、src/trivium/adapters/codex-trace.ts:88-92、doc/08_project/BACKLOG.md:173 的同口径表述（均写「未采集」或「输出在轨迹里」）。
+
+**建议**：改为「codex 的命令输出在 trace.json 的 commands[].output 里、适配器未做命中解析（未采集）」，并把 agy / zcode 与 stub 的两种原因分列，与三家的适配器注释逐字对齐。
+
+### CODEX-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/grep-hits.test.ts:283-289（T12 第 ③ 格）` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：T12 第 ③ 格是纯阴性断言（peerHits / notedPaths / typedHits 三个集合都空），它无法区分「命中了但被 dispose 放行」与「压根没命中」。本轮新引入的 toLogicalForm 恰恰有一个把项目外路径弄丢的失效面（rel === null 分支若被改成「不保留」，运行根那类 deny 条目在措施 a 里会静默变盲，直接 fail-open），而当前没有任何用例对这一情形做正对照：T12 ①②③④ 与 T13 在那种变异下会全部照绿（T13 只覆盖项目内的 realpath 别名）。
+
+**依据**：读 test/unit/grep-hits.test.ts:258-296（四格断言）与 298-323（T13）；读 src/trivium/guard.ts:285-300（toLogicalForm 的 rel === null || rel === '.' ? p : rel）与 260-266（dispose）。为判断该格是否真的走过 dispose，我用 node --input-type=module 直调 dist 里的 judgeSide 复算（同 req、同 base，仅换 search_hit_paths）：对端侧 /runs/proj-1/R1/gemini/out/result.json → peerArtifactRead=true、typedHits=[{path:…,category:'peer-run-output'}]；己方侧 /runs/proj-1/R1/claude/out/result.json → 三集合皆空；toProjectRelative('/runs/proj-1/R1/claude/out/result.json', ['/proj/m9-acceptance']) === null（项目外、原样保留）。结论：今天是对的，但阳性证据只存在于我的临时复算里，不在用例里。
+
+**建议**：在 T12 第 ③ 格内补一条对端侧正对照（同一 deny 条目、把 critic 段换成对端侧，断言 peerArtifactRead===true 且 category 为 peer-run-output）——一条断言就能把「项目外路径原样送进 checkPeerLeak」钉住，也顺带让该格不再是可空转的阴性断言。
+
+### CODEX-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/fixtures/claude-events/README.md（新增「Grep 两份」段）与 doc/05_testing/evidence/m9-acceptance-20260919/grep-tool-results-20260919T120643Z.jsonl` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：README 写「原件另存 doc/05_testing/evidence/m9-acceptance-20260919/grep-tool-results-20260919T120643Z.jsonl」，但两者逐字节相同（同一 sha256、同为 71065 字节），都带 <ROOT> 占位符——仓库里并不存在未改写前缀的原件。于是「其余内容一字未动」这句无法被后来者核对，71 KB 的同一份件还落了两处；README 提到的「截取脚本」也不在仓库里（同类名脚本 doc/.../build-fixture.sh 是流水线夹具重建脚本，不做 Grep 截取）。
+
+**依据**：shasum -a 256 test/fixtures/claude-events/grep-content-absolute-path.jsonl doc/05_testing/evidence/m9-acceptance-20260919/grep-tool-results-20260919T120643Z.jsonl → 二者同为 8450ee693b6e9ca363c549951f12e1cf149ab5fd7a79b70acab842a20c10f700；读 test/fixtures/claude-events/README.md:15-28；读 doc/05_testing/evidence/m9-acceptance-20260919/build-fixture.sh 全文与该证据件首行（"cwd": "<ROOT>"）。
+
+**建议**：二选一：把「原件」落到该路径（真原件或可复现的截取脚本 + 命令），或删掉一处重复并把措辞改成「同一份截取的归档副本（已做根前缀改写）」，让溯源声明与盘上事实一致。
+
+### CODEX-05 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/guard.ts:160-167` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：本补丁把 matchConsulted 的文档块插在「单侧判定。…consulted 交叉核对的阈值是 80%」那段之后，形成两个相邻的 /** */ 块：后一块挂到 matchConsulted，前一块成了无主注释，而 judgeSide 至此没有文档注释。读者会把「单侧判定 / 阈值 80%」的描述挂到 matchConsulted（一个纯匹配函数）上——这正是本仓最在意的那类「文档与声明对不上」。
+
+**依据**：读 src/trivium/guard.ts:160-192（两块注释相邻，judgeSide 定义在 matchConsulted 之后且无注释）；对照本补丁 guard.ts 的 @166/@163 hunk（-161,6 +163,32）插入位置。
+
+**建议**：把「单侧判定」那段移到 judgeSide 定义正上方；若想同时说明 matchConsulted，就在它自己的块里以它的口径重写主语。
+
+## 认为正确的部分
+
+- 焦点第一问：T12 四格与 dispose 的分派逐格对应（peer-artifact→作废、orchestrator-state→告警、own-run-material→整体丢弃、null→恢复 false），四格断言我都复算过，与 guard.ts:260-266、316-330 的实现一致。
+- 焦点第一问后半：己方材料那格锁的是「命中了但被放行」，不是「没命中」。我用探针复算过——同一 req 下把命中换成对端侧 /runs/proj-1/R1/gemini/out/result.json 会判 peer-run-output 并置 peerArtifactRead=true，说明 deny 条目 /runs/proj-1/R1 确实能匹配到子路径；己方侧那一格才因此是「命中后被 dispose 丢弃」。
+- 焦点第二问：toLogicalForm 的 rel === null || rel === '.' ? p : rel 分支把项目外/运行根路径原样保留，没有被顺手弄丢；折成相对形态的只是落在 roots（含 realpath 别名）之内的路径，交回 checkPeerLeak 后由它按字面 projectRoot 解析回逻辑形态，方向正确（init.cwd 是内核 canonical 形态，与 realpath(projectRoot) 同形）。
+- 降级方向是安全的：init.cwd 缺失时 parseGrepResults 回落到 req.project_root 作基准，相对命中仍能被折成相对形态命中 deny 条目；不会因 CLI 版本漂移产生假阳性。
+- 分档口径在解析器与判定面一致：content 进 hits（判定面），count / files_with_matches 进 listed（只留痕），T1a/T1b/T2/T3 分别锁住三种模式、两种 path 形态（相对/绝对）、文件级 行号:文本 不产路径、以及两道守卫与噪声行过滤——我按夹具逐行核对过，文件级形态不会被误计入 hits。
+- 契约面未被破坏：search_hit_paths 只被 judgeSide 两处消费（guard.ts:297、411）；run.v2 的 critic 段 additionalProperties:true 且不要求该键，字段本身不进 run.json；其命中明细经 typedHits 进 guard.peer_leak_via_path.hits[].path 时 schema 只要求 string（未假定绝对形态），gate.ts:798 也只读 category——无 schema 破坏、无遗漏消费方。
+
+## 未覆盖范围（本侧盲区）
+
+- 全量测试与变异验证未跑：本沙箱只读，凡需 mkdtemp 的用例一律 EPERM。全量 unit 报 468/1276 失败，我逐条核对 936 处错误全是 EPERM（mkdtemp 被拒），非真实失败；能跑通的只有不落盘的 grep-hits，11/11 通过。变异三例（正则永不匹配 / isUnder 退化 / 删并集）我只是按代码推演其红点，未实跑。
+- 未在真实符号链接根的仓库上端到端跑一次：T13 用的是合成根 + 注入命中，realpath 别名在生产路径（judgeRun 的 fs.realpath）上的行为未实测。
+- 大小写不敏感文件系统（macOS 默认）下 init.cwd 与 projectRoot 大小写不一致的情形未验证：realpath 不修大小写，这时 toProjectRelative 会返回 null 并把命中留在物理形态——推测与符号链接同族（假阴性方向），confidence low，未作为意见提。
+- ClaudeTrace.toolResults 保留全部成功 tool_result 文本的内存占用未量化（上一轮已登记为观察，本批未测，故不重复提为意见）。
+- Grep 输出格式漂移只能由夹具兜底守（EV-78 已登记），我没有做探针实测或 CLI 升版复现。
+- doc/05_testing/evidence/m9-acceptance-20260919/ 下其余验收材料（review-claude-*.json / run-*.json / trace-*.json）与本补丁改动的一致性未逐份核对。
+- 未评估新规则的产品后果（一次 content Grep 命中对端件即整轮报废、BRIEF 第 8 段引导是否足够），那需要实跑验收，不在本轮。
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-Grep命中计入读取面/code/_meta/changes-20260919T154710Z.diff`
+- `.reviews/M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-response-claude.md`
+- `AGENTS.md（工作目录内联指令）`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/05_testing/evidence/m9-acceptance-20260919/build-fixture.sh`
+- `doc/05_testing/evidence/m9-acceptance-20260919/grep-tool-results-20260919T120643Z.jsonl`
+- `doc/08_project/BACKLOG.md`
+- `scripts/mutation-check.mjs`
+- `skills/dual-critic/schema/review.v1.json`
+- `skills/dual-critic/schema/run.v2.json`
+- `src/trivium/adapters/agy.ts`
+- `src/trivium/adapters/base.ts`
+- `src/trivium/adapters/claude-trace.ts`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/adapters/codex-trace.ts`
+- `src/trivium/adapters/codex.ts`
+- `src/trivium/adapters/stub.ts`
+- `src/trivium/adapters/zcode.ts`
+- `src/trivium/brief.ts`
+- `src/trivium/freeze.ts`
+- `src/trivium/gate.ts`
+- `src/trivium/guard.ts`
+- `src/trivium/naming.ts`
+- `src/trivium/parse.ts`
+- `src/trivium/review.ts`
+- `src/trivium/runner.ts`
+- `src/trivium/types.ts`
+- `test/fixtures/claude-events/README.md`
+- `test/fixtures/claude-events/grep-content-absolute-path.jsonl`
+- `test/fixtures/claude-events/grep-three-modes-relative-path.jsonl`
+- `test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt`
+- `test/unit/deny-category.test.ts`
+- `test/unit/grep-hits.test.ts`
+- `test/unit/guard-capability.test.ts`
+- `test/unit/render.test.ts`
+- `test/unit/runner.test.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":93,"project_reads":62}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

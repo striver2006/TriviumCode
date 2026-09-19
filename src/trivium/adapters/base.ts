@@ -268,6 +268,8 @@ export function failedResult(
     profile_requested: fail.profileRequested ?? null,
     tool_calls: {},
     read_paths: [],
+    // 失败出口没有任何轨迹事实可言：与 model_provider 同款，写 null 不写 []
+    search_hit_paths: null,
     write_events: [],
     command_texts: [],
     evidence_ok: false,
@@ -1649,6 +1651,26 @@ export function normalizeAbs(p: string, projectRoot: string): string {
 export function isUnder(abs: string, root: string): boolean {
   const r = root.startsWith('/private/') ? root.slice('/private'.length) : root;
   return abs === r || abs.startsWith(r.endsWith('/') ? r : `${r}/`);
+}
+
+/**
+ * 把一条轨迹路径归一成**项目相对路径**；不在任一 root 之下返回 `null`。
+ *
+ * consulted 交叉核对此前是「切 projectRoot 前缀 + 精确相等 + `./` 变体」（guard.ts 旧实现），
+ * 没有 realpath 感知、也没有分隔符边界——macOS `/tmp` 与 `/private/tmp`、`/repo` 与 `/repository`
+ * 都会出错（M9 第 6 步代码双审 CODEX-07 / 计划双审 AGY-04）。这里**扩展**既有的 `normalizeAbs`
+ * + `isUnder`，不另写第二份归一化（计划双审 CODEX-06）：`roots` 由调用方给
+ * `[projectRoot, realpath(projectRoot)]`，realpath 取不到就只传前者。
+ */
+export function toProjectRelative(p: string, roots: readonly string[]): string | null {
+  const abs = normalizeAbs(expandHome(p), roots[0] ?? '/');
+  for (const root of roots) {
+    const r = normalizeAbs(root, '/');
+    if (!isUnder(abs, r)) continue;
+    const rel = nodePath.relative(r, abs);
+    return rel === '' ? '.' : rel.replace(/^\.\//, '');
+  }
+  return null;
 }
 
 /** 模型路由：命令行参数 > 主题级覆盖 > profile > 阶段默认（设计 §11.5 四级） */

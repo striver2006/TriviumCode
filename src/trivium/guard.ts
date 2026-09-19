@@ -5,6 +5,7 @@
  * 这样「检出」与「处置」分开，处置策略可配而检出逻辑恒定。
  */
 import nodePath from 'node:path';
+import { promises as fs } from 'node:fs';
 import type { Config, CriticId, CriticRequest, CriticResult, DenyCategory, Review,
   SuspectedWrite,
 } from './types.js';
@@ -13,6 +14,7 @@ import {
   checkPeerLeak,
   checkPeerLeakViaCommand,
   effectiveReadPaths,
+  toProjectRelative,
   TOOL_TRACE_CAPABILITY,
   type TraceCapability,
 } from './adapters/base.js';
@@ -156,10 +158,36 @@ export interface SideVerification {
 }
 
 /**
+ * consulted 交叉核对的匹配集（§11.4）。导出是为了让用例能断言**集合本身**而不只是布尔位：
+ * 阈值 80% 下 15 项漏 3 项照样绿，只锁布尔锁不住 15/15（计划双审 CODEX-02 ≡ AGY-01 ≡ GLM-02）。
+ *
+ * 两边都经 `toProjectRelative` 归一（realpath 别名、`./`、绝对/相对写法，CODEX-07）；
+ * consulted 里项目外的条目算 `missing`（它本来就不该出现在那里）。
+ */
+export function matchConsulted(
+  consulted: readonly string[],
+  tracePaths: readonly string[],
+  roots: readonly string[],
+): { matched: string[]; missing: string[] } {
+  const traceSet = new Set<string>();
+  for (const p of tracePaths) {
+    const rel = toProjectRelative(p, roots);
+    if (rel !== null) traceSet.add(rel);
+  }
+  const matched: string[] = [];
+  const missing: string[] = [];
+  for (const c of consulted) {
+    const rel = toProjectRelative(c, roots);
+    (rel !== null && traceSet.has(rel) ? matched : missing).push(c);
+  }
+  return { matched, missing };
+}
+
+/**
  * 单侧判定。
  *
  * `consulted` 交叉核对的阈值是 80%（§11.4）：允许少量路径写法差异，
- * 但大面积对不上就说明是编造的。
+ * 但大面积对不上就说明是编造的。匹配集本身由上面的 `matchConsulted` 算。
  */
 export function judgeSide(
   cfg: Config,
@@ -170,6 +198,12 @@ export function judgeSide(
   opts: {
     archiveRootAbs: string;
     projectRoot: string;
+    /**
+     * consulted 归一化用的根别名：`[projectRoot, realpath(projectRoot)]`。
+     * 由 `judgeRun` 算一次传下来（realpath 是 I/O，本函数保持同步纯函数）；
+     * 缺省 `[projectRoot]`——单测用合成根时走这条，行为与传 realpath 失败时相同。
+     */
+    projectRoots?: readonly string[];
     /** 编排器状态目录的绝对路径——分类与具名放行都要它（设计 §10.1.1） */
     triviumDir: string;
     /** 运行根的绝对路径。那是混合树，己方材料与对端输出都在里面 */
@@ -232,13 +266,39 @@ export function judgeSide(
   };
 
   /*
-   * 措施 a **只吃 `read_paths`，不吃回填**（r2/r3 双审两侧均确认）：
+   * 措施 a **只吃真实读取事实（`read_paths` 与 `search_hit_paths`），不吃回填**（r2/r3 双审两侧均确认；
+   * `search_hit_paths` 是 EV-76 出路 ① 加进来的，见下一段）：
    * 回填路径的语义是「跑了一条提到该文件的命令」，不等于「读到了该文件」。
    * 命令通道由下面的措施 b 承担，两条分列才看得出泄漏走的是哪条。
    *
    * 按**全集**匹配，分类在命中之后做——见上面的说明。
    */
-  const peerRaw = checkPeerLeak(result.read_paths, req.deny_paths, opts.projectRoot);
+  /*
+   * 措施 a 吃两份**真实读取**事实：结构化读取路径，以及搜索工具 `content` 输出里命中的文件
+   * （`search_hit_paths`，EV-76 出路 ①）。后者的文本与 Read 同样进入模型上下文；探针实测
+   * CLI 路径级 deny 对 Grep 不生效（§3.7），事后核验是那条通道唯一的兜底。
+   * **这是新规则**（设计 §10.1 2026-09-19 起），不是「既有承诺生效」：此前承诺只覆盖 Grep 的
+   * `path` 入参。`files_with_matches` / `count` 只披露存在性、与 Glob 同档，不进这里。
+   * 与 codex 侧 EV-16 的不对称：那边命令输出在 trace.json 里但**未做命中解析**（未采集），这边解析了——
+   * 差在采集，不是规则矛盾。
+   *
+   * **两条判定线共用一份归一化**（代码双审 CODEX-02 ≡ GLM-02）：`checkPeerLeak` 内部只按字面
+   * `projectRoot` 归一（抹 `/private`，无 realpath），而 Grep 命中以 `init.cwd`（物理路径）为基准——
+   * 符号链接根下 deny 条目是逻辑形态、命中是物理形态，恒不命中。所以先经 `toProjectRelative`
+   * 用 `projectRoots` 别名把落在项目内的路径折成**项目相对**形态再送入（由它按字面根解析回逻辑形态）；
+   * 项目外的（运行根等）保留原样。`read_paths` 同样处理，不只改新通道。
+   */
+  const roots = opts.projectRoots ?? [opts.projectRoot];
+  const toLogicalForm = (ps: readonly string[]): string[] =>
+    ps.map((p) => {
+      const rel = toProjectRelative(p, roots);
+      return rel === null || rel === '.' ? p : rel;
+    });
+  const peerRaw = checkPeerLeak(
+    toLogicalForm([...result.read_paths, ...(result.search_hit_paths ?? [])]),
+    req.deny_paths,
+    opts.projectRoot,
+  );
   /*
    * 措施 b（§10.1 / EV-01）：命令原文的字面扫描。
    *
@@ -343,17 +403,16 @@ export function judgeSide(
    */
   const readonlyBreach = result.write_events.length > 0;
 
-  // consulted 与轨迹交叉核对——吃回填后的有效路径，否则 command-trace 侧每轮误报
+  // consulted 与轨迹交叉核对——吃回填后的有效路径 ∪ 搜索命中，两边都过同一份归一化
   let consultedUnverified = false;
   const consulted = review?.consulted ?? [];
   if (consulted.length > 0) {
-    const traceSet = new Set(
-      effectiveReadPaths(result, cap, opts.projectRoot).map((p) =>
-        p.startsWith(opts.projectRoot) ? p.slice(opts.projectRoot.length).replace(/^\/+/, '') : p,
-      ),
+    const { matched } = matchConsulted(
+      consulted,
+      [...effectiveReadPaths(result, cap, opts.projectRoot), ...(result.search_hit_paths ?? [])],
+      opts.projectRoots ?? [opts.projectRoot],
     );
-    const matched = consulted.filter((c) => traceSet.has(c) || traceSet.has(`./${c}`)).length;
-    consultedUnverified = matched / consulted.length < 0.8;
+    consultedUnverified = matched.length / consulted.length < 0.8;
   } else if (review !== null) {
     // 结构化成功但没填 consulted，无法核对
     consultedUnverified = true;
@@ -553,6 +612,18 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
     ...(input.triviumDirRel ? { triviumDirRel: input.triviumDirRel } : {}),
   });
 
+  /*
+   * consulted 归一化的根别名：realpath 取不到（合成根、ENOENT）就只用 projectRoot，
+   * 与 `judgeSide` 缺省一致；取到了也不替换 projectRoot，只多一个别名。
+   */
+  let projectRoots: readonly string[] = [input.projectRoot];
+  try {
+    const real = await fs.realpath(input.projectRoot);
+    if (real !== input.projectRoot) projectRoots = [input.projectRoot, real];
+  } catch {
+    /* 合成根或不可解析：只按字面根归一 */
+  }
+
   const sides: Partial<Record<CriticId, SideVerdict>> = {};
   for (const c of Object.keys(results) as CriticId[]) {
     const r = results[c];
@@ -571,6 +642,7 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
     sides[c] = judgeSide(cfg, c, r, reviews[c] ?? null, q, {
       archiveRootAbs: input.archiveRootAbs,
       projectRoot: input.projectRoot,
+      projectRoots,
       /*
        * 分类与具名放行要这两个根（设计 §10.1.1）。
        * `triviumDirRel` 是可选的（旧调用没传），缺省按约定目录名拼——

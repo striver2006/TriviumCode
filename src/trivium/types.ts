@@ -1501,6 +1501,21 @@ export interface CriticResult {
   /** 轨迹中出现过的读取路径（项目相对），供 deny_paths 核验与 consulted 交叉核对 */
   read_paths: string[];
   /**
+   * 经**搜索工具的输出**读到的文件（绝对路径）：claude 侧 Grep `content` 模式的命中（EV-76 出路 ①）。
+   *
+   * **三态与 `model_provider` 同构**：必填，claude 填数组（可为空）；其余显式写 `null`，
+   * 但同一个 `null` 背后是两种原因，各家适配器的注释写明了是哪种：
+   *   - **无此事实**：agy / zcode 的流只有工具入参、stub 不产真实输出；
+   *   - **未采集**：codex 的命令输出在 trace.json 的 `commands[].output` 里，只是适配器未做命中解析
+   *     （解析任意 shell 输出另是一档代价，EV-19 族；要做时从那里起步）。
+   * 可选字段会让「没采集」与「没有这种事实」落成同一个观测——所以必填，且两种原因不能写成一种。
+   *
+   * **消费方只有两处**：`judgeSide` 的 consulted 交叉核对与措施 a（`checkPeerLeak`）——
+   * **不进** `project_reads` 计数（一次目录级 Grep 命中 41 个文件不等于打开了 41 个文件），
+   * 不进 run.json / 审查文档（无 schema 变更），只在 `trace.json` 留痕。
+   */
+  search_hit_paths: string[] | null;
+  /**
    * 「必然带路径」的读调用总数，与其中真的提出了路径的条数（设计 §10.1.1 第②层）。
    *
    * 两者不等 ⇒ 提取器相对厂商实际参数名**已经退化**——这是本项目唯一能在

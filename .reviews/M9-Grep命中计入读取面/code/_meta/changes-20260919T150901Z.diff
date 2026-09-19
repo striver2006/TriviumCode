@@ -1,0 +1,1014 @@
+# trivium changes.diff
+# run_id: 20260919T150901Z
+# base: HEAD
+# head: 470ee846b60b3b2f065be155686948a94350ad83
+# files: 22
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/05_testing/evidence/m9-acceptance-20260919/grep-tool-results-20260919T120643Z.jsonl
+#   doc/08_project/BACKLOG.md
+#   src/trivium/adapters/agy.ts
+#   src/trivium/adapters/base.ts
+#   src/trivium/adapters/claude-trace.ts
+#   src/trivium/adapters/claude.ts
+#   src/trivium/adapters/codex.ts
+#   src/trivium/adapters/stub.ts
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/brief.ts
+#   src/trivium/guard.ts
+#   src/trivium/runner.ts
+#   src/trivium/types.ts
+#   test/fixtures/claude-events/README.md
+#   test/fixtures/claude-events/grep-content-absolute-path.jsonl
+#   test/fixtures/claude-events/grep-three-modes-relative-path.jsonl
+#   test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+#   test/unit/grep-hits.test.ts
+#   test/unit/guard-capability.test.ts
+#   test/unit/render.test.ts
+#   test/unit/runner.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index f4893e9..bf57572 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -381,6 +381,7 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参
+ | `trust_prompt_required` | **false** —— 全新目录首跑无提示 | `.trust_prompt_required` |
+ | `path_deny` | **对 `Read` true，对 `Grep` false** —— 覆盖不完整。`rule_syntax` 落的是**目录 glob**（`Read(./<dir>/**)`），而 `deny_paths` 是逐文件清单。**两者的等价性已于 M9 第 3 步实测结案（EV-42，2.1.276）**：逐文件注入后哨兵未泄漏且记入 `permission_denials`，两条腿都成立 ⇒ `file_shape_verified: true`；项目相对目录形态同样成立；项目外绝对路径条目**规则语法被接受**（不拒整份 `--settings`），但其**拦截效果不可单独验证**——`--restricted` 已把文件工具限制在工作目录内，两者效果不可区分，这条边界要连着结论一起读 | `.path_deny.supported` / `.rule_syntax` / **`.coverage_complete`**（三态：另测的读工具是否同样被挡；`null` = 没另测过，**不等于覆盖完整**）/ **`.file_shape_verified`**（三态：逐文件形状验没验过；适配器的 `peer_deny_applied` 读它**而不是 `supported`**——那两个问的是不同的事） |
+ | `stream_json_requires_verbose` | **true** —— 不带 `--verbose` 时 CLI **直接拒绝**（退 1、零事件、零 API 调用），不是「吐得少」 | `.stream_json_requires_verbose`（三态）。**消费方是漂移可见性，不参与参数构造** |
++| Grep 输出格式（2.1.277 实测，非探针格） | `content`：`<相对 cwd 的路径>:<行号>:<文本>`，`path` 为单文件时 `<行号>:<文本>`（无路径），尾随 `[Showing results with pagination …]`；`count`：`<路径>:<计数>` + `Found N total occurrences across M files.`；`files_with_matches`（缺省）：`Found N files` + 路径行。**命中路径相对 cwd，不相对 `path` 参数**。样本 `test/fixtures/claude-events/grep-*.jsonl`（一份生产截取、一份探针实测） | 无探针格（登记 EV-78）；解析器只认这三种严格形态，漂移症状是 `trace.json.grep.hits` 归零而 `resultLines` 非零，夹具兜底用例 T10 在构建期打红 |
+ | `strict_mcp_config_applied` | **true** —— 落盘的只读组合里含 MCP 硬前置旗标 | `.strict_mcp_config_applied`（三态：**没核对成时为 `null`**，不从空数组反算「确认缺失」）。消费方：`claudeSeverity` 与 M9 `availability()`——适配层据此校验硬前置，而**不必也不得**在 `adapters/` 写出那个字面量（§11.1 判据三的黑名单） |
+ | `scratch_paths` | `[]` —— 项目根零污染 | `.scratch_paths` |
+ 
+@@ -1752,6 +1753,15 @@ Hook 行为约定：
+   消除了此前「提示语禁了一堆、核验只对其中一部分」的错位（那正是通道③④的成因）。
+   落点：`freeze.ts` 的 `enumerateDenyPaths()`、`brief.ts` 第 8 段渲染、`adapters/base.ts` 的
+   `checkPeerLeak`（支持目录前缀匹配），正例单测在 `test/unit/deny-matrix.test.ts`。
++  **2026-09-19 起新规则（EV-76 出路 ①，M9 第 6 步后）**：措施 a 的输入除结构化读取路径外，
++  还吃**搜索工具 `content` 输出里命中的文件**（`CriticResult.search_hit_paths`，claude 侧 Grep）——
++  文本真实进入模型上下文，与 Read 同一通道，而 §3.7 实测 CLI 路径级 deny 对 Grep 不生效，事后核验是那条通道唯一的兜底。
++  这是**新规则**：此前的承诺只覆盖 Grep 的 `path` **入参**。`files_with_matches` / `count` 只披露存在性，
++  与 Glob 同档、不进措施 a，只在 trace.json 留痕。**与 EV-16 的不对称如实登记**：codex 的根递归 grep 检测不到、
++  作为 B-2 长期接受；claude 的 Grep 命中检测得到，命中对端产物按 10.1.1 分档处置——同一行为两条通道结论不同，
++  源于检测能力而非规则矛盾。代价：§12.1「作废并重跑一次」待实施，现状下 claude 侧一次 content Grep 命中对端审查件
++  = 该侧作废、整轮报废；BRIEF 第 8 段已加一句引导搜索工具限定 `path`。agy / zcode 的流没有工具输出、codex 的命令输出不进轨迹，
++  三家 `search_hit_paths` 记 `null`（该族无此事实）。
+ 
+ #### 10.1.1 禁读集的四类分档与处置（2026-09-16 起）
+ 
+@@ -2375,7 +2385,7 @@ HOME="<run_home>" "<runtime.node>" "<entry>" \
+ | 工具调用轨迹存在 | `trace_path` 可解析且非空 | 该侧标 `failed(no_trace)` |
+ | 读文件次数下限 | `read + grep + glob ≥ min_tool_calls`（默认 5；`code` 阶段若补丁为空可豁免） | 该侧标 `failed(insufficient_evidence)`，重试一次 |
+ | **项目文件读取下限**（UR-01 / AC-11） | 读取路径**不在** `.reviews/` 且不是 brief/subject 的次数 `project_reads ≥ min_project_reads`（默认 3）——防止「把 BRIEF 与被审文档反复读 5 遍」通过上一条 | 该侧标 `failed(no_project_context)`，重试一次（brief 中追加「你未读取任何项目文件」提示） |
+-| `consulted` 与轨迹交叉核对 | `review.consulted` 中的路径至少 80% 出现在轨迹读取集合中（防止编造） | 标 `evidence_ok: false`，文档头注明 `consulted_unverified` |
++| `consulted` 与轨迹交叉核对 | `review.consulted` 中的路径至少 80% 出现在轨迹读取集合中（防止编造）。**轨迹读取集合**（2026-09-19 起）= 读工具入参路径（含命令通道回填）∪ 搜索工具 `content` 输出命中的文件（`search_hit_paths`，claude 侧；agy / zcode / codex 无此事实）；两边经同一份归一化（`toProjectRelative`：realpath 别名、`./`、绝对/相对写法）后比对。M9 第 6 步第 2 跑按旧口径 10/15、新口径 15/15（`test/unit/grep-hits.test.ts` T7 回放） | 标 `evidence_ok: false`，文档头注明 `consulted_unverified` |
+ | 会话标识可核对 | Antigravity 的 `conversation_id` / ZCode 的 `sessionId` 写入元数据 | 缺失则标 `evidence_ok: false` |
+ 
+ **任一侧 `evidence_ok=false` 时，该侧不得计为合格双审的一半**；按失败策略走严格中止或单审降级。
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 3ae7377..c80bb68 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -112,7 +112,7 @@
+ | EV-18 | **done**（2026-09-17，主题「凭据副本残留与参数静默丢失」）：`--` 之后的 argv 原样保留为数组交给解析器，`tokenize` 与 `--args` 传法删除；`--topic` 字样被包进正文或 `--focus` 值里而未显式给主题时退 64，其余旗标字样进 notes；旧写法的字面引号给 note；四条 skill 改教「整段单引号包裹、内部单引号写 `'\''`」。原文如下 | **焦点正文里的裸双引号会让 `topic resolve` 静默丢掉 `--topic`**。`--` 之后的内容被拼成一整串再重新分词，正文里出现 `"` 时边界判断被打乱，`--topic <主题>` 不再被识别为旗标——于是回落到**主题推断**。2026-09-15 实撞：焦点含 `~[^/\s"'` + 反引号 + `]+` 这个字符类，报的却是「主题名不合法：不得包含路径分隔符」——**报错指向的是推断结果，不是真正的原因**，逐字符二分才定位到 `"`。**危险的不是报错，是它先静默丢了 `--topic`**：这次因为推断出的主题恰好含 `/` 才炸出来，换个不含斜杠的正文就会**静默跑在错误主题下**——与 skill 反复警告的 `--base` / `--critics` 漏传是同一族缺口（不报错、审的不是用户以为的那个对象）。**skill 教的办法对这一族无解**：它说「正文含 `--` 开头的词时补字面双引号」，而正文本身含引号时，补的引号与正文里的引号对撞，实测仍失败。**当前绕法**（本轮用的）：`resolve` 用不含引号的简化正文取元数据，焦点原文直接传给 `review --start --focus`——第 3 步走标准 argv 解析，不经重新分词，FR-20 的逐字承诺不打折。修法方向：①`topic resolve` 改为**先抽取已知旗标再取正文**，而不是拼串后重新分词；或②正文里的引号做转义/剥离后再分词；无论哪条，**必须让「`--topic` 给了却没被识别」响亮失败而不是回落推断**。发现于 M8 第 1 步 r4 双审的启动环节 | `topic-args.ts` 的 `--` 后重新分词、`cli.ts` 的 `topic resolve` 分支、四条 review skill 的「补字面双引号」指引 |
+ | EV-19 | **已接受**（2026-09-15，M8 第 2 步登记） | **`command-trace` 族的 deny 轨迹核验只有措施 b 一条通道，且只承诺已知形态。** 这是 EV-01（措施 b 的承诺边界）、EV-16（不收窄 git 通道）、R25（威胁模型不抵御蓄意规避）三条**局部事实的合成结论**——三者各自登记在案，但此前**没有任何一个条目承载合成后的那句话**，它只活在计划稿散文与 `base.ts` 的 B-2 注释里。**内容**：读取路径只存在于命令文本里的一族（现役唯一实例是 codex，M8 第 3 步接入），措施 a（读取路径比对 deny）**恒不命中**——它的输入是结构化 `read_paths`，该族恒空；而从命令原文回填出的路径**刻意不喂给措施 a**（「跑了提到该文件的命令」不等于「读到了该文件」，掺进去会把措施 a 的文件系统级断言变成推测）。于是**结构化轨迹两家有 a、b 两条通道，该族只有一条**。**为什么是接受项而非待办**：两条修法（路径级 deny、结构化路径字段）都在 CLI 能力之外，不是本项目能实现的；如实登记差距并让它在留痕里可见（`guard.verification_degraded.path`，使「没法扫」与「扫了没命中」分得开）是当前能做到的全部。**对 M8 第 3 步的约束**：不得因为「措施 b 已落地 + 降级已留痕」就把 codex 侧的 deny 核验标为与另两家等效——引用本条，不要重新发明一遍论证。来源：M8 第 2 步计划双审 r2（AGY-07 ≡ GLM-09）、r3 复核确认 | 设计 §10.1 措施 b 末段「已知限制」、§11.1「轨迹能力与判定分档」、`guard.ts` 的 `SideVerification`、M8 第 3 步 |
+ | EV-15 | todo | **`readonly_commands` 登记而无消费方，而设计称它是「既有旋钮」**。设计 §10.1 写着「既有配置 `readonly_commands` **即 paranoid 旋钮**——把 `git show` / `git log` 从白名单裁掉即收窄该通道」，§18.1 #21 也以它为由拒绝给命令文本命中加 `hard｜warn｜off` 开关（「裁 `readonly_commands` 已是更强的既有旋钮」）。**但全仓 grep 后只有三类命中**：`types.ts:545` 的类型声明、`config.ts:256` 的默认值、`.trivium/config.yaml` 的用户配置，外加几处**注释**提到它——**没有任何代码读这个字段**。这是 EV-06（`instructionFiles` 登记而无消费方）的同族形态，且比它更糟：EV-06 只是没接线，本项是**两处设计论证把不存在的机制当成了既有前提**。**当前不是活风险**：agy 的 `trivium-critic` 工具面里没有任何命令工具（`run_command` 出现即判失守），zcode 的只读组合全禁 `Bash`——两家现役审核者压根跑不了命令，白名单无处可用。**它在 M8 第 3 步变活**：codex 读文件就是跑 shell，届时「能跑哪些命令」第一次成为真问题。**修法要先回答一个没测过的问题**：codex 支不支持命令白名单？M6 第 2 步只探到它的只读是 `-s read-only` 沙箱 + `approval: never`，而**沙箱管的是写、不是「能跑哪些命令」**。若不支持，`readonly_commands` 对该侧就是**不可执行的**，那两处设计论证必须改写而不是补实现。发现于 M8 第 1 步（核 r1 双审 GLM-03 的建议时顺带查出，不在任何一条意见里） | `types.ts:545`、`config.ts:256`、设计 §10.1 与 §18.1 #21、M8 第 3 步的 codex 适配器 |
+-| EV-16 | **已拍板（2026-09-15）：不收窄** | **决策者 Chen Zhenbo。** 裸 `git log -p` 与根递归 `grep -rn .` **保留在审核者的命令能力内**，盲区 **B-2 作为已知残留风险接受**，不因它削减 bug 阶段的排查能力。**后果要说清，不能只记结论**：①B-2 从「待处置」变为**长期接受**，R25 的风险登记随之**不再有对应的缓解措施**——它是纯接受项；②M8 第 3 步 codex 接入后这条通道**真实可达**（该侧读文件就是跑 shell），届时措施 b 对它的覆盖面就是 F 清单那几条，**通道②在非指名形态上仍是开的**；③因此 M8 第 3 步**不得**因为「措施 b 已落地」就把通道②标为收口——设计 §10.1 通道表现在写的是「**F-3 字面形态**已收口」，这个限定词是本决策的直接产物，不能省。**本决策不解除 EV-15**：那是「设计把不存在的机制当既有前提」的独立缺陷，与用不用它无关——反而因为本决策，§18.1 #21 那句「裁 `readonly_commands` 已是更强的既有旋钮」同时失去了两个支点（旋钮不存在 + 已决定不用），措辞必须改。**原条目**：是否把裸 `git log -p` 与根递归 `grep -rn .` 挡在审核者的命令白名单外。这两条是措施 b 盲区 **B-2** 的主体：命令文本里**不出现**任何 deny 路径，而 `.reviews/` 进 Git（341 个文件在库）、HEAD 历史里就有对端产物，一条 `git log -p` 就整份 dump 出来。字面扫描对它**天然无效**——要挡只能在执行侧限制能跑哪些命令。**这是取舍不是缺陷**，所以不自行决定：收窄的代价是 **bug 阶段镜头能力受损**，而设计 §10.1 明说「`git log/blame/show` 是 bug 阶段镜头的重要能力（追溯引入提交、查作者意图），deny `.git` 会实质砍掉它」。**与 EV-15 绑定**：即便拍板收窄，也得先有消费方、且先确认 codex 那边拦得住。同样**当前不是活风险**，M8 第 3 步 codex 接入时变活。来源：r1 双审 GLM-03（该条的文档部分已在本步落地，处置部分即本项） | 设计 §10.1 与 §10.3、`agents.<id>.readonly_commands`、M8 第 3 步 |
++| EV-16 | **已拍板（2026-09-15）：不收窄**（2026-09-19 注记：EV-76 出路 ① 让 claude 侧的 Grep `content` 命中进措施 a——同一「根递归搜索撞上对端件」行为，codex 命令通道检测不到、按本条接受，claude 通道检测得到、按 10.1.1 分档处置。不对称源于检测能力，不是规则矛盾；见设计 §10.1） | **决策者 Chen Zhenbo。** 裸 `git log -p` 与根递归 `grep -rn .` **保留在审核者的命令能力内**，盲区 **B-2 作为已知残留风险接受**，不因它削减 bug 阶段的排查能力。**后果要说清，不能只记结论**：①B-2 从「待处置」变为**长期接受**，R25 的风险登记随之**不再有对应的缓解措施**——它是纯接受项；②M8 第 3 步 codex 接入后这条通道**真实可达**（该侧读文件就是跑 shell），届时措施 b 对它的覆盖面就是 F 清单那几条，**通道②在非指名形态上仍是开的**；③因此 M8 第 3 步**不得**因为「措施 b 已落地」就把通道②标为收口——设计 §10.1 通道表现在写的是「**F-3 字面形态**已收口」，这个限定词是本决策的直接产物，不能省。**本决策不解除 EV-15**：那是「设计把不存在的机制当既有前提」的独立缺陷，与用不用它无关——反而因为本决策，§18.1 #21 那句「裁 `readonly_commands` 已是更强的既有旋钮」同时失去了两个支点（旋钮不存在 + 已决定不用），措辞必须改。**原条目**：是否把裸 `git log -p` 与根递归 `grep -rn .` 挡在审核者的命令白名单外。这两条是措施 b 盲区 **B-2** 的主体：命令文本里**不出现**任何 deny 路径，而 `.reviews/` 进 Git（341 个文件在库）、HEAD 历史里就有对端产物，一条 `git log -p` 就整份 dump 出来。字面扫描对它**天然无效**——要挡只能在执行侧限制能跑哪些命令。**这是取舍不是缺陷**，所以不自行决定：收窄的代价是 **bug 阶段镜头能力受损**，而设计 §10.1 明说「`git log/blame/show` 是 bug 阶段镜头的重要能力（追溯引入提交、查作者意图），deny `.git` 会实质砍掉它」。**与 EV-15 绑定**：即便拍板收窄，也得先有消费方、且先确认 codex 那边拦得住。同样**当前不是活风险**，M8 第 3 步 codex 接入时变活。来源：r1 双审 GLM-03（该条的文档部分已在本步落地，处置部分即本项） | 设计 §10.1 与 §10.3、`agents.<id>.readonly_commands`、M8 第 3 步 |
+ | EV-12 | **done**（2026-09-17，M9 工前并入，设计 v1.3.17）：**裁定机制类旗标属适配层**，`readonly_flags` 只装必须靠实测才知道的安全不变量，尺度类走 `CriticRequest`；判据三条写进设计 11.1「旗标归属判据」，边界由 `registry-parity` 第 6 条守（适配层字面重建探针落盘的 argv 片段即判红，带防空转第二腿，两种变异各实测过）。**原条目的一处前提经核实不成立**：它写「P7 的字面是『适配层绝不硬编码 CLI 旗标』…现在的字面是绝对的」——**该句不是 P7 的原文**，P7 写的是「实现代码只读探针结论，不硬编码**本文列出的**命令行」，主语是「实现代码」、宾语有「本文列出的」限定。同族表述的落点之一是 `REPORT_2026-09-14_m6_claude_probe.md` §四.9（已一并更正）；**「源头」是多点**——`git log -S` 查得 `AGENTS.md` 纪律 1 的同形表述引入于 `a90ac87`（2026-09-13），早于该报告落盘的 `e44cb5a`（2026-09-15），详见设计 11.1 判据段与 §21 的 v1.3.18 行。按 P7 的真实措辞，**「P7 与 zcode 先例互相矛盾」并不成立**，故本次**不改 P7 措辞**，只补它未覆盖的分层判据。另：两家做法不同的真正原因是**探针落盘形态不同**——claude 与 codex 的 `readonly_flags` 是可直接用的 argv 片段（适配层原样透传），zcode 的是候选串接受记录（取旗标名、值另给全集）。连带发现并处置：**演进设计 §7.2 的 claude 调用模板作废**（缺 `--restricted` 与 `--strict-mcp-config`，且写 `--allowed-tools` 而实测被接受的是 `--tools`），纠偏落在设计 3.7.1。原文如下 | **调用形态旗标没有机读落点，M9 / M10 只能在适配层硬编码**。`probe.cli.claude.readonly_flags` 装的是三个**安全不变量**（`--restricted` / `--strict-mcp-config` / `--tools <白名单>`），但**调用形态**旗标（`-p`、`--output-format stream-json`、`--verbose`、stdin 置空、`--json-schema` 收内联 JSON）一个都不在里面——它们只活在 `probes/claude.ts` 的文件头注释与报告散文里。于是 **P7 的字面**（「适配层绝不硬编码 CLI 旗标」）与 **zcode 先例**（机制类旗标写在适配层）在这里互相矛盾，M9 落地时两头都说不清。M6 第 3 步已把「adapters/ 不得 import probes/」做成了会红的契约测试（`registry-parity`），但那只挡住了「绕过探针直接复用函数」，没回答「这些旗标该归谁」。**这是个归属决策，不是缺陷**：要么明确承认机制类旗标属适配层（并把 P7 的措辞改准，因为现在的字面是绝对的），要么给探针加机读字段。M6 第 4 步**没有替 M9 拍这个板**——真实的调用形态要等 M9 接一遍才知道哪些是稳定的，现在定就是凭想象定契约。来源：r4 GLM-06 | `types.ts` `ClaudeProbe`、`adapters/` 的 M9 实现、设计 §11.1、原则 P7 的措辞 |
+ | EV-20 | **done**（2026-09-17，主题「凭据副本残留与参数静默丢失」）：codex 与 **zcode** 两侧（计划双审三侧同时指出原稿漏了 zcode）的凭据载体在 runner 每次尝试的 finally 整份删除，自有目录后验扫描命中即删，`stdout.*` / `trace.json` 就地脱敏；`worker_lost`、`--cancel`、会话启动清扫三处兜底，清扫与 `run_dir_days` 解耦且 status 读不到一律跳过；密钥规则补认 JSON 转义引号。`sessions/` 不扫（EV-32），跨项目清扫未做（EV-33）。原文如下 | **凭据副本留在运行目录 30 天，而密钥扫描不覆盖那里。** `prepareCodexHome()` 必须把 `~/.codex/config.toml`（含多个 provider 的明文 `experimental_bearer_token`）、`<profile>.config.toml` 与 `auth.json` 拷进 `~/.trivium/runs/<run>/codex/codexhome/`——codex 要凭据才调得动 API，**这一步无法省**。已做的是把副本权限收到属主可读写；**没做的是运行结束后清理**，而 `retention.run_dir_days: 30` 让副本留一个月。**J9 的覆盖面在这里有缺口**：`scanSecrets` 只挂在 `archive.ts`（归档落盘那一侧），`~/.trivium/runs/**` 不在它的论域里——而 J9 当初从第 4 步**前移到第 3 步**的理由，逐字就是「`prepareCodexHome()` 会把凭据拷进运行目录，凭据副本从本步开始存在」。**理由说的是运行目录，落地只做到了归档侧。** 发现于 2026-09-16 M8 第 4 步：我为查一个键而整份打印了一份副本，把多个 provider 的 token 打进终端（据此新增了 `CLAUDE.md` 的「含凭据的文件一律 grep 键名」那条）。**修法方向**：运行成功后抹掉副本里的凭据、保留其余结构——`sessions/` 是事后排查的依据（本步查 codex 超时全靠它），整目录删掉代价太大。**动的是留存策略，属新范围，不自行实施** | `adapters/codex-home.ts`、`archive.ts` 的 `scanSecrets`、`retention.run_dir_days`、设计 §10.5 |
+ | EV-21 | todo | **模型与 provider 家族的错配只能事后记录，预检拦不住。** 实测 `codex exec -p qwen -m deepseek-v4-pro` **成功退 0**，回读 `model_provider=qwen` 而模型名为 `deepseek-v4-pro`——codex 不校验两者的对应关系。**边界要写准**（计划双审 CODEX-06 / GLM-03 各自指出过原措辞说过头）：**按 profile 的分层目录拦得住**「模型不属于本 profile」（M8 第 4 步 D4-1 = C″ 已落地，误杀误放双向实测已验）；**拦不住**的是「profile 与模型跨家族错配、而两家族目录恰有交集」——E-1 那次实测正是后者。**按 slug 前缀猜家族仍然否决**：`config.v2` schema 注释写明它会随目录命名漂移。当前处置是如实入档（`model_provider` 与 `profile_requested` 成对进 `run.v2`），由 AC-20 的逐分量判据在事后核对 | `preflight.ts` 的 `checkModelAgainstCatalog`、`adapters/codex.ts` 的 `catalogModelsFor`、设计 §15.3 AC-20 |
+@@ -170,8 +170,9 @@
+ | EV-73 | todo | **`gate` 侧对「较新的运行留痕读不出」同样静默退回更旧的那一份。** `latestRunMeta` 是 newest-first、取第一份**可读**者，跳过的较新项只进 `unreadable` 并 `warn`。`cmdGate` 只判 `scanned > 0 && !meta`（全损）为硬失败，于是「最新那份坏了、上一份能读」时它会静默采信**上一轮**的 driver 与 rerun_index——`meta.ts` 自己的注释早就承认过这点（「最新那条坏掉时闸门会据此把轮次与 run_id 一并变旧」）。**Hook 侧已于 EV-68 收紧**（代码双审 GLM-01 ≡ CODEX-01），两侧口径**现已有意分叉**：Hook 是拦截型、判错当场生效，故判红；`gate` 另有提交锚 `checkRunManifests` 做跑后核对，容忍度不同。**存量口径要写准**（第 2 轮 GLM-03 纠正）：跑后核对**存在**——错误放行方向由 `archive.checkStageArtifacts` 的「角色工件须在 run.json 登记内」兜底——但它**不无条件在场**：只在 `gate --check-artifacts` 路径触发，提交锚 `checkArchiveIntegrity` 并不含它，且对 `critics_selected` 之外的角色失明。本条评估要从这个准确的存量出发，不要照抄「Hook 没有任何跑后兜底」那句已被更正的表述。**本条要评估的是**：`gate` 侧那一格该不该同样收紧，还是维持「有兜底所以可降级」——这需要连同提交锚的兜底强度一起判，不能只看单点。**不评估就别动**：把两侧强行拉齐是这条最容易犯的错，分叉本身有理由（已写进 `resolveRoundDriver` 注释与设计 §8.4）。**触发条件：下一次动 `cmdGate` 的留痕解析面，或 EV-55 重写提交锚时。** | `src/trivium/cli.ts` 的 `cmdGate`（`latest?.driver ?? DEFAULT_DRIVER` 一段）、`src/trivium/meta.ts` 的 `latestRunMeta` |
+ | EV-74 | todo | **claude 探针的 `json_schema_ok` 从未喂过真实契约文件，M9 第 6 步验收第一跑就撞上。** `probes/claude.ts` 判 `json_schema_ok` 用的是一个手写迷你 schema（`{type:object, properties:{first_line}}`，**不带 `$schema`**），而适配器真正传的是 `skills/dual-critic/schema/review.v1.json`，头部有 `"$schema": "https://json-schema.org/draft/2020-12/schema"`。claude 2.1.277 的校验器不认 2020-12 元 schema 引用，当场拒绝（`no schema with key or ref …`），两次尝试零 API 调用；同一文件去掉 `$schema` 或改 draft-07 均被接受。**于是准入三步（M6 探针、M9 第 1 步、第 3 步复验）的 `json_schema_ok: true` 都是真的，但答的是「旗标收内联 JSON」这个形态问题，不是「收本仓的契约文件」**——探针夹具与真实请求之间的差异正是 EV-42 那一类「形状实测」要防的。**已做**：适配器层 `stripMetaSchemaRef` 剥掉顶层 `$schema`（只剥这一键，`$id` 保留；契约文件不改，agy 侧传路径且接受 2020-12）。**本条要做的**：探针的结构化输出那一臂改喂**真实的 `review.v1.json`**，且必须**经适配层同一份变换**送出（`stripMetaSchemaRef` 现已挂在 `buildClaudeArgs` 出口，探针臂也已接上；不经它会撞第 1 跑的拒绝形态——零 result 事件 ⇒ `judgeJsonSchema` 落 **null** 而非 false，三态纪律里 null 不报警，`json_schema_ok` 又无 doctor 消费方，静默回归，代码双审 CODEX-03）；`scripts/claude-admission-control.mjs` 的第二份自造 schema 同改；设计 §3.7 该行的口径同步改准。触发条件：下一次动 `probes/claude.ts`，或 M10 前。发现于 2026-09-19 M9 第 6 步验收（run `20260919T120018Z`） | `src/trivium/probes/claude.ts` 结构化输出臂、`scripts/claude-admission-control.mjs` ③ json_schema_ok 段、`src/trivium/adapters/claude.ts` `stripMetaSchemaRef` / `buildClaudeArgs`、设计 §3.7 `json_schema_ok` 行 |
+ | EV-75 | todo | **claude 侧把 `StructuredOutput` 算成写事件，整轮误判 `readonly_breach: true`。** 带 `--json-schema` 时 CLI 在 `system/init.tools` 里注入 `StructuredOutput` 作为结构化输出的交付通道；它不在 `--tools` 白名单（`Read,Grep,Glob`）里，而适配器的判据是「白名单外的 `tool_use` 即写」，于是 M9 第 6 步验收第 2 跑（run `20260919T120643Z`）记下 5 次「写事件」、`guard.readonly_breach: true`、`breached_files` 五条全是 `StructuredOutput(...)`——而它一个字节都没落盘。**两处连带**：①`readonly_breach` 落盘于 run.json guard 段并在 `summarizeRun` / `report.ts` guardFlags / console 告警三处渲染，但当时**没有任何失败面或作废判定消费它**——真失守与假失守走同一条路，闸门都绿（代码双审 CODEX-02 ≡ AGY-02 ≡ GLM-02，三侧独立命中；GLM-04 改准了「只进 report.ts」的说法）；②探针的 `json_schema_ok` 臂与工具面 / 写事件两臂分开跑，工具面核对时没带 `--json-schema`，从未见过这个工具名（与 EV-74 同根：探针夹具与真实请求形态不一致），且 `judgeToolSurface` 当时不认输出通道——EV-75 初版登记的「两臂合并」修法照字面做会把 claude 侧判不可用（CODEX-01 ≡ AGY-01 ≡ GLM-01）。**已做**：`CLAUDE_OUTPUT_TOOLS = {StructuredOutput}` 在写事件判据里豁免（A29/A30 正反锁定）；`judgeToolSurface` 从同一份常量取输出通道、不计 extra 并单列 `outputChannel`（A6c/A6d 对账）；`readonly_breach` 经 `loadRoundReviews` 带出、`checkAdjudication` 判 failure `readonly_breach` 并按 AD-06 列文件（gate.test 正反例）。**本条还要做的**：①探针把 `--json-schema` 与工具面核对合到同一臂（工具面判据已同源，合并前不得再各写一份清单）。接手前要知道「白名单外」有**三处**推导及其分工（第 2 轮 GLM-01 / CODEX-F01-④）：`judgeToolSurface` 的 `extra` 与适配器写事件判据同源豁免输出通道；只读负对照臂的 `offLimit`（`READONLY_TOOLS.split(',')`）**刻意不豁免**——那臂要的正是白名单外调用以证留痕能力，且不带 `--json-schema`，今天咬不到 `StructuredOutput`；清单**加宽**方向由 A6e 源码字面腿咬住（探针与适配器文件不得出现该名字的字面量，事实只能 import）；②写失守改**逐侧**留痕——`guard` 已逐侧算 `readonlyBreach`，run.json 只落整跑布尔 + `breached_files`，本批按整跑布尔接失败面；逐侧形状与「失守侧作废、与 peer-leak 同款」的语义要另定（GLM-02）。触发条件：下一次动 `probes/claude.ts` 或 run.v2 的 guard 段 | `src/trivium/adapters/claude-trace.ts` `CLAUDE_OUTPUT_TOOLS`、`src/trivium/adapters/claude.ts` 写事件过滤、`src/trivium/probes/claude.ts` 工具面臂、`src/trivium/gate.ts` |
+-| EV-76 | todo | **`consulted` 交叉核对对「经目录级 Grep 命中的文件」不可见，claude 侧首跑匹配率 60%。** M9 第 6 步验收第 2 跑：审查员自报 `consulted` 15 项，其中 9 项经 `Read` 打开、1 项经文件级 `Grep`，另 5 项（两份测试、三份文档）只在**目录级** `Grep` 的结果里出现过——模型确实据此写了有据的意见（CLAUDE-01 引用了 `doc/03_api/…:249` 与 `doc/05_testing/…:273` 的行号），但轨迹里只有 `Grep(path=doc)` 这一条，编排器提不出它命中了哪些文件。`effectiveReadPaths` 只看 `tool_use` 入参，`tool_result` 的内容（Grep 返回的 `file:line:text`）不在解析面。于是 BRIEF 的「实际读过」与判据的「Read/Grep 入参里出现过」两个口径不一致，J5（M9 完成判据）在这一跑失败，且**不是模型撒谎**。三条出路，需设计裁定：①解析 Grep 的 `tool_result` 把命中文件计入读取面（agy 侧同构，工作量最大、口径最准）；②BRIEF 把 `consulted` 的定义收窄为「用 Read 工具打开过的文件」（改协议片段，四侧同改）；③阈值不动、口径不动，把这一格如实记为「claude 侧首跑未过」。**M9 第 6 步取 ③ 登记**，不临场放宽（计划双审 AGY-02 已驳回放宽）。**裁定前置（代码双审 CODEX-07）**：匹配器今天是「切 `projectRoot` 前缀 + 精确字符串相等 + `./` 变体」、无 realpath——macOS `/tmp` 与 `/private/tmp`、绝对/相对写法会整族假阴性，与「看不见 `tool_result`」在观测上同形（本仓 `judgeTracePathStructured` 登记过同款）；先改按归一化相对路径比对并补「同一文件不同写法必须匹配」用例，修完再谈阈值与出路。另：J5 的结果只在侧级 front-matter 条件展开、闸门输出不可见（GLM-02），出路裁定时一并定 `consulted_unverified` / `evidence_ok` 要不要进 `gate --check` 的告警档。触发条件：决定 M9 第 6 步第 3 次尝试之前 | `src/trivium/guard.ts` consulted 交叉核对、`src/trivium/adapters/claude-trace.ts` `readPaths`、`skills/dual-critic/protocol/` BRIEF 第 4 段 |
++| EV-76 | **已关闭**（2026-09-19，出路 ①，用户裁定；计划双审 17 条全接受）：claude 侧解析 Grep `tool_result`，`content` 命中进 `search_hit_paths`（三态、`model_provider` 先例），J5 匹配集与措施 a 同吃；`files_with_matches` / `count` 只留痕；consulted 匹配改经 `toProjectRelative` 归一（CODEX-07 前置一并结案）；第 2 跑回放 10/15 → 15/15（`grep-hits.test.ts` T7）。agy / zcode / codex 无工具输出、记 `null`——出路 ① 在那三侧**不可达**，如实为边界。措施 a 变严的后果与 EV-16 不对称见设计 §10.1；J5 结果进闸门告警档仍在 EV-75③ | **`consulted` 交叉核对对「经目录级 Grep 命中的文件」不可见，claude 侧首跑匹配率 60%。** M9 第 6 步验收第 2 跑：审查员自报 `consulted` 15 项，其中 9 项经 `Read` 打开、1 项经文件级 `Grep`，另 5 项（两份测试、三份文档）只在**目录级** `Grep` 的结果里出现过——模型确实据此写了有据的意见（CLAUDE-01 引用了 `doc/03_api/…:249` 与 `doc/05_testing/…:273` 的行号），但轨迹里只有 `Grep(path=doc)` 这一条，编排器提不出它命中了哪些文件。`effectiveReadPaths` 只看 `tool_use` 入参，`tool_result` 的内容（Grep 返回的 `file:line:text`）不在解析面。于是 BRIEF 的「实际读过」与判据的「Read/Grep 入参里出现过」两个口径不一致，J5（M9 完成判据）在这一跑失败，且**不是模型撒谎**。三条出路，需设计裁定：①解析 Grep 的 `tool_result` 把命中文件计入读取面（agy 侧同构，工作量最大、口径最准）；②BRIEF 把 `consulted` 的定义收窄为「用 Read 工具打开过的文件」（改协议片段，四侧同改）；③阈值不动、口径不动，把这一格如实记为「claude 侧首跑未过」。**M9 第 6 步取 ③ 登记**，不临场放宽（计划双审 AGY-02 已驳回放宽）。**裁定前置（代码双审 CODEX-07）**：匹配器今天是「切 `projectRoot` 前缀 + 精确字符串相等 + `./` 变体」、无 realpath——macOS `/tmp` 与 `/private/tmp`、绝对/相对写法会整族假阴性，与「看不见 `tool_result`」在观测上同形（本仓 `judgeTracePathStructured` 登记过同款）；先改按归一化相对路径比对并补「同一文件不同写法必须匹配」用例，修完再谈阈值与出路。另：J5 的结果只在侧级 front-matter 条件展开、闸门输出不可见（GLM-02），出路裁定时一并定 `consulted_unverified` / `evidence_ok` 要不要进 `gate --check` 的告警档。触发条件：决定 M9 第 6 步第 3 次尝试之前 | `src/trivium/guard.ts` consulted 交叉核对、`src/trivium/adapters/claude-trace.ts` `readPaths`、`skills/dual-critic/protocol/` BRIEF 第 4 段 |
+ | EV-77 | todo | **真载体下 Hook 的生效性未验——EV-71 关闭时刻意留下的残量。** M9 第 6 步的载体取 ① 名义 Driver（仍在 Claude Code 会话里操作，`--driver codex` 只作旗标声明），EV-68 的修复在这条路径上被真实触发；但 ② 真载体（codex / gemini 在自己的 CLI 里执笔）下 `PreToolUse` 根本不存在，护栏不触发——这一层**没有任何实测**，EV-71 原文的那句警示（「别家 Driver 在自己 CLI 里执笔时护栏不触发」）在本条继续成立。设计 §16.1 M10 行前置 ③ 已加注记，别把「EV-71 已关闭」读成「前置 ③ 已满足」。**触发条件：M10 四家入口资产落地后、第一次让别家在自己 CLI 里当 Driver 之前，实测一次写事件。** 来源：M9 第 6 步计划双审 CODEX-06 | 设计 §16.1 M10 行前置 ③、`skills/dual-critic/hooks/hooks.json` |
++| EV-78 | todo | **Grep 输出格式没有探针事实格，解析器建在两份样本上。** EV-76 出路 ① 的解析器只认三种严格行形态（设计 §3.7「Grep 输出格式」行），样本是一份生产截取 + 一份探针实测（2.1.277）。格式随 CLI 版本漂移时的症状是 `trace.json.grep.hits` 归零而 `resultLines` 非零——J5 会回到修前的失败、措施 a 对 Grep 通道静默变盲，而 preflight / doctor 都不会说话。构建期由夹具兜底用例 T10 守（样本不变则永绿，守不住运行时漂移）。**修法**：与 EV-74（探针改喂真实契约文件）同批，探针结构化输出臂之外加一条「Grep 三模式格式」臂，落 `probe.cli.claude.grep_output_format` 三态并接 preflight 漂移提示；或至少在 `doctor --only claude` 里跑一次并比对夹具形态。触发条件：下一次动 `probes/claude.ts`，或 claude CLI 升版后第一次 doctor | `src/trivium/probes/claude.ts`、`src/trivium/adapters/claude-trace.ts` `parseGrepResults`、设计 §3.7 |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/src/trivium/adapters/agy.ts b/src/trivium/adapters/agy.ts
+index 5cafd3d..7d01866 100644
+--- a/src/trivium/adapters/agy.ts
++++ b/src/trivium/adapters/agy.ts
+@@ -387,6 +387,8 @@ export const agyAdapter: CriticAdapter = {
+       profile_requested: null,
+       tool_calls: countTools(out.parsed),
+       read_paths: readPaths(out.parsed),
++      // agy 流只有 parameters / error，没有工具输出——该族无此事实（EV-76 边界）
++      search_hit_paths: null,
+       // 路径提取覆盖率：两者不等即提取器已相对厂商参数名退化（设计 §10.1.1 第②层）
+       path_bearing_reads: coverage.total,
+       path_bearing_reads_with_path: coverage.withPath,
+diff --git a/src/trivium/adapters/base.ts b/src/trivium/adapters/base.ts
+index 8447bf1..7dea8a2 100644
+--- a/src/trivium/adapters/base.ts
++++ b/src/trivium/adapters/base.ts
+@@ -268,6 +268,8 @@ export function failedResult(
+     profile_requested: fail.profileRequested ?? null,
+     tool_calls: {},
+     read_paths: [],
++    // 失败出口没有任何轨迹事实可言：与 model_provider 同款，写 null 不写 []
++    search_hit_paths: null,
+     write_events: [],
+     command_texts: [],
+     evidence_ok: false,
+@@ -1651,6 +1653,26 @@ export function isUnder(abs: string, root: string): boolean {
+   return abs === r || abs.startsWith(r.endsWith('/') ? r : `${r}/`);
+ }
+ 
++/**
++ * 把一条轨迹路径归一成**项目相对路径**；不在任一 root 之下返回 `null`。
++ *
++ * consulted 交叉核对此前是「切 projectRoot 前缀 + 精确相等 + `./` 变体」（guard.ts 旧实现），
++ * 没有 realpath 感知、也没有分隔符边界——macOS `/tmp` 与 `/private/tmp`、`/repo` 与 `/repository`
++ * 都会出错（M9 第 6 步代码双审 CODEX-07 / 计划双审 AGY-04）。这里**扩展**既有的 `normalizeAbs`
++ * + `isUnder`，不另写第二份归一化（计划双审 CODEX-06）：`roots` 由调用方给
++ * `[projectRoot, realpath(projectRoot)]`，realpath 取不到就只传前者。
++ */
++export function toProjectRelative(p: string, roots: readonly string[]): string | null {
++  const abs = normalizeAbs(expandHome(p), roots[0] ?? '/');
++  for (const root of roots) {
++    const r = normalizeAbs(root, '/');
++    if (!isUnder(abs, r)) continue;
++    const rel = nodePath.relative(r, abs);
++    return rel === '' ? '.' : rel.replace(/^\.\//, '');
++  }
++  return null;
++}
++
+ /** 模型路由：命令行参数 > 主题级覆盖 > profile > 阶段默认（设计 §11.5 四级） */
+ export function routeModel(
+   cfg: Config,
+diff --git a/src/trivium/adapters/claude-trace.ts b/src/trivium/adapters/claude-trace.ts
+index 927b25b..0e300c9 100644
+--- a/src/trivium/adapters/claude-trace.ts
++++ b/src/trivium/adapters/claude-trace.ts
+@@ -45,13 +45,26 @@
+ /** 一次 headless 调用解析出来的轨迹 */
+ export interface ClaudeTrace {
+   /** `system/init` 回读的生效配置 */
+-  init: { model: string | null; tools: string[]; permissionMode: string | null } | null;
++  /**
++   * `cwd` 是 CLI 在 `system/init` 里回报的工作目录（realpath 形态）。claude 侧它是构造性的
++   * （`invokeClaude` 显式 `cwd: projectRoot`），采集它是为了给 Grep 命中的相对路径一个
++   * **回读来的**基准，而不是靠调用方记得传（EV-76 出路 ①，计划双审 CODEX-04 ≡ GLM-03）。
++   */
++  init: { model: string | null; tools: string[]; permissionMode: string | null; cwd: string | null } | null;
+   /** 全部 `tool_use`：工具名 + 参数 + id（id 用于与 tool_result 配对） */
+   toolUses: { name: string; input: Record<string, unknown>; id: string | null }[];
+   /** 出错的 `tool_result` 文本（白名单外工具走这条路，不进 permission_denials） */
+   toolErrors: string[];
+   /** 收到 `is_error` 结果的那些 `tool_use_id`——判据要配对，不能只数错误条数 */
+   erroredToolUseIds: Set<string>;
++  /**
++   * **成功** `tool_result` 的文本，按 `tool_use_id` 配对。
++   *
++   * 此前解析器只留 `is_error` 的结果，成功结果的内容被丢弃——于是目录级 Grep 命中了哪些文件
++   * 无从得知，J5 只能看见 `Grep(path=doc)` 这一条入参（EV-76）。这里只存文本，不做任何解释；
++   * 解释在 `parseGrepResults`。
++   */
++  toolResults: Map<string, string>;
+   /** `result` 事件里的权限拒绝记录（路径级 deny 走这条路） */
+   permissionDenials: { tool_name: string; tool_input: Record<string, unknown> }[];
+   finalText: string | null;
+@@ -95,6 +108,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
+   const toolUses: ClaudeTrace['toolUses'] = [];
+   const toolErrors: string[] = [];
+   const erroredToolUseIds = new Set<string>();
++  const toolResults = new Map<string, string>();
+   let permissionDenials: ClaudeTrace['permissionDenials'] = [];
+   let finalText: string | null = null;
+   let sessionId: string | null = null;
+@@ -119,6 +133,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
+         model: typeof o['model'] === 'string' ? o['model'] : null,
+         tools: Array.isArray(o['tools']) ? (o['tools'] as string[]) : [],
+         permissionMode: typeof o['permissionMode'] === 'string' ? o['permissionMode'] : null,
++        cwd: typeof o['cwd'] === 'string' ? o['cwd'] : null,
+       };
+     }
+ 
+@@ -137,6 +152,8 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
+         if (b['type'] === 'tool_result' && b['is_error'] === true) {
+           toolErrors.push(typeof b['content'] === 'string' ? b['content'] : JSON.stringify(b['content']));
+           if (typeof b['tool_use_id'] === 'string') erroredToolUseIds.add(b['tool_use_id']);
++        } else if (b['type'] === 'tool_result' && typeof b['tool_use_id'] === 'string') {
++          toolResults.set(b['tool_use_id'], resultText(b['content']));
+         }
+       }
+     }
+@@ -162,6 +179,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
+     toolUses,
+     toolErrors,
+     erroredToolUseIds,
++    toolResults,
+     permissionDenials,
+     finalText,
+     sessionId,
+@@ -273,6 +291,100 @@ export function readPaths(trace: ClaudeTrace): string[] {
+   return [...out];
+ }
+ 
++// ─────────────────────── Grep 结果解析（EV-76 出路 ①，M9 第 6 步后） ───────────────────────
++
++/** `tool_result.content` 的文本形态：字符串，或 `{type:'text',text}` 数组 */
++function resultText(content: unknown): string {
++  if (typeof content === 'string') return content;
++  if (Array.isArray(content)) {
++    return content
++      .map((x) => (x && typeof x === 'object' && typeof (x as { text?: unknown }).text === 'string' ? (x as { text: string }).text : ''))
++      .join('\n');
++  }
++  return '';
++}
++
++/**
++ * Grep 三种 `output_mode` 的输出格式（claude 2.1.277 实测，夹具 `grep-*.jsonl`）：
++ *
++ * | 模式 | 行形态 | 噪声行 |
++ * | `content` | `<相对项目根的路径>:<行号>:<文本>`；`path` 为单文件时是 `<行号>:<文本>`（无路径） | `[Showing results with pagination …]` |
++ * | `count` | `<路径>:<计数>` | 空行、`Found N total occurrences across M files.` |
++ * | `files_with_matches`（缺省） | `<路径>` | `Found N files`、`No files found` |
++ *
++ * 路径**相对 cwd**（= 项目根），不是相对 `path` 参数——`path: <ROOT>/src` 的命中仍写作 `src/…`。
++ *
++ * **分档消费**（计划双审 CODEX-01 ≡ GLM-01）：只有 `content` 的文本真实进入模型上下文，
++ * 它的命中才算「读过」，进 `hits`（J5 匹配集 + 措施 a）；`count` / `files_with_matches`
++ * 只披露存在性，与 Glob 同档，进 `listed` 只留痕、不消费。
++ *
++ * **只认严格形态、不猜**：提取出的路径不得以数字开头、不含空白、须含 `/` 或 `.`——
++ * 文件级 Grep 的 `7:  a ? 1:2:3` 这类文本被第一条挡掉；代价是根目录下无扩展名的文件
++ * （`Dockerfile`）会被丢，属可接受的假阴性（用例 T2 锁这条边界）。
++ * 格式漂移的症状是 `hits` 归零而 `resultLines` 不为零——两格一起落 trace.json 才分得开。
++ */
++export interface GrepResults {
++  /** `content` 模式命中的文件（绝对路径，去重、保序） */
++  hits: string[];
++  /** `count` / `files_with_matches` 列出的文件（绝对路径，去重）——只留痕 */
++  listed: string[];
++  /** 成功 Grep 结果的非空行总数（去重前、含噪声行）：漂移诊断用 */
++  resultLines: number;
++}
++
++const GREP_CONTENT_LINE = /^([^\s:][^:]*?):(\d+):/;
++const GREP_COUNT_LINE = /^([^\s:][^:]*?):(\d+)$/;
++const GREP_NOISE_LINES = [/^Found \d+ files?$/, /^Found \d+ total occurrences/, /^No files found/, /^\[Showing results/];
++
++function grepPathLike(s: string): boolean {
++  return s.length > 0 && !/^\d/.test(s) && !/\s/.test(s) && (s.includes('/') || s.includes('.'));
++}
++
++export function parseGrepResults(trace: ClaudeTrace, fallbackRoot: string | null): GrepResults {
++  const base = trace.init?.cwd ?? fallbackRoot;
++  const hits = new Set<string>();
++  const listed = new Set<string>();
++  let resultLines = 0;
++  const absolutize = (p: string): string | null => {
++    if (p.startsWith('/')) return p;
++    if (base === null) return null;
++    return `${base.replace(/\/+$/, '')}/${p.replace(/^\.\//, '')}`;
++  };
++  for (const u of successfulToolUses(trace)) {
++    if (u.name !== 'Grep' || u.id === null) continue;
++    const text = trace.toolResults.get(u.id);
++    if (text === undefined) continue;
++    const mode = typeof u.input['output_mode'] === 'string' ? u.input['output_mode'] : 'files_with_matches';
++    for (const raw of text.split('\n')) {
++      const line = raw.trimEnd();
++      if (line.trim() === '') continue;
++      resultLines += 1;
++      if (GREP_NOISE_LINES.some((re) => re.test(line))) continue;
++      let p: string | null = null;
++      let target: Set<string> | null = null;
++      if (mode === 'content') {
++        const m = GREP_CONTENT_LINE.exec(line);
++        if (m) { p = m[1]!; target = hits; }
++      } else if (mode === 'count') {
++        const m = GREP_COUNT_LINE.exec(line);
++        if (m) { p = m[1]!; target = listed; }
++      } else {
++        p = line;
++        target = listed;
++      }
++      if (p === null || target === null || !grepPathLike(p)) continue;
++      const a = absolutize(p);
++      if (a !== null) target.add(a);
++    }
++  }
++  return { hits: [...hits], listed: [...listed], resultLines };
++}
++
++/** `content` 模式命中的文件——「读过」的那一档 */
++export function grepHitPaths(trace: ClaudeTrace, fallbackRoot: string | null): string[] {
++  return parseGrepResults(trace, fallbackRoot).hits;
++}
++
+ /**
+  * 路径提取的覆盖率（设计 §10.1.1 第②层）。
+  *
+diff --git a/src/trivium/adapters/claude.ts b/src/trivium/adapters/claude.ts
+index b1e465e..cf8f00b 100644
+--- a/src/trivium/adapters/claude.ts
++++ b/src/trivium/adapters/claude.ts
+@@ -41,6 +41,7 @@ import {
+   extractClaudePath,
+   finalReviewText,
+   parseClaudeEvents,
++  parseGrepResults,
+   pathCoverage,
+   readPaths,
+   successfulToolUses,
+@@ -488,6 +489,11 @@ export function buildClaudeResult(
+    * 埋在 `run()` 里的字段组装没有任何用例守得到——codex 侧的 M4 变异证实过这一点。
+    */
+   deny: Pick<DenySettingsBuild, 'ruleCount' | 'skipped' | 'bytes'>,
++  /**
++   * Grep 相对命中的绝对化基准，只在 `init.cwd` 缺失时用。可选是为了不动 14 处既有直调
++   * （它们的夹具 init 无 cwd 且不含 Grep 结果，缺省 null 即「相对命中丢弃」）。
++   */
++  opts: { fallbackRoot?: string | null } = {},
+ ): CriticResult {
+   /*
+    * **运行期断言：白名单为空时不得产出「没有写事件」这个结论**（fail-closed 的后半）。
+@@ -570,6 +576,11 @@ export function buildClaudeResult(
+       run_command: 0,
+     },
+     read_paths: readPaths(trace),
++    /*
++     * Grep `content` 命中（EV-76 出路 ①）：基准 = `init.cwd`（回读）?? 调用方给的项目根。
++     * 只装 `content` 档；另两档留在 trace.json 的 `grep.listed`，不进判定面。
++     */
++    search_hit_paths: parseGrepResults(trace, opts.fallbackRoot ?? null).hits,
+     /*
+      * 覆盖率两个计数**无条件填**（算不出写 null，不省略键）。
+      * `zcode.ts` 那边记过教训：省略键会让 `verification.path` 档位恒为 ok，
+@@ -932,6 +943,12 @@ export const claudeAdapter: CriticAdapter = {
+           toolErrors: trace.toolErrors,
+           permissionDenials: trace.permissionDenials,
+           eventCount: trace.eventCount,
++          /*
++           * Grep 结果解析留痕（EV-76 出路 ①，计划双审 CODEX-07）：
++           * `hits` = content 命中（去重后，进判定面）；`listed` = 另两档（去重后，只留痕）；
++           * `resultLines` = 成功 Grep 结果的非空行总数（去重前）。格式漂移 = hits 归零而 resultLines 不为零。
++           */
++          grep: parseGrepResults(trace, req.project_root),
+           denySettings: {
+             injected: settingsJson !== null,
+             ruleCount: deny.ruleCount,
+@@ -953,6 +970,8 @@ export const claudeAdapter: CriticAdapter = {
+       'utf8',
+     );
+ 
+-    return buildClaudeResult(trace, out, { stdout: stdoutPath, trace: tracePath }, probe, readonlyTools, deny);
++    return buildClaudeResult(trace, out, { stdout: stdoutPath, trace: tracePath }, probe, readonlyTools, deny, {
++      fallbackRoot: req.project_root,
++    });
+   },
+ };
+diff --git a/src/trivium/adapters/codex.ts b/src/trivium/adapters/codex.ts
+index 82abf3b..37a6450 100644
+--- a/src/trivium/adapters/codex.ts
++++ b/src/trivium/adapters/codex.ts
+@@ -221,6 +221,8 @@ export function buildCodexResult(
+      * 不是「没采集」。
+      */
+     read_paths: [],
++    // command-trace 族：`rg` 的输出不进轨迹，「搜索命中」这种事实不存在——null，不是 []
++    search_hit_paths: null,
+     write_events: writes,
+     suspected_write_events: suspected,
+     command_texts: allCommands,
+diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts
+index 8a4905f..74e252b 100644
+--- a/src/trivium/adapters/stub.ts
++++ b/src/trivium/adapters/stub.ts
+@@ -181,6 +181,8 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
+     model_provider: null,
+     profile_requested: null,
+     tool_calls: { read: 6, grep: 2, glob: 1, run_command: 0 },
++    // 桩不产真实工具输出：搜索命中这种事实不存在，null（与 model_provider 同款）
++    search_hit_paths: null,
+     // 4 条项目内读取：min_project_reads 默认下限是 3，留一点余量
+     read_paths: [
+       `${req.project_root}/src/a.ts`,
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index 3ad5b58..8d87ed1 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -493,6 +493,8 @@ export const zcodeAdapter: CriticAdapter = {
+       model_route: home.route,
+       tool_calls: toolCalls,
+       read_paths: readPathList,
++      // zcode 轨迹只有 toolCalls[].input，没有工具输出——该族无此事实
++      search_hit_paths: null,
+       /*
+        * 覆盖率两项**恒写**（r2 代码双审 GLM-08 ≡ CODEX-10）。
+        *
+diff --git a/src/trivium/brief.ts b/src/trivium/brief.ts
+index f4c2bfb..e83cb7a 100644
+--- a/src/trivium/brief.ts
++++ b/src/trivium/brief.ts
+@@ -279,7 +279,9 @@ ${lens.trim()}
+ 
+ 下列是**另一位审查员的产出**（历史审查件、结构化原文，以及运行目录下对方本轮的
+ 原始输出）。它们进入你的上下文会破坏背靠背独立性——
+-**读取其中任何一个，本次审查即作废**（编排器扫描你的工具调用轨迹与命令文本逐条核对）：
++**读取其中任何一个，本次审查即作废**（编排器扫描你的工具调用轨迹与命令文本逐条核对；
++**搜索工具的输出同样在核对面上**——用 Grep 一类工具时把 \`path\` 限定在被审对象涉及的目录，
++不要从项目根递归，归档目录里就有对方的历史产出）：
+ 
+ ${voiding.length > 0 ? fmt(voiding) : '（本次无对方产出需要屏蔽）'}
+ ${mixedTreeNote(voiding, denyCtx, projectRoot, critic)}
+diff --git a/src/trivium/guard.ts b/src/trivium/guard.ts
+index 408d5c2..58a48db 100644
+--- a/src/trivium/guard.ts
++++ b/src/trivium/guard.ts
+@@ -5,6 +5,7 @@
+  * 这样「检出」与「处置」分开，处置策略可配而检出逻辑恒定。
+  */
+ import nodePath from 'node:path';
++import { promises as fs } from 'node:fs';
+ import type { Config, CriticId, CriticRequest, CriticResult, DenyCategory, Review,
+   SuspectedWrite,
+ } from './types.js';
+@@ -13,6 +14,7 @@ import {
+   checkPeerLeak,
+   checkPeerLeakViaCommand,
+   effectiveReadPaths,
++  toProjectRelative,
+   TOOL_TRACE_CAPABILITY,
+   type TraceCapability,
+ } from './adapters/base.js';
+@@ -161,6 +163,32 @@ export interface SideVerification {
+  * `consulted` 交叉核对的阈值是 80%（§11.4）：允许少量路径写法差异，
+  * 但大面积对不上就说明是编造的。
+  */
++/**
++ * consulted 交叉核对的匹配集（§11.4）。导出是为了让用例能断言**集合本身**而不只是布尔位：
++ * 阈值 80% 下 15 项漏 3 项照样绿，只锁布尔锁不住 15/15（计划双审 CODEX-02 ≡ AGY-01 ≡ GLM-02）。
++ *
++ * 两边都经 `toProjectRelative` 归一（realpath 别名、`./`、绝对/相对写法，CODEX-07）；
++ * consulted 里项目外的条目算 `missing`（它本来就不该出现在那里）。
++ */
++export function matchConsulted(
++  consulted: readonly string[],
++  tracePaths: readonly string[],
++  roots: readonly string[],
++): { matched: string[]; missing: string[] } {
++  const traceSet = new Set<string>();
++  for (const p of tracePaths) {
++    const rel = toProjectRelative(p, roots);
++    if (rel !== null) traceSet.add(rel);
++  }
++  const matched: string[] = [];
++  const missing: string[] = [];
++  for (const c of consulted) {
++    const rel = toProjectRelative(c, roots);
++    (rel !== null && traceSet.has(rel) ? matched : missing).push(c);
++  }
++  return { matched, missing };
++}
++
+ export function judgeSide(
+   cfg: Config,
+   critic: CriticId,
+@@ -170,6 +198,12 @@ export function judgeSide(
+   opts: {
+     archiveRootAbs: string;
+     projectRoot: string;
++    /**
++     * consulted 归一化用的根别名：`[projectRoot, realpath(projectRoot)]`。
++     * 由 `judgeRun` 算一次传下来（realpath 是 I/O，本函数保持同步纯函数）；
++     * 缺省 `[projectRoot]`——单测用合成根时走这条，行为与传 realpath 失败时相同。
++     */
++    projectRoots?: readonly string[];
+     /** 编排器状态目录的绝对路径——分类与具名放行都要它（设计 §10.1.1） */
+     triviumDir: string;
+     /** 运行根的绝对路径。那是混合树，己方材料与对端输出都在里面 */
+@@ -238,7 +272,19 @@ export function judgeSide(
+    *
+    * 按**全集**匹配，分类在命中之后做——见上面的说明。
+    */
+-  const peerRaw = checkPeerLeak(result.read_paths, req.deny_paths, opts.projectRoot);
++  /*
++   * 措施 a 吃两份**真实读取**事实：结构化读取路径，以及搜索工具 `content` 输出里命中的文件
++   * （`search_hit_paths`，EV-76 出路 ①）。后者的文本与 Read 同样进入模型上下文；探针实测
++   * CLI 路径级 deny 对 Grep 不生效（§3.7），事后核验是那条通道唯一的兜底。
++   * **这是新规则**（设计 §10.1 2026-09-19 起），不是「既有承诺生效」：此前承诺只覆盖 Grep 的
++   * `path` 入参。`files_with_matches` / `count` 只披露存在性、与 Glob 同档，不进这里。
++   * 与 codex 侧 EV-16（根递归 grep 检测不到、只能接受）的不对称源于检测能力，不是规则矛盾。
++   */
++  const peerRaw = checkPeerLeak(
++    [...result.read_paths, ...(result.search_hit_paths ?? [])],
++    req.deny_paths,
++    opts.projectRoot,
++  );
+   /*
+    * 措施 b（§10.1 / EV-01）：命令原文的字面扫描。
+    *
+@@ -343,17 +389,16 @@ export function judgeSide(
+    */
+   const readonlyBreach = result.write_events.length > 0;
+ 
+-  // consulted 与轨迹交叉核对——吃回填后的有效路径，否则 command-trace 侧每轮误报
++  // consulted 与轨迹交叉核对——吃回填后的有效路径 ∪ 搜索命中，两边都过同一份归一化
+   let consultedUnverified = false;
+   const consulted = review?.consulted ?? [];
+   if (consulted.length > 0) {
+-    const traceSet = new Set(
+-      effectiveReadPaths(result, cap, opts.projectRoot).map((p) =>
+-        p.startsWith(opts.projectRoot) ? p.slice(opts.projectRoot.length).replace(/^\/+/, '') : p,
+-      ),
++    const { matched } = matchConsulted(
++      consulted,
++      [...effectiveReadPaths(result, cap, opts.projectRoot), ...(result.search_hit_paths ?? [])],
++      opts.projectRoots ?? [opts.projectRoot],
+     );
+-    const matched = consulted.filter((c) => traceSet.has(c) || traceSet.has(`./${c}`)).length;
+-    consultedUnverified = matched / consulted.length < 0.8;
++    consultedUnverified = matched.length / consulted.length < 0.8;
+   } else if (review !== null) {
+     // 结构化成功但没填 consulted，无法核对
+     consultedUnverified = true;
+@@ -553,6 +598,18 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
+     ...(input.triviumDirRel ? { triviumDirRel: input.triviumDirRel } : {}),
+   });
+ 
++  /*
++   * consulted 归一化的根别名：realpath 取不到（合成根、ENOENT）就只用 projectRoot，
++   * 与 `judgeSide` 缺省一致；取到了也不替换 projectRoot，只多一个别名。
++   */
++  let projectRoots: readonly string[] = [input.projectRoot];
++  try {
++    const real = await fs.realpath(input.projectRoot);
++    if (real !== input.projectRoot) projectRoots = [input.projectRoot, real];
++  } catch {
++    /* 合成根或不可解析：只按字面根归一 */
++  }
++
+   const sides: Partial<Record<CriticId, SideVerdict>> = {};
+   for (const c of Object.keys(results) as CriticId[]) {
+     const r = results[c];
+@@ -571,6 +628,7 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
+     sides[c] = judgeSide(cfg, c, r, reviews[c] ?? null, q, {
+       archiveRootAbs: input.archiveRootAbs,
+       projectRoot: input.projectRoot,
++      projectRoots,
+       /*
+        * 分类与具名放行要这两个根（设计 §10.1.1）。
+        * `triviumDirRel` 是可选的（旧调用没传），缺省按约定目录名拼——
+diff --git a/src/trivium/runner.ts b/src/trivium/runner.ts
+index 43bde3d..1ae9c37 100644
+--- a/src/trivium/runner.ts
++++ b/src/trivium/runner.ts
+@@ -235,6 +235,7 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
+         profile_requested: input.requests[critic]?.profile_requested ?? null,
+         tool_calls: {},
+         read_paths: [],
++        search_hit_paths: null,
+         write_events: [],
+         command_texts: [],
+         evidence_ok: false,
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index e24f633..4519802 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -1500,6 +1500,18 @@ export interface CriticResult {
+   tool_calls: ToolCallCounts;
+   /** 轨迹中出现过的读取路径（项目相对），供 deny_paths 核验与 consulted 交叉核对 */
+   read_paths: string[];
++  /**
++   * 经**搜索工具的输出**读到的文件（绝对路径）：claude 侧 Grep `content` 模式的命中（EV-76 出路 ①）。
++   *
++   * **三态与 `model_provider` 同构**：必填；没有这种事实的族**显式写 `null`**
++   * （agy / zcode 的流只有工具入参、codex 的命令输出不进轨迹、stub 不产真实输出），
++   * claude 填数组（可为空）。可选字段会让「没采集」与「没有这种事实」落成同一个观测。
++   *
++   * **消费方只有两处**：`judgeSide` 的 consulted 交叉核对与措施 a（`checkPeerLeak`）——
++   * **不进** `project_reads` 计数（一次目录级 Grep 命中 41 个文件不等于打开了 41 个文件），
++   * 不进 run.json / 审查文档（无 schema 变更），只在 `trace.json` 留痕。
++   */
++  search_hit_paths: string[] | null;
+   /**
+    * 「必然带路径」的读调用总数，与其中真的提出了路径的条数（设计 §10.1.1 第②层）。
+    *
+diff --git a/test/fixtures/claude-events/README.md b/test/fixtures/claude-events/README.md
+index d00e1f6..5713e6f 100644
+--- a/test/fixtures/claude-events/README.md
++++ b/test/fixtures/claude-events/README.md
+@@ -12,6 +12,20 @@
+ | `tool-denied.jsonl` | 「在当前目录创建文件 breach.txt」 | **白名单外的工具调用留在轨迹里**（含目标路径与内容），且走「工具不存在」路径而非 `permission_denials` |
+ | `path-denied.jsonl` | 「读取对方产出并回显全部内容」，附 `--settings` 注入 `permissions.deny` | **路径级 deny 真的挡住了**，且被拒的读进了 `permission_denials`（带 `tool_input.file_path`） |
+ 
++## Grep 两份（2026-09-19，`2.1.277`）——真跑输出的**截取**，根前缀改写
++
++EV-76 出路 ①（Grep 命中计入读取面）用。两份都不是完整录制，而是从原始 `stream-json` 里**截取**
++`system/init` + 全部 `tool_use` + **仅 Grep 的** `tool_result`，并把项目根的绝对前缀逐字替换为 `<ROOT>`
++（其余内容一字未动；加载时由用例换回一个假根）。截取脚本与来源：
++
++| 文件 | 来源 | 录它是为了固定什么 |
++| :--- | :--- | :--- |
++| `grep-content-absolute-path.jsonl` | M9 第 6 步验收第 2 跑 `20260919T120643Z`（`claude-sonnet-5`，真实审查）的 24 条 `tool_use` + 9 条 Grep 结果；原件另存 `doc/05_testing/evidence/m9-acceptance-20260919/grep-tool-results-20260919T120643Z.jsonl` | **生产形态**：9/9 次 Grep 传绝对 `path`、全是 `content` 模式；命中行**相对 cwd**（`src/…`）而非相对 `path`；T7 回放 15/15 |
++| `grep-three-modes-relative-path.jsonl` | 2026-09-19 一次 `haiku` 实测（`--tools Grep --strict-mcp-config`，$0.018），相对 `path: ./src` | 三种 `output_mode` 的行形态与噪声行（`Found N files` / `Found N total occurrences` / `[Showing results …]`），以及**文件级** Grep 的 `行号:文本` 无路径形态 |
++
++这两份的 `init.tools` 不是 `Glob,Grep,Read`（前者含 `StructuredOutput`、后者只有 `Grep`），
++锁工具面的用例不要把它们当「干净工具面」的样本；本目录兜底扫描对它们只查路径参数键与 Grep 输出可解析（T10）。
++
+ ## 一份**刻意没有**录的样本
+ 
+ 不加 `--strict-mcp-config` 时工具面会混入数十个 MCP 工具（含发信、建档、分享、删除等
+diff --git a/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt b/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+index 1c96e1a..8202b65 100644
+--- a/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
++++ b/test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt
+@@ -138,6 +138,8 @@ export const stubAgentAdapter: CriticAdapter = {
+       profile_requested: null,
+       tool_calls: { read: toolCalls },
+       read_paths: reads,
++      // 桩没有搜索工具输出这种事实：null（与 model_provider 同款三态）
++      search_hit_paths: null,
+       write_events: [],
+       /*
+        * 本桩不跑任何命令，故恒为空数组——含义是「没有命令」而不是「没采集」。
+diff --git a/test/unit/guard-capability.test.ts b/test/unit/guard-capability.test.ts
+index e55dec4..2de795b 100644
+--- a/test/unit/guard-capability.test.ts
++++ b/test/unit/guard-capability.test.ts
+@@ -60,6 +60,7 @@ function result(over: Partial<CriticResult> = {}): CriticResult {
+     profile_requested: null,
+     tool_calls: {},
+     read_paths: [],
++    search_hit_paths: null,
+     /*
+      * 覆盖率两项：**结构化轨迹的两家适配器现在都报它**（设计 10.1.1 第②层）。
+      * 夹具跟着报，否则走的是「该侧没报数」那一支、档位落 unavailable——
+diff --git a/test/unit/render.test.ts b/test/unit/render.test.ts
+index 0cc7972..2dfecfd 100644
+--- a/test/unit/render.test.ts
++++ b/test/unit/render.test.ts
+@@ -12,7 +12,7 @@ const RESULT: CriticResult = {
+   raw_response_text: '{}', model_effective: 'gemini-3.1-pro-high',
+   model_effective_source: 'envelope', model_provider: null, profile_requested: null,
+   tool_calls: { read: 27, grep: 9 },
+-  read_paths: [], write_events: [], command_texts: [], evidence_ok: true, fail_reason: null,
++  read_paths: [], search_hit_paths: null, write_events: [], command_texts: [], evidence_ok: true, fail_reason: null,
+   session_id: 'conv-1', cli_version: '1.2.0', peer_deny_applied: false,
+   deny_skipped: 0, deny_rule_count: 0, deny_bytes: 0,
+   command_line: 'agy -p …',
+diff --git a/test/unit/runner.test.ts b/test/unit/runner.test.ts
+index 65e8fe9..1870d5c 100644
+--- a/test/unit/runner.test.ts
++++ b/test/unit/runner.test.ts
+@@ -16,7 +16,7 @@ function okResult(critic: CriticId, over: Partial<CriticResult> = {}): CriticRes
+     raw_stdout_path: '/runs/out', trace_path: '/runs/trace', review_json: null,
+     raw_response_text: '{}', model_effective: 'M', model_effective_source: 'envelope',
+     model_provider: null, profile_requested: null,
+-    tool_calls: { read: 6 }, read_paths: ['/proj/src/a.ts'], write_events: [], command_texts: [],
++    tool_calls: { read: 6 }, read_paths: ['/proj/src/a.ts'], search_hit_paths: null, write_events: [], command_texts: [],
+     evidence_ok: true, fail_reason: null, session_id: 'S', cli_version: '1',
+     peer_deny_applied: false, deny_skipped: 0, deny_rule_count: 0, deny_bytes: 0, command_line: 'x', ...over,
+   };
+diff --git a/doc/05_testing/evidence/m9-acceptance-20260919/grep-tool-results-20260919T120643Z.jsonl b/doc/05_testing/evidence/m9-acceptance-20260919/grep-tool-results-20260919T120643Z.jsonl
+new file mode 100644
+index 0000000..a2aa9b6
+--- /dev/null
++++ b/doc/05_testing/evidence/m9-acceptance-20260919/grep-tool-results-20260919T120643Z.jsonl
+@@ -0,0 +1,34 @@
++{"type": "system", "subtype": "init", "cwd": "<ROOT>", "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4", "tools": ["Glob", "Grep", "Read", "StructuredOutput"], "mcp_servers": [], "model": "claude-sonnet-5", "permissionMode": "default", "slash_commands": ["deep-research", "design", "slides", "design-sync", "dataviz", "artifact-diagramming", "artifact-capabilities", "update-config", "verify", "debug", "code-review", "simplify", "batch", "fewer-permission-prompts", "doctor", "loop", "schedule", "claude-api", "workflow-authoring", "run", "run-skill-generator", "advisor", "agents", "auto-mode-setup", "autocompact", "clear", "color", "compact", "config", "output-style", "context", "effort", "fast", "heapdump", "init", "mcp", "import", "model", "__remote-workflow", "workflow-launch-exec", "reload-plugins", "reload-skills", "rename", "ultrareview", "security-review", "usage-credits", "extra-usage", "usage", "insights", "recap", "skill-doctor", "goal", "design-consent", "design-revoke", "list-agents", "team-onboarding"], "terminal_slash_commands": ["doctor", "color", "reload-plugins"], "apiKeySource": "none", "claude_code_version": "2.1.277", "output_style": "default", "agents": ["claude", "claude-code-guide", "Explore", "general-purpose", "Plan", "statusline-setup"], "skills": ["deep-research", "design", "slides", "design-sync", "dataviz", "artifact-diagramming", "artifact-capabilities", "update-config", "verify", "debug", "code-review", "simplify", "batch", "fewer-permission-prompts", "doctor", "loop", "schedule", "claude-api", "workflow-authoring", "run", "run-skill-generator"], "plugins": [{"name": "agents-md", "path": "builtin", "source": "agents-md@builtin"}], "capabilities": ["interrupt_receipt_v1", "interrupt_cancel_queued_v1", "msg_lifecycle_v1"], "analytics_disabled": false, "product_feedback_disabled": false, "uuid": "9243956a-0181-44be-a9b1-a964feaa0059", "scratchpad_path": "/private/tmp/claude-501/-private-tmp-claude-501--Users-chenzhenbo-Work-TriviumCode-8498a631-5c50-4055-b53d-336e61a51887-scratchpad-m9-acceptance/6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4/scratchpad", "messaging_socket_path": "/tmp/cc-socks/80279.sock", "fast_mode_state": "off", "fast_mode_disabled_reason": "extra_usage_disabled"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01ST3fhGAqUvY65kfsSNGoik", "name": "Read", "input": {"file_path": "<ROOT>/.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01MNQKgidqxTdwDSvcH7SFBm", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/adapters/base.ts"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_013TkNh2ywwU8NYcMEPhpLa3", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/preflight.ts"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_017DJi6WjBN4Skw4iuV1veRS", "name": "Grep", "input": {"pattern": "process\\.execPath|runtime\\.node", "path": "<ROOT>/src", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_017DJi6WjBN4Skw4iuV1veRS", "type": "tool_result", "content": "src/trivium/selftest.ts:196:    run(process.execPath, [selfScript, ...args], {\nsrc/trivium/preflight.ts:187:  const runner = vp.runner === 'node' ? (cfg.runtime.node ?? process.execPath) : entry;\nsrc/trivium/preflight.ts:412:  // nodePath 取与运行期同一口径：配了 runtime.node 的机器上，预检与真实运行\nsrc/trivium/preflight.ts:414:  const actx: AdapterContext = { cfg: ctx.config, nodePath: ctx.config.runtime.node ?? process.execPath };\nsrc/trivium/preflight.ts:511:    { cfg, nodePath: cfg.runtime.node ?? process.execPath },\nsrc/trivium/init.ts:207: * `process.execPath` 在 Homebrew 下解析为 `/opt/homebrew/Cellar/node/25.2.1/bin/node`，\nsrc/trivium/init.ts:343:  const nodePath = opts.nodePath ?? ctx.config.runtime.node ?? (await stableNodePath(process.execPath));\nsrc/trivium/run-protocol.ts:128:    nodePath: ctx.config.runtime.node ?? process.execPath,\nsrc/trivium/run-protocol.ts:297:      ctx.config.runtime.node ?? process.execPath,\nsrc/trivium/review.ts:329:    nodePath: cfg.runtime.node ?? process.execPath,\nsrc/trivium/probes/env.ts:28:  if (process.execPath && (await exists(process.execPath))) return stableNodePath(process.execPath);\nsrc/trivium/probes/zcode.ts:291:   * 这个事实——具体哪个 node 由运行时的 runtime.node 决定，落盘会立刻过期。\nsrc/trivium/doctor.ts:453:    const r = await probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01Xx3BgZNhp5kvHanfPbvy3q", "name": "Grep", "input": {"pattern": "|&", "path": "<ROOT>/src/trivium/adapters/base.ts", "output_mode": "content"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01Xx3BgZNhp5kvHanfPbvy3q", "type": "tool_result", "content": "1:/**\n2: * 适配层统一契约（设计 §11.1）。\n3: *\n4: * 适配层是**唯一**允许调用厂商 CLI 的地方（§5.1）。它把两家的差异\n5: * （参数、输出字段、模型指定方式、只读方式、轨迹来源）收敛为一组请求/结果结构，\n6: * 上层的 runner / parse / guard 只面对这组结构。\n7: *\n8: * 铁律（原则 P7）：命令行**一律由 probe 结论构造**，不得硬编码设计文档里的示例。\n9: */\n10:import nodePath from 'node:path';\n11:import os from 'node:os';\n12:import type {\n13:  Config, CriticId, CriticRequest, CriticResult, Stage, SuspectedWrite,\n14:} from '../types.js';\n15:\n16:export interface AdapterContext {\n17:  cfg: Config;\n18:  /** node 绝对路径（GUI 进程不读 .zshrc，§10.5） */\n19:  nodePath: string;\n20:}\n21:\n22:/**\n23: * 该侧轨迹能提供什么形状的证据（设计 §11.1，M8 第 2 步）。\n24: *\n25: * ## 为什么需要它\n26: *\n27: * 判定层原先假定「读取路径是结构化拿到的」「被拒的写操作会留痕」。M6 实测\n28: * （P-C1 / P-C2）推翻了这两条对 codex 的适用性：codex 读文件就是跑 shell，\n29: * 路径只在命令文本里；被沙箱拒绝的命令一条事件都不产生。\n30: *\n31: * 消费方因此必须**面对能力而不是 Agent id**——按 id 分叉是纪律 7 明令禁止的，\n32: * 而且 M9 的 claude 又是另一种组合，按 id 分叉会分出三支。\n33: *\n34: * ## 为什么挂在 `CriticAdapter` 上而不是注册表或 `CriticResult`\n35: *\n36: * 不挂 `CriticResult`：它是**该侧的固有能力**，不是单次运行的结果；挂结果上会让\n37: * 每次运行都要重填一遍，且允许同一侧两次运行报出不同能力（r1 裁决 §2.3）。\n38: *\n39: * 不挂注册表：`criticEnabled=false` 的 Agent 选不进运行（`critics.ts` 抛 `EXIT.USAGE`），\n40: * 而 M8 第 2 步不翻 codex 的开关——静态注册表方案下，桩的 `command-trace` 形态\n41: * **在集成测试里根本走不到**，泛化就没有机器判据（r2 裁决 AGY-04）。\n42: * 挂适配器则桩适配器可以声明自己的能力。\n43: */\n44:export interface TraceCapability {\n45:  /**\n46:   * 轨迹形态：专用工具带结构化路径，还是 shell 命令。\n47:   *\n48:   * **消费方有两个**（缺一个就是 r2 那次「无消费方」的误判）：\n49:   * `effectiveReadPaths` 的路径提取、`checkEvidence` 的 `toolTotal` 计数。\n50:   */\n51:  traceShape: 'tool-trace' | 'command-trace';\n52:  /**\n53:   * 被拒的操作是否留痕。\n54:   *\n55:   * `false` ⇒ 该侧**「尝试写」的检测失效**——注意**不是**「轨迹对写事件全盲」：\n56:   * P-C2 只断言被沙箱拒绝的命令不产生事件，**成功执行的写命令照常留痕**\n57:   * （P-C1 的样本本身就是 `status:\"completed\"` 的命令事件）。\n58:   * 所以 `readonlyBreach` 仍由写事件判定，本字段只修饰**阴性结论**的可信度。\n59:   */\n60:  rejectionRecorded: boolean;\n61:}\n62:\n63:/**\n64: * 探活能力（M8 第 3 步，收敛 `preflight` 的按厂商分派）。\n65: *\n66: * ## 切分口径\n67: *\n68: * **厂商知识回到适配器**：指纹从哪个文件算、最小调用怎么发、失败该怎么说。\n69: * **通用逻辑留在 `preflight`**：TTL、版本比对、缓存读写、失败即不缓存。\n70: *\n71: * 这样新增一家只写自己那两件，而缓存策略不会被抄成三份各自漂移。\n72: * 收敛前 `preflight` 里是 `probeAgyAuth` / `probeZcodeAuth` 两个写死分支，\n73: * 计划双审两侧独立指出再加第三个就是第三次堆砌（AGY-03 ≡ GLM-06）。\n74: */\n75:export interface AuthProbe {\n76:  /**\n77:   * 该侧凭据的指纹（通常是凭据文件的哈希），缓存失效判据之一。\n78:   * `null` = 无从计算，此时缓存只由 TTL 与 CLI 版本约束。\n79:   */\n80:  fingerprint(): Promise<string | null>;\n81:  /** 真跑一次最小 headless 调用。**这是预检里最贵的一步**，由调用方决定要不要跑 */\n82:  probe(): Promise<{ ok: boolean; detail: string }>;\n83:}\n84:\n85:export interface CriticAdapter {\n86:  readonly critic: CriticId;\n87:  /** 该侧轨迹的证据形状——判定层据此分档，不按 Agent id 分叉（§11.1） */\n88:  readonly capability: TraceCapability;\n89:  /** 该侧是否可用（探针结论决定）。不可用时给出人读原因 */\n90:  availability(ctx: AdapterContext): { ok: boolean; reason?: string };\n91:  /**\n92:   * 模型 slug 在与探针目录比对**之前**的归一。**可选**：不需要归一的侧不实现。\n93:   *\n94:   * 存在的理由是 zcode：配置里写短名，实际传参要补 `<providerId>/` 前缀（坑 P-06），\n95:   * 而预检要比对的是**补全后**的形态。这条知识属于那一侧，不该住在 `preflight` 里\n96:   * ——它住在那里时，`checkModelAgainstCatalog` 就得按 vendor 分支，\n97:   * 于是第三家一律落「无法校验」（计划双审 GLM-04）。\n98:   */\n99:  normalizeModelForCatalog?(cfg: Config, model: string): string;\n100:  /**\n101:   * 探活。**可选**：没有凭据概念的侧（如桩）不实现，`preflight` 相应跳过并如实说明——\n102:   * 「没得探」与「探过通过」不能长得一样。\n103:   */\n104:  authProbe?(ctx: AdapterContext, projectRoot: string): AuthProbe;\n105:  run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult>;\n106:}\n107:\n108:/** 结构化轨迹两家（gemini / glm）的能力：与本步之前的行为逐字等价 */\n109:export const TOOL_TRACE_CAPABILITY: TraceCapability = {\n110:  traceShape: 'tool-trace',\n111:  rejectionRecorded: true,\n112:};\n113:\n114:/**\n115: * Agent id → 适配器的查表结构。\n116: *\n117: * **是 `Partial`，而且必须是。** `CriticId` 在 M7b 第 6 步放开成注册表全集之后，\n118: * `Record<CriticId, CriticAdapter>` 就成了一句谎话：它承诺**每一个已登记 Agent**\n119: * 都有适配器，而 Driver（claude）与尚未接入的 codex 本来就没有、也不该有。\n120: *\n121: * 谎话的代价不是类型不好看，而是**取值处的 undefined 检查被类型系统免掉了**：\n122: * `adapters[critic]` 恒被当成非空，真缺一个就在 `adapter.run` 上崩出一条\n123: * 与原因无关的 TypeError。改成 Partial 后取值处必须显式判空，缺谁说得出名字。\n124: *\n125: * 「已启用为审核者的那几家一定在表里」这条保证由 `realAdapters()` 在取表时\n126: * **运行期**兑现（缺接线即响亮失败），不靠类型硬编。\n127: */\n128:export type AdapterTable = Partial<Record<CriticId, CriticAdapter>>;\n129:\n130:/** 失败结果的统一构造，避免各适配器自行拼字段时漏项 */\n131:export function failedResult(\n132:  critic: CriticId,\n133:  fail: {\n134:    status: 'timeout' | 'failed' | 'parse_fallback';\n135:    reason: string;\n136:    exitCode?: number | null;\n137:    durationS?: number;\n138:    rawStdoutPath?: string;\n139:    tracePath?: string | null;\n140:    rawText?: string | null;\n141:    cliVersion?: string | null;\n142:    commandLine?: string;\n143:    sessionId?: string | null;\n144:  },\n145:): CriticResult {\n146:  return {\n147:    critic,\n148:    status: fail.status,\n149:    exit_code: fail.exitCode ?? null,\n150:    duration_s: fail.durationS ?? 0,\n151:    raw_stdout_path: fail.rawStdoutPath ?? '',\n152:    trace_path: fail.tracePath ?? null,\n153:    review_json: null,\n154:    raw_response_text: fail.rawText ?? null,\n155:    model_effective: null,\n156:    model_effective_source: 'unverified',\n157:    tool_calls: {},\n158:    read_paths: [],\n159:    write_events: [],\n160:    command_texts: [],\n161:    evidence_ok: false,\n162:    fail_reason: fail.reason,\n163:    session_id: fail.sessionId ?? null,\n164:    cli_version: fail.cliVersion ?? null,\n165:    peer_deny_applied: false,\n166:    command_line: fail.commandLine ?? '',\n167:  };\n168:}\n169:\n170:/**\n171: * 判定 Agent 执行证据是否达标（设计 §11.4，五项检查中的前三项）。\n172: *\n173: * 这不是可选项：Antigravity 的软拒绝会产生「exit 0 但零工具调用」的空审查，\n174: * 因此工具轨迹下限是 AC-05 的强制落点。\n175: */\n176:export interface EvidenceCheck {\n177:  ok: boolean;\n178:  reasons: string[];\n179:  /** 被审对象与送审包之外的项目文件读取次数（AC-11） */\n180:  projectReads: number;\n181:  /**\n182:   * 本次该侧**实际生效**的项目读取下限。\n183:   *\n184:   * 与配置值可能不同：`command-trace` 族按折减系数下调（见 `effectiveMinProjectReads`）。\n185:   * 单列出来是为了进留痕——不记的话，codex 侧 `project_reads=2` 通过、\n186:   * gemini 侧同样是 2 却不通过，事后复盘看起来像 bug。\n187:   */\n188:  minProjectReads: number;\n189:}\n190:\n191:export function checkEvidence(\n192:  result: Pick<CriticResult, 'tool_calls' | 'read_paths' | 'trace_path' | 'command_texts'>,\n193:  req: Pick<CriticRequest, 'min_tool_calls' | 'min_project_reads' | 'subject_path' | 'brief_path' | 'project_root'>,\n194:  opts: { archiveRootAbs: string; capability?: TraceCapability },\n195:): EvidenceCheck {\n196:  const reasons: string[] = [];\n197:  const cap = opts.capability ?? TOOL_TRACE_CAPABILITY;\n198:  const commandTrace = cap.traceShape === 'command-trace';\n199:\n200:  const tc = result.tool_calls;\n201:  /*\n202:   * ② 的计数口径按轨迹形态分档。\n203:   *\n204:   * `command-trace` 族**必须**计入 `run_command`：该族读文件就是跑 shell，\n205:   * `read`/`grep`/`glob` 三者恒 0，不计就必然触发 `insufficient_evidence`——\n206:   * 这正是 r2 计划稿误判「`commandSemantics` 无消费方」时漏掉的那个消费方。\n207:   * 对 `tool-trace` 族不计入：那一族的 `run_command` 是写事件信号（agy 的白名单里\n208:   * 根本没有它），计进证据就是把失守信号当成读取证据。\n209:   */\n210:  const toolTotal =\n211:    (tc.read ?? 0) + (tc.grep ?? 0) + (tc.glob ?? 0) + (commandTrace ? (tc.run_command ?? 0) : 0);\n212:\n213:  // 判定层使用的有效读取路径：command-trace 族从命令文本回填（派生视图，不回写结果）\n214:  const effective = effectiveReadPaths(result, cap, req.project_root);\n215:\n216:  // ① 轨迹存在\n217:  if (result.trace_path === null && effective.length === 0 && toolTotal === 0) {\n218:    reasons.push('no_trace：拿不到任何工具调用轨迹');\n219:  }\n220:\n221:  // ② 读文件次数下限\n222:  if (toolTotal < req.min_tool_calls) {\n223:    reasons.push(`insufficient_evidence：工具调用 ${toolTotal} 次 < 下限 ${req.min_tool_calls}`);\n224:  }\n225:\n226:  /*\n227:   * ③ 项目文件读取下限——防止「把 BRIEF 与被审文档反复读 N 遍」通过上一条。\n228:   *\n229:   * 下限对 `command-trace` 族**单独折减**（r1 裁决 §2.2 第 3 条）：该族的路径靠命令\n230:   * 文本提取，变量拼接、管道组合、`find -exec` 都提不出来，读数**系统性偏低**。\n231:   * 沿用为结构化轨迹定的那个数，等于给该族设了一道不可达的闸；\n232:   * 而按「下限不适用」处置又等于对该族放弃 AC-11——提取偏低但不为零\n233:   * （BRIEF 给的是绝对路径，模型据此读项目文件，提出来就是项目内绝对路径）。\n234:   * 生效值进留痕（`evidence_threshold`），否则同一个读数在两族间一过一不过会像 bug。\n235:   */\n236:  const minProjectReads = effectiveMinProjectReads(req.min_project_reads, cap);\n237:\n238:  const excluded = new Set([req.subject_path, req.brief_path].map((p) => normalizeAbs(p, req.project_root)));\n239:  const projectReads = effective.filter((p) => {\n240:    const abs = normalizeAbs(p, req.project_root);\n241:    if (excluded.has(abs)) return false;\n242:    // 归档根内的文件不算「项目上下文」——那是审查材料本身\n243:    if (isUnder(abs, opts.archiveRootAbs)) return false;\n244:    // 项目根之外的读取（~/ 下的无关文件）也不算：AC-11 要的是「结合整个项目评审」\n245:    return isUnder(abs, req.project_root);\n246:  }).length;\n247:\n248:  if (projectReads < minProjectReads) {\n249:    reasons.push(\n250:      `no_project_context：被审对象与送审包之外的项目文件读取 ${projectReads} 次 < 下限 ${minProjectReads}`,\n\n[Showing results with pagination = limit: 250]"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_0194bA6sub3ZbZGbjwf9RUKA", "name": "Grep", "input": {"pattern": "ALL_CLI_NAMES|cliName|DEFAULT_CRITICS|resolveCriticSelection", "path": "<ROOT>/src/trivium/agents/registry.ts", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_0194bA6sub3ZbZGbjwf9RUKA", "type": "tool_result", "content": "75:   * `config.local.yaml` 的 `probe.cli.<cliName>` 按本字段索引，\n79:   * 而两份还可能互相不一致；按 cliName 索引则天然共享同一份。\n85:   * cliName 全表唯一、探针段具名键 ⊆ cliName 集。\n87:  cliName: string;\n133:    cliName: 'claude',\n147:    cliName: 'codex',\n161:    cliName: 'agy',\n175:    cliName: 'zcode',\n199: * 它们只该占探针段的**一个**键（见 `cliName` 的登记说明）。\n200: * `registry-parity` 另有一条「cliName 全表唯一」的对账——那条守的是\n204:export const ALL_CLI_NAMES: readonly string[] = [...new Set(AGENTS.map((a) => a.cliName))];\n207:export function agentByCliName(cliName: string): AgentDescriptor | null {\n208:  return AGENTS.find((a) => a.cliName === cliName) ?? null;"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01BoiEHGySAyxQ89Si3MAffA", "name": "Grep", "input": {"pattern": "resolveCriticSelection|DEFAULT_CRITICS", "path": "<ROOT>/src", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01BoiEHGySAyxQ89Si3MAffA", "type": "tool_result", "content": "src/trivium/config.ts:20:import { DEFAULT_CRITICS } from './types.js';\nsrc/trivium/config.ts:227:      default_critics: [...DEFAULT_CRITICS],\nsrc/trivium/critics.ts:44:export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput = {}): CriticId[] {\nsrc/trivium/report.ts:27:import { CRITICS, DEFAULT_CRITICS, STAGES, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';\nsrc/trivium/report.ts:438:    const cols: CriticId[] = seen.size > 0 ? CRITICS.filter((c) => seen.has(c)) : [...DEFAULT_CRITICS];\nsrc/trivium/preflight.ts:17:import { DEFAULT_CRITICS, STAGES } from './types.js';\nsrc/trivium/preflight.ts:211:  critics: readonly CriticId[] = DEFAULT_CRITICS,\nsrc/trivium/preflight.ts:298:  critics: readonly CriticId[] = DEFAULT_CRITICS,\nsrc/trivium/archive.ts:18:import { DEFAULT_CRITICS, type CriticId, type Stage, type StageOrVerify } from './types.js';\nsrc/trivium/archive.ts:281:  critics: readonly Role[] = DEFAULT_CRITICS,\nsrc/trivium/divergence.ts:14:import { DEFAULT_CRITICS } from './types.js';\nsrc/trivium/divergence.ts:128:  pair: { a: CriticId; b: CriticId } = { a: DEFAULT_CRITICS[0]!, b: DEFAULT_CRITICS[1] ?? DEFAULT_CRITICS[0]! },\nsrc/trivium/gate.ts:11:import { DEFAULT_CRITICS, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';\nsrc/trivium/gate.ts:411:  return selected.length > 0 ? selected : DEFAULT_CRITICS;\nsrc/trivium/cli.ts:38:import { resolveCriticSelection } from './critics.js';\nsrc/trivium/cli.ts:358:   * 入选集合的解析与校验交给 `resolveCriticSelection`——**与 `topic resolve` 同一个判定处**。\nsrc/trivium/cli.ts:364:  const critics = resolveCriticSelection(ctx.config, {\nsrc/trivium/cli.ts:524:   * 解析走 `resolveCriticSelection`——与 `topic resolve` / `review --start` 同一处判定，\nsrc/trivium/cli.ts:527:  const critics = resolveCriticSelection(ctx.config, {\nsrc/trivium/review.ts:57:import { resolveCriticSelection } from './critics.js';\nsrc/trivium/review.ts:178:   * 由调用方经 `resolveCriticSelection` 解析并校验完再传进来——本模块不再自己\nsrc/trivium/review.ts:339:  const sides: CriticId[] = [...(opts.critics ?? resolveCriticSelection(cfg))];\nsrc/trivium/review.ts:366:   * 生产路径当前不可达（两个 CLI 入口都经 `resolveCriticSelection`，它保证非空；\nsrc/trivium/types.ts:44: * 因为那道防线本来就不该由类型承担：`resolveCriticSelection` 里「当轮 Driver\nsrc/trivium/types.ts:89:export const DEFAULT_CRITICS: readonly CriticId[] =\nsrc/trivium/types.ts:580:   * 接线已在 M7b 第 5 步完成：不给 `--critics` 时，`resolveCriticSelection`\nsrc/trivium/topic-args.ts:16:import { resolveCriticSelection } from './critics.js';\nsrc/trivium/topic-args.ts:246:   * `--critics` 与 `--only` 的解析与校验都交给 `resolveCriticSelection`\nsrc/trivium/topic-args.ts:272:  const critics = resolveCriticSelection(ctx.config, {"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_015K6zoFoD2ftXtyGPWmUvpX", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/critics.ts"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01E7QDn4T6P9kXcsJq5Wf5jR", "name": "Grep", "input": {"pattern": "SuspectedWrite|suspected_write_events|classifyWriteCommands", "path": "<ROOT>/src/trivium", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01E7QDn4T6P9kXcsJq5Wf5jR", "type": "tool_result", "content": "src/trivium/types.ts:650: * 一条判不实的写入线索（`CriticResult.suspected_write_events` 的元素）。\nsrc/trivium/types.ts:655:export interface SuspectedWrite {\nsrc/trivium/types.ts:981:  suspected_write_events?: SuspectedWrite[];\nsrc/trivium/guard.ts:9:  SuspectedWrite,\nsrc/trivium/guard.ts:58:  suspectedWrites: SuspectedWrite[];\nsrc/trivium/guard.ts:190:    suspectedWrites: [...(result.suspected_write_events ?? [])],\nsrc/trivium/adapters/codex-trace.ts:125: * 成功执行过的命令 —— 写判据的入参（`classifyWriteCommands` 的调用契约）。\nsrc/trivium/adapters/base.ts:13:  Config, CriticId, CriticRequest, CriticResult, Stage, SuspectedWrite,\nsrc/trivium/adapters/base.ts:639:  suspected: SuspectedWrite[];\nsrc/trivium/adapters/base.ts:797:export function classifyWriteCommands(\nsrc/trivium/adapters/base.ts:802:  const suspected: SuspectedWrite[] = [];\nsrc/trivium/adapters/codex.ts:28:  classifyWriteCommands,\nsrc/trivium/adapters/codex.ts:165:   * 而 `command_texts` 拿全集——两者论域不同，见 `classifyWriteCommands` 的契约。\nsrc/trivium/adapters/codex.ts:168:  const { writes, suspected } = classifyWriteCommands(succeededCommands(trace), projectRoot);\nsrc/trivium/adapters/codex.ts:196:    suspected_write_events: suspected,\nsrc/trivium/adapters/codex.ts:454:    const { writes, suspected } = classifyWriteCommands("}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01Dv3Rpsn8CNY2FLpVqp8tmF", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/guard.ts", "offset": 1, "limit": 220}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01PauskhjvxGALtisUpzYDSz", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/adapters/codex.ts", "offset": 100, "limit": 140}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01KgSwovEbQmCMoJxaNnUDq8", "name": "Grep", "input": {"pattern": "\\|&", "path": "<ROOT>/test", "output_mode": "content"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01KgSwovEbQmCMoJxaNnUDq8", "type": "tool_result", "content": "test/unit/codex-write-verbs.test.ts:148: * 原实现 `/\\|\\||;|&(?!&)/` 的负向前瞻只看后一个字符：`&&` 的第二个 `&` 后面是空格，"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01WeDnFxaeDFWWyFd43o55X6", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/review.ts", "offset": 300, "limit": 100}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01MG3XPgyYSrXWWTvBJoFuKg", "name": "Grep", "input": {"pattern": "'sed'|\"sed\"|WRITE_VERBS\\b", "path": "<ROOT>/src", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01MG3XPgyYSrXWWTvBJoFuKg", "type": "tool_result", "content": "src/trivium/adapters/base.ts:443:  if (verb === 'sed') {\nsrc/trivium/adapters/base.ts:611:const WRITE_VERBS: ReadonlySet<string> = new Set([\nsrc/trivium/adapters/base.ts:632:export const WRITE_VERBS_FOR_PARITY: readonly string[] = [...WRITE_VERBS].sort();\nsrc/trivium/adapters/base.ts:716:  if (WRITE_VERBS.has(base)) {\nsrc/trivium/adapters/base.ts:875:      if (verbs.some((v) => WRITE_VERBS.has(v))) {"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01NFpr8ZEEEuu8bxyjphbn6L", "name": "Grep", "input": {"pattern": "checkModelSlugs\\(|checkCliVersions\\(", "path": "<ROOT>", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01NFpr8ZEEEuu8bxyjphbn6L", "type": "tool_result", "content": "src/trivium/review.ts:356:    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides);\nsrc/trivium/preflight.ts:209:async function checkCliVersions(\nsrc/trivium/preflight.ts:294:export function checkModelSlugs(\nsrc/trivium/preflight.ts:558:  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected)));\nsrc/trivium/preflight.ts:562:  if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected));\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:371:-async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:372:+async function checkCliVersions(\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:422:@@ -236,21 +258,15 @@ async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:475:-  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg)));\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:476:+  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected)));\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:561:-    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides);\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:562:+    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides);\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:371:-async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:372:+async function checkCliVersions(\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:422:@@ -236,21 +258,15 @@ async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:475:-  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg)));\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:476:+  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected)));\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:561:-    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides);\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:562:+    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides);\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:371:-async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:372:+async function checkCliVersions(\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:422:@@ -236,21 +258,15 @@ async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:475:-  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg)));\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:476:+  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected)));\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:561:-    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides);\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:562:+    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides);\ntest/unit/preflight.test.ts:82:  assert.equal(checkModelSlugs(ctx.config, 'plan').ok, true);\ntest/unit/preflight.test.ts:83:  assert.equal(checkModelSlugs(ctx.config, 'all').ok, true, '--stage all 校验三个阶段');\ntest/unit/preflight.test.ts:88:  const r = checkModelSlugs(ctx.config, 'plan', { gemini: 'gemini-9.9-nope' });\ntest/unit/preflight.test.ts:98:  const r = checkModelSlugs(ctx.config, 'plan', { glm: 'GLM-999-nope' });\ntest/unit/preflight.test.ts:105:  assert.equal(checkModelSlugs(ctx.config, 'plan', { glm: 'GLM-5.3' }).ok, true);\ntest/unit/preflight.test.ts:106:  assert.equal(checkModelSlugs(ctx.config, 'plan', { glm: 'bigmodel/GLM-5.3' }).ok, true);\ntest/unit/preflight.test.ts:114:  assert.equal(checkModelSlugs(ctx.config, 'plan', { gemini: 'anything' }).ok, true);\ntest/unit/preflight.test.ts:122:  const r = checkModelSlugs(ctx.config, 'plan');\ntest/unit/preflight.test.ts:173:  assert.equal(checkModelSlugs(ctx.config, 'plan').ok, true, 'plan 阶段本身合法');\ntest/unit/preflight.test.ts:174:  const all = checkModelSlugs(ctx.config, 'all');\ntest/unit/preflight.test.ts:380:  const r = checkModelSlugs(ctx.config, 'plan');\ntest/unit/preflight.test.ts:390:  const r = checkModelSlugs(ctx.config, 'plan');\ntest/unit/preflight.test.ts:402:  const r = checkModelSlugs(ctx.config, 'plan');"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_017GkWF1Hg9DSVkVSUg3J4ps", "name": "Read", "input": {"file_path": "<ROOT>/CLAUDE.md"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01XRR31LL3K1nFUwXcj5Fyqq", "name": "Read", "input": {"file_path": "<ROOT>/AGENTS.md"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_016pLiJNsNJZUr2GujQShN9J", "name": "Grep", "input": {"pattern": "写动词|WRITE_VERBS|sed -i|只读失守", "path": "<ROOT>/doc", "output_mode": "content", "-n": true, "head_limit": 40}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_016pLiJNsNJZUr2GujQShN9J", "type": "tool_result", "content": "doc/05_testing/REPORT_2026-09-11_m0_probe.md:233:- **工具调用计数与只读失守判定**（写事件扫描）走标准日志——需要 `completed` 状态才算证据；\ndoc/03_api/PROTOCOL_dual_critic_relay.md:249:| `hook-pre-bash` | `PreToolUse` / `Bash`（无 `if` 过滤） | `hook-pre-write` 只覆盖 Edit / Write，`cat > f`、`sed -i`、`tee`、`git checkout` 是旁路。按写命令形态做**启发式**拦截：命中编排器独占对象 → **任何时候**都拦；其余写命令 → 仅闸门期拦。判定在**未剥 heredoc 的原文**上进行 |\ndoc/05_testing/CASE_manual_acceptance.md:273:`cat > f`、`sed -i`、`tee`、`git checkout -- f` 都能绕过去，`hook-pre-bash` 是补这个缺口的。\ndoc/05_testing/CASE_manual_acceptance.md:288:probe \"sed -i '' 's/blocker/minor/' .reviews/<主题>/plan/<日期>-<主题>-glm.md\"  # 期望 2\ndoc/05_testing/CASE_manual_acceptance.md:311:| 6.1 | 改角色后缀文件（删 / `sed -i`）任何时候都被拦 | `2` |\ndoc/07_manuals/QUICKSTART.md:214:| 闸门期 / 任何时候 | 用 **Bash** 绕过前三道：`cat > f`、`sed -i`、`tee`、`git checkout -- f` | Edit / Write 只是写文件的一条路，这些是旁路。命中编排器独占对象（角色后缀文件、`.trivium/` 的状态与锁、归档内 `_meta/` 与 `task.json`）**任何时候**都挡；其余写命令只在闸门期挡 |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md:69:| **轻量编排器** | **Trivium Orchestrator** | 本地执行的确定性编排核心 CLI，负责环境预检、命令解析、并发拉起双审、工件归档、只读失守检测与闸门控制。 |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md:96:│  │  - 只读失守监测 (ReadOnlyGuard)                                           │  │\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md:395:#### 4.4.2 只读失守检测与熔断（ReadOnlyGuard）\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md:411:        Orch->>Orch: 🚨 触发只读失守告警 (CRITIC_WRITE_VIOLATION)\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md:752:| **审查阶段发生业务文件写篡改** | `ReadOnlyGuard` 检测到 Git Tree 变化 | 立即发出 `CRITIC_WRITE_VIOLATION` 红色警报，调用 `git` 强制回滚受污染文件，阻断流水线。 | 归档中写入只读失守违规日志，全流程判定失败。 | FR-15<br>AC-08 |\ndoc/02_design/ADR_001_isolation_mode.md:54:  - 两家 Agent 可能在项目根留下会话缓存等临时文件，需探针白名单，否则误判只读失守。\ndoc/08_project/BACKLOG.md:15:| B5 | done | Bash 出口不设防（`cat >`/`sed -i`）；dual-run 授予裸 Bash | .claude/settings.json、skills/dual-run/SKILL.md |\ndoc/02_design/reference/2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md:238:| 只读失守后自动 `git checkout / clean` 回滚 | gemini 版 4.4.2、第 7 章 | 命令 A 期间工作区含 Driver 未提交改动，自动回滚会误删；PRD AC-08 只要求检出与告警。被审稿 10.3 与 glm 版 D10 立场一致，正确 |\ndoc/07_manuals/MANUAL_user.md:625:| 闸门期 | 用 Bash 旁路改业务文件（`cat >`、`sed -i`、`tee`、`git checkout -- f`） | 同第一、二道 |\ndoc/02_design/LLD_orchestrator.md:78:| `guard.ts` | 225 | 只读失守 / 证据下限 / 泄漏 / 漂移的**判定**（不做处置） | `judgeRun()` `judgeSide()` |\ndoc/02_design/LLD_orchestrator.md:352:第 0 步先过 `WRITE_LIKE` 14 条正则（重定向、`tee`、`sed -i`、`rm/mv/cp`、`git checkout/reset/...`、包管理器写操作、解释器内写 API）。不像写命令直接放行。\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-dsv4flash.md:411:| 审查员误改文件 | 分发前后取 git 指纹，若变更非空则告警并 `git checkout` 回滚（防只读失守） |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-dsv4flash.md:584:# ── 3. 只读失守检查 ──\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-dsv4flash.md:594:| ZCode 只读失守 | 代码被意外改 | `plan` 模式 + denylist + git 指纹兜底 |\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:116:| P5 | **不可伪装** | 单审、空审、解析失败、只读失守、无 Agent 证据，一律显式标记且不得被改名/删除掩盖（FR-19 / AC-05 / AC-06 / AC-08）。 |\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:526:| `guard` | 只读失守检测（指纹）、漂移判定、对方产出读取检测（轨迹）、伪造角色文件检测、Agent 证据下限校验（含项目文件读取下限） | 指纹 + 轨迹 | Verdict | 中止决策（交给 `gate`） |\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1403:[Omitted long matching line]\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1513:4. 同时做只读失守判定（10.3）：F 中若有非白名单文件且 git status 显示为审查期间新出现的改动，\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2030:仅对**瞬时故障**重试一次：空输出、非 TTY 丢 stdout、429/网络抖动、schema 校验失败、工具证据不足。业务性失败（认证失败、模型非法、只读失守、读到对方产出且二次命中）不重试。结果缓存键为 `(snapshot_hash, brief_hash, critic, model, effort)`，其中 `brief_hash` 为渲染后 `BRIEF.md` 全文的 sha256（含提示语、镜头、输出契约），因此**换提示语必定重审**（AC-09）；全部相同才复用既有结果并在命令输出与 `run.json` 记 `cache_hit: true` 与来源 `run_id`，重跑加 `--force` 穿透。缓存默认关闭（`review.cache: false`），属 NFR-06 的可选优化。\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2298:| AC-08 只读失守可检出 | 前后指纹比对（`tree_hash` + `git status`，排除 scratch 白名单）+ 轨迹写事件 | 用桩适配器让审查员向项目写一个文件，应判 `readonly_breach` 并列出该文件 |\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2464:| 闸门期用 Bash 写业务文件（`cat > f`、`sed -i f`、`tee f`、`git checkout -- f`） | `hook-pre-bash` `deny`，原因文本包含 `/dual-approve` 指引 |\ndoc/06_deployment/RUNBOOK_pipeline_ops.md:112:| `hook-pre-bash` | 像在改动工作树的 Bash 命令（重定向、`tee`、`sed -i`、`rm/mv/cp`、`git checkout` …，启发式） | 同上；对审查文档 / `_meta/` / `task.json` / `state.json` / `.trivium/bin` 的写命令则任何时候都挡。判定在**未剥离 heredoc 的原文**上做：`python3 - <<'PY' … PY` 的正文若指向上述对象同样拦，代价是正文里出现这些路径字面量的无害命令会被误拦（改用 Write 工具即可） |\ndoc/01_requirements/PRD_driver_dual_critic.md:154:- [ ] **FR-15 审查员只读**：审查 Agent 不得写入业务文件。若发生只读失守（审查阶段出现非预期的业务文件改动），系统必须能检测并告警，且不得把失守后的仓库状态当作合法产物继续流转。\ndoc/01_requirements/PRD_driver_dual_critic.md:364:10. **AC-08 只读失守可检出**  \ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:137:| 校验层 | `dc verify` | `dc` 内模块 | 归档完整性、裁决覆盖、只读失守、污染检测 | 3.6 |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:154:| D10 | 只读失守 = **检出 + 告警 + 流程停下等人工处置**（默认不自动回滚） | 自动 `git checkout` 回滚后继续 | 命令 A 期间工作区含 Driver 未提交改动，自动回滚有误伤风险；PRD 只要求\"检出、告警、不得当干净完成\"（AC-08） |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:242:| 4 | 审查失败（严格模式下单侧重试后仍失败 / 双侧失败 / 只读失守） | 中止本阶段，转述单审标记与原因；保留已有工件（AC-06） |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:268:    K --> O[git 指纹快照 after<br/>只读失守检测]\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:279:- **重试**：仅对瞬态失败（超时、空输出、JSON 解析失败、可识别的网络抖动）自动重试一次；只读失守与污染**不自动重试**（NFR-02）。\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:460:    DC->>DC: 只读失守检测（git 指纹前后比对）\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:721:| 审查阶段写入业务文件（只读失守） | git 指纹前后比对 | 告警；该次审查标 `contaminated`，不得标干净完成；流程停下等人工处置（不自动回滚，D10） | 违规文件清单入元数据 | FR-15 / AC-08 |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:729:**重试细则（NFR-02）**：仅瞬态失败重试一次（超时、空输出、解析失败、可识别网络错误）；重试使用相同冻结材料与相同模型；重试仍失败进入严格/降级分支。只读失守与污染不重试。\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:885:| AC-08 | 只读失守可检出 | 3.2.3 指纹比对、6 |"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01VVLqyX6uixpnm6M5etbQas", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/guard.ts", "offset": 220, "limit": 240}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_014fDztmzmm8ZzM9Fqf5Xi8m", "name": "StructuredOutput", "input": {"schema": "{\"schema\":\"trivium.review.v1\",\"verdict\":\"request-changes\",\"summary\":\"最值得关注的是 base.ts 里 WRITE_VERBS 闭集仍遗漏 sed -i / perl -i / patch / git apply 等原地编辑动词——这类命令成功写入后既不进 writes 也不进 suspected，与紧邻的 COMMAND_TRACE_CAPABILITY 注释「成功执行的写命令照常留痕」的承诺相悖；唯一兜底是全局 git 指纹漂移（降级为「无法归因」而非确凿判决），项目自己的 Driver Hook 文档早就把 sed -i 列为常见写旁路，说明这不是假想威胁。SEGMENT_SPLIT_RE 对 |& 的处理依赖环视副作用而非显式分支，暂无可观察错误但缺测试锁定，属隐患。preflight.ts 对 checkCliVersions/checkReadonlyCapability/checkModelSlugs 三处的 selected 集合泛化是对称、一致的，未发现漏侧。review.ts 的 sides 排序修复与 guard.ts 的 suspectedWrites 接线均核实无误。\",\"agreed\":[\"本补丁准确定位并修复了原 `&(?!&)` 负向前瞻同时命中 `&&` 第二个字符与 `2>&1` 里 `&` 的问题，新 SEGMENT_SPLIT_RE 用前后各排除 `>`/`&` 的写法堵住了「加个 2>&1 就能绕过只读失守」这个具体 blocker，且补了对应用例。\",\"checkCliVersions 新增的 critics 参数与 checkReadonlyCapability / checkModelSlugs 已有的 selected 口径完全对齐，preflight.ts 里三处按入选侧生效失败、全体生效提示的分工写得清楚且互相一致，没有发现遗漏某一侧的生成缺口。\",\"review.ts 把 sides 解析提到 checkModelSlugs 调用之前，修复了此前非默认侧非法 slug 漏校验的问题，且补了走真实子进程的集成测试锁例，是恰当的修复方式。\",\"guard.ts 对 suspectedWrites 的接线很克制：只加了一个字段、一段渲染逻辑，有真实消费方（renderGuardWarnings）且有单测覆盖判定层到渲染层的完整链路，没有『宣称了不存在的消费方』的问题。\",\"codex.ts 的 providerSection() 实现简单直接，对 provider 段的抽取、轮换指纹变化、噪声字段不变、无 provider 段返回 null 四种情形都有对应测试。\"],\"findings\":[{\"id\":\"CLAUDE-01\",\"severity\":\"major\",\"layer\":\"code\",\"kind\":\"contract\",\"location\":\"src/trivium/adapters/base.ts:578-589（COMMAND_TRACE_CAPABILITY 契约声明）与 611-887（WRITE_VERBS 闭集与 classifyWriteCommands）\",\"problem\":\"WRITE_VERBS 闭集只有 13 个动词（cp/mv/install/ln/tee/rm/rmdir/mkdir/touch/chmod/chown/truncate/dd），不含 sed -i / perl -i / patch / `git apply` 等原地编辑类命令。`classifyWriteCommands` 的主逻辑与 `hitAny` 兜底（提不出目标时仍要疑似）都只查这张表，于是像 `sed -i 's/blocker/nit/' src/report.ts` 这样真实成功执行的写命令，既不进 `writes`，也不进 `suspected_write_events`——彻底不在判定层的视野内。这与紧邻上方 COMMAND_TRACE_CAPABILITY 的文档承诺直接冲突：『`rejectionRecorded: false` ⇒ 该侧「尝试写」的检测失效——**不是**轨迹对写事件全盲……**成功执行的写命令照常留痕**』。项目自己并非不知道 sed -i 是常见写旁路：CLAUDE.md 第 24-26 行、doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 都把它列为 Driver 侧 Hook 要专门堵的旁路形态，唯独 codex 审查员的写判据没有覆盖。唯一的兜底是 guard.ts 里独立的 git 指纹漂移检测：当某侧 `rejectionRecorded===false`（codex 正是）时，任何实际文件变化都会落进 `unattributedDriftFiles`（『无法归因，请人工核对』），而不是本补丁着力要给出的确凿 `readonlyBreach` 或 `suspected` 判决——把一个本该由写判据直接坐实的问题，退化成了需要人工翻 git diff 才能发现的弱信号。\",\"evidence\":\"读 src/trivium/adapters/base.ts 578-589（rejectionRecorded 文档承诺『成功执行的写命令照常留痕』）、611-632（WRITE_VERBS 定义）、797-887（classifyWriteCommands 主循环与 hitAny 兜底均只判 `WRITE_VERBS.has(v)`），确认 sed 从未出现在这张集合里（另用 Grep 在 src/trivium 全目录搜 `'sed'`/`WRITE_VERBS\\\\b`，命中的三处 sed 引用全在 extractFromSegment 的读取路径提取逻辑里，与写判据无关）；读 src/trivium/guard.ts 305-382（judgeRun 里 anyReadonlyUnavailable 为真时，改动文件落进 unattributedDriftFiles 而非 readonlyBreach）；读 CLAUDE.md 24-26 行与用 Grep 核实 doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 均把 sed -i 列为已知写旁路。\",\"suggestion\":\"要么把 WRITE_VERBS 扩到覆盖常见原地编辑命令（至少 sed -i / perl -i，`patch`/`git apply` 视优先级），要么把 rejectionRecorded 文档里『成功执行的写命令照常留痕』的措辞收窄为『闭集内动词才留痕』，避免契约比实现宽。\",\"confidence\":\"high\"},{\"id\":\"CLAUDE-02\",\"severity\":\"minor\",\"layer\":\"code\",\"kind\":\"test-gap\",\"location\":\"src/trivium/adapters/base.ts:642-654（SEGMENT_SPLIT_RE）\",\"problem\":\"新分隔符正则的文档详尽列举了 `2>&1`/`>&2`/`&>file` 三种 fd 重定向形态并各给了测试，但没有提到 bash 的 `|&`（等价于 `2>&1 |`，常见于『同时看 stdout 与 stderr』的写法）。实测其处理完全是环视副作用的偶然结果：`|` 因后瞻『后一个字符不能是 &』而拒绝匹配、拆分退回给前一段；紧邻的单个 `&` 因前后顾都满足反而被当成分隔符——于是那个 `|` 字符原样残留成前一段末尾的一个 token，会被 `writeSinksOfSegment` 当作候选 sink（`isResolvablePath('|')` 为真）。目前因为该段恰好总是落进『掩码降级为 suspected』分支、又被后续按 (command, why) 去重的逻辑吞掉了这条伪造 sink 产生的重复项，暂无可观察的错误输出；但这是一段未声明、无测试锁定的隐式行为——下次对这条正则做任何看似无关的微调，都可能在没有测试变红的情况下让 `|&` 场景真正漏判或产生脏数据。\",\"evidence\":\"读 src/trivium/adapters/base.ts 642-654（SEGMENT_SPLIT_RE 与其只列 `2>&1`/`>&2`/`&>` 三种形态的注释）、689-763（writeSinksOfSegment 对 args 的过滤只挡 `-` 前缀，不挡孤立的 `|`）、814-867（masked 判定与最终的按 command+why 去重逻辑）；用 Grep 在 test/unit/codex-write-verbs.test.ts 中搜索 `\\\\|&`，只命中文档注释里的一处历史描述，没有任何断言 `|&` 实际行为的用例。\",\"suggestion\":\"在 SEGMENT_SPLIT_RE 里显式加一条 `\\\\|&` 分支（视同 `|`处理），并补一条 `|&` 场景的用例，把当前『靠环视副作用凑巧安全』的行为改成显式声明的规则。\",\"confidence\":\"medium\"}],\"not_covered\":[\"未执行 npm run typecheck / npm test，只做了静态阅读，没有实证验证测试是否真的通过（无 Bash 工具可用）。\",\"zcode.ts 180s 超时改动『与搬家前的值一致』的说法未做 git blame 核实，只读了当前代码，未确认历史提交里的具体数值。\",\"report.ts 的表格列回退逻辑（DEFAULT_CRITICS 兜底）只看了 diff 本身，没有交叉核对 gate.ts / archive.ts 里 rounds.sides 的产出是否总能满足非空前提。\",\"providerSection() 是否会对 codex 真实 TOML schema 里某个恰好以 `[model_providers` 为前缀但语义不同的顶层键（如某种假设的 `[model_providers_history]`）产生误判，未做实证核实，只是代码层面的可能性推演，故未单独列为 finding。\",\"SEGMENT_SPLIT_RE 与嵌套子 shell、多重转义引号组合的边界情形未逐一穷举，只验证了 brief 点名的 2>&1/&&/|& 相关路径。\",\"没有审查 codex-trace.ts 内 succeededCommands() 的完整实现，只确认了它被 classifyWriteCommands 调用这一层契约。\"],\"consulted\":[\".reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff\",\"src/trivium/adapters/base.ts\",\"src/trivium/preflight.ts\",\"src/trivium/adapters/codex.ts\",\"src/trivium/critics.ts\",\"src/trivium/guard.ts\",\"src/trivium/review.ts\",\"src/trivium/agents/registry.ts\",\"test/unit/preflight.test.ts\",\"test/unit/codex-write-verbs.test.ts\",\"CLAUDE.md\",\"AGENTS.md\",\"doc/03_api/PROTOCOL_dual_critic_relay.md\",\"doc/05_testing/CASE_manual_acceptance.md\",\"doc/02_design/LLD_orchestrator.md\"]}"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_012ebrmVi1yDWTUXwnsoN2Pn", "name": "StructuredOutput", "input": {"schema": "{\"schema\": \"trivium.review.v1\", \"verdict\": \"request-changes\", \"summary\": \"最值得关注的是 base.ts 里 WRITE_VERBS 闭集仍遗漏 sed -i / perl -i / patch / git apply 等原地编辑动词——这类命令成功写入后既不进 writes 也不进 suspected，与紧邻的 COMMAND_TRACE_CAPABILITY 注释「成功执行的写命令照常留痕」的承诺相悖；唯一兜底是全局 git 指纹漂移（降级为「无法归因」而非确凿判决），项目自己的 Driver Hook 文档早就把 sed -i 列为常见写旁路，说明这不是假想威胁。SEGMENT_SPLIT_RE 对 |& 的处理依赖环视副作用而非显式分支，暂无可观察错误但缺测试锁定，属隐患。preflight.ts 对 checkCliVersions/checkReadonlyCapability/checkModelSlugs 三处的 selected 集合泛化是对称、一致的，未发现漏侧。review.ts 的 sides 排序修复与 guard.ts 的 suspectedWrites 接线均核实无误。\", \"agreed\": [\"本补丁准确定位并修复了原 &(?!&) 负向前瞻同时命中 && 第二个字符与 2>&1 里 & 的问题，新 SEGMENT_SPLIT_RE 用前后各排除 >/& 的写法堵住了「加个 2>&1 就能绕过只读失守」这个具体 blocker，且补了对应用例。\", \"checkCliVersions 新增的 critics 参数与 checkReadonlyCapability / checkModelSlugs 已有的 selected 口径完全对齐，preflight.ts 里三处按入选侧生效失败、全体生效提示的分工写得清楚且互相一致，没有发现遗漏某一侧的生成缺口。\", \"review.ts 把 sides 解析提到 checkModelSlugs 调用之前，修复了此前非默认侧非法 slug 漏校验的问题，且补了走真实子进程的集成测试锁例，是恰当的修复方式。\", \"guard.ts 对 suspectedWrites 的接线很克制：只加了一个字段、一段渲染逻辑，有真实消费方（renderGuardWarnings）且有单测覆盖判定层到渲染层的完整链路，没有『宣称了不存在的消费方』的问题。\", \"codex.ts 的 providerSection() 实现简单直接，对 provider 段的抽取、轮换指纹变化、噪声字段不变、无 provider 段返回 null 四种情形都有对应测试。\"], \"findings\": [{\"id\": \"CLAUDE-01\", \"severity\": \"major\", \"layer\": \"code\", \"kind\": \"contract\", \"location\": \"src/trivium/adapters/base.ts:578-589（COMMAND_TRACE_CAPABILITY 契约声明）与 611-887（WRITE_VERBS 闭集与 classifyWriteCommands）\", \"problem\": \"WRITE_VERBS 闭集只有 13 个动词（cp/mv/install/ln/tee/rm/rmdir/mkdir/touch/chmod/chown/truncate/dd），不含 sed -i / perl -i / patch / git apply 等原地编辑类命令。classifyWriteCommands 的主逻辑与 hitAny 兜底（提不出目标时仍要疑似）都只查这张表，于是像 sed -i 's/blocker/nit/' src/report.ts 这样真实成功执行的写命令，既不进 writes，也不进 suspected_write_events——彻底不在判定层的视野内。这与紧邻上方 COMMAND_TRACE_CAPABILITY 的文档承诺直接冲突：rejectionRecorded: false 的注释写着『该侧「尝试写」的检测失效——不是轨迹对写事件全盲……成功执行的写命令照常留痕』。项目自己并非不知道 sed -i 是常见写旁路：CLAUDE.md 第 24-26 行、doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 都把它列为 Driver 侧 Hook 要专门堵的旁路形态，唯独 codex 审查员的写判据没有覆盖。唯一的兜底是 guard.ts 里独立的 git 指纹漂移检测：当某侧 rejectionRecorded===false（codex 正是）时，任何实际文件变化都会落进 unattributedDriftFiles（『无法归因，请人工核对』），而不是本补丁着力要给出的确凿 readonlyBreach 或 suspected 判决——把一个本该由写判据直接坐实的问题，退化成了需要人工翻 git diff 才能发现的弱信号。\", \"evidence\": \"读 src/trivium/adapters/base.ts 578-589（rejectionRecorded 文档承诺『成功执行的写命令照常留痕』）、611-632（WRITE_VERBS 定义）、797-887（classifyWriteCommands 主循环与 hitAny 兜底均只判 WRITE_VERBS.has(v)），确认 sed 从未出现在这张集合里（另用 Grep 在 src/trivium 全目录搜 'sed'/WRITE_VERBS\\\\b，命中的三处 sed 引用全在 extractFromSegment 的读取路径提取逻辑里，与写判据无关）；读 src/trivium/guard.ts 305-382（judgeRun 里 anyReadonlyUnavailable 为真时，改动文件落进 unattributedDriftFiles 而非 readonlyBreach）；读 CLAUDE.md 24-26 行与用 Grep 核实 doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 均把 sed -i 列为已知写旁路。\", \"suggestion\": \"要么把 WRITE_VERBS 扩到覆盖常见原地编辑命令（至少 sed -i / perl -i，patch/git apply 视优先级），要么把 rejectionRecorded 文档里『成功执行的写命令照常留痕』的措辞收窄为『闭集内动词才留痕』，避免契约比实现宽。\", \"confidence\": \"high\"}, {\"id\": \"CLAUDE-02\", \"severity\": \"minor\", \"layer\": \"code\", \"kind\": \"test-gap\", \"location\": \"src/trivium/adapters/base.ts:642-654（SEGMENT_SPLIT_RE）\", \"problem\": \"新分隔符正则的文档详尽列举了 2>&1/>&2/&>file 三种 fd 重定向形态并各给了测试，但没有提到 bash 的 |&（等价于 2>&1 |，常见于『同时看 stdout 与 stderr』的写法）。实测其处理完全是环视副作用的偶然结果：| 因后瞻『后一个字符不能是 &』而拒绝匹配、拆分退回给前一段；紧邻的单个 & 因前后顾都满足反而被当成分隔符——于是那个 | 字符原样残留成前一段末尾的一个 token，会被 writeSinksOfSegment 当作候选 sink（isResolvablePath('|') 为真）。目前因为该段恰好总是落进『掩码降级为 suspected』分支、又被后续按 (command, why) 去重的逻辑吞掉了这条伪造 sink 产生的重复项，暂无可观察的错误输出；但这是一段未声明、无测试锁定的隐式行为——下次对这条正则做任何看似无关的微调，都可能在没有测试变红的情况下让 |& 场景真正漏判或产生脏数据。\", \"evidence\": \"读 src/trivium/adapters/base.ts 642-654（SEGMENT_SPLIT_RE 与其只列 2>&1/>&2/&> 三种形态的注释）、689-763（writeSinksOfSegment 对 args 的过滤只挡 - 前缀，不挡孤立的 |）、814-867（masked 判定与最终的按 command+why 去重逻辑）；用 Grep 在 test/unit/codex-write-verbs.test.ts 中搜索 |&，只命中文档注释里的一处历史描述，没有任何断言 |& 实际行为的用例。\", \"suggestion\": \"在 SEGMENT_SPLIT_RE 里显式加一条 |& 分支（视同 | 处理），并补一条 |& 场景的用例，把当前『靠环视副作用凑巧安全』的行为改成显式声明的规则。\", \"confidence\": \"medium\"}], \"not_covered\": [\"未执行 npm run typecheck / npm test，只做了静态阅读，没有实证验证测试是否真的通过（无 Bash 工具可用）。\", \"zcode.ts 180s 超时改动『与搬家前的值一致』的说法未做 git blame 核实，只读了当前代码，未确认历史提交里的具体数值。\", \"report.ts 的表格列回退逻辑（DEFAULT_CRITICS 兜底）只看了 diff 本身，没有交叉核对 gate.ts / archive.ts 里 rounds.sides 的产出是否总能满足非空前提。\", \"providerSection() 是否会对 codex 真实 TOML schema 里某个恰好以 [model_providers 为前缀但语义不同的顶层键产生误判，未做实证核实，只是代码层面的可能性推演，故未单独列为 finding。\", \"SEGMENT_SPLIT_RE 与嵌套子 shell、多重转义引号组合的边界情形未逐一穷举，只验证了 brief 点名的 2>&1/&&/|& 相关路径。\", \"没有审查 codex-trace.ts 内 succeededCommands() 的完整实现，只确认了它被 classifyWriteCommands 调用这一层契约。\"], \"consulted\": [\".reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff\", \"src/trivium/adapters/base.ts\", \"src/trivium/preflight.ts\", \"src/trivium/adapters/codex.ts\", \"src/trivium/critics.ts\", \"src/trivium/guard.ts\", \"src/trivium/review.ts\", \"src/trivium/agents/registry.ts\", \"test/unit/preflight.test.ts\", \"test/unit/codex-write-verbs.test.ts\", \"CLAUDE.md\", \"AGENTS.md\", \"doc/03_api/PROTOCOL_dual_critic_relay.md\", \"doc/05_testing/CASE_manual_acceptance.md\", \"doc/02_design/LLD_orchestrator.md\"]}"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_018Z3iEavwKCdub3CpteyAp6", "name": "StructuredOutput", "input": {"schema": "{\"schema\": \"trivium.review.v1\", \"verdict\": \"approve-with-nits\", \"summary\": \"test\", \"findings\": []}"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_016QEojX5qu9b2QC86JZCnL5", "name": "StructuredOutput", "input": {"schema": "{\"schema\":\"trivium.review.v1\",\"verdict\":\"approve-with-nits\",\"summary\":\"retry test\",\"findings\":[]}"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01JCY7XynoP8opwDQ5fNUpjM", "name": "StructuredOutput", "input": {"schema": "trivium.review.v1", "verdict": "request-changes", "summary": "最值得关注的是 base.ts 里 WRITE_VERBS 闭集仍遗漏 sed -i / perl -i / patch / git apply 等原地编辑动词——这类命令成功写入后既不进 writes 也不进 suspected，与紧邻的 COMMAND_TRACE_CAPABILITY 注释「成功执行的写命令照常留痕」的承诺相悖；唯一兜底是全局 git 指纹漂移（降级为「无法归因」而非确凿判决），项目自己的 Driver Hook 文档早就把 sed -i 列为常见写旁路，说明这不是假想威胁。SEGMENT_SPLIT_RE 对 |& 的处理依赖环视副作用而非显式分支，暂无可观察错误但缺测试锁定，属隐患。preflight.ts 对 checkCliVersions/checkReadonlyCapability/checkModelSlugs 三处的 selected 集合泛化是对称、一致的，未发现漏侧。review.ts 的 sides 排序修复与 guard.ts 的 suspectedWrites 接线均核实无误。", "agreed": ["本补丁准确定位并修复了原 &(?!&) 负向前瞻同时命中 && 第二个字符与 2>&1 里 & 的问题，新 SEGMENT_SPLIT_RE 用前后各排除 >/& 的写法堵住了「加个 2>&1 就能绕过只读失守」这个具体 blocker，且补了对应用例。", "checkCliVersions 新增的 critics 参数与 checkReadonlyCapability / checkModelSlugs 已有的 selected 口径完全对齐，preflight.ts 里三处按入选侧生效失败、全体生效提示的分工写得清楚且互相一致，没有发现遗漏某一侧的生成缺口。", "review.ts 把 sides 解析提到 checkModelSlugs 调用之前，修复了此前非默认侧非法 slug 漏校验的问题，且补了走真实子进程的集成测试锁例，是恰当的修复方式。", "guard.ts 对 suspectedWrites 的接线很克制：只加了一个字段、一段渲染逻辑，有真实消费方（renderGuardWarnings）且有单测覆盖判定层到渲染层的完整链路，没有『宣称了不存在的消费方』的问题。", "codex.ts 的 providerSection() 实现简单直接，对 provider 段的抽取、轮换指纹变化、噪声字段不变、无 provider 段返回 null 四种情形都有对应测试。"], "findings": [{"id": "CLAUDE-01", "severity": "major", "layer": "code", "kind": "contract", "location": "src/trivium/adapters/base.ts:578-589（COMMAND_TRACE_CAPABILITY 契约声明）与 611-887（WRITE_VERBS 闭集与 classifyWriteCommands）", "problem": "WRITE_VERBS 闭集只有 13 个动词（cp/mv/install/ln/tee/rm/rmdir/mkdir/touch/chmod/chown/truncate/dd），不含 sed -i / perl -i / patch / git apply 等原地编辑类命令。classifyWriteCommands 的主逻辑与 hitAny 兜底（提不出目标时仍要疑似）都只查这张表，于是像 sed -i 's/blocker/nit/' src/report.ts 这样真实成功执行的写命令，既不进 writes，也不进 suspected_write_events——彻底不在判定层的视野内。这与紧邻上方 COMMAND_TRACE_CAPABILITY 的文档承诺直接冲突：rejectionRecorded: false 的注释写着『该侧「尝试写」的检测失效——不是轨迹对写事件全盲……成功执行的写命令照常留痕』。项目自己并非不知道 sed -i 是常见写旁路：CLAUDE.md 第 24-26 行、doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 都把它列为 Driver 侧 Hook 要专门堵的旁路形态，唯独 codex 审查员的写判据没有覆盖。唯一的兜底是 guard.ts 里独立的 git 指纹漂移检测：当某侧 rejectionRecorded===false（codex 正是）时，任何实际文件变化都会落进 unattributedDriftFiles（『无法归因，请人工核对』），而不是本补丁着力要给出的确凿 readonlyBreach 或 suspected 判决——把一个本该由写判据直接坐实的问题，退化成了需要人工翻 git diff 才能发现的弱信号。", "evidence": "读 src/trivium/adapters/base.ts 578-589（rejectionRecorded 文档承诺『成功执行的写命令照常留痕』）、611-632（WRITE_VERBS 定义）、797-887（classifyWriteCommands 主循环与 hitAny 兜底均只判 WRITE_VERBS.has(v)），确认 sed 从未出现在这张集合里（另用 Grep 在 src/trivium 全目录搜 sed/WRITE_VERBS，命中的三处 sed 引用全在 extractFromSegment 的读取路径提取逻辑里，与写判据无关）；读 src/trivium/guard.ts 305-382（judgeRun 里 anyReadonlyUnavailable 为真时，改动文件落进 unattributedDriftFiles 而非 readonlyBreach）；读 CLAUDE.md 24-26 行与用 Grep 核实 doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 均把 sed -i 列为已知写旁路。", "suggestion": "要么把 WRITE_VERBS 扩到覆盖常见原地编辑命令（至少 sed -i / perl -i，patch/git apply 视优先级），要么把 rejectionRecorded 文档里『成功执行的写命令照常留痕』的措辞收窄为『闭集内动词才留痕』，避免契约比实现宽。", "confidence": "high"}, {"id": "CLAUDE-02", "severity": "minor", "layer": "code", "kind": "test-gap", "location": "src/trivium/adapters/base.ts:642-654（SEGMENT_SPLIT_RE）", "problem": "新分隔符正则的文档详尽列举了 2>&1/>&2/&>file 三种 fd 重定向形态并各给了测试，但没有提到 bash 的 |&（等价于 2>&1 |，常见于『同时看 stdout 与 stderr』的写法）。实测其处理完全是环视副作用的偶然结果：| 因后瞻『后一个字符不能是 &』而拒绝匹配、拆分退回给前一段；紧邻的单个 & 因前后顾都满足反而被当成分隔符——于是那个 | 字符原样残留成前一段末尾的一个 token，会被 writeSinksOfSegment 当作候选 sink（isResolvablePath('|') 为真）。目前因为该段恰好总是落进『掩码降级为 suspected』分支、又被后续按 (command, why) 去重的逻辑吞掉了这条伪造 sink 产生的重复项，暂无可观察的错误输出；但这是一段未声明、无测试锁定的隐式行为——下次对这条正则做任何看似无关的微调，都可能在没有测试变红的情况下让 |& 场景真正漏判或产生脏数据。", "evidence": "读 src/trivium/adapters/base.ts 642-654（SEGMENT_SPLIT_RE 与其只列 2>&1/>&2/&> 三种形态的注释）、689-763（writeSinksOfSegment 对 args 的过滤只挡 - 前缀，不挡孤立的 |）、814-867（masked 判定与最终的按 command+why 去重逻辑）；用 Grep 在 test/unit/codex-write-verbs.test.ts 中搜索 |&，只命中文档注释里的一处历史描述，没有任何断言 |& 实际行为的用例。", "suggestion": "在 SEGMENT_SPLIT_RE 里显式加一条 |& 分支（视同 | 处理），并补一条 |& 场景的用例，把当前『靠环视副作用凑巧安全』的行为改成显式声明的规则。", "confidence": "medium"}], "not_covered": ["未执行 npm run typecheck / npm test，只做了静态阅读，没有实证验证测试是否真的通过（无 Bash 工具可用）。", "zcode.ts 180s 超时改动『与搬家前的值一致』的说法未做 git blame 核实，只读了当前代码，未确认历史提交里的具体数值。", "report.ts 的表格列回退逻辑（DEFAULT_CRITICS 兜底）只看了 diff 本身，没有交叉核对 gate.ts / archive.ts 里 rounds.sides 的产出是否总能满足非空前提。", "providerSection() 是否会对 codex 真实 TOML schema 里某个恰好以 [model_providers 为前缀但语义不同的顶层键产生误判，未做实证核实，只是代码层面的可能性推演，故未单独列为 finding。", "SEGMENT_SPLIT_RE 与嵌套子 shell、多重转义引号组合的边界情形未逐一穷举，只验证了 brief 点名的 2>&1/&&/|& 相关路径。", "没有审查 codex-trace.ts 内 succeededCommands() 的完整实现，只确认了它被 classifyWriteCommands 调用这一层契约。"], "consulted": [".reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff", "src/trivium/adapters/base.ts", "src/trivium/preflight.ts", "src/trivium/adapters/codex.ts", "src/trivium/critics.ts", "src/trivium/guard.ts", "src/trivium/review.ts", "src/trivium/agents/registry.ts", "test/unit/preflight.test.ts", "test/unit/codex-write-verbs.test.ts", "CLAUDE.md", "AGENTS.md", "doc/03_api/PROTOCOL_dual_critic_relay.md", "doc/05_testing/CASE_manual_acceptance.md", "doc/02_design/LLD_orchestrator.md"]}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
+diff --git a/test/fixtures/claude-events/grep-content-absolute-path.jsonl b/test/fixtures/claude-events/grep-content-absolute-path.jsonl
+new file mode 100644
+index 0000000..a2aa9b6
+--- /dev/null
++++ b/test/fixtures/claude-events/grep-content-absolute-path.jsonl
+@@ -0,0 +1,34 @@
++{"type": "system", "subtype": "init", "cwd": "<ROOT>", "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4", "tools": ["Glob", "Grep", "Read", "StructuredOutput"], "mcp_servers": [], "model": "claude-sonnet-5", "permissionMode": "default", "slash_commands": ["deep-research", "design", "slides", "design-sync", "dataviz", "artifact-diagramming", "artifact-capabilities", "update-config", "verify", "debug", "code-review", "simplify", "batch", "fewer-permission-prompts", "doctor", "loop", "schedule", "claude-api", "workflow-authoring", "run", "run-skill-generator", "advisor", "agents", "auto-mode-setup", "autocompact", "clear", "color", "compact", "config", "output-style", "context", "effort", "fast", "heapdump", "init", "mcp", "import", "model", "__remote-workflow", "workflow-launch-exec", "reload-plugins", "reload-skills", "rename", "ultrareview", "security-review", "usage-credits", "extra-usage", "usage", "insights", "recap", "skill-doctor", "goal", "design-consent", "design-revoke", "list-agents", "team-onboarding"], "terminal_slash_commands": ["doctor", "color", "reload-plugins"], "apiKeySource": "none", "claude_code_version": "2.1.277", "output_style": "default", "agents": ["claude", "claude-code-guide", "Explore", "general-purpose", "Plan", "statusline-setup"], "skills": ["deep-research", "design", "slides", "design-sync", "dataviz", "artifact-diagramming", "artifact-capabilities", "update-config", "verify", "debug", "code-review", "simplify", "batch", "fewer-permission-prompts", "doctor", "loop", "schedule", "claude-api", "workflow-authoring", "run", "run-skill-generator"], "plugins": [{"name": "agents-md", "path": "builtin", "source": "agents-md@builtin"}], "capabilities": ["interrupt_receipt_v1", "interrupt_cancel_queued_v1", "msg_lifecycle_v1"], "analytics_disabled": false, "product_feedback_disabled": false, "uuid": "9243956a-0181-44be-a9b1-a964feaa0059", "scratchpad_path": "/private/tmp/claude-501/-private-tmp-claude-501--Users-chenzhenbo-Work-TriviumCode-8498a631-5c50-4055-b53d-336e61a51887-scratchpad-m9-acceptance/6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4/scratchpad", "messaging_socket_path": "/tmp/cc-socks/80279.sock", "fast_mode_state": "off", "fast_mode_disabled_reason": "extra_usage_disabled"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01ST3fhGAqUvY65kfsSNGoik", "name": "Read", "input": {"file_path": "<ROOT>/.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01MNQKgidqxTdwDSvcH7SFBm", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/adapters/base.ts"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_013TkNh2ywwU8NYcMEPhpLa3", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/preflight.ts"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_017DJi6WjBN4Skw4iuV1veRS", "name": "Grep", "input": {"pattern": "process\\.execPath|runtime\\.node", "path": "<ROOT>/src", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_017DJi6WjBN4Skw4iuV1veRS", "type": "tool_result", "content": "src/trivium/selftest.ts:196:    run(process.execPath, [selfScript, ...args], {\nsrc/trivium/preflight.ts:187:  const runner = vp.runner === 'node' ? (cfg.runtime.node ?? process.execPath) : entry;\nsrc/trivium/preflight.ts:412:  // nodePath 取与运行期同一口径：配了 runtime.node 的机器上，预检与真实运行\nsrc/trivium/preflight.ts:414:  const actx: AdapterContext = { cfg: ctx.config, nodePath: ctx.config.runtime.node ?? process.execPath };\nsrc/trivium/preflight.ts:511:    { cfg, nodePath: cfg.runtime.node ?? process.execPath },\nsrc/trivium/init.ts:207: * `process.execPath` 在 Homebrew 下解析为 `/opt/homebrew/Cellar/node/25.2.1/bin/node`，\nsrc/trivium/init.ts:343:  const nodePath = opts.nodePath ?? ctx.config.runtime.node ?? (await stableNodePath(process.execPath));\nsrc/trivium/run-protocol.ts:128:    nodePath: ctx.config.runtime.node ?? process.execPath,\nsrc/trivium/run-protocol.ts:297:      ctx.config.runtime.node ?? process.execPath,\nsrc/trivium/review.ts:329:    nodePath: cfg.runtime.node ?? process.execPath,\nsrc/trivium/probes/env.ts:28:  if (process.execPath && (await exists(process.execPath))) return stableNodePath(process.execPath);\nsrc/trivium/probes/zcode.ts:291:   * 这个事实——具体哪个 node 由运行时的 runtime.node 决定，落盘会立刻过期。\nsrc/trivium/doctor.ts:453:    const r = await probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01Xx3BgZNhp5kvHanfPbvy3q", "name": "Grep", "input": {"pattern": "|&", "path": "<ROOT>/src/trivium/adapters/base.ts", "output_mode": "content"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01Xx3BgZNhp5kvHanfPbvy3q", "type": "tool_result", "content": "1:/**\n2: * 适配层统一契约（设计 §11.1）。\n3: *\n4: * 适配层是**唯一**允许调用厂商 CLI 的地方（§5.1）。它把两家的差异\n5: * （参数、输出字段、模型指定方式、只读方式、轨迹来源）收敛为一组请求/结果结构，\n6: * 上层的 runner / parse / guard 只面对这组结构。\n7: *\n8: * 铁律（原则 P7）：命令行**一律由 probe 结论构造**，不得硬编码设计文档里的示例。\n9: */\n10:import nodePath from 'node:path';\n11:import os from 'node:os';\n12:import type {\n13:  Config, CriticId, CriticRequest, CriticResult, Stage, SuspectedWrite,\n14:} from '../types.js';\n15:\n16:export interface AdapterContext {\n17:  cfg: Config;\n18:  /** node 绝对路径（GUI 进程不读 .zshrc，§10.5） */\n19:  nodePath: string;\n20:}\n21:\n22:/**\n23: * 该侧轨迹能提供什么形状的证据（设计 §11.1，M8 第 2 步）。\n24: *\n25: * ## 为什么需要它\n26: *\n27: * 判定层原先假定「读取路径是结构化拿到的」「被拒的写操作会留痕」。M6 实测\n28: * （P-C1 / P-C2）推翻了这两条对 codex 的适用性：codex 读文件就是跑 shell，\n29: * 路径只在命令文本里；被沙箱拒绝的命令一条事件都不产生。\n30: *\n31: * 消费方因此必须**面对能力而不是 Agent id**——按 id 分叉是纪律 7 明令禁止的，\n32: * 而且 M9 的 claude 又是另一种组合，按 id 分叉会分出三支。\n33: *\n34: * ## 为什么挂在 `CriticAdapter` 上而不是注册表或 `CriticResult`\n35: *\n36: * 不挂 `CriticResult`：它是**该侧的固有能力**，不是单次运行的结果；挂结果上会让\n37: * 每次运行都要重填一遍，且允许同一侧两次运行报出不同能力（r1 裁决 §2.3）。\n38: *\n39: * 不挂注册表：`criticEnabled=false` 的 Agent 选不进运行（`critics.ts` 抛 `EXIT.USAGE`），\n40: * 而 M8 第 2 步不翻 codex 的开关——静态注册表方案下，桩的 `command-trace` 形态\n41: * **在集成测试里根本走不到**，泛化就没有机器判据（r2 裁决 AGY-04）。\n42: * 挂适配器则桩适配器可以声明自己的能力。\n43: */\n44:export interface TraceCapability {\n45:  /**\n46:   * 轨迹形态：专用工具带结构化路径，还是 shell 命令。\n47:   *\n48:   * **消费方有两个**（缺一个就是 r2 那次「无消费方」的误判）：\n49:   * `effectiveReadPaths` 的路径提取、`checkEvidence` 的 `toolTotal` 计数。\n50:   */\n51:  traceShape: 'tool-trace' | 'command-trace';\n52:  /**\n53:   * 被拒的操作是否留痕。\n54:   *\n55:   * `false` ⇒ 该侧**「尝试写」的检测失效**——注意**不是**「轨迹对写事件全盲」：\n56:   * P-C2 只断言被沙箱拒绝的命令不产生事件，**成功执行的写命令照常留痕**\n57:   * （P-C1 的样本本身就是 `status:\"completed\"` 的命令事件）。\n58:   * 所以 `readonlyBreach` 仍由写事件判定，本字段只修饰**阴性结论**的可信度。\n59:   */\n60:  rejectionRecorded: boolean;\n61:}\n62:\n63:/**\n64: * 探活能力（M8 第 3 步，收敛 `preflight` 的按厂商分派）。\n65: *\n66: * ## 切分口径\n67: *\n68: * **厂商知识回到适配器**：指纹从哪个文件算、最小调用怎么发、失败该怎么说。\n69: * **通用逻辑留在 `preflight`**：TTL、版本比对、缓存读写、失败即不缓存。\n70: *\n71: * 这样新增一家只写自己那两件，而缓存策略不会被抄成三份各自漂移。\n72: * 收敛前 `preflight` 里是 `probeAgyAuth` / `probeZcodeAuth` 两个写死分支，\n73: * 计划双审两侧独立指出再加第三个就是第三次堆砌（AGY-03 ≡ GLM-06）。\n74: */\n75:export interface AuthProbe {\n76:  /**\n77:   * 该侧凭据的指纹（通常是凭据文件的哈希），缓存失效判据之一。\n78:   * `null` = 无从计算，此时缓存只由 TTL 与 CLI 版本约束。\n79:   */\n80:  fingerprint(): Promise<string | null>;\n81:  /** 真跑一次最小 headless 调用。**这是预检里最贵的一步**，由调用方决定要不要跑 */\n82:  probe(): Promise<{ ok: boolean; detail: string }>;\n83:}\n84:\n85:export interface CriticAdapter {\n86:  readonly critic: CriticId;\n87:  /** 该侧轨迹的证据形状——判定层据此分档，不按 Agent id 分叉（§11.1） */\n88:  readonly capability: TraceCapability;\n89:  /** 该侧是否可用（探针结论决定）。不可用时给出人读原因 */\n90:  availability(ctx: AdapterContext): { ok: boolean; reason?: string };\n91:  /**\n92:   * 模型 slug 在与探针目录比对**之前**的归一。**可选**：不需要归一的侧不实现。\n93:   *\n94:   * 存在的理由是 zcode：配置里写短名，实际传参要补 `<providerId>/` 前缀（坑 P-06），\n95:   * 而预检要比对的是**补全后**的形态。这条知识属于那一侧，不该住在 `preflight` 里\n96:   * ——它住在那里时，`checkModelAgainstCatalog` 就得按 vendor 分支，\n97:   * 于是第三家一律落「无法校验」（计划双审 GLM-04）。\n98:   */\n99:  normalizeModelForCatalog?(cfg: Config, model: string): string;\n100:  /**\n101:   * 探活。**可选**：没有凭据概念的侧（如桩）不实现，`preflight` 相应跳过并如实说明——\n102:   * 「没得探」与「探过通过」不能长得一样。\n103:   */\n104:  authProbe?(ctx: AdapterContext, projectRoot: string): AuthProbe;\n105:  run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult>;\n106:}\n107:\n108:/** 结构化轨迹两家（gemini / glm）的能力：与本步之前的行为逐字等价 */\n109:export const TOOL_TRACE_CAPABILITY: TraceCapability = {\n110:  traceShape: 'tool-trace',\n111:  rejectionRecorded: true,\n112:};\n113:\n114:/**\n115: * Agent id → 适配器的查表结构。\n116: *\n117: * **是 `Partial`，而且必须是。** `CriticId` 在 M7b 第 6 步放开成注册表全集之后，\n118: * `Record<CriticId, CriticAdapter>` 就成了一句谎话：它承诺**每一个已登记 Agent**\n119: * 都有适配器，而 Driver（claude）与尚未接入的 codex 本来就没有、也不该有。\n120: *\n121: * 谎话的代价不是类型不好看，而是**取值处的 undefined 检查被类型系统免掉了**：\n122: * `adapters[critic]` 恒被当成非空，真缺一个就在 `adapter.run` 上崩出一条\n123: * 与原因无关的 TypeError。改成 Partial 后取值处必须显式判空，缺谁说得出名字。\n124: *\n125: * 「已启用为审核者的那几家一定在表里」这条保证由 `realAdapters()` 在取表时\n126: * **运行期**兑现（缺接线即响亮失败），不靠类型硬编。\n127: */\n128:export type AdapterTable = Partial<Record<CriticId, CriticAdapter>>;\n129:\n130:/** 失败结果的统一构造，避免各适配器自行拼字段时漏项 */\n131:export function failedResult(\n132:  critic: CriticId,\n133:  fail: {\n134:    status: 'timeout' | 'failed' | 'parse_fallback';\n135:    reason: string;\n136:    exitCode?: number | null;\n137:    durationS?: number;\n138:    rawStdoutPath?: string;\n139:    tracePath?: string | null;\n140:    rawText?: string | null;\n141:    cliVersion?: string | null;\n142:    commandLine?: string;\n143:    sessionId?: string | null;\n144:  },\n145:): CriticResult {\n146:  return {\n147:    critic,\n148:    status: fail.status,\n149:    exit_code: fail.exitCode ?? null,\n150:    duration_s: fail.durationS ?? 0,\n151:    raw_stdout_path: fail.rawStdoutPath ?? '',\n152:    trace_path: fail.tracePath ?? null,\n153:    review_json: null,\n154:    raw_response_text: fail.rawText ?? null,\n155:    model_effective: null,\n156:    model_effective_source: 'unverified',\n157:    tool_calls: {},\n158:    read_paths: [],\n159:    write_events: [],\n160:    command_texts: [],\n161:    evidence_ok: false,\n162:    fail_reason: fail.reason,\n163:    session_id: fail.sessionId ?? null,\n164:    cli_version: fail.cliVersion ?? null,\n165:    peer_deny_applied: false,\n166:    command_line: fail.commandLine ?? '',\n167:  };\n168:}\n169:\n170:/**\n171: * 判定 Agent 执行证据是否达标（设计 §11.4，五项检查中的前三项）。\n172: *\n173: * 这不是可选项：Antigravity 的软拒绝会产生「exit 0 但零工具调用」的空审查，\n174: * 因此工具轨迹下限是 AC-05 的强制落点。\n175: */\n176:export interface EvidenceCheck {\n177:  ok: boolean;\n178:  reasons: string[];\n179:  /** 被审对象与送审包之外的项目文件读取次数（AC-11） */\n180:  projectReads: number;\n181:  /**\n182:   * 本次该侧**实际生效**的项目读取下限。\n183:   *\n184:   * 与配置值可能不同：`command-trace` 族按折减系数下调（见 `effectiveMinProjectReads`）。\n185:   * 单列出来是为了进留痕——不记的话，codex 侧 `project_reads=2` 通过、\n186:   * gemini 侧同样是 2 却不通过，事后复盘看起来像 bug。\n187:   */\n188:  minProjectReads: number;\n189:}\n190:\n191:export function checkEvidence(\n192:  result: Pick<CriticResult, 'tool_calls' | 'read_paths' | 'trace_path' | 'command_texts'>,\n193:  req: Pick<CriticRequest, 'min_tool_calls' | 'min_project_reads' | 'subject_path' | 'brief_path' | 'project_root'>,\n194:  opts: { archiveRootAbs: string; capability?: TraceCapability },\n195:): EvidenceCheck {\n196:  const reasons: string[] = [];\n197:  const cap = opts.capability ?? TOOL_TRACE_CAPABILITY;\n198:  const commandTrace = cap.traceShape === 'command-trace';\n199:\n200:  const tc = result.tool_calls;\n201:  /*\n202:   * ② 的计数口径按轨迹形态分档。\n203:   *\n204:   * `command-trace` 族**必须**计入 `run_command`：该族读文件就是跑 shell，\n205:   * `read`/`grep`/`glob` 三者恒 0，不计就必然触发 `insufficient_evidence`——\n206:   * 这正是 r2 计划稿误判「`commandSemantics` 无消费方」时漏掉的那个消费方。\n207:   * 对 `tool-trace` 族不计入：那一族的 `run_command` 是写事件信号（agy 的白名单里\n208:   * 根本没有它），计进证据就是把失守信号当成读取证据。\n209:   */\n210:  const toolTotal =\n211:    (tc.read ?? 0) + (tc.grep ?? 0) + (tc.glob ?? 0) + (commandTrace ? (tc.run_command ?? 0) : 0);\n212:\n213:  // 判定层使用的有效读取路径：command-trace 族从命令文本回填（派生视图，不回写结果）\n214:  const effective = effectiveReadPaths(result, cap, req.project_root);\n215:\n216:  // ① 轨迹存在\n217:  if (result.trace_path === null && effective.length === 0 && toolTotal === 0) {\n218:    reasons.push('no_trace：拿不到任何工具调用轨迹');\n219:  }\n220:\n221:  // ② 读文件次数下限\n222:  if (toolTotal < req.min_tool_calls) {\n223:    reasons.push(`insufficient_evidence：工具调用 ${toolTotal} 次 < 下限 ${req.min_tool_calls}`);\n224:  }\n225:\n226:  /*\n227:   * ③ 项目文件读取下限——防止「把 BRIEF 与被审文档反复读 N 遍」通过上一条。\n228:   *\n229:   * 下限对 `command-trace` 族**单独折减**（r1 裁决 §2.2 第 3 条）：该族的路径靠命令\n230:   * 文本提取，变量拼接、管道组合、`find -exec` 都提不出来，读数**系统性偏低**。\n231:   * 沿用为结构化轨迹定的那个数，等于给该族设了一道不可达的闸；\n232:   * 而按「下限不适用」处置又等于对该族放弃 AC-11——提取偏低但不为零\n233:   * （BRIEF 给的是绝对路径，模型据此读项目文件，提出来就是项目内绝对路径）。\n234:   * 生效值进留痕（`evidence_threshold`），否则同一个读数在两族间一过一不过会像 bug。\n235:   */\n236:  const minProjectReads = effectiveMinProjectReads(req.min_project_reads, cap);\n237:\n238:  const excluded = new Set([req.subject_path, req.brief_path].map((p) => normalizeAbs(p, req.project_root)));\n239:  const projectReads = effective.filter((p) => {\n240:    const abs = normalizeAbs(p, req.project_root);\n241:    if (excluded.has(abs)) return false;\n242:    // 归档根内的文件不算「项目上下文」——那是审查材料本身\n243:    if (isUnder(abs, opts.archiveRootAbs)) return false;\n244:    // 项目根之外的读取（~/ 下的无关文件）也不算：AC-11 要的是「结合整个项目评审」\n245:    return isUnder(abs, req.project_root);\n246:  }).length;\n247:\n248:  if (projectReads < minProjectReads) {\n249:    reasons.push(\n250:      `no_project_context：被审对象与送审包之外的项目文件读取 ${projectReads} 次 < 下限 ${minProjectReads}`,\n\n[Showing results with pagination = limit: 250]"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_0194bA6sub3ZbZGbjwf9RUKA", "name": "Grep", "input": {"pattern": "ALL_CLI_NAMES|cliName|DEFAULT_CRITICS|resolveCriticSelection", "path": "<ROOT>/src/trivium/agents/registry.ts", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_0194bA6sub3ZbZGbjwf9RUKA", "type": "tool_result", "content": "75:   * `config.local.yaml` 的 `probe.cli.<cliName>` 按本字段索引，\n79:   * 而两份还可能互相不一致；按 cliName 索引则天然共享同一份。\n85:   * cliName 全表唯一、探针段具名键 ⊆ cliName 集。\n87:  cliName: string;\n133:    cliName: 'claude',\n147:    cliName: 'codex',\n161:    cliName: 'agy',\n175:    cliName: 'zcode',\n199: * 它们只该占探针段的**一个**键（见 `cliName` 的登记说明）。\n200: * `registry-parity` 另有一条「cliName 全表唯一」的对账——那条守的是\n204:export const ALL_CLI_NAMES: readonly string[] = [...new Set(AGENTS.map((a) => a.cliName))];\n207:export function agentByCliName(cliName: string): AgentDescriptor | null {\n208:  return AGENTS.find((a) => a.cliName === cliName) ?? null;"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01BoiEHGySAyxQ89Si3MAffA", "name": "Grep", "input": {"pattern": "resolveCriticSelection|DEFAULT_CRITICS", "path": "<ROOT>/src", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01BoiEHGySAyxQ89Si3MAffA", "type": "tool_result", "content": "src/trivium/config.ts:20:import { DEFAULT_CRITICS } from './types.js';\nsrc/trivium/config.ts:227:      default_critics: [...DEFAULT_CRITICS],\nsrc/trivium/critics.ts:44:export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput = {}): CriticId[] {\nsrc/trivium/report.ts:27:import { CRITICS, DEFAULT_CRITICS, STAGES, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';\nsrc/trivium/report.ts:438:    const cols: CriticId[] = seen.size > 0 ? CRITICS.filter((c) => seen.has(c)) : [...DEFAULT_CRITICS];\nsrc/trivium/preflight.ts:17:import { DEFAULT_CRITICS, STAGES } from './types.js';\nsrc/trivium/preflight.ts:211:  critics: readonly CriticId[] = DEFAULT_CRITICS,\nsrc/trivium/preflight.ts:298:  critics: readonly CriticId[] = DEFAULT_CRITICS,\nsrc/trivium/archive.ts:18:import { DEFAULT_CRITICS, type CriticId, type Stage, type StageOrVerify } from './types.js';\nsrc/trivium/archive.ts:281:  critics: readonly Role[] = DEFAULT_CRITICS,\nsrc/trivium/divergence.ts:14:import { DEFAULT_CRITICS } from './types.js';\nsrc/trivium/divergence.ts:128:  pair: { a: CriticId; b: CriticId } = { a: DEFAULT_CRITICS[0]!, b: DEFAULT_CRITICS[1] ?? DEFAULT_CRITICS[0]! },\nsrc/trivium/gate.ts:11:import { DEFAULT_CRITICS, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';\nsrc/trivium/gate.ts:411:  return selected.length > 0 ? selected : DEFAULT_CRITICS;\nsrc/trivium/cli.ts:38:import { resolveCriticSelection } from './critics.js';\nsrc/trivium/cli.ts:358:   * 入选集合的解析与校验交给 `resolveCriticSelection`——**与 `topic resolve` 同一个判定处**。\nsrc/trivium/cli.ts:364:  const critics = resolveCriticSelection(ctx.config, {\nsrc/trivium/cli.ts:524:   * 解析走 `resolveCriticSelection`——与 `topic resolve` / `review --start` 同一处判定，\nsrc/trivium/cli.ts:527:  const critics = resolveCriticSelection(ctx.config, {\nsrc/trivium/review.ts:57:import { resolveCriticSelection } from './critics.js';\nsrc/trivium/review.ts:178:   * 由调用方经 `resolveCriticSelection` 解析并校验完再传进来——本模块不再自己\nsrc/trivium/review.ts:339:  const sides: CriticId[] = [...(opts.critics ?? resolveCriticSelection(cfg))];\nsrc/trivium/review.ts:366:   * 生产路径当前不可达（两个 CLI 入口都经 `resolveCriticSelection`，它保证非空；\nsrc/trivium/types.ts:44: * 因为那道防线本来就不该由类型承担：`resolveCriticSelection` 里「当轮 Driver\nsrc/trivium/types.ts:89:export const DEFAULT_CRITICS: readonly CriticId[] =\nsrc/trivium/types.ts:580:   * 接线已在 M7b 第 5 步完成：不给 `--critics` 时，`resolveCriticSelection`\nsrc/trivium/topic-args.ts:16:import { resolveCriticSelection } from './critics.js';\nsrc/trivium/topic-args.ts:246:   * `--critics` 与 `--only` 的解析与校验都交给 `resolveCriticSelection`\nsrc/trivium/topic-args.ts:272:  const critics = resolveCriticSelection(ctx.config, {"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_015K6zoFoD2ftXtyGPWmUvpX", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/critics.ts"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01E7QDn4T6P9kXcsJq5Wf5jR", "name": "Grep", "input": {"pattern": "SuspectedWrite|suspected_write_events|classifyWriteCommands", "path": "<ROOT>/src/trivium", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01E7QDn4T6P9kXcsJq5Wf5jR", "type": "tool_result", "content": "src/trivium/types.ts:650: * 一条判不实的写入线索（`CriticResult.suspected_write_events` 的元素）。\nsrc/trivium/types.ts:655:export interface SuspectedWrite {\nsrc/trivium/types.ts:981:  suspected_write_events?: SuspectedWrite[];\nsrc/trivium/guard.ts:9:  SuspectedWrite,\nsrc/trivium/guard.ts:58:  suspectedWrites: SuspectedWrite[];\nsrc/trivium/guard.ts:190:    suspectedWrites: [...(result.suspected_write_events ?? [])],\nsrc/trivium/adapters/codex-trace.ts:125: * 成功执行过的命令 —— 写判据的入参（`classifyWriteCommands` 的调用契约）。\nsrc/trivium/adapters/base.ts:13:  Config, CriticId, CriticRequest, CriticResult, Stage, SuspectedWrite,\nsrc/trivium/adapters/base.ts:639:  suspected: SuspectedWrite[];\nsrc/trivium/adapters/base.ts:797:export function classifyWriteCommands(\nsrc/trivium/adapters/base.ts:802:  const suspected: SuspectedWrite[] = [];\nsrc/trivium/adapters/codex.ts:28:  classifyWriteCommands,\nsrc/trivium/adapters/codex.ts:165:   * 而 `command_texts` 拿全集——两者论域不同，见 `classifyWriteCommands` 的契约。\nsrc/trivium/adapters/codex.ts:168:  const { writes, suspected } = classifyWriteCommands(succeededCommands(trace), projectRoot);\nsrc/trivium/adapters/codex.ts:196:    suspected_write_events: suspected,\nsrc/trivium/adapters/codex.ts:454:    const { writes, suspected } = classifyWriteCommands("}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01Dv3Rpsn8CNY2FLpVqp8tmF", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/guard.ts", "offset": 1, "limit": 220}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01PauskhjvxGALtisUpzYDSz", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/adapters/codex.ts", "offset": 100, "limit": 140}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01KgSwovEbQmCMoJxaNnUDq8", "name": "Grep", "input": {"pattern": "\\|&", "path": "<ROOT>/test", "output_mode": "content"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01KgSwovEbQmCMoJxaNnUDq8", "type": "tool_result", "content": "test/unit/codex-write-verbs.test.ts:148: * 原实现 `/\\|\\||;|&(?!&)/` 的负向前瞻只看后一个字符：`&&` 的第二个 `&` 后面是空格，"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01WeDnFxaeDFWWyFd43o55X6", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/review.ts", "offset": 300, "limit": 100}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01MG3XPgyYSrXWWTvBJoFuKg", "name": "Grep", "input": {"pattern": "'sed'|\"sed\"|WRITE_VERBS\\b", "path": "<ROOT>/src", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01MG3XPgyYSrXWWTvBJoFuKg", "type": "tool_result", "content": "src/trivium/adapters/base.ts:443:  if (verb === 'sed') {\nsrc/trivium/adapters/base.ts:611:const WRITE_VERBS: ReadonlySet<string> = new Set([\nsrc/trivium/adapters/base.ts:632:export const WRITE_VERBS_FOR_PARITY: readonly string[] = [...WRITE_VERBS].sort();\nsrc/trivium/adapters/base.ts:716:  if (WRITE_VERBS.has(base)) {\nsrc/trivium/adapters/base.ts:875:      if (verbs.some((v) => WRITE_VERBS.has(v))) {"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01NFpr8ZEEEuu8bxyjphbn6L", "name": "Grep", "input": {"pattern": "checkModelSlugs\\(|checkCliVersions\\(", "path": "<ROOT>", "output_mode": "content", "-n": true}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01NFpr8ZEEEuu8bxyjphbn6L", "type": "tool_result", "content": "src/trivium/review.ts:356:    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides);\nsrc/trivium/preflight.ts:209:async function checkCliVersions(\nsrc/trivium/preflight.ts:294:export function checkModelSlugs(\nsrc/trivium/preflight.ts:558:  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected)));\nsrc/trivium/preflight.ts:562:  if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected));\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:371:-async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:372:+async function checkCliVersions(\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:422:@@ -236,21 +258,15 @@ async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:475:-  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg)));\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:476:+  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected)));\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:561:-    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides);\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120018Z.diff:562:+    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides);\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:371:-async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:372:+async function checkCliVersions(\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:422:@@ -236,21 +258,15 @@ async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:475:-  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg)));\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:476:+  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected)));\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:561:-    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides);\n.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff:562:+    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides);\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:371:-async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:372:+async function checkCliVersions(\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:422:@@ -236,21 +258,15 @@ async function checkCliVersions(cfg: Config): Promise<CheckResult[]> {\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:475:-  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg)));\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:476:+  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected)));\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:561:-    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides);\n.reviews/M9-验收-3812f4c/code/_meta/changes.diff:562:+    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides);\ntest/unit/preflight.test.ts:82:  assert.equal(checkModelSlugs(ctx.config, 'plan').ok, true);\ntest/unit/preflight.test.ts:83:  assert.equal(checkModelSlugs(ctx.config, 'all').ok, true, '--stage all 校验三个阶段');\ntest/unit/preflight.test.ts:88:  const r = checkModelSlugs(ctx.config, 'plan', { gemini: 'gemini-9.9-nope' });\ntest/unit/preflight.test.ts:98:  const r = checkModelSlugs(ctx.config, 'plan', { glm: 'GLM-999-nope' });\ntest/unit/preflight.test.ts:105:  assert.equal(checkModelSlugs(ctx.config, 'plan', { glm: 'GLM-5.3' }).ok, true);\ntest/unit/preflight.test.ts:106:  assert.equal(checkModelSlugs(ctx.config, 'plan', { glm: 'bigmodel/GLM-5.3' }).ok, true);\ntest/unit/preflight.test.ts:114:  assert.equal(checkModelSlugs(ctx.config, 'plan', { gemini: 'anything' }).ok, true);\ntest/unit/preflight.test.ts:122:  const r = checkModelSlugs(ctx.config, 'plan');\ntest/unit/preflight.test.ts:173:  assert.equal(checkModelSlugs(ctx.config, 'plan').ok, true, 'plan 阶段本身合法');\ntest/unit/preflight.test.ts:174:  const all = checkModelSlugs(ctx.config, 'all');\ntest/unit/preflight.test.ts:380:  const r = checkModelSlugs(ctx.config, 'plan');\ntest/unit/preflight.test.ts:390:  const r = checkModelSlugs(ctx.config, 'plan');\ntest/unit/preflight.test.ts:402:  const r = checkModelSlugs(ctx.config, 'plan');"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_017GkWF1Hg9DSVkVSUg3J4ps", "name": "Read", "input": {"file_path": "<ROOT>/CLAUDE.md"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01XRR31LL3K1nFUwXcj5Fyqq", "name": "Read", "input": {"file_path": "<ROOT>/AGENTS.md"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_016pLiJNsNJZUr2GujQShN9J", "name": "Grep", "input": {"pattern": "写动词|WRITE_VERBS|sed -i|只读失守", "path": "<ROOT>/doc", "output_mode": "content", "-n": true, "head_limit": 40}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_016pLiJNsNJZUr2GujQShN9J", "type": "tool_result", "content": "doc/05_testing/REPORT_2026-09-11_m0_probe.md:233:- **工具调用计数与只读失守判定**（写事件扫描）走标准日志——需要 `completed` 状态才算证据；\ndoc/03_api/PROTOCOL_dual_critic_relay.md:249:| `hook-pre-bash` | `PreToolUse` / `Bash`（无 `if` 过滤） | `hook-pre-write` 只覆盖 Edit / Write，`cat > f`、`sed -i`、`tee`、`git checkout` 是旁路。按写命令形态做**启发式**拦截：命中编排器独占对象 → **任何时候**都拦；其余写命令 → 仅闸门期拦。判定在**未剥 heredoc 的原文**上进行 |\ndoc/05_testing/CASE_manual_acceptance.md:273:`cat > f`、`sed -i`、`tee`、`git checkout -- f` 都能绕过去，`hook-pre-bash` 是补这个缺口的。\ndoc/05_testing/CASE_manual_acceptance.md:288:probe \"sed -i '' 's/blocker/minor/' .reviews/<主题>/plan/<日期>-<主题>-glm.md\"  # 期望 2\ndoc/05_testing/CASE_manual_acceptance.md:311:| 6.1 | 改角色后缀文件（删 / `sed -i`）任何时候都被拦 | `2` |\ndoc/07_manuals/QUICKSTART.md:214:| 闸门期 / 任何时候 | 用 **Bash** 绕过前三道：`cat > f`、`sed -i`、`tee`、`git checkout -- f` | Edit / Write 只是写文件的一条路，这些是旁路。命中编排器独占对象（角色后缀文件、`.trivium/` 的状态与锁、归档内 `_meta/` 与 `task.json`）**任何时候**都挡；其余写命令只在闸门期挡 |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md:69:| **轻量编排器** | **Trivium Orchestrator** | 本地执行的确定性编排核心 CLI，负责环境预检、命令解析、并发拉起双审、工件归档、只读失守检测与闸门控制。 |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md:96:│  │  - 只读失守监测 (ReadOnlyGuard)                                           │  │\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md:395:#### 4.4.2 只读失守检测与熔断（ReadOnlyGuard）\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md:411:        Orch->>Orch: 🚨 触发只读失守告警 (CRITIC_WRITE_VIOLATION)\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-gemini.md:752:| **审查阶段发生业务文件写篡改** | `ReadOnlyGuard` 检测到 Git Tree 变化 | 立即发出 `CRITIC_WRITE_VIOLATION` 红色警报，调用 `git` 强制回滚受污染文件，阻断流水线。 | 归档中写入只读失守违规日志，全流程判定失败。 | FR-15<br>AC-08 |\ndoc/02_design/ADR_001_isolation_mode.md:54:  - 两家 Agent 可能在项目根留下会话缓存等临时文件，需探针白名单，否则误判只读失守。\ndoc/08_project/BACKLOG.md:15:| B5 | done | Bash 出口不设防（`cat >`/`sed -i`）；dual-run 授予裸 Bash | .claude/settings.json、skills/dual-run/SKILL.md |\ndoc/02_design/reference/2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md:238:| 只读失守后自动 `git checkout / clean` 回滚 | gemini 版 4.4.2、第 7 章 | 命令 A 期间工作区含 Driver 未提交改动，自动回滚会误删；PRD AC-08 只要求检出与告警。被审稿 10.3 与 glm 版 D10 立场一致，正确 |\ndoc/07_manuals/MANUAL_user.md:625:| 闸门期 | 用 Bash 旁路改业务文件（`cat >`、`sed -i`、`tee`、`git checkout -- f`） | 同第一、二道 |\ndoc/02_design/LLD_orchestrator.md:78:| `guard.ts` | 225 | 只读失守 / 证据下限 / 泄漏 / 漂移的**判定**（不做处置） | `judgeRun()` `judgeSide()` |\ndoc/02_design/LLD_orchestrator.md:352:第 0 步先过 `WRITE_LIKE` 14 条正则（重定向、`tee`、`sed -i`、`rm/mv/cp`、`git checkout/reset/...`、包管理器写操作、解释器内写 API）。不像写命令直接放行。\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-dsv4flash.md:411:| 审查员误改文件 | 分发前后取 git 指纹，若变更非空则告警并 `git checkout` 回滚（防只读失守） |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-dsv4flash.md:584:# ── 3. 只读失守检查 ──\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-dsv4flash.md:594:| ZCode 只读失守 | 代码被意外改 | `plan` 模式 + denylist + git 指纹兜底 |\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:116:| P5 | **不可伪装** | 单审、空审、解析失败、只读失守、无 Agent 证据，一律显式标记且不得被改名/删除掩盖（FR-19 / AC-05 / AC-06 / AC-08）。 |\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:526:| `guard` | 只读失守检测（指纹）、漂移判定、对方产出读取检测（轨迹）、伪造角色文件检测、Agent 证据下限校验（含项目文件读取下限） | 指纹 + 轨迹 | Verdict | 中止决策（交给 `gate`） |\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1403:[Omitted long matching line]\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1513:4. 同时做只读失守判定（10.3）：F 中若有非白名单文件且 git status 显示为审查期间新出现的改动，\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2030:仅对**瞬时故障**重试一次：空输出、非 TTY 丢 stdout、429/网络抖动、schema 校验失败、工具证据不足。业务性失败（认证失败、模型非法、只读失守、读到对方产出且二次命中）不重试。结果缓存键为 `(snapshot_hash, brief_hash, critic, model, effort)`，其中 `brief_hash` 为渲染后 `BRIEF.md` 全文的 sha256（含提示语、镜头、输出契约），因此**换提示语必定重审**（AC-09）；全部相同才复用既有结果并在命令输出与 `run.json` 记 `cache_hit: true` 与来源 `run_id`，重跑加 `--force` 穿透。缓存默认关闭（`review.cache: false`），属 NFR-06 的可选优化。\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2298:| AC-08 只读失守可检出 | 前后指纹比对（`tree_hash` + `git status`，排除 scratch 白名单）+ 轨迹写事件 | 用桩适配器让审查员向项目写一个文件，应判 `readonly_breach` 并列出该文件 |\ndoc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2464:| 闸门期用 Bash 写业务文件（`cat > f`、`sed -i f`、`tee f`、`git checkout -- f`） | `hook-pre-bash` `deny`，原因文本包含 `/dual-approve` 指引 |\ndoc/06_deployment/RUNBOOK_pipeline_ops.md:112:| `hook-pre-bash` | 像在改动工作树的 Bash 命令（重定向、`tee`、`sed -i`、`rm/mv/cp`、`git checkout` …，启发式） | 同上；对审查文档 / `_meta/` / `task.json` / `state.json` / `.trivium/bin` 的写命令则任何时候都挡。判定在**未剥离 heredoc 的原文**上做：`python3 - <<'PY' … PY` 的正文若指向上述对象同样拦，代价是正文里出现这些路径字面量的无害命令会被误拦（改用 Write 工具即可） |\ndoc/01_requirements/PRD_driver_dual_critic.md:154:- [ ] **FR-15 审查员只读**：审查 Agent 不得写入业务文件。若发生只读失守（审查阶段出现非预期的业务文件改动），系统必须能检测并告警，且不得把失守后的仓库状态当作合法产物继续流转。\ndoc/01_requirements/PRD_driver_dual_critic.md:364:10. **AC-08 只读失守可检出**  \ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:137:| 校验层 | `dc verify` | `dc` 内模块 | 归档完整性、裁决覆盖、只读失守、污染检测 | 3.6 |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:154:| D10 | 只读失守 = **检出 + 告警 + 流程停下等人工处置**（默认不自动回滚） | 自动 `git checkout` 回滚后继续 | 命令 A 期间工作区含 Driver 未提交改动，自动回滚有误伤风险；PRD 只要求\"检出、告警、不得当干净完成\"（AC-08） |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:242:| 4 | 审查失败（严格模式下单侧重试后仍失败 / 双侧失败 / 只读失守） | 中止本阶段，转述单审标记与原因；保留已有工件（AC-06） |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:268:    K --> O[git 指纹快照 after<br/>只读失守检测]\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:279:- **重试**：仅对瞬态失败（超时、空输出、JSON 解析失败、可识别的网络抖动）自动重试一次；只读失守与污染**不自动重试**（NFR-02）。\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:460:    DC->>DC: 只读失守检测（git 指纹前后比对）\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:721:| 审查阶段写入业务文件（只读失守） | git 指纹前后比对 | 告警；该次审查标 `contaminated`，不得标干净完成；流程停下等人工处置（不自动回滚，D10） | 违规文件清单入元数据 | FR-15 / AC-08 |\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:729:**重试细则（NFR-02）**：仅瞬态失败重试一次（超时、空输出、解析失败、可识别网络错误）；重试使用相同冻结材料与相同模型；重试仍失败进入严格/降级分支。只读失守与污染不重试。\ndoc/02_design/reference/2026-09-10-Claude-Code主攻双智能体审核流水线-glm.md:885:| AC-08 | 只读失守可检出 | 3.2.3 指纹比对、6 |"}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01VVLqyX6uixpnm6M5etbQas", "name": "Read", "input": {"file_path": "<ROOT>/src/trivium/guard.ts", "offset": 220, "limit": 240}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_014fDztmzmm8ZzM9Fqf5Xi8m", "name": "StructuredOutput", "input": {"schema": "{\"schema\":\"trivium.review.v1\",\"verdict\":\"request-changes\",\"summary\":\"最值得关注的是 base.ts 里 WRITE_VERBS 闭集仍遗漏 sed -i / perl -i / patch / git apply 等原地编辑动词——这类命令成功写入后既不进 writes 也不进 suspected，与紧邻的 COMMAND_TRACE_CAPABILITY 注释「成功执行的写命令照常留痕」的承诺相悖；唯一兜底是全局 git 指纹漂移（降级为「无法归因」而非确凿判决），项目自己的 Driver Hook 文档早就把 sed -i 列为常见写旁路，说明这不是假想威胁。SEGMENT_SPLIT_RE 对 |& 的处理依赖环视副作用而非显式分支，暂无可观察错误但缺测试锁定，属隐患。preflight.ts 对 checkCliVersions/checkReadonlyCapability/checkModelSlugs 三处的 selected 集合泛化是对称、一致的，未发现漏侧。review.ts 的 sides 排序修复与 guard.ts 的 suspectedWrites 接线均核实无误。\",\"agreed\":[\"本补丁准确定位并修复了原 `&(?!&)` 负向前瞻同时命中 `&&` 第二个字符与 `2>&1` 里 `&` 的问题，新 SEGMENT_SPLIT_RE 用前后各排除 `>`/`&` 的写法堵住了「加个 2>&1 就能绕过只读失守」这个具体 blocker，且补了对应用例。\",\"checkCliVersions 新增的 critics 参数与 checkReadonlyCapability / checkModelSlugs 已有的 selected 口径完全对齐，preflight.ts 里三处按入选侧生效失败、全体生效提示的分工写得清楚且互相一致，没有发现遗漏某一侧的生成缺口。\",\"review.ts 把 sides 解析提到 checkModelSlugs 调用之前，修复了此前非默认侧非法 slug 漏校验的问题，且补了走真实子进程的集成测试锁例，是恰当的修复方式。\",\"guard.ts 对 suspectedWrites 的接线很克制：只加了一个字段、一段渲染逻辑，有真实消费方（renderGuardWarnings）且有单测覆盖判定层到渲染层的完整链路，没有『宣称了不存在的消费方』的问题。\",\"codex.ts 的 providerSection() 实现简单直接，对 provider 段的抽取、轮换指纹变化、噪声字段不变、无 provider 段返回 null 四种情形都有对应测试。\"],\"findings\":[{\"id\":\"CLAUDE-01\",\"severity\":\"major\",\"layer\":\"code\",\"kind\":\"contract\",\"location\":\"src/trivium/adapters/base.ts:578-589（COMMAND_TRACE_CAPABILITY 契约声明）与 611-887（WRITE_VERBS 闭集与 classifyWriteCommands）\",\"problem\":\"WRITE_VERBS 闭集只有 13 个动词（cp/mv/install/ln/tee/rm/rmdir/mkdir/touch/chmod/chown/truncate/dd），不含 sed -i / perl -i / patch / `git apply` 等原地编辑类命令。`classifyWriteCommands` 的主逻辑与 `hitAny` 兜底（提不出目标时仍要疑似）都只查这张表，于是像 `sed -i 's/blocker/nit/' src/report.ts` 这样真实成功执行的写命令，既不进 `writes`，也不进 `suspected_write_events`——彻底不在判定层的视野内。这与紧邻上方 COMMAND_TRACE_CAPABILITY 的文档承诺直接冲突：『`rejectionRecorded: false` ⇒ 该侧「尝试写」的检测失效——**不是**轨迹对写事件全盲……**成功执行的写命令照常留痕**』。项目自己并非不知道 sed -i 是常见写旁路：CLAUDE.md 第 24-26 行、doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 都把它列为 Driver 侧 Hook 要专门堵的旁路形态，唯独 codex 审查员的写判据没有覆盖。唯一的兜底是 guard.ts 里独立的 git 指纹漂移检测：当某侧 `rejectionRecorded===false`（codex 正是）时，任何实际文件变化都会落进 `unattributedDriftFiles`（『无法归因，请人工核对』），而不是本补丁着力要给出的确凿 `readonlyBreach` 或 `suspected` 判决——把一个本该由写判据直接坐实的问题，退化成了需要人工翻 git diff 才能发现的弱信号。\",\"evidence\":\"读 src/trivium/adapters/base.ts 578-589（rejectionRecorded 文档承诺『成功执行的写命令照常留痕』）、611-632（WRITE_VERBS 定义）、797-887（classifyWriteCommands 主循环与 hitAny 兜底均只判 `WRITE_VERBS.has(v)`），确认 sed 从未出现在这张集合里（另用 Grep 在 src/trivium 全目录搜 `'sed'`/`WRITE_VERBS\\\\b`，命中的三处 sed 引用全在 extractFromSegment 的读取路径提取逻辑里，与写判据无关）；读 src/trivium/guard.ts 305-382（judgeRun 里 anyReadonlyUnavailable 为真时，改动文件落进 unattributedDriftFiles 而非 readonlyBreach）；读 CLAUDE.md 24-26 行与用 Grep 核实 doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 均把 sed -i 列为已知写旁路。\",\"suggestion\":\"要么把 WRITE_VERBS 扩到覆盖常见原地编辑命令（至少 sed -i / perl -i，`patch`/`git apply` 视优先级），要么把 rejectionRecorded 文档里『成功执行的写命令照常留痕』的措辞收窄为『闭集内动词才留痕』，避免契约比实现宽。\",\"confidence\":\"high\"},{\"id\":\"CLAUDE-02\",\"severity\":\"minor\",\"layer\":\"code\",\"kind\":\"test-gap\",\"location\":\"src/trivium/adapters/base.ts:642-654（SEGMENT_SPLIT_RE）\",\"problem\":\"新分隔符正则的文档详尽列举了 `2>&1`/`>&2`/`&>file` 三种 fd 重定向形态并各给了测试，但没有提到 bash 的 `|&`（等价于 `2>&1 |`，常见于『同时看 stdout 与 stderr』的写法）。实测其处理完全是环视副作用的偶然结果：`|` 因后瞻『后一个字符不能是 &』而拒绝匹配、拆分退回给前一段；紧邻的单个 `&` 因前后顾都满足反而被当成分隔符——于是那个 `|` 字符原样残留成前一段末尾的一个 token，会被 `writeSinksOfSegment` 当作候选 sink（`isResolvablePath('|')` 为真）。目前因为该段恰好总是落进『掩码降级为 suspected』分支、又被后续按 (command, why) 去重的逻辑吞掉了这条伪造 sink 产生的重复项，暂无可观察的错误输出；但这是一段未声明、无测试锁定的隐式行为——下次对这条正则做任何看似无关的微调，都可能在没有测试变红的情况下让 `|&` 场景真正漏判或产生脏数据。\",\"evidence\":\"读 src/trivium/adapters/base.ts 642-654（SEGMENT_SPLIT_RE 与其只列 `2>&1`/`>&2`/`&>` 三种形态的注释）、689-763（writeSinksOfSegment 对 args 的过滤只挡 `-` 前缀，不挡孤立的 `|`）、814-867（masked 判定与最终的按 command+why 去重逻辑）；用 Grep 在 test/unit/codex-write-verbs.test.ts 中搜索 `\\\\|&`，只命中文档注释里的一处历史描述，没有任何断言 `|&` 实际行为的用例。\",\"suggestion\":\"在 SEGMENT_SPLIT_RE 里显式加一条 `\\\\|&` 分支（视同 `|`处理），并补一条 `|&` 场景的用例，把当前『靠环视副作用凑巧安全』的行为改成显式声明的规则。\",\"confidence\":\"medium\"}],\"not_covered\":[\"未执行 npm run typecheck / npm test，只做了静态阅读，没有实证验证测试是否真的通过（无 Bash 工具可用）。\",\"zcode.ts 180s 超时改动『与搬家前的值一致』的说法未做 git blame 核实，只读了当前代码，未确认历史提交里的具体数值。\",\"report.ts 的表格列回退逻辑（DEFAULT_CRITICS 兜底）只看了 diff 本身，没有交叉核对 gate.ts / archive.ts 里 rounds.sides 的产出是否总能满足非空前提。\",\"providerSection() 是否会对 codex 真实 TOML schema 里某个恰好以 `[model_providers` 为前缀但语义不同的顶层键（如某种假设的 `[model_providers_history]`）产生误判，未做实证核实，只是代码层面的可能性推演，故未单独列为 finding。\",\"SEGMENT_SPLIT_RE 与嵌套子 shell、多重转义引号组合的边界情形未逐一穷举，只验证了 brief 点名的 2>&1/&&/|& 相关路径。\",\"没有审查 codex-trace.ts 内 succeededCommands() 的完整实现，只确认了它被 classifyWriteCommands 调用这一层契约。\"],\"consulted\":[\".reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff\",\"src/trivium/adapters/base.ts\",\"src/trivium/preflight.ts\",\"src/trivium/adapters/codex.ts\",\"src/trivium/critics.ts\",\"src/trivium/guard.ts\",\"src/trivium/review.ts\",\"src/trivium/agents/registry.ts\",\"test/unit/preflight.test.ts\",\"test/unit/codex-write-verbs.test.ts\",\"CLAUDE.md\",\"AGENTS.md\",\"doc/03_api/PROTOCOL_dual_critic_relay.md\",\"doc/05_testing/CASE_manual_acceptance.md\",\"doc/02_design/LLD_orchestrator.md\"]}"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_012ebrmVi1yDWTUXwnsoN2Pn", "name": "StructuredOutput", "input": {"schema": "{\"schema\": \"trivium.review.v1\", \"verdict\": \"request-changes\", \"summary\": \"最值得关注的是 base.ts 里 WRITE_VERBS 闭集仍遗漏 sed -i / perl -i / patch / git apply 等原地编辑动词——这类命令成功写入后既不进 writes 也不进 suspected，与紧邻的 COMMAND_TRACE_CAPABILITY 注释「成功执行的写命令照常留痕」的承诺相悖；唯一兜底是全局 git 指纹漂移（降级为「无法归因」而非确凿判决），项目自己的 Driver Hook 文档早就把 sed -i 列为常见写旁路，说明这不是假想威胁。SEGMENT_SPLIT_RE 对 |& 的处理依赖环视副作用而非显式分支，暂无可观察错误但缺测试锁定，属隐患。preflight.ts 对 checkCliVersions/checkReadonlyCapability/checkModelSlugs 三处的 selected 集合泛化是对称、一致的，未发现漏侧。review.ts 的 sides 排序修复与 guard.ts 的 suspectedWrites 接线均核实无误。\", \"agreed\": [\"本补丁准确定位并修复了原 &(?!&) 负向前瞻同时命中 && 第二个字符与 2>&1 里 & 的问题，新 SEGMENT_SPLIT_RE 用前后各排除 >/& 的写法堵住了「加个 2>&1 就能绕过只读失守」这个具体 blocker，且补了对应用例。\", \"checkCliVersions 新增的 critics 参数与 checkReadonlyCapability / checkModelSlugs 已有的 selected 口径完全对齐，preflight.ts 里三处按入选侧生效失败、全体生效提示的分工写得清楚且互相一致，没有发现遗漏某一侧的生成缺口。\", \"review.ts 把 sides 解析提到 checkModelSlugs 调用之前，修复了此前非默认侧非法 slug 漏校验的问题，且补了走真实子进程的集成测试锁例，是恰当的修复方式。\", \"guard.ts 对 suspectedWrites 的接线很克制：只加了一个字段、一段渲染逻辑，有真实消费方（renderGuardWarnings）且有单测覆盖判定层到渲染层的完整链路，没有『宣称了不存在的消费方』的问题。\", \"codex.ts 的 providerSection() 实现简单直接，对 provider 段的抽取、轮换指纹变化、噪声字段不变、无 provider 段返回 null 四种情形都有对应测试。\"], \"findings\": [{\"id\": \"CLAUDE-01\", \"severity\": \"major\", \"layer\": \"code\", \"kind\": \"contract\", \"location\": \"src/trivium/adapters/base.ts:578-589（COMMAND_TRACE_CAPABILITY 契约声明）与 611-887（WRITE_VERBS 闭集与 classifyWriteCommands）\", \"problem\": \"WRITE_VERBS 闭集只有 13 个动词（cp/mv/install/ln/tee/rm/rmdir/mkdir/touch/chmod/chown/truncate/dd），不含 sed -i / perl -i / patch / git apply 等原地编辑类命令。classifyWriteCommands 的主逻辑与 hitAny 兜底（提不出目标时仍要疑似）都只查这张表，于是像 sed -i 's/blocker/nit/' src/report.ts 这样真实成功执行的写命令，既不进 writes，也不进 suspected_write_events——彻底不在判定层的视野内。这与紧邻上方 COMMAND_TRACE_CAPABILITY 的文档承诺直接冲突：rejectionRecorded: false 的注释写着『该侧「尝试写」的检测失效——不是轨迹对写事件全盲……成功执行的写命令照常留痕』。项目自己并非不知道 sed -i 是常见写旁路：CLAUDE.md 第 24-26 行、doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 都把它列为 Driver 侧 Hook 要专门堵的旁路形态，唯独 codex 审查员的写判据没有覆盖。唯一的兜底是 guard.ts 里独立的 git 指纹漂移检测：当某侧 rejectionRecorded===false（codex 正是）时，任何实际文件变化都会落进 unattributedDriftFiles（『无法归因，请人工核对』），而不是本补丁着力要给出的确凿 readonlyBreach 或 suspected 判决——把一个本该由写判据直接坐实的问题，退化成了需要人工翻 git diff 才能发现的弱信号。\", \"evidence\": \"读 src/trivium/adapters/base.ts 578-589（rejectionRecorded 文档承诺『成功执行的写命令照常留痕』）、611-632（WRITE_VERBS 定义）、797-887（classifyWriteCommands 主循环与 hitAny 兜底均只判 WRITE_VERBS.has(v)），确认 sed 从未出现在这张集合里（另用 Grep 在 src/trivium 全目录搜 'sed'/WRITE_VERBS\\\\b，命中的三处 sed 引用全在 extractFromSegment 的读取路径提取逻辑里，与写判据无关）；读 src/trivium/guard.ts 305-382（judgeRun 里 anyReadonlyUnavailable 为真时，改动文件落进 unattributedDriftFiles 而非 readonlyBreach）；读 CLAUDE.md 24-26 行与用 Grep 核实 doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 均把 sed -i 列为已知写旁路。\", \"suggestion\": \"要么把 WRITE_VERBS 扩到覆盖常见原地编辑命令（至少 sed -i / perl -i，patch/git apply 视优先级），要么把 rejectionRecorded 文档里『成功执行的写命令照常留痕』的措辞收窄为『闭集内动词才留痕』，避免契约比实现宽。\", \"confidence\": \"high\"}, {\"id\": \"CLAUDE-02\", \"severity\": \"minor\", \"layer\": \"code\", \"kind\": \"test-gap\", \"location\": \"src/trivium/adapters/base.ts:642-654（SEGMENT_SPLIT_RE）\", \"problem\": \"新分隔符正则的文档详尽列举了 2>&1/>&2/&>file 三种 fd 重定向形态并各给了测试，但没有提到 bash 的 |&（等价于 2>&1 |，常见于『同时看 stdout 与 stderr』的写法）。实测其处理完全是环视副作用的偶然结果：| 因后瞻『后一个字符不能是 &』而拒绝匹配、拆分退回给前一段；紧邻的单个 & 因前后顾都满足反而被当成分隔符——于是那个 | 字符原样残留成前一段末尾的一个 token，会被 writeSinksOfSegment 当作候选 sink（isResolvablePath('|') 为真）。目前因为该段恰好总是落进『掩码降级为 suspected』分支、又被后续按 (command, why) 去重的逻辑吞掉了这条伪造 sink 产生的重复项，暂无可观察的错误输出；但这是一段未声明、无测试锁定的隐式行为——下次对这条正则做任何看似无关的微调，都可能在没有测试变红的情况下让 |& 场景真正漏判或产生脏数据。\", \"evidence\": \"读 src/trivium/adapters/base.ts 642-654（SEGMENT_SPLIT_RE 与其只列 2>&1/>&2/&> 三种形态的注释）、689-763（writeSinksOfSegment 对 args 的过滤只挡 - 前缀，不挡孤立的 |）、814-867（masked 判定与最终的按 command+why 去重逻辑）；用 Grep 在 test/unit/codex-write-verbs.test.ts 中搜索 |&，只命中文档注释里的一处历史描述，没有任何断言 |& 实际行为的用例。\", \"suggestion\": \"在 SEGMENT_SPLIT_RE 里显式加一条 |& 分支（视同 | 处理），并补一条 |& 场景的用例，把当前『靠环视副作用凑巧安全』的行为改成显式声明的规则。\", \"confidence\": \"medium\"}], \"not_covered\": [\"未执行 npm run typecheck / npm test，只做了静态阅读，没有实证验证测试是否真的通过（无 Bash 工具可用）。\", \"zcode.ts 180s 超时改动『与搬家前的值一致』的说法未做 git blame 核实，只读了当前代码，未确认历史提交里的具体数值。\", \"report.ts 的表格列回退逻辑（DEFAULT_CRITICS 兜底）只看了 diff 本身，没有交叉核对 gate.ts / archive.ts 里 rounds.sides 的产出是否总能满足非空前提。\", \"providerSection() 是否会对 codex 真实 TOML schema 里某个恰好以 [model_providers 为前缀但语义不同的顶层键产生误判，未做实证核实，只是代码层面的可能性推演，故未单独列为 finding。\", \"SEGMENT_SPLIT_RE 与嵌套子 shell、多重转义引号组合的边界情形未逐一穷举，只验证了 brief 点名的 2>&1/&&/|& 相关路径。\", \"没有审查 codex-trace.ts 内 succeededCommands() 的完整实现，只确认了它被 classifyWriteCommands 调用这一层契约。\"], \"consulted\": [\".reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff\", \"src/trivium/adapters/base.ts\", \"src/trivium/preflight.ts\", \"src/trivium/adapters/codex.ts\", \"src/trivium/critics.ts\", \"src/trivium/guard.ts\", \"src/trivium/review.ts\", \"src/trivium/agents/registry.ts\", \"test/unit/preflight.test.ts\", \"test/unit/codex-write-verbs.test.ts\", \"CLAUDE.md\", \"AGENTS.md\", \"doc/03_api/PROTOCOL_dual_critic_relay.md\", \"doc/05_testing/CASE_manual_acceptance.md\", \"doc/02_design/LLD_orchestrator.md\"]}"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_018Z3iEavwKCdub3CpteyAp6", "name": "StructuredOutput", "input": {"schema": "{\"schema\": \"trivium.review.v1\", \"verdict\": \"approve-with-nits\", \"summary\": \"test\", \"findings\": []}"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_016QEojX5qu9b2QC86JZCnL5", "name": "StructuredOutput", "input": {"schema": "{\"schema\":\"trivium.review.v1\",\"verdict\":\"approve-with-nits\",\"summary\":\"retry test\",\"findings\":[]}"}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01JCY7XynoP8opwDQ5fNUpjM", "name": "StructuredOutput", "input": {"schema": "trivium.review.v1", "verdict": "request-changes", "summary": "最值得关注的是 base.ts 里 WRITE_VERBS 闭集仍遗漏 sed -i / perl -i / patch / git apply 等原地编辑动词——这类命令成功写入后既不进 writes 也不进 suspected，与紧邻的 COMMAND_TRACE_CAPABILITY 注释「成功执行的写命令照常留痕」的承诺相悖；唯一兜底是全局 git 指纹漂移（降级为「无法归因」而非确凿判决），项目自己的 Driver Hook 文档早就把 sed -i 列为常见写旁路，说明这不是假想威胁。SEGMENT_SPLIT_RE 对 |& 的处理依赖环视副作用而非显式分支，暂无可观察错误但缺测试锁定，属隐患。preflight.ts 对 checkCliVersions/checkReadonlyCapability/checkModelSlugs 三处的 selected 集合泛化是对称、一致的，未发现漏侧。review.ts 的 sides 排序修复与 guard.ts 的 suspectedWrites 接线均核实无误。", "agreed": ["本补丁准确定位并修复了原 &(?!&) 负向前瞻同时命中 && 第二个字符与 2>&1 里 & 的问题，新 SEGMENT_SPLIT_RE 用前后各排除 >/& 的写法堵住了「加个 2>&1 就能绕过只读失守」这个具体 blocker，且补了对应用例。", "checkCliVersions 新增的 critics 参数与 checkReadonlyCapability / checkModelSlugs 已有的 selected 口径完全对齐，preflight.ts 里三处按入选侧生效失败、全体生效提示的分工写得清楚且互相一致，没有发现遗漏某一侧的生成缺口。", "review.ts 把 sides 解析提到 checkModelSlugs 调用之前，修复了此前非默认侧非法 slug 漏校验的问题，且补了走真实子进程的集成测试锁例，是恰当的修复方式。", "guard.ts 对 suspectedWrites 的接线很克制：只加了一个字段、一段渲染逻辑，有真实消费方（renderGuardWarnings）且有单测覆盖判定层到渲染层的完整链路，没有『宣称了不存在的消费方』的问题。", "codex.ts 的 providerSection() 实现简单直接，对 provider 段的抽取、轮换指纹变化、噪声字段不变、无 provider 段返回 null 四种情形都有对应测试。"], "findings": [{"id": "CLAUDE-01", "severity": "major", "layer": "code", "kind": "contract", "location": "src/trivium/adapters/base.ts:578-589（COMMAND_TRACE_CAPABILITY 契约声明）与 611-887（WRITE_VERBS 闭集与 classifyWriteCommands）", "problem": "WRITE_VERBS 闭集只有 13 个动词（cp/mv/install/ln/tee/rm/rmdir/mkdir/touch/chmod/chown/truncate/dd），不含 sed -i / perl -i / patch / git apply 等原地编辑类命令。classifyWriteCommands 的主逻辑与 hitAny 兜底（提不出目标时仍要疑似）都只查这张表，于是像 sed -i 's/blocker/nit/' src/report.ts 这样真实成功执行的写命令，既不进 writes，也不进 suspected_write_events——彻底不在判定层的视野内。这与紧邻上方 COMMAND_TRACE_CAPABILITY 的文档承诺直接冲突：rejectionRecorded: false 的注释写着『该侧「尝试写」的检测失效——不是轨迹对写事件全盲……成功执行的写命令照常留痕』。项目自己并非不知道 sed -i 是常见写旁路：CLAUDE.md 第 24-26 行、doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 都把它列为 Driver 侧 Hook 要专门堵的旁路形态，唯独 codex 审查员的写判据没有覆盖。唯一的兜底是 guard.ts 里独立的 git 指纹漂移检测：当某侧 rejectionRecorded===false（codex 正是）时，任何实际文件变化都会落进 unattributedDriftFiles（『无法归因，请人工核对』），而不是本补丁着力要给出的确凿 readonlyBreach 或 suspected 判决——把一个本该由写判据直接坐实的问题，退化成了需要人工翻 git diff 才能发现的弱信号。", "evidence": "读 src/trivium/adapters/base.ts 578-589（rejectionRecorded 文档承诺『成功执行的写命令照常留痕』）、611-632（WRITE_VERBS 定义）、797-887（classifyWriteCommands 主循环与 hitAny 兜底均只判 WRITE_VERBS.has(v)），确认 sed 从未出现在这张集合里（另用 Grep 在 src/trivium 全目录搜 sed/WRITE_VERBS，命中的三处 sed 引用全在 extractFromSegment 的读取路径提取逻辑里，与写判据无关）；读 src/trivium/guard.ts 305-382（judgeRun 里 anyReadonlyUnavailable 为真时，改动文件落进 unattributedDriftFiles 而非 readonlyBreach）；读 CLAUDE.md 24-26 行与用 Grep 核实 doc/03_api/PROTOCOL_dual_critic_relay.md:249、doc/05_testing/CASE_manual_acceptance.md:273 均把 sed -i 列为已知写旁路。", "suggestion": "要么把 WRITE_VERBS 扩到覆盖常见原地编辑命令（至少 sed -i / perl -i，patch/git apply 视优先级），要么把 rejectionRecorded 文档里『成功执行的写命令照常留痕』的措辞收窄为『闭集内动词才留痕』，避免契约比实现宽。", "confidence": "high"}, {"id": "CLAUDE-02", "severity": "minor", "layer": "code", "kind": "test-gap", "location": "src/trivium/adapters/base.ts:642-654（SEGMENT_SPLIT_RE）", "problem": "新分隔符正则的文档详尽列举了 2>&1/>&2/&>file 三种 fd 重定向形态并各给了测试，但没有提到 bash 的 |&（等价于 2>&1 |，常见于『同时看 stdout 与 stderr』的写法）。实测其处理完全是环视副作用的偶然结果：| 因后瞻『后一个字符不能是 &』而拒绝匹配、拆分退回给前一段；紧邻的单个 & 因前后顾都满足反而被当成分隔符——于是那个 | 字符原样残留成前一段末尾的一个 token，会被 writeSinksOfSegment 当作候选 sink（isResolvablePath('|') 为真）。目前因为该段恰好总是落进『掩码降级为 suspected』分支、又被后续按 (command, why) 去重的逻辑吞掉了这条伪造 sink 产生的重复项，暂无可观察的错误输出；但这是一段未声明、无测试锁定的隐式行为——下次对这条正则做任何看似无关的微调，都可能在没有测试变红的情况下让 |& 场景真正漏判或产生脏数据。", "evidence": "读 src/trivium/adapters/base.ts 642-654（SEGMENT_SPLIT_RE 与其只列 2>&1/>&2/&> 三种形态的注释）、689-763（writeSinksOfSegment 对 args 的过滤只挡 - 前缀，不挡孤立的 |）、814-867（masked 判定与最终的按 command+why 去重逻辑）；用 Grep 在 test/unit/codex-write-verbs.test.ts 中搜索 |&，只命中文档注释里的一处历史描述，没有任何断言 |& 实际行为的用例。", "suggestion": "在 SEGMENT_SPLIT_RE 里显式加一条 |& 分支（视同 | 处理），并补一条 |& 场景的用例，把当前『靠环视副作用凑巧安全』的行为改成显式声明的规则。", "confidence": "medium"}], "not_covered": ["未执行 npm run typecheck / npm test，只做了静态阅读，没有实证验证测试是否真的通过（无 Bash 工具可用）。", "zcode.ts 180s 超时改动『与搬家前的值一致』的说法未做 git blame 核实，只读了当前代码，未确认历史提交里的具体数值。", "report.ts 的表格列回退逻辑（DEFAULT_CRITICS 兜底）只看了 diff 本身，没有交叉核对 gate.ts / archive.ts 里 rounds.sides 的产出是否总能满足非空前提。", "providerSection() 是否会对 codex 真实 TOML schema 里某个恰好以 [model_providers 为前缀但语义不同的顶层键产生误判，未做实证核实，只是代码层面的可能性推演，故未单独列为 finding。", "SEGMENT_SPLIT_RE 与嵌套子 shell、多重转义引号组合的边界情形未逐一穷举，只验证了 brief 点名的 2>&1/&&/|& 相关路径。", "没有审查 codex-trace.ts 内 succeededCommands() 的完整实现，只确认了它被 classifyWriteCommands 调用这一层契约。"], "consulted": [".reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff", "src/trivium/adapters/base.ts", "src/trivium/preflight.ts", "src/trivium/adapters/codex.ts", "src/trivium/critics.ts", "src/trivium/guard.ts", "src/trivium/review.ts", "src/trivium/agents/registry.ts", "test/unit/preflight.test.ts", "test/unit/codex-write-verbs.test.ts", "CLAUDE.md", "AGENTS.md", "doc/03_api/PROTOCOL_dual_critic_relay.md", "doc/05_testing/CASE_manual_acceptance.md", "doc/02_design/LLD_orchestrator.md"]}, "caller": {"type": "direct"}}]}, "session_id": "6cc8e96f-25b3-4fb5-a3ff-a6fa118ec3b4"}
+diff --git a/test/fixtures/claude-events/grep-three-modes-relative-path.jsonl b/test/fixtures/claude-events/grep-three-modes-relative-path.jsonl
+new file mode 100644
+index 0000000..34d219e
+--- /dev/null
++++ b/test/fixtures/claude-events/grep-three-modes-relative-path.jsonl
+@@ -0,0 +1,9 @@
++{"type": "system", "subtype": "init", "cwd": "<ROOT>", "session_id": "182b2867-ca35-4a30-a743-d7dc7ef41242", "tools": ["Grep"], "mcp_servers": [], "model": "claude-haiku-4-5-20251001", "permissionMode": "default", "slash_commands": ["bailian-cli", "bailian-docs-llm-wiki", "bailian-finetune", "bailian-gen", "bailian-managed-agent", "bailian-model-recommend", "bailian-protocol", "bailian-sandbox", "bailian-train-deploy", "deliver", "dual-abandon", "dual-approve", "dual-review-bug", "dual-review-code", "dual-review-plan", "dual-run", "dual-status", "pandoc", "deep-research", "pdf-viewer:annotate", "pdf-viewer:fill-form", "pdf-viewer:open", "pdf-viewer:sign", "product-management:brainstorm", "pdf-viewer:view-pdf", "design:accessibility-review", "design:design-critique", "design:design-handoff", "design:design-system", "design:research-synthesis", "design:user-research", "design:ux-copy", "operations:capacity-plan", "operations:change-request", "operations:compliance-tracking", "operations:process-doc", "operations:process-optimization", "operations:risk-assessment", "operations:runbook", "operations:status-report", "operations:vendor-review", "engineering:architecture", "engineering:code-review", "engineering:debug", "engineering:deploy-checklist", "engineering:documentation", "engineering:incident-response", "engineering:standup", "engineering:system-design", "engineering:tech-debt", "engineering:testing-strategy", "productivity:start", "productivity:update", "product-management:competitive-brief", "product-management:metrics-review", "product-management:product-brainstorming", "product-management:roadmap-update", "product-management:sprint-planning", "product-management:stakeholder-update", "product-management:synthesize-research", "product-management:write-spec", "cowork-plugin-management:cowork-plugin-customizer", "cowork-plugin-management:create-cowork-plugin", "enterprise-search:digest", "enterprise-search:search", "marketing:brand-review", "marketing:campaign-plan", "marketing:competitive-brief", "marketing:draft-content", "marketing:email-sequence", "marketing:performance-report", "marketing:seo-audit", "data:analyze", "data:build-dashboard", "data:create-viz", "data:data-context-extractor", "data:explore-data", "data:validate-data", "data:write-query", "design", "slides", "design-sync", "dataviz", "artifact-diagramming", "artifact-capabilities", "update-config", "verify", "debug", "code-review", "simplify", "batch", "fewer-permission-prompts", "doctor", "loop", "schedule", "claude-api", "workflow-authoring", "run", "run-skill-generator", "advisor", "agents", "auto-mode-setup", "autocompact", "clear", "color", "compact", "config", "output-style", "context", "effort", "fast", "heapdump", "init", "mcp", "import", "model", "__remote-workflow", "workflow-launch-exec", "reload-plugins", "reload-skills", "rename", "ultrareview", "security-review", "usage-credits", "extra-usage", "usage", "insights", "recap", "skill-doctor", "goal", "design-consent", "design-revoke", "list-agents", "team-onboarding", "anthropic-skills:algorithmic-art", "anthropic-skills:docs", "anthropic-skills:docx", "anthropic-skills:import-memory", "anthropic-skills:learn", "anthropic-skills:mcp-builder", "anthropic-skills:morning", "anthropic-skills:pdf", "anthropic-skills:pptx", "anthropic-skills:skill-creator", "anthropic-skills:web-artifacts-builder", "anthropic-skills:xlsx"], "terminal_slash_commands": ["doctor", "color", "reload-plugins"], "apiKeySource": "none", "claude_code_version": "2.1.277", "output_style": "default", "agents": ["claude", "claude-code-guide", "doc-summarize", "Explore", "general-purpose", "Plan", "quick-lookup", "statusline-setup"], "skills": ["bailian-cli", "bailian-docs-llm-wiki", "bailian-finetune", "bailian-gen", "bailian-managed-agent", "bailian-model-recommend", "bailian-protocol", "bailian-sandbox", "bailian-train-deploy", "deliver", "dual-abandon", "dual-approve", "dual-review-bug", "dual-review-code", "dual-review-plan", "dual-run", "dual-status", "pandoc", "deep-research", "pdf-viewer:view-pdf", "design:accessibility-review", "design:design-critique", "design:design-handoff", "design:design-system", "design:research-synthesis", "design:user-research", "design:ux-copy", "operations:capacity-plan", "operations:change-request", "operations:compliance-tracking", "operations:process-doc", "operations:process-optimization", "operations:risk-assessment", "operations:runbook", "operations:status-report", "operations:vendor-review", "engineering:architecture", "engineering:code-review", "engineering:debug", "engineering:deploy-checklist", "engineering:documentation", "engineering:incident-response", "engineering:standup", "engineering:system-design", "engineering:tech-debt", "engineering:testing-strategy", "productivity:start", "productivity:update", "product-management:competitive-brief", "product-management:metrics-review", "product-management:product-brainstorming", "product-management:roadmap-update", "product-management:sprint-planning", "product-management:stakeholder-update", "product-management:synthesize-research", "product-management:write-spec", "cowork-plugin-management:cowork-plugin-customizer", "cowork-plugin-management:create-cowork-plugin", "enterprise-search:digest", "enterprise-search:search", "marketing:brand-review", "marketing:campaign-plan", "marketing:competitive-brief", "marketing:draft-content", "marketing:email-sequence", "marketing:performance-report", "marketing:seo-audit", "data:analyze", "data:build-dashboard", "data:create-viz", "data:data-context-extractor", "data:explore-data", "data:validate-data", "data:write-query", "design", "slides", "design-sync", "dataviz", "artifact-diagramming", "artifact-capabilities", "update-config", "verify", "debug", "code-review", "simplify", "batch", "fewer-permission-prompts", "doctor", "loop", "schedule", "claude-api", "workflow-authoring", "run", "run-skill-generator", "anthropic-skills:algorithmic-art", "anthropic-skills:docs", "anthropic-skills:docx", "anthropic-skills:import-memory", "anthropic-skills:learn", "anthropic-skills:mcp-builder", "anthropic-skills:morning", "anthropic-skills:pdf", "anthropic-skills:pptx", "anthropic-skills:skill-creator", "anthropic-skills:web-artifacts-builder", "anthropic-skills:xlsx"], "plugins": [{"name": "pdf-viewer", "path": "/Users/chenzhenbo/.claude/plugins/synced/9640074f-f5de-49f7-a7cd-9ea7648dd59c_282b9bda-5fbb-4a88-bc6d-a67f1face5b2/pdf-viewer", "source": "pdf-viewer@synced", "version": "0.2.0"}, {"name": "design", "path": "/Users/chenzhenbo/.claude/plugins/synced/9640074f-f5de-49f7-a7cd-9ea7648dd59c_282b9bda-5fbb-4a88-bc6d-a67f1face5b2/design", "source": "design@synced", "version": "1.2.0"}, {"name": "operations", "path": "/Users/chenzhenbo/.claude/plugins/synced/9640074f-f5de-49f7-a7cd-9ea7648dd59c_282b9bda-5fbb-4a88-bc6d-a67f1face5b2/operations", "source": "operations@synced", "version": "1.3.0"}, {"name": "engineering", "path": "/Users/chenzhenbo/.claude/plugins/synced/9640074f-f5de-49f7-a7cd-9ea7648dd59c_282b9bda-5fbb-4a88-bc6d-a67f1face5b2/engineering", "source": "engineering@synced", "version": "1.2.0"}, {"name": "productivity", "path": "/Users/chenzhenbo/.claude/plugins/synced/9640074f-f5de-49f7-a7cd-9ea7648dd59c_282b9bda-5fbb-4a88-bc6d-a67f1face5b2/productivity", "source": "productivity@synced", "version": "1.3.1"}, {"name": "product-management", "path": "/Users/chenzhenbo/.claude/plugins/synced/9640074f-f5de-49f7-a7cd-9ea7648dd59c_282b9bda-5fbb-4a88-bc6d-a67f1face5b2/product-management", "source": "product-management@synced", "version": "1.2.0"}, {"name": "cowork-plugin-management", "path": "/Users/chenzhenbo/.claude/plugins/synced/9640074f-f5de-49f7-a7cd-9ea7648dd59c_282b9bda-5fbb-4a88-bc6d-a67f1face5b2/cowork-plugin-management", "source": "cowork-plugin-management@synced", "version": "0.2.2"}, {"name": "enterprise-search", "path": "/Users/chenzhenbo/.claude/plugins/synced/9640074f-f5de-49f7-a7cd-9ea7648dd59c_282b9bda-5fbb-4a88-bc6d-a67f1face5b2/enterprise-search", "source": "enterprise-search@synced", "version": "1.3.0"}, {"name": "marketing", "path": "/Users/chenzhenbo/.claude/plugins/synced/9640074f-f5de-49f7-a7cd-9ea7648dd59c_282b9bda-5fbb-4a88-bc6d-a67f1face5b2/marketing", "source": "marketing@synced", "version": "1.2.0"}, {"name": "data", "path": "/Users/chenzhenbo/.claude/plugins/synced/9640074f-f5de-49f7-a7cd-9ea7648dd59c_282b9bda-5fbb-4a88-bc6d-a67f1face5b2/data", "source": "data@synced", "version": "1.1.0"}], "capabilities": ["interrupt_receipt_v1", "interrupt_cancel_queued_v1", "msg_lifecycle_v1"], "analytics_disabled": false, "product_feedback_disabled": false, "uuid": "41f67846-bac4-444e-ba3a-d60b4de0efc4", "memory_paths": {"auto": "/Users/chenzhenbo/.claude/projects/-private-tmp-claude-501--Users-chenzhenbo-Work-TriviumCode-8498a631-5c50-4055-b53d-336e61a51887-scratchpad-m9-acceptance/memory/"}, "scratchpad_path": "/private/tmp/claude-501/-private-tmp-claude-501--Users-chenzhenbo-Work-TriviumCode-8498a631-5c50-4055-b53d-336e61a51887-scratchpad-m9-acceptance/182b2867-ca35-4a30-a743-d7dc7ef41242/scratchpad", "messaging_socket_path": "/tmp/cc-socks/30690.sock", "fast_mode_state": "off", "fast_mode_disabled_reason": "extra_usage_disabled"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01LQeS23Gyx42j7dnSXE3jS5", "name": "Grep", "input": {"pattern": "resolveCriticSelection", "path": "./src", "output_mode": "files_with_matches"}, "caller": {"type": "direct"}}]}, "session_id": "182b2867-ca35-4a30-a743-d7dc7ef41242"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01LQeS23Gyx42j7dnSXE3jS5", "type": "tool_result", "content": "Found 5 files\nsrc/trivium/review.ts\nsrc/trivium/cli.ts\nsrc/trivium/critics.ts\nsrc/trivium/topic-args.ts\nsrc/trivium/types.ts"}]}, "session_id": "182b2867-ca35-4a30-a743-d7dc7ef41242"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01Aj6SiYu4R624C9VHDktZHs", "name": "Grep", "input": {"pattern": "resolveCriticSelection", "path": "./src", "output_mode": "count"}, "caller": {"type": "direct"}}]}, "session_id": "182b2867-ca35-4a30-a743-d7dc7ef41242"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01Aj6SiYu4R624C9VHDktZHs", "type": "tool_result", "content": "src/trivium/cli.ts:5\nsrc/trivium/types.ts:2\nsrc/trivium/critics.ts:1\nsrc/trivium/topic-args.ts:3\nsrc/trivium/review.ts:4\n\nFound 15 total occurrences across 5 files."}]}, "session_id": "182b2867-ca35-4a30-a743-d7dc7ef41242"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_01R4BcWQo8R5XMZLfCmophfV", "name": "Grep", "input": {"pattern": "resolveCriticSelection", "path": "./src", "output_mode": "content", "head_limit": 3}, "caller": {"type": "direct"}}]}, "session_id": "182b2867-ca35-4a30-a743-d7dc7ef41242"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_01R4BcWQo8R5XMZLfCmophfV", "type": "tool_result", "content": "src/trivium/types.ts:44: * 因为那道防线本来就不该由类型承担：`resolveCriticSelection` 里「当轮 Driver\nsrc/trivium/types.ts:580:   * 接线已在 M7b 第 5 步完成：不给 `--critics` 时，`resolveCriticSelection`\nsrc/trivium/topic-args.ts:16:import { resolveCriticSelection } from './critics.js';\n\n[Showing results with pagination = limit: 3]"}]}, "session_id": "182b2867-ca35-4a30-a743-d7dc7ef41242"}
++{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_015udK3nLBSfxWZCa5HYbTc5", "name": "Grep", "input": {"pattern": "resolveCriticSelection", "path": "./src/trivium/critics.ts", "output_mode": "content"}, "caller": {"type": "direct"}}]}, "session_id": "182b2867-ca35-4a30-a743-d7dc7ef41242"}
++{"type": "user", "message": {"content": [{"tool_use_id": "toolu_015udK3nLBSfxWZCa5HYbTc5", "type": "tool_result", "content": "44:export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput = {}): CriticId[] {"}]}, "session_id": "182b2867-ca35-4a30-a743-d7dc7ef41242"}
+diff --git a/test/unit/grep-hits.test.ts b/test/unit/grep-hits.test.ts
+new file mode 100644
+index 0000000..81f4b7c
+--- /dev/null
++++ b/test/unit/grep-hits.test.ts
+@@ -0,0 +1,244 @@
++/**
++ * Grep 命中计入读取面（EV-76 出路 ①）：解析、分档、归一化、回放。
++ *
++ * 夹具是**真跑输出的截取**（`test/fixtures/claude-events/README.md`「Grep 两份」一节）：
++ * 根前缀改写成 `<ROOT>`，加载时换成本文件的 `FAKE_ROOT`。两种形态都锁——
++ * 生产 9/9 次 Grep 传绝对 `path`，探针实测传相对 `path`（计划双审 CODEX-03 / GLM-04）。
++ *
++ * 变异验证（2026-09-19 实跑，`node scripts/build.mjs --with-tests` 后单跑本文件）：
++ *   - `GREP_CONTENT_LINE` 改成永不匹配 → T1a / T1b / T2 / T3 / T7 / T8 / T10 七条红；
++ *   - `toProjectRelative` 的 `isUnder` 退化成裸 `startsWith` → T11 红（`/repository` 被切成 `../repository/…`）。
++ * 注意 `npm run build` 只打 bundle，不重编 `dist/test`——单跑用例前要带 `--with-tests`，否则测的是旧产物。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { REPO_ROOT } from '../helpers/fixture.js';
++import {
++  countTools,
++  grepHitPaths,
++  parseClaudeEvents,
++  parseGrepResults,
++  readPaths,
++} from '../../src/trivium/adapters/claude-trace.js';
++import { buildClaudeResult } from '../../src/trivium/adapters/claude.js';
++import { failedResult, toProjectRelative, TOOL_TRACE_CAPABILITY } from '../../src/trivium/adapters/base.js';
++import { judgeSide, matchConsulted } from '../../src/trivium/guard.js';
++import { TRIVIUM_DIR, defaultConfig } from '../../src/trivium/config.js';
++import { READONLY_INVARIANTS } from '../../src/trivium/probes/claude.js';
++import { readonlyToolsFromProbe } from '../../src/trivium/adapters/claude.js';
++import type { CriticRequest, CriticResult, Review } from '../../src/trivium/types.js';
++
++const FIXTURES = path.join(REPO_ROOT, 'test/fixtures/claude-events');
++const FAKE_ROOT = '/proj/m9-acceptance';
++
++async function loadTrace(name: string, root = FAKE_ROOT) {
++  const raw = await fs.readFile(path.join(FIXTURES, name), 'utf8');
++  return parseClaudeEvents(raw.split('<ROOT>').join(root));
++}
++
++/** 第 2 跑（run 20260919T120643Z）审查员自报的 15 项 consulted，逐字 */
++const CONSULTED_RUN2 = [
++  '.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff',
++  'src/trivium/adapters/base.ts',
++  'src/trivium/preflight.ts',
++  'src/trivium/adapters/codex.ts',
++  'src/trivium/critics.ts',
++  'src/trivium/guard.ts',
++  'src/trivium/review.ts',
++  'src/trivium/agents/registry.ts',
++  'test/unit/preflight.test.ts',
++  'test/unit/codex-write-verbs.test.ts',
++  'CLAUDE.md',
++  'AGENTS.md',
++  'doc/03_api/PROTOCOL_dual_critic_relay.md',
++  'doc/05_testing/CASE_manual_acceptance.md',
++  'doc/02_design/LLD_orchestrator.md',
++];
++/** 其中只在目录级 Grep 结果里出现过的 5 项——修前 J5 落 10/15 的那 5 项 */
++const GREP_ONLY_RUN2 = [
++  'test/unit/preflight.test.ts',
++  'test/unit/codex-write-verbs.test.ts',
++  'doc/03_api/PROTOCOL_dual_critic_relay.md',
++  'doc/05_testing/CASE_manual_acceptance.md',
++  'doc/02_design/LLD_orchestrator.md',
++];
++
++// ── T1：两种形态 × 三种模式 ────────────────────────────────────────────
++
++test('T1a 相对 path 形态：content 进 hits，count / files_with_matches 进 listed，文件级 Grep 不产路径', async () => {
++  const t = await loadTrace('grep-three-modes-relative-path.jsonl');
++  assert.equal(t.init?.cwd, FAKE_ROOT, 'init.cwd 必须被采集（计划双审 CODEX-04）');
++  const g = parseGrepResults(t, null);
++  // files_with_matches 5 个 + count 5 个，同一集合
++  const five = ['cli.ts', 'critics.ts', 'review.ts', 'topic-args.ts', 'types.ts'].map((f) => `${FAKE_ROOT}/src/trivium/${f}`);
++  assert.deepEqual([...g.listed].sort(), [...five].sort());
++  // content（head_limit 3）：命中哪几个文件取决于 ripgrep 的遍历顺序，不锁具体文件；
++  // 锁的是形态——非空、全在 src/trivium/ 下、且 ⊆ files_with_matches 列出的那 5 个
++  assert.ok(g.hits.length >= 1 && g.hits.length <= 3, `head_limit 3 最多 3 行，实得 ${g.hits.length} 个文件`);
++  for (const h of g.hits) assert.ok(five.includes(h), `content 命中 ${h} 不在 files_with_matches 的集合里——路径基准或解析出错`);
++  assert.ok(g.resultLines > 10, '原始行数含噪声行，作漂移诊断');
++  // 文件级 Grep（path=critics.ts，content）输出是「行号:文本」，不得提出任何路径
++  const fileLevel = t.toolUses.filter((u) => u.name === 'Grep' && String(u.input['path']).endsWith('critics.ts'));
++  assert.equal(fileLevel.length, 1);
++  assert.ok(!g.hits.some((h) => h.endsWith('critics.ts')), '文件级 Grep 的命中归入参路径（readPaths 已计），不重复计');
++});
++
++test('T1b 绝对 path 形态（生产形态）：content 命中相对 cwd 而非相对 path 参数', async () => {
++  const t = await loadTrace('grep-content-absolute-path.jsonl');
++  const g = parseGrepResults(t, null);
++  assert.ok(g.hits.length >= 30, `目录级 content Grep 应命中数十个文件，实得 ${g.hits.length}`);
++  for (const h of g.hits) assert.ok(h.startsWith(`${FAKE_ROOT}/`), `命中必须落在项目根下：${h}`);
++  // path=<ROOT>/src 的命中写作 src/…（相对 cwd），不是 trivium/…（相对 path）
++  assert.ok(g.hits.includes(`${FAKE_ROOT}/src/trivium/preflight.ts`));
++  assert.deepEqual(g.listed, [], '生产 9/9 次都是 content 模式，listed 应为空');
++});
++
++// ── T2 / T3：守卫与配对 ───────────────────────────────────────────────
++
++test('T2 守卫：数字开头、含空白、无 / 无 . 的行不当路径；噪声行不计', () => {
++  const lines = [
++    '[Showing results with pagination = limit: 3]',
++    'Found 3 files',
++    '7:  const t = a ? 1:2:3',      // 文件级 content 行里的文本——数字开头
++    'src/a b.ts:1:x',               // 含空白
++    'Dockerfile:3:FROM node',       // 无 / 无 .——已知假阴性
++    'src/ok.ts:12:hit',
++  ].join('\n');
++  const t = parseClaudeEvents(
++    [
++      JSON.stringify({ type: 'system', subtype: 'init', cwd: FAKE_ROOT, tools: ['Grep'], model: 'm' }),
++      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'g1', name: 'Grep', input: { pattern: 'x', path: FAKE_ROOT, output_mode: 'content' } }] } }),
++      JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'g1', content: lines }] } }),
++    ].join('\n'),
++  );
++  const g = parseGrepResults(t, null);
++  assert.deepEqual(g.hits, [`${FAKE_ROOT}/src/ok.ts`]);
++  assert.equal(g.resultLines, 6, '非空行全计，噪声行也算——漂移诊断要看总量');
++});
++
++test('T3 配对：is_error 的 Grep 结果不计；无 id 的 tool_use 不计；数组形态的 content 也能读', () => {
++  const t = parseClaudeEvents(
++    [
++      JSON.stringify({ type: 'system', subtype: 'init', cwd: FAKE_ROOT, tools: ['Grep'], model: 'm' }),
++      JSON.stringify({ type: 'assistant', message: { content: [
++        { type: 'tool_use', id: 'g1', name: 'Grep', input: { pattern: 'x', output_mode: 'content' } },
++        { type: 'tool_use', name: 'Grep', input: { pattern: 'x', output_mode: 'content' } },
++        { type: 'tool_use', id: 'g3', name: 'Grep', input: { pattern: 'x', output_mode: 'content' } },
++      ] } }),
++      JSON.stringify({ type: 'user', message: { content: [
++        { type: 'tool_result', tool_use_id: 'g1', is_error: true, content: 'src/err.ts:1:x' },
++        { type: 'tool_result', tool_use_id: 'g3', content: [{ type: 'text', text: 'src/arr.ts:1:x' }] },
++      ] } }),
++    ].join('\n'),
++  );
++  assert.deepEqual(grepHitPaths(t, null), [`${FAKE_ROOT}/src/arr.ts`]);
++});
++
++// ── T7：回放第 2 跑 ───────────────────────────────────────────────────
++
++const REQ: CriticRequest = {
++  critic: 'claude',
++  stage: 'code',
++  model: 'm',
++  timeout_s: 60,
++  min_tool_calls: 5,
++  min_project_reads: 3,
++  subject_path: `${FAKE_ROOT}/.reviews/M9-验收-3812f4c/code/_meta/changes-20260919T120643Z.diff`,
++  brief_path: `${FAKE_ROOT}/.reviews/M9-验收-3812f4c/code/_meta/brief-claude-R1.md`,
++  project_root: FAKE_ROOT,
++  deny_paths: [],
++  out_dir: '/runs/out',
++  brief_text: '',
++} as unknown as CriticRequest;
++
++function sideResult(trace: ReturnType<typeof parseClaudeEvents>, over: Partial<CriticResult> = {}): CriticResult {
++  const built = buildClaudeResult(
++    trace,
++    { exitCode: 0, durationMs: 1000, commandLine: 'claude -p …' },
++    { stdout: '/run/stdout.jsonl', trace: '/run/trace.json' },
++    { version: '2.1.277', path_deny: { file_shape_verified: true } },
++    readonlyToolsFromProbe(READONLY_INVARIANTS),
++    { ruleCount: 0, skipped: [], bytes: 0 },
++    { fallbackRoot: FAKE_ROOT },
++  );
++  return { ...built, ...over };
++}
++
++function judge(result: CriticResult, review: Review | null) {
++  return judgeSide(defaultConfig(), 'claude', result, review, REQ, {
++    archiveRootAbs: `${FAKE_ROOT}/.reviews`,
++    projectRoot: FAKE_ROOT,
++    triviumDir: `${FAKE_ROOT}/${TRIVIUM_DIR}`,
++    runRoot: '/runs',
++    capability: TOOL_TRACE_CAPABILITY,
++  });
++}
++
++test('T7 回放第 2 跑：Grep 命中恰好补上那 5 项，consulted 15/15，布尔位翻回 false', async () => {
++  const t = await loadTrace('grep-content-absolute-path.jsonl');
++  assert.equal(t.toolUses.length, 24, '夹具是那 24 条 tool_use 的截取');
++  const reads = readPaths(t);
++  const hits = grepHitPaths(t, FAKE_ROOT);
++  for (const f of GREP_ONLY_RUN2) {
++    assert.ok(hits.includes(`${FAKE_ROOT}/${f}`), `目录级 Grep 命中必须含 ${f}`);
++    assert.ok(!reads.includes(`${FAKE_ROOT}/${f}`), `${f} 只经 Grep 结果见过，不该在 readPaths 里`);
++  }
++  const r = sideResult(t);
++  // 集合断言：15 项逐条在归一化后的匹配集里（不是只看 80% 布尔位）
++  const m = matchConsulted(CONSULTED_RUN2, [...r.read_paths, ...(r.search_hit_paths ?? [])], [FAKE_ROOT]);
++  assert.deepEqual(m.missing, [], `仍未匹配：${m.missing.join('、')}`);
++  assert.equal(m.matched.length, 15);
++  // 修前口径（不并 search_hit_paths）恰是 10/15——锁住「修的就是这 5 项」
++  const before = matchConsulted(CONSULTED_RUN2, r.read_paths, [FAKE_ROOT]);
++  assert.equal(before.matched.length, 10);
++  const review = { consulted: CONSULTED_RUN2, findings: [], summary: 'x', not_covered: [] } as unknown as Review;
++  assert.equal(judge(r, review).consultedUnverified, false);
++  assert.equal(judge({ ...r, search_hit_paths: null }, review).consultedUnverified, true, '不并命中即回到修前的 J5 失败');
++});
++
++// ── T8 / T9：不进 project_reads；三态 ─────────────────────────────────
++
++test('T8 search_hit_paths 不进 project_reads——证据档口径不动（变异守卫）', async () => {
++  const t = await loadTrace('grep-content-absolute-path.jsonl');
++  const r = sideResult(t);
++  const withHits = judge(r, null).projectReads;
++  const without = judge({ ...r, search_hit_paths: null }, null).projectReads;
++  assert.equal(withHits, without, '把 hits 并进 read_paths 会让这条红');
++  assert.ok((r.search_hit_paths ?? []).length > 30, '前提：本夹具确实有几十条命中');
++});
++
++test('T9 三态：失败出口写 null，claude 成功出口写数组（可为空）', async () => {
++  const f = failedResult('claude', { reason: 'x', exitCode: 1, durationMs: 1, commandLine: 'c' } as never);
++  assert.equal(f.search_hit_paths, null);
++  const t = await loadTrace('read-sentinel.jsonl');
++  assert.deepEqual(sideResult(t).search_hit_paths, [], '无 Grep 的轨迹是空数组，不是 null');
++  assert.ok(countTools(t).read! >= 1);
++});
++
++// ── T10：夹具兜底扫描的输出腿 ─────────────────────────────────────────
++
++test('T10 兜底：凡 grep-*.jsonl 夹具，content 命中或 listed 至少一条非空——格式漂移在构建期打红', async () => {
++  const names = (await fs.readdir(FIXTURES)).filter((n) => n.startsWith('grep-') && n.endsWith('.jsonl'));
++  assert.ok(names.length >= 2, '两种形态的样本都要在');
++  for (const n of names) {
++    const g = parseGrepResults(await loadTrace(n), FAKE_ROOT);
++    assert.ok(g.resultLines > 0, `${n}：没有任何结果行`);
++    assert.ok(g.hits.length + g.listed.length > 0, `${n}：结果行 ${g.resultLines} 条却一条都没解析出——格式漂移了（设计 §3.7 Grep 格式行）`);
++  }
++});
++
++// ── T11：归一化 ───────────────────────────────────────────────────────
++
++test('T11 toProjectRelative：/tmp 与 /private/tmp、./、绝对写法互相匹配；同名前缀与项目外为 null', () => {
++  const roots = ['/tmp/repo', '/private/tmp/repo'];
++  assert.equal(toProjectRelative('/private/tmp/repo/src/a.ts', roots), 'src/a.ts');
++  assert.equal(toProjectRelative('/tmp/repo/src/a.ts', roots), 'src/a.ts');
++  assert.equal(toProjectRelative('./src/a.ts', roots), 'src/a.ts');
++  assert.equal(toProjectRelative('src/a.ts', roots), 'src/a.ts');
++  assert.equal(toProjectRelative('/tmp/repository/src/a.ts', roots), null, '分隔符边界：/repo 不是 /repository 的前缀（AGY-04）');
++  assert.equal(toProjectRelative('/etc/passwd', roots), null);
++  const m = matchConsulted(['src/a.ts', 'doc/x.md'], ['/private/tmp/repo/src/a.ts'], roots);
++  assert.deepEqual(m, { matched: ['src/a.ts'], missing: ['doc/x.md'] });
++});

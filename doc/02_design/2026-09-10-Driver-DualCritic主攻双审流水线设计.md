@@ -381,6 +381,7 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 | `trust_prompt_required` | **false** —— 全新目录首跑无提示 | `.trust_prompt_required` |
 | `path_deny` | **对 `Read` true，对 `Grep` false** —— 覆盖不完整。`rule_syntax` 落的是**目录 glob**（`Read(./<dir>/**)`），而 `deny_paths` 是逐文件清单。**两者的等价性已于 M9 第 3 步实测结案（EV-42，2.1.276）**：逐文件注入后哨兵未泄漏且记入 `permission_denials`，两条腿都成立 ⇒ `file_shape_verified: true`；项目相对目录形态同样成立；项目外绝对路径条目**规则语法被接受**（不拒整份 `--settings`），但其**拦截效果不可单独验证**——`--restricted` 已把文件工具限制在工作目录内，两者效果不可区分，这条边界要连着结论一起读 | `.path_deny.supported` / `.rule_syntax` / **`.coverage_complete`**（三态：另测的读工具是否同样被挡；`null` = 没另测过，**不等于覆盖完整**）/ **`.file_shape_verified`**（三态：逐文件形状验没验过；适配器的 `peer_deny_applied` 读它**而不是 `supported`**——那两个问的是不同的事） |
 | `stream_json_requires_verbose` | **true** —— 不带 `--verbose` 时 CLI **直接拒绝**（退 1、零事件、零 API 调用），不是「吐得少」 | `.stream_json_requires_verbose`（三态）。**消费方是漂移可见性，不参与参数构造** |
+| Grep 输出格式（2.1.277 实测，非探针格） | `content`：`<相对 cwd 的路径>:<行号>:<文本>`，`path` 为单文件时 `<行号>:<文本>`（无路径），尾随 `[Showing results with pagination …]`；`count`：`<路径>:<计数>` + `Found N total occurrences across M files.`；`files_with_matches`（缺省）：`Found N files` + 路径行。**命中路径相对 cwd，不相对 `path` 参数**。样本 `test/fixtures/claude-events/grep-*.jsonl`（一份生产截取、一份探针实测） | 无探针格（登记 EV-78）；解析器只认这三种严格形态，漂移症状是 `trace.json.grep.hits` 归零而 `resultLines` 非零，夹具兜底用例 T10 在构建期打红 |
 | `strict_mcp_config_applied` | **true** —— 落盘的只读组合里含 MCP 硬前置旗标 | `.strict_mcp_config_applied`（三态：**没核对成时为 `null`**，不从空数组反算「确认缺失」）。消费方：`claudeSeverity` 与 M9 `availability()`——适配层据此校验硬前置，而**不必也不得**在 `adapters/` 写出那个字面量（§11.1 判据三的黑名单） |
 | `scratch_paths` | `[]` —— 项目根零污染 | `.scratch_paths` |
 
@@ -1752,6 +1753,15 @@ Hook 行为约定：
   消除了此前「提示语禁了一堆、核验只对其中一部分」的错位（那正是通道③④的成因）。
   落点：`freeze.ts` 的 `enumerateDenyPaths()`、`brief.ts` 第 8 段渲染、`adapters/base.ts` 的
   `checkPeerLeak`（支持目录前缀匹配），正例单测在 `test/unit/deny-matrix.test.ts`。
+  **2026-09-19 起新规则（EV-76 出路 ①，M9 第 6 步后）**：措施 a 的输入除结构化读取路径外，
+  还吃**搜索工具 `content` 输出里命中的文件**（`CriticResult.search_hit_paths`，claude 侧 Grep）——
+  文本真实进入模型上下文，与 Read 同一通道，而 §3.7 实测 CLI 路径级 deny 对 Grep 不生效，事后核验是那条通道唯一的兜底。
+  这是**新规则**：此前的承诺只覆盖 Grep 的 `path` **入参**。`files_with_matches` / `count` 只披露存在性，
+  与 Glob 同档、不进措施 a，只在 trace.json 留痕。**与 EV-16 的不对称如实登记**：codex 的根递归 grep 输出在 trace.json 的 `commands[].output` 里，
+  但适配器**未做命中解析**（未采集，解析任意 shell 输出另是一档代价、EV-19 族），故按 B-2 长期接受；claude 的 Grep 命中已解析，
+  命中对端产物按 10.1.1 分档处置——同一行为两条通道结论不同，源于**采集**差异而非规则矛盾，也不是检测能力边界（代码双审 CODEX-01）。代价：§12.1「作废并重跑一次」待实施，现状下 claude 侧一次 content Grep 命中对端审查件
+  = 该侧作废、整轮报废；BRIEF 第 8 段已加一句引导搜索工具限定 `path`。agy / zcode 的流没有工具输出（该族无此事实）、codex 的命令输出在轨迹里但未做命中解析（未采集），
+  三家 `search_hit_paths` 均记 `null`——同一个 `null` 背后是两种原因，各家适配器的注释写明了是哪种。
 
 #### 10.1.1 禁读集的四类分档与处置（2026-09-16 起）
 
@@ -2375,7 +2385,7 @@ HOME="<run_home>" "<runtime.node>" "<entry>" \
 | 工具调用轨迹存在 | `trace_path` 可解析且非空 | 该侧标 `failed(no_trace)` |
 | 读文件次数下限 | `read + grep + glob ≥ min_tool_calls`（默认 5；`code` 阶段若补丁为空可豁免） | 该侧标 `failed(insufficient_evidence)`，重试一次 |
 | **项目文件读取下限**（UR-01 / AC-11） | 读取路径**不在** `.reviews/` 且不是 brief/subject 的次数 `project_reads ≥ min_project_reads`（默认 3）——防止「把 BRIEF 与被审文档反复读 5 遍」通过上一条 | 该侧标 `failed(no_project_context)`，重试一次（brief 中追加「你未读取任何项目文件」提示） |
-| `consulted` 与轨迹交叉核对 | `review.consulted` 中的路径至少 80% 出现在轨迹读取集合中（防止编造） | 标 `evidence_ok: false`，文档头注明 `consulted_unverified` |
+| `consulted` 与轨迹交叉核对 | `review.consulted` 中的路径至少 80% 出现在轨迹读取集合中（防止编造）。**轨迹读取集合**（2026-09-19 起）= 读工具入参路径（含命令通道回填）∪ 搜索工具 `content` 输出命中的文件（`search_hit_paths`：claude 侧已解析；agy / zcode 的流无工具输出；codex 的输出在轨迹里但未采集——两种 `null` 的分野只在 §10.1 定义一次）；两边经同一份归一化（`toProjectRelative`：realpath 别名、`./`、绝对/相对写法）后比对。M9 第 6 步第 2 跑按旧口径 10/15、新口径 15/15（`test/unit/grep-hits.test.ts` T7 回放） | 标 `evidence_ok: false`，文档头注明 `consulted_unverified` |
 | 会话标识可核对 | Antigravity 的 `conversation_id` / ZCode 的 `sessionId` 写入元数据 | 缺失则标 `evidence_ok: false` |
 
 **任一侧 `evidence_ok=false` 时，该侧不得计为合格双审的一半**；按失败策略走严格中止或单审降级。

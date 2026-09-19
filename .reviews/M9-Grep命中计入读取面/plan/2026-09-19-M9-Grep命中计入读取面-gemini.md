@@ -1,0 +1,169 @@
+---
+schema: trivium.review.v1
+topic: M9-Grep命中计入读取面
+stage: plan
+role: gemini
+vendor: antigravity
+agent_cli: agy/1.2.7
+model_requested: gemini-3.8-flash-high
+model_effective: gemini-3.8-flash-high
+model_effective_source: envelope
+effort: high
+run_id: 20260919T142238Z
+rerun_index: 1
+snapshot_hash: sha256:d074a59c7c92ef7d504467f7115f4a82f1f72d00d8e764c2ff8db24c047d00d4
+blind: true
+started_at: 2026-09-19T14:22:39.035Z
+finished_at: 2026-09-19T14:33:39.796Z
+duration_s: 377
+tool_calls:
+  read: 40
+  grep: 19
+  glob: 4
+  run_command: 0
+  project_reads: 25
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 2
+  minor: 2
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: 458be78f-0c39-468e-9a23-0cae7a092235
+---
+
+# 计划审查：M9-Grep命中计入读取面
+
+> Critic-A · Google Antigravity ｜ 模型 `gemini-3.8-flash-high`
+> ｜ 运行 `20260919T142238Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+审查重点裁决：1. 措施 a 应当吃 search_hit_paths，这是对端防泄漏唯一的轨迹闭环；2. 三态字段 null vs [] 语义上与 model_provider 同构，但计划遗漏了核心通用工厂 base.ts:failedResult；3. 回放用例 T7 按当前设计锁不住 15/15，因 80% 阈值下命中 12 项即判通过，漏掉 3 个 Grep 目标仍会假绿，必须加强断言；4. §3.1 文件级 Grep 免 stat 跳过逻辑存在设计矛盾需解耦。因存在阻塞性测试遗漏与实现矛盾，结论判定为 request-changes。
+
+**结论**：`request-changes`
+
+## 审查意见（共 5 条：重要 2 ｜ 次要 2 ｜ 吹毛求疵 1）
+
+### AGY-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §四 T7` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：回放用例 T7 若仅断言 `consultedUnverified === false`，受 80% 阈值掩码影响，无法真正锁死 15/15 全数命中，解析器遗漏 5 个 Grep 目标中的 3 个仍能假绿。
+
+**依据**：查看 guard.ts:356 与 SideVerdict 接口：SideVerdict 仅暴露布尔值 consultedUnverified，不暴露 matched 计数或命中集合；核对 guard.ts:356 的计算逻辑 `consultedUnverified = matched / consulted.length < 0.8`，当 consulted.length === 15 时，15 * 0.8 = 12.0，即匹配 12 项时 consultedUnverified 便为 false。第 2 跑基线已有 10 项通过 Read/单文件 Grep 匹配，目录级 Grep 的 5 项只需解析出任意 2 项（10 + 2 = 12）即可通过 consultedUnverified === false 断言，即使漏掉剩余 3 项也不会引发断言红。计划四表 T7 标注的「变异（改哪里必红）：任一环节退化」在单断言 consultedUnverified 下并不成立。
+
+**建议**：在 T7 中明确要求直接断言匹配集合全等或 15 项逐条均在归一化命中集合中（assert.equal(matched, 15) 或逐条 match 断言），不得仅依赖单侧判定后的布尔位 consultedUnverified 作为唯一判据。
+
+### AGY-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.1` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§3.1「入参 path 是文件（以 readPaths 已计为准，不再 stat）→ 跳过」规则不可行：readPaths 中混有目录级 Grep 的目录参数，无法据此区分文件；且若解析器禁止 stat，该跳过条件缺乏可操作依据。
+
+**依据**：查看 claude-trace.ts:266-274，readPaths(trace) 会提取所有读类工具调用的路径参数，包括目录级 Grep 的目录名（如 src、doc 等均在 readPaths 中），readPaths 内部并不区分文件与目录；plan §3.1 既规定「不再 stat」，又要求判定「入参 path 是文件 → 跳过」，在离线事件流中若不借助外部元数据或 stat，纯入参无法区分无后缀文件与目录，且若通过 readPaths 判定跳过，则目录也会因存在于 readPaths 而被跳过。
+
+**建议**：移除「先判入参是否为文件再跳过」的前置假设，改由输出模式的严格正则自适应区分：Grep 作用于单文件时 content/count 模式不输出文件路径，自然不会匹配出新路径；若 files_with_matches 产生文件名，并入 search_hit_paths 后经并集去重亦完全幂等。
+
+### AGY-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.2 与 §3.1` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：CriticResult 新增必填字段 search_hit_paths 遗漏了通用失败工厂函数 base.ts:failedResult，且未规划 buildClaudeResult 的签名调整与测试兼容。
+
+**依据**：查看 src/trivium/adapters/base.ts:254-288，failedResult 构造完整的 CriticResult 对象，全仓有约 20 处调用（agy/zcode/codex/claude/stub 均在失败时调用）；查看 claude.ts:477-491，buildClaudeResult 接收 6 个参数，不含 projectRoot，而 grepHitPaths 依赖 projectRoot 做路径绝对化；查看 test/unit/claude-adapter.test.ts 中有 14 处直接调用 buildClaudeResult。
+
+**建议**：在 §3.2 补上 base.ts:failedResult 的字段补齐（默认赋 null）；在 §3.1 明确 buildClaudeResult 引入 projectRoot 参数或默认 fallback，并在用例规划中包含 claude-adapter.test.ts 的相应断言适配。
+
+### AGY-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.4` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§3.4 normalizeForMatch 描述为「若以 projectRoot 或其 realpath 为前缀则取相对路径」，未声明路径分隔符边界，存在误伤同名前缀目录的风险。
+
+**依据**：查看 src/trivium/adapters/base.ts:1649 isUnder 与 checkPeerLeak:1037，路径前缀检查必须带路径分隔符边界（如 abs.startsWith(`${root}${nodePath.sep}`) 或 isUnder），否则对于前缀同名的兄弟目录（如 /repo 与 /repository）会误判并切碎路径。
+
+**建议**：明确 normalizeForMatch 使用 path.relative(root, abs) 或带分隔符边界的 isUnder 判定是否落在根目录下，避免直接字符串 startsWith 切片带来的边界溢出。
+
+### AGY-05 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.1` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：§3.1 对 files_with_matches 模式的解析规则过宽（「其余非空行即路径」），缺乏对无匹配或异常输出提示行的过滤保护。
+
+**依据**：查看 plan §3.1 对 files_with_matches 的解析描述：「跳过 ^Found \d+ files?$ 行，其余非空行即路径」；当 Grep 未找到任何结果时，CLI 可能输出空或包含非路径提示行（如 No files found），若仅做简单的非空行提取，可能误收录非路径内容。
+
+**建议**：对 files_with_matches 输出增加基础路径合法性过滤，或显式过滤已知的非路径输出行（如无匹配提示行）。
+
+## 认为正确的部分
+
+- 赞同措施 a（禁读核对）吃 search_hit_paths：Grep 的成功 tool_result 是模型真实读到文件内容的直接证据，且探针早已证实 CLI 层的 permissions.deny 无法拦截 Grep，措施 a 是该通道唯一的闭环兜底；配合既有的 classifyDenyPath 分档机制，己方材料与放行项不误伤，逻辑自洽。
+- 赞同本步不在探针中新增 Grep 输出格式探测格并登记 BACKLOG：探针增加模型调用格会显著增加 doctor 的时间与资金成本，且解析器格式漂移时的表现为命中数掉至零（fail-closed），通过 trace.json 的 grepHits 与 grepResultLines 具备充分的可观测性，与 EV-74 一并推进是务实的工程取舍。
+- 赞同 consulted 匹配引入 realpath 感知的归一化函数 normalizeForMatch（CODEX-07）：通过在 judgeRun 阶段单次解析 projectRoot 的真实路径并下传，既彻底解决了 macOS /tmp 与 /private/tmp 以及相对/绝对写法的假阴性匹配，又保持了 judgeSide 的纯函数与离线可测性。
+- 赞同将 search_hit_paths 与 read_paths 保持独立、不将 Grep 命中并入 project_reads 计数：严格保护了 evidence_ok 的 min_project_reads 语义（打开了几个项目文件），避免目录检索导致项目读取数失真膨胀。
+
+## 未覆盖范围（本侧盲区）
+
+- 未在真实环境重新发起 haiku 或 sonnet 实际 API 调用（遵守只读审查员约束与计划零模型调用原则）
+- 未直接执行 npm test / npm run check 验证构建（遵守只读约束，由编排器与后续执笔流程保证）
+- 未覆盖后续阶段 gate --check 告警档接入 J5 状态的改动（属于计划明确保留的 EV-75③ 范围）
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-Grep命中计入读取面/plan/2026-09-19-M9-Grep命中计入读取面-claude.md`
+- `src/trivium/types.ts`
+- `src/trivium/adapters/claude-trace.ts`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/adapters/base.ts`
+- `src/trivium/adapters/stub.ts`
+- `src/trivium/runner.ts`
+- `src/trivium/guard.ts`
+- `src/trivium/freeze.ts`
+- `src/trivium/review.ts`
+- `test/unit/claude-events.test.ts`
+- `test/unit/claude-trace.test.ts`
+- `test/unit/claude-adapter.test.ts`
+- `test/unit/guard-capability.test.ts`
+- `test/integration/command-trace.test.ts`
+- `test/fixtures/claude-events/README.md`
+- `test/fixtures/claude-events/read-sentinel.jsonl`
+- `doc/05_testing/REPORT_2026-09-19_m9_claude_critic_acceptance.md`
+- `doc/05_testing/evidence/m9-acceptance-20260919/trace-20260919T120643Z.json`
+- `doc/05_testing/evidence/m9-acceptance-20260919/run-20260919T120643Z.json`
+- `doc/08_project/BACKLOG.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":40,"grep":19,"glob":4,"run_command":0,"project_reads":25}
+
+---
+
+*本文档由 TriviumCode 编排器从 `gemini` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

@@ -493,6 +493,8 @@ export const zcodeAdapter: CriticAdapter = {
       model_route: home.route,
       tool_calls: toolCalls,
       read_paths: readPathList,
+      // zcode 轨迹只有 toolCalls[].input，没有工具输出——该族无此事实
+      search_hit_paths: null,
       /*
        * 覆盖率两项**恒写**（r2 代码双审 GLM-08 ≡ CODEX-10）。
        *

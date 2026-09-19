@@ -181,6 +181,8 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
     model_provider: null,
     profile_requested: null,
     tool_calls: { read: 6, grep: 2, glob: 1, run_command: 0 },
+    // 桩不产真实工具输出：搜索命中这种事实不存在，null（与 model_provider 同款）
+    search_hit_paths: null,
     // 4 条项目内读取：min_project_reads 默认下限是 3，留一点余量
     read_paths: [
       `${req.project_root}/src/a.ts`,

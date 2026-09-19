@@ -12,6 +12,22 @@
 | `tool-denied.jsonl` | 「在当前目录创建文件 breach.txt」 | **白名单外的工具调用留在轨迹里**（含目标路径与内容），且走「工具不存在」路径而非 `permission_denials` |
 | `path-denied.jsonl` | 「读取对方产出并回显全部内容」，附 `--settings` 注入 `permissions.deny` | **路径级 deny 真的挡住了**，且被拒的读进了 `permission_denials`（带 `tool_input.file_path`） |
 
+## Grep 两份（2026-09-19，`2.1.277`）——真跑输出的**截取**，根前缀改写
+
+EV-76 出路 ①（Grep 命中计入读取面）用。两份都不是完整录制，而是从原始 `stream-json` 里**截取**
+`system/init` + 全部 `tool_use` + **仅 Grep 的** `tool_result`，并把项目根的绝对前缀逐字替换为 `<ROOT>`
+（其余内容一字未动；加载时由用例换回一个假根）。截取脚本是
+`doc/05_testing/evidence/m9-acceptance-20260919/extract-grep-pairs.py`（`python3 extract-grep-pairs.py <原始 stdout.jsonl> <项目根> <out.jsonl>`），
+「一字未动」可以拿它对原始流复跑核对；原始 `stdout.jsonl` 含本机 slash_commands 清单，刻意不入库。来源：
+
+| 文件 | 来源 | 录它是为了固定什么 |
+| :--- | :--- | :--- |
+| `grep-content-absolute-path.jsonl` | M9 第 6 步验收第 2 跑 `20260919T120643Z`（`claude-sonnet-5`，真实审查）的 24 条 `tool_use` + 9 条 Grep 结果。`doc/05_testing/evidence/m9-acceptance-20260919/grep-tool-results-20260919T120643Z.jsonl` 是**同一份截取的归档副本**（逐字节相同，同样已做根前缀改写），不是未改写的原件 | **生产形态**：9/9 次 Grep 传绝对 `path`、全是 `content` 模式；命中行**相对 cwd**（`src/…`）而非相对 `path`；T7 回放 15/15 |
+| `grep-three-modes-relative-path.jsonl` | 2026-09-19 一次 `haiku` 实测（`--tools Grep --strict-mcp-config`，$0.018），相对 `path: ./src` | 三种 `output_mode` 的行形态与噪声行（`Found N files` / `Found N total occurrences` / `[Showing results …]`），以及**文件级** Grep 的 `行号:文本` 无路径形态 |
+
+这两份的 `init.tools` 不是 `Glob,Grep,Read`（前者含 `StructuredOutput`、后者只有 `Grep`），
+锁工具面的用例不要把它们当「干净工具面」的样本；本目录兜底扫描对它们只查路径参数键与 Grep 输出可解析（T10）。
+
 ## 一份**刻意没有**录的样本
 
 不加 `--strict-mcp-config` 时工具面会混入数十个 MCP 工具（含发信、建档、分享、删除等

@@ -387,6 +387,8 @@ export const agyAdapter: CriticAdapter = {
       profile_requested: null,
       tool_calls: countTools(out.parsed),
       read_paths: readPaths(out.parsed),
+      // agy 流只有 parameters / error，没有工具输出——该族无此事实（EV-76 边界）
+      search_hit_paths: null,
       // 路径提取覆盖率：两者不等即提取器已相对厂商参数名退化（设计 §10.1.1 第②层）
       path_bearing_reads: coverage.total,
       path_bearing_reads_with_path: coverage.withPath,

@@ -45,13 +45,26 @@
 /** 一次 headless 调用解析出来的轨迹 */
 export interface ClaudeTrace {
   /** `system/init` 回读的生效配置 */
-  init: { model: string | null; tools: string[]; permissionMode: string | null } | null;
+  /**
+   * `cwd` 是 CLI 在 `system/init` 里回报的工作目录（realpath 形态）。claude 侧它是构造性的
+   * （`invokeClaude` 显式 `cwd: projectRoot`），采集它是为了给 Grep 命中的相对路径一个
+   * **回读来的**基准，而不是靠调用方记得传（EV-76 出路 ①，计划双审 CODEX-04 ≡ GLM-03）。
+   */
+  init: { model: string | null; tools: string[]; permissionMode: string | null; cwd: string | null } | null;
   /** 全部 `tool_use`：工具名 + 参数 + id（id 用于与 tool_result 配对） */
   toolUses: { name: string; input: Record<string, unknown>; id: string | null }[];
   /** 出错的 `tool_result` 文本（白名单外工具走这条路，不进 permission_denials） */
   toolErrors: string[];
   /** 收到 `is_error` 结果的那些 `tool_use_id`——判据要配对，不能只数错误条数 */
   erroredToolUseIds: Set<string>;
+  /**
+   * **成功** `tool_result` 的文本，按 `tool_use_id` 配对。
+   *
+   * 此前解析器只留 `is_error` 的结果，成功结果的内容被丢弃——于是目录级 Grep 命中了哪些文件
+   * 无从得知，J5 只能看见 `Grep(path=doc)` 这一条入参（EV-76）。这里只存文本，不做任何解释；
+   * 解释在 `parseGrepResults`。
+   */
+  toolResults: Map<string, string>;
   /** `result` 事件里的权限拒绝记录（路径级 deny 走这条路） */
   permissionDenials: { tool_name: string; tool_input: Record<string, unknown> }[];
   finalText: string | null;
@@ -95,6 +108,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
   const toolUses: ClaudeTrace['toolUses'] = [];
   const toolErrors: string[] = [];
   const erroredToolUseIds = new Set<string>();
+  const toolResults = new Map<string, string>();
   let permissionDenials: ClaudeTrace['permissionDenials'] = [];
   let finalText: string | null = null;
   let sessionId: string | null = null;
@@ -119,6 +133,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
         model: typeof o['model'] === 'string' ? o['model'] : null,
         tools: Array.isArray(o['tools']) ? (o['tools'] as string[]) : [],
         permissionMode: typeof o['permissionMode'] === 'string' ? o['permissionMode'] : null,
+        cwd: typeof o['cwd'] === 'string' ? o['cwd'] : null,
       };
     }
 
@@ -137,6 +152,8 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
         if (b['type'] === 'tool_result' && b['is_error'] === true) {
           toolErrors.push(typeof b['content'] === 'string' ? b['content'] : JSON.stringify(b['content']));
           if (typeof b['tool_use_id'] === 'string') erroredToolUseIds.add(b['tool_use_id']);
+        } else if (b['type'] === 'tool_result' && typeof b['tool_use_id'] === 'string') {
+          toolResults.set(b['tool_use_id'], resultText(b['content']));
         }
       }
     }
@@ -162,6 +179,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
     toolUses,
     toolErrors,
     erroredToolUseIds,
+    toolResults,
     permissionDenials,
     finalText,
     sessionId,
@@ -271,6 +289,100 @@ export function readPaths(trace: ClaudeTrace): string[] {
     if (p) out.add(p);
   }
   return [...out];
+}
+
+// ─────────────────────── Grep 结果解析（EV-76 出路 ①，M9 第 6 步后） ───────────────────────
+
+/** `tool_result.content` 的文本形态：字符串，或 `{type:'text',text}` 数组 */
+function resultText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((x) => (x && typeof x === 'object' && typeof (x as { text?: unknown }).text === 'string' ? (x as { text: string }).text : ''))
+      .join('\n');
+  }
+  return '';
+}
+
+/**
+ * Grep 三种 `output_mode` 的输出格式（claude 2.1.277 实测，夹具 `grep-*.jsonl`）：
+ *
+ * | 模式 | 行形态 | 噪声行 |
+ * | `content` | `<相对项目根的路径>:<行号>:<文本>`；`path` 为单文件时是 `<行号>:<文本>`（无路径） | `[Showing results with pagination …]` |
+ * | `count` | `<路径>:<计数>` | 空行、`Found N total occurrences across M files.` |
+ * | `files_with_matches`（缺省） | `<路径>` | `Found N files`、`No files found` |
+ *
+ * 路径**相对 cwd**（= 项目根），不是相对 `path` 参数——`path: <ROOT>/src` 的命中仍写作 `src/…`。
+ *
+ * **分档消费**（计划双审 CODEX-01 ≡ GLM-01）：只有 `content` 的文本真实进入模型上下文，
+ * 它的命中才算「读过」，进 `hits`（J5 匹配集 + 措施 a）；`count` / `files_with_matches`
+ * 只披露存在性，与 Glob 同档，进 `listed` 只留痕、不消费。
+ *
+ * **只认严格形态、不猜**：提取出的路径不得以数字开头、不含空白、须含 `/` 或 `.`——
+ * 文件级 Grep 的 `7:  a ? 1:2:3` 这类文本被第一条挡掉；代价是根目录下无扩展名的文件
+ * （`Dockerfile`）会被丢，属可接受的假阴性（用例 T2 锁这条边界）。
+ * 格式漂移的症状是 `hits` 归零而 `resultLines` 不为零——两格一起落 trace.json 才分得开。
+ */
+export interface GrepResults {
+  /** `content` 模式命中的文件（绝对路径，去重、保序） */
+  hits: string[];
+  /** `count` / `files_with_matches` 列出的文件（绝对路径，去重）——只留痕 */
+  listed: string[];
+  /** 成功 Grep 结果的非空行总数（去重前、含噪声行）：漂移诊断用 */
+  resultLines: number;
+}
+
+const GREP_CONTENT_LINE = /^([^\s:][^:]*?):(\d+):/;
+const GREP_COUNT_LINE = /^([^\s:][^:]*?):(\d+)$/;
+const GREP_NOISE_LINES = [/^Found \d+ files?$/, /^Found \d+ total occurrences/, /^No files found/, /^\[Showing results/];
+
+function grepPathLike(s: string): boolean {
+  return s.length > 0 && !/^\d/.test(s) && !/\s/.test(s) && (s.includes('/') || s.includes('.'));
+}
+
+export function parseGrepResults(trace: ClaudeTrace, fallbackRoot: string | null): GrepResults {
+  const base = trace.init?.cwd ?? fallbackRoot;
+  const hits = new Set<string>();
+  const listed = new Set<string>();
+  let resultLines = 0;
+  const absolutize = (p: string): string | null => {
+    if (p.startsWith('/')) return p;
+    if (base === null) return null;
+    return `${base.replace(/\/+$/, '')}/${p.replace(/^\.\//, '')}`;
+  };
+  for (const u of successfulToolUses(trace)) {
+    if (u.name !== 'Grep' || u.id === null) continue;
+    const text = trace.toolResults.get(u.id);
+    if (text === undefined) continue;
+    const mode = typeof u.input['output_mode'] === 'string' ? u.input['output_mode'] : 'files_with_matches';
+    for (const raw of text.split('\n')) {
+      const line = raw.trimEnd();
+      if (line.trim() === '') continue;
+      resultLines += 1;
+      if (GREP_NOISE_LINES.some((re) => re.test(line))) continue;
+      let p: string | null = null;
+      let target: Set<string> | null = null;
+      if (mode === 'content') {
+        const m = GREP_CONTENT_LINE.exec(line);
+        if (m) { p = m[1]!; target = hits; }
+      } else if (mode === 'count') {
+        const m = GREP_COUNT_LINE.exec(line);
+        if (m) { p = m[1]!; target = listed; }
+      } else {
+        p = line;
+        target = listed;
+      }
+      if (p === null || target === null || !grepPathLike(p)) continue;
+      const a = absolutize(p);
+      if (a !== null) target.add(a);
+    }
+  }
+  return { hits: [...hits], listed: [...listed], resultLines };
+}
+
+/** `content` 模式命中的文件——「读过」的那一档 */
+export function grepHitPaths(trace: ClaudeTrace, fallbackRoot: string | null): string[] {
+  return parseGrepResults(trace, fallbackRoot).hits;
 }
 
 /**

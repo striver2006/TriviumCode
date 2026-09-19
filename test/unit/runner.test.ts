@@ -16,7 +16,7 @@ function okResult(critic: CriticId, over: Partial<CriticResult> = {}): CriticRes
     raw_stdout_path: '/runs/out', trace_path: '/runs/trace', review_json: null,
     raw_response_text: '{}', model_effective: 'M', model_effective_source: 'envelope',
     model_provider: null, profile_requested: null,
-    tool_calls: { read: 6 }, read_paths: ['/proj/src/a.ts'], write_events: [], command_texts: [],
+    tool_calls: { read: 6 }, read_paths: ['/proj/src/a.ts'], search_hit_paths: null, write_events: [], command_texts: [],
     evidence_ok: true, fail_reason: null, session_id: 'S', cli_version: '1',
     peer_deny_applied: false, deny_skipped: 0, deny_rule_count: 0, deny_bytes: 0, command_line: 'x', ...over,
   };

@@ -1,0 +1,130 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一条：「措施 a 吃 Grep 命中」被写成「§10.1 既有承诺第一次生效，不是新规则」，而设计的承诺逐字是覆盖 Grep 的 path 参数（今天已覆盖）；根递归搜索命中对端件属于 B-2 那类**已拍板不收窄、无缓解措施**的接受项（EV-16），照此实施会让命令通道接受、Grep 通道作废，而 claude 只有 Grep 一条搜索通道——重跑主题下第 2 跑那条项目根级符号搜索就会把该侧判作废。\n其次 T7 锁不住 15/15：判据只回一个布尔、阈值是 <0.8，对上 12/15 就是 0.8、用例照样绿，而它是本步唯一的端到端验收。\n第三，解析器的三条分支与 T7 基线所依赖的三种输出模式样本在仓库里**无法复核**：归档轨迹只有 24 条 tool_use、没有一条成功 tool_result 的内容，本仓也没有任何 stdout.jsonl；而生产 9/9 次 Grep 全是绝对 path + content 模式，「命中相对项目根」这个核心假设在生产形态上一次都没验过。\n另有一条计划内自相矛盾：R-4 引用 init.cwd，而解析器今天不保留该字段、改动清单里也没有它。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "security",
+      "location": "plan §3.3 表第 2 行与 §3.5（设计 §10.1 措施 a 回补）",
+      "problem": "把 Grep 命中并入措施 a 这一步的理由句不成立，且口径未决。①设计对 M9 的承诺逐字是「事后轨迹核验仍必需，且必须覆盖 Grep 的 path 参数」——该参数今天已由 CLAUDE_PATH_KEYS 收进 read_paths，所以这是**新规则**而不是「§10.1 的既有承诺第一次对 Grep 通道生效」。②「Grep 的命中」在既有判据里属另一类：设计 §10.1 通道表与 base.ts 的 B-2 把「从根递归的 grep -rn .（命令文本里不出现任何 deny 路径）」登记为**已拍板不收窄、因此没有缓解措施**的长期接受项（EV-16，决策者 Chen Zhenbo，理由是保留 bug 阶段的根递归排查能力）。于是同一行为——从项目根递归搜索、结果撞上对端历史件——在命令通道是接受的风险，在新加的 Grep 命中通道是「该侧作废」，形成本项目自己命名过的形态（同一次泄漏、两条通道、相反结论）。claude 侧只读工具面里没有命令工具（command_texts 恒空），Grep 是它唯一的搜索通道，因此这一改动等于把 EV-16 明确保留的能力对 claude 家族事实上没收。③理由句「Grep 取到内容就是读过」只覆盖 content 模式：files_with_matches（缺省）与 count **不返回任何内容**，模型只学到「某文件匹配了这个 pattern」，把它们按「读过」判、按泄漏判都是另一个决定。可预测的后果（有现存证据）：作废重跑的代价是整轮预算与 M9 进度，且重跑会重复同一条搜索、触发二次命中停机。",
+      "evidence": "读 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:396-406（承诺原文 = Grep 的 path 参数）与 §10.1 通道表、§10.1.1 分档表；读 src/trivium/adapters/base.ts 的 B-2 定义段（「收窄它要在执行侧限制能跑哪些命令，不是在检测侧加机制」）、checkPeerLeak 与 effectiveReadPaths 注释（措施 a 声称的是文件系统级读取事实）；读 doc/08_project/BACKLOG.md 的 EV-16（根递归 grep 保留、B-2 作为已知残留风险接受、无缓解）；读 doc/05_testing/evidence/m9-acceptance-20260919/trace-20260919T120643Z.json 逐条核对 9 次 Grep 入参：全部 output_mode=content，path 为绝对路径，其中一次 path=项目根、pattern=checkModelSlugs\\\\(|checkCliVersions\\\\(（符号交替）——首跑对端历史件不在盘所以零命中，同主题重跑时这一条会命中对端审查文档。",
+      "suggestion": "在实施前把口径定死并写进设计（不是措辞调整）：①按 output_mode 分档——只有 content（内容真的回到模型）判作废，files_with_matches/count 落告警档；或 ②一律判作废，但承认为新规则并同步处置 B-2/EV-16（否则两通道相反结论要如实登记）；或 ③命中只进 J5 匹配集、不进措施 a。同时把「命中即读过」写进 §11.4，并说明 claude 家族在重跑主题下的作废概率与最坏代价（一次作废重跑 + 二次命中该侧 failed）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §四 T7 与 §2.2",
+      "problem": "T7 声称「断言匹配 15/15、consultedUnverified === false」，但这句断言在判据上不可实现：判据只回一个布尔，阈值是 matched / consulted.length < 0.8，15 项里对上 12 项恰好等于 0.8、不算小于，于是 consultedUnverified 仍为 false。也就是说 T7 能锁住的是「≥12/15」，任意 3 项的退化（只解析 content 模式、丢掉另两种模式；或 search_hit_paths 只并进一部分）都不会让这条用例变红——而 §2.2 的 15/15 正是本步全部改动的唯一端到端证据。此外 T7 夹具的 projectRoot 若是合成路径，§3.4 里 judgeRun 的 fs.realpath 一步会抛，计划没有说这步怎么处理。",
+      "evidence": "读 src/trivium/guard.ts:80-95 与 :346-360（SideVerdict 只 expose consultedUnverified；阈值与布尔推导）；读 test/unit/guard-capability.test.ts:324-337（现有 consulted 用例同样只断言布尔，两档各取 true/false）；读 plan §2.2、§3.4、§四 T7。",
+      "suggestion": "把 T7 的断言落在**匹配集**而不是布尔位上：对同一份夹具直接断言 grepHitPaths(trace) 覆盖那 5 项、且 readPaths(trace) 不含它们（这样每一项退化都当场红）；或在 SideVerdict 上补一块「未匹配的 consulted 项」明细并给它一个消费方（front-matter/report 的既有 consulted_unverified 渲染位）。只靠 80% 阈值，用例锁不住 15/15。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.1、§3.1 与 §四 T1/T7",
+      "problem": "解析器的三条分支和 T7 的基线都建在 §2.1 那三种输出模式样本上，而这些样本在本仓无法复核：归档证据里唯一的轨迹只留了 24 条 tool_use（10 Read / 9 Grep / 5 StructuredOutput，逐条数过）与 4 条 is_error 文本，成功 tool_result 的内容一个字节都没有（顶层键只有 sessionId/init/toolUses/toolErrors/permissionDenials/eventCount/denySettings/degradations），本仓也不存在任何 stdout.jsonl。于是 §2.2 的「41 条命中 / 15-15」与 §2.1 的「Found N files / count 尾行 / 分页尾行」只存在于计划正文，复核者与未来任何一次重跑都没有可对账的原始件。而形态差异是实打实的：§2.1 的唯一实测用相对 path（./src），生产 9/9 次全是绝对 path，且生产只出现过 content 一种模式——「命中路径相对项目根（cwd）」这个决定整个解析器正确性的假设，在生产输入形态上从未被验过；一旦它不成立，症状是命中集为空（J5 再次失败 / 措施 a 静默变盲），正是本步要修的那个现象。另外 T1 的夹具是「§2.1 截取 + 根改写为 /proj」，与该目录 README 写死的「这些是真跑出来的输出，不是手编的」约定有张力，改造范围没有登记。",
+      "evidence": "读 doc/05_testing/evidence/m9-acceptance-20260919/trace-20260919T120643Z.json（打印 keys、24 条 toolUses、9 条 Grep 的 input）；find . -name stdout.jsonl（除 node_modules/.git 外零命中）；读 test/fixtures/claude-events/README.md（目录约定与升版重录规则）；读 test/unit/claude-trace.test.ts:146-200（该目录已有兜底扫描，但只扫入参键名与值）。",
+      "suggestion": "先取原件再定解析：把第 2 跑原始 stdout.jsonl（脱敏后）落进 doc/05_testing/evidence/ 或夹具目录，用它作 §2.1 的追加样本（9 次真实 Grep 输出，含项目根级 content 搜索那一次），解析分支与 T7 夹具都从这份原件派生而非从计划摘录派生；夹具 README 注明来源与改写范围（截取、根前缀重写）。原件只在本机运行目录，我按任务书禁读清单未读它。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §六 R-4 与 §3.1/§3.2 改动清单",
+      "problem": "R-4 的处置写「init.cwd 在 trace 里可核，解析时以它为准、缺失才回落 projectRoot」，但 ClaudeTrace.init 今天只有 model/tools/permissionMode 三个字段，parseClaudeEvents 对 system/init 也只投影这三个键，而真实样本里该事件**确实带 cwd**。§三 的改动清单（§3.1/§3.2）没有「保留 init.cwd」这一项，trace.json 的写入点也不加它。按现清单实施，init.cwd 永远取不到，R-4 就是一条写了但不会触发的缓解措施——而它正是「相对命中路径按什么基准绝对化」唯一的兜底；生产 9/9 次 Grep 都传绝对 path，一旦将来传相对 path，这个基准假设直接决定命中集，也就直接决定措施 a 与 J5 的成败。",
+      "evidence": "读 src/trivium/adapters/claude-trace.ts:104-145（system/init 只投影三键）与其 ClaudeTrace 接口定义；读 test/fixtures/claude-events/path-denied.jsonl 首行（system/init 带 \\\"cwd\\\":\\\"/private/tmp/claude-probe-ffQFA9\\\"）；读 doc/05_testing/evidence/m9-acceptance-20260919/trace-20260919T120643Z.json 的 init 段（三键，无 cwd）。",
+      "suggestion": "要么把「ClaudeTrace.init 增设 cwd（含 trace.json 落点）」写进 §3.1 的改动清单并同步 §3.5 的文档回补，要么把 R-4 的处置改成「本步不做，基准固定 projectRoot 并注明这是未验假设」。不要留一条引用不存在字段的处置。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3.1「格式漂移的症状是命中数归零」与 §六 R-1",
+      "problem": "格式漂移只有 trace.json 的 grepHits / grepResultLines 两格留痕，判定面与准入面都没有信号；而 trace.json 只在成功出口写、全仓没有消费方读它——本项目对同形态已两次登记（EV-06「宣称了不存在的消费方」；deny_skipped 的立条理由就是「必须进判定面，而不是只躺在 trace.json」）。同时 grepResultLines 的口径（原始行数算哪些行、在哪个函数算）没定义，trace.json 的组装点（claude.ts 的 run()）也不在 §三 的改动清单里。漂移的后果在措施 a 上是**安全控制的静默变盲**（不是只影响 J5 计数），与 v1.3.12 教训七记的 agy grep 全盲同族。",
+      "evidence": "读 src/trivium/adapters/claude.ts:780-960（stdoutPath/tracePath 与 trace.json payload 的唯一组装点、超时与未完成两条出口 return 在写它之前）；读 src/trivium/types.ts:1574-1610（deny_skipped 的立条理由）；读 skills/dual-critic/schema/run.v2.json:270-318（verification_degraded 的 path/path_cause 是既有扩展点，改它要按 AGENTS.md 的契约同步清单走）；读 test/unit/claude-trace.test.ts:146-200（现有夹具兜底扫描只覆盖入参键名，不覆盖工具输出格式）。",
+      "suggestion": "本步仍不立探针格可以接受，但至少有两条低成本动作：①在已有夹具目录兜底扫描上加一条**输出腿**（凡夹具里含 Grep 结果的样本都必须解析出非零命中），把漂移在构建期打红——这正是 v1.3.12 教训七的既有对策形态；②若要让漂移进判定面，走已有的 verification_degraded.path/path_cause 扩展点并承担其 schema 同步成本，不要在 trace.json 里放一个无人读的字段。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §3.4",
+      "problem": "计划新写一个 normalizeForMatch(p, projectRoot, projectRootReal)，而 adapters/base.ts 已有 normalizeAbs（抹平 /private 前缀，正是 macOS /tmp↔/private/tmp 那条），guard.ts 也已经 import 了 base.js 的多个成员，复用路径现成。两份归一化并存后，「哪一侧该用哪一份」只能靠记忆——本项目对这类形态的既有判据是「一处事实一个来源」，注释里也多次记过两份判据必然漂移。另外 realpath 失败（夹具用合成 projectRoot、项目根不可解析）时的处置没有定义，而 T6/T7 的夹具根很可能就是合成路径。",
+      "evidence": "读 src/trivium/adapters/base.ts:1643-1652（normalizeAbs 与 isUnder 的 /private 处理）；读 src/trivium/guard.ts:1-25（已从 adapters/base.js import checkPeerLeak / effectiveReadPaths 等）与 :346-360（现状匹配器）。",
+      "suggestion": "说明为何不能扩展 normalizeAbs（例如符号链接 realpath 是它覆盖不到的），或直接复用/扩展它，只保留一份归一化；并把 realpath 取不到时的行为写清（抛错、回落，还是夹具必须用真实临时目录），否则 T6/T7 会卡在这一步。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §一(5) 与 §3.1",
+      "problem": "「trace.json 记 grepHits 供复核」与 §3.1 的改动清单不一致：这两格的写入点在 claude.ts 的 run()（trace.json 的唯一组装处），不在 claude-trace.ts 的函数清单里；两格的键名、语义（去重前后）、以及 grepResultLines 的计数口径都没定义。照字面只改解析器，这两格落不了地，R-1 的处置就只剩一句空话。",
+      "evidence": "读 src/trivium/adapters/claude.ts:908-956（trace.json payload 组装）；读 plan §一.5、§3.1。",
+      "suggestion": "把 trace.json 两格列进 §三 的改动清单，并写明「命中数（去重后）/ 原始非空行数」的口径与去重前的关系。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "三态形状与 model_provider 先例**同构**（焦点 2 的答复）：必填、没有该事实的族显式写 null、不省略键；进 CriticResult 而不进 run.json 这句我核过——meta 的逐侧段（review.ts 里 meta.critics[c] 手写字段表）连 read_paths 都不收，所以确实无 schema 变更；且因为字段必填，tsc 会强制所有构造点（共享出口 failedResult、runner 的异常分支、stub、测试字面量）补齐，T9 之外还有编译期兜底。",
+    "project_reads / pathCoverage 口径不动是对的：一次目录级 Grep 命中 41 个文件不等于读了 41 个文件，而 min_project_reads 的语义就是「打开了几个项目文件」；「只改匹配集与禁读核对」这条边界划得干净。",
+    "只认三种严格形态、不匹配的行一律丢弃不猜：宽松正则会把 Found N files / 分页尾行 / count 的汇总行当成路径灌进匹配集与作废集，那是把一个漏报问题换成一个误报问题。",
+    "Glob 不计（返回的是存在性而不是内容）与「content 模式文件级 Grep 归入参路径、不重复计」两条判断都对。",
+    "措施 a 仍不吃命令通道回填这条口径保持不变（effectiveReadPaths 的注释明写措施 a 声称的是文件系统级读取事实），本步新增的是另一个**真实输出**来源，而不是把「提到」并进「读到」。",
+    "agy / zcode / codex 记 null 与现状一致：我读到的 agy 事件面只有 parameters/error（无工具输出），zcode 的 rollout 解析只取 response.toolCalls[].input——「该族没有这种事实」在解析面上站得住。",
+    "不临场放宽阈值、不改 BRIEF 措辞、把 EV-75③ 与探针事实格拆成独立轮次，边界诚实；R-2 把「措施 a 变严可能导致首跑作废」如实登记而不是悄悄放宽，这个态度是对的（我的意见只在口径，不在取向）。",
+    "关于焦点 3：本步不单立探针事实格、只登记，可以接受；但本步必须先用**手边的生产轨迹**把格式事实坐实（见 CODEX-03），并把漂移的构建期守卫接上（CODEX-05）。",
+    "用真实轨迹做夹具（而不是合成数据）与 test/fixtures/claude-events/README.md 的既有约定同向，T1/T7 的方向对。"
+  ],
+  "not_covered": [
+    "未能独立复核 §2.2 的「41 条命中 / 15-15」：归档证据不含成功 tool_result 文本，原始 stdout.jsonl 只在本机运行目录，而任务书禁读清单禁止我读 ~/.trivium/runs 下任何文件，我没有读。",
+    "没有自己的 Grep 输出样本（环境只读、无该工具），「命中路径相对 cwd 而非相对 path」这条假设我无法独立验证，只能指出它在生产输入形态上没有样本。",
+    "agy / zcode 厂商原始轨迹里是否真的完全没有工具输出，我只读了适配器的解析面与类型定义，未读原始样本。",
+    "文档同步面只核了设计 §3.7/§10.1/§11.4 与 BACKLOG 的现状文本，未核 skills/dual-critic/protocol/ 与各 SKILL.md 是否需要跟着改。",
+    "T2/T3/T5/T6/T8 的变异强度未逐一评估，只审了 T7 的判据可达性（另有 T8 与 T4 的覆盖方向看起来合理）。",
+    "未执行 npm run check / 任何构建或测试（只读环境且本步无代码改动），全部结论基于静态阅读与归档证据复算。"
+  ],
+  "consulted": [
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/types.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/review.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/retention.ts",
+    "test/unit/claude-trace.test.ts",
+    "test/unit/guard-capability.test.ts",
+    "test/fixtures/claude-events/README.md",
+    "test/fixtures/claude-events/path-denied.jsonl",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-09-19_m9_claude_critic_acceptance.md",
+    "doc/05_testing/evidence/m9-acceptance-20260919/trace-20260919T120643Z.json",
+    "doc/05_testing/evidence/m9-acceptance-20260919/review-claude-20260919T120643Z.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/review.v1.json",
+    "package.json"
+  ]
+}

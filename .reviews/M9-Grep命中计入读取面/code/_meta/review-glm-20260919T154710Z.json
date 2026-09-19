@@ -1,0 +1,57 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "三把焦点核完，第 1 轮补的两把锁本身成立。最要紧的一条是焦点 3 的漏网：types.ts:1507 的 CriticResult 契约注释仍写「codex 的命令输出不进轨迹」，把 codex 归进「没有这种事实」一族——与已更正的三处（codex.ts / 设计 §10.1 / BACKLOG EV-76）矛盾，也与 codex-trace.ts:91 把 aggregated_output 逐字收进 commands[].output 的事实相反，是 CODEX-01 修改计划落点清单之外的第四处。T12 四格与 dispose 分派逐格对应，③ 锁的是「真命中后放行」而非「没命中」（deny 目录条目 /runs/proj-1/R1 前缀命中 ownRun 后经 classifyDenyPath 判 own-run-material、dispose 返回 null；删该放行会让 ③ 的 notedPaths 断言红）。toLogicalForm 对项目外路径保留原样、运行根条目命中不丢，T13 正反两格方向正确。另有一条 guard.ts 注释层的 nit。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/types.ts:1507",
+      "problem": "search_hit_paths 的契约注释在「三态与 model_provider 同构」的括号例举里写「codex 的命令输出不进轨迹」，把 codex 与 agy / zcode / stub 并列为「没有这种事实、显式写 null」的族。这与本批已更正的三处全部矛盾：codex.ts:225-228 写「**未采集**，不是『无此事实』：命令 stdout 就在轨迹里（commands[].output）」，设计 §10.1 新规则段与 BACKLOG EV-76 关闭行同口径。事实站在后者一边：codex-trace.ts:91 是 output: String(item['aggregated_output'] ?? '')，命令 stdout 逐字进轨迹，codex 记 null 的真实理由是「适配器未做命中解析」。查 response-claude.md 的 CODEX-01 修改计划，落点列了 codex.ts / 设计 §10.1 / BACKLOG EV-76、EV-16、EV-78 五处，不含 types.ts——这处漏改。后果落在后来者身上：EV-76 关闭行明写「codex 侧要做时另立条目、从 trace.json 的 commands[].output 起步」，而实现者第一站读的正是这份 CriticResult 契约注释，会被指向「原料不存在」的相反结论；且 1508 行那句「可选字段会让『没采集』与『没有这种事实』落成同一个观测」自己强调的三态纪律，恰好在这条例举上失效。",
+      "evidence": "读 src/trivium/types.ts:1503-1514（括号例举原文「agy / zcode 的流只有工具入参、codex 的命令输出不进轨迹、stub 不产真实输出」）；读 src/trivium/adapters/codex.ts:224-230（「未采集，不是『无此事实』……记 null 表示『本侧没有采集这项事实』」）；grep src/trivium/adapters/codex-trace.ts 命中第 91 行 output: String(item['aggregated_output'] ?? '')；读 .reviews/M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-response-claude.md 的 CODEX-01 裁决行（修改计划落点无 types.ts）；被审 diff 中设计 §10.1 新规则段与 BACKLOG EV-76 关闭行的对应措辞。",
+      "suggestion": "把 types.ts:1507 括号里 codex 那一项改成与 codex.ts 同款口径（「codex 的命令输出在轨迹里但未做命中解析——未采集」），或把该括号收窄为只列真正「无此事实」的三家（agy / zcode / stub）、单起一句注明 codex 属「未采集」。不必动其它措辞。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/guard.ts:160-165 与 268-274",
+      "problem": "两处注释在本轮插入后错位。其一，guard.ts:160-165「单侧判定……阈值是 80%」这段 docstring 原本属于 judgeSide，matchConsulted（自带完整 docstring）插在它之后，形成两个连续的 /** */ 块——JSDoc 只附着紧邻的声明，第一段成了悬空孤儿，judgeSide 在 IDE hover 下失去这段说明。其二，268 行起的旧注释首句「措施 a **只吃 read_paths，不吃回填**」在本轮并集之后字面前半已不准确（措施 a 现在还吃 search_hit_paths），紧随的 276-289 新注释块已完整交代新规则，但两段连排、字面冲突，读者要自行调和。",
+      "evidence": "读 src/trivium/guard.ts:160-192（连续两个 docstring 后是 matchConsulted 声明，judgeSide 紧随其后且无 docstring 附着）与 268-289（「只吃 read_paths」旧块与「吃两份真实读取事实」新块连排）。",
+      "suggestion": "把孤儿 docstring 移回 judgeSide 声明之上（或并入 matchConsulted 的说明并补一句 judgeSide 的阈值语义归属）；旧注释块首句改为「措施 a 只吃**真实读取**事实（read_paths 与 search_hit_paths）、不吃回填」以与新块衔接。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "T12 四格与 dispose 的分派逐格对应：①对端审查件经精确匹配命中后 dispose 判 peer-artifact（voiding）进 peerHits 与 typedHits；②.trivium/state.json 命中判 orchestrator-state、非作废只进 notedPaths/notedCategories；③己方材料是真命中后放行——deny 目录条目 /runs/proj-1/R1 是项目外绝对形态，toLogicalForm 保留原样，checkPeerLeak 按前缀匹配命中 ownRun，classifyDenyPath 按 seg[2]='claude'===critic 判 own-run-material，dispose 返回 null、三个集合都不记；删掉 dispose 的 own-run-material 放行会让该命中（非 voiding）落进 notedPaths，③的 deepEqual 断言红——锁的不是「没命中」。④置空恢复与①合并守「并集被删」变异，文件头第三次变异记录与代码事实相符。",
+    "T12 的两个前提由既有用例托底、无须重复锁：checkPeerLeak 的目录条目前缀匹配（含兄弟目录不误伤）由 deny-matrix.test.ts:291-310 守着，own-run-material 分类由 deny-category.test.ts:70-83 守着（含段数不足的保守处置与对端输出作废的反向格）。",
+    "toLogicalForm 没有弄丢项目外命中：rel === null 或 '.' 时保留原路径（guard.ts:291-295），运行根条目照常前缀命中，T12 ③ 即活证据。T13 正面格锁物理形态（init.cwd 为基准的命中）折成项目相对后按字面根解析回逻辑形态、命中逻辑形态条目；反面格明示「不带别名 = CODEX-02 的假阴性」并锁住「别名是修法」这件事。read_paths 与 search_hit_paths 经同一条语句送入，覆盖等价。",
+    "codex 措辞三处（codex.ts:224-230、设计 §10.1 新规则段、BACKLOG EV-76 关闭行）相互一致，且与 codex-trace.ts:91 的事实相符；agy / zcode / stub 的「无此事实」注释与各自轨迹形态（仅 parameters/input、桩不产输出）相符，两种 null 的分野在注释层面是清楚的。",
+    "consulted 交叉核对两条判定线现在共用一份归一化：matchConsulted 两边都过 toProjectRelative（guard.ts:409-413），judgeRun 算一次 realpath 别名传两侧；T7 回放 15/15 与修前 10/15 的断言和夹具事实吻合（上一轮静态清点过 24 条 tool_use 的构成，本轮复核该段代码未再变）。"
+  ],
+  "not_covered": [
+    "只读约束下未实跑任何测试与变异；T12 / T13 的结论是对 checkPeerLeak、classifyDenyPath、dispose、toLogicalForm 全链路的逐断言静态推演，不是实证复跑。",
+    "classifyDenyPath 的 isRunDirFile 分支（运行目录层的编排器文件 request.json / worker.log / status.json）在 search_hit_paths 通道无用例；deny-category.test.ts 所读段（45-95 行）未见该形态，95 行之后未查——属既有分类函数的覆盖面，本轮未改 freeze.ts，未深究。",
+    "runner.ts / brief.ts / render.test.ts / runner.test.ts 只在 diff 层看过改动段，未读完整调用上下文；两份 grep 夹具与 doc/05_testing/evidence 原件的 <ROOT> 前缀改写一致性未逐字节核对。",
+    "trace.json 的 grep 嵌套留痕（hits / listed / resultLines）只核了写入点（claude.ts 适配器），doctor / preflight 对 trace.json 既有字段的读法是否受新键影响未审。"
+  ],
+  "consulted": [
+    ".reviews/M9-Grep命中计入读取面/code/_meta/changes-20260919T154710Z.diff",
+    "src/trivium/guard.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/types.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/codex-trace.ts",
+    "test/unit/grep-hits.test.ts",
+    "test/unit/deny-category.test.ts",
+    "test/unit/deny-matrix.test.ts",
+    ".reviews/M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-glm.md",
+    ".reviews/M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-response-claude.md",
+    "/Users/chenzhenbo/.claude/skills/dual-critic/schema/review.v1.json"
+  ]
+}

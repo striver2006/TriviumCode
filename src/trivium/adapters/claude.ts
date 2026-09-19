@@ -41,6 +41,7 @@ import {
   extractClaudePath,
   finalReviewText,
   parseClaudeEvents,
+  parseGrepResults,
   pathCoverage,
   readPaths,
   successfulToolUses,
@@ -488,6 +489,11 @@ export function buildClaudeResult(
    * 埋在 `run()` 里的字段组装没有任何用例守得到——codex 侧的 M4 变异证实过这一点。
    */
   deny: Pick<DenySettingsBuild, 'ruleCount' | 'skipped' | 'bytes'>,
+  /**
+   * Grep 相对命中的绝对化基准，只在 `init.cwd` 缺失时用。可选是为了不动 14 处既有直调
+   * （它们的夹具 init 无 cwd 且不含 Grep 结果，缺省 null 即「相对命中丢弃」）。
+   */
+  opts: { fallbackRoot?: string | null } = {},
 ): CriticResult {
   /*
    * **运行期断言：白名单为空时不得产出「没有写事件」这个结论**（fail-closed 的后半）。
@@ -570,6 +576,11 @@ export function buildClaudeResult(
       run_command: 0,
     },
     read_paths: readPaths(trace),
+    /*
+     * Grep `content` 命中（EV-76 出路 ①）：基准 = `init.cwd`（回读）?? 调用方给的项目根。
+     * 只装 `content` 档；另两档留在 trace.json 的 `grep.listed`，不进判定面。
+     */
+    search_hit_paths: parseGrepResults(trace, opts.fallbackRoot ?? null).hits,
     /*
      * 覆盖率两个计数**无条件填**（算不出写 null，不省略键）。
      * `zcode.ts` 那边记过教训：省略键会让 `verification.path` 档位恒为 ok，
@@ -932,6 +943,12 @@ export const claudeAdapter: CriticAdapter = {
           toolErrors: trace.toolErrors,
           permissionDenials: trace.permissionDenials,
           eventCount: trace.eventCount,
+          /*
+           * Grep 结果解析留痕（EV-76 出路 ①，计划双审 CODEX-07）：
+           * `hits` = content 命中（去重后，进判定面）；`listed` = 另两档（去重后，只留痕）；
+           * `resultLines` = 成功 Grep 结果的非空行总数（去重前）。格式漂移 = hits 归零而 resultLines 不为零。
+           */
+          grep: parseGrepResults(trace, req.project_root),
           denySettings: {
             injected: settingsJson !== null,
             ruleCount: deny.ruleCount,
@@ -953,6 +970,8 @@ export const claudeAdapter: CriticAdapter = {
       'utf8',
     );
 
-    return buildClaudeResult(trace, out, { stdout: stdoutPath, trace: tracePath }, probe, readonlyTools, deny);
+    return buildClaudeResult(trace, out, { stdout: stdoutPath, trace: tracePath }, probe, readonlyTools, deny, {
+      fallbackRoot: req.project_root,
+    });
   },
 };

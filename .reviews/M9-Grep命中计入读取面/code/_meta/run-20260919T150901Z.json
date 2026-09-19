@@ -1,0 +1,277 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260919T150901Z",
+  "topic": "M9-Grep命中计入读取面",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点看三处：一、content 与另两档的分档在解析器与判定面是否一致，listed 有没有从哪条路漏进判定；二、措施 a 并入搜索命中后与 10.1.1 分档的接线，命中对端审查件是否真按作废类处置；三、T7 的集合断言与两次变异记录是否与代码事实相符",
+  "task_goal": "计划：Grep 命中文件计入读取面（EV-76 出路 ①）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "470ee846b60b3b2f065be155686948a94350ad83",
+    "tree_hash": "2f8045e73b784303ef5c2519b3433b3641d9a0b1",
+    "dirty": true,
+    "subject_sha256": "05c38932f0f2caa859247991915e2db8ed8c848cf342d6b71e40d3fe3deae8fa",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-19T15:09:02.698Z",
+  "finished_at": "2026-09-19T15:19:22.534Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 320.775,
+      "tool_calls": {
+        "run_command": 70,
+        "project_reads": 55
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0ba36-b740-7cd0-ad29-62fcc484f962",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.7",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 593.096,
+      "tool_calls": {
+        "read": 37,
+        "grep": 16,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 27
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 479125,
+        "output_tokens": 50005,
+        "thinking_tokens": 44003,
+        "cache_read_tokens": 7312857,
+        "total_tokens": 529130
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "339e89db-9c95-4534-889e-6edac3da123d",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 619.517,
+      "tool_calls": {
+        "read": 14,
+        "grep": 10,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 12
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 16,
+        "inputTokens": 1784687,
+        "outputTokens": 31655,
+        "totalTokens": 1816342,
+        "cacheReadTokens": 1634880,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_229b45f1-6824-405f-8d6b-da95adf9a94b",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M9-Grep命中计入读取面/plan/2026-09-19-M9-Grep命中计入读取面-gemini.md",
+    ".reviews/M9-Grep命中计入读取面/plan/2026-09-19-M9-Grep命中计入读取面-glm.md",
+    ".reviews/M9-Grep命中计入读取面/plan/_meta/review-gemini-20260919T142238Z.json",
+    ".reviews/M9-Grep命中计入读取面/plan/_meta/review-glm-20260919T142238Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": true,
+        "commands": [
+          "/bin/zsh -lc \"cd /Users/chenzhenbo/Work/TriviumCode && node -e '\nconst fs=require(\\\"fs\\\");\nconst {parseClaudeEvents, parseGrepResults}=require(\\\"./dist/test/src/trivium/adapters/claude-trace.js\\\");\nconst raw=fs.readFileSync(\\\"test/fixtures/claude-events/grep-content-absolute-path.jsonl\\\",\\\"utf8\\\").split(\\\"<ROOT>\\\").join(\\\"/proj/m9-acceptance\\\");\nconst t=parseClaudeEvents(raw);\nconst g=parseGrepResults(t,\\\"/proj/m9-acceptance\\\");\nconsole.log(\\\"hits\\\",g.hits.length,\\\"listed\\\",g.listed.length,\\\"resultLines\\\",g.resultLines);\nconst outside=g.hits.filter(h=>\"'!h.startsWith(\"/proj/m9-acceptance/\"));\nconsole.log(\"hits outside fake root:\",outside);\nconsole.log(\"hits under .reviews:\"); for(const h of g.hits) if(h.includes(\"/.reviews/\")) console.log(\"  \",h.replace(\"/proj/m9-acceptance/\",\"\"));\nconsole.log(\"hits under .trivium:\"); for(const h of g.hits) if(h.includes(\"/.trivium\")) console.log(\"  \",h);\nconsole.log(\"sample of hits:\"); for(const h of g.hits.slice(0,12)) console.log(\"  \",h.replace(\"/proj/m9-acceptance/\",\"\"));\n'\"' 2>&1 | head -60\""
+        ],
+        "hits": [
+          {
+            "command": "/bin/zsh -lc \"cd /Users/chenzhenbo/Work/TriviumCode && node -e '\nconst fs=require(\\\"fs\\\");\nconst {parseClaudeEvents, parseGrepResults}=require(\\\"./dist/test/src/trivium/adapters/claude-trace.js\\\");\nconst raw=fs.readFileSync(\\\"test/fixtures/claude-events/grep-content-absolute-path.jsonl\\\",\\\"utf8\\\").split(\\\"<ROOT>\\\").join(\\\"/proj/m9-acceptance\\\");\nconst t=parseClaudeEvents(raw);\nconst g=parseGrepResults(t,\\\"/proj/m9-acceptance\\\");\nconsole.log(\\\"hits\\\",g.hits.length,\\\"listed\\\",g.listed.length,\\\"resultLines\\\",g.resultLines);\nconst outside=g.hits.filter(h=>\"'!h.startsWith(\"/proj/m9-acceptance/\"));\nconsole.log(\"hits outside fake root:\",outside);\nconsole.log(\"hits under .reviews:\"); for(const h of g.hits) if(h.includes(\"/.reviews/\")) console.log(\"  \",h.replace(\"/proj/m9-acceptance/\",\"\"));\nconsole.log(\"hits under .trivium:\"); for(const h of g.hits) if(h.includes(\"/.trivium\")) console.log(\"  \",h);\nconsole.log(\"sample of hits:\"); for(const h of g.hits.slice(0,12)) console.log(\"  \",h.replace(\"/proj/m9-acceptance/\",\"\"));\n'\"' 2>&1 | head -60\"",
+            "path": "/Users/chenzhenbo/Work/TriviumCode/.trivium",
+            "category": "orchestrator-state"
+          }
+        ]
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/changes-20260919T150901Z.diff",
+      "sha256": "05c38932f0f2caa859247991915e2db8ed8c848cf342d6b71e40d3fe3deae8fa"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/brief-codex-20260919T150901Z.md",
+      "sha256": "0b26df7573f266300783b0481033aa409d165ba0667fa73fadcf5aa2ea169916"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/brief-gemini-20260919T150901Z.md",
+      "sha256": "83be2f0934ccfd17e551ac605b29179e72870c392e7c5fe100b97ce7fba6c344"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/brief-glm-20260919T150901Z.md",
+      "sha256": "3b07cfbea64d3ad3111593ce0e8001a6e18dd892ea46f564493be0aa8a5c95cf"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/review-codex-20260919T150901Z.json",
+      "sha256": "6358d0f2adff95babe33cd96bd3e9740b147410b2676222a87fb6344a506e107"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/review-gemini-20260919T150901Z.json",
+      "sha256": "d5647c4ea3ddc86efac149f7f892f3879e47ed8f376e1af4e43e48e7a4aaf800"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/review-glm-20260919T150901Z.json",
+      "sha256": "e9b9f7fa243ef4fa7ecff17fe2e42a884cd4dde7f9b7406e7015880ba6e00812"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-codex.md",
+      "sha256": "040bea0462624f05478ac34e868b7bd7801161628fe19dba44815ad01ba122eb"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-gemini.md",
+      "sha256": "3941cc71a2900971a0e4193dda3b62ea6686362a185c6855363e5a4f027d7ab9"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-glm.md",
+      "sha256": "880ee25bae83bd7eb60adb90d548642cc7d05934f025aeb73939ab214822d95d"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

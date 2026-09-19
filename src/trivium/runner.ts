@@ -235,6 +235,7 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
         profile_requested: input.requests[critic]?.profile_requested ?? null,
         tool_calls: {},
         read_paths: [],
+        search_hit_paths: null,
         write_events: [],
         command_texts: [],
         evidence_ok: false,

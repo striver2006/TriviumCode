@@ -1,0 +1,273 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260919T154710Z",
+  "topic": "M9-Grep命中计入读取面",
+  "stage": "code",
+  "rerun_index": 2,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "第 2 轮只看第 1 轮补的两把锁：T12 四格对 dispose 的分派是否逐格对应、己方材料那格是否真的锁住了「不记」而非「没命中」；toLogicalForm 折成相对形态后送进 checkPeerLeak，项目外路径与运行根条目的命中有没有被顺手弄丢；codex 侧「未采集」的措辞三处是否一致",
+  "task_goal": "计划：Grep 命中文件计入读取面（EV-76 出路 ①）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "470ee846b60b3b2f065be155686948a94350ad83",
+    "tree_hash": "7e1dbe0927375c2a0713ca9ba9d67b6d3601fea8",
+    "dirty": true,
+    "subject_sha256": "84d7f2483d7a4941996aa63b47de9670ab783d9980edaae53c9049ef9008d654",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-19T15:47:11.702Z",
+  "finished_at": "2026-09-19T15:54:27.779Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 435.852,
+      "tool_calls": {
+        "run_command": 93,
+        "project_reads": 62
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0ba59-a4b6-7e60-b0a3-31ef7a5b4367",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.7",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 270.235,
+      "tool_calls": {
+        "read": 24,
+        "grep": 7,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 14
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 225868,
+        "output_tokens": 41552,
+        "thinking_tokens": 37249,
+        "cache_read_tokens": 2512321,
+        "total_tokens": 267420
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "9109a036-5e80-4da7-9dee-a1b6a6ae2250",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 418.807,
+      "tool_calls": {
+        "read": 13,
+        "grep": 7,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 10
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 9,
+        "inputTokens": 843301,
+        "outputTokens": 28084,
+        "totalTokens": 871385,
+        "cacheReadTokens": 733184,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_5ec3eaba-9e34-480b-8a98-f28c422fae90",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-gemini.md",
+    ".reviews/M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-glm.md",
+    ".reviews/M9-Grep命中计入读取面/code/_meta/review-gemini-20260919T150901Z.json",
+    ".reviews/M9-Grep命中计入读取面/code/_meta/review-glm-20260919T150901Z.json",
+    ".reviews/M9-Grep命中计入读取面/plan/2026-09-19-M9-Grep命中计入读取面-gemini.md",
+    ".reviews/M9-Grep命中计入读取面/plan/2026-09-19-M9-Grep命中计入读取面-glm.md",
+    ".reviews/M9-Grep命中计入读取面/plan/_meta/review-gemini-20260919T142238Z.json",
+    ".reviews/M9-Grep命中计入读取面/plan/_meta/review-glm-20260919T142238Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/changes-20260919T154710Z.diff",
+      "sha256": "84d7f2483d7a4941996aa63b47de9670ab783d9980edaae53c9049ef9008d654"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/brief-codex-20260919T154710Z.md",
+      "sha256": "17ad9b557fc9f054da70fdc7b9bed2cfd22e08a2acdab567acbeb36f0eb8e7ce"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/brief-gemini-20260919T154710Z.md",
+      "sha256": "f427b8a8e16587b0067a9762a2284b0455fc02bb272487e6eaf89a503fa89031"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/brief-glm-20260919T154710Z.md",
+      "sha256": "158a99f206bedc7f7e210c0a7a8afbc2364e953e2b421de74f45c5df28328f87"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/review-codex-20260919T154710Z.json",
+      "sha256": "6717ec2e8de7960d74fadef7eb5499bcfb9a628fca52ad2845696983d975035e"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/review-gemini-20260919T154710Z.json",
+      "sha256": "1aa0d832c0610fa08e4a0819fb4aa62eba7febb5f8de4afcdf9f25bbc77cf1e0"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/_meta/review-glm-20260919T154710Z.json",
+      "sha256": "49b2ae92eff637695baa0c7598cea0c93b1e4747ecde24fd8f8492f67685c55e"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-r2-codex.md",
+      "sha256": "4f111cbecb07297c18023820ad853c516c5ddc2bd426aae7084965ba66c0ca69"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-r2-gemini.md",
+      "sha256": "bad509a160ed49f59e22608a267b7adaeeb7fcfb4acc8422670225d7691ee1b2"
+    },
+    {
+      "path": "M9-Grep命中计入读取面/code/2026-09-19-M9-Grep命中计入读取面-r2-glm.md",
+      "sha256": "f5b57a8d17131623635f54c4caab8239743d02cf60bfcb11406c8ec8ca733181"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

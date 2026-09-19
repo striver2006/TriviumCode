@@ -1,0 +1,99 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "方向与事实底座扎实：出路①要补的洞（Grep tool_result 不在解析面）真实存在，CODEX-07 的匹配器缺口逐字核实，三态取 model_provider 先例正确。两条 major：①措施 a 无差别吃三种 output_mode 的命中——files_with_matches 只披露存在性，按计划自己的 Glob 排除理由（「文件存在不是内容」）不该与 content 同档作废，而第 2 跑证据显示审查员常态会打根目录级 Grep（trace 有一条 path=<ROOT> 扫进 .reviews）、且 §12.1 的「作废重跑一次」标注待实施，一次误触即烧掉整轮；②T7 声称锁 15/15 但 SideVerdict 只有 consultedUnverified 布尔，实际只能锁住 ≥80%，丢 1~3 个命中的解析退化会静默通过。其余为事实面缺口（init.cwd 未被解析器采集、绝对 path 形态未实测样本、§9.3 引错章节）与先例表述不准。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.3（措施 a 行）与 §3.1 末行（Glob 不计）",
+      "problem": "措施 a 对三种 output_mode 的命中一律按作废类处置，但 files_with_matches 只向模型披露「文件存在」（与 count 的频次），不披露内容——这与计划自己在 §3.1 排除 Glob 的理由（「它返回的是文件存在，不是内容」）直接矛盾：同一份存在性信息经 Grep 列出即作废、经 Glob 列出则完全零后果。叠加两个已核实的事实，首次真实轮的作废概率不可忽略：(a) 审查员的常态工作流包含根目录级 content Grep——第 2 跑证据 trace 里 9 条 Grep 有一条 path 就是整个根（扫进 .reviews，该次仅因 pattern 碰巧不匹配对端审查件而零命中 deny 集）；(b) 设计 §12.1 对 peer_leak 的处置是「该侧作废并重跑一次」，且该重跑机制明文标注**待实施**——现行机制下一次误触就是烧掉整轮（9 分钟 / $1.6）且 M9 第 6 步再失败一次。R-2 只写了「如实登记，不放宽」，没有回答存在性披露为何配作废、也没写作废后无重跑时的操作后果。",
+      "evidence": "src/trivium/guard.ts:227-241（dispose/isVoidingCategory 分档，命中按类处置）、doc/05_testing/evidence/m9-acceptance-20260919/trace-20260919T120643Z.json（实测统计：24 条 tool_use，9 条 Grep 全为绝对 path，其中一条 path=克隆根目录）、doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2444（§12.1「重跑一次」标注待实施）、doc/02_design/…设计.md:400（§3.7：威胁模型记的是「从被拒目录取到内容」）、plan §3.1 末行、plan §2.2（41 命中对 deny 零命中系 pattern 运气）",
+      "suggestion": "措施 a 的消费按 output_mode 分档或至少把「存在性披露也作废」当成一个显式决策写透：要么 content/count 吃全、files_with_matches 单独定档（并回答与 Glob 的口径为何不同），要么维持一律作废但补两件事——§10.1 修订处写明存在性披露的作废理由，以及作废在「重跑一次」未实施的现状下对第 6 步第 2 轮意味着什么（是否需要 BRIEF 侧引导 Grep 避开 .reviews 作缓解）。方向上吃命中是对的（content 文本真实进入模型上下文、CLI deny 对 Grep 实测不生效），问题只在档位一刀切。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §四 T7",
+      "problem": "T7 断言「匹配 15/15、consultedUnverified === false」，但 judgeSide 的返回面里没有任何数值观测量：matched 是函数内局部量，SideVerdict 只暴露 consultedUnverified 布尔（80% 阈值）。照计划写出的测试只能锁住「≥12/15」，锁不住 15/15——某个解析分支退化丢掉 41 个命中里的 1~3 个（如 content 正则对某形态失配）时 T7 与 T4 照样全绿，J5 也照样过。变异表声称 T7「任一环节退化必红」，这只对跌破 80% 的大退化成立。",
+      "evidence": "src/trivium/guard.ts:91-92（SideVerdict 无计数字段）、src/trivium/guard.ts:347-360（matched 为局部量，只有 <0.8 才翻布尔）、test/unit/guard-capability.test.ts:324-338（既有 consulted 用例同样只断言布尔）、plan §四 T7 行",
+      "suggestion": "二选一：给 SideVerdict 暴露 matchedCount（或 matched 列表）并在 T7 断言 ===15；或 T7 在断言布尔之外，用导出的 normalizeForMatch 独立断言「read_paths ∪ search_hit_paths 归一后 ⊇ consulted 全部 15 项」。后者不动判定面，代价更小。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.1 / R-4",
+      "problem": "R-4 写「init.cwd 在 trace 里可核、解析时以它为准、缺失才回落 projectRoot」，但 ClaudeTrace.init 今天只采集 model/tools/permissionMode——cwd 在原始 system/init 事件里确实存在（read-sentinel.jsonl 第 1 行含 cwd 字段，且是 realpath 形态 /private/tmp/…），却被解析器丢弃。grepHitPaths 想以 init.cwd 为准，前提是先扩 parseClaudeEvents 的 init 捕获，这一改动不在计划的改动清单里，§3.1 的函数签名也只收 projectRoot。另「cwd = 项目根，设计 §9.3」引错章节：§9.3 是差异化审查镜头；cwd=<project_root> 的模板在 §11.2（2319 行，agy 一节），claude 侧该事实其实是构造性的——invokeClaude 显式 cwd: req.project_root。",
+      "evidence": "src/trivium/adapters/claude-trace.ts:48（init 类型无 cwd）、claude-trace.ts:117-122（init 捕获不取 cwd）、test/fixtures/claude-events/read-sentinel.jsonl:1（原始事件含 \"cwd\":\"/private/tmp/…\"）、src/trivium/adapters/claude.ts:873（cwd: req.project_root）、doc/02_design/…设计.md:1673 与 2319（§9.3 标题 vs cwd 模板所在行）",
+      "suggestion": "两选一并对齐文案：要么把「init 采集 cwd」补进 §3.1 的解析器改动（反正该文件已因 toolResults 要动），R-4 照写；要么删掉 init.cwd 说法、grepHitPaths 一律按 projectRoot 解析（构造上 cwd 就是 project_root，成立），并把「设计 §9.3」的引用改准。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.1 / §3.1 / T1",
+      "problem": "§2.1 的格式表（计划明言「复核时按 §二给的样本看，不要信本文的概括」）只实测了 path: ./src 的相对形态；而第 2 跑真实轨迹里 9 条 Grep 的 path 全是绝对路径（<ROOT>/src、<ROOT> 等），「命中路径相对 cwd、不是相对 path」这一关键断言在绝对 path 形态下既无样本也无记录。T7 夹具恰恰截自这条绝对形态轨迹、T1 夹具却来自相对形态实验——若绝对形态下命中行呈现不同（相对被搜目录、或绝对），§3.1 的解析与「相对路径按 projectRoot 绝对化」会整体对不上，且 T1 绿不能代表 T7 绿。这是纪律 1 的标准场景：取值靠实测才知道，而 §二只给了半边的实测。",
+      "evidence": "doc/05_testing/evidence/m9-acceptance-20260919/trace-20260919T120643Z.json（逐条 toolUses：9 条 Grep 的 path 全为 /private/tmp/…/scratchpad/m9-acceptance 下的绝对路径，output_mode 全为 content）、plan §2.1（样本仅 path: ./src）、plan T1/T7（两夹具来源不同形态）、原始 stdout.jsonl 在禁读运行根内、本侧无法独立复核 41/15/15",
+      "suggestion": "§2.1 补一行绝对 path 形态的真实命中样本（或至少声明「绝对形态下命中行仍相对 cwd」并由第 2 跑复算背书）；T1 夹具至少含一条绝对 path 的样本，使解析器对两种入参形态都有锁。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3.2 / §3.3",
+      "problem": "三处契约性表述与代码事实不齐：①「三态与 model_provider / read_paths 同构」——read_paths 是必填 string[]、没有 null 态（types.ts:1502），command-trace 族的结构性空用 [] + capability 档位表达；能类比的先例只有 model_provider（必填 + null=该族无此事实，types.ts:1483）。把 read_paths 也列为同构先例，读者会得出「另三家也可填 []」的错读。②构造点只列 runner.ts:237 与 stub.ts，漏了 base.ts 的 failedResult（claude 侧超时与「未产出最终回复」两条出口都走它，base.ts:215 起）以及 agy/zcode/codex 三家适配器与测试夹具——必填字段由 tsc 兜住不会真漏，但 T9 声称守「三态不塌缩」，其论域应列全。③§3.3 写「分类沿用 categorizeDenyHit」——仓库无此函数，实际是 classifyDenyPath + isVoidingCategory（freeze.ts:69/149）与 guard.ts 的 dispose 闭包；照名字找不到落点。",
+      "evidence": "src/trivium/types.ts:1483（model_provider 必填可空）、types.ts:1502（read_paths 必填不可空）、src/trivium/adapters/base.ts:215-275（failedResult 构造 CriticResult）、src/trivium/adapters/claude.ts:892-923（两条失败出口均经 failedResult）、src/trivium/freeze.ts:69/149（实际函数名）、src/trivium/runner.ts:218-255（异常路径构造）、plan §3.2/§3.3/T9",
+      "suggestion": "先例表述改为只提 model_provider；构造点清单补 failedResult 与三家适配器（并说明 tsc 必填是主闸门）；函数名改为 classifyDenyPath / isVoidingCategory。均为文案级修正，不影响方案本体。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "出路①针对的洞真实：parseClaudeEvents 今天只留 is_error 的 tool_result（claude-trace.ts:137），成功结果内容被丢弃，而 tool_use 已带 id、配对通道现成——计划的 §2.3 事实全部核实无误。",
+    "措施 a 吃 Grep 命中在 content/count 形态下成立：tool_result 文本真实进入模型上下文（与 Read 同一通道），设计 §3.7 实测 CLI 路径级 deny 对 Grep 不生效，事后轨迹核验是那条通道唯一兜底；这与 guard.ts/base.ts 里「措施 a 不吃回填」的既有裁定不冲突——回填是输入侧字面量，grep 命中是输出侧内容，区分是对的。",
+    "三态取 model_provider 先例（必填 + null=该族无此事实）与本仓「可选会让『没有这种事实』与『没采到』同形」的既有纪律一致；不进 run.json / 审查文档、无 schema 变更的主张核实成立（skills/dual-critic/schema/ 无 trace 契约，CriticRunMeta 逐侧段确无 read_paths 同款）。",
+    "agy / zcode / codex 不可达的边界声明与三家解析器现状相符：AgyToolCall 只有 parameters+error，zcode 轨迹只有 toolCalls[].input，codex 命令事件无输出——「不是没做」的登记方式诚实。",
+    "CODEX-07 的缺口描述逐字对上（guard.ts:350-356 前缀切片 + 精确相等 + ./ 变体），§3.4 的归一化方案与 T6 用例能关掉它；judgeRun 一次 realpath、经 opts 传给 judgeSide 保持纯函数的做法与现有测试形态（guard-capability.test.ts 以字面根直调 judgeSide）兼容。",
+    "project_reads 计数口径不动（一次命中 41 文件≠读 41 文件）、Glob 不计、探针事实格缓立并登记 BACKLOG（严格形态漂移的症状是归零而非误计，grepResultLines 留痕可分辨）——三项取舍均合理。",
+    "§2.2 的复算框架与证据 trace 间接印证一致：24 条 tool_use、Read 10 / Grep 9 / StructuredOutput 5，_meta 命中不在 deny 集。"
+  ],
+  "not_covered": [
+    "第 2 跑原始 stdout.jsonl 在禁读运行根内，41 命中与 15/15 复算数字只能采信计划自述（tool_use 侧分布已用证据 trace 交叉印证），tool_result 的真实文本形态本侧未见过。",
+    "未实跑任何构建/测试/变异（只读审查）；T1~T9 的实际可写性与变异红否未经执行验证。",
+    "skills/dual-critic/protocol BRIEF 第 4 段原文未读，「实际读过」措辞的精确出处与 EV-76 出路②的关系未复核。",
+    "run.v2.json schema 全文未读，逐侧段无 read_paths 的结论经 types.ts 与计划交叉得出。",
+    "checkPeerLeakViaCommand / 措施 b 的 F-1~F-9 清单细节未逐条核（与本步改动无直接交集）；gate --check 接线（EV-75③）按计划明示不在本轮，未深查。",
+    "stub 适配器（可扮任意 critic）的 search_hit_paths 该填 null 还是数组，计划未写、本侧不裁，留实现期定。"
+  ],
+  "consulted": [
+    ".reviews/M9-Grep命中计入读取面/plan/2026-09-19-M9-Grep命中计入读取面-claude.md",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/types.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/freeze.ts",
+    "test/unit/claude-events.test.ts",
+    "test/unit/guard-capability.test.ts",
+    "test/fixtures/claude-events/read-sentinel.jsonl",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-09-19_m9_claude_critic_acceptance.md",
+    "doc/05_testing/evidence/m9-acceptance-20260919/trace-20260919T120643Z.json"
+  ]
+}
