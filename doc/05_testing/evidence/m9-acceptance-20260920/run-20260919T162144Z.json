@@ -1,0 +1,130 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260919T162144Z",
+  "topic": "M9-验收-3812f4c",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "这是 M9 第 6 步验收：被审对象是历史提交 3812f4c 的 src 与 test 差异。重点看 adapters/base.ts 的只读失守判定改动是否仍有绕过形态，以及 preflight.ts 的泛化是否漏掉了某一侧",
+  "task_goal": null,
+  "entry": "C",
+  "driver": "codex",
+  "driver_enabled": false,
+  "critics_selected": [
+    "claude"
+  ],
+  "snapshot": {
+    "git_head": "654877b04e31545d3497e08c71441b3aade06413",
+    "tree_hash": "2775be383d37b6e0d31008e1eb6240af57f3ceb9",
+    "dirty": true,
+    "subject_sha256": "a3301d7d7c960f81135e21ddf5b98ba830169e82fc545c1bc5437dbf2d16748e",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-19T16:21:44.610Z",
+  "finished_at": "2026-09-19T16:28:53.950Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "claude": {
+      "vendor": "anthropic",
+      "cli_version": "2.1.277",
+      "model_requested": "claude-sonnet-5",
+      "model_effective": "claude-sonnet-5",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 429.183,
+      "tool_calls": {
+        "read": 11,
+        "grep": 10,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 11
+      },
+      "evidence_ok": true,
+      "usage": {
+        "cost_usd": 1.2452288000000002
+      },
+      "heterogeneous": false,
+      "override_reason": "档位 （缺省） 的默认模型落在 Claude 系",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "9404bc4d-972d-47c2-acd5-83de5da29c6d",
+      "peer_deny_applied": true,
+      "deny_skipped": 0,
+      "deny_rule_count": 18,
+      "deny_bytes": 545
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "claude": true
+    },
+    "deny_skipped": {
+      "claude": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "claude": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "claude": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1
+    },
+    "verification_degraded": {
+      "claude": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M9-验收-3812f4c/code/_meta/changes-20260919T162144Z.diff",
+      "sha256": "a3301d7d7c960f81135e21ddf5b98ba830169e82fc545c1bc5437dbf2d16748e"
+    },
+    {
+      "path": "M9-验收-3812f4c/code/_meta/brief-claude-20260919T162144Z.md",
+      "sha256": "3473912e522b2218eb0275cd43babe024bb18265142d57fe4fc5984474e6b9b3"
+    },
+    {
+      "path": "M9-验收-3812f4c/code/_meta/review-claude-20260919T162144Z.json",
+      "sha256": "302c4c906b8063bf2618eae89768bce572f71212a470a91521c3549d65316c58"
+    },
+    {
+      "path": "M9-验收-3812f4c/code/2026-09-20-M9-验收-3812f4c-claude.md",
+      "sha256": "c692b30e9e273e3d834d723ad7387485adc616796dbf3e5f98da3f04541c1cb2"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

@@ -1,0 +1,21 @@
+CLAUDE-01 对照：短旗标
+  $ rm -rf src/existing-dir
+  writes=[] suspected=["rm 的幂等形态，成功退出不等于发生了写入"]
+CLAUDE-01 主张：长旗标 + 递归
+  $ rm -r --force src/existing-dir
+  writes=[] suspected=["rm 的幂等形态，成功退出不等于发生了写入"]
+CLAUDE-01 对照：无 -f 的递归删除
+  $ rm -r src/existing-dir
+  writes=["rm -r src/existing-dir"] suspected=[]
+CLAUDE-02 主张：仅 &> 作写入手段
+  $ echo secret &> src/leak.txt
+  writes=[] suspected=[]
+CLAUDE-02 主张：仅 &>> 作写入手段
+  $ echo secret &>> src/leak.txt
+  writes=[] suspected=[]
+CLAUDE-02 对照：普通 >
+  $ echo x > src/a.ts
+  writes=["echo x > src/a.ts"] suspected=[]
+CLAUDE-02 对照：现有用例形态
+  $ echo x > src/a.ts &> /dev/null
+  writes=["echo x > src/a.ts &> /dev/null"] suspected=[]

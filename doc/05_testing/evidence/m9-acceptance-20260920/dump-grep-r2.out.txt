@@ -1,0 +1,48 @@
+== Grep is_error=False output_mode=None path=src/trivium/adapters/base.ts pattern=REDIRECT_RE|unwrapSubshell|WRITE_VERB_TARGET\b|extractPathTokens|Suspe
+   lines=2
+   | Found 1 file
+   | src/trivium/adapters/base.ts
+== Grep is_error=False output_mode='content' path=src/trivium/adapters/base.ts pattern=REDIRECT_RE\s*=|unwrapSubshell\s*[=(]|function unwrapSubshell
+   lines=4
+   | 299:function unwrapSubshell(cmd: string): string {
+   | 375:const REDIRECT_RE = /^[0-9]*>>?/;
+   | 497:  const cmd = unwrapSubshell(rawCommand);
+== Grep is_error=False output_mode='content' path=src pattern=checkModelSlugs\(|checkCliVersions\(|checkReadonlyCapability\(|DEFAULT
+   lines=21
+   | src/trivium/config.ts:20:import { DEFAULT_CRITICS } from './types.js';
+   | src/trivium/config.ts:227:      default_critics: [...DEFAULT_CRITICS],
+   | src/trivium/types.ts:89:export const DEFAULT_CRITICS: readonly CriticId[] =
+== Grep is_error=False output_mode='content' path=src/trivium/cli.ts pattern=runPreflight\(|PreflightOptions|critics:|--critics
+   lines=8
+   | 130:      --critics <id,…>  本轮入选的审核者，逗号分隔（1～review.max_critics 个）。
+   | 133:      --only gemini|glm  仅跑一侧。**--critics 的单元素旧写法**，两者不能同时给
+   | 148:  trivium preflight --stage plan|code|bug|all [--json] [--critics <id,…>] [--skip-auth-check] [--refresh-auth]
+== Grep is_error=False output_mode='content' path=src/trivium/types.ts pattern=CriticId|CRITICS\b|DEFAULT_CRITICS\b" -n
+   lines=26
+   | 40: * 中间靠 `CRITICS` 那个 `as` 断言把差异抹平。第 6 步的桩夹具正是被它卡住：
+   | 49: * **运行期的真集合始终是 `CRITICS`**（由 `criticEnabled` 派生）。
+   | 51:export type CriticId = AgentId;
+== Grep is_error=False output_mode='content' path=src/trivium/preflight.ts pattern=process\.execPath|runtime\.node
+   lines=4
+   | 187:  const runner = vp.runner === 'node' ? (cfg.runtime.node ?? process.execPath) : entry;
+   | 412:  // nodePath 取与运行期同一口径：配了 runtime.node 的机器上，预检与真实运行
+   | 414:  const actx: AdapterContext = { cfg: ctx.config, nodePath: ctx.config.runtime.node ?? process.execPath };
+== Grep is_error=False output_mode='content' path=src/trivium/types.ts pattern=SuspectedWrite|suspected_write_events
+   lines=3
+   | 650: * 一条判不实的写入线索（`CriticResult.suspected_write_events` 的元素）。
+   | 655:export interface SuspectedWrite {
+   | 981:  suspected_write_events?: SuspectedWrite[];
+== Grep is_error=False output_mode='content' path=src/trivium/adapters/base.ts pattern=extractPathTokens|&>|REDIRECT_RE" -n src/trivium/adapters/base.ts
+   lines=4
+   | 496:export function extractPathTokens(rawCommand: string): string[] {
+   | 570:    for (const tok of extractPathTokens(cmd)) {
+   | 645: * **fd 重定向不是分隔符**：`2>&1`、`>&2`、`&>file` 里的 `&` 与命令分隔无关。
+== Grep is_error=False output_mode='content' path=src/trivium/guard.ts pattern=readonlyBreach|write_events|classifyWriteCommands" -n src/trivium/guar
+   lines=12
+   | 30:  readonlyBreach: boolean;
+   | 52:   * 不参与 `readonlyBreach`——它是排查线索，不是判决。
+   | 62:   * **三态不得塌缩**：`readonlyBreach: false` 与 `peerHits: []` 各有两个来源——
+== Grep is_error=False output_mode='content' path=src/trivium/adapters/codex.ts pattern=write_events|classifyWriteCommands" -n src/trivium/adapters/codex.ts
+   lines=2
+   | 195:    write_events: writes,
+   | 196:    suspected_write_events: suspected,
