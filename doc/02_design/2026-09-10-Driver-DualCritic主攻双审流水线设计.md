@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.29
+> - **当前版本**：v1.3.30
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -23,19 +23,24 @@
 >   审查尺度 slug 回读，见 3.7 / 3.7.1 与下方报告⑥；第 2 步探针补三个机读字段：
 >   `stream_json_requires_verbose`（EV-40 结案）、`path_deny.coverage_complete`、
 >   `strict_mcp_config_applied`，见 3.7 与 11.1 判据一收束段——
->   **这两步不改对外行为**）；M9 第 3 步（`adapters/claude.ts` 本体与准入收口）与
->   **第 4 步（配套六件 + Hook 语义 + 夹具收口）已合入**——
->   **claude 的 `criticEnabled` 自第 4 步起为 `true`，已是可选审核者**
->   （`defaultSelected` 仍为 false，缺省集合不变；`--critics claude` 仍退 64，
->   因为「当轮 Driver 不得入选」是独立检查，放开 Driver 指定要等第 5 步）。
->   M9 第 5～7 步与 M10～M11 尚未开工。
+>   **这两步不改对外行为**）**以及 M9 第 3～7 步——M9 全部七步已达成（2026-09-20，v1.3.30）**：
+>   第 3 步 `adapters/claude.ts` 本体与四条准入前置（3.7 / 3.7.1，报告⑦）；
+>   第 4 步配套六件 + Hook 语义——**claude 的 `criticEnabled` 自此为 `true`、抬头 Critic-D，已是可选审核者**
+>   （`defaultSelected` 仍为 false，缺省集合仍是 codex / gemini / glm 三家）；
+>   第 5 步 `--driver <id>` 全链路（7.1 该段，**当轮 Driver 成为运行属性**；`--critics claude`
+>   只在 `--driver` 取非 claude 时合法）；第 6 步两条前置（裁决件 `role` 放宽 EV-66、Hook 当轮保护集 EV-68）
+>   与两轮验收实跑（**M9 完成判据达成**：真实审查一次、`consulted` 9/9 交叉核对通过，报告⑧⑨）；
+>   第 7 步纪律 6 回溯（本版，落点见 §21 该行与 §24.1）。
+>   **达成边界四条**：验收载体是名义 Driver（`--driver codex` 只作声明，仍在 Claude Code 会话里操作）、
+>   审核者与 Driver 同为 claude 家族、J6 未诱导、真载体下 Hook 未验（EV-77）——原文见 16.1 M9 行末段。
+>   M10～M11 尚未开工。
 >   **本段是「现状断言」，凡与代码不一致一律以代码为准**——它曾在 M8 第 2、3 步合入后
 >   连续两版未跟上（两次回填都只改了各自章节），第 4 步的计划双审把它查了出来。
 >   本文继续作为**唯一实现依据**：后续任何与本文不一致的改动，仍须先回溯修订本文（16.2 纪律 1、纪律 6）
 >
 > - **审核依据**：①[`2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md`](./reference/2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md)（v1.1.0 按其 RV-01～RV-26 修订，逐条应答见第 22 章）；②项目负责人评审意见 UR-01～UR-06（2026-09-11，v1.2.0 据此修订，逐条应答见第 23 章）
 > - **架构决策记录**：[`ADR_001_isolation_mode.md`](./ADR_001_isolation_mode.md)（就地审查模式，Accepted）
-> - **实测依据**：①[`REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md)（**`P-xx` 本机坑清单的唯一落点**，见其 §7——跨里程碑持续追加，`P-16～P-18` 系 M4/M5 补录、`P-19～P-23` 系 M6 第 4 步补录；另含 12 条冲突 C-01～C-12，v1.2.1 据此回补第 3、10、11、12 章）；②[`REPORT_2026-09-14_m6_codex_probe.md`](../05_testing/REPORT_2026-09-14_m6_codex_probe.md)（M6 第 2 步，3.6 的数据来源）；③[`REPORT_2026-09-14_m6_claude_probe.md`](../05_testing/REPORT_2026-09-14_m6_claude_probe.md)（M6 第 3 步，3.7 的数据来源）；④[`REPORT_2026-09-15_m6_driver_entry_probe.md`](../05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md)（M6 第 4 步，入口承载面与新增坑 P-19～P-23）；⑤[`REPORT_2026-09-16_m8_ac20_acceptance.md`](../05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md)（M8 第 4 步，**AC-20 的验收证据链**与三条达成边界）；⑥[`REPORT_2026-09-17_m9_claude_entry_probe.md`](../05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md)（M9 第 1～2 步，EV-41 / EV-40 的证据与 `--restricted` 记忆阻断的单变量对照）。**凡本文与这六份报告冲突，以实测为准**（16.2 纪律 1）
+> - **实测依据**：①[`REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md)（**`P-xx` 本机坑清单的唯一落点**，见其 §7——跨里程碑持续追加，`P-16～P-18` 系 M4/M5 补录、`P-19～P-23` 系 M6 第 4 步补录；另含 12 条冲突 C-01～C-12，v1.2.1 据此回补第 3、10、11、12 章）；②[`REPORT_2026-09-14_m6_codex_probe.md`](../05_testing/REPORT_2026-09-14_m6_codex_probe.md)（M6 第 2 步，3.6 的数据来源）；③[`REPORT_2026-09-14_m6_claude_probe.md`](../05_testing/REPORT_2026-09-14_m6_claude_probe.md)（M6 第 3 步，3.7 的数据来源）；④[`REPORT_2026-09-15_m6_driver_entry_probe.md`](../05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md)（M6 第 4 步，入口承载面与新增坑 P-19～P-23）；⑤[`REPORT_2026-09-16_m8_ac20_acceptance.md`](../05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md)（M8 第 4 步，**AC-20 的验收证据链**与三条达成边界）；⑥[`REPORT_2026-09-17_m9_claude_entry_probe.md`](../05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md)（M9 第 1～2 步，EV-41 / EV-40 的证据与 `--restricted` 记忆阻断的单变量对照）；⑦[`REPORT_2026-09-18_m9_claude_admission.md`](../05_testing/REPORT_2026-09-18_m9_claude_admission.md)（M9 第 3 步，EV-42 / EV-43 / EV-44 的准入收口实测）；⑧[`REPORT_2026-09-19_m9_claude_critic_acceptance.md`](../05_testing/REPORT_2026-09-19_m9_claude_critic_acceptance.md)（M9 第 6 步第 1 轮，未达成——挖出 EV-74 / EV-75 / EV-76 三条准入盲区）；⑨[`REPORT_2026-09-20_m9_claude_critic_acceptance_r2.md`](../05_testing/REPORT_2026-09-20_m9_claude_critic_acceptance_r2.md)（M9 第 6 步第 2 轮，**M9 完成判据达成**，含四条达成边界）。**凡本文与这九份报告冲突，以实测为准**（16.2 纪律 1）
 > - **需求依据**：[PRD_driver_dual_critic.md](../01_requirements/PRD_driver_dual_critic.md) v1.4.0
 > - **演进依据**：[`2026-09-13-通用Agent编排与动态多审设计.md`](./2026-09-13-通用Agent编排与动态多审设计.md) v1.0.0（**受控增量规范**，下称「演进设计」）。它不是独立的实现依据——其条款的规范效力由本文 16.1 里程碑表与 §24「演进并入台账」**逐条显式授予**，并入本文正文后一律以本文文字为准。**任何时刻两文冲突，以本文为准；全仓只有一条规范链。**
 > - **参考方案**：[`reference/`](./reference/) 下 5 份多模型设计答卷（gemini / grok4.6 / dsv4flash / qwen3.8-flash / zcode）
@@ -107,12 +112,12 @@
 
 | # | 目标 | 对应 PRD | 落点 | 状态 |
 | :--- | :--- | :--- | :--- | :--- |
-| R-1 | QWen / DeepSeek 等多模型家族经 Codex 接入为审核者 | FR-27 | 7.1 桩位、9.3、11.1 | 【待实施 · M8】 |
+| R-1 | QWen / DeepSeek 等多模型家族经 Codex 接入为审核者 | FR-27 | 7.1 桩位、9.3、11.1 | 【**已达成** · M8 第 4 步（AC-20，2026-09-16，含三条达成边界，见 15.3）；FR-27 的厂商 profile **单次覆盖入口**仍缺（EV-22，随 M11 档位表收口）——状态位自 M8 起失实，M9 第 7 步改准】 |
 | R-2 | 任一注册 Agent 可作为 Driver（「Driver」从系统常量降为每次运行的属性） | FR-28 | 第 0 章术语、6.7.1、8.5 | 【待实施 · M10】 |
-| R-3 | 每次审核动态选 1～3 个审核者；选 1 审是配置意图、**不标降级** | FR-29 | 6.7.1、8.6、12.1 | 【待实施 · M7b】 |
+| R-3 | 每次审核动态选 1～3 个审核者；选 1 审是配置意图、**不标降级** | FR-29 | 6.7.1、8.6、12.1 | 【**部分达成** · M7b 第 5 步（`--critics` 入口）+ M8 第 3 步 / D4-4（三家启用、默认即三侧）+ M9 第 4～5 步（第四家可选，须 `--driver` 取非 claude）；「三个编号前缀都对闸门可见」仍须逐轮核对，见 15.3 AC-22——状态位自 M7b 起失实，M9 第 7 步改准】 |
 | R-4 | 逐审核者指定模型与思考等级；每 Agent 提供高中低三档组合 | FR-30 | 11.5、13.1.1 | 【待实施 · M11】 |
-| R-5 | 通用 Agent 注册表架构：新增 Agent = **接入套件（七件）**，核心流程零改动 | FR-31 | **4.1、5.1**（注册表本体）、**5.1.1**（套件清单与验收装置） | 【**部分达成** · M7a + M7b 第 6 步（**桩级**）；真实接入待 M8 / M9，理由见 5.1.1「已知缺口」】 |
-| R-6 | Codex 厂商 profile 透传（`codex -p <配置> exec …`） | FR-27 | 11.1、13.1.1 | 【待实施 · M8】 |
+| R-5 | 通用 Agent 注册表架构：新增 Agent = **接入套件（七件）**，核心流程零改动 | FR-31 | **4.1、5.1**（注册表本体）、**5.1.1**（套件清单与验收装置） | 【**部分达成** · M7a + M7b 第 6 步（桩级）+ **M8 / M9 两家真实接入已完成**（codex 2026-09-16、claude 2026-09-20）；仍不记「已达成」：接入 claude 时核心流程改了两处（Hook 保护集判据、选侧检查成为唯一防线，见 16.1 M9 行第 4 步）——套件不覆盖「新 Agent 同时是缺省 Driver」这一情形；第 ⑤ 件对 claude 显式不做（EV-44）。5.1.1「已知缺口」所记的三项 preflight 写死已于 M8 第 3 步收敛（EV-05 结案）】 |
+| R-6 | Codex 厂商 profile 透传（`codex -p <配置> exec …`） | FR-27 | 11.1、13.1.1 | 【**部分达成** · M8 第 3～4 步（`agents.codex.profile` 逐次透传、`profile_requested` 入档，AC-20 以此取证）；单次覆盖入口待 M11（EV-22）——状态位自 M8 起失实，M9 第 7 步改准】 |
 
 ### 1.2 明确不做（Non-Goal）
 
@@ -341,7 +346,7 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 证据与负对照见 [`REPORT_2026-09-15_m6_driver_entry_probe.md`](../05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md) §1，
 登记为 BACKLOG EV-08。
 
-### 3.7 Claude Code headless（作为**审核者**被拉起）—— 【已回填 · M6 第 3 步】
+### 3.7 Claude Code headless（作为**审核者**被拉起）—— 【已回填 · M6 第 3 步；M9 第 1～6 步续填（2026-09-17～20，报告⑥⑦⑧⑨）】
 
 > **本节数据来自本机实测**，证据见 [`REPORT_2026-09-14_m6_claude_probe.md`](../05_testing/REPORT_2026-09-14_m6_claude_probe.md)。
 > 与**演进设计 §3.2 / §7.2** 冲突之处一律以本节为准（同 3.6 的口径）。
@@ -694,7 +699,11 @@ R-5 / FR-31 的承诺是「新增一家 Agent 只需一份套件，核心流程�
 
 #### 已知缺口（第 6 步实测暴露，登记不修）
 
-- **探针结论无处落盘**：`ProbeSection` 是按厂商固定键的闭合形状，第三家的探针结论
+- **探针结论无处落盘**——**已收口**（M9 第 7 步补记）：`ProbeSection` 随 M6 第 1 步改为 `probe.cli.<cliName>`、
+  键集由 `ALL_CLI_NAMES` 派生；下文「三项按厂商写死的环境检查」也已于 M6 第 1 步（版本校验）与
+  M8 第 3 步（只读能力遍历适配器 `availability()`、探活遍历 `authProbe()`）收敛，M9 第 6 步 claude 侧
+  `preflight --stage code --critics claude --driver codex` 7/7 在真实链路证实，**EV-05 结案**。
+  以下保留登记时原文：`ProbeSection` 是按厂商固定键的闭合形状，第三家的探针结论
   要入档就得改 **`types.ts` 的 `ProbeSection` 及其消费点**——套件之外的成本。
   **范围只到 `types.ts`**：`config.v2.json` 的 `probe` 段是 `additionalProperties: true`，
   任意厂商键本就过 ajv（2026-09-14 代码双审 GLM-05 核正了这处多记）。
@@ -703,6 +712,8 @@ R-5 / FR-31 的承诺是「新增一家 Agent 只需一份套件，核心流程�
   没有任何代码读它。因此第 ⑤ 件目前**验证不了任何东西**——夹具只能断言 overlay
   落了这个文件，断言不了它被用上。已登记 BACKLOG **EV-06**。
   登记而不接线的字段会让后来者以为它已经生效，这正是本项目一贯反对的形态。
+  **M9 补记**：第 ⑤ 件对 claude 侧已裁定**显式不做**（EV-44——`--restricted` 会连项目记忆一起阻断，
+  片段做出来是死件）；EV-06 的消费方问题随 M10「入口资产单源渲染」一并处理。
 
 **中间态的处置原则**：`checkModelSlugs` 的缺口在本步被改成了**可见**的——
 它按 vendor 分派，未知厂商记「无法校验」第三态（不拦，但在预检输出里点名是哪几侧
@@ -810,7 +821,7 @@ TriviumCode/
 > | 条目 | 状态 |
 > | :--- | :--- |
 > | 角色后缀**由注册表统一派生**，不再散落于命名、Hook、gate、freeze 各处硬编码 | 【已实现 · M7a】 |
-> | **生效的审核者枚举**（`src/trivium/types.ts` 的 `CriticId`）仍锁定 `gemini` \| `glm`；`codex` / `claude` 虽已登记，但 `criticEnabled: false` | 【待实施 · M8 / M9】 |
+> | **生效的审核者枚举**：`CriticId` 已随 M7b 第 6 步放开为 `AgentId`，真集合 `CRITICS` 由 `criticEnabled` 派生——codex 随 M8 第 3 步、claude 随 M9 第 4 步翻真，**四家全部生效**（缺省集合仍是 codex / gemini / glm 三家；claude 入选须 `--driver` 取非 claude） | 【已实现 · M8 / M9】（状态位自 M8 起失实，M9 第 7 步改准） |
 >
 > 两者的区别是本文状态标记制度的要点：**「注册表登记了四家」不等于「系统支持四家」**。
 > 前者是机制已就位（可观察：`registry.ts` 存在且被对账测试守着），
@@ -1098,7 +1109,7 @@ addresses:               # 本件应答的审查文档（当前恒两份；【�
 
 | 字段 | 含义 | schema | 接线里程碑 |
 | :--- | :--- | :--- | :--- |
-| `driver` | **当轮发起方**的 Agent id。与归档后缀（产出方）正交 | 必备 | M7b（值恒为 `claude` 直到 M10） |
+| `driver` | **当轮发起方**的 Agent id。与归档后缀（产出方）正交 | 必备 | M7b；**自 M9 第 5 步起随 `--driver <id>` 取值**（缺省 `claude`；只校验「已登记」，`driverEnabled: false` 的取值放行但在预检与留痕里标注；翻 `driverEnabled` 在 M10） |
 | `critics_selected[]` | 本次入选的审核者集合，基数 1～3 | 必备 | M7b |
 | `review_mode` | `full`（全部入选审核者 ok）\| `partial`（部分失败后降级续跑）。**取代 v1 的 `dual`/`single`** | 必备 | M7b |
 | `critics` | 由「恰两键」改为**动态键**（键取自 `critics_selected`） | 必备 | M7b |
@@ -1167,6 +1178,21 @@ v1 → 内存 v2 的映射：`dual → full`、`single → partial`、`driver` �
 > Agent、须在 `agents` 段有配置、不得含当轮 Driver、不得重复、基数 1～`max_critics`；
 > 缺省取 `review.default_critics`。违反任一条**退 64 且零工件**。
 > **选 1 个是配置意图**：记 `review_mode: full`、不写 `degraded_reason`、不打降级横幅（AC-22）。
+>
+> **`--driver <id>`（当轮 Driver）自 M9 第 5 步起生效**【已实现 · M9 第 5 步】。
+> 按 16.2 纪律 6b 本段应在第 5 步开工前并入，实际随第 7 步回溯补记（v1.3.30）——偏离如实登记，
+> 契约文字以第 5 步已落地的行为为准。缺省 `claude`；取值论域是**全部已登记 Agent**，
+> 只校验「已登记」：`driverEnabled: false` 的取值放行，但**预检多打一行标注、留痕如实记**
+> （翻 `driverEnabled` 是 M10 的事）。它是**一个事实、四处消费**：①选侧——当轮 Driver 不得入选，
+> `selectableCritics` = 启用集合减 Driver；②原稿定位——`locateSubject` 按它定后缀，写错后缀在
+> `review --start` 退 65，且**审查件不得被当原稿**（`isReviewArtifact`：显式路径硬拒、自动候选过滤）；
+> ③冻结与 `run.v2` 的 `driver` 字段；④闸门——`gate` **不收 `--driver`**，事实来源是留痕不是旗标，
+> 裁决件 `role` 须与留痕 `driver` 一致（6.6）。`preflight` 与 `review --start` 必须传**同一个值**，
+> 否则预检查的不是本轮实际会用的集合。**不进 skill、不进 `argument-hint`**（计划双审裁定 §2.14）：
+> 四条 `/dual-*` 命令的执笔者就是本会话的 Claude Code，M10 之前换 Driver 只有手工 CLI 一条路。
+> 配套：三个入口共用 `--model-<id>` 白名单判据（`assertModelOverrideKeys`，EV-53）；
+> `heterogeneous: false` 时 `override_reason` 由 `overrideReasonFor` 单点派生（EV-54）；
+> 留痕读不出时 `latestRunMeta` 分「一份都没有」与「有但全读不出」两档，后者硬失败并指引重跑该阶段。
 >
 > **【待实施 · M10 / M11】其余旗标的 N 方化**：`--tier-<id>` / `--effort-<id>`
 > （逐审核者档位与精确覆盖）、`--profile-codex`（Codex 厂商 profile），
@@ -2462,15 +2488,15 @@ profiles:
 | 运行进行中 Driver 会话结束或 `--wait` 心跳失联 | 工作进程独立于会话继续跑完；`hook-session-start` 提醒 `--wait`；心跳失联判 `failed(worker_lost)` | `run.json` 记 `status` | 7.5 |
 | 主脑试图伪造审查文件 | Hook `deny` | — | PRD 6.3 |
 
-**【待实施 · M7b / M8】演进增补行**（细则见演进设计 §12）：
+**演进增补行**（细则见演进设计 §12；状态位于 M9 第 7 步按现状改准——M7b / M8 各行此前一直挂着「待实施」）：
 
 | 场景 | 处置 | 留痕 | 依据 | 状态 |
 | :--- | :--- | :--- | :--- | :--- |
-| `--critics` 指定了未登记或 `criticEnabled: false` 的 Agent | 拒绝启动（退出 64），列出可用值 | 无工件 | FR-29 | 【待实施 · M7b】 |
-| `--critics` 基数超过 `review.max_critics` | 拒绝启动（退出 64） | 无工件 | FR-29 | 【待实施 · M7b】 |
-| N 审中部分审核者失败，`failure_policy: strict` | 整次中止（同现状两侧逻辑） | `review_mode` 不落 `full` | FR-29 | 【待实施 · M7b】 |
-| N 审中部分审核者失败，显式允许降级 | 续跑，记 `review_mode: partial` + `degraded_reason`。**选 1 审不走此路径**——那是配置意图，记 `full` | `run.json` | FR-29 | 【待实施 · M7b】 |
-| 选用的模型所属家族未在厂商侧完成 provider 配置 | **预检即拦截**并给出可粘贴的配置样例（只展示不写入，遵 16.2 纪律 5） | 无工件 | FR-27 | 【待实施 · M8】 |
+| `--critics` 指定了未登记、`criticEnabled: false` 或**当轮 Driver** 的 Agent | 拒绝启动（退出 64），列出可用值 | 无工件 | FR-29 | 【已实现 · M7b 第 5 步；「当轮 Driver 不得入选」自 M9 第 4 步起是唯一防线】 |
+| `--critics` 基数超过 `review.max_critics` | 拒绝启动（退出 64） | 无工件 | FR-29 | 【已实现 · M7b 第 5 步】 |
+| N 审中部分审核者失败，`failure_policy: strict` | 整次中止（同现状两侧逻辑） | `review_mode` 不落 `full` | FR-29 | 【已实现 · M7b】 |
+| N 审中部分审核者失败，显式允许降级 | 续跑，记 `review_mode: partial` + `degraded_reason`。**选 1 审不走此路径**——那是配置意图，记 `full` | `run.json` | FR-29 | 【已实现 · M7b】 |
+| 选用的模型所属家族未在厂商侧完成 provider 配置 | **预检即拦截**并给出可粘贴的配置样例（只展示不写入，遵 16.2 纪律 5） | 无工件 | FR-27 | 【已实现 · M8 第 3 步】（逐家族 provider 探活随 codex 接入落地，AC-20 验收覆盖） |
 | 审核者读到任一其他审核者产物（轨迹读取路径或命令文本命中 deny 集的**第①②类**） | 该侧作废重跑一次，二次命中 `failed(peer_leak)`；strict 中止 | `guard.peer_artifact_read`、`guard.peer_leak_via_path` | FR-10 | **分档与按侧留痕【已实现 · 2026-09-16】（见 10.1.1）；「重跑一次」【待实施】**——过渡处置见 12.1 |
 
 ### 12.2 超时策略（NFR-03）
@@ -2631,7 +2657,7 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 
 | 变更 | 说明 |
 | :--- | :--- |
-| `critics.*` → **`agents.*`** | 配置段按 Agent id 命名空间组织。**`agents` 的键只要求「是已登记 Agent」**，不要求 `criticEnabled: true`——Driver 自身（如 `claude`，`critic_enabled: false`）也需要配置容身之处。`criticEnabled: true` **只约束** `review.default_critics` 与 `--critics` 的每一项 |
+| `critics.*` → **`agents.*`** | 配置段按 Agent id 命名空间组织。**`agents` 的键只要求「是已登记 Agent」**，不要求 `criticEnabled: true`——Driver 自身也需要配置容身之处（M9 第 4 步前 claude 的 `critic_enabled` 为 false，正是这一格；今天四家都已 `criticEnabled: true`，这条仍成立——当轮 Driver 不入选，但它的配置段照样要在）。`criticEnabled: true` **只约束** `review.default_critics` 与 `--critics` 的每一项 |
 | `agents.<id>.vendor` | 必须等于注册表中该 Agent 的 vendor（防路由错配） |
 | `review.default_critics` / `max_critics` | 默认审核者集合与基数上限。**默认值由注册表的 `defaultSelected` 派生**（M8 第 3 步）——此前派生自 `criticEnabled`，两者合一时「启用第三家」就等于「每次审查成本自动涨一档」，而那是用户可见的行为变化，不该由一次接入顺带决定。拆开后：`criticEnabled` 答「这一家能不能当审核者」，`defaultSelected` 答「不指定 `--critics` 时跑不跑它」。仍是纯派生值，没有第二事实源（纪律 7）。codex 自 M8 第 3 步起 `criticEnabled: true`；**`defaultSelected` 于 2026-09-16 由项目负责人裁定翻为 `true`（决策 D4-4）——缺省集合自此为 codex、gemini、glm 三家，默认即三审，降回两侧走显式 `--critics` 或配置**。M8 第 3 步原定「默认仍是两家」（D-1，2026-09-15），理由是该侧尚未跑过真实审查；该理由随 **AC-20 达成**而消失（两家族各真审一次、四分量逐一有据，见 `doc/05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md`）。**四条代价一并记明**：①配额 ×1.5，墙钟取最慢侧；②预检会检查 codex 这一侧，没配 codex profile 的机器跑不了任何审查（失败响亮、不静默回落），环境门槛抬高一档；③**本翻转只对「配置里没有显式写 `default_critics`」的项目生效**——`init` 落盘 `defaultConfig()` 整份而该键在其中，于是已 init 过的项目把当时的缺省集合冻进了进 Git 的配置，翻注册表对它们无效（本仓库走 v1 迁移路径、迁移故意不补该键，故在此生效）；④按**内置默认**超时档（`plan: 900`）该侧偏紧——AC-20 实测一次代码审 1038s，已越过 plan 档、距 code 档仅约 14% 余量，且超时不重试、`failure_policy` 默认 strict。上限侧另有一条机器不变量：缺省集合长度不得超过 `max_critics` 的内置默认，越界在**模块加载期**抛（`deriveDefaultCritics`）。读不到运行记录时的回落值一并改为缺省集合（`archive` / `gate` / `divergence` / `preflight` 四处），按启用全集回落会对每个两侧轮次报假缺口 |
 | `review.allow_single_flag` → `allow_partial_flag` | 旧键**保留为别名**长期兼容 |
@@ -2734,7 +2760,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | **FR-28** 任意注册 Agent 可为 Driver | P1 | Driver 降为运行属性（`run.json.driver`）；四家入口资产；护栏分级 L1/L2 | `agents/registry`、`hooks` | 第 0 章术语、6.7.1、8.5 · 【待实施 · M10】 |
 | **FR-29** 每次审核动态选 1～3 个审核者 | P1 | `--critics`；隔离/裁决/归档/闸门全面 N 方化；**选 1 审不标降级** | `runner`、`gate`、`freeze` | 6.7.1、8.6、10.1、12.1 · 【待实施 · M7b】 |
 | **FR-30** 逐审核者模型+思考等级与三档组合 | P1 | `agents.<id>.tiers`；`--tier-*` / `--model-*` / `--effort-*`；生效值回读 | `config`、`adapters` | 11.5、13.1.1 · 【待实施 · M11】 |
-| **FR-31** 通用 Agent 扩展架构 | P1 | Agent 注册表为唯一来源；新增 Agent = **接入套件（七件）**，清单见 5.1.1 | `agents/registry` | 4.1、5.1、**5.1.1** · **【部分达成 · M7a + M7b 第 6 步】**（注册表本体随 M7a；套件接入的**桩级**端到端验收随 M7b 第 6 步。**真实接入仍需改 `ProbeSection` 与 preflight 三项**，故不记完全达成——见 5.1.1「已知缺口」与 BACKLOG EV-05） |
+| **FR-31** 通用 Agent 扩展架构 | P1 | Agent 注册表为唯一来源；新增 Agent = **接入套件（七件）**，清单见 5.1.1 | `agents/registry` | 4.1、5.1、**5.1.1** · **【部分达成 · M7a + M7b 第 6 步】**（注册表本体随 M7a；套件接入的**桩级**端到端验收随 M7b 第 6 步。**M9 第 7 步复核**：`ProbeSection` 与 preflight 三项已分别于 M6 第 1 步、M8 第 3 步收敛（EV-05 结案），codex / claude 两家真实接入已完成（M8 / M9）；**仍不记完全达成，理由换了**——接入 claude 时核心流程改了 Hook 保护集判据与选侧检查（该 Agent 同时是缺省 Driver，套件不覆盖这一情形），第 ⑤ 件对 claude 显式不做（EV-44）。见 5.1.1「已知缺口」与 16.1 M9 行第 4 步） |
 
 ### 15.2 非功能需求 → 设计
 
@@ -2773,9 +2799,9 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | AC-19 等待期进度可读可预期 | `--wait` 返回结构化进度字段 + 单行摘要；启动播报 | 跑一次真实双审，核对每次等待返回与开场播报 |
 | **AC-20** Codex 真实审查（**至少两个模型家族各一次**）· **【已达成 · M8 第 4 步】**（2026-09-16，`qwen` 与 `deepseek` 两家族各一次真实代码审；证据链与三条达成边界见 [验收报告](../05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md)） | 证据链完整 + 沙箱负对照（**带正对照**） | **逐分量断言，不是「二元组任一分量不同即可」**：两次运行的 ① `model_provider` 互不相同、② `model_effective` 互不相同、③ 各自与本次**请求**的模型一致、④ 两侧 provider 的 `base_url`（**归一到 host**）互不相同——**任一侧 host 取不到（`null`）时本分量记「无法校验」，不得据此宣布 AC-20 达成**（本机 `gpt` profile 就是这一格：内置 provider 无 `[model_providers.*]` 段）；`project_reads` 达该族生效下限（`command-trace` 折减后）；沙箱负对照**须含正对照**——同一次调用里：①那条写命令**确实进了轨迹**、②**它自己的输出显示写入被拒**、③项目内哨兵 A 未创建。缺了①②，A 的缺席证明不了任何事（「被拒」与「没尝试」产出相同观测）。**注**：本条初稿写的是「允许写路径的 B 存在」，**已由 M8 第 4 步实跑证伪**——`-s read-only` 把整个文件系统置为只读，不存在「允许写的路径」，按那个形态执行本条恒不可满足（见 3.6 的再更正与 M6 报告 P-C2）；`profile_requested` 如实入档而生效模型仍以回读为准 |
 | **AC-21** 任一 Agent 作为 Driver 走通命令 B · 【待实施 · M10】 | 四 Driver 各跑一轮 | 工件命名 / 闸门 / 裁决语义与本文一致（claude/zcode 真实，codex/gemini 夹具级） |
-| **AC-22** 1～3 审核者动态生效 · 【待实施 · M7b】 | 1 / 2 / 3 审各跑一轮 | `critics_selected` 如实；**1 审无降级标记**（`review_mode: full`、无 `degraded_reason`）；3 审三份审查齐备且 gate 差集覆盖三个前缀 |
+| **AC-22** 1～3 审核者动态生效 · **【部分达成 · M7b 第 5 步 + M8 第 3 步】**（选 1 / 2 侧 2026-09-14 实跑；选 3 侧自三家启用、D4-4 默认即三侧起可真跑；M9 起第四家 claude 可入选，须 `--driver` 取非 claude。「三个编号前缀都对闸门可见」是**逐轮核对项**，故不记完全达成——状态位自 M7b 起失实，M9 第 7 步改准） | 1 / 2 / 3 审各跑一轮 | `critics_selected` 如实；**1 审无降级标记**（`review_mode: full`、无 `degraded_reason`）；3 审三份审查齐备且 gate 差集覆盖三个前缀 |
 | **AC-23** 档位与精确覆盖生效可核对 · 【待实施 · M11】 | 两种发起方式各一次 | `--tier-<id> high` 与 `--model-<id> … --effort-<id> …` 的 `model_effective` / `effort_effective` / `tier_source` 回读一致 |
-| **AC-24** 新增 Agent 接入套件接入、核心流程零改动 · **【已达成 · M7b 第 6 步】** | 桩 Agent 夹具全链路 | 断言①overlay 脚本**实际触及的路径集** ⊆ 套件白名单（不是夹具树自比，那是同义反复；且自报清单须与**全树哈希差集**逐项相等，白名单每条还须被真正用到）；断言②`tsc --noEmit` → `preflight` → `topic resolve` → `review --start/--wait` → `gate --check` → `gate --check-artifacts` 在重打包产物上真实通过；断言③三侧产**三对**退化度。落点 `test/integration/stub-agent-kit.test.ts`。**证明边界**：桩不触发真实适配器路径（vendor 旗标、轨迹解析、effort 透传），也不触发第三家的探活与 CLI 版本校验（仍按厂商写死，EV-05），且**预检是以 `--skip-auth-check` 跑通的**，M8/M9 才是对真检验。**本条达成 ≠ FR-31 达成**：它以桩为口径，不足以完整验收 FR-31 的「核心流程零改动」 |
+| **AC-24** 新增 Agent 接入套件接入、核心流程零改动 · **【已达成 · M7b 第 6 步】** | 桩 Agent 夹具全链路 | 断言①overlay 脚本**实际触及的路径集** ⊆ 套件白名单（不是夹具树自比，那是同义反复；且自报清单须与**全树哈希差集**逐项相等，白名单每条还须被真正用到）；断言②`tsc --noEmit` → `preflight` → `topic resolve` → `review --start/--wait` → `gate --check` → `gate --check-artifacts` 在重打包产物上真实通过；断言③三侧产**三对**退化度。落点 `test/integration/stub-agent-kit.test.ts`。**证明边界**：桩不触发真实适配器路径（vendor 旗标、轨迹解析、effort 透传），也不触发第三家的探活与 CLI 版本校验（仍按厂商写死，EV-05），且**预检是以 `--skip-auth-check` 跑通的**。**对真检验已随 M8（codex，2026-09-16）与 M9（claude，2026-09-20）完成**，EV-05 的两项 preflight 写死已于 M8 第 3 步收敛。**本条达成 ≠ FR-31 达成**：它以桩为口径，不足以完整验收 FR-31 的「核心流程零改动」 |
 | **AC-25** N 方隔离与路径通道检测收口 · 【待实施 · M7b】 | 3 审中桩伪造读取 | 伪造**读取**另两方任一产物（含归档 `_meta/` 下的结构化意见、运行目录 `~/.trivium/**`）→ `peer_leak` 作废重跑 |
 
 > **命令文本通道**的验收（原演进 AC-N6b）此前随措施 b 的独立演进项**暂不排 AC 号**。
@@ -2865,8 +2891,8 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | **M7a 注册表（行为等价重构）** | `agents/registry.ts`：后缀 / 前缀 / 配置键 / 探针段 / 镜头键 / 禁读矩阵 / Hook 字面集统一派生；`registry-parity` grep 级对账测试；**顺带完成 10.1 措施 a 的路径侧收口**（结构化意见与运行目录进 deny 机器集合，提示语与核验同源） | `npm run check` 全绿；双侧行为与重构前逐项等价，**唯一有意的行为变化是 deny 集合的扩展**（那是修补既有缺口，方向是收紧）；四家登记但 `criticEnabled` 仅 gemini/glm、`driverEnabled` 仅 claude | ✅ 2026-09-13（`039bdc9`） |
 | **M7b 配置 v2 与动态多审** | types / config v2 / 四份 schema；naming·hooks·gate·freeze·brief·runner·CLI 的 N 方化；**禁读矩阵的 N 方泛化**（措施 a 的路径侧已随 M7a 落地，此处做三审展开）；全部新测试；selftest N 侧场景 | `npm run check` 全绿；双侧默认行为与 M7a 后等价（除 schema 版本号）；AC-22 / AC-24 / AC-25 | ✅ **六步全部合入**（分批交付）：第 1 步 ✅ `3ceeee6`（既有缺陷修复）；第 2 步 ✅ `a891ab2`（泛化欠账与对账扩展）；第 3 步 ✅ `5b83e4b`（**run.v2 与读侧按阶段分发**，6.7.1）；第 4 步 ✅ `2f08018`（**config v2 与内存迁移**，13.1.1）；第 5 步 ✅ **`--critics` 入口与 `default_critics` 接线**（7.1；**AC-22 的 1／2 侧分支自此可验收，3 侧待第三家接入**）；第 6 步 ✅ **接入套件验收装置**（5.1.1；桩 Agent overlay + 三审全链路实跑，**AC-24 达成**含证明边界；**FR-31 记部分达成**——真实接入仍需改 `ProbeSection` 与 preflight 三项）。**M7b 六步全部合入。** 第 6 步顺带清掉三笔泛化欠账（`CriticId` 字面收窄放开、`effortFor` 与 `checkModelSlugs` 的身份穷尽改按 vendor 分派、`--model-<id>` 旗标白名单按注册表派生），并修掉一条实缺陷：`review.v1.json` 把意见编号前缀写死成 `^(AGY|GLM)-`，第三家的合法结论会被 ajv 拒掉退化成 `parse_fallback`（6.5） |
 | **M8 Codex（多模型）审核者** | `adapters/codex.ts` + 探针接线（含逐家族 provider 探活）+ 镜头 codex 键 + 密钥扫描增补 | AC-20（两家族各真实审查一次）；沙箱负对照通过；**两条 M6 实测带来的前置**：①**EV-01（命令文本字面扫描）已落地**——codex 的 `trace_path_structured` 实测为 false，它是该侧路径核验的**唯一**手段，不落地则 AC-04 在 codex 侧没有任何实现（见 3.6、BACKLOG EV-01）；②**隔离同时覆盖 `CODEX_HOME` 与 `HOME`**——前者管配置面、指令面随 `HOME` 派生（见 3.6 末段、BACKLOG EV-08）。**一条已拍板的残留风险要带进本里程碑**：措施 b 的盲区 **B-2**（未指名 deny 路径的内容转储——裸 `git log -p`、根递归 `grep`）**决定不收窄**（2026-09-15，EV-16），而 codex 侧读文件就是跑 shell，**这条通道在该侧真实可达**。本里程碑**不得**因措施 b 已落地就把通道②整体标为收口 | ✅ **四步全部合入**（分批交付）：第 1 步 ✅ `194ef0b`（措施 b 落地）；第 2 步 ✅ `9d511a6`（适配层契约泛化）；第 3 步 ✅ `a8c7595` + `3812f4c`（codex 接入为第三个审核者，抬头 Critic-C）；**第 4 步 ✅ AC-20 达成**（2026-09-16）——`model_provider` 与 `profile_requested` 进契约、模型目录改按**逐 profile** 校验（`models_by_profile`）、沙箱负对照补正对照；`qwen` / `deepseek` 两家族各真实审查一次，四个分量逐一有据，J3～J6 全部满足。**三条达成边界随报告登记**（该侧只读保障只剩两重、`base_url` 分量依赖两侧该键都在场、单侧运行不构成多审）。验收报告见 `doc/05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md`。**M8 至此四步全部合入** |
-| **M9 Claude Code 审核者** | `adapters/claude.ts` + 审查员身份片段 + `critic_enabled` 开关。**第 3 步开工前置（照 M8 行把前置钉进范围栏的先例，代码双审 r3 GLM-02）**：**EV-39**（`registry-parity` 黑名单按厂商归属，建 `adapters/claude.ts` 那一步一并做）、**EV-42**（`rule_syntax` 目录 glob 与 `deny_paths` 逐文件清单的等价性实测——**编写适配器之前**做；未结案前 `peer_deny_applied` 不得记 true）、**EV-43**（stdin 形态下按闭集清单逐格复验，含结论回写落点）、**EV-44**（接入套件第 ⑤ 件对 claude 侧的取舍裁定，含已改挂因变量的翻转条件）——**其配套交付物「落那一格三态探针判据」同属本步范围**：无论裁定做不做第 ⑤ 件，不落该格则翻转条件引用一个不存在的字段、永远是死条件（代码双审 r4）。**不把它们列进范围栏，接手第 3 步的会话就读不到**——§3.7 表格那句话与 `types.ts` 注释都不是开工入口 | 真实审查一次，`consulted` 交叉核对通过 | 🚧 **进行中（第 1～6 步已完成：第 6 步第 2 轮验收（2026-09-20）M9 完成判据达成——真实审查一次、`consulted` 9/9 交叉核对通过；第 7 步纪律 6 回溯待开工，见本格末段「第 6 步第 2 轮」）**。第 1 步**准入实测**（一行适配器代码都不写）：EV-41 结案——三种 prompt 载入形态全部成立、31,913 字节送审包实测跑通、**不需要分片或截断**；另三件顺带取证：**`--restricted` 会连项目记忆 `CLAUDE.md` 一起阻断**（单变量对照，**这条否证了交底给第 ⑤ 件的理由，且连同它给的处置一并否证**——片段会被同一旗标挡掉，做出来是死件，第 ⑤ 件对 claude 侧的取舍**待 M9 第 3 步接入时裁定**——见 BACKLOG **EV-44**，含翻转条件。此处上一版写的是「待代码双审裁定」，而 r2 那次双审已经发生且选择了登记而非裁定，该句已过时；两处只允许一个时点，代码双审 r3 GLM-03）、`denied_tool_in_trace` 拿到本机首个正向样本、审查尺度 slug 由 `system/init` 回读挣得。第 2 步**探针补三个机读字段**：`stream_json_requires_verbose`（**EV-40 结案，且其原拟判据「数事件条数」被实测否证**——实为 CLI 硬拒绝，判据改为「负对照被干净拒绝」）、`path_deny.coverage_complete`、`strict_mcp_config_applied`；**第 2 步的代码双审 16 条、三侧独立收敛到同一个阻断**（`[].includes(x)` 把「没测到」算成「确认没有」，使未登录机器被判安全失守），已修并加纵深用例。**两步均不改对外行为，`criticEnabled` 仍为 `false`**。 **第 3 步（2026-09-18）：适配器本体落地，四条准入前置全部结案。** ①`adapters/claude-trace.ts` 解析器搬家（探针反向 import，方向同三家先例），新增路径提取/覆盖率/计数；②`adapters/claude.ts` 分两半落地——下半身（argv/exec 封装，纯函数）供准入脚本 import，上半身（`claudeAdapter` 各成员）随后；③**EV-42 正向结案**（`file_shape_verified: true`，探针第三臂实测，两个独立装置同结论）；④**EV-43 七格 argv/stdin 双臂零分叉**（改双臂是因为本机已漂到 2.1.276 而基准产自 2.1.273，单臂比对两个变量同时在变）；⑤**EV-44 裁定第 ⑤ 件显式不做**，翻转条件落成必填三态 `project_memory_blocked`（+独立夹具+对照臂唯一构造点）；⑥**EV-39 主扫改三分 + 豁免排他 + 四条新腿**，新增能力：分解形规避与跨厂商豁免（旧判据完全抓不到）。 变异验证 20 条逐一实跑全部咬住。**第 3 步仍不改对外行为，`criticEnabled` 当时仍为 `false`**（翻开关是第 4 步）。 证据见 `doc/05_testing/REPORT_2026-09-18_m9_claude_admission.md`，留痕见 `.reviews/M9-适配器本体与准入收口/`。 **第 4 步（2026-09-18）：配套六件 + Hook 语义 + 夹具收口，`criticEnabled` 翻为 `true`——本里程碑第一次改对外行为。** ①**claude 成为可选审核者**（`defaultSelected` 保持 false，缺省集合仍是 codex/gemini/glm 三家、已顶满内置 `max_critics = 3`；翻 `defaultSelected` 会被 `deriveDefaultCritics` 的上限不变量在模块加载期拦下）；②**`--critics claude` 仍退 64**，因为「当轮 Driver 不得入选」是 `critics.ts` 的独立检查——翻开关的那一刻，这条从「靠 `criticEnabled` 顺带成立」变成**唯一防线**，已实测立住（报错里「当前可用」为 codex、gemini、glm 三家，不含 claude）；③**Hook 保护集判据由 `CRITICS`（启用集合）改为「全部已登记角色减当轮 Driver」**——不改则翻开关那一刻 Driver 写不了自己的裁决件、整条流水线锁死（实测：归档内写入由退 0 变退 2），今日行为等价、换的是理由；④第 ⑥⑦ 件补齐（`config.v2` 的 anthropic 分支只有 vendor 判别式，入口由探针独占；两档模型 default=sonnet-5 / flash=haiku）。**接入套件第 ⑤ 件按 EV-44 显式不做。** 实测口径：翻开关前单变量实验红 19 条、第 ⑦ 件另独立红 3 条（代码双审 CODEX-01 补出，计划原稿的「19 条」是单变量结论、不等于本步失败面），全部收口后 `npm run check` 1390 通过 / 0 失败 / 3 跳过（三条跳过均为实测确认的不可达分支，带原因）。留痕见 `.reviews/M9-审核者启用与夹具收口/`。 **第 6 步前置之二（2026-09-19）：Hook 当轮保护集接上当轮 Driver（EV-68 结案，计划双审 13 条全部接受）。** 当轮面与跨时间面在签名上分家——`hasProtectedRoleSuffix(fileName, driver)` **必填无默认值**（漏传变编译期错误，与 EV-69 登记的「默认参数让漏传静默成功」同源），跨时间面另立 `hasRoleSuffixCrossTime()` 承接提交锚与 Bash 侧、**取值口径一字未改**。**driver 的权威来源是 `run.json.driver` 而非闸门项**：原计划把 `state.json` 的 `GateEntry.driver` 定为第 1 级，被双审**两侧独立打穿**（`review.ts` 四处 `setGateChecked` 全不传 driver，唯一写它的两处以「裁决件已落盘」为前置，而 Driver 写裁决件正在那之前；叠加 upsert「沿用前一条的值」，重跑换 Driver 时拿到的是上一轮的值）。留痕损坏则**硬失败**，与 `gate` 同口径。**两条边界如实登记**：非缺省 Driver 仍写不出 plan/bug 原稿（EV-72，不挡第 6 步因为验收走 code 阶段、以 diff 为被审对象）、会话载体未定（EV-71，承接 EV-68 不该丢失的警示）。留痕见 `.reviews/M9-Hook当轮Driver保护集/`。 **本行的完整纪律 6 回溯（版本台账行、§24 台账）留待第 7 步**，此处只回补会当场失实的现状断言（代码双审 CODEX-07）。留痕见 `.reviews/M9-ClaudeCode审核者接入/`，实测见 `REPORT_2026-09-17_m9_claude_entry_probe.md`。 **第 6 步第 1 轮（2026-09-19）：验收实跑，M9 完成判据未达成，但拿到了三条准入面没测出的事实。** 载体取 ① 名义 Driver（计划双审三侧一致，EV-71 结案、残量 EV-77）；被审对象是历史提交 `3812f4c` 的 src/test 差异（作者 BobChen、2026-09-16，凭据可核，J4 达成、「同 claude 家族」记为达成边界）。两次尝试：**第 1 跑零 API 调用即拒**——`review.v1.json` 的 2020-12 `$schema` 头被 claude 2.1.277 拒绝，探针的 `json_schema_ok` 从未喂过真实契约文件（EV-74，适配器已剥该键）；**第 2 跑 525s / $1.58 跑通**，`parse_fallback: false`、`evidence_ok: true`、`model_effective_source: envelope`、`peer_deny_applied: true`（三家里第一次），但 **J5 失败**（`consulted_unverified: true`：自报 15 项，Read/文件级 Grep 只覆盖 10 项，另 5 项只在目录级 Grep 结果里出现——不是撒谎，是核对面看不见 `tool_result`，EV-76），且 **`readonly_breach: true` 是误判**（`StructuredOutput` 交付通道被算成 5 次写，EV-75，适配器已豁免该名字、探针工具面判据改为同源认得输出通道；`gate --check` 当时不消费该旗标——真假失守同样不拦——本轮代码双审后已接进失败面，按 AD-06 列文件）。零成本判据全过：刻 B 写事件翻转、J8 退 64、EV-66 负例判 `bad_front_matter`。按计划 §六不做第 3 次尝试；第 3 次要不要跑、跑之前 EV-76 取哪条出路，由用户定。证据 `doc/05_testing/REPORT_2026-09-19_m9_claude_critic_acceptance.md` 与 `doc/05_testing/evidence/m9-acceptance-20260919/`，留痕 `.reviews/M9-验收实跑/`。 **第 6 步第 2 轮（2026-09-20，用户发起）：第 3 次尝试，M9 完成判据达成。** EV-76 出路 ① 合入后重跑：同一夹具脚本重建（`cmp` 相同）、同一被审对象（`subject_sha256` 同值）、同一焦点；构建身份 = `a75ec43` 干净树重建的 bundle（sha256 `c50d787…`，与全局副本逐字节相同）。单次 429s / $1.25 跑通：`parse_fallback: false`、`evidence_ok: true`（read 11 · grep 10 · project_reads 11）、`model_effective_source: envelope`、`peer_deny_applied: true`、`drift: false`。**J5 达成**：自报 `consulted` 9 项，9/9 匹配——Read 覆盖 7 项、文件级 Grep 独占 2 项（`types.ts`、`codex.ts`），`content` 命中另覆盖 3 项但**无独占贡献**：本次样本按修前口径同样会过，出路 ① 的作用只由第 2 跑回放 15/15（`grep-hits.test.ts` T7）背书，不由本轮背书；本轮目录级 Grep 只有 1 次（`path=src`），没有撞到对端件（单侧运行也没有对端件），BRIEF 引导句是否起了作用单样本说不清。**`readonly_breach: false`**：`init.tools` 含 `StructuredOutput`、模型调用 2 次（首次形态被 CLI 打回），EV-75 的豁免与 `gate --check` 接线第一次在真实链路成立。零成本判据全部复现：刻 A / 刻 B 六格、J8 退 64、EV-66 三次 `--check`（ok → `bad_front_matter` → ok）。审查结论 `request-changes`，2 条 blocker（`rm -r --force <已存在目录>` 落 suspected 不落 writes；`&>` / `&>>` 既不进 writes 也不进 suspected）**均在本仓 HEAD 编译产物上复现**——被审对象 `3812f4c` 当初经 codex / gemini / glm 三侧代码双审合入，两处都漏过；登记 **EV-79**，不在本步修。另一条观察：`checkReviewIntegrity` 把用例里的字面路径（`src/a.ts`、`src/gone.ts`）与只经 diff 读到的文件报成「evidence 引用但未列入 consulted」，告警噪声，登记 **EV-80**。达成边界不变：名义 Driver、同 claude 家族、J6 本轮未诱导（`null`）、真载体 Hook 未验（EV-77）。证据 `doc/05_testing/REPORT_2026-09-20_m9_claude_critic_acceptance_r2.md` 与 `doc/05_testing/evidence/m9-acceptance-20260920/`。**本行的版本台账行、§24 台账与 PRD AC 状态仍留第 7 步（EV-57）。** |
-| **M10 任意 Driver** | 四家入口资产与单源渲染；install 多目标；`hooks --agent`；`approve` 前置复核；协议片段两段式；**两个选侧入口（`topic resolve` 与 `review --start`）必须把当轮 Driver 传进 `resolveCriticSelection`** | AC-21 + 兼容验收；ZCode/Codex Driver 夹具跑通；**「当轮 Driver 不得入选」对非缺省 Driver 生效**（有用例）；**前置（四条，缺一不可）**：①**agy skills 真实加载行为实测通过**——M6 第 4 步对 agy 承载面只拿到静态证据（内嵌迁移表 + 旗标帮助），据此定入口形态就是把静态证据当结论（P-05 的教训），实测通过才能拍板 §18.1 #16；②**EV-55 跨时间面重写**——提交锚改按 run 元数据的 artifacts 登记判不可变，Bash 侧另需单独决定历史后缀的文本层保护；不做则换 Driver 当天历史工件集体变「可改」或新 Driver 原稿被判伪造；③**EV-71 会话载体拍板并实测一次写事件**——Hook 只在 Claude Code 会话里生效，别家 Driver 在自己 CLI 里执笔时护栏不触发。**M9 第 6 步已拍板取「名义 Driver」并实测**（`--driver codex` 只作声明、留痕在场时 `-claude.md` 拦 / `-response-codex.md` 放，经 `gate hook-pre-write` 直喂 `PreToolUse` 完成，未覆盖 matcher 分发、`sh -c` 存在性守卫、`CLAUDE_PROJECT_DIR` 解析三层）；**真载体下 Hook 的生效性仍未验**，随本行范围栏的四家入口资产一起验（EV-77）；④**EV-72 主题级 driver 落盘**——plan/bug 原稿写在 `review --start` 之前，那一刻该阶段无留痕，非缺省 Driver 写不出自己的原稿。**完整前置清单以 BACKLOG 为准**（本栏是接手者第一眼读的地方，故把触发条件写在这里） | ⏳ 未开始 |
+| **M9 Claude Code 审核者** | `adapters/claude.ts` + 审查员身份片段 + `critic_enabled` 开关。**第 3 步开工前置（照 M8 行把前置钉进范围栏的先例，代码双审 r3 GLM-02）**：**EV-39**（`registry-parity` 黑名单按厂商归属，建 `adapters/claude.ts` 那一步一并做）、**EV-42**（`rule_syntax` 目录 glob 与 `deny_paths` 逐文件清单的等价性实测——**编写适配器之前**做；未结案前 `peer_deny_applied` 不得记 true）、**EV-43**（stdin 形态下按闭集清单逐格复验，含结论回写落点）、**EV-44**（接入套件第 ⑤ 件对 claude 侧的取舍裁定，含已改挂因变量的翻转条件）——**其配套交付物「落那一格三态探针判据」同属本步范围**：无论裁定做不做第 ⑤ 件，不落该格则翻转条件引用一个不存在的字段、永远是死条件（代码双审 r4）。**不把它们列进范围栏，接手第 3 步的会话就读不到**——§3.7 表格那句话与 `types.ts` 注释都不是开工入口 | 真实审查一次，`consulted` 交叉核对通过 | ✅ **七步全部达成（2026-09-20，v1.3.30）**——完成判据「真实审查一次、`consulted` 交叉核对通过」由第 6 步第 2 轮验收达成（9/9）；第 7 步纪律 6 回溯见 §21 v1.3.30 行与 §24.1；**四条达成边界**见本格末段「第 6 步第 2 轮」。第 1 步**准入实测**（一行适配器代码都不写）：EV-41 结案——三种 prompt 载入形态全部成立、31,913 字节送审包实测跑通、**不需要分片或截断**；另三件顺带取证：**`--restricted` 会连项目记忆 `CLAUDE.md` 一起阻断**（单变量对照，**这条否证了交底给第 ⑤ 件的理由，且连同它给的处置一并否证**——片段会被同一旗标挡掉，做出来是死件，第 ⑤ 件对 claude 侧的取舍**待 M9 第 3 步接入时裁定**——见 BACKLOG **EV-44**，含翻转条件。此处上一版写的是「待代码双审裁定」，而 r2 那次双审已经发生且选择了登记而非裁定，该句已过时；两处只允许一个时点，代码双审 r3 GLM-03）、`denied_tool_in_trace` 拿到本机首个正向样本、审查尺度 slug 由 `system/init` 回读挣得。第 2 步**探针补三个机读字段**：`stream_json_requires_verbose`（**EV-40 结案，且其原拟判据「数事件条数」被实测否证**——实为 CLI 硬拒绝，判据改为「负对照被干净拒绝」）、`path_deny.coverage_complete`、`strict_mcp_config_applied`；**第 2 步的代码双审 16 条、三侧独立收敛到同一个阻断**（`[].includes(x)` 把「没测到」算成「确认没有」，使未登录机器被判安全失守），已修并加纵深用例。**两步均不改对外行为，`criticEnabled` 仍为 `false`**。 **第 3 步（2026-09-18）：适配器本体落地，四条准入前置全部结案。** ①`adapters/claude-trace.ts` 解析器搬家（探针反向 import，方向同三家先例），新增路径提取/覆盖率/计数；②`adapters/claude.ts` 分两半落地——下半身（argv/exec 封装，纯函数）供准入脚本 import，上半身（`claudeAdapter` 各成员）随后；③**EV-42 正向结案**（`file_shape_verified: true`，探针第三臂实测，两个独立装置同结论）；④**EV-43 七格 argv/stdin 双臂零分叉**（改双臂是因为本机已漂到 2.1.276 而基准产自 2.1.273，单臂比对两个变量同时在变）；⑤**EV-44 裁定第 ⑤ 件显式不做**，翻转条件落成必填三态 `project_memory_blocked`（+独立夹具+对照臂唯一构造点）；⑥**EV-39 主扫改三分 + 豁免排他 + 四条新腿**，新增能力：分解形规避与跨厂商豁免（旧判据完全抓不到）。 变异验证 20 条逐一实跑全部咬住。**第 3 步仍不改对外行为，`criticEnabled` 当时仍为 `false`**（翻开关是第 4 步）。 证据见 `doc/05_testing/REPORT_2026-09-18_m9_claude_admission.md`，留痕见 `.reviews/M9-适配器本体与准入收口/`。 **第 4 步（2026-09-18）：配套六件 + Hook 语义 + 夹具收口，`criticEnabled` 翻为 `true`——本里程碑第一次改对外行为。** ①**claude 成为可选审核者**（`defaultSelected` 保持 false，缺省集合仍是 codex/gemini/glm 三家、已顶满内置 `max_critics = 3`；翻 `defaultSelected` 会被 `deriveDefaultCritics` 的上限不变量在模块加载期拦下）；②**`--critics claude` 仍退 64**，因为「当轮 Driver 不得入选」是 `critics.ts` 的独立检查——翻开关的那一刻，这条从「靠 `criticEnabled` 顺带成立」变成**唯一防线**，已实测立住（报错里「当前可用」为 codex、gemini、glm 三家，不含 claude）；③**Hook 保护集判据由 `CRITICS`（启用集合）改为「全部已登记角色减当轮 Driver」**——不改则翻开关那一刻 Driver 写不了自己的裁决件、整条流水线锁死（实测：归档内写入由退 0 变退 2），今日行为等价、换的是理由；④第 ⑥⑦ 件补齐（`config.v2` 的 anthropic 分支只有 vendor 判别式，入口由探针独占；两档模型 default=sonnet-5 / flash=haiku）。**接入套件第 ⑤ 件按 EV-44 显式不做。** 实测口径：翻开关前单变量实验红 19 条、第 ⑦ 件另独立红 3 条（代码双审 CODEX-01 补出，计划原稿的「19 条」是单变量结论、不等于本步失败面），全部收口后 `npm run check` 1390 通过 / 0 失败 / 3 跳过（三条跳过均为实测确认的不可达分支，带原因）。留痕见 `.reviews/M9-审核者启用与夹具收口/`。 **第 5 步（2026-09-19）：`--driver` 全链路与选侧收口（EV-53 / EV-54 结案）。** 把 `--driver` 接进「解析 → 选侧 → 原稿定位 → freeze → 运行元数据」全链路（契约见 7.1 该段）：`resolveDriver` / `selectableCritics` 两个单点判定；闸门区改为直读运行元数据取当轮 Driver 与轮次（按工件后缀反推有循环依赖——要先知道 driver 才能跳过 Driver 的产出，而 driver 只记在留痕里）；裁决件 `role` 须与当轮 Driver 一致；`latestRunMeta` 把「一份都没有」与「有但全读不出」分两档、后者硬失败并指引重跑该阶段；审查件不得被当原稿（`isReviewArtifact`）。这是第 6 步的硬前置——claude 是本会话的 Driver，不接 `--driver` 验收一次都跑不成。接线扫描判据被三轮双审逐次打穿、重写五版，最终改用 TypeScript 官方解析器做词法剥离（手写状态机在少剥方向 fail-green）。三轮代码双审：r1 三侧 `request-changes` 13 条 → r2 两侧 12 条 → r3 三侧 `approve-with-nits` 11 条。边界如实登记：EV-66（裁决件 schema 的 `role` 常量，第 6 步前置之一结案）、EV-67（能入选但未入选侧的模型覆盖静默丢弃）。留痕见 `.reviews/M9-Driver旗标全链路与选侧收口/`。 **第 6 步前置之一（2026-09-19）：裁决件 `role` 契约放宽（EV-66 结案，v1.3.29）**，细节见 §21 该行与 6.6 引文块。 **第 6 步前置之二（2026-09-19）：Hook 当轮保护集接上当轮 Driver（EV-68 结案，计划双审 13 条全部接受）。** 当轮面与跨时间面在签名上分家——`hasProtectedRoleSuffix(fileName, driver)` **必填无默认值**（漏传变编译期错误，与 EV-69 登记的「默认参数让漏传静默成功」同源），跨时间面另立 `hasRoleSuffixCrossTime()` 承接提交锚与 Bash 侧、**取值口径一字未改**。**driver 的权威来源是 `run.json.driver` 而非闸门项**：原计划把 `state.json` 的 `GateEntry.driver` 定为第 1 级，被双审**两侧独立打穿**（`review.ts` 四处 `setGateChecked` 全不传 driver，唯一写它的两处以「裁决件已落盘」为前置，而 Driver 写裁决件正在那之前；叠加 upsert「沿用前一条的值」，重跑换 Driver 时拿到的是上一轮的值）。留痕损坏则**硬失败**，与 `gate` 同口径。**两条边界如实登记**：非缺省 Driver 仍写不出 plan/bug 原稿（EV-72，不挡第 6 步因为验收走 code 阶段、以 diff 为被审对象）、会话载体未定（EV-71，承接 EV-68 不该丢失的警示）。留痕见 `.reviews/M9-Hook当轮Driver保护集/`。 **本行的完整纪律 6 回溯（版本台账行、§24 台账）留待第 7 步**，此处只回补会当场失实的现状断言（代码双审 CODEX-07）。留痕见 `.reviews/M9-ClaudeCode审核者接入/`，实测见 `REPORT_2026-09-17_m9_claude_entry_probe.md`。 **第 6 步第 1 轮（2026-09-19）：验收实跑，M9 完成判据未达成，但拿到了三条准入面没测出的事实。** 载体取 ① 名义 Driver（计划双审三侧一致，EV-71 结案、残量 EV-77）；被审对象是历史提交 `3812f4c` 的 src/test 差异（作者 BobChen、2026-09-16，凭据可核，J4 达成、「同 claude 家族」记为达成边界）。两次尝试：**第 1 跑零 API 调用即拒**——`review.v1.json` 的 2020-12 `$schema` 头被 claude 2.1.277 拒绝，探针的 `json_schema_ok` 从未喂过真实契约文件（EV-74，适配器已剥该键）；**第 2 跑 525s / $1.58 跑通**，`parse_fallback: false`、`evidence_ok: true`、`model_effective_source: envelope`、`peer_deny_applied: true`（三家里第一次），但 **J5 失败**（`consulted_unverified: true`：自报 15 项，Read/文件级 Grep 只覆盖 10 项，另 5 项只在目录级 Grep 结果里出现——不是撒谎，是核对面看不见 `tool_result`，EV-76），且 **`readonly_breach: true` 是误判**（`StructuredOutput` 交付通道被算成 5 次写，EV-75，适配器已豁免该名字、探针工具面判据改为同源认得输出通道；`gate --check` 当时不消费该旗标——真假失守同样不拦——本轮代码双审后已接进失败面，按 AD-06 列文件）。零成本判据全过：刻 B 写事件翻转、J8 退 64、EV-66 负例判 `bad_front_matter`。按计划 §六不做第 3 次尝试；第 3 次要不要跑、跑之前 EV-76 取哪条出路，由用户定。证据 `doc/05_testing/REPORT_2026-09-19_m9_claude_critic_acceptance.md` 与 `doc/05_testing/evidence/m9-acceptance-20260919/`，留痕 `.reviews/M9-验收实跑/`。 **第 6 步第 2 轮（2026-09-20，用户发起）：第 3 次尝试，M9 完成判据达成。** EV-76 出路 ① 合入后重跑：同一夹具脚本重建（`cmp` 相同）、同一被审对象（`subject_sha256` 同值）、同一焦点；构建身份 = `a75ec43` 干净树重建的 bundle（sha256 `c50d787…`，与全局副本逐字节相同）。单次 429s / $1.25 跑通：`parse_fallback: false`、`evidence_ok: true`（read 11 · grep 10 · project_reads 11）、`model_effective_source: envelope`、`peer_deny_applied: true`、`drift: false`。**J5 达成**：自报 `consulted` 9 项，9/9 匹配——Read 覆盖 7 项、文件级 Grep 独占 2 项（`types.ts`、`codex.ts`），`content` 命中另覆盖 3 项但**无独占贡献**：本次样本按修前口径同样会过，出路 ① 的作用只由第 2 跑回放 15/15（`grep-hits.test.ts` T7）背书，不由本轮背书；本轮目录级 Grep 只有 1 次（`path=src`），没有撞到对端件（单侧运行也没有对端件），BRIEF 引导句是否起了作用单样本说不清。**`readonly_breach: false`**：`init.tools` 含 `StructuredOutput`、模型调用 2 次（首次形态被 CLI 打回），EV-75 的豁免与 `gate --check` 接线第一次在真实链路成立。零成本判据全部复现：刻 A / 刻 B 六格、J8 退 64、EV-66 三次 `--check`（ok → `bad_front_matter` → ok）。审查结论 `request-changes`，2 条 blocker（`rm -r --force <已存在目录>` 落 suspected 不落 writes；`&>` / `&>>` 既不进 writes 也不进 suspected）**均在本仓 HEAD 编译产物上复现**——被审对象 `3812f4c` 当初经 codex / gemini / glm 三侧代码双审合入，两处都漏过；登记 **EV-79**，不在本步修。另一条观察：`checkReviewIntegrity` 把用例里的字面路径（`src/a.ts`、`src/gone.ts`）与只经 diff 读到的文件报成「evidence 引用但未列入 consulted」，告警噪声，登记 **EV-80**。达成边界不变：名义 Driver、同 claude 家族、J6 本轮未诱导（`null`）、真载体 Hook 未验（EV-77）。证据 `doc/05_testing/REPORT_2026-09-20_m9_claude_critic_acceptance_r2.md` 与 `doc/05_testing/evidence/m9-acceptance-20260920/`。**第 7 步（2026-09-20，v1.3.30）：纪律 6 回溯完成**——§21 台账行（含第 4～6 步五个提交欠下的行）、§24.1 三行与 §24.2 九行、PRD v1.4.6 的 AC / FR / 场景状态、测试报告索引、七份门面文档的现状句、`--driver` 的 7.1 契约（6b 迟到补记）；grep 差集自检的残余命中与处置见 `doc/05_testing/evidence/m9-step7-20260920/grep-anchors.md`；EV-57 结案。 |
+| **M10 任意 Driver** | 四家入口资产与单源渲染；install 多目标；`hooks --agent`；`approve` 前置复核；协议片段两段式；**两个选侧入口（`topic resolve` 与 `review --start`）必须把当轮 Driver 传进 `resolveCriticSelection`**（**已随 M9 第 5 步提前落地**，见 7.1 `--driver` 段；本行只剩翻 `driverEnabled` 与真载体验证） | AC-21 + 兼容验收；ZCode/Codex Driver 夹具跑通；**「当轮 Driver 不得入选」对非缺省 Driver 生效**（有用例）；**前置（四条，缺一不可）**：①**agy skills 真实加载行为实测通过**——M6 第 4 步对 agy 承载面只拿到静态证据（内嵌迁移表 + 旗标帮助），据此定入口形态就是把静态证据当结论（P-05 的教训），实测通过才能拍板 §18.1 #16；②**EV-55 跨时间面重写**——提交锚改按 run 元数据的 artifacts 登记判不可变，Bash 侧另需单独决定历史后缀的文本层保护；不做则换 Driver 当天历史工件集体变「可改」或新 Driver 原稿被判伪造；③**EV-71 会话载体拍板并实测一次写事件**——Hook 只在 Claude Code 会话里生效，别家 Driver 在自己 CLI 里执笔时护栏不触发。**M9 第 6 步已拍板取「名义 Driver」并实测**（`--driver codex` 只作声明、留痕在场时 `-claude.md` 拦 / `-response-codex.md` 放，经 `gate hook-pre-write` 直喂 `PreToolUse` 完成，未覆盖 matcher 分发、`sh -c` 存在性守卫、`CLAUDE_PROJECT_DIR` 解析三层）；**真载体下 Hook 的生效性仍未验**，随本行范围栏的四家入口资产一起验（EV-77）；④**EV-72 主题级 driver 落盘**——plan/bug 原稿写在 `review --start` 之前，那一刻该阶段无留痕，非缺省 Driver 写不出自己的原稿。**完整前置清单以 BACKLOG 为准**（本栏是接手者第一眼读的地方，故把触发条件写在这里） | ⏳ 未开始 |
 | **M11 档位全链路与文档收口** | tiers 四侧配齐 + `--tier-*` 全链 + report 按 Driver/审核者聚合；`profiles` 放开 `{tier}` 形态；§17 剩余批 B 条目收口 | AC-23；**§24 台账全绿**；文档对账零冲突（禁两套规范并行）；全量手工验收剧本 | ⏳ 未开始 |
 | **M8 第 1 步**（原「独立演进项 · 未排期」→ 2026-09-15 升格为 M8 前置 → 同日落地） | 隔离检测**措施 b**：`run_command` 命令文本字面扫描（10.2） | 命令文本伪造命中作废；`run.v2` 的 `guard.peer_leak_via_command` 接线 | ✅ **已实现（M8 第 1 步，v1.3.8）**，BACKLOG **EV-01** 转 done。**升格理由**：M6 第 2 步实测 codex 的 `trace_path_structured = false`（读取经 shell，轨迹里只有命令文本），本项遂从「通道②的唯一覆盖」变成「**codex 侧一切路径核验的唯一手段**」。承诺面是 F-1～F-9 闭集、盲区 B-1～B-5，详见 10.1 措施 b |
 
@@ -2944,7 +2970,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | 单元 | 命名生成、防覆盖、重跑版本号、schema 校验、裁决表解析、路径分类（6.4）、禁读清单枚举、漂移判定、`project_reads` 统计 | `node:test` + 纯函数 + 夹具文件，无需真实 CLI |
 | 契约 | 适配层对两家 CLI 输出的解析 | 用**录制的真实 stdout 样本**回放（M0 阶段采集），避免每次测试都烧配额 |
 | 集成 | `review` → `archive` → `gate` 全链 | 夹具仓库 + 桩适配器（可注入超时/空输出/脏输出/写文件等故障） |
-| 端到端 | 四条命令在真实 Claude Code + 真实两家 Agent 下运行 | 手工验收，对照 15.3 |
+| 端到端 | 四条命令在真实 Claude Code + 真实入选审核者（缺省三家；claude 侧以名义 Driver 单独验过一次，M9 第 6 步）下运行 | 手工验收，对照 15.3 |
 
 ### 17.2 必测故障注入用例
 
@@ -3165,6 +3191,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.30** | 2026-09-20 | **M9 第 7 步：纪律 6 回溯，M9 七步收口（EV-57 结案；纯文档，零代码改动）。** 本版是**状态翻转与并入登记**，不改任何契约语义；唯一的契约文字新增是 7.1 的 `--driver` 段，登记的是第 5 步**已经落地**的行为（纪律 6b 的并入迟到，段首如实写明）。**一、补记第 4～6 步欠下的台账行**（第 4 步只回补了两处现状断言，EV-57 登记的刻意最小回补）：第 4 步（2026-09-18，`8ff9fc3`）claude `criticEnabled` 翻 true、抬头 Critic-D、`agents.claude` anthropic 分支、Hook 保护集改「全集减当轮 Driver」——计划 1 轮 14 条、代码 1 轮 17 条，全部接受；第 5 步（2026-09-19，`3686058`）`--driver` 全链路、EV-53 / EV-54 结案——代码三轮 13 → 12 → 11 条；第 6 步前置之二（`3617077`）Hook 当轮保护集接上当轮 Driver、EV-68 结案——计划 13 条全接受、代码两轮 12（接受 11、驳回 1）+ 5；第 6 步第 1 轮（`470ee84`）验收未达成、挖出 EV-74 / 75 / 76——计划 13 条（接受 12、驳回 1）、代码 15（接受 14、驳回 1）+ 11；EV-76 出路 ①（`a75ec43`）Grep 命中计入读取面——计划 17 条全接受、代码 7 + 9 全接受；第 6 步第 2 轮（`f62075a`，用户发起）**M9 完成判据达成**。**二、本版落点**：文档头（现状断言改为「M9 七步达成」、实测依据补报告⑦⑧⑨）；1.1 的 R-1 / R-3 / R-5 / R-6 状态位（R-1 / R-3 / R-6 自 M7b / M8 起失实，一并改准并注明）；3.7 抬头续填标记；5.1.1 已知缺口（EV-05 结案注记、第 ⑤ 件 EV-44 注记）；6.7.1 `driver` 行；**7.1 新增 `--driver` 段**；13.1.1 的「claude `critic_enabled: false`」例子改准；15.3 的 FR-31 / AC-22 / AC-24 三行；16.1 M9 行（状态位、补第 5 步与第 6 步前置之一的叙述、末段改为第 7 步落点）与 M10 行（Driver 传参已提前落地）；§24.1 新增两行（3.7 续填、接入套件真实接入）+ 改两行（7.1 `--driver`、11.1 注记）；§24.2 十行（含 LLD）。**差集自检另捞出并改准的过期状态位**：6.2 角色枚举表（「仍锁定 gemini \| glm」，自 M8 起失实）、12.1 演进增补行（M7b / M8 五行一直挂「待实施」）、17.1 端到端行（「真实两家 Agent」）、`LLD_orchestrator.md` v1.1.1（「当前边界」与 Hook 伪造判据）、`AGENTS.md` 一处「两家 CLI」。**三、本文之外**：PRD v1.4.5 → v1.4.6（AC-22 / AC-24 / FR-27 / FR-29 / FR-31 / S6～S8 状态与「第三家仍待 M8 / M9」等失实句）；`doc/05_testing/README.md` 补四份 M9 报告与证据目录；`PROTOCOL` / `QUICKSTART` / `MANUAL_user` / `.reviews/README` / `README.md` / `doc/02_design/README` / `doc/03_api/README` 的现状句（多数自 M8 第 3 步起就失实，本次一并改准）；仓库根 `CLAUDE.md` 与 `CLAUDE.md.snippet` 只改一处审核者枚举、护栏口径一字不动；BACKLOG EV-57 结案、EV-05 核实结案、EV-61 扩到 `--only` 提示与三处 `argument-hint`。**四、FR-31 为何仍不记「已达成」**：两家真实接入完成，但接 claude 时核心流程改了两处（Hook 保护集判据、选侧检查成为唯一防线），套件不覆盖「新 Agent 同时是缺省 Driver」这一情形；第 ⑤ 件显式不做。**五、计划稿 §8.2 的 grep 差集自检已跑**（四条锚 + `*.snippet` include + `--only` / `gemini\|glm` 措辞锚 + 广撒网 `claude`），残余命中与逐条处置见 `doc/05_testing/evidence/m9-step7-20260920/grep-anchors.md`。**刻意不做的**：`cli.ts` USAGE 与 `argument-hint` 的 `--only gemini\|glm`（EV-61，纯文案、随 M10 入口资产单源渲染）；`.env.example` 的 codex 段（§24.2 仍 ⏳，M8 欠账）；`AGENTS.md` 审查员身份段（第 ⑤ 件不做，EV-44）；PRD / 手册正文里以两家为例的安装与 doctor 步骤（随 M10 入口资产收口）。 |
 | **v1.3.29** | 2026-09-19 | **M9 第 6 步前置：裁决件 `role` 契约放宽（EV-66 结案，计划双审 14 条：接受 13、驳回 0、暂缓 1）。** 留痕见 `.reviews/M9-裁决件角色契约放宽/plan/`。**一、契约本身**：`disposition.v1.json` 的 `role` 由 `{"const":"claude"}` 改 `{"type":"string","minLength":1}`，身份校验落到代码层（`validateDispositionFrontMatter` 两段式 + `checkDispositionRole`）。**修正演进设计 §4 表第 9 行与 §6.2 表的「enum 四值」口径**——enum 等于在 schema 里抄第二份 Agent id，与纪律 7 相抵，且第五家登记时必漏改；**而漏改的症状正是 EV-66 本身**。演进设计自 v1.0.0 冻结正文，修正只落本文 6.6 引文块，与 7.6「五件套 → 七件」同一机制。**二、这一步是 M9 第 6 步验收的必要（不是充分）前置**：EV-66 只解除三条阻碍中的 schema 这一条；另两条——Hook 当轮保护集烙死缺省 Driver（`hasCriticRoleSuffix` 不收 `driver`，非缺省 Driver 写自己的 `-<id>.md` 会被判伪造件，而同轮 claude 作为审核者的 `-claude.md` 反而不受保护）、四家入口资产尚未落地——**未解除前验收同样跑不完**，已登记 BACKLOG 并修正 EV-55 的论域记载（原文只覆盖跨时间面，当轮面无人跟）。**三、两处「计划照做就会当场打红自家验收标准」的遗漏，由双审三侧独立命中**：①`registry-parity` 给 `properties.role.const` 立的具名豁免，配「没被用到的豁免就是空头支票」的守卫——删 const 即红，正确处置是删条目而非扩豁免面；`types.ts` 的 `Disposition.role: 'claude'` 与其字面白名单条目同源（理由「Driver 任意化排在 M10」在本步之后即成失实留痕，已改写为探针键）。②计划 §3.2 声明「与 `validateRunMeta` 逐字同构」（**短路**形态）而 §3.4 的负例保留 `addresses: []`，ajv 必败 ⇒ 身份校验不可达 ⇒ 新断言红在「校验器没跑到」。**改取 `validateConfig` 的追加形态**（ajv 失败也跑身份检查，与该函数 GLM-04 那次同源），并把负例按「一条只测一件事」拆开。**四、资产面第一次有机器判据**（`test/contract/disposition-role-assets.test.ts`）：`skills/` 下指挥产出裁决件的祈使句不得写死角色名。判据按四维写——论域 glob 自动扩展（不用人工清单：计划那份「实测 6 处」的清单实测是 9 文件 17 行）、字面从 `DEFAULT_DRIVER` 派生（否则扫描器自己成第二事实源）、命中下限、正向 + 变异自测。**如实标注边界**：只证「旧字面不复发」，证不到「新指引语义正确」，那一格只能靠第 6 步实跑。同批改掉 `promise-landing.test.ts` 的假证明——它靠字面 `-response-claude.md` 找裁决件且明写不断言命中数，是**本步之后第一个会静默失效**的既有判据，改为 `parseArtifactName` 解析并补论域下限。**五、T-11 第 3 格由「期望失败」翻为「期望通过」**：非缺省 Driver 的闸门闭环第一次真正走通；前两格一字未动（定位不到 / 谎报判红），正说明放宽没顺手松掉别的。**口径限定（代码双审 CODEX-07）**：该格跑的是 T-11 夹具——工作树产物 + `TRIVIUM_ASSET_ROOT` 指向工作树 skills + 桩审核者，**裁决件由测试直写**；schema 经 `import ... with { type: "json" }` **构建期内联**进 bundle，真实会话须重新构建并装到全局后才同效（未重装前用户侧 `gate --check` 仍按旧的 `const: claude` 判）。该格也**不覆盖**「非缺省 Driver 照资产自己写出这份件」那一步——那一步见 EV-68。全量 1459 tests / 1457 pass / 0 fail / 2 skip（跳过数未增加；计划原稿把 HEAD 基线的 **tests 总数** 1449 误记为「通过数」，实际 HEAD 为 1449 tests = 1447 pass + 2 skip）。 |
 | v1.0.0 | 2026-09-10 | 首版。依据 PRD v1.3.0、5 份参考方案与 2026-09-10 联网调研，确定分层架构、组件划分、工件契约、四条命令流程、隔离与只读机制、模型路由、异常矩阵、追溯矩阵与实施路线。 |
 | v1.1.0 | 2026-09-10 | 按审核意见 RV-01～RV-26 修订（第 22 章逐条应答）：AD-03 改为 `review --start/--wait` 分段协议并新增 7.5、R12；AD-05/10.2 把 `in-place` 规格化为完整备选并立 ADR-001；3.5 新增 `home_isolation`、`isolation.cost` 探针，11.2/11.3 配置隔离改由探针决定；12.3 缓存键加 `brief_hash` 且默认关闭；8.4 闸门写锁限同会话 + TTL，新增 `/dual-abandon`；5.3/18.2 补 `.gitignore` 白名单；7.4 改用 `.trivium/bin/trivium`；3.1/8.5 修正 `MultiEdit`、Stop 阻断输出契约、8 次硬上限，新增 AD-13（commands vs skills）；6.6/8.6 裁决词对齐 FR-14，空洞理由与共同 blocker 默认 warning，新增 parse_fallback 侧规则；6.1 保留后缀；14.1 只执行显式配置；8.1 认证缓存；12.6 主题锁；6.4 简化为路径判定；AD-12 下限 3.9；术语「覆盖三档 / 路由四级」统一；18.1 新增 4 项待拍板；18.2 补 PRD 回填项。 |
@@ -3310,20 +3337,22 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
 | **3.6 Codex 事实表** | **B-事实** | **M6** | ✅ **已并入 v1.3.7**，并**修正演进设计 §3.1 的三处口径**：①`-p` 是文件分层而非 `[profiles.*]` 段；②effort 档位表全错且 CLI 不校验；③模型目录路径名对不上。演进设计 v1.0.0 冻结正文，修正只落本文 3.6——**以本文为准**，与 7.6「五件套 → 七件」同一机制 | **3.6**；[`REPORT_2026-09-14_m6_codex_probe.md`](../05_testing/REPORT_2026-09-14_m6_codex_probe.md)、`probes/codex.ts` |
 | **3.7 Claude headless 事实表** | **B-事实** | **M6** | ✅ **已并入 v1.3.7**，并**修正演进设计 §3.2 的一处口径**：路径级 deny 对 `Read` 可用但**对 `Grep` 不可用**，第 ③ 道屏蔽不能单靠 CLI 层。另记 `--strict-mcp-config` 为硬前置（不传则 MCP 写工具进入工具面、成本 ×24） | **3.7**；[`REPORT_2026-09-14_m6_claude_probe.md`](../05_testing/REPORT_2026-09-14_m6_claude_probe.md)、`probes/claude.ts` |
 | **3.7 / 3.7.1 的 M9 实测回填（三个新机读字段 + EV-40/41 结案）** | **B-事实** | **M9** | ✅ **已并入 v1.3.20**：`stream_json_requires_verbose`、`path_deny.coverage_complete`、`strict_mcp_config_applied` 三行进 3.7 事实表；3.7.1 的 stdin 行与 `--verbose` 来源列改准（后者初稿写「绑定关系本身读该字段」，与 `types.ts`「消费方是漂移可见性、不是参数构造」两个口径，代码双审 AGY-02）。**11.1 判据一第三类随之清空为空集**。数据只能由 M9 自身产出，故并入本文是 M9 的完成判据之一（纪律 6a） | **3.7** / **3.7.1** / **11.1**；[`REPORT_2026-09-17_m9_claude_entry_probe.md`](../05_testing/REPORT_2026-09-17_m9_claude_entry_probe.md) |
+| **3.7 的 M9 第 3～6 步续填（EV-42 / 43 / 44 结案；`json_schema_ok` 口径、`StructuredOutput` 输出通道、Grep 输出格式与命中分档）** | **B-事实** | **M9** | ✅ **已并入 v1.3.25 / v1.3.30**：EV-42 `file_shape_verified`、EV-43 七格双臂零分叉、EV-44 `project_memory_blocked` 三态随第 3 步进 3.7；第 6 步两轮验收把 `json_schema_ok` 改为「只证形态、不证契约文件」（EV-74）、`StructuredOutput` 记为输出通道而非写事件（EV-75）、Grep `content` 命中计入读取面（EV-76 出路 ①，10.1 新规则）。数据只能由 M9 自身产出，并入本文是 M9 完成判据之一（纪律 6a） | **3.7** / **10.1** / **11.4**；报告⑦⑧⑨ |
 | **Driver 入口承载面（M6 第 4 步，原清单未列）** | **B-事实** | **M6** | ✅ **已并入 v1.3.7**：四家入口均为 SKILL.md 形态（agy 侧待行为实测），codex 的承载面是 skills 而非演进设计写的 `prompts/`；`CODEX_HOME` 隔离不住指令面。**不进机读 `ProbeSection`**——消费方是 M10 的设计决策而非运行期代码，塞字段就是第二个 EV-06 | **3.6** 末段；[`REPORT_2026-09-15_m6_driver_entry_probe.md`](../05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md)；BACKLOG EV-08 / EV-09 |
 | 4.1 分层图增注册表 | A | 第零步 | ✅ 已并入 v1.3.0 | 4.1 |
 | 5.1 组件表增 `agents/registry` | A | 第零步 | ✅ 已并入 v1.3.0 | 5.1 |
 | **7.6 通用性验证（桩 Agent 夹具）** | A | 第零步（规格）/ **M7b 第 6 步**（实现） | ✅ **已并入 v1.3.6**，并**修正演进设计的口径**：演进设计 §7.6 / §225 / AC-N5 写的是「**五件套**」，实测为**七件**（补模型路由与配置形状）。演进设计自 v1.0.0 冻结正文，故修正只落本文 5.1.1 与 PRD v1.4.4——**以本文为准**，这正是冻结 + 台账机制要处理的情形 | **5.1.1**；`test/integration/stub-agent-kit.test.ts`、`test/fixtures/stub-agent-kit/` |
+| **5.1.1 接入套件的真实接入（M8 codex / M9 claude，原清单未列）** | **B** | **M8 / M9** | ✅ **两家真实接入完成**（codex 2026-09-16 AC-20；claude 2026-09-20 M9 完成判据）。**不据此把 FR-31 记「已达成」**：接 claude 时核心流程改了 Hook 保护集判据与选侧检查（该 Agent 同时是缺省 Driver，套件不覆盖这一情形）；第 ⑤ 件对 claude 显式不做（EV-44）；5.1.1 已知缺口的 EV-05 结案 | **5.1.1**、15.3 FR-31 行、16.1 M8 / M9 行 |
 | 6.2 角色枚举 | A | 第零步 | ✅ 已并入 v1.3.0（**拆两级标记**） | 6.2 |
 | 6.5 意见前缀 | A | 第零步 | ✅ 已并入 v1.3.0（**拆两级标记**） | 6.5 |
 | 6.6 role 与 addresses | A（规格）/ **B-契约**（role 实现） | 第零步 / **M9 第 6 步前置** | ✅ 规格已并入 v1.3.0；**`role` 契约 ✅ 已落地（EV-66，v1.3.29）**，并**修正演进设计 §4 表第 9 行与 §6.2 表的口径**：不取「enum 四值」而取 `string` + 代码层注册表校验（理由见 6.6 引文块：enum 等于在 schema 里抄第二份 id，与纪律 7 相抵且第五家登记必漏改）。`addresses` 基数 1～3 已随 M7b `--critics` 落地 | **6.6** 引文块；`schema/disposition.v1.json`、`schemas.ts` 的 `validateDispositionFrontMatter` + `checkDispositionRole`、`gate.ts` 的 role↔driver 比对；`test/contract/disposition-role-assets.test.ts` |
 | 6.7 → run.v2 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0；**实现 ✅ 已落地（M7b 第 3 步，2026-09-14）** | **6.7.1**（并排追加，v1 基线保留）；`schema/run.v2.json`、`meta.ts` 写侧与 `migrateRunMetaV1`、`archive.ts` 的 `runManifestProblem` |
-| 7.1 / 7.4 命令旗标与四家入口 | **B-契约** | **M10 / M7b** | ✅ `--critics` 已并入（M7b 第 5 步）；`--tier-*` / `--effort-*` / 四家入口 ⏳ 待 M10 / M11 | 7.1 引言块 |
+| 7.1 / 7.4 命令旗标与四家入口 | **B-契约** | **M7b / M9 / M10** | ✅ `--critics` 已并入（M7b 第 5 步）；✅ **`--driver` 已并入 v1.3.30**（M9 第 5 步落地——按纪律 6b 应在开工前并入，实际随第 7 步补记，偏离如实登记于 7.1 该段）；`--tier-*` / `--effort-*` / 四家入口 ⏳ 待 M10 / M11 | 7.1 引言块 |
 | 8.4 / 8.5 Hook `--agent` 与多目标 | **B-契约** | **M10** | ⏳ 未并入（指针占位 + 护栏分级表已并入） | 8.5 引言块 |
 | 8.6 gate 裁决校验 N 方化 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0 | 8.6 末段 |
 | 9.3 镜头四键 | **B-契约** | **M8 / M9** | ✅ 已并入 v1.3.17：**四键齐备**——`codex` 键随 M8 第 3 步、`claude` 键按纪律 6b 于 M9 工前并入，四家的轴两两零关键短语交叠 | 9.3 引言块 + `lenses.yaml` 的 `codex` / `claude` 段 |
 | 10.1 / 10.2 deny 矩阵与检测收口 | A（登记）/ B（N 方泛化）/ **B-前置**（措施 b） | 第零步 / M7b / **M8（前置依赖）** | ✅ 通道清单已并入。**措施 a 路径侧 ✅ 已实现（M7a）**；N 方泛化 ⏳ M7b；**措施 b ✅ 已实现（M8 第 1 步，v1.3.8）**——2026-09-15 先由「独立项 · 未排期」升格为 M8 前置（依据是 M6 第 2 步实测 codex `trace_path_structured = false`，本项是该侧路径核验的唯一手段），同日落地。承诺面是 F-1～F-9 闭集、盲区 B-1～B-5，见 10.1 措施 b 与 BACKLOG EV-01 | 10.1 措施 b；16.1；EV-01 |
-| 11.1 适配层契约泛化 | **B-契约** | **M8 / M9** | ◐ 部分并入（能力声明与判定分档，M8 第 2 步；**写判据两档与厂商旗标收敛，M8 第 3 步**；**`model_provider` / `profile_requested` 进结果契约、模型目录钩子 `catalogModelsFor` 按逐 profile 校验，M8 第 4 步**；**旗标归属判据三条 + 会红的契约测试，M9 工前并入 v1.3.17，EV-12 结案**）；思考等级透传待 M11 | 11.1「轨迹能力与判定分档」「`command-trace` 族的写判据两档」「生效目录随配置分层」「旗标归属判据」+ 3.7.1 + `registry-parity` 第 6 条 |
+| 11.1 适配层契约泛化 | **B-契约** | **M8 / M9** | ◐ 部分并入（能力声明与判定分档，M8 第 2 步；**写判据两档与厂商旗标收敛，M8 第 3 步**；**`model_provider` / `profile_requested` 进结果契约、模型目录钩子 `catalogModelsFor` 按逐 profile 校验，M8 第 4 步**；**旗标归属判据三条 + 会红的契约测试，M9 工前并入 v1.3.17，EV-12 结案**；**claude 侧 `event-stream` 族的写事件判据、输出通道豁免与 Grep 命中三态 `search_hit_paths`，M9 第 3～6 步**）；思考等级透传待 M11 | 11.1「轨迹能力与判定分档」「`command-trace` 族的写判据两档」「生效目录随配置分层」「旗标归属判据」+ 3.7.1 + `registry-parity` 第 6 条 |
 | 11.5 档位路由 | **B-契约** | **M11** | ⏳ 未并入（指针占位） | 11.5 引言块 |
 | 12.1 异常矩阵增行 | A | 第零步 | ✅ 已并入 v1.3.0 | 12.1「演进增补行」表 |
 | 13.1 → config.v2 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0；**实现 ✅ 已落地（M7b 第 4 步，2026-09-14）** | **13.1.1**（并排追加，v1 基线保留）；`schema/config.v2.json`、`config.ts` 的 `migrateConfigV1` 与 `agentConfigOf`、`init.ts` 的一次性改写 |
@@ -3342,24 +3371,24 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
 
 | 目标文档 | 批 | 目标里程碑 | 状态 |
 | :--- | :--- | :--- | :--- |
-| [PRD](../01_requirements/PRD_driver_dual_critic.md) v1.4.0 | A | 第零步 | ✅ 已并入 |
-| [`LLD_orchestrator.md`](./LLD_orchestrator.md) v1.1.0 | A | 第零步 | ✅ 已并入 |
-| [`PROTOCOL_dual_critic_relay.md`](../03_api/PROTOCOL_dual_critic_relay.md) | A + B | 第零步 / M7b～M11 | ✅ 批 A 已并入（依据回填 + 契约变更说明）；CLI 旗标表随 M7b/M10 |
-| [`QUICKSTART.md`](../07_manuals/QUICKSTART.md) | A + B | 第零步 / M8～M11 | ✅ 批 A 已并入；四 Agent 安装、Driver 切换、档位用法随各里程碑 |
+| [PRD](../01_requirements/PRD_driver_dual_critic.md) v1.4.0 → **v1.4.6** | A + B | 第零步 / M8 / M9 | ✅ 批 A 已并入；AC-20 状态随 M8（v1.4.5）、AC-22 / AC-24 / FR-27 / FR-29 / FR-31 / S6～S8 状态随 M9 第 7 步（v1.4.6） |
+| [`LLD_orchestrator.md`](./LLD_orchestrator.md) v1.1.0 → **v1.1.1** | A | 第零步 / M9 | ✅ 批 A 已并入；「当前边界」与 Hook 伪造判据两处现状句于 M9 第 7 步改准（v1.1.1） |
+| [`PROTOCOL_dual_critic_relay.md`](../03_api/PROTOCOL_dual_critic_relay.md) | A + B | 第零步 / M7b～M11 | ✅ 批 A 已并入（依据回填 + 契约变更说明）；`--critics` 随 M7b、`--driver` 与 `role` 放宽随 M9 第 5～6 步已并入；现状句于 M9 第 7 步改准；`--tier-*` / `--effort-*` 随 M10 / M11 |
+| [`QUICKSTART.md`](../07_manuals/QUICKSTART.md) | A + B | 第零步 / M8～M11 | ✅ 批 A 已并入；**现状句于 M9 第 7 步改准**（四家审核者可选、缺省三家）；codex / claude 安装与 doctor 指引、Driver 切换、档位用法仍随 M10 / M11 |
 | [`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md) | A | 第零步 | ✅ 已并入 |
 | [`RUNBOOK_pipeline_ops.md`](../06_deployment/RUNBOOK_pipeline_ops.md) | **B** | **M10** | ⏳ 未并入（多审失败处置、L2 Driver 人工兜底） |
-| [`MANUAL_user.md`](../07_manuals/MANUAL_user.md) v1.0.1 | A | 第零步 | ✅ 已并入 |
+| [`MANUAL_user.md`](../07_manuals/MANUAL_user.md) v1.0.1 | A + B | 第零步 / M9 | ✅ 批 A 已并入；**现状句于 M9 第 7 步改准**（§1 与 §4.2 的「只有两家」）；四家用法与 Driver 切换随 M10 |
 | [`CASE_manual_acceptance.md`](../05_testing/CASE_manual_acceptance.md) | **B** | **M11** | ⏳ 未并入（演进设计 §13.3 的剧本增补） |
-| [`.reviews/README.md`](../../.reviews/README.md) | A | 第零步 | ✅ 已并入 |
-| [`README.md`](../../README.md) | A | 第零步 | ✅ 已并入 |
+| [`.reviews/README.md`](../../.reviews/README.md) | A | 第零步 | ✅ 批 A 已并入；**现状句于 M9 第 7 步改准**（「仍是两侧审查」自 M8 起失实） |
+| [`README.md`](../../README.md) | A | 第零步 | ✅ 批 A 已并入；演进注记与分层表于 M9 第 7 步改准（第四家已接入） |
 | [`AGENTS.md`](../../AGENTS.md) | A | 第零步 | ✅ 已并入 |
-| [`doc/02_design/README.md`](./README.md) | A | 第零步 | ✅ 已并入 |
+| [`doc/02_design/README.md`](./README.md) | A | 第零步 | ✅ 批 A 已并入；主设计条目版本与读法于 M9 第 7 步改准（曾停在 v1.3.15） |
 | [`.env.example`](../../.env.example) | **B** | **M8** | ⏳ 未并入（Codex 侧凭据与 provider 说明） |
 | [`BACKLOG.md`](../08_project/BACKLOG.md) | A | 第零步 | ✅ 已并入（措施 b 独立演进项已登记） |
 | `ADR_002_multicritic_isolation.md` | A | 第零步 | ✅ 已新建 |
-| **仓库根 `CLAUDE.md`** | **B** | **M10** | ⏳ 未并入。**M10 前刻意不改**——它是当前唯一启用 Driver 的行为约束，改早了等于提前放开护栏口径 |
+| **仓库根 `CLAUDE.md`** | **B** | **M10** | ⏳ 未并入。**M10 前刻意不改**——它是当前唯一启用 Driver 的行为约束，改早了等于提前放开护栏口径。**M9 第 7 步只改了一处失实枚举**（「Antigravity 与 ZCode 只做只读审查」→ 三家，与 `CLAUDE.md.snippet` 同改），护栏口径一字未动 |
 | **`skills/` 资产（12 份）** | **B** | **M10** | ⏳ 未并入（随「入口资产单源多渲染」收口） |
-| [`doc/03_api/README.md`](../03_api/README.md) | A | 第零步 | ✅ 已并入（角色枚举四值） |
+| [`doc/03_api/README.md`](../03_api/README.md) | A | 第零步 | ✅ 已并入（角色枚举四值）；现状句于 M9 第 7 步改准 |
 
 ### 24.3 完成判据
 

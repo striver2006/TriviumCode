@@ -17,7 +17,7 @@ Claude Code 主攻执笔，Antigravity（`agy`）与 ZCode 背靠背只读双审
 TypeScript 编写，esbuild 打成**单文件零依赖 CJS**；仅支持 macOS + VS Code，
 Node ≥ 18（开发建议 ≥ 22）。
 
-- `src/trivium/` — 编排器全部实现（`cli.ts` 入口，`adapters/` 收敛两家 CLI 差异，
+- `src/trivium/` — 编排器全部实现（`cli.ts` 入口，`adapters/` 收敛四家 CLI 差异，
   `agents/registry.ts` 是 Agent 差异的唯一登记处）
 - `src/install.ts` — 安装器（→ `dist/install.cjs`）
 - `skills/` — 8 个 Claude 用户级 skill，核心资产在 `skills/dual-critic/`

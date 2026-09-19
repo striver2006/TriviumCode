@@ -29,10 +29,11 @@
 
 > **演进方向（进行中）**：项目正在把这套流水线从「固定 Driver + 固定双审」泛化为
 > 「**任意注册 Agent 可为 Driver + 每次审核动态选 1～3 个审核者 + 逐审核者指定模型与思考等级**」
-> （多审 / MultiCritic）。**已合入 M7a（Agent 注册表重构）、M7b 六步与 M8（Codex 接入）**：
-> `--critics` 已可用，当前启用为审核者的是 Antigravity、ZCode、Codex 三家，
-> 三者同为**缺省入选集合**（不写 `--critics` 时默认跑这几侧，2026-09-16 决策 D4-4）；
-> **第四家 Agent（Claude Code 作审核者）待 M9**，换一家 Agent 主攻待 M10。
+> （多审 / MultiCritic）。**已合入 M7a（Agent 注册表重构）、M7b 六步、M8（Codex 接入）与 M9（Claude Code 审核者）**：
+> `--critics` 已可用，四家 Agent 均已启用为审核者；Antigravity、ZCode、Codex 三家
+> 同为**缺省入选集合**（不写 `--critics` 时默认跑这几侧，2026-09-16 决策 D4-4）；
+> **第四家（Claude Code 作审核者）已随 M9 接入**（2026-09-20 真实审查一次通过 `consulted` 交叉核对），
+> 但它是本会话的 Driver，入选须 `--driver` 取另一家——换一家 Agent 真正主攻待 M10。
 > 规范与进度见[设计文档](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
 > **本 README 其余部分描述的都是当前可用的系统。**
 
@@ -180,11 +181,11 @@ TriviumCode **绝非**调用 LLM 补全接口，而是直接拉起各厂商**系
 | :--- | :--- |
 | 交互层 | Claude Code + 四条 `/` 命令 + Hook 护栏 |
 | 编排层 | `trivium` CLI：`init` `doctor` `preflight` `topic resolve` `review`（`--start`/`--wait`/`--status`/`--cancel`）`gate`（含五个 `hook-*` 入口）`approve` `abandon` `verify` `report` `status`。**无常驻进程**，每条命令按需拉起、跑完即退 |
-| 适配层 | `AgyAdapter` / `ZcodeAdapter`：把两家 CLI 的参数、输出字段、模型指定方式、只读方式、轨迹来源差异收敛到统一契约 |
-| 执行层 | `agy` / `zcode.cjs` 的 headless Agent 运行时 |
+| 适配层 | 四家适配器（`adapters/agy.ts` / `zcode.ts` / `codex.ts` / `claude.ts`）：把各家 CLI 的参数、输出字段、模型指定方式、只读方式、轨迹来源差异收敛到统一契约 |
+| 执行层 | `agy` / `zcode.cjs` / `codex` / `claude` 的 headless Agent 运行时 |
 | 归档层 | `.reviews/`（进 Git，是本流水线对外的「事实」）+ `.trivium/`（本机运行时状态） |
 
-> 三家 CLI 的参数与行为随版本漂移，因此**能力靠探针，不靠记忆**：`trivium doctor` 在本机逐项实测后把结论回填配置，实现代码只读探针结论，不硬编码设计文档列出的命令行。
+> 四家 CLI 的参数与行为随版本漂移，因此**能力靠探针，不靠记忆**：`trivium doctor` 在本机逐项实测后把结论回填配置，实现代码只读探针结论，不硬编码设计文档列出的命令行。
 
 ---
 

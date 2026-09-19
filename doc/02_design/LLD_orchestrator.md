@@ -2,8 +2,13 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.0
+> - **当前版本**：v1.1.1
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.1（2026-09-20）随[设计 v1.3.30](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 的 M9 第 7 步纪律 6 回溯同步：
+>   2.6 的「当前边界」由「只启用两家审核者」改准为四家全部 `criticEnabled`（codex 随 M8 第 3 步、claude 随 M9 第 4 步），
+>   `driverEnabled` 仍只对 `claude` 为真、`--driver` 自 M9 第 5 步可声明其他家；Hook 伪造审查文件判据由
+>   「`-（gemini|glm）.md`」改准为注册表派生的「全集减当轮 Driver」（M7a 派生、M9 EV-68 起随留痕 `driver`）。
+>   两处都是 grep 差集自检捞出的过期现状句，不改本文其余部分。
 > - **变更说明**：v1.1.0（2026-09-14）随[设计 v1.3.0](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 的规范链回溯同步：
 >   2.6 适配层新增 `agents/registry.ts`（M7a 引入的 Agent 注册表，全部 Agent 差异的唯一登记处），
 >   并写明**M7a 是行为等价重构**的边界——登记四家但只启用两家审核者与一个 Driver，
@@ -116,10 +121,12 @@ graph TD
 
 **适配层是唯一允许调用厂商 CLI 的地方**（`adapters/base.ts` 文件头铁律）。
 
-> **当前边界**（读代码前务必分清）：注册表**登记**了四家，但 `criticEnabled` 只对
-> `gemini` / `glm` 为真、`driverEnabled` 只对 `claude` 为真——与 M7a 重构前的可选集合**逐项相同**。
-> **「注册表登记了四家」不等于「系统支持四家」**：`codex` / `claude` 的审核者能力在 M8 / M9，
-> Driver 任意化在 M10。登记而不启用，是为了让注册表从第一天起就是完整的单一来源。
+> **当前边界**（读代码前务必分清；v1.1.1 改准）：注册表登记的四家**均已 `criticEnabled: true`**
+> （gemini / glm 自 M7a，codex 自 M8 第 3 步，claude 自 M9 第 4 步），`defaultSelected` 为 codex / gemini / glm 三家；
+> `driverEnabled` 仍只对 `claude` 为真——`--driver <id>` 自 M9 第 5 步起可声明其他家（只校验「已登记」，
+> 预检与留痕标注「尚未启用为 Driver」），Driver 任意化本身在 M10。
+> M7a 当时是行为等价重构：登记四家而只启用两家审核者，为的是让注册表从第一天起就是完整的单一来源；
+> 之后每接一家只翻注册表的开关与补接入套件，本文其余描述的代码路径不因此改变。
 >
 > **两处类型／契约收窄已在 M7b 第 6 步放开**（此处原文记的是收窄状态，已过期）：
 > `types.ts` 的 `CriticId` 由 `Extract<AgentId, 'gemini' | 'glm'>` 放开为 `AgentId`
@@ -336,7 +343,7 @@ bashTimeoutFor  = min(600_000, waitTimeoutS × 1000 + 60_000)
 四条判定，**顺序即优先级**：
 
 1. 取不到目标路径 → 放行
-2. **伪造审查文件**（basename 匹配 `-（gemini|glm）.md`）→ deny，**不受闸门状态与 TTL 限制**
+2. **伪造审查文件**（basename 匹配**非当轮 Driver 的角色后缀** `-<id>.md`，集合由注册表派生：全集减当轮 Driver，当轮 Driver 自 M9 EV-68 起读运行留痕的 `driver`）→ deny，**不受闸门状态与 TTL 限制**
 3. **闸门状态文件**（`.trivium/state.json`、`.trivium/lock/**`）→ deny
 4. **归档内**：命中 `_meta` 组件或 `task.json` → deny；否则放行（裁决件、原稿要写进归档）
 5. 归档外业务文件：遍历 `listOpenGates()`，任一 `shouldLockWrites` 为真 → deny

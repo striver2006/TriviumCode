@@ -1,9 +1,9 @@
 # PROTOCOL：Driver-DualCritic 工件中继与协议契约
 
-> 依据 [设计 v1.3.6](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.4](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.30](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.6](../01_requirements/PRD_driver_dual_critic.md)。
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
 >
-> **⚠️ 本文描述的是当前真实生效的契约**（**`config.v2`** / **`run.v2`** / 两侧审核者 / `--driver <id>`）。
+> **⚠️ 本文描述的是当前真实生效的契约**（**`config.v2`** / **`run.v2`** / 四家审核者（缺省三家）/ `--driver <id>`）。
 > `run.v2`（含 `driver` / `critics_selected` / `review_mode: full|partial`）于 M7b 第 3 步生效，规范见设计 6.7.1；
 > `config.v2`（`critics.*` → `agents.*`、`allow_single_flag` → `allow_partial_flag`、
 > 新增 `review.default_critics` / `max_critics`）于第 4 步生效，规范见设计 13.1.1。
@@ -24,12 +24,13 @@
 > 文件名后缀与 `role` 必须同指一人，闸门两头都比对，不一致即 `bad_front_matter`。
 >
 > **`addresses` 基数 1～3 已随 M7b 的 `--critics` 生效**（`minItems: 1`，上限即入选审核者数）。
-> 其余多 Agent 演进带来的契约变更——意见编号前缀扩为四值、`--tier-*` / `--effort-*`
-> 等旗标——**均尚未生效**，随各里程碑并入本文。
-> 注意 `--critics` 当前实际可选的只有两家：第三家的审核者能力随 M8 / M9 接入。
+> **意见编号前缀已是四值**（`CODEX-` 随 M8、`CLAUDE-` 随 M9；取值由注册表派生、schema 不枚举）；
+> `--tier-*` / `--effort-*` 等旗标**尚未生效**，随 M10 / M11 并入本文。
+> `--critics` 当前可选四家：codex / gemini / glm 为缺省集合（默认即三侧，D4-4），
+> claude 只在 `--driver` 取非 claude 时可入选（当轮 Driver 不得入选）。
 > **按本文实现的客户端不会被演进破坏**：读侧双读、旧形态长期兼容。
 
-三方（Claude Code Driver、Antigravity Critic-A、ZCode Critic-B）之间**没有**任何进程间
+各方（当轮 Driver 与入选审核者 Critic-A～D）之间**没有**任何进程间
 协议——它们互不通信。全部协同经由**本地文件**与**编排器进程**完成。这是有意的设计
 （原则 P4 工件即接口）：能被读、能进 Git、能事后独立复核的东西才算接口。
 
@@ -42,7 +43,7 @@
 
 | Schema | 文件 | 生产者 | 校验落点 |
 | :--- | :--- | :--- | :--- |
-| `trivium.review.v1` | `review.v1.json` | 两侧审查员（最终回答即该 JSON） | `parse`（失败即 parse_fallback） |
+| `trivium.review.v1` | `review.v1.json` | 各入选审查员（最终回答即该 JSON） | `parse`（失败即 parse_fallback） |
 | `trivium.disposition.v1` | `disposition.v1.json` | Driver（裁决件 front-matter；表格由 gate 单独解析） | `gate --check` 的 bad_front_matter |
 | `trivium.run.v2` | `run.v2.json` | 编排器 | `writeRunMeta` 写前校验；留痕核对把不合契约的 run.json 视为「不可读」并拦提交 |
 | `trivium.run.v1` | `run.v1.json` | **已停写**（M7b 第 3 步前的编排器） | 只读：既有归档按写入时的规范解读，读进内存时迁移为 v2 形状 |

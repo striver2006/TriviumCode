@@ -1,6 +1,6 @@
 # 05_测试验证与质量保证 (Testing & QA)
 
-本目录直接存放所有测试策略、测试用例与验证报告（扁平结构，无子目录），通过文件名前缀区分文档类型。
+本目录直接存放所有测试策略、测试用例与验证报告（报告扁平存放，通过文件名前缀区分文档类型；`evidence/` 子目录收实跑的原始留痕）。
 
 ---
 
@@ -29,4 +29,9 @@
 - [`REPORT_2026-09-14_m6_codex_probe.md`](./REPORT_2026-09-14_m6_codex_probe.md)：M6 第 2 步 · Codex 探针实测（`codex-cli 0.154.0`）。**推翻三条设计事实**（`-p` 是文件分层而非 `[profiles.*]` 段、effort 档位表全错且 CLI 不校验、模型目录路径名对不上），并记两条决定 M8 可行性的硬事实（读取无结构化路径 ⇒ EV-01 升为 M8 前置；沙箱拒绝静默不进事件流 ⇒ 「轨迹有写事件 ⇒ 失守」对该侧永久为假）。**设计 3.6 的数据来源。**
 - [`REPORT_2026-09-14_m6_claude_probe.md`](./REPORT_2026-09-14_m6_claude_probe.md)：M6 第 3 步 · Claude Code headless 探针实测（`claude 2.1.270`）。`--strict-mcp-config` 是硬前置（不传则 MCP 写工具进入工具面、成本 ×24）；路径级 deny **对 `Read` 可用、对 `Grep` 不可用**，故第 ③ 道屏蔽不能单靠 CLI 层。**设计 3.7 的数据来源。**
 - [`REPORT_2026-09-15_m6_driver_entry_probe.md`](./REPORT_2026-09-15_m6_driver_entry_probe.md)：M6 第 4 步 · Driver 入口承载面与 zcode 复测（零配额）。新增坑 **P-19～P-23**：`CODEX_HOME` 隔离不住指令面、zcode 的 user 级 command 盖过 project 级、skills 重名不去重不告警、`~/.agents/skills` 被两家共享、codex 的承载面是 skills 而非 `prompts/`。结论**刻意不进机读段**，理由见该报告 §0。
+- [`REPORT_2026-09-17_m9_claude_entry_probe.md`](./REPORT_2026-09-17_m9_claude_entry_probe.md)：M9 第 1 步 · Claude Code 准入实测（`claude 2.1.273`，零适配器代码）。EV-41 结案：三种 prompt 载入形态全部成立、31,913 字节送审包不需分片；**`--restricted` 会连项目记忆 `CLAUDE.md` 一起阻断**（单变量对照，否证了第 ⑤ 件的理由，EV-44 据此裁定不做）；`denied_tool_in_trace` 首个正向样本；审查尺度 slug 由 `system/init` 回读。**设计 3.7 / 3.7.1 的 M9 数据来源。**
+- [`REPORT_2026-09-18_m9_claude_admission.md`](./REPORT_2026-09-18_m9_claude_admission.md)：M9 第 3 步 · 准入收口实测（`claude 2.1.276`，装置 `scripts/claude-admission-control.mjs`）。EV-42 正向结案（`file_shape_verified`，两个独立装置同结论）、EV-43 七格 argv / stdin 双臂零分叉、EV-44 第 ⑤ 件裁定不做并落 `project_memory_blocked` 三态。
+- [`REPORT_2026-09-19_m9_claude_critic_acceptance.md`](./REPORT_2026-09-19_m9_claude_critic_acceptance.md)：**M9 第 6 步 · 审核者验收实跑第 1 轮（未达成）**。载体取名义 Driver（`--driver codex`），被审对象为历史提交 `3812f4c`。第 1 跑零 API 调用即拒（`review.v1.json` 的 2020-12 `$schema` 头，EV-74）；第 2 跑 525s / $1.58 跑通但 J5 失败（`consulted` 10/15，目录级 Grep 命中不在核对面，EV-76）且 `readonly_breach` 误判（`StructuredOutput` 被算成写，EV-75）。零成本判据全过。证据 `evidence/m9-acceptance-20260919/`。
+- [`REPORT_2026-09-20_m9_claude_critic_acceptance_r2.md`](./REPORT_2026-09-20_m9_claude_critic_acceptance_r2.md)：**M9 第 6 步 · 第 2 轮（第 3 次尝试）——M9 完成判据达成**。同一剧本、同一被审对象、构建身份 `a75ec43`；429s / $1.25，`consulted` 9/9、`readonly_breach: false`（EV-75 豁免与闸门接线首次在真实链路成立）、`peer_deny_applied: true`。审查结论的 2 条 blocker 在本仓 HEAD 复现（EV-79）；`checkReviewIntegrity` 告警噪声登记 EV-80。四条达成边界（名义 Driver、同 claude 家族、J6 未诱导、真载体 Hook 未验 EV-77）随报告登记。证据 `evidence/m9-acceptance-20260920/`。
+- `evidence/`：实跑的原始留痕（run / review / brief / trace / worker 日志 / Hook 与闸门原始输出 / 复现脚本），按 `m<里程碑>-<用途>-<日期>/` 分目录；`m9-step7-20260920/` 是 M9 第 7 步纪律 6 回溯的 grep 差集自检记录。
 - [`REPORT_2026-09-16_m8_ac20_acceptance.md`](./REPORT_2026-09-16_m8_ac20_acceptance.md)：**M8 第 4 步 · AC-20 真机验收**。`qwen` 与 `deepseek` 两家族各真实审查一次，四个分量（provider 互异 / 生效模型互异 / 各自与请求一致 / provider host 互异）逐一有据；沙箱**正负对照**两侧均成立——正对照用「写命令确实进轨迹且输出显示被拒」，而非计划双审最初提的「另写一个允许写的路径」（那个形态已被实跑证伪）。**含三条达成边界与一条利益冲突标注**（两次取证审的都是 codex 自己的接入代码），引用本条验收时须一并带上。

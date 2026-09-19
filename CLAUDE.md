@@ -4,7 +4,7 @@
 
 本项目启用了 TriviumCode「主攻 + 双审」流水线。作为 Driver（执笔者）你需要知道：
 
-- **你是唯一有权改业务代码的角色。** Antigravity 与 ZCode 只做只读审查，
+- **你是唯一有权改业务代码的角色。** 其余入选的审核者（今天可选 Antigravity、ZCode、Codex）只做只读审查，
   它们的结论由编排器落盘，不经你转述。
 - 四条命令是唯一入口：`/dual-run`（全流程）、`/dual-review-plan`、
   `/dual-review-code`、`/dual-review-bug`。**不要自行调用 `agy` 或 `zcode`**——

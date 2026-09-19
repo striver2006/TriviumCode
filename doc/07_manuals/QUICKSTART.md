@@ -1,13 +1,14 @@
 # 快速上手：Driver-DualCritic 双审流水线
 
 > 目标：**15 分钟内**装好并跑通一条真实任务。
-> 依据 [设计 v1.3.6](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.4](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.30](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.6](../01_requirements/PRD_driver_dual_critic.md)。
 >
-> **本文描述的是当前可用的系统**：Claude Code 主攻 + Antigravity / ZCode 两侧审查。
-> 设计文档里带【待实施】标记的能力（第三、四家 Agent、换一家 Agent 主攻、思考等级三档）
-> **还不能用**，按本文操作即可，无需关心它们。
-> **例外**：`--critics <id,…>` 已可用——能从当前两家里选跑哪几侧（选一侧不算降级）；
-> 但选第三家仍会被拒，因为只有两家启用了审核者能力。
+> **本文描述的是当前可用的系统**：Claude Code 主攻 + 缺省三侧审查（Antigravity / ZCode / Codex，2026-09-16 起默认即三侧）。
+> 第四家（Claude Code 作审核者）已随 M9 接入，但它是本会话的 Driver，入选须 `--driver` 取另一家，本文不展开；
+> 换一家 Agent 主攻（M10）与思考等级三档（M11）**还不能用**，按本文操作即可。
+> **`--critics <id,…>` 已可用**——从已启用的几家里选跑哪几侧（选一侧不算降级）。
+> **本文正文的安装与 doctor 步骤仍以 Antigravity / ZCode 两家为例**；Codex 侧的 provider 配置由
+> `doctor` 探测并给可粘贴样例（设计 16.2 纪律 5），完整指引随 M10 入口资产收口后补写。
 
 这条流水线让 Claude Code 主攻写代码，**Google Antigravity** 与**智谱 ZCode** 两个
 独立审查员背靠背复审，结论逐条落盘留痕。你的角色是 Driver 的使用者——按 `/dual-*`
@@ -198,7 +199,7 @@ plan 审查中 ｜ 已用 5m0s / 预算 15m0s（33%）｜ gemini 已完成 · gl
 
 **想只跑一侧**（省时间或省配额）：给 B/C/D 加 `--critics glm`（或 `gemini`）。
 留痕里会如实记下本轮只选了这一侧，**不标降级**——那是配置意图，不是出了事。
-拼错、选了没启用的那两家、或与旧写法 `--only` 同时给，都会当场退 64 并列出可用值。
+拼错、选了当轮 Driver、或与旧写法 `--only` 同时给，都会当场退 64 并列出可用值。
 
 ---
 
