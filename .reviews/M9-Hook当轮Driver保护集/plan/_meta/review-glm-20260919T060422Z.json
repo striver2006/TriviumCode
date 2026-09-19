@@ -1,0 +1,74 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一条：EV-68 条目自带的验收前置——「第 6 步开跑前必须先定非缺省 Driver 以何种会话载体运行并实测一次写事件」——计划全文未承接。Hook 只挂 Claude Code 的 PreToolUse（hooks.json matcher 为 Edit|Write|NotebookEdit），若第 6 步由别家 Driver 在自己 CLI 会话里执笔，方向①②都不经过本步改的代码，「解除验收阻碍」的主张就不完整；而 §九.6 将 EV-68 转 done，这段警示随条目关闭失去载体。其余逐点实核全部成立：缺口诊断与代码逐字吻合（hooks.ts:155-157 不收 driver、:545 模块级固化），三级取值与「与 cmdGate 同源」核实无误（latestRunMeta 论域确为主题+阶段，cli.ts:808），readState 对 ENOENT 返回空状态不会误伤首轮 plan 原稿，code 阶段裁决件形态 -response-<driver>.md 引用准确（naming.ts:167-169）。另两条小意见：回落用例缺负向断言（鉴别力不足）、state.ts 注释与回落取向的字面冲突未安排弥合。方案主体可采纳，补上载体前置的处置即可实施。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §五 / §七 / §九.6（对照 doc/08_project/BACKLOG.md:165 EV-68 条目）",
+      "problem": "计划的目标是「解除 M9 第 6 步验收的阻碍」，但其直接依据 EV-68 的条目原文写明了一个验收前置：「影响面带一个条件：只在有 Hook 的会话（Claude Code）里成立；验收若让别家当 Driver 在自己的 CLI 会话里跑，Hook 不生效、撞不上这一格。所以第 6 步开跑前必须先定『非缺省 Driver 以何种会话载体运行』并实测一次写事件，否则这条阻碍是明是暗都说不清」。计划全文没有承接这个前置：§七 验收标准全部是 unit/编译级（变异验证、tsc 必填），没有任何真实写事件实测；§五「已知边界」只登记了 plan 阶段时序那一格；§九.6 安排把 EV-68 转 done 并只改准 hooks.json/init.ts 两处落点，未处置这段警示。后果有二：①若第 6 步验收的载体是非 Claude Code 会话，本步修复在验收路径上不被触发，方向②（防 Driver 伪造 -claude.md）在该载体下没有任何强制层，验收是否真的走得通此刻无法判断；②条目关闭后这段「必须先定载体」的知识没有迁移落点，第 6 步接手的会话读不到。",
+      "evidence": "doc/08_project/BACKLOG.md:165（EV-68 条目末段原文，含「第 6 步开跑前必须先定……并实测一次写事件」）；skills/dual-critic/hooks/hooks.json:37（hook-pre-write 挂在 PreToolUse 的 Edit|Write|NotebookEdit matcher 上，仅 Claude Code 会话触发）；src/trivium/critics.ts:142-148（resolveDriver 刻意不校验 driverEnabled 以支撑第 6 步「别家当 Driver」的剧本，载体问题真实存在而非假设）；被审计划 §五、§七、§九.6（无任何会话载体相关安排）。",
+      "suggestion": "在计划中显式处置这段前置，三选一即可：①把「一次真实写事件实测（非缺省 Driver 语境、经真实 Hook 路径）」纳入本步或明确写入第 6 步的验收剧本；②把「会话载体待定 + 实测前置」登记为新 EV 并写进主设计 §16.1 的 M9 第 6 步行（与 §五边界的落点同路）；③至少在 §九.6 的 EV-68 关闭理由中逐字保留这段警示并指向新的承接条目，保证条目转 done 后知识不丢。不要静默略过。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3.5「回落」行",
+      "problem": "回落用例「gate 无 driver 字段、无 run 元数据，写 …-claude.md 期望退 0」没有鉴别力：若第 3 级实现走样成「取不到 driver 就放行一切」（例如三级链写成 driver = a ?? b 后漏掉 ?? DEFAULT_DRIVER，或在取值失败处早退 ALLOW），该用例照样绿。它钉不住用例标题声称的「缺省 Driver 语义」——「按缺省 Driver 判定」与「回落即放行」在这一条断言下不可区分。第 3 级恰是 plan 阶段原稿必然走过的最常用路径，防线在这里静默失效最难排查。",
+      "evidence": "plan §3.5 表格回落行（仅一条正向断言）；src/trivium/agents/registry.ts:348（DEFAULT_DRIVER='claude'，故 -codex.md/-gemini.md 在缺省保护集内，可作负向探针）；test/unit/hooks.test.ts:210-218（既有「伪造审查文件一律拒绝」用例证明无闸门场景写 -glm.md 退 2 的既有口径，可与回落场景对照）。",
+      "suggestion": "回落用例补一条同场景负向断言：同样无任何 driver 留痕时，写 …-codex.md（或 …-gemini.md）必须退 2。只有「-claude.md 放行 + -codex.md 拦截」成对出现，才把「按缺省 Driver 判定」钉死。与 §3.4 自己提出的「成对补翻转格、不要重言式」是同一条纪律，应用到新用例即可。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §六（state.ts 注释修订）对照 src/trivium/state.ts:55-65",
+      "problem": "计划安排把 state.ts 的「只记不读」注释改成「读取方见 hooks.ts」，但 GateEntry.driver 注释里「早于该步立起的闸门项没有这个字段，缺失即『无从得知』，不等于缺省 Driver」将与本步实现「两处留痕都取不到即按 DEFAULT_DRIVER 判定」并存于同一文件——后来者（尤其 M10 做主题级 driver 落盘、EV-55 做跨时间面收口的会话）会读到两句方向相反的注释：一处说缺失≠缺省，另一处的实现按缺省判。§八.1 自己也承认这是「字面相抵」。",
+      "evidence": "src/trivium/state.ts:55-65（GateEntry.driver 的文档注释原文）；plan §3.2 第 3 级与 §六（只安排改「只记不读」四个字，未安排弥合取向冲突）。",
+      "suggestion": "改注释时一并写明两层语义的分工：字段缺失在语义上是「无从得知」（注释那句仍然为真），hook 侧的处理是「无从得知时按缺省 Driver 判定并在拦截文案注明」——这是 §3.2 论证过的可用性取舍，不是把缺失重定义为缺省。一行注释的事，随 §六顺手做。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "缺口诊断与代码实况逐字吻合：hasCriticRoleSuffix 不收 driver 且函数体吃默认值（hooks.ts:155-157）、ROLE_SUFFIX_ANYWHERE 模块加载期固化（hooks.ts:545）、GateEntry.driver 只记不读（state.ts:65），两处消费点、三处语义的盘点准确。",
+    "§八.2 裁定：拆成两个具名函数优于单函数加必填参数。跨时间面的取值口径（全集减缺省）写进函数名，消费点不再背着「当轮该传什么」的疑问；与 EV-69 登记的「默认参数让漏传静默成功」教训同源，类型层面关死这一族缺口。",
+    "§八.1 裁定：第 3 级回落 DEFAULT_DRIVER 可接受。fail-closed（按全集保护）会把缺省 Driver 自己的 -claude.md 原稿一并拦死、锁死今天走得通的 /dual-review-plan——论证经核实成立；不存在更轻的第三条路（主题级 driver 落盘是 §五登记的 M10 前置 schema 变更）。唯一附帶条件见 GLM-03 的注释弥合。",
+    "「与 cmdGate 同源」核实成立：cli.ts:808 的 latestRunMeta 以 ref.layout（含 topic）+ stage 为论域取该主题该阶段最近一条，hook 侧按路径解析主题后同一查询可行；且 readState 对 state.json 不存在返回空状态而非抛错（state.ts:102），首轮 plan 原稿不会误撞 StateCorruptError 退 2；StateCorruptError 退 2 已由 runHook 外层统一处理（hooks.ts:1301-1311），计划「不吞异常」的口径与现状机制一致。",
+    "§八.3 裁定：修一半比不修好。code 阶段裁决件形态确为 -response-<driver>.md（naming.ts:167-169、archive.ts:372），验收剧本不需要原稿，§五「对第 6 步不构成阻碍、对 M10 构成阻碍」的边界判断与命名事实一致，且安排了 BACKLOG 与 §16.1 双落点。",
+    "§八.4 裁定：ROLE_SUFFIX_ANYWHERE 改惰性求值不算范围蔓延——它解掉的是模块加载期固化这个隐式副作用，取值口径不动，为 EV-55 留出显式取值点，改动半径与收益相称。",
+    "§六「hooks.json / init.ts 不改」实核成立：四条拦截命令均不带 driver 参数（hooks.json:34-66），driver 由 hook 进程从留痕解析；顺带改准 EV-68 落点条目文字的做法与 EV-39 先例同源。",
+    "§3.4「文件名字面写死、不从 criticRoleSuffixes(driver) 反推」防重言式的要求正确，与 hooks.test.ts:85-92 已点破的既有问题同源；对 §八.4 之外各「不做」项的边界划定（EV-55/69/70、主题级落盘）均有明确触发条件，无越界。"
+  ],
+  "not_covered": [
+    "未实际运行 npm run check，验收基线数字（1459 tests / 1457 pass / 2 skip）未核实，采信计划自述。",
+    "review --start 立起 running 闸门时是否写入 driver 未逐行核实（review.ts 未读）；结论不依赖它——第 2 级 run 元数据兜底覆盖该窗口。",
+    "闸门终态条目的 driver 与新一轮 run 元数据 driver 理论上可错位（setGateChecked expect 不匹配时跳写，cli.ts:1186-1187 有此路径）：窗口极窄且落在本就该拦的区间（running 期抢写裁决件），未深挖。",
+    "归档内两段路径（<主题>/task.json、主题根直放文件、_meta/ 下文件）的阶段解析失败分支未在计划中展开，我判定其回落方向安全（回落即现状行为），未要求计划补写。",
+    "集成层（test/integration、test/contract/hook-guard.test.ts）未逐条核对是否受签名变更波及；初判不受影响（wrapper 与命令行不变）。",
+    "README.md、doc/README.md、doc/01_requirements/README.md、src/trivium/init.ts、cli.ts 全文、设计文档正文 §8.4 未通读（仅读导览与「保护集」命中段）。"
+  ],
+  "consulted": [
+    ".reviews/M9-Hook当轮Driver保护集/plan/2026-09-19-M9-Hook当轮Driver保护集-claude.md",
+    "src/trivium/hooks.ts",
+    "src/trivium/state.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/critics.ts",
+    "test/unit/hooks.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "skills/dual-critic/hooks/hooks.json",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md"
+  ]
+}

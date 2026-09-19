@@ -1,0 +1,113 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "计划的主体方向成立（把当轮面与跨时间面在签名上分开、driver 必填、惰性求值、影响面实核 hooks.json/init.ts 不必改），但有两条会使本步目标落空的计划级缺陷。最危险的是 CODEX-01：§3.2 把「第 1 级来源」定为 state.json 的 GateEntry.driver，而该字段只在 gate --check --await-approval 时才写——那一刻 Driver 的裁决件必须已经落盘，所以在唯一要紧的窗口里它恒为陈旧值或缺失，换 Driver 的重跑场景下方向①仍被退 2、方向②仍被放行，而计划新写的单测（测试直接手写「gate 记 driver: codex」）恰好不会红。其次是 CODEX-02：计划自称清扫「M10 过期时点」，但设计 §6.2 那一行明写「【待实施 · M10】起该判定按当轮 Driver（run.json.driver）泛化」，正是本步要做的事，§8.4 的拦截 bullet 也没记 driver 来源，两处会随本步合入当场失实。再次是验证面：新增判据只落单元层，而本仓 test/integration/gate-loop.test.ts 头部自己记着「单元测试直接调 hookXxx、绕过了这个缺口」，且本步改动不重装对真实会话无效（CODEX-03/04）。其余为口径未钉死（CODEX-05/06），可单独裁决。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.2（三级来源的第 1 级）",
+      "problem": "「当轮 Driver」的第 1 级来源 `GateEntry.driver` 在 Driver 写裁决件的那个窗口里必然陈旧或缺失，于是本步要修的两个方向在最需要它们的时候依旧反向：同一 (主题, 阶段) 槽位上一轮若停过点并记下过另一个 Driver，本轮换成非缺省 Driver 后，(a) 它写自己的 `…-response-codex.md` 仍被判伪造件退 2（它还是交不了卷），(b) 同轮 claude 作为审核者的 `…-claude.md` 仍不受保护（方向②仍失守）。更糟的是这个错误在计划自带的用例形状下不可见：§3.5 的用例直接手写「gate 记 driver: codex」，而生产流程里那个值恰恰不会在那一刻是新值——用例绿、流程红，症状要到 M10 的 AC-21「四 Driver 各跑一轮」才集中爆发。",
+      "evidence": "读了 src/trivium/state.ts:226-227（upsert 合并写明「driver 记下就不丢，后续状态迁移沿用前一条的值」）；src/trivium/cli.ts:1005 与 :1181 是**唯一**两处把 driver 写进闸门项的调用点，都在 cmdGate 的「停在等待审批」分支，且都以 `result.ok`（checkAdjudication 通过、裁决件已存在）为前置——cli.ts:1219 的 `--check` 放行分支只写 idle、不传 driver，cli.ts:963/1044 的 driver 是 checkAdjudication 的入参而非闸门项；src/trivium/review.ts:934-946 的 `review --start` 只写 running/run_id/rerun_index，不传 driver（run-protocol.ts 全文无 `driver:` 写闸门项）。另：设计 §6.2 该行把泛化来源写成 `run.json.driver`，cmdGate 自身取 `latest?.driver ?? DEFAULT_DRIVER`（cli.ts:855），本计划把更弱的 state 项放在更高优先级，与两处既有口径都相反。",
+      "suggestion": "以运行级留痕作为第 1 级来源（`latestRunMeta` 的 `driver`，即 cmdGate 的取值面；或按工件名解析出的轮次去匹配对应 run.json），state.json 项降为回落，或给 state 项加新鲜度判据（其 run_id 与最近一次运行一致才采信）。§3.5 补一条「state 项记着上一轮的 Driver、run 元数据记着本轮 Driver」的翻转断言，把这条缺陷锁成机器判据。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §九.5 与 §六（同步面）",
+      "problem": "清扫「M10 时点」记载的面不完整，而且漏掉的恰好是最权威的那一处：设计文档 §6.2 的角色后缀行写着「【待实施 · M10】起该判定按**当轮 Driver**（`run.json.driver`）泛化」——本步就是把这条泛化提前到 M9 第 6 步。计划只点了 hooks.ts:113-121 与 BACKLOG EV-55。同节 §8.4 的拦截 bullet 也只写「审核者角色后缀（`-gemini.md` / `-glm.md`，取值由 Agent 注册表派生）」，既没记 codex（本仓已有注释指出它漏过这一家），也没记「driver 从哪来」——而本步第一次让这件事成为契约面。合入后设计文档会同时存在「行为已做」与「待实施 · M10」两种读法，接手 M10 的会话按设计文档会以为 Hook 的当轮化还没做（计划 §五 的边界也指望 M10 会话能读到）。",
+      "evidence": "读了 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:826（§6.2 该行）与 :1447-1465（§8.4 bullet 与 §8.5 的「【待实施 · M10】Hook 的多 Driver 化」）；项目 AGENTS.md 的「改动同步清单」第一行要求「与设计文档不一致的行为 → 先回补修订 doc/02_design/ 设计文档（唯一实现依据）」；计划的 §九.7 只把 §21/§24 台账留待第 7 步，覆盖不到 §6.2/§8.4 这种当场失实的现状断言。",
+      "suggestion": "把设计 §6.2 该行与 §8.4 的拦截 bullet 明确列进 §九.5 的同步清单（不必等第 7 步），并在 §六 影响面里点名这两处文档落点。清扫方式可照 EV-66 那次的先例：grep 设计文档里「M10」与「当轮 Driver」共现的行逐行判，而不是按记忆点名两处。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §七.2 与 §3.5",
+      "problem": "新增判据的机器判据只落在单元层（直接调 `hookPreWrite` + 手工 setGate/手写留痕），而本仓对「hookXxx 单元用例」已有明确记载的教训：它们会在真实缺口上全绿。本步的 driver 解析要同时跨 state.json 与 `<阶段>/_meta/run-*.json` 两个真实文件面，单元夹具里这两份都是测试自己种的，恰好绕开了「真实留痕在那一刻长什么样」这个本步的核心问题（也是 CODEX-01 能溜过去的原因）。",
+      "evidence": "读了 test/integration/gate-loop.test.ts:1-30 的头部注释与 :185 那条用例（原文：「state.json 压根没被创建……`hook-pre-write` / `hook-pre-commit` / `hook-stop` 三个 Hook 全部无事可判、一律退 0，而单元测试全绿（它们直接调 hookXxx 并手工 setGate，绕过了这个缺口）」）；对照计划 §3.5 的四条用例形状；test/integration/gate-loop.test.ts:406-441 已有「归档内写裁决件退 0」的真实子进程用例，是本步最自然的落点。",
+      "suggestion": "在 §七 增一条集成层判据（沿用 gate-loop.test.ts 的 `hook(root, name, input)` 真子进程路径），夹具里先落一轮真实留痕、再以另一 Driver 起一轮，断言方向①②。若嫌配额，注意 test/integration/driver-flag.test.ts:1-22 的配额注记：桩配置必须点名本轮入选的每一侧，否则每次 `npm run check` 都会真拉一次厂商 CLI。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §七 与 §九（执行顺序收尾）",
+      "problem": "计划缺「构建 + 重装」这一步，而本步的收益只在真实 Claude Code 会话里可观察。`.trivium/bin/trivium` 是 `trivium init` 生成的 wrapper，exec 的是 assetRoot 下的 `scripts/trivium.cjs`（已安装副本），不是仓库刚构建的产物；不重装时真实会话仍按旧判据拦人。EV-68 的触发条件恰恰要求第 6 步开跑前「实测一次写事件」，那一格若撞上旧副本，会被误诊成「修复无效」。",
+      "evidence": "读了 src/trivium/init.ts:239-259（writeWrapper：`exec \"${nodePath}\" \"${assetRoot}/scripts/trivium.cjs\"`）与 skills/dual-critic/hooks/hooks.json（四条拦截命令 exec `$D/bin/trivium`）；项目 AGENTS.md「已知坑」第一条「改完代码必须重装才生效……要 `npm run build && node dist/install.cjs` 两步都做；调试可直接 `node skills/dual-critic/scripts/trivium.cjs <子命令>`」；设计 §21 的 v1.3.29 台账为同类问题已记过「构建期内联……真实会话须重新构建并装到全局后才同效」。",
+      "suggestion": "在 §九 收尾补一步重装（`npm run build && node dist/install.cjs`，调试期用 `TRIVIUM_ASSET_ROOT` 指向工作树），并把「第 6 步验收前必须已重装」写进 §五 已知边界；否则执行者在验收时会把「旧副本仍在拦」当成修复无效而重做一遍。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.2（解析时机）与 §六（影响面）",
+      "problem": "计划没写 driver 解析放在 `hookPreWrite` 的哪一步，而位置决定两件计划未提的后果：(a) 归档内写入今天**完全不读** state.json（`isInsideArchive` 命中即 `return ALLOW`），改后必须读；若解析按字面写在函数开头，则每次 Write/Edit 都要多付一次 state 读 + run 元数据 readdir/解析/校验收；(b) 更实质的是退出码——关掉写锁的项目（`gate.block_business_write_when_awaiting_approval: false`）今天在任何业务写入前根本不读 state，改后一个坏掉的 state.json 会让这些写入从退 0 变退 2。这与 §六「影响面实核」的口径不符，也没有进 §五 已知边界。",
+      "evidence": "读了 src/trivium/hooks.ts:343-380（hookPreWrite 判定顺序：伪造件 → state 文件 → 归档内 `return ALLOW` → 才查 config 与 `listOpenGates`）、src/trivium/state.ts:96-114（readState：ENOENT 返回空、内容坏抛 StateCorruptError）、src/trivium/hooks.ts:1301-1311（runHook 把 StateCorruptError 一律转退 2）、src/trivium/meta.ts:396-419（latestRunMeta 需 readdir + 逐份 readFile/JSON.parse + schema 校验）。",
+      "suggestion": "把短路顺序写进 §3.2：先判「文件名后缀 ∈ 全量角色集」且「落在归档内」，命中才解析 driver；并把「非角色后缀、归档外的写入，其退出码不因新增的 state 读取而改变」写成一条断言（变异验证：把 `block_business_write_when_awaiting_approval` 置 false 后再跑）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.2（第 2/3 级）与 §八.1",
+      "problem": "计划自称回落「与 `cmdGate` 同源」，但只取了取值方式、没取降级语义。cmdGate 在「扫到运行元数据却一份都读不出来」这一格是**硬失败**，注释原话是「不能按缺省 Driver 继续——那会把『留痕坏了』判成『按 claude 判』」；而按本计划的第 3 级，Hook 在同一状态（`latestRunMeta` 返回 `{meta:null, scanned>0}`）会静默按缺省 Driver 判——正是那条被点名的形态。此时方向①仍会误拦，而拦截型的退 2 没有「等审完再跑」这种低成本出口。这一格计划没有表态，留给实现者随手选。",
+      "evidence": "读了 src/trivium/cli.ts:836-853（该状态的硬失败分支与其理由）、src/trivium/meta.ts:393-419（`LatestRunMetaResult` 的三元组，明确区分「一份都没有」与「有但全读不出」）、plan §3.2 第 2/3 级与 §八.1 的请裁项。",
+      "suggestion": "在计划里为该格显式拍板并写理由：要么与 cmdGate 一致地硬失败（并在拦截文案里说明留痕坏了），要么明确接受「留痕全读不出按缺省 Driver 判」并把它写进 §五 已知边界与拦截文案。不要把它留成实现期的一格自由选择。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§3.1 拆成两个具名函数（当轮面必填 driver、跨时间面 `hasRoleSuffixCrossTime`）我同意，比「保留一个函数加必填参数」好：语义写在函数名上，而 `immutableChangeReason` 那段注释（basename 进、不能改组合判定）本来就解释了为什么需要一个纯 basename 的跨时间入口。",
+    "§3.2 让第 3 级回落不到 fail-closed 是对的：plan/bug 阶段原稿写在 `review --start` 之前，那一刻 gate 与 run 元数据都不存在，fail-closed 会当场锁死今天走得通的 `/dual-review-plan`。在那个窗口里保护集与今日取值逐字相同，没有新增误拦。",
+    "§八.3 的判断我同意「修一半比不修好」，但前提是补上 CODEX-01/02——stale 场景下方向①照样被拦，那时「精确解除第 6 步阻碍」这句就不成立。",
+    "§八.4 判为不构成范围蔓延：惰性求值在本步行为等价。不过它在本步也是零收益的改动（跨时间集与缺省 Driver 无关，今天与明天取值相同），若 EV-55 最终按 artifacts 登记改写这一处，这笔改动作废——建议在计划里标成可选而非必做。",
+    "§六「`hooks.json` / `init.ts` 不必改」经核实成立：四条拦截命令 exec 的都是 `$D/bin/trivium`，driver 由 Hook 进程自行解析，命令串无需带参数。",
+    "影响面与引用核对属实：三处消费点计数（`hasCriticRoleSuffix` 两支 + `ROLE_SUFFIX_ANYWHERE` → `bashTargetsProtected`）、测试行段（53-67 / 95-112 / 155-170 / 516-580）、第 126 行那条参数契约用例、第 85 行「差集是重言式」的注释，以及 1459 tests / 1457 pass / 0 fail / 2 skip 的基线，均与工作树一致。",
+    "本步无新增外部依赖、无 schema 变更、无数据迁移，回滚就是 revert 单个提交，数据面无可逆损失——这是本步最便宜的一点；也正因为如此，上述计划级缺陷值得在动手前改掉。"
+  ],
+  "not_covered": [
+    "沙箱只读：没有跑 `npm run check` / 构建 / 测试，基线数字（1459/1457/0/2）只从设计 §21 的 v1.3.29 台账读到，未亲自复算。",
+    "未实测 driver 解析在真实 Hook 进程与真实 Claude Code 会话中的行为；也未核对本机已安装副本（`~/.claude/skills/dual-critic/scripts/trivium.cjs`）的内容与版本。",
+    "§3.4 那 20 余条断言没有逐条清点，只核对了计划引用的行段与三条 test 名。",
+    "未读 `.trivium/`（含本仓 state.json 的真实内容）与 `.env*`，也未读本 run 之外的任何审查件。",
+    "EV-68 之外、M9 第 6 步验收的第三条阻碍（四家入口资产尚未落地）与本步的关系未评估。",
+    "另一位审查员的角度未覆盖（背靠背），本结论未与其交叉。"
+  ],
+  "consulted": [
+    ".reviews/M9-Hook当轮Driver保护集/plan/2026-09-19-M9-Hook当轮Driver保护集-claude.md",
+    "AGENTS.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/08_project/BACKLOG.md",
+    "skills/dual-critic/hooks/hooks.json",
+    "src/trivium/archive.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/init.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/state.ts",
+    "src/trivium/types.ts",
+    "src/trivium/util/log.ts",
+    "test/integration/driver-flag.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/unit/hooks.test.ts"
+  ]
+}

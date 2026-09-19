@@ -28,7 +28,8 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
-import { type Ctx, type Stage } from './types.js';
+import { type Ctx, type Stage, STAGES } from './types.js';
+import { looksLikeRoleArtifact } from './naming.js';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
 import { EXIT } from './exit-codes.js';
 import { listOpenGates, readState, shouldLockWrites, StateCorruptError } from './state.js';
@@ -108,19 +109,35 @@ export function isInsideArchive(targetPath: string, projectRoot: string, archive
  *
  * `naming.looksLikeRoleArtifact` 用的是**全量**后缀（`suffixAlternation()`）。
  * 改动后两者不再相等：**识别集 ⊇ 保护集**，差集恰是当轮 Driver。
- * 这层不等式由 `hooks.test.ts` 的专门用例锁住——它今天恒成立，改错了当场红。
+ * 这层不等式由 `hooks.test.ts` 的专门用例锁住——**恒成立，但证伪力有限**：
+ * 那条用例自己的注释里已经算清楚了它证伪不了什么（差集断言是重言式；
+ * 换回被替换掉的旧判据也不会红）。真正锁住当轮语义的是它下面那条换 Driver 的用例。
  *
- * ## M10 的接口
+ * ## `driver` 参数（EV-68 已接上，**不再是 M10 的预留接口**）
  *
- * `driver` 参数留着是为了 M10 按**会话 Driver** 取值。M9 只有一个 Driver，
- * 默认参数即注册表缺省值。
+ * 上一版这里写「`driver` 参数留着是为了 M10 按会话 Driver 取值」，并指出两处消费点
+ * 都在模块加载期烙死缺省值。**那个时点判断已过期**：M9 第 5 步放开 `--driver` 之后，
+ * 第 6 步验收就要「非缺省 Driver + `--critics claude`」跑一轮，届时两个方向当场显形
+ * （它写不出自己的裁决件；claude 的产出反而失守）。所以接上的时点是 **M9 第 6 步前置**，
+ * 不是 M10——EV-68 结案。
  *
- * **但「到那时改调用方传值即可」这句口径太窄**（代码双审 GLM-03）：两处消费点
- * 都在**模块加载期**烙死缺省值——`hasCriticRoleSuffix` 根本不收 `driver` 参数，
- * `ROLE_SUFFIX_ANYWHERE` 是模块级 `const`、构造时就把正则固化了。
- * M10 要让它随会话 Driver 变，这两处都得改造（传参或改惰性求值），不是只改调用方。
+ * 两处消费点现已各自处置：
+ *   · 当轮面 → `hasProtectedRoleSuffix(fileName, driver)`，driver **必填**，
+ *     取值由 `hookPreWrite` 经 `resolveRoundDriver` 从 `run.json.driver` 解析；
+ *   · 跨时间面 → `hasRoleSuffixCrossTime()` 与 `roleSuffixAnywhere()`，
+ *     取值口径不变（全集减缺省 Driver），后者已由模块级 `const` 改惰性求值。
+ *
+ * **仍属 M10 的是跨时间面本身**（EV-55）：提交锚改按 run 元数据的 artifacts 登记判不可变、
+ * Bash 侧单独决定历史后缀的文本层保护。那两处与本函数的当轮语义不同源。
+ *
+ * ## `driver` 没有默认值（第 2 轮代码双审 CODEX-03）
+ *
+ * 本步的手法是「漏传变编译期错误」，源头却留着 `= DEFAULT_DRIVER` 就不对称——
+ * 新增调用点漏传会静默退回「缺省 Driver 的补集」，正是 EV-68 / EV-69 要消灭的形态。
+ * 跨时间面的三处调用点显式写 `criticRoleSuffixes(DEFAULT_DRIVER)`：**它们要的就是缺省值**，
+ * 显式写出来比靠默认值省略更说明问题。
  */
-export function criticRoleSuffixes(driver: AgentId = DEFAULT_DRIVER): readonly string[] {
+export function criticRoleSuffixes(driver: AgentId): readonly string[] {
   return ALL_AGENT_IDS.filter((id) => id !== driver);
 }
 
@@ -132,28 +149,51 @@ export function criticRoleSuffixes(driver: AgentId = DEFAULT_DRIVER): readonly s
  * **消费者的判据含义不同，这层不对称是有意留下的**（M9 第 4 步，计划双审
  * AGY-02 ≡ CODEX-04；消费点计数由代码双审 CODEX-03 改准）。
  *
- * `criticRoleSuffixes()` 有**两处派生、三处语义**——上一版这里写「两个消费者」，
- * 漏了 Bash 侧那一处：
+ * `criticRoleSuffixes(DEFAULT_DRIVER)` 有**两处派生、三处语义**。三处分别是：
  *
- *   · `hasCriticRoleSuffix`（本函数）再分两个消费者：
- *       - `isForgedRoleFile`——形态 + 位置，**当轮**语境。「减当轮 Driver」在这里成立。
- *       - `immutableChangeReason`（提交锚）——纯 basename、**跨时间**判定。那里没有
- *         「当轮 Driver」这个概念：一份三个月前由别的 Driver 落的同名文件，今天该不该拦？
- *         纯词法后缀检查**区分不了**「Driver 自身原稿」与「同名历史审查件」。
- *   · `ROLE_SUFFIX_ANYWHERE` → `bashTargetsProtected`——同样是**跨时间**面：
+ *   · `isForgedRoleFile` / `hookPreWrite`——形态 + 位置，**当轮**语境；
+ *   · `immutableChangeReason`（提交锚）——纯 basename、**跨时间**判定。那里没有
+ *     「当轮 Driver」这个概念：一份三个月前由别的 Driver 落的同名文件，今天该不该拦？
+ *     纯词法后缀检查**区分不了**「Driver 自身原稿」与「同名历史审查件」。
+ *   · `roleSuffixAnywhere()` → `bashTargetsProtected`——同样是**跨时间**面：
  *     它无条件按命令文本里的字面后缀拦，不看位置、不看是不是本轮的文件、
  *     不受闸门与 TTL 限制。**它与提交锚不同源**：Bash 侧拿不到 run 上下文，
  *     所以 EV-55 给提交锚的修法方向（按 run 元数据的 artifacts 登记判不可变）
  *     **覆盖不到这一处**，需要单独决定。
  *
- * **M9 不假装能分。** 现状是把一个**跨时间**的保护面绑在一个**当轮**的值上，
- * 代价在 M9 为零（只有一个 Driver，历史与当轮同值），M10 第一次换 Driver 就会显形：
- * 届时历史 `-claude.md` 会集体变成「可改」，或反过来新 Driver 的原稿被判伪造。
- * 提交锚判据的重构（按 `run.json` 的 artifacts 登记判不可变）是安全关键面的重写，
- * **触发时点是 M10 换 Driver**，已登记 BACKLOG，不在本步做。
+ * ## 两种语义已在签名上分家（EV-68，M9 第 6 步前置）
+ *
+ * 上一版这里是**一个无参函数**被两种语义共用，调用点看不出自己吃的是哪一种——
+ * 这正是 EV-68 那一族缺口能长期潜伏的结构性原因。现在拆成两个具名函数：
+ *
+ *   · `hasProtectedRoleSuffix(fileName, driver)`——**当轮**面，`driver` **必填且无默认值**。
+ *     漏传是编译期错误，不是运行期的静默回落。理由与 EV-69 登记的教训同源：
+ *     `gate.ts` 的 `voidedSides` 注释原话是「可选参数的默认值让漏传静默成功」。
+ *   · `hasRoleSuffixCrossTime(fileName)`——**跨时间**面，取值口径写进函数名
+ *     （全集减**缺省** Driver），供提交锚与 Bash 侧使用。
+ *
+ * **跨时间面本步行为一字不变。** 它仍然把一个跨时间的保护面绑在缺省 Driver 上，
+ * M10 第一次换 Driver 仍会显形：届时历史 `-claude.md` 会集体变成「可改」，
+ * 或反过来新 Driver 的原稿被判伪造。那条修法（提交锚按 `run.json` 的 artifacts
+ * 登记判不可变；Bash 侧另需单独决定）是安全关键面的重写，**触发时点是 M10**，
+ * 已登记 BACKLOG EV-55，不在本步做。本步只把它从隐式的模块加载期固化
+ * 变成一个显式的取值点，好让 EV-55 真做时不必再拆一次耦合。
  */
-export function hasCriticRoleSuffix(fileName: string): boolean {
-  return new RegExp(`-(?:${criticRoleSuffixes().join('|')})\\.md$`).test(path.basename(fileName));
+export function hasProtectedRoleSuffix(fileName: string, driver: AgentId): boolean {
+  return new RegExp(`-(?:${criticRoleSuffixes(driver).join('|')})\\.md$`).test(
+    path.basename(fileName),
+  );
+}
+
+/**
+ * 跨时间面的角色后缀判据：**不问当轮是谁**，取值恒为「全集减缺省 Driver」。
+ *
+ * 消费者是提交锚 `immutableChangeReason` 与 Bash 侧 `roleSuffixAnywhere()`——
+ * 两处都要对**历史**文件表态，而「当轮 Driver」在那里没有意义。
+ * 与 `hasProtectedRoleSuffix` 的差别见后者的文档块。
+ */
+export function hasRoleSuffixCrossTime(fileName: string): boolean {
+  return new RegExp(`-(?:${criticRoleSuffixes(DEFAULT_DRIVER).join('|')})\\.md$`).test(path.basename(fileName));
 }
 
 /**
@@ -255,11 +295,167 @@ export function isForgedRoleFile(
   targetPath: string,
   projectRoot: string,
   archiveRoot: string,
+  driver: AgentId,
 ): boolean {
   return (
-    hasCriticRoleSuffix(targetPath) &&
+    hasProtectedRoleSuffix(targetPath, driver) &&
     isInsideArchiveResolved(targetPath, projectRoot, archiveRoot)
   );
+}
+
+/**
+ * 解析「当轮 Driver」——**只给 `isForgedRoleFile` 这一个当轮面判据用**（EV-68）。
+ *
+ * ## 为什么来源是 run 元数据，而不是闸门项
+ *
+ * 上一版计划把 `state.json` 的 `GateEntry.driver` 定为第 1 级来源，计划双审
+ * **两侧独立打穿**（CODEX-01 / AGY-01）：`review.ts` 的四处 `setGateChecked`
+ * （置 `running`、置 `review_done_awaiting_disposition` 等）**全都不传 driver**，
+ * 唯一写闸门项 driver 的是 `cli.ts` 的两处 `awaiting_approval`，而后者以
+ * 「裁决件已落盘」为前置——**Driver 写裁决件正发生在那之前**。
+ * 于是在唯一要紧的那个窗口里，闸门项要么没有这个字段，要么更糟：
+ * `setGate` 的 upsert 会**沿用前一条的值**（`state.ts` 的「driver 记下就不丢」），
+ * 同槽位重跑换 Driver 时拿到的是**上一轮**的 driver，被当成权威值。
+ *
+ * 所以闸门项**不作为来源**。权威来源是运行留痕：`run.v2` 里 `driver` 是必填字段，
+ * 与设计 §6.2「该判定按当轮 Driver（`run.json.driver`）泛化」的既有口径一致，
+ * 也与 `cmdGate` 自己的取法（`latestRunMeta` 的 `driver`）同源。
+ *
+ * ## 三种结局
+ *
+ *   · 取到留痕 → 用它；
+ *   · `scanned === 0`（该阶段从未跑过）→ 回落缺省 Driver。**这不是把「无从得知」
+ *     重定义为「缺省」**，而是可用性取舍：plan/bug 阶段的原稿写在 `review --start`
+ *     **之前**，那一刻该阶段一份留痕都没有，fail-closed 会当场锁死今天走得通的
+ *     `/dual-review-plan`。代价是非缺省 Driver 仍写不出自己的原稿（已登记为已知边界）。
+ *   · 有留痕却读不出来（一份都读不出，**或**比被采信的那份更新的读不出）→ **硬失败**：
+ *     那是「留痕坏了」，不能判成「按缺省 Driver 算」，也不能判成「按上一轮 Driver 算」
+ *     （计划双审 CODEX-06 / AGY-04；代码双审 GLM-01 ≡ CODEX-01 补出后一格）。
+ *
+ * ## 与 `cmdGate` 在中间格**有意分叉**
+ *
+ * `cmdGate` 对「最新那份坏了、较旧一份可读」是静默采信较旧的那份，本函数判红。
+ *
+ * 这不是漏改，但理由要写准（第 2 轮代码双审 GLM-03 纠正）：**跑后核对是存在的**——
+ * 错误放行方向由 `archive.checkStageArtifacts` 的「角色工件须在 run.json 登记内」兜底
+ * （本文件 `bashTargetsProtected` 那段注释引的就是它），`gate` 侧另有提交锚 `checkRunManifests`。
+ * 上一版这里写「没有任何跑后核对能追回来」，与同一文件的那段注释自相矛盾。
+ *
+ * 准确的不对称在于**兜底不无条件在场**：`checkStageArtifacts` 只在 `gate --check-artifacts`
+ * 路径触发，提交锚 `checkArchiveIntegrity` 并不含它，且它对 `critics_selected` 之外的角色失明；
+ * 而 Hook 是拦截型，判错当场生效，`warn()` 又只写 stderr、在退 0 路径上 Driver 根本看不见。
+ * 拦截侧取更严的取向仍然成立。`gate` 侧那一格是否也要收紧，
+ * 需要与上述兜底的**实际覆盖面**一起评估，已单独登记 **EV-73**，不在本步。
+ */
+type DriverResolution =
+  | { kind: 'ok'; driver: AgentId; fromDefault: boolean }
+  | { kind: 'corrupt'; unreadable: string[] };
+
+async function resolveRoundDriver(
+  ctx: Ctx,
+  topic: string,
+  stage: Stage,
+): Promise<DriverResolution> {
+  const { latestRunMeta } = await import('./meta.js');
+  const r = await latestRunMeta({ archiveRoot: ctx.archiveRoot, topic }, stage);
+  /*
+   * `unreadable` 非空即判坏，**即使已经取到了一份可读的 meta**（代码双审 GLM-01 ≡ CODEX-01）。
+   *
+   * `latestRunMeta` 是 newest-first 且命中即返回，所以 `unreadable` 里装的恰好全是
+   * **比 `meta` 更新**的那几份——语义天然对齐，不必再比 run_id。若这里只判 `!r.meta`，
+   * 「最新那份读不出、较旧一份可读」会静默降级成**上一轮**的 Driver，而拦截文案还会
+   * 自称「取自该阶段最近一份运行留痕」。那两条后果与本步否掉 `state.json` 闸门项时
+   * 列的理由**逐字同形**（「沿用前一条的值，被当成权威值」），只是换成了留痕版。
+   */
+  if (r.meta && r.unreadable.length === 0) {
+    return { kind: 'ok', driver: r.meta.driver, fromDefault: false };
+  }
+  if (r.meta || r.scanned > 0) return { kind: 'corrupt', unreadable: r.unreadable };
+  return { kind: 'ok', driver: DEFAULT_DRIVER, fromDefault: true };
+}
+
+/**
+ * 从归档内的目标路径解析出 `<主题>/<阶段>`，用来定位该阶段的运行留痕。
+ *
+ * 守卫两件事（计划双审 AGY-02 / CODEX-05）：段数与阶段合法性。归档内并非所有路径
+ * 都是三段式——`<主题>/task.json`、主题根直放的文件、`<主题>/verify/*`（`verify`
+ * 不是 `Stage`）都会在这里落空。
+ *
+ * **落空不等于放行。** 调用方此时回落缺省 Driver，即改动前的判定口径——
+ * 「定位不出阶段」说的是「不知道该查哪份留痕」，不是「这个文件不用保护」。
+ *
+ * 两条路径都要试。只试词法会漏掉「归档外的软链指向归档内」——那条软链的词法路径
+ * 在 `doc/` 下，定位必然落空；若落空即放行，`Write` 会沿链把文件在归档内创建出来，
+ * 而这正是 `isInsideArchiveResolved` 那段注释点名要拦的形态（实测：会让悬空软链用例由退 2 变退 0）。
+ *
+ * ## realpath 优先，词法兜底——**与 `isInsideArchiveResolved` 有意不同源**
+ *
+ * 那个函数取词法 ∪ realpath 的**并集**，因为它问的是「要不要管」，fail-closed 方向是「都算在内」。
+ * 本函数问的是「这份写入**实际落在**哪个阶段」，只能有一个答案，而写入会沿软链落到 realpath 那侧。
+ * 两者口径不同是有意的，**不要为了「对齐」把其中一个改成另一个**。
+ *
+ * ## 顺序**有真实的行为差异**（第 2 轮代码双审 AGY-01 ≡ CODEX-02 更正）
+ *
+ * 第 1 轮我把这条判成「表达性修正、无可观测差异」，**那个结论是错的**，
+ * 错因值得记：当时的夹具用 `t/mirror -> t/code`，而 `mirror` **不是合法 Stage**，
+ * `stageSegmentsUnder` 的白名单守卫直接返回 null ⇒ 词法分支压根不命中 ⇒ 必然回退 realpath。
+ * 「调换顺序用例仍绿」靠的是这个巧合，不是我当时写的「readdir 沿软链」。
+ * **用「变异后用例仍绿」当等价性证据之前，要先确认那条用例真的覆盖了被变异的路径。**
+ *
+ * 实测（构造复现）：**文件级（终端组件）软链**是反例——
+ * `t/plan/x-claude.md -> t/code/x-claude.md` 时词法定位 `t/plan`、realpath 定位 `t/code`，
+ * 而这两个阶段的 `_meta` 是**不同的物理目录**，读到的是不同留痕、可能是不同 Driver。
+ * 词法优先会按 `t/plan` 的 Driver 判身份，放行一份实际落在 `t/code` 的写入，
+ * 覆写那一阶段受保护的审核者产出。等价只在**阶段目录整体是软链**那一格成立
+ * （那时词法侧的 `_meta` 会沿同一条软链落到同一个物理目录）。
+ *
+ * ## 以及：解析结果落在归档外时**不得回落词法**
+ *
+ * 这是第 2 轮 GLM-01 报的安全缺口，由「按留痕定 driver」引入、构造实测复现过：
+ * 归档外预置一份合法 run 留痕 → `ln -s <归档外目录> .reviews/<新主题>/code`
+ * （Bash 侧不命中：无角色后缀字面，阶段目录本身也不在编排器独占集）→
+ * 写 `.reviews/<新主题>/code/x-glm.md`。此时 realpath 解到归档外 ⇒ 段解析因 `..` 返回 null ⇒
+ * **若回落词法**就会得到 `<新主题>/code`，`latestRunMeta` 再沿软链读到**攻击者的留痕**，
+ * 保护集变成「全集减攻击者自选的 driver」，伪件放行。改动前保护集是静态的，没有这条通道。
+ *
+ * 所以落在归档外一律返回 null（⇒ 按缺省 Driver 判定，三家后缀仍受保护）。
+ * 这也让本函数与 `isInsideArchiveResolved` 的口径**对齐**：那边按并集拦下
+ * 「归档内软链指向归档外」的写入，这边拒绝采信归档外的留痕，同一形态不再两处相反。
+ */
+function locateArchiveTarget(
+  targetPath: string,
+  projectRoot: string,
+  archiveRoot: string,
+): { topic: string; stage: Stage } | null {
+  const lexical = path.isAbsolute(targetPath)
+    ? targetPath
+    : path.resolve(projectRoot, targetPath);
+
+  const root = safeRealpath(archiveRoot);
+  if (root !== null) {
+    const resolved = resolveExisting(lexical);
+    /*
+     * 解析后落在**归档根之外** ⇒ 软链把落点引出了归档，这里必须返回 null
+     * （即「定位不出」⇒ 按缺省 Driver 判定），**绝不能回落词法定位**。
+     * 回落会把 driver 的来源一起带出归档根——见本函数文档块的攻击链一节。
+     */
+    if (!isInside(root, resolved)) return null;
+    return stageSegmentsUnder(root, resolved);
+  }
+  // 归档根自身不可解析时才退化为纯词法（等价于改动前的行为）
+  return stageSegmentsUnder(archiveRoot, lexical);
+}
+
+/** `<root>/<主题>/<阶段>/…` 的段解析。不合形态一律 null。 */
+function stageSegmentsUnder(root: string, abs: string): { topic: string; stage: Stage } | null {
+  const rel = path.relative(root, abs);
+  if (rel.length === 0 || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  const segs = rel.split(path.sep);
+  if (segs.length < 3) return null;
+  const [topic, stage] = segs;
+  if (topic === undefined || stage === undefined) return null;
+  if (!STAGES.includes(stage as Stage)) return null;
+  return { topic, stage: stage as Stage };
 }
 
 /**
@@ -301,8 +497,11 @@ async function immutableChangeReason(projectRoot: string, relFromRoot: string): 
    *
    * 也正因如此，这里**不能**换成组合判定 `isForgedRoleFile`：`base` 是 basename，
    * 位置判定会把它解析到项目根、恒判「归档外」，提交锚就此静默失效。
+   *
+   * 走**跨时间**函数（EV-68 拆分后）：这里要对历史文件表态，没有「当轮 Driver」可言。
+   * 行为与拆分前逐字相同。
    */
-  if (hasCriticRoleSuffix(base)) return '审查文档只能由编排器落盘，改动即伪造';
+  if (hasRoleSuffixCrossTime(base)) return '审查文档只能由编排器落盘，改动即伪造';
   if (inMeta && IMMUTABLE_META.test(base)) return '审计材料一经落盘即不可变';
   if (inMeta && /^run-.+\.json$/.test(base)) {
     /*
@@ -330,7 +529,7 @@ async function immutableChangeReason(projectRoot: string, relFromRoot: string): 
  *
  * 两条独立规则：
  *   1. **伪造审查文件**：写归档内带**受保护角色后缀**的文件一律拒绝。
- *      后缀集见 `criticRoleSuffixes()`（全部已登记角色减当轮 Driver）——
+ *      后缀集见 `criticRoleSuffixes(DEFAULT_DRIVER)`（全部已登记角色减当轮 Driver）——
  *      **不在这里重抄一份枚举**：抄的那份会随注册表漂移，而它今天就已经漏过
  *      `-codex.md`（M8 起 codex 已在保护集内，这句话却只列了两家）。
  *      主脑不得自己编一份审查（PRD 6.3）——该规则**不受**会话与 TTL 限制。
@@ -340,12 +539,69 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
   const target = extractTargetPath(input);
   if (!target) return ALLOW; // 拿不到路径就别拦，宁可放过也不误伤
 
-  if (isForgedRoleFile(target, ctx.projectRoot, ctx.archiveRoot)) {
-    return deny(
-      `禁止写入 ${path.basename(target)}：审查文档只能由编排器从审查员的结构化输出渲染落盘。` +
-        `主脑不得自行产出归档根内的审查员后缀文件（PRD 6.3 / 设计 §10.4）。\n` +
-        `  归档根之外的同形态文件不受此限——doc/ 下沿用「日期-主题-角色」命名的设计稿可正常编辑。`,
-    );
+  /*
+   * ## 短路顺序（EV-68，计划双审 CODEX-05 / AGY-02）
+   *
+   * 当轮 Driver 解析要读 run 元数据（readdir + 逐份解析校验），而本函数拦的是
+   * **全工作区**的每一次 Edit/Write。所以先用两个纯词法/纯路径的判据挡住绝大多数调用：
+   *   ① 文件名不是角色工件形态 → 直接走后续判定，**一次留痕都不读**；
+   *   ② 不在归档内 → 同上。
+   *
+   * 这两条命中才解析 driver。这样「非角色后缀、或归档外的写入」其退出码
+   * 不因本步新增的读取而改变——关掉写锁的项目（`block_business_write_when_awaiting_approval`
+   * 为 false）今天在业务写入前根本不读任何状态文件，改后依然不读。
+   * 该性质由这个短路条件**结构性**保证——不是靠断言兜住的：一条只看退出码的用例
+   * 区分不了「解析被前置」与「解析没被前置」（两条路径都退 0）。用例锁的是
+   * 「退出码不受影响」，鉴别力来自夹具里那份**读不出的留痕**（代码双审 CODEX-05 ≡ GLM-03）。
+   */
+  if (
+    looksLikeRoleArtifact(path.basename(target)) &&
+    isInsideArchiveResolved(target, ctx.projectRoot, ctx.archiveRoot)
+  ) {
+    /*
+     * 定位不出 `<主题>/<阶段>` 时**回落缺省 Driver**，即改动前的判定口径——
+     * 不是跳过判定。归档内的两段式路径（`<主题>/x-gemini.md`）、`verify/` 下的文件
+     * 原本都会被拦，跳过判定会把它们一起放行，那是安全回归而不是守卫。
+     */
+    const loc = locateArchiveTarget(target, ctx.projectRoot, ctx.archiveRoot);
+    let driver: AgentId = DEFAULT_DRIVER;
+    let why = '定位不出所属阶段，按缺省 Driver 判定';
+    if (loc) {
+      const res = await resolveRoundDriver(ctx, loc.topic, loc.stage);
+      if (res.kind === 'corrupt') {
+        /*
+         * 出口句与 `cmdGate` 同状态的文案**语义同源**（第 2 轮代码双审 GLM-02 ≡ CODEX-01）。
+         * 上一版写的是「请先修复或清理该阶段 _meta/ 下的运行清单」——那是 cmdGate 被
+         * 纠正**之前**的形态，而且对受话人是死路：Driver 对 `_meta/` 的任何写都会被
+         * 本 Hook 自己拒绝，已登记的 run 清单又被提交锚判为不可变，照做会把提交永久拦下。
+         * 两处同状态给相反出口，正是本仓最忌的「两条规范并行」。
+         */
+        return deny(
+          `无法判定当轮 Driver：${loc.topic} / ${loc.stage} 的运行留痕读不出来` +
+            `（${res.unreadable.join('、')}）——文件损坏、schema 不识，或不合 run.v1/v2 契约。\n` +
+            '  「审查文档只能由编排器落盘」这条判定要先知道本轮执笔者是谁，留痕坏了就判不了。\n' +
+            '  这里**不**按缺省 Driver 继续，**也不**退回更旧的那一份——前者把「留痕坏了」\n' +
+            '  判成「按缺省算」，后者判成「按上一轮的执笔者算」，两条都会让判定悄悄用错身份。\n' +
+            `  出口是**重跑一次 ${loc.stage} 阶段双审**：新运行会先落一份可读的运行留痕，判定随即恢复。\n` +
+            '  不要删除或改写这些 run-*.json——它们是提交时留痕核对的锚，动了会让 git commit 被拦下。\n' +
+            '  若是本工具版本落后于留痕的 schema（装好的副本比工作树旧），先重装再试。',
+        );
+      }
+      driver = res.driver;
+      why = res.fromDefault
+        ? '该阶段尚无运行留痕，按缺省 Driver 判定'
+        : '取自该阶段最近一份运行留痕';
+    }
+    // 外层 `if` 已确立落在归档内，这里只问后缀——不再走 `isForgedRoleFile`，
+    // 那会把 realpath 解析重跑第三遍（代码双审 AGY-01）。该函数本身保留为完整语义判据。
+    if (hasProtectedRoleSuffix(target, driver)) {
+      return deny(
+        `禁止写入 ${path.basename(target)}：审查文档只能由编排器从审查员的结构化输出渲染落盘。` +
+          `主脑不得自行产出归档根内的审查员后缀文件（PRD 6.3 / 设计 §10.4）。\n` +
+          `  本轮 Driver 判定为「${driver}」（${why}），其余已登记角色的后缀均受保护。\n` +
+          `  归档根之外的同形态文件不受此限——doc/ 下沿用「日期-主题-角色」命名的设计稿可正常编辑。`,
+      );
+    }
   }
   // 闸门状态与锁同样是编排器独占的：Driver 用 Write 覆盖 state.json 等于自己解闸
   if (isTriviumStateFile(target, ctx.projectRoot, ctx.triviumDir)) {
@@ -538,11 +794,17 @@ const SEGMENT_SPLIT = /(?:&&|\|\||[;&|\n\r])/;
  *
  * 出现在命令文本任何位置都拦——见下方「为什么 Bash 侧不做收窄」。
  *
- * 后缀集与 Write/Edit 侧**同源**（`criticRoleSuffixes()`，即全集减当轮 Driver），
- * 理由见该函数的文档块。两侧若各写一份派生，翻开关时会一边失守一边不失守，
- * 而那种半拉子状态最难排查。
+ * 后缀集取**跨时间**口径（`criticRoleSuffixes(DEFAULT_DRIVER)`，即全集减**缺省** Driver），
+ * 与提交锚同源、与 Write/Edit 侧的当轮口径**有意不同**——这一处要对历史文件与
+ * 纯文本表态，拿不到 run 上下文，也就没有「当轮 Driver」可言（EV-68 / EV-55）。
+ *
+ * **惰性求值**（EV-68）：上一版是模块级 `const`，正则在**模块加载期**就固化了。
+ * 那个固化是隐式的副作用——本步把它变成一个显式取值点，口径一字未改，
+ * 好让 EV-55 真做跨时间面收口时不必先拆一次模块加载期的耦合。
  */
-const ROLE_SUFFIX_ANYWHERE = new RegExp(`-(?:${criticRoleSuffixes().join('|')})\\.md\\b`);
+function roleSuffixAnywhere(): RegExp {
+  return new RegExp(`-(?:${criticRoleSuffixes(DEFAULT_DRIVER).join('|')})\\.md\\b`);
+}
 
 /*
  * ## 为什么 Bash 侧不做收窄（2026-09-14，代码双审后撤回）
@@ -589,7 +851,7 @@ const ROLE_SUFFIX_ANYWHERE = new RegExp(`-(?:${criticRoleSuffixes().join('|')})\
  */
 function bashTargetsProtected(cmd: string, ctx: Ctx, startCwd: string): boolean {
   // ① 角色后缀：审查文档只能由编排器落盘，出现在命令任何位置都拒（收窄尝试已撤回，见上）
-  if (ROLE_SUFFIX_ANYWHERE.test(cmd)) return true;
+  if (roleSuffixAnywhere().test(cmd)) return true;
 
   const segments = cmd.split(SEGMENT_SPLIT);
   /** 当前目录。null 表示推断不出，此后只靠字面兜底 */
@@ -648,7 +910,7 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
         '  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\n' +
         '    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n' +
         '      （删掉或改坏 bin/ 会让 .claude/settings.json 里每条 Hook 的守卫永真放行）\n' +
-        `    · 审查文档的角色后缀（${criticRoleSuffixes().map((s) => `-${s}.md`).join(' / ')}）\n` +
+        `    · 审查文档的角色后缀（${criticRoleSuffixes(DEFAULT_DRIVER).map((s) => `-${s}.md`).join(' / ')}）\n` +
         '  只能由编排器维护（FR-25 / P5）。\n' +
         '\n' +
         '  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\n' +

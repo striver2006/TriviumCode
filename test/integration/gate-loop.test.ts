@@ -431,6 +431,59 @@ test('审查进行中禁写业务文件，但归档内的裁决件不拦（§8.5
   assert.equal(disp.code, EXIT.OK, '归档内的写入不受闸门写锁约束');
 });
 
+/*
+ * **当轮 Driver 判定走真实 Hook 进程**（EV-68，计划双审 CODEX-03）。
+ *
+ * 本文件头部记着的那条教训正对着这里：单元测试直接调 `hookXxx` 并手工种夹具，
+ * 绕得过「真实留痕在那一刻长什么样」这个问题——而 EV-68 的第一版计划
+ * （把 `state.json` 的闸门项当作 driver 来源）恰恰就是被这种形状的用例放过去的。
+ * 所以这一格必须走 `hook()` 的真子进程路径，读真实落盘的 `_meta/run-*.json`。
+ *
+ * 顺带说明：子进程跑的是 **BUNDLE**，改完 `src/` 不重新构建，这条用例测的还是旧代码。
+ *
+ * ## 对计划措辞的偏离，以及为什么接受（代码双审 GLM-04）
+ *
+ * 计划 §2.5 写的是「夹具先落一轮真实留痕，**再以另一 Driver 起一轮**」，
+ * 而这里是用写侧 `newRunMeta` 手写一份 `run-*.json` 直落 `_meta/`，没有真起 review 轮。
+ * 取舍理由：真实起轮要给本轮入选的**每一侧**点名桩配置（见 `driver-flag.test.ts` 头部的
+ * 配额注记），否则每次 `npm run check` 会真拉厂商 CLI，成本与这一格要证的东西不相称。
+ *
+ * **因此它只解了 CODEX-03 关切的一半**：读侧走的是真子进程、真文件、真 schema 校验
+ * （`readRunMeta` 会按 `trivium.run.v2` 校验，形状不合就返回 null），
+ * 但「那份留痕是不是真实流水线产出的」这一半仍由测试自己保证。
+ */
+test('当轮 Driver 按真实留痕判定：非缺省 Driver 交得了卷，审核者产出仍受保护', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { newRunMeta } = await import('../../src/trivium/meta.js');
+  const fx = await makeFixture({ topic: TOPIC });
+
+  const metaDir = path.join(fx.stageDir, '_meta');
+  await fs.mkdir(metaDir, { recursive: true });
+  await fs.writeFile(
+    path.join(metaDir, 'run-RDRV.json'),
+    JSON.stringify(newRunMeta({
+      runId: 'RDRV', topic: TOPIC, stage: 'plan', rerunIndex: 1, command: 'x',
+      promptHint: null, taskGoal: null, criticsSelected: ['gemini', 'glm'],
+      treeHash: 'h', gitHead: null, dirty: false, subjectSha256: 's',
+      denyPaths: [], driftPolicy: 'warn', driver: 'codex',
+    })),
+  );
+
+  // 方向①：codex 是当轮 Driver，它要写得出自己的裁决件
+  const own = await hook(
+    fx.root, 'hook-pre-write',
+    writeEvent(path.join(fx.stageDir, `${today()}-${TOPIC}-revised-codex.md`)),
+  );
+  assert.equal(own.code, EXIT.OK, `非缺省 Driver 交不了卷：\n${own.stdout}${own.stderr}`);
+
+  // 方向②：同一轮里 claude 是审核者，Driver 不得手写它的产出
+  const forged = await hook(
+    fx.root, 'hook-pre-write',
+    writeEvent(path.join(fx.stageDir, `${today()}-${TOPIC}-claude.md`)),
+  );
+  assert.equal(forged.code, EXIT.GATE_BLOCK, '当轮 Driver 是 codex 时 -claude.md 是审核者产出');
+  assert.match(forged.stderr, /codex/, '拦截文案要说清本轮 Driver 判定成了谁');
+});
+
 test('伪造角色后缀文件一律拦下，与闸门状态无关（AC-07）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   // 全新仓库，没有任何闸门

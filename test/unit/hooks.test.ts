@@ -5,11 +5,13 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   hookPreWrite, hookPreBash, hookPreCommit, hookStop, hookSessionStart, runHook, looksLikeWriteCommand,
-  extractTargetPath, isForgedRoleFile, hasCriticRoleSuffix, criticRoleSuffixes, isInsideArchive, isOrchestratorOwned,
+  extractTargetPath, isForgedRoleFile, hasProtectedRoleSuffix, hasRoleSuffixCrossTime,
+  criticRoleSuffixes, isInsideArchive, isOrchestratorOwned,
   type HookInput,
 } from '../../src/trivium/hooks.js';
 import { looksLikeRoleArtifact } from '../../src/trivium/naming.js';
-import { ALL_AGENT_IDS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER, type AgentId } from '../../src/trivium/agents/registry.js';
+import { newRunMeta } from '../../src/trivium/meta.js';
 import { exists } from '../../src/trivium/util/fsx.js';
 import { setGate } from '../../src/trivium/state.js';
 import { defaultConfig } from '../../src/trivium/config.js';
@@ -50,8 +52,9 @@ test('从各种 tool_input 字段名里取出目标路径', () => {
 
 test('纯后缀检查：只问形态，不问位置', () => {
   // 提交锚（immutableChangeReason）用的就是这一支，传进来的是 basename
-  assert.equal(hasCriticRoleSuffix('2026-09-10-t-gemini.md'), true);
-  assert.equal(hasCriticRoleSuffix('2026-09-10-t-glm.md'), true);
+  // EV-68 拆分后它走**跨时间**函数，断言一字未改——这正是「跨时间面行为不变」的机器判据
+  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-gemini.md'), true);
+  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-glm.md'), true);
   /*
    * 后两条**结论不变、理由已改写**（M9 第 4 步）。
    *
@@ -60,11 +63,11 @@ test('纯后缀检查：只问形态，不问位置', () => {
    * 于是注释会静默地变成谎话。
    *
    * 新理由：**`-claude.md` 是当轮 Driver 自己的产出**。判据是「全部已登记角色
-   * 减当轮 Driver」，与「谁能当审核者」无关——见 `criticRoleSuffixes()` 的文档块。
+   * 减当轮 Driver」，与「谁能当审核者」无关——见 `criticRoleSuffixes(DEFAULT_DRIVER)` 的文档块。
    */
-  assert.equal(hasCriticRoleSuffix('2026-09-10-t-claude.md'), false);
-  assert.equal(hasCriticRoleSuffix('2026-09-10-t-revised-claude.md'), false);
-  assert.equal(hasCriticRoleSuffix('src/gemini.md'), false, '文件名必须以 -gemini.md 结尾');
+  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-claude.md'), false);
+  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-revised-claude.md'), false);
+  assert.equal(hasRoleSuffixCrossTime('src/gemini.md'), false, '文件名必须以 -gemini.md 结尾');
 });
 
 /*
@@ -82,7 +85,7 @@ test('纯后缀检查：只问形态，不问位置', () => {
  *
  * 上一版这里写着「这条用例今天恒成立，两侧任一改错都当场红」——**那两句自相矛盾**，
  * 而且后半句是假的：
- *   · 差集那条断言是**重言式**：`diff` 与 `criticRoleSuffixes()` 同源于 `ALL_AGENT_IDS`，
+ *   · 差集那条断言是**重言式**：`diff` 与 `criticRoleSuffixes(DEFAULT_DRIVER)` 同源于 `ALL_AGENT_IDS`，
  *     只要 `DEFAULT_DRIVER` 已登记，`diff === [DEFAULT_DRIVER]` 恒真；
  *   · 把实现换回被替换掉的旧判据（`CRITIC_AGENT_IDS` 减 Driver）**也不会红**：
  *     四家全启用时两个集合取值逐字相同。
@@ -92,11 +95,11 @@ test('纯后缀检查：只问形态，不问位置', () => {
  * 本用例真正能证伪的是下面那段**换 Driver** 的断言：它锁住参数契约与差集的动态性。
  */
 test('识别集 ⊇ 保护集，差集恰是当轮 Driver', () => {
-  const protectedIds = criticRoleSuffixes();
+  const protectedIds = criticRoleSuffixes(DEFAULT_DRIVER);
 
   for (const id of protectedIds) {
     const f = `2026-09-10-t-${id}.md`;
-    assert.equal(hasCriticRoleSuffix(f), true, `${id} 应在保护集内`);
+    assert.equal(hasProtectedRoleSuffix(f, DEFAULT_DRIVER), true, `${id} 应在保护集内`);
     assert.equal(looksLikeRoleArtifact(f), true, `保护集成员 ${id} 必须也被识别集认出`);
   }
 
@@ -109,16 +112,49 @@ test('识别集 ⊇ 保护集，差集恰是当轮 Driver', () => {
   // 差集成员：识别得出来，但不受保护
   const driverFile = `2026-09-10-t-${DEFAULT_DRIVER}.md`;
   assert.equal(looksLikeRoleArtifact(driverFile), true, 'Driver 的产出仍是角色工件，归档要靠它算轮次');
-  assert.equal(hasCriticRoleSuffix(driverFile), false, 'Driver 的产出不受保护，否则它写不了自己的裁决件');
+  assert.equal(
+    hasProtectedRoleSuffix(driverFile, DEFAULT_DRIVER), false,
+    'Driver 的产出不受保护，否则它写不了自己的裁决件',
+  );
+});
+
+/*
+ * **当轮面真的按当轮算**（EV-68）。
+ *
+ * 上一条用例锁的是 `criticRoleSuffixes(driver)` 这个**源头**函数的参数契约，
+ * 而 EV-68 的缺口根本不在源头——源头一直是对的，错在下游两处消费点
+ * 把 driver 丢了（`hasCriticRoleSuffix` 不收参、`ROLE_SUFFIX_ANYWHERE` 模块级固化）。
+ * 所以断言必须推到**消费点这一层**，否则换掉源头实现也照样绿。
+ *
+ * 文件名字面写死、不从 `criticRoleSuffixes(driver)` 反推：反推出来的是重言式
+ * （与上一条用例注释里点破的是同一个坑）。
+ */
+test('当轮面按当轮 Driver 翻转：hasProtectedRoleSuffix 的两个方向', () => {
+  // 方向①：codex 当 Driver 时，它自己的产出不受保护——否则它交不了卷
+  assert.equal(
+    hasProtectedRoleSuffix('2026-09-19-t-response-codex.md', 'codex'), false,
+    '当轮 Driver 是 codex，-codex.md 是它自己的交卷文件，必须放行',
+  );
+  // 方向②：同一轮里 claude 是审核者，它的产出反而要保护
+  assert.equal(
+    hasProtectedRoleSuffix('2026-09-19-t-claude.md', 'codex'), true,
+    '当轮 Driver 是 codex 时 claude 是审核者，Driver 不得伪造它的产出',
+  );
+  // 缺省 Driver 下两条结论恰好相反——这才说明判据真的随 driver 变，而不是常量
+  assert.equal(hasProtectedRoleSuffix('2026-09-19-t-response-codex.md', DEFAULT_DRIVER), true);
+  assert.equal(hasProtectedRoleSuffix('2026-09-19-t-claude.md', DEFAULT_DRIVER), false);
 });
 
 /*
  * **换一个当轮 Driver，保护集必须跟着翻转**（代码双审 AGY-04 ≡ GLM-03 ≡ CODEX-04）。
  *
- * `criticRoleSuffixes(driver)` 的 `driver` 参数自称是「M10 的接口」，
- * 而上一版全仓**零覆盖**：把它忽略掉、或把函数体写死成 `!== DEFAULT_DRIVER`，
- * 今天一条用例都不会红。一个没有断言的预留接口，到 M10 才发现它没接上就太晚了——
- * 那时它要承载的是「谁的产出不该由 Driver 手写」这条安全判据。
+ * `criticRoleSuffixes(driver)` 的 `driver` 参数曾被记成「M10 的预留接口」，而上一版
+ * 全仓**零覆盖**：把它忽略掉、或把函数体写死成 `!== DEFAULT_DRIVER`，一条用例都不会红。
+ * **该参数已于 M9 第 6 步前置真正接通**（EV-68）——接上的时点比原判断早了一个里程碑，
+ * 因为第 5 步放开 `--driver` 之后，第 6 步验收当场就要用到它。
+ *
+ * 本条锁的是**源头**函数的参数契约。EV-68 的缺口不在源头（源头一直是对的），
+ * 而在下游消费点把 driver 丢了，那一层由「当轮面按当轮 Driver 翻转」等用例锁。
  *
  * 这条断言不是重言式：它让同一个函数在两个不同入参下产出**不同**的集合，
  * 并检查翻转的方向对不对。
@@ -152,9 +188,9 @@ test('识别伪造审查文件：形态像 + 落在归档内', () => {
   const root = '/p';
   const archive = '/p/.reviews';
 
-  assert.equal(isForgedRoleFile('/p/.reviews/t/plan/2026-09-10-t-gemini.md', root, archive), true);
-  assert.equal(isForgedRoleFile('.reviews/t/plan/2026-09-10-t-glm.md', root, archive), true);
-  assert.equal(isForgedRoleFile('2026-09-10-t-claude.md', root, archive), false);
+  assert.equal(isForgedRoleFile('/p/.reviews/t/plan/2026-09-10-t-gemini.md', root, archive, DEFAULT_DRIVER), true);
+  assert.equal(isForgedRoleFile('.reviews/t/plan/2026-09-10-t-glm.md', root, archive, DEFAULT_DRIVER), true);
+  assert.equal(isForgedRoleFile('2026-09-10-t-claude.md', root, archive, DEFAULT_DRIVER), false);
 
   /*
    * 有意的契约变更（2026-09-14 收窄，计划 D-4）：归档根之外的同形态文件不再拦。
@@ -162,12 +198,12 @@ test('识别伪造审查文件：形态像 + 落在归档内', () => {
    * 「日期-主题-角色」命名的设计稿——本仓库自己就踩了很久。
    */
   assert.equal(
-    isForgedRoleFile('doc/02_design/2026-09-10-t-glm.md', root, archive),
+    isForgedRoleFile('doc/02_design/2026-09-10-t-glm.md', root, archive, DEFAULT_DRIVER),
     false,
     'doc/ 下的同形态设计稿应放行',
   );
   assert.equal(
-    isForgedRoleFile('2026-09-10-t-glm.md', root, archive),
+    isForgedRoleFile('2026-09-10-t-glm.md', root, archive, DEFAULT_DRIVER),
     false,
     '项目根下的裸名文件不在归档内，应放行',
   );
@@ -513,7 +549,7 @@ test('软链：两个方向都拦得住', async () => {
   const linkInDoc = path.join(ctx.projectRoot, 'doc/2026-09-14-t-gemini.md');
   await fs.symlink(realArtifact, linkInDoc);
   assert.equal(
-    isForgedRoleFile(linkInDoc, ctx.projectRoot, archive),
+    isForgedRoleFile(linkInDoc, ctx.projectRoot, archive, DEFAULT_DRIVER),
     true,
     'doc/ 下指向归档内的软链，Write 会沿链覆写真审查件',
   );
@@ -524,7 +560,7 @@ test('软链：两个方向都拦得住', async () => {
   const linkInArchive = path.join(archive, 't/plan/2026-09-14-t-glm.md');
   await fs.symlink(outside, linkInArchive);
   assert.equal(
-    isForgedRoleFile(linkInArchive, ctx.projectRoot, archive),
+    isForgedRoleFile(linkInArchive, ctx.projectRoot, archive, DEFAULT_DRIVER),
     true,
     '归档内的路径不因软链指向外部而被放行',
   );
@@ -540,7 +576,7 @@ test('归档根不可解析时，归档内的后缀写入仍被拦', async () =>
   assert.equal(await exists(ctx.archiveRoot), false, '前置：归档根不存在');
 
   assert.equal(
-    isForgedRoleFile('.reviews/t/plan/2026-09-14-t-gemini.md', ctx.projectRoot, ctx.archiveRoot),
+    isForgedRoleFile('.reviews/t/plan/2026-09-14-t-gemini.md', ctx.projectRoot, ctx.archiveRoot, DEFAULT_DRIVER),
     true,
     '归档根解析不出时应退化为词法比较，而不是放行',
   );
@@ -565,7 +601,7 @@ test('悬空软链：指向归档内尚未创建的文件，仍被拦', async ()
   assert.equal(await exists(notYetCreated), false, '前置：目标确实还不存在');
 
   assert.equal(
-    isForgedRoleFile(dangling, ctx.projectRoot, ctx.archiveRoot),
+    isForgedRoleFile(dangling, ctx.projectRoot, ctx.archiveRoot, DEFAULT_DRIVER),
     true,
     '悬空软链的落点在归档内，必须拦',
   );
@@ -573,11 +609,304 @@ test('悬空软链：指向归档内尚未创建的文件，仍被拦', async ()
   assert.equal(r.exitCode, EXIT.GATE_BLOCK);
 });
 
+// ── 当轮 Driver 解析（EV-68）──
+
+/**
+ * 在夹具归档里落一份**合法的** `trivium.run.v2` 运行留痕。
+ *
+ * 用写侧 `newRunMeta` 而不是手写字面量：手写夹具会与写侧各自漂移，
+ * 而 `readRunMeta` 会对 v2 做 schema 校验，形状不合就返回 null——
+ * 那时用例会以「留痕损坏」的形态绿/红，测的就不是本意了（与 archive.test.ts 同款理由）。
+ */
+async function seedRunMeta(
+  ctx: Ctx, topic: string, stage: 'plan' | 'code' | 'bug', runId: string, driver: AgentId,
+): Promise<void> {
+  const dir = path.join(ctx.archiveRoot, topic, stage, '_meta');
+  await fs.mkdir(dir, { recursive: true });
+  const meta = newRunMeta({
+    runId, topic, stage, rerunIndex: 1, command: 'x',
+    promptHint: null, taskGoal: null, criticsSelected: ['gemini', 'glm'],
+    treeHash: 'h', gitHead: null, dirty: false, subjectSha256: 's',
+    denyPaths: [], driftPolicy: 'warn', driver,
+  });
+  await fs.writeFile(path.join(dir, `run-${runId}.json`), JSON.stringify(meta));
+}
+
+test('方向①：非缺省 Driver 写得出自己的裁决件', async () => {
+  const ctx = await fakeCtx();
+  await seedRunMeta(ctx, 't', 'code', 'R1', 'codex');
+  const f = path.join(ctx.archiveRoot, 't/code/2026-09-19-t-response-codex.md');
+  const r = await hookPreWrite(ctx, writeInput(f));
+  assert.equal(r.exitCode, EXIT.OK, 'codex 是当轮 Driver，-codex.md 是它的交卷文件，必须放行');
+});
+
+test('方向②：当轮 Driver 不得伪造审核者产出（claude 此轮是审核者）', async () => {
+  const ctx = await fakeCtx();
+  await seedRunMeta(ctx, 't', 'code', 'R1', 'codex');
+  const f = path.join(ctx.archiveRoot, 't/code/2026-09-19-t-claude.md');
+  const r = await hookPreWrite(ctx, writeInput(f));
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK, 'claude 此轮是审核者，Driver 不得手写它的产出');
+});
+
+/*
+ * **陈旧闸门项不得影响判定**（计划双审 CODEX-01 ≡ AGY-01）。
+ *
+ * 这是本步最重要的一条断言。上一版计划把 `state.json` 的 `GateEntry.driver`
+ * 定为第 1 级来源，而 `review.ts` 的四处 `setGateChecked` 全都不传 driver，
+ * 唯一写它的两处以「裁决件已落盘」为前置——Driver 写裁决件正发生在那之前。
+ * 叠加 `setGate` upsert「沿用前一条的值」，同槽位重跑换 Driver 时闸门项里
+ * 留着的是**上一轮**的 driver。若判定采信它，方向①当场反向。
+ */
+test('陈旧闸门项不影响当轮判定：留痕说了算', async () => {
+  const ctx = await fakeCtx();
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: 't', stage: 'code', state: 'idle',
+    runId: 'R0', driver: 'claude', heartbeatStaleMs: STALE,
+  });
+  await seedRunMeta(ctx, 't', 'code', 'R1', 'codex');
+
+  const f = path.join(ctx.archiveRoot, 't/code/2026-09-19-t-response-codex.md');
+  const r = await hookPreWrite(ctx, writeInput(f));
+  assert.equal(
+    r.exitCode, EXIT.OK,
+    '闸门项记着上一轮的 claude，本轮留痕记的是 codex——判定必须按留痕走，否则 Driver 交不了卷',
+  );
+});
+
+/*
+ * **归档外软链 + 非缺省 Driver**：定位阶段必须与 `isInsideArchiveResolved` 同口径。
+ *
+ * 这条锁的是 `locateArchiveTarget` 里那条 realpath 回退分支的**必要性**。
+ * 软链的词法路径在 `doc/` 下，只试词法必然定位落空、回落缺省 Driver，
+ * 于是 `-claude.md` 被判成「Driver 自己的产出」而放行——而当轮 Driver 其实是 codex，
+ * claude 是审核者。既有的悬空软链用例锁不住这一格：它用的是 `-gemini.md`，
+ * 在缺省保护集内，两种实现都会拦（变异实跑验证过）。
+ */
+test('归档外软链指向归档内：当轮 Driver 仍按落点所属阶段的留痕判定', async () => {
+  const ctx = await fakeCtx();
+  await fs.mkdir(path.join(ctx.projectRoot, 'doc'), { recursive: true });
+  await fs.mkdir(path.join(ctx.archiveRoot, 't/code'), { recursive: true });
+  await seedRunMeta(ctx, 't', 'code', 'R1', 'codex');
+
+  const real = path.join(ctx.archiveRoot, 't/code/2026-09-19-t-claude.md');
+  await fs.writeFile(real, 'x');
+  const link = path.join(ctx.projectRoot, 'doc/2026-09-19-t-claude.md');
+  await fs.symlink(real, link);
+
+  const r = await hookPreWrite(ctx, writeInput(link));
+  assert.equal(
+    r.exitCode, EXIT.GATE_BLOCK,
+    '落点在 code 阶段、该阶段留痕记的 Driver 是 codex，故 -claude.md 是审核者产出，必须拦',
+  );
+});
+
+/*
+ * 回落两条**成对**出现才钉得住「按缺省 Driver 判定」（计划双审 GLM-02）。
+ * 只有正向那条时，「回落到缺省」与「取不到就放行一切」不可区分。
+ */
+test('回落·正：该阶段无留痕时，缺省 Driver 的产出放行', async () => {
+  const ctx = await fakeCtx();
+  await fs.mkdir(path.join(ctx.archiveRoot, 't/plan'), { recursive: true });
+  const f = path.join(ctx.archiveRoot, 't/plan/2026-09-19-t-claude.md');
+  assert.equal((await hookPreWrite(ctx, writeInput(f))).exitCode, EXIT.OK);
+});
+
+test('回落·负：该阶段无留痕时，非缺省角色的后缀仍被拦', async () => {
+  const ctx = await fakeCtx();
+  await fs.mkdir(path.join(ctx.archiveRoot, 't/plan'), { recursive: true });
+  const f = path.join(ctx.archiveRoot, 't/plan/2026-09-19-t-codex.md');
+  assert.equal(
+    (await hookPreWrite(ctx, writeInput(f))).exitCode, EXIT.GATE_BLOCK,
+    '回落是「按缺省 Driver 判定」，不是「放行一切」',
+  );
+});
+
+/*
+ * 留痕存在却一份都读不出来 → **硬失败**，与 `cmdGate` 同口径
+ * （计划双审 CODEX-06 ≡ AGY-04）：那是「留痕坏了」，不能判成「按缺省 Driver 算」。
+ */
+test('留痕损坏：不按缺省 Driver 继续，硬失败', async () => {
+  const ctx = await fakeCtx();
+  const dir = path.join(ctx.archiveRoot, 't/code/_meta');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'run-R1.json'), '{ not valid run meta }');
+
+  /*
+   * 目标**必须**取缺省 Driver 自己的后缀。
+   *
+   * 第一版这里写的是 `-response-codex.md`，而那条断言**没有鉴别力**：
+   * 若实现退化成「留痕坏了就按缺省 Driver 判」，`-codex.md` 在缺省保护集内，
+   * 照样退 2，用例照样绿（变异实跑验证过）——两种实现殊途同归，什么也没证明。
+   * 这正是本轮 GLM-02 点出的那一族问题，换成 `-claude.md` 才能区分：
+   *   · 正确实现（硬失败）→ 退 2
+   *   · 退化实现（按缺省判）→ `-claude.md` 不在缺省保护集内 → 退 0
+   */
+  const f = path.join(ctx.archiveRoot, 't/code/2026-09-19-t-claude.md');
+  const r = await hookPreWrite(ctx, writeInput(f));
+  assert.equal(
+    r.exitCode, EXIT.GATE_BLOCK,
+    '留痕坏了就判不出当轮 Driver，不能按缺省继续——那会把「留痕坏了」判成「按缺省算」',
+  );
+  assert.match(
+    JSON.stringify(r.json), /读不出来/,
+    '文案要说清是留痕坏了，而不是让人以为自己写错了文件名',
+  );
+});
+
+/*
+ * **归档外与非角色后缀的写入，退出码不因本步新增的读取而改变**（计划双审 CODEX-05）。
+ *
+ * 关掉写锁的项目今天在业务写入前根本不读任何状态文件。若把 driver 解析写在
+ * 函数开头，一个坏掉的 state.json 会让这些写入从退 0 变退 2。
+ */
+test('非角色工件的写入不触发当轮 Driver 解析，退出码不变', async () => {
+  const ctx = await fakeCtx();
+  ctx.config.gate.block_business_write_when_awaiting_approval = false;
+
+  /*
+   * 夹具里**必须**种一份读不出的留痕，否则这条用例没有鉴别力（代码双审 CODEX-05 ≡ GLM-03）。
+   *
+   * 第一版写的是「空归档 + 写 src/a.ts，断言退 0」——把 `resolveRoundDriver` 无条件提到
+   * 函数开头，那条路径也只会拿到 `scanned === 0` → 缺省 Driver → 后缀不匹配 → 退 0，
+   * 用例照绿。能让它红的只有「无条件 deny」这种不现实的退化，而它要防的回归
+   * （短路被拆掉、无关写入开始读留痕）恰好不会让它红。
+   *
+   * 种了损坏留痕之后：短路正确 ⇒ 压根不读 ⇒ ALLOW；解析若被前置 ⇒ 撞 corrupt ⇒ 退 2。
+   * 目标取归档**内**的非角色工件，这样连「归档外」那一支都绕开，锁的就是后缀这一支。
+   */
+  const dir = path.join(ctx.archiveRoot, 't/code/_meta');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'run-RBAD.json'), '{ not valid run meta }');
+
+  const notes = path.join(ctx.archiveRoot, 't/code/notes.txt');
+  assert.equal((await hookPreWrite(ctx, writeInput(notes))).exitCode, EXIT.OK);
+
+  // 归档外的普通业务文件同理
+  const biz = path.join(ctx.projectRoot, 'src/a.ts');
+  assert.equal((await hookPreWrite(ctx, writeInput(biz))).exitCode, EXIT.OK);
+});
+
+/*
+ * **较新的留痕读不出时不得退回更旧的那一份**（代码双审 GLM-01 ≡ CODEX-01）。
+ *
+ * `latestRunMeta` 是 newest-first、取第一份可读者，所以「最新那份坏了、上一份能读」
+ * 会正常返回一个 meta——那是**上一轮**的 Driver。采信它，本步否掉 `state.json`
+ * 闸门项时列的两条后果会原样重现，只是换成留痕版。
+ */
+test('较新留痕损坏：不退回上一轮 Driver，硬失败', async () => {
+  const ctx = await fakeCtx();
+  // 旧的一份可读、记 codex；新的一份坏掉（run id 字典序更大 = 更新）
+  await seedRunMeta(ctx, 't', 'code', 'R1', 'codex');
+  await fs.writeFile(
+    path.join(ctx.archiveRoot, 't/code/_meta', 'run-R2.json'), '{ broken }',
+  );
+
+  /*
+   * 目标取 `-response-codex.md`：退回上一轮（codex）会**放行**，硬失败则退 2。
+   * 若这里取 `-claude.md`，退回 codex 同样会拦，两种实现殊途同归——
+   * 与本文件另外两条用例踩过的是同一个坑。
+   */
+  const f = path.join(ctx.archiveRoot, 't/code/2026-09-19-t-response-codex.md');
+  const r = await hookPreWrite(ctx, writeInput(f));
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK, '最新一份读不出来就判不了当轮身份，不能退回上一轮');
+  assert.match(JSON.stringify(r.json), /R2/, '文案要点名是哪几份读不出来');
+});
+
+/*
+ * **阶段目录是软链（合法阶段名）时按落点那一侧的留痕判定。**
+ *
+ * 夹具取 `t/plan -> t/code`——**阶段名必须合法**。第 1 版用的是 `t/mirror`，
+ * 而 `mirror` 不在 STAGES 里，`stageSegmentsUnder` 的白名单守卫直接返回 null，
+ * 词法分支压根不命中、必然回退 realpath：那条用例测的不是它声称的机制
+ * （第 2 轮代码双审 CODEX-02 指出）。
+ */
+test('阶段目录是软链：按落点所在阶段的留痕判定', async () => {
+  const ctx = await fakeCtx();
+  await seedRunMeta(ctx, 't', 'code', 'R1', 'codex');
+
+  // t/plan -> t/code（真实目录只有 code；此格下词法侧的 _meta 会沿同一条软链落到同一处）
+  await fs.symlink(path.join(ctx.archiveRoot, 't/code'), path.join(ctx.archiveRoot, 't/plan'));
+
+  const f = path.join(ctx.archiveRoot, 't/plan/2026-09-19-t-claude.md');
+  const r = await hookPreWrite(ctx, writeInput(f));
+  assert.equal(
+    r.exitCode, EXIT.GATE_BLOCK,
+    '落点实际在 code 阶段、该阶段 Driver 是 codex，故 -claude.md 是审核者产出',
+  );
+});
+
+/*
+ * **文件级软链：两种解析顺序在这里真的不等价**（第 2 轮 AGY-01 ≡ CODEX-02）。
+ *
+ * 第 1 轮我把 realpath 优先判成「表达性修正、无可观测差异」——错了。
+ * 这一格两个阶段各有自己的 `_meta`（不像阶段目录软链那样是同一个物理目录），
+ * 于是词法定位 `t/plan`、realpath 定位 `t/code`，读到的是**不同的留痕**。
+ *
+ * 词法优先会按 plan 的 Driver（claude）判 `-claude.md` 为「Driver 自己的产出」而放行，
+ * 写入却沿软链落到 code 阶段，覆写那一阶段受保护的审核者产出。
+ * **把 `locateArchiveTarget` 改回词法优先，本用例必红**——这才是它的鉴别力。
+ */
+test('文件级软链跨阶段：按 realpath 侧的阶段判定，不按词法侧', async () => {
+  const ctx = await fakeCtx();
+  await seedRunMeta(ctx, 't', 'plan', 'R1', DEFAULT_DRIVER); // plan 阶段 Driver = claude
+  await seedRunMeta(ctx, 't', 'code', 'R1', 'codex');        // code 阶段 Driver = codex
+
+  const real = path.join(ctx.archiveRoot, 't/code/2026-09-19-t-claude.md');
+  await fs.writeFile(real, 'x');
+  const link = path.join(ctx.archiveRoot, 't/plan/2026-09-19-t-claude.md');
+  await fs.symlink(real, link);
+
+  const r = await hookPreWrite(ctx, writeInput(link));
+  assert.equal(
+    r.exitCode, EXIT.GATE_BLOCK,
+    '写入实际落在 code 阶段，该阶段 Driver 是 codex ⇒ -claude.md 是审核者产出，必须拦',
+  );
+});
+
+/*
+ * **归档内软链指向归档外：不得采信归档外的留痕**（第 2 轮 GLM-01，major）。
+ *
+ * 这是「按留痕定 driver」引入的通道，构造实测复现过：
+ * 归档外预置一份合法 run 留痕（driver 任选）→ 把它软链成归档内的一个阶段目录 →
+ * 写该阶段下的审核者后缀文件。若 `locateArchiveTarget` 在 realpath 落到归档外时
+ * **回落词法定位**，`latestRunMeta` 就会沿软链读到攻击者的留痕，
+ * 保护集变成「全集减攻击者自选的 driver」，伪件放行。
+ *
+ * 改动前不存在这条路：那时保护集是静态的、与留痕无关。
+ * 去掉 `locateArchiveTarget` 里的归档内守卫，本用例必红。
+ */
+test('归档内阶段目录软链指向归档外：伪留痕不得被采信', async () => {
+  const ctx = await fakeCtx();
+
+  // 归档外的伪留痕：声称当轮 Driver 是 glm，好让 -glm.md 变成「Driver 自己的产出」
+  const outside = path.join(ctx.projectRoot, 'doc/evil');
+  await fs.mkdir(path.join(outside, '_meta'), { recursive: true });
+  await fs.writeFile(
+    path.join(outside, '_meta', 'run-EVIL.json'),
+    JSON.stringify(newRunMeta({
+      runId: 'EVIL', topic: 't2', stage: 'code', rerunIndex: 1, command: 'x',
+      promptHint: null, taskGoal: null, criticsSelected: ['gemini'],
+      treeHash: 'h', gitHead: null, dirty: false, subjectSha256: 's',
+      denyPaths: [], driftPolicy: 'warn', driver: 'glm',
+    })),
+  );
+
+  await fs.mkdir(path.join(ctx.archiveRoot, 't2'), { recursive: true });
+  await fs.symlink(outside, path.join(ctx.archiveRoot, 't2/code'));
+
+  const f = path.join(ctx.archiveRoot, 't2/code/2026-09-19-t2-glm.md');
+  const r = await hookPreWrite(ctx, writeInput(f));
+  assert.equal(
+    r.exitCode, EXIT.GATE_BLOCK,
+    'driver 的来源不得被软链引出归档根——落在归档外即按缺省 Driver 判定，glm 仍在保护集内',
+  );
+});
+
 test('父目录尚不存在的合法新建不被误杀', async () => {
   // 审查意见 AGY-r2-02：ENOENT 就判「归档内」会锁死 doc/ 下新建子目录的写入
   const ctx = await fakeCtx();
   assert.equal(
-    isForgedRoleFile('doc/new_sub/2026-09-14-t-glm.md', ctx.projectRoot, ctx.archiveRoot),
+    isForgedRoleFile('doc/new_sub/2026-09-14-t-glm.md', ctx.projectRoot, ctx.archiveRoot, DEFAULT_DRIVER),
     false,
   );
 });

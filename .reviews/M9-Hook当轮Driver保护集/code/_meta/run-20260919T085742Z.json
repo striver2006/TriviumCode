@@ -1,0 +1,277 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260919T085742Z",
+  "topic": "M9-Hook当轮Driver保护集",
+  "stage": "code",
+  "rerun_index": 2,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点核实三件事：一是「较新留痕读不出即判红」这条新判据会不会在正常流程里误拦，二是与闸门侧口径有意分叉的理由是否站得住，三是我对软链定位给出的结论——两种解析顺序行为等价、属表达性修正而非缺陷修复——这个实测判断对不对",
+  "task_goal": "计划：Hook 当轮 Driver 保护集（EV-68）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "6177d26ec1a2d2f478833d5ff460266dd63dd958",
+    "tree_hash": "1dedaa18b90eb6119a05442bc6e2c0d21750ccc5",
+    "dirty": true,
+    "subject_sha256": "65ad39c237a326ff84448824dfeeffc5f76664bdc3c9c65036a9fbd870f59c41",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-19T08:57:42.713Z",
+  "finished_at": "2026-09-19T09:09:46.465Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.0",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "parse_fallback",
+      "exit_code": 0,
+      "duration_s": 340.013,
+      "tool_calls": {
+        "run_command": 54,
+        "project_reads": 36
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "JSON 语法错误：Bad escaped character in JSON at position 5872 (line 44 column 204)",
+      "empty_review": false,
+      "parse_fallback": true,
+      "session_id": "01a0b8e2-bfef-7511-8d1a-3c3c283ea969",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.7",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 218.879,
+      "tool_calls": {
+        "read": 25,
+        "grep": 8,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 13
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 345320,
+        "output_tokens": 37891,
+        "thinking_tokens": 33671,
+        "cache_read_tokens": 3748527,
+        "total_tokens": 383211
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "0ddb20e3-48c7-4aaf-ac77-66354b79fd08",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 723.499,
+      "tool_calls": {
+        "read": 12,
+        "grep": 7,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 9
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 7,
+        "inputTokens": 927503,
+        "outputTokens": 44309,
+        "totalTokens": 971812,
+        "cacheReadTokens": 760320,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_6df89bb3-81fe-4685-8e37-ef55fbf2d17e",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M9-Hook当轮Driver保护集/code/2026-09-19-M9-Hook当轮Driver保护集-gemini.md",
+    ".reviews/M9-Hook当轮Driver保护集/code/2026-09-19-M9-Hook当轮Driver保护集-glm.md",
+    ".reviews/M9-Hook当轮Driver保护集/code/_meta/review-gemini-20260919T064055Z.json",
+    ".reviews/M9-Hook当轮Driver保护集/code/_meta/review-glm-20260919T064055Z.json",
+    ".reviews/M9-Hook当轮Driver保护集/plan/2026-09-19-M9-Hook当轮Driver保护集-gemini.md",
+    ".reviews/M9-Hook当轮Driver保护集/plan/2026-09-19-M9-Hook当轮Driver保护集-glm.md",
+    ".reviews/M9-Hook当轮Driver保护集/plan/_meta/review-gemini-20260919T060422Z.json",
+    ".reviews/M9-Hook当轮Driver保护集/plan/_meta/review-glm-20260919T060422Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M9-Hook当轮Driver保护集/code/_meta/changes-20260919T085742Z.diff",
+      "sha256": "65ad39c237a326ff84448824dfeeffc5f76664bdc3c9c65036a9fbd870f59c41"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/code/_meta/brief-codex-20260919T085742Z.md",
+      "sha256": "7867e5804f045693201d6ad98f23d185d1485dcf9e2cb96b84f1805f530363b3"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/code/_meta/brief-gemini-20260919T085742Z.md",
+      "sha256": "36934f7de1b63c9fbc6ebfd5111b6c02dbc6ac3cd6b5ebb411d98cac8ddb7b8e"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/code/_meta/brief-glm-20260919T085742Z.md",
+      "sha256": "406ffeebd4e83ba64ba3b5c120d2a1cd924e97d892b9c0b019885f96e124296b"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/code/_meta/review-codex-20260919T085742Z.json",
+      "sha256": "a0217be7f0ad3978a7bfb5874a7cdb2ef43cdaaed8fe0421dba12a50c4e2decc"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/code/_meta/review-codex-20260919T085742Z.fallback-items.md",
+      "sha256": "3da3b2d9868bd5da3f115cb0761a4412ef80d6188461711eaacd7d5fc9350ccc"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/code/_meta/review-gemini-20260919T085742Z.json",
+      "sha256": "ef2102c24a4811c6c21c500992e4716fbd4a674ce6a642dcedbef80bb5be0ea7"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/code/_meta/review-glm-20260919T085742Z.json",
+      "sha256": "755a2e737c6d7dd0ec026dc8e94aea9d407b6b142ea7fc1389a06948c5e8283d"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/code/2026-09-19-M9-Hook当轮Driver保护集-r2-codex.md",
+      "sha256": "72b9b2903a573bb56569874f3491f71a306c57001b1a34280df10c34ac377556"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/code/2026-09-19-M9-Hook当轮Driver保护集-r2-gemini.md",
+      "sha256": "a5b6283ead108fdcbafb89032def7f8c4faa3b60b5d51f752f8c42f31bd47323"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/code/2026-09-19-M9-Hook当轮Driver保护集-r2-glm.md",
+      "sha256": "3ceb66a103173710f32721a3c8db573137931351e1d42c6dff38ca9ff94245cf"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

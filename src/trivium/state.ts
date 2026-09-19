@@ -57,10 +57,26 @@ export interface GateEntry {
    * 缺失即「无从得知」，不等于缺省 Driver。
    *
    * 设计 §5.2 / §9.2 把它列为 `--driver` 三处留痕面之一（另两处是
-   * `run.json.driver` 与 `task.json.runs[]`）。**本步只记不读**——
-   * Hook 的 Driver 感知按计划 §2.2 不在第 5 步范围（见 EV-55），
-   * 但记录面先落齐，免得实现与唯一实现依据对同一件事各说一套
-   * （代码双审 CODEX-06）。
+   * `run.json.driver` 与 `task.json.runs[]`）。
+   *
+   * ## 它**不是** Hook 的 Driver 来源（EV-68，M9 第 6 步前置）
+   *
+   * 曾经打算让 `hooks.ts` 读这里，计划双审两侧独立打穿：`review.ts` 的四处
+   * `setGateChecked` 全都不传 driver，唯一写它的是 `cli.ts` 两处
+   * `awaiting_approval`，而那以「裁决件已落盘」为前置——**Driver 写裁决件
+   * 正发生在那之前**。更糟的是下面 `upsert` 的「沿用前一条的值」：
+   * 同槽位重跑换 Driver 时，这里留着的是**上一轮**的 driver，
+   * 采信它会让当轮判定反向。所以 Hook 的权威来源是 `run.json.driver`
+   * （`latestRunMeta`），与设计 §6.2 和 `cmdGate` 同源；本字段维持纯留痕面。
+   *
+   * ## 「缺失」的语义没有变
+   *
+   * 上面那句「缺失即『无从得知』，不等于缺省 Driver」**仍然为真**。
+   * Hook 侧在无从得知时按缺省 Driver 判定并在拦截文案里注明，
+   * 那是论证过的可用性取舍（plan/bug 原稿写在 `review --start` 之前，
+   * 那一刻该阶段一份留痕都没有，fail-closed 会锁死整条流水线），
+   * **不是**把「缺失」重定义成「缺省」。两层语义分工见 `hooks.ts`
+   * 的 `resolveRoundDriver`（计划双审 GLM-03）。
    */
   driver?: AgentId;
   /**

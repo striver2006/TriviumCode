@@ -1,0 +1,153 @@
+---
+schema: trivium.review.v1
+topic: M9-Hook当轮Driver保护集
+stage: code
+role: glm
+vendor: zcode
+agent_cli: zcode/0.16.5
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260919T064055Z
+rerun_index: 1
+snapshot_hash: sha256:b26582a8ba71fb53d7c55212e1d50b878e9676ca2597995e5409eb8d9991de4f
+blind: true
+started_at: 2026-09-19T06:40:56.412Z
+finished_at: 2026-09-19T07:12:28.113Z
+duration_s: 495
+tool_calls:
+  read: 8
+  grep: 11
+  glob: 1
+  run_command: 0
+  project_reads: 14
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 1
+  minor: 2
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: sess_b194d6e9-a305-43f9-b8da-a5f38b4d47fc
+---
+
+# 代码审查：M9-Hook当轮Driver保护集
+
+> Critic-B · 智谱 ZCode ｜ 模型 `bigmodel-coding-plan/GLM-5.3`
+> ｜ 运行 `20260919T064055Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+EV-68 的主体实现与修订版计划 §2.1–2.8 逐项吻合、时序口径成立（第 6 步前置结案、验收未开工、EV-71 载体决策按用户裁定延后、EV-72 边界如实登记），driver 权威来源弃闸门项改 run 留痕的裁决依据我逐行实核成立。最危险的一条（GLM-01）：resolveRoundDriver 在取到 meta 时把 latestRunMeta 的 unreadable 整个丢弃——「最新一份留痕读不出来、较旧一份可读」时会静默采信上一轮 Driver（fromDefault:false，文案自称『取自该阶段最近一份运行留痕』）；第 6 步验收在本仓落下 codex 轮之后，错误放行方向恰使该轮受保护的 -claude.md 变为可伪造，错误拦截方向会锁死当轮 Driver 的交卷。另有：修订计划 §2.6 承诺的 M10 行双落点未做（GLM-02）；两条测试的鉴别力/忠实度问题（GLM-03 / GLM-04）。
+
+**结论**：`request-changes`
+
+## 审查意见（共 4 条：重要 1 ｜ 次要 2 ｜ 吹毛求疵 1）
+
+### GLM-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/hooks.ts:331-341（resolveRoundDriver）及 hooks.ts:505-507（拦截文案）` |
+| 类别 | security ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：部分损坏的留痕会让陈旧 Driver 被静默当成权威。meta.ts 的 latestRunMeta（410-418 行）从新到旧逐个尝试、返回最新一份**可读**的 meta，跳过的较新项只进 unreadable 并 warn。resolveRoundDriver 在 `r.meta` 非空时直接返回 `{kind:'ok', driver: r.meta.driver, fromDefault:false}`，把 `r.unreadable` 整个丢弃；hookPreWrite 的文案随之断言『取自该阶段最近一份运行留痕』——当最新一份 run-*.json 读不出来而较旧一份可读时，这句是假的。后果双向：一旦归档存在混合 Driver 历史（第 6 步验收以 --driver codex 跑一轮后本仓即为该状态），最新一份损坏会使判定落到上一轮 Driver——若上一轮是 claude、本轮 codex+claude 当审核者，`-claude.md` 不进保护集、Driver 可手写审核者产出（错误放行；仅靠 checkStageArtifacts 跑后核对兜底）；同时 `-codex.md`（当轮 Driver 自己的裁决件）被拦、流水线锁死且拦截文案指向错误结论（此方向无任何跑后兜底）。warn 走 stderr（util/log.ts:24-26），在错误放行的退 0 路径上用户不可见。这与本步自己立的原则（『留痕坏了就判不了，不能判成按缺省 Driver 算』）同族：留痕坏了被悄悄判成『按上一轮 Driver 算』。
+
+**依据**：src/trivium/meta.ts:410-418（newest-first 循环，`if (m) return { meta: m, scanned: ids.length, unreadable }`，跳过项仅 warn）；src/trivium/hooks.ts:338（`if (r.meta) return { kind: 'ok', driver: r.meta.driver, fromDefault: false }`——unreadable 未消费）；hooks.ts:505-507（`why = '取自该阶段最近一份运行留痕'`）；对照 hooks.ts:324-325 与 .reviews/M9-Hook当轮Driver保护集/code/_meta/changes-20260919T064055Z.diff 中 BACKLOG EV-68 关闭记录『留痕损坏（scanned > 0 却读不出）硬失败』——该承诺只覆盖全损格；cli.ts:823-855 证实 cmdGate 在同一中间格同样静默采信较旧 meta（『与 gate 同口径』字面为真，缝隙是共有的）。
+
+**建议**：在 resolveRoundDriver 里把 `r.meta && r.unreadable.length > 0` 显式分档：要么与 corrupt 同处置（硬失败退 2，文案列出被跳过的较新 run_id，理由同『留痕坏了就判不了』），要么至少把『较新的 N 份读不出来已跳过』写进拦截文案并考虑在放行路径给可见提示。改的时候与 cmdGate 联动决策——只改一侧会让『与 gate 同口径』这句承诺失真；若决定维持现状，则应在设计 §8.4 三种结局里补第四种结局的明文，别让读者以为『留痕损坏必硬失败』。
+
+### GLM-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2852（§16.1 M10 行）` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：修订版计划 §2.6 明确约定新条目『双落点：BACKLOG 与主设计 §16.1（M9 第 6 步行 + M10 行）』，本次只改了 M9 行：M10 行的前置栏仍只有『agy skills 真实加载行为实测通过』，而 EV-55（跨时间面重写）、EV-71（会话载体拍板+实测写事件）、EV-72（主题级 driver 落盘）三条都是 BACKLOG 里写明『M10 第一次换 Driver 之前』的硬前置。只按 §16.1 M10 行圈定范围的人会漏掉这三道闸。
+
+**依据**：.reviews/M9-Hook当轮Driver保护集/plan/2026-09-19-M9-Hook当轮Driver保护集-revised-claude.md §2.6（『双落点：BACKLOG 与主设计 §16.1（M9 第 6 步行 + M10 行）』）；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2852 实读确认 M10 行本次未动、前置栏无 EV-55/71/72；changes diff 中设计文档仅 823 / 1449 / 2848 三处 hunk。
+
+**建议**：在 M10 行的前置栏补上 EV-55 / EV-71 / EV-72（各一句触发条件即可），或在该栏显式写明『完整前置清单以 BACKLOG 为准』——本仓纪律是设计文档为唯一实现依据，里程碑行的范围栏是接手者第一眼读的地方。
+
+### GLM-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/hooks.test.ts:759-766（『普通业务文件不触发当轮 Driver 解析，退出码不变』）` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：该用例对它声称要锁的承诺没有鉴别力。构造是空归档 + 写 src/a.ts：即便把 resolveRoundDriver 无条件提到函数开头，这条路径上 latestRunMeta 也只会得到 scanned=0 → 缺省 Driver → 照样退 0，用例照绿。能让它变红的只有『无条件 deny』这类并不现实的退化，而它要防的回归（短路顺序被拆掉、无关写入开始读留痕）恰好不会让它红。hooks.ts:479『该承诺已锁成断言』因此言过其实。
+
+**依据**：test/unit/hooks.test.ts:759-766（构造仅 `ctx.config.gate.block_business_write_when_awaiting_approval = false` + 空夹具写 src/a.ts，断言仅 exitCode===OK）；src/trivium/hooks.ts:469-480（注释声称的承诺范围）与 hooks.ts:331-341（解析在空归档上无副作用、不抛异常——readRunMeta/latestRunMeta 全程 catch）。
+
+**建议**：换有鉴别力的构造：先在该阶段 `_meta/` 种一份损坏的 run-*.json，再写一个**非角色工件形态**的归档内文件（如 `<主题>/code/notes.txt`，非 _meta/task.json、block_business_write=false）。短路顺序正确时应 ALLOW；解析若被提前无条件执行则撞 corrupt 硬失败退 2——只有这样才能真正钉住『非角色后缀写入不读留痕』。
+
+### GLM-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/integration/gate-loop.test.ts:434-455（『当轮 Driver 按真实留痕判定…』）` |
+| 类别 | scope-drift ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：修订版计划 §2.5 写的是『夹具先落一轮真实留痕，**再以另一 Driver 起一轮**』，交付的用例没有起真实 review 轮，而是用 newRunMeta 手写 run-RDRV.json 直落 _meta。缓解是真实的（newRunMeta 是写侧同一生产者、readRunMeta 会做契约校验、hook 侧走真子进程读真文件），但这是对已批准计划措辞的偏离，测试注释把它当作 CODEX-03 的履行来叙述、未显式声明偏离及理由——而 CODEX-03 的原始关切（『夹具两份都是测试自己种的』）在 run 留痕这一侧只解了一半。
+
+**依据**：.reviews/M9-Hook当轮Driver保护集/plan/2026-09-19-M9-Hook当轮Driver保护集-revised-claude.md §2.5；changes diff 中 gate-loop.test.ts 新用例（`newRunMeta({...driver:'codex'})` 直接 writeFile 到 metaDir，未经 prepareRun/writeRunMeta/真实 --driver 轮）。
+
+**建议**：在用例注释里显式声明这一取舍（为何不走真实 --driver 轮：桩配置点名入选侧的成本与配额风险），或后续在 driver-flag 方向补一条真实起轮的端到端用例。仅要求声明，不要求本步返工。
+
+## 认为正确的部分
+
+- 当轮面/跨时间面拆成两个具名函数，且 hasProtectedRoleSuffix 的 driver 必填无默认值——漏传从运行期静默回落变成编译期错误，与 EV-69 登记的教训同源；旧名 hasCriticRoleSuffix / ROLE_SUFFIX_ANYWHERE 全仓无残留活代码引用（仅注释存史）。
+- driver 权威来源弃 GateEntry 改 run.json.driver 的裁决依据实核成立：review.ts 四处 setGateChecked（938/996/1512/1601）确都不传 driver，唯一两处写 driver 的闸门迁移（cli.ts:1005/1181）都在裁决件落盘之后，state.ts:242-243 的 upsert 确实『沿用前一条的值』——采信闸门项会把上一轮 Driver 当权威。
+- 『scanned>0 且一份都读不出』硬失败与 cmdGate 同口径属实（cli.ts:823-852），文案指明出口（重跑而非删改锚）也与闸门侧一致。
+- 短路顺序（识别集 ⊇ 任意保护集，looksLikeRoleArtifact + isInsideArchiveResolved 命中才解析）设计正确；locateArchiveTarget 词法+realpath 双路与 isInsideArchiveResolved 对称，且软链负例选了有鉴别力的 -claude.md（-gemini.md 两种实现殊途同归，注释里把这一族坑写透了）。
+- 回落正/负成对用例（hooks.test.ts:704/711）正确落实了计划双审 GLM-02 的要求；留痕损坏用例的目标后缀选择同理。
+- state.ts 的 GateEntry.driver 注释改写把『缺失=无从得知』与『Hook 侧按缺省判定是可用性取舍』两层语义分开，避免了同文件两句方向相反的话。
+- 设计 §6.2 / §8.4 的字面量清扫到位（保护集由注册表派生、不再列两家后缀），EV-71 对警示逐字迁移、EV-72 把刻意接受的边界如实登记为 todo 而非隐瞒。
+- hooks.json 四条拦截命令实读确认均为静态 JSON、无 driver 参数——关闭记录『两处落点实核不需要改动』中 hooks.json 一侧属实。
+
+## 未覆盖范围（本侧盲区）
+
+- 未运行 npm run check / build / 变异验证（只读审查）：行为断言全部来自代码阅读与 diff 记录的实测数字，未独立复跑。
+- 未核实『重装才生效』一步（修订计划 §2.7 第 9 步 / CODEX-04）——安装产物在仓库之外。
+- src/trivium/init.ts 的 writeWrapper 未重读（关闭记录声称无需改动的那一侧）；BACKLOG 与设计文档的未变更部分仅经 diff hunk 了解。
+- Bash 侧跨时间语义（EV-55）与提交锚改按 artifacts 登记判不可变的论证链未重审——已登记为 M10 前置，不在本步范围。
+- 设计 §21/§24 版本台账、PRD 侧 AC 状态未核对（EV-57 显式留给第 7 步）。
+
+## 实际查阅的项目文件
+
+- `.reviews/M9-Hook当轮Driver保护集/code/_meta/changes-20260919T064055Z.diff`
+- `.reviews/M9-Hook当轮Driver保护集/plan/2026-09-19-M9-Hook当轮Driver保护集-revised-claude.md`
+- `src/trivium/hooks.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/state.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/review.ts`
+- `src/trivium/naming.ts`
+- `src/trivium/types.ts`
+- `src/trivium/util/log.ts`
+- `test/unit/hooks.test.ts`
+- `test/integration/gate-loop.test.ts`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `skills/dual-critic/hooks/hooks.json`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":8,"grep":11,"glob":1,"run_command":0,"project_reads":14}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

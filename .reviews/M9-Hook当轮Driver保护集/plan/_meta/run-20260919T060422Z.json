@@ -1,0 +1,261 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260919T060422Z",
+  "topic": "M9-Hook当轮Driver保护集",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "审核本计划是否合理，是否需要优化",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "6177d26ec1a2d2f478833d5ff460266dd63dd958",
+    "tree_hash": "7d4da5ccbc5ff6cfacc27a483b0ad3b887032dbc",
+    "dirty": true,
+    "subject_sha256": "81b711b100d7d111266dd7051766eb7a1f292ad705bfe0bc0314898e70f6d041",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-19T06:04:23.504Z",
+  "finished_at": "2026-09-19T06:14:28.990Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.0",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 247.17,
+      "tool_calls": {
+        "run_command": 56,
+        "project_reads": 30
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0b844-11f5-7691-a6b2-e317a7e10406",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.7",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 605.333,
+      "tool_calls": {
+        "read": 41,
+        "grep": 18,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 26
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 456820,
+        "output_tokens": 51840,
+        "thinking_tokens": 44587,
+        "cache_read_tokens": 5877651,
+        "total_tokens": 508660
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "b30b3b28-f6fb-417c-a0d7-06e434a2a436",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.5",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 542.125,
+      "tool_calls": {
+        "read": 11,
+        "grep": 9,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 14
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 11,
+        "inputTokens": 907895,
+        "outputTokens": 32460,
+        "totalTokens": 940355,
+        "cacheReadTokens": 798848,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_2fa29514-44ce-4dc7-995e-a432164c9faf",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M9-Hook当轮Driver保护集/plan/_meta/brief-codex-20260919T060422Z.md",
+      "sha256": "982a608b7bab4797972b3e7d6a4821ebb9b8f9ab90e72ad5ea9854fcbd98f9a5"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/plan/_meta/brief-gemini-20260919T060422Z.md",
+      "sha256": "238d1c7435a8141ccf7ea80cd3cd291c6463ead79f7ad3319df9754485784ea8"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/plan/_meta/brief-glm-20260919T060422Z.md",
+      "sha256": "506cf4bdbb7f90a9f2511cec1cdb846d6bedf4cd86f312ea9e99435632a4217c"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/plan/_meta/review-codex-20260919T060422Z.json",
+      "sha256": "788144974dcdd5664003a362741dbf1cd84a965e082cbf07cb684173e068dfc2"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/plan/_meta/review-gemini-20260919T060422Z.json",
+      "sha256": "e60e9b20c650259e75e1233cb67f20c0dd8398713a68d70c8fabd6a012c1034b"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/plan/_meta/review-glm-20260919T060422Z.json",
+      "sha256": "71fbedb129f580e4f5f51f1aa2884f74306f2150d48772bf32f9d552f2192f72"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/plan/2026-09-19-M9-Hook当轮Driver保护集-codex.md",
+      "sha256": "370cabfa230f0cccd21ab13077c0f38d62efa7f32e3270e0327bdcf788e3ddd5"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/plan/2026-09-19-M9-Hook当轮Driver保护集-gemini.md",
+      "sha256": "9a761b4fe58ca1e5d12a947c0c73ae175ae42a32b30b306ee49dd8d457364707"
+    },
+    {
+      "path": "M9-Hook当轮Driver保护集/plan/2026-09-19-M9-Hook当轮Driver保护集-glm.md",
+      "sha256": "687bda8d53b09353d388ee31986936642a0bca1d0e04148caa6cd5be7e973edf"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
