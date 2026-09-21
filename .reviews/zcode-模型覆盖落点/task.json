@@ -1,0 +1,164 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "zcode-模型覆盖落点",
+  "goal": null,
+  "created_at": "2026-09-21T09:58:28.518Z",
+  "updated_at": "2026-09-21T14:23:37.815Z",
+  "runs": [
+    {
+      "run_id": "20260921T095827Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-21T09:58:28.507Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260921T111833Z",
+      "stage": "plan",
+      "rerun_index": 2,
+      "status": "failed",
+      "review_mode": "partial",
+      "started_at": "2026-09-21T11:18:33.843Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260921T114825Z",
+      "stage": "plan",
+      "rerun_index": 3,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-21T11:48:26.355Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260921T124003Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-21T12:40:03.861Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260921T132440Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-21T13:24:41.416Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260921T140524Z",
+      "stage": "code",
+      "rerun_index": 3,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-21T14:05:25.498Z",
+      "driver": "claude"
+    }
+  ],
+  "gate": {
+    "stage": "code",
+    "state": "approved",
+    "since": "2026-09-21T14:23:37.808Z",
+    "run_id": "20260921T140524Z"
+  },
+  "approvals": [
+    {
+      "at": "2026-09-21T10:16:24.304Z",
+      "stage": "plan",
+      "run_id": "20260921T095827Z",
+      "decision": "approved",
+      "reason": "修改后开始实现",
+      "session_id": null
+    },
+    {
+      "at": "2026-09-21T12:04:49.688Z",
+      "stage": "plan",
+      "run_id": "20260921T114825Z",
+      "decision": "approved",
+      "reason": "修改后实现",
+      "session_id": null
+    },
+    {
+      "at": "2026-09-21T13:00:37.414Z",
+      "stage": "code",
+      "run_id": "20260921T124003Z",
+      "decision": "approved",
+      "reason": null,
+      "session_id": null
+    },
+    {
+      "at": "2026-09-21T13:46:41.767Z",
+      "stage": "code",
+      "run_id": "20260921T132440Z",
+      "decision": "approved",
+      "reason": null,
+      "session_id": null
+    },
+    {
+      "at": "2026-09-21T14:23:37.808Z",
+      "stage": "code",
+      "run_id": "20260921T140524Z",
+      "decision": "approved",
+      "reason": null,
+      "session_id": null
+    }
+  ],
+  "degradations": [
+    {
+      "run_id": "20260921T111833Z",
+      "stage": "plan",
+      "reason": "codex: timeout（脚本级超时（1500s））",
+      "at": "2026-09-21T11:43:34.421Z"
+    }
+  ],
+  "disputed": false,
+  "disputes": [],
+  "joint_checks": [
+    {
+      "run_id": "20260921T095827Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-09-21T10:15:08.110Z"
+    },
+    {
+      "run_id": "20260921T114825Z",
+      "stage": "plan",
+      "rerun_index": 3,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-09-21T12:03:34.554Z"
+    },
+    {
+      "run_id": "20260921T124003Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1,
+      "reason": "no-structured-review",
+      "at": "2026-09-21T12:59:16.085Z"
+    },
+    {
+      "run_id": "20260921T132440Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-09-21T13:45:27.336Z"
+    },
+    {
+      "run_id": "20260921T140524Z",
+      "stage": "code",
+      "rerun_index": 3,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-09-21T14:20:10.709Z"
+    }
+  ]
+}

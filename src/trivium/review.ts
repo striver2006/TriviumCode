@@ -1433,6 +1433,15 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       profile_requested: r.profile_requested,
       model_provider: r.model_provider,
       ...(r.model_route ? { model_route: r.model_route } : {}),
+      /*
+       * **条件展开是刻意的**，与上面几格「恒写」的口径不冲突（EV-82）：那几格的
+       * 字段缺席没有含义，所以缺席必须被消灭；这一格的字段缺席**本身就是一种取值**
+       * ——「本次没有覆盖尝试」。恒写会把它压进 `null`，而 `null` 的唯一含义是
+       * 「尝试了、没回读到生效模型」。详见 `CriticResult.model_override_applied`。
+       */
+      ...(r.model_override_applied === undefined
+        ? {}
+        : { model_override_applied: r.model_override_applied }),
       ...(requests[c]!.effort ? { effort: requests[c]!.effort! } : {}),
       status: r.status,
       exit_code: r.exit_code,

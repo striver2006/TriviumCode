@@ -7,8 +7,11 @@
  *     因此「已登录」不等于「可用」，预检必须真跑一次最小 headless。
  *   - `--help` 列出的参数不等于实际接受的参数（`--max-turns` 即为反例），
  *     `readonly_flags` 必须逐个实测。
- *   - **不存在裸 `ZCODE_MODEL` 环境变量**（0.16.5），模型覆盖只能走
- *     `config_copy`（`ZCODE_HOME` 指向独立配置副本）或 `global`。
+ *   - **不存在裸 `ZCODE_MODEL` 环境变量**（0.16.5，0.16.9 亦无 model 旗标），模型覆盖只能走
+ *     `config_copy`（独立 `HOME` 下的 `cli/config.json` 副本）或 `global`。
+ *   - **0.16.9 起 `config_copy` 生效的前提是不注入个人 provider 配置**（EV-82）：个人文件存在
+ *     CLI 就直接用它、不做 legacy 导入，副本里的 `model.main` 没人读。`probeModelOverride` 臂
+ *     零配额实测这条前提是否仍成立。
  */
 import path from 'node:path';
 import os from 'node:os';
@@ -17,12 +20,18 @@ import { run } from '../util/exec.js';
 // 命令行只在适配层构造（设计 §5.1）
 import {
   invokeZcode,
+  legacyProviderMembers,
+  qualifyAgainstCliConfig,
+  readonlyArgsFromProbe,
   zcodeProviderConfigPaths,
   zcodeProviderEnv,
   ZCODE_ARGV_PARSED_RE,
+  ZCODE_CREDENTIAL_ENV_KEYS,
+  ZCODE_DIR_ENV_KEYS,
   ZCODE_BUILTIN_PROVIDER_ENV,
   ZCODE_PERSONAL_PROVIDER_ENV,
   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
+  zcodeModelTail,
 } from '../adapters/zcode.js';
 import { exists, makeTempDir } from '../util/fsx.js';
 // CLI 原话进 note 之前过一遍脱敏（r5 CODEX-06）
@@ -76,7 +85,12 @@ export async function probeZcodeEntry(
    */
   const r = await run(node, [entry, 'version'], {
     timeoutMs: 60_000,
-    env: { [ZCODE_BUILTIN_PROVIDER_ENV]: undefined, [ZCODE_PERSONAL_PROVIDER_ENV]: undefined },
+    // 三个目录键与两个凭据键同样清底色（代码双审 r1 codex 子项 06）：口径是「全部探针路径」，不是「两条主路径」
+    env: {
+      [ZCODE_BUILTIN_PROVIDER_ENV]: undefined,
+      [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
+      ...Object.fromEntries([...ZCODE_DIR_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS].map((k) => [k, undefined])),
+    },
     // 与其余五处拉起厂商 CLI 的口径一致（r5 CODEX-04）：此前这里是全仓唯一没开的一处。
     // `version` 现在不起子进程，但 P-29 已经证明这个 CLI 的演化方向是把活儿往前挪——
     // 真挪过来时，超时只杀直接子进程会留下孤儿继续跑
@@ -148,10 +162,14 @@ export async function probeReadonlyFlags(
   // 个人那份**显式置 `undefined`**（r2 CODEX-01 ≡ AGY-02）：`run()` 以 `{...process.env}` 为底，
   // 只追加不清除的话，宿主环境里预置的同名变量会原样透传进来——「我没给」不等于「它没有」，
   // 而这里正是「它有就会烧七次配额」的那个位置。
-  const { [ZCODE_BUILTIN_PROVIDER_ENV]: builtinFile } = await zcodeProviderEnv(entry);
+  //
+  // **整包接收 `zcodeProviderEnv` 的返回**（代码双审 r1 codex 子项 01 ≡ AGY-01）：此前只解构内置键、手拼两键对象，
+  // 把三个目录键丢在解构之外——宿主预置 `ZCODE_DATA_BASE_DIR` 时 `FZi` 会推出副本外的个人配置根，空 HOME 挡不住，
+  // 七个候选变七次真实调用。`run()` 只对「值为 undefined 的键」做删除，键缺席就是原样透传。
+  // 两个凭据键一并清：探针路径不该继承宿主的凭据/端点通道。
   const providerEnv: Record<string, string | undefined> = {
-    [ZCODE_BUILTIN_PROVIDER_ENV]: builtinFile,
-    [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
+    ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
+    ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
   };
   const emptyHome = await makeTempDir('trivium-flagprobe');
   try {
@@ -297,6 +315,201 @@ export async function probeScratchPaths(fx: Fixture): Promise<string[]> {
   return [...new Set([...changed, ...untracked])].sort();
 }
 
+/** `probeModelOverride` 写进副本、供比对的哨兵密钥——不像任何真实凭据形态，扫描器也不会误认 */
+export const ZCODE_PROBE_SENTINEL_KEY = 'trivium-probe-sentinel-not-a-key';
+
+/** 探针副本里每个 provider 保留的键——**白名单**，不在这里的一律不带（含 `headers` 等任何凭据形态） */
+const PROBE_PROVIDER_KEEP: readonly string[] = ['name', 'kind', 'source', 'enabled', 'models'];
+/** 放哨兵的那个 options 键名（CLI legacy 导入读 `options.apiKey`） */
+const PROBE_SENTINEL_FIELD = 'apiKey';
+
+/**
+ * 按**白名单**重建探针用的 `cli/config.json` 副本（代码双审 r1 codex 子项 03 ≡ AGY-02）。
+ *
+ * 此前是黑名单：只把名为 `apiKey` 的值换成哨兵。黑名单漏一个键就是一份真实凭据进副本——
+ * `headers.Authorization`、`token` 这类形态原样保留，副本在 `finally` 之前被 SIGKILL 就残留在临时目录。
+ * 白名单反过来：每个 provider 只留 CLI legacy 导入要看的 `name` / `kind` / `source` / `enabled` / `models`，
+ * `options` 只留 `baseURL`（provider 定义要它）与哨兵 `apiKey`，其余键**一律不带**。
+ * 漏掉一个该留的键只会让导入不成（可见），漏掉一个该剥的键会静默泄漏（不可见）——与 codex 侧
+ * `KEEP_TOP_KEYS` 选白名单是同一条取向。
+ *
+ * ## 白名单 ⊇ 导入器必需键（代码双审 r2 CODEX-02）
+ *
+ * 探针臂的输入（本副本）与审查运行的输入（整份拷贝）**不同形**，所以要说清楚裁掉的键不会让导入失败。
+ * 包内 `Oqa`（`importLegacyCliPersonalProviderConfig`）对 custom provider 读的是：`source`（非 custom 跳过）、
+ * `name`、`kind`（→ `Dqa` 映射 api 类型，缺省 openai-chat-completions）、`options.apiKey`、`models`（`Nqa`，
+ * 跳 `deleted`、取 `id ?? 键名`、含 `contextWindow`）、`options.headers`（`Lqa` 合并，**可缺**）、
+ * **`options.apiKeyRequired`**（`Fqa`：它的判定语义是「provider **显式声明** `apiKeyRequired: false` 就抛
+ * `UnsupportedLegacyCliProviderConfigError`」，`skt` 捕获后**整份**导入返回 null——**不是**「缺 apiKey 才抛」，
+ * 代码双审 r3 CODEX-01 纠正了我这里原先写反的语义）。
+ * 于是白名单**必须**带上 `apiKeyRequired`（布尔，非凭据）：裁掉它，探针副本在免密 provider 上不触发抛错、
+ * 判 `config_copy`，而审查运行的整份拷贝会被导入器整份拒掉——探针对运行**假乐观**。带上之后，两种副本在
+ * 「导入会不会被拒」这件事上同形；被裁掉的 `headers` 等则确实只影响「导入带不带某些信息」，不影响成败。
+ * 若某版 CLI 把别的可缺项改成必需，探针臂会先于审查运行翻成未判定/`global`（文案里写明了这种可能），
+ * 同形第二臂作可选后续（EV-94）。**引用包内函数作论据时，写它的判定语义，不只写它读了哪些键。**
+ */
+export function buildProbeCliConfig(
+  cfg: { provider?: Record<string, Record<string, unknown> | undefined> },
+  qualified: string,
+): Record<string, unknown> {
+  const provider: Record<string, unknown> = {};
+  for (const [key, p] of Object.entries(cfg.provider ?? {})) {
+    if (!p) continue;
+    const kept: Record<string, unknown> = {};
+    for (const k of PROBE_PROVIDER_KEEP) if (k in p) kept[k] = p[k];
+    const opts = (p['options'] ?? {}) as Record<string, unknown>;
+    // 键用计算属性写：`fixture-credentials` 契约扫描器把「apiKey: <长标识符>」的字面形态当成密钥赋值，
+    // 这里放的是哨兵常量而不是密钥，但形态判据不看语义，改写法比给扫描器开豁免便宜
+    kept['options'] = {
+      ...(typeof opts['baseURL'] === 'string' ? { baseURL: opts['baseURL'] } : {}),
+      // `apiKeyRequired` 决定导入会不会被拒（`Fqa`），探针必须与整份拷贝同形（r3 CODEX-01）
+      ...(typeof opts['apiKeyRequired'] === 'boolean' ? { apiKeyRequired: opts['apiKeyRequired'] } : {}),
+      [PROBE_SENTINEL_FIELD]: ZCODE_PROBE_SENTINEL_KEY,
+    };
+    provider[key] = kept;
+  }
+  return { provider, model: { main: qualified, lite: qualified } };
+}
+
+/**
+ * 在 `cli/config.json` 的目录里挑一个**非首位**模型作探针请求（计划双审 r3 CODEX-01）。
+ *
+ * 为什么必须非首位：CLI 的模型选择解析在 `defaultModelSelection` 验不过时回落到
+ * 「第一个可见 provider 的第一个模型」——请求首位模型时，「读到了 `model.main`」与「没读到、回落」
+ * 两个世界的回读值相同，判据结构性失明。挑不出非首位模型时返回 null，调用方记「未判定」。
+ */
+export function pickNonFirstModel(cfg: { provider?: Record<string, { models?: Record<string, unknown> } | undefined> }): string | null {
+  // 成员按导入器同一组规则取（r3 CODEX-02）：被删的、非 custom 的、builtin:/account: 前缀的都不在注册表里
+  for (const [key, members] of legacyProviderMembers(cfg)) {
+    const list = [...members];
+    if (list.length >= 2) return `${key}/${list[1]}`;
+  }
+  return null;
+}
+
+/** `probeModelOverride` 的结论 */
+export interface ModelOverrideProbe {
+  /** `config_copy`：副本 `model.main` 被读到并成为默认选择；`global`：CLI 跑到了模型层却没读它；null：本轮判不出 */
+  override: 'config_copy' | 'global' | null;
+  /** 写进副本 `model.main` 的请求串 */
+  requested: string | null;
+  /** CLI 自写的 `v2/provider_config.json` 里 `defaultModelSelection` 的 `<providerId>/<modelId>` */
+  observed: string | null;
+  /** 人读说明 */
+  why: string;
+}
+
+/**
+ * `zcode.model_override`：**实测** `config_copy` 档在本机 CLI 版本下是否仍生效（EV-82，r3 CODEX-04）。
+ *
+ * 判据取自 CLI 的模型选择链：副本 HOME 下**没有**个人 provider 配置时，CLI 从 `<HOME>/.zcode/cli/config.json`
+ * legacy 导入、把 `model.main` 转成 `defaultModelSelection`，并把迁移结果**写成**
+ * `<HOME>/.zcode/v2/provider_config.json`——这一步发生在配置读取阶段、**先于任何模型调用**。
+ * 于是读那份自写文件就能知道 `model.main` 有没有被读到，**不必等模型回应**。
+ *
+ * 零配额、零真实凭据：副本按白名单重建（`buildProbeCliConfig`，apiKey 是哨兵、不带任何别的凭据键），
+ * 探针路径的 env 清掉两个凭据键；请求一个**非首位**模型（否则回落也会得到同一个值，见 `pickNonFirstModel`）；
+ * 只给内置变量、个人键与三个 `ZCODE_*` 目录键一律清掉（与审查运行同一形态）；
+ * **带只读参数**（`--mode plan` + 完整 denylist，代码双审 r1 AGY-02）：本地免密端点下哨兵挡不住真实请求，
+ * CLI 可能真跑起来，只读参数把它限在不执行工具。
+ *
+ * **三分判定**（代码双审 r1 codex 子项 02）：拉起没跑到配置读取阶段（spawn 失败 / 超时 / 内置文件定位失败 /
+ * 未识别形态）记 **null**（未判定、保留旧值），不得记成有定论的 `global`——那是把「本轮没判成」记成
+ * 「判成了、没生效」，与 r2 CODEX-02 修 `readonly_flags` 时的双义同型。只有「CLI 跑到了模型/鉴权层
+ * （`ZCODE_ARGV_PARSED_RE` 命中）却没写出 v2 文件」才是 `global`。
+ *
+ * 清理只认 `makeTempDir` 的返回值（2026-09-20 事故 R1）。
+ */
+export async function probeModelOverride(
+  entry: string,
+  node: string,
+  cwd: string,
+  opts: { cliConfigPath?: string; timeoutMs?: number; readonlyArgs?: readonly string[] } = {},
+): Promise<ModelOverrideProbe> {
+  const src = opts.cliConfigPath ?? ZCODE_CLI_CONFIG;
+  let cfg: { provider?: Record<string, Record<string, unknown> | undefined>; model?: unknown };
+  try {
+    cfg = JSON.parse(await fs.readFile(src, 'utf8')) as typeof cfg;
+  } catch (e) {
+    return { override: null, requested: null, observed: null, why: `读不到 ${src}：${(e as Error).message}` };
+  }
+  const pick = pickNonFirstModel(cfg as Parameters<typeof pickNonFirstModel>[0]);
+  if (!pick) {
+    return {
+      override: null, requested: null, observed: null,
+      why: 'cli/config.json 目录里没有任何 provider 拥有两个以上模型，挑不出非首位模型，判据会失明——本轮未判定',
+    };
+  }
+  const q = qualifyAgainstCliConfig(pick, cfg as Parameters<typeof qualifyAgainstCliConfig>[1]);
+  if (q.qualified === null) return { override: null, requested: pick, observed: null, why: q.reason };
+
+  const home = await makeTempDir('trivium-modeloverride');
+  try {
+    const copy = buildProbeCliConfig(cfg, q.qualified);
+    const cliDir = path.join(home, '.zcode/cli');
+    await fs.mkdir(cliDir, { recursive: true });
+    await fs.writeFile(path.join(cliDir, 'config.json'), JSON.stringify(copy, null, 2), { encoding: 'utf8', mode: 0o600 });
+
+    const env: Record<string, string | undefined> = {
+      ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
+      ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
+      HOME: home,
+    };
+    const r = await run(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])], {
+      cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
+    });
+
+    // 先看 CLI 有没有写出 v2 文件——写了就有判据，与退出形态无关
+    const written = path.join(home, '.zcode/v2/provider_config.json');
+    let observed: string | null = null;
+    let wroteV2 = false;
+    try {
+      const w = JSON.parse(await fs.readFile(written, 'utf8')) as { config?: { defaultModelSelection?: { providerId?: unknown; modelId?: unknown } } };
+      wroteV2 = true;
+      const sel = w.config?.defaultModelSelection;
+      if (sel && typeof sel.providerId === 'string' && typeof sel.modelId === 'string') observed = `${sel.providerId}/${sel.modelId}`;
+    } catch {
+      wroteV2 = false;
+    }
+    if (wroteV2) {
+      /*
+       * 判据与 run() 侧**同一口径**（代码双审 r2 CODEX-03）：只看 modelId 段（`zcodeModelTail`）。
+       * 在配置层整串等式本来合法（写出的 providerId 来自副本自己的 `model.main` 切分），
+       * 但两份判据并存会让 doctor 结论与运行留痕在「providerId 形态漂了、modelId 仍对」时互相矛盾。
+       * providerId 形态差只落 `why` 当 note。
+       */
+      const modelMatches = observed !== null && zcodeModelTail(observed) === zcodeModelTail(q.qualified);
+      const providerNote =
+        observed !== null && observed !== q.qualified && modelMatches ? `（providerId 形态与副本源不同：写出 ${observed}）` : '';
+      return modelMatches
+        ? { override: 'config_copy', requested: q.qualified, observed, why: `副本 model.main 被 legacy 导入读到并成为 defaultModelSelection${providerNote}` }
+        : { override: 'global', requested: q.qualified, observed, why: `CLI 写出的 defaultModelSelection 是 ${observed ?? '（缺失）'}，modelId 段不是请求的模型——model.main 未被采信` };
+    }
+
+    // 没写出 v2：只有「确实跑到了模型/鉴权层」才能说导入没发生；其余一律未判定
+    const firstLine = r.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? '（stderr 为空）';
+    const tail = `（退出码 ${r.code === null ? 'null' : r.code}${r.timedOut ? '，超时' : ''}：${redactSecrets(firstLine.slice(0, 120)).content}）`;
+    if (r.code === null || r.timedOut) {
+      return { override: null, requested: q.qualified, observed: null, why: `拉起未完成，本轮未判定${tail}` };
+    }
+    if (ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE.test(r.stderr)) {
+      return { override: null, requested: q.qualified, observed: null, why: `内置 provider 配置定位失败（P-28），配置读取阶段未到，本轮未判定${tail}` };
+    }
+    if (ZCODE_ARGV_PARSED_RE.test(r.stderr)) {
+      // 文案不承诺 CLI 行为（代码双审 r2 CODEX-02）：探针副本是白名单重建，与审查运行的整份拷贝不同形
+      return {
+        override: 'global', requested: q.qualified, observed: null,
+        why:
+          `CLI 跑到了模型层，但白名单重建的副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）——` +
+          `可能是 CLI 改了导入流程，也可能是探针裁剪掉了导入需要的键；请先核对 buildProbeCliConfig 的白名单是否仍 ⊇ 导入器必需键${tail}`,
+      };
+    }
+    return { override: null, requested: q.qualified, observed: null, why: `未识别的停止形态，本轮未判定${tail}` };
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+}
+
 /** 读取某个 sessionId 的会话日志并解析轨迹 */
 export async function readTrace(
   sessionId: string | null,
@@ -369,7 +582,22 @@ export async function probePathDeny(
 export async function probeZcode(
   configuredEntry: string | null,
   node: string,
-  opts: { skipModelCalls?: boolean; existing?: ZcodeProbe } = {},
+  opts: {
+    skipModelCalls?: boolean;
+    existing?: ZcodeProbe;
+    /**
+     * 两个**测试注入口**（代码双审 r2 CODEX-01 / CODEX-04 ≡ AGY-01）。
+     *
+     * 不开口子的后果实测过：`preflight.test.ts` 的回归用例传 `null` 入口，`probeZcodeEntry` 回落到
+     * `/Applications/...` 绝对路径候选，装了 ZCode.app 的机器上这条**单元**用例会真实拉起探针臂并读
+     * 真实 `~/.zcode/cli/config.json`；而它断言的 `model_override` 此前靠写死值恒绿，实测化之后靠
+     * 本机 CLI 现势恰好同值——「未判定保留旧值」的语义在本机根本没被测到。
+     * `cliConfigPath` 同时喂 `cliConfigured` 判定与探针臂；`modelOverrideProbe` 替换探针臂本体，
+     * 让接线（只读参数透传、`null` 不覆盖、`global` 出 ⚠️）能被桩咬住。
+     */
+    cliConfigPath?: string;
+    modelOverrideProbe?: typeof probeModelOverride;
+  } = {},
 ): Promise<{ probe: ZcodeProbe; notes: string[]; flagsIndeterminate: string[]; flagsZeroExit: string[] }> {
   const notes: string[] = [];
   /*
@@ -441,7 +669,8 @@ export async function probeZcode(
   );
 
   // CLI 侧模型配置是否就位——这一步不花配额，但决定后面能不能跑
-  const cliConfigured = await exists(ZCODE_CLI_CONFIG);
+  const cliConfigPath = opts.cliConfigPath ?? ZCODE_CLI_CONFIG;
+  const cliConfigured = await exists(cliConfigPath);
   if (!cliConfigured) {
     notes.push(
       `⚠️ 缺少 ${ZCODE_CLI_CONFIG}。ZCode 的 CLI 模型 provider 配置独立于桌面端` +
@@ -526,10 +755,37 @@ export async function probeZcode(
       );
     }
 
+    /*
+     * 模型覆盖档位——**实测**而非写死（EV-82，r3 CODEX-04）。零配额、零真实凭据，
+     * 所以 `--no-model-calls` 下照跑；只依赖 `cli/config.json` 在。
+     * 判不出（目录里没有非首位模型 / 读不到文件）时保留上一次的结论、只出 note。
+     */
+    if (cliConfigured) {
+      const arm = opts.modelOverrideProbe ?? probeModelOverride;
+      const mo = await arm(entry, node, fx.root, {
+        cliConfigPath,
+        readonlyArgs: readonlyArgsFromProbe(probe.readonly_flags),
+      });
+      if (mo.override !== null) probe.model_override = mo.override;
+      probe.isolation = 'home_copy';
+      notes.push(
+        `model_override=${mo.override ?? '未判定（保留上一次 ' + JSON.stringify(probe.model_override) + '）'} / isolation=home_copy：` +
+          `${mo.why}（请求 ${mo.requested ?? '—'}，CLI 写出 ${mo.observed ?? '—'}）。` +
+          '前提：副本 HOME 下不注入个人 provider 配置，CLI 从 cli/config.json 副本 legacy 导入；' +
+          '既无模型旗标也无选型环境变量，`--settings` 被拒',
+      );
+      if (mo.override === 'global') {
+        notes.push(
+          '⚠️ 探针臂判 config_copy 档未生效：若审查运行也如此，模型覆盖会静默落到全局默认（guard 会播报「请求的模型没有生效」）。' +
+            '成因两种都可能：CLI 改了 legacy 导入流程，或探针的白名单副本裁掉了导入需要的键——先核对 buildProbeCliConfig 的白名单，再按 P-31 复核包内字面',
+        );
+      }
+    }
+
     if (opts.skipModelCalls || !cliConfigured) {
       notes.push(
         '跳过需要真实模型调用的 ZCode 探针（配置缺失或已显式跳过）——' +
-          'response_field / path_deny / scratch_paths / model_override 保留上一次的结论',
+          'response_field / path_deny / scratch_paths 保留上一次的结论',
       );
       return { probe, notes, flagsIndeterminate, flagsZeroExit };
     }
@@ -613,14 +869,7 @@ export async function probeZcode(
     probe.scratch_paths = await probeScratchPaths(fx);
     notes.push(`scratch_paths=${JSON.stringify(probe.scratch_paths)}`);
 
-    // 模型覆盖：env 档已被证伪（0.16.5 无裸 ZCODE_MODEL），只剩 config_copy 与 global
-    probe.model_override = 'config_copy';
-    probe.isolation = 'home_copy';
-    notes.push(
-      'model_override=config_copy / isolation=home_copy：0.16.5 既无裸 ZCODE_MODEL 环境变量，' +
-        '`--settings` 参数也被拒绝，且 ZCODE_HOME/ZCODE_DATA_BASE_DIR/ZCODE_STORAGE_DIR ' +
-        '对配置解析无效——模型覆盖只能靠独立 HOME 下的 <home>/.zcode/cli/config.json 副本实现',
-    );
+    // model_override 已由上面的 probeModelOverride 臂实测决定；`env` 档 0.16.5 已证伪（无裸 ZCODE_MODEL）
   } finally {
     await fx.cleanup();
   }

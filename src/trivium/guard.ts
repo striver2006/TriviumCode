@@ -112,6 +112,14 @@ export interface SideVerdict {
    * 不记的话，`command-trace` 侧的空数组与「扫过没命中」在留痕里**完全同形**。
    */
   verification: SideVerification;
+  /**
+   * 模型覆盖是否落实（EV-82）。原样透传 `CriticResult.model_override_applied`——
+   * **判据归适配器，本层只播报**：各族的模型 id 形态不同，判定层做统一比较必然误报。
+   *
+   * 四种情况（`undefined` / `true` / `false` / `null`）的语义见
+   * `CriticResult.model_override_applied`。这里只对 `false` 出告警。
+   */
+  modelOverrideApplied?: boolean | null;
 }
 
 /** 单侧两条核验通道的档位与生效阈值 */
@@ -462,6 +470,10 @@ export function judgeSide(
         evidenceThreshold: ev.minProjectReads,
       };
     })(),
+    // 字段缺席（本次无覆盖尝试）与三态一并原样透传，本层不做归一（EV-82）
+    ...(result.model_override_applied === undefined
+      ? {}
+      : { modelOverrideApplied: result.model_override_applied }),
   };
 }
 
@@ -830,6 +842,24 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
         `${s.critic} 侧有 ${s.suspectedWrites.length} 条**疑似写入**（不判失守，仅供排查）：` +
           head.join('；') +
           (s.suspectedWrites.length > head.length ? ` …另 ${s.suspectedWrites.length - head.length} 条见 trace.json` : ''),
+      );
+    }
+    /*
+     * 模型覆盖没落实的人读出口（EV-82）。
+     *
+     * **不判失守、不改 `evidenceOk`、不阻断**：跑的模型不是请求的那个，不影响该侧结论本身的
+     * 有效性，但它让 FR-06 的模型路由与 NFR-06 的异构默认在该侧失效——两侧可能是同一家族，
+     * 双审的独立性名存实亡。EV-82 之所以埋了两天才被逮到，正是因为这件事此前**只有数据没有判定**：
+     * `model_requested` 与 `model_effective` 两个值都在留痕里，没有任何一处去对照它们。
+     *
+     * 只对 `false` 出声：`true` 是正常、`null` 是没回读到（另有 `model_effective_source`
+     * 那条通道说这件事）、字段缺席是本次压根没做覆盖。
+     */
+    if (s.modelOverrideApplied === false) {
+      out.push(
+        `${s.critic} 侧**请求的模型没有生效**：实际跑的是另一个模型（对照 run.json 的 ` +
+          '`model_requested` 与 `model_effective`）。该侧结论仍然有效，但模型路由（FR-06）与' +
+          '异构默认（NFR-06）在本侧失效——若另一侧模型与它同家族，这一轮不构成真正的双审。',
       );
     }
     if (s.verification.path === 'unavailable') {

@@ -307,7 +307,17 @@ export interface AgyProbe extends CommonProbe {
 export interface ZcodeProbe extends CommonProbe {
   /** 实测**实际被接受**的只读参数组合，不是文档上写的 */
   readonly_flags: string[];
-  /** 模型覆盖实际生效的档位 */
+  /**
+   * 模型覆盖实际生效的档位——**实测值**，不是写死的（EV-82，计划双审 r3 CODEX-04）。
+   *
+   * 探针臂 `probeModelOverride`：副本 HOME + `cli/config.json` 副本（apiKey 全换哨兵、`model.main`
+   * 写一个**非首位**模型）+ 只给内置变量 → headless → 读 CLI 自写的 `v2/provider_config.json`，
+   * 其 `defaultModelSelection` 等于请求 ⇒ `config_copy`（legacy 导入读到了 `model.main`）；
+   * 否则 `global`。零配额、副本里无真实凭据。
+   *
+   * 谁消费：只有 doctor 的 notes（给人看）。`availability()` 与 `run()` 不读它——拉起时按当下的
+   * 文件系统重算（与 `provider_config` 那一格同一条理由）。
+   */
   model_override: 'env' | 'config_copy' | 'global' | null;
   /**
    * 工具轨迹来源：**工具名、调用计数、生效模型、结构化失败根因**的路径模板。
@@ -1128,6 +1138,8 @@ export interface CriticRunMeta {
   profile_requested: string | null;
   model_provider: string | null;
   model_route?: 'env' | 'config_copy' | 'global';
+  /** 模型覆盖是否落实（EV-82）。四种情况与语义见 `CriticResult.model_override_applied` */
+  model_override_applied?: boolean | null;
   effort?: string;
   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
   exit_code: number | null;
@@ -1476,6 +1488,37 @@ export interface CriticResult {
   model_effective: string | null;
   model_effective_source: 'envelope' | 'trace' | 'requested' | 'unverified';
   model_route?: 'env' | 'config_copy' | 'global';
+  /**
+   * 本侧的模型覆盖**是否真的落实**：回读到的生效模型与请求的是不是同一个（EV-82）。
+   *
+   * ## 为什么需要它
+   *
+   * EV-82 的形态是**静默失效**：探活能过、审查跑得起来、结论也产出了，只是跑的不是
+   * 请求的那个模型——于是 FR-06 的模型路由与 NFR-06 的异构默认双双失守，而留痕里
+   * `model_requested` 与 `model_effective` 两个值虽然都在，却**没有任何一处判定去对照它们**。
+   * 靠人对照等于靠记性，这条字段把它换成机制。
+   *
+   * ## 三态与「字段缺席」是**四**种情况，不能压成三种
+   *
+   * - **字段缺席**：本次没有覆盖尝试（没指定模型、或该族根本不做配置覆盖）。
+   * - `true` / `false`：比对过，一致 / 不一致。
+   * - `null`：**尝试了覆盖，但没回读到生效模型**，无法判定。唯一含义，不表示「没有这种概念」。
+   *
+   * 这正是本字段**可选而非必填**的理由（计划双审 AGY-03）：初稿设计成必填三态，
+   * 让四家适配器一律填 `null`，于是 `null` 同时承载「本族未实现」与「本轮没采到」——
+   * 两个原因落进同一个观测，事后分不开。可选字段的代价是失去 `tsc` 逐处点名，
+   * 换回的是 `null` 语义单一。随 `model_route` 的既有先例。
+   *
+   * ## 判据归各家适配器，不归判定层
+   *
+   * 各族的模型 id 形态不同（zcode `<providerId>/<name>`、codex profile + model 两维、
+   * claude slug），判定层做统一字符串比较必然误报。判定层只播报结论
+   * （`guard.ts` 的 `renderGuardWarnings`）。
+   *
+   * **当前只有 zcode 侧产出**；其余三家的作答落点登记在 BACKLOG，接入前先定义
+   * 「本族什么算一次覆盖尝试」。
+   */
+  model_override_applied?: boolean | null;
   /**
    * 该侧**实际走到的 provider 家族**（回读值）。
    *

@@ -368,3 +368,46 @@ test('同主题连跑两次 code 审后仍能提交（审查意见 GLM-01，bloc
   assert.equal(perRun.length, 2, `每轮应各有一份补丁，实际：${metas.join(', ')}`);
   assert.ok(metas.includes('changes.diff'), '便利副本仍在（人读用，不进保护集）');
 });
+
+test('run.v2 逐侧段：没有覆盖尝试的侧（桩适配器）model_override_applied **缺席**，不是 null（代码双审 r1 codex 子项 05 ≡ AGY-03）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * 字段缺席与 null 是两件事（EV-82 r1 AGY-03）：缺席＝本次没有覆盖尝试；null＝尝试了但没回读到生效模型。
+   * review.ts 落 run.json 那处用条件展开而不是恒写，正是为了保住这个区分——此前零用例，去掉门恒写 null 全量照绿。
+   */
+  const fx = await codeFixture();
+  // code 阶段的被审对象是 git diff：先造一处变更，否则 --start 退 65「没有待审变更」
+  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 3;\n');
+  const { meta } = await runCode(fx.root, fx.codeDir);
+  const sides = Object.entries(meta.critics ?? {});
+  assert.ok(sides.length > 0, '至少要有一侧');
+  for (const [side, entry] of sides) {
+    assert.equal('model_override_applied' in (entry as object), false, `${side} 侧没有覆盖尝试，字段必须缺席`);
+  }
+});
+
+test('run.v2 逐侧段：桩注入 model_override_applied=false → 该侧落盘 false、另一侧缺席、guard 播报「没有生效」（代码双审 r2 AGY-02）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * r1 只锁了「桩侧缺席」这一半；true / false / null 经 review.ts 条件展开落盘、过 run.v2 校验、
+   * 再被 guard 播报——这条链此前没有端到端用例，review.ts 那一行键名手误抓不到。
+   */
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 4;\n');
+  const { meta, out } = await runCode(fx.root, fx.codeDir, [], {
+    gemini: { mode: 'ok' },
+    glm: { mode: 'ok', modelOverrideApplied: false },
+  });
+  const glm = meta.critics.glm as Record<string, unknown> | undefined;
+  const gemini = meta.critics.gemini as Record<string, unknown> | undefined;
+  assert.ok(glm && gemini, '两侧都要有');
+  assert.equal(glm!['model_override_applied'], false, '注入的 false 必须原样落到 run.json（键名手误在这里现形）');
+  assert.equal('model_override_applied' in gemini!, false, '没注入的一侧必须缺席，不是 null');
+  // guard 的播报随 ReviewOutcome.warnings 进 status.json.message，`--wait --json` 的终态返回原样透出
+  const w = await cli(fx.root, ['review', '--wait', meta.run_id, '--timeout', '5', '--json'], STUB, 60_000);
+  const cand = extractJsonCandidate(w.stdout);
+  assert.ok(cand, `终态查询无可解析 JSON：\n${w.stdout}\n${w.stderr}\n${out.slice(-300)}`);
+  const terminal = JSON.parse(cand.json) as { message?: string | null };
+  assert.ok(
+    (terminal.message ?? '').includes('没有生效'),
+    `guard 必须把「请求的模型没有生效」播报进终态 message，实得：${terminal.message ?? '(空)'}`,
+  );
+});

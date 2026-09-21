@@ -1,0 +1,161 @@
+---
+schema: trivium.review.v1
+topic: zcode-模型覆盖落点
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.155.1
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260921T140524Z
+rerun_index: 3
+snapshot_hash: sha256:41d3e05ba96b65aa337e57b758fb8d60491772f025abf0419630c29349704b93
+blind: true
+started_at: 2026-09-21T14:05:25.684Z
+finished_at: 2026-09-21T14:18:21.829Z
+duration_s: 776
+tool_calls:
+  run_command: 33
+  project_reads: 9
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 2
+  nit: 2
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0c449-2fab-7c20-876e-7aeab3834511
+---
+
+# 代码审查：zcode-模型覆盖落点
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20260921T140524Z` ｜ 第 3 轮
+> ｜ 本轮审核者 codex、gemini
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+按 r3 焦点逐条核过：§二九条落点与代码逐一对得上（两个注入口默认值与注入前完全等价、生产调用方 doctor.ts 不传新参）；接线三腿走的是真 probeZcode 路径（假入口上旗标实测→派生→臂收到的 argv），不是桩自回显；preflight 回归用例注入恒 null 桩臂后，「未判定⇒保留旧值」在有 ZCode.app 的机器上被真测到、CI 上退化为恒真但同语义腿已由接线用例②在假入口上补齐；桩注入 + code-stage 两格确实咬住 review.ts 条件展开与 guard 播报（断言落在落盘的 run.json 与终态 message 上，不在桩上）；留痕一致性（设计 §21 v1.3.33 九段 / EV-92 撤销行 / EV-94 / r2 应答件实施记录）逐条核过无漂移。本轮新发现集中在焦点四：我对 zcode.cjs 0.16.9 包内做了 r2 未做的独立复核（r2 CODEX 自己记了未覆盖此面），Oqa/Nqa/Fqa/Dqa/Lqa/skt/Mqa/okt 字面核实的结论是：白名单『⊇ 必需键』方向成立，但『同真同假』的论证有两个具体的反向破口，且注释对 Fqa 的语义描述与包内字面不符。另查出限定/挑选函数与导入器成员规则（deleted、id??key、builtin:/account: 跳过）不同源、以及首/尾斜杠切分口径与包内 okt 不一致。均为判据漂移类问题，运行期守卫会响亮出声，无阻断级缺陷。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 4 条：次要 2 ｜ 吹毛求疵 2）
+
+### CODEX-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/zcode.ts（buildProbeCliConfig 的「白名单 ⊇ 导入器必需键」注释段，及其导出的「同真同假」论证）；doc/06_deployment/RUNBOOK_pipeline_ops.md 排障表 model_override_applied=false 行` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：焦点四的直接回答：这条论证在「探针不会少带必需键」方向成立，但「于是『导入没发生』在本副本与整份拷贝下同真同假」不成立，且有包内反例——`options.apiKeyRequired === false` 时包内 `Fqa` 为真，`Oqa` 对**该 provider** 抛 `UnsupportedLegacyCliProviderConfigError`，`skt`（readLegacyCliPersonalProviderConfig）捕获后整份导入返回 null。探针的白名单副本只重建 `name/kind/source/enabled/models` + `options{baseURL,apiKey哨兵}`，恰好把这个抛错触发键**裁掉了**；审查运行是整份拷贝，会原样带上它。所以宿主 `cli/config.json` 里只要有一个免密 provider（`apiKeyRequired:false`，本地端点形态），探针臂判 `config_copy` 而审查运行实际走不到导入、静默落回退——探针臂在这一点上是对审查运行的**假乐观**，恰是本轮解除 glm 禁用的判据面。EV-94 ② 的触发条件只登记了反方向（探针 global 而运行 true）。另外注释对 `Fqa` 的语义描述不对：它不是「既无 apiKey 又无其它鉴权才抛」，而是「显式声明不需要鉴权就抛（执行字段尚不能表达）」——apiKey 缺失本身在这段代码里不触发 Fqa。
+
+**依据**：/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs 包内字面：`function Oqa(e){...if(Fqa(l))throw new ikt(u)...}`、`function Fqa(e){return e.options?.apiKeyRequired===!1}`、`async function skt(e){...catch(n){if(jqa(n)||n instanceof ikt)return null;throw n}}`、ikt 的报错文案「旧 CLI Provider … 含有正式 Config 尚不能表达的执行字段」；对照 src/trivium/probes/zcode.ts 的 PROBE_PROVIDER_KEEP/options 重建逻辑与注释段、src/trivium/adapters/zcode.ts prepareZcodeHome 的整份拷贝；.reviews/zcode-模型覆盖落点/code/2026-09-21-zcode-模型覆盖落点-r2-response-claude.md §一 CODEX-02 行的键清单复述
+
+**建议**：三选一由 Driver 裁决：① 探针臂的白名单改为「保留 `options.apiKeyRequired` 原值」或在副本里检测源配置含该键时记未判定；② 至少把注释与 r2 应答件里 Fqa 的描述改准、把这条不对称（探针 config_copy / 运行 global）补进 EV-94 ② 的触发面，并让 RUNBOOK 那一行的成因清单多一条「副本源里有免密 provider 使整份导入被拒」；③ prepareZcodeHome 的整份拷贝路径在 route 判定时如实记 source 含 apiKeyRequired 的形态（探针与运行同源化）。
+
+### CODEX-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/zcode.ts `qualifyAgainstCliConfig`；src/trivium/probes/zcode.ts `pickNonFirstModel`` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：焦点四的读取面核对：包内 `Nqa`（collectLegacyCliModelMembers）收集 provider 成员时跳过 `deleted===true` 的条目、modelId 取 `s.id ?? key`（可与键名不同）、按 trim 后去重；`Oqa` 整体跳过 `builtin:` / `account:` 开头的 provider 键与 `source` 非 custom 的 provider。而 `qualifyAgainstCliConfig` 用「键名 in provider.models」判成员存在、`pickNonFirstModel` 用 `Object.keys(models)[1]` 选探针请求——两者都看不见 deleted/id 改写/provider 前缀这三条规则。后果：全限定串写进 `model.main` 后，`Mqa` 只解析字符串、不校目录，所以 CLI 自写的 `v2/provider_config.json` 里 `defaultModelSelection` 照样等于请求值（探针臂据此判 config_copy），而**运行期** `isSelectable` 在注册表里精确匹配时该选择可能根本不成成员（provider 被跳过、成员被删、真实 modelId 是 id 字段而非键名）——运行落到回退模型，guard 报「没有生效」并把排查引向「CLI 又改了 legacy 导入流程」。这正是 v1.3.32 台账自己引以为戒的「注册表形态异源」换了个维度复发。假入口夹具（LEGACY_IMPORT_ENTRY）不带这些形态，用例面测不到。
+
+**依据**：zcode.cjs 包内：`function Nqa(e){...if(s.deleted===!0)continue;let a=(s.id??o).trim()...}`、Oqa 的 `if(u.startsWith("builtin:")||u.startsWith("account:")||l.source!==void 0&&l.source!=="custom")continue`、`function Mqa(e){let t=qEn(e).model?.main;...}`（只解析字符串）；对照 src/trivium/adapters/zcode.ts 的 qualifyAgainstCliConfig（`modelId in models` / `owners` 按键名）、src/trivium/probes/zcode.ts 的 pickNonFirstModel、test/unit/zcode-model-selection.test.ts 的合成夹具（provider 条目均无 deleted/id/enabled 变体）
+
+**建议**：限定与挑选按 `Nqa` 同一组规则做（跳过 deleted、成员比对用 `id ?? key`、拒绝 builtin:/account:/source≠custom 的 provider 键）；做不到本轮的话至少登记一条 BACKLOG 并在 RUNBOOK 的成因清单里补「请求名是被删成员或键与 id 不同形」。
+
+### CODEX-03 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/zcode.ts `zcodeModelTail` / `qualifyAgainstCliConfig`（lastIndexOf）与包内 `okt`（indexOf）` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：切分口径与 CLI 不同形：包内 `okt` 解析 `model.main` 用**第一个** '/'（provider=前段、model=含斜杠的整段余文），本仓限定与 tail 比对用**最后一个** '/'。模型键名不含 '/' 时两者等价；含 '/' 时（自定义 provider 下完全可能，键名无格式约束）`qualifyAgainstCliConfig` 会把合法请求判成「provider 键不存在」而落 route global，`zcodeModelTail` 也会把请求与回读切成不同段参与比对。与 P-31「两种形态并存」是同族问题：切分规则也是外部产品事实，纪律 1 应按包内字面取齐。
+
+**依据**：zcode.cjs `function okt(e){...let t=e.indexOf("/");...return{provider:n,model:o}}`；src/trivium/adapters/zcode.ts zcodeModelTail / qualifyAgainstCliConfig 的 lastIndexOf；test/unit/zcode-model-selection.test.ts LEGACY_IMPORT_ENTRY 也按 indexOf('/') 切（假入口与真 CLI 同形、与本仓限定不同形，恰好印证缝隙存在）
+
+**建议**：限定与比对的切分改用首个 '/'（与 okt 同规则），或至少在注释里写明该差异与成立前提（模型键名不含 '/'）。
+
+### CODEX-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/zcode-model-selection.test.ts `probeWith`（约 537 行）` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：`await legacyLayout(opts?.cliConfigPath ? {} : {})` 是两个分支同为 `{}` 的死三元——读者会以为这里有随注入切换的布局，实际没有；疑为编写中想给 withBuiltin 开关、改主意后残留。死三元是「看起来有逻辑、实际无逻辑」的形态，下次改这条用例的人最容易被它误导。
+
+**依据**：test/unit/zcode-model-selection.test.ts probeWith 函数体；legacyLayout 的签名只认 withBuiltin
+
+**建议**：直接改成 `legacyLayout()`。
+
+## 认为正确的部分
+
+- 两个测试注入口的默认值与注入前逐字等价（`opts.cliConfigPath ?? ZCODE_CLI_CONFIG` 同时喂 cliConfigured 与臂、`opts.modelOverrideProbe ?? probeModelOverride`），生产唯一调用方 doctor.ts:505 不传新参——焦点一的这一问答案是「没有改掉生产路径」。
+- 接线三腿走真 probeZcode：腿①断言臂收到 `--disallowed-tools`（假入口若本轮把 --mode yolo 记成接受，透传原始 accepted 与 readonlyArgsFromProbe 派生结果 deepEqual 当场分家），不是桩自回显。
+- 探针臂三分判定（spawn 失败/超时/定位失败/未识别形态一律 null 保旧值，唯「跑到模型层且无 v2」记 global）与 readonly_flags 那条双义修复同构，落点与 r1 裁决一致；wroteV2 分支先于退出形态取判据的顺序是对的。
+- `decideModelOverride` 四态语义在 types.ts / review.ts 条件展开 / guard 播报 / run.v2.json 描述四处逐字一致；guard 只在 false 出声、不动 evidenceOk，judgeSide 原样透传不归一。
+- 桩侧 code-stage 两格咬的是落盘件与终态 message（review.ts 键名手误、guard 条件改动都会现形），不是桩自己。
+- 三个 ZCODE_* 目录键与两个凭据键在 version 探针、旗标探针、探针臂、invokeZcode 四条路径的清除与包内实测一致（ZCODE_API_KEY 在 0.16.9 包内确为零命中、ZCODE_BASE_URL 命中 1 处且属端点层——注释「清它是 fail-closed 不是断言生效」措辞准确）。
+- 留痕一致性核过：设计 §21 v1.3.33 第九段、BACKLOG EV-92 撤销行与 EV-94 两条、r2 应答件 §二/§四实施记录与被审代码对得上；provider_config_copy / personalOverride / prepareZcodePersonalConfig 全仓除历史裁决件外零残留。
+
+## 未覆盖范围（本侧盲区）
+
+- 未运行 `npm run check` 与五条变异（沙箱只读），台账 1563/1555/0/2 与「逐字节恢复」按记录采信；未复跑真实 CLI 探针臂。
+- 包内私有成员 `fpe.#m` / `#f` 的完整模型选择链未逐行核（CODEX-01/02 的证据取自达人可查的 Oqa/Nqa/Fqa/Mqa/okt/skt 导出函数）；`isSelectable` 对 defaultModelSelection 的校验发生点只从 EV-82 记载推知。
+- 探针臂「写出的 v2 文件在 isSelectable 失败时记录的是请求值还是回退值」未核到落盘点——CODEX-02 的置信度受此限。
+- EV-94 ①（preflight 用例在装了 ZCode.app 的机器上真起 8 次子进程）本轮既有登记，未重复立案，但如实记：CI 与开发机在该用例上测的不是同一件事。
+- guard 播报对 `null`/缺席不出声的档位选择、EV-91 的三家待定，均按已裁决口径接受，未复审。
+
+## 实际查阅的项目文件
+
+- `src/trivium/adapters/zcode.ts`
+- `src/trivium/probes/zcode.ts`
+- `src/trivium/guard.ts`
+- `src/trivium/review.ts`
+- `src/trivium/types.ts`
+- `src/trivium/adapters/stub.ts`
+- `skills/dual-critic/schema/run.v2.json`
+- `test/unit/zcode-model-selection.test.ts`
+- `test/unit/zcode-provider-env.test.ts`
+- `test/unit/preflight.test.ts`
+- `test/integration/code-stage.test.ts`
+- `test/unit/registry-parity.test.ts`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/05_testing/REPORT_2026-09-11_m0_probe.md`
+- `doc/06_deployment/RUNBOOK_pipeline_ops.md`
+- `doc/08_project/BACKLOG.md`
+- `.reviews/zcode-模型覆盖落点/code/_meta/changes-20260921T140524Z.diff`
+- `.reviews/zcode-模型覆盖落点/code/2026-09-21-zcode-模型覆盖落点-r2-response-claude.md`
+- `.reviews/zcode-模型覆盖落点/code/2026-09-21-zcode-模型覆盖落点-r2-codex.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":33,"project_reads":9}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

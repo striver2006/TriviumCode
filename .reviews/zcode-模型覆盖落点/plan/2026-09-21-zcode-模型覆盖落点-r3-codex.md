@@ -1,0 +1,167 @@
+---
+schema: trivium.review.v1
+topic: zcode-模型覆盖落点
+stage: plan
+role: codex
+vendor: openai
+agent_cli: codex/0.155.1
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260921T114825Z
+rerun_index: 3
+snapshot_hash: sha256:44a386a03e0d09fa5b07c551c1e877f0e3916ec4684a9857dac9a64b8cbf4b19
+blind: true
+started_at: 2026-09-21T11:48:26.508Z
+finished_at: 2026-09-21T12:00:00.489Z
+duration_s: 694
+tool_calls:
+  run_command: 37
+  project_reads: 17
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 2
+  minor: 2
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0c3cb-c611-72f0-b940-62e8fdcb44a2
+---
+
+# 计划审查：zcode-模型覆盖落点
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20260921T114825Z` ｜ 第 3 轮
+> ｜ 本轮审核者 codex、gemini
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+根因改判成立：我在包内逐字复核了 N-1～N-9 全链（EKe 回落顺序、fpe#m 的「文件在就不导入」、standalone 接线、skt→O7→os.homedir、Mqa 读 model.main 且仅 builtin:zapi 返 null、okt 按第一个斜杠切、cfr 成对抛错），§1.3 的改判与 E0/P-30 的解释力都对得上；E1 标低置信恰当（其引文「ZCode Built-in missing」在包内确实不存在）。但有三处要在批准前钉死：一是 §4.2 的判据在默认档位 GLM-5.3 上结构性失明——恰因回落到「该 provider 第一个模型」也是 GLM-5.3，用默认档跑的验证给不出「具体模型生效」的肯定答案，计划却把它列为可选项；二是「CLI 自写的 v2 文件一定落在副本 HOME 之内」不成立——包内 FZi 的个人路径推导链是 dataBaseDir ?? ZCODE_DATA_BASE_DIR ?? homedir()，宿主若预置该变量，写入面与 legacy 导入判定都会逸出副本，而我方代码与注释还写着「ZCODE_DATA_BASE_DIR 对配置解析无效」（0.16.5 结论，0.16.9 已不准）；三是 qualifyZcodeModel 的前缀取自上一次回读的 model_id_form（P-31 亲记 UUID 形态回读存在），路线 L 的注册表形态却来自 cli/config.json 的 provider 键——异源拼串可能静默配不上、落回第一模型。其余为验证成本与注释挂空问题。
+
+**结论**：`request-changes`
+
+## 审查意见（共 5 条：重要 2 ｜ 次要 2 ｜ 吹毛求疵 1）
+
+### CODEX-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.2 判据表第一行与「E1 的矛盾在这一步一并裁决」段` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§4.2 允许用默认档位 GLM-5.3 跑真实链路验证，但该档位在「Mqa 生效」与「Mqa 返回 null、落到 registry-fallback 的第一模型」两种世界里回读值同为 GLM-5.3（N-9：models 顺序 GLM-5.3 在前；N-1：configuredDefault 验不过就取第一个可见 provider 的第一个模型）——验证通过也裁决不了 E1 的矛盾，FR-06 的判定会出现假绿。计划自己规定了 Flash 场景才裁决矛盾，却没把「必须用非首位模型跑」写进判据，判据表把两者并列为可选。同理，保留的运行时守卫 decideModelOverride 只比 modelId 段，对「请求 = provider 第一个模型」的组合永远失明——守卫买的 EV-82 复发响亮性在默认档位上是打折的，§4.3 应如实写明这个边界。
+
+**依据**：包内 zcode.cjs EKe 函数体（configured-default → registry-fallback 逐 provider/model 顺序）与 Nqa 按 Object.entries 顺序收集模型；被审计划 §1.1 N-1/N-9 自述与 §4.2 表；src/trivium/adapters/zcode.ts decideModelOverride 注释（判据只看 modelId 段）与 zcodeModelTail。
+
+**建议**：把 §4.2 的判定性跑钉死为「必须请求非该 provider 首位的模型（GLM-5.3-Flash）」，GLM-5.3 档只算回归确认不算路线判定；并在 §4.3 或 §2.2 补一句守卫的失明边界（请求模型恰为注册表首位时 applied=true 无法区分 configured-default 与 fallback）。
+
+### CODEX-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §2.1 第 3、4 步与 §4.2 判据「CLI 自写的 v2/provider_config.json」` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：「CLI 会把迁移结果写成 <副本HOME>/.zcode/v2/provider_config.json、一定落在副本之内」不是无条件的。包内启动时序是：boot 先调 prepareCliProviderRuntimeEnv(FZi)——个人变量没给时它按 `e.dataBaseDir ?? process.env.ZCODE_DATA_BASE_DIR ?? os.homedir()` 推出 `<root>/.zcode/v2/provider_config.json` 并**写回 process.env**，之后 cfr 的成对检查才拿得到两个键。宿主环境里预置的 ZCODE_DATA_BASE_DIR 会原样透传进子进程（run() 以 {...process.env} 为底，适配层只删两个 ZCODE_*_PROVIDER_CONFIG_FILE 键、从不碰它）：一旦设了且指向真实目录，个人文件在副本外「存在」→ legacy 导入被跳过 → model.main 又不被读——正是本轮改判的根因换个入口复发，且 CLI 自写的凭据文件落在清扫论域之外。另一面，我方自己的登记已经过期：适配器头注释、探针 note、M0 C-08 都写着「ZCODE_DATA_BASE_DIR 对配置解析无效」，这在 0.16.9 的 provider 配置解析上不再成立（C-08 是 0.16.5 实测）。
+
+**依据**：包内 FZi（jZi 对 --prompt 为真 → 推导并 Object.assign(process.env)）、cfr、lkt 的调用点；src/trivium/adapters/zcode.ts 头注释第 8 行与 zcodeProviderEnv（只清两个 provider-config 键、run() 以 process.env 为底的注释）；doc/05_testing/REPORT_2026-09-11_m0_probe.md C-08；src/trivium/probes/zcode.ts:627 同句。
+
+**建议**：三选一并写进改动清单：在 zcodeProviderEnv 的 env 片段里把 ZCODE_DATA_BASE_DIR（连带 ZCODE_HOME/ZCODE_STORAGE_DIR，wKn 的 SEA 工具根也吃它）显式置 undefined；或验证前实测宿主环境无该变量并登记为运行前提；同时回补 C-08/头注释在 0.16.9 的适用范围。§4.2 的「v2 文件被自写」哨兵应说明它成立的前提正是推导根 = 副本 HOME。
+
+### CODEX-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §2.2 表第一行「现有 qualifyZcodeModel 的产出直接可用」与 §2.1 第 3 步` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：路线 L 写进副本的 model.main = qualifyZcodeModel(req.model, probe.model_id_form)，前缀取自**上一次真实 HOME 运行回读**的生效模型；而 legacy 导入后的注册表 providerId 只认副本源 cli/config.json 的 provider 键（Oqa 对 custom provider 原样带键名）。P-31 亲记两种形态并存、F-2 回读是 <providerUUID>/…——若探针上一次回读落在 UUID 形态，拼出的 `<UUID>/GLM-5.3-Flash` 对不上 bigmodel-coding-plan，V4i 验不过 → registry-fallback → 默认档位静默「看起来生效」（与 CODEX-01 叠加）、Flash 档位只报 false 而不报真因。§2.2 的「直接可用」把这层同源性当既成事实，恰是本轮教训①要防的那类登记。
+
+**依据**：src/trivium/adapters/zcode.ts qualifyZcodeModel（前缀来自 model_id_form）与 prepareZcodeHome（整份拷 + 写 model.main）；doc/05_testing/REPORT_2026-09-11_m0_probe.md P-31/F-2（UUID 形态回读）；包内 Oqa/Nqa（custom provider 键名与 models 键即注册表形态）、V4i 精确匹配、EKe 回落。
+
+**建议**：在准备阶段加一条零配额预检：qualified 的 providerId 段必须是本次拷进副本的 config.json 的 provider 键之一（modelId 在其 models 键之一），不满足就不覆盖并给明确理由，而不是留给运行期 fallback 静默吞掉；同时把「model_id_form 与 cli/config.json 键形态同源」在本机验证里显式看一眼，或按纪律 1 靠预检消解这个前提。
+
+### CODEX-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §四 4.1/4.2 之间` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：§4.2 是本轮唯一判定点，却要烧一整次真实双审（三个 Agent 的调用）。链上存在更便宜的等价判定点：legacy 导入与 #p 回写发生在 CLI 启动的配置读取阶段、**先于任何模型调用**——写进去的那份 v2/provider_config.json 的 defaultModelSelection 值本身就是「Mqa 读了 model.main、且匹配形态」的判据。一次副本 HOME 下的拉起（请求 Flash、跑起来即杀，或干脆让它停在定位后的错误）即可零/微配额裁决 E1 矛盾，失败时把路线 P 的讨论提前，不必等整轮双审。
+
+**依据**：包内 fpe#m→#f→#p 写链与 NodeProviderConfigRuntime 构造点（importLegacy 接线于 read 路径，先于模型创建）；skt/Oqa/Mqa 均在该路径上；被审计划 §4.1（零配额）与 §4.2（花配额）之间没有中间档。
+
+**建议**：在 §4.1 末尾加一步「一次性 HOME + 假死法：拉起后立即终止，读自写 v2 文件的 defaultModelSelection 是否等于请求串」作为路线 L 的前置判据；该步同时补上 CODEX-01 想要的「具体模型生效 vs 回落」判别力。若判断该步的可靠性不足以单独立判据，至少在 §4.2 失败分支里先做它再谈路线 P。
+
+### CODEX-05 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 改动清单 adapters/zcode.ts 行` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：撤掉 prepareZcodePersonalConfig 后，ZCODE_CREDENTIAL_CARRIERS 上方注释里「v2/provider_config.json：prepareZcodePersonalConfig 抄来改 defaultModelSelection 的那份，实测含 apiKey」一条挂空——该文件的来历在路线 L 下变成「CLI 从 cli/config.json 副本自写」。改动清单写了文档块要改 prepareZcodeHome 上方那段，没点名这一条；这是清扫清单语义的出处说明，留着死引用会误导下一次论域扩删。
+
+**依据**：src/trivium/adapters/zcode.ts L444-458（载体来历三条注释）与 L449-451 原文；被审计划 §三 首行未列此处。
+
+**建议**：改动清单补一行：随撤除改写 ZCODE_CREDENTIAL_CARRIERS 注释第二条的来历描述（文件保留在清单上，只是来历换人）。
+
+## 认为正确的部分
+
+- §1.1 的 N-1～N-9 我在包内逐字复核全部成立：EKe 的 configured-default→registry-fallback→none 顺序、V4i 的精确匹配+hidden 排除、fpe#m 的「个人文件存在且已规范化就直接用、不导入」（含细节：文件在但形态过期时走 #f 也是就地迁移而非 legacy 导入，导入只在文件不存在时发生，与 N-4 严格一致）、skt→O7→iy→os.homedir 随副本 HOME 走、Mqa 只在 provider 为 builtin:zapi 时返 null、okt 按第一个斜杠切、Oqa 对 custom provider 连 apiKey 原样入册。
+- §1.3 根因改判成立：EV-81 注入个人变量 → 个人文件存在 → 跳过 legacy 导入 → model.main 无人读。config_copy 档没死。P-30「只给内置也停模型层」与我上轮 CODEX-01 打掉 D-3 的观察现在有了统一解释：boot 期 FZi 会为缺失的键合成派生路径并写回 process.env，cfr 的成对抛错在 headless 路径上被它兜住——逐键门控维持撤回 D-3 的结论不受影响。
+- E1 置信度标低恰当：我全文检索包内，E1 记录引用的 stderr 片段 'ZCode Built-in missing' 不存在，该记录的可靠性本就该折到最低；§1.2 各行的置信度标注与链的解释力匹配。
+- §2.1/§2.4 的撤除集合正确：prepareZcodePersonalConfig/ZcodePersonalConfigPrep/个人副本注入/splitZcodeModel 均建立在被推翻的 P-31 上；保留守卫、三份载体清扫、zcodeModelTail/decideModelOverride、三态参数与 D-3 撤回结论，与改判后的链一致；路线 L 的凭据面确实从 2 份降到 1 份、与桌面端 v2 文件解耦，§2.2 的对比表在这几点上不是过度声明。
+- §2.4 关闭 EV-90 的理由（目录与生效落点重新同源）成立——但见 CODEX-03：同源只对 provider 键形态一致时成立，UUID 形态回读是它的残留缝隙。
+- headless 路径 skipUserConfig 恒为假（包内无任何把它置真的入口，仅桌面嵌入用），N-8 的前提在审查运行路径上满足。
+
+## 未覆盖范围（本侧盲区）
+
+- 未逐行读 src/trivium/scrub.ts 与 guard.ts 全文（只核对了与本计划相关的载体与透传段落），扫描器对 CLI 自写 v2 文件的实际脱敏行为按既有注释采信。
+- 未实测 ZCODE_DATA_BASE_DIR/telemetry 状态文件在副本 HOME 下的真实落盘面（CODEX-02 的依据是包内字面 + 启动时序，不是跑出来的）。
+- 路线 P 的三个前提（account:* 进注册表、OAuth 账号态、ZCODE_CREDENTIAL_SECRET）与计划一样未复核，仅接受其搁置决定。
+- 未核 .trivium/config.local.yaml 中已落盘的 model_override 旧值在撤除后的重探路径（推断为下次 doctor 覆盖即可、无 schema 强校验，未实证）。
+- 未逐一复核 §五 文档回填涉及的各设计章节现文；registry-parity 对 run.v2.json 的兜底扫描按机制存在采信。
+- gemini 侧历史与本轮产出未读（禁读）；r1 计划稿/revised 稿只对照了与本稿冲突所需段落。
+
+## 实际查阅的项目文件
+
+- `src/trivium/adapters/zcode.ts`
+- `src/trivium/probes/zcode.ts`
+- `src/trivium/types.ts`
+- `skills/dual-critic/schema/run.v2.json`
+- `test/unit/zcode-provider-env.test.ts`
+- `test/unit/zcode-model-selection.test.ts`
+- `doc/05_testing/REPORT_2026-09-11_m0_probe.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/08_project/BACKLOG.md`
+- `.reviews/zcode-模型覆盖落点/plan/2026-09-21-zcode-模型覆盖落点-codex.md`
+- `.reviews/zcode-模型覆盖落点/plan/2026-09-21-zcode-模型覆盖落点-r2-claude.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":37,"project_reads":17}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

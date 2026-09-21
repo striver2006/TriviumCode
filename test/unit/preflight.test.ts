@@ -404,10 +404,16 @@ test('回归：--no-model-calls 保留上一次探到的 agy 结论', async () =
 
 test('回归：--no-model-calls 保留上一次探到的 zcode 结论', async () => {
   const { probeZcode } = await import('../../src/trivium/probes/zcode.js');
+  /*
+   * `model_override` 用 `'env'`——探针臂**永远不会**产出的值（代码双审 r2 CODEX-01）。
+   * 此前写 `'config_copy'`：在装了 ZCode.app 的机器上，`null` 入口会回落到绝对路径候选、探针臂真跑，
+   * 实测结果恰好也是 `config_copy`，「保留旧值」的语义根本没被测到；CI 上入口不存在则早退、恒真。
+   * 再把探针臂换成恒返回「未判定」的桩：这条用例测的就只剩「未判定 ⇒ 保留」这一件事。
+   */
   const existing = {
     entrypoint: '/x/zcode.cjs', version: '0.16.5',
     version_probe: null, probed_at: new Date().toISOString(),
-    readonly_flags: ['--mode plan'], model_override: 'config_copy' as const,
+    readonly_flags: ['--mode plan'], model_override: 'env' as const,
     trace_source: '/log/{date}.jsonl', trace_args_source: '/rollout/{sessionId}.jsonl',
     response_field: 'response',
     path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: [], coverage_complete: null, file_shape_verified: null },
@@ -417,9 +423,10 @@ test('回归：--no-model-calls 保留上一次探到的 zcode 结论', async ()
   const { probe } = await probeZcode(null, process.execPath, {
     skipModelCalls: true,
     existing,
+    modelOverrideProbe: async () => ({ override: null, requested: null, observed: null, why: '桩：本轮未判定' }),
   });
   assert.equal(probe.response_field, 'response', '不得被覆盖成 null');
-  assert.equal(probe.model_override, 'config_copy');
+  assert.equal(probe.model_override, 'env', '探针臂未判定时必须保留旧值——桩永远不会产出 env，改成别的值即现形');
   assert.equal(probe.model_id_form, 'p/GLM-5.3');
 });
 

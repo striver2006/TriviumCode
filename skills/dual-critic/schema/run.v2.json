@@ -497,7 +497,15 @@
             "env",
             "config_copy",
             "global"
-          ]
+          ],
+          "description": "模型覆盖走了哪一档。zcode 的 config_copy 在 0.16.9 下仍生效，前提是拉起时不注入个人 provider 配置、让 CLI 从副本 cli/config.json 做 legacy 导入（EV-82）"
+        },
+        "model_override_applied": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "模型覆盖是否落实（EV-82）。字段缺席＝本次没有覆盖尝试；true/false＝比对过一致/不一致；null＝尝试了但没回读到生效模型。判据归各家适配器，判定层只播报"
         },
         "effort": {
           "type": "string"

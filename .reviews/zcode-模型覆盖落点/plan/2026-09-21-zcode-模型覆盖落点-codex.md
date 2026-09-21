@@ -1,0 +1,194 @@
+---
+schema: trivium.review.v1
+topic: zcode-模型覆盖落点
+stage: plan
+role: codex
+vendor: openai
+agent_cli: codex/0.155.1
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260921T095827Z
+rerun_index: 1
+snapshot_hash: sha256:208cbfb63300d0c6dae4413f2259fea5f437bd799dfc164b92e2efd0627b4207
+blind: true
+started_at: 2026-09-21T09:58:28.691Z
+finished_at: 2026-09-21T10:13:23.832Z
+duration_s: 895
+tool_calls:
+  run_command: 31
+  project_reads: 18
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 2
+  minor: 4
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0c367-1923-70e2-b40a-98508033054c
+---
+
+# 计划审查：zcode-模型覆盖落点
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20260921T095827Z`
+> ｜ 本轮审核者 codex、gemini
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+方案主方向成立且我复核了前提：包内确无模型类 CLI 旗标与环境变量（--model 的全部命中都在内嵌的其它 CLI 补全规格表里；ZCODE_MODEL_* 全集与选型无关），defaultModelSelection 的 schema 形态与 B-2 逐字吻合，P-31 的实测链也支持「生效模型取自个人配置的 defaultModelSelection」。但有一处必须先改：§三 D-3 把 zcodeProviderEnv 改成「成对门控」的前提与仓内两处实测（M0 P-30、上一主题 E1）直接冲突——单变量注入实测不撞抛错；而探针的内置路径恰恰从 zcodeProviderEnv 取，改门控会让「个人配置缺失」的机器上旗标探针整体退化为 indeterminate，属计划自己制造的环境假设回归。次重的两处：三态比对的严格字符串等式与 P-31 亲记的「别名/UUID 两形态并存」相抵，会把已生效的覆盖误报成未生效；「用户真实文件写入面由 1 减到 0」被探活/探针路径证伪，是净收益论证的过度声明。其余为规格缺口与契约面欠账，均可在计划文本内解决。
+
+**结论**：`request-changes`
+
+## 审查意见（共 7 条：重要 2 ｜ 次要 4 ｜ 吹毛求疵 1）
+
+### CODEX-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 D-3（成对门控）与 §二 B-3` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：D-3 把 zcodeProviderEnv 的存在性门控改成「两份都在才注入」，其依据是包内 resolveNodeProviderRuntimePaths 的「只给一个→抛错」。但仓内自己的实测记录与此相反：P-30 明载「只给内置那份则停在 Error: Model creation failed，参数解析已完成」，上一主题 E1（副本 HOME + 只给内置变量）实测退 0——单变量形态在 headless --prompt 路径上从未撞上该抛错（该抛错所在函数只有一处调用点，在 Worker 启动路径，是否触达 headless 路径计划未证）。更实的回归是耦合面：probeReadonlyFlags 的内置路径正是 await zcodeProviderEnv(entry) 解构取得的，个人配置真实缺失的机器上，成对门控会让探针拿到 undefined、两份都不注入 → CLI 自推算 → 撞 P-28 定位失败 → 七个候选全记 indeterminate、readonly_flags 永远无法首轮判成——今天这类机器靠「只给内置」的探针形态是可用的（假入口测试夹具的应答脚本也锁定了该形态）。而「内置不在」的场景本就被 availability() 的 provider_config.builtin_file === null 挡住，D-3 声称要防的组合在 run() 路径上不可达。
+
+**依据**：doc/05_testing/REPORT_2026-09-11_m0_probe.md §7 P-30/P-31；src/trivium/probes/zcode.ts（probeReadonlyFlags 内 providerEnv 构造与 P-30 注释）；src/trivium/adapters/zcode.ts（zcodeProviderEnv 的恒定两键设计、availability() 布局支先于旗标判空）；test/unit/zcode-provider-env.test.ts（假入口按「缺内置才报定位失败」应答，不实现成对抛错）；grep /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs：cfr 的抛错字面存在，但调用点在 lkt（Worker 启动），与 P-30/E1 实测形态矛盾。
+
+**建议**：撤回 D-3，维持现有逐键门控（其设计注释 r2 CODEX-01 ≡ AGY-02 的「宿主透传必须清除」语义与门控无关、不受影响）；把「成对抛错到底在不在 headless 路径上」登记为待实测项（可用假入口夹具零配额验证）。若双审后仍要改成对门控，则 §四 改动清单必须补 probes/zcode.ts 的 providerEnv 构造点，§6.1 必须补「个人缺失、内置在」的探针用例。
+
+### CODEX-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 E（比对规则 modelEffective === qualified）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：三态比对用严格字符串等式，但 P-31/EV-82 明记「bigmodel-coding-plan/… 与 <providerUUID>/… 两种模型 id 形态并存」，且 F-2 的回读正是 UUID 前缀。qualified 的 providerId 取自探针 model_id_form（cli/config.json 目录的别名形态），回读值却可能以个人 provider 规则里的 UUID providerId 呈现——覆盖真生效了，等式却判 false，guard 播报「该侧不构成独立一侧」。这是假阴性方向的误报，而计划设计的正是「响亮」告警，误报会长期污染播报可信度，且 §6.2.3/6.2.5 两步验证只在「本机恰好同形态」时才绿。
+
+**依据**：doc/05_testing/REPORT_2026-09-11_m0_probe.md §7 P-31（两形态并存、F-2 回读为 <providerUUID>/qwen3.8-max）；doc/08_project/BACKLOG.md EV-82（同句登记）；src/trivium/adapters/zcode.ts qualifyZcodeModel（前缀来自 probe.model_id_form）；被审计划 §2.1 F-2/F-3 与 §三 E。
+
+**建议**：在计划里钉死比较口径：至少拆成 modelId 等值 + providerId 语义同一（别名↔UUID 若可解析），或退一步先以 modelId 差异为告警充分条件、providerId 形态差只记 note；并把「本机实跑的回读形态与写入形态是否同形」列为 §6.2.3 的显式观察项（而非隐含假设）。
+
+### CODEX-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §二 B-7 引注「改指副本后…写入面由 1 减到 0」与 §三 B 表「凭据面变化」行` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：「编排器不再有任何路径能写到用户的个人配置」是过度声明：authProbe 与 probeZcode 的真实模型探测仍以默认参数把 ZCODE_PERSONAL_PROVIDER_CONFIG_FILE 指向用户真实文件（计划 §三 D 表自己写明「探活走真实 HOME」），而 B-7 的结论恰恰是「CLI 会写它被指向的那份文件」。审查运行路径的写入面由 1 减到 1→0 成立，全局「任何路径」不成立。这句是本轮净收益论证的一部分，会被回填进设计 §3.3 结论段，写重了会误导后续对敏感面的判断。
+
+**依据**：src/trivium/adapters/zcode.ts（authProbe 的 invokeZcode 调用 homeDir: null，env 走 zcodeProviderEnv 默认派生真实目录）；被审计划 §三 D 表第三、四行与 §二 B-7 注。
+
+**建议**：把该句限定为「审查运行路径」，并考虑登记一条 BACKLOG（探活/探针的个人配置是否也应指一次性副本），别把「全局已归零」当成既成事实入册。
+
+### CODEX-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 E（zcode 作答规则）与 §四 review.ts 恒写` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：三态规则没写「本次未请求模型」这一格：req.model 为空时 qualified 为 null，按字面规则 modelEffective（非 null）=== null → false，guard 会播报「请求模型 null 未生效」这种荒诞告警。§E 的 null 语义（本侧没做这个比对）本来覆盖该情形，但可实施的判据（modelEffective === qualified → true/false）没给出「qualified 为 null 时不比对、记 null」的门。
+
+**依据**：src/trivium/adapters/zcode.ts（qualifyZcodeModel(null) 返回 null；prepareZcodeHome 对无模型返回 route global）；被审计划 §三 E 第二条的判据原文。
+
+**建议**：在 §E 的 zcode 作答规则里显式补一句：请求模型为空 → 恒 null（与 route global 同源），并纳入 §6.1 比对用例的第四格。
+
+### CODEX-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 A-3（splitZcodeModel 的输入域）` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：当 model_id_form 缺失且请求模型是裸名时，qualifyZcodeModel 原样返回、串里没有 '/'——splitZcodeModel 无从产出 {providerId, modelId} 两个非空串（B-2 的 schema 两者 min(1) 必填）。§A 没写 prepareZcodePersonalConfig 拿到无 '/' 输入时的处置（不写副本？route 记什么？），§6.1 也只测「切分与 qualify 同结论」而不测 prepare 的行为。tsc 挡不住这个运行时形态。
+
+**依据**：src/trivium/adapters/zcode.ts（qualifyZcodeModel 探针无前缀时原样传）；grep zcode.cjs 的 defaultModelSelection schema（providerId/modelId 均 string().trim().min(1)，与 B-2 一致）。
+
+**建议**：在 §A 钉死：切分不出两个非空段 → 不写副本、route 记 global 并给原因（与 A-5 同档），并补一条用例。
+
+### CODEX-06 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §四 改动清单末行「run.v2 若声明了逐侧字段集，同步（实施时按实际 schema 核，不预设）」` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：这件事我已核实：是**确定项**而非「若」。skills/dual-critic/schema/run.v2.json 的 $defs.critic.properties.model_route 是封闭 enum ["env","config_copy","global"]——不先改 schema，run.v2.json 落 provider_config_copy 直接校验打红。而且按 AGENTS.md「改动同步清单」，动 JSON Schema 的连带义务是 parse/gate/meta 校验、PROTOCOL_dual_critic_relay.md、skills/dual-critic/SKILL.md、AGENTS.md 契约面描述、registry-parity 扫描盯防点——§五 的文档回填清单只列了设计/BACKLOG/M0/RUNBOOK/.env.example/QUICKSTART，PROTOCOL 与 SKILL.md 两处缺席。
+
+**依据**：skills/dual-critic/schema/run.v2.json（model_route enum，实测读取）；AGENTS.md 改动同步清单表；src/trivium/review.ts:1435（model_route 恒走该字段写入）。
+
+**建议**：把「run.v2 schema 增 enum 值与新字段」从『按实际核』改成明确改动项，并把 PROTOCOL 文档与 SKILL.md 补进 §五 回填清单。
+
+### CODEX-07 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §二 B-5` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：「与模型有关的变量只有 ZCODE_MODEL_RETRY_* 与 ZCODE_MODEL_TELEMETRY_ENABLED」不完备：包内全集还有 ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY 与 ZCODE_MODEL_REASONING_SEPARATOR（均已 grep 核实）。结论（无模型选型环境变量、defaultModelSelection 是唯一落点）不受影响，但这张表是「B-5 是整个方案成立前提」的证据，抄录宜精确。
+
+**依据**：grep /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs 的 ZCODE_MODEL_[A-Z_]* 全集。
+
+**建议**：回填时把这两个补进 B-5 的枚举并各自注「非选型变量」。
+
+## 认为正确的部分
+
+- 「defaultModelSelection 是唯一落点」这个前提我独立核过包体：parseArgs 层面与补全表之外无任何模型旗标（--model 的 5 处命中全是内嵌的其它工具补全规格），ZCODE_MODEL_* 无一涉选型，B-2/B-3 的 schema 与抛错字面逐字属实——方向（每运行副本 + 定点改写）是当前约束下的正解，且与纪律 1/纪律 5 相合。
+- 不合成最小副本、整份拷贝的取舍论证成立（副本已在清扫论域内，敏感度增量≈0，等价性收益真实）；含凭据载体按名整删与 codex 侧 isCredentialCarrier 口径一致；两份 deleted 分记不合并，正确。
+- model_route 新增值不复用 config_copy 的理由充分（codex.ts 也在用 config_copy，两档同名恰是 EV-82 被埋的形态）；清扫论域不扩大、放 HOME 之内的论证核过无误。
+- §6.2.3 搭下一次真实双审、不为验证单分开运行的配额安排，以及 R-4 的 schemaVersion 断言、回退路径的窄化，成本核算合理；审查形态取 --critics codex,gemini 的两条理由与 BACKLOG EV-81/82 一致。
+- 「响亮不阻断」的三态设计取向与既有 guard 播报结构（renderGuardWarnings 按侧 push、judgeSide 透传）兼容，实施面核对属实。
+
+## 未覆盖范围（本侧盲区）
+
+- 未真跑 ZCode CLI（沙箱只读、且不烧配额）——CODEX-01 里「抛错是否触达 headless --prompt 路径」以仓内 P-30/E1 两处实测与单调用点 grep 为据，未做假入口新增实验；
+- gate.ts / meta.ts 对新增 CriticResult 字段的消费点未逐一核（计划称恒写、判定不读，按此假设未展开）；
+- agy/codex/claude/stub 四家适配器的作答点与 test/unit 夹具的 tsc 点名面未逐个预演；
+- 设计文档 §3.3/§11.3/§21/§24 与 RUNBOOK §五 的现文未通读，回填清单的完备性只核到 AGENTS.md 同步表这一层；
+- R-1 的「内置 provider 是否接受任意 modelId」维持计划自评的未实测状态。
+
+## 实际查阅的项目文件
+
+- `src/trivium/adapters/zcode.ts`
+- `src/trivium/probes/zcode.ts`
+- `src/trivium/guard.ts`
+- `src/trivium/review.ts`
+- `src/trivium/types.ts`
+- `skills/dual-critic/schema/run.v2.json`
+- `skills/dual-critic/schema/review.v1.json`
+- `doc/05_testing/REPORT_2026-09-11_m0_probe.md`
+- `doc/08_project/BACKLOG.md`
+- `test/unit/zcode-provider-env.test.ts`
+- `.trivium/config.yaml`
+- `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs（外部只读 grep，非项目文件）`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":31,"project_reads":18}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

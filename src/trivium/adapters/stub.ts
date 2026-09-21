@@ -110,6 +110,12 @@ export interface StubSpec {
   findings?: number;
   /** 覆盖回读到的生效模型，用于 AC-13 的用例 */
   modelEffective?: string;
+  /**
+   * 模拟「模型覆盖是否落实」的四态（EV-82，代码双审 r2 AGY-02）：不给 ⇒ 字段缺席（无覆盖尝试），
+   * 给 `true` / `false` / `null` ⇒ 原样产出。桩不判定，只让 `review.ts` 的条件展开与 `run.v2` 校验、
+   * `guard` 的播报这条链能被集成用例端到端咬住。
+   */
+  modelOverrideApplied?: boolean | null;
   note?: string;
 }
 
@@ -177,6 +183,8 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
     raw_response_text: sampleReview(critic, n),
     model_effective: spec.modelEffective ?? req.model,
     model_effective_source: 'envelope',
+    // 与真适配器同一条口径：不给就**缺席**，不写 null（缺席与 null 是两件事）
+    ...(spec.modelOverrideApplied === undefined ? {} : { model_override_applied: spec.modelOverrideApplied }),
     // 桩不模拟厂商事实：这两个字段的真实形态只有真适配器才产得出（AC-24 的证明边界）
     model_provider: null,
     profile_requested: null,

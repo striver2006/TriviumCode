@@ -1,0 +1,184 @@
+---
+schema: trivium.review.v1
+topic: zcode-模型覆盖落点
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.155.1
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260921T124003Z
+rerun_index: 1
+snapshot_hash: sha256:1591e9bec0682e56512d803f062f36c422eb18cd1cbaaaa25bb28630e864c570
+blind: true
+started_at: 2026-09-21T12:40:04.026Z
+finished_at: 2026-09-21T12:54:07.465Z
+duration_s: 843
+tool_calls:
+  run_command: 32
+  project_reads: 26
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 0
+  nit: 0
+degraded: false
+parse_fallback: true
+peer_deny: false
+drift: false
+readonly_verification: unavailable
+path_verification: unavailable
+joint_check:
+  state: skipped-insufficient-sides
+  effective_sides: 1
+heterogeneous: true
+session_id: 01a0c3fb-0974-7642-bb50-01f4e09b25fa
+---
+
+# 代码审查：zcode-模型覆盖落点
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20260921T124003Z`
+> ｜ 本轮审核者 codex、gemini
+
+> ⚠️ **解析降级**：本侧输出未能解析为结构化结论，下方为原文。该侧不参与阻断判定。
+>
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 原始输出（未能结构化解析）
+
+```
+审查完成。以下为我的结构化结论（`trivium.review.v1`，前缀 `CODEX-`）：
+
+```json
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "r3 裁决件八条落点逐条对得上代码：限定改副本源键（qualifyAgainstCliConfig 七格）、探针臂哨兵密钥、载体来历改写、布尔开关、失明边界钉死非首位、EV-87 限定，全部属实；r1 个人副本机制撤除干净（全仓 grep 无 prepareZcodePersonalConfig/personalOverride/splitZcodeModel 死引用），qualifyZcodeModel 单消费方标注如实；run() 端到端用例真咬住 M1（同时摆副本源与个人文件）。但有一处本轮口径未落地：`probeReadonlyFlags` 只从 zcodeProviderEnv 取内置键、把三个 ZCODE_* 目录键丢在解构之外——宿主预置 ZCODE_DATA_BASE_DIR 时 P-30 零配额前提在该路径仍可被打破，而本轮三处文档刚写下「一律清掉」。次重的两条：探针臂把子进程运行结果整个丢弃、spawn 失败/超时/崩溃全记成有定论的 `global`（「判不出」与「判成没生效」双义，正是本轮修过 readonly_flags 的同型）；「副本里无真实凭据」断言对凭据 env 通道（ZCODE_API_KEY 等，M0 §6.2 实测存在且设计 §7 把它列为凭据注入口）与 apiKey 之外的凭据形状不成立。另：RUNBOOK/设计残留已撤除的 provider_config_copy 词汇；model_override_applied 的两处「条件产出」全仓零用例。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/zcode.ts:155-169（probeReadonlyFlags 的 env 构造）",
+      "problem": "r3 CODEX-02 的「三个 ZCODE_* 目录键恒清」没有覆盖旗标探针这条路径——而它是 P-30 零配额前提最需要保护的一条。probeReadonlyFlags 只从 `zcodeProviderEnv` 解构出内置键，另建 `providerEnv = { builtin, personal: undefined }` 递给 run()；zcodeProviderEnv 返回的三个恒为 undefined 的目录键被丢弃。`run()` 以 `{...process.env}` 为底（util/exec.ts 只删「值为 undefined 的键」），宿主预置的 ZCODE_DATA_BASE_DIR 原样透传进七次拉起。按本轮自己接受的机理（包内 `FZi` 按 `dataBaseDir ?? ZCODE_DATA_BASE_DIR ?? homedir()` 合成个人配置路径并写回 env），该变量指向的根下若存在 provider_config.json（自带默认模型与凭据），CLI 就直接用它、空 HOME 挡不住——七个候选变七次真实模型调用，且发生在用户明跑 `--no-model-calls` 时最可能跑的旗标探针上。本轮三处新文档（适配器头注释、M0 P-28 机理补记、C-08 适用范围）都写着「适配层把它连同其余两个一律从子进程环境删掉」，代码在这一条路径上不成立。",
+      "evidence": "src/trivium/probes/zcode.ts:155-169：`const { [ZCODE_BUILTIN_PROVIDER_ENV]: builtinFile } = await zcodeProviderEnv(entry)` 后仅两键进 providerEnv；src/trivium/adapters/zcode.ts 的 zcodeProviderEnv 与 ZCODE_DIR_ENV_KEYS（三键恒 undefined）——对照 src/trivium/probes/zcode.ts:392 的 probeModelOverride 用整包 spread `...(await zcodeProviderEnv(...))`，形态正确；src/trivium/util/exec.ts 的 childEnv 构造证实「键缺席＝原样透传」；doc/05_testing/REPORT_2026-09-11_m0_probe.md P-28 机理补记与 C-08 适用范围（本轮新增文字）均称「一律清掉」；.reviews/.../plan/...-r3-revised-claude.md CODEX-02 落点行。现有用例只锁「个人变量七次不给」（zcode-provider-env.test.ts），无一条锁旗标探针路径的目录键。",
+      "suggestion": "probeReadonlyFlags 改与 probeModelOverride 同形：整包 spread `await zcodeProviderEnv(entry, undefined, { omitPersonal: true })`（内置键由它做存在性门控，个人键与三目录键恒 undefined），并给旗标探针补一条「宿主预置 ZCODE_DATA_BASE_DIR → 七次调用的子进程都拿不到」的锁（复用现有假入口的调用日志断言面）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/zcode.ts:393-408（probeModelOverride 丢弃 run 结果）",
+      "problem": "探针臂对子进程的运行结果完全不检视：`await run(...)` 的返回值被丢弃，判据只看 CLI 自写的 v2 文件是否存在。spawn 失败（code 为 null）、模块加载崩溃、内置文件缺失的「无法定位 Provider Config」退 1、30s 超时被杀——凡没写出该文件的形态，一律落进 `override: 'global'` 并给出「legacy 导入没有发生」的定论，还会覆盖上一次结论并打「config_copy 档未生效，请核对 ZCode 版本与 P-31」的 ⚠️。这是把「本轮没判成」记成「判成了、没生效」的双义——与本轮对 readonly_flags 的修正（r2 CODEX-02：判不出就不写结论、保留旧值、note 说明成因）同一形状，且方向相反（这里污染的是 model_override 那一格）。设计裁决明写「挑不出非首位模型时记未判定」，对拉起失败这一类未做同样区分。",
+      "evidence": "src/trivium/probes/zcode.ts:393-408：run 返回值未接收，catch 分支返回 'global'；同文件 555-641 旗标探针一派对「spawn 失败/crash 不得记成定论」的处理（r4 CODEX-01 正向证据判据 + indeterminate 保留旧值）与 652-656 的 probeZcode 消费（mo.override !== null 才写格、'global' 出 ⚠️ note）；测试侧 LEGACY_IMPORT_ENTRY 缺内置变量的退 1 分支（test/unit/zcode-model-selection.test.ts:398）恰好演示了「没跑到导入」也会落进 global 判读，该形态无用例。",
+      "evidence_extra": null,
+      "suggestion": "检视 run 结果：`code === null`、`timedOut`、或 stderr 既不命中 ZCODE_ARGV_PARSED_RE 也不命中 Model creation 停点形态时，返回 override: null（未判定、保留旧值）并把退出码与 stderr 首行带进 why——与旗标探针的 indeterminate 同口径。补一条「假入口 crash/无输出 → 未判定」用例。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/probes/zcode.ts:304-316, 390-395（replaceApiKeys 覆盖面 + 子进程 env 继承）",
+      "problem": "「零配额、副本里无真实凭据」这两个前提各有一条被打破的路径：(1) replaceApiKeys 只替换键名恰为 `apiKey` 的字符串值——用户自定义 provider 的 options 若带其它凭据形态（如 headers 里的 Authorization），探针副本原样保留真实值，直到 finally 删除；进程被 SIGKILL 时残留在临时目录。(2) 更实的一条：子进程 env 以 `{...process.env}` 为底，探针臂没有清 `ZCODE_API_KEY`（M0 §6.2 实测该变量存在，设计 §3.3 认证行把它列为替代凭据通道、§7 凭据条明写「从 .env/Keychain 读取注入子进程」是受支持姿势）——宿主若按这条姿势在用，哨兵形同虚设：CLI 拿真实 key 过鉴权，探针臂在 `--no-model-calls` 下起一个真实 turn，两个前提同时失守。审查运行路径继承它是应有之义，探针路径不该继承。",
+      "evidence": "src/trivium/probes/zcode.ts:308（replaceApiKeys 仅认 apiKey）、392-395（env 只含 zcodeProviderEnv 的五个键 + HOME，其余全从 process.env 透传）；src/trivium/util/exec.ts childEnv 构造；doc/05_testing/REPORT_2026-09-11_m0_probe.md §6.2 「ZCODE_API_KEY / ZCODE_BASE_URL 均存在」实测条目；doc/02_design 设计 §7 凭据行。测试夹具（zcode-model-selection.test.ts cliConfigFixture）的凭据形态只有 options.apiKey，假入口也只检查 apiKey——测不出这两条。",
+      "suggestion": "探针臂 env 显式置 `ZCODE_API_KEY` / `ZCODE_BASE_URL` 为 undefined（与三个目录键同一「子进程拿不到」口径，旗标探针同理可捎带）；副本凭据面改白名单重建（只保留 provider 键名/models/model.main 与哨兵）或在写副本后过一遍 scanAndRemoveSecrets 兜底；把「除 apiKey 外不落任何凭据」从注释断言改成用例断言（假入口检查整份副本 JSON 里不出现真实用户文件里的任何字符串值）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "doc/06_deployment/RUNBOOK_pipeline_ops.md:266；doc/02_design/…设计.md:247",
+      "problem": "r1 撤除机制的词汇没扫干净：RUNBOOK 排障行让读者去 trace.json 找 `route` 为 `provider_config_copy` 的分支——该取值在全仓代码、run.v2.json 的封闭 enum、ZcodeHomePrep 类型里都已不存在（enum 只有 env/config_copy/global）；「副本写了但 CLI 没按它走」的真实观测形态其实是 `route: config_copy` + `model_override_applied: false`，恰好是这一行没写的那格。设计 §3.3 第一条 bullet 同型：仍写「v1.3.32 按 P-31 把生效的那一档从 config_copy 换成 provider_config_copy」并保留「三个 ZCODE_* 目录键对配置解析全部无效」——与紧挨着的 v1.3.33 新条目（生效档就是 config_copy；0.16.9 的 ZCODE_DATA_BASE_DIR 决定 provider 配置根、故恒清）直接矛盾。设计是「唯一实现依据」，两格自相矛盾的残留会让人按错的那半改代码。",
+      "evidence": "grep：`provider_config_copy` 在 src/、skills/、test/ 零命中，仅存于 RUNBOOK:266 与设计 §3.3:247/§24 台账（台账是历史记录，合理）；skills/dual-critic/schema/run.v2.json:495-502 的 model_route enum；src/trivium/adapters/zcode.ts ZcodeHomePrep.route 类型；设计 v1.3.33 新条目自述「C-08『无效』只对 0.16.5 成立」。",
+      "suggestion": "RUNBOOK 该行改判读路径为「route=config_copy 而 model_override_applied=false ⇒ 副本写了但 CLI 没按它走」；设计 247 行把「换成 provider_config_copy」改为「曾换成、v1.3.33 撤回」或直接按现行档名重写，同句「对配置解析全部无效」补 0.16.9 适用范围（C-08 已补，bullet 要同步）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "test",
+      "kind": "test-gap",
+      "location": "src/trivium/adapters/zcode.ts:966；src/trivium/review.ts:1442-1450",
+      "problem": "「产出条件」本身没有守卫：`model_override_applied` 的两道条件闸门——run() 里 `overrideAttempted ? … : {}` 与 review.ts 落 run.json 的条件展开——没有任何用例覆盖「不该产出时确实不产出」。全仓 test/ 里该字段只在 zcode-model-selection.test.ts 出现，run() 的端到端只有一条 config_copy 正格（断言产出且为 null）；限定失败走 route global 的 run() 形态、以及 run.json 写侧，都不在用例论域。做变异「去掉 overrideAttempted 门、恒写 applied ?? null」或「恒写 null」，当前全量测试照样绿——正是本轮记过的 M1 形态（跑绿但咬不住），而 AGY-03 裁决的「字段缺席与 null 是两件事」这个语义区分恰恰只有这两道闸门在执行。",
+      "evidence": "grep -rn model_override_applied test/ 仅命中 zcode-model-selection.test.ts；该文件 run() 端到端用例（262-308 行区）只走 qualified 成功路径；src/trivium/review.ts:1442 的条件展开无任何测试引用（render.test.ts 只测 model_route）；src/trivium/types.ts 与 run.v2.json 都声明「字段缺席＝本次没有覆盖尝试」为该字段的一种合法取值。",
+      "suggestion": "补两条：① run() 一条「请求模型不在副本源目录里 → route global → result 里没有该字段」的负格（夹具现成：qualifyAgainstCliConfig 失败用例的 cfg）；② executeRun 层或至少对 run.v2 产物的展开条件加一条用例，锁住「缺席≠null」。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/probes/zcode.ts:177-182（probeZcodeEntry 的 env）",
+      "problem": "version 探针只清两个 provider 键、不清三个目录键。它自己的注释立论是「判据『子进程拿不到』只在两条主拉起路径兑现就是留口子，P-29 证明该 CLI 的演化方向是把 provider 定位挪得更早」——同一条立论完全适用于 ZCODE_DATA_BASE_DIR（FZi 的推导优先级第二位），而本轮刚在另外两条路径上清了它。现势无害（version 不读 provider 配置，P-28 实测），不对称的是口径。",
+      "evidence": "src/trivium/probes/zcode.ts probeZcodeEntry 的 env 字面只含两键；src/trivium/adapters/zcode.ts ZCODE_DIR_ENV_KEYS 与 r3 CODEX-02 的「子进程拿不到」判据；M0 P-28「version 子命令不受影响」。",
+      "suggestion": "要么把三键一并清掉（成本一行），要么在该注释块补一句「三目录键刻意不清的理由」，别让下一个读的人以为恒清是全路径事实。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/zcode.ts:88-110, 433-438",
+      "problem": "两处注释漂移：① decideModelOverride 的文档块仍写「故这里用 `hasEffective` 显式区分」——函数签名里没有这个参数（r1 形态的残留），读者会去找一个不存在的概念；② 「为一次运行准备独立 HOME 与模型覆盖」这段 doc 现在挂在 `zcodeHomeUnder` 常量头上，与下面 `prepareZcodeHome` 自己的 doc 块近乎重复——注释块与函数体在撤除 r1 机制的重排中错位了。",
+      "evidence": "src/trivium/adapters/zcode.ts 实际签名 `decideModelOverride(attempted, requested, effective)`，文档块却引用 hasEffective；zcodeHomeUnder 上方的注释与其后 prepareZcodeHome 的注释内容重叠。",
+      "suggestion": "删 hasEffective 那句（现行「applied: undefined + note、调用方按尝试过落 null」的描述已足够）；把常量头上的注释并进 prepareZcodeHome 的 doc 块。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "r3 八条落点逐条对得上：CODEX-02 的三键恒清（zcodeProviderEnv/ZCODE_DIR_ENV_KEYS + invokeZcode/probeModelOverride 两条主路径）、CODEX-03 的 qualifyAgainstCliConfig（七格用例含 UUID 前缀负例）、CODEX-04 的哨兵密钥方案（确实避免了拉起即终止的竞态，判据取 CLI 自写的 v2 文件）、CODEX-05 的载体来历改写、CODEX-01≡AGY-r2-01 的 pickNonFirstModel + RUNBOOK「端到端用非首位模型」指引、AGY-r2-02 的布尔开关、AGY-r2-03 的 EV-87 限定，全部如实落地。",
+    "「有副本 HOME 就省略个人键」未发现反例：限定失败仍建副本时省略个人键是正确方向（CLI 从副本源导入其原默认，route global 的语义「沿用副本源里的默认」成立，凭据落进三份载体清单）；源文件不存在则不建副本、个人键照常给，与探活/探针（EV-87）口径一致。",
+    "r1 撤除干净：src/、test/ 全仓 grep 无 prepareZcodePersonalConfig / personalOverride / splitZcodeModel 的活引用；qualifyZcodeModel 如实标注「只剩 normalizeModelForCatalog 一个消费方」并指向 EV-93。",
+    "四态语义在 types.ts / run.v2.json / guard.ts / review.ts 四处一致，guard 只对 false 出声、不碰 evidenceOk/readonlyBreach 有用例锁定；判据取 modelId 段（zcodeModelTail）并有用例防整串等式回潮。",
+    "run() 端到端用例的「摆个人文件否则被删与本来没有同形」设计正确，M1 本体被真咬住；探针臂清理确实只认 makeTempDir 返回值（finally rm），有用例核对临时目录无残留。"
+  ],
+  "not_covered": [
+    "CLI 包内字面（FZi/Mqa/isSelectable/importLegacy 的推导细节）未独立复核——本机无 ZCode 安装包读取面，全部以 r2/r3 两侧「包内逐字复核成立」的记载为前提；CODEX-01 的触发链依赖该前提。",
+    "真实 CLI 端到端（含 glm 的真实双审、run.json 落格、guard 播报实貌）未跑，按裁决这搭下一次运行核对。",
+    "CLI 是否还有 HOME 之外的落点（macOS ~/Library、app.getPath 类）不受副本 HOME 约束——未核。",
+    "未执行 npm run typecheck / test（只读沙箱），「1546/1544/0/2」的绿灯口径未复算。",
+    "codex/claude/agy 三侧适配器不产出 model_override_applied 的落点（EV-91）与 gate/meta 校验面未展开审。",
+    "P-31/C-08/BACKLOG 各行与代码的逐字一致性做了抽查（见 CODEX-04 的两处反例），未逐行通读全部台账。"
+  ],
+  "consulted": [
+    ".reviews/zcode-模型覆盖落点/code/_meta/changes-20260921T124003Z.diff",
+    ".reviews/zcode-模型覆盖落点/plan/2026-09-21-zcode-模型覆盖落点-r3-revised-claude.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/doctor.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/zcode-model-selection.test.ts",
+    "test/unit/zcode-provider-env.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-09-11_m0_probe.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md"
+  ]
+}
+```
+
+**要点复述（最危险的一条先行）**：`probeReadonlyFlags` 从 `zcodeProviderEnv` 只取走内置键、把本轮刚落地的「三个 `ZCODE_*` 目录键恒清」丢在了解构之外（CODEX-01）——宿主预置 `ZCODE_DATA_BASE_DIR` 时，P-30 的七次零配额前提在这条最常被 `--no-model-calls` 触发的路径上仍会被打破，而本轮三处文档都已写下「一律清掉」。修法与 `probeModelOverride` 现成同形。其余为探针臂的判定双义（CODEX-02）、凭据前提的两条破口（CODEX-03）、`provider_config_copy` 文档残留（CODEX-04）、产出条件的测试缺口（CODEX-05）与两条注释 nit。
+```

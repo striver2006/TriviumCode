@@ -1,0 +1,203 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260921T124003Z",
+  "topic": "zcode-模型覆盖落点",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "审核焦点：一、r3 裁决件八条落点是否逐条对得上代码，尤其 CODEX-02 的三个目录键恒清、CODEX-03 的限定改按副本源 provider 键、CODEX-04 的探针臂取哨兵密钥而非拉起后终止；二、run 里「有副本 HOME 就省略个人键」这一行——限定失败仍建副本时也省略，有没有反例会让 CLI 又跳过 legacy 导入；三、探针臂 probeModelOverride：只替换名为 apiKey 的键是否覆盖了 cli/config.json 里全部凭据形态（headers、token 之类有没有漏），副本 HOME 的清理是否只认 makeTempDir 的返回值，在 --no-model-calls 下「哨兵密钥让 CLI 停在鉴权层」这个零配额假设有没有被打破的路径；四、撤除 r1 个人副本机制后有无死代码或挂空引用，qualifyZcodeModel 只剩目录比对一个消费方是否如实标注；五、用例里还有没有 M1 那种跑绿但咬不住的形态，尤其三个目录键的清除与 model_override_applied 的产出条件；六、P-31 改判、C-08 适用范围等文档措辞与代码是否一致。",
+  "task_goal": "计划（r2）：ZCode 0.16.9 模型覆盖落点——根因改判，路线改走 legacy 导入（EV-82）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini"
+  ],
+  "snapshot": {
+    "git_head": "98b2fd30b61f303b6190efcb79112cbd53944e3f",
+    "tree_hash": "2fd7c942507499678817ddc94c9a446d2791dd55",
+    "dirty": true,
+    "subject_sha256": "1591e9bec0682e56512d803f062f36c422eb18cd1cbaaaa25bb28630e864c570",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-21T12:40:03.861Z",
+  "finished_at": "2026-09-21T12:54:07.465Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "parse_fallback",
+      "exit_code": 0,
+      "duration_s": 843.39,
+      "tool_calls": {
+        "run_command": 32,
+        "project_reads": 26
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "JSON 不符合 trivium.review.v1：/findings/1 must NOT have additional properties {\"additionalProperty\":\"evidence_extra\"}; /findings/4/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+      "empty_review": false,
+      "parse_fallback": true,
+      "session_id": "01a0c3fb-0974-7642-bb50-01f4e09b25fa",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.7",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 339.027,
+      "tool_calls": {
+        "read": 31,
+        "grep": 12,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 18
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 498792,
+        "output_tokens": 37923,
+        "thinking_tokens": 29412,
+        "cache_read_tokens": 6401962,
+        "total_tokens": 536715
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "25f381b5-5790-43c4-ae9f-c6d91dceed1f",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/zcode-模型覆盖落点/plan/2026-09-21-zcode-模型覆盖落点-gemini.md",
+    ".reviews/zcode-模型覆盖落点/plan/2026-09-21-zcode-模型覆盖落点-r2-gemini.md",
+    ".reviews/zcode-模型覆盖落点/plan/2026-09-21-zcode-模型覆盖落点-r3-gemini.md",
+    ".reviews/zcode-模型覆盖落点/plan/_meta/review-gemini-20260921T095827Z.json",
+    ".reviews/zcode-模型覆盖落点/plan/_meta/review-gemini-20260921T111833Z.json",
+    ".reviews/zcode-模型覆盖落点/plan/_meta/review-gemini-20260921T114825Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "zcode-模型覆盖落点/code/_meta/changes-20260921T124003Z.diff",
+      "sha256": "1591e9bec0682e56512d803f062f36c422eb18cd1cbaaaa25bb28630e864c570"
+    },
+    {
+      "path": "zcode-模型覆盖落点/code/_meta/brief-codex-20260921T124003Z.md",
+      "sha256": "b294515c170799ac24c17359c253f603805d8ba847f0baaca1cda93d495b597c"
+    },
+    {
+      "path": "zcode-模型覆盖落点/code/_meta/brief-gemini-20260921T124003Z.md",
+      "sha256": "0d264fc7ae60fbf34f7d9608f75c0875801811d8564b8e56907d030d6929e494"
+    },
+    {
+      "path": "zcode-模型覆盖落点/code/_meta/review-codex-20260921T124003Z.json",
+      "sha256": "97d319326b09b4a80f8ad90b34e332a31b18ba35e6afd2e2aeb0e6eae7637a9f"
+    },
+    {
+      "path": "zcode-模型覆盖落点/code/_meta/review-codex-20260921T124003Z.fallback-items.md",
+      "sha256": "e2e52fdcd3120dfed6439ae3263ed2d7af5844e6f51aa86feba73af0e7715136"
+    },
+    {
+      "path": "zcode-模型覆盖落点/code/_meta/review-gemini-20260921T124003Z.json",
+      "sha256": "122f2af3f5e4bbd4aa6a7e44334aa2d16a3ba4800638e6147c4ee76cd4abcc21"
+    },
+    {
+      "path": "zcode-模型覆盖落点/code/2026-09-21-zcode-模型覆盖落点-codex.md",
+      "sha256": "72aa1dbba399e3b673c9dd639ab04bffa58bdc46df23e01fa1e8f8c24d6a07c4"
+    },
+    {
+      "path": "zcode-模型覆盖落点/code/2026-09-21-zcode-模型覆盖落点-gemini.md",
+      "sha256": "56e98ce12f105dd303db48c184421c2096f90e2cb615ee4d3605b064eb0251f1"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

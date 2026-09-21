@@ -21,11 +21,14 @@ import {
   invokeZcode,
   zcodeProviderConfigPaths,
   zcodeProviderEnv,
+  readonlyArgsFromProbe,
   ZCODE_BUILTIN_PROVIDER_ENV,
+  ZCODE_CREDENTIAL_ENV_KEYS,
+  ZCODE_DIR_ENV_KEYS,
   ZCODE_PERSONAL_PROVIDER_ENV,
   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
 } from '../../src/trivium/adapters/zcode.js';
-import { probeReadonlyFlags } from '../../src/trivium/probes/zcode.js';
+import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type ModelOverrideProbe } from '../../src/trivium/probes/zcode.js';
 import { runDoctor } from '../../src/trivium/doctor.js';
 import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
 
@@ -41,6 +44,11 @@ if (env.FAKE_ZCODE_LOG) {
     builtin: env.${ZCODE_BUILTIN_PROVIDER_ENV} ?? null,
     personal: env.${ZCODE_PERSONAL_PROVIDER_ENV} ?? null,
     home: env.HOME ?? null,
+    dataBase: env.ZCODE_DATA_BASE_DIR ?? null,
+    zhome: env.ZCODE_HOME ?? null,
+    storage: env.ZCODE_STORAGE_DIR ?? null,
+    apiKeyEnv: env.ZCODE_API_KEY ?? null,
+    baseUrlEnv: env.ZCODE_BASE_URL ?? null,
   }) + '\\n');
 }
 const argv = process.argv.slice(2);
@@ -88,6 +96,17 @@ if (env.FAKE_ZCODE_ECHO_ENV) {
 process.stderr.write('Error: Model creation failed (traceId: fake)\\n');
 process.exit(1);
 `;
+
+/** 探针路径必须清掉的全部键——由适配器的两组常量 + 两个 provider 键派生，不手抄 */
+const ALL_CLEARED_KEYS: readonly string[] = [
+  ZCODE_BUILTIN_PROVIDER_ENV, ZCODE_PERSONAL_PROVIDER_ENV, ...ZCODE_DIR_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS,
+];
+/** 每个键在假入口日志里对应的字段名 */
+const LOG_FIELD_OF: Record<string, string> = {
+  [ZCODE_BUILTIN_PROVIDER_ENV]: 'builtin', [ZCODE_PERSONAL_PROVIDER_ENV]: 'personal',
+  ZCODE_DATA_BASE_DIR: 'dataBase', ZCODE_HOME: 'zhome', ZCODE_STORAGE_DIR: 'storage',
+  ZCODE_API_KEY: 'apiKeyEnv', ZCODE_BASE_URL: 'baseUrlEnv',
+};
 
 /**
  * 摆出应用包布局：`<root>/Resources/glm/zcode.cjs` 与 `<root>/Resources/config/provider/zcode-builtin.json`
@@ -166,6 +185,10 @@ test('两份都在 → 两个变量都给，值为绝对路径', async () => {
     assert.deepEqual(env, {
       [ZCODE_BUILTIN_PROVIDER_ENV]: await fs.realpath(L.builtin),
       [ZCODE_PERSONAL_PROVIDER_ENV]: L.personal,
+      // 三个目录键恒在场、恒 undefined（r3 CODEX-02）：0.16.9 的 provider 配置根会读 ZCODE_DATA_BASE_DIR
+      ZCODE_DATA_BASE_DIR: undefined,
+      ZCODE_HOME: undefined,
+      ZCODE_STORAGE_DIR: undefined,
     });
   } finally {
     await L.cleanup();
@@ -179,10 +202,15 @@ test('文件不在 → 该键值为 undefined（不是缺席）：宿主环境�
     assert.deepEqual(env, {
       [ZCODE_BUILTIN_PROVIDER_ENV]: undefined,
       [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
+      ZCODE_DATA_BASE_DIR: undefined,
+      ZCODE_HOME: undefined,
+      ZCODE_STORAGE_DIR: undefined,
     });
     // 键必须在场——`run()` 只对「值为 undefined 的键」执行删除，键缺席就是原样透传
     assert.ok(Object.hasOwn(env, ZCODE_BUILTIN_PROVIDER_ENV));
     assert.ok(Object.hasOwn(env, ZCODE_PERSONAL_PROVIDER_ENV));
+    // 宿主预置 ZCODE_DATA_BASE_DIR 会让 CLI 把个人配置根推到副本之外（r3 CODEX-02），同样只能靠删
+    for (const k of ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_STORAGE_DIR']) assert.ok(Object.hasOwn(env, k), k);
   } finally {
     await L.cleanup();
   }
@@ -191,6 +219,9 @@ test('文件不在 → 该键值为 undefined（不是缺席）：宿主环境�
     assert.deepEqual(await zcodeProviderEnv(M.entry, M.userHome), {
       [ZCODE_BUILTIN_PROVIDER_ENV]: await fs.realpath(M.builtin),
       [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
+      ZCODE_DATA_BASE_DIR: undefined,
+      ZCODE_HOME: undefined,
+      ZCODE_STORAGE_DIR: undefined,
     });
   } finally {
     await M.cleanup();
@@ -300,6 +331,41 @@ test('P-29：provider 配置定位失败时七个候选全部 indeterminate，�
     assert.deepEqual(r.rejected, []);
     assert.equal(r.indeterminate.length, 7);
   } finally {
+    await L.cleanup();
+  }
+});
+
+test('旗标探针：宿主预置 ZCODE_DATA_BASE_DIR / ZCODE_API_KEY → 七次拉起的子进程一个都拿不到（代码双审 r1 codex 子项 01 ≡ AGY-01）', async () => {
+  /*
+   * 此前只解构内置键、手拼两键对象递给 run()，三个目录键被丢在解构之外——`run()` 只对「值为 undefined 的键」
+   * 做删除，键缺席就是原样透传。宿主预置 ZCODE_DATA_BASE_DIR 时，0.16.9 的 FZi 会按它推出副本外的个人配置根，
+   * 空 HOME 挡不住，七个候选变七次真实调用。这条用例锁的是「子进程拿不到」，与个人键那条同一口径。
+   */
+  const L = await layout({ withBuiltin: true, withPersonal: false });
+  const log = path.join(L.root, 'calls.jsonl');
+  process.env['FAKE_ZCODE_LOG'] = log;
+  // 预置表按两组常量**全量派生**（代码双审 r2 CODEX-05）：标题说七个键，就得七个键都预置、都断言
+  for (const k of ALL_CLEARED_KEYS) process.env[k] = `host-preset-${k}`;
+  try {
+    const r = await probeReadonlyFlags(L.entry, process.execPath, L.cwd);
+    assert.deepEqual(r.indeterminate, []);
+    const calls = (await fs.readFile(log, 'utf8')).trim().split('\n')
+      .map((l) => JSON.parse(l) as Record<string, string | null>);
+    assert.equal(calls.length, 7);
+    const realBuiltin = await fs.realpath(L.builtin);
+    for (const c of calls) {
+      for (const [k, field] of Object.entries(LOG_FIELD_OF)) {
+        if (k === ZCODE_BUILTIN_PROVIDER_ENV) {
+          // 内置键是唯一要**给**的：宿主诱饵必须被派生路径覆盖，而不是被删
+          assert.equal(c[field], realBuiltin, '内置变量每次都按安装布局派生，宿主预置值不生效');
+          continue;
+        }
+        assert.equal(c[field], null, `${k} 必须被删掉（ZCODE_DATA_BASE_DIR 会让 FZi 把个人配置根推到副本之外；凭据键不该进探针路径）`);
+      }
+    }
+  } finally {
+    delete process.env['FAKE_ZCODE_LOG'];
+    for (const k of ALL_CLEARED_KEYS) delete process.env[k];
     await L.cleanup();
   }
 });
@@ -447,4 +513,79 @@ test('warnings 不影响阻断判定：有告警但 blockers 为空', async () =
     delete process.env['FAKE_ZCODE_WEIRD_FAIL'];
     await L.cleanup();
   }
+});
+
+test('version 探针：宿主预置的两个 provider 键、三个目录键、两个凭据键一律进不了子进程（代码双审 r1 codex 子项 06）', async () => {
+  // 口径是「全部探针路径」而不是「两条主拉起路径」——P-29 已证明这个 CLI 会把 provider 定位往前挪
+  const L = await layout({ withBuiltin: true, withPersonal: true });
+  const log = path.join(L.root, 'calls.jsonl');
+  const preset: Record<string, string> = { FAKE_ZCODE_LOG: log };
+  for (const k of ALL_CLEARED_KEYS) preset[k] = `host-preset-${k}`;
+  for (const [k, v] of Object.entries(preset)) process.env[k] = v;
+  try {
+    const r = await probeZcodeEntry(L.entry, process.execPath);
+    assert.equal(r.version, '0.16.9');
+    const call = JSON.parse((await fs.readFile(log, 'utf8')).trim().split('\n')[0]!) as Record<string, string | null>;
+    for (const [k, field] of Object.entries(LOG_FIELD_OF)) assert.equal(call[field], null, k);
+  } finally {
+    for (const k of Object.keys(preset)) delete process.env[k];
+    await L.cleanup();
+  }
+});
+
+// ── probeZcode 接线（代码双审 r2 CODEX-04 ≡ AGY-01）：只读参数透传、null 不覆盖、global 出 ⚠️ ──
+
+async function probeZcodeWithStubArm(armResult: ModelOverrideProbe, existingOverride: 'env' | 'config_copy' | 'global') {
+  const L = await layout({ withBuiltin: true, withPersonal: false });
+  // 合成的 cli/config.json：只要「在」，探针臂就会被接线；内容不被桩臂读取
+  const cliConfig = path.join(L.root, 'cli-config.json');
+  await fs.writeFile(cliConfig, '{"provider":{},"model":{}}', 'utf8');
+  const received: Parameters<typeof probeZcode>[2] extends infer _ ? { readonlyArgs?: readonly string[]; cliConfigPath?: string }[] : never = [];
+  const existing = {
+    entrypoint: L.entry, version: '0.16.9', version_probe: null, probed_at: new Date().toISOString(),
+    readonly_flags: [], model_override: existingOverride,
+    trace_source: null, trace_args_source: null, response_field: 'response',
+    path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: [], coverage_complete: null, file_shape_verified: null },
+    scratch_paths: [], isolation: 'home_copy' as const, model_id_form: null, models: [],
+  };
+  try {
+    const out = await probeZcode(L.entry, process.execPath, {
+      skipModelCalls: true,
+      existing,
+      cliConfigPath: cliConfig,
+      modelOverrideProbe: async (_entry, _node, _cwd, opts) => { received.push({ ...opts }); return armResult; },
+    });
+    return { ...out, received };
+  } finally {
+    await L.cleanup();
+  }
+}
+
+test('接线：probeZcode 把本轮 readonly_flags 经 readonlyArgsFromProbe 递给探针臂，并透传 cliConfigPath', async () => {
+  const { probe, received } = await probeZcodeWithStubArm(
+    { override: 'config_copy', requested: 'p/m', observed: 'p/m', why: '桩' }, 'env',
+  );
+  assert.equal(received.length, 1, '探针臂恰好被接线一次');
+  // 旗标探针在假入口上实测出的 readonly_flags，经同一个派生函数得到的 argv 必须原样到达臂
+  assert.deepEqual(received[0]!.readonlyArgs, readonlyArgsFromProbe(probe.readonly_flags));
+  assert.ok(received[0]!.readonlyArgs!.includes('--disallowed-tools'), '完整 denylist 必须在——本地免密端点下这是唯一的护栏');
+  assert.ok(received[0]!.cliConfigPath!.endsWith('cli-config.json'));
+  assert.equal(probe.model_override, 'config_copy');
+});
+
+test('接线：探针臂判 null（未判定）→ 结论保留旧值、note 说明、不出 ⚠️', async () => {
+  const { probe, notes } = await probeZcodeWithStubArm(
+    { override: null, requested: 'p/m', observed: null, why: '桩：未判定' }, 'env',
+  );
+  assert.equal(probe.model_override, 'env', '未判定不得覆盖旧值');
+  assert.ok(notes.some((n) => n.includes('未判定') && n.includes('桩：未判定')));
+  assert.equal(notes.some((n) => n.includes('⚠️ 探针臂判 config_copy 档未生效')), false);
+});
+
+test('接线：探针臂判 global → 结论写 global 且出 ⚠️', async () => {
+  const { probe, notes } = await probeZcodeWithStubArm(
+    { override: 'global', requested: 'p/m', observed: 'p/first', why: '桩：回落' }, 'env',
+  );
+  assert.equal(probe.model_override, 'global');
+  assert.ok(notes.some((n) => n.includes('⚠️ 探针臂判 config_copy 档未生效')));
 });
