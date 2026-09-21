@@ -1,8 +1,9 @@
 # M10 · 任意 Driver 实施计划
 
-- **日期**：2026-09-20
-- **起点**：`f4f3970`（M9 第 7 步收口，设计 v1.3.30 / PRD v1.4.6），`main` 干净
-- **基线核实**：`npm run check` 本会话复跑 **1495 用例 / 1493 通过 / 2 跳过 / 0 失败，exit 0**（不是转述）
+- **日期**：2026-09-20（**2026-09-21 刷新**：F-8 两个小主题 EV-81 / EV-82 均已提交，本稿据此更新起点、基线、F-3 / F-4 / F-8 / P-4 / R-b 与 §8.2 / §12 的 glm 口径；其余段落未动）
+- **起点**：`17f88ac`（EV-82 结案，设计 v1.3.33；上一稿写的 `f4f3970` 之后合入了 `98b2fd3` EV-81 与 `17f88ac` EV-82 两次提交），`main` 干净、已推送
+- **基线核实**：`npm run check` 刷新当日复跑 **1566 用例 / 1564 通过 / 2 跳过 / 0 失败，exit 0**（不是转述；上一稿 1495）
+- **本计划审的跑法**：`--critics codex,gemini,glm --model-glm GLM-5.3-Flash`——三侧跑；`--model-glm` 必须给非首位模型，因为 EV-82 的守卫在请求 provider 首位模型（本机默认档 `GLM-5.3`）时分不出「读到了副本」与「回落到首位」。这次运行同时充当 EV-82 结案判据里最后一条「一次含 glm 的真实双审」：跑完核 `run.json` glm 段 `model_route: config_copy`、`model_override_applied: true`、`model_effective` 的 modelId 段 = `GLM-5.3-Flash`
 - **依据**：主设计 §16.1 M10 行（含四条前置）、§7.1 `--driver` 段、§8.5 引言块（护栏分级表 + `--agent` 不得成为第二判据源）、
   §18.1 #16、§24.1 台账三行；演进设计 §5.2 / §7.5 / §9.3 / §9.4 / §10.2；PRD FR-28 / AC-21 / S6；
   BACKLOG **EV-55 / EV-72 / EV-77**（前置）、**EV-06 / EV-07 / EV-61 / EV-62 / EV-64**（范围内连带）、EV-74 / EV-79（触发条件写「M10 前」，见 §1.3）
@@ -44,19 +45,19 @@
 | :--- | :--- | :--- | :--- |
 | **F-1** | **`guardLevel` 在注册表登记了四家，生产代码零消费方**——只在测试夹具里出现。与 EV-06 的 `instructionFiles` 同形：登记而未接线 | `grep -rn guardLevel src test`：仅 `registry.ts`、`registry-parity.test.ts:79`、`overlay.ts:239` | AC-21 要求「护栏差异对使用者明示」，明示的事实源就该是它。第 4 步给它接上消费方（预检打印 + 留痕 + 文档），否则 M10 收口时 F-1 与 EV-06 一起成为「第三个 EV-06」 |
 | **F-2** | **glm 的 `guardLevel: 'L1'` 是未经实测的登记**。设计 §3.3 与 M0 报告对 zcode 都没有任何 Hook 记载（M0 只记了 agy 的 plugin hook）；演进设计写的是「ZCode Hook 支持（形态探针定；通过则 L1，否则 L2）」 | `grep -in hook` 于设计 §3.3 段零命中；`REPORT_2026-09-11_m0_probe.md:123` 只提 agy | 第 1 步实测；不通过就把注册值翻 L2 并如实写文档，**不伪装** |
-| **F-3** | **codex 的 `$ARGUMENTS` 展开同样只有静态证据**（M6 报告 §2 引的是 0.154.0 内嵌撰写规范原文，不是回显实测）。且本机四家版本都动了：agy **1.2.7**（报告 1.2.2）、codex **0.155.1**（报告 0.154.0）、claude 2.1.277、zcode **0.16.9**（探针记录 0.16.5，本会话重探已更新；连带撞出 F-8） | 报告 §2「参数展开」段；本会话 `--version` 与 `doctor --only zcode` | 第 1 步把三家的「skill 加载 + 参数展开」一并做**行为实测**，版本记进报告 |
-| **F-4** | **`zcode` 不在 PATH**。编排器按 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` 定位（本机存在，0.16.5），审核者链路不受影响；但「ZCode 当 Driver」的真载体是 ZCode 的交互会话，不是 `node zcode.cjs -p` | `probes/zcode.ts:31-32`；`which zcode` 无 | AC-21 要 zcode 真实一轮。第 1 步先确认 ZCode 交互会话（CLI 或桌面端）能否加载 user 级 skill 并执行 `.trivium/bin/trivium`；确认不了就把「zcode 真实」降为「夹具级」并**如实登记为达成边界**，不改验收口径本身 |
+| **F-3** | **codex 的 `$ARGUMENTS` 展开同样只有静态证据**（M6 报告 §2 引的是 0.154.0 内嵌撰写规范原文，不是回显实测）。且本机四家版本都动了：agy **1.2.7**（报告 1.2.2）、codex **0.155.1**（报告 0.154.0）、claude 2.1.277、zcode **0.16.9**（探针记录已更新；连带撞出 F-8，现已结） | 报告 §2「参数展开」段；`--version` 与 `doctor --only zcode`（2026-09-21 复跑，`model_override=config_copy`） | 第 1 步把三家的「skill 加载 + 参数展开」一并做**行为实测**，版本记进报告 |
+| **F-4** | **`zcode` 不在 PATH**。编排器按 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` 定位（本机存在，0.16.9），审核者链路不受影响；但「ZCode 当 Driver」的真载体是 ZCode 的交互会话，不是 `node zcode.cjs -p` | `probes/zcode.ts:31-32`；`which zcode` 无 | AC-21 要 zcode 真实一轮。第 1 步先确认 ZCode 交互会话（CLI 或桌面端）能否加载 user 级 skill 并执行 `.trivium/bin/trivium`；确认不了就把「zcode 真实」降为「夹具级」并**如实登记为达成边界**，不改验收口径本身 |
 | **F-5** | **`--driver` 今天不进入口资产**，且命令 A 显式拒绝它（`topic-args.ts:352-358`）。这是 M9 第 5 步计划双审 §2.14 的裁定，理由是「M10 之前四条命令的执笔者就是本会话的 Claude Code」——**M10 就是那个「之前」的终点** | 设计 §7.1 该段；`topic-args.ts:346-358` | 第 5 步推翻该限定：每家渲染出的入口资产**自带** `--driver <id>`（入口资产自己知道身份，演进设计 §5.2），命令 A 同步放开。这是契约变更，列入不可逆决策 D7 |
 | **F-6** | **EV-07 状态列陈旧**：`disposition.v1.json` 的 `role` 已在 EV-66（v1.3.29）放宽为 `type: string`，BACKLOG 仍 todo；`registry-parity` 的 `LITERAL_ALLOWLIST` 第 270 行仍留着「Driver 任意化排在 M10」的豁免理由 | `disposition.v1.json:13-14`；`registry-parity.test.ts:270` | 第 4 步核实 `types.ts` 侧字面是否仍存在、豁免是否仍被需要，然后**结案而不是顺手删豁免**（EV-39 的口径：豁免要有「仍被需要」的腿） |
 | **F-7** | `CASE_manual_acceptance.md` **没有 S6 剧本**；`selftest.ts` 零处 `driver`——自检链路只会以缺省 Driver 跑 | `grep S6` 仅命中标题引用行；`grep -c driver selftest.ts` = 0 | 第 7 步补 S6 剧本；selftest 是否扩非缺省 Driver 场景在第 7 步按成本决定（不列为完成判据，因为 §16.1 没写） |
-| **F-8** | **ZCode 0.16.9 独立拉起时找不到内置 provider 配置，本机 glm 侧探活当前失败**（`preflight` 退 69）。根因：0.16.9 的 `zcode.cjs` 按**入口文件目录**推算 `zcode-builtin.json`，两条候选（`<入口目录>/provider/…` 与 `<入口目录>/../../../../../config/provider/…`，后者是源码树布局）在应用包内都不存在；真实文件在 `Resources/config/provider/zcode-builtin.json`。桌面端启动 CLI 时通过环境变量 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` + `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`（须**同时**给，后者指 `~/.zcode/v2/provider_config.json`）传路径；我方 `invokeZcode` 只透传 `HOME`，不传这两个。**本会话带上两个变量复跑 `preflight --stage plan` 整份通过（exit 0）**，假设已验证 | `zcode.cjs` 内 `LZi` / `resolveNodeProviderRuntimePaths` 字面；`app.asar` 内 `DC()`（packaged 取 `resourcesPath/config/provider/…`）；`adapters/zcode.ts:121-127` `invokeZcode` 的 `env` 只有 `HOME`；最近一次 glm 成功留痕 `run-20260919T154710Z` 记 `cli_version 0.16.5` | **不在 M10 范围**，但它卡住两件事：本主题的计划审默认三侧含 glm；M10 第 1 步 2.3 的 zcode 实测要靸 headless 跑通。修法是**改适配层**（纪律 1）：`invokeZcode` 注入两个变量，内置路径按入口派生（`resolve(dirname(entry), '../config/provider/zcode-builtin.json')`）并由探针落盘存在性、个人路径取 `~/.zcode/v2/provider_config.json`；`homeDir` 隔离副本下两条绝对路径不受影响。建议**另开小主题先修**（见 P-4）。**2026-09-20 更新：已按 P-4 ① 在小主题 `zcode-provider配置注入`（EV-81）落地**——适配层存在性门控注入两个变量、`failureKind` 增 `provider_config_unresolved`、探针增 `provider_config` 事实格与 `indeterminate` 第三态；实测另挖出两条同根因事实（P-29：定位先于参数解析，2026-09-19 的 `readonly_flags` 结论被污染成七个全接受；P-30：个人 provider 配置自带默认模型，旗标探针只能注入内置那份）。事实登记 M0 报告 §7 P-28～P-30、设计 v1.3.31。该主题代码双审只能 codex + gemini 两侧。**2026-09-21 更正：上句「已落地」只对「glm 侧起不起得来」成立，「合入后即可三侧跑」不成立——待 EV-82。** 该主题 r2 代码双审的 CODEX-05 实测证实：0.16.9 把模型选择迁到了 `~/.zcode/v2/provider_config.json` 的 `defaultModelSelection`，`config_copy` 副本的 `model.main` 不再生效，glm 侧探活能过但会静默跑在个人配置默认模型（本机是 `qwen3.8-max`，与 codex 同家族）。**EV-82 结案前 glm 不作审核者，本计划审仍只能 `--critics codex,gemini` 两侧跑** |
+| **F-8** | **ZCode 0.16.9 独立拉起时找不到内置 provider 配置，本机 glm 侧探活当前失败**（`preflight` 退 69）。根因：0.16.9 的 `zcode.cjs` 按**入口文件目录**推算 `zcode-builtin.json`，两条候选（`<入口目录>/provider/…` 与 `<入口目录>/../../../../../config/provider/…`，后者是源码树布局）在应用包内都不存在；真实文件在 `Resources/config/provider/zcode-builtin.json`。桌面端启动 CLI 时通过环境变量 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` + `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`（后者指 `~/.zcode/v2/provider_config.json`；上一稿写「须同时给」已被 EV-88 推翻——`FZi` 会在成对检查前合成缺失键，headless 路径只给内置那份即可）传路径；我方 `invokeZcode` 只透传 `HOME`，不传这两个。**本会话带上两个变量复跑 `preflight --stage plan` 整份通过（exit 0）**，假设已验证 | `zcode.cjs` 内 `LZi` / `resolveNodeProviderRuntimePaths` 字面；`app.asar` 内 `DC()`（packaged 取 `resourcesPath/config/provider/…`）；`adapters/zcode.ts:121-127` `invokeZcode` 的 `env` 只有 `HOME`；最近一次 glm 成功留痕 `run-20260919T154710Z` 记 `cli_version 0.16.5` | **不在 M10 范围**，但它卡住两件事：本主题的计划审默认三侧含 glm；M10 第 1 步 2.3 的 zcode 实测要靸 headless 跑通。修法是**改适配层**（纪律 1）：`invokeZcode` 注入两个变量，内置路径按入口派生（`resolve(dirname(entry), '../config/provider/zcode-builtin.json')`）并由探针落盘存在性、个人路径取 `~/.zcode/v2/provider_config.json`；`homeDir` 隔离副本下两条绝对路径不受影响。建议**另开小主题先修**（见 P-4）。**2026-09-20 更新：已按 P-4 ① 在小主题 `zcode-provider配置注入`（EV-81）落地**——适配层存在性门控注入两个变量、`failureKind` 增 `provider_config_unresolved`、探针增 `provider_config` 事实格与 `indeterminate` 第三态；实测另挖出两条同根因事实（P-29：定位先于参数解析，2026-09-19 的 `readonly_flags` 结论被污染成七个全接受；P-30：个人 provider 配置自带默认模型，旗标探针只能注入内置那份）。事实登记 M0 报告 §7 P-28～P-30、设计 v1.3.31。该主题代码双审只能 codex + gemini 两侧。**2026-09-21 更正：上句「已落地」只对「glm 侧起不起得来」成立**——该主题 r2 代码双审的 CODEX-05 实测发现 glm 侧探活能过但静默跑在个人配置默认模型（本机是 `qwen3.8-max`，与 codex 同家族），另立 **EV-82**。**2026-09-21 收口：EV-81 提交 `98b2fd3`（五轮代码双审）、EV-82 提交 `17f88ac`（两轮计划双审 + 三轮代码双审）。** EV-82 的根因不是「0.16.9 删了 `model.main` 读取点」，而是 EV-81 自己注入的个人变量让 CLI 跳过 legacy 导入（个人文件存在就直接用）；修法（路线 L）：审查运行的副本 HOME 下**不注入**个人键，模型限定按副本源 `cli/config.json` 自己的 provider 成员做（与包内导入器同一组规则），`probe.model_override` 改为零配额探针臂实测，守卫 `model_override_applied` 在请求模型未生效时播报。真实 0.16.9 上探针臂写出的 `defaultModelSelection` = 请求的 `bigmodel-coding-plan/GLM-5.3-Flash`。**glm 的审核者禁用已解除，本计划审三侧跑**；含 glm 的运行要带 `--model-glm GLM-5.3-Flash`（见抬头「本计划审的跑法」）。残量：EV-87（探活/探针路径仍指真实个人文件，本日实证归因到桌面端）、EV-93（`model_id_form` 补前缀与目录异源）、EV-94（探针两条残量） |
 
 ### 0.4 需要项目负责人拍板的三件（计划审前）
 
 - **P-1 EV-74 / EV-79 的处置**。两条的触发条件都写「M10 前」。EV-79 是只读失守判定的两处**静默漏检**（`rm -r --force` 降档、`&>` 不识别），且标「待双审」；EV-74 是 claude 探针的 `json_schema_ok` 从未喂过真实契约。**它们都不在 §16.1 M10 行的范围栏里。** 我的建议：**另开小主题、排在 M10 第 3 步之前**，不并入本主题——并入会让 M10 的代码双审面同时含「护栏判据」与「入口渲染」两种性质完全不同的改动。若你决定并入，本计划第 3 步加一节。
 - **P-2 F-4 的验收口径**：zcode 真载体验收若本机确认不了，接受「zcode 夹具级 + 达成边界登记」还是**卡住 M10 直到接通**？我倾向前者（PRD AC-21 的原文是「claude/zcode 真实，codex/gemini 夹具级」，降级要在留痕与 PRD 上写明，不静默）。
 - **P-3 渲染产物的 Git 归属**（决策 D5）：另三家的渲染产物是否提交进仓库。我倾向提交（可 diff 对账、审查员读得到），代价是每次改契约源多三份 diff。
-- **P-4 F-8 的先后**：①先另开小主题修 zcode 适配层（代码双审只能用 codex + gemini 两侧，因为 glm 正是坏着的那侧），修完再以三侧跑本计划审；②本计划审先以 `--critics codex,gemini` 两侧跑，zcode 修复与 M10 第 2～4 步并行。我倾向 ①：M10 第 1 步 2.3 本来就要 zcode headless 跑通，且 glm 在 M9 多轮双审里给过别家没给的结论，计划审少它一侧是真实损失。**已拍板 ①（2026-09-20），小主题 `zcode-provider配置注入` 已落地（代码未合入，r3 代码双审待跑）；但它只解了「起不起得来」——模型覆盖失效另立 EV-82，结案前三侧跑不成，见 F-8 行末 2026-09-21 更正。**
+- **P-4 F-8 的先后**：①先另开小主题修 zcode 适配层（代码双审只能用 codex + gemini 两侧，因为 glm 正是坏着的那侧），修完再以三侧跑本计划审；②本计划审先以 `--critics codex,gemini` 两侧跑，zcode 修复与 M10 第 2～4 步并行。我倾向 ①：M10 第 1 步 2.3 本来就要 zcode headless 跑通，且 glm 在 M9 多轮双审里给过别家没给的结论，计划审少它一侧是真实损失。**已拍板 ①（2026-09-20）。执行结果（2026-09-21）：小主题 `zcode-provider配置注入`（EV-81，`98b2fd3`）只解了「起不起得来」，模型覆盖失效另立 EV-82、再开小主题 `zcode-模型覆盖落点`（`17f88ac`）解掉。两者都已合入，本计划审按 ① 三侧跑，P-4 结项。**
 
 ---
 
@@ -116,6 +117,7 @@
 - **加载面**（补 M6 §3.5 留下的空白）：`~/.zcode/skills` 与 `~/.agents/skills` 同名 skill 各放不同哨兵，真实调用一次看模型加载了哪份；`$ARGUMENTS` 回显。结论决定第 5 步 glm 侧安装到哪个根（若两份都可能被加载，则**只装一个根并在安装器里查另一个根的重名**）。
 - **Hook 形态**：先静态——`~/.zcode/cli/config.json` 只 `grep -n` 键名（该文件含 provider 凭据，**禁止整份打印**，仓库根 `CLAUDE.md` 那条纪律）、`zcode.cjs --help`、二进制字面量扫 `PreToolUse` / `hooks` / `deny`；有线索再做行为实测：注册一条会 `exit 2` 的 Hook，发一次写工具调用，看是否被拒。
 - **载体**（F-4）：ZCode 交互会话能否在项目根执行 `.trivium/bin/trivium preflight --stage plan --json`。
+- **本步的 headless 拉起口径**（2026-09-21 补）：一律走 `doctor` / `preflight` / `review` 入口，不手搓脚本复刻 `prepareZcodeHome` / `scrubZcodeHome`（2026-09-20 事故与仓库根 `CLAUDE.md` 的纪律）；凭据文件只 `grep` 键名。实测中若要看 CLI 自写的 `v2/provider_config.json`，看的是**副本 HOME** 下那份（探针臂已落盘 `defaultModelSelection`），不是 `~` 下的。
 - 通过判据：Hook 能拒一次写 ⇒ glm 维持 L1，第 6 步开工；否则翻 L2，第 6 步只落文档。
 
 ### 2.4 claude：无需实测
@@ -257,7 +259,7 @@ Bash 侧拿不到 run 上下文（命令文本里没有主题），按 artifacts
 | codex | codex 交互会话 | claude / gemini / glm 中任两家 | **夹具级 + EV-77 真载体写事件**：闸门期在 codex 会话里改一个业务文件，预期**无拦截**，随后 `approve` 复核与漂移复算暴露；记录 L2 边界的真实形态 |
 | gemini | agy（第 1 步 2.1 通过时） | 任两家 | 夹具级；不通过则按退路（协议片段 + 手工 CLI）跑一轮，登记 |
 
-每轮判据：原稿后缀 = Driver；`run.json.driver` = 声明值且 `driver_enabled: true`；审核者集合不含 Driver；裁决件 `role` = Driver 且 `gate --check` 通过；`approve` 前复核触发（造一次缺件确认退 2）。
+每轮判据：原稿后缀 = Driver；`run.json.driver` = 声明值且 `driver_enabled: true`；审核者集合不含 Driver；裁决件 `role` = Driver 且 `gate --check` 通过；`approve` 前复核触发（造一次缺件确认退 2）。**glm 作审核者的轮次**加一条：`--model-glm GLM-5.3-Flash`，`run.json` glm 段 `model_route: config_copy` 且 `model_override_applied: true`（R-g ②）。
 
 ### 8.3 兼容验收（J3）
 
@@ -300,7 +302,8 @@ claude 轮的 `.reviews/` 布局、文件名、`_meta` 形状与 `settings.json`
 ## 11. 已知风险与边界
 
 - **R-a 第 1 步的结论决定第 5～7 步的形态**，且 agy / zcode 两家的行为实测都要发真实调用（配额与墙钟）。第 1 步先跑、结论出来再进第 5 步；第 2～4 步不依赖它，可并行推进。
-- **R-b zcode 真载体不可用**（F-4）：不静默降级，走 P-2 拍板。**且 F-8 未修前 zcode headless 本身不通**，第 1 步 2.3 与任何含 glm 的双审都跑不了——F-8 是第 1 步的硬前置。
+- **R-b zcode 真载体不可用**（F-4）：不静默降级，走 P-2 拍板。~~且 F-8 未修前 zcode headless 本身不通~~ F-8 已结（EV-81 / EV-82），headless 与含 glm 的双审都通了；剩下的只是「交互会话当 Driver」这一层。
+- **R-g glm 侧的两条环境风险**（2026-09-21 新增）：① 桌面端会改写 `~/.zcode/v2/provider_config.json`（本日实证：切 provider 家族时抹掉 `defaultModelSelection`、把自定义 provider `enabled` 翻 false，CLI 随即 `Model creation failed`）——第 1 步 2.3 与任何含 glm 的运行若撞上，先看 RUNBOOK「Select a model before continuing」那行，**不是**编排器的锅（区分实验已做，EV-87）；② 守卫的失明边界：含 glm 的运行一律 `--model-glm GLM-5.3-Flash`，否则 `model_override_applied: true` 没有鉴别力。
 - **R-c 误拦面扩大**（D3，R22）：本仓库日常会更频繁撞 Bash 侧拦截。出口已有且写在 `CLAUDE.md`；不为此开任何豁免（RV-B1）。
 - **R-d 渲染层引入第二事实源的风险**：契约源与四份产物若靠人记得重渲，就会漂。靠 `entry-render-parity` 在 CI 上判红，不靠记性。
 - **R-e L2 Driver 的残余风险**（R18）：闸门期可改业务文件，事后暴露。本轮把「审批前裁决完整」守死（5.2），把「写拦截」如实降为事后可审计，文档明示——**不用祈使句伪装机制**。
@@ -314,6 +317,7 @@ claude 轮的 `.reviews/` 布局、文件名、`_meta` 形状与 `settings.json`
 - 变异验证：第 2 步（忽略 task.json）、第 3 步（去掉任一条判据）、第 4 步（approve 跳过复核）各至少一条红，记入应答件。
 - `trivium doctor --selftest` 全绿（缺省 Driver 路径不退化）。
 - 第 7 步报告含每轮命令、退出码、留痕路径与 sha256。
+- 变异验证前先确认 `dist/test` 真被重编（`node scripts/build.mjs --tests-only`；`npm run build` 不含测试树）——EV-82 r3 前两轮变异循环因此空跑过，五条「全逃逸」其实跑在旧产物上。
 
 ---
 
@@ -324,3 +328,4 @@ claude 轮的 `.reviews/` 布局、文件名、`_meta` 形状与 `settings.json`
 - 第 2 步 `topic claim` 的命名与「`topic resolve` 纯只读」承诺的边界；EV-72 原文写的是「`topic resolve --driver` 时落盘」，本计划**刻意不这么做**，理由在 3.2。
 - D4 的两段逻辑是否又是一个 EV-06：只在 zcode 实测落 null 时才存在，请判断这个条件是否站得住。
 - 第 5 步渲染产物进 Git（D5）与「`skills/` 是资产根、wrapper 不动」的兼容承诺是否冲突。
+- **给 glm 侧**：这是路线 L 合入后 glm 第一次以审核者身份跑真实双审。你的意见照常逐条裁决；你跑在哪个模型上由 `run.json` 回读决定，与意见内容无关。
