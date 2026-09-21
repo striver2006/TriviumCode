@@ -25,7 +25,7 @@
 | git | 任意近期版本 | `git --version` |
 | Claude Code | 已安装并能用 | — |
 | Antigravity CLI | `agy` 可调用且**已登录** | `agy --version` |
-| 智谱 ZCode | 桌面应用已安装，CLI 凭据已配置 | `ls ~/.zcode/cli/config.json` |
+| 智谱 ZCode | 桌面应用已安装，CLI 凭据已配置（0.16.9 起编排器还要按路径注入桌面端的 provider 配置，只判文件有无、不读内容） | `ls ~/.zcode/cli/config.json ~/.zcode/v2/provider_config.json` |
 
 **关于凭据**：两侧的登录由你自己完成（`agy` 的交互登录、ZCode 的 `zcode login` 或
 provider 配置）。编排器只读取已有登录态，从不代你写凭据，也不会把凭据写进任何工件——

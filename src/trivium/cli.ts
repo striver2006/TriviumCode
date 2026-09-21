@@ -646,6 +646,7 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
       probe: report.probe,
       notes: report.notes,
       blockers: report.blockers,
+      warnings: report.warnings,
     });
   } else {
     renderDoctorReport(report);

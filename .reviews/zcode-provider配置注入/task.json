@@ -1,0 +1,141 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "zcode-provider配置注入",
+  "goal": null,
+  "created_at": "2026-09-20T08:28:18.211Z",
+  "updated_at": "2026-09-21T09:32:17.461Z",
+  "runs": [
+    {
+      "run_id": "20260920T082817Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "partial",
+      "started_at": "2026-09-20T08:28:18.200Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260920T083936Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-20T08:39:36.809Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260921T080553Z",
+      "stage": "code",
+      "rerun_index": 3,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-21T08:05:54.048Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260921T083716Z",
+      "stage": "code",
+      "rerun_index": 4,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-21T08:37:17.267Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260921T091034Z",
+      "stage": "code",
+      "rerun_index": 5,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-21T09:10:35.143Z",
+      "driver": "claude"
+    }
+  ],
+  "gate": {
+    "stage": "code",
+    "state": "approved",
+    "since": "2026-09-21T09:27:03.299Z",
+    "run_id": "20260921T091034Z"
+  },
+  "approvals": [
+    {
+      "at": "2026-09-20T10:51:24.325Z",
+      "stage": "code",
+      "run_id": "20260920T083936Z",
+      "decision": "rejected",
+      "reason": "事故后暂停，待数据恢复与 EV-82 后重审",
+      "session_id": null
+    },
+    {
+      "at": "2026-09-21T08:26:45.072Z",
+      "stage": "code",
+      "run_id": "20260921T080553Z",
+      "decision": "approved",
+      "reason": null,
+      "session_id": null
+    },
+    {
+      "at": "2026-09-21T08:59:51.050Z",
+      "stage": "code",
+      "run_id": "20260921T083716Z",
+      "decision": "approved",
+      "reason": "修改后提交",
+      "session_id": null
+    },
+    {
+      "at": "2026-09-21T09:27:03.299Z",
+      "stage": "code",
+      "run_id": "20260921T091034Z",
+      "decision": "approved",
+      "reason": "修改后提交",
+      "session_id": null
+    }
+  ],
+  "degradations": [
+    {
+      "run_id": "20260920T082817Z",
+      "stage": "code",
+      "reason": "gemini: failed（agy 非零退出（1）：error: Eligibility check failed: UNAVAILABLE (code 503): The service is currently unavailable.\n）",
+      "at": "2026-09-20T08:31:59.497Z"
+    }
+  ],
+  "disputed": false,
+  "disputes": [],
+  "joint_checks": [
+    {
+      "run_id": "20260920T083936Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1,
+      "reason": "voided",
+      "at": "2026-09-20T09:06:04.648Z"
+    },
+    {
+      "run_id": "20260921T080553Z",
+      "stage": "code",
+      "rerun_index": 3,
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1,
+      "reason": "voided",
+      "at": "2026-09-21T08:32:30.992Z"
+    },
+    {
+      "run_id": "20260921T083716Z",
+      "stage": "code",
+      "rerun_index": 4,
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1,
+      "reason": "no-structured-review",
+      "at": "2026-09-21T08:55:04.366Z"
+    },
+    {
+      "run_id": "20260921T091034Z",
+      "stage": "code",
+      "rerun_index": 5,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-09-21T09:32:17.461Z"
+    }
+  ]
+}

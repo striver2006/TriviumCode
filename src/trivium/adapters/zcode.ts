@@ -11,6 +11,10 @@
  *   - stdout **不是纯 JSON**（前面有 AI SDK 告警行），必须抠 envelope。
  *   - envelope **没有 model 字段**，生效模型只能从日志/rollout 回读。
  *   - 轨迹需要**两个**文件：日志给工具名与状态，rollout 给工具参数（路径）。
+ *   - **0.16.9 起独立拉起要靠两个环境变量定位 provider 配置**（坑 P-28）：CLI 按**入口文件目录**
+ *     推算 `zcode-builtin.json`，应用包布局下两条候选都不存在；桌面端起 CLI 时用
+ *     `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` / `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` 传路径。
+ *     这一步**先于参数解析**：不传的话连 `Unknown option` 都报不出来（坑 P-29）。
  */
 import path from 'node:path';
 import os from 'node:os';
@@ -32,6 +36,8 @@ import {
   type CriticAdapter,
 } from './base.js';
 import { scanAndRemoveSecrets } from '../scrub.js';
+// CLI 原话进探活详情 / 失败原因之前过一遍脱敏（r5 CODEX-06）
+import { redactSecrets } from '../secrets.js';
 
 /**
  * 把 profile 里的人类可读短名补全为 `<providerId>/<modelName>` 全限定形态。
@@ -52,6 +58,127 @@ export function qualifyZcodeModel(model: string | null, modelIdForm: string | nu
 /** 写类工具 + shell + 出网：审查员不该把被审代码发到外部端点 */
 export const ZCODE_READONLY_DENYLIST = 'Write,Edit,MultiEdit,ApplyPatch,NotebookEdit,Bash,WebFetch,WebSearch';
 
+/**
+ * 0.16.9 起 CLI 定位 provider 配置的两个环境变量（坑 P-28）。
+ *
+ * 两条路径都是**绝对路径**，不随 `HOME` 走：`config_copy` 档把 `HOME` 指到运行目录下的
+ * 副本时，副本里没有 `.zcode/v2/`，所以个人配置必须显式给真实用户目录下那份。
+ */
+export const ZCODE_BUILTIN_PROVIDER_ENV = 'ZCODE_BUILTIN_PROVIDER_CONFIG_FILE';
+export const ZCODE_PERSONAL_PROVIDER_ENV = 'ZCODE_PERSONAL_PROVIDER_CONFIG_FILE';
+
+/**
+ * CLI 没定位到内置 provider 配置时的 stderr 形态（0.16.9 实测原文：
+ * 「无法定位 CLI ZCode Built-in Provider Config：<候选1>, <候选2>」）。
+ * 只认英文片段——中文前缀随 CLI 语言设置变，英文名词是配置项本身的名字。
+ */
+export const ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE = /Built-in Provider Config/;
+
+/**
+ * 「参数解析**已经发生过**」的正向证据（r4 CODEX-01）。
+ *
+ * 全是**模型/凭据层**的停点：CLI 只有先吃完 argv 才会走到建模型、读凭据这一步，
+ * 所以它们出现即证明参数解析已过。旗标探针拿它当「接受」的判据——
+ * 原先的判据是否定式（没报 `Unknown option` 就算接受），把「没有证据证明被拒」
+ * 当成了「有证据证明被接受」：`run()` 在 spawn 失败时 `code` 为 `null`、stderr 拼
+ * `[spawn error]`，既不命中定位失败也不命中 `Unknown`，七个候选会**全部**记成接受——
+ * 与 P-29 同一类结论文件污染，只是换了成因。
+ *
+ * 这条列表**必然是不完备的**（停点文案随版本变），所以判据的设计是：命不中就记
+ * `indeterminate`、保留旧结论并告警，而不是回落成接受。漏判的代价是有人去看一眼，
+ * 误放的代价是一份看起来正常的失真结论。
+ */
+export const ZCODE_ARGV_PARSED_RE =
+  /Model creation failed|Model config is missing|provider is missing an API key|provider_not_configured|Provider authentication failed/i;
+
+/**
+ * 内置 provider 配置定位不到时的说法，**四处同源**（r2 AGY-04 立常量，r3 AGY-03 补齐第四处）：
+ * 适配器探活详情、`availability()` 的不可用原因、`critic.run()` 的失败提示、`doctor` 的布局 blocker。
+ * 文案分头写过一次，于是 `run()` 落到 `stderr.slice()` 而探活给的是根因——同一现象两种说法。
+ * 加消费点时记得回来改这个数字：它是本注释唯一会过期的部分。
+ *
+ * **适用版本前提（r5 CODEX-01）**：这段话背后的判据——「内置文件缺失 ⇒ 独立拉起必失败」——
+ * 以 **0.16.9** 实测为据。0.16.5 没有这个问题（M0 报告 P-28；本仓最近一次 glm 成功留痕
+ * `run-20260919T154710Z` 记的正是 0.16.5），未来某版若改回自己能定位、或把这份文件挪走，
+ * 判据同样会失效并**误拦**。注入路径本身（`zcodeProviderEnv`）是版本中立的，误拦只发生在
+ * `availability()` 与 doctor 的那两支。按版本门控要引入版本比较与「`version` 为 null 时怎么办」
+ * 这条新语义，登记 BACKLOG **EV-85**，触发条件：下一次改动布局支，或 ZCode 跨版本升级。
+ */
+export const ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT =
+  `CLI 未定位到内置 provider 配置（坑 P-28）：0.16.9 起 CLI 按入口目录推算 zcode-builtin.json，` +
+  `应用包布局下推算不到；编排器按 ${ZCODE_BUILTIN_PROVIDER_ENV} 注入 ` +
+  `<入口目录>/../config/provider/zcode-builtin.json，本机该文件不存在或 ZCode 安装布局已变。` +
+  `这是**安装布局**问题而非凭据问题，请核对 ZCode 安装布局`;
+
+/**
+ * ZCode headless 未跑通时的说法，`availability()` 与 `doctor` 同源（r2 AGY-04）。
+ * 分头写的版本里 doctor 已补上「布局 ≠ 凭据」那句而 `availability()` 没有，
+ * 于是 preflight 挡住人的那一刻给的仍是旧说法。
+ */
+export const ZCODE_HEADLESS_NOT_OK_HINT =
+  'ZCode headless 未跑通。注意：CLI 的模型 provider 配置独立于桌面端，' +
+  '「已登录」不等于「可用」——请确认 ~/.zcode/cli/config.json 存在；' +
+  '若 doctor notes 里 provider_config 的内置文件为「未找到」，是 ZCode 安装布局问题（P-28），不是凭据问题。';
+
+/**
+ * 按入口派生两份 provider 配置的路径。
+ *
+ * 内置：`<entry 真实目录>/../config/provider/zcode-builtin.json`——应用包布局下
+ * `Resources/glm/zcode.cjs` 与 `Resources/config/provider/…` 是兄弟目录，桌面端
+ * （`app.asar` 内 `DC()`）取的正是 `resourcesPath/config/provider/…`。
+ * 个人：`<用户目录>/.zcode/v2/provider_config.json`（0600，含凭据，**不要读内容**）。
+ *
+ * **入口先 `resolve` 再 `realpath`**（r2 CODEX-04 ≡ AGY-03）：`dirname` 不解软链，
+ * 配置里给相对入口会落到 cwd、给 `/usr/local/bin/zcode.cjs` 这类软链会落到软链所在目录，
+ * 两种形态派生出的兄弟目录都不是真实安装布局里的那个。CLI 自己按**真实**入口文件推算，
+ * 这里必须跟它同一口径。入口不存在时（探针未找到 / 布局已变）回落到词法路径，
+ * 交给下游的存在性门控判——软链断了不该在这里抛。
+ */
+export async function zcodeProviderConfigPaths(
+  entry: string,
+  userHome: string = os.homedir(),
+): Promise<{ builtin: string; personal: string }> {
+  const abs = path.resolve(entry);
+  let real = abs;
+  try {
+    real = await fs.realpath(abs);
+  } catch {
+    real = abs;
+  }
+  return {
+    builtin: path.resolve(path.dirname(real), '../config/provider/zcode-builtin.json'),
+    personal: path.join(userHome, '.zcode/v2/provider_config.json'),
+  };
+}
+
+/**
+ * 存在性门控后的 env 片段：**文件在才注入**，不在就显式置 `undefined`，让 `run()` 把宿主
+ * 环境里同名的变量**删掉**，CLI 走自己的默认逻辑并把原话报出来
+ * （`failureKind: 'provider_config_unresolved'`）。
+ * 指向不存在的文件不会让 CLI 更早失败（实测退成「Model creation failed」），但会把
+ * 「文件丢了」伪装成「模型建不出来」——所以宁可不给。
+ *
+ * **两个键恒定出现、缺的那个值为 `undefined`**（r2 CODEX-01 ≡ AGY-02）：`run()` 以
+ * `{...process.env}` 为底再覆盖，只追加不清除的话，宿主环境里预置的
+ * `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` 会原样透传进空 HOME 的旗标探针——那是七次真实模型调用。
+ * 「没主动注入」与「子进程拿不到」是两件事，判据只能是后者。
+ *
+ * 只判有无、不读内容（个人配置含凭据）。
+ */
+export async function zcodeProviderEnv(
+  entry: string,
+  userHome: string = os.homedir(),
+): Promise<Record<string, string | undefined>> {
+  const p = await zcodeProviderConfigPaths(entry, userHome);
+  const env: Record<string, string | undefined> = {
+    [ZCODE_BUILTIN_PROVIDER_ENV]: undefined,
+    [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
+  };
+  if (await exists(p.builtin)) env[ZCODE_BUILTIN_PROVIDER_ENV] = p.builtin;
+  if (await exists(p.personal)) env[ZCODE_PERSONAL_PROVIDER_ENV] = p.personal;
+  return env;
+}
+
 export interface ZcodeInvokeOptions {
   entry: string;
   node: string;
@@ -61,6 +188,17 @@ export interface ZcodeInvokeOptions {
   readonlyArgs: string[];
   /** 独立 HOME：模型覆盖与配置隔离的唯一落点 */
   homeDir?: string | null;
+  /**
+   * 派生**个人** provider 配置路径时用的用户目录，默认 `os.homedir()`。
+   *
+   * 与 `homeDir` 不是一回事：那个是递给子进程的 `HOME`（副本），这个是编排器在**本机**
+   * 找个人配置时用的真实用户目录，两条 provider 路径都是绝对路径、不随副本 `HOME` 走。
+   *
+   * 存在的理由是可测性（r3 CODEX-F01-02）：不开这个口子，用例只能吃真实 `os.homedir()`——
+   * 而开发机上 `~/.zcode/v2/provider_config.json` 真实存在，于是「个人那份不在」的用例摆不出来，
+   * 「两个键都被删」的断言在个人这一半是**假阴性**（它拿到的恰是真实路径）。
+   */
+  userHome?: string;
   timeoutMs: number;
 }
 
@@ -72,7 +210,7 @@ export interface ZcodeInvokeOutcome {
   stderr: string;
   commandLine: string;
   durationMs: number;
-  failureKind: 'none' | 'model_config_missing' | 'provider_not_configured' | 'other';
+  failureKind: 'none' | 'model_config_missing' | 'provider_not_configured' | 'provider_config_unresolved' | 'other';
 }
 
 /** zcode 的 argv 拼装。纯函数，与执行分离，让 M0 调用配方有回归测试 */
@@ -121,14 +259,26 @@ export function bashStillDenied(readonlyFlags: readonly string[]): boolean {
 export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvokeOutcome> {
   const args = buildZcodeArgs(opts);
 
-  const env: Record<string, string | undefined> = {};
+  // provider 配置路径先于 HOME 算：两条都是绝对路径，按**真实**用户目录取，不受副本 HOME 影响
+  const env: Record<string, string | undefined> = {
+    ...(await zcodeProviderEnv(opts.entry, opts.userHome ?? os.homedir())),
+  };
   if (opts.homeDir) env['HOME'] = opts.homeDir;
 
   const r = await run(opts.node, args, { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, killTree: true });
 
+  /*
+   * 「无法定位 Built-in Provider Config」是**布局/环境**问题而非模型问题：它要先于
+   * `model_config_missing` 判，否则 preflight 给出的提示会把人引去查凭据与模型配置，根因隐形。
+   *
+   * 但判定放在**退出码门控之内**（r2 AGY-01）：该形态实测退 1（stdout 为空、stderr 一行），
+   * 而这个正则是裸名词匹配——CLI 正常退 0 时 stderr 若出现同一名词（诊断行、告警行），
+   * 一次成功的调用会被判成布局失败。退出码是免费的第一道闸，先过它再谈形态。
+   */
   let failureKind: ZcodeInvokeOutcome['failureKind'] = 'none';
   if (r.code !== 0) {
-    if (/Model config is missing/i.test(r.stderr)) failureKind = 'model_config_missing';
+    if (ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE.test(r.stderr)) failureKind = 'provider_config_unresolved';
+    else if (/Model config is missing/i.test(r.stderr)) failureKind = 'model_config_missing';
     else if (/provider is missing an API key|provider_not_configured|Provider authentication failed/i.test(r.stderr))
       failureKind = 'provider_not_configured';
     else failureKind = 'other';
@@ -297,7 +447,11 @@ export const zcodeAdapter: CriticAdapter = {
             ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
             : out.failureKind === 'model_config_missing'
               ? '缺 ~/.zcode/cli/config.json（CLI 的模型配置独立于桌面端，「已登录」不等于可用）'
-              : `探活失败（${out.failureKind}）：${out.stderr.slice(0, 200)}`,
+              : // CLI 原话过一遍脱敏再进详情（r5 CODEX-06）：这段文字会进 doctor / preflight 输出，
+                // 而那些输出的实际流转方式是被人抄进 git 里的 evidence 目录，那条路上没有闸门
+                out.failureKind === 'provider_config_unresolved'
+                ? `${ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT}：${redactSecrets(out.stderr.slice(0, 200)).content}`
+                : `探活失败（${out.failureKind}）：${redactSecrets(out.stderr.slice(0, 200)).content}`,
         };
       },
     };
@@ -310,10 +464,31 @@ export const zcodeAdapter: CriticAdapter = {
       return { ok: false, reason: 'zcode 尚未探测，请先运行 trivium doctor --only zcode' };
     }
     if (!p.entrypoint) return { ok: false, reason: '探针未找到 zcode.cjs 入口，请先运行 trivium doctor' };
+    /*
+     * 布局判据要**先于**旗标判空（r2 CODEX-02 ≡ AGY-04）：内置 provider 配置定位不到时，
+     * 参数解析根本没发生（P-29），`readonly_flags` 为空是布局失败的**后果**而不是独立结论。
+     * 先判旗标，人拿到的会是「无可用只读旗标、请升级 ZCode」——往升级方向查，永远查不到。
+     *
+     * 判据是严格 `=== null`（探过、没找到）。旧结论文件没有这一格时值是 `undefined`，
+     * 那是「未探过」，不该在这里拦人——`probed_at` 那一支已经管住它了。
+     */
+    if (p.provider_config?.builtin_file === null) {
+      return { ok: false, reason: ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT };
+    }
     if (p.readonly_flags.length === 0) {
       return {
         ok: false,
-        reason: '探针未实测到任何可用的只读参数组合，无法保障审查员只读，该侧不可用',
+        /*
+         * 后半句是 r3 CODEX-F01-03：空集**仍有**第二种成因没被这里区分开——
+         * 「新结论文件 + 本轮未判定」时保留的是初始 `[]`，而「本轮未判定」这个事实不落盘
+         * （它是探测过程的属性，落盘就过期），`availability()` 读不到它。
+         * 不能为此把状态加进结论文件，能做的是**别把人引向唯一那个错方向**：
+         * 旧文案只说「升级 ZCode」，而这一格为空最常见的原因恰恰是布局问题导致本轮没判成。
+         */
+        reason:
+          '探针未实测到任何可用的只读参数组合，无法保障审查员只读，该侧不可用。' +
+          '若 doctor notes 里记了「本轮未判定」（provider 配置定位失败，参数解析根本没发生），' +
+          '先重跑 trivium doctor --only zcode 并核对 ZCode 安装布局，而不是升级 ZCode',
       };
     }
     /*
@@ -331,12 +506,7 @@ export const zcodeAdapter: CriticAdapter = {
       };
     }
     if (p.response_field === null) {
-      return {
-        ok: false,
-        reason:
-          'ZCode headless 未跑通。注意 CLI 的模型 provider 配置独立于桌面端——' +
-          '「已登录」不等于「可用」，请确认 ~/.zcode/cli/config.json 存在。',
-      };
+      return { ok: false, reason: ZCODE_HEADLESS_NOT_OK_HINT };
     }
     return { ok: true };
   },
@@ -407,7 +577,11 @@ export const zcodeAdapter: CriticAdapter = {
           ? '缺 ~/.zcode/cli/config.json（CLI 的模型配置独立于桌面端）'
           : out.failureKind === 'provider_not_configured'
             ? 'provider 鉴权失败，检查 config.json 里的 apiKey'
-            : out.stderr.slice(0, 300);
+            : // 与探活、availability() 同一段文案（r2 AGY-04）：没有这一支时它落到裸 stderr，
+              // 读留痕的人看到的是 CLI 的一行原话，看不出「这是安装布局问题」
+              out.failureKind === 'provider_config_unresolved'
+              ? `${ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT}：${redactSecrets(out.stderr.slice(0, 200)).content}`
+              : redactSecrets(out.stderr.slice(0, 300)).content;
       return failedResult('glm', {
         status: 'failed',
         reason: `zcode 执行失败（${out.failureKind}）：${hint}`,

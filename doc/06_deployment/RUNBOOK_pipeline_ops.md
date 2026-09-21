@@ -261,6 +261,9 @@ trivium doctor --only agy       # 只探一侧，省配额
 | 配额打满 | 换模型档位，或 `--allow-single` 单侧跑（记为降级） |
 | 未认证 | 按厂商自己的登录流程处理。**凭据不经编排器**，配置里只放模型 slug 与路径 |
 | 探针结论过期 | `.trivium/config.local.yaml` 的 `probe.generated_at`，重跑 `doctor` 刷新 |
+| `preflight` 在「ZCode 已认证」退 69，详情含「无法定位 CLI ZCode Built-in Provider Config」 | ZCode 0.16.9 起 CLI 按入口目录推算 provider 配置，应用包布局下推算不到（坑 P-28）。编排器已按入口派生并注入 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` / `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`，仍报错说明 `<ZCode.app>/Contents/Resources/config/provider/zcode-builtin.json` 不在原位——跑 `trivium doctor --only zcode --no-model-calls`，看 notes 里 `provider_config` 那行。这是**安装布局**问题，不是凭据问题 |
+| 自己在 shell 里设了 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` / `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`，但不生效 | **编排器独占这两个变量**，拉起 zcode 的三条路径（version 探针、旗标探针、审查执行）一律按 ZCode 安装布局派生后注入，派生不到就把它们从子进程环境里**删除**。这是有意的：判据必须是「子进程拿不到」而不是「编排器没主动注入」，否则宿主环境能改变探针行为（旗标探针那侧会因此烧七次真实配额）。`doctor` 探测到宿主预置值时会出一条 ⚠️ note。要换 provider 配置的位置，请调整 ZCode 安装布局，不要靠环境变量 |
+| glm 侧起得来，但留痕里的 `model_effective` 不是请求的 GLM 模型 | ZCode 0.16.9 把模型选择迁到了 `~/.zcode/v2/provider_config.json` 的 `defaultModelSelection`，运行目录下的 `config_copy` 副本里的 `model.main` **已不生效**（坑 P-31 / BACKLOG **EV-82**，未修）。AC-13 的回读会如实记差异，但该侧跑的是个人配置的默认模型——可能与另一侧同家族，双审的异构性失效。**EV-82 结案前不要把 glm 选为审核者**，双审用 `--critics codex,gemini` |
 
 已知的厂商行为坑列在 [`REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md)。
 其中几条值得单独记住：
@@ -273,6 +276,16 @@ trivium doctor --only agy       # 只探一侧，省配额
 ---
 
 ## 六、留痕相关
+
+### 把 doctor / preflight 的输出抄进 evidence 目录之前
+
+`doc/05_testing/evidence/` 下的实测留痕是**人工抄录**的，那条路径上**没有** secrets 闸门——
+归档件与送审补丁有，手抄的没有。而 doctor 的 notes、preflight 的失败详情里会带 **CLI 的 stderr 原话**。
+
+编排器已经把这几处原文在拼进 note / 详情之前过了一遍 `redactSecrets()`（旗标探针的未判定成因、
+headless 失败 note、ZCode 探活详情、`critic.run()` 的失败提示），所以正常情况下抄过去是安全的。
+**但它只认已登记的凭据形态**：厂商换一种回显写法，脱敏就漏。所以抄录前仍然自己扫一眼，
+尤其是任何形如 `<id>.<secret>` 的长串。含凭据的配置文件一律 `grep` 目标键名，**不要整份打印**。
 
 ### 提交被拦下，说「归档留痕不完整」
 

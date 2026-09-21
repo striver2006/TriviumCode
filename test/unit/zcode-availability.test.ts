@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { zcodeAdapter } from '../../src/trivium/adapters/zcode.js';
+import { zcodeAdapter, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT } from '../../src/trivium/adapters/zcode.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 
 function ctxWith(flags: string[]) {
@@ -61,4 +61,40 @@ test('只有 --mode plan 时不可用，并说明原因', () => {
 
 test('有 --disallowed-tools 即可用', () => {
   assert.equal(zcodeAdapter.availability(ctxWith(['--mode plan', '--disallowed-tools Write,Edit,Bash'])).ok, true);
+});
+
+/*
+ * ── 内置 provider 配置定位不到：判据本身，以及它相对旗标判空的**顺序**（r3 AGY-01）──
+ *
+ * 这一支的全部价值就在顺序上。定位失败时参数解析根本没发生（P-29），`readonly_flags`
+ * 为空是布局失败的**后果**；先判旗标，人拿到的是「无可用只读旗标、请升级 ZCode」——
+ * 往升级方向查，永远查不到。顺序是重构时最容易被静默改掉、而类型与既有用例都拦不住的东西。
+ */
+
+test('内置 provider 配置探过但没找到 → 报安装布局，不报旗标', () => {
+  const ctx = ctxWith(['--mode plan', '--disallowed-tools Write,Edit,Bash']);
+  ctx.cfg.probe.cli.zcode!.provider_config = { builtin_file: null, personal_file: '/u/.zcode/v2/provider_config.json' };
+  const a = zcodeAdapter.availability(ctx);
+  assert.equal(a.ok, false);
+  assert.equal(a.reason, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT);
+});
+
+test('布局失败与旗标为空同时成立时，布局提示优先（顺序守卫）', () => {
+  const ctx = ctxWith([]); // 旗标空集：定位失败的后果，不是独立结论
+  ctx.cfg.probe.cli.zcode!.provider_config = { builtin_file: null, personal_file: null };
+  const a = zcodeAdapter.availability(ctx);
+  assert.equal(a.ok, false);
+  assert.equal(a.reason, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT);
+  assert.doesNotMatch(
+    a.reason ?? '', /升级 ZCode/,
+    '两支换序就会退回「请升级 ZCode」——那正是这条判据要消灭的误导',
+  );
+});
+
+test('旧结论文件没有 provider_config 这一格（undefined）时不走布局支', () => {
+  const ctx = ctxWith(['--mode plan', '--disallowed-tools Write,Edit,Bash']);
+  // 「未探过」与「探过、没找到」是两件事：严格 === null 只认后者，
+  // 缺格的旧结论由 probed_at 那一支管，不该在这里拦人
+  delete ctx.cfg.probe.cli.zcode!.provider_config;
+  assert.equal(zcodeAdapter.availability(ctx).ok, true);
 });

@@ -323,6 +323,18 @@ export interface ZcodeProbe extends CommonProbe {
   response_field: string | null;
   /** 实测到的模型 id 规范写法（本机为 builtin:<provider>/<name> 形态） */
   model_id_form?: string | null;
+  /**
+   * 0.16.9 起 CLI 定位 provider 配置所需的两份文件（坑 P-28），记**探测时刻的存在性**：
+   * 存在记绝对路径，不存在记 null，整段 null 表示旧结论文件未探过这一格。
+   *
+   * 谁消费：`doctor` 的 notes 与 blocker **直接读**这一格；`preflight` 经 `zcodeAdapter.availability()`
+   * 读 `builtin_file` 判该侧可用性（自己不读结论文件）；探活失败的详情由 `authProbe()` 在**运行时**
+   * 从 CLI 的 stderr 生成，与这一格无关。**真正执行拉起的那条路径不读它**：派生规则
+   * （`zcodeProviderConfigPaths`）只有一处，拉起时按当下的文件系统重算并做存在性门控；
+   * 若改成读这格，文件在两次 doctor 之间出现或消失时，拉起要么漏注入要么注入到不存在的路径。
+   * 这格的价值是让人在 doctor 输出里**看见**编排器会注入什么，以及让「可用性」有一个不必起进程的判据。
+   */
+  provider_config?: { builtin_file: string | null; personal_file: string | null } | null;
 }
 
 /**

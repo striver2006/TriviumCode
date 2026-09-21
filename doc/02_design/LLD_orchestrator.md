@@ -111,7 +111,7 @@ graph TD
 | **`agents/registry.ts`** | — | **全部 Agent 差异的唯一登记处**（M7a 引入，`039bdc9`）。`AgentDescriptor` 登记四家（`claude` / `codex` / `gemini` / `glm`）的 id、显示名、vendor、归档后缀、意见前缀、`criticEnabled` / `driverEnabled`、护栏等级与协议片段落点；归档后缀、意见前缀、配置键、探针段、镜头键、**禁读矩阵**、Hook 字面集一律由它派生。`test/unit/registry-parity.test.ts` 以 grep 级对账守着「除本文件与各适配器外，任何模块不得出现具体 Agent id / 后缀 / 前缀字面量」 |
 | `adapters/base.ts` | 164 | 适配器契约、证据下限判定、泄漏判定 |
 | `adapters/agy.ts` | 314 | Antigravity CLI 的 argv 构造与结果解析 |
-| `adapters/zcode.ts` | 331 | ZCode CLI 同上，外加 `HOME` 副本的模型覆盖 |
+| `adapters/zcode.ts` | 331 | ZCode CLI 同上，外加 `HOME` 副本的模型覆盖与 0.16.9 provider 配置环境变量注入（P-28，存在性门控） |
 | `adapters/agy-events.ts` | 176 | agy 的 `stream-json` 事件流解析（工具轨迹来源） |
 | `adapters/zcode-trace.ts` | 300 | ZCode 的会话日志 + rollout 双文件轨迹解析 |
 | `adapters/stub.ts` | 228 | 桩适配器，经环境变量跨进程注入，`--selftest` 与集成测试用 |

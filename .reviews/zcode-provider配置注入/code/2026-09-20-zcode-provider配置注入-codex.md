@@ -1,0 +1,193 @@
+---
+schema: trivium.review.v1
+topic: zcode-provider配置注入
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.155.1
+model_requested: deepseek-flash
+model_effective: deepseek-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260920T082817Z
+rerun_index: 1
+snapshot_hash: sha256:9cbf2a96aa7e6ed3897b2083139f2610a19288391b79a58f830c0d56fc4c3b49
+blind: true
+started_at: 2026-09-20T08:28:18.341Z
+finished_at: 2026-09-20T08:31:59.160Z
+duration_s: 221
+tool_calls:
+  run_command: 43
+  project_reads: 24
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 2
+  minor: 4
+  nit: 0
+degraded: true
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+readonly_verification: unavailable
+path_verification: unavailable
+joint_check:
+  state: skipped-insufficient-sides
+  effective_sides: 1
+heterogeneous: true
+session_id: 01a0bdee-2e83-7f92-8ee2-3716e1c3cf8f
+---
+
+# 代码审查：zcode-provider配置注入
+
+> Critic-C · OpenAI Codex ｜ 模型 `deepseek-flash`
+> ｜ 运行 `20260920T082817Z`
+> ｜ 本轮审核者 codex、gemini
+
+> ⚠️ **本次为降级轮次**：有入选审核者未能完成，本结论不构成本轮预期的完整多审。实际完成情况见抬头的审核者清单与 run 元数据的 `degraded_reason`。
+>
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+核心机制方向正确：存在性门控（内置那份是承重的、个人那份不能替代）、按 stderr 形态判 provider_config_unresolved、第三态 indeterminate 不写入 readonly_flags，都比修前严格；evidence 与 10 条零配额用例也扎实。问题在于这套判断还没走到「用户看得见」的那一层，外加一处未实测的新交互。最需要先定论的是 CODEX-02：运行期现在同时给两份 provider 变量，而 evidence 自己证明「个人配置自带默认模型、足以决定模型」，它与 config_copy 写进副本 HOME 的 model.main 谁优先从未实测——若个人那份优先，模型覆盖会在配额花完之后才由回读发现。紧接着是 CODEX-01：第三态只进本次 doctor 的 notes、不落盘，而 preflight 的短路顺序让本补丁要修的那台机器第一眼看到的是「CLI 不支持只读组合」，与设计承诺的「提示指向安装布局」相反。其余为探针判据单点识别、超时不杀进程树、入口派生不解符号链接，以及三处文档口径与实现不符。
+
+**结论**：`request-changes`
+
+## 审查意见（共 6 条：重要 2 ｜ 次要 4）
+
+### CODEX-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/zcode.ts:370-390 与 src/trivium/adapters/zcode.ts:381-385` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：新的第三态只活在本次 doctor 的 notes 里、不落盘：`probe.readonly_flags = flags.accepted` 无条件写盘，七个候选全 indeterminate 时结论就变成 `readonly_flags: []`，而 indeterminate 的条数/原因只存在于同一进程的 notes 里。preflight 的检查顺序是 ①新鲜度 ②CLI 版本 ④只读能力 … ⑧探活，且每步都 `checks.every(ok)` 短路（preflight.ts:644/650），所以在**本补丁要修的那台机器上**（内置 provider 配置缺失）用户根本走不到探活那一步，第一眼读到的是 ④ 的「探针未实测到任何可用的只读参数组合，无法保障审查员只读，该侧不可用」——把一个「CLI 找不到自己的 provider 配置」的安装布局问题，说成「CLI 不支持只读参数组合」。设计 §11.3 要点 7 与 §3.5 的 `zcode.readonly_flags` 行都写「预检提示指向安装布局而不是凭据」，这一步没有兑现；方向比修前更偏（修前至少是 authProbe 的「凭据」口径，现在前置到「CLI 能力」口径）。
+
+**依据**：读 src/trivium/probes/zcode.ts:370-390（indeterminate 只 push 进 notes，readonly_flags 无条件赋 accepted）、src/trivium/adapters/zcode.ts:375-396（availability 判据链：probed_at → entrypoint → `readonly_flags.length === 0` 先于 `--disallowed-tools` 与 `response_field`）、src/trivium/preflight.ts:596-676（④ 在 ⑧ 之前，`checks.every(c => c.ok)` 逐级短路）、src/trivium/adapters/zcode.ts:355-372（布局提示只加在 authProbe 的探活详情里）；`grep -rn provider_config src/` 的命中只有 doctor.ts:505 / probes/zcode.ts / config.ts:97 / types.ts:335 / adapters/zcode.ts，preflight 无任何消费点；doc/05_testing/evidence/zcode-provider-config-20260920/probe-outputs.md §6 记的是同一台机器上被污染的结论形态。
+
+**建议**：让第三态可被读侧看见：把 indeterminate（或至少一个计数/布尔）落进探针结论，`availability()` 在 `readonly_flags` 为空时先判「候选未能判定（provider 配置定位失败）」，给出布局指向与 `doctor --only zcode` notes 的指引；退一步也至少要给「全空」这条分支补一句诊断方向，别让它继续自称只读能力不足。
+
+### CODEX-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/zcode.ts:178-186` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：真跑路径现在同时注入内置与个人两个变量，而「个人那份」足以决定用哪个模型：evidence §4 里空 HOME + 两份变量时，CLI 自己起了一个 turn 到 `qwen3.8-max`——那个名字就是个人 provider 配置的默认模型。而运行期的模型覆盖仍然靠 `prepareZcodeHome` 往副本 HOME 的 `cli/config.json` 写 `model.main`（C-07/C-08 是在 0.16.5 上实测的，当时**这两个变量根本不存在**）。两者同时在场时谁优先，本轮没有任何实测、文档也没有一句断言；若个人那份优先，`config_copy` 档会在用户看不见的地方换成另一个模型，预检拦不住（它只校 slug 在不在目录里，不看生效模型），只有 AC-13 的事后回读会记账，而配额那时已经花掉。测试同样没守这条：`invokeZcode` 那条用例建的是 `withPersonal: false` 的布局，运行路径「两份都给」从未被断言真的递到了子进程（个人变量只被断言过「探针一次都不给」）。
+
+**依据**：读 src/trivium/adapters/zcode.ts:178-186、:285-303（prepareZcodeHome 写 model.main）、:430-450（run 里 qualifyZcodeModel + home）；test/unit/zcode-provider-env.test.ts:143-165（withPersonal: false）；doc/05_testing/evidence/zcode-provider-config-20260920/probe-outputs.md §3（只给内置 → Model creation failed）与 §4（两份都给 + 空 HOME → 真起 turn 到 qwen3.8-max）；设计 §3.3 结论与对策第 1 条（模型覆盖两档降级的实测前提）。
+
+**建议**：补一次端到端实测：副本 HOME 里有 `cli/config.json`（`model.main` 写一个与个人默认不同的 slug）+ 两个变量都给，从 rollout/log 回读生效模型是谁；把结论按 P-xx 记进 M0 报告与设计 §3.3，再决定运行期该给一份还是两份。若实测显示个人那份压过副本，就把「给哪几份」按调用场景分开，并让运行路径的用例断言实际 env（而不是只断言内置那一支）。
+
+### CODEX-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/zcode.ts:112-129` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：第三态只认一条 stderr 名词片段，而它要防的那条默认规则——「没报 Unknown option 就是接受」——一字未改。任何别的「参数解析没跑到」的形态（文案改词、消息改走 stdout、换成一个更早的定位/初始化错误、语言包变化）都会重新落回 accepted，而这一次的代价是七个候选各起一次真实 turn（P-30 的形态：进程挂着不退，只能等 30s 超时被杀）。循环里也没有任何残留断言：§4 那次真实调用在 stdout 留下了 97 字节 envelope，而当前判据完全不看 stdout，所以「真的调了模型」在结论里留不下痕迹——P-29 那次失真之所以能潜伏，正是因为它长得像正常结论。
+
+**依据**：读 src/trivium/probes/zcode.ts:100-131；doc/05_testing/evidence/zcode-provider-config-20260920/probe-outputs.md §1（失败形态：stderr 一行、stdout 0 字节）、§4（真实调用有 97 字节 stdout）、§5（正常停点 stdout 恒 0 字节）、§6（七个候选全记接受的形状）；设计 §3.5 `zcode.readonly_flags` 行的第三态约定。
+
+**建议**：把判据翻成「要有正向证据才记接受」：任一候选 stdou 非空/抠得出 envelope 即整轮记 indeterminate 并告警（§5 已证正常停点 stdout 恒 0 字节，这条判据成本近乎为零）；另加一条形状守卫，对「接受集 == 候选全集」这种 2026-09-19 出现过的形态拒绝写入并提示复核，而不是静默落盘。
+
+### CODEX-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/zcode.ts:113-118` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：旗标探针直接 `run(...)`，没有像 `invokeZcode` 那样传 `killTree: true`。30s 超时只杀直接子进程（node），厂商 CLI 再派生的进程会被留下——而本补丁自己刚记下「进程在 turn 里可长时间不退出」，evidence §7 还得靠 `pgrep -fl zcode-cli` 手工分辨哪些进程是实验产物、哪些属于桌面端。真出现一次悬挂候选，孤儿进程会继续跑完那个 turn（继续花配额），而探针这边 `finally` 已经把临时 HOME 整棵删掉，事后既不好定位也不好在留痕里说清是谁的。
+
+**依据**：读 src/trivium/probes/zcode.ts:113-129（RunOptions 只给 cwd / timeoutMs / env）、src/trivium/adapters/zcode.ts:185（invokeZcode 传 `killTree: true`）、src/trivium/util/exec.ts:97-120（killTree 的语义：detached 进程组整棵杀）；doc/05_testing/evidence/zcode-provider-config-20260920/probe-outputs.md §4 / §7。
+
+**建议**：该调用点补 `killTree: true`（与适配层同口径）；若担心探针时长，可同时把超时收到「模型创建失败」停点所需的量级。
+
+### CODEX-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/zcode.ts:86-92` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | low |
+
+**问题**：门控判据是「按入口的**字面**路径派生出的那一条存在」。`path.resolve` 不解符号链接，所以当 `agents.glm.entry` 指向别名（符号链接、`~/.local/bin` 里的转发、搬过位置的 .app）时，派生结果大概率不存在 → 静默不注入；而 CLI 自己按 realpath 推算的两条候选在应用包布局下本来就都不存在，于是该侧整体不可用。用户拿到的提示是「ZCode 安装布局问题 / 文件不在原位」，不会被告知「入口配置指向了别名」——而这一条恰恰是用户自己配的、唯一可操作的那一格。
+
+**依据**：读 src/trivium/adapters/zcode.ts:79-99（zcodeProviderConfigPaths 用 path.resolve 派生、zcodeProviderEnv 只判 exists）、:355-372（失败详情的措辞只提安装布局）；doc/05_testing/evidence/zcode-provider-config-20260920/probe-outputs.md §0（真实文件在 `Resources/config/provider/`）与 §1（CLI 自己的两条候选都在应用包内，`<入口目录>/provider/…` 与归一后的 `/config/provider/…`）；设计 §3.5 `zcode.provider_config` 行。
+
+**建议**：在 `zcodeProviderEnv` 里先 `fs.realpath(entry)`（失败回落原路径）再派生；或在定位失败时把 CLI 自报的候选与我们派生出的路径并列打进详情，让「派生错了」与「文件真没了」看得出区别。
+
+### CODEX-06 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/types.ts:328-335；设计 §11.3 要点 7；doc/05_testing/REPORT_2026-09-11_m0_probe.md:344-345` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：三处「地图」与实现不符，都会让后来者按错的那份改代码：①`types.ts` 的字段注释与设计 §3.5 都写这格的消费方是「`doctor` 的说明与 **`preflight` 的失败详情**」，但 `src/` 里 `provider_config` 的消费点只有 doctor 的阻断文案与探针本身，preflight 一处都没有（与 CODEX-01 同源：想指向布局的那句话没有落在 preflight 上）；②设计 §11.3 要点 7 写「`invokeZcode` 是唯一执行点」，而 `probeReadonlyFlags` 自己用 `run()` 拉起 CLI 并**独立重算**了一份 provider env（本次补丁才让它成为第二处），「给哪几份变量」的策略因此分居两处、无共享断言；③本次一并修订的 M0 报告里，flag 探针那段仍写「把 `ZCODE_HOME` 指向空目录」，与本版新增的 P-29/P-30（HOME）以及早已结案的 C-08 直接冲突——这正是本版声称在清理的那类过期表述。
+
+**依据**：`grep -rn provider_config src/ test/`：命中 doctor.ts:505、probes/zcode.ts:359-377、config.ts:97、types.ts:335、adapters/zcode.ts，preflight.ts 无命中；读 src/trivium/probes/zcode.ts:110-118；读 doc/05_testing/REPORT_2026-09-11_m0_probe.md:344-345 与同文件 §7 的 P-29/P-30（HOME）；被审 diff 中设计 §11.3 要点 7 的新增行。
+
+**建议**：把三处文字改准：①要么在 preflight 里真的消费这格，要么把「preflight 的失败详情」从注释与设计里删掉；②把「唯一执行点」改成如实描述（两个执行点、探针按自己的需要只给内置那份），或把探针那侧的 env 拼装收进适配层一个可测入口，让这句话重新成立；③顺手清掉 M0 报告那处 `ZCODE_HOME` 旧表述。
+
+## 认为正确的部分
+
+- 存在性门控这个方向选对了，且判据选对了承重项：evidence §3 实测「只给个人那份」仍是「无法定位 Built-in Provider Config」，说明内置那份才是定位成败的关键，个人那份缺失不会更早失败、只会伪装成 `Model creation failed`——「文件不在就不给变量」正是不让这两种失败混淆的正确做法。
+- 两条路径都用绝对路径、个人那份按真实用户目录取，确实不受 config_copy 副本 HOME 影响；`zcodeProviderConfigPaths` 抽成纯函数便于回归，与测试里的路径断言一致。
+- `failureKind: provider_config_unresolved` 按 stderr 名词片段判、不依赖退出码，且只认 `Built-in Provider Config` 这段英文（中文前缀随语言设置变），降级路径是安全的（认不出就落 other，不会误判成凭据问题）；探活详情把人引向安装布局也符合设计意图。
+- 第三态 indeterminate 的引入本身是对的：把「没报 Unknown 就是接受」改成三态，比修前严格得多；在 provider 配置定位失败时写入空集（而不是七个假接受）是更保守的一侧，P-29 那种污染不会以原形态复发。
+- 测试文件是真零配额的夹具：假入口按 CLI 的三段 stderr 顺序应答，并用调用日志把「七次调用一次都不给个人变量」锁死，`defaultProbe` 的 `provider_config: null` 与 `structuredClone(opts.existing)` 也守住了「未探过 ≠ 未找到」。
+
+## 未覆盖范围（本侧盲区）
+
+- 本环境只读且无网络，未真实运行 ZCode CLI 或任何探针；P-28～P-30 的实测事实完全采信 doc/05_testing/evidence/zcode-provider-config-20260920/probe-outputs.md，未独立复现（含「个人配置优先序」「ZCODE_API_KEY 等旁路是否仍能让空 HOME 起 turn」这两条只能真机验证的问题）。
+- 未跑 `npm run typecheck` / `npm run build` / `npm test`（只读沙箱不允许写构建产物）；对 `failureKind` 联合类型的消费只做了 grep（除 adapters/zcode.ts 的 if-else 与探针文案外无 `Record<…>` / 穷举 switch，加成员不会静默漏分支）。
+- .env.example 不在被审 diff 的 14 个文件里（按任务书属禁用面），正文声称的「顺手改正其 ZCODE_HOME 过期表述」我未核实；`.trivium/` 状态文件同样未读。
+- 未审计运行目录里 CLI 新建的载体是否含个人 provider 配置的凭据：P-30 的 lsof 显示它在 HOME 下建了 `.zcode/cli/db/db.sqlite`，而 `scrubZcodeHome` 明确不扫 `db/`（EV-36）——「个人 provider 配置的内容会不会落进这个不被扫描的 sqlite」需要真机复现才能定论，本次未查。
+- 未逐行核对设计 v1.3.31 台账行、BACKLOG EV-81、RUNBOOK / QUICKSTART 文案与实现的一致性（只抽查了 §3.3 / §3.5 / §11.3 / §11.4 与本次焦点相关的行）。
+- probes/zcode.ts 的其余部分（path_deny / scratch_paths / rollout / models 采集）未细读，未评估 provider_config 注入对它们的影响。
+
+## 实际查阅的项目文件
+
+- `.reviews/zcode-provider配置注入/code/_meta/changes-20260920T082817Z.diff`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/02_design/LLD_orchestrator.md`
+- `doc/05_testing/REPORT_2026-09-11_m0_probe.md`
+- `doc/05_testing/README.md`
+- `doc/05_testing/evidence/zcode-provider-config-20260920/probe-outputs.md`
+- `doc/06_deployment/RUNBOOK_pipeline_ops.md`
+- `doc/07_manuals/QUICKSTART.md`
+- `doc/08_project/BACKLOG.md`
+- `skills/dual-critic/schema/review.v1.json`
+- `skills/dual-critic/schema/config.v2.json`
+- `src/trivium/adapters/zcode.ts`
+- `src/trivium/probes/zcode.ts`
+- `src/trivium/config.ts`
+- `src/trivium/doctor.ts`
+- `src/trivium/preflight.ts`
+- `src/trivium/types.ts`
+- `src/trivium/util/exec.ts`
+- `test/unit/zcode-provider-env.test.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":43,"project_reads":24}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

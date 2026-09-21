@@ -20,6 +20,8 @@ import { probeCodex } from './probes/codex.js';
 import { probeClaude } from './probes/claude.js';
 import type { ClaudeProbe, CodexProbe, Config, ProbeSection } from './types.js';
 import { realAdapters } from './adapters/index.js';
+// 同源文案：blocker 与 `availability()` 对同一现象只能有一种说法（r2 AGY-04）
+import { ZCODE_HEADLESS_NOT_OK_HINT, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT } from './adapters/zcode.js';
 import type { TraceCapability } from './adapters/base.js';
 import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
 import { say, step, warn } from './util/log.js';
@@ -57,6 +59,15 @@ export interface DoctorReport {
   notes: string[];
   /** 阻断级问题：非空则 preflight 必然失败 */
   blockers: string[];
+  /**
+   * 告警级问题：**不影响退出码**，但要从 notes 里拎出来单独渲染（r3 CODEX-F01-03）。
+   *
+   * 存在的理由是「有些事实既不该拦人、又不该被划过」。第一个住户是旗标第三态：
+   * 本轮没判成时不能拦（拦了就是把布局问题报成能力缺失），可它同时意味着落盘的
+   * `readonly_flags` 是上一轮的旧值——读的人必须知道，否则 preflight 那头的
+   * 「无可用只读旗标」会把他引向升级 ZCode。
+   */
+  warnings: string[];
 }
 
 /** 一条诊断结论：进 blockers 还是只进 notes */
@@ -374,6 +385,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   };
   const notes: string[] = [];
   const blockers: string[] = [];
+  const warnings: string[] = [];
   const only = opts.only ?? null;
 
   // ── 环境 ────────────────────────────────────────────────────────────
@@ -498,11 +510,44 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     notes.push(...r.notes.map((n) => `[zcode] ${n}`));
     await checkpoint('zcode');
     if (!r.probe.entrypoint) blockers.push('未找到 zcode.cjs 入口');
-    else if (r.probe.response_field === null && !opts.skipModelCalls) {
-      blockers.push(
-        'ZCode headless 未跑通。注意：CLI 的模型 provider 配置独立于桌面端，' +
-          '「已登录」不等于「可用」——请确认 ~/.zcode/cli/config.json 存在。',
-      );
+    else {
+      /*
+       * 布局与旗标两条 blocker **不借道 `response_field`**（r2 CODEX-06 ≡ AGY-05）。
+       * 原先只有一支 `response_field === null && !skipModelCalls`，它在最该出现的两条路径上不可达：
+       * ① 回归形态下探针 `failureKind !== 'none'` 时只 push note 就 return，`response_field` 保留旧值，
+       *    全量 doctor 退 0、blockers 为空；② `--no-model-calls` 下整支被跳过，而 RUNBOOK 恰恰
+       *    建议用这条命令排障——内置文件缺失 + 旗标全未判定时，它 0 blocker 通过。
+       * 这两件事都与模型调用无关，判据也就不该挂在模型调用的结论上。
+       */
+      if (r.probe.provider_config?.builtin_file === null) blockers.push(ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT);
+      // 只在**判定完成**时才拦：本轮未判定（P-29）时 readonly_flags 是保留的旧值，
+      // 它为空只说明「没探出来过」，拦它给的是误导性结论（见 probes/zcode.ts 的第三态注释）
+      if (r.flagsIndeterminate.length === 0 && r.probe.readonly_flags.length === 0) {
+        blockers.push(
+          '探针未实测到任何可用的只读参数组合，无法保障审查员只读——请重跑 trivium doctor 或升级 ZCode',
+        );
+      }
+      if (r.flagsZeroExit.length > 0) {
+        // 成本异常要被看见，但不拦：结论本身是对的（退 0 证明 argv 已解析完），
+        // 异常的是这个探针本该零配额（r5 CODEX-02）
+        warnings.push(
+          `ZCode 旗标探针出现 ${r.flagsZeroExit.length} 次退 0——该探针本应零配额` +
+            '（空 HOME 停在模型层，P-30），退 0 意味着真实模型调用已发生。请核对停点形态与配额消耗。',
+        );
+      }
+      if (r.flagsIndeterminate.length > 0) {
+        /*
+         * 不拦，但也不能只留一条 note（r3 CODEX-F01-03）：落盘的 `readonly_flags` 是**上一轮的**，
+         * 而 preflight 那头一旦读到空集就会报「无可用只读旗标、请升级 ZCode」——
+         * 那是把布局问题报成能力缺失，人会往一个永远查不到的方向走。
+         */
+        warnings.push(
+          `ZCode 旗标本轮未判定（${r.flagsIndeterminate.length} 个候选在参数解析前就退出，P-29）：` +
+            `readonly_flags 保留的是上一次的结论 ${JSON.stringify(r.probe.readonly_flags)}。` +
+            '先核对 ZCode 安装布局与 provider 配置定位，再谈旗标——这不是「探针没探到能力」。',
+        );
+      }
+      if (r.probe.response_field === null && !opts.skipModelCalls) blockers.push(ZCODE_HEADLESS_NOT_OK_HINT);
     }
   }
 
@@ -598,7 +643,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   const written = path.join(opts.triviumDir, 'config.local.yaml');
   notes.push(`探针结论已写入 ${written}`);
 
-  return { probe, notes, blockers };
+  return { probe, notes, blockers, warnings };
 }
 
 /** 人读渲染 */
@@ -608,6 +653,9 @@ export function renderDoctorReport(report: DoctorReport): void {
   say('─'.repeat(60));
   for (const n of report.notes) say(`  ${n}`);
   say('');
+  // 告警在阻断之前渲染且不影响退出码：它要被看见，但不该让 doctor 退非零
+  for (const w of report.warnings) warn(w);
+  if (report.warnings.length > 0) say('');
   if (report.blockers.length === 0) {
     say('✓ 未发现阻断级问题');
   } else {

@@ -1,0 +1,164 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260920T082817Z",
+  "topic": "zcode-provider配置注入",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "provider 配置注入的存在性门控是否完备、旗标探针只注入内置那份是否真挡住了模型调用、failureKind 新档位与预检提示是否会误导使用者",
+  "task_goal": "计划：ZCode 0.16.9 provider 配置注入（EV-81）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini"
+  ],
+  "snapshot": {
+    "git_head": "f4f397070033317a01fa9d86b004c439f7da0369",
+    "tree_hash": "4eac44c1ca1bf6051c8c4fb2cc6f83adae6bdbcf",
+    "dirty": true,
+    "subject_sha256": "9cbf2a96aa7e6ed3897b2083139f2610a19288391b79a58f830c0d56fc4c3b49",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-20T08:28:18.200Z",
+  "finished_at": "2026-09-20T08:31:59.160Z",
+  "review_mode": "partial",
+  "degraded_reason": "gemini: failed（agy 非零退出（1）：error: Eligibility check failed: UNAVAILABLE (code 503): The service is currently unavailable.\n）",
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 220.758,
+      "tool_calls": {
+        "run_command": 43,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0bdee-2e83-7f92-8ee2-3716e1c3cf8f",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.7",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": null,
+      "model_effective_source": "unverified",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "failed",
+      "exit_code": 1,
+      "duration_s": 15.476,
+      "tool_calls": {
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "agy 非零退出（1）：error: Eligibility check failed: UNAVAILABLE (code 503): The service is currently unavailable.\n",
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "zcode-provider配置注入/code/_meta/changes-20260920T082817Z.diff",
+      "sha256": "9cbf2a96aa7e6ed3897b2083139f2610a19288391b79a58f830c0d56fc4c3b49"
+    },
+    {
+      "path": "zcode-provider配置注入/code/_meta/brief-codex-20260920T082817Z.md",
+      "sha256": "f6824ab8955c67807dc164b66ea56432b1c688b8cd267737f8fad506118565ad"
+    },
+    {
+      "path": "zcode-provider配置注入/code/_meta/brief-gemini-20260920T082817Z.md",
+      "sha256": "490d82313c1cf2a6ae3f9d9d3c5e38eb5b3dbd1725b584e6266809e27c2be9af"
+    },
+    {
+      "path": "zcode-provider配置注入/code/_meta/review-codex-20260920T082817Z.json",
+      "sha256": "959dd2ad86a9f1c675c3e535e5386397af0e75848238589b35578e73d906baa0"
+    },
+    {
+      "path": "zcode-provider配置注入/code/_meta/review-gemini-20260920T082817Z.failed.json",
+      "sha256": "72565be2f4d9898c080dde70d2f8ea0cfe2e6540a4d078edf878d9e90115ff5e"
+    },
+    {
+      "path": "zcode-provider配置注入/code/2026-09-20-zcode-provider配置注入-codex.md",
+      "sha256": "e548e4293606ffe609291b334e6d11a9c4370d72d37b1f7ee98f75355c5d7ef6"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed"
+}

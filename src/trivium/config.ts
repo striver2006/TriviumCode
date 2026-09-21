@@ -94,6 +94,7 @@ export function defaultProbe(): ProbeSection {
     trace_args_source: null,
     response_field: null,
     model_id_form: null,
+    provider_config: null,
   };
 
   /*

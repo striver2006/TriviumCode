@@ -15,8 +15,18 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { run } from '../util/exec.js';
 // 命令行只在适配层构造（设计 §5.1）
-import { invokeZcode } from '../adapters/zcode.js';
+import {
+  invokeZcode,
+  zcodeProviderConfigPaths,
+  zcodeProviderEnv,
+  ZCODE_ARGV_PARSED_RE,
+  ZCODE_BUILTIN_PROVIDER_ENV,
+  ZCODE_PERSONAL_PROVIDER_ENV,
+  ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
+} from '../adapters/zcode.js';
 import { exists, makeTempDir } from '../util/fsx.js';
+// CLI 原话进 note 之前过一遍脱敏（r5 CODEX-06）
+import { redactSecrets } from '../secrets.js';
 import { workTreeHash, statusPorcelain, diffTrees } from '../util/git.js';
 import { createFixture, SENTINEL_OPEN, SENTINEL_PEER, type Fixture } from './fixture.js';
 import {
@@ -52,7 +62,26 @@ export async function probeZcodeEntry(
     }
   }
   if (!entry) return { entry: null, version: null };
-  const r = await run(node, [entry, 'version'], { timeoutMs: 60_000 });
+  /*
+   * 两个 provider 变量在这条路径上也要**清底色**（r3 CODEX-F01-01）。
+   *
+   * 0.16.9 实测 `version` 子命令不读 provider 配置（M0 报告 P-28 末句），所以现势无害；
+   * 但 `zcodeProviderEnv` 的判据自述是「子进程拿不到」，只在两条主拉起路径上兑现、
+   * 在这里留个口子，等于让这句话在第三条路径上不成立。而 P-29 已经证明这个 CLI 的演化方向
+   * 就是把 provider 定位挪得更早——哪天 `version` 臂也开始吃这两个变量，入口与 cli_version
+   * 就会在「被宿主诱饵改造过」的环境下采得，与真实拉起口径分叉，且 doctor 全程沉默。
+   *
+   * **只清不给**：不调 `zcodeProviderEnv`。这里是逐候选路径试探，派生要多做存在性判断，
+   * 而 version 本就不需要这两个变量——给它反而多一条要维护的假设。
+   */
+  const r = await run(node, [entry, 'version'], {
+    timeoutMs: 60_000,
+    env: { [ZCODE_BUILTIN_PROVIDER_ENV]: undefined, [ZCODE_PERSONAL_PROVIDER_ENV]: undefined },
+    // 与其余五处拉起厂商 CLI 的口径一致（r5 CODEX-04）：此前这里是全仓唯一没开的一处。
+    // `version` 现在不起子进程，但 P-29 已经证明这个 CLI 的演化方向是把活儿往前挪——
+    // 真挪过来时，超时只杀直接子进程会留下孤儿继续跑
+    killTree: true,
+  });
   if (r.code !== 0) return { entry, version: null };
   const m = /(\d+\.\d+\.\d+)/.exec(r.stdout);
   return { entry, version: m?.[1] ?? r.stdout.trim() };
@@ -64,12 +93,31 @@ export async function probeZcodeEntry(
  * 不能信 `--help`——M0 实测 `--max-turns` 在 help 中列出但会报
  * `Unknown option '--max-turns'`。判定方式是看 stderr 里是否出现 `Unknown option '<flag>'`：
  * 参数解析发生在模型调用之前，因此这一步**不消耗配额**。
+ *
+ * **但参数解析不是第一步**（坑 P-29）：0.16.9 先定位 provider 配置，定位不到就带着
+ * 那一行报错退出，`Unknown option` 根本报不出来。若仍按「没报 Unknown 就是接受」判，
+ * 七个候选会**全部**记成接受——2026-09-19 那次 doctor 就把 0.16.5 已证实被拒的四个
+ * 旗标全写进了 `readonly_flags`。所以这里第三态 `indeterminate`：命中该报错的候选
+ * 既不算接受也不算拒绝，调用方不得把它写进结论。
  */
 export async function probeReadonlyFlags(
   entry: string,
   node: string,
   cwd: string,
-): Promise<{ accepted: string[]; rejected: string[] }> {
+): Promise<{
+  accepted: string[];
+  rejected: string[];
+  indeterminate: { flag: string; why: string }[];
+  /**
+   * 靠**退 0** 判成接受的候选（r5 CODEX-02）。
+   *
+   * 退 0 证明 argv 吃完了，这个推理没问题；有问题的是它在**这个装置里**意味着什么：
+   * 本探针的零配额不变量是「空 HOME + 只给内置 ⇒ 必停在 `Model creation failed` 退 1」（P-30 实测），
+   * 所以这里出现退 0 的唯一现实解释，是一次完整 headless 运行真的发生了、配额真的烧了。
+   * 结论照记接受，但**不能静默**——调用方据此出 note 与告警。
+   */
+  zeroExit: string[];
+}> {
   const candidates: string[][] = [
     ['--mode', 'plan'],
     ['--mode', 'yolo'],
@@ -82,29 +130,93 @@ export async function probeReadonlyFlags(
 
   const accepted: string[] = [];
   const rejected: string[] = [];
+  const indeterminate: { flag: string; why: string }[] = [];
+  const zeroExit: string[] = [];
 
   // 关键：把 **HOME** 指向一个空目录，让模型配置解析必然失败。
-  // ZCode 的处理顺序是「参数解析 → 配置解析 → 模型调用」，因此这样能在
-  // 拿到参数解析结论的同时，在配置解析阶段就停住，**一次模型调用都不会发生**。
+  // ZCode 的处理顺序是「provider 配置定位 → 参数解析 → 模型配置解析 → 模型调用」，
+  // 因此这样能在拿到参数解析结论的同时，在模型配置解析阶段就停住，**一次模型调用都不会发生**。
   // 否则在配置正常的机器上跑 doctor 会白白烧掉 7 次 ZCode 配额。
   //
   // 注意必须是 HOME 而不是 ZCODE_HOME —— M0 实测后者对配置解析无效（冲突项 C-08）。
+  //
+  // provider 配置**只注入内置那一份**（P-30）：个人配置 `~/.zcode/v2/provider_config.json`
+  // 自带默认模型，两份都给时空 HOME 挡不住——0.16.9 实测在没有 cli/config.json 的空 HOME 下
+  // 照样起了一个 turn（stderr 出现 `AI SDK Warning (… / qwen3.8-max)`），七个候选就是七次真实调用。
+  // 只给内置那份则停在「Model creation failed」（无凭据），参数解析已经做完，正是这里要的停点。
+  //
+  // 个人那份**显式置 `undefined`**（r2 CODEX-01 ≡ AGY-02）：`run()` 以 `{...process.env}` 为底，
+  // 只追加不清除的话，宿主环境里预置的同名变量会原样透传进来——「我没给」不等于「它没有」，
+  // 而这里正是「它有就会烧七次配额」的那个位置。
+  const { [ZCODE_BUILTIN_PROVIDER_ENV]: builtinFile } = await zcodeProviderEnv(entry);
+  const providerEnv: Record<string, string | undefined> = {
+    [ZCODE_BUILTIN_PROVIDER_ENV]: builtinFile,
+    [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
+  };
   const emptyHome = await makeTempDir('trivium-flagprobe');
   try {
     for (const flag of candidates) {
       const r = await run(
         node,
         [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...flag],
-        { cwd, timeoutMs: 30_000, env: { HOME: emptyHome } },
+        // `killTree`：P-30 实测该 CLI 能在一个 turn 里 3 分钟不退。第三态的前提（只给内置那份
+        // 就停在无凭据）一旦被某次升版打破，这七次就是七次真实调用——超时杀父进程而遗弃孙进程，
+        // 它们会继续烧配额（r3 CODEX-F01-04；`exec.ts` 要求拉起厂商 CLI 一律打开）。
+        { cwd, timeoutMs: 30_000, env: { ...providerEnv, HOME: emptyHome }, killTree: true },
       );
+      /*
+       * 判定链是**三分**，且「接受」要正向证据（r4 CODEX-01）。
+       *
+       * 原判据是否定式：没报 `Unknown option` 就算接受。于是任何「参数解析同样没发生」
+       * 的失败都会被记成接受——spawn 失败（`run()` 给 `code: null` 与 `[spawn error]`）、
+       * 模块加载崩溃、入口对子进程 cwd 不可达，全落进 accepted。这与 P-29 那次
+       * 「七个候选全记成接受」是同一类污染，只是成因换了一个。r3 补的退出码门控解决的是
+       * 「误放成功调用」，这里解决的是「误放崩溃」，是同一课的另一半。
+       *
+       * 顺序上 `Unknown option` 先判：它既是被拒的证据，本身也证明参数解析已经发生。
+       */
       const unknown = new RegExp(`Unknown option '${flag[0]!.replace(/-/g, '\\-')}`).test(r.stderr);
-      if (unknown) rejected.push(flag.join(' '));
-      else accepted.push(flag.join(' '));
+      if (unknown) {
+        rejected.push(flag.join(' '));
+        continue;
+      }
+      // 与 `invokeZcode` 同口径：**退出码非 0 才看形态**（r3 CODEX-F01-04）——
+      // 裸正则会把 stderr 带同名诊断行的成功调用误判成布局失败。
+      if (r.code !== 0 && ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE.test(r.stderr)) {
+        indeterminate.push({ flag: flag.join(' '), why: '内置 provider 配置定位失败，参数解析未发生（P-28/P-29）' });
+        continue;
+      }
+      // 正向证据：退 0（参数吃完了才跑得到成功），或停在模型/凭据层的已知停点。
+      // 退 0 另记一笔——在这个装置里它同时意味着零配额前提被打破（见 `zeroExit` 的说明）
+      if (r.code === 0) {
+        accepted.push(flag.join(' '));
+        zeroExit.push(flag.join(' '));
+        continue;
+      }
+      if (ZCODE_ARGV_PARSED_RE.test(r.stderr)) {
+        accepted.push(flag.join(' '));
+        continue;
+      }
+      // 其余一切一律判不出：**不回落成接受**。把退出码与 stderr 首行带上，
+      // 否则「为什么判不出」又要靠人复跑一次探针才知道
+      /*
+       * CLI 原话**过一遍脱敏再拼**（r5 CODEX-06）。这行文字会进 doctor notes，而 notes 的实际
+       * 流转方式是被人抄进 git 里的 `doc/05_testing/evidence/`——那条路径上没有 secrets 闸门，
+       * 防线只剩手抄纪律。`secrets.ts` 专为 ZCode 的凭据形态写过扫描规则，说明「CLI 错误行回显凭据」
+       * 是被当过真的风险。机制在先，纪律在后。
+       */
+      const firstLine = r.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? '（stderr 为空）';
+      indeterminate.push({
+        flag: flag.join(' '),
+        why:
+          `未识别的失败形态（退出码 ${r.code === null ? 'null' : r.code}）：` +
+          redactSecrets(firstLine.slice(0, 120)).content,
+      });
     }
   } finally {
     await fs.rm(emptyHome, { recursive: true, force: true });
   }
-  return { accepted, rejected };
+  return { accepted, rejected, indeterminate, zeroExit };
 }
 
 /**
@@ -258,8 +370,19 @@ export async function probeZcode(
   configuredEntry: string | null,
   node: string,
   opts: { skipModelCalls?: boolean; existing?: ZcodeProbe } = {},
-): Promise<{ probe: ZcodeProbe; notes: string[] }> {
+): Promise<{ probe: ZcodeProbe; notes: string[]; flagsIndeterminate: string[]; flagsZeroExit: string[] }> {
   const notes: string[] = [];
+  /*
+   * 本轮**没能判定**的候选旗标（P-29）。结论文件里没有这一格——它是「本次探测过程」的事实，
+   * 不是「被探对象」的属性，落盘会立刻过期。doctor 要靠它区分 `readonly_flags` 为空的两种成因：
+   * 判过、一个都不接受（该拦）；本轮没判、保留的旧值恰好为空（拦它只会把人引向升级 ZCode）。
+   */
+  const flagsIndeterminate: string[] = [];
+  /**
+   * 本轮有多少候选是靠**退 0** 判成接受的（r5 CODEX-02）。同样是「本次探测过程」的事实、不落盘。
+   * 非空即意味着零配额前提被打破：doctor 据此出告警，让烧掉的配额被看见而不是静默。
+   */
+  const flagsZeroExit: string[] = [];
   // 同 probeAgy：以既有结论为起点，跳过的探针保留原值——否则
   // `doctor --no-model-calls` 会把上一次真实探到的 response_field / path_deny /
   // scratch_paths / model_override 覆盖成 null，preflight 随即判该侧不可用。
@@ -298,7 +421,7 @@ export async function probeZcode(
   };
   if (!entry) {
     notes.push('未找到 zcode.cjs 入口，ZCode 侧不可用');
-    return { probe, notes };
+    return { probe, notes, flagsIndeterminate, flagsZeroExit };
   }
 
   const zcodeModels = await probeZcodeModels();
@@ -330,25 +453,92 @@ export async function probeZcode(
     );
   }
 
+  // provider 配置文件的存在性（P-28）。只记有无、不读内容；适配层拉起时自己重算，这格是给人看的
+  const providerPaths = await zcodeProviderConfigPaths(entry);
+  probe.provider_config = {
+    builtin_file: (await exists(providerPaths.builtin)) ? providerPaths.builtin : null,
+    personal_file: (await exists(providerPaths.personal)) ? providerPaths.personal : null,
+  };
+  notes.push(
+    `provider_config：内置=${probe.provider_config.builtin_file ?? '未找到'}；` +
+      `个人=${probe.provider_config.personal_file ?? '未找到'}` +
+      // 个人那份按 `os.homedir()` 取，而它读的是 `$HOME`（r2 CODEX-03）：编排器若跑在被重定向
+      // HOME 的会话里，这一格会在错误目录下找、门控静默不给、CLI 换个面目报错。写出本次取的是哪个
+      // 目录，让人在 doctor 输出里就能认出这一形态。切到 `os.userInfo().homedir` 见 BACKLOG EV-83。
+      `（个人那份按用户目录 ${os.homedir()} 取）` +
+      (probe.provider_config.builtin_file
+        ? '（拉起时经 ZCODE_*_PROVIDER_CONFIG_FILE 注入，0.16.9 起独立拉起必需）'
+        : '——0.16.9 起独立拉起会报「无法定位 CLI ZCode Built-in Provider Config」，请核对 ZCode 安装布局'),
+  );
+  /*
+   * 这两个变量是 CLI 官方承认的定位通道，非标准安装布局下用户自设曾是唯一可行方案；
+   * 而编排器**独占**它们：派生路径在就覆盖、不在就删除，两条路都不尊重宿主预置值
+   * （判据必须是「子进程拿不到」而不是「我没主动注入」，见 `zcodeProviderEnv`）。
+   * 这个口径此前只活在代码注释里——用户自设了却不生效时，他在 doctor 输出里看不到任何线索
+   * （r4 CODEX-02，「记录不改行为」那一支）。
+   */
+  const hostPreset = [ZCODE_BUILTIN_PROVIDER_ENV, ZCODE_PERSONAL_PROVIDER_ENV].filter((k) => process.env[k]);
+  if (hostPreset.length > 0) {
+    notes.push(
+      `⚠️ 宿主环境预置了 ${hostPreset.join(' / ')}——**编排器独占这两个变量**，` +
+        '拉起时一律按派生路径注入、派生不到就删除，你设的值不会生效（这是有意的：' +
+        '判据是「子进程拿不到」，否则宿主环境能改变探针行为）。要换 provider 配置位置请调整 ZCode 安装布局',
+    );
+  }
+
   const fx = await createFixture();
   try {
     const flags = await probeReadonlyFlags(entry, node, fx.root);
-    probe.readonly_flags = flags.accepted;
-    notes.push(
-      `readonly_flags 接受=${JSON.stringify(flags.accepted)}；` +
-        `拒绝=${JSON.stringify(flags.rejected)}（--help 列出不等于实际接受）`,
-    );
+    flagsIndeterminate.push(...flags.indeterminate.map((i) => i.flag));
+    flagsZeroExit.push(...flags.zeroExit);
+    if (flags.zeroExit.length > 0) {
+      /*
+       * 零配额前提被打破了（r5 CODEX-02）。本探针整套设计就建立在「空 HOME ⇒ 停在模型层」上，
+       * 退 0 意味着那个停点没生效、真跑完了一轮。结论照记接受（argv 确实吃完了），
+       * 但这件事必须被说出来——r3 给「turn 里 3 分钟不退」加了 killTree，超时会被看见；
+       * 「跑完并成功」是同族形态，此前无人说话。
+       */
+      notes.push(
+        `⚠️ 旗标探针出现 ${flags.zeroExit.length} 次退 0（${JSON.stringify(flags.zeroExit)}）——` +
+          '空 HOME 停在模型层的假设（P-30）已被打破，本轮疑似发生同样次数的真实模型调用。' +
+          '结论仍按接受记（退 0 证明参数解析已完成），但请核对停点形态与配额消耗',
+      );
+    }
+    if (flags.indeterminate.length > 0) {
+      /*
+       * **本轮未判定就不写结论**（r2 CODEX-02）：原先无条件 `probe.readonly_flags = flags.accepted`，
+       * 全 indeterminate 时写进去的是 `[]`——与紧邻的「不写入 readonly_flags」自相矛盾，
+       * 且空集在本仓是有双义的（types.ts 明写）：`availability()` 会把布局问题报成
+       * 「无可用只读旗标、请升级 ZCode」，还顺手抹掉上一轮有效的结论。
+       * 保留旧值 + note 写明「本轮未判定」，让空集只有「判过、一个都不接受」这一个意思。
+       */
+      notes.push(
+        `⚠️ ${flags.indeterminate.length} 个候选旗标本轮未判定是否被接受——` +
+          `readonly_flags 保留上一次的结论 ${JSON.stringify(probe.readonly_flags)}，不覆盖。` +
+          // 逐条写出成因：不写的话「为什么判不出」要靠人再跑一次探针才知道（r4 CODEX-01）
+          flags.indeterminate.map((i) => `\n    · ${i.flag} ← ${i.why}`).join(''),
+      );
+    } else {
+      probe.readonly_flags = flags.accepted;
+      notes.push(
+        `readonly_flags 接受=${JSON.stringify(flags.accepted)}；` +
+          `拒绝=${JSON.stringify(flags.rejected)}（--help 列出不等于实际接受）`,
+      );
+    }
 
     if (opts.skipModelCalls || !cliConfigured) {
       notes.push(
         '跳过需要真实模型调用的 ZCode 探针（配置缺失或已显式跳过）——' +
           'response_field / path_deny / scratch_paths / model_override 保留上一次的结论',
       );
-      return { probe, notes };
+      return { probe, notes, flagsIndeterminate, flagsZeroExit };
     }
 
-    // 只取实测被接受的只读组合，展开成 argv
-    const readonly = flags.accepted
+    // 只取实测被接受的只读组合，展开成 argv。
+    // 取的是 `probe.readonly_flags`（本轮结论，未判定时是保留下来的旧值）而不是 `flags.accepted`：
+    // 两者在正常路径上相同，而在「本轮未判定」那一支上，后者是空数组——拿它去跑真实模型调用，
+    // 等于在没有任何只读参数的情况下拉起 CLI。
+    const readonly = probe.readonly_flags
       .filter((f) => f.startsWith('--mode plan') || f.startsWith('--disallowed-tools'))
       .flatMap((f) => f.split(' '));
 
@@ -364,8 +554,8 @@ export async function probeZcode(
     });
 
     if (out.failureKind !== 'none') {
-      notes.push(`ZCode headless 失败（${out.failureKind}）：${out.stderr.slice(0, 200)}`);
-      return { probe, notes };
+      notes.push(`ZCode headless 失败（${out.failureKind}）：${redactSecrets(out.stderr.slice(0, 200)).content}`);
+      return { probe, notes, flagsIndeterminate, flagsZeroExit };
     }
 
     // 正文字段：设计记载为 .response，实测确认
@@ -435,5 +625,5 @@ export async function probeZcode(
     await fx.cleanup();
   }
 
-  return { probe, notes };
+  return { probe, notes, flagsIndeterminate, flagsZeroExit };
 }
