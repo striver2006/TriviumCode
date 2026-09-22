@@ -1,0 +1,266 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260922T154900Z",
+  "topic": "EV-74-探针喂真实契约文件",
+  "stage": "plan",
+  "rerun_index": 2,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "审核焦点：本稿是 r1 二十三条意见的修订稿，请重点看增量。一、最该被质疑的是 §3.4 的方向反转：r1 想扩大失败值的成因面让问题可见，查清那个值其实是生产降级扳机后改成了收紧，只有「命令行工具干净拒绝」才落该值，模型没交出必填键改落空值加重测提示。请核这个反转有没有矫枉过正——收紧之后，本主题「让失败可见」的目的还剩多少，以及 §3.7 定的告警面够不够补上这部分。二、§3.2.1 是 r1 完全缺失的一节，把资产根拆成「解析规则归属」与「取值靠注入」两半。请核两半是否都必要、合并两份同形规则是否真无行为变化，以及由诊断命令解析后注入会不会把解析时机提前到不该提前的地方。三、§5 用例 2 的第三条断言「执行层零调用」是这轮新加的判别力来源，用来咬住「回落仓内副本」那条最容易存活的变异。请核它是否真能咬住，以及会不会被别的改动误触发。四、§3.4.2 把判据写死成行为特征并明文禁止文案匹配，依据是本仓既有的同形判据。请核这个形态在本格是否真的适用——拒绝形态与那个先例的信号结构是否一致。五、§3.3 的限度改成三段式，新增了「接受不等于全程强制」这一头。请核三段是否互斥穷尽、有没有说大。六、§1 现状表新增了「怎么穷举的」一列，起因是 r1 有一条全称否定断言没核就写。请核这一列是否每行都真能复跑，有没有哪行的穷举方式其实盖不住它的断言。七、§4.2 的撞闸口径我写成「实测后定死」。请核这算不算把决策推给未来。八、§8 结案同步项是新增的，请核九项是否齐备。九、有没有本稿新引入的问题。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "97a4f28ef3d19404697fddb2404ae82a46aa0a5a",
+    "tree_hash": "962f3b07a096796399d70758cb8fbf0f13621bd0",
+    "dirty": false,
+    "subject_sha256": "9419cd322838e240bbd1cc0138f69d85acf9190d09b360a5a2d00199f289fb43",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-22T15:49:01.439Z",
+  "finished_at": "2026-09-22T16:02:17.464Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 500.523,
+      "tool_calls": {
+        "run_command": 16,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0c9ce-6485-7a90-899e-5a402fbd5a90",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.8",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 281.82,
+      "tool_calls": {
+        "read": 41,
+        "grep": 12,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 23
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 294207,
+        "output_tokens": 33132,
+        "thinking_tokens": 25822,
+        "cache_read_tokens": 4762199,
+        "total_tokens": 327339
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "56eb8d60-3775-4d2c-b29a-f4fb98835050",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 795.673,
+      "tool_calls": {
+        "read": 3,
+        "grep": 1,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 26
+      },
+      "evidence_ok": false,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 13,
+        "inputTokens": 1976393,
+        "outputTokens": 48677,
+        "totalTokens": 2025070,
+        "cacheReadTokens": 1763648,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_a1a592b9-61a4-468c-9f9a-73fade2bc336",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-22-EV-74-探针喂真实契约文件-gemini.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-22-EV-74-探针喂真实契约文件-glm.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T144533Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-glm-20260922T144533Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/brief-codex-20260922T154900Z.md",
+      "sha256": "dff51d2b1c3d899eb8e11fd9b5262af3562c4b1eb98e75188d2f7d6e085436cc"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/brief-gemini-20260922T154900Z.md",
+      "sha256": "dd2e8989a40e0124b3a82f5acb8aacf333422ad233e7a712f38a6f801b6a0083"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/brief-glm-20260922T154900Z.md",
+      "sha256": "1561f54118db8f862e0017d64b2af5c0ebbc6e9681097acdf04fc2d03e5e6f91"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/review-codex-20260922T154900Z.json",
+      "sha256": "79a0489dc42500f2e5021b20aca10992a7bb9161ecdfbd8471aeb31ed5377335"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T154900Z.json",
+      "sha256": "0a18fb943e32c5af147fdc1c272679bbd9bce17016b76f664fba4d5ea1b02c8d"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/review-glm-20260922T154900Z.json",
+      "sha256": "98a4dd98b8ad9fd40da10f086d9d0dbb6788b261521ba686f1f3fbab3fc2c7f0"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r2-codex.md",
+      "sha256": "67015f5bd9c3f28295b1d3a45fc8e09f2a90cd920c6e8dbc0fca21a92c00b608"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r2-gemini.md",
+      "sha256": "82a9aee9fe28a9559d162adf5a81f6526bf053db8a4fa47c054c94fd99d3278f"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r2-glm.md",
+      "sha256": "2164e161a4db8695163883c2207a54a46917cbb2fe68a06b367dcc110f28ebff"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

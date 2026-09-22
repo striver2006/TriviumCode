@@ -1,0 +1,118 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险一条：§3.4.1 三态映射表缺「跑完了但 result 不可 JSON parse」这一格——现判据该支落 false（生产降级扳机），§3.3「不必改判据函数」会诱导原样保留，恰是 §3.4.3 论证要防的「能力问题与模型/方言行为合流」（GLM-01，major）。其次：null 的稳态机制未决——判新鲜读的是段级 probed_at，§3.2 的「不判新鲜（或强制重探）」与 §4.2「实测后定死」两个分叉互相耦合，都通向「每次 doctor 全量重探、字段仍 null」的配额循环而未核算（GLM-02，major）。另有：§3.2.1 对 registry-parity 的「会当场红」引证失实（GLM-03）；§5 用例 1/2③ 缺可观测机制（GLM-04）；§3.7 告警面只盖 false、长期 null 无档（GLM-05）；现状表第 11 行穷举域窄于断言域（GLM-06）。§3.4 方向反转本身核实成立、不算矫枉过正；§1 十六行逐行复跑通过；§3.2.1 两半都必要、时机无提前问题；§8 九项同步目标实存。request-changes 指修订计划文本，不动主轴。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.4.1 / §3.3 / §5 用例 3·4",
+      "problem": "三态映射表缺第四格「跑完、CLI 未拒绝、但 result 不可 JSON parse」。现判据该支落 false（judgeJsonSchema 的 catch 分支），而 §3.4.1 明文「非干净拒绝是唯一允许落 false 的形态」——按 §3.3「不必改判据函数」原样保留 catch⇒false，一次「CLI 收下 schema 却没强制住、模型交了自由文本」的完成轮就会落 false、触发两侧生产降级扳机（adapters/claude.ts:810 / agy.ts:288），正是 §3.4.3 要防的合流；且该场景与本主题自己放大的 §3.3 第 3 条世界（方言静默忽略键、强制面收窄）直接相通。连带一处内部矛盾：§5 用例 4 要求「requiredKey 非 string ⇒ null」，而现判据 typeof 失败返回 false——判据函数的三态出口必须改，§3.3 的「不必改」与之冲突。§5 断言与变异清单（5 条）均无 parse 失败一项，这条语义分叉没有任何用例盯着。",
+      "evidence": "src/trivium/probes/claude.ts:376-388（judgeJsonSchema 现状：!completed⇒null、catch⇒false、else 支 typeof 失败也返回 false）；被审对象 §3.4.1 表仅三行、§3.3「不必改判据函数」、§5 用例 3/4 与变异清单 1-5；src/trivium/adapters/claude.ts:806-820（false ⇒ 不传 --json-schema 并记 degradation）。",
+      "suggestion": "§3.4.1 补第四行判死「跑完但不可 parse」的归属（与缺键同属『交付未合规、依赖模型/方言行为』，按本仓既有纪律应落 null + note；若刻意选 false 须写明代价并说明为何不与降级扳机冲突）；§3.3 改为「只换 requiredKey 不必改、三态出口必须改」；§5 用例 3 补「finalText 为非 JSON ⇒ null」断言，变异清单补「把 parse 失败改回 false」一条。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.2（TTL 处置）/ §4.2",
+      "problem": "null 的稳态机制由两个互相耦合的未决分叉承担，且都没对准现状机制。判新鲜读的是段级 probed_at（cliProbeIsFresh），没有字段级时间戳；「json_schema_ok === null 时该段不判新鲜（或强制重探该侧）」两可——压住 probed_at 刷新会连坐其余各字段的新鲜度（它们本轮明明重验过），preflight 将持续点名；新增字段级 TTL 则是探针落盘形状的机制变更，计划未列；「强制重探该侧」意味着每次 doctor 全量重探 claude 侧（读、verbose 负对照、写、路径 deny 三臂、scratch、记忆对照，约十次真实调用）。叠加 §3.4.3 把模型未合规落 null（一个可跨轮持续的成因）、§4.2 撞闸也落 null，机器会进入「每轮 doctor 烧全段配额、字段仍 null、只剩一条 note」的循环；§4.2 的二选一治不了模型未合规这条来路，且「实测后定死」没有预登记判定规则，实测后仍是临场裁量——这正是焦点七问的「把决策推给未来」。",
+      "evidence": "src/trivium/config.ts:825-827（新鲜度＝段级 probed_at，无字段粒度）；src/trivium/probes/claude.ts:973（模型段跑过即刷 probed_at，不看 json_schema_ok 取值）；被审对象 §3.2「（或强制重探该侧）」两可表述、§4.2「撞闸口径要在实测后定死」及二选一；§3.4.3 缺键 ⇒ null。",
+      "suggestion": "把两处分叉并成一节决掉：null 稳定态选字段级时间戳还是段级 stale ＋ 提示行（若选前者，评估落盘与结案同步面）；为 §4.2 预登记判定规则（如「撞闸先上调该臂预算/超时，上调后仍撞才接受 null＋note」）与单轮重探成本上界；「别让它成为每 7 天安静失败一次的格」这句要连同「别让它成为每轮 doctor 重复烧钱的格」一起成立。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.2.1（取值半边）",
+      "problem": "「不能让 probes/ 反向 import 编排层……registry-parity.test.ts 守着分层契约、会当场红」引证失实：该测试的架构契约只有「adapters/ 不得 import probes/」一条方向（第 5 条），不守 probes→编排方向；probes/claude.ts 今天就 import ../config.js，「probes 不得 import 编排层」并非既成文边界，真有人从 probes import review.ts 时不会有任何测试变红。取值半边（doctor 注入）的决策本身不受影响——真实理由独立成立——但结案同步（§8 第 2 项改设计 §3.5）时照抄这句，就是一条声称强于事实的留痕。",
+      "evidence": "test/unit/registry-parity.test.ts:1091-1133（唯一的 import 方向守卫是 adapters↛probes）；src/trivium/probes/claude.ts:41（既有 import { emptyPathDeny } from '../config.js'）；scripts/claude-admission-control.mjs:93-108（loadProd 从 dist 动态 import probes/claude.js——取值半边的真实理由在此）；被审对象 §3.2.1 原句。",
+      "suggestion": "引证换成两条独立成立的理由（准入脚本经 dist 引探针模块会把整条编排链拖进 import 图；避免第三份资产根规则副本）；若认定 probes→编排方向该守，补一条真正守它的契约，而不是引用不存在的守卫。归属半边建议点名落点模块（config.ts 是现成先例，probes 已依赖它）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §5 用例 1 / 用例 2③",
+      "problem": "两条判别力断言在现结构下没有指名的观测机制。「注入的资产根路径出现在读取实参里」——fs 读取无 spy 面，单测看不见 readFile 的实参；「执行层零调用（未 spawn / 未送 jsonSchema）」——execProbe 模块私有、内联 spawn，且 probeClaude 其余各臂（读、verbose 负对照、写、路径 deny 三臂、记忆对照）都会 spawn，字面的全局「零 spawn」要么恒红、要么只能借 skipModelCalls——而它连结构化臂一起早退，用例根本走不到这一格。机制不定，实现者可能滑向 process.env（§3.2.1 自己明令禁止的测试通道）或写出恒红断言，焦点三问的「会不会被误触发」正落在这里。",
+      "evidence": "src/trivium/probes/claude.ts:546-569（execProbe 私有、直接调 run）、:959-967（skipModelCalls 整段早退）、:978-1367（各臂顺序 spawn）；被审对象 §5 表与变异 2「必须靠用例 2 的③断言咬住」。",
+      "suggestion": "写死观测装置：configuredBin 指向记录 argv 的伪 bin（测试资产），③的断言域收紧为「没有任何一次被记录的调用携带 --json-schema／注入 schema 的特征内容」；用例 1 经同一装置断言 argv 里的 schema 内容取自注入路径下的文件（比「读取实参」更强且可观测）。可注明误触发面：未来另一臂合法携带该旗标时 ③ 变红属期望行为。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3.7 / §3.4.3",
+      "problem": "告警面只覆盖 false。本主题引入/放大的两类长期 null（资产未安装、模型未合规）在 warnings 通道无档——而按 §3.4.3 自己的论证，改喂真契约后最可能成为现实的失败模式恰是 haiku 档交不出四键合规对象、跨轮持续落 null，其可见性只剩 doctor 输出里一条普通 note 行。§3.7 把「最轻一档」只判给 false，等于告警面逮住较不可能的形态（干净拒绝，正是 EV-74 原事发形状、已被覆盖）而放过较可能的新形态。这是焦点一「告警面够不够补」的直接答案：够覆盖原发病，不够覆盖本主题自己引入的新病。",
+      "evidence": "src/trivium/doctor.ts:57-71 与 :650-666（DoctorReport.warnings 通道现成、渲染先于 blockers，claude 段当前一次都没用过）；被审对象 §3.7「把 false 显示为告警行，不进 preflight」、§3.4.3 缺键 ⇒ null＋note。",
+      "suggestion": "补一档轻提示：本轮真的重探过仍 null（或连续 N 轮 null）⇒ doctor 提示行（不必进 preflight 失败面），与 §3.2 的 TTL 处置落同一节；未安装的 null 已有指路句 note，可只对「重探过仍未得出」这档加提示。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §1 现状表第 11 行",
+      "problem": "断言域宽于穷举域：断言写「全仓消费点仅此两处」，穷举写 grep -rn 'json_schema_ok' src/——scripts/claude-admission-control.mjs:460（产出侧）与 skills/dual-critic/scripts/trivium.cjs（构建产物多处副本）都不在该 grep 的论域里。我扩域复跑后结论本身成立（真实消费点确为两个适配器），但按这张表本轮自立的「全称否定断言必须附穷举方式」标准，这条方法盖不住断言，复跑者从仓库根跑会看到论域外命中。",
+      "evidence": "本轮复跑 grep：src/ 内消费点仅 adapters/claude.ts:810 与 adapters/agy.ts:288；scripts/claude-admission-control.mjs:460 为产出侧记录；skills/dual-critic/scripts/trivium.cjs 多处命中为构建产物副本；被审对象 §1 第 11 行。",
+      "suggestion": "断言收窄为「src/ 内消费点仅此两处（scripts/ 一处为产出侧记录，构建产物副本不计）」，或穷举域扩至 scripts/ 并注明产出侧命中不算消费。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§2.2 的方向更正与 §3.4 反转本身成立、不矫枉过正：false 确是生产降级扳机（src/trivium/adapters/claude.ts:810-811：false ⇒ 本次不传 --json-schema 并记 degradation；src/trivium/adapters/agy.ts:288 同形），收紧而非扩大 false 的成因面是对的。",
+    "§3.4.2 行为特征判据的先例适用性核实成立：judgeVerboseBinding（src/trivium/probes/claude.ts:662-712）的四道门与 M9 拒绝形态（doc/05_testing/evidence/m9-acceptance-20260919/run-20260919T120018Z.json:41-49：exit_code 1、duration_s 0.704、fail_reason 落 schema 拒绝文本）同为「调用前参数校验拒绝」，信号结构一致；退出码单独不能判别亦有 src/trivium/adapters/claude.ts:917-921 佐证。",
+    "§3.2 取 A 及三条修正成立；两份资产根规则同形同环境变量（src/trivium/review.ts:396-401 对 src/trivium/init.ts:45-47，均为 TRIVIUM_ASSET_ROOT ?? homedir 链），合并确无行为变化；本机比对全局安装副本与仓内副本逐字一致（两份均 81 行同文）。",
+    "§3.2.1 两半都必要：归属半消除第二份同形规则（grep 全仓仅两处定义、各一处调用）；取值半的真实理由（准入脚本 loadProd 从 dist 动态 import probes/claude.js，会把编排链拖进 import 图）成立；doctor 注入不提前任何不该提前的时机——解析是 env+homedir 纯计算，doctor 本就是 probeClaude 唯一调用方（src/trivium/doctor.ts:588）。",
+    "§3.3 三段式互斥且未说大：第 2 条（我方判据弱）与第 3 条（CLI 方言强制面收窄）成因不同源；requiredKey 换 summary 与 typeof 判据相容（skills/dual-critic/schema/review.v1.json:15-19，summary 顶层必填、type string）。",
+    "§4.1 零 API 定性与「超时已被结构性区分」核实成立（timedOut 在 execProbe 与适配层均单独透传；拒绝发生在 API 调用之前有 M9 证据）。§4.2 要求必录单次成本与耗时是对稳态成本的正确补课。",
+    "§5 的「判别力来自断言输入」、用例 2b 正向对照防单边空枪、用例 5 的 grep 级契约（准入脚本经 DIST 动态 import 的通道现成）以及变异验证「先证替换进产物再看红否」的形态均正确。",
+    "§8 九项同步目标全部实存：设计 §3.7 该行（doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:390）、§3.5 清单与 §21 台账、BACKLOG:171 确含「json_schema_ok 又无 doctor 消费方」半句（结案后会失实，须一并改准）、agy 登记理由经 src/trivium/probes/agy.ts:150-184（自造迷你 schema）与 src/trivium/adapters/agy.ts:288（生产传真实契约路径）核实。",
+    "§1 现状表十六行逐行复跑通过（含各行穷举方式），唯一例外见 GLM-06；行号引用与当前工作树相符。"
+  ],
+  "not_covered": [
+    "未执行任何真实 CLI 调用与写命令（EV-95：全部结论来自读码与仓内留痕的推理而非实测）；§4.2 的模型合规性、§4.1 复跑要补的退出码数值与 stdout 事件条数均未实测。",
+    "「M6 / M9 第 1 步 / 第 3 步复验三处 json_schema_ok: true」的历史记录原文未逐份复核，沿第 1 轮采信口径。",
+    "§3.4.1 判据的残余裂缝（零退出 + 零事件 + stderr 非空的静默拒绝形态落 null）未列为意见——judgeVerboseBinding 同形裂缝同在，属既有口径一致的外推，非本稿新引入。",
+    "zcode 侧是否存在同形盲区未追（仅核了 claude 与 agy 两侧）；EV-79 结案件与本主题的衔接面未审；skills/ 的 SKILL.md 与 PROTOCOL 全文未逐字读（仅 grep 该字段无命中）。",
+    "背靠背约束：未读另一侧审查员的任何产出，本份结论独立形成。"
+  ],
+  "consulted": [
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-22-EV-74-探针喂真实契约文件-r2-claude.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-22-EV-74-探针喂真实契约文件-glm.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-22-EV-74-探针喂真实契约文件-revised-claude.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/evidence/m9-acceptance-20260919/run-20260919T120018Z.json",
+    "doc/08_project/BACKLOG.md",
+    "scripts/claude-admission-control.mjs",
+    "skills/dual-critic/schema/review.v1.json",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/config.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/init.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/review.ts",
+    "src/trivium/util/exec.ts",
+    "test/unit/registry-parity.test.ts"
+  ]
+}
