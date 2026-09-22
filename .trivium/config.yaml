@@ -25,9 +25,20 @@ review:
   parallel: true
   failure_policy: strict
   timeout_s:
-    plan: 1500
-    code: 7200
-    bug: 1200
+    # 2026-09-22 用户裁定三阶段全调：plan 1500→1800、code 7200→3600、bug 1200→1800。
+    #
+    # plan 抬高的由来：EV-79 主题 plan r2 那轮 codex 侧（qwen3.8-flash）撞满 1500s
+    # 脚本级超时导致整轮作废，而同轮 gemini 2m49s、glm 20m34s 都交了卷。成因是 r2 稿比
+    # r1 长一倍多，而 codex 侧的做法是在编译产物上做内存补丁逐格实测——稿子变长，
+    # 它的实测量同步变长。抬到 1800 后重跑，codex 16m36s 交卷（未用上 --allow-single）。
+    #
+    # code 砍半是**明知有张力的取舍**：profiles 段 codex 档的注释记着 M9 第 1～2 步
+    # 代码双审四轮 8m36s → 56m → 62m → 118m53s，最后一轮离旧的 7200s 只剩 66 秒——
+    # 按 3600s 那一轮会直接超时作废。真撞上就调这里，不要默默换家族
+    # （换家族要连 agents.codex.profile 一起改）。
+    plan: 1800
+    code: 3600
+    bug: 1800
   wait_timeout_s: 180
   heartbeat_stale_s: 120
   retry:
@@ -80,7 +91,9 @@ profiles:
     # 零产出，而 qwen3.8-flash 同期 419s / 1038s 交卷——本轮先按 max 配过一版，随即按此实测改回 flash。
     # 仍未消除的风险：2026-09-18 换去 deepseek 的原因是 codex 侧（那时正是 qwen3.8-flash）在
     # M9 第 1～2 步的代码双审四轮里耗时 8m36s → 56m → 62m → 118m53s，最后一轮离 code 阶段
-    # 7200s 预算只剩 66 秒。预算按用户裁定维持 7200s（2026-09-21），撞了再调 review.timeout_s.code，
+    # 7200s 预算只剩 66 秒。**2026-09-22 用户把 code 预算由 7200s 降到 3600s**（此前是 2026-09-21
+    # 裁定维持 7200s）——按 3600s，上面那轮 118m53s 会直接超时作废。**这个张力是明知的取舍，
+    # 不是漏改**：真撞上就调 review.timeout_s.code，
     # 不要默默换家族——换家族要连 agents.codex.profile 一起改（模型槽与 `-p` 是两个维度，见 flash 档注释）。
     codex:
       plan: qwen3.8-flash
