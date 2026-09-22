@@ -1,0 +1,293 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260922T044914Z",
+  "topic": "M10-任意Driver",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "审核焦点：一、三级判定的插入点是否正确——第 2 级是否只在第 1 级取不到值时生效；运行留痕损坏时仍硬失败、不降级到声明，这个「不把权威排序倒过来用」的理由是否站得住；而主题元数据读不出来时落到第 3 级而不是硬失败，这个相反的取舍是否也成立（两处都在 resolveRoundDriver，判据必须说得清为什么一个硬失败一个不）。二、分支 3′ 是本步唯一的安全收紧：我把「留痕」的论域从运行留痕扩到「该阶段目录下带角色后缀的文件」，请核 (a) 反复翻转是否真被关掉，还有没有别的序列能在零留痕窗口内取得第二个后缀；(b) 镜像死锁是否仍然解得开——分支 3 的原始职责不能被这次收紧顺手砍掉；(c) 判据用 endsWith 匹配后缀，裁决件形态与其它扩展名的边界是否划对。三、声明史的两个决定：入史条目剥掉自身的 history 字段以免每撤回一次历史翻倍、幂等档不写盘以免认领时刻随重跑往后漂——这两条是否成立，有没有把别的东西一起丢掉。四、交叉校验与不变量的次序与接线：两个选侧入口是否都接上了，不变量是否真排在交叉校验之前；特别核不变量错误文案给的那条出口命令是否真走得通（它教用户把声明改回留痕值，而分支 1 只拒绝与留痕不同的认领——如果这条推理错了，就是又一处「报错教的命令当场被拒」）。五、用例的鉴别力：跨阶段那条原本对「第 2 级退回按主题取值」毫无鉴别力（构造里 plan 有留痕，第 1 级就赢了，根本走不到第 2 级），变异验证打穿后已补。请按同一把尺子核其余用例，有没有别的「构造恰好绕开被测判据」。六、两处偏离计划的落点：计划说不变量落在预检，而预检只接阶段旗标不接主题旗标、根本不知道检查哪个主题，故改落两个选侧入口；计划说盯防点加在两个 parity 用例里，而那两个管的是别的论域，故改成接线判据。这两处改法是否合理、有没有因此丢掉计划本来想要的保障。七、把 stripNonCode 词法器从 driver-wiring 抽到共享 helper：它被实测打穿过四次，自测仍留在原处而实现搬了家——这个拆法会不会让下一个改实现的人看不到那些自测。",
+  "task_goal": "M10a · Driver 护栏与契约面 实施计划（第 7 稿）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "9d9cf94da1ab236a2b474774e9a95271b2b350a5",
+    "tree_hash": "3618aba5e8adee35f73192f8cdcbfa6a11cd932b",
+    "dirty": true,
+    "subject_sha256": "0f37e1b64321cea48bed40f2e9cb92bb4cada05521150229e363d702dbed180b",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-22T04:49:15.759Z",
+  "finished_at": "2026-09-22T05:00:18.746Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 462.583,
+      "tool_calls": {
+        "run_command": 26,
+        "project_reads": 20
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0c772-5d27-79f2-b14c-1b4fe494db8a",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.7",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 196.557,
+      "tool_calls": {
+        "read": 26,
+        "grep": 2,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 223744,
+        "output_tokens": 34488,
+        "thinking_tokens": 29092,
+        "cache_read_tokens": 2967941,
+        "total_tokens": 258232
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "b888f408-eaa2-4ed2-9deb-921014b07b59",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 662.573,
+      "tool_calls": {
+        "read": 18,
+        "grep": 10,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 22
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 13,
+        "inputTokens": 2029690,
+        "outputTokens": 40620,
+        "totalTokens": 2070310,
+        "cacheReadTokens": 1844736,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_e9b48e91-880c-487c-bff1-7844fe7afad6",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-r2-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-r2-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r4-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r4-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r5-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r5-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r6-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r6-glm.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260921T145353Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260921T152520Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260922T004543Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260922T021222Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260922T024405Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260922T032428Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T145353Z.fallback-items.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T145353Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T152520Z.fallback-items.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T152520Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T004543Z.fallback-items.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T004543Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T021222Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T024405Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T032428Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M10-任意Driver/code/_meta/changes-20260922T044914Z.diff",
+      "sha256": "0f37e1b64321cea48bed40f2e9cb92bb4cada05521150229e363d702dbed180b"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/brief-codex-20260922T044914Z.md",
+      "sha256": "8d674cee8312733df228f6783d09fd42b479defb678f766eeb4b8dbf77bfbd5b"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/brief-gemini-20260922T044914Z.md",
+      "sha256": "0a7c983e00c606135ce3edf35cf1aacd83d7d557be7a9eb365e1637c3eb9f55a"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/brief-glm-20260922T044914Z.md",
+      "sha256": "8fdd8d2568c8bc7ed89c2d8f23faa488021a222b194d1f7a672b3b627439b1e0"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/review-codex-20260922T044914Z.json",
+      "sha256": "40e73ef0f9f6c34afaf11b9912acc903ab89c54d0574f61161bb4e400c90197f"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/review-gemini-20260922T044914Z.json",
+      "sha256": "eb72d872794f11652ee33bcfb023212c8ca9f60ce92a89ed1023f99d75d0c846"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/review-glm-20260922T044914Z.json",
+      "sha256": "0cf20029b13db687800c4fd24bfa87fb4df101e5b08a47bb402260663aa0569e"
+    },
+    {
+      "path": "M10-任意Driver/code/2026-09-22-M10-任意Driver-codex.md",
+      "sha256": "7a494dec1e2580e6c3a18d43e7ec24755293dc734b37227aa6df0820ecb020a2"
+    },
+    {
+      "path": "M10-任意Driver/code/2026-09-22-M10-任意Driver-gemini.md",
+      "sha256": "d6187e7a0c38d9eab51a2bea19bd036cb9ebcda7a13ada2e5018157adee6fe81"
+    },
+    {
+      "path": "M10-任意Driver/code/2026-09-22-M10-任意Driver-glm.md",
+      "sha256": "2866b107b2482ca95bc7755ddfa1a16df0779226f498663f7954d77fbfeac4c8"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

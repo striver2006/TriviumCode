@@ -1,0 +1,1580 @@
+# trivium changes.diff
+# run_id: 20260922T044914Z
+# base: HEAD
+# head: 9d9cf94da1ab236a2b474774e9a95271b2b350a5
+# files: 9
+#   src/trivium/cli.ts
+#   src/trivium/driver-claim.ts
+#   src/trivium/hooks.ts
+#   src/trivium/meta.ts
+#   src/trivium/topic-args.ts
+#   test/helpers/strip-non-code.ts
+#   test/integration/topic-claim.test.ts
+#   test/unit/driver-claim.test.ts
+#   test/unit/driver-wiring.test.ts
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index dd91ee9..2441463 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -153,7 +153,10 @@ function positionalHint(command: string): string {
+         '  `--reject` 不接受值，拒绝理由同样走 --reason。'
+       );
+     case 'topic':
+-      return '  原始参数请放在 `--` 之后：trivium topic resolve --stage <s> -- <正文> --topic <主题>';
++      return (
++        '  resolve：原始参数请放在 `--` 之后：trivium topic resolve --stage <s> -- <正文> --topic <主题>\n' +
++        '  claim：全部走旗标，没有位置参数：trivium topic claim --topic <主题> --stage <s> --driver <id>'
++      );
+     default:
+       return `  用法见 trivium --help`;
+   }
+@@ -244,6 +247,13 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
+       -- 之后按 argv 逐个 token 解析、不再分词：正文整段放进一个单引号参数，
+       旗标放在引号之外。正文里的引号、$、反引号、--xxx 都逐字进入焦点。
+ 
++  trivium topic claim --topic <主题> --stage <s> --driver <id> [--json]
++      为该阶段**声明**当轮 Driver。plan / bug 原稿写在 review --start 之前，
++      那一刻该阶段零留痕、判定回落缺省 Driver，非缺省 Driver 写不出自己的原稿。
++      --stage 必填不默认：声明直接决定 Write / Edit 侧的保护集。
++      留痕优先——该阶段已有运行留痕且不同，退 64；
++      声明已用来写出带该后缀的文件之后，撤回权消失（终端清理后可重试）。
++
+   trivium verify --topic <主题> [--only build|test] [--timeout <秒>] [--json]
+       执行 .trivium/config.yaml 中 verify.build / verify.test **显式声明**的命令，
+       落盘 verify/<日期>-<主题>-verify.md 与 _meta/verify-<run_id>.json（FR-21 / AC-10）。
+@@ -499,6 +509,31 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
+     warn(`当轮 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`);
+   }
+ 
++  /*
++   * ── 交叉校验：`--driver` 与该阶段的权威值（M10a 第 1 步，EV-72）──
++   *
++   * 与 `topic resolve` 共用 `driver-claim.crossCheckDriver`。**两个入口都要有**：
++   * 技能侧先走 resolve 会被挡住，而本入口才是真正烧配额的那条——
++   * 只落一处就是 EV-53 那族缺口的形状（手工 CLI 绕过校验、审的不是用户以为的那家）。
++   *
++   * 位置在冻结送审包**之前**：判错身份的那一轮跑完才发现，代价是整轮作废。
++   */
++  {
++    const { latestRunMeta, readTask } = await import('./meta.js');
++    const { crossCheckDriver, declaredStageDriver, stageDriverInvariant } = await import(
++      './driver-claim.js'
++    );
++    const layout = { archiveRoot: ctx.archiveRoot, topic };
++    const [latest, task] = await Promise.all([latestRunMeta(layout, stage), readTask(layout)]);
++    const runDriver = latest.meta?.driver ?? null;
++    const declared = declaredStageDriver(task, stage);
++    // 先问「这份留痕本身自洽吗」，再问「你传的对不对」——顺序反了会用一个坏基准去判对错
++    const broken = stageDriverInvariant({ stage, runDriver, declared });
++    if (broken) throw usageError(broken);
++    const conflict = crossCheckDriver({ stage, driver, runDriver, declared });
++    if (conflict) throw usageError(conflict);
++  }
++
+   const contextRaw = flagString(args, 'context');
+   // 任务目标与审查焦点分开传（RV-19）：前者说「要达成什么」，后者说「这次重点看什么」
+   const goal = flagString(args, 'goal');
+@@ -715,9 +750,90 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
+   return r.ok ? EXIT.OK : r.exitCode;
+ }
+ 
++/**
++ * `topic claim`：为某一阶段**声明**当轮 Driver（M10a 第 1 步，EV-72）。
++ *
++ * `--stage` **必填、不给默认值**：一次认领哪一道闸门要说清楚，
++ * 与 `approve --stage` 同一条理由。默认到 plan 会让「我以为认的是 code」
++ * 这类错认领悄悄成功，而声明直接决定 Write / Edit 侧的保护集。
++ *
++ * 判定分支与出口全在 `driver-claim.ts`，本函数只做三件事：
++ * 取三个输入（留痕 / 既有声明 / 会话来源）、落盘、把结果说清楚。
++ */
++async function cmdTopicClaim(args: ParsedArgs): Promise<number> {
++  const ctx = await loadCtx();
++  const stage = parseStage(args);
++  const topic = flagString(args, 'topic');
++  if (!topic) throw usageError('topic claim 需要 --topic');
++
++  const rawDriver = flagString(args, 'driver');
++  if (!rawDriver) throw usageError('topic claim 需要 --driver');
++  // 取值合法性走 `resolveDriver` 这**唯一一处**判定，不在这里重写一遍（critics.ts 头注释）
++  const { driver } = resolveDriver(rawDriver);
++
++  const ref = await resolveTopic(ctx, topic, stage);
++  const { latestRunMeta, readTask, updateTask } = await import('./meta.js');
++  const { claimStageDriver, claimRejectionMessage } = await import('./driver-claim.js');
++
++  const latest = await latestRunMeta(ref.layout, stage);
++  const task = await readTask(ref.layout);
++  const outcome = await claimStageDriver({
++    layout: ref.layout,
++    stage,
++    driver,
++    claimedBy:
++      flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? 'unknown-session',
++    runDriver: latest.meta?.driver ?? null,
++    existing: task.drivers?.[stage] ?? null,
++  });
++
++  if (outcome.kind === 'blocked-by-run' || outcome.kind === 'blocked-by-usage') {
++    throw usageError(claimRejectionMessage(outcome, stage, driver));
++  }
++
++  /*
++   * 幂等档**不写盘**：再写一次只会把 `claimed_at` 往后推，
++   * 让「什么时候认领的」这个审计事实随每次重跑漂移。
++   */
++  if (outcome.kind !== 'noop') {
++    await updateTask(ref.layout, (t) => {
++      t.drivers = { ...(t.drivers ?? {}), [stage]: outcome.claim };
++    }, {
++      triviumDir: ctx.triviumDir,
++      heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
++    });
++  }
++
++  if (isJsonMode()) {
++    emitJson({
++      ok: true,
++      topic: ref.topic,
++      stage,
++      driver,
++      outcome: outcome.kind,
++      claimed_at: outcome.claim.claimed_at,
++      claimed_by: outcome.claim.claimed_by,
++      ...(outcome.kind === 'revoked' ? { revoked: outcome.previous } : {}),
++      history_len: outcome.claim.history?.length ?? 0,
++    });
++  } else {
++    const verb = { noop: '已声明（幂等，未改动）', revoked: '已改写声明', claimed: '已声明' }[
++      outcome.kind
++    ];
++    say(`${verb}：${ref.topic} / ${stage} → ${driver}`);
++    if (outcome.kind === 'revoked') {
++      step(`原声明 ${outcome.previous} 已撤回并入声明史（共 ${outcome.claim.history?.length ?? 0} 条）`);
++    }
++    step(`声明来源 ${outcome.claim.claimed_by}`);
++    step('留痕一旦产生即以留痕为准；声明用来写出文件之后不可再撤回');
++  }
++  return EXIT.OK;
++}
++
+ async function cmdTopic(args: ParsedArgs): Promise<number> {
++  if (args.sub[0] === 'claim') return cmdTopicClaim(args);
+   if (args.sub[0] !== 'resolve') {
+-    throw usageError(`topic 只支持 resolve 子命令，收到：${args.sub[0] ?? '(空)'}`);
++    throw usageError(`topic 只支持 resolve / claim 子命令，收到：${args.sub[0] ?? '(空)'}`);
+   }
+   const ctx = await loadCtx();
+   const scope = parsePreflightScope(flagString(args, 'stage'));
+diff --git a/src/trivium/hooks.ts b/src/trivium/hooks.ts
+index 12db9ba..5eacf0c 100644
+--- a/src/trivium/hooks.ts
++++ b/src/trivium/hooks.ts
+@@ -348,9 +348,26 @@ export function isForgedRoleFile(
+  * 需要与上述兜底的**实际覆盖面**一起评估，已单独登记 **EV-73**，不在本步。
+  */
+ type DriverResolution =
+-  | { kind: 'ok'; driver: AgentId; fromDefault: boolean }
++  | { kind: 'ok'; driver: AgentId; source: 'run' | 'claim' | 'default' }
+   | { kind: 'corrupt'; unreadable: string[] };
+ 
++/**
++ * 当轮 Driver 的**三级判定**（M10a 第 1 步，EV-72）：
++ *
++ *   1. 该**阶段**最新 `run.json.driver`（**留痕**，现有行为一字不动）；
++ *   2. `task.json` 的 `drivers[<该阶段>].driver`（**声明**）；
++ *   3. `DEFAULT_DRIVER`。
++ *
++ * 第 2 级插在这里而不是别处，是因为它要补的恰好是**第 1 级取不到值**的那一段：
++ * plan / bug 原稿写在 `review --start` 之前，那一刻该阶段零留痕。
++ *
++ * **`source` 取代了原来的 `fromDefault`**：三级之后布尔值说不清来源，
++ * 而拦截文案必须说得出「凭什么判成这一家」——判错身份时，用户能从文案里
++ * 直接看出是留痕、声明还是缺省值出的问题。
++ *
++ * **留痕损坏仍然硬失败，不降级到声明**：`corrupt` 的含义是「锚本身坏了」，
++ * 此时退到一个**由被保护方自己写的**声明值，正好是把权威排序倒过来用。
++ */
+ async function resolveRoundDriver(
+   ctx: Ctx,
+   topic: string,
+@@ -368,10 +385,29 @@ async function resolveRoundDriver(
+    * 列的理由**逐字同形**（「沿用前一条的值，被当成权威值」），只是换成了留痕版。
+    */
+   if (r.meta && r.unreadable.length === 0) {
+-    return { kind: 'ok', driver: r.meta.driver, fromDefault: false };
++    return { kind: 'ok', driver: r.meta.driver, source: 'run' };
+   }
+   if (r.meta || r.scanned > 0) return { kind: 'corrupt', unreadable: r.unreadable };
+-  return { kind: 'ok', driver: DEFAULT_DRIVER, fromDefault: true };
++
++  // ── 第 2 级：该阶段零留痕时读声明 ──
++  /*
++   * `readTask` 用宽松版而不是 `readTaskStrict`：这一级的语义是「有没有人声明过」，
++   * 而 task.json 读不出来时**没有可信的声明**，与「没声明」在判定上同档——
++   * 都该落到第 3 级。用严格版在这里硬失败会让「task.json 损坏」把 Driver 自己
++   * 写原稿的路也一并堵死，而那不是安全收益，是把可用性换成了噪声。
++   * task.json 损坏本身有别的锚在管（`checkRunManifests` 与预检）。
++   */
++  const { readTask, declaredStageDriver } = await (async () => {
++    const [m, d] = await Promise.all([import('./meta.js'), import('./driver-claim.js')]);
++    return { readTask: m.readTask, declaredStageDriver: d.declaredStageDriver };
++  })();
++  const declared = declaredStageDriver(
++    await readTask({ archiveRoot: ctx.archiveRoot, topic }),
++    stage,
++  );
++  if (declared) return { kind: 'ok', driver: declared, source: 'claim' };
++
++  return { kind: 'ok', driver: DEFAULT_DRIVER, source: 'default' };
+ }
+ 
+ /**
+@@ -588,9 +624,12 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
+         );
+       }
+       driver = res.driver;
+-      why = res.fromDefault
+-        ? '该阶段尚无运行留痕，按缺省 Driver 判定'
+-        : '取自该阶段最近一份运行留痕';
++      // 三级判定各有各的来源句——判错身份时用户要能从文案里看出是哪一级出的问题
++      why = {
++        run: '取自该阶段最近一份运行留痕',
++        claim: '该阶段尚无运行留痕，取自 topic claim 的声明',
++        default: '该阶段既无运行留痕也无声明，按缺省 Driver 判定',
++      }[res.source];
+     }
+     // 外层 `if` 已确立落在归档内，这里只问后缀——不再走 `isForgedRoleFile`，
+     // 那会把 realpath 解析重跑第三遍（代码双审 AGY-01）。该函数本身保留为完整语义判据。
+diff --git a/src/trivium/meta.ts b/src/trivium/meta.ts
+index 8b8a184..f65985a 100644
+--- a/src/trivium/meta.ts
++++ b/src/trivium/meta.ts
+@@ -127,6 +127,54 @@ export interface TaskMeta {
+     reason?: 'voided' | 'no-structured-review' | 'both';
+     at: string;
+   }[];
++  /**
++   * **按阶段**的 Driver 声明（M10a 第 1 步，EV-72）。**可选**：缺该字段 = 「未声明」。
++   *
++   * ## 为什么需要它
++   *
++   * plan / bug 原稿在 `review --start` **之前**由 Driver 写出，那一刻该阶段零留痕，
++   * `resolveRoundDriver` 回落 `DEFAULT_DRIVER`，于是非缺省 Driver 的 `-<id>.md` 原稿
++   * 被 `isForgedRoleFile` 判成伪造件退 2——**它连自己的原稿都写不出来**。
++   * 声明补的正是「留痕诞生之前」这一段。
++   *
++   * ## 为什么按阶段而不按主题
++   *
++   * 它要与 `resolveRoundDriver` 第 1 级「该**阶段**最新 `run.json.driver`」同构。
++   * 主题级单值会**精确覆盖跨阶段换 Driver 发生的那一刻**（plan 由 claude 执笔、
++   * code 换 glm 接手是合法链路），而那一刻正是本字段唯一有用的时候。
++   *
++   * ## `history[]` 为什么是追加式
++   *
++   * `drivers[stage]` 是单值、改写即覆盖。而这里的「谁在何时认领过」是**审计面**：
++   * 撤回是本字段唯一允许改写既有声明的口子，它的审计面不该最弱。
++   * 同文件的 `approvals` / `degradations` / `disputes` 三个数组都是追加式，
++   * 先例 `ApprovalRecord.session_id` 的要义恰恰是把「谁干的」持久写进 task.json。
++   * 只往 stderr 打一行日志等于撤回史不落任何持久载体（计划双审 r6 GLM-04）。
++   *
++   * schema 仍是 `trivium.task.v1`——additive 可选字段，旧文件读得动，读侧缺失即「未声明」。
++   */
++  drivers?: {
++    [stage in Stage]?: StageDriverClaim;
++  };
++}
++
++/** 某一阶段的 Driver 声明（见 {@link TaskMeta.drivers}） */
++export interface StageDriverClaim {
++  driver: AgentId;
++  claimed_at: string;
++  /**
++   * 谁声明的。**自声明边界的控制点**——本字段之后「当轮 Driver」第一次由
++   * 被保护方自己说了算，而它直接决定 Write / Edit 侧的保护集
++   * （`hooks.ts` 规则 1：保护集 = 全集减当轮 Driver）。
++   *
++   * **先例 `ApprovalRecord.session_id` 不能照搬**（计划双审 r6 CODEX-02）：
++   * 那个自声明只影响事后对账，**不改变任何保护集**；这个改变保护集。
++   * 两者档位不同，故本字段之外另加两重约束——声明一旦被使用即锁死
++   * （见 `driver-claim.ts` 分支 3′）、每次撤回入 `history[]`。
++   */
++  claimed_by: string;
++  /** 被撤回的历史声明，**追加不覆盖** */
++  history?: (Omit<StageDriverClaim, 'history'> & { revoked_at: string })[];
+ }
+ 
+ const taskPath = (l: ArchiveLayout): string => path.join(topicDir(l), 'task.json');
+diff --git a/src/trivium/topic-args.ts b/src/trivium/topic-args.ts
+index cb648d5..db539a2 100644
+--- a/src/trivium/topic-args.ts
++++ b/src/trivium/topic-args.ts
+@@ -509,6 +509,31 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
+   assertModelOverrideKeys(ctx.config, driver, written);
+   for (const id of written) models[id] = named[`model-${id}`]!;
+ 
++  /*
++   * ── 交叉校验：`--driver` 与该阶段的权威值（M10a 第 1 步，EV-72）──
++   *
++   * 判定共用 `driver-claim.crossCheckDriver`，与 `review --start` 同一处——
++   * 同一条校验实现两遍就是改一漏二。
++   *
++   * `scope === 'all'` 不校验：命令 A 在上面已拒绝 `--driver`，这里没有可比对的值。
++   * 全程纯只读，`topic resolve` 的「不创建任何目录」承诺不受影响。
++   */
++  if (scope !== 'all') {
++    const { latestRunMeta, readTask } = await import('./meta.js');
++    const { crossCheckDriver, declaredStageDriver, stageDriverInvariant } = await import(
++      './driver-claim.js'
++    );
++    const layout = { archiveRoot: ctx.archiveRoot, topic };
++    const [latest, task] = await Promise.all([latestRunMeta(layout, scope), readTask(layout)]);
++    const runDriver = latest.meta?.driver ?? null;
++    const declared = declaredStageDriver(task, scope);
++    // 先问「这份留痕本身自洽吗」，再问「你传的对不对」——顺序反了会用一个坏基准去判对错
++    const broken = stageDriverInvariant({ stage: scope, runDriver, declared });
++    if (broken) throw new TriviumError(EXIT.USAGE, broken);
++    const conflict = crossCheckDriver({ stage: scope, driver, runDriver, declared });
++    if (conflict) throw new TriviumError(EXIT.USAGE, conflict);
++  }
++
+   const contextPaths = (named['context'] ?? '')
+     .split(',')
+     .map((c) => c.trim())
+diff --git a/test/unit/driver-wiring.test.ts b/test/unit/driver-wiring.test.ts
+index 70d891e..93a960d 100644
+--- a/test/unit/driver-wiring.test.ts
++++ b/test/unit/driver-wiring.test.ts
+@@ -29,8 +29,8 @@ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+-import ts from 'typescript';
+ import { REPO_ROOT } from '../helpers/fixture.js';
++import { stripNonCode } from '../helpers/strip-non-code.js';
+ 
+ /**
+  * 剥掉**一切不是代码的东西**：注释 + 字符串 / 模板 / 正则字面量的正文。
+@@ -76,47 +76,11 @@ import { REPO_ROOT } from '../helpers/fixture.js';
+  * 记下来是因为：照着意见清单去写「`]` 之后必须剥」的断言会**写出一条错的判据**。
+  * 同理 `obj.val! / driver / scale` 里的 `driver` 是真标识符，保留它才对。
+  *
+- * 实现要点：
+- * - **置空而非替换**：每个非代码字符换成空格（换行保留）。这样偏移量不变，
+- *   锚点在剥离后文本里的位置与原文一致，也不会凭空造出括号。
+- * - 模板只置空 `TemplateHead/Middle/Tail` 与无插值模板，`${…}` 里的**表达式保留**
+- *   （那里面本来就可以是真实取值）。头尾各含一半花括号，一起置空即保持配平。
+- * - 注释走 `getLeadingCommentRanges`，并且**按 token 粒度遍历**（`getChildren`
+- *   会给出 `(`、`)` 这类 token）——只走节点会漏掉 `foo(/* c *​/)` 这种
+- *   夹在 token 之间的注释。
++ * **实现搬去了 `test/helpers/strip-non-code.ts`**（M10a 第 1 步）：
++ * 第二个需要它的判据出现时（声明接线盯防点），照抄一份就会长出第二份真相——
++ * 而它恰恰是被实测打穿过四次的那类代码，两份各修各的必然分叉。
++ * **本文件末尾那一整节自测仍然守着它**，实现搬家不搬责任。
+  */
+-function stripNonCode(src: string): string {
+-  const sf = ts.createSourceFile('scan.ts', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+-  const out = src.split('');
+-  const blank = (from: number, to: number): void => {
+-    for (let i = Math.max(0, from); i < Math.min(to, out.length); i++) {
+-      if (!/\s/.test(out[i]!)) out[i] = ' ';
+-    }
+-  };
+-
+-  const LITERALS = new Set<ts.SyntaxKind>([
+-    ts.SyntaxKind.StringLiteral,
+-    ts.SyntaxKind.NoSubstitutionTemplateLiteral,
+-    ts.SyntaxKind.RegularExpressionLiteral,
+-    ts.SyntaxKind.TemplateHead,
+-    ts.SyntaxKind.TemplateMiddle,
+-    ts.SyntaxKind.TemplateTail,
+-  ]);
+-
+-  const visit = (node: ts.Node): void => {
+-    for (const r of ts.getLeadingCommentRanges(src, node.getFullStart()) ?? []) {
+-      blank(r.pos, r.end);
+-    }
+-    if (LITERALS.has(node.kind)) {
+-      blank(node.getStart(sf), node.getEnd());
+-      return; // 字面量里没有代码，不必再下钻
+-    }
+-    for (const child of node.getChildren(sf)) visit(child);
+-  };
+-  visit(sf);
+-
+-  return out.join('');
+-}
+ 
+ /**
+  * 键/实参是否**以完整标识符的形态**出现在这段代码里。
+diff --git a/src/trivium/driver-claim.ts b/src/trivium/driver-claim.ts
+new file mode 100644
+index 0000000..f859067
+--- /dev/null
++++ b/src/trivium/driver-claim.ts
+@@ -0,0 +1,266 @@
++/**
++ * `driver-claim`：**按阶段的 Driver 声明**（M10a 第 1 步，EV-72）。
++ *
++ * ## 这个模块解决什么
++ *
++ * plan / bug 原稿写在 `review --start` **之前**。那一刻该阶段零留痕，
++ * `resolveRoundDriver` 只能回落 `DEFAULT_DRIVER`，于是非缺省 Driver 连自己的原稿
++ * 都写不出来——`isForgedRoleFile` 把它判成伪造件。声明补的正是这一段。
++ *
++ * ## 权威排序：**留痕不可改、声明可撤回**
++ *
++ * `runs[].driver` / `run.json.driver` 是**留痕**（跑过了，是事实）；
++ * `drivers[<阶段>]` 是**声明**（打算这么跑）。二者冲突时留痕永远赢。
++ * 判定顺序自上而下、首个命中生效，见 {@link claimStageDriver}。
++ *
++ * ## 撤回权为什么会消失（计划双审 r6 CODEX-02）
++ *
++ * 最初的设计只以「该阶段零 **run** 留痕」为撤回前置。但**写一份带后缀的原稿
++ * 不产生 run 留痕**——零留痕窗口不会因为写了文件而关闭。于是同一个会话可以：
++ *
++ *   `claim glm` ⇒ 以「glm 是当轮 Driver」的身份写 `…-glm.md`
++ *   ⇒ 撤回改 `claim codex` ⇒ 再写 `…-codex.md` ⇒ …
++ *
++ * **在首份 run 留痕诞生前依次拿到每一家的后缀豁免**——而保护集正是「全集减当轮
++ * Driver」，当轮 Driver 的取值又来自这个自声明。这是一条真的绕过路径。
++ *
++ * 两个看起来更直接的修法都不成立，这里记下来免得下一个人再试一遍：
++ *
++ *   · **比对会话 id 与 `claimed_by`**——防的是「别的会话搭车」，而威胁模型里
++ *     执笔者**就是同一个会话**，它自己反复翻转声明，会话 id 全程一致。
++ *   · **限制撤回次数 ≤ 1**——只是把能拿到的后缀数从 N 降到 2。量变不是质变。
++ *
++ * 实际采用的是**把「留痕」的论域从 `run.json` 扩到「该阶段目录下的带后缀文件」**：
++ * 声明一旦被**使用**（产出了带该后缀的文件），它就不再是「尚无留痕的声明」，
++ * 撤回权随之消失。方向与权威排序完全同向，改的只是「什么算留痕」。
++ *
++ * 这一改顺带关掉了「孤儿原稿」（r6 GLM-06）：孤儿之所以能存在，正是因为撤回不看它。
++ *
++ * **镜像死锁仍然堵着**——那条序列要求的是「声明了但还没动手」
++ * （`claim glm` ⇒ 发现该用 claude ⇒ 此时尚未写任何 `-glm.md`），
++ * 而那正是撤回仍然覆盖的区间。
++ *
++ * ## 残余面（如实登记，计划 §7.3 R-l）
++ *
++ * 「声明了、还没写任何文件」的窗口内撤回次数不设上限。该窗口里执笔者拿到的是
++ * 「可以**选**一个后缀」而不是「可以依次拿到**所有**后缀」——用掉即锁死。
++ * **不假装这是机械边界**：终端里直接写文件同样绕过整条链路（与提交锚的
++ * 强制力单向同源）。
++ */
++import { promises as fs } from 'node:fs';
++import type { AgentId, Stage } from './types.js';
++import type { StageDriverClaim, TaskMeta } from './meta.js';
++import { stageDir, type ArchiveLayout } from './archive.js';
++
++/**
++ * 读出该阶段的声明值。**读侧唯一入口**——别处直接摸 `task.drivers?.[stage]?.driver`
++ * 会让「缺字段 = 未声明」这条约定散落到每个调用点。
++ */
++export function declaredStageDriver(task: TaskMeta, stage: Stage): AgentId | null {
++  return task.drivers?.[stage]?.driver ?? null;
++}
++
++/** 该阶段目录下带 `-<driver>.md` 后缀的文件（**声明是否被使用过**的判据） */
++export async function filesBearingSuffix(
++  layout: ArchiveLayout,
++  stage: Stage,
++  driver: AgentId,
++): Promise<string[]> {
++  let entries: string[];
++  try {
++    entries = await fs.readdir(stageDir(layout, stage));
++  } catch {
++    // 目录不存在 = 该阶段还没有任何文件，属正常
++    return [];
++  }
++  const suffix = `-${driver}.md`;
++  return entries.filter((f) => f.endsWith(suffix)).sort();
++}
++
++/** {@link claimStageDriver} 的输入 */
++export interface ClaimInput {
++  layout: ArchiveLayout;
++  stage: Stage;
++  /** 要认领成哪一家 */
++  driver: AgentId;
++  /** 谁在声明（会话来源），落进 `claimed_by` */
++  claimedBy: string;
++  /** 该阶段最新一份**可读**留痕里的 driver；无留痕传 `null` */
++  runDriver: AgentId | null;
++  /** 现有声明（`task.drivers?.[stage]`），无则 `null` */
++  existing: StageDriverClaim | null;
++  now?: string;
++}
++
++/**
++ * 判定分支。**与计划 §2.3 的表逐行对应**，改这里请同步改那张表。
++ *
++ * `blocked-by-run` / `blocked-by-usage` 两档都是退 64——它们分开是因为
++ * **出口不同**：前者只能新开主题或换阶段，后者在终端清理后可重试。
++ * 合并成一个 `blocked` 会让错误文案说不清该干什么。
++ */
++export type ClaimOutcome =
++  /** 分支 1：该阶段已有 run 留痕且与 `--driver` 不同 */
++  | { kind: 'blocked-by-run'; runDriver: AgentId }
++  /** 分支 3′：零 run 留痕、但旧声明已被使用（产出过带其后缀的文件） */
++  | { kind: 'blocked-by-usage'; previous: AgentId; files: string[] }
++  /** 分支 2：已声明且相同，幂等 */
++  | { kind: 'noop'; claim: StageDriverClaim }
++  /** 分支 3：零 run 留痕、旧声明未被使用 ⇒ 撤回改写 */
++  | { kind: 'revoked'; claim: StageDriverClaim; previous: AgentId }
++  /** 分支 4：其余合法认领 */
++  | { kind: 'claimed'; claim: StageDriverClaim };
++
++/**
++ * 纯判定 + 构造新声明，**不落盘**。落盘由调用方经 `updateTask` 在短临界区内完成——
++ * 判定与写入分开是为了让分支表可以被单元测试直接喂构造好的输入，
++ * 不必先摆出一整个归档。
++ *
++ * 唯一的 I/O 是分支 3′ 要扫目录（`filesBearingSuffix`），它只在
++ * 「零 run 留痕 ∧ 已声明 ∧ driver 不同」这一格才发生。
++ */
++export async function claimStageDriver(input: ClaimInput): Promise<ClaimOutcome> {
++  const now = input.now ?? new Date().toISOString();
++  const { driver, existing, runDriver } = input;
++
++  // ── 分支 1：留痕优先。**必须排在「已声明」判定之前** ──
++  /*
++   * 排序理由（计划双审 r5 GLM-08）：把它放在「已声明」之后，
++   * 「已声明 X 且留痕 Y≠X」这个非法态会被幂等分支与拒绝分支给出**相反答案**。
++   * 提到首位后留痕永远优先，与本模块头部的权威排序一致。
++   */
++  if (runDriver !== null && runDriver !== driver) {
++    return { kind: 'blocked-by-run', runDriver };
++  }
++
++  // ── 分支 2：幂等 ──
++  if (existing && existing.driver === driver) {
++    return { kind: 'noop', claim: existing };
++  }
++
++  // ── 分支 3 / 3′：撤回既有声明 ──
++  if (existing && existing.driver !== driver) {
++    const used = await filesBearingSuffix(input.layout, input.stage, existing.driver);
++    if (used.length > 0) {
++      return { kind: 'blocked-by-usage', previous: existing.driver, files: used };
++    }
++    const { history: _drop, ...revoked } = existing;
++    return {
++      kind: 'revoked',
++      previous: existing.driver,
++      claim: {
++        driver,
++        claimed_at: now,
++        claimed_by: input.claimedBy,
++        // 追加不覆盖：旧声明整条入史，含撤回时刻
++        history: [...(existing.history ?? []), { ...revoked, revoked_at: now }],
++      },
++    };
++  }
++
++  // ── 分支 4：其余合法认领（新阶段首次声明、与既有留痕一致） ──
++  return {
++    kind: 'claimed',
++    claim: { driver, claimed_at: now, claimed_by: input.claimedBy },
++  };
++}
++
++/**
++ * **不变量**：同一阶段的「留痕」与「声明」不一致**没有合法来源**（计划 §2.4）。
++ *
++ * `claimStageDriver` 的分支 1 就是为了让这个状态造不出来（留痕在场时拒绝异声明），
++ * 所以真撞上它只可能来自**手改 `task.json`** 或历史遗留数据。
++ * 它比 `crossCheckDriver` 更靠前：后者问「你传的对不对」，本函数问「这份留痕本身自洽吗」。
++ *
++ * **落点与计划 §2.4 的字面有偏差，如实记在这里**：计划写的是「预检报错」，
++ * 而 `trivium preflight` **只接 `--stage` 不接 `--topic`**——它根本不知道要检查哪个主题，
++ * 这条在那里落不下去。改落在两个选侧入口（`topic resolve` 与 `review --start`），
++ * 它们每轮必经且拿得到主题。给 preflight 加 `--topic` 是另一件事，不在本步范围。
++ */
++export function stageDriverInvariant(args: {
++  stage: Stage;
++  runDriver: AgentId | null;
++  declared: AgentId | null;
++}): string | null {
++  if (args.runDriver === null || args.declared === null) return null;
++  if (args.runDriver === args.declared) return null;
++  return (
++    `${args.stage} 阶段的留痕与声明不一致：留痕记 ${args.runDriver}，声明记 ${args.declared}。\n` +
++    '  这个状态没有合法来源——topic claim 在留痕在场时会拒绝异声明，\n' +
++    '  所以它只可能来自手改 task.json 或历史遗留数据。\n' +
++    `  **以留痕为准**，出口是把声明改回留痕值：\n` +
++    `    trivium topic claim --stage ${args.stage} --driver ${args.runDriver}\n` +
++    '  这条命令走得通——分支 1「留痕优先」只拒绝**与留痕不同**的认领，改回同值不触发它；\n' +
++    `  旧声明会整条进 drivers.${args.stage}.history 留档。\n` +
++    `  唯一的例外是该阶段已存在带旧声明后缀的文件，那时撤回权已消失，需在终端清理后重试。`
++  );
++}
++
++/**
++ * **交叉校验**：用户传的 `--driver` 与该阶段的权威值是否一致（计划 §2.4）。
++ *
++ * 基准统一为「该阶段**最新一份可读留痕**」，三档：
++ *
++ *   · 有留痕 ⇒ 与最新留痕比对，不符则报错且**指向留痕**；
++ *   · 零留痕但有声明 ⇒ 与声明比对；
++ *   · 零留痕且无声明 ⇒ **不校验**（首次认领本来就该放行）。
++ *
++ * 两个入口（`topic resolve` 与 `review --start`）共用本函数。
++ * **判定只此一处**——同一条校验实现两遍就是改一漏二，`--only` 那次已经演过一回。
++ *
++ * 返回 `null` 表示通过；返回字符串即错误文案（调用方决定用哪个退出码）。
++ * 本函数**纯只读**，`topic resolve` 的「不创建任何目录」承诺不受影响。
++ */
++export function crossCheckDriver(args: {
++  stage: Stage;
++  /** 用户这次传的值 */
++  driver: AgentId;
++  /** 该阶段最新一份可读留痕的 driver；无留痕传 `null` */
++  runDriver: AgentId | null;
++  /** 该阶段的声明值；未声明传 `null` */
++  declared: AgentId | null;
++}): string | null {
++  if (args.runDriver !== null) {
++    if (args.runDriver === args.driver) return null;
++    return (
++      `--driver ${args.driver} 与 ${args.stage} 阶段的运行留痕不符：` +
++      `该阶段最新一份留痕记的是 ${args.runDriver}。\n` +
++      '  留痕是事实、声明只是打算，冲突时以留痕为准。\n' +
++      `  要按 ${args.runDriver} 继续，去掉 --driver 或改传该值；` +
++      '要换 Driver，请新开主题或在尚无留痕的阶段认领。'
++    );
++  }
++  if (args.declared !== null) {
++    if (args.declared === args.driver) return null;
++    return (
++      `--driver ${args.driver} 与 ${args.stage} 阶段的声明不符：该阶段已声明为 ${args.declared}。\n` +
++      `  改声明：trivium topic claim --stage ${args.stage} --driver ${args.driver}\n` +
++      '  该阶段尚无运行留痕，若声明还没用来写出任何带后缀的文件，上面这条命令可直接改写它。'
++    );
++  }
++  return null;
++}
++
++/** 分支 1 / 3′ 的错误文案。**出口写在文案里**——两档的出口不同，见 {@link ClaimOutcome} */
++export function claimRejectionMessage(o: ClaimOutcome, stage: Stage, driver: AgentId): string {
++  if (o.kind === 'blocked-by-run') {
++    return (
++      `${stage} 阶段已由 ${o.runDriver} 执笔（该阶段最新一份运行留痕如此记录），` +
++      `不能改声明为 ${driver}。\n` +
++      '  留痕不可改。换 Driver 请新开主题，或在尚无留痕的阶段认领。'
++    );
++  }
++  if (o.kind === 'blocked-by-usage') {
++    const list = o.files.map((f) => `    · ${f}`).join('\n');
++    return (
++      `${stage} 阶段的声明 ${o.previous} **已被使用**，撤回权已消失，不能改声明为 ${driver}。\n` +
++      '  该阶段目录下已存在带该后缀的文件：\n' +
++      `${list}\n` +
++      '  声明一旦用来写出文件，它就等同于留痕。这条限制是刻意的：\n' +
++      '  否则同一个会话可以在首份运行留痕诞生前反复翻转声明、依次拿到每一家的后缀豁免。\n' +
++      '  出口：在**终端**里清理上列文件后重试（会话内删不掉同样是刻意的——\n' +
++      '  Bash 守卫按命令文本的角色后缀字面拦截，不区分「写它」与「说它」）。'
++    );
++  }
++  return '';
++}
+diff --git a/test/helpers/strip-non-code.ts b/test/helpers/strip-non-code.ts
+new file mode 100644
+index 0000000..0ca22a4
+--- /dev/null
++++ b/test/helpers/strip-non-code.ts
+@@ -0,0 +1,59 @@
++/**
++ * 源码扫描类判据共用的**词法剥离器**。
++ *
++ * ## 为什么要有它，以及为什么它住在这里
++ *
++ * 本仓有一族判据靠**扫真实调用点的源码**来防「函数签名支持了、调用点没传」
++ * ——这类缺口在被调函数自己的单测里**必然是绿的**（那些用例自己构造入参）。
++ * 而裸子串扫描会被注释与字符串骗倒，`driver-wiring.test.ts` 的头注释记着
++ * 这条判据被打穿的四个版本，第 5 版才立住。
++ *
++ * 那套实现原先只住在 `driver-wiring.test.ts` 里。第二个需要它的判据出现时
++ * （M10a 第 1 步的声明接线盯防点），照抄一份就会长出第二份真相——
++ * 而它恰恰是**被实测打穿过四次**的那类代码，两份各修各的必然分叉。
++ * 故抽到这里共用；**它的自测仍留在 `driver-wiring.test.ts`**，
++ * 那里有七种被实测打穿的形态逐条钉着，判据自己也要有人看着。
++ *
++ * ## 三条设计约束（改这里之前先读）
++ *
++ * - **置空而非替换**：每个非代码字符换成空格（换行保留）。这样偏移量不变，
++ *   锚点在剥离后文本里的位置与原文一致，也不会凭空造出括号。
++ * - 模板只置空 `TemplateHead/Middle/Tail` 与无插值模板，`${…}` 里的**表达式保留**
++ *   （那里面本来就可以是真实取值）。头尾各含一半花括号，一起置空即保持配平。
++ * - 注释走 `getLeadingCommentRanges`，并且**按 token 粒度遍历**（`getChildren`
++ *   会给出 `(`、`)` 这类 token）——只走节点会漏掉夹在 token 之间的注释。
++ */
++import ts from 'typescript';
++
++export function stripNonCode(src: string): string {
++  const sf = ts.createSourceFile('scan.ts', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
++  const out = src.split('');
++  const blank = (from: number, to: number): void => {
++    for (let i = Math.max(0, from); i < Math.min(to, out.length); i++) {
++      if (!/\s/.test(out[i]!)) out[i] = ' ';
++    }
++  };
++
++  const LITERALS = new Set<ts.SyntaxKind>([
++    ts.SyntaxKind.StringLiteral,
++    ts.SyntaxKind.NoSubstitutionTemplateLiteral,
++    ts.SyntaxKind.RegularExpressionLiteral,
++    ts.SyntaxKind.TemplateHead,
++    ts.SyntaxKind.TemplateMiddle,
++    ts.SyntaxKind.TemplateTail,
++  ]);
++
++  const visit = (node: ts.Node): void => {
++    for (const r of ts.getLeadingCommentRanges(src, node.getFullStart()) ?? []) {
++      blank(r.pos, r.end);
++    }
++    if (LITERALS.has(node.kind)) {
++      blank(node.getStart(sf), node.getEnd());
++      return; // 字面量里没有代码，不必再下钻
++    }
++    for (const child of node.getChildren(sf)) visit(child);
++  };
++  visit(sf);
++
++  return out.join('');
++}
+diff --git a/test/integration/topic-claim.test.ts b/test/integration/topic-claim.test.ts
+new file mode 100644
+index 0000000..7145b80
+--- /dev/null
++++ b/test/integration/topic-claim.test.ts
+@@ -0,0 +1,254 @@
++/**
++ * `topic claim` 的端到端契约（M10a 第 1 步，EV-72）。
++ *
++ * ## 为什么要走真实子进程
++ *
++ * 分支判定本身在 `test/unit/driver-claim.test.ts` 已经逐格测过，而且那些用例
++ * **自己构造入参**——CLI 把哪几个值取错了、落盘落没落、退出码翻译对不对，
++ * 它们一概看不见。本文件只管这一跳：取值 → 判定 → 落盘 → 退出码。
++ *
++ * ## 零配额
++ *
++ * `topic claim` 不拉起任何适配器，全部用例都是纯本地文件操作。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { bundleMissing, bundleSkipReason, cli, makeFixture, today } from '../helpers/fixture.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++import { extractJsonCandidate } from '../../src/trivium/parse.js';
++import type { TaskMeta } from '../../src/trivium/meta.js';
++
++const TOPIC = '按阶段认领';
++
++async function readTaskJson(root: string): Promise<TaskMeta> {
++  const raw = await fs.readFile(path.join(root, '.reviews', TOPIC, 'task.json'), 'utf8');
++  return JSON.parse(raw) as TaskMeta;
++}
++
++function parseJson(stdout: string): Record<string, unknown> {
++  const c = extractJsonCandidate(stdout);
++  assert.notEqual(c, null, '--json 必须产出可解析的 JSON');
++  return JSON.parse(c!.json) as Record<string, unknown>;
++}
++
++test(
++  '首次认领：落盘 drivers[<阶段>]，--json 形状齐备',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC });
++    const r = await cli(root, [
++      'topic', 'claim', '--topic', TOPIC, '--stage', 'code', '--driver', 'glm',
++      '--session-id', 'sess-1', '--json',
++    ]);
++    assert.equal(r.code, EXIT.OK, r.stderr);
++
++    const j = parseJson(r.stdout);
++    assert.equal(j['outcome'], 'claimed');
++    assert.equal(j['stage'], 'code');
++    assert.equal(j['driver'], 'glm');
++    assert.equal(j['claimed_by'], 'sess-1');
++    assert.equal(j['history_len'], 0);
++
++    const task = await readTaskJson(root);
++    assert.equal(task.drivers?.code?.driver, 'glm');
++    assert.equal(task.drivers?.code?.claimed_by, 'sess-1', 'claimed_by 要真落盘，不只是回显');
++    assert.equal(task.schema, 'trivium.task.v1', 'additive 字段不得改 schema 版本');
++    // 认领 code 不得污染别的阶段
++    assert.equal(task.drivers?.plan, undefined);
++  },
++);
++
++test(
++  '幂等：同值再认领退 0，且 claimed_at 不被刷新',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC });
++    const a = await cli(root, [
++      'topic', 'claim', '--topic', TOPIC, '--stage', 'code', '--driver', 'glm',
++      '--session-id', 'sess-1', '--json',
++    ]);
++    assert.equal(a.code, EXIT.OK);
++    const first = (await readTaskJson(root)).drivers?.code?.claimed_at;
++
++    const b = await cli(root, [
++      'topic', 'claim', '--topic', TOPIC, '--stage', 'code', '--driver', 'glm',
++      '--session-id', 'sess-2', '--json',
++    ]);
++    assert.equal(b.code, EXIT.OK);
++    assert.equal(parseJson(b.stdout)['outcome'], 'noop');
++
++    const task = await readTaskJson(root);
++    assert.equal(
++      task.drivers?.code?.claimed_at, first,
++      '幂等档不写盘——照写会让「什么时候认领的」随每次重跑往后漂',
++    );
++    assert.equal(
++      task.drivers?.code?.claimed_by, 'sess-1',
++      '幂等不得把认领人改成后来那个会话',
++    );
++  },
++);
++
++test(
++  '--stage 必填：缺它退 64，不默认到 plan',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC });
++    const r = await cli(root, ['topic', 'claim', '--topic', TOPIC, '--driver', 'glm']);
++    assert.equal(r.code, EXIT.USAGE, '声明直接决定保护集，认哪一道必须说清');
++    assert.match(r.stderr, /--stage/);
++    // 没有落盘副作用
++    await assert.rejects(() => readTaskJson(root));
++  },
++);
++
++test(
++  '--driver 必填且须是已登记 Agent',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC });
++    const a = await cli(root, ['topic', 'claim', '--topic', TOPIC, '--stage', 'code']);
++    assert.equal(a.code, EXIT.USAGE);
++    assert.match(a.stderr, /--driver/);
++
++    const b = await cli(root, [
++      'topic', 'claim', '--topic', TOPIC, '--stage', 'code', '--driver', 'zcode',
++    ]);
++    assert.equal(b.code, EXIT.USAGE, 'zcode 是 cliName 不是 AgentId');
++    assert.match(b.stderr, /已登记/, '报错要列出可用取值');
++  },
++);
++
++test(
++  '撤回：零留痕且未用过 ⇒ 改写成功，旧声明进 history',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC });
++    await cli(root, [
++      'topic', 'claim', '--topic', TOPIC, '--stage', 'code', '--driver', 'glm',
++      '--session-id', 'sess-1',
++    ]);
++    const r = await cli(root, [
++      'topic', 'claim', '--topic', TOPIC, '--stage', 'code', '--driver', 'codex',
++      '--session-id', 'sess-2', '--json',
++    ]);
++    assert.equal(r.code, EXIT.OK, r.stderr);
++    const j = parseJson(r.stdout);
++    assert.equal(j['outcome'], 'revoked');
++    assert.equal(j['revoked'], 'glm');
++    assert.equal(j['history_len'], 1);
++
++    const task = await readTaskJson(root);
++    assert.equal(task.drivers?.code?.driver, 'codex');
++    assert.equal(task.drivers?.code?.history?.[0]?.driver, 'glm');
++    assert.equal(task.drivers?.code?.history?.[0]?.claimed_by, 'sess-1');
++    assert.ok(task.drivers?.code?.history?.[0]?.revoked_at, '撤回时刻要落盘');
++  },
++);
++
++test(
++  '撤回权因「声明已被使用」而消失：退 64 且文案列出那些文件',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC, draft: false });
++    await cli(root, [
++      'topic', 'claim', '--topic', TOPIC, '--stage', 'plan', '--driver', 'glm',
++    ]);
++
++    // 用掉这个声明：写一份带 glm 后缀的原稿
++    const stageDir = path.join(root, '.reviews', TOPIC, 'plan');
++    await fs.mkdir(stageDir, { recursive: true });
++    const orphan = `${today()}-${TOPIC}-glm.md`;
++    await fs.writeFile(path.join(stageDir, orphan), '# 原稿\n', 'utf8');
++
++    const r = await cli(root, [
++      'topic', 'claim', '--topic', TOPIC, '--stage', 'plan', '--driver', 'claude',
++    ]);
++    assert.equal(r.code, EXIT.USAGE);
++    assert.match(r.stderr, /已被使用/);
++    assert.match(r.stderr, new RegExp(orphan.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
++      '要点名是哪些文件挡住了撤回，否则用户不知道该清理什么');
++    assert.match(r.stderr, /终端/, '出口必须写明——会话内删不掉是刻意的');
++
++    // 声明没被改动
++    assert.equal((await readTaskJson(root)).drivers?.plan?.driver, 'glm');
++  },
++);
++
++test(
++  '留痕优先：该阶段已有运行留痕时，异声明退 64',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC });
++    /*
++     * 造一份 plan 阶段的 run 留痕。这里直接摆文件而不跑一轮真双审——
++     * 本用例要证的是「claim 读不读得到留痕」，跑真双审只会多烧一次配额。
++     */
++    const metaDir = path.join(root, '.reviews', TOPIC, 'plan', '_meta');
++    await fs.mkdir(metaDir, { recursive: true });
++    const { newRunMeta } = await import('../../src/trivium/meta.js');
++    await fs.writeFile(
++      path.join(metaDir, 'run-R1.json'),
++      JSON.stringify(newRunMeta({
++        runId: 'R1', topic: TOPIC, stage: 'plan', rerunIndex: 1, command: 'x',
++        promptHint: null, taskGoal: null, criticsSelected: ['gemini', 'glm'],
++        treeHash: 'h', gitHead: null, dirty: false, subjectSha256: 's',
++        denyPaths: [], driftPolicy: 'warn', driver: 'claude',
++      })),
++      'utf8',
++    );
++
++    const r = await cli(root, [
++      'topic', 'claim', '--topic', TOPIC, '--stage', 'plan', '--driver', 'glm',
++    ]);
++    assert.equal(r.code, EXIT.USAGE);
++    assert.match(r.stderr, /已由 claude 执笔/);
++    assert.match(r.stderr, /新开主题/, '出口要给全：留痕不可改，只能换主题或换阶段');
++
++    // 同值认领仍可通过（分支 1 只拒绝与留痕**不同**的那一档）
++    const ok = await cli(root, [
++      'topic', 'claim', '--topic', TOPIC, '--stage', 'plan', '--driver', 'claude',
++    ]);
++    assert.equal(ok.code, EXIT.OK, ok.stderr);
++  },
++);
++
++test(
++  '交叉校验：review --start 的 --driver 与声明不符时拒绝启动',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC });
++    await cli(root, [
++      'topic', 'claim', '--topic', TOPIC, '--stage', 'plan', '--driver', 'glm',
++    ]);
++
++    /*
++     * **必须在冻结送审包之前拒**：判错身份的那一轮跑完才发现，代价是整轮作废。
++     * 断言零工件就是这条的落点。
++     */
++    const r = await cli(root, [
++      'review', '--start', '--entry', 'B', '--stage', 'plan', '--topic', TOPIC,
++      '--focus', '看边界', '--driver', 'codex', '--critics', 'gemini,glm',
++    ]);
++    assert.equal(r.code, EXIT.USAGE, r.stdout);
++    assert.match(r.stderr, /声明不符/);
++    assert.match(r.stderr, /topic claim --stage plan --driver codex/, '要给可直接敲的出口');
++
++    const metaDir = path.join(root, '.reviews', TOPIC, 'plan', '_meta');
++    const left = await fs.readdir(metaDir).catch(() => [] as string[]);
++    assert.deepEqual(left, [], '拒绝发生在冻结之前，不得留下半个送审包');
++  },
++);
++
++test(
++  'topic 只认 resolve / claim 两个子命令',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const { root } = await makeFixture({ topic: TOPIC });
++    const r = await cli(root, ['topic', 'bogus', '--topic', TOPIC]);
++    assert.equal(r.code, EXIT.USAGE);
++    assert.match(r.stderr, /resolve \/ claim/);
++  },
++);
+diff --git a/test/unit/driver-claim.test.ts b/test/unit/driver-claim.test.ts
+new file mode 100644
+index 0000000..fa3681f
+--- /dev/null
++++ b/test/unit/driver-claim.test.ts
+@@ -0,0 +1,568 @@
++/**
++ * **按阶段 Driver 声明**的判据（M10a 第 1 步，EV-72）。
++ *
++ * 三层分开测，各自的鉴别力不同：
++ *
++ *   · **分支表**（纯函数）——`claimStageDriver` 的六格，直接喂构造好的输入；
++ *   · **三级判定**（Hook 真链路）——`hookPreWrite` 经 `resolveRoundDriver` 的落点，
++ *     这一层才证明「声明真的让非缺省 Driver 写得出原稿」；
++ *   · **交叉校验与不变量**——两个选侧入口共用的那两条。
++ *
++ * ## 为什么分支表要单独测而不是只跑 CLI
++ *
++ * 分支 3′（撤回权因「声明已被使用」而消失）要构造「目录里有带旧后缀的文件」，
++ * 经 CLI 造这个前置状态本身就要绕过 Hook 保护。纯函数层直接摆文件即可，
++ * 而 CLI 层只需证明「分支结果被正确地翻译成退出码与落盘」。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import {
++  claimStageDriver, crossCheckDriver, declaredStageDriver, filesBearingSuffix,
++  stageDriverInvariant,
++} from '../../src/trivium/driver-claim.js';
++import { hookPreWrite, type HookInput } from '../../src/trivium/hooks.js';
++import { emptyTask, newRunMeta } from '../../src/trivium/meta.js';
++import { defaultConfig } from '../../src/trivium/config.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++import type { AgentId, Ctx } from '../../src/trivium/types.js';
++
++const SESSION = 'sess-claim';
++
++async function fakeCtx(): Promise<Ctx> {
++  const raw = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-claim-'));
++  const root = await fs.realpath(raw);
++  const triviumDir = path.join(root, '.trivium');
++  await fs.mkdir(triviumDir, { recursive: true });
++  await fs.writeFile(path.join(triviumDir, 'config.yaml'), 'schema: trivium.config.v1\n');
++  return {
++    config: defaultConfig(),
++    projectRoot: root,
++    archiveRoot: path.join(root, '.reviews'),
++    triviumDir,
++    sources: ['<test>'],
++  };
++}
++
++function writeInput(filePath: string): HookInput {
++  return { session_id: SESSION, tool_name: 'Write', tool_input: { file_path: filePath } };
++}
++
++async function seedRunMeta(
++  ctx: Ctx, topic: string, stage: 'plan' | 'code' | 'bug', runId: string, driver: AgentId,
++): Promise<void> {
++  const dir = path.join(ctx.archiveRoot, topic, stage, '_meta');
++  await fs.mkdir(dir, { recursive: true });
++  const meta = newRunMeta({
++    runId, topic, stage, rerunIndex: 1, command: 'x',
++    promptHint: null, taskGoal: null, criticsSelected: ['gemini', 'glm'],
++    treeHash: 'h', gitHead: null, dirty: false, subjectSha256: 's',
++    denyPaths: [], driftPolicy: 'warn', driver,
++  });
++  await fs.writeFile(path.join(dir, `run-${runId}.json`), JSON.stringify(meta));
++}
++
++/** 直接写 task.json 的 drivers 段——测「读侧」时不绕 claim 的分支判定 */
++async function seedClaim(
++  ctx: Ctx, topic: string, stage: 'plan' | 'code' | 'bug', driver: AgentId,
++): Promise<void> {
++  const dir = path.join(ctx.archiveRoot, topic);
++  await fs.mkdir(dir, { recursive: true });
++  const t = emptyTask(topic);
++  t.drivers = { [stage]: { driver, claimed_at: '2026-09-22T00:00:00.000Z', claimed_by: SESSION } };
++  await fs.writeFile(path.join(dir, 'task.json'), JSON.stringify(t));
++}
++
++/** 一次种多个阶段的声明——「按阶段不按主题」的判据要两个阶段同时在场才构造得出来 */
++async function seedClaims(
++  ctx: Ctx, topic: string, byStage: Partial<Record<'plan' | 'code' | 'bug', AgentId>>,
++): Promise<void> {
++  const dir = path.join(ctx.archiveRoot, topic);
++  await fs.mkdir(dir, { recursive: true });
++  const t = emptyTask(topic);
++  t.drivers = {};
++  for (const [stage, driver] of Object.entries(byStage)) {
++    t.drivers[stage as 'plan' | 'code' | 'bug'] = {
++      driver: driver as AgentId, claimed_at: '2026-09-22T00:00:00.000Z', claimed_by: SESSION,
++    };
++  }
++  await fs.writeFile(path.join(dir, 'task.json'), JSON.stringify(t));
++}
++
++const layoutOf = (ctx: Ctx, topic: string): { archiveRoot: string; topic: string } => ({
++  archiveRoot: ctx.archiveRoot,
++  topic,
++});
++
++// ══════════════════════════════════════════════════════════════
++// 一、分支表（计划 §2.3 逐行）
++// ══════════════════════════════════════════════════════════════
++
++test('分支 1：该阶段已有 run 留痕且不同 ⇒ 拒，且指向留痕', async () => {
++  const ctx = await fakeCtx();
++  const r = await claimStageDriver({
++    layout: layoutOf(ctx, 't'), stage: 'code', driver: 'glm', claimedBy: SESSION,
++    runDriver: 'claude',
++    // **已声明且与留痕不同**：这正是分支 1 必须排在「已声明」判定之前的那一格。
++    // 排序反了的话，这里会落到幂等或撤回分支，非法态被静默接受（r5 GLM-08）。
++    existing: { driver: 'glm', claimed_at: 'x', claimed_by: 'y' },
++  });
++  assert.equal(r.kind, 'blocked-by-run');
++  assert.equal(r.kind === 'blocked-by-run' && r.runDriver, 'claude');
++});
++
++test('分支 2：已声明且相同 ⇒ 幂等，且不刷新 claimed_at', async () => {
++  const ctx = await fakeCtx();
++  const existing = { driver: 'glm' as AgentId, claimed_at: 'T0', claimed_by: 'who' };
++  const r = await claimStageDriver({
++    layout: layoutOf(ctx, 't'), stage: 'code', driver: 'glm', claimedBy: 'other-session',
++    runDriver: null, existing, now: 'T9',
++  });
++  assert.equal(r.kind, 'noop');
++  /*
++   * `claimed_at` 必须还是 T0。幂等档若照写一遍，「什么时候认领的」这个审计事实
++   * 会随每次重跑往后漂——而它正是自声明边界要留的那条线索。
++   */
++  assert.equal(r.kind === 'noop' && r.claim.claimed_at, 'T0');
++  assert.equal(r.kind === 'noop' && r.claim.claimed_by, 'who');
++});
++
++test('分支 3：零 run 留痕、声明未被使用 ⇒ 撤回改写，旧声明整条入 history', async () => {
++  const ctx = await fakeCtx();
++  const r = await claimStageDriver({
++    layout: layoutOf(ctx, 't'), stage: 'plan', driver: 'claude', claimedBy: 'sess-B',
++    runDriver: null,
++    existing: { driver: 'glm', claimed_at: 'T0', claimed_by: 'sess-A' },
++    now: 'T1',
++  });
++  assert.equal(r.kind, 'revoked');
++  if (r.kind !== 'revoked') return;
++  assert.equal(r.previous, 'glm');
++  assert.equal(r.claim.driver, 'claude');
++  assert.deepEqual(r.claim.history, [
++    { driver: 'glm', claimed_at: 'T0', claimed_by: 'sess-A', revoked_at: 'T1' },
++  ]);
++});
++
++test('分支 3：镜像死锁序列仍然解得开（分支 3 的原始职责）', async () => {
++  const ctx = await fakeCtx();
++  /*
++   * 死锁序列：claim glm（零留痕放行）⇒ 发现该用 claude ⇒ 改不回声明 ⇒ 建不了留痕
++   * ⇒ task.json 双侧独占 ⇒ 出路只剩新开主题或终端手改受保护文件。
++   * 关键前置是「**声明了但还没动手**」——此时该阶段目录下没有任何 -glm.md。
++   */
++  const r = await claimStageDriver({
++    layout: layoutOf(ctx, 't'), stage: 'plan', driver: 'claude', claimedBy: SESSION,
++    runDriver: null, existing: { driver: 'glm', claimed_at: 'T0', claimed_by: SESSION },
++  });
++  assert.equal(r.kind, 'revoked', '零留痕、零文件时撤回必须放行，否则死锁回来了');
++});
++
++test("分支 3′：声明已被使用（目录有带其后缀的文件）⇒ 撤回权消失", async () => {
++  const ctx = await fakeCtx();
++  const stageDir = path.join(ctx.archiveRoot, 't/plan');
++  await fs.mkdir(stageDir, { recursive: true });
++  await fs.writeFile(path.join(stageDir, '2026-09-22-t-glm.md'), '# 原稿\n');
++
++  const r = await claimStageDriver({
++    layout: layoutOf(ctx, 't'), stage: 'plan', driver: 'claude', claimedBy: SESSION,
++    runDriver: null, existing: { driver: 'glm', claimed_at: 'T0', claimed_by: SESSION },
++  });
++  assert.equal(r.kind, 'blocked-by-usage');
++  if (r.kind !== 'blocked-by-usage') return;
++  assert.equal(r.previous, 'glm');
++  assert.deepEqual(r.files, ['2026-09-22-t-glm.md']);
++});
++
++test('分支 4：新阶段首次声明 ⇒ 放行', async () => {
++  const ctx = await fakeCtx();
++  const r = await claimStageDriver({
++    layout: layoutOf(ctx, 't'), stage: 'bug', driver: 'codex', claimedBy: SESSION,
++    runDriver: null, existing: null, now: 'T5',
++  });
++  assert.equal(r.kind, 'claimed');
++  assert.equal(r.kind === 'claimed' && r.claim.claimed_at, 'T5');
++  assert.equal(r.kind === 'claimed' && r.claim.history, undefined);
++});
++
++test('分支 4：与既有留痕一致的认领 ⇒ 放行（不被分支 1 误伤）', async () => {
++  const ctx = await fakeCtx();
++  const r = await claimStageDriver({
++    layout: layoutOf(ctx, 't'), stage: 'code', driver: 'claude', claimedBy: SESSION,
++    runDriver: 'claude', existing: null,
++  });
++  assert.equal(r.kind, 'claimed');
++});
++
++// ══════════════════════════════════════════════════════════════
++// 二、反复翻转（计划 §2.4 自声明边界，r6 CODEX-02）
++// ══════════════════════════════════════════════════════════════
++
++/*
++ * **这条是本步的安全用例**。
++ *
++ * 只以「零 run 留痕」为撤回前置时，同一个会话可以：
++ *   claim glm ⇒ 写 -glm.md ⇒ 撤回 claim codex ⇒ 写 -codex.md ⇒ …
++ * 在首份 run 留痕诞生前依次拿到**每一家**的后缀豁免——而保护集正是
++ * 「全集减当轮 Driver」，当轮 Driver 又取自这个自声明。
++ *
++ * 断言写成「**第二次翻转必须失败**」而不是「某个具体文件被拦」：
++ * 前者锁的是能力（能不能连续取得第二个后缀），后者只锁一个样本。
++ */
++test('反复翻转：用掉一个后缀之后拿不到第二个', async () => {
++  const ctx = await fakeCtx();
++  const stageDir = path.join(ctx.archiveRoot, 't/plan');
++  await fs.mkdir(stageDir, { recursive: true });
++
++  // 第 1 次翻转：零文件，放行
++  const first = await claimStageDriver({
++    layout: layoutOf(ctx, 't'), stage: 'plan', driver: 'glm', claimedBy: SESSION,
++    runDriver: null, existing: { driver: 'codex', claimed_at: 'T0', claimed_by: SESSION },
++  });
++  assert.equal(first.kind, 'revoked', '还没用过的声明可以撤回');
++
++  // 用掉它：写一份带 glm 后缀的文件
++  await fs.writeFile(path.join(stageDir, '2026-09-22-t-glm.md'), '# 原稿\n');
++
++  // 第 2 次翻转：必须失败
++  const second = await claimStageDriver({
++    layout: layoutOf(ctx, 't'), stage: 'plan', driver: 'gemini', claimedBy: SESSION,
++    runDriver: null, existing: { driver: 'glm', claimed_at: 'T1', claimed_by: SESSION },
++  });
++  assert.equal(
++    second.kind, 'blocked-by-usage',
++    '声明一旦用来写出文件就等同留痕；否则同一会话可依次拿到每一家的后缀豁免',
++  );
++});
++
++test('声明史追加不覆盖：连续两次撤回留下两条', async () => {
++  const ctx = await fakeCtx();
++  const r1 = await claimStageDriver({
++    layout: layoutOf(ctx, 't'), stage: 'plan', driver: 'glm', claimedBy: 'sA',
++    runDriver: null, existing: { driver: 'codex', claimed_at: 'T0', claimed_by: 'sZ' },
++    now: 'T1',
++  });
++  assert.equal(r1.kind, 'revoked');
++  if (r1.kind !== 'revoked') return;
++
++  const r2 = await claimStageDriver({
++    layout: layoutOf(ctx, 't'), stage: 'plan', driver: 'gemini', claimedBy: 'sB',
++    runDriver: null, existing: r1.claim, now: 'T2',
++  });
++  assert.equal(r2.kind, 'revoked');
++  if (r2.kind !== 'revoked') return;
++  assert.equal(r2.claim.history?.length, 2, '追加不覆盖——撤回史是审计面');
++  assert.deepEqual(
++    r2.claim.history?.map((h) => h.driver), ['codex', 'glm'],
++    '按撤回先后排列',
++  );
++  // 入史的条目不得自带嵌套 history，否则每撤回一次整棵历史翻倍
++  assert.equal(
++    JSON.stringify(r2.claim.history).includes('"history"'), false,
++    '入史条目要剥掉自己的 history 字段',
++  );
++});
++
++test('filesBearingSuffix：只认该家的后缀，目录不存在返回空', async () => {
++  const ctx = await fakeCtx();
++  assert.deepEqual(await filesBearingSuffix(layoutOf(ctx, 't'), 'plan', 'glm'), []);
++
++  const stageDir = path.join(ctx.archiveRoot, 't/plan');
++  await fs.mkdir(stageDir, { recursive: true });
++  for (const f of ['a-glm.md', 'b-codex.md', 'c-revised-glm.md', 'd-glm.txt', 'glm.md']) {
++    await fs.writeFile(path.join(stageDir, f), 'x');
++  }
++  assert.deepEqual(
++    await filesBearingSuffix(layoutOf(ctx, 't'), 'plan', 'glm'),
++    ['a-glm.md', 'c-revised-glm.md'],
++    '裁决件形态 -revised-glm.md 同样算「用过」；扩展名不对或没有连字符的不算',
++  );
++});
++
++// ══════════════════════════════════════════════════════════════
++// 三、三级判定（Hook 真链路）
++// ══════════════════════════════════════════════════════════════
++
++test('第 1 级：有留痕时取留痕，声明不参与', async () => {
++  const ctx = await fakeCtx();
++  await seedRunMeta(ctx, 't', 'code', 'R1', 'codex');
++  await seedClaim(ctx, 't', 'code', 'glm'); // 声明说 glm，留痕说 codex
++
++  // 留痕赢 ⇒ 当轮 Driver = codex ⇒ 保护集不含 codex ⇒ 写 -codex.md 放行
++  const ok = path.join(ctx.archiveRoot, 't/code/2026-09-22-t-response-codex.md');
++  assert.equal((await hookPreWrite(ctx, writeInput(ok))).exitCode, EXIT.OK);
++
++  // 而声明的那一家（glm）在保护集里 ⇒ 拦。声明若赢了，这一条会放行
++  const blocked = path.join(ctx.archiveRoot, 't/code/2026-09-22-t-glm.md');
++  assert.equal((await hookPreWrite(ctx, writeInput(blocked))).exitCode, EXIT.GATE_BLOCK);
++});
++
++test('第 2 级：零留痕时取声明——非缺省 Driver 写得出自己的原稿', async () => {
++  const ctx = await fakeCtx();
++  await seedClaim(ctx, 't', 'plan', 'glm');
++
++  /*
++   * 这一条就是 EV-72 的靶心：plan 原稿写在 `review --start` 之前，
++   * 那一刻该阶段零留痕。没有第 2 级时判定回落缺省 Driver，
++   * `-glm.md` 落进保护集被判伪造件退 2——glm 连自己的原稿都写不出来。
++   */
++  const own = path.join(ctx.archiveRoot, 't/plan/2026-09-22-t-glm.md');
++  const r = await hookPreWrite(ctx, writeInput(own));
++  assert.equal(r.exitCode, EXIT.OK, '声明为 glm 时，glm 的原稿必须写得出来');
++
++  // 反向：缺省 Driver 的后缀此时**进了**保护集
++  const other = path.join(ctx.archiveRoot, 't/plan/2026-09-22-t-claude.md');
++  const r2 = await hookPreWrite(ctx, writeInput(other));
++  assert.equal(r2.exitCode, EXIT.GATE_BLOCK);
++  assert.match(
++    JSON.stringify(r2.json), /topic claim/,
++    '拦截文案要说清判定来源是声明，否则用户查不到为什么判成这一家',
++  );
++});
++
++test('第 3 级：既无留痕也无声明 ⇒ 缺省 Driver，文案点明', async () => {
++  const ctx = await fakeCtx();
++  const f = path.join(ctx.archiveRoot, 't/plan/2026-09-22-t-glm.md');
++  const r = await hookPreWrite(ctx, writeInput(f));
++  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
++  assert.match(JSON.stringify(r.json), /既无运行留痕也无声明/);
++});
++
++/*
++ * **「按阶段而不按主题」的真判据**。
++ *
++ * 上一版这条用例写的是「plan 有 **run 留痕** claude + code 声明 glm」——
++ * 变异验证当场打穿：plan 那边第 1 级就赢了，**压根走不到第 2 级**，
++ * 把第 2 级换成「按主题取任意一条声明」它照样绿。
++ *
++ * 能鉴别的构造只有一个：**两个阶段都只有声明、且声明不同**。
++ * 此时主题级单值必然给其中一个阶段回答错的那一家——而那正是计划里说的
++ * 「精确覆盖跨阶段换 Driver 发生的那一刻」。
++ */
++test('按阶段不按主题：两个阶段各自的声明互不渗透', async () => {
++  const ctx = await fakeCtx();
++  await seedClaims(ctx, 't', { plan: 'claude', code: 'glm' });
++
++  // code 声明 glm ⇒ glm 的原稿放行
++  assert.equal(
++    (await hookPreWrite(ctx, writeInput(
++      path.join(ctx.archiveRoot, 't/code/2026-09-22-t-glm.md'),
++    ))).exitCode,
++    EXIT.OK,
++  );
++  // plan 声明 claude ⇒ glm 在保护集里 ⇒ 拦。按主题取值会让这一条放行
++  assert.equal(
++    (await hookPreWrite(ctx, writeInput(
++      path.join(ctx.archiveRoot, 't/plan/2026-09-22-t-glm.md'),
++    ))).exitCode,
++    EXIT.GATE_BLOCK,
++    'plan 的声明是 claude，code 的声明不得渗过去',
++  );
++  // 对称方向：plan 的 claude 原稿放行，code 的 claude 原稿被拦
++  assert.equal(
++    (await hookPreWrite(ctx, writeInput(
++      path.join(ctx.archiveRoot, 't/plan/2026-09-22-t-claude.md'),
++    ))).exitCode,
++    EXIT.OK,
++  );
++  assert.equal(
++    (await hookPreWrite(ctx, writeInput(
++      path.join(ctx.archiveRoot, 't/code/2026-09-22-t-claude.md'),
++    ))).exitCode,
++    EXIT.GATE_BLOCK,
++    '两个方向都要测——只测一边时，按主题取值有一半概率蒙对',
++  );
++});
++
++test('跨阶段合法链路：plan 留痕 claude + code 声明 glm ⇒ 两边各按各的判', async () => {
++  const ctx = await fakeCtx();
++  await seedRunMeta(ctx, 't', 'plan', 'R1', 'claude');
++  await seedClaim(ctx, 't', 'code', 'glm');
++
++  /*
++   * **这条用例是「按阶段而不按主题」的核心判据**。
++   * 主题级单值会精确覆盖跨阶段换 Driver 发生的那一刻——而那正是本字段唯一有用的时候。
++   */
++  const codeOwn = path.join(ctx.archiveRoot, 't/code/2026-09-22-t-glm.md');
++  assert.equal(
++    (await hookPreWrite(ctx, writeInput(codeOwn))).exitCode, EXIT.OK,
++    'code 阶段声明为 glm ⇒ glm 的原稿放行',
++  );
++
++  const planGlm = path.join(ctx.archiveRoot, 't/plan/2026-09-22-t-glm.md');
++  assert.equal(
++    (await hookPreWrite(ctx, writeInput(planGlm))).exitCode, EXIT.GATE_BLOCK,
++    'plan 阶段留痕是 claude，code 的声明不得渗过去',
++  );
++});
++
++test('留痕损坏时不降级到声明，仍硬失败', async () => {
++  const ctx = await fakeCtx();
++  const dir = path.join(ctx.archiveRoot, 't/code/_meta');
++  await fs.mkdir(dir, { recursive: true });
++  await fs.writeFile(path.join(dir, 'run-RBAD.json'), '{ broken }');
++  await seedClaim(ctx, 't', 'code', 'glm');
++
++  /*
++   * `corrupt` 的含义是「锚本身坏了」。此时退到一个**由被保护方自己写的**声明值，
++   * 正好是把权威排序倒过来用——留痕坏了反而让声明说了算。
++   */
++  const f = path.join(ctx.archiveRoot, 't/code/2026-09-22-t-glm.md');
++  const r = await hookPreWrite(ctx, writeInput(f));
++  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
++  assert.match(JSON.stringify(r.json), /RBAD/, '要点名是哪份留痕读不出来，不能静默用声明顶上');
++});
++
++test('task.json 损坏时落到第 3 级，不硬失败', async () => {
++  const ctx = await fakeCtx();
++  await fs.mkdir(path.join(ctx.archiveRoot, 't'), { recursive: true });
++  await fs.writeFile(path.join(ctx.archiveRoot, 't/task.json'), '{ not json');
++
++  /*
++   * 「有没有人声明过」这一级读不出来时**没有可信的声明**，与「没声明」同档。
++   * 在这里硬失败会把 Driver 写原稿的路一并堵死，而那不是安全收益是噪声——
++   * task.json 损坏本身另有锚在管。
++   */
++  const f = path.join(ctx.archiveRoot, 't/plan/2026-09-22-t-glm.md');
++  const r = await hookPreWrite(ctx, writeInput(f));
++  assert.equal(r.exitCode, EXIT.GATE_BLOCK, '落到缺省 Driver ⇒ glm 在保护集里 ⇒ 拦');
++  assert.match(JSON.stringify(r.json), /既无运行留痕也无声明/);
++});
++
++test('孤儿兜底：旧后缀文件在场时，定位不受影响（存量数据）', async () => {
++  const ctx = await fakeCtx();
++  await seedClaim(ctx, 't', 'plan', 'claude');
++  const stageDir = path.join(ctx.archiveRoot, 't/plan');
++  await fs.mkdir(stageDir, { recursive: true });
++  // 绕过 claim 直接造出来的存量孤儿
++  await fs.writeFile(path.join(stageDir, '2026-09-20-t-glm.md'), '# 孤儿\n');
++
++  /*
++   * 分支 3′ 之后这一态不再产生，但存量数据要有兜底：
++   * 孤儿仍在保护集里（当轮 Driver 是 claude），写它照样被拦。
++   */
++  const r = await hookPreWrite(ctx, writeInput(path.join(stageDir, '2026-09-20-t-glm.md')));
++  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
++});
++
++// ══════════════════════════════════════════════════════════════
++// 四、交叉校验与不变量（两个选侧入口共用）
++// ══════════════════════════════════════════════════════════════
++
++test('交叉校验三档：有留痕比留痕、零留痕比声明、都没有则不校验', () => {
++  // ① 有留痕 ⇒ 与留痕比
++  assert.equal(
++    crossCheckDriver({ stage: 'code', driver: 'claude', runDriver: 'claude', declared: 'glm' }),
++    null,
++    '留痕一致即通过——声明不参与，它在这一档没有话语权',
++  );
++  const a = crossCheckDriver({
++    stage: 'code', driver: 'glm', runDriver: 'claude', declared: 'glm',
++  });
++  assert.match(String(a), /运行留痕不符/);
++  assert.match(String(a), /claude/, '错误文案要指向留痕的那个值');
++
++  // ② 零留痕但有声明 ⇒ 与声明比
++  assert.equal(
++    crossCheckDriver({ stage: 'plan', driver: 'glm', runDriver: null, declared: 'glm' }), null,
++  );
++  const b = crossCheckDriver({
++    stage: 'plan', driver: 'codex', runDriver: null, declared: 'glm',
++  });
++  assert.match(String(b), /声明不符/);
++  assert.match(String(b), /topic claim --stage plan --driver codex/, '要给出可直接敲的出口');
++
++  // ③ 都没有 ⇒ 不校验（首次认领本就该放行）
++  assert.equal(
++    crossCheckDriver({ stage: 'plan', driver: 'codex', runDriver: null, declared: null }), null,
++  );
++});
++
++test('不变量：同阶段留痕与声明不一致 ⇒ 报错，且出口是可行的', () => {
++  assert.equal(stageDriverInvariant({ stage: 'code', runDriver: null, declared: 'glm' }), null);
++  assert.equal(stageDriverInvariant({ stage: 'code', runDriver: 'glm', declared: null }), null);
++  assert.equal(stageDriverInvariant({ stage: 'code', runDriver: 'glm', declared: 'glm' }), null);
++
++  const msg = stageDriverInvariant({ stage: 'code', runDriver: 'claude', declared: 'glm' });
++  assert.match(String(msg), /没有合法来源/);
++  /*
++   * **出口必须真的走得通**——文案里给的 `claim --driver <留痕值>` 恰好不触发分支 1
++   * （它只拒绝与留痕**不同**的认领）。这条断言锁的就是「文案与实现不得给相反答案」，
++   * 与 §3.2.2 那族「报错教的命令当场被拒」是同一个失效形态。
++   */
++  assert.match(String(msg), /topic claim --stage code --driver claude/);
++});
++
++/*
++ * **次序判据要打真入口，不能只断言纯函数**。
++ *
++ * 顺序反了会发生什么：留痕 claude、声明 glm、用户传 glm。
++ * 先跑交叉校验 ⇒ 它按「有留痕比留痕」判 glm≠claude，报「与运行留痕不符」，
++ * 用户以为是自己 `--driver` 传错了；而真正坏的是 task.json 被手改过。
++ * 两条消息指向**不同的修法**，顺序决定用户走哪条。
++ *
++ * 只断言 `stageDriverInvariant` 非 null 证明不了这件事——它对两种排序都成立。
++ * 能鉴别的只有「真入口报出来的是哪一条」。
++ */
++test('不变量先于交叉校验：真入口报的是「没有合法来源」而不是「传错了」', async () => {
++  const ctx = await fakeCtx();
++  await seedRunMeta(ctx, 't', 'code', 'R1', 'claude');
++  await seedClaim(ctx, 't', 'code', 'glm');
++
++  const { resolveTopicArgs } = await import('../../src/trivium/topic-args.js');
++  /*
++   * 显式给 `--critics`：缺省集合含 glm，而「当轮 Driver 不得入选」排在本步校验之前，
++   * 不避开它这条用例会红在一个与次序无关的前置上——测的就不是它要测的东西了。
++   */
++  const err = await resolveTopicArgs({
++    ctx,
++    scope: 'code',
++    rawArgs: ['看这一处', '--topic', 't', '--driver', 'glm', '--critics', 'codex,gemini'],
++  }).then(() => null, (e: Error) => e);
++
++  assert.notEqual(err, null, '留痕与声明打架时必须拒绝启动');
++  assert.match(String(err?.message), /没有合法来源/, '要说清是留痕本身不自洽');
++  assert.doesNotMatch(
++    String(err?.message), /与 code 阶段的运行留痕不符/,
++    '不得把「基准坏了」报成「你传错了」——两条指向不同的修法',
++  );
++});
++
++/*
++ * ── 接线盯防点（计划 §2.4 末行）──
++ *
++ * 前面那些用例**在接线缺失时照样是绿的**：它们自己构造入参去调判定函数，
++ * 根本走不到「真实入口有没有调它」这一跳。这是本仓反复栽过的缺口形态
++ * （`driver-wiring.test.ts` 的头注释记着同族的三次），判据只能是扫源码。
++ *
++ * 剥注释与字符串用共享的词法器——裸子串会被我自己写在注释里的
++ * 「共用 driver-claim.crossCheckDriver」骗倒，那正是它被打穿的第 1 版形态。
++ */
++test('接线：两个选侧入口都要调校验，且不变量在交叉校验之前', async () => {
++  const { stripNonCode } = await import('../helpers/strip-non-code.js');
++  const { REPO_ROOT } = await import('../helpers/fixture.js');
++
++  for (const rel of ['src/trivium/topic-args.ts', 'src/trivium/cli.ts']) {
++    const src = stripNonCode(await fs.readFile(path.join(REPO_ROOT, rel), 'utf8'));
++
++    const inv = src.indexOf('stageDriverInvariant({');
++    const cross = src.indexOf('crossCheckDriver({');
++    assert.notEqual(inv, -1, `${rel} 没有调用 stageDriverInvariant——判定有了，入口没接`);
++    assert.notEqual(cross, -1, `${rel} 没有调用 crossCheckDriver——判定有了，入口没接`);
++    /*
++     * 次序判据落在源码上，因为 `review --start` 那一侧没有便宜的运行期构造：
++     * 顺序反了会把「基准坏了」报成「你传错了」，两条指向不同的修法。
++     */
++    assert.ok(inv < cross, `${rel} 里不变量必须排在交叉校验之前，否则会用一个坏基准去判对错`);
++  }
++});
++
++test('declaredStageDriver：缺字段即未声明', () => {
++  const t = emptyTask('t');
++  assert.equal(declaredStageDriver(t, 'plan'), null);
++  t.drivers = { plan: { driver: 'glm', claimed_at: 'T', claimed_by: 's' } };
++  assert.equal(declaredStageDriver(t, 'plan'), 'glm');
++  assert.equal(declaredStageDriver(t, 'code'), null, '按阶段取值，不跨阶段渗透');
++});

@@ -127,6 +127,54 @@ export interface TaskMeta {
     reason?: 'voided' | 'no-structured-review' | 'both';
     at: string;
   }[];
+  /**
+   * **按阶段**的 Driver 声明（M10a 第 1 步，EV-72）。**可选**：缺该字段 = 「未声明」。
+   *
+   * ## 为什么需要它
+   *
+   * plan / bug 原稿在 `review --start` **之前**由 Driver 写出，那一刻该阶段零留痕，
+   * `resolveRoundDriver` 回落 `DEFAULT_DRIVER`，于是非缺省 Driver 的 `-<id>.md` 原稿
+   * 被 `isForgedRoleFile` 判成伪造件退 2——**它连自己的原稿都写不出来**。
+   * 声明补的正是「留痕诞生之前」这一段。
+   *
+   * ## 为什么按阶段而不按主题
+   *
+   * 它要与 `resolveRoundDriver` 第 1 级「该**阶段**最新 `run.json.driver`」同构。
+   * 主题级单值会**精确覆盖跨阶段换 Driver 发生的那一刻**（plan 由 claude 执笔、
+   * code 换 glm 接手是合法链路），而那一刻正是本字段唯一有用的时候。
+   *
+   * ## `history[]` 为什么是追加式
+   *
+   * `drivers[stage]` 是单值、改写即覆盖。而这里的「谁在何时认领过」是**审计面**：
+   * 撤回是本字段唯一允许改写既有声明的口子，它的审计面不该最弱。
+   * 同文件的 `approvals` / `degradations` / `disputes` 三个数组都是追加式，
+   * 先例 `ApprovalRecord.session_id` 的要义恰恰是把「谁干的」持久写进 task.json。
+   * 只往 stderr 打一行日志等于撤回史不落任何持久载体（计划双审 r6 GLM-04）。
+   *
+   * schema 仍是 `trivium.task.v1`——additive 可选字段，旧文件读得动，读侧缺失即「未声明」。
+   */
+  drivers?: {
+    [stage in Stage]?: StageDriverClaim;
+  };
+}
+
+/** 某一阶段的 Driver 声明（见 {@link TaskMeta.drivers}） */
+export interface StageDriverClaim {
+  driver: AgentId;
+  claimed_at: string;
+  /**
+   * 谁声明的。**自声明边界的控制点**——本字段之后「当轮 Driver」第一次由
+   * 被保护方自己说了算，而它直接决定 Write / Edit 侧的保护集
+   * （`hooks.ts` 规则 1：保护集 = 全集减当轮 Driver）。
+   *
+   * **先例 `ApprovalRecord.session_id` 不能照搬**（计划双审 r6 CODEX-02）：
+   * 那个自声明只影响事后对账，**不改变任何保护集**；这个改变保护集。
+   * 两者档位不同，故本字段之外另加两重约束——声明一旦被使用即锁死
+   * （见 `driver-claim.ts` 分支 3′）、每次撤回入 `history[]`。
+   */
+  claimed_by: string;
+  /** 被撤回的历史声明，**追加不覆盖** */
+  history?: (Omit<StageDriverClaim, 'history'> & { revoked_at: string })[];
 }
 
 const taskPath = (l: ArchiveLayout): string => path.join(topicDir(l), 'task.json');
@@ -194,11 +242,32 @@ export async function updateTask(
   mutate: (t: TaskMeta) => void,
   lock: TaskLock,
 ): Promise<TaskMeta> {
+  return updateTaskAsync(l, (t) => Promise.resolve(mutate(t)), lock);
+}
+
+/**
+ * `updateTask` 的 async 版：**回调可以做 I/O，而且仍在同一个临界区内**。
+ *
+ * 存在的理由是一次真实的丢更新（代码双审 r1 CODEX-06 ≡ GLM-02）：`topic claim`
+ * 的判定要读该阶段子树（判「这个后缀用过没有」），同步回调做不到，于是上一版把
+ * **读与判定放在锁外**、只把落盘放进来。并发认领时后写者覆盖前者，
+ * 且被覆盖的那条既不在当前值、也不进任何人的 `history`——
+ * 「读-改-写在同一临界区」这条前提被绕过了一半。
+ *
+ * **`mutate` 返回 `false` 表示「不写盘」**：幂等档与被拒档都需要「读了、判了、不改」，
+ * 而在锁外先判一次再决定要不要进锁，等于把判据又挪回锁外。
+ */
+export async function updateTaskAsync(
+  l: ArchiveLayout,
+  mutate: (t: TaskMeta) => Promise<void | false>,
+  lock: TaskLock,
+): Promise<TaskMeta> {
   return withTopicLock(
     { triviumDir: lock.triviumDir, topic: taskLockName(l.topic), heartbeatStaleMs: lock.heartbeatStaleMs },
     async () => {
       const t = await readTask(l);
-      mutate(t);
+      const r = await mutate(t);
+      if (r === false) return t;
       t.updated_at = new Date().toISOString();
       await writeAtomic(taskPath(l), JSON.stringify(t, null, 2) + '\n');
       return t;

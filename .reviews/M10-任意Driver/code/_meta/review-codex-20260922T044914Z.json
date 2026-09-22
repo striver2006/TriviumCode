@@ -1,0 +1,128 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "三级判定的插入点本身是对的（第 2 级只在「该阶段零留痕」那一段生效，分支 1 置首、镜像死锁未被砍、`.md` 边界与保护集同宽），但本步宣称的三条「出口可走」里有两条走不通：① 交叉校验把「省略 --driver」当成「传了缺省 Driver」，非缺省 Driver 的主题上一切省略该旗标的 `review --start` / `topic resolve` 一律退 64，而文案恰恰建议「去掉 --driver」；② 不变量与交叉校验给出的 `topic claim` 出口都缺必填的 `--topic`，照抄即退 64——就是任务书第四点问的那一族，测试只断言子串所以锁不住。此外「留痕损坏」在两个选侧入口被降级成声明基准（与 Hook 的硬失败相反），分支 3′ 的「使用过」论域只扫阶段目录一层（嵌套路径仍能取得第二个后缀），claim 的读判在主题锁外。文档/契约面（PROTOCOL、SKILL、计划落点偏离）未同步。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/cli.ts:501 + 528-531；src/trivium/topic-args.ts:362 + 528-534；src/trivium/driver-claim.ts:229",
+      "problem": "交叉校验无法区分「用户没传 --driver」和「用户传了缺省 Driver」。两个入口的 driver 都来自 `resolveDriver(旗标值 ?? null)`，省略即得 DEFAULT_DRIVER；随后 crossCheckDriver 以「有留痕比留痕」为基准，于是**任何非缺省 Driver 的主题上，省略 --driver 的 review --start / topic resolve 一律退 64**。这不是「防住误传」，是把今天所有省略该旗标的常规用法（含重跑同一阶段）在 M10 场景下全量拒掉。更糟的是错误文案写着「去掉 --driver 或改传该值」——去掉之后 driver 仍解析成缺省值、仍不等于留痕值，**照文案做第二次仍然被拒**。",
+      "evidence": "读 src/trivium/critics.ts:167-191（resolveDriver：`raw` 为空即 return DEFAULT_DRIVER，不区分未传）；src/trivium/cli.ts:501 与 src/trivium/topic-args.ts:362 都是无条件取该结果；src/trivium/driver-claim.ts:214-232 的第一档只要 runDriver!==null 且 !==driver 就报错，文案含「去掉 --driver 或改传该值」。test/unit/driver-claim.test.ts 与 test/integration/topic-claim.test.ts 的所有交叉校验用例都显式传 --driver，未覆盖「省略」这一格。",
+      "suggestion": "让「未传」不进入比对：crossCheckDriver 的 driver 形参改成可空（或入口在旗标缺席时跳过交叉校验、只跑不变量），并把「留痕是 glm 时请显式传 --driver glm」写进文案；补一条用例：plan 阶段留痕 glm + 省略 --driver，断言按留痕继续而非退 64。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/driver-claim.ts:192（stageDriverInvariant 出口）与 :237（crossCheckDriver 声明档出口）",
+      "problem": "两条错误文案教的命令都**缺 `--topic`**，而 `topic claim` 的 `--topic` 是必填（缺失即 `usageError('topic claim 需要 --topic')` → 退 64）。用户照文案敲，第一次就被拒——正是任务书第四点点名要核的「报错教的命令当场被拒」，也正是 §3.2.2 那一族。测试只断言子串 `topic claim --stage code --driver claude`，而该子串在缺 --topic 的完整命令里同样存在，所以它对「命令是否可执行」零鉴别力，反而把这条错文案钉成了期望值。",
+      "evidence": "读 src/trivium/driver-claim.ts:185-195 与 :233-240（两处都只写 --stage/--driver）；src/trivium/cli.ts:767 要求 --topic；src/trivium/cli.ts 的 USAGE 段（本 diff 新增）自己写的是 `trivium topic claim --topic <主题> --stage <s> --driver <id>`，与文案给出的形态不一致；test/unit/driver-claim.test.ts「不变量：…且出口是可行的」与 test/integration/topic-claim.test.ts「交叉校验：…要给可直接敲的出口」两条断言均为子串匹配。",
+      "suggestion": "把主题传进这两个函数（它们本就由持有 topic 的入口调用），文案按 USAGE 的完整形态输出；测试升级为「按文案给出的参数真跑一次 CLI 并断言退 0」，否则这条判据下次照样骗人。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/cli.ts:528；src/trivium/topic-args.ts:528；对照 src/trivium/hooks.ts:385-392",
+      "problem": "「留痕在场但读不出来」在两个选侧入口被压成 `null`，于是它们落到 crossCheckDriver 的**第二档（以声明为基准）**；而 hooks.ts 的 resolveRoundDriver 对同一状态判 `corrupt` 硬失败。结果是：把某阶段 `_meta/run-*.json` 搅坏后，权威值实际由被保护方自己写的 `drivers[<阶段>]` 决定，`review --start` 会以该身份冻结送审包并写下**新的一份 run 留痕**——「不把权威排序倒过来用」这条理由在真正烧配额、且会生成新锚的入口处不成立。同一条三档语义现在有两份实现且结论相反，也违反了「判定只此一处」的自述。",
+      "evidence": "读 src/trivium/meta.ts:435-467（latestRunMeta 明确区分「零留痕」与「有 scanned 但全读不出」，返回 unreadable/scanned）；两处入口只取 `latest.meta?.driver ?? null`、丢弃 scanned/unreadable；src/trivium/hooks.ts:378-392 用 `if (r.meta || r.scanned > 0) return corrupt` 判坏并拒绝降级。",
+      "suggestion": "把 resolveRoundDriver 的三档结论提炼成 driver-claim 导出的单一判据（ok(run)/ok(claim)/ok(default)/corrupt），三个消费点共用；入口在 corrupt 档一律拒绝启动，不进第 2 档。若刻意保留差异，至少要有一条用例锁住「同一归档状态下 Hook 与入口给出同一个 Driver」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/driver-claim.ts:60-78（filesBearingSuffix）对照 src/trivium/hooks.ts:520-533 + 594-620",
+      "problem": "分支 3′ 的「声明已被使用」论域与 Hook 的保护论域不同宽：前者只 `readdir` **阶段目录的第一层**，后者对归档内任意深度生效（locateArchiveTarget 只要求段数 ≥3，`<主题>/<阶段>/…` 的任意子路径都按该阶段 Driver 判定）。于是零留痕窗口内仍可取得第二个后缀：`claim glm` → 写 `plan/sub/x-glm.md`（glm 是当轮，放行；且 `sub` 不在阶段目录一层，不进论域）→ `claim codex` 判为「未被使用」放行 → 写 `plan/y-codex.md`。任务书第二问 (a) 的答案因此是「没关死」。",
+      "evidence": "读 src/trivium/driver-claim.ts:66-77（单层 readdir + endsWith）；src/trivium/hooks.ts 的 stageSegmentsUnder 用 `segs.length < 3` 只设下界、不限上界，故 `<主题>/plan/sub/x-glm.md` 定位到 plan 阶段并按 plan 的 Driver 放行；本步两条相关用例（test/unit/driver-claim.test.ts 分支 3′、反复翻转；test/integration/topic-claim.test.ts 的 `fs.writeFile(path.join(stageDir, orphan))`）全部只往阶段目录一层摆文件，对嵌套形态零覆盖。",
+      "suggestion": "把「用过」的判据与 Hook 对齐：递归走该阶段目录（或整棵主题子树），命中条件直接复用同一个角色后缀判据而不是另写 `-${driver}.md` 的 endsWith；补一条嵌套路径用例（写 `plan/sub/…-glm.md` 后撤回必须被拒）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/driver-claim.ts:68-73",
+      "problem": "`catch {}` 把**所有** readdir 失败（EACCES、ENOTDIR、ELOOP、软链指向不可读目录）都折成「该阶段没有任何文件」，即安全收紧分支在 I/O 异常时 fail-open。同仓其它扫描处（latestRunMeta）至少在语义上区分了「目录不存在」与「扫到但读不出」，这里两者被压平。",
+      "evidence": "读 src/trivium/driver-claim.ts:60-78：只判 `catch { return [] }`，未取 `(e as NodeJS.ErrnoException).code`；对照 src/trivium/meta.ts:446-452 同一族的写法（那里注释明确「一份都没有」与「有但读不出」不能压成同一个值）。",
+      "suggestion": "只对 ENOENT/ENOTDIR 返回空集；其余 errno 保守当作「已被使用」（或直接抛错退 64），并在文案里说明读不出来。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "concurrency",
+      "location": "src/trivium/cli.ts:776-805（cmdTopicClaim：latestRunMeta/readTask → claimStageDriver → updateTask）",
+      "problem": "判定用的 `existing` 与目录扫描都发生在主题锁**之外**，只有落盘在 updateTask 的短临界区内，且 mutate 回调把锁外算好的 outcome.claim 整块写回。两个会话并发认领同一阶段时，后写者会覆盖前者的 `claimed_at/claimed_by`，并丢掉本应进 `history[]` 的那条（history 是从锁外的 stale existing 派生的）。这正是 updateTask 头注释自己列的「三者互不持锁时互相覆盖——丢一条指针」的形态，只是这次丢的是自声明边界的审计面。",
+      "evidence": "读 src/trivium/meta.ts:232-255（updateTask 在 withTopicLock 内重新 readTask 后 mutate，前提是「读-改-写在同一临界区」）；src/trivium/cli.ts:779-805 把 readTask/claimStageDriver 放在锁外，mutate 只做 `t.drivers = {...t.drivers, [stage]: outcome.claim}`；test/integration/topic-claim.test.ts 全部用例都是单进程串行，无并发认领覆盖用例。",
+      "suggestion": "把判定移进临界区（在 mutate 内按刚读到的 t.drivers[stage] 重算分支，或用乐观并发：写入前比对 existing 未变，变了就重试一次）；同时给分支 3′ 的目录扫描一个明确的「扫不到即保守」语义。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/cli.ts（USAGE 新增 topic claim 段）；doc/03_api/PROTOCOL_dual_critic_relay.md:341-342；skills/dual-critic/SKILL.md",
+      "problem": "新 CLI 面只改了 USAGE：PROTOCOL 的命令行对照表里没有 `topic claim`（表内现有 `preflight` / `topic resolve` 两行），SKILL.md 也没有任何一步调用它，四级契约中「CLI 参数或退出码 → PROTOCOL + 相关 SKILL.md」这一条只落了一半。后果不只是文档过期——非缺省 Driver 的原稿链路在 skill 侧仍然走不通（技能不会去认领，Hook 第 2 级永远取不到声明），本步的能力对用户不可达。另外 `--session-id` 被 cmdTopicClaim 读取却不在 USAGE 的该命令行里（其它命令同类取法都在表内）。计划 §2.4 的落点偏离（不变量改落选侧入口）只在代码注释里记账，未回补计划/设计文档。",
+      "evidence": "grep 全仓 `topic claim`：命中仅 src/、test/、以及生成物 skills/dual-critic/scripts/trivium.cjs，doc/ 与 SKILL.md 零命中；读 doc/03_api/PROTOCOL_dual_critic_relay.md:341-342 确认该表逐条维护 CLI 子命令；读 src/trivium/driver-claim.ts:168-173 的注释自述「落点与计划 §2.4 的字面有偏差」；AGENTS.md「改动同步清单」要求 CLI 参数变更同步 PROTOCOL 与 SKILL.md。",
+      "suggestion": "补 PROTOCOL 表行（含退 64 的两个分支与出口差异）、SKILL.md 的认领步骤或在计划里显式登记「技能接线留给后续步骤」，并把 §2.4 落点偏离回补进计划/设计文档（补丁版本），不要让「代码注释里记着」成为唯一留痕。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-08",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/hooks.ts:394-399（第 2 级用宽松 readTask 的理由段）",
+      "problem": "为「task.json 读不出来时落第 3 级而不硬失败」给出的理由里点名「`checkRunManifests` 与预检」在管，但 `trivium preflight` 根本不读 task.json（全文件无 readTask/task.json 引用）。这条注释正是任务书第一问要求说清判据的地方，引用一个不存在的锚会让下一个人以为预检兜得住。",
+      "evidence": "grep src/trivium/preflight.ts 的 `readTask|task.json` 零命中；读 src/trivium/archive.ts:609-639 确认 checkRunManifests 是**接收**调用方读出的 registered 列表（提交侧锚），并不自己核对 task.json 完整性。",
+      "suggestion": "把理由改成实际成立的那两条（提交侧 run 清单锚、gate/task 读取处的严格版 readTaskStrict），或删掉「预检」这半句；取舍本身（可用性优先于噪声）我认同，不需要改行为。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "三级判定的插入点正确：第 2 级只在 `r.meta && unreadable.length===0` 与 `r.meta || scanned>0` 两条都不成立（即该阶段确无留痕）时才求值，第 1 级行为一字未动；`source: 'run'|'claim'|'default'` 取代 fromDefault 后三档各有来源句，判错身份时用户能看出是哪一级出的问题（hooks.ts:348-410、624-633）。",
+    "「留痕损坏仍硬失败、不降到声明」的理由成立——损坏状态下可信度排序不能被自声明反超；问题只在同一语义没被两个入口共用（见 CODEX-03）。",
+    "分支 1 排在「已声明」之前，非法态不会同时得到幂等与拒绝两个相反答案；`blocked-by-run` 与 `blocked-by-usage` 分档且各自出口不同，合并会丢可操作性的判断也对。",
+    "分支 3′ 没有顺手砍掉分支 3 的原始职责：镜像死锁用例（claim glm、零文件 ⇒ 撤回放行）与纯函数 + 集成两层都还在（test/unit/driver-claim.test.ts、test/integration/topic-claim.test.ts）。",
+    "判据用 `-<driver>.md` 收尾，与保护集 `hasProtectedRoleSuffix` 的 `\\.md$` 边界同宽：其它扩展名既不受 Hook 保护、也就不构成「后缀豁免被用掉」，划法正确（只欠嵌套深度这一维，见 CODEX-04）。",
+    "声明史两条都成立：入史条目用 `const {history: _drop, ...revoked}` 剥掉自身 history，撤回 N 次不会指数级翻倍，且 `claimed_by` 与 `revoked_at` 都留得住；幂等档不写盘避免 claimed_at 随重跑漂移，集成用例还额外锁了 claimed_by 不被后来会话覆盖——这两条都没把别的东西一起丢掉。",
+    "两处落点偏离的改法本身合理：preflight 只接 --stage 不接 --topic、在那里确实落不下去，改落两个每轮必经且持有主题的选侧入口是更 strict 的位置；计划那两个 parity 用例论域不同，改成扫源码的接线判据也是对的（残余问题是覆盖面只有两文件、且 `indexOf('stageDriverInvariant({')` 对换行格式敏感，属脆性不是错）。",
+    "stripNonCode 抽共享不丢看守：helper 头明确指向 driver-wiring.test.ts 的自测节，wiring 文件头也回指「实现搬家不搬责任」，那七种被打穿形态现在测的正是共享实现（test/helpers/strip-non-code.ts:1-30、test/unit/driver-wiring.test.ts:28-84、450+）。",
+    "不变量排在交叉校验之前的**判断**正确（坏基准不能用来判对错），并且专门补了打真入口的次序用例，这一点比只断言纯函数强。"
+  ],
+  "not_covered": [
+    "沙箱只读、未执行构建与测试（`npm run check` / registry-parity / hook-guard 均未跑），所以「新增 drivers 字段是否触碰机读契约对账」只做了静态判断（schema/ 目录无 task.v1.json，drivers 为 additive 可选字段，driver-claim.ts 不含 Agent id 字面量），未由测试证实。",
+    "未评估 gate / disposition / archive 侧是否需要（或后续步骤是否会）接同一套声明判定，也未审 `checkStageArtifacts`、`computeRerunIndex` 与新 `drivers` 段的交互。",
+    "未审 skills 侧脚本联动与本步的端到端可用性（只确认 SKILL.md 未调用 topic claim），也未跑 `trivium doctor --selftest`。",
+    "未覆盖 Windows/大小写不敏感文件系统下的后缀匹配与 `endsWith` 行为（本仓声明仅支持 macOS，未按此方向给意见）。",
+    "未审 `_meta` 子树内的命名是否与 filesBearingSuffix 的论域有额外冲突（只看了一层 readdir 的事实，未逐一枚举归档内既有 .md 工件形态）。"
+  ],
+  "consulted": [
+    ".reviews/M10-任意Driver/code/_meta/changes-20260922T044914Z.diff",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/preflight.ts",
+    "test/helpers/strip-non-code.ts",
+    "test/unit/driver-wiring.test.ts",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "skills/dual-critic/SKILL.md"
+  ]
+}

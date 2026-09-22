@@ -1,0 +1,59 @@
+{
+  "agreed": [
+    "§4.1.1 明确登记仅限 plan/bug 并禁止以 request.subject_path 取值，彻底排除了 code 阶段被审补丁的重复登记与 _pending 逻辑路径造成的永久死锁，约束坚实自洽。",
+    "§1.2.1 提出的 T1（修复落地）/ T2（gemini 轮真实复验）/ T3（第 8 步改 BACKLOG 结案登记）三时点模型，将开工门槛与结案登记解耦，彻底消解了 r3 的循环依赖；全案 8 处引用与 D11 逐字对齐，口径高度一致。",
+    "§3.2.2 分支 3 在认领入口主动拦截与同阶段既有留痕冲突的 Driver 切换，与 §3.2.3 的交叉校验同向 fail fast，严密堵死了同阶段「声明 ≠ 留痕」的死锁序列。",
+    "§1.4.1 直接推翻设计 §16.1 的「2～3 天」乐观估算，并修正为周级与 10～14 轮双审，直面客观现实；§1.4.2 将触发检查点移至每轮双审收尾并设兜底阈值，执行口径具备明确可操作性。",
+    "§4.2.2 将误拦面表述由脆弱的枚举式改为稳健的「判据式表述 + 举例」，并将提示前置至四家入口资产中，从根本上杜绝了后续维护「按表抄漏动词」的隐患。",
+    "§11 R-k 明确「若 r4 之后仍需 r5，先与用户确认收窄范围」的止损线，为超大特性的计划发散设定了必要的工程熔断护栏。"
+  ],
+  "consulted": [
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r4-claude.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-revised-claude.md",
+    "src/trivium/hooks.ts",
+    "src/trivium/review.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/verify.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/types.ts",
+    "doc/08_project/BACKLOG.md",
+    "test/unit/topic-args.test.ts",
+    "test/unit/hooks.test.ts",
+    ".gitignore"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/hooks.ts:505-520 显示当前 run-*.json 处于 running 状态的提交豁免依赖于 IMMUTABLE_META 仅匹配 review/brief/changes 不匹配 run-*.json，从而能够穿透至 line 506 的 readAtHead 逻辑；.reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r4-claude.md §4.1.2 判据 2 仅排除了 changes.diff；§4.1.3:462 行为表第 5 行将「_meta/ 内其余一切」概括为不可改；test/unit/hooks.test.ts 中缺乏针对 running 状态 run-*.json 变更提交的测试覆盖。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4.1.2 与 §4.1.3",
+      "problem": "§4.1.2 判据 2「位于 _meta/ 目录内，且 basename 不是 changes.diff ⇒ 拦」若未明确执行次序或未排除 run-*.json，会在代码实现中提前拦截正在进行的合法运行清单收尾（已提交的 running 状态更新为 passed/failed），导致原有 running 豁免机制被屏蔽为死代码；§4.1.3 行为表遗漏该项动态例外，且 §4.3 缺对应的正例回归测试。",
+      "severity": "minor",
+      "suggestion": "在 §4.1.2 判据 2 中显式排除 run-*.json（或规定必须先执行 run-*.json 动态分支再执行判据 2）；在 §4.1.3 行为表中将 run-*.json 单列为条件可变行；在 §4.3 补充「已提交处于 running 状态的 run-*.json 在收尾变更后可正常提交」的正例用例。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r4-claude.md §3.2.2:328 表格第 4 行将正常放行条件描述为「别的阶段声明／留痕了别的 driver」。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §3.2.2",
+      "problem": "§3.2.2 topic claim 分支 4 的条件文案偏窄，字面仅提及「别的阶段声明／留痕了别的 driver」，未明确涵盖新主题冷启动或当前阶段为首个认领、且与留痕一致或零留痕的首次正常认领放行路径。",
+      "severity": "nit",
+      "suggestion": "将第 4 行条件表述放宽澄清为更通用的兜底形态（如「未命中 1/2/3 的合法认领，含新阶段首次声明、或与其他阶段/既有留痕不冲突」）。"
+    }
+  ],
+  "not_covered": [
+    "未在真实环境中拉起 ZCode 交互终端会话实测其 preflight 与写工具拦截（P-2 约束保留至第 1 步）。",
+    "未校验各家入口资产在 Windows PowerShell 等非 POSIX 终端下的环境变量与转义展开。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最需留心的是 §4.1.2 判据 2 对 _meta/ 的拦截顺序若置于 run-*.json 动态分支前，会误伤已提交 running 运行清单的正常收尾，§4.1.3 行为表亦漏列该动态例外且缺回归测试。此外 §4.1.1 两条硬约束严密自洽，§1.2.1 三时点模型彻底解开 EV-82 循环依赖且八处引用逐字对齐，§3.2.2 分支 3 严密堵住认领死锁，§1.4.1 的周级修正与 §4.2.2 判据式出口表述均具实操性。全案总体成熟，准予带附带意见通过。",
+  "verdict": "approve-with-nits"
+}

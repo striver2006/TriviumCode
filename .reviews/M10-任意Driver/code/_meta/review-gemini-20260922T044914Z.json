@@ -1,0 +1,65 @@
+{
+  "agreed": [
+    "三级判定插入点准确：第 2 级（声明）仅在第 1 级（留痕）完全无记录时生效，零留痕起草原稿的痛点被精准修复。",
+    "权威排序与容错取舍自洽：留痕损坏硬失败避免了以声明倒置事实权威；task.json 损坏退回第 3 级（默认基线）保证了起草可用性且未击穿底层安全。",
+    "分支 3′ 准确封堵翻转漏洞：扩展留痕论域至目录下带后缀文件，彻底关掉了通过反复改写声明依次获取所有角色后缀豁免的绕过路径，同时保留了零文件时的镜像死锁自救能力。",
+    "声明史与幂等审计设计严密：撤回时剥掉自身 history 字段杜绝历史指数翻倍；幂等认领不写盘防止 claimed_at 与 claimed_by 发生审计漂移。",
+    "交叉校验与不变量次序及接线完备：cli 与 topic-args 两大选侧入口均已接入，不变量严格先于交叉校验执行，且文案出口命令逻辑闭环、切实可行。",
+    "计划偏离落点修正合理：将不变量从无 topic 上下文的 preflight 移至选侧入口、将盯防点从静态 parity 移至 AST 扫描与运行时测试，纠正了原计划论域错配，保障力度更强。"
+  ],
+  "consulted": [
+    ".reviews/M10-任意Driver/code/_meta/changes-20260922T044914Z.diff",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/meta.ts",
+    "test/helpers/strip-non-code.ts",
+    "test/unit/driver-wiring.test.ts",
+    "test/unit/driver-claim.test.ts",
+    "test/integration/topic-claim.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "test/unit/driver-claim.test.ts 第 1430-1444 行用例「task.json 损坏时落到第 3 级，不硬失败」，其注释明确指出目的在于「不让 task.json 损坏把 Driver 自己写原稿的路也一并堵死」。但用例仅对写 glm 的原稿断言了 GATE_BLOCK 与文案匹配，并未断言缺省 Driver（claude）在此状态下写入 own 原稿（-claude.md）能够成功放行（exitCode === EXIT.OK）。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/unit/driver-claim.test.ts:1430",
+      "problem": "用例断言缺少正向放行验证：仅反向验证了非缺省 Driver 被拦截并匹配了提示文案，未直接验证缺省 Driver 的原稿在 task.json 损坏时是否确实能成功写出，用例鉴别力对「原稿通路未被堵死」存在半格盲区。",
+      "severity": "nit",
+      "suggestion": "在用例末尾追加一条针对缺省 Driver 原稿（如 t/plan/2026-09-22-t-claude.md）的 hookPreWrite 写入断言，断言其 exitCode 为 EXIT.OK，直接闭合正向可用性证明。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "stripNonCode 实现抽至 test/helpers/strip-non-code.ts，而其被实测打穿过的 7 种形态自测保留在 test/unit/driver-wiring.test.ts:450-560。虽然 strip-non-code.ts 头部声明了该位置，但二者物理分离。若协作者只针对 helper 修改并运行局部测试，不会触发 driver-wiring.test.ts。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "test/helpers/strip-non-code.ts:14",
+      "problem": "共享词法器与其自身防御性自测跨文件分离，虽然存在注释指针且全量 npm test 会跑全，但在局部针对 helper 维护时存在看不到或漏跑自测的认知负担。",
+      "severity": "nit",
+      "suggestion": "后续可考虑将不依赖 driver-wiring 私有语料的纯语法自测提取为 test/unit/helpers/strip-non-code.test.ts，或在 helper 文件头注释中明确标注推荐的局部验证命令（node --test dist/test/test/unit/driver-wiring.test.js）。"
+    }
+  ],
+  "not_covered": [
+    "M10b 范围的各 Agent 真载体 headless CLI 资产加载与真实执行（如 agy skills 加载行为、zcode/codex 真实写事件拦截）未在本次纯编排器测试中覆盖。",
+    "提交锚完整性变更（EV-55）属于 M10a 第 2 步范围，本次审查仅覆盖第 1 步的声明落盘与三级判定实现。",
+    "adapters/ 各厂商 CLI 适配层在其他阶段的遗留行为未作逐行全量审查。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "核心安全收紧分支 3′ 准确封堵了零留痕窗口内翻转自声明换取后缀豁免的漏洞，镜像死锁自救能力依然保留。\n三级判定插入点准确，留痕损坏硬失败与 task.json 损坏回落默认基线的取舍逻辑严谨成立。\n不变量与交叉校验在两处选侧入口接线完备且执行次序正确，错误文案指引的出口命令切实可行。\n两处偏离计划的落点合理纠正了预检与 parity 的论域错配，整体实现质量高，发现 2 处 nit 级测试与可维护性建议。",
+  "verdict": "approve-with-nits"
+}

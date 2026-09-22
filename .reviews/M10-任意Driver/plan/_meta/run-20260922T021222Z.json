@@ -1,0 +1,256 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260922T021222Z",
+  "topic": "M10-任意Driver",
+  "stage": "plan",
+  "rerun_index": 4,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "审核焦点：一、§4.1.2 给第 2 条判据补的那一个例外够不够——元数据目录这个论域还有没有别的刻意可变项被漏掉（r3 正是漏枚举栽的），§4.1.3 行为表逐行是否成立。二、§4.1.1 的两条硬约束是否站得住——代码审那一轮是否真的无需新增登记、计划与缺陷两轮取 input.subjectPath 是否拿得到真实路径而不是尚未回填的逻辑路径。三、§1.2.1 的三时点表是否真把循环依赖解开了，以及 §1.3、§1.3.1、§8、D11 四处措辞是否与该表逐字一致（r3 正是措辞不一致掩盖了矛盾）。四、§3.2.2 新增的分支 3 是否堵住了 r3 给出的那条死锁序列，有没有别的序列能绕开。五、§1.4 重算为 10～13 轮、并直接判定里程碑「2～3 天」估算不成立、修正为以周计——这个判定与修正值是否仍偏乐观，§1.4.2 的触发口径是否可执行。六、§4.2.2 改成判据式表述是否真能防住「按表抄就会漏」，以及 R-k 这条止损线（r5 之前先谈范围收窄）是否合理。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "9d9cf94da1ab236a2b474774e9a95271b2b350a5",
+    "tree_hash": "72941051aa60c7d935a086d5e47f429e0114d4f2",
+    "dirty": false,
+    "subject_sha256": "27c1c9ca1eb0a8b2de6bf36644bd38688f4a87d20f296fb4ede80389ca601725",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-22T02:12:23.716Z",
+  "finished_at": "2026-09-22T02:37:23.939Z",
+  "review_mode": "partial",
+  "degraded_reason": "codex: timeout（脚本级超时（1500s））",
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": null,
+      "model_effective_source": "unverified",
+      "profile_requested": "qwen",
+      "model_provider": null,
+      "status": "timeout",
+      "exit_code": 0,
+      "duration_s": 1500.019,
+      "tool_calls": {
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "脚本级超时（1500s）",
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0c6e2-c000-79a1-9ccb-ad06f5831314",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.7",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 348.026,
+      "tool_calls": {
+        "read": 52,
+        "grep": 10,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 18
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 669254,
+        "output_tokens": 45426,
+        "thinking_tokens": 38917,
+        "cache_read_tokens": 6638025,
+        "total_tokens": 714680
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "8aa98b05-f1c6-4931-8fe4-e0358caf02f1",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 656.293,
+      "tool_calls": {
+        "read": 10,
+        "grep": 3,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 5
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 7,
+        "inputTokens": 745803,
+        "outputTokens": 40683,
+        "totalTokens": 786486,
+        "cacheReadTokens": 621568,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_12473e71-0299-4e30-b3b2-ac74f8f066a1",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-r2-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-r2-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-glm.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260921T145353Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260921T152520Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260922T004543Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T145353Z.fallback-items.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T145353Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T152520Z.fallback-items.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T152520Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T004543Z.fallback-items.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T004543Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M10-任意Driver/plan/_meta/brief-codex-20260922T021222Z.md",
+      "sha256": "c2e27449c2ca01d1d2132c469ba30ef90fb420ec69fa47a995f89b06525c11e8"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/brief-gemini-20260922T021222Z.md",
+      "sha256": "1b024b0d31e94e73022bf04aeddcec454007c376864199ff6a96aae67f37c175"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/brief-glm-20260922T021222Z.md",
+      "sha256": "5a42463cfadb9117c74475b2feee18331303cebfc48b42f134a6354521fc0d6b"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/review-codex-20260922T021222Z.failed.json",
+      "sha256": "34bddd2e92de5537e27660ca195ab0ead015ac952d33acac97a8848e00b259b9"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/review-gemini-20260922T021222Z.json",
+      "sha256": "a2951a586a04d682d200c804097d5ada7e0a569d04b5f79df90780e452c1b9f9"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/review-glm-20260922T021222Z.json",
+      "sha256": "aeb0be3c55a9f6e65a3c2972510af150e4e77ab8d407d941742519a784719f13"
+    },
+    {
+      "path": "M10-任意Driver/plan/2026-09-22-M10-任意Driver-r4-gemini.md",
+      "sha256": "30c5f6ba8ae41538997f5027932d100025585eb2ac8e2e085715efc6ff44436f"
+    },
+    {
+      "path": "M10-任意Driver/plan/2026-09-22-M10-任意Driver-r4-glm.md",
+      "sha256": "9391ffba0ee0183c375f3665f215ee9079242babecc70f57e6956e069797158e"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed"
+}

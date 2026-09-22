@@ -153,7 +153,10 @@ function positionalHint(command: string): string {
         '  `--reject` 不接受值，拒绝理由同样走 --reason。'
       );
     case 'topic':
-      return '  原始参数请放在 `--` 之后：trivium topic resolve --stage <s> -- <正文> --topic <主题>';
+      return (
+        '  resolve：原始参数请放在 `--` 之后：trivium topic resolve --stage <s> -- <正文> --topic <主题>\n' +
+        '  claim：全部走旗标，没有位置参数：trivium topic claim --topic <主题> --stage <s> --driver <id>'
+      );
     default:
       return `  用法见 trivium --help`;
   }
@@ -243,6 +246,15 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       解析主题、提示语、被审对象与模型覆盖。**纯只读**，不创建任何目录。
       -- 之后按 argv 逐个 token 解析、不再分词：正文整段放进一个单引号参数，
       旗标放在引号之外。正文里的引号、$、反引号、--xxx 都逐字进入焦点。
+
+  trivium topic claim --topic <主题> --stage <s> --driver <id> [--session-id <id>] [--json]
+      为该阶段**声明**当轮 Driver。plan / bug 原稿写在 review --start 之前，
+      那一刻该阶段零留痕、判定回落缺省 Driver，非缺省 Driver 写不出自己的原稿。
+      --stage 必填不默认：声明直接决定 Write / Edit 侧的保护集。
+      留痕优先——该阶段已有运行留痕且不同，退 64；
+      该阶段子树里已有他家角色后缀的文件时同样退 64（终端清理后可重试）。
+      --session-id 落进 claimed_by，供事后对账；缺省取 CLAUDE_SESSION_ID。
+      声明之后 review --start / topic resolve 省略 --driver 即继承该阶段的值。
 
   trivium verify --topic <主题> [--only build|test] [--timeout <秒>] [--json]
       执行 .trivium/config.yaml 中 verify.build / verify.test **显式声明**的命令，
@@ -487,8 +499,67 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
    * 启用第三家时这边会**先于**那边拒掉合法取值，而错误信息还振振有词地只列两家。
    * 校验逻辑分两处实现是改一漏二的典型形态，M7b 第 5 步收敛成一处。
    */
-  // 当轮 Driver 先解析：选侧要用它（判定处同样只有一个，在 critics.ts）
-  const { driver, enabledAsDriver } = resolveDriver(flagString(args, 'driver'));
+  /*
+   * ── 当轮 Driver：显式旗标优先，缺席则**继承该阶段的权威值**（M10a 第 1 步）──
+   *
+   * `resolveDriver` 对「没传」与「传了缺省值」返回同一个结果，所以要先把原始旗标值
+   * 留在手里（`explicitDriver`）：交叉校验只对**显式传的**值比对，缺席时不比对。
+   * 上一版没分开，后果是任何非缺省 Driver 的主题上每一次省略该旗标的运行都退 64
+   * （代码双审 r1 CODEX-01）。
+   *
+   * 主题先归一化再用：`validateTopic` 会 trim 并把内部空白折成 `-`，
+   * 而 `--topic 'M10 任意'` 时声明落在 `M10-任意`、校验若读 `M10 任意` 就目录不存在、
+   * 于是零留痕零声明、**静默通过**（代码双审 r1 GLM-04）。
+   */
+  const driverRaw = flagString(args, 'driver');
+  // 仍然过一次 resolveDriver：非法取值要在这里退 64，不能等到继承判定之后
+  const explicitDriver = driverRaw?.trim() ? resolveDriver(driverRaw).driver : null;
+
+  const { resolveStageDriver, crossCheckDriver, declaredStageDriver, stageDriverInvariant } =
+    await import('./driver-claim.js');
+  const { resolveTopicName } = await import('./topic.js');
+  const { readTask } = await import('./meta.js');
+  const layout = { archiveRoot: ctx.archiveRoot, topic: resolveTopicName(ctx, topic) };
+
+  const resolution = await resolveStageDriver(layout, stage);
+  if (resolution.kind === 'corrupt') {
+    /*
+     * **不降级到声明**：`corrupt` 的含义是「锚本身坏了」，而本入口会冻结送审包
+     * 并写下**新一份留痕**。此时退到一个由被保护方自己写的声明值，
+     * 正好是把权威排序倒过来用——那也是 Hook 侧同状态的结论（同一个判定函数）。
+     */
+    throw new TriviumError(
+      EXIT.GATE_BLOCK,
+      `无法判定当轮 Driver：${layout.topic} / ${stage} 的运行留痕读不出来` +
+        `（${resolution.unreadable.join('、')}）。\n` +
+        '  这里**不**按缺省 Driver 继续，**也不**退回声明——前者把「留痕坏了」判成「按缺省算」，\n' +
+        '  后者让被保护方自己的声明在锚损坏时反超留痕。\n' +
+        `  出口是**重跑一次 ${stage} 阶段双审**：新运行会先落一份可读的留痕，判定随即恢复。`,
+    );
+  }
+
+  const declared = declaredStageDriver(await readTask(layout), stage);
+  // 先问「这份留痕本身自洽吗」，再问「你传的对不对」——顺序反了会用一个坏基准去判对错
+  const broken = stageDriverInvariant({
+    topic: layout.topic, stage, runDriver: resolution.source === 'run' ? resolution.driver : null,
+    declared,
+  });
+  if (broken) throw usageError(broken);
+  const conflict = crossCheckDriver({
+    topic: layout.topic, stage, driver: explicitDriver,
+    runDriver: resolution.source === 'run' ? resolution.driver : null,
+    declared,
+  });
+  if (conflict) throw usageError(conflict);
+
+  // 校验通过后：显式值优先，缺席即继承权威值
+  const driver = explicitDriver ?? resolution.driver;
+  /*
+   * `enabledAsDriver` 要按**最终**的 driver 取，不能沿用旗标那次解析的结果：
+   * 继承来的值可能是另一家，那一行标注就会说错对象。
+   */
+  const enabledAsDriver = resolveDriver(driver).enabledAsDriver;
+
   const critics = resolveCriticSelection(ctx.config, {
     critics: flagString(args, 'critics'),
     only: onlyRaw,
@@ -499,6 +570,15 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     warn(`当轮 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`);
   }
 
+  /*
+   * ── 交叉校验：`--driver` 与该阶段的权威值（M10a 第 1 步，EV-72）──
+   *
+   * 与 `topic resolve` 共用 `driver-claim.crossCheckDriver`。**两个入口都要有**：
+   * 技能侧先走 resolve 会被挡住，而本入口才是真正烧配额的那条——
+   * 只落一处就是 EV-53 那族缺口的形状（手工 CLI 绕过校验、审的不是用户以为的那家）。
+   *
+   * 位置在冻结送审包**之前**：判错身份的那一轮跑完才发现，代价是整轮作废。
+   */
   const contextRaw = flagString(args, 'context');
   // 任务目标与审查焦点分开传（RV-19）：前者说「要达成什么」，后者说「这次重点看什么」
   const goal = flagString(args, 'goal');
@@ -715,9 +795,118 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
   return r.ok ? EXIT.OK : r.exitCode;
 }
 
+/**
+ * `topic claim`：为某一阶段**声明**当轮 Driver（M10a 第 1 步，EV-72）。
+ *
+ * `--stage` **必填、不给默认值**：一次认领哪一道闸门要说清楚，
+ * 与 `approve --stage` 同一条理由。默认到 plan 会让「我以为认的是 code」
+ * 这类错认领悄悄成功，而声明直接决定 Write / Edit 侧的保护集。
+ *
+ * 判定分支与出口全在 `driver-claim.ts`，本函数只做三件事：
+ * 取三个输入（留痕 / 既有声明 / 会话来源）、落盘、把结果说清楚。
+ */
+async function cmdTopicClaim(args: ParsedArgs): Promise<number> {
+  const ctx = await loadCtx();
+  const stage = parseStage(args);
+  const topic = flagString(args, 'topic');
+  if (!topic) throw usageError('topic claim 需要 --topic');
+
+  const rawDriver = flagString(args, 'driver');
+  if (!rawDriver) throw usageError('topic claim 需要 --driver');
+  // 取值合法性走 `resolveDriver` 这**唯一一处**判定，不在这里重写一遍（critics.ts 头注释）
+  const { driver, enabledAsDriver } = resolveDriver(rawDriver);
+  if (!enabledAsDriver) {
+    /*
+     * 与另两个解析该旗标的入口同款标注（代码双审 r1 GLM-06）。
+     * 上一版这里丢弃了该字段，于是认领别家一律静默成功、要到 `review --start` 才见提示——
+     * M9 立的「放行但如实标注」在新入口缺了一角。第 3 步收紧成退 64 时这行随分支一并消失。
+     */
+    warn(`声明的 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`);
+  }
+
+  const ref = await resolveTopic(ctx, topic, stage);
+  const { updateTaskAsync } = await import('./meta.js');
+  const { claimStageDriver, claimRejectionMessage, resolveStageDriver } =
+    await import('./driver-claim.js');
+  type ClaimOutcome = Awaited<ReturnType<typeof claimStageDriver>>;
+
+  const resolution = await resolveStageDriver(ref.layout, stage);
+  if (resolution.kind === 'corrupt') {
+    throw new TriviumError(
+      EXIT.GATE_BLOCK,
+      `无法判定 ${ref.topic} / ${stage} 的当轮 Driver：运行留痕读不出来` +
+        `（${resolution.unreadable.join('、')}）。\n` +
+        '  留痕坏了就判不了「这一阶段归谁」，此时接受任何认领都是让声明在锚损坏时反超留痕。\n' +
+        `  出口是重跑一次 ${stage} 阶段双审：新运行会先落一份可读的留痕。`,
+    );
+  }
+  const runDriver = resolution.source === 'run' ? resolution.driver : null;
+  const claimedBy =
+    flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? 'unknown-session';
+
+  /*
+   * ── 判定与落盘在**同一个临界区**内（代码双审 r1 CODEX-06 ≡ GLM-02）──
+   *
+   * 上一版把 `readTask` / 目录扫描 / 分支判定全放在锁外，`mutate` 回调再把锁外算好的
+   * `outcome.claim` 整块写回。两个会话并发认领同一阶段时，后写者直接覆盖前者，
+   * **且前者既不在当前值也不进任何人的 `history`**——`history` 是从锁外的 stale
+   * `existing` 派生的。这正是 `updateTask` 头注释自己列的丢更新形态，只是这次丢的是
+   * 自声明边界的审计面。
+   *
+   * 现在 `existing` 取自锁内刚读到的那份，判定随之在锁内做。
+   * `outcome` 用外层变量带出来，供后面的输出与拒绝分支使用。
+   */
+  let outcome!: ClaimOutcome;
+  await updateTaskAsync(ref.layout, async (task) => {
+    outcome = await claimStageDriver({
+      layout: ref.layout,
+      stage,
+      driver,
+      claimedBy,
+      runDriver,
+      existing: task.drivers?.[stage] ?? null,
+    });
+    // 被拒与幂等都是「读了、判了、不改」——回调返回 false 即不写盘。
+    // 幂等档若照写，`claimed_at` 会随每次重跑往后推，审计事实跟着漂。
+    if (outcome.kind !== 'claimed' && outcome.kind !== 'revoked') return false;
+    task.drivers = { ...(task.drivers ?? {}), [stage]: outcome.claim };
+    return;
+  }, { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 });
+
+  if (outcome.kind === 'blocked-by-run' || outcome.kind === 'blocked-by-usage') {
+    throw usageError(claimRejectionMessage(outcome, stage, driver));
+  }
+
+  if (isJsonMode()) {
+    emitJson({
+      ok: true,
+      topic: ref.topic,
+      stage,
+      driver,
+      outcome: outcome.kind,
+      claimed_at: outcome.claim.claimed_at,
+      claimed_by: outcome.claim.claimed_by,
+      ...(outcome.kind === 'revoked' ? { revoked: outcome.previous } : {}),
+      history_len: outcome.claim.history?.length ?? 0,
+    });
+  } else {
+    const verb = { noop: '已声明（幂等，未改动）', revoked: '已改写声明', claimed: '已声明' }[
+      outcome.kind
+    ];
+    say(`${verb}：${ref.topic} / ${stage} → ${driver}`);
+    if (outcome.kind === 'revoked') {
+      step(`原声明 ${outcome.previous} 已撤回并入声明史（共 ${outcome.claim.history?.length ?? 0} 条）`);
+    }
+    step(`声明来源 ${outcome.claim.claimed_by}`);
+    step('留痕一旦产生即以留痕为准；声明用来写出文件之后不可再撤回');
+  }
+  return EXIT.OK;
+}
+
 async function cmdTopic(args: ParsedArgs): Promise<number> {
+  if (args.sub[0] === 'claim') return cmdTopicClaim(args);
   if (args.sub[0] !== 'resolve') {
-    throw usageError(`topic 只支持 resolve 子命令，收到：${args.sub[0] ?? '(空)'}`);
+    throw usageError(`topic 只支持 resolve / claim 子命令，收到：${args.sub[0] ?? '(空)'}`);
   }
   const ctx = await loadCtx();
   const scope = parsePreflightScope(flagString(args, 'stage'));

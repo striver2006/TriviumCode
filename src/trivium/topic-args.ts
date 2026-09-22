@@ -358,20 +358,15 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     );
   }
 
-  // 当轮 Driver 先解析：选侧与被审对象定位都要用它（判定处在 critics.ts，此处只取值）
-  const { driver, enabledAsDriver } = resolveDriver(named['driver'] ?? null);
-  if (!enabledAsDriver) {
-    // 放行但如实标注（见 resolveDriver 的文档块）。留痕要让事后对得上账
-    notes.push(
-      `本次声明的 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`,
-    );
-  }
+  /*
+   * 当轮 Driver 的**取值**推迟到主题解析之后（M10a 第 1 步）——缺席时要继承该阶段的
+   * 权威值，而那要先知道主题。这里只做取值合法性校验：非法取值必须在这里退 64，
+   * 不能等到继承判定之后。
+   */
+  const explicitDriver = (named['driver'] ?? '').trim()
+    ? resolveDriver(named['driver']!).driver
+    : null;
 
-  const critics = resolveCriticSelection(ctx.config, {
-    critics: named['critics'] ?? null,
-    only: onlyRaw || null,
-    driver,
-  });
   /*
    * **入选来自 `--only` 时，输出的 `only` 置 null**（审查意见 AGY-01 ≡ GLM-01，两侧判 major）。
    *
@@ -477,6 +472,72 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     );
   }
   const topic = v.normalized;
+
+  /*
+   * ── 当轮 Driver：显式旗标优先，缺席则**继承该阶段的权威值**（M10a 第 1 步）──
+   *
+   * 与 `review --start` 共用 `driver-claim` 的那一份判定与校验。**两个入口都要有**：
+   * 技能侧先走本入口会被挡住，而 `review --start` 才是真正烧配额的那条——
+   * 只落一处就是 EV-53 那族缺口的形状。
+   *
+   * `scope === 'all'` 跳过：命令 A 在上面已拒绝 `--driver`，没有可比对的值，
+   * 且它的阶段还没定下来。全程纯只读，「不创建任何目录」的承诺不受影响。
+   */
+  let driver: AgentId = explicitDriver ?? DEFAULT_DRIVER;
+  if (scope !== 'all') {
+    const {
+      resolveStageDriver, crossCheckDriver, declaredStageDriver, stageDriverInvariant,
+    } = await import('./driver-claim.js');
+    const { readTask } = await import('./meta.js');
+    const layout = { archiveRoot: ctx.archiveRoot, topic };
+
+    const resolution = await resolveStageDriver(layout, scope);
+    if (resolution.kind === 'corrupt') {
+      throw new TriviumError(
+        EXIT.GATE_BLOCK,
+        `无法判定当轮 Driver：${topic} / ${scope} 的运行留痕读不出来` +
+          `（${resolution.unreadable.join('、')}）。\n` +
+          '  这里**不**按缺省 Driver 继续，**也不**退回声明——留痕坏了就判不了身份，\n' +
+          '  而退到被保护方自己写的声明是把权威排序倒过来用。\n' +
+          `  出口是重跑一次 ${scope} 阶段双审：新运行会先落一份可读的留痕。`,
+      );
+    }
+    const declared = declaredStageDriver(await readTask(layout), scope);
+    const runDriver = resolution.source === 'run' ? resolution.driver : null;
+    // 先问「这份留痕本身自洽吗」，再问「你传的对不对」——顺序反了会用一个坏基准去判对错
+    const broken = stageDriverInvariant({ topic, stage: scope, runDriver, declared });
+    if (broken) throw new TriviumError(EXIT.USAGE, broken);
+    const conflict = crossCheckDriver({
+      topic, stage: scope, driver: explicitDriver, runDriver, declared,
+    });
+    if (conflict) throw new TriviumError(EXIT.USAGE, conflict);
+
+    driver = explicitDriver ?? resolution.driver;
+    if (!explicitDriver && resolution.source !== 'default') {
+      notes.push(
+        `未传 --driver，已继承 ${scope} 阶段的当轮 Driver「${driver}」` +
+          `（来源：${resolution.source === 'run' ? '运行留痕' : 'topic claim 的声明'}）`,
+      );
+    }
+  }
+
+  /*
+   * `enabledAsDriver` 按**最终**的 driver 取，不是按旗标那次解析的结果：
+   * 继承来的值可能是另一家，沿用旧结果会让这行标注说错对象。
+   */
+  const enabledAsDriver = resolveDriver(driver).enabledAsDriver;
+  if (!enabledAsDriver) {
+    // 放行但如实标注（见 resolveDriver 的文档块）。留痕要让事后对得上账
+    notes.push(
+      `本次声明的 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`,
+    );
+  }
+
+  const critics = resolveCriticSelection(ctx.config, {
+    critics: named['critics'] ?? null,
+    only: onlyRaw || null,
+    driver,
+  });
 
   const models: Partial<Record<CriticId, string>> = {};
   /*

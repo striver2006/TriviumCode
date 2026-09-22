@@ -29,8 +29,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import ts from 'typescript';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { stripNonCode } from '../helpers/strip-non-code.js';
 
 /**
  * 剥掉**一切不是代码的东西**：注释 + 字符串 / 模板 / 正则字面量的正文。
@@ -76,47 +76,11 @@ import { REPO_ROOT } from '../helpers/fixture.js';
  * 记下来是因为：照着意见清单去写「`]` 之后必须剥」的断言会**写出一条错的判据**。
  * 同理 `obj.val! / driver / scale` 里的 `driver` 是真标识符，保留它才对。
  *
- * 实现要点：
- * - **置空而非替换**：每个非代码字符换成空格（换行保留）。这样偏移量不变，
- *   锚点在剥离后文本里的位置与原文一致，也不会凭空造出括号。
- * - 模板只置空 `TemplateHead/Middle/Tail` 与无插值模板，`${…}` 里的**表达式保留**
- *   （那里面本来就可以是真实取值）。头尾各含一半花括号，一起置空即保持配平。
- * - 注释走 `getLeadingCommentRanges`，并且**按 token 粒度遍历**（`getChildren`
- *   会给出 `(`、`)` 这类 token）——只走节点会漏掉 `foo(/* c *​/)` 这种
- *   夹在 token 之间的注释。
+ * **实现搬去了 `test/helpers/strip-non-code.ts`**（M10a 第 1 步）：
+ * 第二个需要它的判据出现时（声明接线盯防点），照抄一份就会长出第二份真相——
+ * 而它恰恰是被实测打穿过四次的那类代码，两份各修各的必然分叉。
+ * **本文件末尾那一整节自测仍然守着它**，实现搬家不搬责任。
  */
-function stripNonCode(src: string): string {
-  const sf = ts.createSourceFile('scan.ts', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const out = src.split('');
-  const blank = (from: number, to: number): void => {
-    for (let i = Math.max(0, from); i < Math.min(to, out.length); i++) {
-      if (!/\s/.test(out[i]!)) out[i] = ' ';
-    }
-  };
-
-  const LITERALS = new Set<ts.SyntaxKind>([
-    ts.SyntaxKind.StringLiteral,
-    ts.SyntaxKind.NoSubstitutionTemplateLiteral,
-    ts.SyntaxKind.RegularExpressionLiteral,
-    ts.SyntaxKind.TemplateHead,
-    ts.SyntaxKind.TemplateMiddle,
-    ts.SyntaxKind.TemplateTail,
-  ]);
-
-  const visit = (node: ts.Node): void => {
-    for (const r of ts.getLeadingCommentRanges(src, node.getFullStart()) ?? []) {
-      blank(r.pos, r.end);
-    }
-    if (LITERALS.has(node.kind)) {
-      blank(node.getStart(sf), node.getEnd());
-      return; // 字面量里没有代码，不必再下钻
-    }
-    for (const child of node.getChildren(sf)) visit(child);
-  };
-  visit(sf);
-
-  return out.join('');
-}
 
 /**
  * 键/实参是否**以完整标识符的形态**出现在这段代码里。
@@ -487,6 +451,11 @@ test('对账：两个「谁算原稿」的入口对同一夹具给出同一答�
 /*
  * 上一轮的教训是「判据看起来对、实际永绿」，而那次正是**没有**把判据写成
  * 可执行的东西再验一遍。下面三条验的是本文件的三条约束本身。
+ *
+ * > **约束 1 的被测对象在 `test/helpers/strip-non-code.ts`**，不在本文件里
+ * > （M10a 第 1 步搬的家，因为第二个判据也要用它）。**自测没跟着搬**：
+ * > 下面这些跑在 `review.ts` 等真实语料上，搬去 helper 旁边就只剩合成用例了。
+ * > 改那个 helper 的人请回来跑这一节。
  */
 
 test('判据自测：约束 1 剥得掉单行块注释（上一轮就是在这里漏的）', () => {

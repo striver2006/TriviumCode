@@ -347,31 +347,18 @@ export function isForgedRoleFile(
  * 拦截侧取更严的取向仍然成立。`gate` 侧那一格是否也要收紧，
  * 需要与上述兜底的**实际覆盖面**一起评估，已单独登记 **EV-73**，不在本步。
  */
-type DriverResolution =
-  | { kind: 'ok'; driver: AgentId; fromDefault: boolean }
-  | { kind: 'corrupt'; unreadable: string[] };
-
-async function resolveRoundDriver(
-  ctx: Ctx,
-  topic: string,
-  stage: Stage,
-): Promise<DriverResolution> {
-  const { latestRunMeta } = await import('./meta.js');
-  const r = await latestRunMeta({ archiveRoot: ctx.archiveRoot, topic }, stage);
-  /*
-   * `unreadable` 非空即判坏，**即使已经取到了一份可读的 meta**（代码双审 GLM-01 ≡ CODEX-01）。
-   *
-   * `latestRunMeta` 是 newest-first 且命中即返回，所以 `unreadable` 里装的恰好全是
-   * **比 `meta` 更新**的那几份——语义天然对齐，不必再比 run_id。若这里只判 `!r.meta`，
-   * 「最新那份读不出、较旧一份可读」会静默降级成**上一轮**的 Driver，而拦截文案还会
-   * 自称「取自该阶段最近一份运行留痕」。那两条后果与本步否掉 `state.json` 闸门项时
-   * 列的理由**逐字同形**（「沿用前一条的值，被当成权威值」），只是换成了留痕版。
-   */
-  if (r.meta && r.unreadable.length === 0) {
-    return { kind: 'ok', driver: r.meta.driver, fromDefault: false };
-  }
-  if (r.meta || r.scanned > 0) return { kind: 'corrupt', unreadable: r.unreadable };
-  return { kind: 'ok', driver: DEFAULT_DRIVER, fromDefault: true };
+/**
+ * 当轮 Driver 的三级判定（M10a 第 1 步，EV-72）。
+ *
+ * **判定本身在 `driver-claim.ts` 的 `resolveStageDriver`，本文件只是它的一个消费点。**
+ * 本函数曾经是判定的所在地，而另外三个消费点各写各的
+ * `latestRunMeta(...).meta?.driver ?? null`——同一条语义两份实现、**结论相反**
+ * （这里对损坏留痕硬失败，那边把它折成「零留痕」再用自声明顶上）。
+ * 收成一处之后这一层只剩转发，理由见那个函数的文档块（代码双审 r1 CODEX-03 ≡ GLM-01）。
+ */
+async function resolveRoundDriver(ctx: Ctx, topic: string, stage: Stage) {
+  const { resolveStageDriver } = await import('./driver-claim.js');
+  return resolveStageDriver({ archiveRoot: ctx.archiveRoot, topic }, stage);
 }
 
 /**
@@ -588,9 +575,12 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
         );
       }
       driver = res.driver;
-      why = res.fromDefault
-        ? '该阶段尚无运行留痕，按缺省 Driver 判定'
-        : '取自该阶段最近一份运行留痕';
+      // 三级判定各有各的来源句——判错身份时用户要能从文案里看出是哪一级出的问题
+      why = {
+        run: '取自该阶段最近一份运行留痕',
+        claim: '该阶段尚无运行留痕，取自 topic claim 的声明',
+        default: '该阶段既无运行留痕也无声明，按缺省 Driver 判定',
+      }[res.source];
     }
     // 外层 `if` 已确立落在归档内，这里只问后缀——不再走 `isForgedRoleFile`，
     // 那会把 realpath 解析重跑第三遍（代码双审 AGY-01）。该函数本身保留为完整语义判据。
