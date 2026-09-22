@@ -1,0 +1,205 @@
+---
+schema: trivium.review.v1
+topic: M10-任意Driver
+stage: plan
+role: codex
+vendor: openai
+agent_cli: codex/0.155.1
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260921T152520Z
+rerun_index: 2
+snapshot_hash: sha256:52f42476404dd637edff09a9c3638393a021a6fa503ac0cd01d15f4a4031aaf7
+blind: true
+started_at: 2026-09-21T15:25:20.898Z
+finished_at: 2026-09-21T15:43:37.960Z
+duration_s: 1097
+tool_calls:
+  run_command: 28
+  project_reads: 27
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 3
+  minor: 3
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0c492-5b97-75b2-93ec-4ba9b67416a2
+---
+
+# 计划审查：M10-任意Driver
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20260921T152520Z` ｜ 第 2 轮
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+r2 对 24 条接受意见的落实总体是真改判据而非只写说明，五个指定锚点中四个（§3.2.1 窗口限定、§4.1.1 裁决件排除、§6.1.1 落点、§6.2.1 必装）经代码核对成立；AGY-01 的驳回读法成立（hookPreBash 的 writeLike 合取门在 hooks.ts:903-904 实证）。但发现三处计划级缺陷：①§4.1.2 选定的提交锚出口建立在「原稿送审后进 artifacts[]」这一与代码不符的断言上——artifacts[] 从不登记原稿路径，选定出口字面实施后已提交原稿实际不受保护；②claim 的不可覆盖 + 主题级字段第 2 级权威组合起来仍会锁死 §3.2.1 自己援引的「跨阶段换 Driver」合法场景，窗口限定只修了旗标比对一处；③EV-82 的第 7 步前置与 §8.2 表格互斥——表中没有任何一行以 glm 为必选审核者，第 7 步可在 EV-82 未修时跑通全部判据。P-2 链条本身自洽、无残留 zcode 降级出口。另登记真载体风险暴露时点偏乐观、渲染落点的嵌套枚举未实测、§1.4 量级表漏项四条次级问题。
+
+**结论**：`request-changes`
+
+## 审查意见（共 7 条：重要 3 ｜ 次要 3 ｜ 吹毛求疵 1）
+
+### CODEX-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.1 第 1 条与 §4.1.2（三选一取第三项）、§8.3 末段` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：第 1 条判据写「该路径出现在 run.json.artifacts[] 登记内（含被冻结的原稿 subject 与审查件）」，并以此支撑选定出口「未送审原稿交给第 1 条判定已送审版本」。但代码里原稿**从不进 artifacts[]**：`--start` 时 meta.artifacts 只登记 `_meta` 补丁与两份 brief，收尾时追加的是审查工件与 `_meta` 运行清单；原稿在 run.json 里只留 `subject_sha256`（哈希，无路径），run.v2 schema 没有 subject_path 字段。按字面实施，第 1 条对**任何**原稿（含已送审的）恒不命中——「已冻结送审的原稿不可变」这一保护静默缺失，而 §8.3 补的「刷新已提交原稿」验收形态会以错误的理由通过（它本来就没被拦）。若要补洞，把原稿在 `--start` 登记进 artifacts[] 会改变 claude 侧该数组内容，需按 J3/§8.3 的兼容口径显式声明；给 run.v2 加 subject 路径则牵动 schema 同步清单（parse/gate/meta/PROTOCOL/SKILL.md/registry-parity），两条路本稿都没登记。
+
+**依据**：读 src/trivium/review.ts:835-893（prepareRun 的 metaArtifacts 只含 _meta 补丁与 brief，`meta.artifacts = [...metaArtifacts]`）、review.ts:1485-1494（收尾追加 protectedMeta 与逐侧审查工件，无 subject）、review.ts:806（subject_path 只存在于运行期 request，types.ts:1405）、src/trivium/meta.ts:239,265（RunMeta 落盘只有 subject_sha256）、skills/dual-critic/schema/run.v2.json（grep subject 仅命中 subject_sha256）、src/trivium/archive.ts:440-463（checkRecordedArtifacts 只遍历 artifacts[]）、src/trivium/hooks.ts:504（提交锚纯后缀判定）。计划 §4.1.1 自己正确指出裁决件不在 artifacts[]，同一事实源却对原稿做了相反断言。
+
+**建议**：把第 1 条的论域改为可判定的来源（例如 `--start` 时将原稿 path+sha256 登记进 artifacts[]，或判据并入 run.json 的 subject 事实并把路径落进留痕），并把所选路线的连带面（claude 侧 artifacts 内容变化进 J3/§8.3 口径，或 run.v2 schema 变更进同步清单）写进 §4.1/§4.3。§8.3 那条验收形态要改成能鉴别「送审后被改确实被拦」的正反例，否则它测的是空集。
+
+### CODEX-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.2（claim 的「已存在且不同 ⇒ 退 64、不提供覆盖」）与 §3.2.1、§10 D1` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§3.2.1 把交叉校验限定到「零留痕窗口」以保住演进设计第 647 行的「跨阶段换 Driver（claude→zcode 续跑）允许」，但同一方案在另外两处把它关了回去：新阶段恰是零留痕窗口——code 阶段首次运行时该阶段零留痕、主题级 driver 仍是 plan 阶段 claim 的 claude；zcode 侧入口资产执行 `topic claim --driver zcode` 命中「已存在且不同 ⇒ 退 64」，即便不跑 claim，resolveRoundDriver 第 2 级按主题级字段解析出 claude，zcode 写的 `-zcode.md` 原稿被判伪造件退 2——正是 §3.1 描述、EV-72 要修的那个死锁，只是从缺省 Driver 场景挪到了跨阶段场景。D1 把「换 Driver 不允许覆盖」列为不可逆决定且「结论维持不变」（§3.2.1 末句），窗口限定实际只修了 `--driver` 旗标比对，没修 claim 与第 2 级权威。
+
+**依据**：读被审计划 §3.2（claim 语义、三级判定）、§3.2.1（引演进设计 647 行「允许」并自陈新开主题的代价）、§10 D1；核 doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md:647（该行确写「同主题跨运行切换 Driver（如 claude→zcode 续跑）｜允许」）；核 src/trivium/hooks.ts:354-375（resolveRoundDriver 现行为：该阶段零留痕即回落，改三级后第 2 级取主题级字段是计划的明文方案）。§3.3 测试清单里的「主题级 A、run.json B」用例用预置留痕构造，恰好绕开了「新阶段零留痕 + 主题级过期值」这一格。
+
+**建议**：三选一并写明：①主题级字段的权威域限「首次声明」——一旦存在更新的阶段需要不同 Driver，允许 claim 以追加语义改写过该字段并留 `driver_claimed_at`/历史；②resolveRoundDriver 第 2 级按「阶段」而非「主题」取值，claim 落点带阶段；③承认可跨阶段换 Driver 的合法形态不存在、删掉 §3.2.1 援引 647 行的理由并在演进设计登记偏离——但这与 §9.1「AC-N2/§5.2 不改语义」的姿态冲突。无论取哪条，§3.3 必须补「plan 阶段有留痕 + code 阶段零留痕 + 新 Driver」的构造用例。
+
+### CODEX-03 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan 抬头警示块、§1.2 EV-82 条、§8.2 表格与「glm 作审核者的轮次」段、§1.3 依赖图` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：EV-82 被列为第 7 步前置的唯一机械理由是「§8.2 需要 --model-glm 作鉴别条件」，但 §8.2 的四行剧本里没有任何一行以 glm 为**必选**审核者：claude/codex 行显式不带 glm，glm 行 glm 是 Driver，gemini 行「任两家」未钉死；且 §1.4 缩减口径鼓励不带 glm。按本稿执行，第 7 步可以在 EV-82 未修时启动并逐格通过，glm 侧的 FR-06 模型路由证据则整体失踪——前置关系是散文，没有落点；「glm 作审核者的轮次加一条判据」成了悬空义务（没有哪一行欠它）。同类问题：EV-74/EV-79「须早于第 3 步」也只是依赖图上的一条线，第 3 步开工前没有任何 preflight/自检项核对这两条已结案。
+
+**依据**：读被审计划 §1.2、§1.3、§1.4（缩减口径原文）、§8.2（表格与判据段）；核 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2814 与演进设计 :668（AC-N2 原文只要求 claude/zcode 真实，不含 glm 模型路由证据，模型路由属 FR-06 面）。裁决件与 r1 实测表（计划抬头引用）显示 model_override_applied 的检验只在 glm 被**调用为审核者**时才有观测面。
+
+**建议**：二选一写明：①把 §8.2 某一行（如 gemini 行）钉死为「claude + glm」并挂 `--model-glm` 判据，此时 EV-82 的前置成立且 §1.4 的量级/风险面要跟着重算；②承认第 7 步各轮均不以 glm 为审核者，把「含 glm 的真实双审」证据归 EV-82 小主题自身的结案判据，§1.2 的前置措辞从「第 7 步的前置」改为「FR-06 证据面的前置」，并给「前置」加机械钩子（如第 3 步/第 7 步开工前先跑一条对 BACKLOG 结案状态的具名核对，写进 §12 验证方式）。
+
+### CODEX-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §11 R-h「它会在第 1 步就暴露，不会拖到第 7 步」与 §2.3【P-2 阻塞点】` |
+| 类别 | scope-drift ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：第 1 步 2.3 对真载体的确认只是「交互会话能执行 `.trivium/bin/trivium preflight --stage plan --json`」一条命令级冒烟；J4 要求的是 ZCode 会话跑通整轮命令 B——它还依赖第 5 步才存在的渲染入口资产、`topic claim`、原稿命名、Bash 侧出口、gate/approve 在 ZCode 权限模型下的表现。这些面在第 1 步都不存在，「第 1 步暴露」只对「会话能否拉起 wrapper」这一格成立。P-2 把「接不通则不收口」设为硬约束后，风险若在第 7 步才现形，沉没的是第 2～6 步全部工作。
+
+**依据**：读被审计划 §2.3、§1.3（真载体确认排在第 5/6 步之前）、§11 R-h、§8.2 glm 行；对照 skills/dual-review-plan/SKILL.md 的七步序列（resolve→claim（新增）→写稿→--start→--wait→gate→approve）确认命令 B 的全链路远宽于单条 preflight；核 src/trivium/install.ts:24-36（今天 glm 侧连入口资产都没有，第 5 步前无法跑完整轮）。
+
+**建议**：不必扩大第 1 步（那里没有可跑的东西），但在第 5 步收尾加一格「glm driver 薄冒烟」：用渲染产物在 ZCode 会话走一遍到 `--start` 之前即可、不设收口判据——它能把「载体能跑但资产/权限形态不对」这一类失败从第 7 步提前到第 5 步；或在 R-h 如实把「第 1 步暴露」限定为「preflight 可执行性在第 1 步暴露」。
+
+### CODEX-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.2 首条「不影响 Driver 写自己的原稿与裁决件」与 §4.3 测试清单` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：AGY-01 的驳回对「`TV review --start … --plan-file …-claude.md` 无 writeLike 字面」这一具体形态成立（hooks.ts:903-904 的合取门与 WRITE_LIKE 全集均已核对）；但 D3 后「writeLike ∧ 提到 `-claude.md`」的真实交集里除了 commit message，还有几类本仓库当前在用的形态：`cp …-r1-claude.md …-r2-claude.md`（原稿克隆，本主题自己的 r1→r2 工作流）、`mv`/`rm` 整理旧稿、`… --plan-file X-claude.md > run.log` 型重定向（WRITE_LIKE 第 1 条命中 `>`）——今天 claude 后缀被排除在跨时间集外，这些都走得通。这些都有 Write/Edit + `git commit -F` 出口且 R-c 已登记误拦面扩大，结论不翻；但 §4.3 没有一条「入口资产七步命令与上述原稿操作形态在 D3 后仍可走通（或按登记的出口改写后可走通）」的用例，「不影响 Driver 写自己的原稿与裁决件」这句对 cp/重定向形态也不成立，措辞与用例面要各补一格。
+
+**依据**：读 src/trivium/hooks.ts:672-689（WRITE_LIKE 含 `>` 重定向、rm|mv|cp、git commit）、:903-904（writeLike 前置门）、:805-807（roleSuffixAnywhere 现取 criticRoleSuffixes(DEFAULT_DRIVER)，claude 不在内）、:852-854；读被审计划 §4.2/§4.3/§11 R-c。
+
+**建议**：§4.3 增一条负向用例：逐字取第 5 步渲染产物里的 TV 命令行与「克隆原稿 / 带重定向的 start」两形态，断言 D3 后的通过/拦截与 §4.2 文案一致；§4.2 那句改为「不影响经 Write/Edit 的落笔；Bash 侧的原稿克隆/改名/重定向属已登记的误拦面」。
+
+### CODEX-06 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §6.1.1（落点选 `skills/dual-critic/entry/<agent>/dual-*/SKILL.md`）与 §2 读取面清单` |
+| 类别 | security ｜ 层次 plan |
+| 置信度 | low |
+
+**问题**：落点避开顶层扫描的判断（skillNames 只列直接子目录）经代码核对成立；但 syncDir 是整目录递归搬运，选定后另三家带自家 `--driver` 的 SKILL.md 会随 dual-critic 一起落进 `~/.claude/skills/dual-critic/entry/…`，6.2.2 也未钉死其它目标是「只装入口子集」还是「整棵 skills 树」。任一载体若做嵌套/递归 skill 枚举（未实测，各家读取面清单只测「哪些根、同名行为」，不含嵌套深度这一臂），嵌套的同名入口资产（注入别人 Driver id）就会出现在自家根里——正是 §2 开头 CODEX-05 修正要防的形态，且在 claude 根内部重现。
+
+**依据**：读 src/install.ts:59-93（syncDir 递归复制全部子目录；skillNames 只 readdir 顶层）、被审计划 §6.1.1、§6.2.2（目标表只给根路径未给内容映射）、§2 读取面清单的三问（枚举哪些根/同名行为/有无告警——无嵌套项）。
+
+**建议**：第 1 步读取面清单加一臂：隔离 HOME 的 skillsTarget 下放 `dual-critic/entry/x/dual-zzz/SKILL.md` 哨兵，逐家确认嵌套是否被枚举；§6.2.2 钉死每目标的内容映射（只装渲染入口 + 运行时根单独计），若某家会递归枚举则换落点或改扁平命名。
+
+### CODEX-07 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §1.4 量级表` |
+| 类别 | performance ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：表自称是「2～3 天估算是否成立的判据」，但漏了三块同窗口的成本：①两个并行小主题（EV-74/79、EV-82）各自的双审轮次与重跑，它们占用同一份审查配额与墙钟；②第 7 步 glm 行是人工交互载体，「等待义务」把墙钟从调用时长变成人机串行长链；③本 r2 若再被驳回产生 r3 的 plan 档重审（本轮 run 实测 14m23s 恰是三侧 plan 档）。按现表求和会得出「成立」，补齐后「2～3 天」是否仍成立是未知的。
+
+**依据**：读被审计划 §1.4 全表与 §1.2/§1.3（两小主题并行）、§8.2（glm 行真实不可降级）；引用数值（14m23s、1038s）与表内自述一致。
+
+**建议**：§1.4 补两行（小主题双审、人工载体串行）与一行「r3 若发生」，并把「与 §16.1 估算不符则回补设计」的触发口径写成数值而不是印象。
+
+## 认为正确的部分
+
+- AGY-01 的驳回读法成立：hookPreBash 在 hooks.ts:903-904 先过 writeLike 门才评估 bashTargetsProtected，`TV review --start … --plan-file …-claude.md` 不含任何 WRITE_LIKE 字面（逐条比对正则），§4.2.2 的实证与代码一致；驳回而不收窄（RV-B1 同构）的取舍同意。
+- 五个指定锚点中四处是真改判据：§3.2.1 窗口限定落进了 §3.3 的两条用例、§4.1.1 的裁决件排除与 hooks.ts:1204-1216 既有不变量及 `-<suffix>\.md$` 正则吻合（裁决件确实不在 artifacts[]，排除即彻底放行，推理自洽）、§6.1.1 落点避开了 skillNames 顶层扫描、§6.2.1 的三处硬编码引证（init.ts:45-46、review.ts:397-401、install.ts:24-36）逐一属实。
+- P-2 链条（J4/§2.3/§8.2/R-b/R-h/D10）口径一致，未找到残留的 zcode 降级出口：§2.1 的退路只降 gemini、§7 只降护栏登记，都不触碰 J4；D10 的回滚行明确要求同步改主设计与演进设计两处，符合纪律 6。
+- §0.3 的 F-6/§5.5 EV-07 双件处置与 registry-parity.test.ts:268-276 的沿革注释、disposition.v1.json 现行 role 形状、BACKLOG.md:104 条目原文完全一致——「豁免腿没空不得删」是对 r1 三侧意见的正确落法。
+- §5.5 的拆分线大体切对了：EV-62/64/07 与「安全收紧+审批链路+护栏接线」零依赖成立；5.2.1 引 cli.ts 的 runId 拒绝注释与代码逐字一致；6.2.3 临时 home 注入对齐纪律 9 且 defaultTargets(home) 确已可注入。
+- §2.3.1 把取值路径作为计划级决策二选一定死、§2.5「无消费方不入机读」的原文保留，都是对的机制取向。
+
+## 未覆盖范围（本侧盲区）
+
+- r1 裁决件 27 条意见的逐条落点核对是聚焦 5 锚点 + 抽查（F-1/F-2/F-3/F-6、§5.1.1、§5.2.2、§9.2 等），未逐条比对其余接受意见与源文件的每一处行号级引文。
+- 未实测任何一家厂商 CLI（版本、agy/zcode 的加载与 Hook 行为、`which zcode`）——这些正是计划第 1 步要做的，我只核了仓内静态证据与 M6/M9 报告的引用行。
+- 未复跑 npm run check，「1566/1564/2/0」基线数字未验证。
+- 演进设计 §7.5/§9.4/§10.2 与主设计 §16.1 M10 行、§8.5 注记未逐节通读，只核了计划引用的 :647/:668/:2814 三处。
+- §6.2.2 各安装目标的内容映射（整树 vs 入口子集）计划未写明，我只按文字推断了歧义（见 CODEX-06），未给出应然方案。
+- 自己 r1 的 11 条意见与裁决的逐条对账未做（未重读 r1 审查件全文）。
+
+## 实际查阅的项目文件
+
+- `.reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-r2-claude.md`
+- `src/trivium/hooks.ts`
+- `src/trivium/review.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/archive.ts`
+- `src/trivium/init.ts`
+- `src/trivium/topic-args.ts`
+- `src/trivium/critics.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/types.ts`
+- `src/trivium/agents/registry.ts`
+- `src/trivium/adapters/base.ts`
+- `src/install.ts`
+- `test/unit/registry-parity.test.ts`
+- `skills/dual-critic/schema/review.v1.json`
+- `skills/dual-critic/schema/run.v2.json`
+- `skills/dual-critic/schema/disposition.v1.json`
+- `skills/dual-review-plan/SKILL.md`
+- `scripts/build.mjs`
+- `doc/08_project/BACKLOG.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":28,"project_reads":27}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

@@ -1,0 +1,98 @@
+{
+  "agreed": [
+    "§4.1 将提交锚不可变判据从角色后缀重写为「artifacts[] 登记 ∪ _meta/ 位置」，从根源上消除了 r2 中 GLM-01 揭示的「跨时间面必须知晓当轮 Driver 才能判别原稿与审查件」的逻辑缺口，裁决件天然落在可变侧，自洽性较 r2 显著提升。",
+    "§3.2 将 TaskMeta 的认领字段由主题级重构为按阶段声明 drivers[<阶段>]，彻底解除了跨阶段换 Driver 时初态零留痕被主题级单值锁死的问题，§3.3 跨阶段用例链路完整成立。",
+    "§4.2.1 对 Bash 侧 D3 全集保护的误拦面进行了极其诚实的清查与分类，特别是将「命令 B 焦点含写动词」作为关键形态写明出口并将其前置到入口资产提示中，安全防御取向稳固。",
+    "§6.1.1 渲染产物落点规划避开了顶层技能扫描，并配套 §2.4 的嵌套枚举实测作为防御验证，兼顾了多目标与 Claude 侧字节兼容。",
+    "§8.3 对 J3 允许差异白名单不仅补入原稿登记条目，而且对新增的三项差异均给出了确定的取值口径，防范了兼容性回归的模糊地带。"
+  ],
+  "consulted": [
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-claude.md",
+    "src/trivium/hooks.ts",
+    "src/trivium/review.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/agents/registry.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "skills/dual-review-plan/SKILL.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "hooks.ts:483-487 原明确标明「返回 null 表示该文件本就可变（task.json、原稿、裁决件、便利副本 changes.diff）」，IMMUTABLE_META 仅拦截带 runId 的 changes-.+\\.diff；review.ts:846-851 记载 changes.diff 是会被下一轮覆盖的便利副本；而在 .reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-claude.md §4.1.2 与 §4.1.3 中，第 2 条判定「位于 _meta/ 目录内 => 拦」且表格将「_meta/ 内一切」标为不可改。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4.1.2",
+      "problem": "§4.1.2 提交锚新判据第 2 条将不可变范围粗暴简化为「位于 _meta/ 目录内 => 拦」，遗漏了多轮重跑时必被覆写的便利副本 _meta/changes.diff。已提交上一轮工件后若发生重跑，changes.diff 内容更新进入 tracked.modified，提交锚第 2 条会将其误判为不可变工件改动并阻断 git commit。",
+      "severity": "major",
+      "suggestion": "第 2 条位置判据中明确排除 changes.diff，保持原 IMMUTABLE_META 对 changes-.+\\.diff 的过滤粒度，或增加 base !== 'changes.diff' 豁免。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "meta.ts:73-98 显示 task.runs[] 已在场记录 stage 与 driver；而在 .reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-claude.md §3.2.2 中，claim 仅检查 drivers[<阶段>]；§3.2.3 规定 review --start 严格按同阶段最新留痕校验；§3.2.4 却将同阶段不一致解释为「不报错——跨阶段换 Driver 合法」。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §3.2.2",
+      "problem": "§3.2.2 topic claim 仅检查 task.drivers[stage]，未检查 task.runs 中该阶段是否已有留痕。对历史遗留主题或未 claim 即已跑过运行的阶段，claim 允许认领不同 Driver，导致 drivers[stage] 与 runs[stage] 在同阶段内产生冲突；§3.2.4 误将同阶段冲突当成「跨阶段换 Driver」而不报错，导致 preflight 仅出提示，但随后的 review --start 按 §3.2.3 会因与留痕不符而直接报错，前后行为脱节。",
+      "severity": "major",
+      "suggestion": "topic claim 认领时应同时核验 drivers[stage] 与 task.runs 中该阶段的既有 driver，同阶段已有留痕且 driver 不同时同样退 64；修正 §3.2.4 注释，明确同阶段两键冲突属于非法状态而非跨阶段合法切换。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "review.ts:688-689 与 :844 显示 code 阶段的 subjectPath 即为 _meta/ 下的 changes-${runId}.diff，且已被 push 进 metaArtifacts；.reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-claude.md §4.1.1 宣称「只需多 push 一条」，未对 stage 做区分门控。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4.1.1",
+      "problem": "§4.1.1 在 --start 追加原稿登记时未区分阶段类型。code 阶段的 subject_path 本身就是 _meta/changes-${runId}.diff，该文件已在 review.ts:844 登记过，无条件追加会导致 code 阶段 artifacts[] 出现重复的 diff 条目，与 §8.3 产生预期外差异。",
+      "severity": "minor",
+      "suggestion": "原稿追加登记仅在 stage === 'plan' || stage === 'bug' 时执行（或按 path 去重）；§8.3 白名单取值口径同步明确原稿新增条目仅适用于含 Markdown 原稿的阶段。"
+    },
+    {
+      "confidence": "high",
+      "evidence": ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-claude.md §1.4 表格逐行计数显示：第 2～4 步 3 轮 + 第 5～6 步 1～2 轮 + §5.5 0～1 轮 + 并行小主题 ≥2 轮 + 第 7 步验收 4 轮 = 10～13 轮；而下文总计写「6～9 轮」，且触发口径绑定「第 1 步结束时实际 > 9 轮」。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §1.4",
+      "problem": "§1.4 双审轮次总量区间（6～9 轮）与表格明细行的累加底线（至少 10～13 轮）存在算术矛盾，估算依然明显偏乐观；且数值触发条件要求「第 1 步结束时双审轮次实际 > 9 轮」，而第 1 步仅为无双审的准入探针，该时点轮次恒为 0，触发判定在逻辑上不可执行。",
+      "severity": "minor",
+      "suggestion": "将双审总轮次区间修正为 10～13 轮；解耦触发条件中的时点与全流程总轮次，设定为合理的执行期动态阈值。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "doc/08_project/BACKLOG.md:179 显示 EV-82 状态当前仍为「**已关闭**」；.reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-claude.md §1.3.1 仅描述「跑一条具名核对」，无具体命令。",
+      "id": "AGY-05",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §1.3.1",
+      "problem": "§1.3.1 提出的开工前机械前置钩子缺乏明确的命令或脚本形式；更关键的是仓库 BACKLOG.md 中 EV-82 现仍保留 2026-09-21 的「已关闭」标记，纯文本 grep 检查会产生假阳性放行，未能真正起到机械拦截作用。",
+      "severity": "minor",
+      "suggestion": "给出具体的核查命令行脚本；在实施前先将 BACKLOG.md 中的 EV-82 状态修正回退为重开状态，或将钩子改为检查对应小主题分支提交与回归测试。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "agents/registry.ts:223-235 明确 AgentId 为 glm，工件后缀为 glm，zcode 是 cliName；critics.ts:180-189 校验传入的 driver 必须为 ALL_AGENT_IDS（含 glm，不含 zcode）；.reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-claude.md §3.3:347-350 写 --driver zcode 与 -zcode.md。",
+      "id": "AGY-06",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §3.3",
+      "problem": "§3.3 用例文案与断言将 Driver id 与后缀误写为 zcode 和 -zcode.md。在注册表契约中 AgentId 与后缀均为 glm，CLI 传入 --driver zcode 会被 resolveDriver 判定为非法 Agent 直接退出 64。",
+      "severity": "nit",
+      "suggestion": "将用例与断言中的 --driver zcode 及 -zcode.md 统一更正为 --driver glm 及 -glm.md（或改用 codex 举例）。"
+    }
+  ],
+  "not_covered": [
+    "未在本地环境实际运行 ZCode 交互会话并验证 provider 配置覆盖（EV-87）的实时状态。",
+    "未逐一审查各家入口资产在特定 shell 下特殊符号（如嵌套单双引号、换行 heredoc）展开的极致边缘情况。",
+    "未实测第五家假想 Agent 在注册表桩注入下的全部错误文案细节。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最危险的问题在于 §4.1.2 提交锚判据将 _meta/ 简化为全不可变，遗漏了重跑时必然重写的便利副本 changes.diff，将导致后续重跑轮次在 git commit 时被硬阻断；此外 §3.2.2 topic claim 漏查既有 runs 留痕，与 §3.2.4 的不变量解释及 §3.2.3 的 start 拦截形成逻辑闭环冲突。两处架构缺陷需在实施前修复。整体验收思路与 D11 取舍基本成立，但配额与机械钩子需校准。综合判定 request-changes。",
+  "verdict": "request-changes"
+}

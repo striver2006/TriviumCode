@@ -1,0 +1,280 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260922T004543Z",
+  "topic": "M10-任意Driver",
+  "stage": "plan",
+  "rerun_index": 3,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "审核焦点：一、§4.1 全节重写是否自洽——核 §4.1.3 行为表逐行成立与否，尤其裁决件是否真落在可变侧、4.1.1 的原稿登记是否真是第 1 条对原稿生效的前提（§4.3 有对应变异），以及判据由后缀改为位置之后，r2 的 GLM-01 指出的「需要当轮 Driver 才能判别原稿与审查件」这个缺口是否真的消失了。二、§3.2 全节重写是否自洽——§3.3 那条「plan 阶段有留痕、code 阶段零留痕、换新 Driver」的用例在按阶段方案下是否真能放行，按阶段拆分之后「同阶段不允许覆盖」是否还站得住，以及 drivers 与 runs 两份取值的不变量有没有漏洞。三、D11 的取舍是否合理——钉死 gemini 轮含 glm、让 EV-82 成为 M10 硬前置，与选项②（前置改指 FR-06 证据面、M10 与 EV-82 解耦）相比代价是否划算；§1.3.1 那两条机械钩子是否够。四、§8.3 允许差异白名单新增的第三行，是不是 J3「逐字节不变」的必要松动，取值口径有没有写死。五、§4.2.1 的五形态表有没有遗漏本仓库当前在用的形态。六、§1.4 的量级表修正到 6～9 轮双审之后是否仍偏乐观，数值触发口径可不可执行。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "4591147c3ba208695977077b45157325abdfe308",
+    "tree_hash": "34b467b0c5e709e65e7109cafac6bc5d443f78a5",
+    "dirty": true,
+    "subject_sha256": "843b35476b44e9830f4145d2ea501c5908dea482b0637d2d0fd88904c6291c95",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-22T00:45:44.300Z",
+  "finished_at": "2026-09-22T00:56:21.448Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "parse_fallback",
+      "exit_code": 0,
+      "duration_s": 636.935,
+      "tool_calls": {
+        "run_command": 15,
+        "project_reads": 9
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "JSON 不符合 trivium.review.v1：/findings/1/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+      "empty_review": false,
+      "parse_fallback": true,
+      "session_id": "01a0c693-6a10-7cd2-b0a2-b8ebf070021a",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.7",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 265.424,
+      "tool_calls": {
+        "read": 31,
+        "grep": 12,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 14
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 571891,
+        "output_tokens": 55671,
+        "thinking_tokens": 46244,
+        "cache_read_tokens": 4293268,
+        "total_tokens": 627562
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "c337d5e6-1b29-424f-8e28-1693da21a270",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "status": "parse_fallback",
+      "exit_code": 0,
+      "duration_s": 577.085,
+      "tool_calls": {
+        "read": 19,
+        "grep": 4,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 14
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 11,
+        "inputTokens": 1354113,
+        "outputTokens": 39597,
+        "totalTokens": 1393710,
+        "cacheReadTokens": 1220672,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "JSON 不符合 trivium.review.v1：/findings/1/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}; /findings/2/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}; /findings/3/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}; /findings/4/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}; /findings/5/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+      "empty_review": false,
+      "parse_fallback": true,
+      "session_id": "sess_73b73110-7c69-497d-a435-6064c8f1fab4",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-r2-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-r2-glm.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260921T145353Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260921T152520Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T145353Z.fallback-items.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T145353Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T152520Z.fallback-items.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T152520Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M10-任意Driver/plan/_meta/brief-codex-20260922T004543Z.md",
+      "sha256": "048e570e75659fdbb882931fc570b06a72218e6b337869c802e2c9328d144926"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/brief-gemini-20260922T004543Z.md",
+      "sha256": "3eaeb5de7759885ba793f3c2a9136b0a339f01d5898d555543f358b3326635c4"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/brief-glm-20260922T004543Z.md",
+      "sha256": "b4339cafeb61bc81778f271b39b0661f46fe8adb16b89a3b4d1d1747c34494b7"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/review-codex-20260922T004543Z.json",
+      "sha256": "63294a722fcea0ed84f7ebcfe1dc405cc6e2dc3732234086ce28015409f7cb71"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/review-codex-20260922T004543Z.fallback-items.md",
+      "sha256": "5f7bacaa46d38bd2cd591d136a6b3961d499bc9c5c6d184798c0a42c091d4d4b"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/review-gemini-20260922T004543Z.json",
+      "sha256": "6827f82aff98327c4d7e2b72c936a37eff8d70730563ece8609bf49cc087b445"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/review-glm-20260922T004543Z.json",
+      "sha256": "35e597b07353ff725acf52f0bcdcc9bbf3591a176d0676c12ec87efdb57857ad"
+    },
+    {
+      "path": "M10-任意Driver/plan/_meta/review-glm-20260922T004543Z.fallback-items.md",
+      "sha256": "d6b222e7bf5e41c90ab939270225b56e036bab0c0b3a36b7f238008e01909d3b"
+    },
+    {
+      "path": "M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-codex.md",
+      "sha256": "1b5eeeec3f46e4d907d22dd0ca22d0cef8853c14acefb02356375ba89ca90ba6"
+    },
+    {
+      "path": "M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-gemini.md",
+      "sha256": "ca64e8a81f5152bb3cffc458a78b9ba6ad3678b10d4e7ea89230f4fabe39cd06"
+    },
+    {
+      "path": "M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-glm.md",
+      "sha256": "6f2cda3f3518370ddf732cf06f1ef3e004912664f30d430481fb2e19b7e93f83"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

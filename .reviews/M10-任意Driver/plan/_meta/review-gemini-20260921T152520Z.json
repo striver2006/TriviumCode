@@ -1,0 +1,88 @@
+{
+  "agreed": [
+    "P-2 拍板「zcode 真载体接不通则 M10 不收口」在 J4、§2.3、§8.2、R-b、R-h、D10 之间改动一致，彻底消除了 zcode 作为 Driver 时的降级退路。",
+    "§5.5 将 EV-62、EV-64、EV-07 从第 4 步中剥离为独立小步，保证了核心安全与审批链路代码双审的专注度，拆分线清晰合理。",
+    "§4.1.1 明确在提交锚判据 2 中排除 `-revised-` 与 `-response-` 裁决件变体，修正了 r1 中提交锚对合法裁决修订的误杀。",
+    "§6.1.1 明确将另三家渲染产物收纳于 `skills/dual-critic/entry/<agent>/`，有效避开了 `install.ts` 对 `skills/` 的顶层扫描，维护了 Claude 侧的字节级兼容。",
+    "§1.4 新增的调用量级估算与配额核算坦诚暴露了真实调用的墙钟风险，并建立了超期回补设计的纪律约束。"
+  ],
+  "consulted": [
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-r2-claude.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-revised-claude.md",
+    "src/trivium/hooks.ts",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-critic/SKILL.md",
+    "src/trivium/topic-args.ts",
+    "src/trivium/review.ts",
+    "src/install.ts",
+    "src/trivium/init.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/gate.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/hooks.ts:903 在未剥离参数的 cmd 原文上执行 `const writeLike = WRITE_LIKE.some((re) => re.test(cmd))`，而 WRITE_LIKE (hooks.ts:677) 包含 `\\b(?:rm|mv|cp|touch|mkdir|rmdir|ln|install|rsync|patch|dd|truncate|chmod|chown|unzip|tar)\\b` 等高频词汇。skills/dual-review-plan/SKILL.md:69-86 规定将用户焦点与原稿路径拼成 `TV review --start ... --focus <焦点> ... --plan-file <路径>` 并在 Bash 中执行。一旦用户的焦点或目标提及例如「install 多目标」「patch 逻辑」或「rm 误删」，`writeLike` 即为 true。随后 hooks.ts:854 执行 `roleSuffixAnywhere().test(cmd)`，在 D3 将其扩为全集（包含 claude）后，`--plan-file` 中的 `-claude.md` 会被直接匹配命中，导致 hookPreBash 返回 deny 彻底阻断审查启动。此时 hooks.ts:918 给出的出口（改用 Write/Edit 或 git commit -F）对 CLI 启动命令完全不适用。当前代码中因 DEFAULT_DRIVER 排除 claude 故未暴露，D3 收紧后将造成确定性误杀。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4.2 / §4.2.2 / §10 (D3)",
+      "problem": "§4.2.2 驳回 AGY-01 的依据存在逻辑漏洞：当用户焦点或任务目标包含触发 WRITE_LIKE 的关键字时，D3 扩展后的 roleSuffixAnywhere() 会直接拦截合法的 TV review --start 审查启动命令，且无有效出口。",
+      "severity": "major",
+      "suggestion": "修正 §4.2.2 读法，并在实施 D3 时对编排器自身合法命令调用进行白名单放行（例如判断命令首 token 为编排器 wrapper 且子命令为只读/启动类时，或仅对重定向与写操作目标 token 核验角色后缀，而非在整条命令行做全集字面扫描），避免启动命令被无差别拦死。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "演进设计第 647 行明确允许同主题跨运行切换 Driver（如 plan 阶段 claude，code 阶段切换为 zcode）。实施计划 §3.2 规定 `topic claim` 在 driver 不同时退 64 且不提供覆盖旗标；§3.2.1 将交叉校验限定在「该主题相关阶段零留痕时」；§3.3 规定「零留痕时 --driver 与主题级不符 ⇒ 退 64」。当主题完成 plan 阶段进入 code 阶段时，code 阶段初态必然是「该阶段零留痕」，此时换用新 Driver 既无法执行 `claim`（退 64），也无法执行 `review --start --stage code --driver <新Driver>`（因该阶段零留痕，校验 `--driver` 与 `task.json.driver` 不符退 64）。计划 §3.3 注释甚至承认「经 --start 构造不出这个状态」，只能用直接写 run.json 的夹具构造。判据本身仍彻底阻断了合法的跨阶段换 Driver 链路。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §3.2.1 / §3.3 / §10 (D1)",
+      "problem": "§3.2.1 关于交叉校验论域的修正仅写了说明，判据本身仍锁死了演进设计第 647 行允许的跨阶段切换 Driver 场景，且 §3.3 承认真实命令流无法构造该合法状态。",
+      "severity": "major",
+      "suggestion": "明确跨阶段换 Driver 时的合法迁移状态流：例如当换 Driver 发生在不同阶段（新阶段尚无留痕）时，允许通过带有阶段语义或显式确认的机制更新主题级声明，或者将零留痕交叉校验限定在「首个阶段零留痕」，阶段间允许根据 --driver 开启新阶段留痕，消除判据与设计承诺的冲突。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "实施计划 §4.1 第 384-386 行明确给出判据 2 的正文定义：「basename 带全集任一后缀（ALL_SUFFIXES，含 claude）且位于归档根内 ⇒ 拦，但显式排除裁决件变体（见 4.1.1）」。而在 §4.1.2 中宣称选定第三项出口：「第 2 条只覆盖 _meta 与审查件全集，Driver 自己的原稿交由第 1 条 artifacts[] 判定」。src/trivium/hooks.ts:488-505 显示提交锚在 `immutableChangeReason` 中仅依据 basename 的正则 `hasRoleSuffixCrossTime` 判定。由于 Driver 原稿与审查件在 basename 命名上完全同构（均形如 `<日期>-<主题>-<角色>.md`），若仅按 §4.1 正文字面排除裁决件变体，任何已被 git add/commit 过的 Driver 原稿在送审前进行本地修订刷新时，都将被判据 2 依 basename 无差别拦截，§4.1.2 承诺的出口在实现层落空。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4.1 (384-386行) / §4.1.2",
+      "problem": "§4.1 提交锚判据 2 的规则正文与 §4.1.2 选定的三选一出口存在直接矛盾，未落实「不覆盖未登记的 Driver 原稿」的判据定义。",
+      "severity": "major",
+      "suggestion": "将 §4.1.2 的出口取舍真落到 §4.1 判据 2 的正文表述中：明确判据 2 仅拦截 `_meta/` 与历史已冻结审查工件，或在 `hooks.ts` 中给出区分未送审 Driver 原稿与审查工件的具体路径判据（例如结合目录结构或排除当前阶段的 `<主题>-<driver>.md`），消除正文条文与说明章节的分叉。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "计划 §1.2 与 §8 开头将 EV-82 列为第 7 步前置，但 §1.1 完成判据 J6 未收录 EV-82（仍仅列原前置四条）。同时 §8.2 表格中将 claude、codex 轮次均显式标注「不带 glm」，且在第 721-722 行写有「在它修复前，凡带 glm 的轮次都不能拿模型路由作证据」的免责说明。若第 7 步第 4 轮选择 claude+codex，则整步第 7 步完全无需 glm 审查员，使得执行者可在 EV-82 根本未修复的情况下走通全部验收剧本并宣称完成，令前置约束形同虚设。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §1.2 / §1.1 (J6) / §8.2",
+      "problem": "EV-82 重开后与第 7 步验收的前置关系存在执行漏洞，§8.2 的措辞留有在 EV-82 未修好时绕过前置启动第 7 步的降级缺口。",
+      "severity": "minor",
+      "suggestion": "在 §1.1 J6 中把 EV-82 明确列为里程碑硬性前置，删除 §8.2 中「在它修复前……」这一与前置声明冲突的降级假设，并在第 7 步剧本中固定安排一轮以 glm 为审核者的鉴别验收，确保 EV-82 修复闭环。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "实施计划 §5 第 482 行指出「双审要点写明按三块分别出结论」，但通读 §5 全文并无任何双审要点段落，第 4 步仍由安全收紧、护栏接线与审批复核混装；此外，§6.2.1 与 D9 规定运行时资产根为必装目标且不参与「根不存在即跳过」，src/trivium/init.ts:46 与 src/trivium/review.ts:400 默认均硬编码 `~/.claude/skills/dual-critic`。计划未明确在纯 Codex/ZCode 机器上是否强行创建 `~/.claude` 目录存放运行时，亦未在 §6.2.2 与 src/install.ts 卸载逻辑中定义该非注册表目标的对称清理边界。",
+      "id": "AGY-05",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §5 / §5.1 / §6.2.1 / §10 (D9)",
+      "problem": "第 4 步承诺的「按三块分别出结论的双审要点」未实际写入；D9 运行时资产根在非 Claude 环境下的具体落盘路径与卸载清理口径未定义。",
+      "severity": "minor",
+      "suggestion": "在 §5 补齐第 4 步针对三块改动的具体双审验收要点清单；在 §6.2.1 明确运行时资产根在各环境下的权威物理路径（是否始终固定 `~/.claude/skills/dual-critic` 或独立于特定 CLI），并在 §6.2.2 补齐卸载对称性规范。"
+    }
+  ],
+  "not_covered": [
+    "未对非 macOS 平台下 ZCode 应用包内的 Node 运行时及内置 provider 配置路径进行实际跨平台验证。",
+    "未在真实各家 CLI 交互终端中执行第 1 步拟定的所有探针命令（属于第 1 步待办任务）。",
+    "未对接入第五家 Agent 时的禁读矩阵和 PROSE_EXCEPTIONS 颗粒度展开推演（属于后续演进范围）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "总判断：【request-changes】。\n最危险的问题在于 §4.2.2 对 AGY-01 的驳回依据不成立：当审查焦点或目标涉及 install、patch、rm 等常见词汇时，D3 扩展后的 roleSuffixAnywhere() 会在 TV review --start 中误触发写命令判定并拦截 --plan-file，导致正常审查完全无法启动且无出口；\n其次，§3.2.1 交叉校验的论域限定仍停留在说明层面，其「零留痕时 --driver 与主题级不符退 64」的判据仍会挡死首个运行跨阶段切换 Driver 的正常链路；\n再次，§4.1 提交锚判据 2 的条文正文未真正落实 §4.1.2 排除 Driver 原稿的出口设计，存在条文冲突；\n此外，EV-82 与第 7 步的前置关系存在绕行缺口，第 4 步双审要点与非 Claude 运行时的路径规范仍需补全。",
+  "verdict": "request-changes"
+}
