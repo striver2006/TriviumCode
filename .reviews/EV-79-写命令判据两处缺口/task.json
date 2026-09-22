@@ -3,7 +3,7 @@
   "topic": "EV-79-写命令判据两处缺口",
   "goal": null,
   "created_at": "2026-09-22T06:19:40.337Z",
-  "updated_at": "2026-09-22T10:16:22.726Z",
+  "updated_at": "2026-09-22T14:09:20.153Z",
   "runs": [
     {
       "run_id": "20260922T061939Z",
@@ -49,13 +49,49 @@
       "review_mode": "full",
       "started_at": "2026-09-22T09:50:13.780Z",
       "driver": "claude"
+    },
+    {
+      "run_id": "20260922T115822Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-22T11:58:22.770Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260922T123905Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-22T12:39:06.478Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260922T134058Z",
+      "stage": "code",
+      "rerun_index": 3,
+      "status": "running",
+      "review_mode": "full",
+      "started_at": "2026-09-22T13:40:58.977Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260922T134313Z",
+      "stage": "code",
+      "rerun_index": 3,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-22T13:43:14.406Z",
+      "driver": "claude"
     }
   ],
   "gate": {
-    "stage": "plan",
+    "stage": "code",
     "state": "approved",
-    "since": "2026-09-22T10:16:22.718Z",
-    "run_id": "20260922T095012Z"
+    "since": "2026-09-22T14:09:20.147Z",
+    "run_id": "20260922T134313Z"
   },
   "approvals": [
     {
@@ -88,6 +124,30 @@
       "run_id": "20260922T095012Z",
       "decision": "approved",
       "reason": "开始实施",
+      "session_id": null
+    },
+    {
+      "at": "2026-09-22T12:22:56.617Z",
+      "stage": "code",
+      "run_id": "20260922T115822Z",
+      "decision": "approved",
+      "reason": "修改代码",
+      "session_id": null
+    },
+    {
+      "at": "2026-09-22T13:43:02.826Z",
+      "stage": "code",
+      "run_id": "20260922T123905Z",
+      "decision": "abandoned",
+      "reason": "第2轮22条意见裁决已齐备，唯一拦路的readonly_breach经核实为误报：被记录的写事件原文是一次只读的内联求值（读编译产物后打印），仅因样例字符串里含重定向记号而命中写命令判据；run元数据的snapshot.drift.changed为false作为旁证。按CLI给出的两条出口之一显式作废该轮，三份审查文档与裁决件全部保留在归档里，改由第3轮就修复结果重新送审。用户2026-09-22裁定。",
+      "session_id": null
+    },
+    {
+      "at": "2026-09-22T14:09:20.147Z",
+      "stage": "code",
+      "run_id": "20260922T134313Z",
+      "decision": "approved",
+      "reason": "可以收口",
       "session_id": null
     }
   ],
@@ -134,6 +194,30 @@
       "state": "checked-none",
       "effective_sides": 3,
       "at": "2026-09-22T10:06:41.478Z"
+    },
+    {
+      "run_id": "20260922T115822Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-22T12:20:59.829Z"
+    },
+    {
+      "run_id": "20260922T123905Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-22T13:41:08.666Z"
+    },
+    {
+      "run_id": "20260922T134313Z",
+      "stage": "code",
+      "rerun_index": 3,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-22T14:02:17.970Z"
     }
   ]
 }

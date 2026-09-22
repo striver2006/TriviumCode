@@ -1,0 +1,59 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "本次实现严格落实了 EV-79 计划 r6 稿的判别轴重构，两处判据缺口修复精准无偏差。\n以运算符形态（REDIRECT_RE / FD_DUP_OP_RE）为轴准确切分了 fd 复制与双流文件写入，四条规则短路穷尽，第四条无条件取目标彻底杜绝了漏检回归。\n三条「目标钉死」反推用例设计巧妙，有效杀死了首轮存活变异；危害出口修正为「证据自证」逻辑自洽且证据链完整。\n实现中存在测试断言落点未端到端触达 matchConsulted、以及重定向循环未防御性跳过已消费 token 两处轻微改进空间，不影响整体正确性。",
+  "findings": [
+    {
+      "id": "AGY-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/guard-capability.test.ts:262-278",
+      "problem": "用例标题宣称测试「交叉核对出口」，但断言落点实际止步于有效读取路径提取（effectiveReadPaths），未端到端调用 matchConsulted 验证 consulted 交叉核对判定结果。",
+      "evidence": "查阅 test/unit/guard-capability.test.ts:262-278，该测试仅调用 effectiveReadPaths(r, COMMAND_TRACE, ROOT) 并断言其不包含 src/never-read.ts，未将 consulted 数组传入 src/trivium/guard.ts:418-423 的 matchConsulted 验证匹配率与 consultedUnverified 状态。",
+      "suggestion": "可在该用例中追加一步调用 matchConsulted(['src/never-read.ts'], eff, [ROOT])，断言其匹配结果为空或不满足阈值，使测试落点真正闭环到「交叉核对出口」。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/base.ts:857-886",
+      "problem": "writeSinksOfSegment 中的重定向循环在分离形态下执行了 consumed.add(i + 1)，但循环开头未检查 consumed.has(i)，存在潜在的重复解析风险。",
+      "evidence": "查阅 src/trivium/adapters/base.ts:857-862，循环为标准 for 迭代，若某次重定向分离目标恰好以重定向记号开头，下一轮迭代因未通过 if (consumed.has(i)) continue 检查，会被二次当作重定向运算符解析。",
+      "suggestion": "可在循环体开头加入 if (consumed.has(i)) continue; 或在分离形态消费后推进循环下标，增强词法遍历的防御性。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "判别轴从残留换成运算符形态（FD_DUP_OP_RE 与 FD_TARGET_RE）精准对应了 probe-redirect-operators.out.txt 中 30 行外壳实测事实，规则 4 的「无条件取文件目标」成功守住了普通重定向与 clobber 覆盖后缀不发生漏检回归。",
+    "FD_DUP_OP_RE = /^[0-9]*>&$/ 与 FD_TARGET_RE = /^(?:\\d+|-)$/ 严格钉住了「无 clobber 后缀、仅单尖括号后置与号、纯数字/减号等值匹配」三条边界，杜绝了把真实写入静默漏检的隐患。",
+    "writeSinksOfSegment 分离形态的 consumed.add(i + 1) 严格放置在 fd 排除分支之前无条件执行，杜绝了 fd 编号顶替写动词（mode === 'last'）写入目标的隐蔽篡改风险。",
+    "三条「目标钉死」用例通过构造项目外真实目标，利用「提取错误时错目标归一进项目内导致写入断言失败」的差异，成功杀死了首轮变异中的存活项，测试断言咬合紧密。",
+    "读面危害归因更正为「证据自证」符合 guard.ts 中措施 a 不吃回填的客观架构事实，断言打在 effectiveReadPaths 使得测试落点与核心安全威胁严格对应。",
+    "主设计文档（v1.3.34、重定向分类措辞纠正、分界与幂等边界回补）及 BACKLOG.md（EV-79 结案与 EV-96~EV-99 残余登记）留痕详实，与代码实现完全一致。"
+  ],
+  "not_covered": [
+    "未在真机终端实际拉起各外壳执行测试脚本（受只读约束未执行写命令与脚本），外壳行为比对依托证据件 probe-redirect-operators.out.txt 的留痕数据。",
+    "未覆盖 zsh 5.9 / bash 3.2 之外的其它 shell 方言（如 dash、sh、fish）在特殊重定向组合下的真实退出码与语法行为。",
+    "未覆盖除 codex 以外其它 Agent（agy、zcode、claude）在未来若开启 command-trace 时的端到端运行时表现。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/guard.ts",
+    "test/unit/codex-write-verbs.test.ts",
+    "test/unit/guard-capability.test.ts",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-redirect-operators.out.txt",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.out.txt",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r6-claude.md"
+  ]
+}

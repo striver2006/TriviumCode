@@ -1,0 +1,88 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "核心判据经本侧逐 token 静态推演、与证据件 30 行实测逐行对账：四条规则的短路序/互斥/穷尽成立，规则 4 无条件取文件目标（r4/r5 两次自引回归形态确认已消除），FD_DUP_OP_RE 三条边界与幂等收紧（含簇合旗标）全部吻合，未发现 blocker/major。5 条意见均 minor/nit：最重是 GLM-01——读面消费点①依赖文法吞尽 [|!]? 后缀，而强制覆盖族分离形态在读面零断言，文法少吞一段时分离目标会重新漏进 effectiveReadPaths（焦点三的答案是「会」），当前仅靠写面目标钉死用例经同一常量间接挡。其次 GLM-02（证据件比计划 §5 承诺少了 rm 退出码表与 55 形态对账表、偏差未显式登记）与 GLM-04（结案数字对不上：新增实为 24 条非 22；1607+24=1631≠1626）。本侧零命令执行，全部结论为读码推理而非实测（EV-95 口径）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/adapters/base.ts:571",
+      "problem": "读路径消费点①（`REDIRECT_RE.test(t) && t.replace(REDIRECT_RE, '') === ''` 才 skip 下一 token）依赖新文法把运算符连同 `[|!]?` 后缀整体吞尽，而强制覆盖族的分离形态（`>&| f`、`>| f`、`>&! f`）在读面没有任何负断言：`读面：双流重定向的目标不再算读取路径`（test/unit/codex-write-verbs.test.ts:434-451）只覆盖 `&>` / `>&` / `2>&` / `>>&` 四种分离形态，guard-capability 两条（test/unit/guard-capability.test.ts:242-278）同一集合。若文法少吞 `[|!]?` 这一段（r6 变异清单第 5 项），`echo x >&| src/leak.txt` 的 `src/leak.txt` 会重新以读取身份进 `effectiveReadPaths`（推演：token `>&|` 残留 `|` 非空 → 下一 token 不进 skip → 含 `/` 被「像路径」判据收走）——焦点三问的「会重新漏进」成立。该变异今天只被写面「目标钉死」两条（:485-500）经同一常量间接杀死，读面行为本身无锁：将来有人单独改消费点① 的条件（不动词法）不会被任何读面用例抓住。",
+      "evidence": "读 src/trivium/adapters/base.ts:569-571（消费点①条件）、:508（REDIRECT_RE）、:620（紧贴 continue）；test/unit/codex-write-verbs.test.ts:434-451、:485-500；test/unit/guard-capability.test.ts:242-278；ev79 证据件与 verify-claude-findings 脚本的读面 cases（经补丁全文读得，新文件完整载于 diff）——均无 clobber 形态。变异推演按正则语义逐 token 展开，是推理不是实测。",
+      "suggestion": "读面负断言补两格（如 `extractPathTokens('echo x >&| src/leak.txt')` 不含 `src/leak.txt`，`>|` 同理），或并入 guard-capability 的 effectiveReadPaths 两条。顺手可补一条紧贴钉死：`classify('echo x >&/tmp/out.txt')` 应落疑似·项目外——「去掉 &?」变异当前只在读面被杀，写面紧贴目标错取（残留 `&src/…` 归一进项目）分辨不出，这一格能补上（焦点五问到的剩余格子之一）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "scope-drift",
+      "location": "doc/05_testing/evidence/ev79-shell-redirect-20260922/",
+      "problem": "计划 §5 承诺的证据件是「§1.4.1 / §1.4.2 的实测……+ 55 形态对账表」，实际落盘只有 §1.4.2 的 30 行重定向运算符实测（probe-redirect-operators.sh / .out.txt 两个文件）。缺口一的可达性地基——`rm -rf <不存在>` 退 0、`rm -r <不存在>` 退 1、BSD `rm` 长旗标退 64——被本轮三处新文本以「实测」口吻引用（base.ts:1033-1034、codex-write-verbs.test.ts:252-254 的「实测退 64」），却没有任何证据件可对账；§3.1 声称「完整（对账）表随 evidence 件落盘」同样缺席。设计 v1.3.34 只按 30 行表述（与实物一致、不夸大），但计划承诺的落空未在任何结案记录显式登记——按本仓「实现偏离计划必须显式」的口径，这是一条未认领的偏差，且「实测」措辞无留痕支撑恰是 EV-95 要防的形态。",
+      "evidence": "读 r6 计划 §5（:638-642）、§3.1（:472-473）、§1.4.1 表（:197-206）；补丁 files 清单与 ev79 证据件两文件全文（完整载于 diff，仅重定向探针）；src/trivium/adapters/base.ts:1026-1038 与 test/unit/codex-write-verbs.test.ts:252-254 的「实测退 64」引用。",
+      "suggestion": "二选一：补一份 rm 退出码探针输出（§1.4.3 的报错文本判别法在只读环境可用）与 55 形态对账表；或在 BACKLOG EV-79 结案段补一句显式登记——「§1.4.1 退出码表与 55 形态对账表未落盘，以计划稿 §1.4.1 / §3.1 表格为准」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "test/unit/codex-write-verbs.test.ts:436",
+      "problem": "本轮新写的注释里，行号锚用的是改动前基线的行号，落盘第一天就指错位置：:436 引「base.ts:676-682」（「措施 a 不吃回填」的注释实际在 base.ts:712-717）；:470 引「base.ts:653-655 / :928-930」（两处引号剥离实际在 base.ts:689-691 与 :981-983）；BACKLOG EV-98 引「:653-655 / :928-930」同款。后来者按锚跳转会读错段落；本仓 EV-83 的处置先例正是把位置清单改成 grep 锚。",
+      "evidence": "读 test/unit/codex-write-verbs.test.ts:436、:470；对 src/trivium/adapters/base.ts 逐行核对（:689-691 / :712-717 / :981-983 的实际内容与所引主题不符，所引旧号对应改动前位置）；BACKLOG EV-98 行（diff 载明）。",
+      "suggestion": "行号引用改为符号锚（如「extractPathTokens / classifyWriteCommands 的 dequote 段」「effectiveReadPaths 的文档注释」），或按新文件行号刷新一次。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md §24 v1.3.34 行",
+      "problem": "结案记账数字对不上账：① 实际新增 test() 共 24 条（codex-write-verbs 22 + guard-capability 2），v1.3.34 写「新增 22 条单测（……读面正反各一 + 消费面两条、目标钉死三条）」——括注把不在 22 之内的消费面两条（在另一文件）并进了同一计数叙述；② 全量数：r6 计划基线 1607/1605/2/0，+24 应为 1631，而 v1.3.34 与 EV-79 结案写 1626/1624/0/2（=+19）——基线数、新增数、结案总数三者不能同时成立，至少一处失真。另有一处未兑现的小项：计划 §4「既有用例（:160-161）标题写着（2>&1 / >&2 / &>）而 cases 数组里没有 >&2 条目——补齐」未执行，该用例（现 :161-165）cases 仍无 `>&2`，标题与 cases 的失配原样保留（覆盖由新用例 :394 另行承担，非缺陷，但承诺动作没做也没登记）。",
+      "evidence": "静态清点 test/unit/codex-write-verbs.test.ts（新增 22 条：:247-:502 逐条数过）与 test/unit/guard-capability.test.ts（新增 2 条：:242、:262）；r6 计划基线行（:10）与 §4「用例标题与论域对齐」（:603-605）；设计 v1.3.34 行与 BACKLOG EV-79 结案段的数字（diff 载明）。本侧无法执行测试核实 1626 的真值（见 not_covered），静态计数是确定的。",
+      "suggestion": "复核 1626 的来源并统一三处口径（若计划基线数失真也一并修留痕）；「22 条」改为按文件的准确分布（22 + 2）；给 :161 的 cases 补 `>&2` 或改标题。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/adapters/base.ts:1029-1030",
+      "problem": "缺口一注释把排障指纹押在「gate.ts 的 readonly_breach 处置文案本就先核 drift」上。该文案属实（gate.ts:320-327：处置先核对 run 元数据的 snapshot.drift 与工作区、再分两步），但 gate.test.ts:657-687 只断言失守进 failure 面与列出受影响文件，没有断言文案含 drift 指引。文案措辞一旦漂移，注释里承诺的「据此分档」指纹静默失效——属于本仓明令防的「注释宣称行为却无断言」一格（r1 双审 GLM-05 的先例正是注释宣称了不存在的保障）。",
+      "evidence": "读 src/trivium/gate.ts:310-328（文案原文含「先核对 run 元数据的 snapshot.drift」）、test/unit/gate.test.ts:657-687（断言面只有 ok:false、code、/breach\\.txt/）、src/trivium/adapters/base.ts:1026-1038（注释引用处）。",
+      "suggestion": "在既有 readonly_breach 用例里补一行对 `f!.message` 匹配 `/snapshot\\.drift/` 的断言，把指纹的承重文本锁住。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "四条规则与实现严格对应（base.ts:857-886）：`if (glued) / else if` 结构保证互斥与穷尽（唯一未覆盖格是「分离运算符后无目标」的残缺命令，语法错进不了 exit_code===0 契约）；规则 4 无条件取文件目标——非 fd 族没有任何数字/-分流，也没有 startsWith('&') 残留逻辑，r4/r5 两次自引回归的形态确认已消除。",
+    "FD_DUP_OP_RE 三条边界（base.ts:516-523 注释①②③与实现双钉）与 FD_TARGET_RE 等值判据（:527-533），经逐 token 推演与证据件 30 行实测全部吻合：`>&| 2` / `2>>&1` / `>&2foo` / `>& 2` 各归其位；对应三项变异（isFdOp 加回 [|!]?、放宽到 >>& 族、目标改前缀）经推演均被既有用例咬住（:356-373、:339-354、:388-392）。",
+    "consumed.add(i + 1) 无条件执行（base.ts:881，先于 fd 分流判断），实现/注释/用例三处一致；漏掉时 `cp` 的真实目标确会被数字顶替成项目内假失守——「项目外目标反推」的钉死法（:502-512）我双向推演过，确能分辨，三条钉死用例成立。",
+    "消费面断言落点正确：effectiveReadPaths 是三个消费方的唯一汇点（base.ts:712-717），「judgeSide 的 consulted 交叉核对吃回填」的接线由既有用例 guard-capability.test.ts:375-389 守住，新增负向两条补上另一头——「证据自证」危害链两头有锁；guard.ts:277-283「措施 a 只吃真实读取事实、不吃回填」逐字属实，危害归因更正（r5 CODEX-02）成立。",
+    "幂等收紧三件套齐备（递归+强制四种写法进 writes :247-271、簇合 -fr/-vrf :266-271、单调性基线 :273-280、无 -r 的 -f 与 mkdir -p 不变色 :282-289）；`/^-\\w*[rR]/` 对 -fr/-vrf/-R/--recursive 均命中、不会把 --force 误当递归（`--` 不入 \\w，推演核过）。",
+    "EV-96～99 四条残余与代码现状对得上（动词取第一个不含 = 的 token：base.ts:889/:1012；引号剥离 :689-691/:981-983；{var}> 在 ^ 锚定外；管道末段的既有保守），登记无夸大；EV-95 的措辞约束在本轮已见效——本侧据此显式声明全部结论为推理非实测。"
+  ],
+  "not_covered": [
+    "本侧在 plan 模式 + Bash 禁用下运行、零命令执行：未复跑 npm test、未重跑 12 项变异、未复测外壳探针——「全量 1626/1624/0/2」与「变异全咬住」均未独立复核，全部行为结论来自对正则与判据的静态推演（推理不是实测）。",
+    "证据件 30 行外壳实测本身未复测；紧贴 fd 复制形态（`2>&1` / `1>&2` / `>&-`）不在实测表内（「真正的 fd 操作」节只测了分离形态），其「不建文件」语义按 POSIX 推理采信。",
+    "doc/02_design 只核了 §11.1 改动段与 §24 版本表，未读全文；README / doc/README / CLAUDE.md 全文未读（AGENTS.md 经任务书内嵌已知悉）。",
+    "未沿 adapters/codex.ts 的两个调用点（classifyWriteCommands 的喂入侧）走完整上游筛选实现；EV-96 已登记的表外动词面只核实了登记与代码相符，未深挖。",
+    "SKILL.md / PROTOCOL_dual_critic_relay.md 的同步面未逐条核对（本次改动未触及 CLI 参数与 schema，按 AGENTS.md 改动同步清单判断无连带项，属推断）。"
+  ],
+  "consulted": [
+    ".reviews/EV-79-写命令判据两处缺口/code/_meta/changes-20260922T115822Z.diff",
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r6-claude.md",
+    "skills/dual-critic/schema/review.v1.json",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/gate.ts",
+    "test/unit/codex-write-verbs.test.ts",
+    "test/unit/guard-capability.test.ts",
+    "test/unit/gate.test.ts"
+  ]
+}

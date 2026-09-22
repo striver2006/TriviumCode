@@ -1,0 +1,96 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "核心判据修复（REDIRECT_RE 文法式 + fd 族等值分界 + rm 递归+强制收紧 + 读面双机制拆分）与探针实测逐格对得上，我逐形态度推演了运算符解析，未发现新的静默漏检格。最重的一条在修口之外：CODEX-09 把 drift 指纹改成单向可用后，gate.ts 里真正被人执行的处置文案仍留着反推句「没有改动则是写事件判据误报」，而 gate.test.ts 新增断言只锁字段名字面量、对该反推句无判别力。次重的两条是证据件自身：probe-delete 的 .out.txt 结论 3 未随 .sh 同轮重生成、对账表 X 档的「判据」列由期望值反推（结构上不可能报不符）。焦点一/二/四/五的构造我判定有效（只读环境未复跑变异，按 EV-95 声明为推理结论）。",
+  "findings": [
+    {
+      "id": "CODEX-r3-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/gate.ts:317,324（配合 test/unit/gate.test.ts:688-697 的新断言）",
+      "problem": "本轮焦点六把 drift 指纹改成「只能单向用」并落在三处（base.ts 注释、设计 v1.3.34、probe-delete-exit-codes.sh 结论），但 readonly_breach 处置的**执行面文案**没跟上：gate.ts 的 message 仍写着「没有改动则是写事件判据误报，按 BACKLOG EV-75 登记后重跑」，注释也写着「没有就按误报登记」——这正是收紧后的误杀形态（`rm -rf <项目内不存在目录>`，本轮起进 writes）触发失守时人最先读到的一句，它教人做的恰是 CODEX-09 判定「会把真失守降级」的那个反推。收紧使这类 hit-with-drift-false 从不可达变为可达，gate.ts 的旧口径从「不精确」升级成「与判据层裁决直接冲突」。且 gate.test.ts 新增断言只匹配 /snapshot\\.drift/ 的字面在场，对这句话的语义零判别力——文案漂移回双向口径它照样绿。",
+      "evidence": "读 src/trivium/gate.ts:310-330：message 含「没有改动则是写事件判据误报」；读 base.ts:1040-1049 与设计 v1.3.34 台账「排障指纹只能单向用……drift=false 时还须核目标是否真实存在、是否被 ignore；直接据此判『误报』会把真失守降级」；读 r2-response-claude.md §2.5：修复自述只覆盖「base.ts 注释、设计、探针结论」三处。另注意本轮起 `rm -rf <不存在>` 判 writes 是可达形态（probe-delete-exit-codes.out.txt 记 rc=0），所以这条处置文案会被真实触发。",
+      "suggestion": "把 gate.ts 的 readonly_breach 处置文案与注释同步为单向口径（drift=false 只排除「已跟踪文件的改动」，还须核目标存在性与 .gitignore 后才能登记误报）；顺手把 gate.test.ts 那条断言从「字段名在场」升级为锁住单向性关键短语（如断言文案含『是否被 ignore』或不含『则是写事件判据误报』式反推句）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-r3-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-delete-exit-codes.out.txt:22-24",
+      "problem": "同批新增的 .sh 与 .out.txt 内部不一致：.sh 的结论 3 已按 CODEX-09 改成四行「但该指纹只能单向用……被 ignore 的目录被真实递归删除同样 drift=false」，而归档的 .out.txt 仍是改前版本的结论 3（「……恒 false，与真落盘的失守据此分档」）。本轮自己批评过的「结论只活在某一稿」在证据件内部重演：后来人拿 .out.txt 当实测原样引用，会引用到已被裁决为过诺的措辞，且无从看出它比同目录脚本旧一稿。",
+      "evidence": "对照读两文件：probe-delete-exit-codes.sh 末段 echo 与 .out.txt 结论逐行不同；.out.txt 其余各行（环境、六格 rc/err、对照段）与脚本当前版一致，说明差异正是措辞修复后未重跑所致。",
+      "suggestion": "重跑一次该脚本刷新 .out.txt（它只在临时目录活动、零副作用），或在 .out.txt 头部加一行生成时对应的脚本修订锚点。这类「脚本改口径、留痕不重生成」的形态，值得在证据件规范里补一条对账：成对的 .sh/.out.txt 结论段逐字一致。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-r3-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "doc/05_testing/evidence/ev79-shell-redirect-20260922/redirect-operator-matrix.mjs:113-118",
+      "problem": "焦点七问「排除档拆两类是否准确」——当前 56 格的标号我逐格对过 probe-redirect-operators.out.txt（X:fd 的九格 fd 形态全部「rc=0 不建文件」，X:miss 的 {fd}> 格实测建出 fdvar.txt，引号字面量格不建文件），分类**现为准确**；但机制上它是循环论证：`got === 'X'` 时判据列直接抄期望值（`got = want === 'X:miss' ? 'X:miss' : 'X:fd'`），实测侧真值（是否建文件）没有任何程序化输入。GLM-06 要防的「对账表给新漏检盖相符章」只防住了一半：拿 X:fd 当期望加进来的**真静默写入**形态，「不符期望」永远等于 0，末行那句「不等于无漏检」的免责也只核 miss 计数、不核 fd 标号错贴。另外「X:fd（正确排除）」一名其实混着两种排除理由（fd 语义排除 / 引号剥离排除），引号行标 X:fd 语义上偏紧。",
+      "evidence": "读 redirect-operator-matrix.mjs 全文：CASES 行只有 [label, cmd, want] 三元组，无实测字段；判据侧观测到 X 后标签由 want 决定。对照 probe-redirect-operators.out.txt 与 redirect-operator-matrix.out.txt 逐格核对当前标号。",
+      "suggestion": "给 CASES 行补第四个字段「实测是否真写入」（值抄自 probe-redirect-operators.out.txt 的建出文件列，来源具名到行），由 (判据 X && 实测真写入) 派生 X:miss——这样 fd/miss 分档才和写面用例一样有判别力，新形态标错档时表会自己红。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-r3-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-delete-exit-codes.sh:66-71（「对照：目标存在」段）",
+      "problem": "焦点二问「还有没有别的脚本自身缺陷导致数据失真的面」——有一处，且在被新校验说服的那条注释自己脚下：末段对照块 `d=$(mktemp -d …) && mkdir -p \"$d/existing-dir\"` 之后直接 `rc=$( cd \"$d\" && /bin/zsh -c 'rm -r existing-dir' … )`，没走 probe_rm 里刚加的 `$d` 校验。mktemp 失败时 `d` 为空——而本脚本头部的注释白纸黑字写着 `cd \"\"` 是 no-op——于是 `rm -r existing-dir` 与 `ls -1A` 会落在**调用者的当前目录**：在仓库根复跑时，若存在同名目录会被真删，「目录残留」列会把整棵仓库的文件名印进表里。这正是 _case_dir 校验要堵的两个失真，函数堵了、内联段漏了。",
+      "evidence": "读 probe-delete-exit-codes.sh 全文：probe_rm 有 `[ -z \"$d\" ] || [ ! -d \"$d\" ] || [ -n \"$(ls -1A …)\" ]` 守卫，文件末段「对照：目标存在时」无守卫直用 $d；脚本注释（probe-redirect-operators.sh 的 _case_dir_ok 段）自证 `cd \"\"` no-op 的成因。",
+      "suggestion": "对照块复用同一个校验函数（或 mktemp 失败即整段跳过并打 ERROR 行）。同理 probe-redirect-operators.sh 若日后加内联段也应复用 _case_dir_ok——值得在两个脚本头注释里各加一句「任何用 $d 之前必须过 _case_dir_ok」。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-r3-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/evidence/ev79-shell-redirect-20260922/redirect-operator-matrix.mjs:16-20",
+      "problem": "本轮对 verify-claude-findings-on-head.mjs 的 CODEX-05 修复明确写了「仓库根由 git 推导，不写死绝对路径」，而同轮**新建**的对账脚本却把 `/Users/chenzhenbo/Work/TriviumCode` 硬编码进 dist 导入路径与 `git -C` 两处——换机 / 别的 checkout 路径下证据件直接跑不起来，正是 CODEX-05 治的那类耦合在同一补丁内的第二现形。",
+      "evidence": "读 redirect-operator-matrix.mjs 头部两行字面量，对照 diff 中 verify-claude-findings-on-head.mjs 的 REPO_ROOT = execSync('git rev-parse --show-toplevel') 写法与注释落款。",
+      "suggestion": "同法改为 git 推导（脚本自身可从 `import.meta.url` 目录相对定位仓库根），两份证据脚本口径归一。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "焦点一：AGY-02 防御用例的新构造确实只对该防御敏感——我按当前实现逐步推演：防御在时 sinks=['>/tmp/out']（归一进项目内、writes 一条、疑似空），删防御后紧贴支二次解析剥出绝对路径 '/tmp/out' 落「项目外」疑似，判别点在 suspected 由 0 变 1，与注释声称一致；writes 去重同形的问题确实被绕开了。只读环境未复跑变异，此为推理（EV-95 口径）。（probe_zsh）",
+    "焦点二：_case_dir_ok 三条件（非空/是目录/为空）不会误伤正常格——mktemp -d 产出的新目录恒空且恒存在，只有 mktemp 失败或 TMPDIR 异常才会触发 ERROR 支，恰是设计意图。",
+    "焦点三：rc 与 err 一次执行同取，现有各格数据不变（本批形态无状态，两跑合一结果相同），err.$$ 暂存文件落 PROBE_ROOT 而 files 只 `ls -1A` case 目录，不会计入样例产物；probe-redirect 的 .out.txt 与 .sh 已含紧贴补测行与 bash 段，两者自洽。",
+    "焦点四：读面 ! 族与 | 族两条用例各守一个机制的拆法成立——去掉文法 `[|!]?` 时 ! 族因残留非空、下一 token 不被 skip 而红；| 族在「文法少吞 + 现行 ①②」组合下仍绿，对照用例把这份耦合写死成断言（含 `src/other.ts` 冒充读取的登记格），根因指路清晰。",
+    "焦点五：projectReads===0 与 matchConsulted 落 missing 两条出口断言确实能分辨「目标混进回填」——回填混入时前者变 4、后者 missing 变空，构造有判别力。",
+    "焦点六（判据本体）：REDIRECT_RE/FD_DUP_OP_RE/FD_TARGET_RE 三常量我逐形态度推演过（>&2 / >>&2 / >&| 2 / >&2foo / > 2 / >| f / cp … >& 2 / 2>>&1），与 probe-redirect-operators.out.txt 的建文件观测逐格一致，未发现新的静默吃掉真实写入的格；`{fd}>` 残余与 sh/dash 未测分别有 EV-99/EV-101 具名指针，焦点八的指针与论域（EV-96/99/100/102 不重叠声明）核过成立，新增 29 条用例数与设计台账一致。",
+    "BEFORE 分文件留痕 + 输出头自动落 HEAD 与工作树脏标记，是对「同名无声覆盖」那个 CODEX-01 根因的正确机制化处置。"
+  ],
+  "not_covered": [
+    "未执行任何测试/变异/探针脚本（沙箱只读 + 任务书硬约束），所有「删掉防御则红」类判断均为代码阅读推理；driver 声称的 13 项变异全咬住与全量 1636/1634/0/2 未独立复跑。",
+    "未核 hooks.ts 的 Bash 侧写命令判据与本轮新正则的交互（EV-98 是命令文本扫描面，与 classifyWriteCommands 不是同一判据）；措施 b 的字面清单未过一遍与新增证据文件内容的冲突。",
+    "test/unit/zcode-*.test.ts、scripts/build.mjs 等建议清单文件仅在上一轮读过，本轮未重读（与本焦点无交叉改动）。",
+    "PROTOCOL_dual_critic_relay.md 与 SKILL.md 是否需要同步「按运算符文法覆盖」的口径——本轮改的是内部判据实现与注释，未核该对外契约面是否存在描述。",
+    "设计 §11.1 全文只读了 diff 触达的两段，其余节未通读。"
+  ],
+  "consulted": [
+    ".reviews/EV-79-写命令判据两处缺口/code/_meta/changes-20260922T134313Z.diff",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/gate.ts",
+    "test/unit/codex-write-verbs.test.ts",
+    "test/unit/guard-capability.test.ts",
+    "test/unit/gate.test.ts",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-redirect-operators.sh",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-redirect-operators.out.txt",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-delete-exit-codes.sh",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-delete-exit-codes.out.txt",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/redirect-operator-matrix.mjs",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/redirect-operator-matrix.out.txt",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.out.txt",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/EV-79-写命令判据两处缺口/code/2026-09-22-EV-79-写命令判据两处缺口-r2-response-claude.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md"
+  ]
+}

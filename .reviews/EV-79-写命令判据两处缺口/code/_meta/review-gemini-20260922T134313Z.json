@@ -1,0 +1,83 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "本轮对第二轮 22 条意见的修复质量极高。最核心的「已消费跳过」防御用例改用项目外目标构造后，彻底摆脱去重掩盖，具备了真实且精准的判别力（反向验证成立）；读面两条用例拆解、消费面真出口断言、漂移指纹单向可用界定均严格对齐底层机理；探针脚本与对账表修复了多处隐蔽埋雷。本次审查仅发现 3 处轻微的脚本维护性与健壮性瑕疵（对账脚本硬编码绝对路径、删除探针对照段未校验目录、对账表分类语义混称与赋值覆盖），无任何阻断性问题。判定为 approve-with-nits。",
+  "findings": [
+    {
+      "id": "AGY-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/evidence/ev79-shell-redirect-20260922/redirect-operator-matrix.mjs:16",
+      "problem": "redirect-operator-matrix.mjs 中仍然写死了开发机绝对路径，未按 CODEX-05 的落点规范（动态由 git 推导仓库根）改造，在其他环境或变更目录复跑时会报错失败。",
+      "evidence": "查阅 doc/05_testing/evidence/ev79-shell-redirect-20260922/redirect-operator-matrix.mjs:16（import('/Users/chenzhenbo/Work/TriviumCode/dist/test/src/trivium/adapters/base.js')）与第 18 行（git -C /Users/chenzhenbo/Work/TriviumCode ...），均硬编码了开发者本地绝对路径；而同批脚本 doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.mjs:17-18 已改为通过 execSync('git rev-parse --show-toplevel') 结合 pathToFileURL 动态推导。",
+      "suggestion": "将 redirect-operator-matrix.mjs 中的 base.js 导入路径与 git 命令执行目录改为通过 git rev-parse --show-toplevel 动态推导，消除硬编码绝对路径以增强脚本可移植性。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-delete-exit-codes.sh:67",
+      "problem": "probe-delete-exit-codes.sh 中「对照：目标存在时」单列用例未做临时目录有效性校验，若 mktemp 失败则在 zsh 下 cd \"\" 为空操作，存在于脚本工作目录下裸跑删除命令的隐患。",
+      "evidence": "查阅 doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-delete-exit-codes.sh:67-70，该段直接执行 d=$(mktemp -d ...) && mkdir -p \"$d/existing-dir\"，随后执行 rc=$( cd \"$d\" && /bin/zsh -c 'rm -r existing-dir' ... )。该处未采用 probe_rm 函数（第 46 行）中的非空与是目录校验。若 mktemp 失败导致 $d 为空，zsh 下 cd \"\" 返回 0，将在调用者当前工作目录尝试删除 existing-dir，属于同类目录校验防御的局部遗漏。",
+      "suggestion": "在执行第 67-68 行前对 $d 进行非空与目录有效性校验，或者将对照段用例重构复用带校验的探针函数。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/evidence/ev79-shell-redirect-20260922/redirect-operator-matrix.mjs:102",
+      "problem": "对账表中将非写入的模式字面量期望标记为 X:fd，语义上将引号免疫与 fd 操作混称；且脚本对 X 档位采用 got = want === 'X:miss' ? 'X:miss' : 'X:fd' 的直接覆盖逻辑，使判定比对被强制短路为相符。",
+      "evidence": "查阅 doc/05_testing/evidence/ev79-shell-redirect-20260922/redirect-operator-matrix.mjs:102，CASES 将 grep -n '&>' src/a.ts 期望标记为 X:fd（注释自述为非写入而非 fd 排除）；同脚本第 121-123 行在 got === 'X' 时直接根据 want 的值将 got 强行赋为 want，并在第 124 行执行 got === want，导致判据未提取到目标时无条件判定与期望相符，无法通过比对发现期望分类本身的笔误。",
+      "suggestion": "为非写入字符串独立设立如 X:clean 或 X:noop 档位，且在比对逻辑中保留判据原始落档状态或通过显式规则映射，避免以期望值直接覆盖实测值。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "防御用例改用项目外目标构造（echo x > '>/tmp/out'），彻底消除了原用例中项目内路径去重导致的同形假绿现象，经反向变异验证（删掉 consumed.has(i) 防御则 suspected 多出项目外疑似而红），证实该构造真实且仅对该防御机制敏感，判别力完备可靠。",
+    "两个探针函数新加的临时目录三重校验（非空、是目录、且为空）严密正确，彻底消除了 zsh 下 cd \"\" 为空操作导致在仓库根执行并产生数据失真的隐患，且不会误伤正常测试用例。",
+    "探针脚本将报错与退出码合并为单次执行同时获取，并将暂存文件置于探针根 PROBE_ROOT（样例目录的上级），有效隔离了 ls -1A 扫描，消除了非幂等命令多次执行带来的状态污染，对现有数据安全无影响。",
+    "读面两条用例按 ! 族（真漏点，守运算符文法完整性）与 | 族（对照用例，锁定段切分与段首吞位规则的架构偶然耦合及同段后序 token 冒充读取的副作用）拆开，两条各守一个机制，具备清晰独立的判别力与排障指引价值。",
+    "消费面在 guard-capability.test.ts 中直接对 checkEvidence 的 projectReads 进行了真出口级负断言，确保无真实读取时计数严格为 0，有力证实了双流重定向写目标不会混入回填坐实读取证据。",
+    "漂移指纹准确更正为「单向可用」：既讲明 rm -rf <不存在> 必然 snapshot.drift=false 的必要性，又严肃指出了 git 树只比对已跟踪文件、删除 ignore 目录同样 drift=false 的失灵边界，防止排障时真失守被草率判定为误报。",
+    "对账表将排除档细化为 X:fd（正确排除）与 X:miss（文法外已知漏检），并在统计末尾独立输出 miss 格数与警示说明，有效防止了漏检形态被盖上「相符」印章而造成虚假安全感。",
+    "留痕数字自洽，新增单测 29 条与 13 项变异全咬住闭环，EV-96～EV-102 七项残余条目在动词提取、段掩码、子壳展开、文法起首、读面排除位扫描、外壳兼容性及引号处理上论域界限分明，无相互重叠。"
+  ],
+  "not_covered": [
+    "受审查只读环境约束，未在终端直接执行写命令重跑 shell 探针脚本，依赖静态词法推演与落盘证据件比对。",
+    "未覆盖 zsh 5.9 / bash 3.2 之外的 sh 与 dash 子 shell 方言对重定向运算符并集文法的实际行为（已由 EV-101 登记待处理）。",
+    "未对非 command-trace 族（tool-trace）在无 command_texts 时的证据回填路径进行额外端到端执行测试（该族不受本次改动影响）。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/gate.ts",
+    "test/unit/codex-write-verbs.test.ts",
+    "test/unit/guard-capability.test.ts",
+    "test/unit/gate.test.ts",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-delete-exit-codes.sh",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-delete-exit-codes.out.txt",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-redirect-operators.sh",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/probe-redirect-operators.out.txt",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/redirect-operator-matrix.mjs",
+    "doc/05_testing/evidence/ev79-shell-redirect-20260922/redirect-operator-matrix.out.txt",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.mjs",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.out.txt",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.BEFORE-a75ec43.out.txt",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/EV-79-写命令判据两处缺口/code/2026-09-22-EV-79-写命令判据两处缺口-r2-gemini.md",
+    ".reviews/EV-79-写命令判据两处缺口/code/2026-09-22-EV-79-写命令判据两处缺口-r2-response-claude.md",
+    ".reviews/EV-79-写命令判据两处缺口/code/_meta/changes-20260922T134313Z.diff"
+  ]
+}
