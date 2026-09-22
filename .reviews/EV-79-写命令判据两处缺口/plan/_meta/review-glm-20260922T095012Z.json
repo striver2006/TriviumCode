@@ -1,0 +1,83 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最重一条（GLM-01）：§3.1 的 isFdOp 把 [|!] 后缀并入 fd 族，第 1/2 格会把「fd 族 × 强制覆盖 × 纯数字目标」（如 >&| 2）这一交叉格排除为 fd 操作——该格 §1.4.2 未测、§4 无用例；若 zsh 在此实际打开文件，正是本主题要消灭的静默漏检。本侧无命令执行工具（EV-95 登记的设计约束），此判断是推理不是实测。GLM-02：主设计 §11.1（:2870）把 &> 称作「fd 重定向」，与本稿地基 §1.4.2 直接矛盾，而改动同步清单要求的设计文档回补在 §5 缺步。其余焦点核验通过：四格互斥穷尽，公布的对账行与 base.ts 现实现逐行相符，第 4 格「无条件」正是 r4 回归的解毒；§1.2 新归因（consulted 交叉核对 guard.ts:414-423、projectReads、措施 a 不吃回填 :305-309）准确，§3.2 取 A 立得住；§2.4.0 分层与全仓调用点实况一致；§1.3 的移动与残余四条措辞属实。焦点七的答复：把 GLM-01 的一格实测并入 §5 已承诺的 evidence 件、补上 GLM-02 的设计回补，即可进 code，不需要再审一轮。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.1（改动② isFdOp 与四格表第 1、2 格）",
+      "problem": "isFdOp 把强制覆盖后缀并入 fd 族，第 1/2 格据此把「[n]>&[|!] + 纯数字或 - 目标」（如 echo x >&| 2、echo x 2>&! 1）排除为 fd 操作。这一交叉格 §1.4.2 没测过：第 7～9 行只测无后缀的 [n]>&，第 14～19 行只测 >&[|!] + 文件目标；§4 也没有对应用例（第 1 格 fd 回归与第 4 格强制覆盖族各测一半，无交集格）。若 zsh 在该格实际打开文件（cwd 即项目根，等于项目内写），这正是本主题要消灭的静默漏检，D3「按运算符文法覆盖可证」在该格未经证实。bash 侧该拼法是语法错、经 exit_code===0 收敛不可达，故只需补 zsh 一格。",
+      "evidence": "读 plan §3.1/§4/§1.4.2 与 src/trivium/adapters/base.ts:821-833（消费点③现状）；对 §3.1 公布的对账表 11 行手工模拟正则切分与四格归属，逐行相符，但样本中无「>&[|!]+数字」形态。本侧无命令执行工具（BACKLOG EV-95：zcode 侧 Bash 在 denylist 是设计如此），无法按 §1.4.3 报错文本法实测该格——本条判断是推理不是实测。",
+      "suggestion": "在 §5 已承诺的 evidence 件里补一行该格实测（§1.4.3 的方法可区分：dup 语义对关闭的 fd 报 fd 错误、文件语义对不可写路径报路径错误），§4 按结果补一条用例；若决定不测，第 1/2 格对该格改采保守方向（只把无后缀的 [n]>& 排除为 fd 操作，>&[|!] 一律取文件目标）并在计划里写明取舍。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §5（对照 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2849-2884）",
+      "problem": "§5 验证清单没有任何回补设计文档的步骤，而本主题改的正是主设计 §11.1「command-trace 族的写判据两档」规定的判据（:2858 写事件四条件、:2870 把 &> 与 2>&1 并称「fd 重定向」）。:2870 那句与 §1.4.2 第 3～4 行（&> 建出文件、是双流文件重定向）直接矛盾——按本稿自己的地基它已经是错的；D1 又改了「幂等形态」的边界。AGENTS.md 改动同步清单第一条要求「与设计文档不一致的行为先回补修订 doc/02_design 并升补丁版本」，计划漏了这一步，缺口会在 M10a 收口或后续审计时变成返工。",
+      "evidence": "读 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2849-2884（§11.1 两档表与四条边界，:2870 原文「fd 重定向（2>&1、&>）不是分隔符」）与 CLAUDE.md 同款协议、AGENTS.md 改动同步清单；通读 plan §5 全文确认无设计文档回补项。",
+      "suggestion": "§5 增加一项设计回补：改 :2870 的措辞（区分 fd 复制 2>&1 与双流文件重定向 &>，两者只是 & 都不作分隔符），§11.1 边界条目补「运算符形态分界」与「rm 递归+强制不属幂等」两处，按同步清单升补丁版本。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §3.3（对照 src/trivium/adapters/base.ts:612）",
+      "problem": "§3.3 为「消费点①一律 skip」给出的反对称化论据失实：论据称若①也分流，echo x >& 2 的 2 会「归一成 /proj/2 进 projectReads」——但 2（与 -）过不了 :612 的「像路径」过滤（无 /、无扩展名），且今天的残留是 & 非空、本就不 skip、也从未被收进读面。①一律 skip 的决定本身仍对（对文件目标 >& src/leak.txt 是必要的），错的只是机制描述，而这段论证按 §3.3 的写法是要随代码落注释的。",
+      "evidence": "逐行核 src/trivium/adapters/base.ts:533-535（现状条件）、:581-615（token 收集循环与 :612 路径判据）：纯数字与 - 在读面提取里到不了 out.push；对照 plan §3.3 原句。",
+      "suggestion": "把论据换成真实机制：①的 skip 对文件目标是必要的（重定向目标是写位、不是读证据），对 fd 编号是顺手且无害的统一；删去 /proj/2 这个走不通的例子。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §3.1 四格表第 4 格",
+      "problem": "第 4 格「以 & 打头则 slice(1)」在新 REDIRECT_RE 下近乎不可达：紧跟运算符的 & 会被正则自身的 &? 吞掉；能剩下 & 的位置（[|!] 之后、或 && 形态）要么被 SEGMENT_SPLIT_RE 的环视在进 writeSinksOfSegment 前切走（如 2>!&f、2>|&f），要么是 >>&&f 一类重定向缺目标的语法错（退非零、进不了 succeededCommands）。r4 裁决件自己标注这一格「没实测」，r5 原样保留。不可达的规格会诱导写出不可测的分支，§4 变异清单也无从为它设变异。",
+      "evidence": "手工模拟新 REDIRECT_RE 与 src/trivium/adapters/base.ts:776 的 SEGMENT_SPLIT_RE（(?<![>&])[|;&](?![>&])）在 2>!&f、2>|&f、>>&&f 等 token 上的交互（推理，非实测）；对照 plan §3.1 第 4 格原文与 .reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r4-revised-claude.md §3.2 的「这一格我没实测」。",
+      "suggestion": "删去该从句，或指名它针对的唯一形态并配用例；若保留为防御分支，注明其不可达理由，避免注释宣称不存在的输入。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§3.1 换轴方向正确：判别轴从「残留形态」改到「运算符形态」与 §1.4.2 的语义边界一致；我对公布的对账表逐行手工模拟正则切分与四格归属（包括 >&2foo 等值防线、2>>&1 落文件、>& 2 排除），与实测语义全部相符；第 4 格「无条件取文件目标」正是 r4 漏检回归（echo x > 2 今天判 writes）的解毒，r4 的照抄分流在新轴下结构上不可能复发。",
+    "§1.2 的新危害归因准确：措施 a 不吃回填（guard.ts:277-283 落款、:305-309 入参仅 read_paths ∪ search_hit_paths）；consulted 交叉核对吃回填（guard.ts:414-423）、projectReads 吃回填（base.ts:361-368）；「证据自证」描述成立；§3.2 取方案 A 的理由随之立得住（同一正则喂三个消费点，只补写面会留下读面污染）。",
+    "§2.4.0 两层分层与全仓实况相符：classifyWriteCommands 仅 codex.ts:185/:614 两处调用；extractPathTokens 仅 base.ts:692（effectiveReadPaths 内，非 command-trace 早退）；COMMAND_TRACE_CAPABILITY 仅 codex.ts:271 消费——「代码论域限 codex 侧、安全原则全项目」这次没有滑向任何一边。",
+    "§1.3 把强制覆盖族移入 §0.1 论域的移动正确（若 §1.4.2 第 14～19 行实测为真，它们就是真实静默写通道，新判据第 3/4 格确能覆盖）；残余表四条措辞经代码核实属实：sudo/env/xargs 首 token 脱表（base.ts:836/:959）且读面假读取、tee 末段进掩码疑似、BSD rm 长旗标退 64、实验脚本样例字符串误报（§8 旁证）。",
+    "缺口一修法成立：§2.1 判据（/-\\w*[rR]/ 簇合 + --recursive 等值）覆盖四种写法；§2.2 单调性主论证干净；§2.3「C 与 A 零差异」经 base.ts:976-986 判定顺序核实为真；§2.4.1 的 drift 恒 false 分档与「0 命中证弱不证无」口径如实。",
+    "§4 的测试组织（按四格组织写面、fd 回归一字不变、读面正反各一 + 消费面断言、引号免疫锁例、10 项变异）与 §5 的 --tests-only 提醒（EV-82 教训）、证据脚本扩法（七条全写面、:2 用法注释写旧旗标）均与 build.mjs:12/:24-25、verify-claude-findings-on-head.mjs 实况逐条相符；test/unit/codex-write-verbs.test.ts 确为 22 条且 :160-161 标题含 >&2 而 cases 缺该条目。",
+    "D6 的承重论证改对了：文本判据外壳无关、可达性由 exit_code===0 收敛、取并集收进写面在两个外壳下都正确；对 base.ts:413-418 只是 SUBSHELL_RE 文档注释、n=1 样本、四外壳接受的降格描述与代码一致。",
+    "R-d/R-e/R-f 的风险登记诚实（4 轮超预估、sh/dash 未测、审查侧无法复测地基），§1.4.3 的报错文本法与 §5 的 evidence 件是对 r3/r4 教训的正确处置。"
+  ],
+  "not_covered": [
+    "无法执行任何命令：本会话无 shell 执行工具（与 BACKLOG EV-95 登记的 zcode 侧 Bash denylist 设计一致）。§1.4.1/§1.4.2 未做独立复测，§1.4.3 的报错文本法一行未跑；对 21 行 zsh 表与 3 行 bash 表的核验是「外壳语义推理 + 表内自洽 + 与代码判据的手工对账」，全部标注为推理而非实测。",
+    "§1.4.2 第 20/21 行（2>>&1 建出文件 1、>>&- 建出文件 -）属 zsh 特有词法行为，我的外壳知识无法独立确证，其采信度完全依赖 §5 承诺的 evidence 件；若该两行有误，第 4 格对 2>>&1 的判定随之存疑。",
+    "被审对象的内容哈希（sha256:f1fa2e24…）未核，工作树快照 tree:9557d260 未独立比对，基线 1607/1605/2/0 未复跑——均需命令执行。",
+    "§3.1「38 个形态逐格对照」的完整清单不在稿内，仅对公布的 11 行做了手工对账。",
+    "sh / dash 未测（R-e 已登记）：按推理 POSIX sh 无 &>/>>&/clobber 形态、非数字 2>&word 报语法错，经 exit_code===0 收敛后不可达，维持 R-e 现状即可——此为推理，非实测。",
+    "必读清单中的 README.md、doc/README.md、doc/01_requirements/README.md、doc/02_design/README.md 索引未逐个读（本轮证据全部落在 base.ts、guard.ts、codex.ts、codex-write-verbs.test.ts、证据脚本、build.mjs、BACKLOG 与主设计文档 §11.1 段）；r1/r3 历史裁决件未读，只读了我自己的 r4 输出与 r4 裁决件。"
+  ],
+  "consulted": [
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r5-claude.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/adapters/codex.ts",
+    "test/unit/codex-write-verbs.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.mjs",
+    "scripts/build.mjs",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "CLAUDE.md",
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r4-glm.md",
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r4-revised-claude.md"
+  ]
+}

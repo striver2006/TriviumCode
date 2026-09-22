@@ -1,0 +1,69 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "本稿 §3.1 换轴方案在总体拓扑上成立，成功消除了 r4 在规则 4 引入的 echo x > 2 静默漏检，危害归因（§1.2）与两层分界（§2.4.0）均已准确纠偏。\n最危险的一处缺陷在 §3.1 改动 ② 的 isFdOp = /^[0-9]*>&[|!]?$/ 正则误包含了 [|!]? 后缀，导致强制覆盖族 >&| / >&! / 2>&| 被判为 fd 操作：当目标为纯数字或 - 时（如 echo payload >&| 2），会触发规则 1/2 被误排除，构成新的静默写漏检与 D3 承诺反例（AGY-01）。\n此外，分离形态在 writeSinksOfSegment 中未明确无条件执行 consumed.add(i + 1)，存在下一 token 逃逸混进写动词参数位的风险（AGY-02）。\n本侧审查员环境无命令执行工具，依照 BACKLOG EV-95 如实说明结论基于语法规范推演与代码对账。\n除上述两处具体的判据收敛点外，实施计划已具备完备的地基与自洽性，修正 isFdOp 正则后即可充分支撑编码阶段。",
+  "findings": [
+    {
+      "id": "AGY-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r5-claude.md §3.1 改动 ②（:411）",
+      "problem": "isFdOp = /^[0-9]*>&[|!]?$/ 正则包含了可选强制覆盖后缀 [|!]?，导致 >&|、>&!、2>&|、2>&! 被误判归入 isFdOp。当这些强制覆盖运算符的操作数为纯数字或 - 时（例如 echo payload >&| 2、echo payload >&|2 或 2>&|1），会触发规则 1 或规则 2 被当作 fd 操作排除，导致文件写入静默漏检。shell 语义中 >&| 是 &>| 的别名，纯属双流强制覆盖写文件，其数字目标是文件名而非描述符。该形态直接构成符合 §3.1 运算符文法却仍被漏检的反例。",
+      "evidence": "1. 计划 §3.1 :410 注释明确声明「唯一有 fd 语义的一族：[n]>& —— 单个 >、& 在其后、& 不在其前」，字面上并未包含 [|!]?；\n2. zsh 手册与规范确认 >&| word 与 &>| word 完全等价，是对 word 文件的强制截断写入；文件描述符复制操作不存在 noclobber 语义；\n3. 计划 §1.4.2 证明 &> 2、&>> 2、>>& 2 与 2>>&1 遇到数字目标均建出同名文件；强制覆盖族同理，echo payload >&| 2 必然落盘名为 2 的文件；\n4. 但按 §3.1 判据，isFdOp 判定为真，glued 或下一 token 为 2 时命中规则 1/2 排除，导致 writes 漏判；§3.1 表格 :446 行亦将 2>&|t.txt 标为 isFdOp=Y，仅因 t.txt 非数字才侥幸逃逸进规则 3；\n5. 对照 doc/08_project/BACKLOG.md EV-79 论域说明与 .reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r5-claude.md §1.4.2 实测。",
+      "suggestion": "将 isFdOp 正则严格收敛为 /^[0-9]*>&$/，剥离 [|!]?。使所有含 | 或 ! 的强制覆盖运算符（>&|、>&!、2>&| 等）在 isFdOp 处判定为 false，统一进入规则 4 无条件提取文件目标；在 §4 测试用例中补齐 echo x >&| 2 与 echo x >&|2 判定为 writes 的断言。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r5-claude.md §3.1 规则 2（:419）与 §3.3 消费点 ③",
+      "problem": "§3.1 规则 2 中 isFdOp 且 glued === '' 分离写法下，若下一 token 为纯数字或 -，处置仅声明「fd 操作，排除」，未明确在 writeSinksOfSegment 中将下一 token 索引加入 consumed 集合。若未将其标记为 consumed，该数字 token 会残留在写动词参数序列中，导致如 cp /tmp/a src/b.ts >& 2 等命令的写入目标被末尾的 2 篡改覆盖。",
+      "evidence": "1. 查阅 src/trivium/adapters/base.ts:824-831，当前只要匹配重定向标记且为分离写法，即执行 consumed.add(i + 1)；\n2. base.ts:845 规定写动词操作数严格通过 !consumed.has(i) 过滤；若分离 fd 的目标仅从 sinks 排除而未记入 consumed，cp 等动词在 mode === 'last' 时会把未被消费的数字 token 当作最后一个操作数；\n3. test/unit/codex-write-verbs.test.ts:212 用例「重定向记号不得混进写动词的操作数」守卫过同类问题，换轴方案需保持该防御完整性。",
+      "suggestion": "在 §3.1 规则 2 及 §3.3 消费点 ③ 明确写明：在 writeSinksOfSegment 实现中，凡属于分离形态（glued === ''），无论该 token 最终是提取为 sink 还是被 fd 规则排除，consumed.add(i + 1) 均须无条件执行。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r5-claude.md §3.1 规则 4（:421）",
+      "problem": "规则 4 处置中「否则取 glued（以 & 打头则 slice(1)）」是 r4 旧正则（未将运算符末尾 & 吞入 op）残留的心智模型。在 r5 新正则捕获全部操作符后，正常文件名的 glued 不会以 & 开头；若存在重定向至真实以 & 起始文件名的极端情况，此处的 slice(1) 反而可能导致误剪切。",
+      "evidence": "1. r5 改动 ① 的 REDIRECT_RE = /^(?:&|[0-9]*)>>?&?[|!]?/ 中 &? 为贪婪匹配，>&file 与 >>&file 的 op 分别为 >& 与 >>&，剩余 glued 均为 file，不存在 & 前缀；\n2. 对比 .reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r4-revised-claude.md §3可知，该 slice(1) 属于 r4 残余。",
+      "suggestion": "在代码实施时移除多余的 slice(1) 操作，或补充注释澄清其为不可达的防御性残留，避免对特殊文件名造成非预期截断。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§3.1 换轴方案架构正确，以运算符本身作为 fd 分界轴取代残留特征划分，彻底修复了 r4 在规则 4 引入的 echo x > 2 静默漏检，规则 4 保持无条件提取是正确的。",
+    "§1.2 的危害归因更正为「projectReads 证据面与 consulted 交叉核对」，与 guard.ts:277-283、guard.ts:420 及 base.ts:676-682 的真实代码消费面完全吻合，消除前四稿将危害挂在措施 a 上的失实描述，方案 A 理由成立。",
+    "§2.4.0 明确划分代码执行论域（仅限 codex 侧命令轨迹）与只读安全原则（全项目通用不变量）两层，既界定了误杀排查范围，又守住了全项目一致的安全底线，未偏向任一极端。",
+    "§1.3 将强制覆盖族（>&| / >&! 等）移出已知残余并纳入 §0.1 论域符合实测真建文件的事实；残余表保留的表外动词、管道末段、BSD 长旗标、脚本命令样例等 4 项分析客观准确。",
+    "§1.4 补全命令原文、具体外壳版本，并在 §1.4.3 提供了只读环境可用的报错文本判别法，有效解决了前几轮双审验证手段脱离环境能力的阻碍。"
+  ],
+  "not_covered": [
+    "真实子进程命令动态执行：本侧审查员环境未配置终端/Bash 执行工具（工具面仅只读与检索），无法在真实 zsh 5.9 / bash 3.2 进程中执行 §1.4.3 的报错文本实验，所有语法与行为结论均基于 POSIX/zsh 规范、项目测试源码与平台逻辑推演（遵从 BACKLOG EV-95）。",
+    "sh / dash 外壳真机验证：未在真实机器上实测 sh / dash 对各类双流重定向的语法解析与退出码行为，仅依据 succeededCommands exit_code === 0 的契约假定其可达性边界。",
+    "Codex 近 30 天 Trace 历史样本频次：未深入 ~/.trivium/runs/ 检索全部历史运行日志以统计真实环境中 rm -rf 的误杀命中绝对次数。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/gate.ts",
+    "test/unit/codex-write-verbs.test.ts",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.mjs",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r4-revised-claude.md",
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r5-claude.md"
+  ]
+}
