@@ -1,0 +1,73 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "GLM-01（major）：缺口二把「组合重定向」论域写成 `&>`/`&>>`，漏了 bash/zsh 手册与之并列的第三种拼写 `>&word`（等价于 `>word 2>&1`）。实测（bf3342b 编译产物 + 计划正则的内存副本，副本与真模块逐命令对账 0 不一致）：`echo secret >&src/leak.txt` 修前修后都两档全空、读路径也空——彻底静默漏检；分离写法 `>& src/leak.txt` 还带出与 §1.2 同形的假读取，修后原样保留（残留同以 `&` 打头、被当 fd 复制排除）。除此之外本稿全部关键断言实测成立：§1.1/§1.2/§1.3 修前行为逐行复现；§3.2 三消费点预期逐行成立；`>&2`/`2>&1` 修前修后逐字不变；递归旗标形态列全；§2.2 反方向收紧的论证成立、§2.4 误杀面登记如实；§2.3 否决 B/C 的依据成立（对 C 甚至说轻了）。另两条 minor 分别补 §4 用例面与 §5 结案证据面的口子。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "security",
+      "location": "plan §1.2 / §3.1（机制在 src/trivium/adapters/base.ts:827-828 与 :584）",
+      "problem": "缺口二的论域把「组合重定向」写成 `&>` / `&>>` 两种，漏掉 bash/zsh 手册与之并列的第三种拼写 `>&word`（bash REDIRECTION 章：双流重定向有 `&>word` 与 `>&word` 两种格式）。实测：`echo secret >&src/leak.txt` 今天 writes/suspected 双空、读路径也空——与 `&>` 修前一样是彻底静默的写漏检；分离写法 `echo secret >& src/leak.txt` 双空之外还把 `src/leak.txt` 报成读取路径，与 §1.2 实测出的 `&>` 症状（不进写档 + 目标进读路径、喂禁读核验）逐字同形。根因同源：token 命中 `REDIRECT_RE` 后残留以 `&` 打头（`&src/leak.txt`，或裸 `&`），被「fd 复制排除」吞掉。按本稿修完后这两个形态原样保留，而计划对它们只字未登记——熟悉判据的一方把 `&>` 换写成 `>&` 即可维持一条完全静默的只读失守通道，与 EV-79 要关的洞同族。",
+      "evidence": "在 bf3342b 的 dist/test/src/trivium/adapters/base.js 真模块与把 REDIRECT_RE 换成计划正则 `^&?[0-9]*>>?` 的内存副本上对照实测：`echo secret >&src/leak.txt` 修前修后 classify 均 writes=0/suspected=[]、extractPathTokens 均 []；`echo secret >& src/leak.txt` 修前修后均 writes=0 且 extractPathTokens=[\"src/leak.txt\"]。代码依据：src/trivium/adapters/base.ts:827-828（`glued.startsWith('&')` 排除吞掉文件目标）、:584（读面同一判定）、:535（分离写法因残留非空不跳下一 token，目标落进读路径）。对照面：`2>&1`/`1>&2`/`>&2` 的残留 `&1`/`&2`/`&2` 后是纯数字、确为 fd 复制，修前修后不变（见 agreed 第 4 条），说明排除机制该分的类没分——「`&` 后是否纯数字」。",
+      "suggestion": "二选一：(a) 最低限度——把 `>&word`（紧贴与分离两种写法）登记进 §1.2 与头注释的「已知不收」清单，明说与 `&>` 同族、机制同为 `&` 残留排除，避免留下「该族已收口」的错觉；(b) 趁同一正则被改动顺手收口：fd 复制与文件目标的分界改成「`>` 命中后残留为 `&`+纯数字才算 fd 复制；`&` 后非数字按双流文件重定向取目标，裸 `&` 残留走下一 token 取目标」，并给 `>&src/leak.txt`、`>& src/leak.txt` 各补正反用例与一条变异。方向供 Driver 取舍，不附整段补丁。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4（缺口二用例清单）",
+      "problem": "§4 缺口二的用例只覆盖分离形态 `&> src/leak.txt` / `&>> src/leak.txt`；紧贴形态 `&>src/leak.txt`（§3.2 消费点②/③ 的紧贴支路）无用例，行②的预期落不了锁。另外 R-b 承诺的「读面正反各一」中的正例（普通读命令仍算读取）只写在风险节文字里、没进 §4 清单——本仓 r6 的教训（M10a r7 §0.3：『两边都以为对方写了』）正是承诺与清单分家。",
+      "evidence": "对照 plan §4 与 §7 R-b：缺口二清单四条全是分离形态；实测紧贴形态 `echo secret &>src/leak.txt` 在计划正则下 writes=1，走的是与分离形态不同的代码支路（残留直接作目标 vs 下一 token 作目标）。test/unit/codex-write-verbs.test.ts:160-161 既有用例标题写着 `（2>&1 / >&2 / &>）` 但 cases 数组里没有 `>&2` 条目——「标题与论域不符」的口子本仓已开过一次。",
+      "suggestion": "§4 清单补三条：`echo secret &>src/leak.txt`、`echo secret &>>src/leak.txt` 进 writes；`extractPathTokens('cat src/a.ts')` 仍含 `src/a.ts`（把 R-b 的正例从风险节落进用例清单）。可选：新增 `echo x >&2` 回归条时顺手让既有用例标题与 cases 对齐。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §5（结案证据复跑）",
+      "problem": "§5 的结案判据「复跑 verify-claude-findings-on-head.mjs，输出应当翻转」论域只有 classifyWriteCommands——脚本 7 条 case 全在写面。§1.2 自己实测新增的「第三个后果」（`&>` 目标进假读取，extractPathTokens 面，喂禁读核验）不在脚本论域里；复跑输出翻转只能证明写面修好，读面没有结案证据，「把新输出收进 evidence 作为结案证据」这句话会让读面看起来也被覆盖了。",
+      "evidence": "读 doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.mjs 全文：只 import 并调用 classifyWriteCommands，无 extractPathTokens；.out.txt 同样只有 writes/suspected 两列，§1.2 表中 extractPathTokens 列（[\"src/leak.txt\"]）无对应输出。",
+      "suggestion": "结案前给脚本补两行 extractPathTokens 断言（`&>` 两条命令不含 src/leak.txt、`cat src/a.ts` 仍含），或在 §5 明写「脚本只证写面，读面由 §4 单测承担」——两者择一，别让复跑判据读起来覆盖整个缺口二。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§2.2 反方向收紧的论证成立：`rm -f` 的幂等理由只对「目标不存在」成立而判定层不做 I/O；`-r` 整棵子树 + `-f` 不问恰是破坏力最大而豁免最宽的一格。实测与代码（base.ts:976-998）核过分类顺序：项目外→疑似、解析不了→疑似、掩码→疑似、`/dev/*`→跳过——收紧后新增误杀面确实只有「项目内、无掩码、实际不存在」一种形态，§2.4 如实登记，「`rm -r <不存在>` 今天已如此」也属实（.out.txt 对照行 writes=[命令]）。",
+    "§2.3 对 B 的否决成立：suspected 不驱动失守（base.ts:757-761 接口契约；guard 以 write_events 非空为唯一判据），只换文案闸门仍绿。对 C 的否决不仅成立还说轻了——「项目内且可静态解析才进 writes」正是现状判据本身，C 相对 A 是零差异分支，不是『差别很小』。",
+    "§3.1 取 A（改共用正则）正确：REDIRECT_RE 消费点 grep 全仓恰为三处（base.ts:535/584/823-825），§3.2 表逐行实测成立——修后 `&> f` 的 f 不再进读路径（extractPathTokens 实测转空）、紧贴 `&>src/leak.txt` 取到目标进 writes、分离 `&> f` 取下一 token 进 writes；只补写面会留下喂禁读核验的假读取。",
+    "§3.1「多认没有副作用」实测成立：`>&2`/`1>&2`/`2>&1` 修前修后判定位逐字不变（残留均以 `&` 打头被排除）；多认的 `&2>` 类形态在 bash/zsh 均非合法语法，残留为空只是吞掉一个不会出现的 token。推荐写法 `^&?[0-9]*>>?` 与收紧写法 `^(?:&|[0-9]*)>>?` 对真实输入逐 token 等价——计划「两种写法等价」的自评没说错。",
+    "递归旗标形态列全：`/^-\\w*[rR]/` + `--recursive` 精确等值实测覆盖 `-r/-R/-rf/-Rf/-fr/-vrf/-rv` 与分离组合，`-f/-i/-P` 不误中；与既有 force 判据同构，正是 r9 `--parents` 长旗标教训的镜像防法。",
+    "§1.1/§1.2/§1.3 的修前实测全部复现一致：四种递归+强制写法今天全落疑似幂等；`&>`/`&>>` 两向皆错（不进档 + 目标进读路径）；`2>&1`/`>&2`/`|&`/后台 `&` 四形态的行为与计划给的判定理由（含 `|&` 落掩码档）逐一相符。",
+    "§0.3 前置定位成立：M10a r7 §0.1/§6.1 确有「第 2 步开工前核 EV-74/EV-79 状态列、未结案退非零并停止」的可执行钩子（2026-09-21 P-1 已拍板）；EV-74 改的全在 probes/claude.ts 一族，「与本主题无代码交集」核实。EV-55 改的是 hooks.ts 提交锚与 Bash 保护、不改 classifyWriteCommands——两者的耦合是诊断可归因性而非代码依赖，计划的表述没有夸大成代码依赖。",
+    "§5 的 `node scripts/build.mjs --tests-only` 旗标真实存在（build.mjs:12-25），EV-82 空跑变异的教训接住了；变异四条与 §4 用例的对应关系成立；既有用例数「22 条」点数相符。"
+  ],
+  "not_covered": [
+    "基线「1607 用例 / 1605 通过 / 2 跳过 / 0 失败」未独立复跑——只读审查不能构建/写 dist，采信计划自述。",
+    "`2>&word`（fd 前缀 + 非数字 word）在 bash/zsh 的语义有差异，未深究其是否与 GLM-01 同为漏检面。",
+    "`--recursive` 的 GNU 长旗标缩写形态（如 `--recurs`）未纳入判据——与既有 `--force`/`--parents` 的精确相等判据同限，且 macOS BSD rm 不支持长旗标，未列为缺口。",
+    "修后行为验证基于对 dist 编译产物做单点正则替换的内存副本（与真模块 17 条命令对账 0 不一致），未真跑 npm test 与变异循环。",
+    "EV-75（写失守逐侧留痕）与本主题的边界划分、EV-74 主题本身、M10b 范围均未审。"
+  ],
+  "consulted": [
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-claude.md",
+    "src/trivium/adapters/base.ts",
+    "test/unit/codex-write-verbs.test.ts",
+    "dist/test/src/trivium/adapters/base.js",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.mjs",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.out.txt",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "scripts/build.mjs"
+  ]
+}

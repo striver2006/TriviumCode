@@ -1,0 +1,83 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "总体方向成立：缺口一/二的成因、修法与六格分界我逐格推演并补了实测，未发现方向性问题。最危险的一条是 §1.1 对照行「真实可达＝否」按其标注的目标（existing-dir）不成立——`rm -r <存在目录>` 退 0 且可达，它是 §2.2 单调性论证的基座，而 §4 又恰好没为它设回归条，与 r1 的登记口径错误同族。其余三条：§1.3 表外动词行「三空」与实测不符（读面留假读取）、§5 要「改掉」的 build.mjs 注释不一致实际不存在、§2.4 的成本与频率论证未点明本判据当前只对 codex 侧生效。焦点二问的两格（`>&-`、`2>&word`）我实测过两个 shell，判得都对。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "§1.1 表对照行「rm -r src/existing-dir（无 -f）」与其下方注释；关联 §4 缺口一清单",
+      "problem": "该行「真实可达」判「否——退 1，进不了判定层」，但行内标的目标是 existing-dir（存在），`rm -r <存在目录>` 成功退 0，完全可达——今天被分类成 writes 的正是它，§2.2 单调性论证（「今天 rm -r src/x 判 writes」）与 §2.4.1 都以此为基座。「退 1」的理由只对**不存在**的目标成立（§1.4 实测的正是 nope_dir，§1.1 注释里那句限定词「rm -r <不存在>」与表格行标注是两个目标）。叠加一个同族的缺口：§4 缺口一清单只测四格提到 writes，没有一条回归用例钉住「`rm -r <存在>` ⇒ writes」这半边基线——「标注不可达 + 无用例」合起来，恰是任务书焦点四担心的形态：后来者据这格的「否」把它当成可删的合成用例，而它其实是唯一真实可达且必须保绿的行为。",
+      "evidence": "r2 稿 §1.1 表格与注释、§1.4 实测表（只测了 nope_dir 退 1）、§2.2、§4 清单；我在 HEAD 编译产物上直调 `classifyWriteCommands(['rm -r src/existing-dir'], '/proj')`（dist/test/src/trivium/adapters/base.js）得 writes=1，与表格分类列一致——表格的 writes 列对、可达列错。rm 语义：目标存在且可读时递归删除成功退 0，无需实测。",
+      "suggestion": "该行判定改为「可达（真实删除）」，或拆成两行（存在/不存在，后者退 1 不可达）；并在 §4 缺口一回归组补一条 `rm -r <项目内存在目录>` ⇒ writes 的钉死用例，作为 D1 的单调性基线半边。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "§1.3「已知残余」表第 1 行（表外动词）；§5「落 BACKLOG 三条新残余」",
+      "problem": "「实测结果」列写「writes / suspected / reads 三空，彻底静默」，四个例子里只有 `git clean -fdx src` 真是三空：`sudo rm -rf src/x` 的 reads=[\"src/x\"]、`find src -name '*.ts' -delete` 的 reads=[\"x.ts\"]、`xargs rm -rf < list.txt` 的 reads=[\"list.txt\"]——读面留下的是**假读取**，与 §1.2 花整段论证的「第三个后果」同构（写目标以读取身份进路径面、喂禁读核验）。按「彻底静默」登记并照此落 BACKLOG「零留痕」，会丢掉这三格读面污染的信息，也让下一个读者以为这一族与路径面核验无关。焦点五问「登记措辞是否如实」，这条不如实。",
+      "evidence": "在 HEAD 编译产物上直调 `extractPathTokens` 与 `classifyWriteCommands`（dist/test/src/trivium/adapters/base.js）对四个例子逐条实测，输出如上；BACKLOG.md 的 EV-79 条目与 r2 稿 §1.2「路径面是措施 a 的输入」的论证读自原文。",
+      "suggestion": "该行实测列改「writes/suspected 空；读面对 git clean 形态全空，对其余三例目标以假读取留痕」；§5 落 BACKLOG 的措辞随之改，「表外动词零留痕」改为「表外动词写面零留痕 + 读面假读取」。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "§5 第二条（「该脚本顶部注释写的 --with-tests 与此处口径不一致，一并改掉」）",
+      "problem": "所谓「不一致」不存在：`scripts/build.mjs` 顶部注释（:12）本来就同时写了「--tests-only 或 --with-tests」，argv 处理（:24-25）也同时接受两个旗标——`--with-tests` 是合法且被复现脚本 usage 注释使用的旧名。这条「一并改掉」会把实施者派去找一个不存在的问题，或诱发把合法别名从注释里删掉的无谓改动。",
+      "evidence": "读了 scripts/build.mjs:1-12 与 :24-25（grep + head）；读 doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.mjs 头部 usage 注释，用的正是 --with-tests。",
+      "suggestion": "删掉「一并改掉」半句，或改为「口径统一用 --tests-only；--with-tests 为有效旧别名，保留即可」。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "scope-drift",
+      "location": "§2.4.1 代价估计、§2.4.2 频率判断、「结案时去 runs/ 核频率」的口径",
+      "problem": "两个精度问题。其一，`classifyWriteCommands` 当前只接在 codex 侧（adapters/codex.ts 两处调用），gemini 侧 write_events 走 agy-events.ts 的工具事件、glm 侧走 zcode-trace.ts 的 toolName 采集、claude 侧走 claude.ts:502-524 的白名单派生——都不过这条文本判据。即：本主题收紧新引入的误杀面**只可能砸 codex 一侧**，缺口二的静默通道与 D5 裁定（`make … &> build.log`）保护的也只在 codex 侧。§2.4 通篇按「各侧」行文，频率论证与结案核查（去 runs/ 数历史误杀）都应限定 codex 侧轨迹，否则结案留痕会数错论域。其二，成本量级两处口径不一：§2.4.1 写「整侧作废并重跑一轮，等于各侧一次配额 + 一次墙钟」，而它引的 r7 稿 :662 先例是「**整轮**作废重跑」——一侧、一轮差数倍配额，登记该钉死一个。",
+      "evidence": "全仓 grep `classifyWriteCommands` 的 import/调用只在 src/trivium/adapters/codex.ts（:33/:185/:614）；write_events 的来源分别是 src/trivium/adapters/agy-events.ts:241、src/trivium/adapters/zcode-trace.ts:183-204、src/trivium/adapters/claude.ts:502-524（grep 行与上下文）；.reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md:662 原文「整轮作废重跑」。",
+      "suggestion": "§2.4 开头加一句作用面限定（本判据当前仅 codex 侧生效，频率判断与结案核查按 codex 侧论域）；误杀代价按实际重跑策略写「单侧重跑」或「整轮重跑」其一，与 :662 引文对齐。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "焦点二（§3.1 两格未实测）：我替它实测了——/bin/bash 3.2.57 `echo x 2>&file_xyz` ⇒ 'ambiguous redirect' 退 1，zsh 5.9 ⇒ 'bad substitution' 退 1，`2>&word` 在本机两个 shell 下确实不可达，「维持排除 + 用例钉住别顺手放开」判对；`>&-` 在两个 shell 都是合法关闭 fd，且 `true >&-` 退 0 可达 ⇒ 排除该格不仅判对，还是必要的（否则被当成写一个名为 `-` 的文件，误杀）。六格在新 REDIRECT_RE 口径下穷尽（残留 ∈ {空、裸&、&数字、&-、&其它、非&打头}），前两格对 `2>&1` 条件重叠但裁决相同，无实施分叉。",
+    "焦点三（§3.3 消费点①「空或裸 &」是否漏第三种残留）：逐 token 复算后**不缺**——我初审时把 `>&`（>打头）误读成 `&>` 打头、一度以为改动①后残留自动变空、连带改动是伪需求；复算证实新正则对 `>&`/`>&path` 仍只剥掉开头的 `>`，残留保持 `&`/`&path` 一字不变——裁决件 AGY-04「换新正则后残留一字不变」的说法与我的复算一致，消费点① 的连带改动确有必要，条件不缺口。",
+    "焦点六：D4 与 `-t`/`dd of=` 既有特例的区别站得住——base.ts:828 的 `startsWith('&')` 分界本身就是 §1.2 成因第 2 条，属缺口因果链；-t/dd 特例不参与本轮任何登记形态。且我对 D4 的平台前提做了环境核算：`&>word` 与 `>&word` 两种拼写在 macOS 自带的最保守 shell（/bin/bash 3.2.57）上都可执行退 0，「换拼写维持静默通道」的论证不因本机老版本 bash 而失效。",
+    "焦点一：§2.4.3 契约实况读代码核实无误（WriteCommandClassification 的 writes 是 string[]，why 只在 SuspectedWrite，base.ts:757-761），r1 的承诺确实落不下去；§2.4.1「`rm -rf <不存在>` 是本次新引入的可达误杀路径、不带 -f 的同形态退 1 进不来」与 §1.4 实测自洽；§2.4.2「正确失守」的裁定方向从成本面可接受——同形态今天写 `> build.log` 就已作废，D5 拒绝实施期临时豁免避免制造第二裁决面，是对的。",
+    "焦点七：§0.3 没有反过来说轻——M10a r7 稿 §6.1（:590-592）与 §8（:740）确有「第 2 步开工前核 EV-74/EV-79 状态列、未结案退非零并停止」的可执行钩子，:51 记 P-1 于 2026-09-21 拍板；R-d 引用的 plan 1~2 / code 3~5 轮与 r7 稿 :651 一致。",
+    "§1.1/§1.2/§1.3 的分类结果我抽了十条形态在 HEAD 编译产物上直调复核，writes/suspected 列逐条与表一致；codex-write-verbs.test.ts 现 22 条、:160 用例标题含 `>&2` 而 cases 数组无该条——§4「补齐」一条属实。"
+  ],
+  "not_covered": [
+    "沙箱执行策略拒绝一切含 rm 的命令，§1.4 的退 64/1/0 三个退出码未复核，采信计划自报 + BSD rm 常识（CODEX-01 的结论不依赖实测 rm 本身）。",
+    "未跑 `npm run check`，基线 1607/1605/2/0 与「新增用例后相应抬升」未复核。",
+    "未逐条对账裁决件 12 项落点在本稿的落实情况，只核了焦点相关处（GLM-01/AGY-04 的 >&、§0.3、§2.4、§3.x）。",
+    "未读 gemini/glm 两侧的 r1/r2 审查产出（禁读面），三侧「16 条全部接受」不在我的核验论域。",
+    "各 Agent CLI 的 Bash 工具实际用哪个 shell 拉起（/bin/bash 3.2、zsh 还是自带 coreutils）未逐一实测；若某审查侧装了 GNU rm，长旗标「本机不可达」的登记对它不成立——但等值匹配不受此影响，误判面方向不变。",
+    "非 codex 侧（agy/zcode/claude）write_events 的工具事件判据细节未展开审，只核了调用面。"
+  ],
+  "consulted": [
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r2-claude.md",
+    "src/trivium/adapters/base.ts",
+    "test/unit/codex-write-verbs.test.ts",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.mjs",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-revised-claude.md",
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-codex.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md",
+    "scripts/build.mjs",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/adapters/claude.ts",
+    "dist/test/src/trivium/adapters/base.js"
+  ]
+}

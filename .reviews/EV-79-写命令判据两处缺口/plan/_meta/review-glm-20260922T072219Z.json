@@ -1,0 +1,122 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最重两条都落在 §3.1 六格分界表——焦点二点名、计划自陈最弱且未实测的那两格，本轮双 shell 实测均被推翻：GLM-01「2>&word 是 ambiguous redirect 退非零、不可达」在 codex 实际执行 shell /bin/zsh 5.9 上不成立（rc=0 且目标以写方式打开，是穿过退 0 筛选的可达静默写通道），macOS /bin/bash 3.2 默认模式同样 rc=0，报错的只有 --posix；§4 还要用例把该排除钉死。GLM-02 六格表 cell 5 对 `>& 2` / `>& -` 分离 fd 形态会把数字当文件目标，新引入一条 §2.4 未登记的假失守面。其余为登记与表格事实层的 minor 三条（§1.2 紧贴 &> 读面格与实测不符、§1.1 对照行名实矛盾、§1.3「三空」对 sudo/xargs 不实）与 nit 两条。§2.4.2「正确失守」裁定、§3.3 消费点①连带改动、§0.3 流程钩子表述、D4 与既有特例的区分均核实成立。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "security",
+      "location": "plan §3.1 改动② 六格表「以 & 打头，且 prefix 含 fd 数字」格与表下注「2>&word 维持排除」、§4「fd 操作回归」用例、§6 D4；机制在 src/trivium/adapters/base.ts:821-833",
+      "problem": "「2>&word（fd 前缀 + 非数字）维持排除：bash 对它报 ambiguous redirect 并退非零 ⇒ 进不了判定层，不可达」这条论断的前提双双不实。其一，codex 的命令实际经 /bin/zsh -lc 执行（base.ts:413-418 SUBSHELL_RE 注释），本机 /bin/zsh 5.9 实测 `2>&/dev/null` 与分离写法 `2>& /dev/null` 均 rc=0 且 stderr 确实改道进目标（word 以写方式打开），`1>&word` 亦 rc=0 且连 stdout 一起吞进目标。其二，即便按计划引用的 bash 依据，本机 /bin/bash 3.2 默认模式下 `2>&/dev/null` 同样 rc=0 吞输出，报 ambiguous redirect 退非零的只有 --posix 模式。即「fd 前缀 + 非数字目标」是穿过 succeededCommands 的 exit_code===0 筛选进判定层的可达写通道，与 §0.1 纳入 >&word 的理由（「换写法即可维持静默通道」）同族；而按该格「prefix 含 fd 数字即排除」，`echo secret 2>& src/leak.txt` 修后仍两档皆空——修法自己留下一条已知可达的静默写通道，§4 还要用例「echo x 2>&file ⇒ 不进任何一档」把这条通道当正确行为钉死，后来者按用例理解会以为排除是对的。另基线实测该形态今天还产出假读取（extractPathTokens('echo x 2>& /dev/null') 含 /dev/null），与缺口二「两个方向同时错」同形。",
+      "evidence": "本轮双 shell 实测（/bin/zsh 5.9、/bin/bash 3.2，目标全用 /dev/null，无落盘）：zsh 下 `{ echo A; echo B >&2; } 2>&/dev/null` 与 `echo A 2>& /dev/null` 均 rc=0 且 B 消失（fd2 改道进目标）、`echo A 1>&/dev/null` rc=0 且 A 消失；bash 默认模式 `2>&/dev/null` rc=0 输出被吞，`bash --posix` 同命令 rc=1 报 ambiguous redirect。src/trivium/adapters/base.ts:413-418（codex 经 /bin/zsh -lc）、src/trivium/adapters/codex-trace.ts:127-133（判定层只喂退 0）、:821-833（今天的排除实现）；dist/test/src/trivium/adapters/base.js 直调实测 `echo x 2>& /dev/null` / `1>& /dev/null` 写档双空、前者 reads 含 /dev/null。该 bash 前提出自 r1 裁决件 GLM-01 落点的「边界待 code 阶段收口」句，r2 稿忠实继承——错在上游前提本身。",
+      "suggestion": "§1.4「平台事实」补上重定向族在 /bin/zsh（实际执行 shell）而非 bash 手册上的实测并改写「不可达」论断；该格排除条件收敛到与「残留 & 后为纯数字或恰为 &-」同一判据，`2>&file` 一类按文件目标收进写面与读面；§4 对应用例的语义随之改写（不能钉住排除）；顺手把 zsh 特有的 `>&| word` / `>&! word` / `>>& word` 拼写族登记进论域说明，别让后来者再按 bash 论域推断。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.1 改动② 六格表「残留是裸 &」格（cell 5）、§2.4（漏登记）、§4（无用例）",
+      "problem": "cell 5「残留是裸 & ⇒ 分离写法，取下一 token 作目标」未对下一 token 是否 fd 数字或 `-` 分流：`>& 2` / `>& 1` / `>& -`（分离写法的 fd 复制与关闭）在 zsh 与 bash 都是 fd 操作而非写文件——本机 /bin/zsh 实测 `exec >& 2; echo A` 后输出去向 stderr、工作目录无任何文件产生、rc=0；/bin/bash 同形态同样 rc=0 无文件。按 cell 5 文义实现会把 `2` / `1` / `-` 当写入目标 push，归一到项目内（如 /proj/2）⇒ 假失守 ⇒ 整侧作废。这是本次修法新引入的误杀面：基线实测这三条今天 writes/suspected 双空（裸 & 残留今天既不 push 也不取下一 token），而 §2.4 的误杀面登记只有缺口一与缺口二两条、§4 无对应用例——与 r1 被三侧命中的 CODEX-03（缺口二新增作废面未登记）同类，且焦点二点名的正是这张表。",
+      "evidence": "shell 实测（/bin/zsh 5.9、/bin/bash 3.2，全写 /dev/null）：`exec >& 2; echo A` 外层丢弃 stderr 后 stdout 无 A、目录无名为 2 的文件、rc=0。基线实测（dist/test/src/trivium/adapters/base.js 直调）：`echo x >& 2` / `>&2` / `>&-` 今天 writes/suspected 双空。src/trivium/adapters/base.ts:826-832（今天裸 & 残留不 push、不取下一 token 的分支结构）、:974-988（sink 归一落在项目内即进 writes 的判定顺序）。修后行为按 cell 5 文义与既有归一顺序推定（修法未实现，未在真模块上验证）。",
+      "suggestion": "cell 5 补一条分流：下一 token 为纯数字或恰为 `-` 时按 fd 操作排除（把 cell 3 的判据挪到下一 token 上）；§2.4 补登记这条新引入的误杀面（形态、可达性、代价按 §2.4.1 同款口径）；§4 补 `echo x >& 2` 不进任何一档的用例。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §1.2 表第 3 行（`echo secret &>src/leak.txt`（紧贴）的 extractPathTokens 列写 []）",
+      "problem": "该格与实测不符：bf3342b 编译产物实测 extractPathTokens('echo secret &>src/leak.txt') 返回 [\"&>src/leak.txt\"] 而非 []。机制：紧贴 token 不被今天的 REDIRECT_RE 认出（base.ts:584 跳不过），又因含 / 被 :612 的「像路径」判据收进读面，归一后 /proj/&>src/leak.txt 落在项目内、还会计入 projectReads 证据面。即今天紧贴 &> 的真实症状是「漏检 + 一条垃圾读取 token」，不是读面干净——比计划写的略重；它与分离形态的假读取（src/leak.txt 进读面）是两种不同读面症状，应分开登记。§1 开头「§1.1～§1.3 全部在编译产物上实测」的口径被这一格打破。不影响修法正确性（改正则后 :584 命中即转空）。",
+      "evidence": "dist/test/src/trivium/adapters/base.js 直调实测（连同 §1.2 其余行逐格复核：分离 &> / &>> / >& 的 reads=[\"src/leak.txt\"]、紧贴 >& 与对照 > 的 reads=[]，均与计划一致，唯紧贴 &> 一格不符）；src/trivium/adapters/base.ts:535（分离 skip 条件）、:584（紧贴整 token 跳过）、:612（含 / 即收）。另实测对照行 `echo x > src/a.ts &> /dev/null` 今天 reads 含 /dev/null（表中该格写「—」未测）。",
+      "suggestion": "§1.2 该格改为 [\"&>src/leak.txt\"] 并补一句紧贴形态现状（垃圾 token 进读面、归一后在项目内）；§4 读面负断言顺带把紧贴与分离两种症状各锁一条。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §1.1 表第 5 行（对照 `rm -r src/existing-dir`（无 -f）的「真实可达」列标「否——退 1，进不了判定层」）",
+      "problem": "行名与「否」的论据自相矛盾：目录若如行名那样真实存在，`rm -r` 删除成功退 0 ⇒ 可达，且可达时判 writes 正是该判据今天的正确检出（真实发生的递归删除就该失守）；「退 1」只对目标不存在的形态成立——§1.4 表与 §2.4.1 写的都是 nope_dir（那两处自洽），唯独 §1.1 这格以 existing-dir 之名行 nope 之实。「真实可达」列是本稿为纠正 r1 口径新增的载荷列，最需要精确的对照行自己名实不符，后来者照行名取用会高估或低估误杀频率，正是 §2.4.1 引 r1 教训要防的那件事。焦点四问「三个否判得对不对」：两行长旗标（退 64）判得对，这一格不成立。",
+      "evidence": "本轮 shell 复测 `rm -r <不存在>` 退 1、`rm -rf <不存在>` 退 0（§1.4 五格全部复现）；src/trivium/adapters/codex-trace.ts:127-133（判定层只收退 0）；doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.out.txt（`rm -r src/existing-dir` 分类层面判 writes 的对照实证）；plan §1.4 表第 1 行与 §2.4.1 第 3 段均用 nope_dir /「<不存在>」限定，与 §1.1 行名对照。",
+      "suggestion": "该行目标改成不存在的名字（如 src/gone-dir），或把「否」的论据改写成条件式：「仅当目标不存在时退 1 不可达；目标存在则退 0 可达，且判 writes 是今天的正确检出」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §1.3 已知残余表第 1 行（表外动词「writes / suspected / reads 三空，彻底静默」）",
+      "problem": "「三空」对四个样例中的两个不实：实测 `sudo rm -rf src/x` 的 reads 为 [\"src/x\"]、`xargs rm -rf < list.txt` 为 [\"list.txt\"]——sudo / xargs 不在 WRITE_VERB_TARGET，其参数被「像路径」判据收进读面。写面「彻底静默」（writes/suspected 双空）成立，读面不空。该行按 §5 将原样落 BACKLOG，失实措辞会被带进 BACKLOG；且「读面不空」对这族其实是掩护——看似有留痕、写面实为零留痕，如实登记反而更能说明为什么要修。",
+      "evidence": "dist/test/src/trivium/adapters/base.js 直调实测两条样例的 writes/suspected/reads 三列（sudo：写面双空、reads=[\"src/x\"]；xargs：写面双空、reads=[\"list.txt\"]；`git clean -fdx` 真三空）；src/trivium/adapters/base.ts:434-453（WRITE_VERB_TARGET 键集无 sudo/xargs）、:546-555（按段首动词的 skip 规则）、:612（像路径判据）。",
+      "suggestion": "该行改为「写面双空（reads 不为空——参数被当读路径收进）」，或把样例换成真三空的 `git clean -fdx` / `find -delete` 一类；BACKLOG 登记同步。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.1 改动② 六格表（cell 3「& 后是纯数字或 -」与表行判定顺序）",
+      "problem": "cell 3 未钉死等值还是前缀：按前缀实现（如 /^&\\d/ 一类）会把 `>&2foo`、`>&-foo` 误排除——word 是文件名 2foo / -foo，zsh 手册 `>& number` 只在 word 恰为数字时匹配，双流形态照常打开该文件，误排除是静默漏检方向。且六格未写明按行序短路判定：`2>&`（裸 & 残留 + fd 前缀）同时满足 cell 2 与 cell 5 的描述，判定顺序不同结果不同。严格互斥也不成立：cell 2 与 cell 3 对 `2>&-` 双命中（判定同为排除，无行为分叉，但表自称分界应自洽）。",
+      "evidence": "man zshmisc REDIRECTION 章 `>& word` 条目与 `>& number` / `>& -` 的例外关系（上轮摘读，本轮相关语义经实测复证）；plan §3.1 六格表原文（例只有 `>&2` / `>&-`，未写等值/前缀与行序）。",
+      "suggestion": "计划文字钉死两点：残留恰为 `&<纯数字>` 或恰为 `&-` 才排除（等值，非前缀）；六格按表行顺序短路判定。可给 `>&2foo` 一格用例防前缀式实现。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §5「该脚本顶部注释写的 --with-tests 与此处口径不一致，一并改掉」",
+      "problem": "改动清单漏具名第二处：证据脚本自己的用法注释（doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.mjs 第 2 行「先 node scripts/build.mjs --with-tests」）也写着旧旗标，而 §5 恰好要扩这份脚本；且 scripts/build.mjs 顶部注释如实记载两旗标并存（:12，:24-25 两旗标都实现），「不一致」的实体其实是证据脚本用法注释与口径之差。上一轮 CODEX-07 ≡ GLM-03 正是「两处口径要读者自己对上」，收口不该留半边。",
+      "evidence": "scripts/build.mjs:12（顶部注释「（--tests-only 或 --with-tests）」）与 :24-25（两旗标都实现）；doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.mjs:2（用法注释）；plan §5 原文。",
+      "suggestion": "§5 的改动具名两处：build.mjs 顶部注释与证据脚本第 2 行用法注释统一为 --tests-only；若要连 --with-tests 旗标本身一并移除，另说一句，避免「注释改了、旗标还活着」的半改状态。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§2.4.2「项目内的双流日志重定向按正确失守处理」裁定成立：与 `> build.log` 完全同权（今天 `>` 在项目内即失守；`make -j4 &> build.log` 基线双空实测、修后 writes 的预期一致）；/dev/null 与 /dev/* 由 isDevicePath 过滤、/tmp 目标落「项目外→疑似」；D5「不在实施期临时豁免」定得对——焦点一后半问的裁定站得住。",
+    "§3.3 消费点① 连带改动的发现与方向正确，且「残留为空或裸 &」对消费点① 不缺第三种残留形态：合法分离写法里非空残留（&数字 / &- / &word）的目标都 glued 在本 token，真正的缺口在消费点③ 的 cell 5（GLM-02）；`2>&` / `2>>&` 分离形态的裸 & 恰被扩展条件覆盖（焦点三答案）。",
+    "D4 与 `-t` / `dd of=` 既有特例的区分成立：fd 复制分界（base.ts:828）是缺口二的成因本身，`-t` / `dd of=` 是写动词操作数规则（:839-862），动前者不牵连后者——不认为 D4 越界（焦点六答案）。",
+    "§0.3 流程钩子表述核实成立：M10a r7 §0.1（:51 P-1 已拍板 2026-09-21）与 §6.1/§8（:590-597、:740 核状态列、未结案退非零并停止）逐字对上；「诊断可归因性而非代码依赖」有据（classifyWriteCommands 调用点经 grep 复核确为 codex.ts:185/:614 两处），没有反过来说轻（焦点七答案）。",
+    "§1.4 平台事实的 rm 退出码五格本轮全部复现（1/0/0/64/64）；§1.3 `|&` 行的登记与「写段在首段」限定站得住——实测 `touch src/x.ts |& cat` 判掩码疑似（SEGMENT_SPLIT_RE 后瞻只排除 `>`/`&` 前缀，`|&` 的 `&` 被当分隔符、写段确在首段），管道末段写动词两条也实测为「仅掩码一条疑似」（焦点五答案：限定站得住，登记如实）。",
+    "§2.2 单调性主论证成立；§2.3 对 B/C 的否决核实（guard 以 write_events 非空为唯一判据；C 与 A 零差异——base.ts:976-988 判定顺序本就含项目外/提不出两道疑似闸）；§2.4.3 契约实况正确（writes 是 string[]、why 只在 SuspectedWrite，base.ts:757-761）；§2.4.1 的成本量化（M10a r7 :662 的 r4 codex 25m0s 属实）与「频率取不到、结案时由 Driver 核 runs/」的处置均如实。",
+    "焦点二点名的「关闭文件描述符那一格」判得对：`>&-` / `2>&-` 在 zsh 与 bash 都不是文件写入，zsh 下 rc=0 可达、cell 3 排除方向正确（bash 3.2 对 `>&-` 的 echo 行为虽有怪癖——A 仍输出、退 1——但任何一条路径都不创建文件，目录前后核对无新文件，分类上排除无害）；六格的穷尽性成立。",
+    "§3.4 引号免疫实测复现（grep -n '&>' src/a.ts ⇒ reads=[\"src/a.ts\"]）；§4 用例标题与 cases 对齐那条核实（codex-write-verbs.test.ts:160-161 标题写 >&2 而数组无此条目，22 条点数相符）；§5 对证据脚本「七条全在写面、无 extractPathTokens」的诊断属实，扩读面两格 + 统一重编口径的方向正确。"
+  ],
+  "not_covered": [
+    "基线「1607 用例 / 1605 通过 / 2 跳过 / 0 失败」未独立复跑——只读审查不能构建或写 dist；npm run check、trivium doctor --selftest、变异循环均未跑。",
+    "修后六格行为未在真模块上验证：REDIRECT_RE 与 fd 分界是模块内常量、修法未实现，本侧以计划文义 + 基线产物直调 + 双 shell 语义实测为据；GLM-02 的假失守路径按 cell 5 文义与既有归一顺序推定。",
+    "zsh `2>&word` 打开目标用截断还是追加模式未细分（对「构成写事件」的结论无影响）；zsh 特有 `>&|` / `>&!` / `>>&` 族与 `>&$param` 形态只按手册登记方向，未逐一实测分类结果。",
+    "M10a r7 仅抽查被引用段落（§0.1 / §6.1 / §7.1 / §7.2 / :662），未整篇复审；EV-74 / EV-75 主题本身、M10b 范围、guard.ts 对 write_events 的下游消费细节、BACKLOG 其余条目未审。",
+    "`>|`（强制覆盖）等罕见重定向形态为今天既有行为、本稿不恶化，未列意见。"
+  ],
+  "consulted": [
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r2-claude.md",
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-revised-claude.md",
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-glm.md",
+    ".reviews/EV-79-写命令判据两处缺口/plan/2026-09-22-EV-79-写命令判据两处缺口-r2-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex-trace.ts",
+    "src/trivium/adapters/codex.ts",
+    "dist/test/src/trivium/adapters/base.js",
+    "test/unit/codex-write-verbs.test.ts",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.mjs",
+    "doc/05_testing/evidence/m9-acceptance-20260920/verify-claude-findings-on-head.out.txt",
+    "doc/08_project/BACKLOG.md",
+    "scripts/build.mjs",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md"
+  ]
+}
