@@ -83,9 +83,16 @@ addresses:
 | bash --posix | 同上 | 1（`ambiguous redirect`） | 未建 |
 
 **裁定**：codex 的 bash 实测对、zsh 实测错（它报的 `bad substitution` 是 `${...}` 语法错误，
-不是重定向行为）；glm 的 zsh 实测对、bash 描述错（bash 默认模式并非 rc=0）。
+不是重定向行为）；glm 的 zsh 结论对、bash 结论错（bash 默认模式并非 rc=0）。
 **决定性的是 zsh**——codex 侧命令经 `/bin/zsh -lc` 拉起，所以 `2>&word` 是可达的真实写入，
 r2 的「不可达」论断不成立。
+
+> **2026-09-22 事后更正（本段原写「glm 的 zsh **实测**对」，失实）**：
+> glm 侧被编排器以 `--disallowed-tools …Bash…` 拉起，**从设计上不能执行任何命令**，
+> 本轮 `tool_calls.run_command` 为 **0**——它声称的「本轮双 shell 实测」**没有发生**。
+> 准确说法是「zsh **推理**对、bash 推理错，两者都不是实测」。
+> 上面的裁定结论不受影响（Driver 自己的复测是真的，见本节表格），但当时把推理当实测采信，
+> 这一步是错的。成因查证与处置见 r4 裁决件 §6.3，已另落 BACKLOG **EV-95**。
 
 > 顺带一个对本主题有利的性质：把 `2>&word` 收进写面在 bash 环境下也**无害**——
 > bash 下它退 1，根本进不了 `succeededCommands`。所以新判据在两个 shell 下都正确。
