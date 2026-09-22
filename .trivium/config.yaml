@@ -32,11 +32,23 @@ review:
     # r1 长一倍多，而 codex 侧的做法是在编译产物上做内存补丁逐格实测——稿子变长，
     # 它的实测量同步变长。抬到 1800 后重跑，codex 16m36s 交卷（未用上 --allow-single）。
     #
+    # 2026-09-23 再抬 1800→2700：**同一形态第三次致废**（EV-74 主题 plan r3，
+    # codex 撞满 1800s；台账第 4、9、18 行，三次全是 plan 档、全是 codex 侧）。
+    # 这次先查了成因再调，不是又一次盲调——运行目录实测：
+    #   · 本轮 stdout.jsonl 633KB vs 同主题上一轮 192KB（3.3 倍）
+    #   · command_execution 74 次 vs 34 次（2.2 倍）
+    #   · **无 turn.completed、无 trace.json** ⇒ 被掐断时仍在正常产出，不是挂死
+    # 所以瓶颈是**核查面**而非故障：每轮稿子与 --context 都在涨，codex 的逐格实测
+    # 随之线性涨。2700s 对已观测的 30m 留约 3 成余量。
+    # **这条处置的限度要写明**：它治的是「这一次不够用」，不治「核查面每轮都在涨」。
+    # 下次再撞，先收窄 --context 与焦点，别再往上加——
+    # 1500→1800 那次就是只调数字、没动增长本身，一个主题之后就被打穿。
+    #
     # code 砍半是**明知有张力的取舍**：profiles 段 codex 档的注释记着 M9 第 1～2 步
     # 代码双审四轮 8m36s → 56m → 62m → 118m53s，最后一轮离旧的 7200s 只剩 66 秒——
     # 按 3600s 那一轮会直接超时作废。真撞上就调这里，不要默默换家族
     # （换家族要连 agents.codex.profile 一起改）。
-    plan: 1800
+    plan: 2700
     code: 3600
     bug: 1800
   wait_timeout_s: 180
@@ -95,10 +107,17 @@ profiles:
     # 裁定维持 7200s）——按 3600s，上面那轮 118m53s 会直接超时作废。**这个张力是明知的取舍，
     # 不是漏改**：真撞上就调 review.timeout_s.code，
     # 不要默默换家族——换家族要连 agents.codex.profile 一起改（模型槽与 `-p` 是两个维度，见 flash 档注释）。
+    #
+    # 2026-09-23：qwen3.8-flash → deepseek-flash（用户指定，**qwen 额度耗尽**）。
+    # `agents.codex.profile` 已同批改成 deepseek，两个维度同家族。
+    # **换回 deepseek 意味着上面那段耗时记录重新相关**：2026-09-18 之所以从 qwen 换去
+    # deepseek，正是因为 qwen 侧那四轮 8m36s → 56m → 62m → 118m53s；而 deepseek 档
+    # 在本仓的耗时基线尚无系统记录。**本次换回后要重新观察 plan 档耗时**——
+    # 今天刚因 codex 侧撞满 1800s 作废过一轮（台账第 18 行），预算已抬到 2700s。
     codex:
-      plan: qwen3.8-flash
-      code: qwen3.8-flash
-      bug: qwen3.8-flash
+      plan: deepseek-flash
+      code: deepseek-flash
+      bug: deepseek-flash
     # claude 档（M9 第 4 步）。slug 由 system/init 回读挣来（第 1 步报告 §4），
     # 不是文档推断——probe.cli.claude.models 为 []，猜错 slug 预检拦不下来。
     # 真实审查尺度的耗时与成本未测，第 6 步验收才会有第一份数据。
@@ -121,10 +140,12 @@ profiles:
     # **本档与 default 同为 qwen3.8-flash 是结果，不是漏改**：用户已把 default 统一到 flash 档，
     # qwen 目录里更低的一档 qwen3.6-flash 在本仓从未实测过，不拿没数据的档位去填这一格。
     # 真要让 flash 档在本侧有区分度，先给 qwen3.6-flash 跑一轮取数，再改这里。
+    # 2026-09-23 随 default 档换到 deepseek 家族（qwen 额度耗尽）。本档与 default 同值的
+    # 理由不变：deepseek 目录里更低的档在本仓同样没有实测数据，不拿没数据的档位填这一格。
     codex:
-      plan: qwen3.8-flash
-      code: qwen3.8-flash
-      bug: qwen3.8-flash
+      plan: deepseek-flash
+      code: deepseek-flash
+      bug: deepseek-flash
     # flash 档取 haiku，不跟 default 同值（计划双审 CODEX-05）：
     # haiku 是 probes/claude.ts 的 PROBE_MODEL、M6 起一直在用，回读记录早有。
     # 两档同值会让 flash 在 claude 侧形同虚设，而另两家的 flash 行都是真换了一档。
@@ -191,7 +212,10 @@ agents:
     bin: null
     # 2026-09-21：deepseek → qwen（用户指定）。这一行决定 provider 家族与模型目录，
     # 必须与 profiles.*.codex 的 slug 同家族，否则端点直接拒绝。
-    profile: qwen
+    # 2026-09-23：qwen → deepseek（用户指定，**qwen 额度耗尽**）。
+    # 同批已把 profiles.default.codex 与 profiles.flash.codex 三阶段一并改成 deepseek-flash——
+    # 只改一处会组成 `-p deepseek -m qwen3.8-flash`，正是下方 flash 档注释记着的实测被拒形态。
+    profile: deepseek
     effort:
       plan: high
       code: high
