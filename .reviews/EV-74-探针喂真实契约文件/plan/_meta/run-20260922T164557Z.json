@@ -1,0 +1,76 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260922T164557Z",
+  "topic": "EV-74-探针喂真实契约文件",
+  "stage": "plan",
+  "rerun_index": 4,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "审核焦点：本稿是 r2 二十二条意见的修订稿，请重点看增量。一、§3.4.1 这一稿从三格扩到六格并补了三道前置门（超时、拿不到退出码、正对照不成立），另把信号口径从「零 result 事件」改回「整个输出零事件」，并新增「输出不可解析」这条出口。请核门序与所引先例是否真的同构、六格是否互斥穷尽，以及有没有哪一格的归属仍会把「能力不支持」与「模型没配合」合流。二、§3.2.1 的缓存处置按成因拆成三档，替换了上一稿那个按字段作废整段新鲜度的错误落点。请核「未安装那档每轮免调用复核存在性」会不会引入新的每轮开销，以及三档是否穷尽。三、§3.7 改用诊断报告里现成的另一条通道，并把覆盖面从「仅失败值」扩到「本轮真的重探过仍为空值」。请核后一个条件怎么判——它需要知道本轮是否真的重探过，而这个状态今天有没有落点。四、§5 用例 6 是新增的架构契约，用来补上上一稿凭空引用的那条守卫。请核扫描面该怎么划才不会误伤——探针层今天合法依赖配置模块与适配器。五、§4.2 预登记了判定规则（超当前常量五成就先上调，上调后仍撞才接受空值）。请核这个阈值是否有依据，还是又一个拍脑袋的数。六、§1 现状表这一稿逐行复核了整列并自查出两行错位、另新增三行。请核整列的验法域是否都等于断言域，新增三行的证据是否准确。七、§6 对两条相邻待办明确表态不接并各给了理由。请独立判理由是否站得住，还是应当至少接其中一条。八、§8 同步项扩到十三项，请核是否齐备。九、有没有本稿新引入的问题。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "d459ac354739c6341749397c5db85055c15bda3d",
+    "tree_hash": "eff60a0cdd6d804a8d181cff8fe179d659e3c0b9",
+    "dirty": true,
+    "subject_sha256": "66a7d38f4dd3334ccd9b210c9787b46dcd7a2ba729220719d990ec8f26757abb",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-22T16:45:58.037Z",
+  "finished_at": null,
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {},
+  "deny_paths": [
+    ".env.example",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-22-EV-74-探针喂真实契约文件-gemini.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-22-EV-74-探针喂真实契约文件-glm.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r2-gemini.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r2-glm.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r3-gemini.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r3-glm.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T144533Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T154900Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T161206Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-glm-20260922T144533Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-glm-20260922T154900Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-glm-20260922T161206Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {},
+    "forged_role_file": false
+  },
+  "artifacts": [
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/brief-codex-20260922T164557Z.md",
+      "sha256": "dcd5da5c7d5b98c439e4dac00a048295c22385a8d45aa6ff71ce0ab3c0e55323"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/brief-gemini-20260922T164557Z.md",
+      "sha256": "6ce96e3d6e07830c90132d955efaa67bc114b012c161c8a404b84fa1570e9f71"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/brief-glm-20260922T164557Z.md",
+      "sha256": "985a60bf82f1f356ef17eeb15ee9d45f361a134177f3ef101cfeb1611e807349"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "running"
+  },
+  "status": "running"
+}
