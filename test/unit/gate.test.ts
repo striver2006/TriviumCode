@@ -685,6 +685,34 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
   const f = r1.failures.find((x) => x.code === 'readonly_breach');
   assert.ok(f, renderGateResult(r1));
   assert.match(f!.message, /breach\.txt/, '按 AD-06 列出受影响文件');
+  /*
+   * 处置文案必须保留「先核 snapshot.drift」这一步（EV-79 代码双审 GLM-05）。
+   * base.ts 的幂等收紧注释把排障指纹押在它身上——`rm -rf <项目内不存在目录>` 的误杀形态
+   * 没有工作树改动，故 drift 为 false。文案措辞一旦漂移，那条指纹静默失效，
+   * 而代码里只剩一句没人守的注释。
+   */
+  assert.match(
+    f!.message,
+    /snapshot\.drift/,
+    '文案要给出 drift 分档指引——base.ts 的误杀排障指纹指着它',
+  );
+  /*
+   * 但指纹**只能单向用**（r2 CODEX-09 定性，r3 CODEX-r3-01 落到这里）：
+   * `judgeDrift` 是 git 树比对、只看已跟踪文件，被 ignore 的目录（`dist/`）
+   * 被真实递归删除同样 drift=false。文案若回到「没有改动则是误报」的反推，
+   * 就是在教人把真失守降级。
+   *
+   * **这里刻意用否定式锁**：锁「不含反推句」而不是「含某个正确短语」。
+   * 肯定式会把文案钉死在一种写法上，正常演进即误伤——这正是 r2 焦点六问的
+   * 「锁法是否过紧」，当时答「不过紧」只因为它锁的是字段名。
+   * 否定式只禁掉一种语义，对措辞怎么演进都不敏感，而它要防的恰恰就是那一种。
+   */
+  assert.doesNotMatch(
+    f!.message,
+    /(没有|无)改动.{0,6}(就|则|即).{0,4}(是|按).{0,6}误报/,
+    'drift 指纹只能单向用：文案不得出现「没有改动则是误报」式反推，' +
+      '否则被 ignore 的产物目录被真实删除时会被判成误报（r3 CODEX-r3-01）',
+  );
 
   // ② 字段在场且为 false（newRunMeta 缺省）→ hit:false，闸门不失败。
   //    注意这**不是**「旧留痕无字段」：该字段两版契约必填，writeRunMeta 写前按 run.v2 校验、

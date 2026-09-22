@@ -493,8 +493,44 @@ const WRITE_VERB_TARGET: Record<string, 'last' | 'all-after-flags'> = {
  * 类别不止一类，登记按「表外动词」而非「表外目录型动词」写（r8 双审 GLM-03）。
  * 承诺是「已知形态可提、已知虚报源已排除」，不是完备。
  */
-/** 重定向记号：可带 fd 前缀（`>`、`>>`、`2>`、`2>>`、`1>`） */
-const REDIRECT_RE = /^[0-9]*>>?/;
+/**
+ * 重定向运算符（EV-79 缺口二）。
+ *
+ * 文法：可选 fd 数字**或**前置 `&`，然后 `>` / `>>`，然后可选后置 `&`，
+ * 最后可选 zsh 的强制覆盖后缀 `|` / `!`。覆盖 `>`、`>>`、`2>`、`&>`、`&>>`、
+ * `>&`、`2>&`、`>>&`、`2>>&`、`>|`、`>&|`、`&>!` 等全族。
+ *
+ * **承诺面是「按运算符文法覆盖」，不是一张拼写清单**——EV-79 的 r1～r4 每稿都给
+ * 穷尽式数目、每稿都被下一轮证明数漏了（`&>` → `>&` → `2>&` → `>>&` → 强制覆盖族）。
+ * 文法**边界**：只认以 `>` / `>>` 起首（可带上述前后缀）的运算符；
+ * zsh 的 fd 变量重定向 `{var}>f` 在 `^` 锚定下永不匹配，属已知残余（BACKLOG）。
+ */
+const REDIRECT_RE = /^(?:&|[0-9]*)>>?&?[|!]?/;
+
+/**
+ * **唯一有 fd 语义的运算符族**：无强制覆盖后缀的 `[n]>&`。
+ *
+ * 判别轴是**运算符形态**而不是残留：同一残留 `&2`，在 `>&2` 是 fd 复制、
+ * 在 `>>&2` 是往名为 `2` 的文件写（实测两者都建出文件才叫文件重定向）。
+ *
+ * **三条边界都是实测挣来的，放宽任意一条都会把真实写入静默吃掉**：
+ * ①`>>&` 不在族内——`echo X >>& 2` 建出文件 `2`；
+ * ②`&>` 不在族内——`echo X &> 2` 建出文件 `2`；
+ * ③**带后缀的 `>&|` / `>&!` 不在族内**——`echo x >&| 2` 建出文件 `2`，
+ *   clobber 后缀**消去** fd 语义（EV-79 r5 双审三侧同时命中此格）。
+ * 断言见 `codex-write-verbs.test.ts` 的「重定向：clobber 后缀消去 fd 语义」
+ * 与「重定向：普通数字/减号目标是文件名」两条。
+ */
+const FD_DUP_OP_RE = /^[0-9]*>&$/;
+
+/**
+ * fd 操作的目标位：**恰为**纯数字（复制）或 `-`（关闭）。
+ *
+ * **必须等值、不可前缀**：`echo Y >&2foo` 建出名为 `2foo` 的文件，
+ * 按 `/^&?\d/` 一类前缀实现会把它误排除——静默漏检方向。
+ * 断言见「重定向：等值防线——>&2foo 是文件，不是 fd 复制」。
+ */
+const FD_TARGET_RE = /^(?:\d+|-)$/;
 
 /** 版本号/版本区间形态（`1.3.8`、`v1.3.8..v1.3.9`）——不含 `/`，不是路径 */
 const VERSION_LIKE_RE = /^v?\d+(\.\d+)+(\.\.+v?\d+(\.\d+)+)?$/;
@@ -819,16 +855,45 @@ function writeSinksOfSegment(tokens: readonly string[]): string[] {
    * 只按动词判会把最常见的写入形态整个漏掉。
    */
   for (let i = 0; i < tokens.length; i++) {
+    /*
+     * 已被上一轮分离形态消费掉的 token 不再当运算符解析（代码双审 AGY-02）。
+     * 没有这道检查时，目标**自身以重定向记号开头**会被二次解析：
+     * `echo x > '>foo'` 的目标 token 是 `>foo`（引号剥离不改它），
+     * 下一轮迭代会把它当成新运算符、再往 sinks 里推一个 `foo`。
+     * 与读面扫描不看 `consumed` 是同一族问题——消费标记要被一致地使用。
+     */
+    if (consumed.has(i)) continue;
+
     const t = tokens[i]!;
-    if (!REDIRECT_RE.test(t)) continue;
+    const m = REDIRECT_RE.exec(t);
+    if (!m) continue;
     consumed.add(i);
-    const glued = t.replace(REDIRECT_RE, '');
+
+    const op = m[0];
+    const glued = t.slice(op.length);
+    const isFdOp = FD_DUP_OP_RE.test(op);
+
     if (glued) {
-      // `>out.txt` 紧贴写法。`2>&1` 这类 fd 复制的残留以 `&` 开头，不是文件目标
-      if (!glued.startsWith('&')) sinks.push(glued);
+      // 紧贴写法：目标就在本 token 里
+      if (isFdOp && FD_TARGET_RE.test(glued)) continue; // `2>&1` / `>&-`：fd 操作，不是文件
+      sinks.push(glued);
     } else if (tokens[i + 1]) {
+      /*
+       * 分离写法：目标在下一个 token。
+       *
+       * **`consumed.add` 必须无条件执行**，排除支也要——下面取写动词操作数时按
+       * `!consumed.has(i)` 过滤，漏消费会让被排除的 fd 编号留在 args 里，
+       * `mode === 'last'` 的动词把它当最后一个操作数。
+       *
+       * **断言见「目标钉死：被排除的 fd 编号不得顶替写动词的真实目标」**
+       * （用**项目外**目标构造：取对了进疑似档、取错了归一到项目内进 writes）。
+       * 不要拿 `cp /tmp/a src/b.ts >& 2` 那条当判别器——它的目标被 `2` 顶替后
+       * 归一成 `/proj/2` **仍在项目内**，两条断言同样成立、分辨不出（代码双审 CODEX-04）。
+       */
       consumed.add(i + 1);
-      sinks.push(tokens[i + 1]!); // `> out.txt` 分离写法
+      const next = tokens[i + 1]!;
+      if (isFdOp && FD_TARGET_RE.test(next)) continue; // `>& 2` / `>& -`：fd 操作
+      sinks.push(next);
     }
   }
 
@@ -963,10 +1028,35 @@ export function classifyWriteCommands(
        * **长旗标也要认**（r9 双审 GLM-03）：`^-\w*p` 匹配不了 `--parents`
        * ——第二个 `-` 不是 `\w`。判不出幂等的后果是把一次没有实际写入的成功命令
        * 判成只读失守、整侧作废，**是误杀方向**，本主题对这个方向的定级一贯更重。
+       *
+       * **但递归 + 强制不算幂等**（EV-79 缺口一）：这是白名单内的**单调性违背**——
+       * `rm -r <目标>` 今天判 writes，而**加上** `-f` 之后反而降级到疑似。
+       * 给命令增加一个破坏性旗标却让判定变轻，是判据自身的缺陷。
+       * `-f` 的幂等理由只对「目标不存在」成立，而这一层不做 I/O 判不出；
+       * 对非递归的 `rm -f <文件>` 这个不确定性可以接受，`-r` 把论域扩到整棵子树之后不能。
+       *
+       * 收紧的**误杀面**（EV-79 计划 §2.4.1，如实登记）：`rm -rf <项目内、实际不存在的目录>`
+       * 会被判 writes。它是本次新引入的**可达**路径——`-f` 让目标不存在时也退 0，
+       * 从而穿过调用契约的 `exit_code === 0` 筛选；不带 `-f` 的同形态退 1、进不到这里。
+       * 排障指纹（**只能用来排除一部分，不能用来坐实**，代码双审 CODEX-09）：
+       * 该形态没有工作树改动，故 `snapshot.drift` 为 false。但反过来不成立——
+       * `judgeDrift` 是 git 树比对，**只看已跟踪文件**，`dist/` 之类在 `.gitignore`
+       * 里的目录被真实 `rm -rf` 掉同样 drift=false。所以 drift=false 时还须核
+       * 目标是否真实存在、是否被 ignore；拿它直接判「误报」会把真失守降级。
+       *
+       * **递归旗标要一次写全**：`-r` / `-R` / `--recursive` 与簇合形态（`-rf` / `-fr` / `-vrf`）。
+       * 与 `-\w*f` 同款用 `/^-\w*[rR]/` 加长旗标等值，**不改前缀匹配**——
+       * 本机 BSD `rm` 不接受任何长旗标（实测退 64），前缀匹配只会平白扩大误判面。
+       *
+       * 四种写法进 writes、两条既有幂等行为不变色，断言见
+       * `test/unit/codex-write-verbs.test.ts` 的「幂等：递归 + 强制不算幂等形态」
+       * 与「幂等：长旗标 --parents / --force 也要认出来」两条。
        */
       const idempotent =
         (verb === 'mkdir' && tokens.some((t) => /^-\w*p/.test(t) || t === '--parents')) ||
-        (verb === 'rm' && tokens.some((t) => /^-\w*f/.test(t) || t === '--force'));
+        (verb === 'rm' &&
+          tokens.some((t) => /^-\w*f/.test(t) || t === '--force') &&
+          !tokens.some((t) => /^-\w*[rR]/.test(t) || t === '--recursive'));
 
       for (const sink of writeSinksOfSegment(tokens)) {
         if (isDevicePath(sink)) continue;

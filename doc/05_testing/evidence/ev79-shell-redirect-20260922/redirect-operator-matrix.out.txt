@@ -1,0 +1,73 @@
+# EV-79 · 重定向运算符对账表 ｜ 基线 HEAD=feaa61e + 未提交改动（工作树脏） ｜ 生成于 2026-09-22T14:17:24.906Z
+# 轴一 判据侧：classifyWriteCommands 的落档（F:in = 项目内、F:<路径> = 项目外、
+#              S:<原因> = 落进非「项目外」的疑似档、X = 不取任何目标）
+# 轴二 实测侧：抄自同目录 probe-redirect-operators.out.txt，src 为抄录行号（~ = 同运算符旁证）
+# 漏检 = 轴一为 X 且轴二为真写入，**派生得出**，不由期望值声明
+
+   >out.txt               echo x >/tmp/o.txt                     判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L8~)
+   > out.txt              echo x > /tmp/o.txt                    判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L8~)
+   >>out.txt              echo x >>/tmp/o.txt                    判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L9~)
+   >> out.txt             echo x >> /tmp/o.txt                   判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L9~)
+   &>out.txt              echo x &>/tmp/o.txt                    判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L10~)
+   &> out.txt             echo x &> /tmp/o.txt                   判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L10~)
+   &>>out.txt             echo x &>>/tmp/o.txt                   判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L11~)
+   &>> out.txt            echo x &>> /tmp/o.txt                  判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L11~)
+   >>&out.txt             echo x >>&/tmp/o.txt                   判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L18)
+   >>& out.txt            echo x >>& /tmp/o.txt                  判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L17)
+   2>>&1                  echo x 2>>&1                           判据=F:in         期望=F:in           实测=真写入     (L19)
+   >>&-                   echo x >>&-                            判据=F:in         期望=F:in           实测=真写入     (L20)
+   > 2                    echo x > 2                             判据=F:in         期望=F:in           实测=真写入     (L8)
+   >> 2                   echo x >> 2                            判据=F:in         期望=F:in           实测=真写入     (L9)
+   &> 2                   echo x &> 2                            判据=F:in         期望=F:in           实测=真写入     (L10)
+   &>> 2                  echo x &>> 2                           判据=F:in         期望=F:in           实测=真写入     (L11)
+   >>& 2                  echo x >>& 2                           判据=F:in         期望=F:in           实测=真写入     (L12)
+   >>&2                   echo x >>&2                            判据=F:in         期望=F:in           实测=真写入     (L13)
+   > -                    echo x > -                             判据=F:in         期望=F:in           实测=真写入     (L51)
+   >&| f                  echo x >&| /tmp/o.txt                  判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L23)
+   >&! f                  echo x >&! /tmp/o.txt                  判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L24)
+   &>| f                  echo x &>| /tmp/o.txt                  判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L25)
+   &>! f                  echo x &>! /tmp/o.txt                  判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L26)
+   2>&| f                 echo x 2>&| /tmp/o.txt                 判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L27)
+   2>&! f                 echo x 2>&! /tmp/o.txt                 判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L28)
+   >&|f（紧贴）               echo x >&|/tmp/o.txt                   判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L23~)
+   >&| 2                  echo x >&| 2                           判据=F:in         期望=F:in           实测=真写入     (L30)
+   >&|2（紧贴）               echo x >&|2                            判据=F:in         期望=F:in           实测=真写入     (L31~)
+   >&!2（紧贴）               echo x >&!2                            判据=F:in         期望=F:in           实测=真写入     (L31)
+   >&| -                  echo x >&| -                           判据=F:in         期望=F:in           实测=真写入     (L32)
+   2>&! 1                 echo x 2>&! 1                          判据=F:in         期望=F:in           实测=真写入     (L33)
+   2>&|1（紧贴）              echo x 2>&|1                           判据=F:in         期望=F:in           实测=真写入     (L33~)
+   >| f                   echo x >| /tmp/o.txt                   判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L36)
+   >|f（紧贴）                echo x >|/tmp/o.txt                    判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L36~)
+   >! f                   echo x >! /tmp/o.txt                   判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L37)
+   >>| f                  echo x >>| /tmp/o.txt                  判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L38)
+   >>! f                  echo x >>! /tmp/o.txt                  判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L39)
+   >&f（紧贴）                echo x >&/tmp/o.txt                    判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L16~)
+   >& f（分离）               echo x >& /tmp/o.txt                   判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L15~)
+   2>&f（紧贴）               echo x 2>&/tmp/o.txt                   判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L16)
+   2>& f（分离）              echo x 2>& /tmp/o.txt                  判据=F:/tmp/o.txt 期望=F:/tmp/o.txt   实测=真写入     (L15)
+   >&2foo（等值防线）           echo Y >&2foo                          判据=F:in         期望=F:in           实测=真写入     (L14)
+   >&2                    echo x >&2                             判据=X            期望=X              实测=不建文件    (L44)  [fd 语义排除]
+   >&1                    echo x >&1                             判据=X            期望=X              实测=不建文件    (L44~)  [fd 语义排除]
+   2>&1                   echo x 2>&1                            判据=X            期望=X              实测=不建文件    (L45)  [fd 语义排除]
+   1>&2                   echo x 1>&2                            判据=X            期望=X              实测=不建文件    (L46)  [fd 语义排除]
+   >&-                    echo x >&-                             判据=X            期望=X              实测=不建文件    (L47)  [fd 语义排除]
+   2>&-                   echo x 2>&-                            判据=X            期望=X              实测=不建文件    (L48)  [fd 语义排除]
+   >& 2（分离）               echo x >& 2                            判据=X            期望=X              实测=不建文件    (L42)  [fd 语义排除]
+   >& -（分离）               echo x >& -                            判据=X            期望=X              实测=不建文件    (L43)  [fd 语义排除]
+   2>& 1（分离）              echo x 2>& 1                           判据=X            期望=X              实测=不建文件    (L42~)  [fd 语义排除]
+   cp … >& 2              cp src/a.ts /tmp/out.ts >& 2           判据=F:/tmp/out.ts 期望=F:/tmp/out.ts  实测=不建文件    (L42)
+   cp … >& -              cp src/a.ts /tmp/out.ts >& -           判据=F:/tmp/out.ts 期望=F:/tmp/out.ts  实测=不建文件    (L43)
+   cp … 2>&1              cp src/a.ts /tmp/out.ts 2>&1           判据=F:/tmp/out.ts 期望=F:/tmp/out.ts  实测=不建文件    (L45)
+  ※{fd}> f（文法外）           echo x {fd}> /tmp/o.txt                判据=X            期望=X              实测=真写入     (L54)  [文法外 ⇒ EV-99]
+   引号内的 &> 字面量            grep -n '&>' src/a.ts                  判据=X            期望=X              实测=不建文件    (—)  [去引号丢弃 ⇒ EV-102]
+
+共 56 形态，轴一不符期望：0
+※ 漏检（判据不取目标而实测真写入）：1 格 —— 属已知残余，靠 BACKLOG 兜底
+未实测（本探针未覆盖该拼写，不参与漏检判定）：0 格
+
+口径声明（三条，都是这张表**不能**证明的事）：
+  1. 「不符期望：0」只说明判据行为与登记一致，**不等于无漏检**——漏检看 ※ 那行。
+  2. 方括号里的机制标注（fd 语义 / 去引号丢弃 / 文法外）是**登记侧给定的说明**，
+     对账不校验它；标错了这张表不会红，只能靠人读 src 行号复核。
+  3. 轴二是从另一份留痕**抄录**来的，不是本次执行实测。两份留痕不可能在一次
+     执行里联动（探针要真建文件，本脚本不能建），失真面是「抄录出错」。

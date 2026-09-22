@@ -1,21 +1,104 @@
+# ═══ EV-79 结案证据（修后观测）═══
+#
+# 基线 HEAD=feaa61e + 未提交改动（工作树脏） ｜ 生成于 2026-09-22T13:31:12.491Z
+# 先 `node scripts/build.mjs --tests-only` 重编测试树，否则跑的是旧产物（EV-82 教训）。
+#
+# 读这份要看的是**两条缺陷修掉后**的样子，与同目录
+# verify-claude-findings-on-head.BEFORE-a75ec43.out.txt（修前）逐条对照。
+# 本件会被复跑覆盖；修前那份是历史留痕，不要覆盖它。
+#
+═══ 写面 ═══
+
 CLAUDE-01 对照：短旗标
   $ rm -rf src/existing-dir
-  writes=[] suspected=["rm 的幂等形态，成功退出不等于发生了写入"]
+  writes=["rm -rf src/existing-dir"] suspected=[]
 CLAUDE-01 主张：长旗标 + 递归
   $ rm -r --force src/existing-dir
-  writes=[] suspected=["rm 的幂等形态，成功退出不等于发生了写入"]
+  writes=["rm -r --force src/existing-dir"] suspected=[]
 CLAUDE-01 对照：无 -f 的递归删除
   $ rm -r src/existing-dir
   writes=["rm -r src/existing-dir"] suspected=[]
+CLAUDE-01 对照：无 -r 的 -f（仍应判幂等）
+  $ rm -f src/gone.ts
+  writes=[] suspected=["rm 的幂等形态，成功退出不等于发生了写入"]
 CLAUDE-02 主张：仅 &> 作写入手段
   $ echo secret &> src/leak.txt
-  writes=[] suspected=[]
+  writes=["echo secret &> src/leak.txt"] suspected=[]
 CLAUDE-02 主张：仅 &>> 作写入手段
   $ echo secret &>> src/leak.txt
-  writes=[] suspected=[]
+  writes=["echo secret &>> src/leak.txt"] suspected=[]
 CLAUDE-02 对照：普通 >
   $ echo x > src/a.ts
   writes=["echo x > src/a.ts"] suspected=[]
 CLAUDE-02 对照：现有用例形态
   $ echo x > src/a.ts &> /dev/null
   writes=["echo x > src/a.ts &> /dev/null"] suspected=[]
+EV-79 后置 &：紧贴
+  $ echo secret >&src/leak.txt
+  writes=["echo secret >&src/leak.txt"] suspected=[]
+EV-79 后置 &：分离
+  $ echo secret >& src/leak.txt
+  writes=["echo secret >& src/leak.txt"] suspected=[]
+EV-79 fd 前缀 + 非数字目标
+  $ echo secret 2>& src/leak.txt
+  writes=["echo secret 2>& src/leak.txt"] suspected=[]
+EV-79 双流追加
+  $ echo secret >>& src/leak.txt
+  writes=["echo secret >>& src/leak.txt"] suspected=[]
+EV-79 强制覆盖 × 文件目标
+  $ echo secret >&| src/leak.txt
+  writes=["echo secret >&| src/leak.txt"] suspected=[]
+EV-79 强制覆盖 × 数字目标（r5 漏检面）
+  $ echo x >&| 2
+  writes=["echo x >&| 2"] suspected=[]
+EV-79 普通覆盖后缀
+  $ echo P >| src/p1.txt
+  writes=["echo P >| src/p1.txt"] suspected=[]
+EV-79 数字目标是文件名（r4 漏检面）
+  $ echo x > 2
+  writes=["echo x > 2"] suspected=[]
+EV-79 等值防线
+  $ echo Y >&2foo
+  writes=["echo Y >&2foo"] suspected=[]
+EV-79 fd 复制：紧贴（应一档都不进）
+  $ echo x >&2
+  writes=[] suspected=[]
+EV-79 fd 复制：分离（应一档都不进）
+  $ echo x >& 2
+  writes=[] suspected=[]
+EV-79 fd 目标不得顶替写动词目标
+  $ cp src/a.ts /tmp/out.ts >& 2
+  writes=[] suspected=["写入目标在项目外：/tmp/out.ts"]
+
+═══ 读面（extractPathTokens） ═══
+
+负：&> 分离目标不算读取
+  $ echo secret &> src/leak.txt
+  reads=[]  含 src/leak.txt? false
+负：&> 紧贴整串不算读取
+  $ echo secret &>src/leak.txt
+  reads=[]  含 &>src/leak.txt? false
+负：&> 紧贴剥出目标也不算读取
+  $ echo secret &>src/leak.txt
+  reads=[]  含 src/leak.txt? false
+负：>& 分离目标不算读取
+  $ echo secret >& src/leak.txt
+  reads=[]  含 src/leak.txt? false
+负：2>& 分离目标不算读取
+  $ echo secret 2>& src/leak.txt
+  reads=[]  含 src/leak.txt? false
+负：>>& 分离目标不算读取
+  $ echo secret >>& src/leak.txt
+  reads=[]  含 src/leak.txt? false
+负：>&! 分离目标不算读取
+  $ echo secret >&! src/leak.txt
+  reads=[]  含 src/leak.txt? false
+负：>&| 分离目标不算读取
+  $ echo secret >&| src/leak.txt
+  reads=[]  含 src/leak.txt? false
+正：普通读命令仍算读取
+  $ cat src/a.ts
+  reads=["src/a.ts"]  含 src/a.ts? true
+正：读+重定向混合，只留被读的那个
+  $ grep foo src/a.ts &> /dev/null
+  reads=["src/a.ts"]  含 src/a.ts? true

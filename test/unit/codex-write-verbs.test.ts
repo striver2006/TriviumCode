@@ -14,6 +14,7 @@ import {
   WRITE_VERBS_FOR_PARITY,
   WRITE_TARGET_VERBS_FOR_PARITY,
   classifyWriteCommands,
+  extractPathTokens,
 } from '../../src/trivium/adapters/base.js';
 
 const ROOT = '/proj';
@@ -158,7 +159,12 @@ test('掩码：&& 链里的真实写入必须判失守（注释一直这么写�
 });
 
 test('掩码：fd 重定向不是掩码（2>&1 / >&2 / &>）', () => {
-  for (const c of ['echo x > src/a.ts 2>&1', 'cp /tmp/a src/b.ts 2>&1', 'echo x > src/a.ts &> /dev/null']) {
+  for (const c of [
+    'echo x > src/a.ts 2>&1',
+    'cp /tmp/a src/b.ts 2>&1',
+    'echo x > src/a.ts >&2', // 标题一直写着 >&2，cases 里却没有（EV-79 计划 §4 承诺补齐）
+    'echo x > src/a.ts &> /dev/null',
+  ]) {
     assert.deepEqual(classify(c).writes, [c], `这不是掩码结构，是重定向：${c}`);
   }
 });
@@ -239,4 +245,364 @@ test('幂等：长旗标 --parents / --force 也要认出来', () => {
     assert.deepEqual(r.writes, [], `幂等空操作不判失守：${c}`);
     assert.ok(r.suspected[0]!.why.includes('幂等'));
   }
+});
+
+// ───────────── 幂等的边界：递归 + 强制（EV-79 缺口一） ─────────────
+
+test('幂等：递归 + 强制不算幂等形态，四种写法都进 writes', () => {
+  /*
+   * 单调性违背：`rm -r X` 今天判 writes，加上 `-f` 反而降级到疑似——
+   * 给命令增加破坏性旗标却让判定变轻。
+   *
+   * 后两条是**分类器直调的合成输入**：本机 BSD rm 不接受长旗标（实测退 64），
+   * 它们不会作为真实轨迹出现。但判据是纯文本分类、与外壳无关，
+   * 用例仍有效，**不得因「本机不可达」被删**。
+   */
+  for (const c of [
+    'rm -rf src/existing-dir',
+    'rm -r --force src/existing-dir',
+    'rm -R -f src/existing-dir',
+    'rm --recursive --force src/existing-dir',
+  ]) {
+    assert.deepEqual(classify(c).writes, [c], `递归 + 强制是破坏性写入，不是幂等空操作：${c}`);
+  }
+});
+
+test('幂等：簇合形态的递归旗标也要认出来（-fr / -vrf）', () => {
+  // 与 `-\w*f` 同款用 `/^-\w*[rR]/`，别漏掉旗标挤在一起的写法
+  for (const c of ['rm -fr src/existing-dir', 'rm -vrf src/existing-dir']) {
+    assert.deepEqual(classify(c).writes, [c], `簇合旗标里的 r/R 同样是递归：${c}`);
+  }
+});
+
+test('幂等：单调性基线——无 -f 的递归删除本来就判 writes', () => {
+  /*
+   * 这是 D1 单调性论证的另一半：没有它，「加 -f 反而变轻」这句话在用例里无从对照。
+   * 目标存在时 `rm -r` 退 0、完全可达，判 writes 正是这条判据今天的**正确检出**。
+   */
+  const c = 'rm -r src/existing-dir';
+  assert.deepEqual(classify(c).writes, [c], '真实发生的递归删除就该判失守');
+});
+
+test('幂等：收紧不得溢出——无 -r 的 -f 与 mkdir -p 仍判幂等', () => {
+  // r9 GLM-03 挣来的行为；改 idempotent 一处要守住另一半
+  for (const c of ['rm -f src/gone.ts', 'rm --force src/gone.ts', 'mkdir --parents src/existing']) {
+    const r = classify(c);
+    assert.deepEqual(r.writes, [], `非递归的幂等形态不得被本次收紧误伤：${c}`);
+    assert.ok(r.suspected[0]!.why.includes('幂等'));
+  }
+});
+
+// ═══════════ 重定向运算符族（EV-79 缺口二） ═══════════
+//
+// 判别轴是**运算符形态**，不是残留：同一残留 `&2`，在 `>&2` 是 fd 复制、
+// 在 `>>&2` 是往名为 2 的文件写。四条规则见 EV-79 r6 计划 §3.1。
+//
+// 本组用例的每一格都对应 r6 §1.4.2 的一行外壳实测（zsh 5.9 / bash 3.2.57），
+// 判别法是「跑完看目录里建出了什么文件」。
+
+test('重定向：前置 & 的双流写入进 writes（&> / &>>，紧贴与分离）', () => {
+  for (const c of [
+    'echo secret &> src/leak.txt',
+    'echo secret &>src/leak.txt',
+    'echo secret &>> src/leak.txt',
+    'echo secret &>>src/leak.txt',
+  ]) {
+    assert.deepEqual(classify(c).writes, [c], `&> 是双流文件重定向，目标就是写入点：${c}`);
+  }
+});
+
+test('重定向：后置 & 的双流写入进 writes（>& / 2>&，紧贴与分离）', () => {
+  /*
+   * 收进写面在两个外壳下都不亏（r6 D6）：某拼写若在别的外壳下退非零，
+   * `succeededCommands` 的 `exit_code === 0` 契约已把它挡在判定层外。
+   *
+   * **不要写「bash 下这些形态退非零」**——分离写法的 `>& 文件` 在 bash 3.2 下
+   * rc=0 且真建文件（r6 §1.4.2 bash 对照表末行）；退非零的只有带数字前缀的 `2>&文件`。
+   */
+  for (const c of [
+    'echo secret >& src/leak.txt',
+    'echo secret >&src/leak.txt',
+    'echo secret 2>& src/leak.txt',
+    'echo secret 2>&src/leak.txt',
+  ]) {
+    assert.deepEqual(classify(c).writes, [c], `>& 后跟非数字目标是文件重定向：${c}`);
+  }
+});
+
+test('重定向：双流追加进 writes（>>& / 2>>&）', () => {
+  for (const c of [
+    'echo secret >>& src/leak.txt',
+    'echo secret >>&src/leak.txt',
+    'echo x 2>>&1',
+    'echo x >>&-',
+  ]) {
+    assert.equal(classify(c).writes.length, 1, `>>& 含 >& 却是双流追加文件重定向：${c}`);
+  }
+});
+
+test('重定向：普通数字/减号目标是文件名，不是 fd（r4 回归面）', () => {
+  /*
+   * r4 曾在「非 fd 族」那一格加过「下一 token 是纯数字或 - 就排除」的分流，
+   * 把今天判 writes 的 `echo x > 2` 降成双空——静默漏检。
+   * 实测：`> 2` / `>> 2` / `&> 2` / `>>& 2` 全部建出名为 2 的文件。
+   */
+  for (const c of [
+    'echo x > 2',
+    'echo x >> 2',
+    'echo x &> 2',
+    'echo x >>& 2',
+    'echo x > -',
+  ]) {
+    assert.deepEqual(classify(c).writes, [c], `这些运算符没有 fd 语义，目标位是文件名：${c}`);
+  }
+});
+
+test('重定向：clobber 后缀消去 fd 语义，数字目标仍是文件（r5 回归面）', () => {
+  /*
+   * r5 的 isFdOp 写成 `/^[0-9]*>&[|!]?$/`，把 `>&|` / `>&!` 划进了 fd 族，
+   * 于是这一族配纯数字目标时被当 fd 操作排除——与 r4 同类的静默漏检，只是换了格子。
+   * 实测：`>&| 2` 建出文件 2、`>&!2` 建出 2、`>&| -` 建出 -、`2>&! 1` 建出 1。
+   *
+   * **isFdOp 不得带 `[|!]?`。**
+   */
+  for (const c of [
+    'echo x >&| 2',
+    'echo x >&|2',
+    'echo x >&!2',
+    'echo x >&| -',
+    'echo x 2>&! 1',
+  ]) {
+    assert.deepEqual(classify(c).writes, [c], `clobber 后缀下目标位恒为文件：${c}`);
+  }
+});
+
+test('重定向：普通强制覆盖后缀的目标不带前导符号（>| / >! / >>| / >>!）', () => {
+  // 今天旧正则只吞掉 `>`，残留 `|p1.txt` 被当成目标——目标被错记
+  for (const c of [
+    'echo P >| src/p1.txt',
+    'echo P >|src/p1.txt',
+    'echo Q >! src/p2.txt',
+    'echo R >>| src/p3.txt',
+    'echo S >>! src/p4.txt',
+  ]) {
+    assert.deepEqual(classify(c).writes, [c], `强制覆盖仍是文件重定向：${c}`);
+  }
+});
+
+test('重定向：等值防线——>&2foo 是文件，不是 fd 复制', () => {
+  // 实测 `echo Y >&2foo` 建出名为 2foo 的文件。判据按前缀实现会把它误排除（静默漏检方向）
+  const c = 'echo Y >&2foo';
+  assert.deepEqual(classify(c).writes, [c], '& 后必须“恰为”纯数字才是 fd 操作');
+});
+
+test('重定向：真正的 fd 操作一档都不进（紧贴）', () => {
+  for (const c of ['echo x >&2', 'echo x 2>&1', 'echo x 1>&2', 'echo x >&-', 'echo x 2>&-']) {
+    const r = classify(c);
+    assert.deepEqual(r.writes, [], `fd 复制/关闭不是文件写入：${c}`);
+    assert.deepEqual(r.suspected, [], `也不该留疑似：${c}`);
+  }
+});
+
+test('重定向：分离形态的 fd 操作一档都不进（>& 2 / >& -）', () => {
+  /*
+   * r4 的分界表没给分离形态分流，会把 `2` / `-` 当写入目标、归一成 /proj/2 ⇒ 假失守。
+   * 实测这两条 rc=0 且不产生任何文件。
+   */
+  for (const c of ['echo x >& 2', 'echo x >& -']) {
+    const r = classify(c);
+    assert.deepEqual(r.writes, [], `分离写法的 fd 操作同样不是文件写入：${c}`);
+    assert.deepEqual(r.suspected, [], `也不该留疑似：${c}`);
+  }
+});
+
+test('重定向：被排除的 fd 目标仍须消费，不得混进写动词操作数', () => {
+  /*
+   * 写动词操作数靠 `!consumed.has(i)` 过滤。分离形态排除 fd 目标时若不 consume，
+   * 那个数字会留在 args 里，mode === 'last' 的动词把它当最后一个操作数——
+   * 写目标被篡改成 `2`。与既有用例「写入位：重定向记号不得混进写动词的操作数」同族。
+   */
+  const c = 'cp /tmp/a src/b.ts >& 2';
+  const r = classify(c);
+  assert.deepEqual(r.writes, [c], 'cp 的写目标是 src/b.ts，命令仍判失守');
+  assert.deepEqual(r.suspected, [], '目标在项目内且可解析，不该进疑似档');
+});
+
+test('重定向：作废面——项目内的双流日志重定向按正确失守处理', () => {
+  // r6 D5：与 `> build.log` 同权，不设豁免。动词 make 不在写动词表里，靠重定向取到目标
+  const c = 'make -j4 &> build.log';
+  assert.deepEqual(classify(c).writes, [c], '把构建日志写进项目根同样违反只读承诺');
+});
+
+// ───────────── 读面：修掉假读取与垃圾 token ─────────────
+
+test('读面：双流重定向的目标不再算读取路径（负断言）', () => {
+  /*
+   * 危害不在措施 a——它只吃真实读取事实、不吃回填
+   * （锚：base.ts 里 `effectiveReadPaths` 上方「**消费方只有三处**」那段文档注释；
+   *   guard.ts 里「措施 a **只吃真实读取事实**」那段）。
+   * 回填喂的是 checkEvidence 的 projectReads 与 judgeSide 的 consulted 交叉核对，
+   * 所以污染读面 = 让审查员能借一条从未读过的路径坐实虚假的 consulted 声明（证据自证）。
+   */
+  for (const c of [
+    'echo secret &> src/leak.txt',
+    'echo secret >& src/leak.txt',
+    'echo secret 2>& src/leak.txt',
+    'echo secret >>& src/leak.txt',
+  ]) {
+    assert.ok(
+      !extractPathTokens(c).includes('src/leak.txt'),
+      `重定向目标是写入点、不是读取证据：${c}`,
+    );
+  }
+});
+
+test('读面：紧贴 &> 的整条 token 不再进读面（垃圾 token）', () => {
+  // 今天 `&>src/leak.txt` 认不出是重定向，整串因含 / 被「像路径」判据收走、还计入 projectReads
+  const c = 'echo secret &>src/leak.txt';
+  const reads = extractPathTokens(c);
+  assert.ok(!reads.includes('&>src/leak.txt'), '运算符与目标粘在一起的串不是路径');
+  assert.ok(!reads.includes('src/leak.txt'), '剥出来的目标也是写入点，不是读取');
+});
+
+test('读面：普通读命令仍算读取（正断言）', () => {
+  assert.ok(extractPathTokens('cat src/a.ts').includes('src/a.ts'), '别把读面一起修没了');
+  const mixed = extractPathTokens('grep foo src/a.ts &> /dev/null');
+  assert.ok(mixed.includes('src/a.ts'), '被 grep 的文件是真实读取');
+  assert.ok(!mixed.includes('/dev/null'), '重定向目标不是读取');
+});
+
+test('读面：引号内的 &> 字面量不受影响（免疫锁例）', () => {
+  /*
+   * 免疫不是本族判据给的，而是引号剥离给的
+   * （锚：base.ts 里两处 `const dequoted = cmd.replace(/(['"`])…`——
+   *   `extractPathTokens` 与 `classifyWriteCommands` 各一份）：
+   * 含 & 的引号段整体换成空格，`&>` 根本不成为 token。改引号口径会踢翻它。
+   */
+  const c = "grep -n '&>' src/a.ts";
+  assert.deepEqual(classify(c).writes, [], '搜索模式里的 &> 不是重定向');
+  assert.ok(extractPathTokens(c).includes('src/a.ts'), '被搜索的文件仍是真实读取');
+});
+
+// ───────────── 目标钉死：writes 只给命令原文，靠项目内外之差反推目标 ─────────────
+//
+// `WriteCommandClassification.writes` 是 string[]、只有命令行原文，
+// 所以「目标取对了没有」无法直接断言。这两条用**项目外目标**构造可分辨的落点：
+// 取对了 ⇒ 项目外 ⇒ 进疑似档；取错了 ⇒ 错目标归一到项目内 ⇒ 进 writes。
+// 变异验证里「去掉 [|!]?」与「去掉 consumed.add」两项，正是靠这两条才杀得死。
+
+test('目标钉死：强制覆盖后缀必须被运算符吞掉，不得留进目标', () => {
+  /*
+   * 若 REDIRECT_RE 不认 `[|!]`，`>&|` 只吞掉 `>&`，残留 `|/tmp/out.txt` 被当目标，
+   * 归一成 /proj/|/tmp/out.txt ⇒ 落在项目内 ⇒ 误判失守。
+   */
+  const r = classify('echo x >&| /tmp/out.txt');
+  assert.deepEqual(r.writes, [], '真实目标 /tmp/out.txt 在项目外，不构成失守');
+  assert.equal(r.suspected.length, 1);
+  assert.ok(r.suspected[0]!.why.includes('项目外'), `目标应是 /tmp/out.txt：${r.suspected[0]?.why}`);
+});
+
+test('目标钉死：普通强制覆盖同理（>| 的 | 不是目标的一部分）', () => {
+  const r = classify('echo x >| /tmp/out.txt');
+  assert.deepEqual(r.writes, []);
+  assert.ok(r.suspected[0]!.why.includes('项目外'));
+});
+
+test('目标钉死：被排除的 fd 编号不得顶替写动词的真实目标', () => {
+  /*
+   * `cp src/a.ts /tmp/out.ts >& 2`：真实写入点是 /tmp/out.ts（项目外）。
+   * 若分离支漏了 consumed.add，`2` 会留在 args 里，mode === 'last' 取到它，
+   * 归一成 /proj/2 ⇒ 落在项目内 ⇒ 把一次项目外写入误判成只读失守。
+   */
+  const r = classify('cp src/a.ts /tmp/out.ts >& 2');
+  assert.deepEqual(r.writes, [], 'cp 的目标是 /tmp/out.ts，在项目外');
+  assert.equal(r.suspected.length, 1);
+  assert.ok(r.suspected[0]!.why.includes('项目外'), `目标被 fd 编号顶替了：${r.suspected[0]?.why}`);
+});
+
+// ───────────── 强制覆盖族在读面的锁（代码双审 CODEX-02 ≡ GLM-01） ─────────────
+//
+// 消费点① 的条件是「整个运算符被吞掉、残留为空才 skip 下一 token」，
+// 它的成立**前提**是 REDIRECT_RE 的 `[|!]?` 把强制覆盖后缀也吞进 op。
+// 这个前提此前只被**写面**的目标钉死用例经同一常量间接守住，读面零断言。
+//
+// 实测（把文法的 `[|!]?` 去掉后）：
+//   `>&! f` / `>>! f` ⇒ 目标**重新漏进读面**  ← 真漏点
+//   `>&| f` / `>| f`  ⇒ 读面仍空，但那是**另一条正则碰巧挡住的**，见下一条用例
+
+test('读面：! 后缀族的分离目标不算读取（真漏点，靠本族文法挡住）', () => {
+  /*
+   * **只放 `!` 族**（代码双审 GLM-07）：`!` 不参与读面的段切分，
+   * 挡住它的确实是本族文法把 `[|!]?` 整体吞进运算符。
+   * `|` 族另有机制、归下一条对照用例——两条各守一个机制，
+   * 谁红就知道根因在哪条正则；混在一起会同时红而线索指错方向。
+   */
+  for (const c of ['echo x >&! src/leak.txt', 'echo x >>! src/leak.txt']) {
+    assert.deepEqual(
+      extractPathTokens(c),
+      [],
+      `强制覆盖仍是重定向，目标是写入点不是读取证据：${c}`,
+    );
+  }
+});
+
+test('读面：| 后缀族靠另外两条规则挡住，是耦合不是设计（对照用例）', () => {
+  /*
+   * `>&|` / `>|` 即便文法少吞一段也不漏，原因不在本族判据，而是**两条规则合起来**
+   * （代码双审 CODEX-06 更正了我原先只归给前者的说法）：
+   *   ① 读面的段分隔正则 /\|\||&&|[|;()]/ **没有 lookbehind**，把运算符尾部的 `|`
+   *      当成段分隔符切走；
+   *   ② 切出的第二段里，目标落在**段首**，被 extractFromSegment 的 `skip.add(0)`
+   *      当动词位吞掉。
+   * 改①或改②中任何一条，`|` 族都会退化成和 `!` 族一样的漏点——这条用例是那时唯一的线索。
+   *
+   * **切分不是无害的**：实测 `echo x >| src/leak.txt src/other.ts` ⇒ ["src/other.ts"]，
+   * 目标被段首规则吞掉后，**同段其后的 token 反而以读取身份出现**。
+   * 这一格已登记进 EV-100 一族（读面写目标位扫描的残留）。
+   */
+  assert.deepEqual(extractPathTokens('echo x >&| src/leak.txt'), []);
+  assert.deepEqual(extractPathTokens('echo x >| src/leak.txt'), []);
+  assert.deepEqual(
+    extractPathTokens('echo x >| src/leak.txt src/other.ts'),
+    ['src/other.ts'],
+    '切分的副作用：目标被段首吞掉，其后的 token 冒充读取（EV-100 一族）',
+  );
+});
+
+test('目标钉死：紧贴形态的后置 & 必须被运算符吞掉（GLM-01 补的剩余格）', () => {
+  /*
+   * 「去掉 &?」这项变异此前只在读面被杀。写面紧贴形态分辨不出：
+   * 目标错取成 `&/tmp/out.txt` 后归一进项目内，命令照样判 writes。
+   * 改用项目外目标即可分辨——取对了落疑似档，取错了落 writes。
+   */
+  const r = classify('echo x >&/tmp/out.txt');
+  assert.deepEqual(r.writes, [], '真实目标 /tmp/out.txt 在项目外，不构成失守');
+  assert.equal(r.suspected.length, 1);
+  assert.ok(r.suspected[0]!.why.includes('项目外'), `目标应是 /tmp/out.txt：${r.suspected[0]?.why}`);
+});
+
+test('重定向：目标本身以重定向记号开头时不得被二次解析（AGY-02）', () => {
+  /*
+   * `echo x > '>/tmp/out'` 的目标 token 是 `>/tmp/out`（引号剥离不改它，内层无空白无分隔符）。
+   * 循环若不先看 consumed，下一轮会把它当新运算符、紧贴支再推一个 `/tmp/out` 进 sinks。
+   *
+   * **目标必须放在项目外才有判别力**（代码双审 CODEX-01 ≡ GLM-01）：
+   * 若两个目标都在项目内（原先写的 `'>foo'`），二次解析产生的重复 sink 会被
+   * `writes: [...new Set(writes)]` 去重，`writes.length` 与 `suspected` 在
+   * 变异前后完全同形——断言分辨不出，那条用例是**空枪**（实测：删掉防御后 48 条全绿）。
+   * 换成这个构造后两种实现的观测**确实不同**（已实测）：
+   *   防御在   ⇒ sinks = ['>/tmp/out']          ——不以 `/` 打头、归一进 /proj/ 之下
+   *                ⇒ writes 一条、**suspected 空**
+   *   防御去掉 ⇒ sinks = ['>/tmp/out', '/tmp/out'] ——二次解析剥出的那个是绝对路径
+   *                ⇒ writes 仍一条（去重），但**多出一条「写入目标在项目外」疑似**
+   * 判别点就在 suspected：它从空变成 1 条。
+   */
+  const c = "echo x > '>/tmp/out'";
+  const r = classify(c);
+  assert.deepEqual(r.writes, [c], '目标 >/tmp/out 归一后落在项目内');
+  assert.deepEqual(
+    r.suspected,
+    [],
+    '二次解析会把 /tmp/out 剥成第二个 sink 并落「项目外」疑似——出现即说明防御失效',
+  );
 });

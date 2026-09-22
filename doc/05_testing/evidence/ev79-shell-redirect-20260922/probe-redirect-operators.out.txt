@@ -1,0 +1,69 @@
+环境
+  zsh    : zsh 5.9 (arm64-apple-darwin26.0)
+  bash   : GNU bash, version 3.2.57(1)-release (arm64-apple-darwin26)
+  uname  : Darwin 27.0.0
+  仓库    : feaa61e
+
+── zsh：文件目标族（建出同名文件即为文件重定向）──
+  > 2                                rc=0  建出文件: 2 
+  >> 2                               rc=0  建出文件: 2 
+  &> 2                               rc=0  建出文件: 2 
+  &>> 2                              rc=0  建出文件: 2 
+  >>& 2                              rc=0  建出文件: 2 
+  >>&2（紧贴）                           rc=0  建出文件: 2 
+  >&2foo（等值防线）                       rc=0  建出文件: 2foo 
+  2>& t1.txt                         rc=0  建出文件: t1.txt 
+  2>&t2.txt（紧贴）                      rc=0  建出文件: t2.txt 
+  >>& sep.txt                        rc=0  建出文件: sep.txt 
+  >>&glu.txt（紧贴）                     rc=0  建出文件: glu.txt 
+  2>>&1                              rc=0  建出文件: 1 
+  >>&-                               rc=0  建出文件: - 
+
+── zsh：强制覆盖后缀族（后缀消去 fd 语义）──
+  >&| t1.txt                         rc=0  建出文件: t1.txt 
+  >&! t2.txt                         rc=0  建出文件: t2.txt 
+  &>| t3.txt                         rc=0  建出文件: t3.txt 
+  &>! t4.txt                         rc=0  建出文件: t4.txt 
+  2>&| t5.txt                        rc=0  建出文件: t5.txt 
+  2>&! t6.txt                        rc=0  建出文件: t6.txt 
+  ↓ 同族配纯数字/减号目标 —— r5 的 isFdOp 误把它们当 fd 操作排除（三侧同时命中）
+  >&| 2                              rc=0  建出文件: 2 
+  >&!2（紧贴）                           rc=0  建出文件: 2 
+  >&| -                              rc=0  建出文件: - 
+  2>&! 1                             rc=0  建出文件: 1 
+
+── zsh：普通强制覆盖后缀 ──
+  >| p1.txt                          rc=0  建出文件: p1.txt 
+  >! p2.txt                          rc=0  建出文件: p2.txt 
+  >>| p3.txt                         rc=0  建出文件: p3.txt 
+  >>! p4.txt                         rc=0  建出文件: p4.txt 
+
+── zsh：真正的 fd 操作（不建文件）──
+  >& 2（分离）                           rc=0  建出文件: （无）
+  >& -（分离）                           rc=0  建出文件: （无）
+  >&2（紧贴）                            rc=0  建出文件: （无）
+  2>&1（紧贴）                           rc=0  建出文件: （无）
+  1>&2（紧贴）                           rc=0  建出文件: （无）
+  >&-（紧贴）                            rc=0  建出文件: （无）
+  2>&-（紧贴）                           rc=0  建出文件: （无）
+
+── zsh：纯减号目标是文件名（与上组对照）──
+  > -                                rc=0  建出文件: - 
+
+── zsh：文法之外（已知残余，本主题不修）──
+  {fd}> fdvar.txt                    rc=0  建出文件: fdvar.txt 
+  >>&&x（应语法错）                        rc=1  建出文件: （无）
+
+── bash 3.2 对照：同形态未必可达 ──
+  2>&b1.txt                          rc=1  建出文件: （无）          /bin/bash: b1.txt: ambiguous redirect
+  2>&b2.txt(--posix)                 rc=1  建出文件: （无）          /bin/bash: b2.txt: ambiguous redirect
+  >>& f                              rc=2  建出文件: （无）          /bin/bash: -c: line 0: syntax error near unexpected token `&'
+  >& bashsep.txt                     rc=0  建出文件: bashsep.txt  
+
+结论（计划 r6 §1.4.2 三条）：
+  1. fd 语义只属于**无强制覆盖后缀**的 [n]>& 一族；
+     >>& / &> / >&| / >&! 含 & 却都是文件重定向。
+  2. 同一 fd 族内，目标**恰为**纯数字或 - 才是 fd 操作；
+     >&2foo 建出文件，故判据须等值、不可前缀。
+  3. 文本判据外壳无关，取各外壳拼写的并集——
+     某拼写在别的外壳下退非零时，exit_code === 0 的契约已把它挡在判定层外。

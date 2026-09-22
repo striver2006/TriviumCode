@@ -1,0 +1,26 @@
+环境
+  zsh    : zsh 5.9 (arm64-apple-darwin26.0)
+  rm     : /bin/rm: illegal option -- -
+  uname  : Darwin 27.0.0
+  仓库    : feaa61e
+
+── 目标不存在时的退出码（决定误杀面可不可达）──
+  rm -r nope_dir                     rc=1   rm: nope_dir: No such file or directory    进不了判定层：契约只喂 exit_code===0
+  rm -rf nope_dir                    rc=0   （无输出）                                      **可达** —— 本次收紧新引入的误杀路径
+  rm -f nope.txt                     rc=0   （无输出）                                      今天已走幂等档，本次不变
+
+── 长旗标（决定判据用等值还是前缀）──
+  rm --recursive --force             rc=64  rm: illegal option -- -                    BSD rm 不接受长旗标 ⇒ 形态不可达
+  rm --recur --forc                  rc=64  rm: illegal option -- -                    GNU 风格缩写同样不可达
+
+── 对照：目标存在时（正确检出的那一半）──
+  rm -r <存在目录>                       rc=0   目录残留: （已删除）                        退 0 且真删 ⇒ 可达，判 writes 是正确检出
+
+结论：
+  1. -f 让「目标不存在」也退 0，误杀面因此**可达**；不带 -f 的同形态退 1，进不到判定层。
+  2. 本机 BSD rm 拒收一切长旗标（含 GNU 风格缩写），故递归旗标判据用等值匹配、不改前缀——
+     前缀匹配只会平白扩大误判面。
+  3. 误杀形态「目标不存在」没有工作树改动 ⇒ snapshot.drift 为 false。
+     **但该指纹只能单向用**：drift 是 git 树比对、只看已跟踪文件，
+     被 ignore 的目录（如 dist/）被真实递归删除同样 drift=false，
+     直接据此判「误报」会把真失守降级（代码双审 CODEX-09）。

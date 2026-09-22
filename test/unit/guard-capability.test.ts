@@ -20,7 +20,7 @@ import {
   TOOL_TRACE_CAPABILITY,
   type TraceCapability,
 } from '../../src/trivium/adapters/base.js';
-import { judgeSide } from '../../src/trivium/guard.js';
+import { judgeSide, matchConsulted } from '../../src/trivium/guard.js';
 import { TRIVIUM_DIR, defaultConfig } from '../../src/trivium/config.js';
 import type { CriticRequest, CriticResult, Review } from '../../src/trivium/types.js';
 
@@ -225,6 +225,93 @@ test('回填是派生视图，绝不回写 CriticResult（诚实记录不被污�
   const r = result({ read_paths: [], command_texts: ['cat src/a.ts'] });
   effectiveReadPaths(r, COMMAND_TRACE, ROOT);
   assert.deepEqual(r.read_paths, [], 'read_paths 记的是适配器实际采到什么，推导结果不得写回');
+});
+
+/*
+ * ── 重定向目标不得进回填（EV-79 缺口二的**危害出口**） ──
+ *
+ * 回填的消费方只有三处：`checkEvidence` 的 `no_trace` 与 `projectReads`、
+ * `judgeSide` 的 consulted 交叉核对（措施 a 不吃回填，见本文件上方那组用例）。
+ *
+ * 所以「重定向目标以读取身份进路径面」的真实危害是**证据自证**：
+ * 一条从未读过的路径，只要被某次重定向当过目标，就能让 consulted 里的虚假声明
+ * 下面三条分别打：`effectiveReadPaths`（两个出口的共同直接输入）、
+ * `matchConsulted`（consulted 交叉核对的真出口）、`checkEvidence` 的 `projectReads`
+ * （证据面的真出口）——只钉 `extractPathTokens` 的正负输出
+ * 守的是中间函数，与「为什么必须连读面一起修」这条理由脱钩。
+ */
+
+test('回填：双流重定向的目标不进有效读取路径（证据面出口）', () => {
+  const r = result({
+    read_paths: [],
+    command_texts: [
+      'echo secret &> src/leak.txt',
+      'echo secret >& src/leak2.txt',
+      'echo secret 2>& src/leak3.txt',
+      'echo secret >>& src/leak4.txt',
+    ],
+  });
+  const eff = effectiveReadPaths(r, COMMAND_TRACE, ROOT);
+  for (const n of ['leak', 'leak2', 'leak3', 'leak4']) {
+    assert.ok(
+      !eff.includes(`${ROOT}/src/${n}.txt`),
+      `重定向目标是写入点、不是读取证据，不得计进 projectReads：${n}.txt`,
+    );
+  }
+  assert.deepEqual(eff, [], '这四条命令没有任何真实读取');
+});
+
+test('回填：重定向目标不得坐实虚假的 consulted 声明（交叉核对出口）', () => {
+  /*
+   * 审查员从未读过 src/never-read.ts，只是把它当过一次重定向目标。
+   * 若该目标进了回填，consulted 里写上它就能通过 judgeSide 的交叉核对——
+   * 这正是本主题要堵的「证据自证」。
+   *
+   * **断言打到真出口**（代码双审 CODEX-10 ≡ AGY-01）：只断言 effectiveReadPaths
+   * 是止步于「出口的直接输入」，差一跳。下面把它喂进 matchConsulted，
+   * 断言那条虚假声明确实落进 missing——与 grep-hits.test.ts 同款口径。
+   */
+  const r = result({
+    read_paths: [`${ROOT}/src/a.ts`],
+    command_texts: ['cat src/a.ts', 'echo x &> src/never-read.ts'],
+  });
+  const eff = effectiveReadPaths(r, COMMAND_TRACE, ROOT);
+  assert.ok(eff.includes(`${ROOT}/src/a.ts`), '真实读取仍在');
+  assert.ok(
+    !eff.includes(`${ROOT}/src/never-read.ts`),
+    '只当过重定向目标的路径不得成为“读过”的证据',
+  );
+
+  // 真出口：虚假声明进 missing，真实读取进 matched
+  const m = matchConsulted(['src/a.ts', 'src/never-read.ts'], eff, [ROOT]);
+  assert.ok(m.matched.includes('src/a.ts'), '真读过的仍能被坐实');
+  assert.ok(
+    m.missing.includes('src/never-read.ts'),
+    '只当过写目标的路径必须落进 missing——否则 consulted 可以自证',
+  );
+});
+
+test('回填：重定向目标不得计进 projectReads（证据面出口）', () => {
+  /*
+   * 第三处消费方（代码双审 CODEX-08）：上一轮只把 consulted 那一侧打到了真出口，
+   * `checkEvidence` 的 `projectReads` 仍停在直接输入——正是本主题自己批评过的「差一跳」。
+   * 项目内读取计数会渲染进 run 元数据与留痕，虚假坐实同样成立。
+   *
+   * 构造：`read_paths` 为空、`command_texts` 只放双流重定向 ⇒ 没有任何真实读取
+   * ⇒ `projectReads` 必须是 0。若重定向目标混进回填，这里会变成 4。
+   */
+  const r = result({
+    read_paths: [],
+    command_texts: [
+      'echo secret &> src/leak.txt',
+      'echo secret >& src/leak2.txt',
+      'echo secret 2>& src/leak3.txt',
+      'echo secret >>& src/leak4.txt',
+    ],
+    tool_calls: { read: 0, grep: 0, glob: 0, run_command: 4 },
+  });
+  const ev = checkEvidence(r, REQ, { ...OPTS, capability: COMMAND_TRACE });
+  assert.equal(ev.projectReads, 0, '四条命令没有任何真实读取，写目标不得充数');
 });
 
 // ── checkEvidence 分档 ────────────────────────────────────────────

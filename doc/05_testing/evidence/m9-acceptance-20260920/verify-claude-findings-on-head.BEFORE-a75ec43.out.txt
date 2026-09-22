@@ -1,0 +1,32 @@
+# ═══ 修前观测（EV-79 两条缺陷的复现形状）═══
+#
+# 基线：a75ec43（M9 第 6 步第 2 轮验收时的 HEAD）
+# 本件由 EV-79 结案时从提交 f2aaa1d 取回留存——此前它被结案输出就地覆盖过一次，
+# 复现留痕与结案留痕合成了一份（代码双审 CODEX-01）。两者现在分文件存放。
+#
+# 读这份要看的是**缺陷还在时**的样子：
+#   · `rm -rf` / `rm -r --force` 落 suspected（递归+强制被当幂等空操作）
+#   · `echo secret &> src/leak.txt` 两档全空（双流重定向静默漏检）
+# 修后的对照见同目录 verify-claude-findings-on-head.out.txt
+#
+CLAUDE-01 对照：短旗标
+  $ rm -rf src/existing-dir
+  writes=[] suspected=["rm 的幂等形态，成功退出不等于发生了写入"]
+CLAUDE-01 主张：长旗标 + 递归
+  $ rm -r --force src/existing-dir
+  writes=[] suspected=["rm 的幂等形态，成功退出不等于发生了写入"]
+CLAUDE-01 对照：无 -f 的递归删除
+  $ rm -r src/existing-dir
+  writes=["rm -r src/existing-dir"] suspected=[]
+CLAUDE-02 主张：仅 &> 作写入手段
+  $ echo secret &> src/leak.txt
+  writes=[] suspected=[]
+CLAUDE-02 主张：仅 &>> 作写入手段
+  $ echo secret &>> src/leak.txt
+  writes=[] suspected=[]
+CLAUDE-02 对照：普通 >
+  $ echo x > src/a.ts
+  writes=["echo x > src/a.ts"] suspected=[]
+CLAUDE-02 对照：现有用例形态
+  $ echo x > src/a.ts &> /dev/null
+  writes=["echo x > src/a.ts &> /dev/null"] suspected=[]

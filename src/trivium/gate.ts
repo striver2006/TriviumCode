@@ -314,15 +314,25 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
      * 不是「工作区确有改动」——两者要分开说。`breached_files` 装的是 `工具名(参数)` 形式的
      * 调用记录，不是文件路径；该判据有过误报（M9 第 6 步 run 20260919T120643Z：
      * 五条记录全是 `StructuredOutput(...)`，`snapshot.drift.changed: false`），
-     * 所以处置分两步：先看 `snapshot.drift` 与工作区，确有改动才谈清理，没有就按误报登记。
+     * 所以处置分两步：先看 `snapshot.drift` 与工作区，确有改动才谈清理。
+     *
+     * **`drift` 只能单向用**（EV-79 代码双审 r2 CODEX-09、r3 CODEX-r3-01）：
+     * `judgeDrift` 是 git 树比对，**只看已跟踪文件**，`ownPrefixes` 还显式排除归档根与
+     * `.trivium/`。于是 `dist/` 这类在 `.gitignore` 里的目录被真实递归删除同样 drift=false。
+     * 所以 drift=false **只排除了「已跟踪文件被改」这一种失守**，不足以推出误报——
+     * 还要核调用记录本身是不是真的写、目标是否真实存在、是否被 ignore。
+     * 拿 drift=false 直接判误报会把真失守降级，这正是本判据要防的事。
+     *
      * 整跑布尔说不出是哪一侧（EV-75②），这里不暗示可以按侧清理。
      */
     failures.push({
       code: 'readonly_breach',
       message:
         '本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），裁决不得进入审批。' +
-        '处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查；' +
-        '没有改动则是写事件判据误报，按 BACKLOG EV-75 登记后重跑。调用记录（非文件路径）：' +
+        '处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。' +
+        'drift 为 false 只排除了「已跟踪文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，' +
+        '还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。' +
+        '调用记录（非文件路径）：' +
         (files.length > 0 ? files.slice(0, 8).join('、') + (files.length > 8 ? '…' : '') : '（run 元数据未记录）'),
     });
   }
