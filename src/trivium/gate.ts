@@ -13,7 +13,6 @@ import { isFallbackId, parseDisposition, type ParsedDisposition } from './dispos
 import { checkRecordedArtifacts, listStageArtifacts, metaDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { dispositionKindForStage } from './naming.js';
-import { parseFrontMatter } from './render.js';
 import { parseReview } from './parse.js';
 import { validateDispositionFrontMatter } from './schemas.js';
 
@@ -1012,42 +1011,6 @@ async function fileExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * 从审查文档 front-matter 读回本轮的 run_id（`gate --check` 不必要求人传）。
- *
- * 跳过的是**当轮 Driver 的产出**（原稿与裁决件不带审查侧的 run_id），
- * 而不是字面的 claude（计划 §2.1 / B-4）——Claude 作为审核者时，
- * 写死跳过会让反查恒返回 null。
- */
-/**
- * @deprecated M9 第 5 步起**闸门区不再用它**，改为 `meta.latestRunMeta` 直读留痕。
- *
- * 它按工件后缀反推 run_id，而「跳过当轮 Driver 的产出」这一步**需要先知道 driver**——
- * driver 又只记在运行元数据里，于是构成循环依赖。非缺省 Driver 且 `--critics claude`
- * 时本轮审查件全是 `-claude.md`，按缺省 Driver 推会整批跳过并返回 null，
- * 闸门以「请先跑一次双审」硬失败（计划双审 r2 AGY-01，判阻断）。
- *
- * 现无生产消费方。保留仅为不扩大本步改动面；**不要在新代码里用它**，
- * 需要 run_id / driver / 轮次一律走 `latestRunMeta`。删除登记为 EV-64。
- */
-export async function inferLatestRunId(
-  layout: ArchiveLayout,
-  stage: Stage,
-  rerunIndex: number,
-  driver: AgentId = DEFAULT_DRIVER,
-): Promise<string | null> {
-  const items = await listStageArtifacts(layout, stage);
-  for (const i of items) {
-    if (i.parsed.rerunIndex !== rerunIndex) continue;
-    if (i.parsed.role === driver) continue;
-    const p = path.join(layout.archiveRoot, layout.topic, stage, i.fileName);
-    const fm = parseFrontMatter(await fs.readFile(p, 'utf8'));
-    const runId = fm?.['run_id'];
-    if (typeof runId === 'string') return runId;
-  }
-  return null;
 }
 
 export type { Disposal };

@@ -142,6 +142,24 @@ test('与主脑同源时醒目告警并记录覆盖理由（AC-18）', () => {
   assert.equal(fm['override_reason'], '用户显式指定');
 });
 
+test('同源旗标不写死 Claude 系（EV-62）', () => {
+  /*
+   * 判据改为按当轮 Driver 厂商的名义模型族之后，同源的那一侧未必是 Claude 系：
+   * Driver 为 Codex 时，gemini 侧经显式覆盖跑 gpt-* 也会判同族。旗标若仍写
+   * 「本侧使用了 Claude 系模型」，读的人会被带到错的方向上。
+   */
+  const reason = '用户经 --model-gemini 显式指定了与当轮 Driver（Codex）同族的模型';
+  const md = renderReviewDoc(input({
+    heterogeneous: false, overrideReason: reason,
+    modelRequested: 'gpt-oss-120b-medium',
+  }));
+  assert.ok(md.includes('与主脑同源'));
+  assert.ok(md.includes(reason));
+  assert.ok(!md.includes('Claude 系'), '同源旗标不得再写死「Claude 系」');
+  // 这一格是按模型名的检出，不是同源的证明——标题不得写成确定性结论（代码双审 r5 CODEX-03）
+  assert.ok(md.includes('疑似与主脑同源'), '同源旗标的标题要带「疑似」：检出不等于证明');
+});
+
 test('零意见时文件照常渲染，并提示这不等于没审（FR-13）', () => {
   const md = renderReviewDoc(input({
     review: { ...REVIEW, findings: [], verdict: 'approve', summary: '未发现阻断性问题。' },

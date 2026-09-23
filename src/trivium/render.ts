@@ -311,7 +311,10 @@ export function renderReviewDoc(input: RenderInput): string {
     );
   }
   if (!input.heterogeneous) {
-    flags.push(`**与主脑同源**：本侧使用了 Claude 系模型${input.overrideReason ? `（${input.overrideReason}）` : ''}。`);
+    flags.push(
+      `**疑似与主脑同源**：本侧生效模型落在当轮 Driver 厂商的名义模型族里` +
+        `（按模型名判定，启发式）${input.overrideReason ? `：${input.overrideReason}` : ''}。`,
+    );
   }
   if (flags.length > 0) parts.push(flags.map((f) => `> ⚠️ ${f}`).join('\n>\n'));
 

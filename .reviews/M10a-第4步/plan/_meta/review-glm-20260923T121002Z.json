@@ -1,0 +1,85 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "三个焦点逐一核实基本成立：闸 7 落点确在闸 6（scripts/mutation-check.mjs:198-208，try 之外）与建哨兵（:229）之间、先于任何工作树写盘，零命中改整批拒跑不伤合法写法（零命中今天本就计 ✖ 并在收尾 exit 1，装置 :284、:355-357）；codex profile 两条不采用理由成立（`-p` 只进审核者调用 argv，profile 字段仅 codex 一家有）；§6 各 find 串与写点 A/B、render.ts:314、cli.ts:984、gate.ts:1053 的唯一命中前提均对得上，U5② 改正说明、驳回 AGY-03、暂缓 AGY-04 的理由都成立。最需要改的一条：§2.2 代价段与 EV-107 ① 写的 driver=codex 两种错判形态在选侧层不可达（critics.ts:302 硬拒 critic=driver，其余三家审核者跑不了 qwen/gpt-*），属把未经核实的形态写进落点。次条：D3 的鉴别叙事部分失实且 M-D3 手工程序缺工作树收尾步骤。另有一条 nit：§6 自称逐字写出而 M64a/b 并未写出。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.2「代价要写明」段；§2.6 EV-107 ①「具体到 driver=codex」句",
+      "problem": "计划两处断言 driver=codex 时「审核者跑 qwen 会被判异构、审核者跑 gpt-* 会被判同族」，并把它们当作本判据的真实代价登记。这两个形态在现行选侧层都构造不出来：能跑 qwen 或 gpt-* 的只有 codex 审核者（config.ts 的模型表里 qwen 只出现在 profiles.codex，config.ts:350/366），而 driver=codex 时 codex 恰好被排除——selectableCritics 只做「减当轮 Driver」（critics.ts:88-90），显式 --critics codex 兼任也被 critics.ts:302-309 以 USAGE 64 硬拒；其余三家（claude/gemini/glm）的内置与可覆盖模型里没有 qwen/gpt-*。于是这两类「错判」无从发生，driver=codex 下可达的残余只是 Driver 名义族（gpt）与其真实模型不符这一层，且在内置配置下无可观测错判。这正是本稿 §0.2 要防的「没核实就把事实写进落点」，且会随 §5.1 原样落进 BACKLOG 的 EV-107 条目。",
+      "evidence": "src/trivium/critics.ts:80-91（selectableCritics＝启用∩有配置段−driver）、:302-309（id===driver 抛 USAGE「当轮 Driver 不能同时当审核者」）；src/trivium/config.ts:346-386（两档 profiles 里 qwen 只属于 codex 键，claude/gemini/glm 均为各家自有模型）；src/trivium/adapters/codex.ts:62-76（-p 只进审核者调用的 argv）",
+      "suggestion": "把 §2.2 代价段与 EV-107 ① 的 driver=codex 两句改写成如实口径：要么标注「当前选侧层不可达，属假设形态（须未来放开 driver 兼任审核者或出现第二家 openai 系 Agent）」，要么换成可达的误差实例（如 driver=claude 经兼容端点跑别家模型时，gemini 审核者经显式覆盖跑 claude-* slug 被判同族——Antigravity 确实提供 claude-* slug）。两条不采用 profile 的理由本身成立，不受此影响。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3.5 锁例 D3 与 M-D3 手工验证段",
+      "problem": "D3 的鉴别叙事与手工程序有两处对不上装置实况。其一：计划称「去掉闸 7 后……D3 断言『不留哨兵』『在构建前拒绝』红」，但四条列出的断言里并没有「在构建前拒绝」这条；而「不留哨兵」只有在装置被 D3 的 60s 超时杀死（finally 未跑）时才变红——装置任何**干净完成**的失败路径（基线不绿、读不出测试结果、零命中计 ✖ 后收尾 exit 1）都会走 finally 把哨兵删掉（mutation-check.mjs:352），届时唯一可靠变红的只有「stderr 点名两条 case 与命中数」这一条。鉴别力还在，但计划写的红法不成立，报告会照错的机制记账。其二：M-D3 手工步骤（删闸 7、跑测试、确认红、恢复比对）没写工作树收尾——无闸 7 的那次运行要么超时被杀、在仓库根留下 stale 哨兵（下次任何装置运行会被闸 3 前半拦下），要么真刀真枪对一个仓库文件做变异+恢复+两次全量构建；另外 D3 未指定 spec 的 suites，也没要求 D3 自身先断言「多处串仍多处、零处串仍零处」——目标文件漂移后（多处串恰好变唯一）闸 7 仍会因零命中条拒跑、stderr 仍点名两条 case，D3 照绿但已不再覆盖多处命中分支；极端情况下两条都漂移成恰好 1 处，装置会在单测里进入真跑。",
+      "evidence": "scripts/mutation-check.mjs:264-273（基线不绿即 throw）、:283-285（零命中记 ✖ 继续）、:318-353（finally 恢复、重建、dirtyExit=false 时删哨兵）、:355-357（有 ✖ 即 exit 1）；test/unit/mutation-device.test.ts:43-50（run 带 timeout 60_000）、:52-83（D1 显式 finally 清哨兵的先例）；计划 §3.5 只列四条断言、未指定 suites 与计数前置断言",
+      "suggestion": "§3.5 补三件小事：① 鉴别说明改为如实口径——干净失败路径下哨兵会被 finally 删掉，稳定咬住 M-D3 的是 stderr 断言，「不留哨兵」仅在超时/异常杀进程时连带变红；② M-D3 手工步骤加收尾：跑完删 `.mutation-check-running`、`git status` 核对目标文件与 dist 后再恢复装置文件；③ D3 在 spawn 装置前先自己断言规格前提（多处串计数 ≥2、零处串计数为 0，或直接断言 stderr 里的具体命中数），让目标文件漂移变成干净的红，而不是让判据悄悄空转。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §6 变异表 M64a、M64b 两行",
+      "problem": "§6 卷首声称「find 串逐字写出，且必须唯一」，但 M64a 的 find 写作「`const pinned = …;` 那一行」（省略号），M64b 只写「`verifyRoundForApproval` 内一处唯一锚点」，连锚点选哪个都没指名——两条都不满足本稿自设的「逐字写出」标准。落点本身今天是无歧义的（cli.ts:984 的 `const pinned` 全仓唯一；gate.ts 的 verifyRoundForApproval 可选出唯一锚点），闸 7 也会在开跑前机械兜底，残余风险小，但 r2 修正④的声称与表格内容不自洽，实施者要么猜、要么回头补规格。",
+      "evidence": "src/trivium/cli.ts:983-984（`const pinnedId` / `const pinned = pinnedId ? await readRunMeta(ref.layout, stage, pinnedId) : null;` 全仓唯一）；src/trivium/gate.ts:1017-1053（verifyRoundForApproval 区域与 `export type { Disposal };`）；计划 §6 表 M64a/M64b 行的 find 栏",
+      "suggestion": "M64a 补出整行原文，M64b 点名锚点（或逐字写出）；若有意留到实施时定稿，就把 §6 卷首的声称改成「M62 系逐字写出、M64 系以符号定位、实施时逐字核对」，让声称与事实一致。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "焦点一（闸 7 落点）：装置实际顺序为闸 6（mutation-check.mjs:198-208，try 之外）→ 闸 3 前半建哨兵（:229）→ try 内备份/基线/逐条变异；闸 7 插在闸 6 与建哨兵之间确属任何工作树写盘之前（此前唯一写盘是 mkdtemp 临时目录，拒绝路径照闸 6 先例删除），D1/D2 不受影响（D2 在闸 6 先拒、D1 无 case），「头注释闸表加一行 + 删除不可达的软判定分支」也与代码事实一致。",
+    "焦点一（零命中整批拒跑不误伤）：今天零命中本就产出 ✖「变异未命中」并在收尾 exit(1)（:283-285、:355-357），不存在依赖「零命中继续跑」的合法规格；改动只是把失败提前到开跑前、跳过无效工作，B3 的回退路径（恢复软判定分支）也属实。",
+    "焦点二（不取 agents.codex.profile 的两条理由）：`-p` 只经 buildCodexArgs 进 invokeCodex——「唯一执行 codex 的地方」（adapters/codex.ts:62-76、:99），profile 字段只出现在 codex 段（config.ts:322-331；vendorProfileOf 注释「profile 只出现在 openai 分支」，config.ts:478-489；agy/claude 适配器注释自证无 profile 概念），Driver 会话不经编排器拉起——理由一成立；只有一家有此字段、采用即按 id 分叉（纪律 7）——理由二成立。",
+    "焦点三（find 串唯一性）：M62a/b/b′/c/e、M64c 与两个写点的实施后形态一一对应（写点 A 后接 `overrideReason: overrideReasonFor(`、写点 B 后接两行注释再 `override_reason:`，review.ts:1274-1277、:1484-1489；`meta` 在 executeRun 内有绑定 review.ts:1192、agentById 已导入 review.ts:18；render.ts:314 旗标唯一位点；gate.ts:1053 `export type { Disposal };` 唯一）；写点 B 用注释行作区分上下文可接受——注释被删/改时 find 零命中、闸 7 开跑前响亮拒跑，不会静默落错位置。",
+    "U5② 改正后的鉴别说明成立：driver=codex/gemini/glm 时 selectableCritics 均含 claude（critics.ts:88-90 只减 driver），其两档默认模型 claude-sonnet-5 / claude-haiku-4-5-20251001（config.ts:361、:382）在 M62a 退化判据下返回 false，② 断言 ===true 变红；M62a 期望 adapter-base 3 自洽（U1/U5① 仍绿：DEFAULT_CRITICS 三家模型 qwen/gemini/GLM 均非 claude）。「新增检出」行 72 格零命中与我对两档×四家×三侧的静态交叉验证一致。",
+    "驳回 AGY-03 的理由成立：闸门区本就要读裁决件 front-matter 比对 run_id 与 role（disposition.ts 的 DispositionRow 形状、driver-wiring「闸门区」用例钉住的 checkAdjudication 取值判据），「gate.ts 不得解析 front-matter」确是会误伤正当用途的又一条名字判据；暂缓 AGY-04 的理由也成立——o 系列不含 gpt 属实，在已知不准的近似上逐个补模式应等真载荷数据，触发条件已如实写进 EV-107②。",
+    "U9 与 M64 系期望条数自洽：既有「闸门区」用例断言 cli.ts 不得再调 inferLatestRunId（driver-wiring.test.ts:372-378），M64a＝该条+U9 共 2、M64b/c 各 1（gate.ts 无既有扫描、仅 U9 能抓）；U9 的递归枚举+剥注释在 RECONCILE 用例有现成先例，gateDriver 的字面钉死先例（:408-419）支撑 U7 的边界说明；§3.1「删 parseFrontMatter import」与 gate.ts:16/1046 的使用面一致。",
+    "EV-07 两件的事实基础核实无误：LITERAL_ALLOWLIST 的 types.ts 条目原文确为「按 Agent id 命名」「如 :778」（registry-parity.test.ts:275），§4.2 改写未越出「保留」；§5.2 两处移交项原文属实（README.md:89、CASE_manual_acceptance.md:207），演进设计 §5 L283「模型族按生效模型判定，不按 Agent」引文逐字无误，EV-107 编号未被占用（BACKLOG 现无该号），registry-parity 两处注释（:445、:565）指名 base.ts 的现状举例确在本步后失效。",
+    "render 既有「与主脑同源」用例只断言「与主脑同源」与覆盖理由（render.test.ts:133-143），§2.1 第 13 行「不改」与 M62e 期望 render 1 自洽；§8 的 build.mjs --tests-only 旗标存在（scripts/build.mjs:24-25）。"
+  ],
+  "not_covered": [
+    "全程只读（审查员身份），未复跑 typecheck/构建/测试/变异装置：测试基线 1694、§6 各期望失败条数、U5②「落笔时已实测零命中」均为静态推演（config/registry/critics 交叉验证），实跑数字以实施时为准。",
+    "D3 在「无闸 7」情形下 `node --test` 空参数发现面的实际行为与耗时是机制推断，未实测；M-D3 各断言哪条变红依赖该运行如何收尾，本侧只完成了代码路径推演。",
+    "上位依据 r7 的 §7.4/§8/§9 未通读（仅 r1 阶段核过 §5 与 EV-62/64/07 相关引文）；主设计五处命中行（L166/L2486-2487/L2783/L2832）与 PRD FR-17/AC-18 原文本轮未复读，接受 r1 已核结论。",
+    "types.ts ProbeByCli 头注释与 claude?: ClaudeProbe 的行号（r1 记 :785/:807）本轮未复读；CriticResult.heterogeneous/override_reason 注释「没有 Claude 口径」（§2.1 第 15 行）未逐字复核。",
+    "未读另一位审查员的任何产出（背靠背约束）；其结论仅经计划 r2 的转述与裁决件获知。",
+    "skills/ 资产、hooks 契约、集成测试层本轮未触碰（与三焦点无关）。"
+  ],
+  "consulted": [
+    ".reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-r2-claude.md",
+    ".reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-glm.md",
+    ".reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-revised-claude.md",
+    "scripts/mutation-check.mjs",
+    "test/unit/mutation-device.test.ts",
+    "test/unit/driver-wiring.test.ts",
+    "test/unit/adapter-base.test.ts",
+    "test/unit/render.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/config.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/disposition.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/05_testing/CASE_manual_acceptance.md",
+    "README.md",
+    "scripts/build.mjs"
+  ]
+}

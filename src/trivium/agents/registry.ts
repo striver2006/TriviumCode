@@ -46,6 +46,25 @@ export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm';
 export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode';
 
 /**
+ * 各厂商的**名义**模型族，按模型名判定（EV-62，M10a 第 4 步）。
+ *
+ * 唯一用途：`isHeterogeneous` 用它近似「当轮 Driver 的模型族」。
+ * 编排器不采集 Driver 的生效模型，只能假定 Driver 跑的是其厂商的自家模型——
+ * 这是**启发式**。本仓自己就有反例：codex 在本仓默认跑 qwen，Antigravity 提供 claude-* slug。
+ * 它也**不是** `agents.codex.profile` 意义上的「家族」：那一个描述的是审核者调用连到哪家
+ * provider，与 Driver 会话无关。与演进设计 §5「模型族按生效模型判定、不按 Agent」
+ * 在 Driver 一侧有张力，根本解见 BACKLOG EV-107。
+ *
+ * 以 `Record<AgentVendor, …>` 声明：登记第五个厂商而不补这里，编译期就报错。
+ */
+export const VENDOR_MODEL_FAMILY: Readonly<Record<AgentVendor, RegExp>> = {
+  anthropic: /claude/i,
+  openai: /gpt/i,
+  antigravity: /gemini/i,
+  zcode: /glm/i,
+};
+
+/**
  * 护栏等级（计划 §7.5）。
  *
  * L1 具备 blocking Hook（闸门期写拦截 + Stop 阻断 + 提交完整性锚）；

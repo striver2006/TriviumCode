@@ -1,0 +1,96 @@
+{
+  "agreed": [
+    "§2.2 对 Driver 侧按厂商推断自家模型族的启发式近似坦诚面对，如实说明了与演进设计 §5「按生效模型、不按 Agent」的张力，准确纠正了初稿将判异构（true）称为保守的误差方向谬误，并将根本解清晰沉淀为 EV-107，架构分期与边界处理极其清醒。",
+    "§2.5 U7 明确界定了仅钉 meta.driver 这一字面写法的边界，结合既有 newRunMeta 锚点形成完整防御闭环；U8 通过 (a)~(e) 五组精心设计的合成代码，走真实判据管线，成功咬住了「参数在场但形对值错」以及「判据退化为只查参数是否存在」的退化形态，构思严密。",
+    "§4.2 对 types.ts 白名单条目的两处失实（行号漂移、键名实为 cliName）查证确凿，改写 why 纠偏描述且改用符号锚点，未动豁免条目本身，完全符合「保留」原则和沿革注释规矩。",
+    "§3.1~§3.4 彻底清理 inferLatestRunId 定义、残留 import 与现状注释，并配以跨全 src/trivium 的防复活名字判据 U9，落点完整且说明了边界。",
+    "证实了 esbuild 打包机制下不带 import 的裸调用在 bundle 阶段被视为自由全局变量处理，不会导致构建中断，变异注入机制在纯源码文本扫描测试场景下是可行的。"
+  ],
+  "consulted": [
+    ".reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-claude.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/review.ts",
+    "src/trivium/render.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "test/unit/adapter-base.test.ts",
+    "test/unit/driver-wiring.test.ts",
+    "test/unit/render.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/helpers/strip-non-code.ts",
+    "scripts/mutation-check.mjs",
+    "scripts/build.mjs",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/05_testing/REPORT_2026-09-23_m10a_step3.md",
+    "doc/05_testing/CASE_manual_acceptance.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "在 test/unit/adapter-base.test.ts 中，U5 ② 的断言论域覆盖 DRIVER_AGENT_IDS × selectableCritics(cfg, driver)。当 Driver 为 codex（vendor 为 openai）时，selectableCritics 包含 claude（模型为 claude-opus-4-6 / claude-sonnet-4-6）。在 M62a 变异下，isHeterogeneous 退回为 return !/claude/i.test(model);，对该组合会返回 false，导致 U5 ② 断言 isHeterogeneous(m, vendor) === true 抛错变红。因此变异后 adapter-base 失败条数为 3（U2, U3, U5 ②），而非 2。详见 .reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-claude.md 的 §2.5 与 §6。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": ".reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-claude.md:347",
+      "problem": "变异 M62a 的期望失败条数推演错误（少算了 U5 ②）：计划在 §2.5 宣称 U5 ② 在 M62a 下照样绿，并将 §6 变异表中 M62a 的期望失败条数记为 adapter-base 2；但实际上 U5 ② 在 M62a 下必定变红，实际失败条数应为 3。",
+      "severity": "major",
+      "suggestion": "纠正 §2.5 U5 中「M62a 下照样绿」的描述，并将 §6 变异表 M62a 的期望变红用例更新为 U2、U3、U5 ②，期望失败条数更正为 adapter-base 3。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 doc/05_testing/CASE_manual_acceptance.md 第 207 行，仍记载「| 4.3 | 两侧 heterogeneous: true | 默认 profile 两侧都不是 Claude 系（AC-18） |」。该文档为项目受控的手工验收用例清单，在 EV-62 改判据之后，该处描述与新行为脱节，应与 PRD / 主设计一同纳入第 5 步回溯。详见 .reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-claude.md 的 §5.2。",
+      "id": "AGY-02",
+      "kind": "scope-drift",
+      "layer": "plan",
+      "location": ".reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-claude.md:320",
+      "problem": "移交第 5 步的设计与需求回溯清单遗漏了测试规约文档 doc/05_testing/CASE_manual_acceptance.md 中把默认审查模型写为「非 Claude 系」的现状断言。",
+      "severity": "minor",
+      "suggestion": "在 §5.2 的移交清单中追加 doc/05_testing/CASE_manual_acceptance.md:207，并入 EV-106。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "src/trivium/gate.ts 中删除 inferLatestRunId 后，其唯一的 parseFrontMatter import 失去用处（第 16 行与第 1046 行）。inferLatestRunId 的本质是通过扫描工件并解析 front-matter 获取元数据，而闸门区其它逻辑（如裁决校验）均使用 parseAdjudication，不使用 parseFrontMatter。详见 src/trivium/gate.ts 与 test/unit/driver-wiring.test.ts。",
+      "id": "AGY-03",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": ".reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-claude.md:272",
+      "problem": "U9 虽如实标明是名字判据，但可低成本补充一项贴近语义的防线，即防范 gate.ts 重新引入工件 front-matter 解析。",
+      "severity": "nit",
+      "suggestion": "可考虑在 driver-wiring.test.ts 中补充断言 gate.ts 不得 import 或调用 parseFrontMatter，与 U9 形成互补，以零额外开销守住「闸门区不得解析工件 front-matter 猜元数据」的语义。"
+    },
+    {
+      "confidence": "low",
+      "evidence": ".reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-claude.md 的 §2.6 EV-107 已明确记录已知漏报形态「OpenAI 的 o 系列不含 gpt」。src/trivium/agents/registry.ts 拟增加的 VENDOR_MODEL_FAMILY 中 openai 仅映射为 /gpt/i。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-claude.md:121",
+      "problem": "VENDOR_MODEL_FAMILY 中 openai: /gpt/i 正则已知漏检 o 系列模型（已登记在 EV-107），在当前模型生态下可在本步顺手收紧。",
+      "severity": "nit",
+      "suggestion": "评估是否将 openai 的模型族正则放宽为 /gpt|^o\\d/i，或保持现状并在 EV-107 中继续追踪。"
+    }
+  ],
+  "not_covered": [
+    "未在真实运行环境中挂载不同厂商 CLI 执行端到端的 trivium review 命令（本步为计划审查阶段，尚未进入代码实施与真机运行）",
+    "未对 config.ts 中可能通过外部自定义 provider 加载的动态模型命名空间做全量正则穷举测试",
+    "未复跑全量测试套件（严格遵守只读约束，基线数据以第 3 步测试报告为准）",
+    "未对其它历史阶段已经完成结案的旧 EV 条目做逐字重新审计"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "§6 变异表存在一处推演错误：变异 M62a 期望失败条数误记为 2，实测 U5 ② 必然在 Driver 为 codex 且审核者为 claude 时变红，实际失败条数应为 3，若不纠正会在实跑装置时造成数目不符返工。\n§5.2 移交第 5 步的回溯清单遗漏了 CASE_manual_acceptance.md:207 的旧口径断言。\n其余焦点全部核实通过：Driver 近似及 EV-107 定位准确；U7 字面钉死边界与 U8 判据自测能够咬住退化；U9 名字判据边界说准且裸调用可通过 esbuild 打包；types.ts 豁免的改写两处失实属实且未越出保留范围。整体规划严密。",
+  "verdict": "request-changes"
+}

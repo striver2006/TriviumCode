@@ -271,8 +271,11 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
    *     EV-66 在 M9 第 6 步前就把 role 放开成 AgentId 了，那句预言本身失效，
    *     再留着就是一条**失实的留痕**（而上面那条守卫只查字面在不在，查不出理由过期）。
    * 现在的理由是探针键，与裁决件契约无关。下一个动这行的人请照样如实改写，别顺手删。
+   *   · M10a 第 4 步（EV-07 结案时）：理由未变，改准了描述——原文把键说成 Agent id、
+   *     行号 :778 已漂移。键其实按 cliName 索引（`ProbeByCli` 头注释原话），
+   *     改用符号锚，不再写行号。
    */
-  { file: 'types.ts', why: "ClaudeProbe 等探针结果的按 Agent id 命名的可选键（如 :778 的 claude?: ClaudeProbe）：探针形状逐家不同，键名即 Agent id，泛化要等各家探针结构收敛" },
+  { file: 'types.ts', why: 'ProbeByCli 的具名可选键（claude?: ClaudeProbe、codex?: CodexProbe）：键按 cliName 索引，只因 claude / codex 的 cliName 恰与 AgentId 同形才被本扫描命中（成因同 probes/codex.ts 条）；探针形状逐家不同，泛化要等各家探针结构收敛' },
 ];
 
 test('白名单纪律：每一项都要写明理由，且不得豁免不存在的文件', async () => {
@@ -442,7 +445,7 @@ function stripComments(src: string, opts: { keepStrings?: boolean } = {}): strin
      * 之后才可能是正则，否则是除号。不完备，但足以覆盖本仓库的写法；
      * 且**正则内容整体跳过**——它里面的引号不该参与任何判定。
      *
-     * 代价：正则字面量里的 Agent 名（如 `adapters/base.ts` 的 `!/claude/i.test(model)`）
+     * 代价：正则字面量里的 Agent 名（如 `/claude/i` 这类写法）
      * 对账扫不到。这条已在「不覆盖的形态」里如实登记，不追全覆盖。
      */
     if (c === '/' && lastMeaningful !== null && /[(,=:[!&|?{};]/.test(lastMeaningful)) {
@@ -562,8 +565,8 @@ test('grep 对账：白名单外的模块不得出现 Agent id / 前缀字面量
  * 1. **散文/文案**：`divergence.ts` 曾有「仅 gemini … 仅 glm」的输出文案，
  *    空格前缀、后不接冒号，三个模式**都不匹配**。那处是重构成 `${d.a} × ${d.b}`
  *    顺手修掉的，**不是**对账守住的——早先这份注释把它列为覆盖对象，是高估（GLM-03）。
- * 2. **正则字面量**：`adapters/base.ts` 的 `!/claude/i.test(model)` 是行为逻辑，
- *    而剥离器会整体跳过正则内容（否则里面的引号会让状态机失步）。
+ * 2. **正则字面量**：`/claude/i` 这类写法若是行为逻辑，
+ *    剥离器会整体跳过正则内容（否则里面的引号会让状态机失步）。
  * 3. **模板串里的旗标与枚举散文**：`cli.ts` 的 USAGE 里 `--model-gemini`、
  *    `--only gemini|glm` 之类，第三家启用后会静默过期。
  *

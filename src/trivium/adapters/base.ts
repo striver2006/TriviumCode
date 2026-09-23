@@ -15,6 +15,7 @@ import os from 'node:os';
 import type {
   Config, CriticId, CriticRequest, CriticResult, Stage, SuspectedWrite,
 } from '../types.js';
+import { VENDOR_MODEL_FAMILY, type AgentVendor } from '../agents/registry.js';
 
 export interface AdapterContext {
   cfg: Config;
@@ -1778,8 +1779,15 @@ export function routeModel(
   return { model: null, source: 'none' };
 }
 
-/** 是否与主脑异构（FR-17 / AC-18）：Claude 系模型即为同源 */
-export function isHeterogeneous(model: string | null): boolean {
+/**
+ * 审查模型是否与当轮 Driver 异构（FR-17 / AC-18；EV-62 起按当轮 Driver 判定）。
+ *
+ * 判据：模型名**不落在** Driver 厂商的名义模型族里，即判异构。两层都是启发式：
+ * 模型族靠模型名判（`VENDOR_MODEL_FAMILY`），Driver 的模型族靠厂商近似。
+ * 所以 `true` 的准确读法是「未检出同族」，不是「确认异构」。
+ * 取不到模型名时判 `true`，与改动前一致。
+ */
+export function isHeterogeneous(model: string | null, driverVendor: AgentVendor): boolean {
   if (!model) return true;
-  return !/claude/i.test(model);
+  return !VENDOR_MODEL_FAMILY[driverVendor].test(model);
 }

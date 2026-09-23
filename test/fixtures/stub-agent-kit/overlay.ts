@@ -62,7 +62,7 @@ export const STUB_MODEL = 'stub-model-v0';
  * 计划稿第一版漏了模型路由、第二版补成六件，这里是第三次补。
  */
 export const KIT_WHITELIST: readonly { path: string; piece: string }[] = [
-  { path: 'src/trivium/agents/registry.ts', piece: '① 注册项：身份、后缀、前缀、厂商、能力开关' },
+  { path: 'src/trivium/agents/registry.ts', piece: '① 注册项：身份、后缀、前缀、厂商、能力开关、厂商名义模型族' },
   { path: 'src/trivium/adapters/stub-agent.ts', piece: '② 适配器本体：该 Agent 的执行者' },
   { path: 'src/trivium/adapters/index.ts', piece: '② 适配器接线：唯一的 id → 执行者登记处，加一行' },
   { path: 'src/trivium/probes/stub.ts', piece: '③ 探针：可用性与版本' },
@@ -198,6 +198,17 @@ export async function applyOverlay(dest: string): Promise<string[]> {
       "export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode';",
       `export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode' | '${STUB_VENDOR}';`,
       'AgentVendor union',
+    );
+    /*
+     * 名义模型族（EV-62，M10a 第 4 步）：`VENDOR_MODEL_FAMILY` 以 `Record<AgentVendor, …>`
+     * 声明，加了厂商而不补这一条，**typecheck 当场报错**——那正是它要的效果。
+     * 本套件的「加桩后 tsc 仍自洽」用例在该步第一次跑时就是这样红的。
+     */
+    s = anchor(
+      s,
+      '  zcode: /glm/i,\n};',
+      `  zcode: /glm/i,\n  ${STUB_VENDOR}: /stub-model/i,\n};`,
+      'VENDOR_MODEL_FAMILY 末项',
     );
     s = anchor(
       s,

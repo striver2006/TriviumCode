@@ -292,22 +292,37 @@ export async function resolveTaskGoal(
  *
  * ## 取值来源写死在这里，不留给调用点各写一份
  *
- * 只有两种成因：用户显式指定，或档位默认落在了 Claude 系。两个写点
+ * 只有两种成因：用户显式指定，或档位默认落在了与当轮 Driver 同族的模型上。两个写点
  * （审查文档 front-matter 与运行元数据）**共用本函数**——各写一份文案就会
  * 踩破「两处同值」这条判据本身。
  *
  * **只补写入方，不升 schema 的 `if/then` 机器判据**：那会让历史留痕集体读不回。
+ *
+ * ## M10a 第 4 步的变化（EV-62）
+ *
+ * 判据改为按**当轮 Driver 厂商的名义模型族**判定（`VENDOR_MODEL_FAMILY`，启发式），
+ * 上面「恒返回 false」一句是 M9 时点的叙事，保留原文。文案随之不再写死「Claude 系」，
+ * 改为点名当轮 Driver；历史留痕里的旧文案不回改，新旧两种说法并存。
+ *
+ * `agentById(driver)!` 的非空断言依赖的是 **run.v2 校验**：`driver` 取自 `meta.driver`，
+ * 而 `meta` 在两条路径上都过了 `validateRunMeta` → `checkAgentIdentities`（要求 driver
+ * 为已登记 id）——同步路径是 `prepareRun` 里 `writeRunMeta` 落盘之前，worker 路径是
+ * `rebuildContext` 里 `readRunMeta` 读回之时（读不过即抛）。两个写点都在 `executeRun` 里，
+ * 排在这两处之后。**不是「入口的 `resolveDriver` 已经拦过」**：worker 分支根本不经过它
+ * （代码双审 r5 CODEX-01）。本函数自己不做这个判定。
  */
 function overrideReasonFor(
   c: CriticId,
   model: string | null,
   modelOverrides: Partial<Record<CriticId, string>>,
   profileRequested: string | null,
+  driver: AgentId,
 ): string | null {
-  if (isHeterogeneous(model)) return null;
+  const desc = agentById(driver)!;
+  if (isHeterogeneous(model, desc.vendor)) return null;
   return modelOverrides[c]
-    ? `用户经 --model-${c} 显式指定了 Claude 系模型`
-    : `档位 ${profileRequested ?? '（缺省）'} 的默认模型落在 Claude 系`;
+    ? `用户经 --model-${c} 显式指定了与当轮 Driver（${desc.display}）同族的模型`
+    : `档位 ${profileRequested ?? '（缺省）'} 的默认模型与当轮 Driver（${desc.display}）同族`;
 }
 
 /** 运行目录按仓库路径哈希分桶，避免不同项目互相覆盖 */
@@ -1271,9 +1286,9 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
        * 裁决者读的是这份单侧文档，「有效侧不足、这一档没做」直接决定他还剩几层防线。
        */
       jointCheck: jointCheckRun,
-      heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model),
+      heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model, agentById(meta.driver)!.vendor),
       overrideReason: overrideReasonFor(
-        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested,
+        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested, meta.driver,
       ),
     });
 
@@ -1481,11 +1496,11 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       tool_calls: { ...r.tool_calls, project_reads: side?.projectReads ?? 0 },
       evidence_ok: side?.evidenceOk ?? false,
       ...(r.usage ? { usage: r.usage } : {}),
-      heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model),
+      heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model, agentById(meta.driver)!.vendor),
       // 与上面渲染侧**共用同一个派生函数**：两处各写一份文案就会踩破
       // 「front-matter 与运行元数据两处同值」这条自己要守的判据（EV-54）
       override_reason: overrideReasonFor(
-        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested,
+        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested, meta.driver,
       ),
       fail_reason: r.fail_reason,
       empty_review: (reviews[c]?.findings.length ?? -1) === 0,

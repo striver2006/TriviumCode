@@ -16,7 +16,10 @@
  * 「脚本静默地没做我以为它做的事」——本仓纪律 12 的原话是
  * **「靠记性的纪律要换成不依赖记性的机制」**。所以它们必须是装置的默认行为。
  *
- * ## 五道闸，缺一不可
+ * ## 七道闸，缺一不可
+ *
+ * 原题写「五道闸」，是闸 6、闸 7 补入之前的数；两次补闸都没跟着改标题，
+ * M10a 第 4 步代码双审 r5 GLM-02 指出后改正。
  *
  * | 闸 | 防的是 |
  * | :--- | :--- |
@@ -26,6 +29,7 @@
  * | 变异后断言**被测产物确实变了** | 变异 no-op（replace 没匹配上）而我以为它生效了 |
  * | 每条跑完**恢复件与基线逐字节比对** | 恢复本身失败（写半截、路径再错） |
  * | 开跑前断言 **cases ⊆ targets** | 规格写漏 ⇒ 变异留在工作树上（恢复面够不到） |
+ * | 开跑前断言 **每条 find 在目标文件中恰好命中一处**（闸 7） | 只替换首处 ⇒ 同形文本处变异落错位置，而装置照报「咬住」 |
  *
  * 第四道是 codex 建议的形态：**用指纹证明身份**，本仓 `TRIVIUM_STUB_CRITIC` 桩有先例。
  * 没有它，一条 `replace` 悄悄没匹配上就会产出「变异了、没红」的假阴性。
@@ -67,12 +71,24 @@
  *    `finally` 会从空备份目录逐条 ENOENT，逐条打印「工作树可能已脏」——
  *    而树从未被碰过。**装置在自己的告警上说过头话，会训练操作者无视它的告警**（GLM-07）。
  *
+ * ## M10a 第 4 步补的闸 7 与哨兵拆分（该步计划双审 r1 CODEX-01、r2 CODEX-05）
+ *
+ * **闸 7：每条 case 的 find 在目标文件中必须恰好命中一处。** `String.replace` 只替换首处，
+ * 此前也不查唯一性：同一文本出现两次时（第 4 步两个写点改完后逐字相同），标称改「写点 B」
+ * 的变异会落在写点 A，装置照报「✓ 咬住」，归因记到错的位置上——又一处「声称强于事实」。
+ * 零命中也一并在开跑前拒绝（此前记一条「未命中」、跑完再退 1），规格写错时不白跑构建。
+ *
+ * **哨兵拆成两段：只读预检 → 闸 7 → 独占创建。** 闸 7 若早于哨兵检查，上次异常退出
+ * 留下的残留变异常让 find 命中 0，闸 7 先开口，读起来是「规格写错」，而修规格正好会把
+ * 残留固化下来。所以先只读看一眼哨兵；`wx` 独占创建保留，兜住预检与创建之间的并发窗口。
+ *
  * ## 装置自身的锁例与它的边界
  *
- * `test/unit/mutation-device.test.ts` 锁住上面两条拒绝路径（它们不写盘、不花配额）。
+ * `test/unit/mutation-device.test.ts` 锁住上面的拒绝路径（它们不写盘、不花配额）。
  * **但装置验证不了对自己的变异**：闸 4 比的是 `artifactOf()` 给出的被测产物，
  * 而本文件是 `.mjs`、不进构建，`dist/test/scripts/…` 根本不存在。
- * 所以 D1/D2 两条的「能不能红」是**手工变异 + 哈希比对**验的，记在报告 §5.2。
+ * 所以 D1/D2 两条的「能不能红」是**手工变异 + 哈希比对**验的，记在报告 §5.2；
+ * D3/D4（闸 7 与哨兵预检的顺序）同样手工验，记在 M10a 第 4 步的测试报告里。
  *
  * ## 用法
  *
@@ -184,7 +200,10 @@ async function main() {
   const results = [];
 
   /*
-   * ── 闸 6：`cases ⊆ targets`，拦在**任何写盘之前** ──
+   * ── 闸 6：`cases ⊆ targets`，拦在**任何工作树写盘之前** ──
+   *
+   * 「工作树」是限定语，不是修辞：临时备份目录（`bak`）的 `mkdtemp` 排在本闸之前，
+   * 拒绝时即删（代码双审 r5 CODEX-02）。
    *
    * 不校验的话：变异照写 → 恢复时备份不存在抛 ENOENT → `finally` 只遍历 targets
    * ⇒ **变异留在工作树里**，而错误信息是裸 ENOENT、不提「树已脏」。
@@ -201,7 +220,7 @@ async function main() {
   if (missing.length > 0) {
     console.error(
       `规格错误：这些 case 的 file 不在 targets 里，恢复面够不到它们：\n  ${missing.join('\n  ')}\n` +
-        '  （在任何写盘之前拦下——否则变异会留在工作树上）',
+        '  （在任何工作树写盘之前拦下——否则变异会留在工作树上）',
     );
     await fs.rm(bak, { recursive: true, force: true });
     process.exit(1);
@@ -225,15 +244,12 @@ async function main() {
    *      两次并行开跑都能读到 null 并各自写成功，互相覆盖彼此的变异。
    *
    * 走到 `try` 就意味着**哨兵是本次创建的**，所以收尾删它无须再加归属判据。
+   *
+   * **M10a 第 4 步：拆成「只读预检 → 闸 7 → 独占创建」**（头注释「闸 7 与哨兵拆分」一节）。
+   * 预检先于闸 7，残留变异才会被诊断成「上次没善终」而不是「规格写错」；
+   * 独占创建原样保留，兜住预检与创建之间另一次开跑抢先的那一格。
    */
-  try {
-    await fs.writeFile(
-      SENTINEL,
-      `started_at=${new Date().toISOString()}\nspec=${specPath}\npid=${process.pid}\n`,
-      { flag: 'wx' },
-    );
-  } catch (e) {
-    if (e.code !== 'EEXIST') throw e;
+  const rejectStale = async () => {
     const stale = (await staleRun())?.trim() || '(哨兵内容读不出来)';
     console.error(
       `上一次运行没有善终，或另有一次正在跑（哨兵还在）：\n  ${stale}\n` +
@@ -245,6 +261,46 @@ async function main() {
     );
     await fs.rm(bak, { recursive: true, force: true });
     process.exit(1);
+  };
+
+  if ((await staleRun()) !== null) await rejectStale();
+
+  /*
+   * ── 闸 7：每条 find 在目标文件中恰好命中一处，拦在**任何工作树写盘之前** ──
+   *
+   * 数的是基线文件：每条 case 跑完都由闸 5 恢复到基线，所以「跑前唯一」在一次运行内不会失效。
+   * 零处与多处都拦，并逐条报出命中数——报一条「不唯一」而不给数，排查时还得自己再数一遍。
+   */
+  const badFind = [];
+  for (const c of spec.cases) {
+    const text = await fs.readFile(path.join(ROOT, c.file), 'utf8').catch(() => null);
+    if (text === null) {
+      badFind.push(`${c.id}（${c.file}）：目标文件读不出来`);
+      continue;
+    }
+    const hits = typeof c.find === 'string' && c.find !== '' ? text.split(c.find).length - 1 : 0;
+    if (hits !== 1) badFind.push(`${c.id}（${c.file}）：find 命中 ${hits} 处`);
+  }
+  if (badFind.length > 0) {
+    console.error(
+      `规格错误：这些 case 的 find 串在目标文件中不是恰好命中一处：\n  ${badFind.join('\n  ')}\n` +
+        '  装置只替换首处：多处命中时变异会落在第一处，未必是你要改的那一处，而结果照样报「咬住」；\n' +
+        '  零处命中则这条变异根本不生效。给 find 补足区分上下文后再来。\n' +
+        '  （在任何工作树写盘之前拦下，工作树未被碰过）',
+    );
+    await fs.rm(bak, { recursive: true, force: true });
+    process.exit(1);
+  }
+
+  try {
+    await fs.writeFile(
+      SENTINEL,
+      `started_at=${new Date().toISOString()}\nspec=${specPath}\npid=${process.pid}\n`,
+      { flag: 'wx' },
+    );
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+    await rejectStale();
   }
 
   /** 收尾重建失败时置位——绝不静默吞（GLM-05） */
@@ -280,10 +336,8 @@ async function main() {
     for (const c of spec.cases) {
       const abs = path.join(ROOT, c.file);
       const before = await fs.readFile(abs, 'utf8');
-      if (!before.includes(c.find)) {
-        results.push({ id: c.id, desc: c.desc, verdict: '✖ 变异未命中（find 串对不上，本条无效）' });
-        continue;
-      }
+      // 命中数已由闸 7 在开跑前保证恰为 1（原先这里的「未命中」软判定随之删除：留着就是一段
+      // 永不执行、却读起来像有效防线的代码）
       await fs.writeFile(abs, before.replace(c.find, c.replace), 'utf8');
 
       // ── 闸 4：断言**被测产物**确实变了 ──

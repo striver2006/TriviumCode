@@ -360,7 +360,8 @@ for (const [rel, assign] of [
 
 test('闸门区：driver 与轮次一律直读留痕，不从工件后缀反推', async () => {
   /*
-   * 计划第 2 轮的**阻断**：`inferLatestRunId` 要先知道 driver 才能跳过 Driver 自己的
+   * 计划第 2 轮的**阻断**：`inferLatestRunId`（该函数已于 M10a 第 4 步按 EV-64 删除，
+   * 防复活见下方「EV-64」用例）要先知道 driver 才能跳过 Driver 自己的
    * 产出，而 driver 只记在留痕里——循环依赖。非缺省 Driver 且 `--critics claude` 时，
    * 本轮审查件全是 `-claude.md`，按缺省 Driver 推会把它们整批跳过并返回 null，
    * `gate --check` 以「请先跑一次双审」硬失败，而双审明明跑完了。
@@ -429,26 +430,203 @@ test('闸门区：driver 与轮次一律直读留痕，不从工件后缀反推'
   );
 });
 
-test('调用链：isHeterogeneous 的两个写点都要配 override_reason（EV-54）', async () => {
-  const src = await stripped('src/trivium/review.ts');
-  const hits = [...src.matchAll(/heterogeneous: isHeterogeneous\(/g)];
-  assert.equal(hits.length, 2, `review.ts 里 heterogeneous 的写点应当有 2 处，实得 ${hits.length} 处`);
+test('EV-64：inferLatestRunId 已删除，src/trivium 下不得以原名复活', async () => {
   /*
-   * 判据落在**同一行之后的一小段**上：两个写点分别在渲染入参与运行元数据里，
-   * 键名一个是 camelCase 一个是 snake_case，取值必须来自同一个派生函数。
+   * 上一条只扫 cli.ts 的调用。M10a 第 3 步把 `--await-approval` 的复核抽进了
+   * gate.ts 的 `verifyRoundForApproval`，闸门区从此跨两个文件——gate.ts 里重新出现的
+   * 定义或调用，上一条看不见。
+   *
+   * **边界：这是名字判据，只防原名复活。** 改个名字的同形实现（按工件后缀反推 run_id）
+   * 它抓不到；那种实现要接进 run_id / driver 才有害，而这两个值在 cli.ts（`gateDriver`
+   * 与 `latestRunMeta`）与 gate.ts（`runMeta.driver`）各有取值判据。
+   * 不另加「gate.ts 不得解析 front-matter」：gate.ts 本来就要解析裁决件 front-matter
+   * （比对 run_id 与 role），那不是不变量（M10a 第 4 步计划双审 r1 AGY-03 驳回）。
    */
+  const root = path.join(REPO_ROOT, 'src', 'trivium');
+  const files: string[] = [];
+  const walk = async (dir: string): Promise<void> => {
+    for (const e of await fs.readdir(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) await walk(p);
+      else if (e.name.endsWith('.ts')) files.push(p);
+    }
+  };
+  await walk(root);
+  const rels = files.map((f) => path.relative(root, f));
+  assert.ok(
+    rels.includes('cli.ts') && rels.includes('gate.ts'),
+    `扫描面没有覆盖 cli.ts 与 gate.ts（实得 ${files.length} 个文件）：遍历写错了，本条会空转`,
+  );
+  const offenders: string[] = [];
+  for (const f of files) {
+    // 剥注释：cli.ts / meta.ts 的历史叙事里仍提到这个名字，那是留痕不是复活
+    if (/\binferLatestRunId\b/.test(stripNonCode(await fs.readFile(f, 'utf8')))) {
+      offenders.push(path.relative(REPO_ROOT, f));
+    }
+  }
+  assert.deepEqual(
+    offenders, [],
+    'inferLatestRunId 以原名复活了（定义或调用）：它按工件后缀反推 run_id，而「跳过当轮 Driver 的产出」' +
+      '需要先知道 driver——循环依赖（EV-58 / EV-64）。需要 run_id / driver / 轮次一律走 latestRunMeta',
+  );
+});
+
+/*
+ * ── EV-54 / EV-62：异构判定的取值来源 ──
+ *
+ * 三个锚点**各写成一个具名常量**，变异规格按整行定位（M10a 第 4 步计划 r3 §6）。
+ * 都允许尾随逗号与空白：写点的 `overrideReasonFor(` 是多行调用、末参后带逗号，
+ * 计划 r1 写的「以 `meta.driver)` 收尾」在正确代码上会假红（计划双审 r1 CODEX-03 ≡ GLM-03）。
+ */
+const VENDOR_ARG_FROM_META = /,\s*agentById\(meta\.driver\)!\.vendor\s*,?\s*\)$/;
+const DRIVER_ARG_FROM_META = /,\s*meta\.driver\s*,?\s*\)$/;
+const VENDOR_ARG_IN_BODY = /,\s*desc\.vendor\s*,?\s*\)$/;
+
+/**
+ * 异构判定的接线判据，返回违规清单（空 = 合格）。
+ *
+ * **抽成纯函数，是为了让判据自测走同一个函数**（先例：`disposition-role-assets.test.ts`
+ * 的「变异自测走真实管线」）。判据退回「只看参数在不在」时，真实源码上照样全绿——
+ * 只有喂形对值错的合成源码才看得出来。
+ *
+ * 判的是**取值来源**，不是参数在不在：`agentById(DEFAULT_DRIVER)!.vendor`、`'anthropic'`
+ * 这类形对值错的写法会让非缺省 Driver 下的判定回到 EV-62 的旧 bug。
+ * **边界**：① 钉的是一种字面写法，语义等价的写法（如 `opts.driver ?? DEFAULT_DRIVER`）
+ * 也会红，这是刻意的，与上面 `gateDriver` 那条同构；② 只证「取的是 `meta.driver`」，
+ * 它是否就是当轮 Driver 由 TARGETS 的 `newRunMeta` 锚点承接；③ 函数体内 `desc` 与
+ * `driver` 形参的对应只按名字认。
+ */
+function heterogeneousWiringViolations(src: string): string[] {
+  const out: string[] = [];
+  const hits = [...src.matchAll(/heterogeneous: isHeterogeneous\(/g)];
+  if (hits.length !== 2) out.push(`heterogeneous 的写点应当有 2 处，实得 ${hits.length} 处`);
+
   for (const h of hits) {
+    const block = argBlockAt(src, h.index!);
+    if (block === null || !VENDOR_ARG_FROM_META.test(block)) {
+      out.push(
+        'isHeterogeneous 的厂商实参不是 agentById(meta.driver)!.vendor：' +
+          '非缺省 Driver 下会把跨厂商的 claude 系模型继续误判成同源（EV-62）\n' +
+          `  实参块：${(block ?? '（括号没配平）').slice(0, 240)}`,
+      );
+    }
+    /*
+     * 两个写点分别在渲染入参与运行元数据里，键名一个是 camelCase 一个是 snake_case，
+     * 取值必须来自同一个派生函数（EV-54）。窗口 400 字符：剥注释后长度不变，
+     * 写点 B 的两行注释也算在窗口里。
+     */
     const after = src.slice(h.index!, h.index! + 400);
-    assert.ok(
-      /overrideReason|override_reason/.test(after),
-      'heterogeneous 旁边没有 override_reason：run.v2 的契约要求 false 时必须有它，' +
-        '而第 6 步验收（--critics claude）产出的必然是 false 那一格——' +
-        '不补写入方，那份留痕会自相矛盾地进台账',
+    if (!/overrideReason|override_reason/.test(after)) {
+      out.push(
+        'heterogeneous 旁边没有 override_reason：run.v2 的契约要求 false 时必须有它，' +
+          '不补写入方，那份留痕会自相矛盾地进台账',
+      );
+    }
+    const k = src.indexOf('overrideReasonFor(', h.index!);
+    if (k < 0 || k - h.index! > 400) {
+      out.push('两个写点必须共用 overrideReasonFor 派生：各写一份文案会踩破「两处同值」这条判据自身');
+      continue;
+    }
+    const orBlock = argBlockAt(src, k);
+    if (orBlock === null || !DRIVER_ARG_FROM_META.test(orBlock)) {
+      out.push(
+        'overrideReasonFor 的末参不是 meta.driver：文案会点名错的 Driver，' +
+          '函数体内的同族判定也会按错的厂商算\n' +
+          `  实参块：${(orBlock ?? '（括号没配平）').slice(0, 240)}`,
+      );
+    }
+  }
+
+  /*
+   * 函数体内那次判定（计划双审 r2 CODEX-01）：它的厂商实参若写死，编译与 typecheck 都过
+   * （`driver` 仍被 `desc.display` 读取），缺省 Driver 下行为也一致，而非缺省 Driver 下
+   * 会写出「heterogeneous: true 配一条非空 override_reason」的自相矛盾件。
+   * 函数是模块私有的，单测进不去，所以判据落在源码上。
+   */
+  const fnAt = src.indexOf('function overrideReasonFor(');
+  const params = fnAt < 0 ? null : argBlockAt(src, fnAt);
+  if (params === null) {
+    out.push('找不到 overrideReasonFor 的定义（或参数表括号没配平）');
+    return out;
+  }
+  if (!/\bdriver\s*:\s*AgentId\b/.test(params)) {
+    out.push('overrideReasonFor 没有 driver: AgentId 形参：同族判定拿不到当轮 Driver');
+  }
+  const bodyAt = src.indexOf('{', fnAt + params.length);
+  const body = bodyAt < 0 ? null : argBlockAt(src, bodyAt);
+  if (body === null) {
+    out.push('overrideReasonFor 的函数体括号没配平');
+    return out;
+  }
+  if (!/\bconst\s+desc\s*=\s*agentById\(\s*driver\s*\)!\s*;/.test(body)) {
+    out.push('overrideReasonFor 体内的 desc 不是取自 agentById(driver)!：文案与同族判定会用错的 Driver');
+  }
+  const hAt = body.indexOf('isHeterogeneous(');
+  const inner = hAt < 0 ? null : argBlockAt(body, hAt);
+  if (inner === null || !VENDOR_ARG_IN_BODY.test(inner)) {
+    out.push(
+      'overrideReasonFor 体内 isHeterogeneous 的厂商实参不是 desc.vendor：' +
+        '非缺省 Driver 下会写出「heterogeneous: true 配一条非空 override_reason」的自相矛盾件\n' +
+        `  实参块：${(inner ?? '（没找到调用）').slice(0, 240)}`,
     );
-    assert.ok(
-      /overrideReasonFor\(/.test(after),
-      '两个写点必须共用 overrideReasonFor 派生：各写一份文案会踩破「两处同值」这条判据自身',
-    );
+  }
+  return out;
+}
+
+test('调用链：isHeterogeneous 与 overrideReasonFor 的厂商与 Driver 取值来自当轮留痕（EV-54 / EV-62）', async () => {
+  const src = await stripped('src/trivium/review.ts');
+  const violations = heterogeneousWiringViolations(src);
+  assert.deepEqual(violations, [], violations.join('\n'));
+});
+
+test('判据自测：取值来源判据对形对值错的写法必须报出', () => {
+  /*
+   * 合成源码喂**同一个函数**。判据若退回「只看参数在不在」，(b)(c)(d)(f)(g) 会判空，
+   * 本条变红；(a) 两份防判据恒报，也防排版差异（单行 / 多行加尾逗号）造成假红。
+   */
+  const fixture = (o: {
+    vendorA?: string; vendorB?: string; driverA?: string; driverB?: string;
+    bodyVendor?: string; bodyDesc?: string; multiline?: boolean; singleArg?: boolean;
+  }): string => {
+    const v = (x: string | undefined): string => x ?? 'agentById(meta.driver)!.vendor';
+    const d = (x: string | undefined): string => x ?? 'meta.driver';
+    const het = (x: string | undefined): string =>
+      o.singleArg ? 'isHeterogeneous(m)' : `isHeterogeneous(m, ${v(x)})`;
+    const orCall = (key: string, x: string | undefined): string =>
+      o.multiline
+        ? `${key}: overrideReasonFor(\n        c, m, opts.modelOverrides, r.profile_requested, ${d(x)},\n      ),`
+        : `${key}: overrideReasonFor(c, m, opts.modelOverrides, r.profile_requested, ${d(x)}),`;
+    return [
+      'function overrideReasonFor(c: CriticId, model: string | null, mo: X, p: string | null, driver: AgentId): string | null {',
+      `  const desc = ${o.bodyDesc ?? 'agentById(driver)!'};`,
+      `  if (isHeterogeneous(model, ${o.bodyVendor ?? 'desc.vendor'})) return null;`,
+      '  return desc.display;',
+      '}',
+      'const a = {',
+      `      heterogeneous: ${het(o.vendorA)},`,
+      `      ${orCall('overrideReason', o.driverA)}`,
+      '};',
+      'const b = {',
+      `      heterogeneous: ${het(o.vendorB)},`,
+      `      ${orCall('override_reason', o.driverB)}`,
+      '};',
+    ].join('\n');
+  };
+
+  // (a) 正确写法，单行与多行加尾逗号两种排版
+  assert.deepEqual(heterogeneousWiringViolations(fixture({})), [], '(a) 单行正确写法被误报');
+  assert.deepEqual(heterogeneousWiringViolations(fixture({ multiline: true })), [], '(a) 多行加尾逗号的正确写法被误报');
+
+  const mustReport: [string, Parameters<typeof fixture>[0]][] = [
+    ['(b) 写点厂商实参取缺省 Driver', { vendorA: 'agentById(DEFAULT_DRIVER)!.vendor' }],
+    ['(c) 写点厂商实参写死 anthropic', { vendorB: "'anthropic'" }],
+    ['(d) overrideReasonFor 末参取缺省 Driver', { driverA: 'DEFAULT_DRIVER', multiline: true }],
+    ['(e) 只有一个实参（改前形态）', { singleArg: true }],
+    ['(f) 函数体内厂商实参写死 anthropic', { bodyVendor: "'anthropic'" }],
+    ['(g) 函数体内 desc 取自缺省 Driver', { bodyDesc: 'agentById(DEFAULT_DRIVER)!' }],
+  ];
+  for (const [what, o] of mustReport) {
+    assert.ok(heterogeneousWiringViolations(fixture(o)).length > 0, `${what}：判据没有报出`);
   }
 });
 

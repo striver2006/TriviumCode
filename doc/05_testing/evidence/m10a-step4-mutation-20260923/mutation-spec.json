@@ -1,0 +1,105 @@
+{
+  "targets": [
+    "src/trivium/adapters/base.ts",
+    "src/trivium/review.ts",
+    "src/trivium/render.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/gate.ts",
+    "test/unit/driver-wiring.test.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/adapter-base.test.js",
+    "dist/test/test/unit/driver-wiring.test.js",
+    "dist/test/test/unit/render.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M62a",
+      "desc": "isHeterogeneous 退回不感知 Driver",
+      "file": "src/trivium/adapters/base.ts",
+      "find": "return !VENDOR_MODEL_FAMILY[driverVendor].test(model);",
+      "replace": "return !/claude/i.test(model);",
+      "expect": "dist/test/test/unit/adapter-base.test.js"
+    },
+    {
+      "id": "M62b",
+      "desc": "写点 A 厂商实参取缺省 Driver",
+      "file": "src/trivium/review.ts",
+      "find": "agentById(meta.driver)!.vendor),\n      overrideReason: overrideReasonFor(",
+      "replace": "agentById(DEFAULT_DRIVER)!.vendor),\n      overrideReason: overrideReasonFor(",
+      "expect": "dist/test/test/unit/driver-wiring.test.js"
+    },
+    {
+      "id": "M62b'",
+      "desc": "写点 B 厂商实参写死 anthropic",
+      "file": "src/trivium/review.ts",
+      "find": "agentById(meta.driver)!.vendor),\n      // 与上面渲染侧",
+      "replace": "'anthropic'),\n      // 与上面渲染侧",
+      "expect": "dist/test/test/unit/driver-wiring.test.js"
+    },
+    {
+      "id": "M62c",
+      "desc": "写点 A 的 overrideReasonFor 末参取缺省 Driver",
+      "file": "src/trivium/review.ts",
+      "find": "overrideReason: overrideReasonFor(\n        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested, meta.driver,",
+      "replace": "overrideReason: overrideReasonFor(\n        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested, DEFAULT_DRIVER,",
+      "expect": "dist/test/test/unit/driver-wiring.test.js"
+    },
+    {
+      "id": "M62f",
+      "desc": "overrideReasonFor 体内厂商实参写死 anthropic",
+      "file": "src/trivium/review.ts",
+      "find": "if (isHeterogeneous(model, desc.vendor)) return null;",
+      "replace": "if (isHeterogeneous(model, 'anthropic')) return null;",
+      "expect": "dist/test/test/unit/driver-wiring.test.js"
+    },
+    {
+      "id": "M62d",
+      "desc": "厂商锚点退回只看有无第二实参",
+      "file": "test/unit/driver-wiring.test.ts",
+      "find": "const VENDOR_ARG_FROM_META = /,\\s*agentById\\(meta\\.driver\\)!\\.vendor\\s*,?\\s*\\)$/;",
+      "replace": "const VENDOR_ARG_FROM_META = /,\\s*\\S[\\s\\S]*\\)$/;",
+      "expect": "dist/test/test/unit/driver-wiring.test.js"
+    },
+    {
+      "id": "M62d'",
+      "desc": "末参锚点退回只看有无第五实参",
+      "file": "test/unit/driver-wiring.test.ts",
+      "find": "const DRIVER_ARG_FROM_META = /,\\s*meta\\.driver\\s*,?\\s*\\)$/;",
+      "replace": "const DRIVER_ARG_FROM_META = /,\\s*\\S[\\s\\S]*\\)$/;",
+      "expect": "dist/test/test/unit/driver-wiring.test.js"
+    },
+    {
+      "id": "M62e",
+      "desc": "同源旗标文案退回 Claude 系",
+      "file": "src/trivium/render.ts",
+      "find": "本侧生效模型落在当轮 Driver 厂商的名义模型族里",
+      "replace": "本侧使用了 Claude 系模型",
+      "expect": "dist/test/test/unit/render.test.js"
+    },
+    {
+      "id": "M64a",
+      "desc": "cli.ts 闸门区加回裸调用",
+      "file": "src/trivium/cli.ts",
+      "find": "const pinned = pinnedId ? await readRunMeta(ref.layout, stage, pinnedId) : null;",
+      "replace": "const pinned = pinnedId ? await readRunMeta(ref.layout, stage, pinnedId) : null;\n  await inferLatestRunId(ref.layout, stage, 1);",
+      "expect": "dist/test/test/unit/driver-wiring.test.js"
+    },
+    {
+      "id": "M64b",
+      "desc": "gate.ts 加回裸调用（证明 U9 覆盖 gate.ts）",
+      "file": "src/trivium/gate.ts",
+      "find": "const tampered = await checkRecordedArtifacts(layout, [",
+      "replace": "await inferLatestRunId(layout, stage, 1);\n  const tampered = await checkRecordedArtifacts(layout, [",
+      "expect": "dist/test/test/unit/driver-wiring.test.js"
+    },
+    {
+      "id": "M64c",
+      "desc": "gate.ts 加回函数定义（不接调用）",
+      "file": "src/trivium/gate.ts",
+      "find": "export type { Disposal };",
+      "replace": "export async function inferLatestRunId(\n  layout: ArchiveLayout,\n  stage: Stage,\n  rerunIndex: number,\n  driver: AgentId = DEFAULT_DRIVER,\n): Promise<string | null> {\n  const items = await listStageArtifacts(layout, stage);\n  for (const i of items) {\n    if (i.parsed.rerunIndex !== rerunIndex) continue;\n    if (i.parsed.role === driver) continue;\n    const fm = parseFrontMatter(await fs.readFile(path.join(layout.archiveRoot, layout.topic, stage, i.fileName), 'utf8'));\n    if (typeof fm?.['run_id'] === 'string') return fm['run_id'];\n  }\n  return null;\n}\n\nexport type { Disposal };",
+      "expect": "dist/test/test/unit/driver-wiring.test.js"
+    }
+  ]
+}

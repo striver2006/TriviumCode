@@ -1,0 +1,74 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最重一条是 BACKLOG EV-62 结案段的「变异 7 条」与测试报告 §1.1 的 M62 系列 8 条对不上（7+3≠11），属留痕数字失实（GLM-01）；另有 mutation-check.mjs 头注释「五道闸」标题与 7 行闸表不符（GLM-02）。四个审查焦点逐项核过：EV-62 取值来源全部钉在当轮 Driver（meta 来自 newRunMeta，review.ts:902/1286/1496），启发式口径在 registry / base / render 三处注释与旗标文案里如实标注；heterogeneousWiringViolations 三个锚点允许尾随逗号与空白、argBlockAt fail-closed，合成源码六种形对值错与单实参形态均有真实鉴别点；装置闸 7 确在哨兵只读预检之后、独占创建与一切工作树写入之前，读不出目标文件与非串 find 均只拒不放；D3/D4 承重断言与 M-D3/M-D4 实测红点逐条吻合。报告的六条偏差与九条缺口登记属实，未发现行为层缺陷。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/08_project/BACKLOG.md EV-62 行（【2026-09-23 done · M10a 第 4 步】结案段）",
+      "problem": "结案段写「变异 7 条全部咬住（REPORT_2026-09-23_m10a_step4.md）」，但它引用的报告 §1.1 里 M62 系列变异是 8 条（M62a、M62b、M62b′、M62c、M62f、M62d、M62d′、M62e），EV-64 段写 3 条（M64a/b/c），8+3=11 才与 doc/05_testing/README.md 新行的「11 条变异经装置全部咬住」一致。7 对不上任何自然口径（不含 M62e 是 7，但 M62e 验的 U6 正是 EV-62 自己的落点「render.ts 同源旗标不再写死 Claude 系」）。本仓纪律是「留痕里的失实断言先改再提交」（EV-59 先例），对照报告与台账读的人会对不出这个数。",
+      "evidence": "读 .reviews/M10-任意Driver/code/_meta/changes-20260923T125723Z.diff 中 BACKLOG EV-62/EV-64 行、doc/05_testing/REPORT_2026-09-23_m10a_step4.md §1.1 变异表（M62 系 8 条逐条数过）、doc/05_testing/README.md 新增行（11 条）。",
+      "suggestion": "把 EV-62 结案段的「7 条」改为 8 条，或写明排除口径（若刻意只计判据侧变异，须点名哪条不计、为何）；EV-64 的 3 条与总数 11 一并复核后统一。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "scripts/mutation-check.mjs:19",
+      "problem": "头注释标题「## 五道闸，缺一不可」下方的闸表现在有 7 行（闸 6 是 M10a 第 3 步加的、闸 7 是本步加的），标题两次都没跟着改。mutation-device.test.ts:12 还引用「装置头部那张『五道闸』表是一份**声称**」——而本步恰在这张表里加了闸 7 一行，却没改标题，是本仓反复登记的「声称强于事实」形态在自己身上的再现。",
+      "evidence": "读 scripts/mutation-check.mjs 第 19～29 行（标题 + 7 行闸表，本步 diff 在表中新增闸 7 行）；test/unit/mutation-device.test.ts 第 11～12 行的引用。",
+      "suggestion": "标题改为实数（或不写数字，如「这几道闸，缺一不可」），mutation-device.test.ts:12 的引用句一并改准。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "EV-62 主链取值来源全部来自当轮 Driver：registry.ts 新增 VENDOR_MODEL_FAMILY 以 Record<AgentVendor,…> 声明（第五厂商漏补即编译报错——接入套件首跑实测红过，overlay 补 STUB_VENDOR 映射后绿，偏差 1 的解释成立且正是该类型的设计意图）；isHeterogeneous(model, driverVendor) 新签名（base.ts:1790）；review.ts 两个写点（:1286/:1496）的厂商实参均为 agentById(meta.driver)!.vendor、overrideReasonFor 末参均为 meta.driver，而 meta 来自 review.ts:902 的 newRunMeta，其实参块的 driver 键由 driver-wiring TARGETS 锚点守着——「meta.driver 即当轮 Driver」有承接。",
+    "启发式没有写成确定性保证：registry.ts VENDOR_MODEL_FAMILY 文档块明写「名义/启发式/本仓自己就有反例」；base.ts 注释明写「true 的准确读法是未检出同族」；review.ts overrideReasonFor 文档标注「（VENDOR_MODEL_FAMILY，启发式）」；render.ts:315 同源旗标文案带「（按模型名判定，启发式）」。残余面按可达性登记为 EV-107，known-wrong 形态与「heterogeneous 只驱动告警与留痕、不拦闸门」的边界都写清了。",
+    "判据自测设计成立：三个锚点常量允许尾随逗号与空白（driver-wiring.test.ts:481-483），吸收了计划 r1「以 meta.driver) 收尾」会在正确代码上假红的教训；argBlockAt 配不平即返回 null（fail-closed，不回落 slice）；stripNonCode 等长置空保偏移，400 字符窗口内的注释不吞掉 overrideReasonFor 锚点；合成源码 (b)～(g) 六种形对值错/单实参形态 mustReport、(a) 单行与多行两种排版防恒报与假红——「判据退回只看参数在不在」时 (b)(c)(d)(f)(g) 判空、U8 变红，M62d/M62d′ 有真实鉴别点，U8 的边界三条（钉字面写法、newRunMeta 锚点承接、desc↔driver 按名字认）在用例注释与报告 §3 双向如实登记。",
+    "装置闸 7 与哨兵拆分顺序正确：闸 6 → 哨兵只读预检（rejectStale）→ 闸 7 → wx 独占创建 → try（备份/构建/变异），EEXIST 仍走同一 stale 函数；闸 7 拒绝路径不建哨兵、不碰工作树（D3 的两条条件性断言承接的正是这一点）；目标文件读不出与非非空串 find 都归入同一批规格错误、只拒不放（报告偏差 2 与实码一致，兜底确实避免了 try 外抛异常 + 临时目录残留）；原逐条「变异未命中」软判定删除后不再有读起来像防线的死代码。",
+    "D3/D4 的承重断言说准：D3 承重是 stderr 点名两条 case 及各自命中数 + 不含「基线全绿」（证明拒在建哨兵与构建之前），「不留哨兵/哈希不变」两条如实标注为条件性判别——与 M-D3 实测「装置干净跑完 408ms、收尾删哨兵、闸 5 恢复，只有 stderr 断言红」完全对应；README.md 中「TriviumCode」实测出现 8 次，与报告 M-D3 的命中数（8）一致。D4 的「报上次没善终而非规格写错」+ 哨兵原样保留与 rejectStale 行为一致，M-D4 的红点（match 失败消息「要报的是上次没善终」）与断言顺序吻合。",
+    "EV-07 结案段四点逐点属实：①EV-66（2026-09-19）早于本条结案、状态列陈旧四天的叙事与 BACKLOG 现状一致；②原句三处纠正成立——schema 的 const 已随 EV-66 消失，types.ts 豁免还在且 ProbeByCli 头注释（types.ts:785）原话确是「按 cliName 索引」，新 why 与 LITERAL_ALLOWLIST 里 probes/codex.ts 条的成因呼应，「改写过两次」沿革句按 r3 §4.2 保留未动；③schemas.ts:344 checkDispositionRole（两段式追加形态）与 gate.ts:281 的 fm.role !== driver 比对都在；④本步确实没动 disposition.v1.json 与 src/trivium/types.ts（两文件不在 diff 清单）。",
+    "EV-64 删除干净且判据补位正确：src/trivium 下 inferLatestRunId 仅剩 cli.ts:974、meta.ts:422/426 三处历史叙事注释（剥注释后 U9 判据为空）；U9 全 src/trivium 名字判据补上了既有「闸门区」用例只扫 cli.ts、看不到 gate.ts 的缺口（M10a 第 3 步后闸门区跨两文件），其「只防原名复活」的边界在用例注释、BACKLOG 结案段、报告 §3 三处口径一致；M64a 期望 fail=2 与两用例的断言（driver-wiring:375 的调用扫描 + U9）逐条对得上。",
+    "报告偏差与缺口登记可信：偏差 1（接入套件首跑红、补名义族映射）理由正确；偏差 3（U7 加参数表须含 driver: AgentId）只收紧不放宽；缺口里「非缺省 Driver 下 heterogeneous/override_reason 无端到端用例」如实写成「真实的覆盖空白，不是低风险」，不补的理由（桩侧需报出与桩 Driver 同族的模型名，超本步范围）说得通；台账数字自洽（7h32m25s+14m28s+16m11s=8h3m4s，plan 档 21 轮、累计 29）。"
+  ],
+  "not_covered": [
+    "未复跑任何测试、构建、typecheck、变异或 install:local——审查员只读不写，npm test 会重建 dist。1703 条全绿、11 条装置变异 + 2 条手工变异的实跑结果、doctor --selftest 14/14、装后逐字节一致，均采信报告与台账，未独立验证。",
+    "变异规格按报告偏差 6 未进仓库（本人在 doc/05_testing/evidence/ 下 Glob 过 *.json，现存均为探针/留痕证据，无变异规格），无法从仓库侧复核规格与 r3 §6 的逐字一致性，也无法复算闸 7 的「11 条 find 各恰命中一处」。",
+    "EV-107 所列「本机模型目录可达性」事实（agy 目录有 gpt-oss-120b-medium、能跑 qwen 的只有 codex 目录等）未实测复核，按登记采信。",
+    "EV-106 追加段点名的失实文字位置（PRD FR-17/AC-18、主设计四处、README.md:89、CASE_manual_acceptance.md :207/:211-213）只核对了登记的位置声明，未逐一打开设计文档核对每处原文。",
+    "本侧上一轮历史产出与 Driver 裁决（任务书 §3 末列出的 glm/response 文件）本轮未回看，结论独立于既往轮次；另一位审查员的产出按禁读清单未读。",
+    "render.test U6 断言 !md.includes('Claude 系') 与测试夹具 REVIEW 内容之间的隐性耦合（未来夹具若合法出现该字样会撞断言）未深入评估，判为低风险。"
+  ],
+  "consulted": [
+    ".reviews/M10-任意Driver/code/_meta/changes-20260923T125723Z.diff",
+    ".reviews/M10a-第4步/plan/2026-09-23-M10a-第4步-r3-claude.md",
+    "doc/05_testing/REPORT_2026-09-23_m10a_step4.md",
+    "doc/05_testing/README.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/M10a-轮次台账.md",
+    "scripts/mutation-check.mjs",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/review.ts",
+    "src/trivium/render.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/types.ts",
+    "src/trivium/critics.ts",
+    "test/unit/driver-wiring.test.ts",
+    "test/unit/adapter-base.test.ts",
+    "test/unit/mutation-device.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/render.test.ts",
+    "test/fixtures/stub-agent-kit/overlay.ts",
+    "test/helpers/strip-non-code.ts",
+    "README.md"
+  ]
+}

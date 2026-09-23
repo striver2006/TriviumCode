@@ -419,11 +419,11 @@ export function migrateRunMetaV1(raw: unknown): RunMeta {
  *
  * ## 为什么需要它：后缀反推有循环依赖
  *
- * 闸门区此前靠 `inferLatestRunId` / `resolveRerunIndex` 从**工件后缀**反推，
- * 而两者都要先知道当轮 Driver 才能「跳过 Driver 自己的产出」——
+ * 闸门区此前靠 `inferLatestRunId`（M10a 第 4 步按 EV-64 删除）/ `resolveRerunIndex`
+ * 从**工件后缀**反推，而两者都要先知道当轮 Driver 才能「跳过 Driver 自己的产出」——
  * driver 又只记在运行元数据里。于是形成死循环：
  * 非缺省 Driver 且 `--critics claude` 时，本轮审查件全是 `-claude.md`，
- * 按缺省 Driver 推会把它们**整批跳过**，`inferLatestRunId` 返回 null，
+ * 按缺省 Driver 推会把它们**整批跳过**，当时的 `inferLatestRunId` 会返回 null，
  * 命令以「请先跑一次双审」硬失败——而双审明明已经跑完。
  *
  * 曾经想过「先按缺省猜一次、读到元数据后再复算」，那只是把循环包了一层：

@@ -971,7 +971,8 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   /*
    * ── 当轮 Driver 与轮次：**直读运行元数据**，不从工件后缀反推（M9 第 5 步）──
    *
-   * 后缀反推有循环依赖：`inferLatestRunId` / `resolveRerunIndex` 都要先知道 driver
+   * M9 第 5 步之前闸门区靠后缀反推，而后缀反推有循环依赖：当时的 `inferLatestRunId`
+   * （M10a 第 4 步按 EV-64 删除）与仍在 `archive.ts` 的 `resolveRerunIndex` 都要先知道 driver
    * 才能跳过 Driver 自己的产出，而 driver 只记在留痕里。非缺省 Driver 且
    * `--critics claude` 时，本轮审查件全是 `-claude.md`，按缺省 Driver 推会把它们
    * 整批跳过——`gate --check` 以「请先跑一次双审」硬失败，而双审明明跑完了。

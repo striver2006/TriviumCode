@@ -9,7 +9,16 @@ import {
   failedResult,
 } from '../../src/trivium/adapters/base.js';
 import { defaultConfig } from '../../src/trivium/config.js';
+import { selectableCritics } from '../../src/trivium/critics.js';
 import { DEFAULT_CRITICS } from '../../src/trivium/types.js';
+import {
+  AGENTS,
+  DEFAULT_DRIVER,
+  DRIVER_AGENT_IDS,
+  VENDOR_MODEL_FAMILY,
+  agentById,
+  type AgentVendor,
+} from '../../src/trivium/agents/registry.js';
 
 const REQ = {
   min_tool_calls: 5,
@@ -159,12 +168,50 @@ test('模型路由：profile 缺该阶段时返回 none 而非瞎猜', () => {
   assert.deepEqual(routeModel(cfg, 'gemini', 'plan'), { model: null, source: 'none' });
 });
 
-test('异构判定：Claude 系为同源，需显式标记（FR-17 / AC-18）', () => {
-  assert.equal(isHeterogeneous('gemini-3.1-pro-high'), true);
-  assert.equal(isHeterogeneous('GLM-5.3'), true);
-  assert.equal(isHeterogeneous('claude-sonnet-4-6'), false);
-  assert.equal(isHeterogeneous('claude-opus-4-6-thinking'), false);
-  assert.equal(isHeterogeneous(null), true);
+test('异构判定：Driver 为 anthropic 时 Claude 系为同源（FR-17 / AC-18）', () => {
+  assert.equal(isHeterogeneous('gemini-3.1-pro-high', 'anthropic'), true);
+  assert.equal(isHeterogeneous('GLM-5.3', 'anthropic'), true);
+  assert.equal(isHeterogeneous('claude-sonnet-4-6', 'anthropic'), false);
+  assert.equal(isHeterogeneous('claude-opus-4-6-thinking', 'anthropic'), false);
+  assert.equal(isHeterogeneous(null, 'anthropic'), true);
+});
+
+const NON_ANTHROPIC: readonly AgentVendor[] = ['openai', 'antigravity', 'zcode'];
+
+test('EV-62：Driver 非 anthropic 时，claude 系模型不再判同源', () => {
+  /*
+   * EV-62 原文那一格：Driver 不是 claude，审核者用 claude 系模型时旧判据判「与主脑同源」，
+   * 而主脑根本不是 claude。按当轮 Driver 的厂商名义族判定后，这一格判异构。
+   */
+  for (const v of NON_ANTHROPIC) {
+    assert.equal(
+      isHeterogeneous('claude-sonnet-4-6', v), true,
+      `Driver 厂商为 ${v} 时，claude 系审核者模型不应判同源——主脑不是 claude`,
+    );
+  }
+});
+
+test('EV-62：Driver 非 anthropic 时，其厂商名义族判同源', () => {
+  /*
+   * 这几格也防「非 anthropic 一律判异构」那种退化（计划 r1 初稿的方案）：
+   * 那样实现时前三格全是 true。最后一格是跨族对照，防反向退化成「一律判同族」。
+   * 名义族是启发式（见 `VENDOR_MODEL_FAMILY` 的文档块），这里测的是判据本身，不是厂商事实。
+   */
+  assert.equal(isHeterogeneous('gemini-3.8-flash-high', 'antigravity'), false);
+  assert.equal(isHeterogeneous('GLM-5.3', 'zcode'), false);
+  assert.equal(isHeterogeneous('gpt-5.2', 'openai'), false);
+  assert.equal(isHeterogeneous('GLM-5.3', 'antigravity'), true, '跨族：GLM 模型对 antigravity 名义族应判异构');
+});
+
+test('EV-62：VENDOR_MODEL_FAMILY 与注册表厂商集同一', () => {
+  /*
+   * 「每个厂商都有条目」由 `Record<AgentVendor, …>` 在编译期保证；本条补的是反方向：
+   * 映射里不留注册表已经不用的厂商键（`AgentVendor` 联合类型比注册表实际用到的宽时会出现）。
+   */
+  assert.deepEqual(
+    Object.keys(VENDOR_MODEL_FAMILY).sort(),
+    [...new Set(AGENTS.map((a) => a.vendor))].sort(),
+  );
 });
 
 /*
@@ -191,8 +238,9 @@ test('缺省入选的各侧默认模型互不相同且均为非 Claude 系（AC-
     const models = DEFAULT_CRITICS.map((c) => {
       const m = routeModel(cfg, c, stage).model;
       assert.ok(m, `${stage} 的 ${c} 侧应有默认模型——取不到会在 review.ts 直接抛 envError`);
+      // `DEFAULT_CRITICS` 只对缺省 Driver 成立（非缺省 Driver 下缺省选侧会退 64），故厂商取缺省 Driver
       assert.equal(
-        isHeterogeneous(m), true,
+        isHeterogeneous(m, agentById(DEFAULT_DRIVER)!.vendor), true,
         `${stage} 的 ${c} 侧是 Claude 系（${m}）：缺省入选里出现与主脑同源的模型即违反 AC-18`,
       );
       return m;
@@ -202,6 +250,42 @@ test('缺省入选的各侧默认模型互不相同且均为非 Claude 系（AC-
       `${stage} 的缺省各侧默认模型不应相同——相同模型 + 相同镜头只是把成本乘二；实得 ${models.join('、')}`,
     );
   }
+});
+
+/*
+ * **AC-18 逐 Driver**（EV-62，M10a 第 4 步）。
+ *
+ * AC-18 的「主脑」今天可以是任一家；上一条只对缺省 Driver 成立。
+ * 论域用「每家 Driver 可选的每个审核者」，不用缺省选侧：非缺省 Driver 在内置配置下
+ * 缺省选侧含它自己，`resolveCriticSelection` 会退 64，而不是把它剔除。
+ *
+ * 本条同时咬住「判据退回不感知 Driver」：非 claude 的 Driver 下 claude 审核者可选，
+ * 其默认模型是 claude 系，退回旧判据时会判同源。它也守内置配置：
+ * 哪天某家默认模型改成与某个 Driver 的名义族同族，这里会红——那时停下来看，别改断言去凑。
+ */
+test('AC-18 逐 Driver：每家 Driver 可选的每个审核者，档位默认模型都不落在该 Driver 的名义模型族', () => {
+  const cfg = defaultConfig();
+  const profiles = Object.keys(cfg.profiles);
+  assert.ok(profiles.length > 0, '内置配置至少一个档位，否则本条空转');
+  let checked = 0;
+  for (const p of profiles) {
+    cfg.active_profile = p;
+    for (const driver of DRIVER_AGENT_IDS) {
+      const vendor = agentById(driver)!.vendor;
+      for (const c of selectableCritics(cfg, driver)) {
+        for (const stage of ['plan', 'code', 'bug'] as const) {
+          const m = routeModel(cfg, c, stage).model;
+          assert.ok(m, `档位 ${p} 的 ${c} 侧 ${stage} 应有默认模型`);
+          assert.equal(
+            isHeterogeneous(m, vendor), true,
+            `档位 ${p}、Driver ${driver}（${vendor}）下，${c} 侧 ${stage} 的默认模型 ${m} 落在该 Driver 的名义模型族里`,
+          );
+          checked++;
+        }
+      }
+    }
+  }
+  assert.ok(checked > 0, '一格都没核到：论域为空，本条空转');
 });
 
 /*
