@@ -1,0 +1,55 @@
+{
+  "agreed": [
+    "CODEX-01 完整闭环：GIT_OPTS_WITH_VALUE 与 GIT_OPT_PREFIX 覆盖了全部带取值全局选项，非选项词立即截断前缀匹配，避免了只读命令误拦；同时与 commitTargetsProject / parseGitSegment 共用同一份选项集。",
+    "CODEX-03 提交锚取舍合理：删去提交锚角色后缀支彻底解除了非缺省 Driver 修改原稿/裁决件的死锁，审查文档防篡改由锚②登记 sha256 承接，修改 run.json 由 _meta/ 位置判据硬拦，安全模型闭环。",
+    "CODEX-04 偏差核实成立：准确指出了 /dual-abandon 仅修改闸门状态而不清除已登记工件的事实，明确唯有 git restore 才能解开提交锚②，实现文案准确性优于裁决件草案。",
+    "GLM-04 运行期告警接线透彻：runWarnings 从 run.json 经 loadRoundReviews 穿透至 cli.ts 两个调用点，并在 checkAdjudication 任意早退（包括缺裁决件）前装载，集成用例与单测均已咬住。",
+    "边界防御与测试补齐到位：resolveSubjectArtifactRelPath 的软链归一化、subjectArtifactRelPath 的空路径/根路径排除、fault-injection 中修改原稿提交拦截端到端测试均高质量落地。"
+  ],
+  "consulted": [
+    ".reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r2-response-claude.md",
+    ".reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r2-gemini.md",
+    ".reviews/M10-任意Driver/code/_meta/changes-20260923T063434Z.diff",
+    "src/trivium/hooks.ts",
+    "src/trivium/review.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/state.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/util/git.ts",
+    "test/contract/bash-recovery-wording.test.ts",
+    "test/contract/disposition-role-assets.test.ts",
+    "test/unit/subject-artifact.test.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/code-stage.test.ts",
+    "CLAUDE.md",
+    "skills/dual-critic/protocol/CLAUDE.md.snippet",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/M10a-轮次台账.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "test/contract/bash-recovery-wording.test.ts:1171-1188 中 groupAround 仅通过 lines[k].trim().endsWith('+') 进行首尾延伸；若文案以数组形式书写（各行以逗号结尾）或跨行模板串（`...`）跨行，start 与 end 均锁在命中单行，无法与组内同文案其他行上的「终端」提示结合。对照 .reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r2-response-claude.md:66（CODEX-02 裁决明确承诺「同一模板串或同一 [...].join / + 拼接组」）。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/contract/bash-recovery-wording.test.ts:1171",
+      "problem": "扫描判据 groupAround 仅按行尾 '+' 延展语句组，未按裁决件（CODEX-02）承诺实现对跨行模板串与数组 join 的识别，后续若采用此类形态书写恢复提示将触发假阳性拦截。",
+      "severity": "nit",
+      "suggestion": "当前仓内恢复文案均采用 '+' 拼接故测试可通过；若后续保持纯字面语法分析，建议在注释中如实说明当前仅支持 '+' 拼接并在文档或判据中补充模板串与数组分支，或在后续需要时引入完整的语句级 AST 解析。"
+    }
+  ],
+  "not_covered": [
+    "真实 Agent 载体（如 codex / gemini / agy 等）在 headless CLI 下真实触发外部 hook 事件（归属 M10b 真机验收范围）。",
+    "非缺省 Driver 在实际多阶段轮转中写裁决件与原稿的跨轮次端到端集成行为（依赖 --driver 启用后的全流程实跑）。",
+    "src/trivium/ 以外的第三方依赖库及 Node.js 运行时底层异常。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本轮 18 项双审意见已全部高质量落地。经复核：① git 全局选项前缀涵盖全部带值选项，非选项词立即截断匹配避免了只读命令误拦，且与提交识别共用选项集；② 提交锚删去后缀支后，审查文档防篡改由锚②登记核对与 _meta/ 位置判据闭环守卫，running 态改写窗口严格受限且无法伪造留痕；③ CODEX-04 针对 /dual-abandon 无法解开工件提交锚的实现偏差修正准确成立；④ 运行期告警透传在两处调用点及早退路径上接线完备；⑤ 唯一遗留为扫描判据 groupAround 仅实现了 '+' 拼接延展，未支持跨行模板串与数组 join，属测试鲁棒性次要问题（AGY-01）。全仓未引入新阻断，整体通过。",
+  "verdict": "approve-with-nits"
+}

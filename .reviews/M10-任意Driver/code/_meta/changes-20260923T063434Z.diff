@@ -1,0 +1,1428 @@
+# trivium changes.diff
+# run_id: 20260923T063434Z
+# base: HEAD
+# head: e1a0d9adb15245ecaf46e26b4db63ecc6ef6397b
+# files: 15
+#   CLAUDE.md
+#   doc/08_project/BACKLOG.md
+#   doc/08_project/M10a-轮次台账.md
+#   skills/dual-critic/protocol/CLAUDE.md.snippet
+#   src/trivium/cli.ts
+#   src/trivium/gate.ts
+#   src/trivium/hooks.ts
+#   src/trivium/review.ts
+#   test/contract/bash-recovery-wording.test.ts
+#   test/integration/code-stage.test.ts
+#   test/integration/fault-injection.test.ts
+#   test/integration/gate-loop.test.ts
+#   test/unit/gate.test.ts
+#   test/unit/hooks.test.ts
+#   test/unit/subject-artifact.test.ts
+diff --git a/CLAUDE.md b/CLAUDE.md
+index aade9f5..81dc63e 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -37,6 +37,12 @@
+   **出口是改用 Write / Edit 工具落文件，提交说明写进文件再 `git commit -F <文件>`**
+   （精确判定，不看字面），不是想办法绕过判定。
+   这个误拦是刻意接受的取舍，不要当成 bug 去「修」。
++  **确实要用 `git checkout --` / `git restore` 恢复一个被误改的受保护文件时，
++  请在终端里手动执行**（M10a 第 2 步 EV-55 §3.2.2）：恢复命令的参数正是那个
++  受保护路径，常规写法在会话里会被同一条判据再拦一次，不要在会话里反复重试。
++  这条判据是按命令形态的**启发式、并不完备**（2026-09-23 代码双审 r2 CODEX-01
++  就打穿过一次：`git -c <键>=<值> restore …` 曾被判「不像写命令」，已修）——
++  但换一种写法让它认不出来属于绕过判定，不是出口。
+ - **同一条 Hook 还有第二种误拦形态：命令文本里提到「写动词」。**
+   拦截要两个条件同时成立——命令**像**写命令（`looksLikeWriteCommand`）且提到保护路径。
+   而前者是**词边界字面匹配、不看上下文**：动词集见 `src/trivium/hooks.ts` 的 `WRITE_LIKE`，
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 134c631..cde8de2 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -149,7 +149,7 @@
+ | EV-52 | todo | **两条校验分支在四家全启用后不可达（原写三条，代码双审改准）。** M9 第 4 步把 claude 的 `criticEnabled` 与 anthropic 形状一并补齐后，两格变成空集：①`checkConfigAgents` 的「已登记但形状未定义」（判据读**注册表登记的 vendor**，不是配置里写的那个——实跑确认过，拿 `vendor: 'no-such-vendor'` 去试会走到再下一条「vendor 与注册表不符」）；②`topic-args.ts` 的「给非审核者指定 `--model-<id>`」。两条用例已改为 `skip` **并写明原因**（不是删，也不是提前 `return` 让它显示为通过）。**③原列的第三条是误判、已修正**（代码双审 AGY-01 ≡ GLM-01 ≡ CODEX-01 三侧独立收敛）：`default_critics` 那条的判据是 `!CRITIC_AGENT_IDS.includes(id)`，它同时承担**两类**输入，四家全启用后消失的只是「已登记但未启用」这一类，**分支对未登记 id 照旧可达**（`config.v2.json` 的 `default_critics.items` 无枚举，ajv 不会先拒 `'nobody'`），而当时全仓没有第二条覆盖它——**一条仍可达分支的唯一覆盖被一并放掉了**。现已按「规则」而非「那一种输入」拆成两条用例：未登记 id 那条今天就跑（变异验证：删掉 `schemas.ts` 那条校验即当场红），「已登记但未启用」那条保留 skip 且消息按子情形措辞。**这一点在计划双审里被逐字警告过**（CODEX-02b），裁决接受了、注释也写对了，而判据与 skip 消息按错的那版落了地——**注释写对了不算改对**。**为什么不开注入口**：那三个函数都只收 data、注册表是模块级绑定，要造负例就得给校验层加参数——那是生产改动，要连它自己的双审成本一起算，超出本步「夹具收口」的范围（计划双审 AGY-02 ≡ GLM-01 ≡ CODEX-02 三侧同判）。对照：`resolveCriticSelection` 本步**已开** `descriptors` 注入口（仿 `deriveDefaultCritics` 先例），所以「登记但未启用」那条在 `critics.test.ts` 里有真覆盖——三条 skip 的是**另外三个**函数。**触发条件**：注册表登记第五家而其 `criticEnabled` 或 vendor 形状未跟上时，三条各自自动恢复执行（skip 判据是运行期算的）。**修法方向**：给三处校验各开一个与 `deriveDefaultCritics` 同构的可选入参。 | `src/trivium/schemas.ts` 的 `checkConfigAgents`、`src/trivium/topic-args.ts` 的模型旗标校验段、三处对应用例 |
+ | EV-53 | **done**（2026-09-19，M9 第 5 步 r2 补齐） | **落地记要（第 2 轮订正）**：第一版只收了 `topic resolve` **一个入口**，而 `review --start`（真正烧配额那条）与 `preflight` 原样留着——`collectModelOverrides` 的论域是 `CRITICS`（四家全在内），下游 `checkModelSlugs` 只遍历入选侧，于是 `--model-<本轮当不了审核者的一家>` 在那两条路上**仍是解析成功后被悄悄丢弃**，正是本条原文的症状。技能侧因先走 `topic resolve` 被挡住，暴露面是手工 CLI，但当时那句「已收口」并不成立（第 2 轮代码双审 CODEX-05）。订正做法：判定抽成 `critics.ts` 的 `assertModelOverrideKeys`，**三个入口共用一份**（`topic resolve` / `review --start` / `preflight`），文案统一走 `legalList`（「当前可用」），`topic-args.ts` 自拼的那句「本轮可用」随之消失——同一论域两层措辞分叉曾让一条集成负例的锚点落空（见 EV-53 同批的 GLM-03 落点）。残余缺口见 **EV-67**。**第一版落地记要**：判据由 `CRITICS.includes(id)`（启用集合）改为 `selectableCritics(cfg, driver)`（本轮实际能入选谁），判据与文案**共用同一份派生**——`legalList` 也改调它，两套论域合一。`topic-args.ts` 对 `CRITICS` 的 import 随之删除（全集论域在该文件已无消费方，这是收口到位的信号）。测试侧：`MODEL_FLAG_PENDING` 的 skip 判据同步改写，该用例**由 skip 恢复执行**（全仓跳过数 3→2），并新增两条互为镜像的断言——负例「报错文案里不得出现当轮 Driver」（EV-53 ③ 的口径分叉）、正例「换掉 Driver 之后原 Driver 那一家的模型覆盖就合法」（钉住「论域跟着当轮 Driver 变」，防止拒绝分支写过宽）。原始条目如下 —— **`--model-claude` 能解析成功，而 claude 永远不会入选——「解析成功后被悄悄丢弃」在 Driver 这一格真实存在。** `topic-args.ts` 的 `--model-<id>` 白名单判据是 `CRITICS.includes(id)`，M9 第 4 步翻开关后 claude 进了这个集合，于是 `--model-claude X` 合法通过；但 `critics.ts` 的「当轮 Driver 不得入选」恒拒 claude，那个模型覆盖一路走到被丢弃，**留痕里看不出用户曾经指定过**。这正是该用例当初要防的形态（与 `--base` 漏传同族），只是触发它的从「尚未启用的第三家」换成了「已启用但当不了本轮审核者的 Driver」。**本步不修**：正确判据是「本轮**实际**能入选谁」，而那要等 `--driver` 落地（M9 第 5 步）才成为逐次运行的事实；现在按 `CRITICS` 减缺省 Driver 硬编码一版，第 5 步就要推翻。**触发条件：M9 第 5 步 `--driver` 全链路落地时**，与白名单判据一并收口。来源：计划双审 CODEX-02 的连带发现。**代码双审补记三条**（AGY-03 ≡ CODEX-09 + GLM-04）：①该分支**当前恒假、已成死代码**（`ALL_AGENT_IDS` 与 `CRITICS` 元素相同），本步**不删**——正确判据要等 `--driver`，现在删掉等于放弃一条马上要用的校验；②正例用例的采样已从 `CRITICS[0]`（= claude，永不能入选）改为 `SELECTABLE[0]`，否则它锁定的「正常路径」其实是一次必然被丢弃的覆盖，在测试层反向加固本缺口；③**恢复时的口径分叉**：该处报错文案用 `CRITICS.join('、')`（含 Driver），与 `legalList`（减 Driver）是两套派生，恢复执行时子断言会钉死一条「指引用户去选 claude」的文案，而用户照着写 `--critics claude` 就撞 Driver 拒绝——正是 `critics.ts` 立规要防的「第一个错误把用户引向第二个错误」。第 5 步收口时两处论域要对齐。 | `src/trivium/topic-args.ts` 的模型旗标校验段、`src/trivium/critics.ts` 的 Driver 检查 |
+ | EV-54 | **done**（2026-09-19，M9 第 5 步） | **落地记要**：`review.ts` 两个 `heterogeneous` 写点（渲染入参与运行元数据）旁补 `overrideReasonFor` 传值，**两处共用同一个派生函数**——各写一份文案会当场踩破「两处同值」这条判据自身。取值只有两种成因：用户经 `--model-<id>` 显式指定 claude 系模型、或档位默认落在 claude 系。**只补写入方，不给 schema 加 `if/then`**（加了历史留痕集体读不回，与 `driver_enabled` 同一条口径）。判据：`driver-wiring.test.ts` 扫两个写点的实参块必须含 `overrideReason`**且**取值来自 `overrideReasonFor(`。原始条目如下 —— **`override_reason` 无写入方，`heterogeneous: false` 的机器判据也只是 description。** `isHeterogeneous` 对 Claude 系模型返回 false（`adapters/base.ts`，只看模型串），而 `run.v2.json` 的 description 写着「false 时必须有 `override_reason`（AC-18）」——**那句没有任何 `if/then` 机器判据**，且 `override_reason` 全仓只有 `render.ts` 三处（类型声明、条件渲染、人读 flag），`review.ts` 两个 `heterogeneous` 写点**都不传它**。**口径要分两层**（计划双审 GLM-06）：PRD AC-18 只背书「覆盖后的模型可见」，而 `model_effective` 本就落 run.json 与 front-matter，**那一句已经成立**；「false ⇒ 必须有 `override_reason`」是 `run.v2` 自己加强的契约，不是需求原文——权衡时别把 schema 散文的约束力当成需求约束力。**M9 第 4 步刻意不做**（裁定由「本步补写入方」改为「推后」，计划双审 CODEX-04）：本步 claude 一次也选不上（`--critics claude` 必退 64），补的写入方**没有任何路径能端到端验证**，只能验到「传参接通」。**缺口今天已存在，且与翻开关无关**：`--model-gemini claude-*` 这条路今天就能落出同一个自相矛盾的 run.json。**触发条件：M9 第 5/6 步**，与 claude 真能入选的那一刻对齐。 | `src/trivium/review.ts` 的两个 heterogeneous 写点、`src/trivium/render.ts`、`skills/dual-critic/schema/run.v2.json` 的 `heterogeneous` |
+-| EV-55 | todo | **提交锚的角色后缀判据是跨时间的，却绑在当轮 Driver 上。** M9 第 4 步把 Hook 的保护集从 `CRITICS`（启用集合）改成 `criticRoleSuffixes()`（全集减当轮 Driver）——**必须改**，否则翻开关那一刻 Driver 自己的产出后缀进保护集，它写不了自己的裁决件，整条流水线锁死（实测：归档内写入由退 0 变退 2）。但 `hasCriticRoleSuffix` 有**两个判据含义不同的消费者**：`isForgedRoleFile` 是「形态 + 位置、当轮语境」，改动对它成立；`immutableChangeReason`（提交锚）是**纯 basename、跨时间**判定，那里没有「当轮 Driver」这个概念。现在等于把一个跨时间的保护面绑在一个当轮的值上。**M9 代价为零**（只有一个 Driver，历史与当轮同值），**M10 第一次换 Driver 就会显形**：历史工件会集体变成「可改」，或反过来新 Driver 的原稿被判伪造。**纯词法后缀检查区分不了「Driver 自身原稿」与「同名历史审查件」，M9 不假装能分。** **修法方向**（计划双审 CODEX-04 提出）：提交锚改按 run 元数据的 artifacts 登记判不可变，而不是按文件名形态——那是安全关键面的重写。**触发条件：M10 第一次换 Driver 之前必须先落它。** **论域修正（2026-09-19，EV-66 计划双审 CODEX-F01 第 1 条）**：本条原文写「`isForgedRoleFile` 是当轮语境，改动对它成立」，这句话让读的人以为**当轮面无需处理**——实况是当轮面同样有缺口，只是形态不同：`hasCriticRoleSuffix` **根本不收 `driver` 参数**，保护集在模块加载期就烙死成缺省 Driver 的补集，于是非缺省 Driver 轮次里 `isForgedRoleFile` 算的是**错的那个当轮**。该缺口已单独登记 **EV-68**，**触发时点是 M9 第 6 步验收、不是 M10**（`hooks.ts` 的注释写的也是 M10，那句记载随 EV-68 一并改）。**EV-68 已于 2026-09-19 结案**：当轮面改由 `hasProtectedRoleSuffix(fileName, driver)` 承接，driver 取自运行留痕；本条承接的两处**跨时间**面改走 `hasRoleSuffixCrossTime()` 与 `roleSuffixAnywhere()`，**取值口径一字未改**（仍是全集减缺省 Driver），行为等价由既有断言原样守住。本条的触发时点维持 **M10 第一次换 Driver 之前**。本条自身的论域维持不变：提交锚与 Bash 侧两处**跨时间**面。 **补记（代码双审 CODEX-03）：实质消费是两处派生、三处语义，本条原只登记了两处。** 漏掉的是 Bash 侧 `ROLE_SUFFIX_ANYWHERE` → `bashTargetsProtected`：它无条件按命令文本里的字面后缀拦，不看位置、不看是不是本轮的文件、不受闸门与 TTL 限制，**同样属跨时间面**（另一侧审查员判它是「当轮语义」，核过判错）。**关键：它与提交锚不同源，上面那条修法方向覆盖不到它**——Bash 侧拿不到 run 上下文，按 artifacts 登记判不可变在那里无从实施，需要单独决定「历史后缀在文本层面是否一律保护、当轮 Driver 的文件如何豁免」。M10 换 Driver 后若只修提交锚，新 Driver 后缀的历史审查件会同时从两处掉出去，**原地改**（非删除）这类已提交工件不再被任何一处拦下（删除仍被 git 锚兜住）。 | `src/trivium/hooks.ts` 的 `criticRoleSuffixes` / `hasRoleSuffixCrossTime` / `immutableChangeReason` / `roleSuffixAnywhere` 与 `bashTargetsProtected`（EV-68 拆分后跨时间面的两处派生已改名，本条论域不变） |
++| EV-55 | todo | **提交锚的角色后缀判据是跨时间的，却绑在当轮 Driver 上。** M9 第 4 步把 Hook 的保护集从 `CRITICS`（启用集合）改成 `criticRoleSuffixes()`（全集减当轮 Driver）——**必须改**，否则翻开关那一刻 Driver 自己的产出后缀进保护集，它写不了自己的裁决件，整条流水线锁死（实测：归档内写入由退 0 变退 2）。但 `hasCriticRoleSuffix` 有**两个判据含义不同的消费者**：`isForgedRoleFile` 是「形态 + 位置、当轮语境」，改动对它成立；`immutableChangeReason`（提交锚）是**纯 basename、跨时间**判定，那里没有「当轮 Driver」这个概念。现在等于把一个跨时间的保护面绑在一个当轮的值上。**M9 代价为零**（只有一个 Driver，历史与当轮同值），**M10 第一次换 Driver 就会显形**：历史工件会集体变成「可改」，或反过来新 Driver 的原稿被判伪造。**纯词法后缀检查区分不了「Driver 自身原稿」与「同名历史审查件」，M9 不假装能分。** **修法方向**（计划双审 CODEX-04 提出）：提交锚改按 run 元数据的 artifacts 登记判不可变，而不是按文件名形态——那是安全关键面的重写。**触发条件：M10 第一次换 Driver 之前必须先落它。** **论域修正（2026-09-19，EV-66 计划双审 CODEX-F01 第 1 条）**：本条原文写「`isForgedRoleFile` 是当轮语境，改动对它成立」，这句话让读的人以为**当轮面无需处理**——实况是当轮面同样有缺口，只是形态不同：`hasCriticRoleSuffix` **根本不收 `driver` 参数**，保护集在模块加载期就烙死成缺省 Driver 的补集，于是非缺省 Driver 轮次里 `isForgedRoleFile` 算的是**错的那个当轮**。该缺口已单独登记 **EV-68**，**触发时点是 M9 第 6 步验收、不是 M10**（`hooks.ts` 的注释写的也是 M10，那句记载随 EV-68 一并改）。**EV-68 已于 2026-09-19 结案**：当轮面改由 `hasProtectedRoleSuffix(fileName, driver)` 承接，driver 取自运行留痕；本条承接的两处**跨时间**面改走 `hasRoleSuffixCrossTime()` 与 `roleSuffixAnywhere()`，**取值口径一字未改**（仍是全集减缺省 Driver），行为等价由既有断言原样守住。本条的触发时点维持 **M10 第一次换 Driver 之前**。本条自身的论域维持不变：提交锚与 Bash 侧两处**跨时间**面。 **补记（代码双审 CODEX-03）：实质消费是两处派生、三处语义，本条原只登记了两处。** 漏掉的是 Bash 侧 `ROLE_SUFFIX_ANYWHERE` → `bashTargetsProtected`：它无条件按命令文本里的字面后缀拦，不看位置、不看是不是本轮的文件、不受闸门与 TTL 限制，**同样属跨时间面**（另一侧审查员判它是「当轮语义」，核过判错）。**关键：它与提交锚不同源，上面那条修法方向覆盖不到它**——Bash 侧拿不到 run 上下文，按 artifacts 登记判不可变在那里无从实施，需要单独决定「历史后缀在文本层面是否一律保护、当轮 Driver 的文件如何豁免」。M10 换 Driver 后若只修提交锚，新 Driver 后缀的历史审查件会同时从两处掉出去，**原地改**（非删除）这类已提交工件不再被任何一处拦下（删除仍被 git 锚兜住）。<br>**进展（2026-09-23，M10a 第 2 步实施中，未结案）**：提交锚已改为「位置 + 登记」两条判据——`_meta/` 内一律不可变（排除 `changes.diff` 与 running 态 `run-*.json`）；plan / bug 原稿在成功收尾时按归档相对路径登记进 `artifacts[]`，由锚②承接。跨时间后缀支与 `hasRoleSuffixCrossTime` 已删（代码双审 r2 CODEX-03：它让非缺省 Driver 的原稿与裁决件被判伪造；审查文档自 M1 起即已登记，删后保护不丢）。Bash 侧 `roleSuffixAnywhere()` 按计划不动，本条后半「Bash 侧需单独决定」仍开放。**偏差（如实登记）**：计划 §3.1.1 要求「在 run.json 与**预检**如实标注本轮原稿不在保护集」，预检这半没做——`trivium preflight` 只接 `--stage`，不知道主题和被审对象，与计划 §7.4 偏差 1 同源；标注实际落在 run.json 的 `gate.warnings`、收尾 stderr 与 `gate --check` 的 `run_warning` 告警（代码双审 r2 CODEX-06 / GLM-04）。 | `src/trivium/hooks.ts` 的 `criticRoleSuffixes` / `hasRoleSuffixCrossTime` / `immutableChangeReason` / `roleSuffixAnywhere` 与 `bashTargetsProtected`（EV-68 拆分后跨时间面的两处派生已改名，本条论域不变） |
+ | EV-56 | todo · **第 3 次复现**（2026-09-19，M9-验收实跑 code 第 2 轮，run `20260919T133957Z`：codex 侧把整份合法 JSON 包进 ```json 围栏，6 条意见塌成 1 个单元 `CODEX-F01`，人工拆开逐条裁决） | **审查员在 JSON 前多写一句引言就会整份降级，7 条意见塌缩成 2 个兜底编号。** M9 第 4 步计划双审，codex 侧输出以一句自然语言引言开头、随后是完整且合法的 ```json 块，编排器判 `parse_fallback: true`，7 条编号意见（含 2 条 major，其中一条推翻了计划的中心事实）被切成两个不可分单元：那句引言一个、整个 JSON 块一个。**代价不是「少了结构化字段」**：`gate --check` 按兜底编号校验，裁决者若不逐条读原文，那 2 条 major 会整体失效——本轮是人工拆开逐条裁决才没丢。与 EV-10 同族但**成因不同**（EV-10 是结论 JSON 多带 front-matter 字段撞 `additionalProperties: false`，这次是 JSON 块**之前**有自然语言前缀）。**修法方向**：解析器容忍代码围栏前的自然语言前缀（按围栏定位而不是要求整份即 JSON）；**需先确认这不会放宽「必须产出结构化结论」的判据**——容忍前缀与容忍「没有 JSON」是两回事。 | 编排器的结论解析层、本主题 plan 阶段的降级留痕件 |
+ | EV-57 | **done**（2026-09-20，M9 第 7 步） | **落地记要**：逐项对照本条清单补齐——设计 §21 v1.3.30 台账行（含第 4～6 步五个提交欠下的行）、§24.1 两新两改 + §24.2 九行、PRD v1.4.6 的 AC / FR / 场景状态、`doc/05_testing/README.md` 补四份 M9 报告与证据目录、纪律 6 清单其余项（7.1 `--driver` 段按 6b 迟到补记、七份门面文档现状句、1.1 四个状态位、6.7.1 / 13.1.1 / 15.3 的失实例句）；计划稿 §8.2 的 grep 差集自检见 `doc/05_testing/evidence/m9-step7-20260920/grep-anchors.md`。**刻意不做并另行登记**：`--only gemini\|glm` 提示（EV-61 扩项）、`.env.example` codex 段（§24.2 仍 ⏳，M8 欠账）、审查员身份段（EV-44 不做）。原始条目如下 —— **M9 第 4 步的完整纪律 6 回溯待第 7 步，本条是那条偏离的显式登记。** 本步改了对外行为（`criticEnabled` 翻真、`agents.claude` 可配、Hook 保护集改判据），而步骤表把「回溯与留痕」排在**第 7 步**，计划 §1.2 已列为本步范围外。代码双审 CODEX-07 指出设计文档未同步，核实成立——**处置取它给的第二条出路并加严**：本步**只**回补会当场失实的两处现状断言（文档抬头的「`criticEnabled` 仍为 false，claude 尚未启用为审核者」、§16.1 M9 行的状态位与第 4 步叙述），理由是本仓纪律「归档件里的失实断言先改再提交」——那两句在合入的一刻就在**唯一实现依据**里变成假的，不能等。**仍欠第 7 步的**：§21 版本台账行、§24 演进并入台账、PRD 侧 AC 状态、`doc/05_testing` 的实测报告、以及纪律 6 清单的其余项。**触发条件：M9 第 7 步开工时**——届时对照本条逐项补齐，不要只看设计文档已经改过就以为回溯做完了（本步只改了两处，是刻意的最小回补）。 | `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md` §21 / §24、`doc/01_requirements/PRD_driver_dual_critic.md`、`doc/05_testing/` |
+ | EV-58 | **已关闭**（2026-09-19，M9 第 5 步） | **闸门区的 driver 位空着，取值链存在「先有鸡还是先有蛋」。** 登记时的形态：`cli.ts` 的 `resolveRerunIndex` 与三处 `inferLatestRunId` 都按缺省 Driver 算，而要算对得先知道 driver、driver 又在留痕里。计划 r2 一度想用「先按缺省猜一次、读到元数据后复算」解，被代码前的计划双审判为**阻断**（AGY-01）：裁决件尚未写出时第一趟恒为 null，而那正是 `gate --check` 最常用的状态；glm 另构造出可触发的 2-循环。**关闭理由**：第 5 步改为 `latestRunMeta` 直读运行元数据（run_id 即文件名，`driver` 与 `rerun_index` 在 run.v2 里都必填），循环依赖**整体消失**，本条描述的那一格不再存在。`inferLatestRunId` 随之无生产消费方，标 `@deprecated` 待删（见 EV-64） | `src/trivium/cli.ts` `cmdGate`、`src/trivium/meta.ts` `latestRunMeta` |
+diff --git a/doc/08_project/M10a-轮次台账.md b/doc/08_project/M10a-轮次台账.md
+index cd652f2..b060da9 100644
+--- a/doc/08_project/M10a-轮次台账.md
++++ b/doc/08_project/M10a-轮次台账.md
+@@ -90,6 +90,7 @@
+ | 20 | EV-74 | plan | r4 | `20260922T170908Z` | 2026-09-23 | 8m27s | codex `request-changes`·**回退** ｜ gemini `request-changes`·**回退** ｜ glm `request-changes` | 13（编号）／24（实际意见） | **换 `deepseek-flash` 后一次跑通**：codex 4m51s 交卷，而同一份稿在 qwen 上撞满 30m 未完成——耗时问题解决。**但两侧解析回退是新出现的**（前三轮 qwen 从未回退）：两侧的 JSON 外面都裹了东西（codex 前置散文加围栏、gemini 前置一行 toolAction 状态），内容本身完整合规。后果是**闸门判 `joint_check_degraded`：有效侧只剩 1 家、共同阻断这一档未执行**——「不是查过没发现，是没查」。裁决件按 13 个编号齐备，但其中两个是整块 JSON 的回退单元，实际逐条裁决了 24 条 |
+ | 21 | EV-74 | plan | r5 | `20260922T232724Z` | 2026-09-23 | 10m27s | codex `request-changes` ｜ gemini `request-changes` ｜ glm `request-changes` | 16 | **三侧均结构化，零 `parse_fallback`**——本轮起焦点显式要求裸 JSON 输出，上一轮两侧回退的问题未复现。16 条全接受，plan 档就此结案，产出 r5 稿并获批 |
+ | 22 | EV-74 | code | r1 | `20260923T004127Z` | 2026-09-23 | 12m34s | codex `request-changes` ｜ gemini `approve-with-nits` ｜ glm `approve-with-nits` | 15 | 三侧均结构化，零阻断。15 条（14 接受 + 1 暂缓）全部处理，code 档结案并获批，EV-74 主题结案 |
++| 23 | M10a | code | r2 | `20260923T030441Z` | 2026-09-23 | 20m9s | codex `request-changes` ｜ gemini `request-changes` ｜ glm `request-changes` | 18 | 第 2 步（EV-55）；三侧均结构化，联合校验生效。**1 个阻断**（CODEX-01：git 取值型全局选项绕过写命令判据，缺口先于本步存在、被本步新文案断言成确定性保证）。18 条全接受并获批，修复待第 3 轮复审 |
+ 
+ > **「裁决条目」不等于人读的意见条数**：某侧解析回退时，它那一整块结构化输出
+ > 塌成若干 `<PREFIX>-F<n>` 编号，闸门按这些编号校验齐备性。
+@@ -101,14 +102,14 @@
+ | 项 | 实际 | 阈值 | 余量 |
+ | :--- | :--- | :--- | :--- |
+ | plan 档轮次 | **17**（M10a 6 + EV-79 5 + EV-74 6） | —（分档不单设阈值） | — |
+-| code 档轮次 | **5**（M10a 1 + EV-79 3 + EV-74 1） | — | — |
+-| **累计轮次** | **22** | **> 33 报告** | 还有 11 轮 |
++| code 档轮次 | **6**（M10a 2 + EV-79 3 + EV-74 1） | — | — |
++| **累计轮次** | **23** | **> 33 报告** | 还有 10 轮 |
+ | 其中作废轮 | **5**（M10a plan r4、EV-79 plan r2、EV-79 code r2、EV-74 plan r3、**EV-74 plan r4 取消**） | —（照计，见 §0） | — |
+ | **其中 codex 脚本级超时致废** | **3**（第 4、9、18 行）——**同一侧、同一形态、第三次** | —（见 §2 末条） | — |
+ | 其中**一侧证据不足**轮 | **1**（EV-74 plan r2，glm 侧） | —（照计，见 §0） | — |
+ | 其中**联合校验未执行**轮 | **1**（EV-74 plan r4，两侧解析回退） | —（照计，见 §0） | — |
+ | 未成轮（不计入） | **1**（`20260922T134058Z`） | —（口径待拍板） | — |
+-| 子进程耗时合计 | **6h19m40s**（含取消轮的观测值 ≥21m26s；第 21、22 行分别计入 10m27s / 12m34s） | —（仅作参考） | — |
++| 子进程耗时合计 | **6h39m49s**（含取消轮的观测值 ≥21m26s；第 21、22、23 行分别计入 10m27s / 12m34s / 20m9s） | —（仅作参考） | — |
+ | **累计墙钟** | **3 天**（2026-09-21 → 2026-09-23） | **> 6 周报告** | 还有约 39 天 |
+ 
+ **当前判定：未触及阈值，无需回补估算。**
+diff --git a/skills/dual-critic/protocol/CLAUDE.md.snippet b/skills/dual-critic/protocol/CLAUDE.md.snippet
+index 210c7cd..cb19a35 100644
+--- a/skills/dual-critic/protocol/CLAUDE.md.snippet
++++ b/skills/dual-critic/protocol/CLAUDE.md.snippet
+@@ -32,6 +32,10 @@
+   **出口是改用 Write / Edit 工具落文件，提交说明写进文件再 `git commit -F <文件>`**
+   （精确判定，不看字面），不是想办法绕过判定。
+   这个误拦是刻意接受的取舍，不要当成 bug 去「修」。
++  **确实要用 `git checkout --` / `git restore` 恢复一个被误改的受保护文件时，
++  请在终端里手动执行**：恢复命令的参数正是那个受保护路径，常规写法在会话里
++  会被同一条判据再拦一次，不要在会话里反复重试。这条判据是按命令形态的
++  **启发式、并不完备**——但换一种写法让它认不出来属于绕过判定，不是出口。
+ - **不要再试图给 `git commit` 开豁免。** 2026-09-12 开过一次（RV-B1），双审打穿后撤回：
+   三个前置条件漏掉至少五条夹带路径，其中换行、附着重定向、文本提及三条实测能放行。
+   根因是原判定 fail-closed，豁免把它变成需要穷举危险形态的 fail-open——而 shell
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index 269826f..c581b72 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -1144,7 +1144,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+       );
+     }
+     {
+-      const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach } =
++      const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings } =
+         await loadRoundReviews(ref.layout, stage, runId);
+       const pre = await checkAdjudication({
+         cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
+@@ -1152,7 +1152,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+         // 非缺省 Driver 下必报 missing_disposition（计划双审 r2 GLM-03，阻断）
+         driver: gateDriver,
+         runIdPinned: Boolean(pinnedId),
+-        degraded, voidedSides, readonlyBreach,
++        degraded, voidedSides, readonlyBreach, runWarnings,
+         expectedFallbackIds, missingSides, runId,
+       });
+       if (!pre.ok) {
+@@ -1225,7 +1225,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+       `找不到 ${stage} 阶段的运行元数据。请先跑一次双审，或用 --run-id 指定。`,
+     );
+   }
+-  const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach } =
++  const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings } =
+     await loadRoundReviews(ref.layout, stage, runId);
+   for (const n of notes) step(n);
+ 
+@@ -1233,7 +1233,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+     cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
+     driver: gateDriver,
+     runIdPinned: Boolean(pinnedId),
+-    degraded, voidedSides, readonlyBreach,
++    degraded, voidedSides, readonlyBreach, runWarnings,
+     expectedFallbackIds, missingSides, runId,
+   });
+ 
+diff --git a/src/trivium/gate.ts b/src/trivium/gate.ts
+index 6879e3d..644eb77 100644
+--- a/src/trivium/gate.ts
++++ b/src/trivium/gate.ts
+@@ -47,7 +47,9 @@ export interface GateWarning {
+     | 'parse_problem'
+     | 'degraded_round'
+     /** 排除作废侧后有效侧不足两家，共同阻断这一档**未执行**（设计 §12.1 的过渡处置） */
+-    | 'joint_check_degraded';
++    | 'joint_check_degraded'
++    /** 运行期写进 run.json `gate.warnings` 的标注，原样透传（如「本轮原稿不在保护集」） */
++    | 'run_warning';
+   message: string;
+   ids?: string[];
+ }
+@@ -159,6 +161,12 @@ export interface GateCheckInput {
+    * 留痕整份读不出时 `missingSides` 先行兜底。漏传本参数才按不拦处理，接线由 cli 两处调用点负责。
+    */
+   readonlyBreach?: { hit: boolean; files: string[] };
++  /**
++   * run.json `gate.warnings` 里运行期写下的标注，原样作为 `run_warning` 告警透传
++   * （M10a 第 2 步代码双审 r2 GLM-04：此前该字段只写不读，「如实标注」没有读者）。
++   * 由 `loadRoundReviews` 带出，接线同 `readonlyBreach`。
++   */
++  runWarnings?: string[];
+ }
+ 
+ export async function checkAdjudication(input: GateCheckInput): Promise<GateCheckResult> {
+@@ -166,6 +174,8 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
+   const voidedSides = input.voidedSides ?? [];
+   const failures: GateFailure[] = [];
+   const warnings: GateWarning[] = [];
++  // 排在一切早退之前：缺裁决件那一格也要看得见运行期标注
++  for (const w of input.runWarnings ?? []) warnings.push({ code: 'run_warning', message: w });
+ 
+   // 第 1 步：收集本轮结构化意见编号
+   const structuredIds: string[] = [];
+@@ -357,7 +367,18 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
+       code: 'missing_review_json',
+       message:
+         `读不到 ${missingSides.join('、')} 侧的结构化结论（_meta/review-<侧>-<run_id>.json），` +
+-        '而 run.json 记录该侧已产出结论。结论文件是裁决校验的唯一事实来源，请用 git restore 恢复，或重跑一轮。',
++        '而 run.json 记录该侧已产出结论。结论文件是裁决校验的唯一事实来源。' +
++        /*
++         * **恢复与重跑两个出口都要给，且说清重跑替代不了恢复**（M10a 第 2 步
++         * EV-55 §3.2.2；代码双审 r2 CODEX-04 推翻了「只留重跑一轮」的简化）：
++         * 该结论文件登记在本 run 的 `artifacts[]` 里，重跑只产生新 run，提交锚②
++         * 会一直以「已丢失」拦下任何提交。恢复命令的目标含 `_meta`，会话里的常规写法
++         * 会被 hook-pre-bash 拦下，所以明说在终端执行——措辞与 `checkArchiveIntegrity`
++         * 的恢复指引同源。
++         */
++        '该文件已丢失或被改动：请在终端里用 `git restore <路径>` 恢复（会话里的常规写法会被 Hook 拦下）。' +
++        '也可以重跑一轮（既有工件不受影响，`-r<N>` 自动抬升），但重跑与 `/dual-abandon` ' +
++        '都解不开提交锚（它们不动已登记的工件），恢复仍是必经步骤。',
+     });
+   }
+ 
+@@ -722,6 +743,8 @@ export async function loadRoundReviews(
+    * 那一格由 `missingSides` 判失败，不靠这里。
+    */
+   readonlyBreach: { hit: boolean; files: string[] };
++  /** run.json `gate.warnings`（读不到 run.json 时为空） */
++  runWarnings: string[];
+ }> {
+   const reviews: Partial<Record<CriticId, Review | null>> = {};
+   const notes: string[] = [];
+@@ -817,7 +840,9 @@ export async function loadRoundReviews(
+     files: [...(runMeta?.guard?.breached_files ?? [])],
+   };
+ 
+-  return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach };
++  const runWarnings = [...(runMeta?.gate?.warnings ?? [])];
++
++  return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings };
+ }
+ 
+ /** 从 `.fallback-items.md` 读回编排器编好号的待裁决单元（每行 `- <前缀>-F<n>: …`） */
+diff --git a/src/trivium/hooks.ts b/src/trivium/hooks.ts
+index 5ffcec4..bc1a689 100644
+--- a/src/trivium/hooks.ts
++++ b/src/trivium/hooks.ts
+@@ -124,17 +124,15 @@ export function isInsideArchive(targetPath: string, projectRoot: string, archive
+  * 两处消费点现已各自处置：
+  *   · 当轮面 → `hasProtectedRoleSuffix(fileName, driver)`，driver **必填**，
+  *     取值由 `hookPreWrite` 经 `resolveRoundDriver` 从 `run.json.driver` 解析；
+- *   · 跨时间面 → `hasRoleSuffixCrossTime()` 与 `roleSuffixAnywhere()`，
+- *     取值口径不变（全集减缺省 Driver），后者已由模块级 `const` 改惰性求值。
+- *
+- * **仍属 M10 的是跨时间面本身**（EV-55）：提交锚改按 run 元数据的 artifacts 登记判不可变、
+- * Bash 侧单独决定历史后缀的文本层保护。那两处与本函数的当轮语义不同源。
++ *   · 跨时间面 → Bash 侧 `roleSuffixAnywhere()`，取值口径不变（全集减缺省 Driver），
++ *     已由模块级 `const` 改惰性求值。提交锚那一处已于 M10a 第 2 步（EV-55）撤掉后缀判据，
++ *     改由 run 元数据的 `artifacts[]` 登记判不可变（见 `immutableChangeReason`）。
+  *
+  * ## `driver` 没有默认值（第 2 轮代码双审 CODEX-03）
+  *
+  * 本步的手法是「漏传变编译期错误」，源头却留着 `= DEFAULT_DRIVER` 就不对称——
+  * 新增调用点漏传会静默退回「缺省 Driver 的补集」，正是 EV-68 / EV-69 要消灭的形态。
+- * 跨时间面的三处调用点显式写 `criticRoleSuffixes(DEFAULT_DRIVER)`：**它们要的就是缺省值**，
++ * 跨时间面的调用点（EV-55 后剩 Bash 侧两处）显式写 `criticRoleSuffixes(DEFAULT_DRIVER)`：**它们要的就是缺省值**，
+  * 显式写出来比靠默认值省略更说明问题。
+  */
+ export function criticRoleSuffixes(driver: AgentId): readonly string[] {
+@@ -149,13 +147,10 @@ export function criticRoleSuffixes(driver: AgentId): readonly string[] {
+  * **消费者的判据含义不同，这层不对称是有意留下的**（M9 第 4 步，计划双审
+  * AGY-02 ≡ CODEX-04；消费点计数由代码双审 CODEX-03 改准）。
+  *
+- * `criticRoleSuffixes(DEFAULT_DRIVER)` 有**两处派生、三处语义**。三处分别是：
++ * 角色后缀判据今天有**两处语义**：
+  *
+  *   · `isForgedRoleFile` / `hookPreWrite`——形态 + 位置，**当轮**语境；
+- *   · `immutableChangeReason`（提交锚）——纯 basename、**跨时间**判定。那里没有
+- *     「当轮 Driver」这个概念：一份三个月前由别的 Driver 落的同名文件，今天该不该拦？
+- *     纯词法后缀检查**区分不了**「Driver 自身原稿」与「同名历史审查件」。
+- *   · `roleSuffixAnywhere()` → `bashTargetsProtected`——同样是**跨时间**面：
++ *   · `roleSuffixAnywhere()` → `bashTargetsProtected`——**跨时间**面：
+  *     它无条件按命令文本里的字面后缀拦，不看位置、不看是不是本轮的文件、
+  *     不受闸门与 TTL 限制。**它与提交锚不同源**：Bash 侧拿不到 run 上下文，
+  *     所以 EV-55 给提交锚的修法方向（按 run 元数据的 artifacts 登记判不可变）
+@@ -169,15 +164,9 @@ export function criticRoleSuffixes(driver: AgentId): readonly string[] {
+  *   · `hasProtectedRoleSuffix(fileName, driver)`——**当轮**面，`driver` **必填且无默认值**。
+  *     漏传是编译期错误，不是运行期的静默回落。理由与 EV-69 登记的教训同源：
+  *     `gate.ts` 的 `voidedSides` 注释原话是「可选参数的默认值让漏传静默成功」。
+- *   · `hasRoleSuffixCrossTime(fileName)`——**跨时间**面，取值口径写进函数名
+- *     （全集减**缺省** Driver），供提交锚与 Bash 侧使用。
+- *
+- * **跨时间面本步行为一字不变。** 它仍然把一个跨时间的保护面绑在缺省 Driver 上，
+- * M10 第一次换 Driver 仍会显形：届时历史 `-claude.md` 会集体变成「可改」，
+- * 或反过来新 Driver 的原稿被判伪造。那条修法（提交锚按 `run.json` 的 artifacts
+- * 登记判不可变；Bash 侧另需单独决定）是安全关键面的重写，**触发时点是 M10**，
+- * 已登记 BACKLOG EV-55，不在本步做。本步只把它从隐式的模块加载期固化
+- * 变成一个显式的取值点，好让 EV-55 真做时不必再拆一次耦合。
++ *   · 跨时间面当时拆出的 `hasRoleSuffixCrossTime(fileName)` 供提交锚使用；
++ *     M10a 第 2 步（EV-55）提交锚改按 `artifacts[]` 登记判不可变后，它已无消费者，
++ *     随之删除（代码双审 r2 CODEX-03）。Bash 侧的跨时间面仍是 `roleSuffixAnywhere()`。
+  */
+ export function hasProtectedRoleSuffix(fileName: string, driver: AgentId): boolean {
+   return new RegExp(`-(?:${criticRoleSuffixes(driver).join('|')})\\.md$`).test(
+@@ -185,17 +174,6 @@ export function hasProtectedRoleSuffix(fileName: string, driver: AgentId): boole
+   );
+ }
+ 
+-/**
+- * 跨时间面的角色后缀判据：**不问当轮是谁**，取值恒为「全集减缺省 Driver」。
+- *
+- * 消费者是提交锚 `immutableChangeReason` 与 Bash 侧 `roleSuffixAnywhere()`——
+- * 两处都要对**历史**文件表态，而「当轮 Driver」在那里没有意义。
+- * 与 `hasProtectedRoleSuffix` 的差别见后者的文档块。
+- */
+-export function hasRoleSuffixCrossTime(fileName: string): boolean {
+-  return new RegExp(`-(?:${criticRoleSuffixes(DEFAULT_DRIVER).join('|')})\\.md$`).test(path.basename(fileName));
+-}
+-
+ /**
+  * 目标是否落在归档根内——**词法路径与真实路径取并集**（设计 §8.4，2026-09-14 收窄）。
+  *
+@@ -470,30 +448,39 @@ export function isOrchestratorOwned(targetPath: string, projectRoot: string, arc
+ /**
+  * 已提交的归档文件里，哪些**一经落盘即不可变**（git 锚要拦其改动）。
+  * 返回 null 表示该文件本就可变（task.json、原稿、裁决件、便利副本 changes.diff）。
++ *
++ * **判据从「后缀枚举」改为「位置」（M10a 第 2 步 EV-55 §3.1.2）**：原判据靠一条
++ * 正则枚举 `_meta/` 下的文件名形态（`review-*.json` / `brief-*.md` /
++ * `changes-*.diff`），新增一种 `_meta/` 工件类型就要跟着改枚举——新增判据改为
++ * 「位于 `_meta/` 内即不可变」，只留两个排除项（下方 run-*.json 分支、
++ * `changes.diff` 便利副本）。**原稿的不可变性不在这个函数里判**：原稿不落在
++ * `_meta/` 内，它的保护改由锚②（`archive.checkRecordedArtifacts`）按 §3.1.1 的
++ * 登记承接——谁登记了谁不可变，这个函数不需要认得「什么是原稿」。
+  */
+-const IMMUTABLE_META = /^(?:review-.+\.(?:json|fallback-items\.md)|brief-.+\.md|changes-.+\.diff)$/;
+ async function immutableChangeReason(projectRoot: string, relFromRoot: string): Promise<string | null> {
+   const base = path.basename(relFromRoot);
+   const inMeta = relFromRoot.split('/').includes('_meta');
+   /*
+-   * 这里用**纯后缀检查**，不做位置判定（审查意见 AGY-03）。
++   * **不再按角色后缀判**（M10a 第 2 步代码双审 r2 CODEX-03）。
+    *
+-   * 调用方 `deletedOrModifiedTracked` 传进来的范围本就是 `archiveRel`——能进
+-   * `tracked.modified` 的文件天然在归档根内，再判一次位置是多余的，还会给每次
+-   * `git commit` 加上一轮 realpath I/O。
++   * 上一版这里第一支是 `hasRoleSuffixCrossTime(base)`：保护集「全集减**缺省** Driver」。
++   * 它区分不了「Driver 自己的原稿 / 裁决件」与「同名历史审查件」，于是当轮 Driver
++   * 不是缺省值时，它自己的 `-<id>.md` 原稿与 `-response-<id>.md` 裁决件被判
++   * 「改动即伪造」——计划 §3.1.4 的行为表与 §3.1.5 的出口对那一族不成立。
+    *
+-   * 也正因如此，这里**不能**换成组合判定 `isForgedRoleFile`：`base` 是 basename，
+-   * 位置判定会把它解析到项目根、恒判「归档外」，提交锚就此静默失效。
+-   *
+-   * 走**跨时间**函数（EV-68 拆分后）：这里要对历史文件表态，没有「当轮 Driver」可言。
+-   * 行为与拆分前逐字相同。
++   * 删掉它保护不丢：审查文档自 M1 起就在收尾时登记进 `artifacts[]`
++   * （`review.ts` 里 `artifacts.push(written.absPath)` → `meta.artifacts`），
++   * 由锚②（`archive.checkRecordedArtifacts`）按登记 sha256 核对——这正是计划
++   * §3.1.2「原稿与审查件的不可变性改由锚②按登记承接」的本意。删除则由锚①兜住。
+    */
+-  if (hasRoleSuffixCrossTime(base)) return '审查文档只能由编排器落盘，改动即伪造';
+-  if (inMeta && IMMUTABLE_META.test(base)) return '审计材料一经落盘即不可变';
+   if (inMeta && /^run-.+\.json$/.test(base)) {
+     /*
+      * run.json 只在运行**期间**被编排器改写（骨架 → 收尾）。已提交的版本若还是
+      * `running`，说明有人在运行中途提交过，本次改动是正常收尾，不能拦。
++     *
++     * **这一支必须排在下面的 `_meta/` 位置判据之前求值**：位置判据本会把
++     * `run-*.json` 也判成不可变，`run-*.json` 需要这条更细的例外先拦下、
++     * 不落到位置判据的通用拒绝上。
+      */
+     const { readAtHead } = await import('./util/git.js');
+     const head = await readAtHead(projectRoot, relFromRoot);
+@@ -506,6 +493,14 @@ async function immutableChangeReason(projectRoot: string, relFromRoot: string):
+     }
+     return '运行清单是留痕核对的锚，改锚即可整枝绕过';
+   }
++  if (inMeta && base !== 'changes.diff') {
++    /*
++     * 便利副本 `changes.diff` 每轮覆盖写（`.reviews/README.md` 记载的就是这个
++     * 名字），受保护的是同目录下带 run_id 的那份（已命中 `review-*` / `brief-*` /
++     * `changes-*.diff` 等旧枚举，现由本条位置判据统一覆盖）。
++     */
++    return '_meta/ 下的审计材料一经落盘即不可变（changes.diff 便利副本除外）';
++  }
+   return null;
+ }
+ 
+@@ -659,13 +654,32 @@ function deny(reason: string): HookOutput {
+  * 方向取保守：宁可在闸门期多拦一条无害命令（用户可以等审完再跑），也不能放过一次写入。
+  * 只在闸门期生效，日常不受影响。
+  */
++/** 需要额外吃掉一个参数值的 git 全局选项（`WRITE_LIKE` 与 `commitTargetsProject` 共用） */
++const GIT_OPTS_WITH_VALUE = new Set([
++  '-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env',
++]);
++
++/**
++ * git 子命令之前的全局选项前缀。
++ *
++ * **取值型选项要多吃一个 token**（M10a 第 2 步代码双审 r2 CODEX-01）：上一版只写了
++ * `(?:-[^\s]+\s+)*`，吃得下 `--git-dir=x` 这种自带取值的形态，吃不下
++ * `git -c core.quotePath=false restore …` / `git -C <目录> checkout …`——取值那个词
++ * 不以 `-` 开头，前缀就此断掉，整条命令判「不像写命令」，`hookPreBash` 的两条规则
++ * 在第一道门就一起放行。取值允许带引号段（`-c core.editor="a b"`）。
++ */
++export const GIT_OPT_PREFIX =
++  `(?:(?:${[...GIT_OPTS_WITH_VALUE].join('|')})\\s+(?:[^\\s"']|"[^"]*"|'[^']*')+\\s+|-[^\\s]+\\s+)*`;
++
+ const WRITE_LIKE: readonly RegExp[] = [
+   /(^|[^<>|&\d])>{1,2}(?!\s*(?:&|\/dev\/null))/,        // 重定向（排除 2>&1 与 > /dev/null）
+   /\btee\b/,
+   /\bsed\s+(?:-[A-Za-z]*i|--in-place)\b/,
+   /\bperl\s+-[A-Za-z]*i\b/,
+   /\b(?:rm|mv|cp|touch|mkdir|rmdir|ln|install|rsync|patch|dd|truncate|chmod|chown|unzip|tar)\b/,
+-  /\bgit\s+(?:-[^\s]+\s+)*(?:checkout|restore|switch|stash|reset|apply|am|cherry-pick|merge|rebase|pull|revert|clean|mv|rm|commit)\b/,
++  new RegExp(
++    `\\bgit\\s+${GIT_OPT_PREFIX}(?:checkout|restore|switch|stash|reset|apply|am|cherry-pick|merge|rebase|pull|revert|clean|mv|rm|commit)\\b`,
++  ),
+   /\b(?:npm|pnpm|yarn|bun)\s+(?:install|i|ci|add|remove|rm|uninstall|update|up|pkg|link)\b/,
+   /\bpip3?\s+(?:install|uninstall)\b/,
+   /\bcargo\s+(?:add|remove|install)\b/,
+@@ -785,7 +799,7 @@ const SEGMENT_SPLIT = /(?:&&|\|\||[;&|\n\r])/;
+  * 出现在命令文本任何位置都拦——见下方「为什么 Bash 侧不做收窄」。
+  *
+  * 后缀集取**跨时间**口径（`criticRoleSuffixes(DEFAULT_DRIVER)`，即全集减**缺省** Driver），
+- * 与提交锚同源、与 Write/Edit 侧的当轮口径**有意不同**——这一处要对历史文件与
++ * 与 Write/Edit 侧的当轮口径**有意不同**（提交锚已于 EV-55 改按登记判定，不再共用）——这一处要对历史文件与
+  * 纯文本表态，拿不到 run 上下文，也就没有「当轮 Driver」可言（EV-68 / EV-55）。
+  *
+  * **惰性求值**（EV-68）：上一版是模块级 `const`，正则在**模块加载期**就固化了。
+@@ -908,7 +922,12 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
+         '  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\n' +
+         '  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\n' +
+         '  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\n' +
+-        '  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。',
++        '  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\n' +
++        '\n' +
++        '  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\n' +
++        '  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\n' +
++        '  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\n' +
++        '  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。',
+     );
+   }
+   if (!ctx.config.gate.block_business_write_when_awaiting_approval) return ALLOW;
+@@ -950,11 +969,6 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
+  * 本 Hook 改挂全部 Bash 事件，过滤全在进程内完成。
+  * 判不出来时按「是提交」处理：Hook 的职责是拦住违规提交，不是放过可疑输入。
+  */
+-/** 需要额外吃掉一个参数值的 git 全局选项 */
+-const GIT_OPTS_WITH_VALUE = new Set([
+-  '-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env',
+-]);
+-
+ /**
+  * 一段命令里的 git 调用：**子命令** + 它自己指定的工作目录
+  * （`-C` / `--work-tree` / `--git-dir`）。
+@@ -1278,6 +1292,9 @@ async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
+       problems.slice(0, 20).join('\n') +
+       (problems.length > 20 ? `\n  · …另有 ${problems.length - 20} 项` : '') +
+       '\n\n  请用 `git checkout -- <路径>` 或 `git restore <路径>` 恢复。\n' +
++      '  **这一步请在终端里手动执行**：恢复命令的参数正是上面列出的受保护路径，\n' +
++      '  常规写法在会话里会被 hook-pre-bash 拦下（M10a 第 2 步 EV-55 §3.2.2）。\n' +
++      '  那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。\n' +
+       '  确实要作废某一轮，用 `/dual-abandon --topic <主题>`——它保留工件、只解闸门。\n' +
+       '  重跑会自动抬升 -r<N>，既有工件一律不覆盖，不需要先删。',
+   };
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index af973bf..fc6b39f 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -475,6 +475,37 @@ export interface RunContext {
+   onSideProgress?: (critic: CriticId, patch: SideProgress) => void;
+ }
+ 
++/**
++ * plan / bug 原稿相对归档根的登记路径（M10a 第 2 步 EV-55 §3.1.1 域约束）。
++ *
++ * 抽成纯函数是为了能被单测直接咬住——埋在 `executeRun` 里要真跑一次审查才走得到。
++ * 返回 `null` 表示 `subjectPath` 越出归档根（如 `--plan-file doc/…` 这类归档外
++ * 文档），调用方据此判定「不登记」，不是把 `null` 当成某种路径值写进去。
++ *
++ * 排除条件与同仓 `hooks.isOrchestratorOwned` 同形（代码双审 r2 AGY-02 / GLM-06）：
++ * 空串是**归档根本身**，不是可登记的工件路径——登记了会让锚② 对一个目录求哈希；
++ * 结果为绝对路径（跨盘符等）同样视为域外。
++ *
++ * **纯词法**：两侧的软链归一化由调用方先做（见 `resolveSubjectArtifactRelPath`）。
++ */
++export function subjectArtifactRelPath(archiveRoot: string, subjectPath: string): string | null {
++  const rel = path.relative(archiveRoot, subjectPath);
++  if (rel.length === 0 || rel.startsWith('..') || path.isAbsolute(rel)) return null;
++  return rel;
++}
++
++/**
++ * 域判定前先把两侧解到真实路径（代码双审 r2 CODEX-08）。
++ *
++ * 纯词法比较对软链写法敏感：macOS 的 `/var` → `/private/var`、工程目录本身是软链时，
++ * 同一个归档内文件会被判「越出归档根」而**静默失去保护**。解不开（不存在等）就退回
++ * 原值——`locateSubject` 已验过存在性，这里失败只可能是竞态，按词法判即可。
++ */
++export async function resolveSubjectArtifactRelPath(archiveRoot: string, subjectPath: string): Promise<string | null> {
++  const real = async (p: string): Promise<string> => fs.realpath(p).catch(() => p);
++  return subjectArtifactRelPath(await real(archiveRoot), await real(subjectPath));
++}
++
+ /**
+  * 准备阶段：可用性检查 → 定位被审对象 → 冻结 → 渲染两侧送审包 → 写 run.json 骨架。
+  *
+@@ -1497,6 +1528,42 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+   } else {
+     meta.status = 'success';
+   }
++
++  /*
++   * ── plan / bug 原稿登记（M10a 第 2 步，EV-55，计划 §3.1.1）──
++   *
++   * **时点**：收尾且 `meta.status === 'success'` 才登记，不在 `--start` 骨架期。
++   * 送审窗口内改稿由 `subject_drift` 判定承接、整轮作废；作废轮（本判据之前的
++   * `subject_drift` / 超时 / abort 分支）不登记，于是「作废轮之后要不要继续保护
++   * 原稿」这个取舍不必做——它压根没进保护集，改了直接可提交。
++   *
++   * **只对 plan / bug 生效**：code 阶段的被审对象是 `_meta/changes-<runid>.diff`，
++   * 已在 `prepareRun` 经 `pendingDiff` 登记（§3.1.1 硬约束 1），这里再登记就是同一份
++   * 工件的重复条目。
++   *
++   * **路径按归档相对形态登记**，不用 `subjectPath` 的绝对值——`checkRecordedArtifacts`
++   * 核对时统一按 `path.join(layout.archiveRoot, a.path)` 解析（`archive.ts`），
++   * 绝对路径会被当成归档根下一个不存在的位置，判 `missing`。
++   *
++   * **域约束**：相对结果以 `..` 越出归档根（`--plan-file doc/…` 这类归档外文档）时
++   * 不登记，且如实标注——静默跳过会让人以为登记了，而这类文档要保留「设计文档审后
++   * 回补修订」的常态改动能力，提交锚不该覆盖它。
++   *
++   * **哈希用冻结值**（计划 §7.3 R-j，代码双审 r2 GLM-03）：不在这里重新读盘。
++   * 漂移复算点与这里之间隔着批量哈希与多份落盘，窗口内原稿若被改写，重算会把
++   * 篡改版锁成基线；登记冻结值则是 fail-safe——窗口内被改的文件在下次提交时判 modified。
++   */
++  if (stage !== 'code' && meta.status === 'success') {
++    const relSubject = await resolveSubjectArtifactRelPath(ctx.archiveRoot, subjectPath);
++    if (relSubject === null) {
++      const notice = `本轮原稿不在保护集：${subjectPath} 不在归档根内，提交锚不覆盖它`;
++      warnings.push(notice);
++      meta.gate.warnings = [...(meta.gate.warnings ?? []), notice];
++    } else {
++      meta.artifacts.push({ path: relSubject, sha256: primarySnap.subjectSha256 });
++    }
++  }
++
+   meta.gate.state = meta.status === 'success' ? 'review_done_awaiting_disposition' : 'failed';
+ 
+   await writeRunMeta(ref.layout, stage, meta);
+diff --git a/test/integration/code-stage.test.ts b/test/integration/code-stage.test.ts
+index c4c3483..1a19979 100644
+--- a/test/integration/code-stage.test.ts
++++ b/test/integration/code-stage.test.ts
+@@ -141,6 +141,28 @@ test('有变更 → 冻结 changes.diff，其 sha256 即 subject_sha256', { skip
+   assert.equal(meta.snapshot.subject_sha256, sha, 'subject_sha256 必须是补丁全文的 sha256');
+ });
+ 
++test('code 轮不新增原稿登记：补丁只在骨架期登记一次（M10a 第 2 步 EV-55 §3.1.1 硬约束 1，代码双审 r2 GLM-02 (b)）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await codeFixture();
++  await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 7;\n', 'utf8');
++
++  const { exitCode, meta } = await runCode(fx.root, fx.codeDir);
++  assert.equal(exitCode, EXIT.OK, '双审应成功');
++  assert.equal(meta.status, 'success');
++
++  /*
++   * 收尾的原稿登记块被 `stage !== 'code'` 挡住。去掉这道门控时，code 阶段的被审对象
++   * （补丁）会被再登记一次——要么是同一份 `changes-<run_id>.diff` 的重复条目，
++   * 要么是每轮覆盖写的便利副本 `changes.diff`（登记了就再也改不动）。两种都在这里红。
++   */
++  const diffEntries = meta.artifacts.filter((a) => a.path.endsWith(`changes-${meta.run_id}.diff`));
++  assert.equal(diffEntries.length, 1, `补丁应只登记一次：${JSON.stringify(meta.artifacts)}`);
++  assert.equal(
++    meta.artifacts.some((a) => a.path.endsWith('/_meta/changes.diff') || a.path.endsWith(`${path.sep}_meta${path.sep}changes.diff`)),
++    false,
++    `便利副本 changes.diff 不得进 artifacts[]：${JSON.stringify(meta.artifacts)}`,
++  );
++});
++
+ test('两侧拿到同一份补丁——逐侧各自 git diff 会让两侧审到不同东西', { skip: bundleMissing && bundleSkipReason }, async () => {
+   const fx = await codeFixture();
+   await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 1;\nexport const z = 2;\n', 'utf8');
+diff --git a/test/integration/fault-injection.test.ts b/test/integration/fault-injection.test.ts
+index 66ce6aa..78a7e88 100644
+--- a/test/integration/fault-injection.test.ts
++++ b/test/integration/fault-injection.test.ts
+@@ -10,10 +10,15 @@ import {
+   makeFixture,
+   today,
+ } from '../helpers/fixture.js';
++import { sha256File } from '../../src/trivium/util/fsx.js';
+ import { type StubConfig } from '../../src/trivium/adapters/stub.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import { extractJsonCandidate } from '../../src/trivium/parse.js';
+ import type { RunMeta } from '../../src/trivium/types.js';
++import { loadCtx } from '../../src/trivium/config.js';
++import { hookPreCommit } from '../../src/trivium/hooks.js';
++import { setGate } from '../../src/trivium/state.js';
++import type { Ctx } from '../../src/trivium/types.js';
+ 
+ /**
+  * 故障注入（设计 §17.2，修订版 M3 计划 §5 与 §7）。
+@@ -93,6 +98,19 @@ async function runInjected(
+   return { root, stageDir, exitCode, meta, waitOut };
+ }
+ 
++/**
++ * 把本主题 plan 闸门推到「等待审批」，让提交锚只剩留痕完整性这一层在判。
++ *
++ * 成功收尾后闸门停在「等待裁决」，`hookPreCommit` 会先以「裁决未完成」早退，
++ * 根本走不到锚②——不先推开这一层，下面的「不点名」断言会因早退而空转。
++ */
++async function releaseAdjudication(ctx: Ctx): Promise<void> {
++  await setGate({
++    triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan',
++    state: 'awaiting_approval', sessionId: 'S', heartbeatStaleMs: 120_000,
++  });
++}
++
+ 
+ test('桩经环境变量跨进程注入，worker 真的用了桩（AGY-05）', { skip: bundleMissing && bundleSkipReason }, async () => {
+   const { meta } = await runInjected({ gemini: { mode: 'ok' }, glm: { mode: 'ok', findings: 2 } });
+@@ -109,6 +127,117 @@ test('桩经环境变量跨进程注入，worker 真的用了桩（AGY-05）', {
+   assert.equal(meta.status, 'success');
+ });
+ 
++test('plan 原稿在成功收尾后进 meta.artifacts（M10a 第 2 步 EV-55 §3.1.1）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const { root, meta } = await runInjected({ gemini: { mode: 'ok' }, glm: { mode: 'ok' } });
++  assert.equal(meta.status, 'success');
++
++  // makeFixture 在 plan 阶段目录下种的原稿：<topic>/plan/<today>-<topic>-claude.md
++  const relSubject = `${TOPIC}/plan/${today()}-${TOPIC}-claude.md`;
++  const entry = meta.artifacts.find((a) => a.path === relSubject);
++  assert.ok(
++    entry,
++    `原稿应当登记进 artifacts[]（相对归档根的路径 ${relSubject}），实际 artifacts：` +
++      JSON.stringify(meta.artifacts),
++  );
++
++  // 登记的 sha256 必须能还原：path.join(archiveRoot, entry.path) 解析回真实文件、哈希一致
++  const archiveRoot = path.join(root, '.reviews');
++  const absSubject = path.join(archiveRoot, entry!.path);
++  assert.equal(await sha256File(absSubject), entry!.sha256, 'path.join(archiveRoot, path) 必须解析回原稿真实位置');
++  // 登记的是冻结值（计划 §7.3 R-j，代码双审 r2 GLM-03），与 run.json 的快照哈希同一个值
++  assert.equal(entry!.sha256, meta.snapshot.subject_sha256, '登记哈希应取冻结时的 subject_sha256');
++
++  /*
++   * 登记是锚② 生效的**前提**，前提链要端到端验一次（代码双审 r2 AGY-01 ① ≡ GLM-02 (d)）：
++   * 成功收尾后原地改原稿，提交锚必须把它作为「已被改动」列出来。
++   */
++  const ctx = await loadCtx({ cwd: root });
++  await releaseAdjudication(ctx);
++  const before = await hookPreCommit(ctx, { session_id: 'S' });
++  assert.equal(before.exitCode, EXIT.OK, `改稿之前提交锚应放行（否则下面的拦截证明不了什么）：\n${before.stderr}`);
++  await fs.appendFile(absSubject, '\n审后改稿\n', 'utf8');
++  const after = await hookPreCommit(ctx, { session_id: 'S' });
++  assert.equal(after.exitCode, EXIT.GATE_BLOCK);
++  assert.ok(
++    (after.stderr ?? '').includes(`已被改动：${relSubject}`),
++    `已登记原稿被改动，锚② 必须把它列出来：\n${after.stderr}`,
++  );
++
++  /*
++   * 审查文档的不可变性同样由锚② 承接（代码双审 r2 CODEX-03：提交锚的后缀支已删）。
++   * 它们自 M1 起就登记在 artifacts[] 里——这里端到端证明删支后保护没丢。
++   */
++  const relReview = `${TOPIC}/plan/${today()}-${TOPIC}-gemini.md`;
++  assert.ok(meta.artifacts.some((a) => a.path === relReview), `审查文档应已登记：${JSON.stringify(meta.artifacts)}`);
++  await fs.appendFile(path.join(archiveRoot, relReview), '\n伪造一条意见\n', 'utf8');
++  const forged = await hookPreCommit(ctx, { session_id: 'S' });
++  assert.ok(
++    (forged.stderr ?? '').includes(`已被改动：${relReview}`),
++    `已登记的审查文档被改动，锚② 必须把它列出来：\n${forged.stderr}`,
++  );
++});
++
++test('作废轮（subject_drift）不登记原稿，之后原地改稿不触发锚②（EV-55 §3.1.1 时点）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  // 桩在审查期间改写原稿本身 ⇒ 被审对象漂移 ⇒ 整轮作废
++  const relSubject = `${TOPIC}/plan/${today()}-${TOPIC}-claude.md`;
++  const { root, meta } = await runInjected({
++    gemini: { mode: 'mutate_file', note: `.reviews/${relSubject}` },
++    glm: { mode: 'ok' },
++  });
++  assert.equal(meta.status, 'failed', '原稿在送审窗口内被改，整轮必须作废');
++  assert.equal(
++    meta.artifacts.some((a) => a.path === relSubject),
++    false,
++    `作废轮不得登记原稿（登记时点移回 --start 时这里会红）：${JSON.stringify(meta.artifacts)}`,
++  );
++
++  const ctx = await loadCtx({ cwd: root });
++  await releaseAdjudication(ctx);
++  await fs.appendFile(path.join(root, '.reviews', relSubject), '\n作废后继续改稿\n', 'utf8');
++  const r = await hookPreCommit(ctx, { session_id: 'S' });
++  assert.equal(r.exitCode, EXIT.OK, `作废轮之后改稿应可提交：\n${r.stderr}`);
++});
++
++test('归档外被审对象（--plan-file doc/…）不登记，run.json 与 gate --check 都有标注（EV-55 §3.1.1 域）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const docRel = 'doc/design-under-review.md';
++  const { root, meta } = await runInjected(
++    { gemini: { mode: 'ok' }, glm: { mode: 'ok' } },
++    ['--plan-file', docRel],
++    [],
++    async (r) => {
++      await fs.mkdir(path.join(r, 'doc'), { recursive: true });
++      await fs.writeFile(path.join(r, docRel), '# 归档外的设计文档\n', 'utf8');
++    },
++  );
++  assert.equal(meta.status, 'success');
++  assert.equal(
++    meta.artifacts.some((a) => a.path.includes('design-under-review.md')),
++    false,
++    `归档外文档不得进 artifacts[]：${JSON.stringify(meta.artifacts)}`,
++  );
++  assert.ok(
++    (meta.gate.warnings ?? []).some((w) => w.includes('本轮原稿不在保护集')),
++    `run.json 的 gate.warnings 必须如实标注：${JSON.stringify(meta.gate.warnings)}`,
++  );
++
++  // 标注要有读者（代码双审 r2 GLM-04）：gate --check --json 透传
++  const chk = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
++  const cand = extractJsonCandidate(chk.stdout);
++  assert.ok(cand, `gate --check --json 未产出 JSON：\n${chk.stdout}\n${chk.stderr}`);
++  const js = JSON.parse(cand.json) as { warnings: Array<{ code: string; message: string }> };
++  assert.ok(
++    js.warnings.some((w) => w.code === 'run_warning' && w.message.includes('本轮原稿不在保护集')),
++    `gate --check 必须透传 run.json 的 gate.warnings：${JSON.stringify(js.warnings)}`,
++  );
++
++  // 随后改它：提交锚不点名这份文档
++  const ctx = await loadCtx({ cwd: root });
++  await releaseAdjudication(ctx);
++  await fs.appendFile(path.join(root, docRel), '\n审后回补修订\n', 'utf8');
++  const r = await hookPreCommit(ctx, { session_id: 'S' });
++  assert.equal(r.exitCode, EXIT.OK, `归档外文档审后可改、可提交：\n${r.stderr}`);
++});
++
+ test('未设注入变量时，绝不会用到桩', { skip: bundleMissing && bundleSkipReason }, async () => {
+   const { root } = await makeFixture({ topic: TOPIC });
+   // 不给探针结论，两侧适配器的 availability 应判不可用 → 退 69，而不是悄悄走桩
+diff --git a/test/integration/gate-loop.test.ts b/test/integration/gate-loop.test.ts
+index 0414566..d2ed945 100644
+--- a/test/integration/gate-loop.test.ts
++++ b/test/integration/gate-loop.test.ts
+@@ -966,8 +966,18 @@ test('改审查文档并同步改写 run.json 的 sha → git 锚拦下（锚与
+   const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
+   assert.equal(r.code, EXIT.GATE_BLOCK, `改锚绕过必须被拦：\n${r.stdout}${r.stderr}`);
+   assert.match(r.stderr, /不可变工件被改动/);
+-  assert.match(r.stderr, /gemini\.md/);
++  /*
++   * **只点名 run.json、不再点名 gemini.md**（M10a 第 2 步代码双审 r2 CODEX-03 删掉提交锚后缀支之后）。
++   *
++   * 上一版这条链有两道独立信号：后缀支按文件名拦审查文档、位置判据拦 run.json。
++   * 后缀支删掉后（它让非缺省 Driver 的原稿 / 裁决件被判伪造），审查文档的不可变性只由
++   * 锚②按登记核对——而这条链恰好把登记里的 sha 一起改了，锚②自证清白。
++   * **拦住它的是 run.json 本身**：收尾后的 run-*.json 位于 `_meta/` 内，改它即拦。
++   * 攻击链必须改锚，改锚必被拦，所以保护成立；代价是冗余从两道降为一道、诊断少点名一个文件。
++   * 这个取舍已列入第 3 轮代码双审的焦点。
++   */
+   assert.match(r.stderr, new RegExp(`run-${runId}\\.json`));
++  assert.match(r.stderr, /运行清单是留痕核对的锚/);
+ });
+ 
+ test('结构化结论 review-*.json 在保护集内：改成空意见即拦，删掉则 gate --check 失败', { skip: bundleMissing && bundleSkipReason }, async () => {
+diff --git a/test/unit/gate.test.ts b/test/unit/gate.test.ts
+index b04733b..97f92ef 100644
+--- a/test/unit/gate.test.ts
++++ b/test/unit/gate.test.ts
+@@ -189,7 +189,38 @@ test('run.json 记录已产出结论、结构化结论却读不到 → missing_r
+   assert.equal(r.ok, false, '结论文件是唯一事实来源，缺了不能当「该侧无意见」放行');
+   const f = r.failures.find((x) => x.code === 'missing_review_json');
+   assert.match(f!.message, /glm/);
++  /*
++   * 恢复与重跑两个出口都要给（M10a 第 2 步 EV-55 §3.2.2；代码双审 r2 CODEX-04
++   * 推翻了「只留重跑一轮」）：该文件登记在本 run 的 artifacts[] 里，重跑解不开
++   * 提交锚②，恢复是必经步骤——恢复命令的目标含 `_meta`，所以要明说在终端执行。
++   */
+   assert.match(f!.message, /git restore/);
++  assert.match(f!.message, /终端/);
++  assert.match(f!.message, /重跑一轮/);
++  assert.match(f!.message, /解不开提交锚/);
++});
++
++test('run.json 的 gate.warnings 作为 run_warning 透传，缺裁决件的早退路径也带着（代码双审 r2 GLM-04）', async () => {
++  const l = await layout();
++  const notice = '本轮原稿不在保护集：/proj/doc/x.md 不在归档根内，提交锚不覆盖它';
++  // 没有裁决件：checkAdjudication 走 missing_disposition 早退
++  const early = await checkAdjudication({
++    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
++    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
++    runWarnings: [notice],
++  });
++  assert.equal(early.failures[0]?.code, 'missing_disposition');
++  assert.deepEqual(early.warnings.filter((w) => w.code === 'run_warning').map((w) => w.message), [notice]);
++
++  await putDisposition(l, `${HEAD}
++| AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
++  const full = await checkAdjudication({
++    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
++    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
++    runWarnings: [notice],
++  });
++  assert.equal(full.ok, true, JSON.stringify(full.failures));
++  assert.deepEqual(full.warnings.filter((w) => w.code === 'run_warning').map((w) => w.message), [notice]);
+ });
+ 
+ test('AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求落点', async () => {
+diff --git a/test/unit/hooks.test.ts b/test/unit/hooks.test.ts
+index 9e1205a..996191b 100644
+--- a/test/unit/hooks.test.ts
++++ b/test/unit/hooks.test.ts
+@@ -5,7 +5,7 @@ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import {
+   hookPreWrite, hookPreBash, hookPreCommit, hookStop, hookSessionStart, runHook, looksLikeWriteCommand,
+-  extractTargetPath, isForgedRoleFile, hasProtectedRoleSuffix, hasRoleSuffixCrossTime,
++  extractTargetPath, isForgedRoleFile, hasProtectedRoleSuffix,
+   criticRoleSuffixes, isInsideArchive, isOrchestratorOwned,
+   type HookInput,
+ } from '../../src/trivium/hooks.js';
+@@ -17,6 +17,8 @@ import { setGate } from '../../src/trivium/state.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import type { Ctx } from '../../src/trivium/types.js';
++import { initFixtureRepo } from '../../src/trivium/util/git.js';
++import { run } from '../../src/trivium/util/exec.js';
+ 
+ const SESSION = 'S-CURRENT';
+ const STALE = 120_000;
+@@ -51,10 +53,11 @@ test('从各种 tool_input 字段名里取出目标路径', () => {
+ });
+ 
+ test('纯后缀检查：只问形态，不问位置', () => {
+-  // 提交锚（immutableChangeReason）用的就是这一支，传进来的是 basename
+-  // EV-68 拆分后它走**跨时间**函数，断言一字未改——这正是「跨时间面行为不变」的机器判据
+-  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-gemini.md'), true);
+-  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-glm.md'), true);
++  // 原先测的是跨时间函数 hasRoleSuffixCrossTime（提交锚专用）；M10a 第 2 步 EV-55 后提交锚改按
++  // artifacts[] 登记判不可变，那个函数随之删除（代码双审 r2 CODEX-03）。形态断言改挂到当轮函数、
++  // 以缺省 Driver 取值——断言本身一字未改
++  assert.equal(hasProtectedRoleSuffix('2026-09-10-t-gemini.md', DEFAULT_DRIVER), true);
++  assert.equal(hasProtectedRoleSuffix('2026-09-10-t-glm.md', DEFAULT_DRIVER), true);
+   /*
+    * 后两条**结论不变、理由已改写**（M9 第 4 步）。
+    *
+@@ -65,9 +68,9 @@ test('纯后缀检查：只问形态，不问位置', () => {
+    * 新理由：**`-claude.md` 是当轮 Driver 自己的产出**。判据是「全部已登记角色
+    * 减当轮 Driver」，与「谁能当审核者」无关——见 `criticRoleSuffixes(DEFAULT_DRIVER)` 的文档块。
+    */
+-  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-claude.md'), false);
+-  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-revised-claude.md'), false);
+-  assert.equal(hasRoleSuffixCrossTime('src/gemini.md'), false, '文件名必须以 -gemini.md 结尾');
++  assert.equal(hasProtectedRoleSuffix('2026-09-10-t-claude.md', DEFAULT_DRIVER), false);
++  assert.equal(hasProtectedRoleSuffix('2026-09-10-t-revised-claude.md', DEFAULT_DRIVER), false);
++  assert.equal(hasProtectedRoleSuffix('src/gemini.md', DEFAULT_DRIVER), false, '文件名必须以 -gemini.md 结尾');
+ });
+ 
+ /*
+@@ -978,6 +981,134 @@ test('block_commit=false 时不拦', async () => {
+   assert.equal((await hookPreCommit(ctx, { session_id: SESSION })).exitCode, EXIT.OK);
+ });
+ 
++// ── hook-pre-commit：_meta/ 位置判据（M10a 第 2 步 EV-55 §3.1.2，§3.3）──
++
++/**
++ * 这一族此前**完全没有测试**（`immutableChangeReason` / `checkArchiveIntegrity`
++ * 只在 `hookPreCommit` 内部私有调用，仓库里此前没有一条用例真的提交过、
++ * 又改动过一份 `_meta/` 工件）。判据从「后缀枚举」改成「位置」之后，
++ * 这里补上最有价值的那几格：一种**旧枚举压根不认识**的新 `_meta` 文件类型、
++ * 两个排除项（`changes.diff` 便利副本、`running` 态 `run-*.json`）。
++ */
++async function gitCtx(): Promise<Ctx> {
++  const ctx = await fakeCtx();
++  await initFixtureRepo(ctx.projectRoot);
++  return ctx;
++}
++
++async function commitAll(root: string, message: string): Promise<void> {
++  await run('git', ['add', '-A'], { cwd: root });
++  await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', message, '--no-verify'], {
++    cwd: root,
++  });
++}
++
++test('_meta/ 下一种旧枚举不认识的新工件类型：提交后改动即拦（判据从后缀改成位置）', async () => {
++  const ctx = await fakeCtx();
++  const metaDir = path.join(ctx.archiveRoot, 'T', 'plan', '_meta');
++  await fs.mkdir(metaDir, { recursive: true });
++  // 故意起一个不匹配旧 IMMUTABLE_META 正则（review-*.json / brief-*.md / changes-*.diff）的文件名
++  const target = path.join(metaDir, 'trace-20260101T000000Z.json');
++  await fs.writeFile(target, '{"v":1}\n');
++  await initFixtureRepo(ctx.projectRoot); // 把上面写的文件一并纳入首个提交
++
++  await fs.writeFile(target, '{"v":2}\n'); // 已提交后原地改动
++  const r = await hookPreCommit(ctx, { session_id: SESSION });
++  assert.equal(r.exitCode, EXIT.GATE_BLOCK, `_meta/ 下的新工件类型也该被位置判据拦下：\n${r.stderr}`);
++  assert.match(r.stderr ?? '', /trace-20260101T000000Z\.json/);
++});
++
++test('changes.diff 便利副本：提交后改动可以提交（每轮覆盖写，位置判据的排除项）', async () => {
++  const ctx = await gitCtx();
++  const metaDir = path.join(ctx.archiveRoot, 'T', 'code', '_meta');
++  await fs.mkdir(metaDir, { recursive: true });
++  const alias = path.join(metaDir, 'changes.diff');
++  await fs.writeFile(alias, 'diff v1\n');
++  await commitAll(ctx.projectRoot, 'seed changes.diff');
++
++  await fs.writeFile(alias, 'diff v2\n'); // 下一轮覆盖写
++  const r = await hookPreCommit(ctx, { session_id: SESSION });
++  assert.equal(r.exitCode, EXIT.OK, `changes.diff 是每轮覆盖的便利副本，不应被拦：\n${r.stderr}`);
++});
++
++test('run-*.json：running 态收尾回写可以提交，success 态原地改动被拦（两条例外求值顺序）', async () => {
++  const ctx = await gitCtx();
++  const metaDir = path.join(ctx.archiveRoot, 'T', 'plan', '_meta');
++  await fs.mkdir(metaDir, { recursive: true });
++
++  // ① running → 收尾回写：不拦
++  const runningRun = path.join(metaDir, 'run-20260101T000000Z.json');
++  await fs.writeFile(runningRun, JSON.stringify({ status: 'running' }) + '\n');
++  await commitAll(ctx.projectRoot, 'seed running run.json');
++  await fs.writeFile(runningRun, JSON.stringify({ status: 'success' }) + '\n');
++  const r1 = await hookPreCommit(ctx, { session_id: SESSION });
++  assert.equal(r1.exitCode, EXIT.OK, `running 态收尾回写不应被拦：\n${r1.stderr}`);
++  await commitAll(ctx.projectRoot, 'finish run.json');
++
++  // ② 已收尾（success）的 run.json 再被原地改动：拦
++  await fs.writeFile(runningRun, JSON.stringify({ status: 'success', tampered: true }) + '\n');
++  const r2 = await hookPreCommit(ctx, { session_id: SESSION });
++  assert.equal(r2.exitCode, EXIT.GATE_BLOCK, `已收尾的 run.json 被改动必须拦：\n${r2.stderr}`);
++  assert.match(r2.stderr ?? '', /run-20260101T000000Z\.json/);
++});
++
++test('非缺省 Driver 的原稿与裁决件：提交后原地改可以提交（代码双审 r2 CODEX-03 的鉴别用例）', async () => {
++  /*
++   * 提交锚上一版第一支是跨时间后缀判据（全集减**缺省** Driver），`-codex.md` 在保护集内——
++   * codex 当 Driver 时它自己的原稿与裁决件会被判「改动即伪造」。复原那一支这里就红。
++   * 未登记进任何 artifacts[]（没有 run.json），所以锚② 也不管：它们本就可变。
++   */
++  const ctx = await gitCtx();
++  const planDir = path.join(ctx.archiveRoot, 'T', 'plan');
++  const codeDir = path.join(ctx.archiveRoot, 'T', 'code');
++  await fs.mkdir(planDir, { recursive: true });
++  await fs.mkdir(codeDir, { recursive: true });
++  const draft = path.join(planDir, '2026-09-23-T-codex.md');
++  const verdict = path.join(codeDir, '2026-09-23-T-response-codex.md');
++  const revised = path.join(planDir, '2026-09-23-T-revised-codex.md');
++  for (const f of [draft, verdict, revised]) await fs.writeFile(f, 'v1\n');
++  await commitAll(ctx.projectRoot, 'seed codex-driver artifacts');
++
++  for (const f of [draft, verdict, revised]) await fs.writeFile(f, 'v2\n');
++  const r = await hookPreCommit(ctx, { session_id: SESSION });
++  assert.equal(r.exitCode, EXIT.OK, `非缺省 Driver 修改自己的原稿 / 裁决件不应被拦：\n${r.stderr}`);
++});
++
++test('git 取值型全局选项不能让恢复 / 改写命令绕过写命令判据（代码双审 r2 CODEX-01）', async () => {
++  /*
++   * 上一版 git 分支的选项前缀只吃 `--git-dir=x` 这种自带取值的形态：
++   * `git -c k=v restore …` 的取值那个词不以 `-` 开头，前缀断掉，整条判「不像写命令」，
++   * `hookPreBash` 第一道门放行。既有负例 `git -c core.editor="rm …" commit` 能拦，
++   * 是靠取值里的 `rm` 字面蒙中的，不算覆盖——这里的取值都不含任何写动词。
++   */
++  const ctx = await fakeCtx();
++  for (const cmd of [
++    'git -c core.quotePath=false restore -- .reviews/t/plan/_meta/run-R1.json',
++    'git -C /proj checkout -- .reviews/t/plan/a-gemini.md',
++    'git --git-dir .git restore -- .reviews/t/plan/_meta/review-glm-R1.json',
++    'git -c core.pager="less -R" -C . checkout -- .reviews/t/task.json',
++    'git --work-tree . -c core.quotePath=false reset --hard',
++  ]) {
++    assert.equal(looksLikeWriteCommand(cmd), true, `应判为写命令：${cmd}`);
++  }
++  for (const cmd of [
++    'git -c core.quotePath=false restore -- .reviews/t/plan/_meta/run-R1.json',
++    'git -C /proj checkout -- .reviews/t/plan/a-gemini.md',
++    'git --git-dir .git restore -- .reviews/t/plan/_meta/review-glm-R1.json',
++  ]) {
++    assert.equal((await hookPreBash(ctx, bashInput(cmd))).exitCode, EXIT.GATE_BLOCK, `应被拦：${cmd}`);
++  }
++  // 收紧不能变成误拦：只读子命令照样放行
++  for (const cmd of [
++    'git -c core.quotePath=false log --oneline',
++    'git -C /proj status --porcelain',
++    'git -c core.quotePath=false diff HEAD -- .reviews/t/plan/_meta/run-R1.json',
++    'git --git-dir .git show HEAD:.reviews/t/task.json',
++  ]) {
++    assert.equal(looksLikeWriteCommand(cmd), false, `不应判为写命令：${cmd}`);
++  }
++});
++
+ // ── hook-stop（三层防死循环）──
+ 
+ test('裁决未完成时阻止收工，并给出该怎么做', async () => {
+diff --git a/test/contract/bash-recovery-wording.test.ts b/test/contract/bash-recovery-wording.test.ts
+new file mode 100644
+index 0000000..b33bf19
+--- /dev/null
++++ b/test/contract/bash-recovery-wording.test.ts
+@@ -0,0 +1,387 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import { REPO_ROOT } from '../helpers/fixture.js';
++import { GIT_OPT_PREFIX } from '../../src/trivium/hooks.js';
++
++/**
++ * §3.2.2 扫描判据的机械核对（M10a 第 2 步 EV-55）。
++ *
++ * 计划把「清单的得出方式」从人工数处数改成一条可执行判据：扫 `src/trivium/` 下
++ * 所有提到 git 恢复类子命令的文案源串，要求每一处都提示「这一步请在终端里手动执行」——
++ * 因为恢复命令本身会提到受保护路径，常规写法在会话里会被 Bash 守卫的同一条判据再拦一次。
++ *
++ * ## 论域：语句组 + 具名豁免，不再用字符窗口（代码双审 r2 CODEX-02 ≡ GLM-01 ≡ AGY-03）
++ *
++ * 上一版的论域是「命中点 ±400 字符内出现保护字面（`_meta` / `task.json` / 角色后缀）」。
++ * 实测在真实仓库上**论域为空**：真实文案的对象写的是 `<路径>` 占位符或「上面列出的
++ * 受保护路径」，最近的保护字面在 705 字符之外，六处命中全被 `continue` 掉——把全部
++ * 「终端」提示删光测试照样绿。「对象带不带保护字面」从源码字面上判不出来。
++ *
++ * 所以改成显式判定：
++ *   · **每一处**命中都要在它所在的**语句组**（由 `+` 拼接的同一条文案）内含「终端」；
++ *   · 对象确实不是受保护路径的，进下方 `EXEMPTIONS` 具名豁免，写明理由；
++ *     豁免表本身也被扫描——豁免不到任何命中就判过期；
++ *   · 已知站点下限：`KNOWN_SITES` 必须真的进论域，论域被清空时这里先红；
++ *   · 变异腿：从 hooks.ts 源文本删去「终端」，判据必须报出这两处。
++ *
++ * 保护字面那张手抄的角色后缀表随之删除（GLM-05 (a)：它是注册表之外的第二份登记事实）。
++ */
++
++const RECOVERY_SUBCOMMANDS = ['checkout', 'restore', 'switch', 'stash', 'reset', 'clean', 'revert'];
++/**
++ * 与 `hooks.ts` 的写命令判据共用同一段 git 选项前缀（代码双审 r2 CODEX-07）：
++ * `git -c core.quotePath=false restore …` 恰是本仓纪律要求的 git 写法，
++ * 上一版的 `git\s+(checkout|…)` 认不出它。
++ */
++const GIT_RECOVERY_RE = new RegExp(`\\bgit\\s+${GIT_OPT_PREFIX}(?:${RECOVERY_SUBCOMMANDS.join('|')})\\b`, 'g');
++const TERMINAL_HINT_RE = /终端/;
++
++interface Marked {
++  /** 相对仓库根 */
++  file: string;
++  /** 语句组内必须出现的一段原文，用来认出是哪一条文案 */
++  marker: string;
++}
++
++/** 对象不是受保护路径的恢复类文案：不要求「终端」提示 */
++const EXEMPTIONS: ReadonlyArray<Marked & { reason: string }> = [
++  {
++    file: 'src/trivium/guard.ts',
++    marker: '只读失守',
++    reason: '只读失守的恢复对象是审查期间被写的工作树业务文件，会话内可执行（计划 §3.2.2 表第 3 行，记巡检清单不改）',
++  },
++  {
++    file: 'src/trivium/hooks.ts',
++    marker: '这是按写命令形态的启发式判定',
++    reason: '闸门写锁的 deny 文案在列举写命令形态，不是恢复建议',
++  },
++];
++
++/** 必须进论域的已知站点：论域被清空（窗口、正则或剥注释出错）时这里先红 */
++const KNOWN_SITES: readonly Marked[] = [
++  { file: 'src/trivium/hooks.ts', marker: '禁止用 Bash 改动编排器独占的文件' },
++  { file: 'src/trivium/hooks.ts', marker: '归档留痕不完整' },
++  { file: 'src/trivium/gate.ts', marker: '结论文件是裁决校验的唯一事实来源' },
++];
++
++// ───────────────────────── 剥注释（字符串感知，保留换行） ─────────────────────────
++
++/**
++ * 剥掉注释，**保留字符串、模板串与正则字面量**，并把被剥内容换成等量空白、保留换行——
++ * 于是剥后文本的行号就是原文行号（代码双审 r2 CODEX-05：上一版把整块注释压成一个空格，
++ * 报错行号整体前移数百行）。
++ *
++ * 上一版是两条正则，不感知字符串：字符串里的 `//`（URL）会把行尾剥掉、`'src/*'`
++ * 会与后面的 `*∕` 配对吞掉中间源码（代码双审 r2 CODEX-07 / GLM-05 (b)；
++ * registry-parity 记过同一个坑）。正则字面量也要认：`/['"]x/` 里的引号
++ * 若被当成字符串起点，后面整段代码都会错位。
++ *
++ * 模板串 `${…}` 内的表达式原样保留、不剥注释——那里的注释极罕见，保留只会让
++ * 待判文本变多（多报），不会漏报。
++ */
++function stripComments(src: string): string {
++  const n = src.length;
++  const blank = (s: string): string => s.replace(/[^\n]/g, ' ');
++
++  const scanQuoted = (i: number, q: string): number => {
++    let j = i + 1;
++    while (j < n) {
++      const c = src[j]!;
++      if (c === '\\') { j += 2; continue; }
++      if (c === q || c === '\n') return j + 1;
++      j++;
++    }
++    return n;
++  };
++  const scanExpr = (i: number): number => {
++    let j = i;
++    let depth = 0;
++    while (j < n) {
++      const c = src[j]!;
++      if (c === '\'' || c === '"') { j = scanQuoted(j, c); continue; }
++      if (c === '`') { j = scanTemplate(j); continue; }
++      if (c === '{') depth++;
++      else if (c === '}') {
++        if (depth === 0) return j + 1;
++        depth--;
++      }
++      j++;
++    }
++    return n;
++  };
++  const scanTemplate = (i: number): number => {
++    let j = i + 1;
++    while (j < n) {
++      const c = src[j]!;
++      if (c === '\\') { j += 2; continue; }
++      if (c === '`') return j + 1;
++      if (c === '$' && src[j + 1] === '{') { j = scanExpr(j + 2); continue; }
++      j++;
++    }
++    return n;
++  };
++  /** 返回正则字面量的结束位置；不是合法正则（遇换行）时返回 -1 */
++  const scanRegex = (i: number): number => {
++    let j = i + 1;
++    let inClass = false;
++    while (j < n) {
++      const c = src[j]!;
++      if (c === '\n') return -1;
++      if (c === '\\') { j += 2; continue; }
++      if (inClass) { if (c === ']') inClass = false; }
++      else if (c === '[') inClass = true;
++      else if (c === '/') {
++        j++;
++        while (j < n && /[a-z]/i.test(src[j]!)) j++;
++        return j;
++      }
++      j++;
++    }
++    return -1;
++  };
++  /** `/` 处于「期待表达式」的位置才是正则起点 */
++  const regexAllowed = (out: string): boolean =>
++    /(?:^|[(,=:[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bcase)\s*$/.test(out.slice(-40));
++
++  let out = '';
++  let i = 0;
++  while (i < n) {
++    const c = src[i]!;
++    const d = src[i + 1];
++    if (c === '/' && d === '/') {
++      const nl = src.indexOf('\n', i);
++      const end = nl === -1 ? n : nl;
++      out += blank(src.slice(i, end));
++      i = end;
++      continue;
++    }
++    if (c === '/' && d === '*') {
++      const close = src.indexOf('*/', i + 2);
++      const end = close === -1 ? n : close + 2;
++      out += blank(src.slice(i, end));
++      i = end;
++      continue;
++    }
++    if (c === '\'' || c === '"') {
++      const end = scanQuoted(i, c);
++      out += src.slice(i, end);
++      i = end;
++      continue;
++    }
++    if (c === '`') {
++      const end = scanTemplate(i);
++      out += src.slice(i, end);
++      i = end;
++      continue;
++    }
++    if (c === '/' && regexAllowed(out)) {
++      const end = scanRegex(i);
++      if (end !== -1) {
++        out += src.slice(i, end);
++        i = end;
++        continue;
++      }
++    }
++    out += c;
++    i++;
++  }
++  return out;
++}
++
++// ───────────────────────── 语句组与判据 ─────────────────────────
++
++/**
++ * 命中所在的「语句组」：由行尾 `+` 串起来的同一条文案（本仓的多行消息一律这么拼）。
++ * 向上吞并行尾为 `+` 的前行，向下沿行尾 `+` 延伸；空行（剥掉的注释）跳过。
++ */
++function groupAround(lines: string[], idx: number): { start: number; end: number } {
++  const t = (k: number): string => lines[k]!.trim();
++  let start = idx;
++  for (let k = idx - 1; k >= 0; k--) {
++    if (t(k) === '') continue;
++    if (!t(k).endsWith('+')) break;
++    start = k;
++  }
++  let end = idx;
++  let cur = idx;
++  while (t(cur).endsWith('+')) {
++    let m = cur + 1;
++    while (m < lines.length && t(m) === '') m++;
++    if (m >= lines.length) break;
++    end = m;
++    cur = m;
++  }
++  return { start, end };
++}
++
++interface Hit {
++  file: string;
++  /** 原文行号（剥注释保留了换行，两者一致） */
++  line: number;
++  group: string;
++}
++
++function collectHits(file: string, raw: string): Hit[] {
++  const src = stripComments(raw);
++  const lines = src.split('\n');
++  const hits: Hit[] = [];
++  for (const m of src.matchAll(GIT_RECOVERY_RE)) {
++    const line = src.slice(0, m.index).split('\n').length;
++    const { start, end } = groupAround(lines, line - 1);
++    hits.push({ file, line, group: lines.slice(start, end + 1).join('\n') });
++  }
++  return hits;
++}
++
++function judge(sources: ReadonlyArray<{ file: string; raw: string }>): {
++  hits: Hit[];
++  offenders: string[];
++} {
++  const hits = sources.flatMap((s) => collectHits(s.file, s.raw));
++  const offenders = hits
++    .filter((h) => !EXEMPTIONS.some((e) => e.file === h.file && h.group.includes(e.marker)))
++    .filter((h) => !TERMINAL_HINT_RE.test(h.group))
++    .map((h) => `${h.file}:${h.line}`);
++  return { hits, offenders };
++}
++
++async function collectSourceFiles(root: string): Promise<string[]> {
++  const out: string[] = [];
++  const walk = async (dir: string): Promise<void> => {
++    for (const e of await fs.readdir(dir, { withFileTypes: true })) {
++      const abs = path.join(dir, e.name);
++      if (e.isDirectory()) await walk(abs);
++      else if (e.name.endsWith('.ts')) out.push(abs);
++    }
++  };
++  await walk(root);
++  return out;
++}
++
++async function loadSources(): Promise<Array<{ file: string; raw: string }>> {
++  const files = await collectSourceFiles(path.join(REPO_ROOT, 'src/trivium'));
++  return Promise.all(
++    files.map(async (f) => ({ file: path.relative(REPO_ROOT, f).split(path.sep).join('/'), raw: await fs.readFile(f, 'utf8') })),
++  );
++}
++
++// ───────────────────────── 用例 ─────────────────────────
++
++test('§3.2.2 扫描判据：每一处 git 恢复类文案都要在同一语句组内提示「终端」（豁免须具名）', async () => {
++  const { hits, offenders } = judge(await loadSources());
++
++  // 下限：已知站点必须真的进论域——论域被清空时判据本身就失效了
++  for (const s of KNOWN_SITES) {
++    assert.ok(
++      hits.some((h) => h.file === s.file && h.group.includes(s.marker)),
++      `已知站点没进论域（判据空转）：${s.file}「${s.marker}」\n实际命中：\n` +
++        hits.map((h) => `  ${h.file}:${h.line}`).join('\n'),
++    );
++  }
++  // 豁免表防过期：每条豁免都必须豁免到至少一处真实命中
++  for (const e of EXEMPTIONS) {
++    assert.ok(
++      hits.some((h) => h.file === e.file && h.group.includes(e.marker)),
++      `豁免已过期（没有命中可豁免），请删除：${e.file}「${e.marker}」`,
++    );
++  }
++
++  assert.deepEqual(
++    offenders,
++    [],
++    '以下位置提到 git 恢复类子命令，但同一条文案里没有「请在终端执行」的提示——' +
++      '恢复命令本身会提到受保护路径，常规写法会被 Bash 守卫再拦一次。' +
++      '对象确实不是受保护路径的，进 EXEMPTIONS 并写明理由：\n' +
++      offenders.join('\n'),
++  );
++});
++
++test('变异腿：从 hooks.ts 删去「终端」提示，判据必须报出两处已知站点', async () => {
++  const sources = await loadSources();
++  const mutated = sources.map((s) => (s.file === 'src/trivium/hooks.ts' ? { ...s, raw: s.raw.replaceAll('终端', '别处') } : s));
++  const { hits, offenders } = judge(mutated);
++  for (const marker of ['禁止用 Bash 改动编排器独占的文件', '归档留痕不完整']) {
++    const site = hits.find((h) => h.file === 'src/trivium/hooks.ts' && h.group.includes(marker));
++    assert.ok(site, `变异后仍应命中「${marker}」`);
++    assert.ok(
++      offenders.includes(`${site.file}:${site.line}`),
++      `删掉「终端」后「${marker}」必须成为 offender，实际：${offenders.join(', ')}`,
++    );
++  }
++});
++
++test('报错行号是原文行号：剥注释保留换行（代码双审 r2 CODEX-05）', () => {
++  const raw =
++    '/*\n * 很长的块注释\n * 第三行\n */\n' +
++    'const a = 1; // 行注释\n' +
++    "const msg = '请 `git restore <路径>`' +\n" +
++    "  '  恢复。';\n";
++  const hits = collectHits('x.ts', raw);
++  assert.equal(hits.length, 1);
++  assert.equal(hits[0]!.line, 6, '命中在原文第 6 行');
++  assert.equal(stripComments(raw).split('\n').length, raw.split('\n').length, '剥注释不能改变行数');
++});
++
++test('判据认得带取值型选项的 git 写法与全部恢复类子命令（代码双审 r2 CODEX-07）', () => {
++  for (const s of [
++    'git -c core.quotePath=false restore -- x',
++    'git -C /proj checkout -- x',
++    'git --git-dir .git reset --hard',
++    'git switch main',
++    'git clean -fd',
++    'git revert HEAD',
++    'git stash pop',
++  ]) {
++    GIT_RECOVERY_RE.lastIndex = 0;
++    assert.ok(GIT_RECOVERY_RE.test(s), `应命中：${s}`);
++  }
++  for (const s of ['git -c core.quotePath=false log', 'git diff HEAD', 'git status']) {
++    GIT_RECOVERY_RE.lastIndex = 0;
++    assert.equal(GIT_RECOVERY_RE.test(s), false, `不应命中：${s}`);
++  }
++  GIT_RECOVERY_RE.lastIndex = 0;
++});
++
++test('语句组：跨行 + 拼接的文案作为一组判定，「终端」出现在组外不算数（代码双审 r2 GLM-01 宽松方向）', () => {
++  const inGroup =
++    "const a = '请用 `git checkout -- <路径>` 恢复。\\n' +\n" +
++    "  '  这一步请在终端里手动执行。';\n";
++  assert.deepEqual(judge([{ file: 'a.ts', raw: inGroup }]).offenders, []);
++
++  const outOfGroup =
++    "const a = '请用 `git checkout -- <路径>` 恢复。';\n" +
++    "const b = '无关文案：请在终端里看日志。';\n";
++  assert.deepEqual(judge([{ file: 'b.ts', raw: outOfGroup }]).offenders, ['b.ts:1'], '相邻无关文案里的「终端」不能替它作证');
++});
++
++test('防空转腿：剥注释真的剥掉了注释，且不误伤字符串 / 正则字面量', () => {
++  // 注释里的恢复命令只是在讲机制，必须剥掉
++  const sample = '/** git checkout 只是在讲机制 */\nconst x = 1; // git restore 同上\n';
++  const stripped = stripComments(sample);
++  assert.doesNotMatch(stripped, /git checkout|git restore/);
++  assert.match(stripped, /const x = 1;/);
++
++  // 字符串里的 `//`：上一版正则会把同一行后面的代码剥掉
++  const url = "const u = 'https://example.com'; const s = 'git restore x';\n";
++  assert.match(stripComments(url), /const s = 'git restore x';/, '字符串里的 // 不是注释');
++
++  // 字符串里的 `/*`：上一版会与后面的 `*/` 配对吞掉中间源码
++  const glob = "const g = 'src/*'; const s = 'git restore x'; /* 真注释 */\n";
++  const g2 = stripComments(glob);
++  assert.match(g2, /const s = 'git restore x';/, "字符串里的 /* 不是注释起点");
++  assert.doesNotMatch(g2, /真注释/);
++
++  // 正则字面量里的引号：当成字符串起点会让后面整段错位
++  const re = "const r = /['\"]x/; const s = 'git restore x'; // 注释\n";
++  const r2 = stripComments(re);
++  assert.match(r2, /const s = 'git restore x';/);
++  assert.doesNotMatch(r2, /注释/);
++
++  // 模板串里的 `${}` 与 `//`
++  const tpl = "const t = `a ${b ? '//' : 'x'} git restore y`; // 注释\n";
++  const t2 = stripComments(tpl);
++  assert.match(t2, /git restore y`;/);
++  assert.doesNotMatch(t2, /注释/);
++});
+diff --git a/test/unit/subject-artifact.test.ts b/test/unit/subject-artifact.test.ts
+new file mode 100644
+index 0000000..2e881d7
+--- /dev/null
++++ b/test/unit/subject-artifact.test.ts
+@@ -0,0 +1,63 @@
++/**
++ * `subjectArtifactRelPath`：plan / bug 原稿登记路径的域约束（M10a 第 2 步 EV-55 §3.1.1）。
++ *
++ * 抽成纯函数单测的理由与本仓其余 `judge*` 一致：埋在 `executeRun` 里要真跑一次
++ * 审查（拉起至少一侧 Agent）才走得到，等于没有断言守着。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import { subjectArtifactRelPath, resolveSubjectArtifactRelPath } from '../../src/trivium/review.js';
++
++test('归档内的原稿：返回相对归档根的路径，不是绝对路径', () => {
++  const archiveRoot = '/proj/.reviews';
++  const subjectPath = '/proj/.reviews/EV-1/plan/2026-01-01-EV-1-claude.md';
++  assert.equal(subjectArtifactRelPath(archiveRoot, subjectPath), 'EV-1/plan/2026-01-01-EV-1-claude.md');
++});
++
++test('归档外的原稿（--plan-file doc/…）：返回 null，不登记', () => {
++  const archiveRoot = '/proj/.reviews';
++  const subjectPath = '/proj/doc/02_design/设计.md';
++  assert.equal(subjectArtifactRelPath(archiveRoot, subjectPath), null);
++});
++
++test('原稿恰好落在归档根本身：返回 null——归档根不是可登记的工件路径（代码双审 r2 AGY-02 / GLM-06）', () => {
++  // 上一版这里把空串钉成期望值：调用方会把 '' 登记进 artifacts[]，锚② 随后对归档根目录求哈希
++  const archiveRoot = '/proj/.reviews';
++  assert.equal(subjectArtifactRelPath(archiveRoot, archiveRoot), null);
++  assert.equal(subjectArtifactRelPath(archiveRoot, `${archiveRoot}/`), null);
++});
++
++test('经软链写法给出的归档内原稿仍判归档内（代码双审 r2 CODEX-08）', async () => {
++  // 真实目录 + 指向它的软链：纯词法比较会把软链写法判成「越出归档根」而静默不登记
++  const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-subj-')));
++  const realRoot = path.join(base, 'real');
++  const archiveRoot = path.join(realRoot, '.reviews');
++  await fs.mkdir(path.join(archiveRoot, 'EV-1', 'plan'), { recursive: true });
++  const draft = path.join(archiveRoot, 'EV-1', 'plan', 'a.md');
++  await fs.writeFile(draft, 'x\n');
++  const link = path.join(base, 'link');
++  await fs.symlink(realRoot, link);
++  const viaLink = path.join(link, '.reviews', 'EV-1', 'plan', 'a.md');
++
++  assert.equal(subjectArtifactRelPath(archiveRoot, viaLink), null, '前提：纯词法判据确实会误判');
++  assert.equal(await resolveSubjectArtifactRelPath(archiveRoot, viaLink), path.join('EV-1', 'plan', 'a.md'));
++  assert.equal(await resolveSubjectArtifactRelPath(path.join(link, '.reviews'), draft), path.join('EV-1', 'plan', 'a.md'));
++});
++
++test('返回的相对路径能经 path.join(archiveRoot, rel) 解析回真实位置——与 checkRecordedArtifacts 同一套还原口径', () => {
++  const archiveRoot = '/proj/.reviews';
++  const subjectPath = '/proj/.reviews/EV-1/plan/2026-01-01-EV-1-claude.md';
++  const rel = subjectArtifactRelPath(archiveRoot, subjectPath);
++  assert.equal(rel === null ? null : path.join(archiveRoot, rel), subjectPath);
++});
++
++test('相邻但不在归档内的兄弟目录不得被误判为归档内（前缀匹配陷阱）', () => {
++  // archiveRoot 是 /proj/.reviews，而 /proj/.reviews-backup/x.md 只是字符串前缀相同，
++  // path.relative 的结果必须以 '..' 开头，不能被 startsWith('..') 之外的检查放过
++  const archiveRoot = '/proj/.reviews';
++  const subjectPath = '/proj/.reviews-backup/x.md';
++  assert.equal(subjectArtifactRelPath(archiveRoot, subjectPath), null);
++});

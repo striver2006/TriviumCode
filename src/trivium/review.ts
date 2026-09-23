@@ -476,6 +476,37 @@ export interface RunContext {
 }
 
 /**
+ * plan / bug 原稿相对归档根的登记路径（M10a 第 2 步 EV-55 §3.1.1 域约束）。
+ *
+ * 抽成纯函数是为了能被单测直接咬住——埋在 `executeRun` 里要真跑一次审查才走得到。
+ * 返回 `null` 表示 `subjectPath` 越出归档根（如 `--plan-file doc/…` 这类归档外
+ * 文档），调用方据此判定「不登记」，不是把 `null` 当成某种路径值写进去。
+ *
+ * 排除条件与同仓 `hooks.isOrchestratorOwned` 同形（代码双审 r2 AGY-02 / GLM-06）：
+ * 空串是**归档根本身**，不是可登记的工件路径——登记了会让锚② 对一个目录求哈希；
+ * 结果为绝对路径（跨盘符等）同样视为域外。
+ *
+ * **纯词法**：两侧的软链归一化由调用方先做（见 `resolveSubjectArtifactRelPath`）。
+ */
+export function subjectArtifactRelPath(archiveRoot: string, subjectPath: string): string | null {
+  const rel = path.relative(archiveRoot, subjectPath);
+  if (rel.length === 0 || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return rel;
+}
+
+/**
+ * 域判定前先把两侧解到真实路径（代码双审 r2 CODEX-08）。
+ *
+ * 纯词法比较对软链写法敏感：macOS 的 `/var` → `/private/var`、工程目录本身是软链时，
+ * 同一个归档内文件会被判「越出归档根」而**静默失去保护**。解不开（不存在等）就退回
+ * 原值——`locateSubject` 已验过存在性，这里失败只可能是竞态，按词法判即可。
+ */
+export async function resolveSubjectArtifactRelPath(archiveRoot: string, subjectPath: string): Promise<string | null> {
+  const real = async (p: string): Promise<string> => fs.realpath(p).catch(() => p);
+  return subjectArtifactRelPath(await real(archiveRoot), await real(subjectPath));
+}
+
+/**
  * 准备阶段：可用性检查 → 定位被审对象 → 冻结 → 渲染两侧送审包 → 写 run.json 骨架。
  *
  * 这一段**不拉起任何 Agent**，因此可以在 `--start` 的同步窗口内完成并秒级返回。
@@ -1157,6 +1188,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     meta.rerun_index = sharedIndex;
   }
   const artifacts: string[] = [];
+  /**
+   * 审查文档写入时的 sha256，收尾登记直接用它（代码双审 r3 CODEX-04）。
+   * 与 `protectedMeta`、原稿登记、verify 记录同口径：不在收尾时重新读盘——
+   * 落盘到收尾之间若有改写，重算会把改写版锁成基线；登记写入值则在下次提交时判 modified。
+   */
+  const artifactSha = new Map<string, string>();
   /*
    * 结构化结论、失败记录与 fallback 单元也进 `run.json.artifacts` 保护集。
    * `review-<c>-<runId>.json` 是 `gate --check` **唯一**的事实来源：不受保护时，
@@ -1245,6 +1282,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       warn(`${c} 侧审查文档落到了第 ${written.effectiveRerunIndex} 轮（预定第 ${sharedIndex} 轮），两侧轮次不一致，请人工核对`);
     }
     artifacts.push(written.absPath);
+    artifactSha.set(written.absPath, written.sha256);
 
     // 结构化原文进 _meta/，供 gate 机读与追溯
     const rj = await writeMeta(
@@ -1478,7 +1516,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     ...(await Promise.all(
       artifacts.map(async (p) => ({
         path: path.relative(ctx.archiveRoot, p),
-        sha256: await sha256File(p),
+        sha256: artifactSha.get(p) ?? (await sha256File(p)),
       })),
     )),
   ];
@@ -1497,6 +1535,42 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   } else {
     meta.status = 'success';
   }
+
+  /*
+   * ── plan / bug 原稿登记（M10a 第 2 步，EV-55，计划 §3.1.1）──
+   *
+   * **时点**：收尾且 `meta.status === 'success'` 才登记，不在 `--start` 骨架期。
+   * 送审窗口内改稿由 `subject_drift` 判定承接、整轮作废；作废轮（本判据之前的
+   * `subject_drift` / 超时 / abort 分支）不登记，于是「作废轮之后要不要继续保护
+   * 原稿」这个取舍不必做——它压根没进保护集，改了直接可提交。
+   *
+   * **只对 plan / bug 生效**：code 阶段的被审对象是 `_meta/changes-<runid>.diff`，
+   * 已在 `prepareRun` 经 `pendingDiff` 登记（§3.1.1 硬约束 1），这里再登记就是同一份
+   * 工件的重复条目。
+   *
+   * **路径按归档相对形态登记**，不用 `subjectPath` 的绝对值——`checkRecordedArtifacts`
+   * 核对时统一按 `path.join(layout.archiveRoot, a.path)` 解析（`archive.ts`），
+   * 绝对路径会被当成归档根下一个不存在的位置，判 `missing`。
+   *
+   * **域约束**：相对结果以 `..` 越出归档根（`--plan-file doc/…` 这类归档外文档）时
+   * 不登记，且如实标注——静默跳过会让人以为登记了，而这类文档要保留「设计文档审后
+   * 回补修订」的常态改动能力，提交锚不该覆盖它。
+   *
+   * **哈希用冻结值**（计划 §7.3 R-j，代码双审 r2 GLM-03）：不在这里重新读盘。
+   * 漂移复算点与这里之间隔着批量哈希与多份落盘，窗口内原稿若被改写，重算会把
+   * 篡改版锁成基线；登记冻结值则是 fail-safe——窗口内被改的文件在下次提交时判 modified。
+   */
+  if (stage !== 'code' && meta.status === 'success') {
+    const relSubject = await resolveSubjectArtifactRelPath(ctx.archiveRoot, subjectPath);
+    if (relSubject === null) {
+      const notice = `本轮原稿不在保护集：${subjectPath} 不在归档根内，提交锚不覆盖它`;
+      warnings.push(notice);
+      meta.gate.warnings = [...(meta.gate.warnings ?? []), notice];
+    } else {
+      meta.artifacts.push({ path: relSubject, sha256: primarySnap.subjectSha256 });
+    }
+  }
+
   meta.gate.state = meta.status === 'success' ? 'review_done_awaiting_disposition' : 'failed';
 
   await writeRunMeta(ref.layout, stage, meta);

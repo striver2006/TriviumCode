@@ -141,6 +141,28 @@ test('有变更 → 冻结 changes.diff，其 sha256 即 subject_sha256', { skip
   assert.equal(meta.snapshot.subject_sha256, sha, 'subject_sha256 必须是补丁全文的 sha256');
 });
 
+test('code 轮不新增原稿登记：补丁只在骨架期登记一次（M10a 第 2 步 EV-55 §3.1.1 硬约束 1，代码双审 r2 GLM-02 (b)）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 7;\n', 'utf8');
+
+  const { exitCode, meta } = await runCode(fx.root, fx.codeDir);
+  assert.equal(exitCode, EXIT.OK, '双审应成功');
+  assert.equal(meta.status, 'success');
+
+  /*
+   * 收尾的原稿登记块被 `stage !== 'code'` 挡住。去掉这道门控时，code 阶段的被审对象
+   * （补丁）会被再登记一次——要么是同一份 `changes-<run_id>.diff` 的重复条目，
+   * 要么是每轮覆盖写的便利副本 `changes.diff`（登记了就再也改不动）。两种都在这里红。
+   */
+  const diffEntries = meta.artifacts.filter((a) => a.path.endsWith(`changes-${meta.run_id}.diff`));
+  assert.equal(diffEntries.length, 1, `补丁应只登记一次：${JSON.stringify(meta.artifacts)}`);
+  assert.equal(
+    meta.artifacts.some((a) => a.path.endsWith('/_meta/changes.diff') || a.path.endsWith(`${path.sep}_meta${path.sep}changes.diff`)),
+    false,
+    `便利副本 changes.diff 不得进 artifacts[]：${JSON.stringify(meta.artifacts)}`,
+  );
+});
+
 test('两侧拿到同一份补丁——逐侧各自 git diff 会让两侧审到不同东西', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await codeFixture();
   await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 1;\nexport const z = 2;\n', 'utf8');

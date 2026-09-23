@@ -966,8 +966,25 @@ test('改审查文档并同步改写 run.json 的 sha → git 锚拦下（锚与
   const r = await hook(fx.root, 'hook-pre-commit', commitEvent);
   assert.equal(r.code, EXIT.GATE_BLOCK, `改锚绕过必须被拦：\n${r.stdout}${r.stderr}`);
   assert.match(r.stderr, /不可变工件被改动/);
-  assert.match(r.stderr, /gemini\.md/);
+  /*
+   * **只点名 run.json、不再点名 gemini.md**（M10a 第 2 步代码双审 r2 CODEX-03 删掉提交锚后缀支之后）。
+   *
+   * 上一版这条链有两道独立信号：后缀支按文件名拦审查文档、位置判据拦 run.json。
+   * 后缀支删掉后（它让非缺省 Driver 的原稿 / 裁决件被判伪造），审查文档的不可变性只由
+   * 锚②按登记核对——而这条链恰好把登记里的 sha 一起改了，锚②自证清白。
+   * **拦住它的是 run.json 本身**：收尾后的 run-*.json 位于 `_meta/` 内，改它即拦；
+   * 已提交版本仍为 running 时，改写已登记条目同样被拦（r3 CODEX-01 收窄，只许追加）。
+   * 代价是冗余从两道降为一道、诊断少点名一个文件。
+   *
+   * **这不是确定性保证**（r3 CODEX-01 指出上一版这里写成了「改锚必被拦」）。剩余边界：
+   *   · 收尾**新追加**的条目在追加那一刻仍可被同步改写——那段窗口由写侧承担
+   *     （Write/Edit 精确拦、Bash 启发式拦）；
+   *   · 审查文档已落盘、收尾登记未发生时进程崩溃，且该状态被提交（r3 GLM-02）：
+   *     这批文档既不在 `_meta/` 也不在登记里，提交锚两层都够不着，只剩写侧。
+   * 两格已登记 BACKLOG EV-55。
+   */
   assert.match(r.stderr, new RegExp(`run-${runId}\\.json`));
+  assert.match(r.stderr, /运行清单是留痕核对的锚/);
 });
 
 test('结构化结论 review-*.json 在保护集内：改成空意见即拦，删掉则 gate --check 失败', { skip: bundleMissing && bundleSkipReason }, async () => {

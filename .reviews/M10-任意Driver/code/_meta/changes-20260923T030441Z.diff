@@ -1,0 +1,511 @@
+# trivium changes.diff
+# run_id: 20260923T030441Z
+# base: HEAD
+# head: e1a0d9adb15245ecaf46e26b4db63ecc6ef6397b
+# files: 10
+#   CLAUDE.md
+#   skills/dual-critic/protocol/CLAUDE.md.snippet
+#   src/trivium/gate.ts
+#   src/trivium/hooks.ts
+#   src/trivium/review.ts
+#   test/contract/bash-recovery-wording.test.ts
+#   test/integration/fault-injection.test.ts
+#   test/unit/gate.test.ts
+#   test/unit/hooks.test.ts
+#   test/unit/subject-artifact.test.ts
+diff --git a/CLAUDE.md b/CLAUDE.md
+index aade9f5..d75f075 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -37,6 +37,10 @@
+   **出口是改用 Write / Edit 工具落文件，提交说明写进文件再 `git commit -F <文件>`**
+   （精确判定，不看字面），不是想办法绕过判定。
+   这个误拦是刻意接受的取舍，不要当成 bug 去「修」。
++  **确实要用 `git checkout --` / `git restore` 恢复一个被误改的受保护文件时，
++  这一步必须在终端里手动执行**（M10a 第 2 步 EV-55 §3.2.2）：恢复命令的参数
++  正是那个受保护路径，命令文本一提到它就会被同一条判据再拦一次——这不是例外，
++  是这条判据的必然结果，Bash 工具做不到，不要在会话里反复重试。
+ - **同一条 Hook 还有第二种误拦形态：命令文本里提到「写动词」。**
+   拦截要两个条件同时成立——命令**像**写命令（`looksLikeWriteCommand`）且提到保护路径。
+   而前者是**词边界字面匹配、不看上下文**：动词集见 `src/trivium/hooks.ts` 的 `WRITE_LIKE`，
+diff --git a/skills/dual-critic/protocol/CLAUDE.md.snippet b/skills/dual-critic/protocol/CLAUDE.md.snippet
+index 210c7cd..78f0d66 100644
+--- a/skills/dual-critic/protocol/CLAUDE.md.snippet
++++ b/skills/dual-critic/protocol/CLAUDE.md.snippet
+@@ -32,6 +32,10 @@
+   **出口是改用 Write / Edit 工具落文件，提交说明写进文件再 `git commit -F <文件>`**
+   （精确判定，不看字面），不是想办法绕过判定。
+   这个误拦是刻意接受的取舍，不要当成 bug 去「修」。
++  **确实要用 `git checkout --` / `git restore` 恢复一个被误改的受保护文件时，
++  这一步必须在终端里手动执行**：恢复命令的参数正是那个受保护路径，命令文本
++  一提到它就会被同一条判据再拦一次——这不是例外，是这条判据的必然结果，
++  Bash 工具做不到，不要在会话里反复重试。
+ - **不要再试图给 `git commit` 开豁免。** 2026-09-12 开过一次（RV-B1），双审打穿后撤回：
+   三个前置条件漏掉至少五条夹带路径，其中换行、附着重定向、文本提及三条实测能放行。
+   根因是原判定 fail-closed，豁免把它变成需要穷举危险形态的 fail-open——而 shell
+diff --git a/src/trivium/gate.ts b/src/trivium/gate.ts
+index 6879e3d..44f5572 100644
+--- a/src/trivium/gate.ts
++++ b/src/trivium/gate.ts
+@@ -357,7 +357,14 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
+       code: 'missing_review_json',
+       message:
+         `读不到 ${missingSides.join('、')} 侧的结构化结论（_meta/review-<侧>-<run_id>.json），` +
+-        '而 run.json 记录该侧已产出结论。结论文件是裁决校验的唯一事实来源，请用 git restore 恢复，或重跑一轮。',
++        '而 run.json 记录该侧已产出结论。结论文件是裁决校验的唯一事实来源。' +
++        /*
++         * **只给「重跑一轮」这一个出口**（M10a 第 2 步 EV-55 §3.2.2）：`git restore`
++         * 的目标路径含 `_meta`，那条恢复命令本身会被 hook-pre-bash 拦下——
++         * 推荐一个在会话内做不到的动作，等于把排障者推向终端绕过判定。
++         * 重跑一轮是唯一在 Claude Code 会话里就能完成的出口。
++         */
++        '请重跑一轮（既有工件不受影响，`-r<N>` 自动抬升）。',
+     });
+   }
+ 
+diff --git a/src/trivium/hooks.ts b/src/trivium/hooks.ts
+index 5ffcec4..c5728d5 100644
+--- a/src/trivium/hooks.ts
++++ b/src/trivium/hooks.ts
+@@ -470,8 +470,15 @@ export function isOrchestratorOwned(targetPath: string, projectRoot: string, arc
+ /**
+  * 已提交的归档文件里，哪些**一经落盘即不可变**（git 锚要拦其改动）。
+  * 返回 null 表示该文件本就可变（task.json、原稿、裁决件、便利副本 changes.diff）。
++ *
++ * **判据从「后缀枚举」改为「位置」（M10a 第 2 步 EV-55 §3.1.2）**：原判据靠一条
++ * 正则枚举 `_meta/` 下的文件名形态（`review-*.json` / `brief-*.md` /
++ * `changes-*.diff`），新增一种 `_meta/` 工件类型就要跟着改枚举——新增判据改为
++ * 「位于 `_meta/` 内即不可变」，只留两个排除项（下方 run-*.json 分支、
++ * `changes.diff` 便利副本）。**原稿的不可变性不在这个函数里判**：原稿不落在
++ * `_meta/` 内，它的保护改由锚②（`archive.checkRecordedArtifacts`）按 §3.1.1 的
++ * 登记承接——谁登记了谁不可变，这个函数不需要认得「什么是原稿」。
+  */
+-const IMMUTABLE_META = /^(?:review-.+\.(?:json|fallback-items\.md)|brief-.+\.md|changes-.+\.diff)$/;
+ async function immutableChangeReason(projectRoot: string, relFromRoot: string): Promise<string | null> {
+   const base = path.basename(relFromRoot);
+   const inMeta = relFromRoot.split('/').includes('_meta');
+@@ -489,11 +496,14 @@ async function immutableChangeReason(projectRoot: string, relFromRoot: string):
+    * 行为与拆分前逐字相同。
+    */
+   if (hasRoleSuffixCrossTime(base)) return '审查文档只能由编排器落盘，改动即伪造';
+-  if (inMeta && IMMUTABLE_META.test(base)) return '审计材料一经落盘即不可变';
+   if (inMeta && /^run-.+\.json$/.test(base)) {
+     /*
+      * run.json 只在运行**期间**被编排器改写（骨架 → 收尾）。已提交的版本若还是
+      * `running`，说明有人在运行中途提交过，本次改动是正常收尾，不能拦。
++     *
++     * **这一支必须排在下面的 `_meta/` 位置判据之前求值**：位置判据本会把
++     * `run-*.json` 也判成不可变，`run-*.json` 需要这条更细的例外先拦下、
++     * 不落到位置判据的通用拒绝上。
+      */
+     const { readAtHead } = await import('./util/git.js');
+     const head = await readAtHead(projectRoot, relFromRoot);
+@@ -506,6 +516,14 @@ async function immutableChangeReason(projectRoot: string, relFromRoot: string):
+     }
+     return '运行清单是留痕核对的锚，改锚即可整枝绕过';
+   }
++  if (inMeta && base !== 'changes.diff') {
++    /*
++     * 便利副本 `changes.diff` 每轮覆盖写（`.reviews/README.md` 记载的就是这个
++     * 名字），受保护的是同目录下带 run_id 的那份（已命中 `review-*` / `brief-*` /
++     * `changes-*.diff` 等旧枚举，现由本条位置判据统一覆盖）。
++     */
++    return '_meta/ 下的审计材料一经落盘即不可变（changes.diff 便利副本除外）';
++  }
+   return null;
+ }
+ 
+@@ -908,7 +926,11 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
+         '  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\n' +
+         '  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\n' +
+         '  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\n' +
+-        '  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。',
++        '  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\n' +
++        '\n' +
++        '  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\n' +
++        '  那条命令本身会提到同一个受保护路径，会被这条判据再拦一次——**这不是例外，\n' +
++        '  是这条判据的必然结果**（M10a 第 2 步 EV-55 §3.2.2）。这一步必须在终端里手动执行。',
+     );
+   }
+   if (!ctx.config.gate.block_business_write_when_awaiting_approval) return ALLOW;
+@@ -1278,6 +1300,9 @@ async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
+       problems.slice(0, 20).join('\n') +
+       (problems.length > 20 ? `\n  · …另有 ${problems.length - 20} 项` : '') +
+       '\n\n  请用 `git checkout -- <路径>` 或 `git restore <路径>` 恢复。\n' +
++      '  **这一步必须在终端里手动执行，Bash 工具做不到**：恢复命令的参数正是上面\n' +
++      '  列出的受保护路径，命令文本一提到它就会被 hook-pre-bash 拦下——不是这条\n' +
++      '  判据的例外，是同一条判据的必然结果（M10a 第 2 步 EV-55 §3.2.2）。\n' +
+       '  确实要作废某一轮，用 `/dual-abandon --topic <主题>`——它保留工件、只解闸门。\n' +
+       '  重跑会自动抬升 -r<N>，既有工件一律不覆盖，不需要先删。',
+   };
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index af973bf..54cd038 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -475,6 +475,18 @@ export interface RunContext {
+   onSideProgress?: (critic: CriticId, patch: SideProgress) => void;
+ }
+ 
++/**
++ * plan / bug 原稿相对归档根的登记路径（M10a 第 2 步 EV-55 §3.1.1 域约束）。
++ *
++ * 抽成纯函数是为了能被单测直接咬住——埋在 `executeRun` 里要真跑一次审查才走得到。
++ * 返回 `null` 表示 `subjectPath` 越出归档根（如 `--plan-file doc/…` 这类归档外
++ * 文档），调用方据此判定「不登记」，不是把 `null` 当成某种路径值写进去。
++ */
++export function subjectArtifactRelPath(archiveRoot: string, subjectPath: string): string | null {
++  const rel = path.relative(archiveRoot, subjectPath);
++  return rel.startsWith('..') ? null : rel;
++}
++
+ /**
+  * 准备阶段：可用性检查 → 定位被审对象 → 冻结 → 渲染两侧送审包 → 写 run.json 骨架。
+  *
+@@ -1497,6 +1509,38 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+   } else {
+     meta.status = 'success';
+   }
++
++  /*
++   * ── plan / bug 原稿登记（M10a 第 2 步，EV-55，计划 §3.1.1）──
++   *
++   * **时点**：收尾且 `meta.status === 'success'` 才登记，不在 `--start` 骨架期。
++   * 送审窗口内改稿由 `subject_drift` 判定承接、整轮作废；作废轮（本判据之前的
++   * `subject_drift` / 超时 / abort 分支）不登记，于是「作废轮之后要不要继续保护
++   * 原稿」这个取舍不必做——它压根没进保护集，改了直接可提交。
++   *
++   * **只对 plan / bug 生效**：code 阶段的被审对象是 `_meta/changes-<runid>.diff`，
++   * 已在 `prepareRun` 经 `pendingDiff` 登记（§3.1.1 硬约束 1），这里再登记就是同一份
++   * 工件的重复条目。
++   *
++   * **路径按归档相对形态登记**，不用 `subjectPath` 的绝对值——`checkRecordedArtifacts`
++   * 核对时统一按 `path.join(layout.archiveRoot, a.path)` 解析（`archive.ts`），
++   * 绝对路径会被当成归档根下一个不存在的位置，判 `missing`。
++   *
++   * **域约束**：相对结果以 `..` 越出归档根（`--plan-file doc/…` 这类归档外文档）时
++   * 不登记，且如实标注——静默跳过会让人以为登记了，而这类文档要保留「设计文档审后
++   * 回补修订」的常态改动能力，提交锚不该覆盖它。
++   */
++  if (stage !== 'code' && meta.status === 'success') {
++    const relSubject = subjectArtifactRelPath(ctx.archiveRoot, subjectPath);
++    if (relSubject === null) {
++      const notice = `本轮原稿不在保护集：${subjectPath} 不在归档根内，提交锚不覆盖它`;
++      warnings.push(notice);
++      meta.gate.warnings = [...(meta.gate.warnings ?? []), notice];
++    } else {
++      meta.artifacts.push({ path: relSubject, sha256: await sha256File(subjectPath) });
++    }
++  }
++
+   meta.gate.state = meta.status === 'success' ? 'review_done_awaiting_disposition' : 'failed';
+ 
+   await writeRunMeta(ref.layout, stage, meta);
+diff --git a/test/integration/fault-injection.test.ts b/test/integration/fault-injection.test.ts
+index 66ce6aa..376cc65 100644
+--- a/test/integration/fault-injection.test.ts
++++ b/test/integration/fault-injection.test.ts
+@@ -10,6 +10,7 @@ import {
+   makeFixture,
+   today,
+ } from '../helpers/fixture.js';
++import { sha256File } from '../../src/trivium/util/fsx.js';
+ import { type StubConfig } from '../../src/trivium/adapters/stub.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import { extractJsonCandidate } from '../../src/trivium/parse.js';
+@@ -109,6 +110,25 @@ test('桩经环境变量跨进程注入，worker 真的用了桩（AGY-05）', {
+   assert.equal(meta.status, 'success');
+ });
+ 
++test('plan 原稿在成功收尾后进 meta.artifacts（M10a 第 2 步 EV-55 §3.1.1）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const { root, meta } = await runInjected({ gemini: { mode: 'ok' }, glm: { mode: 'ok' } });
++  assert.equal(meta.status, 'success');
++
++  // makeFixture 在 plan 阶段目录下种的原稿：<topic>/plan/<today>-<topic>-claude.md
++  const relSubject = `${TOPIC}/plan/${today()}-${TOPIC}-claude.md`;
++  const entry = meta.artifacts.find((a) => a.path === relSubject);
++  assert.ok(
++    entry,
++    `原稿应当登记进 artifacts[]（相对归档根的路径 ${relSubject}），实际 artifacts：` +
++      JSON.stringify(meta.artifacts),
++  );
++
++  // 登记的 sha256 必须能还原：path.join(archiveRoot, entry.path) 解析回真实文件、哈希一致
++  const archiveRoot = path.join(root, '.reviews');
++  const absSubject = path.join(archiveRoot, entry!.path);
++  assert.equal(await sha256File(absSubject), entry!.sha256, 'path.join(archiveRoot, path) 必须解析回原稿真实位置');
++});
++
+ test('未设注入变量时，绝不会用到桩', { skip: bundleMissing && bundleSkipReason }, async () => {
+   const { root } = await makeFixture({ topic: TOPIC });
+   // 不给探针结论，两侧适配器的 availability 应判不可用 → 退 69，而不是悄悄走桩
+diff --git a/test/unit/gate.test.ts b/test/unit/gate.test.ts
+index b04733b..d156179 100644
+--- a/test/unit/gate.test.ts
++++ b/test/unit/gate.test.ts
+@@ -189,7 +189,13 @@ test('run.json 记录已产出结论、结构化结论却读不到 → missing_r
+   assert.equal(r.ok, false, '结论文件是唯一事实来源，缺了不能当「该侧无意见」放行');
+   const f = r.failures.find((x) => x.code === 'missing_review_json');
+   assert.match(f!.message, /glm/);
+-  assert.match(f!.message, /git restore/);
++  /*
++   * 只给「重跑一轮」这一个出口（M10a 第 2 步 EV-55 §3.2.2），不再建议
++   * `git restore`——那条命令的目标路径含 `_meta`，本会话内会被 hook-pre-bash
++   * 自己拦下，推荐一个做不到的动作等于把排障者推向终端绕过判定。
++   */
++  assert.match(f!.message, /重跑一轮/);
++  assert.doesNotMatch(f!.message, /git restore/);
+ });
+ 
+ test('AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求落点', async () => {
+diff --git a/test/unit/hooks.test.ts b/test/unit/hooks.test.ts
+index 9e1205a..41a4a72 100644
+--- a/test/unit/hooks.test.ts
++++ b/test/unit/hooks.test.ts
+@@ -17,6 +17,8 @@ import { setGate } from '../../src/trivium/state.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import type { Ctx } from '../../src/trivium/types.js';
++import { initFixtureRepo } from '../../src/trivium/util/git.js';
++import { run } from '../../src/trivium/util/exec.js';
+ 
+ const SESSION = 'S-CURRENT';
+ const STALE = 120_000;
+@@ -978,6 +980,77 @@ test('block_commit=false 时不拦', async () => {
+   assert.equal((await hookPreCommit(ctx, { session_id: SESSION })).exitCode, EXIT.OK);
+ });
+ 
++// ── hook-pre-commit：_meta/ 位置判据（M10a 第 2 步 EV-55 §3.1.2，§3.3）──
++
++/**
++ * 这一族此前**完全没有测试**（`immutableChangeReason` / `checkArchiveIntegrity`
++ * 只在 `hookPreCommit` 内部私有调用，仓库里此前没有一条用例真的提交过、
++ * 又改动过一份 `_meta/` 工件）。判据从「后缀枚举」改成「位置」之后，
++ * 这里补上最有价值的那几格：一种**旧枚举压根不认识**的新 `_meta` 文件类型、
++ * 两个排除项（`changes.diff` 便利副本、`running` 态 `run-*.json`）。
++ */
++async function gitCtx(): Promise<Ctx> {
++  const ctx = await fakeCtx();
++  await initFixtureRepo(ctx.projectRoot);
++  return ctx;
++}
++
++async function commitAll(root: string, message: string): Promise<void> {
++  await run('git', ['add', '-A'], { cwd: root });
++  await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', message, '--no-verify'], {
++    cwd: root,
++  });
++}
++
++test('_meta/ 下一种旧枚举不认识的新工件类型：提交后改动即拦（判据从后缀改成位置）', async () => {
++  const ctx = await fakeCtx();
++  const metaDir = path.join(ctx.archiveRoot, 'T', 'plan', '_meta');
++  await fs.mkdir(metaDir, { recursive: true });
++  // 故意起一个不匹配旧 IMMUTABLE_META 正则（review-*.json / brief-*.md / changes-*.diff）的文件名
++  const target = path.join(metaDir, 'trace-20260101T000000Z.json');
++  await fs.writeFile(target, '{"v":1}\n');
++  await initFixtureRepo(ctx.projectRoot); // 把上面写的文件一并纳入首个提交
++
++  await fs.writeFile(target, '{"v":2}\n'); // 已提交后原地改动
++  const r = await hookPreCommit(ctx, { session_id: SESSION });
++  assert.equal(r.exitCode, EXIT.GATE_BLOCK, `_meta/ 下的新工件类型也该被位置判据拦下：\n${r.stderr}`);
++  assert.match(r.stderr ?? '', /trace-20260101T000000Z\.json/);
++});
++
++test('changes.diff 便利副本：提交后改动可以提交（每轮覆盖写，位置判据的排除项）', async () => {
++  const ctx = await gitCtx();
++  const metaDir = path.join(ctx.archiveRoot, 'T', 'code', '_meta');
++  await fs.mkdir(metaDir, { recursive: true });
++  const alias = path.join(metaDir, 'changes.diff');
++  await fs.writeFile(alias, 'diff v1\n');
++  await commitAll(ctx.projectRoot, 'seed changes.diff');
++
++  await fs.writeFile(alias, 'diff v2\n'); // 下一轮覆盖写
++  const r = await hookPreCommit(ctx, { session_id: SESSION });
++  assert.equal(r.exitCode, EXIT.OK, `changes.diff 是每轮覆盖的便利副本，不应被拦：\n${r.stderr}`);
++});
++
++test('run-*.json：running 态收尾回写可以提交，success 态原地改动被拦（两条例外求值顺序）', async () => {
++  const ctx = await gitCtx();
++  const metaDir = path.join(ctx.archiveRoot, 'T', 'plan', '_meta');
++  await fs.mkdir(metaDir, { recursive: true });
++
++  // ① running → 收尾回写：不拦
++  const runningRun = path.join(metaDir, 'run-20260101T000000Z.json');
++  await fs.writeFile(runningRun, JSON.stringify({ status: 'running' }) + '\n');
++  await commitAll(ctx.projectRoot, 'seed running run.json');
++  await fs.writeFile(runningRun, JSON.stringify({ status: 'success' }) + '\n');
++  const r1 = await hookPreCommit(ctx, { session_id: SESSION });
++  assert.equal(r1.exitCode, EXIT.OK, `running 态收尾回写不应被拦：\n${r1.stderr}`);
++  await commitAll(ctx.projectRoot, 'finish run.json');
++
++  // ② 已收尾（success）的 run.json 再被原地改动：拦
++  await fs.writeFile(runningRun, JSON.stringify({ status: 'success', tampered: true }) + '\n');
++  const r2 = await hookPreCommit(ctx, { session_id: SESSION });
++  assert.equal(r2.exitCode, EXIT.GATE_BLOCK, `已收尾的 run.json 被改动必须拦：\n${r2.stderr}`);
++  assert.match(r2.stderr ?? '', /run-20260101T000000Z\.json/);
++});
++
+ // ── hook-stop（三层防死循环）──
+ 
+ test('裁决未完成时阻止收工，并给出该怎么做', async () => {
+diff --git a/test/contract/bash-recovery-wording.test.ts b/test/contract/bash-recovery-wording.test.ts
+new file mode 100644
+index 0000000..5835cc0
+--- /dev/null
++++ b/test/contract/bash-recovery-wording.test.ts
+@@ -0,0 +1,107 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import { REPO_ROOT } from '../helpers/fixture.js';
++
++/**
++ * §3.2.2 扫描判据的机械核对（M10a 第 2 步 EV-55）。
++ *
++ * 计划把"清单的得出方式"从人工数处数改成一条可执行判据：扫 `src/trivium/` 下
++ * 所有提到 `git checkout|restore|stash|reset` 的文案源串，命中且**对象带保护字面**
++ * （`_meta` / `task.json` / `state.json` / 角色后缀）的，必须同时提示"这一步要在
++ * 终端里手动执行"——因为恢复命令本身会提到受保护路径，被 Bash 守卫的同一条判据
++ * 再拦一次，不是例外。
++ *
++ * **这是防"下次新增一处恢复文案又漏掉"的机械保证，取代人工数处数**（计划 §3.3）。
++ * 判据在**全文件内容**（不是逐行）上做窗口匹配：消息文案常是多行 `+` 拼接的模板串，
++ * "提到 git checkout"与"提到 _meta"可能分处不同行，逐行扫会像本条一开始实测的
++ * 那样**全部漏检**（登记为本测试的防空转依据，见下方防空转腿）。
++ */
++
++const GIT_RECOVERY_RE = /git\s+(checkout|restore|stash|reset)\b/g;
++const PROTECTED_LITERAL_RE = /_meta|task\.json|state\.json|-codex\.md|-gemini\.md|-glm\.md/;
++const TERMINAL_HINT_RE = /终端/;
++const WINDOW = 400; // 字符数，覆盖典型的多行模板串拼接跨度
++
++/**
++ * 粗剥注释（块注释 + 行注释），只为本文件这条窄判据服务——不追求
++ * `test/helpers/strip-non-code.ts` 那种 TS AST 级精度（那个反过来会把我要扫的
++ * 字符串字面量内容也剥掉，两者目标相反：那边要剥"非代码"保留调用实参，
++ * 这里要剥"注释"保留字符串消息本体）。误伤字符串里恰好出现 `//` 的极端情形
++ * 本判据的论域（git 恢复类错误文案）不会触发，代价可接受。
++ */
++function stripComments(src: string): string {
++  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, ' ');
++}
++
++async function collectSourceFiles(root: string): Promise<string[]> {
++  const out: string[] = [];
++  const walk = async (dir: string): Promise<void> => {
++    const entries = await fs.readdir(dir, { withFileTypes: true });
++    for (const e of entries) {
++      const abs = path.join(dir, e.name);
++      if (e.isDirectory()) {
++        await walk(abs);
++        continue;
++      }
++      if (e.name.endsWith('.ts')) out.push(abs);
++    }
++  };
++  await walk(root);
++  return out;
++}
++
++test('§3.2.2 扫描判据：git checkout|restore|stash|reset 文案若对象带保护字面，附近必须有"终端"提示', async () => {
++  const files = await collectSourceFiles(path.join(REPO_ROOT, 'src/trivium'));
++  const offenders: string[] = [];
++
++  for (const f of files) {
++    const raw = await fs.readFile(f, 'utf8');
++    const src = stripComments(raw);
++    for (const m of src.matchAll(GIT_RECOVERY_RE)) {
++      const start = Math.max(0, (m.index ?? 0) - WINDOW);
++      const end = Math.min(src.length, (m.index ?? 0) + WINDOW);
++      const windowText = src.slice(start, end);
++      if (!PROTECTED_LITERAL_RE.test(windowText)) continue; // 对象不带保护字面，不在本判据论域
++      if (!TERMINAL_HINT_RE.test(windowText)) {
++        const line = src.slice(0, m.index).split('\n').length;
++        offenders.push(`${path.relative(REPO_ROOT, f)}:${line}`);
++      }
++    }
++  }
++
++  assert.deepEqual(
++    offenders,
++    [],
++    '以下位置提到 git checkout/restore/stash/reset 且对象带保护字面，' +
++      '但附近没有"这一步需在终端执行"的提示——恢复命令本身会被 Bash 守卫再拦一次，\n' +
++      offenders.join('\n'),
++  );
++});
++
++test('防空转腿：stripComments 真的剥掉了注释，不是静默 no-op', () => {
++  const sample = '/** git checkout 与 _meta 只是在讲机制，不是恢复指引 */\nconst x = 1; // git restore 同上，纯注释\n';
++  const stripped = stripComments(sample);
++  assert.doesNotMatch(stripped, /git checkout/);
++  assert.doesNotMatch(stripped, /git restore/);
++  assert.match(stripped, /const x = 1;/, '代码本体不能被误剥');
++});
++
++test('防空转腿：判据确实是全文件窗口匹配而非逐行——逐行版本会漏掉本仓真实存在过的形态', async () => {
++  /*
++   * 这条锁住"为什么不能逐行扫"这个设计决定本身：构造一段与
++   * `hooks.ts` 提交锚恢复指引同构的多行模板串（git 提示语与 _meta 提示语分处
++   * 不同的字符串字面量、由 `+` 拼接），逐行正则扫不到，窗口扫描能扫到。
++   */
++  const sample =
++    "      '\\n\\n  请用 `git checkout -- <路径>` 或 `git restore <路径>` 恢复。\\n' +\n" +
++    "      '  这一步必须在终端里手动执行：恢复命令的参数正是归档内 _meta/ 下的路径。\\n'";
++  const perLineHit = sample.split('\n').some((line) => GIT_RECOVERY_RE.test(line) && PROTECTED_LITERAL_RE.test(line));
++  GIT_RECOVERY_RE.lastIndex = 0;
++  assert.equal(perLineHit, false, '逐行匹配确实找不到——这正是本测试改用全文件窗口匹配的理由');
++
++  const windowHit = PROTECTED_LITERAL_RE.test(sample) && TERMINAL_HINT_RE.test(sample) && GIT_RECOVERY_RE.test(sample);
++  GIT_RECOVERY_RE.lastIndex = 0;
++  assert.equal(windowHit, true, '窗口匹配应当抓得住这个样例（且样例本身已带"终端"提示，判为合规）');
++});
+diff --git a/test/unit/subject-artifact.test.ts b/test/unit/subject-artifact.test.ts
+new file mode 100644
+index 0000000..5d56e8e
+--- /dev/null
++++ b/test/unit/subject-artifact.test.ts
+@@ -0,0 +1,42 @@
++/**
++ * `subjectArtifactRelPath`：plan / bug 原稿登记路径的域约束（M10a 第 2 步 EV-55 §3.1.1）。
++ *
++ * 抽成纯函数单测的理由与本仓其余 `judge*` 一致：埋在 `executeRun` 里要真跑一次
++ * 审查（拉起至少一侧 Agent）才走得到，等于没有断言守着。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { subjectArtifactRelPath } from '../../src/trivium/review.js';
++
++test('归档内的原稿：返回相对归档根的路径，不是绝对路径', () => {
++  const archiveRoot = '/proj/.reviews';
++  const subjectPath = '/proj/.reviews/EV-1/plan/2026-01-01-EV-1-claude.md';
++  assert.equal(subjectArtifactRelPath(archiveRoot, subjectPath), 'EV-1/plan/2026-01-01-EV-1-claude.md');
++});
++
++test('归档外的原稿（--plan-file doc/…）：返回 null，不登记', () => {
++  const archiveRoot = '/proj/.reviews';
++  const subjectPath = '/proj/doc/02_design/设计.md';
++  assert.equal(subjectArtifactRelPath(archiveRoot, subjectPath), null);
++});
++
++test('原稿恰好落在归档根本身（边界值，理论不可达但判据仍要正确）', () => {
++  const archiveRoot = '/proj/.reviews';
++  assert.equal(subjectArtifactRelPath(archiveRoot, archiveRoot), '');
++});
++
++test('返回的相对路径能经 path.join(archiveRoot, rel) 解析回真实位置——与 checkRecordedArtifacts 同一套还原口径', () => {
++  const archiveRoot = '/proj/.reviews';
++  const subjectPath = '/proj/.reviews/EV-1/plan/2026-01-01-EV-1-claude.md';
++  const rel = subjectArtifactRelPath(archiveRoot, subjectPath);
++  assert.equal(rel === null ? null : path.join(archiveRoot, rel), subjectPath);
++});
++
++test('相邻但不在归档内的兄弟目录不得被误判为归档内（前缀匹配陷阱）', () => {
++  // archiveRoot 是 /proj/.reviews，而 /proj/.reviews-backup/x.md 只是字符串前缀相同，
++  // path.relative 的结果必须以 '..' 开头，不能被 startsWith('..') 之外的检查放过
++  const archiveRoot = '/proj/.reviews';
++  const subjectPath = '/proj/.reviews-backup/x.md';
++  assert.equal(subjectArtifactRelPath(archiveRoot, subjectPath), null);
++});

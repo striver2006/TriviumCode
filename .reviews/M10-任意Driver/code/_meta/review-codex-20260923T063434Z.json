@@ -1,0 +1,99 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "18 条落地的机械部分我复核通过了：选项前缀确实与提交识别共用同一份 GIT_OPTS_WITH_VALUE（本机 git 取值型全局选项只有 -C/-c/--exec-path/--git-dir/--work-tree/--namespace/--config-env，集合完整），只读子命令未被误拦；扫描判据在真实 src/trivium 全树上 7 命中 0 offender，不空转；CODEX-04 的偏差（abandon 不动已登记工件 ⇒ 只有恢复是必经步骤）成立，实现文案比裁决件措辞更准。\n但有一处残留必须裁决：删掉跨时间后缀支后，审查文档的不可变性只剩锚②一道，而锚②的期望值来自 run.json 的 artifacts[]，run.json 自己有一格被设计成「HEAD 为 running 即可改」。于是「中途提交 → 一次提交里同步改写审查文档与登记 sha」这条链仍然自洽通过，且本次新加的 gate-loop 注释把它断言成「攻击链必须改锚，改锚必被拦」——与 r2 那个 blocker 同族（把有例外的判据写成确定性保证）。\n另有两条次要：语句组判据只认行尾 +（数组 join / 多行模板串会把正确文案判红，与裁决件承诺不符）；—await-approval 路径新接的 runWarnings 只在失败分支可见。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts:460-508（immutableChangeReason 的 run-*.json 分支与 _meta/ 位置判据）、src/trivium/archive.ts:440-467 + 548-600 + 609-644、src/trivium/util/git.ts:285-299",
+      "problem": "后缀支删掉后，审查文档的不可变性只剩锚②一道，而锚②的期望值与它要保护的对象同域、且该期望值的载体有一格按设计可改。「运行清单已提交版本为 running」这个窗口里，一次提交内可以同时改掉审查文档正文与 run.json 里它的 sha256（或直接删掉该条目），锚② 读到的是被同步改过的那份 run.json，因此自证清白；后缀支已删 ⇒ 没有任何独立信号。可重现的窗口条件并不苛刻：① `deletedOrModifiedTracked` 只收 'M'，新增（A）的 run-*.json 完全不进判据；② hookPreCommit 只在闸门状态为 review_done_awaiting_disposition 时拦，running 闸门不拦提交，且 `git add` 不在 WRITE_LIKE 里；③ hooks.ts:479 那条注释本身就承认「有人在运行中途提交过」是常态。所以「跑审查时顺手提交前面攒的改动」会把 running 态 run.json 带进 HEAD，此后的篡改即落地。task.json 不记 run.json 的哈希（checkRunManifests 只查存在性与可读性），没有一个跟 run.json 无关的外部锚能发现这次改写。会话内改写审查文档仍要绕写侧启发式（Write/Edit 侧无条件拦、Bash 侧是启发式），但提交锚存在的理由恰恰是不依赖那条启发式。gate-loop.test.ts:940 那条链（改文档 + 同步改锚 ⇒ 拦住）在 running 窗口里会退 0，而它新加的注释写成「攻击链必须改锚，改锚必被拦，所以保护成立」。",
+      "evidence": "读了 src/trivium/hooks.ts（460-508：run-*.json 分支先求值、HEAD 为 running 时 return null；其后 inMeta && base !== 'changes.diff' 的位置判据）、src/trivium/archive.ts（checkRecordedArtifacts 按 run.json.artifacts 的 path+sha256 与磁盘文件比对；listRecordedRuns 读工作树；checkRunManifests 无哈希项）、src/trivium/util/git.ts（deletedOrModifiedTracked 用 git diff --name-status HEAD，只把 'M' 收入 modified）、src/trivium/state.ts:296-332（running 加业务写锁，但锁的是写、不是提交）、test/integration/gate-loop.test.ts:940-990（篡改链只用 success 态 run.json，且注释自认冗余从两道降为一道，并把它列为第 3 轮焦点）。另交叉核了 test/unit/hooks.test.ts 新用例只覆盖「running ⇒ 收尾回写放行 / success ⇒ 拦」，没有覆盖「running ⇒ 收尾回写里夹带篡改」。",
+      "suggestion": "让锚②的期望值来源与 run.json 的可变性解耦：对「已跟踪且被改动」的工件，用 HEAD 版 run.json（readAtHead 已是现成机制）作期望值，而不是工作树那份；或者把 running 例外收窄成「只许追加 artifacts 条目 / 只许 status 迁移」，禁止改已有条目的 sha256、禁止减少条目。若决定保留现状（理由是中途提交属边缘场景），至少要把 gate-loop.test.ts 注释里「攻击链必须改锚，改锚必被拦」改成有条件的表述，并在 BACKLOG 登记这一格，别让下一个人把它当已证性质。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/contract/bash-recovery-wording.test.ts:196-215（groupAround）与 :73-80 的具名豁免机制；对照 r2 裁决件 CODEX-02 的落点",
+      "problem": "语句组只按「行尾 +」划，遇到数组 join 或跨行模板串就划错，而 r2 裁决件 CODEX-02 的落点写的是「同一模板串或同一 `[...].join` / `+` 拼接组」。后果方向是**假红**：一份完全正确、提示就写在下一行/下一元素的文案会被判成 offender，报错文案还会说它「同一条文案里没有请在终端执行的提示」，把人引去改对的文案。目前仓库里的命中点恰好都是 + 拼接，所以现在不红；这条判据是给下一个人写的，他自然会把多行文案写成模板串或数组。",
+      "evidence": "我把该文件里的 stripComments / groupAround / collectHits / judge 原文（连同 GIT_OPT_PREFIX 的同一构造式）抽出来在 node 里直跑：数组元素形态 `['请用 `git restore <路径>` 恢复。', '  这一步请在终端里手动执行。']` → offenders ['array_joined_ok.ts:2']；多行模板串同形文案 → offenders ['template_multiline_ok.ts:1']；+ 拼接同文案 → []。同时对真实 src/trivium 全树跑同一份判据：hits 7（gate.ts:379、guard.ts:759、hooks.ts:927×2/945/1294×2），offenders []，证明判据本身不空转、具名豁免与 KNOWN_SITES 都有效。",
+      "suggestion": "语句组按「语句 / 字面量跨度」划而不是按行尾 + 划（数组元素、模板串各自成一组，或把 `[...]` 与模板串跨度一并纳入分组），并补两格用例（数组 join、跨行模板串）把新形态钉住；若刻意只支持 + 拼接，就把论的表述与裁决件对齐（写明判据只认 + 拼接组），别让落点承诺与实现对不上。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/cli.ts:1146-1165（--await-approval 分支）",
+      "problem": "runWarnings 接进了这一处调用点，但只有 `!pre.ok` 时才会经 renderGateResult 打出来；`pre.ok` 时（含 --json 的 emitJson）整个被丢弃。也就是说「本轮原稿不在保护集」这条新接的告警，恰好在需要人工表态的那一格看不见——审批人要看的正是这类运行期事实。副作用是下一个人看这里「参数似乎没用」时把它删掉，失败分支会一起失去它。",
+      "evidence": "读了 src/trivium/cli.ts:1149（传入 runWarnings）、1157-1164（仅 !pre.ok 渲染）、1188-1215（成功路径的 emitJson 只有 ok/state/stage/rerun_index/message，无 warnings）；src/trivium/gate.ts:176-178（run_warning 进 warnings 数组）与 663-678（renderGateResult 打印 warnings）。--check 路径（cli.ts:1229-1247）两态都渲染，构成不对称。",
+      "suggestion": "两条路径同一口径：无论 pre.ok 与否都渲染 warnings（成功路径的 --json 输出里也带上 warnings 字段），或在该分支注释里写明「这里刻意只报失败态」，免得被当成死参数删掉。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/review.ts:1278（artifacts.push(written.absPath)）与 :1506-1515（收尾重算 sha256）",
+      "problem": "审查文档登记进 artifacts[] 的哈希是**收尾时重算**的，而不是 writeArtifact 返回的冻结值。同一次收尾里 protectedMeta（_meta/ 的 brief、review-*.json、fallback 单元）用的是冻结值（w.sha256），verify.ts:214-219 用的也是冻结值，本轮为原稿定的口径（GLM-03，理由是「重算会把篡改版锁成基线」）同样是冻结值——四处同族，只有审查文档这一处重算。于是文档落盘到收尾之间的改写会被锁成基线，此后锚② 拿它自证清白；计划 §3.1.4 把这段窗口交给 Bash/Write 侧的后缀保护，而那一侧正是本仓反复登记为启发式、不完备的那一层，交出独立性损失的正是 commit 锚的意义。差异只会在人读文档与 _meta/ 里的结构化 review-*.json 之间显现，而后者受位置判据保护，需要人工比对才能发现。",
+      "evidence": "读了 src/trivium/review.ts:1192-1290（protectedMeta.push({path, sha256: w.sha256})）与 :1506-1515（artifacts.map(async p => ({path: path.relative(...), sha256: await sha256File(p)}))）；src/trivium/archive.ts:180-188（WrittenArtifact 已带 sha256，取用零成本）、:440-467（比对侧只看登记值）；src/trivium/verify.ts:214-219（冻结值先例）；计划 r7 §3.1.4 行为表「落盘到收尾的窗口期由 Bash / Write 侧的后缀保护覆盖」。",
+      "suggestion": "与三处同族对齐：登记时直接用 writeArtifact 返回的 sha256（一行改动，与 protectedMeta 同构），让窗口内被改的文档在下次提交时判 modified；如判断该窗口可接受，就把这个口径差写进 BACKLOG，别只留在实现里。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "焦点一（选项前缀）：GIT_OPTS_WITH_VALUE 已提到 WRITE_LIKE 与 commitTargetsProject 之上共用一份，GIT_OPT_PREFIX 由它派生，没有第二份枚举；集合与本机 `git --help` 用法行里的取值型全局选项完全一致（-C / -c / --exec-path / --git-dir / --work-tree / --namespace / --config-env）。我把生产构造式在 node 里跑了一遍：`git -c core.quotePath=false restore -- x`、`git -C /proj checkout -- x`、`git --git-dir .git restore -- x`、`git -c a=b -c c=d checkout` 命中；`git -c core.quotePath=false log`、`git -C /proj status`、`git -c core.pager=cat log` 不命中（无误拦只读命令）。\n`--super-prefix` 我实测不是可用选项（本机 git 回 `unknown option: --super-prefix`，这类选项只由内部调用方传），所以「带取值选项没覆盖」这一格我核过，没有留洞；`-c alias.<name>=<恢复子命令>` 这层间接古已有之（旧正则同样认不出），不算本步引入。\n（本机 git 版本受沙箱限制未能打印，此项结论以 usage 行与 `--super-prefix` 实测为据。）",
+    "焦点三（CODEX-04 的偏差）成立，且实现文案比裁决件措辞更准确：recordApproval 只写 state.json 的闸门与 task.json 的 approvals（approval.ts:110-190），从不碰 run.json / artifacts[]；锚② 的期望值只来自 run.json，因此 abandon 之后那条已丢失的 review-*.json 仍被判 missing，恢复确实是必经步骤。「恢复或 /dual-abandon 仍是必经步骤」那版措辞是错的，实现改成「重跑与 /dual-abandon 都解不开提交锚」是对的，不该回退。",
+    "焦点二的前半（删掉后缀支后保护是否还在）：核对成立。审查文档确实自 v1 起就登记在 artifacts[] 里——我抽读了两份历史留痕 `.reviews/Agent注册表与多审泛化/plan/_meta/run-20260913T115435Z.json`（run.v1）与 `.reviews/EV-79-写命令判据两处缺口/plan/_meta/run-20260922T061939Z.json`（run.v2），两者的 artifacts[] 都列出 `…-gemini.md` / `…-glm.md`（后者还含 codex），所以删支后已提交的审查文档不会掉出保护集。位置判据的求值顺序也对：旧 IMMUTABLE_META 本就不含 `run-`，新的通用位置判据放在 run-*.json 分支之后，行为与改动前一致；`changes.diff` 便利副本仍是唯一的例外项（旧正则只保护带 run_id 的那份，口径未变）。",
+    "焦点四的另一半：判据确实不再空转。我对真实 src/trivium 全树跑了该文件自身的算法：7 处命中、0 offender，guard.ts:759 靠具名豁免（marker 在同一条 + 拼接组内，我核过 guard.ts:748-762）、hooks.ts:945 靠「按写命令形态的启发式判定」豁免；剥注释的字符串/正则感知修正与「报错行号=原文行号」都由行数不变的断言守着，是实打实的修复。",
+    "焦点五：两处接线都在（cli.ts:1149 与 :1232），早退路径也带着告警——gate.ts:176-178 把 run_warning 排在 missing_disposition 早退之前，且 checkAdjudication 的另两条 return 都返回同一个 warnings 数组；run.json 的 gate.warnings 在 run.v2.json 的 gate 节点里有定义（additionalProperties 未收严），落盘不会被 validateRunMeta 判不合法。",
+    "`_meta/` 从「后缀枚举」改成「位置判据」方向正确，并且补上了此前完全没有的一族用例（新工件类型、changes.diff 例外、running/success 两态求值顺序、非缺省 Driver 的原稿与裁决件可改）；「预检标注」那半没做已在 BACKLOG EV-55 里如实登记为偏差（与 §7.4 偏差 1 同源），不是静默缺席。",
+    "新加的 hooks.ts 文案与协议 snippet 的措辞方向对：不再把启发式包装成确定性保证，并明确「换写法绕过属于违规」；两份文本的有意差异（snippet 不带仓库内部编号）与既有约定一致，资产契约的论域（skills/** 的角色名字面）也没有被新句子触到。"
+  ],
+  "not_covered": [
+    "未运行 `npm run typecheck && npm run build && npm test`（本次会话是只读沙箱，无法写 dist/ 与临时文件），因此「全绿」只有 Driver 的声明，我没有独立验证；所有结论来自读代码与对纯函数/正则的隔离 node 直跑。",
+    "没有真跑一轮审查，也没构造端到端复现 CODEX-01 那条链（需要夹具仓库 + 真提交 + 真 run.json 状态机）；该条结论是代码路径推断，reachability 依赖「先有一次中途提交」，因此给了 medium。",
+    "未读对方审查员的任何产出与被禁读清单内的路径（背靠背独立性），因此无法判断本轮问题是否与另一侧重叠。",
+    "未覆盖 verify 阶段的面（只读了 verify.ts 的写入侧以确认 run.json 无 running 态、判据不会误伤）；也未覆盖 driver-claim / topic claim / 适配器与注册表一侧（属第 1 步与本步之外）。",
+    "未核 doc/02_design 里 §11.1 / §12.1 的原文（只读了本主题 r7 计划稿的相关小节作为实现依据），因此「计划 vs 设计文档」的漂移不在本次结论内。",
+    "未核并发场景（两个会话/两个提交与 hook 的交错），也未核 Windows/大小写不敏感文件系统下的路径口径（本项目声明只支持 macOS）。"
+  ],
+  "consulted": [
+    ".reviews/M10-任意Driver/code/_meta/changes-20260923T063434Z.diff",
+    ".reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r2-response-claude.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md",
+    ".reviews/Agent注册表与多审泛化/plan/_meta/run-20260913T115435Z.json",
+    ".reviews/EV-79-写命令判据两处缺口/plan/_meta/run-20260922T061939Z.json",
+    "CLAUDE.md",
+    "skills/dual-critic/protocol/CLAUDE.md.snippet",
+    "skills/dual-critic/schema/run.v1.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "src/trivium/approval.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/review.ts",
+    "src/trivium/state.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/verify.ts",
+    "test/contract/bash-recovery-wording.test.ts",
+    "test/contract/disposition-role-assets.test.ts",
+    "test/helpers/fixture.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/subject-artifact.test.ts",
+    "/Users/chenzhenbo/.claude/skills/dual-critic/schema/review.v1.json"
+  ]
+}

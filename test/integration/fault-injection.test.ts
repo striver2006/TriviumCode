@@ -10,10 +10,15 @@ import {
   makeFixture,
   today,
 } from '../helpers/fixture.js';
+import { sha256File } from '../../src/trivium/util/fsx.js';
 import { type StubConfig } from '../../src/trivium/adapters/stub.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import type { RunMeta } from '../../src/trivium/types.js';
+import { loadCtx } from '../../src/trivium/config.js';
+import { hookPreCommit } from '../../src/trivium/hooks.js';
+import { setGate } from '../../src/trivium/state.js';
+import type { Ctx } from '../../src/trivium/types.js';
 
 /**
  * 故障注入（设计 §17.2，修订版 M3 计划 §5 与 §7）。
@@ -93,6 +98,19 @@ async function runInjected(
   return { root, stageDir, exitCode, meta, waitOut };
 }
 
+/**
+ * 把本主题 plan 闸门推到「等待审批」，让提交锚只剩留痕完整性这一层在判。
+ *
+ * 成功收尾后闸门停在「等待裁决」，`hookPreCommit` 会先以「裁决未完成」早退，
+ * 根本走不到锚②——不先推开这一层，下面的「不点名」断言会因早退而空转。
+ */
+async function releaseAdjudication(ctx: Ctx): Promise<void> {
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan',
+    state: 'awaiting_approval', sessionId: 'S', heartbeatStaleMs: 120_000,
+  });
+}
+
 
 test('桩经环境变量跨进程注入，worker 真的用了桩（AGY-05）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const { meta } = await runInjected({ gemini: { mode: 'ok' }, glm: { mode: 'ok', findings: 2 } });
@@ -107,6 +125,150 @@ test('桩经环境变量跨进程注入，worker 真的用了桩（AGY-05）', {
   }
   assert.equal(meta.review_mode, 'full');
   assert.equal(meta.status, 'success');
+});
+
+test('plan 原稿在成功收尾后进 meta.artifacts（M10a 第 2 步 EV-55 §3.1.1）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { root, meta } = await runInjected({ gemini: { mode: 'ok' }, glm: { mode: 'ok' } });
+  assert.equal(meta.status, 'success');
+
+  // makeFixture 在 plan 阶段目录下种的原稿：<topic>/plan/<today>-<topic>-claude.md
+  const relSubject = `${TOPIC}/plan/${today()}-${TOPIC}-claude.md`;
+  const entry = meta.artifacts.find((a) => a.path === relSubject);
+  assert.ok(
+    entry,
+    `原稿应当登记进 artifacts[]（相对归档根的路径 ${relSubject}），实际 artifacts：` +
+      JSON.stringify(meta.artifacts),
+  );
+
+  // 登记的 sha256 必须能还原：path.join(archiveRoot, entry.path) 解析回真实文件、哈希一致
+  const archiveRoot = path.join(root, '.reviews');
+  const absSubject = path.join(archiveRoot, entry!.path);
+  assert.equal(await sha256File(absSubject), entry!.sha256, 'path.join(archiveRoot, path) 必须解析回原稿真实位置');
+  // 登记的是冻结值（计划 §7.3 R-j，代码双审 r2 GLM-03），与 run.json 的快照哈希同一个值
+  assert.equal(entry!.sha256, meta.snapshot.subject_sha256, '登记哈希应取冻结时的 subject_sha256');
+
+  /*
+   * 登记是锚② 生效的**前提**，前提链要端到端验一次（代码双审 r2 AGY-01 ① ≡ GLM-02 (d)）：
+   * 成功收尾后原地改原稿，提交锚必须把它作为「已被改动」列出来。
+   */
+  const ctx = await loadCtx({ cwd: root });
+  await releaseAdjudication(ctx);
+  const before = await hookPreCommit(ctx, { session_id: 'S' });
+  assert.equal(before.exitCode, EXIT.OK, `改稿之前提交锚应放行（否则下面的拦截证明不了什么）：\n${before.stderr}`);
+  await fs.appendFile(absSubject, '\n审后改稿\n', 'utf8');
+  const after = await hookPreCommit(ctx, { session_id: 'S' });
+  assert.equal(after.exitCode, EXIT.GATE_BLOCK);
+  assert.ok(
+    (after.stderr ?? '').includes(`已被改动：${relSubject}`),
+    `已登记原稿被改动，锚② 必须把它列出来：\n${after.stderr}`,
+  );
+
+  /*
+   * 审查文档的不可变性同样由锚② 承接（代码双审 r2 CODEX-03：提交锚的后缀支已删）。
+   * 它们自 M1 起就登记在 artifacts[] 里——这里端到端证明删支后保护没丢。
+   */
+  const relReview = `${TOPIC}/plan/${today()}-${TOPIC}-gemini.md`;
+  const reviewEntry = meta.artifacts.find((a) => a.path === relReview);
+  assert.ok(reviewEntry, `审查文档应已登记：${JSON.stringify(meta.artifacts)}`);
+  /*
+   * 登记的是写入时的哈希（代码双审 r3 CODEX-04）。正常运行里它与此刻重算的值相同——
+   * 这条断言锁的是「登记值可还原回文件」，**区分不了**冻结口径与收尾重算口径，别当成变异锁。
+   */
+  assert.equal(reviewEntry!.sha256, await sha256File(path.join(archiveRoot, relReview)));
+  await fs.appendFile(path.join(archiveRoot, relReview), '\n伪造一条意见\n', 'utf8');
+  const forged = await hookPreCommit(ctx, { session_id: 'S' });
+  assert.ok(
+    (forged.stderr ?? '').includes(`已被改动：${relReview}`),
+    `已登记的审查文档被改动，锚② 必须把它列出来：\n${forged.stderr}`,
+  );
+});
+
+test('作废轮（subject_drift）不登记原稿，之后原地改稿不触发锚②（EV-55 §3.1.1 时点）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  // 桩在审查期间改写原稿本身 ⇒ 被审对象漂移 ⇒ 整轮作废
+  const relSubject = `${TOPIC}/plan/${today()}-${TOPIC}-claude.md`;
+  const { root, meta } = await runInjected({
+    gemini: { mode: 'mutate_file', note: `.reviews/${relSubject}` },
+    glm: { mode: 'ok' },
+  });
+  assert.equal(meta.status, 'failed', '原稿在送审窗口内被改，整轮必须作废');
+  assert.equal(
+    meta.artifacts.some((a) => a.path === relSubject),
+    false,
+    `作废轮不得登记原稿（登记时点移回 --start 时这里会红）：${JSON.stringify(meta.artifacts)}`,
+  );
+
+  const ctx = await loadCtx({ cwd: root });
+  await releaseAdjudication(ctx);
+  await fs.appendFile(path.join(root, '.reviews', relSubject), '\n作废后继续改稿\n', 'utf8');
+  const r = await hookPreCommit(ctx, { session_id: 'S' });
+  assert.equal(r.exitCode, EXIT.OK, `作废轮之后改稿应可提交：\n${r.stderr}`);
+});
+
+test('归档外被审对象（--plan-file doc/…）不登记，run.json 与 gate --check 都有标注（EV-55 §3.1.1 域）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const docRel = 'doc/design-under-review.md';
+  const { root, meta } = await runInjected(
+    { gemini: { mode: 'ok' }, glm: { mode: 'ok' } },
+    ['--plan-file', docRel],
+    [],
+    async (r) => {
+      await fs.mkdir(path.join(r, 'doc'), { recursive: true });
+      await fs.writeFile(path.join(r, docRel), '# 归档外的设计文档\n', 'utf8');
+    },
+  );
+  assert.equal(meta.status, 'success');
+  assert.equal(
+    meta.artifacts.some((a) => a.path.includes('design-under-review.md')),
+    false,
+    `归档外文档不得进 artifacts[]：${JSON.stringify(meta.artifacts)}`,
+  );
+  assert.ok(
+    (meta.gate.warnings ?? []).some((w) => w.includes('本轮原稿不在保护集')),
+    `run.json 的 gate.warnings 必须如实标注：${JSON.stringify(meta.gate.warnings)}`,
+  );
+
+  // 标注要有读者（代码双审 r2 GLM-04）：gate --check --json 透传
+  const chk = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
+  const cand = extractJsonCandidate(chk.stdout);
+  assert.ok(cand, `gate --check --json 未产出 JSON：\n${chk.stdout}\n${chk.stderr}`);
+  const js = JSON.parse(cand.json) as { warnings: Array<{ code: string; message: string }> };
+  assert.ok(
+    js.warnings.some((w) => w.code === 'run_warning' && w.message.includes('本轮原稿不在保护集')),
+    `gate --check 必须透传 run.json 的 gate.warnings：${JSON.stringify(js.warnings)}`,
+  );
+
+  // 审批停点同样要看得见（代码双审 r3 CODEX-03 ≡ GLM-04）：补齐裁决件后走 --await-approval 成功路径
+  await fs.writeFile(
+    path.join(root, '.reviews', TOPIC, 'plan', `${today()}-${TOPIC}-revised-claude.md`),
+    [
+      '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
+      'role: claude', 'kind: revised', `run_id: ${meta.run_id}`,
+      'addresses:', '  - AGY-01', '  - GLM-01',
+      '---', '',
+      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- |',
+      '| AGY-01 | gemini | blocker | 接受 | 确实漏了这一处，需要补 | §1 |',
+      '| GLM-01 | glm | blocker | 接受 | 同一处问题，一并补上 | §1 |',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  const aw = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--json']);
+  assert.equal(aw.code, EXIT.OK, `--await-approval 应成功：\n${aw.stdout}\n${aw.stderr}`);
+  const awCand = extractJsonCandidate(aw.stdout);
+  assert.ok(awCand, `--await-approval --json 未产出 JSON：\n${aw.stdout}`);
+  const awJs = JSON.parse(awCand.json) as { state: string; warnings?: Array<{ code: string; message: string }> };
+  assert.equal(awJs.state, 'awaiting_approval');
+  assert.ok(
+    (awJs.warnings ?? []).some((w) => w.code === 'run_warning' && w.message.includes('本轮原稿不在保护集')),
+    `审批停点必须带出运行期告警：${JSON.stringify(awJs.warnings)}`,
+  );
+
+  // 随后改它：提交锚不点名这份文档
+  const ctx = await loadCtx({ cwd: root });
+  await releaseAdjudication(ctx);
+  await fs.appendFile(path.join(root, docRel), '\n审后回补修订\n', 'utf8');
+  const r = await hookPreCommit(ctx, { session_id: 'S' });
+  assert.equal(r.exitCode, EXIT.OK, `归档外文档审后可改、可提交：\n${r.stderr}`);
 });
 
 test('未设注入变量时，绝不会用到桩', { skip: bundleMissing && bundleSkipReason }, async () => {

@@ -1143,8 +1143,14 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
           '  （推断不出来时**不会**跳过校验——那等于给「跳过裁决直接审批」留后门。）',
       );
     }
+    /*
+     * 校验通过时的告警也要带到停点上（代码双审 r3 CODEX-03 ≡ GLM-04）：审批停点正是
+     * 最该看见「本轮原稿不在保护集」这类运行期事实的地方，只在失败分支渲染会让它
+     * 在人要表态的那一格消失。
+     */
+    let preWarnings: Array<{ code: string; message: string }> = [];
     {
-      const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach } =
+      const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings } =
         await loadRoundReviews(ref.layout, stage, runId);
       const pre = await checkAdjudication({
         cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
@@ -1152,7 +1158,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
         // 非缺省 Driver 下必报 missing_disposition（计划双审 r2 GLM-03，阻断）
         driver: gateDriver,
         runIdPinned: Boolean(pinnedId),
-        degraded, voidedSides, readonlyBreach,
+        degraded, voidedSides, readonlyBreach, runWarnings,
         expectedFallbackIds, missingSides, runId,
       });
       if (!pre.ok) {
@@ -1163,6 +1169,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
         );
         return EXIT.GATE_BLOCK;
       }
+      preWarnings = pre.warnings;
     }
     /*
      * 条件迁移，与本批刚确立的「非覆盖场合一律条件迁移」保持一致（GLM-03）。
@@ -1210,9 +1217,11 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       `  通过：/dual-approve --topic ${topic} --stage ${stage} [--reason <附言>]\n` +
       `  拒绝：/dual-approve --topic ${topic} --stage ${stage} --reject --reason <理由>\n` +
       `  放弃：/dual-abandon --topic ${topic}\n` +
-      `  在此期间不得修改业务文件（Hook 会拦下）。`;
-    if (isJsonMode()) emitJson({ ok: true, state: 'awaiting_approval', stage, rerun_index: rerunIndex, message: msg });
-    else say(msg);
+      `  在此期间不得修改业务文件（Hook 会拦下）。` +
+      preWarnings.map((w) => `\n  ⚠️ [${w.code}] ${w.message}`).join('');
+    if (isJsonMode()) {
+      emitJson({ ok: true, state: 'awaiting_approval', stage, rerun_index: rerunIndex, message: msg, warnings: preWarnings });
+    } else say(msg);
     return EXIT.OK;
   }
 
@@ -1225,7 +1234,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       `找不到 ${stage} 阶段的运行元数据。请先跑一次双审，或用 --run-id 指定。`,
     );
   }
-  const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach } =
+  const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings } =
     await loadRoundReviews(ref.layout, stage, runId);
   for (const n of notes) step(n);
 
@@ -1233,7 +1242,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
     driver: gateDriver,
     runIdPinned: Boolean(pinnedId),
-    degraded, voidedSides, readonlyBreach,
+    degraded, voidedSides, readonlyBreach, runWarnings,
     expectedFallbackIds, missingSides, runId,
   });
 

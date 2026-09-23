@@ -189,7 +189,38 @@ test('run.json 记录已产出结论、结构化结论却读不到 → missing_r
   assert.equal(r.ok, false, '结论文件是唯一事实来源，缺了不能当「该侧无意见」放行');
   const f = r.failures.find((x) => x.code === 'missing_review_json');
   assert.match(f!.message, /glm/);
+  /*
+   * 恢复与重跑两个出口都要给（M10a 第 2 步 EV-55 §3.2.2；代码双审 r2 CODEX-04
+   * 推翻了「只留重跑一轮」）：该文件登记在本 run 的 artifacts[] 里，重跑解不开
+   * 提交锚②，恢复是必经步骤——恢复命令的目标含 `_meta`，所以要明说在终端执行。
+   */
   assert.match(f!.message, /git restore/);
+  assert.match(f!.message, /终端/);
+  assert.match(f!.message, /重跑一轮/);
+  assert.match(f!.message, /解不开提交锚/);
+});
+
+test('run.json 的 gate.warnings 作为 run_warning 透传，缺裁决件的早退路径也带着（代码双审 r2 GLM-04）', async () => {
+  const l = await layout();
+  const notice = '本轮原稿不在保护集：/proj/doc/x.md 不在归档根内，提交锚不覆盖它';
+  // 没有裁决件：checkAdjudication 走 missing_disposition 早退
+  const early = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
+    runWarnings: [notice],
+  });
+  assert.equal(early.failures[0]?.code, 'missing_disposition');
+  assert.deepEqual(early.warnings.filter((w) => w.code === 'run_warning').map((w) => w.message), [notice]);
+
+  await putDisposition(l, `${HEAD}
+| AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
+  const full = await checkAdjudication({
+    cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
+    runWarnings: [notice],
+  });
+  assert.equal(full.ok, true, JSON.stringify(full.failures));
+  assert.deepEqual(full.warnings.filter((w) => w.code === 'run_warning').map((w) => w.message), [notice]);
 });
 
 test('AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求落点', async () => {

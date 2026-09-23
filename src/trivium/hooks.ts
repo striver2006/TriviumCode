@@ -124,17 +124,15 @@ export function isInsideArchive(targetPath: string, projectRoot: string, archive
  * 两处消费点现已各自处置：
  *   · 当轮面 → `hasProtectedRoleSuffix(fileName, driver)`，driver **必填**，
  *     取值由 `hookPreWrite` 经 `resolveRoundDriver` 从 `run.json.driver` 解析；
- *   · 跨时间面 → `hasRoleSuffixCrossTime()` 与 `roleSuffixAnywhere()`，
- *     取值口径不变（全集减缺省 Driver），后者已由模块级 `const` 改惰性求值。
- *
- * **仍属 M10 的是跨时间面本身**（EV-55）：提交锚改按 run 元数据的 artifacts 登记判不可变、
- * Bash 侧单独决定历史后缀的文本层保护。那两处与本函数的当轮语义不同源。
+ *   · 跨时间面 → Bash 侧 `roleSuffixAnywhere()`，取值口径不变（全集减缺省 Driver），
+ *     已由模块级 `const` 改惰性求值。提交锚那一处已于 M10a 第 2 步（EV-55）撤掉后缀判据，
+ *     改由 run 元数据的 `artifacts[]` 登记判不可变（见 `immutableChangeReason`）。
  *
  * ## `driver` 没有默认值（第 2 轮代码双审 CODEX-03）
  *
  * 本步的手法是「漏传变编译期错误」，源头却留着 `= DEFAULT_DRIVER` 就不对称——
  * 新增调用点漏传会静默退回「缺省 Driver 的补集」，正是 EV-68 / EV-69 要消灭的形态。
- * 跨时间面的三处调用点显式写 `criticRoleSuffixes(DEFAULT_DRIVER)`：**它们要的就是缺省值**，
+ * 跨时间面的调用点（EV-55 后剩 Bash 侧两处）显式写 `criticRoleSuffixes(DEFAULT_DRIVER)`：**它们要的就是缺省值**，
  * 显式写出来比靠默认值省略更说明问题。
  */
 export function criticRoleSuffixes(driver: AgentId): readonly string[] {
@@ -149,13 +147,10 @@ export function criticRoleSuffixes(driver: AgentId): readonly string[] {
  * **消费者的判据含义不同，这层不对称是有意留下的**（M9 第 4 步，计划双审
  * AGY-02 ≡ CODEX-04；消费点计数由代码双审 CODEX-03 改准）。
  *
- * `criticRoleSuffixes(DEFAULT_DRIVER)` 有**两处派生、三处语义**。三处分别是：
+ * 角色后缀判据今天有**两处语义**：
  *
  *   · `isForgedRoleFile` / `hookPreWrite`——形态 + 位置，**当轮**语境；
- *   · `immutableChangeReason`（提交锚）——纯 basename、**跨时间**判定。那里没有
- *     「当轮 Driver」这个概念：一份三个月前由别的 Driver 落的同名文件，今天该不该拦？
- *     纯词法后缀检查**区分不了**「Driver 自身原稿」与「同名历史审查件」。
- *   · `roleSuffixAnywhere()` → `bashTargetsProtected`——同样是**跨时间**面：
+ *   · `roleSuffixAnywhere()` → `bashTargetsProtected`——**跨时间**面：
  *     它无条件按命令文本里的字面后缀拦，不看位置、不看是不是本轮的文件、
  *     不受闸门与 TTL 限制。**它与提交锚不同源**：Bash 侧拿不到 run 上下文，
  *     所以 EV-55 给提交锚的修法方向（按 run 元数据的 artifacts 登记判不可变）
@@ -169,31 +164,14 @@ export function criticRoleSuffixes(driver: AgentId): readonly string[] {
  *   · `hasProtectedRoleSuffix(fileName, driver)`——**当轮**面，`driver` **必填且无默认值**。
  *     漏传是编译期错误，不是运行期的静默回落。理由与 EV-69 登记的教训同源：
  *     `gate.ts` 的 `voidedSides` 注释原话是「可选参数的默认值让漏传静默成功」。
- *   · `hasRoleSuffixCrossTime(fileName)`——**跨时间**面，取值口径写进函数名
- *     （全集减**缺省** Driver），供提交锚与 Bash 侧使用。
- *
- * **跨时间面本步行为一字不变。** 它仍然把一个跨时间的保护面绑在缺省 Driver 上，
- * M10 第一次换 Driver 仍会显形：届时历史 `-claude.md` 会集体变成「可改」，
- * 或反过来新 Driver 的原稿被判伪造。那条修法（提交锚按 `run.json` 的 artifacts
- * 登记判不可变；Bash 侧另需单独决定）是安全关键面的重写，**触发时点是 M10**，
- * 已登记 BACKLOG EV-55，不在本步做。本步只把它从隐式的模块加载期固化
- * 变成一个显式的取值点，好让 EV-55 真做时不必再拆一次耦合。
+ *   · 跨时间面当时拆出的 `hasRoleSuffixCrossTime(fileName)` 供提交锚使用；
+ *     M10a 第 2 步（EV-55）提交锚改按 `artifacts[]` 登记判不可变后，它已无消费者，
+ *     随之删除（代码双审 r2 CODEX-03）。Bash 侧的跨时间面仍是 `roleSuffixAnywhere()`。
  */
 export function hasProtectedRoleSuffix(fileName: string, driver: AgentId): boolean {
   return new RegExp(`-(?:${criticRoleSuffixes(driver).join('|')})\\.md$`).test(
     path.basename(fileName),
   );
-}
-
-/**
- * 跨时间面的角色后缀判据：**不问当轮是谁**，取值恒为「全集减缺省 Driver」。
- *
- * 消费者是提交锚 `immutableChangeReason` 与 Bash 侧 `roleSuffixAnywhere()`——
- * 两处都要对**历史**文件表态，而「当轮 Driver」在那里没有意义。
- * 与 `hasProtectedRoleSuffix` 的差别见后者的文档块。
- */
-export function hasRoleSuffixCrossTime(fileName: string): boolean {
-  return new RegExp(`-(?:${criticRoleSuffixes(DEFAULT_DRIVER).join('|')})\\.md$`).test(path.basename(fileName));
 }
 
 /**
@@ -470,41 +448,113 @@ export function isOrchestratorOwned(targetPath: string, projectRoot: string, arc
 /**
  * 已提交的归档文件里，哪些**一经落盘即不可变**（git 锚要拦其改动）。
  * 返回 null 表示该文件本就可变（task.json、原稿、裁决件、便利副本 changes.diff）。
+ *
+ * **判据从「后缀枚举」改为「位置」（M10a 第 2 步 EV-55 §3.1.2）**：原判据靠一条
+ * 正则枚举 `_meta/` 下的文件名形态（`review-*.json` / `brief-*.md` /
+ * `changes-*.diff`），新增一种 `_meta/` 工件类型就要跟着改枚举——新增判据改为
+ * 「位于 `_meta/` 内即不可变」，只留两个排除项（下方 run-*.json 分支、
+ * `changes.diff` 便利副本）。**原稿的不可变性不在这个函数里判**：原稿不落在
+ * `_meta/` 内，它的保护改由锚②（`archive.checkRecordedArtifacts`）按 §3.1.1 的
+ * 登记承接——谁登记了谁不可变，这个函数不需要认得「什么是原稿」。
  */
-const IMMUTABLE_META = /^(?:review-.+\.(?:json|fallback-items\.md)|brief-.+\.md|changes-.+\.diff)$/;
 async function immutableChangeReason(projectRoot: string, relFromRoot: string): Promise<string | null> {
   const base = path.basename(relFromRoot);
   const inMeta = relFromRoot.split('/').includes('_meta');
   /*
-   * 这里用**纯后缀检查**，不做位置判定（审查意见 AGY-03）。
+   * **不再按角色后缀判**（M10a 第 2 步代码双审 r2 CODEX-03）。
    *
-   * 调用方 `deletedOrModifiedTracked` 传进来的范围本就是 `archiveRel`——能进
-   * `tracked.modified` 的文件天然在归档根内，再判一次位置是多余的，还会给每次
-   * `git commit` 加上一轮 realpath I/O。
+   * 上一版这里第一支是 `hasRoleSuffixCrossTime(base)`：保护集「全集减**缺省** Driver」。
+   * 它区分不了「Driver 自己的原稿 / 裁决件」与「同名历史审查件」，于是当轮 Driver
+   * 不是缺省值时，它自己的 `-<id>.md` 原稿与 `-response-<id>.md` 裁决件被判
+   * 「改动即伪造」——计划 §3.1.4 的行为表与 §3.1.5 的出口对那一族不成立。
    *
-   * 也正因如此，这里**不能**换成组合判定 `isForgedRoleFile`：`base` 是 basename，
-   * 位置判定会把它解析到项目根、恒判「归档外」，提交锚就此静默失效。
-   *
-   * 走**跨时间**函数（EV-68 拆分后）：这里要对历史文件表态，没有「当轮 Driver」可言。
-   * 行为与拆分前逐字相同。
+   * 删掉它保护不丢：审查文档自 M1 起就在收尾时登记进 `artifacts[]`
+   * （`review.ts` 里 `artifacts.push(written.absPath)` → `meta.artifacts`），
+   * 由锚②（`archive.checkRecordedArtifacts`）按登记 sha256 核对——这正是计划
+   * §3.1.2「原稿与审查件的不可变性改由锚②按登记承接」的本意。删除则由锚①兜住。
    */
-  if (hasRoleSuffixCrossTime(base)) return '审查文档只能由编排器落盘，改动即伪造';
-  if (inMeta && IMMUTABLE_META.test(base)) return '审计材料一经落盘即不可变';
   if (inMeta && /^run-.+\.json$/.test(base)) {
     /*
      * run.json 只在运行**期间**被编排器改写（骨架 → 收尾）。已提交的版本若还是
      * `running`，说明有人在运行中途提交过，本次改动是正常收尾，不能拦。
+     *
+     * **这一支必须排在下面的 `_meta/` 位置判据之前求值**：位置判据本会把
+     * `run-*.json` 也判成不可变，`run-*.json` 需要这条更细的例外先拦下、
+     * 不落到位置判据的通用拒绝上。
      */
     const { readAtHead } = await import('./util/git.js');
     const head = await readAtHead(projectRoot, relFromRoot);
     if (head) {
+      let headStatus: string | undefined;
       try {
-        if ((JSON.parse(head) as { status?: string }).status === 'running') return null;
+        headStatus = (JSON.parse(head) as { status?: string }).status;
       } catch {
         /* HEAD 里的版本本身就坏了：按不可变处理 */
       }
+      if (headStatus === 'running') {
+        const work = await fs.readFile(path.join(projectRoot, relFromRoot), 'utf8').catch(() => null);
+        return runningRewriteViolation(head, work);
+      }
     }
     return '运行清单是留痕核对的锚，改锚即可整枝绕过';
+  }
+  if (inMeta && base !== 'changes.diff') {
+    /*
+     * 便利副本 `changes.diff` 每轮覆盖写（`.reviews/README.md` 记载的就是这个
+     * 名字），受保护的是同目录下带 run_id 的那份（已命中 `review-*` / `brief-*` /
+     * `changes-*.diff` 等旧枚举，现由本条位置判据统一覆盖）。
+     */
+    return '_meta/ 下的审计材料一经落盘即不可变（changes.diff 便利副本除外）';
+  }
+  return null;
+}
+
+/**
+ * running 态 run.json 的改写是否越出「正常收尾」（M10a 第 2 步代码双审 r3 CODEX-01 ≡ GLM-01）。
+ *
+ * 上一版只看 HEAD 里的 `status === 'running'` 就放行，对改写内容零校验：
+ * 「运行中途提交过一次」之后，同一次提交里既改审查文档 / 原稿、又改 `artifacts[]`
+ * 里它的 sha256（或删掉条目），锚② 读到的是被同步改过的期望值，自证清白。
+ * 删掉提交锚的后缀支之后，那是这些文件唯一的一道保护。
+ *
+ * 收尾对 `artifacts[]` 只做**追加**（`review.ts` 收尾合并用的是展开追加），
+ * 所以正常收尾满足：同一 `run_id`、HEAD 里的每条登记原样保留。据此收窄：
+ *   · 工作树版本读不出 / 解析不了 ⇒ 拦（收尾从不写坏 JSON）；
+ *   · `run_id` 变了 ⇒ 拦；
+ *   · HEAD 里任一 `artifacts[]` 条目在工作树版本里消失或 sha256 变了 ⇒ 拦。
+ *
+ * **剩余边界，不写成确定性保证**：收尾**新追加**的条目（审查文档、原稿）在追加那一刻
+ * 仍可被同步改写——那段窗口由写侧（Write/Edit 精确拦、Bash 启发式拦）承担；
+ * 已落盘未登记时进程崩溃并被提交的审查文档（r3 GLM-02）同属此类。
+ * running 态可以被一直延续，但延续期间只能追加、不能改写已登记条目。
+ *
+ * 返回 null 表示放行。
+ */
+export function runningRewriteViolation(headText: string, workText: string | null): string | null {
+  type Manifest = { run_id?: unknown; artifacts?: Array<{ path?: unknown; sha256?: unknown }> };
+  let head: Manifest;
+  let work: Manifest;
+  try {
+    head = JSON.parse(headText) as Manifest;
+  } catch {
+    return '运行清单是留痕核对的锚，改锚即可整枝绕过';
+  }
+  if (workText === null) return '运行中的运行清单读不出来：收尾回写不会产生这种状态';
+  try {
+    work = JSON.parse(workText) as Manifest;
+  } catch {
+    return '运行中的运行清单被改成了不可解析的内容：收尾回写不会产生这种状态';
+  }
+  if (work.run_id !== head.run_id) return '运行中的运行清单 run_id 被改动：收尾回写不会改 run_id';
+  const workEntries = new Map<unknown, unknown>();
+  for (const a of work.artifacts ?? []) workEntries.set(a.path, a.sha256);
+  for (const a of head.artifacts ?? []) {
+    if (!workEntries.has(a.path)) {
+      return `运行中的运行清单删掉了已登记条目 ${String(a.path)}：收尾只追加登记，不删改`;
+    }
+    if (workEntries.get(a.path) !== a.sha256) {
+      return `运行中的运行清单改写了已登记条目 ${String(a.path)} 的 sha256：收尾只追加登记，不删改`;
+    }
   }
   return null;
 }
@@ -659,13 +709,38 @@ function deny(reason: string): HookOutput {
  * 方向取保守：宁可在闸门期多拦一条无害命令（用户可以等审完再跑），也不能放过一次写入。
  * 只在闸门期生效，日常不受影响。
  */
+/**
+ * 需要额外吃掉一个参数值的 git 全局选项（`WRITE_LIKE` 与 `commitTargetsProject` 共用）。
+ *
+ * 按 git(1) 的全局选项列出；`--shallow-file` 是内部 / 测试用旗标，同样取值分离，
+ * 一并收进来（代码双审 r3 GLM-05）。集合是照文档枚举的，git 新增全局选项时不会自动跟上——
+ * 判据本身仍属启发式、不完备。
+ */
+const GIT_OPTS_WITH_VALUE = new Set([
+  '-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env', '--shallow-file',
+]);
+
+/**
+ * git 子命令之前的全局选项前缀。
+ *
+ * **取值型选项要多吃一个 token**（M10a 第 2 步代码双审 r2 CODEX-01）：上一版只写了
+ * `(?:-[^\s]+\s+)*`，吃得下 `--git-dir=x` 这种自带取值的形态，吃不下
+ * `git -c core.quotePath=false restore …` / `git -C <目录> checkout …`——取值那个词
+ * 不以 `-` 开头，前缀就此断掉，整条命令判「不像写命令」，`hookPreBash` 的两条规则
+ * 在第一道门就一起放行。取值允许带引号段（`-c core.editor="a b"`）。
+ */
+export const GIT_OPT_PREFIX =
+  `(?:(?:${[...GIT_OPTS_WITH_VALUE].join('|')})\\s+(?:[^\\s"']|"[^"]*"|'[^']*')+\\s+|-[^\\s]+\\s+)*`;
+
 const WRITE_LIKE: readonly RegExp[] = [
   /(^|[^<>|&\d])>{1,2}(?!\s*(?:&|\/dev\/null))/,        // 重定向（排除 2>&1 与 > /dev/null）
   /\btee\b/,
   /\bsed\s+(?:-[A-Za-z]*i|--in-place)\b/,
   /\bperl\s+-[A-Za-z]*i\b/,
   /\b(?:rm|mv|cp|touch|mkdir|rmdir|ln|install|rsync|patch|dd|truncate|chmod|chown|unzip|tar)\b/,
-  /\bgit\s+(?:-[^\s]+\s+)*(?:checkout|restore|switch|stash|reset|apply|am|cherry-pick|merge|rebase|pull|revert|clean|mv|rm|commit)\b/,
+  new RegExp(
+    `\\bgit\\s+${GIT_OPT_PREFIX}(?:checkout|restore|switch|stash|reset|apply|am|cherry-pick|merge|rebase|pull|revert|clean|mv|rm|commit)\\b`,
+  ),
   /\b(?:npm|pnpm|yarn|bun)\s+(?:install|i|ci|add|remove|rm|uninstall|update|up|pkg|link)\b/,
   /\bpip3?\s+(?:install|uninstall)\b/,
   /\bcargo\s+(?:add|remove|install)\b/,
@@ -785,7 +860,7 @@ const SEGMENT_SPLIT = /(?:&&|\|\||[;&|\n\r])/;
  * 出现在命令文本任何位置都拦——见下方「为什么 Bash 侧不做收窄」。
  *
  * 后缀集取**跨时间**口径（`criticRoleSuffixes(DEFAULT_DRIVER)`，即全集减**缺省** Driver），
- * 与提交锚同源、与 Write/Edit 侧的当轮口径**有意不同**——这一处要对历史文件与
+ * 与 Write/Edit 侧的当轮口径**有意不同**（提交锚已于 EV-55 改按登记判定，不再共用）——这一处要对历史文件与
  * 纯文本表态，拿不到 run 上下文，也就没有「当轮 Driver」可言（EV-68 / EV-55）。
  *
  * **惰性求值**（EV-68）：上一版是模块级 `const`，正则在**模块加载期**就固化了。
@@ -908,7 +983,12 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
         '  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\n' +
         '  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\n' +
         '  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\n' +
-        '  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。',
+        '  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\n' +
+        '\n' +
+        '  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\n' +
+        '  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\n' +
+        '  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\n' +
+        '  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。',
     );
   }
   if (!ctx.config.gate.block_business_write_when_awaiting_approval) return ALLOW;
@@ -950,11 +1030,6 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
  * 本 Hook 改挂全部 Bash 事件，过滤全在进程内完成。
  * 判不出来时按「是提交」处理：Hook 的职责是拦住违规提交，不是放过可疑输入。
  */
-/** 需要额外吃掉一个参数值的 git 全局选项 */
-const GIT_OPTS_WITH_VALUE = new Set([
-  '-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env',
-]);
-
 /**
  * 一段命令里的 git 调用：**子命令** + 它自己指定的工作目录
  * （`-C` / `--work-tree` / `--git-dir`）。
@@ -1278,6 +1353,9 @@ async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
       problems.slice(0, 20).join('\n') +
       (problems.length > 20 ? `\n  · …另有 ${problems.length - 20} 项` : '') +
       '\n\n  请用 `git checkout -- <路径>` 或 `git restore <路径>` 恢复。\n' +
+      '  **这一步请在终端里手动执行**：恢复命令的参数正是上面列出的受保护路径，\n' +
+      '  常规写法在会话里会被 hook-pre-bash 拦下（M10a 第 2 步 EV-55 §3.2.2）。\n' +
+      '  那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。\n' +
       '  确实要作废某一轮，用 `/dual-abandon --topic <主题>`——它保留工件、只解闸门。\n' +
       '  重跑会自动抬升 -r<N>，既有工件一律不覆盖，不需要先删。',
   };

@@ -5,8 +5,8 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   hookPreWrite, hookPreBash, hookPreCommit, hookStop, hookSessionStart, runHook, looksLikeWriteCommand,
-  extractTargetPath, isForgedRoleFile, hasProtectedRoleSuffix, hasRoleSuffixCrossTime,
-  criticRoleSuffixes, isInsideArchive, isOrchestratorOwned,
+  extractTargetPath, isForgedRoleFile, hasProtectedRoleSuffix,
+  criticRoleSuffixes, isInsideArchive, isOrchestratorOwned, runningRewriteViolation,
   type HookInput,
 } from '../../src/trivium/hooks.js';
 import { looksLikeRoleArtifact } from '../../src/trivium/naming.js';
@@ -17,6 +17,8 @@ import { setGate } from '../../src/trivium/state.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { Ctx } from '../../src/trivium/types.js';
+import { initFixtureRepo } from '../../src/trivium/util/git.js';
+import { run } from '../../src/trivium/util/exec.js';
 
 const SESSION = 'S-CURRENT';
 const STALE = 120_000;
@@ -51,10 +53,11 @@ test('从各种 tool_input 字段名里取出目标路径', () => {
 });
 
 test('纯后缀检查：只问形态，不问位置', () => {
-  // 提交锚（immutableChangeReason）用的就是这一支，传进来的是 basename
-  // EV-68 拆分后它走**跨时间**函数，断言一字未改——这正是「跨时间面行为不变」的机器判据
-  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-gemini.md'), true);
-  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-glm.md'), true);
+  // 原先测的是跨时间函数 hasRoleSuffixCrossTime（提交锚专用）；M10a 第 2 步 EV-55 后提交锚改按
+  // artifacts[] 登记判不可变，那个函数随之删除（代码双审 r2 CODEX-03）。形态断言改挂到当轮函数、
+  // 以缺省 Driver 取值——断言本身一字未改
+  assert.equal(hasProtectedRoleSuffix('2026-09-10-t-gemini.md', DEFAULT_DRIVER), true);
+  assert.equal(hasProtectedRoleSuffix('2026-09-10-t-glm.md', DEFAULT_DRIVER), true);
   /*
    * 后两条**结论不变、理由已改写**（M9 第 4 步）。
    *
@@ -65,9 +68,9 @@ test('纯后缀检查：只问形态，不问位置', () => {
    * 新理由：**`-claude.md` 是当轮 Driver 自己的产出**。判据是「全部已登记角色
    * 减当轮 Driver」，与「谁能当审核者」无关——见 `criticRoleSuffixes(DEFAULT_DRIVER)` 的文档块。
    */
-  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-claude.md'), false);
-  assert.equal(hasRoleSuffixCrossTime('2026-09-10-t-revised-claude.md'), false);
-  assert.equal(hasRoleSuffixCrossTime('src/gemini.md'), false, '文件名必须以 -gemini.md 结尾');
+  assert.equal(hasProtectedRoleSuffix('2026-09-10-t-claude.md', DEFAULT_DRIVER), false);
+  assert.equal(hasProtectedRoleSuffix('2026-09-10-t-revised-claude.md', DEFAULT_DRIVER), false);
+  assert.equal(hasProtectedRoleSuffix('src/gemini.md', DEFAULT_DRIVER), false, '文件名必须以 -gemini.md 结尾');
 });
 
 /*
@@ -976,6 +979,188 @@ test('block_commit=false 时不拦', async () => {
     state: 'review_done_awaiting_disposition', sessionId: SESSION, heartbeatStaleMs: STALE,
   });
   assert.equal((await hookPreCommit(ctx, { session_id: SESSION })).exitCode, EXIT.OK);
+});
+
+// ── hook-pre-commit：_meta/ 位置判据（M10a 第 2 步 EV-55 §3.1.2，§3.3）──
+
+/**
+ * 这一族此前**完全没有测试**（`immutableChangeReason` / `checkArchiveIntegrity`
+ * 只在 `hookPreCommit` 内部私有调用，仓库里此前没有一条用例真的提交过、
+ * 又改动过一份 `_meta/` 工件）。判据从「后缀枚举」改成「位置」之后，
+ * 这里补上最有价值的那几格：一种**旧枚举压根不认识**的新 `_meta` 文件类型、
+ * 两个排除项（`changes.diff` 便利副本、`running` 态 `run-*.json`）。
+ */
+async function gitCtx(): Promise<Ctx> {
+  const ctx = await fakeCtx();
+  await initFixtureRepo(ctx.projectRoot);
+  return ctx;
+}
+
+async function commitAll(root: string, message: string): Promise<void> {
+  await run('git', ['add', '-A'], { cwd: root });
+  await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', message, '--no-verify'], {
+    cwd: root,
+  });
+}
+
+test('_meta/ 下一种旧枚举不认识的新工件类型：提交后改动即拦（判据从后缀改成位置）', async () => {
+  const ctx = await fakeCtx();
+  const metaDir = path.join(ctx.archiveRoot, 'T', 'plan', '_meta');
+  await fs.mkdir(metaDir, { recursive: true });
+  // 故意起一个不匹配旧 IMMUTABLE_META 正则（review-*.json / brief-*.md / changes-*.diff）的文件名
+  const target = path.join(metaDir, 'trace-20260101T000000Z.json');
+  await fs.writeFile(target, '{"v":1}\n');
+  await initFixtureRepo(ctx.projectRoot); // 把上面写的文件一并纳入首个提交
+
+  await fs.writeFile(target, '{"v":2}\n'); // 已提交后原地改动
+  const r = await hookPreCommit(ctx, { session_id: SESSION });
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK, `_meta/ 下的新工件类型也该被位置判据拦下：\n${r.stderr}`);
+  assert.match(r.stderr ?? '', /trace-20260101T000000Z\.json/);
+});
+
+test('changes.diff 便利副本：提交后改动可以提交（每轮覆盖写，位置判据的排除项）', async () => {
+  const ctx = await gitCtx();
+  const metaDir = path.join(ctx.archiveRoot, 'T', 'code', '_meta');
+  await fs.mkdir(metaDir, { recursive: true });
+  const alias = path.join(metaDir, 'changes.diff');
+  await fs.writeFile(alias, 'diff v1\n');
+  await commitAll(ctx.projectRoot, 'seed changes.diff');
+
+  await fs.writeFile(alias, 'diff v2\n'); // 下一轮覆盖写
+  const r = await hookPreCommit(ctx, { session_id: SESSION });
+  assert.equal(r.exitCode, EXIT.OK, `changes.diff 是每轮覆盖的便利副本，不应被拦：\n${r.stderr}`);
+});
+
+test('run-*.json：running 态收尾回写可以提交，success 态原地改动被拦（两条例外求值顺序）', async () => {
+  const ctx = await gitCtx();
+  const metaDir = path.join(ctx.archiveRoot, 'T', 'plan', '_meta');
+  await fs.mkdir(metaDir, { recursive: true });
+
+  // ① running → 收尾回写：不拦
+  const runningRun = path.join(metaDir, 'run-20260101T000000Z.json');
+  await fs.writeFile(runningRun, JSON.stringify({ status: 'running' }) + '\n');
+  await commitAll(ctx.projectRoot, 'seed running run.json');
+  await fs.writeFile(runningRun, JSON.stringify({ status: 'success' }) + '\n');
+  const r1 = await hookPreCommit(ctx, { session_id: SESSION });
+  assert.equal(r1.exitCode, EXIT.OK, `running 态收尾回写不应被拦：\n${r1.stderr}`);
+  await commitAll(ctx.projectRoot, 'finish run.json');
+
+  // ② 已收尾（success）的 run.json 再被原地改动：拦
+  await fs.writeFile(runningRun, JSON.stringify({ status: 'success', tampered: true }) + '\n');
+  const r2 = await hookPreCommit(ctx, { session_id: SESSION });
+  assert.equal(r2.exitCode, EXIT.GATE_BLOCK, `已收尾的 run.json 被改动必须拦：\n${r2.stderr}`);
+  assert.match(r2.stderr ?? '', /run-20260101T000000Z\.json/);
+});
+
+test('running 态运行清单：收尾只许追加登记，删改已登记条目或改 run_id 即拦（代码双审 r3 CODEX-01 ≡ GLM-01）', () => {
+  const head = JSON.stringify({
+    run_id: 'R1', status: 'running',
+    artifacts: [{ path: 'T/plan/_meta/brief-glm-R1.md', sha256: 'aaa' }],
+  });
+  const finish = (over: Record<string, unknown>): string =>
+    JSON.stringify({ run_id: 'R1', status: 'success', artifacts: [{ path: 'T/plan/_meta/brief-glm-R1.md', sha256: 'aaa' }], ...over });
+
+  // 正常收尾：追加新条目
+  assert.equal(
+    runningRewriteViolation(head, finish({
+      artifacts: [{ path: 'T/plan/_meta/brief-glm-R1.md', sha256: 'aaa' }, { path: 'T/plan/x-glm.md', sha256: 'bbb' }],
+    })),
+    null,
+  );
+  // 改已登记条目的 sha / 删条目 / 改 run_id / 写坏 / 读不出
+  assert.match(runningRewriteViolation(head, finish({ artifacts: [{ path: 'T/plan/_meta/brief-glm-R1.md', sha256: 'zzz' }] })) ?? '', /改写了已登记条目/);
+  assert.match(runningRewriteViolation(head, finish({ artifacts: [] })) ?? '', /删掉了已登记条目/);
+  assert.match(runningRewriteViolation(head, finish({ run_id: 'R2' })) ?? '', /run_id/);
+  assert.match(runningRewriteViolation(head, '{坏') ?? '', /不可解析/);
+  assert.match(runningRewriteViolation(head, null) ?? '', /读不出来/);
+});
+
+test('running 窗口的篡改链：中途提交后同步改审查文档与登记 sha，提交锚必须拦（代码双审 r3 CODEX-01）', async () => {
+  /*
+   * 上一版 running 分支只看 HEAD 的 status：中途提交过一次 running 态清单之后，
+   * 同一次提交里改审查文档正文、再把清单里它的 sha 改成新值，锚② 读到的是被同步改过的期望值，
+   * 自证清白；提交锚的后缀支又已删除——整条链退 0。收窄后改写已登记条目即拦。
+   */
+  const ctx = await gitCtx();
+  const planDir = path.join(ctx.archiveRoot, 'T', 'plan');
+  const metaDir = path.join(planDir, '_meta');
+  await fs.mkdir(metaDir, { recursive: true });
+  const doc = path.join(planDir, '2026-09-23-T-glm.md');
+  await fs.writeFile(doc, '原始意见\n');
+  const { createHash } = await import('node:crypto');
+  const sha = async (f: string): Promise<string> => createHash('sha256').update(await fs.readFile(f)).digest('hex');
+  const runPath = path.join(metaDir, 'run-R1.json');
+  const manifest = (docSha: string): string =>
+    JSON.stringify({ run_id: 'R1', status: 'running', artifacts: [{ path: 'T/plan/2026-09-23-T-glm.md', sha256: docSha }] }) + '\n';
+  await fs.writeFile(runPath, manifest(await sha(doc)));
+  await commitAll(ctx.projectRoot, 'mid-run commit');
+
+  await fs.writeFile(doc, '被改过的意见\n');
+  await fs.writeFile(runPath, manifest(await sha(doc)));
+  const r = await hookPreCommit(ctx, { session_id: SESSION });
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK, `running 窗口内改写已登记条目必须拦：\n${r.stderr}`);
+  assert.match(r.stderr ?? '', /改写了已登记条目/);
+});
+
+test('git --shallow-file 同样是取值分离的全局选项（代码双审 r3 GLM-05）', () => {
+  assert.equal(looksLikeWriteCommand('git --shallow-file x restore -- .reviews/t/plan/_meta/run-R1.json'), true);
+});
+
+test('非缺省 Driver 的原稿与裁决件：提交后原地改可以提交（代码双审 r2 CODEX-03 的鉴别用例）', async () => {
+  /*
+   * 提交锚上一版第一支是跨时间后缀判据（全集减**缺省** Driver），`-codex.md` 在保护集内——
+   * codex 当 Driver 时它自己的原稿与裁决件会被判「改动即伪造」。复原那一支这里就红。
+   * 未登记进任何 artifacts[]（没有 run.json），所以锚② 也不管：它们本就可变。
+   */
+  const ctx = await gitCtx();
+  const planDir = path.join(ctx.archiveRoot, 'T', 'plan');
+  const codeDir = path.join(ctx.archiveRoot, 'T', 'code');
+  await fs.mkdir(planDir, { recursive: true });
+  await fs.mkdir(codeDir, { recursive: true });
+  const draft = path.join(planDir, '2026-09-23-T-codex.md');
+  const verdict = path.join(codeDir, '2026-09-23-T-response-codex.md');
+  const revised = path.join(planDir, '2026-09-23-T-revised-codex.md');
+  for (const f of [draft, verdict, revised]) await fs.writeFile(f, 'v1\n');
+  await commitAll(ctx.projectRoot, 'seed codex-driver artifacts');
+
+  for (const f of [draft, verdict, revised]) await fs.writeFile(f, 'v2\n');
+  const r = await hookPreCommit(ctx, { session_id: SESSION });
+  assert.equal(r.exitCode, EXIT.OK, `非缺省 Driver 修改自己的原稿 / 裁决件不应被拦：\n${r.stderr}`);
+});
+
+test('git 取值型全局选项不能让恢复 / 改写命令绕过写命令判据（代码双审 r2 CODEX-01）', async () => {
+  /*
+   * 上一版 git 分支的选项前缀只吃 `--git-dir=x` 这种自带取值的形态：
+   * `git -c k=v restore …` 的取值那个词不以 `-` 开头，前缀断掉，整条判「不像写命令」，
+   * `hookPreBash` 第一道门放行。既有负例 `git -c core.editor="rm …" commit` 能拦，
+   * 是靠取值里的 `rm` 字面蒙中的，不算覆盖——这里的取值都不含任何写动词。
+   */
+  const ctx = await fakeCtx();
+  for (const cmd of [
+    'git -c core.quotePath=false restore -- .reviews/t/plan/_meta/run-R1.json',
+    'git -C /proj checkout -- .reviews/t/plan/a-gemini.md',
+    'git --git-dir .git restore -- .reviews/t/plan/_meta/review-glm-R1.json',
+    'git -c core.pager="less -R" -C . checkout -- .reviews/t/task.json',
+    'git --work-tree . -c core.quotePath=false reset --hard',
+  ]) {
+    assert.equal(looksLikeWriteCommand(cmd), true, `应判为写命令：${cmd}`);
+  }
+  for (const cmd of [
+    'git -c core.quotePath=false restore -- .reviews/t/plan/_meta/run-R1.json',
+    'git -C /proj checkout -- .reviews/t/plan/a-gemini.md',
+    'git --git-dir .git restore -- .reviews/t/plan/_meta/review-glm-R1.json',
+  ]) {
+    assert.equal((await hookPreBash(ctx, bashInput(cmd))).exitCode, EXIT.GATE_BLOCK, `应被拦：${cmd}`);
+  }
+  // 收紧不能变成误拦：只读子命令照样放行
+  for (const cmd of [
+    'git -c core.quotePath=false log --oneline',
+    'git -C /proj status --porcelain',
+    'git -c core.quotePath=false diff HEAD -- .reviews/t/plan/_meta/run-R1.json',
+    'git --git-dir .git show HEAD:.reviews/t/task.json',
+  ]) {
+    assert.equal(looksLikeWriteCommand(cmd), false, `不应判为写命令：${cmd}`);
+  }
 });
 
 // ── hook-stop（三层防死循环）──

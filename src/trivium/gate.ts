@@ -47,7 +47,9 @@ export interface GateWarning {
     | 'parse_problem'
     | 'degraded_round'
     /** 排除作废侧后有效侧不足两家，共同阻断这一档**未执行**（设计 §12.1 的过渡处置） */
-    | 'joint_check_degraded';
+    | 'joint_check_degraded'
+    /** 运行期写进 run.json `gate.warnings` 的标注，原样透传（如「本轮原稿不在保护集」） */
+    | 'run_warning';
   message: string;
   ids?: string[];
 }
@@ -159,6 +161,12 @@ export interface GateCheckInput {
    * 留痕整份读不出时 `missingSides` 先行兜底。漏传本参数才按不拦处理，接线由 cli 两处调用点负责。
    */
   readonlyBreach?: { hit: boolean; files: string[] };
+  /**
+   * run.json `gate.warnings` 里运行期写下的标注，原样作为 `run_warning` 告警透传
+   * （M10a 第 2 步代码双审 r2 GLM-04：此前该字段只写不读，「如实标注」没有读者）。
+   * 由 `loadRoundReviews` 带出，接线同 `readonlyBreach`。
+   */
+  runWarnings?: string[];
 }
 
 export async function checkAdjudication(input: GateCheckInput): Promise<GateCheckResult> {
@@ -166,6 +174,8 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
   const voidedSides = input.voidedSides ?? [];
   const failures: GateFailure[] = [];
   const warnings: GateWarning[] = [];
+  // 排在一切早退之前：缺裁决件那一格也要看得见运行期标注
+  for (const w of input.runWarnings ?? []) warnings.push({ code: 'run_warning', message: w });
 
   // 第 1 步：收集本轮结构化意见编号
   const structuredIds: string[] = [];
@@ -357,7 +367,18 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
       code: 'missing_review_json',
       message:
         `读不到 ${missingSides.join('、')} 侧的结构化结论（_meta/review-<侧>-<run_id>.json），` +
-        '而 run.json 记录该侧已产出结论。结论文件是裁决校验的唯一事实来源，请用 git restore 恢复，或重跑一轮。',
+        '而 run.json 记录该侧已产出结论。结论文件是裁决校验的唯一事实来源。' +
+        /*
+         * **恢复与重跑两个出口都要给，且说清重跑替代不了恢复**（M10a 第 2 步
+         * EV-55 §3.2.2；代码双审 r2 CODEX-04 推翻了「只留重跑一轮」的简化）：
+         * 该结论文件登记在本 run 的 `artifacts[]` 里，重跑只产生新 run，提交锚②
+         * 会一直以「已丢失」拦下任何提交。恢复命令的目标含 `_meta`，会话里的常规写法
+         * 会被 hook-pre-bash 拦下，所以明说在终端执行——措辞与 `checkArchiveIntegrity`
+         * 的恢复指引同源。
+         */
+        '该文件已丢失或被改动：请在终端里用 `git restore <路径>` 恢复（会话里的常规写法会被 Hook 拦下）。' +
+        '也可以重跑一轮（既有工件不受影响，`-r<N>` 自动抬升），但重跑与 `/dual-abandon` ' +
+        '都解不开提交锚（它们不动已登记的工件），恢复仍是必经步骤。',
     });
   }
 
@@ -722,6 +743,8 @@ export async function loadRoundReviews(
    * 那一格由 `missingSides` 判失败，不靠这里。
    */
   readonlyBreach: { hit: boolean; files: string[] };
+  /** run.json `gate.warnings`（读不到 run.json 时为空） */
+  runWarnings: string[];
 }> {
   const reviews: Partial<Record<CriticId, Review | null>> = {};
   const notes: string[] = [];
@@ -817,7 +840,9 @@ export async function loadRoundReviews(
     files: [...(runMeta?.guard?.breached_files ?? [])],
   };
 
-  return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach };
+  const runWarnings = [...(runMeta?.gate?.warnings ?? [])];
+
+  return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings };
 }
 
 /** 从 `.fallback-items.md` 读回编排器编好号的待裁决单元（每行 `- <前缀>-F<n>: …`） */

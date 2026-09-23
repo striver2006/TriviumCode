@@ -1,0 +1,115 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险一条：§3.2.2 的扫描判据测试实际论域为空——按其自身算法精确复算，剥注释后全部六个动词命中无一进入「对象带保护字面」判定，把源内全部「终端」提示删光测试仍绿；本步刚修的两处旗舰文案（hooks.ts:931 / :1302）因用 `<路径>` 占位符被排除在论域外，计划 §3.2.2 表第 1 行明判「对象带保护字面=是」的条目，机械判据给出相反答案（GLM-01）。其次：§3.3/R-a 点名的登记三要素正负例与变异大面积缺席，§8 五条 3.1.1 变异只有一条有可红用例（GLM-02）。行为代码本身逐项核实忠实于 r7 §3.1/§3.2：时点/阶段/域三判据、run-*.json 例外求值顺序、IMMUTABLE_META 零残留、gate.ts 只留重跑不丢合法出口、guard.ts:759 不改的判断，全部成立。另有登记哈希重算偏离 R-j 冻结口径（GLM-03，微窗口竞态）与「预检标注」无承载面（GLM-04）两条次要，测试自维护两条小项。修复面集中在测试层，行为侧仅需一行级对齐。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/contract/bash-recovery-wording.test.ts:57-81（判据定义）；src/trivium/hooks.ts:931、:1302（被守护的两处文案）",
+      "problem": "扫描判据把计划 §3.2.2 的「对每一条判定该命令的对象是否带保护字面」实现成「±400 字符源码窗口内出现保护字面」，导致该测试今天不可失败。用测试自身的 stripComments、三条正则与窗口宽度对 src/trivium 全目录精确复算：剥注释后共六个动词命中（guard.ts 1 处、hooks.ts 5 处，对应原文 guard.ts:759 与 hooks.ts:931/:948/:1302），inDomain 全部为 false——包括本步刚加上终端提示的两处旗舰文案 hooks.ts:931（hookPreBash deny）与 :1302（提交锚恢复指引），它们的保护对象以 `<路径>` 占位符或运行时值出现而非源码字面，最近的保护字面（hooks.ts:919 的 _meta/task.json/state.json、:1263 的 task.json）距匹配点约 785/1060 字符，远超 400 窗口。进一步把源内全部「终端」字样替换掉再复算，offenders 仍为空：即把本步加上的终端提示全部撤回，这条测试照样绿。计划表第 1 行对该文案的判定是「对象带保护字面=是 ⇒ 必须明示终端」，实现的机械判据对每一条论域内条目都给出相反答案；计划 §10 提醒 3 点名的「判据式论域划错，会漏得更安静」正是这个形态。两条防空转腿证明的只是机器在合成样例（窗口内恰有 _meta 字面）上工作——真实语料零进入，恰与真实文案的占位符写法相反。另注：窗口判据还有宽松方向的偏离——窗口内任意位置的「终端」（哪怕来自相邻无关文案）即可满足要求。",
+      "evidence": "用 node 只读脚本按测试逐字复刻的 stripComments/PROTECTED_LITERAL_RE/TERMINAL_HINT_RE/WINDOW=400 对 src/trivium 复算，输出六个命中 inDomain 全 false；将「终端」全部替换后 offenders 仍为空（两次 pass 的完整行级结果在审查过程留痕）。hooks.ts:916-934、:1296-1308（两处文案全文，占位符 `<路径>`）、:919（保护字面所在行）与 :926-930（ intervening 文本量）经 Read 核对；guard.ts:748-760 核对。test/contract/bash-recovery-wording.test.ts:57-81 判据定义、:447-463 防空转腿样例经 diff 全文核对。计划稿 §3.2.2 表第 1/4 行与 §10 提醒 3。",
+      "suggestion": "把「逐条判定对象」从窗口字面近似改为显式判定表：按模板串拼接组（语句域）提取动词命中，每条要么断言同组内含「终端」，要么挂一条具名豁免标注（如 guard.ts:759 记「对象通常是业务文件」，标注本身进扫描防过期）。并加一条真正的负例锁：从 hooks.ts 提交锚指引里删掉终端句后，测试必须红——这是本判据存在的唯一理由。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/review.ts:1533-1542（新登记块）；test/integration/fault-injection.test.ts:113-129；test/unit/hooks.test.ts:983-1053",
+      "problem": "计划 §3.3 与 §7.3 R-a 明确要求的登记三要素正负例+变异大面积缺席，改动说明只承认了其中两条（裁决件回归锁、Bash D3 形态断言）。实际缺席：(a) 作废轮（subject_drift/超时/abort）不登记——r6 CODEX-03 的核心成果零用例，§8 变异「登记时点移回 --start ⇒ 作废轮用例红」没有可红的用例；(b) code 轮不新增登记条目（阶段门控）零用例，「阶段门控去掉 ⇒ code 轮用例红」同样落空；(c) 归档外被审对象只有纯函数单测，executeRun 的警告分支与「该文档随后可提交」无端到端——把调用方的域检查删掉，现有测试全绿；(d) 锚②对新登记原稿「成功收尾后原地改 ⇒ 拦」无端到端，fault-injection 只断言条目存在，而 §3.3 特意注明「本例测的是既有锚②，登记是它生效的前提」——前提链未验；(e) 裁决件原地改可提交正例、(f) Bash 恢复命令被拦。§8 列的五条 3.1.1 变异只有「登记改用绝对路径」一条有可红用例。新代码的全部行为就两个条件分支加一个域分支，(a)(b)(c) 直接守着它们，属 R-a 点名的「同一个动作只做一半正是这类重写最易无声丢失的形态」；且 gitCtx/commitAll 夹具本轮已在手，每条都是数行成本，「低风险不补」论据不足。",
+      "evidence": "review.ts:1498-1542（status 链与登记块，两个条件分支无任何用例直达）；test/unit/hooks.test.ts:983-1053（仅补位置判据三格：新工件类型/changes.diff/run-*.json 两态）；test/integration/fault-injection.test.ts:113-129（仅断言登记存在与哈希可还原，未断言随后改动被拦、未构造作废轮/code 轮/归档外场景）；test/unit/subject-artifact.test.ts 全文（纯函数五格，不含 executeRun 链路）；计划稿 §3.3 逐条与 §8 变异清单对照。hooks.test.ts:985-991 注释自认「这一族此前完全没有测试」，故无既有用例兜住。",
+      "suggestion": "本轮至少补 (a)(b)(c)(d)：作废轮负例（TRIVIUM_STUB 配合改稿制造 subject_drift，断言 artifacts 无原稿条目）、code 轮门控（复用 runInjected 改 --stage code，断言无第二条登记）、归档外端到端（--plan-file 指到夹具 doc，断言 run.json 有标注且随后改它可提交）、登记后锚②拦截（e2e 成功收尾后原地改原稿，hookPreCommit 判拦）。(e)(f) 用现有 hookPreBash/hookPreCommit 夹具各一条正例即可。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/review.ts:1540（对照计划 §7.3 R-j 与 §3.1.1）",
+      "problem": "登记哈希在收尾处重新读文件计算（await sha256File(subjectPath)），而计划 R-j 写死「sha256 = 冻结时的 subject_sha256」、§3.1.1 成本行也是复用 prepareRun 已算出的 subjectSha256。漂移复算发生在 review.ts:1055（afterSubjectSha），1055 与 1540 之间隔着 verdict 判定、artifacts 批量哈希（:1490-1496）与多份落盘 I/O——窗口内外部改写原稿会被静默登记为不可变基线：审查对应的是冻结版 A、锚②从此保护篡改版 B，且 run.json 的 snapshot.subject_sha256 与 artifacts[] 条目自相矛盾。用作用域内现成的 primarySnap.subjectSha256（:981 解构进 executeRun）即可消除窗口并与计划对齐，成功路径下两者本应相等，属一行级改动。",
+      "evidence": "review.ts:1049-1055（afterSubjectSha 收尾复算点）、:1490-1511（中间隔着的批量哈希与 status 链）、:1533-1541（登记重算）、:978-982（primarySnap 在解构中）；freeze.ts:436-467（冻结哈希来源）；计划稿 §7.3 R-j 原文「sha256 = 冻结时的 subject_sha256」。test/integration/fault-injection.test.ts:126-129 只断言登记哈希与当前文件一致，区分不了冻结口径与重算口径。",
+      "suggestion": "登记条目改用 primarySnap.subjectSha256；若刻意重算有别的理由，须在注释与计划偏离表显式登记并说明为何接受该窗口（fail-safe 方向论证：登记冻结值时，窗口内被改的文件会在下次提交被判 modified，而不是把篡改内容锁成基线）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/review.ts:1538（meta.gate.warnings 唯一写入点）；src/trivium/preflight.ts（无读者）",
+      "problem": "计划 §3.1.1 域行要求「在 run.json 与预检如实标注『本轮原稿不在保护集』」。实现落了 run.json（gate.warnings，run.v2 schema 允许）与运行收尾 stderr，但全仓检索显示 gate.warnings 没有任何读者——preflight.ts 全文零命中，gate --check 与 report 也不读它，「预检」半句没有承载面，标注只存在于 run.json 文件本体。上一轮 CODEX-08 刚处理过同形态（第 2 级理由段引用预检、而预检根本不读 task.json），本仓对「拿预检当不存在的面」有明确先例，这次是计划要求落在一个不读该数据的面上。",
+      "evidence": "grep 'gate\\.warnings' 在 src/trivium 仅 review.ts:1538 一处（写无读）；grep 'warnings' 在 src/trivium/preflight.ts 零命中；skills/dual-critic/schema/run.v2.json:408-428（gate.warnings 字段在 schema 内，落盘合法）；计划稿 §3.1.1 域行原文；.reviews/M10-任意Driver/code/2026-09-22-M10-任意Driver-response-claude.md CODEX-08 行（先例）。",
+      "suggestion": "二选一：在 gate --check 或 report 的输出里透传 gate.warnings（让下一次会话的排障者看得见）；或在改动说明/计划偏离表显式登记「预检半句未做、理由与去向」，不让计划要求无声缺席。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "test/contract/bash-recovery-wording.test.ts:57（PROTECTED_LITERAL_RE）、:64（stripComments）",
+      "problem": "(a) 保护字面里的角色后缀 `-codex\\.md|-gemini\\.md|-glm\\.md` 是手抄的第二份登记事实。registry-parity 的字面量扫描只扫 src/trivium（test/unit/registry-parity.test.ts:288/:317），机器不会红，但第五家登记时该判据论域静默变窄——与本仓纪律 10/11「注册表派生、不抄第二份」的既定路线相悖，而 hooks.ts 自己就是 criticRoleSuffixes(DEFAULT_DRIVER) 派生的，测试完全可以从同源 import。(b) stripComments 非字符串感知：字符串里的 `//`（如 URL）会把该行剩余文本当注释剥掉、字符串里的 `/*`（如 glob 'src/*'）会与后续 `*/` 配对吞掉中间源码——registry-parity.test.ts:313 的注释记过一模一样的坑（白名单条目曾被字符串里的 /* 吞掉而误判过期）。测试注释只承认 `//` 一种风险且以「论域不会触发」为由接受，那是假设不是机制，且 `/*` 形态完全未提。",
+      "evidence": "test/contract/bash-recovery-wording.test.ts:52-64（后缀字面量与 stripComments 定义、注释自认的取舍范围）；test/unit/registry-parity.test.ts:288/:317（扫描论域仅 src/trivium）与 :310-315（`/*` 吞并坑的自述）；src/trivium/hooks.ts:805-815（运行时侧同集合按注册表派生的先例）。",
+      "suggestion": "后缀集改从注册表派生（import criticRoleSuffixes/DEFAULT_DRIVER 构造 alternation）；剥注释改为字符串感知（或参照 test/helpers/strip-non-code.ts 的思路按需取舍），至少把 `//` 与 `/*` 两种失效形态都写进注释并各配一条防空转腿。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/review.ts:485-488；test/unit/subject-artifact.test.ts:23-25",
+      "problem": "subjectPath 恰为 archiveRoot 时 path.relative 返回空串，函数按「归档内」返回 ''，调用方把 '' 当有效值登记；checkRecordedArtifacts 随后 path.join(archiveRoot,'')=archiveRoot → sha256File 对目录抛错。理论不可达（locateSubject 返回 fs.exists 已验的文件路径），但单测把 '' 钉成「判据仍要正确」的期望值，等于给未来调用方埋一个语义坑：空串是「归档根本身」而不是一个可登记的工件路径。",
+      "evidence": "review.ts:485-488（实现）、:1534-1541（调用方仅判 null）；archive.ts:447-456（join 后哈希、失败判 missing）；test/unit/subject-artifact.test.ts:23-25（把 '' 断言为返回值）。",
+      "suggestion": "空串一并按 null（域外）处理，边界用例改断言 null，一行改动加一行注释说明「等于归档根不是可登记对象」。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "登记时点核实成立：收尾且 status==='success' 才登记，subject_drift / driftAction fail / abort 三支（review.ts:1498-1511）全部置 failed 且排在新块之前，作废轮确实不登记；code 阶段被 stage !== 'code' 挡住，prepareRun 的 pendingDiff 不会产生重复条目。",
+    "域判据成立：path.relative + '..' 前缀对归档外文档与兄弟目录前缀陷阱（.reviews-backup）判得对；归档相对形态与 archive.ts:447 的 path.join 还原口径一致，e2e 断言了登记哈希可还原回真实文件。",
+    "immutableChangeReason 顺序与残留干净：run-*.json 的 running 态例外确在位置判据之前（hooks.ts:499-527），新测试③两格（running 收尾回写放行 / 已收尾再改拦）真锁住求值顺序；hasRoleSuffixCrossTime 支位置与行为未动；IMMUTABLE_META 在 src 与 test 均零引用残留（仅一处说明性注释提及）。",
+    "gate.ts 只留「重跑一轮」的简化不丢合法出口：恢复 `_meta/review-*.json` 的命令在会话内本就走不通（WRITE_LIKE hooks.ts:686 含 checkout/restore，bashTargetsProtected 的 MENTIONS_OWNED/isOrchestratorOwnedPath 覆盖 _meta），注释前提实测成立；终端里的人工恢复不因文案删句而消失，重跑的 -r<N> 抬升与 /dual-abandon 出口仍在；gate.test.ts 的正向与反向断言同步改了。",
+    "hookPreBash deny 消息、checkArchiveIntegrity 恢复指引与拦截行为三者互指一致（拦恢复命令的判据、被拦后的解释、终端指引闭环）；CLAUDE.md 与 protocol/CLAUDE.md.snippet 同步更新且措辞一致。",
+    "guard.ts:759 不改的判断成立：readonly 失守的恢复对象通常是审查期间被写的工作树业务文件，消息是命令输出给人读且带「确认无误后再决定」，与计划 §3.2.2 表第 3 行「记巡检清单不改」一致。",
+    "三条 hooks 新测试非空转：trace-*.json 是旧枚举不认识的文件名（旧代码下会放行），对位置判据有真鉴别力；changes.diff 与 running 态两个排除项各有正例且正好是 §3.3 变异的靶点；e2e 能区分「未登记 / 绝对路径登记」两种坏形态。",
+    "「不在保护集」警告同时进本地 warnings（stderr 播报、随 outcome 返回）与 run.json 的 gate.warnings，后者在 run.v2 schema 允许范围内。"
+  ],
+  "not_covered": [
+    "未实跑 npm run typecheck/build/test 与变异验证（审查只读，构建会写 dist/）；「新用例当前全绿」是静态判断。唯一例外是对扫描判据做了精确复算（只读 node 脚本逐字复刻其算法），GLM-01 的论域为空与提示删改不红均为计算结论而非估计。",
+    "skills/dual-critic/scripts/trivium.cjs（生成物）与源码一致性未比对。",
+    "hookPreWrite/hookStop 等未改动区域只读了与本次判据相关的段落，未整文件复核。",
+    "Bash 侧 D3 七形态的其余负例（克隆原稿、带重定向 start、焦点含写动词的 --start）未逐一构造实测。",
+    "§6.2/§3.1.3 的文档回溯（.reviews/README.md、设计文档、verify-* 保护面扩张登记）按计划属第 5 步，本轮只核了代码面，未判其滞后是否越界。",
+    "r6 三侧「_meta 无第三个刻意可变项」的核查未重复（r7 §10 明示不必重复；本轮新测试未与该结论冲突）。",
+    "未读另一位审查员本轮产出（按禁读清单）；上一轮（第 1 步）自身产出与 Driver 裁决已读，本轮六条意见与之无重叠。"
+  ],
+  "consulted": [
+    ".reviews/M10-任意Driver/code/_meta/changes-20260923T030441Z.diff",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md",
+    ".reviews/M10-任意Driver/code/2026-09-22-M10-任意Driver-glm.md",
+    ".reviews/M10-任意Driver/code/2026-09-22-M10-任意Driver-response-claude.md",
+    "src/trivium/review.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/cli.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/contract/bash-recovery-wording.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/subject-artifact.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/helpers/fixture.ts"
+  ]
+}
