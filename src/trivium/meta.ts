@@ -296,8 +296,9 @@ export interface NewRunMetaInput {
    * M9 的 `--driver` 只校验「已登记」，`driverEnabled === false` 照样放行——
    * 校验它会让第 6 步验收跑不成（当前只有 claude 启用为 Driver，而验收恰恰要
    * claude 当审核者）。放行的代价由这个字段兜住：事后能对出「这一轮声明的
-   * Driver 当时还没启用」。M10 收紧成校验之后，历史留痕仍要能读回，
-   * 所以它是**可选**字段、不进 `required`、不加 `if/then`。
+   * Driver 当时还没启用」。M10a 第 3 步已在入口（`resolveDriver`）收紧为退 64，
+   * 新运行这里恒为 true；历史留痕仍要能读回，所以它是**可选**字段、
+   * 不进 `required`、不加 `if/then`。
    */
   driverEnabled?: boolean;
   /** 本轮入选的审核者集合。**必填**：它是「本该跑几侧」的唯一事实来源 */

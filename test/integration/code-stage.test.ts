@@ -391,6 +391,49 @@ test('同主题连跑两次 code 审后仍能提交（审查意见 GLM-01，bloc
   assert.ok(metas.includes('changes.diff'), '便利副本仍在（人读用，不进保护集）');
 });
 
+/*
+ * A6（M10a 第 3 步，计划 r3 §4.1）：approve 的 sha256 抽核不误拦 code 阶段的合规路径。
+ *
+ * 抽核核的是本轮 run.json 登记的工件。它会不会误拦，取决于「登记件里有没有合法可变的」——
+ * 提交锚②每次提交都全量核对同一批登记、历次提交都过，这是推断；这条用例是实测。
+ * 连跑两轮是为了让第二轮覆盖写 `changes.diff` 便利副本：它不登记，登记的是带 run_id 的那份，
+ * 所以两轮都必须批得过。
+ */
+test('A6：code 阶段连跑两轮，每轮停点后 approve 都能通过（抽核不误拦便利副本）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await codeFixture();
+  const today2 = (await import('../helpers/fixture.js')).today();
+  const roundThenApprove = async (roundPrefix: string) => {
+    const run = await runCode(fx.root, fx.codeDir, ['--entry', 'C']);
+    assert.equal(run.exitCode, EXIT.OK);
+    await fs.writeFile(
+      path.join(fx.codeDir, `${today2}-${TOPIC}-${roundPrefix}response-claude.md`),
+      [
+        '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: code',
+        'role: claude', 'kind: response', `run_id: ${run.meta.run_id}`,
+        'addresses:',
+        `  - ${today2}-${TOPIC}-${roundPrefix}gemini.md`,
+        `  - ${today2}-${TOPIC}-${roundPrefix}glm.md`,
+        '---', '',
+        '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改计划 |',
+        '| :--- | :--- | :--- | :--- | :--- | :--- |',
+        '| AGY-01 | gemini | blocker | 接受 | 桩数据 | 某处 |',
+        '| GLM-01 | glm | blocker | 接受 | 桩数据 | 某处 |',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const g = await cli(fx.root, ['gate', '--stage', 'code', '--topic', TOPIC, '--check']);
+    assert.equal(g.code, EXIT.OK, `${g.stdout}${g.stderr}`);
+    const a = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'code']);
+    assert.equal(a.code, EXIT.OK, `第 ${roundPrefix || 'r1'} 轮合规停点被复核误拦：\n${a.stdout}${a.stderr}`);
+  };
+
+  await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 111;\n', 'utf8');
+  await roundThenApprove('');
+  await fs.writeFile(path.join(fx.root, 'src/b.ts'), 'export const b = 2;\n', 'utf8');
+  await roundThenApprove('r2-');
+});
+
 test('run.v2 逐侧段：没有覆盖尝试的侧（桩适配器）model_override_applied **缺席**，不是 null（代码双审 r1 codex 子项 05 ≡ AGY-03）', { skip: bundleMissing && bundleSkipReason }, async () => {
   /*
    * 字段缺席与 null 是两件事（EV-82 r1 AGY-03）：缺席＝本次没有覆盖尝试；null＝尝试了但没回读到生效模型。

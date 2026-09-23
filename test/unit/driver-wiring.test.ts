@@ -329,6 +329,35 @@ for (const t of TARGETS) {
   });
 }
 
+/*
+ * ── 继承来的 driver 必须再过一次 `resolveDriver`（M10a 第 3 步，代码双审 r4 CODEX-01）──
+ *
+ * 显式 `--driver` 在旗标解析时就经过了 `resolveDriver`；而**继承来的**（运行留痕或 claim 声明）
+ * 只在「显式值优先、缺席即继承」定下最终值之后的那一次再解析里经过它——未启用为 Driver 的
+ * 靠这一次退 64。删掉它，函数级用例（critics.test.ts 的桩）照样全绿，
+ * 症状却正是本步要消灭的「未启用的 Agent 当上 Driver」：本仓点名过的「函数级全绿、真实调用点没接」。
+ *
+ * 判据：在定下最终值的那一行之后、选侧（`resolveCriticSelection(`）之前，
+ * 必须出现一次以**最终变量** `driver` 为实参的 `resolveDriver(`。两处入口各钉一次。
+ */
+for (const [rel, assign] of [
+  ['src/trivium/cli.ts', /const\s+driver\s*=\s*explicitDriver\s*\?\?\s*resolution\.driver\s*;/],
+  ['src/trivium/topic-args.ts', /\bdriver\s*=\s*explicitDriver\s*\?\?\s*resolution\.driver\s*;/],
+] as const) {
+  test(`继承判定之后按最终 driver 再过 resolveDriver：${rel}`, async () => {
+    const src = await stripped(rel);
+    const m = assign.exec(src);
+    assert.ok(m, `${rel} 里找不到「显式值优先、缺席即继承」那一行——判据定位失效会让本条永绿`);
+    const after = src.slice(m.index + m[0].length);
+    const sel = after.search(/\bresolveCriticSelection\s*\(/);
+    assert.ok(sel >= 0, `${rel} 在定下最终 driver 之后找不到选侧调用，无法划定判据的区间`);
+    assert.match(
+      after.slice(0, sel), /\bresolveDriver\s*\(\s*driver\s*\)/,
+      `${rel}：定下最终 driver 之后、选侧之前没有 resolveDriver(driver)——继承来的未启用 Agent 会静默当上 Driver`,
+    );
+  });
+}
+
 test('闸门区：driver 与轮次一律直读留痕，不从工件后缀反推', async () => {
   /*
    * 计划第 2 轮的**阻断**：`inferLatestRunId` 要先知道 driver 才能跳过 Driver 自己的
@@ -352,8 +381,27 @@ test('闸门区：driver 与轮次一律直读留痕，不从工件后缀反推'
     'cli.ts 没有直读留痕：driver 与 rerun_index 的权威来源是运行元数据，不是后缀',
   );
 
+  /*
+   * M10a 第 3 步：`--await-approval` 那一处 `checkAdjudication` 随抽取搬进
+   * `gate.verifyRoundForApproval`（与 approve 共用），cli.ts 只剩 `--check` 一处。
+   * 判据不变——driver 一律直读留痕——落点变了，所以下面两处分开钉：
+   * cli.ts 的取 `gateDriver`，复核函数里的取本轮留痕 `runMeta.driver`。
+   */
   const calls = [...src.matchAll(/await\s+checkAdjudication\(\{/g)];
-  assert.equal(calls.length, 2, `cmdGate 里应当有 2 处 checkAdjudication，实得 ${calls.length} 处`);
+  assert.equal(calls.length, 1, `cmdGate 里应当只剩 1 处 checkAdjudication（--check），实得 ${calls.length} 处`);
+  const verifyCalls = [...src.matchAll(/await\s+verifyRoundForApproval\(\{/g)];
+  assert.equal(
+    verifyCalls.length, 2,
+    `cli.ts 应当有 2 处 verifyRoundForApproval（--await-approval 与 approve），实得 ${verifyCalls.length} 处`,
+  );
+  const gateSrc = await stripped('src/trivium/gate.ts');
+  const inVerify = gateSrc.slice(gateSrc.indexOf('export async function verifyRoundForApproval'));
+  const vcall = inVerify.search(/await\s+checkAdjudication\(\{/);
+  assert.ok(vcall >= 0, 'verifyRoundForApproval 里没有 checkAdjudication：审批前复核丢了裁决齐备这一半');
+  assert.ok(
+    /driver:\s*runMeta\.driver\b/.test(requireArgBlock(inVerify, vcall, 'checkAdjudication')),
+    'verifyRoundForApproval 的 checkAdjudication 没有取本轮留痕的 driver：按缺省找裁决件，非缺省 Driver 下必报 missing_disposition',
+  );
   for (const c of calls) {
     const block = requireArgBlock(src, c.index!, "checkAdjudication");
     /*

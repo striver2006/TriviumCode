@@ -1,0 +1,165 @@
+---
+schema: trivium.review.v1
+topic: M10-任意Driver
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.155.1
+model_requested: deepseek-flash
+model_effective: deepseek-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260923T091257Z
+rerun_index: 4
+snapshot_hash: sha256:e10547910f493b259d25c4f2fc0dff95cc1d2d5e9c3e886d35ae559c5a2f2b17
+blind: true
+started_at: 2026-09-23T09:12:58.676Z
+finished_at: 2026-09-23T09:23:56.554Z
+duration_s: 414
+tool_calls:
+  run_command: 96
+  project_reads: 42
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 2
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0cd8a-28a6-7ff1-b639-d7b2d0f6d103
+---
+
+# 代码审查：M10-任意Driver
+
+> Critic-C · OpenAI Codex ｜ 模型 `deepseek-flash`
+> ｜ 运行 `20260923T091257Z` ｜ 第 4 轮
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+M10a 第 3 步（块一安全收紧 / 块二审批链路）逐条核完，两块的核心判定都收在唯一来源上：resolveDriver 的「未启用」与「未登记」两分支共用同一判定、缺省分支不写死 true、清单按 driverEnabled 派生；approve 与 gate --await-approval 共用 verifyRoundForApproval，生产代码里 checkAdjudication 只剩 --check 与复核函数各一处，「推断不出 run_id」「元数据读不出」都只抛错、无 if(runId) 式跳过；verifiedRunId 判据没有空值放行，注释自己写明「不证明复核跑过」。两条小意见：测试报告 §2 第 3 行那句「在真实注册表下构造不出来」与树内 stub-agent-kit 夹具矛盾，且本步新依赖的那个入口调用点（cli.ts:565）至今没有任何判据守着；新增的篡改恢复指引只给 git restore，对未提交工件（停点上的常态）走不通。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 2 条：次要 2）
+
+### CODEX-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/05_testing/REPORT_2026-09-23_m10a_step3.md §2 第 3 行；对应 src/trivium/cli.ts:558-566（cmdReview 的再解析）与 test/integration/stub-agent-kit.test.ts` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：报告把「未启用的那一家在集成层构造不出来」记成事实（§2 第 3 行：「集成用例走打包 CLI，注入不了注册表」「在真实注册表下构造不出来，只能在单测里用桩覆盖」），据此把注入格全放进单测。但树内已有一个把「第五家已登记但 driverEnabled: false」装进真实注册表、用同一 build.mjs 重打包、再起真实 CLI 的夹具，本步最需要端到端守着的那一格（入口对未启用者的 64，以及偏差 4 为此在 cmdReview 里特意保留的那次 resolveDriver）因此没有任何判据：driver-wiring.test.ts 的 TARGETS 里没有一处锚在 resolveDriver 上，集成用例也构造不出非启用 Driver 的继承路径。若以后有人把 cli.ts:565 那次再解析删掉（或退回只取 enabledAsDriver 的旧写法），全部用例仍然全绿，而症状正是本步要消灭的「非启用 Agent 当上 Driver」——即本仓自己点名的「函数级全绿、真实调用点没接」形态。
+
+**依据**：读 test/fixtures/stub-agent-kit/overlay.ts:184-240（applyOverlay 用 rec.edit 往 src/trivium/agents/registry.ts 追加一项，其 descriptor 为 defaultSelected: false、driverEnabled: false）与 test/integration/stub-agent-kit.test.ts:226-241（在同一夹具树里用真实 CLI 跑 --critics gemini,glm,stub 并断言 critics_selected），二者合起来就是一个「真实注册表含未启用第五家 + 打包 CLI」的可运行装置；读 src/trivium/cli.ts:558-566 与 test/unit/driver-wiring.test.ts:200-290 的 TARGETS 清单（无 resolveDriver 锚点，故该调用点无判据）；读 doc/05_testing/REPORT_2026-09-23_m10a_step3.md §2 第 3 行与 §3。附注：报告其余数字我做了对账——diff 新增用例 18 条与「1691 比基线多 18」自洽，§3 里 selftest 无 approve 步骤也已核实（src/trivium/selftest.ts 无 approv 字样）。
+
+**建议**：三选一：①在 stub-agent-kit 夹具里补一格（`topic claim --driver stub` 或 `review --start --driver stub` 期望退 64 且清单不含 stub），顺带把它当作偏差 4 继承路径的端到端覆盖；②若不想动那套夹具（它跑一次代价不小），就按本仓既有做法在 driver-wiring.test.ts 里给 cli.ts:558-566 加一条源码级判据（锚 `resolveDriver(` 的调用点与实参块），成本一行；③若两者都不做，请把「集成层这一格未覆盖」写进报告 §3 的缺口清单并说明取舍——现在的写法是拿一句不成立的可能性当理由，读到它的人不会再去补这一格。
+
+### CODEX-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/gate.ts:969-983（renderTamperedArtifacts），经 cli.ts:1132 与 cli.ts:1504 两个失败分支透出` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：篡改清单的恢复指引只有一条「恢复用 `git restore <路径>`，这一步请在终端里手动执行」。对**从未提交过**的工件这条指引走不通：git restore 只作用于 git 认识的路径，未跟踪的路径会直接以 `error: pathspec … did not match any file(s) known to git` 失败，而 `kind === 'missing'` 的那份更是没有任何副本可恢复。偏偏「本轮工件已落盘但尚未提交」正是审批停点上的常见状态——提交锚自己就把两类对象分开管（git 管已提交的，run.json 管刚落盘未提交的，锚③专门处理「首次提交之前归档全是未跟踪文件」）。此时人照着指引跑一条必然失败的命令，而唯一的真出口（放弃这一轮或重跑）只以「确实要作废这一轮」的次选口吻出现。夹带证据：本函数被登记为「与 hooks.ts 锚②的两行同义」，但那份副本给的是 `git checkout -- <路径>` 或 `git restore <路径>`，并且带一句本副本丢掉的出口提示「重跑会自动抬升 -r<N>，既有工件一律不覆盖，不需要先删」——两份展示文案已经开始分叉。
+
+**依据**：读 src/trivium/gate.ts:969-983（指引全文与「只核本轮」口径）、src/trivium/archive.ts:410-470（TamperedArtifact 的 missing / modified 两态与判定）、src/trivium/hooks.ts:1260-1360（锚①②③的分工与原话「git 管已提交的，run.json 管刚落盘未提交的」，以及提交锚那段同义但措辞更全的恢复文案）、doc/05_testing/REPORT_2026-09-23_m10a_step3.md §2 偏差 3（作者自陈这是同义文案的第二份）。A3/A3′ 用例改的正是这种未提交工件，但它们只断言命令退 2 与「已被改动」，不断言给出的出口可执行。
+
+**建议**：按工件在 git 里的状态分档给出口：已提交的给 `git restore`；未提交/已丢失的直说「没有副本可恢复，出口是 /dual-abandon 或重跑（重跑按 -r<N> 抬升、既有工件不覆盖）」。既然两份文案已经开始漂移，可一并考虑把这两行渲染与恢复段收成一处（判定本来就在 checkRecordedArtifacts 里唯一，展示文案没有理由两处各修）。
+
+## 认为正确的部分
+
+- 块一·收得干净：critics.ts 的 resolveDriver 现在先定 id（未传即 DEFAULT_DRIVER）再走同一条「查表 → 判 driverEnabled」，缺省分支不写死 true；未登记与未启用两个分支的尾部清单都由 (descriptors ?? AGENTS).filter(driverEnabled) 派生，没有复用审核者口径的 legalList。
+- 块一·桩用例真能鉴别：critics.test.ts 的 withDriverDisabled 造出的表同时用于「未启用 ⇒ 64」「清单不含该桩」「driverEnabled 为真而 criticEnabled 为假的那家必须列出」三格，后一格正好把 legalList 口径的写法撞红；再配上 DRIVER_AGENT_IDS ≡ ALL_AGENT_IDS 的自适应断言，第五家登记时会把这几条提醒回真实注册表。
+- 块一·标注入删得干净且语义无残留：src 里除 preflight.ts:637 那句只对注入参数渲染的保留话术外零「尚未启用为 Driver」；driver_enabled 的写入侧（review.ts:544、meta.ts:329）只剩留痕用途，全仓无消费方；registry 头注释、critics 文档块、USAGE、PROTOCOL 都把收紧限定在「经 resolveDriver 的入口」并点明不经它的面（prepareRun 查表、Hook、历史留痕、手改 claim），没有写成全局保证。
+- 块二·唯一一份判定：cli.ts 里 verifyRoundForApproval 恰好两处调用（1132 --await-approval、1504 approve），生产代码里 checkAdjudication 只剩 gate.ts:950（复核函数内）与 cli.ts:1227（--check）；两个失败分支都只抛 TriviumError（65），复核函数内无 try/catch、无 if (runId) 式空值跳过，approve 优先报告状态（running 的闸门不会被拖去跑复核）。
+- 块二·verifiedRunId 判据没有空值放行：写作 !i.verifiedRunId || i.verifiedRunId !== gate.run_id，未传/null/空串三种形态都被测试锁住；注释明确写「只证明 run_id 与闸门一致，不证明复核跑过」，没有夸大；rejected/abandoned 的路径不受影响（approval.test.ts 有专格）。
+- 块二·出口文案与代码事实一致：review.ts:966 的期望状态确实不含 awaiting_approval（--start 抢不走待批槽位），--check/--await-approval 都带 expect.runId，approve 不收 --run-id；A4/A4′ 用 walkAbandonExit 真按文案走了一遍（abandon 退 0、闸门转 abandoned、重跑抢占槽位），且放弃记录会落在闸门自己那个读不出的 run_id 上——文案里这句也是准的。
+- 报告 §2 其余出入与 §3 缺口经我独立核对成立：registry.ts:20/29 确属 M7a/M8 的历史叙事小节（头注释追加一节并声明「上面两节是当时的叙事」的处置成立）；types.ts:634 的原文在四家翻开后依然为真；EV-106 引用的 LLD:126-127、主设计:1126/1199 三处失实描述确实存在；「交接文件的 driver 无消费方」这一条我按 review.ts:1001 起 executeRun 全文与 run-protocol.ts:160-204 独立复核，成立；轮次台账的加法（17→19、24→26、6h52m55s+28m32s=7h21m27s）也对得上。
+
+## 未覆盖范围（本侧盲区）
+
+- 未执行任何测试、构建或变异装置（只读沙箱且不做写操作）：报告 §0 的 1691 条与 §1 的 6 条变异咬合结果无法复跑，我只能做静态对账（diff 新增用例 18 条 = 报告所称增量，且与「1689 通过 / 2 跳过」自洽）。
+- 未逐条核实轮次台账第 25/26 行的耗时与当轮结论（需读运行目录里的 worker 日志，那是本任务书的禁读区）。
+- 未审计 skills/dual-critic/scripts/trivium.cjs 这份打包产物与 src 的对应关系；只抽查确认新的 USAGE/文案已随重建进包（按纪律它是生成物，不进 Git）。
+- 未复核 r6/r7 计划里与本步无关的章节（只读了 r7 §4 与本步 r3 计划），也没有把「实现是否满足 r7 全部 A 项验收」逐条对完。
+- 未对新增哈希抽核的耗时做实测（哈希量看起来很小、且包在原有复核里，判断为对 Bash 工具 600s 超时无实质影响，但没有量过）。
+- 未构造两进程真实竞态去撞 verifiedRunId 那个窗口（单测是直接调 recordApproval，我没有起两个 CLI 进程抢同一闸门槽位）。
+- 跨平台面未核验：本项目只支持 macOS，路径分隔/编码/locale 这一侧我没有可判别的证据，也没有在非 macOS 上跑过任何命令。
+
+## 实际查阅的项目文件
+
+- `.reviews/M10-任意Driver/code/_meta/changes-20260923T091257Z.diff`
+- `.reviews/M10a-第3步/plan/2026-09-23-M10a-第3步-r3-claude.md`
+- `.reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md`
+- `src/trivium/agents/registry.ts`
+- `src/trivium/approval.ts`
+- `src/trivium/archive.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/critics.ts`
+- `src/trivium/exit-codes.ts`
+- `src/trivium/gate.ts`
+- `src/trivium/hooks.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/preflight.ts`
+- `src/trivium/review.ts`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/selftest.ts`
+- `src/trivium/state.ts`
+- `src/trivium/topic-args.ts`
+- `src/trivium/topic.ts`
+- `src/trivium/types.ts`
+- `src/trivium/util/log.ts`
+- `scripts/build.mjs`
+- `scripts/mutation-check.mjs`
+- `package.json`
+- `test/unit/approval.test.ts`
+- `test/unit/critics.test.ts`
+- `test/unit/driver-wiring.test.ts`
+- `test/unit/gate.test.ts`
+- `test/unit/preflight.test.ts`
+- `test/unit/registry-parity.test.ts`
+- `test/unit/run-meta.test.ts`
+- `test/unit/topic-args.test.ts`
+- `test/integration/code-stage.test.ts`
+- `test/integration/driver-flag.test.ts`
+- `test/integration/gate-loop.test.ts`
+- `test/integration/stub-agent-kit.test.ts`
+- `test/fixtures/stub-agent-kit/overlay.ts`
+- `doc/02_design/LLD_orchestrator.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `doc/05_testing/README.md`
+- `doc/05_testing/REPORT_2026-09-23_m10a_step3.md`
+- `doc/07_manuals/MANUAL_user.md`
+- `doc/08_project/BACKLOG.md`
+- `doc/08_project/M10a-轮次台账.md`
+- `skills/dual-approve/SKILL.md`
+- `skills/dual-abandon/SKILL.md`
+- `skills/dual-critic/schema/run.v1.json`
+- `skills/dual-critic/schema/run.v2.json`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":96,"project_reads":42}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

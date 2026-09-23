@@ -9,7 +9,7 @@ import { exists } from './util/fsx.js';
 import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
 import { applyProfileOverride, loadCtx, runRoot } from './config.js';
-import { ALL_AGENT_IDS, DEFAULT_DRIVER } from './agents/registry.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER, DRIVER_AGENT_IDS } from './agents/registry.js';
 import {
   runDoctor,
   renderDoctorReport,
@@ -23,12 +23,12 @@ import { collectCommands, runVerify, summarizeVerify } from './verify.js';
 import { buildTopicReport, renderTopicReport } from './report.js';
 import { cancelRun, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
 import {
-  checkAdjudication, loadRoundReviews, renderGateResult,
+  checkAdjudication, loadRoundReviews, renderGateResult, renderTamperedArtifacts, verifyRoundForApproval,
 } from './gate.js';
 import { checkStageArtifacts, listRecordedRuns, resolveRerunIndex } from './archive.js';
 import { readHookInput, runHook, type HookName } from './hooks.js';
-import { listOpenGates, setGateChecked } from './state.js';
-import { recordApproval } from './approval.js';
+import { getGate, listOpenGates, setGateChecked } from './state.js';
+import { assertGateDecidable, recordApproval } from './approval.js';
 import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
 import { latestRunMeta, newRunId, readTask, readRunMeta } from './meta.js';
 import { runInit, renderInitReport } from './init.js';
@@ -214,8 +214,8 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                   含当轮 Driver、含未启用为审核者的 Agent、或重复项一律退 64
       --only gemini|glm  仅跑一侧。**--critics 的单元素旧写法**，两者不能同时给
       --driver <id>  当轮 Driver（执笔者），缺省 ${DEFAULT_DRIVER}。
-                  取值论域是**全部已登记 Agent**（${ALL_AGENT_IDS.join(' | ')}）——
-                  只校验「已登记」，尚未启用为 Driver 的也放行，但会在预检与留痕里标注。
+                  取值须为**可用作 Driver 的 Agent**（${DRIVER_AGENT_IDS.join(' | ')}）——
+                  未登记、或已登记但尚未启用为 Driver 的一律退 64（M10a 第 3 步起）。
                   它决定谁不得入选（自己不能审自己）与原稿是谁的后缀
       --allow-single  一侧失败时不中止，产出单审结果并留痕（§12.4）。
                       受配置 review.allow_partial_flag 约束（旧名 allow_single_flag 仍可用）；默认 strict
@@ -288,6 +288,9 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
   trivium approve --topic <主题> --stage <s> [--reason <附言>] [--reject --reason <理由>]
   trivium abandon --topic <主题> [--stage <s>] [--reason <理由>]
       人工审批 / 放弃闸门。三种结论均解除业务写锁，工件一律保留。
+      通过（approve 不带 --reject）前复核本轮：裁决齐备 + 本轮 run.json 登记工件的 sha256。
+      不通过退 2；推断不出 run_id 或运行元数据读不出退 65。拒绝与放弃不复核。
+      复核保的是「裁决齐备、本轮工件未被改」，不保「审批来自人」。
       通过必须带 --stage（一次放行哪一道要说清楚）；拒绝与放弃可以省略。
       审批附言一律走 --reason（写进审批记录）；多余的位置参数退 64，不会静默丢掉。
       **审批不校验调用来源**：它靠提示词约束，审批记录里留会话来源供事后对账。
@@ -555,20 +558,17 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   // 校验通过后：显式值优先，缺席即继承权威值
   const driver = explicitDriver ?? resolution.driver;
   /*
-   * `enabledAsDriver` 要按**最终**的 driver 取，不能沿用旗标那次解析的结果：
-   * 继承来的值可能是另一家，那一行标注就会说错对象。
+   * 按**最终**的 driver 再过一次 `resolveDriver`，不能只信旗标那次解析：
+   * 继承来的值（运行留痕或 claim 声明）没经过它，未启用为 Driver 的要在这里退 64
+   * （M10a 第 3 步；此前这里只取 `enabledAsDriver` 打一行标注后放行）。
    */
-  const enabledAsDriver = resolveDriver(driver).enabledAsDriver;
+  resolveDriver(driver);
 
   const critics = resolveCriticSelection(ctx.config, {
     critics: flagString(args, 'critics'),
     only: onlyRaw,
     driver,
   });
-  if (!enabledAsDriver) {
-    // 放行但如实标注：留痕落 driver_enabled，这里再给人读一行
-    warn(`当轮 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`);
-  }
 
   /*
    * ── 交叉校验：`--driver` 与该阶段的权威值（M10a 第 1 步，EV-72）──
@@ -813,16 +813,12 @@ async function cmdTopicClaim(args: ParsedArgs): Promise<number> {
 
   const rawDriver = flagString(args, 'driver');
   if (!rawDriver) throw usageError('topic claim 需要 --driver');
-  // 取值合法性走 `resolveDriver` 这**唯一一处**判定，不在这里重写一遍（critics.ts 头注释）
-  const { driver, enabledAsDriver } = resolveDriver(rawDriver);
-  if (!enabledAsDriver) {
-    /*
-     * 与另两个解析该旗标的入口同款标注（代码双审 r1 GLM-06）。
-     * 上一版这里丢弃了该字段，于是认领别家一律静默成功、要到 `review --start` 才见提示——
-     * M9 立的「放行但如实标注」在新入口缺了一角。第 3 步收紧成退 64 时这行随分支一并消失。
-     */
-    warn(`声明的 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`);
-  }
+  /*
+   * 取值合法性走 `resolveDriver` 这**唯一一处**判定，不在这里重写一遍（critics.ts 头注释）。
+   * 未启用为 Driver 的在这里退 64（M10a 第 3 步）；此前这一格是「放行 + 标注」（代码双审 r1 GLM-06
+   * 补的那行 warn），随收紧一并删除——它预告过这一点。
+   */
+  const { driver } = resolveDriver(rawDriver);
 
   const ref = await resolveTopic(ctx, topic, stage);
   const { updateTaskAsync } = await import('./meta.js');
@@ -1119,9 +1115,6 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
 
   // ── --await-approval ──
   if (args.flags.get('await-approval') === true) {
-    // 同样直读：`latest.run_id` 就是这一轮的 run_id，不必按后缀反推
-    const runId = latest?.run_id ?? null;
-
     /*
      * ── 先校验裁决完整性，再置闸门（审查意见 AGY-02）──
      *
@@ -1130,47 +1123,40 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
      * 被覆写成 awaiting_approval，`approve` 再把它放行，全程没人检查过裁决件。
      *
      * 人工审批是在「机器已确认裁决齐备」之上再加一道，不是它的替代品。
+     *
+     * M10a 第 3 步：判定抽成 `verifyRoundForApproval`，与 `approve` 共用一份，并补上本轮
+     * 登记工件的 sha256 抽核（此前这里只核裁决齐备，审查工件被改而结构化原文还在时照常通过）。
+     * 「推断不出 runId 就拒绝」随抽取搬进该函数，判定与注释原样保留；这里只给出口文案。
+     * `latest.run_id` 直读留痕，不按后缀反推。
      */
-    /*
-     * 推断不出 runId 就**拒绝**，而不是跳过检查（审查意见 AGY-05 ≡ GLM-03）。
-     * `if (runId)` 那种写法等于留了个后门：只要让 runId 推断失败，
-     * 整段裁决完整性校验就被绕过。
-     */
-    if (!runId) {
-      throw missingArtifactError(
-        `找不到 ${stage} 阶段第 ${rerunIndex} 轮的 run_id，无法校验裁决完整性。\n` +
-          '  用 --run-id <id> 显式指定，或先跑一次双审。\n' +
-          '  （推断不出来时**不会**跳过校验——那等于给「跳过裁决直接审批」留后门。）',
+    const v = await verifyRoundForApproval({
+      cfg: ctx.config, layout: ref.layout, stage,
+      runId: latest?.run_id ?? null,
+      runIdPinned: Boolean(pinnedId),
+      runIdSource: pinnedId ? '--run-id' : '最新一次运行',
+      recovery: {
+        missingRunId: '用 --run-id <id> 显式指定，或先跑一次双审。',
+        unreadableRunMeta: `出口是重跑一次 ${stage} 阶段双审：新运行会落一份可读的运行元数据。`,
+      },
+    });
+    const runId = v.runId;
+    if (!v.ok) {
+      if (!v.result.ok) say(renderGateResult(v.result));
+      if (v.tampered.length > 0) say(renderTamperedArtifacts(v.tampered));
+      fail(
+        (v.result.ok ? '本轮登记的审查工件与留痕不符' : '裁决尚未齐备') + '，不能置为等待人工审批。\n' +
+          (v.result.ok
+            ? '  先恢复上面列出的工件（或作废这一轮）再重试。'
+            : `  先补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${topic} --check\`。`),
       );
+      return EXIT.GATE_BLOCK;
     }
     /*
      * 校验通过时的告警也要带到停点上（代码双审 r3 CODEX-03 ≡ GLM-04）：审批停点正是
      * 最该看见「本轮原稿不在保护集」这类运行期事实的地方，只在失败分支渲染会让它
      * 在人要表态的那一格消失。
      */
-    let preWarnings: Array<{ code: string; message: string }> = [];
-    {
-      const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings } =
-        await loadRoundReviews(ref.layout, stage, runId);
-      const pre = await checkAdjudication({
-        cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
-        // driver 位补上：裁决件是 `-revised-<当轮 Driver>.md`，按缺省找会在
-        // 非缺省 Driver 下必报 missing_disposition（计划双审 r2 GLM-03，阻断）
-        driver: gateDriver,
-        runIdPinned: Boolean(pinnedId),
-        degraded, voidedSides, readonlyBreach, runWarnings,
-        expectedFallbackIds, missingSides, runId,
-      });
-      if (!pre.ok) {
-        say(renderGateResult(pre));
-        fail(
-          '裁决尚未齐备，不能置为等待人工审批。\n' +
-            `  先补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${topic} --check\`。`,
-        );
-        return EXIT.GATE_BLOCK;
-      }
-      preWarnings = pre.warnings;
-    }
+    const preWarnings: Array<{ code: string; message: string }> = v.result.warnings;
     /*
      * 条件迁移，与本批刚确立的「非覆盖场合一律条件迁移」保持一致（GLM-03）。
      *
@@ -1486,11 +1472,63 @@ async function cmdApproval(
     );
   }
 
+  /*
+   * ── 通过前复核（M10a 第 3 步，M10 计划 r7 §4.3 / §4.4，演进设计 §9.4）──
+   *
+   * 只对 approved 做；拒绝与放弃不复核、也不加确认码（v1.2.3 ② 撤销过，见 approval.ts 头注释）。
+   * 判定与 `gate --await-approval` 共用 `verifyRoundForApproval` 一份：裁决齐备 + 本轮登记工件的
+   * sha256 抽核。它挡的是「停点之后裁决件被删改、审查工件被改」这类形态，
+   * **不挡「审批不是人发起的」**——approve 不校验调用来源。
+   *
+   * **先全部复核、再逐一落审批**：不留「一个阶段已放行、另一个阶段复核失败」的半截态。
+   * approved 今天强制 `--stage`、实际只有一个阶段，这样写是为了不依赖这个前提。
+   */
+  const verified = new Map<Stage, string>();
+  if (decision === 'approved') {
+    for (const stage of stages) {
+      const gate = await getGate(ctx.triviumDir, topic, stage);
+      // 状态不对先报状态（无闸门 / running / 非待批），别让 running 的闸门去跑复核、报一串误导的缺口
+      assertGateDecidable(gate, { topic, stage, decision, reason: flagString(args, 'reason') });
+      const ref = await resolveTopicReadOnly(ctx, topic, stage);
+      /*
+       * 出口单独写，不沿用 `--await-approval` 那两条（计划 r3 §3.2，计划双审 r1 CODEX-02）：
+       * approve 没有 `--run-id`；`review --start` 抢占时不接受 awaiting_approval 的槽位；
+       * `--check` / `--await-approval` 带 expect.runId、不改写属于别的运行的闸门项。
+       * 走得通的只有 abandon（它以闸门自己的 run_id 做比较-交换）之后重跑。两个分支同一段文案。
+       */
+      const exit =
+        '本机闸门项没有指向一份可读的运行留痕：归档是正本、本机闸门是副本，两者已经分叉。\n' +
+        '  approve 不接受 --run-id；--check 与 --await-approval 不会改写属于别的运行的闸门项。\n' +
+        `  出口：/dual-abandon --topic ${topic} --stage ${stage} --reason '<说明分叉>'，然后重跑该阶段双审。\n` +
+        '  这会留下一条 run_id 为空（或为那个读不出的值）的放弃记录，请在 reason 里写明缘由。';
+      const v = await verifyRoundForApproval({
+        cfg: ctx.config, layout: ref.layout, stage,
+        runId: gate.run_id ?? null,
+        runIdPinned: true,
+        runIdSource: '本机闸门记录',
+        recovery: { missingRunId: exit, unreadableRunMeta: exit },
+      });
+      if (!v.ok) {
+        if (!v.result.ok) say(renderGateResult(v.result));
+        if (v.tampered.length > 0) say(renderTamperedArtifacts(v.tampered));
+        fail(
+          `${topic} / ${stage}（第 ${v.rerunIndex} 轮）通过前复核未过，本次不放行，闸门保持等待审批。\n` +
+            (v.result.ok
+              ? '  先恢复上面列出的工件（或 /dual-abandon 作废这一轮）再审批。'
+              : `  先补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${topic} --check\`，再审批。`),
+        );
+        return EXIT.GATE_BLOCK;
+      }
+      verified.set(stage, v.runId);
+    }
+  }
+
   for (const stage of stages) {
     const out = await recordApproval({
       ctx, topic, stage, decision,
       reason: flagString(args, 'reason'),
       sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
+      verifiedRunId: verified.get(stage) ?? null,
     });
     say(out.message);
   }

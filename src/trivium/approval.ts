@@ -45,6 +45,25 @@ export interface ApprovalInput {
    * 唯独「谁解的闸」这一最关键的事件不留痕。现在它会进审批记录供事后审计。
    */
   sessionId?: string | null;
+  /**
+   * 调用方**已复核过**的 run_id（M10a 第 3 步，计划 r3 §3.3）。
+   *
+   * `decision === 'approved'` 时必须与闸门当前的 run_id 一致，未传视同不一致。
+   *
+   * ## 为什么要它
+   *
+   * 复核（`gate.verifyRoundForApproval`）在 `cmdApproval` 里做，本函数随后**自己再读一次闸门**
+   * 并按那次读到的 run_id 做比较-交换。两次读之间别的运行若把同一阶段置成
+   * awaiting_approval，下面的状态检查拦不住（那是它认可的合法状态）——
+   * 于是会批到一个没核过的轮次。这个字段把「核过的」钉进本函数的比较。
+   *
+   * ## 它不保证什么
+   *
+   * **只证明调用方给出的 run_id 与闸门一致，不证明复核真的跑过**——调用方完全可以
+   * 不复核就把 `gate.run_id` 原样传进来。复核有没有跑，靠 `cmdApproval` 的代码结构
+   * 与变异验证守着（M10a 第 3 步测试报告 M1），不靠这个字段。
+   */
+  verifiedRunId?: string | null;
 }
 
 /** 放弃可以作用在哪些状态上：除 `running` 之外的全部 */
@@ -107,10 +126,19 @@ export async function humanDecidedThisRound(
   );
 }
 
-export async function recordApproval(i: ApprovalInput): Promise<{ message: string }> {
-  const { ctx } = i;
-  const gate = await getGate(ctx.triviumDir, i.topic, i.stage);
-
+/**
+ * 闸门是否处于可表态的状态——`recordApproval` 的前置校验，抽出来与 `cmdApproval` 共用。
+ *
+ * `cmdApproval` 在 approved 路径上**复核之前**先调它：running 的闸门若先去跑复核，
+ * 用户看到的会是一串误导人的「裁决缺口」，而不是「双审进行中，请先 --cancel」。
+ * **`recordApproval` 内保留原调用**（计划双审 r1 GLM-02）：三种决定的前置校验与抽取前逐字相同。
+ *
+ * 只抛错、不返回布尔——调用方没有「判定不过但继续」的写法可选。
+ */
+export function assertGateDecidable(
+  gate: Awaited<ReturnType<typeof getGate>>,
+  i: Pick<ApprovalInput, 'topic' | 'stage' | 'decision' | 'reason'>,
+): asserts gate is NonNullable<Awaited<ReturnType<typeof getGate>>> {
   if (!gate) {
     throw new TriviumError(
       EXIT.MISSING_ARTIFACT,
@@ -138,6 +166,27 @@ export async function recordApproval(i: ApprovalInput): Promise<{ message: strin
   }
   if (i.decision === 'rejected' && !i.reason) {
     throw new TriviumError(EXIT.USAGE, '拒绝审批必须给出 --reason');
+  }
+}
+
+export async function recordApproval(i: ApprovalInput): Promise<{ message: string }> {
+  const { ctx } = i;
+  const gate = await getGate(ctx.triviumDir, i.topic, i.stage);
+  assertGateDecidable(gate, i);
+
+  /*
+   * 核过的就是批的（见 `ApprovalInput.verifiedRunId`）。
+   * 未传或为空一律视同不一致——写成 `(verifiedRunId ?? null) !== gate.run_id` 的话，
+   * 闸门 run_id 为 null 且调用方没传时 `null === null` 放行，正是「没传就不比」的口子。
+   * 闸门 run_id 为 null 时 approved 因此恒被拒，与复核函数「推断不出 run_id 即拒绝」同向。
+   */
+  if (i.decision === 'approved' && (!i.verifiedRunId || i.verifiedRunId !== gate.run_id)) {
+    throw new TriviumError(
+      EXIT.GATE_BLOCK,
+      `闸门当前记着 run ${gate.run_id ?? '（无）'}，而通过前复核的是 ${i.verifiedRunId ?? '（未给出）'}——` +
+        '两者不是同一轮，本次不放行。\n' +
+        `  请重新查看 \`trivium status --topic ${i.topic}\` 后再审批。`,
+    );
   }
 
   const record: ApprovalRecord = {

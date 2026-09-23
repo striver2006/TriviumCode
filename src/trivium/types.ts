@@ -1237,7 +1237,7 @@ export interface RunMeta {
    *
    * **可选**：早于本步的留痕没有这个字段，缺失即「无从得知」，不等于 false。
    * M9 的 `--driver` 只校验「已登记」，于是归档里会出现 `driver_enabled: false`
-   * 的合法留痕；M10 把校验收紧之后那些留痕**仍要读得回**，
+   * 的合法留痕；M10a 第 3 步把校验收紧（入口 `resolveDriver` 退 64）之后那些留痕**仍要读得回**，
    * 所以它不进 `required`、不加 `if/then`。这是本步唯一不可逆的选择。
    */
   driver_enabled?: boolean;

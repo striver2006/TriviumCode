@@ -4,8 +4,11 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
+  APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID,
   checkAdjudication, findJointRejectedBlockers, jointCheckState, isHollowReason, loadRoundReviews, renderGateResult,
+  verifyRoundForApproval,
 } from '../../src/trivium/gate.js';
+import { EXIT } from '../../src/trivium/exit-codes.js';
 import { newRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
 import { CRITICS } from '../../src/trivium/types.js';
 import { defaultConfig } from '../../src/trivium/config.js';
@@ -838,4 +841,66 @@ test('loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，�
   await writeRunMeta(lOk, 'plan', clean);
   const ok = await loadRoundReviews(lOk, 'plan', 'ROK');
   assert.equal(ok.degraded, false, '没有 degraded_reason 就不是降级轮次');
+});
+
+// ─────────── 审批前复核：两个抛错分支的「错误身份」（M10a 第 3 步，计划 r3 §4.1）───────────
+
+/*
+ * 只断言「会抛错」是不够的（计划双审 r1 CODEX-04）：`readRunMeta` 读文件失败一律返回 null，
+ * 于是第 1 步（runId 为 null 即拒绝）失效时，null 会落到第 2 步、照样抛——
+ * 只看「抛了」的单测照样绿，r7 §4.3 列为验收项的那条判定就没有任何锁。
+ * 所以两格各断言**自己那句判别文字在、对方那句不在**。判别文字取导出常量，
+ * 不在这里再抄一遍（计划 r2 就是两处各抄、一处带 Markdown 星号，基线即红）。
+ *
+ * 本组是变异 M3a（只让第 1 步失效）与 M3b（整个校验体包进 if (runId)）的鉴别用例。
+ */
+const RECOVERY = { missingRunId: '【出口-缺 run_id】', unreadableRunMeta: '【出口-元数据读不出】' };
+
+test('审批前复核：runId 为 null ⇒ 第 1 步拒绝（退 65），且不是落到第 2 步才被拦下', async () => {
+  const l = await layout();
+  await assert.rejects(
+    verifyRoundForApproval({
+      cfg: defaultConfig(), layout: l, stage: 'plan',
+      runId: null, runIdPinned: true, runIdSource: '本机闸门记录', recovery: RECOVERY,
+    }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.MISSING_ARTIFACT);
+      assert.ok(e.message.includes(APPROVAL_CHECK_NO_RUN_ID), `缺第 1 步的判别文字：${e.message}`);
+      assert.ok(e.message.includes('本机闸门记录'), '要说清 run_id 是从哪儿推断的');
+      assert.ok(e.message.includes(RECOVERY.missingRunId), '出口文案由调用方给，要原样带出');
+      assert.ok(
+        !e.message.includes(APPROVAL_CHECK_META_UNREADABLE),
+        `出现了第 2 步的判别文字——说明第 1 步没拦住、null 落到了读元数据那一步：${e.message}`,
+      );
+      return true;
+    },
+  );
+});
+
+test('审批前复核：runId 非空但本轮运行元数据读不出 ⇒ 第 2 步拒绝（退 65），不回落缺省 Driver', async () => {
+  const l = await layout();
+  await assert.rejects(
+    verifyRoundForApproval({
+      cfg: defaultConfig(), layout: l, stage: 'plan',
+      runId: '20990101T000000Z', runIdPinned: true, runIdSource: '本机闸门记录', recovery: RECOVERY,
+    }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.MISSING_ARTIFACT);
+      assert.ok(e.message.includes(APPROVAL_CHECK_META_UNREADABLE), `缺第 2 步的判别文字：${e.message}`);
+      assert.ok(e.message.includes('20990101T000000Z'), '要点名是哪一轮');
+      assert.ok(e.message.includes(RECOVERY.unreadableRunMeta));
+      assert.match(e.message, /不要删除或改写/, '要警示别去动提交锚');
+      assert.ok(!e.message.includes(APPROVAL_CHECK_NO_RUN_ID));
+      return true;
+    },
+  );
+});
+
+test('审批前复核：两句判别文字互不包含、都是纯文本（不带 Markdown 记号）', () => {
+  assert.ok(!APPROVAL_CHECK_NO_RUN_ID.includes(APPROVAL_CHECK_META_UNREADABLE));
+  assert.ok(!APPROVAL_CHECK_META_UNREADABLE.includes(APPROVAL_CHECK_NO_RUN_ID));
+  for (const t of [APPROVAL_CHECK_NO_RUN_ID, APPROVAL_CHECK_META_UNREADABLE]) {
+    // 只查星号与反引号：`run_id` 这种词内下划线不构成强调，r2 撞上的正是 `**不会**` 这种星号
+    assert.doesNotMatch(t, /[*`]/, `判别文字里有 Markdown 记号，渲染与子串匹配会对不上：${t}`);
+  }
 });

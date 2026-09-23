@@ -670,7 +670,7 @@ test('topic resolve：显式指定审查件 → 退 65 并说明是审查件', a
   );
 });
 
-test('topic resolve：--driver 非缺省时回显，未启用为 Driver 时进 notes', async () => {
+test('topic resolve：--driver 非缺省时回显；M10a 第 3 步起已启用，不再有「未启用」标注', async () => {
   assertSelectableUsable();
   const other = SELECTABLE[0]!;
   const ctx = await fakeCtx();
@@ -681,13 +681,14 @@ test('topic resolve：--driver 非缺省时回显，未启用为 Driver 时进 n
   });
   assert.equal(r.driver, other);
   /*
-   * M9 只校验「已登记」，`driverEnabled === false` 照样放行——校验它第 6 步就跑不成。
-   * 放行的代价必须看得见：这里一条 notes，预检一行提示，留痕一个 driver_enabled。
+   * M9 时这里是「放行 + 标注」：`driver_enabled` 为 false、notes 里有一条「尚未启用为 Driver」。
+   * M10a 第 3 步翻开关并把未启用收紧为退 64（桩用例见 critics.test.ts），走到这里的恒为 true，
+   * 那条标注随分支一并删除——还留着就说明删漏了。
    */
-  assert.equal(r.driver_enabled, false, `${other} 目前尚未启用为 Driver（registry 里是 false）`);
+  assert.equal(r.driver_enabled, true, `${other} 已于 M10a 第 3 步启用为 Driver`);
   assert.ok(
-    r.notes.some((n) => n.includes(other) && n.includes('尚未启用为 Driver')),
-    `notes 里没有标注「${other} 尚未启用为 Driver」：放行而不留痕就是静默降低了门槛`,
+    !r.notes.some((n) => n.includes('尚未启用为 Driver')),
+    `notes 里还有「尚未启用为 Driver」的标注：那条分支应当随收紧一并删除：${JSON.stringify(r.notes)}`,
   );
 });
 

@@ -1,0 +1,66 @@
+{
+  "agreed": [
+    "64 收紧路径彻底：经 resolveDriver 的入口（cmdReview 显式与继承判定、topic resolve 显式与继承、topic claim、preflight）均退 64，继承机制下即使篡改 task.json 或历史 run.json 也无法绕过进入新运行；底层没有未拦截的启动面。",
+    "复核函数在 readRunMeta 为 null 时拒绝是正确的 fail-closed 行为，不误伤任何合法状态：正常轮次、v1 历史记录（由 readRunMeta 在内存中迁移）以及崩溃骨架（符合 schema 且能读出）均可正常读出 RunMeta；唯有文件缺失或损坏才返回 null，审批关口本就不该放行此类异常。",
+    "verifiedRunId 绑定设计非常必要且严谨：在 cmdApproval 复核与 recordApproval 记录之间存在读取闸门的时间差，通过将 verifiedRunId 传入 recordApproval 并校验 gate.run_id，彻底堵住了并发或外部写入接管闸门导致核 A 批 B 的窗口；注释表述如实客观，未夸大其安全性。",
+    "§6.2 变异设计严密：特别是「approve 跳过复核」变异定义中刻意传回 verifiedRunId: gate.run_id，精准防范了被 verifiedRunId 校验提前拦截而掩盖复核缺失的假阳性；5 条变异均能由目标用例真实变红。",
+    "§5 四条与 r7 的偏差登记完整真实，不存在遗漏的未登记偏差。"
+  ],
+  "consulted": [
+    ".reviews/M10a-第3步/plan/2026-09-23-M10a-第3步-claude.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md",
+    "CLAUDE.md",
+    "src/trivium/critics.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/review.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/state.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/types.ts",
+    "test/unit/critics.test.ts",
+    "test/unit/approval.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/bug-stage.test.ts",
+    "test/integration/code-stage.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查看 src/trivium/review.ts:514-541 与 src/trivium/run-protocol.ts:170-205/302 可知，review.ts:541 处于 prepareRun 阶段，由 cmdReview 在派生 worker 前的启动准备期同步执行；派生后的工作进程 workerMain 仅从 handoff.json 重建上下文，内部并不调用 agentById 查表派生 driverEnabled。",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/M10a-第3步/plan/2026-09-23-M10a-第3步-claude.md:34",
+      "problem": "§1 表格将 review.ts:541 描述为「worker 内直接查表取 driverEnabled，只用于留痕」，上下文归属不够准确：该行位于 prepareRun（主进程启动准备期），而不是 worker 进程内部。workerMain 仅读取已写入的元数据。",
+      "severity": "nit",
+      "suggestion": "将 §1 表格中的「worker 内直接查表」修正为「prepareRun 启动准备期直接查表」，避免后续读者误解工作进程内的校验边界。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查看 src/trivium/cli.ts:1054/1140-1145 可知，原处的 rerunIndex 是外部在 cmdGate 预先根据 latest 计算出来的；抽取为独立函数 verifyRoundForApproval 后，若 runId 为 null，函数内部尚未读取 meta，此时原样搬运的文案如果依赖 rerunIndex 会产生未定义值。另外被审文档 §4.1 A4′ 期望抛 EXIT.MISSING_ARTIFACT，但 §3.1 第 2 步只写了「同样抛错」未显式写明错误码。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": ".reviews/M10a-第3步/plan/2026-09-23-M10a-第3步-claude.md:98-102",
+      "problem": "§3.1 第 1 步在 runId 为 null 时原样复用 cli.ts:1141 报错文案，但原句依赖 rerunIndex（找不到 stage 阶段第 rerunIndex 轮的 run_id），而在抽出的独立函数 verifyRoundForApproval 且 runId 为 null 时尚未读到 runMeta，直接套用会导致 rerunIndex 缺失；此外第 2 步未显式指明 readRunMeta 返回 null 时抛错的 EXIT 码。",
+      "severity": "nit",
+      "suggestion": "在 verifyRoundForApproval 中，当 runId 为 null 时报错文案调整为基于 stage 与 runIdSource 渲染（避免依赖未计算的 rerunIndex）；并在 §3.1 第 2 步显式约定抛 TriviumError(EXIT.MISSING_ARTIFACT, ...)，确保与 A4/A4′ 的单测期望精确契合。"
+    }
+  ],
+  "not_covered": [
+    "M10b 阶段涉及的各家入口资产（SKILL.md / argument-hint）自动渲染与技能侧认领调用。",
+    "第三方大模型 CLI 在跨网络及高并发环境下的真实耗时与重试抖动。",
+    "第 5 步（回溯步）涉及的主设计/演进设计/PRD 文档变更的文字修订细节。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "总体评估：本实施计划论证深入、边界严密，对四个指定焦点的处理均属审慎合规，同意实施（approve-with-nits）。\n一、64 收紧覆盖全部显式及继承解析入口，无未启用 Agent 启动新运行的缝隙；\n二、runMeta 读不到时拒绝属于正确的 fail-closed 门控，不误伤任何合法状态（含 v1 记录与崩溃骨架）；\n三、verifiedRunId 真实切断了核验与落盘间的接管空窗，注释诚实未夸大；\n四、§6.2 的 5 条变异均能由目标用例独立触发变红，防线隔离清晰，§5 四项偏差登记完整；\n仅提出 2 处文本与实现细节的轻微改进建议（nit），不影响计划总体架构。",
+  "verdict": "approve-with-nits"
+}

@@ -72,9 +72,10 @@ test('driver_enabled 恒写：缺省 Driver 那一路也要有值', () => {
 
 test('driver_enabled: false 是合法留痕——M9 只校验「已登记」，不校验 driverEnabled', () => {
   /*
-   * 这正是本步刻意接受的形态：校验 `driverEnabled` 会让第 6 步验收跑不成
-   * （当前只有 claude 启用为 Driver，而验收恰恰要 claude 当审核者）。
-   * 放行的代价由这个字段兜住，所以它必须能通过校验、而不是被判成坏留痕。
+   * 这是 M9 第 5 步刻意接受的形态：校验 `driverEnabled` 会让 M9 第 6 步验收跑不成
+   * （那时只有 claude 启用为 Driver，而验收恰恰要 claude 当审核者）。
+   * M10a 第 3 步起入口对未启用者退 64，新运行不再写出 false；但此前归档里的 false
+   * 仍是合法留痕，必须能通过校验、而不是被判成坏留痕——schema 侧因此不收紧。
    */
   const meta = skeleton({ driver: 'gemini', driverEnabled: false, criticsSelected: ['glm'] });
   assert.equal(meta.driver, 'gemini');

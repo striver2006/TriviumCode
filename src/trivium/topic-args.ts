@@ -247,8 +247,9 @@ export interface TopicResolution {
   /**
    * 本次声明的 Driver 是否**已启用为 Driver**。
    *
-   * false 不阻断（M9 只校验「已登记」，见 `resolveDriver`），但要让调用方看得见：
-   * notes 里会有一条，预检也会打一行。
+   * M10a 第 3 步起未启用即在 `resolveDriver` 退 64，走到这里的恒为 true。
+   * 字段保留为契约：M9 第 5 步到 M10a 第 2 步之间它可以是 false（当时「放行 + 标注」），
+   * 下游按字段读，删掉就是破坏性变更。
    */
   driver_enabled: boolean;
   /**
@@ -522,16 +523,11 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
   }
 
   /*
-   * `enabledAsDriver` 按**最终**的 driver 取，不是按旗标那次解析的结果：
-   * 继承来的值可能是另一家，沿用旧结果会让这行标注说错对象。
+   * 按**最终**的 driver 再过一次 `resolveDriver`，不是只信旗标那次解析：
+   * 继承来的值没经过它，未启用为 Driver 的要在这里退 64（M10a 第 3 步；
+   * 此前这里是「放行 + 往 notes 里标注一条」）。
    */
   const enabledAsDriver = resolveDriver(driver).enabledAsDriver;
-  if (!enabledAsDriver) {
-    // 放行但如实标注（见 resolveDriver 的文档块）。留痕要让事后对得上账
-    notes.push(
-      `本次声明的 Driver「${driver}」尚未启用为 Driver，该值仅用于选侧判定与原稿定位`,
-    );
-  }
 
   const critics = resolveCriticSelection(ctx.config, {
     critics: named['critics'] ?? null,

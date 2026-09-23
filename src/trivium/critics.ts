@@ -9,7 +9,7 @@
  * 判定只依赖配置与注册表，不碰文件系统，可直接单测。
  */
 import { CRITICS, type Config, type CriticId } from './types.js';
-import { ALL_AGENT_IDS, DEFAULT_DRIVER, agentById, type AgentDescriptor, type AgentId } from './agents/registry.js';
+import { AGENTS, DEFAULT_DRIVER, agentById, type AgentDescriptor, type AgentId } from './agents/registry.js';
 import { EXIT, TriviumError, swallowedTextHint } from './exit-codes.js';
 
 export interface CriticSelectionInput {
@@ -139,52 +139,76 @@ export function assertModelOverrideKeys(
 export interface DriverResolution {
   driver: AgentId;
   /**
-   * 该 Agent 的 `driverEnabled`。**false 不阻断**——M9 只校验「已登记」。
+   * 该 Agent 的 `driverEnabled`。**经本函数返回的值恒为 true**——未启用即退 64（见下）。
    *
-   * 校验 `driverEnabled` 会让 M9 第 6 步跑不成：当前只有 claude 启用为 Driver，
-   * 而验收恰恰要让 claude 当审核者、由别家当 Driver（`--driver codex` 会被拒 ⇒ 死循环）。
-   * 取舍是「放行但如实标注」：预检打一行可见提示，`run.json` 落 `driver_enabled`。
-   * 理由与 `approve` 同构——这条防线靠调用方守规矩，而留痕要让事后对得上账。
-   * M10 收口时把它收紧成 `driverEnabled` 校验。
+   * 字段保留是为留痕契约：`run.json` 与 `topic resolve` JSON 的 `driver_enabled`
+   * 都由它取值，而 M9 第 5 步到 M10a 第 2 步之间的归档里有 `driver_enabled: false`
+   * 的合法留痕（那时的口径是「放行 + 如实标注」）。字段一删，读写两侧的契约就断了。
    */
   enabledAsDriver: boolean;
 }
 
 /**
- * 解析 `--driver` 的取值（M9 第 5 步）。
+ * 解析 `--driver` 的取值（M9 第 5 步；M10a 第 3 步收紧）。
  *
- * **判定只此一处**，三个调用点共用（`cmdReview` / `cmdPreflight` / `topic resolve`）。
- * 理由见本文件开头：同一条校验实现两遍，就是改一漏二——`--only` 那次已经演过一回。
+ * **判定只此一处**。经它的入口：`review --start`（显式旗标，以及继承判定之后按最终
+ * driver 的再解析）、`preflight`、`topic resolve`（同两格）、`topic claim`。
+ * 同一条校验实现两遍就是改一漏二——`--only` 那次已经演过一回。
  *
- * 错误文案的论域用 **`ALL_AGENT_IDS`（全部已登记）而不是 `DRIVER_AGENT_IDS`**：
- * 判据是「已登记」，而后者今天只含 claude。用它当清单会让报错列出的可用值
- * 与实际接受的取值不一致，又是一次「第一个错误引向第二个错误」。
+ * ## 未启用为 Driver ⇒ 退 64（M10a 第 3 步，M10 计划 r7 §4.2 / §9 A4）
  *
- * `descriptors` 是与 {@link CriticSelectionInput.descriptors} 同构的测试注入口：
- * 注册表里 `driverEnabled: true` 只有缺省 Driver 一家，没有它，
- * 「非缺省且已启用」这一臂的用例**今天根本构造不出来**（计划双审 r2 GLM-05）。
+ * M9 这里是「放行 + 如实标注」：校验 `driverEnabled` 会让 M9 第 6 步验收跑不成
+ * （那时只有 claude 启用）。四家翻开之后该分支**对现注册表不可达**，保留它是为
+ * **第五家登记而未启用**的那一格；覆盖靠 `descriptors` 注入的桩，不靠生产数据碰巧长什么样。
+ * 方向是收紧不是放开。缺省分支（没传旗标）走**同一个判定**，不写死 true。
+ *
+ * **这条收紧只作用于经本函数的入口，不是全称保证。** 不经它、也不校验
+ * `driverEnabled` 的面：`prepareRun` 内查表（只用于留痕）、Hook 的当轮 Driver 解析
+ * （读 run.json 与 claim 声明）、历史 run.json、手工改写的 claim 声明。
+ * 它们依赖的是「入口已经拦过」，自身不做判定。
+ *
+ * ## 报错清单的口径：「可用作 Driver」，两个分支一致（计划 r3 §2.2）
+ *
+ * 未登记与未启用两个分支，尾部都列 `driverEnabled` 为真的那几家——报错列出的
+ * 可用值必须与实际接受的取值一致，否则第一个错误把用户引向第二个错误
+ * （M9 时这里列的是「全部已登记」，因为那时判据就是「已登记」）。
+ * **不复用 `legalList`**：那是审核者口径（criticEnabled ∩ 有配置段 − 当轮 Driver），
+ * 今天四家两口径同集，第五家只当 Driver 或没有配置段时就会分叉（计划双审 r1 CODEX-03）。
+ *
+ * `descriptors` 是与 {@link CriticSelectionInput.descriptors} 同构的测试注入口。
  */
 export function resolveDriver(
   raw: string | null | undefined,
   descriptors?: readonly AgentDescriptor[],
 ): DriverResolution {
+  const table = descriptors ?? AGENTS;
   const lookup = (x: string): AgentDescriptor | null =>
     descriptors ? (descriptors.find((a) => a.id === x) ?? null) : agentById(x);
+  const usable = (): string => {
+    const ids = table.filter((a) => a.driverEnabled).map((a) => a.id);
+    return ids.length > 0 ? ids.join(' | ') : '（没有任何已启用为 Driver 的 Agent）';
+  };
 
-  const id = raw?.trim() ?? '';
-  if (!id) {
-    // 没给就是缺省 Driver；它的 driverEnabled 同样**查表得来**，不写死 true
-    return { driver: DEFAULT_DRIVER, enabledAsDriver: lookup(DEFAULT_DRIVER)?.driverEnabled ?? true };
-  }
-
+  const given = raw?.trim() ?? '';
+  const id = given || DEFAULT_DRIVER;
   const agent = lookup(id);
   if (!agent) {
-    const known = descriptors ? descriptors.map((a) => a.id) : ALL_AGENT_IDS;
     throw new TriviumError(
       EXIT.USAGE,
-      `--driver 的取值「${id}」不是已登记的 Agent。\n` +
-        `  已登记：${known.join(' | ')}` +
+      `${given ? '--driver 的取值' : '缺省 Driver'}「${id}」不是已登记的 Agent。\n` +
+        `  可用作 Driver：${usable()}` +
         swallowedTextHint(id),
+    );
+  }
+  if (!agent.driverEnabled) {
+    /*
+     * 措辞中性，不说「--driver 的取值」：继承来的 driver（运行留痕或 claim 声明）
+     * 同样经过这里，用户可能根本没传旗标；缺省分支同理。
+     */
+    throw new TriviumError(
+      EXIT.USAGE,
+      `Driver「${agent.id}」已登记但尚未启用为 Driver${given ? '' : '（未传 --driver，取的是缺省 Driver）'}。\n` +
+        `  可用作 Driver：${usable()}`,
     );
   }
   return { driver: agent.id, enabledAsDriver: agent.driverEnabled };

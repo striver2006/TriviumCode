@@ -287,6 +287,71 @@ test('接入套件 ③：三审的重合度逐对算，三对齐备', { timeout:
   );
 });
 
+// ─────────────────────────── 断言 ④ ───────────────────────────
+
+/*
+ * **第五家登记而未启用为 Driver ⇒ 各入口退 64**（M10a 第 3 步，代码双审 r4 CODEX-01）。
+ *
+ * 本夹具的桩在**真实注册表**里是 `driverEnabled: false`（overlay 追加、重打包），
+ * 正是 `resolveDriver` 那条 64 分支守的「第五家」形态——四家翻开之后，这是全仓唯一
+ * 能在打包 CLI 上构造它的地方（单测靠注入表，见 critics.test.ts）。
+ * 上一版测试报告写「集成层注入不了注册表、构造不出来」，那句不成立，这一格因此漏了。
+ *
+ * 三格：显式 `--driver` 两个入口；以及**继承**——claim 声明里是桩、不传 `--driver`，
+ * 靠「定下最终值之后那一次再解析」拦下（cli.ts / topic-args.ts 各一处，
+ * driver-wiring.test.ts 另有源码级判据钉住调用点）。
+ */
+test('接入套件 ④：登记而未启用为 Driver 的第五家——显式与继承两条路都退 64', { timeout: 300_000 }, async () => {
+  const k = theKit();
+  await buildBundle(k);
+  const fx = await makeStubFixtureRepo();
+  const usableTail = (out: string) => out.slice(out.indexOf('可用作 Driver'));
+
+  // ── 显式：topic resolve 与 topic claim ──
+  const res = await cliIn(k, fx, [
+    'topic', 'resolve', '--stage', 'code', '--json', '--', '--topic', TOPIC, '--driver', STUB_ID, '看边界',
+  ]);
+  const resOut = res.stdout + res.stderr;
+  assert.equal(res.code, EXIT.USAGE, `--driver ${STUB_ID} 应退 64：\n${resOut}`);
+  assert.match(resOut, /尚未启用为 Driver/);
+  assert.doesNotMatch(usableTail(resOut), new RegExp(`\\b${STUB_ID}\\b`), '清单不该列未启用的桩');
+
+  const claim = await cliIn(k, fx, ['topic', 'claim', '--stage', 'code', '--topic', TOPIC, '--driver', STUB_ID, '--session-id', 'S']);
+  assert.equal(claim.code, EXIT.USAGE, `认领未启用的桩应退 64：\n${claim.stdout}${claim.stderr}`);
+
+  // ── 继承：先合法认领一家已启用的，得到一份合法的声明，再把声明里的 driver 换成桩 ──
+  const ok = await cliIn(k, fx, ['topic', 'claim', '--stage', 'code', '--topic', TOPIC, '--driver', 'gemini', '--session-id', 'S']);
+  assert.equal(ok.code, EXIT.OK, `前提：认领已启用的一家应成功：\n${ok.stdout}${ok.stderr}`);
+  const taskPath = path.join(fx.archiveRoot, TOPIC, 'task.json');
+  const task = JSON.parse(await fs.readFile(taskPath, 'utf8')) as { drivers: Record<string, { driver: string }> };
+  assert.equal(task.drivers['code']?.driver, 'gemini', '前提：声明已落盘');
+  task.drivers['code']!.driver = STUB_ID;
+  await fs.writeFile(taskPath, JSON.stringify(task, null, 2), 'utf8');
+
+  /*
+   * **显式给 `--critics gemini,glm`，并断言报错文案**（变异 M6c 实测出的掩盖）：
+   * 本夹具的 `default_critics` 含桩，继承到的 driver 也是桩时，选侧会以「含当轮 Driver」
+   * 同样退 64——删掉那次再解析，本格照样绿。排除选侧这道防线、再钉住「尚未启用」的文案，
+   * 退 64 才只可能来自再解析。
+   */
+  const inherit = await cliIn(k, fx, [
+    'topic', 'resolve', '--stage', 'code', '--json', '--', '--topic', TOPIC, '--critics', 'gemini,glm', '看边界',
+  ]);
+  assert.equal(
+    inherit.code, EXIT.USAGE,
+    `topic resolve 继承到未启用的桩却没退 64——定下最终 driver 之后那次再解析没接上：\n${inherit.stdout}${inherit.stderr}`,
+  );
+  assert.match(inherit.stdout + inherit.stderr, /尚未启用为 Driver/, '退 64 必须来自 Driver 判定，不是别的防线');
+  const start = await cliIn(k, fx, [
+    'review', '--start', '--stage', 'code', '--topic', TOPIC, '--focus', '看边界', '--critics', 'gemini,glm', '--json',
+  ]);
+  assert.equal(
+    start.code, EXIT.USAGE,
+    `review --start 继承到未启用的桩却没退 64：\n${start.stdout}${start.stderr}`,
+  );
+  assert.match(start.stdout + start.stderr, /尚未启用为 Driver/);
+});
+
 // ─────────────────────────── 夹具搭建 ───────────────────────────
 
 let built = false;

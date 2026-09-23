@@ -536,6 +536,9 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    * 当轮 Driver：本函数里四个消费方（轮次、原稿定位、禁读剪枝、留痕）都用它。
    * `driverEnabled` **就地由注册表派生**，不进 ReviewOptions 也不进交接文件——
    * 它是 id 的属性，不是调用方的选择；让它随参数传递就多了一个能传错的地方。
+   *
+   * **这里只查表、不校验**（只用于留痕）：未启用为 Driver 的拦截在入口的
+   * `resolveDriver`（M10a 第 3 步起退 64），本函数依赖的是「入口已经拦过」。
    */
   const driver: AgentId = opts.driver ?? DEFAULT_DRIVER;
   const driverEnabled = agentById(driver)?.driverEnabled ?? false;
@@ -898,9 +901,10 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     /*
      * 发起方与它的启用状态一起落盘（M9 第 5 步）。
      *
-     * `driver_enabled: false` 是 M9 刻意接受的形态：本步只校验「已登记」，
-     * 不校验 `driverEnabled`（校验了第 6 步就跑不成，见 `resolveDriver`）。
-     * 放行的代价必须由留痕兜住——事后要能对出「这一轮声明的 Driver 当时还没启用」。
+     * `driver_enabled: false` 是 M9 刻意接受的形态：那时只校验「已登记」，
+     * 不校验 `driverEnabled`（校验了 M9 第 6 步就跑不成），放行的代价由留痕兜住。
+     * M10a 第 3 步起入口的 `resolveDriver` 对未启用者退 64，新运行这里恒为 true；
+     * 历史归档里的 false 仍是合法留痕。
      */
     driver,
     driverEnabled,

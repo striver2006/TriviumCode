@@ -13,7 +13,7 @@
 > 缺省取 `review.default_critics`，校验不过退 64 且零工件；`--only` 是它的单元素旧写法，
 > **两者同时给即拒**。选 1 侧记 `review_mode: full`、不写 `degraded_reason`——
 > 配置意图不是降级。规则细则见设计 7.1。
-> **`--driver <id>` 自 M9 第 5 步起生效**：缺省 `claude`，取值须为已登记 Agent。
+> **`--driver <id>` 自 M9 第 5 步起生效**：缺省 `claude`，取值须为**可用作 Driver 的 Agent**（已登记且 `driverEnabled`；M10a 第 3 步起四家均已启用）。未登记或已登记未启用的一律退 64——M9 时是「只校验已登记、未启用的放行并标注」，M10a 第 3 步收紧；收紧只作用于经 `resolveDriver` 的入口（`review --start` / `preflight` / `topic resolve` / `topic claim`，含继承判定后的再解析）。
 > 它决定本轮谁是 Driver，进而决定**原稿与裁决件的后缀**（`locateSubject` 按它定位
 > 被审对象，写错后缀在 `review --start` 就退 65）、闸门按谁定位裁决件、以及留痕里
 > 记的发起方。规则细则见设计 §7.1。
@@ -346,7 +346,7 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 | `review --worker <run_id>` | 工作进程入口，由 `--start` 派生。**不应由人直接调用** |
 | `gate --check` / `--check-artifacts` / `--await-approval` | 裁决完整性 / 最低工件集 / 置人工闸门 |
 | `gate hook-*` | Hook 入口，从 stdin 读事件。**不应由人直接调用** |
-| `approve` / `abandon` | 人工审批 / 放弃闸门。审批附言走 `--reason`；多余的位置参数退 64（EV-24），布尔旗标（`--reject` 等）不吞下一个 token、`=` 传值只认 true/false |
+| `approve` / `abandon` | 人工审批 / 放弃闸门。审批附言走 `--reason`；多余的位置参数退 64（EV-24），布尔旗标（`--reject` 等）不吞下一个 token、`=` 传值只认 true/false。**通过前复核**（M10a 第 3 步）：与 `gate --await-approval` 共用一份判定——本轮裁决齐备 + 本轮 `run.json.artifacts[]` 的 sha256 抽核；不通过退 2，推断不出 run_id 或运行元数据读不出退 65（出口是 abandon 后重跑）。拒绝与放弃不复核。复核不保证「审批来自人」 |
 | `verify --topic <t>` | 执行显式配置的编译测试命令并落盘记录 |
 | `report --topic <t>` | 主题级复盘 |
 | `status` | 闸门、运行、降级与争议 |

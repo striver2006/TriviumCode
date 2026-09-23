@@ -27,6 +27,16 @@
  * 同时新增 `defaultSelected`：**「能不能当审核者」与「不选时跑不跑它」自此是两件事**——
  * 否则启用第三家就等于让每次审查的成本自动涨一档（决策 D-1）。
  * claude 的审核者能力仍待 M9，Driver 任意化仍待 M10。
+ *
+ * ## M10a 第 3 步的变化
+ *
+ * codex / gemini / glm 的 `driverEnabled` 翻为 true，四家均可作为 Driver。
+ * 与此同时 `resolveDriver` 对 `driverEnabled: false` 由「放行 + 标注」收紧为退 64——
+ * 今天四家全启用、该分支对本表不可达，它守的是**第五家登记而未启用**的那一格
+ * （M10 计划 r7 §4.2 / §9 A4）。收紧只作用于经 `resolveDriver` 的入口，
+ * 不经它的面见 `critics.ts` 的 `DriverResolution` 文档块。
+ * 任一 Agent 作为 Driver 真实走完命令 B 的真载体验收在 M10b（入口资产随之渲染）。
+ * 上面两节是当时的叙事，保留原文。
  */
 
 /** 已登记的 Agent。取值同时是归档后缀与配置键命名空间 */
@@ -201,7 +211,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
      * 本仓库把 `plan` 调到了 1500s 所以不吃紧，但内置默认是给别人用的。
      */
     defaultSelected: true,
-    driverEnabled: false, // M10 启用
+    driverEnabled: true, // M10a 第 3 步启用
     guardLevel: 'L2',
     instructionFiles: ['AGENTS.md'],
   },
@@ -215,7 +225,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
     findingPrefix: 'AGY',
     criticEnabled: true,
     defaultSelected: true,
-    driverEnabled: false, // M10 启用
+    driverEnabled: true, // M10a 第 3 步启用
     guardLevel: 'L2',
     instructionFiles: ['GEMINI.md'],
   },
@@ -229,7 +239,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
     findingPrefix: 'GLM',
     criticEnabled: true,
     defaultSelected: true,
-    driverEnabled: false, // M10 启用
+    driverEnabled: true, // M10a 第 3 步启用
     guardLevel: 'L1',
     instructionFiles: ['AGENTS.md'],
   },
@@ -334,7 +344,7 @@ export function deriveDefaultCritics(
   return picked;
 }
 
-/** 当前可作为 Driver 的 Agent（M7a：claude） */
+/** 当前可作为 Driver 的 Agent（M7a 只有 claude；M10a 第 3 步起四家全部启用） */
 export const DRIVER_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.driverEnabled).map(
   (a) => a.id,
 );

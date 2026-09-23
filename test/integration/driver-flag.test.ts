@@ -120,19 +120,20 @@ test(
       '被审对象应当是当轮 Driver 的原稿，而不是缺省 Driver 的那一份',
     );
     /*
-     * M9 只校验「已登记」，不校验 `driverEnabled`——校验了第 6 步就跑不成。
-     * 放行的代价必须看得见：这条 note 就是「如实标注」那一半。
+     * M9 时这里是「放行 + 标注」：`driver_enabled: false` 加一条「尚未启用为 Driver」的 note。
+     * M10a 第 3 步翻开关、未启用收紧为退 64 之后，走到这里的恒为 true，那条 note 随分支删除
+     * （退 64 那一臂对真实注册表不可达，由 critics.test.ts 的桩用例覆盖）。
      */
-    assert.equal(json.driver_enabled, false);
+    assert.equal(json.driver_enabled, true);
     assert.ok(
-      json.notes.some((n) => n.includes('尚未启用为 Driver')),
-      `notes 里没有标注「${other} 尚未启用为 Driver」：${JSON.stringify(json.notes)}`,
+      !json.notes.some((n) => n.includes('尚未启用为 Driver')),
+      `notes 里还有「尚未启用为 Driver」的标注，那条分支应当已删除：${JSON.stringify(json.notes)}`,
     );
   },
 );
 
 test(
-  '--driver 取值未登记 → 退 64，并列出全部已登记（不是「已启用为 Driver」的那几家）',
+  '--driver 取值未登记 → 退 64，并列出「可用作 Driver」的那几家（M10a 第 3 步起与未启用分支同口径）',
   { skip: bundleMissing && bundleSkipReason },
   async () => {
     const { root } = await makeFixture({ topic: TOPIC });
@@ -143,7 +144,13 @@ test(
     assert.equal(r.code, EXIT.USAGE, `${r.stdout}${r.stderr}`);
     const out = r.stdout + r.stderr;
     assert.match(out, /nobody/);
-    // 论域是「已登记」，所以尚未启用为 Driver 的那几家也要列出来——它们是合法取值
+    /*
+     * M9 时论域是「已登记」，所以尚未启用为 Driver 的也列出来——那时它们是合法取值。
+     * M10a 第 3 步起合法取值是「可用作 Driver」，报错清单跟着改（计划双审 r2 GLM-02）：
+     * 列出的可用值要与实际接受的一致。「未启用的那一家不进清单」这一格在 CLI 上构造不出来
+     * （真实注册表四家全启用），由 critics.test.ts 的注入表用例覆盖。
+     */
+    assert.match(out, /可用作 Driver/);
     assertSelectableUsable();
     assert.match(out, new RegExp(SELECTABLE[0]!));
   },

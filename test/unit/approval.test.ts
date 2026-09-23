@@ -25,7 +25,7 @@ async function fakeCtx(): Promise<Ctx> {
 test('等待审批的闸门可以通过，记录进 task.json 并解除写锁', async () => {
   const ctx = await fakeCtx();
   await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: 'R1', heartbeatStaleMs: STALE });
-  const out = await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved', sessionId: 'S-HUMAN' });
+  const out = await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved', sessionId: 'S-HUMAN', verifiedRunId: 'R1' });
   assert.match(out.message, /已通过/);
   assert.equal((await getGate(ctx.triviumDir, TOPIC, 'plan'))?.state, 'approved');
   const task = await readTask({ archiveRoot: ctx.archiveRoot, topic: TOPIC });
@@ -38,7 +38,7 @@ test('等待审批的闸门可以通过，记录进 task.json 并解除写锁', 
 test('GLM-05：没传会话 id 时留痕为 null，而不是假装知道', async () => {
   const ctx = await fakeCtx();
   await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: 'R1', heartbeatStaleMs: STALE });
-  await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved' });
+  await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved', verifiedRunId: 'R1' });
   const task = await readTask({ archiveRoot: ctx.archiveRoot, topic: TOPIC });
   assert.equal(task.approvals[0]?.session_id, null);
 });
@@ -102,7 +102,7 @@ test('EV-29：三个人工终态都算「本轮已表态」，不只是 approved
     await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: 'R1', heartbeatStaleMs: STALE });
     await recordApproval({
       ctx, topic: TOPIC, stage: 'plan', decision,
-      ...(decision === 'approved' ? {} : { reason: '理由' }),
+      ...(decision === 'approved' ? { verifiedRunId: 'R1' } : { reason: '理由' }),
     });
     assert.equal(
       await humanDecidedThisRound(layout, 'plan', 'R1'),
@@ -116,7 +116,7 @@ test('EV-29：只认本轮本阶段——别轮次/别阶段的表态不算', as
   const ctx = await fakeCtx();
   const layout = { archiveRoot: ctx.archiveRoot, topic: TOPIC };
   await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: 'R1', heartbeatStaleMs: STALE });
-  await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved' });
+  await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved', verifiedRunId: 'R1' });
 
   assert.equal(await humanDecidedThisRound(layout, 'plan', 'R1'), true);
   assert.equal(await humanDecidedThisRound(layout, 'plan', 'R2'), false, '另一轮没表过态');
@@ -126,9 +126,13 @@ test('EV-29：只认本轮本阶段——别轮次/别阶段的表态不算', as
 test('EV-29：空 run_id 不当通配', async () => {
   const ctx = await fakeCtx();
   const layout = { archiveRoot: ctx.archiveRoot, topic: TOPIC };
-  // 闸门没有 run_id 时审批记录里写的就是空串，不能让它匹配上任何一轮
+  /*
+   * 闸门没有 run_id 时审批记录里写的就是空串，不能让它匹配上任何一轮。
+   * 用 rejected 造这条记录：M10a 第 3 步起 approved 在闸门 run_id 为 null 时恒被拒
+   * （`verifiedRunId` 绑定），而本条测的是 `humanDecidedThisRound`，与决定种类无关。
+   */
   await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: null, heartbeatStaleMs: STALE });
-  await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved' });
+  await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'rejected', reason: '造一条空 run_id 的记录' });
   const t = await readTask({ archiveRoot: ctx.archiveRoot, topic: TOPIC });
   assert.equal(t.approvals[0]?.run_id, '', '前提：这种情形确实写空串');
 
@@ -145,7 +149,7 @@ test('EV-29：正本损坏时 fail-closed —— 不推进，而不是当成没�
   const ctx = await fakeCtx();
   const layout = { archiveRoot: ctx.archiveRoot, topic: TOPIC };
   await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: 'R1', heartbeatStaleMs: STALE });
-  await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved' });
+  await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved', verifiedRunId: 'R1' });
 
   /*
    * 把审批正本写坏。走宽松读会把「锚被搅坏」当成「没有审批记录」→ 判定可以推进
@@ -159,4 +163,53 @@ test('EV-29：正本损坏时 fail-closed —— 不推进，而不是当成没�
     true,
     '读不出正本时必须保守——宁可不推进，也不能凭「读不到」去撤销人的审批',
   );
+});
+
+/*
+ * ── 核过的就是批的（M10a 第 3 步，计划 r3 §3.3）──
+ *
+ * `cmdApproval` 先复核、再调 `recordApproval`，后者自己再读一次闸门。两次读之间闸门若被
+ * 另一轮接管成 awaiting_approval，状态检查拦不住——只有 run_id 比对能拦。
+ * 本组也是变异 M5（删掉绑定）的鉴别用例：直接调 `recordApproval`，不经 CLI、不经复核。
+ */
+test('verifiedRunId：approved 时与闸门 run_id 不一致 ⇒ 拒绝，闸门与正本都不动', async () => {
+  const ctx = await fakeCtx();
+  await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: 'R2', heartbeatStaleMs: STALE });
+  await assert.rejects(
+    recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved', verifiedRunId: 'R1' }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.GATE_BLOCK);
+      assert.match(e.message, /R2/);
+      assert.match(e.message, /R1/);
+      return true;
+    },
+  );
+  assert.equal((await getGate(ctx.triviumDir, TOPIC, 'plan'))?.state, 'awaiting_approval');
+  const task = await readTask({ archiveRoot: ctx.archiveRoot, topic: TOPIC });
+  assert.equal(task.approvals.length, 0, '核的不是这一轮，就不能留下「已通过」的记录');
+});
+
+test('verifiedRunId：approved 时没传（或为空）⇒ 拒绝——不给「没传就不比」的口子', async () => {
+  for (const runId of ['R1', null] as const) {
+    const ctx = await fakeCtx();
+    await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId, heartbeatStaleMs: STALE });
+    for (const verifiedRunId of [undefined, null, ''] as const) {
+      await assert.rejects(
+        recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved', verifiedRunId }),
+        (e: { code?: number }) => e.code === EXIT.GATE_BLOCK,
+        `闸门 run_id=${runId}、verifiedRunId=${JSON.stringify(verifiedRunId)} 不得放行` +
+          '（闸门为 null 且未传时 null === null 正是那个口子）',
+      );
+    }
+    assert.equal((await getGate(ctx.triviumDir, TOPIC, 'plan'))?.state, 'awaiting_approval');
+  }
+});
+
+test('verifiedRunId 只约束 approved：rejected / abandoned 不需要它', async () => {
+  for (const decision of ['rejected', 'abandoned'] as const) {
+    const ctx = await fakeCtx();
+    await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: 'R1', heartbeatStaleMs: STALE });
+    await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision, reason: '理由' });
+    assert.equal((await getGate(ctx.triviumDir, TOPIC, 'plan'))?.state, decision);
+  }
 });

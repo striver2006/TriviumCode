@@ -10,7 +10,8 @@ import { promises as fs } from 'node:fs';
 import { DEFAULT_DRIVER, findingPrefixAlternation, type AgentId } from './agents/registry.js';
 import { DEFAULT_CRITICS, VOIDING_DENY_CATEGORIES, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
-import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
+import { checkRecordedArtifacts, listStageArtifacts, metaDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
+import { EXIT, TriviumError } from './exit-codes.js';
 import { dispositionKindForStage } from './naming.js';
 import { parseFrontMatter } from './render.js';
 import { parseReview } from './parse.js';
@@ -142,7 +143,7 @@ export interface GateCheckInput {
   runIdPinned?: boolean;
   /**
    * 当轮 Driver。裁决件后缀与它一致（计划 §9.1）。
-   * 缺省 `claude` 与重构前行为逐项相同，为 M10 的 Driver 任意化预留。
+   * 缺省 `claude` 与重构前行为逐项相同；M10a 第 3 步起四家均可为 Driver，由调用方按留痕传入。
    */
   driver?: AgentId;
   /**
@@ -843,6 +844,149 @@ export async function loadRoundReviews(
   const runWarnings = [...(runMeta?.gate?.warnings ?? [])];
 
   return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings };
+}
+
+/**
+ * 审批前复核两个抛错分支的**判别文字**（M10a 第 3 步，计划 r3 §3.1）。
+ *
+ * 导出成常量，函数与测试引用同一份：测试靠它们区分「第 1 步拒绝」与「第 2 步拒绝」，
+ * 两处各抄一遍就会像计划 r2 那样一处带 Markdown 星号、一处不带，基线即红
+ * （计划双审 r2 CODEX-02 ≡ AGY-01 ≡ GLM-01）。
+ *
+ * **唯一性的口径**：在本函数的各抛错分支之间唯一；作为全仓字面，靠的是落笔时 grep
+ * 零命中，**不是机制保证**——以后别处写出同一串，判别只在本函数范围内仍成立。
+ */
+export const APPROVAL_CHECK_NO_RUN_ID = '推断不出 run_id 时不跳过复核';
+export const APPROVAL_CHECK_META_UNREADABLE = '本轮运行元数据读不出，复核无从进行';
+
+export interface ApprovalCheckInput {
+  cfg: Config;
+  layout: ArchiveLayout;
+  stage: Stage;
+  /** 要复核的那一轮。**null ⇒ 抛错拒绝，绝不跳过** */
+  runId: string | null;
+  /**
+   * 该 run_id 是否由调用方钉住，原样透传给 `checkAdjudication`：
+   * 它决定 `missing_disposition` 要不要提示「用 --run-id 指回更早轮次」（见 `GateCheckInput.runIdPinned`）。
+   * approve 没有 `--run-id`、轮次取自闸门记录，传 true 以压掉那句不适用的提示。
+   */
+  runIdPinned: boolean;
+  /** run_id 从哪儿来，进报错（如「最新一次运行」「本机闸门记录」） */
+  runIdSource: string;
+  /**
+   * 两个抛错分支的出口文案，**由调用方给**（计划 r3 §3.2，计划双审 r1 CODEX-02）。
+   *
+   * 判定只有一份，出口却因调用点而异：`--await-approval` 可以「用 --run-id 指定或重跑」，
+   * approve 那一格这两条都走不通（approve 没有 `--run-id`；`review --start` 不抢占
+   * awaiting_approval 的槽位），只剩 abandon 后重跑。照搬一份文案就会给出走不通的出口。
+   * 它只进报错文字，**不参与判定**。
+   */
+  recovery: { missingRunId: string; unreadableRunMeta: string };
+}
+
+export interface ApprovalCheckResult {
+  /** 裁决齐备且本轮登记工件无一缺失或改动 */
+  ok: boolean;
+  runId: string;
+  rerunIndex: number;
+  result: GateCheckResult;
+  tampered: TamperedArtifact[];
+}
+
+/**
+ * 审批前复核：`approve`（通过）与 `gate --await-approval` **共用的唯一一份判定**
+ * （M10a 第 3 步，M10 计划 r7 §4.3 / §4.4，演进设计 §9.4）。
+ *
+ * 顺序执行，**任何一步都没有跳过路径**：
+ *
+ *   1. runId 为 null ⇒ 抛错拒绝；
+ *   2. 本轮运行元数据读不出 ⇒ 抛错拒绝（拿不到 driver 与轮次，不回落缺省 Driver）；
+ *   3. `loadRoundReviews` + `checkAdjudication`（driver / 轮次取自该轮留痕）；
+ *   4. `checkRecordedArtifacts`：**本轮** run.json 登记工件的 sha256 抽核；
+ *   5. 两者都过才算 ok。
+ *
+ * ## 它保什么、不保什么
+ *
+ * 保「本轮裁决齐备」与「本轮登记工件未缺失、未改动」。**抽核范围只到本轮**：更早轮次的登记
+ * 由 `hook-pre-commit` 的锚②在每次提交时全量核对，这里不重复——是取舍，不是完备核对。
+ * **不保「审批来自人」**：approve 不校验调用来源（`approval.ts` 头注释）。
+ */
+export async function verifyRoundForApproval(i: ApprovalCheckInput): Promise<ApprovalCheckResult> {
+  const { cfg, layout, stage, runId } = i;
+  /*
+   * 推断不出 runId 就**拒绝**，而不是跳过检查（审查意见 AGY-05 ≡ GLM-03，原在 cli.ts 的
+   * `--await-approval` 分支，M10a 第 3 步随抽取原样带过来）。
+   * `if (runId)` 那种写法等于留了个后门：只要让 runId 推断失败，
+   * 整段裁决完整性校验就被绕过。
+   */
+  if (!runId) {
+    throw new TriviumError(
+      EXIT.MISSING_ARTIFACT,
+      `找不到 ${stage} 阶段要复核的 run_id（来源：${i.runIdSource}），无法校验裁决完整性。\n` +
+        `  ${APPROVAL_CHECK_NO_RUN_ID}——那等于给「跳过裁决直接审批」留后门。\n` +
+        `  ${i.recovery.missingRunId}`,
+    );
+  }
+
+  const { readRunMeta } = await import('./meta.js');
+  const runMeta = await readRunMeta(layout, stage, runId);
+  if (!runMeta) {
+    /*
+     * 比 `loadRoundReviews` 的宽松口径严（计划 r3 §5 偏差 5）：那里 run.json 读不到时
+     * 交给 `missingSides` 判，这里连 driver 与轮次都拿不到，审批停点不该按猜测放行。
+     * 文案与 `cmdGate` 的「留痕读不出」分档同源：点名、警示别动锚、给走得通的出口。
+     */
+    throw new TriviumError(
+      EXIT.MISSING_ARTIFACT,
+      `${stage} 阶段 run ${runId}（来源：${i.runIdSource}）：${APPROVAL_CHECK_META_UNREADABLE}` +
+        '（文件缺失、内容损坏，或不合 run.v1/v2 契约）。\n' +
+        '  不要删除或改写这份运行元数据——它是提交时留痕核对的锚，动了会让 git commit 被拦下。\n' +
+        `  ${i.recovery.unreadableRunMeta}`,
+    );
+  }
+
+  const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings } =
+    await loadRoundReviews(layout, stage, runId);
+  const result = await checkAdjudication({
+    cfg, layout, stage, rerunIndex: runMeta.rerun_index, reviews,
+    driver: runMeta.driver,
+    runIdPinned: i.runIdPinned,
+    degraded, voidedSides, readonlyBreach, runWarnings,
+    expectedFallbackIds, missingSides, runId,
+  });
+  const tampered = await checkRecordedArtifacts(layout, [
+    { run_id: runId, stage, artifacts: runMeta.artifacts },
+  ]);
+  return { ok: result.ok && tampered.length === 0, runId, rerunIndex: runMeta.rerun_index, result, tampered };
+}
+
+/**
+ * 本轮登记工件的抽核结果，人读渲染。
+ *
+ * 与 `hooks.ts` 提交锚②的两行同义（计划 r3 §5 偏差 3）：刻意不去改那个安全关键文件，
+ * 代价是这两行展示文案有第二份。它不是判据，判据只在 `checkRecordedArtifacts`。
+ *
+ * **恢复出口分两档**（M10a 第 3 步代码双审 r4 CODEX-02）：审批停点上本轮工件通常还没提交，
+ * 只给 `git restore` 的话照做必然失败、`missing` 那一格更无副本——唯一走得通的是作废后重跑。
+ * 这里拿不到 git 状态，所以两档并列写清，不猜。提交锚那份文案面对的是「已提交」为主的时点，
+ * 两份措辞因此不同，分叉登记在 M10a 第 3 步测试报告偏差 3。
+ */
+export function renderTamperedArtifacts(tampered: readonly TamperedArtifact[]): string {
+  if (tampered.length === 0) return '';
+  const lines = tampered.map((t) =>
+    t.kind === 'missing'
+      ? `  · 已丢失：${t.relPath}（run ${t.runId} 记录过它，sha256 ${t.recordedSha256.slice(0, 12)}）`
+      : `  · 已被改动：${t.relPath}（run ${t.runId} 记录 ${t.recordedSha256.slice(0, 12)}，现为 ${t.actualSha256?.slice(0, 12)}）`,
+  );
+  return (
+    '本轮登记的审查工件与留痕不符（sha256 抽核，只核本轮）：\n' +
+    lines.join('\n') +
+    '\n  已落盘的审查工件不得删除或改动。出口按工件在 git 里的状态分两档（这里拿不到 git 状态，两档都写）：' +
+    '\n  · **尚未提交过的（审批停点上的常态）或已丢失的**：没有副本可恢复——`git restore` 对未跟踪路径会直接失败。' +
+    '\n    出口是 `/dual-abandon` 作废这一轮后重跑；重跑按 -r<N> 抬升，既有工件一律不覆盖，不需要先删。' +
+    '\n  · **已提交过的**：可用 `git restore <路径>` 恢复，**这一步请在终端里手动执行**——常规写法在会话里' +
+    '\n    会被 hook-pre-bash 拦下；那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。'
+  );
 }
 
 /** 从 `.fallback-items.md` 读回编排器编好号的待裁决单元（每行 `- <前缀>-F<n>: …`） */

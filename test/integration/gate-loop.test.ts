@@ -4,6 +4,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { bundleMissing, bundleSkipReason, cli, makeFixture, today } from '../helpers/fixture.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
+import { APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID } from '../../src/trivium/gate.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import type { StubConfig } from '../../src/trivium/adapters/stub.js';
 
@@ -1507,3 +1508,183 @@ test(
     );
   },
 );
+
+// ─────────── approve 通过前复核（M10a 第 3 步，M10 计划 r7 §4.3 / §4.4 / §4.5，计划 r3 §4.1）───────────
+/*
+ * 停点立起来之后（`--check` 自动立、或 `--await-approval`），approve 此前不做任何复核：
+ * 裁决件被删改、审查工件被改，approve 照样放行。现在 approved 前与 `--await-approval`
+ * 共用一份判定：裁决齐备 + 本轮登记工件的 sha256 抽核。拒绝与放弃不复核。
+ *
+ * A1～A3 是变异 M1（approve 跳过复核）的鉴别用例；A3 / A3′ 是 M2（跳过 sha256 抽核）的。
+ * **A3 改的必须是渲染出的 .md 审查文档**（计划双审 r1 GLM-01）：结构化结论 JSON 也在登记里，
+ * 但 `loadRoundReviews` 只读它——改它会先因解析失败被判红，M2 就鉴别不出来了。
+ */
+
+/** 本机闸门状态文件（编排器维护；测试夹具里直接读写以构造分叉），写法同本文件既有用例 */
+const LOCAL_STATE = ['.trivium/state.json'] as const;
+/** 审批正本（归档主题目录下） */
+const TASK_NAME = 'task.json';
+
+const gatesOf = async (root: string) =>
+  (JSON.parse(await fs.readFile(path.join(root, ...LOCAL_STATE), 'utf8')) as {
+    gates: Record<string, { state: string; run_id: string | null }>;
+  }).gates;
+
+const approvalsOf = async (archiveRoot: string) =>
+  (JSON.parse(await fs.readFile(path.join(archiveRoot, TOPIC, TASK_NAME), 'utf8')) as {
+    approvals: { decision: string; run_id: string }[];
+  }).approvals;
+
+type Fx = Awaited<ReturnType<typeof makeFixture>>;
+
+/** 跑完一轮并经 `--check` 立起停点（B/C/D 自动立） */
+async function toAwaitingApproval(fx: Fx): Promise<string> {
+  const runId = await runPlan(fx.root, 'C');
+  await writeDisposition(fx.stageDir, runId);
+  const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
+  assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
+  assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'awaiting_approval', '前提：停点已立');
+  return runId;
+}
+
+const approveNow = (root: string) =>
+  cli(root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--session-id', SESSION]);
+
+const awaitNow = (root: string) =>
+  cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval']);
+
+async function assertNotApproved(fx: Fx) {
+  assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'awaiting_approval', '复核未过，闸门必须保持等待审批');
+  assert.ok(
+    !(await approvalsOf(fx.archiveRoot)).some((a) => a.decision === 'approved'),
+    '复核未过，不得留下「已通过」的审批记录',
+  );
+}
+
+/** 本轮渲染出的某一侧审查文档（只受哈希保护，`loadRoundReviews` 不读它） */
+const reviewDoc = (side: string) => `${today()}-${TOPIC}-${side}.md`;
+
+test('A1：停点之后裁决件少了一条 ⇒ approve 退 2，闸门保持等待', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  const disp = path.join(fx.stageDir, `${today()}-${TOPIC}-revised-claude.md`);
+  const text = await fs.readFile(disp, 'utf8');
+  await fs.writeFile(disp, text.split('\n').filter((l) => !l.startsWith('| GLM-01 ')).join('\n'), 'utf8');
+
+  const r = await approveNow(fx.root);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `裁决缺一条仍放行了：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout + r.stderr, /GLM-01/, '要点名缺的是哪一条');
+  assert.match(r.stdout + r.stderr, /通过前复核未过/);
+  await assertNotApproved(fx);
+});
+
+test('A2：--await-approval 通过后删掉裁决件 ⇒ approve 仍退 2', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  const aw = await awaitNow(fx.root);
+  assert.equal(aw.code, EXIT.OK, `${aw.stdout}${aw.stderr}`);
+  await fs.rm(path.join(fx.stageDir, `${today()}-${TOPIC}-revised-claude.md`));
+
+  const r = await approveNow(fx.root);
+  assert.equal(r.code, EXIT.GATE_BLOCK, `裁决件没了仍放行：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout + r.stderr, /裁决件/);
+  await assertNotApproved(fx);
+});
+
+test('A3：--await-approval 通过后改了渲染出的审查文档 ⇒ approve 退 2，点名该文件', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  const aw = await awaitNow(fx.root);
+  assert.equal(aw.code, EXIT.OK, `${aw.stdout}${aw.stderr}`);
+  const doc = reviewDoc('gemini');
+  await fs.appendFile(path.join(fx.stageDir, doc), '\n（停点之后追加的一行）\n', 'utf8');
+
+  const r = await approveNow(fx.root);
+  const out = r.stdout + r.stderr;
+  assert.equal(r.code, EXIT.GATE_BLOCK, `审查文档被改仍放行：\n${out}`);
+  assert.ok(out.includes(doc), `要点名被改的文件：${out}`);
+  assert.match(out, /已被改动/);
+  /*
+   * 出口要走得通（代码双审 r4 CODEX-02）：这份文档从未提交过——停点上的常态——
+   * 只给 `git restore` 的话照做必然失败。必须同时给出「作废后重跑」这一档。
+   */
+  assert.match(out, /dual-abandon/, `未提交工件的出口没给：${out}`);
+  assert.match(out, /尚未提交过的/, '要说清哪一档适用于未提交的工件');
+  await assertNotApproved(fx);
+});
+
+test('A3′：--await-approval 之前审查文档已被改 ⇒ --await-approval 退 2（抽核两处都补了）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  const doc = reviewDoc('gemini');
+  await fs.appendFile(path.join(fx.stageDir, doc), '\n（停点之前追加的一行）\n', 'utf8');
+
+  const aw = await awaitNow(fx.root);
+  const out = aw.stdout + aw.stderr;
+  assert.equal(aw.code, EXIT.GATE_BLOCK, `--await-approval 没有做 sha256 抽核：\n${out}`);
+  assert.ok(out.includes(doc), `要点名被改的文件：${out}`);
+  assert.match(out, /已被改动/);
+});
+
+/*
+ * A4 / A4′：本机闸门项与归档分叉。approve 那一格的出口单独写（计划 r3 §3.2）：
+ * approve 没有 --run-id，`review --start` 不抢占 awaiting_approval 的槽位，
+ * `--check` / `--await-approval` 不改写别的运行的闸门项——只有 abandon 后重跑走得通。
+ * **按出口走一遍**：给出的出口必须真的走得通（cli.ts 里「留痕读不出」那一格被打穿过一次）。
+ */
+async function setGateRunId(root: string, runId: string | null) {
+  const p = path.join(root, ...LOCAL_STATE);
+  const st = JSON.parse(await fs.readFile(p, 'utf8')) as { gates: Record<string, { run_id: string | null }> };
+  st.gates[`${TOPIC}/plan`]!.run_id = runId;
+  await fs.writeFile(p, JSON.stringify(st, null, 2), 'utf8');
+}
+
+async function walkAbandonExit(fx: Fx) {
+  const ab = await cli(fx.root, ['abandon', '--topic', TOPIC, '--stage', 'plan', '--reason', '本机闸门项与归档分叉']);
+  assert.equal(ab.code, EXIT.OK, `给出的出口 abandon 走不通：\n${ab.stdout}${ab.stderr}`);
+  assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'abandoned');
+  // 出口的后半：重跑该阶段双审能抢占槽位
+  const rerun = await runPlan(fx.root, 'C');
+  assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.run_id, rerun, '重跑后闸门应指向新一轮');
+}
+
+test('A4：闸门项没有 run_id ⇒ approve 退 65（第 1 步拒绝、不跳过复核），出口 abandon 后重跑走得通', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  await setGateRunId(fx.root, null);
+
+  const r = await approveNow(fx.root);
+  const out = r.stdout + r.stderr;
+  assert.equal(r.code, EXIT.MISSING_ARTIFACT, `推断不出 run_id 仍放行或退错码：\n${out}`);
+  assert.ok(out.includes(APPROVAL_CHECK_NO_RUN_ID), `缺第 1 步的判别文字：${out}`);
+  assert.ok(!out.includes(APPROVAL_CHECK_META_UNREADABLE));
+  assert.match(out, /dual-abandon/, 'approve 这一格的出口是 abandon 后重跑');
+  assert.doesNotMatch(out, /用 --run-id/, 'approve 没有 --run-id，不能把它当出口给出去');
+  await assertNotApproved(fx);
+  await walkAbandonExit(fx);
+});
+
+test('A4′：闸门项指向不存在的运行 ⇒ approve 退 65（第 2 步拒绝），出口同样走得通', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  await setGateRunId(fx.root, '20990101T000000Z');
+
+  const r = await approveNow(fx.root);
+  const out = r.stdout + r.stderr;
+  assert.equal(r.code, EXIT.MISSING_ARTIFACT, `运行元数据读不出仍放行或退错码：\n${out}`);
+  assert.ok(out.includes(APPROVAL_CHECK_META_UNREADABLE), `缺第 2 步的判别文字：${out}`);
+  assert.ok(!out.includes(APPROVAL_CHECK_NO_RUN_ID));
+  assert.match(out, /20990101T000000Z/);
+  assert.match(out, /dual-abandon/);
+  await assertNotApproved(fx);
+  await walkAbandonExit(fx);
+});
+
+test('拒绝与放弃不复核：停点之后裁决件被删，reject 照常生效', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  await fs.rm(path.join(fx.stageDir, `${today()}-${TOPIC}-revised-claude.md`));
+  const rej = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--reject', '--reason', '方向不对']);
+  assert.equal(rej.code, EXIT.OK, `拒绝不该被复核挡住：\n${rej.stdout}${rej.stderr}`);
+  assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'rejected');
+});

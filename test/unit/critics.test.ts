@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { resolveCriticSelection, resolveDriver, selectableCritics } from '../../src/trivium/critics.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
-import { AGENTS, ALL_AGENT_IDS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+import { AGENTS, ALL_AGENT_IDS, DEFAULT_DRIVER, DRIVER_AGENT_IDS } from '../../src/trivium/agents/registry.js';
 import { CRITICS, type Config, DEFAULT_CRITICS } from '../../src/trivium/types.js';
 import { SELECTABLE, assertSelectableUsable } from '../helpers/critic-fixtures.js';
 
@@ -339,53 +339,132 @@ test('resolveDriver：不给就是缺省 Driver，且 enabledAsDriver 是查表�
   }
 });
 
-test('resolveDriver：未登记的取值退 64，并列出**全部已登记**（不是已启用为 Driver 的）', () => {
+test('resolveDriver：未登记的取值退 64，并列出**可用作 Driver** 的那几家（M10a 第 3 步起两个分支同口径）', () => {
   assert.throws(
     () => resolveDriver('nobody'),
     (e: { code?: number; message: string }) => {
       assert.equal(e.code, EXIT.USAGE, '参数错误一律退 64');
       /*
-       * 文案论域必须是 `ALL_AGENT_IDS`。判据是「已登记」，而 `DRIVER_AGENT_IDS`
-       * 今天只含缺省 Driver 一家——拿它当清单，报错列出的可用值会与实际接受的
-       * 取值不一致，又是一次「第一个错误把用户引向第二个错误」。
+       * M9 时这里列「全部已登记」，因为那时判据就是「已登记」。M10a 第 3 步起判据是
+       * 「已登记且已启用为 Driver」，报错列出的可用值必须与实际接受的取值一致，
+       * 否则第一个错误把用户引向第二个错误（计划双审 r2 GLM-02）。今天四家全启用，两口径同集。
        */
-      for (const id of ALL_AGENT_IDS) {
-        assert.match(e.message, new RegExp(id), `报错里要列出 ${id}：它是合法取值`);
+      assert.match(e.message, /可用作 Driver/);
+      for (const a of AGENTS.filter((x) => x.driverEnabled)) {
+        assert.match(e.message, new RegExp(a.id), `报错里要列出 ${a.id}：它是合法取值`);
       }
       return true;
     },
   );
 });
 
-test('resolveDriver：已登记但尚未启用为 Driver → **不抛**，只把 enabledAsDriver 置 false', () => {
-  /*
-   * M9 刻意只校验「已登记」。校验 `driverEnabled` 会形成死循环：当前只有缺省
-   * Driver 一家启用，而第 6 步验收恰恰要让它当审核者、由别家当 Driver——
-   * 那时 `--driver <别家>` 会被拒，验收永远跑不成。
-   * 取舍是「放行 + 如实标注」，M10 再收紧成校验。
-   */
-  assertSelectableUsable();
-  const other = SELECTABLE[0]!;
-  const r = resolveDriver(other);
-  assert.equal(r.driver, other);
-  assert.equal(r.enabledAsDriver, false, `${other} 在注册表里是 driverEnabled: false`);
+/**
+ * 造一个「只关掉某一家 Driver 能力」的注入表（M10a 第 3 步的桩 overlay）。
+ *
+ * 四家翻开之后 `driverEnabled: false` 对真实注册表不可达——它守的是**第五家登记而未启用**
+ * 的那一格。覆盖不能取决于生产数据碰巧长什么样（本文件 :133 那条的同款教训），所以靠注入表。
+ */
+function withDriverDisabled(id: string) {
+  return AGENTS.map((a) => (a.id === id ? { ...a, driverEnabled: false } : a));
+}
+
+test('resolveDriver：已登记但未启用为 Driver（桩）→ 退 64，清单来自注入表且不含该桩', () => {
+  const stub = ALL_AGENT_IDS.find((id) => id !== DEFAULT_DRIVER)!;
+  const registry = withDriverDisabled(stub);
+  assert.throws(
+    () => resolveDriver(stub, registry),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.USAGE, 'M10a 第 3 步起未启用为 Driver 退 64，不再「放行 + 标注」');
+      assert.match(e.message, /尚未启用为 Driver/);
+      const tail = e.message.slice(e.message.indexOf('可用作 Driver'));
+      assert.doesNotMatch(tail, new RegExp(`\\b${stub}\\b`), `清单里不该有未启用的 ${stub}：${tail}`);
+      return true;
+    },
+  );
+  // 未登记分支同口径：未启用的那一家同样不出现在它的清单里（计划双审 r2 GLM-02）
+  assert.throws(
+    () => resolveDriver('nobody', registry),
+    (e: { message: string }) => {
+      const tail = e.message.slice(e.message.indexOf('可用作 Driver'));
+      assert.doesNotMatch(tail, new RegExp(`\\b${stub}\\b`), `未登记分支的清单也不该列未启用的 ${stub}：${tail}`);
+      return true;
+    },
+  );
 });
 
-test('resolveDriver：非缺省**且已启用**那一臂——靠注入表构造，不留「今天验不了」的空当', () => {
+test('resolveDriver：清单按 Driver 口径派生，不借审核者口径（criticEnabled 为假的 Driver 也要列出）', () => {
   /*
-   * 真实注册表里 `driverEnabled: true` 只有缺省 Driver 一家，所以这一臂
-   * **今天构造不出来**。上一版计划把它写成一条用例却没给注入口，
-   * 实现者只能临场造夹具绕注册表——那正是「留给临场发明」的口子。
-   *
-   * 注入口与 `CriticSelectionInput.descriptors` 同构：判定本就只依赖
-   * 「登记表 + 配置」，把登记表参数化是把隐式依赖显式化，生产路径一个字不变。
+   * 计划双审 r1 CODEX-03：`legalList` 是审核者口径（criticEnabled ∩ 有配置段 − 当轮 Driver）。
+   * 今天四家两口径同集，看不出差别；第五家「只当 Driver 不当审核者」时就会漏列一个合法取值。
    */
-  assertSelectableUsable();
-  const other = SELECTABLE[0]!;
-  const registry = AGENTS.map((a) => ({ ...a, driverEnabled: a.id === other ? true : a.driverEnabled }));
-  const r = resolveDriver(other, registry);
-  assert.equal(r.driver, other);
-  assert.equal(r.enabledAsDriver, true, '注入表里它已启用为 Driver，判定要跟着注入表走');
+  const driverOnly = ALL_AGENT_IDS.find((id) => id !== DEFAULT_DRIVER)!;
+  const disabled = ALL_AGENT_IDS.find((id) => id !== DEFAULT_DRIVER && id !== driverOnly)!;
+  const registry = withDriverDisabled(disabled).map((a) =>
+    a.id === driverOnly ? { ...a, criticEnabled: false } : a,
+  );
+  assert.throws(
+    () => resolveDriver(disabled, registry),
+    (e: { message: string }) => {
+      const tail = e.message.slice(e.message.indexOf('可用作 Driver'));
+      assert.match(tail, new RegExp(`\\b${driverOnly}\\b`), `只当 Driver 的 ${driverOnly} 是合法取值，清单漏了它：${tail}`);
+      return true;
+    },
+  );
+});
+
+test('resolveDriver：缺省分支走同一个判定——缺省 Driver 在注入表里被关掉时，不传旗标同样退 64', () => {
+  const registry = withDriverDisabled(DEFAULT_DRIVER);
+  for (const raw of [null, undefined, '', '   ']) {
+    assert.throws(
+      () => resolveDriver(raw, registry),
+      (e: { code?: number; message: string }) => {
+        assert.equal(e.code, EXIT.USAGE, `取值 ${JSON.stringify(raw)}：缺省分支不能写死 true 放行`);
+        assert.match(e.message, /未传 --driver/, '要说清楚这是缺省 Driver，不是用户传错了');
+        return true;
+      },
+    );
+  }
+});
+
+test('resolveDriver：非缺省 Driver 在真实注册表下已启用（M10a 第 3 步翻开关）', () => {
+  /*
+   * M9 时「非缺省且已启用」这一臂只能靠注入表构造。四家翻开之后真实注册表即可覆盖；
+   * 注入表那一格留作对照：判定要跟着注入表走，而不是偷看模块级注册表。
+   */
+  for (const id of ALL_AGENT_IDS) {
+    const r = resolveDriver(id);
+    assert.equal(r.driver, id);
+    assert.equal(r.enabledAsDriver, true, `${id} 已启用为 Driver`);
+  }
+  const other = ALL_AGENT_IDS.find((id) => id !== DEFAULT_DRIVER)!;
+  assert.throws(() => resolveDriver(other, withDriverDisabled(other)), /尚未启用为 Driver/,
+    '同一个 id，注入表里关掉就必须退 64——判定跟着注入表走');
+});
+
+/*
+ * **自适应断言：真实注册表是否四家全启用为 Driver**（同 :206 的先例）。
+ * 第五家登记而未启用时这条红——提醒上面几条桩用例可以回到真实注册表取夹具。
+ * 写成断言而不是注释：注释会随注册表变化而失真，且没有任何机制提醒。
+ */
+test('真实注册表当前全部启用为 Driver——引入未启用的第五家时，桩用例可回到真实注册表', () => {
+  assert.deepEqual(
+    [...DRIVER_AGENT_IDS], [...ALL_AGENT_IDS],
+    '注册表出现了未启用为 Driver 的 Agent。这不是错误：resolveDriver 的 64 分支从此有了真实数据覆盖。',
+  );
+});
+
+/*
+ * **J5 穷举**（M10 计划 r7 §4.6）：四家逐一作为 Driver 时，自己都不在可入选集合里，
+ * 显式选自己退 64。论域取「全部已登记」而不是「已启用为 Driver」，第五家登记时自动进穷举。
+ */
+test('J5：每一家作为 Driver 时，selectableCritics 都不含自己，且 --critics 自己 退 64', () => {
+  for (const id of ALL_AGENT_IDS) {
+    assert.ok(
+      !(selectableCritics(cfg(), id) as readonly string[]).includes(id),
+      `${id} 作为 Driver 时仍在自己的可入选集合里——自己审自己不构成二次审查`,
+    );
+    rejects(() => resolveCriticSelection(cfg(), { critics: id, driver: id }), /Driver/);
+  }
 });
 
 test('selectableCritics：论域是「启用 ∩ 有配置条目 − 当轮 Driver」，且跟着注入表走', () => {

@@ -261,10 +261,10 @@ test('预检：--driver 非缺省时多打一行提示，且它是 ok:true 不�
 
 test('预检：--driver 已启用为 Driver 时，提示里不带「仅用于选侧判定」那句', async () => {
   /*
-   * 「非缺省**且已启用**」这一臂在真实注册表下今天构造不出来——`driverEnabled: true`
-   * 只有缺省 Driver 一家（其余三家都是 `// M10 启用`）。
-   * 预检这一层接受的是布尔入参，所以可以直接构造；`resolveDriver` 那一层
-   * 则另开了 `descriptors` 注入口（见 critics.test.ts），两处都不留「今天验不了」的臂。
+   * 「非缺省**且已启用**」这一臂在 M9 时的真实注册表下构造不出来（那时只有缺省 Driver 启用）；
+   * M10a 第 3 步四家翻开之后，生产路径上传进来的恒为 true，反倒是 false 那一臂只剩注入测试能走到。
+   * 预检这一层接受的是布尔入参，两臂都可以直接构造；`resolveDriver` 那一层
+   * 另开了 `descriptors` 注入口（见 critics.test.ts），两处都不留「验不了」的臂。
    */
   const ctx = await fakeCtx();
   const r = await runPreflight({
