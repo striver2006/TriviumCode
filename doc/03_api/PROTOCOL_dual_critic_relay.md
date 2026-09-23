@@ -1,6 +1,6 @@
 # PROTOCOL：Driver-DualCritic 工件中继与协议契约
 
-> 依据 [设计 v1.3.30](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.6](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.37](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.7](../01_requirements/PRD_driver_dual_critic.md)。
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
 >
 > **⚠️ 本文描述的是当前真实生效的契约**（**`config.v2`** / **`run.v2`** / 四家审核者（缺省三家）/ `--driver <id>`）。
@@ -25,7 +25,7 @@
 >
 > **`addresses` 基数 1～3 已随 M7b 的 `--critics` 生效**（`minItems: 1`，上限即入选审核者数）。
 > **意见编号前缀已是四值**（`CODEX-` 随 M8、`CLAUDE-` 随 M9；取值由注册表派生、schema 不枚举）；
-> `--tier-*` / `--effort-*` 等旗标**尚未生效**，随 M10 / M11 并入本文。
+> `--tier-*` / `--effort-*` 等旗标**尚未生效**，随 M10b / M11 并入本文。
 > `--critics` 当前可选四家：codex / gemini / glm 为缺省集合（默认即三侧，D4-4），
 > claude 只在 `--driver` 取非 claude 时可入选（当轮 Driver 不得入选）。
 > **按本文实现的客户端不会被演进破坏**：读侧双读、旧形态长期兼容。
@@ -283,7 +283,7 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 
 | Hook | 事件 | 拦什么 |
 | :--- | :--- | :--- |
-| `hook-pre-write` | `PreToolUse` / `Edit\|Write\|NotebookEdit` | ①主脑写 `*-gemini.md` / `*-glm.md`（AC-07，与闸门状态无关）②编排器独占对象（运行时状态与锁、归档内 `_meta/` 与 `task.json`）③闸门期改业务文件（归档内不拦） |
+| `hook-pre-write` | `PreToolUse` / `Edit\|Write\|NotebookEdit` | ①主脑在归档内写审核者后缀的文件（全部已登记角色减当轮 Driver，claude 为 Driver 时即另三家；AC-07，与闸门状态无关）②编排器独占对象（运行时状态与锁、归档内 `_meta/` 与 `task.json`）③闸门期改业务文件（归档内不拦） |
 | `hook-pre-bash` | `PreToolUse` / `Bash`（无 `if` 过滤） | `hook-pre-write` 只覆盖 Edit / Write，`cat > f`、`sed -i`、`tee`、`git checkout` 是旁路。按写命令形态做**启发式**拦截：命中编排器独占对象 → **任何时候**都拦；其余写命令 → 仅闸门期拦。判定在**未剥 heredoc 的原文**上进行 |
 | `hook-pre-commit` | `PreToolUse` / `Bash`（无 `if` 过滤） | 裁决未齐备时禁止提交（AC-12），并校验留痕完整性 |
 | `hook-stop` | `Stop` | 裁决未齐备时禁止收工（AC-02），输出 `{"decision":"block","reason":…}` |
@@ -340,7 +340,7 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 | `doctor --selftest` | 临时夹具里真跑整条流水线，14 步核对（桩适配器，零配额） |
 | `preflight --stage plan\|code\|bug\|all [--critics <id,…>]` | 设计 §8.1 的启动预检，fail-fast，失败零工件。`--critics` 指定本次要用哪几侧——只读能力、模型 slug、探活都只查这几侧，缺省取 `review.default_critics`（M8 第 3 步）。**四条 skill 的第 1 步不传它**：那时 `topic resolve` 还没跑、选侧尚未解析出来。选了非缺省侧时，该侧的可用性由 `review --start` 在拉起 CLI 之前的 `availability()` 兜住（AC-20 末条的落点），`--critics` 供用户显式预检时用 |
 | `topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。`--stage` 也接受 `all`（命令 A 用）。`--` 之后按 argv 逐个 token 解析、不再分词（EV-18）：正文整段放进一个单引号参数，旗标放在引号之外；`--topic` 字样被包进正文而未显式给主题时退 64。`--args` 传法已删 |
-| `topic claim --topic <主题> --stage <s> --driver <id> [--session-id <id>]` | 为该**阶段**声明当轮 Driver（M10a 第 1 步，EV-72）。plan / bug 原稿写在 `review --start` 之前，那一刻该阶段零留痕、判定回落缺省 Driver，非缺省 Driver 写不出自己的原稿。`--stage` **必填不默认**：声明直接决定 Write / Edit 侧的保护集。判定顺序自上而下：**留痕优先**——该阶段已有运行留痕且与 `--driver` 不同 ⇒ 退 64（出口是新开主题或换阶段）；已声明同值 ⇒ 幂等退 0 且**不刷新** `claimed_at`；该阶段子树里已存在**他家角色后缀**的文件 ⇒ 退 64（出口是在终端清理后重试，会话内删不掉是 Bash 守卫的刻意取舍）；其余合法认领放行。撤回的旧声明整条追加进 `drivers[<阶段>].history`，不覆盖。`--session-id` 落进 `claimed_by`，与 `approvals[].session_id` 同一个用途：自声明边界要让事后对得上账 |
+| `topic claim --topic <主题> --stage <s> --driver <id> [--session-id <id>]` | 为该**阶段**声明当轮 Driver（M10a 第 1 步，EV-72）。plan / bug 原稿写在 `review --start` 之前，那一刻该阶段零留痕、判定回落缺省 Driver，非缺省 Driver 写不出自己的原稿。`--stage` **必填不默认**：声明直接决定 Write / Edit 侧的保护集。判定顺序自上而下：**留痕优先**——该阶段已有运行留痕且与 `--driver` 不同 ⇒ 退 64（出口是新开主题或换阶段）；已声明同值 ⇒ 幂等退 0 且**不刷新** `claimed_at`；该阶段子树里已存在**他家角色后缀**的文件 ⇒ 退 64（那些文件可能是撤回前的旧声明留下的，也可能是尚无声明时写下、仍在使用的原稿；出口是由用户确认去留、在终端处理后重试。不在会话里删它们来换回认领——这条限制防的正是会话自己反复翻转声明，见设计 7.1 `topic claim` 段）；其余合法认领放行。撤回的旧声明整条追加进 `drivers[<阶段>].history`，不覆盖。`--session-id` 落进 `claimed_by`，与 `approvals[].session_id` 同一个用途：自声明边界要让事后对得上账 |
 | `review --stage <s>` | 同步跑一次双审（手工调试用） |
 | `review --start / --wait / --status / --cancel` | 分段协议 |
 | `review --worker <run_id>` | 工作进程入口，由 `--start` 派生。**不应由人直接调用** |

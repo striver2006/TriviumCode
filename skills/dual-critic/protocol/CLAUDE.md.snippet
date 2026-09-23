@@ -26,7 +26,7 @@
   （重定向、`tee`、`sed -i`、`rm/mv/cp`、`git checkout` …），不是完备的——别去绕它，
   绕过去的改动同样会被跑后复算判成漂移。
 - Bash 拦截有一种**已知误拦**：判定在未剥 heredoc 的原文上做，命令正文里只要出现
-  `-gemini.md`、`_meta`、`task.json`、`state.json`、`.trivium` 字样就会命中，
+  任一角色后缀（`-gemini.md`，也包括你自己的，例如 `-claude.md`）、`_meta`、`task.json`、`state.json`、`.trivium` 字样就会命中，
   哪怕实际写的是别的文件——**任何把这些名字写进 Bash 命令文本的场合都会撞上**，
   包括 commit message。
   **出口是改用 Write / Edit 工具落文件，提交说明写进文件再 `git commit -F <文件>`**

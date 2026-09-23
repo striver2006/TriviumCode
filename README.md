@@ -33,7 +33,7 @@
 > `--critics` 已可用，四家 Agent 均已启用为审核者；Antigravity、ZCode、Codex 三家
 > 同为**缺省入选集合**（不写 `--critics` 时默认跑这几侧，2026-09-16 决策 D4-4）；
 > **第四家（Claude Code 作审核者）已随 M9 接入**（2026-09-20 真实审查一次通过 `consulted` 交叉核对），
-> 但它是本会话的 Driver，入选须 `--driver` 取另一家——换一家 Agent 真正主攻待 M10。
+> 但它是本会话的 Driver，入选须 `--driver` 取另一家——换一家 Agent 在自己的 CLI 里真正主攻待 M10b（编排器侧的判定与护栏已随 M10a 交付）。
 > 规范与进度见[设计文档](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
 > **本 README 其余部分描述的都是当前可用的系统。**
 
@@ -86,7 +86,7 @@ TriviumCode **绝非**调用 LLM 补全接口，而是直接拉起各厂商**系
 
 ### 5. 按需动态调度大模型
 
-支持按任务分别指定两侧模型，两边可不同，且**默认与主脑异构**（非 Claude 系）：
+支持按任务分别指定两侧模型，两边可不同，且**默认与主脑异构**（各侧生效模型不落在当轮 Driver 厂商的名义模型族，Claude Code 执笔时即非 Claude 系；按模型名判定，属启发式）：
 
 - **日常快速迭代**：两侧都用轻量高速模型，极速响应；
 - **核心重构 / 高危排错**：两侧都用旗舰推理模型，展开深度推演。
@@ -108,7 +108,7 @@ TriviumCode **绝非**调用 LLM 补全接口，而是直接拉起各厂商**系
 
 辅助命令：`/dual-approve`（人工审批 / 拒绝）、`/dual-abandon`（放弃闸门）、`/dual-status`（状态查询）。
 
-**关于停点**：B/C/D 停在人工审批不是一句提示，而是三层机制——状态层写入 `awaiting_approval`，提示层输出统一停点话术，**强制层由 Claude Code Hook 在 `PreToolUse` 拒绝写入业务文件**。同时 Hook 会拒绝 Driver 写出 `*-gemini.md` / `*-glm.md`，防止主脑自己编一份审查。
+**关于停点**：B/C/D 停在人工审批不是一句提示，而是三层机制——状态层写入 `awaiting_approval`，提示层输出统一停点话术，**强制层由 Claude Code Hook 在 `PreToolUse` 拒绝写入业务文件**。同时 Hook 会拒绝 Driver 在归档内写出审核者后缀的文件（全部已登记角色减当轮 Driver，Claude Code 执笔时即另三家），防止主脑自己编一份审查；Bash 侧另按命令文本字面拦全部角色后缀（启发式）。
 
 **命令 D 不得由 A 或 C 代替**：命令 A 的链路不含独立根因审阶段，遇到待审根因材料一律引导至 D。
 
@@ -199,12 +199,12 @@ TriviumCode **绝非**调用 LLM 补全接口，而是直接拉起各厂商**系
 .reviews/<主题>/<阶段>/<YYYY-MM-DD>-<主题>[-r<N>][-revised|-response]-<角色>.md
 
 阶段 = plan | code | bug | verify
-角色 = claude | gemini | glm
+角色 = claude | codex | gemini | glm（由 Agent 注册表派生）
 ```
 
 - `-r<N>`：同一主题同一阶段**重跑**时追加（N 从 2 起）。**既有工件无论是否已审批一律不覆盖**，`archive` 以 `O_CREAT|O_EXCL` 原子创建保证。
 - `-revised`：计划 / 根因修订件；`-response`：代码应答件。
-- 角色后缀是硬约束：审查员不得产出 `claude` 后缀，Driver 不得产出 `gemini`/`glm` 后缀。
+- 角色后缀是硬约束：审查员不得产出当轮 Driver 的后缀，Driver 不得产出审核者的后缀（受保护集 = 全部已登记角色减当轮 Driver，Claude Code 执笔时即 `codex` / `gemini` / `glm`）。
 
 ### 各阶段工件集
 

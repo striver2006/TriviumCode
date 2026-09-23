@@ -1,14 +1,14 @@
 # 快速上手：Driver-DualCritic 双审流水线
 
 > 目标：**15 分钟内**装好并跑通一条真实任务。
-> 依据 [设计 v1.3.30](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.6](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.37](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.7](../01_requirements/PRD_driver_dual_critic.md)。
 >
 > **本文描述的是当前可用的系统**：Claude Code 主攻 + 缺省三侧审查（Antigravity / ZCode / Codex，2026-09-16 起默认即三侧）。
 > 第四家（Claude Code 作审核者）已随 M9 接入，但它是本会话的 Driver，入选须 `--driver` 取另一家，本文不展开；
-> 换一家 Agent 主攻（M10）与思考等级三档（M11）**还不能用**，按本文操作即可。
+> 换一家 Agent 在自己的 CLI 里主攻（M10b）与思考等级三档（M11）**还不能用**，按本文操作即可。
 > **`--critics <id,…>` 已可用**——从已启用的几家里选跑哪几侧（选一侧不算降级）。
 > **本文正文的安装与 doctor 步骤仍以 Antigravity / ZCode 两家为例**；Codex 侧的 provider 配置由
-> `doctor` 探测并给可粘贴样例（设计 16.2 纪律 5），完整指引随 M10 入口资产收口后补写。
+> `doctor` 探测并给可粘贴样例（设计 16.2 纪律 5），完整指引随 M10b 入口资产收口后补写。
 
 这条流水线让 Claude Code 主攻写代码，**Google Antigravity** 与**智谱 ZCode** 两个
 独立审查员背靠背复审，结论逐条落盘留痕。你的角色是 Driver 的使用者——按 `/dual-*`
@@ -211,7 +211,7 @@ plan 审查中 ｜ 已用 5m0s / 预算 15m0s（33%）｜ gemini 已完成 · gl
 | :--- | :--- | :--- |
 | 审查进行中 | 改业务文件 | 等审查跑完。审查员正在读真实工作树，你的改动会造成快照漂移，可能让整次运行作废 |
 | 审查完成、裁决未齐备 | `git commit`、结束对话 | 补齐裁决件，跑 `gate --stage <阶段> --check` 通过 |
-| 任何时候 | 主脑写 `*-gemini.md` / `*-glm.md` | 这两类文件只能由编排器渲染落盘（AC-07），你的产出后缀是 `-claude` |
+| 任何时候 | 主脑在归档内写审核者后缀的文件（全部已登记角色减当轮 Driver；Claude Code 主攻时即 codex / gemini / glm 三家） | 审查文档只能由编排器渲染落盘（AC-07），你的产出后缀是当轮 Driver 自己的（本文的 Claude Code 主攻即 `-claude`） |
 | 闸门期 / 任何时候 | 用 **Bash** 绕过前三道：`cat > f`、`sed -i`、`tee`、`git checkout -- f` | Edit / Write 只是写文件的一条路，这些是旁路。命中编排器独占对象（角色后缀文件、`.trivium/` 的状态与锁、归档内 `_meta/` 与 `task.json`）**任何时候**都挡；其余写命令只在闸门期挡 |
 
 第四道是**启发式**的，不求完备——它挡住顺手的旁路，但不要指望绕过去就没事：

@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.36
+> - **当前版本**：v1.3.37
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -33,7 +33,10 @@
 >   第 7 步纪律 6 回溯（本版，落点见 §21 该行与 §24.1）。
 >   **达成边界四条**：验收载体是名义 Driver（`--driver codex` 只作声明，仍在 Claude Code 会话里操作）、
 >   审核者与 Driver 同为 claude 家族、J6 未诱导、真载体下 Hook 未验（EV-77）——原文见 16.1 M9 行末段。
->   M10～M11 尚未开工。
+>   **原 M10 于 2026-09-22 拆为 M10a / M10b。M10a（Driver 护栏与契约面）五步已达成（2026-09-24，v1.3.37）**：
+>   按阶段声明当轮 Driver（`topic claim`，7.1）、提交锚改「位置 + 登记」（8.5）、翻开 `driverEnabled` 并收紧、
+>   `approve` 前置复核（8.4 / 8.5）、登记清理、Bash 侧角色后缀全集字面保护——**零真实 CLI 调用**，
+>   八条达成边界见 16.1 M10a 行。**M10b（入口资产与真载体验收）与 M11 尚未开工。**
 >   **本段是「现状断言」，凡与代码不一致一律以代码为准**——它曾在 M8 第 2、3 步合入后
 >   连续两版未跟上（两次回填都只改了各自章节），第 4 步的计划双审把它查了出来。
 >   本文继续作为**唯一实现依据**：后续任何与本文不一致的改动，仍须先回溯修订本文（16.2 纪律 1、纪律 6）
@@ -79,7 +82,7 @@
 
 | 术语 | 含义 |
 | :--- | :--- |
-| Driver | **当轮**执笔与裁决者。当前唯一启用者是 Claude Code（VS Code 插件）；【待实施 · M10】起成为「每次运行的属性」，任一注册 Agent 皆可担任，记入 `run.json.driver` |
+| Driver | **当轮**执笔与裁决者。缺省是 Claude Code（VS Code 插件）。自 M9 第 5 步起是「每次运行的属性」（`--driver <id>`，记入 `run.json.driver`）；plan / bug 阶段在写原稿之前可经 `topic claim` 按阶段声明（M10a 第 1 步，见 7.1）；注册表四家自 M10a 第 3 步起均可用作 Driver。**在别家自己的 CLI 里执笔**（入口资产、真载体下的 Hook）【待实施 · M10b】 |
 | Critic-A / `gemini` | Antigravity 编程 Agent（CLI 入口 `agy`），审查输出角色后缀 `gemini` |
 | Critic-B / `glm` | ZCode 编程 Agent（CLI 入口 `zcode.cjs`），审查输出角色后缀 `glm` |
 | **Agent** | 一家厂商编程 Agent 的注册项：`claude`（Claude Code）/ `codex`（Codex）/ `gemini`（Antigravity）/ `glm`（ZCode）。Agent id 同时是**归档后缀**与配置键命名空间 |
@@ -113,7 +116,7 @@
 | # | 目标 | 对应 PRD | 落点 | 状态 |
 | :--- | :--- | :--- | :--- | :--- |
 | R-1 | QWen / DeepSeek 等多模型家族经 Codex 接入为审核者 | FR-27 | 7.1 桩位、9.3、11.1 | 【**已达成** · M8 第 4 步（AC-20，2026-09-16，含三条达成边界，见 15.3）；FR-27 的厂商 profile **单次覆盖入口**仍缺（EV-22，随 M11 档位表收口）——状态位自 M8 起失实，M9 第 7 步改准】 |
-| R-2 | 任一注册 Agent 可作为 Driver（「Driver」从系统常量降为每次运行的属性） | FR-28 | 第 0 章术语、6.7.1、8.5 | 【待实施 · M10】 |
+| R-2 | 任一注册 Agent 可作为 Driver（「Driver」从系统常量降为每次运行的属性） | FR-28 | 第 0 章术语、6.7.1、7.1、8.5 | 【**部分达成** · M10a（编排器侧的判定与护栏，2026-09-24）；入口资产与真载体 · M10b】 |
 | R-3 | 每次审核动态选 1～3 个审核者；选 1 审是配置意图、**不标降级** | FR-29 | 6.7.1、8.6、12.1 | 【**部分达成** · M7b 第 5 步（`--critics` 入口）+ M8 第 3 步 / D4-4（三家启用、默认即三侧）+ M9 第 4～5 步（第四家可选，须 `--driver` 取非 claude）；「三个编号前缀都对闸门可见」仍须逐轮核对，见 15.3 AC-22——状态位自 M7b 起失实，M9 第 7 步改准】 |
 | R-4 | 逐审核者指定模型与思考等级；每 Agent 提供高中低三档组合 | FR-30 | 11.5、13.1.1 | 【待实施 · M11】 |
 | R-5 | 通用 Agent 注册表架构：新增 Agent = **接入套件（七件）**，核心流程零改动 | FR-31 | **4.1、5.1**（注册表本体）、**5.1.1**（套件清单与验收装置） | 【**部分达成** · M7a + M7b 第 6 步（桩级）+ **M8 / M9 两家真实接入已完成**（codex 2026-09-16、claude 2026-09-20）；仍不记「已达成」：接入 claude 时核心流程改了两处（Hook 保护集判据、选侧检查成为唯一防线，见 16.1 M9 行第 4 步）——套件不覆盖「新 Agent 同时是缺省 Driver」这一情形；第 ⑤ 件对 claude 显式不做（EV-44）。5.1.1「已知缺口」所记的三项 preflight 写死已于 M8 第 3 步收敛（EV-05 结案）】 |
@@ -163,7 +166,7 @@
 | FR-13/14 意见可裁决 + 逐条裁决 | `trivium.review.v1` 意见 schema + `trivium gate` 裁决完整性硬校验 | 6.5、6.6、8.6 |
 | FR-15 只读 | 三重保障：工具集裁剪 + 前后指纹比对（`tree_hash` + `git status`）+ 轨迹核验 | 10.3 |
 | FR-16 送审自包含 | 送审包结构固定，落盘 `_meta/`；被审对象以真实路径 + sha256 固定，漂移可检出 | 第 9 章 |
-| FR-17 模型异构默认 | 默认 profile 非 Claude 系；覆盖需显式且回填元数据 | 11.3 |
+| FR-17 模型异构默认 | 默认 profile 下各审核者的生效模型不落在当轮 Driver 厂商的名义模型族（claude 为 Driver 时即非 Claude 系；按模型名判，属启发式，见 11.5）；覆盖需显式且回填元数据 | 11.3 |
 | FR-18 启动预检 | `trivium preflight` 在任一侧送审前完成，失败即中止且零工件 | 8.1 |
 | FR-19 超时与降级 | `failure_policy: strict\|degrade` + 降级标记与原因写入元数据与文档头 | 第 12 章 |
 | FR-20 提示语进上下文 | 提示语是 B/C/D 必填参数，写入两侧送审包的固定段落 | 7.3、9.4 |
@@ -375,7 +378,7 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 > （M8 期间重跑留下的），与本行的 2.1.270 是两个指称，不相冲突。
 >
 > **身份提醒**：claude 是**当前的 Driver**。本节记的是它作为**审核者**被 headless 拉起时的能力；
-> 接入为审核者是 M9、Driver 任意化是 M10。
+> 接入为审核者是 M9、Driver 任意化是 M10（2026-09-22 拆为 M10a 编排器侧 / M10b 真载体）。
 
 | 探针项 | 实测结论 | 落盘字段 |
 | :--- | :--- | :--- |
@@ -727,7 +730,7 @@ R-5 / FR-31 的承诺是「新增一家 Agent 只需一份套件，核心流程�
   落了这个文件，断言不了它被用上。已登记 BACKLOG **EV-06**。
   登记而不接线的字段会让后来者以为它已经生效，这正是本项目一贯反对的形态。
   **M9 补记**：第 ⑤ 件对 claude 侧已裁定**显式不做**（EV-44——`--restricted` 会连项目记忆一起阻断，
-  片段做出来是死件）；EV-06 的消费方问题随 M10「入口资产单源渲染」一并处理。
+  片段做出来是死件）；EV-06 的消费方问题随 M10b「入口资产单源渲染」一并处理（原 M10 拆分后，入口资产归 M10b）。
 
 **中间态的处置原则**：`checkModelSlugs` 的缺口在本步被改成了**可见**的——
 它按 vendor 分派，未知厂商记「无法校验」第三态（不拦，但在预检输出里点名是哪几侧
@@ -826,8 +829,8 @@ TriviumCode/
 ```text
 <YYYY-MM-DD>-<主题字段>-<角色>.md
 主题字段 = <主题>[-r<N>][-revised|-response]
-角色     = claude | gemini | glm          # 当前生效的枚举（两家审核者 + Driver）
-         → claude | codex | gemini | glm  # 【待实施 · M8 / M9】codex 与 claude 启用为审核者后
+角色     = claude | codex | gemini | glm  # 由注册表派生；四家均可为审核者（codex 随 M8、claude 随 M9），
+                                          # 均可用作 Driver（M10a 第 3 步）。v1.3.37 前此处仍写「两家审核者 + Driver」
 ```
 
 > **状态拆解（v1.3.0 新增，标记粒度的示范条目）**：
@@ -839,7 +842,7 @@ TriviumCode/
 >
 > 两者的区别是本文状态标记制度的要点：**「注册表登记了四家」不等于「系统支持四家」**。
 > 前者是机制已就位（可观察：`registry.ts` 存在且被对账测试守着），
-> 后者是能力可被外部观察到（当前观察不到：指定 `codex` 为审核者会被拒绝）。
+> 后者是能力可被外部观察到（M7a 当时观察不到：指定 `codex` 为审核者会被拒绝；M8 第 3 步起已可观察）。
 
 规则细则：
 
@@ -849,7 +852,7 @@ TriviumCode/
 | `-r<N>` | 仅当同一主题同一阶段重跑时出现，`N` 从 2 起递增（首跑无后缀）。同一次运行内两侧与裁决件共用同一 `N`（FR-25 / AD-11） |
 | `-revised` | 计划修订件、根因修订件专用；只出现在 `plan/`、`bug/` 的 `claude` 文件 |
 | `-response` | 代码应答件专用；只出现在 `code/` 的 `claude` 文件 |
-| 角色后缀 | 审查员不得产出 Driver 后缀；Driver 不得产出审核者后缀（由 Hook + `archive` 双重拦截，PRD 6.3）。**Hook 的 Write/Edit 侧判定自 M9 第 6 步前置起已按当轮 Driver 泛化**（EV-68）：保护集 = 全部已登记角色减当轮 Driver，当轮 Driver 取自 `run.json.driver`（`latestRunMeta`，与 `gate` 同源；该阶段尚无留痕时回落缺省 Driver 并在拦截文案注明）。**后缀标识产出方、`run.json.driver` 标识发起方，两者正交**，同一后缀在不同运行中可能是 Driver 也可能是审核者。**仍待 M10 的是跨时间面**（EV-55）：提交锚与 Bash 侧文本扫描仍按「全集减**缺省** Driver」判，它们要对历史文件表态、拿不到 run 上下文，与当轮语义不同源 |
+| 角色后缀 | 审查员不得产出 Driver 后缀；Driver 不得产出审核者后缀（由 Hook + `archive` 双重拦截，PRD 6.3）。**Hook 的 Write/Edit 侧判定自 M9 第 6 步前置起已按当轮 Driver 泛化**（EV-68）：保护集 = 全部已登记角色减当轮 Driver，当轮 Driver 按三级判定：该阶段最新可读的 `run.json.driver` → `task.json` 的按阶段声明 `drivers[<阶段>]`（`topic claim`，M10a 第 1 步）→ 缺省 Driver，拦截文案注明取值来源；判定单点是 `driver-claim.ts` 的 `resolveStageDriver`（见 8.5）。**后缀标识产出方、`run.json.driver` 标识发起方，两者正交**，同一后缀在不同运行中可能是 Driver 也可能是审核者。**跨时间面**（EV-55，M10a 已收口）：提交锚改按「位置 + 登记」判不可变，不再看后缀（第 2 步，见 8.5 Hook 表）；Bash 侧文本扫描拿不到 run 上下文，角色后缀按**全集**字面判（第 5 步 D3），含当轮 Driver 自己的后缀在内——此前是「全集减缺省 Driver」，非缺省轮次里缺省 Driver 的后缀恰是审核者产出而无字面保护 |
 | 防覆盖 | `archive` 以 `O_CREAT\|O_EXCL` 原子创建；命中已存在文件即视为重跑，自动抬升 `-r<N>` 并在输出中说明 |
 
 示例（主题「登录重构」，2026-09-10 首跑 + 同日重跑）：
@@ -1123,7 +1126,7 @@ addresses:               # 本件应答的审查文档（当前恒两份；【�
 
 | 字段 | 含义 | schema | 接线里程碑 |
 | :--- | :--- | :--- | :--- |
-| `driver` | **当轮发起方**的 Agent id。与归档后缀（产出方）正交 | 必备 | M7b；**自 M9 第 5 步起随 `--driver <id>` 取值**（缺省 `claude`；只校验「已登记」，`driverEnabled: false` 的取值放行但在预检与留痕里标注；翻 `driverEnabled` 在 M10） |
+| `driver` | **当轮发起方**的 Agent id。与归档后缀（产出方）正交 | 必备 | M7b；**自 M9 第 5 步起随 `--driver <id>` 取值**（缺省 `claude`；取值须已登记**且** `driverEnabled`，否则退 64——M10a 第 3 步收紧，四家均已启用。M9 时是「只校验已登记，未启用的放行并在预检与留痕里标注」）；plan / bug 阶段零留痕时由 `task.json.drivers[<阶段>]` 的声明补位（M10a 第 1 步，见 7.1 `topic claim` 段） |
 | `critics_selected[]` | 本次入选的审核者集合，基数 1～3 | 必备 | M7b |
 | `review_mode` | `full`（全部入选审核者 ok）\| `partial`（部分失败后降级续跑）。**取代 v1 的 `dual`/`single`** | 必备 | M7b |
 | `critics` | 由「恰两键」改为**动态键**（键取自 `critics_selected`） | 必备 | M7b |
@@ -1195,20 +1198,45 @@ v1 → 内存 v2 的映射：`dual → full`、`single → partial`、`driver` �
 >
 > **`--driver <id>`（当轮 Driver）自 M9 第 5 步起生效**【已实现 · M9 第 5 步】。
 > 按 16.2 纪律 6b 本段应在第 5 步开工前并入，实际随第 7 步回溯补记（v1.3.30）——偏离如实登记，
-> 契约文字以第 5 步已落地的行为为准。缺省 `claude`；取值论域是**全部已登记 Agent**，
-> 只校验「已登记」：`driverEnabled: false` 的取值放行，但**预检多打一行标注、留痕如实记**
-> （翻 `driverEnabled` 是 M10 的事）。它是**一个事实、四处消费**：①选侧——当轮 Driver 不得入选，
+> 契约文字以第 5 步已落地的行为为准。缺省 `claude`；取值须为**可用作 Driver 的 Agent**（已登记且 `driverEnabled`；
+> M10a 第 3 步起四家均已启用），未登记或已登记未启用的一律退 64。M9 时的口径是「只校验已登记、
+> 未启用的放行并在预检与留痕里标注」，M10a 第 3 步收紧为退 64——**方向是收紧不是放开**：指定路径自 M9 第 5 步即开放。
+> **64 收紧只作用于经过 `resolveDriver` 的入口，不是全称保证**：不经过它、也不校验 `driverEnabled` 的面有
+> `prepareRun` 内查表（只用于留痕）、Hook 的当轮 Driver 解析、历史 `run.json`、手工改写的认领声明。它是**一个事实、四处消费**：①选侧——当轮 Driver 不得入选，
 > `selectableCritics` = 启用集合减 Driver；②原稿定位——`locateSubject` 按它定后缀，写错后缀在
 > `review --start` 退 65，且**审查件不得被当原稿**（`isReviewArtifact`：显式路径硬拒、自动候选过滤）；
 > ③冻结与 `run.v2` 的 `driver` 字段；④闸门——`gate` **不收 `--driver`**，事实来源是留痕不是旗标，
 > 裁决件 `role` 须与留痕 `driver` 一致（6.6）。`preflight` 与 `review --start` 必须传**同一个值**，
 > 否则预检查的不是本轮实际会用的集合。**不进 skill、不进 `argument-hint`**（计划双审裁定 §2.14）：
-> 四条 `/dual-*` 命令的执笔者就是本会话的 Claude Code，M10 之前换 Driver 只有手工 CLI 一条路。
+> 四条 `/dual-*` 命令的执笔者就是本会话的 Claude Code，M10b 之前换 Driver 只有手工 CLI 一条路。
 > 配套：三个入口共用 `--model-<id>` 白名单判据（`assertModelOverrideKeys`，EV-53）；
 > `heterogeneous: false` 时 `override_reason` 由 `overrideReasonFor` 单点派生（EV-54）；
 > 留痕读不出时 `latestRunMeta` 分「一份都没有」与「有但全读不出」两档，后者硬失败并指引重跑该阶段。
 >
-> **【待实施 · M10 / M11】其余旗标的 N 方化**：`--tier-<id>` / `--effort-<id>`
+> **`topic claim`（按阶段声明当轮 Driver）**【已实现 · M10a 第 1 步（EV-72）】。
+> 按 16.2 纪律 6b 本段应在第 1 步开工前并入，实际随第 5 步回溯补记（v1.3.37）——偏离如实登记，契约文字以已落地的行为为准。
+> 形态：`trivium topic claim --topic <主题> --stage <阶段> --driver <id> [--session-id <id>] [--json]`，全走旗标、没有位置参数。
+> **为什么要有它**：plan / bug 原稿在 `review --start` 之前写出，那一刻该阶段零留痕，当轮判定回落缺省 Driver，
+> 非缺省 Driver 的原稿被判伪造件。声明让「写原稿之前」也有一个当轮 Driver 的来源。
+> **落盘**：`task.json` additive 可选字段 `drivers[<阶段>]` = `{driver, claimed_at, claimed_by, history?[]}`，**按阶段不按主题**；
+> `claimed_by` 取 `--session-id`（缺省取 `CLAUDE_SESSION_ID`；与 `approvals[].session_id` 同一用途：自声明要让事后对得上账）；
+> 撤回时旧声明整条追加进 `history[]`（含 `revoked_at`），不覆盖。schema 仍是 `trivium.task.v1`，缺字段即「未声明」。`--stage` 必填不默认。
+> 声明之后 `review --start` / `topic resolve` 省略 `--driver` 即继承该阶段的值。
+> **判定分支（自上而下，首个命中生效）**：①该阶段已有运行留痕且与 `--driver` 不同 ⇒ 退 64（留痕不可改；出口是新开主题或换阶段）；
+> ②已声明且相同 ⇒ 幂等退 0，不刷新 `claimed_at`；③零留痕、已声明且不同、该阶段子树里没有旧声明后缀的文件 ⇒ 允许撤回改写；
+> ③′同上但**已有**旧声明后缀的文件 ⇒ 退 64（声明一旦用来写出文件就等同于留痕，撤回权随之消失）；
+> ④其余合法认领放行——**首次认领同样检查**该阶段子树里有无他家后缀的文件，有则退 64（代码双审 r1 GLM-05）。
+> ③′与④被拒时，那些文件可能是撤回前的旧声明留下的，也可能是尚无声明时写下、仍在使用的原稿：由用户确认去留后在终端处理再重试；
+> **不要在会话里删它们来换回认领**——那正是这条限制要防的「会话自己反复翻转声明」。
+> **与三级判定的关系**：当轮 Driver 的解析顺序是「该阶段最新可读留痕 → 该阶段声明 → 缺省 Driver」，判定单点是
+> `driver-claim.ts` 的 `resolveStageDriver`（Hook、`topic resolve`、`review --start` 都消费它，见 8.5）。**留痕是权威，声明可撤回**。
+> 同阶段二者不一致没有合法来源，在两个选侧入口报错并指向留痕——**不在预检**：`preflight` 只接 `--stage`、不知道主题。
+> **自声明边界（如实登记）**：声明直接决定 Write / Edit 侧的保护集，而它由被保护方自己发起。约束有三：必带 `claimed_by`；
+> 声明一旦被使用即失去撤回权（③′）；撤回全史留痕。**残余面**：「一个后缀都还没用过」的窗口内，认领与撤回次数不设上限——
+> 执笔者拿到的是「可以选一个后缀」，不是「可以依次拿到所有后缀」；终端里直接写文件同样绕过整条链路。**这不是机械边界。**
+> **入口只有手工 CLI**：四条 `/dual-*` skill 都没有认领步骤，声明只能手工发；Hook 第 2 级读的是 `task.json` 里的声明、不区分调用链路，所以只在有人手工声明过时才有值。skill 侧的认领步骤随 M10b 入口资产单源渲染一起做。
+>
+> **【待实施 · M10b / M11】其余旗标的 N 方化**：`--tier-<id>` / `--effort-<id>`
 > （逐审核者档位与精确覆盖）、`--profile-codex`（Codex 厂商 profile），
 > 以及四家 Driver 各自的入口资产形态，细则见演进设计 §10.1 与 §7.5。
 > 按 **16.2 纪律 6b**（特性契约类），它们须在各自里程碑**开工前**并入本节并升次版本
@@ -1492,15 +1520,15 @@ stateDiagram-v2
    - 闸门 `session_id` 为 **null** 时按「本会话」处理，照样加锁。会话 id 只能靠 `--session-id` / `CLAUDE_SESSION_ID` 传入，而 Claude Code 不向 Bash 工具注入后者，skill 正常走一遍闸门几乎总是 null；若把 null 判为「不加锁」，写锁与 `hook-stop` 在默认路径上就从未生效过（实测本仓库 `state.json` 的真实闸门全是 null）。拿不准是不是别人的会话时宁可多拦，TTL 兜底。
    - 若目标路径以**受保护的**角色后缀结尾**且落在归档根内** → 一律 `deny`（主脑不得伪造审查文件，PRD 6.3；该规则不受会话与 TTL 限制）。
      保护集 = **全部已登记角色减当轮 Driver**，取值由 Agent 注册表派生，**不在此处列举字面量**——写死的枚举会随注册表漂移，而它确实漏过一次（M8 接入 codex 后此处仍只写着两家）。
-     **当轮 Driver 的唯一来源是 `run.json.driver`**（按目标路径解析出 `<主题>/<阶段>` 后取该阶段最近一份运行留痕，EV-68）。**四种结局**：
+     **当轮 Driver 的权威来源是 `run.json.driver`**（按目标路径解析出 `<主题>/<阶段>` 后取该阶段最近一份运行留痕，EV-68）；**该阶段零留痕时取 `task.json` 的按阶段声明 `drivers[<阶段>]`**（`topic claim`，M10a 第 1 步，见 7.1），都没有才回落缺省 Driver——判定单点是 `driver-claim.ts` 的 `resolveStageDriver`，Hook 只是它的一个消费点。**四种结局**：
      ①取到留痕且没有更新的留痕读不出 → 用它；
-     ②该阶段尚无任何留痕（原稿写在 `review --start` 之前即属此列）→ 回落缺省 Driver 并在拦截文案注明；
+     ②该阶段尚无任何留痕（原稿写在 `review --start` 之前即属此列）→ 取该阶段的声明，无声明才回落缺省 Driver，拦截文案注明取值来源（M10a 第 1 步之前这一格一律回落缺省，非缺省 Driver 写不出自己的原稿，EV-72）；
      ③有留痕却读不出——**一份都读不出，或比被采信的那份更新的读不出**——→ **硬失败**。那是「留痕坏了」，既不能判成「按缺省 Driver 算」，也不能退回更旧的那份判成「按上一轮执笔者算」；
      ④目标落在归档内但**解析不出** `<主题>/<阶段>`（归档根两段式路径、`verify/` 下的同形态文件）→ 按缺省 Driver 判定，且一次留痕都不读。
      结局③在「较新那份坏了」这一格上**与 `gate` 有意分叉**（`gate` 会静默采信较旧的可读份）：跑后核对**存在**（`archive.checkStageArtifacts` 的未登记核对、`gate` 侧的提交锚），但**不无条件在场**——只在 `gate --check-artifacts` 路径触发、提交锚 `checkArchiveIntegrity` 不含它、且对 `critics_selected` 之外的角色失明；而 Hook 是拦截型，判错当场生效。拦截侧取更严的取向，`gate` 侧那一格是否同样收紧见 EV-73。
      **定位本身还有一条安全判据**：按目标路径解析 `<主题>/<阶段>` 时，realpath 解析结果落在**归档根之外**一律判「定位不出」（结局④），**不得回落词法定位**。否则「归档外预置一份合法 run 留痕 + 软链成归档内的阶段目录」即可让判定采信攻击者的留痕、自选当轮 Driver 使伪审查件放行。这与本节上文「词法路径与 realpath 任一在归档内即算在内」的并集口径**方向一致**：那条管「要不要拦这次写入」，这条管「能不能采信这份留痕」，两者都不允许软链把判定带出归档根。
      **闸门项 `state.json` 的 `driver` 不作为来源**：写它的两处都以「裁决件已落盘」为前置，而 Driver 写裁决件正发生在那之前，且 upsert 会沿用上一轮的值。
-     **`--agent` 不得成为第二条判据源**：M10 若落地 `trivium hooks --agent <id>`（§8.5），它只用于**安装目标与会话身份声明**；当轮 Driver 的判定来源仍然只有 `run.json.driver` 这一处。演进设计 §9.3 写的「`isForgedRoleFile` / `bashTargetsProtected` 的字面集按 `--agent` 动态生成」**已被本节取代**（该文正文自 v1.0.0 冻结，修正只落本文，与 §7.6「五件套 → 七件」同一机制）：Write 侧从留痕取，CLI 里也没有这个旗标。给同一条安全判据配两个事实源，正是本节刚在闸门项上明令禁止的形态。
+     **`--agent` 不得成为第二条判据源**：M10b 若落地 `trivium hooks --agent <id>`（§8.5），它只用于**安装目标与会话身份声明**；当轮 Driver 的判定来源仍然只有运行留痕与按阶段声明两级（声明只在该阶段零留痕时生效，留痕一出现即以留痕为准），`--agent` 不进这条链。演进设计 §9.3 写的「`isForgedRoleFile` / `bashTargetsProtected` 的字面集按 `--agent` 动态生成」**已被本节取代**（该文正文自 v1.0.0 冻结，修正只落本文，与 §7.6「五件套 → 七件」同一机制）：Write 侧从留痕取，CLI 里也没有这个旗标。给同一条安全判据配两个事实源，正是本节刚在闸门项上明令禁止的形态。
      判定「落在归档根内」时，**词法路径与 realpath 解析后的真实路径任一在归档内即算在内**——前者拦「归档内软链指向归档外」，后者拦「归档外软链指向归档内」；`archiveRoot` 须做对称 realpath 规范化（macOS 的 `/var` → `/private/var`），解析失败时回退为纯词法比较且不得让异常外泄到 Hook 兜底分支（那会变成静默放行）。
      **归档根之外的同形态文件不拦**：`doc/` 下沿用「日期-主题-角色」命名的设计文档不进入 `gate` 的任何读取面（`loadRoundReviews` 只读 `_meta/review-<critic>-<runId>.json`、`checkAdjudication` 只取 `listStageArtifacts` 的结果），拦它没有防御价值，只有误锁成本。
      **该收窄只作用于 Write / Edit 侧。** `hook-pre-bash` 的角色后缀判定维持「命令文本出现字面量即拦」不变——同步收窄的尝试经三轮双审逐一打穿后撤回（§21 v1.2.7），根因是收窄创设了「`doc/` 下可合法存在同形态文件」的新状态，使 `cp -R doc/ .reviews/<主题>/<阶段>/` 这类**不含后缀字样**的目录级搬运成为新通道，以字面量为介入信号的规则结构性失效。该通道改由 `archive.checkStageArtifacts` 的「审核者工件须在 `run.json.artifacts[]` 登记内」跑后核对兜住——那是路径信号，对文件经何种手法进入归档不敏感，并顺带补上了此前对新增未跟踪文件完全失明的缺口。
@@ -1508,9 +1536,11 @@ stateDiagram-v2
 
 **解除方式**：开发者执行 `/dual-approve --topic X --stage plan`（或 `--reject --reason …`）或 `/dual-abandon --topic X`。审批结果写入 `task.json` 的 `approvals[]`（含时间、结论、理由），状态切换为 `approved` / `rejected` / `abandoned`；三种结论**均解除业务写锁**。拒绝或放弃时保留全部已有工件（PRD 第 10 章）；拒绝后 Driver 可按开发者意见改写 `.reviews/` 内的修订件（重跑 `gate --check`），但流水线不得自动进入编码/改码/修复，该约束由命令模板与 `hook-stop` 承担。
 
+**`approve` 的前置复核**【已实现 · M10a 第 3 步】：结论为 `approved` 时、落审批记录之前，对该阶段本轮无条件执行 `verifyRoundForApproval`——`loadRoundReviews` + `checkAdjudication`（裁决齐备）+ `checkRecordedArtifacts`（本轮登记工件的 sha256 抽核），与 `--await-approval` 共用一份；推断不出 run_id 即拒绝而不是跳过（退 65，运行元数据读不出同此），裁决或工件不符退 2。`rejected` / `abandoned` 不复核，**不加确认码**（v1.2.3 ② 撤销过）。**它只保「裁决齐备 + 本轮登记工件哈希一致」**，三条边界如实写明：①**只核本轮**，更早轮次的登记由提交锚在每次提交时核；②**不查「未登记件混入」**——停点后塞进阶段目录、不在任何 `artifacts[]` 里的伪审查件，事后只有 `gate --check-artifacts` 查得到，提交锚也不守这一面（它只看已跟踪文件的改动）；③**不保审批来自人**——`approve` 不校验调用来源，Driver 自己敲一条命令就能关掉闸门；复核挡住的是「裁决不齐或工件被改时批准」，挡不住「裁决齐了、由 Driver 自己批准」。
+
 ### 8.5 Hook 配置（注入目标项目 `.claude/settings.json`）
 
-> **【待实施 · M10】Hook 的多 Driver 化**：`trivium hooks --agent <id>` 按当轮 Driver 渲染，
+> **【待实施 · M10b】Hook 的多 Driver 化**：`trivium hooks --agent <id>` 按当轮 Driver 渲染，
 > 安装器支持多目标；ZCode 侧 Hook 的合并形态待 M6 探针确认。细则见演进设计 §9.3 与 §7.5。
 >
 > **护栏分级是这次演进的固有代价，必须如实标注、不得伪装成同等级强制**：
@@ -1518,9 +1548,10 @@ stateDiagram-v2
 > | 等级 | Agent | 能力 |
 > | :--- | :--- | :--- |
 > | **L1** | `claude`（现状）、`glm`（探针通过时） | 具备 blocking Hook：闸门期写拦截 + Stop 阻断 + 提交完整性锚 |
-> | **L2** | `codex`、`gemini` | **没有** blocking Hook。靠三层补偿：①`approve` 迁移状态前无条件重跑一次裁决完整性校验（幂等秒级，把「审批前裁决完整」从 Hook 单点变 CLI 双点）；②归档 `_meta/` 下的结构化意见是 `gate --check` 的唯一事实来源 + `archive` 的 `O_CREAT｜O_EXCL` 防覆盖，伪造审查文档过不了闸门；③跑后漂移复算与留痕核对 |
+> | **L2** | `codex`、`gemini` | **没有** blocking Hook。靠三层补偿：①`approve` 迁移状态前无条件复核本轮【已实现 · M10a 第 3 步】（`verifyRoundForApproval`：裁决齐备 + 本轮登记工件 sha256 抽核，与 `--await-approval` 共用；把「审批前裁决完整」从 Hook 单点变 CLI 双点；只核本轮、不查未登记件混入、**不保审批来自人**，见 8.4）；②归档 `_meta/` 下的结构化意见是 `gate --check` 的唯一事实来源 + `archive` 的 `O_CREAT｜O_EXCL` 防覆盖，伪造审查文档过不了闸门；③跑后漂移复算与留痕核对 |
 >
-> L2 的差异须在 QUICKSTART 对使用者**明示**，并登记为风险（第 19 章 R18）。
+> L2 的差异须在 QUICKSTART 对使用者**明示**，并登记为风险（第 19 章 R18）。**这一条仍未交付**：用户文档至今没有 L1 / L2 的明示，
+> 随 M10b 的入口资产与真载体一起写（PRD AC-21 子句 ②）。L2 只在 codex / gemini 真在自己的 CLI 里执笔时才有意义。
 
 ```json
 {
@@ -1588,8 +1619,8 @@ Hook 行为约定：
 | Hook | 触发 | 行为 |
 | :--- | :--- | :--- |
 | `hook-pre-write` | 每次文件写入前 | 见 8.4。另：存在**本会话**触发且状态为 `running` 的审查运行时，同样 `deny` 归档根之外的写入（就地模式下审查员正在读真实工作树，Driver 此时不得改业务文件；Driver 本就处于 `--wait` 循环，正常不会触发）。安全兜底：①本设计的 Hook 配置只由 `trivium init` 注入**项目级** `.claude/settings.json`；②每条命令外层的 `sh -c` 守卫**区分两种情形**：无 `.trivium/config.yaml` → 项目从未初始化（协作者克隆仓库后尚未跑过 `trivium init` 是必然常态），静默 exit 0，不会误伤；有 `config.yaml` 但 wrapper 缺失或不可执行 → 护栏已被破坏，exit 2 并打印修复指引。守卫**不可一律 exit 0**：那样一条 `rm -rf` 或 `chmod -x` 打在 wrapper 上，就能把四个拦截型 Hook 一次性变成永真放行，而且悄无声息（审查意见 AGY-03）；③wrapper 自身在检测不到 `.trivium/config.yaml` 时同样返回 0 |
-| `hook-pre-bash` | 每次 Bash 调用前 | `hook-pre-write` 只覆盖 Edit / Write / NotebookEdit，`cat > f`、`sed -i`、`tee`、`git checkout` 都是旁路。本 Hook 挂**全部** Bash 事件（无 `if` 过滤），按写命令形态做**启发式**拦截（重定向、`tee`、`sed -i` / `perl -i`、`rm` / `mv` / `cp` / `touch`、`git checkout` / `reset` / `commit`、包管理器安装等）：①命中编排器独占对象（角色后缀文件、运行时状态目录及其下的状态文件、锁与 wrapper、归档内 `_meta/` 与 `task.json`）→ **任何时候**都 deny，不受闸门状态限制；②其余写命令仅在闸门期（`awaiting_approval` / `running`）deny。判定**刻意在未剥 heredoc 的原文上**进行——先剥 heredoc 会让 `python3 - <<'PY' … PY` 剥完只剩 `python3 -`，两条规则连评估机会都没有，而归档根与 `.trivium/` 被 `judgeDrift` 整体排除、提交锚只在 commit 时触发，这条路**没有任何跑后兜底**（GLM-03）。**已知代价：误拦**——命令正文里出现 `-gemini.md` / `_meta` / `task.json` / `state.json` / `.trivium` 字样即命中，哪怕它实际要写别的文件。**任何把这些名字写进 Bash 命令文本的场合都会撞上**，不限于写文件（本项目改护栏文档时已实撞两次：一次是改文档的脚本，一次是描述该误拦的 commit message）。出口是改用 Write / Edit 工具落文件、提交用 `git commit -F <文件>`（精确判定，不看字面）。**没有任何例外**——曾为 `git commit` 开过一条豁免（RV-B1），双审打穿后已撤回，理由见 §21 的 v1.2.5：原判定是 fail-closed（看见字面就拦，代价是误拦），豁免把它变成需要穷举危险形态的 fail-open，而 shell 的攻击面穷举不完（三个前置条件漏掉至少五条路径，三条实测击穿）。误拦有零成本出口，漏拦则直接击穿本条不变式且无跑后兜底——**这个方向本身不成立，不要再试**。该代价**刻意接受**：正文写保护路径正是要防的攻击形态，正则无法区分「讨论它」与「攻击它」，而漏拦的后果（裁决期归档被篡改且无兜底）远重于误拦的后果（换个工具）。收窄规则以减少误拦会把判定重新推向依赖命令结构精确解析的方向，那正是 AGY-01 实跑复现过的整体失防形态。启发式不求完备：它挡住顺手的旁路，绕过去的改动仍会被跑后复算判成漂移 |
-| `hook-pre-commit` | 每次 Bash 调用前 | 存在「审查文档已落盘但裁决件缺失/不完整」的阶段时 exit 2 阻断，说明缺哪些编号；并校验留痕完整性三条锚（已提交工件被删 / 不可变工件被改、run 清单与其元数据文件互相可达且 `artifacts[].sha256` 逐份吻合、记过 run 的主题其 `task.json` 仍在）。**不按会话过滤**——裁决完整性是仓库的属性，不是会话的属性。原先带 `if: Bash(git commit:*)`，但那是**前缀**匹配：`sh -c 'git commit -m x'` 不以 `git commit` 开头，Hook 根本不触发，裁决期的提交拦截与留痕校验被一起跳过，被篡改的归档可以一次性洗进 HEAD（审查意见 GLM-02）。现改为不设 `if`、由 `looksLikeCommit` 在进程内过滤，它还要判这次提交是否打在**本项目**上（前缀规则本来也表达不了这件事）。可由 `gate.block_commit: false` 关闭 |
+| `hook-pre-bash` | 每次 Bash 调用前 | `hook-pre-write` 只覆盖 Edit / Write / NotebookEdit，`cat > f`、`sed -i`、`tee`、`git checkout` 都是旁路。本 Hook 挂**全部** Bash 事件（无 `if` 过滤），按写命令形态做**启发式**拦截（重定向、`tee`、`sed -i` / `perl -i`、`rm` / `mv` / `cp` / `touch`、`git checkout` / `reset` / `commit`、包管理器安装等）：①命中编排器独占对象（角色后缀文件——**全部已登记角色的后缀，含当轮 Driver 自己的**：Bash 侧拿不到当轮，只能全集字面判，M10a 第 5 步 D3 起；此前是全集减缺省 Driver——、运行时状态目录及其下的状态文件、锁与 wrapper、归档内 `_meta/` 与 `task.json`）→ **任何时候**都 deny，不受闸门状态限制；②其余写命令仅在闸门期（`awaiting_approval` / `running`）deny。判定**刻意在未剥 heredoc 的原文上**进行——先剥 heredoc 会让 `python3 - <<'PY' … PY` 剥完只剩 `python3 -`，两条规则连评估机会都没有，而归档根与 `.trivium/` 被 `judgeDrift` 整体排除、提交锚只在 commit 时触发，这条路**没有任何跑后兜底**（GLM-03）。**已知代价：误拦**——命令正文里出现任一角色后缀（D3 起含 `-claude.md`）/ `_meta` / `task.json` / `state.json` / `.trivium` 字样即命中，哪怕它实际要写别的文件。**任何把这些名字写进 Bash 命令文本的场合都会撞上**，不限于写文件（本项目改护栏文档时已实撞两次：一次是改文档的脚本，一次是描述该误拦的 commit message）。出口是改用 Write / Edit 工具落文件、提交用 `git commit -F <文件>`（精确判定，不看字面）。**没有任何例外**——曾为 `git commit` 开过一条豁免（RV-B1），双审打穿后已撤回，理由见 §21 的 v1.2.5：原判定是 fail-closed（看见字面就拦，代价是误拦），豁免把它变成需要穷举危险形态的 fail-open，而 shell 的攻击面穷举不完（三个前置条件漏掉至少五条路径，三条实测击穿）。误拦有零成本出口，漏拦则直接击穿本条不变式且无跑后兜底——**这个方向本身不成立，不要再试**。该代价**刻意接受**：正文写保护路径正是要防的攻击形态，正则无法区分「讨论它」与「攻击它」，而漏拦的后果（裁决期归档被篡改且无兜底）远重于误拦的后果（换个工具）。收窄规则以减少误拦会把判定重新推向依赖命令结构精确解析的方向，那正是 AGY-01 实跑复现过的整体失防形态。启发式不求完备：它挡住顺手的旁路，绕过去的改动仍会被跑后复算判成漂移 |
+| `hook-pre-commit` | 每次 Bash 调用前 | 存在「审查文档已落盘但裁决件缺失/不完整」的阶段时 exit 2 阻断，说明缺哪些编号；并校验留痕完整性三条锚（已提交工件被删 / 不可变工件被改、run 清单与其元数据文件互相可达且 `artifacts[].sha256` 逐份吻合、记过 run 的主题其 `task.json` 仍在）。**不按会话过滤**——裁决完整性是仓库的属性，不是会话的属性。原先带 `if: Bash(git commit:*)`，但那是**前缀**匹配：`sh -c 'git commit -m x'` 不以 `git commit` 开头，Hook 根本不触发，裁决期的提交拦截与留痕校验被一起跳过，被篡改的归档可以一次性洗进 HEAD（审查意见 GLM-02）。现改为不设 `if`、由 `looksLikeCommit` 在进程内过滤，它还要判这次提交是否打在**本项目**上（前缀规则本来也表达不了这件事）。可由 `gate.block_commit: false` 关闭。**「不可变工件」怎么判**（M10a 第 2 步，EV-55；此前按角色后缀与 `_meta/` 内的文件名正则判）：①**位置判据**——已跟踪、位于 `_meta/` 内的文件被改即拦，排除两项：`changes.diff`（便利副本，每轮覆盖写）与「已提交版本为 running」的 `run-*.json`（正常收尾回写；收窄为同一 run_id、已登记条目逐条保留且 sha 不变、只许追加）；②**登记判据（锚②）**——plan / bug 原稿在该轮**成功收尾**时按**归档相对路径**登记进 `run.json.artifacts[]`，此后原地改原稿即判 `modified`；作废轮不登记；**归档根外的被审对象不登记**，改为在 `run.json` 的 `gate.warnings` 标注「本轮原稿不在保护集」（收尾 stderr 与 `gate --check` 的 `run_warning` 同句）。审查文档自 M1 起即登记。由此 `verify-*.json` 从**锚②单层**（verify 运行清单早已登记它）变为**锚①②双层**。**三条边界如实登记**：强制力单向——只挂在 Claude Code 的 Bash matcher 上，终端里直接提交完全绕过；剩余两格够不着——收尾新追加的登记条目在追加那一刻可被同步改写，审查文档已落盘而登记未发生时进程崩溃且该状态被提交（BACKLOG EV-108）；预检**没有**「不在保护集」的标注（`preflight` 不接 `--topic`，标注落在上述三处）。用户出口：未送审的原稿直接改；作废轮之后继续改；已成功送审的原稿要改就另起 `-r<N>` 新稿（原稿的 `-r<N>` 与审查轮次号是两套编号） |
 | `hook-stop` | Driver 结束回合前 | 若存在**本会话**的 `review_done_awaiting_disposition` 状态 → 输出 `{"decision":"block","reason":"还有未逐条裁决的审查意见：…"}`（或 exit 2 + stderr）；若为 `awaiting_approval` → exit 0（这是**期望的**停点）。带 `stop_hook_active` 早退与每阶段最多 2 次阻断上限，避免死循环 |
 | `hook-session-start` | 会话开始 | 通过 `additionalContext` 注入当前待审批闸门与未完成裁决的清单 |
 
@@ -2033,7 +2064,7 @@ flowchart LR
 ### 10.4 主脑侧的写权限约束
 
 - Driver 是唯一写业务代码者（FR-01）。
-- Hook `hook-pre-write` 拒绝 Driver 写出 `*-gemini.md` / `*-glm.md`（防止「主脑自己编一份审查」）。
+- Hook `hook-pre-write` 拒绝 Driver 在归档根内写出**审核者**后缀的文件——全部已登记角色减当轮 Driver（claude 为 Driver 时即另三家；由注册表派生，不在此列举），防止「主脑自己编一份审查」。
 - 审查员输出由 `archive` 落盘，审查员本身没有写仓库的能力（PRD 第 7 章第 5 条）。
 
 ### 10.5 安全与密钥
@@ -2483,8 +2514,9 @@ profiles:
 
 **异构默认的强制**（FR-17 / AC-18）：
 
-- 默认 profile 中两侧均为非 Claude 系模型；两侧默认互不相同（相同模型 + 相同镜头的双审只是把成本乘二）。
-- 若用户显式把某侧指定为 Claude 系（Antigravity 确实提供 `claude-*` slug），编排器：①打印醒目告警；②在 `run.json` 写 `heterogeneous: false` 与 `override_reason`；③在该侧审查文档 front-matter 标注。**不阻止**，但必须可见。
+- 默认 profile 中各审核者的生效模型都不落在**当轮 Driver 厂商的名义模型族**（注册表 `VENDOR_MODEL_FAMILY`，M10a 第 4 步 EV-62；claude 为 Driver 时即非 Claude 系，与原口径等价）；各侧默认互不相同（相同模型 + 相同镜头的双审只是把成本乘二）。
+- 若用户显式把某侧指定为与当轮 Driver 名义族**同族**的模型（claude 为 Driver 时即 `claude-*` slug，Antigravity 确实提供），编排器：①打印醒目告警；②在 `run.json` 写 `heterogeneous: false` 与 `override_reason`（文案点名当轮 Driver）；③在该侧审查文档 front-matter 标注（渲染标题「疑似与主脑同源」）。**不阻止**，但必须可见。
+- **判据两层都是启发式，不是确定性保证**：模型族按模型名判；Driver 一侧按厂商名义族近似——编排器不采集 Driver 的生效模型，与演进设计 §5.4「模型族按生效模型判定，不按 Agent」在 Driver 一侧有张力。`heterogeneous: true` 的准确读法是「未检出同族」；已知错判形态见 BACKLOG EV-107。`heterogeneous` 只驱动告警与留痕，不拦闸门。**历史留痕**里的 `override_reason` 旧文案（「落在 Claude 系」）不回改，与新文案并存，读旧留痕按写入时的口径理解。
 - 模型 slug 一律以 `agy models` / ZCode 模型目录的实际值为准。
 
 **slug 校验的执行点**（两处，缺一不可）：
@@ -2780,7 +2812,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | FR-14 逐条裁决 | P1 | 接受/驳回/暂缓 + 理由 + 落点，`gate` 硬校验（空洞理由与共同 blocker 默认 warning） | `gate` | 6.6、8.6 |
 | FR-15 审查员只读 | P1 | 工具层禁写 + 前后指纹 + 轨迹写事件扫描，失守检出与告警 | `guard` | 10.3 |
 | FR-16 送审自包含 | P1 | 送审包落 `_meta/` + 被审对象 sha256 + `tree_hash` 漂移检测 | `freeze`、`brief` | 9.1、9.2 |
-| FR-17 模型异构默认 | P1 | 默认非 Claude 系；覆盖告警并写入元数据 | `config`、`meta` | 11.5 |
+| FR-17 模型异构默认 | P1 | 默认不与当轮 Driver 厂商名义族同族（claude 为 Driver 时即非 Claude 系；启发式，见 11.5）；覆盖告警并写入元数据 | `config`、`meta` | 11.5 |
 | FR-18 启动预检 | P1 | `trivium preflight` 八项检查，失败零工件 | `preflight` | 8.1 |
 | FR-19 超时与降级可见 | P1 | strict/degrade 双策略 + 降级三处留痕 | `runner`、`meta` | 12.1、12.4 |
 | FR-20 提示语进上下文 | P1 | BRIEF 第 2 段逐字嵌入，两侧都有 | `brief` | 9.4 |
@@ -2791,7 +2823,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | FR-25 阶段重跑不覆盖 | P2 | `-r<N>` 版本后缀 + 原子独占创建 | `archive` | 6.2、12.5 |
 | FR-26 等待期进度反馈 | P1 | `--wait` 返回结构化进度 + 单行摘要；Driver 负责播报 | `review` | 7.5.1 |
 | **FR-27** QWen/DeepSeek 等多模型经 Codex 接入（含 profile 透传） | P1 | `adapters/codex.ts` + 逐家族 provider 探活 + 镜头 codex 键 | `adapters.codex` | 3.6、9.3、11.1 · 【待实施 · M8】 |
-| **FR-28** 任意注册 Agent 可为 Driver | P1 | Driver 降为运行属性（`run.json.driver`）；四家入口资产；护栏分级 L1/L2 | `agents/registry`、`hooks` | 第 0 章术语、6.7.1、8.5 · 【待实施 · M10】 |
+| **FR-28** 任意注册 Agent 可为 Driver | P1 | Driver 降为运行属性（`run.json.driver`）；四家入口资产；护栏分级 L1/L2 | `agents/registry`、`hooks` | 第 0 章术语、6.7.1、7.1、8.4、8.5 · **【部分达成 · M10a】**（M10a 交付：按阶段声明当轮 Driver、提交锚跨时间面重写、翻开 `driverEnabled` 并收紧、`approve` 前置复核、Bash 侧全集字面保护；运行属性化 M9 第 5 步已有。**「任一已注册 Agent 在自己的 CLI 里发起四条命令」与护栏差异对使用者明示待 M10b**） |
 | **FR-29** 每次审核动态选 1～3 个审核者 | P1 | `--critics`；隔离/裁决/归档/闸门全面 N 方化；**选 1 审不标降级** | `runner`、`gate`、`freeze` | 6.7.1、8.6、10.1、12.1 · 【待实施 · M7b】 |
 | **FR-30** 逐审核者模型+思考等级与三档组合 | P1 | `agents.<id>.tiers`；`--tier-*` / `--model-*` / `--effort-*`；生效值回读 | `config`、`adapters` | 11.5、13.1.1 · 【待实施 · M11】 |
 | **FR-31** 通用 Agent 扩展架构 | P1 | Agent 注册表为唯一来源；新增 Agent = **接入套件（七件）**，清单见 5.1.1 | `agents/registry` | 4.1、5.1、**5.1.1** · **【部分达成 · M7a + M7b 第 6 步】**（注册表本体随 M7a；套件接入的**桩级**端到端验收随 M7b 第 6 步。**M9 第 7 步复核**：`ProbeSection` 与 preflight 三项已分别于 M6 第 1 步、M8 第 3 步收敛（EV-05 结案），codex / claude 两家真实接入已完成（M8 / M9）；**仍不记完全达成，理由换了**——接入 claude 时核心流程改了 Hook 保护集判据与选侧检查（该 Agent 同时是缺省 Driver，套件不覆盖这一情形），第 ⑤ 件对 claude 显式不做（EV-44）。见 5.1.1「已知缺口」与 16.1 M9 行第 4 步） |
@@ -2829,10 +2861,10 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | AC-15 命令 D 工件齐全 | `bug/` 四件套，修订不覆盖原稿 | 目录校验 + 原稿哈希未变 |
 | AC-16 预检失败即中止 | 预检在送审前，失败零工件；**`review` 自身的任一失败出口（64/65/69/70）同样不得留半套工件** | 断网/改坏路径后启动，检查无任何文件生成；另需覆盖「第一侧送审包已渲染、第二侧才失败」这一形态——按失败出口逐个比对 `.reviews/` 前后文件集合应逐字节一致（`test/integration/no-artifacts.test.ts`） |
 | AC-17 送审材料固定且自包含 | 送审包落 `_meta/` + `subject_sha256` + `tree_hash` 漂移检测 | 审查中修改被审对象，运行应判 `subject_drift` 作废；修改无关文件，应出 `drift` 警告并列出文件；结论只对应 `run.json.snapshot` 记录的哈希 |
-| AC-18 模型异构默认与覆盖可见 | 默认非 Claude 系；覆盖写入元数据与文档头 | 默认跑一次 + 显式覆盖跑一次，检查元数据 |
+| AC-18 模型异构默认与覆盖可见 | 默认不与当轮 Driver 厂商名义族同族（claude 为 Driver 时即非 Claude 系；启发式，见 11.5）；覆盖写入元数据与文档头 | 默认跑一次 + 显式覆盖跑一次，检查元数据 |
 | AC-19 等待期进度可读可预期 | `--wait` 返回结构化进度字段 + 单行摘要；启动播报 | 跑一次真实双审，核对每次等待返回与开场播报 |
 | **AC-20** Codex 真实审查（**至少两个模型家族各一次**）· **【已达成 · M8 第 4 步】**（2026-09-16，`qwen` 与 `deepseek` 两家族各一次真实代码审；证据链与三条达成边界见 [验收报告](../05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md)） | 证据链完整 + 沙箱负对照（**带正对照**） | **逐分量断言，不是「二元组任一分量不同即可」**：两次运行的 ① `model_provider` 互不相同、② `model_effective` 互不相同、③ 各自与本次**请求**的模型一致、④ 两侧 provider 的 `base_url`（**归一到 host**）互不相同——**任一侧 host 取不到（`null`）时本分量记「无法校验」，不得据此宣布 AC-20 达成**（本机 `gpt` profile 就是这一格：内置 provider 无 `[model_providers.*]` 段）；`project_reads` 达该族生效下限（`command-trace` 折减后）；沙箱负对照**须含正对照**——同一次调用里：①那条写命令**确实进了轨迹**、②**它自己的输出显示写入被拒**、③项目内哨兵 A 未创建。缺了①②，A 的缺席证明不了任何事（「被拒」与「没尝试」产出相同观测）。**注**：本条初稿写的是「允许写路径的 B 存在」，**已由 M8 第 4 步实跑证伪**——`-s read-only` 把整个文件系统置为只读，不存在「允许写的路径」，按那个形态执行本条恒不可满足（见 3.6 的再更正与 M6 报告 P-C2）；`profile_requested` 如实入档而生效模型仍以回读为准 |
-| **AC-21** 任一 Agent 作为 Driver 走通命令 B · 【待实施 · M10】 | 四 Driver 各跑一轮 | 工件命名 / 闸门 / 裁决语义与本文一致（claude/zcode 真实，codex/gemini 夹具级） |
+| **AC-21** 任一 Agent 作为 Driver 走通命令 B · **【部分达成 · M10a：仅子句 ③】**（③审批前的裁决完整性由编排器无条件复核兜住——M10a 第 3 步；①任一 Agent 作为 Driver 真实走完命令 B、②护栏差异对使用者明示——均待 M10b，**不得据此整体转为达成**） | 四 Driver 各跑一轮 | 工件命名 / 闸门 / 裁决语义与本文一致（claude/zcode 真实，codex/gemini 夹具级） |
 | **AC-22** 1～3 审核者动态生效 · **【部分达成 · M7b 第 5 步 + M8 第 3 步】**（选 1 / 2 侧 2026-09-14 实跑；选 3 侧自三家启用、D4-4 默认即三侧起可真跑；M9 起第四家 claude 可入选，须 `--driver` 取非 claude。「三个编号前缀都对闸门可见」是**逐轮核对项**，故不记完全达成——状态位自 M7b 起失实，M9 第 7 步改准） | 1 / 2 / 3 审各跑一轮 | `critics_selected` 如实；**1 审无降级标记**（`review_mode: full`、无 `degraded_reason`）；3 审三份审查齐备且 gate 差集覆盖三个前缀 |
 | **AC-23** 档位与精确覆盖生效可核对 · 【待实施 · M11】 | 两种发起方式各一次 | `--tier-<id> high` 与 `--model-<id> … --effort-<id> …` 的 `model_effective` / `effort_effective` / `tier_source` 回读一致 |
 | **AC-24** 新增 Agent 接入套件接入、核心流程零改动 · **【已达成 · M7b 第 6 步】** | 桩 Agent 夹具全链路 | 断言①overlay 脚本**实际触及的路径集** ⊆ 套件白名单（不是夹具树自比，那是同义反复；且自报清单须与**全树哈希差集**逐项相等，白名单每条还须被真正用到）；断言②`tsc --noEmit` → `preflight` → `topic resolve` → `review --start/--wait` → `gate --check` → `gate --check-artifacts` 在重打包产物上真实通过；断言③三侧产**三对**退化度。落点 `test/integration/stub-agent-kit.test.ts`。**证明边界**：桩不触发真实适配器路径（vendor 旗标、轨迹解析、effort 透传），也不触发第三家的探活与 CLI 版本校验（仍按厂商写死，EV-05），且**预检是以 `--skip-auth-check` 跑通的**。**对真检验已随 M8（codex，2026-09-16）与 M9（claude，2026-09-20）完成**，EV-05 的两项 preflight 写死已于 M8 第 3 步收敛。**本条达成 ≠ FR-31 达成**：它以桩为口径，不足以完整验收 FR-31 的「核心流程零改动」 |
@@ -2956,7 +2988,8 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | **M7b 配置 v2 与动态多审** | types / config v2 / 四份 schema；naming·hooks·gate·freeze·brief·runner·CLI 的 N 方化；**禁读矩阵的 N 方泛化**（措施 a 的路径侧已随 M7a 落地，此处做三审展开）；全部新测试；selftest N 侧场景 | `npm run check` 全绿；双侧默认行为与 M7a 后等价（除 schema 版本号）；AC-22 / AC-24 / AC-25 | ✅ **六步全部合入**（分批交付）：第 1 步 ✅ `3ceeee6`（既有缺陷修复）；第 2 步 ✅ `a891ab2`（泛化欠账与对账扩展）；第 3 步 ✅ `5b83e4b`（**run.v2 与读侧按阶段分发**，6.7.1）；第 4 步 ✅ `2f08018`（**config v2 与内存迁移**，13.1.1）；第 5 步 ✅ **`--critics` 入口与 `default_critics` 接线**（7.1；**AC-22 的 1／2 侧分支自此可验收，3 侧待第三家接入**）；第 6 步 ✅ **接入套件验收装置**（5.1.1；桩 Agent overlay + 三审全链路实跑，**AC-24 达成**含证明边界；**FR-31 记部分达成**——真实接入仍需改 `ProbeSection` 与 preflight 三项）。**M7b 六步全部合入。** 第 6 步顺带清掉三笔泛化欠账（`CriticId` 字面收窄放开、`effortFor` 与 `checkModelSlugs` 的身份穷尽改按 vendor 分派、`--model-<id>` 旗标白名单按注册表派生），并修掉一条实缺陷：`review.v1.json` 把意见编号前缀写死成 `^(AGY|GLM)-`，第三家的合法结论会被 ajv 拒掉退化成 `parse_fallback`（6.5） |
 | **M8 Codex（多模型）审核者** | `adapters/codex.ts` + 探针接线（含逐家族 provider 探活）+ 镜头 codex 键 + 密钥扫描增补 | AC-20（两家族各真实审查一次）；沙箱负对照通过；**两条 M6 实测带来的前置**：①**EV-01（命令文本字面扫描）已落地**——codex 的 `trace_path_structured` 实测为 false，它是该侧路径核验的**唯一**手段，不落地则 AC-04 在 codex 侧没有任何实现（见 3.6、BACKLOG EV-01）；②**隔离同时覆盖 `CODEX_HOME` 与 `HOME`**——前者管配置面、指令面随 `HOME` 派生（见 3.6 末段、BACKLOG EV-08）。**一条已拍板的残留风险要带进本里程碑**：措施 b 的盲区 **B-2**（未指名 deny 路径的内容转储——裸 `git log -p`、根递归 `grep`）**决定不收窄**（2026-09-15，EV-16），而 codex 侧读文件就是跑 shell，**这条通道在该侧真实可达**。本里程碑**不得**因措施 b 已落地就把通道②整体标为收口 | ✅ **四步全部合入**（分批交付）：第 1 步 ✅ `194ef0b`（措施 b 落地）；第 2 步 ✅ `9d511a6`（适配层契约泛化）；第 3 步 ✅ `a8c7595` + `3812f4c`（codex 接入为第三个审核者，抬头 Critic-C）；**第 4 步 ✅ AC-20 达成**（2026-09-16）——`model_provider` 与 `profile_requested` 进契约、模型目录改按**逐 profile** 校验（`models_by_profile`）、沙箱负对照补正对照；`qwen` / `deepseek` 两家族各真实审查一次，四个分量逐一有据，J3～J6 全部满足。**三条达成边界随报告登记**（该侧只读保障只剩两重、`base_url` 分量依赖两侧该键都在场、单侧运行不构成多审）。验收报告见 `doc/05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md`。**M8 至此四步全部合入** |
 | **M9 Claude Code 审核者** | `adapters/claude.ts` + 审查员身份片段 + `critic_enabled` 开关。**第 3 步开工前置（照 M8 行把前置钉进范围栏的先例，代码双审 r3 GLM-02）**：**EV-39**（`registry-parity` 黑名单按厂商归属，建 `adapters/claude.ts` 那一步一并做）、**EV-42**（`rule_syntax` 目录 glob 与 `deny_paths` 逐文件清单的等价性实测——**编写适配器之前**做；未结案前 `peer_deny_applied` 不得记 true）、**EV-43**（stdin 形态下按闭集清单逐格复验，含结论回写落点）、**EV-44**（接入套件第 ⑤ 件对 claude 侧的取舍裁定，含已改挂因变量的翻转条件）——**其配套交付物「落那一格三态探针判据」同属本步范围**：无论裁定做不做第 ⑤ 件，不落该格则翻转条件引用一个不存在的字段、永远是死条件（代码双审 r4）。**不把它们列进范围栏，接手第 3 步的会话就读不到**——§3.7 表格那句话与 `types.ts` 注释都不是开工入口 | 真实审查一次，`consulted` 交叉核对通过 | ✅ **七步全部达成（2026-09-20，v1.3.30）**——完成判据「真实审查一次、`consulted` 交叉核对通过」由第 6 步第 2 轮验收达成（9/9）；第 7 步纪律 6 回溯见 §21 v1.3.30 行与 §24.1；**四条达成边界**见本格末段「第 6 步第 2 轮」。第 1 步**准入实测**（一行适配器代码都不写）：EV-41 结案——三种 prompt 载入形态全部成立、31,913 字节送审包实测跑通、**不需要分片或截断**；另三件顺带取证：**`--restricted` 会连项目记忆 `CLAUDE.md` 一起阻断**（单变量对照，**这条否证了交底给第 ⑤ 件的理由，且连同它给的处置一并否证**——片段会被同一旗标挡掉，做出来是死件，第 ⑤ 件对 claude 侧的取舍**待 M9 第 3 步接入时裁定**——见 BACKLOG **EV-44**，含翻转条件。此处上一版写的是「待代码双审裁定」，而 r2 那次双审已经发生且选择了登记而非裁定，该句已过时；两处只允许一个时点，代码双审 r3 GLM-03）、`denied_tool_in_trace` 拿到本机首个正向样本、审查尺度 slug 由 `system/init` 回读挣得。第 2 步**探针补三个机读字段**：`stream_json_requires_verbose`（**EV-40 结案，且其原拟判据「数事件条数」被实测否证**——实为 CLI 硬拒绝，判据改为「负对照被干净拒绝」）、`path_deny.coverage_complete`、`strict_mcp_config_applied`；**第 2 步的代码双审 16 条、三侧独立收敛到同一个阻断**（`[].includes(x)` 把「没测到」算成「确认没有」，使未登录机器被判安全失守），已修并加纵深用例。**两步均不改对外行为，`criticEnabled` 仍为 `false`**。 **第 3 步（2026-09-18）：适配器本体落地，四条准入前置全部结案。** ①`adapters/claude-trace.ts` 解析器搬家（探针反向 import，方向同三家先例），新增路径提取/覆盖率/计数；②`adapters/claude.ts` 分两半落地——下半身（argv/exec 封装，纯函数）供准入脚本 import，上半身（`claudeAdapter` 各成员）随后；③**EV-42 正向结案**（`file_shape_verified: true`，探针第三臂实测，两个独立装置同结论）；④**EV-43 七格 argv/stdin 双臂零分叉**（改双臂是因为本机已漂到 2.1.276 而基准产自 2.1.273，单臂比对两个变量同时在变）；⑤**EV-44 裁定第 ⑤ 件显式不做**，翻转条件落成必填三态 `project_memory_blocked`（+独立夹具+对照臂唯一构造点）；⑥**EV-39 主扫改三分 + 豁免排他 + 四条新腿**，新增能力：分解形规避与跨厂商豁免（旧判据完全抓不到）。 变异验证 20 条逐一实跑全部咬住。**第 3 步仍不改对外行为，`criticEnabled` 当时仍为 `false`**（翻开关是第 4 步）。 证据见 `doc/05_testing/REPORT_2026-09-18_m9_claude_admission.md`，留痕见 `.reviews/M9-适配器本体与准入收口/`。 **第 4 步（2026-09-18）：配套六件 + Hook 语义 + 夹具收口，`criticEnabled` 翻为 `true`——本里程碑第一次改对外行为。** ①**claude 成为可选审核者**（`defaultSelected` 保持 false，缺省集合仍是 codex/gemini/glm 三家、已顶满内置 `max_critics = 3`；翻 `defaultSelected` 会被 `deriveDefaultCritics` 的上限不变量在模块加载期拦下）；②**`--critics claude` 仍退 64**，因为「当轮 Driver 不得入选」是 `critics.ts` 的独立检查——翻开关的那一刻，这条从「靠 `criticEnabled` 顺带成立」变成**唯一防线**，已实测立住（报错里「当前可用」为 codex、gemini、glm 三家，不含 claude）；③**Hook 保护集判据由 `CRITICS`（启用集合）改为「全部已登记角色减当轮 Driver」**——不改则翻开关那一刻 Driver 写不了自己的裁决件、整条流水线锁死（实测：归档内写入由退 0 变退 2），今日行为等价、换的是理由；④第 ⑥⑦ 件补齐（`config.v2` 的 anthropic 分支只有 vendor 判别式，入口由探针独占；两档模型 default=sonnet-5 / flash=haiku）。**接入套件第 ⑤ 件按 EV-44 显式不做。** 实测口径：翻开关前单变量实验红 19 条、第 ⑦ 件另独立红 3 条（代码双审 CODEX-01 补出，计划原稿的「19 条」是单变量结论、不等于本步失败面），全部收口后 `npm run check` 1390 通过 / 0 失败 / 3 跳过（三条跳过均为实测确认的不可达分支，带原因）。留痕见 `.reviews/M9-审核者启用与夹具收口/`。 **第 5 步（2026-09-19）：`--driver` 全链路与选侧收口（EV-53 / EV-54 结案）。** 把 `--driver` 接进「解析 → 选侧 → 原稿定位 → freeze → 运行元数据」全链路（契约见 7.1 该段）：`resolveDriver` / `selectableCritics` 两个单点判定；闸门区改为直读运行元数据取当轮 Driver 与轮次（按工件后缀反推有循环依赖——要先知道 driver 才能跳过 Driver 的产出，而 driver 只记在留痕里）；裁决件 `role` 须与当轮 Driver 一致；`latestRunMeta` 把「一份都没有」与「有但全读不出」分两档、后者硬失败并指引重跑该阶段；审查件不得被当原稿（`isReviewArtifact`）。这是第 6 步的硬前置——claude 是本会话的 Driver，不接 `--driver` 验收一次都跑不成。接线扫描判据被三轮双审逐次打穿、重写五版，最终改用 TypeScript 官方解析器做词法剥离（手写状态机在少剥方向 fail-green）。三轮代码双审：r1 三侧 `request-changes` 13 条 → r2 两侧 12 条 → r3 三侧 `approve-with-nits` 11 条。边界如实登记：EV-66（裁决件 schema 的 `role` 常量，第 6 步前置之一结案）、EV-67（能入选但未入选侧的模型覆盖静默丢弃）。留痕见 `.reviews/M9-Driver旗标全链路与选侧收口/`。 **第 6 步前置之一（2026-09-19）：裁决件 `role` 契约放宽（EV-66 结案，v1.3.29）**，细节见 §21 该行与 6.6 引文块。 **第 6 步前置之二（2026-09-19）：Hook 当轮保护集接上当轮 Driver（EV-68 结案，计划双审 13 条全部接受）。** 当轮面与跨时间面在签名上分家——`hasProtectedRoleSuffix(fileName, driver)` **必填无默认值**（漏传变编译期错误，与 EV-69 登记的「默认参数让漏传静默成功」同源），跨时间面另立 `hasRoleSuffixCrossTime()` 承接提交锚与 Bash 侧、**取值口径一字未改**。**driver 的权威来源是 `run.json.driver` 而非闸门项**：原计划把 `state.json` 的 `GateEntry.driver` 定为第 1 级，被双审**两侧独立打穿**（`review.ts` 四处 `setGateChecked` 全不传 driver，唯一写它的两处以「裁决件已落盘」为前置，而 Driver 写裁决件正在那之前；叠加 upsert「沿用前一条的值」，重跑换 Driver 时拿到的是上一轮的值）。留痕损坏则**硬失败**，与 `gate` 同口径。**两条边界如实登记**：非缺省 Driver 仍写不出 plan/bug 原稿（EV-72，不挡第 6 步因为验收走 code 阶段、以 diff 为被审对象）、会话载体未定（EV-71，承接 EV-68 不该丢失的警示）。留痕见 `.reviews/M9-Hook当轮Driver保护集/`。 **本行的完整纪律 6 回溯（版本台账行、§24 台账）留待第 7 步**，此处只回补会当场失实的现状断言（代码双审 CODEX-07）。留痕见 `.reviews/M9-ClaudeCode审核者接入/`，实测见 `REPORT_2026-09-17_m9_claude_entry_probe.md`。 **第 6 步第 1 轮（2026-09-19）：验收实跑，M9 完成判据未达成，但拿到了三条准入面没测出的事实。** 载体取 ① 名义 Driver（计划双审三侧一致，EV-71 结案、残量 EV-77）；被审对象是历史提交 `3812f4c` 的 src/test 差异（作者 BobChen、2026-09-16，凭据可核，J4 达成、「同 claude 家族」记为达成边界）。两次尝试：**第 1 跑零 API 调用即拒**——`review.v1.json` 的 2020-12 `$schema` 头被 claude 2.1.277 拒绝，探针的 `json_schema_ok` 从未喂过真实契约文件（EV-74，适配器已剥该键）；**第 2 跑 525s / $1.58 跑通**，`parse_fallback: false`、`evidence_ok: true`、`model_effective_source: envelope`、`peer_deny_applied: true`（三家里第一次），但 **J5 失败**（`consulted_unverified: true`：自报 15 项，Read/文件级 Grep 只覆盖 10 项，另 5 项只在目录级 Grep 结果里出现——不是撒谎，是核对面看不见 `tool_result`，EV-76），且 **`readonly_breach: true` 是误判**（`StructuredOutput` 交付通道被算成 5 次写，EV-75，适配器已豁免该名字、探针工具面判据改为同源认得输出通道；`gate --check` 当时不消费该旗标——真假失守同样不拦——本轮代码双审后已接进失败面，按 AD-06 列文件）。零成本判据全过：刻 B 写事件翻转、J8 退 64、EV-66 负例判 `bad_front_matter`。按计划 §六不做第 3 次尝试；第 3 次要不要跑、跑之前 EV-76 取哪条出路，由用户定。证据 `doc/05_testing/REPORT_2026-09-19_m9_claude_critic_acceptance.md` 与 `doc/05_testing/evidence/m9-acceptance-20260919/`，留痕 `.reviews/M9-验收实跑/`。 **第 6 步第 2 轮（2026-09-20，用户发起）：第 3 次尝试，M9 完成判据达成。** EV-76 出路 ① 合入后重跑：同一夹具脚本重建（`cmp` 相同）、同一被审对象（`subject_sha256` 同值）、同一焦点；构建身份 = `a75ec43` 干净树重建的 bundle（sha256 `c50d787…`，与全局副本逐字节相同）。单次 429s / $1.25 跑通：`parse_fallback: false`、`evidence_ok: true`（read 11 · grep 10 · project_reads 11）、`model_effective_source: envelope`、`peer_deny_applied: true`、`drift: false`。**J5 达成**：自报 `consulted` 9 项，9/9 匹配——Read 覆盖 7 项、文件级 Grep 独占 2 项（`types.ts`、`codex.ts`），`content` 命中另覆盖 3 项但**无独占贡献**：本次样本按修前口径同样会过，出路 ① 的作用只由第 2 跑回放 15/15（`grep-hits.test.ts` T7）背书，不由本轮背书；本轮目录级 Grep 只有 1 次（`path=src`），没有撞到对端件（单侧运行也没有对端件），BRIEF 引导句是否起了作用单样本说不清。**`readonly_breach: false`**：`init.tools` 含 `StructuredOutput`、模型调用 2 次（首次形态被 CLI 打回），EV-75 的豁免与 `gate --check` 接线第一次在真实链路成立。零成本判据全部复现：刻 A / 刻 B 六格、J8 退 64、EV-66 三次 `--check`（ok → `bad_front_matter` → ok）。审查结论 `request-changes`，2 条 blocker（`rm -r --force <已存在目录>` 落 suspected 不落 writes；`&>` / `&>>` 既不进 writes 也不进 suspected）**均在本仓 HEAD 编译产物上复现**——被审对象 `3812f4c` 当初经 codex / gemini / glm 三侧代码双审合入，两处都漏过；登记 **EV-79**，不在本步修。另一条观察：`checkReviewIntegrity` 把用例里的字面路径（`src/a.ts`、`src/gone.ts`）与只经 diff 读到的文件报成「evidence 引用但未列入 consulted」，告警噪声，登记 **EV-80**。达成边界不变：名义 Driver、同 claude 家族、J6 本轮未诱导（`null`）、真载体 Hook 未验（EV-77）。证据 `doc/05_testing/REPORT_2026-09-20_m9_claude_critic_acceptance_r2.md` 与 `doc/05_testing/evidence/m9-acceptance-20260920/`。**第 7 步（2026-09-20，v1.3.30）：纪律 6 回溯完成**——§21 台账行（含第 4～6 步五个提交欠下的行）、§24.1 三行与 §24.2 九行、PRD v1.4.6 的 AC / FR / 场景状态、测试报告索引、七份门面文档的现状句、`--driver` 的 7.1 契约（6b 迟到补记）；grep 差集自检的残余命中与处置见 `doc/05_testing/evidence/m9-step7-20260920/grep-anchors.md`；EV-57 结案。 |
-| **M10 任意 Driver** | 四家入口资产与单源渲染；install 多目标；`hooks --agent`；`approve` 前置复核；协议片段两段式；**两个选侧入口（`topic resolve` 与 `review --start`）必须把当轮 Driver 传进 `resolveCriticSelection`**（**已随 M9 第 5 步提前落地**，见 7.1 `--driver` 段；本行只剩翻 `driverEnabled` 与真载体验证） | AC-21 + 兼容验收；ZCode/Codex Driver 夹具跑通；**「当轮 Driver 不得入选」对非缺省 Driver 生效**（有用例）；**前置（四条，缺一不可）**：①**agy skills 真实加载行为实测通过**——M6 第 4 步对 agy 承载面只拿到静态证据（内嵌迁移表 + 旗标帮助），据此定入口形态就是把静态证据当结论（P-05 的教训），实测通过才能拍板 §18.1 #16；②**EV-55 跨时间面重写**——提交锚改按 run 元数据的 artifacts 登记判不可变，Bash 侧另需单独决定历史后缀的文本层保护；不做则换 Driver 当天历史工件集体变「可改」或新 Driver 原稿被判伪造；③**EV-71 会话载体拍板并实测一次写事件**——Hook 只在 Claude Code 会话里生效，别家 Driver 在自己 CLI 里执笔时护栏不触发。**M9 第 6 步已拍板取「名义 Driver」并实测**（`--driver codex` 只作声明、留痕在场时 `-claude.md` 拦 / `-response-codex.md` 放，经 `gate hook-pre-write` 直喂 `PreToolUse` 完成，未覆盖 matcher 分发、`sh -c` 存在性守卫、`CLAUDE_PROJECT_DIR` 解析三层）；**真载体下 Hook 的生效性仍未验**，随本行范围栏的四家入口资产一起验（EV-77）；④**EV-72 主题级 driver 落盘**——plan/bug 原稿写在 `review --start` 之前，那一刻该阶段无留痕，非缺省 Driver 写不出自己的原稿。**完整前置清单以 BACKLOG 为准**（本栏是接手者第一眼读的地方，故把触发条件写在这里） | ⏳ 未开始 |
+| **M10a Driver 护栏与契约面**（原 M10 于 2026-09-22 拆分的前半程；主题 `M10-任意Driver`） | 五步：①按阶段声明当轮 Driver（EV-72：`topic claim` + 三级判定）；②EV-55 跨时间面重写（提交锚「位置 + 登记」）；③翻 `driverEnabled` 并收紧（未启用即退 64）+ `approve` 前置复核；④登记清理（EV-62 / EV-64 / EV-07）；⑤纪律 6 回溯，并补上第 ② 步漏做的 Bash 侧全集字面保护（D3）。**零真实 CLI 调用**。前置小主题 EV-74 / EV-79 | J2 / J5 / J6 ②④ / J7（M10a 份额）；「当轮 Driver 不得入选」对非缺省 Driver 生效（有用例，四家逐一穷举）。**原 M10 前置四条按拆分重排（M10 计划 r7 §0.3）**：②EV-55 由第 2 步交付；④EV-72 由第 1 步交付；③EV-71 会话载体已于 M9 第 6 步拍板取「名义 Driver」并实测一次写事件，真载体下 Hook 的生效性（EV-77）归 M10b；①随入口资产归 M10b。**前置 ① 不构成翻 `driverEnabled` 的前置——显式裁决**：① 约束的是入口资产怎么装、从哪加载，翻开关改变的是 `resolveDriver` 的一个分支；一个别家 Driver 即使没有任何入口资产，也能以名义 Driver 身份被指定并受三层护栏约束（M9 第 6 步已实测）。**这是对原前置「四条，缺一不可」的改，不是从原文读得出的解**，故显式写在这里 | ✅ **五步全部达成（2026-09-24，v1.3.37）**：第 1 步 `2cb05c8`（`task.json.drivers[<阶段>]` + `topic claim` + 三级判定，见 7.1）；第 2 步 `82773dc`（提交锚「位置 + 登记」，见 8.5 Hook 表）；第 3 步 `21f189a`（翻 `driverEnabled`、未启用即退 64；`approve` 前置复核，见 8.4）；第 4 步 `871b093`（按当轮 Driver 厂商名义族判异构、删 `inferLatestRunId`、EV-07 如实结案，见 11.5）；第 5 步 `f64a485` 与本版（Bash 侧角色后缀全集字面保护——r7 §3.2 的 D3，第 2 步漏做、本步补上；纪律 6 回溯）。双审轮次与墙钟见 `doc/08_project/M10a-轮次台账.md`。**八条达成边界**：①**零真实 CLI 调用**——全部判据在测试夹具与打包 CLI 上成立，非缺省 Driver 没有在任何真载体上跑过一轮（M10b）；②`driverEnabled` 的 64 收紧**只作用于经过 `resolveDriver` 的入口**，不是全称保证（不经过它的面见 7.1 `--driver` 段）；③**提交锚**强制力单向（终端提交绕过），剩余两格够不着（EV-108），预检没有「不在保护集」的标注；④**Bash 侧角色后缀全集字面保护**于第 5 步落地，判据仍是词边界字面匹配的启发式、不完备；⑤**`approve` 前置复核**只保「裁决齐备 + 本轮登记工件哈希一致」：只核本轮、不查未登记件混入、**不保审批来自人**；⑥**`topic claim` 只有手工 CLI 入口**，四条 skill 都没有认领步骤，声明只能手工发，Hook 第 2 级只在有人手工声明过时才有值（skill 侧认领归 M10b）；「一个后缀都还没用过」的窗口内认领与撤回次数不设上限；⑦**`heterogeneous` 两层启发式**（EV-107）；⑧**AC-21 只达成子句 ③** |
+| **M10b 入口资产与真载体验收**（原 M10 拆分的后半程；计划 `.reviews/M10b-入口资产与真载体验收/`） | 准入实测（agy skills 加载、codex `$ARGUMENTS`、zcode 加载面 / Hook / 真载体、嵌套枚举臂）；四家入口资产与单源渲染；install 多目标；`hooks --agent`（条件步）；协议片段两段式；D4（`guardLevel` 按探针降级）；skill 侧的 `topic claim` 认领步骤；四 Driver 验收 | AC-21 子句 ① ② + 兼容验收（J3，允许差异白名单见 M10b 计划 §5.3）；**ZCode 真载体一轮、不接受降级；codex / gemini 夹具级**（P-2 拍板 2026-09-21；M10b 计划 §1 J4——原 M10 行此处写「ZCode/Codex Driver 夹具跑通」，与 P-2 相反，本版拆行时即按 P-2 写入）。**前置 ①**：agy skills 真实加载行为实测通过——M6 第 4 步对 agy 承载面只拿到静态证据（内嵌迁移表 + 旗标帮助），据此定入口形态就是把静态证据当结论（P-05 的教训），实测通过才能拍板 §18.1 #16。**前置 ③ 的残量**：EV-71 会话载体已于 M9 第 6 步拍板取「名义 Driver」并实测（`--driver codex` 只作声明、留痕在场时 `-claude.md` 拦 / `-response-codex.md` 放，经 `gate hook-pre-write` 直喂 `PreToolUse` 完成，未覆盖 matcher 分发、`sh -c` 存在性守卫、`CLAUDE_PROJECT_DIR` 解析三层）；**真载体下 Hook 的生效性仍未验**，随四家入口资产一起验（EV-77）。前置 ② ④ 已由 M10a 交付。**完整前置清单以 BACKLOG 为准** | ⏳ 未开始 |
 | **M11 档位全链路与文档收口** | tiers 四侧配齐 + `--tier-*` 全链 + report 按 Driver/审核者聚合；`profiles` 放开 `{tier}` 形态；§17 剩余批 B 条目收口 | AC-23；**§24 台账全绿**；文档对账零冲突（禁两套规范并行）；全量手工验收剧本 | ⏳ 未开始 |
 | **M8 第 1 步**（原「独立演进项 · 未排期」→ 2026-09-15 升格为 M8 前置 → 同日落地） | 隔离检测**措施 b**：`run_command` 命令文本字面扫描（10.2） | 命令文本伪造命中作废；`run.v2` 的 `guard.peer_leak_via_command` 接线 | ✅ **已实现（M8 第 1 步，v1.3.8）**，BACKLOG **EV-01** 转 done。**升格理由**：M6 第 2 步实测 codex 的 `trace_path_structured = false`（读取经 shell，轨迹里只有命令文本），本项遂从「通道②的唯一覆盖」变成「**codex 侧一切路径核验的唯一手段**」。承诺面是 F-1～F-9 闭集、盲区 B-1～B-5，详见 10.1 措施 b |
 
@@ -2964,7 +2997,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 
 ```text
 链① 探针：  M6 ─────────────────┐
-                                 ├──→ M8 / M9（可并行）──→ M10 ──→ M11
+                                 ├──→ M8 / M9（可并行）──→ M10a ✅ ──→ M10b ──→ M11
 链② 主干：  M7a ✅ ──→ M7b ─────┘
 ```
 
@@ -3121,7 +3154,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | :--- | :--- | :--- | :--- |
 | 14 | 默认审核者数量与组合 | **自 2026-09-16（D4-4）为三家 `[codex, gemini, glm]`，由注册表 `defaultSelected` 派生**；此前为 `[gemini, glm]`（D-1，理由「codex 尚未真跑过」随 AC-20 达成而消失） | 三审默认：隔离更强但成本 ×1.5、墙钟取最慢侧、环境门槛抬高一档；降回两侧走显式 `--critics`；单审默认与 FR-29 意图不符 |
 | 15 | Codex 多家族 provider 配置的引导方式 | `doctor` 逐家族只展示可粘贴样例、由人写入 | `doctor` 代写厂商全局配置：省事但违反 16.2 纪律 5 |
-| 16 | Antigravity 作为 Driver 的入口形态 | ~~M6 探针后定：优先自定义 agent 定义，退路为协议片段契约~~ **M6 第 4 步给出倾向（2026-09-15，未拍板）**：改为 **skills 优先**（`~/.gemini/config/skills/<name>/SKILL.md`，与另三家同形，单源多渲染成本最低）；自定义 agent 定义**保留给只读审查者身份**（它承载的是工具白名单，与入口资产是两件事）；协议片段契约降为退路 | **本条尚未拍板，因为证据强度不够**：agy 侧的两条依据（二进制内嵌的 workflows → skills 迁移表、`--disable-slash-commands` 旗标帮助）都是**静态证据**，没有行为实测；而 **P-05 的教训正对着这里**——ZCode 的 `--help` 列过 `--max-turns`，实测被拒，**旗标帮助不是能力证据**。**「agy skills 真实加载行为实测」已写进 16.1 的 M10 完成判据**，实测通过才拍板。详见 [`REPORT_2026-09-15_m6_driver_entry_probe.md`](../05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md) §4.3 与 §8、本文 §24.1。另：一期只支持三家 Driver 仍是备选 |
+| 16 | Antigravity 作为 Driver 的入口形态 | ~~M6 探针后定：优先自定义 agent 定义，退路为协议片段契约~~ **M6 第 4 步给出倾向（2026-09-15，未拍板）**：改为 **skills 优先**（`~/.gemini/config/skills/<name>/SKILL.md`，与另三家同形，单源多渲染成本最低）；自定义 agent 定义**保留给只读审查者身份**（它承载的是工具白名单，与入口资产是两件事）；协议片段契约降为退路 | **本条尚未拍板，因为证据强度不够**：agy 侧的两条依据（二进制内嵌的 workflows → skills 迁移表、`--disable-slash-commands` 旗标帮助）都是**静态证据**，没有行为实测；而 **P-05 的教训正对着这里**——ZCode 的 `--help` 列过 `--max-turns`，实测被拒，**旗标帮助不是能力证据**。**「agy skills 真实加载行为实测」已写进 16.1 的 M10 完成判据（原 M10 行于 v1.3.37 拆分后，归 M10b 行的前置 ①）**，实测通过才拍板。详见 [`REPORT_2026-09-15_m6_driver_entry_probe.md`](../05_testing/REPORT_2026-09-15_m6_driver_entry_probe.md) §4.3 与 §8、本文 §24.1。另：一期只支持三家 Driver 仍是备选 |
 | 17 | 「三档」挂 Agent 还是挂模型 | tiers 挂 Agent（组合可跨模型）+ 模型侧声明各自的 effort 枚举 | tiers 挂模型：更贴字面但表达不了「同族快慢两档」的既有先例 |
 | 18 | schema 升级策略 | run / config 升 v2 双读；review / disposition 原地扩展 | 全部原地扩展：少一个版本位，但 `critics` 开放 map 会放宽对历史工件的校验 |
 | 19 | `claude` 审核者读项目指令文件的处置 | 指令文件加审查员身份片段（同 `AGENTS.md` 手法） | 无可用手段时 `claude` 暂不启用为审核者（`critic_enabled: false` 兜底） |
@@ -3211,11 +3244,11 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 | :--- | :--- | :--- | :--- | :--- |
 | R16 | Codex CLI 版本漂移（事件流 / 旗标随版本变，同 R2 性质） | 适配层易碎 | 全参数走探针 + 录制样本契约回放 + 预检校验关键 flag + 版本入档 | 3.6、11.1 |
 | R17 | 三审成本 = 双审 × 1.5（配额与等待心智） | 用户绕过流程 | **默认三侧（D4-4）+ 显式降回两侧的路径**（`--critics` 或 `review.default_critics`）；档位分级延续；代价四条写在 13.1.1 与注册表 `defaultSelected` 的说明里 | 11.5、18.1 #14 |
-| R18 | **L2 Driver（codex / gemini）无事前写拦截** | 闸门期业务文件可被改，事后才发现 | `approve` 前置复核 + 归档 `_meta/` 唯一事实 + `O_EXCL` 防覆盖 + 跑后漂移复算；**护栏差异在 QUICKSTART 明示** | 8.5 |
+| R18 | **L2 Driver（codex / gemini）无事前写拦截** | 闸门期业务文件可被改，事后才发现 | `approve` 前置复核（【已实现 · M10a 第 3 步】；只核本轮、不查未登记件混入、不保审批来自人，见 8.4）+ 归档 `_meta/` 唯一事实 + `O_EXCL` 防覆盖 + 跑后漂移复算；**护栏差异在 QUICKSTART 明示**（【待实施 · M10b】） | 8.4、8.5 |
 | R19 | 四 Agent 配置面爆炸，v1→v2 迁移踩旧项目 | 旧项目升级即坏 | v1 全兼容读取（内存迁移）+ `init` 一次性改写 + 迁移夹具测试 | 13.1.1 |
 | R20 | Antigravity Driver 入口缺命令载体（无参数系统） | 四条命令语义靠口述，易走样 | M6 定形；最弱退路 = 协议片段契约 + 手动 CLI 调用；如实标注成熟度 | 8.5、18.1 #16 |
 | R21 | **N 方禁读矩阵手工维护漏项** | 隔离破洞 | deny 集合程序生成 + **禁止手工枚举**（16.2 纪律 7）+ `registry-parity` 测试 | 10.2 |
-| R22 | 新后缀（`-codex.md` / `-claude.md`）进保护字面集，Bash 误拦频率上升 | Driver 摩擦变大 | **判定语义不动**（RV-B1 教训，见第 21 章 v1.2.5）；出口是 Write/Edit 工具 + `git commit -F <文件>`；文档如实登记 | 8.5 |
+| R22 | 新后缀（`-codex.md` / `-claude.md`）进保护字面集，Bash 误拦频率上升（**已全部发生**：`-codex.md` 随 M8 接入，`-claude.md` 随 M10a 第 5 步 D3——Bash 侧拿不到当轮，含当轮 Driver 自己的后缀在内全集字面拦） | Driver 摩擦变大 | **判定语义不动**（RV-B1 教训，见第 21 章 v1.2.5）；出口是 Write/Edit 工具 + `git commit -F <文件>`；文档如实登记 | 8.5 |
 | R23 | 同一后缀跨运行既当 Driver 又当审核者，语义混淆 | 留痕误读 | **后缀 = 产出方、`run.json.driver` = 发起方，两者正交**；report 双维度聚合 | 6.2、6.7.1 |
 | R24 | Codex 多家族 provider 均依赖用户侧手工配置，家族越多配置面越大 | 首跑门槛高 | `doctor` 逐家族探活并展示可粘贴样例 + QUICKSTART 增补；选用未配置家族的模型**在预检即拦截**并给指引 | 12.1、18.1 #15 |
 | R25 | 命令文本扫描是启发式，**五类不可检**（10.1 措施 b 的 B-1～B-5）：**分段拼接**（完整字面量从不出现）、**未指名 deny 路径的内容转储**（deny 文件条目的祖先目录、**无 pathspec 的裸 `git log -p`**、**从根递归的 `grep -rn . `**）、glob 展开、编码/间接。**非蓄意也会撞上的有两类：B-2 与 B-5**——B-1 / B-3 / B-4 各需一个刻意动作（拆开拼接、用 glob、编码），而目录级 git 读取是排查时的常用手法、重指名项目根是子目录工作时的自然写法。**B-2 的特殊之处不在「唯一」而在它没有缓解措施**（已拍板不收窄，EV-16）；B-5 则是 F-6 收窄的代价（见 10.1 措施 b）。原写「B-2 是四类里唯一非蓄意」，B-5 入表后即为假（r4 双审 GLM-01） | 对抗形态的泄漏静默发生；**B-2 则连非对抗形态也漏** | 威胁模型定调下**接受**（10.2：防锚定污染、非对抗穿透，目标「泄漏必检 + 成本抬升」）；硬隔离备选已留档（ADR-002），出现实锤即重启评估。**B-2 已拍板不收窄**（2026-09-15，决策者 Chen Zhenbo，BACKLOG **EV-16**）：裸 `git log -p` 与根递归 `grep` 保留在审核者的命令能力内，不因它削减 bug 阶段排查能力。**故 B-2 是纯接受项——本行对它没有缓解措施**，这与 B-1/B-3/B-4「蓄意规避不可检」的接受理由不同：B-2 是**明知非对抗形态也会撞上而选择接受**。**对现役两家不是活风险**（agy 工具面无命令工具、zcode 全禁 `Bash`）；**M8 第 3 步 codex 接入时变活**，届时不得因「措施 b 已落地」把通道②整体标为收口——通道表记的是「**F-3 字面形态**已收口」，那个限定词是本决策的直接产物 | 10.2 |
@@ -3255,6 +3288,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.37** | 2026-09-24 | **M10a 第 5 步：纪律 6 回溯，M10a 五步收口**（计划 `.reviews/M10a-第5步/`：计划双审 1 轮 16 条，接受 15、暂缓 1；段一代码双审 r6 6 条全接受；本版为段二）。**一、16.1 M10 行拆为 M10a / M10b 两行**：M10a 记五步达成与八条达成边界；原前置四条按拆分重排（② ④ 由 M10a 交付、③ 残量与 ① 归 M10b），并写入显式裁决「前置 ① 不构成翻 `driverEnabled` 的前置」（M10 计划 r7 §0.3）；M10b 行的完成判据直接按 P-2 写「ZCode 真载体一轮」，不继承原行的「夹具跑通」。**二、M10a 落地的契约迟到并入**（纪律 6b，偏离如实登记）：7.1 新增 `topic claim` 段；6.7.1 / 7.1 的 `--driver` 由「只校验已登记」改为「未启用即退 64」，并写明 64 收紧的作用面不是全称；6.2 与 8.5 的当轮 Driver 改为三级判定；8.4 新增 `approve` 前置复核与三条边界；8.5 Hook 表写明提交锚「位置 + 登记」判据、剩余边界与强制力单向，`hook-pre-bash` 的后缀集改为全集（D3）；10.4 的后缀枚举句改判据式。**三、异构口径**：1.2、11.5、15.1 FR-17、15.3 AC-18 由「非 Claude 系」改为「不与当轮 Driver 厂商名义族同族」，写明两层启发式与历史文案并存（EV-107）。**四、状态位**：术语表、1.1 R-2、15.1 FR-28、15.3 AC-21（仅子句 ③）、19 R18 / R22、18.1 #16 指针、依赖图、§24.1 三行（含新增「演进设计三处口径修正」行）与 §24.2 十二行。**五、核出并改准的一处过头说法**：`verify-*.json`「由不受保护变为受保护」（自 M10 计划 r7 起沿用）实为「由锚②单层变为锚①②双层」——verify 运行清单早已登记它。回溯完整性的核法（逐项对账表 + 反向表 + grep 锚差集）与结论见 [`REPORT_2026-09-24_m10a_step5.md`](../05_testing/REPORT_2026-09-24_m10a_step5.md)。 |
 | **v1.3.36** | 2026-09-23 | **EV-74 结案：探针与准入脚本结构化输出臂改喂真实契约文件**（M10a 第 2 步开工前置清零；计划 5 轮 40 条全接受、代码 1 轮 15 条全接受/1 条暂缓，实测报告见 [`REPORT_2026-09-23_ev74_structured_arm_acceptance.md`](../05_testing/REPORT_2026-09-23_ev74_structured_arm_acceptance.md)）。**一、判据从形态判定升级为契约判定**：`probes/claude.ts` 的 `json_schema_ok` 此前只喂不带 `$schema` 的迷你 schema，只证「旗标收不收内联 JSON」不证「CLI 收不收本仓的契约」（BACKLOG 登记的既有盲区）。现经 `readSchemaJson` 剥壳后喂真实 `review.v1.json`，`judgeJsonSchema` 按七格三态判据分格（`false` 只由干净拒绝触发；`null` 的四类成因——两头皆空／已吐事件未完成／撞闸未跑完／模型不合规——经返回值字段 `StructuredArmCause` 承载，不落盘、仿 zcode `flagsIndeterminate` 先例），`doctor` 按成因分派 `DoctorReport.warnings` 文案，不做文案匹配。**二、资产根解析规则收敛为单一事实来源**：`config.ts` 新增 `resolveAssetRoot` / `resolveReviewSchemaPath`，`review.ts` 与 `init.ts` 原本各自维护的同形 `override ?? env ?? homedir` 链合并为一处；准入脚本 `claude-admission-control.mjs` 同改经共用出口取契约，资产根缺失时 fail-fast（不回落仓内副本）。**三、新增架构契约**：`probes/` 自身的 import 面从「未定义」改为允许清单（`{node:*、probes/ 同目录、../config.js、../types.js、../util/*、../adapters/*、../secrets.js}`，`../init.js` 具名登记为例外），配防空转腿与防腐烂腿，见 §11.1「`probes/` 自身的 import 面」。**四、代码双审第 1 轮修复两处真实缺陷**：契约文件"存在但已损坏"此前会被当成合法内容送去 CLI、被拒后误判成"CLI 不接受契约"而非"本地文件损坏"（`readSchemaJson` 对坏 JSON 不抛是既有契约，探针与脚本均加 `JSON.parse` 前置校验堵上）；准入脚本的 fail-fast 曾被逐用例 `try/catch` 吞掉、进程仍退 0（提到用例循环之前）。**五、§4 实测证实核心保证成立**：零成本的拒绝形态复现（`stdout_event_count=0`，补全 M9 第 1 跑缺的数据点）与三次真实契约下的结构化输出实测（全部一次命中 `true`/`ok`，成本 $0.0421）均通过；预算/超时常量留有充足余量（最高实测成本仅占预算 12%），**按臂覆盖入参机制维持故意未接线**（不编造未实测的上调数值）。**六、一条待续**：`doctor.ts` claude 段的 `configuredBin` 硬编码 `null`（早于本主题的既有架构缺口），若要给 §5 用例 7 补 `runDoctor` 层端到端测试需先补注入口，登记为独立残余，本主题不顺手改。留痕见 `.reviews/EV-74-探针喂真实契约文件/`（`plan/` 五轮、`code/` 一轮）。 |
 | **v1.3.35** | 2026-09-22 | **EV-79 代码双审第 3 轮收口（12 条全接受零驳回；三侧一致 `approve-with-nits`，阻断 0）。判据主体本轮零意见——12 条全落在证据件与留痕层。** **一、本轮的统一教训是「落点的论域被读窄」**：12 条里有 3 组指向同一个模式——我按「意见列出的文件」逐个改，而不是按「落点承诺的论域」扫一遍。`CODEX-09「三处措辞改准」`漏了 `gate.ts` 的**执行面正文**（真正被人读到的第四处）与未重跑的 `.out.txt`；`CODEX-02「校验 + 退出码分开取」`只兑现了前半句，且内联对照段没复用校验；`CODEX-05「不写死绝对路径」`只改了姊妹脚本，漏了同批新建的对账脚本。三条形状一样：落点句子里的量词被当成枚举而非论域。**做法固化**：接受意见时落点栏要追加「该口径的全部落点由什么方式穷举」，改完按那个方式复扫。本轮据此全仓 grep，多找到两处——`gate.test.ts` 的注释仍写旧口径（已改）、`m9-acceptance-20260919/build-fixture.sh` 的硬编码路径（不在本轮 diff 内，登记为 EV-103 不顺手改）。**二、drift 指纹补上第四处落点**：`gate.ts` 的 `readonly_breach` 处置正文与注释改为单向口径；`gate.test.ts` 加**否定式**语义锁（锁「不得出现『没有改动则是误报』式反推」）——否定式只禁一种语义、对措辞演进不敏感，肯定式会把文案钉死而误伤。该处置文案的实际代价本轮已兑现：r2 闸门因 `readonly_breach` 误报解不开，`await-approval` 退 2、`approve` 也不放行，最终由用户裁定走 `abandon` 显式作废那一轮（工件保留，**22 条裁决未走到人工审批位**，已如实登记）。**三、对账表重写，把「实测」从期望值里拆出来**：上一版 `got === 'X'` 时按 `want` 反填档位，**凡期望为 X 的行构造上永远「相符」**——与本主题 r2 那条「空枪用例」同族，只是换了载体。现改为两条独立的轴（轴一判据行为 `got` vs `want`，want 只取 `F:…` 或 `X`；轴二实测真值具名抄自探针落盘件的行号），漏检由两轴交叉**派生**而非声明。限度写明不遮：两份留痕不可能在一次执行里联动，轴二是抄录，失真面从「永远相符」降到「抄录出错」。另修正引号字面量行的机制归属——它既非 fd 排除也非「引号免疫」，而是去引号规则把含 `&` 的引号段整体丢弃，**那正是 EV-102 登记的残余机制本身**，上一版给它盖了「正确排除」章。**四、探针脚本**：两个脚本立「任何用 `$d` 之前必须过校验」的纪律并补上内联对照段的遗漏；`cd` 失败与命令退出码用哨兵分开取（实测两种写法均返回哨兵值），并写明**哨兵抓不到空串**（`cd ""` 是 no-op 返 0，那一格只有「非空」校验能抓）；立「改了 `.sh` 的结论段必须同轮复跑刷新 `.out.txt`」的证据件约定——本轮的 `probe-delete-exit-codes.out.txt` 正是那条约定的起因。**五、验证**：全量 1636 / 1634 / 0 / 2（本轮是给既有用例加断言，计数不变）；变异扩到 **14 项全部咬住**，新增第 14 项打 `gate.ts` + `gate.test.ts`，变异装置同时加了「替换是否真进产物」的前置守卫（r2 曾把自己的转义 bug 误判成用例失效）；两个探针复跑后数据行逐字不变，对账表 56 形态、轴一不符 0、漏检 1 格。**六、EV-95 / EV-98 各得一组数据**：焦点开头加硬约束（禁止用解释器内联字符串验证判据）后**三侧全部无失守**，连撞三轮的误报断了，而 codex 侧仍跑 26 次命令保持实测级核验；三侧均如实声明哪些结论是推理（gemini、glm 的 `run_command` 为 0）。约束有效但成本由 Driver 每轮手工承担，两条严重度均不下调。 |
 | **v1.3.34** | 2026-09-22 | **EV-79 写命令判据两处缺口（M10a 第 2 步的开工前置之一；plan 5 轮双审，30 + 11 条全接受零驳回）。** **一、缺口一**：`rm` 的递归 + 强制被整体判成幂等形态，不驱动 `readonly_breach`。根因是同一张白名单内的**单调性违背**——`rm -r X` 判写事件，**加上** `-f` 反而降级到疑似。`-f` 的幂等理由只对「目标不存在」成立而判定层不做 I/O，非递归时可接受，`-r` 把论域扩到整棵子树之后不能。收紧后的误杀面如实登记：`rm -rf <项目内、实际不存在的目录>` **是可达的**（`-f` 让它也退 0、穿过「只喂成功命令」的契约；不带 `-f` 的同形态退 1 进不来），排障指纹是 `snapshot.drift` 恒 false。**二、缺口二**：双流重定向既不进写事件也不进疑似，且其目标**倒过来污染读路径面**。判别轴由「残留长什么样」改为**运算符形态**——同一残留 `&2`，在 `>&2` 是 fd 复制、在 `>>&2` 是往名为 `2` 的文件写。`REDIRECT_RE` 改为文法式 `/^(?:&\|[0-9]*)>>?&?[\|!]?/`；**有 fd 语义的只有无强制覆盖后缀的 `[n]>&` 一族**，且该族内目标位**恰为**纯数字或 `-` 才是 fd 操作。**三、论域在五稿里扩了四次、每次都由实测驱动**（`&>` → 加 `>&` → 加 `2>&` → 加 `>>&` 与强制覆盖族 → 加普通覆盖后缀），故承诺面从「共 N 种拼写」改写为「**按运算符文法覆盖**」——可证，而枚举清单不可证；文法边界写明（`{var}>f` 在 `^` 锚定外，登记为残余）。**四、危害归因更正**：前四稿都把读面污染的危害写成「喂进措施 a 的禁读核验」，而 `base.ts` 与 `guard.ts` 的注释白纸黑字写着**措施 a 不吃回填**（落款还是更早两轮双审的确认）。真正的危害是**证据自证**——一条从未读过的路径只要被某次重定向当过目标，就能让 `consulted` 里的虚假声明通过 `judgeSide` 的交叉核对。用例据此补在**危害出口**（`judgeSide` 的 `matchConsulted`）与其直接输入（`effectiveReadPaths`）两处，而不只在中间提取函数上——只钉 `extractPathTokens` 的正负输出，守的是中间层、与选方案 A 的理由脱钩。**五、三次自引回归，全部由双审揪出**：r4 把 fd 族的数字分流照抄给了普通文件重定向（`echo x > 2` 今天判写事件、按那版降为双空）；r5 把强制覆盖后缀并进 fd 族（`>&\| 2` 实测建出文件 `2`，三侧同时命中，且它正是焦点里主动求的 D3 反例）；两次共性都是「判据放宽一点点就把真实写入静默吃掉」。变异清单为此专设两项回归锁。**六、外壳语义落成证据件**：审查侧建不了文件，本主题曾为同一组外壳事实烧掉两轮三侧配额（一轮两侧结论互相矛盾、一轮一侧声称实测而命令计数为 0，见 BACKLOG EV-95），故 §1.4 的外壳实测连同命令原文、外壳版本与基线 commit 落进 `doc/05_testing/evidence/ev79-shell-redirect-20260922/`（重定向运算符探针、`rm` 退出码探针、56 形态对账表三件），并给出**只读环境下可用的报错文本复测法**。**七、验证**：新增 29 条单测（`codex-write-verbs` 26 + `guard-capability` 3；写面按四条规则组织、fd 回归一字不变、读面正反各一 + 强制覆盖族读面锁、消费面打到 `matchConsulted` 真出口、目标钉死四条）；13 项变异**首轮 3 项存活**——逐项核出 1 项是替换没生效（编译产物里是双引号）、2 项是**用例真的不足**（`writes` 只给命令原文，目标取错时命令照样进档），补「用项目外目标反推写入点」的三条后全部咬住。全量 1636 / 1634 / 0 / 2。 |
@@ -3417,8 +3451,9 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
 | 6.5 意见前缀 | A | 第零步 | ✅ 已并入 v1.3.0（**拆两级标记**） | 6.5 |
 | 6.6 role 与 addresses | A（规格）/ **B-契约**（role 实现） | 第零步 / **M9 第 6 步前置** | ✅ 规格已并入 v1.3.0；**`role` 契约 ✅ 已落地（EV-66，v1.3.29）**，并**修正演进设计 §4 表第 9 行与 §6.2 表的口径**：不取「enum 四值」而取 `string` + 代码层注册表校验（理由见 6.6 引文块：enum 等于在 schema 里抄第二份 id，与纪律 7 相抵且第五家登记必漏改）。`addresses` 基数 1～3 已随 M7b `--critics` 落地 | **6.6** 引文块；`schema/disposition.v1.json`、`schemas.ts` 的 `validateDispositionFrontMatter` + `checkDispositionRole`、`gate.ts` 的 role↔driver 比对；`test/contract/disposition-role-assets.test.ts` |
 | 6.7 → run.v2 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0；**实现 ✅ 已落地（M7b 第 3 步，2026-09-14）** | **6.7.1**（并排追加，v1 基线保留）；`schema/run.v2.json`、`meta.ts` 写侧与 `migrateRunMetaV1`、`archive.ts` 的 `runManifestProblem` |
-| 7.1 / 7.4 命令旗标与四家入口 | **B-契约** | **M7b / M9 / M10** | ✅ `--critics` 已并入（M7b 第 5 步）；✅ **`--driver` 已并入 v1.3.30**（M9 第 5 步落地——按纪律 6b 应在开工前并入，实际随第 7 步补记，偏离如实登记于 7.1 该段）；`--tier-*` / `--effort-*` / 四家入口 ⏳ 待 M10 / M11 | 7.1 引言块 |
-| 8.4 / 8.5 Hook `--agent` 与多目标 | **B-契约** | **M10** | ⏳ 未并入（指针占位 + 护栏分级表已并入） | 8.5 引言块 |
+| 7.1 / 7.4 命令旗标与四家入口 | **B-契约** | **M7b / M9 / M10a / M10b / M11** | ✅ `--critics` 已并入（M7b 第 5 步）；✅ **`--driver` 已并入 v1.3.30**（M9 第 5 步落地——按纪律 6b 应在开工前并入，实际随第 7 步补记，偏离如实登记于 7.1 该段），M10a 第 3 步收紧为「未启用即退 64」随 v1.3.37 改准；✅ **`topic claim` 已并入 v1.3.37**（M10a 第 1 步落地，同样随回溯步迟到补记）；四家入口 ⏳ 待 M10b；`--tier-*` / `--effort-*` ⏳ 待 M11 | 7.1 引言块、7.1 `topic claim` 段 |
+| 8.4 / 8.5 Hook `--agent` 与多目标 | **B-契约** | **M10a / M10b** | ◐ **M10a 份额 ✅ 已并入 v1.3.37**：`approve` 前置复核（8.4 解除方式、8.5 L2 表 ①）、提交锚「位置 + 登记」判据（8.5 Hook 表 `hook-pre-commit` 行）、当轮 Driver 三级判定（8.5 结局 ②）、Bash 侧全集字面保护（8.5 Hook 表 `hook-pre-bash` 行）；**`--agent` 与多目标 ⏳ M10b** | 8.4 解除方式、8.5 引言块与 Hook 表 |
+| **演进设计 §5.2 / §9.4 / §5.4 末条的口径修正（M10a，原清单未列）** | **B-契约** | **M10a** | ✅ **已并入 v1.3.37**，并**修正演进设计三处口径**：①§5.2「发起」只列留痕三处，M10a 多了一处**声明**（`task.json.drivers[<阶段>]`，见 7.1 `topic claim` 段）；②§9.4「`approve` 无条件重跑一次 `checkAdjudication`（含 sha256 抽核）」的实际形态是 `verifyRoundForApproval`，且有三条边界（见 8.4）；③§5.4「模型族按生效模型判定，不按 Agent」在 Driver 一侧做不到，今天按厂商名义族近似（见 11.5，EV-107）。演进设计 v1.0.0 冻结正文，修正只落本文——**以本文为准**，与 3.6 / 3.7 / 7.6 / 6.6 同一机制；演进设计只改了 §14 里程碑表的 M10 行与预估列（先例 `194ef0b`） | 7.1、8.4、11.5 |
 | 8.6 gate 裁决校验 N 方化 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0 | 8.6 末段 |
 | 9.3 镜头四键 | **B-契约** | **M8 / M9** | ✅ 已并入 v1.3.17：**四键齐备**——`codex` 键随 M8 第 3 步、`claude` 键按纪律 6b 于 M9 工前并入，四家的轴两两零关键短语交叠 | 9.3 引言块 + `lenses.yaml` 的 `codex` / `claude` 段 |
 | 10.1 / 10.2 deny 矩阵与检测收口 | A（登记）/ B（N 方泛化）/ **B-前置**（措施 b） | 第零步 / M7b / **M8（前置依赖）** | ✅ 通道清单已并入。**措施 a 路径侧 ✅ 已实现（M7a）**；N 方泛化 ⏳ M7b；**措施 b ✅ 已实现（M8 第 1 步，v1.3.8）**——2026-09-15 先由「独立项 · 未排期」升格为 M8 前置（依据是 M6 第 2 步实测 codex `trace_path_structured = false`，本项是该侧路径核验的唯一手段），同日落地。承诺面是 F-1～F-9 闭集、盲区 B-1～B-5，见 10.1 措施 b 与 BACKLOG EV-01 | 10.1 措施 b；16.1；EV-01 |
@@ -3441,24 +3476,24 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
 
 | 目标文档 | 批 | 目标里程碑 | 状态 |
 | :--- | :--- | :--- | :--- |
-| [PRD](../01_requirements/PRD_driver_dual_critic.md) v1.4.0 → **v1.4.6** | A + B | 第零步 / M8 / M9 | ✅ 批 A 已并入；AC-20 状态随 M8（v1.4.5）、AC-22 / AC-24 / FR-27 / FR-29 / FR-31 / S6～S8 状态随 M9 第 7 步（v1.4.6） |
-| [`LLD_orchestrator.md`](./LLD_orchestrator.md) v1.1.0 → **v1.1.1** | A | 第零步 / M9 | ✅ 批 A 已并入；「当前边界」与 Hook 伪造判据两处现状句于 M9 第 7 步改准（v1.1.1） |
-| [`PROTOCOL_dual_critic_relay.md`](../03_api/PROTOCOL_dual_critic_relay.md) | A + B | 第零步 / M7b～M11 | ✅ 批 A 已并入（依据回填 + 契约变更说明）；`--critics` 随 M7b、`--driver` 与 `role` 放宽随 M9 第 5～6 步已并入；现状句于 M9 第 7 步改准；`--tier-*` / `--effort-*` 随 M10 / M11 |
-| [`QUICKSTART.md`](../07_manuals/QUICKSTART.md) | A + B | 第零步 / M8～M11 | ✅ 批 A 已并入；**现状句于 M9 第 7 步改准**（四家审核者可选、缺省三家）；codex / claude 安装与 doctor 指引、Driver 切换、档位用法仍随 M10 / M11 |
+| [PRD](../01_requirements/PRD_driver_dual_critic.md) v1.4.0 → **v1.4.7** | A + B | 第零步 / M8 / M9 / M10a | ✅ 批 A 已并入；AC-20 状态随 M8（v1.4.5）、AC-22 / AC-24 / FR-27 / FR-29 / FR-31 / S6～S8 状态随 M9 第 7 步（v1.4.6）；**FR-28 / AC-21 部分达成、FR-17 / AC-18 名义族口径随 M10a 第 5 步（v1.4.7）** |
+| [`LLD_orchestrator.md`](./LLD_orchestrator.md) v1.1.0 → **v1.1.2** | A | 第零步 / M9 / M10a | ✅ 批 A 已并入；「当前边界」与 Hook 伪造判据两处现状句于 M9 第 7 步改准（v1.1.1）；「当前边界」的 `driverEnabled` 现状句于 M10a 第 5 步改准（v1.1.2） |
+| [`PROTOCOL_dual_critic_relay.md`](../03_api/PROTOCOL_dual_critic_relay.md) | A + B | 第零步 / M7b～M11 | ✅ 批 A 已并入（依据回填 + 契约变更说明）；`--critics` 随 M7b、`--driver` 与 `role` 放宽随 M9 第 5～6 步已并入；现状句于 M9 第 7 步改准；`topic claim` 随 M10a 第 1 步、`--driver` 收紧随第 3 步已并入，认领出口文案随第 5 步改准；四家入口随 M10b、`--tier-*` / `--effort-*` 随 M11 |
+| [`QUICKSTART.md`](../07_manuals/QUICKSTART.md) | A + B | 第零步 / M8～M11 | ✅ 批 A 已并入；**现状句于 M9 第 7 步改准**（四家审核者可选、缺省三家）；codex / claude 安装与 doctor 指引、Driver 切换、档位用法仍随 M10b / M11（M10a 第 5 步只改了 M10 标签） |
 | [`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md) | A | 第零步 | ✅ 已并入 |
-| [`RUNBOOK_pipeline_ops.md`](../06_deployment/RUNBOOK_pipeline_ops.md) | **B** | **M10** | ⏳ 未并入（多审失败处置、L2 Driver 人工兜底） |
-| [`MANUAL_user.md`](../07_manuals/MANUAL_user.md) v1.0.1 | A + B | 第零步 / M9 | ✅ 批 A 已并入；**现状句于 M9 第 7 步改准**（§1 与 §4.2 的「只有两家」）；四家用法与 Driver 切换随 M10 |
-| [`CASE_manual_acceptance.md`](../05_testing/CASE_manual_acceptance.md) | **B** | **M11** | ⏳ 未并入（演进设计 §13.3 的剧本增补） |
-| [`.reviews/README.md`](../../.reviews/README.md) | A | 第零步 | ✅ 批 A 已并入；**现状句于 M9 第 7 步改准**（「仍是两侧审查」自 M8 起失实） |
-| [`README.md`](../../README.md) | A | 第零步 | ✅ 批 A 已并入；演进注记与分层表于 M9 第 7 步改准（第四家已接入） |
-| [`AGENTS.md`](../../AGENTS.md) | A | 第零步 | ✅ 已并入 |
-| [`doc/02_design/README.md`](./README.md) | A | 第零步 | ✅ 批 A 已并入；主设计条目版本与读法于 M9 第 7 步改准（曾停在 v1.3.15） |
+| [`RUNBOOK_pipeline_ops.md`](../06_deployment/RUNBOOK_pipeline_ops.md) | **B** | **M10b** | ⏳ 未并入（多审失败处置、L2 Driver 人工兜底；原 M10 拆分后归 M10b）。提交锚一句的锚归因于 M10a 第 5 步改准（位置 + 登记） |
+| [`MANUAL_user.md`](../07_manuals/MANUAL_user.md) v1.0.1 | A + B | 第零步 / M9 | ✅ 批 A 已并入；**现状句于 M9 第 7 步改准**（§1 与 §4.2 的「只有两家」）；§8.2「前置复核保什么、不保什么」与 §8 护栏表的判据式措辞随 M10a 第 5 步（v1.0.2）；四家用法与 Driver 切换随 M10b |
+| [`CASE_manual_acceptance.md`](../05_testing/CASE_manual_acceptance.md) | **B** | **M10b / M11** | ⏳ 未并入（演进设计 §13.3 的剧本增补；S6 剧本随 M10b）。**4.3 行与其后 `claude-*` 段已于 M10a 第 5 步按名义族口径改写**（须在 M10b 真载体验收前改） |
+| [`.reviews/README.md`](../../.reviews/README.md) | A | 第零步 | ✅ 批 A 已并入；**现状句于 M9 第 7 步改准**（「仍是两侧审查」自 M8 起失实）；**「提交时的留痕核对」一节随 M10a 第 5 步新增**（位置 + 登记、`verify-*.json` 由单锚变双锚、Bash 侧口径） |
+| [`README.md`](../../README.md) | A | 第零步 | ✅ 批 A 已并入；演进注记与分层表于 M9 第 7 步改准（第四家已接入）；异构口径、角色后缀枚举句与 M10 标签于 M10a 第 5 步改准 |
+| [`AGENTS.md`](../../AGENTS.md) | A | 第零步 / M10a | ✅ 已并入；项目概览的失实句（「Antigravity 与 ZCode 背靠背只读双审」）于 M10a 第 5 步改准。面向执笔者的协议段随 M10b「协议片段两段式」 |
+| [`doc/02_design/README.md`](./README.md) | A | 第零步 | ✅ 批 A 已并入；主设计条目版本与读法于 M9 第 7 步改准（曾停在 v1.3.15）；M10a 第 5 步跟到 v1.3.37 |
 | [`.env.example`](../../.env.example) | **B** | **M8** | ⏳ 未并入（Codex 侧凭据与 provider 说明） |
 | [`BACKLOG.md`](../08_project/BACKLOG.md) | A | 第零步 | ✅ 已并入（措施 b 独立演进项已登记） |
 | `ADR_002_multicritic_isolation.md` | A | 第零步 | ✅ 已新建 |
-| **仓库根 `CLAUDE.md`** | **B** | **M10** | ⏳ 未并入。**M10 前刻意不改**——它是当前唯一启用 Driver 的行为约束，改早了等于提前放开护栏口径。**M9 第 7 步只改了一处失实枚举**（「Antigravity 与 ZCode 只做只读审查」→ 三家，与 `CLAUDE.md.snippet` 同改），护栏口径一字未动 |
-| **`skills/` 资产（12 份）** | **B** | **M10** | ⏳ 未并入（随「入口资产单源多渲染」收口） |
-| [`doc/03_api/README.md`](../03_api/README.md) | A | 第零步 | ✅ 已并入（角色枚举四值）；现状句于 M9 第 7 步改准 |
+| **仓库根 `CLAUDE.md`** | **B** | **M10a / M10b** | ◐ **M10a 份额 ✅**：误拦段的恢复出口于第 2 步改；当轮 Driver 三级判定、Bash 侧全集字面保护的措辞与孤儿原稿的终端出口于第 5 步改。原记「**M10 前刻意不改**——它是当前唯一启用 Driver 的行为约束」的理由已不成立：M10a 第 3 步起四家均可用作 Driver。**M9 第 7 步只改了一处失实枚举**（「Antigravity 与 ZCode 只做只读审查」→ 三家）。**多 Driver 的入口协议（别家在自己的 CLI 里执笔时读什么）⏳ 随 M10b** |
+| **`skills/` 资产（12 份）** | **B** | **M10b** | ⏳ 未并入（随「入口资产单源多渲染」收口）。`protocol/CLAUDE.md.snippet` 的误拦段文案于 M10a 第 2 / 5 步先行改准（纯文本，不依赖渲染） |
+| [`doc/03_api/README.md`](../03_api/README.md) | A | 第零步 | ✅ 已并入（角色枚举四值）；现状句于 M9 第 7 步改准；「当轮 Driver 今天仍是 claude」于 M10a 第 5 步改准 |
 
 ### 24.3 完成判据
 

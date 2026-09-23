@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.1
+> - **当前版本**：v1.1.2
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.2（2026-09-24）随设计 v1.3.37 的 M10a 第 5 步纪律 6 回溯同步：2.6「当前边界」的 `driverEnabled` 现状句改准——M10a 第 3 步起四家均为真，`--driver` 取未启用值退 64；补 `topic claim` 按阶段声明一句。
 > - **变更说明**：v1.1.1（2026-09-20）随[设计 v1.3.30](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 的 M9 第 7 步纪律 6 回溯同步：
 >   2.6 的「当前边界」由「只启用两家审核者」改准为四家全部 `criticEnabled`（codex 随 M8 第 3 步、claude 随 M9 第 4 步），
 >   `driverEnabled` 仍只对 `claude` 为真、`--driver` 自 M9 第 5 步可声明其他家；Hook 伪造审查文件判据由
@@ -123,8 +124,9 @@ graph TD
 
 > **当前边界**（读代码前务必分清；v1.1.1 改准）：注册表登记的四家**均已 `criticEnabled: true`**
 > （gemini / glm 自 M7a，codex 自 M8 第 3 步，claude 自 M9 第 4 步），`defaultSelected` 为 codex / gemini / glm 三家；
-> `driverEnabled` 仍只对 `claude` 为真——`--driver <id>` 自 M9 第 5 步起可声明其他家（只校验「已登记」，
-> 预检与留痕标注「尚未启用为 Driver」），Driver 任意化本身在 M10。
+> `driverEnabled` 自 M10a 第 3 步起四家均为真——`--driver <id>` 取未登记或未启用的值退 64（M9 时是只校验已登记、
+> 未启用的放行并标注）；plan / bug 阶段在写原稿之前可经 `topic claim` 按阶段声明当轮 Driver（M10a 第 1 步）。
+> 别家在自己的 CLI 里执笔（入口资产、真载体下的 Hook）在 M10b。
 > M7a 当时是行为等价重构：登记四家而只启用两家审核者，为的是让注册表从第一天起就是完整的单一来源；
 > 之后每接一家只翻注册表的开关与补接入套件，本文其余描述的代码路径不因此改变。
 >

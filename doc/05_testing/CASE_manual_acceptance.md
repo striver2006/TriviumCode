@@ -204,13 +204,15 @@ PY
 | :--- | :--- | :--- |
 | 4.1 | 两次的 `model_effective` 不同，且与各自 `model_requested` 一致 | ZCode 侧生效值带 `<providerId>/` 前缀属正常（坑 C-02），后半段应匹配 |
 | 4.2 | `model_effective_source` 是 `envelope` 或 `trace`，**不是** `requested` / `unverified` | `requested` 表示没回读到，等于没验证（AC-13） |
-| 4.3 | 两侧 `heterogeneous: true` | 默认 profile 两侧都不是 Claude 系（AC-18） |
+| 4.3 | 两侧 `heterogeneous: true` | 默认 profile 下各侧生效模型都不落在当轮 Driver 厂商的名义模型族——本剧本以 Claude Code 为 Driver，即都不是 Claude 系（AC-18）。判定按模型名，属启发式；`true` 的准确读法是「未检出同族」 |
 | 4.4 | `~/.zcode/cli/config.json` 的默认模型**与跑前一致** | 模型覆盖走独立 `HOME` 下的配置副本，绝不改用户全局配置 |
 | 4.5 | 第二轮产出 `-r2-` 文件，第一轮文件**字节不变** | `shasum` 比对（FR-25 / P6） |
 
-> 若把某侧显式指定为 `claude-*` slug（`agy models` 里确实有），编排器**不阻止**，
-> 但会打醒目告警、在 `run.json` 写 `heterogeneous: false`、并在该侧文档头标注。
-> 这条也值得单独验一次。
+> 若把某侧显式指定为**与当轮 Driver 厂商名义族同族**的模型（本剧本 Driver 是 Claude Code，即 `claude-*` slug，`agy models` 里确实有），
+> 编排器**不阻止**，但会打醒目告警、在 `run.json` 写 `heterogeneous: false` 与 `override_reason`（文案点名当轮 Driver），
+> 并在该侧文档头标注（渲染为「疑似与主脑同源」）。换一家当 Driver 时「同族」跟着换：例如 codex 为 Driver 时，
+> 同族的是 OpenAI 名义族（模型名含 `gpt`），`claude-*` 反而判异构。判定按模型名、属启发式，
+> 模型名不含族名时会漏判（BACKLOG EV-107）。这条也值得单独验一次。
 
 ---
 

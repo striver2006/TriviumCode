@@ -295,9 +295,9 @@ headless 失败 note、ZCode 探活详情、`critic.run()` 的失败提示），
 已落盘的审查工件被删除或改动了。这是**设计要挡的**（P5 / P6、FR-25）：
 留痕的意义恰恰在于它删不掉也改不掉。
 
-校验有三个锚：git 索引（删除一律拦；审查文档、`_meta/` 审计材料与运行清单等**不可变工件**的改动也拦，task.json 与裁决件的正常改动放过）、`task.json` 的 `runs[]`、以及 `.trivium/state.json`（记过运行的主题，其 `task.json` 必须还在——首次提交前 git 没有基线，这是仅剩的锚）。另外 `hook-pre-write` 不允许 Driver 写 `_meta/` 与 `task.json`：它们是锚与 `gate --check` 的事实来源。
+校验有三个锚：git 索引（删除一律拦；已跟踪的 `_meta/` 审计材料与运行清单被改也拦——M10a 第 2 步起按**位置**判，排除便利副本 `changes.diff` 与仍在 running 的运行清单；task.json 与裁决件的正常改动放过）、`task.json` 的 `runs[]` 与各运行清单的 `artifacts[]`（审查文档与**成功送审**的 plan / bug 原稿按 sha256 登记，被删或被改即拦；归档外的被审原稿不登记）、以及 `.trivium/state.json`（记过运行的主题，其 `task.json` 必须还在——首次提交前 git 没有基线，这是仅剩的锚）。另外 `hook-pre-write` 不允许 Driver 写 `_meta/` 与 `task.json`：它们是锚与 `gate --check` 的事实来源。
 
-**处置**：把被删/被改的文件恢复回去（`git checkout -- <path>`）。
+**处置**：出口按工件在 git 里的状态分两档。**已提交过的**：把被删 / 被改的文件恢复回去（`git checkout -- <path>`），**这一步请在终端里手动执行**——恢复对象是归档内的 `_meta/` 与角色后缀文件，常规写法在会话里会被 `hook-pre-bash` 按字面拦下；那条判据是启发式、不完备，换写法绕过属于违规，不是出口。**尚未提交过的或已丢失的**：没有副本可恢复，出口是 `/dual-abandon` 作废这一轮后重跑。
 如果你确实想重跑那一轮，正规做法是**再跑一次**——`archive` 以 `O_CREAT|O_EXCL`
 原子创建，命中已存在文件即自动抬升 `-r<N>`，原文件字节不变。
 

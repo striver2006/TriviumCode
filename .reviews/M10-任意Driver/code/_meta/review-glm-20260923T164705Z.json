@@ -1,0 +1,80 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最重一条：段二的 grep 锚装置把 .reviews/ 整棵目录剪掉，.reviews/README.md 实际不在扫描论域，而证据件 grep-anchors.md 声称它在论域内并把它计进 B5 增量——第二层机器核对恰好在被审补丁唯一看不见（被剔除）的文件上失明，靠第一层人工对账（EV-61 ③）兜住了大部分残余。另两处小问题：报告 H2 的「零命中」核验格被自己的证据（after.txt 与主设计 3494 行的「原记」引述）证伪；.reviews/README.md:85 的后缀枚举缺 codex、未被残余待办显式覆盖。回溯主体核实成立：EV-106 点名各处、r7 §6.2 各行、开工指令十一项在补丁里逐一找到落点，自查搜索未见仍把未拆分 M10／「只校验已登记」／「唯一启用」当现状句的失实残留；16.1 拆行照 r7 §0.3、M10b 行按 P-2；八条达成边界逐条对上代码；verify「单锚变双锚」对 verify.ts 与 hooks.ts 成立；AC-21 子句③与追溯子表自洽；六类启发式判据无一句写成确定性保证。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "doc/05_testing/evidence/m10a-step5-20260924/grep-anchors.mjs:34-40、52-54（excluded() 的 .reviews 子句与 walk() 的目录剪枝）；doc/05_testing/evidence/m10a-step5-20260924/grep-anchors.md:5-6、20",
+      "problem": "grep 锚装置的目录剪枝把 .reviews/README.md 排除出了扫描论域，与它自己声称的论域相反。walk() 对目录用 `excluded(rel + '/')` 判定是否下潜，对 `.reviews` 这一级求值的是 excluded('.reviews/')——按 excluded() 的 `.reviews/` 子句（rel !== '.reviews/README.md'）恒为 true，整棵子树（含本应豁免的 README.md）从不被遍历。证据件却写「排除 .reviews/ 下除 README.md 外的全部归档件」（论域声明），B5 差值解释还把「.reviews/README.md 新节（论域内只计 README 一份）」计进跑后增量。实测核验：对 grep-anchors.after.txt 与 before.txt 全文搜 `reviews/README` 均零命中，而真实 .reviews/README.md 新增的「提交时的留痕核对」一节含「提交锚／verify-／不可变」等 B5 锚词十余处、85 行含 B7 锚词，本应大量命中。后果：第二层机器核对在被审补丁唯一剔除（diffExcludePrefixes）的文件上是盲的，报告 §3「改动前命中过、改动后仍留着的失实现状句一处也没找到」的结论对该文件不成立；该装置的「复跑方式」一节还邀请后人复用，盲区会原样遗传。",
+      "evidence": "读 doc/05_testing/evidence/m10a-step5-20260924/grep-anchors.mjs（经被审补丁全文，新文件 82 行完整在场）核对 walk/excluded 实现；用 Grep 在 doc/05_testing/evidence/m10a-step5-20260924/grep-anchors.after.txt 与 .before.txt 搜 `reviews/README` 零命中；读 .reviews/README.md 确认 §四新节（101-121 行）与 85 行含锚词；读 grep-anchors.md 核对其论域与 B5 行的措辞。",
+      "suggestion": "两选一：修装置（walk 下潜 .reviews/ 但对其子目录剪枝，或对根级具名文件在目录剪枝前单独收录），修完重跑 after 并如实登记 before 不可复现；或至少改准 grep-anchors.md 与报告 §3 的论域声明，写明 .reviews/README.md 未进锚扫描、其残余靠 EV-61 ③ 的人工登记兜住，并把该缺口登记进报告缺口节，供下次回溯修装置。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "doc/05_testing/REPORT_2026-09-24_m10a_step5.md:46（H2 核验格）；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:3494",
+      "problem": "报告 H2 行的核验格写「『唯一启用』在主设计零命中」，但本补丁自己在主设计 §24.2 仓库根 CLAUDE.md 行引入的「原记『M10 前刻意不改——它是当前唯一启用 Driver 的行为约束』的理由已不成立」含「唯一启用」字样（3494 行），且报告自己的证据 after.txt 的 B2 段就列出了这条命中。报告 §1 开头明言「核验一列是改动后可以 grep 的事实」，这一格按字面 grep 不成立——恰是 §4 偏差 5（不写没逐个数过的数字）要防的同族失守。语义上无害（该处是紧跟否定语的史实引述），但会误导后续回溯者按「零命中」口径复查时漏掉这一处或误判矛盾。",
+      "evidence": "用 Grep 在主设计搜 `唯一启用`，唯一命中 3494 行（本补丁 §24.2 CLAUDE.md 行的改写内容，见被审补丁 diff 同段）；Grep doc/05_testing/evidence/m10a-step5-20260924/grep-anchors.after.txt 的 B2 段列出该命中（after.txt:86）。",
+      "suggestion": "把 H2 核验格改准为「『唯一启用』在主设计仅剩 §24.2 的『原记』引述一处（紧跟『理由已不成立』）」一类如实表述；同类核验格（H8、H13、H18 等）建议按 after.txt 复核一遍措辞再收口。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": ".reviews/README.md:85",
+      "problem": "「且 `archive` 保证 `_meta/` 内不出现以 `-claude.md` / `-gemini.md` / `-glm.md` 结尾的文件」是一句保证形态的枚举，缺 `-codex.md`（M8 起第四家）。EV-61 扩项 ③ 登记的同类残余点名的是「第三节工件表与第四节 `_meta/` 树」等示例，这句位于 §四导语、不在点名列举里；又因 GLM-01 的装置盲区，B7 锚本该抓它而没抓到。枚举方向是少列（实际的 archive 判据若按注册表派生则保证面更宽），风险是读者照抄这份三后缀清单。",
+      "evidence": "读 .reviews/README.md 全文，85 行原文如上；对照被审补丁 EV-61 扩项 ③ 的点名清单（`README.md` 角色表与目录示例、`.reviews/README.md` 第三节工件表与第四节 `_meta/` 树、MANUAL / QUICKSTART 目录示例），未含该句；Grep after.txt 确认该文件不在扫描结果中。",
+      "suggestion": "把该句补进 EV-61 扩项 ③ 的点名清单随 M10b 同批改（与其它示例完整性残留一起改为判据式表述），不必在本轮单独改。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "回溯完整性（焦点一）核实成立：EV-106 点名的 LLD:126-127、主设计 :1126/:1199、MANUAL §8.2、PRD FR-17/AC-18、主设计 :166/:2486-2487/:2783/:2832、演进设计 §5.4 末条（方案 A 落主设计 + §24.1 新行）、README:89、验收剧本 4.3 与其后一段，在补丁里逐一找到落点；r7 §6.2 各行与开工指令十一项同样逐一对上。",
+    "自行搜索未见失实现状句残留：对 doc/ 以 `M10([^ab0-9]|$)`、`待实施 · M10`、`唯一启用`、`只校验` 等模式复查，剩余命中均为史实、原记引述、冻结正文或本步新写的准确口径（如主设计 :1129/:1202 的 M9 口径已入括注历史）。",
+    "16.1 拆行照 r7 §0.3：前置四条重排（② ④ 由 M10a 交付、③ 残量与 ① 归 M10b）与「前置 ① 不构成翻 driverEnabled 的前置」的显式裁决原文在场，并如实标注「这是对原前置『四条，缺一不可』的改，不是从原文读得出的解」。",
+    "M10b 行按 P-2 写「ZCode 真载体一轮、不接受降级；codex / gemini 夹具级」妥当：与 M10b 计划 r2 §1 J4 的 P-2 判据及其「已由 M10a 第 5 步拆行时提前写入、本步只核对不再改」的预告一致，未继承原行与 P-2 相反的「夹具跑通」。",
+    "八条达成边界逐条对上代码与登记：hooks.ts:896-901 bashProtectedRoleSuffixes()=ALL_AGENT_IDS 且判据与拦截文案同源（:1008）；driver-claim.ts:111 resolveStageDriver 三级判定单点、hooks/cli/topic-args 均为消费点；critics.ts:158-168 未启用即退 64 且自注「不是全称保证」并列四个不经它的面；registry.ts 四家 driverEnabled 均为 true；skills/ 下仅打包产物含 topic claim、四条 SKILL.md 不认领（边界 ⑥ 属实）。",
+    "「verify-*.json 由锚②单层变锚①②双层」（焦点四）对代码成立：verify.ts:216-219 的运行清单 artifacts[] 早登记 verify-<runId>.json 连同 sha256（注释标 GLM-r2-08），hooks.ts immutableChangeReason 的位置判据（_meta/ 内、changes.diff 与 running 态 run-*.json 两例外、runningRewriteViolation 收窄）为新增锚①。",
+    "AC-21 只标子句 ③ 与第 12 章子表自洽：FR-28 五成分与 AC-21 三子句的落点、状态与正文达成边界互不矛盾；对 doc/07_manuals 全文 L1/L2 零命中，与「子句 ② 未交付、归 M10b」一致。",
+    "六类判据无一写成确定性保证：名义族两层启发式（11.5、PRD FR-17/AC-18、README、CASE 4.3）、提交锚边界与强制力单向（8.5 Hook 表、.reviews/README.md「边界（照实写，不是保证）」、EV-108）、Bash 全集字面属启发式（CLAUDE.md、README:111、MANUAL §8.1）、复核三边界（8.4、MANUAL §8.2、PRD AC-21 注）、64 作用面（7.1、critics.ts 文档块同款自注）、自声明窗口（7.1「这不是机械边界」）。",
+    ".reviews/README.md 的真实改动与报告 §7 附 diff 一致（焦点五）：工作树 `git diff HEAD -- .reviews/README.md` 恰为四段 hunk、头部与 §7 逐一吻合，新增「提交时的留痕核对」一节与真实文件 101-121 行内容一致；补丁文件 sha256（5ba1313e…711d）与任务书一致。",
+    "认领拒绝文案已按段一改准：driver-claim.ts:449-464 无「删不掉」、真实理由（防会话反复翻转声明）在场，PROTOCOL topic claim 行同源改写。"
+  ],
+  "not_covered": [
+    "未执行任何构建、测试或变异装置（npm run check、doctor --selftest、mutation-check）；报告 §0 的 1709 条与 14/14 以其自述为准，本审为只读。",
+    "第 2/3/4 步报告（REPORT_2026-09-23_m10a_step2_ev55.md 等）的缺口节原文未读，其落点经 r2 §4.3 归处表与报告 §2.4 间接核对。",
+    "grep-anchors before/after 的四百余条命中未逐条人读，只抽查 B1/B2/B5/B7 关键判据与「唯一启用」「只校验」「待实施 M10」等模式；doc/02_design/reference/ 与历史报告等冻结材料未进论域。",
+    "doc/08_project/M10a-轮次台账.md 的 >47 阈值与演进设计预估列的数字登记未复核。",
+    "段一（D3 代码与用例）已在 r6 审结，本轮只核其对文档的引用面，未重审 hooks.test.ts 用例与变异规格。",
+    "轨迹披露：除任务书 8.1 清单外未读任何他侧审查件；但有一次 Grep 意外以仓库根 `*.md` glob 递归，当前输出页出现了归档内 brief-codex/brief-gemini 文件片段（任务书与 .reviews/README.md §四明示 brief 互相可见、不含意见，且不在 8.1 清单上）；未翻后续分页、未打开任何清单内文件，如实披露供轨迹核验对账。"
+  ],
+  "consulted": [
+    ".reviews/M10-任意Driver/code/_meta/changes-20260923T164705Z.diff",
+    "doc/05_testing/REPORT_2026-09-24_m10a_step5.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md",
+    ".reviews/M10a-第5步/plan/2026-09-23-M10a-第5步-r2-claude.md",
+    ".reviews/M10a-第5步/plan/2026-09-23-M10a-第5步-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-23-M10b-入口资产与真载体验收-r2-claude.md",
+    "doc/05_testing/evidence/m10a-step5-20260924/grep-anchors.md",
+    "doc/05_testing/evidence/m10a-step5-20260924/grep-anchors.after.txt",
+    "doc/05_testing/evidence/m10a-step5-20260924/grep-anchors.before.txt",
+    "doc/05_testing/evidence/m10a-step5-20260924/grep-anchors.mjs",
+    ".reviews/README.md",
+    "src/trivium/hooks.ts",
+    "src/trivium/verify.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/agents/registry.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/07_manuals/MANUAL_user.md"
+  ]
+}
