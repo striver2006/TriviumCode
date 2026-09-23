@@ -1,6 +1,12 @@
 /**
  * Claude Code CLI 能力探针（设计 §3.5 / 演进设计 §3.2，M6 第 3 步）。
  *
+ * **本文件（连同 `probes/` 下其余探针文件）的 import 面受允许清单约束**（EV-74，
+ * `test/unit/registry-parity.test.ts`）：只许落在
+ * `{node:*、probes/ 同目录、../config.js、../types.js、../util/*、../adapters/*、
+ * ../secrets.js}`，其余需具名登记为例外。判据是「config/types/util/adapters/secrets
+ * 不算编排层」，见设计 §11.1「`probes/` 自身的 import 面」。
+ *
  * 本机实测（`2.1.270`）确立的调用配方，M9 适配层必须复用：
  *   1. `-p --output-format stream-json --verbose`：headless + 事件流。
  *      **`--verbose` 不是可选项，而且不是「吐得少」——不带它 CLI 直接拒绝**
