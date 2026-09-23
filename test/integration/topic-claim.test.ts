@@ -186,7 +186,7 @@ test(
     assert.match(r.stderr, /已被使用/);
     assert.match(r.stderr, new RegExp(orphan.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
       '要点名是哪些文件挡住了撤回，否则用户不知道该清理什么');
-    assert.match(r.stderr, /终端/, '出口必须写明——会话内删不掉是刻意的');
+    assert.match(r.stderr, /终端/, '出口必须写明：请用户确认后在终端清理（理由是防会话自己翻转声明，见 driver-claim 单测）');
 
     // 声明没被改动
     assert.equal((await readTaskJson(root)).drivers?.plan?.driver, 'glm');

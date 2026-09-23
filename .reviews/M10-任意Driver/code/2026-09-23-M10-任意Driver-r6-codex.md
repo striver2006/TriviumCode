@@ -1,0 +1,180 @@
+---
+schema: trivium.review.v1
+topic: M10-任意Driver
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.155.1
+model_requested: deepseek-flash
+model_effective: deepseek-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260923T154352Z
+rerun_index: 6
+snapshot_hash: sha256:c23a5b4f0cbeb4bad7ee71e166ee1071095ef14496f539f539e5af89f3226529
+blind: true
+started_at: 2026-09-23T15:43:53.438Z
+finished_at: 2026-09-23T15:50:25.242Z
+duration_s: 328
+tool_calls:
+  run_command: 41
+  project_reads: 25
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 3
+  nit: 2
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0cef0-0cce-7a92-9b83-d9b25eea9347
+---
+
+# 代码审查：M10-任意Driver
+
+> Critic-C · OpenAI Codex ｜ 模型 `deepseek-flash`
+> ｜ 运行 `20260923T154352Z` ｜ 第 6 轮
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+逐块结论：一、判据与拦截文案确已同源取注册表全集（hooks.ts:896 定义、:901 判据、:1008 文案三处同源），当轮面（criticRoleSuffixes→hasProtectedRoleSuffix→hookPreWrite）一字未动；三个追加文档块把历史叙事与 D3 后的取值并存，没有把启发式写成保证。二、正负例合格：B1～B4 与 B5 的 claude 一格都以缺省 Driver 自己的后缀构造，正是 D3 前唯一翻转的一格；P1～P3 覆盖只读提及、git add、skill 正常调用。三、三条变异各有可红用例，MD3a 多红 M1 的解释成立（M1 第一句「应拦」先红，与同源无关）。四、出口文案确实不再断言会话内删不掉、关键词有鉴别力，但「撤回前留下的孤儿」在分支 4 不成立（CODEX-01），并顺带断言了一个 L2 家族并不存在的 Bash 守卫（CODEX-02）。五、误拦面按判据登记属实，未发现判据之外的类别。无阻断无重要，最危险的一条是 CODEX-01：它可能在首次认领那一格引导用户删掉仍在用的原稿。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 5 条：次要 3 ｜ 吹毛求疵 2）
+
+### CODEX-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/driver-claim.ts:465（相关：:326 分支 4、:460 开头句）` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：新增句「出口：请用户确认上列文件是撤回前留下的孤儿后…」把分支 3′（撤回被拒）的语义写进了两档共用的文案。`blocked-by-usage` 有两个产出点：分支 3′（有旧声明、旧声明已产出文件）与分支 4（`existing === null` 的**首次认领**撞上他人后缀文件）。分支 4 下**从未发生撤回**——那些文件是本阶段无声明期合法写下的原稿（第 3 级判定下缺省 Driver 写 `-claude.md` 就是合法形态）；把它们说成「撤回前留下的孤儿」，会让用户按提示把仍在用的计划原稿当垃圾清掉（且这句是唯一告诉用户「这些文件是什么」的话）。用例是按构造好的 ClaimOutcome 直接调 `claimRejectionMessage`，从不经 `claimStageDriver`，所以分支 4 这条路径上的文案没有任何断言盯着。
+
+**依据**：读 src/trivium/driver-claim.ts：:246（ClaimOutcome 文档：两档分开只因「出口不同」）、:275-333（分支 2 幂等与分支 3 已覆盖 `existing` 非空的两格，故到分支 4 必 `existing === null`；:326-330 分支 4 返回 `{kind:'blocked-by-usage', previous: owner, files}`）、:460/:465-468（新文案）。读 test/unit/driver-claim.test.ts:703-717：用例自己的注释把 `previous = claude` 那一格点明为「分支 4 首次认领撞上缺省 Driver 先写的原稿」，即作者清楚被拒场景是首次认领，文案却写成撤回。读 .reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md §3.2.1 第 7 行：「清理撤回声明留下的孤儿原稿（§2.3 分支 3′）」——「孤儿」这一说法本身只被限定给分支 3′。
+
+**建议**：让措辞在两种情形下都成立（例如「上列文件不是本次认领写出的」），或给 ClaimOutcome 的 blocked-by-usage 加一个区分「首认被拒 / 撤回被拒」的字段、两档分文案；并补一条经 `claimStageDriver` 真正走到分支 4、再把结论喂给 `claimRejectionMessage` 的用例，否则这句话只靠人工核。
+
+### CODEX-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/driver-claim.ts:467-468` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：附带说明写「会话内的删除命令通常也会被 Bash 守卫按角色后缀字面拦下，但那是启发式、并不完备」。Bash 守卫只在 L1 家族存在：注册表把 codex / gemini 记为 `guardLevel: 'L2'`（按 GuardLevel 文档即「没有 blocking Hook」），而 M10a 第 3 步起这两家都能当 Driver。在这两家的会话里，这句话没有对应事实——不是「不完备」，而是「没有这条守卫」；一句以「通常」+「启发式」自我限定的句子，限定的却是完备性、不是「这条守卫在不在」。危害有限（同句已声明它不是这条出口的理由），但它正属本步要清掉的那一类：把局部事实写成会话的普遍属性。
+
+**依据**：读 src/trivium/agents/registry.ts:145（GuardLevel 定义：L1 具备 blocking Hook，L2 没有，靠 approve 前置复核与跑后复算补偿）与四条登记 :183 claude L1、:234 codex L2、:248 gemini L2、:262 glm L1；读 src/trivium/driver-claim.ts:467-468。
+
+**建议**：按会话能力限定（「在带 Bash 守卫的会话里…」）或删去这句——真实理由已单独成句（:466），不需要它兜底。
+
+### CODEX-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/driver-claim.test.ts:714` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：注释写「逐家再过一遍防漏」，但循环用的字面量是硬编码四家 `['claude','codex','gemini','glm'] as AgentId[]`；同一步里 hooks.test.ts 的 B5 用的是 `ALL_AGENT_IDS`，两处口径不一。登记第五家时这条「防漏」会静默失效（不红、不报、无人发现），而 registry-parity 的 grep 对账只扫 `src/trivium/`，管不到 test/。
+
+**依据**：读 test/unit/driver-claim.test.ts:714（字面四家）与 test/unit/hooks.test.ts:1614 一带（B5 用 `for (const id of ALL_AGENT_IDS)`，并在注释里自陈目的是「防第五家登记时漏」）；读 test/unit/registry-parity.test.ts:291（扫描根是 `path.join(REPO_ROOT,'src/trivium')`，test/ 不在论域）。
+
+**建议**：改成遍历 `ALL_AGENT_IDS`，与 B5 同口径；该用例的 `previous` 只影响插值，改法是一行。
+
+### CODEX-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/05_testing/evidence/m10a-step5-mutation-20260923/gen-spec.mjs:5` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：头注释仍写「用 `String.raw` 写含反斜杠与反引号的串，免得手写 JSON 时转义出错」，而同一文件 :25 的注释与本步报告 §3 第 5 行都记着：正是 `String.raw` 模板仍会插值 `${`、第一版因此语法报错，最终改成了普通单引号串。报告登记了这次改动，脚本头没跟着改——后来者照头注释写会重踩同一个坑。
+
+**依据**：读 doc/05_testing/evidence/m10a-step5-mutation-20260923/gen-spec.mjs:5 与 :25（「普通单引号串：`${` 在这里是字面量（String.raw 的模板仍会插值，第一次写错过）」）；读 doc/05_testing/REPORT_2026-09-23_m10a_step5_d3.md §3 第 5 行。
+
+**建议**：头注释改成与实现一致的说法，或直接删掉这句实现细节（规格的用法与闸 7 约束才是这份脚本真正要对读者交代的）。
+
+### CODEX-05 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/05_testing/evidence/m10a-step5-mutation-20260923/mutation-spec.json:31-32（报告 §2 表第 3 行同）` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：MC1 被描述成「认领出口文案退回『会话内删不掉』**原句**」，但 find/replace 只替换三句中的第一句，且替换串「（会话内删不掉同样是刻意的）。」是历史文案里并不存在的改写版；改后第 2、3 句（真实理由、启发式附注）仍在。于是它的变红只由 `doesNotMatch /删不掉/` 这一条负向断言产生，对两条正向关键词断言（「会话自己翻转声明」「启发式」）的鉴别力没有提供任何证据——而那两条恰是本步自审时改过一次的地方。
+
+**依据**：读 doc/05_testing/evidence/m10a-step5-mutation-20260923/mutation-spec.json:28-33（MC1 的 find/replace）与 gen-spec.mjs:36-40（同一对串）；读 doc/05_testing/REPORT_2026-09-23_m10a_step5_d3.md:80（「退回『会话内删不掉』原句」）；读 src/trivium/driver-claim.ts:464-468（新三句与历史首句的实际形状）。关键词本身我逐字核过：旧文案不含「会话自己翻转声明」也不含「启发式」，所以断言确实只对新文案成立（这一点是好的）。
+
+**建议**：要么把 MC1 的 replace 写成真正的历史三句（这样三条断言都被牵动，也被更严格地测到），要么在规格 desc 与报告里把措辞改准；若想让关键词断言的鉴别力也进装置，另加一条只回退「真实理由」一句的变异。
+
+## 认为正确的部分
+
+- 同源确凿：bashProtectedRoleSuffixes（hooks.ts:896）直接返回 ALL_AGENT_IDS，判据 roleSuffixAnywhere（:900-901）与拦截文案列举行（:1008）都只经它取值；全仓 grep 后 criticRoleSuffixes 在 src/ 只剩定义处 :143 与当轮面 :180 两个命中，bashProtectedRoleSuffixes 只有上述两个消费者——追加段「本函数此后只剩当轮面一个消费者」属实，不是自夸。
+- 当轮面未被波及：本步 diff 只动注释、roleSuffixAnywhere 与 hookPreBash 文案；hasProtectedRoleSuffix、hookPreWrite 的驱动解析、naming.looksLikeRoleArtifact/suffixAlternation 均未改，「识别集 ⊇ 保护集、差集恰是当轮 Driver」这条既有不等式仍指当轮面，口径没被 D3 搞混。
+- 文档块追加写法正确：三处（:140-141、:176-177、:877-895）都是「原文保留作历史 + 追加 D3 说明」，且把「启发式、不完备、误拦刻意接受」写明；新拦截文案自己标注「Bash 侧拿不到当轮，只能全集字面拦」，没有把启发式写成保证。
+- 正负例的鉴别力成立：OWN = '.reviews/t/plan/2026-09-23-t-claude.md'（hooks.test.ts:1585）是 D3 前后唯一翻转的一格，B1～B4（:1587-1600）与 B5 的 claude 一格都用它构造，MD3a 的期望集因此非空；P1～P3 覆盖只读提及（cat/grep）、逐个 git add、以及不含写动词的 --start 调用。另核既有用例：hooks.test.ts 里没有断言「Bash 侧放行 -claude.md」的旧口径用例（命中处全是 hookPreWrite/isForgedRoleFile 的当轮面断言），所以本步不需要改既有用例——与 r2 §3.0.3 的预判一致。
+- MD3a 多红一条的解释成立，不是「说对结论、说错依据」：M1（hooks.test.ts:1621）第一句断言是「应拦」，MD3a 把后缀集退回全集减缺省 Driver 后 `-claude.md` 不再被拦，M1 在第一句就红，与「文案与判据同源」无关；报告 §2 记为「前提连带」与实情相符。
+- 出口文案的两条要求都做到了：不再出现「删不掉」这种确定性口吻；出口（终端清理）与真实理由（防会话自己翻转声明）分开成句，Bash 守卫降级为标注了「启发式、并不完备」的附带说明。关键词有鉴别力：历史首句含「反复翻转声明」但不含「会话自己翻转声明」，也不含「启发式」，所以两条正向断言只对新文案成立。
+- 误拦面的登记方式正确（判据式而非枚举，与 r7 §3.2.1 的药方同构）：报告列出的典型形态与 WRITE_LIKE 的实际词表对得上（重定向、tee、sed -i、rm/mv/cp、git checkout|restore|stash|commit…），`git add` 确实不在 WRITE_LIKE 里（P2 的放行前提成立）。两点补充（同判据射程内、报告未点名，结论不变）：①仓库里真实存在归档之外的角色后缀文件（doc/02_design/reference/2026-09-10-Driver-DualCritic主攻双审流水线设计审核意见-claude.md、doc/05_testing/evidence/m9-acceptance-*/review-rendered-claude.md），改名/删除它们从此也要走 Write / Edit 或终端；②判定在未剥 heredoc 的原文上做（hooks.ts:988-998 的注释块与 RV-B1 之后的两条规则），于是 heredoc 正文提到自己的后缀也会拦。两者出口相同，都不构成新的缺口。
+- 台账与索引的算术自洽：plan 档 22 = 6+5+6+2+2+1；累计 31、余量 47-31=16；耗时 8h11m28s + 12m59s = 8h24m27s；doc/05_testing/README.md 新增行与本步报告口径一致。
+- D3 之后既有护栏的相邻面未被破坏：闸门写锁那条规则与 MENTIONS_OWNED/路径归一化都未动；bash-recovery-wording.test.ts 的判据（恢复类文案的语句组内须含「终端」）在本步新增文案下仍成立（新文案含「终端」且不含 git 恢复类子命令，不进论域）；工作树里 skills/dual-critic/scripts/trivium.cjs 已含 bashProtectedRoleSuffixes，与报告「install:local 已执行」的说法相符。
+
+## 未覆盖范围（本侧盲区）
+
+- 未独立复跑任何测试或装置：沙箱只读，`npm run check` / `npm test` / mutation-check 都写盘，因此报告 §0 的「1708 条全绿 / 基线 1703」、§2 的「闸 7 三条 find 各恰好命中一处」「MD3a fail=3 / MD3b fail=1 / MC1 fail=1」「工作树无残留、哨兵已删」这些装置侧结论我一条都没有复跑，只核了规格与源码的字面一致性、报告内部自洽与台账算术。
+- 未读各厂商适配器、probes 与 src/install.ts，因此 CODEX-02 里「codex/gemini 会话没有 blocking Bash Hook」的依据是注册表 guardLevel 与 GuardLevel 文档块，没有下到安装面确认「哪家 harness 装了什么 Hook」。
+- 未覆盖第 5 步段二（文档回溯）的落点：只核了本步对「主设计 / .reviews/README.md / 根 CLAUDE.md / 协议片段 / PROTOCOL 尚未同步」的登记属实（根 CLAUDE.md 的受保护后缀段与误拦段确实还是旧枚举），没有核段二该改成什么、也没核 r2 §3.4 的 C1/C4/S1/P2 是否会被完整执行。
+- 未核审查装置自身的其它闸（备份单射、闸 4 产物比对、闸 5 恢复字节比对、哨兵预检顺序）的实现细节；只读到闸 3/6/7 的部分，未核 mutation-check 在本次运行中的实际输出。
+- 未核 skills/dual-critic/scripts/trivium.cjs 与源码的逐字节同步（只核到它已包含本步新增函数），也未核 ~/.claude/skills/ 下安装副本的状态。
+- 未核本步之外的面：registry-parity 的其余对账项、gate/schemas/parse 的身份校验、以及段二涉及的设计文档版本指针，本次都只在理解上下文所必需的范围内读。
+
+## 实际查阅的项目文件
+
+- `CLAUDE.md`
+- `README.md`
+- `src/trivium/hooks.ts`
+- `src/trivium/driver-claim.ts`
+- `src/trivium/agents/registry.ts`
+- `src/trivium/naming.ts`
+- `src/trivium/gate.ts`
+- `src/trivium/cli.ts`
+- `test/unit/hooks.test.ts`
+- `test/unit/driver-claim.test.ts`
+- `test/unit/registry-parity.test.ts`
+- `test/contract/bash-recovery-wording.test.ts`
+- `test/integration/topic-claim.test.ts`
+- `scripts/mutation-check.mjs`
+- `doc/05_testing/README.md`
+- `doc/05_testing/REPORT_2026-09-23_m10a_step5_d3.md`
+- `doc/05_testing/evidence/m10a-step5-mutation-20260923/gen-spec.mjs`
+- `doc/05_testing/evidence/m10a-step5-mutation-20260923/mutation-spec.json`
+- `doc/08_project/M10a-轮次台账.md`
+- `.reviews/M10a-第5步/plan/2026-09-23-M10a-第5步-r2-claude.md`
+- `.reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":41,"project_reads":25}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

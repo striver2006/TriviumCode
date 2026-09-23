@@ -1,0 +1,54 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "五块审查焦点逐块对代码核实，均成立：判据与拦截文案同源取 bashProtectedRoleSuffixes()（hooks.ts:901 与 :1008 两处消费），当轮面 hasProtectedRoleSuffix(target, driver) 未波及且被既有用例锁住；B1～B4 全用 -claude.md（D3 前后唯一翻转格）具备鉴别力，B5 遍历注册表防第五家漏；三条变异各有可红用例，MD3a 多红的 M1 经独立核对（MENTIONS_OWNED 与 isOrchestratorOwnedPath 均不拦 rm …-claude.md）确认「前提连带」解释成立；认领新文案给真实理由、不再断言删不掉，关键词「会话自己翻转声明」对旧文案不成立、有鉴别力；误拦面扩大已如实登记。唯一一条 nit：报告 §4 典型形态未点名 heredoc 正文这一实施中真实发生过、D3 后对 -claude.md 新扩的误拦形态。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/REPORT_2026-09-23_m10a_step5_d3.md §4（误拦形态列举处）",
+      "problem": "§4「典型形态」列举了克隆原稿、改名或删除旧稿、commit message、带重定向的 --start、焦点含写动词、恢复或清理六项，未点名 heredoc 正文形态：hookPreBash 刻意在未剥 heredoc 的原文上判 writeLike 与后缀字面（src/trivium/hooks.ts:985-997），解释器脚本正文同时含写函数调用（如 writeFile( ）与 -claude.md 字样时会被拦。hooks.ts:763-766（stripHeredocs 注释）记录该误报形态「本项目实施过程中就被拦过」——那是对旧后缀集；D3 后对缺省 Driver 自己的 -claude.md 是同一判据下的新扩面。段二写判据式文档时若只对照报告这份列举，容易漏掉这条唯一有真实发生记录的形态。",
+      "evidence": "src/trivium/hooks.ts:985-997（hookPreBash 在未剥 heredoc 的原文上判定并注明代价刻意接受）、src/trivium/hooks.ts:763-766（「本项目自己的实施过程就被这条误报拦过」）、doc/05_testing/REPORT_2026-09-23_m10a_step5_d3.md §4 六项典型形态无 heredoc 一项。判据式表述（writeLike ∧ 后缀字面）本身覆盖此形态，故仅 nit。",
+      "suggestion": "在报告 §4 典型形态或段二的判据式文档中补一行 heredoc 正文形态（出口同既有：改用 Write 落文件、终端执行）；独立可驳回。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "判据与拦截文案同源：bashProtectedRoleSuffixes() 返回 ALL_AGENT_IDS（registry.ts:271 派生），roleSuffixAnywhere（hooks.ts:901）与 hookPreBash 文案行（hooks.ts:1008）两处消费；src 全目录 grep 确认 criticRoleSuffixes 的代码消费者此后只剩 hasProtectedRoleSuffix（hooks.ts:180），文档块断言属实",
+    "当轮面判据未被波及：hookPreWrite 仍经 resolveRoundDriver 取当轮 driver 后调 hasProtectedRoleSuffix(target, driver)（hooks.ts:645），既有用例（hooks.test.ts:71-72）仍锁「claude 后缀对缺省 Driver 放行」的旧口径",
+    "负例鉴别力：criticRoleSuffixes(DEFAULT_DRIVER)（registry.ts:377 定 claude）不含 claude、ALL_AGENT_IDS 含，B1～B4 全用 -claude.md 恰是 D3 前后唯一翻转格；B2/B3/B4 的 writeLike 命中（重定向、焦点含 rm/mv 字面、git restore）逐条对 WRITE_LIKE（hooks.ts:743-760）核实成立",
+    "正例充分：P1 cat/grep 非 writeLike、P2 git add 不在 git 写子命令正则（hooks.ts:750 列表无 add）、P3 --plan-file 指向自己原稿且焦点干净——三个「不受误伤」声明各有承载",
+    "MD3a 多红 M1 的「前提连带」解释成立：变异后 rm .reviews/t/plan/…-claude.md 不再命中 roleSuffixAnywhere，而该命令 token 不匹配 MENTIONS_OWNED（hooks.ts:807）、路径解析后 rel 无 _meta/task.json（isOrchestratorOwnedPath，hooks.ts:820-833），确实无人拦、M1 在第一断言红",
+    "MD3b 只 M1 红、B1～B4 不红：文案首行「编排器独占」仍在；M1 改为只解析「角色工件的后缀」列举行，避开首行命令回显的 -claude.md 污染——两处实施中修掉的用例缺陷（回显污染、翻转声明关键词）都有真实鉴别力",
+    "MC1 变异只回退出口第一句、后两句仍在，用例靠 doesNotMatch(/删不掉/) 仍红，断言鉴别力不依赖完整回退；集成断言（topic-claim.test.ts:189）如实登记为「断言本身不变、只改说明」",
+    "认领新文案（driver-claim.ts:465-468）三句结构把启发式标注为「通常也会被拦下、并不完备、不是这条出口的理由」，正是把旧版确定性保证改回启发式口径",
+    "变异装置闸 7（find 恰好命中一处，mutation-check.mjs:274-293）与 fail 计数（ℹ fail 行，mutation-check.mjs:186）口径核实无误；三条 find 串对当前源码的命中唯一性经比对源码确认",
+    "误拦面扩大已如实登记（报告 §4 与 r7 §3.2.1 七形态同源，且 r7 明言该表不是穷举、以判据式表述为准）；未发现判据交集之外会被新拦的日常操作——git add（P2 锁）、只读命令（非 writeLike 前置门放行）均不受影响"
+  ],
+  "not_covered": [
+    "只读审查：未运行 npm test 与变异装置，三条变异可红性为代码级推演并采信报告的实跑结果，未独立复跑",
+    "未读段二待同步文档（主设计、PROTOCOL、.reviews/README.md、根 CLAUDE.md、协议片段）的当前口径——本步不改它们，报告已登记「段二完成前以代码为准」",
+    "未审 M10a-第5步 计划轮（台账行 31）的裁决细节，属计划双审不属本代码补丁",
+    "hooks.ts 内与本步无关的 pre-existing 注释未逐处核（如 hookPreWrite 上方 577 行仍以 criticRoleSuffixes(DEFAULT_DRIVER) 作当轮判据指针），报告按 r2 §4.1 只登记了 resolveRoundDriver 一处交段二汇总，该清单是否穷尽未验证",
+    "install:local 与 trivium doctor --selftest 的结果按报告采信，未复核"
+  ],
+  "consulted": [
+    ".reviews/M10-任意Driver/code/_meta/changes-20260923T154352Z.diff",
+    "src/trivium/hooks.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/agents/registry.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/driver-claim.test.ts",
+    "test/integration/topic-claim.test.ts",
+    "scripts/mutation-check.mjs",
+    "doc/05_testing/REPORT_2026-09-23_m10a_step5_d3.md",
+    "doc/05_testing/evidence/m10a-step5-mutation-20260923/gen-spec.mjs",
+    "doc/05_testing/evidence/m10a-step5-mutation-20260923/mutation-spec.json",
+    "doc/05_testing/README.md",
+    "doc/08_project/M10a-轮次台账.md",
+    ".reviews/M10a-第5步/plan/2026-09-23-M10a-第5步-r2-claude.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md"
+  ]
+}

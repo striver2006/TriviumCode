@@ -1,0 +1,100 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最重一条（GLM-01）：PROTOCOL:343 的 `topic claim` 行也写着「会话内删不掉是 Bash 守卫的刻意取舍」——正是 §2.2 判为失实的那句确定性保证，但它既不在 §2.2 的修正面、也不在 §3 对账表（§3.4 末段明写「本步不动 PROTOCOL 内容」）；若 §2.2 选 (a) 改代码文案，契约文档将与代码当场分叉。其余核验结果良好：§2 四处不一致逐条对到源码全部属实（`roleSuffixAnywhere()` 仍为全集减缺省 Driver、`claimRejectionMessage` 原文在场、AC-21 子句②四份用户文档零命中、M10b §5.3 条目位置与 review.ts 收尾顺序不符）；主设计四个短语族独立复扫，命中全部有行，未发现对账漏项；方案 A 的冻结论证成立（冻结条款原文、`194ef0b` 确改过 §6.2 一格与 §14 行名/末列、§24.1 有「修正只落本文」四行先例）；§6 对开工指令前提的纠错与归档根剔除补丁均核实。取 request-changes 仅因 GLM-01 属契约面遗留，修法是给对账表加一行的事。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §2.2 / §3.4 末段；doc/03_api/PROTOCOL_dual_critic_relay.md:343",
+      "problem": "§2.2 判定 `driver-claim.ts` `claimRejectionMessage` 的「会话内删不掉」在 `previous = claude` 时失实，但同一句断言还写在 PROTOCOL :343 的 `topic claim` 契约行里（「出口是在终端清理后重试，会话内删不掉是 Bash 守卫的刻意取舍」）。该行被 §1.1 归为「第 1 步已做、本步只核对」，§3 全表没有它的落点，§3.4 末段更明写「本步不动 PROTOCOL 与 QUICKSTART 的内容、只登记版本指针」。结果：若 §2.2 拍板选 (a) 改运行时文案，PROTOCOL 这句用户可见契约将与新代码口径分叉；若选 (b) 延后，契约文档继续断言一件对 `-claude.md` 不成立的事——两种拍板下它都漏。计划自己在 §2.2 说「两处口径应当同源」，却漏数了这第三处。",
+      "evidence": "doc/03_api/PROTOCOL_dual_critic_relay.md:343（`topic claim` 行末句，grep 实读）；src/trivium/driver-claim.ts:457-467（`claimRejectionMessage` 的 blocked-by-usage 文案原文）；src/trivium/hooks.ts:799（`MENTIONS_OWNED` 不含角色后缀路径）、:811-824（`isOrchestratorOwnedPath` 只护 `_meta` 组件与 `task.json`）、:870-872（`roleSuffixAnywhere` = `criticRoleSuffixes(DEFAULT_DRIVER)`，不含 `-claude.md`）——三者合起来证明「删 `-claude.md` 在会话内可行」；被审计划 §2.2、§3.4 末段、§1.1 第一表（全文实读，无 PROTOCOL 内容行）。",
+      "suggestion": "把 PROTOCOL :343 该半句纳入 §2.2 的修正面与 §3 对账表（文档行，随本步改准，不依赖 (a)/(b) 拍板——理由与写进 CLAUDE.md 的出口指引同源：换成「不让会话自己翻转声明」的真实理由）；若坚持不动 PROTOCOL 内容，至少在对账表给一行「不改·登记」并写明去向，别让 §4.2 的反向表在这一条上失明。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3 / §4.1 / §4.2；doc/05_testing/REPORT_2026-09-23_m10a_step4.md:111-113、REPORT_2026-09-23_m10a_step3.md:98-102",
+      "problem": "§4.2 第一层要求「四个来源（含 S3/S4 缺口节）的每一条都必须能在表里找到一行，找不到的就是漏项」，但 S3/S4 缺口节里若干条目在 §3 无行、在 §4.1 无 EV 去向：最实的一条是第 4 步报告明写「这是一处真实的覆盖空白，不是『低风险』」的「没有端到端用例验证非缺省 Driver 下 heterogeneous/override_reason 取值」；另有第 3 步的「doctor --selftest 不含 approve 步骤」「两句判别文字全仓唯一」、第 4 步的「U7/U9 钉字面、变异逐条归因是推断」等测试内部条目。按计划自己的失误清单第 6 条（缺口逐条列、不加风险标签略过），这些条目应有「不改·登记」「归 M10b（真载体轮会实跑出 heterogeneous）」之类的预定处置，否则实施稿的反向表要么硬造行、要么显漏。",
+      "evidence": "doc/05_testing/REPORT_2026-09-23_m10a_step4.md:111-113（端到端覆盖空白，报告原话「不是『低风险』」）；doc/05_testing/REPORT_2026-09-23_m10a_step3.md:98-102（判别文字唯一性、selftest 无 approve、bug 正例未新写）；被审计划 §3（全表无对应行）、§4.1（EV-55/72/106/107/108/109/110 均不含这些条目）、§0 失误 6、§4.2 第一层（全文实读）。",
+      "suggestion": "在 §4.1 或 §3 给 S3/S4 的非文档面条目一个显式分类（例如「测试面残留：登记不改，其中端到端 heterogeneous 一条注明由 M10b 真载体轮承接、可在 EV-107 追加句里点名」），使反向表每条都有归处；不必为此扩本步改动面。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §1.2（.reviews/README.md 行）/ §3.4 R1；.reviews/README.md:75",
+      "problem": "§1.2 对 `.reviews/README.md` 的现状写「`verify-*.json` 只在工件表里出现，没说受保护」，但工件表那一行（:75）明写「由留痕核对保护」——该句在第 2 步之前并不成立（r7 A5 与第 2 步测试都按「verify-*.json 由不受保护变为受保护」记账；hooks.ts 的三锚在改动前都不含它），今天则因 `_meta/` 位置判据而为真但机制没说清。R1 追加新节时应顺带把 :75 这句改准指向提交锚，否则同一文件里新旧两句各说各话。附带一档（置信中等）：同表 plan/code/bug 行仍枚举 claude/gemini/glm 三后缀、无 codex，与 PRD 抬头「缺省集合为 codex/gemini/glm 三家」不一致，属 M8/M9 残留而非本步份额，建议按 §4.1「代码注释残余」同款登记而非本步改。",
+      "evidence": ".reviews/README.md:75（grep 实读原文「由留痕核对保护」）；.reviews/BACKLOG 侧证据：doc/08_project/BACKLOG.md:152 EV-55 进展段与 r7 §9 A5 的「由不受保护变为受保护」口径；src/trivium/hooks.ts（grep `verify-|checkRunManifests`：三锚实现无 verify 文件引用）；doc/01_requirements/PRD_driver_dual_critic.md:16（缺省三家）；被审计划 §1.2、§3.4 R1（全文实读）。",
+      "suggestion": "R1 的核验串里加一条针对 :75 的改准（把「由留痕核对保护」改写为指向新节的提交锚口径）；codex 枚举残留按登记处理，写明归 M10b 或对应里程碑的回溯面。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §5；doc/08_project/M10a-轮次台账.md:23-25",
+      "problem": "§5 写「本步估计 plan 1～2 轮 + code 1～3 轮……上限 35，未触及」，而其引用的台账 §0 的上限是 36（= 30 + 第 5 步 5 轮 + 第 4 步可能再审一轮的 0～1）。两个数都远低于阈值 47、不影响触发判断，但 35 是「本步自身累计」、36 是「台账口径累计」，§5 未标明口径，按计划 §0 第 4 条「每个数字注明来源」的自设标准应对齐。",
+      "evidence": "doc/08_project/M10a-轮次台账.md:23-25（「上限 30 + 5 + 1 = 36，阈值 36 × 1.33 ≈ 47」）；被审计划 §5（「当前累计 30 轮……上限 35」）。",
+      "suggestion": "§5 改写为「本步后累计至 35；台账口径上限 36（含第 4 步 0～1 轮预留），均未及 >47」或直接引台账数字。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§2 四处不一致逐条对源码核实全部属实：§2.1 hooks.ts:870-872 `roleSuffixAnywhere()` 返回 `criticRoleSuffixes(DEFAULT_DRIVER)`（全集减缺省 Driver，三个后缀，不含 -claude.md），EV-55 进展段「按计划不动」原句在场，r7 §3.2/A3 确要求改全集；§2.2 claimRejectionMessage 原文逐字在场，且 `MENTIONS_OWNED` / `isOrchestratorOwnedPath` / `roleSuffixAnywhere` 三道都不拦会话内删 `-claude.md`，「删得掉」推演成立；§2.3 AC-21 三子句拆解与 PRD:469-472 原文一致，QUICKSTART/MANUAL/RUNBOOK（doc/06_deployment/）/README 对 L1/L2/护栏等级/护栏分级零命中；§2.4 review.ts:1582-1590 的时点/域/warnings 与 1532-1541+1589 的条目顺序（原稿条目 push 在审查文档合并之后、全列表末尾）均与 M10b §5.3 那行对不上。",
+    "对账表覆盖面独立复扫无漏项：主设计「M10～M11 尚未开工 / 待实施·M10 / 只校验 / 唯一来源是 / 非Claude 系 / topic claim 零命中」四个短语族逐条 grep，全部命中都能对到 H1～H32 的某一行，且计划给的行号提示（:36/:82/:166/:1126/:1199/:2486/:2783/:2832/:2835 等）全部准确；r7 §6.2 七行（主设计/演进设计/PRD/MANUAL/.reviews README/根 CLAUDE+AGENTS/BACKLOG）与 EV-106 清单（含第 4 步追加段）逐项都能找到落点。",
+    "方案 A 的取舍成立：演进设计抬头冻结条款原文（L10-12「正文不随条款并入而修改……一律查主设计 §24 台账」）与「全仓只有一条规范链」在场；`194ef0b` 确实改过演进设计（4 个 hunk：§6.2 `guard.peer_leak_via_command` 一格、§14 M8 第 1 步行名与末列 ✅，另含 §16 #8 与 §17.1 两处状态性修改——先例比计划说的还宽一点）；主设计 §24.1 的 3.6（:3407）与 7.6（:3414）两行明写「冻结正文，修正只落本文——以本文为准」。V1/V2 只动状态与预估列，属完成度记账而非条款并入，不与冻结条款字面冲突，且留了「演进设计一字不动」的回退分支。",
+    "§6 对开工指令前提的纠错属实：code-stage.ts:238-241 `skipped = skippable && cfg.review.skip_doc_only_review`、理由串「可跳过，但 review.skip_doc_only_review 为 false，仍照常送审」逐字在场；.trivium/config.yaml:74 该键为 false；`diffExcludePrefixes`（code-stage.ts:104-109）确实无条件剔 `.trivium`/`.git`/归档根，`.reviews/README.md` 不进被审补丁——方案一的三条保证（run.json 证据、整段 diff 附进 doc/05_testing 报告进补丁、焦点点名）是合理的补偿。",
+    "§3 措辞要点没有把启发式写成保证：H12/H15 的复核边界与 gate.ts:899-911「保什么不保什么」注释及 cli.ts:1144-1153（不通过退 GATE_BLOCK=2，runId 推断不出/元数据读不出退 65，PROTOCOL:349 亦如此分档）一致；H18 名义族两层启发式与 EV-62/EV-107 现文一致；H16 三条边界与 EV-55 进展段的「剩余边界」原文一致；H9 的 64 收紧作用面与第 3 步报告缺口节及 PROTOCOL:16 的作用面句一致。",
+    "§2.2 对「出口本身是对的、真实理由是防声明翻转」的分析正确，与 r7 §7.3 R-l 及代码双审 r1 GLM-05 的动机一致；C2 按真实理由写 CLAUDE.md、不照搬运行时文案的处置是对的。",
+    "台账阈值的处理（§7 偏差 10、V2）与台账 §0「以本台账为准，由第 5 步回溯时一并登记」的预留吻合；「开工指令十一项」在 §3 各行都有 U 编号映射（U1～U11 可追）。",
+    "§0 失误清单第 3 条「不照收上位计划每句事实」有实证支撑：r7 §6.2 的「后半（L2 差异明示 + 编排器无条件复核）」确有两句不成立（§2.3 的子句②未交付、§2.4 的白名单行不一致），本稿的处置（部分达成只认子句③、偏差登记 §7）是对的。"
+  ],
+  "not_covered": [
+    "开工指令十一项的原文不在任务书内，U1～U11 的映射只能按计划稿自引核对，未能独立确认十一项无一漏。",
+    "「无获批的 D3 撤回记录」是否定命题：核了 BACKLOG EV-55、r7 §3.2/A3 与计划引述的 r2/r3 线索，未对全部归档裁决件做穷举检索，无法给出不存在性证明。",
+    "未实跑测试与 grep 锚脚本（只读审查）：1703/1701/0/2 基线、台账累计 30 轮取自报告与台账文字；§1.3 六个契约测试套件只确认了文件与计划描述的方向性一致，未逐行核断言（如 registry-parity 约 L1718 的定位未验证）。",
+    "V1 完成判据里 J2/J5/J6②④/J7 与 r7 §0.1 五步判据的逐字对应、16.1 M10b 行「前置①③残量（EV-77）」的全部细节未逐条复核。",
+    "§2.4 末段「另一处可能的缺口」（override_reason 文案与 render 同源旗标标题是否构成 J3 差异）计划自标「没核死」，本侧也未深挖 M10b §5.3 之外的白名单完备性。",
+    ".trivium/config.yaml 属任务书 8.2 告警面，只 grep 了 skip_doc_only_review 单键、未读整份；QUICKSTART/RUNBOOK 只做了 L1/L2/护栏等级/护栏分级四词扫描，未通读全文找其它失实现状句。"
+  ],
+  "consulted": [
+    ".reviews/M10a-第5步/plan/2026-09-23-M10a-第5步-claude.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r7-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-22-M10b-入口资产与真载体验收-claude.md",
+    ".reviews/README.md",
+    "src/trivium/hooks.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/review.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/code-stage.ts",
+    "src/trivium/exit-codes.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/05_testing/REPORT_2026-09-23_m10a_step2_ev55.md",
+    "doc/05_testing/REPORT_2026-09-23_m10a_step3.md",
+    "doc/05_testing/REPORT_2026-09-23_m10a_step4.md",
+    "doc/05_testing/CASE_manual_acceptance.md",
+    "doc/05_testing/evidence/m9-step7-20260920/grep-anchors.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/M10a-轮次台账.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    ".trivium/config.yaml"
+  ]
+}

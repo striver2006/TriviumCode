@@ -1,0 +1,313 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260923T154352Z",
+  "topic": "M10-任意Driver",
+  "stage": "code",
+  "rerun_index": 6,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "M10a 第 5 步段一：Bash 侧角色后缀改为全集字面保护（D3，照 r7 第 3.2 节补上第 2 步漏做的部分）与认领拒绝出口文案改写。请分块给结论：一、判据与拦截文案是否确实同源取注册表全集，当轮面的判据是否未被波及，文档块的追加是否把启发式写成了保证。二、正例是否足以证明 skill 的正常调用、只读提及与逐个暂存不被误伤；负例四种形态与逐家遍历是否都以缺省 Driver 的后缀构造、能否鉴别本次改动。三、三条变异是否各有可红的用例，第一条多红的那一条按报告解释是否成立。四、认领出口文案是否给出真实理由、不再断言会话内删不掉，单测关键词是否有鉴别力。五、误拦面扩大的代价在报告中是否如实登记，还有没有报告没列出的日常操作会被新判据拦下。硬约束：不得用解释器内联字符串验证任何判据；推理结论须注明依据的文件与符号；按契约只输出裸 JSON。",
+  "task_goal": "M10a · Driver 护栏与契约面 实施计划（第 7 稿）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "871b09308cb2196cfc84d6e6b72f27e55bc65366",
+    "tree_hash": "19fecf640fee8c76fe120bd582953f9a6457c108",
+    "dirty": true,
+    "subject_sha256": "c23a5b4f0cbeb4bad7ee71e166ee1071095ef14496f539f539e5af89f3226529",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-23T15:43:53.297Z",
+  "finished_at": "2026-09-23T15:50:25.242Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 327.679,
+      "tool_calls": {
+        "run_command": 41,
+        "project_reads": 25
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0cef0-0cce-7a92-9b83-d9b25eea9347",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.9",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 186.501,
+      "tool_calls": {
+        "read": 22,
+        "grep": 3,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 174983,
+        "output_tokens": 19177,
+        "thinking_tokens": 14446,
+        "cache_read_tokens": 1838177,
+        "total_tokens": 194160
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "466f308d-8a98-4d25-a845-6ad28218752f",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 391.677,
+      "tool_calls": {
+        "read": 14,
+        "grep": 8,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 9
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 12,
+        "inputTokens": 1132166,
+        "outputTokens": 26012,
+        "totalTokens": 1158178,
+        "cacheReadTokens": 1002176,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_eabb8e83-b477-4421-885f-211a46812b33",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M10-任意Driver/code/2026-09-22-M10-任意Driver-gemini.md",
+    ".reviews/M10-任意Driver/code/2026-09-22-M10-任意Driver-glm.md",
+    ".reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r2-gemini.md",
+    ".reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r2-glm.md",
+    ".reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r3-gemini.md",
+    ".reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r3-glm.md",
+    ".reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r4-gemini.md",
+    ".reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r4-glm.md",
+    ".reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r5-gemini.md",
+    ".reviews/M10-任意Driver/code/2026-09-23-M10-任意Driver-r5-glm.md",
+    ".reviews/M10-任意Driver/code/_meta/review-gemini-20260922T044914Z.json",
+    ".reviews/M10-任意Driver/code/_meta/review-gemini-20260923T030441Z.json",
+    ".reviews/M10-任意Driver/code/_meta/review-gemini-20260923T063434Z.json",
+    ".reviews/M10-任意Driver/code/_meta/review-gemini-20260923T091257Z.json",
+    ".reviews/M10-任意Driver/code/_meta/review-gemini-20260923T125723Z.json",
+    ".reviews/M10-任意Driver/code/_meta/review-glm-20260922T044914Z.json",
+    ".reviews/M10-任意Driver/code/_meta/review-glm-20260923T030441Z.json",
+    ".reviews/M10-任意Driver/code/_meta/review-glm-20260923T063434Z.json",
+    ".reviews/M10-任意Driver/code/_meta/review-glm-20260923T091257Z.json",
+    ".reviews/M10-任意Driver/code/_meta/review-glm-20260923T125723Z.json",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-r2-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-r2-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r3-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r4-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r4-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r5-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r5-glm.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r6-gemini.md",
+    ".reviews/M10-任意Driver/plan/2026-09-22-M10-任意Driver-r6-glm.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260921T145353Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260921T152520Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260922T004543Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260922T021222Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260922T024405Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-gemini-20260922T032428Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T145353Z.fallback-items.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T145353Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T152520Z.fallback-items.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T152520Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T004543Z.fallback-items.md",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T004543Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T021222Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T024405Z.json",
+    ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T032428Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M10-任意Driver/code/_meta/changes-20260923T154352Z.diff",
+      "sha256": "c23a5b4f0cbeb4bad7ee71e166ee1071095ef14496f539f539e5af89f3226529"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/brief-codex-20260923T154352Z.md",
+      "sha256": "66c3893dd84a8fe14d892e273b5abfe168008d057e048dc44305022c14c5eedc"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/brief-gemini-20260923T154352Z.md",
+      "sha256": "a512926809d365bd72809af2bb256def0e65818d17450461e75bc0114c217700"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/brief-glm-20260923T154352Z.md",
+      "sha256": "0801328c403a33057cf4841f2e7f7a3386d3710024471bfd57452a13e78f0db4"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/review-codex-20260923T154352Z.json",
+      "sha256": "712a88ae6b2c6d9c4a3cf23a7533c0a9f79fc5c7d1406fa684f406dae0a9679e"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/review-gemini-20260923T154352Z.json",
+      "sha256": "8410378851a6c654fdd7794f02bca0b45f1de76d4006cf3e8982d398e2f19750"
+    },
+    {
+      "path": "M10-任意Driver/code/_meta/review-glm-20260923T154352Z.json",
+      "sha256": "eb03ba28d5a9ac35c231876aff6e9bd50f6beb1169d9a7474d0d2dbfe6501040"
+    },
+    {
+      "path": "M10-任意Driver/code/2026-09-23-M10-任意Driver-r6-codex.md",
+      "sha256": "968ce58d2346b047bb5ec5b41fc75da3ee1a8760ec143bf8b5efdff24ff5bb04"
+    },
+    {
+      "path": "M10-任意Driver/code/2026-09-23-M10-任意Driver-r6-gemini.md",
+      "sha256": "ba3d8f1b5a917095fead530e0a1293495a27572b5fec124f432a76e12eb6b18b"
+    },
+    {
+      "path": "M10-任意Driver/code/2026-09-23-M10-任意Driver-r6-glm.md",
+      "sha256": "ce41e0a859065663b08517705e5540998d31ca4db66c7d43f95d505b397805d6"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

@@ -1,0 +1,494 @@
+# trivium changes.diff
+# run_id: 20260923T154352Z
+# base: HEAD
+# head: 871b09308cb2196cfc84d6e6b72f27e55bc65366
+# files: 10
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-09-23_m10a_step5_d3.md
+#   doc/05_testing/evidence/m10a-step5-mutation-20260923/gen-spec.mjs
+#   doc/05_testing/evidence/m10a-step5-mutation-20260923/mutation-spec.json
+#   doc/08_project/M10a-轮次台账.md
+#   src/trivium/driver-claim.ts
+#   src/trivium/hooks.ts
+#   test/integration/topic-claim.test.ts
+#   test/unit/driver-claim.test.ts
+#   test/unit/hooks.test.ts
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index 3805447..f66da1e 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -37,4 +37,5 @@
+ - [`REPORT_2026-09-23_m10a_step2_ev55.md`](./REPORT_2026-09-23_m10a_step2_ev55.md)：**M10a 第 2 步 · EV-55 提交锚「位置 + 登记」重写的变异验证**。代码双审 r2（18 条）+ r3（10 条）收口后，15 条变异全部变红；冻结哈希两项不可鉴别、如实登记；提交锚删后缀支后的两格剩余边界（收尾追加那一刻、登记前崩溃并被提交）只剩写侧，与 BACKLOG EV-55 同源。
+ - [`REPORT_2026-09-23_m10a_step3.md`](./REPORT_2026-09-23_m10a_step3.md)：**M10a 第 3 步 · 翻开 `driverEnabled` 与 approve 前置复核**。计划双审两轮（13 + 8 条全接受）后按 r3 实施，代码双审 r4（5 条全接受）后修订；1694 条全绿；10 条变异经 `mutation-check.mjs` 全部咬住（M6c 首跑没红，查出集成用例被选侧那道防线掩盖，修用例后咬住；M1 逐条归因为推断）；与 r3 的 9 处出入逐条登记，其中一处是初稿又把启发式判据写成确定性保证、自审改掉；设计文档口径移交第 5 步（EV-106）。
+ - [`REPORT_2026-09-23_m10a_step4.md`](./REPORT_2026-09-23_m10a_step4.md)：**M10a 第 4 步 · 登记清理（EV-62 / EV-64 / EV-07）**。计划双审两轮（13 + 9 条）后按 r3 实施；1703 条全绿（首跑接入套件因新增厂商未登记名义族而编译报错，正是 `Record<AgentVendor, …>` 要的效果，补夹具后绿）；11 条变异经装置全部咬住，条数与期望逐条相符，归因为推断；装置本身新加闸 7 与哨兵拆分，2 条手工变异（M-D3 / M-D4）咬住；EV-62 判据两层启发式、残余面登记 EV-107；非缺省 Driver 下 `heterogeneous` 取值没有端到端用例，如实列为缺口。代码双审 r5（5 条全接受）后修订：非空断言的前提改指真正生效的 run.v2 校验、同源旗标标题加「疑似」、结案段变异条数与装置闸表标题改准。变异规格与生成脚本收在 [`evidence/m10a-step4-mutation-20260923/`](./evidence/m10a-step4-mutation-20260923/)，可直接重跑。
++- [`REPORT_2026-09-23_m10a_step5_d3.md`](./REPORT_2026-09-23_m10a_step5_d3.md)：**M10a 第 5 步段一 · Bash 侧角色后缀全集字面保护（D3）与认领出口文案**。D3 原定第 2 步、未实施也无撤回记录，第 5 步按用户拍板补上：判据与拦截文案改为同源取全集（含当轮 Driver 自己的后缀），认领被拒的出口改写真实理由、不再断言「会话内删不掉」。1708 条全绿；3 条变异全部咬住（MD3a 多红的一条经逐条核实为用例前提连带）；实施中查出两条用例测不出变异、已修；误拦面扩大（`-claude.md` 进 Bash 字面集）如实列为代价。
+ - [`REPORT_2026-09-16_m8_ac20_acceptance.md`](./REPORT_2026-09-16_m8_ac20_acceptance.md)：**M8 第 4 步 · AC-20 真机验收**。`qwen` 与 `deepseek` 两家族各真实审查一次，四个分量（provider 互异 / 生效模型互异 / 各自与请求一致 / provider host 互异）逐一有据；沙箱**正负对照**两侧均成立——正对照用「写命令确实进轨迹且输出显示被拒」，而非计划双审最初提的「另写一个允许写的路径」（那个形态已被实跑证伪）。**含三条达成边界与一条利益冲突标注**（两次取证审的都是 codex 自己的接入代码），引用本条验收时须一并带上。
+diff --git a/doc/08_project/M10a-轮次台账.md b/doc/08_project/M10a-轮次台账.md
+index 200424f..71d6164 100644
+--- a/doc/08_project/M10a-轮次台账.md
++++ b/doc/08_project/M10a-轮次台账.md
+@@ -106,6 +106,7 @@
+ | 28 | M10a-第4步 | plan | r1 | `20260923T114656Z` | 2026-09-23 | 14m28s | codex `approve-with-nits` ｜ gemini `request-changes` ｜ glm `approve-with-nits` | 13 | 第 4 步（登记清理 EV-62 / EV-64 / EV-07）另开子主题做计划双审；三侧均结构化，零阻断。**三侧独立命中同一处**：Driver 自己写的鉴别说明低估了 U5 ② 的咬合面（M62a 期望失败条数 2 应为 3）。codex 另指出变异装置只替换首处、不查唯一性，两个写点同形时变异会落错位置而装置照报咬住。接受 11、驳回 1（AGY-03）、暂缓 1（AGY-04），获批。收尾取数时撞上一次已登记的 Bash Hook 误拦（命令文本含元数据目录名与 `>`），改用 Read / `find` 取数；本行在闸门期被 Hook 拦下，审批后补记 |
+ | 29 | M10a-第4步 | plan | r2 | `20260923T121002Z` | 2026-09-23 | 16m11s | codex `approve-with-nits` ｜ gemini `approve-with-nits` ｜ glm `approve-with-nits` | 9 | 三侧均结构化，零阻断零重要。**三侧独立命中同一处**：Driver 对锁例 D3「靠什么变红」的推演没对着代码核（装置干净失败时收尾会删哨兵，「不留哨兵」照绿，承重的只有 stderr 断言）——与第 3 步 M6c 同族。codex 另指出 `overrideReasonFor` 函数体内的厂商取值无判据看着、r2 自称逐字写出的 find 串有 5 行仍是描述（核时撞见 gate.ts 里一行出现两次，正是闸 7 要拦的形态）。GLM-01 的事实前提经本机探针只核实一半（agy 目录有 `gpt-oss-120b-medium`，该格可达）。9 条全接受并获批；本行同样在闸门期被 Hook 拦下，审批后补记 |
+ | 30 | M10a | code | r5 | `20260923T125723Z` | 2026-09-23 | 8m24s | codex `approve-with-nits` ｜ gemini `approve` ｜ glm `approve-with-nits` | 5 | 第 4 步（登记清理 EV-62 / EV-64 / EV-07）；用户审 r3 计划后裁定「直接开工」。三侧均结构化，零阻断零重要，5 条全在「说准」层：codex 指出 `overrideReasonFor` 非空断言的前提指错了地方（写「入口 `resolveDriver` 拦过」，而 worker 分支不过它，真正生效的是 run.v2 的 `checkAgentIdentities`）——说对结论、说错依据，与第 3 步 r4 GLM-02 同族；glm 查出 BACKLOG 结案段变异条数数错（7 应为 8）。5 条全接受并获批；本行在闸门期被 Hook 拦下，审批后补记 |
++| 31 | M10a-第5步 | plan | r1 | `20260923T142903Z` | 2026-09-23 | 12m59s | codex `request-changes` ｜ gemini `approve-with-nits` ｜ glm `request-changes` | 16 | 第 5 步（纪律 6 回溯）另开子主题做计划双审；三侧均结构化，零阻断。三侧复现 r1 §2 的四处不一致；问题集中在对账表漏项：PROTOCOL `topic claim` 行的「会话内删不掉」是同一句失实断言的第三份（AGY-01 ≡ GLM-01），后缀枚举句落在全部 grep 锚之外（CODEX-03）。**GLM-03 的事实前提经核不成立**（第 2 步之前 `verify-*.json` 已由 verify 运行清单登记、受锚② 保护），却反向揭出「由不受保护变为受保护」一路说过头（r7 §3.1.3 / A5 起）。接受 15、暂缓 1（AGY-03，演进设计取舍交用户）；获批，附言五条：D3 在 M10a 收尾前补代码、认领文案随本步改、AC-21 只标子句 ③、演进设计按建议、M10b §5.3 现在起修订稿 |
+ 
+ > **「裁决条目」不等于人读的意见条数**：某侧解析回退时，它那一整块结构化输出
+ > 塌成若干 `<PREFIX>-F<n>` 编号，闸门按这些编号校验齐备性。
+@@ -116,15 +117,15 @@
+ 
+ | 项 | 实际 | 阈值 | 余量 |
+ | :--- | :--- | :--- | :--- |
+-| plan 档轮次 | **21**（M10a 6 + EV-79 5 + EV-74 6 + M10a-第3步 2 + M10a-第4步 2） | —（分档不单设阈值） | — |
++| plan 档轮次 | **22**（M10a 6 + EV-79 5 + EV-74 6 + M10a-第3步 2 + M10a-第4步 2 + M10a-第5步 1） | —（分档不单设阈值） | — |
+ | code 档轮次 | **9**（M10a 5 + EV-79 3 + EV-74 1） | — | — |
+-| **累计轮次** | **30** | **> 47 报告**（2026-09-23 由 > 33 上调，理由见 §0） | 还有 17 轮 |
++| **累计轮次** | **31** | **> 47 报告**（2026-09-23 由 > 33 上调，理由见 §0） | 还有 16 轮 |
+ | 其中作废轮 | **5**（M10a plan r4、EV-79 plan r2、EV-79 code r2、EV-74 plan r3、**EV-74 plan r4 取消**） | —（照计，见 §0） | — |
+ | **其中 codex 脚本级超时致废** | **3**（第 4、9、18 行）——**同一侧、同一形态、第三次** | —（见 §2 末条） | — |
+ | 其中**一侧证据不足**轮 | **1**（EV-74 plan r2，glm 侧） | —（照计，见 §0） | — |
+ | 其中**联合校验未执行**轮 | **1**（EV-74 plan r4，两侧解析回退） | —（照计，见 §0） | — |
+ | 未成轮（不计入） | **1**（`20260922T134058Z`） | —（口径待拍板） | — |
+-| 子进程耗时合计 | **8h11m28s**（含取消轮的观测值 ≥21m26s；第 21～30 行分别计入 10m27s / 12m34s / 20m9s / 13m6s / 13m16s / 15m16s / 10m58s / 14m28s / 16m11s / 8m24s） | —（仅作参考） | — |
++| 子进程耗时合计 | **8h24m27s**（含取消轮的观测值 ≥21m26s；第 21～31 行分别计入 10m27s / 12m34s / 20m9s / 13m6s / 13m16s / 15m16s / 10m58s / 14m28s / 16m11s / 8m24s / 12m59s） | —（仅作参考） | — |
+ | **累计墙钟** | **3 天**（2026-09-21 → 2026-09-23） | **> 6 周报告** | 还有约 39 天 |
+ 
+ **当前判定：未触及阈值，无需回补估算。**
+diff --git a/src/trivium/driver-claim.ts b/src/trivium/driver-claim.ts
+index 8a1da61..8f23133 100644
+--- a/src/trivium/driver-claim.ts
++++ b/src/trivium/driver-claim.ts
+@@ -462,8 +462,10 @@ export function claimRejectionMessage(o: ClaimOutcome, stage: Stage, driver: Age
+       `${list}\n` +
+       '  声明一旦用来写出文件，它就等同于留痕。这条限制是刻意的：\n' +
+       '  否则同一个会话可以在首份运行留痕诞生前反复翻转声明、依次拿到每一家的后缀豁免。\n' +
+-      '  出口：在**终端**里清理上列文件后重试（会话内删不掉同样是刻意的——\n' +
+-      '  Bash 守卫按命令文本的角色后缀字面拦截，不区分「写它」与「说它」）。'
++      '  出口：请用户确认上列文件是撤回前留下的孤儿后，在**终端**里清理再重试。\n' +
++      '  不要在会话里删它们来换回认领——那正是这条限制要防的「会话自己翻转声明」。\n' +
++      '  （会话内的删除命令通常也会被 Bash 守卫按角色后缀字面拦下，但那是启发式、并不完备，\n' +
++      '  不是这条出口的理由。）'
+     );
+   }
+   return '';
+diff --git a/src/trivium/hooks.ts b/src/trivium/hooks.ts
+index 69953a7..6b5d121 100644
+--- a/src/trivium/hooks.ts
++++ b/src/trivium/hooks.ts
+@@ -134,6 +134,11 @@ export function isInsideArchive(targetPath: string, projectRoot: string, archive
+  * 新增调用点漏传会静默退回「缺省 Driver 的补集」，正是 EV-68 / EV-69 要消灭的形态。
+  * 跨时间面的调用点（EV-55 后剩 Bash 侧两处）显式写 `criticRoleSuffixes(DEFAULT_DRIVER)`：**它们要的就是缺省值**，
+  * 显式写出来比靠默认值省略更说明问题。
++ *
++ * ## M10a 第 5 步（D3）的变化
++ *
++ * 上一段说的「Bash 侧两处」已改为取 `bashProtectedRoleSuffixes()`（全集），不再调用本函数。
++ * **本函数此后只剩当轮面一个消费者**（`hasProtectedRoleSuffix`）。上面「两处消费点」一段是 EV-68 时的记录，原文保留。
+  */
+ export function criticRoleSuffixes(driver: AgentId): readonly string[] {
+   return ALL_AGENT_IDS.filter((id) => id !== driver);
+@@ -167,6 +172,9 @@ export function criticRoleSuffixes(driver: AgentId): readonly string[] {
+  *   · 跨时间面当时拆出的 `hasRoleSuffixCrossTime(fileName)` 供提交锚使用；
+  *     M10a 第 2 步（EV-55）提交锚改按 `artifacts[]` 登记判不可变后，它已无消费者，
+  *     随之删除（代码双审 r2 CODEX-03）。Bash 侧的跨时间面仍是 `roleSuffixAnywhere()`。
++ *
++ * **M10a 第 5 步（D3）**：Bash 侧那一处的后缀集已改为全集（`bashProtectedRoleSuffixes()`），
++ * 不再是「全集减缺省 Driver」，因此它与本函数的取值从此不同源——当轮面减当轮 Driver，Bash 侧一家不减。
+  */
+ export function hasProtectedRoleSuffix(fileName: string, driver: AgentId): boolean {
+   return new RegExp(`-(?:${criticRoleSuffixes(driver).join('|')})\\.md$`).test(
+@@ -867,8 +875,30 @@ const SEGMENT_SPLIT = /(?:&&|\|\||[;&|\n\r])/;
+  * 那个固化是隐式的副作用——本步把它变成一个显式取值点，口径一字未改，
+  * 好让 EV-55 真做跨时间面收口时不必先拆一次模块加载期的耦合。
+  */
++/*
++ * ## M10a 第 5 步（D3）：后缀集改为**全集**
++ *
++ * 上面那段「跨时间口径（全集减缺省 Driver）」是 EV-68 / EV-55 时的写法，原文保留作历史。
++ * M10a 计划 r7 §3.2 / A3 决定 Bash 侧改为**全部已登记角色的后缀都拦**（四家，含当轮 Driver 自己的）；
++ * 第 2 步没有实施、也没有获批的撤回记录，第 5 步段一补上（第 5 步计划 r2 §2.1）。
++ *
++ * 为什么不是「全集减缺省 Driver」：M10a 第 3 步翻开 `driverEnabled` 之后，当轮 Driver 可以是任一家，
++ * 缺省 Driver 的后缀在非缺省轮次里恰是**审核者**的产出。这里拿不到 run 上下文、判不出当轮，
++ * 减掉任何一家都会让那一家在某些轮次里失守；唯一不依赖「当轮」的取值是全集。
++ *
++ * 代价（r7 §3.2.1，R22 已登记）：命令文本提到**当轮 Driver 自己的**后缀的写形态命令同样被拦，
++ * 包括缺省 Driver 的 `-claude.md`。出口不变：Write / Edit 落文件、`git commit -F`、
++ * 恢复与清理在终端执行。**不做收窄、不开白名单**（下方「为什么 Bash 侧不做收窄」、RV-B1）。
++ *
++ * 判据与 `hookPreBash` 拦截文案**同源**：两处都取 {@link bashProtectedRoleSuffixes}。
++ * 上一版是两个独立取值点，只改一处就会出现「拦下了却少列一个后缀」的提示。
++ */
++export function bashProtectedRoleSuffixes(): readonly string[] {
++  return ALL_AGENT_IDS;
++}
++
+ function roleSuffixAnywhere(): RegExp {
+-  return new RegExp(`-(?:${criticRoleSuffixes(DEFAULT_DRIVER).join('|')})\\.md\\b`);
++  return new RegExp(`-(?:${bashProtectedRoleSuffixes().join('|')})\\.md\\b`);
+ }
+ 
+ /*
+@@ -975,8 +1005,9 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
+         '  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\n' +
+         '    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n' +
+         '      （删掉或改坏 bin/ 会让 .claude/settings.json 里每条 Hook 的守卫永真放行）\n' +
+-        `    · 审查文档的角色后缀（${criticRoleSuffixes(DEFAULT_DRIVER).map((s) => `-${s}.md`).join(' / ')}）\n` +
+-        '  只能由编排器维护（FR-25 / P5）。\n' +
++        `    · 角色工件的后缀（${bashProtectedRoleSuffixes().map((s) => `-${s}.md`).join(' / ')}）——\n` +
++        '      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\n' +
++        '  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\n' +
+         '\n' +
+         '  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\n' +
+         '  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\n' +
+diff --git a/test/integration/topic-claim.test.ts b/test/integration/topic-claim.test.ts
+index 7654fbd..7f7731b 100644
+--- a/test/integration/topic-claim.test.ts
++++ b/test/integration/topic-claim.test.ts
+@@ -186,7 +186,7 @@ test(
+     assert.match(r.stderr, /已被使用/);
+     assert.match(r.stderr, new RegExp(orphan.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+       '要点名是哪些文件挡住了撤回，否则用户不知道该清理什么');
+-    assert.match(r.stderr, /终端/, '出口必须写明——会话内删不掉是刻意的');
++    assert.match(r.stderr, /终端/, '出口必须写明：请用户确认后在终端清理（理由是防会话自己翻转声明，见 driver-claim 单测）');
+ 
+     // 声明没被改动
+     assert.equal((await readTaskJson(root)).drivers?.plan?.driver, 'glm');
+diff --git a/test/unit/driver-claim.test.ts b/test/unit/driver-claim.test.ts
+index 092595e..704e687 100644
+--- a/test/unit/driver-claim.test.ts
++++ b/test/unit/driver-claim.test.ts
+@@ -20,7 +20,7 @@ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import {
+-  claimStageDriver, crossCheckDriver, declaredStageDriver, filesBearingSuffix,
++  claimRejectionMessage, claimStageDriver, crossCheckDriver, declaredStageDriver, filesBearingSuffix,
+   stageDriverInvariant,
+ } from '../../src/trivium/driver-claim.js';
+ import { hookPreWrite, type HookInput } from '../../src/trivium/hooks.js';
+@@ -698,3 +698,32 @@ test('declaredStageDriver：缺字段即未声明', () => {
+   assert.equal(declaredStageDriver(t, 'plan'), 'glm');
+   assert.equal(declaredStageDriver(t, 'code'), null, '按阶段取值，不跨阶段渗透');
+ });
++
++/*
++ * ── 分支 3′ / 首次认领被拒时的出口文案（M10a 第 5 步段一，C1）──
++ *
++ * 旧文案写「会话内删不掉同样是刻意的——Bash 守卫按命令文本的角色后缀字面拦截」，
++ * 把一条启发式判据写成了确定性保证：M10a 第 5 步 D3 之前 Bash 侧后缀集不含缺省 Driver，
++ * `previous = claude` 那一格（分支 4 首次认领撞上缺省 Driver 先写的原稿）会话内**删得掉**；
++ * D3 之后按字面拦住的也只是启发式。**它也从来不是这条出口的真实理由**：终端清理之所以要由人做，
++ * 是因为会话自己删掉用过的后缀文件来换回认领，正是分支 3′ 要防的「反复翻转声明」。
++ *
++ * `previous` 取 claude 一格（最常见也最容易被旧文案误导的形态），逐家再过一遍防漏。
++ */
++test('认领被拒的出口文案：给真实理由，不把 Bash 守卫写成「删不掉」', () => {
++  for (const previous of ['claude', 'codex', 'gemini', 'glm'] as AgentId[]) {
++    const text = claimRejectionMessage(
++      { kind: 'blocked-by-usage', previous, files: [`.reviews/t/plan/2026-09-23-t-${previous}.md`] },
++      'plan',
++      previous === 'claude' ? 'glm' : 'claude',
++    );
++    assert.doesNotMatch(text, /删不掉/, `previous=${previous}：不得断言会话内删不掉`);
++    assert.match(text, /终端/, `previous=${previous}：出口仍是终端清理`);
++    /*
++     * 取「会话自己翻转声明」而不是「翻转声明」：旧文案里本就有「反复翻转声明」一句（讲限制为什么存在），
++     * 只匹配后者对旧文案同样成立，证明不了出口的理由被改写了。
++     */
++    assert.match(text, /会话自己翻转声明/, `previous=${previous}：出口要给真实理由——防会话自己翻转声明`);
++    assert.match(text, /启发式/, `previous=${previous}：提到 Bash 守卫时要注明它是启发式`);
++  }
++});
+diff --git a/test/unit/hooks.test.ts b/test/unit/hooks.test.ts
+index b8b1f89..88643d2 100644
+--- a/test/unit/hooks.test.ts
++++ b/test/unit/hooks.test.ts
+@@ -1570,3 +1570,67 @@ test('带空格的路径也能正确判断在不在项目内', async () => {
+   });
+   assert.equal(outside.exitCode, EXIT.OK);
+ });
++
++// ── D3：Bash 侧角色后缀改全集字面保护（M10a 第 5 步段一，计划 r2 §3.0；r7 §3.2 / §3.3 / A3）──
++//
++// 此前 Bash 侧取「全集减缺省 Driver」：M10a 第 3 步翻开 `driverEnabled` 之后，非缺省轮次里
++// 缺省 Driver 的后缀（`-claude.md`）恰是**审核者**产出，却在 Bash 侧无字面保护。
++// Bash 拿不到 run 上下文，唯一不依赖「当轮」的取值是全集。
++//
++// 负例 B1～B4 取 r7 §3.3 点名的四种形态、一律用 `-claude.md`：那是 D3 前后唯一翻转的一格，
++// 用别家后缀构造的用例在 D3 之前就红，证明不了 D3（变异 MD3a 靠的就是这一点）。
++// 正例 P1～P3 锁「只读提及、`git add`、skill 的正常 `--start` 调用」不被误伤——
++// 全集保护最容易伤到的就是 Driver 自己的日常动作。
++
++const OWN = '.reviews/t/plan/2026-09-23-t-claude.md';
++
++test('D3 · B1～B4：提到 -claude.md 的写形态命令一律拦（缺省 Driver 自己的后缀也拦）', async () => {
++  const ctx = await fakeCtx();
++  for (const [c, why] of [
++    [`cp ${OWN} .reviews/t/plan/2026-09-23-t-r2-claude.md`, 'B1 克隆原稿'],
++    [`node skills/dual-critic/scripts/trivium.cjs review --start --entry B --stage plan --topic t --plan-file ${OWN} --focus x > out.txt`, 'B2 带重定向的 --start'],
++    [`node skills/dual-critic/scripts/trivium.cjs review --start --entry B --stage plan --topic t --plan-file ${OWN} --focus '重点看 rm 与 mv'`, 'B3 焦点含写动词字面'],
++    [`git restore ${OWN}`, 'B4 恢复命令带后缀文件'],
++  ] as const) {
++    const r = await hookPreBash(ctx, bashInput(c));
++    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `${why}：应拦`);
++    assert.match(r.stderr ?? '', /编排器独占/, `${why}：拦下时给的是同一份说明`);
++  }
++});
++
++test('D3 · B5：四家后缀逐一都拦（遍历注册表，防第五家登记时漏）', async () => {
++  const ctx = await fakeCtx();
++  for (const id of ALL_AGENT_IDS) {
++    const r = await hookPreBash(ctx, bashInput(`rm .reviews/t/plan/2026-09-23-t-${id}.md`));
++    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `-${id}.md 应在 Bash 侧受字面保护`);
++  }
++});
++
++test('D3 · P1～P3：只读提及、git add、不含写动词的 --start 都放行', async () => {
++  const ctx = await fakeCtx();
++  for (const [c, why] of [
++    [`cat ${OWN}`, 'P1 只读提及'],
++    [`grep -n 裁决 ${OWN}`, 'P1 只读提及（grep）'],
++    [`git add ${OWN}`, 'P2 git add 不在写命令判据里'],
++    [`node skills/dual-critic/scripts/trivium.cjs review --start --entry B --stage plan --topic t --plan-file ${OWN} --focus '重点看判据'`, 'P3 skill 的正常调用形态'],
++  ] as const) {
++    assert.equal((await hookPreBash(ctx, bashInput(c))).exitCode, EXIT.OK, `${why}：不该拦`);
++  }
++});
++
++test('D3 · M1：拦截文案列出的后缀与判据同源（全集四家，含缺省 Driver）', async () => {
++  const ctx = await fakeCtx();
++  const r = await hookPreBash(ctx, bashInput(`rm ${OWN}`));
++  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
++  /*
++   * 只解析列举那一行：文案首行会回显被拦的命令，命令里本就有 `-claude.md`，
++   * 全文匹配会让「列表漏了 claude」照样绿——变异 MD3b 就咬不住了。
++   */
++  const line = (r.stderr ?? '').split('\n').find((l) => l.includes('角色工件的后缀'));
++  assert.ok(line, '拦截文案要有列举后缀的那一行');
++  const listed = [...line.matchAll(/-([a-z]+)\.md/g)].map((m) => m[1]);
++  for (const id of ALL_AGENT_IDS) {
++    assert.ok(listed.includes(id), `拦截文案应列出 -${id}.md——文案与判据两处独立取值时，只改一处就会少列`);
++  }
++  assert.ok(ALL_AGENT_IDS.includes(DEFAULT_DRIVER), '前提：缺省 Driver 是已登记 Agent');
++});
+diff --git a/doc/05_testing/REPORT_2026-09-23_m10a_step5_d3.md b/doc/05_testing/REPORT_2026-09-23_m10a_step5_d3.md
+new file mode 100644
+index 0000000..675d5cf
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-09-23_m10a_step5_d3.md
+@@ -0,0 +1,120 @@
++# M10a 第 5 步段一测试报告 · Bash 侧角色后缀全集字面保护（D3）与认领出口文案
++
++- **日期**：2026-09-23
++- **依据**：`.reviews/M10a-第5步/plan/2026-09-23-M10a-第5步-r2-claude.md`（下称「r2」）§3.0。
++  - 计划双审第 1 轮 16 条，接受 15、暂缓 1（AGY-03），已获批。
++  - 审批附言第 1、2 条：D3 在 M10a 收尾前补代码；认领拒绝文案选 (a)，随本步改。
++  - D3 的设计与测试照 M10 计划 r7 §3.2 / §3.3 / A3。它本该在第 2 步做，第 2 步没有实施，也没有获批的撤回记录（r2 §2.1）。
++- **基线**：HEAD `871b093`，加上本步段一的工作区改动。
++- **本报告存在的理由**：r2 §3.0 要求的回归、用例、变异、偏差与缺口都记在这里。段一的代码双审（回到 `M10-任意Driver`，r6）以本报告为改动说明。
++  **段二（文档回溯）另起报告，不在本报告范围内。**
++
++---
++
++## 0. 全量回归
++
++| 项 | 结果 |
++| :--- | :--- |
++| 改动前基线（开工第一件事复跑） | **1703 条：1701 通过 / 0 失败 / 2 跳过**，与第 4 步报告一致 |
++| `npm run typecheck` | 通过 |
++| `npm run build` 与 `node scripts/build.mjs --tests-only` | 通过 |
++| `npm test` | **1708 条：1706 通过 / 0 失败 / 2 跳过**。比基线多 5 条：`hooks.test` 的 D3 · B1～B4、B5、P1～P3、M1，与 `driver-claim.test` 的出口文案用例。这 5 个用例名已在输出里逐个核对 |
++| `npm run install:local` | 已执行。执行前逐个比对 8 个 skill 与 `~/.claude/skills/<d>`：只有 `dual-critic/scripts/trivium.cjs` 内容不同，没有文件增删；Antigravity agent 定义逐字节一致。装完再比对，8 个 skill 全部一致 |
++| `trivium doctor --selftest` | **14/14 通过** |
++
++**装完之后，本会话的 Hook 就按 D3 判定了**：命令文本里带 `-claude.md` 的写形态 Bash 命令会被拦。这是预期的代价，见 §3。
++
++---
++
++## 1. 改了什么
++
++### 1.1 D3（`src/trivium/hooks.ts`）
++
++- 新增导出 `bashProtectedRoleSuffixes()`，返回全部已登记 Agent 的 id（`ALL_AGENT_IDS`）。
++- `roleSuffixAnywhere()` 与 `hookPreBash` 拦截文案里列举后缀的那一行**都改取这个函数**。改动前两处各自调用 `criticRoleSuffixes(DEFAULT_DRIVER)`，是两个独立的取值点。
++- 拦截文案补一句「全部已登记角色，含当轮 Driver 自己的：Bash 侧拿不到『当轮』，只能全集字面拦」。
++  原句「只能由编排器维护」对 Driver 自己的原稿不成立，拆成两句：审查文档与审计材料只能由编排器维护；Driver 自己的原稿与裁决件用 Write / Edit 落笔。
++- 三处文档块（`criticRoleSuffixes`、`hasProtectedRoleSuffix`、`roleSuffixAnywhere` 上方）**追加**「M10a 第 5 步（D3）」一段，原文不动（原文是 EV-68 / EV-55 时的记录）。
++  追加段写明：`criticRoleSuffixes` 此后只剩当轮面一个消费者；Bash 侧与当轮面从此不同源。
++- **未改**：Write / Edit 侧的当轮判据（`hasProtectedRoleSuffix(fileName, driver)`）。**不做收窄，不开白名单。**
++
++### 1.2 认领出口文案（`src/trivium/driver-claim.ts` `claimRejectionMessage`）
++
++`blocked-by-usage` 档的末句，原文是：
++
++> 出口：在终端里清理上列文件后重试（会话内删不掉同样是刻意的——Bash 守卫按命令文本的角色后缀字面拦截……）
++
++这句把启发式判据写成了确定性保证。D3 之前 Bash 侧不含 claude，`previous = claude` 那一格会话内删得掉。它也从来不是这条出口的真实理由。现改为三句：
++
++1. 出口：请用户确认上列文件是撤回前留下的孤儿后，在终端清理再重试；
++2. 真实理由：不要在会话里删它们来换回认领，那正是这条限制要防的「会话自己翻转声明」；
++3. 附带说明（加括号）：会话内的删除命令通常也会被 Bash 守卫按字面拦下，但那是启发式、并不完备，不是这条出口的理由。
++
++`blocked-by-run` 档不动。
++
++### 1.3 用例
++
++| 用例 | 断言 |
++| :--- | :--- |
++| `hooks.test` D3 · B1～B4 | 以下四种形态退 2：克隆原稿；带重定向的 `--start`；焦点含写动词字面的 `--start`；`git restore` 带后缀文件。**四条都用 `-claude.md`**：这是 D3 前后唯一翻转的一格，用别家后缀构造的用例在 D3 之前就红，证明不了 D3 |
++| D3 · B5 | 遍历注册表，四家后缀逐一被拦 |
++| D3 · P1～P3 | 以下形态退 0：只读提及（`cat` / `grep`）；`git add`（不在 `WRITE_LIKE` 里）；焦点不含写动词的 `--start --plan-file …-claude.md`（skill 的正常调用形态） |
++| D3 · M1 | 拦截文案**列举那一行**列出全部四家后缀 |
++| `driver-claim.test` 出口文案 | 四家 `previous` 逐一检查：文案不含「删不掉」，含「终端」「会话自己翻转声明」「启发式」 |
++
++另改一处断言说明：`topic-claim.test`（集成）里原写「会话内删不掉是刻意的」的断言消息，改为真实理由。断言本身（`/终端/`）不变。
++
++---
++
++## 2. 变异验证
++
++**方法**：第 4 步的装置 `scripts/mutation-check.mjs`，七道闸与收尾照旧。规格收进 `doc/05_testing/evidence/m10a-step5-mutation-20260923/`（`gen-spec.mjs` 与 `mutation-spec.json`），可直接重跑。
++- 套件：`hooks.test`、`driver-claim.test`。
++- 闸 7 放行：3 条 find 各恰好命中一处。
++- 基线全绿。跑完工作树无残留，哨兵已删。
++
++| id | 变异 | 期望变红 | 结果 |
++| :--- | :--- | :--- | :--- |
++| MD3a | `roleSuffixAnywhere()` 退回 `criticRoleSuffixes(DEFAULT_DRIVER)` | B1～B4、B5 | ✓ 咬住（**fail=3**，见下） |
++| MD3b | 拦截文案退回独立取值 `criticRoleSuffixes(DEFAULT_DRIVER)` | M1 | ✓ 咬住（fail=1） |
++| MC1 | 认领出口文案退回「会话内删不掉」原句 | 出口文案用例 | ✓ 咬住（fail=1） |
++
++**MD3a 的条数与期望不符**：期望 2 条，实跑 3 条。按第 4 步的归因口径，数目不符时逐条手工核实，不改期望去凑数：
++- 手工复现了同一变异，重建测试产物后单跑 `hooks.test`，变红的是 B1～B4、B5 与 **M1**；
++- 核完已从备份恢复源码并重建，`git diff` 只剩本步的改动。
++
++**M1 为什么在 MD3a 下也红**：
++- M1 用 `rm …-claude.md` 构造被拦的场景；MD3a 让这条命令根本不被拦，M1 在第一句「应拦」处就红了，与文案同源无关。
++- 所以 **MD3a 下 M1 的变红是前提连带**，不是它的鉴别点。真正单独咬住「文案与判据同源」的是 MD3b（fail=1，只有 M1 红）。
++- **这一条是逐条核实过的**；MD3b 与 MC1 的条数与期望相符，逐条归因仍是推断。
++
++**实施中发现的两处用例缺陷，已修掉**。两处都是「用例看起来在测，实际测不出变异」：
++- **M1 初稿用全文正则匹配 `-<id>.md`**：拦截文案首行会回显被拦的命令，而命令里本就有 `-claude.md`，于是即使列举那一行漏了 claude，断言照样绿，MD3b 会咬不住。已改为只解析列举那一行。
++- **出口文案用例初稿断言 `/翻转声明/`**：旧文案里本就有「反复翻转声明」一句（讲限制为什么存在），断言对旧文案同样成立，证明不了出口理由被改写了。已改为只有新文案才有的「会话自己翻转声明」。
++
++---
++
++## 3. 与 r2 的出入（如实登记）
++
++| # | r2 怎么写 | 实际怎么做 | 为什么 |
++| :-- | :--- | :--- | :--- |
++| 1 | §3.0.4 MD3a 期望 B1～B4、B5 | 实跑多红一条 M1 | 前提连带，见 §2。期望表没改，这里如实登记 |
++| 2 | §3.0.3 M1「拦截文案列出的后缀集合 = 注册表派生的四个」 | 只解析列举那一行 | 全文匹配会被回显的命令污染，见 §2 |
++| 3 | §3.0.3 C1「含真实理由的关键词」 | 关键词取「会话自己翻转声明」 | 「翻转声明」对旧文案同样成立，见 §2 |
++| 4 | §3.0.1「拦截文案补一句」 | 另把「只能由编排器维护」拆成两句 | 原句对 Driver 自己的原稿不成立，D3 之后文案会把它们也列进拦截对象 |
++| 5 | 未提及 | 生成脚本第一版用 `String.raw` 写含 `${…}` 的 find 串，模板仍会插值，脚本语法报错，改为普通单引号串 | 规格生成的实现细节；错误发生在装置开跑之前，没有产生错误的规格 |
++
++---
++
++## 4. 没补的缺口
++
++- **判据是启发式，不是确定性保证**：词边界字面匹配，不区分「写它」与「说它」。换一种写法让它认不出来，属于绕过判定，不是出口。强制力同样是单向的：终端里的命令不经过这个 Hook。
++- **误拦面扩大已经发生**（r7 §3.2.1、R22）：命令文本里提到当轮 Driver 自己后缀的写形态命令，从此在会话内被拦，包括缺省 Driver 的 `-claude.md`。
++  - 典型形态：克隆原稿、改名或删除旧稿、commit message 带工件名、带重定向的 `--start`、焦点含写动词字面、恢复或清理带后缀文件。
++  - 出口：Write / Edit 落文件；`git commit -F <文件>`；恢复与清理在终端执行。
++  - `git add` 与只读提及不受影响（P1、P2 锁住）。
++- **没有在真实会话里触发过**：用例都在夹具上直接调用 `hookPreBash`。本会话装完之后 Hook 已按 D3 判定，但没有专门构造一次「真实会话里被拦」的观测。真载体归 M10b。
++- **D3 不改变提交锚**：提交锚按「位置 + 登记」判，与后缀无关。剩余边界两格仍在（段二登记为 EV-108）。
++- **`hooks.ts` 里一处与本步无关的失实注释没有改**：`resolveRoundDriver` 上方文档块写「代价是非缺省 Driver 仍写不出自己的原稿（已登记为已知边界）」，EV-72 已于第 1 步修掉这件事。按 r2 §4.1，这类注释残余登记不改，段二报告汇总。
++- **变异 MD3b、MC1 的逐条归因是推断**：装置只报每个套件的失败条数。MD3a 已逐条核实。
++- **文档尚未同步**：主设计、`.reviews/README.md`、根 `CLAUDE.md`、协议片段、PROTOCOL 里关于 Bash 侧后缀集的口径，在段二统一改（r2 §3.0.5）。在段二完成之前，这些文档写的仍是「全集减缺省 Driver」或旧的枚举，读者应以代码为准。
+diff --git a/doc/05_testing/evidence/m10a-step5-mutation-20260923/gen-spec.mjs b/doc/05_testing/evidence/m10a-step5-mutation-20260923/gen-spec.mjs
+new file mode 100644
+index 0000000..1e47ad4
+--- /dev/null
++++ b/doc/05_testing/evidence/m10a-step5-mutation-20260923/gen-spec.mjs
+@@ -0,0 +1,46 @@
++/**
++ * 生成 M10a 第 5 步段一（D3 + 认领文案）的变异规格（计划 `.reviews/M10a-第5步/plan/…-r2-claude.md` §3.0.4）。
++ *
++ * find / replace 逐字取自实施后的源码；唯一性由装置闸 7 在开跑前机械保证，不唯一即拒跑。
++ * 用 `String.raw` 写含反斜杠与反引号的串，免得手写 JSON 时转义出错。
++ *
++ * 用法（仓库根执行）：
++ *   node doc/05_testing/evidence/m10a-step5-mutation-20260923/gen-spec.mjs
++ *   node scripts/mutation-check.mjs doc/05_testing/evidence/m10a-step5-mutation-20260923/mutation-spec.json
++ *
++ * find 串钉的是本步提交时的源码；之后源码改动使某条不再恰好命中一处时，闸 7 会拒跑并点名，
++ * 那时按当前源码更新本脚本，别绕过闸 7。结果见 `REPORT_2026-09-23_m10a_step5_d3.md` §1。
++ */
++import { writeFileSync } from 'node:fs';
++
++const HK = 'dist/test/test/unit/hooks.test.js';
++const DC = 'dist/test/test/unit/driver-claim.test.js';
++
++const spec = {
++  targets: ['src/trivium/hooks.ts', 'src/trivium/driver-claim.ts'],
++  suites: [HK, DC],
++  cases: [
++    {
++      id: 'MD3a', desc: 'Bash 侧判据退回全集减缺省 Driver', file: 'src/trivium/hooks.ts',
++      // 普通单引号串：`${` 在这里是字面量（String.raw 的模板仍会插值，第一次写错过）；源码里的 `\\.` 在此写作 `\\\\.`
++      find: 'return new RegExp(`-(?:${bashProtectedRoleSuffixes().join(\'|\')})\\\\.md\\\\b`);',
++      replace: 'return new RegExp(`-(?:${criticRoleSuffixes(DEFAULT_DRIVER).join(\'|\')})\\\\.md\\\\b`);',
++      expect: HK,
++    },
++    {
++      id: 'MD3b', desc: '拦截文案退回独立取值（与判据不同源）', file: 'src/trivium/hooks.ts',
++      find: '${bashProtectedRoleSuffixes().map((s) => `-${s}.md`).join(\' / \')}',
++      replace: '${criticRoleSuffixes(DEFAULT_DRIVER).map((s) => `-${s}.md`).join(\' / \')}',
++      expect: HK,
++    },
++    {
++      id: 'MC1', desc: '认领出口文案退回「会话内删不掉」', file: 'src/trivium/driver-claim.ts',
++      find: "'  出口：请用户确认上列文件是撤回前留下的孤儿后，在**终端**里清理再重试。\\n' +",
++      replace: "'  出口：在**终端**里清理上列文件后重试（会话内删不掉同样是刻意的）。\\n' +",
++      expect: DC,
++    },
++  ],
++};
++
++writeFileSync(new URL('./mutation-spec.json', import.meta.url), JSON.stringify(spec, null, 2) + '\n');
++console.log(`已写出 ${spec.cases.length} 条变异规格`);
+diff --git a/doc/05_testing/evidence/m10a-step5-mutation-20260923/mutation-spec.json b/doc/05_testing/evidence/m10a-step5-mutation-20260923/mutation-spec.json
+new file mode 100644
+index 0000000..b156d67
+--- /dev/null
++++ b/doc/05_testing/evidence/m10a-step5-mutation-20260923/mutation-spec.json
+@@ -0,0 +1,36 @@
++{
++  "targets": [
++    "src/trivium/hooks.ts",
++    "src/trivium/driver-claim.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/hooks.test.js",
++    "dist/test/test/unit/driver-claim.test.js"
++  ],
++  "cases": [
++    {
++      "id": "MD3a",
++      "desc": "Bash 侧判据退回全集减缺省 Driver",
++      "file": "src/trivium/hooks.ts",
++      "find": "return new RegExp(`-(?:${bashProtectedRoleSuffixes().join('|')})\\\\.md\\\\b`);",
++      "replace": "return new RegExp(`-(?:${criticRoleSuffixes(DEFAULT_DRIVER).join('|')})\\\\.md\\\\b`);",
++      "expect": "dist/test/test/unit/hooks.test.js"
++    },
++    {
++      "id": "MD3b",
++      "desc": "拦截文案退回独立取值（与判据不同源）",
++      "file": "src/trivium/hooks.ts",
++      "find": "${bashProtectedRoleSuffixes().map((s) => `-${s}.md`).join(' / ')}",
++      "replace": "${criticRoleSuffixes(DEFAULT_DRIVER).map((s) => `-${s}.md`).join(' / ')}",
++      "expect": "dist/test/test/unit/hooks.test.js"
++    },
++    {
++      "id": "MC1",
++      "desc": "认领出口文案退回「会话内删不掉」",
++      "file": "src/trivium/driver-claim.ts",
++      "find": "'  出口：请用户确认上列文件是撤回前留下的孤儿后，在**终端**里清理再重试。\\n' +",
++      "replace": "'  出口：在**终端**里清理上列文件后重试（会话内删不掉同样是刻意的）。\\n' +",
++      "expect": "dist/test/test/unit/driver-claim.test.js"
++    }
++  ]
++}

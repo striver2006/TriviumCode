@@ -20,10 +20,11 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
-  claimStageDriver, crossCheckDriver, declaredStageDriver, filesBearingSuffix,
+  claimRejectionMessage, claimStageDriver, crossCheckDriver, declaredStageDriver, filesBearingSuffix,
   stageDriverInvariant,
 } from '../../src/trivium/driver-claim.js';
 import { hookPreWrite, type HookInput } from '../../src/trivium/hooks.js';
+import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
 import { emptyTask, newRunMeta } from '../../src/trivium/meta.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
@@ -697,4 +698,70 @@ test('declaredStageDriver：缺字段即未声明', () => {
   t.drivers = { plan: { driver: 'glm', claimed_at: 'T', claimed_by: 's' } };
   assert.equal(declaredStageDriver(t, 'plan'), 'glm');
   assert.equal(declaredStageDriver(t, 'code'), null, '按阶段取值，不跨阶段渗透');
+});
+
+/*
+ * ── 分支 3′ / 首次认领被拒时的出口文案（M10a 第 5 步段一，C1）──
+ *
+ * 旧文案写「会话内删不掉同样是刻意的——Bash 守卫按命令文本的角色后缀字面拦截」，
+ * 把一条启发式判据写成了确定性保证：M10a 第 5 步 D3 之前 Bash 侧后缀集不含缺省 Driver，
+ * `previous = claude` 那一格（分支 4 首次认领撞上缺省 Driver 先写的原稿）会话内**删得掉**；
+ * D3 之后按字面拦住的也只是启发式。**它也从来不是这条出口的真实理由**：终端清理之所以要由人做，
+ * 是因为会话自己删掉用过的后缀文件来换回认领，正是分支 3′ 要防的「反复翻转声明」。
+ *
+ * `previous` 取 claude 一格（最常见也最容易被旧文案误导的形态），遍历注册表逐家再过一遍防漏
+ * （代码双审 r6 CODEX-03：初稿硬编码四家，第五家登记时会静默失效；`registry-parity` 不扫 test/）。
+ *
+ * ## 代码双审 r6 之后的两处收紧
+ *
+ * - **不称「孤儿」**（CODEX-01）：`blocked-by-usage` 有两个产出点——分支 3′（撤回被拒）与
+ *   分支 4（无声明时首次认领撞上他家后缀文件）。后者根本没有发生过撤回，那些文件可能是
+ *   仍在使用的原稿；称它们为「撤回前留下的孤儿」会引导用户删掉有效工作。
+ * - **不提 Bash 守卫**（CODEX-02）：守卫只存在于装有 TriviumCode Hook 的会话，注册表里
+ *   codex / gemini 是 L2（没有 blocking Hook），而它们自 M10a 第 3 步起都能当 Driver。
+ *   那句本就不是出口的理由，写不准就不写。
+ */
+test('认领被拒的出口文案：给真实理由，不称孤儿，不把 Bash 守卫写进来', () => {
+  for (const previous of ALL_AGENT_IDS) {
+    const text = claimRejectionMessage(
+      { kind: 'blocked-by-usage', previous, files: [`.reviews/t/plan/2026-09-23-t-${previous}.md`] },
+      'plan',
+      previous === 'claude' ? 'glm' : 'claude',
+    );
+    assert.doesNotMatch(text, /删不掉/, `previous=${previous}：不得断言会话内删不掉`);
+    assert.doesNotMatch(text, /孤儿/, `previous=${previous}：分支 4 下没有撤回，不得一律称孤儿`);
+    assert.doesNotMatch(text, /Bash 守卫/, `previous=${previous}：守卫只在带 Hook 的会话存在，不写进通用文案`);
+    assert.match(text, /终端/, `previous=${previous}：出口仍是终端处理`);
+    assert.match(text, /仍在使用/, `previous=${previous}：要说出文件可能仍在使用，别让人当垃圾清掉`);
+    /*
+     * 取「会话自己翻转声明」而不是「翻转声明」：旧文案里本就有「反复翻转声明」一句（讲限制为什么存在），
+     * 只匹配后者对旧文案同样成立，证明不了出口的理由被改写了。
+     */
+    assert.match(text, /会话自己翻转声明/, `previous=${previous}：出口要给真实理由——防会话自己翻转声明`);
+  }
+});
+
+test('分支 4 的真实路径：首次认领撞上缺省 Driver 先写的原稿，被拒文案不称孤儿（代码双审 r6 CODEX-01）', async () => {
+  /*
+   * 上一条用例拿构造好的 ClaimOutcome 直接调文案函数，从不经判定——
+   * 分支 4 这条路径上的文案没有断言盯着。这里走真实判定：
+   * 无声明（`existing: null`）、无留痕，该阶段已有缺省 Driver 在第 3 级判定下合法写下的原稿，
+   * 首次认领另一家 ⇒ 分支 4 返回 blocked-by-usage，再把结论喂给文案函数。
+   */
+  const ctx = await fakeCtx();
+  const stageDir = path.join(ctx.archiveRoot, 't/plan');
+  await fs.mkdir(stageDir, { recursive: true });
+  await fs.writeFile(path.join(stageDir, '2026-09-23-t-claude.md'), '# 原稿，仍在使用\n');
+
+  const r = await claimStageDriver({
+    layout: layoutOf(ctx, 't'), stage: 'plan', driver: 'glm', claimedBy: SESSION,
+    runDriver: null, existing: null,
+  });
+  assert.equal(r.kind, 'blocked-by-usage', '前提：分支 4 的首次认领也查他家后缀文件（代码双审 r1 GLM-05）');
+  if (r.kind !== 'blocked-by-usage') return;
+  assert.equal(r.previous, 'claude');
+
+  const text = claimRejectionMessage(r, 'plan', 'glm');
+  assert.doesNotMatch(text, /孤儿/, '分支 4 下没有发生过撤回，那份原稿不是孤儿');
+  assert.match(text, /仍在使用/);
 });

@@ -1,0 +1,52 @@
+{
+  "targets": [
+    "src/trivium/hooks.ts",
+    "src/trivium/driver-claim.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/hooks.test.js",
+    "dist/test/test/unit/driver-claim.test.js"
+  ],
+  "cases": [
+    {
+      "id": "MD3a",
+      "desc": "Bash 侧判据退回全集减缺省 Driver",
+      "file": "src/trivium/hooks.ts",
+      "find": "return new RegExp(`-(?:${bashProtectedRoleSuffixes().join('|')})\\\\.md\\\\b`);",
+      "replace": "return new RegExp(`-(?:${criticRoleSuffixes(DEFAULT_DRIVER).join('|')})\\\\.md\\\\b`);",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "MD3b",
+      "desc": "拦截文案退回独立取值（与判据不同源）",
+      "file": "src/trivium/hooks.ts",
+      "find": "${bashProtectedRoleSuffixes().map((s) => `-${s}.md`).join(' / ')}",
+      "replace": "${criticRoleSuffixes(DEFAULT_DRIVER).map((s) => `-${s}.md`).join(' / ')}",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "MC1",
+      "desc": "出口句退回含「删不掉」的措辞（只由负向断言咬住）",
+      "file": "src/trivium/driver-claim.ts",
+      "find": "'  出口：请用户确认它们的去留后，在**终端**里处理再重试。\\n' +",
+      "replace": "'  出口：在**终端**里清理后重试（会话内删不掉同样是刻意的）。\\n' +",
+      "expect": "dist/test/test/unit/driver-claim.test.js"
+    },
+    {
+      "id": "MC2",
+      "desc": "删去真实理由「会话自己翻转声明」（只由正向断言咬住）",
+      "file": "src/trivium/driver-claim.ts",
+      "find": "'  不要在会话里删它们来换回认领——那正是这条限制要防的「会话自己翻转声明」。'",
+      "replace": "'  不要在会话里删它们来换回认领。'",
+      "expect": "dist/test/test/unit/driver-claim.test.js"
+    },
+    {
+      "id": "MC4",
+      "desc": "文件性质退回一律称孤儿（分支 4 真实路径用例 + 文案用例）",
+      "file": "src/trivium/driver-claim.ts",
+      "find": "'  也可能是尚无声明时写下、仍在使用的原稿。\\n' +",
+      "replace": "'  它们是撤回前留下的孤儿。\\n' +",
+      "expect": "dist/test/test/unit/driver-claim.test.js"
+    }
+  ]
+}

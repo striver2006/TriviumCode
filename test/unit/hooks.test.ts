@@ -1570,3 +1570,67 @@ test('带空格的路径也能正确判断在不在项目内', async () => {
   });
   assert.equal(outside.exitCode, EXIT.OK);
 });
+
+// ── D3：Bash 侧角色后缀改全集字面保护（M10a 第 5 步段一，计划 r2 §3.0；r7 §3.2 / §3.3 / A3）──
+//
+// 此前 Bash 侧取「全集减缺省 Driver」：M10a 第 3 步翻开 `driverEnabled` 之后，非缺省轮次里
+// 缺省 Driver 的后缀（`-claude.md`）恰是**审核者**产出，却在 Bash 侧无字面保护。
+// Bash 拿不到 run 上下文，唯一不依赖「当轮」的取值是全集。
+//
+// 负例 B1～B4 取 r7 §3.3 点名的四种形态、一律用 `-claude.md`：那是 D3 前后唯一翻转的一格，
+// 用别家后缀构造的用例在 D3 之前就红，证明不了 D3（变异 MD3a 靠的就是这一点）。
+// 正例 P1～P3 锁「只读提及、`git add`、skill 的正常 `--start` 调用」不被误伤——
+// 全集保护最容易伤到的就是 Driver 自己的日常动作。
+
+const OWN = '.reviews/t/plan/2026-09-23-t-claude.md';
+
+test('D3 · B1～B4：提到 -claude.md 的写形态命令一律拦（缺省 Driver 自己的后缀也拦）', async () => {
+  const ctx = await fakeCtx();
+  for (const [c, why] of [
+    [`cp ${OWN} .reviews/t/plan/2026-09-23-t-r2-claude.md`, 'B1 克隆原稿'],
+    [`node skills/dual-critic/scripts/trivium.cjs review --start --entry B --stage plan --topic t --plan-file ${OWN} --focus x > out.txt`, 'B2 带重定向的 --start'],
+    [`node skills/dual-critic/scripts/trivium.cjs review --start --entry B --stage plan --topic t --plan-file ${OWN} --focus '重点看 rm 与 mv'`, 'B3 焦点含写动词字面'],
+    [`git restore ${OWN}`, 'B4 恢复命令带后缀文件'],
+  ] as const) {
+    const r = await hookPreBash(ctx, bashInput(c));
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `${why}：应拦`);
+    assert.match(r.stderr ?? '', /编排器独占/, `${why}：拦下时给的是同一份说明`);
+  }
+});
+
+test('D3 · B5：四家后缀逐一都拦（遍历注册表，防第五家登记时漏）', async () => {
+  const ctx = await fakeCtx();
+  for (const id of ALL_AGENT_IDS) {
+    const r = await hookPreBash(ctx, bashInput(`rm .reviews/t/plan/2026-09-23-t-${id}.md`));
+    assert.equal(r.exitCode, EXIT.GATE_BLOCK, `-${id}.md 应在 Bash 侧受字面保护`);
+  }
+});
+
+test('D3 · P1～P3：只读提及、git add、不含写动词的 --start 都放行', async () => {
+  const ctx = await fakeCtx();
+  for (const [c, why] of [
+    [`cat ${OWN}`, 'P1 只读提及'],
+    [`grep -n 裁决 ${OWN}`, 'P1 只读提及（grep）'],
+    [`git add ${OWN}`, 'P2 git add 不在写命令判据里'],
+    [`node skills/dual-critic/scripts/trivium.cjs review --start --entry B --stage plan --topic t --plan-file ${OWN} --focus '重点看判据'`, 'P3 skill 的正常调用形态'],
+  ] as const) {
+    assert.equal((await hookPreBash(ctx, bashInput(c))).exitCode, EXIT.OK, `${why}：不该拦`);
+  }
+});
+
+test('D3 · M1：拦截文案列出的后缀与判据同源（全集四家，含缺省 Driver）', async () => {
+  const ctx = await fakeCtx();
+  const r = await hookPreBash(ctx, bashInput(`rm ${OWN}`));
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
+  /*
+   * 只解析列举那一行：文案首行会回显被拦的命令，命令里本就有 `-claude.md`，
+   * 全文匹配会让「列表漏了 claude」照样绿——变异 MD3b 就咬不住了。
+   */
+  const line = (r.stderr ?? '').split('\n').find((l) => l.includes('角色工件的后缀'));
+  assert.ok(line, '拦截文案要有列举后缀的那一行');
+  const listed = [...line.matchAll(/-([a-z]+)\.md/g)].map((m) => m[1]);
+  for (const id of ALL_AGENT_IDS) {
+    assert.ok(listed.includes(id), `拦截文案应列出 -${id}.md——文案与判据两处独立取值时，只改一处就会少列`);
+  }
+  assert.ok(ALL_AGENT_IDS.includes(DEFAULT_DRIVER), '前提：缺省 Driver 是已登记 Agent');
+});

@@ -134,6 +134,11 @@ export function isInsideArchive(targetPath: string, projectRoot: string, archive
  * 新增调用点漏传会静默退回「缺省 Driver 的补集」，正是 EV-68 / EV-69 要消灭的形态。
  * 跨时间面的调用点（EV-55 后剩 Bash 侧两处）显式写 `criticRoleSuffixes(DEFAULT_DRIVER)`：**它们要的就是缺省值**，
  * 显式写出来比靠默认值省略更说明问题。
+ *
+ * ## M10a 第 5 步（D3）的变化
+ *
+ * 上一段说的「Bash 侧两处」已改为取 `bashProtectedRoleSuffixes()`（全集），不再调用本函数。
+ * **本函数此后只剩当轮面一个消费者**（`hasProtectedRoleSuffix`）。上面「两处消费点」一段是 EV-68 时的记录，原文保留。
  */
 export function criticRoleSuffixes(driver: AgentId): readonly string[] {
   return ALL_AGENT_IDS.filter((id) => id !== driver);
@@ -167,6 +172,9 @@ export function criticRoleSuffixes(driver: AgentId): readonly string[] {
  *   · 跨时间面当时拆出的 `hasRoleSuffixCrossTime(fileName)` 供提交锚使用；
  *     M10a 第 2 步（EV-55）提交锚改按 `artifacts[]` 登记判不可变后，它已无消费者，
  *     随之删除（代码双审 r2 CODEX-03）。Bash 侧的跨时间面仍是 `roleSuffixAnywhere()`。
+ *
+ * **M10a 第 5 步（D3）**：Bash 侧那一处的后缀集已改为全集（`bashProtectedRoleSuffixes()`），
+ * 不再是「全集减缺省 Driver」，因此它与本函数的取值从此不同源——当轮面减当轮 Driver，Bash 侧一家不减。
  */
 export function hasProtectedRoleSuffix(fileName: string, driver: AgentId): boolean {
   return new RegExp(`-(?:${criticRoleSuffixes(driver).join('|')})\\.md$`).test(
@@ -867,8 +875,30 @@ const SEGMENT_SPLIT = /(?:&&|\|\||[;&|\n\r])/;
  * 那个固化是隐式的副作用——本步把它变成一个显式取值点，口径一字未改，
  * 好让 EV-55 真做跨时间面收口时不必先拆一次模块加载期的耦合。
  */
+/*
+ * ## M10a 第 5 步（D3）：后缀集改为**全集**
+ *
+ * 上面那段「跨时间口径（全集减缺省 Driver）」是 EV-68 / EV-55 时的写法，原文保留作历史。
+ * M10a 计划 r7 §3.2 / A3 决定 Bash 侧改为**全部已登记角色的后缀都拦**（四家，含当轮 Driver 自己的）；
+ * 第 2 步没有实施、也没有获批的撤回记录，第 5 步段一补上（第 5 步计划 r2 §2.1）。
+ *
+ * 为什么不是「全集减缺省 Driver」：M10a 第 3 步翻开 `driverEnabled` 之后，当轮 Driver 可以是任一家，
+ * 缺省 Driver 的后缀在非缺省轮次里恰是**审核者**的产出。这里拿不到 run 上下文、判不出当轮，
+ * 减掉任何一家都会让那一家在某些轮次里失守；唯一不依赖「当轮」的取值是全集。
+ *
+ * 代价（r7 §3.2.1，R22 已登记）：命令文本提到**当轮 Driver 自己的**后缀的写形态命令同样被拦，
+ * 包括缺省 Driver 的 `-claude.md`。出口不变：Write / Edit 落文件、`git commit -F`、
+ * 恢复与清理在终端执行。**不做收窄、不开白名单**（下方「为什么 Bash 侧不做收窄」、RV-B1）。
+ *
+ * 判据与 `hookPreBash` 拦截文案**同源**：两处都取 {@link bashProtectedRoleSuffixes}。
+ * 上一版是两个独立取值点，只改一处就会出现「拦下了却少列一个后缀」的提示。
+ */
+export function bashProtectedRoleSuffixes(): readonly string[] {
+  return ALL_AGENT_IDS;
+}
+
 function roleSuffixAnywhere(): RegExp {
-  return new RegExp(`-(?:${criticRoleSuffixes(DEFAULT_DRIVER).join('|')})\\.md\\b`);
+  return new RegExp(`-(?:${bashProtectedRoleSuffixes().join('|')})\\.md\\b`);
 }
 
 /*
@@ -975,8 +1005,9 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
         '  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\n' +
         '    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n' +
         '      （删掉或改坏 bin/ 会让 .claude/settings.json 里每条 Hook 的守卫永真放行）\n' +
-        `    · 审查文档的角色后缀（${criticRoleSuffixes(DEFAULT_DRIVER).map((s) => `-${s}.md`).join(' / ')}）\n` +
-        '  只能由编排器维护（FR-25 / P5）。\n' +
+        `    · 角色工件的后缀（${bashProtectedRoleSuffixes().map((s) => `-${s}.md`).join(' / ')}）——\n` +
+        '      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\n' +
+        '  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\n' +
         '\n' +
         '  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\n' +
         '  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\n' +
