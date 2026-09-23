@@ -27,7 +27,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { run, tryRun } from '../util/exec.js';
-import { exists } from '../util/fsx.js';
+import { exists, sha256 } from '../util/fsx.js';
 import {
   createFixture,
   createMemoryFixture,
@@ -38,7 +38,7 @@ import {
 } from './fixture.js';
 import { probeScratchPaths } from './agy.js';
 import type { ClaudeProbe, PathDenyProbe } from '../types.js';
-import { emptyPathDeny } from '../config.js';
+import { emptyPathDeny, resolveReviewSchemaPath } from '../config.js';
 /*
  * 轨迹解析住在适配层，探针**反向 import** 它（M9 第 3 步）。
  *
@@ -52,13 +52,13 @@ import { emptyPathDeny } from '../config.js';
  */
 import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents, type ClaudeTrace } from '../adapters/claude-trace.js';
 /*
- * 送 CLI 的 schema 只有一份变换（代码双审 CODEX-03）：适配器、探针、准入脚本三处造
- * `--json-schema` 的值，此前只有适配器那处剥 2020-12 的 `$schema` 头。探针今天的迷你 schema
- * 不带该头、这里是空操作——但 EV-74 要把探针改喂真实 `review.v1.json`，那时不经同一份变换
- * 就会撞第 1 跑的拒绝形态，`json_schema_ok` 落 null 而不是 false，静默回归。
+ * 送 CLI 的 schema 只有一份变换（代码双审 CODEX-03，EV-74 落地）：适配器、探针、准入脚本
+ * 三处造 `--json-schema` 的值，只有 `readSchemaJson`（内部调 `stripMetaSchemaRef`）剥
+ * 2020-12 的 `$schema` 头。探针结构化臂改喂真实 `review.v1.json` 后必须经它，不经同一份
+ * 变换就会撞拒绝形态，`json_schema_ok` 落 null 而不是 false，静默回归。
  * 方向 probes → adapters 与 `claude-trace` 的先例相同；反向（adapters → probes）仍禁止。
  */
-import { stripMetaSchemaRef } from '../adapters/claude.js';
+import { readSchemaJson } from '../adapters/claude.js';
 
 /** 探针模型：探能力不探质量，挑最便宜的一档 */
 const PROBE_MODEL = 'claude-haiku-4-5-20251001';
@@ -129,6 +129,12 @@ export function probeArgs(opts: {
    * 正常探测一律不传本项——不传 `--verbose` 的 stream-json 会被当场拒掉。
    */
   omitVerbose?: boolean;
+  /**
+   * **只给结构化臂的调用点用**（EV-74 计划 §4.2）：按臂覆盖 `--max-budget-usd`，
+   * 不传时取模块常量 `PROBE_BUDGET_USD`。不设默认值——避免除结构化臂外的调用点
+   * 无意间共享覆盖值。
+   */
+  budgetUsdOverride?: string;
 }): string[] {
   /*
    * **这里刻意没有 stdin 形态的分支**（代码双审 r2 CODEX-01）。
@@ -159,7 +165,7 @@ export function probeArgs(opts: {
     // 一处事实一个来源，那条契约才真正对准这个常量。
     ...READONLY_INVARIANTS,
     // ── 探针尺度：M9 自有一套，不从这里取 ──
-    '--max-budget-usd', PROBE_BUDGET_USD,
+    '--max-budget-usd', opts.budgetUsdOverride ?? PROBE_BUDGET_USD,
     '--model', PROBE_MODEL,
     ...(opts.jsonSchema ? ['--json-schema', opts.jsonSchema] : []),
     ...(opts.settings ? ['--settings', opts.settings] : []),
@@ -367,23 +373,68 @@ export function judgeTracePathStructured(o: {
 }
 
 /**
- * `json_schema_ok`：`--json-schema` 有没有真的强制出结构化输出。
+ * `json_schema_ok` 的 null 成因——供 `doctor` 挑 warning 文案（EV-74 计划 §3.7），
+ * **返回值字段，不落进持久化的 `ClaudeProbe`**（仿 zcode `flagsIndeterminate` 先例）。
+ *
+ * `'clean-reject'` 与 `false` 一一对应；`'ok'` 与 `true` 一一对应；
+ * 其余三个 null 成因各自独立，不共用一份「模型未合规」文案——
+ * `'not-completed'` 那一类（撞闸 / 未跑完 / 环境层失败）不得贴模型不合规的帽子。
+ */
+export type JsonSchemaCause = 'clean-reject' | 'not-completed' | 'model-noncompliant' | 'ok';
+
+/**
+ * `json_schema_ok`：`--json-schema` 有没有真的强制出结构化输出（EV-74 三态判据）。
  *
  * `result` 回来的是 **JSON 字符串**而不是对象，要再 parse 一次——这个形态
- * M9 的解析器照着写才不会踩空。parse 失败 ⇒ `false`（确实没按 schema 出），
- * 没跑完 ⇒ `null`（没测到）。两者不能合流。
+ * M9 的解析器照着写才不会踩空。
+ *
+ * **前置门（任一成立即 null/`not-completed`，照 `judgeVerboseBinding` 门序）**：
+ * `timedOut`、拿不到退出码、正对照（同轮读探针）不成立。
+ *
+ * **七格（互斥，`completed` 是否为 `true` 严格二分行 1-4 与行 5-7，计划 §3.4.1）**：
+ *
+ * | 输入 | 结论 | cause |
+ * | :--- | :--- | :--- |
+ * | 非零退出 + `eventCount === 0` + stderr 非空 | `false` | `clean-reject` |
+ * | 非零退出 + `eventCount === 0` + stderr 也空 | `null` | `not-completed` |
+ * | 非零退出 + `completed !== true` 且已吐出事件 | `null` | `not-completed` |
+ * | `completed !== true` 且不落上述三行 | `null` | `not-completed` |
+ * | `completed` 且输出不可 `JSON.parse` | `null` | `model-noncompliant` |
+ * | `completed` 且缺 `requiredKey` 或其非 string | `null` | `model-noncompliant` |
+ * | `completed` 且 `requiredKey` 为 string | `true` | `ok` |
+ *
+ * 两条 false 出口只留一条（干净拒绝）；「不可 parse」与「缺键」都改落 `null`——
+ * 这一格依赖模型配合度（haiku 档位），叠加降级扳机与 7 天 TTL，
+ * 不能让一次模型抖动把生产的结构化输出关掉一周（计划 §3.4.3）。
  */
 export function judgeJsonSchema(o: {
+  timedOut: boolean;
+  exitCode: number | null;
+  stderr: string;
+  eventCount: number;
   completed: boolean;
+  /** 同轮读探针（另一条只读臂）的 `completed`——正对照，不是本臂自己的 `completed` */
+  positiveControlOk: boolean;
   finalText: string | null;
   requiredKey: string;
-}): boolean | null {
-  if (!o.completed) return null;
+}): { value: boolean | null; cause: JsonSchemaCause } {
+  if (o.timedOut) return { value: null, cause: 'not-completed' };
+  if (typeof o.exitCode !== 'number') return { value: null, cause: 'not-completed' };
+  if (!o.positiveControlOk) return { value: null, cause: 'not-completed' };
+
+  if (o.exitCode !== 0 && o.eventCount === 0) {
+    return o.stderr.trim().length > 0
+      ? { value: false, cause: 'clean-reject' }
+      : { value: null, cause: 'not-completed' };
+  }
+  if (o.completed !== true) return { value: null, cause: 'not-completed' };
+
   try {
     const parsed = JSON.parse(o.finalText ?? '') as Record<string, unknown>;
-    return typeof parsed[o.requiredKey] === 'string';
+    if (typeof parsed[o.requiredKey] === 'string') return { value: true, cause: 'ok' };
+    return { value: null, cause: 'model-noncompliant' };
   } catch {
-    return false;
+    return { value: null, cause: 'model-noncompliant' };
   }
 }
 
@@ -543,19 +594,45 @@ export async function probeClaudeBin(
   return { bin, version: m?.[1] ?? null };
 }
 
-/** 跑一次最小任务并解析轨迹 */
+/**
+ * 跑一次最小任务并解析轨迹。
+ *
+ * **按臂覆盖预算/超时入参（EV-74 计划 §4.2）**：`overrideBudgetUsd` / `overrideTimeoutMs`
+ * 只该由结构化臂的调用点显式传入，不设默认值——两个模块常量仍是其余各臂唯一取值来源，
+ * 避免一次未经讨论的全局配额上调（§3.2.1 相反方向）。
+ *
+ * **当前状态：机制已建、故意未接线**（代码双审 CODEX-01≡AGY-01≡GLM-01）。
+ * §4.2 要求先做两次以上真实契约下的实测、取典型值定出上调目标的具体数——这一步
+ * 需要真的花配额跑 claude CLI，本轮未做（EV-95：没实测就不能假装有结论）。
+ * `overrideTimeoutMs` 因此**零调用方**，是刻意的死参数，不是遗漏。接线时机是
+ * §4.2 的实测完成之后；测试面（用例 8／变异 11）也要等那时候才能真正断言
+ * 「结构化臂那次带覆盖值、其余各臂不受影响」——`probeArgs` 的单测（下方
+ * `test/unit/claude-events.test.ts`）现在只能守住覆盖入参本身的隔离性质
+ * （不传落模块常量、传了原样出现、不连带改动其它旗标），守不住"调用点真的拨了
+ * 这个旋钮"，因为调用点确实还没拨。
+ */
 async function execProbe(
   bin: string,
   fx: Fixture,
   prompt: string,
-  extra: { jsonSchema?: string; settings?: string } = {},
-): Promise<ClaudeTrace & { timedOut: boolean; raw: string }> {
-  const r = await run(bin, probeArgs({ prompt, ...extra }), {
-    timeoutMs: PROBE_TIMEOUT_MS,
-    cwd: fx.root,
-    stdin: '',
-    killTree: true,
-  });
+  extra: {
+    jsonSchema?: string;
+    settings?: string;
+    overrideBudgetUsd?: string;
+    overrideTimeoutMs?: number;
+  } = {},
+): Promise<ClaudeTrace & { timedOut: boolean; raw: string; exitCode: number | null; stderr: string }> {
+  const { overrideBudgetUsd, overrideTimeoutMs, ...argOpts } = extra;
+  const r = await run(
+    bin,
+    probeArgs({ prompt, ...argOpts, budgetUsdOverride: overrideBudgetUsd }),
+    {
+      timeoutMs: overrideTimeoutMs ?? PROBE_TIMEOUT_MS,
+      cwd: fx.root,
+      stdin: '',
+      killTree: true,
+    },
+  );
   const trace = parseClaudeEvents(r.stdout);
   /*
    * `raw` 必须透传（审查意见 GLM-03）：泄漏判据要查的是**原始输出**。
@@ -565,7 +642,14 @@ async function execProbe(
    * 测试断言的一直是 raw 全文，实现却更松，两个口径。
    */
   // 超时一定不算跑完，即使输出里恰好已有 result（那是截断的）
-  return { ...trace, completed: trace.completed && !r.timedOut, timedOut: r.timedOut, raw: r.stdout };
+  return {
+    ...trace,
+    completed: trace.completed && !r.timedOut,
+    timedOut: r.timedOut,
+    raw: r.stdout,
+    exitCode: r.code,
+    stderr: r.stderr,
+  };
 }
 
 /**
@@ -903,10 +987,24 @@ async function probeClaudePathDeny(bin: string, fx: Fixture): Promise<PathDenyPr
   };
 }
 
+/**
+ * 结构化臂本轮结果的成因——**返回值字段，不落进持久化的 `ClaudeProbe`**
+ * （仿 zcode `flagsIndeterminate` 先例，EV-74 计划 §3.7 CODEX-03）。
+ *
+ * `'carried-over'`：早退轮（`!bin` / `skipModelCalls`），`probe.json_schema_ok`
+ * 是上一轮的旧值，本轮结构化臂**没跑**。`'asset-root-missing'`：资产根未注入或
+ * 契约文件本轮读不到，结构化臂**那一次调用未发生**（§5 用例 2③）。
+ * 其余四个值来自 `judgeJsonSchema` 的 `cause`（结构化臂**真跑过**）。
+ *
+ * `doctor` 只读这个字段判断「结构化臂本轮是否真跑过、以及为什么是 null」，
+ * 不读 `json_schema_ok` 的值、也不读 notes 文本。
+ */
+export type StructuredArmCause = 'carried-over' | 'asset-root-missing' | JsonSchemaCause;
+
 export async function probeClaude(
   configuredBin: string | null,
-  opts: { skipModelCalls?: boolean; existing?: ClaudeProbe } = {},
-): Promise<{ probe: ClaudeProbe; notes: string[] }> {
+  opts: { skipModelCalls?: boolean; existing?: ClaudeProbe; assetRoot?: string } = {},
+): Promise<{ probe: ClaudeProbe; notes: string[]; structuredArmCause: StructuredArmCause }> {
   const notes: string[] = [];
   // 同另两家：以既有结论为起点，跳过的探针保留原值，
   // 否则 --no-model-calls 会把上一次真实探到的结论覆盖成 null
@@ -953,7 +1051,7 @@ export async function probeClaude(
   probe.version_probe = { runner: null, args: ['--version'], extract: String.raw`(\d+\.\d+\.\d+)` };
   if (!bin) {
     notes.push('未找到 claude 可执行文件，Claude 侧不可用');
-    return { probe, notes };
+    return { probe, notes, structuredArmCause: 'carried-over' };
   }
 
   if (opts.skipModelCalls) {
@@ -963,7 +1061,7 @@ export async function probeClaude(
         'stream_json_requires_verbose / strict_mcp_config_applied / project_memory_blocked ' +
           '保留上一次的结论',
     );
-    return { probe, notes };
+    return { probe, notes, structuredArmCause: 'carried-over' };
   }
 
   /*
@@ -971,6 +1069,9 @@ export async function probeClaude(
    * 两条早退路径不刷它——它们没跑模型段，不该代表模型段。
    */
   probe.probed_at = new Date().toISOString();
+
+  // 早退轮不产出这个值；到这里说明「模型段真跑过」，见上方注释
+  let structuredArmCause: StructuredArmCause = 'asset-root-missing';
 
   const fx = await createFixture();
   try {
@@ -1202,30 +1303,87 @@ export async function probeClaude(
       notes.push('只读负对照未跑完，留痕能力未得出结论');
     }
 
-    // ── 结构化输出 ───────────────────────────────────────────────
-    // 经适配层同一份变换送出（CODEX-03）；今天这份没有 $schema 头，变换是空操作——
-    // 但 EV-74 改喂真实契约文件时，不走这条路会把拒绝形态记成 null
-    const schema = stripMetaSchemaRef(JSON.stringify({
-      type: 'object',
-      properties: { first_line: { type: 'string' } },
-      required: ['first_line'],
-      additionalProperties: false,
-    }));
-    const structured = await execProbe(
-      bin,
-      fx,
-      `读 ${fx.openFile}，回答它的第一行内容。`,
-      { jsonSchema: schema },
-    );
-    probe.json_schema_ok = judgeJsonSchema({
-      completed: structured.completed,
-      finalText: structured.finalText,
-      requiredKey: 'first_line',
-    });
-    notes.push(
-      `--json-schema 强制结构化输出=${probe.json_schema_ok}` +
-        '（参数取内联 JSON 而非文件路径；result 回来是 JSON 字符串，要再 parse 一次）',
-    );
+    // ── 结构化输出（EV-74：改喂真实契约，经 readSchemaJson 同一份变换送出）──
+    const schemaPath = opts.assetRoot ? resolveReviewSchemaPath(opts.assetRoot) : null;
+    let schemaJson: string | null = null;
+    let schemaProblem: string | null = null;
+    if (schemaPath) {
+      try {
+        const raw = await readSchemaJson(schemaPath);
+        /*
+         * **提前校验 `JSON.parse`**（代码双审 GLM-04）：`readSchemaJson` 对坏 JSON
+         * 不抛——`stripMetaSchemaRef` 的既有契约是「解析不了就原样返回，让 CLI 自己
+         * 拒」。不在这里校验，一份损坏的本地文件会被当成合法内容送去 CLI、被拒后落
+         * `clean-reject`，把「本地资产损坏」误报成「CLI 不接受这份契约」。
+         */
+        JSON.parse(raw);
+        schemaJson = raw;
+      } catch (e) {
+        /*
+         * **区分「未安装」与「读不到/损坏」**（代码双审 CODEX-04）：只有 `ENOENT`
+         * 才是「未安装」，其余错误（权限、目录、坏 JSON）不该被同一句指路句盖过——
+         * 那会把人送去装一个已经装好的东西，原始错误也不该被丢弃。
+         */
+        schemaProblem = (e as NodeJS.ErrnoException).code === 'ENOENT' ? null : (e as Error).message;
+      }
+    }
+
+    if (schemaJson === null) {
+      /*
+       * 资产根未注入、本轮读不到、或契约文件已损坏——结构化臂**那一次调用不发生**
+       * （计划 §5 用例 2③）。不进 warnings，可见性靠这条指路 note（§3.2.1／§3.7）。
+       */
+      structuredArmCause = 'asset-root-missing';
+      probe.json_schema_ok = null;
+      notes.push(
+        schemaProblem
+          ? `⚠️ 审查契约文件读取失败或已损坏（${schemaPath}）：${schemaProblem}——请检查该文件是否完整、是否可读`
+          : `⚠️ 未找到审查契约文件（${schemaPath ?? '资产根未注入'}）——结构化输出判据本轮未测，` +
+            '安装 dual-critic skill（或设置 TRIVIUM_ASSET_ROOT）后自动恢复',
+      );
+    } else {
+      const fingerprint = sha256(schemaJson).slice(0, 12);
+      const structured = await execProbe(
+        bin,
+        fx,
+        `对 ${fx.openFile} 做一次最小审查：schema 字段固定为 "trivium.review.v1"、` +
+          'verdict 给 "approve"、summary 用一句话概括文件内容，findings 留空数组即可。',
+        { jsonSchema: schemaJson },
+      );
+      const judged = judgeJsonSchema({
+        timedOut: structured.timedOut,
+        exitCode: structured.exitCode,
+        stderr: structured.stderr,
+        eventCount: structured.eventCount,
+        completed: structured.completed,
+        // 正对照：本轮读探针（上面第一段）是否真的跑通，不是本臂自己的 completed
+        positiveControlOk: read.completed,
+        finalText: structured.finalText,
+        requiredKey: 'summary',
+      });
+      probe.json_schema_ok = judged.value;
+      structuredArmCause = judged.cause;
+      /*
+       * **成因专属文案（代码双审 CODEX-02）**：计划 §3.4.1 为兜底行与「不可 parse／
+       * 缺键」两类结论各点了一句 note，此前只把成因经 `structuredArmCause` 送进
+       * doctor 的 warnings 通道，notes 里只有取值本身——只读 notes 的消费面看到的是
+       * 一个没有成因的 null。三类文案与 `claudeStructuredArmWarning`（doctor.ts）同源
+       * 但措辞更中性：notes 面向「本轮探测记录」，warnings 面向「需要人管」，不复用
+       * 同一句字符串。
+       */
+      const causeNote: Partial<Record<JsonSchemaCause, string>> = {
+        'clean-reject': 'CLI 干净拒绝了本仓契约文件',
+        'not-completed': '未跑完（撞闸或未获模型答复），需重测',
+        'model-noncompliant': '跑通但模型未按契约给出合规输出，需重测',
+      };
+      const note = causeNote[judged.cause];
+      notes.push(
+        `--json-schema 强制结构化输出=${probe.json_schema_ok}` +
+          (note ? `（${note}）` : '') +
+          `（契约 ${schemaPath}，指纹 sha256:${fingerprint}；参数取内联 JSON 而非文件路径；` +
+          'result 回来是 JSON 字符串，要再 parse 一次）',
+      );
+    }
 
     // ── 路径级 deny ──────────────────────────────────────────────
     probe.path_deny = await probeClaudePathDeny(bin, fx);
@@ -1366,5 +1524,5 @@ export async function probeClaude(
     await memFx.cleanup();
   }
 
-  return { probe, notes };
+  return { probe, notes, structuredArmCause };
 }

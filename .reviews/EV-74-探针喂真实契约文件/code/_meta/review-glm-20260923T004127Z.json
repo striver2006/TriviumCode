@@ -1,0 +1,113 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "实现总体忠实于 r5 计划：七个焦点中五个核过无实质问题——七格判据把多个 null 前置门成因并进 not-completed 不丢计划要求的语义区分（计划 §3.4.1 五个 null 格本就共享同一结论与同一文案，§3.7 只要求三类独立文案，cause 四值恰好覆盖；互斥性经『eventCount===0 ⇒ 无 result 事件 ⇒ completed=false』的蕴含关系成立，单测含行序互斥与 true 格断言）；StructuredArmCause 六值让 doctor 能完整区分早退轮/资产根缺失/真跑过三种子成因；resolveAssetRoot/resolveReviewSchemaPath 合并行为逐字不变且全仓运行期规则只剩一份；假二进制协议逐字段对齐 parseClaudeEvents 与 M9 实测形态（含 StructuredOutput 进 init.tools 的细节），判别力断言能咬住变异 1-5；claudeStructuredArmWarning 三类文案互斥、switch 类型穷尽。发现的缺口集中在验收面与边角行为：计划 §5 用例 5（脚本臂同源 grep 契约）与用例 8（覆盖入参）两项 r5 裁定验收无测试落点，准入脚本侧『改回自造 schema / 漏接五输入』当前零守卫；脚本的 fail-fast 被 per-case catch 吞成报告行、进程退 0，与『assertProbeUsable 同族』的停机语义不符；契约文件损坏（非 JSON）会被归因为 CLI 干净拒绝并触发降级扳机。无 blocker/major。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/probes/claude.ts:1320-1326；test/integration/claude-structured-probe.test.ts（全文无用例 8）",
+      "problem": "r5 计划 §5 用例 8 与变异 11（r5 裁决 CODEX-05≡GLM-04 写明的验收：伪 bin 记录到的 argv 里结构化臂那次 --max-budget-usd/超时带覆盖值、其余各臂仍带模块常量值）没有集成层落点。execProbe/probeArgs 的覆盖入参机制已建（probes/claude.ts:604-625、:133-137），但结构化臂调用点不传 overrideBudgetUsd/overrideTimeoutMs，机制处于『已建未接线、零调用方』状态，集成用例因此不可构造，且这一收窄未在任何注释或留痕中显式说明。probeArgs 纯函数层有单测（claude-events.test.ts 新增），但『覆盖只作用于结构化臂那一次调用』这条保证将来真的接线时无守卫。",
+      "evidence": "直读 src/trivium/probes/claude.ts:1320-1326——结构化臂的 execProbe 调用只传 { jsonSchema: schemaJson }；全文件 grep 无 overrideBudgetUsd/overrideTimeoutMs 的任何调用方；test/integration/claude-structured-probe.test.ts 全文（194 行）只有用例 1/2/2b 与三态用例；r5 计划 §5 用例 8 与变异 11 为 r5 裁决（r5-revised-claude.md CODEX-05 行）新增验收项。",
+      "suggestion": "二选一：要么给 probeClaude opts 加结构化臂预算/超时透传缝并落地用例 8 的 argv 断言；要么在 execProbe/probeArgs 注释与计划留痕里显式记录『覆盖机制暂不接线，用例 8 顺延至 §4.2 实测触发上调时一并落地』，让偏离显式化。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "scripts/claude-admission-control.mjs:449-495；test/（无对应断言）",
+      "problem": "r5 计划 §5 用例 5（含 CODEX-08 裁决落点『用例 5 的断言相应伸到路径拼接处』）：『准入脚本与探针走同一份 schema 来源且同一个资产根解析出口与契约相对路径拼接出口；脚本臂五个输入全接——grep 级契约』。实现本身做对了（脚本 :449-453 经 mod.config.resolveAssetRoot/resolveReviewSchemaPath 取路径、:483-493 五输入全接），但 grep 级契约测试不存在：grep test/ 全目录无任何断言涉及 claude-admission-control.mjs。该脚本按仓库规矩不进 npm test，所以『脚本臂被改回自造 schema 或漏接某输入』目前没有任何测试会红——本主题要防的『两个身位再分叉』（§2.3）在脚本侧全靠这一次实现写对，防线只有探针侧的集成用例 1 一半。",
+      "evidence": "grep test/ 目录 'claude-admission-control|resolveAssetRoot|readSchemaJson' 仅命中 claude-structured-probe.test.ts 与 claude-adapter.test.ts 的探针侧断言，无任何针对脚本文本的契约；AGENTS.md 测试要点明示准入脚本真跑不进 npm test；r5 计划 §5 用例 5 原文与 r5-revised-claude.md CODEX-08 落点。",
+      "suggestion": "按计划落地 grep 级契约：在 test/contract 或 test/unit 加一条静态断言——claude-admission-control.mjs 文本必须引用 config 的 resolveAssetRoot/resolveReviewSchemaPath 且不得再现内联自造 schema 的形状（如 JSON.stringify({type:'object',…})），可仿 registry-parity 的文本扫描形态并带防空转腿。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "scripts/claude-admission-control.mjs:449-459（throw 位置）、:654-659（per-case catch）、:44-50（用法段）",
+      "problem": "计划 §3.5（裁决 AGY-02≡GLM-05）要求资产根解析不到时『fail-fast 退出，与 assertProbeUsable（:124-136）先例同族』。实现把解析与 readSchemaJson 放在 caseStdinParity 内部，其 throw 会被 main 的 per-case try/catch 捕获、落成报告里 { ok:false, 中止原因 } 一行后继续跑其余 case，进程退出码 0；而 assertProbeUsable 在 case 循环之前调用，抛错直达顶层 main().catch 以 exit 1 结束——两者并不同族。跑 --case all 时缺资产根的报告仍会正常写出、退出码为成功，按退出码判成败的自动化链会把『缺运行前提』当成通过。另外 CODEX-08 裁决要求的『用法说明新增运行前提（需已安装资产根或设 TRIVIUM_ASSET_ROOT）』也未落：脚本头部用法段与 main 的 usage 行均未提。",
+      "evidence": "直读 scripts/claude-admission-control.mjs 全文：:641-642 assertProbeUsable 在 for(const c of cases) 循环外、:654-659 每个 case 的 try/catch 吞掉 fn 抛错后循环继续、main() 正常返回（顶层 catch 不触发）；新 throw 在 caseStdinParity（:454-459）内部，落在被 catch 的调用链上；文件头 :44-50 用法四行无运行前提。r5 计划 §3.5『fail-fast 退出…与 assertProbeUsable 先例同族』、r5-revised-claude.md AGY-02/GLM-05 落点原文。",
+      "suggestion": "把资产根解析与契约读取上提到 main 里 loadProd/assertProbeUsable 之后、case 循环之前（结果传参进 caseStdinParity），或给『有用例 ok:false』的运行记非零退出码；同时在文件头用法段补一行运行前提。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/claude.ts:1297-1305；src/trivium/adapters/claude.ts:453-465、:809-820",
+      "problem": "契约文件『存在但内容不是合法 JSON』时成因归因错向：readSchemaJson 对坏 JSON 不抛（stripMetaSchemaRef parse 失败原样返回，adapters/claude.ts:456-458），探针侧 catch（probes/claude.ts:1300-1304）只覆盖读文件失败（ENOENT 一类）。坏文件会以『合法 schemaJson』进入结构化臂，CLI 用自己的报错拒绝后落 clean-reject/false——于是 doctor warning 说『claude CLI 拒绝了本仓审查契约文件，已降级为提示词约定』，适配层降级扳机（adapters/claude.ts:810）被触发。真因是本地资产损坏——与 §3.2.1『资产根未安装』同为 spawn 前可判的确定性事实——但修复指引被引向 CLI 方言而非检查/重装本地文件；且 doctor 是手动触发的，false 会持续到用户自行发现文件损坏为止。",
+      "evidence": "直读 adapters/claude.ts:453-465（stripMetaSchemaRef 对不可 parse 输入原样返回）与 :809-820（json_schema_ok===false 即降级不传）；直读 probes/claude.ts:1297-1317（catch 后落 asset-root-missing 的分支只在 readSchemaJson 真抛时到达）；claude-trace/准入脚本的 M9 实测记录（adapters/claude.ts:431-438 注释）证明 CLI 对无效 schema 的拒绝形态正是退 1+零事件+stderr——恰好落 judgeJsonSchema 的 clean-reject 格。",
+      "suggestion": "在 readSchemaJson（或其调用方）对『读得到但 parse 不了』给出独立信号：要么让 readSchemaJson 对坏 JSON 抛错并让探针把它并进 asset-root-missing 的指路句（文案区分『未安装』与『文件损坏』），要么在探针侧喂出前做一次 JSON.parse 前置校验。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "scope-drift",
+      "location": "src/trivium/probes/claude.ts:992（类型定义）、:1042-1055（两处早退）",
+      "problem": "对计划字面的未声明偏离：r5 计划 §3.7（裁决 CODEX-03）写死『!bin 早退返回 uninstalled、skipModelCalls 早退返回 not-attempted』两个不同值，实现合并为单一 carried-over。核实结论：无 doctor 可见的信息丢失——doctor 对两种早退的处理本就相同（都不出 warning；『CLI 不可用』由 claudeSeverity 的 !probe.entrypoint 分支独立报 blocker，skipModelCalls 是用户显式旗标），成因区分仍留在 notes（两条不同文案）。但这是计划明确写出的区分，宜由 Driver 显式裁决『接受合并并回补计划表述』或『恢复两值』。",
+      "evidence": "直读 src/trivium/probes/claude.ts:992（StructuredArmCause = 'carried-over' | 'asset-root-missing' | JsonSchemaCause）与 :1042-1044、:1047-1054（两条早退均返回 carried-over）；r5 计划 §3.7 原文『!bin 早退返回 uninstalled，skipModelCalls 早退返回 not-attempted』；doctor.ts:227-240 对 carried-over 无行为分支。",
+      "suggestion": "若接受合并，在计划留痕（结案同步）里改写 §3.7 的两值表述为 carried-over 一档并记理由；若计划的两值另有预期消费方，则恢复区分。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/claude.ts:126-127；test/unit/claude-adapter.test.ts:670",
+      "problem": "本主题变更使两处既有注释/断言消息的理由句失实而未同步：adapters/claude.ts:126-127 写『放在这里（buildClaudeArgs 出口）是为了让绕过 readSchemaJson 的调用方（探针、准入脚本）』——EV-74 落地后探针与准入脚本恰恰都改走 readSchemaJson 了；claude-adapter.test.ts:670 的断言消息『探针与准入脚本不走 readSchemaJson，出口处必须再剥一次』同病。断言本体（出口幂等剥壳）仍真，但存在理由句会让后来者误解第二道剥壳为何还在。",
+      "evidence": "grep src/trivium/adapters/claude.ts 命中 :126-127 原文；grep test/unit/claude-adapter.test.ts 命中 :670 消息原文；本 diff 显示 probes/claude.ts:61 已改为 import readSchemaJson、scripts/claude-admission-control.mjs:453 改调 mod.adapter.readSchemaJson——『绕过 readSchemaJson 的调用方』这一前提已不成立（探针侧 CODEX-03 注释已同步改写，这两处漏了）。",
+      "suggestion": "两句改写为『幂等第二道，防未来新增调用方绕过 readSchemaJson』一类与现状相符的表述；可顺带在 claude-adapter.test.ts 的用例名里去掉『绕过』的旧前提。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "七格判据把 timedOut/拿不到退出码/正对照不成立/两头皆空并入统一 not-completed 不丢计划语义：计划 §3.4.1 五个 null 格的『结论』列本就同为 null、§3.7 只要求三类独立文案（cause 四值恰好覆盖）；互斥性经蕴含关系成立（claude-trace.ts:161-168 completed 依赖 result 事件，故 eventCount===0 ⇒ completed=false，行 1/2 与行 5-7 不可能同命中），且代码顺序即『首个命中即出』，单测补了行序互斥（exitCode:1+eventCount:3+completed:true ⇒ true）与前置门三断言、true 格断言——CODEX-02/CODEX-04 的 r5 裁决落点全部兑现。",
+    "StructuredArmCause 六值让 doctor 完整区分『早退轮未跑 / 资产根缺失 / 真跑过的三种子成因』，且不落盘、仿 flagsIndeterminate 先例（CODEX-03 落点）；求值点在 probeClaude 返回处、只读该字段不读值不读 notes（doctor.ts:616-625），未安装档不进 warnings 由独立理由支撑（§3.7 GLM-03 裁决落实）。",
+    "resolveAssetRoot/resolveReviewSchemaPath 合并行为逐字不变：review.ts 原私有函数与 config.ts 新导出同形，init.ts 的 opts.assetRoot ?? assetRootDefault() ≡ resolveAssetRoot(opts.assetRoot)（?? 链、空字符串透传均一致）；grep 确认 src/ 与 scripts/ 运行期规则只剩 config.ts 一份（parse.ts/schemas.ts 为编译期 import，计划已知的另一论域）。",
+    "准入脚本主体落实 §3.5：loadProd 补 config.js 动态加载（stat 检查含缺失提示）、③ 段经同一 readSchemaJson（返回 string，无 [object Object] 风险）、buildClaudeArgs 出口幂等再剥、五输入全接、prompt 与 requiredKey 与探针逐字一致、不回落仓内副本；.mjs 类型盲区上这两处经直读确认无恙。",
+    "集成测试假二进制协议形状合格：NDJSON、system/init（subtype/tools/model/session_id）、result（subtype:'success'/is_error/result 字符串/total_cost_usd）逐字段对齐 parseClaudeEvents 消费面，带 --json-schema 时 init.tools 含 StructuredOutput 与 M9 实测一致；exec.run 两种 stdin 形态都 end()（util/exec.ts:232-236），假 bin 的 on('end') 必触发；判别力断言（x-test-marker、$schema 不在场、资产根缺失时零调用、三态 cause 逐值）能咬住计划变异 1/2/3/4/5。",
+    "claudeStructuredArmWarning 三类文案互不重叠且与 §3.7 逐条对应，not-completed 用『非模型不合规』作否定式撇清而非复用归因；switch 六值穷尽由返回类型保证；配套单测含三 null 档断言（计划 §5 用例 7 落实）。",
+    "registry-parity 用例 6 按允许清单 + 防空转腿 + 防腐烂腿落地（CODEX-01≡AGY-01≡GLM-01），probes/ 现状 import 全在清单内；探针 note 带契约路径 + sha256 指纹（CODEX-09 可归因性落实）；types.ts 的 json_schema_ok JSDoc 已按三态口径改写。"
+  ],
+  "not_covered": [
+    "未实际运行 npm run check / npm test / 集成测试（审查员只读约束，构建与测试会写 dist 与临时文件）——所有『测试会绿/红』的判断基于源码推演，集成测试在真实 node --test 环境下的通过情况未亲眼验证。",
+    "计划 §4.2 的实测件（新臂单次成本与耗时、50% 线=1.5 倍典型值的判定、第二档『模型层不合规』预登记的执行情况）不在本 diff 内，未核实是否已做及结论。",
+    "结案同步项（§8 清单：设计文档 §3.7/§3.5/§8.1/§13、BACKLOG EV-74/75/78 条目、M0 坑清单、SKILL.md/PROTOCOL、版本号等）均不在本 diff，未核。",
+    "真实 claude CLI 在真实契约下的探针实际运行结果（clean-reject/ok 在真机上的落点）未复测，只审了判据与接线的代码逻辑。",
+    "agy 侧同形问题（probes/agy.ts 喂自造迷你 schema）与 review.v1.json 方言约束（A31 论域）按计划 §0.2 排除，未覆盖。",
+    "scripts/claude-admission-control.mjs 除 ③ 段与 loadProd 外的既有用例（deny-shape/deny-dialect/project-memory）未逐行复审。"
+  ],
+  "consulted": [
+    ".reviews/EV-74-探针喂真实契约文件/code/_meta/changes-20260923T004127Z.diff",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r5-claude.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r5-revised-claude.md",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/config.ts",
+    "src/trivium/types.ts",
+    "src/trivium/init.ts",
+    "src/trivium/review.ts",
+    "scripts/claude-admission-control.mjs",
+    "test/integration/claude-structured-probe.test.ts",
+    "test/unit/claude-events.test.ts",
+    "test/unit/claude-severity.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/claude-adapter.test.ts",
+    "skills/dual-critic/schema/review.v1.json",
+    "AGENTS.md"
+  ]
+}

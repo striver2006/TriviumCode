@@ -1,0 +1,68 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "本次 EV-74 代码实现总体高度忠实于获批的 r5 计划，核心业务链路（真实契约加载、剥壳、七格判据互斥、成因分派、准入 fail-fast 及架构契约允许清单）均高质量落地且无信息丢失。\n主要遗漏在于计划 §5 用例 8 对按臂覆盖预算/超时的假二进制集成端到端验收被降级成了 probeArgs 单测，且 execProbe 的 overrideTimeoutMs 在全仓为无调用无测试的死参数（AGY-01）；此外准入脚本用法说明未同步运行前提（AGY-02）。",
+  "findings": [
+    {
+      "id": "AGY-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/probes/claude.ts:604-630",
+      "problem": "§5 用例 8（按臂覆盖预算/超时在伪 bin 中隔离生效）未在端到端集成测试中兑现，execProbe 的 overrideTimeoutMs 为零调用零测试的死参数",
+      "evidence": "1. 获批计划 §5 用例 8 明确定死：「8 ｜ 覆盖入参只作用于结构化臂那一次调用（r5 新增，CODEX-05≡GLM-04）｜ 伪 bin 记录到的 argv 里，结构化臂那次 --max-budget-usd/超时带覆盖值，其余各臂仍带模块常量值 ｜ §4.2 的覆盖入参不泄漏到其它臂」；r5 裁决件 CODEX-05 亦明确要求在伪 bin 记录中验证不泄漏及变异红灯。\n2. 查 src/trivium/probes/claude.ts:604-630，execProbe 虽声明了 overrideBudgetUsd 与 overrideTimeoutMs，但在全文件所有 execProbe 调用点（包括 :1320 结构化臂调用点 { jsonSchema: schemaJson }）均未传入这两个覆盖值；probeClaude 自身入参亦未暴露覆盖入口。\n3. 查 test/integration/claude-structured-probe.test.ts:983-1025，fake-claude.cjs 仅记录 hasJsonSchema 与 jsonSchemaValue，压根未记录 --max-budget-usd；且该测试文件无任何覆盖入参用例。\n4. 实现者把用例 8 降级移到了 test/unit/claude-events.test.ts:683-716，仅对导出的 probeArgs 单测了显式传参；而 execProbe 内部的 overrideTimeoutMs 在全仓为死代码（0 调用、0 测试），多臂串联调用时覆盖值是否会无意泄漏也缺乏子进程级守护。",
+      "suggestion": "若实测典型值未超阈值无需在生产提升结构化臂配额，应在 plan §4.2/§5 显式说明为何不固定向 :1320 传覆盖值；同时在 claude-structured-probe.test.ts 中补足对伪 bin 多臂调用中 --max-budget-usd 保持模块常量的断言，并补测 execProbe 的 overrideTimeoutMs 传递逻辑，避免残留未经测试的参数管道。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "scripts/claude-admission-control.mjs:43-51",
+      "problem": "准入脚本顶部用法说明遗漏运行前提（需已安装 dual-critic skill 或设 TRIVIUM_ASSET_ROOT），未兑现计划 §8 第 18 项同步约定",
+      "evidence": "1. 获批计划 §8 结案同步项第 18 条明确写道：「18 ｜ 准入脚本用法说明新增运行前提（需已安装资产根或设 TRIVIUM_ASSET_ROOT） ｜ r5 CODEX-08≡GLM-05」；r5 裁决件 CODEX-08 亦要求「§8 记一条『脚本臂新增运行前提：需已安装资产根或设 TRIVIUM_ASSET_ROOT』」。\n2. 查 scripts/claude-admission-control.mjs:43-51，## 用法 注释块仅保留原有的 node scripts/build.mjs --with-tests 前置，未补充对资产根或环境变量的前置说明。虽然 :456 在抛错时包含提示，但属于事后拦截，事前文档未同步。",
+      "suggestion": "在 scripts/claude-admission-control.mjs:43-51 的 ## 用法 或前置说明中补上一行关于 TRIVIUM_ASSET_ROOT / dual-critic skill 安装的运行前提说明。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "judgeJsonSchema 七格判据互斥性严密：completed 布尔值严格二分前四行与后三行，且前置门与未跑完各类成因合并为 not-completed 忠实保留了「非模型不合规」的语义，未丢失任何计划要求的语义区分度。",
+    "probeClaude 新增的 StructuredArmCause 返回值联合类型（6 态）比计划预想的两个分散字段设计更为紧凑完备，doctor.ts 依此派发 warnings 准确覆盖三类跑过成因且排除了早退和资产根缺失，无信息丢失。",
+    "config.ts 抽出的 resolveAssetRoot 与 resolveReviewSchemaPath 正确收敛了 review.ts 与 init.ts 两份同形实现，override ?? env ?? homedir 回退链行为保持一致。",
+    "scripts/claude-admission-control.mjs 动态加载 config.js、读取真实契约文件并在资产根缺失时通过清晰错误提示 fail-fast 退出，既未回落仓内副本也未导致未捕获崩溃。",
+    "doctor.ts 的 claudeStructuredArmWarning 抽成纯函数，文案区分度明确、互不重叠，覆盖了 StructuredArmCause 全部枚举值且单测完备。",
+    "registry-parity.test.ts 的架构契约按允许清单形式实现，登记了 secrets.js 与已知例外 env.ts，并具备防空转与防腐烂双重守卫。"
+  ],
+  "not_covered": [
+    "未在真实安装有 Claude Code CLI 且配置有效 API Token 的环境中真实拉起远程 Haiku 模型调用执行全量准入脚本。",
+    "未对除 claude 之外的其它 CLI（如 agy、zcode、codex）的探针执行实际网络调用。",
+    "未测试真实并发 doctor 或极端 IO 权限受限（EACCES）下 readSchemaJson 的错误冒泡。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/config.ts",
+    "src/trivium/review.ts",
+    "src/trivium/init.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/types.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "scripts/claude-admission-control.mjs",
+    "scripts/build.mjs",
+    "test/unit/claude-events.test.ts",
+    "test/unit/claude-severity.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/integration/claude-structured-probe.test.ts",
+    "test/integration/driver-flag.test.ts",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r5-claude.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r5-revised-claude.md",
+    ".reviews/EV-74-探针喂真实契约文件/code/_meta/changes-20260923T004127Z.diff"
+  ]
+}

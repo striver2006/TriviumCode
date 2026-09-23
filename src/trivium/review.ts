@@ -10,7 +10,6 @@
  * 因此不需要靠提示词去要求对方「别看」。
  */
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import type {
   Config, CriticId, CriticRequest, CriticResult, Ctx, DenyCategory, Review, Stage, CommandEntry,
@@ -55,7 +54,7 @@ import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeM
 import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
 import { acquireLock } from './lock.js';
 import { measureAllPairs, renderDivergence } from './divergence.js';
-import { agentConfigOf, runRoot, vendorProfileOf } from './config.js';
+import { agentConfigOf, resolveAssetRoot, resolveReviewSchemaPath, runRoot, vendorProfileOf } from './config.js';
 import { resolveCriticSelection } from './critics.js';
 import { setGateChecked } from './state.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
@@ -392,15 +391,6 @@ export interface ReviewOutcome {
   sideStatuses: Partial<Record<CriticId, CriticResult['status']>>;
 }
 
-/** skill 资产根：优先环境变量，其次用户级安装位置 */
-function resolveAssetRoot(override?: string): string {
-  return (
-    override ??
-    process.env['TRIVIUM_ASSET_ROOT'] ??
-    path.join(os.homedir(), '.claude/skills/dual-critic')
-  );
-}
-
 /**
  * 逐侧取思考等级。**按 vendor 分派，不按 Agent 身份穷尽。**
  *
@@ -494,7 +484,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const { ctx, stage } = opts;
   const cfg: Config = ctx.config;
   const assetRoot = resolveAssetRoot(opts.assetRoot);
-  const schemaPath = path.join(assetRoot, 'schema/review.v1.json');
+  const schemaPath = resolveReviewSchemaPath(assetRoot);
   const lensesPath = path.join(assetRoot, 'lenses.yaml');
 
   // 经工厂取适配器：TRIVIUM_STUB_CRITIC 在场时换成桩（测试用，生产路径会打醒目告警）

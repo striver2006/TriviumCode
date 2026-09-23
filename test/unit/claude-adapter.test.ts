@@ -663,11 +663,14 @@ test('A28 schema：readSchemaJson 读真实文件后已剥离——调用方拿�
   assert.equal(args[args.indexOf('--json-schema') + 1], s, '与 A4 同一条路：内容进 argv，不是路径');
 });
 
-test('A28b schema：buildClaudeArgs 是唯一出口——绕过 readSchemaJson 的调用方同样被剥（CODEX-03）', () => {
+test('A28b schema：buildClaudeArgs 是唯一出口——第二道剥壳即使已剥过一次仍是幂等的（CODEX-03，GLM-06 改准）', () => {
   const raw = '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}';
   const args = buildClaudeArgs({ ...base, schemaJson: raw });
   const sent = args[args.indexOf('--json-schema') + 1]!;
-  assert.ok(!sent.includes('json-schema.org/draft/2020-12'), '探针与准入脚本不走 readSchemaJson，出口处必须再剥一次');
+  assert.ok(
+    !sent.includes('json-schema.org/draft/2020-12'),
+    '出口处必须再剥一次——防未来新增调用方绕过 readSchemaJson，不是因为今天真有调用方绕过',
+  );
   assert.equal(JSON.parse(sent).type, 'object');
 });
 

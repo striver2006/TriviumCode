@@ -648,12 +648,19 @@ export interface ClaudeProbe extends CommonProbe {
   /** `--model` 是否真实生效（`system/init` 事件回读）。**消费方**：M11 档位路由 */
   model_flag: boolean | null;
   /**
-   * `--json-schema` 能否强制出结构化输出。
+   * `--json-schema` 能否强制出结构化输出——**探针喂的是真实审查契约**
+   * `skills/dual-critic/schema/review.v1.json`（EV-74），不是迷你 schema。
    *
-   * 本机实测 true，但有两处形态要记：①参数取**内联 JSON 字符串**，
-   * 不是文件路径（codex 的 `--output-schema` 才是文件）；
-   * ②`result` 字段回来的是**JSON 字符串**，调用方要再 parse 一次。
-   * **消费方**：M9 的结构化解析；为 false 时降级为提示词约定 + 宽松解析。
+   * 三态判据见 `judgeJsonSchema`（`probes/claude.ts`）：`false` 只由「CLI 干净拒绝」
+   * 触发；`null` 的成因（撞闸/未跑完/环境层失败/模型不合规/资产根未安装/早退轮
+   * 保留旧值）由**返回值字段** `StructuredArmCause` 承载，不落进本字段本身、
+   * 也不落进 notes——那个字段才是「本轮是否真跑过」与「为什么是 null」的机读来源。
+   *
+   * 两处形态仍要记：①参数取**内联 JSON 字符串**，不是文件路径（codex 的
+   * `--output-schema` 才是文件）；②`result` 字段回来的是**JSON 字符串**，调用方要
+   * 再 parse 一次。
+   * **消费方**：M9 的结构化解析（为 false 时降级为提示词约定 + 宽松解析）；
+   * `doctor` 的 `DoctorReport.warnings`（按 `StructuredArmCause` 分文案，见 `doctor.ts`）。
    */
   json_schema_ok: boolean | null;
   /**

@@ -5,6 +5,7 @@
  * `probe:` 段由 doctor 回填，人不手工编辑；它落在 config.local.yaml（本机结论，不进 Git）。
  */
 import path from 'node:path';
+import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import type {
@@ -29,6 +30,30 @@ export const CONFIG_SCHEMA_ID = 'trivium.config.v2' as const;
 /** v1 的 schema 标识。只出现在读侧：磁盘上的旧配置按它识别并做内存迁移 */
 export const CONFIG_SCHEMA_ID_V1 = 'trivium.config.v1' as const;
 export const TRIVIUM_DIR = '.trivium';
+
+/**
+ * skill 资产根：优先显式覆盖，其次环境变量，最后用户级安装位置。
+ *
+ * **唯一事实来源**（EV-74 计划 §3.2.2）：`review.ts` 与 `init.ts` 此前各自写了一份
+ * 同形规则（`override ?? env ?? homedir`），合并到这里不改行为，只消掉第二份副本。
+ */
+export function resolveAssetRoot(override?: string): string {
+  return (
+    override ??
+    process.env['TRIVIUM_ASSET_ROOT'] ??
+    path.join(os.homedir(), '.claude/skills/dual-critic')
+  );
+}
+
+/**
+ * 契约 schema（`review.v1.json`）相对资产根的路径——**唯一拼接处**（EV-74 计划 §3.2.2）。
+ *
+ * 此前只有 `review.ts:497` 一处运行期拼接；探针与准入脚本改喂真实契约后各自还要
+ * 拼一次，不把这半句也收进共用出口，就是把「同一事实两份实现」从资产根搬到相对路径。
+ */
+export function resolveReviewSchemaPath(assetRoot: string): string {
+  return path.join(assetRoot, 'schema/review.v1.json');
+}
 
 /**
  * `path_deny` 的空壳 —— **唯一构造处**（代码双审 r2 CODEX-06）。

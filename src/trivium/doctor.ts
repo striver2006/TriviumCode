@@ -10,14 +10,14 @@
  */
 import path from 'node:path';
 import YAML from 'yaml';
-import { agentConfigOf, defaultProbe, patchProbe } from './config.js';
+import { agentConfigOf, defaultProbe, patchProbe, resolveAssetRoot } from './config.js';
 import { EXIT } from './exit-codes.js';
 import { probeEnv } from './probes/env.js';
 import { probeVerifyCommands } from './probes/verify-commands.js';
 import { probeAgy } from './probes/agy.js';
 import { probeZcode } from './probes/zcode.js';
 import { probeCodex } from './probes/codex.js';
-import { probeClaude } from './probes/claude.js';
+import { probeClaude, type StructuredArmCause } from './probes/claude.js';
 import type { ClaudeProbe, CodexProbe, Config, ProbeSection } from './types.js';
 import { realAdapters } from './adapters/index.js';
 // 同源文案：blocker 与 `availability()` 对同一现象只能有一种说法（r2 AGY-04）
@@ -209,6 +209,34 @@ export function capabilityParity(
   }
 
   return out;
+}
+
+/**
+ * 结构化臂成因 → `DoctorReport.warnings` 文案（EV-74 计划 §3.7，GLM-03）。
+ *
+ * 抽成纯函数是为了让 §5 用例 7 能直接断言映射本身，不必真跑一次 `probeClaude`
+ * 或 `runDoctor`——与本文件其余 `judge*`/`*Severity` 一律抽纯函数同一条理由。
+ *
+ * **只读 `structuredArmCause`**，不读 `json_schema_ok` 的值、也不读 notes 文本
+ * （§3.4.2 已定「不做文案匹配」）。`'carried-over'`（早退轮）与
+ * `'asset-root-missing'`（可见性已归 note 的指路句）都返回 `null`——
+ * 覆盖面严格等于「结构化臂真跑过且落 null」+ 干净拒绝，三类成因各自独立文案，
+ * 不共用「模型未合规」字样：那正是 §3.4.1 刚在 note 侧修掉的失实归因，
+ * 不能在 warning 侧复发。
+ */
+export function claudeStructuredArmWarning(cause: StructuredArmCause): string | null {
+  switch (cause) {
+    case 'clean-reject':
+      return 'claude CLI 拒绝了本仓审查契约文件（--json-schema），已降级为提示词约定 + 宽松解析。';
+    case 'not-completed':
+      return 'claude 结构化输出本轮探测未跑完（撞闸或未获模型答复），非模型不合规。';
+    case 'model-noncompliant':
+      return 'claude 模型未按契约给出合规的结构化输出，需重测（探针档位为 haiku）。';
+    case 'ok':
+    case 'carried-over':
+    case 'asset-root-missing':
+      return null;
+  }
 }
 
 /**
@@ -588,10 +616,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     const r = await probeClaude(null, {
       skipModelCalls: opts.skipModelCalls ?? false,
       existing: probe.cli.claude,
+      assetRoot: resolveAssetRoot(),
     });
     probe.cli.claude = r.probe;
     notes.push(...r.notes.map((n) => `[claude] ${n}`));
     await checkpoint('claude');
+    const claudeWarning = claudeStructuredArmWarning(r.structuredArmCause);
+    if (claudeWarning) warnings.push(claudeWarning);
     for (const line of claudeSeverity(r.probe, {
       enabled: agentByCliName('claude')?.criticEnabled === true,
       asked: only === 'claude',

@@ -1,0 +1,1130 @@
+# trivium changes.diff
+# run_id: 20260923T004127Z
+# base: HEAD
+# head: a34e58504a7aee1932c42fd10dddf83299a78eff
+# files: 11
+#   scripts/claude-admission-control.mjs
+#   src/trivium/config.ts
+#   src/trivium/doctor.ts
+#   src/trivium/init.ts
+#   src/trivium/probes/claude.ts
+#   src/trivium/review.ts
+#   src/trivium/types.ts
+#   test/integration/claude-structured-probe.test.ts
+#   test/unit/claude-events.test.ts
+#   test/unit/claude-severity.test.ts
+#   test/unit/registry-parity.test.ts
+diff --git a/scripts/claude-admission-control.mjs b/scripts/claude-admission-control.mjs
+index 54e8ce0..ab444ee 100644
+--- a/scripts/claude-admission-control.mjs
++++ b/scripts/claude-admission-control.mjs
+@@ -91,7 +91,12 @@ function budgetGuard() {
+ }
+ 
+ async function loadProd() {
+-  for (const f of ['adapters/claude.js', 'adapters/claude-trace.js', 'probes/claude.js']) {
++  /*
++   * **`config.js` 一并动态加载**（EV-74 计划 §3.5，AGY-02≡GLM-05）：
++   * ③ 段改喂真实契约后要经共用出口取资产根 + 契约相对路径（`config.ts`），
++   * 此前这里只加载 adapters/probes/util，缺 config.js 会在调用点抛未定义异常。
++   */
++  for (const f of ['adapters/claude.js', 'adapters/claude-trace.js', 'probes/claude.js', 'config.js']) {
+     try {
+       await fs.stat(path.join(DIST, f));
+     } catch {
+@@ -105,7 +110,8 @@ async function loadProd() {
+   const trace = await import(pathToFileURL(path.join(DIST, 'adapters/claude-trace.js')).href);
+   const probe = await import(pathToFileURL(path.join(DIST, 'probes/claude.js')).href);
+   const exec = await import(pathToFileURL(path.join(DIST, 'util/exec.js')).href);
+-  return { adapter, trace, probe, exec };
++  const config = await import(pathToFileURL(path.join(DIST, 'config.js')).href);
++  return { adapter, trace, probe, exec, config };
+ }
+ 
+ /** 读本机探针结论的 claude 段 */
+@@ -433,6 +439,25 @@ async function caseStdinParity(mod, probeConc, bin) {
+   const shape = mod.adapter.denyRuleShapeOf(probeConc.path_deny?.rule_syntax ?? null);
+   const arms = {};
+ 
++  /*
++   * **契约来源与探针共用同一个解析出口**（EV-74 计划 §3.5）：`config.js` 的
++   * `resolveAssetRoot` / `resolveReviewSchemaPath`，不再自造迷你 schema。
++   * 解析不到（环境变量未设且全局未装）**fail-fast**，与 `assertProbeUsable` 同族——
++   * 不得因 `readSchemaJson` 遇 `ENOENT` 而未捕获崩溃，也不得回落到仓内副本
++   * （那是 §3.2.2 要堵死的「B 选项后门」）。
++   */
++  const assetRoot = mod.config.resolveAssetRoot();
++  const schemaPath = mod.config.resolveReviewSchemaPath(assetRoot);
++  let schema;
++  try {
++    schema = await mod.adapter.readSchemaJson(schemaPath);
++  } catch (e) {
++    throw new Error(
++      `读不到审查契约文件 ${schemaPath}——请安装 dual-critic skill 或设置 TRIVIUM_ASSET_ROOT。\n` +
++        `  （原始错误：${e.message}）`,
++    );
++  }
++
+   for (const via of ['argv', 'stdin']) {
+     const a = {};
+ 
+@@ -448,18 +473,26 @@ async function caseStdinParity(mod, probeConc, bin) {
+       completed: read.completed, toolUses: read.trace.toolUses, wantBasename: 'sentinel.txt',
+     });
+ 
+-    // ③ json_schema_ok
+-    const schema = JSON.stringify({
+-      type: 'object', properties: { first_line: { type: 'string' } },
+-      required: ['first_line'], additionalProperties: false,
+-    });
++    // ③ json_schema_ok——真实契约，五个输入全接（timedOut/exitCode/stderr/eventCount/正对照）
+     const structured = await callOnce(mod, {
+       bin, cwd: fx.root, via, readonlyArgs, schemaJson: schema, model: null,
+-      prompt: `读 ${fx.openFile}，回答它的第一行内容。`,
++      prompt:
++        `对 ${fx.openFile} 做一次最小审查：schema 字段固定为 "trivium.review.v1"、` +
++        'verdict 给 "approve"、summary 用一句话概括文件内容，findings 留空数组即可。',
+     });
+-    a.json_schema_ok = mod.probe.judgeJsonSchema({
+-      completed: structured.completed, finalText: structured.trace.finalText, requiredKey: 'first_line',
++    const judgedSchema = mod.probe.judgeJsonSchema({
++      timedOut: structured.timedOut,
++      exitCode: structured.exitCode,
++      stderr: structured.stderr,
++      eventCount: structured.trace.eventCount,
++      completed: structured.completed,
++      // 正对照：本轮①读能力那次调用（同一 via）是否真的跑通，不是本臂自己的 completed
++      positiveControlOk: read.completed,
++      finalText: structured.trace.finalText,
++      requiredKey: 'summary',
+     });
++    a.json_schema_ok = judgedSchema.value;
++    a.json_schema_ok_cause = judgedSchema.cause;
+ 
+     // ④ readonly_breach + ⑤ denied_tool_in_trace（**同一次调用**，同源必须同类）
+     const write = await callOnce(mod, {
+diff --git a/src/trivium/config.ts b/src/trivium/config.ts
+index 26e39c1..b0c5c72 100644
+--- a/src/trivium/config.ts
++++ b/src/trivium/config.ts
+@@ -5,6 +5,7 @@
+  * `probe:` 段由 doctor 回填，人不手工编辑；它落在 config.local.yaml（本机结论，不进 Git）。
+  */
+ import path from 'node:path';
++import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import YAML from 'yaml';
+ import type {
+@@ -30,6 +31,30 @@ export const CONFIG_SCHEMA_ID = 'trivium.config.v2' as const;
+ export const CONFIG_SCHEMA_ID_V1 = 'trivium.config.v1' as const;
+ export const TRIVIUM_DIR = '.trivium';
+ 
++/**
++ * skill 资产根：优先显式覆盖，其次环境变量，最后用户级安装位置。
++ *
++ * **唯一事实来源**（EV-74 计划 §3.2.2）：`review.ts` 与 `init.ts` 此前各自写了一份
++ * 同形规则（`override ?? env ?? homedir`），合并到这里不改行为，只消掉第二份副本。
++ */
++export function resolveAssetRoot(override?: string): string {
++  return (
++    override ??
++    process.env['TRIVIUM_ASSET_ROOT'] ??
++    path.join(os.homedir(), '.claude/skills/dual-critic')
++  );
++}
++
++/**
++ * 契约 schema（`review.v1.json`）相对资产根的路径——**唯一拼接处**（EV-74 计划 §3.2.2）。
++ *
++ * 此前只有 `review.ts:497` 一处运行期拼接；探针与准入脚本改喂真实契约后各自还要
++ * 拼一次，不把这半句也收进共用出口，就是把「同一事实两份实现」从资产根搬到相对路径。
++ */
++export function resolveReviewSchemaPath(assetRoot: string): string {
++  return path.join(assetRoot, 'schema/review.v1.json');
++}
++
+ /**
+  * `path_deny` 的空壳 —— **唯一构造处**（代码双审 r2 CODEX-06）。
+  *
+diff --git a/src/trivium/doctor.ts b/src/trivium/doctor.ts
+index d6a73ca..ba62943 100644
+--- a/src/trivium/doctor.ts
++++ b/src/trivium/doctor.ts
+@@ -10,14 +10,14 @@
+  */
+ import path from 'node:path';
+ import YAML from 'yaml';
+-import { agentConfigOf, defaultProbe, patchProbe } from './config.js';
++import { agentConfigOf, defaultProbe, patchProbe, resolveAssetRoot } from './config.js';
+ import { EXIT } from './exit-codes.js';
+ import { probeEnv } from './probes/env.js';
+ import { probeVerifyCommands } from './probes/verify-commands.js';
+ import { probeAgy } from './probes/agy.js';
+ import { probeZcode } from './probes/zcode.js';
+ import { probeCodex } from './probes/codex.js';
+-import { probeClaude } from './probes/claude.js';
++import { probeClaude, type StructuredArmCause } from './probes/claude.js';
+ import type { ClaudeProbe, CodexProbe, Config, ProbeSection } from './types.js';
+ import { realAdapters } from './adapters/index.js';
+ // 同源文案：blocker 与 `availability()` 对同一现象只能有一种说法（r2 AGY-04）
+@@ -211,6 +211,34 @@ export function capabilityParity(
+   return out;
+ }
+ 
++/**
++ * 结构化臂成因 → `DoctorReport.warnings` 文案（EV-74 计划 §3.7，GLM-03）。
++ *
++ * 抽成纯函数是为了让 §5 用例 7 能直接断言映射本身，不必真跑一次 `probeClaude`
++ * 或 `runDoctor`——与本文件其余 `judge*`/`*Severity` 一律抽纯函数同一条理由。
++ *
++ * **只读 `structuredArmCause`**，不读 `json_schema_ok` 的值、也不读 notes 文本
++ * （§3.4.2 已定「不做文案匹配」）。`'carried-over'`（早退轮）与
++ * `'asset-root-missing'`（可见性已归 note 的指路句）都返回 `null`——
++ * 覆盖面严格等于「结构化臂真跑过且落 null」+ 干净拒绝，三类成因各自独立文案，
++ * 不共用「模型未合规」字样：那正是 §3.4.1 刚在 note 侧修掉的失实归因，
++ * 不能在 warning 侧复发。
++ */
++export function claudeStructuredArmWarning(cause: StructuredArmCause): string | null {
++  switch (cause) {
++    case 'clean-reject':
++      return 'claude CLI 拒绝了本仓审查契约文件（--json-schema），已降级为提示词约定 + 宽松解析。';
++    case 'not-completed':
++      return 'claude 结构化输出本轮探测未跑完（撞闸或未获模型答复），非模型不合规。';
++    case 'model-noncompliant':
++      return 'claude 模型未按契约给出合规的结构化输出，需重测（探针档位为 haiku）。';
++    case 'ok':
++    case 'carried-over':
++    case 'asset-root-missing':
++      return null;
++  }
++}
++
+ /**
+  * claude 探针结论 → 诊断严重度（与 `codexSeverity` 同构）。
+  *
+@@ -588,10 +616,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+     const r = await probeClaude(null, {
+       skipModelCalls: opts.skipModelCalls ?? false,
+       existing: probe.cli.claude,
++      assetRoot: resolveAssetRoot(),
+     });
+     probe.cli.claude = r.probe;
+     notes.push(...r.notes.map((n) => `[claude] ${n}`));
+     await checkpoint('claude');
++    const claudeWarning = claudeStructuredArmWarning(r.structuredArmCause);
++    if (claudeWarning) warnings.push(claudeWarning);
+     for (const line of claudeSeverity(r.probe, {
+       enabled: agentByCliName('claude')?.criticEnabled === true,
+       asked: only === 'claude',
+diff --git a/src/trivium/init.ts b/src/trivium/init.ts
+index f91b7db..b7d2d51 100644
+--- a/src/trivium/init.ts
++++ b/src/trivium/init.ts
+@@ -11,11 +11,10 @@
+  * 全部操作**幂等**：重复运行不重复追加、不覆盖用户内容。
+  */
+ import path from 'node:path';
+-import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import YAML from 'yaml';
+ import type { Ctx } from './types.js';
+-import { CONFIG_SCHEMA_ID, CONFIG_SCHEMA_ID_V1, defaultConfig, migrateConfigV1 } from './config.js';
++import { CONFIG_SCHEMA_ID, CONFIG_SCHEMA_ID_V1, defaultConfig, migrateConfigV1, resolveAssetRoot } from './config.js';
+ import { createExclusive, ensureDir, exists, writeAtomic } from './util/fsx.js';
+ import { say, step, warn } from './util/log.js';
+ 
+@@ -42,10 +41,6 @@ export interface InitReport {
+   notes: string[];
+ }
+ 
+-function assetRootDefault(): string {
+-  return process.env['TRIVIUM_ASSET_ROOT'] ?? path.join(os.homedir(), '.claude/skills/dual-critic');
+-}
+-
+ /** 幂等追加带标记的片段。已存在标记则跳过 */
+ async function appendSnippet(
+   target: string,
+@@ -339,7 +334,7 @@ async function rewriteConfigToV2(
+ 
+ export async function runInit(opts: InitOptions): Promise<InitReport> {
+   const { ctx } = opts;
+-  const assetRoot = opts.assetRoot ?? assetRootDefault();
++  const assetRoot = resolveAssetRoot(opts.assetRoot);
+   const nodePath = opts.nodePath ?? ctx.config.runtime.node ?? (await stableNodePath(process.execPath));
+   const dryRun = opts.dryRun ?? false;
+   const report: InitReport = { created: [], updated: [], skipped: [], notes: [] };
+diff --git a/src/trivium/probes/claude.ts b/src/trivium/probes/claude.ts
+index d9b78f8..2bbdb1d 100644
+--- a/src/trivium/probes/claude.ts
++++ b/src/trivium/probes/claude.ts
+@@ -27,7 +27,7 @@
+ import path from 'node:path';
+ import os from 'node:os';
+ import { run, tryRun } from '../util/exec.js';
+-import { exists } from '../util/fsx.js';
++import { exists, sha256 } from '../util/fsx.js';
+ import {
+   createFixture,
+   createMemoryFixture,
+@@ -38,7 +38,7 @@ import {
+ } from './fixture.js';
+ import { probeScratchPaths } from './agy.js';
+ import type { ClaudeProbe, PathDenyProbe } from '../types.js';
+-import { emptyPathDeny } from '../config.js';
++import { emptyPathDeny, resolveReviewSchemaPath } from '../config.js';
+ /*
+  * 轨迹解析住在适配层，探针**反向 import** 它（M9 第 3 步）。
+  *
+@@ -52,13 +52,13 @@ import { emptyPathDeny } from '../config.js';
+  */
+ import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents, type ClaudeTrace } from '../adapters/claude-trace.js';
+ /*
+- * 送 CLI 的 schema 只有一份变换（代码双审 CODEX-03）：适配器、探针、准入脚本三处造
+- * `--json-schema` 的值，此前只有适配器那处剥 2020-12 的 `$schema` 头。探针今天的迷你 schema
+- * 不带该头、这里是空操作——但 EV-74 要把探针改喂真实 `review.v1.json`，那时不经同一份变换
+- * 就会撞第 1 跑的拒绝形态，`json_schema_ok` 落 null 而不是 false，静默回归。
++ * 送 CLI 的 schema 只有一份变换（代码双审 CODEX-03，EV-74 落地）：适配器、探针、准入脚本
++ * 三处造 `--json-schema` 的值，只有 `readSchemaJson`（内部调 `stripMetaSchemaRef`）剥
++ * 2020-12 的 `$schema` 头。探针结构化臂改喂真实 `review.v1.json` 后必须经它，不经同一份
++ * 变换就会撞拒绝形态，`json_schema_ok` 落 null 而不是 false，静默回归。
+  * 方向 probes → adapters 与 `claude-trace` 的先例相同；反向（adapters → probes）仍禁止。
+  */
+-import { stripMetaSchemaRef } from '../adapters/claude.js';
++import { readSchemaJson } from '../adapters/claude.js';
+ 
+ /** 探针模型：探能力不探质量，挑最便宜的一档 */
+ const PROBE_MODEL = 'claude-haiku-4-5-20251001';
+@@ -129,6 +129,12 @@ export function probeArgs(opts: {
+    * 正常探测一律不传本项——不传 `--verbose` 的 stream-json 会被当场拒掉。
+    */
+   omitVerbose?: boolean;
++  /**
++   * **只给结构化臂的调用点用**（EV-74 计划 §4.2）：按臂覆盖 `--max-budget-usd`，
++   * 不传时取模块常量 `PROBE_BUDGET_USD`。不设默认值——避免除结构化臂外的调用点
++   * 无意间共享覆盖值。
++   */
++  budgetUsdOverride?: string;
+ }): string[] {
+   /*
+    * **这里刻意没有 stdin 形态的分支**（代码双审 r2 CODEX-01）。
+@@ -159,7 +165,7 @@ export function probeArgs(opts: {
+     // 一处事实一个来源，那条契约才真正对准这个常量。
+     ...READONLY_INVARIANTS,
+     // ── 探针尺度：M9 自有一套，不从这里取 ──
+-    '--max-budget-usd', PROBE_BUDGET_USD,
++    '--max-budget-usd', opts.budgetUsdOverride ?? PROBE_BUDGET_USD,
+     '--model', PROBE_MODEL,
+     ...(opts.jsonSchema ? ['--json-schema', opts.jsonSchema] : []),
+     ...(opts.settings ? ['--settings', opts.settings] : []),
+@@ -367,23 +373,68 @@ export function judgeTracePathStructured(o: {
+ }
+ 
+ /**
+- * `json_schema_ok`：`--json-schema` 有没有真的强制出结构化输出。
++ * `json_schema_ok` 的 null 成因——供 `doctor` 挑 warning 文案（EV-74 计划 §3.7），
++ * **返回值字段，不落进持久化的 `ClaudeProbe`**（仿 zcode `flagsIndeterminate` 先例）。
++ *
++ * `'clean-reject'` 与 `false` 一一对应；`'ok'` 与 `true` 一一对应；
++ * 其余三个 null 成因各自独立，不共用一份「模型未合规」文案——
++ * `'not-completed'` 那一类（撞闸 / 未跑完 / 环境层失败）不得贴模型不合规的帽子。
++ */
++export type JsonSchemaCause = 'clean-reject' | 'not-completed' | 'model-noncompliant' | 'ok';
++
++/**
++ * `json_schema_ok`：`--json-schema` 有没有真的强制出结构化输出（EV-74 三态判据）。
+  *
+  * `result` 回来的是 **JSON 字符串**而不是对象，要再 parse 一次——这个形态
+- * M9 的解析器照着写才不会踩空。parse 失败 ⇒ `false`（确实没按 schema 出），
+- * 没跑完 ⇒ `null`（没测到）。两者不能合流。
++ * M9 的解析器照着写才不会踩空。
++ *
++ * **前置门（任一成立即 null/`not-completed`，照 `judgeVerboseBinding` 门序）**：
++ * `timedOut`、拿不到退出码、正对照（同轮读探针）不成立。
++ *
++ * **七格（互斥，`completed` 是否为 `true` 严格二分行 1-4 与行 5-7，计划 §3.4.1）**：
++ *
++ * | 输入 | 结论 | cause |
++ * | :--- | :--- | :--- |
++ * | 非零退出 + `eventCount === 0` + stderr 非空 | `false` | `clean-reject` |
++ * | 非零退出 + `eventCount === 0` + stderr 也空 | `null` | `not-completed` |
++ * | 非零退出 + `completed !== true` 且已吐出事件 | `null` | `not-completed` |
++ * | `completed !== true` 且不落上述三行 | `null` | `not-completed` |
++ * | `completed` 且输出不可 `JSON.parse` | `null` | `model-noncompliant` |
++ * | `completed` 且缺 `requiredKey` 或其非 string | `null` | `model-noncompliant` |
++ * | `completed` 且 `requiredKey` 为 string | `true` | `ok` |
++ *
++ * 两条 false 出口只留一条（干净拒绝）；「不可 parse」与「缺键」都改落 `null`——
++ * 这一格依赖模型配合度（haiku 档位），叠加降级扳机与 7 天 TTL，
++ * 不能让一次模型抖动把生产的结构化输出关掉一周（计划 §3.4.3）。
+  */
+ export function judgeJsonSchema(o: {
++  timedOut: boolean;
++  exitCode: number | null;
++  stderr: string;
++  eventCount: number;
+   completed: boolean;
++  /** 同轮读探针（另一条只读臂）的 `completed`——正对照，不是本臂自己的 `completed` */
++  positiveControlOk: boolean;
+   finalText: string | null;
+   requiredKey: string;
+-}): boolean | null {
+-  if (!o.completed) return null;
++}): { value: boolean | null; cause: JsonSchemaCause } {
++  if (o.timedOut) return { value: null, cause: 'not-completed' };
++  if (typeof o.exitCode !== 'number') return { value: null, cause: 'not-completed' };
++  if (!o.positiveControlOk) return { value: null, cause: 'not-completed' };
++
++  if (o.exitCode !== 0 && o.eventCount === 0) {
++    return o.stderr.trim().length > 0
++      ? { value: false, cause: 'clean-reject' }
++      : { value: null, cause: 'not-completed' };
++  }
++  if (o.completed !== true) return { value: null, cause: 'not-completed' };
++
+   try {
+     const parsed = JSON.parse(o.finalText ?? '') as Record<string, unknown>;
+-    return typeof parsed[o.requiredKey] === 'string';
++    if (typeof parsed[o.requiredKey] === 'string') return { value: true, cause: 'ok' };
++    return { value: null, cause: 'model-noncompliant' };
+   } catch {
+-    return false;
++    return { value: null, cause: 'model-noncompliant' };
+   }
+ }
+ 
+@@ -543,19 +594,35 @@ export async function probeClaudeBin(
+   return { bin, version: m?.[1] ?? null };
+ }
+ 
+-/** 跑一次最小任务并解析轨迹 */
++/**
++ * 跑一次最小任务并解析轨迹。
++ *
++ * **按臂覆盖预算/超时入参（EV-74 计划 §4.2）**：`overrideBudgetUsd` / `overrideTimeoutMs`
++ * 只由结构化臂的调用点显式传入，不设默认值——两个模块常量仍是其余各臂唯一取值来源，
++ * 避免一次未经讨论的全局配额上调（§3.2.1 相反方向）。
++ */
+ async function execProbe(
+   bin: string,
+   fx: Fixture,
+   prompt: string,
+-  extra: { jsonSchema?: string; settings?: string } = {},
+-): Promise<ClaudeTrace & { timedOut: boolean; raw: string }> {
+-  const r = await run(bin, probeArgs({ prompt, ...extra }), {
+-    timeoutMs: PROBE_TIMEOUT_MS,
+-    cwd: fx.root,
+-    stdin: '',
+-    killTree: true,
+-  });
++  extra: {
++    jsonSchema?: string;
++    settings?: string;
++    overrideBudgetUsd?: string;
++    overrideTimeoutMs?: number;
++  } = {},
++): Promise<ClaudeTrace & { timedOut: boolean; raw: string; exitCode: number | null; stderr: string }> {
++  const { overrideBudgetUsd, overrideTimeoutMs, ...argOpts } = extra;
++  const r = await run(
++    bin,
++    probeArgs({ prompt, ...argOpts, budgetUsdOverride: overrideBudgetUsd }),
++    {
++      timeoutMs: overrideTimeoutMs ?? PROBE_TIMEOUT_MS,
++      cwd: fx.root,
++      stdin: '',
++      killTree: true,
++    },
++  );
+   const trace = parseClaudeEvents(r.stdout);
+   /*
+    * `raw` 必须透传（审查意见 GLM-03）：泄漏判据要查的是**原始输出**。
+@@ -565,7 +632,14 @@ async function execProbe(
+    * 测试断言的一直是 raw 全文，实现却更松，两个口径。
+    */
+   // 超时一定不算跑完，即使输出里恰好已有 result（那是截断的）
+-  return { ...trace, completed: trace.completed && !r.timedOut, timedOut: r.timedOut, raw: r.stdout };
++  return {
++    ...trace,
++    completed: trace.completed && !r.timedOut,
++    timedOut: r.timedOut,
++    raw: r.stdout,
++    exitCode: r.code,
++    stderr: r.stderr,
++  };
+ }
+ 
+ /**
+@@ -903,10 +977,24 @@ async function probeClaudePathDeny(bin: string, fx: Fixture): Promise<PathDenyPr
+   };
+ }
+ 
++/**
++ * 结构化臂本轮结果的成因——**返回值字段，不落进持久化的 `ClaudeProbe`**
++ * （仿 zcode `flagsIndeterminate` 先例，EV-74 计划 §3.7 CODEX-03）。
++ *
++ * `'carried-over'`：早退轮（`!bin` / `skipModelCalls`），`probe.json_schema_ok`
++ * 是上一轮的旧值，本轮结构化臂**没跑**。`'asset-root-missing'`：资产根未注入或
++ * 契约文件本轮读不到，结构化臂**那一次调用未发生**（§5 用例 2③）。
++ * 其余四个值来自 `judgeJsonSchema` 的 `cause`（结构化臂**真跑过**）。
++ *
++ * `doctor` 只读这个字段判断「结构化臂本轮是否真跑过、以及为什么是 null」，
++ * 不读 `json_schema_ok` 的值、也不读 notes 文本。
++ */
++export type StructuredArmCause = 'carried-over' | 'asset-root-missing' | JsonSchemaCause;
++
+ export async function probeClaude(
+   configuredBin: string | null,
+-  opts: { skipModelCalls?: boolean; existing?: ClaudeProbe } = {},
+-): Promise<{ probe: ClaudeProbe; notes: string[] }> {
++  opts: { skipModelCalls?: boolean; existing?: ClaudeProbe; assetRoot?: string } = {},
++): Promise<{ probe: ClaudeProbe; notes: string[]; structuredArmCause: StructuredArmCause }> {
+   const notes: string[] = [];
+   // 同另两家：以既有结论为起点，跳过的探针保留原值，
+   // 否则 --no-model-calls 会把上一次真实探到的结论覆盖成 null
+@@ -953,7 +1041,7 @@ export async function probeClaude(
+   probe.version_probe = { runner: null, args: ['--version'], extract: String.raw`(\d+\.\d+\.\d+)` };
+   if (!bin) {
+     notes.push('未找到 claude 可执行文件，Claude 侧不可用');
+-    return { probe, notes };
++    return { probe, notes, structuredArmCause: 'carried-over' };
+   }
+ 
+   if (opts.skipModelCalls) {
+@@ -963,7 +1051,7 @@ export async function probeClaude(
+         'stream_json_requires_verbose / strict_mcp_config_applied / project_memory_blocked ' +
+           '保留上一次的结论',
+     );
+-    return { probe, notes };
++    return { probe, notes, structuredArmCause: 'carried-over' };
+   }
+ 
+   /*
+@@ -972,6 +1060,9 @@ export async function probeClaude(
+    */
+   probe.probed_at = new Date().toISOString();
+ 
++  // 早退轮不产出这个值；到这里说明「模型段真跑过」，见上方注释
++  let structuredArmCause: StructuredArmCause = 'asset-root-missing';
++
+   const fx = await createFixture();
+   try {
+     // ── 读文件能力 + 轨迹形态 ────────────────────────────────────
+@@ -1202,30 +1293,56 @@ export async function probeClaude(
+       notes.push('只读负对照未跑完，留痕能力未得出结论');
+     }
+ 
+-    // ── 结构化输出 ───────────────────────────────────────────────
+-    // 经适配层同一份变换送出（CODEX-03）；今天这份没有 $schema 头，变换是空操作——
+-    // 但 EV-74 改喂真实契约文件时，不走这条路会把拒绝形态记成 null
+-    const schema = stripMetaSchemaRef(JSON.stringify({
+-      type: 'object',
+-      properties: { first_line: { type: 'string' } },
+-      required: ['first_line'],
+-      additionalProperties: false,
+-    }));
+-    const structured = await execProbe(
+-      bin,
+-      fx,
+-      `读 ${fx.openFile}，回答它的第一行内容。`,
+-      { jsonSchema: schema },
+-    );
+-    probe.json_schema_ok = judgeJsonSchema({
+-      completed: structured.completed,
+-      finalText: structured.finalText,
+-      requiredKey: 'first_line',
+-    });
+-    notes.push(
+-      `--json-schema 强制结构化输出=${probe.json_schema_ok}` +
+-        '（参数取内联 JSON 而非文件路径；result 回来是 JSON 字符串，要再 parse 一次）',
+-    );
++    // ── 结构化输出（EV-74：改喂真实契约，经 readSchemaJson 同一份变换送出）──
++    const schemaPath = opts.assetRoot ? resolveReviewSchemaPath(opts.assetRoot) : null;
++    let schemaJson: string | null = null;
++    if (schemaPath) {
++      try {
++        schemaJson = await readSchemaJson(schemaPath);
++      } catch {
++        schemaJson = null;
++      }
++    }
++
++    if (schemaJson === null) {
++      /*
++       * 资产根未注入或本轮读不到契约文件——结构化臂**那一次调用不发生**
++       * （计划 §5 用例 2③）。不进 warnings，可见性靠这条指路 note（§3.2.1／§3.7）。
++       */
++      structuredArmCause = 'asset-root-missing';
++      probe.json_schema_ok = null;
++      notes.push(
++        `⚠️ 未找到审查契约文件（${schemaPath ?? '资产根未注入'}）——结构化输出判据本轮未测，` +
++          '安装 dual-critic skill（或设置 TRIVIUM_ASSET_ROOT）后自动恢复',
++      );
++    } else {
++      const fingerprint = sha256(schemaJson).slice(0, 12);
++      const structured = await execProbe(
++        bin,
++        fx,
++        `对 ${fx.openFile} 做一次最小审查：schema 字段固定为 "trivium.review.v1"、` +
++          'verdict 给 "approve"、summary 用一句话概括文件内容，findings 留空数组即可。',
++        { jsonSchema: schemaJson },
++      );
++      const judged = judgeJsonSchema({
++        timedOut: structured.timedOut,
++        exitCode: structured.exitCode,
++        stderr: structured.stderr,
++        eventCount: structured.eventCount,
++        completed: structured.completed,
++        // 正对照：本轮读探针（上面第一段）是否真的跑通，不是本臂自己的 completed
++        positiveControlOk: read.completed,
++        finalText: structured.finalText,
++        requiredKey: 'summary',
++      });
++      probe.json_schema_ok = judged.value;
++      structuredArmCause = judged.cause;
++      notes.push(
++        `--json-schema 强制结构化输出=${probe.json_schema_ok}（契约 ${schemaPath}，` +
++          `指纹 sha256:${fingerprint}；参数取内联 JSON 而非文件路径；` +
++          'result 回来是 JSON 字符串，要再 parse 一次）',
++      );
++    }
+ 
+     // ── 路径级 deny ──────────────────────────────────────────────
+     probe.path_deny = await probeClaudePathDeny(bin, fx);
+@@ -1366,5 +1483,5 @@ export async function probeClaude(
+     await memFx.cleanup();
+   }
+ 
+-  return { probe, notes };
++  return { probe, notes, structuredArmCause };
+ }
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index 1b49ded..af973bf 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -10,7 +10,6 @@
+  * 因此不需要靠提示词去要求对方「别看」。
+  */
+ import path from 'node:path';
+-import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import type {
+   Config, CriticId, CriticRequest, CriticResult, Ctx, DenyCategory, Review, Stage, CommandEntry,
+@@ -55,7 +54,7 @@ import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeM
+ import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
+ import { acquireLock } from './lock.js';
+ import { measureAllPairs, renderDivergence } from './divergence.js';
+-import { agentConfigOf, runRoot, vendorProfileOf } from './config.js';
++import { agentConfigOf, resolveAssetRoot, resolveReviewSchemaPath, runRoot, vendorProfileOf } from './config.js';
+ import { resolveCriticSelection } from './critics.js';
+ import { setGateChecked } from './state.js';
+ import { ensureDir, sha256, sha256File } from './util/fsx.js';
+@@ -392,15 +391,6 @@ export interface ReviewOutcome {
+   sideStatuses: Partial<Record<CriticId, CriticResult['status']>>;
+ }
+ 
+-/** skill 资产根：优先环境变量，其次用户级安装位置 */
+-function resolveAssetRoot(override?: string): string {
+-  return (
+-    override ??
+-    process.env['TRIVIUM_ASSET_ROOT'] ??
+-    path.join(os.homedir(), '.claude/skills/dual-critic')
+-  );
+-}
+-
+ /**
+  * 逐侧取思考等级。**按 vendor 分派，不按 Agent 身份穷尽。**
+  *
+@@ -494,7 +484,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+   const { ctx, stage } = opts;
+   const cfg: Config = ctx.config;
+   const assetRoot = resolveAssetRoot(opts.assetRoot);
+-  const schemaPath = path.join(assetRoot, 'schema/review.v1.json');
++  const schemaPath = resolveReviewSchemaPath(assetRoot);
+   const lensesPath = path.join(assetRoot, 'lenses.yaml');
+ 
+   // 经工厂取适配器：TRIVIUM_STUB_CRITIC 在场时换成桩（测试用，生产路径会打醒目告警）
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 8caf0f9..f5965ac 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -648,12 +648,19 @@ export interface ClaudeProbe extends CommonProbe {
+   /** `--model` 是否真实生效（`system/init` 事件回读）。**消费方**：M11 档位路由 */
+   model_flag: boolean | null;
+   /**
+-   * `--json-schema` 能否强制出结构化输出。
+-   *
+-   * 本机实测 true，但有两处形态要记：①参数取**内联 JSON 字符串**，
+-   * 不是文件路径（codex 的 `--output-schema` 才是文件）；
+-   * ②`result` 字段回来的是**JSON 字符串**，调用方要再 parse 一次。
+-   * **消费方**：M9 的结构化解析；为 false 时降级为提示词约定 + 宽松解析。
++   * `--json-schema` 能否强制出结构化输出——**探针喂的是真实审查契约**
++   * `skills/dual-critic/schema/review.v1.json`（EV-74），不是迷你 schema。
++   *
++   * 三态判据见 `judgeJsonSchema`（`probes/claude.ts`）：`false` 只由「CLI 干净拒绝」
++   * 触发；`null` 的成因（撞闸/未跑完/环境层失败/模型不合规/资产根未安装/早退轮
++   * 保留旧值）由**返回值字段** `StructuredArmCause` 承载，不落进本字段本身、
++   * 也不落进 notes——那个字段才是「本轮是否真跑过」与「为什么是 null」的机读来源。
++   *
++   * 两处形态仍要记：①参数取**内联 JSON 字符串**，不是文件路径（codex 的
++   * `--output-schema` 才是文件）；②`result` 字段回来的是**JSON 字符串**，调用方要
++   * 再 parse 一次。
++   * **消费方**：M9 的结构化解析（为 false 时降级为提示词约定 + 宽松解析）；
++   * `doctor` 的 `DoctorReport.warnings`（按 `StructuredArmCause` 分文案，见 `doctor.ts`）。
+    */
+   json_schema_ok: boolean | null;
+   /**
+diff --git a/test/unit/claude-events.test.ts b/test/unit/claude-events.test.ts
+index 901f0c2..329da2e 100644
+--- a/test/unit/claude-events.test.ts
++++ b/test/unit/claude-events.test.ts
+@@ -499,6 +499,41 @@ test('EV-40 输入开关：omitVerbose 决定 --verbose 在不在 argv 里', ()
+   );
+ });
+ 
++test('EV-74 计划 §4.2/§5 用例 8：budgetUsdOverride 不设默认值，只在显式传入时生效', () => {
++  /*
++   * 覆盖入参只该由结构化臂的调用点显式传入（EV-74 计划 §4.2）。这里守的是
++   * `probeArgs` 本身：不传时必须落回模块常量，不能有任何隐式默认覆盖值——
++   * 否则 `probeArgs` 是导出函数（`test/unit/claude-events.test.ts` 本文件就直接
++   * 调用它），任何调用点都可能无意间共享覆盖值，等于把「一次未经讨论的全局
++   * 配额上调」换个位置重演。
++   */
++  const withoutOverride = probeArgs({ prompt: 'p' });
++  const withOverride = probeArgs({ prompt: 'p', budgetUsdOverride: '9.99' });
++
++  const budgetIdx = (args: string[]) => args.indexOf('--max-budget-usd');
++  assert.notEqual(budgetIdx(withoutOverride), -1, '--max-budget-usd 必须始终存在');
++  assert.notEqual(
++    withoutOverride[budgetIdx(withoutOverride) + 1],
++    '9.99',
++    '不传覆盖值时不得意外落到某个测试用的覆盖值上——必须是模块常量',
++  );
++  assert.equal(
++    withOverride[budgetIdx(withOverride) + 1],
++    '9.99',
++    '显式传入的覆盖值必须原样出现在 argv 里',
++  );
++  // 两次调用除这一个值外，其余 argv 必须逐项相同——覆盖只影响这一个旗标
++  const stripBudget = (args: string[]) => {
++    const i = budgetIdx(args);
++    return [...args.slice(0, i + 1), ...args.slice(i + 2)];
++  };
++  assert.deepEqual(
++    stripBudget(withoutOverride),
++    stripBudget(withOverride),
++    '覆盖预算不该连带改动任何其它旗标',
++  );
++});
++
+ test('EV-40 输入开关：prompt 恒在 argv 末位（本文件全部结论都是 argv 形态下的）', () => {
+   /*
+    * 上一版为「第 3 步在 stdin 形态复验」加过 promptVia 分支，那是条死路
+@@ -837,18 +872,71 @@ test('judgeTracePathStructured 三态：按 basename 比对，没跑完是 null'
+   assert.equal(judgeTracePathStructured({ completed: false, toolUses: [], wantBasename: 'a.ts' }), null);
+ });
+ 
+-test('judgeJsonSchema 三态：parse 失败是 false，没跑完是 null', () => {
+-  assert.equal(judgeJsonSchema({ completed: true, finalText: '{"first_line":"x"}', requiredKey: 'first_line' }), true);
+-  assert.equal(judgeJsonSchema({ completed: true, finalText: '{"other":1}', requiredKey: 'first_line' }), false);
+-  assert.equal(
+-    judgeJsonSchema({ completed: true, finalText: 'not json', requiredKey: 'first_line' }),
+-    false,
+-    '跑完了但输出不是 JSON ⇒ 确实没按 schema 出，这是真结论',
++test('judgeJsonSchema 七格：行序互斥，null 成因各自独立（EV-74 计划 §3.4.1/§5 用例 3）', () => {
++  const base = {
++    timedOut: false,
++    exitCode: 0,
++    stderr: '',
++    eventCount: 1,
++    completed: true,
++    positiveControlOk: true,
++    finalText: '{"summary":"x"}',
++    requiredKey: 'summary',
++  };
++
++  // 前置门（r5 CODEX-02：timedOut 补显式断言）
++  assert.deepEqual(judgeJsonSchema({ ...base, timedOut: true }), { value: null, cause: 'not-completed' });
++  assert.deepEqual(judgeJsonSchema({ ...base, exitCode: null }), { value: null, cause: 'not-completed' });
++  assert.deepEqual(judgeJsonSchema({ ...base, positiveControlOk: false }), { value: null, cause: 'not-completed' });
++
++  // 干净拒绝——唯一允许落 false 的形态
++  assert.deepEqual(
++    judgeJsonSchema({ ...base, exitCode: 1, eventCount: 0, stderr: 'error: bad schema', completed: false }),
++    { value: false, cause: 'clean-reject' },
+   );
+-  assert.equal(
+-    judgeJsonSchema({ completed: false, finalText: null, requiredKey: 'first_line' }),
+-    null,
+-    '没跑完 ⇒ 没测到，与「没按 schema 出」不是一回事',
++
++  // 两头皆空：静默失败
++  assert.deepEqual(
++    judgeJsonSchema({ ...base, exitCode: 1, eventCount: 0, stderr: '', completed: false }),
++    { value: null, cause: 'not-completed' },
++  );
++
++  // 非零退出但已吐出事件、completed !== true：跑到一半才失败
++  assert.deepEqual(
++    judgeJsonSchema({ ...base, exitCode: 1, eventCount: 3, completed: false }),
++    { value: null, cause: 'not-completed' },
++  );
++
++  // 零退出但未跑完（撞闸/未获模型答复）——cause 与「模型不合规」分开
++  assert.deepEqual(
++    judgeJsonSchema({ ...base, exitCode: 0, eventCount: 2, completed: false }),
++    { value: null, cause: 'not-completed' },
++  );
++
++  // completed 但不可 JSON.parse
++  assert.deepEqual(
++    judgeJsonSchema({ ...base, finalText: 'not json' }),
++    { value: null, cause: 'model-noncompliant' },
++    '跑通了但输出不是 JSON ⇒ 模型未按契约给出合规输出',
++  );
++
++  // completed 但缺 requiredKey
++  assert.deepEqual(
++    judgeJsonSchema({ ...base, finalText: '{"other":1}' }),
++    { value: null, cause: 'model-noncompliant' },
++  );
++
++  // completed 且 requiredKey 为 string ⇒ true（r5 CODEX-02 新增：本主题要买的核心保证）
++  assert.deepEqual(
++    judgeJsonSchema({ ...base, finalText: '{"summary":"一句话摘要"}' }),
++    { value: true, cause: 'ok' },
++  );
++
++  // 行序互斥（r5 CODEX-04≡GLM-02）：completed 是唯一分野，一旦为 true，
++  // 退出码不再影响结论——不会像 r4 表那样与「非零退出但已吐出事件⇒null」相撞
++  assert.deepEqual(
++    judgeJsonSchema({ ...base, exitCode: 1, eventCount: 3, completed: true, finalText: '{"summary":"x"}' }),
++    { value: true, cause: 'ok' },
+   );
+ });
+ 
+diff --git a/test/unit/claude-severity.test.ts b/test/unit/claude-severity.test.ts
+index 02f656f..754263a 100644
+--- a/test/unit/claude-severity.test.ts
++++ b/test/unit/claude-severity.test.ts
+@@ -7,7 +7,7 @@
+  */
+ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+-import { claudeSeverity } from '../../src/trivium/doctor.js';
++import { claudeSeverity, claudeStructuredArmWarning } from '../../src/trivium/doctor.js';
+ import { defaultProbe } from '../../src/trivium/config.js';
+ import { READONLY_INVARIANTS, judgeStrictMcpConfig } from '../../src/trivium/probes/claude.js';
+ import type { ClaudeProbe } from '../../src/trivium/types.js';
+@@ -401,3 +401,31 @@ test('已核实的失守排在硬前置之前：负对照落了文件时报的
+   assert.equal(lines.length, 1);
+   assert.match(lines[0]!.message, /负对照失败/);
+ });
++
++test('claudeStructuredArmWarning：三类真跑过的 null/false 成因各自独立文案，不共用「模型未合规」（EV-74 计划 §5 用例 7）', () => {
++  const clean = claudeStructuredArmWarning('clean-reject');
++  const notCompleted = claudeStructuredArmWarning('not-completed');
++  const noncompliant = claudeStructuredArmWarning('model-noncompliant');
++
++  assert.ok(clean, '干净拒绝必须出 warning');
++  assert.ok(notCompleted, '撞闸/未跑完必须出 warning');
++  assert.ok(noncompliant, '模型不合规必须出 warning');
++
++  // 三类文案互不相同，且撞闸类不得贴「模型未合规」字样（§3.4.1 刚在 note 侧修掉的失实归因）
++  assert.notEqual(clean, notCompleted);
++  assert.notEqual(clean, noncompliant);
++  assert.notEqual(notCompleted, noncompliant);
++  // 撞闸类要显式撇清「模型未合规」这个归因，不合规类才该用它
++  assert.match(notCompleted!, /非模型不合规/);
++  assert.match(noncompliant!, /未按契约给出合规/);
++});
++
++test('claudeStructuredArmWarning：早退轮与资产根缺失都不进 warnings（可见性已归 note）', () => {
++  assert.equal(claudeStructuredArmWarning('carried-over'), null, '早退轮不是本轮结论，不该出 warning');
++  assert.equal(
++    claudeStructuredArmWarning('asset-root-missing'),
++    null,
++    '资产根缺失的可见性归 note 指路句，不进 warnings（避免与 note 双报）',
++  );
++  assert.equal(claudeStructuredArmWarning('ok'), null, '结构化臂正常，没有可警示的内容');
++});
+diff --git a/test/unit/registry-parity.test.ts b/test/unit/registry-parity.test.ts
+index 5335a12..1358224 100644
+--- a/test/unit/registry-parity.test.ts
++++ b/test/unit/registry-parity.test.ts
+@@ -1132,6 +1132,79 @@ test('架构契约：adapters/ 不得 import probes/', async () => {
+   );
+ });
+ 
++test('架构契约：probes/ 的 import 面——允许清单而非黑名单（EV-74 计划 §5 用例 6）', async () => {
++  /*
++   * r2 稿只写「扫描 probes/ 的 import 行」，没定义「编排层」——按字面实现的黑名单
++   * 形态会空转（新增编排模块不进清单即漏，AGENTS.md 纪律 12 要防的形状），
++   * 且 `probes/env.ts:10` 今天就 import `../init.js`，按字面第一天就会误伤。
++   * 允许清单把判据倒过来：只许落在这几类，新增一条编排层依赖会立刻被看见。
++   *
++   * **config/types/util/adapters/secrets 不算编排层**——这半句判据直接写进这里：
++   * `secrets.ts` 是无状态脱敏叶子工具，与 util 同族，直接进允许清单本身，
++   * 不像 `../init.js` 那样单独具名登记为例外（EV-74 计划 r5，CODEX-01≡AGY-01≡GLM-01）。
++   */
++  const ALLOWED_TARGETS: readonly RegExp[] = [
++    /^node:/,
++    /^\.\/[\w-]+\.js$/, // probes/ 同目录
++    /^\.\.\/config\.js$/,
++    /^\.\.\/types\.js$/,
++    /^\.\.\/secrets\.js$/,
++    /^\.\.\/util\//,
++    /^\.\.\/adapters\//,
++  ];
++  /** 具名登记的已知例外：把 `stableNodePath` 搬出 `init.ts` 不在本主题论域（plan §0.2） */
++  const NAMED_EXCEPTIONS: ReadonlyMap<string, readonly string[]> = new Map([
++    ['env.ts', ['../init.js']],
++  ]);
++
++  const dir = path.join(REPO_ROOT, 'src/trivium/probes');
++  const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.ts'));
++  assert.ok(files.length > 0, '探针目录不该是空的——扫描范围写错了会让本条永绿');
++
++  // 逐语句而非逐行匹配：多行 import 块的 `from '...'` 常单独占一行，逐行正则会漏检
++  const IMPORT_RE = /^\s*import\s+(?:type\s+)?[\s\S]*?from\s+['"]([^'"]+)['"]/gm;
++  const offenders: string[] = [];
++  let exceptionHits = 0;
++
++  for (const f of files) {
++    const src = await fs.readFile(path.join(dir, f), 'utf8');
++    for (const m of src.matchAll(IMPORT_RE)) {
++      const target = m[1]!;
++      if (ALLOWED_TARGETS.some((re) => re.test(target))) continue;
++      if ((NAMED_EXCEPTIONS.get(f) ?? []).includes(target)) {
++        exceptionHits += 1;
++        continue;
++      }
++      const line = src.slice(0, m.index).split('\n').length;
++      offenders.push(`probes/${f}:${line}  import … from '${target}'`);
++    }
++  }
++
++  assert.deepEqual(
++    offenders,
++    [],
++    '探针文件出现了允许清单之外的 import，可能是把编排层依赖搬进了 probes/：\n' +
++      offenders.join('\n') +
++      "\n  若确属新的基础模块依赖，请在允许清单里登记并说明理由；" +
++      '若只是个别文件的例外，按 probes/env.ts → ../init.js 的形态具名登记为例外。',
++  );
++
++  // 防空转腿（黑名单形态的教训，AGENTS.md 纪律 12）：例外登记必须真的命中过至少一次
++  assert.ok(exceptionHits > 0, '具名例外一次都没命中——契约可能已经空转');
++
++  // 防腐烂腿（EV-74 计划 r5，CODEX-01）：已登记例外指向的文件必须仍然存在，否则例外已过期
++  for (const [file, targets] of NAMED_EXCEPTIONS) {
++    for (const target of targets) {
++      const resolved = path.resolve(dir, target.replace(/\.js$/, '.ts'));
++      const stillExists = await fs.stat(resolved).then(() => true, () => false);
++      assert.ok(
++        stillExists,
++        `具名例外 probes/${file} → ${target} 指向的文件已不存在（${resolved}），例外应当删除`,
++      );
++    }
++  }
++});
++
+ 
+ // ───────── 6. 适配层不得字面重建探针落盘的 argv 片段（M9 工前，BACKLOG EV-12）─────────
+ 
+diff --git a/test/integration/claude-structured-probe.test.ts b/test/integration/claude-structured-probe.test.ts
+new file mode 100644
+index 0000000..8f9c068
+--- /dev/null
++++ b/test/integration/claude-structured-probe.test.ts
+@@ -0,0 +1,192 @@
++/**
++ * `probeClaude` 结构化臂端到端：真起假二进制，覆盖 EV-74 计划 §5 用例 1/2/2b。
++ *
++ * ## 为什么要真起子进程
++ *
++ * `probeClaude` 此前**零端到端覆盖**（现状表第 8 行：`test/` 下无任何用例 import 它）——
++ * 只有它内部复用的 `judge*` 纯函数被单测锁住。`judgeJsonSchema` 的七格互斥已经在
++ * `test/unit/claude-events.test.ts` 里用纯函数输入直接断言过；本文件要补的是
++ * **纯函数断不到的那一段**：`probeClaude` 真的从注入的资产根读到了契约文件、
++ * 把它原样递给 CLI，以及资产根缺失时那一次调用**真的没有发生**——
++ * 这几条只有真起子进程、录下真实 argv 才能证实。
++ *
++ * ## 假二进制怎么定行为
++ *
++ * `-p` 调用一律按「跑通、吐一句话」处理，**除非**这次调用带 `--json-schema`——
++ * 那才是我们关心的结构化臂，行为由 `FAKE_CLAUDE_STRUCTURED_MODE` 决定
++ * （`success` / `reject` / `parse-fail` / `missing-key`）。其余各臂（读能力、
++ * verbose 负对照、breach、path-deny、EV-44 记忆探测）全部生效于「通用成功响应」，
++ * 本文件不断言它们的结论，只要求它们不崩溃、不把整个 `probeClaude` 拖挂。
++ *
++ * 每次 `-p` 调用都往 `FAKE_CLAUDE_ARGV_LOG` 追加一行 JSON，记录本次 argv 是否带
++ * `--json-schema` 及其值——这是判别力的唯一来源：伪 bin 不做任何语义解释，
++ * 断言全部落在「记录到的调用形态」上。
++ */
++import { test, before, after, beforeEach } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import { probeClaude } from '../../src/trivium/probes/claude.js';
++import { resolveReviewSchemaPath } from '../../src/trivium/config.js';
++
++let work = '';
++let fakeBin = '';
++let argvLog = '';
++
++before(async () => {
++  work = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-claude-structured-'));
++
++  const script = path.join(work, 'fake-claude.cjs');
++  await fs.writeFile(
++    script,
++    [
++      "const fs = require('node:fs');",
++      '',
++      'const argv = process.argv.slice(2);',
++      '',
++      "if (argv.includes('--version')) {",
++      "  process.stdout.write('9.9.9 (Fake Claude)\\n');",
++      '  process.exit(0);',
++      '}',
++      '',
++      'const logPath = process.env.FAKE_CLAUDE_ARGV_LOG;',
++      "const hasJsonSchema = argv.includes('--json-schema');",
++      "const schemaIdx = argv.indexOf('--json-schema');",
++      'const jsonSchemaValue = schemaIdx >= 0 ? argv[schemaIdx + 1] : null;',
++      '',
++      'function emit(o) { process.stdout.write(JSON.stringify(o) + "\\n"); }',
++      '',
++      'function finishGeneric() {',
++      "  emit({ type: 'system', subtype: 'init', tools: ['Read', 'Grep', 'Glob'], model: 'claude-haiku-4-5-20251001', session_id: 'fake-session' });",
++      "  emit({ type: 'result', subtype: 'success', is_error: false, result: 'ok', total_cost_usd: 0.001, session_id: 'fake-session' });",
++      '  process.exit(0);',
++      '}',
++      '',
++      'process.stdin.resume();',
++      "process.stdin.on('end', () => {",
++      '  if (logPath) {',
++      '    fs.appendFileSync(logPath, JSON.stringify({ hasJsonSchema, jsonSchemaValue }) + "\\n");',
++      '  }',
++      '  if (!hasJsonSchema) { finishGeneric(); return; }',
++      "  const mode = process.env.FAKE_CLAUDE_STRUCTURED_MODE || 'success';",
++      "  if (mode === 'reject') {",
++      "    process.stderr.write('error: schema rejected by CLI\\n');",
++      '    process.exit(1);',
++      '  }',
++      "  emit({ type: 'system', subtype: 'init', tools: ['Read', 'Grep', 'Glob', 'StructuredOutput'], model: 'claude-haiku-4-5-20251001', session_id: 'fake-session' });",
++      "  let text;",
++      "  if (mode === 'parse-fail') text = 'not json';",
++      "  else if (mode === 'missing-key') text = JSON.stringify({ other: 1 });",
++      "  else text = JSON.stringify({ schema: 'trivium.review.v1', verdict: 'approve', summary: 'fake summary', findings: [] });",
++      "  emit({ type: 'result', subtype: 'success', is_error: false, result: text, total_cost_usd: 0.001, session_id: 'fake-session' });",
++      '  process.exit(0);',
++      '});',
++      '',
++    ].join('\n'),
++  );
++  fakeBin = path.join(work, 'claude');
++  // **`"$@"` 不能漏**：探针的结构化臂判据要读 argv 里的 `--json-schema`，
++  // 缺了参数透传，子进程收到的 argv 永远是空数组（本文件调通前实测踩过一次）。
++  await fs.writeFile(fakeBin, `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, { mode: 0o755 });
++});
++
++after(async () => {
++  await fs.rm(work, { recursive: true, force: true });
++});
++
++beforeEach(async () => {
++  argvLog = path.join(work, `argv-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`);
++  process.env['FAKE_CLAUDE_ARGV_LOG'] = argvLog;
++});
++
++async function structuredCalls(): Promise<{ hasJsonSchema: boolean; jsonSchemaValue: string | null }[]> {
++  let raw: string;
++  try {
++    raw = await fs.readFile(argvLog, 'utf8');
++  } catch {
++    return [];
++  }
++  return raw
++    .split('\n')
++    .filter((l) => l.trim().length > 0)
++    .map((l) => JSON.parse(l) as { hasJsonSchema: boolean; jsonSchemaValue: string | null });
++}
++
++test('用例 1：结构化臂经 readSchemaJson 取 schema——argv 里的内容取自注入路径下的文件', async () => {
++  const assetRoot = await fs.mkdtemp(path.join(work, 'asset-'));
++  const schemaPath = resolveReviewSchemaPath(assetRoot);
++  await fs.mkdir(path.dirname(schemaPath), { recursive: true });
++  const marker = `probe1-${Math.random().toString(36).slice(2)}`;
++  await fs.writeFile(
++    schemaPath,
++    JSON.stringify({
++      $schema: 'https://json-schema.org/draft/2020-12/schema',
++      type: 'object',
++      'x-test-marker': marker,
++    }),
++  );
++
++  process.env['FAKE_CLAUDE_STRUCTURED_MODE'] = 'success';
++  const { probe } = await probeClaude(fakeBin, { assetRoot });
++
++  const calls = (await structuredCalls()).filter((c) => c.hasJsonSchema);
++  assert.equal(calls.length, 1, '结构化臂应当只调用一次');
++  const sent = JSON.parse(calls[0]!.jsonSchemaValue!) as Record<string, unknown>;
++  assert.equal(sent['x-test-marker'], marker, 'argv 里送出的 schema 内容必须取自注入路径下的文件，不是自己另造一份');
++  assert.equal('$schema' in sent, false, 'readSchemaJson 必须剥掉顶层 $schema（stripMetaSchemaRef）');
++  assert.equal(probe.json_schema_ok, true);
++});
++
++test('用例 2：资产根缺失——字段为 null，notes 含未安装说明且含指路句，结构化臂那一次调用未发生', async () => {
++  const missingAssetRoot = await fs.mkdtemp(path.join(work, 'missing-'));
++  // 不在这个目录下放 schema/review.v1.json：模拟未安装 dual-critic skill
++
++  const { probe, notes, structuredArmCause } = await probeClaude(fakeBin, { assetRoot: missingAssetRoot });
++
++  assert.equal(probe.json_schema_ok, null);
++  assert.equal(structuredArmCause, 'asset-root-missing');
++  const note = notes.find((n) => n.includes('未找到审查契约文件'));
++  assert.ok(note, `应有一条指出契约文件未找到的 note，实际 notes：${JSON.stringify(notes)}`);
++  assert.match(note!, /TRIVIUM_ASSET_ROOT|安装/, 'note 必须含指路句（装哪个 skill / 设哪个环境变量）');
++
++  const calls = (await structuredCalls()).filter((c) => c.hasJsonSchema);
++  assert.equal(calls.length, 0, '资产根缺失时结构化臂的那一次调用不应当发生');
++});
++
++test('用例 2b：资产根存在（正向对照）——进入实际探测且不产生未安装 note', async () => {
++  const assetRoot = await fs.mkdtemp(path.join(work, 'asset-ok-'));
++  const schemaPath = resolveReviewSchemaPath(assetRoot);
++  await fs.mkdir(path.dirname(schemaPath), { recursive: true });
++  await fs.writeFile(schemaPath, JSON.stringify({ type: 'object' }));
++
++  process.env['FAKE_CLAUDE_STRUCTURED_MODE'] = 'success';
++  const { probe, notes, structuredArmCause } = await probeClaude(fakeBin, { assetRoot });
++
++  const note = notes.find((n) => n.includes('未找到审查契约文件'));
++  assert.equal(note, undefined, '资产根存在时不应产生未安装 note');
++  assert.equal(structuredArmCause, 'ok');
++  assert.equal(probe.json_schema_ok, true);
++
++  const calls = (await structuredCalls()).filter((c) => c.hasJsonSchema);
++  assert.equal(calls.length, 1, '资产根存在时结构化臂应当真的被调用');
++});
++
++test('结构化臂三态经真实子进程可达：干净拒绝 ⇒ false/clean-reject，缺键 ⇒ null/model-noncompliant', async () => {
++  const assetRoot = await fs.mkdtemp(path.join(work, 'asset-tri-'));
++  const schemaPath = resolveReviewSchemaPath(assetRoot);
++  await fs.mkdir(path.dirname(schemaPath), { recursive: true });
++  await fs.writeFile(schemaPath, JSON.stringify({ type: 'object' }));
++
++  process.env['FAKE_CLAUDE_STRUCTURED_MODE'] = 'reject';
++  const rejected = await probeClaude(fakeBin, { assetRoot });
++  assert.equal(rejected.probe.json_schema_ok, false);
++  assert.equal(rejected.structuredArmCause, 'clean-reject');
++
++  argvLog = path.join(work, `argv-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`);
++  process.env['FAKE_CLAUDE_ARGV_LOG'] = argvLog;
++  process.env['FAKE_CLAUDE_STRUCTURED_MODE'] = 'missing-key';
++  const noncompliant = await probeClaude(fakeBin, { assetRoot });
++  assert.equal(noncompliant.probe.json_schema_ok, null);
++  assert.equal(noncompliant.structuredArmCause, 'model-noncompliant');
++});

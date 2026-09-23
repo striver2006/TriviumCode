@@ -1,0 +1,279 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260922T232724Z",
+  "topic": "EV-74-探针喂真实契约文件",
+  "stage": "plan",
+  "rerun_index": 5,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "审核焦点：本稿是 r4 二十四条意见的修订稿，请重点看增量。**先说一条本轮特有的硬约束：请把结论作为裸 JSON 输出，不要在外面包散文引导语或代码围栏**——上一轮三侧里有两侧因此被判解析回退，闸门随之判联合校验降级、有效侧只剩一家，那层保护整轮不存在。另两条沿用：请勿用 node -e 或 python -c 把命令样例内联成字符串验证判据（EV-98）；无法执行命令时请如实说明结论是推理而非实测（EV-95）。一、§5 用例 6 从「未定义的编排层」改成了允许清单，并把探针层那个既有的安装入口引用具名登记为例外。请核清单是否既不误伤又不空转、例外该不该直接改成搬函数，以及「配置模块不算编排层」这半句判据写在契约注释里够不够。二、§3.4.1 补了「跑完」的操作定义、一条兜底行与末尾显式兜底，现共七格。请核七格是否互斥穷尽，以及兜底行「不附模型未合规提示」这个分写是否到位。三、§3.7 写死了求值点与成因区分，并把未安装那档排除出告警面。请核「结构化臂真跑过」这个谓词在探针返回处是否真的可判，排除之后可见性够不够。四、§4.2 的上调落点从「抬模块常量」改成「给执行封装加覆盖入参」。请核这个改动的范围有没有溢出本主题。五、§1 现状表新增三行并改正了上一稿的行号倒置。请核新增三行的证据，以及整列的验法域是否仍等于断言域。六、§3.5 的补传清单从两个输入改成五个。请核是否与新签名一致、脚本臂还缺什么。七、§6 两条相邻待办的理由这一稿都改准了（上一稿两条理由都被判事实不成立）。请核改准后是否站得住。八、§8 同步项扩到十六项，请核是否齐备。九、有没有本稿新引入的问题。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "a34e58504a7aee1932c42fd10dddf83299a78eff",
+    "tree_hash": "9da1dd70515558f590473ef09dcffbf8ae9b20e9",
+    "dirty": false,
+    "subject_sha256": "d2b5c113585a406e0240de7f6084dfc978c1c0c4c66825c5db787d2cadd65d62",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-22T23:27:24.917Z",
+  "finished_at": "2026-09-22T23:37:51.649Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.155.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 252.461,
+      "tool_calls": {
+        "run_command": 27,
+        "project_reads": 32
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0cb72-107a-7461-94df-a33f543069e7",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.8",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 144.569,
+      "tool_calls": {
+        "read": 29,
+        "grep": 4,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 16
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 233339,
+        "output_tokens": 30922,
+        "thinking_tokens": 26642,
+        "cache_read_tokens": 1991853,
+        "total_tokens": 264261
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "5f2fc7c5-0fe2-4707-8a1c-54a0edf2a027",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 626.404,
+      "tool_calls": {
+        "read": 29,
+        "grep": 3,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 25
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 13,
+        "inputTokens": 1723199,
+        "outputTokens": 49403,
+        "totalTokens": 1772602,
+        "cacheReadTokens": 1552384,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_681dad9e-1b32-4b37-8f7d-0553d0ffe76d",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-22-EV-74-探针喂真实契约文件-gemini.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-22-EV-74-探针喂真实契约文件-glm.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r2-gemini.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r2-glm.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r3-gemini.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r3-glm.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r4-gemini.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r4-glm.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T144533Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T154900Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T161206Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T170908Z.fallback-items.md",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T170908Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-glm-20260922T144533Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-glm-20260922T154900Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-glm-20260922T161206Z.json",
+    ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-glm-20260922T170908Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/brief-codex-20260922T232724Z.md",
+      "sha256": "9ef0d9d3b98ad11d8d760eea7c7ec959a45cfb533931d7a0e5c304be730f9713"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/brief-gemini-20260922T232724Z.md",
+      "sha256": "1ee6808b53d9878637595e69eb7cf072b8887678ba301dc29bbfcfb5f6d521fe"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/brief-glm-20260922T232724Z.md",
+      "sha256": "d1cffe178b5e01c4e092772b5aa5bd0246bf3ad306a0613577388ac95228b4dd"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/review-codex-20260922T232724Z.json",
+      "sha256": "84570c18366b0aa043550b71549f70dc8e6f427b81e3d9cd61873aef98d0668c"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T232724Z.json",
+      "sha256": "c838dedbcbac5744ae459382e13864cf1c8f2739557132087b05044e4516b8af"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/_meta/review-glm-20260922T232724Z.json",
+      "sha256": "c28381df192ccb477038e627e045e5cbf9abe2a74e37d4bef1f47fcd6d1a200e"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r5-codex.md",
+      "sha256": "de61cfa43f1bfbf7af818deb62b0bc410a1912042b95f5148bc640f3d7b50b2d"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r5-gemini.md",
+      "sha256": "bd26a07f71aee550596ee65ab3647fb77f85799ad182e934e2dd2434a57b004d"
+    },
+    {
+      "path": "EV-74-探针喂真实契约文件/plan/2026-09-23-EV-74-探针喂真实契约文件-r5-glm.md",
+      "sha256": "cc2d9227f38dc940caa5cfe7f5e58cf9b1b9c83db813d75fb76427e9fd78f455"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

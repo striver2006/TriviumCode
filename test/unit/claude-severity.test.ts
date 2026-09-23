@@ -7,7 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { claudeSeverity } from '../../src/trivium/doctor.js';
+import { claudeSeverity, claudeStructuredArmWarning } from '../../src/trivium/doctor.js';
 import { defaultProbe } from '../../src/trivium/config.js';
 import { READONLY_INVARIANTS, judgeStrictMcpConfig } from '../../src/trivium/probes/claude.js';
 import type { ClaudeProbe } from '../../src/trivium/types.js';
@@ -400,4 +400,32 @@ test('已核实的失守排在硬前置之前：负对照落了文件时报的�
   );
   assert.equal(lines.length, 1);
   assert.match(lines[0]!.message, /负对照失败/);
+});
+
+test('claudeStructuredArmWarning：三类真跑过的 null/false 成因各自独立文案，不共用「模型未合规」（EV-74 计划 §5 用例 7）', () => {
+  const clean = claudeStructuredArmWarning('clean-reject');
+  const notCompleted = claudeStructuredArmWarning('not-completed');
+  const noncompliant = claudeStructuredArmWarning('model-noncompliant');
+
+  assert.ok(clean, '干净拒绝必须出 warning');
+  assert.ok(notCompleted, '撞闸/未跑完必须出 warning');
+  assert.ok(noncompliant, '模型不合规必须出 warning');
+
+  // 三类文案互不相同，且撞闸类不得贴「模型未合规」字样（§3.4.1 刚在 note 侧修掉的失实归因）
+  assert.notEqual(clean, notCompleted);
+  assert.notEqual(clean, noncompliant);
+  assert.notEqual(notCompleted, noncompliant);
+  // 撞闸类要显式撇清「模型未合规」这个归因，不合规类才该用它
+  assert.match(notCompleted!, /非模型不合规/);
+  assert.match(noncompliant!, /未按契约给出合规/);
+});
+
+test('claudeStructuredArmWarning：早退轮与资产根缺失都不进 warnings（可见性已归 note）', () => {
+  assert.equal(claudeStructuredArmWarning('carried-over'), null, '早退轮不是本轮结论，不该出 warning');
+  assert.equal(
+    claudeStructuredArmWarning('asset-root-missing'),
+    null,
+    '资产根缺失的可见性归 note 指路句，不进 warnings（避免与 note 双报）',
+  );
+  assert.equal(claudeStructuredArmWarning('ok'), null, '结构化臂正常，没有可警示的内容');
 });

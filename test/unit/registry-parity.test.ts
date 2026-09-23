@@ -1132,6 +1132,79 @@ test('架构契约：adapters/ 不得 import probes/', async () => {
   );
 });
 
+test('架构契约：probes/ 的 import 面——允许清单而非黑名单（EV-74 计划 §5 用例 6）', async () => {
+  /*
+   * r2 稿只写「扫描 probes/ 的 import 行」，没定义「编排层」——按字面实现的黑名单
+   * 形态会空转（新增编排模块不进清单即漏，AGENTS.md 纪律 12 要防的形状），
+   * 且 `probes/env.ts:10` 今天就 import `../init.js`，按字面第一天就会误伤。
+   * 允许清单把判据倒过来：只许落在这几类，新增一条编排层依赖会立刻被看见。
+   *
+   * **config/types/util/adapters/secrets 不算编排层**——这半句判据直接写进这里：
+   * `secrets.ts` 是无状态脱敏叶子工具，与 util 同族，直接进允许清单本身，
+   * 不像 `../init.js` 那样单独具名登记为例外（EV-74 计划 r5，CODEX-01≡AGY-01≡GLM-01）。
+   */
+  const ALLOWED_TARGETS: readonly RegExp[] = [
+    /^node:/,
+    /^\.\/[\w-]+\.js$/, // probes/ 同目录
+    /^\.\.\/config\.js$/,
+    /^\.\.\/types\.js$/,
+    /^\.\.\/secrets\.js$/,
+    /^\.\.\/util\//,
+    /^\.\.\/adapters\//,
+  ];
+  /** 具名登记的已知例外：把 `stableNodePath` 搬出 `init.ts` 不在本主题论域（plan §0.2） */
+  const NAMED_EXCEPTIONS: ReadonlyMap<string, readonly string[]> = new Map([
+    ['env.ts', ['../init.js']],
+  ]);
+
+  const dir = path.join(REPO_ROOT, 'src/trivium/probes');
+  const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.ts'));
+  assert.ok(files.length > 0, '探针目录不该是空的——扫描范围写错了会让本条永绿');
+
+  // 逐语句而非逐行匹配：多行 import 块的 `from '...'` 常单独占一行，逐行正则会漏检
+  const IMPORT_RE = /^\s*import\s+(?:type\s+)?[\s\S]*?from\s+['"]([^'"]+)['"]/gm;
+  const offenders: string[] = [];
+  let exceptionHits = 0;
+
+  for (const f of files) {
+    const src = await fs.readFile(path.join(dir, f), 'utf8');
+    for (const m of src.matchAll(IMPORT_RE)) {
+      const target = m[1]!;
+      if (ALLOWED_TARGETS.some((re) => re.test(target))) continue;
+      if ((NAMED_EXCEPTIONS.get(f) ?? []).includes(target)) {
+        exceptionHits += 1;
+        continue;
+      }
+      const line = src.slice(0, m.index).split('\n').length;
+      offenders.push(`probes/${f}:${line}  import … from '${target}'`);
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    '探针文件出现了允许清单之外的 import，可能是把编排层依赖搬进了 probes/：\n' +
+      offenders.join('\n') +
+      "\n  若确属新的基础模块依赖，请在允许清单里登记并说明理由；" +
+      '若只是个别文件的例外，按 probes/env.ts → ../init.js 的形态具名登记为例外。',
+  );
+
+  // 防空转腿（黑名单形态的教训，AGENTS.md 纪律 12）：例外登记必须真的命中过至少一次
+  assert.ok(exceptionHits > 0, '具名例外一次都没命中——契约可能已经空转');
+
+  // 防腐烂腿（EV-74 计划 r5，CODEX-01）：已登记例外指向的文件必须仍然存在，否则例外已过期
+  for (const [file, targets] of NAMED_EXCEPTIONS) {
+    for (const target of targets) {
+      const resolved = path.resolve(dir, target.replace(/\.js$/, '.ts'));
+      const stillExists = await fs.stat(resolved).then(() => true, () => false);
+      assert.ok(
+        stillExists,
+        `具名例外 probes/${file} → ${target} 指向的文件已不存在（${resolved}），例外应当删除`,
+      );
+    }
+  }
+});
+
 
 // ───────── 6. 适配层不得字面重建探针落盘的 argv 片段（M9 工前，BACKLOG EV-12）─────────
 

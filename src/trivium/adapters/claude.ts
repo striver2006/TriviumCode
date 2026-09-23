@@ -124,8 +124,9 @@ export function buildClaudeArgs(
     /*
      * 「送 CLI 的那一份 schema」的唯一出口（代码双审 CODEX-03）：无论调用方从哪读来，
      * 都在这里做幂等归一，剥掉 CLI 不认的 2020-12 `$schema` 头。`readSchemaJson` 也剥，
-     * 两处叠加是幂等的；放在这里是为了让绕过 `readSchemaJson` 的调用方（探针、准入脚本）
-     * 走同一份变换，而不是各自记着要剥。
+     * 两处叠加是幂等的——EV-74 落地后探针与准入脚本都改走 `readSchemaJson` 了
+     * （代码双审 GLM-06），这里仍保留第二道剥壳是防未来新增调用方绕过它，
+     * 不是因为今天真有调用方绕过。
      */
     ...(opts.schemaJson ? ['--json-schema', stripMetaSchemaRef(opts.schemaJson)] : []),
     ...(opts.settingsJson ? ['--settings', opts.settingsJson] : []),

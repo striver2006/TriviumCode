@@ -48,6 +48,11 @@
  *   node scripts/claude-admission-control.mjs --case project-memory
  *   node scripts/claude-admission-control.mjs --case deny-dialect
  *   node scripts/claude-admission-control.mjs --case all --out <报告路径>
+ *
+ * **运行前提（EV-74 落地后新增，代码双审 CODEX-08≡GLM-05≡AGY-02）**：`--case stdin-parity`
+ * 与 `--case all` 需要能解析到审查契约文件（`skills/dual-critic/schema/review.v1.json`），
+ * 即本机需已安装 dual-critic skill（默认 `~/.claude/skills/dual-critic`）或设置
+ * `TRIVIUM_ASSET_ROOT` 指向含 `schema/review.v1.json` 的资产根，解析不到会 fail-fast。
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -91,7 +96,12 @@ function budgetGuard() {
 }
 
 async function loadProd() {
-  for (const f of ['adapters/claude.js', 'adapters/claude-trace.js', 'probes/claude.js']) {
+  /*
+   * **`config.js` 一并动态加载**（EV-74 计划 §3.5，AGY-02≡GLM-05）：
+   * ③ 段改喂真实契约后要经共用出口取资产根 + 契约相对路径（`config.ts`），
+   * 此前这里只加载 adapters/probes/util，缺 config.js 会在调用点抛未定义异常。
+   */
+  for (const f of ['adapters/claude.js', 'adapters/claude-trace.js', 'probes/claude.js', 'config.js']) {
     try {
       await fs.stat(path.join(DIST, f));
     } catch {
@@ -105,7 +115,8 @@ async function loadProd() {
   const trace = await import(pathToFileURL(path.join(DIST, 'adapters/claude-trace.js')).href);
   const probe = await import(pathToFileURL(path.join(DIST, 'probes/claude.js')).href);
   const exec = await import(pathToFileURL(path.join(DIST, 'util/exec.js')).href);
-  return { adapter, trace, probe, exec };
+  const config = await import(pathToFileURL(path.join(DIST, 'config.js')).href);
+  return { adapter, trace, probe, exec, config };
 }
 
 /** 读本机探针结论的 claude 段 */
@@ -426,12 +437,15 @@ async function caseDenyShape(mod, probeConc, bin) {
  * 而 §4.4 的分叉处置是写进设计正文的**持久收窄**。EV-41 的形态 C 就发生过
  * 模型拒答导致判据当场换掉。
  */
-async function caseStdinParity(mod, probeConc, bin) {
+async function caseStdinParity(mod, probeConc, bin, schema) {
   const fx = await makeFixture();
   const readonlyArgs = mod.adapter.readonlyArgsFromProbe(probeConc.readonly_flags);
   const tools = mod.adapter.readonlyToolsFromProbe(probeConc.readonly_flags);
   const shape = mod.adapter.denyRuleShapeOf(probeConc.path_deny?.rule_syntax ?? null);
   const arms = {};
+
+  // 契约内容由 main() 在用例循环之前解析并 fail-fast 校验过（代码双审 CODEX-03≡GLM-03），
+  // 这里只消费，不再自己 catch——避免 per-case try/catch 把 fail-fast 降级成报告行。
 
   for (const via of ['argv', 'stdin']) {
     const a = {};
@@ -448,18 +462,26 @@ async function caseStdinParity(mod, probeConc, bin) {
       completed: read.completed, toolUses: read.trace.toolUses, wantBasename: 'sentinel.txt',
     });
 
-    // ③ json_schema_ok
-    const schema = JSON.stringify({
-      type: 'object', properties: { first_line: { type: 'string' } },
-      required: ['first_line'], additionalProperties: false,
-    });
+    // ③ json_schema_ok——真实契约，五个输入全接（timedOut/exitCode/stderr/eventCount/正对照）
     const structured = await callOnce(mod, {
       bin, cwd: fx.root, via, readonlyArgs, schemaJson: schema, model: null,
-      prompt: `读 ${fx.openFile}，回答它的第一行内容。`,
+      prompt:
+        `对 ${fx.openFile} 做一次最小审查：schema 字段固定为 "trivium.review.v1"、` +
+        'verdict 给 "approve"、summary 用一句话概括文件内容，findings 留空数组即可。',
     });
-    a.json_schema_ok = mod.probe.judgeJsonSchema({
-      completed: structured.completed, finalText: structured.trace.finalText, requiredKey: 'first_line',
+    const judgedSchema = mod.probe.judgeJsonSchema({
+      timedOut: structured.timedOut,
+      exitCode: structured.exitCode,
+      stderr: structured.stderr,
+      eventCount: structured.trace.eventCount,
+      completed: structured.completed,
+      // 正对照：本轮①读能力那次调用（同一 via）是否真的跑通，不是本臂自己的 completed
+      positiveControlOk: read.completed,
+      finalText: structured.trace.finalText,
+      requiredKey: 'summary',
     });
+    a.json_schema_ok = judgedSchema.value;
+    a.json_schema_ok_cause = judgedSchema.cause;
 
     // ④ readonly_breach + ⑤ denied_tool_in_trace（**同一次调用**，同源必须同类）
     const write = await callOnce(mod, {
@@ -612,6 +634,38 @@ async function main() {
   const cases = which === 'all' ? Object.keys(CASE_MAX_CALLS) : [which];
   const report = { 时间: new Date().toISOString(), cli版本: probeConc.version, 用例: {} };
 
+  /*
+   * **契约解析与 fail-fast 提到用例循环之前**（代码双审 CODEX-03≡GLM-03）：
+   * 原先这段住在 `caseStdinParity` 内部，它的 throw 会被下面的逐用例 try/catch
+   * 吞成一行报告、进程仍退 0——`--case all` 时 stdin-parity 之外的三个用例
+   * （真烧配额）照样接着跑，与 `assertProbeUsable`（同样在循环之前、抛错直达
+   * 顶层退 1）并不同族。只在真需要它的用例被选中时才解析，避免无谓拖累
+   * 不需要契约的其它用例。
+   *
+   * **对读得到但已损坏的 JSON 也 fail-fast**（代码双审 GLM-04）：`readSchemaJson`
+   * 对坏 JSON 不抛（`stripMetaSchemaRef` 的既有契约是「解析不了就原样返回，
+   * 让 CLI 自己拒」），如果不在这里提前 `JSON.parse` 校验，一份损坏的本地文件
+   * 会被当成合法内容送去 CLI、被拒后落 `干净拒绝`，把「本地资产损坏」误报成
+   * 「CLI 不接受这份契约」。
+   */
+  let schema = null;
+  if (cases.includes('stdin-parity')) {
+    const assetRoot = mod.config.resolveAssetRoot();
+    const schemaPath = mod.config.resolveReviewSchemaPath(assetRoot);
+    try {
+      const raw = await mod.adapter.readSchemaJson(schemaPath);
+      JSON.parse(raw);
+      schema = raw;
+    } catch (e) {
+      throw new Error(
+        `读不到或解析不了审查契约文件 ${schemaPath}——请安装 dual-critic skill 或设置 ` +
+          `TRIVIUM_ASSET_ROOT，或检查该文件是否完整（原始错误：${e.message}）`,
+      );
+    }
+  }
+
+  const extraArgsByCase = { 'stdin-parity': [schema] };
+
   for (const c of cases) {
     callsUsed = 0;
     callsCap = CASE_MAX_CALLS[c];
@@ -619,7 +673,7 @@ async function main() {
     console.error(`\n=== ${c}（上限 ${callsCap} 次调用）===`);
     const fn = { 'deny-shape': caseDenyShape, 'stdin-parity': caseStdinParity, 'project-memory': caseProjectMemory, 'deny-dialect': caseDenyDialect }[c];
     try {
-      report.用例[c] = { ...(await fn(mod, probeConc, bin)), 实耗调用: callsUsed };
+      report.用例[c] = { ...(await fn(mod, probeConc, bin, ...(extraArgsByCase[c] ?? []))), 实耗调用: callsUsed };
     } catch (e) {
       report.用例[c] = { ok: false, 中止原因: e.message, 实耗调用: callsUsed };
       console.error(`  ✖ ${e.message}`);

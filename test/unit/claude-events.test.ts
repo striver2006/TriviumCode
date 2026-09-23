@@ -499,6 +499,45 @@ test('EV-40 输入开关：omitVerbose 决定 --verbose 在不在 argv 里', () 
   );
 });
 
+test('EV-74 计划 §4.2：probeArgs 的 budgetUsdOverride 不设默认值，只在显式传入时生效', () => {
+  /*
+   * **本条只守机制本身的隔离性质，不等于计划 §5 用例 8**（代码双审
+   * CODEX-01≡AGY-01≡GLM-01）：用例 8 要求端到端断言「结构化臂那次调用点真的
+   * 拨了这个旋钮、其余各臂不受影响」，而调用点目前故意未接线（§4.2 的实测尚未
+   * 做，见 `execProbe` 上方的状态说明）——没有调用点在拨，也就没有"拨没拨没人守"
+   * 这件事可断言。这里守的是**将来接线时**这个机制不会被连带破坏：不传时必须
+   * 落回模块常量，不能有任何隐式默认覆盖值——`probeArgs` 是导出函数
+   * （本文件就直接调用它），任何调用点都可能无意间共享覆盖值，等于把
+   * 「一次未经讨论的全局配额上调」换个位置重演。真正的用例 8（伪 bin 录 argv，
+   * 断言调用点隔离）留到 §4.2 实测完成、覆盖值真正接线之后再补。
+   */
+  const withoutOverride = probeArgs({ prompt: 'p' });
+  const withOverride = probeArgs({ prompt: 'p', budgetUsdOverride: '9.99' });
+
+  const budgetIdx = (args: string[]) => args.indexOf('--max-budget-usd');
+  assert.notEqual(budgetIdx(withoutOverride), -1, '--max-budget-usd 必须始终存在');
+  assert.notEqual(
+    withoutOverride[budgetIdx(withoutOverride) + 1],
+    '9.99',
+    '不传覆盖值时不得意外落到某个测试用的覆盖值上——必须是模块常量',
+  );
+  assert.equal(
+    withOverride[budgetIdx(withOverride) + 1],
+    '9.99',
+    '显式传入的覆盖值必须原样出现在 argv 里',
+  );
+  // 两次调用除这一个值外，其余 argv 必须逐项相同——覆盖只影响这一个旗标
+  const stripBudget = (args: string[]) => {
+    const i = budgetIdx(args);
+    return [...args.slice(0, i + 1), ...args.slice(i + 2)];
+  };
+  assert.deepEqual(
+    stripBudget(withoutOverride),
+    stripBudget(withOverride),
+    '覆盖预算不该连带改动任何其它旗标',
+  );
+});
+
 test('EV-40 输入开关：prompt 恒在 argv 末位（本文件全部结论都是 argv 形态下的）', () => {
   /*
    * 上一版为「第 3 步在 stdin 形态复验」加过 promptVia 分支，那是条死路
@@ -837,18 +876,71 @@ test('judgeTracePathStructured 三态：按 basename 比对，没跑完是 null'
   assert.equal(judgeTracePathStructured({ completed: false, toolUses: [], wantBasename: 'a.ts' }), null);
 });
 
-test('judgeJsonSchema 三态：parse 失败是 false，没跑完是 null', () => {
-  assert.equal(judgeJsonSchema({ completed: true, finalText: '{"first_line":"x"}', requiredKey: 'first_line' }), true);
-  assert.equal(judgeJsonSchema({ completed: true, finalText: '{"other":1}', requiredKey: 'first_line' }), false);
-  assert.equal(
-    judgeJsonSchema({ completed: true, finalText: 'not json', requiredKey: 'first_line' }),
-    false,
-    '跑完了但输出不是 JSON ⇒ 确实没按 schema 出，这是真结论',
+test('judgeJsonSchema 七格：行序互斥，null 成因各自独立（EV-74 计划 §3.4.1/§5 用例 3）', () => {
+  const base = {
+    timedOut: false,
+    exitCode: 0,
+    stderr: '',
+    eventCount: 1,
+    completed: true,
+    positiveControlOk: true,
+    finalText: '{"summary":"x"}',
+    requiredKey: 'summary',
+  };
+
+  // 前置门（r5 CODEX-02：timedOut 补显式断言）
+  assert.deepEqual(judgeJsonSchema({ ...base, timedOut: true }), { value: null, cause: 'not-completed' });
+  assert.deepEqual(judgeJsonSchema({ ...base, exitCode: null }), { value: null, cause: 'not-completed' });
+  assert.deepEqual(judgeJsonSchema({ ...base, positiveControlOk: false }), { value: null, cause: 'not-completed' });
+
+  // 干净拒绝——唯一允许落 false 的形态
+  assert.deepEqual(
+    judgeJsonSchema({ ...base, exitCode: 1, eventCount: 0, stderr: 'error: bad schema', completed: false }),
+    { value: false, cause: 'clean-reject' },
   );
-  assert.equal(
-    judgeJsonSchema({ completed: false, finalText: null, requiredKey: 'first_line' }),
-    null,
-    '没跑完 ⇒ 没测到，与「没按 schema 出」不是一回事',
+
+  // 两头皆空：静默失败
+  assert.deepEqual(
+    judgeJsonSchema({ ...base, exitCode: 1, eventCount: 0, stderr: '', completed: false }),
+    { value: null, cause: 'not-completed' },
+  );
+
+  // 非零退出但已吐出事件、completed !== true：跑到一半才失败
+  assert.deepEqual(
+    judgeJsonSchema({ ...base, exitCode: 1, eventCount: 3, completed: false }),
+    { value: null, cause: 'not-completed' },
+  );
+
+  // 零退出但未跑完（撞闸/未获模型答复）——cause 与「模型不合规」分开
+  assert.deepEqual(
+    judgeJsonSchema({ ...base, exitCode: 0, eventCount: 2, completed: false }),
+    { value: null, cause: 'not-completed' },
+  );
+
+  // completed 但不可 JSON.parse
+  assert.deepEqual(
+    judgeJsonSchema({ ...base, finalText: 'not json' }),
+    { value: null, cause: 'model-noncompliant' },
+    '跑通了但输出不是 JSON ⇒ 模型未按契约给出合规输出',
+  );
+
+  // completed 但缺 requiredKey
+  assert.deepEqual(
+    judgeJsonSchema({ ...base, finalText: '{"other":1}' }),
+    { value: null, cause: 'model-noncompliant' },
+  );
+
+  // completed 且 requiredKey 为 string ⇒ true（r5 CODEX-02 新增：本主题要买的核心保证）
+  assert.deepEqual(
+    judgeJsonSchema({ ...base, finalText: '{"summary":"一句话摘要"}' }),
+    { value: true, cause: 'ok' },
+  );
+
+  // 行序互斥（r5 CODEX-04≡GLM-02）：completed 是唯一分野，一旦为 true，
+  // 退出码不再影响结论——不会像 r4 表那样与「非零退出但已吐出事件⇒null」相撞
+  assert.deepEqual(
+    judgeJsonSchema({ ...base, exitCode: 1, eventCount: 3, completed: true, finalText: '{"summary":"x"}' }),
+    { value: true, cause: 'ok' },
   );
 });
 

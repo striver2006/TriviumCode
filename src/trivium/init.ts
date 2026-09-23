@@ -11,11 +11,10 @@
  * 全部操作**幂等**：重复运行不重复追加、不覆盖用户内容。
  */
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import type { Ctx } from './types.js';
-import { CONFIG_SCHEMA_ID, CONFIG_SCHEMA_ID_V1, defaultConfig, migrateConfigV1 } from './config.js';
+import { CONFIG_SCHEMA_ID, CONFIG_SCHEMA_ID_V1, defaultConfig, migrateConfigV1, resolveAssetRoot } from './config.js';
 import { createExclusive, ensureDir, exists, writeAtomic } from './util/fsx.js';
 import { say, step, warn } from './util/log.js';
 
@@ -40,10 +39,6 @@ export interface InitReport {
   updated: string[];
   skipped: string[];
   notes: string[];
-}
-
-function assetRootDefault(): string {
-  return process.env['TRIVIUM_ASSET_ROOT'] ?? path.join(os.homedir(), '.claude/skills/dual-critic');
 }
 
 /** 幂等追加带标记的片段。已存在标记则跳过 */
@@ -339,7 +334,7 @@ async function rewriteConfigToV2(
 
 export async function runInit(opts: InitOptions): Promise<InitReport> {
   const { ctx } = opts;
-  const assetRoot = opts.assetRoot ?? assetRootDefault();
+  const assetRoot = resolveAssetRoot(opts.assetRoot);
   const nodePath = opts.nodePath ?? ctx.config.runtime.node ?? (await stableNodePath(process.execPath));
   const dryRun = opts.dryRun ?? false;
   const report: InitReport = { created: [], updated: [], skipped: [], notes: [] };
