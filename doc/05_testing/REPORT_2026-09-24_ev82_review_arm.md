@@ -68,9 +68,29 @@
 - 第二段计划落笔前先做第 6 节的零配额静态佐证，用来缩小三种候选；
 - M10b 的范围变更（r5 §2.2「形态换源不在本里程碑」一句失效）与量级重估，另起 M10b 修订稿登记，不回改 r5。
 
-## 6. 可选佐证（未做）
+## 6. 静态佐证（2026-09-24，用户拍板 A 之后做）
 
-计划 r2 §4.3 的静态检索（`zcode.cjs` 包内配置层之后的选择路径：注册表建立与精确匹配、可选性 / 套餐过滤、请求发出前的模型映射）**本轮未做**。它能为三种候选提供旁证，但按设计 §3.3 纪律只作佐证、不作改动依据。是否做、在哪一段做，随用户对第 5 节的拍板一起定。
+对 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`（sha256 前 16 位 `b1df2ef3e5bd76c4`）做只读检索，零配额。
+打包后的混淆名随版本变（09-21 记的导入器 `Mqa` 在本版已是别的函数），下文一律引**登记名**（包内 `r(<混淆名>, "<登记名>")` 的第二参数），混淆名只作定位。
+
+| # | 读到什么 | 登记名 |
+| :-- | :--- | :--- |
+| 1 | legacy 导入把 `model.main` 转成默认选择时只取 `{ providerId, modelId }`，**不带 `options.reasoningLevel`** | `importLegacyCliConfiguredDefault` |
+| 2 | 初始选择：配置的默认选择先过 `isSelectable`，通过才记 `configured-default`；否则遍历可见 provider 的模型，取**第一个**补得出思考档位的，记 `registry-fallback` | `resolveInitialModelSelection`、`completeNewModelSelection` |
+| 3 | `isSelectable` 的最后一关要求 `options.reasoningLevel` 存在且在该模型可选值内；缺失即 `reasoning-level-missing`，判不可选 | `isSelectable`（内调的校验函数，返回码 `reasoning-level-missing` / `reasoning-level-not-supported`） |
+| 4 | 另一条解析路径只对 `reasoning-level-not-supported` 走旧档位兜底（`resolveLegacyReasoningLevel`），对 `reasoning-level-missing` **不兜底** | `resolveEffectiveModelSelection` |
+| 5 | CLI 启动日志有一条 `bootstrap.app.startup.runtime_config.completed`，`context.model` 是运行期选定的模型；诊断运行 `20260924T025839Z` 记的是 `bigmodel-coding-plan/GLM-5.3`，**先于任何网络请求** | 日志事件名 |
+| 6 | ZCode CLI 自身**没有**选模型的命令行旗标（包内 `"--model"` 两处都在内置的其它工具补全表里） | — |
+
+**推断链**（静态，**未在 headless 调用路径上验过**）：导入得到的默认选择缺思考档位 ⇒ 不可选 ⇒ 回落到第一个可见 provider 的第一个模型 `GLM-5.3`。这与全部读数一致：
+- 两臂只读 v2 文件，文件里确实写着 Flash，所以判 `config_copy`；
+- 真实运行走到选择器，Flash 被判不可选，回落首位。
+
+**对第 4 节三种候选的收窄**：落在候选 1（运行期注册表层），但成因**不是 ID 形态配不上，而是缺思考档位**；候选 2、3 没有证据支持。
+所以「形态换源」这个说法不准确，修法可能小得多，不涉及 providerId / modelId 换源，也不依赖桌面端 OAuth 账号态。
+**用户 2026-09-24 同意按此改写第二段范围**：先做零配额的运行期观测（第 5 行的日志事件），再定修法。
+
+按设计 §3.3 纪律，本节只作佐证、不作改动依据；第二段计划以运行期实测为准。
 
 ## 7. 本段收口前待登记的偏离（代码双审两轮裁决承诺）
 

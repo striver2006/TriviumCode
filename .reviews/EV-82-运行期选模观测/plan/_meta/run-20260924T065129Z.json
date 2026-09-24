@@ -1,0 +1,276 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260924T065129Z",
+  "topic": "EV-82-运行期选模观测",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "本轮审 EV-82 第二段计划。重点：一、启动事件的运行期选定能否作依据，首次请求前会不会被改写；二、第 5 节判读表是否互斥穷尽，置首格能否被别的机制造出；三、读 CLI 日志只取一个字段的凭据面与内容面是否够稳；四、置首变体是否真的只动顺序，成员 id 与键名不同时能否定位；五、第 6 节修法候选有无漏项，置首方案的守卫盲区改判据思路是否成立。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "9339ac16fb8d3497dc980b8237023ee21e1d86ff",
+    "tree_hash": "85e0e8c7f3a23560dd97a668eea482f699a7059a",
+    "dirty": true,
+    "subject_sha256": "9d0f5813ce6dfa7ea05c900d47ec1b0b067b8018047d3e30e7e88a51d1658716",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "721225537c1526c1aa73be7a023f3b724e82eccf",
+      "dirty": false,
+      "inputs_sha256": "83724e9b413948c03d7030b4cd5092338eb1a8fb6605ee6f97cf0ad5b4f07d57",
+      "built_at": "2026-09-24T06:31:10.093Z"
+    }
+  },
+  "started_at": "2026-09-24T06:51:30.631Z",
+  "finished_at": "2026-09-24T06:59:53.501Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.156.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 294.269,
+      "tool_calls": {
+        "run_command": 47,
+        "project_reads": 20
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0d22f-01a8-78f1-99a3-c328c20c51d6",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.9",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 233.275,
+      "tool_calls": {
+        "read": 16,
+        "grep": 2,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 10
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 225248,
+        "output_tokens": 29820,
+        "thinking_tokens": 22499,
+        "cache_read_tokens": 1569737,
+        "total_tokens": 255068
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "19a253dd-a7bd-448c-a4ee-822edf118045",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 502.599,
+      "tool_calls": {
+        "read": 14,
+        "grep": 2,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 12
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 9,
+        "inputTokens": 924684,
+        "outputTokens": 30035,
+        "totalTokens": 954719,
+        "cacheReadTokens": 782208,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_847bc694-2214-4128-9048-de44c0882d4d",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "EV-82-运行期选模观测/plan/_meta/brief-codex-20260924T065129Z.md",
+      "sha256": "04885c821464ae6a78b721aeada41ece49468da2f480391f36217fa662ce9320"
+    },
+    {
+      "path": "EV-82-运行期选模观测/plan/_meta/brief-gemini-20260924T065129Z.md",
+      "sha256": "fd791f032867f83e1e26d04d5441d88c00e9080f2bd2d3d78621eb1815782c7e"
+    },
+    {
+      "path": "EV-82-运行期选模观测/plan/_meta/brief-glm-20260924T065129Z.md",
+      "sha256": "8849fbd016856409ecc77fd3389aa20467076891e8c2614e212b564d6b4ce40f"
+    },
+    {
+      "path": "EV-82-运行期选模观测/plan/_meta/review-codex-20260924T065129Z.json",
+      "sha256": "bbade28d363ef2632660f132fec6e74f2d94fb867983420ea21e005dd35dc5fa"
+    },
+    {
+      "path": "EV-82-运行期选模观测/plan/_meta/review-gemini-20260924T065129Z.json",
+      "sha256": "0f63012c5606e5d39450d27b4dda2c198b17d862d66355b0f6a49132558e5f9b"
+    },
+    {
+      "path": "EV-82-运行期选模观测/plan/_meta/review-glm-20260924T065129Z.json",
+      "sha256": "6c999157378897c9e5d949c308df75ecbf6860eee58458994e8baca062658cdf"
+    },
+    {
+      "path": "EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-codex.md",
+      "sha256": "b680c933a52f382a98feb2731e1c19a0557538d30019e6a79dcdcfdf19fa1342"
+    },
+    {
+      "path": "EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-gemini.md",
+      "sha256": "30a459671b06b7c2209e5eb1e20a684beb0c1eacf10d3a869c65df4a9bb165c6"
+    },
+    {
+      "path": "EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-glm.md",
+      "sha256": "8658cf562862a84e2b316b8fc0cc17870163ab5f161fc64273baa7157f79373a"
+    },
+    {
+      "path": "EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-claude.md",
+      "sha256": "9d0f5813ce6dfa7ea05c900d47ec1b0b067b8018047d3e30e7e88a51d1658716"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本与仓库 HEAD 不同版（构建于 7212255，仓库 HEAD 9339ac1）"
+    ]
+  },
+  "status": "success"
+}

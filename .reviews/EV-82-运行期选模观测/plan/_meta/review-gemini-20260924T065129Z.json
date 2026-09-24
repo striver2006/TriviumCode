@@ -1,0 +1,87 @@
+{
+  "agreed": [
+    "保持零配额边界：严格控制凭据替换与残余扫描，明确哨兵拉起走不到启动阶段时停下报告用户，不冒真实模型调用。",
+    "内容面与凭据面最小化暴露：读取 CLI 启动日志仅提取单个 context.model 字段，不回显日志原文，隔离会话与敏感凭据。",
+    "探针变体控制严格：置首变体原则上只调换 provider 与 models 的键顺序而不改动键值与嵌套结构，保持同形性质。",
+    "小步演进分段清晰：严格将「运行期观测与置首验证」限制在探针层面，审查臂修法留待第三段另走双审，不跨段实施。"
+  ],
+  "consulted": [
+    ".reviews/EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-claude.md",
+    "doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/guard.ts",
+    "test/unit/zcode-full-copy-arm.test.ts",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/EV-82-同形第二臂与构建标识/plan/2026-09-24-EV-82-同形第二臂与构建标识-r2-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "doc/02_design/README.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "被审文档 plan §5（第 84-90 行）判读表中，判定次序写明「先看运行期选定是否读得到，再按下表」，自上而下匹配 (E) 至 (F4)。(E) 仅定义「三者都读不到」，单臂或双臂为 null 时无格可落；且 (F4) 两臂一致性判定位于 (F1) 之后。对比第一段计划 .reviews/EV-82-同形第二臂与构建标识/plan/2026-09-24-EV-82-同形第二臂与构建标识-r2-claude.md §4 判读表以「任一为 null」作为首要独立判定门禁。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": ".reviews/EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-claude.md:84-90",
+      "problem": "第 5 节判读表非穷尽且分支互斥性倒置：1. (E) 格仅定义「三者都读不到启动事件」，若出现单臂或双臂因崩溃/超时返回 null 而非三者全 null 时，以及读出未预期的第三种模型时，表格无格可落；2. 判定优先级倒置：(F4) 两臂一致性排在 (F1) 之后，若白名单臂原样选中 Flash 而同形臂原样落到首位 GLM-5.3、置首选中 Flash，自上而下匹配会直接命中 (F1)，从而掩盖了同形臂原样未选中实际是因为两臂存在 H2 差异的事实。",
+      "severity": "major",
+      "suggestion": "重构判定次序与表格：首先设定门禁判定「任一臂为 null」落入未判定/单臂排查格；其次优先校验两臂原样一致性（白名单原样 ≠ 同形原样则先落 (F4) 暴露 H2 差异）；在两臂原样一致且非 null 的前提下，再根据原样与置首的读数分流至 (F1)/(F2)/(F3)，并对非首位非请求的异常模型增设兜底格。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "被审文档 plan §3（第 60-61 行）仅说明两条探针臂在 finally 前调用，并在 doctor 两臂 note 各加一段；plan §5（第 79-80 行）直接要求执行 trivium doctor --only zcode --no-model-calls 读出三个值。但项目源码 src/trivium/probes/zcode.ts 第 1087-1136 行中，probeZcode 仅依次调用了白名单臂与同形臂（opts.modelOverrideProbe 与 opts.modelOverrideFullCopyProbe），既无第三个臂的调用接线，也无专属注入口与 note 字段。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": ".reviews/EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-claude.md:60-62,79-80",
+      "problem": "置首变体在 probeZcode 中的调度编排与展示接线未闭环：若 probeZcode 维持现有的两臂调用，执行 doctor 命令根本不会拉起置首变体，导致实验无法读出置首值；若 probeZcode 默认改为无条件拉起三次（白名单 + 同形原样 + 同形置首），又会导致日常零配额 doctor 耗时与超时风险无端增加 50%。计划对置首变体究竟是由 probeZcode 常驻调度还是通过参数/测试入口派发未予明确。",
+      "severity": "major",
+      "suggestion": "明确置首变体的调用闭环与接线规范：若将其纳入 probeZcode 常规探测，须在 probeZcode 中显式增加置首调用的接线与测试注入口，并评估日常耗时开销；若仅用于本次实验，须明确其 CLI 旗标触发方式或独立的测试拉起脚本，并在 §3 与 §5 保持调度形态一致。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "被审文档 plan §4（第 70-73 行）说明「modelId 取的是成员的 id ?? 键名（与导入器同规则）：按规则找到对应的键再挪动」。但 src/trivium/adapters/zcode.ts 第 578-581 行 legacyProviderMembers 中包含 if (m.deleted === true) continue；同时第 670 行 opts.transformCopy(cfg) 调用未向回调传递限定后的标识符。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": ".reviews/EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-claude.md:70-74",
+      "problem": "置首变体在反查键名时未排除已删除成员，且跨函数参数传递未闭环：1. 查找目标成员键时若只匹配 id ?? 键名，当配置中存在被标记为 deleted: true 的同名或残余条目时，可能误将已废弃的模型键置首；2. prepareZcodeHome 中的 transformCopy(cfg) 现有签名只传配置对象，未将 qualifyAgainstCliConfig 算出的目标 providerKey 和 modelId 传出，transformCopy 内部如何获取目标键未定义。",
+      "severity": "minor",
+      "suggestion": "明确置首成员反查必须严格过滤 deleted === true 成员；并明确限定结果在 transformCopy 中的获取方式（通过闭包捕获或扩展回调参数签名），限定失败时保持原样早退。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "被审文档 plan §3（第 59-60 行）仅写明「读 <home>/.zcode/cli/log/*.jsonl，找事件 bootstrap.app.startup.runtime_config.completed，返回其 context.model」。src/trivium/probes/zcode.ts 第 840-851 行 readTrace 会对目录下的 jsonl 文件排序取最新，且 src/trivium/adapters/zcode-trace.ts 第 138-144 行对每行 JSON 均有容错捕获。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-claude.md:59-60",
+      "problem": "readRuntimeSelectedModel 缺乏多文件/多事件选择规则及截断容错约定：当目录下存在多个日志文件时未明确文件选取顺序，单文件多条同名事件时未指定取最新（应按文件排序取最新文件中的最后一条事件）；此外在超时杀进程等异常场景下，末行可能产生非完整 JSON，若未严格 fail-closed 返回 null，可能抛错中断甚至在异常详情中泄漏敏感信息。",
+      "severity": "minor",
+      "suggestion": "在计划中补齐日志读取防卫契约：明确按文件名排序读最新 .jsonl 文件，多条事件取最后一条；严格捕获 I/O 及单行 JSON 解析异常，异常时 fail-closed 静默返回 null，绝不抛出或回传日志原文。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "被审文档 plan §6（第 100 行）指出「守卫 model_override_applied 在请求即首位时分不出『配置生效』与『回落』，判据要改成看结果：运行期选定 + rollout 逐条模型 = 请求值」。第一段报告 doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md §4 指明 modelSelection.reason 在 trace.json 中记录为 fallback。",
+      "id": "AGY-05",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-claude.md:100",
+      "problem": "第 6 节 M1「改判据」思路模糊了原生配置生效与回落机制的界限：置首本质是利用不可选时的回落首位机制，若守卫判据仅看生效模型相等，将完全丧失对导入流程失效与回落行为漂移的机器感知能力。",
+      "severity": "nit",
+      "suggestion": "若第三段采用 M1 方案，守卫元数据应显式注记生效路径是回落还是配置生效（结合 trace.json 的 modelSelection.reason），避免以回落冒充原生覆盖导致长效守卫失明。"
+    }
+  ],
+  "not_covered": [
+    "ZCode 桌面端 v2 个人配置迁移器在 Electron 层的原生调用路径未测（纯通过 CLI 日志及外部文件观测）",
+    "真实网络与带真实凭据配额的完整 headless 调用未测（保持零配额安全边界）",
+    "ZCode 未来版本对 CLI 启动日志事件名及 context 属性结构的长期向下兼容性"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本轮审 EV-82 第二段实施计划。最主要的问题是：第 5 节判读表既非穷尽（缺少部分臂为 null 的未判定分支，可能导致实验读数无格可落）又存在分支优先级倒置（(F4) 一致性排在 (F1) 之后，会掩盖两臂原样的 H2 差异）；其次，置首变体在 probeZcode 中的调度接线未闭环，导致 doctor 无法直接采集到第三个读数。建议调整判读表优先级与门禁，并补齐置首变体的编排调用设计后再行实施。",
+  "verdict": "request-changes"
+}
