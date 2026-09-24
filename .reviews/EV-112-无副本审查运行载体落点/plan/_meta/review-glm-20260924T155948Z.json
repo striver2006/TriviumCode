@@ -1,0 +1,105 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最需要处理的两条：一、P9② 的 beta 改写在包内还有第二个触发器——process.argv 任一路径段为 zcode-beta 即改写存储根，清 ZCODE_BETA/ZCODE_ENV 挡不住；审查运行两支由「ZCODE_STORAGE_DIR 非空早退」安全，但探针臂（L1～L7）只靠清，入口路径含该段时保护不成立（GLM-01）；二、落点自检的析取判据对「半采纳」失明——日志键在 rB 直读环境、存储键经 aun 进 config，是两条独立代码路径，只丢存储键映射时 carriers_landed 仍为 true，rollout/db/artifacts/sessions 静默回真实 HOME（GLM-02）。其余三条是 E1 证据链与 R6 表述的小项。五个焦点逐一核过：D2-(a) 在包内三处决定性证据下成立（storage 仅 dir/sessionDbPath 两字段且 zod 强制、全包无缺省字面比较、rB 生产路径不传 logDir 形参）；十一键读法与 passthrough 放行名单全文逐条亲证，环境键层面没有第四类；U3b/U8 与 M4/M9/M10 咬合成立（HOME 钉法是既有测试惯例）；stderr 处置基本够、按 GLM-03 收紧两点。结论 approve-with-nits。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4.3（落点开关键 ZCODE_BETA / ZCODE_ENV 行）；§1.2 P9②；§5.1 L1～L7",
+      "problem": "RMi 的 beta 存储根改写除宿主键外还有第二触发器：对 process.argv 逐项匹配 /(^|[/\\\\])zcode-beta(?:$|\\.)/u，任一路径段为 zcode-beta 即把 ZCODE_STORAGE_DIR 写成 homedir()/.zcode-beta——清 ZCODE_BETA/ZCODE_ENV 挡不住它。审查运行两支因三键设置了 ZCODE_STORAGE_DIR（RMi 首句非空即早退）而安全；但 L1～L7 探针路径不设存储根、只靠清，§4.3 该行「探针臂仍靠清」的保护在入口路径含 zcode-beta 段（beta 渠道安装、用户自配 entrypoint）时不成立。实害有界：L2～L4 的 HOME 是临时目录/探针副本，改写结果落各自 HOME 内（回读照常、随临时根删除）；L5～L7 落真实 ~/.zcode-beta，属 R2 类残余——但它让「探针测的环境＝审查运行要面对的环境」再破一格，且 doctor 无声。",
+      "evidence": "包内只读字面亲证（/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs，第 4 行常量段）：`function RMi(e,t){if(e.ZCODE_STORAGE_DIR?.trim())return;let n=e.ZCODE_BETA===\"1\"||e.ZCODE_ENV===\"beta\",o=t.some(s=>/(^|[/\\\\])zcode-beta(?:$|\\.)/u.test(s));!n&&!o||(e.ZCODE_STORAGE_DIR=join(homedir(),\".zcode-beta\"))}`，调用链 `NCe(e,t=process.argv){…IZn(e,t)}` 证实第二参就是 argv；src/trivium/probes/zcode.ts:72 的 ENTRY_CANDIDATES 与 configured entry 是 argv 中唯一的路径来源。",
+      "suggestion": "§4.3 开关键行补注：beta 改写另有 argv 触发器（入口路径含 zcode-beta 段），清键挡不住，审查运行由早退挡住，探针臂命中时按 R2 类残余如实登记；可选加固是 doctor 在 entrypoint 命中该模式时出信息级 note。另：本轮把包内 ZCODE_* 字面全枚举逐类核过第四类（结论见 agreed），§9-2 的悬问可按「环境键层面没有第四类、argv 触发器一处」收口写进 §4.3。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4.6（落点自检判据）；§1.2 P1 / P3；§6.1 U8",
+      "problem": "落点自检判据是「日志里有本次 sessionId 的行」或「rollout 文件在」的析取，两项全缺才算 false。但 P1 的 ZCODE_LOG_DIR 在 rB 里直读环境，P2/P4 的 ZCODE_STORAGE_DIR / ZCODE_SESSION_DB_PATH 经 aun 后缀映射进 config——两条互不相干的代码路径可以独立漂移：若某版 CLI 只认日志键、丢了存储键映射，日志照落运行目录（自检过、modelFromLog 照常、model_effective 非 null），而 rollout/db/artifacts/sessions 全部落回真实 HOME——carriers_landed 为 true、播报不出，EV-112 场景按一半复发且完全不可见。E2 的真实 HOME 只读核能兜住这一形态，但 E2 可选、无副本支 133 次从未走过。",
+      "evidence": "包内只读字面：rB 的 `o=e.logDir??e.env?.ZCODE_LOG_DIR??N6s()`（line 2106；且全部五个调用点都是 `loggerFactory??rB({env})`、不传 logDir 形参）与 aun 的后缀映射表（line 2110：STORAGE_DIR、SESSION_DB_PATH|SESSION_DB 是仅有的三个 storage 后缀）分属两个模块；plan §4.6 的判据与 U8 的假入口（「无视三键」是全有或全无）都没有半采纳臂。",
+      "suggestion": "把两项事实分开持久记（trace.json 的 carriersLanded 拆成「日志在 / rollout 在」两个布尔），播报条件可仍取「双缺」以控噪，但单项缺失要进留痕供事后审计；或直接把判据收紧为合取，接受 rollout 文件名漂移时的一次误报（那本身就是 CLI 行为变了的信号）。U8 相应补一条「假入口只认 ZCODE_LOG_DIR、不认存储键」的半采纳臂。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §6.3 E1（重复取样）；§1.5 读法第 4 条",
+      "problem": "对照组 stderr 多出「ZCode Built-in missing」一行交给 E1 重复取样再判，处置方向对，但两处可再收：①「不稳定 ⇒ 登记为与三键无关的时序差」推断过强——每组 3 次的二元结果只够支撑「未观察到稳定关联」，把它定成「与三键无关」等于往 evidence 里写一份超出样本能力的因果结论；②机理定位有现成且零成本的线索没收：E0 两组的 zcode-builtin.json / zcode-builtin-refresh.json 都落在 HOME 侧 .zcode/v2/runtime/provider/…（同一路径），报错模板集中在内置 provider 远端刷新，「missing」很像刷新后对 builtin 物化文件的检查-使用竞态——E1 只记 stderr 首行，把这两文件的存在性/mtime 与 stderr 全文一并记下，机理定位成本会低很多。",
+      "evidence": "doc/05_testing/evidence/ev112-e0-20260924/e0-output.json：control.stderr_head 首行为 'ZCode Built-in missing'、experiment 无此行；两组 home_other_files 都含 .zcode/v2/runtime/provider/darwin-aarch64/0.0.0-dev/endpoint-…/zcode-builtin-refresh.json 与 zcode-builtin.json；plan §6.3 E1 对重复取样只要求「记录 stderr 首行」。",
+      "suggestion": "E1 采样记录加两项：两组 HOME 侧 zcode-builtin*.json 的存在性与 mtime、脱敏后的 stderr 全文（不只首行）；「不稳定」档的措辞降为「未观察到稳定关联／未解释的观测差」，不下「与三键无关」的因果判定。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §8 R6；§7（BACKLOG 关闭条目与设计文档同步句）",
+      "problem": "R6 写「db、artifacts、memories、sessions 在运行目录里不脱敏、不扫描」，与 scrubZcodeHome 现状不符：exclude 只有 plugins 与 db 两个前缀，artifacts/memories/sessions 实际在「命中即删」扫描域内（文本命中凭据形态即删、二进制按 unscannable 整删）。实际行为比描述更严，无安全缺口，但 §7 要把这句写进设计文档与 RUNBOOK——照抄会落一份与代码不符的行为描述。追根的话这是我上一轮 GLM-05 的原话（「既不脱敏也不扫描」）不准确，r2 的 R6 继承了它，本轮更正。",
+      "evidence": "src/trivium/adapters/zcode.ts:509-513（scanAndRemoveSecrets 的 exclude 只有 .zcode/cli/plugins 与 .zcode/cli/db，redactUnder 只有 rollout 与 log）；src/trivium/scrub.ts:219-307（非 exclude、非 redactUnder 的文本文件命中即删、二进制整删）；test/unit/credential-scrub.test.ts:41-60 的同款断言结构。",
+      "suggestion": "R6 与 §7 同步句改准为：「log/rollout 就地脱敏；db/plugins 整目录排除；artifacts/memories/sessions 过命中即删扫描（命中即删、二进制整删），幸存内容随运行目录保留期整删」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §6.3 E1（副本支对照）",
+      "problem": "E1 副本支对照是 D2-(a)「布局不变」的主要验证，但两组除三键外的环境纯净性没有控制：「不设三键」臂 env 同旧代码＝只清四个目录键，「设三键」臂＝清十一键再设三个——若 E1 脚本进程环境里预置了七个新键中的任何一个，两组的差异就不止三键，布局对照的归因被污染。E0 脚本已记录 host_zcode_env_keys 并实测为空，E1 清单没有对应项。",
+      "evidence": "doc/05_testing/evidence/ev112-e0-20260924/e0-carriers.mjs:173（hostZcodeKeys 记录）与 e0-output.json 的 \"host_zcode_env_keys\": []；plan §6.3 E1 的条目清单无此项。",
+      "suggestion": "E1 脚本沿用 E0 的 host_zcode_env_keys 记录并断言为空（或两组都以十一键清底后再按三键分岔），写进 §6.3 的 E1 清单。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "D2-(a) 成立，本轮在包内补了三处决定性证据：Lm.storage 缺省对象与 zod schema $6s 都只有 dir / sessionDbPath 两个字段（分层合并 _at 对顶层键是 Object.assign 浅替换，但 Env 层两键都设、无第三字段可丢）；全包 \"~/.zcode\" 字面仅缺省对象一处，不存在按字面比较缺省路径的逻辑；rB 全部调用点都是 loggerFactory ?? rB({env})、生产路径不传 logDir 形参，ZCODE_LOG_DIR 不被 config 压制。三键值与 HOME 缺省经 zg 展开后是同一路径，E1 副本支「设/不设」布局对照的设计成立。",
+    "§4.3 十一键的包内读法逐条亲证成立：aun 后缀映射表全文里能进 storage.* 的只有 STORAGE_DIR、SESSION_DB_PATH、SESSION_DB 三个后缀（双别名与后出现的赢均属实）；RMi 早退条件是 ZCODE_STORAGE_DIR?.trim()；CZn 只认 development/production/test（XW 归一）且 .cjs 入口推断恒 production；Hzo 只认 ZCODE_MESSAGE_ENABLED 为 1/true、mailbox 根 zg(env.ZCODE_MAILBOX_ROOT ?? \"~/.zcode/mailbox\") 直读环境、缺省关。开关键「只能清」处置正确且方向 fail-safe：清运行档位后两支都不会进 cli/debug，清 MESSAGE_ENABLED 关掉审查员用不到的会话间消息，均无审查行为损失。",
+    "passthrough 旁路核到名单全文：yZn（代理/CA/OTEL 端点与头/遥测/CUA broker，精确匹配）+ IMi（npm/yarn/pnpm 代理与 CA 正则）+ TMi 排除表，FQ 解包按同一 q8t 名单过滤——任何落点键都进不去，r2「无害」结论成立；编排器虽不清 ZCODE_TOOL_ENV_PASSTHROUGH_JSON 本身，但该通道装不进落点键。",
+    "「第四类能改写落点的键」在环境键层面不存在：包内 ZCODE_* 字面全枚举后逐类核过——ZCODE_DEBUG 是调试旗标、ZCODE_AGENT_WORKDIR 是 glm agent 运行时资源定位提示、ZCODE_DYNAMIC_WORKFLOW_MODE 是 disabled/onDemand/alwaysOn 功能开关、ZCODE_LOG_CONSOLE 只把日志加打到 stderr（R4 已记）、loadCliDotenv（override:false、自 cwd 向上找 .env）仅在 runtime env 为 development 的 protocol-server 路径装载而编排器子进程推断为 production、不可达，ZCODE_BUILTIN_PROVIDER_BUNDLED_CONFIG_FILE 改 provider 定位不改落点（EV-82 论域，可另行登记）。",
+    "§4.6 播报走守卫通道、字段不进 run.json 与 model_override_reorder 同口径：guard.ts:479-482 的侧摘要透传、:864-871 的 modelOverrideApplied===false 播报、types.ts:1562-1570 的 trace-only 先例俱在，新增 carriers_landed 走同一条通道机制上现成。",
+    "U3b/U8 与 M4/M9/M10 咬合成立：U3b 需要的「测试进程 HOME 钉到临时用户目录」在 test/unit/zcode-model-selection.test.ts:263-267 与 :299-300 已是既有惯例，M4 变异下诱饵必被 os.homedir() 读回；M9（恒 true）由 U8 的 carriers_landed===false 断言咬住；M10（开关键不进 zcodeProviderEnv）由 U2 十一键诱饵咬住；M4 另由 U3 的 model_effective 非 null 断言独立咬住。",
+    "§5 影响表与代码逐项对上：invokeZcode 全部四个调用点（src/trivium/adapters/zcode.ts:813/:942、src/trivium/probes/zcode.ts:1075/:1397）都在表内；probes/zcode.ts:521 的「与审查运行同一形态」注释、doctor note :1359-1365、version 探针用例名「EV-110 起四个」（test/unit/zcode-provider-env.test.ts:535）都实际在；run() 回读统一式对副本支无行为差——prepareZcodeHome 的 homeDir 就是 zcodeHomeUnder(dirname(out_dir))（zcode.ts:750/:937），清扫与回读同根。",
+    "E0 读数与 e0-output.json 逐项互证（stderr 首行差异、385 plugins 的 0/385 分置、HOME 侧 v2 文件两组同清单、真实 HOME 只按文件名核的局限如实登记）；§7 的设计文档基线 v1.3.38 与 doc/02_design/README.md 一致；被审文件 sha256 与任务书声明逐字一致，本轮审的就是送审稿。"
+  ],
+  "not_covered": [
+    "scripts/mutation-check.mjs 与 scripts/build.mjs 未读，变异装置沿用既有前提，按计划自述接受。",
+    "包内 P2/P5/P5b/P6/P7 的完整函数链（Zzo/JWr/bbe/XVo/ekt/T$o/M9o）未逐个重走，接受计划行号加 E0 实测旁证；本轮新核的是 P1/P3/P4/P9/P10、passthrough 全名单、aun 映射表、rB/RMi/CZn 与第四类候选。",
+    "三份 zcode 单测只读了引用段（zcode-provider-env.test.ts :160-280 及 grep 命中、zcode-model-selection.test.ts :209-364、zcode-runtime-selection.test.ts :400-480），未逐例全读。",
+    "run.v2 schema 对 critics 段多余字段的拦截行为未亲核，「carriers_landed 不进 run.json」按 types.ts:1562-1570 注释与 review.ts 不透传的先例接受。",
+    "codex / agy 两侧适配器未查（本题只涉 glm 侧）。",
+    "E1 / E2 尚未发生，本审只核验收设计，不预判读数。"
+  ],
+  "consulted": [
+    ".reviews/EV-112-无副本审查运行载体落点/plan/2026-09-24-EV-112-无副本审查运行载体落点-r2-claude.md（被审对象，sha256 校验一致）",
+    ".reviews/EV-112-无副本审查运行载体落点/plan/2026-09-24-EV-112-无副本审查运行载体落点-glm.md",
+    ".reviews/EV-112-无副本审查运行载体落点/plan/2026-09-24-EV-112-无副本审查运行载体落点-revised-claude.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/scrub.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/types.ts",
+    "test/unit/zcode-provider-env.test.ts",
+    "test/unit/zcode-model-selection.test.ts",
+    "test/unit/zcode-runtime-selection.test.ts",
+    "test/unit/credential-scrub.test.ts",
+    "doc/05_testing/evidence/ev112-e0-20260924/e0-carriers.mjs",
+    "doc/05_testing/evidence/ev112-e0-20260924/e0-output.json",
+    "doc/08_project/BACKLOG.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs（项目外厂商包，只读字面抽查，非仓库相对路径）",
+    "/Users/chenzhenbo/.claude/skills/dual-critic/schema/review.v1.json（输出契约）"
+  ]
+}

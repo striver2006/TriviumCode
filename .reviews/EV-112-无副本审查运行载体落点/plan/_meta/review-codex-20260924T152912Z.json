@@ -1,0 +1,100 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "总判断：我按包内字面逐条复核了 P1/P2/P3/P4/P8，全部属实；D1 选 (b) 是被 P2（rollout 由存储根推出、`JWr` 才回落 `e4s`）逼出来的，取舍站得住；§5.1 的 L1～L9 与代码逐条对得上，没漏路径；M2/M4 确实咬得住反序与回读回落。\n最危险的一条：清除清单仍不完整——宿主预置 `ZCODE_BETA=1` / `ZCODE_ENV=beta` 时，CLI 启动会自己把存储根改写成 `<HOME>/.zcode-beta`（`RMi`），而 D2-(b) 让副本一支的 Env 层为空，于是该支的 rollout/日志落点与固定回读路径分叉、`model_effective` 静默落空，且 `.zcode-beta/cli/{log,rollout}` 不在 `redactUnder` 名单里（脱敏变整删）。同一机理下 R1 更实：CLI 的用户层配置文件就是副本源本身。\n次要两条：`ZCODE_MAILBOX_ROOT` 这一载体根未进清单也未登记；三键是否被当前版本采纳缺运行期信号，用例侧抓不到（假入口与断言是同一份读法）。\n以上都可在实现时顺手补，不必改设计骨架。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "security",
+      "location": "plan §4.3 / src/trivium/adapters/zcode.ts:305",
+      "problem": "清除清单按「宿主可能预置的 ZCODE_* 目录键」收口，但漏了两个能**改写存储根**的键：`ZCODE_BETA=1` 与 `ZCODE_ENV=beta`。CLI 启动时 `NCe(process.env)` → `IZn` → `RMi`：若 `ZCODE_STORAGE_DIR` 为空，就把 `os.homedir()/.zcode-beta` 写进 process.env，随后 `aun` 按 Env 层（40）映射成 `storage.dir`。D2-(b) 下副本一支的 Env 层为空 ⇒ 该支的 rollout/artifacts/plugins 落 `<副本 HOME>/.zcode-beta/cli/...`，而 §4.5 的回读（两支都读 `<sideDir>/home/.zcode/cli`）读不到 ⇒ `model_effective` 静默落空（EV-82 守卫只剩「未回读到」）；更麻烦的是 `scrubZcodeHome` 的 `redactUnder` 只列 `.zcode/cli/{rollout,log}`，`.zcode-beta/cli/rollout` 下逐字含送审包的文件会从「就地脱敏」变成「扫描器命中即删」，db 也从排除名单掉出来（`.zcode-beta/cli/db` 不匹配 exclude）。无副本一支反而免疫——它显式设了三键之一，`RMi` 见非空立即早退。也就是说「设」同时是这条洞的补丁，而计划只把「设」用在了一支上。",
+      "evidence": "读了 `src/trivium/adapters/zcode.ts:305`（`ZCODE_DIR_ENV_KEYS` 四键，无 BETA/ENV）、`:509-513`（`exclude`/`redactUnder` 只认 `.zcode/cli/...`）、`:942-951`、`:996`；`src/trivium/util/exec.ts:110-114`。包内 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`（sha256 前 16 位 `b1df2ef3e5bd76c4`，与 §1.2 一致）字面：第 4 行 `function RMi(e,t){if(e.ZCODE_STORAGE_DIR?.trim())return;let n=e.ZCODE_BETA===\"1\"||e.ZCODE_ENV===\"beta\",...;!n&&!o||(e.ZCODE_STORAGE_DIR=join(homedir(),\".zcode-beta\"))}`、`IZn` / `NCe(e,t=process.argv)`，以及第 15449 行 CLI main `Ioc(){...NCe(process.env);...}`（确认在 CLI 路径上以 process.env 调用）；第 2110 行 `aun` 把 `STORAGE_DIR` 后缀映射进 `o.storage.dir`。",
+      "suggestion": "把 `ZCODE_BETA`、`ZCODE_ENV` 并进清除清单（与 EV-110 并入 `ZCODE_LOG_DIR` 完全同构：宿主值不该进子进程，清掉只把落点拉回各自 HOME，方向 fail-safe），或取 §4.2 的 (a) 让两支都显式设存储根从而让 `RMi` 早退。两者都零配额可验：把这两个键加进 U2 的诱饵表并断言子进程看不到即可。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "security",
+      "location": "plan §1.2 载体表 / §3 做 / §4.1",
+      "problem": "§1.2 的表与「P1～P7 全部落进指定根」的结论只覆盖了两条取值链（HOME 派生与存储根派生），漏了第三个**直接读 env、且不随存储根**的载体根：`ZCODE_MAILBOX_ROOT`（缺省 `zg(\"~/.zcode/mailbox\")`，由 `ZCODE_MESSAGE_ENABLED=1|true` 开启）。它是会话间消息（mailbox）的落点，无副本一支 HOME 为真 ⇒ 落真实 `~/.zcode/mailbox`；宿主预置该键时副本一支也落到清扫面之外——与 EV-110 当初并入 `ZCODE_LOG_DIR` 的理由逐字同构。计划既没清它、也没在 §8 登记，属于清单边界没写实：§9.1 问的正是「还有没有别的含送审内容的载体」。",
+      "evidence": "包内字面（同一次全量扫描）：`ZCODE_[A-Z0-9_]+` 共 154 个键、其中 path-ish 22 个，`ZCODE_MAILBOX_ROOT` 是唯一「读 env 得根目录」而不在 `ZCODE_DIR_ENV_KEYS`/`ZCODE_CREDENTIAL_ENV_KEYS` 里的那个（`src/trivium/adapters/zcode.ts:305,312`）；第 15243 行 `Dt=Hzo(e.env??process.env),gn=e.sessionMailboxPort??(Dt?F2o({rootDir:zg((e.env??process.env).ZCODE_MAILBOX_ROOT??\"~/.zcode/mailbox\")}):void 0)`；第 14801 行 `function Hzo(e){return e.ZCODE_MESSAGE_ENABLED===\"1\"||e.ZCODE_MESSAGE_ENABLED===\"true\"}`；`zg` 用 `homedir()` 展开 `~/`（第 2108 行）。",
+      "suggestion": "要么与三键同批处理（清 `ZCODE_MAILBOX_ROOT` 并指向 `<root>/.zcode/mailbox`），要么在 §8 残余里明写触发条件（`ZCODE_MESSAGE_ENABLED`）与处置——两条都不影响 P1～P7 的主结论，只是别让「清单已完整」这句话在 mailbox 上不成立。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §1.2 / §6.1 U3-U4 / §6.3 E0-E1",
+      "problem": "「CLI 采纳这三个键」是从一个 15 MB 压缩产物里读出来的**厂商能力事实**，而该产物随 ZCode 桌面应用自动更新；落成实现后没有任何运行期信号。键改名或后缀映射变了，无副本一支只是悄悄回到真实 HOME：`route: global` ⇒ `overrideAttempted=false` ⇒ EV-82 守卫不判（`decideModelOverride` 直接返回无字段），`guard` 只在 `applied===false` 时出声，唯一症状是 `model_effective` 变 null（会被读成「未回读到」而不是「键没生效」）。用例侧同样抓不到：U3/U4 的假入口按**同一份包内读法**落盘，断言与真实 CLI 用的是同一个假设；真 CLI 路径只有 E0/E1 一次性实验，不进回归（且 E1 因 401 退出码非 0，在 `failureKind!=='none'` 就返回，走不到 `cliDir` 回读分支）。这正是本仓纪律 1「凡取值必须靠实测才知道的旗标，一律读探针结论」所针对的形态。",
+      "evidence": "`src/trivium/adapters/zcode.ts:942-1037`（`invokeZcode` → run 的失败早退分支在轨迹回读之前）；`src/trivium/guard.ts:859`（只有 `applied===false` 才播报）；`test/unit/zcode-model-selection.test.ts:212-228`（`ECHO_ENTRY`/`ECHO_WITH_LOG_ENTRY` 只认 `env.HOME`）、`test/unit/zcode-runtime-selection.test.ts:191-211`（`REVIEW_ARM_ENTRY` 同样硬编码 `env.HOME + '.zcode/cli/log'`）；`doc/05_testing/evidence/ev112-e0-20260924/e0-output.json`（两组都是真 CLI + 401，退出码 1，只验到落盘、验不到回读）。",
+      "suggestion": "在 `run()` 里加一条零配额自检并与 `probe.version` 一起留痕：CLI 确实跑到模型层时，若 `<cliDir>/log` 下没有本次 `sessionId` 的日志、rollout 也读不到，就把「这三个键未被本版本采纳」记成一条 note / 失败成因，而不是只报「未回读到生效模型」。这样厂商漂移当天可见，成本为零（E1 的真 CLI 路径顺手就能断言一次）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "security",
+      "location": "plan §4.2 决策 D2 / §8 R1",
+      "problem": "D2-(b) 的核心理由是「副本一支是 EV-82 刚验收过的路径，不改它的子进程环境」，但这条理由比字面看起来弱：三键在那一支的取值与缺省**逐字相同**，所以「不改」买到的是「不新增取值来源」，代价是把 R1 这条与本主题同形的洞留在 133 次运行的那一支上。而且 R1 不是外部假设：CLI 的用户层配置文件 `U7()` 就是 `<HOME>/.zcode/cli/config.json`——正是 `prepareZcodeHome` 的副本源本身。用户若在该文件里写过 `storage.dir`/`storage.sessionDbPath`，(b) 下没有任何 Env 层值压过它（层表 User 10 < Env 40），副本一支的 rollout（逐字含送审包）就会写到用户指定的位置（很可能就是真实 `~/.zcode`）。",
+      "evidence": "包内字面：`U7(){return join(zg(tHr),eHr)}` 与 `eHr=\"config.json\"`、`tHr=\"~/.zcode/cli\"`（第 2110 行区段）；层表 `eyr={System:0,User:10,Project:20,Session:30,Env:40,Cli:50}` 与 `Lm.storage={dir:\"~/.zcode\",sessionDbPath:\"~/.zcode/cli/db/db.sqlite\"}`（第 108 行）；`src/trivium/adapters/zcode.ts:737`（`srcConfig` 缺省即 `os.homedir()/.zcode/cli/config.json`）；`doc/02_design/2026-09-10-...设计.md:2464`（「Env 层压过 User 层」的设计口径）。注：我无法独立复核 plan §1.2 末「本机按键名计数为 0」——我的 HOME 是合成目录，读不到真实 config。",
+      "suggestion": "改选 D2-(a)：三键值即该支缺省值，E1 本来就要断言「副本支布局与改前相同」，零配额可验；顺带让 `RMi` 早退，把 CODEX-01 一并堵住。若坚持 (b)，请把 R1 从「残余」升成一条**有判据的例外**：写明在什么机器上会触发（用户自己改过 `storage.dir`）、由谁发现、以及在设计文档里明说「副本一支的存储落点仍由用户配置决定」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §1.5 读法 / §6.3 E0",
+      "problem": "E0 这一格「真实 `~/.zcode/cli/{rollout,artifacts}` 下没有本次 sessionId 的文件名」只按**文件名**找 sessionId。日志文件名是 `zcode-<日期>.jsonl`、会话库是 `db.sqlite`，两者都不含 sessionId，所以「日志/db 被绝对路径写回真实 HOME」这一形态在这一格里看不出来。E2 的清单用的是正确形态（`grep -l <sessionId>`、`grep -c`），同一句结论在三次实验里证据强度不一致。",
+      "evidence": "`doc/05_testing/evidence/ev112-e0-20260924/e0-carriers.mjs` 的 `realHomeHasSession()`（只 `readdir` rollout/artifacts 并按 `includes(sessionId)` 过滤）与输出字段 `real_home_session_names`（`e0-output.json`）；对照 plan §6.3 E2 的检查清单（log 用 `grep -l`、会话库用 `grep -c`）。",
+      "suggestion": "E1 起把这一格换成 E2 的形态（真实 log 目录 `grep -l <sessionId>`、db `grep -c`，并加 `~/.zcode-beta` 与 `~/.zcode/mailbox` 的存在性检查），成本为零；这样「真实 HOME 一个不剩」在三次实验里由同一组证据支撑。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§1.2 的取值链复核一致：P1 `logDir ?? env.ZCODE_LOG_DIR ?? N6s()`（包内 2106 行，`N6s()=join(homedir(),\".zcode\",\"cli\",\"log\")`）；P2 `E=zg(config.storage.dir)`、`R=k8(E)`、`L=Zzo(R, isDev)`、`JWr(e,t=debugDir,…)` 与回落 `e4s()`=join(homedir(),\".zcode\",\"cli\",isDev?\"debug\":\"rollout\")（15243/14801/2103-2105 行）——rollout 确实由存储根推出，不是 homedir；P3 `Lm.storage.dir=\"~/.zcode\"` 与层表（108 行）、`aun` 按后缀映射（2110 行）；P4 `jie(e)=zg(config.storage.sessionDbPath)`、缺省字面 `~/.zcode/cli/db/db.sqlite`，运行期会话库由 `dtt({dbPath:jie(B)})` 构造（14801/15265 行）——`MQt()`（1247 行）那处硬编码 homedir 只是 `SqliteSessionStore` 不带参时的兜底；P8 provider 根随 `dataBaseDir ?? ZCODE_DATA_BASE_DIR ?? homedir()`（98/2099/2131/15243 行）。",
+    "D1 取 (b) 的取舍站得住：既然 P2 成立，「只设 ZCODE_LOG_DIR」无论怎么配都收不了 rollout，而 rollout 与日志同含送审包全文；三个值与副本布局逐字相同（我按包内各段 join 复核过）。E0 的对照组也复现了「今天无副本一支」的落点（假 HOME 下 log/rollout/db 各 1）。",
+    "§5.1 的拉起路径表我按代码逐条对过，没有漏路径：`probes/zcode.ts` 的 :93（version，只清不给）、:178（旗标探针，空 HOME）、:574（白名单臂）、:952（同形臂）、:1075（path_deny）、:1397（doctor headless）与 `adapters/zcode.ts` :803（`authProbe`，homeDir:null）、:942（`run`）正好对应 L1～L9；L5～L7 不跟着改的理由（输入含夹具/固定提示语，探的就是真实环境）与它们的实际入参一致。",
+    "§4.3 的两条推理成立：`aun` 是 `for(let[s,a] of Object.entries(e))` 逐条写同一字段、后出现的赢；`exec.ts:110-114` 的 `{...process.env}` 底 + 对 undefined 执行 delete 与 C8 描述一致。D3 是**清掉别名**而不是依赖键序，所以「谁赢」这个不确定项被消掉了，不是被赌上。六键沿用 `ZCODE_DIR_ENV_KEYS` 这个名字可以接受（改名要动全部消费方，收益只是字面；文档块改成「目录与路径键」足够）。",
+    "§6.2 的变异确实咬得住：M2（先设后清）会让 U2 的诱饵场景在子进程里看到 undefined；M4（恢复 `home.homeDir ?? os.homedir()`）会让 U3 的 `model_effective` 因 `sessionId` 过滤变 null；M3/M6/M7 与 U5/U2/U1·U6 的映照关系也自洽（U5 的「六键全 null」只对副本支成立，正是 D2-b 的边界）。",
+    "§9.2 的悬念有答案：`XVo` 只从 `<storageRoot>/agents`、`<cwd>/.zcode/agents`、`<storageRoot>/v2/agents-state.json` 读 profile，而 `vHa`/`bHa` 产出的 `builtInModelSelectionOverrides`/`pluginAgentModelSelectionOverrides` 只认 `general-purpose` 与 `Explore` 两个内置子代理键——空存储根最多让**子代理**的模型覆盖回落成内置缺省，不改变主 agent 的生效模型。D1-(b) 的代价评估因此是安全的。",
+    "E0 的做法站得住：合成副本（只用键名与 `kind`/`source` 形态、apiKey 是哨兵）、本地 401 服务（能证明请求确实发生且只打本机）、两组只差三个键、真实 HOME 侧用 `os.userInfo().homedir` 只读核查；控制组/实验组的读数与 §1.5 读法 1、2 相符，读法 3（P5/P6 只有静态读数）的自述也诚实。",
+    "回滚与迁移成本我核过并且很低，计划不单列可以：改点集中在 `invokeZcode`（一个显式参数）、`run()` 回读一处、常量 +2、doctor 文案与文档，没有任何持久状态需要迁移；回退就是一次代码回退，run 目录内的副本与新落点都是用完即弃的产物。"
+  ],
+  "not_covered": [
+    "没跑任何构建/测试/变异（只读沙箱，`npm run build`、`npm test`、`scripts/mutation-check.mjs` 都会写盘）：§6.1 的 U1～U7 与 §6.2 的 M1～M8 是按现有测试与装置的形态推演的可行性判断，不是实测结果。",
+    "没读 `~/.trivium/runs`（禁读清单）：§1.3 的「EV-82 验收运行 `20260924T104357Z` 副本 HOME 实况」与 §1.4 的「133 次 `config_copy` / 0 次 `global`」两处统计未独立复核，我按计划自述采信。",
+    "我的 HOME 是合成目录，读不到真实 `~/.zcode/cli/config.json`：§1.2 末「storage.dir/sessionDbPath 按键名计数为 0」这条 R1 前提未复核（CODEX-04 的严重度判断因此留了余地）。",
+    "包内只做了定点查询，未穷尽所有写盘路径：`shell-snapshots` 的 rootDir 来源（`_Ir(e.rootDir)` 的调用方）、MCP 配置根 `T$o`、插件市场相关临时目录、CUA/编辑器联动一族（`ZCODE_CUA_*`、`ZCODE_AGENT_*`）在审查运行里是否写盘，都没追到底；不确定是否还有第三个「读 env 得根目录」的键（我已按 154 个 `ZCODE_*` 字面全量扫过一遍，path-ish 22 个逐个看过）。",
+    "P5（artifacts）/P6（memories）的实测缺口该不该用一次真实配额补，我没给判断；只核了 E0/E1 能覆盖到哪一步（E1 因 401 非零退出走不到 `run()` 的轨迹回读分支，回读路径仍只有假入口用例覆盖）。",
+    "未评估 `doc/README.md`、`doc/01_requirements/README.md`、`README.md` 等索引文档；只按 §7 的同步清单核了设计文档版本行（`doc/02_design/README.md:24` 现为 v1.3.38）与两处引用行（设计文档 :250、:2464 确含「这三个连同 ZCODE_LOG_DIR（EV-110）一律清掉」）。",
+    "另一位审查员的结论我不知道，也未做任何交叉（背靠背）。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/runner.ts",
+    "test/unit/zcode-provider-env.test.ts",
+    "test/unit/zcode-model-selection.test.ts",
+    "test/unit/zcode-runtime-selection.test.ts",
+    "test/unit/credential-scrub.test.ts",
+    "scripts/mutation-check.mjs",
+    "doc/05_testing/evidence/ev112-e0-20260924/e0-carriers.mjs",
+    "doc/05_testing/evidence/ev112-e0-20260924/e0-output.json"
+  ]
+}
