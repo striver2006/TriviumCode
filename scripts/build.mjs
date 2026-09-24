@@ -16,6 +16,7 @@
 import { build } from 'esbuild';
 import { readdir, mkdir, rm, cp } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,9 +46,36 @@ async function collectTs(dir) {
   return out;
 }
 
+/**
+ * 构建标识（EV-82 小主题第一段 r2 §2）：算法只在 `src/trivium/build-stamp.ts` 写一份。
+ * 这里先把它单独打包成一个临时 CJS 再调用，运行时收尾重算走的是同一段代码，口径不会漂。
+ * 取不到 git（例如 `git archive` 导出的树）时得到 null，照常构建、不报错。
+ */
+async function computeBuildStamp() {
+  const helper = path.join(ROOT, 'dist/.build-stamp.cjs');
+  await build({
+    platform: 'node', target: 'node18', logLevel: 'silent', charset: 'utf8',
+    entryPoints: [path.join(ROOT, 'src/trivium/build-stamp.ts')],
+    outfile: helper, bundle: true, format: 'cjs',
+  });
+  try {
+    const mod = createRequire(import.meta.url)(helper);
+    return await mod.computeBuildStamp(ROOT);
+  } finally {
+    await rm(helper, { force: true });
+  }
+}
+
 async function bundleBinaries() {
   await mkdir(path.join(ROOT, 'skills/dual-critic/scripts'), { recursive: true });
   await mkdir(path.join(ROOT, 'dist'), { recursive: true });
+
+  const stamp = await computeBuildStamp();
+  console.log(
+    stamp
+      ? `构建标识：${stamp.git_head.slice(0, 7)}${stamp.dirty ? '（作用面内有未提交改动）' : ''}，inputs ${stamp.inputs_sha256.slice(0, 12)}`
+      : '构建标识：取不到 git，注入 null',
+  );
 
   await build({
     ...COMMON,
@@ -56,6 +84,7 @@ async function bundleBinaries() {
     bundle: true,
     format: 'cjs',
     banner: { js: '#!/usr/bin/env node' },
+    define: { __TRIVIUM_BUILD__: JSON.stringify(stamp) },
   });
 
   await build({

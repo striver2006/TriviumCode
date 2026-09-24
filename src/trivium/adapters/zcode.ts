@@ -636,8 +636,16 @@ export function qualifyAgainstCliConfig(
 export async function prepareZcodeHome(
   runDir: string,
   model: string | null,
-  // `srcConfig` 只为可测性：不开这个口子，用例只能吃真实的 `~/.zcode/cli/config.json`（含凭据）
-  opts: { srcConfig?: string } = {},
+  opts: {
+    // `srcConfig` 只为可测性：不开这个口子，用例只能吃真实的 `~/.zcode/cli/config.json`（含凭据）
+    srcConfig?: string;
+    /**
+     * 在**写盘之前**改写副本对象（EV-82 小主题第一段 r2 §3.1）。只给同形探针臂用：
+     * 它要把凭据换成哨兵，写盘前换才没有「先写真实凭据、再覆写」的窗口（AGY-03）。
+     * **审查臂不传**；不传时本函数的输出与加这个参数之前逐字相同（有用例锁住）。
+     */
+    transformCopy?: (cfg: ZcodeCliConfigShape) => ZcodeCliConfigShape;
+  } = {},
 ): Promise<ZcodeHomePrep> {
   const srcConfig = opts.srcConfig ?? path.join(os.homedir(), '.zcode/cli/config.json');
   if (!(await exists(srcConfig))) {
@@ -658,8 +666,9 @@ export async function prepareZcodeHome(
   const q = qualifyAgainstCliConfig(model, cfg);
   // 模型 id 必须是 <providerKey>/<modelId> 全限定形态（坑 P-06），且 providerKey 与本副本同源（r3 CODEX-03）
   if (q.qualified !== null) cfg.model = { main: q.qualified, lite: q.qualified };
+  const toWrite = opts.transformCopy ? opts.transformCopy(cfg) : cfg;
 
-  await fs.writeFile(path.join(dstDir, 'config.json'), JSON.stringify(cfg, null, 2), 'utf8');
+  await fs.writeFile(path.join(dstDir, 'config.json'), JSON.stringify(toWrite, null, 2), 'utf8');
   // 配置副本含凭据，权限收紧
   await fs.chmod(path.join(dstDir, 'config.json'), 0o600);
 

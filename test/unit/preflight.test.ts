@@ -424,6 +424,10 @@ test('回归：--no-model-calls 保留上一次探到的 zcode 结论', async ()
     skipModelCalls: true,
     existing,
     modelOverrideProbe: async () => ({ override: null, requested: null, observed: null, why: '桩：本轮未判定' }),
+    // 同形第二臂同理（EV-82 小主题第一段）：不注入就会在装了 ZCode.app 的机器上读真实 cli/config.json 并真实拉起
+    modelOverrideFullCopyProbe: async () => ({
+      override: null, requested: null, observed: null, why: '桩：本轮未判定', replacedPaths: [], hostCredentialEnv: [],
+    }),
   });
   assert.equal(probe.response_field, 'response', '不得被覆盖成 null');
   assert.equal(probe.model_override, 'env', '探针臂未判定时必须保留旧值——桩永远不会产出 env，改成别的值即现形');
@@ -485,9 +489,20 @@ test('--only zcode 同样不碰 agy 段', async () => {
     cur.cli.agy!.headless_read_ok = true;
   });
 
+  // 两条模型覆盖臂注入合成配置与桩（代码双审 r2 CODEX-03 扫出的第二处）：本用例只关心分段落盘，
+  // 不注入就会在装了 ZCode.app 的机器上读真实 cli/config.json 并真实拉起
+  const cliConfigPath = path.join(root, 'cli-config.json');
+  await fs.writeFile(cliConfigPath, '{"provider":{},"model":{}}', 'utf8');
   await runDoctor({
     config: defaultConfig(), projectRoot: root, triviumDir,
     only: 'zcode', skipModelCalls: true,
+    zcodeProbe: {
+      cliConfigPath,
+      modelOverrideProbe: async () => ({ override: null, requested: null, observed: null, why: '桩：本轮未判定' }),
+      modelOverrideFullCopyProbe: async () => ({
+        override: null, requested: null, observed: null, why: '桩：本轮未判定', replacedPaths: [], hostCredentialEnv: [],
+      }),
+    },
   });
 
   const onDisk = YAML.parse(

@@ -113,6 +113,37 @@
         "subject_sha256": {
           "type": "string"
         },
+        "build": {
+          "description": "运行中的编排器自带的构建标识（EV-82）。git_head 是被审项目的 HEAD，这一项才是编排器本体的构建来源；null = 构建时取不到 git；缺席 = 本字段之前的旧留痕",
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "repo_root_commit",
+            "git_head",
+            "dirty",
+            "inputs_sha256",
+            "built_at"
+          ],
+          "properties": {
+            "repo_root_commit": {
+              "type": "string"
+            },
+            "git_head": {
+              "type": "string"
+            },
+            "dirty": {
+              "type": "boolean"
+            },
+            "inputs_sha256": {
+              "type": "string"
+            },
+            "built_at": {
+              "type": "string"
+            }
+          }
+        },
         "drift": {
           "type": "object",
           "required": [

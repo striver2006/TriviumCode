@@ -1,0 +1,161 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  MB1 ✓ 咬住（fail=3）
+  MB2 ✓ 咬住（fail=1）
+  MB3 ✓ 咬住（fail=1）
+  MF1 ✓ 咬住（fail=7）
+  MF2 ✓ 咬住（fail=9）
+  MF3 ✓ 咬住（fail=2）
+  MF4 ✓ 咬住（fail=1）
+  MF5 ✓ 咬住（fail=10）
+  MF6 ✓ 咬住（fail=1）
+  MF7 ✓ 咬住（fail=1）
+  MF8 ✓ 咬住（fail=2）
+  MF9 ✓ 咬住（fail=3）
+  MB4 ✓ 咬住（fail=1）
+  MB5 ✓ 咬住（fail=1）
+  MB6 ✓ 咬住（fail=1）
+  MB7 ✓ 咬住（fail=1）
+  MR1 ✓ 咬住（fail=1）
+  MF10 ✓ 咬住（fail=1）
+  MF11 ✓ 咬住（fail=2）
+  MF12 ✓ 咬住（fail=1）
+  MF13 ✓ 咬住（fail=1）
+  MF14 ✓ 咬住（fail=1）
+{
+  "总数": 22,
+  "咬住": 22,
+  "逐条": [
+    {
+      "id": "MB1",
+      "desc": "去掉本仓模式判定：外部项目也比 HEAD（CODEX-01）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "MB2",
+      "desc": "收尾不重算作用面指纹（CODEX-08）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MB3",
+      "desc": "作用面漏掉 skills/（CODEX-07 ≡ AGY-01 ≡ GLM-03）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MF1",
+      "desc": "凭据替换不进数组（CODEX-05）",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "MF2",
+      "desc": "凭据替换过宽：一切字符串都换（CODEX-04）",
+      "verdict": "✓ 咬住（fail=9）",
+      "fail": 9
+    },
+    {
+      "id": "MF3",
+      "desc": "去掉 headers 容器判据",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "MF4",
+      "desc": "早退只看 homeDir：限定失败时照样拉起（CODEX-02）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MF5",
+      "desc": "prepareZcodeHome 忽略 transformCopy：真实凭据落盘（AGY-03）",
+      "verdict": "✓ 咬住（fail=10）",
+      "fail": 10
+    },
+    {
+      "id": "MF6",
+      "desc": "两臂不一致告警拿旧值比（CODEX-06）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MF7",
+      "desc": "同形臂判不出也覆盖旧值（CODEX-06）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MF8",
+      "desc": "去掉拉起前的残余扫描拦截：疑似凭据照样拉起（代码双审 r1 CODEX-01）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "MF9",
+      "desc": "去掉 apiKey 无条件写哨兵的结构兜底（代码双审 r1 CODEX-01）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "MB4",
+      "desc": "浅仓也返回根提交：移植边界被当成仓库身份（代码双审 r1 CODEX-03 ≡ GLM-04）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MB5",
+      "desc": "被审项目取不到根提交时不退包名兜底：浅克隆静默判否（代码双审 r1 CODEX-03）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MB6",
+      "desc": "比对异常被静默吞掉（代码双审 r1 GLM-03）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MB7",
+      "desc": "指纹重算取不到时静默跳过（代码双审 r2 CODEX-05）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MR1",
+      "desc": "收尾不再把构建标识告警写进 run.json（代码双审 r2 CODEX-06）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MF10",
+      "desc": "残余扫描不剥鉴权前缀：Bearer 串整串逃逸（代码双审 r2 GLM-01）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MF11",
+      "desc": "残余扫描论域退回只扫 options（代码双审 r2 CODEX-01 ≡ GLM-02）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "MF12",
+      "desc": "收窄档退回不换 headers 容器（代码双审 r2 GLM-01）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MF13",
+      "desc": "去掉短键精确匹配（代码双审 r2 GLM-02）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "MF14",
+      "desc": "残余扫描不排除 UUID 与无 scheme 端点：合法长标识误挡实验（代码双审 r2 CODEX-04）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

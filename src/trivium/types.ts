@@ -18,6 +18,7 @@ import {
 } from './agents/registry.js';
 
 export type { AgentId, AgentVendor };
+import type { BuildStamp } from './build-stamp.js';
 
 export type Stage = 'plan' | 'code' | 'bug';
 export type StageOrVerify = Stage | 'verify';
@@ -319,6 +320,15 @@ export interface ZcodeProbe extends CommonProbe {
    * 文件系统重算（与 `provider_config` 那一格同一条理由）。
    */
   model_override: 'env' | 'config_copy' | 'global' | null;
+  /**
+   * 同形第二臂（EV-94 ②；EV-82 小主题第一段）：副本与审查臂**同形**（`prepareZcodeHome` 整份拷贝、凭据写盘前换哨兵），
+   * 在配置读取层再判一次。只存三态，requested / observed / why / 替换键路径进 notes（与 `model_override` 同构，AGY-04）。
+   * 判不出（null）时**不覆盖**上一轮的值（CODEX-06）。
+   *
+   * 谁消费：doctor 的两臂不一致告警（EV-94 ② 触发器），只在两臂**都是本轮产出且都非 null** 时触发。
+   * 可选：本字段之前的探针结论文件里没有它。
+   */
+  model_override_full_copy?: 'config_copy' | 'global' | null;
   /**
    * 工具轨迹来源：**工具名、调用计数、生效模型、结构化失败根因**的路径模板。
    * M0 实测该日志的 `tool.call.*` 事件里**没有任何路径字段**。
@@ -1194,6 +1204,12 @@ export interface SnapshotMeta {
   dirty: boolean;
   subject_sha256: string;
   drift: { changed: boolean; files: string[]; policy: 'warn' | 'fail' };
+  /**
+   * 运行中的编排器自带的构建标识（EV-82 小主题第一段）。`git_head` 是**被审项目**的 HEAD，
+   * 这一项才是编排器本体是哪一版构建出来的；非本仓项目只作自述指纹，不与 `git_head` 比。
+   * null = 构建时取不到 git；缺席 = 本字段之前的旧留痕。见 `build-stamp.ts`。
+   */
+  build?: BuildStamp | null;
 }
 
 /**

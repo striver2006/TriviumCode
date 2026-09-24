@@ -50,6 +50,7 @@ import {
   type SkipVerdict,
 } from './code-stage.js';
 import { diffAgainst, headSha } from './util/git.js';
+import { collectBuildStampNotices, embeddedBuildStamp } from './build-stamp.js';
 import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
 import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
 import { acquireLock } from './lock.js';
@@ -928,6 +929,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     dirty: primarySnap.dirty,
     subjectSha256: primarySnap.subjectSha256,
     denyPaths: primarySnap.denyPaths,
+    build: embeddedBuildStamp(),
     driftPolicy: cfg.review.on_drift,
   });
   meta.artifacts = [...metaArtifacts];
@@ -1588,6 +1590,19 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     } else {
       meta.artifacts.push({ path: relSubject, sha256: primarySnap.subjectSha256 });
     }
+  }
+
+  /*
+   * 构建标识比对（EV-82 小主题第一段 r2 §2）：只在**本仓模式**下出告警——被审项目就是编排器本仓时，
+   * 才能拿编排器的构建来源与它比；外部项目里 HEAD 恒不等，告警会常亮（r2 CODEX-01）。
+   * 位置在 writeRunMeta 之前，与上面那条同位，才落得进 run.json（AGY-05）。只告警，不阻断、不改 evidence_ok。
+   * 比对本身出错不得拖垮收尾，但**要留痕**（代码双审 r1 GLM-03）：`checkBuildStamp` 内部的 git 失败
+   * 都已以 null 收口，能到这里的基本只剩编程错误，而那恰是最该被看见的一类——吞掉就成了
+   * 「零告警、零痕迹」，与非本仓模式不可区分。与 doctor 侧「读取失败」同型，只告警、不阻断。
+   */
+  for (const notice of await collectBuildStampNotices(ctx.projectRoot, meta.snapshot.build ?? null)) {
+    warnings.push(notice);
+    meta.gate.warnings = [...(meta.gate.warnings ?? []), notice];
   }
 
   meta.gate.state = meta.status === 'success' ? 'review_done_awaiting_disposition' : 'failed';

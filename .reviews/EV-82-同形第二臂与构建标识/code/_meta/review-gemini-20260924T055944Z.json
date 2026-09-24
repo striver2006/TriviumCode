@@ -1,0 +1,51 @@
+{
+  "agreed": [
+    "结构兜底与残余扫描（src/trivium/probes/zcode.ts）：forceProviderApiKeySentinel 强制为每个 provider 的 options 注入哨兵 apiKey，不留黑名单漏判死角；findCredentialResidue 针对 options 子树递归扫描疑似随机凭据串，排除 baseURL、协议 URL 与哨兵，有疑似残余即放弃拉起并记录路径，在守住零配额底线的同时杜绝误伤正常 models 列表（CODEX-01）。",
+    "浅克隆与本仓判定闭环（src/trivium/util/git.ts、src/trivium/build-stamp.ts）：isShallowRepo 明确识别浅仓，rootCommit 在浅仓下安全返回 null 而非移植边界；isSelfRepo 在取不到根提交时准确退到 SELF_PACKAGE_NAME 兜底，彻底杜绝静默判否，并在单测中与 package.json 对账守住改名漂移（CODEX-02、CODEX-03 ≡ GLM-04）。",
+    "比对异常收敛（src/trivium/build-stamp.ts、src/trivium/review.ts）：新增 collectBuildStampNotices 统一捕获 checkBuildStamp 内部异常并转化为可见的 BUILD_WARN_CHECK_FAILED 告警，收尾落盘与 doctor 保持一致形态，只告警不阻断且杜绝异常静默吞没（GLM-03）。",
+    "收窄模式与两臂对拍（src/trivium/probes/zcode.ts、test/unit/zcode-full-copy-arm.test.ts）：同形臂参数支持 replace: 'apiKeyOnly'，对照单测证实只改 apiKey 与全量替换判定一致；两臂行为对拍覆盖 match、mismatch、no_import、crash 四种形态，有力证明共用判据的判别力（CODEX-04 ≡ GLM-02 ①、GLM-02 ②）。",
+    "临时目录清理测试隔离（test/unit/zcode-model-selection.test.ts、test/unit/zcode-full-copy-arm.test.ts）：两处清理用例切换私有 TMPDIR 观察临时根释放，隔离并行 worker 干扰同时保证残留检测的真实有效性。",
+    "设计与契约同步（doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md、skills/dual-critic/schema/run.v2.json）：设计文档新增探针项 zcode.model_override_full_copy 与 snapshot.build，与代码及 JSON Schema 完备对齐（CODEX-05）。"
+  ],
+  "consulted": [
+    ".reviews/EV-82-同形第二臂与构建标识/code/2026-09-24-EV-82-同形第二臂与构建标识-gemini.md",
+    ".reviews/EV-82-同形第二臂与构建标识/code/2026-09-24-EV-82-同形第二臂与构建标识-response-claude.md",
+    ".reviews/EV-82-同形第二臂与构建标识/code/_meta/changes-20260924T055944Z.diff",
+    ".reviews/EV-82-同形第二臂与构建标识/plan/2026-09-24-EV-82-同形第二臂与构建标识-r2-claude.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/README.md",
+    "doc/05_testing/evidence/ev82-seg1-mutation-20260924/mutation-output.txt",
+    "doc/05_testing/evidence/ev82-seg1-mutation-20260924/mutation-spec.json",
+    "doc/08_project/M10b-轮次台账.md",
+    "doc/README.md",
+    "scripts/build.mjs",
+    "skills/dual-critic/schema/run.v2.json",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/build-stamp.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/review.ts",
+    "src/trivium/secrets.ts",
+    "src/trivium/types.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/git.ts",
+    "test/unit/build-stamp.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/zcode-full-copy-arm.test.ts",
+    "test/unit/zcode-model-selection.test.ts",
+    "test/unit/zcode-provider-env.test.ts"
+  ],
+  "findings": [],
+  "not_covered": [
+    "真实的 ZCode 桌面端应用在真实 macOS 用户环境下的端到端拉起与真实在线 API 调用（本轮审查遵循零配额纪律，所有验证基于合成配置、测试桩及假入口）",
+    "EV-82 小主题第二段关于模型路由修复或形态换源的实际演进实施（本轮仅限第一段构建标识与配置读取层第二臂）"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本轮第 2 轮补丁逐条核实第 1 轮 9 条应答全部真落地，代码、契约与用例高度严密。\n一、同形臂结构兜底（apiKey 强制写哨兵）与拉起前残余扫描（仅限 options 子树的长串检测）双锁零配额，既杜绝黑名单漏判，又避免误伤 models 下的长模型 ID；\n二、浅克隆下 rootCommit 返回 null，isSelfRepo 正确退到包名兜底（triviumcode），彻底消除静默判否路径，且包名与 package.json 建立对账；\n三、collectBuildStampNotices 将 checkBuildStamp 的全部异常收敛为 BUILD_WARN_CHECK_FAILED 告警，收尾留痕与 doctor 一致且不阻断；\n四、收窄替换面模式（replace: 'apiKeyOnly'）与对照用例精准锁死基线，两臂四种停止形态对拍断言强力有效；\n五、两处清理用例使用私有 TMPDIR 杜绝并发污染，经 fs.readdir 严格断言临时根清除，能有效捕获真实残留；\n六、设计文档新增的两处表格描述与实现完全一致，15 项变异测试全部咬住，判定通过。",
+  "verdict": "approve"
+}

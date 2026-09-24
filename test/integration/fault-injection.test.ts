@@ -17,6 +17,7 @@ import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import type { RunMeta } from '../../src/trivium/types.js';
 import { loadCtx } from '../../src/trivium/config.js';
 import { hookPreCommit } from '../../src/trivium/hooks.js';
+import { headSha } from '../../src/trivium/util/git.js';
 import { setGate } from '../../src/trivium/state.js';
 import type { Ctx } from '../../src/trivium/types.js';
 
@@ -911,3 +912,41 @@ test('自造未登记前缀 → 同样转 parse_fallback，且重编号用本侧
     );
   }
 });
+
+/*
+ * ── 构建标识的收尾接线（EV-82 小主题第一段，代码双审 r2 CODEX-06）──
+ *
+ * 纯函数单测只证明 `collectBuildStampNotices` 返回了什么；这条证明它**真的被接上**：
+ * 告警落进 run.json 的 `gate.warnings`，并经 `gate --check` 转述为 run_warning。
+ *
+ * 怎么让夹具进入本仓模式而不开测试后门：打包产物里注入的是本仓真实的构建标识，
+ * 夹具的根提交与它不同 ⇒ 默认判非本仓、零告警。把夹具标成浅克隆（git 的正规机制 `.git/shallow`），
+ * 根提交就取不到，判定按规则退到包名兜底；再把包名设成 triviumcode ⇒ 本仓模式成立。
+ * 此后构建标识与夹具 HEAD 必然不同，收尾至少出一条告警——走的是生产路径的每一步。
+ */
+test('构建标识告警经收尾接线落进 run.json 的 gate.warnings，gate --check 转述为 run_warning（r2 CODEX-06）',
+  { skip: bundleMissing && bundleSkipReason }, async () => {
+    const { root, meta } = await runInjected(
+      { gemini: { mode: 'ok' }, glm: { mode: 'ok' } },
+      [],
+      [],
+      async (r) => {
+        await fs.writeFile(path.join(r, 'package.json'), JSON.stringify({ name: 'triviumcode' }), 'utf8');
+        const head = await headSha(r);
+        assert.ok(head, '夹具应是有提交的 git 仓库');
+        await fs.writeFile(path.join(r, '.git', 'shallow'), `${head}\n`, 'utf8');
+      },
+    );
+    assert.equal(meta.status, 'success');
+    const stampWarnings = (meta.gate.warnings ?? []).filter((w) => /构建标识|安装副本|构建时工作树/.test(w));
+    assert.ok(stampWarnings.length > 0, `本仓模式下收尾必须写出构建标识告警：${JSON.stringify(meta.gate.warnings)}`);
+
+    const chk = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
+    const cand = extractJsonCandidate(chk.stdout);
+    assert.ok(cand, `gate --check --json 未产出 JSON：\n${chk.stdout}\n${chk.stderr}`);
+    const js = JSON.parse(cand.json) as { warnings: Array<{ code: string; message: string }> };
+    assert.ok(
+      js.warnings.some((w) => w.code === 'run_warning' && stampWarnings.includes(w.message)),
+      `gate --check 必须转述构建标识告警：${JSON.stringify(js.warnings)}`,
+    );
+  });

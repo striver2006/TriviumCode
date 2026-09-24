@@ -40,6 +40,12 @@ export interface DoctorOptions {
    * `cli.ts` 的三值白名单退 64（审查意见 AGY-03 / GLM-06）。
    */
   only?: string | null;
+  /**
+   * 透传给 `probeZcode` 的注入口（代码双审 r2 CODEX-03），与 `probeZcode` 自己的注入口同形。
+   * 只为可测性：不开这个口子，经 `runDoctor` 走探针的用例在装了 ZCode 的机器上会读真实
+   * `~/.zcode/cli/config.json`、真实拉起两条模型覆盖臂。生产路径不传。
+   */
+  zcodeProbe?: Pick<NonNullable<Parameters<typeof probeZcode>[2]>, 'cliConfigPath' | 'modelOverrideProbe' | 'modelOverrideFullCopyProbe'>;
 }
 
 /** `--only` 的合法取值：全部已登记 CLI，外加环境段 */
@@ -427,6 +433,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   };
   notes.push(`node=${env.nodePath ?? '未找到'} ${env.nodeVersion ?? ''}`.trim());
   notes.push(`git=${env.gitVersion ?? '未找到'}`);
+  // 构建标识（EV-82 小主题第一段）：只读、出错不影响 doctor
+  try {
+    const { describeBuildStamp } = await import('./build-stamp.js');
+    notes.push(await describeBuildStamp(opts.projectRoot));
+  } catch (e) {
+    notes.push(`编排器构建标识：读取失败（${(e as Error).message}）`);
+  }
   if (!env.nodeOk) blockers.push('Node.js 不可用或版本低于 18');
   if (!env.gitOk) blockers.push('git 不可用或版本过低');
   // wrapper 自身在、里面写死的 node / bundle 却没了：每次 Hook 都会报 127
@@ -533,6 +546,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     const r = await probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {
       skipModelCalls: opts.skipModelCalls ?? false,
       existing: probe.cli.zcode,
+      ...(opts.zcodeProbe ?? {}),
     });
     probe.cli.zcode = r.probe;
     notes.push(...r.notes.map((n) => `[zcode] ${n}`));

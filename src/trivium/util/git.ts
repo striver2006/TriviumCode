@@ -69,6 +69,51 @@ export async function workTreeHash(cwd: string): Promise<string> {
   }
 }
 
+/** 是否浅克隆（`git rev-parse --is-shallow-repository`）；判不出返回 null */
+export async function isShallowRepo(cwd: string): Promise<boolean | null> {
+  const r = await git(cwd, ['rev-parse', '--is-shallow-repository']);
+  if (r.code !== 0) return null;
+  return r.stdout.trim() === 'true';
+}
+
+/**
+ * 仓库的根提交（`git rev-list --max-parents=0 HEAD`），作**仓库身份**用（EV-82 构建标识）。
+ *
+ * 多根仓库取字典序第一个，于是同一仓库的**完整**克隆算出同一个值。
+ * **浅克隆返回 null**，不返回移植边界：浅仓里 `--max-parents=0` 命中的是浅边界提交，
+ * 它随克隆深度变，拿它当身份会让本仓判定静默失效（代码双审 r1 CODEX-03 ≡ GLM-04）。
+ * 空仓库、非 git 目录、判不出是否浅仓，同样返回 null。
+ */
+export async function rootCommit(cwd: string): Promise<string | null> {
+  if ((await isShallowRepo(cwd)) !== false) return null;
+  const r = await git(cwd, ['rev-list', '--max-parents=0', 'HEAD']);
+  if (r.code !== 0) return null;
+  const roots = r.stdout.split('\n').map((s) => s.trim()).filter(Boolean).sort();
+  return roots[0] ?? null;
+}
+
+/**
+ * 取 tree 对象下若干路径各自的对象 id；路径不存在记 `absent`（EV-82 构建标识的 `inputs_sha256`）。
+ *
+ * 与 `workTreeHash` 配合：先得工作树的 tree，再按作用面逐项取子对象，
+ * 于是作用面外的改动（`doc/`、`.reviews/`）不影响结果。
+ */
+export async function treeEntryIds(cwd: string, tree: string, paths: readonly string[]): Promise<Array<[string, string]>> {
+  const out: Array<[string, string]> = [];
+  for (const p of paths) {
+    const r = await git(cwd, ['rev-parse', '--verify', '--quiet', `${tree}:${p}`]);
+    out.push([p, r.code === 0 ? r.stdout.trim() : 'absent']);
+  }
+  return out;
+}
+
+/** 作用面内是否有未提交改动（含未跟踪文件）：`git status --porcelain -- <paths>` 非空 */
+export async function isDirtyWithin(cwd: string, paths: readonly string[]): Promise<boolean | null> {
+  const r = await git(cwd, ['status', '--porcelain', '--', ...paths]);
+  if (r.code !== 0) return null;
+  return r.stdout.trim().length > 0;
+}
+
 /** `git status --porcelain -uall` 的结构化结果，用于只读指纹与 scratch_paths 探针 */
 /**
  * 还原 git 加过引号的路径。

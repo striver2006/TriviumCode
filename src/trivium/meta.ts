@@ -10,6 +10,7 @@ import { promises as fs } from 'node:fs';
 import type {
   AgentId, CriticId, LegacyReviewMode, RunMeta, Stage, StageOrVerify, CommandEntry,
 } from './types.js';
+import type { BuildStamp } from './build-stamp.js';
 import { writeAtomic } from './util/fsx.js';
 import { topicDir, type ArchiveLayout } from './archive.js';
 import { withTopicLock } from './lock.js';
@@ -309,6 +310,8 @@ export interface NewRunMetaInput {
   subjectSha256: string;
   denyPaths: string[];
   driftPolicy: 'warn' | 'fail';
+  /** 编排器自带的构建标识（`build-stamp.ts` 的 `embeddedBuildStamp()`）；缺省按 null 记 */
+  build?: BuildStamp | null;
 }
 
 /** 运行开始时先写一份 `status: running` 的骨架，便于 `--wait` 与崩溃后取证 */
@@ -334,6 +337,8 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
       dirty: i.dirty,
       subject_sha256: i.subjectSha256,
       drift: { changed: false, files: [], policy: i.driftPolicy },
+      // 恒写（null 也写）：缺席只留给本字段之前的旧留痕，与 driver_enabled 同一口径
+      build: i.build ?? null,
     },
     started_at: new Date().toISOString(),
     finished_at: null,

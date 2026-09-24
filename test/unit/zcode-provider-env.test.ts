@@ -28,7 +28,7 @@ import {
   ZCODE_PERSONAL_PROVIDER_ENV,
   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
 } from '../../src/trivium/adapters/zcode.js';
-import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type ModelOverrideProbe } from '../../src/trivium/probes/zcode.js';
+import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type FullCopyOverrideProbe, type ModelOverrideProbe } from '../../src/trivium/probes/zcode.js';
 import { runDoctor } from '../../src/trivium/doctor.js';
 import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
 
@@ -441,8 +441,21 @@ async function doctorOnZcode(entry: string, projectRoot: string) {
   const triviumDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-doctor-'));
   try {
     // triviumDir 下没有 bin/trivium ⇒ checkWrapper 返回空，不引入无关 blocker；
-    // 探针结论写进这个临时目录，不碰真实仓库
-    return await runDoctor({ projectRoot, triviumDir, config: cfg, skipModelCalls: true, only: 'zcode' });
+    // 探针结论写进这个临时目录，不碰真实仓库。
+    // 两条模型覆盖臂注入合成配置与桩（代码双审 r2 CODEX-03）：否则在装了 ZCode 的机器上会读真实
+    // ~/.zcode/cli/config.json 并真实拉起，同一用例在不同机器上走不同路径
+    const cliConfigPath = path.join(triviumDir, 'cli-config.json');
+    await fs.writeFile(cliConfigPath, '{"provider":{},"model":{}}', 'utf8');
+    return await runDoctor({
+      projectRoot, triviumDir, config: cfg, skipModelCalls: true, only: 'zcode',
+      zcodeProbe: {
+        cliConfigPath,
+        modelOverrideProbe: async () => ({ override: null, requested: null, observed: null, why: '桩：本轮未判定' }),
+        modelOverrideFullCopyProbe: async () => ({
+          override: null, requested: null, observed: null, why: '桩：本轮未判定', replacedPaths: [], hostCredentialEnv: [],
+        }),
+      },
+    });
   } finally {
     await fs.rm(triviumDir, { recursive: true, force: true });
   }
@@ -588,4 +601,62 @@ test('接线：探针臂判 global → 结论写 global 且出 ⚠️', async ()
   );
   assert.equal(probe.model_override, 'global');
   assert.ok(notes.some((n) => n.includes('⚠️ 探针臂判 config_copy 档未生效')));
+});
+
+// ── 同形第二臂的接线（EV-82 小主题第一段 r2 §3.4）：null 不覆盖、两臂不一致告警只比本轮都非 null 的值 ──
+
+async function probeZcodeWithTwoArms(
+  white: ModelOverrideProbe['override'],
+  full: FullCopyOverrideProbe['override'],
+  existingFullCopy?: 'config_copy' | 'global',
+) {
+  const L = await layout({ withBuiltin: true, withPersonal: false });
+  const cliConfig = path.join(L.root, 'cli-config.json');
+  await fs.writeFile(cliConfig, '{"provider":{},"model":{}}', 'utf8');
+  const existing = {
+    entrypoint: L.entry, version: '0.16.9', version_probe: null, probed_at: new Date().toISOString(),
+    readonly_flags: [], model_override: 'env' as const,
+    ...(existingFullCopy ? { model_override_full_copy: existingFullCopy } : {}),
+    trace_source: null, trace_args_source: null, response_field: 'response',
+    path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: [], coverage_complete: null, file_shape_verified: null },
+    scratch_paths: [], isolation: 'home_copy' as const, model_id_form: null, models: [],
+  };
+  let fullCopyCalls = 0;
+  try {
+    const out = await probeZcode(L.entry, process.execPath, {
+      skipModelCalls: true,
+      existing,
+      cliConfigPath: cliConfig,
+      modelOverrideProbe: async () => ({ override: white, requested: 'p/m', observed: null, why: '桩：白名单臂' }),
+      modelOverrideFullCopyProbe: async () => {
+        fullCopyCalls += 1;
+        return { override: full, requested: 'p/m', observed: null, why: '桩：同形臂', replacedPaths: ['a.apiKey'], hostCredentialEnv: [] };
+      },
+    });
+    return { ...out, fullCopyCalls };
+  } finally {
+    await L.cleanup();
+  }
+}
+
+const TWO_ARM_WARN = '两条探针臂在配置读取层结论不一致';
+
+test('同形臂接线：与白名单臂同一门控、恰好接线一次；结论写进 model_override_full_copy', async () => {
+  const { probe, notes, fullCopyCalls } = await probeZcodeWithTwoArms('config_copy', 'config_copy');
+  assert.equal(fullCopyCalls, 1);
+  assert.equal(probe.model_override_full_copy, 'config_copy');
+  assert.ok(notes.some((n) => n.includes('model_override_full_copy=config_copy') && n.includes('看不见运行期注册表层')));
+  assert.equal(notes.some((n) => n.includes(TWO_ARM_WARN)), false, '两臂一致不告警');
+});
+
+test('同形臂接线：两臂本轮都非 null 且不同 ⇒ 出 EV-94 ② 不一致告警', async () => {
+  const { notes } = await probeZcodeWithTwoArms('config_copy', 'global');
+  assert.ok(notes.some((n) => n.includes(TWO_ARM_WARN)));
+});
+
+test('同形臂接线：本轮判不出 ⇒ 保留上一轮的值，且不拿旧值去比、不出不一致告警（CODEX-06）', async () => {
+  const { probe, notes } = await probeZcodeWithTwoArms('config_copy', null, 'global');
+  assert.equal(probe.model_override_full_copy, 'global', '未判定不得覆盖旧值');
+  assert.ok(notes.some((n) => n.includes('model_override_full_copy=未判定')));
+  assert.equal(notes.some((n) => n.includes(TWO_ARM_WARN)), false, '旧值 global 与本轮白名单 config_copy 不同，也不得告警');
 });

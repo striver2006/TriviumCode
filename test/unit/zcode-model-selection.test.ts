@@ -622,11 +622,18 @@ test('探针臂：只读参数透传到 argv，且宿主的 ZCODE_API_KEY / ZCOD
 });
 
 test('探针臂：副本 HOME 跑后被清（只认 makeTempDir 的返回值）', async () => {
-  const before = new Set(await fs.readdir(os.tmpdir()));
-  const { r } = await probeWith({}, {});
-  assert.equal(r.override, 'config_copy');
-  const after = (await fs.readdir(os.tmpdir())).filter((n) => n.startsWith('trivium-modeloverride') && !before.has(n));
-  assert.deepEqual(after, [], '探针的副本 HOME 必须被清掉');
+  // 私有 TMPDIR：公共 tmpdir 里别的用例文件（node --test 并行）也会建同前缀目录，扫公共目录会互相误判
+  const L = await legacyLayout();
+  const privateTmp = await tmp();
+  const saved = process.env['TMPDIR'];
+  process.env['TMPDIR'] = privateTmp;
+  try {
+    const r = await probeModelOverride(L.entry, process.execPath, L.cwd, { cliConfigPath: L.cliConfig });
+    assert.equal(r.override, 'config_copy', r.why);
+    assert.deepEqual(await fs.readdir(privateTmp), [], '探针的副本 HOME 必须被清掉');
+  } finally {
+    if (saved === undefined) delete process.env['TMPDIR']; else process.env['TMPDIR'] = saved;
+  }
 });
 
 test('探针臂：源里有免密 provider（apiKeyRequired:false）→ 探针副本带上该键、导入被拒、如实 global（r3 CODEX-01）', async () => {

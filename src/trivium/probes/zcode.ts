@@ -21,6 +21,7 @@ import { run } from '../util/exec.js';
 import {
   invokeZcode,
   legacyProviderMembers,
+  prepareZcodeHome,
   qualifyAgainstCliConfig,
   readonlyArgsFromProbe,
   zcodeProviderConfigPaths,
@@ -459,55 +460,376 @@ export async function probeModelOverride(
       cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
     });
 
-    // 先看 CLI 有没有写出 v2 文件——写了就有判据，与退出形态无关
-    const written = path.join(home, '.zcode/v2/provider_config.json');
-    let observed: string | null = null;
-    let wroteV2 = false;
-    try {
-      const w = JSON.parse(await fs.readFile(written, 'utf8')) as { config?: { defaultModelSelection?: { providerId?: unknown; modelId?: unknown } } };
-      wroteV2 = true;
-      const sel = w.config?.defaultModelSelection;
-      if (sel && typeof sel.providerId === 'string' && typeof sel.modelId === 'string') observed = `${sel.providerId}/${sel.modelId}`;
-    } catch {
-      wroteV2 = false;
+    const j = judgeOverrideReadback(q.qualified, await readDefaultSelection(home), r);
+    const base = { override: j.override, requested: q.qualified, observed: j.observed };
+    switch (j.stop) {
+      case 'match':
+        return { ...base, why: `副本 model.main 被 legacy 导入读到并成为 defaultModelSelection${j.providerNote}` };
+      case 'mismatch':
+        return { ...base, why: `CLI 写出的 defaultModelSelection 是 ${j.observed ?? '（缺失）'}，modelId 段不是请求的模型——model.main 未被采信` };
+      case 'not_finished':
+        return { ...base, why: `拉起未完成，本轮未判定${j.tail}` };
+      case 'provider_unresolved':
+        return { ...base, why: `内置 provider 配置定位失败（P-28），配置读取阶段未到，本轮未判定${j.tail}` };
+      case 'no_import':
+        // 文案不承诺 CLI 行为（代码双审 r2 CODEX-02）：探针副本是白名单重建，与审查运行的整份拷贝不同形
+        return {
+          ...base,
+          why:
+            `CLI 跑到了模型层，但白名单重建的副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）——` +
+            `可能是 CLI 改了导入流程，也可能是探针裁剪掉了导入需要的键；请先核对 buildProbeCliConfig 的白名单是否仍 ⊇ 导入器必需键${j.tail}`,
+        };
+      case 'unrecognized':
+        return { ...base, why: `未识别的停止形态，本轮未判定${j.tail}` };
     }
-    if (wroteV2) {
-      /*
-       * 判据与 run() 侧**同一口径**（代码双审 r2 CODEX-03）：只看 modelId 段（`zcodeModelTail`）。
-       * 在配置层整串等式本来合法（写出的 providerId 来自副本自己的 `model.main` 切分），
-       * 但两份判据并存会让 doctor 结论与运行留痕在「providerId 形态漂了、modelId 仍对」时互相矛盾。
-       * providerId 形态差只落 `why` 当 note。
-       */
-      const modelMatches = observed !== null && zcodeModelTail(observed) === zcodeModelTail(q.qualified);
-      const providerNote =
-        observed !== null && observed !== q.qualified && modelMatches ? `（providerId 形态与副本源不同：写出 ${observed}）` : '';
-      return modelMatches
-        ? { override: 'config_copy', requested: q.qualified, observed, why: `副本 model.main 被 legacy 导入读到并成为 defaultModelSelection${providerNote}` }
-        : { override: 'global', requested: q.qualified, observed, why: `CLI 写出的 defaultModelSelection 是 ${observed ?? '（缺失）'}，modelId 段不是请求的模型——model.main 未被采信` };
-    }
-
-    // 没写出 v2：只有「确实跑到了模型/鉴权层」才能说导入没发生；其余一律未判定
-    const firstLine = r.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? '（stderr 为空）';
-    const tail = `（退出码 ${r.code === null ? 'null' : r.code}${r.timedOut ? '，超时' : ''}：${redactSecrets(firstLine.slice(0, 120)).content}）`;
-    if (r.code === null || r.timedOut) {
-      return { override: null, requested: q.qualified, observed: null, why: `拉起未完成，本轮未判定${tail}` };
-    }
-    if (ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE.test(r.stderr)) {
-      return { override: null, requested: q.qualified, observed: null, why: `内置 provider 配置定位失败（P-28），配置读取阶段未到，本轮未判定${tail}` };
-    }
-    if (ZCODE_ARGV_PARSED_RE.test(r.stderr)) {
-      // 文案不承诺 CLI 行为（代码双审 r2 CODEX-02）：探针副本是白名单重建，与审查运行的整份拷贝不同形
-      return {
-        override: 'global', requested: q.qualified, observed: null,
-        why:
-          `CLI 跑到了模型层，但白名单重建的副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）——` +
-          `可能是 CLI 改了导入流程，也可能是探针裁剪掉了导入需要的键；请先核对 buildProbeCliConfig 的白名单是否仍 ⊇ 导入器必需键${tail}`,
-      };
-    }
-    return { override: null, requested: q.qualified, observed: null, why: `未识别的停止形态，本轮未判定${tail}` };
   } finally {
     await fs.rm(home, { recursive: true, force: true });
   }
+}
+
+/** CLI 在副本 HOME 下自写的 `v2/provider_config.json` 里的默认模型选择 */
+export interface DefaultSelectionReadback {
+  wroteV2: boolean;
+  /** `<providerId>/<modelId>`；文件在但字段缺失为 null */
+  observed: string | null;
+}
+
+/** 读 `<home>/.zcode/v2/provider_config.json` 的 `defaultModelSelection`（两臂共用，只读） */
+export async function readDefaultSelection(home: string): Promise<DefaultSelectionReadback> {
+  try {
+    const w = JSON.parse(await fs.readFile(path.join(home, '.zcode/v2/provider_config.json'), 'utf8')) as {
+      config?: { defaultModelSelection?: { providerId?: unknown; modelId?: unknown } };
+    };
+    const sel = w.config?.defaultModelSelection;
+    const observed = sel && typeof sel.providerId === 'string' && typeof sel.modelId === 'string' ? `${sel.providerId}/${sel.modelId}` : null;
+    return { wroteV2: true, observed };
+  } catch {
+    return { wroteV2: false, observed: null };
+  }
+}
+
+/**
+ * 两臂共用的**判据**（EV-82 小主题第一段 r2 §3.2 第 7 条，GLM-07）：只返回三态与停止形态，
+ * **成因文案由各臂自带**——白名单臂的 `no_import` 指向「核对白名单」，同形臂没有白名单可核。
+ */
+export type OverrideStop = 'match' | 'mismatch' | 'not_finished' | 'provider_unresolved' | 'no_import' | 'unrecognized';
+
+export interface OverrideJudgement {
+  override: 'config_copy' | 'global' | null;
+  observed: string | null;
+  stop: OverrideStop;
+  /** 写出的 providerId 形态与请求不同、modelId 一致时的说明；否则空串 */
+  providerNote: string;
+  /** 退出码与 stderr 首行（已脱敏），供没写出 v2 的几支拼文案 */
+  tail: string;
+}
+
+export function judgeOverrideReadback(
+  requested: string,
+  rb: DefaultSelectionReadback,
+  r: { code: number | null; timedOut?: boolean; stderr: string },
+): OverrideJudgement {
+  const firstLine = r.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? '（stderr 为空）';
+  const tail = `（退出码 ${r.code === null ? 'null' : r.code}${r.timedOut ? '，超时' : ''}：${redactSecrets(firstLine.slice(0, 120)).content}）`;
+  // 先看 CLI 有没有写出 v2 文件——写了就有判据，与退出形态无关
+  if (rb.wroteV2) {
+    /*
+     * 判据与 run() 侧**同一口径**（代码双审 r2 CODEX-03）：只看 modelId 段（`zcodeModelTail`）。
+     * providerId 形态差只落说明，不改判定。
+     */
+    const matches = rb.observed !== null && zcodeModelTail(rb.observed) === zcodeModelTail(requested);
+    const providerNote = rb.observed !== null && rb.observed !== requested && matches ? `（providerId 形态与副本源不同：写出 ${rb.observed}）` : '';
+    return matches
+      ? { override: 'config_copy', observed: rb.observed, stop: 'match', providerNote, tail }
+      : { override: 'global', observed: rb.observed, stop: 'mismatch', providerNote: '', tail };
+  }
+  // 没写出 v2：只有「确实跑到了模型/鉴权层」才能说导入没发生；其余一律未判定
+  if (r.code === null || r.timedOut) return { override: null, observed: null, stop: 'not_finished', providerNote: '', tail };
+  if (ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE.test(r.stderr)) return { override: null, observed: null, stop: 'provider_unresolved', providerNote: '', tail };
+  if (ZCODE_ARGV_PARSED_RE.test(r.stderr)) return { override: 'global', observed: null, stop: 'no_import', providerNote: '', tail };
+  return { override: null, observed: null, stop: 'unrecognized', providerNote: '', tail };
+}
+
+// ── 同形第二臂（EV-94 ②；EV-82 小主题第一段 r2 §3） ──
+
+/**
+ * 凭据形态的键名（大小写不敏感、子串匹配）。命中的键，其下的字符串值换成哨兵。
+ * 位于任一 `headers` 对象之下的字符串值也换（`Authorization` 等头字段名五花八门，按容器判更稳）。
+ */
+const CREDENTIAL_KEY_RE = /api[-_]?key|token|secret|passw(or)?d|authorization|cookie|credential|bearer/i;
+/**
+ * 短键：只在键名**恰好等于**它们时命中（代码双审 r2 GLM-02）。子串匹配会误伤 `keyboard` 一类，
+ * 而不收它们，`auth` / `key` 下的裸长十六进制值会三层全过。
+ */
+const SHORT_CREDENTIAL_KEYS: ReadonlySet<string> = new Set(['key', 'auth', 'session', 'passphrase']);
+
+function isCredentialKey(k: string): boolean {
+  return CREDENTIAL_KEY_RE.test(k) || SHORT_CREDENTIAL_KEYS.has(k.toLowerCase());
+}
+
+/**
+ * 按「保键骨架、字符串值换哨兵」改写一份配置（r2 §3.2 第 5 条，CODEX-04 / CODEX-05 / GLM-05）。
+ *
+ * **递归整份**（含嵌套对象与数组，不限于 `options`）；满足任一条的字符串值换成哨兵：
+ *   ①键名命中凭据形态（子串 {@link CREDENTIAL_KEY_RE}，或短键精确匹配）；②位于某个 `headers` 对象之下；
+ *   ③**形态兜底**：`redactSecrets` 判它像凭据（不论键名）。
+ * 其余值原样，**所有键一律保留**：顶层与 provider 白名单外的键正是 H2 的嫌疑面，动了就测不到。
+ *
+ * `headersOnly` 模式（给 `apiKeyOnly` 档用，代码双审 r2 GLM-01）：只做②。收窄的变量是「键名替换面」，
+ * `headers` 容器规则与它正交——导入器对 headers 可缺、不影响导入成败，换掉它不污染诊断目的；
+ * 不换，`Authorization: Bearer <token>` 会原样进副本。
+ *
+ * 这仍是**黑名单**性质：漏判的凭据会原样进副本（r2 §3.3 写明，缓解不是消除）。
+ * 返回替换过的**键路径**（不含值），供 notes 与报告登记。
+ */
+export function sentinelizeCredentials<T>(
+  value: T,
+  mode: 'full' | 'headersOnly' = 'full',
+): { copy: T; replacedPaths: string[] } {
+  const full = mode === 'full';
+  const replacedPaths: string[] = [];
+  const walk = (v: unknown, at: string, sensitive: boolean): unknown => {
+    if (typeof v === 'string') {
+      if (sensitive || (full && redactSecrets(v).count > 0)) {
+        replacedPaths.push(at || '(root)');
+        return ZCODE_PROBE_SENTINEL_KEY;
+      }
+      return v;
+    }
+    if (Array.isArray(v)) return v.map((x, i) => walk(x, `${at}[${i}]`, sensitive));
+    if (v !== null && typeof v === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+        out[k] = walk(x, at ? `${at}.${k}` : k, sensitive || (full && isCredentialKey(k)) || k.toLowerCase() === 'headers');
+      }
+      return out;
+    }
+    return v;
+  };
+  return { copy: walk(value, '', false) as T, replacedPaths };
+}
+
+/**
+ * 结构兜底（代码双审 r1 CODEX-01）：每个 provider 的 `options.apiKey` **无条件**写哨兵，不存在也补上。
+ * 与白名单臂同一取向：最可能的凭据载体不再依赖黑名单命中。只动这一个键的值，键与结构不动。
+ * 返回它改写过的键路径（代码双审 r2 CODEX-02）：两档都并入 `replacedPaths`，读数与盘上一致。
+ */
+export function forceProviderApiKeySentinel<T>(cfg: T): { copy: T; forcedPaths: string[] } {
+  const c = cfg as { provider?: Record<string, { options?: Record<string, unknown> } | undefined> };
+  const forcedPaths: string[] = [];
+  for (const [name, p] of Object.entries(c.provider ?? {})) {
+    if (!p || typeof p !== 'object') continue;
+    // 计算属性键：避开 fixture-credentials 扫描器对「apiKey: <长标识符>」字面形态的判据（与 buildProbeCliConfig 同理）
+    p.options = { ...(p.options ?? {}), [PROBE_SENTINEL_FIELD]: ZCODE_PROBE_SENTINEL_KEY };
+    forcedPaths.push(`provider.${name}.options.${PROBE_SENTINEL_FIELD}`);
+  }
+  return { copy: cfg, forcedPaths };
+}
+
+/** 长随机串的形态：≥20 位、只由 base64 / hex / token 常见字符组成 */
+const RESIDUE_RE = /^[A-Za-z0-9._+/=-]{20,}$/;
+/** 鉴权 scheme 前缀：先剥掉再测余下段（代码双审 r2 GLM-01：锚定正则会让 `Bearer <token>` 整串逃逸） */
+const AUTH_SCHEME_PREFIX_RE = /^(?:bearer|basic|token)\s+/i;
+/** 合法长标识，不算疑似凭据（代码双审 r2 CODEX-04）：标准 UUID；带点主机名加斜杠路径的无 scheme 端点 */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const HOST_PATH_RE = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?:\/[A-Za-z0-9._~-]*)+$/;
+/** provider 对象里不扫的键：`models` 下的长模型 id 会误挡实验；`name` 是人读名 */
+const RESIDUE_SKIP_KEYS: ReadonlySet<string> = new Set(['models', 'name']);
+
+function looksLikeResidue(key: string, raw: string): boolean {
+  if (key === 'baseURL' || raw === ZCODE_PROBE_SENTINEL_KEY || raw.includes('://')) return false;
+  const v = raw.replace(AUTH_SCHEME_PREFIX_RE, '');
+  if (UUID_RE.test(v) || HOST_PATH_RE.test(v)) return false;
+  return RESIDUE_RE.test(v);
+}
+
+/**
+ * 拉起前的残余扫描（代码双审 r1 CODEX-01，r2 放宽论域）：替换之后，凡位于 `provider.<id>` 之下
+ * （跳过 `models` 子树与 `name` 键）、像长随机串且不是 URL / UUID / 无 scheme 端点、不是哨兵的字符串，
+ * 登记为「疑似未替换的凭据」。**只返回键路径，不返回值**。判定前先剥鉴权 scheme 前缀。
+ *
+ * **已知残余（代码双审 r2 GLM-02 落点②）**：副本**顶层**不扫。顶层有 `model.main` 一类合法长值
+ * （`bigmodel-coding-plan/GLM-5.3-Flash`），扫它会把实验挡成未判定；顶层凭据只剩键名与形态两道黑名单。
+ * 这一收窄登记在设计文档探针行与本段收口报告。
+ */
+export function findCredentialResidue(cfg: unknown): string[] {
+  const out: string[] = [];
+  const walk = (v: unknown, at: string, key: string): void => {
+    if (typeof v === 'string') {
+      if (looksLikeResidue(key, v)) out.push(at);
+      return;
+    }
+    if (Array.isArray(v)) { v.forEach((x, i) => walk(x, `${at}[${i}]`, key)); return; }
+    if (v && typeof v === 'object') for (const [k, x] of Object.entries(v as Record<string, unknown>)) walk(x, `${at}.${k}`, k);
+  };
+  const providers = (cfg as { provider?: Record<string, Record<string, unknown> | undefined> }).provider ?? {};
+  for (const [name, p] of Object.entries(providers)) {
+    if (!p || typeof p !== 'object') continue;
+    for (const [k, x] of Object.entries(p)) {
+      if (!RESIDUE_SKIP_KEYS.has(k)) walk(x, `provider.${name}.${k}`, k);
+    }
+  }
+  return out;
+}
+
+/** 同形臂的结论：与白名单臂同一形状，外加替换键路径与宿主预置的凭据 env 键 */
+export interface FullCopyOverrideProbe extends ModelOverrideProbe {
+  replacedPaths: string[];
+  hostCredentialEnv: string[];
+}
+
+/**
+ * `zcode.model_override_full_copy`：用与审查臂**同形**的副本，在**配置读取层**再判一次（r2 §3.2）。
+ *
+ * - 副本由审查臂同一个构造函数 `prepareZcodeHome` 造，经它的 `transformCopy` 在**写盘前**把凭据换成哨兵；
+ * - `homeDir` 为 null 或 route 不是 `config_copy` ⇒ **不拉起**（CODEX-02：否则子进程继承真实 HOME，
+ *   会读、甚至写用户真实的 `~/.zcode/v2/provider_config.json`）；
+ * - 环境与**白名单探针臂**同形（清两个凭据 env 键以保零配额）。与审查臂的已知偏差：审查臂不清这两个键（GLM-04）；
+ * - 判据与白名单臂共用 {@link judgeOverrideReadback}，成因文案本臂自带（GLM-07）；
+ * - 清理只认 `makeTempDir` 的返回值，不调 `scrubZcodeHome`（2026-09-20 事故 R1 / R2）。
+ *
+ * 本臂看得见配置读取层与两臂副本形态差异，**看不见运行期注册表层**。
+ */
+export async function probeModelOverrideFullCopy(
+  entry: string,
+  node: string,
+  cwd: string,
+  opts: {
+    cliConfigPath?: string;
+    model?: string;
+    timeoutMs?: number;
+    readonlyArgs?: readonly string[];
+    /**
+     * 替换面（代码双审 r1 CODEX-04）：`full`（缺省）= 键名 + headers + 形态兜底的递归替换；
+     * `apiKeyOnly` = **只收窄键名替换面**：不做键名与形态替换，但 `headers` 容器替换（r2 GLM-01）、
+     * 每个 provider 的 `apiKey` 结构兜底与拉起前残余扫描**照旧**。计划 §4 判读表 (cc, global) 一格
+     * 「先分 H2 与替换伪影」的第一刀就用它复跑。
+     *
+     * **两档的零配额保证不同**（r2 CODEX-02）：`apiKeyOnly` 档下，不在 `headers` 里、键名又不叫 apiKey 的
+     * 凭据若不被残余扫描命中，会原样进副本。它不是与 `full` 同等的零配额档。
+     */
+    replace?: 'full' | 'apiKeyOnly';
+  } = {},
+): Promise<FullCopyOverrideProbe> {
+  const src = opts.cliConfigPath ?? ZCODE_CLI_CONFIG;
+  const hostCredentialEnv = ZCODE_CREDENTIAL_ENV_KEYS.filter((k) => process.env[k]);
+  const none = (why: string, requested: string | null = null): FullCopyOverrideProbe =>
+    ({ override: null, requested, observed: null, why, replacedPaths: [], hostCredentialEnv });
+
+  let cfg: { provider?: Record<string, Record<string, unknown> | undefined> };
+  try {
+    cfg = JSON.parse(await fs.readFile(src, 'utf8')) as typeof cfg;
+  } catch (e) {
+    return none(`读不到 ${src}：${(e as Error).message}`);
+  }
+  const requested = opts.model ?? pickNonFirstModel(cfg as Parameters<typeof pickNonFirstModel>[0]);
+  if (!requested) return none('cli/config.json 目录里没有任何 provider 拥有两个以上模型，挑不出非首位模型，判据会失明——本轮未判定');
+
+  // 前缀不得以 `trivium-modeloverride` 开头：白名单臂的清理用例按那个前缀找残留，并行跑会互相误判
+  const root = await makeTempDir('trivium-fullcopyarm');
+  try {
+    let replacedPaths: string[] = [];
+    let residue: string[] = [];
+    const prep = await prepareZcodeHome(root, requested, {
+      srcConfig: src,
+      transformCopy: (c) => {
+        const s = sentinelizeCredentials(c, opts.replace === 'apiKeyOnly' ? 'headersOnly' : 'full');
+        const f = forceProviderApiKeySentinel(s.copy);
+        // 读数与盘上一致：结构兜底改写的路径也算替换（r2 CODEX-02）；去重是因为 full 档可能已按键名换过 apiKey
+        replacedPaths = [...new Set([...s.replacedPaths, ...f.forcedPaths])];
+        residue = findCredentialResidue(f.copy);
+        return f.copy;
+      },
+    });
+    if (prep.homeDir === null || prep.route !== 'config_copy' || prep.qualified === null) {
+      return { ...none(`同形副本没有建成模型覆盖（${prep.reason ?? prep.route}），不拉起、本轮未判定`, requested), replacedPaths };
+    }
+    /*
+     * 零配额的前提是「副本里所有凭据都被换掉」（r2 §4 配额前提）。替换是黑名单性质，
+     * 扫出疑似残余就**不拉起**：宁可本轮未判定，也不冒一次真实调用（CODEX-01，`--no-model-calls` 的承诺）。
+     */
+    if (residue.length > 0) {
+      return {
+        ...none(
+          `同形副本里仍有 ${residue.length} 处疑似未替换的凭据（${residue.join('、')}），为守零配额不拉起、本轮未判定。` +
+            '若确认不是凭据，需把判据收窄后再跑',
+          prep.qualified,
+        ),
+        replacedPaths,
+      };
+    }
+
+    const env: Record<string, string | undefined> = {
+      ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
+      ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
+      HOME: prep.homeDir,
+    };
+    const r = await run(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])], {
+      cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
+    });
+
+    const j = judgeOverrideReadback(prep.qualified, await readDefaultSelection(prep.homeDir), r);
+    const base = { override: j.override, requested: prep.qualified, observed: j.observed, replacedPaths, hostCredentialEnv };
+    switch (j.stop) {
+      case 'match':
+        return { ...base, why: `同形副本（整份拷贝、凭据换哨兵）的 model.main 被 legacy 导入读到${j.providerNote}` };
+      case 'mismatch':
+      case 'no_import':
+        return {
+          ...base,
+          why:
+            (j.stop === 'mismatch'
+              ? `CLI 写出的 defaultModelSelection 是 ${j.observed ?? '（缺失）'}，modelId 段不是请求的模型`
+              : 'CLI 跑到了模型层，但同形副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）') +
+            '——成因两种都可能：①整份拷贝里有键让配置层结果与白名单副本不同（H2）；②本臂的凭据替换破坏了导入' +
+            `（本轮替换了 ${replacedPaths.length} 处：${replacedPaths.join('、') || '无'}）${j.tail}`,
+        };
+      case 'not_finished':
+        return { ...base, why: `拉起未完成，本轮未判定${j.tail}` };
+      case 'provider_unresolved':
+        return { ...base, why: `内置 provider 配置定位失败（P-28），配置读取阶段未到，本轮未判定${j.tail}` };
+      case 'unrecognized':
+        return { ...base, why: `未识别的停止形态，本轮未判定${j.tail}` };
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}
+
+/**
+ * 只读个人 `v2/provider_config.json` 里的 provider **键名**（provider id），不读、不返回任何值（r2 §4.2，GLM-02）。
+ *
+ * 用途：核 EV-82 诊断 (D) 格的隔离腿前提「个人配置的 provider 键 ≠ 副本源 legacy 键」。
+ * 文件结构未经完整实测，所以按形态收集：任何名为 `providers` 的对象取其键、数组取元素的 `id`，
+ * 再加 `defaultModelSelection.providerId`。与 `provider_config.personal_file` 只判有无的既有纪律同型。
+ */
+export async function listPersonalProviderIds(file: string): Promise<{ present: boolean; ids: string[] }> {
+  let j: unknown;
+  try {
+    j = JSON.parse(await fs.readFile(file, 'utf8'));
+  } catch {
+    return { present: false, ids: [] };
+  }
+  const ids = new Set<string>();
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (v === null || typeof v !== 'object') return;
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      if (k === 'providers') {
+        if (Array.isArray(x)) {
+          for (const it of x) if (it && typeof it === 'object' && typeof (it as { id?: unknown }).id === 'string') ids.add((it as { id: string }).id);
+        } else if (x && typeof x === 'object') {
+          for (const key of Object.keys(x)) ids.add(key);
+        }
+      }
+      if (k === 'defaultModelSelection' && x && typeof x === 'object' && typeof (x as { providerId?: unknown }).providerId === 'string') {
+        ids.add((x as { providerId: string }).providerId);
+      }
+      walk(x);
+    }
+  };
+  walk(j);
+  return { present: true, ids: [...ids].sort() };
 }
 
 /** 读取某个 sessionId 的会话日志并解析轨迹 */
@@ -597,6 +919,8 @@ export async function probeZcode(
      */
     cliConfigPath?: string;
     modelOverrideProbe?: typeof probeModelOverride;
+    /** 同形第二臂的注入口，与 `modelOverrideProbe` 同理（EV-82 小主题第一段） */
+    modelOverrideFullCopyProbe?: typeof probeModelOverrideFullCopy;
   } = {},
 ): Promise<{ probe: ZcodeProbe; notes: string[]; flagsIndeterminate: string[]; flagsZeroExit: string[] }> {
   const notes: string[] = [];
@@ -778,6 +1102,35 @@ export async function probeZcode(
         notes.push(
           '⚠️ 探针臂判 config_copy 档未生效：若审查运行也如此，模型覆盖会静默落到全局默认（guard 会播报「请求的模型没有生效」）。' +
             '成因两种都可能：CLI 改了 legacy 导入流程，或探针的白名单副本裁掉了导入需要的键——先核对 buildProbeCliConfig 的白名单，再按 P-31 复核包内字面',
+        );
+      }
+
+      /*
+       * 同形第二臂（EV-94 ②；EV-82 小主题第一段 r2 §3）：副本与审查臂同形，在配置读取层再判一次。
+       * 与白名单臂同一门控、同样零配额（凭据写盘前换哨兵）；判不出不覆盖旧值（CODEX-06）。
+       */
+      const fcArm = opts.modelOverrideFullCopyProbe ?? probeModelOverrideFullCopy;
+      const fc = await fcArm(entry, node, fx.root, {
+        cliConfigPath,
+        readonlyArgs: readonlyArgsFromProbe(probe.readonly_flags),
+      });
+      if (fc.override !== null) probe.model_override_full_copy = fc.override;
+      notes.push(
+        `model_override_full_copy=${fc.override ?? '未判定（保留上一次 ' + JSON.stringify(probe.model_override_full_copy ?? null) + '）'}（本轮${fc.override === null ? '未' : ''}产出）：` +
+          `${fc.why}（请求 ${fc.requested ?? '—'}，CLI 写出 ${fc.observed ?? '—'}；替换凭据键 ${fc.replacedPaths.length} 处，另对每个 provider 的 apiKey 无条件写哨兵）。` +
+          '本臂只判配置读取层，看不见运行期注册表层。零配额的前提是副本里所有凭据都被换掉，拉起前已做残余扫描',
+      );
+      if (fc.hostCredentialEnv.length > 0) {
+        notes.push(
+          `⚠️ 宿主环境预置了 ${fc.hostCredentialEnv.join(' / ')}：两条探针臂都清掉了它们，审查运行不清——` +
+            '若两臂与审查运行结论不同，这是一个与副本形态无关的备择成因（GLM-04）',
+        );
+      }
+      // 两臂不一致告警（EV-94 ② 触发器）：只比**本轮都产出且都非 null** 的两值，不拿新值比旧值（CODEX-06）
+      if (mo.override !== null && fc.override !== null && mo.override !== fc.override) {
+        notes.push(
+          `⚠️ 两条探针臂在配置读取层结论不一致：白名单臂 ${mo.override}、同形臂 ${fc.override}——EV-94 ② 的触发条件成立，` +
+            '差异来自副本形态（或同形臂的凭据替换），见 EV-82 小主题第一段计划 §4 判读表',
         );
       }
     }

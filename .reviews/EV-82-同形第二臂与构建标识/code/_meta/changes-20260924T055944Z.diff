@@ -1,0 +1,1984 @@
+# trivium changes.diff
+# run_id: 20260924T055944Z
+# base: HEAD
+# head: 833598cd9780d1489c1d485b4b86ee2e5b6329a2
+# files: 19
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/05_testing/evidence/ev82-seg1-mutation-20260924/mutation-output.txt
+#   doc/05_testing/evidence/ev82-seg1-mutation-20260924/mutation-spec.json
+#   doc/08_project/M10b-轮次台账.md
+#   scripts/build.mjs
+#   skills/dual-critic/schema/run.v2.json
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/build-stamp.ts
+#   src/trivium/doctor.ts
+#   src/trivium/meta.ts
+#   src/trivium/probes/zcode.ts
+#   src/trivium/review.ts
+#   src/trivium/types.ts
+#   src/trivium/util/git.ts
+#   test/unit/build-stamp.test.ts
+#   test/unit/preflight.test.ts
+#   test/unit/zcode-full-copy-arm.test.ts
+#   test/unit/zcode-model-selection.test.ts
+#   test/unit/zcode-provider-env.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index c04b0f8..2085d1a 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -284,6 +284,7 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参
+ | `zcode.readonly_flags` | 依次实测 `--mode plan`、`--disallowed-tools`、`--allowed-tools`，记录**实际被接受**的组合。0.16.9 起 provider 配置定位先于参数解析：定位失败的候选记 `indeterminate`，**不写入**结论（P-29）；该探针只注入内置 provider 配置，个人那份自带默认模型会让空 `HOME` 失去挡模型调用的作用（P-30） | 只读不可保障则该侧不可用 |
+ | `zcode.provider_config` | 内置 `<入口**真实**目录>/../config/provider/zcode-builtin.json`（入口先 `resolve` 再 `realpath`，软链与相对路径都要落到真实安装布局上）与个人 `~/.zcode/v2/provider_config.json` 的**存在性**（存在记绝对路径，不存在记 null；只判有无不读内容）。谁消费：`doctor` 的 notes 与 blocker **直接读**；`preflight` 经 `zcodeAdapter.availability()` 读 `builtin_file` 判该侧可用性；探活失败详情由 `authProbe()` 运行时从 stderr 生成，与这格无关；**执行拉起的那条路径不读它**，按当下文件系统重算 | 内置缺失则 0.16.9 独立拉起必失败，`doctor` 无条件出 blocker（不受 `--no-model-calls` 影响）、`availability()` 先于旗标判空拒绝，提示指向安装布局。**该判据的适用版本前提是 0.16.9**（r5 CODEX-01）：0.16.5 无此问题（M0 P-28），未来某版若改回自己能定位、或挪走这份文件，这两支会**误拦**——注入路径本身版本中立，误拦只发生在可用性判定上。按 `probe.version` 门控要另立「版本取不到时怎么办」的语义，登记 **EV-85** |
+ | `zcode.model_override` | 实测独立 config 副本 / 全局默认哪一级生效，记录 `config_copy\|global`。M0 实测 `env` 档不存在（C-07），该枚举值保留仅为兼容旧结论文件 | 决定第 11.2 节路由实现 |
++| `zcode.model_override_full_copy` | **同形第二臂**（EV-94 ②）：副本由审查臂同一个构造函数 `prepareZcodeHome` 整份拷贝造出，凭据在写盘前换哨兵（键名 + `headers` 容器 + 形态兜底的递归替换，外加每个 provider 的 `apiKey` 无条件写哨兵），拉起前做残余扫描，有疑似未替换的凭据就不拉起；在**配置读取层**判 `config_copy\|global`，只存三态，判不出不覆盖旧值。**只判配置读取层，看不见运行期注册表层** | 只播报：doctor 在两臂**本轮都非 null 且不一致**时出 EV-94 ② 触发告警；用于 EV-82 区分副本形态差异（H2）与「配置层之后」的回落 |
+ | `zcode.trace_source` | 定位会话日志路径并确认可提取工具调用 | 无法提取则 AC-05 证据不足，该侧不合格 |
+ | `zcode.response_field` | 确认正文字段是 `.response` | 解析器取值路径 |
+ | `node` | 绝对路径可执行且 ≥ 18（编排器与 ZCode 共用前置；官方建议 22+），写入 `runtime.node` | 预检失败 |
+@@ -1137,6 +1138,7 @@ addresses:               # 本件应答的审查文档（当前恒两份；【
+ | `critics.<id>.effort_requested` / `effort_effective` / `tier_source` | 思考等级与档位的请求值 / 生效值 / 来源 | **可选** | 【待实施 · M11】 |
+ | `critics.<id>.profile_requested` | 本次请求的**厂商** profile（codex 的 `-p`）。命名随 `model_requested` 惯例；裸名 `profile` 留空不占（本系统里它指档位） | **必备**（无此概念的族写 `null`） | 【已实现 · M8 第 4 步】 |
+ | `critics.<id>.model_provider` | **回读**得到的 provider 家族归属。与 `model_effective` 是两个维度——实测 `-p qwen -m deepseek-v4-pro` 成功且回读 provider=qwen，故「两次模型名不同 ⇒ 两个家族」不成立，AC-20 的互可区分两个维度都要看 | **必备**（同上） | 【已实现 · M8 第 4 步】 |
++| `snapshot.build` | **运行中的编排器**自带的构建标识：`repo_root_commit`（构建来源仓的根提交，作仓库身份）、`git_head`、`dirty`、`inputs_sha256`（安装面路径集 `src/ scripts/ skills/ package.json package-lock.json tsconfig.json` 在构建时工作树上的指纹）、`built_at`。`snapshot.git_head` 是**被审项目**的 HEAD，这一项才是编排器本体是哪一版构建出来的。`null` = 构建时取不到 git（浅克隆、`git archive` 导出的树）；缺席 = 本字段之前的旧留痕。**谁消费**：收尾告警与 doctor，**只在本仓模式**下比对（被审项目根提交 = `repo_root_commit`；任一侧取不到根提交时按 `package.json` 的 `name` 兜底），外部项目只记不比。四条告警：构建标识缺失 / 构建时工作树有未提交改动 / 安装副本不是当前工作树构建的 / 安装副本与仓库 HEAD 不同版；比对本身出错另记一条，均只告警、不阻断 | **可选**（写侧恒写，null 也写） | 【已实现 · EV-82 小主题第一段】`src/trivium/build-stamp.ts` |
+ 
+ `effort_effective` 必须**回读**而非采信请求值：部分厂商存在请求值归并映射
+ （如 DeepSeek 的 `medium/high/xhigh → high`），「请求 medium 实际生效 high」。
+diff --git a/doc/08_project/M10b-轮次台账.md b/doc/08_project/M10b-轮次台账.md
+index e5a772a..b88445a 100644
+--- a/doc/08_project/M10b-轮次台账.md
++++ b/doc/08_project/M10b-轮次台账.md
+@@ -38,6 +38,7 @@
+ | 3 | EV-82-审查臂诊断 | plan | r1 | 单侧取证 | `20260924T014145Z` | 2026-09-24 | 9m49s | glm `request-changes`·回退 | 1 | 单侧、为取证（r5 §3.3.1 诊断派发，`--model-glm GLM-5.3-Flash`）。glm 侧解析回退，裁决 1 条回退项。读数落 (D) 格：生效 `bigmodel-coding-plan/GLM-5.3`（首位）、`model_override_applied: false` |
+ | 4 | EV-82-审查臂诊断 | plan | r2 | 单侧取证 | `20260924T025839Z` | 2026-09-24 | 12m26s | glm `approve-with-nits` | 6 | 单侧、为取证；同一构建（安装副本 sha256 `7fcb0d82…` 未变）复跑，读数与 r1 一致，仍落 (D) 格；rollout 10 条请求全为 `GLM-5.3`。r5 §10.1 给诊断估 1 轮，实耗 2 轮（首轮解析回退） |
+ | 5 | EV-82-同形第二臂与构建标识 | plan | r1 | 双审 | `20260924T034019Z` | 2026-09-24 | 12m14s | codex `request-changes` ｜ gemini `request-changes` ｜ glm `request-changes` | 25 | EV-82 小主题第一段计划；三侧均结构化；25 条全接受，已审批。最重一组：构建标识把编排器构建 HEAD 与被审项目 HEAD 相比（源头在 r5 §3.3.2 的 T2 判据）、凭据替换规则宽窄两头不稳、`homeDir: null` 会以真实 HOME 拉起、判读表轴选错 |
++| 6 | EV-82-同形第二臂与构建标识 | code | r1 | 双审 | `20260924T050351Z` | 2026-09-24 | 10m04s | codex `request-changes` ｜ gemini `approve` ｜ glm `approve-with-nits` | 9 | 第一段代码（16 个文件、78.1 KB）；9 条全接受，「修改后通过」审批。最重一条：同形臂零配额只靠黑名单，漏判凭据会真实调用。本轮收尾首次报出构建标识告警「构建时工作树有未提交改动」，属实 |
+ 
+ > 「裁决条目」的口径同 M10a 台账：记闸门核对的编号数（裁决件 front-matter 的 `addresses` 长度），不是人读的意见条数。
+ > 「性质」栏取值：`双审` ／ `单侧取证` ／ `夹具` ／ `验收`。
+@@ -47,10 +48,10 @@
+ | 项 | 实际 | 阈值 | 余量 |
+ | :--- | :--- | :--- | :--- |
+ | plan 档轮次 | 5 | —（分档不单设阈值；其中单侧取证 2） | — |
+-| code 档轮次 | 0 | — | — |
++| code 档轮次 | 1 | — | — |
+ | 其中验收轮 | 0 | —（单列，照计） | — |
+ | glm 轮连续未成 | 0 | **≥ 3 停下报告** | 3 |
+-| **累计轮次** | **5** | **> 49 报告**（改动记录 1） | 44 |
++| **累计轮次** | **6** | **> 49 报告**（改动记录 1） | 43 |
+ | 未成轮（不计入） | 0 | — | — |
+ | **累计墙钟** | 起点 2026-09-24，第 0 周 | **> 5 周报告** | 约 5 周 |
+ 
+diff --git a/scripts/build.mjs b/scripts/build.mjs
+index 90b8dce..01d56b6 100644
+--- a/scripts/build.mjs
++++ b/scripts/build.mjs
+@@ -16,6 +16,7 @@
+ import { build } from 'esbuild';
+ import { readdir, mkdir, rm, cp } from 'node:fs/promises';
+ import { existsSync } from 'node:fs';
++import { createRequire } from 'node:module';
+ import path from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ 
+@@ -45,10 +46,37 @@ async function collectTs(dir) {
+   return out;
+ }
+ 
++/**
++ * 构建标识（EV-82 小主题第一段 r2 §2）：算法只在 `src/trivium/build-stamp.ts` 写一份。
++ * 这里先把它单独打包成一个临时 CJS 再调用，运行时收尾重算走的是同一段代码，口径不会漂。
++ * 取不到 git（例如 `git archive` 导出的树）时得到 null，照常构建、不报错。
++ */
++async function computeBuildStamp() {
++  const helper = path.join(ROOT, 'dist/.build-stamp.cjs');
++  await build({
++    platform: 'node', target: 'node18', logLevel: 'silent', charset: 'utf8',
++    entryPoints: [path.join(ROOT, 'src/trivium/build-stamp.ts')],
++    outfile: helper, bundle: true, format: 'cjs',
++  });
++  try {
++    const mod = createRequire(import.meta.url)(helper);
++    return await mod.computeBuildStamp(ROOT);
++  } finally {
++    await rm(helper, { force: true });
++  }
++}
++
+ async function bundleBinaries() {
+   await mkdir(path.join(ROOT, 'skills/dual-critic/scripts'), { recursive: true });
+   await mkdir(path.join(ROOT, 'dist'), { recursive: true });
+ 
++  const stamp = await computeBuildStamp();
++  console.log(
++    stamp
++      ? `构建标识：${stamp.git_head.slice(0, 7)}${stamp.dirty ? '（作用面内有未提交改动）' : ''}，inputs ${stamp.inputs_sha256.slice(0, 12)}`
++      : '构建标识：取不到 git，注入 null',
++  );
++
+   await build({
+     ...COMMON,
+     entryPoints: [path.join(ROOT, 'src/trivium/cli.ts')],
+@@ -56,6 +84,7 @@ async function bundleBinaries() {
+     bundle: true,
+     format: 'cjs',
+     banner: { js: '#!/usr/bin/env node' },
++    define: { __TRIVIUM_BUILD__: JSON.stringify(stamp) },
+   });
+ 
+   await build({
+diff --git a/skills/dual-critic/schema/run.v2.json b/skills/dual-critic/schema/run.v2.json
+index bcf6c0e..3789f46 100644
+--- a/skills/dual-critic/schema/run.v2.json
++++ b/skills/dual-critic/schema/run.v2.json
+@@ -113,6 +113,37 @@
+         "subject_sha256": {
+           "type": "string"
+         },
++        "build": {
++          "description": "运行中的编排器自带的构建标识（EV-82）。git_head 是被审项目的 HEAD，这一项才是编排器本体的构建来源；null = 构建时取不到 git；缺席 = 本字段之前的旧留痕",
++          "type": [
++            "object",
++            "null"
++          ],
++          "required": [
++            "repo_root_commit",
++            "git_head",
++            "dirty",
++            "inputs_sha256",
++            "built_at"
++          ],
++          "properties": {
++            "repo_root_commit": {
++              "type": "string"
++            },
++            "git_head": {
++              "type": "string"
++            },
++            "dirty": {
++              "type": "boolean"
++            },
++            "inputs_sha256": {
++              "type": "string"
++            },
++            "built_at": {
++              "type": "string"
++            }
++          }
++        },
+         "drift": {
+           "type": "object",
+           "required": [
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index 637bd61..b92715f 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -636,8 +636,16 @@ export function qualifyAgainstCliConfig(
+ export async function prepareZcodeHome(
+   runDir: string,
+   model: string | null,
+-  // `srcConfig` 只为可测性：不开这个口子，用例只能吃真实的 `~/.zcode/cli/config.json`（含凭据）
+-  opts: { srcConfig?: string } = {},
++  opts: {
++    // `srcConfig` 只为可测性：不开这个口子，用例只能吃真实的 `~/.zcode/cli/config.json`（含凭据）
++    srcConfig?: string;
++    /**
++     * 在**写盘之前**改写副本对象（EV-82 小主题第一段 r2 §3.1）。只给同形探针臂用：
++     * 它要把凭据换成哨兵，写盘前换才没有「先写真实凭据、再覆写」的窗口（AGY-03）。
++     * **审查臂不传**；不传时本函数的输出与加这个参数之前逐字相同（有用例锁住）。
++     */
++    transformCopy?: (cfg: ZcodeCliConfigShape) => ZcodeCliConfigShape;
++  } = {},
+ ): Promise<ZcodeHomePrep> {
+   const srcConfig = opts.srcConfig ?? path.join(os.homedir(), '.zcode/cli/config.json');
+   if (!(await exists(srcConfig))) {
+@@ -658,8 +666,9 @@ export async function prepareZcodeHome(
+   const q = qualifyAgainstCliConfig(model, cfg);
+   // 模型 id 必须是 <providerKey>/<modelId> 全限定形态（坑 P-06），且 providerKey 与本副本同源（r3 CODEX-03）
+   if (q.qualified !== null) cfg.model = { main: q.qualified, lite: q.qualified };
++  const toWrite = opts.transformCopy ? opts.transformCopy(cfg) : cfg;
+ 
+-  await fs.writeFile(path.join(dstDir, 'config.json'), JSON.stringify(cfg, null, 2), 'utf8');
++  await fs.writeFile(path.join(dstDir, 'config.json'), JSON.stringify(toWrite, null, 2), 'utf8');
+   // 配置副本含凭据，权限收紧
+   await fs.chmod(path.join(dstDir, 'config.json'), 0o600);
+ 
+diff --git a/src/trivium/doctor.ts b/src/trivium/doctor.ts
+index ba62943..2937d18 100644
+--- a/src/trivium/doctor.ts
++++ b/src/trivium/doctor.ts
+@@ -427,6 +427,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+   };
+   notes.push(`node=${env.nodePath ?? '未找到'} ${env.nodeVersion ?? ''}`.trim());
+   notes.push(`git=${env.gitVersion ?? '未找到'}`);
++  // 构建标识（EV-82 小主题第一段）：只读、出错不影响 doctor
++  try {
++    const { describeBuildStamp } = await import('./build-stamp.js');
++    notes.push(await describeBuildStamp(opts.projectRoot));
++  } catch (e) {
++    notes.push(`编排器构建标识：读取失败（${(e as Error).message}）`);
++  }
+   if (!env.nodeOk) blockers.push('Node.js 不可用或版本低于 18');
+   if (!env.gitOk) blockers.push('git 不可用或版本过低');
+   // wrapper 自身在、里面写死的 node / bundle 却没了：每次 Hook 都会报 127
+diff --git a/src/trivium/meta.ts b/src/trivium/meta.ts
+index 8015d10..71da0bf 100644
+--- a/src/trivium/meta.ts
++++ b/src/trivium/meta.ts
+@@ -10,6 +10,7 @@ import { promises as fs } from 'node:fs';
+ import type {
+   AgentId, CriticId, LegacyReviewMode, RunMeta, Stage, StageOrVerify, CommandEntry,
+ } from './types.js';
++import type { BuildStamp } from './build-stamp.js';
+ import { writeAtomic } from './util/fsx.js';
+ import { topicDir, type ArchiveLayout } from './archive.js';
+ import { withTopicLock } from './lock.js';
+@@ -309,6 +310,8 @@ export interface NewRunMetaInput {
+   subjectSha256: string;
+   denyPaths: string[];
+   driftPolicy: 'warn' | 'fail';
++  /** 编排器自带的构建标识（`build-stamp.ts` 的 `embeddedBuildStamp()`）；缺省按 null 记 */
++  build?: BuildStamp | null;
+ }
+ 
+ /** 运行开始时先写一份 `status: running` 的骨架，便于 `--wait` 与崩溃后取证 */
+@@ -334,6 +337,8 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
+       dirty: i.dirty,
+       subject_sha256: i.subjectSha256,
+       drift: { changed: false, files: [], policy: i.driftPolicy },
++      // 恒写（null 也写）：缺席只留给本字段之前的旧留痕，与 driver_enabled 同一口径
++      build: i.build ?? null,
+     },
+     started_at: new Date().toISOString(),
+     finished_at: null,
+diff --git a/src/trivium/probes/zcode.ts b/src/trivium/probes/zcode.ts
+index 1bd8561..e8ae6a5 100644
+--- a/src/trivium/probes/zcode.ts
++++ b/src/trivium/probes/zcode.ts
+@@ -21,6 +21,7 @@ import { run } from '../util/exec.js';
+ import {
+   invokeZcode,
+   legacyProviderMembers,
++  prepareZcodeHome,
+   qualifyAgainstCliConfig,
+   readonlyArgsFromProbe,
+   zcodeProviderConfigPaths,
+@@ -459,57 +460,334 @@ export async function probeModelOverride(
+       cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
+     });
+ 
+-    // 先看 CLI 有没有写出 v2 文件——写了就有判据，与退出形态无关
+-    const written = path.join(home, '.zcode/v2/provider_config.json');
+-    let observed: string | null = null;
+-    let wroteV2 = false;
+-    try {
+-      const w = JSON.parse(await fs.readFile(written, 'utf8')) as { config?: { defaultModelSelection?: { providerId?: unknown; modelId?: unknown } } };
+-      wroteV2 = true;
+-      const sel = w.config?.defaultModelSelection;
+-      if (sel && typeof sel.providerId === 'string' && typeof sel.modelId === 'string') observed = `${sel.providerId}/${sel.modelId}`;
+-    } catch {
+-      wroteV2 = false;
++    const j = judgeOverrideReadback(q.qualified, await readDefaultSelection(home), r);
++    const base = { override: j.override, requested: q.qualified, observed: j.observed };
++    switch (j.stop) {
++      case 'match':
++        return { ...base, why: `副本 model.main 被 legacy 导入读到并成为 defaultModelSelection${j.providerNote}` };
++      case 'mismatch':
++        return { ...base, why: `CLI 写出的 defaultModelSelection 是 ${j.observed ?? '（缺失）'}，modelId 段不是请求的模型——model.main 未被采信` };
++      case 'not_finished':
++        return { ...base, why: `拉起未完成，本轮未判定${j.tail}` };
++      case 'provider_unresolved':
++        return { ...base, why: `内置 provider 配置定位失败（P-28），配置读取阶段未到，本轮未判定${j.tail}` };
++      case 'no_import':
++        // 文案不承诺 CLI 行为（代码双审 r2 CODEX-02）：探针副本是白名单重建，与审查运行的整份拷贝不同形
++        return {
++          ...base,
++          why:
++            `CLI 跑到了模型层，但白名单重建的副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）——` +
++            `可能是 CLI 改了导入流程，也可能是探针裁剪掉了导入需要的键；请先核对 buildProbeCliConfig 的白名单是否仍 ⊇ 导入器必需键${j.tail}`,
++        };
++      case 'unrecognized':
++        return { ...base, why: `未识别的停止形态，本轮未判定${j.tail}` };
+     }
+-    if (wroteV2) {
+-      /*
+-       * 判据与 run() 侧**同一口径**（代码双审 r2 CODEX-03）：只看 modelId 段（`zcodeModelTail`）。
+-       * 在配置层整串等式本来合法（写出的 providerId 来自副本自己的 `model.main` 切分），
+-       * 但两份判据并存会让 doctor 结论与运行留痕在「providerId 形态漂了、modelId 仍对」时互相矛盾。
+-       * providerId 形态差只落 `why` 当 note。
+-       */
+-      const modelMatches = observed !== null && zcodeModelTail(observed) === zcodeModelTail(q.qualified);
+-      const providerNote =
+-        observed !== null && observed !== q.qualified && modelMatches ? `（providerId 形态与副本源不同：写出 ${observed}）` : '';
+-      return modelMatches
+-        ? { override: 'config_copy', requested: q.qualified, observed, why: `副本 model.main 被 legacy 导入读到并成为 defaultModelSelection${providerNote}` }
+-        : { override: 'global', requested: q.qualified, observed, why: `CLI 写出的 defaultModelSelection 是 ${observed ?? '（缺失）'}，modelId 段不是请求的模型——model.main 未被采信` };
++  } finally {
++    await fs.rm(home, { recursive: true, force: true });
++  }
++}
++
++/** CLI 在副本 HOME 下自写的 `v2/provider_config.json` 里的默认模型选择 */
++export interface DefaultSelectionReadback {
++  wroteV2: boolean;
++  /** `<providerId>/<modelId>`；文件在但字段缺失为 null */
++  observed: string | null;
++}
++
++/** 读 `<home>/.zcode/v2/provider_config.json` 的 `defaultModelSelection`（两臂共用，只读） */
++export async function readDefaultSelection(home: string): Promise<DefaultSelectionReadback> {
++  try {
++    const w = JSON.parse(await fs.readFile(path.join(home, '.zcode/v2/provider_config.json'), 'utf8')) as {
++      config?: { defaultModelSelection?: { providerId?: unknown; modelId?: unknown } };
++    };
++    const sel = w.config?.defaultModelSelection;
++    const observed = sel && typeof sel.providerId === 'string' && typeof sel.modelId === 'string' ? `${sel.providerId}/${sel.modelId}` : null;
++    return { wroteV2: true, observed };
++  } catch {
++    return { wroteV2: false, observed: null };
++  }
++}
++
++/**
++ * 两臂共用的**判据**（EV-82 小主题第一段 r2 §3.2 第 7 条，GLM-07）：只返回三态与停止形态，
++ * **成因文案由各臂自带**——白名单臂的 `no_import` 指向「核对白名单」，同形臂没有白名单可核。
++ */
++export type OverrideStop = 'match' | 'mismatch' | 'not_finished' | 'provider_unresolved' | 'no_import' | 'unrecognized';
++
++export interface OverrideJudgement {
++  override: 'config_copy' | 'global' | null;
++  observed: string | null;
++  stop: OverrideStop;
++  /** 写出的 providerId 形态与请求不同、modelId 一致时的说明；否则空串 */
++  providerNote: string;
++  /** 退出码与 stderr 首行（已脱敏），供没写出 v2 的几支拼文案 */
++  tail: string;
++}
++
++export function judgeOverrideReadback(
++  requested: string,
++  rb: DefaultSelectionReadback,
++  r: { code: number | null; timedOut?: boolean; stderr: string },
++): OverrideJudgement {
++  const firstLine = r.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? '（stderr 为空）';
++  const tail = `（退出码 ${r.code === null ? 'null' : r.code}${r.timedOut ? '，超时' : ''}：${redactSecrets(firstLine.slice(0, 120)).content}）`;
++  // 先看 CLI 有没有写出 v2 文件——写了就有判据，与退出形态无关
++  if (rb.wroteV2) {
++    /*
++     * 判据与 run() 侧**同一口径**（代码双审 r2 CODEX-03）：只看 modelId 段（`zcodeModelTail`）。
++     * providerId 形态差只落说明，不改判定。
++     */
++    const matches = rb.observed !== null && zcodeModelTail(rb.observed) === zcodeModelTail(requested);
++    const providerNote = rb.observed !== null && rb.observed !== requested && matches ? `（providerId 形态与副本源不同：写出 ${rb.observed}）` : '';
++    return matches
++      ? { override: 'config_copy', observed: rb.observed, stop: 'match', providerNote, tail }
++      : { override: 'global', observed: rb.observed, stop: 'mismatch', providerNote: '', tail };
++  }
++  // 没写出 v2：只有「确实跑到了模型/鉴权层」才能说导入没发生；其余一律未判定
++  if (r.code === null || r.timedOut) return { override: null, observed: null, stop: 'not_finished', providerNote: '', tail };
++  if (ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE.test(r.stderr)) return { override: null, observed: null, stop: 'provider_unresolved', providerNote: '', tail };
++  if (ZCODE_ARGV_PARSED_RE.test(r.stderr)) return { override: 'global', observed: null, stop: 'no_import', providerNote: '', tail };
++  return { override: null, observed: null, stop: 'unrecognized', providerNote: '', tail };
++}
++
++// ── 同形第二臂（EV-94 ②；EV-82 小主题第一段 r2 §3） ──
++
++/**
++ * 凭据形态的键名（大小写不敏感、子串匹配）。命中的键，其下的字符串值换成哨兵。
++ * 位于任一 `headers` 对象之下的字符串值也换（`Authorization` 等头字段名五花八门，按容器判更稳）。
++ */
++const CREDENTIAL_KEY_RE = /api[-_]?key|token|secret|passw(or)?d|authorization|cookie|credential|bearer/i;
++
++/**
++ * 按「保键骨架、字符串值换哨兵」改写一份配置（r2 §3.2 第 5 条，CODEX-04 / CODEX-05 / GLM-05）。
++ *
++ * **递归整份**（含嵌套对象与数组，不限于 `options`）；满足任一条的字符串值换成哨兵：
++ *   ①键名命中 {@link CREDENTIAL_KEY_RE}；②位于某个 `headers` 对象之下；
++ *   ③**形态兜底**：`redactSecrets` 判它像凭据（不论键名）。
++ * 其余值原样，**所有键一律保留**：顶层与 provider 白名单外的键正是 H2 的嫌疑面，动了就测不到。
++ *
++ * 这仍是**黑名单**性质：漏判的凭据会原样进副本（r2 §3.3 写明，缓解不是消除）。
++ * 返回替换过的**键路径**（不含值），供 notes 与报告登记。
++ */
++export function sentinelizeCredentials<T>(value: T): { copy: T; replacedPaths: string[] } {
++  const replacedPaths: string[] = [];
++  const walk = (v: unknown, at: string, sensitive: boolean): unknown => {
++    if (typeof v === 'string') {
++      if (sensitive || redactSecrets(v).count > 0) {
++        replacedPaths.push(at || '(root)');
++        return ZCODE_PROBE_SENTINEL_KEY;
++      }
++      return v;
+     }
++    if (Array.isArray(v)) return v.map((x, i) => walk(x, `${at}[${i}]`, sensitive));
++    if (v !== null && typeof v === 'object') {
++      const out: Record<string, unknown> = {};
++      for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
++        out[k] = walk(x, at ? `${at}.${k}` : k, sensitive || CREDENTIAL_KEY_RE.test(k) || k.toLowerCase() === 'headers');
++      }
++      return out;
++    }
++    return v;
++  };
++  return { copy: walk(value, '', false) as T, replacedPaths };
++}
+ 
+-    // 没写出 v2：只有「确实跑到了模型/鉴权层」才能说导入没发生；其余一律未判定
+-    const firstLine = r.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? '（stderr 为空）';
+-    const tail = `（退出码 ${r.code === null ? 'null' : r.code}${r.timedOut ? '，超时' : ''}：${redactSecrets(firstLine.slice(0, 120)).content}）`;
+-    if (r.code === null || r.timedOut) {
+-      return { override: null, requested: q.qualified, observed: null, why: `拉起未完成，本轮未判定${tail}` };
++/**
++ * 结构兜底（代码双审 r1 CODEX-01）：每个 provider 的 `options.apiKey` **无条件**写哨兵，不存在也补上。
++ * 与白名单臂同一取向：最可能的凭据载体不再依赖黑名单命中。只动这一个键的值，键与结构不动。
++ */
++export function forceProviderApiKeySentinel<T>(cfg: T): T {
++  const c = cfg as { provider?: Record<string, { options?: Record<string, unknown> } | undefined> };
++  for (const p of Object.values(c.provider ?? {})) {
++    if (!p || typeof p !== 'object') continue;
++    // 计算属性键：避开 fixture-credentials 扫描器对「apiKey: <长标识符>」字面形态的判据（与 buildProbeCliConfig 同理）
++    p.options = { ...(p.options ?? {}), [PROBE_SENTINEL_FIELD]: ZCODE_PROBE_SENTINEL_KEY };
++  }
++  return cfg;
++}
++
++/** 长随机串的形态：≥20 位、只由 base64 / hex / token 常见字符组成 */
++const RESIDUE_RE = /^[A-Za-z0-9._+/=-]{20,}$/;
++
++/**
++ * 拉起前的残余扫描（代码双审 r1 CODEX-01）：替换之后，凡位于 `provider.*.options` 之下、
++ * 像长随机串且不是 URL、不是哨兵的字符串，登记为「疑似未替换的凭据」。**只返回键路径，不返回值**。
++ *
++ * 只扫 `options` 子树（凭据的载体），不扫 `models`：较长的模型 id（带日期后缀那种）会被误判，
++ * 把一次本可零配额完成的实验挡掉。`baseURL` 键除外。
++ */
++export function findCredentialResidue(cfg: unknown): string[] {
++  const out: string[] = [];
++  const walk = (v: unknown, at: string, key: string): void => {
++    if (typeof v === 'string') {
++      if (key !== 'baseURL' && v !== ZCODE_PROBE_SENTINEL_KEY && !v.includes('://') && RESIDUE_RE.test(v)) out.push(at);
++      return;
+     }
+-    if (ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE.test(r.stderr)) {
+-      return { override: null, requested: q.qualified, observed: null, why: `内置 provider 配置定位失败（P-28），配置读取阶段未到，本轮未判定${tail}` };
++    if (Array.isArray(v)) { v.forEach((x, i) => walk(x, `${at}[${i}]`, key)); return; }
++    if (v && typeof v === 'object') for (const [k, x] of Object.entries(v as Record<string, unknown>)) walk(x, `${at}.${k}`, k);
++  };
++  const providers = (cfg as { provider?: Record<string, { options?: unknown } | undefined> }).provider ?? {};
++  for (const [name, p] of Object.entries(providers)) {
++    if (p && typeof p === 'object' && 'options' in p) walk(p.options, `provider.${name}.options`, 'options');
++  }
++  return out;
++}
++
++/** 同形臂的结论：与白名单臂同一形状，外加替换键路径与宿主预置的凭据 env 键 */
++export interface FullCopyOverrideProbe extends ModelOverrideProbe {
++  replacedPaths: string[];
++  hostCredentialEnv: string[];
++}
++
++/**
++ * `zcode.model_override_full_copy`：用与审查臂**同形**的副本，在**配置读取层**再判一次（r2 §3.2）。
++ *
++ * - 副本由审查臂同一个构造函数 `prepareZcodeHome` 造，经它的 `transformCopy` 在**写盘前**把凭据换成哨兵；
++ * - `homeDir` 为 null 或 route 不是 `config_copy` ⇒ **不拉起**（CODEX-02：否则子进程继承真实 HOME，
++ *   会读、甚至写用户真实的 `~/.zcode/v2/provider_config.json`）；
++ * - 环境与**白名单探针臂**同形（清两个凭据 env 键以保零配额）。与审查臂的已知偏差：审查臂不清这两个键（GLM-04）；
++ * - 判据与白名单臂共用 {@link judgeOverrideReadback}，成因文案本臂自带（GLM-07）；
++ * - 清理只认 `makeTempDir` 的返回值，不调 `scrubZcodeHome`（2026-09-20 事故 R1 / R2）。
++ *
++ * 本臂看得见配置读取层与两臂副本形态差异，**看不见运行期注册表层**。
++ */
++export async function probeModelOverrideFullCopy(
++  entry: string,
++  node: string,
++  cwd: string,
++  opts: {
++    cliConfigPath?: string;
++    model?: string;
++    timeoutMs?: number;
++    readonlyArgs?: readonly string[];
++    /**
++     * 替换面（代码双审 r1 CODEX-04）：`full`（缺省）= 键名 + headers + 形态兜底的递归替换；
++     * `apiKeyOnly` = 只换每个 provider 的 `options.apiKey`，其余值原样——计划 §4 判读表 (cc, global) 一格
++     * 「先分 H2 与替换伪影」的第一刀就用它复跑。两种都照做拉起前的残余扫描。
++     */
++    replace?: 'full' | 'apiKeyOnly';
++  } = {},
++): Promise<FullCopyOverrideProbe> {
++  const src = opts.cliConfigPath ?? ZCODE_CLI_CONFIG;
++  const hostCredentialEnv = ZCODE_CREDENTIAL_ENV_KEYS.filter((k) => process.env[k]);
++  const none = (why: string, requested: string | null = null): FullCopyOverrideProbe =>
++    ({ override: null, requested, observed: null, why, replacedPaths: [], hostCredentialEnv });
++
++  let cfg: { provider?: Record<string, Record<string, unknown> | undefined> };
++  try {
++    cfg = JSON.parse(await fs.readFile(src, 'utf8')) as typeof cfg;
++  } catch (e) {
++    return none(`读不到 ${src}：${(e as Error).message}`);
++  }
++  const requested = opts.model ?? pickNonFirstModel(cfg as Parameters<typeof pickNonFirstModel>[0]);
++  if (!requested) return none('cli/config.json 目录里没有任何 provider 拥有两个以上模型，挑不出非首位模型，判据会失明——本轮未判定');
++
++  // 前缀不得以 `trivium-modeloverride` 开头：白名单臂的清理用例按那个前缀找残留，并行跑会互相误判
++  const root = await makeTempDir('trivium-fullcopyarm');
++  try {
++    let replacedPaths: string[] = [];
++    let residue: string[] = [];
++    const prep = await prepareZcodeHome(root, requested, {
++      srcConfig: src,
++      transformCopy: (c) => {
++        const s = opts.replace === 'apiKeyOnly' ? { copy: structuredClone(c), replacedPaths: [] as string[] } : sentinelizeCredentials(c);
++        replacedPaths = s.replacedPaths;
++        const forced = forceProviderApiKeySentinel(s.copy);
++        residue = findCredentialResidue(forced);
++        return forced;
++      },
++    });
++    if (prep.homeDir === null || prep.route !== 'config_copy' || prep.qualified === null) {
++      return { ...none(`同形副本没有建成模型覆盖（${prep.reason ?? prep.route}），不拉起、本轮未判定`, requested), replacedPaths };
+     }
+-    if (ZCODE_ARGV_PARSED_RE.test(r.stderr)) {
+-      // 文案不承诺 CLI 行为（代码双审 r2 CODEX-02）：探针副本是白名单重建，与审查运行的整份拷贝不同形
++    /*
++     * 零配额的前提是「副本里所有凭据都被换掉」（r2 §4 配额前提）。替换是黑名单性质，
++     * 扫出疑似残余就**不拉起**：宁可本轮未判定，也不冒一次真实调用（CODEX-01，`--no-model-calls` 的承诺）。
++     */
++    if (residue.length > 0) {
+       return {
+-        override: 'global', requested: q.qualified, observed: null,
+-        why:
+-          `CLI 跑到了模型层，但白名单重建的副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）——` +
+-          `可能是 CLI 改了导入流程，也可能是探针裁剪掉了导入需要的键；请先核对 buildProbeCliConfig 的白名单是否仍 ⊇ 导入器必需键${tail}`,
++        ...none(
++          `同形副本里仍有 ${residue.length} 处疑似未替换的凭据（${residue.join('、')}），为守零配额不拉起、本轮未判定。` +
++            '若确认不是凭据，需把判据收窄后再跑',
++          prep.qualified,
++        ),
++        replacedPaths,
+       };
+     }
+-    return { override: null, requested: q.qualified, observed: null, why: `未识别的停止形态，本轮未判定${tail}` };
++
++    const env: Record<string, string | undefined> = {
++      ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
++      ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
++      HOME: prep.homeDir,
++    };
++    const r = await run(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])], {
++      cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
++    });
++
++    const j = judgeOverrideReadback(prep.qualified, await readDefaultSelection(prep.homeDir), r);
++    const base = { override: j.override, requested: prep.qualified, observed: j.observed, replacedPaths, hostCredentialEnv };
++    switch (j.stop) {
++      case 'match':
++        return { ...base, why: `同形副本（整份拷贝、凭据换哨兵）的 model.main 被 legacy 导入读到${j.providerNote}` };
++      case 'mismatch':
++      case 'no_import':
++        return {
++          ...base,
++          why:
++            (j.stop === 'mismatch'
++              ? `CLI 写出的 defaultModelSelection 是 ${j.observed ?? '（缺失）'}，modelId 段不是请求的模型`
++              : 'CLI 跑到了模型层，但同形副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）') +
++            '——成因两种都可能：①整份拷贝里有键让配置层结果与白名单副本不同（H2）；②本臂的凭据替换破坏了导入' +
++            `（本轮替换了 ${replacedPaths.length} 处：${replacedPaths.join('、') || '无'}）${j.tail}`,
++        };
++      case 'not_finished':
++        return { ...base, why: `拉起未完成，本轮未判定${j.tail}` };
++      case 'provider_unresolved':
++        return { ...base, why: `内置 provider 配置定位失败（P-28），配置读取阶段未到，本轮未判定${j.tail}` };
++      case 'unrecognized':
++        return { ...base, why: `未识别的停止形态，本轮未判定${j.tail}` };
++    }
+   } finally {
+-    await fs.rm(home, { recursive: true, force: true });
++    await fs.rm(root, { recursive: true, force: true });
+   }
+ }
+ 
++/**
++ * 只读个人 `v2/provider_config.json` 里的 provider **键名**（provider id），不读、不返回任何值（r2 §4.2，GLM-02）。
++ *
++ * 用途：核 EV-82 诊断 (D) 格的隔离腿前提「个人配置的 provider 键 ≠ 副本源 legacy 键」。
++ * 文件结构未经完整实测，所以按形态收集：任何名为 `providers` 的对象取其键、数组取元素的 `id`，
++ * 再加 `defaultModelSelection.providerId`。与 `provider_config.personal_file` 只判有无的既有纪律同型。
++ */
++export async function listPersonalProviderIds(file: string): Promise<{ present: boolean; ids: string[] }> {
++  let j: unknown;
++  try {
++    j = JSON.parse(await fs.readFile(file, 'utf8'));
++  } catch {
++    return { present: false, ids: [] };
++  }
++  const ids = new Set<string>();
++  const walk = (v: unknown): void => {
++    if (Array.isArray(v)) { v.forEach(walk); return; }
++    if (v === null || typeof v !== 'object') return;
++    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
++      if (k === 'providers') {
++        if (Array.isArray(x)) {
++          for (const it of x) if (it && typeof it === 'object' && typeof (it as { id?: unknown }).id === 'string') ids.add((it as { id: string }).id);
++        } else if (x && typeof x === 'object') {
++          for (const key of Object.keys(x)) ids.add(key);
++        }
++      }
++      if (k === 'defaultModelSelection' && x && typeof x === 'object' && typeof (x as { providerId?: unknown }).providerId === 'string') {
++        ids.add((x as { providerId: string }).providerId);
++      }
++      walk(x);
++    }
++  };
++  walk(j);
++  return { present: true, ids: [...ids].sort() };
++}
++
+ /** 读取某个 sessionId 的会话日志并解析轨迹 */
+ export async function readTrace(
+   sessionId: string | null,
+@@ -597,6 +875,8 @@ export async function probeZcode(
+      */
+     cliConfigPath?: string;
+     modelOverrideProbe?: typeof probeModelOverride;
++    /** 同形第二臂的注入口，与 `modelOverrideProbe` 同理（EV-82 小主题第一段） */
++    modelOverrideFullCopyProbe?: typeof probeModelOverrideFullCopy;
+   } = {},
+ ): Promise<{ probe: ZcodeProbe; notes: string[]; flagsIndeterminate: string[]; flagsZeroExit: string[] }> {
+   const notes: string[] = [];
+@@ -780,6 +1060,35 @@ export async function probeZcode(
+             '成因两种都可能：CLI 改了 legacy 导入流程，或探针的白名单副本裁掉了导入需要的键——先核对 buildProbeCliConfig 的白名单，再按 P-31 复核包内字面',
+         );
+       }
++
++      /*
++       * 同形第二臂（EV-94 ②；EV-82 小主题第一段 r2 §3）：副本与审查臂同形，在配置读取层再判一次。
++       * 与白名单臂同一门控、同样零配额（凭据写盘前换哨兵）；判不出不覆盖旧值（CODEX-06）。
++       */
++      const fcArm = opts.modelOverrideFullCopyProbe ?? probeModelOverrideFullCopy;
++      const fc = await fcArm(entry, node, fx.root, {
++        cliConfigPath,
++        readonlyArgs: readonlyArgsFromProbe(probe.readonly_flags),
++      });
++      if (fc.override !== null) probe.model_override_full_copy = fc.override;
++      notes.push(
++        `model_override_full_copy=${fc.override ?? '未判定（保留上一次 ' + JSON.stringify(probe.model_override_full_copy ?? null) + '）'}（本轮${fc.override === null ? '未' : ''}产出）：` +
++          `${fc.why}（请求 ${fc.requested ?? '—'}，CLI 写出 ${fc.observed ?? '—'}；替换凭据键 ${fc.replacedPaths.length} 处，另对每个 provider 的 apiKey 无条件写哨兵）。` +
++          '本臂只判配置读取层，看不见运行期注册表层。零配额的前提是副本里所有凭据都被换掉，拉起前已做残余扫描',
++      );
++      if (fc.hostCredentialEnv.length > 0) {
++        notes.push(
++          `⚠️ 宿主环境预置了 ${fc.hostCredentialEnv.join(' / ')}：两条探针臂都清掉了它们，审查运行不清——` +
++            '若两臂与审查运行结论不同，这是一个与副本形态无关的备择成因（GLM-04）',
++        );
++      }
++      // 两臂不一致告警（EV-94 ② 触发器）：只比**本轮都产出且都非 null** 的两值，不拿新值比旧值（CODEX-06）
++      if (mo.override !== null && fc.override !== null && mo.override !== fc.override) {
++        notes.push(
++          `⚠️ 两条探针臂在配置读取层结论不一致：白名单臂 ${mo.override}、同形臂 ${fc.override}——EV-94 ② 的触发条件成立，` +
++            '差异来自副本形态（或同形臂的凭据替换），见 EV-82 小主题第一段计划 §4 判读表',
++        );
++      }
+     }
+ 
+     if (opts.skipModelCalls || !cliConfigured) {
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index ce30614..a52195c 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -50,6 +50,7 @@ import {
+   type SkipVerdict,
+ } from './code-stage.js';
+ import { diffAgainst, headSha } from './util/git.js';
++import { collectBuildStampNotices, embeddedBuildStamp } from './build-stamp.js';
+ import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
+ import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
+ import { acquireLock } from './lock.js';
+@@ -928,6 +929,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+     dirty: primarySnap.dirty,
+     subjectSha256: primarySnap.subjectSha256,
+     denyPaths: primarySnap.denyPaths,
++    build: embeddedBuildStamp(),
+     driftPolicy: cfg.review.on_drift,
+   });
+   meta.artifacts = [...metaArtifacts];
+@@ -1590,6 +1592,19 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+     }
+   }
+ 
++  /*
++   * 构建标识比对（EV-82 小主题第一段 r2 §2）：只在**本仓模式**下出告警——被审项目就是编排器本仓时，
++   * 才能拿编排器的构建来源与它比；外部项目里 HEAD 恒不等，告警会常亮（r2 CODEX-01）。
++   * 位置在 writeRunMeta 之前，与上面那条同位，才落得进 run.json（AGY-05）。只告警，不阻断、不改 evidence_ok。
++   * 比对本身出错不得拖垮收尾，但**要留痕**（代码双审 r1 GLM-03）：`checkBuildStamp` 内部的 git 失败
++   * 都已以 null 收口，能到这里的基本只剩编程错误，而那恰是最该被看见的一类——吞掉就成了
++   * 「零告警、零痕迹」，与非本仓模式不可区分。与 doctor 侧「读取失败」同型，只告警、不阻断。
++   */
++  for (const notice of await collectBuildStampNotices(ctx.projectRoot, meta.snapshot.build ?? null)) {
++    warnings.push(notice);
++    meta.gate.warnings = [...(meta.gate.warnings ?? []), notice];
++  }
++
+   meta.gate.state = meta.status === 'success' ? 'review_done_awaiting_disposition' : 'failed';
+ 
+   await writeRunMeta(ref.layout, stage, meta);
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 75e70a0..f2f850b 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -18,6 +18,7 @@ import {
+ } from './agents/registry.js';
+ 
+ export type { AgentId, AgentVendor };
++import type { BuildStamp } from './build-stamp.js';
+ 
+ export type Stage = 'plan' | 'code' | 'bug';
+ export type StageOrVerify = Stage | 'verify';
+@@ -319,6 +320,15 @@ export interface ZcodeProbe extends CommonProbe {
+    * 文件系统重算（与 `provider_config` 那一格同一条理由）。
+    */
+   model_override: 'env' | 'config_copy' | 'global' | null;
++  /**
++   * 同形第二臂（EV-94 ②；EV-82 小主题第一段）：副本与审查臂**同形**（`prepareZcodeHome` 整份拷贝、凭据写盘前换哨兵），
++   * 在配置读取层再判一次。只存三态，requested / observed / why / 替换键路径进 notes（与 `model_override` 同构，AGY-04）。
++   * 判不出（null）时**不覆盖**上一轮的值（CODEX-06）。
++   *
++   * 谁消费：doctor 的两臂不一致告警（EV-94 ② 触发器），只在两臂**都是本轮产出且都非 null** 时触发。
++   * 可选：本字段之前的探针结论文件里没有它。
++   */
++  model_override_full_copy?: 'config_copy' | 'global' | null;
+   /**
+    * 工具轨迹来源：**工具名、调用计数、生效模型、结构化失败根因**的路径模板。
+    * M0 实测该日志的 `tool.call.*` 事件里**没有任何路径字段**。
+@@ -1194,6 +1204,12 @@ export interface SnapshotMeta {
+   dirty: boolean;
+   subject_sha256: string;
+   drift: { changed: boolean; files: string[]; policy: 'warn' | 'fail' };
++  /**
++   * 运行中的编排器自带的构建标识（EV-82 小主题第一段）。`git_head` 是**被审项目**的 HEAD，
++   * 这一项才是编排器本体是哪一版构建出来的；非本仓项目只作自述指纹，不与 `git_head` 比。
++   * null = 构建时取不到 git；缺席 = 本字段之前的旧留痕。见 `build-stamp.ts`。
++   */
++  build?: BuildStamp | null;
+ }
+ 
+ /**
+diff --git a/src/trivium/util/git.ts b/src/trivium/util/git.ts
+index 4e1c7a4..3ede7d0 100644
+--- a/src/trivium/util/git.ts
++++ b/src/trivium/util/git.ts
+@@ -69,6 +69,51 @@ export async function workTreeHash(cwd: string): Promise<string> {
+   }
+ }
+ 
++/** 是否浅克隆（`git rev-parse --is-shallow-repository`）；判不出返回 null */
++export async function isShallowRepo(cwd: string): Promise<boolean | null> {
++  const r = await git(cwd, ['rev-parse', '--is-shallow-repository']);
++  if (r.code !== 0) return null;
++  return r.stdout.trim() === 'true';
++}
++
++/**
++ * 仓库的根提交（`git rev-list --max-parents=0 HEAD`），作**仓库身份**用（EV-82 构建标识）。
++ *
++ * 多根仓库取字典序第一个，于是同一仓库的**完整**克隆算出同一个值。
++ * **浅克隆返回 null**，不返回移植边界：浅仓里 `--max-parents=0` 命中的是浅边界提交，
++ * 它随克隆深度变，拿它当身份会让本仓判定静默失效（代码双审 r1 CODEX-03 ≡ GLM-04）。
++ * 空仓库、非 git 目录、判不出是否浅仓，同样返回 null。
++ */
++export async function rootCommit(cwd: string): Promise<string | null> {
++  if ((await isShallowRepo(cwd)) !== false) return null;
++  const r = await git(cwd, ['rev-list', '--max-parents=0', 'HEAD']);
++  if (r.code !== 0) return null;
++  const roots = r.stdout.split('\n').map((s) => s.trim()).filter(Boolean).sort();
++  return roots[0] ?? null;
++}
++
++/**
++ * 取 tree 对象下若干路径各自的对象 id；路径不存在记 `absent`（EV-82 构建标识的 `inputs_sha256`）。
++ *
++ * 与 `workTreeHash` 配合：先得工作树的 tree，再按作用面逐项取子对象，
++ * 于是作用面外的改动（`doc/`、`.reviews/`）不影响结果。
++ */
++export async function treeEntryIds(cwd: string, tree: string, paths: readonly string[]): Promise<Array<[string, string]>> {
++  const out: Array<[string, string]> = [];
++  for (const p of paths) {
++    const r = await git(cwd, ['rev-parse', '--verify', '--quiet', `${tree}:${p}`]);
++    out.push([p, r.code === 0 ? r.stdout.trim() : 'absent']);
++  }
++  return out;
++}
++
++/** 作用面内是否有未提交改动（含未跟踪文件）：`git status --porcelain -- <paths>` 非空 */
++export async function isDirtyWithin(cwd: string, paths: readonly string[]): Promise<boolean | null> {
++  const r = await git(cwd, ['status', '--porcelain', '--', ...paths]);
++  if (r.code !== 0) return null;
++  return r.stdout.trim().length > 0;
++}
++
+ /** `git status --porcelain -uall` 的结构化结果，用于只读指纹与 scratch_paths 探针 */
+ /**
+  * 还原 git 加过引号的路径。
+diff --git a/test/unit/preflight.test.ts b/test/unit/preflight.test.ts
+index 4ca7a33..eac8fbe 100644
+--- a/test/unit/preflight.test.ts
++++ b/test/unit/preflight.test.ts
+@@ -424,6 +424,10 @@ test('回归：--no-model-calls 保留上一次探到的 zcode 结论', async ()
+     skipModelCalls: true,
+     existing,
+     modelOverrideProbe: async () => ({ override: null, requested: null, observed: null, why: '桩：本轮未判定' }),
++    // 同形第二臂同理（EV-82 小主题第一段）：不注入就会在装了 ZCode.app 的机器上读真实 cli/config.json 并真实拉起
++    modelOverrideFullCopyProbe: async () => ({
++      override: null, requested: null, observed: null, why: '桩：本轮未判定', replacedPaths: [], hostCredentialEnv: [],
++    }),
+   });
+   assert.equal(probe.response_field, 'response', '不得被覆盖成 null');
+   assert.equal(probe.model_override, 'env', '探针臂未判定时必须保留旧值——桩永远不会产出 env，改成别的值即现形');
+diff --git a/test/unit/zcode-model-selection.test.ts b/test/unit/zcode-model-selection.test.ts
+index fb7c88e..3b53720 100644
+--- a/test/unit/zcode-model-selection.test.ts
++++ b/test/unit/zcode-model-selection.test.ts
+@@ -622,11 +622,18 @@ test('探针臂：只读参数透传到 argv，且宿主的 ZCODE_API_KEY / ZCOD
+ });
+ 
+ test('探针臂：副本 HOME 跑后被清（只认 makeTempDir 的返回值）', async () => {
+-  const before = new Set(await fs.readdir(os.tmpdir()));
+-  const { r } = await probeWith({}, {});
+-  assert.equal(r.override, 'config_copy');
+-  const after = (await fs.readdir(os.tmpdir())).filter((n) => n.startsWith('trivium-modeloverride') && !before.has(n));
+-  assert.deepEqual(after, [], '探针的副本 HOME 必须被清掉');
++  // 私有 TMPDIR：公共 tmpdir 里别的用例文件（node --test 并行）也会建同前缀目录，扫公共目录会互相误判
++  const L = await legacyLayout();
++  const privateTmp = await tmp();
++  const saved = process.env['TMPDIR'];
++  process.env['TMPDIR'] = privateTmp;
++  try {
++    const r = await probeModelOverride(L.entry, process.execPath, L.cwd, { cliConfigPath: L.cliConfig });
++    assert.equal(r.override, 'config_copy', r.why);
++    assert.deepEqual(await fs.readdir(privateTmp), [], '探针的副本 HOME 必须被清掉');
++  } finally {
++    if (saved === undefined) delete process.env['TMPDIR']; else process.env['TMPDIR'] = saved;
++  }
+ });
+ 
+ test('探针臂：源里有免密 provider（apiKeyRequired:false）→ 探针副本带上该键、导入被拒、如实 global（r3 CODEX-01）', async () => {
+diff --git a/test/unit/zcode-provider-env.test.ts b/test/unit/zcode-provider-env.test.ts
+index 9994858..c962481 100644
+--- a/test/unit/zcode-provider-env.test.ts
++++ b/test/unit/zcode-provider-env.test.ts
+@@ -28,7 +28,7 @@ import {
+   ZCODE_PERSONAL_PROVIDER_ENV,
+   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
+ } from '../../src/trivium/adapters/zcode.js';
+-import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type ModelOverrideProbe } from '../../src/trivium/probes/zcode.js';
++import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type FullCopyOverrideProbe, type ModelOverrideProbe } from '../../src/trivium/probes/zcode.js';
+ import { runDoctor } from '../../src/trivium/doctor.js';
+ import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
+ 
+@@ -589,3 +589,61 @@ test('接线：探针臂判 global → 结论写 global 且出 ⚠️', async ()
+   assert.equal(probe.model_override, 'global');
+   assert.ok(notes.some((n) => n.includes('⚠️ 探针臂判 config_copy 档未生效')));
+ });
++
++// ── 同形第二臂的接线（EV-82 小主题第一段 r2 §3.4）：null 不覆盖、两臂不一致告警只比本轮都非 null 的值 ──
++
++async function probeZcodeWithTwoArms(
++  white: ModelOverrideProbe['override'],
++  full: FullCopyOverrideProbe['override'],
++  existingFullCopy?: 'config_copy' | 'global',
++) {
++  const L = await layout({ withBuiltin: true, withPersonal: false });
++  const cliConfig = path.join(L.root, 'cli-config.json');
++  await fs.writeFile(cliConfig, '{"provider":{},"model":{}}', 'utf8');
++  const existing = {
++    entrypoint: L.entry, version: '0.16.9', version_probe: null, probed_at: new Date().toISOString(),
++    readonly_flags: [], model_override: 'env' as const,
++    ...(existingFullCopy ? { model_override_full_copy: existingFullCopy } : {}),
++    trace_source: null, trace_args_source: null, response_field: 'response',
++    path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: [], coverage_complete: null, file_shape_verified: null },
++    scratch_paths: [], isolation: 'home_copy' as const, model_id_form: null, models: [],
++  };
++  let fullCopyCalls = 0;
++  try {
++    const out = await probeZcode(L.entry, process.execPath, {
++      skipModelCalls: true,
++      existing,
++      cliConfigPath: cliConfig,
++      modelOverrideProbe: async () => ({ override: white, requested: 'p/m', observed: null, why: '桩：白名单臂' }),
++      modelOverrideFullCopyProbe: async () => {
++        fullCopyCalls += 1;
++        return { override: full, requested: 'p/m', observed: null, why: '桩：同形臂', replacedPaths: ['a.apiKey'], hostCredentialEnv: [] };
++      },
++    });
++    return { ...out, fullCopyCalls };
++  } finally {
++    await L.cleanup();
++  }
++}
++
++const TWO_ARM_WARN = '两条探针臂在配置读取层结论不一致';
++
++test('同形臂接线：与白名单臂同一门控、恰好接线一次；结论写进 model_override_full_copy', async () => {
++  const { probe, notes, fullCopyCalls } = await probeZcodeWithTwoArms('config_copy', 'config_copy');
++  assert.equal(fullCopyCalls, 1);
++  assert.equal(probe.model_override_full_copy, 'config_copy');
++  assert.ok(notes.some((n) => n.includes('model_override_full_copy=config_copy') && n.includes('看不见运行期注册表层')));
++  assert.equal(notes.some((n) => n.includes(TWO_ARM_WARN)), false, '两臂一致不告警');
++});
++
++test('同形臂接线：两臂本轮都非 null 且不同 ⇒ 出 EV-94 ② 不一致告警', async () => {
++  const { notes } = await probeZcodeWithTwoArms('config_copy', 'global');
++  assert.ok(notes.some((n) => n.includes(TWO_ARM_WARN)));
++});
++
++test('同形臂接线：本轮判不出 ⇒ 保留上一轮的值，且不拿旧值去比、不出不一致告警（CODEX-06）', async () => {
++  const { probe, notes } = await probeZcodeWithTwoArms('config_copy', null, 'global');
++  assert.equal(probe.model_override_full_copy, 'global', '未判定不得覆盖旧值');
++  assert.ok(notes.some((n) => n.includes('model_override_full_copy=未判定')));
++  assert.equal(notes.some((n) => n.includes(TWO_ARM_WARN)), false, '旧值 global 与本轮白名单 config_copy 不同，也不得告警');
++});
+diff --git a/doc/05_testing/evidence/ev82-seg1-mutation-20260924/mutation-output.txt b/doc/05_testing/evidence/ev82-seg1-mutation-20260924/mutation-output.txt
+new file mode 100644
+index 0000000..4b13e83
+--- /dev/null
++++ b/doc/05_testing/evidence/ev82-seg1-mutation-20260924/mutation-output.txt
+@@ -0,0 +1,112 @@
++✓ 工作树干净、基线全绿（3 个套件）
++  MB1 ✓ 咬住（fail=2）
++  MB2 ✓ 咬住（fail=1）
++  MB3 ✓ 咬住（fail=1）
++  MF1 ✓ 咬住（fail=7）
++  MF2 ✓ 咬住（fail=6）
++  MF3 ✓ 咬住（fail=1）
++  MF4 ✓ 咬住（fail=1）
++  MF5 ✓ 咬住（fail=8）
++  MF6 ✓ 咬住（fail=1）
++  MF7 ✓ 咬住（fail=1）
++  MF8 ✓ 咬住（fail=1）
++  MF9 ✓ 咬住（fail=2）
++  MB4 ✓ 咬住（fail=1）
++  MB5 ✓ 咬住（fail=1）
++  MB6 ✓ 咬住（fail=1）
++{
++  "总数": 15,
++  "咬住": 15,
++  "逐条": [
++    {
++      "id": "MB1",
++      "desc": "去掉本仓模式判定：外部项目也比 HEAD（CODEX-01）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "MB2",
++      "desc": "收尾不重算作用面指纹（CODEX-08）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "MB3",
++      "desc": "作用面漏掉 skills/（CODEX-07 ≡ AGY-01 ≡ GLM-03）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "MF1",
++      "desc": "凭据替换不进数组（CODEX-05）",
++      "verdict": "✓ 咬住（fail=7）",
++      "fail": 7
++    },
++    {
++      "id": "MF2",
++      "desc": "凭据替换过宽：一切字符串都换（CODEX-04）",
++      "verdict": "✓ 咬住（fail=6）",
++      "fail": 6
++    },
++    {
++      "id": "MF3",
++      "desc": "去掉 headers 容器判据",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "MF4",
++      "desc": "早退只看 homeDir：限定失败时照样拉起（CODEX-02）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "MF5",
++      "desc": "prepareZcodeHome 忽略 transformCopy：真实凭据落盘（AGY-03）",
++      "verdict": "✓ 咬住（fail=8）",
++      "fail": 8
++    },
++    {
++      "id": "MF6",
++      "desc": "两臂不一致告警拿旧值比（CODEX-06）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "MF7",
++      "desc": "同形臂判不出也覆盖旧值（CODEX-06）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "MF8",
++      "desc": "去掉拉起前的残余扫描拦截：疑似凭据照样拉起（代码双审 r1 CODEX-01）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "MF9",
++      "desc": "去掉 apiKey 无条件写哨兵的结构兜底（代码双审 r1 CODEX-01）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "MB4",
++      "desc": "浅仓也返回根提交：移植边界被当成仓库身份（代码双审 r1 CODEX-03 ≡ GLM-04）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "MB5",
++      "desc": "被审项目取不到根提交时不退包名兜底：浅克隆静默判否（代码双审 r1 CODEX-03）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "MB6",
++      "desc": "比对异常被静默吞掉（代码双审 r1 GLM-03）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/ev82-seg1-mutation-20260924/mutation-spec.json b/doc/05_testing/evidence/ev82-seg1-mutation-20260924/mutation-spec.json
+new file mode 100644
+index 0000000..2776e09
+--- /dev/null
++++ b/doc/05_testing/evidence/ev82-seg1-mutation-20260924/mutation-spec.json
+@@ -0,0 +1,135 @@
++{
++  "targets": [
++    "src/trivium/build-stamp.ts",
++    "src/trivium/probes/zcode.ts",
++    "src/trivium/adapters/zcode.ts",
++    "src/trivium/util/git.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/build-stamp.test.js",
++    "dist/test/test/unit/zcode-full-copy-arm.test.js",
++    "dist/test/test/unit/zcode-provider-env.test.js"
++  ],
++  "cases": [
++    {
++      "id": "MB1",
++      "desc": "去掉本仓模式判定：外部项目也比 HEAD（CODEX-01）",
++      "file": "src/trivium/build-stamp.ts",
++      "find": "  if (!isSelfRepo(i)) return [];",
++      "replace": "",
++      "expect": "dist/test/test/unit/build-stamp.test.js"
++    },
++    {
++      "id": "MB2",
++      "desc": "收尾不重算作用面指纹（CODEX-08）",
++      "file": "src/trivium/build-stamp.ts",
++      "find": "  const currentInputsSha256 = self && build !== null ? await computeInputsSha256(projectRoot) : null;",
++      "replace": "  const currentInputsSha256 = self && build !== null ? null : null;",
++      "expect": "dist/test/test/unit/build-stamp.test.js"
++    },
++    {
++      "id": "MB3",
++      "desc": "作用面漏掉 skills/（CODEX-07 ≡ AGY-01 ≡ GLM-03）",
++      "file": "src/trivium/build-stamp.ts",
++      "find": "  'skills',",
++      "replace": "",
++      "expect": "dist/test/test/unit/build-stamp.test.js"
++    },
++    {
++      "id": "MF1",
++      "desc": "凭据替换不进数组（CODEX-05）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "if (Array.isArray(v)) return v.map((x, i) => walk(x, `${at}[${i}]`, sensitive));",
++      "replace": "if (Array.isArray(v)) return v;",
++      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
++    },
++    {
++      "id": "MF2",
++      "desc": "凭据替换过宽：一切字符串都换（CODEX-04）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "      if (sensitive || redactSecrets(v).count > 0) {",
++      "replace": "      if (typeof v === 'string') {",
++      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
++    },
++    {
++      "id": "MF3",
++      "desc": "去掉 headers 容器判据",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": " || k.toLowerCase() === 'headers');",
++      "replace": ");",
++      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
++    },
++    {
++      "id": "MF4",
++      "desc": "早退只看 homeDir：限定失败时照样拉起（CODEX-02）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "    if (prep.homeDir === null || prep.route !== 'config_copy' || prep.qualified === null) {",
++      "replace": "    if (prep.homeDir === null || prep.qualified === null && false) {",
++      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
++    },
++    {
++      "id": "MF5",
++      "desc": "prepareZcodeHome 忽略 transformCopy：真实凭据落盘（AGY-03）",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "  const toWrite = opts.transformCopy ? opts.transformCopy(cfg) : cfg;",
++      "replace": "  const toWrite = opts.transformCopy ? cfg : cfg;",
++      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
++    },
++    {
++      "id": "MF6",
++      "desc": "两臂不一致告警拿旧值比（CODEX-06）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "      if (mo.override !== null && fc.override !== null && mo.override !== fc.override) {",
++      "replace": "      if (mo.override !== null && (probe.model_override_full_copy ?? null) !== null && mo.override !== probe.model_override_full_copy) {",
++      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
++    },
++    {
++      "id": "MF7",
++      "desc": "同形臂判不出也覆盖旧值（CODEX-06）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "      if (fc.override !== null) probe.model_override_full_copy = fc.override;",
++      "replace": "      probe.model_override_full_copy = fc.override;",
++      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
++    },
++    {
++      "id": "MF8",
++      "desc": "去掉拉起前的残余扫描拦截：疑似凭据照样拉起（代码双审 r1 CODEX-01）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "    if (residue.length > 0) {",
++      "replace": "    if (residue.length > 0 && false) {",
++      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
++    },
++    {
++      "id": "MF9",
++      "desc": "去掉 apiKey 无条件写哨兵的结构兜底（代码双审 r1 CODEX-01）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "    p.options = { ...(p.options ?? {}), [PROBE_SENTINEL_FIELD]: ZCODE_PROBE_SENTINEL_KEY };",
++      "replace": "    p.options = { ...(p.options ?? {}) };",
++      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
++    },
++    {
++      "id": "MB4",
++      "desc": "浅仓也返回根提交：移植边界被当成仓库身份（代码双审 r1 CODEX-03 ≡ GLM-04）",
++      "file": "src/trivium/util/git.ts",
++      "find": "  if ((await isShallowRepo(cwd)) !== false) return null;",
++      "replace": "",
++      "expect": "dist/test/test/unit/build-stamp.test.js"
++    },
++    {
++      "id": "MB5",
++      "desc": "被审项目取不到根提交时不退包名兜底：浅克隆静默判否（代码双审 r1 CODEX-03）",
++      "file": "src/trivium/build-stamp.ts",
++      "find": "  if (i.build !== null && i.projectRootCommit !== null) return",
++      "replace": "  if (i.build !== null) return",
++      "expect": "dist/test/test/unit/build-stamp.test.js"
++    },
++    {
++      "id": "MB6",
++      "desc": "比对异常被静默吞掉（代码双审 r1 GLM-03）",
++      "file": "src/trivium/build-stamp.ts",
++      "find": "    return [`${BUILD_WARN_CHECK_FAILED}：${(e as Error).message}`];",
++      "replace": "    return [];",
++      "expect": "dist/test/test/unit/build-stamp.test.js"
++    }
++  ]
++}
+diff --git a/src/trivium/build-stamp.ts b/src/trivium/build-stamp.ts
+new file mode 100644
+index 0000000..b2d96f1
+--- /dev/null
++++ b/src/trivium/build-stamp.ts
+@@ -0,0 +1,202 @@
++/**
++ * 构建标识（EV-82 小主题第一段 r2 §2）：让「安装副本就是当前工作树构建的」有机器证据。
++ *
++ * ## 为什么要有它
++ *
++ * EV-82 在 2026-09-21 判失效的那次运行，`snapshot.git_head` 就是结案提交、工作树 dirty，
++ * 而当时全局安装副本是哪一版构建出来的，留痕里钉不住（M10b r5 §1.4 ⑤）。
++ * `snapshot.git_head` 记的是**被审项目**的 HEAD（`freeze.ts` 的 `headSha(projectRoot)`），
++ * 不是运行中的编排器本体——编排器装在用户级、在任意项目里跑，两者只在「被审项目就是本仓」时才可比。
++ *
++ * ## 三件事
++ *
++ * - **写入**：`scripts/build.mjs` 构建主包前调 {@link computeBuildStamp}，经 esbuild `define` 注入常量；
++ * - **读出**：运行时 {@link embeddedBuildStamp} 取回，记进 `snapshot.build`；
++ * - **比对**：{@link buildStampWarnings} 只在**本仓模式**下比，其余项目只当自述指纹记录（r2 CODEX-01）。
++ *
++ * 算法只有这一份：构建脚本与运行时收尾重算都调 {@link computeInputsSha256}，口径不会漂。
++ */
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import { headSha, isDirtyWithin, isShallowRepo, rootCommit, treeEntryIds, workTreeHash } from './util/git.js';
++import { sha256 } from './util/fsx.js';
++
++/**
++ * 影响安装产物内容的路径集（r2 §2 作用面，CODEX-07 ≡ AGY-01 ≡ GLM-03）。
++ *
++ * `skills/` 整树由安装器同步进用户级 skill 目录，`skills/dual-critic/schema/*.json` 还经 import 内联进 bundle；
++ * `tsconfig.json` 影响构建。`test/`、`doc/` 不进安装产物，故不在内。
++ * 生成物 `skills/dual-critic/scripts/trivium.cjs` 已被 `.gitignore` 覆盖，`workTreeHash` 的 `add -A` 不会收它。
++ */
++export const INSTALL_INPUT_PATHS: readonly string[] = [
++  'src',
++  'scripts',
++  'skills',
++  'package.json',
++  'package-lock.json',
++  'tsconfig.json',
++];
++
++/** 本仓的包名：构建标识缺失时，用它兜底判定「被审项目就是本仓」 */
++export const SELF_PACKAGE_NAME = 'triviumcode';
++
++export interface BuildStamp {
++  /** 构建来源仓的根提交，作仓库身份 */
++  repo_root_commit: string;
++  git_head: string;
++  /** 构建时作用面内有未提交改动（含未跟踪文件） */
++  dirty: boolean;
++  /** 作用面在构建时工作树上的指纹，见 {@link computeInputsSha256} */
++  inputs_sha256: string;
++  built_at: string;
++}
++
++/**
++ * 作用面指纹：对工作树（含未跟踪文件，经临时索引、不碰真实索引）的 tree，
++ * 逐项取作用面路径的对象 id，按路径排序拼接后取 sha256。
++ *
++ * 作用面外的改动不影响结果；取不到（非 git、`write-tree` 失败）返回 null。
++ */
++export async function computeInputsSha256(root: string, paths: readonly string[] = INSTALL_INPUT_PATHS): Promise<string | null> {
++  let tree: string;
++  try {
++    tree = await workTreeHash(root);
++  } catch {
++    return null;
++  }
++  const entries = await treeEntryIds(root, tree, [...paths].sort());
++  return sha256(entries.map(([p, id]) => `${p} ${id}`).join('\n'));
++}
++
++/** 构建时算一份标识；取不到 git（例如 `git archive` 导出的树）返回 null，不抛 */
++export async function computeBuildStamp(root: string): Promise<BuildStamp | null> {
++  const [repoRoot, head, dirty, inputs] = await Promise.all([
++    rootCommit(root),
++    headSha(root),
++    isDirtyWithin(root, INSTALL_INPUT_PATHS),
++    computeInputsSha256(root),
++  ]);
++  if (repoRoot === null || head === null || dirty === null || inputs === null) return null;
++  return { repo_root_commit: repoRoot, git_head: head, dirty, inputs_sha256: inputs, built_at: new Date().toISOString() };
++}
++
++declare const __TRIVIUM_BUILD__: BuildStamp | null | undefined;
++
++/**
++ * 运行中的编排器自带的构建标识。
++ *
++ * 打包产物由 `scripts/build.mjs` 经 esbuild `define` 注入；逐文件转译的测试构建没有注入，
++ * `typeof` 判为 undefined，按「标识缺失」处理（null）。
++ *
++ * **这是对 r2 §2「测试构建注入固定测试值」的有意偏离**（代码双审 r1 GLM-01）：告警逻辑是纯函数，
++ * 用例都显式传入 stamp；若给测试构建注入固定值，所有端到端用例（外部夹具项目）都会带一份
++ * 与真实构建无关的标识。理由登记在本段收口报告。
++ */
++export function embeddedBuildStamp(): BuildStamp | null {
++  return typeof __TRIVIUM_BUILD__ === 'undefined' ? null : (__TRIVIUM_BUILD__ ?? null);
++}
++
++/** 四条告警文案（r2 §2，AGY-05）。导出供用例按常量断言，不抄字面 */
++export const BUILD_WARN_MISSING = '构建标识缺失：本编排器的构建没有记录来源（取不到 git 的构建），无法判定安装副本是哪一版';
++export const BUILD_WARN_DIRTY = '构建时工作树有未提交改动：安装副本不对应任何一个提交';
++export const BUILD_WARN_STALE_INPUTS = '安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装';
++export const BUILD_WARN_HEAD = '安装副本与仓库 HEAD 不同版';
++/** 比对本身出错时的文案（代码双审 r1 GLM-03）：不重抛，但留痕 */
++export const BUILD_WARN_CHECK_FAILED = '构建标识比对失败';
++
++export interface BuildStampCheckInput {
++  build: BuildStamp | null;
++  /** 被审项目的根提交；非 git 项目为 null */
++  projectRootCommit: string | null;
++  projectHead: string | null;
++  /** 被审项目根目录下 package.json 的 name；读不到为 null */
++  projectPackageName: string | null;
++  /** 仅本仓模式下由调用方重算；传 null 表示没算 */
++  currentInputsSha256: string | null;
++}
++
++/**
++ * 本仓模式判定：被审项目就是编排器本仓。
++ *
++ * - **两边根提交都可得**：只比根提交（标识里带着构建来源仓的根提交），包名不作数；
++ * - **任一边取不到**（构建标识缺失、被审项目是浅克隆或非 git）：退到包名兜底。
++ *   不兜底的话，「构建标识缺失」永远判定不了本仓模式、永远不会出现；浅克隆的本仓会
++ *   **静默**落成「不是本仓」，与真的不是本仓不可区分（代码双审 r1 CODEX-03）。
++ *
++ * **兜底的代价**（CODEX-02）：它不看根提交，任何 `package.json` 的 `name` 也叫 `triviumcode` 的
++ * 第三方项目都会进本仓模式，收到一两条与它无关的告警。无害、不阻断，接受。
++ * `SELF_PACKAGE_NAME` 与 `package.json` 的一致性由用例对账，改名当场红。
++ */
++export function isSelfRepo(i: Pick<BuildStampCheckInput, 'build' | 'projectRootCommit' | 'projectPackageName'>): boolean {
++  if (i.build !== null && i.projectRootCommit !== null) return i.projectRootCommit === i.build.repo_root_commit;
++  return i.projectPackageName === SELF_PACKAGE_NAME;
++}
++
++/**
++ * 比对并给出告警（纯函数）。**非本仓模式恒返回空**：外部项目里 HEAD 恒不等，告警会常亮（r2 CODEX-01）。
++ * 只告警、不阻断，调用方写进 `meta.gate.warnings`。
++ */
++export function buildStampWarnings(i: BuildStampCheckInput): string[] {
++  if (!isSelfRepo(i)) return [];
++  if (i.build === null) return [BUILD_WARN_MISSING];
++  const out: string[] = [];
++  if (i.build.dirty) out.push(BUILD_WARN_DIRTY);
++  if (i.currentInputsSha256 !== null && i.currentInputsSha256 !== i.build.inputs_sha256) out.push(BUILD_WARN_STALE_INPUTS);
++  if (i.projectHead !== null && i.projectHead !== i.build.git_head) out.push(`${BUILD_WARN_HEAD}（构建于 ${i.build.git_head.slice(0, 7)}，仓库 HEAD ${i.projectHead.slice(0, 7)}）`);
++  return out;
++}
++
++/**
++ * 收尾用：调比对并把**比对本身的异常**转成一条告警，不重抛（代码双审 r1 GLM-03）。
++ * `check` 只为可测性开口，生产路径恒用 {@link checkBuildStamp}。
++ */
++export async function collectBuildStampNotices(
++  projectRoot: string,
++  build: BuildStamp | null,
++  check: typeof checkBuildStamp = checkBuildStamp,
++): Promise<string[]> {
++  try {
++    return await check(projectRoot, build);
++  } catch (e) {
++    return [`${BUILD_WARN_CHECK_FAILED}：${(e as Error).message}`];
++  }
++}
++
++/** doctor 一行人读描述：编排器是哪一版构建的，以及当前项目是否本仓模式、比对结论 */
++export async function describeBuildStamp(projectRoot: string, build: BuildStamp | null = embeddedBuildStamp()): Promise<string> {
++  const head = build === null
++    ? '编排器构建标识：缺失（取不到 git 的构建，或测试构建）'
++    : `编排器构建标识：${build.git_head.slice(0, 7)}${build.dirty ? '（构建时作用面有未提交改动）' : ''}，inputs ${build.inputs_sha256.slice(0, 12)}，构建于 ${build.built_at}`;
++  const [projectRootCommit, projectPackageName, shallow] = await Promise.all([
++    rootCommit(projectRoot), readPackageName(projectRoot), isShallowRepo(projectRoot),
++  ]);
++  if (!isSelfRepo({ build, projectRootCommit, projectPackageName })) return `${head}；当前项目不是编排器本仓，只记不比`;
++  const how = build !== null && projectRootCommit !== null ? '按根提交' : shallow ? '浅克隆，按包名' : '按包名';
++  const w = await checkBuildStamp(projectRoot, build);
++  return `${head}；本仓模式（${how}判定）：${w.length === 0 ? '安装副本与当前工作树一致' : w.join('；')}`;
++}
++
++/** 读被审项目根的 package.json 的 name；读不到返回 null */
++export async function readPackageName(projectRoot: string): Promise<string | null> {
++  try {
++    const j = JSON.parse(await fs.readFile(path.join(projectRoot, 'package.json'), 'utf8')) as { name?: unknown };
++    return typeof j.name === 'string' ? j.name : null;
++  } catch {
++    return null;
++  }
++}
++
++/**
++ * 收尾时的一站式检查：取被审项目的根提交、HEAD、包名；本仓模式下重算作用面指纹。
++ * 非本仓模式不重算（省一次 `workTreeHash`）。
++ */
++export async function checkBuildStamp(projectRoot: string, build: BuildStamp | null = embeddedBuildStamp()): Promise<string[]> {
++  const [projectRootCommit, projectHead, projectPackageName] = await Promise.all([
++    rootCommit(projectRoot),
++    headSha(projectRoot),
++    readPackageName(projectRoot),
++  ]);
++  const self = isSelfRepo({ build, projectRootCommit, projectPackageName });
++  const currentInputsSha256 = self && build !== null ? await computeInputsSha256(projectRoot) : null;
++  return buildStampWarnings({ build, projectRootCommit, projectHead, projectPackageName, currentInputsSha256 });
++}
+diff --git a/test/unit/build-stamp.test.ts b/test/unit/build-stamp.test.ts
+new file mode 100644
+index 0000000..61dd0b1
+--- /dev/null
++++ b/test/unit/build-stamp.test.ts
+@@ -0,0 +1,193 @@
++/**
++ * 构建标识（EV-82 小主题第一段 r2 §2）：本仓模式判定、四条告警、作用面指纹、run.json 落盘。
++ *
++ * 全部在临时目录里的合成 git 仓库上跑，不碰本仓工作树。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import {
++  BUILD_WARN_CHECK_FAILED,
++  BUILD_WARN_DIRTY,
++  BUILD_WARN_HEAD,
++  BUILD_WARN_MISSING,
++  BUILD_WARN_STALE_INPUTS,
++  INSTALL_INPUT_PATHS,
++  SELF_PACKAGE_NAME,
++  buildStampWarnings,
++  checkBuildStamp,
++  collectBuildStampNotices,
++  computeBuildStamp,
++  computeInputsSha256,
++  embeddedBuildStamp,
++  isSelfRepo,
++  readPackageName,
++  type BuildStamp,
++} from '../../src/trivium/build-stamp.js';
++import { headSha, initFixtureRepo, isShallowRepo, rootCommit } from '../../src/trivium/util/git.js';
++import { run } from '../../src/trivium/util/exec.js';
++import { newRunMeta } from '../../src/trivium/meta.js';
++import { validateRunMeta } from '../../src/trivium/schemas.js';
++import { REPO_ROOT } from '../helpers/fixture.js';
++
++const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'trivium-buildstamp-'));
++
++/** 一个像本仓的最小仓库：作用面内外各有文件 */
++async function selfLikeRepo(name = SELF_PACKAGE_NAME): Promise<string> {
++  const dir = await tmp();
++  await fs.mkdir(path.join(dir, 'src'), { recursive: true });
++  await fs.mkdir(path.join(dir, 'skills/x'), { recursive: true });
++  await fs.mkdir(path.join(dir, 'doc'), { recursive: true });
++  await fs.writeFile(path.join(dir, 'src/a.ts'), 'export const a = 1;\n');
++  await fs.writeFile(path.join(dir, 'skills/x/SKILL.md'), '# x\n');
++  await fs.writeFile(path.join(dir, 'doc/n.md'), '# n\n');
++  await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }));
++  await initFixtureRepo(dir);
++  return dir;
++}
++
++const stamp = (over: Partial<BuildStamp> = {}): BuildStamp => ({
++  repo_root_commit: 'root', git_head: 'head', dirty: false, inputs_sha256: 'in', built_at: '2026-09-24T00:00:00Z', ...over,
++});
++
++// ── 纯函数：本仓模式与四条告警 ──
++
++test('本仓模式：有标识时按根提交判；缺标识时按包名兜底', () => {
++  assert.equal(isSelfRepo({ build: stamp(), projectRootCommit: 'root', projectPackageName: 'other' }), true);
++  assert.equal(isSelfRepo({ build: stamp(), projectRootCommit: 'elsewhere', projectPackageName: SELF_PACKAGE_NAME }), false,
++    '有标识时只认根提交，包名不作数');
++  assert.equal(isSelfRepo({ build: null, projectRootCommit: 'x', projectPackageName: SELF_PACKAGE_NAME }), true);
++  assert.equal(isSelfRepo({ build: null, projectRootCommit: 'x', projectPackageName: 'other' }), false);
++});
++
++test('非本仓模式零告警：外部项目里 HEAD 恒不等，也不得出「不同版」（r2 CODEX-01）', () => {
++  const w = buildStampWarnings({
++    build: stamp({ dirty: true }), projectRootCommit: 'someone-else', projectHead: 'zzz',
++    projectPackageName: 'their-app', currentInputsSha256: 'different',
++  });
++  assert.deepEqual(w, []);
++  assert.deepEqual(buildStampWarnings({
++    build: null, projectRootCommit: null, projectHead: null, projectPackageName: 'their-app', currentInputsSha256: null,
++  }), []);
++});
++
++test('本仓模式四条告警各自独立：缺失 / dirty / 构建后又改 / HEAD 不同', () => {
++  const base = { projectRootCommit: 'root', projectHead: 'head', projectPackageName: SELF_PACKAGE_NAME, currentInputsSha256: 'in' };
++  assert.deepEqual(buildStampWarnings({ ...base, build: null }), [BUILD_WARN_MISSING]);
++  assert.deepEqual(buildStampWarnings({ ...base, build: stamp() }), [], '一致时零告警');
++  assert.deepEqual(buildStampWarnings({ ...base, build: stamp({ dirty: true }) }), [BUILD_WARN_DIRTY]);
++  assert.deepEqual(buildStampWarnings({ ...base, currentInputsSha256: 'changed', build: stamp() }), [BUILD_WARN_STALE_INPUTS]);
++  const head = buildStampWarnings({ ...base, projectHead: 'newhead', build: stamp() });
++  assert.equal(head.length, 1);
++  assert.ok(head[0]!.startsWith(BUILD_WARN_HEAD));
++});
++
++// ── 作用面指纹 ──
++
++test('inputs_sha256：作用面内改文件（含未跟踪）⇒ 变；作用面外（doc/）改 ⇒ 不变', async () => {
++  const dir = await selfLikeRepo();
++  const h0 = await computeInputsSha256(dir);
++  assert.ok(h0);
++  await fs.writeFile(path.join(dir, 'doc/n.md'), '# changed\n');
++  assert.equal(await computeInputsSha256(dir), h0, 'doc/ 不在作用面');
++  await fs.writeFile(path.join(dir, 'skills/x/SKILL.md'), '# changed\n');
++  const h1 = await computeInputsSha256(dir);
++  assert.notEqual(h1, h0, 'skills/ 在作用面（CODEX-07）');
++  await fs.writeFile(path.join(dir, 'src/new.ts'), 'export {};\n');
++  assert.notEqual(await computeInputsSha256(dir), h1, '未跟踪文件也算');
++  assert.ok(INSTALL_INPUT_PATHS.includes('skills') && INSTALL_INPUT_PATHS.includes('tsconfig.json'));
++});
++
++test('computeBuildStamp：git 仓库里各项齐全；非 git 目录 ⇒ null，不抛', async () => {
++  const dir = await selfLikeRepo();
++  const s = await computeBuildStamp(dir);
++  assert.ok(s);
++  assert.equal(s!.git_head, await headSha(dir));
++  assert.equal(s!.repo_root_commit, await rootCommit(dir));
++  assert.equal(s!.dirty, false);
++  await fs.writeFile(path.join(dir, 'src/a.ts'), 'export const a = 2;\n');
++  assert.equal((await computeBuildStamp(dir))!.dirty, true);
++  assert.equal(await computeBuildStamp(await tmp()), null);
++});
++
++test('checkBuildStamp：本仓模式下构建后又改作用面 ⇒「不是当前工作树构建的」；外部仓库零告警', async () => {
++  const dir = await selfLikeRepo();
++  const s = (await computeBuildStamp(dir))!;
++  assert.deepEqual(await checkBuildStamp(dir, s), []);
++  await fs.writeFile(path.join(dir, 'src/a.ts'), 'export const a = 3;\n');
++  assert.deepEqual(await checkBuildStamp(dir, s), [BUILD_WARN_STALE_INPUTS]);
++
++  const other = await selfLikeRepo('their-app');
++  assert.deepEqual(await checkBuildStamp(other, s), [], '根提交不同 ⇒ 非本仓模式');
++});
++
++// ── 代码双审 r1 的补强 ──
++
++test('包名兜底的常量与 package.json 对账：改名或加 scope 当场红（CODEX-02）', async () => {
++  const pkg = JSON.parse(await fs.readFile(path.join(REPO_ROOT, 'package.json'), 'utf8')) as { name: string };
++  assert.equal(SELF_PACKAGE_NAME, pkg.name);
++});
++
++test('浅克隆：rootCommit 返回 null 而非移植边界；本仓判定退到包名，不静默判否（CODEX-03 ≡ GLM-04）', async () => {
++  const origin = await selfLikeRepo();
++  await fs.writeFile(path.join(origin, 'src/b.ts'), 'export const b = 1;\n');
++  await run('git', ['add', '-A'], { cwd: origin });
++  await run('git', ['commit', '-q', '-m', 'second', '--no-verify'], { cwd: origin });
++  const shallowParent = await tmp();
++  const shallow = path.join(shallowParent, 'clone');
++  const c = await run('git', ['clone', '-q', '--depth', '1', `file://${origin}`, shallow], { cwd: shallowParent, timeoutMs: 60_000 });
++  assert.equal(c.code, 0, c.stderr);
++  assert.equal(await isShallowRepo(shallow), true);
++  assert.equal(await rootCommit(shallow), null, '浅仓不得返回浅边界提交');
++  assert.notEqual(await rootCommit(origin), null);
++  // 构建来自完整仓（有根提交），被审项目是浅克隆：按包名仍判本仓
++  const s = (await computeBuildStamp(origin))!;
++  assert.equal(isSelfRepo({ build: s, projectRootCommit: await rootCommit(shallow), projectPackageName: await readPackageName(shallow) }), true);
++  // 构建来自浅仓：取不到根提交 ⇒ 标识为 null ⇒ 本仓里出「构建标识缺失」，可见
++  assert.equal(await computeBuildStamp(shallow), null);
++  assert.deepEqual(await checkBuildStamp(shallow, null), [BUILD_WARN_MISSING]);
++});
++
++test('比对本身抛错 ⇒ 转成一条「构建标识比对失败」告警，不重抛、不静默（GLM-03）', async () => {
++  const notices = await collectBuildStampNotices('/nowhere', null, async () => { throw new Error('boom'); });
++  assert.deepEqual(notices, [`${BUILD_WARN_CHECK_FAILED}：boom`]);
++});
++
++test('测试构建没有注入 __TRIVIUM_BUILD__ ⇒ embeddedBuildStamp() 为 null', () => {
++  assert.equal(embeddedBuildStamp(), null);
++});
++
++// ── run.json 落盘 ──
++
++function metaInput(build?: BuildStamp | null) {
++  return {
++    runId: '20260924T000000Z', topic: 't', stage: 'plan' as const, rerunIndex: 1,
++    command: 'B' as const, promptHint: null, taskGoal: null, criticsSelected: ['glm' as const],
++    treeHash: 'tree', gitHead: 'h', dirty: false, subjectSha256: 's', denyPaths: [], driftPolicy: 'warn' as const,
++    ...(build === undefined ? {} : { build }),
++  };
++}
++
++test('snapshot.build 恒写：未给 ⇒ null，给了原样落', () => {
++  assert.equal(newRunMeta(metaInput() as never).snapshot.build, null);
++  assert.deepEqual(newRunMeta(metaInput(stamp()) as never).snapshot.build, stamp());
++});
++
++test('schema：snapshot.build 为对象或 null 都合法，缺必填键被拒；旧留痕缺席照样合法', async () => {
++  // 以一份真实的成功 run.json 为底，只动 snapshot.build：别的字段与本用例无关，不能让它们混进错误
++  const real = JSON.parse(await fs.readFile(
++    path.join(REPO_ROOT, '.reviews/M10b-入口资产与真载体验收/plan/_meta/run-20260924T004706Z.json'), 'utf8',
++  )) as { snapshot: Record<string, unknown> };
++  assert.deepEqual(validateRunMeta(real), [], '底样本本身合法（旧留痕，没有 build）');
++  for (const b of [stamp(), null]) {
++    const m = structuredClone(real);
++    m.snapshot['build'] = b;
++    assert.deepEqual(validateRunMeta(m), [], `build=${JSON.stringify(b)}`);
++  }
++  const bad = structuredClone(real);
++  const { inputs_sha256: _drop, ...partial } = stamp();
++  bad.snapshot['build'] = partial;
++  assert.notDeepEqual(validateRunMeta(bad), [], '缺 inputs_sha256 必须被拒');
++});
+diff --git a/test/unit/zcode-full-copy-arm.test.ts b/test/unit/zcode-full-copy-arm.test.ts
+new file mode 100644
+index 0000000..1267426
+--- /dev/null
++++ b/test/unit/zcode-full-copy-arm.test.ts
+@@ -0,0 +1,375 @@
++/**
++ * 同形第二臂（EV-94 ②；EV-82 小主题第一段 r2 §3）与它依赖的三处改动：
++ * `prepareZcodeHome` 的 `transformCopy`、凭据替换 `sentinelizeCredentials`、两臂共用判据 `judgeOverrideReadback`；
++ * 外加 (D) 隔离腿的只读取证 `listPersonalProviderIds`。
++ *
++ * 全部用**临时目录里的合成配置**与假入口，不碰真实 `~/.zcode/**`、不拉起真实 CLI、零配额。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import { prepareZcodeHome, zcodeHomeUnder } from '../../src/trivium/adapters/zcode.js';
++import {
++  findCredentialResidue,
++  forceProviderApiKeySentinel,
++  judgeOverrideReadback,
++  listPersonalProviderIds,
++  probeModelOverride,
++  probeModelOverrideFullCopy,
++  sentinelizeCredentials,
++  ZCODE_PROBE_SENTINEL_KEY,
++} from '../../src/trivium/probes/zcode.js';
++
++const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'trivium-fullcopy-test-'));
++const API_KEY_FIELD = 'apiKey';
++
++// 真实凭据形态的假值：拼出来而不是写成字面，避开 fixture-credentials 扫描器的形态判据
++const SHAPE_ONLY_SECRET = ['sk', 'A'.repeat(28)].join('-');
++const KNOWN_SECRETS = [
++  'fake-id.fake-secret', 'REAL-BEARER-SECRET', 'REAL-TOKEN-SECRET', 'NESTED-TOKEN-SECRET',
++  'ARRAY-TOKEN-SECRET', 'TOP-LEVEL-TOKEN', SHAPE_ONLY_SECRET,
++];
++
++/** 同形臂关心的形态：整份拷贝的全部键都在，凭据藏在嵌套、数组、顶层与「只有形态」四种位置 */
++function fullCopyFixture(): Record<string, unknown> {
++  return {
++    model: { main: 'bigmodel-coding-plan/GLM-5.3', lite: 'bigmodel-coding-plan/GLM-5.3-Flash' },
++    theme: 'dark',
++    token: 'TOP-LEVEL-TOKEN',
++    provider: {
++      'bigmodel-coding-plan': {
++        name: 'BigModel Coding Plan',
++        kind: 'anthropic',
++        source: 'custom',
++        enabled: true,
++        options: {
++          apiKey: 'fake-id.fake-secret',
++          apiKeyRequired: true,
++          baseURL: 'https://example.invalid/api',
++          region: 'cn',
++          headers: { Authorization: 'Bearer REAL-BEARER-SECRET', 'X-Trace': 'plain-header-value' },
++          auth: { token: 'NESTED-TOKEN-SECRET' },
++          extra: [{ token: 'ARRAY-TOKEN-SECRET' }, 'plain-array-value'],
++          unnamed: SHAPE_ONLY_SECRET,
++        },
++        models: { 'GLM-5.3': {}, 'GLM-5.3-Flash': {} },
++      },
++    },
++  };
++}
++
++async function writeSrc(cfg: unknown = fullCopyFixture()): Promise<string> {
++  const dir = await tmp();
++  const p = path.join(dir, 'config.json');
++  await fs.writeFile(p, JSON.stringify(cfg), { encoding: 'utf8', mode: 0o600 });
++  return p;
++}
++
++/** 收集一个 JSON 值里全部字符串 */
++function allStrings(v: unknown, out: string[] = []): string[] {
++  if (typeof v === 'string') out.push(v);
++  else if (Array.isArray(v)) v.forEach((x) => allStrings(x, out));
++  else if (v && typeof v === 'object') Object.values(v).forEach((x) => allStrings(x, out));
++  return out;
++}
++
++/** 收集一个 JSON 值里全部键路径 */
++function allKeyPaths(v: unknown, at = '', out: string[] = []): string[] {
++  if (Array.isArray(v)) v.forEach((x, i) => allKeyPaths(x, `${at}[${i}]`, out));
++  else if (v && typeof v === 'object') {
++    for (const [k, x] of Object.entries(v)) {
++      const p = at ? `${at}.${k}` : k;
++      out.push(p);
++      allKeyPaths(x, p, out);
++    }
++  }
++  return out;
++}
++
++// ── prepareZcodeHome 的 transformCopy（AGY-03）──
++
++test('prepareZcodeHome：不传 transformCopy 时，写出的副本与「只改 model」的源逐字相同', async () => {
++  const src = await writeSrc();
++  const runDir = await tmp();
++  const prep = await prepareZcodeHome(runDir, 'GLM-5.3-Flash', { srcConfig: src });
++  assert.equal(prep.route, 'config_copy');
++  const written = await fs.readFile(path.join(zcodeHomeUnder(runDir), '.zcode/cli/config.json'), 'utf8');
++  const expected = fullCopyFixture();
++  expected['model'] = { main: 'bigmodel-coding-plan/GLM-5.3-Flash', lite: 'bigmodel-coding-plan/GLM-5.3-Flash' };
++  assert.equal(written, JSON.stringify(expected, null, 2), '审查臂不传该参数，输出必须与加参数之前一致');
++});
++
++test('prepareZcodeHome：transformCopy 在写盘之前生效——盘上从未出现原值', async () => {
++  const src = await writeSrc();
++  const runDir = await tmp();
++  await prepareZcodeHome(runDir, 'GLM-5.3-Flash', { srcConfig: src, transformCopy: (c) => sentinelizeCredentials(c).copy });
++  const written = await fs.readFile(path.join(zcodeHomeUnder(runDir), '.zcode/cli/config.json'), 'utf8');
++  for (const s of KNOWN_SECRETS) assert.equal(written.includes(s), false, `盘上不得出现 ${s}`);
++});
++
++// ── 凭据替换（CODEX-04 / CODEX-05 / GLM-05）──
++
++test('凭据替换：四种位置的凭据全换成哨兵；非凭据值原样；所有键一律保留', () => {
++  const src = fullCopyFixture();
++  const { copy, replacedPaths } = sentinelizeCredentials(src);
++  const strings = allStrings(copy);
++  // 漏换方向：副本里的字符串值 ∩ 已知凭据 = 空集
++  assert.deepEqual(strings.filter((s) => KNOWN_SECRETS.includes(s)), []);
++  // 误换方向：非凭据值原样（导入要用的值不能被换掉）
++  for (const keep of ['dark', 'BigModel Coding Plan', 'anthropic', 'custom', 'https://example.invalid/api', 'cn', 'plain-array-value', 'bigmodel-coding-plan/GLM-5.3']) {
++    assert.ok(strings.includes(keep), `非凭据值 ${keep} 必须原样`);
++  }
++  // 容器判据：headers 下的值不论名字一律换
++  const opts = (copy['provider'] as Record<string, { options: Record<string, unknown> }>)['bigmodel-coding-plan']!.options;
++  assert.equal((opts['headers'] as Record<string, unknown>)['X-Trace'], ZCODE_PROBE_SENTINEL_KEY);
++  assert.equal(opts['apiKeyRequired'], true, '布尔值不动（它决定导入成败）');
++  // 键骨架原样
++  assert.deepEqual(allKeyPaths(copy).sort(), allKeyPaths(src).sort());
++  // 替换了哪些路径如实登记，且只登记路径不含值
++  for (const p of ['token', 'provider.bigmodel-coding-plan.options.apiKey', 'provider.bigmodel-coding-plan.options.auth.token',
++    'provider.bigmodel-coding-plan.options.extra[0].token', 'provider.bigmodel-coding-plan.options.unnamed']) {
++    assert.ok(replacedPaths.includes(p), `应登记 ${p}，实际 ${replacedPaths.join(', ')}`);
++  }
++  for (const s of KNOWN_SECRETS) assert.equal(replacedPaths.join('\n').includes(s), false);
++});
++
++test('凭据替换：不改入参（返回新对象）', () => {
++  const src = fullCopyFixture();
++  const before = JSON.stringify(src);
++  sentinelizeCredentials(src);
++  assert.equal(JSON.stringify(src), before);
++});
++
++// ── 两臂共用判据（GLM-07）──
++
++test('判据：写出 v2 ⇒ 只比 modelId 段；没写出 ⇒ 按停止形态分三态', () => {
++  const req = 'bigmodel-coding-plan/GLM-5.3-Flash';
++  const ok = { code: 1, stderr: 'Error: Model creation failed (traceId: x)' };
++  assert.equal(judgeOverrideReadback(req, { wroteV2: true, observed: req }, ok).stop, 'match');
++  const uuid = judgeOverrideReadback(req, { wroteV2: true, observed: 'uuid-x/GLM-5.3-Flash' }, ok);
++  assert.equal(uuid.override, 'config_copy');
++  assert.match(uuid.providerNote, /providerId 形态与副本源不同/);
++  const first = judgeOverrideReadback(req, { wroteV2: true, observed: 'bigmodel-coding-plan/GLM-5.3' }, ok);
++  assert.deepEqual([first.override, first.stop], ['global', 'mismatch']);
++  assert.equal(judgeOverrideReadback(req, { wroteV2: false, observed: null }, { code: null, stderr: '' }).override, null);
++  assert.equal(judgeOverrideReadback(req, { wroteV2: false, observed: null }, { code: 1, timedOut: true, stderr: '' }).stop, 'not_finished');
++  assert.equal(judgeOverrideReadback(req, { wroteV2: false, observed: null }, { code: 0, stderr: 'something else' }).stop, 'unrecognized');
++});
++
++// ── 同形臂流程（假入口）──
++
++/**
++ * 假入口：读 `$HOME/.zcode/cli/config.json`，副本里出现 FAKE_SECRETS 中任一值就退 99（真实凭据泄漏）；
++ * 把 argv 记进 FAKE_ZCODE_LOG；按旗标写或不写 v2：
++ *   FAKE_IGNORE_MAIN 写首位模型；FAKE_NO_IMPORT 跑到模型层不写；FAKE_CRASH 退 137；FAKE_HANG 挂起。
++ */
++const FULL_COPY_ENTRY = `
++const fs = require('node:fs'), path = require('node:path');
++const env = process.env;
++if (env.FAKE_ZCODE_LOG) fs.appendFileSync(env.FAKE_ZCODE_LOG, JSON.stringify({ argv: process.argv.slice(2), apiKeyEnv: env.ZCODE_API_KEY ?? null }) + '\\n');
++if (env.FAKE_CRASH) process.exit(137);
++if (env.FAKE_HANG) { setTimeout(function () { process.exit(1); }, 10000); return; }
++const raw = fs.readFileSync(path.join(env.HOME, '.zcode/cli/config.json'), 'utf8');
++for (const s of JSON.parse(env.FAKE_SECRETS || '[]')) { if (raw.includes(s)) { process.stderr.write('REAL CREDENTIAL LEAKED\\n'); process.exit(99); } }
++if (env.FAKE_NO_IMPORT) { process.stderr.write('Error: Model creation failed (traceId: fake)\\n'); process.exit(1); }
++const cfg = JSON.parse(raw);
++let sel;
++if (env.FAKE_IGNORE_MAIN) { const [pid, pv] = Object.entries(cfg.provider)[0]; sel = { providerId: pid, modelId: Object.keys(pv.models)[0] }; }
++else { const main = cfg.model.main; const i = main.indexOf('/'); sel = { providerId: main.slice(0, i), modelId: main.slice(i + 1) }; }
++fs.mkdirSync(path.join(env.HOME, '.zcode/v2'), { recursive: true });
++fs.writeFileSync(path.join(env.HOME, '.zcode/v2/provider_config.json'), JSON.stringify({ schemaVersion: 1, config: { defaultModelSelection: sel } }));
++process.stderr.write('Error: Model creation failed (traceId: fake)\\n');
++process.exit(1);
++`;
++
++async function fakeLayout(): Promise<{ entry: string; cwd: string; root: string }> {
++  const root = await tmp();
++  const entry = path.join(root, 'Resources/glm/zcode.cjs');
++  await fs.mkdir(path.dirname(entry), { recursive: true });
++  await fs.writeFile(entry, FULL_COPY_ENTRY, 'utf8');
++  const builtin = path.join(root, 'Resources/config/provider/zcode-builtin.json');
++  await fs.mkdir(path.dirname(builtin), { recursive: true });
++  await fs.writeFile(builtin, '{}', 'utf8');
++  const cwd = path.join(root, 'proj');
++  await fs.mkdir(cwd, { recursive: true });
++  return { entry, cwd, root };
++}
++
++async function runArm(flags: Record<string, string>, opts: Parameters<typeof probeModelOverrideFullCopy>[3] = {}, src?: string) {
++  const L = await fakeLayout();
++  const env = { FAKE_SECRETS: JSON.stringify(KNOWN_SECRETS), ...flags };
++  for (const [k, v] of Object.entries(env)) process.env[k] = v;
++  try {
++    return { r: await probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: src ?? (await writeSrc()), ...opts }), L };
++  } finally {
++    for (const k of Object.keys(env)) delete process.env[k];
++  }
++}
++
++test('同形臂：CLI 读到副本 model.main（非首位）⇒ config_copy；副本里无真实凭据（假入口见到就退 99）', async () => {
++  const { r } = await runArm({});
++  assert.equal(r.override, 'config_copy', r.why);
++  assert.equal(r.requested, 'bigmodel-coding-plan/GLM-5.3-Flash');
++  assert.equal(r.observed, r.requested);
++  assert.ok(r.replacedPaths.length >= 6, `替换键路径应被登记：${r.replacedPaths.join(', ')}`);
++});
++
++test('同形臂：回落首位 ⇒ global，文案并列 H2 与「替换破坏导入」两种成因（GLM-01 / GLM-07）', async () => {
++  const { r } = await runArm({ FAKE_IGNORE_MAIN: '1' });
++  assert.equal(r.override, 'global', r.why);
++  assert.equal(r.observed, 'bigmodel-coding-plan/GLM-5.3');
++  assert.match(r.why, /H2/);
++  assert.match(r.why, /凭据替换破坏了导入/);
++  // 「与白名单副本不同」是两臂对比，合法；不得带的是白名单臂专属的指引「去核对 buildProbeCliConfig」
++  assert.equal(/buildProbeCliConfig|核对.*白名单/.test(r.why), false, '同形臂没有白名单可核，不得带白名单臂的指引');
++});
++
++test('同形臂：跑到模型层却没写 v2 ⇒ global；崩溃 ⇒ null；超时 ⇒ null', async () => {
++  assert.equal((await runArm({ FAKE_NO_IMPORT: '1' })).r.override, 'global');
++  const crash = (await runArm({ FAKE_CRASH: '1' })).r;
++  assert.equal(crash.override, null, crash.why);
++  const hang = (await runArm({ FAKE_HANG: '1' }, { timeoutMs: 500 })).r;
++  assert.equal(hang.override, null);
++  assert.match(hang.why, /超时/);
++});
++
++test('同形臂：显式 model 参数优先于 pickNonFirstModel（CODEX-10）', async () => {
++  const { r } = await runArm({}, { model: 'GLM-5.3-Flash' });
++  assert.equal(r.requested, 'bigmodel-coding-plan/GLM-5.3-Flash');
++});
++
++test('同形臂早退：副本源缺失 / 请求模型不在目录 / 挑不出非首位 ⇒ 不拉起、null（CODEX-02）', async () => {
++  const log = path.join(await tmp(), 'calls.jsonl');
++  const cases: Array<[string, Parameters<typeof probeModelOverrideFullCopy>[3], string | undefined]> = [
++    ['副本源缺失', { cliConfigPath: path.join(await tmp(), 'nope.json') }, undefined],
++    ['模型不在目录', { model: 'not-in-catalog' }, undefined],
++    ['挑不出非首位', {}, await writeSrc({ provider: { a: { source: 'custom', models: { only: {} } } } })],
++  ];
++  for (const [name, opts, src] of cases) {
++    const { r } = await runArm({ FAKE_ZCODE_LOG: log }, opts, src);
++    assert.equal(r.override, null, `${name}：${r.why}`);
++  }
++  assert.equal(await fs.stat(log).then(() => true, () => false), false, '三种早退都不得拉起入口');
++});
++
++test('同形臂：宿主预置的凭据 env 键被登记（GLM-04），且进不了子进程', async () => {
++  const log = path.join(await tmp(), 'calls.jsonl');
++  const { r } = await runArm({ FAKE_ZCODE_LOG: log, ZCODE_API_KEY: 'host.key' });
++  assert.deepEqual(r.hostCredentialEnv, ['ZCODE_API_KEY']);
++  const call = JSON.parse((await fs.readFile(log, 'utf8')).trim().split('\n')[0]!) as { apiKeyEnv: string | null };
++  assert.equal(call.apiKeyEnv, null);
++});
++
++test('同形臂：临时根跑后被清（只认 makeTempDir 的返回值）', async () => {
++  // 先把夹具建在公共 tmpdir，再换私有 TMPDIR 只观察本臂自己建的临时根（并行的别的用例文件不会落进来）
++  const L = await fakeLayout();
++  const src = await writeSrc();
++  const privateTmp = await tmp();
++  const saved = process.env['TMPDIR'];
++  process.env['TMPDIR'] = privateTmp;
++  process.env['FAKE_SECRETS'] = JSON.stringify(KNOWN_SECRETS);
++  try {
++    const r = await probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: src });
++    assert.equal(r.override, 'config_copy', r.why);
++    assert.deepEqual(await fs.readdir(privateTmp), [], '同形臂的临时根必须被清掉');
++  } finally {
++    delete process.env['FAKE_SECRETS'];
++    if (saved === undefined) delete process.env['TMPDIR']; else process.env['TMPDIR'] = saved;
++  }
++});
++
++// ── 代码双审 r1 的补强：结构兜底、残余扫描、对照与两臂对拍 ──
++
++test('结构兜底：每个 provider 的 options.apiKey 无条件写哨兵，不存在也补上；其它键不动（CODEX-01）', () => {
++  const cfg = { provider: { a: { options: { baseURL: 'https://x.invalid' } }, b: { name: 'no-options' } } };
++  const out = forceProviderApiKeySentinel(structuredClone(cfg)) as unknown as { provider: Record<string, { options: Record<string, unknown> }> };
++  for (const k of ['a', 'b']) assert.equal(out.provider[k]!.options['apiKey'], ZCODE_PROBE_SENTINEL_KEY);
++  assert.equal(out.provider['a']!.options['baseURL'], 'https://x.invalid');
++});
++
++test('残余扫描：只看 options 子树；URL、baseURL、哨兵、短值与 models 下的长模型 id 都不算', () => {
++  const hex = 'ab'.repeat(20);
++  const cfg = {
++    provider: {
++      p: {
++        models: { 'claude-3-5-sonnet-20241022-long-model-id': {}, x: { id: 'claude-3-5-sonnet-20241022-long-model-id' } },
++        options: {
++          baseURL: 'https://open.example.invalid/api/coding/paas/v4',
++          endpoint: 'https://open.example.invalid/very/long/path/segment',
++          // 计算属性键：fixture-credentials 扫描器按「apiKey: <长标识符>」的字面形态判，不看值是不是哨兵
++          [API_KEY_FIELD]: ZCODE_PROBE_SENTINEL_KEY,
++          region: 'cn-north',
++          key: hex,
++          nested: [{ secretish: hex }],
++        },
++      },
++    },
++  };
++  assert.deepEqual(findCredentialResidue(cfg), ['provider.p.options.key', 'provider.p.options.nested[0].secretish']);
++});
++
++test('同形臂：副本里残留疑似凭据（键名 key、不带点的长十六进制值）⇒ 不拉起、null、why 列出路径（CODEX-01）', async () => {
++  const cfg = fullCopyFixture();
++  const opts = (cfg['provider'] as Record<string, { options: Record<string, unknown> }>)['bigmodel-coding-plan']!.options;
++  opts['key'] = 'cd'.repeat(20);
++  const log = path.join(await tmp(), 'calls.jsonl');
++  const { r } = await runArm({ FAKE_ZCODE_LOG: log }, {}, await writeSrc(cfg));
++  assert.equal(r.override, null, r.why);
++  assert.match(r.why, /provider\.bigmodel-coding-plan\.options\.key/);
++  assert.equal(r.why.includes('cd'.repeat(20)), false, 'why 只记路径不记值');
++  assert.equal(await fs.stat(log).then(() => true, () => false), false, '有残余就不得拉起');
++});
++
++/** 只含 apiKey 一个凭据的干净配置：两种替换面都不会留残余，适合做对照 */
++function cleanFixture(): Record<string, unknown> {
++  const cfg = fullCopyFixture();
++  delete cfg['token'];
++  const opts = (cfg['provider'] as Record<string, { options: Record<string, unknown> }>)['bigmodel-coding-plan']!.options;
++  for (const k of ['headers', 'auth', 'extra', 'unnamed']) delete opts[k];
++  return cfg;
++}
++
++test('对照：只换 options.apiKey 与全量替换，同形臂判定相同（CODEX-04 ≡ GLM-02 ①；计划 §4 第二段第一刀的基线）', async () => {
++  const full = (await runArm({}, { replace: 'full' }, await writeSrc(cleanFixture()))).r;
++  const narrow = (await runArm({}, { replace: 'apiKeyOnly' }, await writeSrc(cleanFixture()))).r;
++  assert.equal(full.override, 'config_copy', full.why);
++  assert.deepEqual([narrow.override, narrow.observed], [full.override, full.observed], narrow.why);
++  assert.deepEqual(narrow.replacedPaths, [], '收窄模式不做键名替换');
++});
++
++test('两臂行为对拍：同一假入口、同一停止形态下，白名单臂与同形臂的三态与 observed 一致（GLM-02 ②）', async () => {
++  for (const flags of [{}, { FAKE_IGNORE_MAIN: '1' }, { FAKE_NO_IMPORT: '1' }, { FAKE_CRASH: '1' }] as Array<Record<string, string>>) {
++    const L = await fakeLayout();
++    const src = await writeSrc();
++    const env = { FAKE_SECRETS: JSON.stringify(KNOWN_SECRETS), ...flags };
++    for (const [k, v] of Object.entries(env)) process.env[k] = v;
++    try {
++      const white = await probeModelOverride(L.entry, process.execPath, L.cwd, { cliConfigPath: src });
++      const full = await probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: src });
++      assert.deepEqual([full.override, full.observed], [white.override, white.observed], `${JSON.stringify(flags)}：${white.why} / ${full.why}`);
++    } finally {
++      for (const k of Object.keys(env)) delete process.env[k];
++    }
++  }
++});
++
++// ── (D) 隔离腿的只读取证（GLM-02）──
++
++test('listPersonalProviderIds：只返回 provider 键名，不返回任何值', async () => {
++  const dir = await tmp();
++  const f = path.join(dir, 'provider_config.json');
++  await fs.writeFile(f, JSON.stringify({
++    schemaVersion: 1,
++    config: {
++      providers: { 'uuid-aaa': { apiKey: 'PERSONAL-SECRET-1' }, 'uuid-bbb': { apiKey: 'PERSONAL-SECRET-2' } },
++      defaultModelSelection: { providerId: 'uuid-aaa', modelId: 'qwen3.8-max' },
++      nested: { providers: [{ id: 'arr-provider', token: 'PERSONAL-SECRET-3' }] },
++    },
++  }));
++  const out = await listPersonalProviderIds(f);
++  assert.deepEqual(out, { present: true, ids: ['arr-provider', 'uuid-aaa', 'uuid-bbb'] });
++  assert.equal(JSON.stringify(out).includes('SECRET'), false);
++  assert.deepEqual(await listPersonalProviderIds(path.join(dir, 'missing.json')), { present: false, ids: [] });
++});

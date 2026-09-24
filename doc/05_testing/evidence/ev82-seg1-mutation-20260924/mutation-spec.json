@@ -1,0 +1,193 @@
+{
+  "targets": [
+    "src/trivium/build-stamp.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/review.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/build-stamp.test.js",
+    "dist/test/test/unit/zcode-full-copy-arm.test.js",
+    "dist/test/test/unit/zcode-provider-env.test.js",
+    "dist/test/test/integration/fault-injection.test.js"
+  ],
+  "cases": [
+    {
+      "id": "MB1",
+      "desc": "去掉本仓模式判定：外部项目也比 HEAD（CODEX-01）",
+      "file": "src/trivium/build-stamp.ts",
+      "find": "  if (!isSelfRepo(i)) return [];",
+      "replace": "",
+      "expect": "dist/test/test/unit/build-stamp.test.js"
+    },
+    {
+      "id": "MB2",
+      "desc": "收尾不重算作用面指纹（CODEX-08）",
+      "file": "src/trivium/build-stamp.ts",
+      "find": "  const currentInputsSha256 = self && build !== null ? await computeInputsSha256(projectRoot) : null;",
+      "replace": "  const currentInputsSha256 = self && build !== null ? null : null;",
+      "expect": "dist/test/test/unit/build-stamp.test.js"
+    },
+    {
+      "id": "MB3",
+      "desc": "作用面漏掉 skills/（CODEX-07 ≡ AGY-01 ≡ GLM-03）",
+      "file": "src/trivium/build-stamp.ts",
+      "find": "  'skills',",
+      "replace": "",
+      "expect": "dist/test/test/unit/build-stamp.test.js"
+    },
+    {
+      "id": "MF1",
+      "desc": "凭据替换不进数组（CODEX-05）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "if (Array.isArray(v)) return v.map((x, i) => walk(x, `${at}[${i}]`, sensitive));",
+      "replace": "if (Array.isArray(v)) return v;",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "MF2",
+      "desc": "凭据替换过宽：一切字符串都换（CODEX-04）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      if (sensitive || (full && redactSecrets(v).count > 0)) {",
+      "replace": "      if (typeof v === 'string') {",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "MF3",
+      "desc": "去掉 headers 容器判据",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": " || k.toLowerCase() === 'headers');",
+      "replace": ");",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "MF4",
+      "desc": "早退只看 homeDir：限定失败时照样拉起（CODEX-02）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    if (prep.homeDir === null || prep.route !== 'config_copy' || prep.qualified === null) {",
+      "replace": "    if (prep.homeDir === null || prep.qualified === null && false) {",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "MF5",
+      "desc": "prepareZcodeHome 忽略 transformCopy：真实凭据落盘（AGY-03）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  const toWrite = opts.transformCopy ? opts.transformCopy(cfg) : cfg;",
+      "replace": "  const toWrite = opts.transformCopy ? cfg : cfg;",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "MF6",
+      "desc": "两臂不一致告警拿旧值比（CODEX-06）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      if (mo.override !== null && fc.override !== null && mo.override !== fc.override) {",
+      "replace": "      if (mo.override !== null && (probe.model_override_full_copy ?? null) !== null && mo.override !== probe.model_override_full_copy) {",
+      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
+    },
+    {
+      "id": "MF7",
+      "desc": "同形臂判不出也覆盖旧值（CODEX-06）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      if (fc.override !== null) probe.model_override_full_copy = fc.override;",
+      "replace": "      probe.model_override_full_copy = fc.override;",
+      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
+    },
+    {
+      "id": "MF8",
+      "desc": "去掉拉起前的残余扫描拦截：疑似凭据照样拉起（代码双审 r1 CODEX-01）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    if (residue.length > 0) {",
+      "replace": "    if (residue.length > 0 && false) {",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "MF9",
+      "desc": "去掉 apiKey 无条件写哨兵的结构兜底（代码双审 r1 CODEX-01）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    p.options = { ...(p.options ?? {}), [PROBE_SENTINEL_FIELD]: ZCODE_PROBE_SENTINEL_KEY };",
+      "replace": "    p.options = { ...(p.options ?? {}) };",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "MB4",
+      "desc": "浅仓也返回根提交：移植边界被当成仓库身份（代码双审 r1 CODEX-03 ≡ GLM-04）",
+      "file": "src/trivium/util/git.ts",
+      "find": "  if ((await isShallowRepo(cwd)) !== false) return null;",
+      "replace": "",
+      "expect": "dist/test/test/unit/build-stamp.test.js"
+    },
+    {
+      "id": "MB5",
+      "desc": "被审项目取不到根提交时不退包名兜底：浅克隆静默判否（代码双审 r1 CODEX-03）",
+      "file": "src/trivium/build-stamp.ts",
+      "find": "  if (i.build !== null && i.projectRootCommit !== null) return",
+      "replace": "  if (i.build !== null) return",
+      "expect": "dist/test/test/unit/build-stamp.test.js"
+    },
+    {
+      "id": "MB6",
+      "desc": "比对异常被静默吞掉（代码双审 r1 GLM-03）",
+      "file": "src/trivium/build-stamp.ts",
+      "find": "    return [`${BUILD_WARN_CHECK_FAILED}：${(e as Error).message}`];",
+      "replace": "    return [];",
+      "expect": "dist/test/test/unit/build-stamp.test.js"
+    },
+    {
+      "id": "MB7",
+      "desc": "指纹重算取不到时静默跳过（代码双审 r2 CODEX-05）",
+      "file": "src/trivium/build-stamp.ts",
+      "find": "out.push(`${BUILD_WARN_INCOMPLETE}：作用面指纹重算取不到，无法判定安装副本是否为当前工作树构建`);",
+      "replace": "{}",
+      "expect": "dist/test/test/unit/build-stamp.test.js"
+    },
+    {
+      "id": "MR1",
+      "desc": "收尾不再把构建标识告警写进 run.json（代码双审 r2 CODEX-06）",
+      "file": "src/trivium/review.ts",
+      "find": "  for (const notice of await collectBuildStampNotices(ctx.projectRoot, meta.snapshot.build ?? null)) {",
+      "replace": "  for (const notice of [] as string[]) {",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "MF10",
+      "desc": "残余扫描不剥鉴权前缀：Bearer 串整串逃逸（代码双审 r2 GLM-01）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  const v = raw.replace(AUTH_SCHEME_PREFIX_RE, '');",
+      "replace": "  const v = raw;",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "MF11",
+      "desc": "残余扫描论域退回只扫 options（代码双审 r2 CODEX-01 ≡ GLM-02）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      if (!RESIDUE_SKIP_KEYS.has(k)) walk(x, `provider.${name}.${k}`, k);",
+      "replace": "      if (k === 'options') walk(x, `provider.${name}.${k}`, k);",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "MF12",
+      "desc": "收窄档退回不换 headers 容器（代码双审 r2 GLM-01）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        const s = sentinelizeCredentials(c, opts.replace === 'apiKeyOnly' ? 'headersOnly' : 'full');",
+      "replace": "        const s = opts.replace === 'apiKeyOnly' ? { copy: structuredClone(c), replacedPaths: [] as string[] } : sentinelizeCredentials(c);",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "MF13",
+      "desc": "去掉短键精确匹配（代码双审 r2 GLM-02）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  return CREDENTIAL_KEY_RE.test(k) || SHORT_CREDENTIAL_KEYS.has(k.toLowerCase());",
+      "replace": "  return CREDENTIAL_KEY_RE.test(k);",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "MF14",
+      "desc": "残余扫描不排除 UUID 与无 scheme 端点：合法长标识误挡实验（代码双审 r2 CODEX-04）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  if (UUID_RE.test(v) || HOST_PATH_RE.test(v)) return false;",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    }
+  ]
+}
