@@ -1,0 +1,60 @@
+{
+  "agreed": [
+    "§2 的五种情形（S1～S5）推演穷尽严密，确证在作用面指纹已知一致的前提下，HEAD 变化不提供额外的安装副本过期信号，消除纯文档/非作用面提交后的告警完全成立。",
+    "D1 决策取 (a) 理由扎实：(b) 换前缀依然经 gate.warnings 落为 run_warning，无法消除噪声；(c) 全删则在指纹取不到或不等时丢失排查与兜底信号；(a) 兼顾了误报消除与防御性留痕。",
+    "D2 决策（指纹一致时 HEAD 取不到不报「比对未能完成」）不与 CODEX-05 冲突：指纹已知一致已确立「安装副本与当前工作树一致」的最终定性，此时 HEAD 比对不参与判定而非「查不出」；在非一致/指纹取不到时仍完整保留 INCOMPLETE 留痕。",
+    "§7 第 2 条对 M10b r5 §7.3 白名单行及 r7 §6 第 2 条的读法极其准确锐利：白名单行比对的是 snapshot.build.git_head 与 snapshot.git_head 字段本身而非告警，EV-111 不改字段，故无法直接免除第 4 步的 §3.7 规避，指明了原建议的盲区。",
+    "§5.2 的 5 条变异设计精准，切实咬住了「回到原行为」和「把 null 当一致」两种回归。",
+    "§2 末的三格正交项均无需登记 BACKLOG：第 3 格已受现有 STALE_INPUTS 机制保护，第 2 格超出工程可管域，第 1 格暂无实遇且无承诺冲突。"
+  ],
+  "consulted": [
+    ".reviews/EV-111-构建标识HEAD误报/plan/2026-09-24-EV-111-构建标识HEAD误报-claude.md",
+    "src/trivium/build-stamp.ts",
+    "test/unit/build-stamp.test.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/review.ts",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r7-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md",
+    ".reviews/EV-82-同形第二臂与构建标识/plan/2026-09-24-EV-82-同形第二臂与构建标识-r2-claude.md",
+    "test/integration/fault-injection.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "scripts/build.mjs",
+    "src/install.ts",
+    "scripts/mutation-check.mjs",
+    "src/trivium/util/git.ts",
+    "CLAUDE.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 test/unit/build-stamp.test.ts:93-95，现有断言 buildStampWarnings({ ...base, projectHead: null, currentInputsSha256: 'in' }) 为 1 条告警（BUILD_WARN_INCOMPLETE）；对照被审计划 .reviews/EV-111-构建标识HEAD误报/plan/2026-09-24-EV-111-构建标识HEAD误报-claude.md §4.1 D2 与 §5.1，此时预期改为 []。若实施时仅改 C4（行 83-85），该用例将直接报错。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §5.1 / test/unit/build-stamp.test.ts:93-95",
+      "problem": "§5.1 在规划改写现有用例时仅点名了 C4（行 83-85），遗漏了同一测试文件中 CODEX-05 既有用例第 93-95 行。该行传入 currentInputsSha256: 'in' 且 projectHead: null 断言抛出 BUILD_WARN_INCOMPLETE；而在 D2 落地后（指纹一致时 HEAD 取不到不再报警），该用例将收到空数组直接红掉。",
+      "severity": "minor",
+      "suggestion": "在 §5.1 明确将 test/unit/build-stamp.test.ts:93-95 的现有断言更新为 []（以守住 D2 行为），并另增一条 currentInputsSha256 为 'changed' 或 null 时的断言以保证非一致分支下的 INCOMPLETE 判定依然被覆盖。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅被审计划 .reviews/EV-111-构建标识HEAD误报/plan/2026-09-24-EV-111-构建标识HEAD误报-claude.md §2，正文已注明「这一格重算指纹不等，已落『不是当前工作树构建的』」；查阅 src/trivium/build-stamp.ts:153 与 test/unit/build-stamp.test.ts:132-133，skills/ 改动必致 currentInputsSha256 改变并触发告警。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §2",
+      "problem": "§2 末将「构建之后、安装之前改了 skills/（安装的 SKILL.md 比 bundle 新）」列为正交缺口，但该形态本身已被 inputs_sha256 判定覆盖（重算指纹不等即报 BUILD_WARN_STALE_INPUTS），并非漏检缺口；将其与真正的表外缺口并列容易引发对构建标识覆盖能力的误判。",
+      "severity": "nit",
+      "suggestion": "在 §2 修正措辞，将该项标明为「已由作用面指纹重算守住的已知形态，无需改动」，明确其不属于待填补缺口，无需登记 BACKLOG。"
+    }
+  ],
+  "not_covered": [
+    "只读审查约束下未执行构建、测试或变异脚本，各项断言与变异行为基于对源码与测试逻辑的静态推演。",
+    "未复核真实的 ~/.claude/skills/ 用户全局安装目录状态及跨平台差异。",
+    "未评估 M10b 第 4 步后续是否需将白名单比对逻辑由「字段比对」修订为「祖先+告警比对」，该决策属 M10b 主题范围。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "计划整体质量很高，对 EV-111 误报成因、决策路径（D1/D2）、M10b 约束（§7.2）的分析极其透彻精准。判定 D1(a) 成立、D2 与 CODEX-05 不冲突、§2 五种情形穷尽且三格正交缺口均无需登记 BACKLOG。主要提醒是一处测试更新遗漏：除了改写 C4 之外，CODEX-05 的既存用例（test/unit/build-stamp.test.ts:93-95）也需同步适配 D2 预期（避免传入 currentInputsSha256: 'in' 被打红）。无 blocker/major，给出 approve-with-nits。",
+  "verdict": "approve-with-nits"
+}
