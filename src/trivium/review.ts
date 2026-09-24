@@ -1491,6 +1491,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       ...(r.model_override_applied === undefined
         ? {}
         : { model_override_applied: r.model_override_applied }),
+      // 落点自检（EV-112 计划 r3 §4.6）：同一口径，缺席 = 没走到自检，不压成 null
+      ...(r.carriers_landed === undefined ? {} : { carriers_landed: r.carriers_landed }),
       ...(requests[c]!.effort ? { effort: requests[c]!.effort! } : {}),
       status: r.status,
       exit_code: r.exit_code,

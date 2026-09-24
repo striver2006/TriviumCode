@@ -1,0 +1,119 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  M1 ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=7）
+  M5 ✓ 咬住（fail=2）
+  M6 ✓ 咬住（fail=4）
+  M7 ✓ 咬住（fail=3）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=5）
+  M10 ✓ 咬住（fail=4）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=7）
+  M14 ✓ 咬住（fail=2）
+  M15 ✓ 咬住（fail=1）
+  M16 ✓ 咬住（fail=1）
+{
+  "总数": 16,
+  "咬住": 16,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "invokeZcode 不应用 storageRedirectRoot ⇒ U2（子进程拿不到编排器的三个值）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "先设后清：设完三键再展开一次清除面，编排器的值被清掉 ⇒ U2",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "D2 退回 (b)：副本支不传落点根 ⇒ U5",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "回读恢复 home.homeDir ?? os.homedir() ⇒ U3（model_effective 变 null）、U3b（诱饵被读回）",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M5",
+      "desc": "重定向漏掉 ZCODE_SESSION_DB_PATH ⇒ U1",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M6",
+      "desc": "清除面去掉 ZCODE_SESSION_DB 别名 ⇒ U2 与十一键全等断言",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M7",
+      "desc": "落点根取 sideDir 而非 zcodeHomeUnder(sideDir) ⇒ U3、U6（纯函数没动，U1 不红）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M8",
+      "desc": "doctor note 条件只看 ZCODE_LOG_DIR ⇒ U7",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "落点自检恒 true ⇒ U3b、U8",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M10",
+      "desc": "开关键常量不进 zcodeProviderEnv ⇒ U2 与十一键全等断言",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M11",
+      "desc": "播报判据退回析取（两项都缺才播报）⇒ 守卫用例的半采纳格",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "review.ts 不把 carriers_landed 写进 run.json ⇒ U9（集成，经打包产物）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "去掉反向核（leaked_to_home 恒缺席）⇒ U3、U3b、U8",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M14",
+      "desc": "代码双审 r1 CODEX-01 ≡ GLM-01：反向核退回只核 rollout（日志一项恒 false）⇒ U8 只认存储键臂",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M15",
+      "desc": "代码双审 r1 CODEX-02：回读退回只取最新一个日志文件 ⇒ 跨午夜臂（model_effective 读不到）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M16",
+      "desc": "日志反向核去掉修改时间过滤（拉起前的历史文件也算本次泄漏）⇒ U3b（诱饵日志是一小时前的文件）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

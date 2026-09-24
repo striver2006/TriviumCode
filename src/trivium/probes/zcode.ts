@@ -30,6 +30,8 @@ import {
   ZCODE_ARGV_PARSED_RE,
   ZCODE_CREDENTIAL_ENV_KEYS,
   ZCODE_DIR_ENV_KEYS,
+  ZCODE_LANDING_SWITCH_ENV_KEYS,
+  ZCODE_BETA_ARGV_RE,
   ZCODE_BUILTIN_PROVIDER_ENV,
   ZCODE_PERSONAL_PROVIDER_ENV,
   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
@@ -92,11 +94,13 @@ export async function probeZcodeEntry(
    */
   const r = await run(node, [entry, 'version'], {
     timeoutMs: 60_000,
-    // 目录键（EV-110 起四个）与两个凭据键同样清底色（代码双审 r1 codex 子项 06）：口径是「全部探针路径」，不是「两条主路径」
+    // 目录 / 路径键、落点开关键（EV-112 起共十一个）与两个凭据键同样清底色（代码双审 r1 codex 子项 06）：口径是「全部探针路径」，不是「两条主路径」
     env: {
       [ZCODE_BUILTIN_PROVIDER_ENV]: undefined,
       [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
-      ...Object.fromEntries([...ZCODE_DIR_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS].map((k) => [k, undefined])),
+      ...Object.fromEntries(
+        [...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS].map((k) => [k, undefined]),
+      ),
     },
     // 与其余五处拉起厂商 CLI 的口径一致（r5 CODEX-04）：此前这里是全仓唯一没开的一处。
     // `version` 现在不起子进程，但 P-29 已经证明这个 CLI 的演化方向是把活儿往前挪——
@@ -446,8 +450,10 @@ export const ZCODE_RUNTIME_CONFIG_EVENT = 'bootstrap.app.startup.runtime_config.
 /**
  * 读副本 HOME 下 CLI 日志里的运行期选定（EV-82 第二段 r2 §3）。
  *
- * - **取法**与审查臂 / `readTrace` 对齐：日志目录里排序取**最新**的 `.jsonl`
- *   （探针 HOME 每次新建、单会话，所以不按 sessionId 过滤）；同一文件多条该事件取**最后一条**；
+ * - **取法**与 `readTrace` 对齐：日志目录里排序取**最新**的 `.jsonl`
+ *   （探针 HOME 每次新建、单会话，所以不按 sessionId 过滤）；同一文件多条该事件取**最后一条**。
+ *   审查臂自 EV-112（代码双审 r1 CODEX-02）起改为读运行目录下**全部**日志文件、按 sessionId 过滤——那个目录也是单次运行独占的，
+ *   读全部是为了跨午夜不落空；探针 HOME 在一次探测内建完即删，跨午夜的代价只是本轮判不出，照旧取最新；
  * - 单行 JSON 解析失败跳过（超时被杀时末行可能残缺）；
  * - **只取 `context.model` 一个字段**，不读、不返回日志其它内容（日志可能含送审包全文）；
  * - I/O 异常 fail-closed：返回对应成因，**不抛**；
@@ -518,7 +524,7 @@ export function describeRuntimeSelection(r: RuntimeSelectionReadback | undefined
  *
  * 零配额、零真实凭据：副本按白名单重建（`buildProbeCliConfig`，apiKey 是哨兵、不带任何别的凭据键），
  * 探针路径的 env 清掉两个凭据键；请求一个**非首位**模型（否则回落也会得到同一个值，见 `pickNonFirstModel`）；
- * 只给内置变量、个人键与 `ZCODE_DIR_ENV_KEYS` 全部目录键一律清掉（与审查运行同一形态）；
+ * 只给内置变量、个人键与全部目录 / 路径键、落点开关键一律清掉（清除面与审查运行相同；审查运行另设落点，EV-112）；
  * **带只读参数**（`--mode plan` + 完整 denylist，代码双审 r1 AGY-02）：本地免密端点下哨兵挡不住真实请求，
  * CLI 可能真跑起来，只读参数把它限在不执行工具。
  *
@@ -1168,6 +1174,13 @@ export async function probeZcode(
     notes.push('未找到 zcode.cjs 入口，ZCode 侧不可用');
     return { probe, notes, flagsIndeterminate, flagsZeroExit };
   }
+  // 入口路径命中包内 beta 改写的 argv 判据（EV-112 计划 r3 §8 R7）：只报命中与否，不报路径全文
+  if (ZCODE_BETA_ARGV_RE.test(entry)) {
+    notes.push(
+      'ZCode 入口在 beta 渠道路径下：探针与探活的存储根会被 CLI 改写到 ~/.zcode-beta（清环境键挡不住这条 argv 触发）；' +
+        '审查运行设了存储根，不受影响（EV-112）',
+    );
+  }
 
   const zcodeModels = await probeZcodeModels();
   probe.models = zcodeModels;
@@ -1356,12 +1369,14 @@ export async function probeZcode(
             '若两臂与审查运行结论不同，这是一个与副本形态无关的备择成因（GLM-04）',
         );
       }
-      // 日志目录（EV-110，第三段 r3 §5）：并入 ZCODE_DIR_ENV_KEYS 后所有拉起路径都清，只剩信息级提示；只判有无、不打印值
-      if (process.env['ZCODE_LOG_DIR']) {
+      // 落点相关的宿主预置（EV-110；EV-112 起十一键）：所有拉起路径都清，只剩信息级提示；只报键名、不打印值
+      const hostLandingKeys = [...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS].filter((k) => process.env[k]);
+      if (hostLandingKeys.length > 0) {
         notes.push(
-          '宿主环境预置了 ZCODE_LOG_DIR：所有拉起路径都已清掉它，CLI 日志落在各自 HOME 下（EV-110）。' +
-            '无副本的审查运行（未指定模型 / 副本源缺失）走真实 HOME：CLI 日志含送审包全文，落在 ~/.zcode/cli/log 并持久留存，' +
-            '宿主的重定向不再生效（代码双审 r1 CODEX-04，见 BACKLOG EV-112）',
+          `宿主环境预置了 ${hostLandingKeys.join(' / ')}：所有拉起路径都已清掉它们（EV-110 / EV-112）。` +
+            '审查运行的 CLI 日志、rollout、会话库与存储根下的 artifacts / sessions / memories / plugins 由编排器指到运行目录' +
+            '（跑后只自检日志与 rollout 两类）：log / rollout 就地脱敏，db / plugins 整目录排除，其余过命中即删扫描，' +
+            '幸存内容随运行目录保留期整删；探活与 doctor 自身的探针在真实 HOME 下跑，不含送审内容',
         );
       }
       // 两臂不一致告警（EV-94 ② 触发器）：只比**本轮都产出且都非 null** 的两值，不拿新值比旧值（CODEX-06）

@@ -538,6 +538,23 @@
           ],
           "description": "模型覆盖是否落实（EV-82）。字段缺席＝本次没有覆盖尝试；true/false＝比对过一致/不一致；null＝尝试了但没回读到生效模型。判据归各家适配器，判定层只播报。zcode 侧自 EV-82 第三段起审查运行把请求模型置首，true 只说明跑的就是请求模型，不说明副本默认被采信（后者见 doctor 的 zcode.runtime_selection）"
         },
+        "carriers_landed": {
+          "type": "object",
+          "properties": {
+            "log": { "type": "boolean" },
+            "rollout": { "type": "boolean" },
+            "leaked_to_home": {
+              "type": "object",
+              "properties": {
+                "log": { "type": "boolean" },
+                "rollout": { "type": "boolean" }
+              },
+              "required": ["log", "rollout"]
+            }
+          },
+          "required": ["log", "rollout"],
+          "description": "落点自检（EV-112，目前只有 zcode 侧产出）。log / rollout＝本次会话的 CLI 日志与 rollout 是否落进运行目录，两项合取，任一为 false 时 guard 播报；leaked_to_home 只在无副本的审查运行出现，两项同形：log＝真实 ~/.zcode/cli/log 里本次拉起后改过的文件中有本次会话的行，rollout＝真实 ~/.zcode/cli/rollout 下有本次会话的 rollout 文件，任一为 true 时 guard 另起一句。落点自检只覆盖日志与 rollout 两类载体。字段缺席＝没走到自检（失败早退、无 sessionId）或该侧不产出"
+        },
         "effort": {
           "type": "string"
         },

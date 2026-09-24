@@ -1,0 +1,1474 @@
+# trivium changes.diff
+# run_id: 20260924T164417Z
+# base: HEAD
+# head: b739c50d196b0ade93fc1658ddb8b6b069fb4a1a
+# files: 18
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/README.md
+#   doc/05_testing/evidence/ev112-mutation-20260925/mutation-output.txt
+#   doc/05_testing/evidence/ev112-mutation-20260925/mutation-spec.json
+#   doc/05_testing/evidence/ev112-mutation-20260925/run.mjs
+#   doc/06_deployment/RUNBOOK_pipeline_ops.md
+#   doc/08_project/BACKLOG.md
+#   skills/dual-critic/schema/run.v2.json
+#   src/trivium/adapters/stub.ts
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/guard.ts
+#   src/trivium/probes/zcode.ts
+#   src/trivium/review.ts
+#   src/trivium/types.ts
+#   test/integration/code-stage.test.ts
+#   test/unit/zcode-carriers.test.ts
+#   test/unit/zcode-model-selection.test.ts
+#   test/unit/zcode-provider-env.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 1e4b08c..f38aec0 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.38
++> - **当前版本**：v1.3.39
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -247,8 +247,8 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参
+ | 项目公约 | 读 `AGENTS.md`，不把 `CLAUDE.md` 当运行时指令 | 参考方案 · 中 |
+ 
+ **结论与对策**：
+-- 模型覆盖采取**两档降级**（v1.2.1 按 M0 实测由三档改为两档，`env` 档作废，见 C-07；v1.3.32 曾据 P-31 误改为个人副本档、v1.3.33 按 P-31 改判撤回——生效档就是 `config_copy`，见下条）：每次运行独立配置副本 → 全局默认。副本只能通过**独立 `HOME`** 注入：`ZCODE_HOME`、`ZCODE_DATA_BASE_DIR`、`ZCODE_STORAGE_DIR` 对 `cli/config.json` 的解析无效（C-08，0.16.5），`--settings` 参数被拒（C-09）；但 0.16.9 的 `ZCODE_DATA_BASE_DIR` 决定 provider 配置根，故拉起时这三个变量一律清掉（EV-110 起连同 `ZCODE_LOG_DIR`，即 `ZCODE_DIR_ENV_KEYS` 全部目录键，见下条）。副本含凭据，故必须 `0600` 权限、跑完即删。无论走哪档，**生效模型一律从运行产物/会话日志回读**，不信配置意图（AC-13）；回读不到时记 `model_effective: unverified`，不采信请求值。
+-- **模型覆盖落点（v1.3.33，EV-82 根因改判）**：`config_copy` 档在 0.16.9 下**仍然生效**，前提是**拉起时不注入个人 provider 配置**：CLI 的模型选择链里个人文件存在就直接用、不导入；不存在才从 `<HOME>/.zcode/cli/config.json` legacy 导入并把 `model.main` 转成 `defaultModelSelection`（包内 `fpe.#f` → `importLegacy` → `Mqa`），迁移结果写成 `<HOME>/.zcode/v2/provider_config.json`。EV-81 注入了指向真实个人文件的变量，正是它把这一档关掉了（P-31 改判）。于是审查运行的副本 HOME 下**省略**个人键（`omitPersonalProviderConfig`，与旗标探针同形），CLI 自写的 `v2/provider_config.json` 与可能写出的 `v2/credentials.json` 一并在按名整删的载体清单里。**模型限定按副本源自己的 provider 键做**（`qualifyAgainstCliConfig`）：探针 `model_id_form` 记的是真实 HOME 运行回读的个人配置默认（UUID 形态），与副本源异源，`isSelectable` 精确匹配下必验不过。**`ZCODE_DIR_ENV_KEYS` 全部目录键恒清**：0.16.9 的 `FZi` 按 `dataBaseDir ?? ZCODE_DATA_BASE_DIR ?? homedir()` 推导 provider 配置根（C-08「无效」只对 0.16.5 的 `cli/config.json` 解析成立），宿主预置会让个人文件逸出副本、导入被跳过。**EV-110（EV-82 第三段 r3 §5）起并入 `ZCODE_LOG_DIR`，共四个**：CLI 日志目录取 `logDir ?? ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`，宿主预置会让审查运行的日志（可能含送审包全文）落到副本 HOME 与清扫面之外、`modelFromLog` 读不到。各拉起路径的 HOME：旗标探针为临时空 HOME（随目录删除）；版本探针（`probeZcodeEntry` 内）、doctor headless 臂与 path_deny 臂、探活为真实 HOME（宿主预置时日志改落 `~/.zcode/cli/log`，headless 臂的 `readTrace` 由此能读到 `model_id_form`）；两条模型探针臂为各自临时根；审查运行建了副本时为副本 HOME，未建副本（未指定模型 / 副本源缺失）时为真实 HOME——后者的 CLI 日志含送审包全文、落在 `~/.zcode/cli/log` 并持久留存，不进清扫面，宿主的重定向也不再生效（EV-82 第三段代码双审 r1 CODEX-04），收口登记为 EV-112。~~v1.3.32 的个人副本机制（拷用户 v2 文件、定点改写、指向副本）~~ 建立在被推翻的 P-31 上且凭据面多一份，撤除。
++- 模型覆盖采取**两档降级**（v1.2.1 按 M0 实测由三档改为两档，`env` 档作废，见 C-07；v1.3.32 曾据 P-31 误改为个人副本档、v1.3.33 按 P-31 改判撤回——生效档就是 `config_copy`，见下条）：每次运行独立配置副本 → 全局默认。副本只能通过**独立 `HOME`** 注入：`ZCODE_HOME`、`ZCODE_DATA_BASE_DIR`、`ZCODE_STORAGE_DIR` 对 `cli/config.json` 的解析无效（C-08，0.16.5），`--settings` 参数被拒（C-09）；但 0.16.9 的 `ZCODE_DATA_BASE_DIR` 决定 provider 配置根，故拉起时这三个变量一律清掉（EV-110 起连同 `ZCODE_LOG_DIR`；EV-112 起扩到十一键：`ZCODE_DIR_ENV_KEYS` 七个目录 / 路径键 + `ZCODE_LANDING_SWITCH_ENV_KEYS` 四个落点开关键，见下条）。副本含凭据，故必须 `0600` 权限、跑完即删。无论走哪档，**生效模型一律从运行产物/会话日志回读**，不信配置意图（AC-13）；回读不到时记 `model_effective: unverified`，不采信请求值。
++- **模型覆盖落点（v1.3.33，EV-82 根因改判）**：`config_copy` 档在 0.16.9 下**仍然生效**，前提是**拉起时不注入个人 provider 配置**：CLI 的模型选择链里个人文件存在就直接用、不导入；不存在才从 `<HOME>/.zcode/cli/config.json` legacy 导入并把 `model.main` 转成 `defaultModelSelection`（包内 `fpe.#f` → `importLegacy` → `Mqa`），迁移结果写成 `<HOME>/.zcode/v2/provider_config.json`。EV-81 注入了指向真实个人文件的变量，正是它把这一档关掉了（P-31 改判）。于是审查运行的副本 HOME 下**省略**个人键（`omitPersonalProviderConfig`，与旗标探针同形），CLI 自写的 `v2/provider_config.json` 与可能写出的 `v2/credentials.json` 一并在按名整删的载体清单里。**模型限定按副本源自己的 provider 键做**（`qualifyAgainstCliConfig`）：探针 `model_id_form` 记的是真实 HOME 运行回读的个人配置默认（UUID 形态），与副本源异源，`isSelectable` 精确匹配下必验不过。**`ZCODE_DIR_ENV_KEYS` 全部目录键恒清**：0.16.9 的 `FZi` 按 `dataBaseDir ?? ZCODE_DATA_BASE_DIR ?? homedir()` 推导 provider 配置根（C-08「无效」只对 0.16.5 的 `cli/config.json` 解析成立），宿主预置会让个人文件逸出副本、导入被跳过。**EV-110（EV-82 第三段 r3 §5）起并入 `ZCODE_LOG_DIR`**：CLI 日志目录取 `logDir ?? ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`，宿主预置会让审查运行的日志（可能含送审包全文）落到副本 HOME 与清扫面之外、`modelFromLog` 读不到。**EV-112（v1.3.39）起清除面扩为十一键**：会话库路径的两个别名 `ZCODE_SESSION_DB_PATH` / `ZCODE_SESSION_DB`（包内按后缀映射、无完整字面）、mailbox 根 `ZCODE_MAILBOX_ROOT`，以及只能清的四个落点开关键 `ZCODE_RUNTIME_ENV`（`development` 把 rollout 改进 `cli/debug`、`test` 不写 rollout）、`ZCODE_BETA` / `ZCODE_ENV`（存储根为空时改写到 `~/.zcode-beta`；`ZCODE_ENV` 另管测试控制面端点与遥测环境名）、`ZCODE_MESSAGE_ENABLED`（mailbox 开关）。**审查运行清完再设三个落点键**（`zcodeStorageRedirectEnv`）：`ZCODE_STORAGE_DIR`（rollout / artifacts / sessions / memories / plugins 的根）、`ZCODE_SESSION_DB_PATH`、`ZCODE_LOG_DIR`，全部指到 `zcodeHomeUnder(sideDir)` 下、与「`HOME` 为该目录时的缺省值」逐字相同的布局。副本支设了等于没改——前两键进配置分层的 Env 层（优先级 40），而 Env 层在包内只有优先级表与装层两处消费方，取值相同时「Env 层非空」本身不切换行为；`ZCODE_LOG_DIR` 由日志工厂直读、不进配置层。设了存储根还让 CLI 启动期的 beta 改写早退，副本源里的 `storage.*`（CLI 的用户层配置文件就是副本源）也被 Env 层压过。无副本支（未指定模型 / 副本源缺失）保留真实 HOME 与个人配置，模型选择不变，CLI 产物由三键拉回运行目录、进清扫面；代价是它的存储根每次为空，用户装在 `~/.zcode` 下的 plugins / profiles / skills / MCP 对审查员不可见，子代理的模型覆盖回落内置缺省（主 agent 不受影响）。跑后回读两支都读 `zcodeHomeUnder(sideDir)/.zcode/cli`，不再回落 `os.homedir()`。**落点自检**：成功返回后分别核「日志里有本次 sessionId」与「rollout 在」，**合取**判（日志键与存储键走两条互不相干的代码路径，可各自漂移）；无副本支另反向核真实 `~/.zcode/cli/rollout` 下有无本次会话的文件；结果落 `critics.<id>.carriers_landed`（进 run.json），`guard` 缺项或泄漏时播报、不阻断。各拉起路径的 HOME：旗标探针为临时空 HOME（随目录删除）；版本探针（`probeZcodeEntry` 内）、doctor headless 臂与 path_deny 臂、探活为真实 HOME，不设落点（输入不含送审内容，探的就是真实环境；入口路径命中 beta 的 argv 判据时存储根会被改写，doctor 出 note）；两条模型探针臂为各自临时根；审查运行两支的 CLI 产物都落在运行目录。~~v1.3.32 的个人副本机制（拷用户 v2 文件、定点改写、指向副本）~~ 建立在被推翻的 P-31 上且凭据面多一份，撤除。
+ - **覆盖是否落实要可判（v1.3.32 起，EV-82 的回归守卫）**：适配器比对请求模型与回读的生效模型，结论落 `CriticResult.model_override_applied`（可选四态：字段缺席＝本次无覆盖尝试；`true`/`false`＝比对过一致/不一致；`null`＝尝试了但没回读到生效模型），`guard` 在 `false` 时播报一条人读告警，**不判失守、不阻断**。**判据只看 `modelId` 段**：`<providerId>` 有多种形态并存，整串等式会把已生效的覆盖误报成未生效。**失明边界**（v1.3.33，r3 CODEX-01 ≡ AGY-r2-01）：请求模型恰为 provider 首位时，`true` 分不出「读到了 `model.main`」与「回落到首位模型」——探针臂 `probeModelOverride` **缺省**请求**非首位**模型在探针层覆盖这个盲区（显式指定首位、或同形臂置首变体生效时，结论照出并在 `why` 标注「无判别力」，EV-82 第二段代码双审 r1 CODEX-04）；端到端验证也要用非首位模型。**探针实测化**（v1.3.33，r3 CODEX-04）：`probe.model_override` 不再写死——副本 HOME + `cli/config.json` 副本（apiKey 全换哨兵、`model.main` 写非首位模型）+ 只给内置变量 → headless → 读 CLI 自写的 `v2/provider_config.json`，零配额、副本里无真实凭据（取哨兵密钥而非「拉起后立即终止」：后者有竞态）。判据归各家适配器，判定层只播报；当前只有 glm 侧产出（EV-91）。**置首之后 `true` 的含义收窄**（EV-82 第三段 r3 §4.1）：审查运行把请求模型排到副本首位后，「副本默认被采信」与「回落到首项」得到同一个结果，`true` 只说明**跑的就是请求模型**；「副本默认是否被采信」由 doctor 的 `zcode.runtime_selection` 零配额另判。
+ - **请求模型置首（EV-82 第三段 r3，M1）**：0.16.9 下副本默认在**运行期**被判不可选、回落「第一个可见 provider 的第一个模型」（第二段零配额实验落 (F1)：配置层写出请求值，启动事件选定首位；置首后选定请求值）。审查运行的 `prepareZcodeHome(…, { requestedFirst: true })` 在写 `model.main` 之后、`transformCopy` 之前把请求的 provider / 成员排到首位，**只动顺序**，provider 与成员两级按导入器规则定位（trim、`id ?? 键名`、跳 `deleted`、重复 id 先到先得）；挪不动**不中止**，结构化成因 `kind` 进 trace.json 的 `modelSelection.reorder`——审查运行里只会出现 `applied` / `identity` / `not_movable` 三档；`qualify_failed` 只由同形臂置首支在限定失败时合成，审查运行限定失败时 `reorder` 缺席、事实在 `route: global` 与 `reason`（代码双审 r1 CODEX-01 ≡ GLM-01）；并经 `CriticResult.model_override_reorder` 交 guard 当轮判定（**不进 run.json**，负向用例锁住）。guard 的 `false` 告警在置首结论在场时按 `kind` 追加一句，缺席时维持原文。置首依赖 CLI 的回落规则，CLI 改了规则时守卫判 `false`、doctor 给出 `reorder_ineffective`，两道都能看见；多 provider 副本源上 provider 一级的顺序传导未验。
+ - 模型 ID 的大小写（`GLM-5.3` 与 `glm-5.3`）以 `zcode.model_override` 探针回读的规范写法为准，本文示例统一使用探针返回值。
+@@ -1140,6 +1140,7 @@ addresses:               # 本件应答的审查文档（当前恒两份；【
+ | `critics.<id>.effort_requested` / `effort_effective` / `tier_source` | 思考等级与档位的请求值 / 生效值 / 来源 | **可选** | 【待实施 · M11】 |
+ | `critics.<id>.profile_requested` | 本次请求的**厂商** profile（codex 的 `-p`）。命名随 `model_requested` 惯例；裸名 `profile` 留空不占（本系统里它指档位） | **必备**（无此概念的族写 `null`） | 【已实现 · M8 第 4 步】 |
+ | `critics.<id>.model_provider` | **回读**得到的 provider 家族归属。与 `model_effective` 是两个维度——实测 `-p qwen -m deepseek-v4-pro` 成功且回读 provider=qwen，故「两次模型名不同 ⇒ 两个家族」不成立，AC-20 的互可区分两个维度都要看 | **必备**（同上） | 【已实现 · M8 第 4 步】 |
++| `critics.<id>.carriers_landed` | 落点自检（EV-112）：`log` / `rollout` 两个布尔＝本次会话的 CLI 日志与 rollout 是否落进运行目录，**合取**判，任一为 false 时 `guard` 播报「CLI 可能不再采纳对应的落点键」；`leaked_to_home` 只在无副本的审查运行出现，true＝本次会话的 rollout 出现在真实 `~/.zcode/cli/rollout` 下，`guard` 另起一句。字段缺席＝没走到自检（失败早退、无 sessionId）或该侧不产出（目前只有 zcode 侧产出）。与 `model_override_applied` 同一口径：条件展开，缺席不压成 null | **可选** | 【已实现 · EV-112】`src/trivium/adapters/zcode.ts` `checkZcodeCarriers` |
+ | `snapshot.build` | **运行中的编排器**自带的构建标识：`repo_root_commit`（构建来源仓的根提交，作仓库身份）、`git_head`、`dirty`、`inputs_sha256`（安装面路径集 `src/ scripts/ skills/ package.json package-lock.json tsconfig.json` 在构建时工作树上的指纹）、`built_at`。`snapshot.git_head` 是**被审项目**的 HEAD，这一项才是编排器本体是哪一版构建出来的。`null` = 构建时取不到 git（浅克隆、`git archive` 导出的树）；缺席 = 本字段之前的旧留痕。**谁消费**：收尾告警与 doctor，**只在本仓模式**下比对（被审项目根提交 = `repo_root_commit`；任一侧取不到根提交时按 `package.json` 的 `name` 兜底），外部项目只记不比。四条告警：构建标识缺失 / 构建时工作树有未提交改动 / 安装副本不是当前工作树构建的 / 安装副本与仓库 HEAD 不同版。**HEAD 只在作用面指纹未判定一致时才比**（EV-111）：指纹一致即构建输入与当前工作树一致，HEAD 不同只剩出处信息（两个字段照记），不告警，doctor 那一行补一句「（构建于 X，仓库 HEAD 已到 Y，作用面与构建时一致）」；否则构建后哪怕只有一次纯文档提交也会报「不同版」。作用面指纹重算取不到时记一条「比对未能完成」；仓库 HEAD 取不到时，**仅当指纹未判定一致**才记一条（指纹一致时 HEAD 不参与判定，谈不上「查不出」）；比对本身抛错另记一条「比对失败」——「查不出」不与「查过、没问题」同形。零告警 ⇔ 标识非空、构建时干净、指纹取得到且一致。均只告警、不阻断。仓库身份：浅克隆里取不到根提交，按包名兜底。指纹的覆盖边界（被忽略文件、`node_modules` 漂移、「改完装上再改回」）见 BACKLOG EV-114 | **可选**（写侧恒写，null 也写） | 【已实现 · EV-82 小主题第一段；HEAD 比对条件 · EV-111】`src/trivium/build-stamp.ts` |
+ 
+ `effort_effective` 必须**回读**而非采信请求值：部分厂商存在请求值归并映射
+@@ -2461,7 +2462,7 @@ HOME="<run_home>" "<runtime.node>" "<entry>" \
+ 1. **模型覆盖两档降级**（`probe.zcode.model_override` **实测**决定用哪档；v1.2.1 由三档改为两档，`env` 档作废见 C-07；v1.3.32 曾误改为个人副本档、v1.3.33 按 P-31 改判撤回）：
+    `config_copy`（**首选**，独立 `HOME` 下的 `cli/config.json` 副本、`model.main` 写请求模型）→ `global`（沿用副本源里原有的默认）。
+    **生效前提是拉起时不注入个人 provider 配置**（EV-82）：CLI 在副本 HOME 下找不到个人文件才做 legacy 导入、读 `model.main`；EV-81 注入指向真实个人文件的变量正是这样把这一档关掉的。CLI 会把导入结果写成 `<副本HOME>/.zcode/v2/provider_config.json`（含 apiKey，在按名整删清单里）。
+-   `config_copy` 只能靠 `HOME` 实现：`--settings <path>` 参数被拒（C-09）；`ZCODE_HOME` / `ZCODE_DATA_BASE_DIR` / `ZCODE_STORAGE_DIR` 对 `cli/config.json` 解析无效（C-08），但 0.16.9 的 `ZCODE_DATA_BASE_DIR` 决定 provider 配置根——这三个连同 `ZCODE_LOG_DIR`（EV-110）一律清掉。副本须拷入凭据（独立 `HOME` 下 `~/.zcode` 不存在）、权限 `0600`、跑完即删。
++   `config_copy` 只能靠 `HOME` 实现：`--settings <path>` 参数被拒（C-09）；`ZCODE_HOME` / `ZCODE_DATA_BASE_DIR` / `ZCODE_STORAGE_DIR` 对 `cli/config.json` 解析无效（C-08），但 0.16.9 的 `ZCODE_DATA_BASE_DIR` 决定 provider 配置根——这三个连同 `ZCODE_LOG_DIR`（EV-110）及 EV-112 的七个键（共十一键）一律清掉；审查运行清完再设日志目录 / 存储根 / 会话库路径三键，把 CLI 产物指到运行目录（见 11.3 上文「模型覆盖落点」条）。副本须拷入凭据（独立 `HOME` 下 `~/.zcode` 不存在）、权限 `0600`、跑完即删。
+    **限定按副本源自己的 provider 键做**（`qualifyAgainstCliConfig`）：`profiles` 里保留人类可读短名（如 `GLM-5.3`），补全时在副本源的 `provider[*].models` 里找恰好一个拥有者；探针 `model_id_form` 只用于目录比对（EV-93）。限定失败仍建副本、不改 `model`、`route: global` 并给理由。
+    **覆盖是否落实**由适配器比对回读值判定并落 `model_override_applied`，`guard` 在不一致时播报（不阻断）；判据只看 `modelId` 段；请求首位模型时判据失明，探针臂固定用非首位模型覆盖该盲区。
+    落到 `global` 档时按 `critics.glm.unsupported_override` 处理（**尚未接线**，EV-30）：`reject`（默认，吸收 glm 版 D6）——请求模型与全局默认不一致即拒绝启动（退出 69，提示修复环境），一致则放行并如实记录「使用全局默认」；`annotate`——放行，但**必须**在文档头与元数据注明「未按任务指定，实际生效为全局默认」。
+@@ -3292,6 +3293,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.39** | 2026-09-25 | **EV-112：审查运行的 CLI 产物一律落进运行目录**（计划 `.reviews/EV-112-无副本审查运行载体落点/`：计划双审 2 轮 26 条全接受，r3 定稿；送审前零配额实测 E0）。**一、现象比登记时大**：无副本的审查运行（未指定模型 / 副本源缺失）把 log、rollout、会话库、artifacts、workflow、memories 全部留在真实 `~/.zcode`，不止日志。ZCode 0.16.9 包内核出三条取值链：日志直读 `ZCODE_LOG_DIR`（只认 HOME）；存储根 `storage.dir` 经配置分层的 Env 层取 `ZCODE_STORAGE_DIR`（rollout 等都在它下面）；会话库 `storage.sessionDbPath` 缺省按 HOME 展开、Env 层按后缀认 `SESSION_DB_PATH` / `SESSION_DB`（包里无完整字面，EV-110 按字面 grep 漏了）。**二、改动**：审查运行两支都**设**三个落点键（`zcodeStorageRedirectEnv`，入参是与 HOME 同层的根），指到 `zcodeHomeUnder(sideDir)` 下与副本相同的布局；清除面由四键扩为十一键（七个目录 / 路径键 + 四个落点开关键 `ZCODE_RUNTIME_ENV` / `ZCODE_BETA` / `ZCODE_ENV` / `ZCODE_MESSAGE_ENABLED`，后者是计划双审两轮与复核追出的启动期落点改写）；跑后回读不再回落 `os.homedir()`。**三、落点自检**：`checkZcodeCarriers` 合取判「日志有本次 sessionId」与「rollout 在」，无副本支反向核真实 HOME；结果进 run.json（6.7.1 新增 `critics.<id>.carriers_landed`），`guard` 播报、不阻断。**四、doctor**：宿主预置十一键任一出信息级 note（只报键名）；探针入口命中 beta 的 argv 判据另出 note。**五、验证**：新增 `test/unit/zcode-carriers.test.ts`（按包内取值链落盘的假入口，含全采纳 / 半采纳 / 全不采纳 / 不写四种形态与真实 HOME 诱饵）与 run.json 组装集成用例；十一键全等断言逐字写出、不从常量派生。变异十三条，证据 `doc/05_testing/evidence/ev112-mutation-20260925/`。**六、残余**：探活与 doctor 探针仍在真实 HOME 下跑（不含送审内容）；beta 的 argv 触发清键挡不住（审查运行由存储根早退挡住）；运行目录里 db / plugins 不扫、其余命中即删，幸存内容随保留期整删 |
+ | **v1.3.38** | 2026-09-24 | **EV-111：构建标识在纯文档提交后误报「安装副本与仓库 HEAD 不同版」**（计划 `.reviews/EV-111-构建标识HEAD误报/`：计划双审 1 轮 11 条全接受，r2 定稿）。6.7.1 `snapshot.build` 行：HEAD 只在作用面指纹未判定一致时才比；指纹一致时 HEAD 取不到也不记「比对未能完成」；doctor 在指纹一致而 HEAD 前进时补一句出处；写明「零告警 ⇔ 标识非空、构建时干净、指纹取得到且一致」。实遇五次，都是构建后只有纯文档提交。M10b r7 §3.4 第 6b 条的容忍项随之空转、判据不改；r5 §7.3 白名单构建标识行比的是字段，本条不解除 r7 §3.7 的规避。指纹覆盖边界登记 BACKLOG EV-114 |
+ | **v1.3.37** | 2026-09-24 | **M10a 第 5 步：纪律 6 回溯，M10a 五步收口**（计划 `.reviews/M10a-第5步/`：计划双审 1 轮 16 条，接受 15、暂缓 1；段一代码双审 r6 6 条全接受；本版为段二）。**一、16.1 M10 行拆为 M10a / M10b 两行**：M10a 记五步达成与八条达成边界；原前置四条按拆分重排（② ④ 由 M10a 交付、③ 残量与 ① 归 M10b），并写入显式裁决「前置 ① 不构成翻 `driverEnabled` 的前置」（M10 计划 r7 §0.3）；M10b 行的完成判据直接按 P-2 写「ZCode 真载体一轮」，不继承原行的「夹具跑通」。**二、M10a 落地的契约迟到并入**（纪律 6b，偏离如实登记）：7.1 新增 `topic claim` 段；6.7.1 / 7.1 的 `--driver` 由「只校验已登记」改为「未启用即退 64」，并写明 64 收紧的作用面不是全称；6.2 与 8.5 的当轮 Driver 改为三级判定；8.4 新增 `approve` 前置复核与三条边界；8.5 Hook 表写明提交锚「位置 + 登记」判据、剩余边界与强制力单向，`hook-pre-bash` 的后缀集改为全集（D3）；10.4 的后缀枚举句改判据式。**三、异构口径**：1.2、11.5、15.1 FR-17、15.3 AC-18 由「非 Claude 系」改为「不与当轮 Driver 厂商名义族同族」，写明两层启发式与历史文案并存（EV-107）。**四、状态位**：术语表、1.1 R-2、15.1 FR-28、15.3 AC-21（仅子句 ③）、19 R18 / R22、18.1 #16 指针、依赖图、§24.1 三行（含新增「演进设计三处口径修正」行）与 §24.2 十二行。**五、核出并改准的一处过头说法**：`verify-*.json`「由不受保护变为受保护」（自 M10 计划 r7 起沿用）实为「由锚②单层变为锚①②双层」——verify 运行清单早已登记它。回溯完整性的核法（逐项对账表 + 反向表 + grep 锚差集）与结论见 [`REPORT_2026-09-24_m10a_step5.md`](../05_testing/REPORT_2026-09-24_m10a_step5.md)。 |
+ | **v1.3.36** | 2026-09-23 | **EV-74 结案：探针与准入脚本结构化输出臂改喂真实契约文件**（M10a 第 2 步开工前置清零；计划 5 轮 40 条全接受、代码 1 轮 15 条全接受/1 条暂缓，实测报告见 [`REPORT_2026-09-23_ev74_structured_arm_acceptance.md`](../05_testing/REPORT_2026-09-23_ev74_structured_arm_acceptance.md)）。**一、判据从形态判定升级为契约判定**：`probes/claude.ts` 的 `json_schema_ok` 此前只喂不带 `$schema` 的迷你 schema，只证「旗标收不收内联 JSON」不证「CLI 收不收本仓的契约」（BACKLOG 登记的既有盲区）。现经 `readSchemaJson` 剥壳后喂真实 `review.v1.json`，`judgeJsonSchema` 按七格三态判据分格（`false` 只由干净拒绝触发；`null` 的四类成因——两头皆空／已吐事件未完成／撞闸未跑完／模型不合规——经返回值字段 `StructuredArmCause` 承载，不落盘、仿 zcode `flagsIndeterminate` 先例），`doctor` 按成因分派 `DoctorReport.warnings` 文案，不做文案匹配。**二、资产根解析规则收敛为单一事实来源**：`config.ts` 新增 `resolveAssetRoot` / `resolveReviewSchemaPath`，`review.ts` 与 `init.ts` 原本各自维护的同形 `override ?? env ?? homedir` 链合并为一处；准入脚本 `claude-admission-control.mjs` 同改经共用出口取契约，资产根缺失时 fail-fast（不回落仓内副本）。**三、新增架构契约**：`probes/` 自身的 import 面从「未定义」改为允许清单（`{node:*、probes/ 同目录、../config.js、../types.js、../util/*、../adapters/*、../secrets.js}`，`../init.js` 具名登记为例外），配防空转腿与防腐烂腿，见 §11.1「`probes/` 自身的 import 面」。**四、代码双审第 1 轮修复两处真实缺陷**：契约文件"存在但已损坏"此前会被当成合法内容送去 CLI、被拒后误判成"CLI 不接受契约"而非"本地文件损坏"（`readSchemaJson` 对坏 JSON 不抛是既有契约，探针与脚本均加 `JSON.parse` 前置校验堵上）；准入脚本的 fail-fast 曾被逐用例 `try/catch` 吞掉、进程仍退 0（提到用例循环之前）。**五、§4 实测证实核心保证成立**：零成本的拒绝形态复现（`stdout_event_count=0`，补全 M9 第 1 跑缺的数据点）与三次真实契约下的结构化输出实测（全部一次命中 `true`/`ok`，成本 $0.0421）均通过；预算/超时常量留有充足余量（最高实测成本仅占预算 12%），**按臂覆盖入参机制维持故意未接线**（不编造未实测的上调数值）。**六、一条待续**：`doctor.ts` claude 段的 `configuredBin` 硬编码 `null`（早于本主题的既有架构缺口），若要给 §5 用例 7 补 `runDoctor` 层端到端测试需先补注入口，登记为独立残余，本主题不顺手改。留痕见 `.reviews/EV-74-探针喂真实契约文件/`（`plan/` 五轮、`code/` 一轮）。 |
+@@ -3492,7 +3494,7 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
+ | [`.reviews/README.md`](../../.reviews/README.md) | A | 第零步 | ✅ 批 A 已并入；**现状句于 M9 第 7 步改准**（「仍是两侧审查」自 M8 起失实）；**「提交时的留痕核对」一节随 M10a 第 5 步新增**（位置 + 登记、`verify-*.json` 由单锚变双锚、Bash 侧口径） |
+ | [`README.md`](../../README.md) | A | 第零步 | ✅ 批 A 已并入；演进注记与分层表于 M9 第 7 步改准（第四家已接入）；异构口径、角色后缀枚举句与 M10 标签于 M10a 第 5 步改准 |
+ | [`AGENTS.md`](../../AGENTS.md) | A | 第零步 / M10a | ✅ 已并入；项目概览的失实句（「Antigravity 与 ZCode 背靠背只读双审」）于 M10a 第 5 步改准。面向执笔者的协议段随 M10b「协议片段两段式」 |
+-| [`doc/02_design/README.md`](./README.md) | A | 第零步 | ✅ 批 A 已并入；主设计条目版本与读法于 M9 第 7 步改准（曾停在 v1.3.15）；M10a 第 5 步跟到 v1.3.37；EV-111 跟到 v1.3.38 |
++| [`doc/02_design/README.md`](./README.md) | A | 第零步 | ✅ 批 A 已并入；主设计条目版本与读法于 M9 第 7 步改准（曾停在 v1.3.15）；M10a 第 5 步跟到 v1.3.37；EV-111 跟到 v1.3.38；EV-112 跟到 v1.3.39 |
+ | [`.env.example`](../../.env.example) | **B** | **M8** | ⏳ 未并入（Codex 侧凭据与 provider 说明） |
+ | [`BACKLOG.md`](../08_project/BACKLOG.md) | A | 第零步 | ✅ 已并入（措施 b 独立演进项已登记） |
+ | `ADR_002_multicritic_isolation.md` | A | 第零步 | ✅ 已新建 |
+diff --git a/doc/02_design/README.md b/doc/02_design/README.md
+index bf7d991..1f4057b 100644
+--- a/doc/02_design/README.md
++++ b/doc/02_design/README.md
+@@ -21,7 +21,7 @@
+ 
+ ### 唯一实现依据
+ 
+-- [`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：**Driver-DualCritic 主攻双审流水线总体架构与详细设计**（**v1.3.38**，状态：**基线已实现、演进进行中**）。依据 PRD v1.4.7 与 5 份参考答卷起草。
++- [`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：**Driver-DualCritic 主攻双审流水线总体架构与详细设计**（**v1.3.39**，状态：**基线已实现、演进进行中**）。依据 PRD v1.4.7 与 5 份参考答卷起草。
+   演进历程：v1.1.0 按设计审核意见 RV-01～RV-26 修订；v1.2.0 按项目负责人意见 UR-01～UR-06 修订（就地审查、结合全项目评审、Node.js + TypeScript、用户级 skills 载体），均附逐条应答；v1.2.1 按 M0 本机实测回补第 3、10、11、12 章；v1.2.2～v1.2.5 按多轮自举双审加固护栏（含 RV-B1 的实施与撤回）；v1.2.6～v1.2.7 护栏判定范围收窄与 Bash 侧撤回；**v1.3.0 把 M6～M11 的多 Agent 演进并入本文**，新增「实现状态基线」与三级状态标记、纪律 6（回溯颗粒度）与纪律 7（注册表单一来源）、§24 演进并入台账；**v1.3.1～v1.3.6 随 M7b 六步逐步回溯**（`run.v2`、`config.v2`、`--critics` 入口、5.1.1 接入套件与其验收装置——并据桩夹具实测把「五件套」修正为「七件套」、把 `review.v1` 的意见编号前缀由 schema 枚举改为注册表校验）；**v1.3.7 按 M6 四步回填事实表**（3.6 Codex / 3.7 Claude headless 由指针占位翻为已回填，§24 台账三行转绿）——回填推翻了演进设计的三条记载（`-p` 是文件分层而非 `[profiles.*]` 段、effort 档位表全错且 CLI 不校验、模型目录路径名对不上）并修正一条（路径级 deny 对 `Read` 可用、对 `Grep` 不可用）；**v1.3.8 落地 M8 第 1 步的措施 b**（命令文本字面扫描，`10.1`）——它因 codex 的读取经 shell 而成为该侧路径核验的唯一手段，承诺面钉成 **F-1～F-9 必检 / B-1～B-5 明确不可检**的闭集，三处（设计、实现 docblock、用例名）由 `known-forms-parity` 机器对账；**v1.3.9 落地 M8 第 2 步的适配层契约泛化**（`11.1` 新增「轨迹能力与判定分档」）——判定层改为面向 `TraceCapability`（轨迹形态 + 被拒操作是否留痕）而非 Agent id，六个消费点逐一分档；**并推翻 3.6 的一条旧断言**：`rejected_command_in_trace = false` 此前被写成「10.3 的判据对 codex 永久为假」，实为过度推广——被拒的命令不留痕，成功执行的照常留痕，故失守判定两档一律由写事件成立，该字段只修饰阴性结论的可信度；连带新增「无法归因」的漂移分类与两条核验通道的降级留痕（五面）；**v1.3.10～v1.3.12 随 M8 第 3～4 步与 D4-4**（codex 接入为第三家审核者、AC-20 真机验收、codex 进缺省集合）；**v1.3.13～v1.3.16 护栏判定缺口与凭据清扫**；**v1.3.17～v1.3.30 随 M9 七步回溯**（claude 准入实测与三个机读字段、适配器本体与四条准入前置、启用为第四家审核者、`--driver` 全链路、裁决件 `role` 放宽与 Hook 当轮保护集、两轮验收实跑达成完成判据、第 7 步纪律 6 回溯）。
+   覆盖架构、组件划分、接口契约、目录与命名规范、操作流程、异常矩阵、实施路线（M0～M11）与验收映射。
+   **⚠️ 读法**：正文未加状态标记者描述当前真实系统（M0～M5 基线 + M6～M9 与 M10a：探针事实、注册表、配置 v2 与动态多审、Codex 与 Claude Code 两家审核者、Driver 护栏与契约面）；
+diff --git a/doc/06_deployment/RUNBOOK_pipeline_ops.md b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+index 902cb8a..2874b75 100644
+--- a/doc/06_deployment/RUNBOOK_pipeline_ops.md
++++ b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+@@ -264,7 +264,8 @@ trivium doctor --only agy       # 只探一侧，省配额
+ | `preflight` 在「ZCode 已认证」退 69，详情含「无法定位 CLI ZCode Built-in Provider Config」 | ZCode 0.16.9 起 CLI 按入口目录推算 provider 配置，应用包布局下推算不到（坑 P-28）。编排器已按入口派生并注入 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` / `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`，仍报错说明 `<ZCode.app>/Contents/Resources/config/provider/zcode-builtin.json` 不在原位——跑 `trivium doctor --only zcode --no-model-calls`，看 notes 里 `provider_config` 那行。这是**安装布局**问题，不是凭据问题 |
+ | 自己在 shell 里设了 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` / `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`，但不生效 | **编排器独占这两个变量**，拉起 zcode 的三条路径（version 探针、旗标探针、审查执行）一律按 ZCode 安装布局派生后注入，派生不到就把它们从子进程环境里**删除**。这是有意的：判据必须是「子进程拿不到」而不是「编排器没主动注入」，否则宿主环境能改变探针行为（旗标探针那侧会因此烧七次真实配额）。`doctor` 探测到宿主预置值时会出一条 ⚠️ note。要换 provider 配置的位置，请调整 ZCode 安装布局，不要靠环境变量 |
+ | guard 告警说某侧「**请求的模型没有生效**」 | 该侧的模型覆盖没落到实处：`run.json` 的 `model_requested` 与 `model_effective` 不是同一个模型（判据只看 `<providerId>/<modelId>` 的 **modelId 段**——两种 providerId 形态并存，前缀不同不算问题）。**该侧的审查结论仍然有效**，但模型路由（FR-06）与异构默认（NFR-06）在本侧失效：若另一侧模型与它同家族，这一轮不构成真正的双审。glm 侧先看 `trace.json` 的 `modelSelection` 段：`route` 为 `global` 说明压根没做覆盖（同段 `reason` 写明为什么），为 `config_copy` 而 `model_override_applied` 为 `false` 说明副本写了但 CLI 运行期没选它。**先看同段的 `reorder`**（EV-82 第三段起审查运行会把请求模型排到副本首位）：`kind` 为 `applied` 说明置首已生效仍回落，CLI 的回落规则可能变了；为 `not_movable` 说明置首没做成，原因在 `reason`；为 `identity` 说明请求本在首位；**`reorder` 段缺席**而 `route` 为 `global`，说明请求模型限定失败、压根没做置首，原因在 `modelSelection.reason`。再跑 `trivium doctor --only zcode --no-model-calls`，看 `runtime_selection`（零配额两支对照：`reorder_needed` 为当前正常形态，`reorder_ineffective` 说明置首也挡不住）与 `model_override` 两格，必要时按 P-31 的方式复核包内字面。**另两种成因**（代码双审 r3）：副本源 `~/.zcode/cli/config.json` 里有 `apiKeyRequired: false` 的免密 provider——导入器对整份配置直接拒掉（`Fqa`），探针臂与运行都会落回退；请求的模型名是被标 `deleted` 的成员、或该成员的 `id` 字段与键名不同形——限定按导入器同一组规则判，这两种会在准备阶段就记 `route: global` 并给理由 |
+-| glm 侧起得来，但留痕里的 `model_effective` 不是请求的 GLM 模型 | **已修（EV-82，2026-09-24 结案）**：配置层 2026-09-21 修；运行期回落由第三段置首修法消除，2026-09-24 端到端验收通过（run `20260924T104357Z`，请求 `GLM-5.3-Flash`，rollout 13 条全为 Flash）。第一层根因：编排器曾注入指向你真实个人 provider 配置的变量——个人文件存在，CLI 就跳过 legacy 导入，副本里的 `model.main` 没人读；现在审查运行的副本 HOME 下**不注入**个人变量，CLI 从 `cli/config.json` 副本导入、默认选择写出请求值。**第二层**（2026-09-24 第二段实测）：写出的默认选择在运行期被判不可选，CLI 回落「第一个可见 provider 的第一个模型」——所以置首修法（`c872b00`）之前的运行会跑到首位模型。第三段起审查运行把请求模型排到副本首位，回落就落在它上面（见上一行的 `reorder`）；`trivium doctor --only zcode`（含 `--no-model-calls`）的 `model_override` 一格零配额实测配置层——记 `config_copy` 即写出了请求值，记 `global` 则 CLI 又改了导入流程；`runtime_selection` 一格零配额实测运行期是否仍需置首。覆盖没落实时 guard 也会出声（见上一行）。**无副本的审查运行**（未指定模型 / 副本源 `~/.zcode/cli/config.json` 缺失）走真实 HOME：CLI 日志含送审包全文，落在 `~/.zcode/cli/log` 并持久留存，宿主设的 `ZCODE_LOG_DIR` 重定向不再生效（EV-110 起所有拉起路径都清掉它），收口见 BACKLOG EV-112。glm 可作为审核者启用。若之后再出现本症状，先看 doctor 的 `runtime_selection`：`reorder_ineffective` 说明 CLI 的回落规则变了、置首已挡不住。端到端验证请用非首位模型（`--model-glm GLM-5.3-Flash`），默认档 `GLM-5.3` 恰是首位模型，回落也得到它，验不出差别 |
++| glm 侧起得来，但留痕里的 `model_effective` 不是请求的 GLM 模型 | **已修（EV-82，2026-09-24 结案）**：配置层 2026-09-21 修；运行期回落由第三段置首修法消除，2026-09-24 端到端验收通过（run `20260924T104357Z`，请求 `GLM-5.3-Flash`，rollout 13 条全为 Flash）。第一层根因：编排器曾注入指向你真实个人 provider 配置的变量——个人文件存在，CLI 就跳过 legacy 导入，副本里的 `model.main` 没人读；现在审查运行的副本 HOME 下**不注入**个人变量，CLI 从 `cli/config.json` 副本导入、默认选择写出请求值。**第二层**（2026-09-24 第二段实测）：写出的默认选择在运行期被判不可选，CLI 回落「第一个可见 provider 的第一个模型」——所以置首修法（`c872b00`）之前的运行会跑到首位模型。第三段起审查运行把请求模型排到副本首位，回落就落在它上面（见上一行的 `reorder`）；`trivium doctor --only zcode`（含 `--no-model-calls`）的 `model_override` 一格零配额实测配置层——记 `config_copy` 即写出了请求值，记 `global` 则 CLI 又改了导入流程；`runtime_selection` 一格零配额实测运行期是否仍需置首。覆盖没落实时 guard 也会出声（见上一行）。**审查运行的 CLI 产物一律落在运行目录**（EV-112 起）：编排器清掉宿主预置的十一个落点相关变量后，再把日志目录 / 存储根 / 会话库指到 `<运行目录>/glm/home/.zcode/…`；无副本的审查运行（未指定模型 / 副本源 `~/.zcode/cli/config.json` 缺失）仍用真实 HOME 与你的个人配置选模型，但 CLI 产物不再留在 `~/.zcode`。代价：这一支看不到你装在 `~/.zcode` 下的 plugins / profiles / skills / MCP，子代理的模型覆盖回落内置缺省（主 agent 不受影响）。glm 可作为审核者启用。若之后再出现本症状，先看 doctor 的 `runtime_selection`：`reorder_ineffective` 说明 CLI 的回落规则变了、置首已挡不住。端到端验证请用非首位模型（`--model-glm GLM-5.3-Flash`），默认档 `GLM-5.3` 恰是首位模型，回落也得到它，验不出差别 |
++| guard 告警说 glm 侧「**运行目录里缺本次会话的日志 / rollout**」，或「本次会话的 rollout **出现在真实 ~/.zcode/cli/rollout 下**」 | 落点自检没过（EV-112）：编排器把 CLI 的日志目录、存储根、会话库指到运行目录，这一轮跑完却在那里找不到本次会话的日志或 rollout。最可能的原因是 ZCode 升级后不再认其中某个环境变量。**不影响该侧结论的有效性，但送审内容可能落在了清扫面之外**。排查：① `trivium doctor --only zcode --no-model-calls` 看 `cli_version` 是否变了；② 看 `run.json` 的 `critics.glm.carriers_landed`：`log` / `rollout` 哪一项为 false，就是哪一族落点键失效（日志键与存储根走两条不同的代码路径）；③ 出现泄漏句时，按 `run.json` 的 `session_id` 在 `~/.zcode/cli/rollout/` 下找 `model-io-<sessionId>.jsonl`，确认后自己删掉（编排器不动真实 HOME）。再跑 glm 之前把这件事报上来，要重新核 ZCode 包内的取值链 |
+ | `preflight`「ZCode 已认证」报 `Error: Model creation failed (traceId: …)` | CLI 在**真实 HOME** 下建不出模型，与编排器的副本机制无关（该探活走 `homeDir: null`）。`failureKind` 落在 `other` 说明它既不是缺 `cli/config.json`（那报 `model_config_missing`），也不是 provider 鉴权失败。**先取结构化根因**：`~/.zcode/cli/log/zcode-<日期>.jsonl` 里按 traceId 找 `turn.failed` 行的 `error.cause.message`（只取这个字段，日志含模型 I/O 全文，不要整份打印）。2026-09-21 实测根因是下一行 |
+ | 结构化根因是 `Select a model before continuing` | CLI 的模型选择解析为空。包内逻辑：先拿 `~/.zcode/v2/provider_config.json` 的 `config.defaultModelSelection` 去注册表**精确匹配**（providerId 与 modelId 都要相等，且 provider 不能 `visibility: hidden`），验不过就回落到注册表第一个可见模型，再没有就报这条。三种成因按顺序查（都只看键名与布尔值，**不要打印凭据值**）：① 该键是否缺失——`python3 -c` 读 JSON 只打 `sorted(config.keys())`；② `providerConfigRules.providerRules[].enabled` 是否全 `false`（桌面端切换 provider 家族时会关掉家族外的 provider，2026-09-21 实测如此）；③ 键指向的 providerId/modelId 是否与注册表精确相等（自定义 provider 是 UUID 形态；内置套餐是 `account:bigmodel-individual-coding-plan` + 小写 `glm-5.3`，**不是** `cli/config.json` 里的 `bigmodel-coding-plan/GLM-5.3`）。修复：先 `cp` 备份，再只改那一个键或那一个布尔值，写成 `.new` 文件核对后再 `mv` 覆盖；恢复后重跑 `trivium doctor --only zcode` 刷新探针结论 |
+ 
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 40807b2..68c1db0 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -205,9 +205,9 @@
+ | EV-107 | todo | **`isHeterogeneous` 的 Driver 模型族是按厂商名义族近似的，不是按生效模型判定。** 演进设计 §5 要求「模型族按生效模型判定，不按 Agent」；审核者一侧做到了，Driver 一侧做不到，因为编排器不采集 Driver 的生效模型。EV-62（M10a 第 4 步）改为「审核者生效模型 vs 当轮 Driver 厂商的名义模型族（`VENDOR_MODEL_FAMILY`）」，两层都是启发式。名义族**不是** `agents.codex.profile` 意义上的「家族」：后者描述审核者调用连到哪家 provider，与 Driver 会话无关。**已知会错的形态**（可达性按本机探针的模型目录判，不是全称）：①**可达**：driver=codex 时，gemini 审核者经显式覆盖跑 `gpt-oss-120b-medium` 被判同族，而 codex Driver 实际多半跑 qwen；driver=claude 而 Claude Code 实际接别家模型时，gemini 审核者经显式覆盖跑 `claude-*` 被判同族。②**本机目录下不可达**：driver=codex 而审核者跑 qwen 会被判异构——能跑 qwen 的只有 codex 审核者（此时被排除），zcode 目录出现 qwen 系之后才可达（它支持自定义 provider）。③模型名不含族名：如 OpenAI 的 `o` 系列不含 `gpt`；补模式的触发条件：根本解落地前，出现 openai Driver 的真实运行且审核者经显式覆盖用了 o 系列（计划双审 r1 AGY-04，暂缓）。④取不到模型名时一律判异构。「新增检出」那一格（非 anthropic Driver 下的名义族同族）在内置配置下不可达，只对显式覆盖生效。`heterogeneous` 只驱动告警与留痕，不拦闸门。**根本解**：采集 Driver 的生效模型（会话声明，或各家载体可回读时回读），再按两侧生效模型比族。**触发条件**：M10b 真载体验收时，或有人依据 `heterogeneous` 做门禁判定之前。来源：M10a 第 4 步（EV-62），计划双审 r1 CODEX-04、r2 GLM-01。**追加（2026-09-24，M10a 第 5 步）**：设计与需求文字已按名义族口径回溯（主设计 11.5、PRD FR-17 / AC-18），并写明两层启发式；根本解仍待本条。另点名第 4 步报告那条「真实的覆盖空白」：**非缺省 Driver 下 `run.json` 与审查文档的 `heterogeneous` / `override_reason` 取值没有端到端用例**，由 M10b 真载体轮实跑承接 | `src/trivium/agents/registry.ts` `VENDOR_MODEL_FAMILY`、`src/trivium/adapters/base.ts` `isHeterogeneous` |
+ | EV-108 | todo | **提交锚的剩余边界两格：只剩写侧，锚②够不着。** M10a 第 2 步（EV-55）删掉提交锚的后缀支之后，审查文档与原稿的不可变性只剩锚②（`run.json.artifacts[]` 的 sha256 登记）一道。已提交版本为 running 的运行清单已收窄为「同一 run_id、已登记条目逐条保留且 sha 不变、只许追加」（代码双审 r3 CODEX-01 ≡ GLM-01），仍够不着的两格：①收尾**新追加**的登记条目在追加那一刻可被同步改写（改文件与改登记同时发生，锚②拿到的就是改过的 sha）；②审查文档已落盘、登记尚未发生时进程崩溃，且该状态被提交——此后这批文档既不在 `_meta/`（位置判据失明）也不在登记里（锚②失明）（代码双审 r3 GLM-02）。两格都只剩写侧兜底：Write / Edit 精确拦，Bash 启发式拦。**后续可行方向**：崩溃轮收尾补登记，或登记时点前移。**触发条件**：有人把提交锚当成审查文档的唯一保护来依赖之前，或写侧拦截被改动时。来源：由 EV-55 拆出（M10a 第 5 步，计划 r2 §4.1），原文照 EV-55 进展段 | `src/trivium/hooks.ts` `immutableChangeReason` / `runningRewriteViolation`；`src/trivium/review.ts` 收尾登记段 |
+ | EV-109 | todo | **`review --start` 先落盘、后检查闸门槽位：被拒的那次留下半套工件与一条永远 running 的运行记录。** `prepareRun` 的顺序是：写被审补丁与便利副本 `changes.diff` → 写各侧 brief → 写 run.json 骨架（`status: running`）→ `registerRun` 登记进 `task.json.runs[]` → **然后**才 `setGateChecked` 检查该阶段槽位；槽位是别的 run 的待裁决状态时抛退 2（「上一轮……尚未裁决，不能直接重跑」）。此时已经落下的东西不会被回收，于是：①`_meta/` 下多出一份补丁与三份 brief，提交之后按位置判据成为不可变工件；②一条 `status: running` 的运行记录永远不会被收尾，`status` 的「运行 N 次」会把它数进去；③它**不消耗 `rerun_index`**，下一次真跑与它同号；④会话启动提示持续报「运行目录的状态读不到」（本仓实例：EV-79 code 档的 `20260922T134058Z`，2026-09-22）。**与 AC-16 同精神**：AC-16 要求 `review` 的失败出口（64 / 65 / 69 / 70）不留半套工件，退 2 这一格不在它的列举里，`no-artifacts` 用例也没覆盖。**修法方向**：把槽位检查提到任何落盘之前（或拒绝时回收本轮已落的工件与登记），并把退 2 这一格补进 AC-16 的零工件用例。**存量处置**：`20260922T134058Z` 那条孤儿记录与运行目录由用户在终端人工检查后清理，不由会话代删。**口径**：这类被拒的 `--start` 不计入双审轮次（`doc/08_project/M10a-轮次台账.md` §0，2026-09-24 用户拍板）。**触发条件**：下次改 `prepareRun` 或 `review --start` 的状态机时；或再出现一次同形孤儿记录时。来源：EV-79 code 档实遇，M10a 轮次台账 §0 登记，2026-09-24 用户拍板「登记」 | `src/trivium/review.ts` `prepareRun`（落盘段在前、`setGateChecked` 在后）；`test/integration/no-artifacts.test.ts` |
+-| EV-110 | **done**（2026-09-24，EV-82 第三段 `EV-82-置首修法` r3 §5：`ZCODE_LOG_DIR` 并入 `ZCODE_DIR_ENV_KEYS`，所有拉起路径一律清；副本路径收口；审查运行未建副本时的日志落点见 **EV-112**） | **审查臂继承宿主的 `ZCODE_LOG_DIR`：日志落到副本 HOME 与清扫面之外，`modelFromLog` 静默落空。** CLI 的日志目录取 `logDir ?? ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`（包内字面，EV-82 第二段代码双审 r1 codex 核实）。EV-82 第二段只在两条探针臂里清它（`ZCODE_PROBE_EXTRA_CLEARED_ENV`，计划 r2 §2「本段不改审查臂」）；审查臂经 `zcodeProviderEnv` 原样继承。宿主一旦预置：①审查臂从 `<副本 HOME>/.zcode/cli/log` 读启动事件读不到，生效模型只剩 rollout 一个来源，而 EV-82 的「真实运行启动即回落」正是用 `modelFromLog` 核实的；②CLI 日志（可能含送审包全文）落在 `scrubZcodeHome` 的论域之外，跑后留存。与 `ZCODE_DATA_BASE_DIR` 当初进清除清单的理由同构（glm）。**现状**：doctor 在宿主预置时出 ⚠️（只报键名）。**候选修法**：把它并进 `ZCODE_DIR_ENV_KEYS`，一行改动、方向 fail-safe（清掉只会把日志拉回副本 HOME）。来源：EV-82 第二段代码双审 r1 CODEX-01 ≡ GLM-04 | `src/trivium/adapters/zcode.ts`（`zcodeProviderEnv` / `ZCODE_DIR_ENV_KEYS`）、`src/trivium/probes/zcode.ts` |
++| EV-110 | **done**（2026-09-24，EV-82 第三段 `EV-82-置首修法` r3 §5：`ZCODE_LOG_DIR` 并入 `ZCODE_DIR_ENV_KEYS`，所有拉起路径一律清；副本路径收口；审查运行未建副本时的日志落点由 **EV-112** 收口（2026-09-25：审查运行两支都把日志 / 存储根 / 会话库指到运行目录）） | **审查臂继承宿主的 `ZCODE_LOG_DIR`：日志落到副本 HOME 与清扫面之外，`modelFromLog` 静默落空。** CLI 的日志目录取 `logDir ?? ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`（包内字面，EV-82 第二段代码双审 r1 codex 核实）。EV-82 第二段只在两条探针臂里清它（`ZCODE_PROBE_EXTRA_CLEARED_ENV`，计划 r2 §2「本段不改审查臂」）；审查臂经 `zcodeProviderEnv` 原样继承。宿主一旦预置：①审查臂从 `<副本 HOME>/.zcode/cli/log` 读启动事件读不到，生效模型只剩 rollout 一个来源，而 EV-82 的「真实运行启动即回落」正是用 `modelFromLog` 核实的；②CLI 日志（可能含送审包全文）落在 `scrubZcodeHome` 的论域之外，跑后留存。与 `ZCODE_DATA_BASE_DIR` 当初进清除清单的理由同构（glm）。**现状**：doctor 在宿主预置时出 ⚠️（只报键名）。**候选修法**：把它并进 `ZCODE_DIR_ENV_KEYS`，一行改动、方向 fail-safe（清掉只会把日志拉回副本 HOME）。来源：EV-82 第二段代码双审 r1 CODEX-01 ≡ GLM-04 | `src/trivium/adapters/zcode.ts`（`zcodeProviderEnv` / `ZCODE_DIR_ENV_KEYS`）、`src/trivium/probes/zcode.ts` |
+ | EV-111 | **done**（2026-09-24，实施提交 `1b7cfed`；零配额验收通过，读数见 `doc/05_testing/evidence/ev111-acceptance-20260924/`：构建于 `1b7cfed`，纯文档提交 `53d12e0` 后 doctor 零告警并补出处句）（主题 `EV-111-构建标识HEAD误报` r2，代码双审 r1 6 条全接受：HEAD 只在作用面指纹未判定一致时才比；指纹一致时 HEAD 取不到也不记「比对未能完成」；doctor 在这一格补出处句。已核「作用面一致而 HEAD 不同」的五种情形（纯文档提交 / 构建时脏后提交 / HEAD 挪到同作用面提交 / 改了又改回 / 同根另一克隆），都不说明副本过期；指纹的覆盖边界另立 **EV-114**。实遇五次（台账第 8、10、11、14 行与本主题计划双审第 1 轮）。**不解除** M10b r7 §3.7 的规避：r5 §7.3 白名单行比的是字段不是告警） | **构建标识在纯文档提交后误报「安装副本与仓库 HEAD 不同版」。** 实遇：EV-82 第二段计划双审第 1 轮收尾（台账第 8 行），中间只有一次纯文档提交、安装作用面未变，告警仍报出。成因：HEAD 比对不看作用面，而 `inputs_sha256` 已覆盖作用面（src、scripts、skills、package.json、package-lock.json、tsconfig.json）。**候选修法**：本仓模式下 `inputs_sha256` 与当前作用面一致时，HEAD 不同降为提示或不报；要先核「作用面一致而 HEAD 不同」是否还有别的含义（如构建时工作树脏）。EV-82 第二段计划 r2 §9 登记，不在该段改 | `src/trivium/build-stamp.ts`（`buildStampWarnings`） |
+-| EV-112 | todo（排在 EV-82 结案之后，待用户定） | **无副本的审查运行把含送审包全文的 CLI 日志持久留在真实 `~/.zcode/cli/log`。** 审查运行未指定模型、或副本源 `~/.zcode/cli/config.json` 缺失时，`prepareZcodeHome` 返回 `homeDir: null`，`invokeZcode` 不改 HOME、不省略个人键，CLI 用真实 HOME 跑完整 turn；按 `scrubZcodeHome` 自己的文档，`log/` 与 `rollout/` 逐字含送审包全文，而清扫只管 `<runDir>/<side>/home`，这条路径整份留在用户真实目录。EV-110 并入 `ZCODE_LOG_DIR` 后，宿主原本能把它重定向到临时卷的办法也失效。**候选修法**（codex 建议）：给无副本那一支**设**（而非清）`ZCODE_LOG_DIR=<runDir>/<side>/home/.zcode/cli/log`，并把 `modelFromLog` 的回读路径改成读同一处，使该路径与副本路径同形、日志落进清扫面；rollout 目录是否同样可重定向需先核包内字面。来源：EV-82 第三段代码双审 r1 CODEX-04 | `src/trivium/adapters/zcode.ts`（`invokeZcode`、`zcodeAdapter.run` 的日志回读、`scrubZcodeHome`） |
++| EV-112 | **实施中**（2026-09-25，主题 `EV-112-无副本审查运行载体落点`：计划双审 2 轮 26 条全接受，r3 定稿 `b739c50`；代码待双审，零配额验收 E1 待做。**现象比登记时大**：不止日志，rollout、会话库、artifacts、workflow、memories 全部留在真实 `~/.zcode`；修法是审查运行两支都**设**日志目录 / 存储根 / 会话库三键到运行目录，清除面扩为十一键，落点自检进 run.json 的 `carriers_landed`，见计划 r3 与设计 v1.3.39） | **无副本的审查运行把含送审包全文的 CLI 日志持久留在真实 `~/.zcode/cli/log`。** 审查运行未指定模型、或副本源 `~/.zcode/cli/config.json` 缺失时，`prepareZcodeHome` 返回 `homeDir: null`，`invokeZcode` 不改 HOME、不省略个人键，CLI 用真实 HOME 跑完整 turn；按 `scrubZcodeHome` 自己的文档，`log/` 与 `rollout/` 逐字含送审包全文，而清扫只管 `<runDir>/<side>/home`，这条路径整份留在用户真实目录。EV-110 并入 `ZCODE_LOG_DIR` 后，宿主原本能把它重定向到临时卷的办法也失效。**候选修法**（codex 建议）：给无副本那一支**设**（而非清）`ZCODE_LOG_DIR=<runDir>/<side>/home/.zcode/cli/log`，并把 `modelFromLog` 的回读路径改成读同一处，使该路径与副本路径同形、日志落进清扫面；rollout 目录是否同样可重定向需先核包内字面。来源：EV-82 第三段代码双审 r1 CODEX-04 | `src/trivium/adapters/zcode.ts`（`invokeZcode`、`zcodeAdapter.run` 的日志回读、`scrubZcodeHome`） |
+ | EV-113 | todo | **glm 侧审查员以 `ExitPlanMode` 工具调用收尾，回合就此结束，结构化结论没有输出，编排器判解析回退。** 实遇：EV-82 诊断第 1 轮（run `20260924T014145Z`，M10b 台账第 3 行），rollout 末条响应以 `ExitPlanMode` 工具调用收尾（`finishReason: tool-calls`），其后没有请求；审查员宣告的四条意见没有输出，裁决只能对回退单元暂缓。第 2 轮（run `20260924T025839Z`）在焦点里加一句「勿调用 `ExitPlanMode`，直接在最终回复里输出完整 JSON」后，结构化结论正常落盘。与 EV-105（结构化输出被散文或围栏包裹）是不同形态：本条是结论根本没产出。**候选修法**：glm 侧任务书固定写入「不要调用 `ExitPlanMode`」；或适配层识别这种收尾形态，如实标注回退成因。先核只读参数 `--mode plan` 是否正是诱因。M10b 第 1 步 r5 §4.5 采集的其余解析回退形态，第 5 步追加进本条或另立。来源：诊断 r3 §6 第 4 条、EV-82 第一段计划 r2 §7（原定第一段收口时登记，漏登，M10b 计划 r7 §5 补登） | `src/trivium/adapters/zcode.ts`、审查任务书模板 |
+ | EV-114 | todo（低优先级：无实遇，无触发不动） | **构建标识指纹的覆盖边界：三种形态下「零构建标识告警」而安装副本与指纹描述的不一致。** 指纹 `inputs_sha256` 管的是「构建时的作用面 = 收尾时的作用面」，不管安装副本本身的字节；EV-82 第一段 r2 §2 已把「不校验安装副本内容」写成明确的「不做」，下面三项都在这条边界及其延伸内：①**作用面内被忽略的文件**：安装器 `syncDir` 整树拷贝 `skills/`、不筛忽略项，指纹不收被忽略文件；现只命中构建产物 `skills/dual-critic/scripts/trivium.cjs` 本身。②**`package-lock.json` 不变时的 `node_modules` 漂移**：构建不确定，指纹相同不保证产物相同。③**「改完装上再改回」**：构建（指纹 F1）→ 改 `skills/` → 安装 → 把 `skills/` 改回 F1 ⇒ 收尾重算等于 F1，零告警，而安装副本里是改过的资产；EV-111 之前，中间恰有提交时会碰巧报出「不同版」，之后不再报。三项 HEAD 比对同样看不见（前两项从不进提交）。构建之后、安装之前改 `skills/` **而改动留到收尾**的那一格已由「不是当前工作树构建的」覆盖，不在本条。来源：EV-111 计划双审第 1 轮 CODEX-05、GLM-03 | `src/trivium/build-stamp.ts`、`src/install.ts` |
+ 
+diff --git a/skills/dual-critic/schema/run.v2.json b/skills/dual-critic/schema/run.v2.json
+index e7545d5..988c332 100644
+--- a/skills/dual-critic/schema/run.v2.json
++++ b/skills/dual-critic/schema/run.v2.json
+@@ -538,6 +538,16 @@
+           ],
+           "description": "模型覆盖是否落实（EV-82）。字段缺席＝本次没有覆盖尝试；true/false＝比对过一致/不一致；null＝尝试了但没回读到生效模型。判据归各家适配器，判定层只播报。zcode 侧自 EV-82 第三段起审查运行把请求模型置首，true 只说明跑的就是请求模型，不说明副本默认被采信（后者见 doctor 的 zcode.runtime_selection）"
+         },
++        "carriers_landed": {
++          "type": "object",
++          "properties": {
++            "log": { "type": "boolean" },
++            "rollout": { "type": "boolean" },
++            "leaked_to_home": { "type": "boolean" }
++          },
++          "required": ["log", "rollout"],
++          "description": "落点自检（EV-112，目前只有 zcode 侧产出）。log / rollout＝本次会话的 CLI 日志与 rollout 是否落进运行目录，两项合取，任一为 false 时 guard 播报；leaked_to_home 只在无副本的审查运行出现，true＝本次会话的 rollout 出现在真实 ~/.zcode/cli/rollout 下。字段缺席＝没走到自检（失败早退、无 sessionId）或该侧不产出"
++        },
+         "effort": {
+           "type": "string"
+         },
+diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts
+index 5ef4a0b..99f6901 100644
+--- a/src/trivium/adapters/stub.ts
++++ b/src/trivium/adapters/stub.ts
+@@ -121,6 +121,11 @@ export interface StubSpec {
+    * 只为集成用例咬住两件事：guard 按 `kind` 分句；`review.ts` 不把它写进 run.json。
+    */
+   modelOverrideReorder?: CriticResult['model_override_reorder'];
++  /**
++   * 模拟落点自检（EV-112 计划 r3 §4.6）：给了就原样产出 `carriers_landed`。只为集成用例咬住两件事：
++   * `review.ts` 把它写进 run.json 逐侧段；guard 按两项合取与 `leaked_to_home` 出声。
++   */
++  carriersLanded?: CriticResult['carriers_landed'];
+   note?: string;
+ }
+ 
+@@ -191,6 +196,7 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
+     // 与真适配器同一条口径：不给就**缺席**，不写 null（缺席与 null 是两件事）
+     ...(spec.modelOverrideApplied === undefined ? {} : { model_override_applied: spec.modelOverrideApplied }),
+     ...(spec.modelOverrideReorder === undefined ? {} : { model_override_reorder: spec.modelOverrideReorder }),
++    ...(spec.carriersLanded === undefined ? {} : { carriers_landed: spec.carriersLanded }),
+     // 桩不模拟厂商事实：这两个字段的真实形态只有真适配器才产得出（AC-24 的证明边界）
+     model_provider: null,
+     profile_requested: null,
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index 417c358..b3dd93e 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -8,7 +8,8 @@
+  *   - `ZCODE_HOME` / `ZCODE_DATA_BASE_DIR` / `ZCODE_STORAGE_DIR` 对 **`cli/config.json` 的解析**无效，
+  *     只有 `HOME` 生效（0.16.5，C-08）。**但 0.16.9 起 `ZCODE_DATA_BASE_DIR` 决定 provider 配置根与
+  *     凭据根**（包内 `FZi` / `gUs`：`dataBaseDir ?? ZCODE_DATA_BASE_DIR ?? homedir()`）——所以拉起时
+- *     这三个变量连同 `ZCODE_LOG_DIR`（EV-110）——即 `ZCODE_DIR_ENV_KEYS` 全部目录键——一律清掉，见 `zcodeProviderEnv`（计划双审 r3 CODEX-02）。
++ *     这三个变量连同 `ZCODE_LOG_DIR`（EV-110）、会话库与 mailbox 的路径键和四个落点开关键（EV-112）一律清掉，
++ *     见 `zcodeProviderEnv`（计划双审 r3 CODEX-02）。审查运行清完再**设**其中三个，把 CLI 产物指到运行目录（EV-112，`zcodeStorageRedirectEnv`）。
+  *   - **模型覆盖的落点是 `cli/config.json` 副本的 `model.main`，前提是不注入个人 provider 配置**（EV-82）：
+  *     个人文件存在时 CLI 直接用它、不做 legacy 导入；不存在时才从 `cli/config.json` 导入并把
+  *     `model.main` 转成默认模型选择（包内 `fpe.#f` → `importLegacy` → `Mqa`）。EV-81 注入了指向
+@@ -256,14 +257,16 @@ export async function zcodeProviderConfigPaths(
+  * `omitPersonal` 为真时个人键恒 `undefined`（与旗标探针同一形态）；否则按真实用户目录派生
+  * ——探活与探针的 headless 臂走后者，它们不做覆盖、在真实 HOME 下跑。
+  *
+- * ## `ZCODE_*` 目录变量恒清（计划双审 r3 CODEX-02；EV-110 起含 `ZCODE_LOG_DIR`，共四个）
++ * ## `ZCODE_*` 目录 / 路径键与落点开关键恒清（计划双审 r3 CODEX-02；EV-110 加 `ZCODE_LOG_DIR`；EV-112 扩到十一键）
+  *
+  * 包内 `FZi(prepareCliProviderRuntimeEnv)` 在 `--prompt` 形态下按
+  * `dataBaseDir ?? env.ZCODE_DATA_BASE_DIR ?? os.homedir()` 推导个人路径并写回 `process.env`，
+  * 凭据根（`gUs`）与遥测状态也读它。宿主预置该变量 → 个人文件在**副本之外**「存在」→ 导入被跳过
+  * ——本轮根因换个入口复发，且 CLI 自写的凭据文件落到清扫论域**之外**。
+  * C-08「这三个变量对配置解析无效」是 0.16.5 对 `cli/config.json` 的结论，对 0.16.9 的 provider
+- * 配置根**不成立**。判据仍是「子进程拿不到」而不是「编排器没主动给」，故目录键（`ZCODE_DIR_ENV_KEYS`，EV-110 起四键）恒置 `undefined`。
++ * 配置根**不成立**。判据仍是「子进程拿不到」而不是「编排器没主动给」，故目录 / 路径键（`ZCODE_DIR_ENV_KEYS`）与
++ * 落点开关键（`ZCODE_LANDING_SWITCH_ENV_KEYS`）恒置 `undefined`。子进程的落点只由 `HOME` 或编排器显式指定的落点决定
++ * （后者见 `invokeZcode` 的 `storageRedirectRoot`，EV-112）。
+  *
+  * ## 为什么门控是**逐键**而不是「两份都在才注入」
+  *
+@@ -286,7 +289,7 @@ export async function zcodeProviderEnv(
+   const env: Record<string, string | undefined> = {
+     [ZCODE_BUILTIN_PROVIDER_ENV]: undefined,
+     [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
+-    ...Object.fromEntries(ZCODE_DIR_ENV_KEYS.map((k) => [k, undefined])),
++    ...Object.fromEntries([...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS].map((k) => [k, undefined])),
+   };
+   if (await exists(p.builtin)) env[ZCODE_BUILTIN_PROVIDER_ENV] = p.builtin;
+   if (!opts.omitPersonal && (await exists(p.personal))) env[ZCODE_PERSONAL_PROVIDER_ENV] = p.personal;
+@@ -294,15 +297,63 @@ export async function zcodeProviderEnv(
+ }
+ 
+ /**
+- * 0.16.9 会改变 provider 配置根 / 凭据根 / 存储根 / 日志目录的四个目录变量。拉起时一律从子进程环境里删掉，
+- * 让根目录只由 `HOME` 决定——那才是副本隔离与清扫论域的边界（r3 CODEX-02）。
++ * 0.16.9 里决定 provider 配置根 / 凭据根 / 存储根 / 日志目录 / 会话库 / mailbox 落点的**目录与路径键**。
++ * 拉起时一律从子进程环境里删掉，宿主值进不了子进程——那才是副本隔离与清扫论域的边界（r3 CODEX-02）。
++ * 审查运行在清完之后再**设**其中三个（`zcodeStorageRedirectEnv`，EV-112），落点由编排器指定。
+  *
+- * `ZCODE_LOG_DIR`（EV-110，EV-82 第三段 r3 §5）：CLI 的日志目录取 `logDir ?? ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`。
+- * 宿主预置它时，审查臂的 CLI 日志（可能含送审包全文）会落到副本 HOME 与 `scrubZcodeHome` 的清扫面之外，
+- * `modelFromLog` 也读不到——与 `ZCODE_DATA_BASE_DIR` 当初进清单的理由同构。清掉它只会把日志拉回各自 HOME 下。
+- * 第二段起它只在两条模型探针臂另清，第三段并入本清单，所有拉起路径一律清；各路径的 HOME 与行为变化见计划 r3 §5。
++ * - `ZCODE_DATA_BASE_DIR` / `ZCODE_HOME` / `ZCODE_STORAGE_DIR`：计划双审 r3 CODEX-02；
++ * - `ZCODE_LOG_DIR`（EV-110，EV-82 第三段 r3 §5）：CLI 的日志目录取 `logDir ?? ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`，
++ *   宿主预置它时日志（可能含送审包全文）落到清扫面之外，`modelFromLog` 也读不到；
++ * - `ZCODE_SESSION_DB_PATH` / `ZCODE_SESSION_DB`（EV-112 计划 r3 §4.3）：包内 `aun` 按**后缀**把两者都映射到
++ *   `storage.sessionDbPath`，包里没有完整字面，按字面 grep 找不到——EV-110 就是这样漏的。两个别名后出现的赢，
++ *   而子进程环境的键序由宿主决定，清掉别名后编排器设的那个才唯一；
++ * - `ZCODE_MAILBOX_ROOT`（EV-112）：mailbox 根目录，按 HOME 展开、不随存储根。
+  */
+-export const ZCODE_DIR_ENV_KEYS: readonly string[] = ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_STORAGE_DIR', 'ZCODE_LOG_DIR'];
++export const ZCODE_DIR_ENV_KEYS: readonly string[] = [
++  'ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_STORAGE_DIR', 'ZCODE_LOG_DIR',
++  'ZCODE_SESSION_DB_PATH', 'ZCODE_SESSION_DB', 'ZCODE_MAILBOX_ROOT',
++];
++
++/**
++ * 会在 CLI 启动期**改写落点**的开关键（EV-112 计划 r3 §4.3）。与目录 / 路径键不同，它们只能清、不能设。
++ * 方向都是 fail-safe；各键的副作用：
++ * - `ZCODE_RUNTIME_ENV`：`development` 把 rollout 目录换成 `cli/debug`（回读与脱敏都不认），`test` 让 rollout 不写。
++ *   清掉后按入口路径推断，`.cjs` 入口得 `production`；
++ * - `ZCODE_BETA` / `ZCODE_ENV`：存储根为空时把它改写到 `~/.zcode-beta`。审查运行设了存储根、不受影响；探针路径靠清。
++ *   `ZCODE_ENV` 另被读作测试控制面端点选择与遥测环境名，清掉即走生产控制面。
++ *   **清键挡不住 argv 触发**：任一 argv 元素含 `/zcode-beta` 路径段同样会改写（计划 r3 §8 R7）；
++ * - `ZCODE_MESSAGE_ENABLED`：开 mailbox。审查员用不到会话间消息，子进程里恒关。
++ */
++export const ZCODE_LANDING_SWITCH_ENV_KEYS: readonly string[] = ['ZCODE_RUNTIME_ENV', 'ZCODE_BETA', 'ZCODE_ENV', 'ZCODE_MESSAGE_ENABLED'];
++
++/**
++ * 包内 `RMi` 的 argv 触发判据，逐字照抄（0.16.9，EV-112 计划 r3 §8 R7）：存储根为空时，任一 argv 元素匹配它，
++ * CLI 就把存储根改写到 `~/.zcode-beta`。清环境键挡不住；审查运行设了存储根、早退不受影响；探针路径会被改写。
++ * 形态是「`zcode-beta` 恰为一段的末尾，或其后紧跟 `.`」：`…/zcode-beta`、`…/zcode-beta.app` 命中，`…/zcode-beta/…` 不命中。
++ */
++export const ZCODE_BETA_ARGV_RE = /(^|[/\\])zcode-beta(?:$|\.)/u;
++
++/**
++ * 审查运行要**设**的三个落点键（EV-112 计划 r3 §4.1）：日志目录、存储根、会话库路径，全部指到 `root` 下
++ * 与「`HOME=<root>` 时 CLI 的缺省值」逐字相同的布局——副本支设了等于没改，无副本支因此与副本支同形、落进清扫面。
++ *
++ * **入参是与 HOME 同层的根**（`zcodeHomeUnder(sideDir)`，即 `<sideDir>/home`），不是 `.zcode`；函数内部才拼 `.zcode`。
++ * 传入 basename 为 `.zcode` 的路径会得到 `.zcode/.zcode` 嵌套且不报错，所以直接抛（`resolve` 顺带去掉尾部分隔符）。
++ *
++ * 生效机制不对称：`ZCODE_STORAGE_DIR` / `ZCODE_SESSION_DB_PATH` 经包内 `aun` 进配置层的 Env 层（优先级 40），
++ * `ZCODE_LOG_DIR` 由日志工厂直读、不进配置层。两条路径能各自漂移，落点自检因此两项分开核（`run()`）。
++ */
++export function zcodeStorageRedirectEnv(root: string): Record<string, string> {
++  if (path.basename(path.resolve(root)) === '.zcode') {
++    throw new Error(`zcodeStorageRedirectEnv 的入参应是与 HOME 同层的根，不是 .zcode 目录本身：${root}`);
++  }
++  const zdir = path.join(root, '.zcode');
++  return {
++    ZCODE_STORAGE_DIR: zdir,
++    ZCODE_SESSION_DB_PATH: path.join(zdir, 'cli', 'db', 'db.sqlite'),
++    ZCODE_LOG_DIR: path.join(zdir, 'cli', 'log'),
++  };
++}
+ 
+ /**
+  * 宿主环境里可能带着的凭据/端点变量。**只在探针路径清**（代码双审 r1 codex 子项 03 ≡ AGY-02）：
+@@ -337,6 +388,12 @@ export interface ZcodeInvokeOptions {
+    * 与 `zcodeProviderEnv` 的 `omitPersonal` 同构（计划双审 r3 AGY-r2-02：布尔开关，不用 null 当魔法值）。
+    */
+   omitPersonalProviderConfig?: boolean;
++  /**
++   * CLI 产物的落点根（EV-112）：给了就在清除面之后**设** `zcodeStorageRedirectEnv(storageRedirectRoot)` 的三个键。
++   * 入参是与 HOME 同层的根（`zcodeHomeUnder(sideDir)`），不是 `.zcode`。
++   * 只有审查运行传（副本 / 无副本两支都传）；探活与探针不传——它们要测的是真实环境。
++   */
++  storageRedirectRoot?: string | null;
+   timeoutMs: number;
+ }
+ 
+@@ -404,6 +461,9 @@ export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvoke
+       omitPersonal: opts.omitPersonalProviderConfig === true,
+     })),
+   };
++  // 先清后设（EV-112 计划 r3 §4.4）：上面已把全部目录 / 路径键与开关键清成 undefined，这里再覆盖三个落点键。
++  // 顺序反过来，编排器的值会被清掉、子进程退回 HOME 缺省（变异 M2）
++  if (opts.storageRedirectRoot) Object.assign(env, zcodeStorageRedirectEnv(opts.storageRedirectRoot));
+   if (opts.homeDir) env['HOME'] = opts.homeDir;
+ 
+   const r = await run(opts.node, args, { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, killTree: true });
+@@ -704,6 +764,48 @@ export function reorderRequestedFirst<T>(cfg: T, providerKey: string, modelId: s
+   return { copy: { ...(cfg as object), provider: newProviders } as T, outcome: { variant: 'requested-first', applied: true, kind: 'applied' } };
+ }
+ 
++/**
++ * 落点自检（EV-112 计划 r3 §4.6）：本次会话的 CLI 产物有没有落进运行目录，以及有没有落进真实 HOME。
++ *
++ * 落点键被 CLI 采纳是从压缩产物读出来的厂商事实，ZCode 随桌面端自动更新。三键分属两条互不相干的代码路径
++ * （日志工厂直读 `ZCODE_LOG_DIR`；存储根与会话库经 `aun` 进配置层），可以**各自**漂移——所以两项分开记、**合取**判：
++ * - `log`：`cliDir/log` 下任一 `.jsonl` 里有本次 `sessionId` 的行（查全部文件，不只最新一个：跨午夜时事件分在两天的文件里）；
++ * - `rollout`：`cliDir/rollout/model-io-<sessionId>.jsonl` 存在。CLI 成功返回时它必写：`recordModelIO` 只在运行档位为
++ *   `test` 或请求带 `skipTranscript` 时为假，而运行档位已被清掉（`ZCODE_LANDING_SWITCH_ENV_KEYS`）；
++ * - `leaked_to_home`：只在无副本支（`realHome` 非 null）核——真实 HOME 下有本次会话的 rollout 文件，即送审内容已写进真实 HOME。
++ *   只查文件名、不读内容；副本支的 HOME 就是落点根，反向核无意义，字段缺席。
++ *
++ * 只读：不改、不删任何文件。
++ */
++export async function checkZcodeCarriers(
++  cliDir: string,
++  sessionId: string,
++  realHome: string | null,
++): Promise<NonNullable<CriticResult['carriers_landed']>> {
++  const rolloutName = `model-io-${sessionId}.jsonl`;
++  let log = false;
++  try {
++    const logDir = path.join(cliDir, 'log');
++    for (const f of (await fs.readdir(logDir)).filter((n) => n.endsWith('.jsonl'))) {
++      const text = await fs.readFile(path.join(logDir, f), 'utf8');
++      if (!text.includes(sessionId)) continue;
++      log = text.split('\n').some((line) => {
++        try {
++          return (JSON.parse(line) as Record<string, unknown>)['sessionId'] === sessionId;
++        } catch {
++          return false;
++        }
++      });
++      if (log) break;
++    }
++  } catch {
++    log = false;
++  }
++  const rollout = await exists(path.join(cliDir, 'rollout', rolloutName));
++  if (realHome === null) return { log, rollout };
++  return { log, rollout, leaked_to_home: await exists(path.join(realHome, ZCODE_CLI_SUBDIR, 'rollout', rolloutName)) };
++}
++
+ /**
+  * 为一次运行准备独立 HOME 与模型覆盖（`config_copy` 档）。
+  *
+@@ -934,7 +1036,14 @@ export const zcodeAdapter: CriticAdapter = {
+      * 请求模型置首（EV-82 第三段 r3 §3）：0.16.9 下副本默认在运行期被判不可选、回落「第一个可见 provider 的第一个模型」
+      * （第二段实验落 (F1)），把请求排到首位，回落就落在它上面。只动顺序；挪不动照常拉起，由守卫按结果判。
+      */
+-    const home = await prepareZcodeHome(path.dirname(req.out_dir), req.model, { requestedFirst: true });
++    const sideDir = path.dirname(req.out_dir);
++    const home = await prepareZcodeHome(sideDir, req.model, { requestedFirst: true });
++    /*
++     * CLI 产物的落点根（EV-112 计划 r3 §4.2）：两支都指到 `zcodeHomeUnder(sideDir)`。副本支 HOME 就是它，三键取值与缺省相同；
++     * 无副本支 HOME 仍是真实目录（个人配置、凭据照旧），日志 / 存储根 / 会话库由这三个键拉回运行目录、进清扫面。
++     * 设了存储根还让 CLI 启动期的 beta 改写早退，副本源里的 `storage.*` 也被 Env 层压过。
++     */
++    const landingRoot = zcodeHomeUnder(sideDir);
+     const overrideAttempted = home.route === 'config_copy';
+ 
+     let out: ZcodeInvokeOutcome;
+@@ -947,6 +1056,7 @@ export const zcodeAdapter: CriticAdapter = {
+         readonlyArgs,
+         homeDir: home.homeDir,
+         omitPersonalProviderConfig: home.homeDir !== null,
++        storageRedirectRoot: landingRoot,
+         timeoutMs: req.timeout_s * 1000,
+       });
+     } catch (e) {
+@@ -993,7 +1103,8 @@ export const zcodeAdapter: CriticAdapter = {
+ 
+     // ── 轨迹：两个来源缺一不可 ──
+     const sessionId = out.envelope.sessionId;
+-    const cliDir = path.join(home.homeDir ?? os.homedir(), '.zcode/cli');
++    // 两支同一个式子（EV-112）：不再回落 os.homedir()——无副本支的产物已被三键指到运行目录，读真实 HOME 只会读到别的会话
++    const cliDir = path.join(landingRoot, ZCODE_CLI_SUBDIR);
+ 
+     let toolCalls: CriticResult['tool_calls'] = {};
+     let writeEvents: string[] = [];
+@@ -1036,6 +1147,11 @@ export const zcodeAdapter: CriticAdapter = {
+ 
+     const modelEffective = modelFromLog ?? modelFromRollout;
+ 
++    // 落点自检（EV-112 计划 r3 §4.6）：成功返回且有 sessionId 才核；无副本支另做反向核（真实 HOME 就是 os.homedir()）
++    const carriersLanded = sessionId
++      ? await checkZcodeCarriers(cliDir, sessionId, home.homeDir === null ? os.homedir() : null)
++      : undefined;
++
+     /*
+      * ── 模型覆盖是否真的落实（EV-82 的回归守卫）──
+      *
+@@ -1081,6 +1197,7 @@ export const zcodeAdapter: CriticAdapter = {
+               : {}),
+             ...(selectionNote ? { note: selectionNote } : {}),
+           },
++          ...(carriersLanded ? { carriersLanded } : {}),
+         },
+         null,
+         2,
+@@ -1122,6 +1239,8 @@ export const zcodeAdapter: CriticAdapter = {
+       ...(home.reorder
+         ? { model_override_reorder: { applied: home.reorder.applied, kind: home.reorder.kind, ...(home.reorder.reason ? { reason: home.reorder.reason } : {}) } }
+         : {}),
++      // 落点自检（EV-112）：没走到自检（无 sessionId）即缺席；review.ts 条件展开写进 run.json，guard 按它播报
++      ...(carriersLanded ? { carriers_landed: carriersLanded } : {}),
+       tool_calls: toolCalls,
+       read_paths: readPathList,
+       // zcode 轨迹只有 toolCalls[].input，没有工具输出——该族无此事实
+diff --git a/src/trivium/guard.ts b/src/trivium/guard.ts
+index 783d3de..26473a3 100644
+--- a/src/trivium/guard.ts
++++ b/src/trivium/guard.ts
+@@ -125,6 +125,11 @@ export interface SideVerdict {
+    * 缺席即本侧无置首，告警维持原文。
+    */
+   modelOverrideReorder?: NonNullable<CriticResult['model_override_reorder']>;
++  /**
++   * 落点自检（EV-112 计划 r3 §4.6）：原样透传 `CriticResult.carriers_landed`。判据归适配器，本层只播报：
++   * `log` 或 `rollout` 为 false、`leaked_to_home` 为 true 时各出一句。缺席不出声。
++   */
++  carriersLanded?: NonNullable<CriticResult['carriers_landed']>;
+ }
+ 
+ /** 单侧两条核验通道的档位与生效阈值 */
+@@ -480,6 +485,7 @@ export function judgeSide(
+       ? {}
+       : { modelOverrideApplied: result.model_override_applied }),
+     ...(result.model_override_reorder === undefined ? {} : { modelOverrideReorder: result.model_override_reorder }),
++    ...(result.carriers_landed === undefined ? {} : { carriersLanded: result.carriers_landed }),
+   };
+ }
+ 
+@@ -869,6 +875,24 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
+           reorderHint(s.modelOverrideReorder),
+       );
+     }
++    /*
++     * 落点自检的人读出口（EV-112 计划 r3 §4.6）。**不判失守、不阻断**：该侧结论本身仍有效，
++     * 出事的是送审内容的落点——它可能不在运行目录的清扫面里，甚至写进了真实 HOME。
++     * 两项合取：日志与存储根走两条互不相干的代码路径，只丢一条时另一条照常，析取会把半采纳报成正常。
++     */
++    if (s.carriersLanded && (!s.carriersLanded.log || !s.carriersLanded.rollout)) {
++      const missing = [!s.carriersLanded.log ? '日志' : null, !s.carriersLanded.rollout ? 'rollout' : null].filter(Boolean).join('与');
++      out.push(
++        `${s.critic} 侧运行目录里缺本次会话的${missing}：ZCode 可能不再采纳对应的落点键（EV-112），` +
++          'CLI 产物可能留在别处，生效模型也可能读不回。先看 doctor 的 cli_version 是否变了；详情见 run.json 的 carriers_landed',
++      );
++    }
++    if (s.carriersLanded?.leaked_to_home === true) {
++      out.push(
++        `${s.critic} 侧本次会话的 rollout 出现在真实 ~/.zcode/cli/rollout 下：送审内容已写进真实 HOME，` +
++          '需人工清理（文件名是 model-io-<sessionId>.jsonl，sessionId 见 run.json）',
++      );
++    }
+     if (s.verification.path === 'unavailable') {
+       out.push(
+         `${s.critic} 侧路径核验无结构化输入：该侧读取路径只存在于命令文本里，` +
+diff --git a/src/trivium/probes/zcode.ts b/src/trivium/probes/zcode.ts
+index 544df04..05231ae 100644
+--- a/src/trivium/probes/zcode.ts
++++ b/src/trivium/probes/zcode.ts
+@@ -30,6 +30,8 @@ import {
+   ZCODE_ARGV_PARSED_RE,
+   ZCODE_CREDENTIAL_ENV_KEYS,
+   ZCODE_DIR_ENV_KEYS,
++  ZCODE_LANDING_SWITCH_ENV_KEYS,
++  ZCODE_BETA_ARGV_RE,
+   ZCODE_BUILTIN_PROVIDER_ENV,
+   ZCODE_PERSONAL_PROVIDER_ENV,
+   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
+@@ -92,11 +94,13 @@ export async function probeZcodeEntry(
+    */
+   const r = await run(node, [entry, 'version'], {
+     timeoutMs: 60_000,
+-    // 目录键（EV-110 起四个）与两个凭据键同样清底色（代码双审 r1 codex 子项 06）：口径是「全部探针路径」，不是「两条主路径」
++    // 目录 / 路径键、落点开关键（EV-112 起共十一个）与两个凭据键同样清底色（代码双审 r1 codex 子项 06）：口径是「全部探针路径」，不是「两条主路径」
+     env: {
+       [ZCODE_BUILTIN_PROVIDER_ENV]: undefined,
+       [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
+-      ...Object.fromEntries([...ZCODE_DIR_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS].map((k) => [k, undefined])),
++      ...Object.fromEntries(
++        [...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS].map((k) => [k, undefined]),
++      ),
+     },
+     // 与其余五处拉起厂商 CLI 的口径一致（r5 CODEX-04）：此前这里是全仓唯一没开的一处。
+     // `version` 现在不起子进程，但 P-29 已经证明这个 CLI 的演化方向是把活儿往前挪——
+@@ -518,7 +522,7 @@ export function describeRuntimeSelection(r: RuntimeSelectionReadback | undefined
+  *
+  * 零配额、零真实凭据：副本按白名单重建（`buildProbeCliConfig`，apiKey 是哨兵、不带任何别的凭据键），
+  * 探针路径的 env 清掉两个凭据键；请求一个**非首位**模型（否则回落也会得到同一个值，见 `pickNonFirstModel`）；
+- * 只给内置变量、个人键与 `ZCODE_DIR_ENV_KEYS` 全部目录键一律清掉（与审查运行同一形态）；
++ * 只给内置变量、个人键与全部目录 / 路径键、落点开关键一律清掉（清除面与审查运行相同；审查运行另设落点，EV-112）；
+  * **带只读参数**（`--mode plan` + 完整 denylist，代码双审 r1 AGY-02）：本地免密端点下哨兵挡不住真实请求，
+  * CLI 可能真跑起来，只读参数把它限在不执行工具。
+  *
+@@ -1168,6 +1172,13 @@ export async function probeZcode(
+     notes.push('未找到 zcode.cjs 入口，ZCode 侧不可用');
+     return { probe, notes, flagsIndeterminate, flagsZeroExit };
+   }
++  // 入口路径命中包内 beta 改写的 argv 判据（EV-112 计划 r3 §8 R7）：只报命中与否，不报路径全文
++  if (ZCODE_BETA_ARGV_RE.test(entry)) {
++    notes.push(
++      'ZCode 入口在 beta 渠道路径下：探针与探活的存储根会被 CLI 改写到 ~/.zcode-beta（清环境键挡不住这条 argv 触发）；' +
++        '审查运行设了存储根，不受影响（EV-112）',
++    );
++  }
+ 
+   const zcodeModels = await probeZcodeModels();
+   probe.models = zcodeModels;
+@@ -1356,12 +1367,13 @@ export async function probeZcode(
+             '若两臂与审查运行结论不同，这是一个与副本形态无关的备择成因（GLM-04）',
+         );
+       }
+-      // 日志目录（EV-110，第三段 r3 §5）：并入 ZCODE_DIR_ENV_KEYS 后所有拉起路径都清，只剩信息级提示；只判有无、不打印值
+-      if (process.env['ZCODE_LOG_DIR']) {
++      // 落点相关的宿主预置（EV-110；EV-112 起十一键）：所有拉起路径都清，只剩信息级提示；只报键名、不打印值
++      const hostLandingKeys = [...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS].filter((k) => process.env[k]);
++      if (hostLandingKeys.length > 0) {
+         notes.push(
+-          '宿主环境预置了 ZCODE_LOG_DIR：所有拉起路径都已清掉它，CLI 日志落在各自 HOME 下（EV-110）。' +
+-            '无副本的审查运行（未指定模型 / 副本源缺失）走真实 HOME：CLI 日志含送审包全文，落在 ~/.zcode/cli/log 并持久留存，' +
+-            '宿主的重定向不再生效（代码双审 r1 CODEX-04，见 BACKLOG EV-112）',
++          `宿主环境预置了 ${hostLandingKeys.join(' / ')}：所有拉起路径都已清掉它们（EV-110 / EV-112）。` +
++            '审查运行的 CLI 产物不再留在真实 ~/.zcode，而是落在运行目录：log / rollout 就地脱敏，db / plugins 整目录排除，' +
++            '其余过命中即删扫描，幸存内容随运行目录保留期整删；探活与 doctor 自身的探针在真实 HOME 下跑，不含送审内容',
+         );
+       }
+       // 两臂不一致告警（EV-94 ② 触发器）：只比**本轮都产出且都非 null** 的两值，不拿新值比旧值（CODEX-06）
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index a52195c..a250a40 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -1491,6 +1491,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+       ...(r.model_override_applied === undefined
+         ? {}
+         : { model_override_applied: r.model_override_applied }),
++      // 落点自检（EV-112 计划 r3 §4.6）：同一口径，缺席 = 没走到自检，不压成 null
++      ...(r.carriers_landed === undefined ? {} : { carriers_landed: r.carriers_landed }),
+       ...(requests[c]!.effort ? { effort: requests[c]!.effort! } : {}),
+       status: r.status,
+       exit_code: r.exit_code,
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 1d18e0c..9b32036 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -1167,6 +1167,8 @@ export interface CriticRunMeta {
+   model_route?: 'env' | 'config_copy' | 'global';
+   /** 模型覆盖是否落实（EV-82）。四种情况与语义见 `CriticResult.model_override_applied`（置首之后 true 的含义收窄，见同处） */
+   model_override_applied?: boolean | null;
++  /** 落点自检（EV-112）。缺席与取值的语义见 `CriticResult.carriers_landed` */
++  carriers_landed?: CriticResult['carriers_landed'];
+   effort?: string;
+   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
+   exit_code: number | null;
+@@ -1568,6 +1570,16 @@ export interface CriticResult {
+     kind: 'applied' | 'identity' | 'not_movable' | 'qualify_failed';
+     reason?: string;
+   };
++  /**
++   * 落点自检（EV-112 计划 r3 §4.6）：本次会话的 CLI 产物有没有落进运行目录（zcode 审查臂 `checkZcodeCarriers` 填）。
++   *
++   * - `log` / `rollout`：两项分开记、**合取**判——任一为 false，guard 播报「ZCode 可能不再采纳对应的落点键」；
++   * - `leaked_to_home`：只在无副本支出现，true 即本次会话的 rollout 出现在真实 `~/.zcode/cli/rollout` 下，guard 另起一句。
++   *
++   * 缺席 = 没走到自检（失败早退、无 sessionId）或该侧不是 zcode。**进 run.json**（与 `model_override_applied` 同处条件展开）：
++   * 它是本题唯一的安全信号，只落 trace.json 的话，运行目录过期后归档里就答不出「这次有没有把送审内容留在真实 HOME」。
++   */
++  carriers_landed?: { log: boolean; rollout: boolean; leaked_to_home?: boolean };
+   /**
+    * 该侧**实际走到的 provider 家族**（回读值）。
+    *
+diff --git a/test/integration/code-stage.test.ts b/test/integration/code-stage.test.ts
+index 1b49b3d..96868f9 100644
+--- a/test/integration/code-stage.test.ts
++++ b/test/integration/code-stage.test.ts
+@@ -477,6 +477,31 @@ test('run.v2 逐侧段：桩注入 model_override_applied=false → 该侧落盘
+   );
+ });
+ 
++test('run.v2 逐侧段：桩注入 carriers_landed ⇒ 该侧原样落盘、另一侧缺席，guard 播报落点缺失与泄漏（EV-112 计划 r3 §6.1 U9）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  /*
++   * 落点自检是本题唯一的安全信号，要进归档：只落 trace.json 的话，运行目录过期后就答不出「这次有没有把送审内容留在真实 HOME」。
++   * review.ts 那一行条件展开写错键名、或干脆没写（变异 M12），这里当场红。
++   */
++  const fx = await codeFixture();
++  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 6;\n');
++  const carriers = { log: true, rollout: false, leaked_to_home: true };
++  const { meta, out } = await runCode(fx.root, fx.codeDir, [], {
++    gemini: { mode: 'ok' },
++    glm: { mode: 'ok', carriersLanded: carriers },
++  });
++  const glm = meta.critics.glm as Record<string, unknown> | undefined;
++  const gemini = meta.critics.gemini as Record<string, unknown> | undefined;
++  assert.ok(glm && gemini, '两侧都要有');
++  assert.deepEqual(glm!['carriers_landed'], carriers, '注入的自检结果必须原样落到 run.json');
++  assert.equal('carriers_landed' in gemini!, false, '没注入的一侧必须缺席');
++  const w = await cli(fx.root, ['review', '--wait', meta.run_id, '--timeout', '5', '--json'], STUB, 60_000);
++  const cand = extractJsonCandidate(w.stdout);
++  assert.ok(cand, `终态查询无可解析 JSON：\n${w.stdout}\n${w.stderr}\n${out.slice(-300)}`);
++  const message = (JSON.parse(cand.json) as { message?: string | null }).message ?? '';
++  assert.ok(message.includes('运行目录里缺本次会话的rollout'), `guard 要播报落点缺失，实得：${message || '(空)'}`);
++  assert.ok(message.includes('写进真实 HOME'), `guard 要播报泄漏，实得：${message || '(空)'}`);
++});
++
+ test('置首结论只供 guard、不进 run.json：桩注入 model_override_reorder ⇒ 逐侧段无该键，guard 按 kind 播报（EV-82 第三段 r3 §3.4 负向用例）', { skip: bundleMissing && bundleSkipReason }, async () => {
+   /*
+    * run.v2 的 critic 段是 additionalProperties: true，字段泄漏了 schema 也不拦；这条边界只能靠用例锁
+diff --git a/test/unit/zcode-model-selection.test.ts b/test/unit/zcode-model-selection.test.ts
+index a5aefc2..e717419 100644
+--- a/test/unit/zcode-model-selection.test.ts
++++ b/test/unit/zcode-model-selection.test.ts
+@@ -23,8 +23,10 @@ import {
+   zcodeHomeUnder,
+   zcodeModelTail,
+   zcodeProviderEnv,
++  zcodeStorageRedirectEnv,
+   ZCODE_BUILTIN_PROVIDER_ENV,
+   ZCODE_DIR_ENV_KEYS,
++  ZCODE_LANDING_SWITCH_ENV_KEYS,
+   ZCODE_PERSONAL_PROVIDER_ENV,
+ } from '../../src/trivium/adapters/zcode.js';
+ import {
+@@ -197,13 +199,17 @@ test('注入：门控仍是逐键——个人在、内置不在时，个人照
+   assert.equal(typeof env[ZCODE_PERSONAL_PROVIDER_ENV], 'string');
+ });
+ 
+-test('注入：四个 ZCODE_* 目录键恒出现且为 undefined——宿主预置也进不了子进程（EV-110 起含 ZCODE_LOG_DIR）', async () => {
++test('注入：七个目录 / 路径键与四个落点开关键恒出现且为 undefined——宿主预置也进不了子进程（EV-110 加 ZCODE_LOG_DIR；EV-112 扩到十一键）', async () => {
+   const env = await zcodeProviderEnv('/nonexistent/entry.cjs', await tmp());
+-  for (const k of ZCODE_DIR_ENV_KEYS) {
++  for (const k of [...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS]) {
+     assert.ok(k in env, `${k} 必须出现`);
+     assert.equal(env[k], undefined);
+   }
+-  assert.deepEqual([...ZCODE_DIR_ENV_KEYS].sort(), ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_LOG_DIR', 'ZCODE_STORAGE_DIR']);
++  // 键集逐字锁住：常量里漏了一个键，这里当场红
++  assert.deepEqual([...ZCODE_DIR_ENV_KEYS].sort(), [
++    'ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_LOG_DIR', 'ZCODE_MAILBOX_ROOT', 'ZCODE_SESSION_DB', 'ZCODE_SESSION_DB_PATH', 'ZCODE_STORAGE_DIR',
++  ]);
++  assert.deepEqual([...ZCODE_LANDING_SWITCH_ENV_KEYS].sort(), ['ZCODE_BETA', 'ZCODE_ENV', 'ZCODE_MESSAGE_ENABLED', 'ZCODE_RUNTIME_ENV']);
+ });
+ 
+ // ── 端到端（假入口）：审查运行形态下子进程拿到的 env ──
+@@ -220,6 +226,13 @@ process.stdout.write(JSON.stringify({
+     zhome: env.ZCODE_HOME ?? null,
+     storage: env.ZCODE_STORAGE_DIR ?? null,
+     logDir: env.ZCODE_LOG_DIR ?? null,
++    sessionDbPath: env.ZCODE_SESSION_DB_PATH ?? null,
++    sessionDb: env.ZCODE_SESSION_DB ?? null,
++    mailboxRoot: env.ZCODE_MAILBOX_ROOT ?? null,
++    runtimeEnv: env.ZCODE_RUNTIME_ENV ?? null,
++    beta: env.ZCODE_BETA ?? null,
++    zenv: env.ZCODE_ENV ?? null,
++    messageEnabled: env.ZCODE_MESSAGE_ENABLED ?? null,
+     home: env.HOME ?? null,
+   }),
+   usage: {}, eventCount: 1,
+@@ -227,7 +240,7 @@ process.stdout.write(JSON.stringify({
+ process.exit(0);
+ `;
+ 
+-test('端到端：omitPersonalProviderConfig + 宿主预置四个目录键 → 子进程一个都拿不到', async () => {
++test('端到端：omitPersonalProviderConfig + 宿主预置十一个目录 / 路径键与落点开关键 → 子进程一个都拿不到（EV-110、EV-112）', async () => {
+   const root = await tmp();
+   const entry = path.join(root, 'Resources/glm/zcode.cjs');
+   await fs.mkdir(path.dirname(entry), { recursive: true });
+@@ -237,7 +250,11 @@ test('端到端：omitPersonalProviderConfig + 宿主预置四个目录键 → 
+   await fs.writeFile(path.join(userHome, '.zcode/v2/provider_config.json'), '{}', 'utf8');
+   const fakeHome = await tmp();
+ 
+-  const preset = { ZCODE_DATA_BASE_DIR: '/host/preset', ZCODE_HOME: '/host/zh', ZCODE_STORAGE_DIR: '/host/st', ZCODE_LOG_DIR: '/host/log' };
++  const preset = {
++    ZCODE_DATA_BASE_DIR: '/host/preset', ZCODE_HOME: '/host/zh', ZCODE_STORAGE_DIR: '/host/st', ZCODE_LOG_DIR: '/host/log',
++    ZCODE_SESSION_DB_PATH: '/host/db.sqlite', ZCODE_SESSION_DB: '/host/db2.sqlite', ZCODE_MAILBOX_ROOT: '/host/mail',
++    ZCODE_RUNTIME_ENV: 'development', ZCODE_BETA: '1', ZCODE_ENV: 'beta', ZCODE_MESSAGE_ENABLED: '1',
++  };
+   const saved: Record<string, string | undefined> = {};
+   for (const [k, v] of Object.entries(preset)) { saved[k] = process.env[k]; process.env[k] = v; }
+   try {
+@@ -252,6 +269,9 @@ test('端到端：omitPersonalProviderConfig + 宿主预置四个目录键 → 
+     assert.equal(seen['zhome'], null);
+     assert.equal(seen['storage'], null);
+     assert.equal(seen['logDir'], null, 'EV-110：审查运行也清 ZCODE_LOG_DIR');
++    for (const f of ['sessionDbPath', 'sessionDb', 'mailboxRoot', 'runtimeEnv', 'beta', 'zenv', 'messageEnabled']) {
++      assert.equal(seen[f], null, `EV-112：${f} 对应的键宿主预置也进不了子进程`);
++    }
+     assert.equal(seen['home'], fakeHome);
+   } finally {
+     for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+@@ -305,6 +325,14 @@ test('run()：副本 HOME 下拉起时个人键被删（即使真实用户目录
+     assert.equal(seen['personal'], null, '副本 HOME 下个人键必须被删——否则 CLI 跳过 legacy 导入，model.main 没人读（EV-82 根因）');
+     assert.equal(seen['home'], zcodeHomeUnder(runDir));
+     assert.equal(seen['dataBase'], null);
++    // U5（EV-112 计划 r3 §4.2 D2-(a)）：副本支也设三个落点键，取值与 HOME=<副本> 时的缺省相同；其余八键为 null
++    const want = zcodeStorageRedirectEnv(zcodeHomeUnder(runDir));
++    assert.equal(seen['storage'], want['ZCODE_STORAGE_DIR'], '副本支不设落点根 ⇒ 变异 M3');
++    assert.equal(seen['sessionDbPath'], want['ZCODE_SESSION_DB_PATH']);
++    assert.equal(seen['logDir'], want['ZCODE_LOG_DIR']);
++    for (const f of ['zhome', 'sessionDb', 'mailboxRoot', 'runtimeEnv', 'beta', 'zenv', 'messageEnabled']) assert.equal(seen[f], null, f);
++    // ECHO_ENTRY 不写日志与 rollout ⇒ 自检两项都为 false；副本支不做反向核 ⇒ 无 leaked_to_home 键
++    assert.deepEqual(result.carriers_landed, { log: false, rollout: false });
+     assert.equal(result.model_route, 'config_copy');
+     // 没有日志可回读 → 尝试了覆盖但判不出 → 字段产出且为 null
+     assert.equal(result.model_override_applied, null);
+diff --git a/test/unit/zcode-provider-env.test.ts b/test/unit/zcode-provider-env.test.ts
+index 1a51479..faa2188 100644
+--- a/test/unit/zcode-provider-env.test.ts
++++ b/test/unit/zcode-provider-env.test.ts
+@@ -21,10 +21,13 @@ import {
+   invokeZcode,
+   zcodeProviderConfigPaths,
+   zcodeProviderEnv,
++  zcodeStorageRedirectEnv,
+   readonlyArgsFromProbe,
++  ZCODE_BETA_ARGV_RE,
+   ZCODE_BUILTIN_PROVIDER_ENV,
+   ZCODE_CREDENTIAL_ENV_KEYS,
+   ZCODE_DIR_ENV_KEYS,
++  ZCODE_LANDING_SWITCH_ENV_KEYS,
+   ZCODE_PERSONAL_PROVIDER_ENV,
+   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
+ } from '../../src/trivium/adapters/zcode.js';
+@@ -50,6 +53,14 @@ if (env.FAKE_ZCODE_LOG) {
+     logDir: env.ZCODE_LOG_DIR ?? null,
+     apiKeyEnv: env.ZCODE_API_KEY ?? null,
+     baseUrlEnv: env.ZCODE_BASE_URL ?? null,
++    // EV-112：会话库两个别名、mailbox 根与四个落点开关键
++    sessionDbPath: env.ZCODE_SESSION_DB_PATH ?? null,
++    sessionDb: env.ZCODE_SESSION_DB ?? null,
++    mailboxRoot: env.ZCODE_MAILBOX_ROOT ?? null,
++    runtimeEnv: env.ZCODE_RUNTIME_ENV ?? null,
++    beta: env.ZCODE_BETA ?? null,
++    zenv: env.ZCODE_ENV ?? null,
++    messageEnabled: env.ZCODE_MESSAGE_ENABLED ?? null,
+   }) + '\\n');
+ }
+ const argv = process.argv.slice(2);
+@@ -100,14 +111,25 @@ process.exit(1);
+ 
+ /** 探针路径必须清掉的全部键——由适配器的两组常量 + 两个 provider 键派生，不手抄 */
+ const ALL_CLEARED_KEYS: readonly string[] = [
+-  ZCODE_BUILTIN_PROVIDER_ENV, ZCODE_PERSONAL_PROVIDER_ENV, ...ZCODE_DIR_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS,
++  ZCODE_BUILTIN_PROVIDER_ENV, ZCODE_PERSONAL_PROVIDER_ENV, ...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS,
+ ];
+ /** 每个键在假入口日志里对应的字段名 */
+ const LOG_FIELD_OF: Record<string, string> = {
+   [ZCODE_BUILTIN_PROVIDER_ENV]: 'builtin', [ZCODE_PERSONAL_PROVIDER_ENV]: 'personal',
+   ZCODE_DATA_BASE_DIR: 'dataBase', ZCODE_HOME: 'zhome', ZCODE_STORAGE_DIR: 'storage', ZCODE_LOG_DIR: 'logDir',
++  ZCODE_SESSION_DB_PATH: 'sessionDbPath', ZCODE_SESSION_DB: 'sessionDb', ZCODE_MAILBOX_ROOT: 'mailboxRoot',
++  ZCODE_RUNTIME_ENV: 'runtimeEnv', ZCODE_BETA: 'beta', ZCODE_ENV: 'zenv', ZCODE_MESSAGE_ENABLED: 'messageEnabled',
+   ZCODE_API_KEY: 'apiKeyEnv', ZCODE_BASE_URL: 'baseUrlEnv',
+ };
++/**
++ * EV-112 的十一键清除面，**逐字写出、不从常量派生**：从常量派生的话，常量里漏了一个键，期望值跟着漏，断言照绿（变异 M6 / M10）。
++ * 七个目录 / 路径键 + 四个落点开关键，全部恒在场、恒 undefined。
++ */
++const ELEVEN_CLEARED: Record<string, undefined> = {
++  ZCODE_DATA_BASE_DIR: undefined, ZCODE_HOME: undefined, ZCODE_STORAGE_DIR: undefined, ZCODE_LOG_DIR: undefined,
++  ZCODE_SESSION_DB_PATH: undefined, ZCODE_SESSION_DB: undefined, ZCODE_MAILBOX_ROOT: undefined,
++  ZCODE_RUNTIME_ENV: undefined, ZCODE_BETA: undefined, ZCODE_ENV: undefined, ZCODE_MESSAGE_ENABLED: undefined,
++};
+ 
+ /**
+  * 摆出应用包布局：`<root>/Resources/glm/zcode.cjs` 与 `<root>/Resources/config/provider/zcode-builtin.json`
+@@ -186,11 +208,8 @@ test('两份都在 → 两个变量都给，值为绝对路径', async () => {
+     assert.deepEqual(env, {
+       [ZCODE_BUILTIN_PROVIDER_ENV]: await fs.realpath(L.builtin),
+       [ZCODE_PERSONAL_PROVIDER_ENV]: L.personal,
+-      // 目录键恒在场、恒 undefined（r3 CODEX-02；EV-110 起加 ZCODE_LOG_DIR）：0.16.9 的 provider 配置根会读 ZCODE_DATA_BASE_DIR
+-      ZCODE_DATA_BASE_DIR: undefined,
+-      ZCODE_HOME: undefined,
+-      ZCODE_STORAGE_DIR: undefined,
+-      ZCODE_LOG_DIR: undefined,
++      // 目录 / 路径键与落点开关键恒在场、恒 undefined（r3 CODEX-02；EV-110 加 ZCODE_LOG_DIR；EV-112 扩到十一键）
++      ...ELEVEN_CLEARED,
+     });
+   } finally {
+     await L.cleanup();
+@@ -204,16 +223,13 @@ test('文件不在 → 该键值为 undefined（不是缺席）：宿主环境
+     assert.deepEqual(env, {
+       [ZCODE_BUILTIN_PROVIDER_ENV]: undefined,
+       [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
+-      ZCODE_DATA_BASE_DIR: undefined,
+-      ZCODE_HOME: undefined,
+-      ZCODE_STORAGE_DIR: undefined,
+-      ZCODE_LOG_DIR: undefined,
++      ...ELEVEN_CLEARED,
+     });
+     // 键必须在场——`run()` 只对「值为 undefined 的键」执行删除，键缺席就是原样透传
+     assert.ok(Object.hasOwn(env, ZCODE_BUILTIN_PROVIDER_ENV));
+     assert.ok(Object.hasOwn(env, ZCODE_PERSONAL_PROVIDER_ENV));
+-    // 宿主预置 ZCODE_DATA_BASE_DIR 会让 CLI 把个人配置根推到副本之外（r3 CODEX-02），同样只能靠删
+-    for (const k of ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_STORAGE_DIR', 'ZCODE_LOG_DIR']) assert.ok(Object.hasOwn(env, k), k);
++    // 宿主预置 ZCODE_DATA_BASE_DIR 会让 CLI 把个人配置根推到副本之外（r3 CODEX-02）；EV-112 的七个键同理，只能靠删
++    for (const k of Object.keys(ELEVEN_CLEARED)) assert.ok(Object.hasOwn(env, k), k);
+   } finally {
+     await L.cleanup();
+   }
+@@ -222,10 +238,7 @@ test('文件不在 → 该键值为 undefined（不是缺席）：宿主环境
+     assert.deepEqual(await zcodeProviderEnv(M.entry, M.userHome), {
+       [ZCODE_BUILTIN_PROVIDER_ENV]: await fs.realpath(M.builtin),
+       [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
+-      ZCODE_DATA_BASE_DIR: undefined,
+-      ZCODE_HOME: undefined,
+-      ZCODE_STORAGE_DIR: undefined,
+-      ZCODE_LOG_DIR: undefined,
++      ...ELEVEN_CLEARED,
+     });
+   } finally {
+     await M.cleanup();
+@@ -319,6 +332,63 @@ test('宿主环境预置了同名变量 → 子进程必须拿不到：只追加
+   }
+ });
+ 
++// ── EV-112：落点键（计划 r3 §4.1～§4.4）──
++
++test('U1 zcodeStorageRedirectEnv：恰好三键，布局与「HOME=<root> 时 CLI 的缺省值」逐字相同；入参是 .zcode 本身时抛错（含尾斜杠）', () => {
++  const root = path.join(os.tmpdir(), 'side', 'home');
++  assert.deepEqual(zcodeStorageRedirectEnv(root), {
++    ZCODE_STORAGE_DIR: path.join(root, '.zcode'),
++    ZCODE_SESSION_DB_PATH: path.join(root, '.zcode', 'cli', 'db', 'db.sqlite'),
++    ZCODE_LOG_DIR: path.join(root, '.zcode', 'cli', 'log'),
++  });
++  // run() 回读用的 cliDir 是 path.join(root, '.zcode/cli')：日志目录必须就在它下面，两处不能各拼各的
++  assert.equal(path.dirname(zcodeStorageRedirectEnv(root)['ZCODE_LOG_DIR']!), path.join(root, '.zcode/cli'));
++  // 入参层级约定（AGY-02 / AGY-r2-01）：传 .zcode 会得到 .zcode/.zcode 嵌套且不报错，必须抛
++  assert.throws(() => zcodeStorageRedirectEnv(path.join(root, '.zcode')), /不是 \.zcode 目录本身/);
++  assert.throws(() => zcodeStorageRedirectEnv(path.join(root, '.zcode') + path.sep), /不是 \.zcode 目录本身/, '尾部分隔符不得绕过判断');
++});
++
++test('U2 invokeZcode 先清后设：宿主预置十一键诱饵 ⇒ 给落点根时子进程拿到编排器的三个值、其余八个为 null；不给时十一个全 null；HOME 不受落点根影响', async () => {
++  const L = await layout({ withBuiltin: true, withPersonal: false });
++  const log = path.join(L.root, 'calls.jsonl');
++  const preset: Record<string, string> = { FAKE_ZCODE_LOG: log };
++  for (const k of Object.keys(ELEVEN_CLEARED)) preset[k] = `host-preset-${k}`;
++  for (const [k, v] of Object.entries(preset)) process.env[k] = v;
++  const landing = path.join(L.root, 'side', 'home');
++  try {
++    await invokeZcode({
++      entry: L.entry, node: process.execPath, cwd: L.cwd, prompt: 'ok',
++      readonlyArgs: [], homeDir: null, userHome: L.userHome, storageRedirectRoot: landing, timeoutMs: 30_000,
++    });
++    await invokeZcode({
++      entry: L.entry, node: process.execPath, cwd: L.cwd, prompt: 'ok',
++      readonlyArgs: [], homeDir: null, userHome: L.userHome, timeoutMs: 30_000,
++    });
++    const [withRoot, without] = (await fs.readFile(log, 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as Record<string, string | null>);
++    const want = zcodeStorageRedirectEnv(landing);
++    assert.equal(withRoot!['storage'], want['ZCODE_STORAGE_DIR']);
++    assert.equal(withRoot!['sessionDbPath'], want['ZCODE_SESSION_DB_PATH']);
++    assert.equal(withRoot!['logDir'], want['ZCODE_LOG_DIR']);
++    for (const k of Object.keys(ELEVEN_CLEARED).filter((k) => !(k in want))) {
++      assert.equal(withRoot![LOG_FIELD_OF[k]!], null, `${k}：宿主诱饵必须被清掉（先清后设，变异 M2 / M10）`);
++    }
++    for (const k of Object.keys(ELEVEN_CLEARED)) assert.equal(without![LOG_FIELD_OF[k]!], null, `${k}：不给落点根时十一键全清`);
++    // 落点根只管 CLI 产物，不改 HOME（无副本支的个人配置与凭据照旧从真实 HOME 来）
++    assert.equal(withRoot!['home'], process.env['HOME'] ?? null);
++    assert.equal(without!['home'], process.env['HOME'] ?? null);
++  } finally {
++    for (const k of Object.keys(preset)) delete process.env[k];
++    await L.cleanup();
++  }
++});
++
++test('ZCODE_BETA_ARGV_RE 与包内 RMi 同形：…/zcode-beta 结尾或后跟「.」命中，目录段 …/zcode-beta/… 不命中', () => {
++  assert.equal(ZCODE_BETA_ARGV_RE.test('/Applications/zcode-beta.app/Contents/Resources/glm/zcode.cjs'), true);
++  assert.equal(ZCODE_BETA_ARGV_RE.test('/opt/zcode-beta'), true);
++  assert.equal(ZCODE_BETA_ARGV_RE.test('/opt/zcode-beta/glm/zcode.cjs'), false);
++  assert.equal(ZCODE_BETA_ARGV_RE.test(REAL_ENTRY), false);
++});
++
+ test('failureKind 的判据只认英文名词片段，中文前缀换了也认得出', () => {
+   assert.match('无法定位 CLI ZCode Built-in Provider Config：a, b', ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE);
+   assert.match('Cannot locate CLI ZCode Built-in Provider Config: a, b', ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE);
+@@ -532,7 +602,7 @@ test('warnings 不影响阻断判定：有告警但 blockers 为空', async () =
+   }
+ });
+ 
+-test('version 探针：宿主预置的两个 provider 键、全部目录键（EV-110 起四个）、两个凭据键一律进不了子进程（代码双审 r1 codex 子项 06）', async () => {
++test('version 探针：宿主预置的两个 provider 键、全部目录 / 路径键与落点开关键（EV-112 起十一个）、两个凭据键一律进不了子进程（代码双审 r1 codex 子项 06）', async () => {
+   // 口径是「全部探针路径」而不是「两条主拉起路径」——P-29 已证明这个 CLI 会把 provider 定位往前挪
+   const L = await layout({ withBuiltin: true, withPersonal: true });
+   const log = path.join(L.root, 'calls.jsonl');
+@@ -733,22 +803,48 @@ test('运行期接线：配置层未判定（null）而运行期 ok≠请求 ⇒
+   assert.ok(notes.some((n) => n.startsWith('model_override=') && n.includes('运行期选定 p/first')));
+ });
+ 
+-test('宿主预置 ZCODE_LOG_DIR ⇒ doctor 出信息级 note（EV-110 起所有路径都清），只报键名不报值；未预置不出', async () => {
+-  const saved = process.env['ZCODE_LOG_DIR'];
+-  const WARN = '所有拉起路径都已清掉它';
++test('U7 宿主预置十一键中的任一个 ⇒ doctor 出信息级 note（EV-110 / EV-112），只报键名不报值、不再说「持久留存」；都不预置不出', async () => {
++  const WARN = '所有拉起路径都已清掉它们';
++  const saved = Object.fromEntries(Object.keys(ELEVEN_CLEARED).map((k) => [k, process.env[k]]));
+   try {
+-    process.env['ZCODE_LOG_DIR'] = '/nonexistent/host-log-dir-value';
+-    const on = await probeZcodeWithTwoArms('config_copy', 'config_copy');
+-    const hit = on.notes.filter((n) => n.includes(WARN));
+-    assert.equal(hit.length, 1);
+-    assert.ok(hit[0]!.includes('ZCODE_LOG_DIR'));
+-    assert.equal(hit[0]!.startsWith('⚠️'), false, 'EV-110 并入后不再是告警');
+-    assert.equal(hit[0]!.includes('host-log-dir-value'), false, '不打印值');
+-    delete process.env['ZCODE_LOG_DIR'];
++    for (const k of Object.keys(ELEVEN_CLEARED)) delete process.env[k];
++    // 逐个单独预置：note 的触发条件漏了哪个键，那一格当场红（变异 M8）
++    for (const k of Object.keys(ELEVEN_CLEARED)) {
++      process.env[k] = `host-value-of-${k}`;
++      const on = await probeZcodeWithTwoArms('config_copy', 'config_copy');
++      const hit = on.notes.filter((n) => n.includes(WARN));
++      assert.equal(hit.length, 1, k);
++      assert.ok(hit[0]!.includes(k), `${k}：note 要点名预置的键`);
++      assert.equal(hit[0]!.startsWith('⚠️'), false, '所有路径都清之后不再是告警');
++      assert.equal(hit[0]!.includes('host-value-of-'), false, '不打印值');
++      assert.equal(hit[0]!.includes('持久留存'), false, 'EV-112 之后那句不再成立');
++      delete process.env[k];
++    }
+     const off = await probeZcodeWithTwoArms('config_copy', 'config_copy');
+     assert.equal(off.notes.some((n) => n.includes(WARN)), false);
+   } finally {
+-    if (saved === undefined) delete process.env['ZCODE_LOG_DIR']; else process.env['ZCODE_LOG_DIR'] = saved;
++    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
++  }
++});
++
++test('U7 探针入口命中 beta 改写的 argv 判据 ⇒ doctor 出信息级 note，只报命中、不报路径全文；不命中不出', async () => {
++  const BETA = 'ZCode 入口在 beta 渠道路径下';
++  const L = await layout({ withBuiltin: true, withPersonal: false });
++  // 同一份假入口，放到 zcode-beta.app 下（与 ZCODE_BETA_ARGV_RE 同形：该段后紧跟「.」）
++  const betaEntry = path.join(L.root, 'zcode-beta.app', 'Resources', 'glm', 'zcode.cjs');
++  await fs.mkdir(path.dirname(betaEntry), { recursive: true });
++  await fs.copyFile(L.entry, betaEntry);
++  // cliConfigPath 指向不存在的文件：探针臂不接线，也不读真实 ~/.zcode/cli/config.json
++  const noCli = path.join(L.root, 'no-cli-config.json');
++  try {
++    const hit = await probeZcode(betaEntry, process.execPath, { skipModelCalls: true, cliConfigPath: noCli });
++    const notes = hit.notes.filter((n) => n.includes(BETA));
++    assert.equal(notes.length, 1);
++    assert.equal(notes[0]!.includes(L.root), false, '不报路径全文');
++    const miss = await probeZcode(L.entry, process.execPath, { skipModelCalls: true, cliConfigPath: noCli });
++    assert.equal(miss.notes.some((n) => n.includes(BETA)), false);
++  } finally {
++    await L.cleanup();
+   }
+ });
+ 
+diff --git a/doc/05_testing/evidence/ev112-mutation-20260925/mutation-output.txt b/doc/05_testing/evidence/ev112-mutation-20260925/mutation-output.txt
+new file mode 100644
+index 0000000..ad4c092
+--- /dev/null
++++ b/doc/05_testing/evidence/ev112-mutation-20260925/mutation-output.txt
+@@ -0,0 +1,98 @@
++✓ 工作树干净、基线全绿（4 个套件）
++  M1 ✓ 咬住（fail=1）
++  M2 ✓ 咬住（fail=1）
++  M3 ✓ 咬住（fail=1）
++  M4 ✓ 咬住（fail=5）
++  M5 ✓ 咬住（fail=2）
++  M6 ✓ 咬住（fail=4）
++  M7 ✓ 咬住（fail=3）
++  M8 ✓ 咬住（fail=1）
++  M9 ✓ 咬住（fail=4）
++  M10 ✓ 咬住（fail=4）
++  M11 ✓ 咬住（fail=1）
++  M12 ✓ 咬住（fail=1）
++  M13 ✓ 咬住（fail=5）
++{
++  "总数": 13,
++  "咬住": 13,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "invokeZcode 不应用 storageRedirectRoot ⇒ U2（子进程拿不到编排器的三个值）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M2",
++      "desc": "先设后清：设完三键再展开一次清除面，编排器的值被清掉 ⇒ U2",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M3",
++      "desc": "D2 退回 (b)：副本支不传落点根 ⇒ U5",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M4",
++      "desc": "回读恢复 home.homeDir ?? os.homedir() ⇒ U3（model_effective 变 null）、U3b（诱饵被读回）",
++      "verdict": "✓ 咬住（fail=5）",
++      "fail": 5
++    },
++    {
++      "id": "M5",
++      "desc": "重定向漏掉 ZCODE_SESSION_DB_PATH ⇒ U1",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M6",
++      "desc": "清除面去掉 ZCODE_SESSION_DB 别名 ⇒ U2 与十一键全等断言",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M7",
++      "desc": "落点根取 sideDir 而非 zcodeHomeUnder(sideDir) ⇒ U3、U6（纯函数没动，U1 不红）",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M8",
++      "desc": "doctor note 条件只看 ZCODE_LOG_DIR ⇒ U7",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M9",
++      "desc": "落点自检恒 true ⇒ U3b、U8",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M10",
++      "desc": "开关键常量不进 zcodeProviderEnv ⇒ U2 与十一键全等断言",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M11",
++      "desc": "播报判据退回析取（两项都缺才播报）⇒ 守卫用例的半采纳格",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M12",
++      "desc": "review.ts 不把 carriers_landed 写进 run.json ⇒ U9（集成，经打包产物）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M13",
++      "desc": "去掉反向核（leaked_to_home 恒缺席）⇒ U3、U3b、U8",
++      "verdict": "✓ 咬住（fail=5）",
++      "fail": 5
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/ev112-mutation-20260925/mutation-spec.json b/doc/05_testing/evidence/ev112-mutation-20260925/mutation-spec.json
+new file mode 100644
+index 0000000..4a59b75
+--- /dev/null
++++ b/doc/05_testing/evidence/ev112-mutation-20260925/mutation-spec.json
+@@ -0,0 +1,120 @@
++{
++  "targets": [
++    "src/trivium/adapters/zcode.ts",
++    "src/trivium/probes/zcode.ts",
++    "src/trivium/guard.ts",
++    "src/trivium/review.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/zcode-provider-env.test.js",
++    "dist/test/test/unit/zcode-model-selection.test.js",
++    "dist/test/test/unit/zcode-carriers.test.js",
++    "dist/test/test/integration/code-stage.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "invokeZcode 不应用 storageRedirectRoot ⇒ U2（子进程拿不到编排器的三个值）",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "  if (opts.storageRedirectRoot) Object.assign(env, zcodeStorageRedirectEnv(opts.storageRedirectRoot));",
++      "replace": "  // M1：落点根被忽略",
++      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "先设后清：设完三键再展开一次清除面，编排器的值被清掉 ⇒ U2",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "Object.assign(env, zcodeStorageRedirectEnv(opts.storageRedirectRoot));",
++      "replace": "Object.assign(env, zcodeStorageRedirectEnv(opts.storageRedirectRoot), await zcodeProviderEnv(opts.entry, opts.userHome ?? os.homedir(), { omitPersonal: opts.omitPersonalProviderConfig === true }));",
++      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "D2 退回 (b)：副本支不传落点根 ⇒ U5",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "        storageRedirectRoot: landingRoot,",
++      "replace": "        storageRedirectRoot: home.homeDir === null ? landingRoot : null,",
++      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "回读恢复 home.homeDir ?? os.homedir() ⇒ U3（model_effective 变 null）、U3b（诱饵被读回）",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "    const cliDir = path.join(landingRoot, ZCODE_CLI_SUBDIR);",
++      "replace": "    const cliDir = path.join(home.homeDir ?? os.homedir(), ZCODE_CLI_SUBDIR);",
++      "expect": "dist/test/test/unit/zcode-carriers.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "重定向漏掉 ZCODE_SESSION_DB_PATH ⇒ U1",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "    ZCODE_SESSION_DB_PATH: path.join(zdir, 'cli', 'db', 'db.sqlite'),\n",
++      "replace": "",
++      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "清除面去掉 ZCODE_SESSION_DB 别名 ⇒ U2 与十一键全等断言",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "'ZCODE_SESSION_DB_PATH', 'ZCODE_SESSION_DB', 'ZCODE_MAILBOX_ROOT',",
++      "replace": "'ZCODE_SESSION_DB_PATH', 'ZCODE_MAILBOX_ROOT',",
++      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "落点根取 sideDir 而非 zcodeHomeUnder(sideDir) ⇒ U3、U6（纯函数没动，U1 不红）",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "    const landingRoot = zcodeHomeUnder(sideDir);",
++      "replace": "    const landingRoot = sideDir;",
++      "expect": "dist/test/test/unit/zcode-carriers.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "doctor note 条件只看 ZCODE_LOG_DIR ⇒ U7",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "const hostLandingKeys = [...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS].filter((k) => process.env[k]);",
++      "replace": "const hostLandingKeys = ['ZCODE_LOG_DIR'].filter((k) => process.env[k]);",
++      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "落点自检恒 true ⇒ U3b、U8",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "  const rollout = await exists(path.join(cliDir, 'rollout', rolloutName));",
++      "replace": "  const rollout = true; log = true;",
++      "expect": "dist/test/test/unit/zcode-carriers.test.js"
++    },
++    {
++      "id": "M10",
++      "desc": "开关键常量不进 zcodeProviderEnv ⇒ U2 与十一键全等断言",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "...Object.fromEntries([...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS].map((k) => [k, undefined])),",
++      "replace": "...Object.fromEntries([...ZCODE_DIR_ENV_KEYS].map((k) => [k, undefined])),",
++      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
++    },
++    {
++      "id": "M11",
++      "desc": "播报判据退回析取（两项都缺才播报）⇒ 守卫用例的半采纳格",
++      "file": "src/trivium/guard.ts",
++      "find": "if (s.carriersLanded && (!s.carriersLanded.log || !s.carriersLanded.rollout)) {",
++      "replace": "if (s.carriersLanded && (!s.carriersLanded.log && !s.carriersLanded.rollout)) {",
++      "expect": "dist/test/test/unit/zcode-carriers.test.js"
++    },
++    {
++      "id": "M12",
++      "desc": "review.ts 不把 carriers_landed 写进 run.json ⇒ U9（集成，经打包产物）",
++      "file": "src/trivium/review.ts",
++      "find": "      ...(r.carriers_landed === undefined ? {} : { carriers_landed: r.carriers_landed }),\n",
++      "replace": "",
++      "expect": "dist/test/test/integration/code-stage.test.js"
++    },
++    {
++      "id": "M13",
++      "desc": "去掉反向核（leaked_to_home 恒缺席）⇒ U3、U3b、U8",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "  if (realHome === null) return { log, rollout };",
++      "replace": "  return { log, rollout };",
++      "expect": "dist/test/test/unit/zcode-carriers.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/ev112-mutation-20260925/run.mjs b/doc/05_testing/evidence/ev112-mutation-20260925/run.mjs
+new file mode 100644
+index 0000000..68f3f22
+--- /dev/null
++++ b/doc/05_testing/evidence/ev112-mutation-20260925/run.mjs
+@@ -0,0 +1,25 @@
++#!/usr/bin/env node
++/**
++ * EV-112 变异验证的包装：跑 `scripts/mutation-check.mjs <本目录>/mutation-spec.json`，
++ * 把装置的 stdout 与 stderr 原样写进 `mutation-output.txt`（会话里的命令不带重定向，输出由脚本自己写）。
++ * 退出码透传装置的退出码。仓库根按脚本位置推导（EV-103）。
++ *
++ * 用法：node doc/05_testing/evidence/ev112-mutation-20260925/run.mjs
++ */
++import { spawn } from 'node:child_process';
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const HERE = path.dirname(fileURLToPath(import.meta.url));
++const ROOT = path.resolve(HERE, '../../../..');
++const child = spawn(process.execPath, [path.join(ROOT, 'scripts/mutation-check.mjs'), path.join(HERE, 'mutation-spec.json')], {
++  cwd: ROOT,
++  stdio: ['ignore', 'pipe', 'pipe'],
++});
++let out = '';
++child.stdout.on('data', (d) => { out += d; process.stdout.write(d); });
++child.stderr.on('data', (d) => { out += d; process.stderr.write(d); });
++const code = await new Promise((resolve) => child.on('close', resolve));
++await fs.writeFile(path.join(HERE, 'mutation-output.txt'), out, 'utf8');
++process.exit(code ?? 1);
+diff --git a/test/unit/zcode-carriers.test.ts b/test/unit/zcode-carriers.test.ts
+new file mode 100644
+index 0000000..fe946cf
+--- /dev/null
++++ b/test/unit/zcode-carriers.test.ts
+@@ -0,0 +1,254 @@
++/**
++ * EV-112：审查运行的 CLI 产物落点（计划 `.reviews/EV-112-无副本审查运行载体落点/plan/` r3 §6.1 U3 / U3b / U4 / U6 / U8）。
++ *
++ * 假入口**按 ZCode 0.16.9 包内取值链**落盘（计划 r3 §1.2）：
++ *   - 日志：`ZCODE_LOG_DIR ?? $HOME/.zcode/cli/log`（日志工厂直读环境）；
++ *   - rollout / artifacts / workflow：`(ZCODE_STORAGE_DIR ?? $HOME/.zcode)/cli/…`（存储根，经配置层）；
++ *   - 会话库：`ZCODE_SESSION_DB_PATH ?? $HOME/.zcode/cli/db/db.sqlite`。
++ * `FAKE_CARRIER_MODE` 模拟厂商漂移：`follow` 全采纳；`half` 只认日志键；`ignore` 三键都不认；`none` 什么都不写。
++ *
++ * 测试进程的 `HOME` 钉到临时用户目录（与 zcode-model-selection 同一惯例）：`os.homedir()` 在 POSIX 下读 `$HOME`，
++ * 于是「真实 HOME」在用例里就是这个临时目录，反向核与回读退回真实 HOME（变异 M4）都在它上面现形。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import {
++  checkZcodeCarriers,
++  zcodeAdapter,
++  zcodeHomeUnder,
++  ZCODE_PERSONAL_PROVIDER_ENV,
++} from '../../src/trivium/adapters/zcode.js';
++import { defaultConfig } from '../../src/trivium/config.js';
++import { readScrubSentinel, scrubSideDir } from '../../src/trivium/scrub.js';
++import type { CriticResult } from '../../src/trivium/types.js';
++
++const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ev112-'));
++const SID = 'sess_ev112';
++const FAKE_MODEL = 'p/fake-model';
++const FAKE_CRED = ['Qx7mZp2L', 'k9Rt4Wv1', 'Ab3Cd5Ef', '7Gh9Jk2M'].join('');
++
++const CARRIER_ENTRY = `
++const fs = require('node:fs'), path = require('node:path');
++const env = process.env, sid = ${JSON.stringify(SID)};
++const mode = env.FAKE_CARRIER_MODE || 'follow';
++const homeZ = path.join(env.HOME, '.zcode');
++const useLog = mode === 'follow' || mode === 'half';
++const useStore = mode === 'follow';
++const logDir = useLog && env.ZCODE_LOG_DIR ? env.ZCODE_LOG_DIR : path.join(homeZ, 'cli', 'log');
++const storage = useStore && env.ZCODE_STORAGE_DIR ? env.ZCODE_STORAGE_DIR : homeZ;
++const db = useStore && env.ZCODE_SESSION_DB_PATH ? env.ZCODE_SESSION_DB_PATH : path.join(homeZ, 'cli', 'db', 'db.sqlite');
++const put = (p, s) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, s); };
++if (mode !== 'none') {
++  put(path.join(logDir, 'zcode-2026-09-25.jsonl'),
++    JSON.stringify({ sessionId: sid, event: 'bootstrap.app.startup.runtime_config.completed', context: { model: ${JSON.stringify(FAKE_MODEL)} } }) + '\\n');
++  put(path.join(storage, 'cli', 'rollout', 'model-io-' + sid + '.jsonl'), '{}\\n');
++  put(path.join(storage, 'cli', 'artifacts', sid, 'x.json'), '{}');
++  put(path.join(storage, 'cli', 'sessions', sid, 'workflows', 'w.js'), '// wf');
++  put(db, 'SQLite format 3');
++}
++process.stdout.write(JSON.stringify({
++  sessionId: sid,
++  response: JSON.stringify({ home: env.HOME ?? null, personal: env.${ZCODE_PERSONAL_PROVIDER_ENV} ?? null }),
++  usage: {}, eventCount: 1,
++}) + '\\n');
++process.exit(0);
++`;
++
++/** 五个载体相对 `.zcode/cli` 的路径（计划 r3 §1.3） */
++const CARRIERS = [
++  'log/zcode-2026-09-25.jsonl',
++  `rollout/model-io-${SID}.jsonl`,
++  `artifacts/${SID}/x.json`,
++  `sessions/${SID}/workflows/w.js`,
++  'db/db.sqlite',
++];
++
++const exists = (p: string) => fs.access(p).then(() => true, () => false);
++
++async function runReview(opts: {
++  model: string | null;
++  withCliConfig: boolean;
++  mode: 'follow' | 'half' | 'ignore' | 'none';
++  decoy?: boolean;
++}) {
++  const root = await tmp();
++  const entry = path.join(root, 'Resources/glm/zcode.cjs');
++  await fs.mkdir(path.dirname(entry), { recursive: true });
++  await fs.writeFile(entry, CARRIER_ENTRY, 'utf8');
++  await fs.mkdir(path.join(root, 'Resources/config/provider'), { recursive: true });
++  await fs.writeFile(path.join(root, 'Resources/config/provider/zcode-builtin.json'), '{}', 'utf8');
++
++  const userHome = await tmp();
++  if (opts.withCliConfig) {
++    await fs.mkdir(path.join(userHome, '.zcode/cli'), { recursive: true });
++    await fs.writeFile(
++      path.join(userHome, '.zcode/cli/config.json'),
++      JSON.stringify({ provider: { p: { source: 'custom', models: { 'fake-model': {} } } }, model: { main: FAKE_MODEL } }),
++      { encoding: 'utf8', mode: 0o600 },
++    );
++  }
++  // 个人配置在：无副本支照旧注入它（C3 不变）
++  await fs.mkdir(path.join(userHome, '.zcode/v2'), { recursive: true });
++  await fs.writeFile(path.join(userHome, '.zcode/v2/provider_config.json'), '{}', 'utf8');
++  if (opts.decoy) {
++    // 诱饵：真实 HOME 下同一 sessionId 的日志与 rollout。回读若退回真实 HOME 就会把它读回来
++    const cli = path.join(userHome, '.zcode/cli');
++    await fs.mkdir(path.join(cli, 'log'), { recursive: true });
++    await fs.writeFile(path.join(cli, 'log/zcode-decoy.jsonl'), JSON.stringify({ sessionId: SID, event: 'x', context: { model: 'decoy/model' } }) + '\n');
++    await fs.mkdir(path.join(cli, 'rollout'), { recursive: true });
++    await fs.writeFile(path.join(cli, `rollout/model-io-${SID}.jsonl`), '{}\n');
++  }
++
++  const cfg = defaultConfig();
++  cfg.probe.cli.zcode!.probed_at = new Date().toISOString();
++  cfg.probe.cli.zcode!.entrypoint = entry;
++  cfg.probe.cli.zcode!.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit,Bash'];
++  cfg.probe.cli.zcode!.response_field = 'response';
++  const runDir = await tmp();
++  const sideDir = path.join(runDir, 'glm');
++  const req = {
++    run_id: 'r', topic: 't', stage: 'code' as const, critic: 'glm' as const,
++    project_root: root, subject_path: path.join(root, 's.md'), deny_paths: [],
++    out_dir: path.join(sideDir, 'out'), brief_path: path.join(root, 'b.md'), brief_text: 'ok',
++    model: opts.model, timeout_s: 20, schema_path: path.join(root, 'schema.json'),
++    min_tool_calls: 0, min_project_reads: 0, profile_requested: null,
++  };
++  const saved = { HOME: process.env['HOME'], FAKE_CARRIER_MODE: process.env['FAKE_CARRIER_MODE'] };
++  process.env['HOME'] = userHome;
++  process.env['FAKE_CARRIER_MODE'] = opts.mode;
++  try {
++    const result = await zcodeAdapter.run({ cfg, nodePath: process.execPath }, req as never);
++    return { result, userHome, sideDir };
++  } finally {
++    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
++  }
++}
++
++async function assertLandedInRunDir(sideDir: string, userHome: string) {
++  const landed = path.join(zcodeHomeUnder(sideDir), '.zcode/cli');
++  for (const rel of CARRIERS) assert.ok(await exists(path.join(landed, rel)), `应落在运行目录：${rel}`);
++  for (const rel of CARRIERS) assert.equal(await exists(path.join(userHome, '.zcode/cli', rel)), false, `不得落在真实 HOME：${rel}`);
++}
++
++test('U3 无副本·未指定模型：五个载体落进运行目录、真实 HOME 下一个没有；HOME 与个人键照旧；回读读运行目录；自检全 true', async () => {
++  const { result, userHome, sideDir } = await runReview({ model: null, withCliConfig: true, mode: 'follow' });
++  assert.equal(result.status, 'ok', result.fail_reason ?? '');
++  const seen = JSON.parse(result.raw_response_text ?? '{}') as Record<string, string | null>;
++  assert.equal(seen['home'], userHome, '无副本支不改 HOME');
++  assert.equal(seen['personal'], path.join(userHome, '.zcode/v2/provider_config.json'), '无副本支照旧注入个人配置（C3）');
++  await assertLandedInRunDir(sideDir, userHome);
++  assert.equal(result.model_route, 'global');
++  assert.equal('model_override_applied' in result, false, '没有覆盖尝试，字段缺席');
++  assert.equal(result.model_effective, FAKE_MODEL, '生效模型从运行目录的日志读回');
++  assert.deepEqual(result.carriers_landed, { log: true, rollout: true, leaked_to_home: false });
++  assert.ok(await exists(path.join(sideDir, 'out', 'rollout.jsonl')), 'rollout 另拷一份进 out_dir');
++});
++
++test('U3b 无副本·CLI 什么都没写、真实 HOME 有同一会话的诱饵：回读不碰真实 HOME，自检两项 false、反向核看见泄漏', async () => {
++  const { result, sideDir } = await runReview({ model: null, withCliConfig: true, mode: 'none', decoy: true });
++  assert.equal(result.status, 'ok', result.fail_reason ?? '');
++  assert.equal(result.model_effective, null, '诱饵被读回 ⇒ 回读退回了真实 HOME（变异 M4）');
++  assert.equal(await exists(path.join(sideDir, 'out', 'rollout.jsonl')), false);
++  assert.deepEqual(result.carriers_landed, { log: false, rollout: false, leaked_to_home: true });
++});
++
++test('U4 无副本·副本源缺失（指定了模型）：与 U3 同样落进运行目录', async () => {
++  const { result, userHome, sideDir } = await runReview({ model: 'fake-model', withCliConfig: false, mode: 'follow' });
++  assert.equal(result.status, 'ok', result.fail_reason ?? '');
++  assert.equal(result.model_route, 'global');
++  await assertLandedInRunDir(sideDir, userHome);
++  assert.deepEqual(result.carriers_landed, { log: true, rollout: true, leaked_to_home: false });
++});
++
++test('U6 清扫衔接：无副本支落进运行目录的日志里夹带凭据形态 ⇒ scrubSideDir 就地脱敏并记进哨兵', async () => {
++  const { sideDir } = await runReview({ model: null, withCliConfig: true, mode: 'follow' });
++  const logFile = path.join(zcodeHomeUnder(sideDir), '.zcode/cli/log/zcode-2026-09-25.jsonl');
++  // 计算属性键：fixture-credentials 扫描器按字面形态认密钥赋值，这里是夹具
++  await fs.appendFile(logFile, JSON.stringify({ sessionId: SID, text: `experimental_bearer_token = "${FAKE_CRED}"` }) + '\n');
++  const out = await scrubSideDir(zcodeAdapter, sideDir, { force: true });
++  assert.equal((await fs.readFile(logFile, 'utf8')).includes(FAKE_CRED), false, '落进清扫面 ⇒ 被脱敏');
++  const sentinel = await readScrubSentinel(sideDir);
++  const rel = path.join('home', '.zcode/cli/log/zcode-2026-09-25.jsonl');
++  assert.ok((out.logs_redacted[rel] ?? 0) > 0, `脱敏记录要点名这份日志：${JSON.stringify(out.logs_redacted)}`);
++  assert.ok((sentinel?.logs_redacted[rel] ?? 0) > 0, '哨兵里同样记着');
++});
++
++test('U8 厂商漂移·三键都不认：产物全回真实 HOME ⇒ 自检两项 false、反向核看见泄漏', async () => {
++  const { result } = await runReview({ model: null, withCliConfig: true, mode: 'ignore' });
++  assert.deepEqual(result.carriers_landed, { log: false, rollout: false, leaked_to_home: true });
++});
++
++test('U8 厂商漂移·只认日志键（半采纳）：日志进运行目录、rollout 回真实 HOME ⇒ 合取判得出来（变异 M11）', async () => {
++  const { result } = await runReview({ model: null, withCliConfig: true, mode: 'half' });
++  assert.deepEqual(result.carriers_landed, { log: true, rollout: false, leaked_to_home: true });
++  // 半采纳时生效模型照样读得回：「model_effective 变 null」不是可靠的间接症状（计划 r3 §4.6）
++  assert.equal(result.model_effective, FAKE_MODEL);
++});
++
++test('checkZcodeCarriers：查全部日志文件（不只最新一个）；副本支（realHome 为 null）不出 leaked_to_home 键', async () => {
++  const cli = path.join(await tmp(), '.zcode/cli');
++  await fs.mkdir(path.join(cli, 'log'), { recursive: true });
++  // 本次会话的行在较早的文件里，较晚的文件属于别的会话（跨午夜形态）
++  await fs.writeFile(path.join(cli, 'log/zcode-2026-09-24.jsonl'), JSON.stringify({ sessionId: SID, event: 'x' }) + '\n');
++  await fs.writeFile(path.join(cli, 'log/zcode-2026-09-25.jsonl'), JSON.stringify({ sessionId: 'sess_other', event: 'x' }) + '\n');
++  assert.deepEqual(await checkZcodeCarriers(cli, SID, null), { log: true, rollout: false });
++  // 只是字面出现 sessionId、行里的 sessionId 字段不是它，不算
++  await fs.writeFile(path.join(cli, 'log/zcode-2026-09-24.jsonl'), JSON.stringify({ sessionId: 'sess_other', note: SID }) + '\n');
++  assert.deepEqual(await checkZcodeCarriers(cli, SID, null), { log: false, rollout: false });
++});
++
++// ── 守卫：落点自检的播报（计划 r3 §4.6）──
++
++async function verdictWith(carriers: CriticResult['carriers_landed']) {
++  const { judgeSide } = await import('../../src/trivium/guard.js');
++  const { failedResult, TOOL_TRACE_CAPABILITY } = await import('../../src/trivium/adapters/base.js');
++  const base = failedResult('glm', { status: 'failed', reason: '夹具' });
++  const result = carriers === undefined ? base : { ...base, carriers_landed: carriers };
++  const req = {
++    critic: 'glm' as const, stage: 'code' as const, model: 'GLM-5.3', effort: null,
++    brief_text: '', brief_path: '/proj/b.md', subject_path: '/proj/s.md',
++    project_root: '/proj', out_dir: '/tmp/out', timeout_s: 60,
++    min_tool_calls: 0, min_project_reads: 0, deny_paths: [],
++  };
++  return judgeSide(defaultConfig(), 'glm', result, null, req as never, {
++    archiveRootAbs: '/proj/.reviews', projectRoot: '/proj',
++    triviumDir: '/proj/.trivium', runRoot: '/tmp/runs',
++    capability: TOOL_TRACE_CAPABILITY,
++  });
++}
++
++async function warningsWith(carriers: CriticResult['carriers_landed']): Promise<string[]> {
++  const { renderGuardWarnings } = await import('../../src/trivium/guard.js');
++  return renderGuardWarnings({
++    sides: { glm: await verdictWith(carriers) }, drift: { changed: false, files: [], related: [] },
++    driftAction: 'ok', fingerprintChangedFiles: [], unattributedDriftFiles: [],
++  } as never);
++}
++
++const LANDING = '运行目录里缺本次会话的';
++const LEAK = '写进真实 HOME';
++
++test('守卫：judgeSide 原样透传 carriers_landed；缺席即缺席', async () => {
++  assert.deepEqual((await verdictWith({ log: true, rollout: false })).carriersLanded, { log: true, rollout: false });
++  assert.equal('carriersLanded' in (await verdictWith(undefined)), false);
++});
++
++test('守卫：半采纳（rollout 缺）出落点播报、点名 rollout；泄漏另起一句；全 true / 缺席不出声', async () => {
++  const half = await warningsWith({ log: true, rollout: false, leaked_to_home: true });
++  const landing = half.filter((n) => n.includes(LANDING));
++  assert.equal(landing.length, 1, half.join(' / '));
++  assert.ok(landing[0]!.includes('rollout') && !landing[0]!.includes('日志'), '只点名缺的那一项');
++  assert.ok(half.some((n) => n.includes(LEAK)));
++
++  const none = await warningsWith({ log: false, rollout: false });
++  assert.ok(none.some((n) => n.includes(`${LANDING}日志与rollout`)), none.join(' / '));
++  assert.equal(none.some((n) => n.includes(LEAK)), false, '副本支没有 leaked_to_home 键，不出泄漏句');
++
++  for (const c of [{ log: true, rollout: true }, { log: true, rollout: true, leaked_to_home: false }, undefined]) {
++    const w = await warningsWith(c);
++    assert.equal(w.some((n) => n.includes(LANDING) || n.includes(LEAK)), false, JSON.stringify(c));
++  }
++});

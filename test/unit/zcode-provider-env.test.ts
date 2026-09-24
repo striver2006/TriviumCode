@@ -21,10 +21,13 @@ import {
   invokeZcode,
   zcodeProviderConfigPaths,
   zcodeProviderEnv,
+  zcodeStorageRedirectEnv,
   readonlyArgsFromProbe,
+  ZCODE_BETA_ARGV_RE,
   ZCODE_BUILTIN_PROVIDER_ENV,
   ZCODE_CREDENTIAL_ENV_KEYS,
   ZCODE_DIR_ENV_KEYS,
+  ZCODE_LANDING_SWITCH_ENV_KEYS,
   ZCODE_PERSONAL_PROVIDER_ENV,
   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
 } from '../../src/trivium/adapters/zcode.js';
@@ -50,6 +53,14 @@ if (env.FAKE_ZCODE_LOG) {
     logDir: env.ZCODE_LOG_DIR ?? null,
     apiKeyEnv: env.ZCODE_API_KEY ?? null,
     baseUrlEnv: env.ZCODE_BASE_URL ?? null,
+    // EV-112：会话库两个别名、mailbox 根与四个落点开关键
+    sessionDbPath: env.ZCODE_SESSION_DB_PATH ?? null,
+    sessionDb: env.ZCODE_SESSION_DB ?? null,
+    mailboxRoot: env.ZCODE_MAILBOX_ROOT ?? null,
+    runtimeEnv: env.ZCODE_RUNTIME_ENV ?? null,
+    beta: env.ZCODE_BETA ?? null,
+    zenv: env.ZCODE_ENV ?? null,
+    messageEnabled: env.ZCODE_MESSAGE_ENABLED ?? null,
   }) + '\\n');
 }
 const argv = process.argv.slice(2);
@@ -100,13 +111,24 @@ process.exit(1);
 
 /** 探针路径必须清掉的全部键——由适配器的两组常量 + 两个 provider 键派生，不手抄 */
 const ALL_CLEARED_KEYS: readonly string[] = [
-  ZCODE_BUILTIN_PROVIDER_ENV, ZCODE_PERSONAL_PROVIDER_ENV, ...ZCODE_DIR_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS,
+  ZCODE_BUILTIN_PROVIDER_ENV, ZCODE_PERSONAL_PROVIDER_ENV, ...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS,
 ];
 /** 每个键在假入口日志里对应的字段名 */
 const LOG_FIELD_OF: Record<string, string> = {
   [ZCODE_BUILTIN_PROVIDER_ENV]: 'builtin', [ZCODE_PERSONAL_PROVIDER_ENV]: 'personal',
   ZCODE_DATA_BASE_DIR: 'dataBase', ZCODE_HOME: 'zhome', ZCODE_STORAGE_DIR: 'storage', ZCODE_LOG_DIR: 'logDir',
+  ZCODE_SESSION_DB_PATH: 'sessionDbPath', ZCODE_SESSION_DB: 'sessionDb', ZCODE_MAILBOX_ROOT: 'mailboxRoot',
+  ZCODE_RUNTIME_ENV: 'runtimeEnv', ZCODE_BETA: 'beta', ZCODE_ENV: 'zenv', ZCODE_MESSAGE_ENABLED: 'messageEnabled',
   ZCODE_API_KEY: 'apiKeyEnv', ZCODE_BASE_URL: 'baseUrlEnv',
+};
+/**
+ * EV-112 的十一键清除面，**逐字写出、不从常量派生**：从常量派生的话，常量里漏了一个键，期望值跟着漏，断言照绿（变异 M6 / M10）。
+ * 七个目录 / 路径键 + 四个落点开关键，全部恒在场、恒 undefined。
+ */
+const ELEVEN_CLEARED: Record<string, undefined> = {
+  ZCODE_DATA_BASE_DIR: undefined, ZCODE_HOME: undefined, ZCODE_STORAGE_DIR: undefined, ZCODE_LOG_DIR: undefined,
+  ZCODE_SESSION_DB_PATH: undefined, ZCODE_SESSION_DB: undefined, ZCODE_MAILBOX_ROOT: undefined,
+  ZCODE_RUNTIME_ENV: undefined, ZCODE_BETA: undefined, ZCODE_ENV: undefined, ZCODE_MESSAGE_ENABLED: undefined,
 };
 
 /**
@@ -186,11 +208,8 @@ test('两份都在 → 两个变量都给，值为绝对路径', async () => {
     assert.deepEqual(env, {
       [ZCODE_BUILTIN_PROVIDER_ENV]: await fs.realpath(L.builtin),
       [ZCODE_PERSONAL_PROVIDER_ENV]: L.personal,
-      // 目录键恒在场、恒 undefined（r3 CODEX-02；EV-110 起加 ZCODE_LOG_DIR）：0.16.9 的 provider 配置根会读 ZCODE_DATA_BASE_DIR
-      ZCODE_DATA_BASE_DIR: undefined,
-      ZCODE_HOME: undefined,
-      ZCODE_STORAGE_DIR: undefined,
-      ZCODE_LOG_DIR: undefined,
+      // 目录 / 路径键与落点开关键恒在场、恒 undefined（r3 CODEX-02；EV-110 加 ZCODE_LOG_DIR；EV-112 扩到十一键）
+      ...ELEVEN_CLEARED,
     });
   } finally {
     await L.cleanup();
@@ -204,16 +223,13 @@ test('文件不在 → 该键值为 undefined（不是缺席）：宿主环境�
     assert.deepEqual(env, {
       [ZCODE_BUILTIN_PROVIDER_ENV]: undefined,
       [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
-      ZCODE_DATA_BASE_DIR: undefined,
-      ZCODE_HOME: undefined,
-      ZCODE_STORAGE_DIR: undefined,
-      ZCODE_LOG_DIR: undefined,
+      ...ELEVEN_CLEARED,
     });
     // 键必须在场——`run()` 只对「值为 undefined 的键」执行删除，键缺席就是原样透传
     assert.ok(Object.hasOwn(env, ZCODE_BUILTIN_PROVIDER_ENV));
     assert.ok(Object.hasOwn(env, ZCODE_PERSONAL_PROVIDER_ENV));
-    // 宿主预置 ZCODE_DATA_BASE_DIR 会让 CLI 把个人配置根推到副本之外（r3 CODEX-02），同样只能靠删
-    for (const k of ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_STORAGE_DIR', 'ZCODE_LOG_DIR']) assert.ok(Object.hasOwn(env, k), k);
+    // 宿主预置 ZCODE_DATA_BASE_DIR 会让 CLI 把个人配置根推到副本之外（r3 CODEX-02）；EV-112 的七个键同理，只能靠删
+    for (const k of Object.keys(ELEVEN_CLEARED)) assert.ok(Object.hasOwn(env, k), k);
   } finally {
     await L.cleanup();
   }
@@ -222,10 +238,7 @@ test('文件不在 → 该键值为 undefined（不是缺席）：宿主环境�
     assert.deepEqual(await zcodeProviderEnv(M.entry, M.userHome), {
       [ZCODE_BUILTIN_PROVIDER_ENV]: await fs.realpath(M.builtin),
       [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
-      ZCODE_DATA_BASE_DIR: undefined,
-      ZCODE_HOME: undefined,
-      ZCODE_STORAGE_DIR: undefined,
-      ZCODE_LOG_DIR: undefined,
+      ...ELEVEN_CLEARED,
     });
   } finally {
     await M.cleanup();
@@ -317,6 +330,65 @@ test('宿主环境预置了同名变量 → 子进程必须拿不到：只追加
     delete process.env[ZCODE_PERSONAL_PROVIDER_ENV];
     await L.cleanup();
   }
+});
+
+// ── EV-112：落点键（计划 r3 §4.1～§4.4）──
+
+test('U1 zcodeStorageRedirectEnv：恰好三键，布局与「HOME=<root> 时 CLI 的缺省值」逐字相同；入参是 .zcode 本身时抛错（含尾斜杠）', () => {
+  const root = path.join(os.tmpdir(), 'side', 'home');
+  assert.deepEqual(zcodeStorageRedirectEnv(root), {
+    ZCODE_STORAGE_DIR: path.join(root, '.zcode'),
+    ZCODE_SESSION_DB_PATH: path.join(root, '.zcode', 'cli', 'db', 'db.sqlite'),
+    ZCODE_LOG_DIR: path.join(root, '.zcode', 'cli', 'log'),
+  });
+  // run() 回读用的 cliDir 是 path.join(root, '.zcode/cli')：日志目录必须就在它下面，两处不能各拼各的
+  assert.equal(path.dirname(zcodeStorageRedirectEnv(root)['ZCODE_LOG_DIR']!), path.join(root, '.zcode/cli'));
+  // 入参层级约定（AGY-02 / AGY-r2-01）：传 .zcode 会得到 .zcode/.zcode 嵌套且不报错，必须抛
+  assert.throws(() => zcodeStorageRedirectEnv(path.join(root, '.zcode')), /不是 \.zcode 目录本身/);
+  assert.throws(() => zcodeStorageRedirectEnv(path.join(root, '.zcode') + path.sep), /不是 \.zcode 目录本身/, '尾部分隔符不得绕过判断');
+});
+
+test('U2 invokeZcode 先清后设：宿主预置十一键诱饵 ⇒ 给落点根时子进程拿到编排器的三个值、其余八个为 null；不给时十一个全 null；HOME 不受落点根影响', async () => {
+  const L = await layout({ withBuiltin: true, withPersonal: false });
+  const log = path.join(L.root, 'calls.jsonl');
+  const preset: Record<string, string> = { FAKE_ZCODE_LOG: log };
+  for (const k of Object.keys(ELEVEN_CLEARED)) preset[k] = `host-preset-${k}`;
+  // 先记宿主原值、finally 逐键还原（代码双审 r1 GLM-02）：本机宿主若预置了这些键，只删不还会改掉后续用例的底色
+  const saved = Object.fromEntries(Object.keys(preset).map((k) => [k, process.env[k]]));
+  for (const [k, v] of Object.entries(preset)) process.env[k] = v;
+  const landing = path.join(L.root, 'side', 'home');
+  try {
+    await invokeZcode({
+      entry: L.entry, node: process.execPath, cwd: L.cwd, prompt: 'ok',
+      readonlyArgs: [], homeDir: null, userHome: L.userHome, storageRedirectRoot: landing, timeoutMs: 30_000,
+    });
+    await invokeZcode({
+      entry: L.entry, node: process.execPath, cwd: L.cwd, prompt: 'ok',
+      readonlyArgs: [], homeDir: null, userHome: L.userHome, timeoutMs: 30_000,
+    });
+    const [withRoot, without] = (await fs.readFile(log, 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as Record<string, string | null>);
+    const want = zcodeStorageRedirectEnv(landing);
+    assert.equal(withRoot!['storage'], want['ZCODE_STORAGE_DIR']);
+    assert.equal(withRoot!['sessionDbPath'], want['ZCODE_SESSION_DB_PATH']);
+    assert.equal(withRoot!['logDir'], want['ZCODE_LOG_DIR']);
+    for (const k of Object.keys(ELEVEN_CLEARED).filter((k) => !(k in want))) {
+      assert.equal(withRoot![LOG_FIELD_OF[k]!], null, `${k}：宿主诱饵必须被清掉（先清后设，变异 M2 / M10）`);
+    }
+    for (const k of Object.keys(ELEVEN_CLEARED)) assert.equal(without![LOG_FIELD_OF[k]!], null, `${k}：不给落点根时十一键全清`);
+    // 落点根只管 CLI 产物，不改 HOME（无副本支的个人配置与凭据照旧从真实 HOME 来）
+    assert.equal(withRoot!['home'], process.env['HOME'] ?? null);
+    assert.equal(without!['home'], process.env['HOME'] ?? null);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    await L.cleanup();
+  }
+});
+
+test('ZCODE_BETA_ARGV_RE 与包内 RMi 同形：…/zcode-beta 结尾或后跟「.」命中，目录段 …/zcode-beta/… 不命中', () => {
+  assert.equal(ZCODE_BETA_ARGV_RE.test('/Applications/zcode-beta.app/Contents/Resources/glm/zcode.cjs'), true);
+  assert.equal(ZCODE_BETA_ARGV_RE.test('/opt/zcode-beta'), true);
+  assert.equal(ZCODE_BETA_ARGV_RE.test('/opt/zcode-beta/glm/zcode.cjs'), false);
+  assert.equal(ZCODE_BETA_ARGV_RE.test(REAL_ENTRY), false);
 });
 
 test('failureKind 的判据只认英文名词片段，中文前缀换了也认得出', () => {
@@ -532,7 +604,7 @@ test('warnings 不影响阻断判定：有告警但 blockers 为空', async () =
   }
 });
 
-test('version 探针：宿主预置的两个 provider 键、全部目录键（EV-110 起四个）、两个凭据键一律进不了子进程（代码双审 r1 codex 子项 06）', async () => {
+test('version 探针：宿主预置的两个 provider 键、全部目录 / 路径键与落点开关键（EV-112 起十一个）、两个凭据键一律进不了子进程（代码双审 r1 codex 子项 06）', async () => {
   // 口径是「全部探针路径」而不是「两条主拉起路径」——P-29 已证明这个 CLI 会把 provider 定位往前挪
   const L = await layout({ withBuiltin: true, withPersonal: true });
   const log = path.join(L.root, 'calls.jsonl');
@@ -733,22 +805,48 @@ test('运行期接线：配置层未判定（null）而运行期 ok≠请求 ⇒
   assert.ok(notes.some((n) => n.startsWith('model_override=') && n.includes('运行期选定 p/first')));
 });
 
-test('宿主预置 ZCODE_LOG_DIR ⇒ doctor 出信息级 note（EV-110 起所有路径都清），只报键名不报值；未预置不出', async () => {
-  const saved = process.env['ZCODE_LOG_DIR'];
-  const WARN = '所有拉起路径都已清掉它';
+test('U7 宿主预置十一键中的任一个 ⇒ doctor 出信息级 note（EV-110 / EV-112），只报键名不报值、不再说「持久留存」；都不预置不出', async () => {
+  const WARN = '所有拉起路径都已清掉它们';
+  const saved = Object.fromEntries(Object.keys(ELEVEN_CLEARED).map((k) => [k, process.env[k]]));
   try {
-    process.env['ZCODE_LOG_DIR'] = '/nonexistent/host-log-dir-value';
-    const on = await probeZcodeWithTwoArms('config_copy', 'config_copy');
-    const hit = on.notes.filter((n) => n.includes(WARN));
-    assert.equal(hit.length, 1);
-    assert.ok(hit[0]!.includes('ZCODE_LOG_DIR'));
-    assert.equal(hit[0]!.startsWith('⚠️'), false, 'EV-110 并入后不再是告警');
-    assert.equal(hit[0]!.includes('host-log-dir-value'), false, '不打印值');
-    delete process.env['ZCODE_LOG_DIR'];
+    for (const k of Object.keys(ELEVEN_CLEARED)) delete process.env[k];
+    // 逐个单独预置：note 的触发条件漏了哪个键，那一格当场红（变异 M8）
+    for (const k of Object.keys(ELEVEN_CLEARED)) {
+      process.env[k] = `host-value-of-${k}`;
+      const on = await probeZcodeWithTwoArms('config_copy', 'config_copy');
+      const hit = on.notes.filter((n) => n.includes(WARN));
+      assert.equal(hit.length, 1, k);
+      assert.ok(hit[0]!.includes(k), `${k}：note 要点名预置的键`);
+      assert.equal(hit[0]!.startsWith('⚠️'), false, '所有路径都清之后不再是告警');
+      assert.equal(hit[0]!.includes('host-value-of-'), false, '不打印值');
+      assert.equal(hit[0]!.includes('持久留存'), false, 'EV-112 之后那句不再成立');
+      delete process.env[k];
+    }
     const off = await probeZcodeWithTwoArms('config_copy', 'config_copy');
     assert.equal(off.notes.some((n) => n.includes(WARN)), false);
   } finally {
-    if (saved === undefined) delete process.env['ZCODE_LOG_DIR']; else process.env['ZCODE_LOG_DIR'] = saved;
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});
+
+test('U7 探针入口命中 beta 改写的 argv 判据 ⇒ doctor 出信息级 note，只报命中、不报路径全文；不命中不出', async () => {
+  const BETA = 'ZCode 入口在 beta 渠道路径下';
+  const L = await layout({ withBuiltin: true, withPersonal: false });
+  // 同一份假入口，放到 zcode-beta.app 下（与 ZCODE_BETA_ARGV_RE 同形：该段后紧跟「.」）
+  const betaEntry = path.join(L.root, 'zcode-beta.app', 'Resources', 'glm', 'zcode.cjs');
+  await fs.mkdir(path.dirname(betaEntry), { recursive: true });
+  await fs.copyFile(L.entry, betaEntry);
+  // cliConfigPath 指向不存在的文件：探针臂不接线，也不读真实 ~/.zcode/cli/config.json
+  const noCli = path.join(L.root, 'no-cli-config.json');
+  try {
+    const hit = await probeZcode(betaEntry, process.execPath, { skipModelCalls: true, cliConfigPath: noCli });
+    const notes = hit.notes.filter((n) => n.includes(BETA));
+    assert.equal(notes.length, 1);
+    assert.equal(notes[0]!.includes(L.root), false, '不报路径全文');
+    const miss = await probeZcode(L.entry, process.execPath, { skipModelCalls: true, cliConfigPath: noCli });
+    assert.equal(miss.notes.some((n) => n.includes(BETA)), false);
+  } finally {
+    await L.cleanup();
   }
 });
 

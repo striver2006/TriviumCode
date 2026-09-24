@@ -125,6 +125,11 @@ export interface SideVerdict {
    * 缺席即本侧无置首，告警维持原文。
    */
   modelOverrideReorder?: NonNullable<CriticResult['model_override_reorder']>;
+  /**
+   * 落点自检（EV-112 计划 r3 §4.6）：原样透传 `CriticResult.carriers_landed`。判据归适配器，本层只播报：
+   * `log` 或 `rollout` 为 false 时出一句落点缺失；`leaked_to_home` 任一项为 true 时另出一句、点名泄漏的那一类。缺席不出声。
+   */
+  carriersLanded?: NonNullable<CriticResult['carriers_landed']>;
 }
 
 /** 单侧两条核验通道的档位与生效阈值 */
@@ -480,6 +485,7 @@ export function judgeSide(
       ? {}
       : { modelOverrideApplied: result.model_override_applied }),
     ...(result.model_override_reorder === undefined ? {} : { modelOverrideReorder: result.model_override_reorder }),
+    ...(result.carriers_landed === undefined ? {} : { carriersLanded: result.carriers_landed }),
   };
 }
 
@@ -867,6 +873,29 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
           '`model_requested` 与 `model_effective`）。该侧结论仍然有效，但模型路由（FR-06）与' +
           '异构默认（NFR-06）在本侧失效——若另一侧模型与它同家族，这一轮不构成真正的双审。' +
           reorderHint(s.modelOverrideReorder),
+      );
+    }
+    /*
+     * 落点自检的人读出口（EV-112 计划 r3 §4.6）。**不判失守、不阻断**：该侧结论本身仍有效，
+     * 出事的是送审内容的落点——它可能不在运行目录的清扫面里，甚至写进了真实 HOME。
+     * 两项合取：日志与存储根走两条互不相干的代码路径，只丢一条时另一条照常，析取会把半采纳报成正常。
+     */
+    if (s.carriersLanded && (!s.carriersLanded.log || !s.carriersLanded.rollout)) {
+      const missing = [!s.carriersLanded.log ? '日志' : null, !s.carriersLanded.rollout ? 'rollout' : null].filter(Boolean).join('与');
+      out.push(
+        `${s.critic} 侧运行目录里缺本次会话的${missing}：ZCode 可能不再采纳对应的落点键（EV-112），` +
+          'CLI 产物可能留在别处，生效模型也可能读不回。先看 doctor 的 cli_version 是否变了；详情见 run.json 的 carriers_landed',
+      );
+    }
+    const leak = s.carriersLanded?.leaked_to_home;
+    if (leak && (leak.log || leak.rollout)) {
+      const where = [
+        leak.log ? '日志（~/.zcode/cli/log 下本次拉起后改过的文件里有本次会话的行，该文件可能混有其它会话）' : null,
+        leak.rollout ? 'rollout（~/.zcode/cli/rollout/model-io-<sessionId>.jsonl）' : null,
+      ].filter(Boolean).join('；');
+      out.push(
+        `${s.critic} 侧本次会话的 CLI 产物出现在真实 HOME 下：${where}。送审内容已写进真实 HOME，` +
+          '需人工自查后清理（sessionId 见 run.json）',
       );
     }
     if (s.verification.path === 'unavailable') {

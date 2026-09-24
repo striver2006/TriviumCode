@@ -477,6 +477,31 @@ test('run.v2 逐侧段：桩注入 model_override_applied=false → 该侧落盘
   );
 });
 
+test('run.v2 逐侧段：桩注入 carriers_landed ⇒ 该侧原样落盘、另一侧缺席，guard 播报落点缺失与泄漏（EV-112 计划 r3 §6.1 U9）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * 落点自检是本题唯一的安全信号，要进归档：只落 trace.json 的话，运行目录过期后就答不出「这次有没有把送审内容留在真实 HOME」。
+   * review.ts 那一行条件展开写错键名、或干脆没写（变异 M12），这里当场红。
+   */
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 6;\n');
+  const carriers = { log: true, rollout: false, leaked_to_home: { log: false, rollout: true } };
+  const { meta, out } = await runCode(fx.root, fx.codeDir, [], {
+    gemini: { mode: 'ok' },
+    glm: { mode: 'ok', carriersLanded: carriers },
+  });
+  const glm = meta.critics.glm as Record<string, unknown> | undefined;
+  const gemini = meta.critics.gemini as Record<string, unknown> | undefined;
+  assert.ok(glm && gemini, '两侧都要有');
+  assert.deepEqual(glm!['carriers_landed'], carriers, '注入的自检结果必须原样落到 run.json');
+  assert.equal('carriers_landed' in gemini!, false, '没注入的一侧必须缺席');
+  const w = await cli(fx.root, ['review', '--wait', meta.run_id, '--timeout', '5', '--json'], STUB, 60_000);
+  const cand = extractJsonCandidate(w.stdout);
+  assert.ok(cand, `终态查询无可解析 JSON：\n${w.stdout}\n${w.stderr}\n${out.slice(-300)}`);
+  const message = (JSON.parse(cand.json) as { message?: string | null }).message ?? '';
+  assert.ok(message.includes('运行目录里缺本次会话的rollout'), `guard 要播报落点缺失，实得：${message || '(空)'}`);
+  assert.ok(message.includes('写进真实 HOME'), `guard 要播报泄漏，实得：${message || '(空)'}`);
+});
+
 test('置首结论只供 guard、不进 run.json：桩注入 model_override_reorder ⇒ 逐侧段无该键，guard 按 kind 播报（EV-82 第三段 r3 §3.4 负向用例）', { skip: bundleMissing && bundleSkipReason }, async () => {
   /*
    * run.v2 的 critic 段是 additionalProperties: true，字段泄漏了 schema 也不拦；这条边界只能靠用例锁

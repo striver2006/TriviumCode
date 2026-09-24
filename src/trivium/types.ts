@@ -1167,6 +1167,8 @@ export interface CriticRunMeta {
   model_route?: 'env' | 'config_copy' | 'global';
   /** 模型覆盖是否落实（EV-82）。四种情况与语义见 `CriticResult.model_override_applied`（置首之后 true 的含义收窄，见同处） */
   model_override_applied?: boolean | null;
+  /** 落点自检（EV-112）。缺席与取值的语义见 `CriticResult.carriers_landed` */
+  carriers_landed?: CriticResult['carriers_landed'];
   effort?: string;
   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
   exit_code: number | null;
@@ -1568,6 +1570,17 @@ export interface CriticResult {
     kind: 'applied' | 'identity' | 'not_movable' | 'qualify_failed';
     reason?: string;
   };
+  /**
+   * 落点自检（EV-112 计划 r3 §4.6）：本次会话的 CLI 产物有没有落进运行目录（zcode 审查臂 `checkZcodeCarriers` 填）。
+   *
+   * - `log` / `rollout`：两项分开记、**合取**判——任一为 false，guard 播报「ZCode 可能不再采纳对应的落点键」；
+   * - `leaked_to_home`：只在无副本支出现，两项与正向核同形（代码双审 r1 CODEX-01 ≡ GLM-01）：`log`＝真实 `~/.zcode/cli/log`
+   *   里本次拉起之后改过的文件中有本次会话的行；`rollout`＝真实 `~/.zcode/cli/rollout` 下有本次会话的 rollout 文件。任一为 true，guard 另起一句点名。
+   *
+   * 缺席 = 没走到自检（失败早退、无 sessionId）或该侧不是 zcode。**进 run.json**（与 `model_override_applied` 同处条件展开）：
+   * 它是本题唯一的安全信号，只落 trace.json 的话，运行目录过期后归档里就答不出「这次有没有把送审内容留在真实 HOME」。
+   */
+  carriers_landed?: { log: boolean; rollout: boolean; leaked_to_home?: { log: boolean; rollout: boolean } };
   /**
    * 该侧**实际走到的 provider 家族**（回读值）。
    *

@@ -23,8 +23,10 @@ import {
   zcodeHomeUnder,
   zcodeModelTail,
   zcodeProviderEnv,
+  zcodeStorageRedirectEnv,
   ZCODE_BUILTIN_PROVIDER_ENV,
   ZCODE_DIR_ENV_KEYS,
+  ZCODE_LANDING_SWITCH_ENV_KEYS,
   ZCODE_PERSONAL_PROVIDER_ENV,
 } from '../../src/trivium/adapters/zcode.js';
 import {
@@ -197,13 +199,17 @@ test('注入：门控仍是逐键——个人在、内置不在时，个人照�
   assert.equal(typeof env[ZCODE_PERSONAL_PROVIDER_ENV], 'string');
 });
 
-test('注入：四个 ZCODE_* 目录键恒出现且为 undefined——宿主预置也进不了子进程（EV-110 起含 ZCODE_LOG_DIR）', async () => {
+test('注入：七个目录 / 路径键与四个落点开关键恒出现且为 undefined——宿主预置也进不了子进程（EV-110 加 ZCODE_LOG_DIR；EV-112 扩到十一键）', async () => {
   const env = await zcodeProviderEnv('/nonexistent/entry.cjs', await tmp());
-  for (const k of ZCODE_DIR_ENV_KEYS) {
+  for (const k of [...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS]) {
     assert.ok(k in env, `${k} 必须出现`);
     assert.equal(env[k], undefined);
   }
-  assert.deepEqual([...ZCODE_DIR_ENV_KEYS].sort(), ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_LOG_DIR', 'ZCODE_STORAGE_DIR']);
+  // 键集逐字锁住：常量里漏了一个键，这里当场红
+  assert.deepEqual([...ZCODE_DIR_ENV_KEYS].sort(), [
+    'ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_LOG_DIR', 'ZCODE_MAILBOX_ROOT', 'ZCODE_SESSION_DB', 'ZCODE_SESSION_DB_PATH', 'ZCODE_STORAGE_DIR',
+  ]);
+  assert.deepEqual([...ZCODE_LANDING_SWITCH_ENV_KEYS].sort(), ['ZCODE_BETA', 'ZCODE_ENV', 'ZCODE_MESSAGE_ENABLED', 'ZCODE_RUNTIME_ENV']);
 });
 
 // ── 端到端（假入口）：审查运行形态下子进程拿到的 env ──
@@ -220,6 +226,13 @@ process.stdout.write(JSON.stringify({
     zhome: env.ZCODE_HOME ?? null,
     storage: env.ZCODE_STORAGE_DIR ?? null,
     logDir: env.ZCODE_LOG_DIR ?? null,
+    sessionDbPath: env.ZCODE_SESSION_DB_PATH ?? null,
+    sessionDb: env.ZCODE_SESSION_DB ?? null,
+    mailboxRoot: env.ZCODE_MAILBOX_ROOT ?? null,
+    runtimeEnv: env.ZCODE_RUNTIME_ENV ?? null,
+    beta: env.ZCODE_BETA ?? null,
+    zenv: env.ZCODE_ENV ?? null,
+    messageEnabled: env.ZCODE_MESSAGE_ENABLED ?? null,
     home: env.HOME ?? null,
   }),
   usage: {}, eventCount: 1,
@@ -227,7 +240,7 @@ process.stdout.write(JSON.stringify({
 process.exit(0);
 `;
 
-test('端到端：omitPersonalProviderConfig + 宿主预置四个目录键 → 子进程一个都拿不到', async () => {
+test('端到端：omitPersonalProviderConfig + 宿主预置十一个目录 / 路径键与落点开关键 → 子进程一个都拿不到（EV-110、EV-112）', async () => {
   const root = await tmp();
   const entry = path.join(root, 'Resources/glm/zcode.cjs');
   await fs.mkdir(path.dirname(entry), { recursive: true });
@@ -237,7 +250,11 @@ test('端到端：omitPersonalProviderConfig + 宿主预置四个目录键 → �
   await fs.writeFile(path.join(userHome, '.zcode/v2/provider_config.json'), '{}', 'utf8');
   const fakeHome = await tmp();
 
-  const preset = { ZCODE_DATA_BASE_DIR: '/host/preset', ZCODE_HOME: '/host/zh', ZCODE_STORAGE_DIR: '/host/st', ZCODE_LOG_DIR: '/host/log' };
+  const preset = {
+    ZCODE_DATA_BASE_DIR: '/host/preset', ZCODE_HOME: '/host/zh', ZCODE_STORAGE_DIR: '/host/st', ZCODE_LOG_DIR: '/host/log',
+    ZCODE_SESSION_DB_PATH: '/host/db.sqlite', ZCODE_SESSION_DB: '/host/db2.sqlite', ZCODE_MAILBOX_ROOT: '/host/mail',
+    ZCODE_RUNTIME_ENV: 'development', ZCODE_BETA: '1', ZCODE_ENV: 'beta', ZCODE_MESSAGE_ENABLED: '1',
+  };
   const saved: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(preset)) { saved[k] = process.env[k]; process.env[k] = v; }
   try {
@@ -252,6 +269,9 @@ test('端到端：omitPersonalProviderConfig + 宿主预置四个目录键 → �
     assert.equal(seen['zhome'], null);
     assert.equal(seen['storage'], null);
     assert.equal(seen['logDir'], null, 'EV-110：审查运行也清 ZCODE_LOG_DIR');
+    for (const f of ['sessionDbPath', 'sessionDb', 'mailboxRoot', 'runtimeEnv', 'beta', 'zenv', 'messageEnabled']) {
+      assert.equal(seen[f], null, `EV-112：${f} 对应的键宿主预置也进不了子进程`);
+    }
     assert.equal(seen['home'], fakeHome);
   } finally {
     for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
@@ -305,6 +325,14 @@ test('run()：副本 HOME 下拉起时个人键被删（即使真实用户目录
     assert.equal(seen['personal'], null, '副本 HOME 下个人键必须被删——否则 CLI 跳过 legacy 导入，model.main 没人读（EV-82 根因）');
     assert.equal(seen['home'], zcodeHomeUnder(runDir));
     assert.equal(seen['dataBase'], null);
+    // U5（EV-112 计划 r3 §4.2 D2-(a)）：副本支也设三个落点键，取值与 HOME=<副本> 时的缺省相同；其余八键为 null
+    const want = zcodeStorageRedirectEnv(zcodeHomeUnder(runDir));
+    assert.equal(seen['storage'], want['ZCODE_STORAGE_DIR'], '副本支不设落点根 ⇒ 变异 M3');
+    assert.equal(seen['sessionDbPath'], want['ZCODE_SESSION_DB_PATH']);
+    assert.equal(seen['logDir'], want['ZCODE_LOG_DIR']);
+    for (const f of ['zhome', 'sessionDb', 'mailboxRoot', 'runtimeEnv', 'beta', 'zenv', 'messageEnabled']) assert.equal(seen[f], null, f);
+    // ECHO_ENTRY 不写日志与 rollout ⇒ 自检两项都为 false；副本支不做反向核 ⇒ 无 leaked_to_home 键
+    assert.deepEqual(result.carriers_landed, { log: false, rollout: false });
     assert.equal(result.model_route, 'config_copy');
     // 没有日志可回读 → 尝试了覆盖但判不出 → 字段产出且为 null
     assert.equal(result.model_override_applied, null);
