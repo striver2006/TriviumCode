@@ -1,0 +1,119 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最重一条（GLM-01）：§3.3.1 诊断的 H1 归因没有排除「环境漂移」这第四种成因——判失效的运行在 zcode.cjs 0.16.9 上，诊断却跑在「今天的 CLI + 今天的副本源 config.json」上，剧本既不比对 cli_version、也不核 GLM-5.3-Flash 仍非 provider 首位，而 H1 结论会以追加形式永久写进 BACKLOG、错了不可改；分支表另漏了「model_override_applied 字段缺席（route: global）」那一格。其余：T2 的安装副本缺口在 H0/H2 分支持续到收口而无机器证据（GLM-02）；写类工具全集的完备性无判据（GLM-03）；EV-94② 的登记触发条件按现文已满足却只在 H2 分支处置、step5 报告残余待办 ⑤ 未承接、台账差异④ 与「未成轮不计入」口径在 EV-109 形态上相反（GLM-04～06）。§1.4④ 三条事实、§5.3 两处改动点与三级回落、§6.2 四形态的守卫语义、§7.3.2.1 基线选择、§9 第 16/18 行的写动词判定、§10.1 算术与台账改动记录，均逐条对代码与留痕核实成立，18 条裁决的落地质量高。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.3.1（诊断剧本与分支表）；§1.4 ④",
+      "problem": "H1 分支的归因「17f88ac 的修复本身生效；重开诊断 H0 被推翻」没有排除第四种成因——环境漂移。判失效的那次运行在 zcode.cjs 0.16.9 上（run.json critics.glm.cli_version），诊断却跑在「今天的 CLI + 今天的 ~/.zcode/cli/config.json」上：ZCode 升级、或副本源 provider 改组（GLM-5.3-Flash 被挪成首位、被删、换 provider 键），都能让「今天 applied: true」成立而与 17f88ac 的修复无关。剧本第 1～4 步的读数（install 输出、HEAD、porcelain、run 字段）不含 cli_version 比对，也不核「Flash 仍非 provider 首位」——而 T2 选 Flash 的全部鉴别力恰恰建立在非首位这个前提上，该前提在诊断时点没有复核。另：分支表三行没有「model_override_applied 字段缺席」那一格——限定失败（route: global）时该字段整个不产出（产出条件是 overrideAttempted），剧本第 4 步虽读 model_route，表里没有对应分支。H1 结论按 §8.4 永久追加进 BACKLOG，错了不可改；这是 r3「照单全收 BACKLOG 诊断」的镜像形态，只是方向反过来。",
+      "evidence": "读 .reviews/M10-任意Driver/plan/_meta/run-20260921T145353Z.json（glm 段 cli_version \"0.16.9\"、model_effective bigmodel-coding-plan/GLM-5.3 为首位回落、snapshot 仅 git_head/tree_hash/dirty 无任何环境标识）；src/trivium/adapters/zcode.ts 的 decideModelOverride（:109-135，applied 为 true/false/undefined 三格）与字段产出条件（:994，`...(overrideAttempted ? { model_override_applied: … } : {})`，未尝试即字段缺席）、prepareZcodeHome 的 route:'global' 分支（:643-669：源文件缺失或限定失败都建不了覆盖）；scripts/build.mjs 全文（无任何构建标识注入）；计划 §3.3.1/§3.3.2。",
+      "suggestion": "剧本第 4 步读数加两项并写进分支条件：① critics.glm.cli_version 与旧证据的 0.16.9 比对，不一致时 H1 那格降级为「环境已变、归因不可判」，按证据不足处置；② 核 GLM-5.3-Flash 在副本源 provider 里仍非首位（或按 pickNonFirstModel 同口径现选模型）。分支表补「字段缺席 / model_route: global」一行——出口同为证据不足，但成因登记为环境变化，别让它落进「null 或运行失败」的措辞缝里。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3.3.2 末段注；§3.3.1 H1 分支",
+      "problem": "「安装副本与 HEAD 同版」没有机器证据的缺口，按现文只在 H1 分支被防漂关闭（「H1 分支落地防漂之后，改为核构建标识」）；H0/H2 分支不建防漂，该缺口从 T2 一直持续到里程碑收口，§3.3.2 的边界句没有说破这一点。旧证据 20260921T145353Z 正是「工作树是新代码、跑的可能是旧副本」的形态——H0/H2 分支下 T2 若撞上同一形态会给出假阴性（修复被判无效），重演一次误判螺旋；方向上虽是假阴性而非假阳性（不会错结案 EV-82），但会消耗轮次并把人引向「修复又失效了」的错误方向。",
+      "evidence": "读计划 §3.3.1（防漂只出现在 H1 分支行）、§3.3.2 末段注（防漂前后只按 H1 的时序写）；run-20260921T145353Z.json 的 snapshot 段（只有 git_head/tree_hash/dirty）；scripts/build.mjs（构建无标识，安装副本版本无从钉住）。",
+      "suggestion": "把构建标识（构建时写入 git rev-parse HEAD 与 dirty 标记，run.json 的 snapshot 旁记安装副本构建标识、不符时收尾告警）提为三个分支共用的前置小改动——它独立于归因结论、体量小；若维持现案，至少在 §3.3.2 与 R-q 写明 H0/H2 分支此缺口持续到收口，并给 T2 假阴性时的排查次序（先核安装副本、再怀疑修复）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.3.3；§6.1 通过条件 2",
+      "problem": "条件 2(i)「写类工具全集逐个进 matcher」依赖 §4.3.3 采出的全集，但全集的完备性没有判据：正文只写「名字以实测为准」，未定枚举来源（CLI 二进制字面量、官方文档、会话观测各占什么位置）与「枚举完成」的核对方式。漏掉一个写类工具正是三条件要堵的「名为 L1、实为 L2」静默形态，而 §6.1 对「全集本身不全」失明——第 1 轮把「解析不出路径」补成了第三种结局，「集合缺成员」是同层还没补的那种。另：§6.1/§11 计划改 extractTargetPath 支持新路径键，但没有配「Claude Code 侧既有五键行为不变」的回归用例条目（新增键的插入次序会影响多键共存输入的取值）。",
+      "evidence": "读计划 §4.3.3（仅「写类工具全集（名字以实测为准）」与 ZCODE_WRITE_TOOLS 的 headless 名单）、§6.1、§11（变异只覆盖「去掉新增的路径键 ⇒ ZCode 样例红」）；src/trivium/hooks.ts 的 extractTargetPath（:72-79，按 file_path/filePath/path/notebook_path/target_file 次序取首个命中）；.claude/settings.json 的 matcher 'Edit|Write|NotebookEdit'。",
+      "suggestion": "在 §4.3.3 为「全集」定至少两个独立来源的交叉核对（如 Hook 形态臂同款的 CLI 二进制字面量扫描 + 交互会话实测清单，差异逐条解释），并把「全集 = 实测观察集、完备性不保证」如实写为 §6.1 的边界进 L1/L2 文档；为 extractTargetPath 的新增键补一条 Claude Code 侧五键行为不变的回归用例。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §2.2 / §8.4（EV-94 ② 处置）；BACKLOG EV-94",
+      "problem": "EV-94② 登记的触发条件是「探针臂与审查运行任一方向不一致——探针判 config_copy 而运行 model_override_applied: false」。按本仓现状这一条已经触发：本机探针段 model_override: config_copy（§1.4②），判失效的运行 20260921T145353Z 正是 applied:false。计划只在诊断落 H2 时往 EV-94② 追加「已触发，并入」；H1/H0 落地时该条将以「挂着一个已满足的触发条件」的 todo 进下一里程碑，下一个读它的人会以为还欠一次判定。",
+      "evidence": "读 BACKLOG EV-94 ② 原文（触发条件原文含「探针判 config_copy 而运行 false」）；计划 §2.2（只在 H2 并入）、§8.4（只在 H2 追加）；§1.4 ② 与 run-20260921T145353Z.json glm 段（model_route config_copy + applied false）。",
+      "suggestion": "小主题收口时无论落哪个分支，都往 EV-94② 追加一行处置（已触发、诊断归因、为何不需要/需要第二臂），与 §8.4 对 EV-82 的追加纪律同形。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §8.4 / §8.5（回溯清单）；doc/05_testing/REPORT_2026-09-24_m10a_step5.md §3 残余待办 ⑤",
+      "problem": "计划把 M10a 第 5 步两份报告的「没补的缺口」列为上位依据，但段二报告残余待办 ⑤（peer_artifact_globs 缺省只含 gemini/glm 两家、是否仍有消费方——报告自记「本段没核，是未核的观察」）在 M10b 全稿零处置。它与 §1.3⑬（CRITIC_AGENT_IDS 陈旧注释，§5.6 ⑤ 拣走了）同形——代码里残留的「两家」字面——处置不对称。",
+      "evidence": "读 REPORT_2026-09-24_m10a_step5.md §3 残余待办 ⑤ 与 §5；grep src/trivium 确认 config.ts:261 缺省 peer_artifact_globs 为 ['**/*-gemini.md', '**/*-glm.md']，唯一消费方 freeze.ts:288-294 已改为注册表派生 + 配置追加（并集语义，实际风险低）；r4 全文零处 peer_artifact_globs。",
+      "suggestion": "第 5 步回溯清单加一行：核 freeze.ts 消费面并把结论落进 EV-61（或对那份报告的 gap 清单追加更正）——要么结案这条观察，要么明确写出不属本里程碑、留给谁。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §10.2 差异④；doc/08_project/M10b-轮次台账.md §0",
+      "problem": "计数口径自相矛盾：台账 §0 继承 M10a 台账「被状态机拒掉且未派生工作进程的未成轮记一行但不计入」，EV-109 的登记口径也是「被拒的 --start 不计入」；而差异④ 把点数对象定义为「evidence 目录里留存的 run.json 副本」且「夹具里的每一次 review --start……副本都当场拷进」。EV-109 形态的被拒 --start 恰恰已经落了 run.json 骨架（这正是那条缺陷本身），拷进 evidence 之后按哪条规则计数，两处给出相反答案；第 4 步夹具轮撞上 EV-109 时（§2.2 明写预留了这条出口）点数会摇摆。",
+      "evidence": "读 doc/08_project/M10b-轮次台账.md §0（沿用 M10a 口径含未成轮不计入；差异④ 原文）；BACKLOG EV-109（「这类被拒的 --start 不计入双审轮次」＋先落盘后查槽位）；src/trivium/review.ts:940（writeRunMeta）先于 :978（setGateChecked）。",
+      "suggestion": "差异④ 补一句：「拷」与「计」分开——run.json 副本（含被拒骨架）照拷进 evidence 备注取证，状态机拒掉的未成轮照 §0 口径不计入累计。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§1.4④ 三条事实逐条属实：审查臂今天就在做模型限定（zcode.ts:828 调 prepareZcodeHome(path.dirname(req.out_dir), req.model)，:840 传 omitPersonalProviderConfig，限定在 :658-660 经 qualifyAgainstCliConfig）；run 20260921T145353Z 的 snapshot.git_head=17f88acb…、dirty:true、started_at 14:53:54Z，与 17f88ac 提交时间 14:43:16Z（git log 核）相差约 10 分钟；重开后 zcode.ts / probes/zcode.ts 零新提交（git log 核）。「r3 的 T1① 答错了题」的改判与 H0/H1/H2 框架成立（GLM-01 补的是 H1 的归因边界，不动框架本身）。",
+    "§1.5 实证逐字属实：旧 run glm 段 status: parse_fallback 同时 model_override_applied: false / model_route: config_copy；现行代码该字段由 decideModelOverride（zcode.ts:109-135）按回读生效模型的 modelId 段判定、在 CriticResult 组装处产出（:994），与解析结果无关——「解析回退侧照常落字段」成立，T2 取证形态不需改。",
+    "T1① 判别力改由与 T2 挂钩、②(a) 只认审查臂零配额实测、(b) 退路如实标「独立性降一档」——在 (a) 路径下 ② 仍是独立证据，①+T2 未退化成单份证据，(b) 的降档标注可接受；③ 拆机核与人核、钩子输出注明「内容对应由人核」落实了上一轮 GLM-01。H1 分支把 17f88ac 从排除改为修复本体的口径切换本身自洽（旧证据在 H1 解释下是陈旧副本跑的、与新结论不矛盾），前提是 GLM-01 的归因边界补上。",
+    "§5.3 命令 A：两处改动点核实（topic-args.ts:353 的拒绝与 :484-488 的交叉校验整段跳过及注释）；三级判定「留痕>声明>缺省、显式值优先、缺席继承、双无静默落 DEFAULT_DRIVER」与 driver-claim.ts:111-144、:409-441 一致。S5 前认领 code 之后，code 阶段在 --start 之前就有权威值，模板内已无静默回落路径；与命令 B/C/D「code 阶段不需要认领」不冲突（它们的 code 产出在 --start 之后且 --start 显式带 --driver），§7.3 白名单行「code 轮出现认领即判回归」把口径钉对了；6 处注入 + 按次数断言 + S2/S6 委托处显式写出，堵住了渲染层的丢参。",
+    "§6.2 四形态与真实守卫逐字对上（.claude/settings.json 的 test -x …&& exec；test -f config.yaml || exit 0；…exit 2）：bin 删/去执行位 ⇒ exit 2 保守拦截、内容替换 ⇒ 永真放行、config 不在场 ⇒ exit 0；hooks.json _comment 确为反事实框架；wrapper 内容替换写成如实边界、不宣称能防，与 B1 输入面的能力相称，可接受——未想到第五种能被存在性检查看见的形态。",
+    "§7.3.2.1：f4f3970 确为「M9 七步收口」提交（2026-09-20）且是 HEAD 祖先（git 核），J3 对照基线选它正确（M10a/M10b 的行为差异全在 §7.3 白名单表里）；worktree 仓库外重建 + npm ci 单独一条 + worktree remove 清理的处置没漏可预见的副作用（.git/worktrees 元数据随 remove 清掉；worktree 内无 .trivium/config.yaml ⇒ 守卫 exit 0 不干扰；旧依赖装不下时如实降级、不写成已对照）。",
+    "§9 第 16/18 行的机制描述全对：install 在 WRITE_LIKE 字面集（hooks.ts:748）且 src/install.ts 命中 \\binstall\\b、git worktree add/remove 不在写动词集而 npm ci 在（:748-752）；「--context 不列含写动词字面的路径」是对只读派发被误拦的规避、不构成绕过判定（与第 1 轮口径一致，台账第 1 行的实测记载佐证）；16～19 行未见漏项，表尾「不承诺完备、撞上新形态照实追加」的立场对。",
+    "§10.1 的 19～37 与 >49：小计算术复核（14/27 + 5～10）；plan 档 2～6 采纳了 M10a 主计划 6 轮的先例（上一轮 GLM-04）；EV-82 按诊断先行重排为「诊断单侧 1 + plan 1～3 + code 2～3 + T2 单侧 1 = 5～8」量级合理，H1 分支防漂的 plan/code 双审也容得进该行预算；台账 §0 改动记录 1 与首行已按 §10.2 落盘（M10b-轮次台账.md 核）。",
+    "§1.3 的 ⑪⑫⑬⑭⑮ 逐条核实：.reviews/README.md:85 的三后缀枚举与「保证」形态、archive.ts:248-252 报错文案写死三家、registry.ts:292 陈旧注释、hooks.ts:1007 拒绝文案的错话逐字在场、EV-82 重开段与代码不符（现行 zcode.ts 即 17f88ac 版本，审查臂接线在场）——五条的立项与排期（§5.6/§8.4）成立。B2/CODEX-08 的代码事实也成立：install() 对每个顶层 skill 目录 syncDir 整树递归（install.ts:101-112、:60-85），不排除 entry/ 就会进 claude 根，§5.5 的排除 + 用例 + 变异闭合。",
+    "数据面与继承面：本仓全部 task.json 里 claimed_by 零命中、approvals 的 session_id 无一非空（grep 核；我数到 108 条 null，与稿中 109 差 1，不影响「无一非空」的结论）；EV-109 的代码事实（writeRunMeta L940 先于 setGateChecked L978）与 §7.2 重试前置的必要性成立，先查槽位可避开主触发形态；EV-108 两格是崩溃/追加时刻的写侧窗口，第 4 步正常流程撞不上；§2.3 七项继承与 M10a 八条边界的划法对得上（除 GLM-05 那条未处置的观察外没发现该继承而未继承的第八项）。"
+  ],
+  "not_covered": [
+    "未读 M10b r1/r2 原稿、M10 计划 r4～r7 与 M10a 各步计划原文：§1 各表对 r2 的引述以 r3/r4 转述为准，未独立对原文。",
+    "未读演进设计与 PRD 全文（AC-N2、§14 表现状、第 12 章子表两格只以 r4 转述为准）；主设计 §15.3 / §16.1 行的行号级现状未复核；doc/08_project/M10a-轮次台账.md 本轮未直接重读（其 §0/§2 的引用以台账 §0 继承句与上一轮核对为准）。",
+    "§4.1/§4.2 的 agy/codex 探针方案细节（隔离 HOME、负对照的可执行性）未独立推演；§4.3.2 会话留痕三问与 §4.3.3 写工具实测只能等第 1 步真跑，本轮只核了它们的代码前提（ZCODE_WRITE_TOOLS、extractTargetPath、matcher）。",
+    "未运行构建/测试/变异验证：§11 的变异点（entry-render-parity、次数断言、effectiveGuardLevel、writeMeta 文案）只做了符号与前提核对，未验证红得住。",
+    "approvals 的 111/109/2 逐条未复数（grep 到 108 条 session_id:null，与稿中 109 差 1，未查明差在哪一条）；M6 报告三条结论的具名行号与 P-19/P-21/P-22 探针条目未核。",
+    "skills/ 七份 SKILL.md 的现状与 §5.1「抽出 + diff 证明渲染回原文件」的可行性未核（沿袭上一轮盲区）；scripts/mutation-check.mjs 未读。"
+  ],
+  "consulted": [
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r4-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-glm.md",
+    ".reviews/M10-任意Driver/plan/_meta/run-20260921T145353Z.json",
+    ".reviews/README.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/review.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/config.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/types.ts",
+    "src/install.ts",
+    "scripts/build.mjs",
+    ".claude/settings.json",
+    "skills/dual-critic/hooks/hooks.json",
+    "skills/dual-critic/schema/review.v1.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/M10b-轮次台账.md",
+    "doc/05_testing/REPORT_2026-09-24_m10a_step5.md",
+    "doc/05_testing/REPORT_2026-09-23_m10a_step5_d3.md"
+  ]
+}

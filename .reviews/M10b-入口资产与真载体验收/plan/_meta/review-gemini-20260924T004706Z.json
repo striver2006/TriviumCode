@@ -1,0 +1,84 @@
+{
+  "agreed": [
+    "§1.4 ④ 三条事实核实全部属实：审查臂今天确实在做模型限定（zcode.ts:636-720、828-840），20260921T145353Z 的 git_head 确为 17f88ac 且 dirty 为 true，本地安装副本与工作树未对齐事实有历史留痕支撑。",
+    "H1 分支将 17f88ac 从排除集移至修复本体不会被旧证据钻空子：20260921T145353Z 的 run.json 中 dirty: true 且 model_override_applied: false，同时无法满足 T1/T2 对干净工作树与覆写生效的双重要求。",
+    "T1 ① 与 T2 挂钩导致证据独立性下降的问题，计划已如实披露并在退路 (b) 降级为单次实测，坦诚披露符合纪律 1。在防漂移标识落地前，§9 强行串联 npm run install:local 已将环境不同步缺口压缩至单机极限。",
+    "§6.1 的三条通过条件（L1 Hook 阻断、L2 降级拦截、白名单放行）逻辑闭环，能有效识别名义 L1 实为 L2 的形态；extractTargetPath 追加目标路径键查找不会波及 Claude Code，因其 standard 工具键在数组最前序列。",
+    "命令 A 增加 6 处注入断言并在 S5 执行 topic claim --stage code，彻底消除了静默回落到缺省 Driver 的死角；与命令 C 在 review --start 后才起草响应的天然受保流程无口径冲突。",
+    "§6.2 对 wrapper 替换无法通过输入面静态检查如实降为防护边界并列入 RUNBOOK，符合纪律 1 对启发式判据边界的界定。",
+    "§7.3.2.1 的 f4f3970 确为 M9 Step 7 封板 commit（2026-09-20），作为 J3 对比基线准确无误。",
+    "§9 第 16 行通过省略 --context 避免触发命令拦截，审查员仍可由提示词引导核对代码，属于已知误报的安全绕行手段，不构成对防御体系的实质绕过。",
+    "§10.1 轮次估算将 EV-82 调整为 5~8 轮、总体 19~37 轮、总阈值 49 经过重算，预算充足且安全边际适度。",
+    "M10a 继承项（7 项关键交付与未补缺口）完整对齐；§7.2 重试前置执行 /dual-status 与 /dual-abandon，彻底清空前轮残留状态，成功避开 EV-109 报错路径。"
+  ],
+  "consulted": [
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r4-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-gemini.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-revised-claude.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/review.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/parse.ts",
+    "scripts/build.mjs",
+    "skills/dual-run/SKILL.md",
+    ".claude/settings.json",
+    ".reviews/M10-任意Driver/plan/_meta/run-20260921T145353Z.json",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/M10a-轮次台账.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查看 .reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r4-claude.md §3.3.1 与 src/trivium/adapters/zcode.ts:636-720。zcode 适配器通过向运行目录写入 provider_config.json 来覆写模型。若宿主个人全局配置（~/.zcode/v2/provider_config.json）默认模型原本就为 GLM-5.3-Flash，则即便拷贝隔离未生效，ZCode 执行输出依然会报告 GLM-5.3-Flash，使得诊断剧本在 model_override_applied 判定上出现假阳性，误将环境偶然一致判定为 H1 成立。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §3.3.1",
+      "problem": "§3.3.1 的 H1 判定逻辑存在被宿主个性配置默认模型干扰的假阳性盲区：若宿主自身的 ~/.zcode/v2/provider_config.json 默认模型恰好也是 GLM-5.3-Flash，则即便拷贝隔离未生效，结果也会呈现 model_override_applied: true，导致误判为 H1 成立。",
+      "severity": "minor",
+      "suggestion": "在 §3.3.1 诊断步骤前增设前置核查：先读取宿主真实 ~/.zcode/v2/provider_config.json 确认其默认模型不是 GLM-5.3-Flash（若是则在诊断时使用其他备选有效模型或临时切走），并在核查产物中增加对 review 临时运行目录下生成的 provider_config.json 文件内容的断言。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查看 .reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r4-claude.md §7.3.2.1 与 §9 第 18 行，命令写为 git worktree remove /tmp/trivium-m9-verify，未加 --force 标志。在执行过 npm ci 的临时 worktree 中，git 默认拒绝删除包含未跟踪文件的 worktree。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §7.3.2.1 及 §9 第 18 行",
+      "problem": "在外部临时 worktree 目录下执行 npm ci 构建并运行装置后，目录内会残留未受版本控制的 node_modules 和构建产物。此时直接执行 git worktree remove <dir> 会因未跟踪文件的存在而报错拒绝删除，导致清理动作中断。",
+      "severity": "nit",
+      "suggestion": "将 §7.3.2.1 及 §9 第 18 行的清理命令补全为 git worktree remove --force /tmp/trivium-m9-verify，并在 §9 提示原因。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查看 .reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r4-claude.md §6.1 条件 1 与 src/trivium/hooks.ts。ZCode 载体支持的写工具不仅有简单的 Write，还包括 ApplyPatch 等结构性修改。仅测试「能拒一次写」无法覆盖载体工具分发键名不同的边缘情况。",
+      "id": "AGY-03",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §6.1 条件 1",
+      "problem": "§6.1 条件 1 仅要求「Hook 能拒一次写」，用单一写操作验证 L1 拦截能力粒度偏粗。若 ZCode 仅对 Write 工具响应 Hook，而对 ApplyPatch 或其他工具存在语法分发差异，单次验证可能遗漏特定写工具的放行漏洞。",
+      "severity": "minor",
+      "suggestion": "在 §6.1 条件 1 中明确测试包含常规 Write 与结构化写工具（如 ApplyPatch/Edit）的拦截，或至少验证 hookMatcher 在 ZCode 真实下发工具名格式上的匹配全覆盖。"
+    }
+  ],
+  "not_covered": [
+    "未在本机物理执行 ZCode / CLI 真载体交互，未执行 npm run install:local 或临时 worktree 的真实运行脚本。",
+    "未对除已审查文件外的其他非关联历史归档及后台 runs 目录进行全面比对。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "1. 本计划第 4 稿全面落实第 1 轮 18 条裁决，把 EV-82 重开段事实修正、诊断前置并收拢判别链，整体架构严谨审慎，结论建议 approve-with-nits。\n2. 最需注意的潜在风险是 §3.3.1 诊断假阳性：若宿主 ~/.zcode 默认模型恰好为 GLM-5.3-Flash，可能在覆写未实际生效时误判为 H1 成立（见 AGY-01）。\n3. 审查焦点涉及的 §1.4 ④ 三条事实全部核实属实；H1 修复本体 17f88ac 不会被旧证据利用（旧 run 存在 dirty 且未覆写）。\n4. T1 ① 与 T2 证据挂钩及 (b) 退路虽共用证据，但在计划中已如实标注为退化路径，可接受；防漂移落地前本地安装缺口由命令链串行构建收束。\n5. §6.1 通过条件堵住伪 L1，extractTargetPath 改动证明对 Claude Code 侧无影响；命令 A 六处注入断言与 S5 认领彻底消除静默回退，与命令 C 口径自洽。\n6. §6.2 wrapper 替换如实降为边界符合纪律 1；§7.3.2.1 基线 f4f3970 属实，但外部 worktree 清理需补 --force 规避 node_modules 阻断（见 AGY-02）。\n7. §9 第 16 行省写动词上下文不构成绕过；§10.1 轮次 19~37 及阈值 49 计算审慎充足；§7.2 重试前置 abandon 有效规避 EV-109。",
+  "verdict": "approve-with-nits"
+}
