@@ -502,6 +502,27 @@ test('run.v2 逐侧段：桩注入 carriers_landed ⇒ 该侧原样落盘、另�
   assert.ok(message.includes('写进真实 HOME'), `guard 要播报泄漏，实得：${message || '(空)'}`);
 });
 
+test('run.v2 逐侧段：桩注入 model_unenforced ⇒ 该侧原样落盘、另一侧缺席，guard 播报「本次没有做模型覆盖」（EV-122 计划 r2 §4.1）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  // review.ts 那一行条件展开写错键名或没写（变异 N6），这里当场红；run.v2 对内层 required 的校验也在这条链上
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 7;\n');
+  const unenforced = { requested: 'GLM-5.3', effective: '84044858-fake/qwen3.8-max', cause: 'source_missing' as const, reason: '夹具理由' };
+  const { meta, out } = await runCode(fx.root, fx.codeDir, [], {
+    gemini: { mode: 'ok' },
+    glm: { mode: 'ok', modelUnenforced: unenforced },
+  });
+  const glm = meta.critics.glm as Record<string, unknown> | undefined;
+  const gemini = meta.critics.gemini as Record<string, unknown> | undefined;
+  assert.ok(glm && gemini, '两侧都要有');
+  assert.deepEqual(glm!['model_unenforced'], unenforced, '注入的结论必须原样落到 run.json');
+  assert.equal('model_unenforced' in gemini!, false, '没注入的一侧必须缺席');
+  const w = await cli(fx.root, ['review', '--wait', meta.run_id, '--timeout', '5', '--json'], STUB, 60_000);
+  const cand = extractJsonCandidate(w.stdout);
+  assert.ok(cand, `终态查询无可解析 JSON：\n${w.stdout}\n${w.stderr}\n${out.slice(-300)}`);
+  const message = (JSON.parse(cand.json) as { message?: string | null }).message ?? '';
+  assert.ok(message.includes('本次没有做模型覆盖') && message.includes('84044858-fake/qwen3.8-max'), `guard 要播报，实得：${message || '(空)'}`);
+});
+
 test('置首结论只供 guard、不进 run.json：桩注入 model_override_reorder ⇒ 逐侧段无该键，guard 按 kind 播报（EV-82 第三段 r3 §3.4 负向用例）', { skip: bundleMissing && bundleSkipReason }, async () => {
   /*
    * run.v2 的 critic 段是 additionalProperties: true，字段泄漏了 schema 也不拦；这条边界只能靠用例锁

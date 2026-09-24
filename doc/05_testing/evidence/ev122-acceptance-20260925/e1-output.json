@@ -1,0 +1,34 @@
+{
+  "run_id": "20260924T172304Z",
+  "e2_fields": {
+    "model_requested": "GLM-5.3",
+    "model_effective": "84044858-4e28-432b-bbbd-7e2d624e39ff/qwen3.8-max",
+    "model_route": "global",
+    "model_override_applied_present": false
+  },
+  "prep": {
+    "homeDir": null,
+    "route": "global",
+    "cause": "source_missing",
+    "reason_kind": "未找到 <临时路径>…",
+    "tmp_entries_after": 0
+  },
+  "model_unenforced": {
+    "requested": "GLM-5.3",
+    "effective": "84044858-4e28-432b-bbbd-7e2d624e39ff/qwen3.8-max",
+    "cause": "source_missing",
+    "reason": "（同 prep.reason）"
+  },
+  "guard_broadcast": [
+    "glm 侧**本次没有做模型覆盖**：请求的是 `GLM-5.3`，实际跑的是 `84044858-4e28-432b-bbbd-7e2d624e39ff/qwen3.8-max`（<reason>）。该侧结论仍然有效，但模型路由（FR-06）与异构默认（NFR-06）在本侧不成立——若另一侧模型与它同家族，这一轮不构成真正的双审。先看副本源 `~/.zcode/cli/config.json` 在不在。"
+  ],
+  "checks": {
+    "A1_e2_shape": true,
+    "A2_prep_early_exit": true,
+    "A3_override_absent": true,
+    "A4_unenforced_produced": true,
+    "A5_guard_one_line": true,
+    "A6_no_false_alarm": true
+  },
+  "all_ok": true
+}

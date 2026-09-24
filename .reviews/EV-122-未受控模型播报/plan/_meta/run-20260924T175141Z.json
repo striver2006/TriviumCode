@@ -1,0 +1,277 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260924T175141Z",
+  "topic": "EV-122-未受控模型播报",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "重点核四件事：一、用新字段而不改 model_override_applied 语义、也不让守卫自己比对，这个取舍站不站得住；二、产出条件会不会误报，尤其 providerId 两种形态并存、请求写短名与全限定名、限定失败时回落模型恰与请求同名；三、除副本源缺失与限定失败外，还有没有没做覆盖却能回读到生效模型的情形；四、codex、agy、claude 三侧有没有同类静默缺口",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "d5c177cfb9d595d87c0c190423438b66e6e2a504",
+    "tree_hash": "9d14167025abace40a4381fe564288c6fd7c123c",
+    "dirty": true,
+    "subject_sha256": "6d5cc454847ae478ce23e959e89c0d98a5b064b0a89d9563581f9a8ab3ec04ff",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "1d80e23fb65e8a5be7479a1a4c22602f785490f0",
+      "dirty": false,
+      "inputs_sha256": "5fe988f070d6dc2ac955e3c73a9abb4d0c0376b8cadc734aebee9d9f98736abc",
+      "built_at": "2026-09-24T17:11:26.983Z"
+    }
+  },
+  "started_at": "2026-09-24T17:51:42.981Z",
+  "finished_at": "2026-09-24T18:00:34.803Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.156.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 291.109,
+      "tool_calls": {
+        "run_command": 49,
+        "project_reads": 48
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0d48b-714c-78e2-8114-a369f27383a5",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.10",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 297.692,
+      "tool_calls": {
+        "read": 37,
+        "grep": 13,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 267314,
+        "output_tokens": 34184,
+        "thinking_tokens": 26075,
+        "cache_read_tokens": 3415446,
+        "total_tokens": 301498
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "911b50de-eb47-4cc3-8d70-dd0666563273",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 531.439,
+      "tool_calls": {
+        "read": 14,
+        "grep": 17,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 23
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 19,
+        "inputTokens": 2224661,
+        "outputTokens": 33009,
+        "totalTokens": 2257670,
+        "cacheReadTokens": 2054848,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_a8f9c603-f124-4821-9508-7a9eb5d86eb4",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "EV-122-未受控模型播报/plan/_meta/brief-codex-20260924T175141Z.md",
+      "sha256": "ad53fa6a1ec0fe0f7b15fd925dcfbfada931baee532c46a91ea4131fe4e66948"
+    },
+    {
+      "path": "EV-122-未受控模型播报/plan/_meta/brief-gemini-20260924T175141Z.md",
+      "sha256": "7d27a6aa0d74b1167376ec541fb41f8c9cbeb6d89206e1d02489861204f9b32a"
+    },
+    {
+      "path": "EV-122-未受控模型播报/plan/_meta/brief-glm-20260924T175141Z.md",
+      "sha256": "073521668051aca4ff219d1c13f5bf6f632810e89b1bdfa80359b4a57435d94d"
+    },
+    {
+      "path": "EV-122-未受控模型播报/plan/_meta/review-codex-20260924T175141Z.json",
+      "sha256": "b1e3da3b97aa47cbe1bcf59933a928188682eee07a72ed7e8a3bef83ebce13a9"
+    },
+    {
+      "path": "EV-122-未受控模型播报/plan/_meta/review-gemini-20260924T175141Z.json",
+      "sha256": "69897212bd9eff1818f8896b985d26e951446f6e6bfee9d601970f1902626335"
+    },
+    {
+      "path": "EV-122-未受控模型播报/plan/_meta/review-glm-20260924T175141Z.json",
+      "sha256": "42611211d4b618e330bb008758456e2e47e3e3cb6745ea6f64eecc4e3865cd13"
+    },
+    {
+      "path": "EV-122-未受控模型播报/plan/2026-09-25-EV-122-未受控模型播报-codex.md",
+      "sha256": "048cff843224750f813b2300f0b62a7354654ae110f4312d94640f57a0081f81"
+    },
+    {
+      "path": "EV-122-未受控模型播报/plan/2026-09-25-EV-122-未受控模型播报-gemini.md",
+      "sha256": "105d95500796f9ad32a02aec0afee51535f6d228c212da3b9667a310c6463d0c"
+    },
+    {
+      "path": "EV-122-未受控模型播报/plan/2026-09-25-EV-122-未受控模型播报-glm.md",
+      "sha256": "985f242bfe35962d3de2ba582ce29e4f8f127922476e2ed0b559b1597e1495ad"
+    },
+    {
+      "path": "EV-122-未受控模型播报/plan/2026-09-25-EV-122-未受控模型播报-claude.md",
+      "sha256": "6d5cc454847ae478ce23e959e89c0d98a5b064b0a89d9563581f9a8ab3ec04ff"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

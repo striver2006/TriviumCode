@@ -126,6 +126,11 @@ export interface StubSpec {
    * `review.ts` 把它写进 run.json 逐侧段；guard 按两项合取与 `leaked_to_home` 出声。
    */
   carriersLanded?: CriticResult['carriers_landed'];
+  /**
+   * 模拟「没做覆盖而实际模型不同」（EV-122）：给了就原样产出 `model_unenforced`。只为集成用例咬住两件事：
+   * `review.ts` 把它写进 run.json 逐侧段；guard 按 `cause` 出声。
+   */
+  modelUnenforced?: CriticResult['model_unenforced'];
   note?: string;
 }
 
@@ -197,6 +202,7 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
     ...(spec.modelOverrideApplied === undefined ? {} : { model_override_applied: spec.modelOverrideApplied }),
     ...(spec.modelOverrideReorder === undefined ? {} : { model_override_reorder: spec.modelOverrideReorder }),
     ...(spec.carriersLanded === undefined ? {} : { carriers_landed: spec.carriersLanded }),
+    ...(spec.modelUnenforced === undefined ? {} : { model_unenforced: spec.modelUnenforced }),
     // 桩不模拟厂商事实：这两个字段的真实形态只有真适配器才产得出（AC-24 的证明边界）
     model_provider: null,
     profile_requested: null,

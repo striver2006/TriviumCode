@@ -803,5 +803,7 @@ test('checkZcodeRuntimeSelection：只在 glm 入选且读数为 reorder_ineffec
   assert.ok(w);
   assert.equal(w!.ok, true, '不拒跑');
   assert.match(w!.detail, /^⚠️ .*reorder_ineffective/);
+  // 两条收尾通道都要指到（EV-122 计划 r2 §3.4）：副本源临时缺失的那一轮出声的是后者
+  assert.ok(w!.detail.includes('请求的模型没有生效') && w!.detail.includes('本次没有做模型覆盖'), w!.detail);
   assert.equal(checkZcodeRuntimeSelection(cfg, ['codex', 'gemini']), null, 'glm 未入选不出项');
 });

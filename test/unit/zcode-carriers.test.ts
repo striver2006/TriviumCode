@@ -154,6 +154,7 @@ test('U3 无副本·未指定模型：五个载体落进运行目录、真实 HO
   await assertLandedInRunDir(sideDir, userHome);
   assert.equal(result.model_route, 'global');
   assert.equal('model_override_applied' in result, false, '没有覆盖尝试，字段缺席');
+  assert.equal('model_unenforced' in result, false, '没指定模型 ⇒ 无从对照，EV-122 的字段同样缺席');
   assert.equal(result.model_effective, FAKE_MODEL, '生效模型从运行目录的日志读回');
   assert.deepEqual(result.carriers_landed, { log: true, rollout: true, leaked_to_home: { log: false, rollout: false } });
   assert.ok(await exists(path.join(sideDir, 'out', 'rollout.jsonl')), 'rollout 另拷一份进 out_dir');
@@ -174,6 +175,20 @@ test('U4 无副本·副本源缺失（指定了模型）：与 U3 同样落进�
   assert.equal(result.model_route, 'global');
   await assertLandedInRunDir(sideDir, userHome);
   assert.deepEqual(result.carriers_landed, { log: true, rollout: true, leaked_to_home: { log: false, rollout: false } });
+  // 请求 fake-model、回读 p/fake-model：modelId 段相同 ⇒ EV-122 的字段不产出
+  assert.equal('model_unenforced' in result, false);
+});
+
+test('EV-122 无副本·副本源缺失、回读到的模型与请求不同 ⇒ model_unenforced 产出，requested 是请求原值、cause 为 source_missing', async () => {
+  // E2 现场的形态：请求 GLM-5.3，CLI 跑在个人配置默认的模型上（这里是假入口写的 p/fake-model）
+  const { result } = await runReview({ model: 'GLM-5.3', withCliConfig: false, mode: 'follow' });
+  assert.equal(result.status, 'ok', result.fail_reason ?? '');
+  assert.equal(result.model_route, 'global');
+  assert.equal('model_override_applied' in result, false, '两格互斥');
+  // requested 若取 home.qualified（本支恒 null），字段恒缺席（变异 N7）；run() 不接线同样红（变异 N4）
+  assert.equal(result.model_unenforced?.requested, 'GLM-5.3');
+  assert.equal(result.model_unenforced?.effective, FAKE_MODEL);
+  assert.equal(result.model_unenforced?.cause, 'source_missing');
 });
 
 test('U6 清扫衔接：无副本支落进运行目录的日志里夹带凭据形态 ⇒ scrubSideDir 就地脱敏并记进哨兵', async () => {

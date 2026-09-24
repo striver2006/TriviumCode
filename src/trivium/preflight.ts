@@ -522,7 +522,8 @@ async function checkArchiveAndGit(ctx: Ctx): Promise<CheckResult> {
  * doctor 的 `zcode.runtime_selection` 读数为 `reorder_ineffective` 时给一条警告（EV-82 第三段 r3 §4.2）：
  * 零配额的两支对照显示「置首也挡不住回落」，glm 侧审查运行的模型覆盖大概率不会生效。
  * **只警告、不拒跑**（`ok: true`）：判据是 doctor 在哨兵凭据下的读数，不是本次运行的事实；
- * 本次运行是否跑对了模型，由 guard 的 `model_override_applied` 比对给出。其余三值与未探过都不出项。
+ * 本次运行是否跑对了模型，由 guard 按本次回读给出（`model_override_applied` 与 EV-122 的 `model_unenforced` 两条）：
+ * 这里说「大概率」，那两条说「实际」。其余三值与未探过都不出项。
  */
 export function checkZcodeRuntimeSelection(cfg: Config, selected: readonly CriticId[]): CheckResult | null {
   // 按入选侧经注册表取 CLI 名，不写 Agent id 字面量（registry-parity 的对账纪律）；这一格目前只有 ZCode 的探针结论有
@@ -537,7 +538,7 @@ export function checkZcodeRuntimeSelection(cfg: Config, selected: readonly Criti
       ok: true,
       detail:
         `⚠️ doctor 的 ${cliName}.runtime_selection 为 reorder_ineffective：零配额探针上置首也没挡住运行期回落，` +
-        `本次 ${critic} 侧大概率跑不到请求的模型（跑完看 guard 的「请求的模型没有生效」告警与 trace.json 的 modelSelection.reorder）`,
+        `本次 ${critic} 侧大概率跑不到请求的模型（跑完看 guard 的「请求的模型没有生效」或「本次没有做模型覆盖」告警，以及 trace.json 的 modelSelection）`,
     };
   }
   return null;

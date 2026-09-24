@@ -26,7 +26,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import type { CriticRequest, CriticResult } from '../types.js';
+import type { CriticRequest, CriticResult, ModelUnenforcedCause } from '../types.js';
 import { run } from '../util/exec.js';
 import { ensureDir, exists, sha256File } from '../util/fsx.js';
 import {
@@ -133,6 +133,34 @@ export function decideModelOverride(
         : `模型一致但 providerId 形态不同（请求 ${want || '（无前缀）'}、回读 ${got || '（无前缀）'}）` +
           '——P-31 记载两种形态并存，不判为未生效',
   };
+}
+
+/**
+ * 没做模型覆盖、而实际模型与请求不同（EV-122）。与 `decideModelOverride` 并列且**产出条件互斥**：
+ * 那边要求 `attempted`，这边要求 `!attempted`。
+ *
+ * EV-112 E2 的实遇：副本源不在，审查运行不做覆盖，glm 侧跑在个人配置默认的 qwen 上；
+ * `model_override_applied` 因「没尝试」而缺席，守卫一句没说。本函数补的就是这一格。
+ *
+ * 四条同时成立才产出：没做覆盖、请求非空、回读到了生效模型、modelId 段（`zcodeModelTail`）不同。
+ * 判据面与 `decideModelOverride` 相同：`providerId` 段两种形态并存（P-31），整串比会误报。
+ * 限定失败时副本回落的模型恰与请求同 modelId 段 ⇒ 不产出：此时跑的就是请求的模型。
+ *
+ * `requested` 要传**请求原值**（`req.model`），不是 `home.qualified`——后者在没做覆盖的两支恒为 null
+ * （计划双审 CODEX-03 ≡ AGY-01）；原值也与 run.json 的 `model_requested` 同源，守卫文案对得上。
+ * `cause` 为 `no_model` 或 null 时不产出：前者请求必为空，后者就是做了覆盖。
+ */
+export function decideModelUnenforced(
+  attempted: boolean,
+  requested: string | null,
+  effective: string | null,
+  cause: ZcodeHomePrep['cause'],
+  reason: string | undefined,
+): CriticResult['model_unenforced'] {
+  if (attempted || !requested || !effective) return undefined;
+  if (cause !== 'source_missing' && cause !== 'qualify_failed') return undefined;
+  if (zcodeModelTail(effective) === zcodeModelTail(requested)) return undefined;
+  return { requested, effective, cause, reason: reason ?? '' };
 }
 
 /** 完整只读 denylist。`Bash` 必须在列——`--mode plan` 挡不住命令执行（M0 实测） */
@@ -598,6 +626,11 @@ export interface ZcodeHomePrep {
   /** `route` 为 `global` 时**必有**——「没覆盖」和「为什么没覆盖」不能只剩前者 */
   reason?: string;
   /**
+   * 没覆盖的**结构化成因**（EV-122 计划 r2 §3.1）：`route` 为 `config_copy` 时为 null。
+   * 下游判定与分句只认它，不匹配 `reason` 文案（计划双审 CODEX-02）。`no_model` 在流水线里走不到（派发前即拒空模型），只为穷尽出口
+   */
+  cause: ModelUnenforcedCause | 'no_model' | null;
+  /**
    * 置首结果（EV-82 第三段 r3 §3.2）：没请求置首（`requestedFirst` 未开）、或限定失败时为 null。
    * 挪不动**不中止**：照常写副本、照常拉起，由守卫按结果判。
    */
@@ -868,10 +901,11 @@ export async function prepareZcodeHome(
       route: 'global',
       qualified: null,
       reason: `未找到 ${srcConfig}，无法做模型覆盖；将沿用 ZCode CLI 的全局默认`,
+      cause: 'source_missing',
       reorder: null,
     };
   }
-  if (!model) return { homeDir: null, route: 'global', qualified: null, reason: '本次未指定模型', reorder: null };
+  if (!model) return { homeDir: null, route: 'global', qualified: null, reason: '本次未指定模型', cause: 'no_model', reorder: null };
 
   const homeDir = zcodeHomeUnder(runDir);
   const dstDir = path.join(homeDir, ZCODE_CLI_SUBDIR);
@@ -895,9 +929,16 @@ export async function prepareZcodeHome(
   await fs.chmod(path.join(dstDir, 'config.json'), 0o600);
 
   if (q.qualified === null) {
-    return { homeDir, route: 'global', qualified: null, reason: `${q.reason}；副本已建但不做模型覆盖`, reorder: null };
+    return {
+      homeDir,
+      route: 'global',
+      qualified: null,
+      reason: `${q.reason}；副本已建但不做模型覆盖`,
+      cause: 'qualify_failed',
+      reorder: null,
+    };
   }
-  return { homeDir, route: 'config_copy', qualified: q.qualified, reorder };
+  return { homeDir, route: 'config_copy', qualified: q.qualified, cause: null, reorder };
 }
 
 export const zcodeAdapter: CriticAdapter = {
@@ -1198,6 +1239,8 @@ export const zcodeAdapter: CriticAdapter = {
      * 这个问题。字段缺席与 `null` 是两件事——后者的唯一含义是「尝试了、但没回读到生效模型」。
      */
     const override = decideModelOverride(overrideAttempted, home.qualified, modelEffective);
+    // 没做覆盖的那一格（EV-122）：第二参是请求原值 req.model，不是恒为 null 的 home.qualified（计划双审 CODEX-03）
+    const unenforced = decideModelUnenforced(overrideAttempted, req.model, modelEffective, home.cause, home.reason);
     // 置首后 true 只说明「跑的是请求模型」，说明不了「副本默认被采信」（r3 §4.1）；后者归 doctor 的 zcode.runtime_selection
     const selectionNote =
       // 只陈述可观测事实（代码双审 r1 CODEX-03）：置首之后「靠置首」与「副本默认被采信」分不开，因果不在这里下
@@ -1272,6 +1315,8 @@ export const zcodeAdapter: CriticAdapter = {
         : {}),
       // 落点自检（EV-112）：没走到自检（无 sessionId）即缺席；review.ts 条件展开写进 run.json，guard 按它播报
       ...(carriersLanded ? { carriers_landed: carriersLanded } : {}),
+      // 没做覆盖而实际模型不同（EV-122）：与 model_override_applied 互斥，缺席即不成立
+      ...(unenforced ? { model_unenforced: unenforced } : {}),
       tool_calls: toolCalls,
       read_paths: readPathList,
       // zcode 轨迹只有 toolCalls[].input，没有工具输出——该族无此事实

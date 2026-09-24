@@ -15,6 +15,7 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   decideModelOverride,
+  decideModelUnenforced,
   invokeZcode,
   legacyProviderMembers,
   prepareZcodeHome,
@@ -133,6 +134,7 @@ test('副本：限定成功 → route config_copy，model.main/lite 写请求模
 
   assert.equal(prep.route, 'config_copy');
   assert.equal(prep.qualified, 'bigmodel-coding-plan/GLM-5.3-Flash');
+  assert.equal(prep.cause, null, '做了覆盖就没有「没覆盖的成因」（EV-122）');
   assert.equal(prep.homeDir, zcodeHomeUnder(runDir));
   const copy = JSON.parse(await fs.readFile(path.join(prep.homeDir!, '.zcode/cli/config.json'), 'utf8')) as Record<string, unknown>;
   assert.deepEqual(copy['model'], { main: 'bigmodel-coding-plan/GLM-5.3-Flash', lite: 'bigmodel-coding-plan/GLM-5.3-Flash' });
@@ -150,6 +152,7 @@ test('副本：限定失败 → 仍建副本（隔离照做）、model 段不动
   assert.equal(prep.route, 'global');
   assert.equal(prep.qualified, null);
   assert.match(prep.reason ?? '', /副本已建但不做模型覆盖/);
+  assert.equal(prep.cause, 'qualify_failed', 'EV-122：下游按结构化成因分句，不匹配 reason 文案（变异 N9）');
   assert.ok(prep.homeDir, '隔离仍要做');
   const copy = JSON.parse(await fs.readFile(path.join(prep.homeDir!, '.zcode/cli/config.json'), 'utf8')) as Record<string, unknown>;
   assert.deepEqual(copy['model'], cliConfigFixture()['model']);
@@ -160,9 +163,11 @@ test('副本：未指定模型 / 源文件不存在 → 不建副本', async () 
   const a = await prepareZcodeHome(await tmp(), null, { srcConfig: cliConfig });
   assert.equal(a.homeDir, null);
   assert.equal(a.route, 'global');
+  assert.equal(a.cause, 'no_model');
   const b = await prepareZcodeHome(await tmp(), 'GLM-5.3', { srcConfig: path.join(await tmp(), 'nope.json') });
   assert.equal(b.homeDir, null);
   assert.match(b.reason ?? '', /未找到/);
+  assert.equal(b.cause, 'source_missing');
 });
 
 // ── zcodeProviderEnv：省略个人键 + 目录键恒清（r3 CODEX-02；EV-110 起四键）──
@@ -398,6 +403,56 @@ test('run() 负格：请求模型不在副本源目录 → route global，且 mo
   assert.equal(result.status, 'ok', result.fail_reason ?? '');
   assert.equal(result.model_route, 'global');
   assert.equal('model_override_applied' in result, false, '没有覆盖尝试就没有「是否落实」这个问题——字段必须缺席');
+  assert.equal('model_unenforced' in result, false, '没回读到生效模型 ⇒ 无从对照，EV-122 的字段同样缺席');
+});
+
+// ── EV-122：没做覆盖而实际模型不同（计划 r2 §4.1） ──
+
+test('run() 限定失败·回读到别的模型 → model_unenforced 产出，cause 为 qualify_failed、requested 是请求原值', async () => {
+  const r = await runWithFakeEntry(ECHO_WITH_LOG_ENTRY, 'nope-model', 'p/other');
+  assert.equal(r.status, 'ok', r.fail_reason ?? '');
+  assert.equal(r.model_route, 'global');
+  assert.equal('model_override_applied' in r, false, '两格互斥');
+  assert.equal(r.model_unenforced?.requested, 'nope-model');
+  assert.equal(r.model_unenforced?.effective, 'p/other');
+  assert.equal(r.model_unenforced?.cause, 'qualify_failed');
+  assert.ok(r.model_unenforced?.reason, 'reason 原样带上，供人读');
+});
+
+test('run() 限定失败·回落模型的 modelId 段恰与请求相同 → 不产出（跑的就是请求的模型）', async () => {
+  // 请求带了副本里没有的 providerId ⇒ 限定失败；回读是同名模型、换了 providerId 形态（计划双审焦点二）
+  const r = await runWithFakeEntry(ECHO_WITH_LOG_ENTRY, '84044858-fake/GLM-5.3-Flash', 'bigmodel-coding-plan/GLM-5.3-Flash');
+  assert.equal(r.model_route, 'global');
+  assert.equal('model_unenforced' in r, false);
+});
+
+test('run() 做了覆盖且没落实 → 只有 model_override_applied: false，model_unenforced 缺席（互斥）', async () => {
+  const r = await runWithFakeEntry(ECHO_WITH_LOG_ENTRY, 'GLM-5.3-Flash', '84044858-fake/qwen3.8-max');
+  assert.equal(r.model_override_applied, false);
+  assert.equal('model_unenforced' in r, false);
+});
+
+test('decideModelUnenforced：四条合取，任一不成立即缺席', () => {
+  const src = 'source_missing' as const;
+  assert.equal(decideModelUnenforced(true, 'GLM-5.3', 'p/qwen', null, undefined), undefined, '做了覆盖（变异 N1）');
+  assert.equal(decideModelUnenforced(true, 'GLM-5.3', 'p/qwen', src, 'x'), undefined, '做了覆盖，即使带了成因');
+  assert.equal(decideModelUnenforced(false, null, 'p/qwen', src, 'x'), undefined, '请求为空');
+  assert.equal(decideModelUnenforced(false, 'GLM-5.3', null, src, 'x'), undefined, '没回读到（变异 N3）');
+  assert.equal(decideModelUnenforced(false, 'GLM-5.3', 'p/qwen', 'no_model', 'x'), undefined, 'no_model 不进字段');
+  assert.equal(
+    decideModelUnenforced(false, 'bigmodel-coding-plan/GLM-5.3', '84044858-fake/GLM-5.3', src, 'x'),
+    undefined,
+    'providerId 形态不同、modelId 段相同 ⇒ 不是换了模型（P-31，变异 N2）',
+  );
+  assert.equal(decideModelUnenforced(false, 'GLM-5.3', 'bigmodel-coding-plan/GLM-5.3', src, 'x'), undefined, '请求短名、回读全限定');
+});
+
+test('decideModelUnenforced：modelId 段不同 ⇒ 四字段原样产出', () => {
+  assert.deepEqual(
+    decideModelUnenforced(false, 'GLM-5.3', '84044858-fake/qwen3.8-max', 'source_missing', '未找到 /x'),
+    { requested: 'GLM-5.3', effective: '84044858-fake/qwen3.8-max', cause: 'source_missing', reason: '未找到 /x' },
+  );
+  assert.equal(decideModelUnenforced(false, 'nope', 'p/other', 'qualify_failed', 'r')?.cause, 'qualify_failed');
 });
 
 test('run() 正格：回读生效模型与请求一致 → true；不一致 → false', async () => {
@@ -782,4 +837,77 @@ test('守卫：不判失守、不动证据判定', async () => {
   const ok = await verdictOf(true);
   assert.equal(v.readonlyBreach, ok.readonlyBreach);
   assert.equal(v.evidenceOk, ok.evidenceOk);
+});
+
+// ── 守卫：没做覆盖而实际模型不同（EV-122 计划 r2 §3.2） ──
+
+type Unenforced = NonNullable<import('../../src/trivium/types.js').CriticResult['model_unenforced']>;
+
+async function warningsForUnenforced(u: Unenforced | undefined): Promise<{ notes: string[]; verdict: Record<string, unknown> }> {
+  const { judgeSide, renderGuardWarnings } = await import('../../src/trivium/guard.js');
+  const { defaultConfig } = await import('../../src/trivium/config.js');
+  const { TOOL_TRACE_CAPABILITY, failedResult } = await import('../../src/trivium/adapters/base.js');
+  const base = failedResult('glm', { status: 'failed', reason: '夹具' });
+  const result = u === undefined ? base : { ...base, model_unenforced: u };
+  const req = {
+    critic: 'glm' as const, stage: 'code' as const, model: 'GLM-5.3', effort: null,
+    brief_text: '', brief_path: '/proj/b.md', subject_path: '/proj/s.md',
+    project_root: '/proj', out_dir: '/tmp/out', timeout_s: 60,
+    min_tool_calls: 0, min_project_reads: 0, deny_paths: [],
+  };
+  const verdict = judgeSide(defaultConfig(), 'glm', result, null, req as never, {
+    archiveRootAbs: '/proj/.reviews', projectRoot: '/proj',
+    triviumDir: '/proj/.trivium', runRoot: '/tmp/runs',
+    capability: TOOL_TRACE_CAPABILITY,
+  });
+  const notes = renderGuardWarnings({
+    sides: { glm: verdict }, drift: { changed: false, files: [], related: [] },
+    driftAction: 'ok', fingerprintChangedFiles: [], unattributedDriftFiles: [],
+  } as never);
+  return { notes, verdict: verdict as unknown as Record<string, unknown> };
+}
+
+// reason 用任意串：守卫若改按文案分句（变异 N8），两种 cause 的指向都会丢
+const ARBITRARY_REASON = '夹具理由-与任何真实文案都不同';
+
+test('守卫：model_unenforced 在 ⇒ 播报一句，含 critic、请求值、生效值、reason 原文与 FR-06 / NFR-06', async () => {
+  const { notes, verdict } = await warningsForUnenforced({
+    requested: 'GLM-5.3', effective: '84044858-fake/qwen3.8-max', cause: 'source_missing', reason: ARBITRARY_REASON,
+  });
+  assert.deepEqual(verdict['modelUnenforced'], {
+    requested: 'GLM-5.3', effective: '84044858-fake/qwen3.8-max', cause: 'source_missing', reason: ARBITRARY_REASON,
+  }, 'judgeSide 原样透传');
+  const hit = notes.filter((n) => n.includes('本次没有做模型覆盖'));
+  assert.equal(hit.length, 1, notes.join(' / '));
+  for (const part of ['glm 侧', 'GLM-5.3', '84044858-fake/qwen3.8-max', ARBITRARY_REASON, 'FR-06', 'NFR-06']) {
+    assert.ok(hit[0]!.includes(part), `缺「${part}」：${hit[0]}`);
+  }
+  assert.equal(notes.some((n) => n.includes('没有生效')), false, '与「覆盖没落实」那句不串');
+  assert.equal(hit[0]!.includes('默认模型'), false, '只陈述事实，不下「CLI 用的是它自己的默认模型」这类因果（CODEX-06）');
+});
+
+test('守卫：按 cause 给排查指向，两种不串', async () => {
+  const src = (await warningsForUnenforced({ requested: 'a', effective: 'p/b', cause: 'source_missing', reason: ARBITRARY_REASON })).notes.join('\n');
+  const qf = (await warningsForUnenforced({ requested: 'a', effective: 'p/b', cause: 'qualify_failed', reason: ARBITRARY_REASON })).notes.join('\n');
+  assert.ok(src.includes('副本源 `~/.zcode/cli/config.json` 在不在'), src);
+  assert.equal(src.includes('provider 目录'), false, src);
+  assert.ok(qf.includes('provider 目录'), qf);
+  assert.equal(qf.includes('cli/config.json'), false, qf);
+});
+
+test('守卫：两值之外的 cause（只可能来自未校验的桩注入）⇒ 主句照常、不拼出 undefined（代码双审 r1 CODEX-01）', async () => {
+  const { notes } = await warningsForUnenforced({
+    requested: 'a', effective: 'p/b', cause: 'no_model' as never, reason: ARBITRARY_REASON,
+  });
+  const hit = notes.filter((n) => n.includes('本次没有做模型覆盖'));
+  assert.equal(hit.length, 1, notes.join(' / '));
+  assert.equal(hit[0]!.includes('undefined'), false, hit[0]);
+  assert.ok(hit[0]!.endsWith('这一轮不构成真正的双审。'), '不给排查指向，只留主句');
+});
+
+test('守卫：model_unenforced 缺席 ⇒ 不出声；覆盖没落实那句也不引出它', async () => {
+  const { notes, verdict } = await warningsForUnenforced(undefined);
+  assert.equal('modelUnenforced' in verdict, false);
+  assert.equal(notes.some((n) => n.includes('本次没有做模型覆盖')), false);
+  assert.equal((await warningsFor(false)).some((n) => n.includes('本次没有做模型覆盖')), false);
 });

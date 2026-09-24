@@ -1,0 +1,72 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "未发现会让线上出错的问题：接线（第二参取 req.model）、与 model_override_applied 的互斥、机读契约的内层必填/禁多余键三处都按计划落实，我用只读复现逐条核对了零配额验收的断言，也核对了「no_model 不进字段」的划分。一条 nit：守卫的 unenforcedHint 无 default 分支，两值之外的 cause（只可能来自未校验的桩注入）会把字面量 undefined 拼进用户可见播报。焦点三的答案：reason 里没有凭据（qualify 理由只拼 provider 键名与成员名），它带进 run.json 的是真实 HOME 绝对路径与用户 provider 的模型清单，前者归档里已有同形（deny_paths 就是绝对路径），后者是 EV-112 的 carriers_landed 没走的那条路，建议明确一句「有意接受」。焦点五的答案：E1 九条判据与 E2 形态逐条成立，变异九条的 find 在当前树上各命中一次（装置闸 7 成立），未见声称强于事实。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/guard.ts:935-943（unenforcedHint）",
+      "problem": "unenforcedHint 的 switch 只列枚举里的两个 cause、没有 default 分支，而函数签名声明返回 string。运行时若 cause 落在两值之外，它返回 undefined，模板拼接把它变成字面量「undefined」直接进用户可见的收尾播报。这不是纯理论：CriticResult.model_unenforced 还有一条不经类型检查的入口——TRIVIUM_STUB_CRITIC 的注入串由 readStubConfig 只做 JSON.parse 就断言成 StubConfig（跨进程故障注入是本仓登记的机制），手写的 cause 会经 stub 的 baseResult 原样透传到 judgeSide → renderGuardWarnings。",
+      "evidence": "只读复现（导入已构建的 dist/test/src/trivium/guard.js）：unenforcedHint('no_model') 与 unenforcedHint('whatever') 均返回 undefined；把 {requested:'a',effective:'p/b',cause:'no_model',reason:'r'} 喂给 judgeSide+renderGuardWarnings，播报落成「…这一轮不构成真正的双审。undefined」。同文件的 reorderHint（guard.ts:945 起）对同形的不可达档留了防御分支，本函数没有。同一路注入的坏 cause 还会在收尾被 writeRunMeta（src/trivium/meta.ts:365-372，校验不过即 throw）按 run.v2.json 的 cause 枚举判死——我用 EV-112 E2 归档 run.json 在内存里复现过 validateRunMeta 的三条拒（坏 cause / 缺 reason / 多键）。适配器自己产不出这两步（decideModelUnenforced 已把两值之外滤掉，实测 cause='no_model' 与 null 均返回 undefined），故只影响注入面，记 nit。",
+      "suggestion": "给 unenforcedHint 加 default 分支（返回一句中性文案或空串），与同文件 reorderHint 的防御分支同形；若想更早拦，可在 judgeSide 透传处对两值之外的 cause 做一次运行期窄化，降级为「只陈述事实、不加排查指向」。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "接线与互斥：run() 的第二参确是请求原值 req.model（zcode.ts:1243），与 run.json 的 model_requested 同源；model_override_applied 只在 overrideAttempted 为真时写（:1308），decideModelUnenforced 在 attempted 为真时恒返回 undefined（:160），两侧的纯函数用例、run() 负格与集成用例都锁住了这两条，读遍两处调用点也没找到能同时产出的出口。",
+    "失败早退与超时路径不产出：timeout / failure 两支在 zcode.ts:1135-1177 就 return 了，unenforced 的计算在 :1241-1243，确实走不到；verify 里也确认 failedResult 不带该字段，review.ts 的条件展开因此不会替它补值。",
+    "焦点二（契约面）：cause 的三值只活在 ZcodeHomePrep（no_model 只为穷尽出口，实测不进字段），进 CriticResult/run.v2 的只有两值，且与 types.ts 的 ModelUnenforcedCause 一致；适配器恒产出恰好四项且两个 global 出口都写了 reason，所以 writeRunMeta 的严格校验在真实路径上撞不到；桩注入若给坏值会被 run.v2 拒（这正是该严格的意图，且与 EV-112 的 carriers_landed 同口径）。新增字段可选，故 run-meta-strict 的「全部 v2 历史留痕仍能校验」这条锁不受影响。",
+    "焦点三（文案与归档内容）：守卫那句自身不含因果断言（不说「CLI 用的是它自己的默认模型」），排查指向按结构化 cause 分句、不匹配 reason 文案，与 reorderHint 同口径；我用构建产物复现出的播报与 E1 读数里引用的那一句逐字一致。reason 原文里没有凭据——qualifyAgainstCliConfig 只拼 provider 键名与成员名（读的是 p.models / p.source，从不碰 options），source_missing 一支只带 srcConfig 路径；后者是真实 HOME 的绝对路径，但归档里本就有同形（E2 归档的 deny_paths[2] = /Users/<user>/.trivium/runs），而 RUNBOOK 给人看的是 ~ 形式；唯一新进归档的本地事实是「用户 provider 目录里的模型清单」，建议在设计 6.7.1 行明确一句这是有意接受。",
+    "焦点四（文档同步）：四处同源表述都改了（设计 :251/:252 的 EV-122 子句、:2467/:2468 的 11.3 要点、6.7.1 新增行、变更记录 v1.3.40），doc/02_design/README.md 跟到 v1.3.40；RUNBOOK 新增「本次没有做模型覆盖」整行，按 cause 分两种排查并写明不播报的那一格；BACKLOG 的 EV-122（改判为「实施完成，待代码双审」而非计划里写的「关闭」，属诚实偏离）、EV-91 补记、EV-30 ⑦ 补记、EV-123 新登记四格齐备；预检 checkZcodeRuntimeSelection 的指向句同时点到两条通道，其用例补了断言。我按「覆盖是否落实」重扫全仓，未发现漏改的第三方表述（skills/dual-critic/scripts/trivium.cjs 里已含 model_unenforced 六处，说明打包产物已重建；dist/test 下的 schema 副本也已更新，故集成用例的校验链是新的）。",
+    "焦点五（验证证据）：E1 读数的 A1 与 EV-112 E2 归档逐字相符（GLM-5.3 / 84044858-…/qwen3.8-max / route global / 无 model_override_applied），A3-A6 我用只读方式复现成立（含「不出声那两句」）；变异规格九条的 find 串在当前工作树上各恰好命中一次（装置闸 7 的前提成立），expect 指向的套件与承载那些断言的测试文件一致，报告里也没有出现「整仓测试全绿」这类未被证据支撑的话。EV-91 补记的四条事实也都核到了（agy 拿不到 init 模型时以请求值顶替并记 requested；claude 的 model_flag 在审查路径零消费方）。"
+  ],
+  "not_covered": [
+    "未运行 npm run typecheck / build / test / check 与 trivium doctor --selftest：本会话是只读沙箱，构建与测试都要写盘。类型面与集成面是靠读源码 + 只读导入已构建的 dist/test 产物复核的（dist 与 skills 打包产物均已包含本次改动，时间戳晚于源码改动）。",
+    "未重跑变异装置（它会改写工作树源码与产物）与零配额验收脚本（它会写 e1-output.json）；改为核对规格与当前树的一致性，并用只读代码复现验收里的判定与播报，未复现脚本自身的写入动作。",
+    "未拉起真实 zcode CLI（零配额要求）：qualified_failed 一支无真实样本这一点，E1 读数已如实登记，我认可该边界，但也就没有独立证据。",
+    "未独立复核计划阶段另两位审查员的意见原文（禁读清单内的产出），设计/BACKLOG 里对 CODEX-xx / AGY-xx / GLM-xx 的引用按计划文档的转述采信。",
+    "doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md 只看过 diff 里那四行（M3 上游反馈登记），按任务书声明不计入本题；未打开该报告全文。",
+    "「未指定模型在派发前即被拒」这条只做了代码路径核对（review.ts:580-584 的 checkModelSlugs 与 preflight 同函数），没有端到端跑一次以空模型启动的流水线来证明，因此 no_model 不可达的结论强度为代码级。",
+    "未涉及非 macOS 平台行为（本项目仅支持 macOS）与安装链路（dist/install.cjs 是否安装了本次产物）。"
+  ],
+  "consulted": [
+    ".reviews/EV-122-未受控模型播报/code/_meta/changes-20260924T222959Z.diff",
+    ".reviews/EV-122-未受控模型播报/plan/2026-09-25-EV-122-未受控模型播报-r2-claude.md",
+    ".reviews/EV-112-E2验收/plan/_meta/run-20260924T172304Z.json",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/types.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/config.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/agents/registry.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "scripts/mutation-check.mjs",
+    "test/unit/zcode-model-selection.test.ts",
+    "test/unit/zcode-carriers.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/run-meta-strict.test.ts",
+    "test/unit/zcode-runtime-selection.test.ts",
+    "test/integration/code-stage.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/README.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/evidence/ev122-mutation-20260925/mutation-spec.json",
+    "doc/05_testing/evidence/ev122-mutation-20260925/mutation-output.txt",
+    "doc/05_testing/evidence/ev122-mutation-20260925/run.mjs",
+    "doc/05_testing/evidence/ev122-acceptance-20260925/01-e1-readout.md",
+    "doc/05_testing/evidence/ev122-acceptance-20260925/e1-check.mjs",
+    "doc/05_testing/evidence/ev122-acceptance-20260925/e1-output.json",
+    "dist/test/src/trivium/guard.js",
+    "dist/test/skills/dual-critic/schema/run.v2.json"
+  ]
+}

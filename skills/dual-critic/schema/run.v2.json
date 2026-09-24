@@ -536,7 +536,22 @@
             "boolean",
             "null"
           ],
-          "description": "模型覆盖是否落实（EV-82）。字段缺席＝本次没有覆盖尝试；true/false＝比对过一致/不一致；null＝尝试了但没回读到生效模型。判据归各家适配器，判定层只播报。zcode 侧自 EV-82 第三段起审查运行把请求模型置首，true 只说明跑的就是请求模型，不说明副本默认被采信（后者见 doctor 的 zcode.runtime_selection）"
+          "description": "模型覆盖是否落实（EV-82）。字段缺席＝本次没有覆盖尝试；true/false＝比对过一致/不一致；null＝尝试了但没回读到生效模型。判据归各家适配器，判定层只播报。zcode 侧自 EV-82 第三段起审查运行把请求模型置首，true 只说明跑的就是请求模型，不说明副本默认被采信（后者见 doctor 的 zcode.runtime_selection）。没做覆盖而实际模型不同见 model_unenforced"
+        },
+        "model_unenforced": {
+          "type": "object",
+          "properties": {
+            "requested": { "type": "string" },
+            "effective": { "type": "string" },
+            "cause": { "enum": ["source_missing", "qualify_failed"] },
+            "reason": {
+              "type": "string",
+              "description": "prepareZcodeHome 给的理由原文，只供人读、不参与判定、不保证文案稳定。可能含副本源的 provider / 模型目录清单（qualify_failed）与真实 HOME 绝对路径（source_missing），随归档持久化；不含凭据"
+            }
+          },
+          "required": ["requested", "effective", "cause", "reason"],
+          "additionalProperties": false,
+          "description": "没做模型覆盖、而实际模型与请求不同（EV-122，目前只有 zcode 侧产出）。与 model_override_applied 互斥：那一格要求本次尝试了覆盖，这一格要求没尝试。requested 与 model_requested 同源；判据只看 modelId 段；cause＝为什么没做覆盖（source_missing：副本源 cli/config.json 不在；qualify_failed：请求的模型在副本源目录里限定失败），guard 按它分句。字段缺席＝做了覆盖、请求为空、没回读到生效模型、modelId 段相同、或该侧不产出"
         },
         "carriers_landed": {
           "type": "object",

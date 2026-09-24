@@ -1169,6 +1169,8 @@ export interface CriticRunMeta {
   model_override_applied?: boolean | null;
   /** 落点自检（EV-112）。缺席与取值的语义见 `CriticResult.carriers_landed` */
   carriers_landed?: CriticResult['carriers_landed'];
+  /** 没做覆盖而实际模型不同（EV-122）。缺席与取值的语义见 `CriticResult.model_unenforced` */
+  model_unenforced?: CriticResult['model_unenforced'];
   effort?: string;
   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
   exit_code: number | null;
@@ -1511,6 +1513,13 @@ export interface ScrubOutcome {
   errors: string[];
 }
 
+/**
+ * 没做模型覆盖的成因（EV-122），进 `CriticResult.model_unenforced.cause`：
+ * `source_missing`＝副本源 `cli/config.json` 不在；`qualify_failed`＝请求的模型在副本源的 provider 目录里限定失败（副本已建）。
+ * 「没指定模型」不在此列：请求为空时该字段恒缺席，且流水线在派发前就拒空模型。
+ */
+export type ModelUnenforcedCause = 'source_missing' | 'qualify_failed';
+
 export interface CriticResult {
   critic: CriticId;
   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
@@ -1535,7 +1544,7 @@ export interface CriticResult {
    *
    * ## 三态与「字段缺席」是**四**种情况，不能压成三种
    *
-   * - **字段缺席**：本次没有覆盖尝试（没指定模型、或该族根本不做配置覆盖）。
+   * - **字段缺席**：本次没有覆盖尝试（没指定模型、或该族根本不做配置覆盖）。没做覆盖而实际模型不同另见 `model_unenforced`（EV-122）。
    * - `true` / `false`：比对过，一致 / 不一致。
    * - `null`：**尝试了覆盖，但没回读到生效模型**，无法判定。唯一含义，不表示「没有这种概念」。
    *
@@ -1581,6 +1590,22 @@ export interface CriticResult {
    * 它是本题唯一的安全信号，只落 trace.json 的话，运行目录过期后归档里就答不出「这次有没有把送审内容留在真实 HOME」。
    */
   carriers_landed?: { log: boolean; rollout: boolean; leaked_to_home?: { log: boolean; rollout: boolean } };
+  /**
+   * 没做模型覆盖、而实际模型与请求不同（EV-122）：zcode 审查臂 `decideModelUnenforced` 填。
+   *
+   * 与 `model_override_applied` **互斥**：那一格要求本次尝试了覆盖，这一格要求没尝试。不并进那一格的 `false`
+   * （计划双审 D1）：「覆盖没落实」查 CLI 读取点，「压根没做覆盖」查副本源在不在，两种成因同形就分不开。
+   *
+   * - `requested`：请求原值，与 run.json 的 `model_requested` 同源；
+   * - `effective`：回读到的生效模型；判据同 `model_override_applied`，只比 modelId 段；
+   * - `cause`：为什么没做覆盖，guard 按它分句——判定与分句的**唯一依据**；
+   * - `reason`：`prepareZcodeHome` 给的理由原文，**只供人读、不参与判定、不保证文案稳定**。
+   *   可能含副本源的 provider / 模型目录清单（`qualify_failed`）与真实 HOME 绝对路径（`source_missing`），随归档持久化；
+   *   不含凭据。这是有意接受的内容面（代码双审 r1 GLM-F03 ②）：截断只能按文案切，而清单正是排查限定失败要用的那部分。
+   *
+   * 缺席 = 做了覆盖、请求为空、没回读到生效模型、modelId 段相同、或该侧不产出。**进 run.json**（与 `carriers_landed` 同处条件展开）。
+   */
+  model_unenforced?: { requested: string; effective: string; cause: ModelUnenforcedCause; reason: string };
   /**
    * 该侧**实际走到的 provider 家族**（回读值）。
    *

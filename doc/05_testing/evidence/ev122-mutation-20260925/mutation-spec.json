@@ -1,0 +1,94 @@
+{
+  "targets": [
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/zcode-model-selection.test.js",
+    "dist/test/test/unit/zcode-carriers.test.js",
+    "dist/test/test/integration/code-stage.test.js"
+  ],
+  "cases": [
+    {
+      "id": "N1",
+      "desc": "产出条件去掉 !attempted（做了覆盖也产出）⇒ 纯函数「做了覆盖，即使带了成因」那格",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  if (attempted || !requested || !effective) return undefined;",
+      "replace": "  if (!requested || !effective) return undefined;",
+      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
+    },
+    {
+      "id": "N2",
+      "desc": "比整串而非 modelId 段 ⇒ 纯函数「providerId 形态不同」与「短名 vs 全限定」两格",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  if (zcodeModelTail(effective) === zcodeModelTail(requested)) return undefined;",
+      "replace": "  if (effective === requested) return undefined;",
+      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
+    },
+    {
+      "id": "N3",
+      "desc": "回读为空时也产出 ⇒ 纯函数「没回读到」那格、run() 负格",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  if (attempted || !requested || !effective) return undefined;",
+      "replace": "  if (attempted || !requested) return undefined;\n  if (!effective && (cause === 'source_missing' || cause === 'qualify_failed')) return { requested, effective: '', cause, reason: reason ?? '' };",
+      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
+    },
+    {
+      "id": "N4",
+      "desc": "run() 不接线（字段恒缺席）⇒ 副本源缺失那格",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "      ...(unenforced ? { model_unenforced: unenforced } : {}),\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-carriers.test.js"
+    },
+    {
+      "id": "N5",
+      "desc": "守卫不播报 ⇒ 守卫「model_unenforced 在 ⇒ 播报一句」那格",
+      "file": "src/trivium/guard.ts",
+      "find": "    if (s.modelUnenforced) {",
+      "replace": "    if (s.modelUnenforced && Date.now() < 0) {",
+      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
+    },
+    {
+      "id": "N6",
+      "desc": "review.ts 不写进 run.json ⇒ 集成用例「桩注入 model_unenforced」",
+      "file": "src/trivium/review.ts",
+      "find": "      ...(r.model_unenforced === undefined ? {} : { model_unenforced: r.model_unenforced }),\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/code-stage.test.js"
+    },
+    {
+      "id": "N7",
+      "desc": "接线第二参由 req.model 换成 home.qualified（照抄相邻 decideModelOverride）⇒ 副本源缺失那格",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "decideModelUnenforced(overrideAttempted, req.model, modelEffective, home.cause, home.reason)",
+      "replace": "decideModelUnenforced(overrideAttempted, home.qualified, modelEffective, home.cause, home.reason)",
+      "expect": "dist/test/test/unit/zcode-carriers.test.js"
+    },
+    {
+      "id": "N8",
+      "desc": "守卫改按 reason 文案分句 ⇒ 守卫「按 cause 给排查指向」那格（注入的 reason 是任意串）",
+      "file": "src/trivium/guard.ts",
+      "find": "          unenforcedHint(u.cause),",
+      "replace": "          unenforcedHint(u.reason.includes('未找到') ? 'source_missing' : 'qualify_failed'),",
+      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
+    },
+    {
+      "id": "N9",
+      "desc": "prepareZcodeHome 的限定失败出口 cause 填成 source_missing ⇒ 成因用例与 run() 限定失败那格",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "      cause: 'qualify_failed',",
+      "replace": "      cause: 'source_missing',",
+      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
+    },
+    {
+      "id": "N10",
+      "desc": "unenforcedHint 去掉 default 分支（代码双审 r1 CODEX-01）⇒ 守卫「两值之外的 cause 不拼出 undefined」那格",
+      "file": "src/trivium/guard.ts",
+      "find": "      void unreachable;\n      return '';",
+      "replace": "      void unreachable;\n      return undefined as unknown as string;",
+      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  N1 ✓ 咬住（fail=1）
+  N2 ✓ 咬住（fail=2）
+  N3 ✓ 咬住（fail=2）
+  N4 ✓ 咬住（fail=1）
+  N5 ✓ 咬住（fail=3）
+  N6 ✓ 咬住（fail=1）
+  N7 ✓ 咬住（fail=1）
+  N8 ✓ 咬住（fail=2）
+  N9 ✓ 咬住（fail=2）
+  N10 ✓ 咬住（fail=1）
+{
+  "总数": 10,
+  "咬住": 10,
+  "逐条": [
+    {
+      "id": "N1",
+      "desc": "产出条件去掉 !attempted（做了覆盖也产出）⇒ 纯函数「做了覆盖，即使带了成因」那格",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N2",
+      "desc": "比整串而非 modelId 段 ⇒ 纯函数「providerId 形态不同」与「短名 vs 全限定」两格",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "N3",
+      "desc": "回读为空时也产出 ⇒ 纯函数「没回读到」那格、run() 负格",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "N4",
+      "desc": "run() 不接线（字段恒缺席）⇒ 副本源缺失那格",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N5",
+      "desc": "守卫不播报 ⇒ 守卫「model_unenforced 在 ⇒ 播报一句」那格",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "N6",
+      "desc": "review.ts 不写进 run.json ⇒ 集成用例「桩注入 model_unenforced」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N7",
+      "desc": "接线第二参由 req.model 换成 home.qualified（照抄相邻 decideModelOverride）⇒ 副本源缺失那格",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N8",
+      "desc": "守卫改按 reason 文案分句 ⇒ 守卫「按 cause 给排查指向」那格（注入的 reason 是任意串）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "N9",
+      "desc": "prepareZcodeHome 的限定失败出口 cause 填成 source_missing ⇒ 成因用例与 run() 限定失败那格",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "N10",
+      "desc": "unenforcedHint 去掉 default 分支（代码双审 r1 CODEX-01）⇒ 守卫「两值之外的 cause 不拼出 undefined」那格",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

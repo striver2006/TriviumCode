@@ -130,6 +130,11 @@ export interface SideVerdict {
    * `log` 或 `rollout` 为 false 时出一句落点缺失；`leaked_to_home` 任一项为 true 时另出一句、点名泄漏的那一类。缺席不出声。
    */
   carriersLanded?: NonNullable<CriticResult['carriers_landed']>;
+  /**
+   * 没做模型覆盖而实际模型不同（EV-122）：原样透传 `CriticResult.model_unenforced`。判据归适配器，本层只播报，
+   * 按结构化 `cause` 给排查指向、不匹配 `reason` 文案。缺席不出声。
+   */
+  modelUnenforced?: NonNullable<CriticResult['model_unenforced']>;
 }
 
 /** 单侧两条核验通道的档位与生效阈值 */
@@ -486,6 +491,7 @@ export function judgeSide(
       : { modelOverrideApplied: result.model_override_applied }),
     ...(result.model_override_reorder === undefined ? {} : { modelOverrideReorder: result.model_override_reorder }),
     ...(result.carriers_landed === undefined ? {} : { carriersLanded: result.carriers_landed }),
+    ...(result.model_unenforced === undefined ? {} : { modelUnenforced: result.model_unenforced }),
   };
 }
 
@@ -865,7 +871,7 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
      * `model_requested` 与 `model_effective` 两个值都在留痕里，没有任何一处去对照它们。
      *
      * 只对 `false` 出声：`true` 是正常、`null` 是没回读到（另有 `model_effective_source`
-     * 那条通道说这件事）、字段缺席是本次压根没做覆盖。
+     * 那条通道说这件事）、字段缺席是本次压根没做覆盖——那一格若实际模型不同，由下面 `modelUnenforced` 那句说（EV-122）。
      */
     if (s.modelOverrideApplied === false) {
       out.push(
@@ -873,6 +879,20 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
           '`model_requested` 与 `model_effective`）。该侧结论仍然有效，但模型路由（FR-06）与' +
           '异构默认（NFR-06）在本侧失效——若另一侧模型与它同家族，这一轮不构成真正的双审。' +
           reorderHint(s.modelOverrideReorder),
+      );
+    }
+    /*
+     * 没做覆盖而实际模型不同（EV-122）。与上一句互斥（适配器保证），**不判失守、不阻断**，理由同上。
+     * 只陈述可观测事实（计划双审 CODEX-06）：限定失败那一支跑的是副本源的 `model.main` 或回落，不是 CLI 全局默认，
+     * 因果不在这里下；排查指向按 `cause` 分句。
+     */
+    if (s.modelUnenforced) {
+      const u = s.modelUnenforced;
+      out.push(
+        `${s.critic} 侧**本次没有做模型覆盖**：请求的是 \`${u.requested}\`，实际跑的是 \`${u.effective}\`（${u.reason}）。` +
+          '该侧结论仍然有效，但模型路由（FR-06）与异构默认（NFR-06）在本侧不成立——若另一侧模型与它同家族，' +
+          '这一轮不构成真正的双审。' +
+          unenforcedHint(u.cause),
       );
     }
     /*
@@ -906,6 +926,28 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
     }
   }
   return out;
+}
+
+/**
+ * 「本次没有做模型覆盖」告警的排查指向（EV-122 计划 r2 §3.2）。是**先看哪里**，不是成因断言；
+ * 按结构化 `cause` 分句，不对 `reason` 文案做匹配（计划双审 CODEX-02，与 `reorderHint` 同口径）。
+ */
+export function unenforcedHint(cause: NonNullable<SideVerdict['modelUnenforced']>['cause']): string {
+  switch (cause) {
+    case 'source_missing':
+      return '先看副本源 `~/.zcode/cli/config.json` 在不在。';
+    case 'qualify_failed':
+      return '先看请求的模型名在不在副本源的 provider 目录里（profile 与 `--model-glm` 的写法），详情见 trace.json 的 `modelSelection.reason`。';
+    default: {
+      /*
+       * 适配器产不出两值之外的 cause，但桩注入串只 JSON.parse、不校验，会原样走到这里（代码双审 r1 CODEX-01）：
+       * 运行期不给指向、只留主句，免得把字面量 undefined 拼进播报。`never` 保住编译期穷尽——新增枚举值时这里照样红
+       */
+      const unreachable: never = cause;
+      void unreachable;
+      return '';
+    }
+  }
 }
 
 /**

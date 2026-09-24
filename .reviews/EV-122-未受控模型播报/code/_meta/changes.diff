@@ -1,0 +1,1105 @@
+# trivium changes.diff
+# run_id: 20260924T222959Z
+# base: HEAD
+# head: d5c177cfb9d595d87c0c190423438b66e6e2a504
+# files: 22
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/README.md
+#   doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md
+#   doc/05_testing/evidence/ev122-acceptance-20260925/01-e1-readout.md
+#   doc/05_testing/evidence/ev122-acceptance-20260925/e1-check.mjs
+#   doc/05_testing/evidence/ev122-acceptance-20260925/e1-output.json
+#   doc/05_testing/evidence/ev122-mutation-20260925/mutation-output.txt
+#   doc/05_testing/evidence/ev122-mutation-20260925/mutation-spec.json
+#   doc/05_testing/evidence/ev122-mutation-20260925/run.mjs
+#   doc/06_deployment/RUNBOOK_pipeline_ops.md
+#   doc/08_project/BACKLOG.md
+#   skills/dual-critic/schema/run.v2.json
+#   src/trivium/adapters/stub.ts
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/guard.ts
+#   src/trivium/preflight.ts
+#   src/trivium/review.ts
+#   src/trivium/types.ts
+#   test/integration/code-stage.test.ts
+#   test/unit/preflight.test.ts
+#   test/unit/zcode-carriers.test.ts
+#   test/unit/zcode-model-selection.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 1dedfa8..18aa474 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.39
++> - **当前版本**：v1.3.40
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -248,8 +248,8 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参
+ 
+ **结论与对策**：
+ - 模型覆盖采取**两档降级**（v1.2.1 按 M0 实测由三档改为两档，`env` 档作废，见 C-07；v1.3.32 曾据 P-31 误改为个人副本档、v1.3.33 按 P-31 改判撤回——生效档就是 `config_copy`，见下条）：每次运行独立配置副本 → 全局默认。副本只能通过**独立 `HOME`** 注入：`ZCODE_HOME`、`ZCODE_DATA_BASE_DIR`、`ZCODE_STORAGE_DIR` 对 `cli/config.json` 的解析无效（C-08，0.16.5），`--settings` 参数被拒（C-09）；但 0.16.9 的 `ZCODE_DATA_BASE_DIR` 决定 provider 配置根，故拉起时这三个变量一律清掉（EV-110 起连同 `ZCODE_LOG_DIR`；EV-112 起扩到十一键：`ZCODE_DIR_ENV_KEYS` 七个目录 / 路径键 + `ZCODE_LANDING_SWITCH_ENV_KEYS` 四个落点开关键，见下条）。副本含凭据，故必须 `0600` 权限、跑完即删。无论走哪档，**生效模型一律从运行产物/会话日志回读**，不信配置意图（AC-13）；回读不到时记 `model_effective: unverified`，不采信请求值。
+-- **模型覆盖落点（v1.3.33，EV-82 根因改判）**：`config_copy` 档在 0.16.9 下**仍然生效**，前提是**拉起时不注入个人 provider 配置**：CLI 的模型选择链里个人文件存在就直接用、不导入；不存在才从 `<HOME>/.zcode/cli/config.json` legacy 导入并把 `model.main` 转成 `defaultModelSelection`（包内 `fpe.#f` → `importLegacy` → `Mqa`），迁移结果写成 `<HOME>/.zcode/v2/provider_config.json`。EV-81 注入了指向真实个人文件的变量，正是它把这一档关掉了（P-31 改判）。于是审查运行的副本 HOME 下**省略**个人键（`omitPersonalProviderConfig`，与旗标探针同形），CLI 自写的 `v2/provider_config.json` 与可能写出的 `v2/credentials.json` 一并在按名整删的载体清单里。**模型限定按副本源自己的 provider 键做**（`qualifyAgainstCliConfig`）：探针 `model_id_form` 记的是真实 HOME 运行回读的个人配置默认（UUID 形态），与副本源异源，`isSelectable` 精确匹配下必验不过。**`ZCODE_DIR_ENV_KEYS` 全部目录键恒清**：0.16.9 的 `FZi` 按 `dataBaseDir ?? ZCODE_DATA_BASE_DIR ?? homedir()` 推导 provider 配置根（C-08「无效」只对 0.16.5 的 `cli/config.json` 解析成立），宿主预置会让个人文件逸出副本、导入被跳过。**EV-110（EV-82 第三段 r3 §5）起并入 `ZCODE_LOG_DIR`**：CLI 日志目录取 `logDir ?? ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`，宿主预置会让审查运行的日志（可能含送审包全文）落到副本 HOME 与清扫面之外、`modelFromLog` 读不到。**EV-112（v1.3.39）起清除面扩为十一键**：会话库路径的两个别名 `ZCODE_SESSION_DB_PATH` / `ZCODE_SESSION_DB`（包内按后缀映射、无完整字面）、mailbox 根 `ZCODE_MAILBOX_ROOT`，以及只能清的四个落点开关键 `ZCODE_RUNTIME_ENV`（`development` 把 rollout 改进 `cli/debug`、`test` 不写 rollout）、`ZCODE_BETA` / `ZCODE_ENV`（存储根为空时改写到 `~/.zcode-beta`；`ZCODE_ENV` 另管测试控制面端点与遥测环境名）、`ZCODE_MESSAGE_ENABLED`（mailbox 开关）。**审查运行清完再设三个落点键**（`zcodeStorageRedirectEnv`）：`ZCODE_STORAGE_DIR`（rollout / artifacts / sessions / memories / plugins 的根）、`ZCODE_SESSION_DB_PATH`、`ZCODE_LOG_DIR`，全部指到 `zcodeHomeUnder(sideDir)` 下、与「`HOME` 为该目录时的缺省值」逐字相同的布局。副本支设了等于没改——前两键进配置分层的 Env 层（优先级 40），而 Env 层在包内只有优先级表与装层两处消费方，取值相同时「Env 层非空」本身不切换行为；`ZCODE_LOG_DIR` 由日志工厂直读、不进配置层。设了存储根还让 CLI 启动期的 beta 改写早退，副本源里的 `storage.*`（CLI 的用户层配置文件就是副本源）也被 Env 层压过。无副本支（副本源缺失；「未指定模型」在 `review.ts` 派发前即被拒，走不到适配器）保留真实 HOME 与个人配置，模型选择不变（即个人配置的默认模型，未必是 GLM，EV-122），CLI 产物由三键拉回运行目录、进清扫面；代价是它的存储根每次为空，用户装在 `~/.zcode` 下的 plugins / profiles / skills / MCP 对审查员不可见，子代理的模型覆盖回落内置缺省（主 agent 不受影响）。跑后回读两支都读 `zcodeHomeUnder(sideDir)/.zcode/cli`，不再回落 `os.homedir()`。**落点自检**：成功返回后分别核「日志里有本次 sessionId」与「rollout 在」，**合取**判（日志键与存储键走两条互不相干的代码路径，可各自漂移）；无副本支另反向核真实 HOME，两项同形：`~/.zcode/cli/log` 里本次拉起后改过的文件中有无本次会话的行、`~/.zcode/cli/rollout` 下有无本次会话的文件（代码双审 r1：只核 rollout 会把「日志键单独失效、日志回落真实 HOME」记成没泄漏）；结果落 `critics.<id>.carriers_landed`（进 run.json），`guard` 缺项或泄漏时播报、不阻断。回读与自检共用同一个日志文件集合：运行目录的日志目录只属于本次运行，读其中全部文件，跨午夜不落空。**覆盖面**：三键管到日志、rollout、会话库与存储根下的 artifacts / sessions / memories / plugins；落点自检只观测日志与 rollout 两类；包内另有不经三键的路径（workspace-hook trust store `yas`、未传 `modelIoDir` 时 rollout 的 `homedir()` 兜底 `e4s`），不含送审内容，是否在 `--prompt` 形态下被走到未核。各拉起路径的 HOME：旗标探针为临时空 HOME（随目录删除）；版本探针（`probeZcodeEntry` 内）、doctor headless 臂与 path_deny 臂、探活为真实 HOME，不设落点（输入不含送审内容，探的就是真实环境；入口路径命中 beta 的 argv 判据时存储根会被改写，doctor 出 note）；两条模型探针臂为各自临时根；审查运行两支的 CLI 日志、rollout、会话库与存储根下的产物都落在运行目录。~~v1.3.32 的个人副本机制（拷用户 v2 文件、定点改写、指向副本）~~ 建立在被推翻的 P-31 上且凭据面多一份，撤除。
+-- **覆盖是否落实要可判（v1.3.32 起，EV-82 的回归守卫）**：适配器比对请求模型与回读的生效模型，结论落 `CriticResult.model_override_applied`（可选四态：字段缺席＝本次无覆盖尝试；`true`/`false`＝比对过一致/不一致；`null`＝尝试了但没回读到生效模型），`guard` 在 `false` 时播报一条人读告警，**不判失守、不阻断**。**判据只看 `modelId` 段**：`<providerId>` 有多种形态并存，整串等式会把已生效的覆盖误报成未生效。**失明边界**（v1.3.33，r3 CODEX-01 ≡ AGY-r2-01）：请求模型恰为 provider 首位时，`true` 分不出「读到了 `model.main`」与「回落到首位模型」——探针臂 `probeModelOverride` **缺省**请求**非首位**模型在探针层覆盖这个盲区（显式指定首位、或同形臂置首变体生效时，结论照出并在 `why` 标注「无判别力」，EV-82 第二段代码双审 r1 CODEX-04）；端到端验证也要用非首位模型。**探针实测化**（v1.3.33，r3 CODEX-04）：`probe.model_override` 不再写死——副本 HOME + `cli/config.json` 副本（apiKey 全换哨兵、`model.main` 写非首位模型）+ 只给内置变量 → headless → 读 CLI 自写的 `v2/provider_config.json`，零配额、副本里无真实凭据（取哨兵密钥而非「拉起后立即终止」：后者有竞态）。判据归各家适配器，判定层只播报；当前只有 glm 侧产出（EV-91）。**置首之后 `true` 的含义收窄**（EV-82 第三段 r3 §4.1）：审查运行把请求模型排到副本首位后，「副本默认被采信」与「回落到首项」得到同一个结果，`true` 只说明**跑的就是请求模型**；「副本默认是否被采信」由 doctor 的 `zcode.runtime_selection` 零配额另判。
++- **模型覆盖落点（v1.3.33，EV-82 根因改判）**：`config_copy` 档在 0.16.9 下**仍然生效**，前提是**拉起时不注入个人 provider 配置**：CLI 的模型选择链里个人文件存在就直接用、不导入；不存在才从 `<HOME>/.zcode/cli/config.json` legacy 导入并把 `model.main` 转成 `defaultModelSelection`（包内 `fpe.#f` → `importLegacy` → `Mqa`），迁移结果写成 `<HOME>/.zcode/v2/provider_config.json`。EV-81 注入了指向真实个人文件的变量，正是它把这一档关掉了（P-31 改判）。于是审查运行的副本 HOME 下**省略**个人键（`omitPersonalProviderConfig`，与旗标探针同形），CLI 自写的 `v2/provider_config.json` 与可能写出的 `v2/credentials.json` 一并在按名整删的载体清单里。**模型限定按副本源自己的 provider 键做**（`qualifyAgainstCliConfig`）：探针 `model_id_form` 记的是真实 HOME 运行回读的个人配置默认（UUID 形态），与副本源异源，`isSelectable` 精确匹配下必验不过。**`ZCODE_DIR_ENV_KEYS` 全部目录键恒清**：0.16.9 的 `FZi` 按 `dataBaseDir ?? ZCODE_DATA_BASE_DIR ?? homedir()` 推导 provider 配置根（C-08「无效」只对 0.16.5 的 `cli/config.json` 解析成立），宿主预置会让个人文件逸出副本、导入被跳过。**EV-110（EV-82 第三段 r3 §5）起并入 `ZCODE_LOG_DIR`**：CLI 日志目录取 `logDir ?? ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`，宿主预置会让审查运行的日志（可能含送审包全文）落到副本 HOME 与清扫面之外、`modelFromLog` 读不到。**EV-112（v1.3.39）起清除面扩为十一键**：会话库路径的两个别名 `ZCODE_SESSION_DB_PATH` / `ZCODE_SESSION_DB`（包内按后缀映射、无完整字面）、mailbox 根 `ZCODE_MAILBOX_ROOT`，以及只能清的四个落点开关键 `ZCODE_RUNTIME_ENV`（`development` 把 rollout 改进 `cli/debug`、`test` 不写 rollout）、`ZCODE_BETA` / `ZCODE_ENV`（存储根为空时改写到 `~/.zcode-beta`；`ZCODE_ENV` 另管测试控制面端点与遥测环境名）、`ZCODE_MESSAGE_ENABLED`（mailbox 开关）。**审查运行清完再设三个落点键**（`zcodeStorageRedirectEnv`）：`ZCODE_STORAGE_DIR`（rollout / artifacts / sessions / memories / plugins 的根）、`ZCODE_SESSION_DB_PATH`、`ZCODE_LOG_DIR`，全部指到 `zcodeHomeUnder(sideDir)` 下、与「`HOME` 为该目录时的缺省值」逐字相同的布局。副本支设了等于没改——前两键进配置分层的 Env 层（优先级 40），而 Env 层在包内只有优先级表与装层两处消费方，取值相同时「Env 层非空」本身不切换行为；`ZCODE_LOG_DIR` 由日志工厂直读、不进配置层。设了存储根还让 CLI 启动期的 beta 改写早退，副本源里的 `storage.*`（CLI 的用户层配置文件就是副本源）也被 Env 层压过。无副本支（副本源缺失；「未指定模型」在 `review.ts` 派发前即被拒，走不到适配器）保留真实 HOME 与个人配置，模型选择不变（即个人配置的默认模型，未必是 GLM；v1.3.40 起与请求不同时由 `model_unenforced` 播报，EV-122），CLI 产物由三键拉回运行目录、进清扫面；代价是它的存储根每次为空，用户装在 `~/.zcode` 下的 plugins / profiles / skills / MCP 对审查员不可见，子代理的模型覆盖回落内置缺省（主 agent 不受影响）。跑后回读两支都读 `zcodeHomeUnder(sideDir)/.zcode/cli`，不再回落 `os.homedir()`。**落点自检**：成功返回后分别核「日志里有本次 sessionId」与「rollout 在」，**合取**判（日志键与存储键走两条互不相干的代码路径，可各自漂移）；无副本支另反向核真实 HOME，两项同形：`~/.zcode/cli/log` 里本次拉起后改过的文件中有无本次会话的行、`~/.zcode/cli/rollout` 下有无本次会话的文件（代码双审 r1：只核 rollout 会把「日志键单独失效、日志回落真实 HOME」记成没泄漏）；结果落 `critics.<id>.carriers_landed`（进 run.json），`guard` 缺项或泄漏时播报、不阻断。回读与自检共用同一个日志文件集合：运行目录的日志目录只属于本次运行，读其中全部文件，跨午夜不落空。**覆盖面**：三键管到日志、rollout、会话库与存储根下的 artifacts / sessions / memories / plugins；落点自检只观测日志与 rollout 两类；包内另有不经三键的路径（workspace-hook trust store `yas`、未传 `modelIoDir` 时 rollout 的 `homedir()` 兜底 `e4s`），不含送审内容，是否在 `--prompt` 形态下被走到未核。各拉起路径的 HOME：旗标探针为临时空 HOME（随目录删除）；版本探针（`probeZcodeEntry` 内）、doctor headless 臂与 path_deny 臂、探活为真实 HOME，不设落点（输入不含送审内容，探的就是真实环境；入口路径命中 beta 的 argv 判据时存储根会被改写，doctor 出 note）；两条模型探针臂为各自临时根；审查运行两支的 CLI 日志、rollout、会话库与存储根下的产物都落在运行目录。~~v1.3.32 的个人副本机制（拷用户 v2 文件、定点改写、指向副本）~~ 建立在被推翻的 P-31 上且凭据面多一份，撤除。
++- **覆盖是否落实要可判（v1.3.32 起，EV-82 的回归守卫）**：适配器比对请求模型与回读的生效模型，结论落 `CriticResult.model_override_applied`（可选四态：字段缺席＝本次无覆盖尝试；`true`/`false`＝比对过一致/不一致；`null`＝尝试了但没回读到生效模型），`guard` 在 `false` 时播报一条人读告警，**不判失守、不阻断**。**判据只看 `modelId` 段**：`<providerId>` 有多种形态并存，整串等式会把已生效的覆盖误报成未生效。**失明边界**（v1.3.33，r3 CODEX-01 ≡ AGY-r2-01）：请求模型恰为 provider 首位时，`true` 分不出「读到了 `model.main`」与「回落到首位模型」——探针臂 `probeModelOverride` **缺省**请求**非首位**模型在探针层覆盖这个盲区（显式指定首位、或同形臂置首变体生效时，结论照出并在 `why` 标注「无判别力」，EV-82 第二段代码双审 r1 CODEX-04）；端到端验证也要用非首位模型。**探针实测化**（v1.3.33，r3 CODEX-04）：`probe.model_override` 不再写死——副本 HOME + `cli/config.json` 副本（apiKey 全换哨兵、`model.main` 写非首位模型）+ 只给内置变量 → headless → 读 CLI 自写的 `v2/provider_config.json`，零配额、副本里无真实凭据（取哨兵密钥而非「拉起后立即终止」：后者有竞态）。判据归各家适配器，判定层只播报；当前只有 glm 侧产出（EV-91）。**没做覆盖而实际模型不同**（v1.3.40，EV-122）：`model_override_applied` 的「字段缺席」不变，这一格另落 `CriticResult.model_unenforced`（`{ requested, effective, cause, reason }`），与前者**互斥**（一个要求尝试了覆盖、一个要求没尝试）。产出条件四条合取：没做覆盖、请求非空、回读到了生效模型、modelId 段不同；`requested` 取请求原值（与 `model_requested` 同源），`cause` 是结构化成因（`source_missing`＝副本源不在；`qualify_failed`＝请求的模型在副本源目录里限定失败，副本已建、生效值来自副本源的 `model.main` 或回落），`reason` 只供人读、不参与判定、不保证文案稳定。`guard` 播报一句（不判失守、不阻断），只陈述请求值、生效值与没做覆盖的理由，按 `cause` 给排查指向、不匹配 `reason` 文案。限定失败时回落模型恰与请求同 modelId 段 ⇒ 不产出（跑的就是请求的模型）。**与预检的分工**：`checkZcodeRuntimeSelection` 由 doctor 探针读数驱动、说「大概率跑不到请求的模型」；收尾这两条由本次运行回读驱动、说「实际」。**置首之后 `true` 的含义收窄**（EV-82 第三段 r3 §4.1）：审查运行把请求模型排到副本首位后，「副本默认被采信」与「回落到首项」得到同一个结果，`true` 只说明**跑的就是请求模型**；「副本默认是否被采信」由 doctor 的 `zcode.runtime_selection` 零配额另判。
+ - **请求模型置首（EV-82 第三段 r3，M1）**：0.16.9 下副本默认在**运行期**被判不可选、回落「第一个可见 provider 的第一个模型」（第二段零配额实验落 (F1)：配置层写出请求值，启动事件选定首位；置首后选定请求值）。审查运行的 `prepareZcodeHome(…, { requestedFirst: true })` 在写 `model.main` 之后、`transformCopy` 之前把请求的 provider / 成员排到首位，**只动顺序**，provider 与成员两级按导入器规则定位（trim、`id ?? 键名`、跳 `deleted`、重复 id 先到先得）；挪不动**不中止**，结构化成因 `kind` 进 trace.json 的 `modelSelection.reorder`——审查运行里只会出现 `applied` / `identity` / `not_movable` 三档；`qualify_failed` 只由同形臂置首支在限定失败时合成，审查运行限定失败时 `reorder` 缺席、事实在 `route: global` 与 `reason`（代码双审 r1 CODEX-01 ≡ GLM-01）；并经 `CriticResult.model_override_reorder` 交 guard 当轮判定（**不进 run.json**，负向用例锁住）。guard 的 `false` 告警在置首结论在场时按 `kind` 追加一句，缺席时维持原文。置首依赖 CLI 的回落规则，CLI 改了规则时守卫判 `false`、doctor 给出 `reorder_ineffective`，两道都能看见；多 provider 副本源上 provider 一级的顺序传导未验。
+ - 模型 ID 的大小写（`GLM-5.3` 与 `glm-5.3`）以 `zcode.model_override` 探针回读的规范写法为准，本文示例统一使用探针返回值。
+ - **provider 配置注入**（v1.3.31，P-28）：拉起时按入口派生内置路径（入口先 `resolve` 再 `realpath`，再取 `<真实入口目录>/../config/provider/zcode-builtin.json`——`dirname` 不解软链，相对入口会落到 cwd，两种形态派生出的兄弟目录都不是真实安装布局）、按**真实**用户目录取个人路径，**文件在才注入**对应变量（`zcodeProviderEnv`，只判有无、不读内容）；文件不在时该键**显式置 `undefined`** 让 `run()` 把宿主环境里的同名变量删掉——判据是「子进程拿不到」而不是「我没主动注入」。两条都是绝对路径，`config_copy` 的副本 `HOME` 不影响它们。旗标探针**只注入内置那份**（P-30），需要真实模型的探针与审查运行才两份都给。定位失败在**退出码非 0 的前提下**按 stderr 形态记 `failureKind: provider_config_unresolved`（裸正则会把 stderr 带同名诊断行的成功调用误判成布局失败），预检提示指向安装布局而不是凭据。
+@@ -1141,6 +1141,7 @@ addresses:               # 本件应答的审查文档（当前恒两份；【
+ | `critics.<id>.profile_requested` | 本次请求的**厂商** profile（codex 的 `-p`）。命名随 `model_requested` 惯例；裸名 `profile` 留空不占（本系统里它指档位） | **必备**（无此概念的族写 `null`） | 【已实现 · M8 第 4 步】 |
+ | `critics.<id>.model_provider` | **回读**得到的 provider 家族归属。与 `model_effective` 是两个维度——实测 `-p qwen -m deepseek-v4-pro` 成功且回读 provider=qwen，故「两次模型名不同 ⇒ 两个家族」不成立，AC-20 的互可区分两个维度都要看 | **必备**（同上） | 【已实现 · M8 第 4 步】 |
+ | `critics.<id>.carriers_landed` | 落点自检（EV-112）：`log` / `rollout` 两个布尔＝本次会话的 CLI 日志与 rollout 是否落进运行目录，**合取**判，任一为 false 时 `guard` 播报「CLI 可能不再采纳对应的落点键」；`leaked_to_home` 只在无副本的审查运行出现，`{ log, rollout }` 两项与正向核同形：`log`＝真实 `~/.zcode/cli/log` 里本次拉起后改过的文件中有本次会话的行，`rollout`＝真实 `~/.zcode/cli/rollout` 下有本次会话的文件；任一为 true，`guard` 另起一句点名泄漏的那一类。落点自检只覆盖日志与 rollout 两类载体。字段缺席＝没走到自检（失败早退、无 sessionId）或该侧不产出（目前只有 zcode 侧产出）。与 `model_override_applied` 同一口径：条件展开，缺席不压成 null | **可选** | 【已实现 · EV-112】`src/trivium/adapters/zcode.ts` `checkZcodeCarriers` |
++| `critics.<id>.model_unenforced` | 没做模型覆盖、而实际模型与请求不同（EV-122）：`{ requested, effective, cause, reason }`。与 `model_override_applied` **互斥**：那一格要求本次尝试了覆盖，这一格要求没尝试——不并进那一格的 `false`，因为「覆盖没落实」查 CLI 读取点、「压根没做覆盖」查副本源在不在，两种成因同形就分不开。`requested` 与 `model_requested` 同源；判据只看 modelId 段；`cause` 取 `source_missing`（副本源 `cli/config.json` 不在）或 `qualify_failed`（请求的模型在副本源目录里限定失败），`guard` 按它分句；`reason` 只供人读、不参与判定、不保证文案稳定。内层四项必填。字段缺席＝做了覆盖、请求为空、没回读到生效模型、modelId 段相同、或该侧不产出（目前只有 zcode 侧产出，其余三家见 EV-91）。与 `carriers_landed` 同一口径：条件展开，缺席不压成 null | **可选** | 【已实现 · EV-122】`src/trivium/adapters/zcode.ts` `decideModelUnenforced` |
+ | `snapshot.build` | **运行中的编排器**自带的构建标识：`repo_root_commit`（构建来源仓的根提交，作仓库身份）、`git_head`、`dirty`、`inputs_sha256`（安装面路径集 `src/ scripts/ skills/ package.json package-lock.json tsconfig.json` 在构建时工作树上的指纹）、`built_at`。`snapshot.git_head` 是**被审项目**的 HEAD，这一项才是编排器本体是哪一版构建出来的。`null` = 构建时取不到 git（浅克隆、`git archive` 导出的树）；缺席 = 本字段之前的旧留痕。**谁消费**：收尾告警与 doctor，**只在本仓模式**下比对（被审项目根提交 = `repo_root_commit`；任一侧取不到根提交时按 `package.json` 的 `name` 兜底），外部项目只记不比。四条告警：构建标识缺失 / 构建时工作树有未提交改动 / 安装副本不是当前工作树构建的 / 安装副本与仓库 HEAD 不同版。**HEAD 只在作用面指纹未判定一致时才比**（EV-111）：指纹一致即构建输入与当前工作树一致，HEAD 不同只剩出处信息（两个字段照记），不告警，doctor 那一行补一句「（构建于 X，仓库 HEAD 已到 Y，作用面与构建时一致）」；否则构建后哪怕只有一次纯文档提交也会报「不同版」。作用面指纹重算取不到时记一条「比对未能完成」；仓库 HEAD 取不到时，**仅当指纹未判定一致**才记一条（指纹一致时 HEAD 不参与判定，谈不上「查不出」）；比对本身抛错另记一条「比对失败」——「查不出」不与「查过、没问题」同形。零告警 ⇔ 标识非空、构建时干净、指纹取得到且一致。均只告警、不阻断。仓库身份：浅克隆里取不到根提交，按包名兜底。指纹的覆盖边界（被忽略文件、`node_modules` 漂移、「改完装上再改回」）见 BACKLOG EV-114 | **可选**（写侧恒写，null 也写） | 【已实现 · EV-82 小主题第一段；HEAD 比对条件 · EV-111】`src/trivium/build-stamp.ts` |
+ 
+ `effort_effective` 必须**回读**而非采信请求值：部分厂商存在请求值归并映射
+@@ -2464,8 +2465,8 @@ HOME="<run_home>" "<runtime.node>" "<entry>" \
+    **生效前提是拉起时不注入个人 provider 配置**（EV-82）：CLI 在副本 HOME 下找不到个人文件才做 legacy 导入、读 `model.main`；EV-81 注入指向真实个人文件的变量正是这样把这一档关掉的。CLI 会把导入结果写成 `<副本HOME>/.zcode/v2/provider_config.json`（含 apiKey，在按名整删清单里）。
+    `config_copy` 只能靠 `HOME` 实现：`--settings <path>` 参数被拒（C-09）；`ZCODE_HOME` / `ZCODE_DATA_BASE_DIR` / `ZCODE_STORAGE_DIR` 对 `cli/config.json` 解析无效（C-08），但 0.16.9 的 `ZCODE_DATA_BASE_DIR` 决定 provider 配置根——这三个连同 `ZCODE_LOG_DIR`（EV-110）及 EV-112 的七个键（共十一键）一律清掉；审查运行清完再设日志目录 / 存储根 / 会话库路径三键，把 CLI 产物指到运行目录（见 11.3 上文「模型覆盖落点」条）。副本须拷入凭据（独立 `HOME` 下 `~/.zcode` 不存在）、权限 `0600`、跑完即删。
+    **限定按副本源自己的 provider 键做**（`qualifyAgainstCliConfig`）：`profiles` 里保留人类可读短名（如 `GLM-5.3`），补全时在副本源的 `provider[*].models` 里找恰好一个拥有者；探针 `model_id_form` 只用于目录比对（EV-93）。限定失败仍建副本、不改 `model`、`route: global` 并给理由。
+-   **覆盖是否落实**由适配器比对回读值判定并落 `model_override_applied`，`guard` 在不一致时播报（不阻断）；判据只看 `modelId` 段；请求首位模型时判据失明，探针臂固定用非首位模型覆盖该盲区。
+-   落到 `global` 档时按 `critics.glm.unsupported_override` 处理（**尚未接线**，EV-30）：`reject`（默认，吸收 glm 版 D6）——请求模型与全局默认不一致即拒绝启动（退出 69，提示修复环境），一致则放行并如实记录「使用全局默认」；`annotate`——放行，但**必须**在文档头与元数据注明「未按任务指定，实际生效为全局默认」。
++   **覆盖是否落实**由适配器比对回读值判定并落 `model_override_applied`，`guard` 在不一致时播报（不阻断）；判据只看 `modelId` 段；请求首位模型时判据失明，探针臂固定用非首位模型覆盖该盲区。**没做覆盖**（副本源缺失、限定失败）而回读到的生效模型与请求不同时，另落 `model_unenforced`、`guard` 同样播报（v1.3.40，EV-122；与前者互斥，详见 §3.3「覆盖是否落实要可判」条）。
++   落到 `global` 档时按 `critics.glm.unsupported_override` 处理（**尚未接线**，EV-30）：`reject`（默认，吸收 glm 版 D6）——请求模型与全局默认不一致即拒绝启动（退出 69，提示修复环境），一致则放行并如实记录「使用全局默认」；`annotate`——放行，但**必须**在文档头与元数据注明「未按任务指定，实际生效为全局默认」。v1.3.40 起「请求模型与实际模型不同」已由 `model_unenforced` 在 run.json 与 `guard` 播报里标注（不阻断，不进文档头），与 `annotate` 的语义部分重合；`reject` 若接线，要先定它与该播报的先后（EV-30 ⑦）。
+    **禁止**为了换模型去改用户全局配置文件（会与桌面端抢配置且无法并行）。
+ 2. **生效模型回读**：从 `--json` envelope / 会话日志中读取实际模型 ID 写入 `model_effective`；不采信配置意图（AC-13）。
+ 3. 正文字段取 `.response`（非 `.text`），并从中抽取 JSON 块；解析失败 → 原文落盘 + `parse_fallback: true` + 该侧不参与阻断判定。
+@@ -3293,6 +3294,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.40** | 2026-09-25 | **EV-122：审查运行没做模型覆盖、实际模型与请求不同时，`guard` 播报**（计划 `.reviews/EV-122-未受控模型播报/`：计划双审 1 轮 13 条，12 条接受、1 条暂缓，r2 定稿）。**一、缺口**：EV-112 E2 实测副本源缺失时 glm 侧跑在个人配置默认的 qwen3.8-max 上，`model_override_applied` 因「没尝试覆盖」而缺席，`guard` 一句没说。**二、改动**：`prepareZcodeHome` 三个 `global` 出口各给结构化成因 `cause`；新纯函数 `decideModelUnenforced` 与 `decideModelOverride` 并列且互斥，产出 `critics.<id>.model_unenforced`（6.7.1 新增，进 run.json）；`guard` 播报一句、按 `cause` 给排查指向，不判失守、不阻断；预检 `checkZcodeRuntimeSelection` 的指向句补上新通道。不取「让 `model_override_applied` 在没做覆盖时也记 false」（两种成因同形）与「`guard` 自己比 `model_requested` / `model_effective`」（判据归适配器）。**三、计划双审要点**：接线第二参必须取请求原值而非恒为 null 的 `home.qualified`（CODEX-03 ≡ AGY-01）；成因不靠匹配中文散文（CODEX-02）；文案只陈述事实，限定失败那一支跑的不是 CLI 全局默认（CODEX-06）。三家（codex / agy / claude）同类缺口不扩入本题，补记 EV-91；预检期提示登记 EV-123 候选；与 `unsupported_override` 的关系补记 EV-30 ⑦。**四、验证**：纯函数、`prepareZcodeHome` 成因、`run()` 两支、守卫、预检与 run.json 集成用例；变异九条，证据 `doc/05_testing/evidence/ev122-mutation-20260925/`；零配额验收以 E2 的真实形态喂判定与播报，证据 `doc/05_testing/evidence/ev122-acceptance-20260925/` |
+ | **v1.3.39** | 2026-09-25 | **EV-112：审查运行的 CLI 日志、rollout、会话库与存储根落进运行目录**（计划 `.reviews/EV-112-无副本审查运行载体落点/`：计划双审 2 轮 26 条全接受，r3 定稿；送审前零配额实测 E0）。**一、现象比登记时大**：无副本的审查运行（副本源缺失；计划写的另一成因「未指定模型」经 E2 前核实在派发前即被拒、走不到）把 log、rollout、会话库、artifacts、workflow、memories 全部留在真实 `~/.zcode`，不止日志。ZCode 0.16.9 包内核出三条取值链：日志直读 `ZCODE_LOG_DIR`（只认 HOME）；存储根 `storage.dir` 经配置分层的 Env 层取 `ZCODE_STORAGE_DIR`（rollout 等都在它下面）；会话库 `storage.sessionDbPath` 缺省按 HOME 展开、Env 层按后缀认 `SESSION_DB_PATH` / `SESSION_DB`（包里无完整字面，EV-110 按字面 grep 漏了）。**二、改动**：审查运行两支都**设**三个落点键（`zcodeStorageRedirectEnv`，入参是与 HOME 同层的根），指到 `zcodeHomeUnder(sideDir)` 下与副本相同的布局；清除面由四键扩为十一键（七个目录 / 路径键 + 四个落点开关键 `ZCODE_RUNTIME_ENV` / `ZCODE_BETA` / `ZCODE_ENV` / `ZCODE_MESSAGE_ENABLED`，后者是计划双审两轮与复核追出的启动期落点改写）；跑后回读不再回落 `os.homedir()`。**三、落点自检**：`checkZcodeCarriers` 合取判「日志有本次 sessionId」与「rollout 在」，无副本支反向核真实 HOME 的日志（本次拉起后改过的文件）与 rollout 两项；结果进 run.json（6.7.1 新增 `critics.<id>.carriers_landed`），`guard` 播报、不阻断；只覆盖日志与 rollout 两类载体。回读改为读运行目录日志目录下全部文件，与自检同一个文件集合。**三之一、代码双审 r1（6 条全接受，codex 1 条 major）**：反向核原先只核 rollout，「日志键单独失效」会把日志回落真实 HOME 而记成没泄漏（CODEX-01 ≡ GLM-01），`leaked_to_home` 由布尔改为 `{ log, rollout }`；回读只取最新文件与自检扫全部文件不一致（CODEX-02）；「一律落进运行目录」的宣称收窄为按载体列举（CODEX-03）。同轮实证 R7：旧构建不设存储根，送审包里的 `…/zcode-beta.app` 字面经 `--prompt` 命中 argv 判据，glm 副本 HOME 的 rollout / memories / plugins 落进 `.zcode-beta/`，rollout 出了回读目录，该侧因此被判证据不足。**四、doctor**：宿主预置十一键任一出信息级 note（只报键名）；探针入口命中 beta 的 argv 判据另出 note。**五、验证**：新增 `test/unit/zcode-carriers.test.ts`（按包内取值链落盘的假入口，含全采纳 / 半采纳 / 全不采纳 / 不写四种形态与真实 HOME 诱饵）与 run.json 组装集成用例；十一键全等断言逐字写出、不从常量派生。变异十三条，证据 `doc/05_testing/evidence/ev112-mutation-20260925/`。**六、残余**：探活与 doctor 探针仍在真实 HOME 下跑（不含送审内容）；beta 的 argv 触发清键挡不住（审查运行由存储根早退挡住）；运行目录里 db / plugins 不扫、其余命中即删，幸存内容随保留期整删；包内不经三键的 `yas`（workspace-hook trust store）与 `e4s`（rollout 的 `homedir()` 兜底）未核是否在 `--prompt` 形态下被走到，不含送审内容。**七、验收**：零配额 E1 九条判据全成立；真实配额 E2（run `20260924T172304Z`，单侧 glm，审查运行期间暂挪副本源进入无副本支）核实日志、rollout、会话库、memories 落进运行目录，落点自检全真无泄漏，真实 HOME 按内容核零写入；artifacts / workflow 本轮未产生，仍只有静态读数。E2 同时实测到无副本支的 glm 侧跑的是个人配置默认模型（本机 qwen3.8-max），登记 EV-122。读数见 `doc/05_testing/evidence/ev112-acceptance-20260925/` |
+ | **v1.3.38** | 2026-09-24 | **EV-111：构建标识在纯文档提交后误报「安装副本与仓库 HEAD 不同版」**（计划 `.reviews/EV-111-构建标识HEAD误报/`：计划双审 1 轮 11 条全接受，r2 定稿）。6.7.1 `snapshot.build` 行：HEAD 只在作用面指纹未判定一致时才比；指纹一致时 HEAD 取不到也不记「比对未能完成」；doctor 在指纹一致而 HEAD 前进时补一句出处；写明「零告警 ⇔ 标识非空、构建时干净、指纹取得到且一致」。实遇五次，都是构建后只有纯文档提交。M10b r7 §3.4 第 6b 条的容忍项随之空转、判据不改；r5 §7.3 白名单构建标识行比的是字段，本条不解除 r7 §3.7 的规避。指纹覆盖边界登记 BACKLOG EV-114 |
+ | **v1.3.37** | 2026-09-24 | **M10a 第 5 步：纪律 6 回溯，M10a 五步收口**（计划 `.reviews/M10a-第5步/`：计划双审 1 轮 16 条，接受 15、暂缓 1；段一代码双审 r6 6 条全接受；本版为段二）。**一、16.1 M10 行拆为 M10a / M10b 两行**：M10a 记五步达成与八条达成边界；原前置四条按拆分重排（② ④ 由 M10a 交付、③ 残量与 ① 归 M10b），并写入显式裁决「前置 ① 不构成翻 `driverEnabled` 的前置」（M10 计划 r7 §0.3）；M10b 行的完成判据直接按 P-2 写「ZCode 真载体一轮」，不继承原行的「夹具跑通」。**二、M10a 落地的契约迟到并入**（纪律 6b，偏离如实登记）：7.1 新增 `topic claim` 段；6.7.1 / 7.1 的 `--driver` 由「只校验已登记」改为「未启用即退 64」，并写明 64 收紧的作用面不是全称；6.2 与 8.5 的当轮 Driver 改为三级判定；8.4 新增 `approve` 前置复核与三条边界；8.5 Hook 表写明提交锚「位置 + 登记」判据、剩余边界与强制力单向，`hook-pre-bash` 的后缀集改为全集（D3）；10.4 的后缀枚举句改判据式。**三、异构口径**：1.2、11.5、15.1 FR-17、15.3 AC-18 由「非 Claude 系」改为「不与当轮 Driver 厂商名义族同族」，写明两层启发式与历史文案并存（EV-107）。**四、状态位**：术语表、1.1 R-2、15.1 FR-28、15.3 AC-21（仅子句 ③）、19 R18 / R22、18.1 #16 指针、依赖图、§24.1 三行（含新增「演进设计三处口径修正」行）与 §24.2 十二行。**五、核出并改准的一处过头说法**：`verify-*.json`「由不受保护变为受保护」（自 M10 计划 r7 起沿用）实为「由锚②单层变为锚①②双层」——verify 运行清单早已登记它。回溯完整性的核法（逐项对账表 + 反向表 + grep 锚差集）与结论见 [`REPORT_2026-09-24_m10a_step5.md`](../05_testing/REPORT_2026-09-24_m10a_step5.md)。 |
+@@ -3494,7 +3496,7 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
+ | [`.reviews/README.md`](../../.reviews/README.md) | A | 第零步 | ✅ 批 A 已并入；**现状句于 M9 第 7 步改准**（「仍是两侧审查」自 M8 起失实）；**「提交时的留痕核对」一节随 M10a 第 5 步新增**（位置 + 登记、`verify-*.json` 由单锚变双锚、Bash 侧口径） |
+ | [`README.md`](../../README.md) | A | 第零步 | ✅ 批 A 已并入；演进注记与分层表于 M9 第 7 步改准（第四家已接入）；异构口径、角色后缀枚举句与 M10 标签于 M10a 第 5 步改准 |
+ | [`AGENTS.md`](../../AGENTS.md) | A | 第零步 / M10a | ✅ 已并入；项目概览的失实句（「Antigravity 与 ZCode 背靠背只读双审」）于 M10a 第 5 步改准。面向执笔者的协议段随 M10b「协议片段两段式」 |
+-| [`doc/02_design/README.md`](./README.md) | A | 第零步 | ✅ 批 A 已并入；主设计条目版本与读法于 M9 第 7 步改准（曾停在 v1.3.15）；M10a 第 5 步跟到 v1.3.37；EV-111 跟到 v1.3.38；EV-112 跟到 v1.3.39 |
++| [`doc/02_design/README.md`](./README.md) | A | 第零步 | ✅ 批 A 已并入；主设计条目版本与读法于 M9 第 7 步改准（曾停在 v1.3.15）；M10a 第 5 步跟到 v1.3.37；EV-111 跟到 v1.3.38；EV-112 跟到 v1.3.39；EV-122 跟到 v1.3.40 |
+ | [`.env.example`](../../.env.example) | **B** | **M8** | ⏳ 未并入（Codex 侧凭据与 provider 说明） |
+ | [`BACKLOG.md`](../08_project/BACKLOG.md) | A | 第零步 | ✅ 已并入（措施 b 独立演进项已登记） |
+ | `ADR_002_multicritic_isolation.md` | A | 第零步 | ✅ 已新建 |
+diff --git a/doc/02_design/README.md b/doc/02_design/README.md
+index 1f4057b..29476bd 100644
+--- a/doc/02_design/README.md
++++ b/doc/02_design/README.md
+@@ -21,7 +21,7 @@
+ 
+ ### 唯一实现依据
+ 
+-- [`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：**Driver-DualCritic 主攻双审流水线总体架构与详细设计**（**v1.3.39**，状态：**基线已实现、演进进行中**）。依据 PRD v1.4.7 与 5 份参考答卷起草。
++- [`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：**Driver-DualCritic 主攻双审流水线总体架构与详细设计**（**v1.3.40**，状态：**基线已实现、演进进行中**）。依据 PRD v1.4.7 与 5 份参考答卷起草。
+   演进历程：v1.1.0 按设计审核意见 RV-01～RV-26 修订；v1.2.0 按项目负责人意见 UR-01～UR-06 修订（就地审查、结合全项目评审、Node.js + TypeScript、用户级 skills 载体），均附逐条应答；v1.2.1 按 M0 本机实测回补第 3、10、11、12 章；v1.2.2～v1.2.5 按多轮自举双审加固护栏（含 RV-B1 的实施与撤回）；v1.2.6～v1.2.7 护栏判定范围收窄与 Bash 侧撤回；**v1.3.0 把 M6～M11 的多 Agent 演进并入本文**，新增「实现状态基线」与三级状态标记、纪律 6（回溯颗粒度）与纪律 7（注册表单一来源）、§24 演进并入台账；**v1.3.1～v1.3.6 随 M7b 六步逐步回溯**（`run.v2`、`config.v2`、`--critics` 入口、5.1.1 接入套件与其验收装置——并据桩夹具实测把「五件套」修正为「七件套」、把 `review.v1` 的意见编号前缀由 schema 枚举改为注册表校验）；**v1.3.7 按 M6 四步回填事实表**（3.6 Codex / 3.7 Claude headless 由指针占位翻为已回填，§24 台账三行转绿）——回填推翻了演进设计的三条记载（`-p` 是文件分层而非 `[profiles.*]` 段、effort 档位表全错且 CLI 不校验、模型目录路径名对不上）并修正一条（路径级 deny 对 `Read` 可用、对 `Grep` 不可用）；**v1.3.8 落地 M8 第 1 步的措施 b**（命令文本字面扫描，`10.1`）——它因 codex 的读取经 shell 而成为该侧路径核验的唯一手段，承诺面钉成 **F-1～F-9 必检 / B-1～B-5 明确不可检**的闭集，三处（设计、实现 docblock、用例名）由 `known-forms-parity` 机器对账；**v1.3.9 落地 M8 第 2 步的适配层契约泛化**（`11.1` 新增「轨迹能力与判定分档」）——判定层改为面向 `TraceCapability`（轨迹形态 + 被拒操作是否留痕）而非 Agent id，六个消费点逐一分档；**并推翻 3.6 的一条旧断言**：`rejected_command_in_trace = false` 此前被写成「10.3 的判据对 codex 永久为假」，实为过度推广——被拒的命令不留痕，成功执行的照常留痕，故失守判定两档一律由写事件成立，该字段只修饰阴性结论的可信度；连带新增「无法归因」的漂移分类与两条核验通道的降级留痕（五面）；**v1.3.10～v1.3.12 随 M8 第 3～4 步与 D4-4**（codex 接入为第三家审核者、AC-20 真机验收、codex 进缺省集合）；**v1.3.13～v1.3.16 护栏判定缺口与凭据清扫**；**v1.3.17～v1.3.30 随 M9 七步回溯**（claude 准入实测与三个机读字段、适配器本体与四条准入前置、启用为第四家审核者、`--driver` 全链路、裁决件 `role` 放宽与 Hook 当轮保护集、两轮验收实跑达成完成判据、第 7 步纪律 6 回溯）。
+   覆盖架构、组件划分、接口契约、目录与命名规范、操作流程、异常矩阵、实施路线（M0～M11）与验收映射。
+   **⚠️ 读法**：正文未加状态标记者描述当前真实系统（M0～M5 基线 + M6～M9 与 M10a：探针事实、注册表、配置 v2 与动态多审、Codex 与 Claude Code 两家审核者、Driver 护栏与契约面）；
+diff --git a/doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md b/doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md
+index 7530669..4772c9a 100644
+--- a/doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md
++++ b/doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md
+@@ -161,6 +161,10 @@
+ ## 9. M3：上游缺陷描述草稿（第三段计划 r3 §6，是否提交由用户定）
+ 
+ > 以第二段实验结论为准：只写观察到的，不写成已证实的「缺思考档位」。
++>
++> **已提交（2026-09-25，用户定）**：[zai-org/feedback#811](https://github.com/zai-org/feedback/issues/811)（ZCode 官方反馈仓库，账号 `striver2006`）。
++> 正文按该仓库 bug 模板补了类别、框架、严重程度、复现频率与环境（桌面端 3.14.3、CLI 0.16.9），内容与下文一致；
++> 注明与 #653（默认模型从 catalog 移除后回退）、#744（headless 建不出模型）相关但不重复；日志未附（实际运行日志含业务内容）。
+ 
+ **标题**：headless 模式下 `cli/config.json` 的 `model.main` 被导入为默认选择，但启动时实际选中第一个 provider 的第一个模型
+ 
+diff --git a/doc/06_deployment/RUNBOOK_pipeline_ops.md b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+index 3f72307..016ff44 100644
+--- a/doc/06_deployment/RUNBOOK_pipeline_ops.md
++++ b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+@@ -264,6 +264,7 @@ trivium doctor --only agy       # 只探一侧，省配额
+ | `preflight` 在「ZCode 已认证」退 69，详情含「无法定位 CLI ZCode Built-in Provider Config」 | ZCode 0.16.9 起 CLI 按入口目录推算 provider 配置，应用包布局下推算不到（坑 P-28）。编排器已按入口派生并注入 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` / `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`，仍报错说明 `<ZCode.app>/Contents/Resources/config/provider/zcode-builtin.json` 不在原位——跑 `trivium doctor --only zcode --no-model-calls`，看 notes 里 `provider_config` 那行。这是**安装布局**问题，不是凭据问题 |
+ | 自己在 shell 里设了 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` / `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`，但不生效 | **编排器独占这两个变量**，拉起 zcode 的三条路径（version 探针、旗标探针、审查执行）一律按 ZCode 安装布局派生后注入，派生不到就把它们从子进程环境里**删除**。这是有意的：判据必须是「子进程拿不到」而不是「编排器没主动注入」，否则宿主环境能改变探针行为（旗标探针那侧会因此烧七次真实配额）。`doctor` 探测到宿主预置值时会出一条 ⚠️ note。要换 provider 配置的位置，请调整 ZCode 安装布局，不要靠环境变量 |
+ | guard 告警说某侧「**请求的模型没有生效**」 | 该侧的模型覆盖没落到实处：`run.json` 的 `model_requested` 与 `model_effective` 不是同一个模型（判据只看 `<providerId>/<modelId>` 的 **modelId 段**——两种 providerId 形态并存，前缀不同不算问题）。**该侧的审查结论仍然有效**，但模型路由（FR-06）与异构默认（NFR-06）在本侧失效：若另一侧模型与它同家族，这一轮不构成真正的双审。glm 侧先看 `trace.json` 的 `modelSelection` 段：`route` 为 `global` 说明压根没做覆盖（同段 `reason` 写明为什么），为 `config_copy` 而 `model_override_applied` 为 `false` 说明副本写了但 CLI 运行期没选它。**先看同段的 `reorder`**（EV-82 第三段起审查运行会把请求模型排到副本首位）：`kind` 为 `applied` 说明置首已生效仍回落，CLI 的回落规则可能变了；为 `not_movable` 说明置首没做成，原因在 `reason`；为 `identity` 说明请求本在首位；**`reorder` 段缺席**而 `route` 为 `global`，说明请求模型限定失败、压根没做置首，原因在 `modelSelection.reason`。再跑 `trivium doctor --only zcode --no-model-calls`，看 `runtime_selection`（零配额两支对照：`reorder_needed` 为当前正常形态，`reorder_ineffective` 说明置首也挡不住）与 `model_override` 两格，必要时按 P-31 的方式复核包内字面。**另两种成因**（代码双审 r3）：副本源 `~/.zcode/cli/config.json` 里有 `apiKeyRequired: false` 的免密 provider——导入器对整份配置直接拒掉（`Fqa`），探针臂与运行都会落回退；请求的模型名是被标 `deleted` 的成员、或该成员的 `id` 字段与键名不同形——限定按导入器同一组规则判，这两种会在准备阶段就记 `route: global` 并给理由 |
++| guard 告警说某侧「**本次没有做模型覆盖**：请求的是 X，实际跑的是 Y」 | 该侧这一轮压根没做模型覆盖，CLI 跑的是它自己选的模型（EV-122）；与上一行「覆盖做了却没生效」互斥，排查方向不同。**该侧的审查结论仍然有效**，但模型路由（FR-06）与异构默认（NFR-06）在本侧不成立。按 `run.json` 的 `critics.<id>.model_unenforced.cause` 分两种：**`source_missing`**——副本源 `~/.zcode/cli/config.json` 不在，CLI 用真实 HOME 的个人配置默认模型；把副本源放回原处即可（EV-112 E2 就是这么复现的）。**`qualify_failed`**——请求的模型名在副本源的 provider 目录里限定失败（没有这个成员、有多个拥有者、被标 `deleted`、或 `id` 与键名不同形），副本已建但没改 `model.main`，CLI 跑的是副本源自己的默认或回落模型；对照 profile 与 `--model-glm` 的写法和副本源 `provider[*].models` 的键，原因原文在同段 `reason` 与 `trace.json` 的 `modelSelection.reason`。**不播报的一格**：限定失败而回落模型恰与请求同名（modelId 段相同），此时跑的就是请求的模型。`reason` 文案只供人读，脚本判成因请认 `cause` |
+ | glm 侧起得来，但留痕里的 `model_effective` 不是请求的 GLM 模型 | **已修（EV-82，2026-09-24 结案）**：配置层 2026-09-21 修；运行期回落由第三段置首修法消除，2026-09-24 端到端验收通过（run `20260924T104357Z`，请求 `GLM-5.3-Flash`，rollout 13 条全为 Flash）。第一层根因：编排器曾注入指向你真实个人 provider 配置的变量——个人文件存在，CLI 就跳过 legacy 导入，副本里的 `model.main` 没人读；现在审查运行的副本 HOME 下**不注入**个人变量，CLI 从 `cli/config.json` 副本导入、默认选择写出请求值。**第二层**（2026-09-24 第二段实测）：写出的默认选择在运行期被判不可选，CLI 回落「第一个可见 provider 的第一个模型」——所以置首修法（`c872b00`）之前的运行会跑到首位模型。第三段起审查运行把请求模型排到副本首位，回落就落在它上面（见上一行的 `reorder`）；`trivium doctor --only zcode`（含 `--no-model-calls`）的 `model_override` 一格零配额实测配置层——记 `config_copy` 即写出了请求值，记 `global` 则 CLI 又改了导入流程；`runtime_selection` 一格零配额实测运行期是否仍需置首。覆盖没落实时 guard 也会出声（见上一行）。**审查运行的 CLI 日志、rollout、会话库与存储根下的产物（artifacts / sessions / memories / plugins）落在运行目录**（EV-112 起）：编排器清掉宿主预置的十一个落点相关变量后，再把日志目录 / 存储根 / 会话库指到 `<运行目录>/glm/home/.zcode/…`；无副本的审查运行（副本源 `~/.zcode/cli/config.json` 缺失；「未指定模型」在派发前就被拒，走不到这里）仍用真实 HOME 与你的个人配置选模型——**这时 glm 侧跑的是你个人配置的默认模型，不一定是 GLM**（本机实测是 qwen3.8-max，EV-122），但这些产物不再留在 `~/.zcode`。跑后只自检日志与 rollout 两类。代价：这一支看不到你装在 `~/.zcode` 下的 plugins / profiles / skills / MCP，子代理的模型覆盖回落内置缺省（主 agent 不受影响）。glm 可作为审核者启用。若之后再出现本症状，先看 doctor 的 `runtime_selection`：`reorder_ineffective` 说明 CLI 的回落规则变了、置首已挡不住。端到端验证请用非首位模型（`--model-glm GLM-5.3-Flash`），默认档 `GLM-5.3` 恰是首位模型，回落也得到它，验不出差别 |
+ | guard 告警说 glm 侧「**运行目录里缺本次会话的日志 / rollout**」，或「本次会话的 CLI 产物**出现在真实 HOME 下**」 | 落点自检没过（EV-112）：编排器把 CLI 的日志目录、存储根、会话库指到运行目录，这一轮跑完却在那里找不到本次会话的日志或 rollout。最可能的原因是 ZCode 升级后不再认其中某个环境变量。**不影响该侧结论的有效性，但送审内容可能落在了清扫面之外**。排查：① `trivium doctor --only zcode --no-model-calls` 看 `cli_version` 是否变了；② 看 `run.json` 的 `critics.glm.carriers_landed`：`log` / `rollout` 哪一项为 false，就是哪一族落点键失效（日志键与存储根走两条不同的代码路径）；③ 出现泄漏句时看 `carriers_landed.leaked_to_home` 哪一项为 true，按 `run.json` 的 `session_id` 自查：rollout 一项在 `~/.zcode/cli/rollout/` 下找 `model-io-<sessionId>.jsonl`，确认后自己删掉；日志一项用 `grep -l <sessionId> ~/.zcode/cli/log/*.jsonl` 找出文件（`-l` 只出文件名），这些文件可能混有其它会话，确认后自己处理（编排器不动真实 HOME）。再跑 glm 之前把这件事报上来，要重新核 ZCode 包内的取值链 |
+ | `preflight`「ZCode 已认证」报 `Error: Model creation failed (traceId: …)` | CLI 在**真实 HOME** 下建不出模型，与编排器的副本机制无关（该探活走 `homeDir: null`）。`failureKind` 落在 `other` 说明它既不是缺 `cli/config.json`（那报 `model_config_missing`），也不是 provider 鉴权失败。**先取结构化根因**：`~/.zcode/cli/log/zcode-<日期>.jsonl` 里按 traceId 找 `turn.failed` 行的 `error.cause.message`（只取这个字段，日志含模型 I/O 全文，不要整份打印）。2026-09-21 实测根因是下一行 |
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index a5a6762..2827686 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -123,7 +123,7 @@
+ | EV-26 | **done**（2026-09-16）：分档、按侧落盘、横幅与 BRIEF 分流均已落地；**「作废侧重跑一次」仍待实施**，过渡处置见设计 §12.1 的三态字段。原文如下 | **「该侧结论作废」只是一句话，没有机器实现；而措施 a 的按侧命中不落盘，事后无从复核。**<br>**① 作废没有落点。** `peerArtifactRead` 的**全部**消费点是四处：`review.ts` 调 `renderGuardWarnings` 生成一行文字、`meta.ts` 的人读行「⚠️ 读到对方产出」、`report.ts` 的复盘 `guardFlags`、`review.ts` 落成一个布尔位。**没有任何一处影响 verdict、阻断判定或让该侧结论真的失效**——「该侧结论作废」这句话写在 `renderGuardWarnings` 返回的字符串里，它是**对人说的话**，作废是裁决者的义务而非系统行为。于是漏看那行文字，被判泄漏的一侧就照常被采信。<br>**② 按侧命中不进留痕。** `run.json` 的 guard 段里，措施 b 按侧记（`peer_leak_via_command.<side>.hit` + 命令原文），措施 a 只有一个**全局 OR** 的布尔位 `peer_artifact_read`，`peerHits` 一条都不进。想知道「哪一侧、命中了什么」只能手工复算原始轨迹，而那些轨迹在运行目录下、`retention.run_dir_days` 到期即删。<br>**③ 本轮的实证（复算得出，非推测）。** r12 里 glm 侧 `read_paths` **26 条**，其中含 `.trivium/config.yaml` 与 `.trivium/config.local.yaml`，而 `.trivium` 是它那份 104 条禁读清单里的裸项；把 `deny_paths` 与其 trace 喂给生产函数 `checkPeerLeak`，返回 **`leaked: true`**，hits 就是这两条。**判定是对的、判出来了**（目录条目按 `<条目>/` 前缀命中，那是 GLM-03 修过的），**处置没跟上**：该侧最终以 `parse_fallback` 结案，我在裁决件里还写了「glm 降级与禁读无关」——因为措施 b 按侧落盘我看得见 codex，措施 a 没落盘我就看不见 glm。<br>**④ 本条的原始登记是错的，更正记此。** 初版写的是「两侧 `read_paths` 都是 0 条、措施 a 扫空集」，依据是我用 `j.get('read_paths', [])` 去读 `review-<side>-*.json`——**那个文件是审查员的结论（`findings`/`consulted`/…），从来没有这个键**，默认值掩盖了「键不存在」与「键为空」的区别。这是三态纪律的又一次复发，而且**就发生在我控诉同一类错误的那句话里**。实测真值：gemini 28 条、glm 26 条，措施 a 有真实输入。`verification.path` 档位只看 `traceShape` 不看实际输入这一点代码上仍成立，但它不是本条的要害，降为附带项。<br>**修法方向**：先给「作废」一个机器落点（至少：该侧 verdict 不参与阻断判定、审查文档头部打出作废横幅、`gate` 侧可见），再把 `peerHits` 按侧落进 `run.json` 与该侧文档 front-matter，与措施 b 对称。两件都做完，措施 a 才算真正生效而不只是「判过了」 | `guard.ts` 的 `RunVerdict.peerArtifactRead` 与 `renderGuardWarnings`、`review.ts` 的 guard 落盘段、`meta.ts` / `report.ts` 的消费点、设计 §10.1 |
+ | EV-28 | **部分 done**（2026-09-16）：键名已补、运行期覆盖率档位已落（第①②层防线）；**第③层探针臂仍待排**。原文如下 | **措施 a 对 grep 通道完全失明——而 grep 是已知的绕过路径。** agy 侧 `extractPath` 的 `PATH_KEYS` 是 `['AbsolutePath','SearchDirectory','DirectoryPath','Path','File','TargetFile']`，**不含 `SearchPath`**，而 `grep_search` 的目录参数恰恰叫 `SearchPath`（`Query` 是搜索词）。r12 实测：gemini 的 15 次 `grep_search`（state 均为 `DONE`）中，`extractPath` 取到路径的是 **0 条**，样本参数值是 `…/doc`、`…/src`、`…/test`。于是审查员用 grep 去搜禁读目录，措施 a 一条都提不出来。**这条格外要命，因为 grep 正是探针记录里白纸黑字写过的绕过通道**：zcode 侧「显式 deny 该路径后，模型改用 Grep 读到了目标文件」、claude 侧「同一批规则下 Grep 仍从该目录取到了哨兵」。也就是说**最可能被用来绕过的那条路，检测面上是空的**。**修法方向**：`PATH_KEYS` 补 `SearchPath`；但更该做的是**反向对账**——用真实轨迹样本断言「每个被判为读工具的 DONE 调用都提得出至少一个路径」，提不出就让用例红，否则厂商下次改参数名仍会静默退化。zcode 侧的 `Grep` 是否同样丢参数需一并核（本轮它 14 次 Grep、`readPaths` 26 条，未逐条对账） | `adapters/agy-events.ts` 的 `PATH_KEYS` / `extractPath` / `readPaths`、`adapters/zcode-trace.ts` 的同名逻辑、设计 §10.1 措施 a |
+ | EV-29 | **done**（2026-09-16）：三处入口（校验命令两个迁移分支、停点命令）均已挂前置判断，判据以归档审批记录为正本、损坏时 fail-closed。原文如下 | **审批之后再跑 `gate --check`，会把已放行的闸门重新关上，而两份状态留痕就此不一致。** `gate --check` 校验通过后按 `run.json` 的 `entry` 分流，B/C/D 一律 `setGateChecked(… 'awaiting_approval')`——**它不看闸门当前是不是已经 `approved`**。这个分流本身是有意设计且理由成立（`cli.ts` 注释：「护栏的存续不该取决于执笔者记不记得走完流程」，防止 Driver 省略 `--await-approval` 让闸门停在 `idle` 被静默旁路），问题在它**缺一个前置判断**：本轮已审批时，`--check` 应当是纯校验、不推进状态。**更实的危害是留痕分叉**：`--check` 只写 `.trivium/state.json`，不写归档里的 `task.json`，于是 2026-09-16 实测出现 `task.json: {state: approved, since: 09:54:32}` 与 `state.json: {state: awaiting_approval, since: 10:42:57}` 并存——**同一道闸门，两份留痕给出互相矛盾的答案**，而 `task.json` 是审批记录的正本（`approvals[]` 在它里面）。事后对账时无从判断哪份为准。触发路径很常见：审批后按裁决补修复、改动涉及裁决件本身、顺手复校一次完整性——本轮就是这么撞上的，撞上后连提交都做不了（Hook 按 `state.json` 判写锁）。**修法方向**：①`--check` 在闸门已是 `approved` 且 `run_id` 相同时不推进状态，只输出校验结论并提示「本轮已审批」；②两份状态的写入收敛到一处，或至少让 `--check` 的推进同步写 `task.json`，不再留下能分叉的缝 | `cli.ts` 的 `gate --check` 分流段与 `setGateChecked`、`state.ts`、`approval.ts` 的 `task.json` 写入、设计 §12 闸门状态机 |
+-| EV-30 | todo | **新查出七个零消费方的配置项，是原先已知数量的三倍多。** 2026-09-16 新增的「配置键 vs 消费方」对账测试（`test/unit/config-consumers.test.ts`）**第一次运行**就抓出这些，此前无人登记：①**`gate.max_check_retries`——七条里最该优先处理的**，`/dual-review-*` 的 skill 文档正拿它当真实行为向 Driver 承诺（「最多重试 `max_check_retries`（默认 3）次」），而代码里没有任何重试计数；这不只是死配置，是一句写在流程文档里的**假承诺**。②`review.parallel`——本该控制并行/串行，而 runner 恒并行；设成 false 不会串行，而这恰是调试单侧问题时最可能被用到的开关。③`isolation.deny_via_cli`——本该控制要不要向 CLI 注入路径级 deny（设计 §10.1 机制③(b)），实际由探针的 `path_deny.supported` 决定，开关从未被读过。④`topic.forbid_chars`——主题名字符校验走的是 `topic.ts` 的独立实现；与 `max_len` 同段而后者**有**消费方，容易误以为两个都生效。⑤`gate.require_adjudication`——gate 恒强制逐条裁决，设成 false 不放松任何检查（方向是「配置比实际更宽松」，不是反过来，所以危害小）。⑥`agents.glm.max_turns`——zcode 适配器从未读它。⑦`agents.glm.unsupported_override`——实际走探针的 `model_override` 档位，用户设 `reject` 不会让它报错。**处置**：本批只做防新增（对账测试已落），七条存量**逐条裁另立主题**——每条都是「接线还是删」的独立决策，并进一批会让裁决面从三四个膨胀到十个以上。**建议优先级**：① 最高（文档已在承诺它）、②③ 次之（用户会真去改）、④⑤⑥⑦ 可批量处理。**另注**：`instructionFiles`（EV-06）与 `readonly_commands`（EV-15）是同族的既有登记，一并纳入那个主题 | `test/unit/config-consumers.test.ts` 的 `KNOWN_DEAD`（每条都写着理由与去向）、`types.ts` 与 `config.ts` 的对应定义、`skills/dual-critic/SKILL.md` 里 `max_check_retries` 那句承诺 |
++| EV-30 | todo | **新查出七个零消费方的配置项，是原先已知数量的三倍多。** 2026-09-16 新增的「配置键 vs 消费方」对账测试（`test/unit/config-consumers.test.ts`）**第一次运行**就抓出这些，此前无人登记：①**`gate.max_check_retries`——七条里最该优先处理的**，`/dual-review-*` 的 skill 文档正拿它当真实行为向 Driver 承诺（「最多重试 `max_check_retries`（默认 3）次」），而代码里没有任何重试计数；这不只是死配置，是一句写在流程文档里的**假承诺**。②`review.parallel`——本该控制并行/串行，而 runner 恒并行；设成 false 不会串行，而这恰是调试单侧问题时最可能被用到的开关。③`isolation.deny_via_cli`——本该控制要不要向 CLI 注入路径级 deny（设计 §10.1 机制③(b)），实际由探针的 `path_deny.supported` 决定，开关从未被读过。④`topic.forbid_chars`——主题名字符校验走的是 `topic.ts` 的独立实现；与 `max_len` 同段而后者**有**消费方，容易误以为两个都生效。⑤`gate.require_adjudication`——gate 恒强制逐条裁决，设成 false 不放松任何检查（方向是「配置比实际更宽松」，不是反过来，所以危害小）。⑥`agents.glm.max_turns`——zcode 适配器从未读它。⑦`agents.glm.unsupported_override`——实际走探针的 `model_override` 档位，用户设 `reject` 不会让它报错（**EV-122 补记，2026-09-25**：`annotate` 档的「放行并标注」语义已由 `model_unenforced` 在 run.json 与 guard 播报里部分承担，不阻断、不进文档头；`reject` 若接线，要先定它与该播报的先后，避免「退 69 拒跑」与「播报放行」两套机制并存。计划双审 GLM-01）。**处置**：本批只做防新增（对账测试已落），七条存量**逐条裁另立主题**——每条都是「接线还是删」的独立决策，并进一批会让裁决面从三四个膨胀到十个以上。**建议优先级**：① 最高（文档已在承诺它）、②③ 次之（用户会真去改）、④⑤⑥⑦ 可批量处理。**另注**：`instructionFiles`（EV-06）与 `readonly_commands`（EV-15）是同族的既有登记，一并纳入那个主题 | `test/unit/config-consumers.test.ts` 的 `KNOWN_DEAD`（每条都写着理由与去向）、`types.ts` 与 `config.ts` 的对应定义、`skills/dual-critic/SKILL.md` 里 `max_check_retries` 那句承诺 |
+ | EV-31 | todo | **对账判据依赖属性访问形态，解构赋值会漏。** 上面那条对账测试的判据是「`src/` 下出现过 `.<键名>`」——取这个形态是因为裸键名会把**注释**算成消费方（三处注释提到 `readonly_commands`，说的恰恰是它没有消费方）。代价是 `const { parallel } = cfg.review` 这种解构写法不带点，会被判成无消费方。**目前全仓没有这种写法**，所以判据当下是准的；但它是个会随代码风格漂移的前提，而不是恒真的性质。**真出现解构时，把那个键加进 `KNOWN_DEAD` 是错的**（它其实是活的），正确做法是改判据——这条已写进测试的头注释，登记在此是为了让它有个可跟踪的编号。**根治方向**：项目现在没有统一的配置访问器（全是 `cfg.review.xxx` 直接取值），有了之后判据可以改成「访问器的调用点」，与写法无关。那是一次跨模块重构，需要单独立项 | `test/unit/config-consumers.test.ts` 的 `hasPropertyAccess` 与头注释的「判据的边界」段 |
+ | EV-27 | todo | **共享层与本机层对「厂商 profile」的分工未定，需拍板。** 决策 C（2026-09-16）把 `agents.codex.profile: qwen` 与模型一起钉进了进 Git 的共享配置，并删掉本机同值覆盖；删的理由成立（同值并存会让日后改共享层被静默顶掉），但它**没有回答这两个键是不是本该分在两层**。论点：`profile` 名是**本机事实**（`$CODEX_HOME/<name>.config.toml` 得真存在），钉进共享层等于要求每个协作者机器上恰好有那个名字，而本机覆盖层正是为这类事实准备的逃生门。**一个可能的分工**：共享层只钉模型与 effort（项目级选择，有实测依据），`profile` 留给本机层或内置默认；代价是又回到「codex 的 profile 靠默认兜底」，而那正是决策 C 想消除的不对称。两者不能兼得。**另记一条结构性成因**：`.trivium/**` 同时是禁读面与配置变更的唯一落点，于是**任何以配置为对象的变更都天然不可审**（r12 CODEX-07 如实登记了「该文件内容我一行未读」）。本条属新决策，r12 裁决件 §3 提请重议 | `.trivium/config.yaml` 的 `agents.codex`、`config.ts` 的分层合并、设计 §13.1.1、`freeze.ts` 的 `diffExcludePrefixes` |
+ | EV-32 | **done**（2026-09-17，同主题代码双审 r1 后收口）：codex `sessions/`、zcode `rollout/` 与 `log/`、以及 zcode 拷进 `out/` 的 `rollout.jsonl` 一律改为**就地脱敏**（只换值、留结构，`parseCodexSessionMeta` 的首行回读实测不受影响）；不删的理由（回读来源、夹具误报）仍成立，所以是脱敏而不是删。**残留**：超过 32 MB 的日志跳过不脱敏，只记告警进哨兵。原文如下 | **模型在沙箱里自读凭据副本，会把 token 写进 codex 的 `sessions/` 会话记录，而那份记录刻意不在抹除的扫描面上。** EV-20 的抹除把 `codexhome/sessions/` 排除在外：它是跑后唯一被回读的东西（生效模型来源，`codex-trace.ts` 的 `findSessionFile`），也含送审包全文，`looksReal` 对被审代码里的测试夹具密钥有误报面，「命中即删」会丢排障证据。但同一次运行里 codex 若执行了 `cat $CODEX_HOME/config.toml`，token 会随命令输出进会话记录——编排器自写的 `stdout.jsonl` 里那一份已被就地脱敏，会话记录里这一份没有。**修法方向**：对 `sessions/` 做与日志同款的就地脱敏（不删、只换值），前提是先确认脱敏后的 JSONL 仍能被 `parseCodexSessionMeta` 回读。登记于计划双审 D-2 的 B 项，本轮不做 | `scrub.ts`、`adapters/codex-home.ts` 的 `KEEP_AFTER_RUN`、`codex-trace.ts` |
+@@ -181,7 +181,7 @@
+ | EV-88 | **已关闭**（2026-09-21，r3 计划双审 codex「认为正确」段补出机理） | **「两个 provider 变量必须成对提供」的抛错为何在 headless 路径上撞不到——机理已明。** 包内 `FZi(prepareCliProviderRuntimeEnv)` 在 `--prompt` 形态下**先于** `cfr` 的成对检查运行，为缺失的键按 `dataBaseDir ?? ZCODE_DATA_BASE_DIR ?? homedir()` **合成派生路径并写回 `process.env`**，`cfr` 看到的永远是两个键。P-30「只给内置那份停在 Model creation failed 且参数解析已完成」正是这个机理的表现。逐键门控的依据从「观察」升为「机制」，D-3 撤回的结论不受影响。**同一机理的另一面登记在 EV-82 的修法里**：宿主预置 `ZCODE_DATA_BASE_DIR` 会改变合成出的个人路径（r3 CODEX-02），故三个目录键恒清。 | `src/trivium/adapters/zcode.ts` `zcodeProviderEnv` 文档块 |
+ | EV-89 | **已关闭**（2026-09-21，前提被 EV-82 根因改判推翻） | ~~**`cli/config.json` 副本的 `model.main` 写入已无读取点、该副本角色已变。**~~ **前提不成立**：`model.main` **有**读取点——CLI 在个人 provider 配置不存在时从 `cli/config.json` legacy 导入并把它转成 `defaultModelSelection`（包内 `Mqa`），`config_copy` 档在 0.16.9 下照常生效，前提是不注入个人键（EV-82）。该副本的角色**没变**：既是 provider 定义与内联凭据的来源，也是模型覆盖的落点。原条目里「确认 0.16.9+ 是否还读该文件的任何键」已由 `probeModelOverride` 臂在真实 CLI 上零配额答毕（读）。 | `src/trivium/adapters/zcode.ts` `prepareZcodeHome` |
+ | EV-90 | **已关闭**（2026-09-21，随 EV-82 路线 L） | ~~**`probeZcodeModels` 的模型目录仍取自 `cli/config.json`，与生效落点不同源。**~~ 路线 L 下 `cli/config.json` 副本**正是**审查运行的模型来源（legacy 导入），目录与生效落点**重新同源**——理由消失。**残留的一条缝隙转登 EV-93**：`normalizeModelForCatalog` 给短名补前缀仍用探针的 `model_id_form`（真实 HOME 运行回读的个人配置默认），与目录的 provider 键形态异源。 | `src/trivium/probes/zcode.ts` `probeZcodeModels` |
+-| EV-91 | todo | **`model_override_applied` 只有 zcode 一家产出，其余三家的作答落点待定。** EV-82 把它设计成**可选**四态（字段缺席＝本次无覆盖尝试；`true`/`false`＝比对过一致/不一致；`null`＝尝试了但没回读到生效模型）。初稿设计成必填三态、让四家一律填 `null`，被计划双审打掉（AGY-03）：那会让 `null` 同时承载「本族未实现」与「本轮没采到」，两个原因落进同一个观测。**通用化的前置**是先给各族定义「什么算一次覆盖尝试」——codex 侧走 `-p profile` + `-m model` 两维且 `model_route` 恒 `config_copy`，claude 侧走 slug，agy 侧形态未核。**不要**在判定层做统一字符串比较：各族模型 id 形态不同，必然误报（这正是本字段判据归适配器的理由）。触发条件：下一次有第二家需要这个事实，或 AC-13 的验收面扩到其余侧。 | `src/trivium/types.ts` `CriticResult.model_override_applied`、`src/trivium/adapters/{codex,claude,agy}.ts` |
++| EV-91 | todo | **`model_override_applied` 只有 zcode 一家产出，其余三家的作答落点待定。** EV-82 把它设计成**可选**四态（字段缺席＝本次无覆盖尝试；`true`/`false`＝比对过一致/不一致；`null`＝尝试了但没回读到生效模型）。初稿设计成必填三态、让四家一律填 `null`，被计划双审打掉（AGY-03）：那会让 `null` 同时承载「本族未实现」与「本轮没采到」，两个原因落进同一个观测。**通用化的前置**是先给各族定义「什么算一次覆盖尝试」——codex 侧走 `-p profile` + `-m model` 两维且 `model_route` 恒 `config_copy`，claude 侧走 slug，agy 侧形态未核。**不要**在判定层做统一字符串比较：各族模型 id 形态不同，必然误报（这正是本字段判据归适配器的理由）。触发条件：下一次有第二家需要这个事实，或 AC-13 的验收面扩到其余侧。**EV-122 补记（2026-09-25，计划双审 CODEX-01 ≡ GLM-02）**：①codex 与 claude 都回读了 `model_effective`（codex 取 session meta、claude 取 `system/init`），但不比对，守卫恒静默；②agy 更深一层：init 事件拿不到 model 时以**请求值顶替**回读值并记 `model_effective_source: 'requested'`（`agy.ts` 生效模型段），静默换模型在留痕里不可见——防线只剩「未知 slug 会非零退出」这一条单点断言，覆盖不到「slug 认识、CLI 却跑了别的」；③claude 探针的 `model_flag`（「`--model` 是否真实生效」）在审查路径零消费方；④待通用化的字段由一个变两个：EV-122 新增了 `model_unenforced`（没做覆盖而实际模型不同），「本族什么算一次覆盖尝试」的定义要同时回答它与 `model_override_applied`。计划双审里 gemini 判「三侧无同类缺口」，依据只覆盖了 slug 不认识一种，未采信。 | `src/trivium/types.ts` `CriticResult.model_override_applied`、`src/trivium/adapters/{codex,claude,agy}.ts` |
+ | EV-92 | **已撤销**（未登记即消失） | 编号曾在 EV-82 r3 计划裁决件 §五预留给「旗标探针改用 `zcodeProviderEnv` 的三态参数（纯重构）」；同轮 AGY-r2-02 把三态改成布尔开关 `omitPersonal`，该重构项随之不存在，编号未被登记也未被注销——代码双审 r2 CODEX-06 指出跳号无注。留此行是为了让台账的编号面连续可读：不是漏了，是撤了。 | — |
+ | EV-94 | todo | **zcode 探针的两条残量。** ① **旗标探针在装了 ZCode.app 的机器上会被单元用例真实拉起**：`probeZcodeEntry(null, node)` 回落到 `/Applications/...` 绝对路径候选，`preflight.test.ts` 的回归用例因此在本机真跑七次旗标候选（零配额，P-30 前提有守卫）与版本探针——CI 上入口不在则早退，两台机器测的不是同一件事。EV-82 代码双审 r2 已给 `probeZcode` 加了 `cliConfigPath` / `modelOverrideProbe` 两个注入口把探针臂隔开，旗标臂与入口候选未隔（既病）。**修法方向**：`probeZcode` 增 `entryCandidates?` 注入口或让用例传合成入口。② **探针臂可选的同形第二臂**：探针副本是白名单重建、审查运行是整份拷贝，两者不同形；按包内 `Oqa` 的读取面白名单 ⊇ 导入器必需键，故不加第二臂（r2 CODEX-02 裁决），但若某版 CLI 把可缺项改成必需，探针臂会先于审查运行判 `global`——届时补一臂「保键骨架、字符串值换哨兵」的同形副本做区分。触发条件：① 下一次改 `probeZcode` 的入口探测；② 探针臂与审查运行**任一方向**不一致——探针判 `global` 而运行 `model_override_applied: true`，或探针判 `config_copy` 而运行 `false`（代码双审 r3 CODEX-01 指出的反向：探针副本比整份拷贝**少键**时对运行假乐观；`apiKeyRequired` 已随 r3 加回白名单，其它可缺项若被某版 CLI 改成决定成败的键会再现同一形态）。<br>**2026-09-24 追加（M10b 计划 r7 §5；上文不改）**：② 的触发条件已满足（2026-09-21 真实运行判 `false`，探针臂判 `config_copy`）。第二臂已由 EV-82 第一段 `7212255` 实现：探针 `zcode.model_override_full_copy` 以审查臂同一构造 `prepareZcodeHome` 整份拷贝为骨架、凭据换哨兵，在配置读取层再判一次。2026-09-24 两臂读数一致，均为 `config_copy`，doctor 未出不一致告警 ⇒ 副本形态差异排除，回落发生在配置读取层之后（EV-82 第二、三段处理）。**② 已实现**；① 仍 todo。 | `src/trivium/probes/zcode.ts` `probeZcodeEntry` / `probeZcode` / `buildProbeCliConfig`、`test/unit/preflight.test.ts` |
+ | EV-93 | todo | **`model_id_form` 作为短名补前缀的来源与目录异源。** 它记的是**上一次真实 HOME 运行回读的生效模型**——即个人配置的默认（本机 2026-09-21 起是 `<providerUUID>/qwen3.8-max`），而 `probeZcodeModels` 的目录与审查运行的副本源都是 `cli/config.json` 的 provider **键**（`bigmodel-coding-plan`）。EV-82 已把**副本**的限定改由 `qualifyAgainstCliConfig` 按副本源做，`model_id_form` 退出那条路径；但 `normalizeModelForCatalog`（preflight 的 slug 目录比对）仍用它补前缀——UUID 形态下拼出的 `<UUID>/GLM-5.3` 不在目录里，本日 preflight 的 slug 校验只靠目录同时收录短名才侥幸过。**修法方向**：目录比对也改用 `qualifyAgainstCliConfig`（同一份文件、同一条规则），`model_id_form` 只留作回读形态的记录。触发条件：下一次 slug 校验误判，或改 `normalizeModelForCatalog`。 | `src/trivium/adapters/zcode.ts` `normalizeModelForCatalog` / `qualifyZcodeModel`、`src/trivium/probes/zcode.ts` `probeZcodeModels` |
+@@ -217,7 +217,8 @@
+ | EV-119 | todo（只记录，与副本支同形） | **运行目录里的 CLI 产物不全脱敏，随保留期整删。** `scrubZcodeHome`：`log` / `rollout` 就地脱敏；`db`（sqlite，整段对话）与 `plugins` 按前缀整目录排除；artifacts / memories / sessions 过命中即删扫描（文本命中凭据形态即删、二进制整删），其余内容保留到 `retention.run_dir_days`（现 30 天）整删。EV-112 收口的是「不再留在真实 `~/.zcode`」，不是「送审内容不再留存」；副本支一直就是这个形态。来源：EV-112 计划 r3 §8 R6（措辞经计划双审第 2 轮 GLM-04 更正） | `src/trivium/adapters/zcode.ts`（`scrubZcodeHome`）、`src/trivium/scrub.ts` |
+ | EV-120 | todo（探针路径的残余；审查运行已免疫） | **CLI 的 beta 改写有 argv 触发，清环境键挡不住。** 包内 `RMi`：存储根为空时，任一 argv 元素匹配 `(^\|[/\\])zcode-beta(?:$\|\.)`（即 `zcode-beta` 恰为一段的末尾，或其后紧跟 `.`）就把存储根改写到 `~/.zcode-beta`。审查运行两支都设了存储根、早退，不受影响；探针与探活（EV-115 那几条路径）不设存储根，入口路径位于 beta 渠道时会被改写，doctor 已对入口路径出信息级 note。**实证**：EV-112 代码双审 r1（run `20260924T164417Z`）用的是不设存储根的旧构建，送审包里的 `…/zcode-beta.app` 字面经 `--prompt` 命中判据，glm 副本 HOME 的 rollout / memories / plugins 落进 `.zcode-beta/`，rollout 出了回读目录，该侧被判证据不足。来源：EV-112 计划 r3 §8 R7（计划双审第 2 轮 CODEX-06 ≡ GLM-01） | `src/trivium/adapters/zcode.ts`（`ZCODE_BETA_ARGV_RE`）、`src/trivium/probes/zcode.ts`（doctor note） |
+ | EV-121 | todo（待核：是否被走到） | **包内有两条不经三个落点键的路径。** ①workspace-hook trust store（`yas`）：按 `homedir()` 或用户配置自己的 `storage.dir` 推 `<…>/security/workspace-hook-trust-v1.json`；②rollout 的 `homedir()` 兜底（`e4s`）：写入函数在未传 `modelIoDir` 时落 `<homedir>/.zcode/cli/{rollout,debug}`。两者都不含送审内容，是否在 `--prompt` 形态下被走到未核；EV-112 的落点自检只观测日志与 rollout 两类，②若被走到，无副本支的反向核会记 rollout 泄漏。来源：EV-112 代码双审 r1 CODEX-03（设计 v1.3.39 残余段） | ZCode 包内 `yas` / `e4s`；`src/trivium/adapters/zcode.ts`（`checkZcodeCarriers`） |
+-| EV-122 | todo（待用户定：处置方式与优先级） | **副本源缺失时，glm 侧跑的是个人配置的默认模型，守卫不出声。** 无副本的审查运行不做模型覆盖，CLI 用 `~/.zcode/v2/provider_config.json` 的默认模型——EV-112 E2 实测为 `84044858-…/qwen3.8-max`，而请求是 `GLM-5.3`。守卫只对「做了覆盖却没生效」（`model_override_applied: false`）出声，这一支没有覆盖尝试、字段缺席，于是静默：glm 侧实际不是 GLM，FR-06 的模型路由与 NFR-06 的异构默认在该侧都不成立，只能靠人对照 run.json 的 `model_requested` 与 `model_effective`。这是 EV-82 以来「全局默认」的既有语义，不是 EV-112 引入的；可达条件只有副本源缺失（「未指定模型」派发前即被拒）。候选处置：①守卫在 `model_route: global` 且 `model_effective` 与 `model_requested` 的 modelId 段不同时播报；②副本源缺失时 glm 侧判不可用；③维持现状只登记。来源：EV-112 E2 读数 `doc/05_testing/evidence/ev112-acceptance-20260925/02-e2-readout.md` | `src/trivium/adapters/zcode.ts`（`prepareZcodeHome` 副本源缺失分支）、`src/trivium/guard.ts` |
++| EV-122 | **实施完成，待代码双审**（2026-09-25 用户定取候选 ①；主题 `EV-122-未受控模型播报`：计划双审 1 轮 13 条，12 条接受、1 条暂缓（CODEX-05 → EV-123），r2 定稿、用户审批「开始实施」。修法：`prepareZcodeHome` 三个 `global` 出口给结构化成因 `cause`，`decideModelUnenforced` 在没做覆盖且 modelId 段不同时产出 `critics.<id>.model_unenforced`（进 run.json，与 `model_override_applied` 互斥），`guard` 播报、按 `cause` 给排查指向、不阻断；见设计 v1.3.40。变异证据 `doc/05_testing/evidence/ev122-mutation-20260925/`，零配额验收 `doc/05_testing/evidence/ev122-acceptance-20260925/`。三家同类缺口补记 EV-91，与 `unsupported_override` 的关系补记 EV-30 ⑦） | **副本源缺失时，glm 侧跑的是个人配置的默认模型，守卫不出声。** 无副本的审查运行不做模型覆盖，CLI 用 `~/.zcode/v2/provider_config.json` 的默认模型——EV-112 E2 实测为 `84044858-…/qwen3.8-max`，而请求是 `GLM-5.3`。守卫只对「做了覆盖却没生效」（`model_override_applied: false`）出声，这一支没有覆盖尝试、字段缺席，于是静默：glm 侧实际不是 GLM，FR-06 的模型路由与 NFR-06 的异构默认在该侧都不成立，只能靠人对照 run.json 的 `model_requested` 与 `model_effective`。这是 EV-82 以来「全局默认」的既有语义，不是 EV-112 引入的；可达条件只有副本源缺失（「未指定模型」派发前即被拒）。候选处置：①守卫在 `model_route: global` 且 `model_effective` 与 `model_requested` 的 modelId 段不同时播报；②副本源缺失时 glm 侧判不可用；③维持现状只登记。来源：EV-112 E2 读数 `doc/05_testing/evidence/ev112-acceptance-20260925/02-e2-readout.md` | `src/trivium/adapters/zcode.ts`（`prepareZcodeHome` 副本源缺失分支）、`src/trivium/guard.ts` |
++| EV-123 | todo（2026-09-25 用户定：做；另起主题，排在 EV-122 提交之后，走计划双审） | **副本源缺失在预检期就可判定，收尾播报却要等配额烧完才出现。** EV-122 的 `model_unenforced` 播报触发条件含「回读到了生效模型」，按构造只能在该侧跑完之后出声；而副本源 `~/.zcode/cli/config.json` 在不在，预检期就知道（zcode 的 `authProbe.fingerprint()` 已经取过这个文件，preflight 拿它做探活缓存失效判定）。EV-112 E2 那一轮就是这样白跑了 16m42s、27 次工具调用、单侧真实配额。**候选**：预检给一条非阻断提示（`ok: true`，形态同 `checkZcodeRuntimeSelection`）：「副本源缺失 ⇒ 本轮 glm 侧会跑在 CLI 默认模型上，FR-06 / NFR-06 在这一侧不成立」。这是 EV-122 候选 ①（收尾播报）与 ②（判不可用）之间的一档，用户 2026-09-25 只定了 ①，故未并入。来源：EV-122 计划双审 CODEX-05（暂缓） | `src/trivium/preflight.ts`（`checkZcodeRuntimeSelection` 旁）、`src/trivium/adapters/zcode.ts`（`authProbe.fingerprint`） |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/skills/dual-critic/schema/run.v2.json b/skills/dual-critic/schema/run.v2.json
+index d7a75f9..4e1a9b1 100644
+--- a/skills/dual-critic/schema/run.v2.json
++++ b/skills/dual-critic/schema/run.v2.json
+@@ -536,7 +536,22 @@
+             "boolean",
+             "null"
+           ],
+-          "description": "模型覆盖是否落实（EV-82）。字段缺席＝本次没有覆盖尝试；true/false＝比对过一致/不一致；null＝尝试了但没回读到生效模型。判据归各家适配器，判定层只播报。zcode 侧自 EV-82 第三段起审查运行把请求模型置首，true 只说明跑的就是请求模型，不说明副本默认被采信（后者见 doctor 的 zcode.runtime_selection）"
++          "description": "模型覆盖是否落实（EV-82）。字段缺席＝本次没有覆盖尝试；true/false＝比对过一致/不一致；null＝尝试了但没回读到生效模型。判据归各家适配器，判定层只播报。zcode 侧自 EV-82 第三段起审查运行把请求模型置首，true 只说明跑的就是请求模型，不说明副本默认被采信（后者见 doctor 的 zcode.runtime_selection）。没做覆盖而实际模型不同见 model_unenforced"
++        },
++        "model_unenforced": {
++          "type": "object",
++          "properties": {
++            "requested": { "type": "string" },
++            "effective": { "type": "string" },
++            "cause": { "enum": ["source_missing", "qualify_failed"] },
++            "reason": {
++              "type": "string",
++              "description": "prepareZcodeHome 给的理由原文，只供人读、不参与判定、不保证文案稳定"
++            }
++          },
++          "required": ["requested", "effective", "cause", "reason"],
++          "additionalProperties": false,
++          "description": "没做模型覆盖、而实际模型与请求不同（EV-122，目前只有 zcode 侧产出）。与 model_override_applied 互斥：那一格要求本次尝试了覆盖，这一格要求没尝试。requested 与 model_requested 同源；判据只看 modelId 段；cause＝为什么没做覆盖（source_missing：副本源 cli/config.json 不在；qualify_failed：请求的模型在副本源目录里限定失败），guard 按它分句。字段缺席＝做了覆盖、没回读到生效模型、modelId 段相同、或该侧不产出"
+         },
+         "carriers_landed": {
+           "type": "object",
+diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts
+index 99f6901..5100e98 100644
+--- a/src/trivium/adapters/stub.ts
++++ b/src/trivium/adapters/stub.ts
+@@ -126,6 +126,11 @@ export interface StubSpec {
+    * `review.ts` 把它写进 run.json 逐侧段；guard 按两项合取与 `leaked_to_home` 出声。
+    */
+   carriersLanded?: CriticResult['carriers_landed'];
++  /**
++   * 模拟「没做覆盖而实际模型不同」（EV-122）：给了就原样产出 `model_unenforced`。只为集成用例咬住两件事：
++   * `review.ts` 把它写进 run.json 逐侧段；guard 按 `cause` 出声。
++   */
++  modelUnenforced?: CriticResult['model_unenforced'];
+   note?: string;
+ }
+ 
+@@ -197,6 +202,7 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
+     ...(spec.modelOverrideApplied === undefined ? {} : { model_override_applied: spec.modelOverrideApplied }),
+     ...(spec.modelOverrideReorder === undefined ? {} : { model_override_reorder: spec.modelOverrideReorder }),
+     ...(spec.carriersLanded === undefined ? {} : { carriers_landed: spec.carriersLanded }),
++    ...(spec.modelUnenforced === undefined ? {} : { model_unenforced: spec.modelUnenforced }),
+     // 桩不模拟厂商事实：这两个字段的真实形态只有真适配器才产得出（AC-24 的证明边界）
+     model_provider: null,
+     profile_requested: null,
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index f400362..bce5bbd 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -26,7 +26,7 @@
+ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+-import type { CriticRequest, CriticResult } from '../types.js';
++import type { CriticRequest, CriticResult, ModelUnenforcedCause } from '../types.js';
+ import { run } from '../util/exec.js';
+ import { ensureDir, exists, sha256File } from '../util/fsx.js';
+ import {
+@@ -135,6 +135,34 @@ export function decideModelOverride(
+   };
+ }
+ 
++/**
++ * 没做模型覆盖、而实际模型与请求不同（EV-122）。与 `decideModelOverride` 并列且**产出条件互斥**：
++ * 那边要求 `attempted`，这边要求 `!attempted`。
++ *
++ * EV-112 E2 的实遇：副本源不在，审查运行不做覆盖，glm 侧跑在个人配置默认的 qwen 上；
++ * `model_override_applied` 因「没尝试」而缺席，守卫一句没说。本函数补的就是这一格。
++ *
++ * 四条同时成立才产出：没做覆盖、请求非空、回读到了生效模型、modelId 段（`zcodeModelTail`）不同。
++ * 判据面与 `decideModelOverride` 相同：`providerId` 段两种形态并存（P-31），整串比会误报。
++ * 限定失败时副本回落的模型恰与请求同 modelId 段 ⇒ 不产出：此时跑的就是请求的模型。
++ *
++ * `requested` 要传**请求原值**（`req.model`），不是 `home.qualified`——后者在没做覆盖的两支恒为 null
++ * （计划双审 CODEX-03 ≡ AGY-01）；原值也与 run.json 的 `model_requested` 同源，守卫文案对得上。
++ * `cause` 为 `no_model` 或 null 时不产出：前者请求必为空，后者就是做了覆盖。
++ */
++export function decideModelUnenforced(
++  attempted: boolean,
++  requested: string | null,
++  effective: string | null,
++  cause: ZcodeHomePrep['cause'],
++  reason: string | undefined,
++): CriticResult['model_unenforced'] {
++  if (attempted || !requested || !effective) return undefined;
++  if (cause !== 'source_missing' && cause !== 'qualify_failed') return undefined;
++  if (zcodeModelTail(effective) === zcodeModelTail(requested)) return undefined;
++  return { requested, effective, cause, reason: reason ?? '' };
++}
++
+ /** 完整只读 denylist。`Bash` 必须在列——`--mode plan` 挡不住命令执行（M0 实测） */
+ /** 写类工具 + shell + 出网：审查员不该把被审代码发到外部端点 */
+ export const ZCODE_READONLY_DENYLIST = 'Write,Edit,MultiEdit,ApplyPatch,NotebookEdit,Bash,WebFetch,WebSearch';
+@@ -597,6 +625,11 @@ export interface ZcodeHomePrep {
+   qualified: string | null;
+   /** `route` 为 `global` 时**必有**——「没覆盖」和「为什么没覆盖」不能只剩前者 */
+   reason?: string;
++  /**
++   * 没覆盖的**结构化成因**（EV-122 计划 r2 §3.1）：`route` 为 `config_copy` 时为 null。
++   * 下游判定与分句只认它，不匹配 `reason` 文案（计划双审 CODEX-02）。`no_model` 在流水线里走不到（派发前即拒空模型），只为穷尽出口
++   */
++  cause: ModelUnenforcedCause | 'no_model' | null;
+   /**
+    * 置首结果（EV-82 第三段 r3 §3.2）：没请求置首（`requestedFirst` 未开）、或限定失败时为 null。
+    * 挪不动**不中止**：照常写副本、照常拉起，由守卫按结果判。
+@@ -868,10 +901,11 @@ export async function prepareZcodeHome(
+       route: 'global',
+       qualified: null,
+       reason: `未找到 ${srcConfig}，无法做模型覆盖；将沿用 ZCode CLI 的全局默认`,
++      cause: 'source_missing',
+       reorder: null,
+     };
+   }
+-  if (!model) return { homeDir: null, route: 'global', qualified: null, reason: '本次未指定模型', reorder: null };
++  if (!model) return { homeDir: null, route: 'global', qualified: null, reason: '本次未指定模型', cause: 'no_model', reorder: null };
+ 
+   const homeDir = zcodeHomeUnder(runDir);
+   const dstDir = path.join(homeDir, ZCODE_CLI_SUBDIR);
+@@ -895,9 +929,16 @@ export async function prepareZcodeHome(
+   await fs.chmod(path.join(dstDir, 'config.json'), 0o600);
+ 
+   if (q.qualified === null) {
+-    return { homeDir, route: 'global', qualified: null, reason: `${q.reason}；副本已建但不做模型覆盖`, reorder: null };
++    return {
++      homeDir,
++      route: 'global',
++      qualified: null,
++      reason: `${q.reason}；副本已建但不做模型覆盖`,
++      cause: 'qualify_failed',
++      reorder: null,
++    };
+   }
+-  return { homeDir, route: 'config_copy', qualified: q.qualified, reorder };
++  return { homeDir, route: 'config_copy', qualified: q.qualified, cause: null, reorder };
+ }
+ 
+ export const zcodeAdapter: CriticAdapter = {
+@@ -1198,6 +1239,8 @@ export const zcodeAdapter: CriticAdapter = {
+      * 这个问题。字段缺席与 `null` 是两件事——后者的唯一含义是「尝试了、但没回读到生效模型」。
+      */
+     const override = decideModelOverride(overrideAttempted, home.qualified, modelEffective);
++    // 没做覆盖的那一格（EV-122）：第二参是请求原值 req.model，不是恒为 null 的 home.qualified（计划双审 CODEX-03）
++    const unenforced = decideModelUnenforced(overrideAttempted, req.model, modelEffective, home.cause, home.reason);
+     // 置首后 true 只说明「跑的是请求模型」，说明不了「副本默认被采信」（r3 §4.1）；后者归 doctor 的 zcode.runtime_selection
+     const selectionNote =
+       // 只陈述可观测事实（代码双审 r1 CODEX-03）：置首之后「靠置首」与「副本默认被采信」分不开，因果不在这里下
+@@ -1272,6 +1315,8 @@ export const zcodeAdapter: CriticAdapter = {
+         : {}),
+       // 落点自检（EV-112）：没走到自检（无 sessionId）即缺席；review.ts 条件展开写进 run.json，guard 按它播报
+       ...(carriersLanded ? { carriers_landed: carriersLanded } : {}),
++      // 没做覆盖而实际模型不同（EV-122）：与 model_override_applied 互斥，缺席即不成立
++      ...(unenforced ? { model_unenforced: unenforced } : {}),
+       tool_calls: toolCalls,
+       read_paths: readPathList,
+       // zcode 轨迹只有 toolCalls[].input，没有工具输出——该族无此事实
+diff --git a/src/trivium/guard.ts b/src/trivium/guard.ts
+index 5dbe8f5..806672e 100644
+--- a/src/trivium/guard.ts
++++ b/src/trivium/guard.ts
+@@ -130,6 +130,11 @@ export interface SideVerdict {
+    * `log` 或 `rollout` 为 false 时出一句落点缺失；`leaked_to_home` 任一项为 true 时另出一句、点名泄漏的那一类。缺席不出声。
+    */
+   carriersLanded?: NonNullable<CriticResult['carriers_landed']>;
++  /**
++   * 没做模型覆盖而实际模型不同（EV-122）：原样透传 `CriticResult.model_unenforced`。判据归适配器，本层只播报，
++   * 按结构化 `cause` 给排查指向、不匹配 `reason` 文案。缺席不出声。
++   */
++  modelUnenforced?: NonNullable<CriticResult['model_unenforced']>;
+ }
+ 
+ /** 单侧两条核验通道的档位与生效阈值 */
+@@ -486,6 +491,7 @@ export function judgeSide(
+       : { modelOverrideApplied: result.model_override_applied }),
+     ...(result.model_override_reorder === undefined ? {} : { modelOverrideReorder: result.model_override_reorder }),
+     ...(result.carriers_landed === undefined ? {} : { carriersLanded: result.carriers_landed }),
++    ...(result.model_unenforced === undefined ? {} : { modelUnenforced: result.model_unenforced }),
+   };
+ }
+ 
+@@ -865,7 +871,7 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
+      * `model_requested` 与 `model_effective` 两个值都在留痕里，没有任何一处去对照它们。
+      *
+      * 只对 `false` 出声：`true` 是正常、`null` 是没回读到（另有 `model_effective_source`
+-     * 那条通道说这件事）、字段缺席是本次压根没做覆盖。
++     * 那条通道说这件事）、字段缺席是本次压根没做覆盖——那一格若实际模型不同，由下面 `modelUnenforced` 那句说（EV-122）。
+      */
+     if (s.modelOverrideApplied === false) {
+       out.push(
+@@ -875,6 +881,20 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
+           reorderHint(s.modelOverrideReorder),
+       );
+     }
++    /*
++     * 没做覆盖而实际模型不同（EV-122）。与上一句互斥（适配器保证），**不判失守、不阻断**，理由同上。
++     * 只陈述可观测事实（计划双审 CODEX-06）：限定失败那一支跑的是副本源的 `model.main` 或回落，不是 CLI 全局默认，
++     * 因果不在这里下；排查指向按 `cause` 分句。
++     */
++    if (s.modelUnenforced) {
++      const u = s.modelUnenforced;
++      out.push(
++        `${s.critic} 侧**本次没有做模型覆盖**：请求的是 \`${u.requested}\`，实际跑的是 \`${u.effective}\`（${u.reason}）。` +
++          '该侧结论仍然有效，但模型路由（FR-06）与异构默认（NFR-06）在本侧不成立——若另一侧模型与它同家族，' +
++          '这一轮不构成真正的双审。' +
++          unenforcedHint(u.cause),
++      );
++    }
+     /*
+      * 落点自检的人读出口（EV-112 计划 r3 §4.6）。**不判失守、不阻断**：该侧结论本身仍有效，
+      * 出事的是送审内容的落点——它可能不在运行目录的清扫面里，甚至写进了真实 HOME。
+@@ -908,6 +928,19 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
+   return out;
+ }
+ 
++/**
++ * 「本次没有做模型覆盖」告警的排查指向（EV-122 计划 r2 §3.2）。是**先看哪里**，不是成因断言；
++ * 按结构化 `cause` 分句，不对 `reason` 文案做匹配（计划双审 CODEX-02，与 `reorderHint` 同口径）。
++ */
++export function unenforcedHint(cause: NonNullable<SideVerdict['modelUnenforced']>['cause']): string {
++  switch (cause) {
++    case 'source_missing':
++      return '先看副本源 `~/.zcode/cli/config.json` 在不在。';
++    case 'qualify_failed':
++      return '先看请求的模型名在不在副本源的 provider 目录里（profile 与 `--model-glm` 的写法），详情见 trace.json 的 `modelSelection.reason`。';
++  }
++}
++
+ /**
+  * `false` 告警的置首分句（EV-82 第三段 r3 §4.1）。**只在置首结论在场时**追加：缺席的侧（其余三家与桩）
+  * 不写 trace.json 的 `modelSelection.reorder`，指向它会指向一份不存在的留痕（计划双审 r2 CODEX-06）。
+diff --git a/src/trivium/preflight.ts b/src/trivium/preflight.ts
+index 67ad201..c76a219 100644
+--- a/src/trivium/preflight.ts
++++ b/src/trivium/preflight.ts
+@@ -522,7 +522,8 @@ async function checkArchiveAndGit(ctx: Ctx): Promise<CheckResult> {
+  * doctor 的 `zcode.runtime_selection` 读数为 `reorder_ineffective` 时给一条警告（EV-82 第三段 r3 §4.2）：
+  * 零配额的两支对照显示「置首也挡不住回落」，glm 侧审查运行的模型覆盖大概率不会生效。
+  * **只警告、不拒跑**（`ok: true`）：判据是 doctor 在哨兵凭据下的读数，不是本次运行的事实；
+- * 本次运行是否跑对了模型，由 guard 的 `model_override_applied` 比对给出。其余三值与未探过都不出项。
++ * 本次运行是否跑对了模型，由 guard 按本次回读给出（`model_override_applied` 与 EV-122 的 `model_unenforced` 两条）：
++ * 这里说「大概率」，那两条说「实际」。其余三值与未探过都不出项。
+  */
+ export function checkZcodeRuntimeSelection(cfg: Config, selected: readonly CriticId[]): CheckResult | null {
+   // 按入选侧经注册表取 CLI 名，不写 Agent id 字面量（registry-parity 的对账纪律）；这一格目前只有 ZCode 的探针结论有
+@@ -537,7 +538,7 @@ export function checkZcodeRuntimeSelection(cfg: Config, selected: readonly Criti
+       ok: true,
+       detail:
+         `⚠️ doctor 的 ${cliName}.runtime_selection 为 reorder_ineffective：零配额探针上置首也没挡住运行期回落，` +
+-        `本次 ${critic} 侧大概率跑不到请求的模型（跑完看 guard 的「请求的模型没有生效」告警与 trace.json 的 modelSelection.reorder）`,
++        `本次 ${critic} 侧大概率跑不到请求的模型（跑完看 guard 的「请求的模型没有生效」或「本次没有做模型覆盖」告警，以及 trace.json 的 modelSelection）`,
+     };
+   }
+   return null;
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index a250a40..58b28dd 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -1493,6 +1493,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+         : { model_override_applied: r.model_override_applied }),
+       // 落点自检（EV-112 计划 r3 §4.6）：同一口径，缺席 = 没走到自检，不压成 null
+       ...(r.carriers_landed === undefined ? {} : { carriers_landed: r.carriers_landed }),
++      // 没做覆盖而实际模型不同（EV-122）：同一口径，缺席 = 不成立，不压成 null
++      ...(r.model_unenforced === undefined ? {} : { model_unenforced: r.model_unenforced }),
+       ...(requests[c]!.effort ? { effort: requests[c]!.effort! } : {}),
+       status: r.status,
+       exit_code: r.exit_code,
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index c41405f..e9da192 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -1169,6 +1169,8 @@ export interface CriticRunMeta {
+   model_override_applied?: boolean | null;
+   /** 落点自检（EV-112）。缺席与取值的语义见 `CriticResult.carriers_landed` */
+   carriers_landed?: CriticResult['carriers_landed'];
++  /** 没做覆盖而实际模型不同（EV-122）。缺席与取值的语义见 `CriticResult.model_unenforced` */
++  model_unenforced?: CriticResult['model_unenforced'];
+   effort?: string;
+   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
+   exit_code: number | null;
+@@ -1511,6 +1513,13 @@ export interface ScrubOutcome {
+   errors: string[];
+ }
+ 
++/**
++ * 没做模型覆盖的成因（EV-122），进 `CriticResult.model_unenforced.cause`：
++ * `source_missing`＝副本源 `cli/config.json` 不在；`qualify_failed`＝请求的模型在副本源的 provider 目录里限定失败（副本已建）。
++ * 「没指定模型」不在此列：请求为空时该字段恒缺席，且流水线在派发前就拒空模型。
++ */
++export type ModelUnenforcedCause = 'source_missing' | 'qualify_failed';
++
+ export interface CriticResult {
+   critic: CriticId;
+   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
+@@ -1535,7 +1544,7 @@ export interface CriticResult {
+    *
+    * ## 三态与「字段缺席」是**四**种情况，不能压成三种
+    *
+-   * - **字段缺席**：本次没有覆盖尝试（没指定模型、或该族根本不做配置覆盖）。
++   * - **字段缺席**：本次没有覆盖尝试（没指定模型、或该族根本不做配置覆盖）。没做覆盖而实际模型不同另见 `model_unenforced`（EV-122）。
+    * - `true` / `false`：比对过，一致 / 不一致。
+    * - `null`：**尝试了覆盖，但没回读到生效模型**，无法判定。唯一含义，不表示「没有这种概念」。
+    *
+@@ -1581,6 +1590,20 @@ export interface CriticResult {
+    * 它是本题唯一的安全信号，只落 trace.json 的话，运行目录过期后归档里就答不出「这次有没有把送审内容留在真实 HOME」。
+    */
+   carriers_landed?: { log: boolean; rollout: boolean; leaked_to_home?: { log: boolean; rollout: boolean } };
++  /**
++   * 没做模型覆盖、而实际模型与请求不同（EV-122）：zcode 审查臂 `decideModelUnenforced` 填。
++   *
++   * 与 `model_override_applied` **互斥**：那一格要求本次尝试了覆盖，这一格要求没尝试。不并进那一格的 `false`
++   * （计划双审 D1）：「覆盖没落实」查 CLI 读取点，「压根没做覆盖」查副本源在不在，两种成因同形就分不开。
++   *
++   * - `requested`：请求原值，与 run.json 的 `model_requested` 同源；
++   * - `effective`：回读到的生效模型；判据同 `model_override_applied`，只比 modelId 段；
++   * - `cause`：为什么没做覆盖，guard 按它分句——判定与分句的**唯一依据**；
++   * - `reason`：`prepareZcodeHome` 给的理由原文，**只供人读、不参与判定、不保证文案稳定**。
++   *
++   * 缺席 = 做了覆盖、请求为空、没回读到生效模型、modelId 段相同、或该侧不产出。**进 run.json**（与 `carriers_landed` 同处条件展开）。
++   */
++  model_unenforced?: { requested: string; effective: string; cause: ModelUnenforcedCause; reason: string };
+   /**
+    * 该侧**实际走到的 provider 家族**（回读值）。
+    *
+diff --git a/test/integration/code-stage.test.ts b/test/integration/code-stage.test.ts
+index 696ef66..7368e9b 100644
+--- a/test/integration/code-stage.test.ts
++++ b/test/integration/code-stage.test.ts
+@@ -502,6 +502,27 @@ test('run.v2 逐侧段：桩注入 carriers_landed ⇒ 该侧原样落盘、另
+   assert.ok(message.includes('写进真实 HOME'), `guard 要播报泄漏，实得：${message || '(空)'}`);
+ });
+ 
++test('run.v2 逐侧段：桩注入 model_unenforced ⇒ 该侧原样落盘、另一侧缺席，guard 播报「本次没有做模型覆盖」（EV-122 计划 r2 §4.1）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  // review.ts 那一行条件展开写错键名或没写（变异 N6），这里当场红；run.v2 对内层 required 的校验也在这条链上
++  const fx = await codeFixture();
++  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 7;\n');
++  const unenforced = { requested: 'GLM-5.3', effective: '84044858-fake/qwen3.8-max', cause: 'source_missing' as const, reason: '夹具理由' };
++  const { meta, out } = await runCode(fx.root, fx.codeDir, [], {
++    gemini: { mode: 'ok' },
++    glm: { mode: 'ok', modelUnenforced: unenforced },
++  });
++  const glm = meta.critics.glm as Record<string, unknown> | undefined;
++  const gemini = meta.critics.gemini as Record<string, unknown> | undefined;
++  assert.ok(glm && gemini, '两侧都要有');
++  assert.deepEqual(glm!['model_unenforced'], unenforced, '注入的结论必须原样落到 run.json');
++  assert.equal('model_unenforced' in gemini!, false, '没注入的一侧必须缺席');
++  const w = await cli(fx.root, ['review', '--wait', meta.run_id, '--timeout', '5', '--json'], STUB, 60_000);
++  const cand = extractJsonCandidate(w.stdout);
++  assert.ok(cand, `终态查询无可解析 JSON：\n${w.stdout}\n${w.stderr}\n${out.slice(-300)}`);
++  const message = (JSON.parse(cand.json) as { message?: string | null }).message ?? '';
++  assert.ok(message.includes('本次没有做模型覆盖') && message.includes('84044858-fake/qwen3.8-max'), `guard 要播报，实得：${message || '(空)'}`);
++});
++
+ test('置首结论只供 guard、不进 run.json：桩注入 model_override_reorder ⇒ 逐侧段无该键，guard 按 kind 播报（EV-82 第三段 r3 §3.4 负向用例）', { skip: bundleMissing && bundleSkipReason }, async () => {
+   /*
+    * run.v2 的 critic 段是 additionalProperties: true，字段泄漏了 schema 也不拦；这条边界只能靠用例锁
+diff --git a/test/unit/preflight.test.ts b/test/unit/preflight.test.ts
+index 6e6a9a0..c7b946b 100644
+--- a/test/unit/preflight.test.ts
++++ b/test/unit/preflight.test.ts
+@@ -803,5 +803,7 @@ test('checkZcodeRuntimeSelection：只在 glm 入选且读数为 reorder_ineffec
+   assert.ok(w);
+   assert.equal(w!.ok, true, '不拒跑');
+   assert.match(w!.detail, /^⚠️ .*reorder_ineffective/);
++  // 两条收尾通道都要指到（EV-122 计划 r2 §3.4）：副本源临时缺失的那一轮出声的是后者
++  assert.ok(w!.detail.includes('请求的模型没有生效') && w!.detail.includes('本次没有做模型覆盖'), w!.detail);
+   assert.equal(checkZcodeRuntimeSelection(cfg, ['codex', 'gemini']), null, 'glm 未入选不出项');
+ });
+diff --git a/test/unit/zcode-carriers.test.ts b/test/unit/zcode-carriers.test.ts
+index 962e7a4..cc8ba2f 100644
+--- a/test/unit/zcode-carriers.test.ts
++++ b/test/unit/zcode-carriers.test.ts
+@@ -154,6 +154,7 @@ test('U3 无副本·未指定模型：五个载体落进运行目录、真实 HO
+   await assertLandedInRunDir(sideDir, userHome);
+   assert.equal(result.model_route, 'global');
+   assert.equal('model_override_applied' in result, false, '没有覆盖尝试，字段缺席');
++  assert.equal('model_unenforced' in result, false, '没指定模型 ⇒ 无从对照，EV-122 的字段同样缺席');
+   assert.equal(result.model_effective, FAKE_MODEL, '生效模型从运行目录的日志读回');
+   assert.deepEqual(result.carriers_landed, { log: true, rollout: true, leaked_to_home: { log: false, rollout: false } });
+   assert.ok(await exists(path.join(sideDir, 'out', 'rollout.jsonl')), 'rollout 另拷一份进 out_dir');
+@@ -174,6 +175,20 @@ test('U4 无副本·副本源缺失（指定了模型）：与 U3 同样落进
+   assert.equal(result.model_route, 'global');
+   await assertLandedInRunDir(sideDir, userHome);
+   assert.deepEqual(result.carriers_landed, { log: true, rollout: true, leaked_to_home: { log: false, rollout: false } });
++  // 请求 fake-model、回读 p/fake-model：modelId 段相同 ⇒ EV-122 的字段不产出
++  assert.equal('model_unenforced' in result, false);
++});
++
++test('EV-122 无副本·副本源缺失、回读到的模型与请求不同 ⇒ model_unenforced 产出，requested 是请求原值、cause 为 source_missing', async () => {
++  // E2 现场的形态：请求 GLM-5.3，CLI 跑在个人配置默认的模型上（这里是假入口写的 p/fake-model）
++  const { result } = await runReview({ model: 'GLM-5.3', withCliConfig: false, mode: 'follow' });
++  assert.equal(result.status, 'ok', result.fail_reason ?? '');
++  assert.equal(result.model_route, 'global');
++  assert.equal('model_override_applied' in result, false, '两格互斥');
++  // requested 若取 home.qualified（本支恒 null），字段恒缺席（变异 N7）；run() 不接线同样红（变异 N4）
++  assert.equal(result.model_unenforced?.requested, 'GLM-5.3');
++  assert.equal(result.model_unenforced?.effective, FAKE_MODEL);
++  assert.equal(result.model_unenforced?.cause, 'source_missing');
+ });
+ 
+ test('U6 清扫衔接：无副本支落进运行目录的日志里夹带凭据形态 ⇒ scrubSideDir 就地脱敏并记进哨兵', async () => {
+diff --git a/test/unit/zcode-model-selection.test.ts b/test/unit/zcode-model-selection.test.ts
+index e717419..ed767a2 100644
+--- a/test/unit/zcode-model-selection.test.ts
++++ b/test/unit/zcode-model-selection.test.ts
+@@ -15,6 +15,7 @@ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import {
+   decideModelOverride,
++  decideModelUnenforced,
+   invokeZcode,
+   legacyProviderMembers,
+   prepareZcodeHome,
+@@ -133,6 +134,7 @@ test('副本：限定成功 → route config_copy，model.main/lite 写请求模
+ 
+   assert.equal(prep.route, 'config_copy');
+   assert.equal(prep.qualified, 'bigmodel-coding-plan/GLM-5.3-Flash');
++  assert.equal(prep.cause, null, '做了覆盖就没有「没覆盖的成因」（EV-122）');
+   assert.equal(prep.homeDir, zcodeHomeUnder(runDir));
+   const copy = JSON.parse(await fs.readFile(path.join(prep.homeDir!, '.zcode/cli/config.json'), 'utf8')) as Record<string, unknown>;
+   assert.deepEqual(copy['model'], { main: 'bigmodel-coding-plan/GLM-5.3-Flash', lite: 'bigmodel-coding-plan/GLM-5.3-Flash' });
+@@ -150,6 +152,7 @@ test('副本：限定失败 → 仍建副本（隔离照做）、model 段不动
+   assert.equal(prep.route, 'global');
+   assert.equal(prep.qualified, null);
+   assert.match(prep.reason ?? '', /副本已建但不做模型覆盖/);
++  assert.equal(prep.cause, 'qualify_failed', 'EV-122：下游按结构化成因分句，不匹配 reason 文案（变异 N9）');
+   assert.ok(prep.homeDir, '隔离仍要做');
+   const copy = JSON.parse(await fs.readFile(path.join(prep.homeDir!, '.zcode/cli/config.json'), 'utf8')) as Record<string, unknown>;
+   assert.deepEqual(copy['model'], cliConfigFixture()['model']);
+@@ -160,9 +163,11 @@ test('副本：未指定模型 / 源文件不存在 → 不建副本', async ()
+   const a = await prepareZcodeHome(await tmp(), null, { srcConfig: cliConfig });
+   assert.equal(a.homeDir, null);
+   assert.equal(a.route, 'global');
++  assert.equal(a.cause, 'no_model');
+   const b = await prepareZcodeHome(await tmp(), 'GLM-5.3', { srcConfig: path.join(await tmp(), 'nope.json') });
+   assert.equal(b.homeDir, null);
+   assert.match(b.reason ?? '', /未找到/);
++  assert.equal(b.cause, 'source_missing');
+ });
+ 
+ // ── zcodeProviderEnv：省略个人键 + 目录键恒清（r3 CODEX-02；EV-110 起四键）──
+@@ -398,6 +403,56 @@ test('run() 负格：请求模型不在副本源目录 → route global，且 mo
+   assert.equal(result.status, 'ok', result.fail_reason ?? '');
+   assert.equal(result.model_route, 'global');
+   assert.equal('model_override_applied' in result, false, '没有覆盖尝试就没有「是否落实」这个问题——字段必须缺席');
++  assert.equal('model_unenforced' in result, false, '没回读到生效模型 ⇒ 无从对照，EV-122 的字段同样缺席');
++});
++
++// ── EV-122：没做覆盖而实际模型不同（计划 r2 §4.1） ──
++
++test('run() 限定失败·回读到别的模型 → model_unenforced 产出，cause 为 qualify_failed、requested 是请求原值', async () => {
++  const r = await runWithFakeEntry(ECHO_WITH_LOG_ENTRY, 'nope-model', 'p/other');
++  assert.equal(r.status, 'ok', r.fail_reason ?? '');
++  assert.equal(r.model_route, 'global');
++  assert.equal('model_override_applied' in r, false, '两格互斥');
++  assert.equal(r.model_unenforced?.requested, 'nope-model');
++  assert.equal(r.model_unenforced?.effective, 'p/other');
++  assert.equal(r.model_unenforced?.cause, 'qualify_failed');
++  assert.ok(r.model_unenforced?.reason, 'reason 原样带上，供人读');
++});
++
++test('run() 限定失败·回落模型的 modelId 段恰与请求相同 → 不产出（跑的就是请求的模型）', async () => {
++  // 请求带了副本里没有的 providerId ⇒ 限定失败；回读是同名模型、换了 providerId 形态（计划双审焦点二）
++  const r = await runWithFakeEntry(ECHO_WITH_LOG_ENTRY, '84044858-fake/GLM-5.3-Flash', 'bigmodel-coding-plan/GLM-5.3-Flash');
++  assert.equal(r.model_route, 'global');
++  assert.equal('model_unenforced' in r, false);
++});
++
++test('run() 做了覆盖且没落实 → 只有 model_override_applied: false，model_unenforced 缺席（互斥）', async () => {
++  const r = await runWithFakeEntry(ECHO_WITH_LOG_ENTRY, 'GLM-5.3-Flash', '84044858-fake/qwen3.8-max');
++  assert.equal(r.model_override_applied, false);
++  assert.equal('model_unenforced' in r, false);
++});
++
++test('decideModelUnenforced：四条合取，任一不成立即缺席', () => {
++  const src = 'source_missing' as const;
++  assert.equal(decideModelUnenforced(true, 'GLM-5.3', 'p/qwen', null, undefined), undefined, '做了覆盖（变异 N1）');
++  assert.equal(decideModelUnenforced(true, 'GLM-5.3', 'p/qwen', src, 'x'), undefined, '做了覆盖，即使带了成因');
++  assert.equal(decideModelUnenforced(false, null, 'p/qwen', src, 'x'), undefined, '请求为空');
++  assert.equal(decideModelUnenforced(false, 'GLM-5.3', null, src, 'x'), undefined, '没回读到（变异 N3）');
++  assert.equal(decideModelUnenforced(false, 'GLM-5.3', 'p/qwen', 'no_model', 'x'), undefined, 'no_model 不进字段');
++  assert.equal(
++    decideModelUnenforced(false, 'bigmodel-coding-plan/GLM-5.3', '84044858-fake/GLM-5.3', src, 'x'),
++    undefined,
++    'providerId 形态不同、modelId 段相同 ⇒ 不是换了模型（P-31，变异 N2）',
++  );
++  assert.equal(decideModelUnenforced(false, 'GLM-5.3', 'bigmodel-coding-plan/GLM-5.3', src, 'x'), undefined, '请求短名、回读全限定');
++});
++
++test('decideModelUnenforced：modelId 段不同 ⇒ 四字段原样产出', () => {
++  assert.deepEqual(
++    decideModelUnenforced(false, 'GLM-5.3', '84044858-fake/qwen3.8-max', 'source_missing', '未找到 /x'),
++    { requested: 'GLM-5.3', effective: '84044858-fake/qwen3.8-max', cause: 'source_missing', reason: '未找到 /x' },
++  );
++  assert.equal(decideModelUnenforced(false, 'nope', 'p/other', 'qualify_failed', 'r')?.cause, 'qualify_failed');
+ });
+ 
+ test('run() 正格：回读生效模型与请求一致 → true；不一致 → false', async () => {
+@@ -783,3 +838,66 @@ test('守卫：不判失守、不动证据判定', async () => {
+   assert.equal(v.readonlyBreach, ok.readonlyBreach);
+   assert.equal(v.evidenceOk, ok.evidenceOk);
+ });
++
++// ── 守卫：没做覆盖而实际模型不同（EV-122 计划 r2 §3.2） ──
++
++type Unenforced = NonNullable<import('../../src/trivium/types.js').CriticResult['model_unenforced']>;
++
++async function warningsForUnenforced(u: Unenforced | undefined): Promise<{ notes: string[]; verdict: Record<string, unknown> }> {
++  const { judgeSide, renderGuardWarnings } = await import('../../src/trivium/guard.js');
++  const { defaultConfig } = await import('../../src/trivium/config.js');
++  const { TOOL_TRACE_CAPABILITY, failedResult } = await import('../../src/trivium/adapters/base.js');
++  const base = failedResult('glm', { status: 'failed', reason: '夹具' });
++  const result = u === undefined ? base : { ...base, model_unenforced: u };
++  const req = {
++    critic: 'glm' as const, stage: 'code' as const, model: 'GLM-5.3', effort: null,
++    brief_text: '', brief_path: '/proj/b.md', subject_path: '/proj/s.md',
++    project_root: '/proj', out_dir: '/tmp/out', timeout_s: 60,
++    min_tool_calls: 0, min_project_reads: 0, deny_paths: [],
++  };
++  const verdict = judgeSide(defaultConfig(), 'glm', result, null, req as never, {
++    archiveRootAbs: '/proj/.reviews', projectRoot: '/proj',
++    triviumDir: '/proj/.trivium', runRoot: '/tmp/runs',
++    capability: TOOL_TRACE_CAPABILITY,
++  });
++  const notes = renderGuardWarnings({
++    sides: { glm: verdict }, drift: { changed: false, files: [], related: [] },
++    driftAction: 'ok', fingerprintChangedFiles: [], unattributedDriftFiles: [],
++  } as never);
++  return { notes, verdict: verdict as unknown as Record<string, unknown> };
++}
++
++// reason 用任意串：守卫若改按文案分句（变异 N8），两种 cause 的指向都会丢
++const ARBITRARY_REASON = '夹具理由-与任何真实文案都不同';
++
++test('守卫：model_unenforced 在 ⇒ 播报一句，含 critic、请求值、生效值、reason 原文与 FR-06 / NFR-06', async () => {
++  const { notes, verdict } = await warningsForUnenforced({
++    requested: 'GLM-5.3', effective: '84044858-fake/qwen3.8-max', cause: 'source_missing', reason: ARBITRARY_REASON,
++  });
++  assert.deepEqual(verdict['modelUnenforced'], {
++    requested: 'GLM-5.3', effective: '84044858-fake/qwen3.8-max', cause: 'source_missing', reason: ARBITRARY_REASON,
++  }, 'judgeSide 原样透传');
++  const hit = notes.filter((n) => n.includes('本次没有做模型覆盖'));
++  assert.equal(hit.length, 1, notes.join(' / '));
++  for (const part of ['glm 侧', 'GLM-5.3', '84044858-fake/qwen3.8-max', ARBITRARY_REASON, 'FR-06', 'NFR-06']) {
++    assert.ok(hit[0]!.includes(part), `缺「${part}」：${hit[0]}`);
++  }
++  assert.equal(notes.some((n) => n.includes('没有生效')), false, '与「覆盖没落实」那句不串');
++  assert.equal(hit[0]!.includes('默认模型'), false, '只陈述事实，不下「CLI 用的是它自己的默认模型」这类因果（CODEX-06）');
++});
++
++test('守卫：按 cause 给排查指向，两种不串', async () => {
++  const src = (await warningsForUnenforced({ requested: 'a', effective: 'p/b', cause: 'source_missing', reason: ARBITRARY_REASON })).notes.join('\n');
++  const qf = (await warningsForUnenforced({ requested: 'a', effective: 'p/b', cause: 'qualify_failed', reason: ARBITRARY_REASON })).notes.join('\n');
++  assert.ok(src.includes('副本源 `~/.zcode/cli/config.json` 在不在'), src);
++  assert.equal(src.includes('provider 目录'), false, src);
++  assert.ok(qf.includes('provider 目录'), qf);
++  assert.equal(qf.includes('cli/config.json'), false, qf);
++});
++
++test('守卫：model_unenforced 缺席 ⇒ 不出声；覆盖没落实那句也不引出它', async () => {
++  const { notes, verdict } = await warningsForUnenforced(undefined);
++  assert.equal('modelUnenforced' in verdict, false);
++  assert.equal(notes.some((n) => n.includes('本次没有做模型覆盖')), false);
++  assert.equal((await warningsFor(false)).some((n) => n.includes('本次没有做模型覆盖')), false);
++});
+diff --git a/doc/05_testing/evidence/ev122-acceptance-20260925/01-e1-readout.md b/doc/05_testing/evidence/ev122-acceptance-20260925/01-e1-readout.md
+new file mode 100644
+index 0000000..f7eff7a
+--- /dev/null
++++ b/doc/05_testing/evidence/ev122-acceptance-20260925/01-e1-readout.md
+@@ -0,0 +1,36 @@
++# EV-122 零配额验收 E1 读数
++
++- **日期**：2026-09-25
++- **计划**：`.reviews/EV-122-未受控模型播报/plan/2026-09-25-EV-122-未受控模型播报-r2-claude.md` §4.3
++- **脚本**：同目录 `e1-check.mjs`（只读；从构建产物 `dist/test/src/…` 导模块，先跑 `npm run build`）；输出 `e1-output.json`
++- **配额**：零。不拉起任何 CLI，不挪用户文件
++
++## 取什么形态
++
++EV-112 E2（run `20260924T172304Z`，单侧 glm）是这一格唯一的真实样本：副本源 `~/.zcode/cli/config.json` 暂时不在，审查运行走无副本一支，
++归档 run.json 的 `critics.glm` 段为 `model_requested: GLM-5.3`、`model_effective: 84044858-…/qwen3.8-max`、`model_route: global`、`model_override_applied` 缺席，收尾 `message` 为空。
++
++run.json 里**没有** `reason` 与 `cause`，脚本不按记忆抄：现跑 `prepareZcodeHome`，`srcConfig` 指向 mkdtemp 目录下一个不存在的文件，走第一个出口早退。
++这样做的唯一差别是 `reason` 里的路径是临时路径而非 E2 当时的真实路径；判定只认 `cause`，不受影响。
++没走默认路径的理由：真实副本源今天在，走默认路径会进副本支，把含凭据的副本写进临时目录。
++
++## 判据与结果
++
++| # | 判据 | 结果 |
++| :-- | :--- | :--- |
++| A1 | 读到的 E2 形态与读数一致（请求 `GLM-5.3`、`route: global`、`model_override_applied` 缺席、有生效模型） | ✅ |
++| A2 | `prepareZcodeHome` 早退：`homeDir: null`、`route: global`、`cause: source_missing`，临时目录跑完仍为空 | ✅ |
++| A3 | `decideModelOverride` 对这一格不产出（没尝试覆盖 ⇒ 缺席，与 EV-82 以来的契约一致） | ✅ |
++| A4 | `decideModelUnenforced` 产出，`requested: GLM-5.3`、`effective` 为 E2 的回读值、`cause: source_missing` | ✅ |
++| A5 | 守卫恰好播报一句，含请求值、生效值、FR-06 与 `source_missing` 的排查指向 | ✅ |
++| A6 | 守卫不出「请求的模型没有生效」那句（两格互斥，不串） | ✅ |
++
++守卫的那一句（`reason` 以占位代替）：
++
++> glm 侧**本次没有做模型覆盖**：请求的是 `GLM-5.3`，实际跑的是 `84044858-4e28-432b-bbbd-7e2d624e39ff/qwen3.8-max`（&lt;reason&gt;）。该侧结论仍然有效，但模型路由（FR-06）与异构默认（NFR-06）在本侧不成立——若另一侧模型与它同家族，这一轮不构成真正的双审。先看副本源 `~/.zcode/cli/config.json` 在不在。
++
++## 边界
++
++- 这份验收锁的是**判定与播报**：E2 已在真实配额下证明「副本源缺失 → 跑在个人配置默认模型上」这条链路本身，这里不再重跑。
++- `run()` 的接线（`requested` 取 `req.model`、结果写进 `CriticResult`）由 `zcode-carriers.test.ts` 的假入口用例端到端覆盖，`review.ts` 写进 run.json 由集成用例覆盖；变异 N4 / N6 / N7 证明这三处都咬得住。
++- 限定失败（`qualify_failed`）这一支没有真实样本，只有假入口用例覆盖（`zcode-model-selection.test.ts`），与计划 §4.3 同一边界。
+diff --git a/doc/05_testing/evidence/ev122-acceptance-20260925/e1-check.mjs b/doc/05_testing/evidence/ev122-acceptance-20260925/e1-check.mjs
+new file mode 100644
+index 0000000..faafc77
+--- /dev/null
++++ b/doc/05_testing/evidence/ev122-acceptance-20260925/e1-check.mjs
+@@ -0,0 +1,89 @@
++#!/usr/bin/env node
++/**
++ * EV-122 零配额验收（计划 r2 §4.3）：拿 EV-112 E2 的**真实形态**喂判定与播报。
++ *
++ * 被取形态：run `20260924T172304Z`（主题 `EV-112-E2验收`，单侧 glm），副本源暂时不在、审查运行走无副本一支，
++ * run.json 里 `model_requested: GLM-5.3`、`model_effective: …/qwen3.8-max`、`model_route: global`、`model_override_applied` 缺席，守卫零播报。
++ *
++ * run.json 里**没有** `reason` 与 `cause`（计划 r2 C7），所以不按记忆抄：现跑 `prepareZcodeHome`，
++ * `srcConfig` 指向本脚本 mkdtemp 出来的目录下一个不存在的文件——走第一个出口早退，不建目录、不写文件，
++ * 也不碰真实的 `~/.zcode/cli/config.json`（它在，走默认路径就会进副本支、把凭据拷进临时目录）。
++ * 于是 `reason` 里的路径是临时路径而非 E2 当时的真实路径，只有这一处与 E2 不同，不影响判定（判定只认 `cause`）。
++ *
++ * 与 EV-112 的 e1/e2 脚本不同，本脚本从**构建产物** `dist/test/src/…` 导模块（先跑 `npm run build`）。
++ * 只读：唯一的写是同目录 e1-output.json 与一个空的 mkdtemp 目录（跑完即删）。
++ *
++ * 用法：node doc/05_testing/evidence/ev122-acceptance-20260925/e1-check.mjs
++ */
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { fileURLToPath, pathToFileURL } from 'node:url';
++
++const HERE = path.dirname(fileURLToPath(import.meta.url));
++const ROOT = path.resolve(HERE, '../../../..');
++const RUN_ID = '20260924T172304Z';
++const load = (rel) => import(pathToFileURL(path.join(ROOT, 'dist/test/src/trivium', rel)).href);
++
++const { prepareZcodeHome, decideModelUnenforced, decideModelOverride } = await load('adapters/zcode.js');
++const { judgeSide, renderGuardWarnings } = await load('guard.js');
++const { failedResult, TOOL_TRACE_CAPABILITY } = await load('adapters/base.js');
++const { defaultConfig } = await load('config.js');
++
++const runJson = JSON.parse(await fs.readFile(path.join(ROOT, '.reviews/EV-112-E2验收/plan', '_' + 'meta', `run-${RUN_ID}.json`), 'utf8'));
++const g = runJson.critics.glm;
++
++const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ev122-e1-'));
++let prep;
++try {
++  prep = await prepareZcodeHome(path.join(tmp, 'glm'), g.model_requested, { srcConfig: path.join(tmp, 'absent', 'config.json') });
++  var tmpEntries = await fs.readdir(tmp);
++} finally {
++  await fs.rm(tmp, { recursive: true, force: true });
++}
++
++const attempted = g.model_route === 'config_copy';
++const override = decideModelOverride(attempted, prep.qualified, g.model_effective);
++const unenforced = decideModelUnenforced(attempted, g.model_requested, g.model_effective, prep.cause, prep.reason);
++
++const base = failedResult('glm', { status: 'failed', reason: 'EV-122 验收夹具' });
++const result = unenforced ? { ...base, model_unenforced: unenforced } : base;
++const req = {
++  critic: 'glm', stage: 'plan', model: g.model_requested, effort: null,
++  brief_text: '', brief_path: '/proj/b.md', subject_path: '/proj/s.md',
++  project_root: '/proj', out_dir: '/tmp/out', timeout_s: 60,
++  min_tool_calls: 0, min_project_reads: 0, deny_paths: [],
++};
++const verdict = judgeSide(defaultConfig(), 'glm', result, null, req, {
++  archiveRootAbs: '/proj/.reviews', projectRoot: '/proj', triviumDir: '/proj/.trivium', runRoot: '/tmp/runs',
++  capability: TOOL_TRACE_CAPABILITY,
++});
++const notes = renderGuardWarnings({
++  sides: { glm: verdict }, drift: { changed: false, files: [], related: [] },
++  driftAction: 'ok', fingerprintChangedFiles: [], unattributedDriftFiles: [],
++});
++const broadcast = notes.filter((n) => n.includes('本次没有做模型覆盖'));
++
++const checks = {
++  A1_e2_shape: g.model_requested === 'GLM-5.3' && g.model_route === 'global' && !('model_override_applied' in g) && typeof g.model_effective === 'string',
++  A2_prep_early_exit: prep.homeDir === null && prep.route === 'global' && prep.cause === 'source_missing' && tmpEntries.length === 0,
++  A3_override_absent: override.applied === undefined && override.note === null,
++  A4_unenforced_produced: !!unenforced && unenforced.requested === 'GLM-5.3' && unenforced.effective === g.model_effective && unenforced.cause === 'source_missing',
++  A5_guard_one_line: broadcast.length === 1
++    && broadcast[0].includes('GLM-5.3') && broadcast[0].includes(g.model_effective)
++    && broadcast[0].includes('FR-06') && broadcast[0].includes('副本源 `~/.zcode/cli/config.json` 在不在'),
++  A6_no_false_alarm: !notes.some((n) => n.includes('没有生效')),
++};
++
++const output = {
++  run_id: RUN_ID,
++  e2_fields: { model_requested: g.model_requested, model_effective: g.model_effective, model_route: g.model_route, model_override_applied_present: 'model_override_applied' in g },
++  prep: { homeDir: prep.homeDir, route: prep.route, cause: prep.cause, reason_kind: prep.reason?.startsWith('未找到 ') ? '未找到 <临时路径>…' : prep.reason, tmp_entries_after: tmpEntries.length },
++  model_unenforced: unenforced ? { ...unenforced, reason: '（同 prep.reason）' } : null,
++  guard_broadcast: broadcast.map((n) => n.replace(prep.reason, '<reason>')),
++  checks,
++  all_ok: Object.values(checks).every(Boolean),
++};
++await fs.writeFile(path.join(HERE, 'e1-output.json'), JSON.stringify(output, null, 2) + '\n', 'utf8');
++console.log(JSON.stringify({ checks, all_ok: output.all_ok }, null, 2));
++process.exit(output.all_ok ? 0 : 1);
+diff --git a/doc/05_testing/evidence/ev122-acceptance-20260925/e1-output.json b/doc/05_testing/evidence/ev122-acceptance-20260925/e1-output.json
+new file mode 100644
+index 0000000..2887abf
+--- /dev/null
++++ b/doc/05_testing/evidence/ev122-acceptance-20260925/e1-output.json
+@@ -0,0 +1,34 @@
++{
++  "run_id": "20260924T172304Z",
++  "e2_fields": {
++    "model_requested": "GLM-5.3",
++    "model_effective": "84044858-4e28-432b-bbbd-7e2d624e39ff/qwen3.8-max",
++    "model_route": "global",
++    "model_override_applied_present": false
++  },
++  "prep": {
++    "homeDir": null,
++    "route": "global",
++    "cause": "source_missing",
++    "reason_kind": "未找到 <临时路径>…",
++    "tmp_entries_after": 0
++  },
++  "model_unenforced": {
++    "requested": "GLM-5.3",
++    "effective": "84044858-4e28-432b-bbbd-7e2d624e39ff/qwen3.8-max",
++    "cause": "source_missing",
++    "reason": "（同 prep.reason）"
++  },
++  "guard_broadcast": [
++    "glm 侧**本次没有做模型覆盖**：请求的是 `GLM-5.3`，实际跑的是 `84044858-4e28-432b-bbbd-7e2d624e39ff/qwen3.8-max`（<reason>）。该侧结论仍然有效，但模型路由（FR-06）与异构默认（NFR-06）在本侧不成立——若另一侧模型与它同家族，这一轮不构成真正的双审。先看副本源 `~/.zcode/cli/config.json` 在不在。"
++  ],
++  "checks": {
++    "A1_e2_shape": true,
++    "A2_prep_early_exit": true,
++    "A3_override_absent": true,
++    "A4_unenforced_produced": true,
++    "A5_guard_one_line": true,
++    "A6_no_false_alarm": true
++  },
++  "all_ok": true
++}
+diff --git a/doc/05_testing/evidence/ev122-mutation-20260925/mutation-output.txt b/doc/05_testing/evidence/ev122-mutation-20260925/mutation-output.txt
+new file mode 100644
+index 0000000..ec8ca88
+--- /dev/null
++++ b/doc/05_testing/evidence/ev122-mutation-20260925/mutation-output.txt
+@@ -0,0 +1,70 @@
++✓ 工作树干净、基线全绿（3 个套件）
++  N1 ✓ 咬住（fail=1）
++  N2 ✓ 咬住（fail=2）
++  N3 ✓ 咬住（fail=2）
++  N4 ✓ 咬住（fail=1）
++  N5 ✓ 咬住（fail=2）
++  N6 ✓ 咬住（fail=1）
++  N7 ✓ 咬住（fail=1）
++  N8 ✓ 咬住（fail=1）
++  N9 ✓ 咬住（fail=2）
++{
++  "总数": 9,
++  "咬住": 9,
++  "逐条": [
++    {
++      "id": "N1",
++      "desc": "产出条件去掉 !attempted（做了覆盖也产出）⇒ 纯函数「做了覆盖，即使带了成因」那格",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "N2",
++      "desc": "比整串而非 modelId 段 ⇒ 纯函数「providerId 形态不同」与「短名 vs 全限定」两格",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "N3",
++      "desc": "回读为空时也产出 ⇒ 纯函数「没回读到」那格、run() 负格",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "N4",
++      "desc": "run() 不接线（字段恒缺席）⇒ 副本源缺失那格",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "N5",
++      "desc": "守卫不播报 ⇒ 守卫「model_unenforced 在 ⇒ 播报一句」那格",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "N6",
++      "desc": "review.ts 不写进 run.json ⇒ 集成用例「桩注入 model_unenforced」",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "N7",
++      "desc": "接线第二参由 req.model 换成 home.qualified（照抄相邻 decideModelOverride）⇒ 副本源缺失那格",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "N8",
++      "desc": "守卫改按 reason 文案分句 ⇒ 守卫「按 cause 给排查指向」那格（注入的 reason 是任意串）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "N9",
++      "desc": "prepareZcodeHome 的限定失败出口 cause 填成 source_missing ⇒ 成因用例与 run() 限定失败那格",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/ev122-mutation-20260925/mutation-spec.json b/doc/05_testing/evidence/ev122-mutation-20260925/mutation-spec.json
+new file mode 100644
+index 0000000..c64f654
+--- /dev/null
++++ b/doc/05_testing/evidence/ev122-mutation-20260925/mutation-spec.json
+@@ -0,0 +1,86 @@
++{
++  "targets": [
++    "src/trivium/adapters/zcode.ts",
++    "src/trivium/guard.ts",
++    "src/trivium/review.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/zcode-model-selection.test.js",
++    "dist/test/test/unit/zcode-carriers.test.js",
++    "dist/test/test/integration/code-stage.test.js"
++  ],
++  "cases": [
++    {
++      "id": "N1",
++      "desc": "产出条件去掉 !attempted（做了覆盖也产出）⇒ 纯函数「做了覆盖，即使带了成因」那格",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "  if (attempted || !requested || !effective) return undefined;",
++      "replace": "  if (!requested || !effective) return undefined;",
++      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
++    },
++    {
++      "id": "N2",
++      "desc": "比整串而非 modelId 段 ⇒ 纯函数「providerId 形态不同」与「短名 vs 全限定」两格",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "  if (zcodeModelTail(effective) === zcodeModelTail(requested)) return undefined;",
++      "replace": "  if (effective === requested) return undefined;",
++      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
++    },
++    {
++      "id": "N3",
++      "desc": "回读为空时也产出 ⇒ 纯函数「没回读到」那格、run() 负格",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "  if (attempted || !requested || !effective) return undefined;",
++      "replace": "  if (attempted || !requested) return undefined;\n  if (!effective && (cause === 'source_missing' || cause === 'qualify_failed')) return { requested, effective: '', cause, reason: reason ?? '' };",
++      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
++    },
++    {
++      "id": "N4",
++      "desc": "run() 不接线（字段恒缺席）⇒ 副本源缺失那格",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "      ...(unenforced ? { model_unenforced: unenforced } : {}),\n",
++      "replace": "",
++      "expect": "dist/test/test/unit/zcode-carriers.test.js"
++    },
++    {
++      "id": "N5",
++      "desc": "守卫不播报 ⇒ 守卫「model_unenforced 在 ⇒ 播报一句」那格",
++      "file": "src/trivium/guard.ts",
++      "find": "    if (s.modelUnenforced) {",
++      "replace": "    if (s.modelUnenforced && Date.now() < 0) {",
++      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
++    },
++    {
++      "id": "N6",
++      "desc": "review.ts 不写进 run.json ⇒ 集成用例「桩注入 model_unenforced」",
++      "file": "src/trivium/review.ts",
++      "find": "      ...(r.model_unenforced === undefined ? {} : { model_unenforced: r.model_unenforced }),\n",
++      "replace": "",
++      "expect": "dist/test/test/integration/code-stage.test.js"
++    },
++    {
++      "id": "N7",
++      "desc": "接线第二参由 req.model 换成 home.qualified（照抄相邻 decideModelOverride）⇒ 副本源缺失那格",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "decideModelUnenforced(overrideAttempted, req.model, modelEffective, home.cause, home.reason)",
++      "replace": "decideModelUnenforced(overrideAttempted, home.qualified, modelEffective, home.cause, home.reason)",
++      "expect": "dist/test/test/unit/zcode-carriers.test.js"
++    },
++    {
++      "id": "N8",
++      "desc": "守卫改按 reason 文案分句 ⇒ 守卫「按 cause 给排查指向」那格（注入的 reason 是任意串）",
++      "file": "src/trivium/guard.ts",
++      "find": "          unenforcedHint(u.cause),",
++      "replace": "          unenforcedHint(u.reason.includes('未找到') ? 'source_missing' : 'qualify_failed'),",
++      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
++    },
++    {
++      "id": "N9",
++      "desc": "prepareZcodeHome 的限定失败出口 cause 填成 source_missing ⇒ 成因用例与 run() 限定失败那格",
++      "file": "src/trivium/adapters/zcode.ts",
++      "find": "      cause: 'qualify_failed',",
++      "replace": "      cause: 'source_missing',",
++      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/ev122-mutation-20260925/run.mjs b/doc/05_testing/evidence/ev122-mutation-20260925/run.mjs
+new file mode 100644
+index 0000000..dca163d
+--- /dev/null
++++ b/doc/05_testing/evidence/ev122-mutation-20260925/run.mjs
+@@ -0,0 +1,25 @@
++#!/usr/bin/env node
++/**
++ * EV-122 变异验证的包装：跑 `scripts/mutation-check.mjs <本目录>/mutation-spec.json`，
++ * 把装置的 stdout 与 stderr 原样写进 `mutation-output.txt`（会话里的命令不带重定向，输出由脚本自己写）。
++ * 退出码透传装置的退出码。仓库根按脚本位置推导（EV-103）。
++ *
++ * 用法：node doc/05_testing/evidence/ev122-mutation-20260925/run.mjs
++ */
++import { spawn } from 'node:child_process';
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const HERE = path.dirname(fileURLToPath(import.meta.url));
++const ROOT = path.resolve(HERE, '../../../..');
++const child = spawn(process.execPath, [path.join(ROOT, 'scripts/mutation-check.mjs'), path.join(HERE, 'mutation-spec.json')], {
++  cwd: ROOT,
++  stdio: ['ignore', 'pipe', 'pipe'],
++});
++let out = '';
++child.stdout.on('data', (d) => { out += d; process.stdout.write(d); });
++child.stderr.on('data', (d) => { out += d; process.stderr.write(d); });
++const code = await new Promise((resolve) => child.on('close', resolve));
++await fs.writeFile(path.join(HERE, 'mutation-output.txt'), out, 'utf8');
++process.exit(code ?? 1);
