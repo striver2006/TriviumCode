@@ -12,7 +12,8 @@
  *
  * - **写入**：`scripts/build.mjs` 构建主包前调 {@link computeBuildStamp}，经 esbuild `define` 注入常量；
  * - **读出**：运行时 {@link embeddedBuildStamp} 取回，记进 `snapshot.build`；
- * - **比对**：{@link buildStampWarnings} 只在**本仓模式**下比，其余项目只当自述指纹记录（r2 CODEX-01）。
+ * - **比对**：{@link buildStampWarnings} 只在**本仓模式**下比，其余项目只当自述指纹记录（r2 CODEX-01）；
+ *   作用面指纹已判定一致时不比 HEAD（EV-111：构建后只有作用面外的提交，HEAD 不同不说明副本过期）。
  *
  * 算法只有这一份：构建脚本与运行时收尾重算都调 {@link computeInputsSha256}，口径不会漂。
  */
@@ -143,16 +144,25 @@ export function isSelfRepo(i: Pick<BuildStampCheckInput, 'build' | 'projectRootC
 /**
  * 比对并给出告警（纯函数）。**非本仓模式恒返回空**：外部项目里 HEAD 恒不等，告警会常亮（r2 CODEX-01）。
  * 只告警、不阻断，调用方写进 `meta.gate.warnings`。
+ *
+ * **HEAD 只在作用面指纹未判定一致时才比**（EV-111）：指纹一致即构建输入与当前工作树一致，
+ * HEAD 不同只剩「构建于哪个提交」的出处信息，而那两个字段 run.json 本来就照记。
+ * 不这样做，构建后哪怕只有一次纯文档提交也会报「不同版」。指纹不等时 HEAD 那条照出，作排查线索；
+ * 指纹取不到时 HEAD 是唯一剩下的版本信号，照比、取不到照记「未能完成」。
+ * 指纹一致时 HEAD 不参与判定，它取不到也不记——那一格结论已由指纹给全，不是「查不出」。
  */
 export function buildStampWarnings(i: BuildStampCheckInput): string[] {
   if (!isSelfRepo(i)) return [];
   if (i.build === null) return [BUILD_WARN_MISSING];
   const out: string[] = [];
   if (i.build.dirty) out.push(BUILD_WARN_DIRTY);
+  const inputsMatch = i.currentInputsSha256 !== null && i.currentInputsSha256 === i.build.inputs_sha256;
   if (i.currentInputsSha256 === null) out.push(`${BUILD_WARN_INCOMPLETE}：作用面指纹重算取不到，无法判定安装副本是否为当前工作树构建`);
-  else if (i.currentInputsSha256 !== i.build.inputs_sha256) out.push(BUILD_WARN_STALE_INPUTS);
-  if (i.projectHead === null) out.push(`${BUILD_WARN_INCOMPLETE}：仓库 HEAD 取不到，无法比对版本`);
-  else if (i.projectHead !== i.build.git_head) out.push(`${BUILD_WARN_HEAD}（构建于 ${i.build.git_head.slice(0, 7)}，仓库 HEAD ${i.projectHead.slice(0, 7)}）`);
+  else if (!inputsMatch) out.push(BUILD_WARN_STALE_INPUTS);
+  if (!inputsMatch) {
+    if (i.projectHead === null) out.push(`${BUILD_WARN_INCOMPLETE}：仓库 HEAD 取不到，无法比对版本`);
+    else if (i.projectHead !== i.build.git_head) out.push(`${BUILD_WARN_HEAD}（构建于 ${i.build.git_head.slice(0, 7)}，仓库 HEAD ${i.projectHead.slice(0, 7)}）`);
+  }
   return out;
 }
 
@@ -183,7 +193,13 @@ export async function describeBuildStamp(projectRoot: string, build: BuildStamp 
   if (!isSelfRepo({ build, projectRootCommit, projectPackageName })) return `${head}；当前项目不是编排器本仓，只记不比`;
   const how = build !== null && projectRootCommit !== null ? '按根提交' : shallow ? '浅克隆，按包名' : '按包名';
   const w = await checkBuildStamp(projectRoot, build);
-  return `${head}；本仓模式（${how}判定）：${w.length === 0 ? '安装副本与当前工作树一致' : w.join('；')}`;
+  if (w.length > 0) return `${head}；本仓模式（${how}判定）：${w.join('；')}`;
+  // 零告警 ⇒ 标识非空且指纹一致。HEAD 若已前进（EV-111 那一格），补一句出处：不告警，但人读时看得到
+  const projectHead = build === null ? null : await headSha(projectRoot);
+  const since = build !== null && projectHead !== null && projectHead !== build.git_head
+    ? `（构建于 ${build.git_head.slice(0, 7)}，仓库 HEAD 已到 ${projectHead.slice(0, 7)}，作用面与构建时一致）`
+    : '';
+  return `${head}；本仓模式（${how}判定）：安装副本与当前工作树一致${since}`;
 }
 
 /** 读被审项目根的 package.json 的 name；读不到返回 null */

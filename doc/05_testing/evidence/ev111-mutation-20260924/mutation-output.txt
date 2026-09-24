@@ -1,0 +1,49 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  E1 ✓ 咬住（fail=4）
+  E2 ✓ 咬住（fail=5）
+  E3 ✓ 咬住（fail=2）
+  E4 ✓ 咬住（fail=1）
+  E5a ✓ 咬住（fail=1）
+  E5b ✓ 咬住（fail=1）
+{
+  "总数": 6,
+  "咬住": 6,
+  "逐条": [
+    {
+      "id": "E1",
+      "desc": "去掉 !inputsMatch 守卫，回到原行为：指纹一致也比 HEAD（EV-111 本体）",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "E2",
+      "desc": "守卫取反：只在指纹一致时比 HEAD",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "E3",
+      "desc": "把 null 当一致（CODEX-04）。注意：删掉 `currentInputsSha256 !== null &&` 是等效变异——inputs_sha256 为非空 string，null === <string> 恒假，行为不变，装置会报存活；不要用那种写法",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "E4",
+      "desc": "D2 反向：指纹一致时 HEAD 取不到仍报「比对未能完成」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "E5a",
+      "desc": "doctor 出处句条件取反：HEAD 相同才补，前进了反而不补",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "E5b",
+      "desc": "doctor 出处句条件恒真：HEAD 相同也补一句零信息量的出处（GLM-01）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

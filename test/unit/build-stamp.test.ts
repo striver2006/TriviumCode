@@ -1,5 +1,6 @@
 /**
- * 构建标识（EV-82 小主题第一段 r2 §2）：本仓模式判定、四条告警、作用面指纹、run.json 落盘。
+ * 构建标识（EV-82 小主题第一段 r2 §2）：本仓模式判定、四条告警、作用面指纹、run.json 落盘；
+ * EV-111 的 HEAD 比对条件与 doctor 描述的出处句。
  *
  * 全部在临时目录里的合成 git 仓库上跑，不碰本仓工作树。
  */
@@ -22,6 +23,7 @@ import {
   collectBuildStampNotices,
   computeBuildStamp,
   computeInputsSha256,
+  describeBuildStamp,
   embeddedBuildStamp,
   isSelfRepo,
   readPackageName,
@@ -72,6 +74,13 @@ test('非本仓模式零告警：外部项目里 HEAD 恒不等，也不得出�
   assert.deepEqual(buildStampWarnings({
     build: null, projectRootCommit: null, projectHead: null, projectPackageName: 'their-app', currentInputsSha256: null,
   }), []);
+  // EV-111 代码双审 r1 CODEX-04：补齐四组。EV-111 本体那一格放到非本仓模式；判据输入全取不到也不报
+  assert.deepEqual(buildStampWarnings({
+    build: stamp(), projectRootCommit: 'someone-else', projectHead: 'zzz', projectPackageName: 'their-app', currentInputsSha256: 'in',
+  }), []);
+  assert.deepEqual(buildStampWarnings({
+    build: stamp(), projectRootCommit: 'someone-else', projectHead: null, projectPackageName: 'their-app', currentInputsSha256: null,
+  }), []);
 });
 
 test('本仓模式四条告警各自独立：缺失 / dirty / 构建后又改 / HEAD 不同', () => {
@@ -80,9 +89,25 @@ test('本仓模式四条告警各自独立：缺失 / dirty / 构建后又改 / 
   assert.deepEqual(buildStampWarnings({ ...base, build: stamp() }), [], '一致时零告警');
   assert.deepEqual(buildStampWarnings({ ...base, build: stamp({ dirty: true }) }), [BUILD_WARN_DIRTY]);
   assert.deepEqual(buildStampWarnings({ ...base, currentInputsSha256: 'changed', build: stamp() }), [BUILD_WARN_STALE_INPUTS]);
-  const head = buildStampWarnings({ ...base, projectHead: 'newhead', build: stamp() });
-  assert.equal(head.length, 1);
-  assert.ok(head[0]!.startsWith(BUILD_WARN_HEAD));
+  // HEAD 那条只在指纹未判定一致时出（EV-111），这里带着「指纹不等」一起出，顺序锁住
+  const head = buildStampWarnings({ ...base, projectHead: 'newhead', currentInputsSha256: 'changed', build: stamp() });
+  assert.equal(head.length, 2);
+  assert.equal(head[0], BUILD_WARN_STALE_INPUTS);
+  assert.ok(head[1]!.startsWith(BUILD_WARN_HEAD));
+  const headNoInputs = buildStampWarnings({ ...base, projectHead: 'newhead', currentInputsSha256: null, build: stamp() });
+  assert.equal(headNoInputs.length, 2, '指纹取不到时 HEAD 是唯一剩下的版本信号，照比');
+  assert.ok(headNoInputs[0]!.startsWith(BUILD_WARN_INCOMPLETE) && headNoInputs[0]!.includes('作用面指纹'));
+  assert.ok(headNoInputs[1]!.startsWith(BUILD_WARN_HEAD));
+});
+
+/*
+ * EV-111：这一格原先断言「指纹一致、只改 HEAD ⇒ 出一条不同版」，把误报锁成了预期。
+ * 实遇五次：构建后只有纯文档提交，作用面没动，每轮收尾都报「与仓库 HEAD 不同版」。
+ */
+test('EV-111：指纹一致而 HEAD 不同 ⇒ 零告警；构建时 dirty 的只报 dirty', () => {
+  const base = { projectRootCommit: 'root', projectHead: 'newhead', projectPackageName: SELF_PACKAGE_NAME, currentInputsSha256: 'in' };
+  assert.deepEqual(buildStampWarnings({ ...base, build: stamp() }), []);
+  assert.deepEqual(buildStampWarnings({ ...base, build: stamp({ dirty: true }) }), [BUILD_WARN_DIRTY], '构建时脏、之后提交（S2）');
 });
 
 test('本仓模式下判据输入取不到 ⇒「比对未能完成」，不与「查过、干净」同形（r2 CODEX-05）', () => {
@@ -90,9 +115,20 @@ test('本仓模式下判据输入取不到 ⇒「比对未能完成」，不与�
   const noInputs = buildStampWarnings({ ...base, projectHead: 'head', currentInputsSha256: null });
   assert.equal(noInputs.length, 1);
   assert.ok(noInputs[0]!.startsWith(BUILD_WARN_INCOMPLETE) && noInputs[0]!.includes('作用面指纹'));
-  const noHead = buildStampWarnings({ ...base, projectHead: null, currentInputsSha256: 'in' });
-  assert.equal(noHead.length, 1);
-  assert.ok(noHead[0]!.startsWith(BUILD_WARN_INCOMPLETE) && noHead[0]!.includes('HEAD'));
+  /*
+   * EV-111：指纹已判定一致时 HEAD 不参与判定，它取不到这一格不再是 CODEX-05 的「查不出」——
+   * 结论已由指纹给全。原断言（期望一条「未能完成」）按此改写。
+   * 指纹未判定一致时 CODEX-05 照旧成立，见下面两条断言。
+   */
+  assert.deepEqual(buildStampWarnings({ ...base, projectHead: null, currentInputsSha256: 'in' }), []);
+  const noHead = buildStampWarnings({ ...base, projectHead: null, currentInputsSha256: 'changed' });
+  assert.equal(noHead.length, 2);
+  assert.equal(noHead[0], BUILD_WARN_STALE_INPUTS);
+  assert.ok(noHead[1]!.startsWith(BUILD_WARN_INCOMPLETE) && noHead[1]!.includes('HEAD'));
+  const neither = buildStampWarnings({ ...base, projectHead: null, currentInputsSha256: null });
+  assert.equal(neither.length, 2);
+  assert.ok(neither.every((w) => w.startsWith(BUILD_WARN_INCOMPLETE)));
+  assert.ok(neither[0]!.includes('作用面指纹') && neither[1]!.includes('HEAD'));
   // 非本仓模式仍然零告警，哪怕两项都取不到
   assert.deepEqual(buildStampWarnings({ ...base, projectRootCommit: 'other', projectHead: null, currentInputsSha256: null }), []);
 });
@@ -134,6 +170,43 @@ test('checkBuildStamp：本仓模式下构建后又改作用面 ⇒「不是当�
 
   const other = await selfLikeRepo('their-app');
   assert.deepEqual(await checkBuildStamp(other, s), [], '根提交不同 ⇒ 非本仓模式');
+});
+
+async function commitAll(dir: string, msg: string): Promise<void> {
+  await run('git', ['add', '-A'], { cwd: dir });
+  const c = await run('git', ['commit', '-q', '-m', msg, '--no-verify'], { cwd: dir });
+  assert.equal(c.code, 0, c.stderr);
+}
+
+test('EV-111 真实 git：构建后只提交 doc/ ⇒ 零告警；再提交 src/ ⇒ 不是当前工作树构建的 + 不同版', async () => {
+  const dir = await selfLikeRepo();
+  const s = (await computeBuildStamp(dir))!;
+  await fs.writeFile(path.join(dir, 'doc/n.md'), '# 纯文档提交\n');
+  await commitAll(dir, 'docs');
+  assert.notEqual(await headSha(dir), s.git_head, '前提：HEAD 已前进');
+  assert.deepEqual(await checkBuildStamp(dir, s), []);
+
+  await fs.writeFile(path.join(dir, 'src/a.ts'), 'export const a = 4;\n');
+  await commitAll(dir, 'src');
+  const w = await checkBuildStamp(dir, s);
+  assert.equal(w.length, 2);
+  assert.equal(w[0], BUILD_WARN_STALE_INPUTS);
+  assert.ok(w[1]!.startsWith(BUILD_WARN_HEAD));
+});
+
+test('doctor 描述：指纹一致时 HEAD 前进才补出处句，HEAD 相同不补（EV-111，GLM-01）', async () => {
+  const dir = await selfLikeRepo();
+  const s = (await computeBuildStamp(dir))!;
+  const same = await describeBuildStamp(dir, s);
+  assert.ok(same.includes('安装副本与当前工作树一致'), same);
+  assert.ok(!same.includes('仓库 HEAD 已到'), `HEAD 相同不得出出处句：${same}`);
+
+  await fs.writeFile(path.join(dir, 'doc/n.md'), '# 纯文档提交\n');
+  await commitAll(dir, 'docs');
+  const moved = await describeBuildStamp(dir, s);
+  assert.ok(moved.includes('安装副本与当前工作树一致'), moved);
+  assert.ok(moved.includes(`构建于 ${s.git_head.slice(0, 7)}，仓库 HEAD 已到 ${(await headSha(dir))!.slice(0, 7)}`), moved);
+  assert.ok(!moved.includes(BUILD_WARN_HEAD), moved);
 });
 
 // ── 代码双审 r1 的补强 ──

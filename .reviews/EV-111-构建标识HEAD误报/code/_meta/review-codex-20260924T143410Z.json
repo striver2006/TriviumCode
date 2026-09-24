@@ -1,0 +1,90 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "核心改动正确，可放行。①三态规则与计划 §4.1 表逐格一致——我直接 import 编译产物 `dist/test/src/trivium/build-stamp.js` 跑了八格读数，与表完全吻合（含「指纹取不到时 HEAD 照比」这格）；零告警 ⇔ 标识非空 + 构建时干净 + 指纹取得到且一致，短路路径穷尽。②两处改写只收窄：diff 里删掉的只有 EV-111 本体与 D2 两格，并各补了更细的格，其余断言未动。③出处句的推断严密（零告警 ⇒ 指纹一致可由纯函数穷尽推出），措辞也避开了 S4 站不住的「其间未改作用面」。④六条变异非等效、咬点正确，与证据文件的 fail 数逐条吻合。⑤未发现让真实过期副本静默的新路径（除已登记的 EV-114 边界）。四条 nit：fault-injection 里一行断言被并进上一行、设计 1143 行引的 doctor 串漏了半句、BACKLOG 已标 done 而验收未落、计划 §5.1「非本仓四种组合」文件里只有两组。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "test/integration/fault-injection.test.ts:943",
+      "problem": "这条本该只改注释的文件里，出现了一处与主题无关的改写：`const stampWarnings = …filter(…)` 与紧随其后的 `assert.ok(stampWarnings.length > 0, …)` 被合并成同一个物理行（200+ 字符）。后果不是功能问题，而是这条断言在 diff 里呈现为「删两行 + 加一行」——而它恰是计划 §4.3 明写「断言不放宽」的那个落点，复核者无法从 diff 一眼确认断言本身没被顺手改过。",
+      "evidence": "读 test/integration/fault-injection.test.ts:943（该行形如 `…test(w));    assert.ok(stampWarnings.length > 0, …)`）；`git diff -- test/integration/fault-injection.test.ts` 的 hunk 头 `@@ -938,8 +940,7 @@`（8 行删、7 行加）；对照 `.reviews/EV-111-构建标识HEAD误报/plan/2026-09-24-EV-111-构建标识HEAD误报-r2-claude.md` §4.3「集成用例 C5 的注释改成实际触发的那条…断言不放宽」。",
+      "suggestion": "拆回两行即可（纯格式，断言内容一字不动）。若并排是有意为之，请在补丁说明里单独点出，否则下次读 diff 的人还得再数一遍。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "nit",
+      "layer": "requirement",
+      "kind": "contract",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1143（§6.7.1 `snapshot.build` 行）",
+      "problem": "行内用「」引的 doctor 出处句与实现不符：文档写「构建于 X，仓库 HEAD 已到 Y」，实现是「（构建于 X，仓库 HEAD 已到 Y，作用面与构建时一致）」。被省掉的第三个分句恰恰是「为什么这不是告警」的那半句（计划 §4.2 是带这半句的）。设计文档是唯一实现依据，按引号里的串去抄用例或验收脚本会对不上。",
+      "evidence": "读 src/trivium/build-stamp.ts:196-202（`since` 模板串与最后的 return）；设计文档 1143 行；计划 §4.2 与 §6①；test/unit/build-stamp.test.ts:198-201 断言的正是含第三分句的整串。",
+      "suggestion": "把引号里的串补成实现全文，或显式标为节略（如「…（后略）」），使文档与实现逐字可对。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "doc/08_project/BACKLOG.md:209（EV-111 行）",
+      "problem": "状态列已写 `**done**`，同一格里又写「零配额验收待做」，而计划 §6 要求这一行追加的「实施提交与验收证据路径」两项此刻都不存在（改动尚未提交）。`done` 一旦成为终态，这两项就没人负责补记——与 EV-110（done 且带运行/证据指向）的形态不同，后来人看到的是「已结案但没有验收证据」。请 Driver 裁决是「计划 §6 的落点排早了」还是「欠一次收尾编辑」，二选一都好，只要显式。",
+      "evidence": "读 doc/08_project/BACKLOG.md:209（EV-111 行含「…零配额验收待做）」）与 208 行（EV-110 的 done 形态对照）；`.reviews/EV-111-构建标识HEAD误报/plan/2026-09-24-EV-111-构建标识HEAD误报-r2-claude.md` §6 第二条；`git status` 显示本轮改动均未提交。",
+      "suggestion": "把状态改成明确的中间态（或写明由哪一步、哪一次编辑补记提交哈希与 evidence 路径）；或把计划 §6 的顺序挪到提交+验收之后。不要在无验收证据的情况下留一个光秃秃的 done。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/build-stamp.test.ts:68-76（对照计划 §5.1）",
+      "problem": "计划 §5.1 末句承诺「非本仓模式四种组合仍为 `[]`（现有用例保留）」，而文件里的非本仓用例只有两组调用（build 非空一组、全 null 一组）。非本仓是纯短路（`if (!isSelfRepo(i)) return []`），所以这更像计划的措辞过头而非实现缺口——但按计划核对覆盖率的人会以为有四组。属实现与已批准计划的偏离，需 Driver 裁决是「计划写错」还是「用例缺两格」。",
+      "evidence": "读 test/unit/build-stamp.test.ts:68-76；src/trivium/build-stamp.ts:155-157（非本仓短路）；`.reviews/EV-111-构建标识HEAD误报/plan/2026-09-24-EV-111-构建标识HEAD误报-r2-claude.md` §5.1。",
+      "suggestion": "改准计划措辞，或补上剩余两组（成本极低，两行断言）。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "三态规则与计划 §4.1 表逐格一致（本仓模式）：指纹=构建时 ⇒ 不报、HEAD 不比；指纹≠ ⇒ STALE_INPUTS + HEAD 照旧；指纹取不到 ⇒ INCOMPLETE(指纹) + HEAD 照旧。我不是只看 diff：直接 import 编译产物 dist/test/src/trivium/build-stamp.js 调 buildStampWarnings 跑了八格，读数与表逐格吻合。",
+    "「零告警 ⇔ 标识非空、构建时干净、指纹取得到且一致」这条等价在整个纯函数上穷尽成立：非本仓短路 → []；build 为 null → 提前返回 MISSING；dirty 必出 DIRTY；指纹 null 必出 INCOMPLETE；指纹不等必出 STALE_INPUTS。八格读数里第 6、7、8 格把这三条短路都实测到了。",
+    "②两处改写确实只收窄：`git diff` 显示删掉的只有「四条告警各自独立」用例里『指纹一致 + HEAD 不同』一格与 CODEX-05 用例的 `noHead` 一格，且各自补了更细的格（指纹取不到/不等 × HEAD 取不到/不同，外加 neither 两条 INCOMPLETE）；`noInputs`、非本仓、dirty、缺失、抛错五组断言一字未动。没有顺手放宽别的格。",
+    "③出处句的推断严密：零告警只能由「非本仓短路」或「本仓 + 标识非空 + !dirty + 指纹非空且相等」产生，而 describeBuildStamp 在短路分支已提前返回，故进入该分支时指纹必然一致，`since` 的「作用面与构建时一致」有据；措辞避开「其间未改作用面」也与 S4（改了又改回）相容。",
+    "④六条变异非等效且咬点正确：我按代码逐条推演失败用例数，与证据文件逐字吻合（E1=4：EV-111 本体/CODEX-05/真实 git/doctor 四用例；E2=5；E3=2；E4=1；E5a=1；E5b=1）。另按装置闸 7 的口径实算了六条 find 串在当前目标文件中的命中数，各恰为 1，替换不会落错位置。",
+    "①未发现让真实过期安装副本静默的新路径：指纹比的是内容，内容相等即安装输入与当前工作树一致（跨克隆、HEAD 挪到同内容提交都成立）；HEAD 那条本身从不单独承担「副本过期」的判据，它的偶然命中面（B3）已在 EV-114 显式登记并写明代价。EV-114 ① 说的「现只命中构建产物 trivium.cjs 本身」我用 `git ls-files --others --ignored --exclude-standard -- src scripts skills package.json package-lock.json tsconfig.json` 核实属实。",
+    "⑤文档面：设计 1143 行、§21 的 v1.3.38 行、doc/02_design/README.md 的跟版都在；BACKLOG EV-114 的 ①②③ 三项与实现边界一致。§21 与 BACKLOG 里关于「M10b r7 §3.4 第 6b 条容忍项空转」「r5 §7.3 白名单行比的是字段」两句，我按 r7 §3.4/§3.7 与 r5 §7.3 原文核过，成立（6b 禁的五类含 STALE_INPUTS 与 INCOMPLETE，改后 HEAD 那条只能与它们同时出现）。",
+    "证据件的自洽性可核：mutation-spec.json 写于 22:15:12、mutation-output.txt 落于 22:16:08，晚于装置收尾重建的 dist（22:15:59）；且 dist 里的产物是未变异版（`if (!inputsMatch) {` 与带 `build.git_head` 判据的 since 条件都在），没有「残留变异体被当成下一版干净基线」。"
+  ],
+  "not_covered": [
+    "没能第一手复跑测试：沙箱只读，`npm run check` / `node --test`（会写 dist/ 与临时目录）被禁止。因此「基线全绿」与「六条变异全部咬住」是我按代码逐条推演 + 读证据件 + 校验装置闸门逻辑核实的，不是我自己跑出来的读数。",
+    "`describeBuildStamp` 的真实 git 路径（含出处句实跑读数）未第一手验证：它经 checkBuildStamp → workTreeHash 会写临时索引，属写操作；只按代码与两处真实 git 用例的写法核对。",
+    "集成用例 fault-injection.test.ts 未实跑（需打包产物与真实子进程）。其注释声称的「实跑读数正是这三条」我只能推演到「至少一条必然成立」（夹具指纹必与本仓构建时不同 ⇒ 必出 STALE_INPUTS），无法确认另两条的当时读数。",
+    "未核第 4 步开工钩子对 r7 §3.4 第 6a/6b 条的代码实现（该钩子尚不存在），只核了文字判据与本次改动的相容性。",
+    "未读本主题除计划 r2 之外的其它留痕（按禁读清单回避了 gemini / glm 两份与运行目录；M10b 侧只读了 claude 稿）。",
+    "已知的窄窗口我没当成缺陷列：describeBuildStamp 对「本仓模式」判两次（自己一次、checkBuildStamp 内再一次），两次结论若在毫秒级内不一致，可能对非本仓打出「本仓模式」句。触发需要根提交在两次调用之间变化，实质不可达，且这是改动前就有的结构，只影响 doctor 一行文案、不影响告警与闸门。"
+  ],
+  "consulted": [
+    ".reviews/EV-111-构建标识HEAD误报/code/_meta/changes-20260924T143410Z.diff",
+    ".reviews/EV-111-构建标识HEAD误报/plan/2026-09-24-EV-111-构建标识HEAD误报-r2-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r7-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/README.md",
+    "doc/05_testing/evidence/ev111-mutation-20260924/mutation-output.txt",
+    "doc/05_testing/evidence/ev111-mutation-20260924/mutation-spec.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/M10b-轮次台账.md",
+    "src/install.ts",
+    "src/trivium/build-stamp.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/review.ts",
+    "src/trivium/util/git.ts",
+    "scripts/mutation-check.mjs",
+    "test/integration/fault-injection.test.ts",
+    "test/unit/build-stamp.test.ts",
+    "dist/test/src/trivium/build-stamp.js"
+  ]
+}
