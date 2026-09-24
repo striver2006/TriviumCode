@@ -1,0 +1,99 @@
+{
+  "agreed": [
+    "§1 现状核实非常细致，六项 M10a 交付按符号名核代码全部属实；精确指出了 r2 的 7 处不一致与代码漂移（尤其是敏锐纠正了 hooks.json 注释被引反、resolveAssetRoot 已收成单一事实源、topic claim 兜底值导致 claimed_by 恒非空等深层事实）。",
+    "将决策编号重排为 B1～B7，彻底理清了与 M10a D3（Bash 侧全集字面保护）以及原 M10 早期编号的混淆，建立了清晰的三方对照。",
+    "§9 详尽排查了 D3 之后的 15 项 Bash 依赖；由用户在外部终端执行破坏性篡改与事后恢复，完全符合 CLAUDE.md 对带外管理员出口的定位；对照装置以独立测试脚本执行且不写受保护文件，划清了正常测试与绕过判定的安全界线。",
+    "恢复 gemini 验收轮并给出「夹具级、名义 Driver」的精确定义，既履行了主设计 §15.3 / 演进设计 AC-N2 的四家验收契约，又诚实守住了 gemini 交互载体不成熟的实际边界。",
+    "EV-107 前置臂利用名义 Driver 跑通编排器端到端异构判定的机理完全成立，期望值推导符合 VENDOR_MODEL_FAMILY 规范。",
+    "前提链 P-a 到 C-T3 拓扑清晰且无回边；P-a 不成立即阻断第 2 步开工的设计严格遵循 P-2 拍板纪律，有效防止在缺乏真载体时进行无效的入口资产构建。"
+  ],
+  "consulted": [
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r3-claude.md",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/review.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/verify.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/adapters/base.ts",
+    "skills/dual-critic/hooks/hooks.json",
+    "src/trivium/topic-args.ts",
+    "src/install.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/approval.ts",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    ".reviews/README.md",
+    "src/trivium/archive.ts",
+    "src/trivium/adapters/zcode.ts",
+    "doc/08_project/M10a-轮次台账.md",
+    "doc/08_project/M10b-轮次台账.md",
+    "CLAUDE.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "对照被审文档 §3.2、§3.3 与 §11，结合 doc/08_project/BACKLOG.md EV-82 重开记录（2026-09-22 实测证实探针臂成立不等于审查臂生效）。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §3.3 与 §11",
+      "problem": "T1 成分 ② 仍留有「只核在场」的形式化缺口，且未将小主题已自带的真实单侧派发留痕 T2 纳入开工门禁。T1 成分 ② 要求提供测试报告并在条件中规定「报告证明的是审查臂，不是探针臂...」，但 §11 的自动化钩子 precheck.mjs 无法解析非结构化自然语言报告的推理逻辑，最终只能退化为核查报告文件是否存在（existsSync）或正则匹配，重蹈「旧证据蒙混/只核在场」覆辙。更为关键的是，小主题已按 B7 通过单侧派发自带了 T2 的 run.json，但 §3.2 的 P-c 仅依赖 T1，将 T2 压后至第 5 步收口（C-T3）。这导致即使小主题审查臂未落实模型覆盖，第 4 步仅凭一份 Markdown 报告的存在就开工并消耗大量验收配额。",
+      "severity": "major",
+      "suggestion": "将 P-c（或 T1 成分 ②）直接锚定在 T2 产出的具名 run.json 上，要求 precheck.mjs 钩子断言 critics.glm.model_override_applied === true 且 model_effective 包含 GLM-5.3-Flash；消除依赖人工自然语言报告的形式化在场漏洞。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "对照被审文档 §4.7 第 336 行与第 338-340 行，并核查 src/trivium/driver-claim.ts 及 src/trivium/review.ts:1499。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4.7",
+      "problem": "EV-107 前置臂存在运行语境与断言目标的内在矛盾，且叠加了过多鉴别目标。第 336 行明确规定该前置臂「在夹具仓库（临时项目）做...不进本仓 .reviews/」，但第 338-340 行却宣称「这样本仓第一次在真实归档上发生认领（topic claim --stage plan --driver codex，此前真实归档零认领，§1.1 第 1 行），并顺带实跑一次非缺省 Driver 的原稿登记」。若在夹具仓库执行，认领和登记均发生在临时目录，根本不是「本仓真实归档」；若在本仓执行，又破坏了不污染本仓的隔离承诺。此外，该前置臂的核心目标是提前验证名义 Driver 下的 EV-107 端到端字段，此时第 2 步技能侧认领尚未开发，强行在此处顺带做非缺省认领与原稿登记混淆了鉴别目标。",
+      "severity": "major",
+      "suggestion": "修正 §4.7 中的表述，删去「本仓第一次在真实归档上发生认领」的不实修辞，明确前置臂是在独立夹具沙箱中仅针对 EV-107 的 heterogeneous / override_reason 进行纯粹的数据流验证；将真实归档上的认领与原稿登记留给第 4 步完成技能渲染后的真实验收轮。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/topic-args.ts:484-515 中 crossCheckDriver 与 stageDriverInvariant 校验逻辑。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §5.3",
+      "problem": "命令 A 放开 --driver 时交叉比对若只核 plan 阶段，将导致全流程在 code 阶段的 Driver 冲突在入口处漏检。§5.3 建议「只比对 plan 阶段，code 阶段由 code 那一次 --start 自己的比对承接」。如果一个既有主题此前已运行过 /dual-review-code（code 阶段已存在留痕或声明），用户若使用命令 A 传入与之冲突的 --driver，在入口处因只查 plan 阶段而侥幸放行，Driver 在耗费大量配额完成 plan 审查后，进入 code 阶段的 review --start 时才被突兀拦截，造成中途返工。",
+      "severity": "minor",
+      "suggestion": "在 topic-args.ts 处理 scope === 'all' 时，对命令 A 覆盖的 ['plan', 'code'] 两个阶段均进行冲突校验；若任一阶段已存的留痕或声明与显式 --driver 冲突，在入口即快速失败报错，避免在完成 plan 后才报错。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/hooks.ts:896-901 及 review.ts:1500。",
+      "id": "AGY-04",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4.3.3 与 §6.1",
+      "problem": "第 3 步通过条件中关于 ZCode 非 shell 写路径的范围未包含裁决件。§6.1 的通过条件要求「glm Driver 自己的原稿有一条不经 shell 的写路径」，但 Driver 在运行生命周期中不仅需要创建原稿（-glm.md），在收尾阶段还需要产出修订原稿与裁决件（-revised-glm.md / -response-glm.md）。若 ZCode 写工具只能新建文件而无法修改已有工件，或只能编辑既有文件而无法新建，命令在进入收尾阶段时仍会被迫回落终端而撞上 D3 拦截，形成半截死锁。",
+      "severity": "minor",
+      "suggestion": "将通过条件第 3 条明确扩展为「针对原稿与裁决件（包含 -glm.md、-revised-glm.md 等全套角色工件）均具备不经 shell 的结构化写工具支持」，并在第 1 步实测中分别验证新建与修改两项能力。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查阅 doc/08_project/M10a-轮次台账.md 实际 33 轮分布与 M10b-轮次台账.md §0 / §2。",
+      "id": "AGY-05",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §10.1 与 §10.2",
+      "problem": "轮次估计下限 16 轮仍显偏低，且夹具运行的点数未明确失败/取消轮次的归档约束。下限 16 轮隐含了除验收外所有子步骤均一次通过的严苛假定，与 M10a 实耗 33 轮的历史经验差距较大，容易产生排期盲区。此外，§10.2 差异 ④ 规定夹具运行按 evidence 目录下的 run.json 点数，若夹具运行中途失败或被取消时执行者未将失败元数据拷入 evidence，会导致台账系统性少计，破坏点数对账的刚性。",
+      "severity": "minor",
+      "suggestion": "适当调高估算区间的下限（例如 20～31 轮）；在 §10.2 中追加约束：夹具仓库中的所有运行（包括失败、作废与取消轮），其生成的 run.json 副本必须一律拷入对应 evidence 目录以备点数。"
+    }
+  ],
+  "not_covered": [
+    "未在本地物理环境中真实执行 npm test、构建产物或真实拉起 ZCode / Gemini / Codex CLI，相关推断基于代码静态阅读与留痕对账。",
+    "未实测 macOS 桌面版 ZCode GUI 交互会话在运行工具调用时的具体落地文件格式与环境变量（需由第 1 步准入报告实测产出）。",
+    "未在 Antigravity 模型目录下真实发起 gpt-oss-120b-medium 调用以观测其实际延迟与配额消耗。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "M10b 第 3 稿较前稿有质的提升，§1 现状核实深入符号级代码、§9 依赖清单细致闭环。但本稿仍存在两处关键疏漏：一是 EV-82 的 T1 成分 ② 仍采用自然语言报告作为门禁，自动化钩子只能沦为「只核在场」，且未将已自带的真实单侧留痕 T2 纳入开工门禁；二是 §4.7 EV-107 前置臂既定为夹具仓库临时运行，又宣称「本仓真实归档认领」，混淆了语境且叠加了过多目标。另有命令 A 校验缺口与裁决件写路径等细节需补齐。建议采纳意见并做针对性修订。",
+  "verdict": "request-changes"
+}

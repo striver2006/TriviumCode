@@ -1,0 +1,266 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260923T232849Z",
+  "topic": "M10b-入口资产与真载体验收",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "本轮审 M10b 第 3 稿。重点：一、第 1 节现状核实是否属实，六项 M10a 交付请按符号名对代码核，不以搜到名字为准，尤其核 Hook 配置注释是否被引反；二、EV-82 的 T1 三条成分新加的鉴别条件够不够，修复之前就存在的证据还能否蒙混过关，鉴别条件本身是否又写成了只核在场；三、前提链 P-a 到 C-T3 有无回边，J4 只凭运行元数据能否证明真载体，会话留痕作证据的证明力边界在哪；四、ZCode 若只经终端工具写文件，与 Bash 侧全集字面保护是否互斥，第 3 步的三条通过条件是否堵住这一格；五、第 9 节依赖清单有无漏项，由用户在终端执行篡改与恢复、对照装置经脚本文件执行，这两条出口是否构成绕过判定；六、恢复 gemini 验收轮与夹具级的定义，命令 A 放开后只比对 plan 阶段是否留缺口；七、第 4 节第 7 小节的 EV-107 前置臂只用名义 Driver 端到端核同族与异构两格，这个做法是否成立，期望值是否算对；八、轮次重估是否仍偏乐观。台账另起一份与前置臂提前做是用户拍板，不在审查范围内，审的是做法。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "d9d05cfc21bca2fe0e038cef9fbee563ceba52e3",
+    "tree_hash": "e9c977ae5fd01c8dc1f0a308e307696c2ae83f51",
+    "dirty": true,
+    "subject_sha256": "40261b238738d4e1408ec2eaaaec18b6c472f31cd3766e657d7d9db23e2d8b99",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "started_at": "2026-09-23T23:28:50.119Z",
+  "finished_at": "2026-09-23T23:39:53.224Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.156.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 437.745,
+      "tool_calls": {
+        "run_command": 110,
+        "project_reads": 46
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0d099-b9a9-7f71-80d3-51b4dea62cd2",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.9",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 386.009,
+      "tool_calls": {
+        "read": 40,
+        "grep": 33,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 25
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 693758,
+        "output_tokens": 52665,
+        "thinking_tokens": 40638,
+        "cache_read_tokens": 8179504,
+        "total_tokens": 746423
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "08baf004-ce6b-443e-a702-d8302fa953dd",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 662.741,
+      "tool_calls": {
+        "read": 12,
+        "grep": 20,
+        "glob": 4,
+        "run_command": 0,
+        "project_reads": 22
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 18,
+        "inputTokens": 2524135,
+        "outputTokens": 48841,
+        "totalTokens": 2572976,
+        "cacheReadTokens": 2344256,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_dd554c67-1dec-42c8-b1ab-910a37b7e6de",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M10b-入口资产与真载体验收/plan/_meta/brief-codex-20260923T232849Z.md",
+      "sha256": "fd9a1bbe1b21edcec29aa7d7fb00e19e7c7a43ccae2eb472af6e8e346979516f"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/plan/_meta/brief-gemini-20260923T232849Z.md",
+      "sha256": "8518a30fee355cf2955855eb7fdb5f105c912eaa617ff6b80c30d6c68e8dec8a"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/plan/_meta/brief-glm-20260923T232849Z.md",
+      "sha256": "8bf1ce020f980af1f0c0027a5569ab2577a8e00310345e2cc2f018ecd7fda08d"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/plan/_meta/review-codex-20260923T232849Z.json",
+      "sha256": "7f323a701fef48e122cf9cdf36a30adce772663d66d19452467d5b245c36252b"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/plan/_meta/review-gemini-20260923T232849Z.json",
+      "sha256": "4a91b904abe932710ce63f3ed7cb2ab121d24e57e4db51e25ee923f8fd8be7a4"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/plan/_meta/review-glm-20260923T232849Z.json",
+      "sha256": "95fe9be34983281cad8108bca2b9ec8d742432b61acb2fedb150295eb12da838"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-codex.md",
+      "sha256": "de4d8a2a1307bcfcdc0c69b1dfd082e5c1d3de813756210a21fdf52d8b188aaa"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-gemini.md",
+      "sha256": "770cbc76e950cd3d6474b85995a6374550c24d3ccdf0dfabe08550b5abad2474"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-glm.md",
+      "sha256": "b31965ec21480f5cf926b6990dc12b18e64f5496c1b061680efda97906db92e6"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r3-claude.md",
+      "sha256": "40261b238738d4e1408ec2eaaaec18b6c472f31cd3766e657d7d9db23e2d8b99"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
