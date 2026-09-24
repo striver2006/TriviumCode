@@ -1,0 +1,45 @@
+{
+  "agreed": [
+    "认可同形臂缺省维持 as-is，由 doctor 显式拉起置首支的架构决策，既保证了配置层判据与 EV-94 ② 语义的连续性，又为运行期新事实提供了零配额替身。",
+    "认可将同形臂 transformCopy 内部的置首分支彻底删除，置首统一收敛至 prepareZcodeHome({ requestedFirst }) 单一入口，杜绝了两处置首导致的恒等覆盖缺陷。",
+    "认可 §4.2 决策表将判据完全收敛于两支运行期读数与请求模型的比对，剔除「首位」模糊概念与配置层状态耦合，按序判定互斥且穷尽。",
+    "认可 CriticResult.model_override_reorder 与 SideVerdict.modelOverrideReorder 专供守卫告警判定、不污染持久留痕 run.json 的边界防护设计。",
+    "认可 EV-110 逐拉起路径影响面的准确梳理，尤其是对 doctor headless 臂 readTrace 失联的正向修复定位。",
+    "认可 §7.3 结案逻辑按 doctor 读数分支的闭环设计，区分「前提不成立」与「修法无效」，避免假阴性阻断。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "scripts/mutation-check.mjs",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/preflight.ts",
+    "test/unit/zcode-model-selection.test.ts",
+    "test/unit/zcode-provider-env.test.ts",
+    "test/integration/code-stage.test.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-gemini.md",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-revised-claude.md",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-r2-claude.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未在真实 macOS 环境下消耗真实配额实际拉起安装版 ZCode.app 执行端到端派发测试（属计划 §7.3 验收步骤，待代码实施后由用户发起）。",
+    "未对多 provider 复杂目录结构下的排序传导进行真实 CLI 验证（沿用前段报告 E5 结论，用户本机副本源为单一 provider）。",
+    "未物理运行 scripts/mutation-check.mjs 对变异规格进行脚本化实跑检验。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "第 1 轮 24 条裁决在 r2 中已全部真落地，无遗漏或虚标。同形臂缺省維持 as-is 并显式拉起置首支后，配置层事实、两臂不一致告警与新事实三者供数清晰、互不串用；§4.2 决策表互斥且穷尽，判不出情况均不覆盖旧值；新增置首结论字段严格限制在 guard 告警通道，未流入 run.json；§5 逐路径影响面表与代码 6 处拉起路径完全一致；§7.3 结案逻辑按 doctor 读数严密分支，判不出被正确定性为前提不成立而非修法无效。本稿具备实施条件，建议批准。",
+  "verdict": "approve"
+}

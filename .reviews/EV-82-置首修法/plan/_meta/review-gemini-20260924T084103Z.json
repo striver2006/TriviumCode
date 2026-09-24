@@ -1,0 +1,106 @@
+{
+  "agreed": [
+    "认同放弃配额耗时翻倍的条件置首方案 (a)，转向审查臂无条件置首 (M1) 并在审查臂守卫中收窄判据的整体技术方向",
+    "认同将「副本默认是否被采信」这一维度的持续观测从审查臂解耦并移交至零配额 doctor 探针的策略，使上游修复信号具备零成本监控能力",
+    "认同 EV-110 将 ZCODE_LOG_DIR 并入 ZCODE_DIR_ENV_KEYS 通用清理清单，将日志收敛至各自 HOME 下的 fail-safe 防护方向",
+    "认同置首操作放在写盘改写之前执行，以及挪不动（如恒等或整数键）时不阻断拉起、交由后续守卫如实记录的防御性处置原则"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/types.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/stub.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/zcode-model-selection.test.ts",
+    "test/integration/code-stage.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "被审计划 §3.4 声明「run.json 不加字段」、§4.1 声明「置首生效仍判 false 时，guard 的告警加一句『置首也没挡住…』」；但审查 src/trivium/types.ts:1502-1544 发现 CriticResult 仅包含 model_override_applied，src/trivium/guard.ts:858-864 仅能依据 s.modelOverrideApplied === false 判定，完全无法访问 trace.json 内的 reorder 字段。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §4.1 与 src/trivium/guard.ts:858-864",
+      "problem": "guard 模块与适配器之间存在数据流断层：计划要求 guard 在「置首生效仍判 false」时输出特定告警，但置首状态只保存在 trace.json 中，未进入 CriticResult 或 SideVerdict，guard 在运行时根本无从得知置首是否生效。",
+      "severity": "major",
+      "suggestion": "明确置首生效状态的跨模块传递机制：或者在 CriticResult/SideVerdict 中显式透传该状态，或者由适配器在 note 中合成相应上下文由既有通道透传，避免 guard 产生无依据的条件判断分支。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "被审计划 §4.2 表格第 2 行将 reorder_needed 限定为「未置首对照 = 首位 ≠ 请求，置首支 = 请求」；表格第 4 行将 null 定义为「...或置首支 applied:false（恒等除外）」；而表格下方正文又写「请求恰在首位时两支不可分，记 null」。结合 src/trivium/probes/zcode.ts:835 的恒等返回逻辑，表格规则存在漏网与自相矛盾。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4.2 表格与正文第 1 点",
+      "problem": "新事实 zcode.runtime_selection 的取值定义不互斥不穷尽：若未置首对照回落到非首位的其他模型而置首支生效，所有分支均不匹配；表格中将恒等排除在 null 之外与正文冲突，且会导致请求在首位时被严重误判为 honored。",
+      "severity": "major",
+      "suggestion": "将 reorder_needed 的判据泛化为「未置首对照 ≠ 请求 且 置首支 = 请求」以消除状态漏网；删除表格中针对恒等的除外说明，与正文对齐，明确规定请求恰在首位时一律记 null。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/probes/zcode.ts:976-977 明确标注「置首后请求就在首位，配置层判据按构造失明」；src/trivium/probes/zcode.ts:1316-1321 中 doctor 仅调用一次 probeModelOverrideFullCopy 并落盘 probe.model_override_full_copy；被审计划 §3.3 将同形臂缺省改为 requested-first，但 §4.1 又要求跑未置首与置首两支。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §3.3 与 §4.1",
+      "problem": "同形探针臂缺省改为置首破坏了其作为配置层探针的判别力（按构造失明），且未定义 doctor 运行两支时持久化事实 model_override_full_copy 的归属逻辑，导致已有探针语义和测试用例面临不必要的破坏。",
+      "severity": "major",
+      "suggestion": "保持 probeModelOverrideFullCopy 缺省行为（as-is）及 model_override_full_copy 的配置层语义不变，由 doctor 显式按需拉起置首对照支来计算 runtime_selection，避免配置层事实失明及大量旧用例改写。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "被审计划 §7.3 仅安排了一次带 --model-glm GLM-5.3-Flash 的单侧派发；doc/08_project/BACKLOG.md:179 记载 EV-82 曾因验证不完备而重开；doc/06_deployment/RUNBOOK_pipeline_ops.md:267 指出默认档 GLM-5.3 恰为首位模型。",
+      "id": "AGY-04",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §7.3",
+      "problem": "结案判据单次派发未覆盖高频的「默认/首位模型（恒等）」执行路径：请求首位模型时置首函数返回 applied: false，该分支在真实 CLI 审查臂下的全链路表现（留痕、守卫）从未被验证，单次非首位派发不足以支撑全面结案。",
+      "severity": "minor",
+      "suggestion": "在端到端验证中补充一次默认模型（首位模型）的调用验证，或在单元/集成用例中对审查臂在恒等分支下的全套留痕与守卫行为进行等价强度的验证。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/probes/zcode.ts:175-184 明确显示旗标探针使用临时目录 emptyHome 并于 finally 清除；src/trivium/probes/zcode.ts:93 明确显示 probeZcodeVersion 直接解构了 ZCODE_DIR_ENV_KEYS；被审计划 §5。",
+      "id": "AGY-05",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §5（影响面 C5）",
+      "problem": "环境清理影响面描述失真：误称旗标探针若用真实 HOME 日志将改落 ~/.zcode/cli/log（实为临时目录且用完即删），同时在清理清单消费面上遗漏了解构该常量的版本探针 probeZcodeVersion。",
+      "severity": "minor",
+      "suggestion": "修正 §5 中关于旗标探针日志流向的描述，准确区分临时目录与真实 HOME，并将 probeZcodeVersion 补入常量修改的影响面清单。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "doc/06_deployment/RUNBOOK_pipeline_ops.md:266-267 包含关于「默认档恰是首位模型回落也得到它验不出差别」以及「从副本导入 model.main 生效」的历史机理陈述；被审计划 §11 仅提到了补充排查顺序。",
+      "id": "AGY-06",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §11 与 RUNBOOK_pipeline_ops.md:266-267",
+      "problem": "RUNBOOK 运维手册历史结论未同步规划更新：第 267 行的验证说明与机理陈述建立在旧修法之上，若不与第三段置首生效机制同步改写，将向运维人员传达相互矛盾的排查逻辑。",
+      "severity": "nit",
+      "suggestion": "将 RUNBOOK 第 267 行一并纳入 §11 文档同步清单，更新模型生效的真实机理与验证说明。"
+    }
+  ],
+  "not_covered": [
+    "未在 macOS 真实环境下对安装版智谱 ZCode.app 实际执行端到端 CLI 调用与配额消耗验证",
+    "未对多 provider 复杂配置下置首函数的排序传导行为进行真实文件系统测试（依赖前段报告 E5 结论）",
+    "未逐字校对 M3 上游缺陷报告的完整英文/中文字面措辞",
+    "未执行 scripts/mutation-check.mjs 脚本对变异用例进行实际运行核验"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最危险的问题是计划在 guard 告警判定上存在跨模块数据流断层（置首生效状态未进入判定链路导致新告警无法触发），且新事实 zcode.runtime_selection 存在状态漏网及表格排除恒等导致的严重误判；同形探针臂缺省置首会导致配置层事实失明且 doctor 调度未闭环。方案总体方向正确，但需修正数据流、状态穷尽性及探针职责后方可实施。",
+  "verdict": "request-changes"
+}

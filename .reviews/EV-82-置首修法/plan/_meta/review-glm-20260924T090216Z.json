@@ -1,0 +1,78 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最重一条在 §7.3：结案表 honored 行不看四条判据，doctor 与真实派发结果分叉时会把一次失败的验收记成「上游已修、EV-82 结案」（GLM-r2-01）。其余两条小项：guard 区分「恒等」只能靠匹配适配层 reason 自由文本，判据通道未决策（GLM-r2-02）；「model_override_reorder 不进 run.json」边界只有实现纪律在守，run.v2 逐侧段 additionalProperties:true 不拦、无负向用例（GLM-r2-03）。第 1 轮 24 条裁决逐条真落地（本侧 10 条的落点全部对上代码）；六个重点里的供数分工、决策表互斥穷尽、§5 逐路径影响面、判不出处置四项核实无问题。方向与主体扎实，三条都不要求改道。",
+  "findings": [
+    {
+      "id": "GLM-r2-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §7.3（结案逻辑表 honored 行）",
+      "problem": "结案表 honored 行的「四条判据」列为「—」：doctor 读 honored 时无论验收派发结果如何都按「上游已修」结案。若 doctor 与真实派发之间配置或 CLI 行为分叉（doctor 在前、派发在后，这正是要核对判据的场景），判据 1/2 失败、guard 出「请求的模型没有生效」，表按字面仍关 EV-82 并登记「上游已修、置首已非必需」——把一次实际失败的验收记成上游修复。reorder_ineffective 行不看判据是安全方向（不结案），honored 行不看判据是结案方向，同一张表里两行不应同形。",
+      "evidence": "plan §7.3 结案表（honored 行判据列为「—」）；src/trivium/guard.ts:858-864（false 告警照出，但结案动作不看它）；src/trivium/review.ts:1491-1493（model_override_applied 落 run.json，失败事实在留痕里却不进结案分支）",
+      "suggestion": "honored 行也核对四条判据（至少判据 1/2）；不满足时与 reorder_ineffective 同处置——不结案、报告用户。doctor 说 honored 而派发回落本身就是值得报告的矛盾，不是可以径直结案的正常态。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-r2-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3.4 / §4.1（modelOverrideReorder 三句分叉）",
+      "problem": "§4.1 的告警表按「applied:false 且原因是恒等」分出第三句，但 §3.4 给 guard 的通道只有 { applied, reason? }，reason 是人读自由文本（恒等分支的字面在 reorderRequestedFirst 的 fail 里：「请求本就在首位（恒等）」）。guard 要区分恒等与其余成因，只能对适配层文案做字面/子串匹配——跨模块字符串耦合，文案一改静默走错格（恒等被报成「置首没做成」，恰是 r2 特意分开的两句）。§3.1 又要求搬函数「行为逐字不变」，字面被冻结但耦合没被消除；§7.1 写得出「四种各一条用例」，判据机制本身是未决策。",
+      "evidence": "plan §3.1/§3.4/§4.1；src/trivium/probes/zcode.ts:816-845（reorderRequestedFirst 的 reason 全为自由文本，恒等字面在 :835）；src/trivium/guard.ts:858-864（追加句落点在 guard，若按 reason 分支需引适配层字面）",
+      "suggestion": "守卫通道里放结构化成因档（如 outcome: 'applied' | 'identity' | 'failed' 一类枚举，或在 VariantOutcome 上扩一个 kind），guard 按结构字段分三句，reason 保持纯人读；§4.1 表的判据列与 §7.1 的守卫用例随之改写。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-r2-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3.4 / §7.1（「只供 guard、不进 run.json」的边界）",
+      "problem": "「不进 run.json」当前守得住：run.json 逐侧段由 review.ts 逐字段挑选构造（model_override_applied 在 review.ts:1491 条件展开），SideVerdict 也由 guard.ts:474-476 显式挑选，两处都没有整体序列化点。但 run.v2 的 $defs.critic 是 additionalProperties:true（run.v2.json:492，2026-09-16 收严的 additionalProperties:false 只罩 guard 节 :418），字段一旦泄漏 schema 不拦；唯一防线是「review.ts 不挑它」这条实现纪律，而 §7.1 没有负向用例锁「run.json 逐侧段不含 model_override_reorder」。按本仓「靠记性的纪律要换成不依赖记性的机制」的取向，这条自己声明的设计性质该有机制锁。",
+      "evidence": "skills/dual-critic/schema/run.v2.json:492（$defs.critic additionalProperties:true）、:418（收严的是 guard 节）；src/trivium/review.ts:1491-1493；test/integration/code-stage.test.ts:437-468（已有现成的逐侧段字段缺席断言形态可复用）",
+      "suggestion": "§7.1 补一条负向用例：沿用 code-stage.test.ts 的逐侧段断言形态，断言置首侧的 run.json 逐侧键集不含 model_override_reorder（持久的留痕仍指向 trace.json 的 modelSelection.reorder）。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "第 1 轮 24 条裁决真落地，不以写了为准：本侧 10 条对应的 r2 段落与代码事实逐一对上——同形臂置首确在 transformCopy 内（probes/zcode.ts:927-941，删后 variant 唯一来源 prep.reorder 可行）、doctor 现调用同形臂不传 variant（:1316-1320）、恒等 fail 文案在 :835、C1–C7 全部属实。",
+    "焦点二（三路供数互不串用）成立：full_copy 的「null 不覆盖」写侧模式已存在（probes/zcode.ts:1321），EV-94 ② 只比本轮两值（:1366），新事实的材料（两臂 runtimeSelected 与 variant）都在 FullCopyOverrideProbe 返回值里；§7.1 有「model_override_full_copy 取原样支」用例，桩臂注入口（:1127）支撑「两次调用 opts」断言可实现。",
+    "焦点三（§4.2 决策表）互斥穷尽：① 前提先行，②～⑤ 恰为（as=req）×（ro=req）四种组合，第三个模型值落进 ③ 或 ④ 不漏网；null 只来自 ① 与 ⑤，口径统一「不覆盖旧值」，与 full_copy 现有语义同构；§7.1 五序各一条用例含「null 不覆盖旧值」。",
+    "焦点五（§5 逐路径影响面表）与代码一致：8 条拉起路径全数核过——旗标探针空 HOME（probes:171-184，finally 整删）、版本探针真实 HOME 直接展开（:93）、headless 臂与 path_deny 臂 invokeZcode 不传 homeDir（:1390/:1086）、探活 homeDir:null（adapters:707-730）、两条模型臂临时根已另清（:576/:964）、审查臂副本 HOME（adapters:837/:896-910，日志在 scrub 的 redactUnder 面 adapters:504-508）；readTrace 默认读 ~/.zcode/cli/log（probes:1044）证实 headless 臂「方向为正」的失联修复判断。",
+    "焦点六（判不出不记修法无效）主体成立：doctor=null 补跑不结案、判据三有恒等出口、恒等走零配额流程用例；判据 4「现有解析器只取首条」属实（zcode-trace.ts:287-289，首条命中后不再覆盖）。",
+    "第二段变异规格的两处 find 引用（evidence/ev82-seg2-mutation-20260924/mutation-spec.json:64/:136）与「闸 7 零命中开跑前拒跑」（scripts/mutation-check.mjs:76-79）核实无误，按历史留痕处置、报告补注的做法得当。",
+    "RUNBOOK 第 267 行确与第二段实测相反（现文仍写「已修……model.main 生效」），§11 的两行更正必要且准确；C6 的 ⚠️ 断言用例在 test/unit/zcode-provider-env.test.ts:716-732，改信息级 note 可行，且既有三键 deepEqual/Object.hasOwn 断言（:185-192/:213）会强制随四键更新，「四键集合断言」的落点成立。",
+    "「CriticResult 加字段不进 run.json」在结构上可行：review.ts 与 guard.ts 对 CriticResult/SideVerdict 均为逐字段挑选，全仓无整体序列化点（本轮 grep 全量核过 model_override 消费方）。"
+  ],
+  "not_covered": [
+    "上位文档原文（第二段计划 r2 §6、M10b r5 §3.3）未读，按 r2 引述采信（沿用 r1 的盲区）。",
+    "E3 的两个诊断 run 原始留痕与 zcode.cjs 包内静态读数 S1–S6 未独立复核，采信报告 §8（含 :114 首位 GLM-5.3、:120-122 三臂读数表）。",
+    "多 provider 副本源上 provider 一级的顺序传导未验证（E5；计划亦声明不验，两者一致）。",
+    "§10 台账「实耗 8 轮（第 3～10 行）」未逐行核对 doc/08_project 的台账文件。",
+    "两位同轮审查员的产出按任务书禁读清单未读，背靠背独立性未破坏。"
+  ],
+  "consulted": [
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-r2-claude.md",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-glm.md",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-revised-claude.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "test/unit/zcode-provider-env.test.ts",
+    "test/unit/zcode-model-selection.test.ts",
+    "test/integration/code-stage.test.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-spec.json",
+    "doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-spec-r1.json",
+    "scripts/mutation-check.mjs"
+  ]
+}

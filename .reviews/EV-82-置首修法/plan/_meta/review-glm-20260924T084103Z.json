@@ -1,0 +1,156 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的两条都落在新事实上：其一，§4.2 四值判据不穷尽——未置首读数为第三模型（既非请求也非首位）时四个值都落不进、null 三个条件也命中不了，且 honored 与 reorder_ineffective 的字面判据可并存而判序未定义（GLM-01）；其二，「同形臂缺省=置首」这一 doctor 主判据的供数行为没有任何用例或变异锁定，缺省悄悄翻回 as-is 会把当前正常形态误判成 reorder_ineffective、preflight 出假警告（GLM-04）。其余为规格自相矛盾（恒等处置两处互驳、「类型不涉及」与 §11 探针表加行冲突）、§7.3 结案判据对恒等无出口、EV-110 影响面的路径事实不准（旗标探针是空 HOME）、同形臂双置首路径未交代去留、一条变异的理由失据。计划主体扎实：C1–C6 落点逐条核实属实，§1.3 语义落点清单无遗漏，(a′) 的取舍与单次单侧派发结案均站得住。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4.2",
+      "problem": "新事实 zcode.runtime_selection 的四值判据不穷尽、判序未定义。reorder_needed 要求「未置首对照 = 首位 ≠ 请求」：若未置首读数是第三模型（既非请求也非首位——多 provider 或选择规则再变时可能出现），两支读数都 ok、置首 applied:true、配置层 config_copy，四个值没有一个落得进，null 的三个条件也全命中不了，判据表没有兜底分支。同时 honored（未置首=请求）与 reorder_ineffective（置首支已生效但 ≠ 请求）的字面判据可以同时满足（未置首=请求而置首≠请求的形态），按哪条先判没有写。",
+      "evidence": "plan §4.2 表格；src/trivium/probes/zcode.ts:461-495（readRuntimeSelectedModel 只给出 ok/非 ok 与模型串，判据层拿到的是任意模型值，不保证落在「请求或首位」二选一里）",
+      "suggestion": "把判据表改成按序判定的决策表（例如：未置首=请求 → honored；否则置首=请求 → reorder_needed；置首≠请求 → reorder_ineffective；两支不可比 → null），并写明「落不进任何一格一律记 null、不覆盖旧值」的兜底；或显式把「未置首 ≠ 首位 ≠ 请求」归进 null 条件。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4.2",
+      "problem": "null 条件「置首支 applied:false（恒等除外）」与下一条「请求恰在首位时两支不可分，记 null」直接矛盾：请求在首位时置首必然走恒等分支，「恒等除外」的字面读法是恒等时不记 null。而恒等时若按读数落值，reorder_needed 会谎报「置首在起作用」（其实是 CLI 自己选了请求）、honored 则丢掉「置首没做成」的信息——恒等恰恰是最该记 null 的形态。",
+      "evidence": "plan §4.2 两处原文；src/trivium/probes/zcode.ts:835（reorderRequestedFirst 的恒等 fail 分支，applied:false +「请求本就在首位」）",
+      "suggestion": "删去「（恒等除外）」，写明 applied:false 的全部成因（恒等、找不到键、重建后不在首位）都进 null，与「请求恰在首位记 null」就一致了。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4.2",
+      "problem": "null 条件「配置层未判 config_copy」没写指哪一支，且两支情形不对称：置首支生效时配置层判据按构造失明但 judgeOverrideReadback 仍会记 config_copy（报告 §8.2 第③次：置首支配置层结论 config_copy），这一支几乎恒不触发该条件；而未置首支判 global（model.main 连配置层都不被采信）时，运行期两支对照仍能得出有效结论，一概 null 会把这个有信息的形态压掉。",
+      "evidence": "plan §4.2；src/trivium/probes/zcode.ts:977（「置首后请求就在首位，配置层判据按构造失明，本次只看运行期读数」标注）；doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md §8.2 第③行",
+      "suggestion": "写明该条件只看未置首对照支，或删掉这一条（三值的判定材料是运行期读数；配置层状态在 doctor notes 里已另有播报）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3.3 / §7.2",
+      "problem": "「同形臂缺省 = 置首」是 doctor 主判据的供数来源，却没有任何用例或变异锁定它。§7.2 变异只锁「审查臂不传 requestedFirst ⇒ 红」；同形臂缺省支若悄悄翻回 as-is，doctor 两支同形态，zcode.runtime_selection 会把当前正常形态误判成 reorder_ineffective（置首支读数=首位≠请求），preflight 出「CLI 回落规则变了」的假警告——比缺信号更糟。§7.1 新事实四值用例若靠桩注入读数构造，也锁不到缺省行为本身。",
+      "evidence": "plan §3.3、§7.1、§7.2；src/trivium/probes/zcode.ts:1316-1319（doctor 调 fcArm 不传 variant，缺省行为全在此）；test/unit/zcode-runtime-selection.test.ts 的置首用例全部显式传 variant:'requested-first'，无一锁缺省",
+      "suggestion": "补一条用例直接断言 probeModelOverrideFullCopy 不传 variant 时返回 requested-first 且 applied:true（夹具沿用第二段 runtime-selection 用例），或加变异「同形臂缺省不置首 ⇒ 红」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §3.3",
+      "problem": "同形臂的置首现在是在 transformCopy 回调内部做的（置首后就地写 variant）；§3.2 把置首移进 prepareZcodeHome（transformCopy 之前）后，计划没交代旧分支的去留。两路并存时 transformCopy 收到的已是置首后副本，二次置首必然走恒等分支把 variant 覆盖成 applied:false（既有用例会红，能兜住）；但按 §3.3 表格的字面，保留旧分支自己置首、不走新选项同样满足表格，那样「与审查臂同形」就从「同一构造函数同一选项」退化为两条代码路径的行为一致——C4 搬函数所要买的机制保证被稀释。",
+      "evidence": "src/trivium/probes/zcode.ts:925-941（transformCopy 内置首与 variant 赋值）；plan §3.2/§3.3（表格只写「谁传什么」）",
+      "suggestion": "§3.3 写明同形臂的置首统一走 prepareZcodeHome 的 requestedFirst 选项、variant 的唯一来源是返回值 reorder，transformCopy 内的置首分支删除。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §4.2 / §11",
+      "problem": "§4.2 说「类型、设计文档探针表、run.v2 不涉及」，§11 又要求设计文档探针表「新增 zcode.runtime_selection 行」——两处至少一处写错。且新事实要写进探针结论，TS 类型 ZcodeProbe 必须加可选字段（写侧赋值在 strict 下编译不过），这正是被说成「不涉及」的「类型」。schema 层我核过：config.v2.json 的 commonProbe 是 additionalProperties:true，schema 确实可以不动，但 ZcodeProbe（src/trivium/types.ts:308-358）非动不可，而它不在 §1.3 与 §11 任何一张同步清单里。",
+      "evidence": "plan §4.2 第三条 bullet、§11；src/trivium/types.ts:308-358（ZcodeProbe 定义，无 runtime_selection 字段）；skills/dual-critic/schema/config.v2.json:625-637（commonProbe additionalProperties:true）",
+      "suggestion": "修正 §4.2 措辞（run.v2 不涉及、TS 类型要加字段），§11 同步清单补「types.ts 的 ZcodeProbe 加 runtime_selection 可选字段」一行。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §7.3",
+      "problem": "结案判据「trace 的 reorder.applied: true」隐含依赖「请求模型当前非首位」的本机现势（报告 §8.1：目录首位 GLM-5.3、请求 Flash）。若验收前副本源键序变化使请求恰在首位，置首恒等 applied:false，其余三条全绿也按字面不结案。§4.2 自己定义了恒等形态，§7.3 却没给恒等的出口；§7.3 的安全出口（报告用户）能兜底，但代价是一次无谓的人工判断。",
+      "evidence": "plan §7.3、§4.2；doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md §8.1（目录首位 bigmodel-coding-plan/GLM-5.3）",
+      "suggestion": "判据三改为「reorder.applied: true，或 applied:false 且 reason 为恒等（此时以其余三条加 doctor 读数为准）」，或写明恒等形态的处置路径。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-08",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §5",
+      "problem": "影响面的「旗标探针与探活若用真实 HOME」与代码事实不符且清单不全：旗标探针用空 HOME（emptyHome，随 finally 整删），宿主预置 ZCODE_LOG_DIR 时它的日志是改落空 HOME 而非 ~/.zcode/cli/log；用真实 HOME 的是探活、doctor 的 headless 臂与 path_deny 臂。其中 headless 臂此前在宿主预置时日志落在预置目录、readTrace（默认读 ~/.zcode/cli/log）读不到 model_id_form，并入后反而修复这条失联——这一条方向为正的行为变化计划没列。",
+      "evidence": "src/trivium/probes/zcode.ts:175-184（旗标探针空 HOME）、:1390-1399（headless 臂 invokeZcode 不传 homeDir → 真实 HOME）、:1044-1046（readTrace 默认读 ZCODE_CLI_DIR/log）；src/trivium/adapters/zcode.ts:707-730（探活 homeDir:null）；plan §5 影响面段",
+      "suggestion": "影响面按拉起路径逐条列（旗标=空 HOME；探活/headless/path_deny=真实 HOME；两条模型探针臂与审查臂=副本 HOME），设计文档同步段按这个清单写。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-09",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §4.1",
+      "problem": "新告警句只覆盖「置首生效仍判 false」；挪不动（applied:false，如整数样键名、trim 同名键）且判 false 时走旧文案，而 RUNBOOK 既有排查路径把这种 false 归因为「ZCode 又改了 legacy 导入的流程」，真实原因（置首没做成）只躺在 trace 的 reorder.reason 里，人读告警不会被引过去。挪不动的常见情形计划只点名了恒等，其余 reason 都走这条暗路。",
+      "evidence": "src/trivium/guard.ts:858-864（现有 false 告警文案，无置首维度）；doc/06_deployment/RUNBOOK_pipeline_ops.md:266（「多半是 ZCode 又改了 legacy 导入的流程」）；plan §4.1",
+      "suggestion": "guard 告警或 RUNBOOK 排查段补一句「false 时先看 trace.json 的 modelSelection.reorder」；§4.1 的新句条件写成「无论置首是否做成」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-10",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §7.2",
+      "problem": "变异「置首放到 transformCopy 之后 ⇒ 红」的理由「同形臂凭据替换看到的不是最终副本」站不住：置首只动 provider/models 键序，不增删键、不改值，哨兵化与残余扫描都按键路径工作、与顺序无关——放前放后在凭据安全上无实质差别。这条变异要红只能断言实现层的调用顺序，锁的是顺序而非它声称的安全属性，落地写规格时会发现断言立不住。",
+      "evidence": "src/trivium/probes/zcode.ts:927-941（sentinelizeCredentials 递归整份、findCredentialResidue 按 provider.<id> 键路径收集，均不依赖键序）；plan §7.2",
+      "suggestion": "改这条变异的目的陈述（明说锁实现顺序、防语义面悄悄变化），或换成可观察的断言（如 prep.reorder 反映最终落盘副本的顺序）。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "(a′) 的取舍站得住：(a) 的否决理由经 E2 核实成立——当前形态下不置首那遍守卫必判 false（同形原样运行期=首位≠请求）、结论注定丢弃，等于每次审查配额与耗时翻倍；(b) 放弃「是否仍需置首」的持续零成本观测，代价真实（M3 上游修复的结案信号没了）。",
+    "「副本默认是否被采信」移 doctor 零配额重判、审查臂守卫只判结果，与既有架构一致（判据归适配器、guard 只播报不阻断，guard.ts:116-122）；「null 不覆盖旧值」与 model_override_full_copy 的现有同口径在 probes/zcode.ts:1321 成立。",
+    "§1.3 语义落点清单核实齐全：src 侧 7 处（types.ts:1158/1544、guard.ts:116/474、review.ts:1489、zcode.ts:1003、stub.ts:187）全在列；doc 侧全目录 grep 仅 5 个文件命中，其中报告/BACKLOG/台账属历史叙述豁免、设计文档与 RUNBOOK 在列；run.v2.json 在列。新探针字段在 config.v2.json 的 commonProbe（additionalProperties:true）下可落盘，「run.v2 不涉及」正确。",
+    "§7.3 单次单侧派发支撑结案是够的：doctor 的 runtime_selection 每轮都用同一非首位模型两支对照（零配额），已覆盖「第二个模型」的维度；端到端一次只验真实配额全链路这一格，第二次派发或第二个模型重复同一命题，不必加。",
+    "置首放 transformCopy 之前、挪不动照常拉起的总体处置正确：guard 对 false 出声、reorder.reason 留痕、残余扫描面对最终落盘副本；§8 对多 provider 未验与「依赖 CLI 回落规则」的声明诚实，未夸大。",
+    "§7.1「既有用例改显式 variant:'as-is'、不放宽断言」是防回归的正确姿势；「requestedFirst 缺省 false、不传逐字相同」沿用第一段用例锁也正确。",
+    "C1–C6 代码落点逐条核实属实，含 C5 的四处行号（probes/zcode.ts:93/:444/:576/:964）与 C6 的 doctor ⚠️（probes/zcode.ts:1358-1364）。"
+  ],
+  "not_covered": [
+    "上位文档原文未读：第二段计划 r2 §6、M10b r5 §3.3 只以本稿引述为准，未核对原篇的修法候选与守卫二选一表述",
+    "E3 的诊断 run 原始留痕（20260924T014145Z / 20260924T025839Z）未读，按报告与计划引述采信",
+    "zcode.cjs 包内静态读数 S1–S6 未独立复核（按报告 §6 采信）；置首所依赖的「回落取第一个可见 provider 的第一个模型」未在包内字面复核",
+    "scripts/mutation-check.mjs 仅确认存在，其规格机制未读",
+    "skills/dual-critic/SKILL.md、prompts 与 hooks 契约面未核（判断本计划未触及它们，成立）",
+    "多 provider 副本源行为未独立验证（E5 明确未验、本计划也声明不验，两者一致）"
+  ],
+  "consulted": [
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "src/trivium/preflight.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/zcode-model-selection.test.ts",
+    "test/unit/zcode-runtime-selection.test.ts",
+    "test/integration/code-stage.test.ts"
+  ]
+}
