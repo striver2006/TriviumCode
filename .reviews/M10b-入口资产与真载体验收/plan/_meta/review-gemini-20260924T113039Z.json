@@ -1,0 +1,85 @@
+{
+  "agreed": [
+    "D-1 选 (a) 的方向符合避免无谓配额消耗的原则，T1 ① 改取收口代码提交 c872b00 逻辑自洽且能有效防范旧证据利用。",
+    "§2.2 候选成因去向清晰，09-21 失效定性为「与已定位机理同形，不可判」守住了纪律 9 底线。",
+    "§3.4 修订后的七条断言与 run 20260924T104357Z 及 evidence 读数逐条核对一致。",
+    "§4 的量级估算中 EV-82 验收轮与第 4 步验收轮切分清晰，无重复计入。",
+    "§5 诚实披露了三段计划中未落地的承诺遗留项，并明确了后续归宿。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r6-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md",
+    "doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md",
+    "doc/08_project/M10b-轮次台账.md",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/EV-82-审查臂诊断/plan/_meta/run-20260924T104357Z.json",
+    "doc/05_testing/evidence/ev82-seg3-acceptance-20260924/acceptance-20260924T104357Z.json",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-r3-claude.md",
+    ".reviews/EV-82-同形第二臂与构建标识/plan/2026-09-24-EV-82-同形第二臂与构建标识-r2-claude.md",
+    ".reviews/EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-r2-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-gemini.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r2-gemini.md",
+    "src/trivium/build-stamp.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r6-claude.md §3.4、.reviews/EV-82-审查臂诊断/plan/_meta/run-20260924T104357Z.json 与 src/trivium/build-stamp.ts 第 31-38、76、150-156 行。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §3.4",
+      "problem": "D-1 选 (a) 以构建标识替代 snapshot.dirty 存在防线减弱，且「未逐项核」留有证据盲区。build.dirty 只检验构建时刻 INSTALL_INPUT_PATHS 内是否干净，无法防御「构建后修改文件」或「工作树配置漂移（如 .trivium/config.yaml）」。断言 6 既未断言 currentInputsSha256 === build.inputs_sha256（即无 BUILD_WARN_STALE_INPUTS），也未断言 build.git_head === snapshot.git_head；此外，§3.4 坦承该运行确有未提交改动但「未逐项核」，断言未提交改动仅为送审原稿缺乏排他性证据。",
+      "severity": "major",
+      "suggestion": "将断言 6 强化为：在要求 snapshot.build.dirty === false 的同时，显式断言构建标识告警集为空（即无 BUILD_WARN_STALE_INPUTS 与 BUILD_WARN_DIRTY），防范构建后修改；并对 run 20260924T104357Z 当时的 dirty 文件补齐逐项核验，闭环「未逐项核」的证据链。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r6-claude.md §4、§6、§3.7，以及 doc/08_project/M10b-轮次台账.md 第 25-27、58-69 行。",
+      "id": "AGY-02",
+      "kind": "scope-drift",
+      "layer": "plan",
+      "location": "plan §4 与 §6",
+      "problem": "§6 将 EV-111 与 EV-112 独立小主题排在第 4 步之前，但 §4 量级重估表与阈值 50 完全未计算两者的轮次预算。若两者如同 EV-82 一样计入 M10b 台账，将新增 4～8 轮双审，直接击穿 50 轮上限；若两者不在 M10b 预算内，则 §6 将其作为第 4 步的前置阻断项不仅与 §4 脱节，也与 §3.7 提出的「构建后不提交即可在第 4 步规避 EV-111」的操作规避路径互相矛盾。",
+      "severity": "major",
+      "suggestion": "澄清 EV-111 与 EV-112 的归属与排期：若计入 M10b 预算，须在 §4 量级表中列出并重估阈值；若独立记账或推迟到 M10b 之后，应在 §6 下一步中解耦，明确第 4 步依据 §3.7 规避措施开工，避免范围与预算断裂。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "对照 .reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r6-claude.md 引言及 §3.4 与 .reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md §3、§4、§11。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan 引言与 §3.4、§11",
+      "problem": "增量稿章节编号与 r5 完全重叠，且替换断言未给出第 4 步钩子代码块完整上下文，存在下游引用与实施歧义。r6 自设 §1～§7，与 r5 的 §1～§7 含义截然不同；下游报告出现常规的「计划 §3」极易混淆。此外，r5 §11 含有完整的机读断言代码字面（含 snapshot.dirty === false），r6 §3.4 仅以表格文字替换，未给出完整的更新后代码块，两份文档并行作为事实源易导致第 4 步 precheck.mjs 钩子编写时出现拼接错漏。",
+      "severity": "minor",
+      "suggestion": "在 r6 中给出替换 r5 §11 开工钩子代码段的完整机读逻辑文本，并明确要求后续各步骤引用时一律带前缀「r5 §x」或「r6 §x」，禁止裸编号引用。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/EV-82-审查臂诊断/plan/_meta/run-20260924T104357Z.json 第 91、107-117 行及 doc/08_project/M10b-轮次台账.md 第 51 行。",
+      "id": "AGY-04",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §3.4",
+      "problem": "结案运行 20260924T104357Z 曾发生 glm 侧禁读泄露导致该侧结论作废，§3.4 对照表与读数说明未对此事实披露。run 20260924T104357Z 记录了 peer_leak_via_path 命中自身运行目录，虽然 T2 取证取的是编排器遥测数据而非审查员主观意见，但在披露「一处与判据不符」的对照表中略去该次运行评审作废的事实，审计留痕披露不够完整。",
+      "severity": "minor",
+      "suggestion": "在 §3.4 对照表或补充说明中补注一行，说明 20260924T104357Z 虽因审查员误读自身运行目录导致该侧审查作废，但 T2 所需的七条读数全部取自编排器自身底层留痕，数据真实有效性不受影响，以保证全流程审计透明。"
+    }
+  ],
+  "not_covered": [
+    "各厂商 CLI 底层二进制运行时的私有反混淆逻辑未做反编译级穷举。",
+    "桌面端 ZCode 交互式会话中的真实网络通信与服务端鉴权行为未在真机界面进行实时拦截。",
+    "本机未安装的外部平台与多操作系统兼容性（Linux/Windows）不在本次论域。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最需注意的问题是 §6 将 EV-111 与 EV-112 列为第 4 步前置小主题，但 §4 量级重估与台账阈值完全未为两者留出预算，范围与台账脱节。\n此外，D-1 (a) 用构建标识替代 snapshot.dirty 缺少对「构建后修改」的指纹约束，且承认为提交文件「未逐项核」留有漏洞。\nT1 ① 收口提交改取 c872b00 逻辑自洽且能防旧证据；09-21 失效定性守住了纪律 9；七条断言数据逐条对齐。\n增量稿形式与 r5 存在章节编号同名冲突，需在第 4 步钩子代码块上提供完整上下文。\n结论建议 request-changes，先闭合预算口径与断言防护。",
+  "verdict": "request-changes"
+}
