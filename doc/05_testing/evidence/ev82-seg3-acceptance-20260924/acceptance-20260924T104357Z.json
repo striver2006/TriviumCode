@@ -1,0 +1,46 @@
+{
+  "plan": "EV-82-置首修法 r3 §7.3",
+  "run_id": "20260924T104357Z",
+  "topic": "EV-82-审查臂诊断",
+  "stage": "plan",
+  "run_status": "success",
+  "git_head": "c872b00d689fe1f8aca44bc4efe1b7a531af1416",
+  "glm": {
+    "status": "ok",
+    "model_requested": "GLM-5.3-Flash",
+    "model_effective": "bigmodel-coding-plan/GLM-5.3-Flash",
+    "model_effective_source": "trace",
+    "model_route": "config_copy",
+    "model_override_applied": true,
+    "run_json_has_model_override_reorder": false
+  },
+  "trace_model_selection": {
+    "requested": "bigmodel-coding-plan/GLM-5.3-Flash",
+    "effective": "bigmodel-coding-plan/GLM-5.3-Flash",
+    "route": "config_copy",
+    "reorder": {
+      "applied": true,
+      "kind": "applied"
+    },
+    "note": "请求模型已置首，读回的正是它；是否靠置首不可分，见 doctor 的 zcode.runtime_selection"
+  },
+  "rollout": {
+    "lines": 13,
+    "parsed": 13,
+    "withModel": 13,
+    "models": {
+      "bigmodel-coding-plan/GLM-5.3-Flash": 13,
+      "GLM-5.3-Flash": 13
+    }
+  },
+  "criteria": {
+    "1_model_effective_is_requested": true,
+    "2_model_override_applied_true": true,
+    "3_reorder_kind": {
+      "kind": "applied",
+      "pass": true
+    },
+    "4_rollout_every_request_is_requested": true
+  },
+  "all_pass": true
+}

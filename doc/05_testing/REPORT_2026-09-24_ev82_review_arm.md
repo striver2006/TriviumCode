@@ -181,3 +181,41 @@
 
 **线索（未证实）**：静态阅读推断，legacy 导入写出的默认选择只有 `{ providerId, modelId }`、不带思考档位，
 可选性检查因此判它不可选（成因码疑似 `reasoning-level-missing`）。这一条只作线索，没有在调用路径上验过。
+
+## 10. 第三段验收：审查运行请求模型置首（2026-09-24，计划 `EV-82-置首修法` r3 §7.3）
+
+### 10.1 派发前的闸门
+
+- 代码 `c872b00`。干净工作树上 build、`install:local` 各一条，构建标识确认安装副本与工作树一致；
+- `trivium doctor --only zcode --no-model-calls`（零配额）：白名单臂、同形原样支的运行期都回落 `GLM-5.3`，同形置首支选中 `GLM-5.3-Flash`；
+  **`zcode.runtime_selection = reorder_needed`** ⇒ 派发。明细见 `evidence/ev82-seg3-acceptance-20260924/01-doctor-readout.md`。
+
+### 10.2 真实派发与四条判据
+
+- 派发：`/dual-review-plan … --topic EV-82-审查臂诊断 --critics glm --model-glm GLM-5.3-Flash`（run `20260924T104357Z`，第 3 轮，与诊断两轮同形）；
+- 采数面三处：run.json（判据 1、2）、该侧 trace.json 的 `modelSelection`（判据 3；`reorder` **只在 trace.json**，按设计不进 run.json）、该侧 `rollout.jsonl`（判据 4，逐条只取模型字段）。
+  脚本 `check-acceptance.mjs` 只读，输出 `acceptance-20260924T104357Z.json`。
+
+| 判据 | 读数 | |
+| :--- | :--- | :-- |
+| 1 生效模型的 modelId 段 = 请求 | `bigmodel-coding-plan/GLM-5.3-Flash`（来源 trace） | ✓ |
+| 2 `model_override_applied` | `true` | ✓ |
+| 3 trace `modelSelection.reorder` | `{ applied: true, kind: "applied" }` | ✓ |
+| 4 rollout 全部请求 | 13 条，顶层 `model` 与 `response.modelId` 全为 `GLM-5.3-Flash` | ✓ |
+
+附带核对：
+- run.json 的 glm 段**不含** `model_override_reorder`，「只供守卫、不进运行记录」在真实运行上成立；
+- trace note 是代码双审 r1 CODEX-03 修改后的事实句。
+
+对照修法前：诊断两轮（同一副本源）生效模型都是首位 `GLM-5.3`，rollout 10 条全为 `GLM-5.3`。
+
+### 10.3 结论
+
+按 r3 §7.3 结论表：doctor 读数 `reorder_needed` 且四条全满足 ⇒ **修法被验证，EV-82 结案**（BACKLOG 已关闭）。
+
+**没有读出的**：请求值被判不可选的具体成因（§6 的静态推断仍未证）；多 provider 副本源上 provider 一级的顺序传导。
+前者留给 M3（§9 草稿，是否提交待用户定）。后者由两道守卫看护：审查运行的 `false` 告警，以及 doctor 的 `reorder_ineffective`。
+
+**这一轮的审查结论作废**：守卫判定 glm 侧读到本次运行自己的运行目录（禁读清单，peer-run-output）。
+成因是被审的诊断说明让审查员去核 rollout。作废只影响这份审查能否算独立一侧；上表的数据全部取自编排器落盘的留痕，不取自审查员陈述。
+审查员在运行中途读到 4 条 rollout 全为 Flash，与收尾后的 13 条一致，只作旁证。

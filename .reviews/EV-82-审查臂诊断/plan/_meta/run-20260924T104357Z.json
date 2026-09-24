@@ -1,0 +1,153 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260924T104357Z",
+  "topic": "EV-82-审查臂诊断",
+  "stage": "plan",
+  "rerun_index": 3,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "验收派发：EV-82 第三段置首修法的端到端核对。本侧照常审查，重点核对计划里对模型覆盖落点的描述是否与本次运行实际选中的模型一致。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "c872b00d689fe1f8aca44bc4efe1b7a531af1416",
+    "tree_hash": "4a698a20ba3605533dd1e4bc565cd4bf144568c8",
+    "dirty": true,
+    "subject_sha256": "048b9d1c5a2ea9dbf9fc97ba18884f3ddb293f5a6387b7ffcf531e1f76f89747",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "c872b00d689fe1f8aca44bc4efe1b7a531af1416",
+      "dirty": false,
+      "inputs_sha256": "abda623a3a9bb87dbb26030cd53caf48363e4a56396026a6755fecbc8e38d6fc",
+      "built_at": "2026-09-24T10:39:11.333Z"
+    }
+  },
+  "started_at": "2026-09-24T10:43:57.999Z",
+  "finished_at": "2026-09-24T10:57:07.737Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3-Flash",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 789.491,
+      "tool_calls": {
+        "read": 15,
+        "grep": 6,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 10
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 13,
+        "inputTokens": 1072890,
+        "outputTokens": 38169,
+        "totalTokens": 1111059,
+        "cacheReadTokens": 919168,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_8f8c1eea-88f3-4bd7-9c63-8b97a234317f",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": true,
+    "peer_deny_applied": {
+      "glm": false
+    },
+    "deny_skipped": {
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "glm": {
+        "hit": true,
+        "hits": [
+          {
+            "path": "/Users/chenzhenbo/.trivium/runs/TriviumCode-2217d505/20260924T104357Z",
+            "category": "peer-run-output"
+          }
+        ]
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 0
+    },
+    "verification_degraded": {
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "EV-82-审查臂诊断/plan/_meta/brief-glm-20260924T104357Z.md",
+      "sha256": "160a075b4edc53d4322ea5b3181eece9937041b7ede7a4baec952093289b0395"
+    },
+    {
+      "path": "EV-82-审查臂诊断/plan/_meta/review-glm-20260924T104357Z.json",
+      "sha256": "acd2ed97cb645661e7f216a8e49b06d5fe8b9689849b97a0e5e814968d21d78c"
+    },
+    {
+      "path": "EV-82-审查臂诊断/plan/2026-09-24-EV-82-审查臂诊断-r3-glm.md",
+      "sha256": "2ded363683f9478cbd56173ce9a70c33e2459865188f8f006905439809619b11"
+    },
+    {
+      "path": "EV-82-审查臂诊断/plan/2026-09-24-EV-82-审查臂诊断-r3-claude.md",
+      "sha256": "048b9d1c5a2ea9dbf9fc97ba18884f3ddb293f5a6387b7ffcf531e1f76f89747"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
