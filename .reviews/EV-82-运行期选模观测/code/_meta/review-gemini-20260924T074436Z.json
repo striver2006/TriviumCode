@@ -1,0 +1,38 @@
+{
+  "agreed": [
+    "一、运行期读数（readRuntimeSelectedModel）：六种成因（not_launched / no_log_dir / no_log_file / no_event / no_model_field / ok）构成严格互斥阶梯，readdir、readFile 与 JSON.parse 均 fail-closed 不抛异常；仅提取启动事件的 context.model 单一字段，杜绝日志原文及敏感信息泄漏；在两臂中均置于 run() 之后、finally 清理临时目录之前执行，时序严格保证。",
+    "二、置首变体（reorderRequestedFirst）：严格只调整 provider 与 models 映射的键序，键值深层结构与入参完全不可变；成员定位遵循 (id ?? 键名).trim() 匹配 modelId、跳过 deleted: true、重复 id 先到先得；找不到 provider/成员、恒等、以及重排后因整数样键名导致未能置于首位的三种情形均严格返回 applied: false 并附原因，决不冒充成功。",
+    "三、同形臂请求模型限定：在 probeModelOverrideFullCopy 拉起前新补的 qualifyAgainstCliConfig 仅用于向闭包传递目标 providerKey 与 modelId 以及填充 variant 失败原因，未提前短路；限定失败时依然交由 prepareZcodeHome 的原有逻辑处理，完全维持原有早退门控与 override: null 判定行为。",
+    "四、日志环境变量隔离：ZCODE_LOG_DIR 纳入 ZCODE_PROBE_EXTRA_CLEARED_ENV 清除清单，有效阻断宿主环境变量对探针日志落盘的污染；审查臂未予清理完全符合计划 r2 §2「本段不改审查臂缺省行为，修法在第三段」的既定范围约束。",
+    "五、doctor 运行期对照告警：比对逻辑使用 zcodeModelTail 剥离 provider 标识，与 judgeOverrideReadback 及 decideModelOverride 的判定口径完全对齐，避免因 UUID/别名形态差异引发误报，且仅在配置层判 config_copy 且运行期读数 ok 时比对，无多余叠加或漏报。",
+    "六、假入口与变异覆盖：假入口在 FAKE_RUNTIME_FALLBACK 下精确复现 S2 注册表回落首位的真实行为，判别力充分；mutation-spec.json 中的 12 条变异不仅完整覆盖计划 §7 列出的 6 类形态，还细化了双臂清理时序与口径一致性，且实测全部咬住（fail >= 1）。",
+    "七、计划 r2 20 条接受项核验：CODEX-01~07、AGY-01~05、GLM-01~08 对应的代码改造、接口向后兼容、成因分诊、测试用例全部真落地，无仅停留在注释中的伪落地项。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "test/unit/zcode-full-copy-arm.test.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/adapters/zcode.ts",
+    "test/unit/zcode-provider-env.test.ts",
+    "test/unit/zcode-runtime-selection.test.ts",
+    "doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-output.txt",
+    "doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-spec.json",
+    ".reviews/EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-r2-claude.md",
+    ".reviews/EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-revised-claude.md",
+    "doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "真实 ZCode CLI 真实子进程与真实网络的端到端拉起（本段实施严格在零配额、假入口与合成夹具环境下核验）",
+    "计划 r2 §5 规划的只读脚本（runtime-selection.mjs）在真实工作树干净状态下的实际跑测产物（属于代码合并/审批后的实验步骤）",
+    "第三段（修法阶段）审查臂对 ZCODE_LOG_DIR 的防御改造与 M1/M2/M3 修法实现（本段严格限制在观测与变体探针）"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "EV-82 第二段代码实现与测试完备可靠，计划 r2 裁决的 20 条接受项全部真实落地。\n运行期选模读数六种成因严格互斥且 fail-closed，字段读取无信息泄漏且时序先于临时根清理；\n置首变体准确定位成员、保证入参不可变且挪不动一律不当成功；\n新补的同形臂限定未改变原有拉起门控；\ndoctor 运行期对照口径与配置层严格统一；\n假入口与 12 条变异测试具备充分判别力。代码结构清晰，通过审查。",
+  "verdict": "approve"
+}

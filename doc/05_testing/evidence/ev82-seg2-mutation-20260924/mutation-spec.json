@@ -1,0 +1,109 @@
+{
+  "targets": [
+    "src/trivium/probes/zcode.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/zcode-runtime-selection.test.js",
+    "dist/test/test/unit/zcode-provider-env.test.js",
+    "dist/test/test/unit/zcode-full-copy-arm.test.js",
+    "dist/test/test/unit/zcode-model-selection.test.js"
+  ],
+  "cases": [
+    {
+      "id": "RS1",
+      "desc": "读错事件名（r2 §7：读错事件名）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "export const ZCODE_RUNTIME_CONFIG_EVENT = 'bootstrap.app.startup.runtime_config.completed';",
+      "replace": "export const ZCODE_RUNTIME_CONFIG_EVENT = 'bootstrap.app.startup.runtime_config.started';",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "RS2",
+      "desc": "白名单臂：运行期读数挪到清理之后（r2 §7：读取挪到清理之后）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    const runtimeSelected = await readRuntimeSelectedModel(home);",
+      "replace": "    const runtimeSelected = await fs.rm(home, { recursive: true, force: true }).then(() => readRuntimeSelectedModel(home));",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "RS3",
+      "desc": "同形臂：运行期读数挪到清理之后（r2 §7：读取挪到清理之后）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    const runtimeSelected = await readRuntimeSelectedModel(prep.homeDir);",
+      "replace": "    const runtimeSelected = await fs.rm(root, { recursive: true, force: true }).then(() => readRuntimeSelectedModel(prep.homeDir!));",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "RS4",
+      "desc": "多条启动事件取第一条而非最后一条（r2 §7）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    found = true;",
+      "replace": "    if (found) continue;\n    found = true;",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "RS5",
+      "desc": "多文件取最旧一份而非最新",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  const latest = files.at(-1);\n  if (!latest) return { cause: 'no_log_file', model: null };",
+      "replace": "  const latest = files[0];\n  if (!latest) return { cause: 'no_log_file', model: null };",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "RS6",
+      "desc": "坏行不跳过、异常外抛（截断末行）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      o = JSON.parse(line);\n    } catch {\n      continue;\n    }",
+      "replace": "      o = JSON.parse(line);\n    } catch (e) {\n      throw e;\n    }",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "RS7",
+      "desc": "不清 ZCODE_LOG_DIR（r2 §7）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "export const ZCODE_PROBE_EXTRA_CLEARED_ENV: readonly string[] = ['ZCODE_LOG_DIR'];",
+      "replace": "export const ZCODE_PROBE_EXTRA_CLEARED_ENV: readonly string[] = [];",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "RV1",
+      "desc": "置首不挪 models（r2 §7）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  const newModels: Record<string, unknown> = { [memberKey]: models[memberKey] };\n  for (const [k, m] of Object.entries(models)) if (k !== memberKey) newModels[k] = m;",
+      "replace": "  const newModels: Record<string, unknown> = { ...models };",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "RV2",
+      "desc": "挪不动当成功（r2 §7）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  const fail = (reason: string) => ({ copy: cfg, outcome: { variant: 'requested-first' as const, applied: false, reason } });",
+      "replace": "  const fail = (reason: string) => ({ copy: cfg, outcome: { variant: 'requested-first' as const, applied: true, reason } });",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "RV3",
+      "desc": "置首只按键名定位、不认成员 id（GLM-08）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    const id = (typeof m?.id === 'string' ? m.id : k).trim();",
+      "replace": "    const id = k;",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "RV4",
+      "desc": "置首不跳过 deleted 成员",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    if (m && typeof m === 'object' && m.deleted === true) continue;",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "RN1",
+      "desc": "运行期 ⚠️ 比整串而非 modelId 段（与配置层判据口径不一）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "            zcodeModelTail(rs.model) !== zcodeModelTail(a.requested)) {",
+      "replace": "            rs.model !== a.requested) {",
+      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
+    }
+  ]
+}

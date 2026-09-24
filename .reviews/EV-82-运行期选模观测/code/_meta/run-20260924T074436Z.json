@@ -1,0 +1,280 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260924T074436Z",
+  "topic": "EV-82-运行期选模观测",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "本轮审 EV-82 第二段代码实现，逐条核计划 r2 的 20 条接受项是否真落地，不以注释写了为准。重点：一、运行期读数六种成因是否互斥、fail-closed，是否只取启动事件的 model 一个字段，读取是否确实发生在临时根清理之前；二、置首是否真的只动顺序，成员定位与导入器规则是否一致（id 与键名不同、首尾空白、已删成员、重复 id、整数样键名、恒等），挪不动时是否一律不当成功；三、同形臂新补的请求模型限定（计划 r2 称已有、实际原先没有）放在拉起前是否改变了原有早退与判定；四、日志目录环境变量只在两条探针臂清，审查臂仍会继承的残余是否需要本段处理；五、doctor 两臂说明里新增的运行期对照口径是否与配置层判据一致，会不会误报或漏报；六、假入口模拟「默认不可选即回落首位」是否有判别力，12 条变异是否覆盖计划 §7 列的全部形态。",
+  "task_goal": "EV-82 小主题 · 第二段：运行期选模观测与「请求模型置首」变体 实施计划（r2 · 定稿）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "49e284eaa305e0ff5d9d1747c645d6b044abb155",
+    "tree_hash": "35abd0962cf29ba260a9dd90bd63f7a19676fa04",
+    "dirty": true,
+    "subject_sha256": "fac861c00638942c007998b018bbe82be1ccc618972040172efbe112beb0f5ef",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "49e284eaa305e0ff5d9d1747c645d6b044abb155",
+      "dirty": true,
+      "inputs_sha256": "2775dbdc7ea823f7c354368d093821454b72505e7742fb18053e0b37b05598d2",
+      "built_at": "2026-09-24T07:24:02.188Z"
+    }
+  },
+  "started_at": "2026-09-24T07:44:37.704Z",
+  "finished_at": "2026-09-24T07:53:05.424Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.156.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 405.699,
+      "tool_calls": {
+        "run_command": 76,
+        "project_reads": 34
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0d25f-a301-72d1-bcdd-8242e8ccc568",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.10",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 220.643,
+      "tool_calls": {
+        "read": 22,
+        "grep": 7,
+        "glob": 5,
+        "run_command": 0,
+        "project_reads": 15
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 394212,
+        "output_tokens": 31533,
+        "thinking_tokens": 26218,
+        "cache_read_tokens": 2937160,
+        "total_tokens": 425745
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "3bcf8ef2-1e77-4b65-8ba0-51bab0328dce",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 507.502,
+      "tool_calls": {
+        "read": 11,
+        "grep": 5,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 13
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 6,
+        "inputTokens": 615683,
+        "outputTokens": 33260,
+        "totalTokens": 648943,
+        "cacheReadTokens": 480448,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_ed8c8758-9666-46fa-bdb3-4092e95636a3",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-gemini.md",
+    ".reviews/EV-82-运行期选模观测/plan/2026-09-24-EV-82-运行期选模观测-glm.md",
+    ".reviews/EV-82-运行期选模观测/plan/_meta/review-gemini-20260924T065129Z.json",
+    ".reviews/EV-82-运行期选模观测/plan/_meta/review-glm-20260924T065129Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "EV-82-运行期选模观测/code/_meta/changes-20260924T074436Z.diff",
+      "sha256": "fac861c00638942c007998b018bbe82be1ccc618972040172efbe112beb0f5ef"
+    },
+    {
+      "path": "EV-82-运行期选模观测/code/_meta/brief-codex-20260924T074436Z.md",
+      "sha256": "0b632eba8df5d0c0d093b785e9951ec698cadefea81e0eea628fed4a4ffc28c2"
+    },
+    {
+      "path": "EV-82-运行期选模观测/code/_meta/brief-gemini-20260924T074436Z.md",
+      "sha256": "c4a3e50deaea58ac1c398f9f3dd7370b14ab76c1b401bd647c5b047392dae57f"
+    },
+    {
+      "path": "EV-82-运行期选模观测/code/_meta/brief-glm-20260924T074436Z.md",
+      "sha256": "a7ac936af2bb30da5ef441e19fcf9adfea340e4428c5942b0661864b3d8e5896"
+    },
+    {
+      "path": "EV-82-运行期选模观测/code/_meta/review-codex-20260924T074436Z.json",
+      "sha256": "18b2ed0de8f3765fcffd35cf77e6873f42cc80949a38b2cbc5aa5b22455cfb06"
+    },
+    {
+      "path": "EV-82-运行期选模观测/code/_meta/review-gemini-20260924T074436Z.json",
+      "sha256": "46c674c067e4351e78814b0d4e991606d5d83bf51e7f86b4ebe4f7dd773e0831"
+    },
+    {
+      "path": "EV-82-运行期选模观测/code/_meta/review-glm-20260924T074436Z.json",
+      "sha256": "f30bd81ba651e630e308bbffc19ba516b3f0e88316c1aaec2fbd0ea53078c1ed"
+    },
+    {
+      "path": "EV-82-运行期选模观测/code/2026-09-24-EV-82-运行期选模观测-codex.md",
+      "sha256": "191825f39594a612755cf407add590d493246bf8fa18e79a10a2d8d4d94e5448"
+    },
+    {
+      "path": "EV-82-运行期选模观测/code/2026-09-24-EV-82-运行期选模观测-gemini.md",
+      "sha256": "2c21147d9a45a99fba289c7b06062f6a9e05d644225141746106d9b93163f135"
+    },
+    {
+      "path": "EV-82-运行期选模观测/code/2026-09-24-EV-82-运行期选模观测-glm.md",
+      "sha256": "bfe1cee8314f6a93b3b986c455cce71feb2995380137f91b9be224aafc6f53e3"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}

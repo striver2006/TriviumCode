@@ -1,0 +1,934 @@
+# trivium changes.diff
+# run_id: 20260924T074436Z
+# base: HEAD
+# head: 49e284eaa305e0ff5d9d1747c645d6b044abb155
+# files: 5
+#   doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-output.txt
+#   doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-spec.json
+#   src/trivium/probes/zcode.ts
+#   test/unit/zcode-provider-env.test.ts
+#   test/unit/zcode-runtime-selection.test.ts
+diff --git a/src/trivium/probes/zcode.ts b/src/trivium/probes/zcode.ts
+index 9e0afbe..cb6737a 100644
+--- a/src/trivium/probes/zcode.ts
++++ b/src/trivium/probes/zcode.ts
+@@ -398,6 +398,91 @@ export interface ModelOverrideProbe {
+   observed: string | null;
+   /** 人读说明 */
+   why: string;
++  /**
++   * 运行期选定（EV-82 第二段 r2 §3）：副本日志启动事件的 `context.model`，带成因。
++   * 可选：桩与本字段之前的调用方不给它。
++   */
++  runtimeSelected?: RuntimeSelectionReadback;
++}
++
++/**
++ * 运行期选定的读数（EV-82 第二段 r2 §3，第 1 轮 CODEX-02）。读不到时**带成因**：
++ * 同一个「读不到」至少有五种来路，下一步各不相同，不能一律读成「哨兵走不到启动」。
++ */
++export type RuntimeSelectionCause = 'not_launched' | 'no_log_dir' | 'no_log_file' | 'no_event' | 'no_model_field' | 'ok';
++export interface RuntimeSelectionReadback {
++  cause: RuntimeSelectionCause;
++  /** 仅 `cause === 'ok'` 时非 null：`<providerId>/<modelId>` */
++  model: string | null;
++}
++
++/** CLI 启动时记下运行期选定的事件名（静态读数 S5；审查臂的 `modelFromLog` 取的就是它的 `context.model`） */
++export const ZCODE_RUNTIME_CONFIG_EVENT = 'bootstrap.app.startup.runtime_config.completed';
++
++/**
++ * 探针拉起时额外清掉的环境键（EV-82 第二段 r2 §3，第 1 轮 CODEX-02）：CLI 的日志目录取
++ * `ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`，宿主预置它会让日志落到副本 HOME 之外，运行期读数就读不到。
++ * 只在两条探针臂里清；审查臂不走探针的环境构造。
++ */
++export const ZCODE_PROBE_EXTRA_CLEARED_ENV: readonly string[] = ['ZCODE_LOG_DIR'];
++
++/**
++ * 读副本 HOME 下 CLI 日志里的运行期选定（EV-82 第二段 r2 §3）。
++ *
++ * - **取法**与审查臂 / `readTrace` 对齐：日志目录里排序取**最新**的 `.jsonl`
++ *   （探针 HOME 每次新建、单会话，所以不按 sessionId 过滤）；同一文件多条该事件取**最后一条**；
++ * - 单行 JSON 解析失败跳过（超时被杀时末行可能残缺）；
++ * - **只取 `context.model` 一个字段**，不读、不返回日志其它内容（日志可能含送审包全文）；
++ * - I/O 异常 fail-closed：返回对应成因，**不抛**。
++ */
++export async function readRuntimeSelectedModel(home: string): Promise<RuntimeSelectionReadback> {
++  const dir = path.join(home, '.zcode/cli/log');
++  let files: string[];
++  try {
++    files = (await fs.readdir(dir)).filter((f) => f.endsWith('.jsonl')).sort();
++  } catch {
++    return { cause: 'no_log_dir', model: null };
++  }
++  const latest = files.at(-1);
++  if (!latest) return { cause: 'no_log_file', model: null };
++  let text: string;
++  try {
++    text = await fs.readFile(path.join(dir, latest), 'utf8');
++  } catch {
++    return { cause: 'no_log_file', model: null };
++  }
++  let found = false;
++  let model: string | null = null;
++  for (const line of text.split('\n')) {
++    if (!line.includes(ZCODE_RUNTIME_CONFIG_EVENT)) continue;
++    let o: unknown;
++    try {
++      o = JSON.parse(line);
++    } catch {
++      continue;
++    }
++    if (!o || typeof o !== 'object' || (o as { event?: unknown }).event !== ZCODE_RUNTIME_CONFIG_EVENT) continue;
++    found = true;
++    const ctx = (o as { context?: unknown }).context;
++    const m = ctx && typeof ctx === 'object' ? (ctx as { model?: unknown }).model : undefined;
++    model = typeof m === 'string' && m.length > 0 ? m : null; // 取最后一条：后出现的覆盖前面的
++  }
++  if (!found) return { cause: 'no_event', model: null };
++  return model === null ? { cause: 'no_model_field', model: null } : { cause: 'ok', model };
++}
++
++/** 人读：运行期读数的一句话 */
++export function describeRuntimeSelection(r: RuntimeSelectionReadback | undefined): string {
++  if (!r) return '运行期选定：未采集';
++  const why: Record<RuntimeSelectionCause, string> = {
++    ok: '',
++    not_launched: '该臂未拉起',
++    no_log_dir: '副本 HOME 下没有 CLI 日志目录',
++    no_log_file: '日志目录里没有 .jsonl',
++    no_event: `日志里没有启动事件 ${ZCODE_RUNTIME_CONFIG_EVENT}`,
++    no_model_field: '启动事件在，但 context.model 缺失（启动时选定为空）',
++  };
++  return r.cause === 'ok' ? `运行期选定 ${r.model}` : `运行期选定读不到：${why[r.cause]}`;
+ }
+ 
+ /**
+@@ -425,24 +510,32 @@ export async function probeModelOverride(
+   entry: string,
+   node: string,
+   cwd: string,
+-  opts: { cliConfigPath?: string; timeoutMs?: number; readonlyArgs?: readonly string[] } = {},
++  opts: {
++    cliConfigPath?: string;
++    /** 显式请求模型（EV-82 第二段 r2 §5.1，GLM-07）：实验里三次拉起传同一个值。缺省仍取 `pickNonFirstModel` */
++    model?: string;
++    timeoutMs?: number;
++    readonlyArgs?: readonly string[];
++  } = {},
+ ): Promise<ModelOverrideProbe> {
++  const notLaunched: RuntimeSelectionReadback = { cause: 'not_launched', model: null };
+   const src = opts.cliConfigPath ?? ZCODE_CLI_CONFIG;
+   let cfg: { provider?: Record<string, Record<string, unknown> | undefined>; model?: unknown };
+   try {
+     cfg = JSON.parse(await fs.readFile(src, 'utf8')) as typeof cfg;
+   } catch (e) {
+-    return { override: null, requested: null, observed: null, why: `读不到 ${src}：${(e as Error).message}` };
++    return { override: null, requested: null, observed: null, why: `读不到 ${src}：${(e as Error).message}`, runtimeSelected: notLaunched };
+   }
+-  const pick = pickNonFirstModel(cfg as Parameters<typeof pickNonFirstModel>[0]);
++  const pick = opts.model ?? pickNonFirstModel(cfg as Parameters<typeof pickNonFirstModel>[0]);
+   if (!pick) {
+     return {
+       override: null, requested: null, observed: null,
+       why: 'cli/config.json 目录里没有任何 provider 拥有两个以上模型，挑不出非首位模型，判据会失明——本轮未判定',
++      runtimeSelected: notLaunched,
+     };
+   }
+   const q = qualifyAgainstCliConfig(pick, cfg as Parameters<typeof qualifyAgainstCliConfig>[1]);
+-  if (q.qualified === null) return { override: null, requested: pick, observed: null, why: q.reason };
++  if (q.qualified === null) return { override: null, requested: pick, observed: null, why: q.reason, runtimeSelected: notLaunched };
+ 
+   const home = await makeTempDir('trivium-modeloverride');
+   try {
+@@ -454,14 +547,17 @@ export async function probeModelOverride(
+     const env: Record<string, string | undefined> = {
+       ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
+       ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
++      ...Object.fromEntries(ZCODE_PROBE_EXTRA_CLEARED_ENV.map((k) => [k, undefined])),
+       HOME: home,
+     };
+     const r = await run(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])], {
+       cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
+     });
+ 
++    // 运行期读数必须在 finally 整删临时根之前读（r2 §3）
++    const runtimeSelected = await readRuntimeSelectedModel(home);
+     const j = judgeOverrideReadback(q.qualified, await readDefaultSelection(home), r);
+-    const base = { override: j.override, requested: q.qualified, observed: j.observed };
++    const base = { override: j.override, requested: q.qualified, observed: j.observed, runtimeSelected };
+     switch (j.stop) {
+       case 'match':
+         return { ...base, why: `副本 model.main 被 legacy 导入读到并成为 defaultModelSelection${j.providerNote}` };
+@@ -672,10 +768,54 @@ export function findCredentialResidue(cfg: unknown): string[] {
+   return out;
+ }
+ 
+-/** 同形臂的结论：与白名单臂同一形状，外加替换键路径与宿主预置的凭据 env 键 */
++/** 置首变体是否生效（EV-82 第二段 r2 §4）。未生效时带原因，该次读数不落判读表 (F1) / (F3) */
++export interface VariantOutcome {
++  variant: 'as-is' | 'requested-first';
++  applied: boolean;
++  reason?: string;
++}
++
++/**
++ * 「请求模型置首」（EV-82 第二段 r2 §4，第 1 轮 CODEX-04 / AGY-03 / GLM-08）：只调整副本里的**顺序**，
++ * 把 `providerKey` 排到 `provider` 映射首位、把请求的成员键排到它的 `models` 映射首位；键、值、嵌套一律不变。
++ *
++ * - 成员定位与导入器同一规则：`(id ?? 键名).trim()` 与 `modelId` 相等，跳过 `deleted: true`，
++ *   重复 id 取**第一个**匹配键（导入器先到先得）；
++ * - **挪不动不当成功**：找不到对应键、请求本就在首位（恒等）、重建后目标仍不在首位
++ *   （JS 对象恒把整数样键名排在前面）——一律 `applied: false` 并给原因。
++ * 返回新对象，不改入参。
++ */
++export function reorderRequestedFirst<T>(cfg: T, providerKey: string, modelId: string): { copy: T; outcome: VariantOutcome } {
++  const fail = (reason: string) => ({ copy: cfg, outcome: { variant: 'requested-first' as const, applied: false, reason } });
++  const c = cfg as { provider?: Record<string, { models?: Record<string, { id?: unknown; deleted?: unknown }> } | undefined> };
++  const providers = c.provider ?? {};
++  const p = providers[providerKey];
++  if (!p) return fail(`副本源里没有 provider ${providerKey}`);
++  const models = p.models ?? {};
++  let memberKey: string | null = null;
++  for (const [k, m] of Object.entries(models)) {
++    if (m && typeof m === 'object' && m.deleted === true) continue;
++    const id = (typeof m?.id === 'string' ? m.id : k).trim();
++    if (id === modelId) { memberKey = k; break; }
++  }
++  if (memberKey === null) return fail(`provider ${providerKey} 里没有 id 为 ${modelId} 的成员`);
++  if (Object.keys(providers)[0] === providerKey && Object.keys(models)[0] === memberKey) return fail('请求本就在首位（恒等）');
++
++  const newModels: Record<string, unknown> = { [memberKey]: models[memberKey] };
++  for (const [k, m] of Object.entries(models)) if (k !== memberKey) newModels[k] = m;
++  const newProviders: Record<string, unknown> = { [providerKey]: { ...p, models: newModels } };
++  for (const [k, v] of Object.entries(providers)) if (k !== providerKey) newProviders[k] = v;
++  if (Object.keys(newProviders)[0] !== providerKey || Object.keys(newModels)[0] !== memberKey) {
++    return fail('重建后目标仍不在首位：存在整数样键名，JS 对象恒把它们排在前面');
++  }
++  return { copy: { ...(cfg as object), provider: newProviders } as T, outcome: { variant: 'requested-first', applied: true } };
++}
++
++/** 同形臂的结论：与白名单臂同一形状，外加替换键路径、宿主预置的凭据 env 键与变体结果 */
+ export interface FullCopyOverrideProbe extends ModelOverrideProbe {
+   replacedPaths: string[];
+   hostCredentialEnv: string[];
++  variant?: VariantOutcome;
+ }
+ 
+ /**
+@@ -688,7 +828,8 @@ export interface FullCopyOverrideProbe extends ModelOverrideProbe {
+  * - 判据与白名单臂共用 {@link judgeOverrideReadback}，成因文案本臂自带（GLM-07）；
+  * - 清理只认 `makeTempDir` 的返回值，不调 `scrubZcodeHome`（2026-09-20 事故 R1 / R2）。
+  *
+- * 本臂看得见配置读取层与两臂副本形态差异，**看不见运行期注册表层**。
++ * 配置层结论（`override`）只判配置读取层；运行期选定另由 {@link readRuntimeSelectedModel} 读启动事件，
++ * 放在 `runtimeSelected`（EV-82 第二段 r2 §3），两者分开报，不合成一个结论。
+  */
+ export async function probeModelOverrideFullCopy(
+   entry: string,
+@@ -709,12 +850,21 @@ export async function probeModelOverrideFullCopy(
+      * 凭据若不被残余扫描命中，会原样进副本。它不是与 `full` 同等的零配额档。
+      */
+     replace?: 'full' | 'apiKeyOnly';
++    /**
++     * 副本变体（EV-82 第二段 r2 §4）：`as-is`（缺省）原样；`requested-first` 把请求的 provider / 模型排到首位，
++     * 只动顺序。只供实验脚本与用例用，doctor 不跑这一支（第 1 轮 AGY-02）。
++     */
++    variant?: 'as-is' | 'requested-first';
+   } = {},
+ ): Promise<FullCopyOverrideProbe> {
+   const src = opts.cliConfigPath ?? ZCODE_CLI_CONFIG;
+   const hostCredentialEnv = ZCODE_CREDENTIAL_ENV_KEYS.filter((k) => process.env[k]);
+-  const none = (why: string, requested: string | null = null): FullCopyOverrideProbe =>
+-    ({ override: null, requested, observed: null, why, replacedPaths: [], hostCredentialEnv });
++  const variantName = opts.variant ?? 'as-is';
++  let variant: VariantOutcome = { variant: variantName, applied: variantName === 'as-is' };
++  const none = (why: string, requested: string | null = null): FullCopyOverrideProbe => ({
++    override: null, requested, observed: null, why, replacedPaths: [], hostCredentialEnv,
++    runtimeSelected: { cause: 'not_launched', model: null }, variant,
++  });
+ 
+   let cfg: { provider?: Record<string, Record<string, unknown> | undefined> };
+   try {
+@@ -724,6 +874,14 @@ export async function probeModelOverrideFullCopy(
+   }
+   const requested = opts.model ?? pickNonFirstModel(cfg as Parameters<typeof pickNonFirstModel>[0]);
+   if (!requested) return none('cli/config.json 目录里没有任何 provider 拥有两个以上模型，挑不出非首位模型，判据会失明——本轮未判定');
++  /*
++   * 置首要知道目标 provider / 模型：在这里先限定一次，经闭包交给 transformCopy（第 1 轮 AGY-03，不改回调签名）。
++   * 限定失败时 prepareZcodeHome 会走 route global，下面的早退照样拦住，不拉起。
++   */
++  const q = qualifyAgainstCliConfig(requested, cfg as Parameters<typeof qualifyAgainstCliConfig>[1]);
++  if (variantName === 'requested-first' && q.qualified === null) {
++    variant = { variant: 'requested-first', applied: false, reason: `请求模型限定失败，无从置首：${q.reason}` };
++  }
+ 
+   // 前缀不得以 `trivium-modeloverride` 开头：白名单臂的清理用例按那个前缀找残留，并行跑会互相误判
+   const root = await makeTempDir('trivium-fullcopyarm');
+@@ -732,7 +890,14 @@ export async function probeModelOverrideFullCopy(
+     let residue: string[] = [];
+     const prep = await prepareZcodeHome(root, requested, {
+       srcConfig: src,
+-      transformCopy: (c) => {
++      transformCopy: (c0) => {
++        let c = c0;
++        // 置首只动顺序，放在凭据替换之前或之后都一样；放前面，残余扫描看到的就是最终落盘的那份
++        if (variantName === 'requested-first' && q.qualified !== null) {
++          const r0 = reorderRequestedFirst(c, q.providerKey, q.modelId);
++          c = r0.copy;
++          variant = r0.outcome;
++        }
+         const s = sentinelizeCredentials(c, opts.replace === 'apiKeyOnly' ? 'headersOnly' : 'full');
+         const f = forceProviderApiKeySentinel(s.copy);
+         // 读数与盘上一致：结构兜底改写的路径也算替换（r2 CODEX-02）；去重是因为 full 档可能已按键名换过 apiKey
+@@ -762,14 +927,17 @@ export async function probeModelOverrideFullCopy(
+     const env: Record<string, string | undefined> = {
+       ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
+       ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
++      ...Object.fromEntries(ZCODE_PROBE_EXTRA_CLEARED_ENV.map((k) => [k, undefined])),
+       HOME: prep.homeDir,
+     };
+     const r = await run(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])], {
+       cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
+     });
+ 
++    // 运行期读数必须在 finally 整删临时根之前读（r2 §3）
++    const runtimeSelected = await readRuntimeSelectedModel(prep.homeDir);
+     const j = judgeOverrideReadback(prep.qualified, await readDefaultSelection(prep.homeDir), r);
+-    const base = { override: j.override, requested: prep.qualified, observed: j.observed, replacedPaths, hostCredentialEnv };
++    const base = { override: j.override, requested: prep.qualified, observed: j.observed, replacedPaths, hostCredentialEnv, runtimeSelected, variant };
+     switch (j.stop) {
+       case 'match':
+         return { ...base, why: `同形副本（整份拷贝、凭据换哨兵）的 model.main 被 legacy 导入读到${j.providerNote}` };
+@@ -1094,7 +1262,7 @@ export async function probeZcode(
+       probe.isolation = 'home_copy';
+       notes.push(
+         `model_override=${mo.override ?? '未判定（保留上一次 ' + JSON.stringify(probe.model_override) + '）'} / isolation=home_copy：` +
+-          `${mo.why}（请求 ${mo.requested ?? '—'}，CLI 写出 ${mo.observed ?? '—'}）。` +
++          `${mo.why}（请求 ${mo.requested ?? '—'}，CLI 写出 ${mo.observed ?? '—'}；${describeRuntimeSelection(mo.runtimeSelected)}）。` +
+           '前提：副本 HOME 下不注入个人 provider 配置，CLI 从 cli/config.json 副本 legacy 导入；' +
+           '既无模型旗标也无选型环境变量，`--settings` 被拒',
+       );
+@@ -1117,9 +1285,24 @@ export async function probeZcode(
+       if (fc.override !== null) probe.model_override_full_copy = fc.override;
+       notes.push(
+         `model_override_full_copy=${fc.override ?? '未判定（保留上一次 ' + JSON.stringify(probe.model_override_full_copy ?? null) + '）'}（本轮${fc.override === null ? '未' : ''}产出）：` +
+-          `${fc.why}（请求 ${fc.requested ?? '—'}，CLI 写出 ${fc.observed ?? '—'}；替换凭据键 ${fc.replacedPaths.length} 处，另对每个 provider 的 apiKey 无条件写哨兵）。` +
+-          '本臂只判配置读取层，看不见运行期注册表层。零配额的前提是副本里所有凭据都被换掉，拉起前已做残余扫描',
++          `${fc.why}（请求 ${fc.requested ?? '—'}，CLI 写出 ${fc.observed ?? '—'}；替换凭据键 ${fc.replacedPaths.length} 处，另对每个 provider 的 apiKey 无条件写哨兵；` +
++          `${describeRuntimeSelection(fc.runtimeSelected)}）。` +
++          '配置层结论只判配置读取层；运行期选定取自 CLI 启动事件（与审查臂的生效模型同一字段）。零配额的前提是副本里所有凭据都被换掉，拉起前已做残余扫描',
+       );
++      /*
++       * 配置层写出了请求值、运行期却没选它（EV-82 第二段 r2 §3）：正是 EV-82 的形态——
++       * 两臂在配置读取层都成立，真实运行却回落首位。按臂各自比 modelId 段，只在读数 ok 时比。
++       */
++      for (const [name, a] of [['白名单臂', mo], ['同形臂', fc]] as const) {
++        const rs = a.runtimeSelected;
++        if (a.override === 'config_copy' && a.requested && rs?.cause === 'ok' && rs.model !== null &&
++            zcodeModelTail(rs.model) !== zcodeModelTail(a.requested)) {
++          notes.push(
++            `⚠️ ${name}：配置读取层写出了请求值 ${a.requested}，但运行期选定是 ${rs.model}——` +
++              '默认选择在运行期没被采用（EV-82 形态），见 EV-82 第二段计划 §5 判读表',
++          );
++        }
++      }
+       if (fc.hostCredentialEnv.length > 0) {
+         notes.push(
+           `⚠️ 宿主环境预置了 ${fc.hostCredentialEnv.join(' / ')}：两条探针臂都清掉了它们，审查运行不清——` +
+diff --git a/test/unit/zcode-provider-env.test.ts b/test/unit/zcode-provider-env.test.ts
+index 50e742d..54d32e4 100644
+--- a/test/unit/zcode-provider-env.test.ts
++++ b/test/unit/zcode-provider-env.test.ts
+@@ -28,7 +28,7 @@ import {
+   ZCODE_PERSONAL_PROVIDER_ENV,
+   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
+ } from '../../src/trivium/adapters/zcode.js';
+-import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type FullCopyOverrideProbe, type ModelOverrideProbe } from '../../src/trivium/probes/zcode.js';
++import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type FullCopyOverrideProbe, type ModelOverrideProbe, type RuntimeSelectionReadback } from '../../src/trivium/probes/zcode.js';
+ import { runDoctor } from '../../src/trivium/doctor.js';
+ import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
+ 
+@@ -609,6 +609,7 @@ async function probeZcodeWithTwoArms(
+   white: ModelOverrideProbe['override'],
+   full: FullCopyOverrideProbe['override'],
+   existingFullCopy?: 'config_copy' | 'global',
++  runtime: { white?: RuntimeSelectionReadback; full?: RuntimeSelectionReadback } = {},
+ ) {
+   const L = await layout({ withBuiltin: true, withPersonal: false });
+   const cliConfig = path.join(L.root, 'cli-config.json');
+@@ -627,10 +628,10 @@ async function probeZcodeWithTwoArms(
+       skipModelCalls: true,
+       existing,
+       cliConfigPath: cliConfig,
+-      modelOverrideProbe: async () => ({ override: white, requested: 'p/m', observed: null, why: '桩：白名单臂' }),
++      modelOverrideProbe: async () => ({ override: white, requested: 'p/m', observed: null, why: '桩：白名单臂', runtimeSelected: runtime.white }),
+       modelOverrideFullCopyProbe: async () => {
+         fullCopyCalls += 1;
+-        return { override: full, requested: 'p/m', observed: null, why: '桩：同形臂', replacedPaths: ['a.apiKey'], hostCredentialEnv: [] };
++        return { override: full, requested: 'p/m', observed: null, why: '桩：同形臂', replacedPaths: ['a.apiKey'], hostCredentialEnv: [], runtimeSelected: runtime.full };
+       },
+     });
+     return { ...out, fullCopyCalls };
+@@ -645,7 +646,7 @@ test('同形臂接线：与白名单臂同一门控、恰好接线一次；结
+   const { probe, notes, fullCopyCalls } = await probeZcodeWithTwoArms('config_copy', 'config_copy');
+   assert.equal(fullCopyCalls, 1);
+   assert.equal(probe.model_override_full_copy, 'config_copy');
+-  assert.ok(notes.some((n) => n.includes('model_override_full_copy=config_copy') && n.includes('看不见运行期注册表层')));
++  assert.ok(notes.some((n) => n.includes('model_override_full_copy=config_copy') && n.includes('配置层结论只判配置读取层')));
+   assert.equal(notes.some((n) => n.includes(TWO_ARM_WARN)), false, '两臂一致不告警');
+ });
+ 
+@@ -660,3 +661,36 @@ test('同形臂接线：本轮判不出 ⇒ 保留上一轮的值，且不拿旧
+   assert.ok(notes.some((n) => n.includes('model_override_full_copy=未判定')));
+   assert.equal(notes.some((n) => n.includes(TWO_ARM_WARN)), false, '旧值 global 与本轮白名单 config_copy 不同，也不得告警');
+ });
++
++// ── 运行期读数进 note（EV-82 第二段 r2 §3）──
++
++const RUNTIME_WARN = '配置读取层写出了请求值';
++
++test('运行期接线：两臂 note 各带运行期读数；配置层 config_copy 而运行期选了别的 ⇒ 按臂出 ⚠️', async () => {
++  const { notes } = await probeZcodeWithTwoArms('config_copy', 'config_copy', undefined, {
++    white: { cause: 'ok', model: 'p/first' },
++    full: { cause: 'no_event', model: null },
++  });
++  assert.ok(notes.some((n) => n.startsWith('model_override=') && n.includes('运行期选定 p/first')));
++  assert.ok(notes.some((n) => n.startsWith('model_override_full_copy=') && n.includes('运行期选定读不到：日志里没有启动事件')));
++  assert.ok(notes.some((n) => n.includes('⚠️ 白名单臂') && n.includes(RUNTIME_WARN) && n.includes('p/first')));
++  assert.equal(notes.some((n) => n.includes('⚠️ 同形臂') && n.includes(RUNTIME_WARN)), false, '读不到不算不一致');
++});
++
++test('运行期接线：运行期与请求 modelId 段一致、或配置层不是 config_copy ⇒ 不出运行期 ⚠️', async () => {
++  const same = await probeZcodeWithTwoArms('config_copy', 'config_copy', undefined, {
++    white: { cause: 'ok', model: 'other-provider/m' },
++    full: { cause: 'ok', model: 'p/m' },
++  });
++  assert.equal(same.notes.some((n) => n.includes(RUNTIME_WARN)), false, '只比 modelId 段，与配置层判据同口径');
++  const glob = await probeZcodeWithTwoArms('global', 'global', undefined, {
++    white: { cause: 'ok', model: 'p/first' },
++    full: { cause: 'ok', model: 'p/first' },
++  });
++  assert.equal(glob.notes.some((n) => n.includes(RUNTIME_WARN)), false, '配置层已判 global，已有 ⚠️，不叠加');
++});
++
++test('运行期接线：桩不给 runtimeSelected ⇒ note 写「未采集」', async () => {
++  const { notes } = await probeZcodeWithTwoArms('config_copy', 'config_copy');
++  assert.ok(notes.some((n) => n.startsWith('model_override=') && n.includes('运行期选定：未采集')));
++});
+diff --git a/doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-output.txt b/doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-output.txt
+new file mode 100644
+index 0000000..f2de212
+--- /dev/null
++++ b/doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-output.txt
+@@ -0,0 +1,91 @@
++✓ 工作树干净、基线全绿（4 个套件）
++  RS1 ✓ 咬住（fail=10）
++  RS2 ✓ 咬住（fail=2）
++  RS3 ✓ 咬住（fail=5）
++  RS4 ✓ 咬住（fail=1）
++  RS5 ✓ 咬住（fail=1）
++  RS6 ✓ 咬住（fail=1）
++  RS7 ✓ 咬住（fail=1）
++  RV1 ✓ 咬住（fail=4）
++  RV2 ✓ 咬住（fail=2）
++  RV3 ✓ 咬住（fail=2）
++  RV4 ✓ 咬住（fail=2）
++  RN1 ✓ 咬住（fail=1）
++{
++  "总数": 12,
++  "咬住": 12,
++  "逐条": [
++    {
++      "id": "RS1",
++      "desc": "读错事件名（r2 §7：读错事件名）",
++      "verdict": "✓ 咬住（fail=10）",
++      "fail": 10
++    },
++    {
++      "id": "RS2",
++      "desc": "白名单臂：运行期读数挪到清理之后（r2 §7：读取挪到清理之后）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "RS3",
++      "desc": "同形臂：运行期读数挪到清理之后（r2 §7：读取挪到清理之后）",
++      "verdict": "✓ 咬住（fail=5）",
++      "fail": 5
++    },
++    {
++      "id": "RS4",
++      "desc": "多条启动事件取第一条而非最后一条（r2 §7）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "RS5",
++      "desc": "多文件取最旧一份而非最新",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "RS6",
++      "desc": "坏行不跳过、异常外抛（截断末行）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "RS7",
++      "desc": "不清 ZCODE_LOG_DIR（r2 §7）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "RV1",
++      "desc": "置首不挪 models（r2 §7）",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "RV2",
++      "desc": "挪不动当成功（r2 §7）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "RV3",
++      "desc": "置首只按键名定位、不认成员 id（GLM-08）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "RV4",
++      "desc": "置首不跳过 deleted 成员",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "RN1",
++      "desc": "运行期 ⚠️ 比整串而非 modelId 段（与配置层判据口径不一）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-spec.json b/doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-spec.json
+new file mode 100644
+index 0000000..245fef6
+--- /dev/null
++++ b/doc/05_testing/evidence/ev82-seg2-mutation-20260924/mutation-spec.json
+@@ -0,0 +1,109 @@
++{
++  "targets": [
++    "src/trivium/probes/zcode.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/zcode-runtime-selection.test.js",
++    "dist/test/test/unit/zcode-provider-env.test.js",
++    "dist/test/test/unit/zcode-full-copy-arm.test.js",
++    "dist/test/test/unit/zcode-model-selection.test.js"
++  ],
++  "cases": [
++    {
++      "id": "RS1",
++      "desc": "读错事件名（r2 §7：读错事件名）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "export const ZCODE_RUNTIME_CONFIG_EVENT = 'bootstrap.app.startup.runtime_config.completed';",
++      "replace": "export const ZCODE_RUNTIME_CONFIG_EVENT = 'bootstrap.app.startup.runtime_config.started';",
++      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
++    },
++    {
++      "id": "RS2",
++      "desc": "白名单臂：运行期读数挪到清理之后（r2 §7：读取挪到清理之后）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "    const runtimeSelected = await readRuntimeSelectedModel(home);",
++      "replace": "    const runtimeSelected = await fs.rm(home, { recursive: true, force: true }).then(() => readRuntimeSelectedModel(home));",
++      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
++    },
++    {
++      "id": "RS3",
++      "desc": "同形臂：运行期读数挪到清理之后（r2 §7：读取挪到清理之后）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "    const runtimeSelected = await readRuntimeSelectedModel(prep.homeDir);",
++      "replace": "    const runtimeSelected = await fs.rm(root, { recursive: true, force: true }).then(() => readRuntimeSelectedModel(prep.homeDir!));",
++      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
++    },
++    {
++      "id": "RS4",
++      "desc": "多条启动事件取第一条而非最后一条（r2 §7）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "    found = true;",
++      "replace": "    if (found) continue;\n    found = true;",
++      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
++    },
++    {
++      "id": "RS5",
++      "desc": "多文件取最旧一份而非最新",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "  const latest = files.at(-1);\n  if (!latest) return { cause: 'no_log_file', model: null };",
++      "replace": "  const latest = files[0];\n  if (!latest) return { cause: 'no_log_file', model: null };",
++      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
++    },
++    {
++      "id": "RS6",
++      "desc": "坏行不跳过、异常外抛（截断末行）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "      o = JSON.parse(line);\n    } catch {\n      continue;\n    }",
++      "replace": "      o = JSON.parse(line);\n    } catch (e) {\n      throw e;\n    }",
++      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
++    },
++    {
++      "id": "RS7",
++      "desc": "不清 ZCODE_LOG_DIR（r2 §7）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "export const ZCODE_PROBE_EXTRA_CLEARED_ENV: readonly string[] = ['ZCODE_LOG_DIR'];",
++      "replace": "export const ZCODE_PROBE_EXTRA_CLEARED_ENV: readonly string[] = [];",
++      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
++    },
++    {
++      "id": "RV1",
++      "desc": "置首不挪 models（r2 §7）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "  const newModels: Record<string, unknown> = { [memberKey]: models[memberKey] };\n  for (const [k, m] of Object.entries(models)) if (k !== memberKey) newModels[k] = m;",
++      "replace": "  const newModels: Record<string, unknown> = { ...models };",
++      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
++    },
++    {
++      "id": "RV2",
++      "desc": "挪不动当成功（r2 §7）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "  const fail = (reason: string) => ({ copy: cfg, outcome: { variant: 'requested-first' as const, applied: false, reason } });",
++      "replace": "  const fail = (reason: string) => ({ copy: cfg, outcome: { variant: 'requested-first' as const, applied: true, reason } });",
++      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
++    },
++    {
++      "id": "RV3",
++      "desc": "置首只按键名定位、不认成员 id（GLM-08）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "    const id = (typeof m?.id === 'string' ? m.id : k).trim();",
++      "replace": "    const id = k;",
++      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
++    },
++    {
++      "id": "RV4",
++      "desc": "置首不跳过 deleted 成员",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "    if (m && typeof m === 'object' && m.deleted === true) continue;",
++      "replace": "",
++      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
++    },
++    {
++      "id": "RN1",
++      "desc": "运行期 ⚠️ 比整串而非 modelId 段（与配置层判据口径不一）",
++      "file": "src/trivium/probes/zcode.ts",
++      "find": "            zcodeModelTail(rs.model) !== zcodeModelTail(a.requested)) {",
++      "replace": "            rs.model !== a.requested) {",
++      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
++    }
++  ]
++}
+diff --git a/test/unit/zcode-runtime-selection.test.ts b/test/unit/zcode-runtime-selection.test.ts
+new file mode 100644
+index 0000000..3264ead
+--- /dev/null
++++ b/test/unit/zcode-runtime-selection.test.ts
+@@ -0,0 +1,298 @@
++/**
++ * EV-82 第二段（运行期选模观测，r2 §3 / §4 / §7）：
++ * 运行期读数 `readRuntimeSelectedModel`、置首变体 `reorderRequestedFirst`、两臂接入 `runtimeSelected`。
++ *
++ * 全部用**临时目录里的合成配置**与假入口，不碰真实 `~/.zcode/**`、不拉起真实 CLI、零配额。
++ * 事件名在本文件里**写字面**、不 import 常量：读错事件名的变异要能被这里咬住。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import {
++  describeRuntimeSelection,
++  probeModelOverride,
++  probeModelOverrideFullCopy,
++  readRuntimeSelectedModel,
++  reorderRequestedFirst,
++} from '../../src/trivium/probes/zcode.js';
++
++const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'trivium-runtimesel-test-'));
++const EVENT = 'bootstrap.app.startup.runtime_config.completed';
++
++async function homeWithLog(files: Record<string, string>): Promise<string> {
++  const home = await tmp();
++  const dir = path.join(home, '.zcode/cli/log');
++  await fs.mkdir(dir, { recursive: true });
++  for (const [name, body] of Object.entries(files)) await fs.writeFile(path.join(dir, name), body, 'utf8');
++  return home;
++}
++
++const line = (o: unknown) => JSON.stringify(o) + '\n';
++const startup = (model?: unknown) => line({ event: EVENT, context: model === undefined ? {} : { model } });
++
++// ── 运行期读数：六种成因（CODEX-02）──
++
++test('运行期读数：无日志目录 ⇒ no_log_dir', async () => {
++  assert.deepEqual(await readRuntimeSelectedModel(await tmp()), { cause: 'no_log_dir', model: null });
++});
++
++test('运行期读数：目录在、没有 .jsonl ⇒ no_log_file', async () => {
++  const home = await homeWithLog({ 'note.txt': startup('p/m') });
++  assert.deepEqual(await readRuntimeSelectedModel(home), { cause: 'no_log_file', model: null });
++});
++
++test('运行期读数：有日志、没有启动事件 ⇒ no_event（事件名只出现在别的字段里也不算）', async () => {
++  const home = await homeWithLog({ 'a.jsonl': line({ event: 'other.event' }) + line({ event: 'x', message: EVENT, context: { model: 'p/m' } }) });
++  assert.deepEqual(await readRuntimeSelectedModel(home), { cause: 'no_event', model: null });
++});
++
++test('运行期读数：启动事件在、context.model 缺失或为空串 ⇒ no_model_field', async () => {
++  for (const m of [undefined, '', 42]) {
++    const home = await homeWithLog({ 'a.jsonl': startup(m) });
++    assert.deepEqual(await readRuntimeSelectedModel(home), { cause: 'no_model_field', model: null }, `model=${JSON.stringify(m)}`);
++  }
++});
++
++test('运行期读数：正常 ⇒ ok，只返回 context.model 一个字段', async () => {
++  const home = await homeWithLog({ 'a.jsonl': line({ event: EVENT, context: { model: 'p/m', prompt: 'SECRET-PROMPT' }, extra: 'x' }) });
++  const r = await readRuntimeSelectedModel(home);
++  assert.deepEqual(r, { cause: 'ok', model: 'p/m' });
++  assert.equal(JSON.stringify(r).includes('SECRET-PROMPT'), false);
++});
++
++test('运行期读数：多文件取排序最新的一份', async () => {
++  const home = await homeWithLog({
++    '2026-09-24T01-00-00.jsonl': startup('p/new'),
++    '2026-09-23T23-00-00.jsonl': startup('p/old'),
++  });
++  assert.equal((await readRuntimeSelectedModel(home)).model, 'p/new');
++});
++
++test('运行期读数：同一文件多条启动事件取最后一条', async () => {
++  const home = await homeWithLog({ 'a.jsonl': startup('p/first') + line({ event: 'mid' }) + startup('p/last') });
++  assert.equal((await readRuntimeSelectedModel(home)).model, 'p/last');
++});
++
++test('运行期读数：末行截断（超时被杀）跳过，不抛、不影响前面的读数', async () => {
++  const truncated = JSON.stringify({ event: EVENT, context: { model: 'p/cut' } }).slice(0, -8);
++  const home = await homeWithLog({ 'a.jsonl': startup('p/whole') + truncated });
++  assert.deepEqual(await readRuntimeSelectedModel(home), { cause: 'ok', model: 'p/whole' });
++});
++
++test('describeRuntimeSelection：每种成因各有一句，ok 带模型', () => {
++  assert.match(describeRuntimeSelection({ cause: 'ok', model: 'p/m' }), /运行期选定 p\/m/);
++  assert.match(describeRuntimeSelection(undefined), /未采集/);
++  const causes = ['not_launched', 'no_log_dir', 'no_log_file', 'no_event', 'no_model_field'] as const;
++  const texts = causes.map((c) => describeRuntimeSelection({ cause: c, model: null }));
++  assert.equal(new Set(texts).size, causes.length, '成因之间不得共用同一句');
++  for (const t of texts) assert.match(t, /读不到：\S/);
++});
++
++// ── 置首变体（CODEX-04 / AGY-03 / GLM-08）──
++
++type Cfg = { model?: unknown; provider: Record<string, { name?: string; models: Record<string, unknown> }> };
++
++function twoProviders(): Cfg {
++  return {
++    model: { main: 'bp/B' },
++    provider: {
++      other: { name: 'Other', models: { x: {}, y: {} } },
++      bp: { name: 'BP', models: { A: { ctx: 1 }, B: { ctx: 2 }, C: { ctx: 3 } } },
++    },
++  };
++}
++
++test('置首：provider 与成员都挪到首位；只动顺序——键集合、每个值、嵌套原样；不改入参', () => {
++  const src = twoProviders();
++  const before = JSON.stringify(src);
++  const { copy, outcome } = reorderRequestedFirst(src, 'bp', 'B');
++  assert.deepEqual(outcome, { variant: 'requested-first', applied: true });
++  assert.deepEqual(Object.keys(copy.provider), ['bp', 'other']);
++  assert.deepEqual(Object.keys(copy.provider['bp']!.models), ['B', 'A', 'C']);
++  assert.deepEqual(copy, src, 'deepEqual 不看键序：值与结构必须完全相同');
++  assert.equal(JSON.stringify(src), before, '入参不得被改');
++});
++
++test('置首：成员 id 与键名不同时按 id 定位；id 带首尾空白按 trim 后比', () => {
++  const cfg: Cfg = { provider: { bp: { models: { k1: { id: 'A' }, k2: { id: ' B ' } } } } };
++  const { copy, outcome } = reorderRequestedFirst(cfg, 'bp', 'B');
++  assert.equal(outcome.applied, true, outcome.reason);
++  assert.deepEqual(Object.keys(copy.provider['bp']!.models), ['k2', 'k1']);
++});
++
++test('置首：跳过 deleted 成员；重复 id 取第一个匹配键（导入器先到先得）', () => {
++  const cfg: Cfg = {
++    provider: { bp: { models: { a: {}, gone: { id: 'B', deleted: true }, first: { id: 'B' }, second: { id: 'B' } } } },
++  };
++  const { copy, outcome } = reorderRequestedFirst(cfg, 'bp', 'B');
++  assert.equal(outcome.applied, true, outcome.reason);
++  assert.equal(Object.keys(copy.provider['bp']!.models)[0], 'first');
++});
++
++test('置首挪不动不当成功：找不到 provider / 成员、恒等、整数样键名 ⇒ applied:false 带原因，原样返回', () => {
++  const cases: Array<[string, Cfg, string, string, RegExp]> = [
++    ['无 provider', twoProviders(), 'nope', 'B', /没有 provider/],
++    ['无成员', twoProviders(), 'bp', 'Z', /没有 id 为 Z/],
++    ['只剩 deleted', { provider: { bp: { models: { a: {}, B: { deleted: true } } } } }, 'bp', 'B', /没有 id 为 B/],
++    ['恒等', { provider: { bp: { models: { B: {}, A: {} } } } }, 'bp', 'B', /恒等/],
++    ['整数样键名', { provider: { bp: { models: { '1': {}, '2': {} } } } }, 'bp', '2', /整数样键名/],
++  ];
++  for (const [name, cfg, pk, mid, why] of cases) {
++    const { copy, outcome } = reorderRequestedFirst(cfg, pk, mid);
++    assert.equal(outcome.applied, false, name);
++    assert.match(outcome.reason ?? '', why, name);
++    assert.equal(copy, cfg, `${name}：挪不动时原样返回`);
++  }
++});
++
++// ── 两臂流程（假入口模拟「默认选择不可选 ⇒ 运行期回落 models 第一个」）──
++
++/**
++ * 假入口：配置读取层照 `model.main` 写出 v2（与真实 CLI 的 legacy 导入同形）；
++ * 运行期选定写进 `${ZCODE_LOG_DIR ?? HOME/.zcode/cli/log}` 的启动事件：
++ *   FAKE_RUNTIME_FALLBACK 时回落「第一个 provider 的第一个未删成员」（EV-82 静态佐证的形态），否则取 model.main；
++ *   FAKE_NO_LOG 不写日志。
++ */
++const RUNTIME_ENTRY = `
++const fs = require('node:fs'), path = require('node:path');
++const env = process.env;
++if (env.FAKE_ZCODE_LOG) fs.appendFileSync(env.FAKE_ZCODE_LOG, JSON.stringify({ logDirEnv: env.ZCODE_LOG_DIR ?? null }) + '\\n');
++const cfg = JSON.parse(fs.readFileSync(path.join(env.HOME, '.zcode/cli/config.json'), 'utf8'));
++const main = cfg.model.main; const i = main.indexOf('/');
++fs.mkdirSync(path.join(env.HOME, '.zcode/v2'), { recursive: true });
++fs.writeFileSync(path.join(env.HOME, '.zcode/v2/provider_config.json'),
++  JSON.stringify({ schemaVersion: 1, config: { defaultModelSelection: { providerId: main.slice(0, i), modelId: main.slice(i + 1) } } }));
++let rt = main;
++if (env.FAKE_RUNTIME_FALLBACK) {
++  const [pid, pv] = Object.entries(cfg.provider)[0];
++  const [mk, mv] = Object.entries(pv.models).find(([, m]) => !(m && m.deleted === true));
++  rt = pid + '/' + ((mv && typeof mv.id === 'string') ? mv.id : mk).trim();
++}
++if (!env.FAKE_NO_LOG) {
++  const dir = env.ZCODE_LOG_DIR || path.join(env.HOME, '.zcode/cli/log');
++  fs.mkdirSync(dir, { recursive: true });
++  fs.writeFileSync(path.join(dir, '2026-09-24T00-00-00.jsonl'),
++    JSON.stringify({ event: 'bootstrap.other' }) + '\\n' + JSON.stringify({ event: '${EVENT}', context: { model: rt } }) + '\\n');
++}
++process.stderr.write('Error: Model creation failed (traceId: fake)\\n');
++process.exit(1);
++`;
++
++/** 两个 provider，请求的那个排第二、请求的模型排第二：置首要同时挪 provider 与成员才能落到请求值 */
++function catalog(): Record<string, unknown> {
++  return {
++    model: { main: 'other/x', lite: 'other/x' },
++    provider: {
++      other: { name: 'Other', kind: 'anthropic', source: 'custom', options: { baseURL: 'https://other.invalid/api', apiKeyRequired: true }, models: { x: {}, y: {} } },
++      'bigmodel-coding-plan': {
++        name: 'BigModel Coding Plan', kind: 'anthropic', source: 'custom',
++        options: { baseURL: 'https://example.invalid/api', apiKeyRequired: true },
++        models: { 'GLM-5.3': {}, 'GLM-5.3-Flash': {}, 'GLM-5.3-Air': {} },
++      },
++    },
++  };
++}
++
++const REQ = 'bigmodel-coding-plan/GLM-5.3-Flash';
++
++async function fakeLayout(): Promise<{ entry: string; cwd: string; src: string }> {
++  const root = await tmp();
++  const entry = path.join(root, 'Resources/glm/zcode.cjs');
++  await fs.mkdir(path.dirname(entry), { recursive: true });
++  await fs.writeFile(entry, RUNTIME_ENTRY, 'utf8');
++  const builtin = path.join(root, 'Resources/config/provider/zcode-builtin.json');
++  await fs.mkdir(path.dirname(builtin), { recursive: true });
++  await fs.writeFile(builtin, '{}', 'utf8');
++  const cwd = path.join(root, 'proj');
++  await fs.mkdir(cwd, { recursive: true });
++  const src = path.join(root, 'config.json');
++  await fs.writeFile(src, JSON.stringify(catalog()), { encoding: 'utf8', mode: 0o600 });
++  return { entry, cwd, src };
++}
++
++async function withEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Promise<T> {
++  const saved = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
++  for (const [k, v] of Object.entries(env)) process.env[k] = v;
++  try {
++    return await fn();
++  } finally {
++    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
++  }
++}
++
++test('同形臂 as-is：配置读取层写出请求值（config_copy），运行期却回落首位——两层分开报', async () => {
++  const L = await fakeLayout();
++  const r = await withEnv({ FAKE_RUNTIME_FALLBACK: '1' }, () =>
++    probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: REQ }));
++  assert.equal(r.override, 'config_copy', r.why);
++  assert.equal(r.observed, REQ);
++  assert.deepEqual(r.runtimeSelected, { cause: 'ok', model: 'other/x' }, '读取发生在清理之前，才读得到');
++  assert.deepEqual(r.variant, { variant: 'as-is', applied: true });
++});
++
++test('同形臂 requested-first：只挪顺序，运行期回落就落在请求模型上', async () => {
++  const L = await fakeLayout();
++  const r = await withEnv({ FAKE_RUNTIME_FALLBACK: '1' }, () =>
++    probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: REQ, variant: 'requested-first' }));
++  assert.equal(r.override, 'config_copy', r.why);
++  assert.deepEqual(r.variant, { variant: 'requested-first', applied: true });
++  assert.deepEqual(r.runtimeSelected, { cause: 'ok', model: REQ });
++});
++
++test('同形臂 requested-first 挪不动（请求本就在首位）⇒ applied:false 带原因，照常拉起', async () => {
++  const L = await fakeLayout();
++  const r = await probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: 'other/x', variant: 'requested-first' });
++  assert.equal(r.variant?.applied, false);
++  assert.match(r.variant?.reason ?? '', /恒等/);
++  assert.equal(r.runtimeSelected?.cause, 'ok');
++});
++
++test('同形臂 requested-first 限定失败 ⇒ 不拉起，variant 带原因、运行期 not_launched', async () => {
++  const L = await fakeLayout();
++  const r = await probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: 'nope/none', variant: 'requested-first' });
++  assert.equal(r.override, null);
++  assert.equal(r.variant?.applied, false);
++  assert.match(r.variant?.reason ?? '', /限定失败/);
++  assert.deepEqual(r.runtimeSelected, { cause: 'not_launched', model: null });
++});
++
++test('白名单臂：显式 opts.model 优先于 pickNonFirstModel，运行期读数接入', async () => {
++  const L = await fakeLayout();
++  const r = await withEnv({ FAKE_RUNTIME_FALLBACK: '1' }, () =>
++    probeModelOverride(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: 'bigmodel-coding-plan/GLM-5.3-Air' }));
++  assert.equal(r.requested, 'bigmodel-coding-plan/GLM-5.3-Air', '缺省会挑 other/y');
++  assert.equal(r.override, 'config_copy', r.why);
++  assert.deepEqual(r.runtimeSelected, { cause: 'ok', model: 'other/x' });
++});
++
++test('两臂早退 ⇒ runtimeSelected 为 not_launched', async () => {
++  const L = await fakeLayout();
++  const white = await probeModelOverride(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: 'nope/none' });
++  const full = await probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: 'nope/none' });
++  assert.deepEqual([white.runtimeSelected?.cause, full.runtimeSelected?.cause], ['not_launched', 'not_launched']);
++});
++
++test('拉起了但没写日志 ⇒ no_log_dir（与 not_launched 区分）', async () => {
++  const L = await fakeLayout();
++  const r = await withEnv({ FAKE_NO_LOG: '1' }, () =>
++    probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: REQ }));
++  assert.equal(r.override, 'config_copy', r.why);
++  assert.deepEqual(r.runtimeSelected, { cause: 'no_log_dir', model: null });
++});
++
++test('宿主预置 ZCODE_LOG_DIR：两臂都清掉它，日志仍落进副本 HOME、宿主目录不被写', async () => {
++  const L = await fakeLayout();
++  const hostLogDir = await tmp();
++  const calls = path.join(await tmp(), 'calls.jsonl');
++  const [white, full] = await withEnv({ ZCODE_LOG_DIR: hostLogDir, FAKE_ZCODE_LOG: calls }, async () => [
++    await probeModelOverride(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: REQ }),
++    await probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: REQ }),
++  ]);
++  assert.deepEqual(white.runtimeSelected, { cause: 'ok', model: REQ });
++  assert.deepEqual(full.runtimeSelected, { cause: 'ok', model: REQ });
++  assert.deepEqual(await fs.readdir(hostLogDir), [], '宿主日志目录不得被写');
++  const seen = (await fs.readFile(calls, 'utf8')).trim().split('\n').map((l) => (JSON.parse(l) as { logDirEnv: string | null }).logDirEnv);
++  assert.deepEqual(seen, [null, null], '子进程看不到 ZCODE_LOG_DIR');
++});

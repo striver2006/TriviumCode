@@ -28,7 +28,7 @@ import {
   ZCODE_PERSONAL_PROVIDER_ENV,
   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
 } from '../../src/trivium/adapters/zcode.js';
-import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type FullCopyOverrideProbe, type ModelOverrideProbe } from '../../src/trivium/probes/zcode.js';
+import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type FullCopyOverrideProbe, type ModelOverrideProbe, type RuntimeSelectionReadback } from '../../src/trivium/probes/zcode.js';
 import { runDoctor } from '../../src/trivium/doctor.js';
 import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
 
@@ -609,6 +609,7 @@ async function probeZcodeWithTwoArms(
   white: ModelOverrideProbe['override'],
   full: FullCopyOverrideProbe['override'],
   existingFullCopy?: 'config_copy' | 'global',
+  runtime: { white?: RuntimeSelectionReadback; full?: RuntimeSelectionReadback } = {},
 ) {
   const L = await layout({ withBuiltin: true, withPersonal: false });
   const cliConfig = path.join(L.root, 'cli-config.json');
@@ -627,10 +628,10 @@ async function probeZcodeWithTwoArms(
       skipModelCalls: true,
       existing,
       cliConfigPath: cliConfig,
-      modelOverrideProbe: async () => ({ override: white, requested: 'p/m', observed: null, why: '桩：白名单臂' }),
+      modelOverrideProbe: async () => ({ override: white, requested: 'p/m', observed: null, why: '桩：白名单臂', runtimeSelected: runtime.white }),
       modelOverrideFullCopyProbe: async () => {
         fullCopyCalls += 1;
-        return { override: full, requested: 'p/m', observed: null, why: '桩：同形臂', replacedPaths: ['a.apiKey'], hostCredentialEnv: [] };
+        return { override: full, requested: 'p/m', observed: null, why: '桩：同形臂', replacedPaths: ['a.apiKey'], hostCredentialEnv: [], runtimeSelected: runtime.full };
       },
     });
     return { ...out, fullCopyCalls };
@@ -645,7 +646,7 @@ test('同形臂接线：与白名单臂同一门控、恰好接线一次；结�
   const { probe, notes, fullCopyCalls } = await probeZcodeWithTwoArms('config_copy', 'config_copy');
   assert.equal(fullCopyCalls, 1);
   assert.equal(probe.model_override_full_copy, 'config_copy');
-  assert.ok(notes.some((n) => n.includes('model_override_full_copy=config_copy') && n.includes('看不见运行期注册表层')));
+  assert.ok(notes.some((n) => n.includes('model_override_full_copy=config_copy') && n.includes('配置层结论只判配置读取层')));
   assert.equal(notes.some((n) => n.includes(TWO_ARM_WARN)), false, '两臂一致不告警');
 });
 
@@ -659,4 +660,73 @@ test('同形臂接线：本轮判不出 ⇒ 保留上一轮的值，且不拿旧
   assert.equal(probe.model_override_full_copy, 'global', '未判定不得覆盖旧值');
   assert.ok(notes.some((n) => n.includes('model_override_full_copy=未判定')));
   assert.equal(notes.some((n) => n.includes(TWO_ARM_WARN)), false, '旧值 global 与本轮白名单 config_copy 不同，也不得告警');
+});
+
+// ── 运行期读数进 note（EV-82 第二段 r2 §3）──
+
+const RUNTIME_WARN = '配置读取层写出了请求值';
+
+test('运行期接线：两臂 note 各带运行期读数；配置层 config_copy 而运行期选了别的 ⇒ 按臂出 ⚠️', async () => {
+  const { notes } = await probeZcodeWithTwoArms('config_copy', 'config_copy', undefined, {
+    white: { cause: 'ok', model: 'p/first' },
+    full: { cause: 'no_event', model: null },
+  });
+  assert.ok(notes.some((n) => n.startsWith('model_override=') && n.includes('运行期选定 p/first')));
+  assert.ok(notes.some((n) => n.startsWith('model_override_full_copy=') && n.includes('运行期选定读不到：日志里没有启动事件')));
+  assert.ok(notes.some((n) => n.includes('⚠️ 白名单臂') && n.includes(RUNTIME_WARN) && n.includes('p/first')));
+  assert.equal(notes.some((n) => n.includes('⚠️ 同形臂') && n.includes(RUNTIME_WARN)), false, '读不到不算不一致');
+});
+
+test('运行期接线：运行期与请求 modelId 段一致、或配置层不是 config_copy ⇒ 不出运行期 ⚠️', async () => {
+  const same = await probeZcodeWithTwoArms('config_copy', 'config_copy', undefined, {
+    white: { cause: 'ok', model: 'other-provider/m' },
+    full: { cause: 'ok', model: 'p/m' },
+  });
+  assert.equal(same.notes.some((n) => n.includes(RUNTIME_WARN)), false, '只比 modelId 段，与配置层判据同口径');
+  const glob = await probeZcodeWithTwoArms('global', 'global', undefined, {
+    white: { cause: 'ok', model: 'p/first' },
+    full: { cause: 'ok', model: 'p/first' },
+  });
+  assert.equal(glob.notes.some((n) => n.includes(RUNTIME_WARN)), false, '配置层已判 global，已有 ⚠️，不叠加');
+});
+
+test('运行期接线：桩不给 runtimeSelected ⇒ note 写「未采集」', async () => {
+  const { notes } = await probeZcodeWithTwoArms('config_copy', 'config_copy');
+  assert.ok(notes.some((n) => n.startsWith('model_override=') && n.includes('运行期选定：未采集')));
+});
+
+test('运行期接线：config_copy 且启动阶段选定为空（no_model_field）⇒ 单列 ⚠️（代码双审 r1 CODEX-03）', async () => {
+  const { notes } = await probeZcodeWithTwoArms('config_copy', 'config_copy', undefined, {
+    white: { cause: 'no_model_field', model: null },
+    full: { cause: 'no_log_dir', model: null },
+  });
+  assert.ok(notes.some((n) => n.includes('⚠️ 白名单臂') && n.includes('启动阶段选定为空')));
+  assert.equal(notes.some((n) => n.includes('⚠️ 同形臂') && n.includes(RUNTIME_WARN)), false, '其余读不到的成因不算不一致');
+});
+
+test('运行期接线：配置层未判定（null）而运行期 ok≠请求 ⇒ 不叠加 ⚠️，但 note 带读数（代码双审 r1 GLM-02）', async () => {
+  const { notes } = await probeZcodeWithTwoArms(null, null, undefined, {
+    white: { cause: 'ok', model: 'p/first' },
+    full: { cause: 'no_model_field', model: null },
+  });
+  assert.equal(notes.some((n) => n.includes(RUNTIME_WARN)), false);
+  assert.ok(notes.some((n) => n.startsWith('model_override=') && n.includes('运行期选定 p/first')));
+});
+
+test('宿主预置 ZCODE_LOG_DIR ⇒ doctor 出 ⚠️，只报键名不报值；未预置不出（代码双审 r1 CODEX-01 ≡ GLM-04）', async () => {
+  const saved = process.env['ZCODE_LOG_DIR'];
+  const WARN = '审查运行的 CLI 日志';
+  try {
+    process.env['ZCODE_LOG_DIR'] = '/nonexistent/host-log-dir-value';
+    const on = await probeZcodeWithTwoArms('config_copy', 'config_copy');
+    const hit = on.notes.filter((n) => n.includes(WARN));
+    assert.equal(hit.length, 1);
+    assert.ok(hit[0]!.includes('ZCODE_LOG_DIR'));
+    assert.equal(hit[0]!.includes('host-log-dir-value'), false, '不打印值');
+    delete process.env['ZCODE_LOG_DIR'];
+    const off = await probeZcodeWithTwoArms('config_copy', 'config_copy');
+    assert.equal(off.notes.some((n) => n.includes(WARN)), false);
+  } finally {
+    if (saved === undefined) delete process.env['ZCODE_LOG_DIR']; else process.env['ZCODE_LOG_DIR'] = saved;
+  }
 });

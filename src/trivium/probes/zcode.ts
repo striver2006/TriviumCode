@@ -388,6 +388,23 @@ export function pickNonFirstModel(cfg: { provider?: Record<string, { models?: Re
   return null;
 }
 
+/**
+ * 请求是否正落在目录首位（代码双审 r1 CODEX-04）：`opts.model` 绕过了 `pickNonFirstModel`，
+ * 请求首位模型时「采信 model.main」与「回落首位」回读同值，配置层判据按构造失明。
+ * 首位取第一个有成员的 provider 的第一个成员（`legacyProviderMembers` 同规则），只比 modelId 段（与判据同口径）。
+ * 是则返回追加到 `why` 的标注，否则空串。结论照出、不改：改结论等于替实验下判断，如实标注即可。
+ */
+export function catalogFirstNote(cfg: Parameters<typeof legacyProviderMembers>[0], qualified: string): string {
+  for (const members of legacyProviderMembers(cfg).values()) {
+    const first = members.values().next().value;
+    if (first === undefined) continue;
+    return first === zcodeModelTail(qualified)
+      ? '。⚠️ 请求为目录首位：采信与回落回读同值，本轮配置层结论无判别力'
+      : '';
+  }
+  return '';
+}
+
 /** `probeModelOverride` 的结论 */
 export interface ModelOverrideProbe {
   /** `config_copy`：副本 `model.main` 被读到并成为默认选择；`global`：CLI 跑到了模型层却没读它；null：本轮判不出 */
@@ -398,6 +415,97 @@ export interface ModelOverrideProbe {
   observed: string | null;
   /** 人读说明 */
   why: string;
+  /**
+   * 运行期选定（EV-82 第二段 r2 §3）：副本日志启动事件的 `context.model`，带成因。
+   * 可选：桩与本字段之前的调用方不给它。
+   */
+  runtimeSelected?: RuntimeSelectionReadback;
+}
+
+/**
+ * 运行期选定的读数（EV-82 第二段 r2 §3，第 1 轮 CODEX-02）。读不到时**带成因**：
+ * 同一个「读不到」至少有五种来路，下一步各不相同，不能一律读成「哨兵走不到启动」。
+ */
+export type RuntimeSelectionCause = 'not_launched' | 'no_log_dir' | 'no_log_file' | 'no_event' | 'no_model_field' | 'ok';
+export interface RuntimeSelectionReadback {
+  cause: RuntimeSelectionCause;
+  /** 仅 `cause === 'ok'` 时非 null：`<providerId>/<modelId>` */
+  model: string | null;
+}
+
+/** CLI 启动时记下运行期选定的事件名（静态读数 S5；审查臂的 `modelFromLog` 取的就是它的 `context.model`） */
+export const ZCODE_RUNTIME_CONFIG_EVENT = 'bootstrap.app.startup.runtime_config.completed';
+
+/**
+ * 探针拉起时额外清掉的环境键（EV-82 第二段 r2 §3，第 1 轮 CODEX-02）：CLI 的日志目录取
+ * `ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`，宿主预置它会让日志落到副本 HOME 之外，运行期读数就读不到。
+ * 只在两条探针臂里清；审查臂不走探针的环境构造。
+ */
+export const ZCODE_PROBE_EXTRA_CLEARED_ENV: readonly string[] = ['ZCODE_LOG_DIR'];
+
+/**
+ * 读副本 HOME 下 CLI 日志里的运行期选定（EV-82 第二段 r2 §3）。
+ *
+ * - **取法**与审查臂 / `readTrace` 对齐：日志目录里排序取**最新**的 `.jsonl`
+ *   （探针 HOME 每次新建、单会话，所以不按 sessionId 过滤）；同一文件多条该事件取**最后一条**；
+ * - 单行 JSON 解析失败跳过（超时被杀时末行可能残缺）；
+ * - **只取 `context.model` 一个字段**，不读、不返回日志其它内容（日志可能含送审包全文）；
+ * - I/O 异常 fail-closed：返回对应成因，**不抛**；
+ * - `not_launched` **由调用方**在早退路径注入，不进本函数签名（代码双审 r1 GLM-05，相对计划 r2 §3 的
+ *   `(home, launched)` 双参是有意偏离）：未拉起就不该去读，把「没读」伪装成一次读数反而多一个出错面。
+ *
+ * 与审查臂取法**方向相反**（代码双审 r1 codex）：`parseZcodeTrace` 取第一条带 `context.model` 的行，
+ * 这里取最新文件里最后一条启动事件（计划 r2 §3 明文）。真实日志目前只有一行带该字段，两者等价；
+ * 两处不是逐字同源，多条形态出现时读数可能分叉。
+ */
+export async function readRuntimeSelectedModel(home: string): Promise<RuntimeSelectionReadback> {
+  const dir = path.join(home, '.zcode/cli/log');
+  let files: string[];
+  try {
+    files = (await fs.readdir(dir)).filter((f) => f.endsWith('.jsonl')).sort();
+  } catch {
+    return { cause: 'no_log_dir', model: null };
+  }
+  const latest = files.at(-1);
+  if (!latest) return { cause: 'no_log_file', model: null };
+  let text: string;
+  try {
+    text = await fs.readFile(path.join(dir, latest), 'utf8');
+  } catch {
+    return { cause: 'no_log_file', model: null };
+  }
+  let found = false;
+  let model: string | null = null;
+  for (const line of text.split('\n')) {
+    if (!line.includes(ZCODE_RUNTIME_CONFIG_EVENT)) continue;
+    let o: unknown;
+    try {
+      o = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!o || typeof o !== 'object' || (o as { event?: unknown }).event !== ZCODE_RUNTIME_CONFIG_EVENT) continue;
+    found = true;
+    const ctx = (o as { context?: unknown }).context;
+    const m = ctx && typeof ctx === 'object' ? (ctx as { model?: unknown }).model : undefined;
+    model = typeof m === 'string' && m.length > 0 ? m : null; // 取最后一条：后出现的覆盖前面的
+  }
+  if (!found) return { cause: 'no_event', model: null };
+  return model === null ? { cause: 'no_model_field', model: null } : { cause: 'ok', model };
+}
+
+/** 人读：运行期读数的一句话 */
+export function describeRuntimeSelection(r: RuntimeSelectionReadback | undefined): string {
+  if (!r) return '运行期选定：未采集';
+  const why: Record<RuntimeSelectionCause, string> = {
+    ok: '',
+    not_launched: '该臂未拉起',
+    no_log_dir: '副本 HOME 下没有 CLI 日志目录',
+    no_log_file: '日志目录里没有 .jsonl',
+    no_event: `日志里没有启动事件 ${ZCODE_RUNTIME_CONFIG_EVENT}`,
+    no_model_field: '启动事件在，但 context.model 缺失（启动时选定为空）',
+  };
+  return r.cause === 'ok' ? `运行期选定 ${r.model}` : `运行期选定读不到：${why[r.cause]}`;
 }
 
 /**
@@ -425,24 +533,35 @@ export async function probeModelOverride(
   entry: string,
   node: string,
   cwd: string,
-  opts: { cliConfigPath?: string; timeoutMs?: number; readonlyArgs?: readonly string[] } = {},
+  opts: {
+    cliConfigPath?: string;
+    /**
+     * 显式请求模型（EV-82 第二段 r2 §5.1，GLM-07）：实验里三次拉起传同一个值。缺省仍取 `pickNonFirstModel`。
+     * 本臂判据的前提是「请求非首位」；显式传了首位时结论照出，`why` 带 {@link catalogFirstNote} 的标注（代码双审 r1 CODEX-04）
+     */
+    model?: string;
+    timeoutMs?: number;
+    readonlyArgs?: readonly string[];
+  } = {},
 ): Promise<ModelOverrideProbe> {
+  const notLaunched: RuntimeSelectionReadback = { cause: 'not_launched', model: null };
   const src = opts.cliConfigPath ?? ZCODE_CLI_CONFIG;
   let cfg: { provider?: Record<string, Record<string, unknown> | undefined>; model?: unknown };
   try {
     cfg = JSON.parse(await fs.readFile(src, 'utf8')) as typeof cfg;
   } catch (e) {
-    return { override: null, requested: null, observed: null, why: `读不到 ${src}：${(e as Error).message}` };
+    return { override: null, requested: null, observed: null, why: `读不到 ${src}：${(e as Error).message}`, runtimeSelected: notLaunched };
   }
-  const pick = pickNonFirstModel(cfg as Parameters<typeof pickNonFirstModel>[0]);
+  const pick = opts.model ?? pickNonFirstModel(cfg as Parameters<typeof pickNonFirstModel>[0]);
   if (!pick) {
     return {
       override: null, requested: null, observed: null,
       why: 'cli/config.json 目录里没有任何 provider 拥有两个以上模型，挑不出非首位模型，判据会失明——本轮未判定',
+      runtimeSelected: notLaunched,
     };
   }
   const q = qualifyAgainstCliConfig(pick, cfg as Parameters<typeof qualifyAgainstCliConfig>[1]);
-  if (q.qualified === null) return { override: null, requested: pick, observed: null, why: q.reason };
+  if (q.qualified === null) return { override: null, requested: pick, observed: null, why: q.reason, runtimeSelected: notLaunched };
 
   const home = await makeTempDir('trivium-modeloverride');
   try {
@@ -454,33 +573,36 @@ export async function probeModelOverride(
     const env: Record<string, string | undefined> = {
       ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
       ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
+      ...Object.fromEntries(ZCODE_PROBE_EXTRA_CLEARED_ENV.map((k) => [k, undefined])),
       HOME: home,
     };
     const r = await run(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])], {
       cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
     });
 
+    // 运行期读数必须在 finally 整删临时根之前读（r2 §3）
+    const runtimeSelected = await readRuntimeSelectedModel(home);
     const j = judgeOverrideReadback(q.qualified, await readDefaultSelection(home), r);
-    const base = { override: j.override, requested: q.qualified, observed: j.observed };
+    const base = { override: j.override, requested: q.qualified, observed: j.observed, runtimeSelected };
+    const blind = catalogFirstNote(cfg as Parameters<typeof legacyProviderMembers>[0], q.qualified);
+    const done = (why: string): ModelOverrideProbe => ({ ...base, why: why + blind });
     switch (j.stop) {
       case 'match':
-        return { ...base, why: `副本 model.main 被 legacy 导入读到并成为 defaultModelSelection${j.providerNote}` };
+        return done(`副本 model.main 被 legacy 导入读到并成为 defaultModelSelection${j.providerNote}`);
       case 'mismatch':
-        return { ...base, why: `CLI 写出的 defaultModelSelection 是 ${j.observed ?? '（缺失）'}，modelId 段不是请求的模型——model.main 未被采信` };
+        return done(`CLI 写出的 defaultModelSelection 是 ${j.observed ?? '（缺失）'}，modelId 段不是请求的模型——model.main 未被采信`);
       case 'not_finished':
-        return { ...base, why: `拉起未完成，本轮未判定${j.tail}` };
+        return done(`拉起未完成，本轮未判定${j.tail}`);
       case 'provider_unresolved':
-        return { ...base, why: `内置 provider 配置定位失败（P-28），配置读取阶段未到，本轮未判定${j.tail}` };
+        return done(`内置 provider 配置定位失败（P-28），配置读取阶段未到，本轮未判定${j.tail}`);
       case 'no_import':
         // 文案不承诺 CLI 行为（代码双审 r2 CODEX-02）：探针副本是白名单重建，与审查运行的整份拷贝不同形
-        return {
-          ...base,
-          why:
-            `CLI 跑到了模型层，但白名单重建的副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）——` +
-            `可能是 CLI 改了导入流程，也可能是探针裁剪掉了导入需要的键；请先核对 buildProbeCliConfig 的白名单是否仍 ⊇ 导入器必需键${j.tail}`,
-        };
+        return done(
+          `CLI 跑到了模型层，但白名单重建的副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）——` +
+          `可能是 CLI 改了导入流程，也可能是探针裁剪掉了导入需要的键；请先核对 buildProbeCliConfig 的白名单是否仍 ⊇ 导入器必需键${j.tail}`,
+        );
       case 'unrecognized':
-        return { ...base, why: `未识别的停止形态，本轮未判定${j.tail}` };
+        return done(`未识别的停止形态，本轮未判定${j.tail}`);
     }
   } finally {
     await fs.rm(home, { recursive: true, force: true });
@@ -672,10 +794,61 @@ export function findCredentialResidue(cfg: unknown): string[] {
   return out;
 }
 
-/** 同形臂的结论：与白名单臂同一形状，外加替换键路径与宿主预置的凭据 env 键 */
+/** 置首变体是否生效（EV-82 第二段 r2 §4）。未生效时带原因，该次读数不落判读表 (F1) / (F3) */
+export interface VariantOutcome {
+  variant: 'as-is' | 'requested-first';
+  applied: boolean;
+  reason?: string;
+}
+
+/**
+ * 「请求模型置首」（EV-82 第二段 r2 §4，第 1 轮 CODEX-04 / AGY-03 / GLM-08）：只调整副本里的**顺序**，
+ * 把 `providerKey` 排到 `provider` 映射首位、把请求的成员键排到它的 `models` 映射首位；键、值、嵌套一律不变。
+ *
+ * - provider 与成员**两级**都按 trim 定位（代码双审 r1 CODEX-02 ≡ GLM-03）：provider 取 `键名.trim()` 与
+ *   `providerKey` 相等的原始键，重建时仍用原始键；多个原始键 trim 后同名 ⇒ 挪不动（导入器取哪个未核实）；
+ * - 成员定位与导入器同一规则：`(id ?? 键名).trim()` 与 `modelId` 相等，跳过 `deleted: true`，
+ *   重复 id 取**第一个**匹配键（导入器先到先得）；
+ * - **挪不动不当成功**：找不到对应键、请求本就在首位（恒等）、重建后目标仍不在首位
+ *   （JS 对象恒把整数样键名排在前面）——一律 `applied: false` 并给原因。
+ * 返回新对象，不改入参。
+ */
+export function reorderRequestedFirst<T>(cfg: T, providerKey: string, modelId: string): { copy: T; outcome: VariantOutcome } {
+  const fail = (reason: string) => ({ copy: cfg, outcome: { variant: 'requested-first' as const, applied: false, reason } });
+  const c = cfg as { provider?: Record<string, { models?: Record<string, { id?: unknown; deleted?: unknown }> } | undefined> };
+  const providers = c.provider ?? {};
+  // provider 键也按 trim 定位（代码双审 r1 CODEX-02 ≡ GLM-03）：`providerKey` 来自 `legacyProviderMembers`，是规整形态
+  const rawKeys = Object.keys(providers).filter((k) => k.trim() === providerKey);
+  if (rawKeys.length === 0) return fail(`副本源里没有 provider ${providerKey}`);
+  if (rawKeys.length > 1) return fail(`有 ${rawKeys.length} 个 provider 键 trim 后都是 ${providerKey}，导入器取哪个未经核实，不猜`);
+  const rawKey = rawKeys[0]!;
+  const p = providers[rawKey];
+  if (!p) return fail(`副本源里 provider ${providerKey} 为空`);
+  const models = p.models ?? {};
+  let memberKey: string | null = null;
+  for (const [k, m] of Object.entries(models)) {
+    if (m && typeof m === 'object' && m.deleted === true) continue;
+    const id = (typeof m?.id === 'string' ? m.id : k).trim();
+    if (id === modelId) { memberKey = k; break; }
+  }
+  if (memberKey === null) return fail(`provider ${providerKey} 里没有 id 为 ${modelId} 的成员`);
+  if (Object.keys(providers)[0] === rawKey && Object.keys(models)[0] === memberKey) return fail('请求本就在首位（恒等）');
+
+  const newModels: Record<string, unknown> = { [memberKey]: models[memberKey] };
+  for (const [k, m] of Object.entries(models)) if (k !== memberKey) newModels[k] = m;
+  const newProviders: Record<string, unknown> = { [rawKey]: { ...p, models: newModels } };
+  for (const [k, v] of Object.entries(providers)) if (k !== rawKey) newProviders[k] = v;
+  if (Object.keys(newProviders)[0] !== rawKey || Object.keys(newModels)[0] !== memberKey) {
+    return fail('重建后目标仍不在首位：存在整数样键名，JS 对象恒把它们排在前面');
+  }
+  return { copy: { ...(cfg as object), provider: newProviders } as T, outcome: { variant: 'requested-first', applied: true } };
+}
+
+/** 同形臂的结论：与白名单臂同一形状，外加替换键路径、宿主预置的凭据 env 键与变体结果 */
 export interface FullCopyOverrideProbe extends ModelOverrideProbe {
   replacedPaths: string[];
   hostCredentialEnv: string[];
+  variant?: VariantOutcome;
 }
 
 /**
@@ -688,7 +861,8 @@ export interface FullCopyOverrideProbe extends ModelOverrideProbe {
  * - 判据与白名单臂共用 {@link judgeOverrideReadback}，成因文案本臂自带（GLM-07）；
  * - 清理只认 `makeTempDir` 的返回值，不调 `scrubZcodeHome`（2026-09-20 事故 R1 / R2）。
  *
- * 本臂看得见配置读取层与两臂副本形态差异，**看不见运行期注册表层**。
+ * 配置层结论（`override`）只判配置读取层；运行期选定另由 {@link readRuntimeSelectedModel} 读启动事件，
+ * 放在 `runtimeSelected`（EV-82 第二段 r2 §3），两者分开报，不合成一个结论。
  */
 export async function probeModelOverrideFullCopy(
   entry: string,
@@ -696,6 +870,7 @@ export async function probeModelOverrideFullCopy(
   cwd: string,
   opts: {
     cliConfigPath?: string;
+    /** 显式请求模型；传了目录首位、或 `variant: 'requested-first'` 置首生效时，结论照出，`why` 标注配置层判据失明（代码双审 r1 CODEX-04） */
     model?: string;
     timeoutMs?: number;
     readonlyArgs?: readonly string[];
@@ -709,12 +884,21 @@ export async function probeModelOverrideFullCopy(
      * 凭据若不被残余扫描命中，会原样进副本。它不是与 `full` 同等的零配额档。
      */
     replace?: 'full' | 'apiKeyOnly';
+    /**
+     * 副本变体（EV-82 第二段 r2 §4）：`as-is`（缺省）原样；`requested-first` 把请求的 provider / 模型排到首位，
+     * 只动顺序。只供实验脚本与用例用，doctor 不跑这一支（第 1 轮 AGY-02）。
+     */
+    variant?: 'as-is' | 'requested-first';
   } = {},
 ): Promise<FullCopyOverrideProbe> {
   const src = opts.cliConfigPath ?? ZCODE_CLI_CONFIG;
   const hostCredentialEnv = ZCODE_CREDENTIAL_ENV_KEYS.filter((k) => process.env[k]);
-  const none = (why: string, requested: string | null = null): FullCopyOverrideProbe =>
-    ({ override: null, requested, observed: null, why, replacedPaths: [], hostCredentialEnv });
+  const variantName = opts.variant ?? 'as-is';
+  let variant: VariantOutcome = { variant: variantName, applied: variantName === 'as-is' };
+  const none = (why: string, requested: string | null = null): FullCopyOverrideProbe => ({
+    override: null, requested, observed: null, why, replacedPaths: [], hostCredentialEnv,
+    runtimeSelected: { cause: 'not_launched', model: null }, variant,
+  });
 
   let cfg: { provider?: Record<string, Record<string, unknown> | undefined> };
   try {
@@ -724,6 +908,14 @@ export async function probeModelOverrideFullCopy(
   }
   const requested = opts.model ?? pickNonFirstModel(cfg as Parameters<typeof pickNonFirstModel>[0]);
   if (!requested) return none('cli/config.json 目录里没有任何 provider 拥有两个以上模型，挑不出非首位模型，判据会失明——本轮未判定');
+  /*
+   * 置首要知道目标 provider / 模型：在这里先限定一次，经闭包交给 transformCopy（第 1 轮 AGY-03，不改回调签名）。
+   * 限定失败时 prepareZcodeHome 会走 route global，下面的早退照样拦住，不拉起。
+   */
+  const q = qualifyAgainstCliConfig(requested, cfg as Parameters<typeof qualifyAgainstCliConfig>[1]);
+  if (variantName === 'requested-first' && q.qualified === null) {
+    variant = { variant: 'requested-first', applied: false, reason: `请求模型限定失败，无从置首：${q.reason}` };
+  }
 
   // 前缀不得以 `trivium-modeloverride` 开头：白名单臂的清理用例按那个前缀找残留，并行跑会互相误判
   const root = await makeTempDir('trivium-fullcopyarm');
@@ -732,7 +924,14 @@ export async function probeModelOverrideFullCopy(
     let residue: string[] = [];
     const prep = await prepareZcodeHome(root, requested, {
       srcConfig: src,
-      transformCopy: (c) => {
+      transformCopy: (c0) => {
+        let c = c0;
+        // 置首只动顺序，放在凭据替换之前或之后都一样；放前面，残余扫描看到的就是最终落盘的那份
+        if (variantName === 'requested-first' && q.qualified !== null) {
+          const r0 = reorderRequestedFirst(c, q.providerKey, q.modelId);
+          c = r0.copy;
+          variant = r0.outcome;
+        }
         const s = sentinelizeCredentials(c, opts.replace === 'apiKeyOnly' ? 'headersOnly' : 'full');
         const f = forceProviderApiKeySentinel(s.copy);
         // 读数与盘上一致：结构兜底改写的路径也算替换（r2 CODEX-02）；去重是因为 full 档可能已按键名换过 apiKey
@@ -762,34 +961,39 @@ export async function probeModelOverrideFullCopy(
     const env: Record<string, string | undefined> = {
       ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
       ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
+      ...Object.fromEntries(ZCODE_PROBE_EXTRA_CLEARED_ENV.map((k) => [k, undefined])),
       HOME: prep.homeDir,
     };
     const r = await run(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])], {
       cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
     });
 
+    // 运行期读数必须在 finally 整删临时根之前读（r2 §3）
+    const runtimeSelected = await readRuntimeSelectedModel(prep.homeDir);
     const j = judgeOverrideReadback(prep.qualified, await readDefaultSelection(prep.homeDir), r);
-    const base = { override: j.override, requested: prep.qualified, observed: j.observed, replacedPaths, hostCredentialEnv };
+    const base = { override: j.override, requested: prep.qualified, observed: j.observed, replacedPaths, hostCredentialEnv, runtimeSelected, variant };
+    const blind =
+      catalogFirstNote(cfg as Parameters<typeof legacyProviderMembers>[0], prep.qualified) +
+      (variant.variant === 'requested-first' && variant.applied ? '。置首后请求就在首位，配置层判据按构造失明，本次只看运行期读数' : '');
+    const done = (why: string): FullCopyOverrideProbe => ({ ...base, why: why + blind });
     switch (j.stop) {
       case 'match':
-        return { ...base, why: `同形副本（整份拷贝、凭据换哨兵）的 model.main 被 legacy 导入读到${j.providerNote}` };
+        return done(`同形副本（整份拷贝、凭据换哨兵）的 model.main 被 legacy 导入读到${j.providerNote}`);
       case 'mismatch':
       case 'no_import':
-        return {
-          ...base,
-          why:
-            (j.stop === 'mismatch'
-              ? `CLI 写出的 defaultModelSelection 是 ${j.observed ?? '（缺失）'}，modelId 段不是请求的模型`
-              : 'CLI 跑到了模型层，但同形副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）') +
-            '——成因两种都可能：①整份拷贝里有键让配置层结果与白名单副本不同（H2）；②本臂的凭据替换破坏了导入' +
-            `（本轮替换了 ${replacedPaths.length} 处：${replacedPaths.join('、') || '无'}）${j.tail}`,
-        };
+        return done(
+          (j.stop === 'mismatch'
+            ? `CLI 写出的 defaultModelSelection 是 ${j.observed ?? '（缺失）'}，modelId 段不是请求的模型`
+            : 'CLI 跑到了模型层，但同形副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）') +
+          '——成因两种都可能：①整份拷贝里有键让配置层结果与白名单副本不同（H2）；②本臂的凭据替换破坏了导入' +
+          `（本轮替换了 ${replacedPaths.length} 处：${replacedPaths.join('、') || '无'}）${j.tail}`,
+        );
       case 'not_finished':
-        return { ...base, why: `拉起未完成，本轮未判定${j.tail}` };
+        return done(`拉起未完成，本轮未判定${j.tail}`);
       case 'provider_unresolved':
-        return { ...base, why: `内置 provider 配置定位失败（P-28），配置读取阶段未到，本轮未判定${j.tail}` };
+        return done(`内置 provider 配置定位失败（P-28），配置读取阶段未到，本轮未判定${j.tail}`);
       case 'unrecognized':
-        return { ...base, why: `未识别的停止形态，本轮未判定${j.tail}` };
+        return done(`未识别的停止形态，本轮未判定${j.tail}`);
     }
   } finally {
     await fs.rm(root, { recursive: true, force: true });
@@ -1094,7 +1298,7 @@ export async function probeZcode(
       probe.isolation = 'home_copy';
       notes.push(
         `model_override=${mo.override ?? '未判定（保留上一次 ' + JSON.stringify(probe.model_override) + '）'} / isolation=home_copy：` +
-          `${mo.why}（请求 ${mo.requested ?? '—'}，CLI 写出 ${mo.observed ?? '—'}）。` +
+          `${mo.why}（请求 ${mo.requested ?? '—'}，CLI 写出 ${mo.observed ?? '—'}；${describeRuntimeSelection(mo.runtimeSelected)}）。` +
           '前提：副本 HOME 下不注入个人 provider 配置，CLI 从 cli/config.json 副本 legacy 导入；' +
           '既无模型旗标也无选型环境变量，`--settings` 被拒',
       );
@@ -1117,13 +1321,45 @@ export async function probeZcode(
       if (fc.override !== null) probe.model_override_full_copy = fc.override;
       notes.push(
         `model_override_full_copy=${fc.override ?? '未判定（保留上一次 ' + JSON.stringify(probe.model_override_full_copy ?? null) + '）'}（本轮${fc.override === null ? '未' : ''}产出）：` +
-          `${fc.why}（请求 ${fc.requested ?? '—'}，CLI 写出 ${fc.observed ?? '—'}；替换凭据键 ${fc.replacedPaths.length} 处，另对每个 provider 的 apiKey 无条件写哨兵）。` +
-          '本臂只判配置读取层，看不见运行期注册表层。零配额的前提是副本里所有凭据都被换掉，拉起前已做残余扫描',
+          `${fc.why}（请求 ${fc.requested ?? '—'}，CLI 写出 ${fc.observed ?? '—'}；替换凭据键 ${fc.replacedPaths.length} 处，另对每个 provider 的 apiKey 无条件写哨兵；` +
+          `${describeRuntimeSelection(fc.runtimeSelected)}）。` +
+          '配置层结论只判配置读取层；运行期选定取自 CLI 启动事件（与审查臂的生效模型同一字段）。零配额的前提是副本里所有凭据都被换掉，拉起前已做残余扫描',
       );
+      /*
+       * 配置层写出了请求值、运行期却没选它（EV-82 第二段 r2 §3）：正是 EV-82 的形态——
+       * 两臂在配置读取层都成立，真实运行却回落首位。按臂各自比 modelId 段（与配置层判据同口径）。
+       *
+       * 只在配置层判 `config_copy` 时对照（代码双审 r1 GLM-02）：⚠️ 的前提是「配置读取层写出了请求值」，
+       * `null`（本轮未判定）与 `global`（没写出，另有配置层 ⚠️）两档下前提不成立，不叠加；运行期读数照常进上面的 note。
+       * 两种情形出 ⚠️：读数 ok 且 modelId 段 ≠ 请求；读数 `no_model_field`（已拉起、启动阶段选定为空，
+       * 请求值必未被采用，代码双审 r1 CODEX-03）。其余读不到的成因不算不一致。
+       */
+      for (const [name, a] of [['白名单臂', mo], ['同形臂', fc]] as const) {
+        const rs = a.runtimeSelected;
+        if (a.override !== 'config_copy' || !a.requested || !rs) continue;
+        if (rs.cause === 'ok' && rs.model !== null && zcodeModelTail(rs.model) !== zcodeModelTail(a.requested)) {
+          notes.push(
+            `⚠️ ${name}：配置读取层写出了请求值 ${a.requested}，但运行期选定是 ${rs.model}——` +
+              '默认选择在运行期没被采用（EV-82 形态），见 EV-82 第二段计划 §5 判读表',
+          );
+        } else if (rs.cause === 'no_model_field') {
+          notes.push(
+            `⚠️ ${name}：配置读取层写出了请求值 ${a.requested}，但启动阶段选定为空（启动事件在、context.model 缺失）——` +
+              '请求值在运行期没被采用，见 EV-82 第二段计划 §5 判读表',
+          );
+        }
+      }
       if (fc.hostCredentialEnv.length > 0) {
         notes.push(
           `⚠️ 宿主环境预置了 ${fc.hostCredentialEnv.join(' / ')}：两条探针臂都清掉了它们，审查运行不清——` +
             '若两臂与审查运行结论不同，这是一个与副本形态无关的备择成因（GLM-04）',
+        );
+      }
+      // 日志目录（代码双审 r1 CODEX-01 ≡ GLM-04）：只判有无、不打印值；审查臂的处置见 BACKLOG EV-110（用户 2026-09-24 拍板：第三段修）
+      if (ZCODE_PROBE_EXTRA_CLEARED_ENV.some((k) => process.env[k])) {
+        notes.push(
+          `⚠️ 宿主环境预置了 ${ZCODE_PROBE_EXTRA_CLEARED_ENV.filter((k) => process.env[k]).join(' / ')}：两条探针臂都清掉了它，审查运行不清——` +
+            '审查运行的 CLI 日志（可能含送审包全文）会落到副本 HOME 与清扫面之外，`modelFromLog` 读不到，生效模型只剩 rollout 一个来源',
         );
       }
       // 两臂不一致告警（EV-94 ② 触发器）：只比**本轮都产出且都非 null** 的两值，不拿新值比旧值（CODEX-06）
