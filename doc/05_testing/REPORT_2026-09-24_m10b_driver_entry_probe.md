@@ -59,11 +59,28 @@
 2. matcher 别名意味着：沿用 `Edit|Write` 形态的 matcher，名字层面**可能已经覆盖** ApplyPatch。§6.1 条件 2(i) 仍以行为实测为准。
 3. **ApplyPatch 的 `tool_input` 键形态未取到**：注册表里有名字，但静态检索没有定位到它的输入 schema。这正是 §6.1 条件 2(ii)「按目标判」要实测的一格：若它只带 patch 正文、不带 `extractTargetPath` 认得的路径键，写侧会对它**静默放行**。**null**，待来源 ② 实测。
 
-### 3.3 真载体（P-a）、会话留痕（§4.3.2）、加载面
+### 3.3 真载体（P-a）：**true**
 
-未测。**P-a 需要用户在 ZCode 交互会话里执行** `.trivium/bin/trivium preflight --stage plan --json`，并把原始输出与退出码贴回。
+- **做法**：用户在 ZCode 桌面端打开工作区 `/Users/chenzhenbo/Work/TriviumCode`，新建会话，要求它用终端工具执行
+  `.trivium/bin/trivium preflight --stage plan --json; echo "EXIT=$?"` 并原样贴出输出。
+- **原始输出**（用户贴回，2026-09-24）：`"ok": true`、`"scope": "plan"`，11 项检查全部 `ok: true`，末行 `EXIT=0`，JSON 内 `"exit_code": 0`。
+- **边界**：三家「已认证」一格都走了缓存（「0.61h 前探活通过」），本次没有真实探活。P-a 只验「一条只读 CLI 调用能在 ZCode 会话里跑通」（r5 §3.2），走缓存不影响结论。
+- **留痕佐证**：见 3.4，调用本体、时间与退出码都能在 ZCode 本地留痕里对上，不只凭用户转贴。
 
-静态顺带读到的一条（供 §4.3.2 第 2 问参考，**不是答案**）：会话标识以 `CLAUDE_SESSION_ID` / `ZCODE_SESSION_ID` 注入的是**命令型 Hook** 的环境；是否也注入 **shell 工具**的环境，未核。
+**P-a 成立。** r5 §3.2：第 2 步的开工前提满足。
+
+### 3.4 会话留痕与会话标识（§4.3.2）
+
+| 问题 | 读数 | 三态 |
+| :--- | :--- | :--- |
+| 1 交互会话把工具调用记在哪里、记不记命令原文 | **与 headless 同一处**：`~/.zcode/cli/rollout/model-io-sess_<会话 ID>.jsonl`。本次会话 `sess_13624e01-2592-42f6-9a85-f19c23a69637`，3 行、每行一次模型请求，字段 `startedAt / completedAt / durationMs / requestId / model / request / response / sessionId / querySource / traceId / turnId`。第 0 行响应里有工具调用 `Bash`，输入 `{"command": ".trivium/bin/trivium preflight --stage plan --json; echo \"EXIT=$?\"", "description": "在项目根目录执行 trivium preflight 阶段检查"}`；第 1 行请求里带回的工具结果含 `EXIT=0`。时间 03:34:52Z～03:35:06Z | **true** |
+| 1′（**超出预期**）留痕记不记 Driver 实际用的模型 | **记**：每行 `model` 为 `GLM-5.3` | **true**。r5 §4.3.2 末段写「会话留痕证明不了该会话的模型就是 GLM」，对 ZCode 这一家**不再成立**：rollout 逐请求记模型。这是 EV-107 根本解（采集 Driver 生效模型）在 zcode 侧的一个现成数据源，只登记、不在本里程碑展开 |
+| 2 会不会向 shell 工具注入会话标识环境变量 | 未测。静态读到的只是**命令型 Hook** 的环境注入 `CLAUDE_SESSION_ID` / `ZCODE_SESSION_ID`；shell 工具环境未核 | **null**（下次让会话执行 `env \| grep -i session` 一类只读命令即可判） |
+| 3 留痕里有没有凭据字段 | 本次只按字段名抽取了时间、模型、工具调用三类，没有整份读 `request` / `response` 正文；是否含凭据**未核** | **null**。§7.1 摘录照旧只取工具调用那几行 |
+
+**对 J4 的意义**：J4 的载体证据可以落在这份 rollout 上：同一 run_id 的 `review --start` 工具调用 + 每条请求的 `model`。r5 §10.3 R-o（载体证据拿不到）的风险**基本解除**，剩「会话标识是否进 shell 环境」一格。
+
+**对 §4.3.3 的顺带读数**：交互会话的 shell 工具名是 `Bash`（与 headless 注册表同名），输入键是 `command`（不是路径键），D3 的 Bash 侧判据按 `command` 文本判，与 Claude Code 同形。
 
 ## 4. claude
 

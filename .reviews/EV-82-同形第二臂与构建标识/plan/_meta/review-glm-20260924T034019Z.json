@@ -1,0 +1,127 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "计划骨架与 M10b r5 §3.3.2/§3.3.3 对齐扎实（直接调 prepareZcodeHome、两臂共用判据、ProbeSection 消费方论证成立），但有三处会在结论层面造成返工：①判读表第 2 行把「H2 成立」与「哨兵替换本身破坏导入」两种成因混在同一格，第二段的键二分会被引偏；②诊断说明 r3 §6 第 2 条明确交办给小主题计划的「(D) 隔离腿前提（个人配置 provider 键 ≠ 副本源 legacy 键）的机制支撑」在全计划无落点也未交代去向，而第 1 行「H2 排除 ⇒ H3」的排除链正踩在这条未证前提上（EV-87 记个人配置 2026-09-21 被重写，UUID 形态只是旧快照）；③构建标识的 dirty 判据只看 src/scripts/package.json，漏了安装产物实际包含的 skills/ 资产，「安装副本与仓库同版」的证据在最常见失真形态下静默漏报。另有四处 minor：环境同形措辞与审查臂实际 env 不符（凭据 env 键清不清）、凭据替换是浅层规则、H3 标签比排除法证据更窄、共用判定函数会把白名单臂专属的成因文案带给同形臂。建议逐条处置后通过。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4 判读表第 2 行 / §3 步骤 4",
+      "problem": "第 2 行（白名单臂 config_copy、同形臂 global）的读出写作「H2 成立：整份拷贝里有某个键让配置层结果不同」，但这一格的观测还有第二种与副本形态无关的成因：同形臂的凭据替换本身破坏了导入。白名单臂的历史证据只证明「哨兵 apiKey 与裁掉 headers 不影响导入成败」，对 options 里其它字符串值被换成哨兵是否无害没有任何证明；一旦命中，第二段会去二分根本不存在的差异键。",
+      "evidence": "src/trivium/probes/zcode.ts `buildProbeCliConfig` 的注释记载了导入器读取面（`Oqa` 读 options.apiKey、options.headers 经 `Lqa` 合并可缺、`apiKeyRequired` 决定成败）——哨兵无害的证明只覆盖这几个键；doc/08_project/BACKLOG.md EV-94 ② 行登记的触发形态明确包含「探针副本比整份拷贝**少键**时对运行假乐观」，方向相反的值替换同理可造出假 `global`；被审计划 §4 第 2 行只给了 H2 一种读出。",
+      "suggestion": "第 2 行「读出什么」并列两种成因（真 H2 / 哨兵替换破坏导入），并预登记区分手段：row 2 触发时以「保键保值」的整份拷贝在同臂复跑一次作对照——凭据姿态与审查臂现状一致（prepareZcodeHome 本就把真实凭据写进 runDir 副本 0600），或把二分实验的第一刀定为先分这两者。不必现在实现对照臂，但判读表不能把伪影写成 H2。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4 判读表第 1 行 / §1 事实表",
+      "problem": "诊断说明 r3 §6 第 2 条把「补上 (D)『隔离成立』腿的前提——个人配置的 provider 键 ≠ 副本源 legacy 键——的机制支撑，取证方式要守凭据纪律」明确交办给 EV-82 小主题计划，本计划全文没有这条的落点，也没有交代它落到第二段。第 1 行「H2 排除 ⇒ H3 成立」的排除链依赖 (D) 判读的隔离腿；若桌面端重写后的个人配置键恰为 legacy 形态，(D) 实为隔离失效（H0 形态），排除链从根上不成立。",
+      "evidence": ".reviews/EV-82-审查臂诊断/plan/2026-09-24-EV-82-审查臂诊断-r3-claude.md §3 注（「(D) 的『隔离成立』一腿有前提……这条前提的机制支撑待补，补法交给 EV-82 小主题计划」）与 §6 第 2 条逐字交办；EV-87 记 2026-09-21 17:56 个人配置被重写（r3 §3 注引），「UUID 形态」只是设计 v1.3.32 的一次回读快照，前提的现势未知；被审计划 §1～§9 逐节核对无此条。",
+      "suggestion": "本段报告的判读前提里写明这条仍是假设，并补一个守凭据纪律的取证（例如只读个人 `~/.zcode/v2/provider_config.json` 的顶层键集、不读值，比对键形态——与 provider_config.personal_file 只判有无的既有纪律同型）；同时写明降级路径：若前提不成立，第 1 行结论降级为「隔离存疑、重按 (B) 排查」。若决定移到第二段，计划里也要显式写这个去向。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2（dirty 判据）",
+      "problem": "dirty 判据 `git status --porcelain -- src scripts package.json` 漏了 `skills/`。安装副本不只是 src 的 bundle：安装器把整个 skills/* 目录同步进安装目标（schema、prompts、lenses、hooks、SKILL.md），且 schema JSON 经 import 内联进 bundle——只改 skills/dual-critic/schema 或 prompts 而不改 src 时，产物内容已变而该 pathspec 零感应。构建标识恰是 T2 假阴性排查的第一步（r5 §3.3.2），这类失真会拿到假绿灯。",
+      "evidence": "src/install.ts 头注释与安装循环（skills/<name> 整目录 syncDir 到 ~/.claude/skills/<name>）；scripts/build.mjs 注释「打包产物靠 esbuild 内联」schema JSON；.gitignore 第 83 行已忽略 skills/dual-critic/scripts/trivium.cjs，把 skills 加进 pathspec 不会造成构建后恒 dirty。",
+      "suggestion": "pathspec 增 `skills`，并在计划里写明 dirty 的语义是「影响安装产物内容的路径集」，顺带明示 test/、doc/ 不进产物、故排除的理由。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3 步骤 5",
+      "problem": "「环境与审查臂同形」的措辞不成立：审查臂（invokeZcode）按设计**不清** ZCODE_CREDENTIAL_ENV_KEYS（注释明写「只在探针路径清……审查运行继承宿主凭据 env 是应有之义」），探针族才清。计划列出的 env（zcodeProviderEnv(omitPersonal) + 清凭据键 + HOME=副本）是白名单探针臂的形态。宿主若预置 ZCODE_API_KEY / ZCODE_BASE_URL（后者在 0.16.9 包内仍存在），同形臂与审查臂在凭据/端点通道上有差，可能产生与副本形态无关的配置层分歧、误落第 2 行。",
+      "evidence": "src/trivium/adapters/zcode.ts `ZCODE_CREDENTIAL_ENV_KEYS`（约 303 行）注释与 `invokeZcode`（约 397 行）的 env 组装——只来自 zcodeProviderEnv + HOME；src/trivium/probes/zcode.ts `probeModelOverride`（约 453 行）显式清两键；对照可知计划所述环境≠审查臂环境。",
+      "suggestion": "措辞改为「与白名单探针臂同形」并登记这处已知偏差；照 probes/zcode.ts 里 hostPreset 告警（两个 PROVIDER_CONFIG 变量的宿主预置检测）的先例，给两个凭据键补同型检测，宿主预置时在第 2 行判读里列为备择成因。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "security",
+      "location": "plan §3 步骤 4 / §5 凭据面",
+      "problem": "凭据替换是「值域黑名单 + headers 特判」的浅层规则：options 内 headers 之外的嵌套对象、数组里的字符串不会被换；provider 段 options 之外与顶层的凭据形态键按设计原样保留，整份真实配置（含未被规则覆盖的凭据）会落进临时副本。白名单法当初取代黑名单法的理由正是「黑名单漏一个键就是一份真实凭据进副本、SIGKILL 先于 finally 就残留」，本臂在值域上重蹈同一形态；mkdtemp 0700 + finally 删除是缓解不是消除。",
+      "evidence": "被审计划 §3 步骤 4 的规则原文；src/trivium/probes/zcode.ts `buildProbeCliConfig` 注释（黑名单被废弃的理由与 SIGKILL 残留形态）；src/trivium/util/fsx.ts:117 makeTempDir=fs.mkdtemp（0700）。",
+      "suggestion": "替换规则改成对 options 子树**递归**替换所有字符串值（白名单只保 baseURL/布尔/数值，headers 自然被覆盖）；provider 段与顶层其余键保留原样是 H2 实验所需、不必动，但计划应写明「副本仍可能含 options 之外的原样凭据形态」这一残余面，别让「凭据面更小」被读成「无凭据」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4 判读表第 1 行",
+      "problem": "第 1 行把「问题在配置层之后」直接落成「H3（运行期注册表配不上）按排除法成立」——排除法证明的边界比这个标签宽。配置层之后至少还有两种与「注册表配不上」不同的机制：isSelectable 一类的可选性/套餐过滤、服务端把 Flash 请求映射回落（rollout 全部请求记为 bigmodel-coding-plan/GLM-5.3，providerId 恰是套餐名）。标签收敛过窄会把第二段「形态换源」的讨论锚定在客户端注册表这一种修法上。",
+      "evidence": "M10b r5 §3.3.1 分层表自述「运行期注册表层：**不能**（直接观测）。只能排除法」；被审计划 §4 可选佐证也只盯 isSelectable 与注册表建立路径；诊断 r3 §5 的 rollout 读数（providerId 为套餐形态）支持存在注册表之外候选的解释。",
+      "suggestion": "第 1 行读出与给用户的报告措辞改为「问题在配置层之后（候选：运行期注册表匹配、可选性过滤、套餐/服务端映射）」，与计划已写明的「排除法结论，不是直接观测」保持同一粒度；若做可选佐证，检索面别只限 isSelectable。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §3 步骤 6",
+      "problem": "「判定与 probeModelOverride 共用同一段逻辑（抽出一个纯函数，两臂都调它）」：现有 probeModelOverride 的 `global` 分支 why 文案是白名单臂专属（「白名单重建的副本没有触发 legacy 导入……请先核对 buildProbeCliConfig 的白名单」）。若共用的函数连文案一起带走，同形臂判 `global` 时 doctor 展示与机读 why 会给出指向白名单的错误指引——同形臂没有白名单可核对。",
+      "evidence": "src/trivium/probes/zcode.ts probeModelOverride 的 global 分支返回值（约 498～507 行）内嵌 buildProbeCliConfig 专属文案；被审计划 §3 步骤 6 只说共用逻辑、未区分判据与文案。",
+      "suggestion": "抽取时把三态判据与成因文案分离：判据共用，文案各臂自带；同形臂的 `global` 文案并列「键形态差异（H2）」与「哨兵替换破坏导入」两种成因（与 GLM-01 同格）。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§3 步骤 3 直接调用 prepareZcodeHome 造副本、不另写准备逻辑——正是 M10b r5 §3.3.3 ②(a)「直接调用同一个构造」的落地，也符合 2026-09-20 事故教训与 EV-82 原文「不得手搓脚本复刻副本准备逻辑」的边界；步骤 7 清理只认 makeTempDir 返回值、不调 scrubZcodeHome（R1/R2）姿态正确。",
+    "同形臂进机读 ProbeSection 的消费方论证成立：r5 §4.6 的先例（hooks_deny_ok 三态 + 同批 doctor 展示）就是「doctor 展示即运行期消费方」的同构形态；且 config.v2.json 的 probe 段对各家专属字段 additionalProperties:true 放行，新增字段无需改 schema、不触发改动同步清单（registry-parity 的 schema 扫描不受影响）。",
+    "判读表对三态组合覆盖完整——(cc,cc)→第 1 行、(cc,global)→第 2 行、(global,*)→第 3 行、任一 null→第 4 行，按行序读互斥；第 3 行「不猜归因、读数原样报告」与 r5 纪律 9 一致；第 4 行保留「本轮未判定」与 probeModelOverride 既有的三分语义一致。",
+    "构建标识「取不到 git 注入 null、只告警不报错」的取舍恰当：M9 基线树（git archive，r5 §7.3.2.1）没有 .git，硬失败会卡死兼容验收；「构建标识缺失」与「不同版」分文案、「只告警不改 evidence_ok」与守卫同姿态；run.v2.json 的 snapshot 节未设 additionalProperties:false，可选字段不破坏旧读侧；告警进 meta.gate.warnings + 收尾 stderr 与 review.ts 既有模式（约 1586 行）同构。",
+    "§5 验证设计到位：合成配置断言哨兵/键全在/顶层键原样、清理目标等于 makeTempDir 返回值、变异（去掉比对 ⇒ 红、漏 headers ⇒ 红、裁顶层键 ⇒ 红）与 r5 §11 的 EV-82 变异项对得上；本机副本源只有一个 provider（bigmodel-coding-plan，成员 GLM-5.3/GLM-5.3-Flash，诊断 r3 §2 读数），pickNonFirstModel 取到的正是诊断同款非首位模型，同形臂与白名单臂请求口径一致。",
+    "主题名 ≠ zcode-模型覆盖落点 满足 T1 ③ 鉴别；build 与 install:local 各单独一条与 r5 §9 第 6 行一致，且 install:local 确在 package.json scripts；§7 的「不修路由、不做 T2、不结案、只追加 BACKLOG」边界与 r5 §2.2/§8.4 对齐。"
+  ],
+  "not_covered": [
+    "未读 ~/.trivium/runs 下任何运行目录（禁读清单 8.1），计划 §1 事实 4（诊断运行副本残留文件形态）未独立复核，按诊断说明 r3 的报告转述采信。",
+    "未对 zcode.cjs 包内做静态检索复核 Oqa/Lqa/Fqa/isSelectable 的读取面与语义——引用的是 buildProbeCliConfig 注释与本仓历史裁决记载的包内字面。",
+    "doctor.ts 未直接读取：doctor 两臂并排展示与一致性告警的接线细节按 probeZcode 的 notes/patchProbe 机制间接核；guard.ts、review.ts、types.ts 只读了与本次焦点相关的段落，未全文通读。",
+    "未实际运行任何构建/测试/doctor（只读审查）；npm script 与 schema 现状以工作树文本为准。",
+    "M10b r5 只精读被引小节（§1.4/§2/§3.3/§4.6/§7.3.2.1/§8.4/§9/§10/§11/§12），其余小节未逐字。",
+    "agy/codex/claude 三家适配层与探针未涉及（本段改动不触碰它们）；构建设计 §3.5 探针清单同步、设计文档回补的具体措辞未逐条核对（属实现期事项）。"
+  ],
+  "consulted": [
+    ".reviews/EV-82-同形第二臂与构建标识/plan/2026-09-24-EV-82-同形第二臂与构建标识-claude.md",
+    ".reviews/EV-82-审查臂诊断/plan/2026-09-24-EV-82-审查臂诊断-r3-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/config.ts",
+    "src/trivium/review.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/types.ts",
+    "src/trivium/util/fsx.ts",
+    "scripts/build.mjs",
+    "src/install.ts",
+    "package.json",
+    ".gitignore",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/config.v2.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md"
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "agreed": [
+    "将 EV-82 拆分为「构建标识 + 同形第二臂（诊断）→ 评估后再定修复」的两段式规划方向明确，严格控制了变更边界（不做模型路由改动、不做 T2），符合 M10b r5 规划要求。",
+    "同形臂复用 prepareZcodeHome 核心构造逻辑并保持 omitPersonal 等环境变量对齐，消除了会话或测试手搓副本构造的维护分叉风险。",
+    "构建阶段取不到 git（如导出的基线树）时注入 null，运行期比对异常只告警而不阻断流水线、不改 evidence_ok，符合全仓非侵入式机器证据设计哲学。",
+    "同形第二臂生命周期与清理严格绑定 makeTempDir 返回值并在 finally 中递归 rm，恪守了 2026-09-20 事故防范要求。"
+  ],
+  "consulted": [
+    ".reviews/EV-82-同形第二臂与构建标识/plan/2026-09-24-EV-82-同形第二臂与构建标识-claude.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "scripts/build.mjs",
+    "src/trivium/meta.ts",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "src/trivium/guard.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/review.v1.json",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/EV-82-审查臂诊断/plan/2026-09-24-EV-82-审查臂诊断-r3-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md",
+    "test/unit/zcode-model-selection.test.ts",
+    "test/unit/retention.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 scripts/build.mjs:54-58 与 src/trivium/schemas.ts:18-21、src/trivium/parse.ts:13 可知，skills/dual-critic/schema/ 下的多份 JSON Schema 文件被源码直接通过 import ... with { type: 'json' } 引入，并在打包时由 esbuild 内联嵌入产物 trivium.cjs。计划 §2 在 run.v2.json 中新增 snapshot.build 属性即属此类。若脏判据仅查 src scripts package.json，修改 schema 或 tsconfig.json 后的构建仍会被判定为 dirty: false，导致安装副本构建事实失真。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §2",
+      "problem": "构建标识的 dirty 检查路径集（src scripts package.json）遗漏了被源码直接内联打包的 skills/dual-critic/schema 以及 tsconfig.json 等关键构建要素。",
+      "severity": "major",
+      "suggestion": "完善 scripts/build.mjs 中的 git status --porcelain 路径范围，将 skills/dual-critic/schema 及 tsconfig.json 等参与构建的核心源文件明确纳入检查集。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "对比计划 §4 判读表与 .reviews/EV-82-审查臂诊断/plan/2026-09-24-EV-82-审查臂诊断-r3-claude.md §3：计划 §4 中第 3 行（global | 任意）与第 4 行（任一为 null | —）在「白名单臂为 global 且同形臂为 null」时条件重叠，未定义判读优先级。此外，src/trivium/probes/zcode.ts:453-475 表明探针臂使用哨兵密钥、CLI 尚未完成模型初始化即因鉴权失败终止；而在审查臂真实调用中，CLI 拥有真实凭据，在配置层写入 Flash 后，仍可能因服务端真实网络鉴权握手重置可用模型列表、工具能力门控（--disallowed-tools 约束下的模型能力判定）或 --mode plan 内置映射机制而回退到首位模型。配置层之后的回落并非仅有 H3（静态注册表配不上）一种解释。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4",
+      "problem": "第 4 节判读表分支条件存在重叠未穷尽互斥且缺少执行顺序；同时第一行将配置层写入成功后的运行期回落唯一归因为 H3（注册表配不上），忽略了运行时动态鉴权握手与能力门控等其它可能。",
+      "severity": "major",
+      "suggestion": "判读表增加显式的判定次序（优先判断任一为 null 的未完成态）；并在报告与分析指引中将第一行结论定性为「H3 注册表层或运行期动态能力门控/握手回落候选」，避免绝对化的排除法断言。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/adapters/zcode.ts:662-664，prepareZcodeHome 会先将含有明文凭据的配置写入临时磁盘目录。计划 §3 步骤 4 在落盘后读取并进行二次替换，若进程在步骤 3 与 4 之间被 SIGKILL 或异常退出，明文凭据将残留在临时目录中。同时步骤 4 规则为「除 baseURL 与布尔值外的字符串值换成哨兵；options.headers 每个值换成哨兵」，若自定义 provider 存在 options.auth: { token: '...' } 等嵌套对象，按 typeof opts[key] === 'string' 将漏判嵌套字符串，导致凭据泄露至探针副本。此外，未明确 prepareZcodeHome 返回 route: 'global' 或 homeDir 为 null 时的早退处理。",
+      "id": "AGY-03",
+      "kind": "security",
+      "layer": "plan",
+      "location": "plan §3",
+      "problem": "同形臂凭据替换规则无法覆盖 options 下的嵌套对象凭据；且先落盘真实凭据再二次覆写的时序存在残留窗口，同时缺失 prepareZcodeHome 失败分支的处理。",
+      "severity": "major",
+      "suggestion": "凭据替换应递归处理 options 下除 baseURL 外的所有字符串叶子节点（或由底层准备函数支持在落盘前传入脱敏转换器）；同时明确处理 prepareZcodeHome 的异常与非 config_copy 返回值，直接返回未判定而不执行无效拉起。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/types.ts:321 与 src/trivium/probes/zcode.ts:769-775，既有 ZcodeProbe.model_override 仅持久化三态枚举（'env' | 'config_copy' | 'global' | null），详细数据（requested、observed、why）统一推入 notes 数组。计划 §3 提出在 ProbeSection 存入包含 why 动态长文本的对象，破坏了探针机读契约的对称性；且 doctor 告警仅需两臂的三态枚举即可计算差异。",
+      "id": "AGY-04",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §3",
+      "problem": "机读探针段 model_override_full_copy 存储动态对象打破了与现有 model_override 的同构性，造成持久化契约冗余。",
+      "severity": "minor",
+      "suggestion": "保持 ZcodeProbe 内部字段类型对齐，model_override_full_copy 仅持久化三态字符串枚举，requested / observed / why 等诊断细节统一推入 notes 供人读。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/review.ts:1593-1637，meta.gate.warnings 必须在 writeRunMeta(ref.layout, stage, meta)（第 1595 行）调用前写入，否则无法被序列化进 run-<id>.json。此外，计划 §2 写着「若 build 为 null... 或 build.dirty === true 追加「安装副本与仓库不同版」」，而 §5 写着「build === null ⇒ 告警文案是「构建标识缺失」」，前后口径不一，且将脏工作树构建与版本不一致混为一谈。",
+      "id": "AGY-05",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §2",
+      "problem": "构建标识告警在 review.ts 中的注入时机未明确强调在 writeRunMeta 之前，且三种异常情形的告警文案存在文档冲突与语义混淆。",
+      "severity": "minor",
+      "suggestion": "明确告警注入必须先于 writeRunMeta 落盘；区分三种文案：构建标识缺失（null）、工作树包含未提交变更（dirty）以及安装副本版本不一致（git_head 差异）。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "计划 §5 的构建标识测试中缺少针对 build.dirty === true 触发告警的分支断言；同形臂测试仅在合成文件层面验证了凭据替换，未仿照 test/unit/zcode-model-selection.test.ts 提供配合 Mock CLI 验证 probeModelOverrideFullCopy 进程拉起、异常处理与结果回读的端到端单测。",
+      "id": "AGY-06",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §5",
+      "problem": "验证方案遗漏 build.dirty 的告警测试用例，且同形臂缺乏针对探针函数拉起与回读的端到端单测设计。",
+      "severity": "minor",
+      "suggestion": "在 §5 补充 build.dirty 的变异测试用例，并增加结合 Mock 假入口测试同形臂完整判定流程的集成单测。"
+    }
+  ],
+  "not_covered": [
+    "未实际拉起 ZCode CLI 0.16.9 二进制进行现场行为测试，仅基于当前仓库代码与 M10b/EV-82 历史实测材料进行静态推演。",
+    "未覆盖 ZCode 桌面端与 CLI 后台进程或共享缓存对实际模型选择可能产生的环境耦合影响。",
+    "未审查第二段潜在的路由修复与形态换源方案，仅评审本段两项改动与零配额实验设计。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最关键的问题是构建标识的 dirty 检查（-- src scripts package.json）遗漏了被源码 import 内联嵌入产物的 skills/dual-critic/schema/ 与 tsconfig.json，修改 schema 后的构建会被误判为干净，削弱机器证据效力。其次，同形臂凭据替换未递归处理 options 嵌套对象，存在泄露隐患且有时序窗口；第 4 节判读表缺乏次序存在逻辑重叠，H3 排除法忽视了网络鉴权与工具能力门控等动态回落可能。此外探针契约存在不对称、告警落盘时序需明确，建议调整后实施。",
+  "verdict": "request-changes"
+}
