@@ -8,7 +8,7 @@
  *   - `ZCODE_HOME` / `ZCODE_DATA_BASE_DIR` / `ZCODE_STORAGE_DIR` 对 **`cli/config.json` 的解析**无效，
  *     只有 `HOME` 生效（0.16.5，C-08）。**但 0.16.9 起 `ZCODE_DATA_BASE_DIR` 决定 provider 配置根与
  *     凭据根**（包内 `FZi` / `gUs`：`dataBaseDir ?? ZCODE_DATA_BASE_DIR ?? homedir()`）——所以拉起时
- *     三个变量一律清掉，见 `zcodeProviderEnv`（计划双审 r3 CODEX-02）。
+ *     这三个变量连同 `ZCODE_LOG_DIR`（EV-110）——即 `ZCODE_DIR_ENV_KEYS` 全部目录键——一律清掉，见 `zcodeProviderEnv`（计划双审 r3 CODEX-02）。
  *   - **模型覆盖的落点是 `cli/config.json` 副本的 `model.main`，前提是不注入个人 provider 配置**（EV-82）：
  *     个人文件存在时 CLI 直接用它、不做 legacy 导入；不存在时才从 `cli/config.json` 导入并把
  *     `model.main` 转成默认模型选择（包内 `fpe.#f` → `importLegacy` → `Mqa`）。EV-81 注入了指向
@@ -256,14 +256,14 @@ export async function zcodeProviderConfigPaths(
  * `omitPersonal` 为真时个人键恒 `undefined`（与旗标探针同一形态）；否则按真实用户目录派生
  * ——探活与探针的 headless 臂走后者，它们不做覆盖、在真实 HOME 下跑。
  *
- * ## 三个 `ZCODE_*` 目录变量恒清（计划双审 r3 CODEX-02）
+ * ## `ZCODE_*` 目录变量恒清（计划双审 r3 CODEX-02；EV-110 起含 `ZCODE_LOG_DIR`，共四个）
  *
  * 包内 `FZi(prepareCliProviderRuntimeEnv)` 在 `--prompt` 形态下按
  * `dataBaseDir ?? env.ZCODE_DATA_BASE_DIR ?? os.homedir()` 推导个人路径并写回 `process.env`，
  * 凭据根（`gUs`）与遥测状态也读它。宿主预置该变量 → 个人文件在**副本之外**「存在」→ 导入被跳过
  * ——本轮根因换个入口复发，且 CLI 自写的凭据文件落到清扫论域**之外**。
  * C-08「这三个变量对配置解析无效」是 0.16.5 对 `cli/config.json` 的结论，对 0.16.9 的 provider
- * 配置根**不成立**。判据仍是「子进程拿不到」而不是「编排器没主动给」，故三键恒置 `undefined`。
+ * 配置根**不成立**。判据仍是「子进程拿不到」而不是「编排器没主动给」，故目录键（`ZCODE_DIR_ENV_KEYS`，EV-110 起四键）恒置 `undefined`。
  *
  * ## 为什么门控是**逐键**而不是「两份都在才注入」
  *
@@ -294,10 +294,15 @@ export async function zcodeProviderEnv(
 }
 
 /**
- * 0.16.9 会改变 provider 配置根 / 凭据根 / 存储根的三个目录变量。拉起时一律从子进程环境里删掉，
+ * 0.16.9 会改变 provider 配置根 / 凭据根 / 存储根 / 日志目录的四个目录变量。拉起时一律从子进程环境里删掉，
  * 让根目录只由 `HOME` 决定——那才是副本隔离与清扫论域的边界（r3 CODEX-02）。
+ *
+ * `ZCODE_LOG_DIR`（EV-110，EV-82 第三段 r3 §5）：CLI 的日志目录取 `logDir ?? ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`。
+ * 宿主预置它时，审查臂的 CLI 日志（可能含送审包全文）会落到副本 HOME 与 `scrubZcodeHome` 的清扫面之外，
+ * `modelFromLog` 也读不到——与 `ZCODE_DATA_BASE_DIR` 当初进清单的理由同构。清掉它只会把日志拉回各自 HOME 下。
+ * 第二段起它只在两条模型探针臂另清，第三段并入本清单，所有拉起路径一律清；各路径的 HOME 与行为变化见计划 r3 §5。
  */
-export const ZCODE_DIR_ENV_KEYS: readonly string[] = ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_STORAGE_DIR'];
+export const ZCODE_DIR_ENV_KEYS: readonly string[] = ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_STORAGE_DIR', 'ZCODE_LOG_DIR'];
 
 /**
  * 宿主环境里可能带着的凭据/端点变量。**只在探针路径清**（代码双审 r1 codex 子项 03 ≡ AGY-02）：
@@ -532,6 +537,11 @@ export interface ZcodeHomePrep {
   qualified: string | null;
   /** `route` 为 `global` 时**必有**——「没覆盖」和「为什么没覆盖」不能只剩前者 */
   reason?: string;
+  /**
+   * 置首结果（EV-82 第三段 r3 §3.2）：没请求置首（`requestedFirst` 未开）、或限定失败时为 null。
+   * 挪不动**不中止**：照常写副本、照常拉起，由守卫按结果判。
+   */
+  reorder: VariantOutcome | null;
 }
 
 /**
@@ -623,6 +633,78 @@ export function qualifyAgainstCliConfig(
 }
 
 /**
+ * 置首的结构化成因（EV-82 第三段 r3 §3.1，计划双审 r2 GLM-r2-02）：判定一律按它做，`reason` 只供人读。
+ *
+ * **产出面**（代码双审 r1 CODEX-01 ≡ GLM-01）：`reorderRequestedFirst` 只产出 `applied` / `identity` / `not_movable` 三档，
+ * 所以审查运行的 trace 与 `CriticResult.model_override_reorder` 也只会是这三档。`qualify_failed` 只由同形臂置首支在
+ * 请求模型限定失败时合成；审查运行限定失败时 `prepareZcodeHome` 走 `route: global`、`reorder` 为 null，
+ * 事实在 trace 的 `modelSelection.route` 与 `reason`。
+ * - `applied`：挪成功（原样支按定义也记 `applied`）；
+ * - `identity`：请求本就在两级首位，不需要挪；
+ * - `not_movable`：找不到 provider / 成员、provider 键 trim 后重名、重建后仍不在首位（整数样键名）；
+ * - `qualify_failed`：请求模型限定失败，无从置首。
+ */
+export type VariantKind = 'applied' | 'identity' | 'not_movable' | 'qualify_failed';
+
+/**
+ * 置首变体是否生效（EV-82 第二段 r2 §4；第三段 r3 §3.1 从探针模块搬来，审查臂与同形臂共用）。
+ * 未生效时带 `kind` 与原因。
+ */
+export interface VariantOutcome {
+  variant: 'as-is' | 'requested-first';
+  applied: boolean;
+  kind: VariantKind;
+  reason?: string;
+}
+
+/**
+ * 「请求模型置首」（EV-82 第二段 r2 §4，第 1 轮 CODEX-04 / AGY-03 / GLM-08）：只调整副本里的**顺序**，
+ * 把 `providerKey` 排到 `provider` 映射首位、把请求的成员键排到它的 `models` 映射首位；键、值、嵌套一律不变。
+ *
+ * - provider 与成员**两级**都按 trim 定位（代码双审 r1 CODEX-02 ≡ GLM-03）：provider 取 `键名.trim()` 与
+ *   `providerKey` 相等的原始键，重建时仍用原始键；多个原始键 trim 后同名 ⇒ 挪不动（导入器取哪个未核实）；
+ * - 成员定位与导入器同一规则：`(id ?? 键名).trim()` 与 `modelId` 相等，跳过 `deleted: true`，
+ *   重复 id 取**第一个**匹配键（导入器先到先得）；
+ * - **挪不动不当成功**：找不到对应键、请求本就在首位（恒等）、重建后目标仍不在首位
+ *   （JS 对象恒把整数样键名排在前面）——一律 `applied: false` 并给原因。
+ * 返回新对象，不改入参。
+ *
+ * 放在适配层而不是探针模块（第三段 r3 §3.1）：审查臂与同形臂的置首要走同一个构造函数、同一个选项，
+ * 而探针模块依赖适配层、反过来不行。探针模块原名再导出。
+ */
+export function reorderRequestedFirst<T>(cfg: T, providerKey: string, modelId: string): { copy: T; outcome: VariantOutcome } {
+  const fail = (reason: string, kind: VariantKind = 'not_movable') =>
+    ({ copy: cfg, outcome: { variant: 'requested-first' as const, applied: false, kind, reason } });
+  const c = cfg as { provider?: Record<string, { models?: Record<string, { id?: unknown; deleted?: unknown }> } | undefined> };
+  const providers = c.provider ?? {};
+  // provider 键也按 trim 定位（代码双审 r1 CODEX-02 ≡ GLM-03）：`providerKey` 来自 `legacyProviderMembers`，是规整形态
+  const rawKeys = Object.keys(providers).filter((k) => k.trim() === providerKey);
+  if (rawKeys.length === 0) return fail(`副本源里没有 provider ${providerKey}`);
+  if (rawKeys.length > 1) return fail(`有 ${rawKeys.length} 个 provider 键 trim 后都是 ${providerKey}，导入器取哪个未经核实，不猜`);
+  const rawKey = rawKeys[0]!;
+  const p = providers[rawKey];
+  if (!p) return fail(`副本源里 provider ${providerKey} 为空`);
+  const models = p.models ?? {};
+  let memberKey: string | null = null;
+  for (const [k, m] of Object.entries(models)) {
+    if (m && typeof m === 'object' && m.deleted === true) continue;
+    const id = (typeof m?.id === 'string' ? m.id : k).trim();
+    if (id === modelId) { memberKey = k; break; }
+  }
+  if (memberKey === null) return fail(`provider ${providerKey} 里没有 id 为 ${modelId} 的成员`);
+  if (Object.keys(providers)[0] === rawKey && Object.keys(models)[0] === memberKey) return fail('请求本就在首位（恒等）', 'identity');
+
+  const newModels: Record<string, unknown> = { [memberKey]: models[memberKey] };
+  for (const [k, m] of Object.entries(models)) if (k !== memberKey) newModels[k] = m;
+  const newProviders: Record<string, unknown> = { [rawKey]: { ...p, models: newModels } };
+  for (const [k, v] of Object.entries(providers)) if (k !== rawKey) newProviders[k] = v;
+  if (Object.keys(newProviders)[0] !== rawKey || Object.keys(newModels)[0] !== memberKey) {
+    return fail('重建后目标仍不在首位：存在整数样键名，JS 对象恒把它们排在前面');
+  }
+  return { copy: { ...(cfg as object), provider: newProviders } as T, outcome: { variant: 'requested-first', applied: true, kind: 'applied' } };
+}
+
+/**
  * 为一次运行准备独立 HOME 与模型覆盖（`config_copy` 档）。
  *
  * 从用户的 `~/.zcode/cli/config.json` 拷一份到运行目录下的临时 HOME，只改 `model.main` / `model.lite`。
@@ -645,6 +727,12 @@ export async function prepareZcodeHome(
      * **审查臂不传**；不传时本函数的输出与加这个参数之前逐字相同（有用例锁住）。
      */
     transformCopy?: (cfg: ZcodeCliConfigShape) => ZcodeCliConfigShape;
+    /**
+     * 请求模型置首（EV-82 第三段 r3 §3.2）：限定成功时，在写 `model.main` 之后、`transformCopy` **之前**
+     * 把请求的 provider / 成员排到首位，只动顺序。`transformCopy` 收到的就是置首后的对象，
+     * 残余扫描面对最终落盘的那份。缺省 false：不传时输出与加这个参数之前逐字相同。
+     */
+    requestedFirst?: boolean;
   } = {},
 ): Promise<ZcodeHomePrep> {
   const srcConfig = opts.srcConfig ?? path.join(os.homedir(), '.zcode/cli/config.json');
@@ -654,9 +742,10 @@ export async function prepareZcodeHome(
       route: 'global',
       qualified: null,
       reason: `未找到 ${srcConfig}，无法做模型覆盖；将沿用 ZCode CLI 的全局默认`,
+      reorder: null,
     };
   }
-  if (!model) return { homeDir: null, route: 'global', qualified: null, reason: '本次未指定模型' };
+  if (!model) return { homeDir: null, route: 'global', qualified: null, reason: '本次未指定模型', reorder: null };
 
   const homeDir = zcodeHomeUnder(runDir);
   const dstDir = path.join(homeDir, ZCODE_CLI_SUBDIR);
@@ -666,16 +755,23 @@ export async function prepareZcodeHome(
   const q = qualifyAgainstCliConfig(model, cfg);
   // 模型 id 必须是 <providerKey>/<modelId> 全限定形态（坑 P-06），且 providerKey 与本副本同源（r3 CODEX-03）
   if (q.qualified !== null) cfg.model = { main: q.qualified, lite: q.qualified };
-  const toWrite = opts.transformCopy ? opts.transformCopy(cfg) : cfg;
+  let staged: ZcodeCliConfigShape = cfg;
+  let reorder: VariantOutcome | null = null;
+  if (q.qualified !== null && opts.requestedFirst) {
+    const r = reorderRequestedFirst(cfg, q.providerKey, q.modelId);
+    staged = r.copy;
+    reorder = r.outcome;
+  }
+  const toWrite = opts.transformCopy ? opts.transformCopy(staged) : staged;
 
   await fs.writeFile(path.join(dstDir, 'config.json'), JSON.stringify(toWrite, null, 2), 'utf8');
   // 配置副本含凭据，权限收紧
   await fs.chmod(path.join(dstDir, 'config.json'), 0o600);
 
   if (q.qualified === null) {
-    return { homeDir, route: 'global', qualified: null, reason: `${q.reason}；副本已建但不做模型覆盖` };
+    return { homeDir, route: 'global', qualified: null, reason: `${q.reason}；副本已建但不做模型覆盖`, reorder: null };
   }
-  return { homeDir, route: 'config_copy', qualified: q.qualified };
+  return { homeDir, route: 'config_copy', qualified: q.qualified, reorder };
 }
 
 export const zcodeAdapter: CriticAdapter = {
@@ -834,7 +930,11 @@ export const zcodeAdapter: CriticAdapter = {
      * 把 `config_copy` 档关掉的。所以只要有副本 HOME 就省略个人键，与旗标探针同一形态。
      * CLI 会把导入结果写成副本 HOME 下的 `v2/provider_config.json`，已在清扫载体清单里。
      */
-    const home = await prepareZcodeHome(path.dirname(req.out_dir), req.model);
+    /*
+     * 请求模型置首（EV-82 第三段 r3 §3）：0.16.9 下副本默认在运行期被判不可选、回落「第一个可见 provider 的第一个模型」
+     * （第二段实验落 (F1)），把请求排到首位，回落就落在它上面。只动顺序；挪不动照常拉起，由守卫按结果判。
+     */
+    const home = await prepareZcodeHome(path.dirname(req.out_dir), req.model, { requestedFirst: true });
     const overrideAttempted = home.route === 'config_copy';
 
     let out: ZcodeInvokeOutcome;
@@ -951,6 +1051,17 @@ export const zcodeAdapter: CriticAdapter = {
      * 这个问题。字段缺席与 `null` 是两件事——后者的唯一含义是「尝试了、但没回读到生效模型」。
      */
     const override = decideModelOverride(overrideAttempted, home.qualified, modelEffective);
+    // 置首后 true 只说明「跑的是请求模型」，说明不了「副本默认被采信」（r3 §4.1）；后者归 doctor 的 zcode.runtime_selection
+    const selectionNote =
+      // 只陈述可观测事实（代码双审 r1 CODEX-03）：置首之后「靠置首」与「副本默认被采信」分不开，因果不在这里下
+      [
+        override.note,
+        home.reorder?.kind === 'applied' && override.applied === true
+          ? '请求模型已置首，读回的正是它；是否靠置首不可分，见 doctor 的 zcode.runtime_selection'
+          : null,
+      ]
+        .filter((x): x is string => x !== null)
+        .join('；') || null;
 
     await fs.writeFile(
       tracePath,
@@ -965,7 +1076,10 @@ export const zcodeAdapter: CriticAdapter = {
             effective: modelEffective,
             route: home.route,
             ...(home.reason ? { reason: home.reason } : {}),
-            ...(override.note ? { note: override.note } : {}),
+            ...(home.reorder
+              ? { reorder: { applied: home.reorder.applied, kind: home.reorder.kind, ...(home.reorder.reason ? { reason: home.reorder.reason } : {}) } }
+              : {}),
+            ...(selectionNote ? { note: selectionNote } : {}),
           },
         },
         null,
@@ -1001,6 +1115,13 @@ export const zcodeAdapter: CriticAdapter = {
       model_route: home.route,
       // 产出条件＝本次确实尝试了覆盖；值为 null 时唯一含义是「尝试了、没回读到生效模型」
       ...(overrideAttempted ? { model_override_applied: override.applied ?? null } : {}),
+      /*
+       * 置首结论只供 guard 当轮判定（r3 §3.4）：review.ts 不透传它，run.json 不收；持久留痕在 trace.json 的
+       * modelSelection.reorder。run.v2 的 critic 段不拦多余字段，这条边界由负向用例锁住
+       */
+      ...(home.reorder
+        ? { model_override_reorder: { applied: home.reorder.applied, kind: home.reorder.kind, ...(home.reorder.reason ? { reason: home.reorder.reason } : {}) } }
+        : {}),
       tool_calls: toolCalls,
       read_paths: readPathList,
       // zcode 轨迹只有 toolCalls[].input，没有工具输出——该族无此事实

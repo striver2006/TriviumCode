@@ -1,0 +1,126 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  S1 ✓ 咬住（fail=2）
+  S2 ✓ 咬住（fail=1）
+  S3 ✓ 咬住（fail=4）
+  S4 ✓ 咬住（fail=2）
+  S5 ✓ 咬住（fail=3）
+  S6 ✓ 咬住（fail=9）
+  S7 ✓ 咬住（fail=3）
+  S8 ✓ 咬住（fail=2）
+  S9 ✓ 咬住（fail=2）
+  S10 ✓ 咬住（fail=2）
+  D1 ✓ 咬住（fail=3）
+  D2 ✓ 咬住（fail=1）
+  D3 ✓ 咬住（fail=1）
+  D4 ✓ 咬住（fail=1）
+  G1 ✓ 咬住（fail=1）
+  G2 ✓ 咬住（fail=1）
+  R1 ✓ 咬住（fail=1）
+{
+  "总数": 17,
+  "咬住": 17,
+  "逐条": [
+    {
+      "id": "S1",
+      "desc": "审查臂不传 requestedFirst（r3 §7.2）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "S2",
+      "desc": "置首挪到 transformCopy 之后（锁实现顺序）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "S3",
+      "desc": "置首结果不落盘（写盘之后才应用）",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "S4",
+      "desc": "挪不动时中止拉起",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "S5",
+      "desc": "kind 赋错：恒等记成 not_movable",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "S6",
+      "desc": "置首函数不挪 models（重新表述第二段 RV1）",
+      "verdict": "✓ 咬住（fail=9）",
+      "fail": 9
+    },
+    {
+      "id": "S7",
+      "desc": "置首挪不动当成功（重新表述第二段 RV2）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "S8",
+      "desc": "置首只按键名定位、不认成员 id（重新表述第二段 RV3）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "S9",
+      "desc": "置首不跳过 deleted 成员（重新表述第二段 RV4）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "S10",
+      "desc": "ZCODE_DIR_ENV_KEYS 漏 ZCODE_LOG_DIR（EV-110）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "D1",
+      "desc": "doctor 置首支不传 variant",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "D2",
+      "desc": "新事实 ⑤ 冲突记成 honored",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "D3",
+      "desc": "新事实 null 覆盖旧值",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "D4",
+      "desc": "新事实 ① 漏掉 identity",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "G1",
+      "desc": "guard 追加句分支错：恒等说成置首已生效",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "G2",
+      "desc": "guard 缺席时仍追加（指向不存在的 trace）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "R1",
+      "desc": "review.ts 把 model_override_reorder 透传进 run.json",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

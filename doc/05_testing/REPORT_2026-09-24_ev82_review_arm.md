@@ -144,3 +144,40 @@
 
 按 r2 §5.3 (F1) 一格：进入第三段，**M1「置首」进入修法候选**。守卫口径二选一由第三段计划双审定（r2 §6）。
 第三段同时处理 BACKLOG **EV-110**（审查臂继承宿主 `ZCODE_LOG_DIR`，用户 2026-09-24 拍板第三段修）。
+
+### 8.5 补注：历史变异规格的可复跑性（第三段计划 r3 §5）
+
+第三段的代码改动让下列三份规格在当前工作树上**不可再跑**：`scripts/mutation-check.mjs` 的闸 7 要求每条 find 恰好命中一处，
+命中 0 次会在写盘之前拒跑。这不是规格写坏了；三份都按历史留痕保留，不改写。
+
+| 规格 | 对应提交 | 失效成因 |
+| :--- | :--- | :--- |
+| `evidence/ev82-seg1-mutation-20260924/mutation-spec.json` | `7212255` | MF5 的 find 是 `prepareZcodeHome` 里 `transformCopy` 那一行，第三段加置首后改写 |
+| `evidence/ev82-seg2-mutation-20260924/mutation-spec.json` | `c673ba3` | RV1～RV4 的 find 在 `reorderRequestedFirst` 函数体内，函数搬到 `adapters/zcode.ts` 后在原文件命中 0 次；RS7 引用的 `ZCODE_PROBE_EXTRA_CLEARED_ENV` 已删除（EV-110 并入 `ZCODE_DIR_ENV_KEYS`） |
+| `evidence/ev82-seg2-mutation-20260924/mutation-spec-r1.json` | `c673ba3` | 同上，另有 RV5、RV6（函数体内）与 RN3（引用该常量） |
+
+这些形态在第三段规格 `evidence/ev82-seg3-mutation-20260924/` 里重新表述（置首函数的四类落在 `adapters/zcode.ts`）。
+
+## 9. M3：上游缺陷描述草稿（第三段计划 r3 §6，是否提交由用户定）
+
+> 以第二段实验结论为准：只写观察到的，不写成已证实的「缺思考档位」。
+
+**标题**：headless 模式下 `cli/config.json` 的 `model.main` 被导入为默认选择，但启动时实际选中第一个 provider 的第一个模型
+
+**环境**：ZCode CLI 0.16.9（`zcode.cjs` sha256 前 16 位 `b1df2ef3e5bd76c4`），macOS，headless `--prompt` 调用，独立 `HOME`。
+
+**复现**：
+1. 新建空目录作 `HOME`，写 `<HOME>/.zcode/cli/config.json`：一个 `source: "custom"` 的 provider，`models` 里依次两个模型 A、B；`model.main` 与 `model.lite` 都写 `<provider>/B`；
+2. 不设 `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`（让 CLI 走 legacy 导入），以该 `HOME` 跑一次 headless `--prompt`；
+3. 看 `<HOME>/.zcode/v2/provider_config.json` 的 `defaultModelSelection`，以及 `<HOME>/.zcode/cli/log/*.jsonl` 里
+   `bootstrap.app.startup.runtime_config.completed` 事件的 `context.model`。
+
+**期望**：启动选定为 `<provider>/B`。
+
+**实际**：`defaultModelSelection` 是 `<provider>/B`（导入成功），但启动事件的 `context.model` 是 `<provider>/A`；
+之后的模型请求也都发给 A。
+
+**附证**：只把 `models` 里 B 挪到 A 前面、其余不变，启动选定随之变成 B。可见默认选择在运行期被判不可选，回落到第一个可见 provider 的第一个模型。
+
+**线索（未证实）**：静态阅读推断，legacy 导入写出的默认选择只有 `{ providerId, modelId }`、不带思考档位，
+可选性检查因此判它不可选（成因码疑似 `reasoning-level-missing`）。这一条只作线索，没有在调用路径上验过。

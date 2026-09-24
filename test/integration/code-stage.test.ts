@@ -476,3 +476,25 @@ test('run.v2 逐侧段：桩注入 model_override_applied=false → 该侧落盘
     `guard 必须把「请求的模型没有生效」播报进终态 message，实得：${terminal.message ?? '(空)'}`,
   );
 });
+
+test('置首结论只供 guard、不进 run.json：桩注入 model_override_reorder ⇒ 逐侧段无该键，guard 按 kind 播报（EV-82 第三段 r3 §3.4 负向用例）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * run.v2 的 critic 段是 additionalProperties: true，字段泄漏了 schema 也不拦；这条边界只能靠用例锁
+   * （计划双审 r2 GLM-r2-03）。另一半：守卫确实拿到了它——播报里要有按 kind=applied 追加的那一句。
+   */
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 5;\n');
+  const { meta, out } = await runCode(fx.root, fx.codeDir, [], {
+    gemini: { mode: 'ok' },
+    glm: { mode: 'ok', modelOverrideApplied: false, modelOverrideReorder: { applied: true, kind: 'applied' } },
+  });
+  const glm = meta.critics.glm as Record<string, unknown> | undefined;
+  assert.ok(glm, 'glm 侧要有');
+  assert.equal('model_override_reorder' in glm!, false, 'model_override_reorder 不得写进 run.json 逐侧段');
+  assert.equal(glm!['model_override_applied'], false);
+  const w = await cli(fx.root, ['review', '--wait', meta.run_id, '--timeout', '5', '--json'], STUB, 60_000);
+  const cand = extractJsonCandidate(w.stdout);
+  assert.ok(cand, `终态查询无可解析 JSON：\n${w.stdout}\n${w.stderr}\n${out.slice(-300)}`);
+  const terminal = JSON.parse(cand.json) as { message?: string | null };
+  assert.ok((terminal.message ?? '').includes('置首已生效仍回落'), `guard 必须按 kind 追加分句，实得：${terminal.message ?? '(空)'}`);
+});

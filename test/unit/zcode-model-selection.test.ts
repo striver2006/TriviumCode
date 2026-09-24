@@ -163,7 +163,7 @@ test('副本：未指定模型 / 源文件不存在 → 不建副本', async () 
   assert.match(b.reason ?? '', /未找到/);
 });
 
-// ── zcodeProviderEnv：省略个人键 + 三个目录键恒清（r3 CODEX-02）──
+// ── zcodeProviderEnv：省略个人键 + 目录键恒清（r3 CODEX-02；EV-110 起四键）──
 
 test('注入：omitPersonal 为真时个人键恒 undefined，即使真实用户目录下个人文件存在', async () => {
   const userHome = await tmp();
@@ -197,13 +197,13 @@ test('注入：门控仍是逐键——个人在、内置不在时，个人照�
   assert.equal(typeof env[ZCODE_PERSONAL_PROVIDER_ENV], 'string');
 });
 
-test('注入：三个 ZCODE_* 目录键恒出现且为 undefined——宿主预置也进不了子进程', async () => {
+test('注入：四个 ZCODE_* 目录键恒出现且为 undefined——宿主预置也进不了子进程（EV-110 起含 ZCODE_LOG_DIR）', async () => {
   const env = await zcodeProviderEnv('/nonexistent/entry.cjs', await tmp());
   for (const k of ZCODE_DIR_ENV_KEYS) {
     assert.ok(k in env, `${k} 必须出现`);
     assert.equal(env[k], undefined);
   }
-  assert.deepEqual([...ZCODE_DIR_ENV_KEYS].sort(), ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_STORAGE_DIR']);
+  assert.deepEqual([...ZCODE_DIR_ENV_KEYS].sort(), ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_LOG_DIR', 'ZCODE_STORAGE_DIR']);
 });
 
 // ── 端到端（假入口）：审查运行形态下子进程拿到的 env ──
@@ -219,6 +219,7 @@ process.stdout.write(JSON.stringify({
     dataBase: env.ZCODE_DATA_BASE_DIR ?? null,
     zhome: env.ZCODE_HOME ?? null,
     storage: env.ZCODE_STORAGE_DIR ?? null,
+    logDir: env.ZCODE_LOG_DIR ?? null,
     home: env.HOME ?? null,
   }),
   usage: {}, eventCount: 1,
@@ -226,7 +227,7 @@ process.stdout.write(JSON.stringify({
 process.exit(0);
 `;
 
-test('端到端：omitPersonalProviderConfig + 宿主预置三个目录键 → 子进程一个都拿不到', async () => {
+test('端到端：omitPersonalProviderConfig + 宿主预置四个目录键 → 子进程一个都拿不到', async () => {
   const root = await tmp();
   const entry = path.join(root, 'Resources/glm/zcode.cjs');
   await fs.mkdir(path.dirname(entry), { recursive: true });
@@ -236,7 +237,7 @@ test('端到端：omitPersonalProviderConfig + 宿主预置三个目录键 → �
   await fs.writeFile(path.join(userHome, '.zcode/v2/provider_config.json'), '{}', 'utf8');
   const fakeHome = await tmp();
 
-  const preset = { ZCODE_DATA_BASE_DIR: '/host/preset', ZCODE_HOME: '/host/zh', ZCODE_STORAGE_DIR: '/host/st' };
+  const preset = { ZCODE_DATA_BASE_DIR: '/host/preset', ZCODE_HOME: '/host/zh', ZCODE_STORAGE_DIR: '/host/st', ZCODE_LOG_DIR: '/host/log' };
   const saved: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(preset)) { saved[k] = process.env[k]; process.env[k] = v; }
   try {
@@ -250,6 +251,7 @@ test('端到端：omitPersonalProviderConfig + 宿主预置三个目录键 → �
     assert.equal(seen['dataBase'], null);
     assert.equal(seen['zhome'], null);
     assert.equal(seen['storage'], null);
+    assert.equal(seen['logDir'], null, 'EV-110：审查运行也清 ZCODE_LOG_DIR');
     assert.equal(seen['home'], fakeHome);
   } finally {
     for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }

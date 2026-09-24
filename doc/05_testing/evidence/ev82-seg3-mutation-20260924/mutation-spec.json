@@ -1,0 +1,152 @@
+{
+  "targets": [
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/zcode-runtime-selection.test.js",
+    "dist/test/test/unit/zcode-provider-env.test.js",
+    "dist/test/test/unit/zcode-model-selection.test.js",
+    "dist/test/test/integration/code-stage.test.js"
+  ],
+  "cases": [
+    {
+      "id": "S1",
+      "desc": "审查臂不传 requestedFirst（r3 §7.2）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    const home = await prepareZcodeHome(path.dirname(req.out_dir), req.model, { requestedFirst: true });",
+      "replace": "    const home = await prepareZcodeHome(path.dirname(req.out_dir), req.model);",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "S2",
+      "desc": "置首挪到 transformCopy 之后（锁实现顺序）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  let staged: ZcodeCliConfigShape = cfg;\n  let reorder: VariantOutcome | null = null;\n  if (q.qualified !== null && opts.requestedFirst) {\n    const r = reorderRequestedFirst(cfg, q.providerKey, q.modelId);\n    staged = r.copy;\n    reorder = r.outcome;\n  }\n  const toWrite = opts.transformCopy ? opts.transformCopy(staged) : staged;",
+      "replace": "  let reorder: VariantOutcome | null = null;\n  let toWrite: ZcodeCliConfigShape = opts.transformCopy ? opts.transformCopy(cfg) : cfg;\n  if (q.qualified !== null && opts.requestedFirst) {\n    const r = reorderRequestedFirst(toWrite, q.providerKey, q.modelId);\n    toWrite = r.copy;\n    reorder = r.outcome;\n  }",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "S3",
+      "desc": "置首结果不落盘（写盘之后才应用）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    staged = r.copy;\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "S4",
+      "desc": "挪不动时中止拉起",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    reorder = r.outcome;\n  }\n  const toWrite",
+      "replace": "    reorder = r.outcome;\n    if (!r.outcome.applied) return { homeDir: null, route: 'global', qualified: null, reason: '挪不动', reorder };\n  }\n  const toWrite",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "S5",
+      "desc": "kind 赋错：恒等记成 not_movable",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "return fail('请求本就在首位（恒等）', 'identity');",
+      "replace": "return fail('请求本就在首位（恒等）');",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "S6",
+      "desc": "置首函数不挪 models（重新表述第二段 RV1）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  const newModels: Record<string, unknown> = { [memberKey]: models[memberKey] };\n  for (const [k, m] of Object.entries(models)) if (k !== memberKey) newModels[k] = m;",
+      "replace": "  const newModels: Record<string, unknown> = { ...models };",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "S7",
+      "desc": "置首挪不动当成功（重新表述第二段 RV2）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    ({ copy: cfg, outcome: { variant: 'requested-first' as const, applied: false, kind, reason } });",
+      "replace": "    ({ copy: cfg, outcome: { variant: 'requested-first' as const, applied: true, kind, reason } });",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "S8",
+      "desc": "置首只按键名定位、不认成员 id（重新表述第二段 RV3）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    const id = (typeof m?.id === 'string' ? m.id : k).trim();",
+      "replace": "    const id = k;",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "S9",
+      "desc": "置首不跳过 deleted 成员（重新表述第二段 RV4）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    if (m && typeof m === 'object' && m.deleted === true) continue;",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "S10",
+      "desc": "ZCODE_DIR_ENV_KEYS 漏 ZCODE_LOG_DIR（EV-110）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "'ZCODE_STORAGE_DIR', 'ZCODE_LOG_DIR'];",
+      "replace": "'ZCODE_STORAGE_DIR'];",
+      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
+    },
+    {
+      "id": "D1",
+      "desc": "doctor 置首支不传 variant",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        variant: 'requested-first',\n      });\n      const rsel",
+      "replace": "      });\n      const rsel",
+      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
+    },
+    {
+      "id": "D2",
+      "desc": "新事实 ⑤ 冲突记成 honored",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  return { value: null, why: `两支冲突",
+      "replace": "  return { value: 'honored', why: `两支冲突",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "D3",
+      "desc": "新事实 null 覆盖旧值",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      if (rsel.value !== null) probe.runtime_selection = rsel.value;",
+      "replace": "      probe.runtime_selection = rsel.value;",
+      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
+    },
+    {
+      "id": "D4",
+      "desc": "新事实 ① 漏掉 identity",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  if (ro.variant?.kind !== 'applied') {",
+      "replace": "  if (ro.variant?.kind !== 'applied' && ro.variant?.kind !== 'identity') {",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "G1",
+      "desc": "guard 追加句分支错：恒等说成置首已生效",
+      "file": "src/trivium/guard.ts",
+      "find": "      return `${head}请求本在首位，未做置首。`;",
+      "replace": "      return `${head}置首已生效仍回落。`;",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "G2",
+      "desc": "guard 缺席时仍追加（指向不存在的 trace）",
+      "file": "src/trivium/guard.ts",
+      "find": "  if (!r) return '';",
+      "replace": "  if (!r) return '先看 trace.json 的 `modelSelection.reorder`。';",
+      "expect": "dist/test/test/unit/zcode-runtime-selection.test.js"
+    },
+    {
+      "id": "R1",
+      "desc": "review.ts 把 model_override_reorder 透传进 run.json",
+      "file": "src/trivium/review.ts",
+      "find": "        : { model_override_applied: r.model_override_applied }),\n",
+      "replace": "        : { model_override_applied: r.model_override_applied }),\n      ...(r.model_override_reorder ? { model_override_reorder: r.model_override_reorder } : {}),\n",
+      "expect": "dist/test/test/integration/code-stage.test.js"
+    }
+  ]
+}

@@ -330,6 +330,16 @@ export interface ZcodeProbe extends CommonProbe {
    */
   model_override_full_copy?: 'config_copy' | 'global' | null;
   /**
+   * 运行期是否仍需置首（EV-82 第三段 r3 §4.2）：doctor 拉起同形臂两支（原样 / 置首），按两支**运行期**读数与请求按序判定。
+   * - `honored`：两支都选中请求——副本默认被采信，置首不再必需（M3 上游修复的信号）；
+   * - `reorder_needed`：原样支没选中、置首支选中——当前形态，置首在起作用；
+   * - `reorder_ineffective`：两支都没选中——置首也挡不住，审查臂的覆盖会失败（preflight 警告、不拒跑）；
+   * - `null`：判不出（任一支读数不 ok、置首支没做成含恒等、两支请求不同、或原样支选中而置首支没选中的冲突）。
+   *
+   * 判不出时**不覆盖**上一轮的值，与 `model_override_full_copy` 同口径。可选：旧结论文件没有它，按「未探过」读。
+   */
+  runtime_selection?: 'honored' | 'reorder_needed' | 'reorder_ineffective' | null;
+  /**
    * 工具轨迹来源：**工具名、调用计数、生效模型、结构化失败根因**的路径模板。
    * M0 实测该日志的 `tool.call.*` 事件里**没有任何路径字段**。
    */
@@ -1155,7 +1165,7 @@ export interface CriticRunMeta {
   profile_requested: string | null;
   model_provider: string | null;
   model_route?: 'env' | 'config_copy' | 'global';
-  /** 模型覆盖是否落实（EV-82）。四种情况与语义见 `CriticResult.model_override_applied` */
+  /** 模型覆盖是否落实（EV-82）。四种情况与语义见 `CriticResult.model_override_applied`（置首之后 true 的含义收窄，见同处） */
   model_override_applied?: boolean | null;
   effort?: string;
   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
@@ -1540,8 +1550,24 @@ export interface CriticResult {
    *
    * **当前只有 zcode 侧产出**；其余三家的作答落点登记在 BACKLOG，接入前先定义
    * 「本族什么算一次覆盖尝试」。
+   *
+   * ## 置首之后 `true` 的含义收窄（EV-82 第三段 r3 §4.1）
+   *
+   * zcode 审查臂从第三段起把请求模型排到副本首位，「副本默认被采信」与「回落到首项」得到同一个结果。
+   * `true` 从此只说明**跑的就是请求模型**，说明不了「副本默认被采信」；后者由 doctor 的
+   * `probe.cli.zcode.runtime_selection` 零配额另判。
    */
   model_override_applied?: boolean | null;
+  /**
+   * 置首结论（EV-82 第三段 r3 §3.4）：zcode 审查臂从副本构造的 `reorder` 填，**只供 guard 当轮判定**
+   * （按 `kind` 分句），`review.ts` 不透传、run.json 不收；持久留痕在 trace.json 的 `modelSelection.reorder`。
+   * 缺席即「本侧无置首」（其余三家与桩）。
+   */
+  model_override_reorder?: {
+    applied: boolean;
+    kind: 'applied' | 'identity' | 'not_movable' | 'qualify_failed';
+    reason?: string;
+  };
   /**
    * 该侧**实际走到的 provider 家族**（回读值）。
    *

@@ -1,0 +1,51 @@
+{
+  "agreed": [
+    "置首算法（reorderRequestedFirst）严格只调整 provider 与 models 映射顺序，未改动任何键、值或嵌套结构；结构化成因四档（applied、identity、not_movable、qualify_failed）与既有各分支一一对应，且判定一律基于 kind 做枚举匹配，消除了对自由文本 reason 的脆弱匹配。",
+    "审查运行与同形臂置首支在代码结构上完成了真正收敛：两者统一调用 prepareZcodeHome(..., { requestedFirst: true })，置首在 transformCopy 之前发生；同形臂内移除了原先 transformCopy 内的置首冗余分支，消除了两处并存导致恒等误判的隐患。",
+    "同形臂原样支与置首支在 doctor 中的供数分工严格清晰：model_override_full_copy 与 EV-94 ② 仅消费原样支（fc），置首支（ro）仅作为审查臂零配额替身提供给 judgeRuntimeSelection(fc, ro)；两臂在配置层结论、告警触发与运行期事实三者之间边界分明，无交叉污染。",
+    "置首结果字段 model_override_reorder 仅通过 SideVerdict 交由 guard 运行时分句，review.ts 在构建 run.json 逐侧数据时显式挑选字段将其排斥在外；test/integration/code-stage.test.ts 的负向测试与变异规格 R1 具备真正的判别力，有效锁死 run.v2 的 additionalProperties 边界。",
+    "judgeRuntimeSelection 严格按照计划 r3 §4.2 决策表顺序实现：前提条件 ① 优先判读，② 至 ⑤ 穷尽读数组合并覆盖第三模型值与提供商形态差异，遇 null 坚决不覆盖原有 runtime_selection 结论并如实写入保留说明 note。",
+    "EV-110 彻底消除宿主日志目录污染：ZCODE_LOG_DIR 规范并入 ZCODE_DIR_ENV_KEYS，各拉起路径（旗标探针、版本探针、headless/path_deny 探针、探活、两模型探针臂、审查运行副本与非副本）实际行为与计划 §5 映射表完全一致，doctor 相应转为信息级提示。",
+    "守卫字段 model_override_applied 含义收窄后的语义落点在 types.ts、guard.ts、review.ts、adapters/zcode.ts、stub.ts、run.v2.json、设计文档与 RUNBOOK 中同步完成；preflight.ts 的 checkZcodeRuntimeSelection 经由注册表动态提取 cliName 与 label，完全杜绝 Agent id 硬编码，严格遵守 registry-parity 架构纪律。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md",
+    "doc/05_testing/evidence/ev82-seg3-mutation-20260924/mutation-spec.json",
+    "doc/05_testing/evidence/ev82-seg3-mutation-20260924/mutation-output.txt",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/zcode-model-selection.test.ts",
+    "test/unit/zcode-provider-env.test.ts",
+    "test/unit/zcode-runtime-selection.test.ts",
+    "test/integration/code-stage.test.ts",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-r3-claude.md",
+    ".reviews/EV-82-置首修法/code/_meta/changes-20260924T100928Z.diff"
+  ],
+  "findings": [],
+  "not_covered": [
+    "真实消耗厂商配额的端到端派发验证（--critics glm --model-glm GLM-5.3-Flash）：按计划由用户在代码双审合入后于终端发起，本代码审查仅覆盖离线静态检查、桩集成测试、单测及变异测试证据。",
+    "非 custom 的其他复杂多 provider 场景下，CLI 内部跨 provider 优先级传导在真实二进制中的深层行为（当前仅针对用户本机单 provider 及标准 custom provider 结构进行了代码核实）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本轮审查针对 EV-82 第三段代码实现（commit 7aa4d2c5bbca）。对照计划 r3 逐条核实，六大审查焦点全部如实落地，未发现任何阻断或契约漂移问题。\n1. 置首函数 reorderRequestedFirst 与成因 VariantKind 四档严格对应分支，审查运行与同形置首支完全共用 prepareZcodeHome 路径；\n2. 同形臂原样支与置首支供数分工清晰，配置层 override、两臂不一致告警及运行期新事实三者互不串用；\n3. model_override_reorder 字段守住边界不进 run.json，负向集成测试与变异测试 R1 均具备真实判别力；\n4. judgeRuntimeSelection 决策表按序实现，判不出时严格维持旧值；\n5. ZCODE_LOG_DIR 并入清除清单，全拉起路径行为与 §5 一致；\n6. 守卫含义收窄落点全量同步，preflight.ts 经注册表取名严格满足 registry-parity。\n结论为 approve。",
+  "verdict": "approve"
+}

@@ -28,7 +28,7 @@ import {
   ZCODE_PERSONAL_PROVIDER_ENV,
   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
 } from '../../src/trivium/adapters/zcode.js';
-import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type FullCopyOverrideProbe, type ModelOverrideProbe, type RuntimeSelectionReadback } from '../../src/trivium/probes/zcode.js';
+import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type FullCopyOverrideProbe, type ModelOverrideProbe, type RuntimeSelectionReadback, type VariantOutcome } from '../../src/trivium/probes/zcode.js';
 import { runDoctor } from '../../src/trivium/doctor.js';
 import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
 
@@ -47,6 +47,7 @@ if (env.FAKE_ZCODE_LOG) {
     dataBase: env.ZCODE_DATA_BASE_DIR ?? null,
     zhome: env.ZCODE_HOME ?? null,
     storage: env.ZCODE_STORAGE_DIR ?? null,
+    logDir: env.ZCODE_LOG_DIR ?? null,
     apiKeyEnv: env.ZCODE_API_KEY ?? null,
     baseUrlEnv: env.ZCODE_BASE_URL ?? null,
   }) + '\\n');
@@ -104,7 +105,7 @@ const ALL_CLEARED_KEYS: readonly string[] = [
 /** 每个键在假入口日志里对应的字段名 */
 const LOG_FIELD_OF: Record<string, string> = {
   [ZCODE_BUILTIN_PROVIDER_ENV]: 'builtin', [ZCODE_PERSONAL_PROVIDER_ENV]: 'personal',
-  ZCODE_DATA_BASE_DIR: 'dataBase', ZCODE_HOME: 'zhome', ZCODE_STORAGE_DIR: 'storage',
+  ZCODE_DATA_BASE_DIR: 'dataBase', ZCODE_HOME: 'zhome', ZCODE_STORAGE_DIR: 'storage', ZCODE_LOG_DIR: 'logDir',
   ZCODE_API_KEY: 'apiKeyEnv', ZCODE_BASE_URL: 'baseUrlEnv',
 };
 
@@ -185,10 +186,11 @@ test('两份都在 → 两个变量都给，值为绝对路径', async () => {
     assert.deepEqual(env, {
       [ZCODE_BUILTIN_PROVIDER_ENV]: await fs.realpath(L.builtin),
       [ZCODE_PERSONAL_PROVIDER_ENV]: L.personal,
-      // 三个目录键恒在场、恒 undefined（r3 CODEX-02）：0.16.9 的 provider 配置根会读 ZCODE_DATA_BASE_DIR
+      // 目录键恒在场、恒 undefined（r3 CODEX-02；EV-110 起加 ZCODE_LOG_DIR）：0.16.9 的 provider 配置根会读 ZCODE_DATA_BASE_DIR
       ZCODE_DATA_BASE_DIR: undefined,
       ZCODE_HOME: undefined,
       ZCODE_STORAGE_DIR: undefined,
+      ZCODE_LOG_DIR: undefined,
     });
   } finally {
     await L.cleanup();
@@ -205,12 +207,13 @@ test('文件不在 → 该键值为 undefined（不是缺席）：宿主环境�
       ZCODE_DATA_BASE_DIR: undefined,
       ZCODE_HOME: undefined,
       ZCODE_STORAGE_DIR: undefined,
+      ZCODE_LOG_DIR: undefined,
     });
     // 键必须在场——`run()` 只对「值为 undefined 的键」执行删除，键缺席就是原样透传
     assert.ok(Object.hasOwn(env, ZCODE_BUILTIN_PROVIDER_ENV));
     assert.ok(Object.hasOwn(env, ZCODE_PERSONAL_PROVIDER_ENV));
     // 宿主预置 ZCODE_DATA_BASE_DIR 会让 CLI 把个人配置根推到副本之外（r3 CODEX-02），同样只能靠删
-    for (const k of ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_STORAGE_DIR']) assert.ok(Object.hasOwn(env, k), k);
+    for (const k of ['ZCODE_DATA_BASE_DIR', 'ZCODE_HOME', 'ZCODE_STORAGE_DIR', 'ZCODE_LOG_DIR']) assert.ok(Object.hasOwn(env, k), k);
   } finally {
     await L.cleanup();
   }
@@ -222,6 +225,7 @@ test('文件不在 → 该键值为 undefined（不是缺席）：宿主环境�
       ZCODE_DATA_BASE_DIR: undefined,
       ZCODE_HOME: undefined,
       ZCODE_STORAGE_DIR: undefined,
+      ZCODE_LOG_DIR: undefined,
     });
   } finally {
     await M.cleanup();
@@ -528,7 +532,7 @@ test('warnings 不影响阻断判定：有告警但 blockers 为空', async () =
   }
 });
 
-test('version 探针：宿主预置的两个 provider 键、三个目录键、两个凭据键一律进不了子进程（代码双审 r1 codex 子项 06）', async () => {
+test('version 探针：宿主预置的两个 provider 键、全部目录键（EV-110 起四个）、两个凭据键一律进不了子进程（代码双审 r1 codex 子项 06）', async () => {
   // 口径是「全部探针路径」而不是「两条主拉起路径」——P-29 已证明这个 CLI 会把 provider 定位往前挪
   const L = await layout({ withBuiltin: true, withPersonal: true });
   const log = path.join(L.root, 'calls.jsonl');
@@ -609,7 +613,14 @@ async function probeZcodeWithTwoArms(
   white: ModelOverrideProbe['override'],
   full: FullCopyOverrideProbe['override'],
   existingFullCopy?: 'config_copy' | 'global',
-  runtime: { white?: RuntimeSelectionReadback; full?: RuntimeSelectionReadback } = {},
+  runtime: {
+    white?: RuntimeSelectionReadback;
+    full?: RuntimeSelectionReadback;
+    /** 置首支（doctor 第二次调同形臂，EV-82 第三段 r3 §3.3）的运行期读数与置首成因；缺省读数缺席 ⇒ 新事实判不出 */
+    ro?: RuntimeSelectionReadback;
+    roKind?: VariantOutcome['kind'];
+    existingRuntimeSelection?: 'honored' | 'reorder_needed' | 'reorder_ineffective';
+  } = {},
 ) {
   const L = await layout({ withBuiltin: true, withPersonal: false });
   const cliConfig = path.join(L.root, 'cli-config.json');
@@ -618,23 +629,30 @@ async function probeZcodeWithTwoArms(
     entrypoint: L.entry, version: '0.16.9', version_probe: null, probed_at: new Date().toISOString(),
     readonly_flags: [], model_override: 'env' as const,
     ...(existingFullCopy ? { model_override_full_copy: existingFullCopy } : {}),
+    ...(runtime.existingRuntimeSelection ? { runtime_selection: runtime.existingRuntimeSelection } : {}),
     trace_source: null, trace_args_source: null, response_field: 'response',
     path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: [], coverage_complete: null, file_shape_verified: null },
     scratch_paths: [], isolation: 'home_copy' as const, model_id_form: null, models: [],
   };
   let fullCopyCalls = 0;
+  const fullCopyOpts: Array<Record<string, unknown>> = [];
   try {
     const out = await probeZcode(L.entry, process.execPath, {
       skipModelCalls: true,
       existing,
       cliConfigPath: cliConfig,
       modelOverrideProbe: async () => ({ override: white, requested: 'p/m', observed: null, why: '桩：白名单臂', runtimeSelected: runtime.white }),
-      modelOverrideFullCopyProbe: async () => {
+      modelOverrideFullCopyProbe: async (_entry, _node, _cwd, opts) => {
         fullCopyCalls += 1;
-        return { override: full, requested: 'p/m', observed: null, why: '桩：同形臂', replacedPaths: ['a.apiKey'], hostCredentialEnv: [], runtimeSelected: runtime.full };
+        fullCopyOpts.push({ ...opts });
+        const base = { override: full, requested: 'p/m', observed: null, replacedPaths: ['a.apiKey'], hostCredentialEnv: [] };
+        return opts?.variant === 'requested-first'
+          ? { ...base, why: '桩：置首支', runtimeSelected: runtime.ro,
+            variant: { variant: 'requested-first' as const, applied: (runtime.roKind ?? 'applied') === 'applied', kind: runtime.roKind ?? 'applied' } }
+          : { ...base, why: '桩：同形臂', runtimeSelected: runtime.full, variant: { variant: 'as-is' as const, applied: true, kind: 'applied' as const } };
       },
     });
-    return { ...out, fullCopyCalls };
+    return { ...out, fullCopyCalls, fullCopyOpts };
   } finally {
     await L.cleanup();
   }
@@ -642,9 +660,11 @@ async function probeZcodeWithTwoArms(
 
 const TWO_ARM_WARN = '两条探针臂在配置读取层结论不一致';
 
-test('同形臂接线：与白名单臂同一门控、恰好接线一次；结论写进 model_override_full_copy', async () => {
-  const { probe, notes, fullCopyCalls } = await probeZcodeWithTwoArms('config_copy', 'config_copy');
-  assert.equal(fullCopyCalls, 1);
+test('同形臂接线：与白名单臂同一门控；原样支一次、置首支一次（显式传 variant）；结论写进 model_override_full_copy', async () => {
+  const { probe, notes, fullCopyCalls, fullCopyOpts } = await probeZcodeWithTwoArms('config_copy', 'config_copy');
+  assert.equal(fullCopyCalls, 2, 'EV-82 第三段 r3 §3.3：doctor 拉起原样支与置首支两次');
+  assert.equal(fullCopyOpts[0]!['variant'], undefined, '第一次是原样支（缺省）');
+  assert.equal(fullCopyOpts[1]!['variant'], 'requested-first', '第二次必须显式传置首——缺省翻回原样会把正常形态误判成 reorder_ineffective');
   assert.equal(probe.model_override_full_copy, 'config_copy');
   assert.ok(notes.some((n) => n.includes('model_override_full_copy=config_copy') && n.includes('配置层结论只判配置读取层')));
   assert.equal(notes.some((n) => n.includes(TWO_ARM_WARN)), false, '两臂一致不告警');
@@ -713,15 +733,16 @@ test('运行期接线：配置层未判定（null）而运行期 ok≠请求 ⇒
   assert.ok(notes.some((n) => n.startsWith('model_override=') && n.includes('运行期选定 p/first')));
 });
 
-test('宿主预置 ZCODE_LOG_DIR ⇒ doctor 出 ⚠️，只报键名不报值；未预置不出（代码双审 r1 CODEX-01 ≡ GLM-04）', async () => {
+test('宿主预置 ZCODE_LOG_DIR ⇒ doctor 出信息级 note（EV-110 起所有路径都清），只报键名不报值；未预置不出', async () => {
   const saved = process.env['ZCODE_LOG_DIR'];
-  const WARN = '审查运行的 CLI 日志';
+  const WARN = '所有拉起路径都已清掉它';
   try {
     process.env['ZCODE_LOG_DIR'] = '/nonexistent/host-log-dir-value';
     const on = await probeZcodeWithTwoArms('config_copy', 'config_copy');
     const hit = on.notes.filter((n) => n.includes(WARN));
     assert.equal(hit.length, 1);
     assert.ok(hit[0]!.includes('ZCODE_LOG_DIR'));
+    assert.equal(hit[0]!.startsWith('⚠️'), false, 'EV-110 并入后不再是告警');
     assert.equal(hit[0]!.includes('host-log-dir-value'), false, '不打印值');
     delete process.env['ZCODE_LOG_DIR'];
     const off = await probeZcodeWithTwoArms('config_copy', 'config_copy');
@@ -729,4 +750,38 @@ test('宿主预置 ZCODE_LOG_DIR ⇒ doctor 出 ⚠️，只报键名不报值�
   } finally {
     if (saved === undefined) delete process.env['ZCODE_LOG_DIR']; else process.env['ZCODE_LOG_DIR'] = saved;
   }
+});
+
+// ── 新事实 zcode.runtime_selection 的接线（EV-82 第三段 r3 §4.2）──
+
+test('runtime_selection 接线：原样支回落、置首支选中 ⇒ reorder_needed 写进结论，运行期 ⚠️ 由它那条 note 合并说明', async () => {
+  const { probe, notes } = await probeZcodeWithTwoArms('config_copy', 'config_copy', undefined, {
+    white: { cause: 'ok', model: 'p/first' },
+    full: { cause: 'ok', model: 'p/first' },
+    ro: { cause: 'ok', model: 'p/m' },
+  });
+  assert.equal(probe.runtime_selection, 'reorder_needed');
+  assert.ok(notes.some((n) => n.startsWith('runtime_selection=reorder_needed')));
+  assert.equal(notes.some((n) => n.includes(RUNTIME_WARN)), false, '判出值时不重复出运行期 ⚠️');
+});
+
+test('runtime_selection 接线：两支都没选中 ⇒ reorder_ineffective，note 带 ⚠️', async () => {
+  const { probe, notes } = await probeZcodeWithTwoArms('config_copy', 'config_copy', undefined, {
+    full: { cause: 'ok', model: 'p/first' },
+    ro: { cause: 'ok', model: 'p/first' },
+  });
+  assert.equal(probe.runtime_selection, 'reorder_ineffective');
+  assert.ok(notes.some((n) => n.startsWith('⚠️ runtime_selection=reorder_ineffective')));
+});
+
+test('runtime_selection 接线：判不出（置首支恒等）⇒ 不覆盖旧值，note 说明保留，运行期 ⚠️ 照旧', async () => {
+  const { probe, notes } = await probeZcodeWithTwoArms('config_copy', 'config_copy', undefined, {
+    full: { cause: 'ok', model: 'p/first' },
+    ro: { cause: 'ok', model: 'p/m' },
+    roKind: 'identity',
+    existingRuntimeSelection: 'reorder_needed',
+  });
+  assert.equal(probe.runtime_selection, 'reorder_needed', '判不出不得覆盖旧值');
+  assert.ok(notes.some((n) => n.startsWith('runtime_selection=未判定') && n.includes('"reorder_needed"') && n.includes('identity')));
+  assert.ok(notes.some((n) => n.includes('⚠️ 同形臂') && n.includes(RUNTIME_WARN)), '判不出时运行期 ⚠️ 照旧出');
 });

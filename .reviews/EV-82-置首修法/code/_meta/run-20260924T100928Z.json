@@ -1,0 +1,304 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260924T100928Z",
+  "topic": "EV-82-置首修法",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "本轮审 EV-82 第三段代码实现，逐条核计划 r3 是否真落地，不以注释写了为准。重点：一、置首只动顺序，结构化成因四档与既有分支是否一一对应，审查运行与同形臂置首支是否确实走同一条副本构造路径；二、原样支与置首支的供数分工在代码里是否守住，配置层结论、两臂不一致告警、运行期新事实三者互不串用；三、置首结论字段只供守卫、不进运行记录，负向集成用例是否真有判别力；四、新事实决策表的实现是否按序，判不出时是否一律不覆盖旧值；五、日志目录并入清除清单后各拉起路径的行为与计划第 5 节表是否一致；六、守卫字段含义收窄后的全部语义落点是否同步，preflight 警告改为经注册表取名是否与既有对账纪律一致。",
+  "task_goal": "EV-82 小主题 · 第三段：审查臂「请求模型置首」修法与 EV-110 实施计划（r3 · 定稿）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "7aa4d2c5bbca626fba985ea5335e8d1afc8d97b9",
+    "tree_hash": "9c30b3e62412ec1fe80457101876c8560e132c1c",
+    "dirty": true,
+    "subject_sha256": "d93bda91fb2c172a228c0dbb3693b349b845c409ea03b75c932964ab12cc19a5",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "7aa4d2c5bbca626fba985ea5335e8d1afc8d97b9",
+      "dirty": true,
+      "inputs_sha256": "e55cadc0501a61be36680fc855c831be06175a8a6fe13b6290643c4a7e0138ae",
+      "built_at": "2026-09-24T09:37:37.370Z"
+    }
+  },
+  "started_at": "2026-09-24T10:09:29.659Z",
+  "finished_at": "2026-09-24T10:18:08.955Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.156.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 387.948,
+      "tool_calls": {
+        "run_command": 121,
+        "project_reads": 56
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0d2e4-43ff-7ca3-a111-ca165912e85a",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.10",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 314.1,
+      "tool_calls": {
+        "read": 39,
+        "grep": 10,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 19
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 469860,
+        "output_tokens": 46542,
+        "thinking_tokens": 40498,
+        "cache_read_tokens": 7774403,
+        "total_tokens": 516402
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "8b4b3d92-a417-40d9-86ba-60d44f77ede0",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 518.923,
+      "tool_calls": {
+        "read": 20,
+        "grep": 4,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 13
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 16,
+        "inputTokens": 2500877,
+        "outputTokens": 35929,
+        "totalTokens": 2536806,
+        "cacheReadTokens": 2288192,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_46be21fa-ff68-4221-8604-223c7831ef55",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-gemini.md",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-glm.md",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-r2-gemini.md",
+    ".reviews/EV-82-置首修法/plan/2026-09-24-EV-82-置首修法-r2-glm.md",
+    ".reviews/EV-82-置首修法/plan/_meta/review-gemini-20260924T084103Z.json",
+    ".reviews/EV-82-置首修法/plan/_meta/review-gemini-20260924T090216Z.json",
+    ".reviews/EV-82-置首修法/plan/_meta/review-glm-20260924T084103Z.json",
+    ".reviews/EV-82-置首修法/plan/_meta/review-glm-20260924T090216Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": true,
+        "commands": [
+          "/bin/zsh -lc \"cd /Users/chenzhenbo/Work/TriviumCode && ls doc/03_api/ && grep -rn \\\"runtime_selection\\\\|model_override\\\\|model_override_full_copy\\\" doc/03_api/ skills/dual-critic/SKILL.md .env.example 2>/dev/null | head\"",
+          "/bin/zsh -lc 'cd /Users/chenzhenbo/Work/TriviumCode && grep -rn \"model_override_applied\" doc/ skills/*.md skills/dual-critic/ .env.example 2>/dev/null | grep -v \"scripts/trivium.cjs\" | grep -v \"/doc/05_testing/evidence/\" | head -20'",
+          "/bin/zsh -lc 'cd /Users/chenzhenbo/Work/TriviumCode && grep -rn \"model_override\" doc/03_api/ doc/01_requirements/ skills/dual-critic/SKILL.md .env.example 2>/dev/null | head -20; echo \"== rc=$? ==\"'"
+        ],
+        "hits": [
+          {
+            "command": "/bin/zsh -lc \"cd /Users/chenzhenbo/Work/TriviumCode && ls doc/03_api/ && grep -rn \\\"runtime_selection\\\\|model_override\\\\|model_override_full_copy\\\" doc/03_api/ skills/dual-critic/SKILL.md .env.example 2>/dev/null | head\"",
+            "path": "/Users/chenzhenbo/Work/TriviumCode/.env.example",
+            "category": "sensitive"
+          },
+          {
+            "command": "/bin/zsh -lc 'cd /Users/chenzhenbo/Work/TriviumCode && grep -rn \"model_override_applied\" doc/ skills/*.md skills/dual-critic/ .env.example 2>/dev/null | grep -v \"scripts/trivium.cjs\" | grep -v \"/doc/05_testing/evidence/\" | head -20'",
+            "path": "/Users/chenzhenbo/Work/TriviumCode/.env.example",
+            "category": "sensitive"
+          },
+          {
+            "command": "/bin/zsh -lc 'cd /Users/chenzhenbo/Work/TriviumCode && grep -rn \"model_override\" doc/03_api/ doc/01_requirements/ skills/dual-critic/SKILL.md .env.example 2>/dev/null | head -20; echo \"== rc=$? ==\"'",
+            "path": "/Users/chenzhenbo/Work/TriviumCode/.env.example",
+            "category": "sensitive"
+          }
+        ]
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "EV-82-置首修法/code/_meta/changes-20260924T100928Z.diff",
+      "sha256": "d93bda91fb2c172a228c0dbb3693b349b845c409ea03b75c932964ab12cc19a5"
+    },
+    {
+      "path": "EV-82-置首修法/code/_meta/brief-codex-20260924T100928Z.md",
+      "sha256": "b9bb7601df60082f03b93004f84ba484a2210b07a1347f79d6b52a463b75c1de"
+    },
+    {
+      "path": "EV-82-置首修法/code/_meta/brief-gemini-20260924T100928Z.md",
+      "sha256": "1d82dee0f135cd9f77b2eabf245c05e32050b47e4745a86f48b90cd9e9967293"
+    },
+    {
+      "path": "EV-82-置首修法/code/_meta/brief-glm-20260924T100928Z.md",
+      "sha256": "4963053060d75ccc4cd524eab19c822338cbebb2586ed45161bdf6a5afdde0c0"
+    },
+    {
+      "path": "EV-82-置首修法/code/_meta/review-codex-20260924T100928Z.json",
+      "sha256": "c8dc65a4547cbe34689f89f7bc681ffececc7e06f0be8e46ab3a0918f4a3b49b"
+    },
+    {
+      "path": "EV-82-置首修法/code/_meta/review-gemini-20260924T100928Z.json",
+      "sha256": "374febca6af9c70d41171a152439da06856ac598f81d41c017b7925eae49af13"
+    },
+    {
+      "path": "EV-82-置首修法/code/_meta/review-glm-20260924T100928Z.json",
+      "sha256": "1b1511a2d2c7281d493cc031de7d76f018e16903acaa9ed573b16599ecce283f"
+    },
+    {
+      "path": "EV-82-置首修法/code/2026-09-24-EV-82-置首修法-codex.md",
+      "sha256": "d52310e76f59e9ac0be93b8dc54294f8921929e421369275d23ae4bbdbcab3aa"
+    },
+    {
+      "path": "EV-82-置首修法/code/2026-09-24-EV-82-置首修法-gemini.md",
+      "sha256": "bcc18cacbad4d220662176f5d09938f76b112d264312f44dd9a6b6f740001381"
+    },
+    {
+      "path": "EV-82-置首修法/code/2026-09-24-EV-82-置首修法-glm.md",
+      "sha256": "b9c9d159af7232678692703807dfb59bc65477f14e0d6b67fc4b6cd0a1de9818"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}

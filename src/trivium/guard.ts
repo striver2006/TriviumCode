@@ -120,6 +120,11 @@ export interface SideVerdict {
    * `CriticResult.model_override_applied`。这里只对 `false` 出告警。
    */
   modelOverrideApplied?: boolean | null;
+  /**
+   * 置首结论（EV-82 第三段 r3 §3.4）：原样透传 `CriticResult.model_override_reorder`，只供 `false` 告警按 `kind` 分句。
+   * 缺席即本侧无置首，告警维持原文。
+   */
+  modelOverrideReorder?: NonNullable<CriticResult['model_override_reorder']>;
 }
 
 /** 单侧两条核验通道的档位与生效阈值 */
@@ -474,6 +479,7 @@ export function judgeSide(
     ...(result.model_override_applied === undefined
       ? {}
       : { modelOverrideApplied: result.model_override_applied }),
+    ...(result.model_override_reorder === undefined ? {} : { modelOverrideReorder: result.model_override_reorder }),
   };
 }
 
@@ -859,7 +865,8 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
       out.push(
         `${s.critic} 侧**请求的模型没有生效**：实际跑的是另一个模型（对照 run.json 的 ` +
           '`model_requested` 与 `model_effective`）。该侧结论仍然有效，但模型路由（FR-06）与' +
-          '异构默认（NFR-06）在本侧失效——若另一侧模型与它同家族，这一轮不构成真正的双审。',
+          '异构默认（NFR-06）在本侧失效——若另一侧模型与它同家族，这一轮不构成真正的双审。' +
+          reorderHint(s.modelOverrideReorder),
       );
     }
     if (s.verification.path === 'unavailable') {
@@ -870,4 +877,25 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
     }
   }
   return out;
+}
+
+/**
+ * `false` 告警的置首分句（EV-82 第三段 r3 §4.1）。**只在置首结论在场时**追加：缺席的侧（其余三家与桩）
+ * 不写 trace.json 的 `modelSelection.reorder`，指向它会指向一份不存在的留痕（计划双审 r2 CODEX-06）。
+ * 按结构化 `kind` 分句，不对 `reason` 文案做匹配（r2 GLM-r2-02）。
+ */
+export function reorderHint(r: SideVerdict['modelOverrideReorder']): string {
+  if (!r) return '';
+  const head = '先看 trace.json 的 `modelSelection.reorder`：';
+  switch (r.kind) {
+    case 'applied':
+      return `${head}置首已生效仍回落——CLI 的回落规则可能变了，先看 doctor 的 \`zcode.runtime_selection\`。`;
+    case 'identity':
+      return `${head}请求本在首位，未做置首。`;
+    case 'not_movable':
+    // qualify_failed：审查运行产不出这一档（限定失败时不写置首结论，见 `VariantKind` 的产出面说明），
+    // 生产上只有桩注入走得到；保留作穷尽 switch 的防御分支（代码双审 r1 CODEX-01）
+    case 'qualify_failed':
+      return `${head}置首没做成${r.reason ? `：${r.reason}` : ''}。`;
+  }
 }

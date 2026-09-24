@@ -5,8 +5,7 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import {
-  parsePreflightScope, checkModelSlugs, runPreflight, commitAuthCache, renderPreflight,
-} from '../../src/trivium/preflight.js';
+  parsePreflightScope, checkModelSlugs, runPreflight, commitAuthCache, renderPreflight, checkZcodeRuntimeSelection } from '../../src/trivium/preflight.js';
 import { TRIVIUM_DIR, defaultConfig, patchProbe } from '../../src/trivium/config.js';
 import { runDoctor } from '../../src/trivium/doctor.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
@@ -789,3 +788,20 @@ test('--only 的取值集合随注册表派生，每一家已登记 CLI 都合�
  * 接入新 CLI 而探针还没写时仍会走到。届时若想恢复覆盖，把本注释连同
  * 那条用例（见 git history，M6 第 2 步的版本）一起取回即可。
  */
+
+// ── ZCode 运行期选模警告（EV-82 第三段 r3 §4.2）：只警告、不拒跑 ──
+
+test('checkZcodeRuntimeSelection：只在 glm 入选且读数为 reorder_ineffective 时出 ok:true 的 ⚠️ 项', () => {
+  const cfg = defaultConfig();
+  assert.equal(checkZcodeRuntimeSelection(cfg, ['glm']), null, '未探过不出项');
+  for (const v of ['honored', 'reorder_needed', null] as const) {
+    cfg.probe.cli.zcode!.runtime_selection = v;
+    assert.equal(checkZcodeRuntimeSelection(cfg, ['glm']), null, `${v} 不出项`);
+  }
+  cfg.probe.cli.zcode!.runtime_selection = 'reorder_ineffective';
+  const w = checkZcodeRuntimeSelection(cfg, ['codex', 'glm']);
+  assert.ok(w);
+  assert.equal(w!.ok, true, '不拒跑');
+  assert.match(w!.detail, /^⚠️ .*reorder_ineffective/);
+  assert.equal(checkZcodeRuntimeSelection(cfg, ['codex', 'gemini']), null, 'glm 未入选不出项');
+});

@@ -10,13 +10,17 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
+import { prepareZcodeHome, zcodeHomeUnder } from '../../src/trivium/adapters/zcode.js';
+import { reorderHint } from '../../src/trivium/guard.js';
 import {
   catalogFirstNote,
   describeRuntimeSelection,
+  judgeRuntimeSelection,
   probeModelOverride,
   probeModelOverrideFullCopy,
   readRuntimeSelectedModel,
   reorderRequestedFirst,
+  type VariantKind,
 } from '../../src/trivium/probes/zcode.js';
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'trivium-runtimesel-test-'));
@@ -109,7 +113,7 @@ test('置首：provider 与成员都挪到首位；只动顺序——键集合�
   const src = twoProviders();
   const before = JSON.stringify(src);
   const { copy, outcome } = reorderRequestedFirst(src, 'bp', 'B');
-  assert.deepEqual(outcome, { variant: 'requested-first', applied: true });
+  assert.deepEqual(outcome, { variant: 'requested-first', applied: true, kind: 'applied' });
   assert.deepEqual(Object.keys(copy.provider), ['bp', 'other']);
   assert.deepEqual(Object.keys(copy.provider['bp']!.models), ['B', 'A', 'C']);
   assert.deepEqual(copy, src, 'deepEqual 不看键序：值与结构必须完全相同');
@@ -133,16 +137,17 @@ test('置首：跳过 deleted 成员；重复 id 取第一个匹配键（导入�
 });
 
 test('置首挪不动不当成功：找不到 provider / 成员、恒等、整数样键名 ⇒ applied:false 带原因，原样返回', () => {
-  const cases: Array<[string, Cfg, string, string, RegExp]> = [
-    ['无 provider', twoProviders(), 'nope', 'B', /没有 provider/],
-    ['无成员', twoProviders(), 'bp', 'Z', /没有 id 为 Z/],
-    ['只剩 deleted', { provider: { bp: { models: { a: {}, B: { deleted: true } } } } }, 'bp', 'B', /没有 id 为 B/],
-    ['恒等', { provider: { bp: { models: { B: {}, A: {} } } } }, 'bp', 'B', /恒等/],
-    ['整数样键名', { provider: { bp: { models: { '1': {}, '2': {} } } } }, 'bp', '2', /整数样键名/],
+  const cases: Array<[string, Cfg, string, string, RegExp, string]> = [
+    ['无 provider', twoProviders(), 'nope', 'B', /没有 provider/, 'not_movable'],
+    ['无成员', twoProviders(), 'bp', 'Z', /没有 id 为 Z/, 'not_movable'],
+    ['只剩 deleted', { provider: { bp: { models: { a: {}, B: { deleted: true } } } } }, 'bp', 'B', /没有 id 为 B/, 'not_movable'],
+    ['恒等', { provider: { bp: { models: { B: {}, A: {} } } } }, 'bp', 'B', /恒等/, 'identity'],
+    ['整数样键名', { provider: { bp: { models: { '1': {}, '2': {} } } } }, 'bp', '2', /整数样键名/, 'not_movable'],
   ];
-  for (const [name, cfg, pk, mid, why] of cases) {
+  for (const [name, cfg, pk, mid, why, kind] of cases) {
     const { copy, outcome } = reorderRequestedFirst(cfg, pk, mid);
     assert.equal(outcome.applied, false, name);
+    assert.equal(outcome.kind, kind, `${name}：结构化成因（第三段 r3 §3.1）`);
     assert.match(outcome.reason ?? '', why, name);
     assert.equal(copy, cfg, `${name}：挪不动时原样返回`);
   }
@@ -161,6 +166,7 @@ test('置首：多个 provider 键 trim 后同名 ⇒ 挪不动（导入器取�
   const { copy, outcome } = reorderRequestedFirst(cfg, 'bp', 'B');
   assert.equal(outcome.applied, false);
   assert.match(outcome.reason ?? '', /trim 后都是 bp/);
+  assert.equal(outcome.kind, 'not_movable');
   assert.equal(copy, cfg);
 });
 
@@ -260,7 +266,7 @@ test('同形臂 as-is：配置读取层写出请求值（config_copy），运行
   assert.equal(r.override, 'config_copy', r.why);
   assert.equal(r.observed, REQ);
   assert.deepEqual(r.runtimeSelected, { cause: 'ok', model: 'other/x' }, '读取发生在清理之前，才读得到');
-  assert.deepEqual(r.variant, { variant: 'as-is', applied: true });
+  assert.deepEqual(r.variant, { variant: 'as-is', applied: true, kind: 'applied' });
 });
 
 test('同形臂 requested-first：只挪顺序，运行期回落就落在请求模型上', async () => {
@@ -268,7 +274,7 @@ test('同形臂 requested-first：只挪顺序，运行期回落就落在请求�
   const r = await withEnv({ FAKE_RUNTIME_FALLBACK: '1' }, () =>
     probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: REQ, variant: 'requested-first' }));
   assert.equal(r.override, 'config_copy', r.why);
-  assert.deepEqual(r.variant, { variant: 'requested-first', applied: true });
+  assert.deepEqual(r.variant, { variant: 'requested-first', applied: true, kind: 'applied' });
   assert.deepEqual(r.runtimeSelected, { cause: 'ok', model: REQ });
 });
 
@@ -276,6 +282,7 @@ test('同形臂 requested-first 挪不动（请求本就在首位）⇒ applied:
   const L = await fakeLayout();
   const r = await probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: 'other/x', variant: 'requested-first' });
   assert.equal(r.variant?.applied, false);
+  assert.equal(r.variant?.kind, 'identity');
   assert.match(r.variant?.reason ?? '', /恒等/);
   assert.equal(r.runtimeSelected?.cause, 'ok');
 });
@@ -286,6 +293,7 @@ test('同形臂 requested-first 限定失败 ⇒ 不拉起，variant 带原因�
   assert.equal(r.override, null);
   assert.equal(r.variant?.applied, false);
   assert.match(r.variant?.reason ?? '', /限定失败/);
+  assert.equal(r.variant?.kind, 'qualify_failed');
   assert.deepEqual(r.runtimeSelected, { cause: 'not_launched', model: null });
 });
 
@@ -346,4 +354,168 @@ test('同形臂：置首生效 ⇒ why 标注配置层判据按构造失明；�
   assert.match(moved.why, /置首后请求就在首位，配置层判据按构造失明/);
   const asIs = await probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, model: REQ });
   assert.equal(/按构造失明/.test(asIs.why), false);
+});
+
+// ── 第三段（置首修法，r3）：副本构造的置首选项、审查臂流程、守卫分句、新事实判定 ──
+
+async function userHomeWith(cfgObj: unknown): Promise<string> {
+  const home = await tmp();
+  await fs.mkdir(path.join(home, '.zcode/cli'), { recursive: true });
+  await fs.writeFile(path.join(home, '.zcode/cli/config.json'), JSON.stringify(cfgObj), { encoding: 'utf8', mode: 0o600 });
+  return home;
+}
+
+test('prepareZcodeHome requestedFirst：transformCopy 收到的已是置首后的对象，盘上键序与 prep.reorder 一致', async () => {
+  const src = path.join(await userHomeWith(catalog()), '.zcode/cli/config.json');
+  const runDir = await tmp();
+  const seen: string[][] = [];
+  const prep = await prepareZcodeHome(runDir, REQ, {
+    srcConfig: src,
+    requestedFirst: true,
+    transformCopy: (c) => {
+      const pv = c.provider as Record<string, { models: Record<string, unknown> }>;
+      seen.push(Object.keys(pv), Object.keys(pv['bigmodel-coding-plan']!.models));
+      return c;
+    },
+  });
+  assert.deepEqual(prep.reorder, { variant: 'requested-first', applied: true, kind: 'applied' });
+  assert.deepEqual(seen, [['bigmodel-coding-plan', 'other'], ['GLM-5.3-Flash', 'GLM-5.3', 'GLM-5.3-Air']], '置首在 transformCopy 之前（锁实现顺序：残余扫描面对最终落盘的副本）');
+  const disk = JSON.parse(await fs.readFile(path.join(zcodeHomeUnder(runDir), '.zcode/cli/config.json'), 'utf8')) as {
+    provider: Record<string, { models: Record<string, unknown> }>;
+  };
+  assert.deepEqual(Object.keys(disk.provider), ['bigmodel-coding-plan', 'other']);
+  assert.deepEqual(Object.keys(disk.provider['bigmodel-coding-plan']!.models), ['GLM-5.3-Flash', 'GLM-5.3', 'GLM-5.3-Air']);
+});
+
+test('prepareZcodeHome：不传 requestedFirst ⇒ reorder 为 null、键序原样；限定失败 ⇒ reorder 为 null、照常建副本', async () => {
+  const src = path.join(await userHomeWith(catalog()), '.zcode/cli/config.json');
+  const plain = await prepareZcodeHome(await tmp(), REQ, { srcConfig: src });
+  assert.equal(plain.reorder, null);
+  const disk = JSON.parse(await fs.readFile(path.join(plain.homeDir!, '.zcode/cli/config.json'), 'utf8')) as { provider: Record<string, unknown> };
+  assert.deepEqual(Object.keys(disk.provider), ['other', 'bigmodel-coding-plan']);
+  const bad = await prepareZcodeHome(await tmp(), 'nope/none', { srcConfig: src, requestedFirst: true });
+  assert.equal(bad.route, 'global');
+  assert.notEqual(bad.homeDir, null);
+  assert.equal(bad.reorder, null);
+});
+
+/**
+ * 审查臂假入口：配置读取层照 model.main 导入；运行期回落「第一个 provider 的第一个未删成员」（第二段实验 (F1) 的形态），
+ * 把运行期选定写进会话日志（带 sessionId，审查臂的 modelFromLog 读它）。
+ */
+const REVIEW_ARM_ENTRY = `
+const fs = require('node:fs'), path = require('node:path');
+const env = process.env;
+const cfg = JSON.parse(fs.readFileSync(path.join(env.HOME, '.zcode/cli/config.json'), 'utf8'));
+const [pid, pv] = Object.entries(cfg.provider)[0];
+const [mk, mv] = Object.entries(pv.models).find(([, m]) => !(m && m.deleted === true));
+const rt = pid + '/' + ((mv && typeof mv.id === 'string') ? mv.id : mk).trim();
+const dir = path.join(env.HOME, '.zcode/cli/log');
+fs.mkdirSync(dir, { recursive: true });
+fs.writeFileSync(path.join(dir, 'zcode-2026-09-24.jsonl'),
+  JSON.stringify({ sessionId: 'sess_fake', event: '${EVENT}', context: { model: rt } }) + '\\n');
+process.stdout.write(JSON.stringify({ sessionId: 'sess_fake', response: 'ok', usage: {}, eventCount: 1 }) + '\\n');
+process.exit(0);
+`;
+
+async function runReviewArm(model: string) {
+  const { defaultConfig } = await import('../../src/trivium/config.js');
+  const { zcodeAdapter } = await import('../../src/trivium/adapters/zcode.js');
+  const root = await tmp();
+  const entry = path.join(root, 'Resources/glm/zcode.cjs');
+  await fs.mkdir(path.dirname(entry), { recursive: true });
+  await fs.writeFile(entry, REVIEW_ARM_ENTRY, 'utf8');
+  await fs.mkdir(path.join(root, 'Resources/config/provider'), { recursive: true });
+  await fs.writeFile(path.join(root, 'Resources/config/provider/zcode-builtin.json'), '{}', 'utf8');
+  const userHome = await userHomeWith(catalog());
+  const cfg = defaultConfig();
+  cfg.probe.cli.zcode!.probed_at = new Date().toISOString();
+  cfg.probe.cli.zcode!.entrypoint = entry;
+  cfg.probe.cli.zcode!.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit,Bash'];
+  cfg.probe.cli.zcode!.response_field = 'response';
+  const runDir = await tmp();
+  const req = {
+    run_id: 'r', topic: 't', stage: 'code' as const, critic: 'glm' as const,
+    project_root: root, subject_path: path.join(root, 's.md'), deny_paths: [],
+    out_dir: path.join(runDir, 'out'), brief_path: path.join(root, 'b.md'), brief_text: 'ok',
+    model, timeout_s: 20, schema_path: path.join(root, 'schema.json'),
+    min_tool_calls: 0, min_project_reads: 0, profile_requested: null,
+  };
+  return withEnv({ HOME: userHome }, async () => {
+    const result = await zcodeAdapter.run({ cfg, nodePath: process.execPath }, req as never);
+    const trace = JSON.parse(await fs.readFile(result.trace_path!, 'utf8')) as {
+      modelSelection: { requested: string; effective: string | null; reorder?: { applied: boolean; kind: string; reason?: string }; note?: string };
+    };
+    return { result, trace };
+  });
+}
+
+test('审查臂：非首位请求 ⇒ 置首后运行期回落正好落在请求上；trace 记 reorder 与「请求模型已置首」事实句；守卫字段 kind=applied', async () => {
+  const { result, trace } = await runReviewArm(REQ);
+  assert.equal(result.status, 'ok', result.fail_reason ?? '');
+  assert.equal(result.model_effective, REQ, '不置首时假入口会回落到 other/x');
+  assert.equal(result.model_override_applied, true);
+  assert.deepEqual(result.model_override_reorder, { applied: true, kind: 'applied' });
+  assert.deepEqual(trace.modelSelection.reorder, { applied: true, kind: 'applied' });
+  assert.match(trace.modelSelection.note ?? '', /请求模型已置首，读回的正是它；是否靠置首不可分/);
+  assert.equal(/靠置首达成/.test(trace.modelSelection.note ?? ''), false, '不替收窄后的字段下因果判断（代码双审 r1 CODEX-03）');
+});
+
+test('审查臂：请求本在首位（恒等路径）⇒ kind=identity、覆盖照样落实、不写置首事实句、守卫不告警', async () => {
+  const { result, trace } = await runReviewArm('other/x');
+  assert.equal(result.model_effective, 'other/x');
+  assert.equal(result.model_override_applied, true);
+  assert.equal(result.model_override_reorder?.kind, 'identity');
+  assert.equal(trace.modelSelection.reorder?.kind, 'identity');
+  assert.equal(/请求模型已置首/.test(trace.modelSelection.note ?? ''), false);
+});
+
+test('reorderHint：缺席 ⇒ 空串（告警维持原文）；在场按 kind 分三句，不看 reason 文案', () => {
+  assert.equal(reorderHint(undefined), '');
+  assert.match(reorderHint({ applied: true, kind: 'applied' }), /置首已生效仍回落.*runtime_selection/);
+  assert.match(reorderHint({ applied: false, kind: 'identity', reason: '随便什么文案' }), /请求本在首位/);
+  for (const kind of ['not_movable', 'qualify_failed'] as const) {
+    assert.match(reorderHint({ applied: false, kind, reason: 'R' }), /置首没做成：R/);
+  }
+  for (const r of [{ applied: true, kind: 'applied' as const }, { applied: false, kind: 'identity' as const }]) {
+    assert.match(reorderHint(r), /^先看 trace\.json 的 `modelSelection\.reorder`/);
+  }
+});
+
+type Arm = Parameters<typeof judgeRuntimeSelection>[0];
+const arm = (model: string | null, over: Partial<Arm> = {}): Arm => ({
+  override: 'config_copy', requested: REQ, observed: REQ, why: '', replacedPaths: [], hostCredentialEnv: [],
+  runtimeSelected: model === null ? { cause: 'no_event', model: null } : { cause: 'ok', model },
+  variant: { variant: 'as-is', applied: true, kind: 'applied' },
+  ...over,
+});
+const roArm = (model: string | null, kind: VariantKind = 'applied', over: Partial<Arm> = {}) =>
+  arm(model, { variant: { variant: 'requested-first', applied: kind === 'applied', kind }, ...over });
+
+test('judgeRuntimeSelection：按序五格（r3 §4.2），只比 modelId 段', () => {
+  const FIRST = 'other/x';
+  // ① 前提
+  assert.equal(judgeRuntimeSelection(arm(null), roArm(REQ)).value, null, '原样支读数不 ok');
+  assert.equal(judgeRuntimeSelection(arm(FIRST), roArm(null)).value, null, '置首支读数不 ok');
+  assert.equal(judgeRuntimeSelection(arm(FIRST), roArm(REQ, 'identity')).value, null, '置首支恒等也记 null');
+  assert.equal(judgeRuntimeSelection(arm(FIRST), roArm(REQ, 'not_movable')).value, null);
+  assert.equal(judgeRuntimeSelection(arm(FIRST), roArm(REQ, 'applied', { requested: 'bigmodel-coding-plan/GLM-5.3-Air' })).value, null, '两支请求不同');
+  // ②～⑤
+  assert.equal(judgeRuntimeSelection(arm(REQ), roArm(REQ)).value, 'honored');
+  assert.equal(judgeRuntimeSelection(arm(FIRST), roArm(REQ)).value, 'reorder_needed');
+  assert.equal(judgeRuntimeSelection(arm('bigmodel-coding-plan/GLM-5.3-Air'), roArm(REQ)).value, 'reorder_needed', '第三个模型值落进 ③');
+  assert.equal(judgeRuntimeSelection(arm(FIRST), roArm(FIRST)).value, 'reorder_ineffective');
+  assert.equal(judgeRuntimeSelection(arm(REQ), roArm(FIRST)).value, null, '⑤ 冲突不收录');
+  assert.equal(judgeRuntimeSelection(arm('uuid-p/GLM-5.3-Flash'), roArm(REQ)).value, 'honored', 'providerId 形态不同不算不同');
+});
+
+test('同形臂：doctor 的两支——原样支 variant 由臂自行合成，置首支 kind=applied（本机形态）', async () => {
+  const L = await fakeLayout();
+  const [asIs, moved] = await withEnv({ FAKE_RUNTIME_FALLBACK: '1' }, async () => [
+    await probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src }),
+    await probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: L.src, variant: 'requested-first' }),
+  ]);
+  assert.deepEqual(asIs.variant, { variant: 'as-is', applied: true, kind: 'applied' });
+  assert.equal(moved.variant?.kind, 'applied');
+  assert.equal(judgeRuntimeSelection(asIs, moved).value, 'reorder_needed', '本机形态（E2）');
 });
