@@ -1,0 +1,84 @@
+{
+  "plan": "EV-82 第二段计划 r2 §5",
+  "requested": "bigmodel-coding-plan/GLM-5.3-Flash",
+  "env": {
+    "entrypoint": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+    "entry_sha256_16": "b1df2ef3e5bd76c4",
+    "entry_same_as_s5": true,
+    "version_probe": "0.16.9",
+    "startup_event_literal_present": true,
+    "readonly_args": [
+      "--mode",
+      "plan",
+      "--disallowed-tools",
+      "Write,Edit,MultiEdit,ApplyPatch,NotebookEdit,Bash,WebFetch,WebSearch"
+    ],
+    "host_preset_env": [],
+    "catalog_first": "bigmodel-coding-plan/GLM-5.3",
+    "git_head": "c673ba3dd3ce0dd020591f74f27f3819697dda1f",
+    "worktree_dirty_outside_evidence": false,
+    "node": "v25.2.1",
+    "ran_at": "2026-09-24T08:31:07.226Z"
+  },
+  "runs": [
+    {
+      "name": "① 白名单臂",
+      "attempt": 1,
+      "requested": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "override": "config_copy",
+      "observed": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "runtime": {
+        "cause": "ok",
+        "model": "bigmodel-coding-plan/GLM-5.3"
+      },
+      "variant": null,
+      "replaced_paths": null,
+      "host_credential_env": null,
+      "why": "副本 model.main 被 legacy 导入读到并成为 defaultModelSelection"
+    },
+    {
+      "name": "② 同形原样",
+      "attempt": 1,
+      "requested": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "override": "config_copy",
+      "observed": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "runtime": {
+        "cause": "ok",
+        "model": "bigmodel-coding-plan/GLM-5.3"
+      },
+      "variant": {
+        "variant": "as-is",
+        "applied": true
+      },
+      "replaced_paths": [
+        "provider.bigmodel-coding-plan.options.apiKey"
+      ],
+      "host_credential_env": [],
+      "why": "同形副本（整份拷贝、凭据换哨兵）的 model.main 被 legacy 导入读到"
+    },
+    {
+      "name": "③ 同形置首",
+      "attempt": 1,
+      "requested": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "override": "config_copy",
+      "observed": "bigmodel-coding-plan/GLM-5.3-Flash",
+      "runtime": {
+        "cause": "ok",
+        "model": "bigmodel-coding-plan/GLM-5.3-Flash"
+      },
+      "variant": {
+        "variant": "requested-first",
+        "applied": true
+      },
+      "replaced_paths": [
+        "provider.bigmodel-coding-plan.options.apiKey"
+      ],
+      "host_credential_env": [],
+      "why": "同形副本（整份拷贝、凭据换哨兵）的 model.main 被 legacy 导入读到。置首后请求就在首位，配置层判据按构造失明，本次只看运行期读数"
+    }
+  ],
+  "judgement": {
+    "cell": "(F1) 置首生效",
+    "notes": []
+  }
+}
