@@ -1,0 +1,99 @@
+{
+ "file": "rollout-model-io-sess_6f97e23e-3192-4783-bd46-e7751b7ad0e2.jsonl",
+ "requests": [
+  {
+   "model": {
+    "modelId": "qwen3.8-max",
+    "providerId": "84044858-4e28-432b-bbbd-7e2d624e39ff"
+   },
+   "toolNames": [
+    "Agent",
+    "AskUserQuestion",
+    "Bash",
+    "Edit",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "Read",
+    "Skill",
+    "TaskOutput",
+    "TaskStop",
+    "TodoRead",
+    "TodoWrite",
+    "WebFetch",
+    "Write",
+    "SendMessage",
+    "ReadSessionContext",
+    "CreateWorkflow",
+    "AmendWorkflow",
+    "SaveWorkflow",
+    "EvalWorkflowSnippet",
+    "ListWorkflowRuns",
+    "GetWorkflowRun",
+    "ResumeWorkflowRun",
+    "ResolveWorkflowQuestion",
+    "ListSavedWorkflows",
+    "ListModels",
+    "mcp__node_repl__js"
+   ],
+   "messages": [
+    {
+     "role": "user",
+     "toolName": null,
+     "isError": null,
+     "content": "\"Use the skill named `dualtest` for this turn.\\nFirst call the `Skill` tool with name `dualtest` before doing the task.\\nAfter the skill content is loaded, follow its instructions and continue.\\n\\nUser request:\\n甲 乙 \\\"带引号\\\"\""
+    }
+   ],
+   "response_text": "I'll load the `dualtest` skill first.\n\n"
+  },
+  {
+   "model": {
+    "modelId": "qwen3.8-max",
+    "providerId": "84044858-4e28-432b-bbbd-7e2d624e39ff"
+   },
+   "toolNames": [
+    "Agent",
+    "AskUserQuestion",
+    "Bash",
+    "Edit",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "Read",
+    "Skill",
+    "TaskOutput",
+    "TaskStop",
+    "TodoRead",
+    "TodoWrite",
+    "WebFetch",
+    "Write",
+    "SendMessage",
+    "ReadSessionContext",
+    "CreateWorkflow",
+    "AmendWorkflow",
+    "SaveWorkflow",
+    "EvalWorkflowSnippet",
+    "ListWorkflowRuns",
+    "GetWorkflowRun",
+    "ResumeWorkflowRun",
+    "ResolveWorkflowQuestion",
+    "ListSavedWorkflows",
+    "ListModels",
+    "mcp__node_repl__js"
+   ],
+   "messages": [
+    {
+     "role": "assistant",
+     "toolName": null,
+     "isError": null,
+     "content": "[{\"type\": \"reasoning\", \"text\": \"The user is requesting the use of the dualtest skill. Two dualtest skills exist, one located at ~/.zcode/skills/dualtest (DESC-ZCS-1K7), and the other located at ~/.agents/skills/dualtest (DESC-AGS-6T3). The user is saying \\\"use the skill named dualtest.\\\" I should call the Skill tool with `dualtest`. There's ambiguity due to the two entries, but the Skill tool probably resolves by name. I'll just go ahead and call it as is.\\n\", \"providerOptions\": {\"anthropic\": {\"signature\": \"\"}}}, {\"type\": \"text\", \"text\": \"I'll load the `dualtest` skill first.\\n\\n\"}]"
+    },
+    {
+     "role": "tool",
+     "toolName": "Skill",
+     "isError": false,
+     "content": "\"<skill_content name=\\\"dualtest\\\">\\n# Skill: dualtest\\nBODY-ZCS-1K7\\n\\nReply with exactly one line and nothing else: the literal prefix `ZCS-1K7 GOT=[`, then the complete\\nuser-provided text that came with this skill invocation, copied character for character, then `] RAW=[$ARGUMENTS]`.\\nIf no such text was provided, put <none> inside GOT=[...]. Do not run any commands and do not read or write any files.\\nBase directory for this skill: ~/.zcode/skills/dualtest\\nRelative paths in this skill are relative to this base directory.\\n</skill_content>\""
+    }
+   ],
+   "response_text": "ZCS-1K7 GOT=[甲 乙 \"带引号\"] RAW=[$ARGUMENTS]"
+  }
+ ]
+}

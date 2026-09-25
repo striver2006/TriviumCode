@@ -1,0 +1,99 @@
+{
+ "file": "rollout-model-io-sess_90c010ab-0e0f-4c28-8985-de21f2a5696d.jsonl",
+ "requests": [
+  {
+   "model": {
+    "modelId": "qwen3.8-max",
+    "providerId": "84044858-4e28-432b-bbbd-7e2d624e39ff"
+   },
+   "toolNames": [
+    "Agent",
+    "AskUserQuestion",
+    "Bash",
+    "Edit",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "Read",
+    "Skill",
+    "TaskOutput",
+    "TaskStop",
+    "TodoRead",
+    "TodoWrite",
+    "WebFetch",
+    "Write",
+    "SendMessage",
+    "ReadSessionContext",
+    "CreateWorkflow",
+    "AmendWorkflow",
+    "SaveWorkflow",
+    "EvalWorkflowSnippet",
+    "ListWorkflowRuns",
+    "GetWorkflowRun",
+    "ResumeWorkflowRun",
+    "ResolveWorkflowQuestion",
+    "ListSavedWorkflows",
+    "ListModels",
+    "mcp__node_repl__js"
+   ],
+   "messages": [
+    {
+     "role": "user",
+     "toolName": null,
+     "isError": null,
+     "content": "\"请只用 Write 工具新建 DENYME-headless-untrusted.txt，内容为 x。不要用其它工具；如果被拦截，照实说明拦截信息，不要换别的办法重试。\""
+    }
+   ],
+   "response_text": "我将用 Write 工具创建该文件。\n\n"
+  },
+  {
+   "model": {
+    "modelId": "qwen3.8-max",
+    "providerId": "84044858-4e28-432b-bbbd-7e2d624e39ff"
+   },
+   "toolNames": [
+    "Agent",
+    "AskUserQuestion",
+    "Bash",
+    "Edit",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "Read",
+    "Skill",
+    "TaskOutput",
+    "TaskStop",
+    "TodoRead",
+    "TodoWrite",
+    "WebFetch",
+    "Write",
+    "SendMessage",
+    "ReadSessionContext",
+    "CreateWorkflow",
+    "AmendWorkflow",
+    "SaveWorkflow",
+    "EvalWorkflowSnippet",
+    "ListWorkflowRuns",
+    "GetWorkflowRun",
+    "ResumeWorkflowRun",
+    "ResolveWorkflowQuestion",
+    "ListSavedWorkflows",
+    "ListModels",
+    "mcp__node_repl__js"
+   ],
+   "messages": [
+    {
+     "role": "assistant",
+     "toolName": null,
+     "isError": null,
+     "content": "[{\"type\": \"reasoning\", \"text\": \"The user is asking to create DENYME-headless-untrusted.txt with the content \\\"x\\\" using only the Write tool. If it gets blocked, report it honestly.\", \"providerOptions\": {\"anthropic\": {\"signature\": \"\"}}}, {\"type\": \"text\", \"text\": \"我将用 Write 工具创建该文件。\\n\\n\"}]"
+    },
+    {
+     "role": "tool",
+     "toolName": "Write",
+     "isError": false,
+     "content": "\"File created successfully at: /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-probe-CsyKTB/fixture2/DENYME-headless-untrusted.txt (file state is current in your context — no need to Read it back)\""
+    }
+   ],
+   "response_text": "写入没有被拦截：Write 工具返回了成功信息「File created successfully at /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-probe-CsyKTB/fixture2/DENYME-headless-untrusted.txt」，文件内容为 `x`。整个过程只用了 Write 工具，没有遇到任何权限拒绝或 hook 拦截提示。"
+  }
+ ]
+}

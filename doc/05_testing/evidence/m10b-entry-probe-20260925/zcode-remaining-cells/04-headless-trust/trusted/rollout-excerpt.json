@@ -1,0 +1,105 @@
+{
+ "file": "rollout-model-io-sess_88cea64d-c039-45c9-b953-8f40febc8768.jsonl",
+ "requests": [
+  {
+   "model": {
+    "modelId": "qwen3.8-max",
+    "providerId": "84044858-4e28-432b-bbbd-7e2d624e39ff"
+   },
+   "toolNames": [
+    "Agent",
+    "AskUserQuestion",
+    "Bash",
+    "Edit",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "Read",
+    "Skill",
+    "TaskOutput",
+    "TaskStop",
+    "TodoRead",
+    "TodoWrite",
+    "WebFetch",
+    "Write",
+    "SendMessage",
+    "ReadSessionContext",
+    "CreateWorkflow",
+    "AmendWorkflow",
+    "SaveWorkflow",
+    "EvalWorkflowSnippet",
+    "ListWorkflowRuns",
+    "GetWorkflowRun",
+    "ResumeWorkflowRun",
+    "ResolveWorkflowQuestion",
+    "ListSavedWorkflows",
+    "ListModels",
+    "mcp__node_repl__js"
+   ],
+   "messages": [
+    {
+     "role": "user",
+     "toolName": null,
+     "isError": null,
+     "content": "\"<system-reminder>\\nAs you answer the user's questions, you can use the following context:\\n# agentsMd\\nCodebase and user instructions are shown below. Be sure to adhere to these instructions. IMPORTANT: These instructions OVERRIDE any default behavior and you MUST follow them exactly as written.\\n\\nContents of ~/.zcode/cli/memories/projects/zcode-fixture-0d3deff48723be41/memory/MEMORY.md (user's auto-memory, persists across conversations):\\n\\n- [No ApplyPatch tool](no-applypatch-tool.md) — environment lacks ApplyPatch; offer Edit+Write or Bash patch instead\\n- [Hook blocks DENYME writes](hook-blocks-denyme-writes.md) — \\\"probe-deny: blocked by M10b hook A\\\" denies DENYME-* Writes; report, don't retry\\n\\n# currentDate\\nToday's date is 2026-09-25.\\n\\n      IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\\n</system-reminder>\\n\""
+    },
+    {
+     "role": "user",
+     "toolName": null,
+     "isError": null,
+     "content": "\"请只用 Write 工具新建 DENYME-headless-trusted.txt，内容为 x。不要用其它工具；如果被拦截，照实说明拦截信息，不要换别的办法重试。\""
+    }
+   ],
+   "response_text": "我用 Write 工具尝试创建该文件。\n\n"
+  },
+  {
+   "model": {
+    "modelId": "qwen3.8-max",
+    "providerId": "84044858-4e28-432b-bbbd-7e2d624e39ff"
+   },
+   "toolNames": [
+    "Agent",
+    "AskUserQuestion",
+    "Bash",
+    "Edit",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "Read",
+    "Skill",
+    "TaskOutput",
+    "TaskStop",
+    "TodoRead",
+    "TodoWrite",
+    "WebFetch",
+    "Write",
+    "SendMessage",
+    "ReadSessionContext",
+    "CreateWorkflow",
+    "AmendWorkflow",
+    "SaveWorkflow",
+    "EvalWorkflowSnippet",
+    "ListWorkflowRuns",
+    "GetWorkflowRun",
+    "ResumeWorkflowRun",
+    "ResolveWorkflowQuestion",
+    "ListSavedWorkflows",
+    "ListModels",
+    "mcp__node_repl__js"
+   ],
+   "messages": [
+    {
+     "role": "assistant",
+     "toolName": null,
+     "isError": null,
+     "content": "[{\"type\": \"reasoning\", \"text\": \"The user is asking to create DENYME-headless-trusted.txt with content \\\"x\\\" using only the Write tool. According to memory, hooks block Writes for DENYME-* and display the message \\\"probe-deny: blocked by M10b hook A\\\". Instructions: if blocked, report faithfully and do not retry by other means.\\n\\nTherefore, I should try Write only once and then report.\\n\", \"providerOptions\": {\"anthropic\": {\"signature\": \"\"}}}, {\"type\": \"text\", \"text\": \"我用 Write 工具尝试创建该文件。\\n\\n\"}]"
+    },
+    {
+     "role": "tool",
+     "toolName": "Write",
+     "isError": false,
+     "content": "\"File created successfully at: <fixture1>/DENYME-headless-trusted.txt (file state is current in your context — no need to Read it back)\""
+    }
+   ],
+   "response_text": "文件已成功创建，这次没有被拦截。\n\n- 工具：仅使用了 Write 工具\n- 路径：`DENYME-headless-trusted.txt`（工作目录下）\n- 内容：`x`\n- 结果：写入成功，没有出现之前记忆中提到的 \"probe-deny: blocked by M10b hook A\" 拦截信息\n\n说明一下与已有记忆的出入：此前记录显示 DENYME-* 前缀的 Write 会被 hook 拒绝，但本次调用未被拦截，可能是当前会话的 hook 配置未启用或规则有变。按你的要求，我没有做任何额外验证或重试操作。"
+  }
+ ]
+}

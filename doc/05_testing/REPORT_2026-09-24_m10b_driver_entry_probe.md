@@ -221,12 +221,37 @@ A 不带 matcher、`timeoutMs: 5000`，记录 stdin 负载与环境变量名，�
 | `exit 2` 拒写：Bash | `echo x > DENYME-bash.txt`：同上，`toolName: "Bash"`、`isError: true`，文件不存在 | **true** |
 | 超时 | `SLOWME.txt`：A 于 10:25:43 开始挂起，日志里**没有**醒来那一行（到 5 秒被杀）；B 于 10:25:48 才执行；文件**写成**；模型收到 `File created successfully`、`isError: false`，**没有任何告警**；用户体感约 6 秒 | **超时即放行**，且对模型与用户都不可见 |
 | 同一事件下多条 Hook 的执行顺序 | SLOWME 那次 B 在 A 超时后才跑 | **依次执行**（一次观察） |
-| matcher `Edit\|Write` 的语义 | Write、Edit 调用时 A、B 都触发；Bash 调用时只有 A 触发 | **按「或」匹配工具名**（`Edit\|Write` 这种写法可用；是正则还是按 `\|` 拆分未区分） |
+| matcher `Edit\|Write` 的语义 | Write、Edit 调用时 A、B 都触发；Bash 调用时只有 A 触发。静态（匹配函数 `jio`）：空或 `*` 匹配全部；只含字母、数字、下划线与 `\|` 时**按 `\|` 拆成精确工具名**；否则当**不锚定**的正则 | **按「或」精确匹配工具名**（行为 + 静态） |
 | stdin 负载 | 驼峰与蛇形两套字段并存：`tool_name` / `toolName`、`tool_input` / `toolInput`、`session_id` / `sessionId`、`hook_event_name`、`transcript_path`（系统临时目录 `zcode-claude-hook-*` 下）、`cwd`、`permission_mode`、`riskLevel`、`sideEffectScope` 等 20 个键 | **true**：`hooks.ts` 读的 `tool_name` / `tool_input` 都在 |
 | 负载里的路径形态 | `cwd` 与 `CLAUDE_PROJECT_DIR` 是 `/tmp/…`，工具输入里的 `file_path` 是 `/private/tmp/…`，同一目录两种写法 | 观察：本仓写侧判定对词法路径与 realpath 取并集，能应付；若有按前缀比较 `CLAUDE_PROJECT_DIR` 的代码，要留意 |
 | Hook 进程的环境变量 | `CLAUDE_CODE_SESSION_ID`、`CLAUDE_SESSION_ID`、`ZCODE_SESSION_ID`（三者同值）、`CLAUDE_PROJECT_DIR`、`ZCODE_PROJECT_DIR` 都有值 | **true**（行为，印证静态） |
 
 证据：`evidence/m10b-entry-probe-20260925/zcode-desktop-session/`（`fixture/` 配置与脚本、`hook-log/` 每次触发的负载与环境变量名、`rollout-excerpt.json` 每轮用户消息与工具结果、`fixture-final-state.txt`）。
+
+#### 3.1.2 子代理与命令行模式（2026-09-25 续测）
+
+**子代理**（桌面端，同一夹具、同一会话，用户操作两次）：
+
+| 做法 | 读数 | 三态 |
+| :--- | :--- | :--- |
+| 让主代理用 `Agent` 派子代理去写 `DENYME-sub.txt`，派发文字里带完整文件名 | **派发本身**被 Hook A 拦下（`Agent` 调用也过 PreToolUse，输入键 `description` / `prompt` / `subagent_type`，文字里含 DENYME）；子代理没起来 | `Agent` 调用过 PreToolUse：**true** |
+| 派发文字只给「DENY」「ME-sub.txt」两段与拼接规则 | 派发放行（A 记 `exit0`）；子代理（GLM-5.3，26 个工具，含 Write / Edit / Bash / `mcp__node_repl__js`，无 Agent）用 Write 写成 `DENYME-sub.txt`，工具结果 `File created successfully`；**Hook 日志里没有子代理这次 Write 的任何记录** | 子代理里的工具调用过工作区 Hook：**false**（不触发，不是触发后放行） |
+
+子代理有自己的 rollout 文件（`model-io-sess_subagent_agent_<id>.jsonl`），同样占「最近 3 份」的名额。
+
+**命令行模式**（用户授权直接调用 zcode，`node zcode.cjs --prompt … --cwd … --json --no-color`，缺省权限 `yolo`；两次真实调用，生效模型是 CLI 缺省的 qwen3.8-max）：
+
+| 臂 | 读数 | 三态 |
+| :--- | :--- | :--- |
+| 在桌面端已信任的夹具 1 里，只用 Write 写 `DENYME-headless-trusted.txt` | 写成；Hook 日志**无记录**；模型答「没有被拦截」 | Hook 不运行 |
+| 在 mkdtemp 新建、配置相同、从未信任的夹具 2 里，写 `DENYME-headless-untrusted.txt` | 写成；Hook 日志**无记录** | Hook 不运行 |
+| 原因 | 两次运行的 CLI 日志（`~/.zcode/cli/log/zcode-2026-09-25.jsonl`）各有一行 `Workspace Hook Trust telemetry`、`event: workspace_hook.feature_disabled`，原因码 `workspace_hooks_feature_disabled`。入口文件里对应的是 `enabled` 开关（缺省 true），`--prompt` 这条路径上被置为 false；从哪个配置来的**没能静态定位**，`--surface desktop` 能否打开**未测** | 命令行模式下工作区 Hook **整体关闭**，与是否信任无关 |
+
+顺带：已信任那一臂的回复提到「之前记忆中提到的 `probe-deny` 拦截信息」，说明 ZCode 的项目记忆把桌面会话的测试内容记下来并带进了命令行会话。
+记忆按项目存在 `~/.zcode/cli/memories/projects/<目录名>-<哈希>/memory/`。按用户指示已清除本次测试留下的三个项目目录（夹具 1 下的 3 份记忆文件，夹具 2 与加载面空项目各一个空目录）：先备份到会话临时目录，逐个核对内容后删除文件，再逐级删除空目录；其余 37 个项目的记忆没有测试标记，未动。
+这也是一条读数：**glm Driver 在本仓工作时，ZCode 会把会话内容沉淀进项目记忆，并带进之后的会话**（包括 headless 审查运行，如果它们落在同一项目目录）。
+
+证据：`evidence/m10b-entry-probe-20260925/zcode-remaining-cells/`（`03-subagent/`、`04-headless-trust/`）。
 
 ### 3.2 写类工具全集（§4.3.3）：来源 ①二进制字面（**已测**）；来源 ②会话实测（**已测**，见 3.2.1）
 
@@ -243,7 +268,10 @@ A 不带 matcher、`timeoutMs: 5000`，记录 stdin 负载与环境变量名，�
 1. 本仓 `zcode-trace.ts` 的 `ZCODE_WRITE_TOOLS` 登记了 `MultiEdit` 与 `NotebookEdit`，按本入口它们不存在。那是 headless 轨迹用的只读 denylist，多登记不会漏拦，**不构成缺陷**；但 §4.3.3「全集」以来源 ① 为准时，写类工具是 **Write / Edit / ApplyPatch（file-write）+ Bash（shell）**。
 2. matcher 别名意味着：沿用 `Edit|Write` 形态的 matcher，名字层面**可能已经覆盖** ApplyPatch。§6.1 条件 2(i) 仍以行为实测为准。
 3. **ApplyPatch 的 `tool_input` 键形态未取到**：注册表里有名字，但静态检索没有定位到它的输入 schema。这正是 §6.1 条件 2(ii)「按目标判」要实测的一格：若它只带 patch 正文、不带 `extractTargetPath` 认得的路径键，写侧会对它**静默放行**。**null**，待来源 ② 实测。
-   **2026-09-25 补**：来源 ② 里 ApplyPatch 不在模型可见清单上（3.2.1），这一格在 GLM-5.3 桌面会话里**无从实测**，仍为 null。
+   **2026-09-25 补**：来源 ② 里 ApplyPatch 不在模型可见清单上（3.2.1），这一格在 GLM-5.3 桌面会话里**无从实测**。
+   **静态已答**（同日续查）：ZCode 里没有 ApplyPatch 自己的工具定义，它映射到 OpenAI Responses API 的内置工具 `openai.apply_patch`（`hasApplyPatchTool: Je("openai.apply_patch")`），只有走这类 provider 的模型才会暴露；本机 GLM 走的是 Anthropic 兼容接口（rollout 里是 `providerMetadata.anthropic`），也没有 OpenAI provider。
+   输入 schema（`z8r`）是 `{callId, operation: {type: "create_file" | "delete_file" | "update_file", path, diff?}}`：**每次调用一个目标**（CODEX-05 的多目标担忧对它不成立），但路径**嵌在 `operation.path`**，而 `extractTargetPath` 只读顶层的 `file_path / filePath / path / notebook_path / target_file` ⇒ 如果它进 Hook 时 `tool_input` 就是这个形态，写侧会**静默放行**。
+   这半句是静态推断，Hook 负载里的实际形态未观察到；行为 **null**（本机无从实测）。
 
 #### 3.2.1 来源 ②：桌面会话实测（2026-09-25，同 3.1.1 的会话）
 
@@ -256,7 +284,7 @@ A 不带 matcher、`timeoutMs: 5000`，记录 stdin 负载与环境变量名，�
 | Bash | 有 | 有 | `command`、`description` | 按命令文本判（D3 同形） |
 | ApplyPatch | 有 | **无** | —— | 要求「只用 ApplyPatch」时模型回答工具列表里没有它。为什么不暴露（按模型、按设置还是按宿主），未查 |
 | `mcp__node_repl__js` | —— | **有** | 未触发 | **来源 ① 看不到的写路径**：来自本机 MCP 配置的 JS REPL，能直接写文件；本仓 Hook 的 matcher（`Edit\|Write\|NotebookEdit` 与 `Bash`）**不覆盖**它 |
-| `Agent` | —— | 有 | 未触发 | 子代理里的工具调用会不会过工作区 Hook，未测 |
+| `Agent` | —— | 有 | `description`、`prompt`、`subagent_type` | 派发本身过 PreToolUse；**子代理里的工具调用不过工作区 Hook**（3.1.2） |
 
 **两源差异的解释**：来源 ① 是 CLI 注册表的全集，来源 ② 是某个模型、某台机器在某次会话里实际暴露的子集加上外挂工具（MCP、插件）。
 所以「全集 = 两源交叉后的观察集，**完备性不保证**」（r5 §4.3.3 的措辞）在这里被坐实：两个来源**互不包含**。
@@ -298,18 +326,46 @@ A 不带 matcher、`timeoutMs: 5000`，记录 stdin 负载与环境变量名，�
 
 ### 3.5 `hooks_deny_ok` 落哪一格（r5 §4.3.4 要求本报告显式回答）
 
-**true，但有三个前提**，缺一个就是静默放行：
+**true，但有五个前提**，缺一个就是静默放行（2026-09-25 续测后由三条扩为五条）：
 
 | 前提 | 不满足时 | 依据 |
 | :--- | :--- | :--- |
-| ① 工作区 Hook 已经过用户信任确认 | 信任前写工具照常执行、Hook 不跑 | 3.1.1「信任确认之前」 |
-| ② Hook 在超时内返回 | 超时即放行，对模型与用户都不可见 | 3.1.1「超时」；缺省超时 60 秒，本仓 Hook 是毫秒级脚本，正常情况下不会碰到 |
-| ③ 写入走的是 matcher 覆盖到的工具 | `mcp__node_repl__js` 这类外挂工具不过 matcher | 3.2.1 |
+| ① 在桌面端（能弹信任提示的宿主）里跑 | 命令行 `--prompt` 模式下工作区 Hook 整体关闭（`workspace_hooks_feature_disabled`），信任过也不跑 | 3.1.2 |
+| ② 工作区 Hook 已经过用户信任确认，且配置改动后重新确认 | 信任前写工具照常执行、Hook 不跑；静态读到 Hook 声明变了会退回待信任（`stale_digest`） | 3.1.1「信任确认之前」；`stale_digest` 一条是静态 |
+| ③ Hook 在超时内返回 | 超时即放行，对模型与用户都不可见 | 3.1.1「超时」；缺省超时 60 秒，本仓 Hook 是毫秒级脚本，正常情况下不会碰到 |
+| ④ 写入走的是 matcher 覆盖到的工具 | `mcp__node_repl__js` 这类外挂工具不过 matcher；ApplyPatch 名字上能被 `Edit\|Write` 覆盖，但路径取不到（静态） | 3.2.1、3.2 第 3 条 |
+| ⑤ 写入发生在主代理里 | 子代理里的工具调用完全不过工作区 Hook | 3.1.2 |
 
-适用范围：ZCode 0.16.9 桌面端、GLM-5.3、项目级 `.zcode/config.json`、单次会话。headless（`zcode` CLI）下工作区 Hook 的信任怎么处理（静态里有 `workspace_hooks_require_trust_capable_host` 一类状态），未测。
+适用范围：ZCode 0.16.9、GLM-5.3、项目级 `.zcode/config.json`。
 
-**取值路径 (a) / (b) 仍由用户二选一**（r5 §4.3.4）：本次实测是人工在桌面端完成的，自动化探针要在 headless 下复现「信任 + 触发写工具」，前提 ① 在 headless 下能否满足本身未知。
-所以 (a) 探针臂自动实测的工程量**至少**包含先测清 headless 的信任行为；(b) 人工填写 + 防漂校验的依据就是本节。
+**取值路径：用户 2026-09-25 拍板 (a) 探针臂自动实测**（r5 §4.3.4 的二选一）。
+
+拍板时已知的可行性事实（供第 3 步开工时的工程量评估用，不改变拍板）：
+
+1. 命令行 `--prompt` 模式下工作区 Hook 整体关闭（3.1.2），所以探针不能照编排器现有的 headless 调用方式直接测；
+2. 桌面端是经 app-server 协议驱动 zcode-cli 的，信任走 RPC `workspace/hooks/trustGrant`，参数 `{workspace, bundleDigest, hookDeclarationDigest}`（静态）。探针要复现「已信任 + 主代理写 + 被拒」，现实路径是自己驱动这套协议，它不是公开接口，随版本变动的风险高；
+3. 让 `--prompt` 模式打开工作区 Hook 的开关，静态没有定位到来源（`--surface desktop` 能否做到未测）；
+4. 就算探针测出 true，它只覆盖五个前提里的 ①～③；④（matcher 覆盖面）、⑤（子代理）是结构性的，探针测不出来，要在文档与 L1 / L2 定级里写明。
+
+按 r2 §2.3.1 对 (a) 的原文要求（「须先估工程量——超过收益则改 (b)」），第 3 步开工时先做这份估算；若估算结论是超过收益，**回到用户重新拍板**，不自行改成 (b)。
+
+### 3.6 加载面：两个用户级根同名时加载哪一份（r5 §4.3.1，2026-09-25）
+
+**做法**（用户授权写用户目录与直接调用 zcode）：`~/.zcode/skills/dualtest/SKILL.md`（标签 ZCS-1K7）与 `~/.agents/skills/dualtest/SKILL.md`（标签 AGS-6T3）同名不同内容，正文要求逐字复述「随调用而来的用户文本」并附字面 `$ARGUMENTS`。
+写前断言两处都不存在，跑完逐字校验后 `unlink`、`rmdir`，两根事后无残留。cwd 是 mkdtemp 空项目。
+
+| 问题 | 读数 | 三态 |
+| :--- | :--- | :--- |
+| 枚举（`zcode skills list --json`，零配额） | 两份都列：先 `scope: user, source: zcode, rootPath: ~/.zcode/skills`，后 `source: agents, rootPath: ~/.agents/skills`；`diagnostics: []` | 同名不去重、不告警：**true**（P-21 在 0.16.9 复现） |
+| 模型可见清单 | 系统提示里的 skill 列表两份都在（本机 `bailian-cli` 等也各有两份），模型自己注意到了重名 | 重名对模型可见、无告警 |
+| 调用方式 | `--prompt '/skill dualtest 甲 乙 "带引号"'` 被 CLI 改写成一条用户消息：「Use the skill named `dualtest` for this turn. First call the `Skill` tool…」+「User request: 甲 乙 "带引号"」；模型随后调 `Skill` 工具 | 斜杠加载 skill：**true**（经 `Skill` 工具） |
+| 同名时加载哪份 | `Skill` 工具结果是 `<skill_content name="dualtest">` + **`~/.zcode/skills` 那份**的正文（BODY-ZCS-1K7）；按名字解析，没有报歧义 | **`~/.zcode/skills` 胜出**（一次观察，与枚举顺序一致） |
+| `$ARGUMENTS` | 注入的正文里是字面 `$ARGUMENTS`；回复 `ZCS-1K7 GOT=[甲 乙 "带引号"] RAW=[$ARGUMENTS]` | CLI 替换：**false**；参数原文到达：**true** |
+
+生效模型是 CLI 缺省的 qwen3.8-max（个人 provider），不是桌面端的 GLM-5.3；加载与改写是 CLI 层行为，推定与模型无关，未在桌面端复测。
+另：第一次直接拉起入口时退 1，stderr「无法定位 CLI ZCode Built-in Provider Config」（P-28），请求没发出、不耗配额；按适配器 `zcodeProviderConfigPaths` 的口径设了 `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` 与 `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`（个人配置只判存在、不读内容）后重跑。
+
+证据：`evidence/m10b-entry-probe-20260925/zcode-remaining-cells/01-load/`。
 
 **对 §4.3.3 的顺带读数**：交互会话的 shell 工具名是 `Bash`（与 headless 注册表同名），输入键是 `command`（不是路径键），D3 的 Bash 侧判据按 `command` 文本判，与 Claude Code 同形。
 
@@ -385,6 +441,17 @@ r2 §2.7 的起因「glm 连续三轮回退」能在 M10 计划的三次运行�
 | 11 | agy g4 嵌套（全局根） | 01:37:37～01:38:20 | 0 |
 | 12 | agy g5 参数到达（全局根） | 01:49:05～01:49:31 | 0 |
 
+**zcode 补测的调用**（2026-09-25 续，用户另行授权直接调用 zcode，不计入上面 agy / codex 的上限）：
+
+| # | 用途 | 起止（UTC） | 退出码 |
+| :--- | :--- | :--- | :--- |
+| z0 | 加载面首跑：P-28 找不到内置 provider 配置，请求未发出 | 02:42:32～02:42:33 | 1 |
+| z1 | 加载面（`/skill dualtest`） | 02:43:06～02:43:22 | 0 |
+| z2 | 命令行信任：已信任夹具 | 02:44:09～02:44:26 | 0 |
+| z3 | 命令行信任：未信任夹具 | 02:44:26～02:44:38 | 0 |
+
+另有 `zcode skills list --json` 2 次（零配额，其中 1 次在 z0 同一脚本里），以及用户在桌面端操作的会话：3.1.1 的第 1～5 步，3.1.2 的两次 `Agent` 派发。
+
 **不耗模型配额的调用**（不计入上限）：`codex debug prompt-input` 6 次；`agy models` / `agy agents` 各 2 次（空 fakehome 一轮、拷入 token 文件一轮）；`security list-keychains` / `default-keychain` 只读核对。
 
 **隔离与清理**：每臂一个 `fs.mkdtemp(os.tmpdir()/m10b-probe-*)` 目录，脚本末尾断言目标在 `os.tmpdir()` 下且前缀是 `m10b-probe-` 后，只删这个返回值；实验脚本里不引用项目的清理助手。
@@ -418,7 +485,15 @@ agy 模型在真实 `HOME` 下执行命令的输出替换成 `<已省略…>`（
 8. **zcode 的 Hook 能拒写，但 L1 有三个前提**（§3.5）：工作区信任、不超时、写工具在 matcher 覆盖内。其中「信任前放行」「超时放行」都是静默的；第 3 步的 L1 / L2 定级与文档要把这三条写进边界。`hooks_deny_ok` 的取值路径 (a) / (b) 待用户在进入第 3 步前拍板。
 9. **ZCode 的 Hook 配置不能照抄 Claude Code 的形态**（§3.1.1）：要写 `hooks.enabled: true`，事件放在 `hooks.events` 下，文件是 `<项目>/.zcode/config.json`（或 `zcode.json`）。第 3 步 `hooks --agent` 渲染 zcode 目标时按这个形态。
 10. **会话 ID 不进 shell 工具环境**（§3.4 问题 2）：r5 §4.3.2 设想的「经 `--session-id` 传进 `topic claim` / `review --start` / `approve`」在 zcode 上拿不到值，只能由 Hook 侧取，或者不传。
-11. **J4 的载体证据要当场拷走**（§3.4 行 3′）：rollout 只留最近 3 个会话。
+11. **J4 的载体证据要当场拷走**（§3.4 行 3′）：rollout 只留最近 3 个会话。用户 2026-09-25 定按本报告的建议处理，J4 剧本（第 4 步）要写成硬性步骤：
+    ① 会话一结束就把该会话的 `model-io-sess_<id>.jsonl` **连同子代理的 `model-io-sess_subagent_*`**（§3.1.2）拷进 evidence；
+    ② 拷完之前**不跑任何 zcode 调用**，包括 `preflight` / `doctor` 的认证探活与审查运行，它们各占一个名额；
+    ③ 同一会话续用也会丢记录：被挤掉后续用会新建一份只含新内容的文件（§3.1.2 的观察），所以一个剧本轮次内不要中途切出去跑别的 zcode；
+    ④ 入仓只收摘录（工具调用、用户消息、`model`），不收全文与系统提示。
 12. **写类工具两源互不包含**（§3.2.1）：`mcp__node_repl__js` 这类外挂写工具在 L1 下是漏口；ApplyPatch 在 GLM-5.3 桌面会话里不暴露，输入键仍未知。
 
-**第 1 步仍未测的 zcode 格**：加载面（两根各放哨兵、真实调用一次，r5 §4.3.1）；ApplyPatch 的输入键；`Agent` 子代理里的工具调用过不过工作区 Hook；headless 下工作区 Hook 的信任行为。
+13. **zcode 同名 skill 由 `~/.zcode/skills` 胜出、不告警**（§3.6）：入口资产装 `~/.zcode/skills` 时，宿主机 `~/.agents/skills` 里的同名项不会盖过它，但两份都对模型可见；r2 §3.2.2 把 `~/.agents/skills` 钉为禁装目标与此一致，查重名仍有意义。ZCode 调 skill 的写法是 `/skill <名字> <参数>`，参数以「User request」原文到达，`$ARGUMENTS` 不替换，与 agy、codex 同形（§1.4、§2.2），第 2 步单源渲染可以三家共用「从用户消息取参数」的正文。
+14. **L1 的第五个前提：子代理不过工作区 Hook**（§3.1.2）；**命令行模式下工作区 Hook 整体关闭**（§3.1.2）。glm Driver 的 L1 只在「桌面端、已信任、主代理、matcher 覆盖、不超时」时成立；§6.1 的通过条件与 L1 / L2 文档要写全这五条。
+15. **ApplyPatch 静态已答、行为 null**（§3.2 第 3 条）：只在 OpenAI Responses 类 provider 下出现，路径嵌在 `operation.path`，本仓 `extractTargetPath` 取不到。
+
+**第 1 步 zcode 各格**：2026-09-25 续测后，r5 §4.3.1～§4.3.4 列的格都有了读数；其中 ApplyPatch 输入键只有静态读数（本机无从实测）。§3.5 的取值路径用户已拍板 (a)，工程量估算留到第 3 步开工时做。
