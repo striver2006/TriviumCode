@@ -17,7 +17,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
+import { DEFAULT_DRIVER, type AgentId, type GuardLevel } from './agents/registry.js';
 import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
 import { readRunMeta, readTask, type TaskMeta } from './meta.js';
 import { loadRoundReviews } from './gate.js';
@@ -44,6 +44,13 @@ export interface RoundReport {
    * 三侧全成还是只选了一侧（AC-22）。
    */
   criticsSelected: CriticId[];
+  /** 当轮 Driver（留痕原值；读不到元数据时为 null） */
+  driver: AgentId | null;
+  /**
+   * 当轮 Driver 在这次运行时的有效护栏等级（M10b 第 3 步 B1，`run.v2` 的可选字段 `driver_guard_level`）。
+   * 早于该步的留痕没有它，记 null、渲染为「—」——不补成 L1，缺失即「无从得知」。
+   */
+  driverGuardLevel: GuardLevel | null;
   degradedReason: string | null;
   /** 逐侧：生效模型、状态、耗时、意见数 */
   sides: {
@@ -180,6 +187,8 @@ async function buildRound(
     status: null,
     reviewMode: null,
     criticsSelected: [],
+    driver: null,
+    driverGuardLevel: null,
     degradedReason: null,
     sides: [],
     severity: zeroSeverity(),
@@ -207,6 +216,8 @@ async function buildRound(
   base.status = meta.status;
   base.reviewMode = meta.review_mode;
   base.criticsSelected = [...meta.critics_selected];
+  base.driver = meta.driver;
+  base.driverGuardLevel = meta.driver_guard_level ?? null;
   base.degradedReason = meta.degraded_reason;
 
   const { reviews, notes: reviewNotes } = await loadRoundReviews(layout, stage, runId);
@@ -442,14 +453,15 @@ export function renderTopicReport(r: TopicReport): string {
   L.push(
     '## 一、时间线',
     '',
-    '| 阶段 | 轮 | 运行 | 起始 | 状态 | 审核者 | 完成度 | 耗时（较慢侧） |',
-    '| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
+    '| 阶段 | 轮 | 运行 | 起始 | 状态 | Driver（护栏） | 审核者 | 完成度 | 耗时（较慢侧） |',
+    '| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
   );
   for (const d of r.rounds) {
     const slowest = d.sides.reduce((a, s) => Math.max(a, s.durationS), 0);
     L.push(
       `| ${d.stage} | r${d.rerunIndex} | \`${d.runId}\` | ${d.startedAt ?? '—'} | ` +
-        `${d.status ?? '—'} | ${d.criticsSelected.join('、') || '—'} | ` +
+        `${d.status ?? '—'} | ${d.driver ?? '—'}（${d.driverGuardLevel ?? '—'}） | ` +
+        `${d.criticsSelected.join('、') || '—'} | ` +
         `${d.reviewMode ?? '—'}${d.degradedReason ? `（${d.degradedReason}）` : ''} | ` +
         `${Math.round(slowest)}s |`,
     );

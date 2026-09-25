@@ -25,6 +25,7 @@ import { exists } from './util/fsx.js';
 import { isGitRepo } from './util/git.js';
 import { run } from './util/exec.js';
 import { step } from './util/log.js';
+import { describeGuard, effectiveGuardLevel } from './hook-config.js';
 
 /**
  * 预检范围。`all` **不是** `Stage`——它不是一个审查阶段，
@@ -94,18 +95,6 @@ export interface PreflightOptions {
   critics?: readonly CriticId[];
   /** 当轮 Driver（M9 第 5 步）。缺省即注册表缺省值，此时不打提示 */
   driver?: AgentId;
-  /**
-   * 该 Driver 是否已启用为 Driver；**只有显式 `true` 才按「已启用」呈现**。
-   *
-   * 缺省取**保守**的一侧（第 3 轮 CODEX-04）：这个字段的存在理由是 M9 的
-   * 「只校验已登记，放行但如实标注」，那条口径只能靠留痕与提示兜住。
-   * M10a 第 3 步起入口（`resolveDriver`）对未启用者退 64，**生产路径上传进来的恒为 true**；
-   * false 那一臂只剩注入测试会走到，保留它是因为本函数按参数渲染、不自己查表。
-   * 上一版把 `undefined` 与 `true` 一并当作「已启用」，于是任何新调用方
-   * 传了 `driver` 却忘了 `driverEnabled`，那半句保留话术会**静默消失**——
-   * 而「少说一句」正是这个字段最不该有的失败方式。
-   */
-  driverEnabled?: boolean;
   /**
    * ④″ 副本源检查用的适配器表（EV-123）。**只为可测性**，缺省取 `realAdapters()`。
    * **只喂给 ④″**：④ 只读能力与 ⑧ 探活都不读它，仍按真实适配器走——
@@ -723,17 +712,26 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
    * 都消费 `r.checks`：单独 print 只有人读那条看得见。
    *
    * 缺省 Driver 时不推：那是绝大多数运行的形态，每次都打一行等于没打。
+   *
+   * **M10b 第 3 步（B1，r5 §6.2、r10 §3.3）起这一行带上护栏等级**，文案与入口资产注入段同源（`describeGuard`）。
+   * 缺省 Driver 仍不推——**除非它登记为 L1 而 Hook 配置当前不在场**：那时有效等级降为 L2，
+   * 写入没有事前拦截，而入口资产告诉执笔者的是 L1。这一格标 `warn`、以 ⚠️ 起头，由 skill 念给用户。
+   *
+   * 原先还有一支「本次声明的 Driver 尚未启用为 Driver，该值仅用于选侧判定」：M10a 第 3 步起
+   * `resolveDriver` 对未启用者退 64，生产路径上走不到它，本步删除（r5 §6.2 末段），`driverEnabled` 入参随之去掉。
    */
   const driver = opts.driver ?? DEFAULT_DRIVER;
-  if (driver !== DEFAULT_DRIVER) {
-    checks.push({
-      name: '当轮 Driver',
-      ok: true,
-      // 缺省走保守侧：不是显式 true 就带上保留话术（第 3 轮 CODEX-04）
-      detail: opts.driverEnabled === true
-        ? driver
-        : `${driver}（本次声明的 Driver 尚未启用为 Driver，该值仅用于选侧判定）`,
-    });
+  const driverAgent = agentById(driver);
+  if (driverAgent) {
+    const guard = await effectiveGuardLevel(ctx.projectRoot, driverAgent);
+    if (driver !== DEFAULT_DRIVER || guard.downgraded) {
+      checks.push({
+        name: '当轮 Driver',
+        ok: true,
+        detail: `${guard.downgraded ? '⚠️ ' : ''}${driver} · 护栏 ${describeGuard(driverAgent, guard)}`,
+        ...(guard.downgraded ? { warn: true as const } : {}),
+      });
+    }
   }
 
   // ① 探针新鲜度（过期即快速失败，不拉 doctor）

@@ -15,6 +15,7 @@ import { type StubConfig } from '../../src/trivium/adapters/stub.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import type { RunMeta } from '../../src/trivium/types.js';
+import { AGENTS, DEFAULT_DRIVER, entryCommandOf, guardProfileOf } from '../../src/trivium/agents/registry.js';
 import { loadCtx } from '../../src/trivium/config.js';
 import { hookPreCommit } from '../../src/trivium/hooks.js';
 import { headSha } from '../../src/trivium/util/git.js';
@@ -257,8 +258,17 @@ test('归档外被审对象（--plan-file doc/…）不登记，run.json 与 gat
   assert.equal(aw.code, EXIT.OK, `--await-approval 应成功：\n${aw.stdout}\n${aw.stderr}`);
   const awCand = extractJsonCandidate(aw.stdout);
   assert.ok(awCand, `--await-approval --json 未产出 JSON：\n${aw.stdout}`);
-  const awJs = JSON.parse(awCand.json) as { state: string; warnings?: Array<{ code: string; message: string }> };
+  const awJs = JSON.parse(awCand.json) as {
+    state: string; message: string; warnings?: Array<{ code: string; message: string }>;
+  };
   assert.equal(awJs.state, 'awaiting_approval');
+  /*
+   * 停点话术按当轮 Driver 的有效护栏等级措辞（M10b 第 3 步）：缺省 Driver 登记 L1，
+   * 但夹具没有 `.claude/settings.json`，本次按 L2 计——不得再说「Hook 会拦下」。
+   */
+  assert.doesNotMatch(awJs.message, /Hook 会拦下/, `Hook 配置不在场时不得宣称会拦：\n${awJs.message}`);
+  assert.match(awJs.message, /Hook 配置不在场（登记 L1，本次按 L2 计）/);
+  assert.match(awJs.message, new RegExp(`通过：${entryCommandOf(DEFAULT_DRIVER, 'dual-approve').replace('$', '\\$')} --topic`));
   assert.ok(
     (awJs.warnings ?? []).some((w) => w.code === 'run_warning' && w.message.includes('本轮原稿不在保护集')),
     `审批停点必须带出运行期告警：${JSON.stringify(awJs.warnings)}`,
@@ -755,6 +765,58 @@ test('--critics 单侧：真的只跑那一侧，且不记降级（AC-22 的核�
     );
   });
 
+/*
+ * 停点话术按**当轮 Driver** 措辞（M10b 第 3 步；第 2 步薄冒烟核出：对 glm 仍写「Hook 会拦下」，
+ * 对 codex 仍写 `/dual-approve`）。取一家调用写法**不是** `/` 起头、且没有 Hook 的 Driver
+ * （由注册表派生，今天是 codex），走一整轮到停点：两处都必须换成它的。
+ */
+test('停点话术：调用写法与「不得修改业务文件」都按当轮 Driver（非缺省、无 Hook、非斜杠写法）',
+  { skip: bundleMissing && bundleSkipReason }, async () => {
+    const drv = AGENTS.find((a) => a.driverEnabled && !a.entryInvocation.startsWith('/') && guardProfileOf(a) === 'l2-none');
+    assert.ok(drv, '前提：注册表里有一家非斜杠写法、没有 Hook 的 Driver');
+    const { root, meta } = await runInjected(
+      { gemini: { mode: 'ok' }, glm: { mode: 'ok' } },
+      ['--driver', drv.id],
+      [],
+      async (r) => {
+        const planDir = path.join(r, '.reviews', TOPIC, 'plan');
+        /*
+         * 夹具的缺省原稿带缺省 Driver 的后缀；换了 Driver 之后它不是本轮原稿，会被当成一份他家工件、
+         * 把轮次抬成 r2（driver-flag 的用例因同一原因用 `draft: false`）。这里换成当轮 Driver 的原稿。
+         */
+        await fs.rm(path.join(planDir, `${today()}-${TOPIC}-${DEFAULT_DRIVER}.md`));
+        await fs.writeFile(path.join(planDir, `${today()}-${TOPIC}-${drv.id}.md`), `# ${drv.id} 执笔的原稿\n`, 'utf8');
+      },
+    );
+    assert.equal(meta.driver, drv.id);
+    assert.equal(meta.driver_guard_level, 'L2');
+    await fs.writeFile(
+      path.join(root, '.reviews', TOPIC, 'plan', `${today()}-${TOPIC}-revised-${drv.id}.md`),
+      [
+        '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
+        `role: ${drv.id}`, 'kind: revised', `run_id: ${meta.run_id}`,
+        'addresses:', '  - AGY-01', '  - GLM-01',
+        '---', '',
+        '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
+        '| :--- | :--- | :--- | :--- | :--- | :--- |',
+        '| AGY-01 | gemini | blocker | 接受 | 确实漏了这一处，需要补 | §1 |',
+        '| GLM-01 | glm | blocker | 接受 | 同一处问题，一并补上 | §1 |',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const aw = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--json']);
+    assert.equal(aw.code, EXIT.OK, `--await-approval 应成功：\n${aw.stdout}\n${aw.stderr}`);
+    const msg = (JSON.parse(extractJsonCandidate(aw.stdout)!.json) as { message: string }).message;
+    const approve = entryCommandOf(drv.id, 'dual-approve');
+    assert.ok(!approve.startsWith('/'), approve);
+    assert.ok(msg.includes(`通过：${approve} --topic`), `调用写法要换成当轮 Driver 的：\n${msg}`);
+    assert.ok(msg.includes(`放弃：${entryCommandOf(drv.id, 'dual-abandon')} --topic`), msg);
+    assert.doesNotMatch(msg, /\/dual-approve/, '不得残留斜杠写法');
+    assert.doesNotMatch(msg, /Hook 会拦下/, '没有 Hook 的载体不得宣称会拦');
+    assert.match(msg, /本载体没有 Hook 拦截（L2），全靠你自觉/);
+  });
+
 test('缺省（不给 --critics）：仍按 default_critics 跑满两侧',
   { skip: bundleMissing && bundleSkipReason }, async () => {
     // 与上一条成对：只有单侧用例的话，「永远只跑第一侧」的实现也能过
@@ -762,6 +824,11 @@ test('缺省（不给 --critics）：仍按 default_critics 跑满两侧',
     assert.deepEqual(meta.critics_selected, ['gemini', 'glm']);
     assert.deepEqual(Object.keys(meta.critics).sort(), ['gemini', 'glm']);
     assert.equal(meta.review_mode, 'full');
+    /*
+     * 有效护栏等级落进留痕（M10b 第 3 步 B1）：缺省 Driver 登记 L1，但夹具没有 `.claude/settings.json`，
+     * Hook 配置不在场 ⇒ 本次运行记 L2。钉的是「真实运行路径上写了这个字段、而且写的是运行时的事实」。
+     */
+    assert.equal(meta.driver_guard_level, 'L2');
   });
 
 /*

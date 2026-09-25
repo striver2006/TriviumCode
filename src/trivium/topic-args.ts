@@ -11,7 +11,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { ALL_AGENT_IDS, DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER, entryCommandOf, type AgentId } from './agents/registry.js';
 import type { CriticId, Ctx, Stage } from './types.js';
 import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
 import { validateTopic, parseArtifactName } from './naming.js';
@@ -439,7 +439,8 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
       EXIT.USAGE,
       '缺少审查焦点：命令 B/C/D 必须写明本次重点看什么（FR-20）。\n' +
         '  焦点会逐字进入两侧送审材料，是 AC-09 的验收落点。\n' +
-        '  写法：/dual-review-<plan|code|bug> <本次重点看什么>\n' +
+        // 调用写法按本次声明的 Driver（入口资产恒显式注入 --driver；缺席取缺省 Driver，代码双审 r3 GLM-03）
+        `  写法：${entryCommandOf(explicitDriver, 'dual-review-<plan|code|bug>')} <本次重点看什么>\n` +
         '  也可显式：<任务目标> --focus <本次重点看什么>',
     );
   }

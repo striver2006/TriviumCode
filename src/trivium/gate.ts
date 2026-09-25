@@ -7,7 +7,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { DEFAULT_DRIVER, findingPrefixAlternation, type AgentId } from './agents/registry.js';
+import { DEFAULT_DRIVER, entryCommandOf, findingPrefixAlternation, type AgentId } from './agents/registry.js';
 import { DEFAULT_CRITICS, VOIDING_DENY_CATEGORIES, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
 import { checkRecordedArtifacts, listStageArtifacts, metaDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
@@ -377,7 +377,8 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
          * 的恢复指引同源。
          */
         '该文件已丢失或被改动：请在终端里用 `git restore <路径>` 恢复（会话里的常规写法会被 Hook 拦下）。' +
-        '也可以重跑一轮（既有工件不受影响，`-r<N>` 自动抬升），但重跑与 `/dual-abandon` ' +
+        // 调用写法按当轮 Driver（代码双审 r3 GLM-03）
+        `也可以重跑一轮（既有工件不受影响，\`-r<N>\` 自动抬升），但重跑与 \`${entryCommandOf(input.driver, 'dual-abandon')}\` ` +
         '都解不开提交锚（它们不动已登记的工件），恢复仍是必经步骤。',
     });
   }
@@ -970,7 +971,11 @@ export async function verifyRoundForApproval(i: ApprovalCheckInput): Promise<App
  * 这里拿不到 git 状态，所以两档并列写清，不猜。提交锚那份文案面对的是「已提交」为主的时点，
  * 两份措辞因此不同，分叉登记在 M10a 第 3 步测试报告偏差 3。
  */
-export function renderTamperedArtifacts(tampered: readonly TamperedArtifact[]): string {
+export function renderTamperedArtifacts(
+  tampered: readonly TamperedArtifact[],
+  /** 当轮 Driver：出口里的调用写法按它取（代码双审 r3 GLM-03）；缺省按缺省 Driver */
+  driver?: string | null,
+): string {
   if (tampered.length === 0) return '';
   const lines = tampered.map((t) =>
     t.kind === 'missing'
@@ -982,7 +987,7 @@ export function renderTamperedArtifacts(tampered: readonly TamperedArtifact[]): 
     lines.join('\n') +
     '\n  已落盘的审查工件不得删除或改动。出口按工件在 git 里的状态分两档（这里拿不到 git 状态，两档都写）：' +
     '\n  · **尚未提交过的（审批停点上的常态）或已丢失的**：没有副本可恢复——`git restore` 对未跟踪路径会直接失败。' +
-    '\n    出口是 `/dual-abandon` 作废这一轮后重跑；重跑按 -r<N> 抬升，既有工件一律不覆盖，不需要先删。' +
+    `\n    出口是 \`${entryCommandOf(driver, 'dual-abandon')}\` 作废这一轮后重跑；重跑按 -r<N> 抬升，既有工件一律不覆盖，不需要先删。` +
     '\n  · **已提交过的**：可用 `git restore <路径>` 恢复，**这一步请在终端里手动执行**——常规写法在会话里' +
     '\n    会被 hook-pre-bash 拦下；那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。'
   );

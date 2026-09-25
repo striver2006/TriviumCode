@@ -581,6 +581,25 @@ test('软链：两个方向都拦得住', async () => {
   );
 });
 
+/*
+ * ZCode Hook 负载的路径形态（M10b 第 3 步，r9 §3.4「实现时加一条用例钉住」）：第 1 步实测里
+ * `cwd` / `CLAUDE_PROJECT_DIR` 是 `/tmp/…` 形态，`file_path` 却是 `/private/tmp/…` 形态——
+ * 项目根取词法路径、目标取真实路径。判定靠「词法与 realpath 并集」接住它；这里钉住那一格。
+ * 本机的 `os.tmpdir()` 本身就在一条系统软链下（macOS 的 `/var` → `/private/var`），夹具据此构造；
+ * 没有这条软链的系统上两种形态相同，用例退化为普通断言、不失去意义。
+ */
+test('项目根是词法路径、写入目标是 realpath 形态（ZCode 负载的形态）：照样拦', async () => {
+  const ctx = await fakeCtx();
+  await fs.mkdir(path.join(ctx.archiveRoot, 't/plan'), { recursive: true });
+  const realRoot = await fs.realpath(ctx.projectRoot);
+  const target = path.join(realRoot, '.reviews/t/plan/2026-09-25-t-gemini.md');
+  assert.equal(
+    isForgedRoleFile(target, ctx.projectRoot, ctx.archiveRoot, DEFAULT_DRIVER),
+    true,
+    `项目根 ${ctx.projectRoot}、目标 ${target}：两种形态混用时不得判成「归档外」而放行`,
+  );
+});
+
 test('归档根不可解析时，归档内的后缀写入仍被拦', async () => {
   /*
    * 审查意见 GLM-r2-03：realpath 失败若让异常外泄，runHook 的兜底 catch 会

@@ -15,7 +15,7 @@ import { writeAtomic } from './util/fsx.js';
 import { topicDir, type ArchiveLayout } from './archive.js';
 import { withTopicLock } from './lock.js';
 import { validateRunMeta, validateRunMetaV1 } from './schemas.js';
-import { DEFAULT_DRIVER } from './agents/registry.js';
+import { DEFAULT_DRIVER, type GuardLevel } from './agents/registry.js';
 import { warn } from './util/log.js';
 
 /** `updateTask` 的短临界区参数 */
@@ -302,6 +302,11 @@ export interface NewRunMetaInput {
    * 不进 `required`、不加 `if/then`。
    */
   driverEnabled?: boolean;
+  /**
+   * 当轮 Driver 的有效护栏等级（M10b 第 3 步 B1）。可选：旧调用方与测试夹具不传时不写这个字段，
+   * 留痕里「缺失」即「无从得知」——不在这里替它补一个 L1，那等于替没检查过的运行作证。
+   */
+  driverGuardLevel?: GuardLevel;
   /** 本轮入选的审核者集合。**必填**：它是「本该跑几侧」的唯一事实来源 */
   criticsSelected: readonly CriticId[];
   treeHash: string;
@@ -330,6 +335,7 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     // 恒写：缺省 Driver 那一路也要有值，否则「字段缺失」既可能是旧留痕、
     // 也可能是本步漏传，事后分不开（口径与 profile_requested / model_provider 同源）
     driver_enabled: i.driverEnabled ?? true,
+    ...(i.driverGuardLevel !== undefined ? { driver_guard_level: i.driverGuardLevel } : {}),
     critics_selected: [...i.criticsSelected],
     snapshot: {
       git_head: i.gitHead,

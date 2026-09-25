@@ -11,6 +11,7 @@ import { acceptanceRate, buildTopicReport, renderTopicReport, type RoundReport }
 import { newRunMeta, writeRunMeta, registerRun, type TaskMeta } from '../../src/trivium/meta.js';
 import { writeArtifact, writeMeta, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { CRITICS, type Review } from '../../src/trivium/types.js';
+import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
 
 /**
  * 主题级复盘（设计 §5.1 / §9.3 / §15.2）。
@@ -65,6 +66,7 @@ async function seedRound(
     glmFailed?: boolean;
     usage?: Record<string, unknown>;
     drift?: boolean;
+    guardLevel?: 'L1' | 'L2';
   },
 ) {
   const meta = newRunMeta({
@@ -72,6 +74,7 @@ async function seedRound(
     command: 'test', promptHint: '焦点', taskGoal: null, criticsSelected: CRITICS,
     treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S',
     denyPaths: [], driftPolicy: 'warn',
+    ...(opts.guardLevel ? { driverGuardLevel: opts.guardLevel } : {}),
   });
   if (opts.drift) meta.snapshot.drift = { changed: true, files: ['x.ts'], policy: 'warn' };
 
@@ -148,6 +151,26 @@ test('一轮双审：时间线、意见数、严重度分布、生效模型齐�
   const md = renderTopicReport(r);
   assert.match(md, /plan r1/);
   assert.match(md, /provider\/GLM-x/, '生效模型须是回读值');
+});
+
+test('时间线带「Driver（护栏）」列：留痕有等级就写等级，旧留痕没有就写「—」，不补成 L1（B1）', async () => {
+  const l = await archive();
+  await seedRound(l, {
+    rerunIndex: 1, runId: 'R1', guardLevel: 'L2',
+    gemini: review(['src/a.ts:10']), glm: review(['src/b.ts:1'], [], 'GLM'),
+  });
+  await seedRound(l, {
+    rerunIndex: 2, runId: 'R2',
+    gemini: review(['src/a.ts:10']), glm: review(['src/b.ts:1'], [], 'GLM'),
+  });
+  const r = await buildTopicReport(l);
+  const [r1, r2] = r.rounds;
+  assert.deepEqual([r1!.driver, r1!.driverGuardLevel], [DEFAULT_DRIVER, 'L2']);
+  assert.deepEqual([r2!.driver, r2!.driverGuardLevel], [DEFAULT_DRIVER, null], '缺失即「无从得知」');
+  const md = renderTopicReport(r);
+  assert.match(md, /\| Driver（护栏） \|/);
+  assert.match(md, new RegExp(`\\| \`R1\` \\|.*\\| ${DEFAULT_DRIVER}（L2） \\|`));
+  assert.match(md, new RegExp(`\\| \`R2\` \\|.*\\| ${DEFAULT_DRIVER}（—） \\|`));
 });
 
 test('归一化后的重合度进表，且未归一化值一并给出', async () => {

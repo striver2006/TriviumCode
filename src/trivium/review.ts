@@ -69,6 +69,7 @@ import {
 } from './exit-codes.js';
 import { checkModelSlugs } from './preflight.js';
 import { say, step, warn } from './util/log.js';
+import { effectiveGuardLevel } from './hook-config.js';
 
 /** 任务目标进 BRIEF 只占一行，不是正文——超长就截断，别把第 4 段挤成一篇文章 */
 const TASK_GOAL_MAX = 200;
@@ -557,7 +558,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    * `resolveDriver`（M10a 第 3 步起退 64），本函数依赖的是「入口已经拦过」。
    */
   const driver: AgentId = opts.driver ?? DEFAULT_DRIVER;
-  const driverEnabled = agentById(driver)?.driverEnabled ?? false;
+  const driverAgent = agentById(driver);
+  const driverEnabled = driverAgent?.driverEnabled ?? false;
 
   // 回落分支也要传 driver：否则「没给 critics」这条路上 Driver 排除按缺省判，
   // 非缺省 Driver 会被漏放进入选集合（计划双审 r2 CODEX-11）
@@ -924,6 +926,11 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
      */
     driver,
     driverEnabled,
+    /*
+     * 有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而 Hook 配置当前不在场即记 L2。
+     * 在这里取，而不是信预检那一次：预检与 `--start` 之间配置可能被改，留痕要记的是**本次运行时**的事实。
+     */
+    ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),
     treeHash: primarySnap.treeHash,
     gitHead: primarySnap.gitHead,
     dirty: primarySnap.dirty,

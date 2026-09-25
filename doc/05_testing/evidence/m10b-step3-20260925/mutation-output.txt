@@ -1,0 +1,168 @@
+✓ 工作树干净、基线全绿（7 个套件）
+  H1 ✓ 咬住（fail=2）
+  H2 ✓ 咬住（fail=1）
+  H3 ✓ 咬住（fail=1）
+  H4 ✓ 咬住（fail=1）
+  H5 ✓ 咬住（fail=1）
+  H6 ✓ 咬住（fail=1）
+  H7 ✓ 咬住（fail=1）
+  H8 ✓ 咬住（fail=1）
+  H9 ✓ 咬住（fail=1）
+  H10 ✓ 咬住（fail=1）
+  H11 ✓ 咬住（fail=2）
+  H12 ✓ 咬住（fail=2）
+  H13 ✓ 咬住（fail=1）
+  H14 ✓ 咬住（fail=1）
+  H15 ✓ 咬住（fail=1）
+  H16 ✓ 咬住（fail=1）
+  H17 ✓ 咬住（fail=1）
+  H18 ✓ 咬住（fail=1）
+  H19 ✓ 咬住（fail=1）
+  H20 ✓ 咬住（fail=1）
+  H21 ✓ 咬住（fail=1）
+  H22 ✓ 咬住（fail=1）
+  H23 ✓ 咬住（fail=1）
+{
+  "总数": 23,
+  "咬住": 23,
+  "逐条": [
+    {
+      "id": "H1",
+      "desc": "ZCode 工具名单混进 NotebookEdit ⇒「渲染：zcode-config 形态……」红",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "H2",
+      "desc": "超时不换算成 timeoutMs（照搬 timeout 秒）⇒ 渲染用例红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H3",
+      "desc": "护栏失效提示仍点名 Claude 的配置文件 ⇒ 渲染用例红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H4",
+      "desc": "显式 enabled: false 也被翻回 true（停用态被重跑覆盖）⇒「保留用户已有……显式 enabled: false 不翻回」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H5",
+      "desc": "ZCode 在场判定不看 hooks.enabled ⇒「hooks.enabled 不为 true ⇒ false」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H6",
+      "desc": "必需集去掉 pre-bash ⇒「缺 pre-bash 一道 ⇒ false」红（代码双审 r3 后必需集改为四道，本条改写）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H7",
+      "desc": "有效等级永不降级 ⇒ hook-config 与预检的降级用例红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H8",
+      "desc": "缺省 Driver 恒打护栏行 ⇒「缺省 Driver、Hook 配置在场 ⇒ 不打这行」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H9",
+      "desc": "缺省 Driver 降级时不打（回到只看非缺省）⇒「登记 L1 而 Hook 配置不在场 ⇒ 降为 L2」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H10",
+      "desc": "init 只合并 Claude 形态的一家 ⇒ 集成「init：两家的 Hook 配置一起合并」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H11",
+      "desc": "hooks --agent 忽略指定的家、两家一起写 ⇒ 集成「只写该家的配置，不碰 Claude 的」红",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "H12",
+      "desc": "review 不把有效等级写进 run.json ⇒ 集成「缺省（不给 --critics）……」红",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "H13",
+      "desc": "newRunMeta 缺省补 L1（替没检查过的运行作证）⇒ run-meta「不传不补」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H14",
+      "desc": "report 不读 driver_guard_level ⇒「时间线带 Driver（护栏）列」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H15",
+      "desc": "合并不按 gate hook-<name> 识别同一条（重跑叠加、升级不替换）⇒ 幂等与升级用例红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H16",
+      "desc": "必需集去掉 Stop（代码双审 r3 CODEX-01 的原形）⇒「单独摘掉 Stop 或 pre-commit 也 ⇒ false」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H17",
+      "desc": "必需集去掉 pre-commit（CODEX-01）⇒ 同上红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H18",
+      "desc": "不看 disableAllHooks（GLM-01 ①的原形）⇒「disableAllHooks……」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H19",
+      "desc": "只看项目层的 disableAllHooks、不认 local 层优先（GLM-01）⇒ 同上红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H20",
+      "desc": "不校验 hooks 键形态（GLM-02 的原形）⇒「嵌套键形态不对……」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H21",
+      "desc": "ZCode 渲染不校验事件名（GLM-04 的原形）⇒「事件名不在 ZCode 的事件枚举里 ⇒ 当场抛」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H22",
+      "desc": "dry-run 仍说「已写入 / 已备份」（CODEX-04 的原形之一）⇒ dry-run 用例红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H23",
+      "desc": "不检测 .gitignore 忽略（CODEX-03 ≡ GLM-05 的原形）⇒「配置被 .gitignore 忽略时如实说……」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

@@ -1,0 +1,2575 @@
+# trivium changes.diff
+# run_id: 20260925T134359Z
+# base: HEAD
+# head: 6521c872aec3850bf9bb6a1a08945ef356ae6b79
+# files: 33
+#   doc/05_testing/REPORT_2026-09-25_m10b_step3.md
+#   doc/05_testing/evidence/m10b-step3-20260925/mutation-output-2.txt
+#   doc/05_testing/evidence/m10b-step3-20260925/mutation-output-run1.txt
+#   doc/05_testing/evidence/m10b-step3-20260925/mutation-output.txt
+#   doc/05_testing/evidence/m10b-step3-20260925/mutation-spec-2.json
+#   doc/05_testing/evidence/m10b-step3-20260925/mutation-spec.json
+#   doc/05_testing/evidence/m10b-step3-20260925/run.mjs
+#   skills-src/carriers/claude.yaml
+#   skills-src/carriers/codex.yaml
+#   skills-src/carriers/gemini.yaml
+#   skills-src/carriers/glm.yaml
+#   skills/dual-critic/schema/run.v2.json
+#   src/entry-render.ts
+#   src/trivium/agents/registry.ts
+#   src/trivium/cli.ts
+#   src/trivium/hook-config.ts
+#   src/trivium/hooks.ts
+#   src/trivium/init.ts
+#   src/trivium/meta.ts
+#   src/trivium/preflight.ts
+#   src/trivium/report.ts
+#   src/trivium/review.ts
+#   src/trivium/types.ts
+#   test/contract/entry-render-parity.test.ts
+#   test/fixtures/stub-agent-kit/overlay.ts
+#   test/integration/fault-injection.test.ts
+#   test/integration/hooks-command.test.ts
+#   test/unit/hook-config.test.ts
+#   test/unit/hooks.test.ts
+#   test/unit/preflight.test.ts
+#   test/unit/registry-parity.test.ts
+#   test/unit/report.test.ts
+#   test/unit/run-meta.test.ts
+diff --git a/skills-src/carriers/claude.yaml b/skills-src/carriers/claude.yaml
+index 00a21ee..4bedc0f 100644
+--- a/skills-src/carriers/claude.yaml
++++ b/skills-src/carriers/claude.yaml
+@@ -9,5 +9,4 @@ layout: top
+ frontmatter: [name, description, argument-hint, disable-model-invocation, allowed-tools]
+ # substitute：载体会把 $ARGUMENTS 替换成参数原文；transcribe：载体不替换，由模型按转抄规约拼参数
+ arguments: substitute
+-# 本载体调用入口 skill 的写法，{name} 换成命令名（第 1 步报告 §1.3 / §2.2 / §3.6；r9 §2.5 表）
+-invocation: /{name}
++# 调用入口 skill 的写法登记在注册表 entryInvocation（M10b 第 3 步迁入：CLI 的停点话术也要用它）
+diff --git a/skills-src/carriers/codex.yaml b/skills-src/carriers/codex.yaml
+index f159423..777a2a2 100644
+--- a/skills-src/carriers/codex.yaml
++++ b/skills-src/carriers/codex.yaml
+@@ -8,5 +8,4 @@ layout: entry
+ # 只输出实测过的两个键（第 1 步各臂哨兵都是这个形态）；argument-hint 改写进正文
+ frontmatter: [name, description]
+ arguments: transcribe
+-# 报告 §2.2：提示词里的显式提及；`/名字` 写法只做过零配额渲染，真实调用未测
+-invocation: ${name}
++# 调用入口 skill 的写法登记在注册表 entryInvocation（M10b 第 3 步迁入：CLI 的停点话术也要用它）
+diff --git a/skills-src/carriers/gemini.yaml b/skills-src/carriers/gemini.yaml
+index 65c718c..fba7e89 100644
+--- a/skills-src/carriers/gemini.yaml
++++ b/skills-src/carriers/gemini.yaml
+@@ -7,5 +7,4 @@ agent: gemini
+ layout: entry
+ frontmatter: [name, description]
+ arguments: transcribe
+-# 报告 §1.3：print 模式斜杠展开；交互模式未测
+-invocation: /{name}
++# 调用入口 skill 的写法登记在注册表 entryInvocation（M10b 第 3 步迁入：CLI 的停点话术也要用它）
+diff --git a/skills-src/carriers/glm.yaml b/skills-src/carriers/glm.yaml
+index b52b90f..6af86f9 100644
+--- a/skills-src/carriers/glm.yaml
++++ b/skills-src/carriers/glm.yaml
+@@ -6,7 +6,4 @@ agent: glm
+ layout: entry
+ frontmatter: [name, description]
+ arguments: transcribe
+-# 桌面端写法 `/名字`：第 2 步薄冒烟实测（2026-09-25，ZCode 桌面端，第 2 步报告附录 B）——
+-# `/dual-review-plan 参数` 被转成一次 `Skill` 工具调用，参数逐字进 args。
+-# 命令行 `--prompt` 模式下是 `/skill 名字`（报告 §3.6）；J4 与 Hook 生效的载体都是桌面端，所以产物按桌面端写。
+-invocation: /{name}
++# 调用入口 skill 的写法登记在注册表 entryInvocation（M10b 第 3 步迁入：CLI 的停点话术也要用它）
+diff --git a/skills/dual-critic/schema/run.v2.json b/skills/dual-critic/schema/run.v2.json
+index b9dcdbd..fb24e55 100644
+--- a/skills/dual-critic/schema/run.v2.json
++++ b/skills/dual-critic/schema/run.v2.json
+@@ -80,6 +80,10 @@
+       "type": "boolean",
+       "description": "当轮 Driver 在这次运行时是否已启用为 Driver（M9 第 5 步）。可选：早于该步的留痕没有此字段，缺失即「无从得知」，不等于 false。M9 的 --driver 只校验「已登记」，因此归档里会出现 driver_enabled: false 的合法留痕；M10 把校验收紧之后那些留痕仍要读得回，所以它不进 required，也不加 if/then"
+     },
++    "driver_guard_level": {
++      "enum": ["L1", "L2"],
++      "description": "当轮 Driver 在这次运行时的有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而项目内 Hook 配置不在场即记 L2。可选：早于该步的留痕没有此字段，缺失即「无从得知」，不等于 L1。只看存在性、不看内容——Hook 命令被改、wrapper 被替换这里都看不见"
++    },
+     "critics_selected": {
+       "type": "array",
+       "minItems": 1,
+diff --git a/src/entry-render.ts b/src/entry-render.ts
+index 1656af8..469463b 100644
+--- a/src/entry-render.ts
++++ b/src/entry-render.ts
+@@ -105,14 +105,19 @@ function parseCarrier(file: string, raw: string): Carrier {
+   }
+   const args = doc!['arguments'];
+   if (args !== 'substitute' && args !== 'transcribe') fail('arguments 只能是 substitute 或 transcribe');
+-  const inv = doc!['invocation'];
+-  if (typeof inv !== 'string' || !inv.includes('{name}')) fail('invocation 须为含 {name} 的字符串');
++  /*
++   * 调用写法**不在载体 yaml 里登记**（M10b 第 3 步迁入注册表 `entryInvocation`）：CLI 生成的停点话术也要用它，
++   * 而运行时读不到 `skills-src/`。yaml 里若还写着就当场报错——留着它，两处迟早各改各的。
++   */
++  if (doc!['invocation'] !== undefined) fail('invocation 已迁入注册表（entryInvocation），载体 yaml 里不要再写');
++  const inv = agentById(agent)!.entryInvocation;
++  if (!inv.includes('{name}')) fail(`注册表里 ${agent} 的 entryInvocation 须含 {name}`);
+   return {
+     agent: agent as AgentId,
+     layout: layout as Carrier['layout'],
+     frontmatter: fm as string[],
+     arguments: args as ArgumentMode,
+-    invocation: inv as string,
++    invocation: inv,
+   };
+ }
+ 
+diff --git a/src/trivium/agents/registry.ts b/src/trivium/agents/registry.ts
+index 894500e..1c26594 100644
+--- a/src/trivium/agents/registry.ts
++++ b/src/trivium/agents/registry.ts
+@@ -78,6 +78,23 @@ export const VENDOR_MODEL_FAMILY: Readonly<Record<AgentVendor, RegExp>> = {
+  */
+ export type GuardLevel = 'L1' | 'L2';
+ 
++/**
++ * 项目内 Hook 配置文件的**形态**（M10b 第 3 步，r10 §3.2）。两家同源于 `hooks/hooks.json`，按形态渲染：
++ *
++ *   claude-settings  `.claude/settings.json` 的 `hooks.<事件>[]`，超时字段 `timeout`（秒）
++ *   zcode-config     `.zcode/config.json` 的 `hooks.enabled` + `hooks.events.<事件>[]`，超时字段 `timeoutMs`（毫秒）；
++ *                    缺省 `enabled: false`，工作区要在桌面端信任后 Hook 才跑（第 1 步报告 §3.1.1）
++ *
++ * 形态跟路径登记在同一个字段里（{@link HookConfigTarget}）：路径与形态分两处登记，就是两个事实源。
++ */
++export type HookConfigFormat = 'claude-settings' | 'zcode-config';
++
++export interface HookConfigTarget {
++  /** 相对项目根 */
++  path: string;
++  format: HookConfigFormat;
++}
++
+ /**
+  * 入口 skill 的安装根怎么取（M10b r10 §2.2：各家 skill 根由注册表派生，按该家 CLI 自己的规则取值）。
+  *
+@@ -177,9 +194,9 @@ export interface AgentDescriptor {
+    * TriviumCode Hook 合并进的**项目内**配置文件（相对项目根）；该家没有 Hook 机制则为 null。
+    *
+    * 「有没有」决定入口资产注入哪段护栏文案（{@link guardProfileOf}）；
+-   * glm 的 `.zcode/config.json` 由 M10b 第 3 步的 `trivium hooks --agent glm` 渲染（r10 §3.2）。
++   * 路径与形态由 `hook-config.ts` 消费：`trivium init` 与 `trivium hooks --agent <id>` 按它渲染、合并（M10b 第 3 步，r10 §3.2）。
+    */
+-  hookConfigTarget: string | null;
++  hookConfigTarget: HookConfigTarget | null;
+   /** 协议片段落点（Driver 协议 + 审查员身份两段式） */
+   instructionFiles: readonly string[];
+   /**
+@@ -191,6 +208,14 @@ export interface AgentDescriptor {
+   criticReadsInstructionFiles: boolean;
+   /** 入口 skill 的安装根（M10b 第 2 步多目标安装） */
+   entrySkillRoot: EntrySkillRootSpec;
++  /**
++   * 在本载体里调用入口 skill 的写法，`{name}` 换成命令名（如 `/{name}`、`${name}`）。
++   *
++   * **唯一来源在这里**（M10b 第 3 步由载体 yaml 迁入）：入口资产渲染（`entry-render.ts` 的 `{{cmd:…}}`）
++   * 与 CLI 生成的话术（闸门停点、Hook 拦截提示）都要用它，而装到运行时根的 CLI 读不到仓库里的 `skills-src/`。
++   * 两处各登记一份，就是第 2 步薄冒烟核出的那种错位：停点话术对 codex 写成了 `/dual-approve`。
++   */
++  entryInvocation: string;
+   /**
+    * 该家 CLI **还会读**的其它用户级 skill 根（相对用户主目录）。安装前按「完整读取面」查重名
+    * （r2 §3.2.2）：同名项在这些根里同样会进模型可见清单。
+@@ -234,10 +259,12 @@ export const AGENTS: readonly AgentDescriptor[] = [
+     defaultSelected: false,
+     driverEnabled: true,
+     guardLevel: 'L1',
+-    hookConfigTarget: '.claude/settings.json',
++    hookConfigTarget: { path: '.claude/settings.json', format: 'claude-settings' },
+     instructionFiles: ['CLAUDE.md'],
+     criticReadsInstructionFiles: false, // EV-44：审核者以 --restricted 拉起，读不到项目记忆
+     entrySkillRoot: { homeRel: '.claude', skillsRel: 'skills' },
++    // 第 1 步报告 §1.3 / §2.2 / §3.6；r9 §2.5 表
++    entryInvocation: '/{name}',
+     entrySkillExtraReadRoots: [],
+   },
+   {
+@@ -294,6 +321,8 @@ export const AGENTS: readonly AgentDescriptor[] = [
+     criticReadsInstructionFiles: true,
+     // 与 `adapters/codex-home.ts` 的 `codexHomeOf()` 同口径：CODEX_HOME 优先，未设回落 ~/.codex
+     entrySkillRoot: { homeEnv: 'CODEX_HOME', homeRel: '.codex', skillsRel: 'skills' },
++    // 报告 §2.2：提示词里的显式提及；`/名字` 写法只做过零配额渲染，真实调用未测
++    entryInvocation: '${name}',
+     entrySkillExtraReadRoots: ['.agents/skills'],
+   },
+   {
+@@ -313,6 +342,8 @@ export const AGENTS: readonly AgentDescriptor[] = [
+     criticReadsInstructionFiles: true,
+     // 全局根；工作区根 print 模式下不读，不作目标（r10 §2.2，报告 §1.2 / §1.3）
+     entrySkillRoot: { homeRel: '.gemini', skillsRel: 'config/skills' },
++    // 报告 §1.3：print 模式斜杠展开；交互模式未测
++    entryInvocation: '/{name}',
+     entrySkillExtraReadRoots: [],
+   },
+   {
+@@ -329,11 +360,14 @@ export const AGENTS: readonly AgentDescriptor[] = [
+     // M10b r10 §3.1（D-2 = (b)）：子代理不过工作区 Hook、命令行模式下工作区 Hook 整体关闭，
+     // Hook 兜不住写入，只作尽力拦截（第 1 步报告 §3.1.2、§3.5）
+     guardLevel: 'L2',
+-    // 尽力拦截的工作区 Hook（r10 §3.1）：第 3 步由 `trivium hooks --agent glm` 渲染
+-    hookConfigTarget: '.zcode/config.json',
++    // 尽力拦截的工作区 Hook（r10 §3.1）：`trivium init` / `trivium hooks --agent glm` 渲染
++    hookConfigTarget: { path: '.zcode/config.json', format: 'zcode-config' },
+     instructionFiles: ['AGENTS.md'],
+     criticReadsInstructionFiles: true,
+     entrySkillRoot: { homeRel: '.zcode', skillsRel: 'skills' },
++    // 桌面端写法 `/名字`：第 2 步薄冒烟实测（第 2 步报告附录 B，`/dual-review-plan 参数` 转成一次 Skill 工具调用）；
++    // 命令行 `--prompt` 模式下是 `/skill 名字`（报告 §3.6）。J4 与 Hook 生效的载体都是桌面端，按桌面端登记
++    entryInvocation: '/{name}',
+     entrySkillExtraReadRoots: ['.agents/skills'],
+   },
+ ];
+@@ -456,6 +490,17 @@ export const DEFAULT_DRIVER: AgentId = 'claude';
+  * 「L1 而没有 Hook 配置目标」没有合法来源——L1 的定义就是 Hook 兜得住（r10 §3.1.1），
+  * 登记成这样当场抛，不让它被渲染成某一段看似合理的文案。
+  */
++/**
++ * 在当轮 Driver 的载体里调用入口 skill `name` 的写法（`dual-approve` → claude 上是 `/dual-approve`、codex 上是 `$dual-approve`）。
++ *
++ * `driverId` 取不到或未登记时按缺省 Driver 的写法：旧的闸门记录没有 `driver` 字段，
++ * 那时的执笔者就是缺省 Driver（M9 第 5 步之前只有它）。
++ */
++export function entryCommandOf(driverId: string | null | undefined, name: string): string {
++  const agent = (driverId ? agentById(driverId) : null) ?? agentById(DEFAULT_DRIVER)!;
++  return agent.entryInvocation.replace('{name}', name);
++}
++
+ export function guardProfileOf(agent: AgentDescriptor): GuardProfile {
+   const hasHook = agent.hookConfigTarget !== null;
+   if (agent.guardLevel === 'L1') {
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index b478314..f95a587 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -8,8 +8,11 @@ import path from 'node:path';
+ import { exists } from './util/fsx.js';
+ import { promises as fsp } from 'node:fs';
+ import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
+-import { applyProfileOverride, loadCtx, runRoot } from './config.js';
+-import { ALL_AGENT_IDS, CRITIC_AGENT_IDS, DEFAULT_DRIVER, DRIVER_AGENT_IDS } from './agents/registry.js';
++import { applyProfileOverride, loadCtx, resolveAssetRoot, runRoot } from './config.js';
++import {
++  AGENTS, ALL_AGENT_IDS, CRITIC_AGENT_IDS, DEFAULT_DRIVER, DRIVER_AGENT_IDS, agentById, entryCommandOf,
++} from './agents/registry.js';
++import { effectiveGuardLevel, gateHoldNotice } from './hook-config.js';
+ import {
+   runDoctor,
+   renderDoctorReport,
+@@ -31,7 +34,7 @@ import { getGate, listOpenGates, setGateChecked } from './state.js';
+ import { assertGateDecidable, recordApproval } from './approval.js';
+ import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
+ import { latestRunMeta, newRunId, readTask, readRunMeta } from './meta.js';
+-import { runInit, renderInitReport } from './init.js';
++import { mergeAllHooks, runInit, renderInitReport, type InitReport } from './init.js';
+ import {
+   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
+ } from './preflight.js';
+@@ -274,8 +277,13 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
+ 
+   trivium init [--dry-run] [--asset-root <路径>]
+       在本项目布置运行时：.trivium/（config.yaml + bin/trivium wrapper）、
+-      合并 Hook 进 .claude/settings.json、幂等追加 .gitignore 与协议片段。
+-      全部操作幂等，重复运行不重复追加、不覆盖用户内容。
++      合并 Hook 进每一家登记了 Hook 目标的项目配置（${AGENTS.filter((a) => a.hookConfigTarget).map((a) => a.hookConfigTarget!.path).join('、')}）、
++      幂等追加 .gitignore 与协议片段。全部操作幂等，重复运行不重复追加、不覆盖用户内容。
++
++  trivium hooks --agent <id> [--dry-run] [--asset-root <路径>] [--json]
++      只把 TriviumCode Hook 渲染并合并进该家的项目配置（只增不删、不覆盖用户已有 Hook）。
++      只做渲染与安装，不参与任何判定。可用：${AGENTS.filter((a) => a.hookConfigTarget).map((a) => a.id).join(' | ')}；
++      没有 Hook 机制的家退 64。ZCode 形态写入后要在桌面端重新信任该工作区，信任前 Hook 不跑。
+ 
+   trivium gate --stage <s> --topic <主题> --check [--run-id <id>] [--json]
+       裁决完整性硬校验（§8.6）。返回 2 表示未通过，stdout 给出缺口清单供直接修补。
+@@ -764,7 +772,8 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
+    * 解析走 `resolveCriticSelection`——与 `topic resolve` / `review --start` 同一处判定，
+    * 不在这里再实现一遍（M7b 第 5 步的教训：两处各写一份，启用第三家时会先后不一致）。
+    */
+-  const { driver, enabledAsDriver } = resolveDriver(flagString(args, 'driver'));
++  // 未启用为 Driver 的在 `resolveDriver` 里就退 64（M10a 第 3 步），这里只取 driver
++  const { driver } = resolveDriver(flagString(args, 'driver'));
+   const critics = resolveCriticSelection(ctx.config, {
+     critics: flagString(args, 'critics'),
+     only: flagString(args, 'only'),
+@@ -785,7 +794,6 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
+     modelOverrides: models,
+     critics,
+     driver,
+-    driverEnabled: enabledAsDriver,
+     skipAuthCheck: args.flags.get('skip-auth-check') === true,
+     refreshAuth: args.flags.get('refresh-auth') === true,
+   });
+@@ -960,6 +968,46 @@ async function cmdInit(args: ParsedArgs): Promise<number> {
+   return EXIT.OK;
+ }
+ 
++/**
++ * `trivium hooks --agent <id>`：只把本仓 Hook 渲染并合并进该家的项目配置（M10b 第 3 步，r5 §6.1、r10 §3.1.2）。
++ *
++ * **只做渲染 / 安装，不参与任何判定**：拦不拦由 `gate hook-*` 决定。与 `init` 共用 `mergeAllHooks`，
++ * 区别只在范围——`init` 合并全部登记了 Hook 目标的家，这里只合并指定的一家（改了一家的配置、要单独刷新时用）。
++ */
++async function cmdHooks(args: ParsedArgs): Promise<number> {
++  const ctx = await loadCtx({ allowUninitialized: true });
++  const withHook = AGENTS.filter((a) => a.hookConfigTarget !== null);
++  const id = (flagString(args, 'agent') ?? '').trim();
++  if (!id) {
++    throw usageError(`hooks 需要 --agent <id>。登记了 Hook 目标的：${withHook.map((a) => a.id).join(' | ')}`);
++  }
++  const agent = agentById(id);
++  if (!agent) throw usageError(`未登记的 Agent「${id}」。可用：${ALL_AGENT_IDS.join(' | ')}`);
++  if (!agent.hookConfigTarget) {
++    throw usageError(
++      `${id} 没有 Hook 机制，无从渲染（护栏等级 L2：写入没有事前拦截，靠审批前复核、_meta 唯一事实、防覆盖与跑后复算兜底）。\n` +
++        `  登记了 Hook 目标的：${withHook.map((a) => a.id).join(' | ')}`,
++    );
++  }
++  const dryRun = args.flags.get('dry-run') === true;
++  const assetRoot = resolveAssetRoot(flagString(args, 'asset-root') ?? undefined);
++  const report: InitReport = { created: [], updated: [], skipped: [], notes: [] };
++  await mergeAllHooks(ctx.projectRoot, path.join(assetRoot, 'hooks/hooks.json'), report, dryRun, [agent]);
++  if (!(await exists(path.join(ctx.triviumDir, 'config.yaml')))) {
++    // Hook 命令外面的守卫在「没有 config.yaml」时一律放行：配置写进去了，但在 init 之前它一条都不拦
++    report.notes.push('本项目尚未 `trivium init`：Hook 守卫在没有 .trivium/config.yaml 时一律放行，init 之后才会生效');
++  }
++  if (isJsonMode()) emitJson({ ok: true, dry_run: dryRun, agent: agent.id, ...report });
++  else renderInitReport(report, dryRun);
++  return EXIT.OK;
++}
++
++/** 停点「不得修改业务文件」那一句：按当轮 Driver 本次的有效护栏等级措辞（M10b 第 3 步） */
++async function holdNoticeFor(projectRoot: string, driverId: string): Promise<string> {
++  const agent = agentById(driverId) ?? agentById(DEFAULT_DRIVER)!;
++  return gateHoldNotice(await effectiveGuardLevel(projectRoot, agent));
++}
++
+ const HOOK_NAMES: readonly HookName[] = [
+   'hook-pre-write', 'hook-pre-bash', 'hook-pre-commit', 'hook-stop', 'hook-session-start',
+ ];
+@@ -1212,12 +1260,18 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+       fail(`闸门未置为等待审批：${g.skipped ?? '当前状态不允许此迁移'}`);
+       return EXIT.GATE_BLOCK;
+     }
++    /*
++     * 停点话术按**当轮 Driver** 措辞（M10b 第 3 步；第 2 步薄冒烟核出）：调用写法取该载体的
++     * （codex 上是 `$dual-approve`），「不得修改业务文件」的后半句按本次运行时的有效护栏等级说。
++     * 此前写死 `/dual-approve` 与「（Hook 会拦下）」，对 L2 载体后半句不成立。
++     */
++    const approveCmd = entryCommandOf(gateDriver, 'dual-approve');
+     const msg =
+       `已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
+-      `  通过：/dual-approve --topic ${topic} --stage ${stage} [--reason <附言>]\n` +
+-      `  拒绝：/dual-approve --topic ${topic} --stage ${stage} --reject --reason <理由>\n` +
+-      `  放弃：/dual-abandon --topic ${topic}\n` +
+-      `  在此期间不得修改业务文件（Hook 会拦下）。` +
++      `  通过：${approveCmd} --topic ${topic} --stage ${stage} [--reason <附言>]\n` +
++      `  拒绝：${approveCmd} --topic ${topic} --stage ${stage} --reject --reason <理由>\n` +
++      `  放弃：${entryCommandOf(gateDriver, 'dual-abandon')} --topic ${topic}\n` +
++      `  ${await holdNoticeFor(ctx.projectRoot, gateDriver)}` +
+       preWarnings.map((w) => `\n  ⚠️ [${w.code}] ${w.message}`).join('');
+     if (isJsonMode()) {
+       emitJson({ ok: true, state: 'awaiting_approval', stage, rerun_index: rerunIndex, message: msg, warnings: preWarnings });
+@@ -1388,7 +1442,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+       const msg =
+         `裁决齐备，已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
+         `  停点话术：trivium gate --stage ${stage} --topic ${topic} --await-approval\n` +
+-        '  在此期间不得修改业务文件（Hook 会拦下）。';
++        `  ${await holdNoticeFor(ctx.projectRoot, gateDriver)}`;
+       if (!isJsonMode()) say(msg);
+       const { resetStopBlockCount } = await import('./lock.js');
+       await resetStopBlockCount(ctx.triviumDir, topic, stage);
+@@ -1809,6 +1863,8 @@ export async function main(argv: string[]): Promise<number> {
+       return cmdDoctor(args);
+     case 'review':
+       return cmdReview(args);
++    case 'hooks':
++      return cmdHooks(args);
+     case 'init':
+       return cmdInit(args);
+     case 'preflight':
+diff --git a/src/trivium/hooks.ts b/src/trivium/hooks.ts
+index e0c1198..2841844 100644
+--- a/src/trivium/hooks.ts
++++ b/src/trivium/hooks.ts
+@@ -30,7 +30,7 @@ import { promises as fs } from 'node:fs';
+ import fsSync from 'node:fs';
+ import { type Ctx, type Stage, STAGES } from './types.js';
+ import { looksLikeRoleArtifact } from './naming.js';
+-import { ALL_AGENT_IDS, DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
++import { ALL_AGENT_IDS, DEFAULT_DRIVER, entryCommandOf, type AgentId } from './agents/registry.js';
+ import { EXIT } from './exit-codes.js';
+ import { listOpenGates, readState, shouldLockWrites, StateCorruptError } from './state.js';
+ import { bumpStopBlockCount } from './lock.js';
+@@ -662,6 +662,7 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
+     return deny(
+       `禁止写入 ${path.relative(ctx.projectRoot, path.resolve(ctx.projectRoot, target))}：` +
+         '.trivium/state.json 与 .trivium/lock/ 由编排器独占维护，是全部 Hook 的判定依据。' +
++        // 这一支不经当轮 Driver 判定（状态文件对谁都禁写）；写法取值同提交 Hook 那处的说明
+         '要解除闸门请走 /dual-approve 或 /dual-abandon。',
+     );
+   }
+@@ -690,9 +691,10 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
+     if (decision.lock) {
+       return deny(
+         `${decision.reason}，此时不得修改业务文件。\n` +
+-          `  通过审批：/dual-approve --topic ${gate.topic} --stage ${gate.stage}\n` +
+-          `  拒绝：    /dual-approve --topic ${gate.topic} --stage ${gate.stage} --reject --reason <理由>\n` +
+-          `  放弃闸门：/dual-abandon --topic ${gate.topic}`,
++          // 调用写法按记下这道闸门的 Driver（M10b 第 3 步）；旧闸门没有 driver 字段时回落缺省 Driver
++          `  通过审批：${entryCommandOf(gate.driver, 'dual-approve')} --topic ${gate.topic} --stage ${gate.stage}\n` +
++          `  拒绝：    ${entryCommandOf(gate.driver, 'dual-approve')} --topic ${gate.topic} --stage ${gate.stage} --reject --reason <理由>\n` +
++          `  放弃闸门：${entryCommandOf(gate.driver, 'dual-abandon')} --topic ${gate.topic}`,
+       );
+     }
+   }
+@@ -1047,8 +1049,8 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
+         `${decision.reason}，此时不得用 Bash 改动工作树：${shown}\n` +
+           '  这是按写命令形态的启发式判定（重定向、tee、sed -i、rm/mv/cp、git checkout…），只在闸门期生效。\n' +
+           '  裁决件请用 Write 工具写进归档；其它改动请等审查结束，或\n' +
+-          `  通过审批：/dual-approve --topic ${gate.topic} --stage ${gate.stage}\n` +
+-          `  放弃闸门：/dual-abandon --topic ${gate.topic}`,
++          `  通过审批：${entryCommandOf(gate.driver, 'dual-approve')} --topic ${gate.topic} --stage ${gate.stage}\n` +
++          `  放弃闸门：${entryCommandOf(gate.driver, 'dual-abandon')} --topic ${gate.topic}`,
+       );
+     }
+   }
+@@ -1398,6 +1400,8 @@ async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
+       '  **这一步请在终端里手动执行**：恢复命令的参数正是上面列出的受保护路径，\n' +
+       '  常规写法在会话里会被 hook-pre-bash 拦下（M10a 第 2 步 EV-55 §3.2.2）。\n' +
+       '  那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。\n' +
++      // 这里拿不到当轮 Driver（提交 Hook 不对应某一道闸门）；会跑到提交 Hook 的只有带 Hook 的载体，
++      // 它们的调用写法今天都是 `/名字`（注册表 entryInvocation）。第三家带 Hook 的载体用别的写法时要改这里
+       '  确实要作废某一轮，用 `/dual-abandon --topic <主题>`——它保留工件、只解闸门。\n' +
+       '  重跑会自动抬升 -r<N>，既有工件一律不覆盖，不需要先删。',
+   };
+@@ -1579,7 +1583,7 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
+     if (g.state === 'awaiting_approval') {
+       lines.push(
+         `  · ${g.topic}/${g.stage} 等待人工审批（自 ${g.since}）` +
+-          `——/dual-approve --topic ${g.topic} --stage ${g.stage}`,
++          `——${entryCommandOf(g.driver, 'dual-approve')} --topic ${g.topic} --stage ${g.stage}`,
+       );
+     } else {
+       lines.push(`  · ${g.topic}/${g.stage} 审查已落盘但裁决未齐备`);
+diff --git a/src/trivium/init.ts b/src/trivium/init.ts
+index 862f1eb..e9d5057 100644
+--- a/src/trivium/init.ts
++++ b/src/trivium/init.ts
+@@ -19,6 +19,7 @@ import type { Ctx } from './types.js';
+ import { CONFIG_SCHEMA_ID, CONFIG_SCHEMA_ID_V1, defaultConfig, migrateConfigV1, resolveAssetRoot } from './config.js';
+ import { createExclusive, ensureDir, exists, writeAtomic } from './util/fsx.js';
+ import { say, step, warn } from './util/log.js';
++import { hookNamesOf, loadHookSource, mergeAgentHooks } from './hook-config.js';
+ 
+ const MARKER_BEGIN = '<!-- BEGIN TriviumCode -->';
+ const MARKER_END = '<!-- END TriviumCode -->';
+@@ -252,10 +253,11 @@ export async function fixGitignore(
+ }
+ 
+ /**
+- * 合并 Hook 进 `.claude/settings.json`。
++ * 合并 Hook 进 Claude Code 形态的项目配置（`.claude/settings.json`）。
+  *
+- * **按事件名追加而非替换**（风险 R-D）：用户可能已有自己的 hooks。
+- * 写前备份；已存在同一条 TriviumCode 命令时跳过（幂等）。
++ * **按事件名追加而非替换**（风险 R-D）：用户可能已有自己的 hooks。写前备份；已就位时跳过（幂等）。
++ * 渲染、合并与去重的实现在 `hook-config.ts`（M10b 第 3 步起两家共用）；本函数保留原签名，
++ * 只合并登记为 `claude-settings` 形态的那一家。两家一起合并用 {@link mergeAllHooks}。
+  */
+ export async function mergeHooks(
+   projectRoot: string,
+@@ -263,74 +265,40 @@ export async function mergeHooks(
+   report: InitReport,
+   dryRun: boolean,
+ ): Promise<void> {
+-  if (!(await exists(hooksJsonPath))) {
++  const source = await loadHookSource(hooksJsonPath);
++  if (!source) {
+     report.notes.push(`缺少 ${hooksJsonPath}，跳过 Hook 合并`);
+     return;
+   }
+-  const incoming = JSON.parse(await fs.readFile(hooksJsonPath, 'utf8')) as {
+-    hooks: Record<string, unknown[]>;
+-  };
+-
+-  const target = path.join(projectRoot, '.claude/settings.json');
+-  let settings: Record<string, unknown> = {};
+-  const had = await exists(target);
+-  if (had) {
+-    const raw = await fs.readFile(target, 'utf8');
+-    try {
+-      settings = JSON.parse(raw) as Record<string, unknown>;
+-    } catch {
+-      warn(`${target} 不是合法 JSON，为避免破坏内容，跳过 Hook 合并。请手工合并。`);
+-      report.notes.push(`${target} 解析失败，未合并 Hook`);
+-      return;
+-    }
+-    if (!dryRun) await fs.writeFile(`${target}.trivium-backup`, raw, 'utf8');
+-  }
+-
+-  const existingHooks = (settings['hooks'] ?? {}) as Record<string, unknown[]>;
+-  let added = 0;
+-  let replaced = 0;
+-  for (const [event, entries] of Object.entries(incoming.hooks)) {
+-    const cur = Array.isArray(existingHooks[event]) ? existingHooks[event] : [];
+-    for (const entry of entries) {
+-      const sig = JSON.stringify(entry);
+-      const mine = hookNamesOf(entry);
+-      /*
+-       * 同一条 TriviumCode Hook 的识别依据是它调用的 `gate hook-<name>`，不是命令全文。
+-       * 原先的正则 /trivium['"]? (gate )?hook-/ 要求 `trivium` 后紧跟空格，而真实命令是
+-       * `…/bin/trivium"; test -x "$W" || exit 0; exec "$W" gate hook-…`——永远匹配不上，
+-       * 去重只剩 JSON 全等：命令文本或 timeout 一变，重跑 init 就在同一事件下叠加第二条，
+-       * 每次工具调用双倍执行。升级时应当**替换**旧条目，而不是跳过或叠加。
+-       */
+-      const at = cur.findIndex((c) => [...hookNamesOf(c)].some((n) => mine.has(n)));
+-      if (at === -1) {
+-        cur.push(entry);
+-        added++;
+-      } else if (JSON.stringify(cur[at]) !== sig) {
+-        cur[at] = entry;
+-        replaced++;
+-      }
+-    }
+-    existingHooks[event] = cur;
++  for (const agent of AGENTS.filter((a) => a.hookConfigTarget?.format === 'claude-settings')) {
++    await mergeAgentHooks(projectRoot, agent, source, report, dryRun);
+   }
+-  settings['hooks'] = existingHooks;
++}
+ 
+-  if (added === 0 && replaced === 0) {
+-    report.skipped.push(`${target}（Hook 已就位）`);
++/**
++ * 把本仓 Hook 合并进每一家登记了 `hookConfigTarget` 的项目配置（M10b 第 3 步，r5 §6.1「`trivium init` 同时合并两家」）。
++ *
++ * `only` 给定时只合并这几家（`trivium hooks --agent <id>`）；它们必须都登记了 Hook 目标，由调用方先校验。
++ */
++export async function mergeAllHooks(
++  projectRoot: string,
++  hooksJsonPath: string,
++  report: InitReport,
++  dryRun: boolean,
++  only?: readonly AgentDescriptor[],
++): Promise<void> {
++  const source = await loadHookSource(hooksJsonPath);
++  if (!source) {
++    report.notes.push(`缺少 ${hooksJsonPath}，跳过 Hook 合并`);
+     return;
+   }
+-  await ensureDir(path.dirname(target));
+-  if (!dryRun) await writeAtomic(target, JSON.stringify(settings, null, 2) + '\n');
+-  (had ? report.updated : report.created).push(target);
+-  if (replaced > 0) report.notes.push(`已把 ${replaced} 条旧版 TriviumCode Hook 替换为当前版本`);
+-  if (had) report.notes.push(`已备份原 settings.json 到 ${path.basename(target)}.trivium-backup`);
++  for (const agent of only ?? AGENTS.filter((a) => a.hookConfigTarget !== null)) {
++    await mergeAgentHooks(projectRoot, agent, source, report, dryRun);
++  }
+ }
+ 
+-/** 一条 hooks 条目里调用了哪些 `gate hook-<name>`（TriviumCode 的 Hook 身份） */
+-export function hookNamesOf(entry: unknown): Set<string> {
+-  const out = new Set<string>();
+-  for (const m of JSON.stringify(entry).matchAll(/gate hook-([a-z-]+)/g)) out.add(m[1]!);
+-  return out;
+-}
++/** 一条 hooks 条目里调用了哪些 `gate hook-<name>`（实现在 `hook-config.ts`，这里保留导出给既有调用方） */
++export { hookNamesOf };
+ 
+ /**
+  * 把 Homebrew Cellar 的版本化路径换成稳定入口。
+@@ -506,7 +474,8 @@ export async function runInit(opts: InitOptions): Promise<InitReport> {
+   }
+ 
+   await writeWrapper(ctx.triviumDir, nodePath, assetRoot, report, dryRun);
+-  await mergeHooks(ctx.projectRoot, path.join(assetRoot, 'hooks/hooks.json'), report, dryRun);
++  // 两家一起合并（M10b 第 3 步）：claude 进 .claude/settings.json，glm 进 .zcode/config.json（尽力拦截，不兜底）
++  await mergeAllHooks(ctx.projectRoot, path.join(assetRoot, 'hooks/hooks.json'), report, dryRun);
+   await fixGitignore(
+     ctx.projectRoot,
+     path.join(assetRoot, 'protocol/gitignore.snippet'),
+diff --git a/src/trivium/meta.ts b/src/trivium/meta.ts
+index 71da0bf..9848a53 100644
+--- a/src/trivium/meta.ts
++++ b/src/trivium/meta.ts
+@@ -15,7 +15,7 @@ import { writeAtomic } from './util/fsx.js';
+ import { topicDir, type ArchiveLayout } from './archive.js';
+ import { withTopicLock } from './lock.js';
+ import { validateRunMeta, validateRunMetaV1 } from './schemas.js';
+-import { DEFAULT_DRIVER } from './agents/registry.js';
++import { DEFAULT_DRIVER, type GuardLevel } from './agents/registry.js';
+ import { warn } from './util/log.js';
+ 
+ /** `updateTask` 的短临界区参数 */
+@@ -302,6 +302,11 @@ export interface NewRunMetaInput {
+    * 不进 `required`、不加 `if/then`。
+    */
+   driverEnabled?: boolean;
++  /**
++   * 当轮 Driver 的有效护栏等级（M10b 第 3 步 B1）。可选：旧调用方与测试夹具不传时不写这个字段，
++   * 留痕里「缺失」即「无从得知」——不在这里替它补一个 L1，那等于替没检查过的运行作证。
++   */
++  driverGuardLevel?: GuardLevel;
+   /** 本轮入选的审核者集合。**必填**：它是「本该跑几侧」的唯一事实来源 */
+   criticsSelected: readonly CriticId[];
+   treeHash: string;
+@@ -330,6 +335,7 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
+     // 恒写：缺省 Driver 那一路也要有值，否则「字段缺失」既可能是旧留痕、
+     // 也可能是本步漏传，事后分不开（口径与 profile_requested / model_provider 同源）
+     driver_enabled: i.driverEnabled ?? true,
++    ...(i.driverGuardLevel !== undefined ? { driver_guard_level: i.driverGuardLevel } : {}),
+     critics_selected: [...i.criticsSelected],
+     snapshot: {
+       git_head: i.gitHead,
+diff --git a/src/trivium/preflight.ts b/src/trivium/preflight.ts
+index 31b2ee8..11c26be 100644
+--- a/src/trivium/preflight.ts
++++ b/src/trivium/preflight.ts
+@@ -25,6 +25,7 @@ import { exists } from './util/fsx.js';
+ import { isGitRepo } from './util/git.js';
+ import { run } from './util/exec.js';
+ import { step } from './util/log.js';
++import { describeGuard, effectiveGuardLevel } from './hook-config.js';
+ 
+ /**
+  * 预检范围。`all` **不是** `Stage`——它不是一个审查阶段，
+@@ -94,18 +95,6 @@ export interface PreflightOptions {
+   critics?: readonly CriticId[];
+   /** 当轮 Driver（M9 第 5 步）。缺省即注册表缺省值，此时不打提示 */
+   driver?: AgentId;
+-  /**
+-   * 该 Driver 是否已启用为 Driver；**只有显式 `true` 才按「已启用」呈现**。
+-   *
+-   * 缺省取**保守**的一侧（第 3 轮 CODEX-04）：这个字段的存在理由是 M9 的
+-   * 「只校验已登记，放行但如实标注」，那条口径只能靠留痕与提示兜住。
+-   * M10a 第 3 步起入口（`resolveDriver`）对未启用者退 64，**生产路径上传进来的恒为 true**；
+-   * false 那一臂只剩注入测试会走到，保留它是因为本函数按参数渲染、不自己查表。
+-   * 上一版把 `undefined` 与 `true` 一并当作「已启用」，于是任何新调用方
+-   * 传了 `driver` 却忘了 `driverEnabled`，那半句保留话术会**静默消失**——
+-   * 而「少说一句」正是这个字段最不该有的失败方式。
+-   */
+-  driverEnabled?: boolean;
+   /**
+    * ④″ 副本源检查用的适配器表（EV-123）。**只为可测性**，缺省取 `realAdapters()`。
+    * **只喂给 ④″**：④ 只读能力与 ⑧ 探活都不读它，仍按真实适配器走——
+@@ -723,17 +712,26 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
+    * 都消费 `r.checks`：单独 print 只有人读那条看得见。
+    *
+    * 缺省 Driver 时不推：那是绝大多数运行的形态，每次都打一行等于没打。
++   *
++   * **M10b 第 3 步（B1，r5 §6.2、r10 §3.3）起这一行带上护栏等级**，文案与入口资产注入段同源（`describeGuard`）。
++   * 缺省 Driver 仍不推——**除非它登记为 L1 而 Hook 配置当前不在场**：那时有效等级降为 L2，
++   * 写入没有事前拦截，而入口资产告诉执笔者的是 L1。这一格标 `warn`、以 ⚠️ 起头，由 skill 念给用户。
++   *
++   * 原先还有一支「本次声明的 Driver 尚未启用为 Driver，该值仅用于选侧判定」：M10a 第 3 步起
++   * `resolveDriver` 对未启用者退 64，生产路径上走不到它，本步删除（r5 §6.2 末段），`driverEnabled` 入参随之去掉。
+    */
+   const driver = opts.driver ?? DEFAULT_DRIVER;
+-  if (driver !== DEFAULT_DRIVER) {
+-    checks.push({
+-      name: '当轮 Driver',
+-      ok: true,
+-      // 缺省走保守侧：不是显式 true 就带上保留话术（第 3 轮 CODEX-04）
+-      detail: opts.driverEnabled === true
+-        ? driver
+-        : `${driver}（本次声明的 Driver 尚未启用为 Driver，该值仅用于选侧判定）`,
+-    });
++  const driverAgent = agentById(driver);
++  if (driverAgent) {
++    const guard = await effectiveGuardLevel(ctx.projectRoot, driverAgent);
++    if (driver !== DEFAULT_DRIVER || guard.downgraded) {
++      checks.push({
++        name: '当轮 Driver',
++        ok: true,
++        detail: `${guard.downgraded ? '⚠️ ' : ''}${driver} · 护栏 ${describeGuard(driverAgent, guard)}`,
++        ...(guard.downgraded ? { warn: true as const } : {}),
++      });
++    }
+   }
+ 
+   // ① 探针新鲜度（过期即快速失败，不拉 doctor）
+diff --git a/src/trivium/report.ts b/src/trivium/report.ts
+index e3fd835..7b9f019 100644
+--- a/src/trivium/report.ts
++++ b/src/trivium/report.ts
+@@ -17,7 +17,7 @@
+  */
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+-import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
++import { DEFAULT_DRIVER, type AgentId, type GuardLevel } from './agents/registry.js';
+ import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
+ import { readRunMeta, readTask, type TaskMeta } from './meta.js';
+ import { loadRoundReviews } from './gate.js';
+@@ -44,6 +44,13 @@ export interface RoundReport {
+    * 三侧全成还是只选了一侧（AC-22）。
+    */
+   criticsSelected: CriticId[];
++  /** 当轮 Driver（留痕原值；读不到元数据时为 null） */
++  driver: AgentId | null;
++  /**
++   * 当轮 Driver 在这次运行时的有效护栏等级（M10b 第 3 步 B1，`run.v2` 的可选字段 `driver_guard_level`）。
++   * 早于该步的留痕没有它，记 null、渲染为「—」——不补成 L1，缺失即「无从得知」。
++   */
++  driverGuardLevel: GuardLevel | null;
+   degradedReason: string | null;
+   /** 逐侧：生效模型、状态、耗时、意见数 */
+   sides: {
+@@ -180,6 +187,8 @@ async function buildRound(
+     status: null,
+     reviewMode: null,
+     criticsSelected: [],
++    driver: null,
++    driverGuardLevel: null,
+     degradedReason: null,
+     sides: [],
+     severity: zeroSeverity(),
+@@ -207,6 +216,8 @@ async function buildRound(
+   base.status = meta.status;
+   base.reviewMode = meta.review_mode;
+   base.criticsSelected = [...meta.critics_selected];
++  base.driver = meta.driver;
++  base.driverGuardLevel = meta.driver_guard_level ?? null;
+   base.degradedReason = meta.degraded_reason;
+ 
+   const { reviews, notes: reviewNotes } = await loadRoundReviews(layout, stage, runId);
+@@ -442,14 +453,15 @@ export function renderTopicReport(r: TopicReport): string {
+   L.push(
+     '## 一、时间线',
+     '',
+-    '| 阶段 | 轮 | 运行 | 起始 | 状态 | 审核者 | 完成度 | 耗时（较慢侧） |',
+-    '| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
++    '| 阶段 | 轮 | 运行 | 起始 | 状态 | Driver（护栏） | 审核者 | 完成度 | 耗时（较慢侧） |',
++    '| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
+   );
+   for (const d of r.rounds) {
+     const slowest = d.sides.reduce((a, s) => Math.max(a, s.durationS), 0);
+     L.push(
+       `| ${d.stage} | r${d.rerunIndex} | \`${d.runId}\` | ${d.startedAt ?? '—'} | ` +
+-        `${d.status ?? '—'} | ${d.criticsSelected.join('、') || '—'} | ` +
++        `${d.status ?? '—'} | ${d.driver ?? '—'}（${d.driverGuardLevel ?? '—'}） | ` +
++        `${d.criticsSelected.join('、') || '—'} | ` +
+         `${d.reviewMode ?? '—'}${d.degradedReason ? `（${d.degradedReason}）` : ''} | ` +
+         `${Math.round(slowest)}s |`,
+     );
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index 58b28dd..959a8a6 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -69,6 +69,7 @@ import {
+ } from './exit-codes.js';
+ import { checkModelSlugs } from './preflight.js';
+ import { say, step, warn } from './util/log.js';
++import { effectiveGuardLevel } from './hook-config.js';
+ 
+ /** 任务目标进 BRIEF 只占一行，不是正文——超长就截断，别把第 4 段挤成一篇文章 */
+ const TASK_GOAL_MAX = 200;
+@@ -557,7 +558,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+    * `resolveDriver`（M10a 第 3 步起退 64），本函数依赖的是「入口已经拦过」。
+    */
+   const driver: AgentId = opts.driver ?? DEFAULT_DRIVER;
+-  const driverEnabled = agentById(driver)?.driverEnabled ?? false;
++  const driverAgent = agentById(driver);
++  const driverEnabled = driverAgent?.driverEnabled ?? false;
+ 
+   // 回落分支也要传 driver：否则「没给 critics」这条路上 Driver 排除按缺省判，
+   // 非缺省 Driver 会被漏放进入选集合（计划双审 r2 CODEX-11）
+@@ -924,6 +926,11 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+      */
+     driver,
+     driverEnabled,
++    /*
++     * 有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而 Hook 配置当前不在场即记 L2。
++     * 在这里取，而不是信预检那一次：预检与 `--start` 之间配置可能被改，留痕要记的是**本次运行时**的事实。
++     */
++    ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),
+     treeHash: primarySnap.treeHash,
+     gitHead: primarySnap.gitHead,
+     dirty: primarySnap.dirty,
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 61e2cd2..ce240b7 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -15,6 +15,7 @@ import {
+   DEFAULT_CRITIC_AGENT_IDS,
+   type AgentId,
+   type AgentVendor,
++  type GuardLevel,
+ } from './agents/registry.js';
+ 
+ export type { AgentId, AgentVendor };
+@@ -1271,6 +1272,14 @@ export interface RunMeta {
+    * 所以它不进 `required`、不加 `if/then`。这是本步唯一不可逆的选择。
+    */
+   driver_enabled?: boolean;
++  /**
++   * 当轮 Driver 在这次运行时的**有效**护栏等级（M10b 第 3 步 B1，计划 r5 §6.2、r10 §3.3）。
++   *
++   * 登记为 L1 而项目内 Hook 配置当前不在场即记 L2（`hook-config.ts` 的 `effectiveGuardLevel`）。
++   * **可选**：早于本步的留痕没有它，缺失即「无从得知」，不等于 L1——与 `driver_enabled` 同一口径。
++   * 只看存在性不看内容（r5 §6.2 边界 R-r），不宣称它能看见 Hook 命令被改或 wrapper 被替换。
++   */
++  driver_guard_level?: GuardLevel;
+   /**
+    * 本轮**入选**的审核者集合（基数 1～3，FR-29）。
+    *
+diff --git a/test/contract/entry-render-parity.test.ts b/test/contract/entry-render-parity.test.ts
+index 34bd232..e1b097b 100644
+--- a/test/contract/entry-render-parity.test.ts
++++ b/test/contract/entry-render-parity.test.ts
+@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs';
+ import path from 'node:path';
+ import { REPO_ROOT } from '../helpers/fixture.js';
+ import {
+-  ENTRY_OUT_DIR, loadEntrySources, renderAll, renderEntry,
++  ENTRY_OUT_DIR, loadCarriers, loadEntrySources, renderAll, renderEntry,
+   type Carrier, type Contract, type EntrySources, type RenderedEntry,
+ } from '../../src/entry-render.js';
+ import { AGENTS, ALL_AGENT_IDS, agentById, guardProfileOf } from '../../src/trivium/agents/registry.js';
+@@ -255,6 +255,21 @@ test('模型与选侧取值由注册表派生，不给当轮 Driver 自己留槽
+   }
+ });
+ 
++test('调用写法只登记在注册表：载体 yaml 里再写 invocation 当场报错；产物用的是注册表的值（M10b 第 3 步）', async () => {
++  // 产物侧：每家的 {{cmd:…}} 渲染结果就是注册表的写法
++  for (const c of src.carriers) assert.equal(c.invocation, agentById(c.agent)!.entryInvocation, c.agent);
++  // 源侧：把真实载体 yaml 拷进临时源目录、给其中一份加回 invocation，加载即抛
++  const tmp = await fs.mkdtemp(path.join((await import('node:os')).tmpdir(), 'trivium-carriers-'));
++  const dst = path.join(tmp, 'skills-src/carriers');
++  await fs.mkdir(dst, { recursive: true });
++  const srcDir = path.join(REPO_ROOT, 'skills-src/carriers');
++  const files = (await fs.readdir(srcDir)).filter((f) => f.endsWith('.yaml'));
++  for (const f of files) await fs.copyFile(path.join(srcDir, f), path.join(dst, f));
++  await loadCarriers(tmp); // 原样拷贝：能加载
++  await fs.appendFile(path.join(dst, files[0]!), '\ninvocation: /{name}\n');
++  await assert.rejects(loadCarriers(tmp), /invocation 已迁入注册表/);
++});
++
+ test('渲染器自测：未知变量与缺失片段当场抛错，不静默留空', () => {
+   const carrier = src.carriers[0]!;
+   const fake = (body: string): Contract => ({
+diff --git a/test/fixtures/stub-agent-kit/overlay.ts b/test/fixtures/stub-agent-kit/overlay.ts
+index 927d788..0b76084 100644
+--- a/test/fixtures/stub-agent-kit/overlay.ts
++++ b/test/fixtures/stub-agent-kit/overlay.ts
+@@ -257,6 +257,8 @@ export async function applyOverlay(dest: string): Promise<string[]> {
+     instructionFiles: ['STUB.md'],
+     criticReadsInstructionFiles: true,
+     entrySkillRoot: { homeRel: '.stub-agent', skillsRel: 'skills' },
++    // M10b 第 3 步由载体 yaml 迁入注册表；桩不作 Driver，取常见写法即可
++    entryInvocation: '/{name}',
+     entrySkillExtraReadRoots: [],
+   },
+ ];`,
+diff --git a/test/integration/fault-injection.test.ts b/test/integration/fault-injection.test.ts
+index 28bd3b2..2ee1647 100644
+--- a/test/integration/fault-injection.test.ts
++++ b/test/integration/fault-injection.test.ts
+@@ -15,6 +15,7 @@ import { type StubConfig } from '../../src/trivium/adapters/stub.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import { extractJsonCandidate } from '../../src/trivium/parse.js';
+ import type { RunMeta } from '../../src/trivium/types.js';
++import { AGENTS, DEFAULT_DRIVER, entryCommandOf, guardProfileOf } from '../../src/trivium/agents/registry.js';
+ import { loadCtx } from '../../src/trivium/config.js';
+ import { hookPreCommit } from '../../src/trivium/hooks.js';
+ import { headSha } from '../../src/trivium/util/git.js';
+@@ -257,8 +258,17 @@ test('归档外被审对象（--plan-file doc/…）不登记，run.json 与 gat
+   assert.equal(aw.code, EXIT.OK, `--await-approval 应成功：\n${aw.stdout}\n${aw.stderr}`);
+   const awCand = extractJsonCandidate(aw.stdout);
+   assert.ok(awCand, `--await-approval --json 未产出 JSON：\n${aw.stdout}`);
+-  const awJs = JSON.parse(awCand.json) as { state: string; warnings?: Array<{ code: string; message: string }> };
++  const awJs = JSON.parse(awCand.json) as {
++    state: string; message: string; warnings?: Array<{ code: string; message: string }>;
++  };
+   assert.equal(awJs.state, 'awaiting_approval');
++  /*
++   * 停点话术按当轮 Driver 的有效护栏等级措辞（M10b 第 3 步）：缺省 Driver 登记 L1，
++   * 但夹具没有 `.claude/settings.json`，本次按 L2 计——不得再说「Hook 会拦下」。
++   */
++  assert.doesNotMatch(awJs.message, /Hook 会拦下/, `Hook 配置不在场时不得宣称会拦：\n${awJs.message}`);
++  assert.match(awJs.message, /Hook 配置不在场（登记 L1，本次按 L2 计）/);
++  assert.match(awJs.message, new RegExp(`通过：${entryCommandOf(DEFAULT_DRIVER, 'dual-approve').replace('$', '\\$')} --topic`));
+   assert.ok(
+     (awJs.warnings ?? []).some((w) => w.code === 'run_warning' && w.message.includes('本轮原稿不在保护集')),
+     `审批停点必须带出运行期告警：${JSON.stringify(awJs.warnings)}`,
+@@ -755,6 +765,58 @@ test('--critics 单侧：真的只跑那一侧，且不记降级（AC-22 的核
+     );
+   });
+ 
++/*
++ * 停点话术按**当轮 Driver** 措辞（M10b 第 3 步；第 2 步薄冒烟核出：对 glm 仍写「Hook 会拦下」，
++ * 对 codex 仍写 `/dual-approve`）。取一家调用写法**不是** `/` 起头、且没有 Hook 的 Driver
++ * （由注册表派生，今天是 codex），走一整轮到停点：两处都必须换成它的。
++ */
++test('停点话术：调用写法与「不得修改业务文件」都按当轮 Driver（非缺省、无 Hook、非斜杠写法）',
++  { skip: bundleMissing && bundleSkipReason }, async () => {
++    const drv = AGENTS.find((a) => a.driverEnabled && !a.entryInvocation.startsWith('/') && guardProfileOf(a) === 'l2-none');
++    assert.ok(drv, '前提：注册表里有一家非斜杠写法、没有 Hook 的 Driver');
++    const { root, meta } = await runInjected(
++      { gemini: { mode: 'ok' }, glm: { mode: 'ok' } },
++      ['--driver', drv.id],
++      [],
++      async (r) => {
++        const planDir = path.join(r, '.reviews', TOPIC, 'plan');
++        /*
++         * 夹具的缺省原稿带缺省 Driver 的后缀；换了 Driver 之后它不是本轮原稿，会被当成一份他家工件、
++         * 把轮次抬成 r2（driver-flag 的用例因同一原因用 `draft: false`）。这里换成当轮 Driver 的原稿。
++         */
++        await fs.rm(path.join(planDir, `${today()}-${TOPIC}-${DEFAULT_DRIVER}.md`));
++        await fs.writeFile(path.join(planDir, `${today()}-${TOPIC}-${drv.id}.md`), `# ${drv.id} 执笔的原稿\n`, 'utf8');
++      },
++    );
++    assert.equal(meta.driver, drv.id);
++    assert.equal(meta.driver_guard_level, 'L2');
++    await fs.writeFile(
++      path.join(root, '.reviews', TOPIC, 'plan', `${today()}-${TOPIC}-revised-${drv.id}.md`),
++      [
++        '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
++        `role: ${drv.id}`, 'kind: revised', `run_id: ${meta.run_id}`,
++        'addresses:', '  - AGY-01', '  - GLM-01',
++        '---', '',
++        '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
++        '| :--- | :--- | :--- | :--- | :--- | :--- |',
++        '| AGY-01 | gemini | blocker | 接受 | 确实漏了这一处，需要补 | §1 |',
++        '| GLM-01 | glm | blocker | 接受 | 同一处问题，一并补上 | §1 |',
++        '',
++      ].join('\n'),
++      'utf8',
++    );
++    const aw = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--json']);
++    assert.equal(aw.code, EXIT.OK, `--await-approval 应成功：\n${aw.stdout}\n${aw.stderr}`);
++    const msg = (JSON.parse(extractJsonCandidate(aw.stdout)!.json) as { message: string }).message;
++    const approve = entryCommandOf(drv.id, 'dual-approve');
++    assert.ok(!approve.startsWith('/'), approve);
++    assert.ok(msg.includes(`通过：${approve} --topic`), `调用写法要换成当轮 Driver 的：\n${msg}`);
++    assert.ok(msg.includes(`放弃：${entryCommandOf(drv.id, 'dual-abandon')} --topic`), msg);
++    assert.doesNotMatch(msg, /\/dual-approve/, '不得残留斜杠写法');
++    assert.doesNotMatch(msg, /Hook 会拦下/, '没有 Hook 的载体不得宣称会拦');
++    assert.match(msg, /本载体没有 Hook 拦截（L2），全靠你自觉/);
++  });
++
+ test('缺省（不给 --critics）：仍按 default_critics 跑满两侧',
+   { skip: bundleMissing && bundleSkipReason }, async () => {
+     // 与上一条成对：只有单侧用例的话，「永远只跑第一侧」的实现也能过
+@@ -762,6 +824,11 @@ test('缺省（不给 --critics）：仍按 default_critics 跑满两侧',
+     assert.deepEqual(meta.critics_selected, ['gemini', 'glm']);
+     assert.deepEqual(Object.keys(meta.critics).sort(), ['gemini', 'glm']);
+     assert.equal(meta.review_mode, 'full');
++    /*
++     * 有效护栏等级落进留痕（M10b 第 3 步 B1）：缺省 Driver 登记 L1，但夹具没有 `.claude/settings.json`，
++     * Hook 配置不在场 ⇒ 本次运行记 L2。钉的是「真实运行路径上写了这个字段、而且写的是运行时的事实」。
++     */
++    assert.equal(meta.driver_guard_level, 'L2');
+   });
+ 
+ /*
+diff --git a/test/unit/hooks.test.ts b/test/unit/hooks.test.ts
+index 2e87d00..a716d79 100644
+--- a/test/unit/hooks.test.ts
++++ b/test/unit/hooks.test.ts
+@@ -581,6 +581,25 @@ test('软链：两个方向都拦得住', async () => {
+   );
+ });
+ 
++/*
++ * ZCode Hook 负载的路径形态（M10b 第 3 步，r9 §3.4「实现时加一条用例钉住」）：第 1 步实测里
++ * `cwd` / `CLAUDE_PROJECT_DIR` 是 `/tmp/…` 形态，`file_path` 却是 `/private/tmp/…` 形态——
++ * 项目根取词法路径、目标取真实路径。判定靠「词法与 realpath 并集」接住它；这里钉住那一格。
++ * 本机的 `os.tmpdir()` 本身就在一条系统软链下（macOS 的 `/var` → `/private/var`），夹具据此构造；
++ * 没有这条软链的系统上两种形态相同，用例退化为普通断言、不失去意义。
++ */
++test('项目根是词法路径、写入目标是 realpath 形态（ZCode 负载的形态）：照样拦', async () => {
++  const ctx = await fakeCtx();
++  await fs.mkdir(path.join(ctx.archiveRoot, 't/plan'), { recursive: true });
++  const realRoot = await fs.realpath(ctx.projectRoot);
++  const target = path.join(realRoot, '.reviews/t/plan/2026-09-25-t-gemini.md');
++  assert.equal(
++    isForgedRoleFile(target, ctx.projectRoot, ctx.archiveRoot, DEFAULT_DRIVER),
++    true,
++    `项目根 ${ctx.projectRoot}、目标 ${target}：两种形态混用时不得判成「归档外」而放行`,
++  );
++});
++
+ test('归档根不可解析时，归档内的后缀写入仍被拦', async () => {
+   /*
+    * 审查意见 GLM-r2-03：realpath 失败若让异常外泄，runHook 的兜底 catch 会
+diff --git a/test/unit/preflight.test.ts b/test/unit/preflight.test.ts
+index a39386e..ec996ea 100644
+--- a/test/unit/preflight.test.ts
++++ b/test/unit/preflight.test.ts
+@@ -13,6 +13,11 @@ import { runDoctor } from '../../src/trivium/doctor.js';
+ import { initFixtureRepo } from '../../src/trivium/util/git.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import type { Config, Ctx, ProbeSection } from '../../src/trivium/types.js';
++import { AGENTS, DEFAULT_DRIVER, guardProfileOf } from '../../src/trivium/agents/registry.js';
++import { mergeHooks, type InitReport } from '../../src/trivium/init.js';
++import { REPO_ROOT } from '../helpers/fixture.js';
++
++const emptyReport = (): InitReport => ({ created: [], updated: [], skipped: [], notes: [] });
+ 
+ function freshProbe(cfg: Config): void {
+   const now = new Date().toISOString();
+@@ -235,12 +240,17 @@ test('探针过期 → 退 69 并指引手动执行', async () => {
+ 
+ // ── 当轮 Driver 提示（M9 第 5 步，T-10）──
+ 
+-test('预检：--driver 非缺省时多打一行提示，且它是 ok:true 不是一次失败', async () => {
++/*
++ * M10b 第 3 步（B1）起这一行带护栏等级；原先「尚未启用为 Driver，该值仅用于选侧判定」那一支
++ * 在生产路径上走不到（`resolveDriver` 对未启用者退 64），随 `driverEnabled` 入参一并删除。
++ * 用例按护栏形态三档各一条（取值经注册表派生，不写死哪家是哪档），外加缺省 Driver 的两格。
++ */
++const byProfile = (p: ReturnType<typeof guardProfileOf>) => AGENTS.find((a) => a.driverEnabled && guardProfileOf(a) === p);
++
++test('预检：--driver 非缺省时多打一行，带护栏等级，且它是 ok:true 不是一次失败', async () => {
+   const ctx = await fakeCtx();
+-  const r = await runPreflight({
+-    ctx, scope: 'plan', skipAuthCheck: true,
+-    driver: 'gemini', driverEnabled: false,
+-  });
++  const none = byProfile('l2-none')!;
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, driver: none.id });
+   const hint = r.checks.find((c) => c.name === '当轮 Driver');
+   assert.ok(hint, '非缺省 Driver 时应当有一行可见提示');
+   /*
+@@ -249,36 +259,23 @@ test('预检：--driver 非缺省时多打一行提示，且它是 ok:true 不
+    * **失败**，而且因为它排在最前面，会把后面所有检查一起短路掉。
+    */
+   assert.equal(hint.ok, true, '提示判成失败会把整个预检短路掉');
+-  assert.match(hint.detail, /gemini/);
+-  assert.match(
+-    hint.detail, /仅用于选侧判定/,
+-    'driverEnabled 为 false 时要说清「该值仅用于选侧判定」——放行而不说明就是静默降低门槛',
+-  );
+-  // 提示不参与成败：本次失败与否应当只由真正的检查项决定
+-  assert.equal(
+-    r.checks.filter((c) => !c.ok).some((c) => c.name === '当轮 Driver'), false,
+-  );
++  assert.match(hint.detail, new RegExp(`^${none.id} · 护栏 L2（该载体没有 Hook 机制`));
++  assert.equal(hint.warn, undefined, '登记的 L2 是已知形态、入口资产已明示，不是缺口');
++  assert.doesNotMatch(hint.detail, /仅用于选侧判定/, '死分支已删，这句不该再出现');
+ });
+ 
+-test('预检：--driver 已启用为 Driver 时，提示里不带「仅用于选侧判定」那句', async () => {
+-  /*
+-   * 「非缺省**且已启用**」这一臂在 M9 时的真实注册表下构造不出来（那时只有缺省 Driver 启用）；
+-   * M10a 第 3 步四家翻开之后，生产路径上传进来的恒为 true，反倒是 false 那一臂只剩注入测试能走到。
+-   * 预检这一层接受的是布尔入参，两臂都可以直接构造；`resolveDriver` 那一层
+-   * 另开了 `descriptors` 注入口（见 critics.test.ts），两处都不留「验不了」的臂。
+-   */
++test('预检：有尽力拦截 Hook 的 L2 载体，文案写「不兜底」与五个生效前提，不说「无事前写拦截」', async () => {
+   const ctx = await fakeCtx();
+-  const r = await runPreflight({
+-    ctx, scope: 'plan', skipAuthCheck: true,
+-    driver: 'codex', driverEnabled: true,
+-  });
++  const best = byProfile('l2-hook')!;
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, driver: best.id });
+   const hint = r.checks.find((c) => c.name === '当轮 Driver')!;
+-  assert.equal(hint.ok, true);
+-  assert.equal(hint.detail, 'codex');
++  assert.match(hint.detail, /L2（有尽力拦截的 Hook：.*不兜底——只在桌面端、已信任、主代理、matcher 覆盖、不超时时生效）/);
++  assert.doesNotMatch(hint.detail, /没有事前拦截/, '与 glm 实况相反的说法（r10 §3.1.3）');
+ });
+ 
+-test('预检：缺省 Driver 不打这行提示（每次都打等于没打）', async () => {
++test('预检：缺省 Driver、Hook 配置在场 ⇒ 不打这行（每次都打等于没打）', async () => {
+   const ctx = await fakeCtx();
++  await mergeHooks(ctx.projectRoot, path.join(REPO_ROOT, 'skills/dual-critic/hooks/hooks.json'), emptyReport(), false);
+   const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
+   assert.equal(
+     r.checks.some((c) => c.name === '当轮 Driver'), false,
+@@ -286,12 +283,31 @@ test('预检：缺省 Driver 不打这行提示（每次都打等于没打）',
+   );
+ });
+ 
++test('预检：缺省 Driver 登记 L1 而 Hook 配置不在场 ⇒ 降为 L2，打一行 ⚠️ 并进 warnings（B1）', async () => {
++  const ctx = await fakeCtx(); // 夹具里没有 .claude/settings.json
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
++  const hint = r.checks.find((c) => c.name === '当轮 Driver');
++  assert.ok(hint, 'L1 的前提（Hook 在场）不成立时必须让人看见');
++  assert.equal(hint.ok, true, '降级是提示，不是失败：审批前复核等补偿照样在');
++  assert.equal(hint.warn, true);
++  assert.match(hint.detail, new RegExp(`^⚠️ ${DEFAULT_DRIVER} · 护栏 L2（登记 L1，但 .* 不在场`));
++  assert.match(hint.detail, /trivium hooks --agent/, '要给出修复出口');
++  assert.ok(r.warnings.some((w) => w.name === '当轮 Driver'));
++  assertWarnInvariant(r);
++});
++
+ test('探针过期时后续检查不再执行（快速失败，不白烧配额）', async () => {
+   const ctx = await fakeCtx((c) => {
+     c.probe.generated_at = null;
+   });
+   const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
+-  assert.equal(r.checks.length, 1, `应只跑第一项就停，实际跑了 ${r.checks.length} 项`);
++  /*
++   * 「当轮 Driver」那一行是排在探针之前的**信息项**（本夹具没有 Hook 配置，缺省 Driver 会带一行降级提示，
++   * M10b 第 3 步 B1），不是检查；本条要钉的是「探针过期之后不再往下跑」，所以把它剔掉再数。
++   */
++  const real = r.checks.filter((c) => c.name !== '当轮 Driver');
++  assert.equal(real.length, 1, `应只跑第一项就停，实际跑了 ${real.length} 项：${real.map((c) => c.name).join('、')}`);
++  assert.equal(real[0]!.ok, false);
+ });
+ 
+ // ── 命令 A 的编译测试检查（§14.1 / GLM-02）──
+@@ -927,7 +943,7 @@ test('现有 ⚠️ 项一律标 warn：C5、覆盖面、探活已跳过', async
+   assert.equal(r.checks.find((c) => c.name === '版本漂移检查覆盖面')?.warn, true, '覆盖面');
+   assert.equal(r.checks.find((c) => c.name === '探活')?.warn, true, '探活已跳过');
+   // 反向：「当轮 Driver」是信息，不是缺口
+-  const d = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {}, driver: 'codex', driverEnabled: true });
++  const d = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {}, driver: 'codex' });
+   assert.equal(d.checks.find((c) => c.name === '当轮 Driver')?.warn, undefined);
+   assertWarnInvariant(r);
+   assertWarnInvariant(d);
+diff --git a/test/unit/registry-parity.test.ts b/test/unit/registry-parity.test.ts
+index 9ed0b9e..d5ba214 100644
+--- a/test/unit/registry-parity.test.ts
++++ b/test/unit/registry-parity.test.ts
+@@ -81,6 +81,7 @@ const FAKE_AGENT = (over: Partial<AgentDescriptor>): AgentDescriptor => ({
+   instructionFiles: [],
+   criticReadsInstructionFiles: true,
+   entrySkillRoot: { homeRel: '.x', skillsRel: 'skills' },
++  entryInvocation: '/{name}',
+   entrySkillExtraReadRoots: [],
+   ...over,
+ });
+diff --git a/test/unit/report.test.ts b/test/unit/report.test.ts
+index e4c502a..0a65a81 100644
+--- a/test/unit/report.test.ts
++++ b/test/unit/report.test.ts
+@@ -11,6 +11,7 @@ import { acceptanceRate, buildTopicReport, renderTopicReport, type RoundReport }
+ import { newRunMeta, writeRunMeta, registerRun, type TaskMeta } from '../../src/trivium/meta.js';
+ import { writeArtifact, writeMeta, type ArchiveLayout } from '../../src/trivium/archive.js';
+ import { CRITICS, type Review } from '../../src/trivium/types.js';
++import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+ 
+ /**
+  * 主题级复盘（设计 §5.1 / §9.3 / §15.2）。
+@@ -65,6 +66,7 @@ async function seedRound(
+     glmFailed?: boolean;
+     usage?: Record<string, unknown>;
+     drift?: boolean;
++    guardLevel?: 'L1' | 'L2';
+   },
+ ) {
+   const meta = newRunMeta({
+@@ -72,6 +74,7 @@ async function seedRound(
+     command: 'test', promptHint: '焦点', taskGoal: null, criticsSelected: CRITICS,
+     treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S',
+     denyPaths: [], driftPolicy: 'warn',
++    ...(opts.guardLevel ? { driverGuardLevel: opts.guardLevel } : {}),
+   });
+   if (opts.drift) meta.snapshot.drift = { changed: true, files: ['x.ts'], policy: 'warn' };
+ 
+@@ -150,6 +153,26 @@ test('一轮双审：时间线、意见数、严重度分布、生效模型齐
+   assert.match(md, /provider\/GLM-x/, '生效模型须是回读值');
+ });
+ 
++test('时间线带「Driver（护栏）」列：留痕有等级就写等级，旧留痕没有就写「—」，不补成 L1（B1）', async () => {
++  const l = await archive();
++  await seedRound(l, {
++    rerunIndex: 1, runId: 'R1', guardLevel: 'L2',
++    gemini: review(['src/a.ts:10']), glm: review(['src/b.ts:1'], [], 'GLM'),
++  });
++  await seedRound(l, {
++    rerunIndex: 2, runId: 'R2',
++    gemini: review(['src/a.ts:10']), glm: review(['src/b.ts:1'], [], 'GLM'),
++  });
++  const r = await buildTopicReport(l);
++  const [r1, r2] = r.rounds;
++  assert.deepEqual([r1!.driver, r1!.driverGuardLevel], [DEFAULT_DRIVER, 'L2']);
++  assert.deepEqual([r2!.driver, r2!.driverGuardLevel], [DEFAULT_DRIVER, null], '缺失即「无从得知」');
++  const md = renderTopicReport(r);
++  assert.match(md, /\| Driver（护栏） \|/);
++  assert.match(md, new RegExp(`\\| \`R1\` \\|.*\\| ${DEFAULT_DRIVER}（L2） \\|`));
++  assert.match(md, new RegExp(`\\| \`R2\` \\|.*\\| ${DEFAULT_DRIVER}（—） \\|`));
++});
++
+ test('归一化后的重合度进表，且未归一化值一并给出', async () => {
+   const l = await archive();
+   await seedRound(l, {
+diff --git a/test/unit/run-meta.test.ts b/test/unit/run-meta.test.ts
+index a8f2683..adfab32 100644
+--- a/test/unit/run-meta.test.ts
++++ b/test/unit/run-meta.test.ts
+@@ -83,6 +83,21 @@ test('driver_enabled: false 是合法留痕——M9 只校验「已登记」，
+   assert.deepEqual(validateRunMeta(meta), [], 'driver_enabled: false 必须是合法留痕');
+ });
+ 
++// ── driver_guard_level：当轮 Driver 的有效护栏等级（M10b 第 3 步 B1）──
++
++test('driver_guard_level：传了才写、合法值过 schema；不传不补（缺失即「无从得知」，不替没检查过的运行作证）', () => {
++  for (const level of ['L1', 'L2'] as const) {
++    const meta = skeleton({ driverGuardLevel: level });
++    assert.equal(meta.driver_guard_level, level);
++    assert.deepEqual(validateRunMeta(meta), [], level);
++  }
++  const absent = skeleton();
++  assert.equal('driver_guard_level' in absent, false, '不传时不得补一个 L1');
++  assert.deepEqual(validateRunMeta(absent), [], '早于本步的留痕没有这个字段，仍是合法留痕');
++  const bad = { ...skeleton(), driver_guard_level: 'L3' } as unknown as RunMeta;
++  assert.notDeepEqual(validateRunMeta(bad), [], '等级只有 L1 / L2 两档');
++});
++
+ // ── latestRunMeta：闸门区 driver 与轮次的权威来源（M9 第 5 步）──
+ 
+ test('latestRunMeta：按 run_id 取最新一条，字典序即时序是构造保证', async () => {
+diff --git a/doc/05_testing/REPORT_2026-09-25_m10b_step3.md b/doc/05_testing/REPORT_2026-09-25_m10b_step3.md
+new file mode 100644
+index 0000000..c47603d
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-09-25_m10b_step3.md
+@@ -0,0 +1,156 @@
++# M10b 第 3 步 · Hook 多目标（ZCode 渲染）与 B1 护栏等级接线 实施报告
++
++> **状态**：代码与测试完成，**未提交**；等待代码双审（用户发起 `/dual-review-code`）。
++> **上位**：计划定稿 r10 §3（替换 r9 §3.2 / §3.4，r9 又替换 r5 §6 的若干条）；D-2 = (b)、D-3 = 撤回自动探针均已由用户于 2026-09-25 拍板，本步不另出子计划。
++> **日期**：2026-09-25　**起点**：`6521c87`（`main`，EV-125 结案，已推送）
++> **证据**：`doc/05_testing/evidence/m10b-step3-20260925/`
++
++glm `guardLevel` → L2 这一项按 r10 §3.1.4 已提前到第 2 步做完，本步不重复。
++
++## 0. 读数总览
++
++| 项 | 读数 |
++| :--- | :--- |
++| 全量测试 | `npm run check`：**2011 / 2009 pass / 0 fail / 2 skipped**（§6） |
++| 变异 | **20 / 20 咬住**（主规格 15 + 停点话术 5），基线全绿起跑（§5） |
++| 真实 HOME | **未写**：本步只改仓库；装置与用例全部在 mkdtemp 夹具里跑 |
++| ZCode 真载体 | **未跑**：渲染出的 `.zcode/config.json` 在桌面端的信任、`Stop` / `SessionStart` 两个事件的行为，都要用户在 ZCode 桌面端薄冒烟（§7 第 2 条） |
++
++## 1. Hook 多目标：同一份 `hooks.json` 按形态渲染（r5 §6.1「通过时」，r10 §3.1.2、§3.2，r9 §3.4）
++
++### 1.1 注册表：路径与形态登记在同一个字段里
++
++`hookConfigTarget` 由路径字符串改为 `{ path, format }`（`format` 取 `claude-settings` / `zcode-config`）。
++理由：两家的配置文件形态不同，渲染器必须知道按哪种形态写；把形态另登记一个字段，或者在渲染器里按路径猜，都会多出一个与注册表并列的事实源。
++消费方只有 `guardProfileOf`（判空）、两处测试夹具（取值为 null）与本步新增的 `hook-config.ts`，改形不牵连别处。
++
++### 1.2 `hook-config.ts`：渲染、合并、在场判定
++
++| 部分 | 做法 |
++| :--- | :--- |
++| 单一来源 | 两家都从运行时根的 `hooks/hooks.json`（Claude Code 形态）派生，不另写一份 ZCode 版 |
++| ZCode 渲染 | matcher 只留 ZCode 工具注册表里有的名字（`Write` / `Edit` / `Bash`，去掉 `NotebookEdit`），且只写精确名单形态（r10 §3.2.2：不锚定正则会让 `Write` 误配 `TodoWrite`）；一条 matcher 过滤后一个名字都不剩就当场抛；`timeout`（秒）换成 `timeoutMs`（毫秒）；护栏失效提示里的「`.claude/settings.json` 中的 TriviumCode Hook」换成本家配置文件名 |
++| ZCode 外壳 | 条目放在 `hooks.events.<事件>[]` 下；`hooks.enabled` **只在缺席时置 true**——用户显式写了 false 是 r10 §3.2.3 的「停用」态，重跑不翻回，只记一条说明 |
++| 合并 | 两家共用：按事件追加、按 `gate hook-<name>` 原位替换旧版（升级不叠加）、不动用户已有的 Hook 与其它键；不是合法 JSON 对象时跳过并原样保留；写盘前备份为 `<文件>.trivium-backup` |
++| 写后提示 | ZCode 形态写入后提示「在桌面端重新信任该工作区，信任前 Hook 不跑」，并点出命令行模式整体关闭、子代理不过 Hook 两条边界 |
++| 在场判定 | `hookConfigPresent`：文件在、是合法 JSON、`PreToolUse` 下 `pre-write` 与 `pre-bash` 两道都在；ZCode 形态另要求 `hooks.enabled === true`。**只看存在性，不看内容**（r5 §6.2 边界 R-r） |
++
++事件映射与 r10 §3.2.1 的表一致：`PreToolUse`（`Write|Edit` → `hook-pre-write`；`Bash` → `hook-pre-bash`、`hook-pre-commit`）、`Stop` → `hook-stop`、`SessionStart` → `hook-session-start`。五个事件名都在 ZCode 的事件枚举里（第 1 步报告 §3.1）。
++
++### 1.3 入口：`trivium init` 两家一起合并，新增 `trivium hooks --agent <id>`
++
++- `init` 改调 `mergeAllHooks`：每一家登记了 `hookConfigTarget` 的都合并（今天是 claude 与 glm）。`mergeHooks` 保留原签名，只合并 Claude 形态那一家，既有用例不动。
++- `trivium hooks --agent <id> [--dry-run] [--asset-root <路径>] [--json]`：只合并指定的一家，**只做渲染与安装，不参与任何判定**。没有 Hook 机制的家（codex、gemini）、未登记的 id、缺 `--agent` 一律退 64 且零写入；项目还没 init 时加一条说明（守卫在没有 `config.yaml` 时一律放行，init 之后才生效）。USAGE 同步。
++
++### 1.4 路径形态用例（r9 §3.4「实现时加一条用例钉住」）
++
++第 1 步实测里 ZCode 负载的 `CLAUDE_PROJECT_DIR` 是 `/tmp/…` 形态、`file_path` 是 `/private/tmp/…` 形态。`hooks.test.ts` 新增一格：项目根取词法路径、写入目标取 realpath 形态，判定照样拦。本机 `os.tmpdir()` 本身就在 `/var` → `/private/var` 这条软链下，夹具天然带着两种形态。
++
++## 2. B1：护栏等级接线（r5 §6.2，r10 §3.3 收窄后的口径）
++
++| 落点 | 做法 |
++| :--- | :--- |
++| `effectiveGuardLevel` | 只对**登记为 L1** 的载体判 Hook 配置是否在场，不在场即降 L2；登记为 L2 的直接返回 L2，不读任何探针字段（D-3） |
++| 文案 | `describeGuard` 按护栏形态三档出文案，与入口资产注入段同源（r10 §3.1.3）：glm 打印「L2（有尽力拦截的 Hook……不兜底——只在桌面端、已信任、主代理、matcher 覆盖、不超时时生效）」，不再有「L2 = 无事前写拦截」这种与 glm 实况相反的说法 |
++| `preflight` | 「当轮 Driver」那一行带上护栏等级。**缺省 Driver 仍不打**（原设计：每次都打等于没打），**例外是它登记 L1 而 Hook 配置不在场**：那时打一行 ⚠️、标 `warn`、进 `warnings`，由 skill 念给用户，并给出修复出口 |
++| `run.v2` | 新增可选字段 `driver_guard_level`（`L1` / `L2`），`review` 在写运行元数据时按**本次运行时**的事实取值（不信预检那一次）；不传就不写——缺失即「无从得知」，不替没检查过的运行补一个 L1。schema 同步 |
++| `report` | 时间线新增「Driver（护栏）」列；旧留痕没有这个字段时写「—」 |
++| 死分支 | `preflight` 里「本次声明的 Driver 尚未启用为 Driver，该值仅用于选侧判定」一支删除，`driverEnabled` 入参随之去掉（`resolveDriver` 对未启用者退 64，生产路径走不到它，r5 §6.2 末段） |
++
++与计划字面的一处偏差：r5 §6.2 写「`preflight.ts` 在当轮 Driver 处打印护栏等级」，没说缺省 Driver 打不打。这里保留原设计「缺省不打」，只在降级时打。理由：降级是唯一需要人看见的形态；缺省路径上每次多一行，会把真正的告警淹掉。
++
++## 2.1 闸门停点话术按当轮 Driver 措辞（第 2 步薄冒烟核出；用户 2026-09-25 定并入本步）
++
++第 2 步附录 B 核出：`gate --await-approval` 对 glm 写「在此期间不得修改业务文件（**Hook 会拦下**）」——glm 是 L2、夹具里也没有 Hook，后半句不成立；
++调用写法写死 `/dual-approve`，对 codex 应是 `$dual-approve`。停点话术由 CLI 生成，不经入口资产渲染，第 2 步的单源渲染管不到它。
++
++| 落点 | 做法 |
++| :--- | :--- |
++| 调用写法的来源 | 由载体 yaml 的 `invocation` **迁入注册表** `entryInvocation`，成为唯一来源：CLI 装到运行时根后读不到 `skills-src/`，而两处各登记一份正是这次错位的成因。渲染器改从注册表取，载体 yaml 里再写 `invocation` 即当场报错。**重渲染 0 份变化**（28 份产物逐字节未动），证明迁移不改行为 |
++| `entryCommandOf(driver, name)` | 按当轮 Driver 取写法；取不到或未登记时回落缺省 Driver（旧闸门记录没有 `driver` 字段，那时执笔者就是缺省 Driver） |
++| 后半句 | `gateHoldNotice` 按**本次运行时的有效等级**四档措辞：只有有效 L1 才说「（Hook 会拦下）」；L1 降级、L2 尽力拦截、L2 无 Hook 三档各说清「靠你自觉」与「越界在审批前复核与跑后漂移复算时暴露」 |
++| CLI 两处 | `gate --await-approval` 的停点话术、`gate --check` 裁决齐备后自动置等待审批的那一句 |
++| Hook 三处 | 写入拦截、Bash 拦截、会话开场待办里的 `/dual-approve` / `/dual-abandon` 改按该闸门记下的 `driver` 派生。另两处拿不到当轮 Driver（状态文件禁写那一支、提交 Hook），保留斜杠写法并在代码里注明：会跑到 Hook 的只有带 Hook 的载体，它们今天都是 `/` 写法 |
++
++## 3. 查证：Claude Code 侧的 Hook 超时与子代理（r9 §3.3「第 3 步开工时查官方文档照实登记」）
++
++来源 `https://code.claude.com/docs/en/hooks.md`（2026-09-25 抓取）：
++
++1. **超时**：原文「A timed-out `command`, `http`, or `mcp_tool` hook doesn't block the tool call. The call continues through the normal permission flow, so don't count on a stalled hook to act as a gate.」
++   ⇒ **Claude Code 也是超时即放行**，与 ZCode 同形。r9 §3.3 威胁表「Hook 超时」行的「Claude Code：未核」改为「超时不拦（官方文档）」。
++   默认超时原文「Defaults: 600 for `command`…」；本仓每条 Hook 都显式挂了 `timeout`（15 / 30 秒），且都是毫秒级脚本，正常情况下碰不到。
++2. **其它退出码**：原文「Any other exit code doesn't block on its own for most hook events.」与本仓 `hooks.ts` 的三档语义（0 放行、2 拦截、1 程序缺陷不阻断）一致。
++3. **子代理**：原文「Hooks from settings files, managed policy settings, and plugins also run inside subagents. When a subagent calls a tool, tool events such as `PreToolUse` and `PostToolUse` fire the same configured hooks as in the main conversation, and the input carries the `agent_id` and `agent_type` common input fields that identify the subagent.」
++   ⇒ r10 §3.1.2 登记的「claude 侧子代理是否过 Hook 也未核」有了答案：**会过**。这正是 claude 与 glm 分级不同的结构性理由之一（ZCode 的子代理不过工作区 Hook，第 1 步报告 §3.1.2）。
++
++这三条是文档陈述，不是本机实测。第 5 步回溯时写进 L1 / L2 文档的「已知边界」与 8.5 引言块（§7 第 3 条）。
++
++## 4. 测试
++
++| 用例 | 覆盖 |
++| :--- | :--- |
++| `unit/hook-config.test.ts`（新，§1～§2 共 12 条） | 两种形态的渲染（用仓库真实的 `hooks.json`）；matcher 过滤后为空即抛；ZCode 合并：新建、幂等、保留用户 Hook 与其它键、旧版原位替换、`enabled: false` 不翻回、非法 JSON 原样保留；没有 Hook 机制的家零写入；在场判定（缺 `pre-bash`、`enabled` 不为 true）；有效等级（L1 在场 / 不在场、L2 不看在场） |
++| `integration/hooks-command.test.ts`（新，4 条） | `hooks --agent` 只写指定的家、不碰 Claude 的；三种 64（没有 Hook 机制、缺 `--agent`、未登记）且零写入；`--dry-run` 零落盘；`init` 两家一起合并 |
++| `unit/preflight.test.ts` | 「当轮 Driver」四格：l2-none 与 l2-hook 各一格文案；缺省 Driver + Hook 在场不打；缺省 Driver + Hook 不在场打 ⚠️ 并进 `warnings`。「探针过期」一格改为剔掉信息行再数 |
++| `unit/run-meta.test.ts` | `driver_guard_level` 传了才写、两档合法、不传不补、`L3` 被 schema 拒 |
++| `unit/report.test.ts` | 时间线「Driver（护栏）」列：有等级写等级、旧留痕写「—」 |
++| `integration/fault-injection.test.ts` | 真实运行路径上 `run.json` 记了 `driver_guard_level`（夹具无 Hook 配置 ⇒ `L2`） |
++| `unit/hooks.test.ts` | §1.4 的路径形态一格 |
++| `unit/hook-config.test.ts`（§2.1 追加 2 条） | 停点后半句四档措辞；`entryCommandOf` 逐家取写法、取不到回落缺省 Driver |
++| `contract/entry-render-parity.test.ts`（§2.1 追加 1 条） | 产物用的调用写法等于注册表；载体 yaml 里加回 `invocation` 即加载失败 |
++| `integration/fault-injection.test.ts`（§2.1） | 既有的缺省 Driver 停点用例补断言：夹具无 Hook 配置 ⇒ 降级措辞、不说「Hook 会拦下」；新增一条：非缺省、无 Hook、非斜杠写法的 Driver（由注册表派生，今天是 codex）走一整轮到停点，调用写法与后半句都换成它的 |
++
++## 5. 变异
++
++装置 `scripts/mutation-check.mjs`，规格 `mutation-spec.json`，包装 `run.mjs`，原始输出 `mutation-output.txt`。
++装置报「✓ 工作树干净、基线全绿（7 个套件）」：「干净」指装置的哨兵判据（上次运行已善终），不是 `git status` 为空——本步改动未提交。**15 / 15 咬住**：
++
++| # | 变异 | 应红的套件 | 结果 |
++| :-- | :--- | :--- | :--- |
++| H1 | ZCode 工具名单混进 `NotebookEdit` | hook-config | ✓ fail=2 |
++| H2 | 超时不换算成 `timeoutMs` | hook-config | ✓ fail=1 |
++| H3 | 护栏失效提示仍点名 Claude 的配置文件 | hook-config | ✓ fail=1 |
++| H4 | 显式 `enabled: false` 被重跑翻回 true | hook-config | ✓ fail=1 |
++| H5 | ZCode 在场判定不看 `enabled` | hook-config | ✓ fail=1 |
++| H6 | 在场判定只要求 `pre-write` 一道 | hook-config | ✓ fail=1 |
++| H7 | 有效等级永不降级 | preflight | ✓ fail=1 |
++| H8 | 缺省 Driver 恒打护栏行 | preflight | ✓ fail=1 |
++| H9 | 缺省 Driver 降级时不打 | preflight | ✓ fail=1 |
++| H10 | `init` 只合并 Claude 形态那一家 | hooks-command（集成） | ✓ fail=1 |
++| H11 | `hooks --agent` 忽略指定的家 | hooks-command（集成） | ✓ fail=2 |
++| H12 | `review` 不把有效等级写进 `run.json` | fault-injection（集成） | ✓ fail=1 |
++| H13 | `newRunMeta` 缺省补 L1 | run-meta | ✓ fail=1 |
++| H14 | report 不读 `driver_guard_level` | report | ✓ fail=1 |
++| H15 | 合并按全文识别同一条（重跑叠加、升级不替换） | init | ✓ fail=1 |
++
++收尾恢复成功，`src/` 的改动与变异前一致。
++
++上表是停点话术（§2.1）改完之后、在当前代码上的重跑（`mutation-output.txt`）；第一次跑在 §2.1 之前（`mutation-output-run1.txt`）。两次逐条相同，只有 H12 由 fail=1 变为 fail=2——新加的 codex 停点用例同样断言了 `driver_guard_level`，符合预期。
++
++**停点话术另一份规格**（`mutation-spec-2.json` → `mutation-output-2.txt`，`node run.mjs mutation-spec-2.json`），**5 / 5 咬住**：
++
++| # | 变异 | 应红的套件 | 结果 |
++| :-- | :--- | :--- | :--- |
++| S1 | 停点调用写法取缺省 Driver 而非当轮 Driver | fault-injection（集成） | ✓ fail=1 |
++| S2 | 停点后半句取缺省 Driver 的护栏等级 | fault-injection（集成） | ✓ fail=1 |
++| S3 | 后半句恒说「Hook 会拦下」（改动前的形态） | hook-config | ✓ fail=1 |
++| S4 | `entryCommandOf` 恒用斜杠写法（改动前的形态） | hook-config | ✓ fail=1 |
++| S5 | 渲染器不再拒绝载体 yaml 里的 `invocation` | entry-render-parity | ✓ fail=1 |
++
++Hook 侧三处改为按闸门的 `driver` 派生写法，**没有变异**：会触发 Hook 的只有带 Hook 的载体，它们今天都是 `/` 写法，把派生改回写死在行为上区分不开。它守的是第三家带 Hook 的载体用别的写法时不漏改。
++
++## 6. 全量测试
++
++`npm run check`（typecheck → build → 全部测试）：**2011 / 2009 pass / 0 fail / 2 skipped**。较第 3 步开工前（EV-125 提交时的 1987）多 24 条：
++- §1～§2 的 Hook 多目标与 B1 共 20 条：hook-config 12、hooks-command 4、run-meta 1、report 1、hooks 1、preflight 净增 1（原「当轮 Driver」三格——含随死分支删除的「尚未启用为 Driver」那格——改写为四格）；
++- §2.1 的停点话术共 4 条：hook-config 2、entry-render-parity 1、fault-injection 1。
++
++另有 fault-injection 两条既有用例补了断言（`driver_guard_level`、缺省 Driver 的停点措辞），不增条数。
++
++## 7. 待用户定与待做
++
++1. **闸门停点话术**：用户 2026-09-25 定并入本步，已做（§2.1）。
++2. **glm 薄冒烟（第二轮）**：渲染出的 `.zcode/config.json` 要在 ZCode 桌面端验：①信任提示出现、信任后 `Write` 一个受保护后缀的文件被拒；②`Stop`（收工拦截）与 `SessionStart`（待办注入）两个事件的实际行为（静态读到 `Stop` 上退 2 走 `decision: block`，未实测）。这一步需要你在桌面端操作，逐步清单可以照第 2 步附录 A 的形式另写一份。
++3. **第 5 步回溯清单追加**（r5 §8.4、r10 §6 之外）：§3 的三条文档陈述写进 L1 / L2 文档与 8.5 引言块；r9 §3.3 威胁表「Hook 超时」行改为两家都「超时即放行」；四态文档（r10 §3.2.3）写进 QUICKSTART 与 RUNBOOK；PROTOCOL 补 `hooks` 命令一行、`run.v2` 的 `driver_guard_level`；RUNBOOK 补「写盘前备份只在真正写入时发生」（见下条）。
++4. **行为变化一处**：旧 `mergeHooks` 在配置已存在时**每次**都先写备份（哪怕随后判定「已就位」不写）；现在只在真正写入时备份。重跑 init 不再反复覆写 `.trivium-backup`，旧备份得以保留。
++5. **`review --cancel` 不回写 `run.json`**：第 2 步冒烟核出，建议新立 BACKLOG，仍待你定。
+diff --git a/doc/05_testing/evidence/m10b-step3-20260925/mutation-output-2.txt b/doc/05_testing/evidence/m10b-step3-20260925/mutation-output-2.txt
+new file mode 100644
+index 0000000..5f5f91e
+--- /dev/null
++++ b/doc/05_testing/evidence/m10b-step3-20260925/mutation-output-2.txt
+@@ -0,0 +1,42 @@
++✓ 工作树干净、基线全绿（3 个套件）
++  S1 ✓ 咬住（fail=1）
++  S2 ✓ 咬住（fail=1）
++  S3 ✓ 咬住（fail=1）
++  S4 ✓ 咬住（fail=1）
++  S5 ✓ 咬住（fail=1）
++{
++  "总数": 5,
++  "咬住": 5,
++  "逐条": [
++    {
++      "id": "S1",
++      "desc": "停点调用写法取缺省 Driver 而非当轮 Driver ⇒ 集成「停点话术：调用写法……按当轮 Driver」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "S2",
++      "desc": "停点后半句取缺省 Driver 的护栏等级 ⇒ 同上红（codex 那一轮会被说成「Hook 配置不在场」）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "S3",
++      "desc": "后半句恒说「Hook 会拦下」（改动前的形态）⇒ 单元「停点后半句按有效等级四档措辞」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "S4",
++      "desc": "entryCommandOf 恒用斜杠写法（改动前的形态）⇒ 单元「entryCommandOf……」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "S5",
++      "desc": "渲染器不再拒绝载体 yaml 里的 invocation（两处登记的口子重开）⇒ 契约「调用写法只登记在注册表」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m10b-step3-20260925/mutation-output-run1.txt b/doc/05_testing/evidence/m10b-step3-20260925/mutation-output-run1.txt
+new file mode 100644
+index 0000000..78f6355
+--- /dev/null
++++ b/doc/05_testing/evidence/m10b-step3-20260925/mutation-output-run1.txt
+@@ -0,0 +1,112 @@
++✓ 工作树干净、基线全绿（7 个套件）
++  H1 ✓ 咬住（fail=2）
++  H2 ✓ 咬住（fail=1）
++  H3 ✓ 咬住（fail=1）
++  H4 ✓ 咬住（fail=1）
++  H5 ✓ 咬住（fail=1）
++  H6 ✓ 咬住（fail=1）
++  H7 ✓ 咬住（fail=1）
++  H8 ✓ 咬住（fail=1）
++  H9 ✓ 咬住（fail=1）
++  H10 ✓ 咬住（fail=1）
++  H11 ✓ 咬住（fail=2）
++  H12 ✓ 咬住（fail=1）
++  H13 ✓ 咬住（fail=1）
++  H14 ✓ 咬住（fail=1）
++  H15 ✓ 咬住（fail=1）
++{
++  "总数": 15,
++  "咬住": 15,
++  "逐条": [
++    {
++      "id": "H1",
++      "desc": "ZCode 工具名单混进 NotebookEdit ⇒「渲染：zcode-config 形态……」红",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "H2",
++      "desc": "超时不换算成 timeoutMs（照搬 timeout 秒）⇒ 渲染用例红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H3",
++      "desc": "护栏失效提示仍点名 Claude 的配置文件 ⇒ 渲染用例红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H4",
++      "desc": "显式 enabled: false 也被翻回 true（停用态被重跑覆盖）⇒「保留用户已有……显式 enabled: false 不翻回」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H5",
++      "desc": "ZCode 在场判定不看 hooks.enabled ⇒「hooks.enabled 不为 true ⇒ false」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H6",
++      "desc": "在场判定只要求 pre-write 一道 ⇒「缺 pre-bash 一道 ⇒ false」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H7",
++      "desc": "有效等级永不降级 ⇒ hook-config 与预检的降级用例红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H8",
++      "desc": "缺省 Driver 恒打护栏行 ⇒「缺省 Driver、Hook 配置在场 ⇒ 不打这行」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H9",
++      "desc": "缺省 Driver 降级时不打（回到只看非缺省）⇒「登记 L1 而 Hook 配置不在场 ⇒ 降为 L2」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H10",
++      "desc": "init 只合并 Claude 形态的一家 ⇒ 集成「init：两家的 Hook 配置一起合并」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H11",
++      "desc": "hooks --agent 忽略指定的家、两家一起写 ⇒ 集成「只写该家的配置，不碰 Claude 的」红",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "H12",
++      "desc": "review 不把有效等级写进 run.json ⇒ 集成「缺省（不给 --critics）……」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H13",
++      "desc": "newRunMeta 缺省补 L1（替没检查过的运行作证）⇒ run-meta「不传不补」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H14",
++      "desc": "report 不读 driver_guard_level ⇒「时间线带 Driver（护栏）列」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H15",
++      "desc": "合并不按 gate hook-<name> 识别同一条（重跑叠加、升级不替换）⇒ 幂等与升级用例红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m10b-step3-20260925/mutation-output.txt b/doc/05_testing/evidence/m10b-step3-20260925/mutation-output.txt
+new file mode 100644
+index 0000000..e99481b
+--- /dev/null
++++ b/doc/05_testing/evidence/m10b-step3-20260925/mutation-output.txt
+@@ -0,0 +1,112 @@
++✓ 工作树干净、基线全绿（7 个套件）
++  H1 ✓ 咬住（fail=2）
++  H2 ✓ 咬住（fail=1）
++  H3 ✓ 咬住（fail=1）
++  H4 ✓ 咬住（fail=1）
++  H5 ✓ 咬住（fail=1）
++  H6 ✓ 咬住（fail=1）
++  H7 ✓ 咬住（fail=1）
++  H8 ✓ 咬住（fail=1）
++  H9 ✓ 咬住（fail=1）
++  H10 ✓ 咬住（fail=1）
++  H11 ✓ 咬住（fail=2）
++  H12 ✓ 咬住（fail=2）
++  H13 ✓ 咬住（fail=1）
++  H14 ✓ 咬住（fail=1）
++  H15 ✓ 咬住（fail=1）
++{
++  "总数": 15,
++  "咬住": 15,
++  "逐条": [
++    {
++      "id": "H1",
++      "desc": "ZCode 工具名单混进 NotebookEdit ⇒「渲染：zcode-config 形态……」红",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "H2",
++      "desc": "超时不换算成 timeoutMs（照搬 timeout 秒）⇒ 渲染用例红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H3",
++      "desc": "护栏失效提示仍点名 Claude 的配置文件 ⇒ 渲染用例红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H4",
++      "desc": "显式 enabled: false 也被翻回 true（停用态被重跑覆盖）⇒「保留用户已有……显式 enabled: false 不翻回」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H5",
++      "desc": "ZCode 在场判定不看 hooks.enabled ⇒「hooks.enabled 不为 true ⇒ false」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H6",
++      "desc": "在场判定只要求 pre-write 一道 ⇒「缺 pre-bash 一道 ⇒ false」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H7",
++      "desc": "有效等级永不降级 ⇒ hook-config 与预检的降级用例红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H8",
++      "desc": "缺省 Driver 恒打护栏行 ⇒「缺省 Driver、Hook 配置在场 ⇒ 不打这行」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H9",
++      "desc": "缺省 Driver 降级时不打（回到只看非缺省）⇒「登记 L1 而 Hook 配置不在场 ⇒ 降为 L2」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H10",
++      "desc": "init 只合并 Claude 形态的一家 ⇒ 集成「init：两家的 Hook 配置一起合并」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H11",
++      "desc": "hooks --agent 忽略指定的家、两家一起写 ⇒ 集成「只写该家的配置，不碰 Claude 的」红",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "H12",
++      "desc": "review 不把有效等级写进 run.json ⇒ 集成「缺省（不给 --critics）……」红",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "H13",
++      "desc": "newRunMeta 缺省补 L1（替没检查过的运行作证）⇒ run-meta「不传不补」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H14",
++      "desc": "report 不读 driver_guard_level ⇒「时间线带 Driver（护栏）列」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "H15",
++      "desc": "合并不按 gate hook-<name> 识别同一条（重跑叠加、升级不替换）⇒ 幂等与升级用例红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m10b-step3-20260925/mutation-spec-2.json b/doc/05_testing/evidence/m10b-step3-20260925/mutation-spec-2.json
+new file mode 100644
+index 0000000..e01bf00
+--- /dev/null
++++ b/doc/05_testing/evidence/m10b-step3-20260925/mutation-spec-2.json
+@@ -0,0 +1,55 @@
++{
++  "targets": [
++    "src/trivium/cli.ts",
++    "src/trivium/hook-config.ts",
++    "src/trivium/agents/registry.ts",
++    "src/entry-render.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/hook-config.test.js",
++    "dist/test/test/contract/entry-render-parity.test.js",
++    "dist/test/test/integration/fault-injection.test.js"
++  ],
++  "cases": [
++    {
++      "id": "S1",
++      "desc": "停点调用写法取缺省 Driver 而非当轮 Driver ⇒ 集成「停点话术：调用写法……按当轮 Driver」红",
++      "file": "src/trivium/cli.ts",
++      "find": "    const approveCmd = entryCommandOf(gateDriver, 'dual-approve');",
++      "replace": "    const approveCmd = entryCommandOf(DEFAULT_DRIVER, 'dual-approve');",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    },
++    {
++      "id": "S2",
++      "desc": "停点后半句取缺省 Driver 的护栏等级 ⇒ 同上红（codex 那一轮会被说成「Hook 配置不在场」）",
++      "file": "src/trivium/cli.ts",
++      "find": "  const agent = agentById(driverId) ?? agentById(DEFAULT_DRIVER)!;",
++      "replace": "  const agent = agentById(DEFAULT_DRIVER)!;",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    },
++    {
++      "id": "S3",
++      "desc": "后半句恒说「Hook 会拦下」（改动前的形态）⇒ 单元「停点后半句按有效等级四档措辞」红",
++      "file": "src/trivium/hook-config.ts",
++      "find": "  if (g.level === 'L1') return '在此期间不得修改业务文件（Hook 会拦下）。';",
++      "replace": "  if (g.level !== 'nope') return '在此期间不得修改业务文件（Hook 会拦下）。';",
++      "expect": "dist/test/test/unit/hook-config.test.js"
++    },
++    {
++      "id": "S4",
++      "desc": "entryCommandOf 恒用斜杠写法（改动前的形态）⇒ 单元「entryCommandOf……」红",
++      "file": "src/trivium/agents/registry.ts",
++      "find": "  return agent.entryInvocation.replace('{name}', name);",
++      "replace": "  return `/${name}`;",
++      "expect": "dist/test/test/unit/hook-config.test.js"
++    },
++    {
++      "id": "S5",
++      "desc": "渲染器不再拒绝载体 yaml 里的 invocation（两处登记的口子重开）⇒ 契约「调用写法只登记在注册表」红",
++      "file": "src/entry-render.ts",
++      "find": "  if (doc!['invocation'] !== undefined) fail('invocation 已迁入注册表（entryInvocation），载体 yaml 里不要再写');\n",
++      "replace": "",
++      "expect": "dist/test/test/contract/entry-render-parity.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m10b-step3-20260925/mutation-spec.json b/doc/05_testing/evidence/m10b-step3-20260925/mutation-spec.json
+new file mode 100644
+index 0000000..dd997fb
+--- /dev/null
++++ b/doc/05_testing/evidence/m10b-step3-20260925/mutation-spec.json
+@@ -0,0 +1,142 @@
++{
++  "targets": [
++    "src/trivium/hook-config.ts",
++    "src/trivium/preflight.ts",
++    "src/trivium/init.ts",
++    "src/trivium/cli.ts",
++    "src/trivium/review.ts",
++    "src/trivium/meta.ts",
++    "src/trivium/report.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/hook-config.test.js",
++    "dist/test/test/unit/preflight.test.js",
++    "dist/test/test/unit/init.test.js",
++    "dist/test/test/unit/run-meta.test.js",
++    "dist/test/test/unit/report.test.js",
++    "dist/test/test/integration/hooks-command.test.js",
++    "dist/test/test/integration/fault-injection.test.js"
++  ],
++  "cases": [
++    {
++      "id": "H1",
++      "desc": "ZCode 工具名单混进 NotebookEdit ⇒「渲染：zcode-config 形态……」红",
++      "file": "src/trivium/hook-config.ts",
++      "find": "const ZCODE_HOOK_TOOLS: ReadonlySet<string> = new Set(['Write', 'Edit', 'Bash']);",
++      "replace": "const ZCODE_HOOK_TOOLS: ReadonlySet<string> = new Set(['Write', 'Edit', 'Bash', 'NotebookEdit']);",
++      "expect": "dist/test/test/unit/hook-config.test.js"
++    },
++    {
++      "id": "H2",
++      "desc": "超时不换算成 timeoutMs（照搬 timeout 秒）⇒ 渲染用例红",
++      "file": "src/trivium/hook-config.ts",
++      "find": "...(timeout !== undefined ? { timeoutMs: timeout * 1000 } : {}),",
++      "replace": "...(timeout !== undefined ? { timeout } : {}),",
++      "expect": "dist/test/test/unit/hook-config.test.js"
++    },
++    {
++      "id": "H3",
++      "desc": "护栏失效提示仍点名 Claude 的配置文件 ⇒ 渲染用例红",
++      "file": "src/trivium/hook-config.ts",
++      "find": "? h.command.split(CLAUDE_SETTINGS_MENTION).join(`${targetPath} 中的 TriviumCode Hook`)",
++      "replace": "? h.command",
++      "expect": "dist/test/test/unit/hook-config.test.js"
++    },
++    {
++      "id": "H4",
++      "desc": "显式 enabled: false 也被翻回 true（停用态被重跑覆盖）⇒「保留用户已有……显式 enabled: false 不翻回」红",
++      "file": "src/trivium/hook-config.ts",
++      "find": "    if (hooks['enabled'] === undefined) {",
++      "replace": "    if (hooks['enabled'] !== true) {",
++      "expect": "dist/test/test/unit/hook-config.test.js"
++    },
++    {
++      "id": "H5",
++      "desc": "ZCode 在场判定不看 hooks.enabled ⇒「hooks.enabled 不为 true ⇒ false」红",
++      "file": "src/trivium/hook-config.ts",
++      "find": "    if (hooks['enabled'] !== true) return false;\n",
++      "replace": "",
++      "expect": "dist/test/test/unit/hook-config.test.js"
++    },
++    {
++      "id": "H6",
++      "desc": "在场判定只要求 pre-write 一道 ⇒「缺 pre-bash 一道 ⇒ false」红",
++      "file": "src/trivium/hook-config.ts",
++      "find": "const REQUIRED_FOR_GUARD: readonly string[] = ['pre-write', 'pre-bash'];",
++      "replace": "const REQUIRED_FOR_GUARD: readonly string[] = ['pre-write'];",
++      "expect": "dist/test/test/unit/hook-config.test.js"
++    },
++    {
++      "id": "H7",
++      "desc": "有效等级永不降级 ⇒ hook-config 与预检的降级用例红",
++      "file": "src/trivium/hook-config.ts",
++      "find": "  const present = await hookConfigPresent(projectRoot, agent);",
++      "replace": "  const present = true;",
++      "expect": "dist/test/test/unit/preflight.test.js"
++    },
++    {
++      "id": "H8",
++      "desc": "缺省 Driver 恒打护栏行 ⇒「缺省 Driver、Hook 配置在场 ⇒ 不打这行」红",
++      "file": "src/trivium/preflight.ts",
++      "find": "    if (driver !== DEFAULT_DRIVER || guard.downgraded) {",
++      "replace": "    if (driverAgent !== undefined) {",
++      "expect": "dist/test/test/unit/preflight.test.js"
++    },
++    {
++      "id": "H9",
++      "desc": "缺省 Driver 降级时不打（回到只看非缺省）⇒「登记 L1 而 Hook 配置不在场 ⇒ 降为 L2」红",
++      "file": "src/trivium/preflight.ts",
++      "find": "    if (driver !== DEFAULT_DRIVER || guard.downgraded) {",
++      "replace": "    if (driver !== DEFAULT_DRIVER) {",
++      "expect": "dist/test/test/unit/preflight.test.js"
++    },
++    {
++      "id": "H10",
++      "desc": "init 只合并 Claude 形态的一家 ⇒ 集成「init：两家的 Hook 配置一起合并」红",
++      "file": "src/trivium/init.ts",
++      "find": "  await mergeAllHooks(ctx.projectRoot, path.join(assetRoot, 'hooks/hooks.json'), report, dryRun);",
++      "replace": "  await mergeHooks(ctx.projectRoot, path.join(assetRoot, 'hooks/hooks.json'), report, dryRun);",
++      "expect": "dist/test/test/integration/hooks-command.test.js"
++    },
++    {
++      "id": "H11",
++      "desc": "hooks --agent 忽略指定的家、两家一起写 ⇒ 集成「只写该家的配置，不碰 Claude 的」红",
++      "file": "src/trivium/cli.ts",
++      "find": "  await mergeAllHooks(ctx.projectRoot, path.join(assetRoot, 'hooks/hooks.json'), report, dryRun, [agent]);",
++      "replace": "  await mergeAllHooks(ctx.projectRoot, path.join(assetRoot, 'hooks/hooks.json'), report, dryRun);",
++      "expect": "dist/test/test/integration/hooks-command.test.js"
++    },
++    {
++      "id": "H12",
++      "desc": "review 不把有效等级写进 run.json ⇒ 集成「缺省（不给 --critics）……」红",
++      "file": "src/trivium/review.ts",
++      "find": "    ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),\n",
++      "replace": "",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    },
++    {
++      "id": "H13",
++      "desc": "newRunMeta 缺省补 L1（替没检查过的运行作证）⇒ run-meta「不传不补」红",
++      "file": "src/trivium/meta.ts",
++      "find": "    ...(i.driverGuardLevel !== undefined ? { driver_guard_level: i.driverGuardLevel } : {}),",
++      "replace": "    driver_guard_level: i.driverGuardLevel ?? 'L1',",
++      "expect": "dist/test/test/unit/run-meta.test.js"
++    },
++    {
++      "id": "H14",
++      "desc": "report 不读 driver_guard_level ⇒「时间线带 Driver（护栏）列」红",
++      "file": "src/trivium/report.ts",
++      "find": "  base.driverGuardLevel = meta.driver_guard_level ?? null;\n",
++      "replace": "",
++      "expect": "dist/test/test/unit/report.test.js"
++    },
++    {
++      "id": "H15",
++      "desc": "合并不按 gate hook-<name> 识别同一条（重跑叠加、升级不替换）⇒ 幂等与升级用例红",
++      "file": "src/trivium/hook-config.ts",
++      "find": "      const at = cur.findIndex((c) => [...hookNamesOf(c)].some((n) => mine.has(n)));",
++      "replace": "      const at = cur.findIndex((c) => JSON.stringify(c) === sig);",
++      "expect": "dist/test/test/unit/init.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m10b-step3-20260925/run.mjs b/doc/05_testing/evidence/m10b-step3-20260925/run.mjs
+new file mode 100644
+index 0000000..0ebfb9d
+--- /dev/null
++++ b/doc/05_testing/evidence/m10b-step3-20260925/run.mjs
+@@ -0,0 +1,29 @@
++#!/usr/bin/env node
++/**
++ * M10b 第 3 步变异验证的包装：跑 `scripts/mutation-check.mjs <本目录>/<规格>`，
++ * 把装置的 stdout 与 stderr 原样写进对应的输出文件（会话里的命令不带重定向，输出由脚本自己写）。
++ * 退出码透传装置的退出码。仓库根按脚本位置推导（EV-103）。
++ *
++ * 用法：
++ *   node doc/05_testing/evidence/m10b-step3-20260925/run.mjs                      # mutation-spec.json → mutation-output.txt
++ *   node doc/05_testing/evidence/m10b-step3-20260925/run.mjs mutation-spec-2.json # → mutation-output-2.txt
++ */
++import { spawn } from 'node:child_process';
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const HERE = path.dirname(fileURLToPath(import.meta.url));
++const ROOT = path.resolve(HERE, '../../../..');
++const spec = process.argv[2] ?? 'mutation-spec.json';
++const suffix = /^mutation-spec(-\d+)?\.json$/.exec(spec)?.[1] ?? '';
++const child = spawn(process.execPath, [path.join(ROOT, 'scripts/mutation-check.mjs'), path.join(HERE, spec)], {
++  cwd: ROOT,
++  stdio: ['ignore', 'pipe', 'pipe'],
++});
++let out = '';
++child.stdout.on('data', (d) => { out += d; process.stdout.write(d); });
++child.stderr.on('data', (d) => { out += d; process.stderr.write(d); });
++const code = await new Promise((resolve) => child.on('close', resolve));
++await fs.writeFile(path.join(HERE, `mutation-output${suffix}.txt`), out, 'utf8');
++process.exit(code ?? 1);
+diff --git a/src/trivium/hook-config.ts b/src/trivium/hook-config.ts
+new file mode 100644
+index 0000000..ce79995
+--- /dev/null
++++ b/src/trivium/hook-config.ts
+@@ -0,0 +1,332 @@
++/**
++ * 项目内 Hook 配置的渲染、合并与在场判定（M10b 第 3 步，计划 r10 §3.1.2、§3.2、§3.3；r9 §3.4）。
++ *
++ * **单一来源**：两家的 Hook 都由运行时根里的 `hooks/hooks.json`（Claude Code 形态）派生。
++ * 注册表的 `hookConfigTarget` 登记每家落在哪个文件、是什么形态；本模块按形态渲染：
++ *
++ *   claude-settings  原样合并进 `.claude/settings.json` 的 `hooks.<事件>[]`
++ *   zcode-config     合并进 `.zcode/config.json` 的 `hooks.events.<事件>[]`：
++ *                    matcher 只留 ZCode 工具注册表里有的名字（`NotebookEdit` 不在其中）；
++ *                    超时 `timeout`（秒）换成 `timeoutMs`（毫秒）；护栏失效提示里的配置文件名换成本家的
++ *
++ * **只增不删、不覆盖用户已有的 Hook**（两家同口径）：按事件追加；同一条 TriviumCode Hook 以它调用的
++ * `gate hook-<name>` 识别，命令文本变了就原位替换旧条目（升级），而不是叠加第二条。
++ *
++ * 本模块**只渲染与安装，不参与任何判定**（r5 §6.1「通过时」）：拦不拦由 `hooks.ts` 决定，
++ * 装没装上由 {@link hookConfigPresent} 回答，给 `preflight` 定当轮护栏等级用（B1，r10 §3.3）。
++ */
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import {
++  type AgentDescriptor, type GuardLevel, type GuardProfile, type HookConfigFormat, guardProfileOf,
++} from './agents/registry.js';
++import { ensureDir, exists, writeAtomic } from './util/fsx.js';
++import { warn } from './util/log.js';
++
++/** `hooks/hooks.json` 里的一条事件条目（Claude Code 形态） */
++export interface HookEntry {
++  matcher?: string;
++  hooks: { type: string; command: string; timeout?: number }[];
++}
++
++export interface HookSource {
++  hooks: Record<string, HookEntry[]>;
++}
++
++/** 与 `init.ts` 的 `InitReport` 同形：`hooks` 命令与 `init` 共用同一份汇报 */
++export interface HookMergeReport {
++  created: string[];
++  updated: string[];
++  skipped: string[];
++  notes: string[];
++}
++
++/** 一条 hooks 条目里调用了哪些 `gate hook-<name>`（TriviumCode 的 Hook 身份） */
++export function hookNamesOf(entry: unknown): Set<string> {
++  const out = new Set<string>();
++  for (const m of JSON.stringify(entry).matchAll(/gate hook-([a-z-]+)/g)) out.add(m[1]!);
++  return out;
++}
++
++export async function loadHookSource(hooksJsonPath: string): Promise<HookSource | null> {
++  if (!(await exists(hooksJsonPath))) return null;
++  return JSON.parse(await fs.readFile(hooksJsonPath, 'utf8')) as HookSource;
++}
++
++// ─────────────────────────── 渲染 ───────────────────────────
++
++/**
++ * ZCode 工具注册表里、本仓 Hook 要挂的那几个工具名（第 1 步报告 §3.2 来源 ①）。
++ *
++ * matcher 只写精确名单（r10 §3.2.2）：ZCode 对「只含字母数字下划线与 `|`」的 matcher 按 `|` 拆成精确名，
++ * 否则当**不锚定**的正则——`Write` 会误匹配 `TodoWrite`。`NotebookEdit` 不在 ZCode 注册表里，渲染时去掉；
++ * `ApplyPatch` 经 ZCode 的 matcher 别名会被 `Write|Edit` 覆盖，但路径嵌在 `operation.path`、
++ * `extractTargetPath` 取不到（报告 §3.2 第 3 条），是登记在案的已知边界，不在这里补。
++ */
++const ZCODE_HOOK_TOOLS: ReadonlySet<string> = new Set(['Write', 'Edit', 'Bash']);
++
++/** 护栏失效提示里点名的配置文件：渲染到别家时要换成别家的，否则提示把人指到一个不起作用的文件 */
++const CLAUDE_SETTINGS_MENTION = '.claude/settings.json 中的 TriviumCode Hook';
++
++function toZcodeEntry(entry: HookEntry, targetPath: string): HookEntry {
++  let matcher: string | undefined;
++  if (entry.matcher !== undefined) {
++    const kept = entry.matcher.split('|').filter((n) => ZCODE_HOOK_TOOLS.has(n));
++    if (kept.length === 0) {
++      // 源里新加了一条 ZCode 没有的工具名：静默丢掉整条就是「装上了却不拦」，当场抛
++      throw new Error(`hooks.json 的 matcher「${entry.matcher}」在 ZCode 上一个工具名都不剩，无法渲染`);
++    }
++    matcher = kept.join('|');
++  }
++  return {
++    ...(matcher !== undefined ? { matcher } : {}),
++    hooks: entry.hooks.map((h) => {
++      const { timeout, ...rest } = h;
++      const command = h.command.includes(CLAUDE_SETTINGS_MENTION)
++        ? h.command.split(CLAUDE_SETTINGS_MENTION).join(`${targetPath} 中的 TriviumCode Hook`)
++        : h.command;
++      return {
++        ...rest,
++        command,
++        ...(timeout !== undefined ? { timeoutMs: timeout * 1000 } : {}),
++      } as HookEntry['hooks'][number];
++    }),
++  };
++}
++
++/** 按形态渲染出「事件 → 条目列表」。ZCode 事件名与 Claude Code 同名（报告 §3.1 的事件枚举） */
++export function renderHookEvents(
++  format: HookConfigFormat,
++  source: HookSource,
++  targetPath: string,
++): Record<string, HookEntry[]> {
++  if (format === 'claude-settings') return source.hooks;
++  const out: Record<string, HookEntry[]> = {};
++  for (const [event, entries] of Object.entries(source.hooks)) {
++    out[event] = entries.map((e) => toZcodeEntry(e, targetPath));
++  }
++  return out;
++}
++
++// ─────────────────────────── 合并 ───────────────────────────
++
++/** 按事件追加、按 `gate hook-<name>` 原位替换；返回改动计数（两家共用） */
++function mergeEvents(
++  existing: Record<string, unknown[]>,
++  incoming: Record<string, HookEntry[]>,
++): { added: number; replaced: number } {
++  let added = 0;
++  let replaced = 0;
++  for (const [event, entries] of Object.entries(incoming)) {
++    const cur = Array.isArray(existing[event]) ? existing[event] : [];
++    for (const entry of entries) {
++      const sig = JSON.stringify(entry);
++      const mine = hookNamesOf(entry);
++      /*
++       * 同一条 TriviumCode Hook 的识别依据是它调用的 `gate hook-<name>`，不是命令全文。
++       * 命令文本或超时一变就按全文比，重跑会在同一事件下叠加第二条、每次工具调用双倍执行。
++       * 升级时应当**替换**旧条目，而不是跳过或叠加。
++       */
++      const at = cur.findIndex((c) => [...hookNamesOf(c)].some((n) => mine.has(n)));
++      if (at === -1) {
++        cur.push(entry);
++        added++;
++      } else if (JSON.stringify(cur[at]) !== sig) {
++        cur[at] = entry;
++        replaced++;
++      }
++    }
++    existing[event] = cur;
++  }
++  return { added, replaced };
++}
++
++async function readJsonObject(
++  target: string,
++  report: HookMergeReport,
++): Promise<{ ok: true; had: boolean; raw: string | null; value: Record<string, unknown> } | { ok: false }> {
++  if (!(await exists(target))) return { ok: true, had: false, raw: null, value: {} };
++  const raw = await fs.readFile(target, 'utf8');
++  try {
++    const value = JSON.parse(raw) as unknown;
++    if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('不是 JSON 对象');
++    return { ok: true, had: true, raw, value: value as Record<string, unknown> };
++  } catch {
++    warn(`${target} 不是合法的 JSON 对象，为避免破坏内容，跳过 Hook 合并。请手工合并。`);
++    report.notes.push(`${target} 解析失败，未合并 Hook`);
++    return { ok: false };
++  }
++}
++
++/**
++ * 把本仓 Hook 合并进 `agent` 的项目内配置文件。`agent.hookConfigTarget` 为 null 时什么都不做。
++ *
++ * 写前备份为 `<文件>.trivium-backup`；全部条目已就位时不写、记一条「已就位」。
++ */
++export async function mergeAgentHooks(
++  projectRoot: string,
++  agent: AgentDescriptor,
++  source: HookSource,
++  report: HookMergeReport,
++  dryRun: boolean,
++): Promise<void> {
++  const spec = agent.hookConfigTarget;
++  if (!spec) return;
++  const target = path.join(projectRoot, spec.path);
++  const read = await readJsonObject(target, report);
++  if (!read.ok) return;
++  const { had, raw, value: config } = read;
++
++  let changed: { added: number; replaced: number };
++  let enabledNote: string | null = null;
++  /** ZCode 形态：本次把缺席的 `hooks.enabled` 补成了 true（条目都已就位时也要写盘） */
++  let enabledSet = false;
++  if (spec.format === 'claude-settings') {
++    const existing = (config['hooks'] ?? {}) as Record<string, unknown[]>;
++    changed = mergeEvents(existing, renderHookEvents(spec.format, source, spec.path));
++    config['hooks'] = existing;
++  } else {
++    const hooks = (config['hooks'] ?? {}) as Record<string, unknown>;
++    const events = (hooks['events'] ?? {}) as Record<string, unknown[]>;
++    changed = mergeEvents(events, renderHookEvents(spec.format, source, spec.path));
++    hooks['events'] = events;
++    /*
++     * `enabled` 缺省为 false（ZCode 自己的缺省），不开就一条都不跑。
++     * **只在缺席时置 true**：用户显式写了 false 是「停用」这一态（r10 §3.2.3），重跑 init 不该把它翻回来。
++     */
++    if (hooks['enabled'] === undefined) {
++      hooks['enabled'] = true;
++      enabledSet = true;
++    } else if (hooks['enabled'] === false) {
++      enabledNote = `${target} 的 hooks.enabled 为 false：TriviumCode Hook 已写入但不会运行（停用态，按你的设置保留）`;
++    }
++    config['hooks'] = hooks;
++  }
++  if (enabledNote) report.notes.push(enabledNote);
++
++  if (changed.added === 0 && changed.replaced === 0 && !enabledSet) {
++    report.skipped.push(`${target}（Hook 已就位）`);
++    return;
++  }
++  await ensureDir(path.dirname(target));
++  if (!dryRun) {
++    if (had && raw !== null) await fs.writeFile(`${target}.trivium-backup`, raw, 'utf8');
++    await writeAtomic(target, JSON.stringify(config, null, 2) + '\n');
++  }
++  (had ? report.updated : report.created).push(target);
++  if (changed.replaced > 0) report.notes.push(`已把 ${target} 里 ${changed.replaced} 条旧版 TriviumCode Hook 替换为当前版本`);
++  if (had) report.notes.push(`已备份原 ${path.basename(target)} 到 ${path.basename(target)}.trivium-backup`);
++  if (spec.format === 'zcode-config') {
++    /*
++     * 工作区 Hook 要在 ZCode 桌面端信任后才跑，声明一变就退回待信任（静态 `stale_digest`）；
++     * 信任待定期间写工具照常执行、Hook 不跑，对模型与用户都不可见（报告 §3.1.1）。不提示就等于没装。
++     */
++    report.notes.push(
++      `已写入 ${target}：请在 ZCode 桌面端重新信任该工作区，信任前 Hook 不跑。` +
++        '命令行（--prompt）模式下工作区 Hook 整体关闭；子代理里的工具调用不过工作区 Hook（尽力拦截，不兜底）',
++    );
++  }
++}
++
++// ─────────────────────────── 在场判定与有效等级 ───────────────────────────
++
++/**
++ * 定级要求在场的 Hook（B1）：写工具与 Bash 两道。缺任一道，写入就有一条无人判定的路。
++ * `hook-stop` / `hook-session-start` 不影响「写入拦不拦得住」，不进这道判定。
++ */
++const REQUIRED_FOR_GUARD: readonly string[] = ['pre-write', 'pre-bash'];
++
++/**
++ * 该家的 TriviumCode Hook 配置**当前**是否在场：文件在、是合法 JSON，且 {@link REQUIRED_FOR_GUARD} 各有一条。
++ * ZCode 形态另要求 `hooks.enabled === true`（缺省 false 即一条都不跑）。
++ *
++ * **只看存在性，不看内容**（r5 §6.2 边界 R-r）：命令被改成放行、matcher 被缩窄、wrapper 或全局副本被替换，
++ * 这里都看不见。它回答的是「配置段被移除」这一种形态，不宣称更多。
++ */
++export async function hookConfigPresent(projectRoot: string, agent: AgentDescriptor): Promise<boolean> {
++  const spec = agent.hookConfigTarget;
++  if (!spec) return false;
++  const target = path.join(projectRoot, spec.path);
++  let config: Record<string, unknown>;
++  try {
++    config = JSON.parse(await fs.readFile(target, 'utf8')) as Record<string, unknown>;
++  } catch {
++    return false;
++  }
++  let events: Record<string, unknown>;
++  if (spec.format === 'claude-settings') {
++    events = (config['hooks'] ?? {}) as Record<string, unknown>;
++  } else {
++    const hooks = (config['hooks'] ?? {}) as Record<string, unknown>;
++    if (hooks['enabled'] !== true) return false;
++    events = (hooks['events'] ?? {}) as Record<string, unknown>;
++  }
++  const pre = events['PreToolUse'];
++  if (!Array.isArray(pre)) return false;
++  const names = new Set(pre.flatMap((e) => [...hookNamesOf(e)]));
++  return REQUIRED_FOR_GUARD.every((n) => names.has(n));
++}
++
++export interface EffectiveGuard {
++  /** 本次运行实际成立的等级 */
++  level: GuardLevel;
++  /** 注册表登记的等级 */
++  registered: GuardLevel;
++  profile: GuardProfile;
++  /** 登记为 L1 却因 Hook 配置不在场降为 L2 */
++  downgraded: boolean;
++}
++
++/**
++ * 当轮 Driver 的**有效**护栏等级（B1，r10 §3.3 收窄后的口径）。
++ *
++ * 只对**登记为 L1** 的载体判「Hook 配置当前是否在场」，不在场即降 L2；登记为 L2 的直接返回 L2，
++ * 不再读任何探针字段（D-3 撤回了 `hooks_deny_ok`）。
++ */
++export async function effectiveGuardLevel(projectRoot: string, agent: AgentDescriptor): Promise<EffectiveGuard> {
++  const profile = guardProfileOf(agent);
++  if (agent.guardLevel !== 'L1') {
++    return { level: agent.guardLevel, registered: agent.guardLevel, profile, downgraded: false };
++  }
++  const present = await hookConfigPresent(projectRoot, agent);
++  return {
++    level: present ? 'L1' : 'L2',
++    registered: 'L1',
++    profile,
++    downgraded: !present,
++  };
++}
++
++/**
++ * 闸门停点那一句「在此期间不得修改业务文件」的后半句，按当轮 Driver 的**有效**护栏等级措辞（M10b 第 3 步）。
++ *
++ * 此前一律写「（Hook 会拦下）」：对 glm（L2，尽力拦截）、codex / gemini（L2，没有 Hook）以及 Hook 配置不在场的
++ * claude 都不成立（第 2 步薄冒烟核出）。说「会拦下」而实际不拦，比不说更糟——执笔者会放心去写。
++ */
++export function gateHoldNotice(g: EffectiveGuard): string {
++  const tail = '越界不会被事前拦下，会在审批前复核与跑后漂移复算时暴露。';
++  if (g.level === 'L1') return '在此期间不得修改业务文件（Hook 会拦下）。';
++  if (g.downgraded) return `在此期间不得修改业务文件——本项目的 Hook 配置不在场（登记 L1，本次按 L2 计），靠你自觉；${tail}`;
++  if (g.profile === 'l2-hook') return `在此期间不得修改业务文件——本载体的 Hook 只作尽力拦截、不兜底（L2），靠你自觉；${tail}`;
++  return `在此期间不得修改业务文件——本载体没有 Hook 拦截（L2），全靠你自觉；${tail}`;
++}
++
++/**
++ * 护栏等级的人读文案（与入口资产注入段同源：都按 {@link GuardProfile} 分三档，r10 §3.1.3）。
++ * glm 打印「L2，有尽力拦截 Hook，不兜底」，不再有「L2 = 无事前写拦截」这种与 glm 实况相反的说法。
++ */
++export function describeGuard(agent: AgentDescriptor, g: EffectiveGuard): string {
++  const target = agent.hookConfigTarget?.path ?? '';
++  if (g.downgraded) {
++    return `L2（登记 L1，但 ${target} 里的 TriviumCode Hook 不在场，本次按 L2 计：写入没有事前拦截，` +
++      '靠审批前复核、_meta 唯一事实、防覆盖与跑后复算兜底；修复：trivium init 或 trivium hooks --agent ' + agent.id + '）';
++  }
++  switch (g.profile) {
++    case 'l1-hook':
++      return `L1（${target} 的 Hook 兜得住写入）`;
++    case 'l2-hook':
++      return `L2（有尽力拦截的 Hook：${target}，不兜底——只在桌面端、已信任、主代理、matcher 覆盖、不超时时生效）`;
++    case 'l2-none':
++      return 'L2（该载体没有 Hook 机制，写入没有事前拦截，靠审批前复核、_meta 唯一事实、防覆盖与跑后复算兜底）';
++  }
++}
+diff --git a/test/integration/hooks-command.test.ts b/test/integration/hooks-command.test.ts
+new file mode 100644
+index 0000000..c1991b0
+--- /dev/null
++++ b/test/integration/hooks-command.test.ts
+@@ -0,0 +1,75 @@
++/**
++ * `trivium hooks --agent <id>` 与 `trivium init` 的 Hook 多目标（M10b 第 3 步，r5 §6.1、r10 §3.1.2 / §3.2）。
++ *
++ * 走真实打包 CLI：命令分派、旗标解析、退出码与 `--json` 输出只有子进程这一层能证明接上了。
++ * 家的取法经注册表（`hookConfigTarget.format`），不写死哪家是哪种形态。零配额：不拉起任何 Agent。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { bundleMissing, bundleSkipReason, cli, makeFixture } from '../helpers/fixture.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++import { extractJsonCandidate } from '../../src/trivium/parse.js';
++import { AGENTS } from '../../src/trivium/agents/registry.js';
++import { hookNamesOf } from '../../src/trivium/hook-config.js';
++
++const skip = { skip: bundleMissing && bundleSkipReason };
++const ZCODE_FMT = AGENTS.find((a) => a.hookConfigTarget?.format === 'zcode-config')!;
++const CLAUDE_FMT = AGENTS.find((a) => a.hookConfigTarget?.format === 'claude-settings')!;
++const NO_HOOK = AGENTS.find((a) => a.hookConfigTarget === null)!;
++
++function json(stdout: string): Record<string, unknown> {
++  const c = extractJsonCandidate(stdout);
++  assert.ok(c, `输出里没有 JSON：${stdout}`);
++  return JSON.parse(c.json) as Record<string, unknown>;
++}
++
++test('hooks --agent <ZCode 形态的家>：只写该家的配置，不碰 Claude 的', skip, async () => {
++  const { root } = await makeFixture({ topic: 'T', draft: false });
++  const r = await cli(root, ['hooks', '--agent', ZCODE_FMT.id, '--json']);
++  assert.equal(r.code, EXIT.OK, r.stdout + r.stderr);
++  const out = json(r.stdout);
++  assert.equal(out['agent'], ZCODE_FMT.id);
++  const zp = path.join(root, ZCODE_FMT.hookConfigTarget!.path);
++  const cfg = JSON.parse(await fs.readFile(zp, 'utf8')) as { hooks: { enabled: boolean; events: Record<string, unknown[]> } };
++  assert.equal(cfg.hooks.enabled, true);
++  const names = Object.values(cfg.hooks.events).flat().flatMap((e) => [...hookNamesOf(e)]);
++  assert.ok(names.includes('pre-write') && names.includes('pre-bash'), names.join('、'));
++  await assert.rejects(fs.access(path.join(root, CLAUDE_FMT.hookConfigTarget!.path)), '只合并指定的一家');
++  assert.ok((out['notes'] as string[]).some((n) => /重新信任/.test(n)), '写入 ZCode 配置后必须提示重新信任');
++});
++
++test('hooks：没有 Hook 机制的家 ⇒ 退 64 并说明 L2；缺 --agent、未登记的 id ⇒ 退 64', skip, async () => {
++  const { root } = await makeFixture({ topic: 'T', draft: false });
++  const none = await cli(root, ['hooks', '--agent', NO_HOOK.id]);
++  assert.equal(none.code, EXIT.USAGE, none.stdout + none.stderr);
++  assert.match(none.stdout + none.stderr, /没有 Hook 机制/);
++  const missing = await cli(root, ['hooks']);
++  assert.equal(missing.code, EXIT.USAGE);
++  assert.match(missing.stdout + missing.stderr, new RegExp(ZCODE_FMT.id), '报错要列出能渲染的家');
++  const unknown = await cli(root, ['hooks', '--agent', 'nosuch']);
++  assert.equal(unknown.code, EXIT.USAGE);
++  for (const f of [ZCODE_FMT, CLAUDE_FMT]) {
++    await assert.rejects(fs.access(path.join(root, f.hookConfigTarget!.path)), '拒绝时零写入');
++  }
++});
++
++test('hooks --dry-run：报告会写什么，但一个文件都不落', skip, async () => {
++  const { root } = await makeFixture({ topic: 'T', draft: false });
++  const r = await cli(root, ['hooks', '--agent', ZCODE_FMT.id, '--dry-run', '--json']);
++  assert.equal(r.code, EXIT.OK, r.stdout + r.stderr);
++  assert.deepEqual(json(r.stdout)['created'], [path.join(root, ZCODE_FMT.hookConfigTarget!.path)]);
++  await assert.rejects(fs.access(path.join(root, ZCODE_FMT.hookConfigTarget!.path)));
++});
++
++test('init：两家的 Hook 配置一起合并（r5 §6.1「trivium init 同时合并两家」）', skip, async () => {
++  const { root } = await makeFixture({ topic: 'T', draft: false });
++  const r = await cli(root, ['init', '--json']);
++  assert.equal(r.code, EXIT.OK, r.stdout + r.stderr);
++  for (const a of AGENTS.filter((x) => x.hookConfigTarget)) {
++    const p = path.join(root, a.hookConfigTarget!.path);
++    const text = await fs.readFile(p, 'utf8');
++    assert.match(text, /gate hook-pre-write/, `${a.id} 的 ${a.hookConfigTarget!.path} 没有合并进 Hook`);
++  }
++});
+diff --git a/test/unit/hook-config.test.ts b/test/unit/hook-config.test.ts
+new file mode 100644
+index 0000000..673b361
+--- /dev/null
++++ b/test/unit/hook-config.test.ts
+@@ -0,0 +1,236 @@
++/**
++ * 项目内 Hook 配置的渲染、合并与在场判定（M10b 第 3 步，计划 r10 §3.1.2、§3.2、§3.3；r9 §3.4）。
++ *
++ * 渲染源用仓库里**真实的** `skills/dual-critic/hooks/hooks.json`：ZCode 形态是从它派生的，
++ * 拿一份手写的最小源测，就测不到「源里新加一条 ZCode 没有的工具名」「护栏失效提示点名的文件」这类真实形态。
++ * 注册表按形态取家（`hookConfigTarget.format`），不写死哪家是哪种形态。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import {
++  describeGuard, effectiveGuardLevel, gateHoldNotice, hookConfigPresent, hookNamesOf, loadHookSource, mergeAgentHooks,
++  renderHookEvents, type HookEntry, type HookMergeReport, type HookSource,
++} from '../../src/trivium/hook-config.js';
++import { AGENTS, DEFAULT_DRIVER, entryCommandOf, type AgentDescriptor } from '../../src/trivium/agents/registry.js';
++import { REPO_ROOT } from '../helpers/fixture.js';
++
++const HOOKS_JSON = path.join(REPO_ROOT, 'skills/dual-critic/hooks/hooks.json');
++const byFormat = (f: string): AgentDescriptor => {
++  const a = AGENTS.find((x) => x.hookConfigTarget?.format === f);
++  assert.ok(a, `注册表里没有登记 ${f} 形态的家——本组用例的前提不成立`);
++  return a;
++};
++const CLAUDE_FMT = byFormat('claude-settings');
++const ZCODE_FMT = byFormat('zcode-config');
++const NO_HOOK = AGENTS.find((a) => a.hookConfigTarget === null)!;
++
++const report = (): HookMergeReport => ({ created: [], updated: [], skipped: [], notes: [] });
++async function project(): Promise<string> {
++  return fs.mkdtemp(path.join(os.tmpdir(), 'trivium-hookcfg-'));
++}
++async function source(): Promise<HookSource> {
++  const s = await loadHookSource(HOOKS_JSON);
++  assert.ok(s, '读不到仓库的 hooks.json');
++  return s;
++}
++async function readJson(p: string): Promise<Record<string, unknown>> {
++  return JSON.parse(await fs.readFile(p, 'utf8')) as Record<string, unknown>;
++}
++function zcodeEvents(cfg: Record<string, unknown>): Record<string, HookEntry[]> {
++  return ((cfg['hooks'] as Record<string, unknown>)['events'] ?? {}) as Record<string, HookEntry[]>;
++}
++const allNames = (events: Record<string, HookEntry[]>): string[] =>
++  Object.values(events).flat().flatMap((e) => [...hookNamesOf(e)]).sort();
++
++// ─────────────────────────── 渲染 ───────────────────────────
++
++test('渲染：claude-settings 形态原样返回源（与改动前的合并逐字相同）', async () => {
++  const s = await source();
++  assert.equal(renderHookEvents('claude-settings', s, '.claude/settings.json'), s.hooks);
++});
++
++test('渲染：zcode-config 形态——matcher 只留 ZCode 有的工具名、timeout 换成 timeoutMs、提示点名本家配置文件', async () => {
++  const s = await source();
++  const target = ZCODE_FMT.hookConfigTarget!.path;
++  const z = renderHookEvents('zcode-config', s, target);
++  assert.deepEqual(Object.keys(z).sort(), Object.keys(s.hooks).sort(), '事件与源同名同集（ZCode 事件枚举含这五个）');
++  assert.deepEqual(allNames(z), allNames(s.hooks), '五个 gate hook-* 一个不少、一个不多');
++  for (const e of Object.values(z).flat()) {
++    if (e.matcher !== undefined) {
++      assert.match(e.matcher, /^[A-Za-z0-9_|]+$/, '只写精确名单形态：否则 ZCode 当不锚定正则，Write 会误配 TodoWrite');
++      assert.ok(!e.matcher.split('|').includes('NotebookEdit'), 'NotebookEdit 不在 ZCode 工具注册表里');
++    }
++    for (const h of e.hooks as Record<string, unknown>[]) {
++      assert.equal(h['timeout'], undefined, 'ZCode 不认 timeout（秒）');
++      assert.equal(typeof h['timeoutMs'], 'number');
++      assert.ok(!String(h['command']).includes('.claude/settings.json'), '护栏失效提示不能把人指到 Claude 的配置文件');
++    }
++  }
++  const preWrite = z['PreToolUse']!.find((e) => hookNamesOf(e).has('pre-write'))!;
++  assert.deepEqual(preWrite.matcher!.split('|').sort(), ['Edit', 'Write']);
++  const srcPreWrite = s.hooks['PreToolUse']!.find((e) => hookNamesOf(e).has('pre-write'))!;
++  assert.equal((preWrite.hooks[0] as Record<string, unknown>)['timeoutMs'], srcPreWrite.hooks[0]!.timeout! * 1000);
++  assert.match(preWrite.hooks[0]!.command, new RegExp(`${target.replace(/\./g, '\\.')} 中的 TriviumCode Hook`));
++});
++
++test('渲染：matcher 在 ZCode 上一个工具名都不剩 ⇒ 当场抛（静默丢掉整条就是「装上了却不拦」）', () => {
++  const s: HookSource = { hooks: { PreToolUse: [{ matcher: 'NotebookEdit', hooks: [{ type: 'command', command: 'x gate hook-pre-write' }] }] } };
++  assert.throws(() => renderHookEvents('zcode-config', s, '.zcode/config.json'), /一个工具名都不剩/);
++});
++
++// ─────────────────────────── 合并 ───────────────────────────
++
++test('合并（ZCode）：新项目 ⇒ 建 .zcode/config.json、hooks.enabled 置 true、提示重新信任', async () => {
++  const root = await project();
++  const r = report();
++  await mergeAgentHooks(root, ZCODE_FMT, await source(), r, false);
++  const p = path.join(root, ZCODE_FMT.hookConfigTarget!.path);
++  const cfg = await readJson(p);
++  assert.equal((cfg['hooks'] as Record<string, unknown>)['enabled'], true, 'ZCode 缺省 enabled: false，不开就一条都不跑');
++  assert.deepEqual(allNames(zcodeEvents(cfg)), allNames((await source()).hooks));
++  assert.deepEqual(r.created, [p]);
++  assert.ok(r.notes.some((n) => /重新信任/.test(n) && /子代理/.test(n)), '信任与子代理两条边界要说出来');
++});
++
++test('合并（ZCode）：幂等——重跑不叠加、记「已就位」', async () => {
++  const root = await project();
++  await mergeAgentHooks(root, ZCODE_FMT, await source(), report(), false);
++  const r2 = report();
++  await mergeAgentHooks(root, ZCODE_FMT, await source(), r2, false);
++  const cfg = await readJson(path.join(root, ZCODE_FMT.hookConfigTarget!.path));
++  assert.equal(allNames(zcodeEvents(cfg)).length, allNames((await source()).hooks).length, '重跑不得叠加');
++  assert.equal(r2.skipped.length, 1);
++  assert.equal(r2.created.length + r2.updated.length, 0);
++});
++
++test('合并（ZCode）：保留用户已有的 Hook 与其它键；旧版同名条目原位替换；显式 enabled: false 不翻回', async () => {
++  const root = await project();
++  const p = path.join(root, ZCODE_FMT.hookConfigTarget!.path);
++  await fs.mkdir(path.dirname(p), { recursive: true });
++  await fs.writeFile(p, JSON.stringify({
++    model: 'keep-me',
++    hooks: {
++      enabled: false,
++      events: {
++        PreToolUse: [
++          { matcher: 'Bash', hooks: [{ type: 'command', command: 'echo mine' }] },
++          { matcher: 'Write', hooks: [{ type: 'command', command: 'old gate hook-pre-write', timeoutMs: 1 }] },
++        ],
++      },
++    },
++  }));
++  const r = report();
++  await mergeAgentHooks(root, ZCODE_FMT, await source(), r, false);
++  const cfg = await readJson(p);
++  assert.equal(cfg['model'], 'keep-me', '其它键不得丢失');
++  const hooks = cfg['hooks'] as Record<string, unknown>;
++  assert.equal(hooks['enabled'], false, '用户显式停用（r10 §3.2.3 停用态）不得被重跑翻回');
++  assert.ok(r.notes.some((n) => /enabled 为 false/.test(n)), '停用态要说出来：写进去了但不会运行');
++  const pre = zcodeEvents(cfg)['PreToolUse']!;
++  assert.ok(pre.some((e) => e.hooks.some((h) => h.command === 'echo mine')), '用户自己的 Hook 不动');
++  const preWrite = pre.filter((e) => hookNamesOf(e).has('pre-write'));
++  assert.equal(preWrite.length, 1, '旧版同名条目应被替换而非叠加');
++  assert.notEqual(preWrite[0]!.hooks[0]!.command, 'old gate hook-pre-write');
++  await fs.access(`${p}.trivium-backup`);
++});
++
++test('合并：不是合法 JSON 对象时跳过、原样保留内容', async () => {
++  const root = await project();
++  const p = path.join(root, ZCODE_FMT.hookConfigTarget!.path);
++  await fs.mkdir(path.dirname(p), { recursive: true });
++  await fs.writeFile(p, '[1, 2]');
++  const r = report();
++  await mergeAgentHooks(root, ZCODE_FMT, await source(), r, false);
++  assert.equal(await fs.readFile(p, 'utf8'), '[1, 2]');
++  assert.ok(r.notes.some((n) => n.includes('解析失败')));
++});
++
++test('合并：没有 Hook 机制的家什么都不做', async () => {
++  const root = await project();
++  const r = report();
++  await mergeAgentHooks(root, NO_HOOK, await source(), r, false);
++  assert.deepEqual(r, report());
++  assert.deepEqual(await fs.readdir(root), []);
++});
++
++// ─────────────────────────── 在场判定与有效等级（B1）───────────────────────────
++
++test('在场判定：配置文件不在 ⇒ false；合并后 ⇒ true；缺 pre-bash 一道 ⇒ false', async () => {
++  const root = await project();
++  assert.equal(await hookConfigPresent(root, CLAUDE_FMT), false);
++  await mergeAgentHooks(root, CLAUDE_FMT, await source(), report(), false);
++  assert.equal(await hookConfigPresent(root, CLAUDE_FMT), true);
++  const p = path.join(root, CLAUDE_FMT.hookConfigTarget!.path);
++  const cfg = await readJson(p);
++  const hooks = cfg['hooks'] as Record<string, HookEntry[]>;
++  hooks['PreToolUse'] = hooks['PreToolUse']!.filter((e) => !hookNamesOf(e).has('pre-bash'));
++  await fs.writeFile(p, JSON.stringify(cfg));
++  assert.equal(await hookConfigPresent(root, CLAUDE_FMT), false, 'Bash 这道没了，写入就有一条无人判定的路');
++});
++
++test('在场判定（ZCode）：hooks.enabled 不为 true ⇒ false', async () => {
++  const root = await project();
++  await mergeAgentHooks(root, ZCODE_FMT, await source(), report(), false);
++  assert.equal(await hookConfigPresent(root, ZCODE_FMT), true);
++  const p = path.join(root, ZCODE_FMT.hookConfigTarget!.path);
++  const cfg = await readJson(p);
++  (cfg['hooks'] as Record<string, unknown>)['enabled'] = false;
++  await fs.writeFile(p, JSON.stringify(cfg));
++  assert.equal(await hookConfigPresent(root, ZCODE_FMT), false);
++});
++
++test('有效等级：登记 L1 且 Hook 在场 ⇒ L1；不在场 ⇒ 降 L2 并标 downgraded，文案给修复出口', async () => {
++  const l1 = AGENTS.find((a) => a.guardLevel === 'L1')!;
++  const root = await project();
++  const down = await effectiveGuardLevel(root, l1);
++  assert.deepEqual([down.level, down.registered, down.downgraded], ['L2', 'L1', true]);
++  assert.match(describeGuard(l1, down), new RegExp(`trivium hooks --agent ${l1.id}`));
++  await mergeAgentHooks(root, l1, await source(), report(), false);
++  const up = await effectiveGuardLevel(root, l1);
++  assert.deepEqual([up.level, up.downgraded], ['L1', false]);
++});
++
++test('停点后半句按有效等级四档措辞：只有真正 L1 才说「Hook 会拦下」（M10b 第 3 步）', async () => {
++  const root = await project();
++  const l1 = AGENTS.find((a) => a.guardLevel === 'L1')!;
++  const texts: Record<string, string> = {};
++  texts['l1-down'] = gateHoldNotice(await effectiveGuardLevel(root, l1));
++  await mergeAgentHooks(root, l1, await source(), report(), false);
++  texts['l1'] = gateHoldNotice(await effectiveGuardLevel(root, l1));
++  texts['l2-hook'] = gateHoldNotice(await effectiveGuardLevel(root, ZCODE_FMT));
++  texts['l2-none'] = gateHoldNotice(await effectiveGuardLevel(root, NO_HOOK));
++
++  assert.equal(texts['l1'], '在此期间不得修改业务文件（Hook 会拦下）。');
++  for (const k of ['l1-down', 'l2-hook', 'l2-none']) {
++    assert.doesNotMatch(texts[k]!, /Hook 会拦下/, `${k}：说「会拦下」而实际不拦，执笔者会放心去写`);
++    assert.match(texts[k]!, /审批前复核与跑后漂移复算/, `${k}：要说清越界靠什么暴露`);
++  }
++  assert.match(texts['l1-down']!, /Hook 配置不在场（登记 L1，本次按 L2 计）/);
++  assert.match(texts['l2-hook']!, /只作尽力拦截、不兜底/);
++  assert.match(texts['l2-none']!, /没有 Hook 拦截/);
++});
++
++test('entryCommandOf：按当轮 Driver 的调用写法；取不到或未登记时回落缺省 Driver', () => {
++  for (const a of AGENTS) {
++    assert.equal(entryCommandOf(a.id, 'dual-approve'), a.entryInvocation.replace('{name}', 'dual-approve'));
++  }
++  const dflt = AGENTS.find((a) => a.id === DEFAULT_DRIVER)!.entryInvocation.replace('{name}', 'x');
++  assert.equal(entryCommandOf(null, 'x'), dflt, '旧闸门记录没有 driver 字段');
++  assert.equal(entryCommandOf('nosuch', 'x'), dflt);
++  assert.ok(AGENTS.some((a) => !a.entryInvocation.startsWith('/')), '前提：至少一家不是斜杠写法，否则本条区分不开');
++});
++
++test('有效等级：登记 L2 的家不看 Hook 在不在场（D-3 撤回 hooks_deny_ok，r10 §3.3）', async () => {
++  const root = await project();
++  for (const a of AGENTS.filter((x) => x.guardLevel === 'L2')) {
++    const g = await effectiveGuardLevel(root, a);
++    assert.deepEqual([g.level, g.downgraded], ['L2', false], a.id);
++    if (a.hookConfigTarget) {
++      await mergeAgentHooks(root, a, await source(), report(), false);
++      assert.equal((await effectiveGuardLevel(root, a)).level, 'L2', `${a.id}：装上尽力拦截的 Hook 也不升 L1`);
++    }
++  }
++});

@@ -4,7 +4,8 @@
  * 产出：
  *   `.trivium/bin/trivium`  wrapper，内含 doctor 探测到的 **node 绝对路径**
  *   `.trivium/config.yaml`  团队共享策略（进 Git）
- *   `.claude/settings.json` 合并 Hook（按事件名追加，不替换用户既有 hooks）
+ *   Hook 配置             按注册表 `hookConfigTarget` 合并进每一家登记了目标的项目配置
+ *                         （今天是 `.claude/settings.json` 与 `.zcode/config.json`；按事件名追加，不替换用户既有 hooks）
  *   `.gitignore`            幂等追加 `.trivium/` 规则，并修正整体忽略 `.claude/` 的写法
  *   协议片段              按注册表 `instructionFiles` 分发（CLAUDE.md / AGENTS.md / GEMINI.md），两段式
  *
@@ -19,6 +20,7 @@ import type { Ctx } from './types.js';
 import { CONFIG_SCHEMA_ID, CONFIG_SCHEMA_ID_V1, defaultConfig, migrateConfigV1, resolveAssetRoot } from './config.js';
 import { createExclusive, ensureDir, exists, writeAtomic } from './util/fsx.js';
 import { say, step, warn } from './util/log.js';
+import { hookNamesOf, loadHookSource, mergeAgentHooks } from './hook-config.js';
 
 const MARKER_BEGIN = '<!-- BEGIN TriviumCode -->';
 const MARKER_END = '<!-- END TriviumCode -->';
@@ -252,10 +254,11 @@ export async function fixGitignore(
 }
 
 /**
- * 合并 Hook 进 `.claude/settings.json`。
+ * 合并 Hook 进 Claude Code 形态的项目配置（`.claude/settings.json`）。
  *
- * **按事件名追加而非替换**（风险 R-D）：用户可能已有自己的 hooks。
- * 写前备份；已存在同一条 TriviumCode 命令时跳过（幂等）。
+ * **按事件名追加而非替换**（风险 R-D）：用户可能已有自己的 hooks。写前备份；已就位时跳过（幂等）。
+ * 渲染、合并与去重的实现在 `hook-config.ts`（M10b 第 3 步起两家共用）；本函数保留原签名，
+ * 只合并登记为 `claude-settings` 形态的那一家。两家一起合并用 {@link mergeAllHooks}。
  */
 export async function mergeHooks(
   projectRoot: string,
@@ -263,74 +266,40 @@ export async function mergeHooks(
   report: InitReport,
   dryRun: boolean,
 ): Promise<void> {
-  if (!(await exists(hooksJsonPath))) {
+  const source = await loadHookSource(hooksJsonPath);
+  if (!source) {
     report.notes.push(`缺少 ${hooksJsonPath}，跳过 Hook 合并`);
     return;
   }
-  const incoming = JSON.parse(await fs.readFile(hooksJsonPath, 'utf8')) as {
-    hooks: Record<string, unknown[]>;
-  };
-
-  const target = path.join(projectRoot, '.claude/settings.json');
-  let settings: Record<string, unknown> = {};
-  const had = await exists(target);
-  if (had) {
-    const raw = await fs.readFile(target, 'utf8');
-    try {
-      settings = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      warn(`${target} 不是合法 JSON，为避免破坏内容，跳过 Hook 合并。请手工合并。`);
-      report.notes.push(`${target} 解析失败，未合并 Hook`);
-      return;
-    }
-    if (!dryRun) await fs.writeFile(`${target}.trivium-backup`, raw, 'utf8');
+  for (const agent of AGENTS.filter((a) => a.hookConfigTarget?.format === 'claude-settings')) {
+    await mergeAgentHooks(projectRoot, agent, source, report, dryRun);
   }
+}
 
-  const existingHooks = (settings['hooks'] ?? {}) as Record<string, unknown[]>;
-  let added = 0;
-  let replaced = 0;
-  for (const [event, entries] of Object.entries(incoming.hooks)) {
-    const cur = Array.isArray(existingHooks[event]) ? existingHooks[event] : [];
-    for (const entry of entries) {
-      const sig = JSON.stringify(entry);
-      const mine = hookNamesOf(entry);
-      /*
-       * 同一条 TriviumCode Hook 的识别依据是它调用的 `gate hook-<name>`，不是命令全文。
-       * 原先的正则 /trivium['"]? (gate )?hook-/ 要求 `trivium` 后紧跟空格，而真实命令是
-       * `…/bin/trivium"; test -x "$W" || exit 0; exec "$W" gate hook-…`——永远匹配不上，
-       * 去重只剩 JSON 全等：命令文本或 timeout 一变，重跑 init 就在同一事件下叠加第二条，
-       * 每次工具调用双倍执行。升级时应当**替换**旧条目，而不是跳过或叠加。
-       */
-      const at = cur.findIndex((c) => [...hookNamesOf(c)].some((n) => mine.has(n)));
-      if (at === -1) {
-        cur.push(entry);
-        added++;
-      } else if (JSON.stringify(cur[at]) !== sig) {
-        cur[at] = entry;
-        replaced++;
-      }
-    }
-    existingHooks[event] = cur;
-  }
-  settings['hooks'] = existingHooks;
-
-  if (added === 0 && replaced === 0) {
-    report.skipped.push(`${target}（Hook 已就位）`);
+/**
+ * 把本仓 Hook 合并进每一家登记了 `hookConfigTarget` 的项目配置（M10b 第 3 步，r5 §6.1「`trivium init` 同时合并两家」）。
+ *
+ * `only` 给定时只合并这几家（`trivium hooks --agent <id>`）；它们必须都登记了 Hook 目标，由调用方先校验。
+ */
+export async function mergeAllHooks(
+  projectRoot: string,
+  hooksJsonPath: string,
+  report: InitReport,
+  dryRun: boolean,
+  only?: readonly AgentDescriptor[],
+): Promise<void> {
+  const source = await loadHookSource(hooksJsonPath);
+  if (!source) {
+    report.notes.push(`缺少 ${hooksJsonPath}，跳过 Hook 合并`);
     return;
   }
-  await ensureDir(path.dirname(target));
-  if (!dryRun) await writeAtomic(target, JSON.stringify(settings, null, 2) + '\n');
-  (had ? report.updated : report.created).push(target);
-  if (replaced > 0) report.notes.push(`已把 ${replaced} 条旧版 TriviumCode Hook 替换为当前版本`);
-  if (had) report.notes.push(`已备份原 settings.json 到 ${path.basename(target)}.trivium-backup`);
+  for (const agent of only ?? AGENTS.filter((a) => a.hookConfigTarget !== null)) {
+    await mergeAgentHooks(projectRoot, agent, source, report, dryRun);
+  }
 }
 
-/** 一条 hooks 条目里调用了哪些 `gate hook-<name>`（TriviumCode 的 Hook 身份） */
-export function hookNamesOf(entry: unknown): Set<string> {
-  const out = new Set<string>();
-  for (const m of JSON.stringify(entry).matchAll(/gate hook-([a-z-]+)/g)) out.add(m[1]!);
-  return out;
-}
+/** 一条 hooks 条目里调用了哪些 `gate hook-<name>`（实现在 `hook-config.ts`，这里保留导出给既有调用方） */
+export { hookNamesOf };
 
 /**
  * 把 Homebrew Cellar 的版本化路径换成稳定入口。
@@ -506,7 +475,8 @@ export async function runInit(opts: InitOptions): Promise<InitReport> {
   }
 
   await writeWrapper(ctx.triviumDir, nodePath, assetRoot, report, dryRun);
-  await mergeHooks(ctx.projectRoot, path.join(assetRoot, 'hooks/hooks.json'), report, dryRun);
+  // 两家一起合并（M10b 第 3 步）：claude 进 .claude/settings.json，glm 进 .zcode/config.json（尽力拦截，不兜底）
+  await mergeAllHooks(ctx.projectRoot, path.join(assetRoot, 'hooks/hooks.json'), report, dryRun);
   await fixGitignore(
     ctx.projectRoot,
     path.join(assetRoot, 'protocol/gitignore.snippet'),

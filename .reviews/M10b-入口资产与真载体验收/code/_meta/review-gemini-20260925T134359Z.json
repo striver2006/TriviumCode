@@ -1,0 +1,47 @@
+{
+  "agreed": [
+    "同一份 hooks.json 派生 ZCode 格式的逻辑严密：matcher 只保留精确白名单工具名，timeout 正确转为 timeoutMs，提示文案替换为对应配置文件名，且用户显式的 enabled: false 停用态得到保留不被覆盖。",
+    "在场判定 hookConfigPresent 边界划定清晰，只关注 pre-write 与 pre-bash 的存在性与启用状态，在 schema、注释与留痕中均统一声明不宣称感知内容篡改，避免了复杂启发式误判。",
+    "预检 runPreflight 对缺省 Driver 采取「正常在场不打扰、降级时必带 ⚠️ 警示与修复出口」的取舍合理，有效降低日常运行噪音同时确保安全边界显性化。",
+    "driver_guard_level 严格反映当前运行时的有效等级，元数据与复盘报告对历史缺失值一律记为 null/— 而不假定补 L1，忠实于留痕事实。",
+    "调用写法从载体 yaml 彻底收敛到注册表 entryInvocation，并在载体解析时主动拒绝遗留的 invocation，消除了多源分叉隐患；停点后半句四档文案与实际防护能力严格匹配。",
+    "init 命令两家同时合并使得项目布置一步到位，且通过无 config.yaml 时 exit 0 的外层守卫机制，消除了非 ZCode 环境或协作者环境下的副作用。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "skills-src/carriers/codex.yaml",
+    "skills/dual-critic/hooks/hooks.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "src/entry-render.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/hook-config.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/init.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/report.ts",
+    "src/trivium/review.ts",
+    "src/trivium/state.ts",
+    "src/trivium/types.ts",
+    "test/contract/entry-render-parity.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/integration/hooks-command.test.ts",
+    "test/unit/hook-config.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/report.test.ts",
+    "test/unit/run-meta.test.ts",
+    "doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md",
+    "doc/05_testing/REPORT_2026-09-25_m10b_step3.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "ZCode 桌面端真机交互测试：.zcode/config.json 写入后在 ZCode 桌面端弹出的信任确认提示、以及信任后 Stop 与 SessionStart 事件的桌面端实际触发表现（报告中已标明属于下一步用户薄冒烟范围）。",
+    "非 macOS 环境下的路径兼容性：未测试非 macOS 平台上系统软链对路径匹配的影响（夹具基于 macOS /var -> /private/var 实测）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "对 M10b 第 3 步（Hook 多目标、护栏等级接线与停点话术）的代码变更进行了全面审查。\n1. ZCode 形态派生（matcher 过滤、timeoutMs 转换、提示路径替换、enabled 停用态保持）实现严谨，事件与负载对齐实测；\n2. 在场判定只看 pre-write 与 pre-bash 两道存在性，取舍与已知边界一致，无误降级；\n3. 预检缺省 Driver 仅降级时报警的策略兼顾了降噪与安全性；\n4. driver_guard_level 运行时取值且缺失不补，全链路（meta/schema/types/report）严格闭合；\n5. 停点话术统一以注册表 entryInvocation 为单一事实源，四档文案契合实际护栏，Hook 侧两处斜杠保留理由成立；\n6. init 双合并生成的 .zcode/config.json 结构幂等且受守卫保护，无不良副作用。\n未发现设计缺陷或破坏性契约漂移。",
+  "verdict": "approve"
+}

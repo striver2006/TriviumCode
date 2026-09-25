@@ -83,6 +83,21 @@ test('driver_enabled: false 是合法留痕——M9 只校验「已登记」，�
   assert.deepEqual(validateRunMeta(meta), [], 'driver_enabled: false 必须是合法留痕');
 });
 
+// ── driver_guard_level：当轮 Driver 的有效护栏等级（M10b 第 3 步 B1）──
+
+test('driver_guard_level：传了才写、合法值过 schema；不传不补（缺失即「无从得知」，不替没检查过的运行作证）', () => {
+  for (const level of ['L1', 'L2'] as const) {
+    const meta = skeleton({ driverGuardLevel: level });
+    assert.equal(meta.driver_guard_level, level);
+    assert.deepEqual(validateRunMeta(meta), [], level);
+  }
+  const absent = skeleton();
+  assert.equal('driver_guard_level' in absent, false, '不传时不得补一个 L1');
+  assert.deepEqual(validateRunMeta(absent), [], '早于本步的留痕没有这个字段，仍是合法留痕');
+  const bad = { ...skeleton(), driver_guard_level: 'L3' } as unknown as RunMeta;
+  assert.notDeepEqual(validateRunMeta(bad), [], '等级只有 L1 / L2 两档');
+});
+
 // ── latestRunMeta：闸门区 driver 与轮次的权威来源（M9 第 5 步）──
 
 test('latestRunMeta：按 run_id 取最新一条，字典序即时序是构造保证', async () => {

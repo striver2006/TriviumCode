@@ -80,6 +80,10 @@
       "type": "boolean",
       "description": "当轮 Driver 在这次运行时是否已启用为 Driver（M9 第 5 步）。可选：早于该步的留痕没有此字段，缺失即「无从得知」，不等于 false。M9 的 --driver 只校验「已登记」，因此归档里会出现 driver_enabled: false 的合法留痕；M10 把校验收紧之后那些留痕仍要读得回，所以它不进 required，也不加 if/then"
     },
+    "driver_guard_level": {
+      "enum": ["L1", "L2"],
+      "description": "当轮 Driver 在这次运行时的有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而项目内 Hook 配置不在场即记 L2。可选：早于该步的留痕没有此字段，缺失即「无从得知」，不等于 L1。只看存在性、不看内容——Hook 命令被改、wrapper 被替换这里都看不见；只读注册表登记的那一个项目内配置文件（Claude 另读同目录 settings.local.json 的 disableAllHooks），落在 user 级或其它设置层的 Hook 看不见，会记成 L2（偏保守）"
+    },
     "critics_selected": {
       "type": "array",
       "minItems": 1,

@@ -15,6 +15,7 @@ import {
   DEFAULT_CRITIC_AGENT_IDS,
   type AgentId,
   type AgentVendor,
+  type GuardLevel,
 } from './agents/registry.js';
 
 export type { AgentId, AgentVendor };
@@ -1271,6 +1272,16 @@ export interface RunMeta {
    * 所以它不进 `required`、不加 `if/then`。这是本步唯一不可逆的选择。
    */
   driver_enabled?: boolean;
+  /**
+   * 当轮 Driver 在这次运行时的**有效**护栏等级（M10b 第 3 步 B1，计划 r5 §6.2、r10 §3.3）。
+   *
+   * 登记为 L1 而项目内 Hook 配置当前不在场即记 L2（`hook-config.ts` 的 `effectiveGuardLevel`）。
+   * **可选**：早于本步的留痕没有它，缺失即「无从得知」，不等于 L1——与 `driver_enabled` 同一口径。
+   * 只看存在性不看内容（r5 §6.2 边界 R-r），不宣称它能看见 Hook 命令被改或 wrapper 被替换；
+   * 只读注册表登记的那一个项目内配置文件（Claude 另读同目录 `settings.local.json` 的 `disableAllHooks`），
+   * 落在 user 级或其它设置层的 Hook 看不见、会记成 L2——偏保守（代码双审 r3 CODEX-02 ≈ GLM-01）。
+   */
+  driver_guard_level?: GuardLevel;
   /**
    * 本轮**入选**的审核者集合（基数 1～3，FR-29）。
    *

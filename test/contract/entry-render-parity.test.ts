@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import {
-  ENTRY_OUT_DIR, loadEntrySources, renderAll, renderEntry,
+  ENTRY_OUT_DIR, loadCarriers, loadEntrySources, renderAll, renderEntry,
   type Carrier, type Contract, type EntrySources, type RenderedEntry,
 } from '../../src/entry-render.js';
 import { AGENTS, ALL_AGENT_IDS, agentById, guardProfileOf } from '../../src/trivium/agents/registry.js';
@@ -253,6 +253,21 @@ test('模型与选侧取值由注册表派生，不给当轮 Driver 自己留槽
     assert.deepEqual(only, want, `${r.relPath}：--only 的取值须等于本轮可入选的审核者`);
     for (const id of models) assert.ok(ALL_AGENT_IDS.includes(id as never));
   }
+});
+
+test('调用写法只登记在注册表：载体 yaml 里再写 invocation 当场报错；产物用的是注册表的值（M10b 第 3 步）', async () => {
+  // 产物侧：每家的 {{cmd:…}} 渲染结果就是注册表的写法
+  for (const c of src.carriers) assert.equal(c.invocation, agentById(c.agent)!.entryInvocation, c.agent);
+  // 源侧：把真实载体 yaml 拷进临时源目录、给其中一份加回 invocation，加载即抛
+  const tmp = await fs.mkdtemp(path.join((await import('node:os')).tmpdir(), 'trivium-carriers-'));
+  const dst = path.join(tmp, 'skills-src/carriers');
+  await fs.mkdir(dst, { recursive: true });
+  const srcDir = path.join(REPO_ROOT, 'skills-src/carriers');
+  const files = (await fs.readdir(srcDir)).filter((f) => f.endsWith('.yaml'));
+  for (const f of files) await fs.copyFile(path.join(srcDir, f), path.join(dst, f));
+  await loadCarriers(tmp); // 原样拷贝：能加载
+  await fs.appendFile(path.join(dst, files[0]!), '\ninvocation: /{name}\n');
+  await assert.rejects(loadCarriers(tmp), /invocation 已迁入注册表/);
 });
 
 test('渲染器自测：未知变量与缺失片段当场抛错，不静默留空', () => {

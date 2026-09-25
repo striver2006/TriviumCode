@@ -4,7 +4,8 @@
  * 源在 `skills-src/`：
  *
  *   commands/<命令>.contract.md   命令契约：front-matter（产物 front-matter 与 `@` 开头的模板变量）+ 正文模板
- *   carriers/<agent>.yaml         四家载体适配层：产物落点、front-matter 键、参数写法、调用写法
+ *   carriers/<agent>.yaml         四家载体适配层：产物落点、front-matter 键、参数写法
+ *                                 （调用写法 M10b 第 3 步已迁注册表 `entryInvocation`，yaml 里再写即报错）
  *   partials/**.md                正文片段：B/C/D 共用正文、参数转抄规约、护栏注入段
  *
  * 产物：
@@ -105,14 +106,19 @@ function parseCarrier(file: string, raw: string): Carrier {
   }
   const args = doc!['arguments'];
   if (args !== 'substitute' && args !== 'transcribe') fail('arguments 只能是 substitute 或 transcribe');
-  const inv = doc!['invocation'];
-  if (typeof inv !== 'string' || !inv.includes('{name}')) fail('invocation 须为含 {name} 的字符串');
+  /*
+   * 调用写法**不在载体 yaml 里登记**（M10b 第 3 步迁入注册表 `entryInvocation`）：CLI 生成的停点话术也要用它，
+   * 而运行时读不到 `skills-src/`。yaml 里若还写着就当场报错——留着它，两处迟早各改各的。
+   */
+  if (doc!['invocation'] !== undefined) fail('invocation 已迁入注册表（entryInvocation），载体 yaml 里不要再写');
+  const inv = agentById(agent)!.entryInvocation;
+  if (!inv.includes('{name}')) fail(`注册表里 ${agent} 的 entryInvocation 须含 {name}`);
   return {
     agent: agent as AgentId,
     layout: layout as Carrier['layout'],
     frontmatter: fm as string[],
     arguments: args as ArgumentMode,
-    invocation: inv as string,
+    invocation: inv,
   };
 }
 

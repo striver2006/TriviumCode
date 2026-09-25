@@ -13,6 +13,11 @@ import { runDoctor } from '../../src/trivium/doctor.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { Config, Ctx, ProbeSection } from '../../src/trivium/types.js';
+import { AGENTS, DEFAULT_DRIVER, guardProfileOf } from '../../src/trivium/agents/registry.js';
+import { mergeHooks, type InitReport } from '../../src/trivium/init.js';
+import { REPO_ROOT } from '../helpers/fixture.js';
+
+const emptyReport = (): InitReport => ({ created: [], updated: [], skipped: [], notes: [] });
 
 function freshProbe(cfg: Config): void {
   const now = new Date().toISOString();
@@ -235,12 +240,17 @@ test('探针过期 → 退 69 并指引手动执行', async () => {
 
 // ── 当轮 Driver 提示（M9 第 5 步，T-10）──
 
-test('预检：--driver 非缺省时多打一行提示，且它是 ok:true 不是一次失败', async () => {
+/*
+ * M10b 第 3 步（B1）起这一行带护栏等级；原先「尚未启用为 Driver，该值仅用于选侧判定」那一支
+ * 在生产路径上走不到（`resolveDriver` 对未启用者退 64），随 `driverEnabled` 入参一并删除。
+ * 用例按护栏形态三档各一条（取值经注册表派生，不写死哪家是哪档），外加缺省 Driver 的两格。
+ */
+const byProfile = (p: ReturnType<typeof guardProfileOf>) => AGENTS.find((a) => a.driverEnabled && guardProfileOf(a) === p);
+
+test('预检：--driver 非缺省时多打一行，带护栏等级，且它是 ok:true 不是一次失败', async () => {
   const ctx = await fakeCtx();
-  const r = await runPreflight({
-    ctx, scope: 'plan', skipAuthCheck: true,
-    driver: 'gemini', driverEnabled: false,
-  });
+  const none = byProfile('l2-none')!;
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, driver: none.id });
   const hint = r.checks.find((c) => c.name === '当轮 Driver');
   assert.ok(hint, '非缺省 Driver 时应当有一行可见提示');
   /*
@@ -249,36 +259,23 @@ test('预检：--driver 非缺省时多打一行提示，且它是 ok:true 不�
    * **失败**，而且因为它排在最前面，会把后面所有检查一起短路掉。
    */
   assert.equal(hint.ok, true, '提示判成失败会把整个预检短路掉');
-  assert.match(hint.detail, /gemini/);
-  assert.match(
-    hint.detail, /仅用于选侧判定/,
-    'driverEnabled 为 false 时要说清「该值仅用于选侧判定」——放行而不说明就是静默降低门槛',
-  );
-  // 提示不参与成败：本次失败与否应当只由真正的检查项决定
-  assert.equal(
-    r.checks.filter((c) => !c.ok).some((c) => c.name === '当轮 Driver'), false,
-  );
+  assert.match(hint.detail, new RegExp(`^${none.id} · 护栏 L2（该载体没有 Hook 机制`));
+  assert.equal(hint.warn, undefined, '登记的 L2 是已知形态、入口资产已明示，不是缺口');
+  assert.doesNotMatch(hint.detail, /仅用于选侧判定/, '死分支已删，这句不该再出现');
 });
 
-test('预检：--driver 已启用为 Driver 时，提示里不带「仅用于选侧判定」那句', async () => {
-  /*
-   * 「非缺省**且已启用**」这一臂在 M9 时的真实注册表下构造不出来（那时只有缺省 Driver 启用）；
-   * M10a 第 3 步四家翻开之后，生产路径上传进来的恒为 true，反倒是 false 那一臂只剩注入测试能走到。
-   * 预检这一层接受的是布尔入参，两臂都可以直接构造；`resolveDriver` 那一层
-   * 另开了 `descriptors` 注入口（见 critics.test.ts），两处都不留「验不了」的臂。
-   */
+test('预检：有尽力拦截 Hook 的 L2 载体，文案写「不兜底」与五个生效前提，不说「无事前写拦截」', async () => {
   const ctx = await fakeCtx();
-  const r = await runPreflight({
-    ctx, scope: 'plan', skipAuthCheck: true,
-    driver: 'codex', driverEnabled: true,
-  });
+  const best = byProfile('l2-hook')!;
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, driver: best.id });
   const hint = r.checks.find((c) => c.name === '当轮 Driver')!;
-  assert.equal(hint.ok, true);
-  assert.equal(hint.detail, 'codex');
+  assert.match(hint.detail, /L2（有尽力拦截的 Hook：.*不兜底——只在桌面端、已信任、主代理、matcher 覆盖、不超时时生效）/);
+  assert.doesNotMatch(hint.detail, /没有事前拦截/, '与 glm 实况相反的说法（r10 §3.1.3）');
 });
 
-test('预检：缺省 Driver 不打这行提示（每次都打等于没打）', async () => {
+test('预检：缺省 Driver、Hook 配置在场 ⇒ 不打这行（每次都打等于没打）', async () => {
   const ctx = await fakeCtx();
+  await mergeHooks(ctx.projectRoot, path.join(REPO_ROOT, 'skills/dual-critic/hooks/hooks.json'), emptyReport(), false);
   const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
   assert.equal(
     r.checks.some((c) => c.name === '当轮 Driver'), false,
@@ -286,12 +283,31 @@ test('预检：缺省 Driver 不打这行提示（每次都打等于没打）', 
   );
 });
 
+test('预检：缺省 Driver 登记 L1 而 Hook 配置不在场 ⇒ 降为 L2，打一行 ⚠️ 并进 warnings（B1）', async () => {
+  const ctx = await fakeCtx(); // 夹具里没有 .claude/settings.json
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
+  const hint = r.checks.find((c) => c.name === '当轮 Driver');
+  assert.ok(hint, 'L1 的前提（Hook 在场）不成立时必须让人看见');
+  assert.equal(hint.ok, true, '降级是提示，不是失败：审批前复核等补偿照样在');
+  assert.equal(hint.warn, true);
+  assert.match(hint.detail, new RegExp(`^⚠️ ${DEFAULT_DRIVER} · 护栏 L2（登记 L1，但 .* 不在场`));
+  assert.match(hint.detail, /trivium hooks --agent/, '要给出修复出口');
+  assert.ok(r.warnings.some((w) => w.name === '当轮 Driver'));
+  assertWarnInvariant(r);
+});
+
 test('探针过期时后续检查不再执行（快速失败，不白烧配额）', async () => {
   const ctx = await fakeCtx((c) => {
     c.probe.generated_at = null;
   });
   const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true });
-  assert.equal(r.checks.length, 1, `应只跑第一项就停，实际跑了 ${r.checks.length} 项`);
+  /*
+   * 「当轮 Driver」那一行是排在探针之前的**信息项**（本夹具没有 Hook 配置，缺省 Driver 会带一行降级提示，
+   * M10b 第 3 步 B1），不是检查；本条要钉的是「探针过期之后不再往下跑」，所以把它剔掉再数。
+   */
+  const real = r.checks.filter((c) => c.name !== '当轮 Driver');
+  assert.equal(real.length, 1, `应只跑第一项就停，实际跑了 ${real.length} 项：${real.map((c) => c.name).join('、')}`);
+  assert.equal(real[0]!.ok, false);
 });
 
 // ── 命令 A 的编译测试检查（§14.1 / GLM-02）──
@@ -927,7 +943,7 @@ test('现有 ⚠️ 项一律标 warn：C5、覆盖面、探活已跳过', async
   assert.equal(r.checks.find((c) => c.name === '版本漂移检查覆盖面')?.warn, true, '覆盖面');
   assert.equal(r.checks.find((c) => c.name === '探活')?.warn, true, '探活已跳过');
   // 反向：「当轮 Driver」是信息，不是缺口
-  const d = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {}, driver: 'codex', driverEnabled: true });
+  const d = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {}, driver: 'codex' });
   assert.equal(d.checks.find((c) => c.name === '当轮 Driver')?.warn, undefined);
   assertWarnInvariant(r);
   assertWarnInvariant(d);

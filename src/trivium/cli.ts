@@ -8,8 +8,11 @@ import path from 'node:path';
 import { exists } from './util/fsx.js';
 import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
-import { applyProfileOverride, loadCtx, runRoot } from './config.js';
-import { ALL_AGENT_IDS, CRITIC_AGENT_IDS, DEFAULT_DRIVER, DRIVER_AGENT_IDS } from './agents/registry.js';
+import { applyProfileOverride, loadCtx, resolveAssetRoot, runRoot } from './config.js';
+import {
+  AGENTS, ALL_AGENT_IDS, CRITIC_AGENT_IDS, DEFAULT_DRIVER, DRIVER_AGENT_IDS, agentById, entryCommandOf,
+} from './agents/registry.js';
+import { effectiveGuardLevel, gateHoldNotice } from './hook-config.js';
 import {
   runDoctor,
   renderDoctorReport,
@@ -31,7 +34,7 @@ import { getGate, listOpenGates, setGateChecked } from './state.js';
 import { assertGateDecidable, recordApproval } from './approval.js';
 import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
 import { latestRunMeta, newRunId, readTask, readRunMeta } from './meta.js';
-import { runInit, renderInitReport } from './init.js';
+import { mergeAllHooks, runInit, renderInitReport, type InitReport } from './init.js';
 import {
   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
 } from './preflight.js';
@@ -274,8 +277,14 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
 
   trivium init [--dry-run] [--asset-root <路径>]
       在本项目布置运行时：.trivium/（config.yaml + bin/trivium wrapper）、
-      合并 Hook 进 .claude/settings.json、幂等追加 .gitignore 与协议片段。
-      全部操作幂等，重复运行不重复追加、不覆盖用户内容。
+      合并 Hook 进每一家登记了 Hook 目标的项目配置（${AGENTS.filter((a) => a.hookConfigTarget).map((a) => a.hookConfigTarget!.path).join('、')}）、
+      幂等追加 .gitignore 与协议片段。全部操作幂等，重复运行不重复追加、不覆盖用户内容。
+
+  trivium hooks --agent <id> [--dry-run] [--asset-root <路径>] [--json]
+      只把 TriviumCode Hook 渲染并合并进该家的项目配置（只增不删、不覆盖用户已有 Hook）。
+      只做渲染与安装，不参与任何判定。可用：${AGENTS.filter((a) => a.hookConfigTarget).map((a) => a.id).join(' | ')}；
+      没有 Hook 机制的家退 64。ZCode 形态写入后要在桌面端重新信任该工作区，信任前 Hook 不跑；
+      .zcode/ 被 .gitignore 忽略时这份 Hook 只对本机生效、不随仓库分发（输出里会提示）。
 
   trivium gate --stage <s> --topic <主题> --check [--run-id <id>] [--json]
       裁决完整性硬校验（§8.6）。返回 2 表示未通过，stdout 给出缺口清单供直接修补。
@@ -764,7 +773,8 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
    * 解析走 `resolveCriticSelection`——与 `topic resolve` / `review --start` 同一处判定，
    * 不在这里再实现一遍（M7b 第 5 步的教训：两处各写一份，启用第三家时会先后不一致）。
    */
-  const { driver, enabledAsDriver } = resolveDriver(flagString(args, 'driver'));
+  // 未启用为 Driver 的在 `resolveDriver` 里就退 64（M10a 第 3 步），这里只取 driver
+  const { driver } = resolveDriver(flagString(args, 'driver'));
   const critics = resolveCriticSelection(ctx.config, {
     critics: flagString(args, 'critics'),
     only: flagString(args, 'only'),
@@ -785,7 +795,6 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
     modelOverrides: models,
     critics,
     driver,
-    driverEnabled: enabledAsDriver,
     skipAuthCheck: args.flags.get('skip-auth-check') === true,
     refreshAuth: args.flags.get('refresh-auth') === true,
   });
@@ -958,6 +967,46 @@ async function cmdInit(args: ParsedArgs): Promise<number> {
   if (isJsonMode()) emitJson({ ok: true, dry_run: dryRun, ...report });
   else renderInitReport(report, dryRun);
   return EXIT.OK;
+}
+
+/**
+ * `trivium hooks --agent <id>`：只把本仓 Hook 渲染并合并进该家的项目配置（M10b 第 3 步，r5 §6.1、r10 §3.1.2）。
+ *
+ * **只做渲染 / 安装，不参与任何判定**：拦不拦由 `gate hook-*` 决定。与 `init` 共用 `mergeAllHooks`，
+ * 区别只在范围——`init` 合并全部登记了 Hook 目标的家，这里只合并指定的一家（改了一家的配置、要单独刷新时用）。
+ */
+async function cmdHooks(args: ParsedArgs): Promise<number> {
+  const ctx = await loadCtx({ allowUninitialized: true });
+  const withHook = AGENTS.filter((a) => a.hookConfigTarget !== null);
+  const id = (flagString(args, 'agent') ?? '').trim();
+  if (!id) {
+    throw usageError(`hooks 需要 --agent <id>。登记了 Hook 目标的：${withHook.map((a) => a.id).join(' | ')}`);
+  }
+  const agent = agentById(id);
+  if (!agent) throw usageError(`未登记的 Agent「${id}」。可用：${ALL_AGENT_IDS.join(' | ')}`);
+  if (!agent.hookConfigTarget) {
+    throw usageError(
+      `${id} 没有 Hook 机制，无从渲染（护栏等级 L2：写入没有事前拦截，靠审批前复核、_meta 唯一事实、防覆盖与跑后复算兜底）。\n` +
+        `  登记了 Hook 目标的：${withHook.map((a) => a.id).join(' | ')}`,
+    );
+  }
+  const dryRun = args.flags.get('dry-run') === true;
+  const assetRoot = resolveAssetRoot(flagString(args, 'asset-root') ?? undefined);
+  const report: InitReport = { created: [], updated: [], skipped: [], notes: [] };
+  await mergeAllHooks(ctx.projectRoot, path.join(assetRoot, 'hooks/hooks.json'), report, dryRun, [agent]);
+  if (!(await exists(path.join(ctx.triviumDir, 'config.yaml')))) {
+    // Hook 命令外面的守卫在「没有 config.yaml」时一律放行：配置写进去了，但在 init 之前它一条都不拦
+    report.notes.push('本项目尚未 `trivium init`：Hook 守卫在没有 .trivium/config.yaml 时一律放行，init 之后才会生效');
+  }
+  if (isJsonMode()) emitJson({ ok: true, dry_run: dryRun, agent: agent.id, ...report });
+  else renderInitReport(report, dryRun);
+  return EXIT.OK;
+}
+
+/** 停点「不得修改业务文件」那一句：按当轮 Driver 本次的有效护栏等级措辞（M10b 第 3 步） */
+async function holdNoticeFor(projectRoot: string, driverId: string): Promise<string> {
+  const agent = agentById(driverId) ?? agentById(DEFAULT_DRIVER)!;
+  return gateHoldNotice(await effectiveGuardLevel(projectRoot, agent));
 }
 
 const HOOK_NAMES: readonly HookName[] = [
@@ -1156,7 +1205,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     const runId = v.runId;
     if (!v.ok) {
       if (!v.result.ok) say(renderGateResult(v.result));
-      if (v.tampered.length > 0) say(renderTamperedArtifacts(v.tampered));
+      if (v.tampered.length > 0) say(renderTamperedArtifacts(v.tampered, gateDriver));
       fail(
         (v.result.ok ? '本轮登记的审查工件与留痕不符' : '裁决尚未齐备') + '，不能置为等待人工审批。\n' +
           (v.result.ok
@@ -1212,12 +1261,18 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       fail(`闸门未置为等待审批：${g.skipped ?? '当前状态不允许此迁移'}`);
       return EXIT.GATE_BLOCK;
     }
+    /*
+     * 停点话术按**当轮 Driver** 措辞（M10b 第 3 步；第 2 步薄冒烟核出）：调用写法取该载体的
+     * （codex 上是 `$dual-approve`），「不得修改业务文件」的后半句按本次运行时的有效护栏等级说。
+     * 此前写死 `/dual-approve` 与「（Hook 会拦下）」，对 L2 载体后半句不成立。
+     */
+    const approveCmd = entryCommandOf(gateDriver, 'dual-approve');
     const msg =
       `已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
-      `  通过：/dual-approve --topic ${topic} --stage ${stage} [--reason <附言>]\n` +
-      `  拒绝：/dual-approve --topic ${topic} --stage ${stage} --reject --reason <理由>\n` +
-      `  放弃：/dual-abandon --topic ${topic}\n` +
-      `  在此期间不得修改业务文件（Hook 会拦下）。` +
+      `  通过：${approveCmd} --topic ${topic} --stage ${stage} [--reason <附言>]\n` +
+      `  拒绝：${approveCmd} --topic ${topic} --stage ${stage} --reject --reason <理由>\n` +
+      `  放弃：${entryCommandOf(gateDriver, 'dual-abandon')} --topic ${topic}\n` +
+      `  ${await holdNoticeFor(ctx.projectRoot, gateDriver)}` +
       preWarnings.map((w) => `\n  ⚠️ [${w.code}] ${w.message}`).join('');
     if (isJsonMode()) {
       emitJson({ ok: true, state: 'awaiting_approval', stage, rerun_index: rerunIndex, message: msg, warnings: preWarnings });
@@ -1388,7 +1443,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       const msg =
         `裁决齐备，已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
         `  停点话术：trivium gate --stage ${stage} --topic ${topic} --await-approval\n` +
-        '  在此期间不得修改业务文件（Hook 会拦下）。';
+        `  ${await holdNoticeFor(ctx.projectRoot, gateDriver)}`;
       if (!isJsonMode()) say(msg);
       const { resetStopBlockCount } = await import('./lock.js');
       await resetStopBlockCount(ctx.triviumDir, topic, stage);
@@ -1510,10 +1565,16 @@ async function cmdApproval(
        * `--check` / `--await-approval` 带 expect.runId、不改写属于别的运行的闸门项。
        * 走得通的只有 abandon（它以闸门自己的 run_id 做比较-交换）之后重跑。两个分支同一段文案。
        */
+      /*
+       * 调用写法按闸门项记下的 Driver（代码双审 r3 GLM-03）。闸门项的 `driver` 不作当轮**身份**来源（EV-68：
+       * 同槽位重跑换 Driver 时它留着上一轮的值），这里只拿它**选写法**；这一支本就是「留痕读不出」的分叉现场，
+       * 拿不到更可信的来源。最坏情况是给出上一轮 Driver 的写法。
+       */
+      const abandonCmd = entryCommandOf(gate.driver, 'dual-abandon');
       const exit =
         '本机闸门项没有指向一份可读的运行留痕：归档是正本、本机闸门是副本，两者已经分叉。\n' +
         '  approve 不接受 --run-id；--check 与 --await-approval 不会改写属于别的运行的闸门项。\n' +
-        `  出口：/dual-abandon --topic ${topic} --stage ${stage} --reason '<说明分叉>'，然后重跑该阶段双审。\n` +
+        `  出口：${abandonCmd} --topic ${topic} --stage ${stage} --reason '<说明分叉>'，然后重跑该阶段双审。\n` +
         '  这会留下一条 run_id 为空（或为那个读不出的值）的放弃记录，请在 reason 里写明缘由。';
       const v = await verifyRoundForApproval({
         cfg: ctx.config, layout: ref.layout, stage,
@@ -1524,11 +1585,11 @@ async function cmdApproval(
       });
       if (!v.ok) {
         if (!v.result.ok) say(renderGateResult(v.result));
-        if (v.tampered.length > 0) say(renderTamperedArtifacts(v.tampered));
+        if (v.tampered.length > 0) say(renderTamperedArtifacts(v.tampered, gate.driver));
         fail(
           `${topic} / ${stage}（第 ${v.rerunIndex} 轮）通过前复核未过，本次不放行，闸门保持等待审批。\n` +
             (v.result.ok
-              ? '  先恢复上面列出的工件（或 /dual-abandon 作废这一轮）再审批。'
+              ? `  先恢复上面列出的工件（或 ${abandonCmd} 作废这一轮）再审批。`
               : `  先补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${topic} --check\`，再审批。`),
         );
         return EXIT.GATE_BLOCK;
@@ -1809,6 +1870,8 @@ export async function main(argv: string[]): Promise<number> {
       return cmdDoctor(args);
     case 'review':
       return cmdReview(args);
+    case 'hooks':
+      return cmdHooks(args);
     case 'init':
       return cmdInit(args);
     case 'preflight':

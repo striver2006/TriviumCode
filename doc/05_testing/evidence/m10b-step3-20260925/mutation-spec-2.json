@@ -1,0 +1,73 @@
+{
+  "targets": [
+    "src/trivium/cli.ts",
+    "src/trivium/hook-config.ts",
+    "src/trivium/agents/registry.ts",
+    "src/entry-render.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/topic-args.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/hook-config.test.js",
+    "dist/test/test/contract/entry-render-parity.test.js",
+    "dist/test/test/integration/fault-injection.test.js"
+  ],
+  "cases": [
+    {
+      "id": "S1",
+      "desc": "停点调用写法取缺省 Driver 而非当轮 Driver ⇒ 集成「停点话术：调用写法……按当轮 Driver」红",
+      "file": "src/trivium/cli.ts",
+      "find": "    const approveCmd = entryCommandOf(gateDriver, 'dual-approve');",
+      "replace": "    const approveCmd = entryCommandOf(DEFAULT_DRIVER, 'dual-approve');",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "S2",
+      "desc": "停点后半句取缺省 Driver 的护栏等级 ⇒ 同上红（codex 那一轮会被说成「Hook 配置不在场」）",
+      "file": "src/trivium/cli.ts",
+      "find": "  const agent = agentById(driverId) ?? agentById(DEFAULT_DRIVER)!;",
+      "replace": "  const agent = agentById(DEFAULT_DRIVER)!;",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "S3",
+      "desc": "后半句恒说「Hook 会拦下」（改动前的形态）⇒ 单元「停点后半句按有效等级四档措辞」红",
+      "file": "src/trivium/hook-config.ts",
+      "find": "  if (g.level === 'L1') return '在此期间不得修改业务文件（Hook 会拦下；Hook 超时即放行，本仓 Hook 是毫秒级、正常碰不到）。';",
+      "replace": "  if (g.level !== 'nope') return '在此期间不得修改业务文件（Hook 会拦下；Hook 超时即放行，本仓 Hook 是毫秒级、正常碰不到）。';",
+      "expect": "dist/test/test/unit/hook-config.test.js"
+    },
+    {
+      "id": "S4",
+      "desc": "entryCommandOf 恒用斜杠写法（改动前的形态）⇒ 单元「entryCommandOf……」红",
+      "file": "src/trivium/agents/registry.ts",
+      "find": "  return agent.entryInvocation.replace('{name}', name);",
+      "replace": "  return `/${name}`;",
+      "expect": "dist/test/test/unit/hook-config.test.js"
+    },
+    {
+      "id": "S5",
+      "desc": "渲染器不再拒绝载体 yaml 里的 invocation（两处登记的口子重开）⇒ 契约「调用写法只登记在注册表」红",
+      "file": "src/entry-render.ts",
+      "find": "  if (doc!['invocation'] !== undefined) fail('invocation 已迁入注册表（entryInvocation），载体 yaml 里不要再写');\n",
+      "replace": "",
+      "expect": "dist/test/test/contract/entry-render-parity.test.js"
+    },
+    {
+      "id": "S6",
+      "desc": "工件篡改的出口不按当轮 Driver 取写法（代码双审 r3 GLM-03）⇒「工件篡改的出口按当轮 Driver 取写法」红",
+      "file": "src/trivium/gate.ts",
+      "find": "entryCommandOf(driver, 'dual-abandon')",
+      "replace": "entryCommandOf(null, 'dual-abandon')",
+      "expect": "dist/test/test/unit/hook-config.test.js"
+    },
+    {
+      "id": "S7",
+      "desc": "缺焦点的用法报错不按本次声明的 Driver 取写法（GLM-03）⇒「缺焦点的用法报错……」红",
+      "file": "src/trivium/topic-args.ts",
+      "find": "entryCommandOf(explicitDriver, 'dual-review-<plan|code|bug>')",
+      "replace": "entryCommandOf(null, 'dual-review-<plan|code|bug>')",
+      "expect": "dist/test/test/unit/hook-config.test.js"
+    }
+  ]
+}

@@ -30,7 +30,7 @@ import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
 import { type Ctx, type Stage, STAGES } from './types.js';
 import { looksLikeRoleArtifact } from './naming.js';
-import { ALL_AGENT_IDS, DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER, entryCommandOf, type AgentId } from './agents/registry.js';
 import { EXIT } from './exit-codes.js';
 import { listOpenGates, readState, shouldLockWrites, StateCorruptError } from './state.js';
 import { bumpStopBlockCount } from './lock.js';
@@ -662,6 +662,7 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
     return deny(
       `禁止写入 ${path.relative(ctx.projectRoot, path.resolve(ctx.projectRoot, target))}：` +
         '.trivium/state.json 与 .trivium/lock/ 由编排器独占维护，是全部 Hook 的判定依据。' +
+        // 这一支不经当轮 Driver 判定（状态文件对谁都禁写）；写法取值同提交 Hook 那处的说明
         '要解除闸门请走 /dual-approve 或 /dual-abandon。',
     );
   }
@@ -690,9 +691,16 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
     if (decision.lock) {
       return deny(
         `${decision.reason}，此时不得修改业务文件。\n` +
-          `  通过审批：/dual-approve --topic ${gate.topic} --stage ${gate.stage}\n` +
-          `  拒绝：    /dual-approve --topic ${gate.topic} --stage ${gate.stage} --reject --reason <理由>\n` +
-          `  放弃闸门：/dual-abandon --topic ${gate.topic}`,
+          /*
+           * 调用写法按记下这道闸门的 Driver（M10b 第 3 步）；旧闸门没有 driver 字段时回落缺省 Driver。
+           * 这里**只拿闸门项的 `driver` 选写法，不参与身份判定**（代码双审 r3 CODEX-05）：本模块头部 EV-68 那段写明
+           * 闸门项不作当轮身份来源（同槽位重跑换 Driver 时它留着上一轮的值）；锁分支可能同时开着多道闸门，
+           * 拿不到单一的「当轮」。最坏情况是给出上一轮 Driver 的写法——今天带 Hook 的两家写法相同，看不出差别。
+           * 下面 Bash 拦截与会话开场待办两处同此。
+           */
+          `  通过审批：${entryCommandOf(gate.driver, 'dual-approve')} --topic ${gate.topic} --stage ${gate.stage}\n` +
+          `  拒绝：    ${entryCommandOf(gate.driver, 'dual-approve')} --topic ${gate.topic} --stage ${gate.stage} --reject --reason <理由>\n` +
+          `  放弃闸门：${entryCommandOf(gate.driver, 'dual-abandon')} --topic ${gate.topic}`,
       );
     }
   }
@@ -1047,8 +1055,8 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
         `${decision.reason}，此时不得用 Bash 改动工作树：${shown}\n` +
           '  这是按写命令形态的启发式判定（重定向、tee、sed -i、rm/mv/cp、git checkout…），只在闸门期生效。\n' +
           '  裁决件请用 Write 工具写进归档；其它改动请等审查结束，或\n' +
-          `  通过审批：/dual-approve --topic ${gate.topic} --stage ${gate.stage}\n` +
-          `  放弃闸门：/dual-abandon --topic ${gate.topic}`,
+          `  通过审批：${entryCommandOf(gate.driver, 'dual-approve')} --topic ${gate.topic} --stage ${gate.stage}\n` +
+          `  放弃闸门：${entryCommandOf(gate.driver, 'dual-abandon')} --topic ${gate.topic}`,
       );
     }
   }
@@ -1398,6 +1406,8 @@ async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
       '  **这一步请在终端里手动执行**：恢复命令的参数正是上面列出的受保护路径，\n' +
       '  常规写法在会话里会被 hook-pre-bash 拦下（M10a 第 2 步 EV-55 §3.2.2）。\n' +
       '  那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。\n' +
+      // 这里拿不到当轮 Driver（提交 Hook 不对应某一道闸门）；会跑到提交 Hook 的只有带 Hook 的载体，
+      // 它们的调用写法今天都是 `/名字`（注册表 entryInvocation）。第三家带 Hook 的载体用别的写法时要改这里
       '  确实要作废某一轮，用 `/dual-abandon --topic <主题>`——它保留工件、只解闸门。\n' +
       '  重跑会自动抬升 -r<N>，既有工件一律不覆盖，不需要先删。',
   };
@@ -1579,7 +1589,8 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
     if (g.state === 'awaiting_approval') {
       lines.push(
         `  · ${g.topic}/${g.stage} 等待人工审批（自 ${g.since}）` +
-          `——/dual-approve --topic ${g.topic} --stage ${g.stage}`,
+          // 闸门项的 driver 只用来选写法、不作身份来源（见写入拦截那处的说明）
+          `——${entryCommandOf(g.driver, 'dual-approve')} --topic ${g.topic} --stage ${g.stage}`,
       );
     } else {
       lines.push(`  · ${g.topic}/${g.stage} 审查已落盘但裁决未齐备`);

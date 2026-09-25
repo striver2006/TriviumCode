@@ -257,6 +257,8 @@ export async function applyOverlay(dest: string): Promise<string[]> {
     instructionFiles: ['STUB.md'],
     criticReadsInstructionFiles: true,
     entrySkillRoot: { homeRel: '.stub-agent', skillsRel: 'skills' },
+    // M10b 第 3 步由载体 yaml 迁入注册表；桩不作 Driver，取常见写法即可
+    entryInvocation: '/{name}',
     entrySkillExtraReadRoots: [],
   },
 ];`,

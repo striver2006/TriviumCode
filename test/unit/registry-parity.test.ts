@@ -81,6 +81,7 @@ const FAKE_AGENT = (over: Partial<AgentDescriptor>): AgentDescriptor => ({
   instructionFiles: [],
   criticReadsInstructionFiles: true,
   entrySkillRoot: { homeRel: '.x', skillsRel: 'skills' },
+  entryInvocation: '/{name}',
   entrySkillExtraReadRoots: [],
   ...over,
 });

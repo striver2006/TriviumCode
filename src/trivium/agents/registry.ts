@@ -79,6 +79,23 @@ export const VENDOR_MODEL_FAMILY: Readonly<Record<AgentVendor, RegExp>> = {
 export type GuardLevel = 'L1' | 'L2';
 
 /**
+ * 项目内 Hook 配置文件的**形态**（M10b 第 3 步，r10 §3.2）。两家同源于 `hooks/hooks.json`，按形态渲染：
+ *
+ *   claude-settings  `.claude/settings.json` 的 `hooks.<事件>[]`，超时字段 `timeout`（秒）
+ *   zcode-config     `.zcode/config.json` 的 `hooks.enabled` + `hooks.events.<事件>[]`，超时字段 `timeoutMs`（毫秒）；
+ *                    缺省 `enabled: false`，工作区要在桌面端信任后 Hook 才跑（第 1 步报告 §3.1.1）
+ *
+ * 形态跟路径登记在同一个字段里（{@link HookConfigTarget}）：路径与形态分两处登记，就是两个事实源。
+ */
+export type HookConfigFormat = 'claude-settings' | 'zcode-config';
+
+export interface HookConfigTarget {
+  /** 相对项目根 */
+  path: string;
+  format: HookConfigFormat;
+}
+
+/**
  * 入口 skill 的安装根怎么取（M10b r10 §2.2：各家 skill 根由注册表派生，按该家 CLI 自己的规则取值）。
  *
  * 只登记**路径规则**，不做任何文件系统访问——注册表被全仓引用，不该有副作用。
@@ -177,9 +194,9 @@ export interface AgentDescriptor {
    * TriviumCode Hook 合并进的**项目内**配置文件（相对项目根）；该家没有 Hook 机制则为 null。
    *
    * 「有没有」决定入口资产注入哪段护栏文案（{@link guardProfileOf}）；
-   * glm 的 `.zcode/config.json` 由 M10b 第 3 步的 `trivium hooks --agent glm` 渲染（r10 §3.2）。
+   * 路径与形态由 `hook-config.ts` 消费：`trivium init` 与 `trivium hooks --agent <id>` 按它渲染、合并（M10b 第 3 步，r10 §3.2）。
    */
-  hookConfigTarget: string | null;
+  hookConfigTarget: HookConfigTarget | null;
   /** 协议片段落点（Driver 协议 + 审查员身份两段式） */
   instructionFiles: readonly string[];
   /**
@@ -191,6 +208,14 @@ export interface AgentDescriptor {
   criticReadsInstructionFiles: boolean;
   /** 入口 skill 的安装根（M10b 第 2 步多目标安装） */
   entrySkillRoot: EntrySkillRootSpec;
+  /**
+   * 在本载体里调用入口 skill 的写法，`{name}` 换成命令名（如 `/{name}`、`${name}`）。
+   *
+   * **唯一来源在这里**（M10b 第 3 步由载体 yaml 迁入）：入口资产渲染（`entry-render.ts` 的 `{{cmd:…}}`）
+   * 与 CLI 生成的话术（闸门停点、Hook 拦截提示）都要用它，而装到运行时根的 CLI 读不到仓库里的 `skills-src/`。
+   * 两处各登记一份，就是第 2 步薄冒烟核出的那种错位：停点话术对 codex 写成了 `/dual-approve`。
+   */
+  entryInvocation: string;
   /**
    * 该家 CLI **还会读**的其它用户级 skill 根（相对用户主目录）。安装前按「完整读取面」查重名
    * （r2 §3.2.2）：同名项在这些根里同样会进模型可见清单。
@@ -234,10 +259,12 @@ export const AGENTS: readonly AgentDescriptor[] = [
     defaultSelected: false,
     driverEnabled: true,
     guardLevel: 'L1',
-    hookConfigTarget: '.claude/settings.json',
+    hookConfigTarget: { path: '.claude/settings.json', format: 'claude-settings' },
     instructionFiles: ['CLAUDE.md'],
     criticReadsInstructionFiles: false, // EV-44：审核者以 --restricted 拉起，读不到项目记忆
     entrySkillRoot: { homeRel: '.claude', skillsRel: 'skills' },
+    // 第 1 步报告 §1.3 / §2.2 / §3.6；r9 §2.5 表
+    entryInvocation: '/{name}',
     entrySkillExtraReadRoots: [],
   },
   {
@@ -294,6 +321,8 @@ export const AGENTS: readonly AgentDescriptor[] = [
     criticReadsInstructionFiles: true,
     // 与 `adapters/codex-home.ts` 的 `codexHomeOf()` 同口径：CODEX_HOME 优先，未设回落 ~/.codex
     entrySkillRoot: { homeEnv: 'CODEX_HOME', homeRel: '.codex', skillsRel: 'skills' },
+    // 报告 §2.2：提示词里的显式提及；`/名字` 写法只做过零配额渲染，真实调用未测
+    entryInvocation: '${name}',
     entrySkillExtraReadRoots: ['.agents/skills'],
   },
   {
@@ -313,6 +342,8 @@ export const AGENTS: readonly AgentDescriptor[] = [
     criticReadsInstructionFiles: true,
     // 全局根；工作区根 print 模式下不读，不作目标（r10 §2.2，报告 §1.2 / §1.3）
     entrySkillRoot: { homeRel: '.gemini', skillsRel: 'config/skills' },
+    // 报告 §1.3：print 模式斜杠展开；交互模式未测
+    entryInvocation: '/{name}',
     entrySkillExtraReadRoots: [],
   },
   {
@@ -329,11 +360,14 @@ export const AGENTS: readonly AgentDescriptor[] = [
     // M10b r10 §3.1（D-2 = (b)）：子代理不过工作区 Hook、命令行模式下工作区 Hook 整体关闭，
     // Hook 兜不住写入，只作尽力拦截（第 1 步报告 §3.1.2、§3.5）
     guardLevel: 'L2',
-    // 尽力拦截的工作区 Hook（r10 §3.1）：第 3 步由 `trivium hooks --agent glm` 渲染
-    hookConfigTarget: '.zcode/config.json',
+    // 尽力拦截的工作区 Hook（r10 §3.1）：`trivium init` / `trivium hooks --agent glm` 渲染
+    hookConfigTarget: { path: '.zcode/config.json', format: 'zcode-config' },
     instructionFiles: ['AGENTS.md'],
     criticReadsInstructionFiles: true,
     entrySkillRoot: { homeRel: '.zcode', skillsRel: 'skills' },
+    // 桌面端写法 `/名字`：第 2 步薄冒烟实测（第 2 步报告附录 B，`/dual-review-plan 参数` 转成一次 Skill 工具调用）；
+    // 命令行 `--prompt` 模式下是 `/skill 名字`（报告 §3.6）。J4 与 Hook 生效的载体都是桌面端，按桌面端登记
+    entryInvocation: '/{name}',
     entrySkillExtraReadRoots: ['.agents/skills'],
   },
 ];
@@ -456,6 +490,17 @@ export const DEFAULT_DRIVER: AgentId = 'claude';
  * 「L1 而没有 Hook 配置目标」没有合法来源——L1 的定义就是 Hook 兜得住（r10 §3.1.1），
  * 登记成这样当场抛，不让它被渲染成某一段看似合理的文案。
  */
+/**
+ * 在当轮 Driver 的载体里调用入口 skill `name` 的写法（`dual-approve` → claude 上是 `/dual-approve`、codex 上是 `$dual-approve`）。
+ *
+ * `driverId` 取不到或未登记时按缺省 Driver 的写法：旧的闸门记录没有 `driver` 字段，
+ * 那时的执笔者就是缺省 Driver（M9 第 5 步之前只有它）。
+ */
+export function entryCommandOf(driverId: string | null | undefined, name: string): string {
+  const agent = (driverId ? agentById(driverId) : null) ?? agentById(DEFAULT_DRIVER)!;
+  return agent.entryInvocation.replace('{name}', name);
+}
+
 export function guardProfileOf(agent: AgentDescriptor): GuardProfile {
   const hasHook = agent.hookConfigTarget !== null;
   if (agent.guardLevel === 'L1') {
