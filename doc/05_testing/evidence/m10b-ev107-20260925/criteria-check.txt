@@ -1,0 +1,13 @@
+run.driver = codex | critics = ['gemini', 'glm']
+gemini status ok vendor antigravity model_requested gpt-oss-120b-medium model_effective_source envelope model_override_applied None
+glm status ok vendor zcode model_requested GLM-5.3 model_effective_source trace model_override_applied True
+
+侧 | 字段 | 期望 | run.json | 判 | front-matter
+gemini | model_effective | gpt-oss-120b-medium | gpt-oss-120b-medium | True | gpt-oss-120b-medium
+gemini | heterogeneous | False | False | True | false
+gemini | override_reason | 非空 | 用户经 --model-gemini 显式指定了与当轮 Driver（Codex）同族的模型 | True | 用户经 --model-gemini 显式指定了与当轮 Driver（Codex）同族的模型
+glm | model_effective | GLM-* | bigmodel-coding-plan/GLM-5.3 | True | bigmodel-coding-plan/GLM-5.3
+glm | heterogeneous | True | True | True | true
+glm | override_reason | 无或 null | None | True | None
+
+全部成立： True

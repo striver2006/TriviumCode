@@ -422,6 +422,35 @@ r2 §2.7 的起因「glm 连续三轮回退」能在 M10 计划的三次运行�
 **按 r2 §2.4 的「结论用途」**：codex 会递归枚举 ⇒ 第 2 步要换落点或改扁平命名（r2 §3.1.1 备选）；agy 全局根不递归。
 把 `dual-critic` 连同 `entry/<agent>/` 一起装进 codex 的任何 skill 根，都会让其它 Driver 的入口资产出现在 codex 的列表里，还能被 `$名字` 调起。
 
+## 5.1 EV-107 前置臂（r5 §4.7，2026-09-25）：**判据两侧六格全部成立**
+
+**发起**：用户 2026-09-25 授权 Claude 代办（夹具 doctor、预检、`review --start`），焦点用 Claude 起草的候选、经用户认可。
+
+**夹具**：scratchpad 下新建的 git 仓库（`src/math.js` 一个函数）→ `trivium init`（安装副本，本仓 `src/`、`skills/` 自 `93b8569` 起无改动）→ `topic claim --topic EV-107-前置臂 --stage plan --driver codex` →
+codex 名义的计划原稿（给 `math.js` 加 `multiply`，由 Claude 用 Write 代笔，与 M9 第 6 步的名义 Driver 口径相同）→ `doctor`（零配额一次 + 完整一次，3 分 30 秒）→ `preflight --stage plan --driver codex --critics gemini,glm` 11 项全过（agy 探活 19 秒、zcode 探活 8 秒）。
+
+**运行**：run `20260925T031426Z`，`review --start --entry B --stage plan --topic EV-107-前置臂 --driver codex --critics gemini,glm --model-gemini gpt-oss-120b-medium --plan-file <原稿> --focus "计划对 ESM 语境的处理是否可行，测试覆盖是否足够"`，用时 6 分 33 秒，两侧 `status: ok`。
+
+**唯一判据**（r5 §4.7 表；`VENDOR_MODEL_FAMILY`：codex 厂商 openai，名义族 `/gpt/i`）：
+
+| 侧 | 字段 | 期望 | run.json | 审查件 front-matter | 判 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| gemini | 生效模型 | `gpt-oss-120b-medium` | `gpt-oss-120b-medium`（`model_effective_source: envelope`） | 同 | ✓ |
+| gemini | `heterogeneous` | **false**（新增检出） | `false` | `false` | ✓ |
+| gemini | `override_reason` | 非空，由 `overrideReasonFor` 派生 | 「用户经 --model-gemini 显式指定了与当轮 Driver（Codex）同族的模型」 | 同 | ✓ |
+| glm | 生效模型 | `GLM-*` 系 | `bigmodel-coding-plan/GLM-5.3`（`model_effective_source: trace`） | 同 | ✓ |
+| glm | `heterogeneous` | **true** | `true` | `true` | ✓ |
+| glm | `override_reason` | 无或 null | 无 | 无 | ✓ |
+
+`run.json.driver = codex`。审查意见的内容不在判据里，本节不裁决；夹具那一轮的闸门留在待裁决状态，不影响读数。
+
+**附带记录**（不作判据）：夹具 `task.json.drivers.plan = {"driver": "codex", "claimed_at": "2026-09-25T03:08:02.876Z", "claimed_by": "unknown-session"}`。
+`claimed_by` 是 `unknown-session`，因为 Claude 的 Bash 环境里没有 `CLAUDE_SESSION_ID`，缺省取值落空；本仓真实归档**仍零认领**。
+
+**边界**（照 r5 §4.7）：补的是 EV-107 端到端空白的两格，不改名义族是两层启发式，**不结案 EV-107**。只跑了一次、一个夹具、一个 Driver（codex）。
+
+证据：`evidence/m10b-ev107-20260925/`（`run.json`、`review-rendered-{gemini,glm}.md`、`plan-draft-codex-nominal.md`、`task.json`、`preflight.json`、`criteria-check.txt` 与生成它的 `ev107_check.py`、`fixture-git-log.txt`）。
+
 ## 6. 2026-09-25 补测的调用台账与证据
 
 真实调用 12 次。授权上限原为 10 次；第 11 次（agy 嵌套臂）是用户在补测前追加授权的，条件是「正对照通过才跑」；第 12 次（agy 参数到达）是用户选 C 时授权的。
@@ -451,6 +480,8 @@ r2 §2.7 的起因「glm 连续三轮回退」能在 M10 计划的三次运行�
 | z3 | 命令行信任：未信任夹具 | 02:44:26～02:44:38 | 0 |
 
 另有 `zcode skills list --json` 2 次（零配额，其中 1 次在 z0 同一脚本里），以及用户在桌面端操作的会话：3.1.1 的第 1～5 步，3.1.2 的两次 `Agent` 派发。
+
+**EV-107 前置臂**（§5.1，用户授权代办）：夹具 `doctor` 零配额 1 次、完整 1 次（3 分 30 秒，在 03:08 UTC 的 `topic claim` 之后、03:14 UTC 发起审查之前）；`preflight` 带探活 1 次；审查运行 1 次（run `20260925T031426Z`，gemini 侧 `gpt-oss-120b-medium` 与 glm 侧 GLM-5.3 各一次审查）。
 
 **不耗模型配额的调用**（不计入上限）：`codex debug prompt-input` 6 次；`agy models` / `agy agents` 各 2 次（空 fakehome 一轮、拷入 token 文件一轮）；`security list-keychains` / `default-keychain` 只读核对。
 

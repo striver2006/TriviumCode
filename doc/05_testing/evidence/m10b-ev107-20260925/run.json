@@ -1,0 +1,218 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260925T031426Z",
+  "topic": "EV-107-前置臂",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "计划对 ESM 语境的处理是否可行，测试覆盖是否足够",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "codex",
+  "driver_enabled": true,
+  "critics_selected": [
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "ead466b7cb2fa1e45181e1cb6e743fa179b2c8d6",
+    "tree_hash": "37b8ab2e32479a396f9170e218e1fb817c3eda96",
+    "dirty": true,
+    "subject_sha256": "ed81c4d54f8d41b250f36033353338591d1efcc1086273c838aa318861160274",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "b16f144275eeb2de890fe8adc05ea0387b312b89",
+      "dirty": true,
+      "inputs_sha256": "c04cfdcc50ad36f49f3dce89bdfc4ce56e8ddeaf79f3b1ab41f9c1d127b70ad2",
+      "built_at": "2026-09-25T00:43:33.450Z"
+    }
+  },
+  "started_at": "2026-09-25T03:14:26.706Z",
+  "finished_at": "2026-09-25T03:20:58.522Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.10",
+      "model_requested": "gpt-oss-120b-medium",
+      "model_effective": "gpt-oss-120b-medium",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 391.664,
+      "tool_calls": {
+        "read": 7,
+        "grep": 0,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 6
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 1572905,
+        "output_tokens": 56526,
+        "thinking_tokens": 0,
+        "cache_read_tokens": 0,
+        "total_tokens": 1629431
+      },
+      "heterogeneous": false,
+      "override_reason": "用户经 --model-gemini 显式指定了与当轮 Driver（Codex）同族的模型",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "bf297a4a-0fa0-46f6-b96f-7832e87bbfc3",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 281.645,
+      "tool_calls": {
+        "read": 9,
+        "grep": 4,
+        "glob": 4,
+        "run_command": 0,
+        "project_reads": 9
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 7,
+        "inputTokens": 269907,
+        "outputTokens": 21925,
+        "totalTokens": 291832,
+        "cacheReadTokens": 227648,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_aa73333b-412c-4556-ac72-73f33e223587",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "~/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "EV-107-前置臂/plan/_meta/brief-gemini-20260925T031426Z.md",
+      "sha256": "5328db2f6bb5d31e0074d5ca3d1019e69a04e40ac96fcb24bd8118d20efb27a1"
+    },
+    {
+      "path": "EV-107-前置臂/plan/_meta/brief-glm-20260925T031426Z.md",
+      "sha256": "370dab8e318bf2a7836ba6b4a2085024924e968b537683356bbb3ffb923d6edb"
+    },
+    {
+      "path": "EV-107-前置臂/plan/_meta/review-gemini-20260925T031426Z.json",
+      "sha256": "a020892717ae7f572a3bb0663b7c84165e9aeec8f8157540eabd14adb75d9a13"
+    },
+    {
+      "path": "EV-107-前置臂/plan/_meta/review-glm-20260925T031426Z.json",
+      "sha256": "65ca0111ea49eb0978e58afe58ef82131d0bffb5564d6cab18ae890600309ae1"
+    },
+    {
+      "path": "EV-107-前置臂/plan/2026-09-25-EV-107-前置臂-gemini.md",
+      "sha256": "62ddf36cb8f7ed36c2fda85b38f1cbe308a3df7609b14b2fcd437ed33a9a55ff"
+    },
+    {
+      "path": "EV-107-前置臂/plan/2026-09-25-EV-107-前置臂-glm.md",
+      "sha256": "3ce1f565513b108f858ad4c2d531d7d404b4fab9b257d48fa9d31318bdfc9756"
+    },
+    {
+      "path": "EV-107-前置臂/plan/2026-09-25-EV-107-前置臂-codex.md",
+      "sha256": "ed81c4d54f8d41b250f36033353338591d1efcc1086273c838aa318861160274"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
