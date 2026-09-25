@@ -208,20 +208,112 @@ test(
      * （显式 `--critics` 排除某家、却仍为它指定模型）会当场退 64，
      * 那需要单独一轮验证，不该搭在本轮的修复里。残余缺口登记为 EV-67。
      *
+     * **M10b 第 2 步已收紧**（代码双审 CODEX-02，收 EV-67）：缺省集合减去 Driver 之后，
+     * 这一格在非 claude Driver 的缺省路径上成了常规形态，判据改为本轮实际入选集合。
+     * 两格用例见 `test/unit/topic-args.test.ts`「能入选、但本轮没入选」一组；
+     * 下面补的是另两个入口（`review --start` 与 `preflight`）也接上了入选集合——
+     * 只在一个入口收紧，正是 EV-53 第一次收口的形状。同样在选侧阶段就退，零配额。
+     *
      * 本条要证的是另一件事：两个入口现在同口径了（EV-53 上一次只收了一个）。
      */
+    assertSelectableUsable(2);
+    const dropped = SELECTABLE[1]!;
+    for (const argv of [
+      ['review', '--start', '--entry', 'B', '--stage', 'plan', '--topic', TOPIC, '--focus', '看边界'],
+      ['preflight', '--stage', 'plan'],
+    ]) {
+      const b = await cli(root, [...argv, '--critics', other, `--model-${dropped}`, 'm-8']);
+      assert.equal(b.code, EXIT.USAGE, `${argv[0]}：没入选的一侧的模型覆盖应当退 64：${b.stdout}${b.stderr}`);
+      assert.match(b.stdout + b.stderr, /本轮没有入选/, `${argv[0]} 的判据没有接上本轮入选集合`);
+    }
+  },
+);
+
+/*
+ * 命令 A 的 `--driver`：M10b 第 2 步由「拒绝」改为「接受 + plan / code 两阶段逐一交叉校验」（计划 r5 §5.3）。
+ * 原先这里钉的是拒绝（接受即静默丢弃）；放开的前提是入口资产在六处交接里都渲染进了 `--driver`。
+ * 声明用真实的 `topic claim` 落盘，不手写元数据——手写的形状与 CLI 写出的漂了，用例就测了个假前提。
+ */
+async function claimStage(root: string, stage: string, driver: string): Promise<void> {
+  const r = await cli(root, ['topic', 'claim', '--topic', TOPIC, '--stage', stage, '--driver', driver, '--json']);
+  assert.equal(r.code, EXIT.OK, `认领前提没立起来：${r.stdout}${r.stderr}`);
+}
+
+async function resolveAll(
+  root: string,
+  extra: string[],
+): Promise<{ code: number | null; out: string; json: Record<string, unknown> | null }> {
+  const r = await cli(root, ['topic', 'resolve', '--stage', 'all', '--json', '--', '做个功能', '--topic', TOPIC, ...extra]);
+  const c = extractJsonCandidate(r.stdout);
+  return { code: r.code, out: r.stdout + r.stderr, json: c ? (JSON.parse(c.json) as Record<string, unknown>) : null };
+}
+
+test(
+  '命令 A 接受 --driver：与两个阶段都相容时通过并回显',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    assertSelectableUsable();
+    const other = SELECTABLE[0]!;
+    // 不预置原稿：夹具的缺省原稿带缺省 Driver 的后缀，认领别家会被分支 3′ 正确地拒掉
+    const { root } = await makeFixture({ topic: TOPIC, draft: false });
+    await claimStage(root, 'plan', other);
+    const r = await resolveAll(root, ['--driver', other]);
+    assert.equal(r.code, EXIT.OK, r.out);
+    assert.equal(r.json?.['driver'], other);
   },
 );
 
 test(
-  '命令 A 不接受 --driver（接受即静默丢弃）',
+  '命令 A：--driver 与 code 阶段的声明冲突 ⇒ 入口处退 64（不等到 S6 的 --start）',
   { skip: bundleMissing && bundleSkipReason },
   async () => {
-    const { root } = await makeFixture({ topic: TOPIC });
-    const r = await cli(root, [
-      'topic', 'resolve', '--stage', 'all', '--json', '--', '做个功能', '--driver', 'codex',
-    ]);
-    assert.equal(r.code, EXIT.USAGE, `${r.stdout}${r.stderr}`);
-    assert.match(r.stdout + r.stderr, /--driver/);
+    assertSelectableUsable(2);
+    const [a, b] = [SELECTABLE[0]!, SELECTABLE[1]!];
+    // 不预置原稿：夹具的缺省原稿带缺省 Driver 的后缀，认领别家会被分支 3′ 正确地拒掉
+    const { root } = await makeFixture({ topic: TOPIC, draft: false });
+    await claimStage(root, 'code', b);
+    const r = await resolveAll(root, ['--driver', a]);
+    assert.equal(r.code, EXIT.USAGE, r.out);
+    // 必须点名是 code 阶段：只查 plan 的实现在这里会放行（改动前的形状）
+    assert.match(r.out, /code 阶段/);
+  },
+);
+
+test(
+  '命令 A：省略 --driver 而两个阶段的权威值不同 ⇒ 退 64，不挑一个继承',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    assertSelectableUsable(2);
+    const [a, b] = [SELECTABLE[0]!, SELECTABLE[1]!];
+    // 不预置原稿：夹具的缺省原稿带缺省 Driver 的后缀，认领别家会被分支 3′ 正确地拒掉
+    const { root } = await makeFixture({ topic: TOPIC, draft: false });
+    await claimStage(root, 'plan', a);
+    await claimStage(root, 'code', b);
+    const r = await resolveAll(root, []);
+    assert.equal(r.code, EXIT.USAGE, r.out);
+    assert.match(r.out, /plan 与 code 阶段当轮 Driver 不一致/);
+    /*
+     * 出口要是真出口（代码双审 GLM-05）：此前文案叫用户「显式传 --driver」，而两阶段互异时
+     * 传哪个都会撞上另一阶段，照做再退一次 64。两个阶段都只是声明，两条改写命令都要给出。
+     */
+    assert.doesNotMatch(r.out, /请显式传 --driver/);
+    assert.match(r.out, new RegExp(`topic claim --topic ${TOPIC} --stage plan --driver ${b}`));
+    assert.match(r.out, new RegExp(`topic claim --topic ${TOPIC} --stage code --driver ${a}`));
+    assert.match(r.out, /另开一个主题/);
+  },
+);
+
+test(
+  '命令 A：省略 --driver 时继承唯一的权威值（只声明了 plan）',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    assertSelectableUsable();
+    const other = SELECTABLE[0]!;
+    // 不预置原稿：夹具的缺省原稿带缺省 Driver 的后缀，认领别家会被分支 3′ 正确地拒掉
+    const { root } = await makeFixture({ topic: TOPIC, draft: false });
+    await claimStage(root, 'plan', other);
+    const r = await resolveAll(root, []);
+    assert.equal(r.code, EXIT.OK, r.out);
+    assert.equal(r.json?.['driver'], other);
   },
 );

@@ -1,0 +1,159 @@
+{
+  "targets": [
+    "src/install.ts",
+    "src/entry-render.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/init.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/cli.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/install.test.js",
+    "dist/test/test/contract/entry-render-parity.test.js",
+    "dist/test/test/contract/skill-flag-parity.test.js",
+    "dist/test/test/unit/init.test.js",
+    "dist/test/test/unit/archive.test.js",
+    "dist/test/test/unit/hooks.test.js",
+    "dist/test/test/integration/driver-flag.test.js",
+    "dist/test/test/integration/usage-registry-parity.test.js"
+  ],
+  "cases": [
+    {
+      "id": "I1",
+      "desc": "拍平改回整树搬运（r10 §2.1 变异 1）⇒「任何目标根下都没有深度 ≥ 2 的 SKILL.md」",
+      "file": "src/install.ts",
+      "find": "      const r = await syncDir(src, dst);",
+      "replace": "      const r = await syncDir(path.join(root, RUNTIME_SRC), path.join(t.skillsRoot, path.basename(RUNTIME_SRC))); void dst; void src;",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "I2",
+      "desc": "去掉运行时根对 entry/ 的排除（r10 §2.1 变异 2）⇒ 同上",
+      "file": "src/install.ts",
+      "find": "plan.runtimeRoot, new Set([ENTRY_SUBDIR]));",
+      "replace": "plan.runtimeRoot, new Set<string>());",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "I3",
+      "desc": "残留检测失效 ⇒「残留检测：安装失败、列出路径、不删残留」",
+      "file": "src/install.ts",
+      "find": "    if (t.layout === 'entry') {\n      for (const n of RESIDUE_NAMES) {",
+      "replace": "    if (t.layout === ('never' as string)) {\n      for (const n of RESIDUE_NAMES) {",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "I4",
+      "desc": "查重名只看安装根、不看完整读取面 ⇒「~/.agents/skills 里的同名判冲突」",
+      "file": "src/install.ts",
+      "find": "      for (const r of t.readRoots) {",
+      "replace": "      for (const r of [t.skillsRoot]) {",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "I5",
+      "desc": "家根不存在也照装 ⇒「跳过并写明原因、不得创建家根」",
+      "file": "src/install.ts",
+      "find": "    if (!(await exists(t.familyRoot))) {",
+      "replace": "    if (!(await exists(t.familyRoot)) && t.agent === ('never' as string)) {",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "I6",
+      "desc": "只读审查 Agent 定义无条件安装 ⇒「没有 Antigravity 家根时不装、不凭空建出 ~/.gemini」",
+      "file": "src/install.ts",
+      "find": "  if (!(await exists(agentFamily))) {",
+      "replace": "  if (agentFamily === '') {",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "R1",
+      "desc": "另三家也用 $ARGUMENTS ⇒「transcribe 载体一处都不许有」",
+      "file": "src/entry-render.ts",
+      "find": "    ARGS: carrier.arguments === 'substitute' ? '$ARGUMENTS' : '<参数>',",
+      "replace": "    ARGS: '$ARGUMENTS',",
+      "expect": "dist/test/test/contract/entry-render-parity.test.js"
+    },
+    {
+      "id": "R2",
+      "desc": "护栏段不按注册表派生、一律 L1 ⇒「护栏注入段与 r10 §3.1.3 的表一致」",
+      "file": "src/entry-render.ts",
+      "find": "    GUARD: guardProfileOf(self),",
+      "replace": "    GUARD: 'l1-hook',",
+      "expect": "dist/test/test/contract/entry-render-parity.test.js"
+    },
+    {
+      "id": "R3",
+      "desc": "模型与选侧清单不减当轮 Driver ⇒「不给当轮 Driver 自己留槽位（EV-61）」",
+      "file": "src/entry-render.ts",
+      "find": "  const critics = CRITIC_AGENT_IDS.filter((id) => id !== carrier.agent);",
+      "replace": "  const critics = [...CRITIC_AGENT_IDS];",
+      "expect": "dist/test/test/contract/entry-render-parity.test.js"
+    },
+    {
+      "id": "R4",
+      "desc": "独立行片段渲染为空时不去掉那一行 ⇒ 渲染器自测与命令 C 产物比对",
+      "file": "src/entry-render.ts",
+      "find": "    slots.push(r === '' ? '' : `${r}\\n${blank ?? ''}`);",
+      "replace": "    slots.push(`${r}\\n${blank ?? ''}`);",
+      "expect": "dist/test/test/contract/entry-render-parity.test.js"
+    },
+    {
+      "id": "T1",
+      "desc": "命令 A 只比对 plan 阶段 ⇒「--driver 与 code 阶段的声明冲突 ⇒ 入口处退 64」",
+      "file": "src/trivium/topic-args.ts",
+      "find": "    const stages: readonly Stage[] = scope === 'all' ? ['plan', 'code'] : [scope];",
+      "replace": "    const stages: readonly Stage[] = scope === 'all' ? ['plan'] : [scope];",
+      "expect": "dist/test/test/integration/driver-flag.test.js"
+    },
+    {
+      "id": "T2",
+      "desc": "两阶段权威值不同时挑一个继承 ⇒「省略 --driver 而两个阶段的权威值不同 ⇒ 退 64」",
+      "file": "src/trivium/topic-args.ts",
+      "find": "      if (distinct.length > 1) {",
+      "replace": "      if (distinct.length > 99) {",
+      "expect": "dist/test/test/integration/driver-flag.test.js"
+    },
+    {
+      "id": "P1",
+      "desc": "不看旧版指纹、见块就换 ⇒「标记内被手工改过：不替换、原样保留」",
+      "file": "src/trivium/init.ts",
+      "find": "  if (!isKnownProtocolBody(target, interior)) {",
+      "replace": "  if (interior === ('\\u0000' as string)) {",
+      "expect": "dist/test/test/unit/init.test.js"
+    },
+    {
+      "id": "P2",
+      "desc": "审查员段不看「作审核者时读不读项目记忆」⇒「CLAUDE.md 只带 Driver 段」",
+      "file": "src/trivium/init.ts",
+      "find": "      if (readers.some((a) => a.criticEnabled && a.criticReadsInstructionFiles)) sections.push('critic');",
+      "replace": "      if (readers.some((a) => a.criticEnabled)) sections.push('critic');",
+      "expect": "dist/test/test/unit/init.test.js"
+    },
+    {
+      "id": "E4",
+      "desc": "EV-61 ④：_meta 拒绝文案退回写死三家 ⇒「文案点名全部已登记后缀」",
+      "file": "src/trivium/archive.ts",
+      "find": " 内不得出现以 ${roleArtifactSuffixLabel()} 结尾的文件名",
+      "replace": " 内不得出现以 -claude/-gemini/-glm.md 结尾的文件名",
+      "expect": "dist/test/test/unit/archive.test.js"
+    },
+    {
+      "id": "E6",
+      "desc": "EV-61 ⑥：拒绝文案退回「删掉或改坏 bin/ 会永真放行」⇒ hooks 文案断言",
+      "file": "src/trivium/hooks.ts",
+      "find": "        '      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\\n' +\n        '        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\\n' +",
+      "replace": "        '      （删掉或改坏 bin/ 会让 .claude/settings.json 里每条 Hook 的守卫永真放行）\\n' +",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "U1",
+      "desc": "EV-61 原条目：USAGE 的 --only 退回写死两家 ⇒ 帮助文本与注册表对账",
+      "file": "src/trivium/cli.ts",
+      "find": "      --only ${CRITIC_AGENT_IDS.join('|')}  仅跑一侧。",
+      "replace": "      --only gemini|glm  仅跑一侧。",
+      "expect": "dist/test/test/integration/usage-registry-parity.test.js"
+    }
+  ]
+}

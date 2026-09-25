@@ -17,6 +17,7 @@ import {
 import { newRunMeta } from '../../src/trivium/meta.js';
 import { CRITICS, DEFAULT_CRITICS, type StageOrVerify } from '../../src/trivium/types.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
 
 async function tmpLayout(): Promise<ArchiveLayout> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-archive-'));
@@ -161,6 +162,15 @@ test('_meta/ 拒绝角色后缀文件名，避免与 AC-07 检查器混淆', asy
   );
   const ok = await writeMeta(l, 'plan', 'brief-gemini-20260910T142310Z.md', '# BRIEF\n');
   assert.ok(ok.absPath.includes(path.join('plan', '_meta')));
+});
+
+test('_meta/ 的拒绝文案点名全部已登记后缀，与判据同源（EV-61 ④）', async () => {
+  const l = await tmpLayout();
+  await assert.rejects(writeMeta(l, 'plan', 'x-gemini.md', 'x'), (e: Error) => {
+    // 此前文案写死三家、缺 codex：判据认四家，被拦的人照文案排查会漏掉一家
+    for (const id of ALL_AGENT_IDS) assert.ok(e.message.includes(`-${id}`), `文案缺 -${id}：${e.message}`);
+    return true;
+  });
 });
 
 test('_meta/ 按 run_id 命名，同名重写视为修正，允许覆盖', async () => {

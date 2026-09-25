@@ -22,6 +22,7 @@ import {
   localDate,
   looksLikeRoleArtifact,
   parseArtifactName,
+  roleArtifactSuffixLabel,
   roleIsAllowedForWriter,
   type ArtifactName,
   type DispositionKind,
@@ -247,7 +248,7 @@ export async function writeMeta(
 ): Promise<{ absPath: string; relPath: string; sha256: string }> {
   if (looksLikeRoleArtifact(fileName)) {
     throw new Error(
-      `_meta/ 内不得出现以 -claude/-gemini/-glm.md 结尾的文件名（收到 ${fileName}）：` +
+      `_meta/ 内不得出现以 ${roleArtifactSuffixLabel()} 结尾的文件名（收到 ${fileName}）：` +
         `会与 AC-07 的角色后缀检查器混淆（设计 §6.2）`,
     );
   }

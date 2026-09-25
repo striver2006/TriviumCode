@@ -1,0 +1,25 @@
+{
+  "targets": ["src/trivium/critics.ts"],
+  "suites": [
+    "dist/test/test/unit/critics.test.js",
+    "dist/test/test/unit/topic-args.test.js"
+  ],
+  "cases": [
+    {
+      "id": "C1",
+      "desc": "缺省集合不减当轮 Driver（退回改前）⇒「缺省集合含当轮 Driver：减去它」与命令 A 缺省配置路径",
+      "file": "src/trivium/critics.ts",
+      "find": "    picked = cfg.review.default_critics.filter((id) => id !== driver);",
+      "replace": "    picked = [...cfg.review.default_critics];",
+      "expect": "dist/test/test/unit/critics.test.js"
+    },
+    {
+      "id": "C2",
+      "desc": "显式 --critics 也静默减去 Driver ⇒「显式含当轮 Driver 仍退 64」",
+      "file": "src/trivium/critics.ts",
+      "find": "    picked = criticsRaw.split(',').map((s) => s.trim()).filter(Boolean);",
+      "replace": "    picked = criticsRaw.split(',').map((s) => s.trim()).filter(Boolean).filter((id) => id !== driver);",
+      "expect": "dist/test/test/unit/critics.test.js"
+    }
+  ]
+}

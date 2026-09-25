@@ -342,7 +342,8 @@ for (const t of TARGETS) {
  */
 for (const [rel, assign] of [
   ['src/trivium/cli.ts', /const\s+driver\s*=\s*explicitDriver\s*\?\?\s*resolution\.driver\s*;/],
-  ['src/trivium/topic-args.ts', /\bdriver\s*=\s*explicitDriver\s*\?\?\s*resolution\.driver\s*;/],
+  // M10b 第 2 步：命令 A 要比对 plan 与 code 两个阶段，继承值改由两阶段合出，最终值收在这一行
+  ['src/trivium/topic-args.ts', /\bdriver\s*:\s*AgentId\s*=\s*explicitDriver\s*\?\?\s*inheritedDriver\s*\?\?\s*DEFAULT_DRIVER\s*;/],
 ] as const) {
   test(`继承判定之后按最终 driver 再过 resolveDriver：${rel}`, async () => {
     const src = await stripped(rel);

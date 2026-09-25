@@ -212,8 +212,8 @@ export async function applyOverlay(dest: string): Promise<string[]> {
     );
     s = anchor(
       s,
-      "    instructionFiles: ['AGENTS.md'],\n  },\n];",
-      `    instructionFiles: ['AGENTS.md'],
+      "    entrySkillExtraReadRoots: ['.agents/skills'],\n  },\n];",
+      `    entrySkillExtraReadRoots: ['.agents/skills'],
   },
   {
     id: '${STUB_ID}',
@@ -248,7 +248,16 @@ export async function applyOverlay(dest: string): Promise<string[]> {
     defaultSelected: false,
     driverEnabled: false,
     guardLevel: 'L2',
+    /*
+     * M10b 第 2 步新增的四项登记（入口资产渲染与多目标安装按它们派生）。
+     * 桩没有 Hook、不作 Driver，所以不需要载体适配层（渲染只覆盖可作 Driver 的 Agent）；
+     * 它的入口 skill 根照样要登记——注册表不接受缺项，新增一家 Agent 时这四项同样要填。
+     */
+    hookConfigTarget: null,
     instructionFiles: ['STUB.md'],
+    criticReadsInstructionFiles: true,
+    entrySkillRoot: { homeRel: '.stub-agent', skillsRel: 'skills' },
+    entrySkillExtraReadRoots: [],
   },
 ];`,
       'AGENTS 末项',

@@ -239,6 +239,32 @@ test('配置的 default_critics 为空 → 同样退 64，不静默回落到全�
   rejects(() => resolveCriticSelection(c), /至少要有一个/);
 });
 
+/*
+ * ── 缺省集合减去当轮 Driver（M10b 第 2 步，用户 2026-09-25 拍板）──
+ *
+ * 此前「缺省集合含当轮 Driver」一律退 64，命令 A 不收 `--critics`，非缺省 Driver 走命令 A 无出口。
+ * 只减**缺省**：显式写出的 `--critics` / `--only` 含 Driver 仍退 64（上面那组用例照旧）。
+ */
+test('缺省集合含当轮 Driver：减去它，不退 64；顺序按缺省集合', () => {
+  const c = cfg();
+  const driver = c.review.default_critics[0]!;
+  assert.deepEqual(resolveCriticSelection(c, { driver }), c.review.default_critics.filter((x) => x !== driver));
+});
+
+test('显式 --critics / --only 含当轮 Driver：仍退 64（只减缺省，不减用户亲手写的）', () => {
+  assertSelectableUsable();
+  const driver = SELECTABLE[0]!;
+  rejects(() => resolveCriticSelection(cfg(), { critics: driver, driver }), /二次审查/);
+  rejects(() => resolveCriticSelection(cfg(), { only: driver, driver }), /二次审查/);
+});
+
+test('缺省集合只有当轮 Driver 一家：减完为空 → 退 64，不静默回落', () => {
+  const c = cfg();
+  const driver = c.review.default_critics[0]!;
+  c.review.default_critics = [driver];
+  rejects(() => resolveCriticSelection(c, { driver }), /至少要有一个/);
+});
+
 // ─────────────────── 错误信息的质量（不是措辞洁癖）───────────────────
 
 /*

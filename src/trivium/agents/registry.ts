@@ -39,6 +39,8 @@
  * 上面两节是当时的叙事，保留原文。
  */
 
+import path from 'node:path';
+
 /** 已登记的 Agent。取值同时是归档后缀与配置键命名空间 */
 export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm';
 
@@ -65,14 +67,42 @@ export const VENDOR_MODEL_FAMILY: Readonly<Record<AgentVendor, RegExp>> = {
 };
 
 /**
- * 护栏等级（计划 §7.5）。
+ * 护栏等级（计划 §7.5；M10b r10 §3.1.1 改写定义）。
  *
- * L1 具备 blocking Hook（闸门期写拦截 + Stop 阻断 + 提交完整性锚）；
- * L2 没有，靠 approve 前置复核、`_meta` 唯一事实来源、`O_EXCL` 防覆盖与
- * 跑后漂移复算补偿。这是「任意 Agent 可为 Driver」的固有代价，如实分级，
- * 不伪装成同等级强制。
+ * L1：blocking Hook **兜得住**该载体上的写入——当轮 Driver 的写操作一律经过 Hook 判定
+ * （闸门期写拦截 + Stop 阻断 + 提交完整性锚），没有已知的结构性旁路。
+ * L2：**不宣称** Hook 兜得住写入。可以没有 Hook（codex、gemini），也可以有尽力拦截的
+ * Hook（glm：只在桌面端、已信任、主代理、matcher 覆盖、不超时时生效）；无论有无，
+ * 都靠 approve 前置复核、`_meta` 唯一事实来源、`O_EXCL` 防覆盖与跑后漂移复算补偿。
+ * 这是「任意 Agent 可为 Driver」的固有代价，如实分级，不伪装成同等级强制。
  */
 export type GuardLevel = 'L1' | 'L2';
+
+/**
+ * 入口 skill 的安装根怎么取（M10b r10 §2.2：各家 skill 根由注册表派生，按该家 CLI 自己的规则取值）。
+ *
+ * 只登记**路径规则**，不做任何文件系统访问——注册表被全仓引用，不该有副作用。
+ * 求值见 {@link entrySkillRootOf}。
+ */
+export interface EntrySkillRootSpec {
+  /** 该家 CLI 承认的「家根」环境变量；设了就以它为家根（codex 的 `CODEX_HOME`） */
+  homeEnv?: string;
+  /** 家根相对用户主目录的缺省位置 */
+  homeRel: string;
+  /** skill 根相对家根的位置 */
+  skillsRel: string;
+}
+
+/**
+ * 当轮 Driver 所在载体的护栏形态（M10b r10 §3.1.3）：由 `guardLevel` 与「有无 Hook 配置目标」两项派生。
+ *
+ *   l1-hook  L1，Hook 兜得住（claude）
+ *   l2-hook  L2，有尽力拦截的 Hook，不兜底（glm）
+ *   l2-none  L2，没有 Hook（codex、gemini）
+ *
+ * 入口资产注入哪段护栏文案按它选；第 3 步 `preflight` 打印的等级文案与它同源。
+ */
+export type GuardProfile = 'l1-hook' | 'l2-hook' | 'l2-none';
 
 export interface AgentDescriptor {
   id: AgentId;
@@ -143,8 +173,31 @@ export interface AgentDescriptor {
   /** 可作为 Driver 发起四条命令 */
   driverEnabled: boolean;
   guardLevel: GuardLevel;
+  /**
+   * TriviumCode Hook 合并进的**项目内**配置文件（相对项目根）；该家没有 Hook 机制则为 null。
+   *
+   * 「有没有」决定入口资产注入哪段护栏文案（{@link guardProfileOf}）；
+   * glm 的 `.zcode/config.json` 由 M10b 第 3 步的 `trivium hooks --agent glm` 渲染（r10 §3.2）。
+   */
+  hookConfigTarget: string | null;
   /** 协议片段落点（Driver 协议 + 审查员身份两段式） */
   instructionFiles: readonly string[];
+  /**
+   * 作为审核者被拉起时会不会读项目记忆（`instructionFiles`）。
+   *
+   * 决定协议片段要不要带【审查员身份】段：读不到就是死件（EV-44：claude 审核者以 `--restricted`
+   * 拉起，实测阻断项目记忆），不写进它的记忆文件（r2 §3.3）。
+   */
+  criticReadsInstructionFiles: boolean;
+  /** 入口 skill 的安装根（M10b 第 2 步多目标安装） */
+  entrySkillRoot: EntrySkillRootSpec;
+  /**
+   * 该家 CLI **还会读**的其它用户级 skill 根（相对用户主目录）。安装前按「完整读取面」查重名
+   * （r2 §3.2.2）：同名项在这些根里同样会进模型可见清单。
+   * 实测：codex、zcode 都读 `~/.agents/skills`（第 1 步报告 §2.1、§3.6）；agy 不读（§1.3.1）。
+   * 这些根**只查不装**：`~/.agents/skills` 是共享读取面，钉为禁装（r2 §3.2.2，P-22）。
+   */
+  entrySkillExtraReadRoots: readonly string[];
 }
 
 /**
@@ -181,7 +234,11 @@ export const AGENTS: readonly AgentDescriptor[] = [
     defaultSelected: false,
     driverEnabled: true,
     guardLevel: 'L1',
+    hookConfigTarget: '.claude/settings.json',
     instructionFiles: ['CLAUDE.md'],
+    criticReadsInstructionFiles: false, // EV-44：审核者以 --restricted 拉起，读不到项目记忆
+    entrySkillRoot: { homeRel: '.claude', skillsRel: 'skills' },
+    entrySkillExtraReadRoots: [],
   },
   {
     id: 'codex',
@@ -232,7 +289,12 @@ export const AGENTS: readonly AgentDescriptor[] = [
     defaultSelected: true,
     driverEnabled: true, // M10a 第 3 步启用
     guardLevel: 'L2',
+    hookConfigTarget: null,
     instructionFiles: ['AGENTS.md'],
+    criticReadsInstructionFiles: true,
+    // 与 `adapters/codex-home.ts` 的 `codexHomeOf()` 同口径：CODEX_HOME 优先，未设回落 ~/.codex
+    entrySkillRoot: { homeEnv: 'CODEX_HOME', homeRel: '.codex', skillsRel: 'skills' },
+    entrySkillExtraReadRoots: ['.agents/skills'],
   },
   {
     id: 'gemini',
@@ -246,7 +308,12 @@ export const AGENTS: readonly AgentDescriptor[] = [
     defaultSelected: true,
     driverEnabled: true, // M10a 第 3 步启用
     guardLevel: 'L2',
+    hookConfigTarget: null,
     instructionFiles: ['GEMINI.md'],
+    criticReadsInstructionFiles: true,
+    // 全局根；工作区根 print 模式下不读，不作目标（r10 §2.2，报告 §1.2 / §1.3）
+    entrySkillRoot: { homeRel: '.gemini', skillsRel: 'config/skills' },
+    entrySkillExtraReadRoots: [],
   },
   {
     id: 'glm',
@@ -259,8 +326,15 @@ export const AGENTS: readonly AgentDescriptor[] = [
     criticEnabled: true,
     defaultSelected: true,
     driverEnabled: true, // M10a 第 3 步启用
-    guardLevel: 'L1',
+    // M10b r10 §3.1（D-2 = (b)）：子代理不过工作区 Hook、命令行模式下工作区 Hook 整体关闭，
+    // Hook 兜不住写入，只作尽力拦截（第 1 步报告 §3.1.2、§3.5）
+    guardLevel: 'L2',
+    // 尽力拦截的工作区 Hook（r10 §3.1）：第 3 步由 `trivium hooks --agent glm` 渲染
+    hookConfigTarget: '.zcode/config.json',
     instructionFiles: ['AGENTS.md'],
+    criticReadsInstructionFiles: true,
+    entrySkillRoot: { homeRel: '.zcode', skillsRel: 'skills' },
+    entrySkillExtraReadRoots: ['.agents/skills'],
   },
 ];
 
@@ -289,7 +363,7 @@ export function agentByCliName(cliName: string): AgentDescriptor | null {
   return AGENTS.find((a) => a.cliName === cliName) ?? null;
 }
 
-/** 当前可被选为审核者的 Agent（M7a：gemini / glm） */
+/** 当前可被选为审核者的 Agent（M7a：gemini / glm；M9 起四家均已启用，EV-61 ⑤） */
 export const CRITIC_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.criticEnabled).map(
   (a) => a.id,
 );
@@ -375,6 +449,52 @@ export const DRIVER_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.drive
  * 使未升级的旧入口资产（不带 `--driver` 的调用）行为不变。
  */
 export const DEFAULT_DRIVER: AgentId = 'claude';
+
+/**
+ * 该 Agent 的护栏形态（见 {@link GuardProfile}）。
+ *
+ * 「L1 而没有 Hook 配置目标」没有合法来源——L1 的定义就是 Hook 兜得住（r10 §3.1.1），
+ * 登记成这样当场抛，不让它被渲染成某一段看似合理的文案。
+ */
+export function guardProfileOf(agent: AgentDescriptor): GuardProfile {
+  const hasHook = agent.hookConfigTarget !== null;
+  if (agent.guardLevel === 'L1') {
+    if (!hasHook) {
+      throw new Error(`注册表登记错误：${agent.id} 登记为 L1 却没有 hookConfigTarget——L1 的前提是 Hook 兜得住写入`);
+    }
+    return 'l1-hook';
+  }
+  return hasHook ? 'l2-hook' : 'l2-none';
+}
+
+export interface EntrySkillRoots {
+  /** 家根：该家 CLI 的配置目录。不存在即视为本机没装这一家 */
+  familyRoot: string;
+  /** 入口 skill 的安装根 */
+  skillsRoot: string;
+  /** 完整读取面：安装根 + 额外读取根（查重名用） */
+  readRoots: readonly string[];
+}
+
+/**
+ * 按 {@link EntrySkillRootSpec} 求值。`home` 与 `env` 显式传入：测试一律注入临时 home
+ * （r2 §3.2.3），安装器不得在这里偷偷读 `os.homedir()`。
+ */
+export function entrySkillRootOf(
+  agent: AgentDescriptor,
+  home: string,
+  env: Readonly<Record<string, string | undefined>>,
+): EntrySkillRoots {
+  const spec = agent.entrySkillRoot;
+  const fromEnv = spec.homeEnv ? env[spec.homeEnv] : undefined;
+  const familyRoot = fromEnv && fromEnv.length > 0 ? fromEnv : path.join(home, spec.homeRel);
+  const skillsRoot = path.join(familyRoot, spec.skillsRel);
+  return {
+    familyRoot,
+    skillsRoot,
+    readRoots: [skillsRoot, ...agent.entrySkillExtraReadRoots.map((r) => path.join(home, r))],
+  };
+}
 
 /** 按 id 取注册项。未登记返回 null——**不得**兜底到任意 Agent */
 export function agentById(id: string): AgentDescriptor | null {

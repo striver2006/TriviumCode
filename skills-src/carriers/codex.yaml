@@ -1,0 +1,12 @@
+# Codex 载体适配层（M10b 第 2 步）
+#
+# 安装时拍平到 $CODEX_HOME/skills/<命令名>/（未设 CODEX_HOME 时 ~/.codex/skills）。
+# 第 1 步报告 §2.2：`$名字` 提及即注入 SKILL.md 正文，但 **$ARGUMENTS 不替换**，参数只以用户消息原文到达；
+# §5：codex 递归枚举 skill 根，所以任何目标里都不得出现 entry/ 子树（r9 §2.1）。
+agent: codex
+layout: entry
+# 只输出实测过的两个键（第 1 步各臂哨兵都是这个形态）；argument-hint 改写进正文
+frontmatter: [name, description]
+arguments: transcribe
+# 报告 §2.2：提示词里的显式提及；`/名字` 写法只做过零配额渲染，真实调用未测
+invocation: ${name}

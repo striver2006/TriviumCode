@@ -177,3 +177,13 @@ export function dispositionKindForStage(stage: Stage): DispositionKind {
 export function looksLikeRoleArtifact(fileName: string): boolean {
   return new RegExp(`-(?:${suffixAlternation()})\\.md$`).test(fileName);
 }
+
+/**
+ * 上面那条判据的人读形态，如 `-claude/-codex/-gemini/-glm.md`——**与判据同源**（EV-61 ④，M10b 第 2 步）。
+ *
+ * 此前 `archive.writeMeta` 的报错文案写死三家后缀：判据按注册表认四家，
+ * 文案只说三家，被拦的人照文案排查会漏掉 codex。
+ */
+export function roleArtifactSuffixLabel(): string {
+  return `-${suffixAlternation().split('|').join('/-')}.md`;
+}

@@ -1,0 +1,54 @@
+{
+  "purpose": "M10b r5 §7.3.2.1 M9 基线产物（第 4 步 Hook 退出码对照装置只读这份）",
+  "commit": "f4f397070033317a01fa9d86b004c439f7da0369",
+  "exported_to": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-m9base-oaGPHw",
+  "cli_path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-m9base-oaGPHw/skills/dual-critic/scripts/trivium.cjs",
+  "cli_sha256": "c50d787863bebd334e8d4cc0acd104e1957ed7a0953c95fa0149042d8cdc2f38",
+  "node": "v25.2.1",
+  "npm": "11.7.0",
+  "method": "git archive <commit> | tar -x（导出物不含 .git，主仓零注册项）；npm ci；node scripts/build.mjs",
+  "deletion_rule": "删除只认 mkdtemp 返回值（2026-09-20 事故 R1）；第 4 步用完由脚本按本路径前缀断言后删除，或交用户在终端删除",
+  "created_at": "2026-09-25T03:59:41.463Z",
+  "steps": [
+    {
+      "step": "解包",
+      "argv": "tar -x -C /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-m9base-oaGPHw",
+      "exit": 0,
+      "ms": 199,
+      "stdoutTail": [
+        ""
+      ],
+      "stderrTail": [
+        ""
+      ]
+    },
+    {
+      "step": "装依赖",
+      "argv": "npm ci --no-audit --no-fund",
+      "exit": 0,
+      "ms": 1843,
+      "stdoutTail": [
+        "added 11 packages in 2s"
+      ],
+      "stderrTail": [
+        ""
+      ]
+    },
+    {
+      "step": "构建",
+      "argv": "node scripts/build.mjs",
+      "exit": 0,
+      "ms": 176,
+      "stdoutTail": [
+        ""
+      ],
+      "stderrTail": [
+        "⚡ Done in 67ms",
+        "",
+        "  dist/install.cjs  7.9kb",
+        "",
+        "⚡ Done in 45ms"
+      ]
+    }
+  ]
+}

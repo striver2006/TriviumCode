@@ -1,7 +1,7 @@
 ---
 name: dual-review-code
 description: 对已有代码变更做背靠背双审，并产出逐条应答与修改方案（命令 C）
-argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-gemini <slug>] [--model-glm <id>] [--base <ref>] [--critics <id,…>] [--only gemini|glm] [--allow-single]
+argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--base <ref>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]
 disable-model-invocation: true
 allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 ---
@@ -19,15 +19,22 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 **你不得自行调用 `agy` 或 `zcode`。** 并行、超时、指纹、轨迹核验、防覆盖命名、
 裁决校验全部在编排器内（设计 §16.2 纪律 4）。你的职责只有三件：按序调用、读文件、写裁决。
 
+**护栏（L1）**：本载体装有 TriviumCode Hook，审查期与闸门期的越界写入会被事前拦下。
+Hook 的 Bash 侧判据有**已知误拦**：命令文本在未剥 heredoc 的原文上命中写动词、又提到任一角色后缀
+（含你自己的）/ `_meta` / `task.json` / `state.json` / `.trivium` 时会被拦，不区分「写它」与「说它」。
+所以原稿与裁决件用结构化写工具（Write / Edit）落笔；恢复与清理交给用户在终端执行，不要在会话里换写法重试。
+`TV` 本身就含 `.trivium`：用户给的焦点或任务目标里若有写动词字面（如 `rm`、`chmod`、`tee`、重定向），
+这条命令会被拦——**先问用户改措辞**（焦点要逐字进送审包，不能由你改），不要换调用路径去绕判据。
+
 ### 1. 预检
 
-运行 `TV preflight --stage code --json`。失败则**原样转述**错误并停止，不要自行猜测修复。
+运行 `TV preflight --stage code --driver claude --json`。失败则**原样转述**错误并停止，不要自行猜测修复。
 
 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
 
 ### 2. 解析主题与被审对象
 
-运行 `TV topic resolve --stage code --json -- $ARGUMENTS`。
+运行 `TV topic resolve --stage code --json -- $ARGUMENTS --driver claude`。
 
 - 用户什么都没写（既无正文也无 `--focus`）时 `topic resolve` 会退 64 并给出写法提示，
   原样转述即可（FR-20）。
@@ -49,13 +56,13 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 例：用户说「重点核实 `--base` 透传说明是否准确」，要传成
 
 ```
-TV topic resolve --stage code --json -- '重点核实 --base 透传说明是否准确' --topic <主题>
+TV topic resolve --stage code --json -- '重点核实 --base 透传说明是否准确' --topic <主题> --driver claude
 ```
 
 正文里若有单引号，写成 `'\''`（关引号、转义一个单引号、再开引号），**其余任何字符一律不转义**：
 
 ```
-TV topic resolve --stage code --json -- '看 it'\''s 这一处与 "双引号" 的处理' --topic <主题>
+TV topic resolve --stage code --json -- '看 it'\''s 这一处与 "双引号" 的处理' --topic <主题> --driver claude
 ```
 
 **不要改用双引号**（`$`、反引号会被 shell 展开），**不要补字面引号**（新版解析器不剥引号，
@@ -68,7 +75,7 @@ TV topic resolve --stage code --json -- '看 it'\''s 这一处与 "双引号" �
 先运行：
 
 ```
-TV review --start --entry C --stage code --topic <主题> --focus <提示语> [--goal <任务目标>] [--base <ref>] [--model-gemini <slug>] [--model-glm <id>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] --json
+TV review --start --entry C --stage code --topic <主题> --driver claude --focus <提示语> [--goal <任务目标>] [--base <ref>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] --json
 ```
 
 `--entry C` 标记本次运行由命令 C 发起，记入 run.json 留痕；它也让 CLI 按 B/C/D 规则
@@ -109,8 +116,9 @@ resolve 总是输出该字段（用户没传时它就是 `HEAD`），而显式�
 **漏传的后果是静默忽略用户的要求**——一侧失败就整次失败，
 而留痕里看不出用户曾经要求过降级。
 
-若 resolve 输出的 `models` 字段非空，把其中的模型覆盖原样传给 `--model-gemini` /
-`--model-glm`。**用户指定的模型只在这一步才真正生效**——独立的 `preflight` 看不到
+若 resolve 输出的 `models` 字段非空，把其中的模型覆盖逐个原样传给对应的
+`--model-<审核者 id>`（`models` 的键就是审核者 id：`--model-codex` / `--model-gemini` / `--model-glm`）。
+**用户指定的模型只在这一步才真正生效**——独立的 `preflight` 看不到
 步骤 3 才传来的覆盖值（`review.ts` 的 slug 校验注释写明了这点），漏传会静默回退到
 profile 配置模型，且留痕里记的就是回退后的模型，事后看不出用户曾经指定过。
 

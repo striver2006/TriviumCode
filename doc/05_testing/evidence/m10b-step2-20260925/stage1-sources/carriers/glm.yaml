@@ -1,0 +1,10 @@
+# ZCode 载体适配层（M10b 第 2 步）
+#
+# 安装时拍平到 ~/.zcode/skills/<命令名>/（报告 §3.6：与 ~/.agents/skills 同名时 ~/.zcode/skills 胜出、不告警）。
+# 报告 §3.6：`/skill 名字 参数` 被 CLI 改写成「用 Skill 工具加载」+「User request: 参数」，**$ARGUMENTS 不替换**。
+agent: glm
+layout: entry
+frontmatter: [name, description]
+arguments: transcribe
+# 报告 §3.6 是 CLI 的写法；桌面端写法待第 2 步薄冒烟核（r10 §2.5）
+invocation: /skill {name}

@@ -77,7 +77,11 @@ const FAKE_AGENT = (over: Partial<AgentDescriptor>): AgentDescriptor => ({
   defaultSelected: true,
   driverEnabled: false,
   guardLevel: 'L2',
+  hookConfigTarget: null,
   instructionFiles: [],
+  criticReadsInstructionFiles: true,
+  entrySkillRoot: { homeRel: '.x', skillsRel: 'skills' },
+  entrySkillExtraReadRoots: [],
   ...over,
 });
 
@@ -211,6 +215,12 @@ test('反推：畸形编号不抛异常，返回 null', () => {
  * 每加一个豁免就削弱一分。适配器与探针按定义就是 Agent 专属实现，它们
  * 的文件名本身即命名空间；除此之外的豁免应当极少，且要在此写明理由。
  */
+/**
+ * `src/trivium/` 之外也要过对账的模块（相对仓库根）。见 LITERAL_ALLOWLIST 里那段「注意」。
+ * 报错里它们的路径显示为 `../<文件名>`（相对 src/trivium/）。
+ */
+const EXTRA_SCANNED: readonly string[] = ['src/entry-render.ts', 'src/install.ts'];
+
 const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
   { file: 'agents/registry.ts', why: '唯一登记处，字面量的来源本身' },
   { file: 'adapters/index.ts', why: 'Agent id → 厂商适配器的唯一接线处；新增一家在此加一行（M7b 第 2 步把 review/run-protocol 两份字面表收敛到这里）' },
@@ -230,8 +240,11 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
       '不写 Agent id 字面量，文件名带 codex 不进扫描面',
   },
   { file: 'config.ts', why: '内置默认配置里各 Agent 的厂商专属配置段（agents.gemini / agents.glm 的 vendor、agent、entry、max_turns）与 profiles 的逐 Agent 模型档位。M7b 第 4 步迁成 agents.* 后**仍需要**：内置默认值本身就得指名道姓地写出每一家配什么，那不是硬编码而是默认值的定义处；新增一家时这里加一段，与注册表加一行是同一件事的两面' },
-  // 注意：`src/install.ts` 不在本对账的扫描范围（只扫 src/trivium/），
-  // 因此不需要、也不应该为它留白名单条目——留着只会误导读者以为它被扫过。
+  // 注意：扫描面是 src/trivium/ **加上** EXTRA_SCANNED 点名的 `src/` 顶层模块
+  // （M10b 第 2 步代码双审 CODEX-04）。`src/` 顶层今天的两个模块都纳入，且都不需要豁免：
+  // `install.ts` 里唯一的家根字面量 `.gemini/…` 带路径分隔符，属性形态扫描本就排除它。
+  // 此前这里写的是「install.ts 不在扫描范围」，而本步新增的 `entry-render.ts` 恰恰也在论域外——
+  // 它的取值清单一律读注册表，按 id 分叉正是本对账要治的形态。`src/` 顶层再加模块时，把它列进 EXTRA_SCANNED。
   //
   // `init.ts` 曾在此表中，2026-09-14 删除：它的 `.claude/...` 全部带路径分隔符、
   // 已被属性扫描排除，文件本身确无 Agent 字面量。此前判它「仍需要」是坏剥离器
@@ -516,7 +529,7 @@ async function collectSourceFiles(root: string): Promise<string[]> {
 test('grep 对账：白名单外的模块不得出现 Agent id / 前缀字面量', async () => {
   // 扫的是**工作树源码**而非 dist 产物：对账要在人写的那一份上做
   const srcRoot = path.join(REPO_ROOT, 'src/trivium');
-  const files = await collectSourceFiles(srcRoot);
+  const files = [...(await collectSourceFiles(srcRoot)), ...EXTRA_SCANNED.map((f) => path.join(REPO_ROOT, f))];
   assert.ok(files.length > 20, `源码扫描没找到足够文件（${files.length}），路径可能不对`);
 
   // 带引号的字面量才算——注释里提到 Agent 名是说明性文字，不影响行为
@@ -578,7 +591,7 @@ test('grep 对账：白名单外的模块不得出现 Agent id / 前缀字面量
  */
 test('grep 对账（属性访问形态）：白名单外不得出现 .<id> / <id>: 的硬编码', async () => {
   const srcRoot = path.join(REPO_ROOT, 'src/trivium');
-  const files = await collectSourceFiles(srcRoot);
+  const files = [...(await collectSourceFiles(srcRoot)), ...EXTRA_SCANNED.map((f) => path.join(REPO_ROOT, f))];
 
   const ids = ALL_AGENT_IDS.join('|');
   /*

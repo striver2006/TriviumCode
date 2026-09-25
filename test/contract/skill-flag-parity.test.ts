@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { renderEntries } from '../../src/entry-render.js';
+import { resolveNamedFlags } from '../../src/trivium/topic-args.js';
 
 /**
  * skill 契约：`argument-hint` 声明的旗标必须在第 3 步的 `review --start`
@@ -45,13 +45,20 @@ const EXEMPT = new Set<string>([
   'only',
 ]);
 
-const readSkill = (name: string): string =>
-  readFileSync(path.join(REPO_ROOT, 'skills', name, 'SKILL.md'), 'utf8');
+/**
+ * 四家载体的产物（M10b 第 2 步：`skill-flag-parity` 扩为四家 × CLI 旗标对账，计划 r5 §5.1 ②）。
+ * 取渲染器的内存产物而不是读盘：「盘上产物 = 源」由 `entry-render-parity` 守，这里只管旗标对账。
+ */
+const ENTRIES = await renderEntries(REPO_ROOT);
+const entriesOf = (name: string) => ENTRIES.filter((e) => e.name === name);
 
-/** 从 front-matter 的 argument-hint 行里抓出所有 `--xxx`。 */
+/**
+ * 抓出声明的所有 `--xxx`：claude 在 front-matter 的 argument-hint 行；
+ * 另三家不输出该键，写进正文的「参数写法：`…`」一行（`skills-src/partials/args/line.transcribe.md`）。
+ */
 function declaredFlags(md: string): string[] {
-  const line = md.split('\n').find((l) => l.startsWith('argument-hint:'));
-  assert.ok(line, 'SKILL.md 缺少 argument-hint 行');
+  const line = md.split('\n').find((l) => l.startsWith('argument-hint:') || l.includes('参数写法：`'));
+  assert.ok(line, 'SKILL.md 缺少 argument-hint 行（或正文的参数写法行）');
   return [...line.matchAll(/--([a-z][a-z0-9-]*)/g)].map((m) => m[1]!);
 }
 
@@ -68,9 +75,8 @@ function startTemplate(md: string): string {
   return line;
 }
 
-for (const name of REVIEW_SKILLS) {
-  test(`${name}：argument-hint 声明的旗标都在 --start 模板里有槽位`, () => {
-    const md = readSkill(name);
+for (const { name, agent, content: md } of REVIEW_SKILLS.flatMap(entriesOf)) {
+  test(`${agent}/${name}：argument-hint 声明的旗标都在 --start 模板里有槽位`, () => {
     const tpl = startTemplate(md);
     const missing = declaredFlags(md)
       .filter((f) => !EXEMPT.has(f))
@@ -83,8 +89,17 @@ for (const name of REVIEW_SKILLS) {
     );
   });
 
-  test(`${name}：模板要求把 resolve 输出的模型覆盖透传下去`, () => {
-    const md = readSkill(name);
+  test(`${agent}/${name}：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单）`, () => {
+    const known = new Set(resolveNamedFlags());
+    const unknown = declaredFlags(md).filter((f) => !known.has(f));
+    assert.deepEqual(
+      unknown, [],
+      `${agent}/${name} 声明了 CLI 不认的旗标 ${unknown.map((f) => `--${f}`).join('、')}：` +
+        '用户照写会被当成正文压进焦点。',
+    );
+  });
+
+  test(`${agent}/${name}：模板要求把 resolve 输出的模型覆盖透传下去`, () => {
     assert.ok(
       /resolve 输出的 `models`/.test(md),
       `${name} 补了 --model-* 槽位还不够：正文必须指示 Driver 把 resolve 输出的 ` +
@@ -100,8 +115,7 @@ for (const name of REVIEW_SKILLS) {
    * （让 Driver 同时传 `--only`），于是 `--only` 场景整条链路必退 64。
    * 那次 flag-parity 全绿——它当时只校验槽位。
    */
-  test(`${name}：正文要交代把 resolve 输出的 critics 透传下去`, () => {
-    const md = readSkill(name);
+  test(`${agent}/${name}：正文要交代把 resolve 输出的 critics 透传下去`, () => {
     assert.ok(
       /resolve 输出的 `critics`/.test(md),
       `${name} 有 --critics 槽位还不够：正文必须指示 Driver 把 resolve 输出的 ` +
@@ -115,8 +129,7 @@ for (const name of REVIEW_SKILLS) {
    * 这条防的是「有人照旧文档把 `--only` 透传加回来」——`topic resolve` 已把
    * 输出的 `only` 置 null，加回来拿不到值；真要硬拼一个，就会撞上互斥退 64。
    */
-  test(`${name}：正文不得指示 Driver 透传 --only（它已并入 critics）`, () => {
-    const md = readSkill(name);
+  test(`${agent}/${name}：正文不得指示 Driver 透传 --only（它已并入 critics）`, () => {
     assert.doesNotMatch(
       md, /把它传给 `--only`/,
       `${name} 的正文又把 --only 透传写回来了。它是 --critics 的单元素旧写法，` +
@@ -125,12 +138,12 @@ for (const name of REVIEW_SKILLS) {
   });
 }
 
-for (const name of REVIEW_SKILLS) {
-  test(`${name}：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源`, () => {
+for (const { name, agent, content } of REVIEW_SKILLS.flatMap(entriesOf)) {
+  test(`${agent}/${name}：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源`, () => {
     const letter = { 'dual-review-plan': 'B', 'dual-review-code': 'C', 'dual-review-bug': 'D' }[name];
     assert.ok(
-      new RegExp(`--entry ${letter}\\b`).test(startTemplate(readSkill(name))),
-      `${name} 的 --start 模板缺 --entry ${letter}：run.json 记不到发起命令`,
+      new RegExp(`--entry ${letter}\\b`).test(startTemplate(content)),
+      `${agent}/${name} 的 --start 模板缺 --entry ${letter}：run.json 记不到发起命令`,
     );
   });
 }
@@ -142,19 +155,19 @@ for (const name of REVIEW_SKILLS) {
  * 这正是 B2 缺口的形状：`--focus` / `--context` 声明了、正文一次没提，
  * 而 S2 委托的 `review --start` 又要求 `--focus`，命令 A 在 S2 必然退 64。
  */
-test('dual-run：argument-hint 声明的每个旗标在正文里都有交代', () => {
-  const md = readSkill('dual-run');
-  const body = md.split('\n').filter((l) => !l.startsWith('argument-hint:')).join('\n');
-  const missing = declaredFlags(md).filter((f) => !new RegExp(`--${f}\\b`).test(body));
-  assert.deepEqual(
-    missing,
-    [],
-    `dual-run 声明了 ${missing.map((f) => `--${f}`).join('、')}，但正文没有交代它们怎么传给 B/C 的第 3 步`,
-  );
-});
+for (const { agent, content: md } of entriesOf('dual-run')) {
+  test(`${agent}/dual-run：argument-hint 声明的每个旗标在正文里都有交代`, () => {
+    const body = md.split('\n').filter((l) => !l.startsWith('argument-hint:') && !l.includes('参数写法：`')).join('\n');
+    const missing = declaredFlags(md).filter((f) => !new RegExp(`--${f}\\b`).test(body));
+    assert.deepEqual(
+      missing,
+      [],
+      `${agent}/dual-run 声明了 ${missing.map((f) => `--${f}`).join('、')}，但正文没有交代它们怎么传给 B/C 的第 3 步`,
+    );
+  });
+}
 
-test('dual-run：有主题解析步骤，且委托执行时以命令 A 身份启动', () => {
-  const md = readSkill('dual-run');
+for (const { agent, content: md } of entriesOf('dual-run')) test(`${agent}/dual-run：有主题解析步骤，且委托执行时以命令 A 身份启动`, () => {
   assert.ok(/TV topic resolve --stage all/.test(md), 'dual-run 缺 topic resolve 步骤：主题名会由模型自由发挥');
   assert.ok(/--entry A\b/.test(md), 'dual-run 委托 B/C 第 3 步时必须传 --entry A，否则缺焦点会退 64');
   assert.ok(/模型覆盖/.test(md), 'S2/S6 的委托说明里没有交代模型覆盖怎么传下去');

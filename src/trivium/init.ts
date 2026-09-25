@@ -6,13 +6,15 @@
  *   `.trivium/config.yaml`  团队共享策略（进 Git）
  *   `.claude/settings.json` 合并 Hook（按事件名追加，不替换用户既有 hooks）
  *   `.gitignore`            幂等追加 `.trivium/` 规则，并修正整体忽略 `.claude/` 的写法
- *   `CLAUDE.md` / `AGENTS.md` 幂等追加协议片段
+ *   协议片段              按注册表 `instructionFiles` 分发（CLAUDE.md / AGENTS.md / GEMINI.md），两段式
  *
  * 全部操作**幂等**：重复运行不重复追加、不覆盖用户内容。
  */
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
+import { AGENTS, type AgentDescriptor } from './agents/registry.js';
 import type { Ctx } from './types.js';
 import { CONFIG_SCHEMA_ID, CONFIG_SCHEMA_ID_V1, defaultConfig, migrateConfigV1, resolveAssetRoot } from './config.js';
 import { createExclusive, ensureDir, exists, writeAtomic } from './util/fsx.js';
@@ -41,27 +43,161 @@ export interface InitReport {
   notes: string[];
 }
 
-/** 幂等追加带标记的片段。已存在标记则跳过 */
-async function appendSnippet(
+/**
+ * 协议片段两段式（M10b 第 2 步；演进设计 §7.5，计划 r2 §3.3）：【审查员身份】+【Driver 协议】。
+ *
+ * 每个项目记忆文件（注册表 `instructionFiles`）带哪几段，**由读它的那几家派生**：
+ *   · 有一家能作审核者、且作审核者时读得到项目记忆 ⇒ 带【审查员身份】，放在最前——首段按身份分流；
+ *   · 有一家能作 Driver ⇒ 带【Driver 协议】。
+ * claude 作审核者以 `--restricted` 拉起、读不到项目记忆（EV-44），所以 CLAUDE.md 不带审查员段。
+ */
+export type ProtocolSection = 'critic' | 'driver';
+
+export interface ProtocolPlanItem {
+  file: string;
+  sections: ProtocolSection[];
+}
+
+export function protocolPlan(agents: readonly AgentDescriptor[] = AGENTS): ProtocolPlanItem[] {
+  const files = [...new Set(agents.flatMap((a) => a.instructionFiles))];
+  return files
+    .map((file) => {
+      const readers = agents.filter((a) => a.instructionFiles.includes(file));
+      const sections: ProtocolSection[] = [];
+      if (readers.some((a) => a.criticEnabled && a.criticReadsInstructionFiles)) sections.push('critic');
+      if (readers.some((a) => a.driverEnabled)) sections.push('driver');
+      return { file, sections };
+    })
+    .filter((p) => p.sections.length > 0);
+}
+
+/** 片段文件名（相对资产根） */
+const SECTION_FILE: Readonly<Record<ProtocolSection, string>> = {
+  critic: 'protocol/critic.snippet',
+  driver: 'protocol/driver.snippet',
+};
+
+/** 拼出一个文件的标记内正文；缺片段文件返回 null（调用方记 notes 并跳过） */
+export async function composeProtocol(assetRoot: string, sections: readonly ProtocolSection[]): Promise<string | null> {
+  const parts: string[] = [];
+  for (const s of sections) {
+    const p = path.join(assetRoot, SECTION_FILE[s]);
+    if (!(await exists(p))) return null;
+    parts.push((await fs.readFile(p, 'utf8')).trim());
+  }
+  return parts.join('\n\n');
+}
+
+/**
+ * 历代协议片段的指纹：sha256（标记内正文 trim 之后），**按指令文件分档**。
+ *
+ * 单段时代取自 git 历史里 `protocol/CLAUDE.md.snippet` 的 11 个版本与 `protocol/AGENTS.md.snippet` 的 1 个版本
+ * （M10b 第 2 步删除这两个文件时逐版算出）。标记内正文命中**本文件那一档**的其一 ⇒ 用户没动过，
+ * 可以整段换成当前版；不命中 ⇒ 多半手工改过，**不替换**，提示手工合并（r2 §3.3 登记的未覆盖项）。
+ *
+ * ## 为什么按文件分档（M10b 第 2 步代码双审 r2 CODEX-02）
+ *
+ * 三类正文同时存在：审查员段单独（= 旧 AGENTS.md 片段）、Driver 段单独（CLAUDE.md 当前版）、两段拼合
+ * （AGENTS.md / GEMINI.md 当前版）。不分文件查一张总表时，用户在 AGENTS.md 里**删掉其中一段**，
+ * 剩下的正文恰好等于另一类文件的已知正文，就会被判「已知旧版」而原位复原——用户的删除被静默撤销。
+ * 那不是哈希碰撞，是真相等。所以「命中已知版本」只在**本文件发出过的形状**里才等于「用户没动过」。
+ * 表里没有的文件（将来新登记的指令文件）一律按「不认识」处理：只追加、不替换。
+ *
+ * **分档也消不掉的一格**：AGENTS.md 里用户删掉 Driver 段、只留审查员段——剩下的正文与旧版 init
+ * 给 AGENTS.md 写的那一版逐字相同，「用户删过」与「旧版项目」在盘上是同一个状态，无从区分。
+ * 这里按旧版升级（后者远为常见）；想长期只留审查员段的用户，改一个字就不会再被认成旧版。
+ *
+ * ## 这张表**只追加、含当前版**（代码双审 r1 GLM-03）
+ *
+ * 每一档登记的是「这个文件发出去过的每一版标记内正文」，**包括当前这一版**。维护不靠记性：
+ * `init.test.ts` 断言当前 `protocolPlan()` 给每个文件拼出的正文指纹都在**该文件那一档**里——改了
+ * `driver.snippet` / `critic.snippet` 就当场变红，照提示把新值追加进对应的档即可。
+ * 旧值不用「挪」：它还是当前版时就已经在档里了。
+ *
+ * 当前版也在档里不影响判定：标记内正文等于当前正文时先走「已是当前版本」那一格。
+ */
+export const KNOWN_PROTOCOL_SHA256: Readonly<Record<string, ReadonlySet<string>>> = {
+  'CLAUDE.md': new Set([
+    'c820483df2fddd16cccd8c4fc3b7a69d30be36a1d21dbcad4d11ed15b331731b', // CLAUDE.md.snippet @10d388d
+    '2cf4f59ee9f1d1a8cd088fe97904beb79191226b358bebee347242024abf8a7c', // @82773dc
+    'dc45d7443edb3417075e2fd10959d2064e4a8532b614d9607060de3f75f83f0f', // @f4f3970
+    'bd36c8411e68468dc9de33126e7c95ebc9ff3ab42c5f4d94f9d94d549505b3cc', // @6177d26
+    'c5aa08dbed3b2aca59887056e70eb6ee9e31ffa5ae12c90df0cfec47ea0883b1', // @c16d044
+    'ef6c0e1efae32aa51f1100ed302843336b5b3ac33940d06ccbd89bd504c9a5e6', // @b4fe405
+    '106bf9fa983db22d935844dc66415ece9ec978ecb1c6679eba33674ada4ea1cf', // @4c2b309
+    '93dc3e8779d1f495dded7cb0f346d18b4875abe3b4e3b72647c73663fd129f36', // @6129058
+    '38024021ca10ccbf276622a601ef90a7ef7726cf969b20b5ee799f18ac967e38', // @d2b34cb
+    'd8f3fc036302afb43366fd5a6d1122aef67fba9008d8463d20e4ffb79f0fcf53', // @5a5ef19
+    'ca0fdd052d101a3a063b34d0c2e03844291339baa7804b04e5c7d317f463e562', // @2d7cbbc
+    // ── 两段式（M10b 第 2 步起）：CLAUDE.md 只写 Driver 段 ──
+    'c93b609aa97a2601f06e98d656cfeec8173e082ccd8ecff0858a676f4cffd02d', // driver
+  ]),
+  'AGENTS.md': new Set([
+    '4aa6b8bc34f8f8f14156ee2dd3891dc758964c64f7843fb81ed5ba819761aa78', // AGENTS.md.snippet @2d7cbbc
+    // ── 两段式（M10b 第 2 步起）──
+    '6c284393db5cd8198c5b9509035c4f5a4444d2671f16eb0ae26d4e05f68c6204', // critic + driver
+  ]),
+  // M10b 第 2 步新登记的指令文件：没有单段时代
+  'GEMINI.md': new Set([
+    '6c284393db5cd8198c5b9509035c4f5a4444d2671f16eb0ae26d4e05f68c6204', // critic + driver
+  ]),
+};
+
+/** 目标文件发出过的某一版正文？只查该文件那一档（见 KNOWN_PROTOCOL_SHA256） */
+export function isKnownProtocolBody(file: string, interior: string): boolean {
+  return KNOWN_PROTOCOL_SHA256[path.basename(file)]?.has(protocolFingerprint(interior)) ?? false;
+}
+
+export const protocolFingerprint = (body: string): string =>
+  createHash('sha256').update(body.trim()).digest('hex');
+
+/**
+ * 写入或升级带标记的协议块。
+ *
+ *   无标记               → 追加（原有内容一字不动）；
+ *   标记内 = 当前正文     → 跳过（幂等）；
+ *   标记内 = 本文件的已知旧版 → **原位替换**成当前正文（旧单段 → 新两段），不追加第二块；
+ *                          别的文件的已知正文不算（删掉一段后恰好等于它，见 KNOWN_PROTOCOL_SHA256）；
+ *   标记内是别的          → **不动**，提示手工合并：宁可停在旧版，也不覆盖用户的手工修改；
+ *   只有开始标记没有结束 → 不动，提示。
+ */
+export async function upsertProtocolBlock(
   target: string,
-  snippetPath: string,
+  body: string,
   report: InitReport,
   dryRun: boolean,
 ): Promise<void> {
-  if (!(await exists(snippetPath))) {
-    report.notes.push(`缺少片段文件 ${snippetPath}，跳过`);
-    return;
-  }
-  const snippet = await fs.readFile(snippetPath, 'utf8');
   const existing = (await exists(target)) ? await fs.readFile(target, 'utf8') : '';
-
-  if (existing.includes(MARKER_BEGIN)) {
-    report.skipped.push(`${target}（已含 TriviumCode 片段）`);
+  const begin = existing.indexOf(MARKER_BEGIN);
+  if (begin === -1) {
+    const block = `\n${MARKER_BEGIN}\n${body.trim()}\n${MARKER_END}\n`;
+    if (!dryRun) await writeAtomic(target, existing + block);
+    (existing.length > 0 ? report.updated : report.created).push(target);
     return;
   }
-  const block = `\n${MARKER_BEGIN}\n${snippet.trim()}\n${MARKER_END}\n`;
-  if (!dryRun) await writeAtomic(target, existing + block);
-  (existing.length > 0 ? report.updated : report.created).push(target);
+  const end = existing.indexOf(MARKER_END, begin);
+  if (end === -1) {
+    report.skipped.push(`${target}（TriviumCode 片段只有开始标记、没有结束标记）`);
+    report.notes.push(`${target} 的 TriviumCode 片段标记不完整，未改动；请手工修正后重跑 init`);
+    return;
+  }
+  const interior = existing.slice(begin + MARKER_BEGIN.length, end).trim();
+  if (interior === body.trim()) {
+    report.skipped.push(`${target}（TriviumCode 片段已是当前版本）`);
+    return;
+  }
+  if (!isKnownProtocolBody(target, interior)) {
+    report.skipped.push(`${target}（TriviumCode 片段与任何已知版本都不同，未替换）`);
+    report.notes.push(
+      `${target} 的 TriviumCode 片段与任何已知版本都不同（多半手工改过），未替换。\n` +
+        '  新版正文由资产根 protocol/ 下的片段拼成；请把标记内内容手工合并到新版。',
+    );
+    return;
+  }
+  const next = `${existing.slice(0, begin)}${MARKER_BEGIN}\n${body.trim()}\n${existing.slice(end)}`;
+  if (!dryRun) await writeAtomic(target, next);
+  report.updated.push(target);
+  report.notes.push(`已把 ${target} 的 TriviumCode 片段从已知旧版升级为当前版本（审查员身份 / Driver 协议两段）`);
 }
 
 /**
@@ -377,18 +513,15 @@ export async function runInit(opts: InitOptions): Promise<InitReport> {
     report,
     dryRun,
   );
-  await appendSnippet(
-    path.join(ctx.projectRoot, 'CLAUDE.md'),
-    path.join(assetRoot, 'protocol/CLAUDE.md.snippet'),
-    report,
-    dryRun,
-  );
-  await appendSnippet(
-    path.join(ctx.projectRoot, 'AGENTS.md'),
-    path.join(assetRoot, 'protocol/AGENTS.md.snippet'),
-    report,
-    dryRun,
-  );
+  // 协议片段：按注册表 instructionFiles 分发（EV-06 结案的「接上」分支；替换原先写死的两处调用）
+  for (const item of protocolPlan()) {
+    const body = await composeProtocol(assetRoot, item.sections);
+    if (body === null) {
+      report.notes.push(`资产根 ${assetRoot} 缺少协议片段（protocol/*.snippet），跳过 ${item.file}`);
+      continue;
+    }
+    await upsertProtocolBlock(path.join(ctx.projectRoot, item.file), body, report, dryRun);
+  }
 
   // 归档根与 README
   const reviewsReadme = path.join(ctx.archiveRoot, 'README.md');

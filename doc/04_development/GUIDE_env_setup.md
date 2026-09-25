@@ -180,6 +180,12 @@ node skills/dual-critic/scripts/trivium.cjs <子命令>
 改了 `skills/` 下的**资产**（`lenses.yaml`、`prompts/`、模板、`hooks.json`）同理，
 或用 `TRIVIUM_ASSET_ROOT=<repo>/skills/dual-critic` 指向工作树。
 
+> **但跑上面那条重装命令之前，先取消这个变量**（`unset TRIVIUM_ASSET_ROOT`，或它写在 `~/.zshrc` 里就先注释掉）。
+> 安装器的运行时根与编排器同源取值：变量指向工作树时，运行时根与仓库重叠，安装器**拒绝写**、卸载**只提示不删**——
+> 否则同步会裁掉仓库里进 Git 的 `entry/` 渲染产物，卸载会删掉整棵运行时源。
+> 变量指向仓库之外的目录时照常安装，但缺省位置 `~/.claude/skills/dual-critic` 的旧副本从此不再更新，安装报告会提示。
+> 另外，入口 SKILL.md（`skills/dual-*/`、`skills/dual-critic/entry/**`）是 `skills-src/` 的渲染产物：改源、跑 `npm run render`，别手改产物。
+
 ---
 
 ## 六、改动时同步什么

@@ -1,0 +1,91 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "五处焦点全部成立：上一轮 10 条意见的修复落实到位，两处实施性偏离（SKILL.md 身份行替代在场判据、指纹表改单表只追加）都比裁决件原方案更稳且理由成立。最重的一条是证据缺口而非代码问题：报告 §9 声称的修复变异读数（判定恒放行 3 条红、退回能力面 2 条红、手改 snippet 即红）在 evidence/ 目录没有对应落盘，复核只能采信陈述。其余两条为 nit：§9「两处偏差」实为三处（CODEX-04 的偏离未计入汇总小节），entry-render.ts 一处注释断言在配置缩减方向不成立。未发现任何代码行为问题，三入口同口径、claude 产物不变、argv 收口无误伤、指纹误判不可能，均有独立核实。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "doc/05_testing/REPORT_2026-09-25_m10b_step2.md §9（CODEX-01 / CODEX-02 / GLM-03 三行的「用例 / 核对」列）；doc/05_testing/evidence/m10b-step2-20260925/",
+      "problem": "§9 声称修复变异「判定恒放行 3 条红」（CODEX-01）、「退回能力面 2 条红」（CODEX-02）、「手改 driver.snippet 一行即红、还原后绿」（GLM-03），但 evidence/m10b-step2-20260925/ 下只有两对变异文件：mutation-spec/output 是第 2 步主段的 17 条（其 P1 的 find 串还是旧名 LEGACY_PROTOCOL_SHA256，可证跑在修复之前），mutation-spec-2/output-2 是 D-4 的 C1/C2。修复轮新增判据（checkRuntimeRoot、assertModelOverrideKeys 的 picked 档）的变异没有 spec 与读数落盘，按本仓 §6 的惯例这是缺口：复核者无法机器核对变异确实按声称的形态注入并咬住，只能采信报告陈述。",
+      "evidence": "读 doc/05_testing/evidence/m10b-step2-20260925/mutation-spec.json（17 条，P1 find 为 'LEGACY_PROTOCOL_SHA256'，修复后该常量已改名 KNOWN_PROTOCOL_SHA256——见 src/trivium/init.ts:108）、mutation-output.txt、mutation-spec-2.json（2 条 C1/C2 均在 critics.ts 缺省分支，属 D-4）、mutation-output-2.txt；diff 头部的 evidence 目录清单亦只有这四份加 codex-enum/、smoke-glm/、stage1-*。",
+      "suggestion": "补落修复轮变异的 spec 与输出（如 mutation-spec-3.json / mutation-output-3.txt），把「恒放行」「退回能力面」的 find/replace 与 fail 计数照 §6 惯例归档；若当时未按装置跑，则在 §9 如实改口径并补跑一次。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/REPORT_2026-09-25_m10b_step2.md §9 末尾「与裁决件文字的两处偏差」小节",
+      "problem": "该小节自数「两处偏差」（CODEX-01 判据、GLM-03 单表），但 CODEX-04 同样偏离了裁决件：裁决件写「src/install.ts 不纳入对账（纳入要开豁免）」，实施改为纳入 EXTRA_SCANNED，偏离与理由只写在表行内、未计入汇总小节——本次审查焦点自己数出的就是「三处偏离」。另外 CODEX-02 的用例落点从裁决件写的 critics.test.ts 挪到了 topic-args.test.ts + driver-flag.test.ts（集成两入口），也未对照声明。后来者按 §9 末尾清单对照裁决件核落点时会漏项。",
+      "evidence": "读 REPORT_2026-09-25_m10b_step2.md §9 全节（末尾小节仅列 CODEX-01 与 GLM-03 两处；CODEX-04 行内写「裁决件原写……实测两者都零命中……故都纳入」）；对照裁决件 .reviews/M10b-入口资产与真载体验收/code/2026-09-25-M10b-入口资产与真载体验收-response-claude.md §1/§1.1 的落点列。",
+      "suggestion": "把 CODEX-04（及 CODEX-02 用例落点挪移）并入偏差小节并如实计数；理由本身都站得住，改的只是登记完整性。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/entry-render.ts:273-277（MODEL_HINT_DEFAULT 的注释）",
+      "problem": "注释断言「用户在 config.yaml 里改过 default_critics 时这里只会少列、不会多列，少列的那几家照样能写」只在用户**扩充** default_critics 的方向成立。用户**缩减**（如去掉 gemini）时，入口仍列 --model-gemini 槽位，照写会以「能入选但本轮没有入选」退 64——这正是该注释所要消除的「必退 64 的写法」在配置缩减方向的残留。以注册表缺省为基准的单一方向表述，会让后来者误以为两个方向都安全。",
+      "evidence": "读 src/entry-render.ts:260-283（defaults 派生自 DEFAULT_CRITIC_AGENT_IDS，静态渲染、不读项目配置）；src/trivium/critics.ts:130-158（assertModelOverrideKeys 对 selectable-但-未-picked 退 64）；src/trivium/topic-args.test.ts:780-801（该退 64 行为有用例钉住）；skills/dual-critic/entry/glm/dual-run/SKILL.md:7（产物列 --model-codex/--model-gemini 槽位，若该项目配置缩减 default_critics 即为多列）。",
+      "suggestion": "注释写全两个方向（扩充少列无害、缩减会多列必退 64，静态渲染无法跟随项目配置），或在命令 A 正文加一句「--model-* 以本轮入选为准，改过 default_critics 时以配置为准」。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "焦点①成立：checkRuntimeRoot（src/install.ts:139-160）双向重叠拒绝（realOrResolved 处理 symlink 与 /var→/private/var，within 双向）、非空外来目录拒绝、卸载判不过只提示不删（:457-470 与安装共用同一判定）；测试两格重叠断言仓库 listTree 前后一致、外来目录卸载后逐字节原样、检查不过时连入口都不落（install.test.ts:264-308），「一个文件都不写」的先查后写语义真被咬住。",
+    "三个放行格没有顺带放过危险形态：absent/empty 无物可删；partial 用仓库真实 SKILL.md 构造「被打断的安装」；SKILL.md 读取失败（权限）fail-closed 落到 runtime-foreign、非目录文件也拒。身份行形态本身被放行格测试间接钉住——若有人改 skills/dual-critic/SKILL.md 的 front-matter 首键，partial 格拷贝后 startsWith 不匹配、当场红。",
+    "改用 SKILL.md 身份行（偏离裁决件的 scripts/trivium.cjs+schema/ 在场判据）理由成立：APFS 目录序下 SKILL.md 先落盘、scripts/ 在后，被打断的安装恰是「有前者缺后者」；且安装末端仍有 scripts/trivium.cjs 在场断言兜底（install.ts:414-416），乱序打断缺 SKILL.md 时判定方向是 fail-closed 拒绝而非误删。",
+    "焦点②成立：三个入口（topic-args.ts:619、cli.ts:599、cli.ts:775）都在 resolveCriticSelection 之后把入选集合传给唯一判定处 assertModelOverrideKeys，收集面两侧一致（全部已登记）；单元两格 + 集成两入口（driver-flag.test.ts:219-229 对 review --start 与 preflight 各一）钉住同口径。",
+    "claude 产物逐字节未变的机制成立且独立核过：注册表 defaultSelected 缺省集合为 codex/gemini/glm（claude 恒 false，registry.ts:221-231），claude 载体下 MODEL_HINT_DEFAULT 与旧 MODEL_HINT 取值同为三家；四份 dual-run 产物实貌直接核对——另三家去掉 --model-claude、claude 仍列三家；entry-render-parity 守零漂移。",
+    "焦点③成立：原版 main() 只有 process.argv.includes('--uninstall')（diff 删除行可证），--targets 为本步新增；原先仅有的两种合法写法（无参安装、--uninstall）都保留，被收掉的只是静默吞参数的缺陷行为本身，十个 argv 形态有直测（install.test.ts:326-337）。",
+    "焦点④成立：用户手工改过的内容要被误判为已知版本，须 trim 后 sha256 恰好等于 14 个登记值之一，即内容与某个历史/当前版本逐字相同——替换等价于无操作；当前版先被 interior===body.trim() 短路（init.ts:158-161），指纹比对只对「别的」内容生效。GLM-03 的「靠记性」缺口由 init.test.ts:418-437 真正关上：契约取仓库真实片段、失败提示给出要追加的行并声明只追加不删旧值。",
+    "焦点⑤的落点一一对应：裁决件 7 个单元的落点在 §9 表内逐条有着落（CODEX-F01 无代码落点如实记 §0）；GLM-05 的四条断言（driver-flag.test.ts:295-302：不再教人显式传 --driver、两条按阶段的 claim 命令、另开主题）齐备；CODEX-04 的 EXTRA_SCANNED 接进两条扫描（registry-parity.test.ts:532/:594）且比裁决件原方案更严；README:307、MANUAL_user.md:236-237、AGENTS.md、entry-render-parity 失败提示（:70-77 两种出口）均按落点改准。",
+    "syncDir 同路径短路（install.ts:216）落实 GLM-02，且实测读数（Node v25.2.1 同文件 copyFileSync 不截断、危险在裁剪）按裁决要求写进了 §9。"
+  ],
+  "not_covered": [
+    "未在本机独立复跑安装/卸载/npm run check/变异（审查侧禁止写命令）；§9 的 1951 全量与真实 HOME 重装读数只核了报告陈述与既有证据。",
+    "checkRuntimeRoot 对 symlink 运行时根的边角（判定读 target、fs.rm 只删链接本身）只做了语义推演未实测；推演方向为「少删」，安全。",
+    "「被打断的安装」的 docblock 理由依赖 readdir 目录序（macOS APFS 字典序）这一平台事实而非 Node 保证语义；本项目仅支持 macOS，成立，未测其它形态。",
+    "fork 出的运行时根（保留 name: dual-critic、内容改过）会被判「本产品」而遭升级裁剪——与 isOurEntry 同判据同取舍，GLM-04 裁决时已明确接受（装得上卸不掉的不对称更糟），本轮未再展开。",
+    "第 2 步主段已审过、修复未触及的文件（hooks.ts、archive.ts、naming.ts、adapters/ 等）未逐行复审。",
+    "四家产物 SKILL.md 全文未逐字节重比（依赖 entry-render-parity 零漂移 + argument-hint 行抽查 + 注册表派生链推导）；stage1-sources 快照与 smoke-glm rollout 摘录未逐字复核（上轮已核关键件）。"
+  ],
+  "consulted": [
+    ".reviews/M10b-入口资产与真载体验收/code/_meta/changes-20260925T064650Z.diff",
+    ".reviews/M10b-入口资产与真载体验收/code/2026-09-25-M10b-入口资产与真载体验收-glm.md",
+    ".reviews/M10b-入口资产与真载体验收/code/2026-09-25-M10b-入口资产与真载体验收-response-claude.md",
+    "src/install.ts",
+    "src/trivium/init.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/config.ts",
+    "src/entry-render.ts",
+    "skills/dual-critic/SKILL.md",
+    "skills/dual-run/SKILL.md",
+    "skills/dual-critic/entry/codex/dual-run/SKILL.md",
+    "skills/dual-critic/entry/gemini/dual-run/SKILL.md",
+    "skills/dual-critic/entry/glm/dual-run/SKILL.md",
+    "skills-src/commands/run.contract.md",
+    "test/unit/install.test.ts",
+    "test/unit/init.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/topic-args.test.ts",
+    "test/integration/driver-flag.test.ts",
+    "test/contract/entry-render-parity.test.ts",
+    "doc/05_testing/REPORT_2026-09-25_m10b_step2.md",
+    "doc/05_testing/evidence/m10b-step2-20260925/mutation-spec.json",
+    "doc/05_testing/evidence/m10b-step2-20260925/mutation-output.txt",
+    "doc/05_testing/evidence/m10b-step2-20260925/mutation-spec-2.json",
+    "doc/05_testing/evidence/m10b-step2-20260925/mutation-output-2.txt",
+    "README.md",
+    "doc/07_manuals/MANUAL_user.md"
+  ]
+}

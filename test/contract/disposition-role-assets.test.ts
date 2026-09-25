@@ -199,7 +199,8 @@ test('资产契约：指挥产出工件的祈使句不得写死角色名', async
    * `protocol/*.snippet` 必须在论域里，单独锁一条。
    *
    * 它是第一版**结构性漏掉**的那一面（扩展名集只有 .md / .template），
-   * 而 `init` 会把 `CLAUDE.md.snippet` 幂等并入每个目标项目的 CLAUDE.md——
+   * 而 `init` 会把协议片段（M10b 第 2 步起是 `driver.snippet` / `critic.snippet` 两段）幂等并入
+   * 每个目标项目的 CLAUDE.md / AGENTS.md / GEMINI.md——
    * 那是 Driver 会话真正读到的项目记忆，最权威的一份指令却不在判据视野内。
    * 只把 `.snippet` 加进扩展名集是不够的：下次有人重构 `collectAssets` 时，
    * 没有这条断言就没人会发现它又掉出去了。

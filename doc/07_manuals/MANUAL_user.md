@@ -225,12 +225,16 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 > `init` 对已存在的 `config.yaml` 无条件跳过。想拿到新版默认值只能手工编辑。
 > 实例：`wait_timeout_s` 的默认值从 540 改成了 180（把进度反馈从 9 分钟收到 3 分钟），但老项目的 config.yaml 里仍是 540，体感上与没有反馈没区别。
 
-> **⚠️ 坑二：`CLAUDE.md` 的协议片段也不会刷新。**
-> 追加逻辑是「见 `<!-- BEGIN TriviumCode -->` 标记就跳过」，所以片段永远停在初始化那天的版本。
-> 实测某项目的片段落后 18 行，缺的正是**已知误拦的出口指引**——撞上时会不知道怎么办。
-> 手工同步：把 `CLAUDE.md` 里 BEGIN 到 END 之间的内容换成 `~/.claude/skills/dual-critic/protocol/CLAUDE.md.snippet` 的当前内容。
+> **⚠️ 坑二：手工改过的协议片段不会刷新。**
+> M10b 第 2 步之前，追加逻辑是「见 `<!-- BEGIN TriviumCode -->` 标记就跳过」，片段永远停在初始化那天的版本
+> （实测某项目的片段落后 18 行，缺的正是**已知误拦的出口指引**）。
+> 现在 `init` 按标记内正文的指纹判断：**没动过的旧版**原位升级为两段式（审查员身份 / Driver 协议），
+> 并按注册表写进 `CLAUDE.md`、`AGENTS.md`、`GEMINI.md`；**标记内被手工改过的**不替换，`init` 输出里会提示。
+> 手工同步：把标记内内容换成 `~/.claude/skills/dual-critic/protocol/` 下 `critic.snippet` 与 `driver.snippet` 的组合
+> （`CLAUDE.md` 只要 Driver 段；`AGENTS.md`、`GEMINI.md` 审查员段在前、Driver 段在后）。
 
-卸载：`node dist/install.cjs --uninstall`（只删用户级 skill 与 Agent 定义，项目内的 `.trivium/` 与 Hook 不动）。
+卸载：`node dist/install.cjs --uninstall`（只删本产品的入口 skill、运行时根与 Agent 定义，项目内的 `.trivium/` 与 Hook 不动；运行时根与仓库重叠或不是本产品的，只提示不删）。
+设了指向工作树的 `TRIVIUM_ASSET_ROOT` 时，安装与卸载前请先取消它。
 
 ---
 
@@ -459,8 +463,10 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 当前即 `--model-gemini` / `--model-glm`。
 
 **旗标名按 Agent 注册表派生**，启用第三家时 `--model-<新 id>` 自动可用，不需要改解析器。
-给**不是当前可用审核者**的 Agent 指定模型（如 Driver 自身的 `--model-claude`）会**退 64
-并列出当前可用值**——不是静默忽略。这条报错是刻意的：此前那类写法会被当成正文吞进审查焦点，
+给**本轮没有入选**的 Agent 指定模型会**退 64**——不是静默忽略。分两种：当不了审核者的
+（如 Driver 自身）报错列出当前可用值；能当、但这一轮没选它的（`--critics gemini --model-glm X`，
+或非 claude 当 Driver 时命令 A 里的 `--model-claude`——命令 A 只跑缺省集合）报错列出本轮入选，
+并提示用 `--critics` 把它加进来。这条报错是刻意的：此前那类写法会被当成正文吞进审查焦点，
 模型覆盖无声丢失，而留痕里看不出你曾经指定过。
 
 ### 5.5 闸门

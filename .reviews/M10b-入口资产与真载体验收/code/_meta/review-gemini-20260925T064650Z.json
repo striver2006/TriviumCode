@@ -1,0 +1,48 @@
+{
+  "agreed": [
+    "① checkRuntimeRoot 实现严密：在 fs.stat 之前先以 realOrResolved + within 检查双向重叠（within(rt, repo) || within(repo, rt)），不论 TRIVIUM_ASSET_ROOT 指向 dual-critic、skills 还是仓库祖先目录均被阻断；放行格覆盖不存在、空目录以及仅包含 SKILL.md 身份行的被打断安装；uninstall 阶段同判据下遇重叠或外来目录仅记录提示不予删除。",
+    "② --model-* 入选侧收紧在 topic resolve（topic-args.ts:619）、review --start（cli.ts:599）与 preflight（cli.ts:775）三个入口同源调用 assertModelOverrideKeys，全部以 resolveCriticSelection 解析结果作为入选事实源；命令 A 契约通过 MODEL_HINT_DEFAULT 改列缺省集合，codex/gemini/glm 的 dual-run entry 去除了不可用的 --model-claude，而 claude 侧因 defaultSelected 与 critics 集合对等而实现 7 份产物逐字节完全一致。",
+    "③ parseInstallArgs 集中解析命令行参数，对未知旗标（如拼错的 --target）、重复声明的 --targets 以及 --uninstall 与 --targets 混用均严格抛错，杜绝了静默吞并用户输入的安全隐患，未误伤合法参数。",
+    "④ 协议片段升级逻辑遵循安全优先原则：先检查 interior === body.trim() 确保当前版跳过，再比对 KNOWN_PROTOCOL_SHA256。由于 SHA-256 抗碰撞性，用户任何微小修改均无法命中已有哈希集合，必定被保留并提示手工合并；init.test.ts 增加的断言确保未来改动片段时必然强制追加哈希，不再依赖人工记性。",
+    "⑤ 裁决件 10 条意见的落点与 REPORT_2026-09-25_m10b_step2.md §9 完全对应；针对 CODEX-01（改用 SKILL.md 避免拷贝时序导致死锁）、GLM-03（单表只追加 + 测试守卫代替人肉挪动旧指纹）、CODEX-04（实测 install.ts 零字面命中故直接纳入 EXTRA_SCANNED 而不需豁免）的三处偏差，分析深刻且实施方案优于原案。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/05_testing/REPORT_2026-09-25_m10b_step2.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/M10b-入口资产与真载体验收/code/2026-09-25-M10b-入口资产与真载体验收-response-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/code/_meta/changes-20260925T064650Z.diff",
+    "src/install.ts",
+    "src/entry-render.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/init.ts",
+    "src/trivium/agents/registry.ts",
+    "skills-src/commands/run.contract.md",
+    "skills/dual-critic/SKILL.md",
+    "skills/dual-run/SKILL.md",
+    "skills/dual-critic/entry/codex/dual-run/SKILL.md",
+    "test/unit/install.test.ts",
+    "test/unit/topic-args.test.ts",
+    "test/unit/init.test.ts",
+    "test/unit/critics.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/integration/driver-flag.test.ts",
+    "test/contract/entry-render-parity.test.ts"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未在真实 macOS/Linux 外接宿主环境执行 node dist/install.cjs 写入实际用户真实 HOME 目录（~/.zcode、~/.codex、~/.gemini）；依赖测试套件中的临时 fakeHome 及沙箱验证。",
+    "未对 ZCode、Codex 或 Antigravity 桌面端发起真实 LLM 会话及审查流量探针，此部分由前序薄冒烟报告与自动化测试覆盖。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本轮复审聚焦的五处修复均已严格核实并全部成立。\n1. 安装器运行时根身份判定（checkRuntimeRoot）通过 realOrResolved 与 within 双向判定彻底堵死与仓库重叠的裁剪与整棵删除风险；以 SKILL.md 身份行作为判据既防住了非空外来目录，又妥善允许未完成安装的重跑，理由充分。\n2. --model-* 在 topic resolve、review --start 与 preflight 三个入口统一接入 resolveCriticSelection 解析出的本轮实际入选集合，口径完全一致；命令 A 仅展示缺省入选集合，使得另三家 entry 剔除无用的 --model-claude，且 claude 的 7 份产物保持逐字节零差异。\n3. parseInstallArgs 严格收口至 --targets 与 --uninstall，未知或冲突旗标即刻报错，未误伤任何既有合法用法。\n4. 协议指纹表 KNOWN_PROTOCOL_SHA256 采用只追加策略且受自动化测试守卫，SHA-256 抗碰撞性保证用户手工改动绝不被误判为已知版本覆盖。\n5. 裁决件落点与报告 §9 逐条对应，三处对裁决件原写法的偏差理由均充分且方案更优。全案准予通过。",
+  "verdict": "approve"
+}

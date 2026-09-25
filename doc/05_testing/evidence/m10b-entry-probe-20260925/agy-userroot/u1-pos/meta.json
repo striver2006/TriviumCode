@@ -1,0 +1,61 @@
+{
+  "arm": "u1-pos",
+  "argv": [
+    "agy",
+    "-p",
+    "/dualtest 甲 乙",
+    "--output-format",
+    "stream-json",
+    "--print-timeout",
+    "180s"
+  ],
+  "cwd": "<tmp>/proj（非 git）",
+  "home": "真实 HOME（未隔离）",
+  "planted": [
+    "~/.agents/skills/dualtest/SKILL.md"
+  ],
+  "started": "2026-09-25T04:01:22.386Z",
+  "ended": "2026-09-25T04:01:51.096Z",
+  "exit": 0,
+  "signal": null,
+  "timedOut": false,
+  "judgement": {
+    "tagHits": {
+      "AGU-7W2": {
+        "agentText": false,
+        "finalResponse": false
+      }
+    },
+    "toolOutputHasSentinel": false,
+    "toolSteps": [
+      {
+        "tool": "run_command",
+        "state": "ERROR",
+        "params": "{\"CommandLine\":\"find ~/.gemini -type f -name \\\"*dualtest*\\\" 2>/dev/null\"}",
+        "outputHasSentinel": false
+      }
+    ],
+    "finalResponse": ""
+  },
+  "cleanup": [
+    "unlink：~/.agents/skills/dualtest/SKILL.md",
+    "rmdir：~/.agents/skills/dualtest"
+  ],
+  "geminiConfigChanged": {
+    "onlyBefore": [],
+    "onlyAfter": []
+  },
+  "globalSkillsChanged": {
+    "onlyBefore": [
+      "1790304202 512 ~/.agents/skills"
+    ],
+    "onlyAfter": [
+      "1790308913 512 ~/.agents/skills"
+    ]
+  },
+  "freshAgyProcesses": [],
+  "newAgyLogs": [
+    "cli-20260925_120122.log"
+  ],
+  "logLinesDropped": 0
+}

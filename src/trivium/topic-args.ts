@@ -55,6 +55,17 @@ type ModelFlag = `model-${AgentId}`;
 const MODEL_FLAGS: readonly ModelFlag[] = ALL_AGENT_IDS.map((id): ModelFlag => `model-${id}`);
 
 const NAMED_FLAGS: readonly (StaticFlag | ModelFlag)[] = [...STATIC_FLAGS, ...MODEL_FLAGS];
+
+/**
+ * `topic resolve` 认得的具名旗标全集（只读导出）。
+ *
+ * 供 `entry-render-parity` 对账「入口资产声明的旗标 ⊆ CLI 认得的旗标」（M10b 第 2 步，
+ * 计划 r5 §5.1 ②：四家 × CLI 旗标对账）——入口资产里写了一个 CLI 不认的旗标，
+ * 它会被当成正文压进焦点，正是本文件头部登记的那一族缺口。
+ */
+export function resolveNamedFlags(): readonly string[] {
+  return NAMED_FLAGS;
+}
 /** 自由文本旗标：贪婪取到下一个已知旗标为止 */
 const GREEDY_FLAGS: ReadonlySet<string> = new Set(['focus', 'goal']);
 /**
@@ -344,20 +355,14 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
   }
 
   /*
-   * **命令 A 同样不接受 `--driver`**（M9 第 5 步，计划双审 D3）。
+   * **命令 A 原先同样不接受 `--driver`**（M9 第 5 步，计划双审 D3）。当时的理由：
+   * `--driver` 只作 CLI / 编排器内部旗标落地，不进 skill、不进 argument-hint（步骤表 §2.14），
+   * 命令 A 收下它之后没有任何交接说明会把它带下去——接受即静默丢弃。
    *
-   * 理由与上面那条逐字同构：`--driver` 本轮只作 CLI / 编排器内部旗标落地，
-   * 不进 skill、不进 argument-hint（步骤表 §2.14）。于是命令 A 收下它之后
-   * 没有任何交接说明会把它带下去——**接受即静默丢弃**，正是「错的报错、对的消失」。
+   * **M10b 第 2 步放开**（计划 r5 §5.3，B4）：入口资产改为单源渲染，`--driver <自家 id>` 由渲染注入，
+   * 命令 A 的交接说明在 S0 / S0.5 / 两次认领 / S2 / S6 六处都显式带上它——「之前」的前提到此为止。
+   * 放开的同时把交叉校验扩到 plan 与 code 两个阶段（见下方主题解析之后那段）。
    */
-  if (scope === 'all' && named['driver']) {
-    throw new TriviumError(
-      EXIT.USAGE,
-      '命令 A（全流程）不接受 --driver：它本轮只作编排器内部旗标，不进 skill 交接说明，' +
-        '在这一层收下会被静默丢弃。\n' +
-        '  需要指定当轮 Driver 请改用 /dual-review-plan、/dual-review-code 或 /dual-review-bug。',
-    );
-  }
 
   /*
    * 当轮 Driver 的**取值**推迟到主题解析之后（M10a 第 1 步）——缺席时要继承该阶段的
@@ -481,46 +486,90 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
    * 技能侧先走本入口会被挡住，而 `review --start` 才是真正烧配额的那条——
    * 只落一处就是 EV-53 那族缺口的形状。
    *
-   * `scope === 'all'` 跳过：命令 A 在上面已拒绝 `--driver`，没有可比对的值，
-   * 且它的阶段还没定下来。全程纯只读，「不创建任何目录」的承诺不受影响。
+   * **命令 A（`scope === 'all'`）对 plan 与 code 两个阶段逐一比对**（M10b 第 2 步，计划 r5 §5.3）：
+   * 此前它整段跳过——那时命令 A 在上面拒绝了 `--driver`，没有可比对的值。放开旗标而不补这一段，
+   * 冲突就要等到 S2 / S6 的 `--start` 才暴露：S1 的原稿已经按错的后缀写下去了。
+   * 任一阶段冲突即在入口退 64；code 阶段 `--start` 的自带比对照样保留，这里是提前一道，不是替代。
+   * 全程纯只读，「不创建任何目录」的承诺不受影响。
    */
-  let driver: AgentId = explicitDriver ?? DEFAULT_DRIVER;
-  if (scope !== 'all') {
+  /** 旗标缺席时继承来的权威值；各阶段都没有留痕与声明则为 null（回落缺省） */
+  let inheritedDriver: AgentId | null = null;
+  {
     const {
-      resolveStageDriver, crossCheckDriver, declaredStageDriver, stageDriverInvariant,
+      resolveStageDriver, crossCheckDriver, declaredStageDriver, stageDriverInvariant, claimCommand,
     } = await import('./driver-claim.js');
     const { readTask } = await import('./meta.js');
     const layout = { archiveRoot: ctx.archiveRoot, topic };
+    // 放在留痕坏损判定之后再读，与改动前的报错先后一致
+    let task: Awaited<ReturnType<typeof readTask>> | undefined;
+    const stages: readonly Stage[] = scope === 'all' ? ['plan', 'code'] : [scope];
 
-    const resolution = await resolveStageDriver(layout, scope);
-    if (resolution.kind === 'corrupt') {
-      throw new TriviumError(
-        EXIT.GATE_BLOCK,
-        `无法判定当轮 Driver：${topic} / ${scope} 的运行留痕读不出来` +
-          `（${resolution.unreadable.join('、')}）。\n` +
-          '  这里**不**按缺省 Driver 继续，**也不**退回声明——留痕坏了就判不了身份，\n' +
-          '  而退到被保护方自己写的声明是把权威排序倒过来用。\n' +
-          `  出口是重跑一次 ${scope} 阶段双审：新运行会先落一份可读的留痕。`,
-      );
+    /** 旗标缺席时各阶段可继承的权威值（缺省回落不算） */
+    const inherited: { stage: Stage; driver: AgentId; source: 'run' | 'claim' }[] = [];
+    for (const stage of stages) {
+      const resolution = await resolveStageDriver(layout, stage);
+      if (resolution.kind === 'corrupt') {
+        throw new TriviumError(
+          EXIT.GATE_BLOCK,
+          `无法判定当轮 Driver：${topic} / ${stage} 的运行留痕读不出来` +
+            `（${resolution.unreadable.join('、')}）。\n` +
+            '  这里**不**按缺省 Driver 继续，**也不**退回声明——留痕坏了就判不了身份，\n' +
+            '  而退到被保护方自己写的声明是把权威排序倒过来用。\n' +
+            `  出口是重跑一次 ${stage} 阶段双审：新运行会先落一份可读的留痕。`,
+        );
+      }
+      if (task === undefined) task = await readTask(layout);
+      const declared = declaredStageDriver(task, stage);
+      const runDriver = resolution.source === 'run' ? resolution.driver : null;
+      // 先问「这份留痕本身自洽吗」，再问「你传的对不对」——顺序反了会用一个坏基准去判对错
+      const broken = stageDriverInvariant({ topic, stage, runDriver, declared });
+      if (broken) throw new TriviumError(EXIT.USAGE, broken);
+      const conflict = crossCheckDriver({
+        topic, stage, driver: explicitDriver, runDriver, declared,
+      });
+      if (conflict) throw new TriviumError(EXIT.USAGE, conflict);
+      if (resolution.source !== 'default') {
+        inherited.push({ stage, driver: resolution.driver, source: resolution.source });
+      }
     }
-    const declared = declaredStageDriver(await readTask(layout), scope);
-    const runDriver = resolution.source === 'run' ? resolution.driver : null;
-    // 先问「这份留痕本身自洽吗」，再问「你传的对不对」——顺序反了会用一个坏基准去判对错
-    const broken = stageDriverInvariant({ topic, stage: scope, runDriver, declared });
-    if (broken) throw new TriviumError(EXIT.USAGE, broken);
-    const conflict = crossCheckDriver({
-      topic, stage: scope, driver: explicitDriver, runDriver, declared,
-    });
-    if (conflict) throw new TriviumError(EXIT.USAGE, conflict);
 
-    driver = explicitDriver ?? resolution.driver;
-    if (!explicitDriver && resolution.source !== 'default') {
-      notes.push(
-        `未传 --driver，已继承 ${scope} 阶段的当轮 Driver「${driver}」` +
-          `（来源：${resolution.source === 'run' ? '运行留痕' : 'topic claim 的声明'}）`,
-      );
+    if (!explicitDriver && inherited.length > 0) {
+      const distinct = [...new Set(inherited.map((i) => i.driver))];
+      if (distinct.length > 1) {
+        /*
+         * 只有命令 A 走得到：两个阶段各有权威值且互不相同，省略旗标就没有「该继承谁」的答案。
+         *
+         * 这时**不存在**与两个阶段都相容的显式取值——显式传哪一个都会撞上另一个阶段（代码双审 GLM-05）。
+         * 此前文案叫用户「显式传 --driver」，照做只会再退一次 64。出口只有两条：
+         * 改写仅有声明（没有运行留痕）的那个阶段，或另开主题。留痕是事实、改不了，故只对声明给命令。
+         */
+        const exits = inherited
+          .filter((i) => i.source !== 'run')
+          .map((i) => {
+            const other = inherited.find((o) => o.stage !== i.stage)!.driver;
+            return `  改写 ${i.stage} 阶段的声明、按 ${other} 继续：${claimCommand(topic, i.stage, other)}`;
+          });
+        throw new TriviumError(
+          EXIT.USAGE,
+          `主题 ${topic} 的 plan 与 code 阶段当轮 Driver 不一致` +
+            `（${inherited.map((i) => `${i.stage}：${i.driver}`).join('；')}），省略 --driver 无从继承；` +
+            '显式传哪一个都会与另一个阶段冲突——命令 A 一次跑两个阶段，只能有一个执笔者。\n' +
+            (exits.length > 0
+              ? `${exits.join('\n')}\n  （该阶段若已用声明写出带后缀的文件，改写会被拒，请先处理那些文件。）\n`
+              : '') +
+            '  或者另开一个主题。',
+        );
+      }
+      inheritedDriver = distinct[0]!;
+      for (const i of inherited) {
+        notes.push(
+          `未传 --driver，已继承 ${i.stage} 阶段的当轮 Driver「${i.driver}」` +
+            `（来源：${i.source === 'run' ? '运行留痕' : 'topic claim 的声明'}）`,
+        );
+      }
     }
   }
+  const driver: AgentId = explicitDriver ?? inheritedDriver ?? DEFAULT_DRIVER;
 
   /*
    * 按**最终**的 driver 再过一次 `resolveDriver`，不是只信旗标那次解析：
@@ -561,9 +610,13 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
    * 而把它在这里再实现一遍正是 EV-53 自己的形态——上一次收口只落在本文件一个入口，
    * 另一个入口原样留着丢参数。共用 `assertModelOverrideKeys` 之后，文案也随之与
    * 「不能选 Driver」那几条统一成「当前可用」。
+   *
+   * **M10b 第 2 步代码双审 CODEX-02 再收紧一档**：判据从「本轮能入选谁」改为「本轮实际入选了谁」
+   * （上面刚解析出的 `critics`）。「能入选但没入选」那一家的覆盖同样会被丢弃（原 EV-67）；
+   * 缺省集合减去 Driver 之后，它在非 claude Driver 的缺省路径上成了常规形态。
    */
   const written = ALL_AGENT_IDS.filter((id) => named[`model-${id}`]);
-  assertModelOverrideKeys(ctx.config, driver, written);
+  assertModelOverrideKeys(ctx.config, driver, written, critics);
   for (const id of written) models[id] = named[`model-${id}`]!;
 
   const contextPaths = (named['context'] ?? '')

@@ -5,7 +5,6 @@
  * `probe:` 段由 doctor 回填，人不手工编辑；它落在 config.local.yaml（本机结论，不进 Git）。
  */
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import type {
@@ -36,14 +35,9 @@ export const TRIVIUM_DIR = '.trivium';
  *
  * **唯一事实来源**（EV-74 计划 §3.2.2）：`review.ts` 与 `init.ts` 此前各自写了一份
  * 同形规则（`override ?? env ?? homedir`），合并到这里不改行为，只消掉第二份副本。
+ * M10b 第 2 步把实现挪进 `asset-root.ts`（安装器要同源取值、又不该拖进本文件的依赖链），这里原样再导出。
  */
-export function resolveAssetRoot(override?: string): string {
-  return (
-    override ??
-    process.env['TRIVIUM_ASSET_ROOT'] ??
-    path.join(os.homedir(), '.claude/skills/dual-critic')
-  );
-}
+export { resolveAssetRoot } from './asset-root.js';
 
 /**
  * 契约 schema（`review.v1.json`）相对资产根的路径——**唯一拼接处**（EV-74 计划 §3.2.2）。
@@ -258,6 +252,12 @@ export function defaultConfig(): Config {
     topic: { max_len: 64, forbid_chars: ['/', '\\', '..', ' '] },
     runtime: { node: null, run_root: '~/.trivium/runs' },
     isolation: {
+      /*
+       * **只是追加项，不是全集**（EV-61 ⑦，M10b 第 2 步核）：唯一消费方 `freeze.ts` 取
+       * 「注册表派生的全部 `**\/*-<id>.md`」∪ 本配置项，四家后缀恒在候选里。
+       * 这两条字面是 M7a 之前的旧默认值，留着不改：已 init 的项目把它冻进了进 Git 的配置，
+       * 改缺省值对它们无效、只会让新旧项目的配置文件无故分叉；并集语义下它也不构成漏洞。
+       */
       peer_artifact_globs: ['**/*-gemini.md', '**/*-glm.md'],
       deny_via_cli: 'auto',
       context_max_docs: 12,

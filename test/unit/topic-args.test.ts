@@ -692,18 +692,25 @@ test('topic resolve：--driver 非缺省时回显；M10a 第 3 步起已启用�
   );
 });
 
-test('topic resolve：命令 A 不接受 --driver（接受即静默丢弃）', async () => {
+/*
+ * M9 第 5 步到 M10b 第 2 步之间，这里钉的是「命令 A 不接受 --driver（接受即静默丢弃）」。
+ * M10b 第 2 步把 `--driver` 渲染进命令 A 的六处交接（计划 r5 §5.3），前提消失，拒绝随之改为接受；
+ * 两阶段交叉校验的冲突用例走真实子进程，见 `test/integration/driver-flag.test.ts`。
+ */
+test('topic resolve：命令 A 接受 --driver 并回显（M10b 第 2 步放开）', async () => {
+  assertSelectableUsable();
+  const other = SELECTABLE[0]!;
   const ctx = await fakeCtx();
-  await assert.rejects(
-    resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--driver', 'codex'] }),
-    (e: { code?: number; message: string }) => {
-      assert.equal(e.code, EXIT.USAGE);
-      assert.match(e.message, /--driver/);
-      // 理由要与 --critics/--only 那条同构：不进 skill 交接说明，收下会被丢弃
-      assert.match(e.message, /静默丢弃|交接说明/);
-      return true;
-    },
-  );
+  /*
+   * **缺省配置、不改 default_critics**：`other` 本身就在缺省审核者集合里。
+   * 命令 A 不收 `--critics`，此前这一格退 64、没有出口（M10b 第 2 步核出）；
+   * 用户拍板后选侧对**缺省**集合减去当轮 Driver（`critics.ts`），这里钉住放开之后的真实路径。
+   */
+  assert.ok(ctx.config.review.default_critics.includes(other), '前提：当轮 Driver 在缺省集合里');
+  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--driver', other] });
+  assert.equal(r.driver, other);
+  assert.equal(r.driver_enabled, true);
+  assert.deepEqual(r.critics, ctx.config.review.default_critics.filter((c) => c !== other));
 });
 
 test('EV-53：换掉 Driver 之后，原 Driver 那一家的模型覆盖就合法了', async () => {
@@ -723,6 +730,9 @@ test('EV-53：换掉 Driver 之后，原 Driver 那一家的模型覆盖就合�
   /*
    * 要显式给 `--critics`：配置的 `review.default_critics` 里含 `otherDriver`，
    * 不给的话会先撞上「默认集合含当轮 Driver」而退 64，验不到本条要验的东西。
+   * （M10b 第 2 步起缺省集合会先减去当轮 Driver，上一句的退 64 已不再发生；
+   * 显式 `--critics` 仍然要给——本条要验的是 `--model-<DEFAULT_DRIVER>` 在 claude 入选时合法，
+   * 而缺省集合里没有 claude。）
    * 这里选 `DEFAULT_DRIVER` 当审核者，正好就是 M9 第 6 步验收的真实形态。
    */
   const r = await resolveTopicArgs({
@@ -761,4 +771,50 @@ test('可用审核者的模型覆盖照常生效（上一条不得误伤正常�
     ctx, scope: 'code', rawArgs: ['看并发', '--topic', 'T', `--model-${side}`, 'm-7'],
   });
   assert.equal(r.models[side], 'm-7');
+});
+
+/*
+ * ───────── 能入选、但本轮没入选（M10b 第 2 步代码双审 CODEX-02，收 EV-67）─────────
+ *
+ * 判据从「本轮能入选谁」收紧到「本轮实际入选了谁」。两格：显式 `--critics` 排除掉的那一家，
+ * 与命令 A 缺省路径上不在缺省集合里的那一家（非 claude Driver 时的 `--model-claude`）——
+ * 后者正是三家入口资产曾经列在参数写法里的写法。上面那条「照常生效」是这两格的正例对照。
+ */
+test('--critics 排除掉的那一家，为它指定模型退 64，而不是静默丢弃', async () => {
+  assertSelectableUsable(2);
+  const [kept, dropped] = [SELECTABLE[0]!, SELECTABLE[1]!];
+  const ctx = await fakeCtx();
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 8;\n');
+  await assert.rejects(
+    resolveTopicArgs({
+      ctx, scope: 'code',
+      rawArgs: ['看并发', '--topic', 'T', '--critics', kept, `--model-${dropped}`, 'm-8'],
+    }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.USAGE, e.message);
+      assert.match(e.message, new RegExp(`--model-${dropped}：${dropped} 本轮没有入选`));
+      assert.match(e.message, new RegExp(`本轮入选：${kept}$`, 'm'), '要列出本轮实际入选的那几家');
+      assert.match(e.message, /--critics/, '要指出把它加进来的出口');
+      return true;
+    },
+  );
+});
+
+test('命令 A 缺省路径：换了 Driver 后缺省集合外的那一家（原 Driver）指定模型退 64', async () => {
+  assertSelectableUsable();
+  const other = SELECTABLE[0]!;
+  const ctx = await fakeCtx();
+  // 前提：原 Driver 此时**能**入选（否则撞的是另一条「不是可用审核者」的报错，验不到本条）、却不在缺省集合里
+  assert.ok(selectableCritics(ctx.config, other).includes(DEFAULT_DRIVER), `前提：${DEFAULT_DRIVER} 能当审核者`);
+  assert.ok(!ctx.config.review.default_critics.includes(DEFAULT_DRIVER), `前提：${DEFAULT_DRIVER} 不在缺省集合里`);
+  await assert.rejects(
+    resolveTopicArgs({
+      ctx, scope: 'all', rawArgs: ['做个功能', '--driver', other, `--model-${DEFAULT_DRIVER}`, 'm-9'],
+    }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.USAGE, e.message);
+      assert.match(e.message, /本轮没有入选/);
+      return true;
+    },
+  );
 });

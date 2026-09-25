@@ -314,6 +314,9 @@ export function isForgedRoleFile(
  *     重定义为「缺省」**，而是可用性取舍：plan/bug 阶段的原稿写在 `review --start`
  *     **之前**，那一刻该阶段一份留痕都没有，fail-closed 会当场锁死今天走得通的
  *     `/dual-review-plan`。代价是非缺省 Driver 仍写不出自己的原稿（已登记为已知边界）。
+ *     **M10a 第 1 步（EV-72）的变化**：回落缺省之前先查该阶段的 `topic claim` 声明（`resolveStageDriver`
+ *     的第 2 级）；非缺省 Driver 先认领、再写原稿即可，上一句的代价已不成立（EV-72 已结案）。
+ *     M10b 第 2 步起，入口资产在「写原稿之前」渲染了认领步骤。上一句是当时的叙事，保留原文。
  *   · 有留痕却读不出来（一份都读不出，**或**比被采信的那份更新的读不出）→ **硬失败**：
  *     那是「留痕坏了」，不能判成「按缺省 Driver 算」，也不能判成「按上一轮 Driver 算」
  *     （计划双审 CODEX-06 / AGY-04；代码双审 GLM-01 ≡ CODEX-01 补出后一格）。
@@ -574,7 +577,10 @@ export function runningRewriteViolation(headText: string, workText: string | nul
  *
  * 两条独立规则：
  *   1. **伪造审查文件**：写归档内带**受保护角色后缀**的文件一律拒绝。
- *      后缀集见 `criticRoleSuffixes(DEFAULT_DRIVER)`（全部已登记角色减当轮 Driver）——
+ *      判据见 `hasProtectedRoleSuffix(target, driver)`：保护集是全部已登记角色减**当轮** Driver，
+ *      `driver` 由 `resolveRoundDriver` 按三级判定解析（运行留痕 → 认领声明 → 缺省），
+ *      不是缺省 Driver（M10b 第 2 步改准：此前这里指向 `criticRoleSuffixes(DEFAULT_DRIVER)`，
+ *      括注却写「减当轮 Driver」，指针与括注互相矛盾）——
  *      **不在这里重抄一份枚举**：抄的那份会随注册表漂移，而它今天就已经漏过
  *      `-codex.md`（M8 起 codex 已在保护集内，这句话却只列了两家）。
  *      主脑不得自己编一份审查（PRD 6.3）——该规则**不受**会话与 TTL 限制。
@@ -814,6 +820,10 @@ const MENTIONS_OWNED = /(?:^|[^\w.\-])(?:_meta|task\.json|state\.json|\.trivium)
  *     （`bin` 是审查意见 AGY-03：wrapper 一旦被删或去掉执行位，
  *      `.claude/settings.json` 里每条 Hook 的存在性守卫都会永真放行，
  *      整套闸门被一次性解除——它必须和判定文件同级受保护）
+ *     **M10b 第 2 步更正（EV-61 ⑥，计划 r5 §1.2）**：上面那句的因果只对守卫修好之前成立。
+ *     守卫改为区分两种情形之后（本文件头注释、`hooks.json` 的 `_comment`）：被删或去掉执行位 ⇒ 守卫
+ *     保守拦截（exit 2）；wrapper **内容被替换**为放行脚本才会永真放行；Hook 配置段或 `.trivium/`
+ *     整体被移除 ⇒ 不再有任何拦截。`bin` 仍须受保护，理由换成后两条。原句保留作当时的叙事。
  *   - 归档根本身，及其下任意含 `_meta` 组件的路径、任意 `task.json`
  */
 function isOrchestratorOwnedPath(abs: string, ctx: Ctx): boolean {
@@ -1004,7 +1014,8 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
       `禁止用 Bash 改动编排器独占的文件：${shown}\n` +
         '  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\n' +
         '    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n' +
-        '      （删掉或改坏 bin/ 会让 .claude/settings.json 里每条 Hook 的守卫永真放行）\n' +
+        '      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\n' +
+        '        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\n' +
         `    · 角色工件的后缀（${bashProtectedRoleSuffixes().map((s) => `-${s}.md`).join(' / ')}）——\n` +
         '      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\n' +
         '  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\n' +

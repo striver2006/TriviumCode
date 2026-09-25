@@ -1,0 +1,126 @@
+✓ 工作树干净、基线全绿（8 个套件）
+  I1 ✓ 咬住（fail=8）
+  I2 ✓ 咬住（fail=2）
+  I3 ✓ 咬住（fail=1）
+  I4 ✓ 咬住（fail=1）
+  I5 ✓ 咬住（fail=2）
+  I6 ✓ 咬住（fail=1）
+  R1 ✓ 咬住（fail=2）
+  R2 ✓ 咬住（fail=2）
+  R3 ✓ 咬住（fail=2）
+  R4 ✓ 咬住（fail=2）
+  T1 ✓ 咬住（fail=2）
+  T2 ✓ 咬住（fail=1）
+  P1 ✓ 咬住（fail=5）
+  P2 ✓ 咬住（fail=4）
+  E4 ✓ 咬住（fail=1）
+  E6 ✓ 咬住（fail=1）
+  U1 ✓ 咬住（fail=1）
+{
+  "总数": 17,
+  "咬住": 17,
+  "逐条": [
+    {
+      "id": "I1",
+      "desc": "拍平改回整树搬运（r10 §2.1 变异 1）⇒「任何目标根下都没有深度 ≥ 2 的 SKILL.md」",
+      "verdict": "✓ 咬住（fail=8）",
+      "fail": 8
+    },
+    {
+      "id": "I2",
+      "desc": "去掉运行时根对 entry/ 的排除（r10 §2.1 变异 2）⇒ 同上",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "I3",
+      "desc": "残留检测失效 ⇒「残留检测：安装失败、列出路径、不删残留」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "I4",
+      "desc": "查重名只看安装根、不看完整读取面 ⇒「~/.agents/skills 里的同名判冲突」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "I5",
+      "desc": "家根不存在也照装 ⇒「跳过并写明原因、不得创建家根」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "I6",
+      "desc": "只读审查 Agent 定义无条件安装 ⇒「没有 Antigravity 家根时不装、不凭空建出 ~/.gemini」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "R1",
+      "desc": "另三家也用 $ARGUMENTS ⇒「transcribe 载体一处都不许有」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "R2",
+      "desc": "护栏段不按注册表派生、一律 L1 ⇒「护栏注入段与 r10 §3.1.3 的表一致」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "R3",
+      "desc": "模型与选侧清单不减当轮 Driver ⇒「不给当轮 Driver 自己留槽位（EV-61）」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "R4",
+      "desc": "独立行片段渲染为空时不去掉那一行 ⇒ 渲染器自测与命令 C 产物比对",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "T1",
+      "desc": "命令 A 只比对 plan 阶段 ⇒「--driver 与 code 阶段的声明冲突 ⇒ 入口处退 64」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "T2",
+      "desc": "两阶段权威值不同时挑一个继承 ⇒「省略 --driver 而两个阶段的权威值不同 ⇒ 退 64」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "P1",
+      "desc": "不看旧版指纹、见块就换 ⇒「标记内被手工改过：不替换、原样保留」",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "P2",
+      "desc": "审查员段不看「作审核者时读不读项目记忆」⇒「CLAUDE.md 只带 Driver 段」",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "E4",
+      "desc": "EV-61 ④：_meta 拒绝文案退回写死三家 ⇒「文案点名全部已登记后缀」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "E6",
+      "desc": "EV-61 ⑥：拒绝文案退回「删掉或改坏 bin/ 会永真放行」⇒ hooks 文案断言",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "U1",
+      "desc": "EV-61 原条目：USAGE 的 --only 退回写死两家 ⇒ 帮助文本与注册表对账",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

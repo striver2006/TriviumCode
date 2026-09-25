@@ -94,6 +94,18 @@ M0 的 P-17（`-p` 进程把工作交给跨运行复用的 hub）在本版本**�
 
 生效模型四次都是 Gemini 3.8 Flash (High)。
 
+### 1.3.1 用户级 `~/.agents/skills`（r10 §2.2 补测，2026-09-25，**已测**）
+
+codex 与 zcode 都读用户级 `~/.agents/skills`（§2.1、§3.6）。计划双审第 4 轮 CODEX-08 指出 agy 这一面没测过。用户授权后补测一次：
+哨兵（标签 `AGU-7W2`，与 1.3 同形）写进 `~/.agents/skills/dualtest/SKILL.md`（写前断言不存在），`agy -p '/dualtest 甲 乙' --output-format stream-json --print-timeout 180s`，cwd 为 mkdtemp 空项目，跑完逐字校验后 `unlink`、`rmdir`。
+
+| 读数 | 三态 |
+| :--- | :--- |
+| 日志**没有**展开记录，`Forwarding user message … (items=1)`；回复里没有哨兵；模型自己去 `find ~/.gemini -name "*dualtest*"`（被自动拒绝），说明哨兵也不在它的常驻清单里 | agy 读用户级 `~/.agents/skills`：**false** |
+
+结论：agy 的 skill 读取面（本机、print 模式）是全局根 `~/.gemini/config/skills`，不含用户级 `~/.agents/skills`，也不含工作区根（1.2）。gemini 目标的查重名面只需覆盖全局根。清理记录两条全成功，`~/.agents/skills` 事后无残留。
+证据：`evidence/m10b-entry-probe-20260925/agy-userroot/u1-pos/`。
+
 ### 1.4 参数：CLI 不替换 `$ARGUMENTS`（**false**），但原文到达模型（**true**）
 
 - **替换**：g1 的回复是字面 `$ARGUMENTS` / `$0` / `$1`，模型收到的正文没被替换过。与静态读数一致：两个 agy 二进制里 `$ARGUMENTS` 字面都是 **0 处**。**false**。
@@ -469,6 +481,7 @@ codex 名义的计划原稿（给 `math.js` 加 `multiply`，由 Claude 用 Writ
 | 10 | agy g3 第三臂（全局根无哨兵） | 01:37:07～01:37:35 | 0 |
 | 11 | agy g4 嵌套（全局根） | 01:37:37～01:38:20 | 0 |
 | 12 | agy g5 参数到达（全局根） | 01:49:05～01:49:31 | 0 |
+| 13 | agy u1 用户级 `~/.agents/skills`（r10 §2.2 补测，用户另行授权） | 04:01:22～04:01:51 | 0 |
 
 **zcode 补测的调用**（2026-09-25 续，用户另行授权直接调用 zcode，不计入上面 agy / codex 的上限）：
 

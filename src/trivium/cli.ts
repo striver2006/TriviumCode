@@ -9,7 +9,7 @@ import { exists } from './util/fsx.js';
 import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
 import { applyProfileOverride, loadCtx, runRoot } from './config.js';
-import { ALL_AGENT_IDS, DEFAULT_DRIVER, DRIVER_AGENT_IDS } from './agents/registry.js';
+import { ALL_AGENT_IDS, CRITIC_AGENT_IDS, DEFAULT_DRIVER, DRIVER_AGENT_IDS } from './agents/registry.js';
 import {
   runDoctor,
   renderDoctorReport,
@@ -205,14 +205,16 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --context   被审对象涉及的代码路径与相关文档，逗号分隔；并入必读清单
       --plan-file / --rca-file  显式指定被审对象
       --base <ref>  仅 code 阶段：diff 比较基线，默认 HEAD
-      --model-gemini <slug> / --model-glm <id>  本次模型覆盖
+      ${CRITIC_AGENT_IDS.map((id) => `--model-${id}`).join(' / ')} <模型>
+                  本次模型覆盖（取值清单随注册表；只对本轮入选的审核者有效，
+                  给没入选的一家指定模型退 64，不静默丢弃）
       --profile <名称>  本次改用另一档模型（config.yaml 的 profiles）。
                   与 --model-* 不冲突：那个指定具体模型、优先级更高，
                   这个只换默认值表。档位不存在则退 64 并列出可用值
       --critics <id,…>  本轮入选的审核者，逗号分隔（1～review.max_critics 个）。
                   缺省取 review.default_critics。选 1 个是配置意图、不标降级；
                   含当轮 Driver、含未启用为审核者的 Agent、或重复项一律退 64
-      --only gemini|glm  仅跑一侧。**--critics 的单元素旧写法**，两者不能同时给
+      --only ${CRITIC_AGENT_IDS.join('|')}  仅跑一侧。**--critics 的单元素旧写法**，两者不能同时给
       --driver <id>  当轮 Driver（执笔者），缺省 ${DEFAULT_DRIVER}。
                   取值须为**可用作 Driver 的 Agent**（${DRIVER_AGENT_IDS.join(' | ')}）——
                   未登记、或已登记但尚未启用为 Driver 的一律退 64（M10a 第 3 步起）。
@@ -584,19 +586,18 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   const goal = flagString(args, 'goal');
   const modelOverrides = collectModelOverrides(args);
   /*
-   * `--model-<id>` 的键必须是本轮实际能入选的那几家（EV-53，第 2 轮 CODEX-05）。
+   * `--model-<id>` 的键必须是本轮**实际入选**的那几家（EV-53，第 2 轮 CODEX-05；
+   * M10b 第 2 步代码双审 CODEX-02 从「能入选」收紧到「实际入选」，收 EV-67）。
    *
    * 这一条此前**只落在 `topic resolve`**，而本入口才是真正烧配额的那条：
-   * `collectModelOverrides` 的论域是 `CRITICS`（M9 第 4 步后四家全在内），
-   * 下游 `checkModelSlugs` 只遍历入选侧，于是 `--critics gemini --model-glm X`
-   * 与 `--model-claude X` 在这里仍是**解析成功后被悄悄丢弃**——留痕与告警
-   * 都看不出用户指定过模型。技能侧因先走 `topic resolve` 而被挡住，
-   * 暴露面是手工 CLI，但 EV-53 的「已收口」当时并不成立。
+   * `collectModelOverrides` 的论域是全部已登记 Agent，下游 `checkModelSlugs` 只遍历入选侧，
+   * 判据若窄于入选集合之外的任何一格，那一格的覆盖就是**解析成功后被悄悄丢弃**——
+   * 留痕与告警都看不出用户指定过模型。
    *
-   * 判定共用 `critics.ts` 的那一份，不在此处复制。
+   * 判定共用 `critics.ts` 的那一份，不在此处复制；入选集合就是上面刚解析出的 `critics`。
    */
-  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides));
-  // 判定通过 ⇒ 键集必然是本轮可入选的审核者，这里才收窄（收集面见 collectModelOverrides）
+  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);
+  // 判定通过 ⇒ 键集必然是本轮入选的审核者，这里才收窄（收集面见 collectModelOverrides）
   const models = modelOverrides as Partial<Record<CriticId, string>>;
 
   const reviewOpts = {
@@ -771,8 +772,8 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
    * 意见点名的是 `review --start`，但 `runPreflight` 内部同样只遍历传进去的
    * `critics`——只修一个入口，剩下那个就是下一次的「改一漏二」。
    */
-  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides));
-  // 判定通过 ⇒ 键集必然是本轮可入选的审核者，这里才收窄（收集面见 collectModelOverrides）
+  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);
+  // 判定通过 ⇒ 键集必然是本轮入选的审核者，这里才收窄（收集面见 collectModelOverrides）
   const models = modelOverrides as Partial<Record<CriticId, string>>;
 
   const r = await runPreflight({

@@ -1,0 +1,300 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260925T060626Z",
+  "topic": "M10b-入口资产与真载体验收",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点看五处：单源渲染的源与产物会不会漂移、claude 产物相对抽取前的每一处差异是否都有计划依据；命令 A 放开 Driver 旗标后 plan 与 code 两阶段的交叉校验与继承有无遗漏；缺省审核者集合减去当轮 Driver 之后，显式与缺省两条路径的边界；多目标安装器在真实用户目录上的写盘面，先查后写是否完备、会不会误判家根或误删用户的东西；协议片段升级的指纹判定会不会覆盖用户手工改过的内容",
+  "task_goal": "M10b · 入口资产与真载体验收 实施计划（第 11 稿 · 第 2 步实施中核出两件 · 定稿）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "c4d9af6ff6245e3f7b8d4ef91beffd337ef6d123",
+    "tree_hash": "b7f96af5e09f7e7d5f749ce7bbf5198712be8c67",
+    "dirty": true,
+    "subject_sha256": "5a7b41e99d60797d8af3b2dc8ffd9c466c8c2fb5f2f2678d6ffc2f25e1a446c5",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "c4d9af6ff6245e3f7b8d4ef91beffd337ef6d123",
+      "dirty": true,
+      "inputs_sha256": "063b552113ddb1171c2f6003b5f924561083857d82463df70e687eb544b18a0f",
+      "built_at": "2026-09-25T06:01:17.236Z"
+    }
+  },
+  "started_at": "2026-09-25T06:06:28.017Z",
+  "finished_at": "2026-09-25T06:18:12.711Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.156.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "parse_fallback",
+      "exit_code": 0,
+      "duration_s": 536.669,
+      "tool_calls": {
+        "run_command": 140,
+        "project_reads": 93
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "JSON 不符合 trivium.review.v1：/findings/2/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}",
+      "empty_review": false,
+      "parse_fallback": true,
+      "session_id": "01a0d72c-20bf-7411-a99b-b1f1e3dd9573",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.11",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 310.221,
+      "tool_calls": {
+        "read": 39,
+        "grep": 7,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 19
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 300262,
+        "output_tokens": 33625,
+        "thinking_tokens": 27364,
+        "cache_read_tokens": 5892329,
+        "total_tokens": 333887
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "f21ac2ad-69a4-4f32-811b-8782b8a2202d",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 704.232,
+      "tool_calls": {
+        "read": 18,
+        "grep": 8,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 9
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 21,
+        "inputTokens": 3252432,
+        "outputTokens": 40927,
+        "totalTokens": 3293359,
+        "cacheReadTokens": 3035392,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_ce97c3f1-1116-45b7-88a9-df86ddb01107",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-gemini.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-glm.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r2-gemini.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r2-glm.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r3-gemini.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r3-glm.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r4-gemini.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r4-glm.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/_meta/review-gemini-20260923T232849Z.json",
+    ".reviews/M10b-入口资产与真载体验收/plan/_meta/review-gemini-20260924T004706Z.json",
+    ".reviews/M10b-入口资产与真载体验收/plan/_meta/review-gemini-20260924T113039Z.json",
+    ".reviews/M10b-入口资产与真载体验收/plan/_meta/review-gemini-20260925T033214Z.json",
+    ".reviews/M10b-入口资产与真载体验收/plan/_meta/review-glm-20260923T232849Z.json",
+    ".reviews/M10b-入口资产与真载体验收/plan/_meta/review-glm-20260924T004706Z.json",
+    ".reviews/M10b-入口资产与真载体验收/plan/_meta/review-glm-20260924T113039Z.json",
+    ".reviews/M10b-入口资产与真载体验收/plan/_meta/review-glm-20260925T033214Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M10b-入口资产与真载体验收/code/_meta/changes-20260925T060626Z.diff",
+      "sha256": "5a7b41e99d60797d8af3b2dc8ffd9c466c8c2fb5f2f2678d6ffc2f25e1a446c5"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/code/_meta/brief-codex-20260925T060626Z.md",
+      "sha256": "4405ce714440c7c1738fca408ae9c868ba7ec3983d2145624836d72a86b7fce1"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/code/_meta/brief-gemini-20260925T060626Z.md",
+      "sha256": "2936ce0f0f90210e926f55a9ff1f69e767c8491b5695fd436bc8894205148fcb"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/code/_meta/brief-glm-20260925T060626Z.md",
+      "sha256": "a9d42fa9c0bdd2c6f47ff3c1d4d2af8350e376a05d35de9ce33fc9910fffd74f"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/code/_meta/review-codex-20260925T060626Z.json",
+      "sha256": "d355dcee13b32495b22f025eb78b027238588344ab242df0a0f061a3e369b433"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/code/_meta/review-codex-20260925T060626Z.fallback-items.md",
+      "sha256": "95abce2462bd8ab513c0dac8bcea2cd9e675d290d44111b1f7f8bee6de4cbf87"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/code/_meta/review-gemini-20260925T060626Z.json",
+      "sha256": "a82358cbbe8edff02317d03b3add897adb2fa8611637252426fd92b8eee34416"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/code/_meta/review-glm-20260925T060626Z.json",
+      "sha256": "c2fc751a4f77eebf7a72ec37a1c36f629d877654dbd6437a22d4cda96eb0a461"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/code/2026-09-25-M10b-入口资产与真载体验收-codex.md",
+      "sha256": "dae0bde56974b5aa8883dba6a81edfc387da864d3b8d91ca187440eb8153311c"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/code/2026-09-25-M10b-入口资产与真载体验收-gemini.md",
+      "sha256": "2a554cd477951d7cda5c0df7300db5b4b4380c3f9ce14a94ee78a0119d3cfff3"
+    },
+    {
+      "path": "M10b-入口资产与真载体验收/code/2026-09-25-M10b-入口资产与真载体验收-glm.md",
+      "sha256": "132da242e563c8e690d0f2163edef2178c93f55bfa70c7c4da6f21572d266c08"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}

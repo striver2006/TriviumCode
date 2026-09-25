@@ -1,0 +1,94 @@
+{
+  "targets": [
+    "src/install.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/init.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/install.test.js",
+    "dist/test/test/unit/topic-args.test.js",
+    "dist/test/test/unit/init.test.js"
+  ],
+  "cases": [
+    {
+      "id": "I7",
+      "desc": "安装侧运行时根判定恒放行 ⇒「指向运行时源本身 / 父目录 / 上级目录 / 外来目录：安装拒绝」",
+      "file": "src/install.ts",
+      "find": "  const rtProblem = await checkRuntimeRoot(root, plan.runtimeRoot);",
+      "replace": "  const rtProblem = null as InstallProblem | null;",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "I8",
+      "desc": "卸载侧运行时根判定恒放行 ⇒「卸载不删，仓库 / 外来目录一个文件都不少」",
+      "file": "src/install.ts",
+      "find": "    const p = await checkRuntimeRoot(root, plan.runtimeRoot);",
+      "replace": "    const p = null as InstallProblem | null;",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "I9",
+      "desc": "重叠只查「运行时根在仓库内」一个方向 ⇒「指向仓库的上级目录：判为重叠」",
+      "file": "src/install.ts",
+      "find": "  if (within(rt, repo) || within(repo, rt)) {",
+      "replace": "  if (within(rt, repo)) {",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "I10",
+      "desc": "去掉 syncDir 同路径短路 ⇒「同路径：顶层 exclude 掉的目录不被裁」",
+      "file": "src/install.ts",
+      "find": "  if ((await realOrResolved(src)) === (await realOrResolved(dst))) return { copied: 0, removed: [] };",
+      "replace": "  if (src === '\\u0000') return { copied: 0, removed: [] };",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "I11",
+      "desc": "缺省位置旧运行时不再提示 ⇒「运行时根换了位置：提示」",
+      "file": "src/install.ts",
+      "find": "    (await isOurRuntime(defaultRuntime))",
+      "replace": "    false",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "A1",
+      "desc": "卸载时静默吞掉 --targets ⇒「卸载带 --targets 报错」",
+      "file": "src/install.ts",
+      "find": "    if (targetsRaw !== undefined) {",
+      "replace": "    if (false) {",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "A2",
+      "desc": "未知参数静默忽略 ⇒「拼错的 --target / 多余位置参数报错」",
+      "file": "src/install.ts",
+      "find": "      throw new Error(`不认识的参数「${a}」。\\n${USAGE}`);",
+      "replace": "      continue;",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "M1",
+      "desc": "--model-* 判据退回能力面（能入选即放行）⇒「--critics 排除的那一家、命令 A 缺省集合外的那一家：退 64」",
+      "file": "src/trivium/critics.ts",
+      "find": "    if (picked.includes(id)) continue;",
+      "replace": "    if (selectable.includes(id)) continue;",
+      "expect": "dist/test/test/unit/topic-args.test.js"
+    },
+    {
+      "id": "P3",
+      "desc": "指纹表退回不分文件的总表 ⇒「只剩另一类文件的正文：不替换」",
+      "file": "src/trivium/init.ts",
+      "find": "  return KNOWN_PROTOCOL_SHA256[path.basename(file)]?.has(protocolFingerprint(interior)) ?? false;",
+      "replace": "  return Object.values(KNOWN_PROTOCOL_SHA256).some((s) => s.has(protocolFingerprint(interior)));",
+      "expect": "dist/test/test/unit/init.test.js"
+    },
+    {
+      "id": "P4",
+      "desc": "当前版指纹不在表里（等价于改了片段忘了登记）⇒「已知指纹表覆盖当前版」守卫",
+      "file": "src/trivium/init.ts",
+      "find": "    'c93b609aa97a2601f06e98d656cfeec8173e082ccd8ecff0858a676f4cffd02d', // driver",
+      "replace": "    '0000000000000000000000000000000000000000000000000000000000000000', // driver",
+      "expect": "dist/test/test/unit/init.test.js"
+    }
+  ]
+}

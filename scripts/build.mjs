@@ -9,6 +9,11 @@
  * 两者都以 CJS + bundle 形式出，把 yaml / ajv 内联进单文件，运行期零 node_modules。
  * --target=node18 而非本机 Node 版本，保证 AD-12 承诺的 Node ≥ 18 兼容性。
  *
+ * 入口资产渲染（--render / --render-only，M10b 第 2 步）：skills-src/ → skills/<命令名>/SKILL.md 与
+ * skills/dual-critic/entry/<agent>/<命令名>/SKILL.md。产物进 Git，**缺省构建不重写它们**：
+ * 由 `entry-render-parity` 契约测试比对「源 → 产物」，改了源忘了渲染就当场红；
+ * 若缺省构建也顺手重写，那条测试在 `npm test`（pretest 先构建）下恒绿，守不住任何东西。
+ *
  * 测试构建（--tests-only 或 --with-tests）：把 src/ 与 test/ 逐文件转译（不 bundle）到
  * dist/test/，再由 `node --test dist/test/` 运行。不用 Node 原生 type-stripping，
  * 因为那需要 Node ≥ 22，会把 Node 18 用户挡在门外。
@@ -24,6 +29,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
 const testsOnly = argv.includes('--tests-only');
 const withTests = testsOnly || argv.includes('--with-tests');
+const renderOnly = argv.includes('--render-only');
+const withRender = renderOnly || argv.includes('--render');
 
 const COMMON = {
   platform: 'node',
@@ -130,5 +137,29 @@ async function buildTests() {
   });
 }
 
-if (!testsOnly) await bundleBinaries();
+/**
+ * 渲染入口资产：渲染逻辑只在 `src/entry-render.ts` 写一份，这里与构建标识同法——先单独打包成临时 CJS 再调用，
+ * 契约测试（逐文件转译后直接 import 同一个模块）与本步走的是同一段代码。
+ */
+async function renderEntryAssets() {
+  const helper = path.join(ROOT, 'dist/.entry-render.cjs');
+  await mkdir(path.join(ROOT, 'dist'), { recursive: true });
+  await build({
+    platform: 'node', target: 'node18', logLevel: 'silent', charset: 'utf8',
+    entryPoints: [path.join(ROOT, 'src/entry-render.ts')],
+    outfile: helper, bundle: true, format: 'cjs',
+  });
+  try {
+    const mod = createRequire(import.meta.url)(helper);
+    const r = await mod.writeEntries(ROOT);
+    console.log(`入口资产渲染：重写 ${r.written.length} 份，删除 ${r.removed.length} 份残留`);
+    for (const p of r.written) console.log(`  ~ ${p}`);
+    for (const p of r.removed) console.log(`  - ${p}`);
+  } finally {
+    await rm(helper, { force: true });
+  }
+}
+
+if (withRender) await renderEntryAssets();
+if (!testsOnly && !renderOnly) await bundleBinaries();
 if (withTests) await buildTests();

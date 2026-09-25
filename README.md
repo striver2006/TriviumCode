@@ -232,15 +232,18 @@ TriviumCode/
 │   │   ├── parse.ts render.ts guard.ts gate.ts
 │   │   ├── archive.ts meta.ts verify.ts report.ts
 │   │   └── adapters/{base,agy,zcode}.ts
-│   └── install.ts                 # 安装器：构建产物 + skills + Agent 定义 → 用户目录
-├── skills/                        # → 安装到 ~/.claude/skills/（用户级，一次安装多项目复用）
+│   ├── entry-render.ts            # 入口资产渲染器：skills-src/ → 四家入口 SKILL.md
+│   └── install.ts                 # 安装器：运行时根 + 四家入口 + Agent 定义 → 用户目录
+├── skills-src/                    # 入口资产的源：命令契约、片段、四家载体差异（改这里，再 npm run render）
+├── skills/                        # → 安装到各家用户级 skill 根（一次安装多项目复用）
 │   ├── dual-critic/               # 核心 skill：编排器脚本与全部资产
+│   │   ├── entry/<agent>/         #   另三家的入口 SKILL.md（渲染产物，进 Git，安装时拍平）
 │   │   ├── scripts/trivium.cjs    #   esbuild 打包产物（不进 Git）
 │   │   ├── schema/                #   review / disposition / run / config 四份 JSON Schema
 │   │   ├── prompts/ lenses.yaml   #   审查提示词模板与两侧差异化审查镜头
 │   │   ├── agents/ templates/     #   Antigravity 只读审查 Agent 定义、文档模板
 │   │   └── hooks/ protocol/       #   Hook 配置与协议片段
-│   └── dual-{run,review-plan,review-code,review-bug,approve,abandon,status}/
+│   └── dual-{run,review-plan,review-code,review-bug,approve,abandon,status}/   # claude 的入口（渲染产物）
 ├── test/                          # node:test 单元 / 契约 / 集成测试
 ├── .reviews/                      # 多智能体协同审计与留痕（进 Git）
 ├── doc/                           # 工程文档中心（单层扁平结构）
@@ -301,7 +304,7 @@ npm run build        # esbuild 打包为单文件零依赖 skills/dual-critic/sc
 node dist/install.cjs
 ```
 
-安装器会：把 `skills/*` 同步到 `~/.claude/skills/`（用户级；升级时裁剪源码已不存在的旧文件）；把只读审查 Agent 定义拷贝到 `~/.gemini/config/agents/trivium-critic/agent.md`；然后**提示**你接下来该做什么——它不会替你跑 `doctor`，因为那会消耗厂商配额。卸载用 `node dist/install.cjs --uninstall`（项目内的 `.trivium/` 与 Hook 不动）。
+安装器会：把运行时资产 `skills/dual-critic/` 装到 `~/.claude/skills/dual-critic`（**必装**，设了 `TRIVIUM_ASSET_ROOT` 就装到那里）；按本机装了哪几家 CLI，把各家的入口 skill 装进各自的 skill 根——Claude Code `~/.claude/skills/`、Codex `$CODEX_HOME/skills/`（未设时 `~/.codex/skills/`）、ZCode `~/.zcode/skills/`、Antigravity `~/.gemini/config/skills/`，家根不存在的那一家跳过；Antigravity 在场时再把只读审查 Agent 定义拷到 `~/.gemini/config/agents/trivium-critic/agent.md`。装之前先查历史残留与重名，有问题**只报错、一个文件都不写、不删你的东西**；升级时只裁剪本产品自己那几个 skill 目录里的旧文件。只想装其中几家用 `--targets claude,glm`。装完它会**提示**你接下来该做什么——不会替你跑 `doctor`，因为那会消耗厂商配额。卸载用 `node dist/install.cjs --uninstall`：只删本产品的东西——各家 skill 根里判定为本产品的入口（`SKILL.md` 名字对得上、且调用 `.trivium/bin/trivium`；保留原名、仍调用 wrapper 的 fork 也会被当成本产品）、运行时根、Agent 定义；项目内的 `.trivium/` 与 Hook 不动。运行时根同样先过身份判定：它与本仓库重叠（`TRIVIUM_ASSET_ROOT` 指向了工作树），或非空却不是本产品的运行时，安装会拒绝、卸载只提示不删——**安装与卸载前请取消指向工作树的 `TRIVIUM_ASSET_ROOT`**。安装器只认 `--targets` 与 `--uninstall` 两个旗标，拼错或卸载时带 `--targets` 都会直接报错。
 
 > **`trivium` 不在 PATH 上**，这是有意的。下文为可读性写作 `trivium <子命令>`，实际调用是：
 > - 项目内（`init` 之后）：`.trivium/bin/trivium <子命令>` ——wrapper 内含 node 绝对路径，GUI 启动的进程不读 `~/.zshrc`；

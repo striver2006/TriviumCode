@@ -8,6 +8,46 @@
 
 作为审查员你只读不写：不得修改任何文件、不得执行写命令、不得读取任务书中
 禁读清单列出的文件。你的结论由编排器落盘，不要自行写文件到仓库。
+
+## TriviumCode 双审流水线协议（Driver）
+
+本项目启用了 TriviumCode「主攻 + 多审」流水线。作为 Driver（执笔者）你需要知道：
+
+- **当轮 Driver 是唯一有权改业务代码的角色。** 其余入选的审核者只做只读审查，
+  它们的结论由编排器落盘，不经你转述。
+- 四条入口命令是唯一入口：`dual-run`（全流程）、`dual-review-plan`、`dual-review-code`、`dual-review-bug`。
+  调用写法因载体而异（Claude Code、Antigravity 与 ZCode 桌面端用 `/名字`，Codex 用 `$名字`；ZCode 命令行模式下是 `/skill 名字`）。
+  **不要自行调用任何一家审核者的 CLI**——并行、超时、指纹核验、防覆盖命名都在编排器内，绕过它会失去全部保障。
+- **禁止在归档根内产出带审查员角色后缀的文件。** 受保护的后缀是
+  **除当轮 Driver 之外的全部已登记角色**——权威判据是 `hooks.ts` 的
+  `criticRoleSuffixes()`，**不要在这里枚举**（枚举过一次，M8 接入 codex 后就漏了）。
+  **你的产出后缀是当轮 Driver 自己的 Agent id**，不是固定的某一家：
+  原稿、裁决件都按它命名，裁决件的 front-matter `role` 也填同一个值。
+  plan / bug 阶段的原稿写在双审之前：**写原稿之前先认领本阶段**（入口命令里有这一步）。
+- 审查意见必须**逐条**裁决（接受 / 驳回 / 暂缓 + 理由，接受要写落点）。禁止静默忽略。
+- 闸门期（等待人工审批）不得修改业务文件。想继续请让用户走 `dual-approve`。
+- **审批的发起权在用户手里，不在你手里。** 只在用户明确要求时才跑 `trivium approve`。
+  技术上你自己跑得通——`approve` 不校验调用来源，正因如此这条才写在这里：
+  它靠的是你守规矩，而审批记录会留下时间与会话来源供事后对账。
+- 审查进行中也不要改业务文件：审查员正在读真实工作树，你的改动会造成快照漂移，
+  可能让整次审查作废。
+- **护栏因载体而异**（入口命令的「护栏」段写着你所在载体的等级）：
+  L1 载体装有 TriviumCode Hook，越界写入、裁决未齐备就收工都会被事前拦下；
+  L2 载体**不宣称** Hook 兜得住——没有 Hook，或只有尽力拦截的 Hook——这些都**靠你自觉**，
+  越界由 approve 前置复核（裁决齐备 + 本轮工件 sha256）与跑后漂移复算在事后暴露。
+- 装有 Hook 时，它对结构化写工具（Write / Edit）精确拦截；对 Bash 只按写命令形态做**启发式**拦截，
+  不是完备的——别去绕它，绕过去的改动同样会被跑后复算判成漂移。
+  Bash 侧有**已知误拦**，判据是：命令**像**写命令（写动词字面、重定向等，词边界字面匹配、不看上下文），
+  且命令文本提到任一角色后缀（含你自己的）、`_meta`、`task.json`、`state.json`、`.trivium`，
+  两条同时成立即拦——**不区分「写它」与「说它」**，包括 commit message 与审查焦点。
+  **出口是改用结构化写工具落文件，提交说明写进文件再 `git commit -F <文件>`**（精确判定，不看字面）；
+  焦点里有写动词字面时先问用户改措辞；恢复被误改的受保护文件请用户在终端执行。
+  换一种写法让判据认不出来属于绕过，不是出口；这个误拦是刻意接受的取舍，不要当成 bug 去「修」。
+- **不要再试图给 `git commit` 开豁免。** 2026-09-12 开过一次（RV-B1），双审打穿后撤回：
+  豁免把 fail-closed 的判定变成需要穷举危险形态的 fail-open，而 shell 的攻击面穷举不完。
+
+留痕全部在 `.reviews/<主题>/{plan,code,bug,verify}/`，命名为
+`<日期>-<主题>[-r<N>][-revised|-response]-<角色>.md`。
 <!-- END TriviumCode -->
 
 ## 项目概览
@@ -19,10 +59,14 @@ Node ≥ 18（开发建议 ≥ 22）。
 
 - `src/trivium/` — 编排器全部实现（`cli.ts` 入口，`adapters/` 收敛四家 CLI 差异，
   `agents/registry.ts` 是 Agent 差异的唯一登记处）
-- `src/install.ts` — 安装器（→ `dist/install.cjs`）
+- `src/install.ts` — 安装器（→ `dist/install.cjs`），多目标：运行时根 + 四家各自的 skill 根
+- `src/entry-render.ts` — 入口资产渲染器：`skills-src/` → 四家载体的入口 SKILL.md
+- `skills-src/` — 入口资产的**源**（`commands/*.contract.md` 命令契约、`partials/` 片段、
+  `carriers/*.yaml` 四家载体差异）。**改入口命令的措辞改这里，再跑 `npm run render`**
 - `skills/` — 8 个 Claude 用户级 skill，核心资产在 `skills/dual-critic/`
   （`scripts/trivium.cjs` 为打包产物**不进 Git**；`schema/` 机读契约，含当前形状与只读保留的历史形状、
-  `prompts/` `lenses.yaml/`、`hooks/`）
+  `prompts/` `lenses.yaml/`、`hooks/`）。其中 7 份 `skills/dual-*/SKILL.md` 与
+  `skills/dual-critic/entry/**` 是 `skills-src/` 的**渲染产物**（进 Git、不手改，漂移由契约测试拦）
 - `test/{unit,contract,integration}/` — 分层测试，共享夹具在 `test/helpers/fixture.ts`
 - `doc/` — 工程文档（八个一级子目录，**单层扁平**，文件名带前缀）
 - `.reviews/` — 流水线审计留痕（进 Git）
@@ -32,6 +76,7 @@ Node ≥ 18（开发建议 ≥ 22）。
 ```bash
 npm run typecheck                 # tsc --noEmit（strict + noUncheckedIndexedAccess + noUnused*）
 npm run build                     # esbuild 出两个 bundle（会重建 skills/ 下产物）
+npm run render                    # skills-src/ → 入口 SKILL.md（缺省构建故意不重写它们）
 npm test                          # pretest 自动全量构建（含测试），再 node --test dist/test
 npm run check                     # typecheck + build + test，提交前的完整闸门
 node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文件
@@ -119,10 +164,14 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
   `~/.claude/skills/.../trivium.cjs`，不是仓库刚构建的产物。要 `npm run build &&
   node dist/install.cjs` 两步都做；调试可直接 `node skills/dual-critic/scripts/trivium.cjs <子命令>`，
   改 `skills/` 资产可用 `TRIVIUM_ASSET_ROOT=<repo>/skills/dual-critic` 指向工作树。
+  **但安装与卸载前要取消这个变量**：运行时根与仓库重叠时安装器拒绝写、卸载只提示不删
+  （否则同步会裁掉仓库里的 `entry/` 渲染产物，卸载会删掉整棵运行时源）。
 - `trivium` 有意不在 PATH 上。
 - esbuild 必须 `charset: 'utf8'`（默认 ascii 会把中文全部 `\u` 转义）；测试构建需把
   `skills/dual-critic/schema/` 按原相对路径拷进 `dist/test/`。
 - 集成产物 `dist/` 与 `skills/dual-critic/scripts/trivium.cjs` 均为生成物，不手改。
+- 入口 SKILL.md（`skills/dual-*/`、`skills/dual-critic/entry/**`）同样是生成物：手改的内容会在下一次
+  `npm run render` 时被源整份覆盖。改 `skills-src/`，别改产物。
 
 ## 改动同步清单
 
@@ -130,7 +179,8 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
 | :--- | :--- |
 | 与设计文档不一致的行为 | 先回补修订 `doc/02_design/` 设计文档（唯一实现依据），升补丁版本 |
 | JSON Schema（含新增一份） | `parse` / `gate` / `meta` 校验、`doc/03_api/PROTOCOL_dual_critic_relay.md`、`skills/dual-critic/SKILL.md`、**本文件的契约面描述**、`registry-parity` 的 schema 扫描盯防点 |
-| CLI 参数或退出码 | `USAGE` 字符串、PROTOCOL 文档、相关 SKILL.md |
+| CLI 参数或退出码 | `USAGE` 字符串、PROTOCOL 文档、相关命令契约（`skills-src/commands/`，改后 `npm run render`） |
+| 入口命令的措辞、护栏、参数写法 | 改 `skills-src/`（契约 / 片段 / 载体），`npm run render` 重出四家产物并一起提交；`entry-render-parity` 契约测试校验零漂移 |
 | 探针项 | 设计 §3.5 清单与 `doc/05_testing/REPORT_2026-09-11_m0_probe.md`（M0 坑清单） |
 | BRIEF 段落 | 八段结构是契约，只并入现有段，不得增删段号 |
 

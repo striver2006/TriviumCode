@@ -1,0 +1,199 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260925T053433Z",
+  "topic": "冒烟主题",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "看 it's 这一处的 $HOME 与 \"双引号\"",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "glm",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini"
+  ],
+  "snapshot": {
+    "git_head": "194a3a6b0e046e7d7b34bb9ce6d9add08c16f5a4",
+    "tree_hash": "5f673cf69bbafbbb74ef57361ce820025c51d7e6",
+    "dirty": true,
+    "subject_sha256": "34a35c9388090ed0d08b3576d6c23cb3be7b5655405ee656cf5c1f70768f973b",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "c4d9af6ff6245e3f7b8d4ef91beffd337ef6d123",
+      "dirty": true,
+      "inputs_sha256": "9817040cf68ea05fe8a02896c2fadc6c120e2f40445a198de4c3369962438f09",
+      "built_at": "2026-09-25T05:20:35.748Z"
+    }
+  },
+  "started_at": "2026-09-25T05:34:33.995Z",
+  "finished_at": "2026-09-25T05:36:36.749Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.156.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 122.567,
+      "tool_calls": {
+        "run_command": 9,
+        "project_reads": 7
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0d70e-eb2a-7d93-b8b7-a7f78defcb21",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.11",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 72.712,
+      "tool_calls": {
+        "read": 6,
+        "grep": 0,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 5
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 53279,
+        "output_tokens": 9095,
+        "thinking_tokens": 7753,
+        "cache_read_tokens": 187613,
+        "total_tokens": 62374
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "da824630-ee6b-4d01-8219-6b764b149b28",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "~/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "冒烟主题/plan/_meta/brief-codex-20260925T053433Z.md",
+      "sha256": "4d71da3b316f8c06250739f835dfe75b7cdd9bf2a34357861fc17c3426b0d9db"
+    },
+    {
+      "path": "冒烟主题/plan/_meta/brief-gemini-20260925T053433Z.md",
+      "sha256": "329feb40f9db1a4f2d51c15426557677d5a81acea317624ea9c33fec971289db"
+    },
+    {
+      "path": "冒烟主题/plan/_meta/review-codex-20260925T053433Z.json",
+      "sha256": "2dbd6b740127e146a6a6b8f0307a0232617fa0af9476bf16db8606c2ffed7fe5"
+    },
+    {
+      "path": "冒烟主题/plan/_meta/review-gemini-20260925T053433Z.json",
+      "sha256": "1abf44afbf805f82db859e307a75b0ba46da2cabeec99a27797bd51df0923266"
+    },
+    {
+      "path": "冒烟主题/plan/2026-09-25-冒烟主题-codex.md",
+      "sha256": "3ee7da92ee8525f24cd92b8a104dbaff82e4cbfd6309105f867db6d9350303e0"
+    },
+    {
+      "path": "冒烟主题/plan/2026-09-25-冒烟主题-gemini.md",
+      "sha256": "426d4b1c271be657108e08fad61a1bf91b739e0cfc48614188775fb1d0744b4e"
+    },
+    {
+      "path": "冒烟主题/plan/2026-09-25-冒烟主题-glm.md",
+      "sha256": "34a35c9388090ed0d08b3576d6c23cb3be7b5655405ee656cf5c1f70768f973b"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

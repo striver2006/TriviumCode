@@ -112,17 +112,39 @@ export function selectableCritics(
  * 同一论域两层措辞分叉，而集成用例正拿「当前可用」当锚点截字符串
  * （第 2 轮 GLM-03）。
  *
+ * ## 判据是「本轮**实际**入选了谁」，不只是「能入选谁」（M10b 第 2 步代码双审 CODEX-02，收 EV-67）
+ *
+ * EV-53 收口时判据只到 `selectableCritics`（能力面），而消费点只遍历**入选侧**——
+ * 「能入选、这一轮没入选」的那一家，覆盖照样解析成功后被丢弃（`--critics gemini --model-glm X`）。
+ * 当时刻意推迟（收紧是行为变化）；M10b 第 2 步把缺省集合改成「减去当轮 Driver」之后，
+ * 这一格在非 claude Driver 的**缺省路径**上成了常规形态：三家入口资产的参数写法行
+ * 列着 `--model-claude`，照写就被静默吞掉。于是收紧到 `picked`：三个调用点在此之前
+ * 都已解析好入选集合，判定点手边就有。
+ *
+ * 两种拒绝分开措辞：当不了审核者（Driver / 未启用）列「当前可用」；能当、但本轮没选它，
+ * 列「本轮入选」并指出怎么把它加进来——两者的出口不同，混成一句会把用户引错方向。
+ *
  * @param ids 用户实际写出来的 `--model-<id>` 里的 `<id>`，不含没写的
+ * @param picked 本轮入选的审核者（`resolveCriticSelection` 的结果）
  */
 export function assertModelOverrideKeys(
   cfg: Config,
   driver: AgentId,
   ids: readonly string[],
+  picked: readonly string[],
   descriptors?: readonly AgentDescriptor[],
 ): void {
   const selectable = selectableCritics(cfg, driver, descriptors) as readonly string[];
   for (const id of ids) {
-    if (selectable.includes(id)) continue;
+    if (picked.includes(id)) continue;
+    if (selectable.includes(id)) {
+      throw new TriviumError(
+        EXIT.USAGE,
+        `--model-${id}：${id} 本轮没有入选，为它指定的模型不会生效。\n` +
+          `  本轮入选：${picked.join(' | ')}\n` +
+          `  要让它参审，请用 --critics 把它列进来；否则去掉这个旗标。`,
+      );
+    }
     const why =
       id === driver
         ? '它是本轮的 Driver（执笔者），不能同时充当审核者'
@@ -252,7 +274,18 @@ export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput 
     picked = [onlyRaw];
     source = '--only';
   } else {
-    picked = [...cfg.review.default_critics];
+    /*
+     * **缺省集合先减去当轮 Driver**（M10b 第 2 步，用户 2026-09-25 拍板；计划 r11）。
+     *
+     * 缺省集合是「不指定时跑谁」，写它的人写的是「平时的审核者」，不是「这一轮除了执笔者之外的」——
+     * 而 codex / gemini / glm 三家既在缺省集合里、又都能当 Driver。此前这一格一律退 64：
+     * B / C / D 还能显式传 `--critics` 绕开，**命令 A 不收 `--critics`，根本没有出口**。
+     * 这条路径改前恒退 64，改后放行不会改变任何今天能跑通的流程；claude 当 Driver 时缺省集合里本就没有它。
+     *
+     * 只减缺省、不减显式：用户**亲手写下**的 `--critics` / `--only` 含 Driver 仍退 64（下面那条检查）——
+     * 那是明确的自审意图，静默去掉就是「错的消失」。减完为空，落到下面「空集合」那条报错。
+     */
+    picked = cfg.review.default_critics.filter((id) => id !== driver);
     source = 'review.default_critics';
   }
 

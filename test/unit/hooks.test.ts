@@ -366,6 +366,18 @@ test('GLM-03：hookPreBash 在未剥离的原文上判，heredoc 里写保护对
   assert.equal((await hookPreBash(ctx, bashInput(benign))).exitCode, EXIT.OK);
 });
 
+test('EV-61 ⑥：拒绝文案按真实机制写 bin/ 的后果，不再说「删掉 bin/ 会永真放行」', async () => {
+  const ctx = await fakeCtx();
+  const r = await hookPreBash(ctx, bashInput('rm -rf .trivium/bin'));
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
+  const msg = r.stderr ?? '';
+  // 删掉或去掉执行位时守卫是保守拦截（hook-guard.test.ts 实跑过 exit 2）；说成「永真放行」是把因果写反了
+  assert.doesNotMatch(msg, /删掉或改坏 bin\/ 会让[^\n]*永真放行/);
+  assert.match(msg, /去掉执行位 ⇒ 守卫保守拦截/);
+  assert.match(msg, /内容被替换\*\* ⇒ 每条 Hook 的守卫永真放行/);
+  assert.match(msg, /整体被移除 ⇒ 不再有任何拦截/);
+});
+
 test('GLM-03：闸门期不剥 heredoc，正文里的写命令一并拦下', async () => {
   const ctx = await fakeCtx();
   await setGate({ triviumDir: ctx.triviumDir, topic: '登录重构', stage: 'plan', state: 'awaiting_approval', sessionId: SESSION, heartbeatStaleMs: STALE });

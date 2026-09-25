@@ -1,0 +1,12 @@
+# ZCode 载体适配层（M10b 第 2 步）
+#
+# 安装时拍平到 ~/.zcode/skills/<命令名>/（报告 §3.6：与 ~/.agents/skills 同名时 ~/.zcode/skills 胜出、不告警）。
+# 报告 §3.6：`/skill 名字 参数` 被 CLI 改写成「用 Skill 工具加载」+「User request: 参数」，**$ARGUMENTS 不替换**。
+agent: glm
+layout: entry
+frontmatter: [name, description]
+arguments: transcribe
+# 桌面端写法 `/名字`：第 2 步薄冒烟实测（2026-09-25，ZCode 桌面端，第 2 步报告附录 B）——
+# `/dual-review-plan 参数` 被转成一次 `Skill` 工具调用，参数逐字进 args。
+# 命令行 `--prompt` 模式下是 `/skill 名字`（报告 §3.6）；J4 与 Hook 生效的载体都是桌面端，所以产物按桌面端写。
+invocation: /{name}

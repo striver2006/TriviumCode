@@ -5,7 +5,10 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   runInit, mergeHooks, fixGitignore, writeWrapper, hookNamesOf, stableNodePath, checkWrapper, type InitReport,
+  protocolPlan, protocolFingerprint, composeProtocol, KNOWN_PROTOCOL_SHA256, upsertProtocolBlock,
 } from '../../src/trivium/init.js';
+import { REPO_ROOT } from '../helpers/fixture.js';
+import { AGENTS } from '../../src/trivium/agents/registry.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import type { Ctx } from '../../src/trivium/types.js';
 
@@ -29,8 +32,8 @@ async function fakeAssets(): Promise<string> {
   );
   await fs.writeFile(path.join(root, 'protocol/gitignore.snippet'),
     '\n# TriviumCode 编排器运行时目录 (.trivium/)\n.trivium/bin/\n.trivium/config.local.yaml\n');
-  await fs.writeFile(path.join(root, 'protocol/CLAUDE.md.snippet'), '## TriviumCode 协议\n\n内容。\n');
-  await fs.writeFile(path.join(root, 'protocol/AGENTS.md.snippet'), '## 审查员身份\n\n内容。\n');
+  await fs.writeFile(path.join(root, 'protocol/driver.snippet'), '\n## TriviumCode 双审流水线协议（Driver）\n\nDRIVER-段。\n');
+  await fs.writeFile(path.join(root, 'protocol/critic.snippet'), '\n## 审查员身份说明（TriviumCode）\n\nCRITIC-段。\n');
   return root;
 }
 
@@ -52,7 +55,7 @@ test('init 产出 config.yaml、wrapper、协议片段与归档 README', async (
   const assetRoot = await fakeAssets();
   const r = await runInit({ ctx, assetRoot, nodePath: '/usr/bin/node' });
 
-  for (const rel of ['.trivium/config.yaml', '.trivium/bin/trivium', 'CLAUDE.md', 'AGENTS.md', '.reviews/README.md']) {
+  for (const rel of ['.trivium/config.yaml', '.trivium/bin/trivium', 'CLAUDE.md', 'AGENTS.md', 'GEMINI.md', '.reviews/README.md']) {
     await fs.access(path.join(ctx.projectRoot, rel));
   }
   assert.ok(r.created.length >= 5);
@@ -294,6 +297,97 @@ test('协议片段带标记且幂等，原有内容保留', async () => {
   assert.equal((md.match(/END TriviumCode/g) ?? []).length, 1);
 });
 
+/*
+ * ── 协议片段两段式（M10b 第 2 步；计划 r2 §3.3、r5 §5.5）──
+ *
+ * 旧版 `appendSnippet` 见标记就跳过，片段永远停在 init 那天（MANUAL「坑二」）。
+ * 新版按标记内正文的指纹判断：已知旧版原位换成新两段，别的一律不动并提示。
+ */
+
+/** 旧版 `protocol/AGENTS.md.snippet`（@2d7cbbc，唯一一版）的正文——指纹在 init.ts 的旧版表里 */
+const LEGACY_AGENTS_SNIPPET = [
+  '## 审查员身份说明（TriviumCode）',
+  '',
+  '若你是通过 TriviumCode 编排器以**审查员**身份被启动的（提示词首段会明确声明角色），',
+  '则以**提示词首段的角色与禁令为准**，忽略本文件中面向执笔者的任务指令——',
+  '那些是给主攻方（Driver）的，不是给你的。',
+  '',
+  '作为审查员你只读不写：不得修改任何文件、不得执行写命令、不得读取任务书中',
+  '禁读清单列出的文件。你的结论由编排器落盘，不要自行写文件到仓库。',
+].join('\n');
+
+const block = (body: string): string => `\n<!-- BEGIN TriviumCode -->\n${body}\n<!-- END TriviumCode -->\n`;
+
+test('协议片段按注册表派生：CLAUDE.md 只带 Driver 段；AGENTS.md / GEMINI.md 审查员段在前、Driver 段在后', () => {
+  const plan = Object.fromEntries(protocolPlan().map((p) => [p.file, p.sections]));
+  assert.deepEqual(plan, {
+    'CLAUDE.md': ['driver'],
+    'AGENTS.md': ['critic', 'driver'],
+    'GEMINI.md': ['critic', 'driver'],
+  });
+  // 派生而不是写死：审核者读不到项目记忆的那一家不带审查员段（EV-44）
+  const flipped = AGENTS.map((a) => (a.instructionFiles.includes('CLAUDE.md') ? { ...a, criticReadsInstructionFiles: true } : a));
+  assert.deepEqual(protocolPlan(flipped).find((p) => p.file === 'CLAUDE.md')?.sections, ['critic', 'driver']);
+});
+
+test('init 按片段组合写三个项目记忆文件，且 GEMINI.md 是新增的', async () => {
+  const ctx = await fakeProject();
+  const assetRoot = await fakeAssets();
+  const r = await runInit({ ctx, assetRoot, nodePath: '/usr/bin/node' });
+  const read = (f: string): Promise<string> => fs.readFile(path.join(ctx.projectRoot, f), 'utf8');
+  const claude = await read('CLAUDE.md');
+  assert.match(claude, /DRIVER-段/);
+  assert.doesNotMatch(claude, /CRITIC-段/);
+  for (const f of ['AGENTS.md', 'GEMINI.md']) {
+    const md = await read(f);
+    assert.ok(md.indexOf('CRITIC-段') >= 0 && md.indexOf('CRITIC-段') < md.indexOf('DRIVER-段'), `${f}：审查员段须在前`);
+  }
+  assert.ok(r.created.some((c) => c.endsWith('GEMINI.md')));
+});
+
+test('已知旧版单段：原位升级为两段式，只有一块，块外内容不动', async () => {
+  const ctx = await fakeProject();
+  const assetRoot = await fakeAssets();
+  const agentsMd = path.join(ctx.projectRoot, 'AGENTS.md');
+  await fs.writeFile(agentsMd, `# 项目说明\n${block(LEGACY_AGENTS_SNIPPET)}\n## 后文\n\n保留。\n`);
+  const r = await runInit({ ctx, assetRoot, nodePath: '/usr/bin/node' });
+  const md = await fs.readFile(agentsMd, 'utf8');
+  assert.equal((md.match(/BEGIN TriviumCode/g) ?? []).length, 1, '替换而不是追加第二块');
+  assert.match(md, /CRITIC-段[\s\S]*DRIVER-段/);
+  assert.doesNotMatch(md, /以\*\*提示词首段的角色与禁令为准/, '旧正文应被换掉');
+  assert.match(md, /^# 项目说明/);
+  assert.match(md, /## 后文\n\n保留。\n$/);
+  assert.ok(r.notes.some((n) => /从已知旧版升级为当前版本/.test(n)), JSON.stringify(r.notes));
+  // 再跑一次：已是当前版本，幂等
+  const r2 = await runInit({ ctx, assetRoot, nodePath: '/usr/bin/node' });
+  assert.ok(r2.skipped.some((x) => x.includes('AGENTS.md') && /当前版本/.test(x)));
+  assert.equal(await fs.readFile(agentsMd, 'utf8'), md);
+});
+
+test('标记内被手工改过：不替换、原样保留，提示手工合并', async () => {
+  const ctx = await fakeProject();
+  const assetRoot = await fakeAssets();
+  const claudeMd = path.join(ctx.projectRoot, 'CLAUDE.md');
+  const original = `# 我的项目\n${block('## 我改过的协议\n\n本项目专属约定。')}`;
+  await fs.writeFile(claudeMd, original);
+  const r = await runInit({ ctx, assetRoot, nodePath: '/usr/bin/node' });
+  assert.equal(await fs.readFile(claudeMd, 'utf8'), original);
+  assert.ok(r.notes.some((n) => n.includes('CLAUDE.md') && /手工合并/.test(n)), JSON.stringify(r.notes));
+  // 判据是指纹而不是「长得像」：旧版正文多一个字就不再是已知旧版
+  assert.notEqual(protocolFingerprint(`${LEGACY_AGENTS_SNIPPET}。`), protocolFingerprint(LEGACY_AGENTS_SNIPPET));
+});
+
+test('只有开始标记没有结束标记：不动，提示', async () => {
+  const ctx = await fakeProject();
+  const assetRoot = await fakeAssets();
+  const gm = path.join(ctx.projectRoot, 'GEMINI.md');
+  const original = '# x\n<!-- BEGIN TriviumCode -->\n半截\n';
+  await fs.writeFile(gm, original);
+  const r = await runInit({ ctx, assetRoot, nodePath: '/usr/bin/node' });
+  assert.equal(await fs.readFile(gm, 'utf8'), original);
+  assert.ok(r.notes.some((n) => /标记不完整/.test(n)));
+});
+
 test('已存在的 config.yaml 不被覆盖', async () => {
   const ctx = await fakeProject();
   const assetRoot = await fakeAssets();
@@ -320,3 +414,59 @@ test('缺少构建产物时给出明确提示（而不是静默产出坏 wrapper
   const r = await runInit({ ctx, assetRoot });
   assert.ok(r.notes.some((n) => n.includes('npm run build')));
 });
+
+test('已知指纹表覆盖当前版：改了协议片段忘了登记，这里当场变红（代码双审 GLM-03）', async () => {
+  /*
+   * 表只追加、含当前版，且**按指令文件分档**（见 init.ts 的 KNOWN_PROTOCOL_SHA256）。
+   * 此前靠注释提醒「改片段时补指纹」，忘了补的后果是已 init 的项目下次被判成「手工改过」、
+   * 静默停在旧版——不报错、不可见。取**仓库里真实的片段**，不取夹具：要守的正是那两份文件的改动。
+   */
+  const assetRoot = path.join(REPO_ROOT, 'skills/dual-critic');
+  const missing: string[] = [];
+  for (const item of protocolPlan()) {
+    const body = await composeProtocol(assetRoot, item.sections);
+    assert.ok(body !== null, `${item.file}：仓库里缺协议片段`);
+    const fp = protocolFingerprint(body);
+    if (!KNOWN_PROTOCOL_SHA256[item.file]?.has(fp)) {
+      missing.push(`  [${item.file}] '${fp}', // ${item.sections.join(' + ')}`);
+    }
+  }
+  assert.deepEqual(
+    missing, [],
+    '当前协议片段拼出的正文指纹不在 KNOWN_PROTOCOL_SHA256 该文件那一档里。请把下面这些行**追加**进对应的档\n' +
+      '（只追加、不删旧值：旧值是已 init 项目的升级依据）：\n' + missing.join('\n'),
+  );
+});
+
+/*
+ * 删掉一段后恰好等于**别的文件**的已知正文：不得当成「已知旧版」复原（代码双审 r2 CODEX-02）。
+ * 三类正文（审查员段单独 = 旧 AGENTS.md 片段、Driver 段单独 = CLAUDE.md 当前版、两段拼合）都在表里，
+ * 不分文件查表时，用户的删除会被静默撤销。这里用仓库真实片段构造，因为要撞的正是真实指纹。
+ *
+ * **刻意不含「AGENTS.md 只剩审查员段」**：那与旧版 init 给 AGENTS.md 写的正文逐字相同，
+ * 「用户删了 Driver 段」与「这是旧版 init 的项目」在盘上是同一个状态，无从区分；按旧版升级是对的
+ * （后者远为常见）。这是分档也消不掉的固有边界，登记在 init.ts 的 KNOWN_PROTOCOL_SHA256 注释里。
+ */
+for (const [file, keep] of [
+  ['AGENTS.md', ['driver']],
+  ['GEMINI.md', ['driver']],
+  ['GEMINI.md', ['critic']],
+  ['CLAUDE.md', ['critic', 'driver']],
+] as const) {
+  test(`${file} 里只剩 ${keep.join(' + ')}（手工删改后恰等于别的文件的正文）：不替换，提示手工合并`, async () => {
+    const assetRoot = path.join(REPO_ROOT, 'skills/dual-critic');
+    const sections = protocolPlan().find((p) => p.file === file)!.sections;
+    const body = (await composeProtocol(assetRoot, sections))!;
+    const leftover = (await composeProtocol(assetRoot, keep))!;
+    assert.notEqual(leftover.trim(), body.trim(), '前提：剩下的正文不是本文件的当前版');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-protocol-'));
+    const target = path.join(dir, file);
+    const original = `# 项目说明\n${block(leftover)}\n## 后文\n`;
+    await fs.writeFile(target, original);
+    const r: InitReport = { created: [], updated: [], skipped: [], notes: [] };
+    await upsertProtocolBlock(target, body, r, false);
+    assert.equal(await fs.readFile(target, 'utf8'), original, '用户删改后的块必须原样保留');
+    assert.deepEqual(r.updated, []);
+    assert.ok(r.notes.some((n) => /与任何已知版本都不同/.test(n)), JSON.stringify(r.notes));
+  });
+}
