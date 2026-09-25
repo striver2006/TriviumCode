@@ -1,8 +1,9 @@
 # M10b 第 1 步 · 准入实测报告（进行中）
 
 > **状态**：进行中。本稿只收已取得的读数；每格三态（true / false / null），未测的格记「未测」。
-> **上位**：`.reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md` §4
-> **日期**：2026-09-24（首次落笔）
+> **上位**：`.reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md` §4（r7、r8 未替换 r5 §4.1 / §4.2 / §4.4，核过 §0 清单）
+> **日期**：2026-09-24（首次落笔）；2026-09-25 补 §1 agy、§2 codex、§5 嵌套枚举
+> **证据**：`doc/05_testing/evidence/m10b-entry-probe-20260925/`（2026-09-25 各臂的原始输出，已脱敏，见 §6）
 
 ## 0. 抬头：版本
 
@@ -18,13 +19,175 @@
 
 > 入口文件的 mtime 晚于 EV-82 判失效的运行（2026-09-21 14:53Z），版本串未变。EV-82 诊断说明已据此加注「环境漂移不可排除」。
 
+**2026-09-25 补测时**（§1、§2、§5 的读数只对这一行版本成立）：
+
+| 项 | 值 | 取法 |
+| :--- | :--- | :--- |
+| 本仓 HEAD | `d40f155` | `git rev-parse --short HEAD` |
+| Codex CLI | 0.156.1（原生二进制 `@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex`） | `codex --version` |
+| Antigravity（agy），PATH 上的入口 | **1.2.10**（`~/.local/bin/agy`，本次真实调用走它） | `agy --version` |
+| Antigravity，`~/.gemini/bin/agy` | 1.2.9 | `~/.gemini/bin/agy --version` |
+
+> 本机有两个 agy 二进制，版本不同。上表 2026-09-24 的「1.2.9」与后者一致，前者已升到 1.2.10。
+> §1 引的静态字面在两个二进制里都核过（各 1 处或同为 0 处），不受这个差异影响。
+
 ## 1. agy：skills 加载行为（§4.1）
 
-未测。
+> **口径偏离（用户 2026-09-25 两次拍板）**：r5 §4.1 要求隔离 `HOME`、哨兵放 `<fakehome>/.gemini/config/skills/`。
+> 实测隔离 `HOME` 不可行（1.1），全程**不隔离 `HOME`**。先把哨兵放在 mkdtemp 项目的**工作区根** `<workspace>/.agents/skills/`（1.2，未命中），
+> 用户随后选 (b)，改在**真实全局根** `~/.gemini/config/skills/` 补测三臂与嵌套（1.3）；再选 C，补测参数到达（1.4 的 g5）。
+> 全局根的写入：只在目标路径事先不存在时写，每臂跑完立刻清理（逐字校验内容 → `unlink` 文件 → 非递归 `rmdir` 空目录），一次确认覆盖三臂。
+
+### 1.1 隔离 `HOME` 不可行：登录态在登录钥匙串（**已测**）
+
+| 试探 | 读数 |
+| :--- | :--- |
+| `HOME=<空 fakehome> agy models` | 退 1：`Error: Please sign in to view available models. Launch the CLI without arguments to sign in.` |
+| 同上，另把 `~/.gemini/jetski-standalone-oauth-token` 拷进 `<fakehome>/.gemini/`（用户拍板；脚本 `fs.copyFile`，内容不读不打印，随 mkdtemp 目录删除） | 仍退 1，报错相同 ⇒ 该文件不是 CLI 的登录态 |
+| `HOME=<空 fakehome> agy agents`（两次） | 退 0，空输出（fakehome 下无 agent 定义） |
+| 二进制字面（两个二进制都有） | 链接 `zalando/go_keyring` 的 `keyring.macOSXKeychain.Get / Set / Delete` |
+| `security list-keychains`：真实 `HOME` 对 `HOME=<空目录>` | 前者 `~/Library/Keychains/login.keychain-db` + `System.keychain`；后者只剩 `System.keychain`，`security default-keychain` 报 `A default keychain could not be found` |
+| 不隔离时的 agy 日志（§1.2 的运行） | `keyringAuth: loaded token …` → `ChainedAuth: authenticated via keyring (effective: keyring)` |
+
+**结论**：agy CLI 1.2.10 的登录态存在 macOS 登录钥匙串里，而钥匙串搜索列表随 `HOME` 走，**隔离 `HOME` 就丢了登录态**。**true**（行为 + 静态）。
+与 M0 报告的 `agy.isolation = shared` 一致；r5 §4.1 的「隔离 `HOME`」手法在本机做不到。
+
+顺带：九次脚本运行（共 11 次 agy 调用：零配额 4 次、真实 7 次）前后比对进程表，都**没有**留下新的 agy 常驻进程；1.2.10 的日志显示后端在进程内拉起（`Creating CLI server backend: … workspaceDirs=[<tmp>/proj]`）。
+M0 的 P-17（`-p` 进程把工作交给跨运行复用的 hub）在本版本**没有复现**，只作观察，不作结论。
+
+### 1.2 正对照（工作区根）：**未命中**
+
+哨兵 `SKILL.md`（与 §2 同形，只换标签）：frontmatter `name: dualtest`、`description: … DESC-AGW-4H6`；正文 `BODY-AGW-4H6`，要求模型逐字照抄 `<<<AGW-4H6 ARGS=[$ARGUMENTS] A0=[$0] A1=[$1] AI0=[$ARGUMENTS[0]]>>>`、不做任何替换。
+这样写，回显能区分「CLI 替换过」（见到 `甲 乙`）与「CLI 没替换」（见到字面 `$ARGUMENTS`）。
+
+| 臂 | 命令与布局 | 读数 | 三态 |
+| :--- | :--- | :--- | :--- |
+| a1 | `agy -p '/dualtest 甲 乙' --output-format stream-json --print-timeout 180s`，cwd = `<tmp>/proj`（非 git），哨兵在 `<tmp>/proj/.agents/skills/dualtest/SKILL.md` | 退 0，186 s（stderr：`root agent idle; waiting up to 3m0s for 1 background task(s)` / `terminating 1 background task(s) on exit`）。输出里**没有哨兵**；模型把 `/dualtest` 当字面文本，执行 `grep -rn "dualtest" ~/.gemini` 找它的定义 | **false** |
+| a1-git | 同上，只多一步：工作区先 `git init`（诊断变体，对应二进制里的 `FindGitRoot` / `workspace %q: unsupported vcs %q`） | 退 0，28 s，失败形态相同 | **false** |
+
+两次的日志都一样：`Print mode: … sending message` → `Forwarding user message … (items=1, media=0)`，消息原样转发；
+`Reloading system slash commands and skills` 与发送消息只差约 1.6 ms；
+**没有**出现 `GetAllSkills: loaded %d skills`，也**没有**出现 `Failed to load skill commands during slash command resolution: %v`（两条格式串在二进制里都存在）。
+生效模型：日志 `Propagating selected model override to backend: label="Gemini 3.8 Flash (High)"`。
+
+**判读**：工作区根的哨兵在 print 模式下**没有被斜杠展开，也不在模型可见的 skill 清单里**：模型没去读 SKILL.md，而是 grep。
+1.3 的全局根在同样的时序下（重载与发送相差约 18 ms）展开成功，所以竞态解释可能性低（未排除）；读数与「**print 模式不读工作区根**」一致（本机两种布局：非 git、git）。
+这与二进制里的 `{workspace}/.agents/skills/{skill_name}/SKILL.md` 字面**冲突**，冲突原因未定位；那条路径也可能只对交互模式或 IDE 生效，未测。
+信任门控的可能性较低：二进制里检索不到把 untrusted 与 skill 连在一起的字面。
+
+### 1.3 全局根 `~/.gemini/config/skills/`（补测，**已测**）
+
+哨兵标签 `AGG-2R8`，其它与 1.2 同形；cwd 仍是 mkdtemp 项目（非 git）。判读规则事先定死：哨兵要经**斜杠展开**进来才算「见到」；
+如果只是模型自己用工具读文件读来的，记为「**被污染**」。依据是日志 `printmode.go` 的展开记录，以及 stream-json 里有没有工具步骤。
+
+| 臂 | 布局与命令 | 日志 | 输出 | 三态 |
+| :--- | :--- | :--- | :--- | :--- |
+| g1 正对照 | `~/.gemini/config/skills/dualtest/SKILL.md`；`agy -p '/dualtest 甲 乙' --output-format stream-json --print-timeout 180s` | `Print mode: expanded slash command "dualtest" (skill)`；`Forwarding user message … (items=2, media=0)` | 11 s，**零工具步骤**，回复 `AGG-2R8 ARGS=[$ARGUMENTS] A0=[$0] A1=[$1] AI0=[$ARGUMENTS[0]]` | 经展开见到哨兵 **true** |
+| g2 负对照 | 同 g1，加 `--disable-slash-commands` | `Print mode: slash command expansion disabled`；`items=1` | 回复里**有**哨兵，但前面有一步 `view_file ~/.gemini/config/skills/dualtest/SKILL.md`：模型自己按路径读了文件 | 展开被关 **true**；哨兵经工具进来，记「被污染」 |
+| g3 第三臂 | 全局根无哨兵（开跑前断言） | `items=1`，无展开 | 无哨兵；模型跑了 `grep` / `ls`（放行），`find`（被拒），最终回复为空 | 不见哨兵 **true** |
+
+读法：
+
+- **全局根会被斜杠展开**，而且展开后消息是 `items=2`（工作区根那两次和 g2、g3 都是 `items=1`）。
+- **全局 skill 同时在模型可见的清单里**：g2 里斜杠展开是关着的，模型却知道这份 SKILL.md 的确切路径，直接用 `view_file` 读了。也就是说，关掉斜杠展开**挡不住**模型自己加载 skill。这与 codex 的常驻 skill 列表同形。
+- 斜杠名匹配不到时（1.2、g3、1.4 的嵌套臂），agy **不报错**，把原文当普通消息发给模型。
+
+生效模型四次都是 Gemini 3.8 Flash (High)。
+
+### 1.4 参数：CLI 不替换 `$ARGUMENTS`（**false**），但原文到达模型（**true**）
+
+- **替换**：g1 的回复是字面 `$ARGUMENTS` / `$0` / `$1`，模型收到的正文没被替换过。与静态读数一致：两个 agy 二进制里 `$ARGUMENTS` 字面都是 **0 处**。**false**。
+- **到达**（g5，用户选 C 后补测，第 12 次真实调用）：哨兵正文改为「逐字复述命令后收到的全部用户文本，前缀 `AGA-9V3 GOT=[`；没收到就回 `AGA-9V3 GOT=<none>`；不跑命令、不读文件」，
+  发 `` /dualtest 甲 乙 "带引号" *星号* `反引号` ``。日志 `expanded slash command "dualtest" (skill)`、`items=2`；**零工具步骤**；
+  回复 `` AGA-9V3 GOT=[甲 乙 "带引号" *星号* `反引号`] ``，与命令后文本**逐字一致**（双引号、星号、反引号都保留）。**true**。
+  模型编不出这段原文，所以它只能是随展开一起送到的，推测就是 `items=2` 的第二项（这半句是推断）。
+
+适用范围：单次、单模型（Gemini 3.8 Flash (High)）。「逐字」来自**模型转抄**，不是 CLI 替换，所以不能排除长文本、特殊字符更多时转抄出错。
+
+### 1.5 对照 r5 §4.1 的判据与拍板 §18.1 #16
+
+| 判据成分 | 读数 |
+| :--- | :--- |
+| 正对照见哨兵 | ✓（g1，经展开） |
+| 参数逐字回显 | 按字面 ✗：`$ARGUMENTS` 不替换（1.4），与 codex 相同（§2.2）。改读为「参数原文到达模型」则 ✓（g5；codex 有 rollout 为证） |
+| 负对照不见 | 展开层面 ✓（日志明示已关）；但哨兵经模型自己 `view_file` 进来（g2） |
+| 第三臂不见 | ✓（g3） |
+
+**用户 2026-09-25 的拍板路径**：字面判据在 codex 上同样不成立，区分不了「skills 优先」与「退路」；用户在 A（改读判据）、B（按字面走退路）、C（先补测参数到达，再按 A）三者中选 **C**，
+约定「复述到了 ⇒ 按 A 拍板；没到 ⇒ 按 B」。g5 复述逐字一致 ⇒ **§18.1 #16 落 A：skills 优先**，判据中「参数逐字回显」一格改读为「参数原文到达模型」。
+主设计 §18.1 #16 从「倾向」改为「已拍板」、写明判据改读及理由，属于第 5 步纪律 6 回溯的份额，本报告不改主设计。
+
+**随拍板而来的代价（如实登记）**：非 Claude Driver（agy、codex）的入口 skill 不能再用 `$ARGUMENTS` 占位，要改写成「把命令后的全部文本原样当参数」。
+FR-20 的「审查焦点逐字进送审包」在这两家上从「CLI 保证」降为「模型转抄」，需要作为 Driver 间的差异登记（落点由第 2 步计划定）。
+
+### 1.6 副作用（如实登记）
+
+不隔离 `HOME` 的七次真实运行里，有五次模型在真实 `HOME` 下**自己调用了只读工具**（g1、g5 零工具步骤；g2 的 `view_file` 见 1.3）：
+a1-git 的 `grep -rn "dualtest" ~/.gemini` 跑完了，输出带出了用户其它 agy 会话的片段；g3 跑了 `grep` 与 `ls -la ~/.gemini/…`；嵌套臂跑了 `ls -la ~/.gemini/config/skills/…`。
+`sqlite3 …/conversations/<id>.db`（a1-git）和 `find ~/.gemini …`（g3、嵌套臂）被自动拒绝：stderr `a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied`，结果里 `denied_actions: [{"action":"command"}]`。
+全程没有写操作；全局根和 `~/.gemini/config/` 一层的前后快照里，唯一的差异是全局根目录自身的 mtime（我自己建、删哨兵目录造成的）。
+入仓的 `stdout.jsonl` 里，这些工具输出一律换成 `<已省略…>`。
+
+**这件事本身也是一条读数**：不带 `--agent trivium-critic` 时，agy 在 print 模式下按用户配置的 allow 规则（日志 `allow=29 deny=0 ask=0`）**放行一部分 shell 命令**，规则外的自动拒绝。
+作审核者时有 agent 白名单挡着；**作 Driver 时，这一面由用户自己的 allow 规则决定**。
 
 ## 2. codex：`$ARGUMENTS` 展开（§4.2）
 
-未测。
+**手法**（r2 §2.2）：隔离目录由 `prepareCodexHome`（`dist/test` 构建，与编排器同一实现）准备，
+`CODEX_HOME=<tmp>/run/codexhome`、`HOME=<tmp>/run/codexhome/fakehome`，profile `qwen`。
+真实调用的 argv 与适配器 `buildCodexArgs` 同形：`codex exec -p qwen -s read-only [-c …] --json --skip-git-repo-check -C <tmp>/proj -`，prompt 走 stdin。
+五次真实调用的生效模型都是 `qwen3.8-flash`（rollout `turn_context.model`），effort `medium`。哨兵 `SKILL.md` 与 §1.2 同形（标签 `CXH-7Q2`）。
+
+### 2.1 读取面（零配额：`codex debug prompt-input`，6 次渲染，不计入预算）
+
+| 渲染 | 布局 | Skill roots | 列表条目 |
+| :--- | :--- | :--- | :--- |
+| z1 `$dualtest 甲 乙` | `$CODEX_HOME/skills/dualtest` | r0 = `$CODEX_HOME/skills`，r1 = `…/skills/.system` | `dualtest … DESC-CXH-7Q2 (file: r0/dualtest/SKILL.md)` |
+| z2 `/dualtest 甲 乙` | 同 z1 | 同 z1 | 同 z1 |
+| z3 负对照 `-c 'skills.config=[{name="dualtest",enabled=false}]'` | 同 z1 | **只剩** `…/skills/.system` | 无 `dualtest` |
+| z4 第三臂 | 不放哨兵 | 只有 `…/skills/.system` | 无 |
+| z5 双根同名 | `$CODEX_HOME/skills/dualtest`（CXH-7Q2）+ `$HOME/.agents/skills/dualtest`（AGT-3K9） | r0 = `$CODEX_HOME/skills`，r1 = `<fakehome>/.agents/skills`，r2 = `.system` | **两条都列**：先 `DESC-AGT-3K9 (r1)`，后 `DESC-CXH-7Q2 (r0)` |
+| z6 嵌套 | 见 §5 | r0、r1 | 见 §5 |
+
+读法：
+
+- 根的枚举顺序是 `$CODEX_HOME/skills` → `$HOME/.agents/skills` → `.system`；**只列至少有一个生效 skill 的根**（z3 禁用唯一的 skill 后，r0 也跟着消失）。
+- 六次渲染里，用户消息后面**都没有** `<skill>` 注入块，而 c1 真实调用在同一布局下有注入（2.2）⇒ `prompt-input` 不做提及展开。r2 §2.2「`debug prompt-input` 只证常驻不证展开」得到印证。
+- 负对照的机制：`SkillConfig` 有 3 个字段（二进制 `struct SkillConfig with 3 elements`，旁边是 `path` / `name`），按 `name` 禁用有效。
+
+### 2.2 展开行为（真实调用）
+
+| 臂 | 读数（rollout = `codexhome/sessions/**/rollout-*.jsonl`） | 三态 |
+| :--- | :--- | :--- |
+| c1 正对照 `$dualtest 甲 乙` | 第 6 行用户消息 `$dualtest 甲 乙`；**第 8 行是 CLI 注入的用户消息** `<skill><name>dualtest</name><path>…/skills/dualtest/SKILL.md</path>` 加 SKILL.md **原文**，其中 `$ARGUMENTS`、`$0`、`$1`、`$ARGUMENTS[0]` **全是字面**；模型回复 `CXH-7Q2 ARGS=[$ARGUMENTS] A0=[$0] A1=[$1] AI0=[$ARGUMENTS[0]]`；全程没有 shell 调用 | 见哨兵 **true**；显式提及即注入正文 **true**；**CLI 替换 `$ARGUMENTS`：false** |
+| c2 负对照（同 z3 的 `-c`） | 列表无 `dualtest`，无注入，无哨兵。（模型把消息误读成 `$dual $low $beta $this $runs $by $design` 一串词，与判据无关，照录） | 不见哨兵 **true** |
+| c3 第三臂 | 无注入，无哨兵；模型执行 `pwd && ls -la` 后反问需求 | 不见哨兵 **true** |
+
+**按 r2 §2.1 的判据**：正对照见哨兵 ✓、负对照不见 ✓、第三臂不见 ✓，但**「参数逐字回显」不成立**：回显的是字面 `$ARGUMENTS`。
+rollout 直接看得到模型收到的输入，所以这不是「模型没照做」，是 **CLI 没替换**。参数只以用户消息原文 `$dualtest 甲 乙` 的形式到达模型。
+
+适用范围：`codex exec` + 提示词里的 `$名字` 提及。`/dualtest` 写法只做过零配额渲染（z2），真实调用**未测**（null）。
+静态线索：二进制里另有一处 `$ARGUMENTS{{}}!`，紧挨着 `source-command-` / `No command template body was found.`，属于**命令模板**路径，不在 skill 注入路径上。那条路径替不替换，未测。
+
+### 2.3 同名双根（c4 真实调用 + z5）
+
+| 问题 | 读数 | 三态 |
+| :--- | :--- | :--- |
+| 同名去重 | 两份都进列表 | **false** |
+| 告警 | stderr 为空，列表无诊断 | **false** |
+| 显式提及 `$dualtest` 时加载哪份 | **两份都不注入**：rollout 里没有 `<skill>` 块。模型自己用 shell `cat` 读了两份，回复「Two different skills are installed under the same name `dualtest` … I'm not going to guess」，反问该用哪份 | 优先级：**无**；同名直接让显式调用**失效** |
+
+与 P-21（zcode 重名不去重不告警）同形；codex 更糟一层，同名时显式调用本身就失效了。
+
+### 2.4 M6 报告结论复核（按具名行号）
+
+| M6 报告位置 | 原结论 | 本次 | 结论 |
+| :--- | :--- | :--- | :--- |
+| §1 第 63～76 行（臂 C） | `~/.agents/skills` 随 `HOME` 派生 | z5 / c4：隔离后 r1 = `<fakehome>/.agents/skills` | **成立** |
+| §2 第 138～151 行 | 「参数展开：**支持**」（依据是第 143 行内嵌的 SKILL.md 撰写规范原文） | 0.156.1 二进制里那句原文还在；但行为上 skill 注入**不替换** | 在 `exec` + `$` 提及路径上**被推翻** |
+| §2 第 158 行 | skills 是常驻承载面 | 六次渲染、五次真实调用的 developer 消息里都有 skill 列表（负对照、第三臂里只剩 `.system` 自带的几项） | **成立** |
+
+P-22（`~/.agents/skills` 是 codex 与 zcode 共享的用户级根）：codex 一侧**成立**；zcode 一侧本次未测。
 
 ## 3. zcode
 
@@ -88,4 +251,64 @@
 
 ## 5. 嵌套枚举一臂（§4.4）
 
-未测。
+**手法**（r2 §2.4）：照 `syncDir` 整目录递归搬运后的真实形态布置：`<根>/dual-critic/SKILL.md`（哨兵 TOP-5M1）
+加 `<根>/dual-critic/entry/x/dual-zzz/SKILL.md`（哨兵 NEST-8P4），发 `dual-zzz 甲 乙`。
+
+| 家 | 根 | 读数 | 三态 |
+| :--- | :--- | :--- | :--- |
+| codex | `$CODEX_HOME/skills` | 零配额 z6：列表里有 `dual-critic (file: r0/dual-critic/SKILL.md)`，**也有** `dual-zzz (file: r0/dual-critic/entry/x/dual-zzz/SKILL.md)`。真实调用 c5 `$dual-zzz 甲 乙`：rollout 注入 `<skill><name>dual-zzz</name><path>…/dual-critic/entry/x/dual-zzz/SKILL.md</path>` 与原文，模型回复 `<<<NEST-8P4 ARGS=[$ARGUMENTS] …>>>` | **true**：递归枚举，且能被显式调用加载 |
+| agy | `~/.gemini/config/skills`（全局根，用户追加授权第 11 次调用） | g4 `agy -p '/dual-zzz 甲 乙' …`：日志**没有**展开记录，`items=1`；模型先 `view_file …/dual-critic/SKILL.md`，再逐层 `ls` 进 `dual-critic/`、`entry/`，`find` 被拒，最终回复为空；两个哨兵都没出现 | **false**：`dual-zzz` 没有注册成斜杠命令；模型知道 `dual-critic` 的路径，却要自己翻目录找 `dual-zzz`，说明后者也不在模型可见清单里（这半句是从行为推断） |
+| zcode | — | 不在本次指令范围 | 未测 |
+
+**按 r2 §2.4 的「结论用途」**：codex 会递归枚举 ⇒ 第 2 步要换落点或改扁平命名（r2 §3.1.1 备选）；agy 全局根不递归。
+把 `dual-critic` 连同 `entry/<agent>/` 一起装进 codex 的任何 skill 根，都会让其它 Driver 的入口资产出现在 codex 的列表里，还能被 `$名字` 调起。
+
+## 6. 2026-09-25 补测的调用台账与证据
+
+真实调用 12 次。授权上限原为 10 次；第 11 次（agy 嵌套臂）是用户在补测前追加授权的，条件是「正对照通过才跑」；第 12 次（agy 参数到达）是用户选 C 时授权的。
+
+| # | 臂 | 起止（UTC） | 退出码 |
+| :--- | :--- | :--- | :--- |
+| 1 | codex c1 正对照 | 01:00:20～01:00:29 | 0 |
+| 2 | codex c2 负对照 | 01:00:57～01:01:10 | 0 |
+| 3 | codex c3 第三臂 | 01:01:10～01:01:31 | 0 |
+| 4 | codex c4 同名双根 | 01:01:31～01:01:55 | 0 |
+| 5 | codex c5 嵌套 | 01:03:25～01:03:33 | 0 |
+| 6 | agy a1 正对照（工作区根，非 git） | 01:18:33～01:21:39 | 0 |
+| 7 | agy a1-git 正对照（工作区根，git） | 01:23:43～01:24:11 | 0 |
+| 8 | agy g1 正对照（全局根） | 01:36:19～01:36:30 | 0 |
+| 9 | agy g2 负对照（全局根） | 01:36:51～01:37:04 | 0 |
+| 10 | agy g3 第三臂（全局根无哨兵） | 01:37:07～01:37:35 | 0 |
+| 11 | agy g4 嵌套（全局根） | 01:37:37～01:38:20 | 0 |
+| 12 | agy g5 参数到达（全局根） | 01:49:05～01:49:31 | 0 |
+
+**不耗模型配额的调用**（不计入上限）：`codex debug prompt-input` 6 次；`agy models` / `agy agents` 各 2 次（空 fakehome 一轮、拷入 token 文件一轮）；`security list-keychains` / `default-keychain` 只读核对。
+
+**隔离与清理**：每臂一个 `fs.mkdtemp(os.tmpdir()/m10b-probe-*)` 目录，脚本末尾断言目标在 `os.tmpdir()` 下且前缀是 `m10b-probe-` 后，只删这个返回值；实验脚本里不引用项目的清理助手。
+codex 的凭据副本（`auth.json`、裁剪后的 `config.toml`）由 `prepareCodexHome` 写进 mkdtemp 目录，随目录删除。agy 的 token 文件副本同样随目录删除。
+agy 全局根的哨兵（g1、g2、g4）不在 mkdtemp 目录里，按用户认可的另一套流程清理：写入前断言目标不存在，跑完逐字校验内容一致后 `unlink`，再由深到浅非递归 `rmdir`。
+g5 同样如此。四次写入的清理记录都是全部 `unlink` / `rmdir` 成功（见各臂 `meta.json` 的 `cleanup`），事后 `ls` 全局根，没有 `dual*` / `*test*` 残留。
+凭据文件一律没有打印：`~/.codex/config.toml` 只看过段头，以及 `model` / `model_provider` 两个非凭据键；agy 的 `trustedFolders.json` 只统计了条目数与取值集合。
+
+**证据目录** `doc/05_testing/evidence/m10b-entry-probe-20260925/`：
+
+| 子目录 | 内容 |
+| :--- | :--- |
+| `codex-zero/` | z1～z6 的 `prompt-input` 渲染与 stderr、`summary.json`（argv 与退出码） |
+| `codex-real/<臂>/` | `stdout.jsonl`（`--json` 事件流）、`stderr.txt`、`session-0.jsonl`（rollout，模型实际收到的输入）、`meta.json`（argv、时间、`prepareCodexHome` 剥掉的键名与拷入的文件名） |
+| `agy-zero/` | 隔离 `HOME` 两轮试探的输出与 fakehome 目录树 |
+| `agy-real/<臂>/` | 工作区根两次：`stdout.jsonl`（stream-json）、`stderr.txt`、`agy-log-excerpt.txt`（本次新日志里与 skill / slash / workspace 相关的行）、`meta.json` |
+| `agy-global/<臂>/` | 全局根五次（g1～g5）：同上四件；`meta.json` 另含判读字段（哨兵出现在回复还是工具输出、工具步骤清单）、清理记录，以及 `~/.gemini/config` 与全局根一层的前后快照差异 |
+
+脱敏：临时目录前缀 → `<tmp>`，用户主目录 → `~`，邮箱 → `<email>`；`meta.json` 里 `prepareCodexHome` 剥掉的 `[projects."…"]` 信任表段名折叠成计数；
+agy 模型在真实 `HOME` 下执行命令的输出替换成 `<已省略…>`（§1.6）。入仓前做过凭据形态扫描（bearer / `sk-` / `ya29.` / JWT / `*_token` 键值），**0 命中**。
+
+## 7. 对 r5 的影响（只报告，不改计划）
+
+1. **codex 入口资产不能靠 `$ARGUMENTS`**（§2.2）：在 `exec` + `$名字` 路径上，参数只以用户消息原文到达模型。第 2 步单源渲染的 codex 产物，正文要写成「从用户消息里 skill 提及之后的文本取参数」，或者改走命令模板路径（未测）。选哪条由第 2 步计划定。
+2. **嵌套落点要换**（§5）：r2 §3.1.1 的 `skills/dual-critic/entry/<agent>/` 在 codex 下会被递归枚举并可调用。
+3. **查重名要覆盖 codex 的两根**（§2.3）：同名时 codex 显式调用直接失效、无告警。r2 §3.2.2 已把 `~/.agents/skills` 钉为禁装目标；但 codex 仍会从这里读，所以安装器查重名时有没有把宿主机 `~/.agents/skills` 里已有的同名项算进去，第 2 步计划要核（本报告未核 r2 §3.2.2 查重名一段的原文范围）。
+4. **§18.1 #16 已按用户选择的 C 路径落 A：skills 优先**（§1.5）。第 2 步要为 gemini 渲染入口 skill，落全局根 `~/.gemini/config/skills/`；agy、codex 两家的入口 skill 不用 `$ARGUMENTS` 占位，改为「把命令后的全部文本原样当参数」；FR-20「焦点逐字」在这两家上降为模型转抄，差异要登记。主设计 §18.1 #16 的状态改写归第 5 步回溯。
+5. **agy 入口资产只能落全局根**（§1.2、§1.3）：print 模式不读工作区根 `<workspace>/.agents/skills`（本机两种布局）。安装目标本来就是全局根，不受影响；但「项目级装 agy 入口」这条路不可用。
+6. **`--disable-slash-commands` 挡不住模型自己加载 skill**（§1.3 g2）：它只关斜杠展开，不从常驻清单里去掉 skill。
+7. **agy 隔离 `HOME` 不可行**（§1.1）；agy 作 Driver 时，print 模式下的 shell 能力由用户自己的 allow 规则决定（§1.6）。后者是否要在第 3 步 Hook 多目标或 L1 / L2 定级里体现，由计划决定。

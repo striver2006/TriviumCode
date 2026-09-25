@@ -1,0 +1,76 @@
+{
+  "arm": "g3-third",
+  "argv": [
+    "agy",
+    "-p",
+    "/dualtest 甲 乙",
+    "--output-format",
+    "stream-json",
+    "--print-timeout",
+    "180s"
+  ],
+  "cwd": "<tmp>/proj（非 git）",
+  "home": "真实 HOME（未隔离）",
+  "planted": [],
+  "started": "2026-09-25T01:37:07.205Z",
+  "ended": "2026-09-25T01:37:35.506Z",
+  "exit": 0,
+  "signal": null,
+  "timedOut": false,
+  "judgement": {
+    "tagHits": {
+      "AGG-2R8": {
+        "agentText": false,
+        "finalResponse": false
+      }
+    },
+    "toolOutputHasSentinel": false,
+    "toolSteps": [
+      {
+        "tool": "run_command",
+        "state": "DONE",
+        "params": "{\"CommandLine\":\"grep -rn \\\"dualtest\\\" ~/.gemini 2>/dev/null\"}",
+        "outputHasSentinel": false
+      },
+      {
+        "tool": "run_command",
+        "state": "DONE",
+        "params": "{\"CommandLine\":\"ls -la ~/.gemini/antigravity-cli\"}",
+        "outputHasSentinel": false
+      },
+      {
+        "tool": "manage_task",
+        "state": "DONE",
+        "params": "{\"Action\":\"kill\",\"TaskId\":\"b9cf2f97-2bc0-4354-8730-b9ff560c325b/task-2\"}",
+        "outputHasSentinel": false
+      },
+      {
+        "tool": "run_command",
+        "state": "DONE",
+        "params": "{\"CommandLine\":\"ls -la ~/.gemini/config/\"}",
+        "outputHasSentinel": false
+      },
+      {
+        "tool": "run_command",
+        "state": "ERROR",
+        "params": "{\"CommandLine\":\"find ~/.gemini -name \\\"*dualtest*\\\"\"}",
+        "outputHasSentinel": false
+      }
+    ],
+    "finalResponse": ""
+  },
+  "cleanup": [],
+  "geminiConfigChanged": {
+    "onlyBefore": [],
+    "onlyAfter": []
+  },
+  "globalSkillsChanged": {
+    "onlyBefore": [],
+    "onlyAfter": []
+  },
+  "freshAgyProcesses": [],
+  "newAgyLogs": [
+    "cli-20260925_093707.log"
+  ],
+  "logLinesDropped": 0
+}
