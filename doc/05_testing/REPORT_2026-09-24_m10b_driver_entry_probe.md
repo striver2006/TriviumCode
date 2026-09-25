@@ -203,10 +203,32 @@ P-22（`~/.agents/skills` 是 codex 与 zcode 共享的用户级根）：codex �
 | 读不读 `.claude/settings.json` | 字面 `.claude/settings` 零处、`settings.local.json` 零处 | **false**（静态）：ZCode 不会自动沿用本仓 `.claude/settings.json` 里的 Hook |
 | 命令型 Hook 的 stdin 负载形态 | 兼容层（混淆名 `T0n`）把内部负载转成 Claude Code 蛇形字段：`hook_event_name`、`permission_mode`、`session_id`、`tool_name`、`tool_input`、`tool_use_id`、`transcript_path`（写到临时目录 `zcode-claude-hook-*` 下）；PostToolUse 另加 `tool_response` | **true**（静态）：`hooks.ts` 读的 `tool_input` / `tool_name` 能拿到 |
 | 命令型 Hook 的环境变量 | `CLAUDE_CODE_SESSION_ID`、`CLAUDE_PROJECT_DIR`（取 `cwd` 或工作目录）、`CLAUDE_SESSION_ID`、`ZCODE_PROJECT_DIR`、`ZCODE_SESSION_ID`；插件型另加 `CLAUDE_PLUGIN_ROOT` / `ZCODE_PLUGIN_ROOT` 等 | **true**（静态）：本仓守卫脚本依赖的 `${CLAUDE_PROJECT_DIR}` 有值 |
-| 拒写语义（`exit 2` 是否拒） | 未测 | **null**（待行为实测：注册一条 `exit 2` 的 Hook，触发一次写工具调用） |
-| 超时语义（r5 §4.3.1 新增） | 未测 | **null**（待行为实测） |
+| 拒写语义（`exit 2` 是否拒） | 静态：`exitCode===2` 走 `kQs`，PreToolUse 上转成 `permissionDecision: "deny"`，理由取 stderr。**行为见 3.1.1** | **true**（行为） |
+| 超时语义（r5 §4.3.1 新增） | 静态：缺省 `hooks.timeoutMs = 60000`；非 0 / 非 2 退出与超时都进「`Hook process failed`（`recoverable: true`）」分支。**行为见 3.1.1** | **超时即放行**（行为） |
 
-### 3.2 写类工具全集（§4.3.3）：来源 ①二进制字面（**已测**）；来源 ②会话实测（未测）
+#### 3.1.1 行为实测（2026-09-25，ZCode 桌面端，用户操作）
+
+**夹具**：scratchpad 下的 git 仓库，`.zcode/config.json` 配两条 PreToolUse Hook（`hooks.enabled: true`，配置形态是 `hooks.events.PreToolUse[] = {matcher?, hooks: [{type: "command", command, timeoutMs?}]}`，比 Claude Code 多一层 `events`）：
+A 不带 matcher、`timeoutMs: 5000`，记录 stdin 负载与环境变量名，目标含 `DENYME` 就 `exit 2`，含 `SLOWME` 就挂起 20 秒；B 的 matcher 为 `Edit|Write`，只记录、一律放行。
+会话由用户在桌面端打开夹具新建，生效模型 GLM-5.3（rollout `model.modelId`）。每一步的用户消息、工具调用结果、Hook 记录都能在证据里对上。
+
+| 问题 | 读数 | 三态 |
+| :--- | :--- | :--- |
+| 项目级 `<项目>/.zcode/config.json` 的 Hook 会不会被加载 | 会：信任后每次工具调用都有 A 的记录（上表「Project 层路径」一格由 null 转为已测） | **true** |
+| 工作区 Hook 要不要信任确认 | 要：打开夹具后弹出信任提示（用户口述；提示原文未留） | **true** |
+| **信任确认之前**的写调用 | 用户在点信任**之前**发了「用 Write 新建 `a.txt`」：`a.txt` 在 10:12 写成（内容 `hello`），**没有任何 Hook 记录**；第一条 Hook 记录在 10:14，点信任之后 | **放行**：信任待定期间工作区 Hook 不跑、写工具照常执行 |
+| `exit 2` 拒写：Write | `DENYME-write.txt`：A 记 `decision=exit2`，文件不存在；模型收到 `{"role":"tool","content":"probe-deny: blocked by M10b hook A","toolName":"Write","isError":true}`（stderr 原样作理由） | **true** |
+| `exit 2` 拒写：Bash | `echo x > DENYME-bash.txt`：同上，`toolName: "Bash"`、`isError: true`，文件不存在 | **true** |
+| 超时 | `SLOWME.txt`：A 于 10:25:43 开始挂起，日志里**没有**醒来那一行（到 5 秒被杀）；B 于 10:25:48 才执行；文件**写成**；模型收到 `File created successfully`、`isError: false`，**没有任何告警**；用户体感约 6 秒 | **超时即放行**，且对模型与用户都不可见 |
+| 同一事件下多条 Hook 的执行顺序 | SLOWME 那次 B 在 A 超时后才跑 | **依次执行**（一次观察） |
+| matcher `Edit\|Write` 的语义 | Write、Edit 调用时 A、B 都触发；Bash 调用时只有 A 触发 | **按「或」匹配工具名**（`Edit\|Write` 这种写法可用；是正则还是按 `\|` 拆分未区分） |
+| stdin 负载 | 驼峰与蛇形两套字段并存：`tool_name` / `toolName`、`tool_input` / `toolInput`、`session_id` / `sessionId`、`hook_event_name`、`transcript_path`（系统临时目录 `zcode-claude-hook-*` 下）、`cwd`、`permission_mode`、`riskLevel`、`sideEffectScope` 等 20 个键 | **true**：`hooks.ts` 读的 `tool_name` / `tool_input` 都在 |
+| 负载里的路径形态 | `cwd` 与 `CLAUDE_PROJECT_DIR` 是 `/tmp/…`，工具输入里的 `file_path` 是 `/private/tmp/…`，同一目录两种写法 | 观察：本仓写侧判定对词法路径与 realpath 取并集，能应付；若有按前缀比较 `CLAUDE_PROJECT_DIR` 的代码，要留意 |
+| Hook 进程的环境变量 | `CLAUDE_CODE_SESSION_ID`、`CLAUDE_SESSION_ID`、`ZCODE_SESSION_ID`（三者同值）、`CLAUDE_PROJECT_DIR`、`ZCODE_PROJECT_DIR` 都有值 | **true**（行为，印证静态） |
+
+证据：`evidence/m10b-entry-probe-20260925/zcode-desktop-session/`（`fixture/` 配置与脚本、`hook-log/` 每次触发的负载与环境变量名、`rollout-excerpt.json` 每轮用户消息与工具结果、`fixture-final-state.txt`）。
+
+### 3.2 写类工具全集（§4.3.3）：来源 ①二进制字面（**已测**）；来源 ②会话实测（**已测**，见 3.2.1）
 
 | 读数 | 出处（字面） |
 | :--- | :--- |
@@ -221,6 +243,32 @@ P-22（`~/.agents/skills` 是 codex 与 zcode 共享的用户级根）：codex �
 1. 本仓 `zcode-trace.ts` 的 `ZCODE_WRITE_TOOLS` 登记了 `MultiEdit` 与 `NotebookEdit`，按本入口它们不存在。那是 headless 轨迹用的只读 denylist，多登记不会漏拦，**不构成缺陷**；但 §4.3.3「全集」以来源 ① 为准时，写类工具是 **Write / Edit / ApplyPatch（file-write）+ Bash（shell）**。
 2. matcher 别名意味着：沿用 `Edit|Write` 形态的 matcher，名字层面**可能已经覆盖** ApplyPatch。§6.1 条件 2(i) 仍以行为实测为准。
 3. **ApplyPatch 的 `tool_input` 键形态未取到**：注册表里有名字，但静态检索没有定位到它的输入 schema。这正是 §6.1 条件 2(ii)「按目标判」要实测的一格：若它只带 patch 正文、不带 `extractTargetPath` 认得的路径键，写侧会对它**静默放行**。**null**，待来源 ② 实测。
+   **2026-09-25 补**：来源 ② 里 ApplyPatch 不在模型可见清单上（3.2.1），这一格在 GLM-5.3 桌面会话里**无从实测**，仍为 null。
+
+#### 3.2.1 来源 ②：桌面会话实测（2026-09-25，同 3.1.1 的会话）
+
+**模型可见工具清单**（rollout `request.toolNames`，35 个）：`Agent, AskUserQuestion, Bash, CronCreate, CronDelete, CronList, CronUpdate, Edit, EnterPlanMode, ExitPlanMode, Read, Skill, TaskOutput, TaskStop, TodoRead, TodoWrite, WebFetch, WebSearch, Write, OffPeakCreate, OffPeakList, SendMessage, ReadSessionContext, CreateWorkflow, AmendWorkflow, SaveWorkflow, EvalWorkflowSnippet, ListWorkflowRuns, GetWorkflowRun, ResumeWorkflowRun, ResolveWorkflowQuestion, ListSavedWorkflows, ListModels, mcp__plugin_image-search_image_search__search_image, mcp__node_repl__js`。
+
+| 工具 | 来源 ① | 来源 ② | 输入键（Hook 负载实录） | 说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| Write | 有 | 有 | `file_path`、`content` | 新建与整体覆写都走它 |
+| Edit | 有 | 有 | `file_path`、`old_string`、`new_string`、`replace_all` | |
+| Bash | 有 | 有 | `command`、`description` | 按命令文本判（D3 同形） |
+| ApplyPatch | 有 | **无** | —— | 要求「只用 ApplyPatch」时模型回答工具列表里没有它。为什么不暴露（按模型、按设置还是按宿主），未查 |
+| `mcp__node_repl__js` | —— | **有** | 未触发 | **来源 ① 看不到的写路径**：来自本机 MCP 配置的 JS REPL，能直接写文件；本仓 Hook 的 matcher（`Edit\|Write\|NotebookEdit` 与 `Bash`）**不覆盖**它 |
+| `Agent` | —— | 有 | 未触发 | 子代理里的工具调用会不会过工作区 Hook，未测 |
+
+**两源差异的解释**：来源 ① 是 CLI 注册表的全集，来源 ② 是某个模型、某台机器在某次会话里实际暴露的子集加上外挂工具（MCP、插件）。
+所以「全集 = 两源交叉后的观察集，**完备性不保证**」（r5 §4.3.3 的措辞）在这里被坐实：两个来源**互不包含**。
+
+**glm Driver 角色工件的新建与修改**（不指定工具，看模型自己选）：新建 `.reviews-demo/2026-09-25-demo-glm.md` 用 **Write**，改第一行用 **Edit**，两次 A、B 都触发、`file_path` 都在。
+对照 r5 §4.3.3 结局表：本仓自己的角色工件走的是结构化写工具，**不必经 shell**，D3 的 Bash 侧字面拦截不会挡住 glm 写自己的原稿。
+
+**对照 r5 §4.3.3 结局表**（只报告，不判第 3 步能否通过）：
+
+- Write / Edit：名字在现有 matcher 里、目标能取出 ⇒ 这一部分满足「全集进 matcher、目标都能取出」。
+- `mcp__node_repl__js`：落在「**有结构化写工具，但名字不在 matcher 里**」一行 ⇒ 这一面名为 L1、实为 L2。它来自用户本机的 MCP 配置，不是 ZCode 自带；是否纳入、用 matcher 还是用文档约束，由 §6.1 定。
+- ApplyPatch：本会话里不存在；其它模型或设置下若出现，按 3.2 第 2 条的别名，`Edit|Write` 在名字层面可能覆盖，输入键仍未知。
 
 ### 3.3 真载体（P-a）：**true**
 
@@ -238,16 +286,71 @@ P-22（`~/.agents/skills` 是 codex 与 zcode 共享的用户级根）：codex �
 | :--- | :--- | :--- |
 | 1 交互会话把工具调用记在哪里、记不记命令原文 | **与 headless 同一处**：`~/.zcode/cli/rollout/model-io-sess_<会话 ID>.jsonl`。本次会话 `sess_13624e01-2592-42f6-9a85-f19c23a69637`，3 行、每行一次模型请求，字段 `startedAt / completedAt / durationMs / requestId / model / request / response / sessionId / querySource / traceId / turnId`。第 0 行响应里有工具调用 `Bash`，输入 `{"command": ".trivium/bin/trivium preflight --stage plan --json; echo \"EXIT=$?\"", "description": "在项目根目录执行 trivium preflight 阶段检查"}`；第 1 行请求里带回的工具结果含 `EXIT=0`。时间 03:34:52Z～03:35:06Z | **true** |
 | 1′（**超出预期**）留痕记不记 Driver 实际用的模型 | **记**：每行 `model` 为 `GLM-5.3` | **true**。r5 §4.3.2 末段写「会话留痕证明不了该会话的模型就是 GLM」，对 ZCode 这一家**不再成立**：rollout 逐请求记模型。这是 EV-107 根本解（采集 Driver 生效模型）在 zcode 侧的一个现成数据源，只登记、不在本里程碑展开 |
-| 2 会不会向 shell 工具注入会话标识环境变量 | 未测。静态读到的只是**命令型 Hook** 的环境注入 `CLAUDE_SESSION_ID` / `ZCODE_SESSION_ID`；shell 工具环境未核 | **null**（下次让会话执行 `env \| grep -i session` 一类只读命令即可判） |
-| 3 留痕里有没有凭据字段 | 本次只按字段名抽取了时间、模型、工具调用三类，没有整份读 `request` / `response` 正文；是否含凭据**未核** | **null**。§7.1 摘录照旧只取工具调用那几行 |
+| 2 会不会向 shell 工具注入会话标识环境变量 | **2026-09-25 实测**（3.1.1 同一会话）：让会话用终端工具执行 `pwd`（夹具目录）、`ps -o pid=,comm= -p $PPID`（`zcode-cli`）、`env \| cut -d= -f1 \| sort`、`env \| grep -E '^(ZCODE\|CLAUDE)[A-Z_]*(SESSION\|PROJECT)[A-Z_]*='`。shell 环境里有 `ZCODE_APP_VERSION`、`ZCODE_RUNTIME_ENV`、`ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` 等十几个 `ZCODE_*` / `ZAI_*` 变量，但 grep **无匹配**（`EXIT=1`）：没有任何会话 ID 或项目目录变量。对照：同一会话里 Hook 进程的环境**有** `ZCODE_SESSION_ID` 等（3.1.1） | **false**：会话 ID 只进 Hook 环境，不进 shell 工具环境。渲染 glm 入口资产时不能指望在 shell 里读到它经 `--session-id` 传下去 |
+| 3 留痕里有没有凭据字段 | **2026-09-25 补核**：09-24 那份会话文件已被 ZCode 自己清掉（见下行 3′），改核目录里现存的 3 份（都是 `x-title: Z Code@cli` 的 headless 会话，不是桌面端）。只列键名、不读值：`request.headers` 16 个头键里**没有**鉴权类（authorization / api-key / token / cookie）；对全文做凭据形态扫描（bearer、`sk-`、JWT、`<32hex>.<16>` 形态、`api_key=`），3 份都是 **0 命中** | **false**（留痕里没有凭据字段）。适用范围：这 3 份 headless 会话；桌面端会话的留痕与它们同一写入函数（`JWr`），推定同形，没有单独核 |
+| 3′（**超出预期**）留痕保留多久 | 入口文件字面：新建会话文件前调 `XFs(目录, VFs-1)`，按修改时间删掉最旧的 `model-io-*.jsonl`，`VFs = 3`，所以目录里**最多留 3 份**；单文件超过 `HFs = 64 MiB`（debug 模式 `GFs = 256 MiB`）就整份重写，原有记录丢失；非 debug 模式剥掉 `request.body` 里的 `messages` 副本与 `response.body`，顶层按 `messageOffset` 增量记录的 `request.messages` 保留。实测对上：09-24 03:34Z 的桌面会话文件已不在，现存 3 份的时间都晚于它；其中 00:27:45Z 那份与 codex 探活（`checked_at` 00:27:50Z）相差 5 秒，推测是 `preflight` 的认证探活，来源未核 | **true**：rollout 是「最近 3 个会话」的滚动窗口，与任何其它 zcode CLI 调用（含本仓自己的探活）共用 |
 
 **对 J4 的意义**：J4 的载体证据可以落在这份 rollout 上：同一 run_id 的 `review --start` 工具调用 + 每条请求的 `model`。r5 §10.3 R-o（载体证据拿不到）的风险**基本解除**，剩「会话标识是否进 shell 环境」一格。
+**2026-09-25 补一条前提**（3′）：rollout 只留最近 3 个会话，J4 会话之后再有 3 次任意 zcode 调用（包括 `preflight` 探活、审查运行的无副本支）就会把它挤掉。所以 J4 的剧本要写明「**会话结束当场把 rollout 拷进 evidence**」，不能事后再去取。
+
+证据：`evidence/m10b-entry-probe-20260925/zcode-rollout/`（`rollout-shape.txt` 只含文件清单、键名、非凭据的会话类型头、常量与相关函数字面；生成脚本同目录）。
+2026-09-25 桌面会话实测时，新会话一建，当时最旧的那份（09-24 17:50Z）就被删掉，目录仍是 3 份，保留策略在行为上也对上了。本次会话的 rollout 是在用户做完操作后立刻拷走的，摘录见 3.1.1 的证据目录。
+
+### 3.5 `hooks_deny_ok` 落哪一格（r5 §4.3.4 要求本报告显式回答）
+
+**true，但有三个前提**，缺一个就是静默放行：
+
+| 前提 | 不满足时 | 依据 |
+| :--- | :--- | :--- |
+| ① 工作区 Hook 已经过用户信任确认 | 信任前写工具照常执行、Hook 不跑 | 3.1.1「信任确认之前」 |
+| ② Hook 在超时内返回 | 超时即放行，对模型与用户都不可见 | 3.1.1「超时」；缺省超时 60 秒，本仓 Hook 是毫秒级脚本，正常情况下不会碰到 |
+| ③ 写入走的是 matcher 覆盖到的工具 | `mcp__node_repl__js` 这类外挂工具不过 matcher | 3.2.1 |
+
+适用范围：ZCode 0.16.9 桌面端、GLM-5.3、项目级 `.zcode/config.json`、单次会话。headless（`zcode` CLI）下工作区 Hook 的信任怎么处理（静态里有 `workspace_hooks_require_trust_capable_host` 一类状态），未测。
+
+**取值路径 (a) / (b) 仍由用户二选一**（r5 §4.3.4）：本次实测是人工在桌面端完成的，自动化探针要在 headless 下复现「信任 + 触发写工具」，前提 ① 在 headless 下能否满足本身未知。
+所以 (a) 探针臂自动实测的工程量**至少**包含先测清 headless 的信任行为；(b) 人工填写 + 防漂校验的依据就是本节。
 
 **对 §4.3.3 的顺带读数**：交互会话的 shell 工具名是 `Bash`（与 headless 注册表同名），输入键是 `command`（不是路径键），D3 的 Bash 侧判据按 `command` 文本判，与 Claude Code 同形。
 
 ## 4. claude
 
 基线，无需实测（§4.5）。
+
+### 4.1 顺带：两侧解析回退的形态（r5 §4.5 → r2 §2.7，只诊断、不修复）
+
+**做法**：只读扫描本仓 `.reviews/` 全部 168 份 run.json 的 `critics.<侧>.status` 与 `fail_reason`；
+再把所有回退侧的原文（`review-<侧>-<run>.json` 的 `raw`）用**当前**解析器（`dist/test` 构建的 `parseReview`）重跑一遍，并按 `review.v1.json` 抽出越界枚举值与多余根键。
+脚本与输出在 `evidence/m10b-entry-probe-20260925/parse-fallback/`。
+
+回退率：
+
+| 侧 | 回退 / 总数 | 生效模型 | 当前解析器重跑能过 |
+| :--- | :--- | :--- | :--- |
+| codex | **22 / 107**（另 timeout 5） | qwen3.8-flash 14、deepseek-flash 8 | 0 / 22 |
+| glm | **14 / 145**（另 timeout 3） | GLM-5.3 14 | 0 / 14 |
+| gemini | 4 / 150（另 failed 4） | gemini-3.8-flash-high 4 | **2 / 4**（早期两份，后来的解析器已修好） |
+
+形态（按 `fail_reason` 归类；一份可以同时占几类）：
+
+| 形态 | codex | glm | gemini | 已有条目 |
+| :--- | :--- | :--- | :--- | :--- |
+| 每条意见都缺 `confidence` | **9** | — | — | 无 |
+| 枚举越界 | **9**：`layer` 取 spec / test / process / doc；`kind` 取 requirement / risk / completeness / fact / plan | **6**：`severity` 取 medium（6 处）/ info；`kind` 取 completeness（9 处）等；`layer` 取 docs（4 处）/ design / schema 等 | — | EV-11 |
+| 缺 `confidence` 之外的必填字段 | — | 2 | 1 | 无 |
+| 根对象多余键：把送审包抬头抄进结论 | — | **6 份**：`stage` 6、`topic` 5、`role` 5、`run_id` 2、`rerun_index` 2 等 | 1 | EV-10 |
+| JSON 语法错（非法转义为主） | 4（deepseek 3 份是非法转义） | 1 | 2 | 无 |
+| 找不到 JSON 对象 | — | 2 | — | EV-113（`ExitPlanMode` 收尾） |
+
+r2 §2.7 的起因「glm 连续三轮回退」能在 M10 计划的三次运行里对上（`20260921T145353Z`、`…152520Z`、`20260922T004543Z`），三次的形态都是枚举越界，不是 JSON 写坏了。
+
+**可修复性评估**（给「是否里程碑内修复」的数据依据，**修复不在 M10b 范围内**）：
+
+1. **codex 最大的一块有现成的修法**：`codex exec --help` 有 `--output-schema <FILE>`，但本仓 codex 适配器**没接**（`buildCodexArgs` 里没有），而 agy（`--json-schema`）和 claude 都接了；三家里 gemini 的回退率最低，与此一致。
+   codex 22 份里有 18 份是 schema 层面的问题（缺 `confidence`、枚举越界），**如果** `--output-schema` 对 qwen / deepseek 这类非 OpenAI provider 也生效，这一块可以整体消掉。它对这些 provider 生不生效，**未测**。**BACKLOG 里没有这一条**，建议新立。
+2. **glm 的两大块都已有条目**（EV-10 剥抬头键、EV-11 枚举不够用），而且是同一种形态反复出现。剥抬头键属于低风险的宽松化；枚举越界要么扩枚举、要么做同义映射，后者会改变 `severity` 的阻断语义（例如把 medium 映射成 major 还是 minor），不能由解析器自己决定。
+3. **JSON 语法错**（7 份）和**找不到 JSON**（2 份）不属于「解析器太严」，修法在提示词或载体一侧（EV-113），宽松解析救不回来。
+4. 按现在的回退率，M10b 余下的双审和四轮验收里，codex 侧大约每 5 次运行回退 1 次，glm 大约每 10 次 1 次。回退只会让该侧意见按 `<前缀>-F<n>` 兜底裁决、`joint_check` 降级，不会让流程卡死。从数据看，**不修也能走完 M10b**；codex 的 `--output-schema` 性价比最高，适合作为独立小主题排在 M10b 之外。
 
 ## 5. 嵌套枚举一臂（§4.4）
 
@@ -312,3 +415,10 @@ agy 模型在真实 `HOME` 下执行命令的输出替换成 `<已省略…>`（
 5. **agy 入口资产只能落全局根**（§1.2、§1.3）：print 模式不读工作区根 `<workspace>/.agents/skills`（本机两种布局）。安装目标本来就是全局根，不受影响；但「项目级装 agy 入口」这条路不可用。
 6. **`--disable-slash-commands` 挡不住模型自己加载 skill**（§1.3 g2）：它只关斜杠展开，不从常驻清单里去掉 skill。
 7. **agy 隔离 `HOME` 不可行**（§1.1）；agy 作 Driver 时，print 模式下的 shell 能力由用户自己的 allow 规则决定（§1.6）。后者是否要在第 3 步 Hook 多目标或 L1 / L2 定级里体现，由计划决定。
+8. **zcode 的 Hook 能拒写，但 L1 有三个前提**（§3.5）：工作区信任、不超时、写工具在 matcher 覆盖内。其中「信任前放行」「超时放行」都是静默的；第 3 步的 L1 / L2 定级与文档要把这三条写进边界。`hooks_deny_ok` 的取值路径 (a) / (b) 待用户在进入第 3 步前拍板。
+9. **ZCode 的 Hook 配置不能照抄 Claude Code 的形态**（§3.1.1）：要写 `hooks.enabled: true`，事件放在 `hooks.events` 下，文件是 `<项目>/.zcode/config.json`（或 `zcode.json`）。第 3 步 `hooks --agent` 渲染 zcode 目标时按这个形态。
+10. **会话 ID 不进 shell 工具环境**（§3.4 问题 2）：r5 §4.3.2 设想的「经 `--session-id` 传进 `topic claim` / `review --start` / `approve`」在 zcode 上拿不到值，只能由 Hook 侧取，或者不传。
+11. **J4 的载体证据要当场拷走**（§3.4 行 3′）：rollout 只留最近 3 个会话。
+12. **写类工具两源互不包含**（§3.2.1）：`mcp__node_repl__js` 这类外挂写工具在 L1 下是漏口；ApplyPatch 在 GLM-5.3 桌面会话里不暴露，输入键仍未知。
+
+**第 1 步仍未测的 zcode 格**：加载面（两根各放哨兵、真实调用一次，r5 §4.3.1）；ApplyPatch 的输入键；`Agent` 子代理里的工具调用过不过工作区 Hook；headless 下工作区 Hook 的信任行为。

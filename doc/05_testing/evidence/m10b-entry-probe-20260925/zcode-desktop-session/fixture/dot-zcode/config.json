@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "enabled": true,
+    "events": {
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "<fixture>/hook-probe/hook-a.sh",
+              "timeoutMs": 5000
+            }
+          ]
+        },
+        {
+          "matcher": "Edit|Write",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "<fixture>/hook-probe/hook-b.sh"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

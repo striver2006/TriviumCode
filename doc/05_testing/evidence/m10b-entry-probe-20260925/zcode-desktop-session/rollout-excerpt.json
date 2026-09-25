@@ -1,0 +1,186 @@
+{
+ "lines": 25,
+ "secret_shape_hits_in_raw": 0,
+ "models": [
+  "{\"modelId\": \"GLM-5.3\", \"providerId\": \"account:bigmodel-individual-coding-plan\"}"
+ ],
+ "toolNames": [
+  "Agent",
+  "AskUserQuestion",
+  "Bash",
+  "CronCreate",
+  "CronDelete",
+  "CronList",
+  "CronUpdate",
+  "Edit",
+  "EnterPlanMode",
+  "ExitPlanMode",
+  "Read",
+  "Skill",
+  "TaskOutput",
+  "TaskStop",
+  "TodoRead",
+  "TodoWrite",
+  "WebFetch",
+  "WebSearch",
+  "Write",
+  "OffPeakCreate",
+  "OffPeakList",
+  "SendMessage",
+  "ReadSessionContext",
+  "CreateWorkflow",
+  "AmendWorkflow",
+  "SaveWorkflow",
+  "EvalWorkflowSnippet",
+  "ListWorkflowRuns",
+  "GetWorkflowRun",
+  "ResumeWorkflowRun",
+  "ResolveWorkflowQuestion",
+  "ListSavedWorkflows",
+  "ListModels",
+  "mcp__plugin_image-search_image_search__search_image",
+  "mcp__node_repl__js"
+ ],
+ "header_keys": [
+  "http-referer",
+  "user-agent",
+  "x-client-language",
+  "x-client-timezone",
+  "x-os-category",
+  "x-os-version",
+  "x-platform",
+  "x-query-id",
+  "x-release-channel",
+  "x-request-id",
+  "x-session-id",
+  "x-title",
+  "x-zcode-agent",
+  "x-zcode-app-version",
+  "x-zcode-session-type",
+  "x-zcode-trace-id"
+ ],
+ "turns": [
+  [
+   "user",
+   "<system-reminder>\nAs you answer the user's questions, you can use the following context:\n# currentDate\nToday's date is 2026-09-25.\n\n      IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n</system-reminder>\n"
+  ],
+  [
+   "user",
+   "请只用 Write 工具新建 a.txt，内容是 hello。不要用其它工具。"
+  ],
+  [
+   "tool",
+   "Write",
+   false,
+   "File created successfully at: <fixture>/a.txt (file state is current in your context — no need to Read it back)"
+  ],
+  [
+   "user",
+   "请用你的终端工具依次执行下面四条命令，并把每条的输出原样贴出来，不要省略：\npwd\nps -o pid=,comm= -p $PPID\nenv | cut -d= -f1 | sort\nenv | grep -E '^(ZCODE|CLAUDE)[A-Z_]*(SESSION|PROJECT)[A-Z_]*=' ; echo EXIT=$?"
+  ],
+  [
+   "tool",
+   "Bash",
+   false,
+   "<fixture>"
+  ],
+  [
+   "tool",
+   "Bash",
+   false,
+   "97334 zcode-cli"
+  ],
+  [
+   "tool",
+   "Bash",
+   false,
+   "COMMAND_MODE\nGIT_EDITOR\nHOME\nJAVA_HOME\nLANG\nLC_CTYPE\nLOGNAME\nMACH_PORT_RENDEZVOUS_PEER_VALDATION\nMISE_SHELL\nMallocNanoZone\nOLDPWD\nOSLogRateLimit\nPATH\nPWD\nPYTHONIOENCODING\nPYTHONUTF8\nSDKMAN_CANDIDATES_DIR\nSDKMAN_DIR\nSDKMAN_PLATFORM\nSHELL\nSHLVL\nSSH_AUTH_SOCK\nTERM\nTMPDIR\nUSER\nXPC_FLAGS\nXPC_SERVICE_NAME\nZAI_BUSINESS_BASE_URL\nZAI_OAUTH_CLIENT_ID\nZAI_OAUTH_ORIGIN\nZCODE_APP_VERSION\nZCODE_BASE_URL\nZCODE_B"
+  ],
+  [
+   "tool",
+   "Bash",
+   false,
+   "EXIT=1"
+  ],
+  [
+   "tool",
+   "Write",
+   false,
+   "The file <fixture>/a.txt has been updated successfully. (file state is current in your context — no need to Read it back)"
+  ],
+  [
+   "user",
+   "2a. 请只用 Write 工具新建 c.txt，内容是 hello。不要用其它工具。"
+  ],
+  [
+   "tool",
+   "Write",
+   false,
+   "File created successfully at: <fixture>/c.txt (file state is current in your context — no need to Read it back)"
+  ],
+  [
+   "user",
+   "2b. 请只用 Edit 工具把 a.txt 里的 hello 改成 world。不要用其它工具。"
+  ],
+  [
+   "tool",
+   "Edit",
+   false,
+   "The file <fixture>/a.txt has been updated successfully. (file state is current in your context — no need to Read it back)"
+  ],
+  [
+   "user",
+   "请只用 ApplyPatch 工具，在同一个补丁里做两件事：把 a.txt 的内容改成 patched-a，并新建 b.txt，内容为 patched-b。不要用其它工具。"
+  ],
+  [
+   "user",
+   "请只用 Write 工具新建 DENYME-write.txt，内容为 x。"
+  ],
+  [
+   "tool",
+   "Write",
+   true,
+   "probe-deny: blocked by M10b hook A"
+  ],
+  [
+   "user",
+   "请用终端工具执行：echo x > DENYME-bash.txt"
+  ],
+  [
+   "tool",
+   "Bash",
+   true,
+   "probe-deny: blocked by M10b hook A"
+  ],
+  [
+   "user",
+   "请只用 Write 工具新建 SLOWME.txt，内容为 x。（记下大约等了几秒）"
+  ],
+  [
+   "tool",
+   "Write",
+   false,
+   "File created successfully at: <fixture>/SLOWME.txt (file state is current in your context — no need to Read it back)"
+  ],
+  [
+   "user",
+   "请在 .reviews-demo/ 目录下新建文件 2026-09-25-demo-glm.md，内容只写一行：# 原稿"
+  ],
+  [
+   "tool",
+   "Write",
+   false,
+   "File created successfully at: <fixture>/.reviews-demo/2026-09-25-demo-glm.md (file state is current in your context — no need to Read it back)"
+  ],
+  [
+   "user",
+   "请把 .reviews-demo/2026-09-25-demo-glm.md 的第一行改成 # 已修改"
+  ],
+  [
+   "tool",
+   "Edit",
+   false,
+   "The file <fixture>/.reviews-demo/2026-09-25-demo-glm.md has been updated successfully. (file state is current in your context — no need to Read it back)"
+  ]
+ ]
+}

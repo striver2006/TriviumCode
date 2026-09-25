@@ -1,0 +1,19 @@
+## 目录清单（按修改时间）
+model-io-sess_4ce878cb-deec-4a28-8698-a7bb8274a662.jsonl bytes 116966 lines 1 startedAt 2026-09-24T17:50:56.720Z model {"modelId": "qwen3.8-max", "providerId": "84044858-4e28-432b-bbbd-7e2d624e39ff"} title Z Code@cli session-type main secret-shape-hits 0
+model-io-sess_85d4f76c-35bc-4324-b496-8c0ca2a91dac.jsonl bytes 118069 lines 1 startedAt 2026-09-24T22:28:34.003Z model {"modelId": "qwen3.8-max", "providerId": "84044858-4e28-432b-bbbd-7e2d624e39ff"} title Z Code@cli session-type main secret-shape-hits 0
+model-io-sess_0ff5a270-6123-4ef1-911c-e125708e8523.jsonl bytes 118821 lines 1 startedAt 2026-09-25T00:27:45.976Z model {"modelId": "qwen3.8-max", "providerId": "84044858-4e28-432b-bbbd-7e2d624e39ff"} title Z Code@cli session-type main secret-shape-hits 0
+
+## 请求头键名（三份并集）
+['http-referer', 'user-agent', 'x-client-language', 'x-client-timezone', 'x-os-category', 'x-os-version', 'x-platform', 'x-query-id', 'x-release-channel', 'x-request-id', 'x-session-id', 'x-title', 'x-zcode-agent', 'x-zcode-app-version', 'x-zcode-session-type', 'x-zcode-trace-id']
+鉴权类头键： []
+
+## 顶层与二层键路径（最新一份）
+['attempt', 'completedAt', 'durationMs', 'model.modelId', 'model.providerId', 'querySource', 'request.body', 'request.headers', 'request.messageCount', 'request.messageOffset', 'request.messages', 'request.messagesKind', 'request.toolNames', 'requestId', 'response.finishReason', 'response.headers', 'response.modelId', 'response.providerMetadata', 'response.reasoningText', 'response.responseId', 'response.text', 'response.toolCalls', 'response.usage', 'sessionId', 'startedAt', 'traceId', 'turnId', 'type']
+
+## 入口文件常量（/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs）
+VFs = 3
+HFs = 64*1024*1024
+GFs = 256*1024*1024
+XFs: function XFs(e,t){let n;try{n=(0,C1.readdirSync)(e).filter(a=>a.startsWith("model-io-")&&a.endsWith(".jsonl"))}catch{return}let o=n.length-t;if(o<=0)return;let s=n.map(a=>{try{return{name:a,mtimeMs:(0,C1.statSync)((0,cOe.join)(e,a)).mtimeMs}}catch{return{name:a,mtimeMs:0}}}).sort((a,l)=>a.mtimeMs-l.mtimeMs).map(a=>a.name);for(let a of s){if(o<=0)break;let l=(0,cOe.join)(e,a);try{(0,C1.rmSync)(l,{force:!0}),Jst.delete(l),o-=1}catch{}}}
+e4s: function e4s(e){return(0,cOe.join)((0,WWr.homedir)(),".zcode","cli",e?"debug":"rollout")}
+r4s: function r4s(e,t){let n={...e};delete n.sdkMessages;let o=rre(n.body);if(o&&!t){let s={...o};delete s.messages,n.body=s}return n}function o4s(e){let t={...e};return delete t.body,t}function i4s(e,t,n){let o=rre(e.reque
