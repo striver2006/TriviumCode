@@ -1,0 +1,112 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "三个焦点里两个站得住：拍平安装（§2.1）对递归枚举的消除是完备的——断言设计不依赖任何一家的递归行为，仓库内落点理由经 install.ts 现行为复核仍成立；D-2 推荐 (b) 的结构性论证（子代理旁路、命令行模式关闭）成立，(c) 的批评也成立。最重的两条都在 FR-20：转抄失真在全计划里没有任何检测点，失真会静默流过整条流水线（GLM-01）；「引号与转义规则在实现时定」与现状不符——claude 侧现 SKILL.md 已有整套拼串契约，且承诺样例恰好漏掉现有契约点名最危险的 `$` 与单引号（GLM-02）。其余为 (b) 交付包缺 L2 运行面内容、§4 防不住会话内子代理挤占 rollout 名额、五前提的 claude 对称性未核、一处落点指针悬空。无 blocker / major。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §2.4（连带 §2.5 薄冒烟）",
+      "problem": "FR-20 在非 claude 载体上降为模型转抄，§2.4 只登记了风险边界（单次、单模型实测不证明长焦点保真），落点是文档；但整份计划连同沿用的 r5 §5.8、§7.2、§3.1 J1 在内，没有任何一处把「到达 BRIEF / run.json 的焦点」与「用户输入原文」做逐字比对的判据。J1 已要求每轮附运行期实际命令行摘录，§4 又规定 J4 的 glm 轮收取 rollout（用户消息原文在内）——两侧证据本来就在场，只差一步 diff。缺了它，非 claude 载体上焦点被转抄改写（漏字符、改引号）时会静默流过整条流水线，审查焦点与用户所要不一致而无从发现。",
+      "evidence": "读 plan §2.4、§2.5、§4 与 §0 替换清单，r5 §5.8（薄冒烟原判据只到「参数原文到达」）、r5 §3.1 J1 行（只收摘录不比对）、r5 §7.2（每轮判据无焦点比对）；报告 §1.4、§1.5（g5 单次单模型的适用范围声明）；PRD_driver_dual_critic.md 第 176 行 FR-20 原文。通读 r9 全稿未见任何焦点保真类断言。",
+      "suggestion": "在 §2.5 薄冒烟或 J4 glm 轮判据里加一条客观比对：以 evidence 中 rollout 的用户消息原文对照 run.json / BRIEF 第 2 段的焦点，逐字一致才判过；若不做，则在 FR-20 边界登记里明确写「无检测手段，依赖人工核对」，不要留成既无手段又未声明的空档。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.4",
+      "problem": "「转抄进 shell 命令时的引号与转义规则在实现时定」与现状不符：claude 侧现文件（单源渲染的抽取源）第 2 步已有一整套拼串契约——正文整段放单引号参数、内嵌单引号写 '\\'' 、其余字符一律不转义、明确禁止双引号（$ 与反引号会被 shell 展开）。r5 §5.1 的单源渲染正是从这些 SKILL.md 抽出契约正文，所以引号规则不是待定空白，而是已有规则需适配「参数来自用户消息而非 $ARGUMENTS 替换」的差异。按 §2.4 字面实施，存在把已有规则当空白重造、或与 claude 产物规则分叉的风险。另外承诺的样例字符集是「反引号、*、双引号」，恰好不含现有契约点名最关键的两个字符：$（双引号内即变量展开 / 命令替换）与单引号（'\\'' 规则的对象）。",
+      "evidence": "skills/dual-review-plan/SKILL.md 第 44～64 行现行拼串契约（单引号包裹、'\\''、禁双引号、$ / 反引号 / * 逐字进焦点）；r5 §5.1（契约正文从现有 7 份 SKILL.md 抽出、diff 证明渲染回 claude 载体等于现文件）；plan §2.4 第二条原文。",
+      "suggestion": "§2.4 改写为「沿用现 claude 契约的拼串规则，适配参数来源差异，并断言三家产物里该规则段完整在场」；样例字符集补上 $ 与单引号两个焦点。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.2 选项 (b)",
+      "problem": "D-2 选项 (a) 的做法包含「RUNBOOK 增『L2 Driver 人工兜底』节、QUICKSTART 明示」，(b) 只写「注册值翻 L2 + 渲染 zcode 配置 + 文档写明五前提生效条件」。但 glm 翻 L2 后 L2 的运行规程在 (b) 下同样必需：注册表对 L2 的定义就是「没有 blocking Hook，靠 approve 前置复核等补偿」，(b) 的尽力拦截只在五前提下生效，操作上仍按 L2 走。r5 §8.4 的 MANUAL/PROTOCOL/RUNBOOK 行未被 §0 替换、按增量规则仍生效，但 (b) 行不引用它——按 §3.2(b) 字面实施第 3 步的人可以只做翻值 + 渲染 + 一句文档，漏掉 L2 兜底规程的交付；两选项在运行面上的实际差异也因此没有表达。",
+      "evidence": "plan §3.2 三行原文与 §0 清单（未列 r5 §8.4）；r5 §6.1「不通过时」原文（RUNBOOK / QUICKSTART 两项）；r5 §8.4 文档表 RUNBOOK 行；src/trivium/agents/registry.ts 第 70～75 行 L1 / L2 定义。",
+      "suggestion": "(b) 行补一句：r5 §8.4 的 RUNBOOK「L2 Driver 人工兜底」与 QUICKSTART L1/L2 节照旧落地（与 (a) 相同），本选项只多出 zcode 配置渲染与安装。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4",
+      "problem": "「会话一结束立刻拷」防不住会话中途被自己的子代理挤出名额：报告 §3.4 行 3′ 载明 rollout 目录最多留 3 份 model-io-*.jsonl、新建会话文件时按修改时间删最旧；§3.1.2 载明子代理的 rollout 文件同样占名额。若 glm 驱动会话中途累计派出 3 个及以上子代理，主会话文件会在会话进行中就被删掉，续用后新建的文件只含新内容——旧内容在「会话一结束」之前已经丢失，规则 1 的当场拷贝来不及。规则 3 只禁「切出去跑别的 zcode 会话」，管不到驱动会话自己派子代理。J4 是不接受降级的验收轮，载体证据缺失的代价是整轮重跑。",
+      "evidence": "报告 §3.4 行 3′（XFs / VFs = 3 的滚动窗口与删除行为）、§3.1.2（子代理 rollout 占名额、被挤掉后续用新建只含新内容的文件）；plan §4 规则 1～3 原文。",
+      "suggestion": "剧本加一条硬性约束：glm 驱动会话内不使用子代理（或子代理文件数控制在 2 以内），并把该指示写进入口 skill / BRIEF；或在会话内每完成一个阶段即时拷贝 rollout 增量。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.1 表 2(i) 行、§3.2(c) 代价行、§3.4 matcher 条",
+      "problem": "五前提叙事把「matcher 覆盖不到外挂写工具」当作把 glm 判「名义 L1 实为 L2」的依据之一，但 claude 侧 hooks.json 的 matcher 同样是精确名单（Edit|Write|NotebookEdit 与 Bash），Claude Code 会话里外挂的写类 MCP 工具（mcp__server__tool 形态）同样不进 matcher、同样绕过 hook-pre-write；§3.2(c) 的代价行只点了「claude 侧子代理未核」，没点这一条同形缺口。这不推翻 (b) 的推荐（子代理旁路、命令行关闭、信任门控是 glm 特有的结构性读数），但影响 (c) 的论证对称性与 J8 文档里 L1/L2 边界的写法。另外 §3.4「渲染时只用精确名单形态，不写正则」没有记录取舍理由——实测里不带 matcher 的条目对全部工具触发（报告夹具 A），是一个存在过的备选；「与 claude 侧同形、避开不锚定正则的误匹配面」若就是理由，应写出来。",
+      "evidence": "skills/dual-critic/hooks/hooks.json 第 37、47 行（matcher 为精确名单）；报告 §3.2.1（mcp__node_repl__js 不被现 matcher 覆盖、来自用户本机 MCP 配置）与 §3.1.1（夹具 A 不带 matcher、对每次工具调用都有记录；静态 jio 的空或 * 匹配全部）；plan §3.1、§3.2(c)、§3.4 原文。",
+      "suggestion": "在 §3.2(c) 代价行或 L1/L2 文档登记里补一句「matcher 对外挂 MCP 写工具的缺口两侧同形，claude 侧未核」；§3.4 给「只用精确名单」补一行理由记录。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.4 末条",
+      "problem": "FR-20 边界的落点写到「第 5 步回溯的 PRD FR-20 条（r5 §8.3）」，但 r5 §8.3 的清单只有 AC-21 子句 ①②、S6 状态与 FR-28 两行，没有 FR-20 条目；r9 §0 的替换清单也未把 r5 §8.3 列入替换或扩展。按增量稿规则，第 5 步执行者在这份清单里找不到 FR-20 这一交付项。增量稿漏落点在本项目是被记录过的反复失败形态（r7 §5 四行逾期即同类）。",
+      "evidence": "r5 §8.3 原文（仅 AC-21 / S6 / FR-28）；plan §2.4 末条与 §0 替换清单。",
+      "suggestion": "在 §0 为 r5 §8.3 增一行「PRD 回溯清单追加 FR-20 边界条」的声明，或把 §2.4 的落点改写成自含的交付描述（写明改哪份文档的哪一节）。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§2.1 拍平方案成立且断言设计得当：codex 递归枚举且可调用的读数（报告 §5）直接支撑「任何安装目标不得出现 entry/ 子树」；「递归查找 entry 目录为空」+「另三家目标根顶层恰 7 个入口」双断言配两条变异，不依赖 claude / agy / zcode 任一家的递归行为；仓库内落点不变的理由（skillNames() 只扫 skills/ 顶层）经 install.ts 现行为复核仍成立；skills/ 顶层实测确为 7 个入口目录 + dual-critic。",
+    "§2.3 撤回 --session-id 注入的证据链完整：zcode shell 工具环境无会话 ID（报告 §3.4 问题 2）且 claude 侧 EV-107 前置臂同样落 unknown-session；claimed_by 取值链末端恒为字面 unknown-session（r5 §1.1 第 1 行核实）、本就不作判据（r5 §7.3 白名单行），撤回无判据损失。",
+    "§3.1 按 r5 §6.1 字面逐条对照诚实：Edit 拒写未实测、ApplyPatch 只有静态读数（operation.path 嵌套、extractTargetPath 五键取不到——与 hooks.ts 第 72～79 行现行为一致）、mcp 工具未测，全部如实标注，没有凑判据；「部分满足 ⇒ 不算通过、处置交用户」忠于 r5 原文。",
+    "§3.4 zcode 配置形态与报告实测一致（events 层、enabled 缺省 false、精确名单语义、stale_digest 改配置即退回待信任并打印重信任提示、/tmp 与 /private/tmp 并存且词法 + realpath 并集判定能应付）；mergeHooks 只增不删与 claude 侧同口径。",
+    "§5 量级与台账全部对上：r7 §4 表 26～37 经 plan 档 3→4～5 得 27～39，阈值 39 × 1.33 = 51.87 ⇒ > 51；台账 §0 改动记录 3 已按此落笔、累计 15 轮与台账 §2 一致，EV-107 前置臂台账行与 evidence run.json 在场（Glob 核过）。",
+    "D-2 推荐 (b) 的核心论证站得住：子代理旁路与命令行模式 Hook 整体关闭是结构性读数（报告 §3.1.2），按注册表 L1 定义（具备 blocking Hook）glm 确实够不上 L1；完全不渲染等于放弃实测有效的主代理拦截，(b) 是诚实的中间态；§3.3 超时行如实（ZCode 有行为实测、Claude 侧标未核且不默认「超时即拦」）。",
+    "§2.2 gemini 确定安装与 §2.5 调用写法表均与报告 §1.2 / §1.3 / §2.2 / §3.6 对得上；薄冒烟顺带核桌面端 zcode 写法，把表内自己标出的已知空白补上；codex 同名双根的 QUICKSTART 症状提示与「查重名按读取面」照旧（读取面含 ~/.agents/skills）相互闭合。"
+  ],
+  "not_covered": [
+    "未读 r3 / r4 / r6 稿与 EV-82 三段子主题计划全文，增量链只经 r5 / r7 / r8 / r9、台账与各稿 §0 清单交叉核对；",
+    "QUICKSTART / MANUAL / RUNBOOK / PROTOCOL 现文未读——GLM-03 对 L2 兜底内容落点的判断只基于计划文本，未核这些文档当前是否已有相关内容；",
+    "主设计文档只按关键词查了护栏等级与注册表相关行，§8.5 引言块、§18.1 #16、§7.1 topic claim 段全文未通读；",
+    "一切 CLI 行为读数（zcode 桌面端 Hook、matcher 语义、codex / agy 调用写法等）以第 1 步报告为准，本审查在只读约束下未独立复现；",
+    "hooks.ts / registry.ts / install.ts / PRD / 设计文档只读了 grep 命中段与关键函数，未逐行通读；测试目录与 adapters/ 未读；",
+    "另一位审查员的产出按背靠背约束未读、不引用。"
+  ],
+  "consulted": [
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r8-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r7-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-23-M10b-入口资产与真载体验收-r2-claude.md",
+    "doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md",
+    "doc/08_project/M10b-轮次台账.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "src/trivium/hooks.ts",
+    "src/trivium/agents/registry.ts",
+    "src/install.ts",
+    "skills/dual-critic/hooks/hooks.json",
+    "skills/dual-review-plan/SKILL.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "/Users/chenzhenbo/.claude/skills/dual-critic/schema/review.v1.json"
+  ]
+}

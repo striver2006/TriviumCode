@@ -1,0 +1,87 @@
+{
+  "agreed": [
+    "准入实测证据扎实：报告 §1～§5.1 的 12 次真实调用及 EV-107 前置臂全部形成可追溯的机读闭环证据，六格判据成立；",
+    "撤回 --session-id 注入合乎实测事实：根据 ZCode 环境变量不透传会话 ID 以及 Claude 环境下同为 unknown-session 的实测，果断在四家入口资产中撤回不切实际的 --session-id 注入，避免了虚假的契约依赖；",
+    "gemini 目标与落点决策明确：基于全局根展开与常驻可见事实，决定安装至全局根，放弃工作区根，符合实测行为；",
+    "阈值与量级重算准确：量级由 26～37 调整为 27～39，阈值 > 51，与 M10b 轮次台账 §0 改动记录 3 严格一致；",
+    "拍平安装的设计方向正确：将非 Claude 入口技能直接平铺在目标根顶层，在目标根空间内消除了多层嵌套结构，解决了 Codex 递归枚举其它 Agent 资产的核心隐患。"
+  ],
+  "consulted": [
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/hooks.ts",
+    "skills/dual-review-plan/SKILL.md",
+    "doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r8-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r7-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-23-M10b-入口资产与真载体验收-r2-claude.md",
+    "doc/08_project/M10b-轮次台账.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r3-revised-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r3-gemini.md",
+    "skills/dual-critic/hooks/hooks.json",
+    "src/install.ts",
+    "test/unit/install.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §3.2 与 §3.4、.reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md §5.1 与 §6.2、doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md §3.1 与 §3.5、skills/dual-critic/hooks/hooks.json。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §3.2、§3.4 与 r5 §5.1",
+      "problem": "D-2 选项 (b) 推荐「glm 注册值翻 L2，但仍渲染 zcode Hook 作尽力拦截」，在契约协同与工程量上存在脱节：①提示词与载体契约冲突：r5 §5.1 原规定「L2 载体没有这个 Hook，渲染时不注入误拦提示，改注入 L2 明示」。若 glm 翻为 L2 但实际部署了 Hook，若按 L2 渲染则模型不会收到误拦提示（如 Bash 写动词拦截），在桌面端一旦触发 Hook 拦截将缺乏预期与应对出口；若按 L1 注入误拦提示，则与 preflight 打印的「护栏 L2——无事前写拦截」口径矛盾，§3.2 未修订 r5 §5.1 对此场景的处理；②hooks_deny_ok 探针工程量评估沦为僵尸需求：§1.2 第 2 条与 §3.2 仍规定在第 3 步开工时评估探针工程量。然而报告 §3.5 已证明该探针需要逆向驱动私有桌面 RPC（workspace/hooks/trustGrant），维护成本极高；在 glm 已经定级为 L2 且 B1 不再需要 effectiveGuardLevel 的前提下，该探针仅作为「观测」不仅无直接收益，还增加了第 3 步的评估与决策开销；③§3.4 Hook 配置形态规格未穷尽：仅给出了 3 行 PreToolUse 的抽象 JSON 片段，未明确 matcher 中收录哪些具体工具（Write/Edit/Bash？）、执行哪些 trivium 命令（hook-pre-write / hook-pre-bash / hook-pre-commit），以及 ZCode 支持的 Stop 和 SessionStart 事件是否配置，导致第 3 步实现缺乏完整规格。",
+      "severity": "major",
+      "suggestion": "在 §3.2 明确 Option (b) 下 glm 入口资产的具体提示词策略（澄清是注入尽力 Hook 提示还是 L2 提示，并与 preflight 文案对齐）；在第 3 步开工前明确：鉴于 glm 已是 L2，hooks_deny_ok 探针不再具有定级价值，建议直接关闭自动探针要求；在 §3.4 补全 zcode Hook 的完整事件映射表与 matcher 名单。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §2.4 与 §0、skills/dual-review-plan/SKILL.md 第 30-65 行、doc/01_requirements/PRD_driver_dual_critic.md FR-20 与 AC-09、.reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md §5.1 与 §7.2。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §2.4 与 r5 §7.2",
+      "problem": "参数由 $ARGUMENTS 改为模型转抄后，对 FR-20（审查焦点逐字传递）与 AC-09 的影响未写全：①空参数编造（幻觉）漏洞未防：在 Claude 载体上，用户未输入焦点时 $ARGUMENTS 为空，topic resolve 会以退出码 64 拦截并要求输入（FR-20 的核心保证）。改由模型转抄后，若用户仅输入 /dual-review-plan，模型极易产生幻觉自行编造焦点（如「全面审查」或从对话中猜测）传给 CLI，导致空焦点校验被静默绕过。§2.4 固定指令未覆盖空参数边界；②正文与旗标（--topic 等）切分歧义：用户输入常同时包含焦点和旗标（如 /dual-review-plan 重点看并发 --topic 登录重构）。原 skill 依赖详细示例指导模型将焦点单引号包裹、旗标移至引号外；若仅给出「本命令后面用户输入的全部文本就是参数，逐字转抄」，模型会将整个输入包含旗标一并单引号包裹，导致 topic resolve 将 --topic 识别进焦点或退 64 报错；③引号转义规则推迟到实现：§2.4 称「引号与转义规则在实现时定」，但 shell 单引号转义（'\\''）是防范语法错误与命令注入的关键契约，计划阶段未明确指导规则；④第 4 步验收与第 5 步回溯漏项：第 4 步每轮判据（r5 §7.2）未增加针对非 Claude Driver 运行期 BRIEF/review --start 中焦点与用户输入文本的对账断言；§0 替换清单未将 r5 §8.3（PRD 回溯）列入，遗漏文档同步点。",
+      "severity": "major",
+      "suggestion": "在 §2.4 补充非 Claude 载体下的关键转抄规约：①显式规定用户未提供焦点时必须传空字符串、严禁自行编造焦点；②给出焦点与 --flag 分离包裹的契约样例；③在第 4 步验收中增加焦点逐字保真核对；并在 §0 补齐第 5 步 PRD FR-20 回溯修改的登记项。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §2.1、src/install.ts 第 60-84、108-112 行、doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md §5。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §2.1 与 src/install.ts:108-112",
+      "problem": "拍平安装在逻辑结构上能够消除递归枚举，但在非 Claude 目标根的升级与残留清理上存在防线盲区。install.ts 当前的 syncDir 是按具体技能目录迭代同步，并不对目标根目录顶层执行整体裁剪（为了不误删用户的其他技能）。如果用户目录或开发环境中曾存在过旧版生成的 <目标根>/entry/ 或 <目标根>/dual-critic/ 残留，按顶层 7 个技能目录分别拍平同步时，旧残留目录不会被自动清理，从而导致 Codex 仍能通过其递归枚举发现旧残留。§2.1 的断言仅覆盖了注入临时空 home 的测试，未覆盖现实安装环境下的防残留机制。",
+      "severity": "minor",
+      "suggestion": "在 install.ts 面向非 Claude 目标根安装时，增加针对本产品历史遗留目录（如 <目标根>/entry、<目标根>/dual-critic）的主动清理检查，并在测试中增加旧残留被清理的断言，确保拍平安装在真实升级场景下也能彻底消除递归枚举源。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查阅 .reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §4、doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md §3.1.2 与 §3.4。",
+      "id": "AGY-04",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §4 与 doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md §3.1.2",
+      "problem": "J4 载体证据当场收取机制未防御会话内子代理导致的滚动挤占风险。§4 规定了会话结束后立即拷贝 model-io-sess_<id>.jsonl 的四项硬性步骤。然而报告 §3.1.2 明确指出，会话内触发的子代理会生成独立的 model-io-sess_subagent_* 文件，并且同样占用「最近 3 份」的滚动配额。若 ZCode 桌面端在执行命令 B 的长流程中自主派发了 3 次子代理，主代理的会话文件将在会话进行期间被静默挤出并删除，导致会话结束后根本拷贝不到主会话留痕。",
+      "severity": "minor",
+      "suggestion": "在 §4 的 J4 剧本步骤中追加提示或约束：在向 ZCode 桌面端交互提示词中明确要求「禁止使用 Agent 派发子代理，所有操作由主代理直接执行」，或增加会话进行中及时备份的防范策略。"
+    }
+  ],
+  "not_covered": [
+    "Codex CLI 0.156.1 二进制在 macOS arm64 之外平台（如 Linux）的 skill 递归枚举行为；",
+    "ZCode 桌面端 GUI 界面在点击信任前后的实时弹窗与本地加密存储机制；",
+    "各厂商大模型（如 Qwen/DeepSeek/GLM-5.3）在不同上下文长度下对复杂转义字符（反引号、管道符、换行符）转抄保真度的穷举压力测试。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最需关注的是 D-2 选项 (b) 导致的契约分裂与逻辑脱节：将 glm 定级为 L2 却保留 Hook 尽力拦截，与 r5 §5.1 的 L2 载体免除误拦提示产生冲突，且继续保留无消费方的 hooks_deny_ok 自动探针评估；\n参数改由模型转抄（FR-20）未防御空焦点被模型幻觉编造绕过的风险，缺少旗标分离指令，且未在第 4 步增加逐字比对断言；\n拍平安装在逻辑上能消除递归枚举，但 install.ts 缺少非 Claude 目标根历史残留目录（entry/、dual-critic/）的主动清理；\nJ4 证据留痕存在会话内子代理挤占 3 份滚动窗口导致主留痕提前丢失的风险；\n建议修订上述契约与防御盲区后重新提交。",
+  "verdict": "request-changes"
+}

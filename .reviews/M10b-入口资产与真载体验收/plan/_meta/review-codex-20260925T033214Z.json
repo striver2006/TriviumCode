@@ -1,0 +1,146 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一条：D-2 推荐 (b)（glm 翻 L2 但仍渲染 ZCode Hook）会与已登记的等级语义正面冲突——主设计 §8.5 与演进设计 §7.5 都把 L1 定义为「具备 blocking Hook」、把 L2 定为「没有」，且写明「glm 探针通过 ⇒ L1」；r9 只写了「注册值翻 L2」，没有交代 L1/L2 定义、AC-21 子句② 与第 5 步回溯面要不要跟着改，也没动 r5 §5.1 的「L2 载体不注入误拦提示、改注入 L2 明示」。\n次重：一是「第 2 步不受影响」不成立——入口资产的注入文案由护栏等级派生，D-2 未定就冻结 glm 的 7 份渲染产物会返工；二是参数改由模型转抄的影响只登记了「焦点进 BRIEF」，而实际是全部命令的全部参数（命令 A 的任务目标进 BRIEF 第 4 段、主题进 topic claim 与归档命名）都降级，且第 4 步无一处核对保真。\n拍平消除递归这个方向站得住：报告 §5 的失效面是「载体根下嵌套的 SKILL.md 进常驻清单且可被 $名字 调起」，拍平后 codex 的枚举面不再有二级路径；但断言只禁止名为 entry 的目录，不如直接断言载体根下不存在深度 ≥2 的 SKILL.md。\n另有三条小的环境/回滚面问题：codex 安装根未按 CODEX_HOME 派生；agy 是否读用户级 ~/.agents/skills 未测而 codex/zcode 都读它；(b) 新增的 .zcode/config.json Hook 段没有清理路径。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §3.2（b）行；同目录 r5 §5.1「误拦提示」条；doc/02_design/2026-09-10-...设计.md §8.5 表；doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md §7.5 表与 §516",
+      "problem": "选 (b) 会让「L2」这个等级字面与已登记定义相反。主设计 §8.5 的等级表写 L1 = 具备 blocking Hook（闸门期写拦截 + Stop 阻断 + 提交完整性锚）、L2 = 没有 blocking Hook；演进设计 §7.5 的能力矩阵逐列写「L1｜claude；glm（ZCode Hook 探针通过）｜✅ 闸门期写拦截」，L2 行是 ❌；§516 也写「通过则 glm Driver 拿 L1」。r9 只写「注册值翻 L2（不宣称 L1）」加「文档写明五个前提」，没有说清 L1/L2 的定义、AC-21 子句②「差异对使用者明示」的判据、以及第 5 步 §8.1/§8.2 的回溯面要不要跟着改。同时 r5 §5.1 的注入规则（L2 载体没有这个 Hook ⇒ 不注入误拦提示、改注入 L2 明示）不在本稿的替换清单内，于是「glm 的 7 份渲染产物该注入什么」有两个互相冲突的来源。r9 用来否掉 (c) 的理由是「L1 一词在两处含义不同」，而 (b) 把同一问题搬到 L2 上（glm 有 Hook、codex/gemini 没有），说明 (b) 不是换一个值，而是一次等级语义的改写。",
+      "evidence": "读 src/trivium/agents/registry.ts 第 145/183/234/248/262 行：GuardLevel 是 AgentDescriptor 的字段，claude 与 glm 现登记 L1、codex 与 gemini 登记 L2。读主设计 §8.5 的等级表（L1 = 具备 blocking Hook；L2 = 没有 blocking Hook，靠三层补偿；并自承「L2 的差异须在 QUICKSTART 对使用者明示」仍未交付）。读演进设计 §7.5 表（L1 行含 glm「探针通过」且勾选闸门期写拦截；L2 行勾 ❌）与 §516「mergeHooks 增 ZCode 配置目标…通过则 glm Driver 拿 L1，codex/gemini 无合并目标」。读 PRD FR-28 与 AC-21 子句②（护栏能力须如实分级、差异须对使用者明示、不得伪装成同等级强制）。再对照 r9 §3.2 的 (b) 行与 §0 替换清单（r5 §5.1 只被替换了 --session-id 那一条）。同一等级在这四处给出互相冲突的读法，冲突是文本可核的。",
+      "suggestion": "在 D-2 的拍板件里先把「L2 的定义」落定（是「没有 Hook」还是「不宣称 Hook 兜住」），并逐处列出随改落点：主设计 §8.5、演进设计 §7.5 与 §236/§430/§516 的修正落点（第 5 步）、r5 §5.1 的注入规则、QUICKSTART 的 L1/L2 节、AC-21 子句② 的判据；若 (b) 要保留，就说明为什么「L2 ❌ 闸门期写拦截」这一列可以带一个反例。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §3.2 末段（第 2 步不受影响，可以先做）与 §7 第 3 条；同目录 r5 §5.1、§8.4",
+      "problem": "「第 2 步不受影响」与既有约定矛盾：入口资产按护栏等级注入不同文案（L1 注入误拦提示；L2 不注入、改注入 L2 明示），而等级的唯一来源是注册表。D-2 落 (b) 或 (a) 都会改 glm 的注册值，于是第 2 步为 glm 渲染的 7 份 SKILL.md 正文、entry-render-parity 的断言对象、以及 QUICKSTART 的 L2 节都随之变。按现在的写法先开工冻结这些产物，D-2 之后必须重渲染并重核测试；反过来先按 L1 渲染，J8 要的 L2 明示就落不了地。",
+      "evidence": "读 r5 §5.1：载体适配层含 --session-id 注入点与误拦提示，末句原写「L2 载体没有这个 Hook，渲染时不注入这段，改注入 L2 明示」（该句不在 r9 §0 的替换清单里）。读 r9 §3.2 末段「第 2 步不受影响，可以先做」与 §7 第 3 条「第 2 步：本稿定稿后开工」。读 r5 §8.4 的 QUICKSTART 落点「J8：L1 / L2 节」。读 src/trivium/agents/registry.ts 的 guardLevel 字段注释（护栏等级是注册表字段，故渲染取值来自注册表）。",
+      "suggestion": "要么把「D-2 与 L1/L2 注入文案」并列为第 2 步的开工前提（而不是「不受影响」），要么明确渲染步以注册表实时值为输入、D-2 落定后必须重跑 build 并重核 entry-render-parity 与 J8 文案，并写成第 2 步的收尾条件。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §3.2（b）行、§3.4；同目录 r5 §7.1、§7.2、§7.3.1",
+      "problem": "(b) 的全部收益是「保留一道实测能拦的尽力防线」，但计划里没有任何验收或观测面：第 4 步 glm 轮（唯一一次真实 ZCode 桌面轮）的判据只有工件命名、闸门停点、裁决与 approve 复核；plan 阶段的 Hook 行为已由 r5 §7.3.1 移到夹具仓库、用 claude 载体做。而按 §3.4，zcode 配置一改就退回待信任，每次 init/hooks 之后防线会静默失效。结果是：M10b 结束时这道防线是否真的在任何一台机器上生效过，既无判据也无记录。",
+      "evidence": "读 r5 §7.1 剧本表 glm 行、§7.2 每轮判据清单、§7.3.1（把「刷新未送审原稿」「送审后改原稿被拦」移到夹具仓库的 claude plan 轮）。读 r9 §3.4「配置一改就退回待信任…打印一行提示用户在桌面端重新信任」。读报告 §3.1.1：信任确认之前写工具照常执行且无 Hook 记录、超时即放行且对模型与用户都不可见。",
+      "suggestion": "在第 4 步 glm 轮加一条零成本观测：记录该项目的 zcode 配置是否已被信任、桌面会话里是否观察到一次拒写/拦截（未信任或未触发就如实记录），并写进第 4 步报告与 QUICKSTART 的有效条件句。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §2.1「新增断言」段",
+      "problem": "断言只禁止名为 entry 的目录，而实测的失效面是「载体根下任何一层嵌套的 SKILL.md 都会进常驻清单、且能被显式调起」。用目录名做判据把结论绑在一个字面量上：将来 assets 形态再变（例如多一层包装目录、或某家目标换名），只要不叫 entry，断言照样绿而 codex 仍会枚举到它——而这正是本稿要消灭的形态。",
+      "evidence": "读报告 §5 的表：codex 在 $CODEX_HOME/skills 下既列出 dual-critic/SKILL.md，也列出 dual-critic/entry/x/dual-zzz/SKILL.md，且真实调用 $dual-zzz 能注入正文（递归枚举且可调用）；§5 末段「把 dual-critic 连同 entry/<agent>/ 一起装进 codex 的任何 skill 根，都会让其它 Driver 的入口资产出现在 codex 的列表里，还能被 $名字 调起」。读报告 §2.1：codex 侧的枚举可用零配额 codex debug prompt-input 直接看（Skill roots 与列表条目）；§3.6 则有 zcode skills list --json。读 r9 §2.1 的断言原文（只查名为 entry 的目录、只数顶层 7 个入口目录）。",
+      "suggestion": "把断言换成性质判据：目标根与运行时根下不存在深度 ≥2 的 SKILL.md；或在注入临时 home 的用例里顺带跑一次载体侧零配额枚举，断言列表里不出现带层级的路径。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "scope-drift",
+      "location": ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §2.4 末条、§6 偏差表 #4；同目录 r5 §8.3；doc/01_requirements/PRD_driver_dual_critic.md FR-20",
+      "problem": "转抄的适用范围比登记的大得多。三家不替换 $ARGUMENTS，意味着全部 7 条命令的全部参数都改由模型转抄：命令 A 的「任务目标」进 BRIEF 第 4 段、主题进 topic claim 与归档目录名与 run 元数据，B/C/D 的问题描述与 --focus 进 BRIEF 第 2 段。计划只登记了「焦点逐字进 BRIEF」一条 FR-20，漏掉另外两条链路：主题（进归档命名与跨阶段认领，改写或截断都无声通过，只有「缺参」才拒绝启动），以及跨命令的一致性（同一主题在 /dual-run 的 plan 与 code 两次认领、或与随后的 /dual-approve 之间，只要模型改写一次措辞就会出现同一主题两个名字）。第 4 步的 glm/codex 轮也没有任何参数保真判据，等于这条降级在整个里程碑里一次都不会被验到。",
+      "evidence": "读 skills/dual-review-plan/SKILL.md 第 30 行 TV topic resolve --stage plan --json -- $ARGUMENTS，与 skills/dual-run/SKILL.md 第 39 行同形调用、第 41～42 行「命令后的正文是任务目标（进 BRIEF 第 4 段）；审查焦点是可选补充，只认显式 --focus（进第 2 段）」。读 PRD FR-20 条与 PRD 第 661 行故障表（只覆盖「缺少提示语 ⇒ 拒绝启动」，不覆盖「被改写」）。读报告 §1.4（agy 只测一次、一个模型，长文本与更多特殊字符不保）、§2.2（codex 参数只以用户消息原文到达）、§3.6（zcode 以 User request 原文到达）。读 r9 §2.4 的登记范围、r5 §7.1/§7.2（第 4 步无保真判据）。",
+      "suggestion": "把「参数保真」按参数种类登记（主题/任务目标 与 焦点 分开），写明改写后哪一段链路会静默接受；并在第 4 步的 glm 与 codex 轮各加一格「BRIEF 焦点、run.json.topic 是否等于用户输入」——这是唯一能验到转抄保真的场合。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §2.4 第 2、3 条",
+      "problem": "转抄文本最终要被模型写进 shell 命令（TV topic claim --topic <文本>、-- $ARGUMENTS 形态）并落盘到 BRIEF，而「引号与转义规则在实现时定」被推到实施期；本稿只承诺加一条样例与一条 $ARGUMENTS 计数为 0 的断言，没有任何往返用例。稿子自己点名的反引号、*、双引号恰是 shell 展开与 Bash 侧 Hook 启发式的高危输入（命令文本出现角色后缀、_meta 等字样即被拦），失败代价落在 J4 那一轮真实运行上。",
+      "evidence": "读 skills/dual-review-plan/SKILL.md 第 30 行与 skills/dual-run/SKILL.md 第 39 行的 -- $ARGUMENTS 调用形态。读 r9 §2.4 的「转抄进 shell 命令时的引号与转义规则在实现时定，定下后写进契约正文，并加一条样例（含反引号、*、双引号的焦点）」。读报告 §1.4 g5：实测用的参数就是 甲 乙 加双引号、*星号*、反引号。读 CLAUDE.md 关于 Bash 侧启发式误拦的描述（提到任一角色后缀、_meta、task.json、state.json、.trivium 字样即命中，且刻意保留）。",
+      "suggestion": "把转抄后的 shell 往返写成一条可跑用例：同一组字符（反引号、*、双引号、$、以及含角色后缀字样的焦点）走一遍，断言落盘的 topic 与 BRIEF 焦点与输入逐字一致、且调用未被 Hook 拦下；规则本身即便留到实施期定，也要在计划里定死「以哪条用例为验收」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/M10b-入口资产与真载体验收/plan/2026-09-23-...-r2-claude.md §3.2.2 目标表（经 r5 §5.5 引用、r9 承接）；src/trivium/adapters/codex-home.ts",
+      "problem": "codex 的安装根被写死为 ~/.codex/skills，而本仓对同一件事是按 CODEX_HOME 解析的，报告 §5 的 codex 臂用的也是 $CODEX_HOME/skills。对设了 CODEX_HOME 的用户，入口资产会装到 codex 根本不读的目录，症状是「装完在 codex 里没有这条 skill」，不报错、也不在安装报告里体现。r9 通篇没有出现 CODEX_HOME，等于把「用户的 codex 根就是 ~/.codex」当成既成事实。",
+      "evidence": "读 src/trivium/adapters/codex-home.ts 的 codexHomeOf()：env['CODEX_HOME'] ?? path.join(os.homedir(), '.codex')，且该文件开头写明本步为什么必须双覆盖 CODEX_HOME 与 HOME。读报告 §2.1 与 §5：codex 的 skill roots 一律写作 $CODEX_HOME/skills（z5 的 r0、z6 的 r0）。读 r9（无 CODEX_HOME 字样）与 r2 §3.2.2 的目标表（codex ~/.codex/skills）。",
+      "suggestion": "把「各家 skill 根」也做成注册表派生的一项，按各家 CLI 自己的解析规则取值（codex 走 CODEX_HOME，其余各按其配置根），并在安装报告里回显实际落点与跳过原因；这与纪律 7「Agent 差异唯一来源」也一致。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-08",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §2.5 末条；同目录 r2 §3.2.2「查重名按读取面」",
+      "problem": "「查重名按读取面」这条判据对 gemini 只登记了 ~/.gemini/config/skills，但用户级 ~/.agents/skills 已被实测证明是 codex 与 zcode 的读取面。agy 是否也读用户级 ~/.agents/skills，报告只测过工作区 <workspace>/.agents/skills（未命中），没测用户级那一份。若 agy 也读，gemini 的撞名判定会漏一面，而且同名时谁胜出在 agy 上也未知——症状要到第 4 步那一轮才现形。",
+      "evidence": "读报告 §1.2（正对照只把哨兵放在工作区根 <workspace>/.agents/skills，未命中）与 §1.3（全局根 ~/.gemini/config/skills 已测）。读报告 §2.1 z5：codex 的 roots 是 $CODEX_HOME/skills 与 $HOME/.agents/skills 两条；§3.6：zcode 枚举出 source: agents、rootPath: ~/.agents/skills。读 src/trivium/adapters/codex-home.ts 注释「~/.agents/skills 这个指令根随 HOME 派生」。读 r9 §2.5 只点了 codex 的读取面含 ~/.agents/skills。",
+      "suggestion": "在 gemini 目标落地前补一次零配额哨兵实测（哨兵放用户级 ~/.agents/skills，看 agy 是否把它注册成斜杠命令、以及同名时的胜出方），把结论写进读取面清单；实测为否也记一句，免得下次装机形态变化时重新推。",
+      "confidence": "low"
+    },
+    {
+      "id": "CODEX-09",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md §3.4；src/install.ts 的 uninstall() 口径（r5 §5.4 照旧）",
+      "problem": "(b) 会把 TriviumCode 的 Hook 段写进每个已 init 项目的 .zcode/config.json，但计划只写了写入与「配置一改就退回待信任」，没写这段的生命周期另一头：既有卸载口径明确「各项目内的 .trivium/ 与 .claude/settings.json 里的 Hook 不动，要清理请手工处理」，新增的 zcode 段属于同一类项目级文件，却没进那份清单，也没说 init 重跑时旧段如何被替换、停用时是否要连带撤销信任。真要退回去，用户得逐项目手工删段并重新确认信任——现在没有一处说得清要做几步、丢什么。",
+      "evidence": "读 r9 §3.4 三条（写 .zcode/config.json、events 形态、配置一改就退回待信任且只打印一行提示）。读 src/install.ts 的 uninstall() 注释：「各项目内的 .trivium/ 与 .claude/settings.json 里的 Hook 不动…要清理请在项目里手工处理」。读 r5 §5.4/§8.4 的文档落点清单（QUICKSTART / MANUAL / RUNBOOK）里没有 zcode 段的清理与停用步骤。",
+      "suggestion": "把 zcode Hook 段的安装、更新、停用、清理四态写进 QUICKSTART 与 RUNBOOK（含停用后信任状态如何复位、残留段的后果），并加进 r5 §8.4 的文档落点表；若更新是「只增不删」，明说旧 matcher/命令残留时靠什么识别。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "第 1 步读数向第 2 步的承接方式站得住：每格三态、逐格给报告指针、拍板项逐条登记；把「参数逐字回显」改读为「参数原文到达模型」并据此把 §18.1 #16 落到「skills 优先」，同时把随拍板而来的 FR-20 降级如实登记，这条处理比按字面走退路更省返工。",
+    "拍平安装消除递归这个方向正确：报告 §5 的失效面是「载体根下嵌套的 SKILL.md 进常驻清单且能被 $名字 调起」，把另三家目标改成 <根>/dual-*/ 之后，codex 的枚举面不再有二级路径；同时保留仓库内 entry/<agent>/ 落点、claude 目标排除 entry/，J3 的字节兼容不受影响。这是对 r2 §3.1.1「备选」的正确替代。",
+    "D-2 拒绝 (a) 的核心论据与读数一致（子代理完全不过工作区 Hook、命令行模式下工作区 Hook 整体关闭，都是结构性的），选项表把三个分支各自的代价都写了出来，没有把 (c) 的代价写得比实测更轻，也没有把探针的工程量预支成结论。",
+    "§4 的 J4 取证四条方向正确：报告 §3.4 行 3′ 的滚动窗口（最多 3 份）、子代理另占名额、以及续用会新建只含新内容的文件，都是实测事实；写成硬性步骤比事后排障便宜得多，「入仓只收摘录」也守住了证据边界。",
+    "§5 的量级算术自洽：27～39 ⇒ 39 × 1.33 = 51.87 ⇒ > 51；台账 §0 改动记录 3 与 §2「累计轮次 15 / 阈值 > 51（改动记录 1、2、3）」已同步落笔，与我在 doc/08_project/M10b-轮次台账.md 读到的口径一致。",
+    "把 codex 解析回退（22/107、其中 18 份属 schema 层面）移出 M10b、另立 BACKLOG 并以前置实测（--output-schema 对非 OpenAI provider 是否生效）为前提，性价比判断与报告 §4.1 一致，不属本里程碑范围的判断也是对的。"
+  ],
+  "not_covered": [
+    "第 3 步 hooks_deny_ok 探针的工程量与「1～3 轮」上界、以及它对阈值 > 51 的连带影响，我未核（计划已如实登记为未估、超收益则回用户）。",
+    "本轮为只读静态审查，我没有运行任何 CLI、没有复核报告 §1～§5 的读数本身，报告里的实测一律按「已发生的读数」引用；也未读 doc/05_testing/evidence/m10b-ev107-20260925/run.json，EV-107 前置臂只从报告 §5.1 与台账第 15 行取结论。",
+    "install() 改造为多目标 + 拍平的实现可行性（syncDir 的裁剪作用域、卸载名单来源、agentTarget 与多目标的关系）未核；skills-src/ 渲染管线与 scripts/build.mjs 增渲染步的接口也未核。",
+    "第 4 步的配额与墙钟实耗（一轮 ZCode 桌面真实轮加各夹具轮）我未估算，只核了轮次算术与阈值口径；各载体的模型配额成本（含 agy 探活、zcode 探活）未核。",
+    "r9 §2.3 撤回 --session-id 注入之后在各载体的连带（topic claim / review --start / approve 的实现面）未核，只核了它与 r5 §5.2、§7.3 白名单的口径自洽性。",
+    "轨迹披露：为取 r5/r7/r8/r2 稿的行数，我在该 plan 目录执行过 wc -l *.md，输出里含同目录其它侧（gemini/glm）文件名与行数；未读其内容、未引用其结论，若编排器按路径判定命中，请以工具轨迹与命令文本为准。"
+  ],
+  "consulted": [
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-25-M10b-入口资产与真载体验收-r9-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r8-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r7-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-24-M10b-入口资产与真载体验收-r5-claude.md",
+    ".reviews/M10b-入口资产与真载体验收/plan/2026-09-23-M10b-入口资产与真载体验收-r2-claude.md",
+    "doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md",
+    "doc/05_testing/evidence/m10b-entry-probe-20260925/codex-real/c4-both/session-0.jsonl",
+    "doc/05_testing/evidence/m10b-entry-probe-20260925/zcode-remaining-cells/01-load/skills-list.json",
+    "doc/08_project/M10b-轮次台账.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "CLAUDE.md",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/install.ts",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-run/SKILL.md"
+  ]
+}
