@@ -150,7 +150,7 @@ Hook 侧三处改为按闸门的 `driver` 派生写法，**没有变异**：会�
 ## 7. 待用户定与待做
 
 1. **闸门停点话术**：用户 2026-09-25 定并入本步，已做（§2.1）。
-2. **glm 薄冒烟（第二轮）**：渲染出的 `.zcode/config.json` 要在 ZCode 桌面端验：①信任提示出现、信任后 `Write` 一个受保护后缀的文件被拒；②`Stop`（收工拦截）与 `SessionStart`（待办注入）两个事件的实际行为（静态读到 `Stop` 上退 2 走 `decision: block`，未实测）。这一步需要你在桌面端操作，逐步清单可以照第 2 步附录 A 的形式另写一份。
+2. **glm 薄冒烟（第二轮）**——**已做（2026-09-25，附录 A），全部按设计生效**。原待做描述：渲染出的 `.zcode/config.json` 要在 ZCode 桌面端验：①信任提示出现、信任后 `Write` 一个受保护后缀的文件被拒；②`Stop`（收工拦截）与 `SessionStart`（待办注入）两个事件的实际行为（静态读到 `Stop` 上退 2 走 `decision: block`，未实测）。这一步需要你在桌面端操作，逐步清单可以照第 2 步附录 A 的形式另写一份。
 3. **第 5 步回溯清单追加**（r5 §8.4、r10 §6 之外）：§3 的三条文档陈述写进 L1 / L2 文档与 8.5 引言块；r9 §3.3 威胁表「Hook 超时」行改为两家都「超时即放行」；四态文档（r10 §3.2.3）写进 QUICKSTART 与 RUNBOOK；PROTOCOL 补 `hooks` 命令一行、`run.v2` 的 `driver_guard_level`；RUNBOOK 补「写盘前备份只在真正写入时发生」（见下条）。
 4. **行为变化一处**：旧 `mergeHooks` 在配置已存在时**每次**都先写备份（哪怕随后判定「已就位」不写）；现在只在真正写入时备份。重跑 init 不再反复覆写 `.trivium-backup`，旧备份得以保留。
 5. **`review --cancel` 不回写 `run.json`**：第 2 步冒烟核出，建议新立 BACKLOG，仍待你定。
@@ -181,3 +181,20 @@ Hook 侧三处改为按闸门的 `driver` 派生写法，**没有变异**：会�
 
 - 主规格 `mutation-spec.json` → `mutation-output.txt`：**23 / 23 咬住**。H5、H6 的 `find` 随代码更新（H6 改为「必需集去掉 pre-bash」）；新增 H16～H23 八条（见上表）。H1～H15 的 fail 数与修复前那次（`mutation-output-run2.txt`）逐条相同。
 - 停点话术 `mutation-spec-2.json` → `mutation-output-2.txt`：**7 / 7 咬住**。S3 的 `find` 随 L1 档措辞更新；新增 S6、S7。S4 由 fail=1 变为 fail=2（新加的 GLM-03 两格也依赖 `entryCommandOf`），符合预期。修复前的 5 条读数留在 `mutation-output-2-run1.txt`。
+
+## 附录 A · glm 第二轮薄冒烟（2026-09-25，ZCode 桌面端，用户操作；结案提交 `da6476c` 之后、安装副本即该构建）
+
+§7 第 2 条的待做。夹具 `…/T/m10b-smoke2-FSFhzT`（mkdtemp，仓库外）；待裁决闸门由**桩审核者**造出（`TRIVIUM_STUB_CRITIC`，与 selftest 同一机制），**零审查配额**。
+证据 `doc/05_testing/evidence/m10b-step3-smoke2-20260925/`：搭建脚本与读数 `setup.mjs` / `01-setup-readout.json`，清单 `00-checklist.md`，两段读数 `02-readout-part1.md` / `03-readout-part2.md`，会话留痕摘录 `extract.mjs` / `04-rollout-excerpt.json`。
+
+| 项 | 结果 |
+| :--- | :--- |
+| 信任提示 | 出现，用户点信任 ✓ |
+| `SessionStart` 待办注入 | 第一段**未注入**：该会话第一轮（14:53:33）早于信任授予（14:53:40～44），信任前 Hook 不跑；第二段（已信任后新会话）**注入** ✓，原文「TriviumCode 待办：· 冒烟二轮/plan 审查已落盘但裁决未齐备」——ZCode 接受 Claude 形态的 `hookSpecificOutput.additionalContext` |
+| `Stop` 收工拦截 | 待裁决时每次收工拦一次、无死循环 ✓（ZCode 以「Stop hook additional context」交给模型）；裁决齐备后放行 ✓ |
+| 写入拦截（审查员后缀） | Write `…-codex.md` 被拒 ✓，当轮 Driver 按运行留痕判为 glm |
+| 闸门写锁（业务文件） | Edit `src/app.ts` 被拒 ✓，出口写法 `/dual-approve …`（按闸门的 Driver 派生） |
+| 停点话术（§2.1） | `--check` 自动置等待审批与 `--await-approval` 两处都写 `/dual-approve`、末句为「本载体的 Hook 只作尽力拦截、不兜底（L2）……」✓——第 2 步冒烟核出的错位已修正 |
+
+**结论**：五个 Hook 在 ZCode 桌面端全部按设计生效，不需要改代码。新登记一条**时序边界**：工作区信任要在会话开始之前完成（ZCode 的信任提示可能在首个会话开始后才弹出，该会话的 `SessionStart` 不跑）——写进第 5 步文档，并写进第 4 步 glm 轮操作卡（先开夹具、点信任，再新建会话）。
+夹具由用户在终端处理去留（会话不删临时目录）。
