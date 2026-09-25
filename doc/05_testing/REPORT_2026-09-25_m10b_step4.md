@@ -108,7 +108,9 @@ TV gate --stage plan --topic 限流器重构 --await-approval
 | 审核者集合不含 Driver | 不含 `claude` | `codex`、`gemini` | ✓ |
 | 应答件 `role` = Driver 且 `gate --check` 通过 | `claude`；退 0 | `2026-09-26-限流器重构-r2-response-claude.md`，`role: claude`；`gate --check` `ok: true`，11 个编号齐全、`warnings: []` | ✓ |
 | 停点话术 | L1 档，`/dual-approve` | `通过：/dual-approve --topic 限流器重构 --stage code …`，末句同 3-1 | ✓ |
-| `approve` 复核：造缺件 / 造改工件 / 审批记录 | 退 2 / 退 2 / 一条 | ⏳ 待用户在终端执行 | — |
+| `approve` 复核：造缺件 | 退 2 | 用户在终端把应答件移出后 `approve`：`[missing_disposition] 找不到第 2 轮的裁决件（应为 …-r2-response-claude.md）`，`exit=2`；随后移回 | ✓ |
+| `approve` 复核：造改工件 | 退 2 | 用户在终端给 `_meta/review-gemini-20260925T163113Z.json` 追加一个空格后 `approve`：「已被改动……记录 a395880493ca，现为 b5ea0f7eb7cd」，`exit=2`；随后从备份复原 | ✓ |
+| 审批记录 | `task.json.approvals[]` 追加一条 | 复原后 `approve` 退 0；`approvals[1]`：`at 2026-09-25T23:09:24.845Z`、`stage code`、`run_id 20260925T163113Z`、`decision approved`、`reason null`、`session_id null`；读数 `03-readout-post-approve.json` | ✓ |
 
 `critics.<id>.heterogeneous`：codex `true`、gemini `true`，`override_reason` 均为 null。
 
