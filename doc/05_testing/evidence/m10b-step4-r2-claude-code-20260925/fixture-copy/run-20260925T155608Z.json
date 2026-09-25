@@ -1,0 +1,181 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260925T155608Z",
+  "topic": "限流器重构",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点看环形缓冲的下标运算与「删后重插 + 队头均摊回收」的正确性，以及时钟回拨两档的阈值边界是否与计划裁决一致",
+  "task_goal": "限流器重构计划（r1）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini"
+  ],
+  "snapshot": {
+    "git_head": "a0da103016d059baf0bb4a64f2a6faed617b3d99",
+    "tree_hash": "35ff229f52626dfa2228e19f738053ff261eedac",
+    "dirty": true,
+    "subject_sha256": "adf0fe55cb23fc0c596880d7dde6cc95cc80152f9a89d16c8c6dd04d13baa5af",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "da6476c57cf6ca1b9521353af31533a426c11429",
+      "dirty": false,
+      "inputs_sha256": "3c1024a35340acdb7aadae277a0dcd7b549d02ac704b138766c01c63005f3964",
+      "built_at": "2026-09-25T14:17:17.969Z"
+    }
+  },
+  "started_at": "2026-09-25T15:56:08.706Z",
+  "finished_at": "2026-09-25T16:16:08.895Z",
+  "review_mode": "partial",
+  "degraded_reason": "codex: timeout（脚本级超时（1200s））",
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.156.1",
+      "model_requested": "qwen3.8-max",
+      "model_effective": null,
+      "model_effective_source": "unverified",
+      "profile_requested": "qwen",
+      "model_provider": null,
+      "status": "timeout",
+      "exit_code": 0,
+      "duration_s": 1200.011,
+      "tool_calls": {
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "脚本级超时（1200s）",
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0d947-fdf5-7452-900e-143af741edff",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.11",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 246.775,
+      "tool_calls": {
+        "read": 9,
+        "grep": 0,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 7
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 118978,
+        "output_tokens": 57606,
+        "thinking_tokens": 54584,
+        "cache_read_tokens": 297871,
+        "total_tokens": 176584
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "87846eb6-f80a-452a-9b12-a898907bc3a8",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".reviews/限流器重构/plan/2026-09-25-限流器重构-gemini.md",
+    ".reviews/限流器重构/plan/_meta/review-gemini-20260925T153032Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "限流器重构/code/_meta/changes-20260925T155608Z.diff",
+      "sha256": "adf0fe55cb23fc0c596880d7dde6cc95cc80152f9a89d16c8c6dd04d13baa5af"
+    },
+    {
+      "path": "限流器重构/code/_meta/brief-codex-20260925T155608Z.md",
+      "sha256": "71c1125b3fd01d196ebb7f458e344d48e2d77cb127073bfd6aca8c5ac4096f8b"
+    },
+    {
+      "path": "限流器重构/code/_meta/brief-gemini-20260925T155608Z.md",
+      "sha256": "e53389af453448900e82c8ed5d24efac25e4cb00f741512ef006b2ea77b5334e"
+    },
+    {
+      "path": "限流器重构/code/_meta/review-codex-20260925T155608Z.failed.json",
+      "sha256": "52df7fcfc9a84dc1f96a2d72a017ebce3a27c65eaad8c455a144769c360d49e1"
+    },
+    {
+      "path": "限流器重构/code/_meta/review-gemini-20260925T155608Z.json",
+      "sha256": "6451226aad90fd27ede2222503f73af6d1796a6a5c66987c0060b9743c62757c"
+    },
+    {
+      "path": "限流器重构/code/2026-09-26-限流器重构-gemini.md",
+      "sha256": "4204fcb7ae06a619774a02616e873f61b7739e137280897d5a2c52d8ca771dcd"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed"
+}

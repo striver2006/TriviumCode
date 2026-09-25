@@ -1,0 +1,48 @@
+{
+  "at": "2026-09-25T15:44:33.738Z",
+  "fixture": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r1-OBOkNy",
+  "phase": "at-gate-b-draft-modified",
+  "draft": "2026-09-25-限流器重构-claude.md",
+  "results": [
+    {
+      "id": "write-draft",
+      "hook": "hook-pre-write",
+      "tool": "Write",
+      "target": ".reviews/限流器重构/plan/2026-09-25-限流器重构-claude.md",
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "id": "edit-draft",
+      "hook": "hook-pre-write",
+      "tool": "Edit",
+      "target": ".reviews/限流器重构/plan/2026-09-25-限流器重构-claude.md",
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "id": "write-revised",
+      "hook": "hook-pre-write",
+      "tool": "Write",
+      "target": ".reviews/限流器重构/plan/2026-09-25-限流器重构-revised-claude.md",
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "id": "write-business",
+      "hook": "hook-pre-write",
+      "tool": "Write",
+      "target": "src/limiter.ts",
+      "exit": 2,
+      "stderr": "主题「限流器重构」的 plan 阶段闸门未审批，此时不得修改业务文件。\n  通过审批：/dual-approve --topic 限流器重构 --stage plan\n  拒绝：    /dual-approve --topic 限流器重构 --stage plan --reject --reason <理由>\n  放弃闸门：/dual-abandon --topic 限流器重构"
+    },
+    {
+      "id": "commit",
+      "hook": "hook-pre-commit",
+      "tool": "Bash",
+      "target": "git commit -m probe",
+      "exit": 2,
+      "stderr": "归档留痕不完整，提交被拦下——已落盘的审查工件不得删除或改动（FR-25 / 设计 §17.3 剧本 5）：\n  · 已被改动：限流器重构/plan/2026-09-25-限流器重构-claude.md（run 20260925T153032Z 记录 da14cc3927a1，现为 adb0defce32b）\n\n  请用 `git checkout -- <路径>` 或 `git restore <路径>` 恢复。\n  **这一步请在终端里手动执行**：恢复命令的参数正是上面列出的受保护路径，\n  常规写法在会话里会被 hook-pre-bash 拦下（M10a 第 2 步 EV-55 §3.2.2）。\n  那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。\n  确实要作废某一轮，用 `/dual-abandon --topic <主题>`——它保留工件、只解闸门。\n  重跑会自动抬升 -r<N>，既有工件一律不覆盖，不需要先删。"
+    }
+  ]
+}

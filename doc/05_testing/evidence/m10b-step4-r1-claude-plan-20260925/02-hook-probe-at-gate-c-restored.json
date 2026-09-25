@@ -1,0 +1,48 @@
+{
+  "at": "2026-09-25T15:44:43.175Z",
+  "fixture": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r1-OBOkNy",
+  "phase": "at-gate-c-restored",
+  "draft": "2026-09-25-限流器重构-claude.md",
+  "results": [
+    {
+      "id": "write-draft",
+      "hook": "hook-pre-write",
+      "tool": "Write",
+      "target": ".reviews/限流器重构/plan/2026-09-25-限流器重构-claude.md",
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "id": "edit-draft",
+      "hook": "hook-pre-write",
+      "tool": "Edit",
+      "target": ".reviews/限流器重构/plan/2026-09-25-限流器重构-claude.md",
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "id": "write-revised",
+      "hook": "hook-pre-write",
+      "tool": "Write",
+      "target": ".reviews/限流器重构/plan/2026-09-25-限流器重构-revised-claude.md",
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "id": "write-business",
+      "hook": "hook-pre-write",
+      "tool": "Write",
+      "target": "src/limiter.ts",
+      "exit": 2,
+      "stderr": "主题「限流器重构」的 plan 阶段闸门未审批，此时不得修改业务文件。\n  通过审批：/dual-approve --topic 限流器重构 --stage plan\n  拒绝：    /dual-approve --topic 限流器重构 --stage plan --reject --reason <理由>\n  放弃闸门：/dual-abandon --topic 限流器重构"
+    },
+    {
+      "id": "commit",
+      "hook": "hook-pre-commit",
+      "tool": "Bash",
+      "target": "git commit -m probe",
+      "exit": 0,
+      "stderr": ""
+    }
+  ]
+}

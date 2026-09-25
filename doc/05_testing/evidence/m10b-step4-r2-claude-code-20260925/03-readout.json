@@ -1,0 +1,186 @@
+{
+  "at": "2026-09-25T16:39:02.205Z",
+  "tag": "pre-approve",
+  "fixture": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r1-OBOkNy",
+  "md_files": [
+    "2026-09-26-限流器重构-gemini.md",
+    "2026-09-26-限流器重构-r2-codex.md",
+    "2026-09-26-限流器重构-r2-gemini.md",
+    "2026-09-26-限流器重构-r2-response-claude.md"
+  ],
+  "meta_files": [
+    "brief-codex-20260925T155608Z.md",
+    "brief-codex-20260925T163113Z.md",
+    "brief-gemini-20260925T155608Z.md",
+    "brief-gemini-20260925T163113Z.md",
+    "changes-20260925T155608Z.diff",
+    "changes-20260925T163113Z.diff",
+    "changes.diff",
+    "review-codex-20260925T155608Z.failed.json",
+    "review-codex-20260925T163113Z.json",
+    "review-gemini-20260925T155608Z.json",
+    "review-gemini-20260925T163113Z.json",
+    "run-20260925T155608Z.json",
+    "run-20260925T163113Z.json"
+  ],
+  "criteria": {
+    "note_draft_suffix": "code 轮无原稿（命令 C 不认领、被审对象是补丁）",
+    "run_driver": "claude",
+    "run_driver_enabled": true,
+    "run_driver_guard_level": "L1",
+    "run_entry": "C",
+    "run_rerun_index": 2,
+    "critics": [
+      "codex",
+      "gemini"
+    ],
+    "critics_exclude_driver": true,
+    "response": {
+      "file": "2026-09-26-限流器重构-r2-response-claude.md",
+      "role": "claude",
+      "ok": true
+    },
+    "task_drivers": {
+      "plan": {
+        "driver": "claude",
+        "claimed_at": "2026-09-25T15:27:20.249Z",
+        "claimed_by": "unknown-session"
+      }
+    },
+    "task_drivers_code_absent": true,
+    "task_runs_code": [
+      {
+        "run_id": "20260925T155608Z",
+        "stage": "code",
+        "rerun_index": 1,
+        "status": "failed",
+        "review_mode": "partial",
+        "started_at": "2026-09-25T15:56:08.706Z",
+        "driver": "claude"
+      },
+      {
+        "run_id": "20260925T163113Z",
+        "stage": "code",
+        "rerun_index": 2,
+        "status": "success",
+        "review_mode": "full",
+        "started_at": "2026-09-25T16:31:13.534Z",
+        "driver": "claude"
+      }
+    ],
+    "degradations": [
+      {
+        "run_id": "20260925T155608Z",
+        "stage": "code",
+        "reason": "codex: timeout（脚本级超时（1200s））",
+        "at": "2026-09-25T16:16:08.994Z"
+      }
+    ],
+    "approvals": [
+      {
+        "at": "2026-09-25T15:51:37.296Z",
+        "stage": "plan",
+        "run_id": "20260925T153032Z",
+        "decision": "approved",
+        "reason": null,
+        "session_id": null
+      }
+    ]
+  },
+  "run_failed": {
+    "run_id": "20260925T155608Z",
+    "status": "failed",
+    "critics": {
+      "codex": {
+        "status": "timeout",
+        "model": "qwen3.8-max",
+        "duration_s": 1200.011,
+        "note": null
+      },
+      "gemini": {
+        "status": "ok",
+        "model": "gemini-3.8-flash-high",
+        "duration_s": 246.775,
+        "note": null
+      }
+    }
+  },
+  "run_ok": {
+    "run_id": "20260925T163113Z",
+    "status": "success",
+    "snapshot": {
+      "git_head": "a0da103016d059baf0bb4a64f2a6faed617b3d99",
+      "tree_hash": "91e372357b4017cf9f1f4a03b643a7f3de84e969",
+      "dirty": true,
+      "subject_sha256": "b68d1c511dc549d553d7f24347270a2e3013af58efa4dcb714e9950b9b495312",
+      "drift": {
+        "changed": false,
+        "files": [],
+        "policy": "warn"
+      },
+      "build": {
+        "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+        "git_head": "da6476c57cf6ca1b9521353af31533a426c11429",
+        "dirty": false,
+        "inputs_sha256": "3c1024a35340acdb7aadae277a0dcd7b549d02ac704b138766c01c63005f3964",
+        "built_at": "2026-09-25T14:17:17.969Z"
+      }
+    },
+    "gate": {
+      "adjudication_complete": false,
+      "state": "review_done_awaiting_disposition"
+    },
+    "artifacts": [
+      {
+        "path": "限流器重构/code/_meta/changes-20260925T163113Z.diff",
+        "sha256": "b68d1c511dc549d553d7f24347270a2e3013af58efa4dcb714e9950b9b495312"
+      },
+      {
+        "path": "限流器重构/code/_meta/brief-codex-20260925T163113Z.md",
+        "sha256": "4bb1d2efd60ab88fdebd63e87eea6532094df0d6c1197274cc62aea70ed7f8ee"
+      },
+      {
+        "path": "限流器重构/code/_meta/brief-gemini-20260925T163113Z.md",
+        "sha256": "a1c20f489a7342f9804d477f2882e0e5941f8359c6c5fbe6a9744463010ec2ab"
+      },
+      {
+        "path": "限流器重构/code/_meta/review-codex-20260925T163113Z.json",
+        "sha256": "07a2bc3d771f71f392e577308c78a35d287740bdf2ba873e0ee2a4dee649e8f0"
+      },
+      {
+        "path": "限流器重构/code/_meta/review-gemini-20260925T163113Z.json",
+        "sha256": "a395880493ca94fa677aba00d2c65e9b2704b4bd649188e6c7a355367efec48f"
+      },
+      {
+        "path": "限流器重构/code/2026-09-26-限流器重构-r2-codex.md",
+        "sha256": "c73af3b9724602e7f351ed56be4b4cb50b3ec6621649b7e17a8a5660671ae1f2"
+      },
+      {
+        "path": "限流器重构/code/2026-09-26-限流器重构-r2-gemini.md",
+        "sha256": "26b49581148cdcf5cdf87661be81394ac868a9f3b600b384d45a698ed4015008"
+      }
+    ],
+    "critics": {
+      "codex": {
+        "status": "ok",
+        "model": "qwen3.8-flash",
+        "heterogeneous": true,
+        "override_reason": null,
+        "verdict": null
+      },
+      "gemini": {
+        "status": "ok",
+        "model": "gemini-3.8-flash-high",
+        "heterogeneous": true,
+        "override_reason": null,
+        "verdict": null
+      }
+    }
+  },
+  "file_sha256": {
+    "2026-09-26-限流器重构-gemini.md": "4204fcb7ae06a619774a02616e873f61b7739e137280897d5a2c52d8ca771dcd",
+    "2026-09-26-限流器重构-r2-codex.md": "c73af3b9724602e7f351ed56be4b4cb50b3ec6621649b7e17a8a5660671ae1f2",
+    "2026-09-26-限流器重构-r2-gemini.md": "26b49581148cdcf5cdf87661be81394ac868a9f3b600b384d45a698ed4015008",
+    "2026-09-26-限流器重构-r2-response-claude.md": "522a090c64a5b037221165c6bf3e9ed34c7755d407715ef38db1a1d38ae29555"
+  }
+}
