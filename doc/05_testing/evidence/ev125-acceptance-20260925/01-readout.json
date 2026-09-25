@@ -1,0 +1,183 @@
+{
+  "at": "2026-09-25T11:02:29.420Z",
+  "results": [
+    {
+      "id": "E1-a 退出码",
+      "ok": true,
+      "detail": "code=0"
+    },
+    {
+      "id": "E1-b critics",
+      "ok": true,
+      "detail": "critics=[\"claude\",\"glm\"]"
+    },
+    {
+      "id": "E1-c models",
+      "ok": true,
+      "detail": "models={\"claude\":\"m-x\"}"
+    },
+    {
+      "id": "E1-d allow_single",
+      "ok": true,
+      "detail": "allow_single=true"
+    },
+    {
+      "id": "E1-e only 置空",
+      "ok": true,
+      "detail": "only=null"
+    },
+    {
+      "id": "E1-f driver",
+      "ok": true,
+      "detail": "driver=codex"
+    },
+    {
+      "id": "E1-g 含当轮 Driver 退 64",
+      "ok": true,
+      "detail": "code=64；✗ --critics 含当轮 Driver「claude」：它是本次运行的执笔者，不能同时充当独立审查员。"
+    },
+    {
+      "id": "E1-h 不是已撤销的旗标拒绝",
+      "ok": true,
+      "detail": "报错里没有「命令 A（全流程）不接受」"
+    },
+    {
+      "id": "E1-i 纯只读",
+      "ok": true,
+      "detail": ".reviews 目录项前后均为 47 个"
+    },
+    {
+      "id": "E2-a 退出码",
+      "ok": true,
+      "detail": "code=0；ok=true"
+    },
+    {
+      "id": "E2-b slug 覆盖三个阶段 × 两侧",
+      "ok": true,
+      "detail": "detail=已校验 3 个阶段 × 2 侧\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（探针未记录 Claude Code 模型目录）"
+    },
+    {
+      "id": "E2-c 只读能力只报入选两侧",
+      "ok": true,
+      "detail": "detail=Claude Code、ZCode 均报告可用"
+    },
+    {
+      "id": "E2b-a 三样同传退 0",
+      "ok": true,
+      "detail": "code=0；ok=true"
+    },
+    {
+      "id": "E2b-b slug 仍覆盖三个阶段 × 两侧",
+      "ok": true,
+      "detail": "detail=已校验 3 个阶段 × 2 侧\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（探针未记录 Claude Code 模型目录）"
+    },
+    {
+      "id": "E2b-c 未入选一家的模型覆盖退 64",
+      "ok": true,
+      "detail": "code=64；✗ --model-gemini：gemini 本轮没有入选，为它指定的模型不会生效。"
+    },
+    {
+      "id": "E3-claude 模型槽位",
+      "ok": true,
+      "detail": "--model-* = codex,gemini,glm"
+    },
+    {
+      "id": "E3-claude 选侧旗标",
+      "ok": true,
+      "detail": "含 --critics / --only / --allow-single"
+    },
+    {
+      "id": "E3-claude 先解析后预检",
+      "ok": true,
+      "detail": "TV preflight --stage all --driver claude --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json"
+    },
+    {
+      "id": "E3-codex 模型槽位",
+      "ok": true,
+      "detail": "--model-* = claude,gemini,glm"
+    },
+    {
+      "id": "E3-codex 选侧旗标",
+      "ok": true,
+      "detail": "含 --critics / --only / --allow-single"
+    },
+    {
+      "id": "E3-codex 先解析后预检",
+      "ok": true,
+      "detail": "TV preflight --stage all --driver codex --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json"
+    },
+    {
+      "id": "E3-gemini 模型槽位",
+      "ok": true,
+      "detail": "--model-* = claude,codex,glm"
+    },
+    {
+      "id": "E3-gemini 选侧旗标",
+      "ok": true,
+      "detail": "含 --critics / --only / --allow-single"
+    },
+    {
+      "id": "E3-gemini 先解析后预检",
+      "ok": true,
+      "detail": "TV preflight --stage all --driver gemini --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json"
+    },
+    {
+      "id": "E3-glm 模型槽位",
+      "ok": true,
+      "detail": "--model-* = claude,codex,gemini"
+    },
+    {
+      "id": "E3-glm 选侧旗标",
+      "ok": true,
+      "detail": "含 --critics / --only / --allow-single"
+    },
+    {
+      "id": "E3-glm 先解析后预检",
+      "ok": true,
+      "detail": "TV preflight --stage all --driver glm --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json"
+    },
+    {
+      "id": "selftest",
+      "ok": true,
+      "detail": "code=0；· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）"
+    }
+  ],
+  "raw": {
+    "e1": {
+      "code": 0,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"EV-125-E1\",\n  \"prompt_hint\": null,\n  \"task_goal\": \"任意目标\",\n  \"subject_path\": null,\n  \"base\": null,\n  \"diff_available\": null,\n  \"context_paths\": [],\n  \"models\": {\n    \"claude\": \"m-x\"\n  },\n  \"profile\": null,\n  \"only\": null,\n  \"critics\": [\n    \"claude\",\n    \"glm\"\n  ],\n  \"allow_single\": true,\n  \"driver\": \"codex\",\n  \"driver_enabled\": true,\n  \"session_id\": null,\n  \"topic_inferred\": false,\n  \"notes\": [\n    \"命令 A：原稿将在 S1 由 Driver 起草，此时尚不存在\"\n  ]\n}\n",
+      "stderr": ""
+    },
+    "e1b": {
+      "code": 64,
+      "stdout": "",
+      "stderr": "✗ --critics 含当轮 Driver「claude」：它是本次运行的执笔者，不能同时充当独立审查员。\n  自己审自己不构成二次审查——这条流水线存在的理由就是避免它。\n  当前可用：codex | gemini | glm\n"
+    },
+    "e2": {
+      "code": 0,
+      "stdout": "{\n  \"ok\": true,\n  \"scope\": \"all\",\n  \"checks\": [\n    {\n      \"name\": \"当轮 Driver\",\n      \"ok\": true,\n      \"detail\": \"codex\"\n    },\n    {\n      \"name\": \"探针结论新鲜\",\n      \"ok\": true,\n      \"detail\": \"全部 4 侧均在 TTL 内\"\n    },\n    {\n      \"name\": \"Claude Code 可调用\",\n      \"ok\": true,\n      \"detail\": \"claude 2.1.281\"\n    },\n    {\n      \"name\": \"Codex 可调用\",\n      \"ok\": true,\n      \"detail\": \"codex 0.156.1\"\n    },\n    {\n      \"name\": \"Antigravity 可调用\",\n      \"ok\": true,\n      \"detail\": \"agy 1.2.11\"\n    },\n    {\n      \"name\": \"ZCode 可调用\",\n      \"ok\": true,\n      \"detail\": \"zcode 0.16.9\"\n    },\n    {\n      \"name\": \"只读能力可用\",\n      \"ok\": true,\n      \"detail\": \"Claude Code、ZCode 均报告可用\"\n    },\n    {\n      \"name\": \"模型 slug 合法\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"已校验 3 个阶段 × 2 侧\\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（探针未记录 Claude Code 模型目录）\"\n    },\n    {\n      \"name\": \"归档与 git 可用\",\n      \"ok\": true,\n      \"detail\": \"归档根 /Users/chenzhenbo/Work/TriviumCode/.reviews\"\n    },\n    {\n      \"name\": \"编译测试命令已配置\",\n      \"ok\": true,\n      \"detail\": \"build 2 条 / test 1 条\"\n    },\n    {\n      \"name\": \"探活\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。\"\n    }\n  ],\n  \"warnings\": [\n    {\n      \"name\": \"模型 slug 合法\",\n      \"detail\": \"已校验 3 个阶段 × 2 侧\\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（探针未记录 Claude Code 模型目录）\"\n    },\n    {\n      \"name\": \"探活\",\n      \"detail\": \"⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。\"\n    }\n  ],\n  \"exit_code\": 0\n}\n",
+      "stderr": ""
+    },
+    "e2b": {
+      "code": 0,
+      "stdout": "{\n  \"ok\": true,\n  \"scope\": \"all\",\n  \"checks\": [\n    {\n      \"name\": \"当轮 Driver\",\n      \"ok\": true,\n      \"detail\": \"codex\"\n    },\n    {\n      \"name\": \"探针结论新鲜\",\n      \"ok\": true,\n      \"detail\": \"全部 4 侧均在 TTL 内\"\n    },\n    {\n      \"name\": \"Claude Code 可调用\",\n      \"ok\": true,\n      \"detail\": \"claude 2.1.281\"\n    },\n    {\n      \"name\": \"Codex 可调用\",\n      \"ok\": true,\n      \"detail\": \"codex 0.156.1\"\n    },\n    {\n      \"name\": \"Antigravity 可调用\",\n      \"ok\": true,\n      \"detail\": \"agy 1.2.11\"\n    },\n    {\n      \"name\": \"ZCode 可调用\",\n      \"ok\": true,\n      \"detail\": \"zcode 0.16.9\"\n    },\n    {\n      \"name\": \"只读能力可用\",\n      \"ok\": true,\n      \"detail\": \"Claude Code、ZCode 均报告可用\"\n    },\n    {\n      \"name\": \"模型 slug 合法\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"已校验 3 个阶段 × 2 侧\\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（探针未记录 Claude Code 模型目录）\"\n    },\n    {\n      \"name\": \"归档与 git 可用\",\n      \"ok\": true,\n      \"detail\": \"归档根 /Users/chenzhenbo/Work/TriviumCode/.reviews\"\n    },\n    {\n      \"name\": \"编译测试命令已配置\",\n      \"ok\": true,\n      \"detail\": \"build 2 条 / test 1 条\"\n    },\n    {\n      \"name\": \"探活\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。\"\n    }\n  ],\n  \"warnings\": [\n    {\n      \"name\": \"模型 slug 合法\",\n      \"detail\": \"已校验 3 个阶段 × 2 侧\\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（探针未记录 Claude Code 模型目录）\"\n    },\n    {\n      \"name\": \"探活\",\n      \"detail\": \"⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。\"\n    }\n  ],\n  \"exit_code\": 0\n}\n",
+      "stderr": ""
+    },
+    "e2c": {
+      "code": 64,
+      "stdout": "",
+      "stderr": "✗ --model-gemini：gemini 本轮没有入选，为它指定的模型不会生效。\n  本轮入选：claude | glm\n  要让它参审，请用 --critics 把它列进来；否则去掉这个旗标。\n"
+    },
+    "e3": {
+      "claude": "argument-hint: <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]",
+      "codex": "下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--critics <id,…>] [--only claude|gemini|glm] [--allow-single]`",
+      "gemini": "下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-glm <模型>] [--critics <id,…>] [--only claude|codex|glm] [--allow-single]`",
+      "glm": "下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-gemini <模型>] [--critics <id,…>] [--only claude|codex|gemini] [--allow-single]`"
+    },
+    "selftest": {
+      "code": 0,
+      "stdout": "自检：在临时夹具仓库里真跑一遍整条流水线（各入选侧走桩适配器，不消耗厂商配额）\n\n自检：✅ 通过（14/14 步）\n\n本次自检**未**覆盖：\n  · Codex、Antigravity、ZCode 各家 CLI 是否可调用、是否已认证——各入选侧一律走桩适配器。请另跑 `trivium doctor` 与 `trivium preflight`。\n  · 真实模型的审查质量：桩产出的是固定假数据，不代表任何真实结论。\n  · 路径级 deny 等隔离机制的厂商侧行为（M0 探针的职责）。\n\n夹具已清理。加 --keep-fixture 可保留以供手工验收（§17.3）。\n",
+      "stderr": "· ✓ 双审启动（review --start）\n· ✓ 双审收敛（review --wait）\n· ✓ 各入选侧审查文档均已落盘\n· ✓ 缺裁决件时工件校验报缺（退 65）\n· ✓ 裁决未齐备时禁止提交（Hook 退 2）\n· ✓ 裁决未齐备时禁止收工（Hook 退 2）\n· ✓ 裁决完整性校验通过（逐条对齐 4 条意见）\n· ✓ 工件齐备（AC-01：原稿 + 3 侧审查 + 裁决件，共 5 件）\n· ✓ 裁决齐备后放行提交\n· ✓ 裁决齐备后放行收工\n· ✓ 禁止主脑自行产出 -gemini.md（AC-07）\n· ✓ 编译测试出口真实执行并落盘（AC-10）\n· ✓ 复盘可生成（含时间线与采纳率）\n· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）\n"
+    }
+  }
+}

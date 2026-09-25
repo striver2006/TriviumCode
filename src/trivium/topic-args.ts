@@ -334,25 +334,20 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
    * 修掉的形态。现在只有一个判定处，两个入口都调它。
    */
   /*
-   * 命令 A 不接受选侧旗标（审查意见 GLM-02）。
+   * **命令 A 原先不接受选侧旗标**（审查意见 GLM-02）。当时的理由：`NAMED_FLAGS` 不分 scope，
+   * `/dual-run --critics glm` 会解析成功、然后被 S2/S6 的交接说明静默丢弃——「错的报错、对的消失」；
+   * 而命令 A 一次跑 plan 与 code 两轮，「这一轮选哪几侧」被判为语义模糊，于是明确拒绝、指引改用 B/C/D。
    *
-   * `NAMED_FLAGS` 不分 scope，于是 `/dual-run --critics glm` 会被解析成功，
-   * 然后**被 S2/S6 的交接说明静默丢弃**（那里只交代了 focus / context / models / profile）——
-   * 拼错的当场退 64，写对的反而无声消失。「错的报错、对的消失」是本项目反复记过的形态。
+   * **EV-125 放开**（用户 2026-09-25 定）：`--critics` / `--only` / `--allow-single` 在命令 A 里
+   * 取「两轮共用同一组」的语义——与 `--model-*` / `--profile` / `--driver` 早已采用的「两轮都生效、
+   * S2 / S6 各传一次」同形，所以不再模糊。拒绝之后的一切本就不分 scope：入选以最终 Driver 解析、
+   * 模型覆盖按入选校验、`only` 恒置 null；而下方的两阶段 Driver 比对保证了同一组对 plan / code 都合法
+   * （Driver 不会一阶段合法、另一阶段非法）。命令 A 契约的 S0.5 / S0.6 / S2 / S6 显式透传 `critics`
+   * 与 `allow_single`，「对的消失」那一格由契约守住。
    *
-   * 不给命令 A 补透传而是明确拒绝：它一次要跑 plan 与 code 两轮双审，
-   * 「这一轮选哪几侧」在命令 A 层面语义本就模糊。与其定义一个想不清楚的语义，
-   * 不如让用户改用 B/C/D。这条边界写在设计 7.1。
+   * 直接效果：命令 A 缺省集合外的一家（非 claude Driver 下的 claude）从此有了入选出口，
+   * 按轮控制侧数也不必再改 `config.yaml`（BACKLOG EV-125 的两个缺口）。
    */
-  if (scope === 'all' && (named['critics'] || onlyRaw)) {
-    const given = named['critics'] ? '--critics' : '--only';
-    throw new TriviumError(
-      EXIT.USAGE,
-      `命令 A（全流程）不接受 ${given}：它一次要跑计划审与代码审两轮，` +
-        '「本轮选哪几侧」在这一层没有确定语义。\n' +
-        '  想指定审核者请改用 /dual-review-plan、/dual-review-code 或 /dual-review-bug。',
-    );
-  }
 
   /*
    * **命令 A 原先同样不接受 `--driver`**（M9 第 5 步，计划双审 D3）。当时的理由：
@@ -360,7 +355,8 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
    * 命令 A 收下它之后没有任何交接说明会把它带下去——接受即静默丢弃。
    *
    * **M10b 第 2 步放开**（计划 r5 §5.3，B4）：入口资产改为单源渲染，`--driver <自家 id>` 由渲染注入，
-   * 命令 A 的交接说明在 S0 / S0.5 / 两次认领 / S2 / S6 六处都显式带上它——「之前」的前提到此为止。
+   * 命令 A 的交接说明在 S0.5 / S0.6 / 两次认领 / S2 / S6 六处都显式带上它——「之前」的前提到此为止
+   * （EV-125 起原「S0 预检」挪到解析之后，记为 S0.6）。
    * 放开的同时把交叉校验扩到 plan 与 code 两个阶段（见下方主题解析之后那段）。
    */
 

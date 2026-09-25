@@ -279,7 +279,8 @@ export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput 
      *
      * 缺省集合是「不指定时跑谁」，写它的人写的是「平时的审核者」，不是「这一轮除了执笔者之外的」——
      * 而 codex / gemini / glm 三家既在缺省集合里、又都能当 Driver。此前这一格一律退 64：
-     * B / C / D 还能显式传 `--critics` 绕开，**命令 A 不收 `--critics`，根本没有出口**。
+     * B / C / D 还能显式传 `--critics` 绕开，**命令 A 当时不收 `--critics`，根本没有出口**
+     * （EV-125 起命令 A 也收 `--critics`，本条的缺省减 Driver 照旧保留：不写 `--critics` 时仍走这里）。
      * 这条路径改前恒退 64，改后放行不会改变任何今天能跑通的流程；claude 当 Driver 时缺省集合里本就没有它。
      *
      * 只减缺省、不减显式：用户**亲手写下**的 `--critics` / `--only` 含 Driver 仍退 64（下面那条检查）——

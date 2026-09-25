@@ -1,0 +1,2038 @@
+# trivium changes.diff
+# run_id: 20260925T102608Z
+# base: HEAD
+# head: 694e6ce1bb30ba7525c1e40f22c5dacde2ba0531
+# files: 30
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/README.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/05_testing/evidence/ev125-acceptance-20260925/00-readout.md
+#   doc/05_testing/evidence/ev125-acceptance-20260925/01-readout.json
+#   doc/05_testing/evidence/ev125-acceptance-20260925/run.mjs
+#   doc/05_testing/evidence/ev125-mutation-20260925/00-readout.md
+#   doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations-output-run1.txt
+#   doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations-output.txt
+#   doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations.mjs
+#   doc/05_testing/evidence/ev125-mutation-20260925/mutation-output-run1.txt
+#   doc/05_testing/evidence/ev125-mutation-20260925/mutation-output.txt
+#   doc/05_testing/evidence/ev125-mutation-20260925/mutation-spec.json
+#   doc/05_testing/evidence/ev125-mutation-20260925/run.mjs
+#   doc/07_manuals/MANUAL_user.md
+#   doc/07_manuals/QUICKSTART.md
+#   doc/08_project/BACKLOG.md
+#   skills-src/commands/run.contract.md
+#   skills/dual-critic/entry/codex/dual-run/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-run/SKILL.md
+#   skills/dual-critic/entry/glm/dual-run/SKILL.md
+#   skills/dual-run/SKILL.md
+#   src/entry-render.ts
+#   src/trivium/critics.ts
+#   src/trivium/topic-args.ts
+#   test/contract/entry-render-parity.test.ts
+#   test/contract/skill-flag-parity.test.ts
+#   test/integration/driver-flag.test.ts
+#   test/unit/critics.test.ts
+#   test/unit/topic-args.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 808fbd8..d339634 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.41
++> - **当前版本**：v1.3.42
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -161,7 +161,7 @@
+ | FR-07 工作目录与可读范围 | 就地模式（唯一模式，ADR-001）：审查员 cwd 即项目根，全库含 `.git` 与依赖可读，仅屏蔽对方产出 | 10.1、10.2 |
+ | FR-08/09 命名与归档 | `YYYY-MM-DD-<主题>[-r<N>][-revised\|-response]-<角色>.md`，主题子目录 + 阶段目录 | 6.2、6.3 |
+ | FR-10 背靠背 | 独立进程与会话、本次产出延迟落盘且运行目录在项目外、历史产出三层屏蔽（禁读清单 / 路径 deny / 轨迹核验） | 第 10 章 |
+-| FR-11 全流程顺序 | 命令 A 状态机 S0～S10 | 8.2 |
++| FR-11 全流程顺序 | 命令 A 状态机 S0.5～S10（EV-125 前为 S0～S10） | 8.2 |
+ | FR-12 四条命令 | `/dual-run`、`/dual-review-plan`、`/dual-review-code`、`/dual-review-bug` | 第 7 章 |
+ | FR-13/14 意见可裁决 + 逐条裁决 | `trivium.review.v1` 意见 schema + `trivium gate` 裁决完整性硬校验 | 6.5、6.6、8.6 |
+ | FR-15 只读 | 三重保障：工具集裁剪 + 前后指纹比对（`tree_hash` + `git status`）+ 轨迹核验 | 10.3 |
+@@ -1259,14 +1259,23 @@ v1 → 内存 v2 的映射：`dual → full`、`single → partial`、`driver` 
+ > 在数据上就不存在。三份 skill 相应删去 `--only` 透传，`skill-flag-parity`
+ > 增两条正文断言（必须交代 `critics` 怎么传、不得把 `--only` 透传写回来）。
+ >
+-> **命令 A 不接受 `--critics` / `--only`**（审查意见 GLM-02）：它一次要跑计划审与
+-> 代码审两轮，「本轮选哪几侧」在那一层没有确定语义。此前这两个旗标会被解析成功
+-> 却被 S2/S6 的交接静默丢弃——**拼错的当场退 64，写对的反而无声消失**。
+-> 现在明确退 64 并指引改用 B/C/D。
++> **命令 A 自 EV-125 起接受 `--critics` / `--only` / `--allow-single`，计划审与代码审两轮共用同一组**【已实现 · EV-125，v1.3.42】。
++> 此前（审查意见 GLM-02）命令 A 明确拒绝前两个旗标：它们会被解析成功却被 S2/S6 的交接静默丢弃——
++> **拼错的当场退 64，写对的反而无声消失**；而「两轮各选哪几侧」被判为语义模糊，于是退 64 并指引改用 B/C/D。
++> 撤销的理由：`--model-*` / `--profile` / `--driver` 在命令 A 里早已是「两轮都生效、S2 / S6 各传一次」，
++> 选侧沿用同一语义即不再模糊；解析在拒绝之后本就不分 scope，两阶段 Driver 比对又先于选侧，
++> 保证 S0.5 解析出的同一组对 plan / code 都合法。拒绝造成的缺口是：非 claude 当 Driver 时 claude 不在缺省集合、
++> 命令 A 又没有旗标能把它加进来；按轮控制侧数只能改 `config.yaml`。
++> 契约侧：S0.5 输出的 `critics` 由 S0.6 预检、S2、S6 **无条件**照传（用户没写时即缺省集合减当轮 Driver），
++> `allow_single` 为真时 S2、S6 都加 `--allow-single`，`--only` 一律不透传。
++> **命令 A 的预检因此挪到解析之后**（S0.6，带入选、档位与模型覆盖），与 B / C / D「先预检后解析」的次序不同：
++> `review --start` 只查当阶段的 slug、不探活，显式加进来的一家若缺 code 阶段 slug，不在开跑前查出就要到 S6（编码之后）才暴露。
++> **残余（如实登记）**：S6 若漏传 `critics`，`--start` 会自行重取配置缺省，两轮可能跑的是不同的几家；运行期没有跨阶段比对。
++> 当轮靠 S2 / S6 开场播报念出的 `models` 键（即本轮入选侧）发现，事后靠两份运行留痕的 `critics_selected` 对出。
+ 
+ | 斜杠命令 | PRD 语义 | 前置条件 | 必选输入 | 可选输入 | 自动执行到 | 停点 |
+ | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+-| `/dual-run` | 命令 A · 全流程 | 已给出任务目标 | 任务目标（`$ARGUMENTS` 中除具名参数外的正文，可由对话上下文提供） | `--topic`、`--model-gemini`、`--model-glm`、`--profile`、`--focus <提示语>`（显式具名，避免与任务目标混淆）、`--context <路径,…>` | 计划双审 → 修订 → 编码 → 代码双审 → 应答 → 改码 → **编译测试** | 编译测试结束（成败均留痕） |
++| `/dual-run` | 命令 A · 全流程 | 已给出任务目标 | 任务目标（`$ARGUMENTS` 中除具名参数外的正文，可由对话上下文提供） | `--topic`、`--model-<审核者 id>`、`--profile`、`--focus <提示语>`（显式具名，避免与任务目标混淆）、`--context <路径,…>`、`--critics <id,…>` / `--only <一侧>`（两轮共用同一组，EV-125）、`--allow-single` | 计划双审 → 修订 → 编码 → 代码双审 → 应答 → 改码 → **编译测试** | 编译测试结束（成败均留痕） |
+ | `/dual-review-plan` | 命令 B · 计划审 | 原始计划已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--plan-file`、`--context <路径,…>`、`--only <一侧>`、`--allow-single` | 双审 → 修订计划 | **等待人工审批** |
+ | `/dual-review-code` | 命令 C · 代码审 | 待审代码已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--base <ref>`、`--context <路径,…>`、`--only <一侧>`、`--allow-single` | 双审 → 应答（确认修改方案） | **等待人工审批** |
+ | `/dual-review-bug` | 命令 D · 根因审 | 根因材料已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--rca-file`、`--context <路径,…>`、`--only <一侧>`、`--allow-single` | 双审 → 修订根因结论 | **等待人工审批** |
+@@ -1483,8 +1492,9 @@ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起
+ 
+ ```mermaid
+ stateDiagram-v2
+-    [*] --> S0_预检
+-    S0_预检 --> S1_起草计划
++    [*] --> S0_5_解析主题与参数
++    S0_5_解析主题与参数 --> S0_6_预检: 入选集合已解析
++    S0_6_预检 --> S1_起草计划
+     S1_起草计划 --> S2_计划双审: 冻结送审包
+     S2_计划双审 --> S3_修订计划: 两份意见齐备
+     S3_修订计划 --> S4_裁决校验
+@@ -1505,7 +1515,8 @@ stateDiagram-v2
+ 
+ | 步 | 执行者 | 产出 | 关键细节 |
+ | :--- | :--- | :--- | :--- |
+-| S0 | `trivium preflight` | — | 见 8.1；通过时念 `warnings`（v1.3.41） |
++| S0.5 | `trivium topic resolve --stage all` | 主题、焦点、任务目标、入选集合 `critics`、`allow_single` 等 | 纯只读；输出的 `critics` 是**两轮共用**的入选集合，S0.6 / S2 / S6 都无条件照传（EV-125，v1.3.42） |
++| S0.6 | `trivium preflight --stage all --critics …` | — | 见 8.1；**在解析之后**，带上 S0.5 的入选、档位与模型覆盖，查全部三个阶段入选各侧的 slug 与探活——用户显式加进来的一家不在这里查，就要到 S6 才暴露（EV-125 前为 S0，排在解析之前、只查缺省集合）；通过时念 `warnings`（v1.3.41）；推导出的主题在本步通过后才回显确认 |
+ | S1 | Driver | `plan/<日期>-<主题>-claude.md` | 由 Driver 用 Write 落盘；`archive` 事后校验命名合规与非覆盖 |
+ | S2 | `trivium review --stage plan` | 两份审查文档 + `_meta/` | 见第 9、10、11 章；`--start` 返回的 `warnings` 在开场播报里念出（v1.3.41） |
+ | S3 | Driver | `plan/…-revised-claude.md` | 必须逐条裁决（6.6） |
+@@ -2833,7 +2844,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
+ | FR-08 工件命名 | P0 | `<日期>-<主题>[-r<N>][-revised\|-response]-<角色>.md` | `archive` | 6.2 |
+ | FR-09 统一归档与主题子目录 | P0 | `.reviews/<主题>/<阶段>/` | `archive` | 6.1、6.2 |
+ | FR-10 背靠背隔离 | P0 | 四道机制（独立进程 / 延迟落盘 + 项目外运行目录 / 历史产出三层屏蔽 / 只读指纹） | `freeze`、`guard` | 10.1 |
+-| FR-11 全流程顺序 | P0 | 命令 A 状态机 S0～S10 | `cli`、命令模板 | 8.2 |
++| FR-11 全流程顺序 | P0 | 命令 A 状态机 S0.5～S10（EV-125 前为 S0～S10） | `cli`、命令模板 | 8.2 |
+ | FR-12 四条命令 | P0 | `/dual-run` `/dual-review-plan` `/dual-review-code` `/dual-review-bug`（用户级入口 skill） | 入口 skill | 第 7 章 |
+ | FR-13 意见可裁决 | P1 | `trivium.review.v1` 七字段必填 + 编号前缀隔离 | `parse` | 6.5 |
+ | FR-14 逐条裁决 | P1 | 接受/驳回/暂缓 + 理由 + 落点，`gate` 硬校验（空洞理由与共同 blocker 默认 warning） | `gate` | 6.6、8.6 |
+@@ -3315,6 +3326,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.42** | 2026-09-25 | **EV-125：命令 A 接受 `--critics` / `--only` / `--allow-single`，计划审与代码审两轮共用同一组；命令 A 的预检挪到解析之后**（计划 `.reviews/EV-125-命令A支持选侧旗标/`：计划双审 1 轮 13 条全部接受，r2 定稿）。**一、缺口**：M10b 第 2 步取「缺省集合减当轮 Driver」让非 claude Driver 的命令 A 能跑通，但命令 A 拒收选侧旗标（GLM-02），于是非 claude 当 Driver 时 claude 永远入不了选、按轮控制侧数只能改配置；`--allow-single` 不在拒绝之列，却被 S2 / S6 的交接静默丢弃。**二、改动**：7.1 撤销拒绝段并登记撤销理由与残余（S6 漏传 `critics` 时两轮可能异侧，靠开场播报与两份留痕的 `critics_selected` 发现）；命令表 `/dual-run` 行补齐选侧旗标并改掉 `--model-gemini` / `--model-glm` 的旧口径；8.2 状态机补 S0.5 解析、原 S0 预检改为解析之后的 S0.6——`review --start` 只查当阶段 slug 且不探活，显式加进来的一家不在开跑前查就要到 S6 才暴露。**三、不改**：`critics.ts` 的判定与缺省减 Driver、`review --start`、B / C / D 的预检次序（同形缺口代价低，登记 BACKLOG）。 |
+ | **v1.3.41** | 2026-09-25 | **EV-123：副本源缺失时，预检与 `review --start` 给只警告的提示；预检与 `--start` 的警告有了结构化标记与转述约定**（计划 `.reviews/EV-123-预检提示副本源缺失/`：计划双审两轮，r1 18 条、r2 14 条全部接受，r3 定稿）。**一、缺口**：EV-122 的收尾播报要回读到生效模型才出声，而副本源在不在拉起前就知道——EV-112 E2 因此白跑一整轮；另外预检的 `ok: true` 警告项与普通通过项同形，skill 只约定「失败则转述」，C5 那条运行期选模警告自 EV-82 第三段起从未有转述约定。**二、改动**：`zcodeOverrideSourcePath()` 成为审查运行（适配器侧）副本源路径的唯一出处（`prepareZcodeHome` 缺省值、探活指纹、适配器成员三处共用；探针臂的 `ZCODE_CLI_CONFIG` 未并入）；`CriticAdapter` 加可选成员 `modelOverrideSource()`，预检按能力判侧；新检查 `checkModelOverrideSource` 在预检 ④″ 与 `startRun`（FR-23 跳过分支之后、派生之前，按当轮 `sides`）各调一次；`CheckResult.warn` 与 `PreflightResult.warnings`（8.1「警告这一级」），`checkModelSlugs` 在未实际校验 / 回落时置 `warn`；预检与 `--start` 的 `--json` 恒带 `warnings`；四条 skill 的预检步骤与开场播报各补转述句（7.4、8.2）；桩注入配置可声明 `modelOverrideSource`（只服务测试）。8.1 表补上 C5、版本漂移覆盖面、探活已跳过三行欠账。**三、计划双审要点**：r1 只定了路径放哪、没定预检怎么认出哪一侧是 zcode（CODEX-01 ≡ GLM-02）→ 可选成员判侧；r1 否决「在 `--start` 再报」的理由对命令 A 不成立、预检选侧不等于当轮选侧（GLM-01、CODEX-02）→ 翻转为同一函数两个入口；措辞删去「FR-06 / NFR-06 不成立」与「跑完一定告警」两处断言（CODEX-03 ≡ AGY-01）；r2 指出 warn 口径按 ⚠️ 前缀划界漏掉 slug 的内嵌行（三侧同指）、`--start` 用例无注入通道（CODEX-01 ≡ GLM-04）、契约用例漏 dual-run（三侧同指）。**不做**：不拒跑、不在拉起前阻断；同步 `review --stage` 不提示；不扩到三家（EV-91）。**四、验证**：单元、预检与 `--start` 真实子进程（全桩、零配额）、skill 契约全目录扫描；变异装置 12 / 12 加手工 P7 3 / 3，证据 `doc/05_testing/evidence/ev123-mutation-20260925/`；零配额验收 E1～E3（空 HOME 下拉起安装副本，不挪用户文件），证据 `doc/05_testing/evidence/ev123-acceptance-20260925/`。**五、代码双审 r1**（codex 3 minor + 1 nit、gemini 1 major、glm 1 minor + 1 nit，7 条全部接受）：`startRun` 的复查原先单独包了只放锁的 `catch`，而此刻闸门已是 `running`，挪进主 `try` 继承闸门回收（三侧同指；今天抛不出，属潜伏缺陷）；「警告这一级」口径改为按判据、补两格「不标」（未入选侧提示、探针部分过期行）；「唯一出处」收窄到适配器侧；写明同步 `review --stage --json` 的 `warnings` 与 `--start` 同键不同形 |
+ | **v1.3.40** | 2026-09-25 | **EV-122：审查运行没做模型覆盖、实际模型与请求不同时，`guard` 播报**（计划 `.reviews/EV-122-未受控模型播报/`：计划双审 1 轮 13 条，12 条接受、1 条暂缓，r2 定稿）。**一、缺口**：EV-112 E2 实测副本源缺失时 glm 侧跑在个人配置默认的 qwen3.8-max 上，`model_override_applied` 因「没尝试覆盖」而缺席，`guard` 一句没说。**二、改动**：`prepareZcodeHome` 三个 `global` 出口各给结构化成因 `cause`；新纯函数 `decideModelUnenforced` 与 `decideModelOverride` 并列且互斥，产出 `critics.<id>.model_unenforced`（6.7.1 新增，进 run.json）；`guard` 播报一句、按 `cause` 给排查指向，不判失守、不阻断；预检 `checkZcodeRuntimeSelection` 的指向句补上新通道。不取「让 `model_override_applied` 在没做覆盖时也记 false」（两种成因同形）与「`guard` 自己比 `model_requested` / `model_effective`」（判据归适配器）。**三、计划双审要点**：接线第二参必须取请求原值而非恒为 null 的 `home.qualified`（CODEX-03 ≡ AGY-01）；成因不靠匹配中文散文（CODEX-02）；文案只陈述事实，限定失败那一支跑的不是 CLI 全局默认（CODEX-06）。三家（codex / agy / claude）同类缺口不扩入本题，补记 EV-91；预检期提示登记 EV-123 候选；与 `unsupported_override` 的关系补记 EV-30 ⑦。**四、验证**：纯函数、`prepareZcodeHome` 成因、`run()` 两支、守卫、预检与 run.json 集成用例；变异九条，证据 `doc/05_testing/evidence/ev122-mutation-20260925/`；零配额验收以 E2 的真实形态喂判定与播报，证据 `doc/05_testing/evidence/ev122-acceptance-20260925/`。**五、代码双审 r1**（codex 1 nit、gemini 0 条、glm 解析回退含 2 minor + 1 info，全部接受）：`unenforcedHint` 补 `default` 分支，两值之外的 `cause`（只可能来自未校验的桩注入）不再把字面量 `undefined` 拼进播报，`never` 保住编译期穷尽（CODEX-01，变异 N10）；schema 的缺席说明补「请求为空」；`reason` 可能含副本源目录清单与 HOME 绝对路径、随归档持久化，写明为有意接受的内容面，不截断 |
+ | **v1.3.39** | 2026-09-25 | **EV-112：审查运行的 CLI 日志、rollout、会话库与存储根落进运行目录**（计划 `.reviews/EV-112-无副本审查运行载体落点/`：计划双审 2 轮 26 条全接受，r3 定稿；送审前零配额实测 E0）。**一、现象比登记时大**：无副本的审查运行（副本源缺失；计划写的另一成因「未指定模型」经 E2 前核实在派发前即被拒、走不到）把 log、rollout、会话库、artifacts、workflow、memories 全部留在真实 `~/.zcode`，不止日志。ZCode 0.16.9 包内核出三条取值链：日志直读 `ZCODE_LOG_DIR`（只认 HOME）；存储根 `storage.dir` 经配置分层的 Env 层取 `ZCODE_STORAGE_DIR`（rollout 等都在它下面）；会话库 `storage.sessionDbPath` 缺省按 HOME 展开、Env 层按后缀认 `SESSION_DB_PATH` / `SESSION_DB`（包里无完整字面，EV-110 按字面 grep 漏了）。**二、改动**：审查运行两支都**设**三个落点键（`zcodeStorageRedirectEnv`，入参是与 HOME 同层的根），指到 `zcodeHomeUnder(sideDir)` 下与副本相同的布局；清除面由四键扩为十一键（七个目录 / 路径键 + 四个落点开关键 `ZCODE_RUNTIME_ENV` / `ZCODE_BETA` / `ZCODE_ENV` / `ZCODE_MESSAGE_ENABLED`，后者是计划双审两轮与复核追出的启动期落点改写）；跑后回读不再回落 `os.homedir()`。**三、落点自检**：`checkZcodeCarriers` 合取判「日志有本次 sessionId」与「rollout 在」，无副本支反向核真实 HOME 的日志（本次拉起后改过的文件）与 rollout 两项；结果进 run.json（6.7.1 新增 `critics.<id>.carriers_landed`），`guard` 播报、不阻断；只覆盖日志与 rollout 两类载体。回读改为读运行目录日志目录下全部文件，与自检同一个文件集合。**三之一、代码双审 r1（6 条全接受，codex 1 条 major）**：反向核原先只核 rollout，「日志键单独失效」会把日志回落真实 HOME 而记成没泄漏（CODEX-01 ≡ GLM-01），`leaked_to_home` 由布尔改为 `{ log, rollout }`；回读只取最新文件与自检扫全部文件不一致（CODEX-02）；「一律落进运行目录」的宣称收窄为按载体列举（CODEX-03）。同轮实证 R7：旧构建不设存储根，送审包里的 `…/zcode-beta.app` 字面经 `--prompt` 命中 argv 判据，glm 副本 HOME 的 rollout / memories / plugins 落进 `.zcode-beta/`，rollout 出了回读目录，该侧因此被判证据不足。**四、doctor**：宿主预置十一键任一出信息级 note（只报键名）；探针入口命中 beta 的 argv 判据另出 note。**五、验证**：新增 `test/unit/zcode-carriers.test.ts`（按包内取值链落盘的假入口，含全采纳 / 半采纳 / 全不采纳 / 不写四种形态与真实 HOME 诱饵）与 run.json 组装集成用例；十一键全等断言逐字写出、不从常量派生。变异十三条，证据 `doc/05_testing/evidence/ev112-mutation-20260925/`。**六、残余**：探活与 doctor 探针仍在真实 HOME 下跑（不含送审内容）；beta 的 argv 触发清键挡不住（审查运行由存储根早退挡住）；运行目录里 db / plugins 不扫、其余命中即删，幸存内容随保留期整删；包内不经三键的 `yas`（workspace-hook trust store）与 `e4s`（rollout 的 `homedir()` 兜底）未核是否在 `--prompt` 形态下被走到，不含送审内容。**七、验收**：零配额 E1 九条判据全成立；真实配额 E2（run `20260924T172304Z`，单侧 glm，审查运行期间暂挪副本源进入无副本支）核实日志、rollout、会话库、memories 落进运行目录，落点自检全真无泄漏，真实 HOME 按内容核零写入；artifacts / workflow 本轮未产生，仍只有静态读数。E2 同时实测到无副本支的 glm 侧跑的是个人配置默认模型（本机 qwen3.8-max），登记 EV-122。读数见 `doc/05_testing/evidence/ev112-acceptance-20260925/` |
+diff --git a/doc/02_design/README.md b/doc/02_design/README.md
+index bda2f08..00a9b71 100644
+--- a/doc/02_design/README.md
++++ b/doc/02_design/README.md
+@@ -21,7 +21,7 @@
+ 
+ ### 唯一实现依据
+ 
+-- [`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：**Driver-DualCritic 主攻双审流水线总体架构与详细设计**（**v1.3.41**，状态：**基线已实现、演进进行中**）。依据 PRD v1.4.7 与 5 份参考答卷起草。
++- [`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：**Driver-DualCritic 主攻双审流水线总体架构与详细设计**（**v1.3.42**，状态：**基线已实现、演进进行中**）。依据 PRD v1.4.7 与 5 份参考答卷起草。
+   演进历程：v1.1.0 按设计审核意见 RV-01～RV-26 修订；v1.2.0 按项目负责人意见 UR-01～UR-06 修订（就地审查、结合全项目评审、Node.js + TypeScript、用户级 skills 载体），均附逐条应答；v1.2.1 按 M0 本机实测回补第 3、10、11、12 章；v1.2.2～v1.2.5 按多轮自举双审加固护栏（含 RV-B1 的实施与撤回）；v1.2.6～v1.2.7 护栏判定范围收窄与 Bash 侧撤回；**v1.3.0 把 M6～M11 的多 Agent 演进并入本文**，新增「实现状态基线」与三级状态标记、纪律 6（回溯颗粒度）与纪律 7（注册表单一来源）、§24 演进并入台账；**v1.3.1～v1.3.6 随 M7b 六步逐步回溯**（`run.v2`、`config.v2`、`--critics` 入口、5.1.1 接入套件与其验收装置——并据桩夹具实测把「五件套」修正为「七件套」、把 `review.v1` 的意见编号前缀由 schema 枚举改为注册表校验）；**v1.3.7 按 M6 四步回填事实表**（3.6 Codex / 3.7 Claude headless 由指针占位翻为已回填，§24 台账三行转绿）——回填推翻了演进设计的三条记载（`-p` 是文件分层而非 `[profiles.*]` 段、effort 档位表全错且 CLI 不校验、模型目录路径名对不上）并修正一条（路径级 deny 对 `Read` 可用、对 `Grep` 不可用）；**v1.3.8 落地 M8 第 1 步的措施 b**（命令文本字面扫描，`10.1`）——它因 codex 的读取经 shell 而成为该侧路径核验的唯一手段，承诺面钉成 **F-1～F-9 必检 / B-1～B-5 明确不可检**的闭集，三处（设计、实现 docblock、用例名）由 `known-forms-parity` 机器对账；**v1.3.9 落地 M8 第 2 步的适配层契约泛化**（`11.1` 新增「轨迹能力与判定分档」）——判定层改为面向 `TraceCapability`（轨迹形态 + 被拒操作是否留痕）而非 Agent id，六个消费点逐一分档；**并推翻 3.6 的一条旧断言**：`rejected_command_in_trace = false` 此前被写成「10.3 的判据对 codex 永久为假」，实为过度推广——被拒的命令不留痕，成功执行的照常留痕，故失守判定两档一律由写事件成立，该字段只修饰阴性结论的可信度；连带新增「无法归因」的漂移分类与两条核验通道的降级留痕（五面）；**v1.3.10～v1.3.12 随 M8 第 3～4 步与 D4-4**（codex 接入为第三家审核者、AC-20 真机验收、codex 进缺省集合）；**v1.3.13～v1.3.16 护栏判定缺口与凭据清扫**；**v1.3.17～v1.3.30 随 M9 七步回溯**（claude 准入实测与三个机读字段、适配器本体与四条准入前置、启用为第四家审核者、`--driver` 全链路、裁决件 `role` 放宽与 Hook 当轮保护集、两轮验收实跑达成完成判据、第 7 步纪律 6 回溯）。
+   覆盖架构、组件划分、接口契约、目录与命名规范、操作流程、异常矩阵、实施路线（M0～M11）与验收映射。
+   **⚠️ 读法**：正文未加状态标记者描述当前真实系统（M0～M5 基线 + M6～M9 与 M10a：探针事实、注册表、配置 v2 与动态多审、Codex 与 Claude Code 两家审核者、Driver 护栏与契约面）；
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index 215a249..aa1a2d7 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -338,7 +338,7 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一
+ | :--- | :--- |
+ | `doctor` | 逐项实测设计 §3.5 的本机能力探针清单，回填 `probe:` 段 |
+ | `doctor --selftest` | 临时夹具里真跑整条流水线，14 步核对（桩适配器，零配额） |
+-| `preflight --stage plan\|code\|bug\|all [--critics <id,…>]` | 设计 §8.1 的启动预检，fail-fast，失败零工件。`--critics` 指定本次要用哪几侧——只读能力、模型 slug、探活都只查这几侧，缺省取 `review.default_critics`（M8 第 3 步）。**四条 skill 的第 1 步不传它**：那时 `topic resolve` 还没跑、选侧尚未解析出来。选了非缺省侧时，该侧的可用性由 `review --start` 在拉起 CLI 之前的 `availability()` 兜住（AC-20 末条的落点），`--critics` 供用户显式预检时用。**只警告项**（EV-123，设计 8.1「警告这一级」）：`--json` 输出恒带 `warnings`（`{ name, detail }[]`，无警告时为 `[]`），`checks[]` 单项在 `warn` 为真时带 `warn: true`；`warn` 不影响 `ok` 与退出码，skill 在通过时逐条念给用户后继续 |
++| `preflight --stage plan\|code\|bug\|all [--critics <id,…>]` | 设计 §8.1 的启动预检，fail-fast，失败零工件。`--critics` 指定本次要用哪几侧——只读能力、模型 slug、探活都只查这几侧，缺省取 `review.default_critics`（M8 第 3 步）。**命令 B / C / D 的第 1 步不传它**：那时 `topic resolve` 还没跑、选侧尚未解析出来；选了非缺省侧时，该侧的可用性由 `review --start` 在拉起 CLI 之前的 `availability()` 兜住（AC-20 末条的落点），但探活不在其中。**命令 A 自 EV-125 起在解析之后预检**（S0.6）：带上 `topic resolve` 输出的 `critics`，以及非空时的 `--profile` / `--model-<id>`，三个阶段入选各侧的 slug 与探活都在开跑前查——命令 A 漏查的 code 阶段 slug 要到 S6（编码之后）才会暴露。`--critics` 也供用户显式预检时用。**只警告项**（EV-123，设计 8.1「警告这一级」）：`--json` 输出恒带 `warnings`（`{ name, detail }[]`，无警告时为 `[]`），`checks[]` 单项在 `warn` 为真时带 `warn: true`；`warn` 不影响 `ok` 与退出码，skill 在通过时逐条念给用户后继续 |
+ | `topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。`--stage` 也接受 `all`（命令 A 用）。`--` 之后按 argv 逐个 token 解析、不再分词（EV-18）：正文整段放进一个单引号参数，旗标放在引号之外；`--topic` 字样被包进正文而未显式给主题时退 64。`--args` 传法已删 |
+ | `topic claim --topic <主题> --stage <s> --driver <id> [--session-id <id>]` | 为该**阶段**声明当轮 Driver（M10a 第 1 步，EV-72）。plan / bug 原稿写在 `review --start` 之前，那一刻该阶段零留痕、判定回落缺省 Driver，非缺省 Driver 写不出自己的原稿。`--stage` **必填不默认**：声明直接决定 Write / Edit 侧的保护集。判定顺序自上而下：**留痕优先**——该阶段已有运行留痕且与 `--driver` 不同 ⇒ 退 64（出口是新开主题或换阶段）；已声明同值 ⇒ 幂等退 0 且**不刷新** `claimed_at`；该阶段子树里已存在**他家角色后缀**的文件 ⇒ 退 64（那些文件可能是撤回前的旧声明留下的，也可能是尚无声明时写下、仍在使用的原稿；出口是由用户确认去留、在终端处理后重试。不在会话里删它们来换回认领——这条限制防的正是会话自己反复翻转声明，见设计 7.1 `topic claim` 段）；其余合法认领放行。撤回的旧声明整条追加进 `drivers[<阶段>].history`，不覆盖。`--session-id` 落进 `claimed_by`，与 `approvals[].session_id` 同一个用途：自声明边界要让事后对得上账 |
+ | `review --stage <s>` | 同步跑一次双审（手工调试用） |
+diff --git a/doc/07_manuals/MANUAL_user.md b/doc/07_manuals/MANUAL_user.md
+index af2c510..d676b64 100644
+--- a/doc/07_manuals/MANUAL_user.md
++++ b/doc/07_manuals/MANUAL_user.md
+@@ -246,11 +246,15 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ 
+ ```
+ /dual-run <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>]
+-          [--profile <名称>] [--model-gemini <slug>] [--model-glm <id>]
++          [--profile <名称>] [--model-<审核者 id> <模型>]
++          [--critics <id,…>] [--only <一侧>] [--allow-single]
+ ```
+ 
+ 出方案 → 双审 → 修订 → 编码 → 双审 → 应答 → 改码 → 真实执行编译测试。
+ 
++`--critics` / `--only` / `--allow-single` 的含义见 4.7；在 `/dual-run` 里**计划审与代码审两轮共用同一组**。
++写了 `--critics` 时，开跑前的预检查的就是这几家（三个阶段的模型与登录都在开跑前查）。
++
+ **A 是唯一不设人工闸门的命令**——它跑完整条链，中途不停。正文是**任务目标**（这次要达成什么），`--focus` 是可选补充。
+ 
+ 前提：`verify.build` / `verify.test` 至少一组非空，否则拒绝启动。
+@@ -312,6 +316,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ ### 4.7 `--critics`（选审核者）与 `--allow-single`（降级）
+ 
+ **这是两件不同的事**，本手册曾把它们混为一谈：前者是「本轮想让谁审」，后者是「有人没审成时怎么办」。
++四条命令都收这组旗标；`/dual-run`（命令 A）的计划审与代码审两轮用同一组（EV-125 起，此前命令 A 拒收）。
+ 
+ | | 作用 | 后果 |
+ | :--- | :--- | :--- |
+@@ -325,7 +330,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ - 不得含当轮 Driver——自己审自己不构成二次审查；
+ - 不得重复（`--critics x,x` 多半是笔误，静默去重会悄悄减少侧数）；
+ - 个数在 1 到 `review.max_critics` 之间；
+-- 不给时取 `review.default_critics`。
++- 不给时取 `review.default_critics`，并**减去当轮 Driver**（缺省集合里的某家当了 Driver，就不审自己）。
+ 
+ **当前可选四家**：`codex`、`gemini`、`glm` 为缺省集合（默认即三侧）；`claude` 已启用为审核者，
+ 但它是本会话的 Driver，只有 `--driver` 取另一家时才能入选——否则退 64 并告知原因。
+@@ -465,7 +470,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ **旗标名按 Agent 注册表派生**，启用第三家时 `--model-<新 id>` 自动可用，不需要改解析器。
+ 给**本轮没有入选**的 Agent 指定模型会**退 64**——不是静默忽略。分两种：当不了审核者的
+ （如 Driver 自身）报错列出当前可用值；能当、但这一轮没选它的（`--critics gemini --model-glm X`，
+-或非 claude 当 Driver 时命令 A 里的 `--model-claude`——命令 A 只跑缺省集合）报错列出本轮入选，
++或非 claude 当 Driver 时、没写 `--critics` 的命令 A 里的 `--model-claude`——那时只跑缺省集合，已减去当轮 Driver）报错列出本轮入选，
+ 并提示用 `--critics` 把它加进来。这条报错是刻意的：此前那类写法会被当成正文吞进审查焦点，
+ 模型覆盖无声丢失，而留痕里看不出你曾经指定过。
+ 
+diff --git a/doc/07_manuals/QUICKSTART.md b/doc/07_manuals/QUICKSTART.md
+index cc37711..bbd6a0f 100644
+--- a/doc/07_manuals/QUICKSTART.md
++++ b/doc/07_manuals/QUICKSTART.md
+@@ -197,7 +197,8 @@ plan 审查中 ｜ 已用 5m0s / 预算 15m0s（33%）｜ gemini 已完成 · gl
+ 
+ `<提示语>` 是必填的（FR-20）：它会**逐字**嵌进两侧 BRIEF 的第 2 段。换提示语必定重审。
+ 
+-**想只跑一侧**（省时间或省配额）：给 B/C/D 加 `--critics glm`（或 `gemini`）。
++**想只跑一侧**（省时间或省配额）：给 B/C/D 或 `/dual-run` 加 `--critics glm`（或 `gemini`）。
++`/dual-run` 的计划审与代码审两轮用的是同一组。
+ 留痕里会如实记下本轮只选了这一侧，**不标降级**——那是配置意图，不是出了事。
+ 拼错、选了当轮 Driver、或与旧写法 `--only` 同时给，都会当场退 64 并列出可用值。
+ 
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index b7b03f1..161dfeb 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -220,7 +220,9 @@
+ | EV-122 | **done**（2026-09-25 用户定取候选 ①；主题 `EV-122-未受控模型播报`：计划双审 1 轮 13 条，12 条接受、1 条暂缓（CODEX-05 → EV-123），r2 定稿、用户审批「开始实施」。修法：`prepareZcodeHome` 三个 `global` 出口给结构化成因 `cause`，`decideModelUnenforced` 在没做覆盖且 modelId 段不同时产出 `critics.<id>.model_unenforced`（进 run.json，与 `model_override_applied` 互斥），`guard` 播报、按 `cause` 给排查指向、不阻断；见设计 v1.3.40。变异证据 `doc/05_testing/evidence/ev122-mutation-20260925/`，零配额验收 `doc/05_testing/evidence/ev122-acceptance-20260925/`。三家同类缺口补记 EV-91，与 `unsupported_override` 的关系补记 EV-30 ⑦。**代码双审 r1**：4 条实质意见全接受（codex 1 nit：`unenforcedHint` 补防御分支；glm 解析回退，原文 2 minor + 1 info：schema 缺席说明补项、`reason` 内容面写明为有意接受、变异证据口径说明），用户审批「通过」。**残余**：变异装置首行「工作树干净」实指「无残留哨兵」、基线是当时工作树而非 `HEAD`，字样宜改，留给下一个触碰 `scripts/mutation-check.mjs` 的主题） | **副本源缺失时，glm 侧跑的是个人配置的默认模型，守卫不出声。** 无副本的审查运行不做模型覆盖，CLI 用 `~/.zcode/v2/provider_config.json` 的默认模型——EV-112 E2 实测为 `84044858-…/qwen3.8-max`，而请求是 `GLM-5.3`。守卫只对「做了覆盖却没生效」（`model_override_applied: false`）出声，这一支没有覆盖尝试、字段缺席，于是静默：glm 侧实际不是 GLM，FR-06 的模型路由与 NFR-06 的异构默认在该侧都不成立，只能靠人对照 run.json 的 `model_requested` 与 `model_effective`。这是 EV-82 以来「全局默认」的既有语义，不是 EV-112 引入的；可达条件只有副本源缺失（「未指定模型」派发前即被拒）。候选处置：①守卫在 `model_route: global` 且 `model_effective` 与 `model_requested` 的 modelId 段不同时播报；②副本源缺失时 glm 侧判不可用；③维持现状只登记。来源：EV-112 E2 读数 `doc/05_testing/evidence/ev112-acceptance-20260925/02-e2-readout.md` | `src/trivium/adapters/zcode.ts`（`prepareZcodeHome` 副本源缺失分支）、`src/trivium/guard.ts` |
+ | EV-123 | **done**（2026-09-25 用户定：做；主题 `EV-123-预检提示副本源缺失`：计划双审两轮，r1 18 条、r2 14 条全部接受，r3 定稿，用户审批「修改后实施」。修法：`zcodeOverrideSourcePath()` 为副本源路径唯一出处；`CriticAdapter` 可选成员 `modelOverrideSource()` 按能力判侧；`checkModelOverrideSource` 在预检 ④″ 与 `startRun`（按当轮入选侧、派生之前）各调一次，只警告；`CheckResult.warn` 与恒在的 `warnings` 汇总进预检与 `--start` 的 `--json`；四条 skill 的预检步骤与开场播报补转述约定；见设计 v1.3.41。变异证据 `doc/05_testing/evidence/ev123-mutation-20260925/`，零配额验收 `doc/05_testing/evidence/ev123-acceptance-20260925/`。**顺带登记**：C5（运行期选模警告）在本题之前**没有转述约定**——信息一直在 `preflight --json` 的工具结果里，EV-82 第三段以来它是否被念给过用户无从查证（只记录，不追溯）。**代码双审 r1**：7 条全接受（三侧同指 `startRun` 复查的 `catch` 不回收 running 闸门，已挪进主 `try`；口径段改按判据、补两格「不标」；「唯一出处」收窄到适配器侧；写明两处 `warnings` 同键不同形），用户审批「修改后提交」。**残余**：① 探针模块的 `ZCODE_CLI_CONFIG` 是副本源路径的第四处写法、且模块加载时取值，未并入 `zcodeOverrideSourcePath()`（CODEX-03）；② `startRun` 主 `catch` 的闸门回收无直接用例（EV-123 复查挪进来后与 `ensureDir` / `writeHandoff` 共用），`prepareRun` 置闸后 `resetStopBlockCount` 仍可抛、只由其前的 `catch` 放锁（GLM-01 指出的既有同形缺口）。**已知边界**：`--start` 的警告在派生之后才到达，拦不住拉起；同步 `review --stage` 不做这项复查；Driver 会话的 HOME 被改写时（如 codex 的 agent 会话）读到的 `~` 与用户家目录脱钩，今天 Driver 是 claude、不受影响） | **副本源缺失在预检期就可判定，收尾播报却要等配额烧完才出现。** EV-122 的 `model_unenforced` 播报触发条件含「回读到了生效模型」，按构造只能在该侧跑完之后出声；而副本源 `~/.zcode/cli/config.json` 在不在，预检期就知道（zcode 的 `authProbe.fingerprint()` 已经取过这个文件，preflight 拿它做探活缓存失效判定）。EV-112 E2 那一轮就是这样白跑了 16m42s、27 次工具调用、单侧真实配额。**候选**：预检给一条非阻断提示（`ok: true`，形态同 `checkZcodeRuntimeSelection`）：「副本源缺失 ⇒ 本轮 glm 侧会跑在 CLI 默认模型上，FR-06 / NFR-06 在这一侧不成立」。这是 EV-122 候选 ①（收尾播报）与 ②（判不可用）之间的一档，用户 2026-09-25 只定了 ①，故未并入。来源：EV-122 计划双审 CODEX-05（暂缓） | `src/trivium/preflight.ts`（`checkZcodeRuntimeSelection` 旁）、`src/trivium/adapters/zcode.ts`（`authProbe.fingerprint`） |
+ | EV-124 | todo（前置：先实测） | **codex 审查臂没接 `--output-schema`，解析回退率三侧最高。** M10b 第 1 步诊断（报告 `REPORT_2026-09-24_m10b_driver_entry_probe.md` §4.1）：本仓 168 次运行，codex 回退 22/107、glm 14/145、gemini 4/150；codex 的 22 份里 18 份是 schema 层面（每条意见缺 `confidence` 9 份、`layer` / `kind` 枚举越界 9 份），用当前解析器重跑 0 份能过。`codex exec --help` 有 `--output-schema <FILE>`，但 `buildCodexArgs` 没传；agy（`--json-schema`）与 claude 都接了 schema 约束，gemini 回退率最低与此一致。**前置**：先实测 `--output-schema` 对 qwen / deepseek 这类非 OpenAI provider 是否生效（它可能依赖 OpenAI Responses 的结构化输出）；生效才改适配器，不生效则记结论、改走提示词侧。不在 M10b 范围（M10b 计划 r9 §1.3、r10 §7） | `src/trivium/adapters/codex.ts` 的 `buildCodexArgs`；报告 §4.1 |
+-| EV-125 | todo（用户定：做；M10b 第 2 步代码复审通过之后单独做） | **命令 A 支持 `--critics`（及 `--allow-single`），计划审与代码审两轮共用同一组审核者。** 即第 2 步报告 §8 第 1 条的选项 (b)：当时取 (a)（缺省集合减去当轮 Driver）并入第 2 步，(b) 未做。现状的代价：非 claude 当 Driver 时命令 A 永远拿不到 claude 这个审核者（它不在缺省集合，又没有旗标能加进来），按轮控制侧数只能改 `config.yaml`，且与 B / C / D 不一致。原拒绝理由（`topic-args.ts`「命令 A 不接受选侧旗标」，GLM-02，设计 §7.1）是「两轮选侧语义模糊」，但 `--model-*` / `--profile` / `--driver` 在命令 A 里都已是「两轮都生效、S2 / S6 各传一次」，同一语义可直接沿用。**修法方向**：撤销 `scope === 'all'` 对 `--critics` / `--only` 的拒绝；命令 A 契约的交接说明（S2 / S6）透传 `critics` 与 `allow_single`；`MODEL_HINT_DEFAULT` 随之退回全集提示；设计 §7.1 的边界同步改写。行为变化，需走计划双审。来源：M10b 第 2 步代码双审 r1 之后用户提问（2026-09-25） | `src/trivium/topic-args.ts`、`skills-src/commands/run.contract.md`、`src/entry-render.ts`、设计 §7.1 |
++| EV-125 | **实施完成，待代码双审**（2026-09-25；主题 `EV-125-命令A支持选侧旗标`：计划双审 1 轮 13 条全接受，r2 定稿，计划提交 `694e6ce`） | **落地记要**：`topic-args.ts` 撤销命令 A 对 `--critics` / `--only` 的拒绝；命令 A 契约 S0.5 输出的 `critics` 由 S0.6 预检、S2、S6 无条件照传，`allow_single` 为真时 S2 / S6 都加 `--allow-single`；**预检挪到解析之后**（S0.6，带入选、档位与模型覆盖——显式加进来的一家缺 code 阶段 slug 时，不在开跑前查就要到 S6 才暴露）；删 `MODEL_HINT_DEFAULT` / `MODEL_FLAGS_DEFAULT`，四条命令同一组槽位。设计 v1.3.42（§7.1、§8.2）、PROTOCOL、MANUAL、QUICKSTART 同步。**残余**：S6 漏传 `critics` 时两轮可能异侧，运行期无跨阶段比对——当轮靠 S2 / S6 开场播报念出的 `models` 键发现，事后靠两份运行留痕的 `critics_selected` 对出（设计 §7.1 同句）。**原条目**：**命令 A 支持 `--critics`（及 `--allow-single`），计划审与代码审两轮共用同一组审核者。** 即第 2 步报告 §8 第 1 条的选项 (b)：当时取 (a)（缺省集合减去当轮 Driver）并入第 2 步，(b) 未做。现状的代价：非 claude 当 Driver 时命令 A 永远拿不到 claude 这个审核者（它不在缺省集合，又没有旗标能加进来），按轮控制侧数只能改 `config.yaml`，且与 B / C / D 不一致。原拒绝理由（`topic-args.ts`「命令 A 不接受选侧旗标」，GLM-02，设计 §7.1）是「两轮选侧语义模糊」，但 `--model-*` / `--profile` / `--driver` 在命令 A 里都已是「两轮都生效、S2 / S6 各传一次」，同一语义可直接沿用。**修法方向**：撤销 `scope === 'all'` 对 `--critics` / `--only` 的拒绝；命令 A 契约的交接说明（S2 / S6）透传 `critics` 与 `allow_single`；`MODEL_HINT_DEFAULT` 随之退回全集提示；设计 §7.1 的边界同步改写。行为变化，需走计划双审。来源：M10b 第 2 步代码双审 r1 之后用户提问（2026-09-25） | `src/trivium/topic-args.ts`、`skills-src/commands/run.contract.md`、`src/entry-render.ts`、设计 §7.1 |
++| EV-126 | todo（只登记；代价低） | **命令 B / C / D 的第 1 步预检在 `topic resolve` 之前、不带 `--critics`，用户显式加进来的那一侧不被探活。** 与 EV-125 前命令 A 的形状相同，但代价不同：B / C / D 的下一步就是 `review --start`，它对入选侧查当阶段 slug 与 `availability()`（零工件、失败得早），漏掉的只有探活——未登录的那一侧要到拉起后才失败。命令 A 在 EV-125 里改为「先解析后预检」，B / C / D 维持原次序；若要改，同样把预检挪到解析之后并带上 resolve 输出的 `critics`。来源：EV-125 计划 r1 C11 | `skills-src/partials/review/body.md` 第 1 步 |
++| EV-127 | todo | **审查件完整性检查把 `skills-src/…` 截成不存在的 `src/…`，误报「evidence 引用但未列入 consulted」。** `parse.ts` 的 `checkReviewIntegrity` 用 `/\b((?:src\|lib\|app\|test\|tests\|doc\|docs\|packages\|scripts)\/…)/` 抽 evidence 里的路径，`\b` 在 `skills-src/` 的连字符之后成立，于是截出 `src/commands/run.contract.md`、`src/partials/…` 这类仓库里并不存在的路径。EV-125 计划双审第 1 轮（run `20260925T073426Z`）codex、gemini 两侧都被标了这条结构问题，而两侧 consulted 里列的恰是完整的 `skills-src/…`。不影响那一轮裁决，但会把正常的审查件标成结构有问题、训练人无视这条告警。候选修法：前界改为「行首或非路径字符」（与 `findSwallowedFlags` 用 `(?<![A-Za-z0-9_-])` 的做法同形），并补 `skills-src/` 一格用例。来源：EV-125 计划双审裁决件 §3 第 2 条 | `src/trivium/parse.ts` :226 |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/skills-src/commands/run.contract.md b/skills-src/commands/run.contract.md
+index 64cb7d5..ba69fe2 100644
+--- a/skills-src/commands/run.contract.md
++++ b/skills-src/commands/run.contract.md
+@@ -1,7 +1,7 @@
+ ---
+ name: dual-run
+ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → 双审 → 应答 → 改码 → 真实执行编译测试（命令 A）
+-argument-hint: <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] {{MODEL_HINT_DEFAULT}}
++argument-hint: <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] {{MODEL_HINT}} [--critics <id,…>] [--only {{ONLY_CHOICES}}] [--allow-single]
+ disable-model-invocation: true
+ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
+ @ARG_KIND: text
+@@ -25,28 +25,28 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
+ 
+ {{> guard/main@GUARD}}
+ 
+-## 状态机 S0～S10（设计 §8.2）
++## 状态机 S0.5～S10（设计 §8.2）
+ 
+-### S0 预检
+-`TV preflight --stage all --driver {{DRIVER}} --json`
+-
+-`--stage all` 是命令 A 专用的范围：它校验 active profile 下**全部三个阶段**两侧的
+-模型 slug，并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
+-跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
+-
+-失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
+-
+-通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
++**先解析、后预检**，与命令 B/C/D 的次序相反（EV-125）：预检要查的是**本轮实际入选**的那几家，
++而入选要等解析之后才知道。用户用 `--critics` 加进来的一家若缺 code 阶段的模型 slug 或没登录，
++不在开跑前查出来，就要到 S6——编码已经做完——才暴露。原先的「S0 预检」因此挪到解析之后，记为 S0.6；
++S0 这个标签不再使用。
+ 
+ ### S0.5 解析主题与参数
+ `TV topic resolve --stage all --json -- {{ARGS}} --driver {{DRIVER}}`
+ 
+ **命令后的正文是任务目标**（「这次要达成什么」，进 BRIEF 第 4 段）；审查焦点是可选补充，
+ 只认显式 `--focus <提示语>`（进第 2 段）。输出字段：
+-- `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导，**回显给用户确认**后再继续；
++- `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导——**这里先不停下来确认**，
++  等 S0.6 预检通过后再回显给用户确认（预检失败的话，这一轮确认就白费了）；
+ - `task_goal`：透传给 S2/S6 的 `--goal`；
+ - `prompt_hint`：非空时透传给 S2/S6 的 `--focus`，为空则省略；
+-- `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（{{MODEL_FLAGS_DEFAULT}}）、`--profile`。
++- `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（{{MODEL_FLAGS}}）、`--profile`；
++- `critics`：本轮**入选的审核者集合，计划审与代码审两轮共用这一组**。S0.6、S2、S6 都把 resolve 输出的 `critics`
++  用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；
++- `allow_single`：为 true 时 S2、S6 都加 `--allow-single`（用户显式要求的降级：一侧失败时不中止，§12.4）。
++
++用户写的 `--only` 已被 resolve 并进 `critics`、输出的 `only` 恒为 null——**任何一步都不要传 `--only`**。
+ 
+ 构造这条命令时，把正文整段放进**一个单引号参数**、旗标放在引号之外
+ （`-- '让 --base 真正进入冻结' --focus '看同类缺口'`）：`--` 之后按 shell 参数逐个解析，
+@@ -54,6 +54,27 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
+ 不要改用双引号，也不要补字面引号（新版不剥引号，补了会原样进 BRIEF）。
+ 不包引号，正文里的 `--base` 就会被当成真旗标吞掉后一个词。
+ 
++### S0.6 预检（在解析之后）
++
++```
++TV preflight --stage all --driver {{DRIVER}} --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json
++```
++
++- `--critics`：S0.5 的 `critics` 用逗号连接，**无条件传**；
++- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；
++- **这三样必须与 S2 / S6 传的是同一组**，都取自 S0.5 的输出，不要各拼各的。
++
++`--stage all` 是命令 A 专用的范围：它校验**全部三个阶段**入选各侧的模型 slug，
++并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
++跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
++
++失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
++
++通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
++
++**通过之后**，若 S0.5 的 `topic_inferred` 为 true，在这里把推导出的主题回显给用户、确认后再进 S0.8。
++用户改了主题就重跑 S0.5；新输出的 `critics` / `profile` / `models` 与本步所用不同时，重跑本步。
++
+ {{> run/claim-plan}}
+ 
+ ### S1 起草计划
+@@ -67,7 +88,9 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
+ - `--goal` 传 S0.5 的 `task_goal`（它在这里落进 `task.json`，之后 S6、乃至后续 bug 定位都会
+   自动复用，审查员才知道这次改动要达成什么，§9.4）；
+ - `--focus` 传 S0.5 的 `prompt_hint`，为空则不传；`--context` 传 `context_paths`；
+-- **`--driver {{DRIVER}}` 照带**（与 S0 / S0.5 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
++- `--critics` 传 S0.5 的 `critics`（逗号连接），**无条件传**；`allow_single` 为 true 时加 `--allow-single`；
++  **不要传 `--only`**（理由见 S0.5）：两个旗标同时递给 `--start` 会被判互斥退 64；
++- **`--driver {{DRIVER}}` 照带**（与 S0.5 / S0.6 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
+ 
+ **每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`。**
+ 
+@@ -76,9 +99,13 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
+ 文本消息，再发下一次 `--wait`」在 S2 / S6 里同样是硬要求——命令 A 的链路更长，
+ 用户等得更久，漏掉播报的代价比命令 B/C/D 还大。
+ 
+-**本命令收到的模型覆盖（{{MODEL_FLAGS_DEFAULT}}）与档位（`--profile`）
+-要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉——一丢就静默回退到
+-配置里的 `active_profile`，留痕里记的是回退后的模型，事后看不出用户曾经指定过。
++**本命令收到的模型覆盖（{{MODEL_FLAGS}}）、档位（`--profile`）、入选集合（`--critics`）
++与降级许可（`--allow-single`）要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉：
++- 模型覆盖与档位一丢，就静默回退到配置里的 `active_profile`，留痕里记的是回退后的模型；
++- 入选集合一丢，`--start` 会自己重取配置缺省——用户加进来的那一家就此消失，两轮还可能不是同一组；
++- 降级许可一丢，一侧失败就整次失败。
++
++事后都看不出用户曾经指定过。开场播报念出的 `models` 以本轮入选侧为键——侧名与用户要求的不符，就是漏传了。
+ 
+ ### S3 修订计划
+ 读两份审查全文，写 `…-revised-<当轮 Driver>.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
+@@ -93,7 +120,8 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
+ 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
+ 
+ ### S6 代码双审
+-同 S2（`--entry A`、`--driver {{DRIVER}}`，含 `--goal` / `--focus` / `--context` / 模型覆盖的透传），但 `--stage code`，
++同 S2（`--entry A`、`--driver {{DRIVER}}`，含 `--goal` / `--focus` / `--context` / `--critics` / `--allow-single` / 模型覆盖的透传——
++入选集合用的仍是 S0.5 那一组，S2 里某侧失败过也照样传它），但 `--stage code`，
+ 按 `{{cmd:dual-review-code}}` 的第 3 步执行。被审对象是 `git diff`，不是文档。
+ 比较基线默认 `HEAD`，即「尚未提交的全部改动」；S5 若已经提交过，
+ 要按 `{{cmd:dual-review-code}}` 第 3 步的说明显式给出 `--base`，否则补丁为空会退 65。
+diff --git a/skills/dual-critic/entry/codex/dual-run/SKILL.md b/skills/dual-critic/entry/codex/dual-run/SKILL.md
+index e4bf312..7299331 100644
+--- a/skills/dual-critic/entry/codex/dual-run/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-run/SKILL.md
+@@ -4,7 +4,7 @@ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → 
+ ---
+ 
+ 参数：本载体**不替换**参数占位符。参数就是用户随本命令给出的全部文本（跟在命令名后面，或被载体标成「User request」的那一段）；
+-下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-gemini <模型>] [--model-glm <模型>]`
++下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--critics <id,…>] [--only claude|gemini|glm] [--allow-single]`
+ 
+ **只在用户显式调用本命令时执行。** 本载体没有「禁止模型自行调用」的开关：你若是自己读到这份说明、
+ 而用户并没有调用本命令，不要执行其中任何一步。
+@@ -39,28 +39,28 @@ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → 
+ 越界不会被事前拦下，而是在事后由 approve 前置复核（裁决齐备 + 本轮工件 sha256）与跑后漂移复算暴露，
+ 整次运行可能因此作废。
+ 
+-## 状态机 S0～S10（设计 §8.2）
++## 状态机 S0.5～S10（设计 §8.2）
+ 
+-### S0 预检
+-`TV preflight --stage all --driver codex --json`
+-
+-`--stage all` 是命令 A 专用的范围：它校验 active profile 下**全部三个阶段**两侧的
+-模型 slug，并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
+-跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
+-
+-失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
+-
+-通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
++**先解析、后预检**，与命令 B/C/D 的次序相反（EV-125）：预检要查的是**本轮实际入选**的那几家，
++而入选要等解析之后才知道。用户用 `--critics` 加进来的一家若缺 code 阶段的模型 slug 或没登录，
++不在开跑前查出来，就要到 S6——编码已经做完——才暴露。原先的「S0 预检」因此挪到解析之后，记为 S0.6；
++S0 这个标签不再使用。
+ 
+ ### S0.5 解析主题与参数
+ `TV topic resolve --stage all --json -- <参数> --driver codex`
+ 
+ **命令后的正文是任务目标**（「这次要达成什么」，进 BRIEF 第 4 段）；审查焦点是可选补充，
+ 只认显式 `--focus <提示语>`（进第 2 段）。输出字段：
+-- `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导，**回显给用户确认**后再继续；
++- `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导——**这里先不停下来确认**，
++  等 S0.6 预检通过后再回显给用户确认（预检失败的话，这一轮确认就白费了）；
+ - `task_goal`：透传给 S2/S6 的 `--goal`；
+ - `prompt_hint`：非空时透传给 S2/S6 的 `--focus`，为空则省略；
+-- `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（`--model-gemini` / `--model-glm`）、`--profile`。
++- `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（`--model-claude` / `--model-gemini` / `--model-glm`）、`--profile`；
++- `critics`：本轮**入选的审核者集合，计划审与代码审两轮共用这一组**。S0.6、S2、S6 都把 resolve 输出的 `critics`
++  用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；
++- `allow_single`：为 true 时 S2、S6 都加 `--allow-single`（用户显式要求的降级：一侧失败时不中止，§12.4）。
++
++用户写的 `--only` 已被 resolve 并进 `critics`、输出的 `only` 恒为 null——**任何一步都不要传 `--only`**。
+ 
+ 构造这条命令时，把正文整段放进**一个单引号参数**、旗标放在引号之外
+ （`-- '让 --base 真正进入冻结' --focus '看同类缺口'`）：`--` 之后按 shell 参数逐个解析，
+@@ -68,6 +68,27 @@ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → 
+ 不要改用双引号，也不要补字面引号（新版不剥引号，补了会原样进 BRIEF）。
+ 不包引号，正文里的 `--base` 就会被当成真旗标吞掉后一个词。
+ 
++### S0.6 预检（在解析之后）
++
++```
++TV preflight --stage all --driver codex --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json
++```
++
++- `--critics`：S0.5 的 `critics` 用逗号连接，**无条件传**；
++- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；
++- **这三样必须与 S2 / S6 传的是同一组**，都取自 S0.5 的输出，不要各拼各的。
++
++`--stage all` 是命令 A 专用的范围：它校验**全部三个阶段**入选各侧的模型 slug，
++并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
++跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
++
++失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
++
++通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
++
++**通过之后**，若 S0.5 的 `topic_inferred` 为 true，在这里把推导出的主题回显给用户、确认后再进 S0.8。
++用户改了主题就重跑 S0.5；新输出的 `critics` / `profile` / `models` 与本步所用不同时，重跑本步。
++
+ ### S0.8 认领 plan 阶段
+ `TV topic claim --topic <主题> --stage plan --driver codex --json`（`<主题>` 取 S0.5 输出的 `topic`）
+ 
+@@ -87,7 +108,9 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ - `--goal` 传 S0.5 的 `task_goal`（它在这里落进 `task.json`，之后 S6、乃至后续 bug 定位都会
+   自动复用，审查员才知道这次改动要达成什么，§9.4）；
+ - `--focus` 传 S0.5 的 `prompt_hint`，为空则不传；`--context` 传 `context_paths`；
+-- **`--driver codex` 照带**（与 S0 / S0.5 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
++- `--critics` 传 S0.5 的 `critics`（逗号连接），**无条件传**；`allow_single` 为 true 时加 `--allow-single`；
++  **不要传 `--only`**（理由见 S0.5）：两个旗标同时递给 `--start` 会被判互斥退 64；
++- **`--driver codex` 照带**（与 S0.5 / S0.6 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
+ 
+ **每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`。**
+ 
+@@ -96,9 +119,13 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ 文本消息，再发下一次 `--wait`」在 S2 / S6 里同样是硬要求——命令 A 的链路更长，
+ 用户等得更久，漏掉播报的代价比命令 B/C/D 还大。
+ 
+-**本命令收到的模型覆盖（`--model-gemini` / `--model-glm`）与档位（`--profile`）
+-要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉——一丢就静默回退到
+-配置里的 `active_profile`，留痕里记的是回退后的模型，事后看不出用户曾经指定过。
++**本命令收到的模型覆盖（`--model-claude` / `--model-gemini` / `--model-glm`）、档位（`--profile`）、入选集合（`--critics`）
++与降级许可（`--allow-single`）要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉：
++- 模型覆盖与档位一丢，就静默回退到配置里的 `active_profile`，留痕里记的是回退后的模型；
++- 入选集合一丢，`--start` 会自己重取配置缺省——用户加进来的那一家就此消失，两轮还可能不是同一组；
++- 降级许可一丢，一侧失败就整次失败。
++
++事后都看不出用户曾经指定过。开场播报念出的 `models` 以本轮入选侧为键——侧名与用户要求的不符，就是漏传了。
+ 
+ ### S3 修订计划
+ 读两份审查全文，写 `…-revised-<当轮 Driver>.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
+@@ -117,7 +144,8 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
+ 
+ ### S6 代码双审
+-同 S2（`--entry A`、`--driver codex`，含 `--goal` / `--focus` / `--context` / 模型覆盖的透传），但 `--stage code`，
++同 S2（`--entry A`、`--driver codex`，含 `--goal` / `--focus` / `--context` / `--critics` / `--allow-single` / 模型覆盖的透传——
++入选集合用的仍是 S0.5 那一组，S2 里某侧失败过也照样传它），但 `--stage code`，
+ 按 `$dual-review-code` 的第 3 步执行。被审对象是 `git diff`，不是文档。
+ 比较基线默认 `HEAD`，即「尚未提交的全部改动」；S5 若已经提交过，
+ 要按 `$dual-review-code` 第 3 步的说明显式给出 `--base`，否则补丁为空会退 65。
+diff --git a/skills/dual-critic/entry/gemini/dual-run/SKILL.md b/skills/dual-critic/entry/gemini/dual-run/SKILL.md
+index 24a71c1..02403f3 100644
+--- a/skills/dual-critic/entry/gemini/dual-run/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-run/SKILL.md
+@@ -4,7 +4,7 @@ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → 
+ ---
+ 
+ 参数：本载体**不替换**参数占位符。参数就是用户随本命令给出的全部文本（跟在命令名后面，或被载体标成「User request」的那一段）；
+-下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-glm <模型>]`
++下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-glm <模型>] [--critics <id,…>] [--only claude|codex|glm] [--allow-single]`
+ 
+ **只在用户显式调用本命令时执行。** 本载体没有「禁止模型自行调用」的开关：你若是自己读到这份说明、
+ 而用户并没有调用本命令，不要执行其中任何一步。
+@@ -39,28 +39,28 @@ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → 
+ 越界不会被事前拦下，而是在事后由 approve 前置复核（裁决齐备 + 本轮工件 sha256）与跑后漂移复算暴露，
+ 整次运行可能因此作废。
+ 
+-## 状态机 S0～S10（设计 §8.2）
++## 状态机 S0.5～S10（设计 §8.2）
+ 
+-### S0 预检
+-`TV preflight --stage all --driver gemini --json`
+-
+-`--stage all` 是命令 A 专用的范围：它校验 active profile 下**全部三个阶段**两侧的
+-模型 slug，并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
+-跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
+-
+-失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
+-
+-通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
++**先解析、后预检**，与命令 B/C/D 的次序相反（EV-125）：预检要查的是**本轮实际入选**的那几家，
++而入选要等解析之后才知道。用户用 `--critics` 加进来的一家若缺 code 阶段的模型 slug 或没登录，
++不在开跑前查出来，就要到 S6——编码已经做完——才暴露。原先的「S0 预检」因此挪到解析之后，记为 S0.6；
++S0 这个标签不再使用。
+ 
+ ### S0.5 解析主题与参数
+ `TV topic resolve --stage all --json -- <参数> --driver gemini`
+ 
+ **命令后的正文是任务目标**（「这次要达成什么」，进 BRIEF 第 4 段）；审查焦点是可选补充，
+ 只认显式 `--focus <提示语>`（进第 2 段）。输出字段：
+-- `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导，**回显给用户确认**后再继续；
++- `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导——**这里先不停下来确认**，
++  等 S0.6 预检通过后再回显给用户确认（预检失败的话，这一轮确认就白费了）；
+ - `task_goal`：透传给 S2/S6 的 `--goal`；
+ - `prompt_hint`：非空时透传给 S2/S6 的 `--focus`，为空则省略；
+-- `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（`--model-codex` / `--model-glm`）、`--profile`。
++- `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（`--model-claude` / `--model-codex` / `--model-glm`）、`--profile`；
++- `critics`：本轮**入选的审核者集合，计划审与代码审两轮共用这一组**。S0.6、S2、S6 都把 resolve 输出的 `critics`
++  用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；
++- `allow_single`：为 true 时 S2、S6 都加 `--allow-single`（用户显式要求的降级：一侧失败时不中止，§12.4）。
++
++用户写的 `--only` 已被 resolve 并进 `critics`、输出的 `only` 恒为 null——**任何一步都不要传 `--only`**。
+ 
+ 构造这条命令时，把正文整段放进**一个单引号参数**、旗标放在引号之外
+ （`-- '让 --base 真正进入冻结' --focus '看同类缺口'`）：`--` 之后按 shell 参数逐个解析，
+@@ -68,6 +68,27 @@ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → 
+ 不要改用双引号，也不要补字面引号（新版不剥引号，补了会原样进 BRIEF）。
+ 不包引号，正文里的 `--base` 就会被当成真旗标吞掉后一个词。
+ 
++### S0.6 预检（在解析之后）
++
++```
++TV preflight --stage all --driver gemini --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json
++```
++
++- `--critics`：S0.5 的 `critics` 用逗号连接，**无条件传**；
++- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；
++- **这三样必须与 S2 / S6 传的是同一组**，都取自 S0.5 的输出，不要各拼各的。
++
++`--stage all` 是命令 A 专用的范围：它校验**全部三个阶段**入选各侧的模型 slug，
++并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
++跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
++
++失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
++
++通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
++
++**通过之后**，若 S0.5 的 `topic_inferred` 为 true，在这里把推导出的主题回显给用户、确认后再进 S0.8。
++用户改了主题就重跑 S0.5；新输出的 `critics` / `profile` / `models` 与本步所用不同时，重跑本步。
++
+ ### S0.8 认领 plan 阶段
+ `TV topic claim --topic <主题> --stage plan --driver gemini --json`（`<主题>` 取 S0.5 输出的 `topic`）
+ 
+@@ -87,7 +108,9 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ - `--goal` 传 S0.5 的 `task_goal`（它在这里落进 `task.json`，之后 S6、乃至后续 bug 定位都会
+   自动复用，审查员才知道这次改动要达成什么，§9.4）；
+ - `--focus` 传 S0.5 的 `prompt_hint`，为空则不传；`--context` 传 `context_paths`；
+-- **`--driver gemini` 照带**（与 S0 / S0.5 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
++- `--critics` 传 S0.5 的 `critics`（逗号连接），**无条件传**；`allow_single` 为 true 时加 `--allow-single`；
++  **不要传 `--only`**（理由见 S0.5）：两个旗标同时递给 `--start` 会被判互斥退 64；
++- **`--driver gemini` 照带**（与 S0.5 / S0.6 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
+ 
+ **每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`。**
+ 
+@@ -96,9 +119,13 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ 文本消息，再发下一次 `--wait`」在 S2 / S6 里同样是硬要求——命令 A 的链路更长，
+ 用户等得更久，漏掉播报的代价比命令 B/C/D 还大。
+ 
+-**本命令收到的模型覆盖（`--model-codex` / `--model-glm`）与档位（`--profile`）
+-要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉——一丢就静默回退到
+-配置里的 `active_profile`，留痕里记的是回退后的模型，事后看不出用户曾经指定过。
++**本命令收到的模型覆盖（`--model-claude` / `--model-codex` / `--model-glm`）、档位（`--profile`）、入选集合（`--critics`）
++与降级许可（`--allow-single`）要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉：
++- 模型覆盖与档位一丢，就静默回退到配置里的 `active_profile`，留痕里记的是回退后的模型；
++- 入选集合一丢，`--start` 会自己重取配置缺省——用户加进来的那一家就此消失，两轮还可能不是同一组；
++- 降级许可一丢，一侧失败就整次失败。
++
++事后都看不出用户曾经指定过。开场播报念出的 `models` 以本轮入选侧为键——侧名与用户要求的不符，就是漏传了。
+ 
+ ### S3 修订计划
+ 读两份审查全文，写 `…-revised-<当轮 Driver>.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
+@@ -117,7 +144,8 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
+ 
+ ### S6 代码双审
+-同 S2（`--entry A`、`--driver gemini`，含 `--goal` / `--focus` / `--context` / 模型覆盖的透传），但 `--stage code`，
++同 S2（`--entry A`、`--driver gemini`，含 `--goal` / `--focus` / `--context` / `--critics` / `--allow-single` / 模型覆盖的透传——
++入选集合用的仍是 S0.5 那一组，S2 里某侧失败过也照样传它），但 `--stage code`，
+ 按 `/dual-review-code` 的第 3 步执行。被审对象是 `git diff`，不是文档。
+ 比较基线默认 `HEAD`，即「尚未提交的全部改动」；S5 若已经提交过，
+ 要按 `/dual-review-code` 第 3 步的说明显式给出 `--base`，否则补丁为空会退 65。
+diff --git a/skills/dual-critic/entry/glm/dual-run/SKILL.md b/skills/dual-critic/entry/glm/dual-run/SKILL.md
+index bc2a398..843cb4f 100644
+--- a/skills/dual-critic/entry/glm/dual-run/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-run/SKILL.md
+@@ -4,7 +4,7 @@ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → 
+ ---
+ 
+ 参数：本载体**不替换**参数占位符。参数就是用户随本命令给出的全部文本（跟在命令名后面，或被载体标成「User request」的那一段）；
+-下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>]`
++下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-gemini <模型>] [--critics <id,…>] [--only claude|codex|gemini] [--allow-single]`
+ 
+ **只在用户显式调用本命令时执行。** 本载体没有「禁止模型自行调用」的开关：你若是自己读到这份说明、
+ 而用户并没有调用本命令，不要执行其中任何一步。
+@@ -47,28 +47,28 @@ Hook 的 Bash 侧判据有**已知误拦**：命令文本在未剥 heredoc 的
+ `TV` 本身就含 `.trivium`：用户给的焦点或任务目标里若有写动词字面（如 `rm`、`chmod`、`tee`、重定向），
+ 这条命令会被拦——**先问用户改措辞**（焦点要逐字进送审包，不能由你改），不要换调用路径去绕判据。
+ 
+-## 状态机 S0～S10（设计 §8.2）
++## 状态机 S0.5～S10（设计 §8.2）
+ 
+-### S0 预检
+-`TV preflight --stage all --driver glm --json`
+-
+-`--stage all` 是命令 A 专用的范围：它校验 active profile 下**全部三个阶段**两侧的
+-模型 slug，并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
+-跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
+-
+-失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
+-
+-通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
++**先解析、后预检**，与命令 B/C/D 的次序相反（EV-125）：预检要查的是**本轮实际入选**的那几家，
++而入选要等解析之后才知道。用户用 `--critics` 加进来的一家若缺 code 阶段的模型 slug 或没登录，
++不在开跑前查出来，就要到 S6——编码已经做完——才暴露。原先的「S0 预检」因此挪到解析之后，记为 S0.6；
++S0 这个标签不再使用。
+ 
+ ### S0.5 解析主题与参数
+ `TV topic resolve --stage all --json -- <参数> --driver glm`
+ 
+ **命令后的正文是任务目标**（「这次要达成什么」，进 BRIEF 第 4 段）；审查焦点是可选补充，
+ 只认显式 `--focus <提示语>`（进第 2 段）。输出字段：
+-- `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导，**回显给用户确认**后再继续；
++- `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导——**这里先不停下来确认**，
++  等 S0.6 预检通过后再回显给用户确认（预检失败的话，这一轮确认就白费了）；
+ - `task_goal`：透传给 S2/S6 的 `--goal`；
+ - `prompt_hint`：非空时透传给 S2/S6 的 `--focus`，为空则省略；
+-- `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（`--model-codex` / `--model-gemini`）、`--profile`。
++- `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（`--model-claude` / `--model-codex` / `--model-gemini`）、`--profile`；
++- `critics`：本轮**入选的审核者集合，计划审与代码审两轮共用这一组**。S0.6、S2、S6 都把 resolve 输出的 `critics`
++  用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；
++- `allow_single`：为 true 时 S2、S6 都加 `--allow-single`（用户显式要求的降级：一侧失败时不中止，§12.4）。
++
++用户写的 `--only` 已被 resolve 并进 `critics`、输出的 `only` 恒为 null——**任何一步都不要传 `--only`**。
+ 
+ 构造这条命令时，把正文整段放进**一个单引号参数**、旗标放在引号之外
+ （`-- '让 --base 真正进入冻结' --focus '看同类缺口'`）：`--` 之后按 shell 参数逐个解析，
+@@ -76,6 +76,27 @@ Hook 的 Bash 侧判据有**已知误拦**：命令文本在未剥 heredoc 的
+ 不要改用双引号，也不要补字面引号（新版不剥引号，补了会原样进 BRIEF）。
+ 不包引号，正文里的 `--base` 就会被当成真旗标吞掉后一个词。
+ 
++### S0.6 预检（在解析之后）
++
++```
++TV preflight --stage all --driver glm --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json
++```
++
++- `--critics`：S0.5 的 `critics` 用逗号连接，**无条件传**；
++- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；
++- **这三样必须与 S2 / S6 传的是同一组**，都取自 S0.5 的输出，不要各拼各的。
++
++`--stage all` 是命令 A 专用的范围：它校验**全部三个阶段**入选各侧的模型 slug，
++并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
++跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
++
++失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
++
++通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
++
++**通过之后**，若 S0.5 的 `topic_inferred` 为 true，在这里把推导出的主题回显给用户、确认后再进 S0.8。
++用户改了主题就重跑 S0.5；新输出的 `critics` / `profile` / `models` 与本步所用不同时，重跑本步。
++
+ ### S0.8 认领 plan 阶段
+ `TV topic claim --topic <主题> --stage plan --driver glm --json`（`<主题>` 取 S0.5 输出的 `topic`）
+ 
+@@ -95,7 +116,9 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ - `--goal` 传 S0.5 的 `task_goal`（它在这里落进 `task.json`，之后 S6、乃至后续 bug 定位都会
+   自动复用，审查员才知道这次改动要达成什么，§9.4）；
+ - `--focus` 传 S0.5 的 `prompt_hint`，为空则不传；`--context` 传 `context_paths`；
+-- **`--driver glm` 照带**（与 S0 / S0.5 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
++- `--critics` 传 S0.5 的 `critics`（逗号连接），**无条件传**；`allow_single` 为 true 时加 `--allow-single`；
++  **不要传 `--only`**（理由见 S0.5）：两个旗标同时递给 `--start` 会被判互斥退 64；
++- **`--driver glm` 照带**（与 S0.5 / S0.6 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
+ 
+ **每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`。**
+ 
+@@ -104,9 +127,13 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ 文本消息，再发下一次 `--wait`」在 S2 / S6 里同样是硬要求——命令 A 的链路更长，
+ 用户等得更久，漏掉播报的代价比命令 B/C/D 还大。
+ 
+-**本命令收到的模型覆盖（`--model-codex` / `--model-gemini`）与档位（`--profile`）
+-要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉——一丢就静默回退到
+-配置里的 `active_profile`，留痕里记的是回退后的模型，事后看不出用户曾经指定过。
++**本命令收到的模型覆盖（`--model-claude` / `--model-codex` / `--model-gemini`）、档位（`--profile`）、入选集合（`--critics`）
++与降级许可（`--allow-single`）要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉：
++- 模型覆盖与档位一丢，就静默回退到配置里的 `active_profile`，留痕里记的是回退后的模型；
++- 入选集合一丢，`--start` 会自己重取配置缺省——用户加进来的那一家就此消失，两轮还可能不是同一组；
++- 降级许可一丢，一侧失败就整次失败。
++
++事后都看不出用户曾经指定过。开场播报念出的 `models` 以本轮入选侧为键——侧名与用户要求的不符，就是漏传了。
+ 
+ ### S3 修订计划
+ 读两份审查全文，写 `…-revised-<当轮 Driver>.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
+@@ -125,7 +152,8 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
+ 
+ ### S6 代码双审
+-同 S2（`--entry A`、`--driver glm`，含 `--goal` / `--focus` / `--context` / 模型覆盖的透传），但 `--stage code`，
++同 S2（`--entry A`、`--driver glm`，含 `--goal` / `--focus` / `--context` / `--critics` / `--allow-single` / 模型覆盖的透传——
++入选集合用的仍是 S0.5 那一组，S2 里某侧失败过也照样传它），但 `--stage code`，
+ 按 `/dual-review-code` 的第 3 步执行。被审对象是 `git diff`，不是文档。
+ 比较基线默认 `HEAD`，即「尚未提交的全部改动」；S5 若已经提交过，
+ 要按 `/dual-review-code` 第 3 步的说明显式给出 `--base`，否则补丁为空会退 65。
+diff --git a/skills/dual-run/SKILL.md b/skills/dual-run/SKILL.md
+index 54e04fe..147c25e 100644
+--- a/skills/dual-run/SKILL.md
++++ b/skills/dual-run/SKILL.md
+@@ -1,7 +1,7 @@
+ ---
+ name: dual-run
+ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → 双审 → 应答 → 改码 → 真实执行编译测试（命令 A）
+-argument-hint: <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>]
++argument-hint: <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]
+ disable-model-invocation: true
+ allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
+ ---
+@@ -29,28 +29,28 @@ Hook 的 Bash 侧判据有**已知误拦**：命令文本在未剥 heredoc 的
+ `TV` 本身就含 `.trivium`：用户给的焦点或任务目标里若有写动词字面（如 `rm`、`chmod`、`tee`、重定向），
+ 这条命令会被拦——**先问用户改措辞**（焦点要逐字进送审包，不能由你改），不要换调用路径去绕判据。
+ 
+-## 状态机 S0～S10（设计 §8.2）
++## 状态机 S0.5～S10（设计 §8.2）
+ 
+-### S0 预检
+-`TV preflight --stage all --driver claude --json`
+-
+-`--stage all` 是命令 A 专用的范围：它校验 active profile 下**全部三个阶段**两侧的
+-模型 slug，并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
+-跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
+-
+-失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
+-
+-通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
++**先解析、后预检**，与命令 B/C/D 的次序相反（EV-125）：预检要查的是**本轮实际入选**的那几家，
++而入选要等解析之后才知道。用户用 `--critics` 加进来的一家若缺 code 阶段的模型 slug 或没登录，
++不在开跑前查出来，就要到 S6——编码已经做完——才暴露。原先的「S0 预检」因此挪到解析之后，记为 S0.6；
++S0 这个标签不再使用。
+ 
+ ### S0.5 解析主题与参数
+ `TV topic resolve --stage all --json -- $ARGUMENTS --driver claude`
+ 
+ **命令后的正文是任务目标**（「这次要达成什么」，进 BRIEF 第 4 段）；审查焦点是可选补充，
+ 只认显式 `--focus <提示语>`（进第 2 段）。输出字段：
+-- `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导，**回显给用户确认**后再继续；
++- `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导——**这里先不停下来确认**，
++  等 S0.6 预检通过后再回显给用户确认（预检失败的话，这一轮确认就白费了）；
+ - `task_goal`：透传给 S2/S6 的 `--goal`；
+ - `prompt_hint`：非空时透传给 S2/S6 的 `--focus`，为空则省略；
+-- `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（`--model-codex` / `--model-gemini` / `--model-glm`）、`--profile`。
++- `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（`--model-codex` / `--model-gemini` / `--model-glm`）、`--profile`；
++- `critics`：本轮**入选的审核者集合，计划审与代码审两轮共用这一组**。S0.6、S2、S6 都把 resolve 输出的 `critics`
++  用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；
++- `allow_single`：为 true 时 S2、S6 都加 `--allow-single`（用户显式要求的降级：一侧失败时不中止，§12.4）。
++
++用户写的 `--only` 已被 resolve 并进 `critics`、输出的 `only` 恒为 null——**任何一步都不要传 `--only`**。
+ 
+ 构造这条命令时，把正文整段放进**一个单引号参数**、旗标放在引号之外
+ （`-- '让 --base 真正进入冻结' --focus '看同类缺口'`）：`--` 之后按 shell 参数逐个解析，
+@@ -58,6 +58,27 @@ Hook 的 Bash 侧判据有**已知误拦**：命令文本在未剥 heredoc 的
+ 不要改用双引号，也不要补字面引号（新版不剥引号，补了会原样进 BRIEF）。
+ 不包引号，正文里的 `--base` 就会被当成真旗标吞掉后一个词。
+ 
++### S0.6 预检（在解析之后）
++
++```
++TV preflight --stage all --driver claude --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json
++```
++
++- `--critics`：S0.5 的 `critics` 用逗号连接，**无条件传**；
++- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；
++- **这三样必须与 S2 / S6 传的是同一组**，都取自 S0.5 的输出，不要各拼各的。
++
++`--stage all` 是命令 A 专用的范围：它校验**全部三个阶段**入选各侧的模型 slug，
++并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
++跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
++
++失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
++
++通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
++
++**通过之后**，若 S0.5 的 `topic_inferred` 为 true，在这里把推导出的主题回显给用户、确认后再进 S0.8。
++用户改了主题就重跑 S0.5；新输出的 `critics` / `profile` / `models` 与本步所用不同时，重跑本步。
++
+ ### S0.8 认领 plan 阶段
+ `TV topic claim --topic <主题> --stage plan --driver claude --json`（`<主题>` 取 S0.5 输出的 `topic`）
+ 
+@@ -77,7 +98,9 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ - `--goal` 传 S0.5 的 `task_goal`（它在这里落进 `task.json`，之后 S6、乃至后续 bug 定位都会
+   自动复用，审查员才知道这次改动要达成什么，§9.4）；
+ - `--focus` 传 S0.5 的 `prompt_hint`，为空则不传；`--context` 传 `context_paths`；
+-- **`--driver claude` 照带**（与 S0 / S0.5 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
++- `--critics` 传 S0.5 的 `critics`（逗号连接），**无条件传**；`allow_single` 为 true 时加 `--allow-single`；
++  **不要传 `--only`**（理由见 S0.5）：两个旗标同时递给 `--start` 会被判互斥退 64；
++- **`--driver claude` 照带**（与 S0.5 / S0.6 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
+ 
+ **每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`。**
+ 
+@@ -86,9 +109,13 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ 文本消息，再发下一次 `--wait`」在 S2 / S6 里同样是硬要求——命令 A 的链路更长，
+ 用户等得更久，漏掉播报的代价比命令 B/C/D 还大。
+ 
+-**本命令收到的模型覆盖（`--model-codex` / `--model-gemini` / `--model-glm`）与档位（`--profile`）
+-要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉——一丢就静默回退到
+-配置里的 `active_profile`，留痕里记的是回退后的模型，事后看不出用户曾经指定过。
++**本命令收到的模型覆盖（`--model-codex` / `--model-gemini` / `--model-glm`）、档位（`--profile`）、入选集合（`--critics`）
++与降级许可（`--allow-single`）要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉：
++- 模型覆盖与档位一丢，就静默回退到配置里的 `active_profile`，留痕里记的是回退后的模型；
++- 入选集合一丢，`--start` 会自己重取配置缺省——用户加进来的那一家就此消失，两轮还可能不是同一组；
++- 降级许可一丢，一侧失败就整次失败。
++
++事后都看不出用户曾经指定过。开场播报念出的 `models` 以本轮入选侧为键——侧名与用户要求的不符，就是漏传了。
+ 
+ ### S3 修订计划
+ 读两份审查全文，写 `…-revised-<当轮 Driver>.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
+@@ -107,7 +134,8 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运
+ 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
+ 
+ ### S6 代码双审
+-同 S2（`--entry A`、`--driver claude`，含 `--goal` / `--focus` / `--context` / 模型覆盖的透传），但 `--stage code`，
++同 S2（`--entry A`、`--driver claude`，含 `--goal` / `--focus` / `--context` / `--critics` / `--allow-single` / 模型覆盖的透传——
++入选集合用的仍是 S0.5 那一组，S2 里某侧失败过也照样传它），但 `--stage code`，
+ 按 `/dual-review-code` 的第 3 步执行。被审对象是 `git diff`，不是文档。
+ 比较基线默认 `HEAD`，即「尚未提交的全部改动」；S5 若已经提交过，
+ 要按 `/dual-review-code` 第 3 步的说明显式给出 `--base`，否则补丁为空会退 65。
+diff --git a/src/entry-render.ts b/src/entry-render.ts
+index ad540ec..1656af8 100644
+--- a/src/entry-render.ts
++++ b/src/entry-render.ts
+@@ -33,7 +33,7 @@ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import YAML from 'yaml';
+ import {
+-  AGENTS, CRITIC_AGENT_IDS, DEFAULT_CRITIC_AGENT_IDS, agentById, guardProfileOf, isAgentId, type AgentId,
++  AGENTS, CRITIC_AGENT_IDS, agentById, guardProfileOf, isAgentId, type AgentId,
+ } from './trivium/agents/registry.js';
+ 
+ /** 源目录（相对仓库根） */
+@@ -260,7 +260,6 @@ function renderText(text: string, scope: Scope, trail: string, depth = 0): strin
+ function carrierVars(carrier: Carrier): Record<string, string> {
+   const self = agentById(carrier.agent)!;
+   const critics = CRITIC_AGENT_IDS.filter((id) => id !== carrier.agent);
+-  const defaults = DEFAULT_CRITIC_AGENT_IDS.filter((id) => id !== carrier.agent);
+   return {
+     DRIVER: carrier.agent,
+     ARG_MODE: carrier.arguments,
+@@ -269,25 +268,18 @@ function carrierVars(carrier: Carrier): Record<string, string> {
+     // 护栏注入段（r10 §3.1.3）：按注册表的 guardLevel 与有无 Hook 配置目标派生
+     GUARD: guardProfileOf(self),
+     /*
+-     * B / C / D 用：列**已启用审核者**减本载体（不是缺省集合）。这几条命令收 `--critics`，
++     * 四条命令同一组：列**已启用审核者**减本载体（不是缺省集合）。四条命令都收 `--critics`，
+      * 不在缺省集合里的一家（如非 claude 载体上的 claude）能被显式加进来，所以槽位合法——
+      * 但它要与 `--critics` 同时给：单写 `--model-<该家>` 会被判「本轮没有入选」退 64，
+-     * 报错点名本轮入选并给出 `--critics` 出口，不是静默（代码双审 r2 CODEX-03）。与下面命令 A 那一组对照着读。
++     * 报错点名本轮入选并给出 `--critics` 出口，不是静默（代码双审 r2 CODEX-03）。
++     *
++     * 命令 A 曾经单用一组 `MODEL_HINT_DEFAULT` / `MODEL_FLAGS_DEFAULT`（注册表缺省集合减本载体，
++     * M10b 第 2 步代码双审 CODEX-02）：那时它不收 `--critics`，缺省集合外的一家没有入选出口，
++     * 给它留槽位就是引出一个必退 64 的写法。EV-125 让命令 A 也收 `--critics` 之后那条理由不再成立，
++     * 两组合并——同值的两个名字留着，下一次只改其一就是分叉。
+      */
+     MODEL_HINT: critics.map((id) => `[--model-${id} <模型>]`).join(' '),
+     MODEL_FLAGS: critics.map((id) => `\`--model-${id}\``).join(' / '),
+-    /*
+-     * 命令 A 专用（代码双审 CODEX-02）：它不收 `--critics`，入选集合只能是「缺省集合减去当轮 Driver」，
+-     * 而 `--model-<id>` 只接受本轮入选的那几家——给缺省集合外的一家留槽位，就是引出一个必退 64 的写法。
+-     *
+-     * 取**注册表**的缺省集合（`defaultSelected`）：渲染是静态的，读不到各项目的 config.yaml。
+-     * 项目改过 `default_critics` 时两个方向后果不同（代码双审 r2 GLM-03）：
+-     *   · 扩充（加了一家）→ 这里少列那一家，照样能写，无害；
+-     *   · 缩减（去了一家）→ 这里多列那一家，照写会以「本轮没有入选」退 64——报错点名本轮入选，不静默。
+-     * 静态渲染跟不上项目配置是有意取舍：按项目渲染就得让入口资产随项目分发，那是另一件事。
+-     */
+-    MODEL_HINT_DEFAULT: defaults.map((id) => `[--model-${id} <模型>]`).join(' '),
+-    MODEL_FLAGS_DEFAULT: defaults.map((id) => `\`--model-${id}\``).join(' / '),
+     ONLY_CHOICES: critics.join('|'),
+   };
+ }
+diff --git a/src/trivium/critics.ts b/src/trivium/critics.ts
+index 72597a0..3a6ad42 100644
+--- a/src/trivium/critics.ts
++++ b/src/trivium/critics.ts
+@@ -279,7 +279,8 @@ export function resolveCriticSelection(cfg: Config, input: CriticSelectionInput
+      *
+      * 缺省集合是「不指定时跑谁」，写它的人写的是「平时的审核者」，不是「这一轮除了执笔者之外的」——
+      * 而 codex / gemini / glm 三家既在缺省集合里、又都能当 Driver。此前这一格一律退 64：
+-     * B / C / D 还能显式传 `--critics` 绕开，**命令 A 不收 `--critics`，根本没有出口**。
++     * B / C / D 还能显式传 `--critics` 绕开，**命令 A 当时不收 `--critics`，根本没有出口**
++     * （EV-125 起命令 A 也收 `--critics`，本条的缺省减 Driver 照旧保留：不写 `--critics` 时仍走这里）。
+      * 这条路径改前恒退 64，改后放行不会改变任何今天能跑通的流程；claude 当 Driver 时缺省集合里本就没有它。
+      *
+      * 只减缺省、不减显式：用户**亲手写下**的 `--critics` / `--only` 含 Driver 仍退 64（下面那条检查）——
+diff --git a/src/trivium/topic-args.ts b/src/trivium/topic-args.ts
+index 36d6309..cf5fbbe 100644
+--- a/src/trivium/topic-args.ts
++++ b/src/trivium/topic-args.ts
+@@ -334,25 +334,20 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
+    * 修掉的形态。现在只有一个判定处，两个入口都调它。
+    */
+   /*
+-   * 命令 A 不接受选侧旗标（审查意见 GLM-02）。
++   * **命令 A 原先不接受选侧旗标**（审查意见 GLM-02）。当时的理由：`NAMED_FLAGS` 不分 scope，
++   * `/dual-run --critics glm` 会解析成功、然后被 S2/S6 的交接说明静默丢弃——「错的报错、对的消失」；
++   * 而命令 A 一次跑 plan 与 code 两轮，「这一轮选哪几侧」被判为语义模糊，于是明确拒绝、指引改用 B/C/D。
+    *
+-   * `NAMED_FLAGS` 不分 scope，于是 `/dual-run --critics glm` 会被解析成功，
+-   * 然后**被 S2/S6 的交接说明静默丢弃**（那里只交代了 focus / context / models / profile）——
+-   * 拼错的当场退 64，写对的反而无声消失。「错的报错、对的消失」是本项目反复记过的形态。
++   * **EV-125 放开**（用户 2026-09-25 定）：`--critics` / `--only` / `--allow-single` 在命令 A 里
++   * 取「两轮共用同一组」的语义——与 `--model-*` / `--profile` / `--driver` 早已采用的「两轮都生效、
++   * S2 / S6 各传一次」同形，所以不再模糊。拒绝之后的一切本就不分 scope：入选以最终 Driver 解析、
++   * 模型覆盖按入选校验、`only` 恒置 null；而下方的两阶段 Driver 比对保证了同一组对 plan / code 都合法
++   * （Driver 不会一阶段合法、另一阶段非法）。命令 A 契约的 S0.5 / S0.6 / S2 / S6 显式透传 `critics`
++   * 与 `allow_single`，「对的消失」那一格由契约守住。
+    *
+-   * 不给命令 A 补透传而是明确拒绝：它一次要跑 plan 与 code 两轮双审，
+-   * 「这一轮选哪几侧」在命令 A 层面语义本就模糊。与其定义一个想不清楚的语义，
+-   * 不如让用户改用 B/C/D。这条边界写在设计 7.1。
++   * 直接效果：命令 A 缺省集合外的一家（非 claude Driver 下的 claude）从此有了入选出口，
++   * 按轮控制侧数也不必再改 `config.yaml`（BACKLOG EV-125 的两个缺口）。
+    */
+-  if (scope === 'all' && (named['critics'] || onlyRaw)) {
+-    const given = named['critics'] ? '--critics' : '--only';
+-    throw new TriviumError(
+-      EXIT.USAGE,
+-      `命令 A（全流程）不接受 ${given}：它一次要跑计划审与代码审两轮，` +
+-        '「本轮选哪几侧」在这一层没有确定语义。\n' +
+-        '  想指定审核者请改用 /dual-review-plan、/dual-review-code 或 /dual-review-bug。',
+-    );
+-  }
+ 
+   /*
+    * **命令 A 原先同样不接受 `--driver`**（M9 第 5 步，计划双审 D3）。当时的理由：
+diff --git a/test/contract/entry-render-parity.test.ts b/test/contract/entry-render-parity.test.ts
+index 6d7f2d2..34bd232 100644
+--- a/test/contract/entry-render-parity.test.ts
++++ b/test/contract/entry-render-parity.test.ts
+@@ -138,7 +138,7 @@ test('参数写法：substitute 载体用 $ARGUMENTS；transcribe 载体一处
+ /**
+  * 每条命令应注入 `--driver` 的调用数（计划 r5 §5.1 ③ / §5.3）。
+  *
+- *   run         S0 预检、S0.5 解析、S0.8 认领 plan、S2 `--start`、S4.5 认领 code、S6 `--start`
++ *   run         S0.5 解析、S0.6 预检、S0.8 认领 plan、S2 `--start`、S4.5 认领 code、S6 `--start`
+  *   review-plan / review-bug  第 0 步认领、预检、解析、两条解析样例、`--start`
+  *   review-code 同上去掉认领（code 阶段的 Driver 产出在 `--start` 之后，`--start` 自带比对）
+  *
+@@ -187,6 +187,24 @@ test('认领步骤：plan / bug / run 在「写原稿」之前；run 在 S5 之
+   }
+ });
+ 
++test('命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2）', () => {
++  /*
++   * 预检要查的是本轮实际入选的那几家：用户用 `--critics` 加进来的一家若缺 code 阶段 slug 或没登录，
++   * 不在开跑前查出来，就要到 S6（编码已做完）才暴露。次序反了、或预检不带 `--critics`，
++   * `--stage all` 这道保证就对显式选侧失效——两处任改其一都应当红。
++   */
++  const runs = rendered.filter((r) => r.command === 'run');
++  assert.equal(runs.length, src.carriers.length, '论域塌了');
++  for (const r of runs) {
++    const resolveAt = r.content.indexOf('TV topic resolve --stage all');
++    const preflightLine = r.content.split('\n').find((l) => l.includes('TV preflight --stage all'));
++    assert.ok(resolveAt >= 0 && preflightLine, `${r.relPath}：缺解析或预检命令`);
++    assert.ok(resolveAt < r.content.indexOf(preflightLine), `${r.relPath}：预检须在解析之后`);
++    assert.match(preflightLine, /--critics /, `${r.relPath}：预检须带 --critics`);
++    assert.ok(r.content.indexOf(preflightLine) < r.content.indexOf('topic claim'), `${r.relPath}：预检须在认领之前`);
++  }
++});
++
+ test('护栏注入段与 r10 §3.1.3 的表一致', () => {
+   // 表本身先钉住：它来自注册表派生，派生规则或登记值一改，这里先红
+   const table = Object.fromEntries(AGENTS.map((a) => [a.id, guardProfileOf(a)]));
+@@ -222,7 +240,10 @@ test('调用写法按载体渲染：codex 用 $名字，另两家与 claude 各
+ });
+ 
+ test('模型与选侧取值由注册表派生，不给当轮 Driver 自己留槽位（EV-61）', () => {
+-  for (const r of rendered.filter((x) => x.command.startsWith('review-'))) {
++  // 论域含 `run`（EV-125）：命令 A 自此与 B / C / D 同一组槽位，而它的参数写法正是历史上漏过一侧的那一处
++  const checked = rendered.filter((x) => x.command.startsWith('review-') || x.command === 'run');
++  assert.equal(checked.filter((x) => x.command === 'run').length, src.carriers.length, '论域塌了：run 没进来');
++  for (const r of checked) {
+     const hint = r.content.split('\n').find((l) => l.startsWith('argument-hint:') || l.includes('参数写法：`'))!;
+     const models = [...hint.matchAll(/--model-([a-z]+)/g)].map((m) => m[1]!);
+     assert.ok(!models.includes(r.agent), `${r.relPath}：不该有 --model-${r.agent}`);
+diff --git a/test/contract/skill-flag-parity.test.ts b/test/contract/skill-flag-parity.test.ts
+index bc0747b..eb67401 100644
+--- a/test/contract/skill-flag-parity.test.ts
++++ b/test/contract/skill-flag-parity.test.ts
+@@ -107,6 +107,16 @@ for (const { name, agent, content: md } of REVIEW_SKILLS.flatMap(entriesOf)) {
+     );
+   });
+ 
++}
++
++/**
++ * 收 `--critics` 的入口：B / C / D 与 `/dual-run`（EV-125 起命令 A 也收）。
++ * 下面两条正文断言原先只对 B / C / D 跑；命令 A 的透传写在 S0.5 / S0.6 / S2 / S6，
++ * 同一族缺口（写了、解析了、交接处没交代）在它身上一样会发生。
++ */
++const CRITICS_RELAY_SKILLS = [...REVIEW_SKILLS, 'dual-run'];
++
++for (const { name, agent, content: md } of CRITICS_RELAY_SKILLS.flatMap(entriesOf)) {
+   /*
+    * 与 `models` 同款的正文断言（审查意见 GLM-01）。
+    *
+@@ -138,6 +148,53 @@ for (const { name, agent, content: md } of REVIEW_SKILLS.flatMap(entriesOf)) {
+   });
+ }
+ 
++for (const { agent, content: md } of entriesOf('dual-run')) {
++  /*
++   * `allow_single` 是 EV-125 之前命令 A 唯一「解析了却被静默丢弃」的选侧旗标：它不在旗标拒绝之列，
++   * 解析进了 `allow_single`，而 S2 / S6 的交接一句没提。B / C / D 的第 3 步有正文交代，这里补上同一条。
++   */
++  test(`${agent}/dual-run：正文交代把 resolve 输出的 allow_single 透传下去`, () => {
++    assert.ok(
++      /`allow_single`/.test(md) && /--allow-single/.test(md),
++      'dual-run 声明了 --allow-single，但正文没有交代 `allow_single` 怎么传给 S2 / S6——用户要求的降级会被静默忽略。',
++    );
++  });
++
++  /*
++   * 交接点逐段锁（EV-125 变异设计时核出）：上面两条只查「整篇正文里有没有」，
++   * 而 S0.5 的字段清单已经含「resolve 输出的 `critics`」「`allow_single`」——删掉 S2 或 S6 的那一条，
++   * 整篇断言照样绿，两轮里的某一轮就会静默丢掉用户选的侧或降级许可。
++   * 所以切出 S2、S6 两处**交接本身**，逐段要求点名这两个旗标。
++   *
++   * 切的是交接清单，不是整个 `### S2` 节（EV-125 契约变异 C1 / C3 核出）：S2 节里还有一段
++   * 「模型覆盖、档位、入选集合（`--critics`）与降级许可（`--allow-single`）要一并传下去」的总述，
++   * 按整节切时删掉清单里的那一条，这段总述照样让断言绿——正是本条要防的形状。
++   * S2 的交接是「……第 3 步执行 `--start` / `--wait` 循环，但：」之后的那张清单；
++   * S6 的交接是标题下「同 S2（……）」那一段。两者都到第一个空行为止。
++   */
++  test(`${agent}/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single`, () => {
++    const paragraphAfter = (anchor: RegExp): string => {
++      const start = md.search(anchor);
++      assert.ok(start >= 0, `找不到交接起点 ${anchor}`);
++      const end = md.indexOf('\n\n', start);
++      return end >= 0 ? md.slice(start, end) : md.slice(start);
++    };
++    for (const [name, sec] of [
++      ['S2', paragraphAfter(/循环，但：$/m)],
++      ['S6', paragraphAfter(/^同 S2（/m)],
++    ] as const) {
++      assert.match(sec, /--critics\b/, `dual-run ${name} 的交接没点名 --critics：用户选的侧会在这一轮丢失`);
++      assert.match(sec, /--allow-single\b/, `dual-run ${name} 的交接没点名 --allow-single：用户要求的降级会在这一轮丢失`);
++    }
++  });
++
++  test(`${agent}/dual-run：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单）`, () => {
++    const known = new Set(resolveNamedFlags());
++    const unknown = declaredFlags(md).filter((f) => !known.has(f));
++    assert.deepEqual(unknown, [], `${agent}/dual-run 声明了 CLI 不认的旗标 ${unknown.map((f) => `--${f}`).join('、')}`);
++  });
++}
++
+ for (const { name, agent, content } of REVIEW_SKILLS.flatMap(entriesOf)) {
+   test(`${agent}/${name}：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源`, () => {
+     const letter = { 'dual-review-plan': 'B', 'dual-review-code': 'C', 'dual-review-bug': 'D' }[name];
+@@ -151,7 +208,7 @@ for (const { name, agent, content } of REVIEW_SKILLS.flatMap(entriesOf)) {
+ /**
+  * `/dual-run` 没有自己的 `--start` 模板——S2/S6 委托给 B/C 的第 3 步执行。
+  * 委托的交接处是所有旗标最容易丢的地方：argument-hint 里声明的每一个旗标，
+- * 正文里都必须交代它怎么传下去；否则用户传的值在 S0 之后就静默消失。
++ * 正文里都必须交代它怎么传下去；否则用户传的值在 S0.5 之后就静默消失。
+  * 这正是 B2 缺口的形状：`--focus` / `--context` 声明了、正文一次没提，
+  * 而 S2 委托的 `review --start` 又要求 `--focus`，命令 A 在 S2 必然退 64。
+  */
+diff --git a/test/integration/driver-flag.test.ts b/test/integration/driver-flag.test.ts
+index 0092b30..fd55104 100644
+--- a/test/integration/driver-flag.test.ts
++++ b/test/integration/driver-flag.test.ts
+@@ -279,6 +279,26 @@ test(
+   },
+ );
+ 
++test(
++  '命令 A：Driver 与某阶段冲突时带上 --critics，先报的仍是 Driver 冲突（选侧在其后，EV-125）',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    /*
++     * EV-125 放开命令 A 的 `--critics` 时，前提之一是「两阶段 Driver 比对先于选侧」：
++     * 那保证了 S0.5 解析出的同一组对 plan / code 都合法。这里用一个**会被选侧判定拒掉**的 `--critics`
++     * （含当轮 Driver 自己）来钉次序——若有人把选侧挪到比对之前，报的就成了「不得入选当轮 Driver」，
++     * 而不是点名 code 阶段的冲突。
++     */
++    assertSelectableUsable(2);
++    const [a, b] = [SELECTABLE[0]!, SELECTABLE[1]!];
++    const { root } = await makeFixture({ topic: TOPIC, draft: false });
++    await claimStage(root, 'code', b);
++    const r = await resolveAll(root, ['--driver', a, '--critics', a]);
++    assert.equal(r.code, EXIT.USAGE, r.out);
++    assert.match(r.out, /code 阶段/);
++  },
++);
++
+ test(
+   '命令 A：省略 --driver 而两个阶段的权威值不同 ⇒ 退 64，不挑一个继承',
+   { skip: bundleMissing && bundleSkipReason },
+diff --git a/test/unit/critics.test.ts b/test/unit/critics.test.ts
+index e6acf92..0122314 100644
+--- a/test/unit/critics.test.ts
++++ b/test/unit/critics.test.ts
+@@ -242,7 +242,7 @@ test('配置的 default_critics 为空 → 同样退 64，不静默回落到全
+ /*
+  * ── 缺省集合减去当轮 Driver（M10b 第 2 步，用户 2026-09-25 拍板）──
+  *
+- * 此前「缺省集合含当轮 Driver」一律退 64，命令 A 不收 `--critics`，非缺省 Driver 走命令 A 无出口。
++ * 此前「缺省集合含当轮 Driver」一律退 64，命令 A 当时不收 `--critics`（EV-125 起才收），非缺省 Driver 走命令 A 无出口。
+  * 只减**缺省**：显式写出的 `--critics` / `--only` 含 Driver 仍退 64（上面那组用例照旧）。
+  */
+ test('缺省集合含当轮 Driver：减去它，不退 64；顺序按缺省集合', () => {
+diff --git a/test/unit/topic-args.test.ts b/test/unit/topic-args.test.ts
+index 3995110..7189818 100644
+--- a/test/unit/topic-args.test.ts
++++ b/test/unit/topic-args.test.ts
+@@ -295,26 +295,65 @@ test('--focus 与 prompt_hint 的对应统一（AGY-04）', async () => {
+  */
+ 
+ /*
+- * 命令 A 明确拒绝选侧旗标（审查意见 GLM-02）。
++ * ── 命令 A 接受选侧旗标（EV-125）──
+  *
+- * 修复前：`NAMED_FLAGS` 不分 scope，`/dual-run --critics glm` 会被解析成功，
+- * 然后被 S2/S6 的交接说明静默丢弃（那里只交代 focus / context / models / profile）。
+- * **拼错的当场退 64，写对的反而无声消失**——「错的报错、对的消失」。
++ * 此前这里钉的是「命令 A 明确拒绝 `--critics` / `--only`」（审查意见 GLM-02）：旗标会被解析成功、
++ * 然后被 S2/S6 的交接静默丢弃，于是改为当场退 64。EV-125 定了「两轮共用同一组」的语义，
++ * 契约在 S0.5 / S0.6 / S2 / S6 显式透传 `critics` 与 `allow_single`，拒绝随之撤销。
++ *
++ * 放开的是**旗标**，不是**判定**：入选仍走 `resolveCriticSelection` 那一处，
++ * 含当轮 Driver、重复、未启用照旧退 64（下面第三条钉住）。
+  */
+-for (const flag of [['--critics', 'glm'], ['--only', 'glm']]) {
+-  test(`命令 A 拒绝 ${flag[0]}：明确报错，不静默丢弃`, async () => {
+-    const ctx = await fakeCtx();
+-    await assert.rejects(
+-      resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', ...flag] }),
+-      (e: { code?: number; message: string }) => {
+-        assert.equal(e.code, EXIT.USAGE);
+-        assert.match(e.message, /命令 A/);
+-        assert.match(e.message, /dual-review/, '要告诉用户改用哪条命令');
+-        return true;
+-      },
+-    );
++test('命令 A 接受 --critics：入选即所写', async () => {
++  const ctx = await fakeCtx();
++  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', '--critics', 'glm'] });
++  assert.deepEqual(r.critics, ['glm']);
++  assert.equal(r.only, null);
++});
++
++test('命令 A 接受 --only：并入 critics，输出的 only 恒为 null（与 B/C/D 同一处理）', async () => {
++  const ctx = await fakeCtx();
++  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', '--only', 'glm'] });
++  assert.deepEqual(r.critics, ['glm']);
++  assert.equal(r.only, null, '两个字段都非空时，契约照抄会同时拼出 --critics 与 --only 而撞上互斥');
++});
++
++test('命令 A 的 --critics 含当轮 Driver ⇒ 退 64：放开的是旗标，不是判定', async () => {
++  const ctx = await fakeCtx();
++  await assert.rejects(
++    resolveTopicArgs({
++      ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', '--driver', DEFAULT_DRIVER, '--critics', DEFAULT_DRIVER],
++    }),
++    (e: { code?: number; message: string }) => {
++      assert.equal(e.code, EXIT.USAGE, e.message);
++      assert.doesNotMatch(e.message, /命令 A（全流程）不接受/, '撞上的应当是选侧判定，不是已撤销的旗标拒绝');
++      return true;
++    },
++  );
++});
++
++test('命令 A 的 --allow-single ⇒ allow_single 为 true（契约据此在 S2 / S6 透传）', async () => {
++  const ctx = await fakeCtx();
++  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', '--allow-single'] });
++  assert.equal(r.allow_single, true);
++  assert.equal(r.task_goal, '把登录改造为 OIDC', '布尔旗标不得吞掉后面的正文');
++});
++
++test('命令 A：非缺省 Driver 下用 --critics 把原 Driver 加进来，并给它指定模型 ⇒ 通过（EV-125 缺口 1）', async () => {
++  assertSelectableUsable();
++  const other = SELECTABLE[0]!;
++  const ctx = await fakeCtx();
++  // 前提：原 Driver 能入选、却不在缺省集合里——EV-125 之前命令 A 对它没有任何入选出口
++  assert.ok(selectableCritics(ctx.config, other).includes(DEFAULT_DRIVER), `前提：${DEFAULT_DRIVER} 能当审核者`);
++  assert.ok(!ctx.config.review.default_critics.includes(DEFAULT_DRIVER), `前提：${DEFAULT_DRIVER} 不在缺省集合里`);
++  const r = await resolveTopicArgs({
++    ctx, scope: 'all',
++    rawArgs: ['做个功能', '--driver', other, '--critics', DEFAULT_DRIVER, `--model-${DEFAULT_DRIVER}`, 'm-9'],
+   });
+-}
++  assert.equal(r.driver, other);
++  assert.deepEqual(r.critics, [DEFAULT_DRIVER]);
++  assert.equal(r.models[DEFAULT_DRIVER], 'm-9');
++});
+ 
+ test('B/C/D 不受影响：同样的旗标在这里照常生效', async () => {
+   const ctx = await fakeCtx();
+@@ -703,7 +742,7 @@ test('topic resolve：命令 A 接受 --driver 并回显（M10b 第 2 步放开
+   const ctx = await fakeCtx();
+   /*
+    * **缺省配置、不改 default_critics**：`other` 本身就在缺省审核者集合里。
+-   * 命令 A 不收 `--critics`，此前这一格退 64、没有出口（M10b 第 2 步核出）；
++   * 命令 A 当时不收 `--critics`（EV-125 起才收），此前这一格退 64、没有出口（M10b 第 2 步核出）；
+    * 用户拍板后选侧对**缺省**集合减去当轮 Driver（`critics.ts`），这里钉住放开之后的真实路径。
+    */
+   assert.ok(ctx.config.review.default_critics.includes(other), '前提：当轮 Driver 在缺省集合里');
+@@ -814,6 +853,11 @@ test('命令 A 缺省路径：换了 Driver 后缺省集合外的那一家（原
+     (e: { code?: number; message: string }) => {
+       assert.equal(e.code, EXIT.USAGE, e.message);
+       assert.match(e.message, /本轮没有入选/);
++      /*
++       * 报错给的出口是「用 --critics 把它列进来」。EV-125 之前这句对命令 A 是错的（A 不收 --critics，
++       * 照做会撞上旗标拒绝）；放开之后它成立——上一条「把原 Driver 加进来」的正例就是照这个出口走通的。
++       */
++      assert.match(e.message, /--critics/);
+       return true;
+     },
+   );
+diff --git a/doc/05_testing/evidence/ev125-acceptance-20260925/00-readout.md b/doc/05_testing/evidence/ev125-acceptance-20260925/00-readout.md
+new file mode 100644
+index 0000000..928054f
+--- /dev/null
++++ b/doc/05_testing/evidence/ev125-acceptance-20260925/00-readout.md
+@@ -0,0 +1,54 @@
++# EV-125 零配额验收读数
++
++- **日期**：2026-09-25
++- **计划**：`.reviews/EV-125-命令A支持选侧旗标/plan/…-r2-claude.md` §4.3
++- **结果**：**25 / 25 成立**（脚本 `run.mjs`，原始输出 `01-readout.json`）
++- **被测构建**：`npm run build` 产出在仓库内的 `skills/dual-critic/scripts/trivium.cjs`，构建标识 `694e6ce`（作用面内有未提交改动），inputs `1e2cc101c796`
++- **不碰真实 HOME**（r2 CODEX-01）：没有跑 `install:local`；资产根经 `TRIVIUM_ASSET_ROOT` 指向工作树，只作用于脚本派生的子进程。预检带 `--skip-auth-check`，全程不发起模型调用。
++
++## E1 解析（`topic resolve --stage all`）
++
++`-- '任意目标' --topic EV-125-E1 --driver codex --critics claude,glm --model-claude m-x --allow-single`：
++
++| 格 | 读数 |
++| :--- | :--- |
++| 退出码 | 0 |
++| `critics` | `["claude","glm"]` |
++| `models` | `{"claude":"m-x"}`——非 claude Driver 下把 claude 加进来并给它指定模型，BACKLOG EV-125 缺口 1 的正向格 |
++| `allow_single` | `true` |
++| `only` | `null` |
++| `driver` | `codex` |
++
++`--driver claude --critics claude`：退 64，报错「--critics 含当轮 Driver「claude」：它是本次运行的执笔者，不能同时充当独立审查员」。报错里没有已撤销的「命令 A（全流程）不接受」。
++
++纯只读：`.reviews/` 目录项前后都是 47 个。
++
++## E2 预检（`preflight --stage all --driver codex --critics claude,glm --skip-auth-check --json`）
++
++| 格 | 读数 |
++| :--- | :--- |
++| 退出码 / `ok` | 0 / `true` |
++| 模型 slug | 「已校验 3 个阶段 × 2 侧」 |
++| 只读能力 | 「Claude Code、ZCode 均报告可用」——只报入选的两家，没有 Antigravity |
++
++slug 那一项带一行已有提示：「⚠️ 其中无模型目录可比对、未实际校验：claude（探针未记录 Claude Code 模型目录）」。这是 claude 探针本来的状态，不是本题引入的；本题关心的是入选侧与阶段数。
++
++## E3 渲染产物（四份 `dual-run`）
++
++| 载体 | `--model-*` 槽位 | 选侧旗标 | 先解析后预检、预检带 `--critics` |
++| :--- | :--- | :--- | :--- |
++| claude | codex, gemini, glm（与改前逐字相同） | ✓ | ✓ |
++| codex | claude, gemini, glm（多回 `--model-claude`） | ✓ | ✓ |
++| gemini | claude, codex, glm（同上） | ✓ | ✓ |
++| glm | claude, codex, gemini（同上） | ✓ | ✓ |
++
++`npm run render` 报「重写 4 份，删除 0 份残留」，只有这四份 `dual-run` 变了，其余 24 份产物逐字节不变（计划 r2 §3.4 的预期）。
++
++## selftest
++
++`doctor --selftest` 退 0。
++
++## 没做的
++
++- **没真跑命令 A**：一次全流程是两轮多侧真实配额；本题的行为变化都在解析与契约文本上，E1～E3 已覆盖。真实链路下一次有人用 `/dual-run --critics` 时自然验证，届时读留痕 `critics_selected` 对照即可。
++- **真实 HOME 的安装副本**：已装的 claude / glm `dual-run` 落后一版，是否用 `--targets claude,glm` 重装由用户定。
+diff --git a/doc/05_testing/evidence/ev125-acceptance-20260925/01-readout.json b/doc/05_testing/evidence/ev125-acceptance-20260925/01-readout.json
+new file mode 100644
+index 0000000..f1dc904
+--- /dev/null
++++ b/doc/05_testing/evidence/ev125-acceptance-20260925/01-readout.json
+@@ -0,0 +1,158 @@
++{
++  "at": "2026-09-25T10:19:54.153Z",
++  "results": [
++    {
++      "id": "E1-a 退出码",
++      "ok": true,
++      "detail": "code=0"
++    },
++    {
++      "id": "E1-b critics",
++      "ok": true,
++      "detail": "critics=[\"claude\",\"glm\"]"
++    },
++    {
++      "id": "E1-c models",
++      "ok": true,
++      "detail": "models={\"claude\":\"m-x\"}"
++    },
++    {
++      "id": "E1-d allow_single",
++      "ok": true,
++      "detail": "allow_single=true"
++    },
++    {
++      "id": "E1-e only 置空",
++      "ok": true,
++      "detail": "only=null"
++    },
++    {
++      "id": "E1-f driver",
++      "ok": true,
++      "detail": "driver=codex"
++    },
++    {
++      "id": "E1-g 含当轮 Driver 退 64",
++      "ok": true,
++      "detail": "code=64；✗ --critics 含当轮 Driver「claude」：它是本次运行的执笔者，不能同时充当独立审查员。"
++    },
++    {
++      "id": "E1-h 不是已撤销的旗标拒绝",
++      "ok": true,
++      "detail": "报错里没有「命令 A（全流程）不接受」"
++    },
++    {
++      "id": "E1-i 纯只读",
++      "ok": true,
++      "detail": ".reviews 目录项前后均为 47 个"
++    },
++    {
++      "id": "E2-a 退出码",
++      "ok": true,
++      "detail": "code=0；ok=true"
++    },
++    {
++      "id": "E2-b slug 覆盖三个阶段 × 两侧",
++      "ok": true,
++      "detail": "detail=已校验 3 个阶段 × 2 侧\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（探针未记录 Claude Code 模型目录）"
++    },
++    {
++      "id": "E2-c 只读能力只报入选两侧",
++      "ok": true,
++      "detail": "detail=Claude Code、ZCode 均报告可用"
++    },
++    {
++      "id": "E3-claude 模型槽位",
++      "ok": true,
++      "detail": "--model-* = codex,gemini,glm"
++    },
++    {
++      "id": "E3-claude 选侧旗标",
++      "ok": true,
++      "detail": "含 --critics / --only / --allow-single"
++    },
++    {
++      "id": "E3-claude 先解析后预检",
++      "ok": true,
++      "detail": "TV preflight --stage all --driver claude --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json"
++    },
++    {
++      "id": "E3-codex 模型槽位",
++      "ok": true,
++      "detail": "--model-* = claude,gemini,glm"
++    },
++    {
++      "id": "E3-codex 选侧旗标",
++      "ok": true,
++      "detail": "含 --critics / --only / --allow-single"
++    },
++    {
++      "id": "E3-codex 先解析后预检",
++      "ok": true,
++      "detail": "TV preflight --stage all --driver codex --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json"
++    },
++    {
++      "id": "E3-gemini 模型槽位",
++      "ok": true,
++      "detail": "--model-* = claude,codex,glm"
++    },
++    {
++      "id": "E3-gemini 选侧旗标",
++      "ok": true,
++      "detail": "含 --critics / --only / --allow-single"
++    },
++    {
++      "id": "E3-gemini 先解析后预检",
++      "ok": true,
++      "detail": "TV preflight --stage all --driver gemini --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json"
++    },
++    {
++      "id": "E3-glm 模型槽位",
++      "ok": true,
++      "detail": "--model-* = claude,codex,gemini"
++    },
++    {
++      "id": "E3-glm 选侧旗标",
++      "ok": true,
++      "detail": "含 --critics / --only / --allow-single"
++    },
++    {
++      "id": "E3-glm 先解析后预检",
++      "ok": true,
++      "detail": "TV preflight --stage all --driver glm --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json"
++    },
++    {
++      "id": "selftest",
++      "ok": true,
++      "detail": "code=0；· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）"
++    }
++  ],
++  "raw": {
++    "e1": {
++      "code": 0,
++      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"EV-125-E1\",\n  \"prompt_hint\": null,\n  \"task_goal\": \"任意目标\",\n  \"subject_path\": null,\n  \"base\": null,\n  \"diff_available\": null,\n  \"context_paths\": [],\n  \"models\": {\n    \"claude\": \"m-x\"\n  },\n  \"profile\": null,\n  \"only\": null,\n  \"critics\": [\n    \"claude\",\n    \"glm\"\n  ],\n  \"allow_single\": true,\n  \"driver\": \"codex\",\n  \"driver_enabled\": true,\n  \"session_id\": null,\n  \"topic_inferred\": false,\n  \"notes\": [\n    \"命令 A：原稿将在 S1 由 Driver 起草，此时尚不存在\"\n  ]\n}\n",
++      "stderr": ""
++    },
++    "e1b": {
++      "code": 64,
++      "stdout": "",
++      "stderr": "✗ --critics 含当轮 Driver「claude」：它是本次运行的执笔者，不能同时充当独立审查员。\n  自己审自己不构成二次审查——这条流水线存在的理由就是避免它。\n  当前可用：codex | gemini | glm\n"
++    },
++    "e2": {
++      "code": 0,
++      "stdout": "{\n  \"ok\": true,\n  \"scope\": \"all\",\n  \"checks\": [\n    {\n      \"name\": \"当轮 Driver\",\n      \"ok\": true,\n      \"detail\": \"codex\"\n    },\n    {\n      \"name\": \"探针结论新鲜\",\n      \"ok\": true,\n      \"detail\": \"全部 4 侧均在 TTL 内\"\n    },\n    {\n      \"name\": \"Claude Code 可调用\",\n      \"ok\": true,\n      \"detail\": \"claude 2.1.281\"\n    },\n    {\n      \"name\": \"Codex 可调用\",\n      \"ok\": true,\n      \"detail\": \"codex 0.156.1\"\n    },\n    {\n      \"name\": \"Antigravity 可调用\",\n      \"ok\": true,\n      \"detail\": \"agy 1.2.11\"\n    },\n    {\n      \"name\": \"ZCode 可调用\",\n      \"ok\": true,\n      \"detail\": \"zcode 0.16.9\"\n    },\n    {\n      \"name\": \"只读能力可用\",\n      \"ok\": true,\n      \"detail\": \"Claude Code、ZCode 均报告可用\"\n    },\n    {\n      \"name\": \"模型 slug 合法\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"已校验 3 个阶段 × 2 侧\\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（探针未记录 Claude Code 模型目录）\"\n    },\n    {\n      \"name\": \"归档与 git 可用\",\n      \"ok\": true,\n      \"detail\": \"归档根 /Users/chenzhenbo/Work/TriviumCode/.reviews\"\n    },\n    {\n      \"name\": \"编译测试命令已配置\",\n      \"ok\": true,\n      \"detail\": \"build 2 条 / test 1 条\"\n    },\n    {\n      \"name\": \"探活\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。\"\n    }\n  ],\n  \"warnings\": [\n    {\n      \"name\": \"模型 slug 合法\",\n      \"detail\": \"已校验 3 个阶段 × 2 侧\\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（探针未记录 Claude Code 模型目录）\"\n    },\n    {\n      \"name\": \"探活\",\n      \"detail\": \"⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。\"\n    }\n  ],\n  \"exit_code\": 0\n}\n",
++      "stderr": ""
++    },
++    "e3": {
++      "claude": "argument-hint: <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]",
++      "codex": "下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--critics <id,…>] [--only claude|gemini|glm] [--allow-single]`",
++      "gemini": "下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-glm <模型>] [--critics <id,…>] [--only claude|codex|glm] [--allow-single]`",
++      "glm": "下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-gemini <模型>] [--critics <id,…>] [--only claude|codex|gemini] [--allow-single]`"
++    },
++    "selftest": {
++      "code": 0,
++      "stdout": "自检：在临时夹具仓库里真跑一遍整条流水线（各入选侧走桩适配器，不消耗厂商配额）\n\n自检：✅ 通过（14/14 步）\n\n本次自检**未**覆盖：\n  · Codex、Antigravity、ZCode 各家 CLI 是否可调用、是否已认证——各入选侧一律走桩适配器。请另跑 `trivium doctor` 与 `trivium preflight`。\n  · 真实模型的审查质量：桩产出的是固定假数据，不代表任何真实结论。\n  · 路径级 deny 等隔离机制的厂商侧行为（M0 探针的职责）。\n\n夹具已清理。加 --keep-fixture 可保留以供手工验收（§17.3）。\n",
++      "stderr": "· ✓ 双审启动（review --start）\n· ✓ 双审收敛（review --wait）\n· ✓ 各入选侧审查文档均已落盘\n· ✓ 缺裁决件时工件校验报缺（退 65）\n· ✓ 裁决未齐备时禁止提交（Hook 退 2）\n· ✓ 裁决未齐备时禁止收工（Hook 退 2）\n· ✓ 裁决完整性校验通过（逐条对齐 4 条意见）\n· ✓ 工件齐备（AC-01：原稿 + 3 侧审查 + 裁决件，共 5 件）\n· ✓ 裁决齐备后放行提交\n· ✓ 裁决齐备后放行收工\n· ✓ 禁止主脑自行产出 -gemini.md（AC-07）\n· ✓ 编译测试出口真实执行并落盘（AC-10）\n· ✓ 复盘可生成（含时间线与采纳率）\n· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）\n"
++    }
++  }
++}
+diff --git a/doc/05_testing/evidence/ev125-acceptance-20260925/run.mjs b/doc/05_testing/evidence/ev125-acceptance-20260925/run.mjs
+new file mode 100644
+index 0000000..b66dcc2
+--- /dev/null
++++ b/doc/05_testing/evidence/ev125-acceptance-20260925/run.mjs
+@@ -0,0 +1,114 @@
++#!/usr/bin/env node
++/**
++ * EV-125 零配额验收（计划 r2 §4.3）：E1 解析、E2 预检、E3 渲染产物，另跑 doctor --selftest。
++ *
++ * **不碰真实 HOME**（r2 CODEX-01）：不跑 `install:local`，直接用 `npm run build` 产出在仓库内的
++ * `skills/dual-critic/scripts/trivium.cjs`；资产根经 `TRIVIUM_ASSET_ROOT` 指向工作树，只作用于本脚本派生的子进程。
++ * 预检带 `--skip-auth-check`，不发起任何模型调用。
++ *
++ * 读数写进同目录 `01-readout.json`（原始输出）与终端摘要；会话里的命令不带重定向，输出由脚本自己写。
++ * 用法：node doc/05_testing/evidence/ev125-acceptance-20260925/run.mjs
++ */
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const run = promisify(execFile);
++const HERE = path.dirname(fileURLToPath(import.meta.url));
++const ROOT = path.resolve(HERE, '../../../..');
++const CLI = path.join(ROOT, 'skills/dual-critic/scripts/trivium.cjs');
++const ENV = { ...process.env, TRIVIUM_ASSET_ROOT: path.join(ROOT, 'skills/dual-critic') };
++
++async function cli(args) {
++  try {
++    const r = await run(process.execPath, [CLI, ...args], { cwd: ROOT, env: ENV, maxBuffer: 64 * 1024 * 1024 });
++    return { code: 0, stdout: r.stdout, stderr: r.stderr };
++  } catch (e) {
++    return { code: typeof e.code === 'number' ? e.code : null, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
++  }
++}
++
++/** stdout 里可能先有几行人读提示，取最后一个完整 JSON 对象 */
++function lastJson(s) {
++  const i = s.indexOf('\n{');
++  const start = s.startsWith('{') ? 0 : i >= 0 ? i + 1 : -1;
++  if (start < 0) return null;
++  try { return JSON.parse(s.slice(start)); } catch { return null; }
++}
++
++const results = [];
++const check = (id, ok, detail) => { results.push({ id, ok, detail }); console.log(`${ok ? '✓' : '✖'} ${id}：${detail}`); };
++const raw = {};
++
++const lsReviews = async () => (await fs.readdir(path.join(ROOT, '.reviews'))).sort();
++
++// ── E1 解析 ──
++const before = await lsReviews();
++const e1 = await cli([
++  'topic', 'resolve', '--stage', 'all', '--json', '--',
++  '任意目标', '--topic', 'EV-125-E1', '--driver', 'codex',
++  '--critics', 'claude,glm', '--model-claude', 'm-x', '--allow-single',
++]);
++raw.e1 = e1;
++const j1 = lastJson(e1.stdout);
++check('E1-a 退出码', e1.code === 0, `code=${e1.code}`);
++check('E1-b critics', JSON.stringify(j1?.critics) === JSON.stringify(['claude', 'glm']), `critics=${JSON.stringify(j1?.critics)}`);
++check('E1-c models', j1?.models?.claude === 'm-x', `models=${JSON.stringify(j1?.models)}`);
++check('E1-d allow_single', j1?.allow_single === true, `allow_single=${j1?.allow_single}`);
++check('E1-e only 置空', j1?.only === null, `only=${JSON.stringify(j1?.only)}`);
++check('E1-f driver', j1?.driver === 'codex', `driver=${j1?.driver}`);
++
++const e1b = await cli([
++  'topic', 'resolve', '--stage', 'all', '--json', '--',
++  '任意目标', '--topic', 'EV-125-E1', '--driver', 'claude', '--critics', 'claude',
++]);
++raw.e1b = e1b;
++check('E1-g 含当轮 Driver 退 64', e1b.code === 64, `code=${e1b.code}；${(e1b.stderr || e1b.stdout).split('\n').find((l) => l.trim()) ?? ''}`);
++check('E1-h 不是已撤销的旗标拒绝', !/命令 A（全流程）不接受/.test(e1b.stderr + e1b.stdout), '报错里没有「命令 A（全流程）不接受」');
++
++const after = await lsReviews();
++check('E1-i 纯只读', JSON.stringify(before) === JSON.stringify(after), `.reviews 目录项前后均为 ${after.length} 个`);
++
++// ── E2 预检 ──
++const e2 = await cli(['preflight', '--stage', 'all', '--driver', 'codex', '--critics', 'claude,glm', '--skip-auth-check', '--json']);
++raw.e2 = e2;
++const j2 = lastJson(e2.stdout);
++check('E2-a 退出码', e2.code === 0, `code=${e2.code}；ok=${j2?.ok}`);
++const slug = j2?.checks?.find((c) => c.name === '模型 slug 合法');
++check('E2-b slug 覆盖三个阶段 × 两侧', /3 个阶段 × 2 侧/.test(slug?.detail ?? ''), `detail=${slug?.detail}`);
++const ro = j2?.checks?.find((c) => c.name === '只读能力可用');
++check('E2-c 只读能力只报入选两侧', /Claude Code/.test(ro?.detail ?? '') && /ZCode/.test(ro?.detail ?? '') && !/Antigravity/.test(ro?.detail ?? ''), `detail=${ro?.detail}`);
++
++// ── E3 渲染产物 ──
++const products = {
++  claude: 'skills/dual-run/SKILL.md',
++  codex: 'skills/dual-critic/entry/codex/dual-run/SKILL.md',
++  gemini: 'skills/dual-critic/entry/gemini/dual-run/SKILL.md',
++  glm: 'skills/dual-critic/entry/glm/dual-run/SKILL.md',
++};
++raw.e3 = {};
++for (const [agent, rel] of Object.entries(products)) {
++  const md = await fs.readFile(path.join(ROOT, rel), 'utf8');
++  const hint = md.split('\n').find((l) => l.startsWith('argument-hint:') || l.includes('参数写法：`')) ?? '';
++  raw.e3[agent] = hint;
++  const models = [...hint.matchAll(/--model-([a-z]+)/g)].map((m) => m[1]);
++  const want = ['claude', 'codex', 'gemini', 'glm'].filter((x) => x !== agent);
++  check(`E3-${agent} 模型槽位`, JSON.stringify(models) === JSON.stringify(want), `--model-* = ${models.join(',')}`);
++  check(`E3-${agent} 选侧旗标`, /--critics <id,…>/.test(hint) && /--only [a-z|]+/.test(hint) && /--allow-single/.test(hint), '含 --critics / --only / --allow-single');
++  const resolveAt = md.indexOf('TV topic resolve --stage all');
++  const pre = md.split('\n').find((l) => l.includes('TV preflight --stage all')) ?? '';
++  check(`E3-${agent} 先解析后预检`, resolveAt >= 0 && resolveAt < md.indexOf(pre) && /--critics /.test(pre), pre.trim());
++}
++
++// ── doctor --selftest ──
++const st = await cli(['doctor', '--selftest']);
++raw.selftest = st;
++const tail = (st.stdout + st.stderr).trim().split('\n').slice(-1)[0] ?? '';
++check('selftest', st.code === 0, `code=${st.code}；${tail}`);
++
++const passed = results.filter((r) => r.ok).length;
++console.log(`\n${passed} / ${results.length} 成立`);
++await fs.writeFile(path.join(HERE, '01-readout.json'), JSON.stringify({ at: new Date().toISOString(), results, raw }, null, 2) + '\n', 'utf8');
++process.exit(passed === results.length ? 0 : 1);
+diff --git a/doc/05_testing/evidence/ev125-mutation-20260925/00-readout.md b/doc/05_testing/evidence/ev125-mutation-20260925/00-readout.md
+new file mode 100644
+index 0000000..f71f25f
+--- /dev/null
++++ b/doc/05_testing/evidence/ev125-mutation-20260925/00-readout.md
+@@ -0,0 +1,50 @@
++# EV-125 变异验证读数
++
++- **日期**：2026-09-25
++- **计划**：`.reviews/EV-125-命令A支持选侧旗标/plan/…-r2-claude.md` §4.2
++- **结果**：**装置 5 / 5 咬住**（`src/` 侧）＋ **契约源 6 / 6 咬住**（`skills-src/` 侧，本目录脚本）
++- **起跑口径**：装置两次运行都报「✓ 工作树干净、基线全绿（4 个套件）」。这里的「干净」是装置的哨兵判据（上次运行已善终、没有残留变异），**不是** `git status` 为空：本题改动尚未提交，工作树本来就有改动（装置头注释「为什么不是 `git status --porcelain`」）。契约脚本开跑前自查基线 fail=0。
++
++## 一、装置跑的五条（`scripts/mutation-check.mjs`，规格 `mutation-spec.json`，包装 `run.mjs`）
++
++| # | 变异 | 应红的用例 | 结果 |
++| :-- | :--- | :--- | :--- |
++| M1 | 恢复命令 A 对 `--critics` / `--only` 的拒绝 | 「命令 A 接受 --critics」「接受 --only」「把原 Driver 加进来」等 | ✓ fail=4 |
++| M2 | 拒绝段只拒 `--only` | 「命令 A 接受 --only」 | ✓ fail=1 |
++| M3 | 命令 A 选侧不用最终 Driver（回落缺省 Driver） | 「非缺省 Driver 下把原 Driver 加进来」「命令 A 接受 --driver 并回显」 | ✓ fail=2 |
++| M7 | 模型与选侧槽位退回缺省集合（即 `MODEL_HINT_DEFAULT` 的语义） | EV-61 断言（论域含 `run`）、盘上产物与源一致 | ✓ fail=2 |
++| M8 | 选侧挪到两阶段 Driver 比对之前 | 集成「Driver 冲突时带上 --critics，先报的仍是 Driver 冲突」 | ✓ fail=1 |
++
++- 计划 r2 §4.2 的 M7 原写「`run.contract.md` 的提示改回 `MODEL_HINT_DEFAULT`（变量先恢复）」，要同时改两个文件，装置一条 case 只改一个文件。实施改为只在 `src/entry-render.ts` 里把槽位的取值退回缺省集合，语义与原 M7 相同（命令 A 的槽位回到「缺省集合减本载体」）。
++- M8 是计划外补的：r2 §4.1 新增的集成用例（两阶段比对先于选侧）需要一条变异来证明它咬得住。
++- `mutation-output.txt` 是第二次运行。第一次（`mutation-output-run1.txt`）跑在 `skill-flag-parity.test.ts` 改动之前（见下文「契约源」第一次运行）；五条都不以该套件为期望，但为了让读数对应当前代码，改完后重跑了一遍，五条 fail 数与第一次逐条相同。
++
++## 二、契约源六条（`contract-mutations.mjs`，输出 `contract-mutations-output.txt`）
++
++装置的闸 4 比对 `dist/test/<源>.js`，契约源是 Markdown、没有对应产物，所以不走装置（EV-123 的 P7、M10b 第 2 步同一处境）。契约测试在运行时从 `skills-src/` 现场渲染，改源后直接跑已编译的两个契约套件即可。
++脚本照装置的闸 3（基线全绿）、闸 4（变异后哈希确实变了）、闸 5（每条恢复后与基线逐字节比对）、闸 7（find 恰好命中一处）做了同名检查。
++**判据是「点名的用例红」，不是「有东西红」**：改任何契约源，`entry-render-parity` 的「源 → 产物零 diff」都会红，那不说明本条断言咬住了。
++
++| # | 变异 | 应红的用例 | 结果 |
++| :-- | :--- | :--- | :--- |
++| C1 | 删掉 S2 交接清单里的 `--critics` 那一条 | 「S2 与 S6 的交接都点名 --critics 与 --allow-single」×4 家 | ✓ |
++| C2 | S6 的透传清单去掉 `--critics` / `--allow-single` | 同上 | ✓ |
++| C3 | S2 交接只传 `--critics`、不提 `--allow-single` | 同上 | ✓ |
++| C4 | 预检不带 `--critics` | 「命令 A 先解析、后预检」 | ✓ |
++| C5 | 预检挪回解析之前 | 同上（另「--driver 注入次数」也红） | ✓ |
++| C6 | 删掉 S0.5 字段清单的 `critics` 条 | 「正文要交代把 resolve 输出的 critics 透传下去」×4 家 | ✓ |
++
++C1～C3 对应计划 r2 §4.2 的 M4 / M5，C4 / C5 对应 M6；C6 是补的一格。
++
++### 第一次运行：C1、C3 没咬住（`contract-mutations-output-run1.txt`）
++
++计划 r2 §4.2 原以为「删掉 S2 交接里的 `critics` ⇒ skill-flag-parity 那格红」。实施时核出这条推断不成立：那条断言只查整篇正文里有没有「resolve 输出的 `critics`」，而 S0.5 的字段清单里也有这句话。于是补了一条逐段断言「S2 与 S6 的交接都点名 --critics 与 --allow-single」。
++
++第一版逐段断言按整个 `### S2` 节切，C1、C3 照样没咬住：S2 节里还有一段「模型覆盖、档位、入选集合（`--critics`）与降级许可（`--allow-single`）要一并传下去」的总述，删掉清单里的那一条，总述照样让断言绿。这正是这条断言要防的形状。
++改为只切交接本身：S2 取「……循环，但：」之后的清单，S6 取「同 S2（……）」那一段，都到第一个空行为止。之后重跑六条全部咬住。
++
++另记一笔操作上的坑：第一次重跑时 `npm run build` 默认不编测试，dist 里还是旧断言，C1、C3 照样没咬住；换成 `node scripts/build.mjs --tests-only` 重编之后才是有效读数（交接记忆里早有这条，照做即可）。
++
++## 三、恢复
++
++两次装置运行收尾均恢复成功（`git diff --stat src/` 与变异前一致）；契约脚本每条恢复后逐字节比对通过，收尾「恢复件与基线逐字节一致」。
+diff --git a/doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations-output-run1.txt b/doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations-output-run1.txt
+new file mode 100644
+index 0000000..d9a5578
+--- /dev/null
++++ b/doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations-output-run1.txt
+@@ -0,0 +1,25 @@
++# EV-125 契约源变异 · 2026-09-25T10:16:22.145Z
++目标：skills-src/commands/run.contract.md（基线 sha256 6ad730c1d77e）
++套件：dist/test/test/contract/skill-flag-parity.test.js、dist/test/test/contract/entry-render-parity.test.js
++基线：fail=0
++
++C1 ✖ 没咬住（fail=1）——删掉 S2 交接里的 --critics 那一条
++   期望红：S2 与 S6 的交接都点名 --critics 与 --allow-single
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | failing tests:
++C2 ✓ 咬住（fail=5）——S6 的透传清单去掉 --critics / --allow-single
++   期望红：S2 与 S6 的交接都点名 --critics 与 --allow-single
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | codex/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | gemini/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | glm/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | failing tests:
++C3 ✖ 没咬住（fail=1）——S2 交接只传 --critics、不提 --allow-single
++   期望红：S2 与 S6 的交接都点名 --critics 与 --allow-single
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | failing tests:
++C4 ✓ 咬住（fail=2）——预检不带 --critics（回到只查缺省集合）
++   期望红：命令 A 先解析、后预检
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | 命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2） | failing tests:
++C5 ✓ 咬住（fail=3）——预检挪回解析之前（在状态机开头放一条预检命令）
++   期望红：命令 A 先解析、后预检
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | --driver <自家 id>：次数等于应注入的调用数，且不出现别家 id | 命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2） | failing tests:
++C6 ✓ 咬住（fail=5）——删掉 S0.5 字段清单里的 critics 条（整篇不再有「resolve 输出的 `critics`」）
++   期望红：dual-run：正文要交代把 resolve 输出的 critics 透传下去
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | codex/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | gemini/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | glm/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | failing tests:
++
++收尾：恢复件与基线逐字节一致；结论 有未咬住项
+diff --git a/doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations-output.txt b/doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations-output.txt
+new file mode 100644
+index 0000000..8cdf449
+--- /dev/null
++++ b/doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations-output.txt
+@@ -0,0 +1,25 @@
++# EV-125 契约源变异 · 2026-09-25T10:17:12.952Z
++目标：skills-src/commands/run.contract.md（基线 sha256 6ad730c1d77e）
++套件：dist/test/test/contract/skill-flag-parity.test.js、dist/test/test/contract/entry-render-parity.test.js
++基线：fail=0
++
++C1 ✓ 咬住（fail=5）——删掉 S2 交接里的 --critics 那一条
++   期望红：S2 与 S6 的交接都点名 --critics 与 --allow-single
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | codex/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | gemini/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | glm/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single
++C2 ✓ 咬住（fail=5）——S6 的透传清单去掉 --critics / --allow-single
++   期望红：S2 与 S6 的交接都点名 --critics 与 --allow-single
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | codex/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | gemini/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | glm/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single
++C3 ✓ 咬住（fail=5）——S2 交接只传 --critics、不提 --allow-single
++   期望红：S2 与 S6 的交接都点名 --critics 与 --allow-single
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | codex/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | gemini/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | glm/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single
++C4 ✓ 咬住（fail=2）——预检不带 --critics（回到只查缺省集合）
++   期望红：命令 A 先解析、后预检
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | 命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2）
++C5 ✓ 咬住（fail=3）——预检挪回解析之前（在状态机开头放一条预检命令）
++   期望红：命令 A 先解析、后预检
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | --driver <自家 id>：次数等于应注入的调用数，且不出现别家 id | 命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2）
++C6 ✓ 咬住（fail=5）——删掉 S0.5 字段清单里的 critics 条（整篇不再有「resolve 输出的 `critics`」）
++   期望红：dual-run：正文要交代把 resolve 输出的 critics 透传下去
++   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | codex/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | gemini/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | glm/dual-run：正文要交代把 resolve 输出的 critics 透传下去
++
++收尾：恢复件与基线逐字节一致；结论 6 / 6 咬住
+diff --git a/doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations.mjs b/doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations.mjs
+new file mode 100644
+index 0000000..55ddec1
+--- /dev/null
++++ b/doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations.mjs
+@@ -0,0 +1,156 @@
++#!/usr/bin/env node
++/**
++ * EV-125 契约源（`skills-src/commands/run.contract.md`）的变异验证。
++ *
++ * ## 为什么不走 `scripts/mutation-check.mjs`
++ *
++ * 装置的闸 4 比对的是 `dist/test/<源>.js` 这份被测产物；契约源是 Markdown、不进构建，
++ * 没有对应产物可比（与 EV-123 的 P7、M10b 第 2 步的先例同一处境）。契约测试在运行时从
++ * `skills-src/` 现场渲染（`renderEntries(REPO_ROOT)`），所以改源、直接跑已编译的契约套件即可。
++ *
++ * ## 判据：点名的用例必须红，不是「有东西红」
++ *
++ * 改任何契约源，`entry-render-parity` 的「盘上产物 = 源」都会红——那不说明本条断言咬住了。
++ * 所以每条变异记下**期望变红的用例名片段**，只有它们出现在 `✖` 行里才判咬住；
++ * 其余顺带变红的用例原样列出，供读数核对。
++ *
++ * ## 闸（照 `mutation-check.mjs` 的同名闸）
++ *
++ * - find 在文件中恰好命中一处（闸 7）；
++ * - 变异后断言文件哈希确实变了（闸 4 的源文件版）；
++ * - 每条跑完恢复并与基线逐字节比对（闸 5）；
++ * - 开跑前基线套件全绿（闸 3 后半）。
++ *
++ * 用法：node doc/05_testing/evidence/ev125-mutation-20260925/contract-mutations.mjs
++ * 输出：同目录 `contract-mutations-output.txt`（会话里的命令不带重定向，输出由脚本自己写）。
++ */
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import { createHash } from 'node:crypto';
++import { fileURLToPath } from 'node:url';
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++
++const run = promisify(execFile);
++const HERE = path.dirname(fileURLToPath(import.meta.url));
++const ROOT = path.resolve(HERE, '../../../..');
++const FILE = path.join(ROOT, 'skills-src/commands/run.contract.md');
++const SUITES = [
++  'dist/test/test/contract/skill-flag-parity.test.js',
++  'dist/test/test/contract/entry-render-parity.test.js',
++];
++
++const CASES = [
++  {
++    id: 'C1',
++    desc: '删掉 S2 交接里的 --critics 那一条',
++    find: '- `--critics` 传 S0.5 的 `critics`（逗号连接），**无条件传**；`allow_single` 为 true 时加 `--allow-single`；\n  **不要传 `--only`**（理由见 S0.5）：两个旗标同时递给 `--start` 会被判互斥退 64；\n',
++    replace: '',
++    expect: ['S2 与 S6 的交接都点名 --critics 与 --allow-single'],
++  },
++  {
++    id: 'C2',
++    desc: 'S6 的透传清单去掉 --critics / --allow-single',
++    find: '`--context` / `--critics` / `--allow-single` / 模型覆盖的透传',
++    replace: '`--context` / 模型覆盖的透传',
++    expect: ['S2 与 S6 的交接都点名 --critics 与 --allow-single'],
++  },
++  {
++    id: 'C3',
++    desc: 'S2 交接只传 --critics、不提 --allow-single',
++    find: '**无条件传**；`allow_single` 为 true 时加 `--allow-single`；\n  **不要传',
++    replace: '**无条件传**；\n  **不要传',
++    expect: ['S2 与 S6 的交接都点名 --critics 与 --allow-single'],
++  },
++  {
++    id: 'C4',
++    desc: '预检不带 --critics（回到只查缺省集合）',
++    find: 'TV preflight --stage all --driver {{DRIVER}} --critics <critics> [--profile',
++    replace: 'TV preflight --stage all --driver {{DRIVER}} [--profile',
++    expect: ['命令 A 先解析、后预检'],
++  },
++  {
++    id: 'C5',
++    desc: '预检挪回解析之前（在状态机开头放一条预检命令）',
++    find: '## 状态机 S0.5～S10（设计 §8.2）\n',
++    replace: '## 状态机 S0.5～S10（设计 §8.2）\n\n`TV preflight --stage all --driver {{DRIVER}} --json`\n',
++    expect: ['命令 A 先解析、后预检'],
++  },
++  {
++    id: 'C6',
++    desc: '删掉 S0.5 字段清单里的 critics 条（整篇不再有「resolve 输出的 `critics`」）',
++    find: '- `critics`：本轮**入选的审核者集合，计划审与代码审两轮共用这一组**。S0.6、S2、S6 都把 resolve 输出的 `critics`\n  用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；\n',
++    replace: '',
++    expect: ['dual-run：正文要交代把 resolve 输出的 critics 透传下去'],
++  },
++];
++
++const sha = (buf) => createHash('sha256').update(buf).digest('hex');
++
++async function runSuites() {
++  let out = '';
++  try {
++    const r = await run('node', ['--test', ...SUITES], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 });
++    out = r.stdout;
++  } catch (e) {
++    out = (e.stdout ?? '') + (e.stderr ?? '');
++  }
++  const m = /^ℹ fail (\d+)$/m.exec(out);
++  if (!m) throw new Error(`读不出测试结果：\n${out.slice(-600)}`);
++  // 只取顶层失败行（node --test 的 spec 报告里失败用例以 ✖ 开头）
++  const failed = [...new Set(out.split('\n').filter((l) => /^\s*✖ /.test(l)).map((l) => l.replace(/^\s*✖ /, '').replace(/ \([\d.]+ms\)$/, '').trim()))]
++    // node --test 在末尾汇总段落前打一行「✖ failing tests:」，它是标题不是用例
++    .filter((n) => n !== 'failing tests:');
++  return { fail: Number(m[1]), failed };
++}
++
++const lines = [];
++const log = (s) => { lines.push(s); console.log(s); };
++
++const base = await fs.readFile(FILE);
++const baseSha = sha(base);
++log(`# EV-125 契约源变异 · ${new Date().toISOString()}`);
++log(`目标：skills-src/commands/run.contract.md（基线 sha256 ${baseSha.slice(0, 12)}）`);
++log(`套件：${SUITES.join('、')}`);
++
++const baseline = await runSuites();
++if (baseline.fail !== 0) {
++  log(`✖ 基线不绿（fail=${baseline.fail}）：${baseline.failed.join(' | ')}——拒跑`);
++  await fs.writeFile(path.join(HERE, 'contract-mutations-output.txt'), lines.join('\n') + '\n', 'utf8');
++  process.exit(1);
++}
++log('基线：fail=0\n');
++
++let allBit = true;
++try {
++  for (const c of CASES) {
++    const text = base.toString('utf8');
++    const hits = text.split(c.find).length - 1;
++    if (hits !== 1) {
++      log(`${c.id} ✖ find 命中 ${hits} 处（须恰好 1 处）——${c.desc}`);
++      allBit = false;
++      continue;
++    }
++    const mutated = text.replace(c.find, c.replace);
++    await fs.writeFile(FILE, mutated, 'utf8');
++    if (sha(await fs.readFile(FILE)) === baseSha) {
++      log(`${c.id} ✖ 变异后哈希未变——${c.desc}`);
++      allBit = false;
++    } else {
++      const r = await runSuites();
++      const bit = c.expect.every((e) => r.failed.some((f) => f.includes(e)));
++      if (!bit) allBit = false;
++      log(`${c.id} ${bit ? '✓ 咬住' : '✖ 没咬住'}（fail=${r.fail}）——${c.desc}`);
++      log(`   期望红：${c.expect.join('；')}`);
++      log(`   实际红：${r.failed.join(' | ') || '（无）'}`);
++    }
++    await fs.writeFile(FILE, base);
++    if (sha(await fs.readFile(FILE)) !== baseSha) throw new Error(`${c.id} 恢复后与基线不一致——停止`);
++  }
++} finally {
++  await fs.writeFile(FILE, base);
++}
++const after = sha(await fs.readFile(FILE));
++log(`\n收尾：恢复件与基线${after === baseSha ? '逐字节一致' : '**不一致**'}；结论 ${allBit ? `${CASES.length} / ${CASES.length} 咬住` : '有未咬住项'}`);
++await fs.writeFile(path.join(HERE, 'contract-mutations-output.txt'), lines.join('\n') + '\n', 'utf8');
++process.exit(allBit && after === baseSha ? 0 : 1);
+diff --git a/doc/05_testing/evidence/ev125-mutation-20260925/mutation-output-run1.txt b/doc/05_testing/evidence/ev125-mutation-20260925/mutation-output-run1.txt
+new file mode 100644
+index 0000000..2ba5494
+--- /dev/null
++++ b/doc/05_testing/evidence/ev125-mutation-20260925/mutation-output-run1.txt
+@@ -0,0 +1,42 @@
++✓ 工作树干净、基线全绿（4 个套件）
++  M1 ✓ 咬住（fail=4）
++  M2 ✓ 咬住（fail=1）
++  M3 ✓ 咬住（fail=2）
++  M7 ✓ 咬住（fail=2）
++  M8 ✓ 咬住（fail=1）
++{
++  "总数": 5,
++  "咬住": 5,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "恢复命令 A 对 --critics / --only 的拒绝 ⇒「命令 A 接受 --critics」「接受 --only」「把原 Driver 加进来」红",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M2",
++      "desc": "拒绝段只拒 --only ⇒「命令 A 接受 --only」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M3",
++      "desc": "命令 A 选侧不用最终 Driver（回落缺省 Driver）⇒「非缺省 Driver 下把原 Driver 加进来」「命令 A 接受 --driver 并回显」红",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M7",
++      "desc": "模型与选侧槽位退回缺省集合（MODEL_HINT_DEFAULT 的语义）⇒ EV-61 断言（论域含 run）与盘上产物一致性红",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M8",
++      "desc": "选侧挪到两阶段 Driver 比对之前 ⇒ 集成用例「Driver 冲突时带上 --critics，先报的仍是 Driver 冲突」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/ev125-mutation-20260925/mutation-output.txt b/doc/05_testing/evidence/ev125-mutation-20260925/mutation-output.txt
+new file mode 100644
+index 0000000..2ba5494
+--- /dev/null
++++ b/doc/05_testing/evidence/ev125-mutation-20260925/mutation-output.txt
+@@ -0,0 +1,42 @@
++✓ 工作树干净、基线全绿（4 个套件）
++  M1 ✓ 咬住（fail=4）
++  M2 ✓ 咬住（fail=1）
++  M3 ✓ 咬住（fail=2）
++  M7 ✓ 咬住（fail=2）
++  M8 ✓ 咬住（fail=1）
++{
++  "总数": 5,
++  "咬住": 5,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "恢复命令 A 对 --critics / --only 的拒绝 ⇒「命令 A 接受 --critics」「接受 --only」「把原 Driver 加进来」红",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M2",
++      "desc": "拒绝段只拒 --only ⇒「命令 A 接受 --only」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M3",
++      "desc": "命令 A 选侧不用最终 Driver（回落缺省 Driver）⇒「非缺省 Driver 下把原 Driver 加进来」「命令 A 接受 --driver 并回显」红",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M7",
++      "desc": "模型与选侧槽位退回缺省集合（MODEL_HINT_DEFAULT 的语义）⇒ EV-61 断言（论域含 run）与盘上产物一致性红",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M8",
++      "desc": "选侧挪到两阶段 Driver 比对之前 ⇒ 集成用例「Driver 冲突时带上 --critics，先报的仍是 Driver 冲突」红",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/ev125-mutation-20260925/mutation-spec.json b/doc/05_testing/evidence/ev125-mutation-20260925/mutation-spec.json
+new file mode 100644
+index 0000000..d663f61
+--- /dev/null
++++ b/doc/05_testing/evidence/ev125-mutation-20260925/mutation-spec.json
+@@ -0,0 +1,54 @@
++{
++  "targets": [
++    "src/trivium/topic-args.ts",
++    "src/entry-render.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/topic-args.test.js",
++    "dist/test/test/integration/driver-flag.test.js",
++    "dist/test/test/contract/entry-render-parity.test.js",
++    "dist/test/test/contract/skill-flag-parity.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "恢复命令 A 对 --critics / --only 的拒绝 ⇒「命令 A 接受 --critics」「接受 --only」「把原 Driver 加进来」红",
++      "file": "src/trivium/topic-args.ts",
++      "find": "  const explicitDriver = (named['driver'] ?? '').trim()\n",
++      "replace": "  if (scope === 'all' && (named['critics'] || onlyRaw)) {\n    throw new TriviumError(EXIT.USAGE, '命令 A（全流程）不接受选侧旗标');\n  }\n  const explicitDriver = (named['driver'] ?? '').trim()\n",
++      "expect": "dist/test/test/unit/topic-args.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "拒绝段只拒 --only ⇒「命令 A 接受 --only」红",
++      "file": "src/trivium/topic-args.ts",
++      "find": "  const explicitDriver = (named['driver'] ?? '').trim()\n",
++      "replace": "  if (scope === 'all' && onlyRaw) {\n    throw new TriviumError(EXIT.USAGE, '命令 A（全流程）不接受 --only');\n  }\n  const explicitDriver = (named['driver'] ?? '').trim()\n",
++      "expect": "dist/test/test/unit/topic-args.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "命令 A 选侧不用最终 Driver（回落缺省 Driver）⇒「非缺省 Driver 下把原 Driver 加进来」「命令 A 接受 --driver 并回显」红",
++      "file": "src/trivium/topic-args.ts",
++      "find": "    only: onlyRaw || null,\n    driver,\n  });",
++      "replace": "    only: onlyRaw || null,\n    driver: scope === 'all' ? DEFAULT_DRIVER : driver,\n  });",
++      "expect": "dist/test/test/unit/topic-args.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "模型与选侧槽位退回缺省集合（MODEL_HINT_DEFAULT 的语义）⇒ EV-61 断言（论域含 run）与盘上产物一致性红",
++      "file": "src/entry-render.ts",
++      "find": "  const critics = CRITIC_AGENT_IDS.filter((id) => id !== carrier.agent);",
++      "replace": "  const critics = AGENTS.filter((a) => a.defaultSelected && a.id !== carrier.agent).map((a) => a.id);",
++      "expect": "dist/test/test/contract/entry-render-parity.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "选侧挪到两阶段 Driver 比对之前 ⇒ 集成用例「Driver 冲突时带上 --critics，先报的仍是 Driver 冲突」红",
++      "file": "src/trivium/topic-args.ts",
++      "find": "    : null;\n\n  /*\n   * **入选来自 `--only` 时",
++      "replace": "    : null;\n  resolveCriticSelection(ctx.config, { critics: named['critics'] ?? null, only: onlyRaw || null, driver: explicitDriver ?? DEFAULT_DRIVER });\n\n  /*\n   * **入选来自 `--only` 时",
++      "expect": "dist/test/test/integration/driver-flag.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/ev125-mutation-20260925/run.mjs b/doc/05_testing/evidence/ev125-mutation-20260925/run.mjs
+new file mode 100644
+index 0000000..6555b6c
+--- /dev/null
++++ b/doc/05_testing/evidence/ev125-mutation-20260925/run.mjs
+@@ -0,0 +1,25 @@
++#!/usr/bin/env node
++/**
++ * EV-125 变异验证的包装：跑 `scripts/mutation-check.mjs <本目录>/mutation-spec.json`，
++ * 把装置的 stdout 与 stderr 原样写进 `mutation-output.txt`（会话里的命令不带重定向，输出由脚本自己写）。
++ * 退出码透传装置的退出码。仓库根按脚本位置推导（EV-103）。
++ *
++ * 用法：node doc/05_testing/evidence/ev125-mutation-20260925/run.mjs
++ */
++import { spawn } from 'node:child_process';
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const HERE = path.dirname(fileURLToPath(import.meta.url));
++const ROOT = path.resolve(HERE, '../../../..');
++const child = spawn(process.execPath, [path.join(ROOT, 'scripts/mutation-check.mjs'), path.join(HERE, 'mutation-spec.json')], {
++  cwd: ROOT,
++  stdio: ['ignore', 'pipe', 'pipe'],
++});
++let out = '';
++child.stdout.on('data', (d) => { out += d; process.stdout.write(d); });
++child.stderr.on('data', (d) => { out += d; process.stderr.write(d); });
++const code = await new Promise((resolve) => child.on('close', resolve));
++await fs.writeFile(path.join(HERE, 'mutation-output.txt'), out, 'utf8');
++process.exit(code ?? 1);

@@ -33,7 +33,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import {
-  AGENTS, CRITIC_AGENT_IDS, DEFAULT_CRITIC_AGENT_IDS, agentById, guardProfileOf, isAgentId, type AgentId,
+  AGENTS, CRITIC_AGENT_IDS, agentById, guardProfileOf, isAgentId, type AgentId,
 } from './trivium/agents/registry.js';
 
 /** 源目录（相对仓库根） */
@@ -260,7 +260,6 @@ function renderText(text: string, scope: Scope, trail: string, depth = 0): strin
 function carrierVars(carrier: Carrier): Record<string, string> {
   const self = agentById(carrier.agent)!;
   const critics = CRITIC_AGENT_IDS.filter((id) => id !== carrier.agent);
-  const defaults = DEFAULT_CRITIC_AGENT_IDS.filter((id) => id !== carrier.agent);
   return {
     DRIVER: carrier.agent,
     ARG_MODE: carrier.arguments,
@@ -269,25 +268,18 @@ function carrierVars(carrier: Carrier): Record<string, string> {
     // 护栏注入段（r10 §3.1.3）：按注册表的 guardLevel 与有无 Hook 配置目标派生
     GUARD: guardProfileOf(self),
     /*
-     * B / C / D 用：列**已启用审核者**减本载体（不是缺省集合）。这几条命令收 `--critics`，
+     * 四条命令同一组：列**已启用审核者**减本载体（不是缺省集合）。四条命令都收 `--critics`，
      * 不在缺省集合里的一家（如非 claude 载体上的 claude）能被显式加进来，所以槽位合法——
      * 但它要与 `--critics` 同时给：单写 `--model-<该家>` 会被判「本轮没有入选」退 64，
-     * 报错点名本轮入选并给出 `--critics` 出口，不是静默（代码双审 r2 CODEX-03）。与下面命令 A 那一组对照着读。
+     * 报错点名本轮入选并给出 `--critics` 出口，不是静默（代码双审 r2 CODEX-03）。
+     *
+     * 命令 A 曾经单用一组 `MODEL_HINT_DEFAULT` / `MODEL_FLAGS_DEFAULT`（注册表缺省集合减本载体，
+     * M10b 第 2 步代码双审 CODEX-02）：那时它不收 `--critics`，缺省集合外的一家没有入选出口，
+     * 给它留槽位就是引出一个必退 64 的写法。EV-125 让命令 A 也收 `--critics` 之后那条理由不再成立，
+     * 两组合并——同值的两个名字留着，下一次只改其一就是分叉。
      */
     MODEL_HINT: critics.map((id) => `[--model-${id} <模型>]`).join(' '),
     MODEL_FLAGS: critics.map((id) => `\`--model-${id}\``).join(' / '),
-    /*
-     * 命令 A 专用（代码双审 CODEX-02）：它不收 `--critics`，入选集合只能是「缺省集合减去当轮 Driver」，
-     * 而 `--model-<id>` 只接受本轮入选的那几家——给缺省集合外的一家留槽位，就是引出一个必退 64 的写法。
-     *
-     * 取**注册表**的缺省集合（`defaultSelected`）：渲染是静态的，读不到各项目的 config.yaml。
-     * 项目改过 `default_critics` 时两个方向后果不同（代码双审 r2 GLM-03）：
-     *   · 扩充（加了一家）→ 这里少列那一家，照样能写，无害；
-     *   · 缩减（去了一家）→ 这里多列那一家，照写会以「本轮没有入选」退 64——报错点名本轮入选，不静默。
-     * 静态渲染跟不上项目配置是有意取舍：按项目渲染就得让入口资产随项目分发，那是另一件事。
-     */
-    MODEL_HINT_DEFAULT: defaults.map((id) => `[--model-${id} <模型>]`).join(' '),
-    MODEL_FLAGS_DEFAULT: defaults.map((id) => `\`--model-${id}\``).join(' / '),
     ONLY_CHOICES: critics.join('|'),
   };
 }

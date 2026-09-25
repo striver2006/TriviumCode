@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.41
+> - **当前版本**：v1.3.42
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -161,7 +161,7 @@
 | FR-07 工作目录与可读范围 | 就地模式（唯一模式，ADR-001）：审查员 cwd 即项目根，全库含 `.git` 与依赖可读，仅屏蔽对方产出 | 10.1、10.2 |
 | FR-08/09 命名与归档 | `YYYY-MM-DD-<主题>[-r<N>][-revised\|-response]-<角色>.md`，主题子目录 + 阶段目录 | 6.2、6.3 |
 | FR-10 背靠背 | 独立进程与会话、本次产出延迟落盘且运行目录在项目外、历史产出三层屏蔽（禁读清单 / 路径 deny / 轨迹核验） | 第 10 章 |
-| FR-11 全流程顺序 | 命令 A 状态机 S0～S10 | 8.2 |
+| FR-11 全流程顺序 | 命令 A 状态机 S0.5～S10（EV-125 前为 S0～S10） | 8.2 |
 | FR-12 四条命令 | `/dual-run`、`/dual-review-plan`、`/dual-review-code`、`/dual-review-bug` | 第 7 章 |
 | FR-13/14 意见可裁决 + 逐条裁决 | `trivium.review.v1` 意见 schema + `trivium gate` 裁决完整性硬校验 | 6.5、6.6、8.6 |
 | FR-15 只读 | 三重保障：工具集裁剪 + 前后指纹比对（`tree_hash` + `git status`）+ 轨迹核验 | 10.3 |
@@ -1259,14 +1259,23 @@ v1 → 内存 v2 的映射：`dual → full`、`single → partial`、`driver` �
 > 在数据上就不存在。三份 skill 相应删去 `--only` 透传，`skill-flag-parity`
 > 增两条正文断言（必须交代 `critics` 怎么传、不得把 `--only` 透传写回来）。
 >
-> **命令 A 不接受 `--critics` / `--only`**（审查意见 GLM-02）：它一次要跑计划审与
-> 代码审两轮，「本轮选哪几侧」在那一层没有确定语义。此前这两个旗标会被解析成功
-> 却被 S2/S6 的交接静默丢弃——**拼错的当场退 64，写对的反而无声消失**。
-> 现在明确退 64 并指引改用 B/C/D。
+> **命令 A 自 EV-125 起接受 `--critics` / `--only` / `--allow-single`，计划审与代码审两轮共用同一组**【已实现 · EV-125，v1.3.42】。
+> 此前（审查意见 GLM-02）命令 A 明确拒绝前两个旗标：它们会被解析成功却被 S2/S6 的交接静默丢弃——
+> **拼错的当场退 64，写对的反而无声消失**；而「两轮各选哪几侧」被判为语义模糊，于是退 64 并指引改用 B/C/D。
+> 撤销的理由：`--model-*` / `--profile` / `--driver` 在命令 A 里早已是「两轮都生效、S2 / S6 各传一次」，
+> 选侧沿用同一语义即不再模糊；解析在拒绝之后本就不分 scope，两阶段 Driver 比对又先于选侧，
+> 保证 S0.5 解析出的同一组对 plan / code 都合法。拒绝造成的缺口是：非 claude 当 Driver 时 claude 不在缺省集合、
+> 命令 A 又没有旗标能把它加进来；按轮控制侧数只能改 `config.yaml`。
+> 契约侧：S0.5 输出的 `critics` 由 S0.6 预检、S2、S6 **无条件**照传（用户没写时即缺省集合减当轮 Driver），
+> `allow_single` 为真时 S2、S6 都加 `--allow-single`，`--only` 一律不透传。
+> **命令 A 的预检因此挪到解析之后**（S0.6，带入选、档位与模型覆盖），与 B / C / D「先预检后解析」的次序不同：
+> `review --start` 只查当阶段的 slug、不探活，显式加进来的一家若缺 code 阶段 slug，不在开跑前查出就要到 S6（编码之后）才暴露。
+> **残余（如实登记）**：S6 若漏传 `critics`，`--start` 会自行重取配置缺省，两轮可能跑的是不同的几家；运行期没有跨阶段比对。
+> 当轮靠 S2 / S6 开场播报念出的 `models` 键（即本轮入选侧）发现，事后靠两份运行留痕的 `critics_selected` 对出。
 
 | 斜杠命令 | PRD 语义 | 前置条件 | 必选输入 | 可选输入 | 自动执行到 | 停点 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `/dual-run` | 命令 A · 全流程 | 已给出任务目标 | 任务目标（`$ARGUMENTS` 中除具名参数外的正文，可由对话上下文提供） | `--topic`、`--model-gemini`、`--model-glm`、`--profile`、`--focus <提示语>`（显式具名，避免与任务目标混淆）、`--context <路径,…>` | 计划双审 → 修订 → 编码 → 代码双审 → 应答 → 改码 → **编译测试** | 编译测试结束（成败均留痕） |
+| `/dual-run` | 命令 A · 全流程 | 已给出任务目标 | 任务目标（`$ARGUMENTS` 中除具名参数外的正文，可由对话上下文提供） | `--topic`、`--model-<审核者 id>`、`--profile`、`--focus <提示语>`（显式具名，避免与任务目标混淆）、`--context <路径,…>`、`--critics <id,…>` / `--only <一侧>`（两轮共用同一组，EV-125）、`--allow-single` | 计划双审 → 修订 → 编码 → 代码双审 → 应答 → 改码 → **编译测试** | 编译测试结束（成败均留痕） |
 | `/dual-review-plan` | 命令 B · 计划审 | 原始计划已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--plan-file`、`--context <路径,…>`、`--only <一侧>`、`--allow-single` | 双审 → 修订计划 | **等待人工审批** |
 | `/dual-review-code` | 命令 C · 代码审 | 待审代码已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--base <ref>`、`--context <路径,…>`、`--only <一侧>`、`--allow-single` | 双审 → 应答（确认修改方案） | **等待人工审批** |
 | `/dual-review-bug` | 命令 D · 根因审 | 根因材料已存在 | **审查焦点提示语**（位置参数正文） | `--goal <任务目标>`、`--topic`、两侧模型、`--profile`、`--rca-file`、`--context <路径,…>`、`--only <一侧>`、`--allow-single` | 双审 → 修订根因结论 | **等待人工审批** |
@@ -1483,8 +1492,9 @@ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起�
 
 ```mermaid
 stateDiagram-v2
-    [*] --> S0_预检
-    S0_预检 --> S1_起草计划
+    [*] --> S0_5_解析主题与参数
+    S0_5_解析主题与参数 --> S0_6_预检: 入选集合已解析
+    S0_6_预检 --> S1_起草计划
     S1_起草计划 --> S2_计划双审: 冻结送审包
     S2_计划双审 --> S3_修订计划: 两份意见齐备
     S3_修订计划 --> S4_裁决校验
@@ -1505,7 +1515,8 @@ stateDiagram-v2
 
 | 步 | 执行者 | 产出 | 关键细节 |
 | :--- | :--- | :--- | :--- |
-| S0 | `trivium preflight` | — | 见 8.1；通过时念 `warnings`（v1.3.41） |
+| S0.5 | `trivium topic resolve --stage all` | 主题、焦点、任务目标、入选集合 `critics`、`allow_single` 等 | 纯只读；输出的 `critics` 是**两轮共用**的入选集合，S0.6 / S2 / S6 都无条件照传（EV-125，v1.3.42） |
+| S0.6 | `trivium preflight --stage all --critics …` | — | 见 8.1；**在解析之后**，带上 S0.5 的入选、档位与模型覆盖，查全部三个阶段入选各侧的 slug 与探活——用户显式加进来的一家不在这里查，就要到 S6 才暴露（EV-125 前为 S0，排在解析之前、只查缺省集合）；通过时念 `warnings`（v1.3.41）；推导出的主题在本步通过后才回显确认 |
 | S1 | Driver | `plan/<日期>-<主题>-claude.md` | 由 Driver 用 Write 落盘；`archive` 事后校验命名合规与非覆盖 |
 | S2 | `trivium review --stage plan` | 两份审查文档 + `_meta/` | 见第 9、10、11 章；`--start` 返回的 `warnings` 在开场播报里念出（v1.3.41） |
 | S3 | Driver | `plan/…-revised-claude.md` | 必须逐条裁决（6.6） |
@@ -2833,7 +2844,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | FR-08 工件命名 | P0 | `<日期>-<主题>[-r<N>][-revised\|-response]-<角色>.md` | `archive` | 6.2 |
 | FR-09 统一归档与主题子目录 | P0 | `.reviews/<主题>/<阶段>/` | `archive` | 6.1、6.2 |
 | FR-10 背靠背隔离 | P0 | 四道机制（独立进程 / 延迟落盘 + 项目外运行目录 / 历史产出三层屏蔽 / 只读指纹） | `freeze`、`guard` | 10.1 |
-| FR-11 全流程顺序 | P0 | 命令 A 状态机 S0～S10 | `cli`、命令模板 | 8.2 |
+| FR-11 全流程顺序 | P0 | 命令 A 状态机 S0.5～S10（EV-125 前为 S0～S10） | `cli`、命令模板 | 8.2 |
 | FR-12 四条命令 | P0 | `/dual-run` `/dual-review-plan` `/dual-review-code` `/dual-review-bug`（用户级入口 skill） | 入口 skill | 第 7 章 |
 | FR-13 意见可裁决 | P1 | `trivium.review.v1` 七字段必填 + 编号前缀隔离 | `parse` | 6.5 |
 | FR-14 逐条裁决 | P1 | 接受/驳回/暂缓 + 理由 + 落点，`gate` 硬校验（空洞理由与共同 blocker 默认 warning） | `gate` | 6.6、8.6 |
@@ -3315,6 +3326,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.42** | 2026-09-25 | **EV-125：命令 A 接受 `--critics` / `--only` / `--allow-single`，计划审与代码审两轮共用同一组；命令 A 的预检挪到解析之后**（计划 `.reviews/EV-125-命令A支持选侧旗标/`：计划双审 1 轮 13 条全部接受，r2 定稿）。**一、缺口**：M10b 第 2 步取「缺省集合减当轮 Driver」让非 claude Driver 的命令 A 能跑通，但命令 A 拒收选侧旗标（GLM-02），于是非 claude 当 Driver 时 claude 永远入不了选、按轮控制侧数只能改配置；`--allow-single` 不在拒绝之列，却被 S2 / S6 的交接静默丢弃。**二、改动**：7.1 撤销拒绝段并登记撤销理由与残余（S6 漏传 `critics` 时两轮可能异侧，靠开场播报与两份留痕的 `critics_selected` 发现）；命令表 `/dual-run` 行补齐选侧旗标并改掉 `--model-gemini` / `--model-glm` 的旧口径；8.2 状态机补 S0.5 解析、原 S0 预检改为解析之后的 S0.6——`review --start` 只查当阶段 slug 且不探活，显式加进来的一家不在开跑前查就要到 S6 才暴露。**三、不改**：`critics.ts` 的判定与缺省减 Driver、`review --start`、B / C / D 的预检次序（同形缺口代价低，登记 BACKLOG）。 |
 | **v1.3.41** | 2026-09-25 | **EV-123：副本源缺失时，预检与 `review --start` 给只警告的提示；预检与 `--start` 的警告有了结构化标记与转述约定**（计划 `.reviews/EV-123-预检提示副本源缺失/`：计划双审两轮，r1 18 条、r2 14 条全部接受，r3 定稿）。**一、缺口**：EV-122 的收尾播报要回读到生效模型才出声，而副本源在不在拉起前就知道——EV-112 E2 因此白跑一整轮；另外预检的 `ok: true` 警告项与普通通过项同形，skill 只约定「失败则转述」，C5 那条运行期选模警告自 EV-82 第三段起从未有转述约定。**二、改动**：`zcodeOverrideSourcePath()` 成为审查运行（适配器侧）副本源路径的唯一出处（`prepareZcodeHome` 缺省值、探活指纹、适配器成员三处共用；探针臂的 `ZCODE_CLI_CONFIG` 未并入）；`CriticAdapter` 加可选成员 `modelOverrideSource()`，预检按能力判侧；新检查 `checkModelOverrideSource` 在预检 ④″ 与 `startRun`（FR-23 跳过分支之后、派生之前，按当轮 `sides`）各调一次；`CheckResult.warn` 与 `PreflightResult.warnings`（8.1「警告这一级」），`checkModelSlugs` 在未实际校验 / 回落时置 `warn`；预检与 `--start` 的 `--json` 恒带 `warnings`；四条 skill 的预检步骤与开场播报各补转述句（7.4、8.2）；桩注入配置可声明 `modelOverrideSource`（只服务测试）。8.1 表补上 C5、版本漂移覆盖面、探活已跳过三行欠账。**三、计划双审要点**：r1 只定了路径放哪、没定预检怎么认出哪一侧是 zcode（CODEX-01 ≡ GLM-02）→ 可选成员判侧；r1 否决「在 `--start` 再报」的理由对命令 A 不成立、预检选侧不等于当轮选侧（GLM-01、CODEX-02）→ 翻转为同一函数两个入口；措辞删去「FR-06 / NFR-06 不成立」与「跑完一定告警」两处断言（CODEX-03 ≡ AGY-01）；r2 指出 warn 口径按 ⚠️ 前缀划界漏掉 slug 的内嵌行（三侧同指）、`--start` 用例无注入通道（CODEX-01 ≡ GLM-04）、契约用例漏 dual-run（三侧同指）。**不做**：不拒跑、不在拉起前阻断；同步 `review --stage` 不提示；不扩到三家（EV-91）。**四、验证**：单元、预检与 `--start` 真实子进程（全桩、零配额）、skill 契约全目录扫描；变异装置 12 / 12 加手工 P7 3 / 3，证据 `doc/05_testing/evidence/ev123-mutation-20260925/`；零配额验收 E1～E3（空 HOME 下拉起安装副本，不挪用户文件），证据 `doc/05_testing/evidence/ev123-acceptance-20260925/`。**五、代码双审 r1**（codex 3 minor + 1 nit、gemini 1 major、glm 1 minor + 1 nit，7 条全部接受）：`startRun` 的复查原先单独包了只放锁的 `catch`，而此刻闸门已是 `running`，挪进主 `try` 继承闸门回收（三侧同指；今天抛不出，属潜伏缺陷）；「警告这一级」口径改为按判据、补两格「不标」（未入选侧提示、探针部分过期行）；「唯一出处」收窄到适配器侧；写明同步 `review --stage --json` 的 `warnings` 与 `--start` 同键不同形 |
 | **v1.3.40** | 2026-09-25 | **EV-122：审查运行没做模型覆盖、实际模型与请求不同时，`guard` 播报**（计划 `.reviews/EV-122-未受控模型播报/`：计划双审 1 轮 13 条，12 条接受、1 条暂缓，r2 定稿）。**一、缺口**：EV-112 E2 实测副本源缺失时 glm 侧跑在个人配置默认的 qwen3.8-max 上，`model_override_applied` 因「没尝试覆盖」而缺席，`guard` 一句没说。**二、改动**：`prepareZcodeHome` 三个 `global` 出口各给结构化成因 `cause`；新纯函数 `decideModelUnenforced` 与 `decideModelOverride` 并列且互斥，产出 `critics.<id>.model_unenforced`（6.7.1 新增，进 run.json）；`guard` 播报一句、按 `cause` 给排查指向，不判失守、不阻断；预检 `checkZcodeRuntimeSelection` 的指向句补上新通道。不取「让 `model_override_applied` 在没做覆盖时也记 false」（两种成因同形）与「`guard` 自己比 `model_requested` / `model_effective`」（判据归适配器）。**三、计划双审要点**：接线第二参必须取请求原值而非恒为 null 的 `home.qualified`（CODEX-03 ≡ AGY-01）；成因不靠匹配中文散文（CODEX-02）；文案只陈述事实，限定失败那一支跑的不是 CLI 全局默认（CODEX-06）。三家（codex / agy / claude）同类缺口不扩入本题，补记 EV-91；预检期提示登记 EV-123 候选；与 `unsupported_override` 的关系补记 EV-30 ⑦。**四、验证**：纯函数、`prepareZcodeHome` 成因、`run()` 两支、守卫、预检与 run.json 集成用例；变异九条，证据 `doc/05_testing/evidence/ev122-mutation-20260925/`；零配额验收以 E2 的真实形态喂判定与播报，证据 `doc/05_testing/evidence/ev122-acceptance-20260925/`。**五、代码双审 r1**（codex 1 nit、gemini 0 条、glm 解析回退含 2 minor + 1 info，全部接受）：`unenforcedHint` 补 `default` 分支，两值之外的 `cause`（只可能来自未校验的桩注入）不再把字面量 `undefined` 拼进播报，`never` 保住编译期穷尽（CODEX-01，变异 N10）；schema 的缺席说明补「请求为空」；`reason` 可能含副本源目录清单与 HOME 绝对路径、随归档持久化，写明为有意接受的内容面，不截断 |
 | **v1.3.39** | 2026-09-25 | **EV-112：审查运行的 CLI 日志、rollout、会话库与存储根落进运行目录**（计划 `.reviews/EV-112-无副本审查运行载体落点/`：计划双审 2 轮 26 条全接受，r3 定稿；送审前零配额实测 E0）。**一、现象比登记时大**：无副本的审查运行（副本源缺失；计划写的另一成因「未指定模型」经 E2 前核实在派发前即被拒、走不到）把 log、rollout、会话库、artifacts、workflow、memories 全部留在真实 `~/.zcode`，不止日志。ZCode 0.16.9 包内核出三条取值链：日志直读 `ZCODE_LOG_DIR`（只认 HOME）；存储根 `storage.dir` 经配置分层的 Env 层取 `ZCODE_STORAGE_DIR`（rollout 等都在它下面）；会话库 `storage.sessionDbPath` 缺省按 HOME 展开、Env 层按后缀认 `SESSION_DB_PATH` / `SESSION_DB`（包里无完整字面，EV-110 按字面 grep 漏了）。**二、改动**：审查运行两支都**设**三个落点键（`zcodeStorageRedirectEnv`，入参是与 HOME 同层的根），指到 `zcodeHomeUnder(sideDir)` 下与副本相同的布局；清除面由四键扩为十一键（七个目录 / 路径键 + 四个落点开关键 `ZCODE_RUNTIME_ENV` / `ZCODE_BETA` / `ZCODE_ENV` / `ZCODE_MESSAGE_ENABLED`，后者是计划双审两轮与复核追出的启动期落点改写）；跑后回读不再回落 `os.homedir()`。**三、落点自检**：`checkZcodeCarriers` 合取判「日志有本次 sessionId」与「rollout 在」，无副本支反向核真实 HOME 的日志（本次拉起后改过的文件）与 rollout 两项；结果进 run.json（6.7.1 新增 `critics.<id>.carriers_landed`），`guard` 播报、不阻断；只覆盖日志与 rollout 两类载体。回读改为读运行目录日志目录下全部文件，与自检同一个文件集合。**三之一、代码双审 r1（6 条全接受，codex 1 条 major）**：反向核原先只核 rollout，「日志键单独失效」会把日志回落真实 HOME 而记成没泄漏（CODEX-01 ≡ GLM-01），`leaked_to_home` 由布尔改为 `{ log, rollout }`；回读只取最新文件与自检扫全部文件不一致（CODEX-02）；「一律落进运行目录」的宣称收窄为按载体列举（CODEX-03）。同轮实证 R7：旧构建不设存储根，送审包里的 `…/zcode-beta.app` 字面经 `--prompt` 命中 argv 判据，glm 副本 HOME 的 rollout / memories / plugins 落进 `.zcode-beta/`，rollout 出了回读目录，该侧因此被判证据不足。**四、doctor**：宿主预置十一键任一出信息级 note（只报键名）；探针入口命中 beta 的 argv 判据另出 note。**五、验证**：新增 `test/unit/zcode-carriers.test.ts`（按包内取值链落盘的假入口，含全采纳 / 半采纳 / 全不采纳 / 不写四种形态与真实 HOME 诱饵）与 run.json 组装集成用例；十一键全等断言逐字写出、不从常量派生。变异十三条，证据 `doc/05_testing/evidence/ev112-mutation-20260925/`。**六、残余**：探活与 doctor 探针仍在真实 HOME 下跑（不含送审内容）；beta 的 argv 触发清键挡不住（审查运行由存储根早退挡住）；运行目录里 db / plugins 不扫、其余命中即删，幸存内容随保留期整删；包内不经三键的 `yas`（workspace-hook trust store）与 `e4s`（rollout 的 `homedir()` 兜底）未核是否在 `--prompt` 形态下被走到，不含送审内容。**七、验收**：零配额 E1 九条判据全成立；真实配额 E2（run `20260924T172304Z`，单侧 glm，审查运行期间暂挪副本源进入无副本支）核实日志、rollout、会话库、memories 落进运行目录，落点自检全真无泄漏，真实 HOME 按内容核零写入；artifacts / workflow 本轮未产生，仍只有静态读数。E2 同时实测到无副本支的 glm 侧跑的是个人配置默认模型（本机 qwen3.8-max），登记 EV-122。读数见 `doc/05_testing/evidence/ev112-acceptance-20260925/` |

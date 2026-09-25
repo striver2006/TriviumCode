@@ -1,0 +1,37 @@
+# EV-125 契约源变异 · 2026-09-25T10:58:31.520Z
+目标：skills-src/commands/run.contract.md（基线 sha256 539c60f1902a）
+套件：dist/test/test/contract/skill-flag-parity.test.js、dist/test/test/contract/entry-render-parity.test.js
+基线：fail=0；全部 find 恰好命中一处
+
+C1 ✓ 咬住（fail=5）——删掉 S2 交接里的 --critics 那一条
+   期望红：的交接各自点名入选、档位、模型覆盖
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | codex/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | gemini/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | glm/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可）
+C2 ✓ 咬住（fail=5）——S6 的透传清单去掉 --critics / --allow-single
+   期望红：的交接各自点名入选、档位、模型覆盖
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | codex/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | gemini/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | glm/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可）
+C3 ✓ 咬住（fail=5）——S2 交接只传 --critics、不提 --allow-single
+   期望红：的交接各自点名入选、档位、模型覆盖
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | codex/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | gemini/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | glm/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可）
+C7 ✓ 咬住（fail=5）——删掉 S0.6 交接里「profile / models 怎么传」那一条（代码双审 CODEX-01）
+   期望红：的交接各自点名入选、档位、模型覆盖
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | codex/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | gemini/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | glm/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可）
+C8 ✓ 咬住（fail=5）——S6 的透传清单去掉 --profile（代码双审 AGY-01 的原形）
+   期望红：的交接各自点名入选、档位、模型覆盖
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | codex/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | gemini/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | glm/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可）
+C9 ✓ 咬住（fail=5）——删掉 S2 交接里的 --profile 那一条（代码双审 AGY-01 的原形）
+   期望红：的交接各自点名入选、档位、模型覆盖
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | codex/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | gemini/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） | glm/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可）
+C4 ✓ 咬住（fail=2）——预检不带 --critics（回到只查缺省集合）
+   期望红：命令 A 先解析、后预检
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | 命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2）
+C5 ✓ 咬住（fail=3）——预检挪回解析之前（在状态机开头放一条预检命令）
+   期望红：命令 A 先解析、后预检
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | --driver <自家 id>：次数等于应注入的调用数，且不出现别家 id | 命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2）
+C6 ✓ 咬住（fail=5）——删掉 S0.5 字段清单里的 critics 条（整篇不再有「resolve 输出的 `critics`」）
+   期望红：dual-run：正文要交代把 resolve 输出的 critics 透传下去
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | codex/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | gemini/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | glm/dual-run：正文要交代把 resolve 输出的 critics 透传下去
+C10 ✓ 咬住（fail=5）——删掉 S0.5 之后的 notes 转述约定（代码双审 CODEX-07）
+   期望红：交代 resolve 输出的 notes 要逐条念给用户
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：交代 resolve 输出的 notes 要逐条念给用户 | codex/dual-run：交代 resolve 输出的 notes 要逐条念给用户 | gemini/dual-run：交代 resolve 输出的 notes 要逐条念给用户 | glm/dual-run：交代 resolve 输出的 notes 要逐条念给用户
+
+收尾：恢复件与基线逐字节一致；结论 10 / 10 咬住

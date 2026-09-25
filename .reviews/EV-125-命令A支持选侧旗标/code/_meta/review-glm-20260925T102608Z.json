@@ -1,0 +1,4 @@
+{
+  "parse_fallback": true,
+  "raw": "所有核实完成。汇总审查发现并提交审查结论。\n\n**审查过程小结**：我读了被审 diff 全文（2039 行）、`src/trivium/topic-args.ts` 与 `skills-src/commands/run.contract.md` 全文、`test/contract/skill-flag-parity.test.ts` 全文，并沿调用链核对了 `cli.ts` 的 `cmdPreflight`（确认 `--driver`/`--critics`/`--profile`/`--model-*` 都被预检入口认，且预检侧同样过 `assertModelOverrideKeys` 的同组判定）、`preflight.ts` 的输入接口、`topic-args.test.ts` 的新用例 helper、变异与验收证据，最后 grep 排查了设计文档、MANUAL、QUICKSTART、cli.ts USAGE、主 SKILL.md、`skills-src/` 的旧口径与 `MODEL_*_DEFAULT` 残留。五个审查焦点逐项核实完毕，未发现 blocker/major 级问题；发现 3 条 minor、2 条 nit，结论为 approve-with-nits。"
+}

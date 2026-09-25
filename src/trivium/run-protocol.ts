@@ -345,7 +345,7 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
    * ── 副本源复查（EV-123）：与预检 ④″ 是**同一个函数**，这里按当轮 `sides` 再调一次 ──
    *
    * 预检按它自己的选侧（skill 第 1 步不传 `--critics`，取缺省集合），时点也早于这里
-   * （命令 A 的 S0 与 S2 之间隔着起草）。决定烧不烧配额的是这里，所以在跳过分支之后、派生之前复查。
+   * （命令 A 的 S0.6 预检与 S2 之间隔着起草）。决定烧不烧配额的是这里，所以在跳过分支之后、派生之前复查。
    * `rc.adapters` 已过 `resolveAdapters`，桩注入在这里同样生效。
    * 同步 `review --stage` 不走这里、不做这项复查：手工调试入口，skill 不走它；收尾 guard 仍在。
    *

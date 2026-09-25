@@ -295,26 +295,65 @@ test('--focus 与 prompt_hint 的对应统一（AGY-04）', async () => {
  */
 
 /*
- * 命令 A 明确拒绝选侧旗标（审查意见 GLM-02）。
+ * ── 命令 A 接受选侧旗标（EV-125）──
  *
- * 修复前：`NAMED_FLAGS` 不分 scope，`/dual-run --critics glm` 会被解析成功，
- * 然后被 S2/S6 的交接说明静默丢弃（那里只交代 focus / context / models / profile）。
- * **拼错的当场退 64，写对的反而无声消失**——「错的报错、对的消失」。
+ * 此前这里钉的是「命令 A 明确拒绝 `--critics` / `--only`」（审查意见 GLM-02）：旗标会被解析成功、
+ * 然后被 S2/S6 的交接静默丢弃，于是改为当场退 64。EV-125 定了「两轮共用同一组」的语义，
+ * 契约在 S0.5 / S0.6 / S2 / S6 显式透传 `critics` 与 `allow_single`，拒绝随之撤销。
+ *
+ * 放开的是**旗标**，不是**判定**：入选仍走 `resolveCriticSelection` 那一处，
+ * 含当轮 Driver、重复、未启用照旧退 64（下面第三条钉住）。
  */
-for (const flag of [['--critics', 'glm'], ['--only', 'glm']]) {
-  test(`命令 A 拒绝 ${flag[0]}：明确报错，不静默丢弃`, async () => {
-    const ctx = await fakeCtx();
-    await assert.rejects(
-      resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', ...flag] }),
-      (e: { code?: number; message: string }) => {
-        assert.equal(e.code, EXIT.USAGE);
-        assert.match(e.message, /命令 A/);
-        assert.match(e.message, /dual-review/, '要告诉用户改用哪条命令');
-        return true;
-      },
-    );
+test('命令 A 接受 --critics：入选即所写', async () => {
+  const ctx = await fakeCtx();
+  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', '--critics', 'glm'] });
+  assert.deepEqual(r.critics, ['glm']);
+  assert.equal(r.only, null);
+});
+
+test('命令 A 接受 --only：并入 critics，输出的 only 恒为 null（与 B/C/D 同一处理）', async () => {
+  const ctx = await fakeCtx();
+  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', '--only', 'glm'] });
+  assert.deepEqual(r.critics, ['glm']);
+  assert.equal(r.only, null, '两个字段都非空时，契约照抄会同时拼出 --critics 与 --only 而撞上互斥');
+});
+
+test('命令 A 的 --critics 含当轮 Driver ⇒ 退 64：放开的是旗标，不是判定', async () => {
+  const ctx = await fakeCtx();
+  await assert.rejects(
+    resolveTopicArgs({
+      ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', '--driver', DEFAULT_DRIVER, '--critics', DEFAULT_DRIVER],
+    }),
+    (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.USAGE, e.message);
+      assert.doesNotMatch(e.message, /命令 A（全流程）不接受/, '撞上的应当是选侧判定，不是已撤销的旗标拒绝');
+      return true;
+    },
+  );
+});
+
+test('命令 A 的 --allow-single ⇒ allow_single 为 true（契约据此在 S2 / S6 透传）', async () => {
+  const ctx = await fakeCtx();
+  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['把登录改造为 OIDC', '--allow-single'] });
+  assert.equal(r.allow_single, true);
+  assert.equal(r.task_goal, '把登录改造为 OIDC', '布尔旗标不得吞掉后面的正文');
+});
+
+test('命令 A：非缺省 Driver 下用 --critics 把原 Driver 加进来，并给它指定模型 ⇒ 通过（EV-125 缺口 1）', async () => {
+  assertSelectableUsable();
+  const other = SELECTABLE[0]!;
+  const ctx = await fakeCtx();
+  // 前提：原 Driver 能入选、却不在缺省集合里——EV-125 之前命令 A 对它没有任何入选出口
+  assert.ok(selectableCritics(ctx.config, other).includes(DEFAULT_DRIVER), `前提：${DEFAULT_DRIVER} 能当审核者`);
+  assert.ok(!ctx.config.review.default_critics.includes(DEFAULT_DRIVER), `前提：${DEFAULT_DRIVER} 不在缺省集合里`);
+  const r = await resolveTopicArgs({
+    ctx, scope: 'all',
+    rawArgs: ['做个功能', '--driver', other, '--critics', DEFAULT_DRIVER, `--model-${DEFAULT_DRIVER}`, 'm-9'],
   });
-}
+  assert.equal(r.driver, other);
+  assert.deepEqual(r.critics, [DEFAULT_DRIVER]);
+  assert.equal(r.models[DEFAULT_DRIVER], 'm-9');
+});
 
 test('B/C/D 不受影响：同样的旗标在这里照常生效', async () => {
   const ctx = await fakeCtx();
@@ -703,7 +742,7 @@ test('topic resolve：命令 A 接受 --driver 并回显（M10b 第 2 步放开�
   const ctx = await fakeCtx();
   /*
    * **缺省配置、不改 default_critics**：`other` 本身就在缺省审核者集合里。
-   * 命令 A 不收 `--critics`，此前这一格退 64、没有出口（M10b 第 2 步核出）；
+   * 命令 A 当时不收 `--critics`（EV-125 起才收），此前这一格退 64、没有出口（M10b 第 2 步核出）；
    * 用户拍板后选侧对**缺省**集合减去当轮 Driver（`critics.ts`），这里钉住放开之后的真实路径。
    */
   assert.ok(ctx.config.review.default_critics.includes(other), '前提：当轮 Driver 在缺省集合里');
@@ -814,6 +853,11 @@ test('命令 A 缺省路径：换了 Driver 后缺省集合外的那一家（原
     (e: { code?: number; message: string }) => {
       assert.equal(e.code, EXIT.USAGE, e.message);
       assert.match(e.message, /本轮没有入选/);
+      /*
+       * 报错给的出口是「用 --critics 把它列进来」。EV-125 之前这句对命令 A 是错的（A 不收 --critics，
+       * 照做会撞上旗标拒绝）；放开之后它成立——上一条「把原 Driver 加进来」的正例就是照这个出口走通的。
+       */
+      assert.match(e.message, /--critics/);
       return true;
     },
   );

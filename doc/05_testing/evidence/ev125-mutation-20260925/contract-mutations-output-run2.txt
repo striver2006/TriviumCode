@@ -1,0 +1,25 @@
+# EV-125 契约源变异 · 2026-09-25T10:17:12.952Z
+目标：skills-src/commands/run.contract.md（基线 sha256 6ad730c1d77e）
+套件：dist/test/test/contract/skill-flag-parity.test.js、dist/test/test/contract/entry-render-parity.test.js
+基线：fail=0
+
+C1 ✓ 咬住（fail=5）——删掉 S2 交接里的 --critics 那一条
+   期望红：S2 与 S6 的交接都点名 --critics 与 --allow-single
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | codex/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | gemini/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | glm/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single
+C2 ✓ 咬住（fail=5）——S6 的透传清单去掉 --critics / --allow-single
+   期望红：S2 与 S6 的交接都点名 --critics 与 --allow-single
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | codex/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | gemini/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | glm/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single
+C3 ✓ 咬住（fail=5）——S2 交接只传 --critics、不提 --allow-single
+   期望红：S2 与 S6 的交接都点名 --critics 与 --allow-single
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | codex/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | gemini/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single | glm/dual-run：S2 与 S6 的交接都点名 --critics 与 --allow-single
+C4 ✓ 咬住（fail=2）——预检不带 --critics（回到只查缺省集合）
+   期望红：命令 A 先解析、后预检
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | 命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2）
+C5 ✓ 咬住（fail=3）——预检挪回解析之前（在状态机开头放一条预检命令）
+   期望红：命令 A 先解析、后预检
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | --driver <自家 id>：次数等于应注入的调用数，且不出现别家 id | 命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2）
+C6 ✓ 咬住（fail=5）——删掉 S0.5 字段清单里的 critics 条（整篇不再有「resolve 输出的 `critics`」）
+   期望红：dual-run：正文要交代把 resolve 输出的 critics 透传下去
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | claude/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | codex/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | gemini/dual-run：正文要交代把 resolve 输出的 critics 透传下去 | glm/dual-run：正文要交代把 resolve 输出的 critics 透传下去
+
+收尾：恢复件与基线逐字节一致；结论 6 / 6 咬住

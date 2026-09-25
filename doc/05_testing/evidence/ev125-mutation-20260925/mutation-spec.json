@@ -1,0 +1,54 @@
+{
+  "targets": [
+    "src/trivium/topic-args.ts",
+    "src/entry-render.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/topic-args.test.js",
+    "dist/test/test/integration/driver-flag.test.js",
+    "dist/test/test/contract/entry-render-parity.test.js",
+    "dist/test/test/contract/skill-flag-parity.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "恢复命令 A 对 --critics / --only 的拒绝 ⇒「命令 A 接受 --critics」「接受 --only」「把原 Driver 加进来」红",
+      "file": "src/trivium/topic-args.ts",
+      "find": "  const explicitDriver = (named['driver'] ?? '').trim()\n",
+      "replace": "  if (scope === 'all' && (named['critics'] || onlyRaw)) {\n    throw new TriviumError(EXIT.USAGE, '命令 A（全流程）不接受选侧旗标');\n  }\n  const explicitDriver = (named['driver'] ?? '').trim()\n",
+      "expect": "dist/test/test/unit/topic-args.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "拒绝段只拒 --only ⇒「命令 A 接受 --only」红",
+      "file": "src/trivium/topic-args.ts",
+      "find": "  const explicitDriver = (named['driver'] ?? '').trim()\n",
+      "replace": "  if (scope === 'all' && onlyRaw) {\n    throw new TriviumError(EXIT.USAGE, '命令 A（全流程）不接受 --only');\n  }\n  const explicitDriver = (named['driver'] ?? '').trim()\n",
+      "expect": "dist/test/test/unit/topic-args.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "命令 A 选侧不用最终 Driver（回落缺省 Driver）⇒「非缺省 Driver 下把原 Driver 加进来」「命令 A 接受 --driver 并回显」红",
+      "file": "src/trivium/topic-args.ts",
+      "find": "    only: onlyRaw || null,\n    driver,\n  });",
+      "replace": "    only: onlyRaw || null,\n    driver: scope === 'all' ? DEFAULT_DRIVER : driver,\n  });",
+      "expect": "dist/test/test/unit/topic-args.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "模型与选侧槽位退回缺省集合（MODEL_HINT_DEFAULT 的语义）⇒ EV-61 断言（论域含 run）与盘上产物一致性红",
+      "file": "src/entry-render.ts",
+      "find": "  const critics = CRITIC_AGENT_IDS.filter((id) => id !== carrier.agent);",
+      "replace": "  const critics = AGENTS.filter((a) => a.defaultSelected && a.id !== carrier.agent).map((a) => a.id);",
+      "expect": "dist/test/test/contract/entry-render-parity.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "选侧挪到两阶段 Driver 比对之前 ⇒ 集成用例「Driver 冲突时带上 --critics，先报的仍是 Driver 冲突」红",
+      "file": "src/trivium/topic-args.ts",
+      "find": "    : null;\n\n  /*\n   * **入选来自 `--only` 时",
+      "replace": "    : null;\n  resolveCriticSelection(ctx.config, { critics: named['critics'] ?? null, only: onlyRaw || null, driver: explicitDriver ?? DEFAULT_DRIVER });\n\n  /*\n   * **入选来自 `--only` 时",
+      "expect": "dist/test/test/integration/driver-flag.test.js"
+    }
+  ]
+}

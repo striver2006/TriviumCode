@@ -280,6 +280,26 @@ test(
 );
 
 test(
+  '命令 A：Driver 与某阶段冲突时带上 --critics，先报的仍是 Driver 冲突（选侧在其后，EV-125）',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    /*
+     * EV-125 放开命令 A 的 `--critics` 时，前提之一是「两阶段 Driver 比对先于选侧」：
+     * 那保证了 S0.5 解析出的同一组对 plan / code 都合法。这里用一个**会被选侧判定拒掉**的 `--critics`
+     * （含当轮 Driver 自己）来钉次序——若有人把选侧挪到比对之前，报的就成了「不得入选当轮 Driver」，
+     * 而不是点名 code 阶段的冲突。
+     */
+    assertSelectableUsable(2);
+    const [a, b] = [SELECTABLE[0]!, SELECTABLE[1]!];
+    const { root } = await makeFixture({ topic: TOPIC, draft: false });
+    await claimStage(root, 'code', b);
+    const r = await resolveAll(root, ['--driver', a, '--critics', a]);
+    assert.equal(r.code, EXIT.USAGE, r.out);
+    assert.match(r.out, /code 阶段/);
+  },
+);
+
+test(
   '命令 A：省略 --driver 而两个阶段的权威值不同 ⇒ 退 64，不挑一个继承',
   { skip: bundleMissing && bundleSkipReason },
   async () => {

@@ -138,7 +138,7 @@ test('参数写法：substitute 载体用 $ARGUMENTS；transcribe 载体一处�
 /**
  * 每条命令应注入 `--driver` 的调用数（计划 r5 §5.1 ③ / §5.3）。
  *
- *   run         S0 预检、S0.5 解析、S0.8 认领 plan、S2 `--start`、S4.5 认领 code、S6 `--start`
+ *   run         S0.5 解析、S0.6 预检、S0.8 认领 plan、S2 `--start`、S4.5 认领 code、S6 `--start`
  *   review-plan / review-bug  第 0 步认领、预检、解析、两条解析样例、`--start`
  *   review-code 同上去掉认领（code 阶段的 Driver 产出在 `--start` 之后，`--start` 自带比对）
  *
@@ -187,6 +187,24 @@ test('认领步骤：plan / bug / run 在「写原稿」之前；run 在 S5 之�
   }
 });
 
+test('命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2）', () => {
+  /*
+   * 预检要查的是本轮实际入选的那几家：用户用 `--critics` 加进来的一家若缺 code 阶段 slug 或没登录，
+   * 不在开跑前查出来，就要到 S6（编码已做完）才暴露。次序反了、或预检不带 `--critics`，
+   * `--stage all` 这道保证就对显式选侧失效——两处任改其一都应当红。
+   */
+  const runs = rendered.filter((r) => r.command === 'run');
+  assert.equal(runs.length, src.carriers.length, '论域塌了');
+  for (const r of runs) {
+    const resolveAt = r.content.indexOf('TV topic resolve --stage all');
+    const preflightLine = r.content.split('\n').find((l) => l.includes('TV preflight --stage all'));
+    assert.ok(resolveAt >= 0 && preflightLine, `${r.relPath}：缺解析或预检命令`);
+    assert.ok(resolveAt < r.content.indexOf(preflightLine), `${r.relPath}：预检须在解析之后`);
+    assert.match(preflightLine, /--critics /, `${r.relPath}：预检须带 --critics`);
+    assert.ok(r.content.indexOf(preflightLine) < r.content.indexOf('topic claim'), `${r.relPath}：预检须在认领之前`);
+  }
+});
+
 test('护栏注入段与 r10 §3.1.3 的表一致', () => {
   // 表本身先钉住：它来自注册表派生，派生规则或登记值一改，这里先红
   const table = Object.fromEntries(AGENTS.map((a) => [a.id, guardProfileOf(a)]));
@@ -222,7 +240,10 @@ test('调用写法按载体渲染：codex 用 $名字，另两家与 claude 各�
 });
 
 test('模型与选侧取值由注册表派生，不给当轮 Driver 自己留槽位（EV-61）', () => {
-  for (const r of rendered.filter((x) => x.command.startsWith('review-'))) {
+  // 论域含 `run`（EV-125）：命令 A 自此与 B / C / D 同一组槽位，而它的参数写法正是历史上漏过一侧的那一处
+  const checked = rendered.filter((x) => x.command.startsWith('review-') || x.command === 'run');
+  assert.equal(checked.filter((x) => x.command === 'run').length, src.carriers.length, '论域塌了：run 没进来');
+  for (const r of checked) {
     const hint = r.content.split('\n').find((l) => l.startsWith('argument-hint:') || l.includes('参数写法：`'))!;
     const models = [...hint.matchAll(/--model-([a-z]+)/g)].map((m) => m[1]!);
     assert.ok(!models.includes(r.agent), `${r.relPath}：不该有 --model-${r.agent}`);

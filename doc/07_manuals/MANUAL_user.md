@@ -246,10 +246,14 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 ```
 /dual-run <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>]
-          [--profile <名称>] [--model-gemini <slug>] [--model-glm <id>]
+          [--profile <名称>] [--model-<审核者 id> <模型>]
+          [--critics <id,…>] [--only <一侧>] [--allow-single]
 ```
 
 出方案 → 双审 → 修订 → 编码 → 双审 → 应答 → 改码 → 真实执行编译测试。
+
+`--critics` / `--only` / `--allow-single` 的含义见 4.7；在 `/dual-run` 里**计划审与代码审两轮共用同一组**。
+写了 `--critics` 时，开跑前的预检查的就是这几家（三个阶段的模型与登录都在开跑前查）。
 
 **A 是唯一不设人工闸门的命令**——它跑完整条链，中途不停。正文是**任务目标**（这次要达成什么），`--focus` 是可选补充。
 
@@ -260,8 +264,8 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 ```
 /dual-review-plan <审查焦点提示语> [--goal <任务目标>] [--topic <主题>]
                   [--context <路径,…>] [--profile <名称>]
-                  [--model-gemini <slug>] [--model-glm <id>]
-                  [--plan-file <路径>] [--critics <id,…>] [--only gemini|glm] [--allow-single]
+                  [--model-<审核者 id> <模型>]
+                  [--plan-file <路径>] [--critics <id,…>] [--only <一侧>] [--allow-single]
 ```
 
 **对「已有」计划做双审**——所以先得有一份草稿落在 `.reviews/<主题>/plan/<日期>-<主题>-claude.md`。让 Claude Code 写好再发这条命令。
@@ -312,6 +316,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 ### 4.7 `--critics`（选审核者）与 `--allow-single`（降级）
 
 **这是两件不同的事**，本手册曾把它们混为一谈：前者是「本轮想让谁审」，后者是「有人没审成时怎么办」。
+四条命令都收这组旗标；`/dual-run`（命令 A）的计划审与代码审两轮用同一组（EV-125 起，此前命令 A 拒收）。
 
 | | 作用 | 后果 |
 | :--- | :--- | :--- |
@@ -325,7 +330,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 - 不得含当轮 Driver——自己审自己不构成二次审查；
 - 不得重复（`--critics x,x` 多半是笔误，静默去重会悄悄减少侧数）；
 - 个数在 1 到 `review.max_critics` 之间；
-- 不给时取 `review.default_critics`。
+- 不给时取 `review.default_critics`，并**减去当轮 Driver**（缺省集合里的某家当了 Driver，就不审自己）。
 
 **当前可选四家**：`codex`、`gemini`、`glm` 为缺省集合（默认即三侧）；`claude` 已启用为审核者，
 但它是本会话的 Driver，只有 `--driver` 取另一家时才能入选——否则退 64 并告知原因。
@@ -460,12 +465,12 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `flash` | `gemini-3.8-flash-high` | `GLM-5.3-Flash` | 省时省配额 |
 
 单次切换用 `--profile <名称>`；只换某一侧的模型用 `--model-<审核者 id>`（优先级更高），
-当前即 `--model-gemini` / `--model-glm`。
+旗标名随注册表派生，四家皆可，但只对本轮入选的审核者有效（见 §4.7）。
 
 **旗标名按 Agent 注册表派生**，启用第三家时 `--model-<新 id>` 自动可用，不需要改解析器。
 给**本轮没有入选**的 Agent 指定模型会**退 64**——不是静默忽略。分两种：当不了审核者的
 （如 Driver 自身）报错列出当前可用值；能当、但这一轮没选它的（`--critics gemini --model-glm X`，
-或非 claude 当 Driver 时命令 A 里的 `--model-claude`——命令 A 只跑缺省集合）报错列出本轮入选，
+或非 claude 当 Driver 时、没写 `--critics` 的命令 A 里的 `--model-claude`——那时只跑缺省集合，已减去当轮 Driver）报错列出本轮入选，
 并提示用 `--critics` 把它加进来。这条报错是刻意的：此前那类写法会被当成正文吞进审查焦点，
 模型覆盖无声丢失，而留痕里看不出你曾经指定过。
 

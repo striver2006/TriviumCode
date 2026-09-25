@@ -1,0 +1,42 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  M1 ✓ 咬住（fail=4）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=2）
+  M7 ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=1）
+{
+  "总数": 5,
+  "咬住": 5,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "恢复命令 A 对 --critics / --only 的拒绝 ⇒「命令 A 接受 --critics」「接受 --only」「把原 Driver 加进来」红",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M2",
+      "desc": "拒绝段只拒 --only ⇒「命令 A 接受 --only」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "命令 A 选侧不用最终 Driver（回落缺省 Driver）⇒「非缺省 Driver 下把原 Driver 加进来」「命令 A 接受 --driver 并回显」红",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M7",
+      "desc": "模型与选侧槽位退回缺省集合（MODEL_HINT_DEFAULT 的语义）⇒ EV-61 断言（论域含 run）与盘上产物一致性红",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "选侧挪到两阶段 Driver 比对之前 ⇒ 集成用例「Driver 冲突时带上 --critics，先报的仍是 Driver 冲突」红",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

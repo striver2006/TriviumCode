@@ -233,13 +233,16 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
   trivium review --status <run_id> [--json]    只读一次状态，不等待
   trivium review --cancel <run_id>             取消运行并回收主题锁
 
-  trivium preflight --stage plan|code|bug|all [--json] [--critics <id,…>] [--skip-auth-check] [--refresh-auth]
+  trivium preflight --stage plan|code|bug|all [--json] [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--skip-auth-check] [--refresh-auth]
       启动预检（FR-18 / AC-16）。失败时**不产生任何工件**。
       --stage all   命令 A 用：校验全部三阶段的模型 slug + 编译测试命令已配置
       --critics <id,…>  本次要用哪几侧。只读能力、模型 slug、探活都只查这几侧；
                         缺省取 review.default_critics。下一步 review --start 选了谁，
                         这里就要传谁——否则那一侧的可用性在预检阶段不被检查
       --profile <名称>  按该档位预检——要校验的是本次实际会用的模型
+      ${CRITIC_AGENT_IDS.map((id) => `--model-${id}`).join(' / ')} <模型>
+                  按该模型预检（口径同 review：只对本轮入选的审核者有效，未入选退 64）。
+                  命令 A 在解析之后预检（EV-125），把 resolve 输出的 models 原样带来
       --driver <id>  当轮 Driver，缺省 ${DEFAULT_DRIVER}。与 review --start 传同一个值：
                   它参与选侧判定，非缺省时预检会多打一行标注
       --refresh-auth  强制重新探活，穿透 TTL 缓存

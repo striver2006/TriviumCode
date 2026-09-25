@@ -107,6 +107,16 @@ for (const { name, agent, content: md } of REVIEW_SKILLS.flatMap(entriesOf)) {
     );
   });
 
+}
+
+/**
+ * 收 `--critics` 的入口：B / C / D 与 `/dual-run`（EV-125 起命令 A 也收）。
+ * 下面两条正文断言原先只对 B / C / D 跑；命令 A 的透传写在 S0.5 / S0.6 / S2 / S6，
+ * 同一族缺口（写了、解析了、交接处没交代）在它身上一样会发生。
+ */
+const CRITICS_RELAY_SKILLS = [...REVIEW_SKILLS, 'dual-run'];
+
+for (const { name, agent, content: md } of CRITICS_RELAY_SKILLS.flatMap(entriesOf)) {
   /*
    * 与 `models` 同款的正文断言（审查意见 GLM-01）。
    *
@@ -138,6 +148,75 @@ for (const { name, agent, content: md } of REVIEW_SKILLS.flatMap(entriesOf)) {
   });
 }
 
+for (const { agent, content: md } of entriesOf('dual-run')) {
+  /*
+   * `allow_single` 是 EV-125 之前命令 A 唯一「解析了却被静默丢弃」的选侧旗标：它不在旗标拒绝之列，
+   * 解析进了 `allow_single`，而 S2 / S6 的交接一句没提。B / C / D 的第 3 步有正文交代，这里补上同一条。
+   */
+  test(`${agent}/dual-run：正文交代把 resolve 输出的 allow_single 透传下去`, () => {
+    assert.ok(
+      /`allow_single`/.test(md) && /--allow-single/.test(md),
+      'dual-run 声明了 --allow-single，但正文没有交代 `allow_single` 怎么传给 S2 / S6——用户要求的降级会被静默忽略。',
+    );
+  });
+
+  /*
+   * 交接点逐段锁（EV-125 变异设计时核出）：上面两条只查「整篇正文里有没有」，
+   * 而 S0.5 的字段清单已经含「resolve 输出的 `critics`」「`allow_single`」——删掉 S2 或 S6 的那一条，
+   * 整篇断言照样绿，两轮里的某一轮就会静默丢掉用户选的侧或降级许可。
+   * 所以切出 S2、S6 两处**交接本身**，逐段要求点名这两个旗标。
+   *
+   * 切的是交接清单，不是整个 `### S2` 节（EV-125 契约变异 C1 / C3 核出）：S2 节里还有一段
+   * 「模型覆盖、档位、入选集合（`--critics`）与降级许可（`--allow-single`）要一并传下去」的总述，
+   * 按整节切时删掉清单里的那一条，这段总述照样让断言绿——正是本条要防的形状。
+   * S2 的交接是「……第 3 步执行 `--start` / `--wait` 循环，但：」之后的那张清单；
+   * S6 的交接是标题下「同 S2（……）」那一段；S0.6 的交接是该节命令代码块之后的那张清单。都到第一个空行为止。
+   *
+   * **三段、各自该有的旗标**（EV-125 代码双审 CODEX-01 ≈ AGY-01 / AGY-02）：第一版只锁 S2 / S6 两段、
+   * 两个旗标，于是 S2 与 S6 都漏了 `--profile`、S0.6 那句「`profile` / `models` 怎么传」整句删掉，套件照样全绿。
+   * 「S0.6 / S2 / S6 必须同一组」这条不变量里，每一项都要有机器看着。
+   *
+   * 锚点不放宽（AGY-02 的前一半未取）：锚点就在本仓自己的契约源里，改写时 `start >= 0` 那一条会响亮失败；
+   * 按第一个空行截断只会让段落更短、断言更严，不会放过缺项。
+   */
+  test(`${agent}/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可）`, () => {
+    const paragraphAt = (start: number, label: string): string => {
+      assert.ok(start >= 0, `找不到 ${label} 的交接起点`);
+      const end = md.indexOf('\n\n', start);
+      return end >= 0 ? md.slice(start, end) : md.slice(start);
+    };
+    const s06 = md.search(/^### S0\.6 /m);
+    assert.ok(s06 >= 0, '找不到 ### S0.6');
+    const fenceOpen = md.indexOf('```', s06);
+    const fenceClose = md.indexOf('\n```\n', fenceOpen + 3);
+    assert.ok(fenceOpen >= 0 && fenceClose >= 0, 'S0.6 的预检命令代码块不在了');
+    const sections: [string, string, RegExp[]][] = [
+      ['S0.6', paragraphAt(md.indexOf('- ', fenceClose), 'S0.6'), [/--critics\b/, /--profile\b/, /--model-/]],
+      ['S2', paragraphAt(md.search(/循环，但：$/m), 'S2'), [/--critics\b/, /--allow-single\b/, /--profile\b/, /--model-/]],
+      ['S6', paragraphAt(md.search(/^同 S2（/m), 'S6'), [/--critics\b/, /--allow-single\b/, /--profile\b/, /模型覆盖/]],
+    ];
+    for (const [name, sec, wants] of sections) {
+      for (const re of wants) {
+        assert.match(sec, re, `dual-run ${name} 的交接没点名 ${re.source}：这一项会在这一步静默丢失`);
+      }
+    }
+  });
+
+  /*
+   * `notes` 的转述约定（EV-125 代码双审 CODEX-07）：命令 A 放开选侧后，`--only` + `--allow-single` 会往 `notes`
+   * 推一条说明；「主题由任务目标推导」「主题异常短」两条本就在同一通道里。契约不交代，它们只停在 `--json` 里。
+   */
+  test(`${agent}/dual-run：交代 resolve 输出的 notes 要逐条念给用户`, () => {
+    assert.match(md, /`notes` 非空时/, 'dual-run 没交代 notes 怎么处理：主题异常短这类提示会被静默吞掉');
+  });
+
+  test(`${agent}/dual-run：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单）`, () => {
+    const known = new Set(resolveNamedFlags());
+    const unknown = declaredFlags(md).filter((f) => !known.has(f));
+    assert.deepEqual(unknown, [], `${agent}/dual-run 声明了 CLI 不认的旗标 ${unknown.map((f) => `--${f}`).join('、')}`);
+  });
+}
+
 for (const { name, agent, content } of REVIEW_SKILLS.flatMap(entriesOf)) {
   test(`${agent}/${name}：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源`, () => {
     const letter = { 'dual-review-plan': 'B', 'dual-review-code': 'C', 'dual-review-bug': 'D' }[name];
@@ -151,7 +230,7 @@ for (const { name, agent, content } of REVIEW_SKILLS.flatMap(entriesOf)) {
 /**
  * `/dual-run` 没有自己的 `--start` 模板——S2/S6 委托给 B/C 的第 3 步执行。
  * 委托的交接处是所有旗标最容易丢的地方：argument-hint 里声明的每一个旗标，
- * 正文里都必须交代它怎么传下去；否则用户传的值在 S0 之后就静默消失。
+ * 正文里都必须交代它怎么传下去；否则用户传的值在 S0.5 之后就静默消失。
  * 这正是 B2 缺口的形状：`--focus` / `--context` 声明了、正文一次没提，
  * 而 S2 委托的 `review --start` 又要求 `--focus`，命令 A 在 S2 必然退 64。
  */
