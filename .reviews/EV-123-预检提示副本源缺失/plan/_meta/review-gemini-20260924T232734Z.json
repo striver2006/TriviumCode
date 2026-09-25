@@ -1,0 +1,83 @@
+{
+  "agreed": [
+    "D1 采用 (a′)（可选成员 modelOverrideSource?() + 适配器导出唯一路径函数）：既消除了 zcode.ts 内部的两处重复字面量，又通过能力判侧避免了在 preflight 中引入厂商硬编码，与 base.ts 现有四个逐侧钩子（normalizeModelForCatalog 等）的架构口径完全一致。",
+    "D2 翻转为在 review --start 复用同一个检查函数：边界剖析深刻透彻，明确了「在拉起后才念出、拦不住拉起但允许立刻 --cancel」的真实时序约束；在 B/C/D 下重复念两次的取舍充分合理（属于异常态下的拉起状态确认），且彻底补齐了 Skill 第 1 步未带 --critics 导致的漏报盲区。",
+    "§3.2 提示文案全面改造为严谨的条件句与引导式表述，删除了关于 FR-06/NFR-06 的绝对性断言，并在 guard 告警指引后明确标注「回读不到生效模型时不出声」的前提条件，彻底消除了上一轮的越界断言。",
+    "验收方案坚持零配额且不挪动用户真实 HOME 文件的原则，通过带 --skip-auth-check 的端到端 CLI 临时 HOME 验收（E3），既防住了配额消耗，又填补了纯函数导入的盲区。"
+  ],
+  "consulted": [
+    ".reviews/EV-123-预检提示副本源缺失/plan/2026-09-25-EV-123-预检提示副本源缺失-r2-claude.md",
+    ".reviews/EV-123-预检提示副本源缺失/plan/2026-09-25-EV-123-预检提示副本源缺失-gemini.md",
+    ".reviews/EV-123-预检提示副本源缺失/plan/2026-09-25-EV-123-预检提示副本源缺失-revised-claude.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/guard.ts",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-run/SKILL.md",
+    "test/unit/preflight.test.ts",
+    "test/integration/codex-wiring.test.ts",
+    "test/integration/stub-agent-kit.test.ts",
+    "test/contract/skill-flag-parity.test.ts",
+    "test/contract/skill-quoting.test.ts",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "读 src/trivium/cli.ts:629-652 与 plan §4.1–§4.2。cli.ts 中 review --start 在 --json 模式下（无论是 finished_inline 还是正常派生）也是通过 emitJson 显式手写每个输出字段。计划 §4.1 为 preflight 补齐了子进程测试与变异 P8，但对 --start 仅在 §4.1 设计了内部函数层的注入用例，未覆盖 cli.ts 的序列化层，§4.2 亦缺少针对 --start 缺少 warnings 映射的变异守卫（P8 仅针对 preflight），加之 §4.3 明确 --start 无真实验收，导致 cli.ts 漏写 warnings 时整条测试链全绿。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §4.1:166 与 §4.2:178（对应 src/trivium/cli.ts:629-652）",
+      "problem": "review --start 的 JSON 映射在 CLI/子进程层无测试与变异守卫，遗留了与 preflight 相同的序列化层盲区。",
+      "severity": "minor",
+      "suggestion": "在 §4.1 补充利用纯文档跳过（FR-23）或 STUB 适配器对 review --start --json 顶层 warnings 字段的 CLI 级子进程断言，并在 §4.2 补充对应的变异守卫（如删去 cli.ts 中 review --start 的 warnings 映射 ⇒ CLI 用例红）。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读 src/trivium/preflight.ts:345-355。checkModelSlugs 在 unverifiable.size > 0（无模型目录可比对、未实际校验）或 fellBack.size > 0（回落到基底目录校验）时，会在 detail 中换行追加带 ⚠️ 的提示行。但因为其首行是 ${scale}（已校验 N 个阶段 × M 侧），不满足计划 §3.3 中「detail 以 ⚠️ 开头」的机械判定，导致这类关键的目录缺失/回落风险既不会标 warn: true，也不会进 PreflightResult.warnings，从而被 Skill 的转述通道漏掉。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §1.2:C11、§3.3:138（对比 src/trivium/preflight.ts:345-355）",
+      "problem": "预检将全标 warn 的口径机械定义为「detail 以 ⚠️ 开头」，遗漏了 checkModelSlugs 在目录缺失或回落时的行内警告。",
+      "severity": "minor",
+      "suggestion": "在计划 §3.3 中明确界定 checkModelSlugs 的口径：当且仅当 unverifiable.size > 0 || fellBack.size > 0 时，动态标记 warn: true 并纳入 warnings；若有意不纳入，必须显式给出设计理由与边界，而非依赖「文本开头是否有 ⚠️」的语法巧合。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读 skills/dual-run/SKILL.md:58 与 test/contract/skill-quoting.test.ts:17。dual-run 触发双审的正文是「执行 --start / --wait 循环」，并不包含 review --start 字面量。计划 §4.1 声明扫描「含 review --start 的文件」，将导致 dual-run 被漏检，无法守住 §3.4 要求在 dual-run S2/S6 补充转述句的契约。",
+      "id": "AGY-03",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §4.1:167（对比 skills/dual-run/SKILL.md:58）",
+      "problem": "Skill 契约测试按「含 review --start」过滤会漏过 dual-run/SKILL.md，使 P7 变异出现盲区。",
+      "severity": "nit",
+      "suggestion": "将 test/contract/ 用例的扫描集合显式包含 dual-run（如与 skill-quoting.test.ts 一致使用显式数组遍历，或将正则放宽至 --start）。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "读 src/trivium/cli.ts:654-656。当前 CLI 在非 JSON 模式下只打印「已启动运行...」与「请循环调用...」两行。计划 §3.3 仅规定了 --start 的 JSON 格式与 preflight 的人读渲染，未涉及 review --start 在终端人工执行时如何输出 warnings。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §3.3:140-141、§8:200（对比 src/trivium/cli.ts:654）",
+      "problem": "计划未规定 review --start 在人读模式（非 --json）下如何展示 warnings。",
+      "severity": "nit",
+      "suggestion": "在 §3.3 补充明确 cli.ts 人读分支在 st.warnings 非空时，同样输出 ⚠ 提示，避免终端人工调试时告警信息静默丢失。"
+    }
+  ],
+  "not_covered": [
+    "未评估真实环境下 ZCode CLI 升级至更新版本后是否会改变配置文件的绝对路径或引入新的覆盖机制",
+    "未在存在真实运行冲突的锁竞争状态下执行 --start 验证 warnings 的透传行为",
+    "未模拟操作系统级权限受限导致读取 ~/.zcode/cli/config.json 抛出 EACCES 时的边界行为"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "审查结论为 approve-with-nits。r2 针对焦点五点的整体架构与取舍站得住：D1 可选成员判侧符合基类既有口径；D2 在 --start 复用定位清晰，B/C/D 重复念两次取舍合理；新措辞无越界断言；验收零配额且不挪文件设计稳妥。\n主要提醒两点：一是 checkModelSlugs 在目录回落/无法校验时的 ⚠️ 行因不处于 detail 开头而存在 warn 口径漏网；二是 review --start 的 JSON 映射在 CLI/子进程层尚无测试与变异守卫，建议用纯文档跳过或 STUB 补齐。",
+  "verdict": "approve-with-nits"
+}

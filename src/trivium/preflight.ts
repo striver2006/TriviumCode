@@ -11,6 +11,7 @@
  * 无处告知也无从等待；而完整 `doctor` 会击穿 600s 工具超时，
  * 届时配额已烧而探针一字未落盘。
  */
+import os from 'node:os';
 import path from 'node:path';
 import { promises as fs, constants as fsConstants } from 'node:fs';
 import type { AuthCacheEntry, CommonProbe, Config, CriticId, Ctx, Stage } from './types.js';
@@ -19,7 +20,7 @@ import { EXIT, TriviumError } from './exit-codes.js';
 import { patchProbe, probeIsFresh, staleCliProbes } from './config.js';
 import { ALL_CLI_NAMES, DEFAULT_DRIVER, agentById, agentByCliName, type AgentId } from './agents/registry.js';
 import { realAdapters } from './adapters/index.js';
-import { routeModel, type AdapterContext, type CriticAdapter } from './adapters/base.js';
+import { routeModel, type AdapterContext, type AdapterTable, type CriticAdapter } from './adapters/base.js';
 import { exists } from './util/fsx.js';
 import { isGitRepo } from './util/git.js';
 import { run } from './util/exec.js';
@@ -49,12 +50,26 @@ export interface CheckResult {
   detail: string;
   /** 失败时应返回的退出码 */
   exitCode?: number;
+  /**
+   * 只警告的通过项（EV-123）：`ok: true`，但在说「本次有一部分没检查到 / 没按请求做到」。
+   * 由产出该项的代码置位，**不看文案**——`⚠️` 只是展示。不影响 `ok` 与退出码；
+   * 汇总进 `PreflightResult.warnings`，skill 负责把它念给用户。
+   */
+  warn?: true;
+}
+
+/** 预检与 `review --start` 共用的警告汇总形状（EV-123） */
+export interface PreflightWarning {
+  name: string;
+  detail: string;
 }
 
 export interface PreflightResult {
   ok: boolean;
   scope: PreflightScope;
   checks: CheckResult[];
+  /** `checks` 里 `warn` 项的汇总，**恒存在**（无警告时为 `[]`，EV-123） */
+  warnings: PreflightWarning[];
   /** 第一个失败项决定退出码 */
   exitCode: number;
   /** 通过后待写入的探活缓存（失败时不写——AC-16） */
@@ -91,6 +106,12 @@ export interface PreflightOptions {
    * 而「少说一句」正是这个字段最不该有的失败方式。
    */
   driverEnabled?: boolean;
+  /**
+   * ④″ 副本源检查用的适配器表（EV-123）。**只为可测性**，缺省取 `realAdapters()`。
+   * **只喂给 ④″**：④ 只读能力与 ⑧ 探活都不读它，仍按真实适配器走——
+   * 新用例若忘了 `skipAuthCheck`，⑧ 会真去探活、消耗配额（代码双审 r1 codex 的提醒）。
+   */
+  adapters?: AdapterTable;
 }
 
 // ─────────────────────── 各项检查 ───────────────────────
@@ -290,6 +311,7 @@ async function checkCliVersions(
     out.push({
       name: '版本漂移检查覆盖面',
       ok: true,
+      warn: true,
       detail:
         '⚠️ 下列 CLI 本次只确认入口在位、未实际比对版本（括号内为原因）：' +
         `${unverifiable.join('、')}。重跑 doctor 可补齐。`,
@@ -345,6 +367,8 @@ export function checkModelSlugs(
   return {
     name: '模型 slug 合法',
     ok: true,
+    // 有侧没实际校验、或按回落来源校验：通过，但要念给用户（EV-123，按集合置位、不看文案）
+    ...(unverifiable.size > 0 || fellBack.size > 0 ? { warn: true as const } : {}),
     detail: [
       scale,
       ...(unverifiable.size > 0
@@ -536,12 +560,60 @@ export function checkZcodeRuntimeSelection(cfg: Config, selected: readonly Criti
     return {
       name: `${label} 运行期选模`,
       ok: true,
+      warn: true,
       detail:
         `⚠️ doctor 的 ${cliName}.runtime_selection 为 reorder_ineffective：零配额探针上置首也没挡住运行期回落，` +
         `本次 ${critic} 侧大概率跑不到请求的模型（跑完看 guard 的「请求的模型没有生效」或「本次没有做模型覆盖」告警，以及 trace.json 的 modelSelection）`,
     };
   }
   return null;
+}
+
+/** 路径在当前用户家目录之下时显示为 `~/…`：预检输出常被抄进 evidence，不必带出用户名 */
+export function displayHomePath(p: string): string {
+  const home = os.homedir();
+  const rel = path.relative(home, p);
+  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return `~/${rel.split(path.sep).join('/')}`;
+  return p;
+}
+
+/**
+ * 做模型覆盖要读的副本源不在时给警告（EV-123）。**只警告、不拒跑**。
+ *
+ * 判侧按能力：入选侧的适配器实现了 `modelOverrideSource` 才查，不写 Agent id 或 CLI 名字面量。
+ * 两个调用点用的是**同一个函数**：预检（④″，按预检自己的选侧）与 `startRun`（按当轮 `sides`，
+ * 在 FR-23 跳过分支之后、派生之前）。所以措辞是条件句——预检时当轮可能压根没选该侧，
+ * `--start` 时文件也可能在派生前被放回。
+ *
+ * `adapters` 是注入口，只为可测性；本函数只判存在、不读内容。
+ */
+export async function checkModelOverrideSource(
+  selected: readonly CriticId[],
+  adapters: AdapterTable = realAdapters(),
+): Promise<CheckResult[]> {
+  const out: CheckResult[] = [];
+  for (const critic of selected) {
+    const src = adapters[critic]?.modelOverrideSource?.();
+    if (!src || (await exists(src))) continue;
+    const agent = agentById(critic);
+    const label = agent?.display ?? critic;
+    const cliName = agent?.cliName ?? critic;
+    out.push({
+      name: `${label} 模型覆盖副本源`,
+      ok: true,
+      warn: true,
+      detail:
+        `⚠️ ${critic} 侧做模型覆盖要读的副本源 ${displayHomePath(src)} 不在。该侧若在它缺位时拉起，就不做模型覆盖，` +
+        `跑的是 ${cliName} 自己选的模型，不一定是请求的那个。要按请求的模型跑，先把副本源放回原处再发起；` +
+        '已经发起的，跑完看 guard 有没有「本次没有做模型覆盖」告警（回读不到生效模型时它不出声）。',
+    });
+  }
+  return out;
+}
+
+/** `warn` 项的汇总：预检与 `--start` 同形（EV-123） */
+export function collectWarnings(checks: readonly CheckResult[]): PreflightWarning[] {
+  return checks.filter((c) => c.warn).map((c) => ({ name: c.name, detail: c.detail }));
 }
 
 /** 命令 A 专属：`verify.build` / `verify.test` 皆空则拒绝启动（§14.1 / GLM-02） */
@@ -675,6 +747,8 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
     const w = checkZcodeRuntimeSelection(cfg, selected);
     if (w) checks.push(w);
   }
+  // ④″ 模型覆盖副本源（EV-123）：只警告、不拒跑；不花配额，放在探活之前
+  if (checks.every((c) => c.ok)) checks.push(...(await checkModelOverrideSource(selected, opts.adapters)));
   // ⑤ 模型 slug（按本次实际生效值）
   if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected));
   // ⑥ 归档与 git（无残留探测）
@@ -690,6 +764,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
       checks.push({
         name: '探活',
         ok: true,
+        warn: true,
         detail: '⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。',
       });
     } else {
@@ -711,6 +786,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
     ok: failed === undefined,
     scope,
     checks,
+    warnings: collectWarnings(checks),
     exitCode: failed?.exitCode ?? (failed ? EXIT.ENV : EXIT.OK),
     pendingAuthCache,
   };
@@ -737,10 +813,11 @@ export async function commitAuthCache(ctx: Ctx, r: PreflightResult): Promise<voi
 export function renderPreflight(r: PreflightResult): string {
   const lines = [`预检（scope=${r.scope}）`, '─'.repeat(60)];
   for (const c of r.checks) {
-    lines.push(`  ${c.ok ? '✓' : '✗'} ${c.name}`);
+    lines.push(`  ${c.ok ? (c.warn ? '⚠' : '✓') : '✗'} ${c.name}`);
     if (c.detail) for (const l of c.detail.split('\n')) lines.push(`      ${l}`);
   }
   lines.push('');
-  lines.push(r.ok ? '✓ 预检通过' : `✗ 预检未通过（退出码 ${r.exitCode}）——不会产生任何工件`);
+  const warned = r.warnings.length > 0 ? `（含 ${r.warnings.length} 条警告）` : '';
+  lines.push(r.ok ? `✓ 预检通过${warned}` : `✗ 预检未通过（退出码 ${r.exitCode}）——不会产生任何工件`);
   return lines.join('\n');
 }

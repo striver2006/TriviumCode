@@ -629,6 +629,8 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
         emitJson({
           ok: true, run_id: st.runId, finished_inline: true,
           max_waits: 0, skipped: true, notice: st.inlineNotice ?? '',
+          // 键恒在：没有审查员会被拉起，不计算（EV-123）
+          warnings: st.warnings,
         });
       } else {
         say(st.inlineNotice ?? `运行 ${st.runId} 已在同步窗口内完成，无需 --wait。`);
@@ -649,9 +651,13 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
         models: st.models,
         worker_pid: st.workerPid,
         run_dir: st.runDir,
+        // 拉起前按当轮入选侧复查的只警告项，键恒在；skill 在开场播报里逐条念出（EV-123）
+        warnings: st.warnings,
       });
     } else {
       say(`已启动运行 ${st.runId}（工作进程 pid ${st.workerPid}）`);
+      // detail 自带 ⚠️ 前缀（与预检同一个函数产出），这里不再叠一个符号
+      for (const w of st.warnings) say(`  ${w.detail}`);
       say(`  请循环调用：trivium review --wait ${st.runId} --timeout ${st.waitTimeoutS}`);
       say(`  循环上限 ${st.maxWaits} 次；每次调用的 Bash 工具超时须设为 ${st.bashTimeoutMs}ms`);
       say(`  运行目录 ${st.runDir}`);
@@ -786,7 +792,10 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
     emitJson({
       ok: r.ok,
       scope: r.scope,
-      checks: r.checks.map((c) => ({ name: c.name, ok: c.ok, detail: c.detail })),
+      // `warn` 只在为真时带上：与既有输出逐字兼容（EV-123）
+      checks: r.checks.map((c) => ({ name: c.name, ok: c.ok, ...(c.warn ? { warn: true } : {}), detail: c.detail })),
+      // 恒在（无警告时为 []）：skill 按它转述，键缺席会让转述句静默不触发
+      warnings: r.warnings,
       exit_code: r.exitCode,
     });
   } else {

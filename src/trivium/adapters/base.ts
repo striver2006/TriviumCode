@@ -126,6 +126,17 @@ export interface CriticAdapter {
    */
   catalogModelsFor?(cfg: Config): CatalogSource | null;
   /**
+   * 该侧做模型覆盖时要读的**用户侧文件**（绝对路径，EV-123）。**可选**：不靠副本做覆盖的侧不实现。
+   *
+   * 契约：文件不在 ⇒ 该侧拉起时不做模型覆盖，跑的是 CLI 自己选的模型。
+   * 预检与 `review --start` 据此各给一条只警告的提示（`checkModelOverrideSource`），不拒跑。
+   * 路径按运行编排器那个进程的 HOME 解析，与拉起侧同源。
+   *
+   * 与 `normalizeModelForCatalog` 同理：这条知识属于那一侧，不住在 `preflight` 里——
+   * 预检按「入选侧有没有这个成员」判侧，不写 Agent id 或 CLI 名字面量。
+   */
+  modelOverrideSource?(): string;
+  /**
    * 探活。**可选**：没有凭据概念的侧（如桩）不实现，`preflight` 相应跳过并如实说明——
    * 「没得探」与「探过通过」不能长得一样。
    */

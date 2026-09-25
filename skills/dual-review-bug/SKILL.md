@@ -23,6 +23,8 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 
 运行 `TV preflight --stage bug --json`。失败则**原样转述**错误并停止，不要自行猜测修复。
 
+通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+
 ### 2. 解析主题与被审对象
 
 运行 `TV topic resolve --stage bug --json -- $ARGUMENTS`。
@@ -123,6 +125,10 @@ profile 配置模型，且留痕里记的就是回退后的模型，事后看不
 降级记录用 `/dual-status`，想中止用 `TV review --cancel <run_id>`。
 这些值**一律取自返回值**，不要写死——模型经 profile 与 `--model-*` 覆盖路由，
 写死就会漂移成错误播报。
+
+`--start` 返回的 `warnings` 非空时，在开场播报里逐条原样念出 `detail`，并提醒：想中止就用 `TV review --cancel <run_id>`。
+这条警告是按**本轮实际入选侧**、在拉起前复查的（第 1 步的预检按缺省选侧查，可能没说到这一侧）；
+它随返回值到达时审查已经拉起，拦不住拉起，但能让用户立刻决定要不要中止。
 
 然后循环运行：
 

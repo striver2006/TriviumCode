@@ -35,6 +35,7 @@ import { scrubRunDir } from './scrub.js';
 import { ensureDir, exists } from './util/fsx.js';
 import { killProcessTree, processAlive, processStartTime, spawnDetached } from './util/exec.js';
 import { fail, say, step, warn } from './util/log.js';
+import { checkModelOverrideSource, collectWarnings, type PreflightWarning } from './preflight.js';
 
 /** 心跳间隔：设计 §7.5 规定 30s */
 const HEARTBEAT_MS = 30_000;
@@ -269,6 +270,12 @@ export interface StartOutcome {
   finishedInline?: boolean;
   /** finishedInline 时的人读说明 */
   inlineNotice?: string;
+  /**
+   * 拉起前按**当轮入选侧**复查出的只警告项（EV-123），**恒存在**。
+   * 在派生**之后**才随返回值交到调用方——拦不住拉起，价值是开场播报时就能看到、可以立即 `--cancel`。
+   * `finishedInline` 时不计算（没有审查员会被拉起），为 `[]`。
+   */
+  warnings: PreflightWarning[];
 }
 
 /**
@@ -327,13 +334,28 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
         runDir: rc.runDirBase,
         finishedInline: true,
         inlineNotice: out.warnings.join('\n'),
+        warnings: [],
       };
     } finally {
       await lock.release(); // 没有 worker 接手，锁必须在这里还
     }
   }
 
+  /*
+   * ── 副本源复查（EV-123）：与预检 ④″ 是**同一个函数**，这里按当轮 `sides` 再调一次 ──
+   *
+   * 预检按它自己的选侧（skill 第 1 步不传 `--critics`，取缺省集合），时点也早于这里
+   * （命令 A 的 S0 与 S2 之间隔着起草）。决定烧不烧配额的是这里，所以在跳过分支之后、派生之前复查。
+   * `rc.adapters` 已过 `resolveAdapters`，桩注入在这里同样生效。
+   * 同步 `review --stage` 不走这里、不做这项复查：手工调试入口，skill 不走它；收尾 guard 仍在。
+   *
+   * **必须在主 `try` 之内**（代码双审 r1 CODEX-01 ≡ AGY-01 ≡ GLM-01）：此刻 `prepareRun` 已把闸门置成
+   * `running`，失败要连闸门一起回收——那正是主 `catch` 做的事。上一版单独包了一个只放锁的 `catch`，
+   * 抛错时闸门会停到 `approval_lock_ttl_h`，而清扫此时拿不到 `worker_pid`、要过 TTL 才回收。
+   */
+  let warnings: PreflightWarning[];
   try {
+    warnings = collectWarnings(await checkModelOverrideSource(rc.sides, rc.adapters));
     await ensureDir(rc.runDirBase);
     await writeHandoff(rc);
 
@@ -388,6 +410,7 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
       bashTimeoutMs: bashTimeoutFor(waitTimeoutS),
       workerPid: spawned.pid,
       runDir: rc.runDirBase,
+      warnings,
       /*
        * 开场播报要用的两项（审查意见 GLM-02）。skill 被要求在 --start 之后
        * 立刻告诉用户「两侧是谁、预算多久」，而这两项原先只有编排器知道：

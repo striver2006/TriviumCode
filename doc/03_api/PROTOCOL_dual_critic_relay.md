@@ -338,11 +338,11 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 | :--- | :--- |
 | `doctor` | 逐项实测设计 §3.5 的本机能力探针清单，回填 `probe:` 段 |
 | `doctor --selftest` | 临时夹具里真跑整条流水线，14 步核对（桩适配器，零配额） |
-| `preflight --stage plan\|code\|bug\|all [--critics <id,…>]` | 设计 §8.1 的启动预检，fail-fast，失败零工件。`--critics` 指定本次要用哪几侧——只读能力、模型 slug、探活都只查这几侧，缺省取 `review.default_critics`（M8 第 3 步）。**四条 skill 的第 1 步不传它**：那时 `topic resolve` 还没跑、选侧尚未解析出来。选了非缺省侧时，该侧的可用性由 `review --start` 在拉起 CLI 之前的 `availability()` 兜住（AC-20 末条的落点），`--critics` 供用户显式预检时用 |
+| `preflight --stage plan\|code\|bug\|all [--critics <id,…>]` | 设计 §8.1 的启动预检，fail-fast，失败零工件。`--critics` 指定本次要用哪几侧——只读能力、模型 slug、探活都只查这几侧，缺省取 `review.default_critics`（M8 第 3 步）。**四条 skill 的第 1 步不传它**：那时 `topic resolve` 还没跑、选侧尚未解析出来。选了非缺省侧时，该侧的可用性由 `review --start` 在拉起 CLI 之前的 `availability()` 兜住（AC-20 末条的落点），`--critics` 供用户显式预检时用。**只警告项**（EV-123，设计 8.1「警告这一级」）：`--json` 输出恒带 `warnings`（`{ name, detail }[]`，无警告时为 `[]`），`checks[]` 单项在 `warn` 为真时带 `warn: true`；`warn` 不影响 `ok` 与退出码，skill 在通过时逐条念给用户后继续 |
 | `topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。`--stage` 也接受 `all`（命令 A 用）。`--` 之后按 argv 逐个 token 解析、不再分词（EV-18）：正文整段放进一个单引号参数，旗标放在引号之外；`--topic` 字样被包进正文而未显式给主题时退 64。`--args` 传法已删 |
 | `topic claim --topic <主题> --stage <s> --driver <id> [--session-id <id>]` | 为该**阶段**声明当轮 Driver（M10a 第 1 步，EV-72）。plan / bug 原稿写在 `review --start` 之前，那一刻该阶段零留痕、判定回落缺省 Driver，非缺省 Driver 写不出自己的原稿。`--stage` **必填不默认**：声明直接决定 Write / Edit 侧的保护集。判定顺序自上而下：**留痕优先**——该阶段已有运行留痕且与 `--driver` 不同 ⇒ 退 64（出口是新开主题或换阶段）；已声明同值 ⇒ 幂等退 0 且**不刷新** `claimed_at`；该阶段子树里已存在**他家角色后缀**的文件 ⇒ 退 64（那些文件可能是撤回前的旧声明留下的，也可能是尚无声明时写下、仍在使用的原稿；出口是由用户确认去留、在终端处理后重试。不在会话里删它们来换回认领——这条限制防的正是会话自己反复翻转声明，见设计 7.1 `topic claim` 段）；其余合法认领放行。撤回的旧声明整条追加进 `drivers[<阶段>].history`，不覆盖。`--session-id` 落进 `claimed_by`，与 `approvals[].session_id` 同一个用途：自声明边界要让事后对得上账 |
 | `review --stage <s>` | 同步跑一次双审（手工调试用） |
-| `review --start / --wait / --status / --cancel` | 分段协议 |
+| `review --start / --wait / --status / --cancel` | 分段协议。`--start` 的返回恒带 `warnings`（EV-123）：拉起前按**当轮入选侧**复用预检的判定函数 `checkModelOverrideSource` 查出的只警告项，形状同预检；在派生之后随返回值到达（拦不住拉起，skill 在开场播报里念出并提示可 `--cancel`）；`finished_inline` 时为 `[]`；同步 `review --stage` 不做这项复查，它的 `--json` 另有既有的 `warnings: string[]`（运行期告警），与 `--start` **同键不同形**，不要按 `detail` 读 |
 | `review --worker <run_id>` | 工作进程入口，由 `--start` 派生。**不应由人直接调用** |
 | `gate --check` / `--check-artifacts` / `--await-approval` | 裁决完整性 / 最低工件集 / 置人工闸门 |
 | `gate hook-*` | Hook 入口，从 stdin 读事件。**不应由人直接调用** |

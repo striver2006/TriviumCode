@@ -1,0 +1,80 @@
+{
+  "agreed": [
+    "适配器导出唯一路径（zcodeOverrideSourcePath）统一收敛 C1 与 C2，预检按需消费而不滥加 CriticAdapter 通用钩子，设计克制且符合 YAGNI 原则",
+    "预检警告分层采用 CheckResult.warn + PreflightResult.warnings 汇总 + skill 约定转述，精准解决了 C5 长期「有产出却无转述通道」的既有缺陷",
+    "不在 review --start 冗余警告，将预检到拉起间极短窗口内的文件挪动交由 guard 的 model_unenforced 后验兜底，前后分工明确且系统解耦",
+    "坚持零配额且不挪动用户真实配置文件的验收总原则，充分吸取了 EV-112 E2 的历史教训"
+  ],
+  "consulted": [
+    ".reviews/EV-123-预检提示副本源缺失/plan/2026-09-25-EV-123-预检提示副本源缺失-claude.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/review.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/adapters/base.ts",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-review-code/SKILL.md",
+    "skills/dual-review-bug/SKILL.md",
+    "skills/dual-run/SKILL.md",
+    "skills/dual-status/SKILL.md",
+    "test/unit/preflight.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "读 src/trivium/adapters/zcode.ts:160-163，decideModelUnenforced 存在判据 if (zcodeModelTail(effective) === zcodeModelTail(requested)) return undefined；且未生效模型告警严格依赖成功回读到生效模型。若用户请求的模型碰巧与 CLI 个人默认模型 tail 一致，或运行异常中断未产生有效会话回读，guard 均不会触发该告警。对比 preflight.ts:540-542 中 checkZcodeRuntimeSelection 使用的指引式表述「跑完看 guard...」，计划当前措辞过度断言了运行期后验结果。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §3.2:78-81",
+      "problem": "§3.2 detail 措辞断言「跑完 guard 会给『本次没有做模型覆盖』告警」，越界成为对运行期后验事实的绝对断言。",
+      "severity": "minor",
+      "suggestion": "将绝对断言改为条件性或指引性措辞，例如「若实际生效模型与请求不一致，跑完 guard 会给「本次没有做模型覆盖」告警」或参考 C5 改为「（跑完看 guard 是否给出「本次没有做模型覆盖」告警）」。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读 plan §4.3 与 src/trivium/cli.ts:785-794。E2 反向验收仅在 node 脚本中从编译产物导入 checkZcodeOverrideSource 与 renderPreflight 执行白盒断言，脱离了 CLI 命令层，无法验证 cli.ts 中 emitJson 对顶层 warnings 汇总及 checks 明细项的序列化逻辑。而 trivium preflight 自身天然支持 --skip-auth-check 旗标，完全支持在临时 HOME 下直接运行 CLI 二进制进行验证。",
+      "id": "AGY-02",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §4.3:126-128",
+      "problem": "E2 反向验收脱离了 CLI 命令管道，仅在单元函数层面验证，遗留了 CLI 包装与 --json 序列化层的验收盲区。",
+      "severity": "minor",
+      "suggestion": "利用已有的 --skip-auth-check 旗标，将 E2 提升为通过 env HOME=\"$TMPDIR\" trivium preflight --stage plan --skip-auth-check --json 驱动的端到端 CLI 零配额验收，直接断言进程退出码与 stdout 的 JSON 结构。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "读 src/trivium/preflight.ts:290-297，checkCliVersions 在 unverifiable.length > 0 时会 push 一个 name 为「版本漂移检查覆盖面」、ok: true、detail 以 ⚠️ 开头的 CheckResult。计划在 §2 与 §3.3 中仅点名了 C5（checkZcodeRuntimeSelection）与新检查，未明确该现存项是否也应归入 warn 体系。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §2:47",
+      "problem": "预检现存的「版本漂移检查覆盖面」检查同样属于 ok: true 且带 ⚠️ 的提示，计划引入 warn 体系时未界定其是否纳入。",
+      "severity": "nit",
+      "suggestion": "在计划中界定「版本漂移检查覆盖面」的处理口径：是一并标 warn: true 进 warnings 汇总，还是显式排除并说明理由，避免再次遗留「带 ⚠️ 但无转述通道」的检查项。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读 src/trivium/cli.ts:789，当前 checks 映射为 r.checks.map((c) => ({ name: c.name, ok: c.ok, detail: c.detail }))。若 CheckResult 接口扩充了 warn?: true，而 cli.ts 未同步透传，下游读取 checks 列表时单项将丢失 warn 标识。",
+      "id": "AGY-04",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §3.3:89-91",
+      "problem": "计划未明确 cli.ts 在 --json 模式下 checks 数组中的单项是否透传 warn 属性。",
+      "severity": "nit",
+      "suggestion": "在计划 §3.3 中补充明确：cli.ts 在序列化 checks 单项时保留 c.warn 属性（如 ...(c.warn ? { warn: true } : {})），保持数据契约完整性。"
+    }
+  ],
+  "not_covered": [
+    "未在真实缺失 ~/.zcode/cli/config.json 且未带 --skip-auth-check 的真实凭据环境下触发真实的网络认证探活",
+    "未评估其它三家审核者（codex/agy/claude）未来引入类似副本机制时适配器接口的通用化方案",
+    "未核验四个 skill 之外是否存在用户自建脚本通过其他未公开路径调用 preflight 的边界场景"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "审查结论为 approve-with-nits。焦点回应：D1 适配器导出唯一路径站得住；D2 警告分层与 skill 约定结合、拉起前并发挪移交收尾 guard 兜底分工合理充分；C7 确实无任何既有通道转述 C5，计划判断准确。\n主要建议两点：一是 §3.2 detail 措辞断言「跑完 guard 会告警」属于越界断言（请求模型与默认一致或运行未完成时不会出声），应改为条件引导；二是 §4.3 反向验收 E2 仅单函数 import 存在 CLI 盲区，建议利用 --skip-auth-check 升级为端到端 CLI 零配额验收；另顺带界定 checkCliVersions 的覆盖面警告口径及 checks 数组中的 warn 字段透传。",
+  "verdict": "approve-with-nits"
+}

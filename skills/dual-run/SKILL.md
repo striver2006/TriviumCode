@@ -33,6 +33,8 @@ Bash 按写命令形态启发式拦截（重定向、`tee`、`sed -i`、`rm/mv/c
 
 失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
 
+通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+
 ### S0.5 解析主题与参数
 `TV topic resolve --stage all --json -- $ARGUMENTS`
 
@@ -63,7 +65,7 @@ Bash 按写命令形态启发式拦截（重定向、`tee`、`sed -i`、`rm/mv/c
 
 **每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`。**
 
-**开场播报与每次 `--wait` 后的进度播报，随委托一并继承**，`finished_inline: true`
+**开场播报（含 `warnings` 的逐条转述）与每次 `--wait` 后的进度播报，随委托一并继承**，`finished_inline: true`
 时跳过两者、直接转述 `notice` 的分支也一并继承。那里对 Driver 说的「先向用户发一条
 文本消息，再发下一次 `--wait`」在 S2 / S6 里同样是硬要求——命令 A 的链路更长，
 用户等得更久，漏掉播报的代价比命令 B/C/D 还大。

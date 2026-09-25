@@ -201,3 +201,28 @@ test('preflight：未入选侧的版本漂移只提示，不让本次运行失�
   const drift = out.checks.find((c) => c.detail.includes('仅提示'));
   assert.ok(drift, '漂移本身仍要说出来（有排查价值），只是不计失败');
 });
+
+test('preflight --json：warnings 键恒在，warn 项在 checks[] 里带 warn 并逐条进 warnings（EV-123）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * skill 一律走 `--json`，人读渲染在那条路上根本不被调用——本题真正承重的只有 `cli.ts`
+   * 那段**手写**的 JSON 映射。漏加 `warnings` 时 skill 的转述句静默不触发（r1 双审 CODEX-04）。
+   * `--skip-auth-check` 让「探活 已跳过」那条 warn 必然出现：映射断了这里就红。
+   */
+  await seedProbes();
+  const r = await cli(root, ['preflight', '--stage', 'plan', '--critics', 'gemini', '--skip-auth-check', '--json'], null, 180_000);
+  const out = JSON.parse(r.stdout) as {
+    ok: boolean;
+    checks: { name: string; ok: boolean; warn?: boolean; detail: string }[];
+    warnings?: { name: string; detail: string }[];
+  };
+  assert.ok(Array.isArray(out.warnings), `warnings 键必须恒在：\n${r.stdout}`);
+  assert.equal(out.ok, true, `本用例要走到探活那一步：\n${r.stdout}`);
+  const skipped = out.checks.find((c) => c.name === '探活');
+  assert.equal(skipped?.warn, true, '「探活 已跳过」在 checks[] 里必须带 warn');
+  assert.ok(out.warnings!.some((w) => w.name === '探活'), '并且进 warnings');
+  assert.deepEqual(
+    out.warnings,
+    out.checks.filter((c) => c.warn).map((c) => ({ name: c.name, detail: c.detail })),
+  );
+  for (const c of out.checks.filter((x) => !x.warn)) assert.equal('warn' in c, false, `「${c.name}」不该带 warn 键`);
+});

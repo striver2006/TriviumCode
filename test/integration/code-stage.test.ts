@@ -226,6 +226,8 @@ test('纯文档变更 + 开关打开 → 跳过，不派生 worker、不产审�
    */
   assert.equal(js.finished_inline, true, '跳过必须在派生前收口');
   assert.equal(js.max_waits, 0, 'skill 不该再进 --wait 循环');
+  // 没有审查员会被拉起，副本源复查不计算，但键恒在（EV-123）
+  assert.deepEqual((js as { warnings?: unknown }).warnings, [], 'finished_inline 支的 warnings 必须是空数组');
 
   const docs = await fs.readdir(codeDir);
   assert.ok(

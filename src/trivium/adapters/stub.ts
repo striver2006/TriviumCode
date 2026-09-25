@@ -131,6 +131,11 @@ export interface StubSpec {
    * `review.ts` 把它写进 run.json 逐侧段；guard 按 `cause` 出声。
    */
   modelUnenforced?: CriticResult['model_unenforced'];
+  /**
+   * 模拟「该侧靠副本做模型覆盖」（EV-123）：给了就实现 `modelOverrideSource`，返回这个路径。
+   * 只为集成用例咬住 `review --start` 的副本源复查：`--start` 路径上唯一的注入通道是本环境变量。
+   */
+  modelOverrideSource?: string;
   note?: string;
 }
 
@@ -263,6 +268,9 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
         ? { traceShape: 'command-trace', rejectionRecorded: false }
         : TOOL_TRACE_CAPABILITY,
     availability: () => ({ ok: true }),
+    ...(spec.modelOverrideSource !== undefined
+      ? { modelOverrideSource: () => spec.modelOverrideSource as string }
+      : {}),
     async run(_ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
       switch (spec.mode) {
         case 'timeout':

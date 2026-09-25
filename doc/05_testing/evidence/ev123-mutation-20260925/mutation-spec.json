@@ -1,0 +1,113 @@
+{
+  "targets": [
+    "src/trivium/preflight.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/cli.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/model-override-source.test.js",
+    "dist/test/test/unit/preflight.test.js",
+    "dist/test/test/integration/codex-wiring.test.js",
+    "dist/test/test/integration/override-source-start.test.js"
+  ],
+  "cases": [
+    {
+      "id": "P1",
+      "desc": "新检查恒不出项 ⇒「文件不在 ⇒ 一条 warn 项」",
+      "file": "src/trivium/preflight.ts",
+      "find": "    if (!src || (await exists(src))) continue;",
+      "replace": "    if (!src || (await exists(src)) || src.length > 0) continue;",
+      "expect": "dist/test/test/unit/model-override-source.test.js"
+    },
+    {
+      "id": "P2",
+      "desc": "不看 selected，遍历全部适配器 ⇒「未入选 ⇒ 不出项」",
+      "file": "src/trivium/preflight.ts",
+      "find": "  for (const critic of selected) {\n    const src = adapters[critic]?.modelOverrideSource?.();",
+      "replace": "  for (const critic of Object.keys(adapters) as CriticId[]) {\n    const src = adapters[critic]?.modelOverrideSource?.();",
+      "expect": "dist/test/test/unit/model-override-source.test.js"
+    },
+    {
+      "id": "P3",
+      "desc": "detail 用绝对路径 ⇒「路径以 ~/ 展示、不带 HOME 绝对路径」",
+      "file": "src/trivium/preflight.ts",
+      "find": "副本源 ${displayHomePath(src)} 不在",
+      "replace": "副本源 ${src} 不在",
+      "expect": "dist/test/test/unit/model-override-source.test.js"
+    },
+    {
+      "id": "P4",
+      "desc": "warnings 不过滤 warn（全部 checks 进汇总）⇒ 口径断言「warnings 恰是 warn 项的汇总」",
+      "file": "src/trivium/preflight.ts",
+      "find": "  return checks.filter((c) => c.warn).map((c) => ({ name: c.name, detail: c.detail }));",
+      "replace": "  return checks.map((c) => ({ name: c.name, detail: c.detail }));",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "P5",
+      "desc": "C5 不标 warn ⇒「现有 ⚠️ 项一律标 warn」与「C5 与副本源各出一条」",
+      "file": "src/trivium/preflight.ts",
+      "find": "      name: `${label} 运行期选模`,\n      ok: true,\n      warn: true,",
+      "replace": "      name: `${label} 运行期选模`,\n      ok: true,",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "P5b",
+      "desc": "探活已跳过不标 warn ⇒ 预检 --json 子进程用例",
+      "file": "src/trivium/preflight.ts",
+      "find": "        name: '探活',\n        ok: true,\n        warn: true,",
+      "replace": "        name: '探活',\n        ok: true,",
+      "expect": "dist/test/test/integration/codex-wiring.test.js"
+    },
+    {
+      "id": "P6",
+      "desc": "prepareZcodeHome 缺省值另写一个路径（不走唯一出处）⇒ 世界 B",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  const srcConfig = opts.srcConfig ?? zcodeOverrideSourcePath();",
+      "replace": "  const srcConfig = opts.srcConfig ?? `${zcodeOverrideSourcePath()}.bak`;",
+      "expect": "dist/test/test/unit/model-override-source.test.js"
+    },
+    {
+      "id": "P8",
+      "desc": "删掉预检 JSON 映射里的 warnings ⇒ 预检 --json 子进程用例",
+      "file": "src/trivium/cli.ts",
+      "find": "      // 恒在（无警告时为 []）：skill 按它转述，键缺席会让转述句静默不触发\n      warnings: r.warnings,\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/codex-wiring.test.js"
+    },
+    {
+      "id": "P9",
+      "desc": "startRun 不调新检查 ⇒ --start 子进程「文件不在 ⇒ 恰一项」",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    warnings = collectWarnings(await checkModelOverrideSource(rc.sides, rc.adapters));",
+      "replace": "    warnings = collectWarnings([]);",
+      "expect": "dist/test/test/integration/override-source-start.test.js"
+    },
+    {
+      "id": "P10",
+      "desc": "删掉 --start JSON 里的 warnings ⇒ --start 子进程用例",
+      "file": "src/trivium/cli.ts",
+      "find": "        // 拉起前按当轮入选侧复查的只警告项，键恒在；skill 在开场播报里逐条念出（EV-123）\n        warnings: st.warnings,\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/override-source-start.test.js"
+    },
+    {
+      "id": "P11",
+      "desc": "checkModelSlugs 在 unverifiable 非空时不置 warn ⇒ slug 两条用例",
+      "file": "src/trivium/preflight.ts",
+      "find": "    ...(unverifiable.size > 0 || fellBack.size > 0 ? { warn: true as const } : {}),",
+      "replace": "    ...(fellBack.size > 0 ? { warn: true as const } : {}),",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "P12",
+      "desc": "桩忽略 modelOverrideSource 字段 ⇒ --start 子进程「文件不在 ⇒ 恰一项」（确认用例真穿过了桩注入链）",
+      "file": "src/trivium/adapters/stub.ts",
+      "find": "    ...(spec.modelOverrideSource !== undefined\n      ? { modelOverrideSource: () => spec.modelOverrideSource as string }\n      : {}),\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/override-source-start.test.js"
+    }
+  ]
+}

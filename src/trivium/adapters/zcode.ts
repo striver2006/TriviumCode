@@ -864,6 +864,21 @@ async function logDirHasSession(logDir: string, sessionId: string, since: number
 }
 
 /**
+ * 审查运行做模型覆盖时的**副本源**：用户的 `~/.zcode/cli/config.json`（EV-123）。
+ *
+ * **审查运行（适配器侧）**的唯一出处：`prepareZcodeHome` 的缺省值、`authProbe.fingerprint()`、
+ * `zcodeAdapter.modelOverrideSource()` 三处都调它。此前前两处各写一遍路径字面，改一处就漏另一处。
+ * 每次调用时现取 `os.homedir()`（POSIX 下读 `$HOME`），不缓存——用例靠钉 HOME 构造两种世界。
+ *
+ * **探针模块的 `ZCODE_CLI_CONFIG`（`probes/zcode.ts`）未并入**：它是 doctor 三条模型覆盖臂的副本源缺省值，
+ * 而且在模块加载时取值——进程内钉 HOME 对它无效。并入要动探针常量（它同时服务 log / rollout / models），
+ * 登记为 BACKLOG 残余（代码双审 r1 CODEX-03）。
+ */
+export function zcodeOverrideSourcePath(): string {
+  return path.join(os.homedir(), '.zcode/cli/config.json');
+}
+
+/**
  * 为一次运行准备独立 HOME 与模型覆盖（`config_copy` 档）。
  *
  * 从用户的 `~/.zcode/cli/config.json` 拷一份到运行目录下的临时 HOME，只改 `model.main` / `model.lite`。
@@ -894,7 +909,7 @@ export async function prepareZcodeHome(
     requestedFirst?: boolean;
   } = {},
 ): Promise<ZcodeHomePrep> {
-  const srcConfig = opts.srcConfig ?? path.join(os.homedir(), '.zcode/cli/config.json');
+  const srcConfig = opts.srcConfig ?? zcodeOverrideSourcePath();
   if (!(await exists(srcConfig))) {
     return {
       homeDir: null,
@@ -961,6 +976,11 @@ export const zcodeAdapter: CriticAdapter = {
     return qualifyZcodeModel(model, cfg.probe.cli.zcode?.model_id_form ?? null) ?? model;
   },
 
+  /** 本侧的模型覆盖靠副本 HOME 实现：副本源不在 ⇒ `prepareZcodeHome` 早退 `source_missing`（EV-123） */
+  modelOverrideSource() {
+    return zcodeOverrideSourcePath();
+  },
+
   /**
    * 探活（M8 第 3 步从 `preflight` 搬来）。
    *
@@ -971,7 +991,7 @@ export const zcodeAdapter: CriticAdapter = {
     const cfg = ctx.cfg;
     return {
       async fingerprint() {
-        const f = path.join(os.homedir(), '.zcode/cli/config.json');
+        const f = zcodeOverrideSourcePath();
         return (await exists(f)) ? sha256File(f) : null;
       },
       async probe() {

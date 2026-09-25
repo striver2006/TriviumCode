@@ -1,0 +1,91 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  P1 ✓ 咬住（fail=2）
+  P2 ✓ 咬住（fail=1）
+  P3 ✓ 咬住（fail=1）
+  P4 ✓ 咬住（fail=5）
+  P5 ✓ 咬住（fail=2）
+  P5b ✓ 咬住（fail=1）
+  P6 ✓ 咬住（fail=1）
+  P8 ✓ 咬住（fail=1）
+  P9 ✓ 咬住（fail=2）
+  P10 ✓ 咬住（fail=3）
+  P11 ✓ 咬住（fail=2）
+  P12 ✓ 咬住（fail=2）
+{
+  "总数": 12,
+  "咬住": 12,
+  "逐条": [
+    {
+      "id": "P1",
+      "desc": "新检查恒不出项 ⇒「文件不在 ⇒ 一条 warn 项」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "P2",
+      "desc": "不看 selected，遍历全部适配器 ⇒「未入选 ⇒ 不出项」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "P3",
+      "desc": "detail 用绝对路径 ⇒「路径以 ~/ 展示、不带 HOME 绝对路径」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "P4",
+      "desc": "warnings 不过滤 warn（全部 checks 进汇总）⇒ 口径断言「warnings 恰是 warn 项的汇总」",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "P5",
+      "desc": "C5 不标 warn ⇒「现有 ⚠️ 项一律标 warn」与「C5 与副本源各出一条」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "P5b",
+      "desc": "探活已跳过不标 warn ⇒ 预检 --json 子进程用例",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "P6",
+      "desc": "prepareZcodeHome 缺省值另写一个路径（不走唯一出处）⇒ 世界 B",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "P8",
+      "desc": "删掉预检 JSON 映射里的 warnings ⇒ 预检 --json 子进程用例",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "P9",
+      "desc": "startRun 不调新检查 ⇒ --start 子进程「文件不在 ⇒ 恰一项」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "P10",
+      "desc": "删掉 --start JSON 里的 warnings ⇒ --start 子进程用例",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "P11",
+      "desc": "checkModelSlugs 在 unverifiable 非空时不置 warn ⇒ slug 两条用例",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "P12",
+      "desc": "桩忽略 modelOverrideSource 字段 ⇒ --start 子进程「文件不在 ⇒ 恰一项」（确认用例真穿过了桩注入链）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    }
+  ]
+}

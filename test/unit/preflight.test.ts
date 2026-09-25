@@ -5,7 +5,9 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import {
-  parsePreflightScope, checkModelSlugs, runPreflight, commitAuthCache, renderPreflight, checkZcodeRuntimeSelection } from '../../src/trivium/preflight.js';
+  parsePreflightScope, checkModelSlugs, runPreflight, commitAuthCache, renderPreflight, checkZcodeRuntimeSelection,
+  type PreflightResult } from '../../src/trivium/preflight.js';
+import type { CriticAdapter } from '../../src/trivium/adapters/base.js';
 import { TRIVIUM_DIR, defaultConfig, patchProbe } from '../../src/trivium/config.js';
 import { runDoctor } from '../../src/trivium/doctor.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
@@ -806,4 +808,127 @@ test('checkZcodeRuntimeSelection：只在 glm 入选且读数为 reorder_ineffec
   // 两条收尾通道都要指到（EV-122 计划 r2 §3.4）：副本源临时缺失的那一轮出声的是后者
   assert.ok(w!.detail.includes('请求的模型没有生效') && w!.detail.includes('本次没有做模型覆盖'), w!.detail);
   assert.equal(checkZcodeRuntimeSelection(cfg, ['codex', 'gemini']), null, 'glm 未入选不出项');
+});
+
+// ── 警告这一级（EV-123）：`warn` 由代码置位，`warnings` 恒在 ──
+
+/**
+ * 口径断言：凡通过项 detail 任一行（去缩进后）以 ⚠️ 起头，必带 `warn`。
+ * 它顶住的是「下一次有人新增一条 ⚠️ 通过项却忘了置 `warn`」——那条提示就又回到
+ * 「躺在工具结果里、没人念」的老样子（r2 双审 CODEX-04 ≡ AGY-02 ≡ GLM-03）。
+ */
+function assertWarnInvariant(r: PreflightResult): void {
+  for (const c of r.checks) {
+    const flagged = c.ok && c.detail.split('\n').some((l) => l.trimStart().startsWith('⚠️'));
+    if (flagged) assert.equal(c.warn, true, `「${c.name}」带 ⚠️ 却没标 warn：\n${c.detail}`);
+  }
+  assert.deepEqual(
+    r.warnings,
+    r.checks.filter((c) => c.warn).map((c) => ({ name: c.name, detail: c.detail })),
+    'warnings 必须恰是 warn 项的汇总',
+  );
+}
+
+/** 只实现 `modelOverrideSource` 的假适配器：本组用例只看 ④″，其余成员用不到 */
+function overrideOnly(src: string): CriticAdapter {
+  return { modelOverrideSource: () => src } as unknown as CriticAdapter;
+}
+
+async function missingPath(): Promise<string> {
+  const d = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ovr-'));
+  return path.join(d, '.zcode/cli/config.json'); // 不创建：「文件不在」
+}
+
+test('warnings 恒在：无警告时为空数组，渲染末行与今天逐字相同', async () => {
+  const ctx = await fakeCtx((c) => probeWithVersionProbe(c, { runner: null, args: ['--version'], extract: '(' }));
+  const present = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ovr-')), 'config.json');
+  await fs.writeFile(present, '{}');
+  // 必须跳过探活（不跳会真去探活、耗配额）；「探活已跳过」与覆盖面两条 warn 下面单独剥掉
+  const r = await runPreflight({
+    ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'],
+    adapters: { gemini: overrideOnly(present) },
+  });
+  assert.equal(r.ok, true);
+  assert.ok(Array.isArray(r.warnings), 'warnings 必须恒在');
+  assert.equal(r.checks.some((c) => c.name.endsWith('模型覆盖副本源')), false, '副本源在就不出项');
+  assertWarnInvariant(r);
+  // 只剩「探活已跳过」与覆盖面两条 warn；把它们去掉之后的渲染与今天同形
+  const quiet: PreflightResult = { ...r, checks: r.checks.map((c) => ({ ...c, warn: undefined })), warnings: [] };
+  const out = renderPreflight(quiet);
+  assert.equal(out.split('\n').at(-1), '✓ 预检通过', '无警告时末行与今天逐字相同');
+  assert.doesNotMatch(out, /⚠ /);
+});
+
+test('④″：入选侧的副本源不在 ⇒ 出一条 ok:true 的 warn 项，进 warnings，不改退出码', async () => {
+  const ctx = await fakeCtx((c) => probeWithVersionProbe(c, { runner: null, args: ['--version'], extract: '(' }));
+  const r = await runPreflight({
+    ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'],
+    adapters: { gemini: overrideOnly(await missingPath()) },
+  });
+  assert.equal(r.ok, true, '只警告、不拒跑');
+  assert.equal(r.exitCode, EXIT.OK);
+  const item = r.checks.find((c) => c.name.endsWith('模型覆盖副本源'));
+  assert.ok(item, '副本源不在必须出项');
+  assert.equal(item!.ok, true);
+  assert.equal(item!.warn, true);
+  assert.ok(r.warnings.some((w) => w.name === item!.name), '必须进 warnings');
+  // ④″ 在探活之前：它不花配额，前面失败就不该轮到探活
+  const idx = (n: string) => r.checks.findIndex((c) => c.name === n);
+  assert.ok(idx(item!.name) < idx('探活'), '副本源检查必须排在探活之前');
+  assertWarnInvariant(r);
+});
+
+test('C5 与副本源各出一条 ⇒ 两条都进 warnings；渲染用 ⚠ 且末行报条数', async () => {
+  const ctx = await fakeCtx((c) => {
+    probeWithVersionProbe(c, { runner: null, args: ['--version'], extract: '(' });
+    // C5 按入选侧的 cliName 取探针读数，与厂商无关；这里借 agy 那格构造它
+    (c.probe.cli.agy as { runtime_selection?: unknown }).runtime_selection = 'reorder_ineffective';
+  });
+  const r = await runPreflight({
+    ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'],
+    adapters: { gemini: overrideOnly(await missingPath()) },
+  });
+  const names = r.warnings.map((w) => w.name);
+  assert.ok(names.some((n) => n.endsWith('运行期选模')), `C5 必须进 warnings：${names.join('、')}`);
+  assert.ok(names.some((n) => n.endsWith('模型覆盖副本源')), `副本源必须进 warnings：${names.join('、')}`);
+  assert.ok(names.includes('探活'), '「探活已跳过」同样是 warn');
+  assert.ok(names.includes('版本漂移检查覆盖面'), '覆盖面项同样是 warn');
+  assertWarnInvariant(r);
+  const out = renderPreflight(r);
+  assert.match(out, /\n {2}⚠ .*模型覆盖副本源/);
+  assert.match(out.split('\n').at(-1)!, new RegExp(`^✓ 预检通过（含 ${r.warnings.length} 条警告）$`));
+});
+
+test('模型 slug 合法：有侧没实际校验时通过但标 warn（按集合置位，不看文案）', async () => {
+  const ctx = await fakeCtx((c) => { c.probe.cli.agy!.models = []; });
+  const r = checkModelSlugs(ctx.config, 'plan', {}, ['gemini']);
+  assert.equal(r.ok, true);
+  assert.equal(r.warn, true, '「没测到 ≠ 测通过」：未实际校验必须进转述通道');
+  const quiet = checkModelSlugs((await fakeCtx()).config, 'plan', {}, ['gemini', 'glm']);
+  assert.equal(quiet.warn, undefined, '都校验到了就不标，免得成为恒真提示');
+});
+
+test('runPreflight：slug 的未校验行同样进 warnings', async () => {
+  const ctx = await fakeCtx((c) => {
+    probeWithVersionProbe(c, { runner: null, args: ['--version'], extract: '(' });
+    c.probe.cli.agy!.models = [];
+  });
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {} });
+  assert.ok(r.warnings.some((w) => w.name === '模型 slug 合法'), r.warnings.map((w) => w.name).join('、'));
+  assertWarnInvariant(r);
+});
+
+test('现有 ⚠️ 项一律标 warn：C5、覆盖面、探活已跳过', async () => {
+  const cfg = defaultConfig();
+  cfg.probe.cli.zcode!.runtime_selection = 'reorder_ineffective';
+  assert.equal(checkZcodeRuntimeSelection(cfg, ['glm'])!.warn, true, 'C5');
+  const ctx = await fakeCtx((c) => probeWithVersionProbe(c, null));
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {} });
+  assert.equal(r.checks.find((c) => c.name === '版本漂移检查覆盖面')?.warn, true, '覆盖面');
+  assert.equal(r.checks.find((c) => c.name === '探活')?.warn, true, '探活已跳过');
+  // 反向：「当轮 Driver」是信息，不是缺口
+  const d = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {}, driver: 'codex', driverEnabled: true });
+  assert.equal(d.checks.find((c) => c.name === '当轮 Driver')?.warn, undefined);
+  assertWarnInvariant(r);
+  assertWarnInvariant(d);
 });

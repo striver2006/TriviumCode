@@ -1,0 +1,109 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一条：D2 否决 (c) 的论据「--start 紧接在预检之后」对命令 A 不成立——S0 预检与 S2 --start 之间隔着 S1 起草，窗口以分钟计，这一窗口内副本源被挪走时预检无警告、(c) 又被否，只剩烧完配额后的收尾播报。其次：§3.1/§3.2 漏了「判侧」的实现落点，独立 export 之外判侧要么写 cliName/vendor 字面量、要么按适配器能力判侧（实质是 (b) 的轻量形态），这是未决策点。方向本身我认可：唯一出处消灭 C1/C2 两份字面、结构化 warn + warnings + skill 约定补「念出来」的通道、零配额不挪用户文件的验收都有据且充分；措辞不越界（焦点三），C5 今天确无任何转述通道（焦点四，无漏看）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.3 D2 (c) 否决理由",
+      "problem": "否决 (c) 的论据「--start 紧接在预检之后，两者之间的时间差不足以抵消两处判定分叉的风险」只对命令 B/C/D 成立（中间只隔一步 resolve，秒级）。命令 A（dual-run）的链路是 S0 预检 → S0.5 解析 → S1 起草计划 → S2 --start：S1 由 Driver 写整份计划文档，窗口以分钟到几十分钟计。在这一窗口内副本源被挪走时，预检警告不出（当时还在）、(c) 又被否，唯一兜底是烧完配额之后的收尾播报——而本题的动机恰恰是「别等跑完」。EV-112 E2 白跑 16m42s 的场景若发生在命令 A 的 S1 之后，本题做完仍然拦不住。",
+      "evidence": "skills/dual-run/SKILL.md 的状态机：S0 预检（第 27-34 行）→ S1 起草计划（第 52 行起，用 Write 落盘整份计划）→ S2 才执行 --start；src/trivium/review.ts:70 确认 --start 只 import checkModelSlugs、不做环境复查；src/trivium/adapters/zcode.ts:153-163 的 decideModelUnenforced 四条件含「回读到了生效模型」，只能在该侧跑完之后出声。",
+      "suggestion": "不必推翻 D2 的结论，但论据必须重述：要么承认命令 A 的 S0→S2 窗口真实存在、明说接受「收尾播报兜底（事后）」这一取舍并写进 §2「不做」的理由；要么对命令 A 单独权衡 (c)（例如 --start 沿用同一检查函数再探一次，而非新增独立判定，分叉风险可控）。现状的写法用一句对命令 A 不成立的事实，盖住了一个真实窗口。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §3.1 (a) 与 §3.2「只对 zcode 那一侧查」",
+      "problem": "计划没有写「怎么判定入选侧里谁是 zcode 那一侧」。§3.1 说新检查「与 checkZcodeRuntimeSelection 读 zcode 探针结论同形」，但这个类比不成立：C5 遍历 selected、按 cliName 索引探针结论，靠「runtime_selection 目前只有 ZCode 探针结论有」这一数据形状天然定向，从头到尾不需要判「谁是 zcode」；新检查要主动执行一个 ZCode 特有的文件系统检查，必须有显式判据。独立 export zcodeOverrideSourcePath() 解决不了判侧：实现者要么在 preflight.ts 写 cliName === 'zcode'（或 vendor === 'zcode'）字面量——不违 parity 明文（'zcode' 不在 ALL_AGENT_IDS 扫描集），但与 C5 注释「按入选侧经注册表取 CLI 名，不写 Agent id 字面量」的口径及纪律 10 的精神相悖；要么把该函数挂到 zcodeAdapter 对象上、按「入选侧适配器是否提供此能力」判侧——那实质上就是被否掉的 (b) 的轻量形态，D1 的取舍论证随之悬空。",
+      "evidence": "src/trivium/preflight.ts:528-545：C5 的实现确实无判侧分支，靠 probe?.runtime_selection !== 'reorder_ineffective' 的数据形状过滤；src/trivium/agents/registry.ts:92-116：Agent 条目有 vendor 与 cliName 字段（zcode 侧 cliName='zcode'、vendor='zcode'），即任何字面判据都绕不开一个 'zcode' 字面量；test/unit/registry-parity.test.ts:321、:516-548：parity 扫描的带引号模式只抓 ALL_AGENT_IDS（'zcode' 不在其中，故不会打红——问题恰恰是它静默不红）。",
+      "suggestion": "在 §3.2 写明判侧的落点并给出理由：推荐把 zcodeOverrideSourcePath 挂到 zcodeAdapter 对象上作为可选能力字段（预检按「入选侧适配器有无该字段」判侧与调用），这同时实现「唯一出处」与免字面判据，代价只是 CriticAdapter 多一个可选成员——比完整 pref- lightAdvisories(ctx) 钩子 (b) 轻得多；若选择接受 cliName/vendor 字面量，也应写进计划并预填 parity 豁免的理由说明，而不是留给实现者临场发挥。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.3 E1",
+      "problem": "E1 断言「warnings 为空」对本机 doctor 读数过敏。warnings 汇总不只含新检查：C5 那条一并标 warn 后也会进汇总，而 C5 是否出项取决于本机探针结论的 runtime_selection 是否为 reorder_ineffective——EV-82 第三段的零配额对照正是在本机实测出 reorder_ineffective 才立项的。若本机读数仍是该值，本题落地后 E1 必红，而那不是回归，Driver 现场会误诊为新检查的问题。",
+      "evidence": "src/trivium/preflight.ts:528-545：C5 的触发条件是 cfg.probe.cli[cliName].runtime_selection === 'reorder_ineffective'，属环境事实；doc/08_project/BACKLOG.md EV-122/EV-82 相关条目记载该读数来自本机实测；test/unit/preflight.test.ts:794-809 显示 C5 出项在单测里靠注入 probe 结论控制，真机 E1 无法控制。",
+      "suggestion": "E1 的断言改为「不出『ZCode 模型覆盖副本源』这条新检查项、warnings 中不含副本源条目」，不断言 warnings 全空；或先跑一次 doctor 确认读数并在读数里注明前提。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.3 (c)「收尾的 model_unenforced 已经兜住『预检后文件被挪走』这一格」",
+      "problem": "「兜住」的边界比计划写的窄：model_unenforced 的产出四条件含「回读到了生效模型」（effective 非空）。若 CLI 跑成功但生效模型没回读到（effective 为 null），model_override_applied 因未尝试而缺席、model_unenforced 因 effective 空而缺席，guard 两句都不出声——这一格（预检时在 → 拉起前挪走 → 跑完回读不到）没有任何一层说话。窗口确实极窄（回读不到通常伴随 rollout 缺失，而落点自检另有落点缺失播报兜一句），但计划用「已经兜住」的全称表述，将来会被当作完整覆盖的依据引用。",
+      "evidence": "src/trivium/adapters/zcode.ts:160-163：decideModelUnenforced 首行 if (attempted || !requested || !effective) return undefined；src/trivium/guard.ts:876-897：两句播报分别只对 modelOverrideApplied === false 与 modelUnenforced 非空出声，无第三通道；doc/05_testing/evidence/ev112-acceptance-20260925/02-e2-readout.md 第 2 格显示 E2 那轮 effective 读得回，属兜得住的那部分。",
+      "suggestion": "把 §3.3 (c) 的表述改为「回读得到生效模型时由收尾播报兜住；回读不到的窗口仍静默（由失败播报与落点自检旁证）」，一句写明边界即可，不必为此改方案。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §3.2 detail 措辞草稿",
+      "problem": "detail 草稿硬写「本轮 glm 侧不会做模型覆盖」「跑完 guard 会给…」，与同段开头「按入选侧经注册表取 CLI 名（同 C5，不写 'glm' 字面）」的声明自相矛盾。C5 的 detail 先例是 ${critic} 与 ${label} 动态插值。照抄草稿实现会把展示文本钉死在 glm 上（parity 的带引号扫描抓的是整串恰为 Agent id 的字面量，长句里的 glm 静默不红——又一次「不红但错」），EV-91 通用化或换侧时要再改文案。",
+      "evidence": "src/trivium/preflight.ts:536-542：C5 的 detail 用模板串插值 critic 与 label，无硬编码 id；test/unit/registry-parity.test.ts:521-523：带引号扫描的模式是整串等于 ALL_AGENT_IDS 之一，长文案内嵌 id 不命中。",
+      "suggestion": "§3.2 的 detail 草稿把「glm 侧」改为经注册表取得的 critic/label 插值的占位写法（如「本轮 ${label} 侧」），保持与 §3.2 自己声明的口径一致。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.1 checkZcodeOverrideSource 用例",
+      "problem": "「文件在 ⇒ null」这一臂的夹具构造没写：若不钉 HOME，该用例依赖本机副本源的真实状态（E2 类验收挪过文件的机器上会误红）。另外新检查的可测性走改 process.env.HOME 的副作用路线，与 prepareZcodeHome 专门开 srcConfig 注入口的既有取向（「不开口子，用例只能吃真实 config.json 含凭据」）不同；本函数只 exists() 不读内容，env 路线可以接受，但属有意偏离先例，宜写明。",
+      "evidence": "src/trivium/adapters/zcode.ts:881-882：srcConfig 参数的注释写明其存在理由是可测性（避免用例吃真实凭据文件）；test/unit/preflight.test.ts:794-809：C5 用例是纯注入夹具、不碰进程环境，新检查用例将首次引入改 HOME 的形态。",
+      "suggestion": "在 §4.1 写明两个臂都把 HOME 钉到临时目录（一个放 config.json、一个不放），并补一句「可测性走 env HOME 而非参数注入口，因本函数不读文件内容」的设计说明。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "C1–C8 全部逐条核实属实：副本源路径两处字面（zcode.ts:897 与 :974）、CheckResult 无警告级（preflight.ts:46-52）、renderPreflight 对 ok 项渲 ✓（:737-746）、review --start 只 import checkModelSlugs（review.ts:70）、四处 skill 预检步骤只约定失败转述、设计 §8.1 检查表无 C5 行（设计 :1448-1457）。",
+    "焦点一（D1 取 (a)）：方向正确。C1/C2 两份字面属实，(c) 第三份正是「改一漏二」的形状；导出唯一出处并由 P6 变异锁住共用，是对的。(b) 的否决理由（通用化只有一个调用方）在「路径导出」这一点上成立——前提是 GLM-02 的判侧问题按建议解决，否则会被迫回到钩子形态。",
+    "焦点三（措辞越界）：不越界。「CLI 跑的是它自己选的模型」是构造性事实——prepareZcodeHome 在 source_missing 时早退不建副本（zcode.ts:898-907），编排器未注入任何模型，CLI 自主选模；「EV-112 E2 实测为个人配置的默认模型」与 readout 原文（02-e2-readout.md「CLI 用个人 provider 配置的默认模型，本机是 qwen3.8-max」）逐字吻合；FR-06（PRD :139）/ NFR-06（PRD :645）引用属实且与 guard 既有文案同口径。",
+    "焦点四（C5 今天有无转述通道）：无漏看。skills 全目录检索只有 4 处预检步骤（dual-review-plan/code/bug 第 1 步与 dual-run S0），全部只约定失败时转述；dual-status 只转述 trivium status 输出；人读输出里 C5 的 detail 文案虽会打印，但行首是 ✓、末行是「✓ 预检通过」，且 Driver 终端输出对用户不可见。C7「只加检查不解决念出来」的判断成立，warn 级 + warnings 汇总 + skill 约定三件套是正确的补法（(b) 按文案匹配判语义已被 EV-122 计划轮 CODEX-02 否过）。",
+    "焦点五（零配额验收）：充分。「从构建产物导入」有直接先例（ev122-acceptance-20260925/e1-check.mjs 从 dist/test/src/trivium/ 按模块导入）；E2 钉 HOME 验函数行为 + E1 验副本源在不出项，已覆盖除「os.homedir() 读 HOME env」以外的一切事实，而挪真实文件换来的只有那一条——不挪的取舍成立（EV-112 E2 的教训也支持）。P1–P7 变异面与 4.1 用例形状同 C5 用例先例（preflight.test.ts:794-809）吻合；install:local 脚本存在（package.json:18）；doctor 不引用 preflight，selftest 验收项无涉。",
+    "§3.2 的位置取舍正确：C5 在 ④′、探活 ⑧ 在最后（成本排序），新检查插在 ④″ 确在探活之前、不花配额；「若发起时仍不在」的措辞把预检的时态边界说准了。§5 文档同步清单完整（含 C8 欠账的补行），改动不触发 JSON Schema 同步（schema/ 目录无 preflight 输出契约，已核）。"
+  ],
+  "not_covered": [
+    "设计文档 :252「与预检的分工」原句与 RUNBOOK 相关段落未逐字核对（改动是加句，风险低）。",
+    "test/unit/topic-args.test.ts（skill 文本用例的先例）未亲读，4.1 仿写它的可行性由 preflight.test.ts 的测试风格旁证。",
+    ".trivium/config.local.yaml（本机 doctor 现行读数）按任务书 8.2 不读；GLM-03 的环境判断基于 EV-82/BACKLOG 的历史实测记载，非现读数，故标 medium。",
+    "test/contract/ 目录未逐文件核对「改四处 SKILL.md 预检段」是否触发其它对账——从改动面（加句、不涉 argument-hint/CLI 旗标）推断无涉。",
+    "scripts/mutation-check.mjs（变异装置本体）未读，P1–P7 的可执行性按 EV-122 的既有变异证据目录旁证。"
+  ],
+  "consulted": [
+    "src/trivium/preflight.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/agents/registry.ts",
+    "skills/dual-run/SKILL.md",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-review-code/SKILL.md",
+    "skills/dual-review-bug/SKILL.md",
+    "skills/dual-status/SKILL.md",
+    "test/unit/preflight.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/evidence/ev112-acceptance-20260925/02-e2-readout.md",
+    "doc/05_testing/evidence/ev122-acceptance-20260925/e1-check.mjs",
+    "package.json"
+  ]
+}
