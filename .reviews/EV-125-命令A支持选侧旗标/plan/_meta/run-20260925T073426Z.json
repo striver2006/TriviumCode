@@ -1,0 +1,277 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260925T073426Z",
+  "topic": "EV-125-命令A支持选侧旗标",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "重点看：①删掉 topic-args 里命令 A 的拒绝段之后，入选、模型覆盖、only 置空是否确与 B/C/D 走同一条路径，有没有我漏看的 scope 特判；②D1 两轮沿用 S0.5 那一刻的集合，是否存在 S6 该用另一组的场景（含 S2 在降级许可下某侧失败）；③D2 先解析后预检，配置有问题时会不会先给出一份与预检互相矛盾的输出，有没有哪一项预检是解析的前提；④契约只能锁文本，执行者漏传 critics 或 allow_single 时是否还需要别的防线；⑤设计与手册之外，还有哪些文档写着命令 A 不收选侧旗标",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "597a3f78e7e74df45061bf5e366bfcb47f0313c0",
+    "tree_hash": "2d8cc96b62ceda0806d3140a083ae40c6355ee51",
+    "dirty": true,
+    "subject_sha256": "b2970023e6c11a3f25bef3ba0b18919533f2aef7a7cf8802015c3b0beec473a8",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "246d831aa20012abb84674f67a4f546d0a6da377",
+      "dirty": false,
+      "inputs_sha256": "048e649dc412eada20c14e56f374727500aefa17fe002d52b9f2b581eff8866c",
+      "built_at": "2026-09-25T07:09:03.466Z"
+    }
+  },
+  "started_at": "2026-09-25T07:34:27.142Z",
+  "finished_at": "2026-09-25T07:43:15.182Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.156.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 333.753,
+      "tool_calls": {
+        "run_command": 72,
+        "project_reads": 46
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0d77c-ae03-7dd3-a399-8cb365cee4ae",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.11",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 433.537,
+      "tool_calls": {
+        "read": 47,
+        "grep": 25,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 34
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 398524,
+        "output_tokens": 41163,
+        "thinking_tokens": 32073,
+        "cache_read_tokens": 7128245,
+        "total_tokens": 439687
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "f0d3b985-d5e5-43ee-81ca-2b628510f706",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 527.731,
+      "tool_calls": {
+        "read": 20,
+        "grep": 21,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 15,
+        "inputTokens": 1522330,
+        "outputTokens": 42816,
+        "totalTokens": 1565146,
+        "cacheReadTokens": 1381504,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_bf969944-7017-4c5d-b80a-2b2ac0792c07",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "EV-125-命令A支持选侧旗标/plan/_meta/brief-codex-20260925T073426Z.md",
+      "sha256": "d71e00c68ac287c83306f532bde36886c0a084ce03fec69aa4c6bbc4cdab442c"
+    },
+    {
+      "path": "EV-125-命令A支持选侧旗标/plan/_meta/brief-gemini-20260925T073426Z.md",
+      "sha256": "a4b433bf64feb116a4bda897519002456a3ae28c7e860f0c7027d5b0e659c91e"
+    },
+    {
+      "path": "EV-125-命令A支持选侧旗标/plan/_meta/brief-glm-20260925T073426Z.md",
+      "sha256": "dd9514d1d3437af5ecdf58fb5118125cbe85855e250dfae6b47c17e99846409e"
+    },
+    {
+      "path": "EV-125-命令A支持选侧旗标/plan/_meta/review-codex-20260925T073426Z.json",
+      "sha256": "37b982a64ee8236e7dacaa3a761c82e14ed58b8ea9a7c606b38026a564c49e9a"
+    },
+    {
+      "path": "EV-125-命令A支持选侧旗标/plan/_meta/review-gemini-20260925T073426Z.json",
+      "sha256": "9286a5859f36ae22e1620abc21242e3d152cb55f79ce86fe21d412eeba02a82e"
+    },
+    {
+      "path": "EV-125-命令A支持选侧旗标/plan/_meta/review-glm-20260925T073426Z.json",
+      "sha256": "b10959e407c1d7a1488ee71145b911360ddf35ed5ffc2b5d5395fccb03d53310"
+    },
+    {
+      "path": "EV-125-命令A支持选侧旗标/plan/2026-09-25-EV-125-命令A支持选侧旗标-codex.md",
+      "sha256": "268da5ae8537924224c231aa6301a6e4746538135fe2e576ed8eb727acc3320e"
+    },
+    {
+      "path": "EV-125-命令A支持选侧旗标/plan/2026-09-25-EV-125-命令A支持选侧旗标-gemini.md",
+      "sha256": "23f70c96c5304eaaa034dc3b66e5cffb0a881551abcbc015b8753bee999da21f"
+    },
+    {
+      "path": "EV-125-命令A支持选侧旗标/plan/2026-09-25-EV-125-命令A支持选侧旗标-glm.md",
+      "sha256": "5d67cc1d5c0dc77dc1318e0f9668d9ad6f5b1c5694e0005b90eff504aef2a922"
+    },
+    {
+      "path": "EV-125-命令A支持选侧旗标/plan/2026-09-25-EV-125-命令A支持选侧旗标-claude.md",
+      "sha256": "b2970023e6c11a3f25bef3ba0b18919533f2aef7a7cf8802015c3b0beec473a8"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

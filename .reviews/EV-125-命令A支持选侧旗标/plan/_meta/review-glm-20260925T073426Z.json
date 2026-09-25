@@ -1,0 +1,70 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最危险一条是 GLM-01：计划 §5 的文档同步清单漏了两处今天写着命令 A 选侧边界的文档（PROTOCOL:341「四条 skill 的第 1 步不传它」、MANUAL §5.4:468「命令 A 只跑缺省集合」），落地后官方文档自相矛盾。其余核实全部成立：焦点①——topic-args.ts 全文仅 :347-355 一处 scope==='all' 选侧特判，删后入选 / 模型覆盖 / only 置空与 B/C/D 完全同路径，resolve --json 对全 scope 都回显 critics 与 allow_single；焦点②③的论证与代码相符（无任何预检项是解析的前提；S6 重试 S2 失败侧语义自洽）。GLM-02 是 nit：S6 漏传 critics 的两轮异侧残余建议显式登记。计划可进实施。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §5（文档同步）；doc/03_api/PROTOCOL_dual_critic_relay.md:341；doc/07_manuals/MANUAL_user.md:468",
+      "problem": "§5 只列了设计 §7.1 与手册 §4.1/§4.7，漏了两处也写着命令 A 选侧边界的文档：① PROTOCOL 的 preflight 行（:341）明写「**四条 skill 的第 1 步不传它**：那时 topic resolve 还没跑、选侧尚未解析出来」——D2(b) 落地后命令 A 的预检在解析之后且带 --critics，这句对 A 失实；② MANUAL §5.4（:468）以「非 claude 当 Driver 时命令 A 里的 --model-claude——命令 A 只跑缺省集合」作「能当、但本轮没选它」报错分支的例句，本题后 --critics claude 即可让 claude 入选（E1 正是这一格），括注失实。",
+      "evidence": "逐字读了 doc/03_api/PROTOCOL_dual_critic_relay.md 的 preflight 行（:341）与 doc/07_manuals/MANUAL_user.md:462-470（§5.4）；另对 doc/04_development、doc/07_manuals/QUICKSTART.md、README.md、根部 *.md、skills-src/ 全部 partial 与 test/ 文案做了 scoped 检索，除这两处外仅设计 §7.1:1262、手册 §4.1/§4.7、BACKLOG EV-125、critics.ts:282 注释与 topic-args.test.ts:297 用例命中——后五者都已在计划 §4/§5 清单内，设计 v1.3.5 变更记录与 M10b 第 2 步报告属历史留痕不应改。",
+      "suggestion": "把这两处补进 §5：PROTOCOL 该句改写为「B/C/D 的第 1 步不传它；命令 A 的预检在 topic resolve 之后、带 resolve 输出的入选集合」；手册 §5.4 的括注改成条件表述（如「命令 A 不写 --critics 时只跑缺省集合」）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §3.2（D1）/ §4.3 / §5",
+      "problem": "「契约写了、执行者 S6 漏传 --critics」这一格运行期没有任何防线：S2 与 S6 是两次独立的 review --start，gate 与 cli 对 critics_selected 的全部消费都是单阶段判定，无 plan↔code 跨阶段一致性比对；S6 漏传时静默回落配置缺省，两轮可跑不同侧且当轮无告警。计划 §4.3 给了「读留痕 critics_selected 对照」的事后出口，但这格残余没有像 C11 那样落成 BACKLOG 条目或设计注记，后续想加防线时找不到登记。",
+      "evidence": "grep 了 src/ 全部 critics_selected 消费点：src/trivium/gate.ts:685-700 与 src/trivium/cli.ts:1088-1098 均只按当阶段 run.json 判意见覆盖，无跨阶段比对；src/trivium/review.ts:562-564 确认 --start 未收 critics 时自行回落 resolveCriticSelection（含减当轮 Driver）。",
+      "suggestion": "不必为此改 review --start（与 B/C/D 既有姿态一致，body.md:89-91 已述同族风险并取「契约 + 留痕」）；在 §5 的新 BACKLOG 条目或设计 §7.1 的撤销注记里补一句：「S6 漏传 critics ⇒ 两轮异侧仅能靠两份 run 留痕的 critics_selected 事后对出」，把这格显式登记。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "焦点①核实成立：src/trivium/topic-args.ts 全文仅 :347-355 一处 scope==='all' 选侧特判；删除后 resolveCriticSelection（:581-585，收最终 driver）、assertModelOverrideKeys（:618-619，按实际入选校验）、only 恒置 null（:387）、--only+--allow-single 的 note（:389-400）与输出对象（:656-674）全部与 B/C/D 同路径；cli.ts 的 topic resolve --json 整体回显 TopicResolution（:932-934），S0.5 交接有数据可读。",
+    "C3 成立：两阶段 Driver 交叉校验（topic-args.ts:497-571）先于选侧解析执行，§4.1 新用例「互异先于选侧退 64」与现状次序一致，M3 变异可咬。",
+    "D1(a) 冻结语义自洽（焦点②）：S6 重试 S2 失败侧是正确取向——运行期失败不是配置意图，失败侧只留 _meta/.failed.json 不跨运行残留；缺省路径上 S0.5 集合与 --start 自身回落（review.ts:562-564 同样减当轮 Driver）等价，无行为回归面。",
+    "D2(b) 论证成立（焦点③）：resolve 纯只读、不读探针 / 模型目录 / wrapper，没有任何一项预检是解析的前提；配置坏时两种次序最终报错相同（config.ts:624-637 loadCtx 回落内置缺省、不报错）；「先回显确认、预检后失败」的代价已在 §3.3 如实记录，不构成误导性输出问题。",
+    "D3(a)：MODEL_HINT_DEFAULT / MODEL_FLAGS_DEFAULT 确仅 skills-src/commands/run.contract.md:4/:49/:79 三处在用，删后无死引用；claude 载体上 defaults 与 critics 两集合同值（自减后均为 codex|gemini|glm），「claude 产物提示逐字不变、另三家多回 --model-claude」的预期可由 entry-render.ts carrierVars（:260-292）推出。",
+    "验收可行性核实：package.json:19 有 install:local；cli.ts:786 有 --skip-auth-check；--driver claude --critics claude 走 critics.ts:335-342 退 64（E1 第二断言成立）；skill-flag-parity 对 dual-run 的「argument-hint 声明的旗标正文要有交代」断言（:158-168）已存在，加旗标后自动强制正文交代；@QUOTE_RULE_AT 是契约 front-matter 变量（entry-render-parity.test.ts:128 消费），改成 S0 不需要动渲染器；DRIVER_CALLS.run=6 不受次序互换影响。",
+    "焦点⑤的既有登记准确：设计 §7.1:1262-1265 与 :1269 命令表、手册 §4.1:247-250 与 §4.7、BACKLOG.md:223 EV-125、critics.ts:282 注释、topic-args.test.ts:297-317 两条拒绝用例——全部在计划的改动或同步清单内。"
+  ],
+  "not_covered": [
+    "全程零命令实跑（审查员只读约束）：C 系事实全靠读码与检索核对；§3.4 的 28 份产物逐字节预期与 §4.2 变异装置对契约源（M4~M7）的咬合只能在实施后验证。",
+    "未逐字读四份现行 dual-run 渲染产物的正文全文：C7（claude 提示与 MODEL_HINT 同文、另三家缺 --model-claude）由 entry-render.ts 的 carrierVars 推得，未与盘上产物逐字节比对。",
+    "hooks.ts / freeze.ts / worker 交接重建路径未深查：本题不改这些面，worker 从交接文件拷 critics 沿既有行为。",
+    "顺手核出但非本题造成、未单列意见的既有漂移：MANUAL §4.7:328「不给时取 review.default_critics」未提「减当轮 Driver」（M10b 第 2 步 D-4(a) 的口径），§5 改 §4.7 时可顺手对齐。",
+    "另一位审查员的视角（背靠背约定，不引用不猜测）。"
+  ],
+  "consulted": [
+    ".reviews/EV-125-命令A支持选侧旗标/plan/2026-09-25-EV-125-命令A支持选侧旗标-claude.md",
+    "src/trivium/topic-args.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/cli.ts",
+    "src/entry-render.ts",
+    "src/trivium/review.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/config.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/gate.ts",
+    "skills-src/commands/run.contract.md",
+    "skills-src/partials/review/body.md",
+    "test/unit/topic-args.test.ts",
+    "test/contract/skill-flag-parity.test.ts",
+    "test/contract/entry-render-parity.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/REPORT_2026-09-25_m10b_step2.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/07_manuals/QUICKSTART.md",
+    "README.md",
+    "package.json"
+  ]
+}

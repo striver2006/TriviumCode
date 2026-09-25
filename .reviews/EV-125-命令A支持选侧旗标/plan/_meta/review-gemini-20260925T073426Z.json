@@ -1,0 +1,96 @@
+{
+  "agreed": [
+    "针对焦点 ①（C2 判断与 scope 特判）：经核查 src/trivium/topic-args.ts 全部 scope 引用，删去 :336-355 拒绝段后，resolveCriticSelection、assertModelOverrideKeys、only 置空与 allow_single 均为 scope 无关逻辑，命令 A 确与 B/C/D 走完全一致的解析与校验路径，无遗漏的特判。",
+    "针对焦点 ②（D1 跨轮一致性）：两轮沿用初始解析出的集合是正确的；S2 在 --allow-single 下单侧失败属运行期瞬态异常，不应剥夺 S6 尝试该侧的权利（S6 仍带 --allow-single，失败仍可降级）；且两阶段 Driver 强一致（topic-args.ts :505），不会出现 S6 撞 Driver 拒绝。",
+    "针对焦点 ③（D2 前置依赖与矛盾）：核实 loadCtx 与 topic resolve 内部无任何针对探针新鲜度、CLI 探活或编译测试的依赖；若配置损坏（YAML 语法或 schema），loadCtx 会在解析期直接退 69（EXIT.ENV），不会产出与预检相悖的误导输出。先解析后预检在逻辑上完全自洽。",
+    "针对焦点 ④（防线完备性）：维持「契约约束 + skill-flag-parity 静态守卫 + run.json 留痕事后对账」的防线架构是合理且一致的，不应在 review --start 里针对 entry A 增加特化非对称检查。",
+    "针对 D3（渲染变量）：彻底删除 MODEL_HINT_DEFAULT / MODEL_FLAGS_DEFAULT 并将 dual-run 切到全集提示的决策干净彻底，消除了单源渲染维护分叉的隐患。"
+  ],
+  "consulted": [
+    ".reviews/EV-125-命令A支持选侧旗标/plan/2026-09-25-EV-125-命令A支持选侧旗标-claude.md",
+    "src/trivium/topic-args.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/config.ts",
+    "src/trivium/preflight.ts",
+    "src/entry-render.ts",
+    "skills-src/commands/run.contract.md",
+    "skills-src/commands/review-plan.contract.md",
+    "skills-src/partials/review/body.md",
+    "skills-src/partials/run/claim-plan.md",
+    "skills-src/partials/args/rule-quote.text.md",
+    "test/contract/skill-flag-parity.test.ts",
+    "test/contract/entry-render-parity.test.ts",
+    "test/unit/topic-args.test.ts",
+    "test/unit/critics.test.ts",
+    "test/integration/driver-flag.test.ts",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/REPORT_2026-09-25_m10b_step2.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/07_manuals/QUICKSTART.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "读 skills-src/partials/run/claim-plan.md:2，其正文写着「（<主题> 取 S0.5 输出的 topic）」；读 skills-src/commands/run.contract.md:67-69，S2 委托说明写着「--goal 传 S0.5 的 task_goal」、「--focus 传 S0.5 的 prompt_hint」；而计划 .reviews/EV-125-命令A支持选侧旗标/plan/2026-09-25-EV-125-命令A支持选侧旗标-claude.md §3.3 明确将「S0.5 解析」与「S0 预检」互换并重命名为「S0 解析主题与参数」「S0.5 预检」。计划仅提到同步 entry-render-parity 的 :141 注释与 @QUOTE_RULE_AT，完全遗漏了 claim-plan.md 与 S2 中对原 S0.5 输出字段的引用。同时计划自身 §3.2（「S0.5 字段清单加两条」）、§5（「S0.5 解析出的同一组」）及 §6.2 也残留了旧编号称谓。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "skills-src/partials/run/claim-plan.md:2、skills-src/commands/run.contract.md:67-69 及 plan §3.2/§3.3",
+      "problem": "S0/S0.5 调换编号后，契约内跨步骤字段引用（topic、task_goal、prompt_hint）未同步改指 S0，会导致执行者按合同到 S0.5 预检去取不存在的字段。",
+      "severity": "major",
+      "suggestion": "在计划中明确将 skills-src/partials/run/claim-plan.md:2 中的「S0.5 输出的 topic」改为「S0 输出的 topic」；将 run.contract.md:67-69 中的「S0.5 的 task_goal/prompt_hint」改为「S0 的 task_goal/prompt_hint」；并将计划自身 §3.2/§5 中的「S0.5」改为「S0」。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读 skills-src/commands/run.contract.md 与 skills-src/partials/review/body.md:86-108，B/C/D 在正文中明确交代了「把 resolve 输出的 critics 数组用逗号连接后传给 --critics，无条件传」以及 profile 与 models 的透传要求。而在计划 §3.3 中，S0.5 预检命令骨架虽然写了 TV preflight --stage all --driver {{DRIVER}} --critics <critics> [--profile <profile>] [--model-<id> <模型> …] --json，但 §3.2 与 §3.3 仅说明了在 S2/S6 交接处交代透传，未定义 S0.5 预检段落内的正文规约。执行者在 S0.5 只有骨架无正文指导，容易在构造 --critics 时出现数组格式错误（如传入 JSON 串或空格分隔）。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §3.2、§3.3 及 skills-src/commands/run.contract.md",
+      "problem": "计划未为 S0.5 预检补充与 S2 同级的参数拼接说明（将 S0 输出的 critics 逗号连接、按需带上 profile 与 models），执行者缺乏明确的参数拼装依据。",
+      "severity": "minor",
+      "suggestion": "在计划 §3.2/§3.3 中补充：在 S0.5 预检步骤正文中加入显式指导，要求执行者将 S0 解析输出的 critics 数组以逗号连接后传入 --critics，若 profile 或 models 非空则一并带入预检。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "针对焦点 ⑤ 全仓扫描文档：读 doc/07_manuals/QUICKSTART.md:200，其明确写着「想只跑一侧（省时间或省配额）：给 B/C/D 加 --critics glm（或 gemini）」；读 doc/03_api/PROTOCOL_dual_critic_relay.md:341，写着「四条 skill 的第 1 步不传它：那时 topic resolve 还没跑、选侧尚未解析出来」；而计划 §5 仅列出了设计文档 §7.1 与用户手册 §4.1/§4.7 的同步，遗漏了上述两处。实施后 QUICKSTART 会误导用户以为命令 A 仍不可指定选侧，PROTOCOL 对命令 A 预检传参的描述也会失实。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §5、doc/07_manuals/QUICKSTART.md:200 及 doc/03_api/PROTOCOL_dual_critic_relay.md:341",
+      "problem": "文档同步范围遗漏了 QUICKSTART.md 与 PROTOCOL_dual_critic_relay.md 中关于命令 A 选侧及预检传参的陈旧断言。",
+      "severity": "minor",
+      "suggestion": "在计划 §5 的文档同步清单中追加 QUICKSTART.md:200（补齐命令 A 亦可指定选侧）与 PROTOCOL_dual_critic_relay.md:341（澄清命令 A 预检在解析之后且会传入 --critics）。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "读 skills-src/commands/run.contract.md:46，原 S0.5 规定「未显式 --topic 时由任务目标推导，回显给用户确认后再继续」。当调换次序由 S0 先解析、S0.5 跑预检时，若 Driver 在 S0 停下来等待用户确认推导主题，而后续预检（如未配置编译测试或探针失效）必然报错，会导致用户进行了一轮无意义的交互。计划 §3.3 虽提到「代价：推导出的主题先回显确认」，但未优化交互衔接。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §3.3 及 skills-src/commands/run.contract.md:46",
+      "problem": "推导主题的回显确认时机若僵化停留在 S0，在预检不可行的情况下会浪费一轮人类确认交互。",
+      "severity": "nit",
+      "suggestion": "在 run.contract.md 中明确「推导出的主题回显确认」可在 S0.5 预检通过后进入 S0.8/S1 时一并向用户确认，避免预检即挂时的无效对话。"
+    }
+  ],
+  "not_covered": [
+    "未实际运行项目 CLI 二进制及测试套件（受独立审查员只读与无 Bash 执行权限约束）。",
+    "未测试各家外部 CLI 在真实网络环境下的探活与调用时延表现。",
+    "未深入分析与未发布的 M10b 第 3 步在 run.contract.md 上的具体文本合并冲突细节（仅依据计划 §8 做了静态交叉确认）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最主要问题是 D2 步骤调换（S0/S0.5）引发的契约引文漂移：claim-plan 与 S2 委托仍指向「S0.5 输出的 topic/task_goal/prompt_hint」，而计划自身多处也仍称 S0.5 为解析步。此外，S0.5 预检虽排在解析之后并带上参数，但正文缺透传规约描述；文档同步漏掉了 QUICKSTART 与 PROTOCOL。核心设计方向（D1 冻结全流程同组、D2 先解析后预检、D3 统一全集提示、删除 topic-args 拒绝段）完全成立，计划整体扎实，补齐上述契约跨步引用与文档即可批准实施。",
+  "verdict": "request-changes"
+}
