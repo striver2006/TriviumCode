@@ -205,6 +205,13 @@ D-4（§8 第 1 条）另一份规格 `mutation-spec-2.json`，输出 `mutation-
 
 全量 `npm run check`：**1958 / 1956 pass / 0 fail / 2 skipped**（较 §9 的 1951 多 7 条）。
 
+提交 `246d831`，推送 `origin/main`（`git ls-remote` 核对远端与本地同为 `246d831`；远端此前停在 `5362bdd`，`c4d9af6` 随之一并推上）。
+
+**真实 HOME 重装**（2026-09-25，用户要求；提交之后、工作树干净时构建，安装副本对应 `246d831`）：
+先只读预检（`planInstall` / `checkInstall`：本机未设 `TRIVIUM_ASSET_ROOT`，claude、glm 各 7 个入口，0 冲突）。
+随后 `npm run build` → `node dist/install.cjs --targets claude,glm` 退 0：运行时根 22 个文件、claude 7 个入口、glm 7 个入口，Agent 定义照常覆盖，无裁剪、无旧副本提示；codex、gemini 跳过（本次未选，与 §8 第 3 条、§9 同范围）。
+抽查 `trivium.cjs`、claude 与 glm 的 `dual-run`、`driver.snippet` 四处与仓库构建产物逐字节一致；装上的 `trivium.cjs` 已含按文件分档的指纹判定。
+
 ## 附录 A · glm 薄冒烟逐步清单（用户在 ZCode 桌面端操作）
 
 **目的**（r10 §2.5，不设收口判据、不进 J4）：加载入口 skill → 参数原文到达 → `topic claim` → 写一份原稿；核一次参数保真；核桌面端调用写法。**不运行 `review --start`**。
