@@ -1,0 +1,117 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "计划的整体方向成立：EV-127 的实测读数我用独立脚本在本仓复算，四行判据数据（旧 101/152/95、② 64/96/39、差异 56 条且其中指向入仓跟踪文件者为 0、./ 前导的真信号恰 1 条）逐字吻合；EV-137 的读点确为唯一一处；与提交锚、EV-133 的相容性论证经读码成立。主要问题集中在 EV-128 新步骤在 cancelRun 里的位置与失败语义没有写完备：①回写排在 patchStatus 之后，编排器进程在这两次写之间被打断会留下「status.json 已终态、run.json 永停 running」且第二次 --cancel 走终态早退分支、无任何补救通道；②计划只规定「前提不满足即跳过」，没有规定新步骤自身抛异常不得阻断后面的锁与闸门回收——那正是代码注释里写明后果最坏的一格。验证面上 E3/M4 咬合不紧：cancelRun 传真实 goneNow.gone 这条接线没有任何变异或用例盯防，而可集成的「无证据」档位（status.json 读不到）其实存在、计划却没用它。以下 6 条均为计划阶段一句话到一小段可修的返工点，无 blocker。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "concurrency",
+      "location": "计划 §3.2（「在 patchStatus 之后、回收锁与闸门之前」）",
+      "problem": "回写排在 status.json 落终态之后，引入了一个计划未登记的不可恢复窗口：cancelRun 的 CLI 进程若在 patchStatus 与 finalizeCancelledRunMeta 之间被中断或崩溃，status.json 已是 cancelled、run.json 仍停 running；此后第二次 --cancel 命中终态早退分支（「已处于终态，无需取消」），永远不会再触达归档侧收尾——本计划要产出的留痕在这条序列里永久缺失，且没有任何输出提示。计划的四条前提与 §6.2 讨论的都是 worker 侧的交错，唯独没讨论编排器自己在两次写之间倒下这一支。",
+      "evidence": "src/trivium/run-protocol.ts :804 终态早退分支与 :854 patchStatus 的实际顺序与文案（已读全函数 :784-900）；计划 §3.2 明确把新步骤放在「patchStatus 之后、回收之前」，§6.2 未提这支窗口。",
+      "suggestion": "在两个方向里选一并写进计划：把回写挪到 patchStatus 之前（此时中断是可恢复的——status.json 仍非终态，第二次 --cancel 会重走全流程并被前提 4 幂等挡住）；或让 :804 的终态分支在 phase 为 cancelled 时也幂等地调一次 finalizeCancelledRunMeta。若维持现顺序，至少要给「patchStatus 后、回写前」的失败模式加一句登记与播报口径。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §3.2 前提段与「cancelRun 播报」段",
+      "problem": "计划只承诺「前提任一不满足即跳过、不报错」，没有约定 finalizeCancelledRunMeta 自身抛异常（落盘 EACCES/ENOSPC、原子替换失败）时 cancelRun 的行为。按 §3.2 的位置，异常会沿 cancelRun 抛出，后面的主题锁与闸门回收整段跳过——而现码的注释明写闸门卡在 running 的后果是「Driver 被永久锁住业务写入、人的第一反应是去关 Hook，护栏就此报废」。一个尽力而为的新增量步骤，不该有把旧路径最硬的兜底动作（收锁收闸门）挡在身后的能力。",
+      "evidence": "src/trivium/run-protocol.ts :864 起回收段的注释块（闸门不回收的后果原文，已读）；计划 §3.2 全文没有出现对新函数异常的处理规定；src/trivium/archive.ts :242-267 writeMeta 走 writeAtomic，存在真实的写盘失败形态。",
+      "suggestion": "计划补一句：新步骤整体 try/catch，失败只 step/warn 一行原因，锁与闸门回收照常执行、退出码不变。这同时也能兜住 CODEX-01 的窗口——catch 里重排或补记均可。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §4.2 E3 与 §4.3 M4",
+      "problem": "E3 自相矛盾且留下了一个变异盲区。(a) 计划说「测 finalizeCancelledRunMeta 的调用方」又说「用例传 false」——用例无法把 false 传进 cancelRun，实际只能是直接调新函数的单测，而 §4.1 的 R1-R5 恰恰没有 workerGone=false 这一格，这条断言被放进了 §4.2 集成小节却没有集成形态。(b) 更要紧的是：接线「cancelRun 传的是 goneNow.gone」在全部用例与十条变异里没有防守——把 cancelRun 改成硬传 true（或在 goneNow 计算之前调用），所有测试照样绿，M4 也照样只咬 finalize 内部的判据。",
+      "evidence": "src/trivium/status.ts :155-180 workerConfirmedGone：status 为 null 时返回 gone:false、why 为「读不到：没有任何证据」——即「已确认退出」不成立的档位并不需要「进程扛得住 SIGKILL」，集成里 seedRun 后删掉 status.json（身份仍可从交接文件兜底）即可造出；src/trivium/run-protocol.ts :842-845 的调用形态；scripts/mutation-check.mjs 的 expect 是**套件级**（文件），E3 落在哪个文件、变异删的是哪一处的判据，计划没有钉死。",
+      "suggestion": "二选一并写清：E3 改为经 cancelRun 的真实集成用例（布置「无 status.json + 有交接文件」，断言 run.json 不写且输出含原因）——这同时把接线钉住；或保留直调单测形态、并在变异表补一条「cancelRun 硬传 true」期望红的用例。顺带说明 E3 属单元还是集成、M4 的 find 落在 finalize 内还是 cancelRun 内，避免实施时两处都可能删。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划 §3.2 D2①（task.json 同步）与 §4.1 R5",
+      "problem": "task.json 里没有对应 run_id 条目时的行为未规定。prepareRun 是先写 run.json、后 registerRun（两个独立写点），中间被打断即留下「run.json 存在、task.json 无条目」的形态；计划只写「同 run_id 那条的 status 改为 cancelled」。若实施者写成「找不到就补登记」，会触碰「不走 registerRun 整条覆盖」的自设禁令；若写成「取末条」则在「取消旧 run 与新一轮 --start 并发」时改错条目。",
+      "evidence": "src/trivium/review.ts :949 writeRunMeta 与 :951 registerRun 相邻两次独立落盘（已读上下文）；src/trivium/meta.ts :526-540 registerRun 按 run_id findIndex 覆盖；计划 §3.2 与 §4.1 R5 均只描述命中态。",
+      "suggestion": "补一句判据：按 run_id 精确匹配，找不到即跳过同步并在播报里说明（不新建条目、不动其它条目）；给 R5 加一格「无对应条目」用例。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §1.3 F6 与 §2.3",
+      "problem": "「本仓 180 份 run.json 里 forged_role_file 全为 false」不精确：180 份里有 6 份属 verify 阶段（5 份 trivium.verify-run.v1、1 份旧形状），根本没有 guard 段——真实分布是 174 份 false、6 份无此字段。结论（永远不会亮）不受影响，但 §2.3 说这些数字出自 run-status-census 脚本、实施时要拷进 evidence 供复算，口径不写清会让验收对不上（我的复算第一次就撞上这 6 份）。",
+      "evidence": "脚本复算：.reviews 下 _meta/run-*.json 共 181（含本轮骨架），status 分布 164/12/5 与 C10 吻合；其中 6 份无 guard 字段，如 .reviews/Agent注册表与多审泛化/verify/_meta/run-20260913T123426Z.json、.reviews/M4-M5实现/verify/_meta/run-20260911T042526Z.json。",
+      "suggestion": "F6 与普查脚本口径注明「含 guard 段的份数」或在 §2.3 标注 verify-run 形状不带 guard；C10 的 180 同理注明是「含 verify 阶段」的合并口径。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §5 同步表与反扫词表",
+      "problem": "cli.ts USAGE 串对 --cancel 的描述是「取消运行并回收主题锁」，行为变更后这句虽不算错但不再完备（现在还回写归档 run.json）；§5 的反扫词表（「停在 status: running」「不回写 run.json」等五个）扫不到这一格。AGENTS.md 同步清单只在参数/退出码变化时强制改 USAGE，本次都不变，所以这是取舍而非违例——但既然 PROTOCOL 同一句话都进了同步表，USAGE 漏列更像是反扫面的遗漏。",
+      "evidence": "src/trivium/cli.ts :241（USAGE 中的该格原文，已读）；AGENTS.md 改动同步清单表；计划 §5 反扫词五项。",
+      "suggestion": "§5 表里给 USAGE 一格（改述或明示「不改，理由：只述锁回收、无失实」），并把「回收主题锁」加入反扫词表以绝后患。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "§2 的实测数字可信：我用独立脚本对本仓 438 份审查件（结构化 383、1892 条意见、降级 55）按四种判据复算，旧 101/152/95、② 64/96/39、差异恰 56 条、差异中指向 git 跟踪文件的为 0 条、前导 ./ 的真信号恰 1 条——与 §2.1/§2.2/§2.3 全部逐字吻合；「只少不多」的结构论证（新判据可匹配处旧判据皆可匹配）经代码推演成立。",
+    "新正则对常见前界成立：全角括号/逗号、反引号、冒号、行首均放行匹配；连字符中段、点号中段、斜杠中段的截断全部堵死；前导 ./ 经 (?:./)* 吃掉后捕获组仍是规范路径，U5 的期望值与正则实现自洽；../ 与绝对路径不核在 §3.1 注释里如实登记为漏报方向，并由 D5 第 2 条进 BACKLOG，闭环完整。",
+    "EV-128 与提交锚相容的论证经读码成立：HEAD 为 running 时放行判据只查 run_id 与已登记 artifacts 条目（三字段改动全在其下），HEAD 非 running 时拦任何改动——E4 的两段断言（取消后提交放行、终态提交后再改被拦）与实现一致；「取消轮唯一一次终态写入」的论证成立，第二次取消被前提 4 与锚双重挡住，EV-133 的字节不变用例走的是正常收尾轮、不受本改动波及。",
+    "「run.json 已终态而 status.json 未终态」的 C8 窗口与两处同形缺口（worker 异常、worker_lost）的口径如实登记、不回填历史 4 份的判断有理由（分不出成因、回填等于替没发生过的收尾作证）。",
+    "EV-137 取候选二充分：全仓 grep 证实 report.ts 唯一读点；F5 对三道防线的覆盖面描述与代码一致——写入前 Hook 仅 L1 载体、未登记审查件判据只在显式 --check-artifacts 时跑且对 critics_selected 之外角色（含 Driver 后缀）失明、提交锚只核已登记项；且 skills-src/ 全目录确无对 --check-artifacts 的调用，「入口资产不调用」属实。run.json 的 gate.state 确无代码读者（判定读的是 state.json / task.json 的闸门），D2② 取 cancelled 只是留痕面，风险声明准确。",
+    "§1 的行号抽查全部命中：parse.ts 正则在 :225、topic-args.ts :192、run-protocol.ts :804/:842/:854、meta.ts :322/:371/:526、hooks.ts :487-511/:544-571、review.ts :949/:1336/:1624-1627/:1697-1703、report.ts :216/:258/:354/:463、types.ts :1321/:1440-1455、archive.ts :549 起 listRecordedRuns 与 :328-408 checkStageArtifacts、run.v2.json status 枚举、MANUAL :615、LLD :452/:563、PROTOCOL :354、主设计 :653/:963/:1105/:1440——均与提交 9cee216 一带的现况相符（个别 ±2 行不影响定位；LLD 里指向 :680 的旧链接本身已失准，§5 反正要重写那一格）。",
+    "验证的成本面合理：全程桩审查员零配额、变异装置七道闸复用既有件、E4 用真实 git 夹具走仓内集成测试惯例，失败时不烧真配额。"
+  ],
+  "not_covered": [
+    "未运行 npm run check 或任何测试套件（沙箱只读），「起点 2080/2078/0/2」的基线数与既有绿测未实证。",
+    "未逐份阅读他角色的历史审查件正文（§2 复算脚本只输出聚合计数与路径命中，不落任何意见内容）；doc/05_testing 两份报告的叙述内容未逐条核对。",
+    "skills-src 渲染产物与四家载体入口资产的措辞细节未审（本次仅反扫其中与 --cancel / check-artifacts 相关的行）。",
+    "E4 场景在 L1/L2 真实载体（含 Bash 启发式误拦）下的操作体验未模拟，结论基于读码。",
+    "PRD FR-24 措辞修订的具体文字、以及 D3 选择下 EV-73 描述并入的措辞，属另一侧镜头范围，未评。"
+  ],
+  "consulted": [
+    "src/trivium/parse.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/review.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/report.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/types.ts",
+    "src/trivium/cli.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/run.v1.json",
+    "test/unit/parse.test.ts",
+    "test/integration/run-protocol.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "scripts/mutation-check.mjs",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "AGENTS.md",
+    ".reviews/留痕字段与误报小修/plan/2026-09-26-留痕字段与误报小修-claude.md"
+  ]
+}

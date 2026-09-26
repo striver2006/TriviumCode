@@ -1,0 +1,279 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260926T135731Z",
+  "topic": "留痕字段与误报小修",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "请重点看五处：①EV-128 的回写前提是否完备（工作进程已确认退出、run.v2 形态、仍为 running 三条），有没有漏掉的竞态，特别是 worker 收尾与取消交错、run.json 已是终态而运行目录状态文件还不是终态的窗口；再核实与提交锚 runningRewriteViolation 的放行条件是否真的相容（运行中途已入库、之后取消、再次入库），以及「取消是该轮唯一一次终态写入，所以不违反 EV-133 收尾后不再更新」这条论证站不站得住；主题任务文件 runs 登记的状态同步会不会带来新的不一致。②EV-127 全词匹配的误报与漏报两个方向：第 2 节实测的读数与分类是否可信（旧判据 152 条、新判据 96 条、56 条差异），不以九个根目录起头的路径不再核对这一漏报是否可以接受，正则对 ./ 开头、全角标点、反引号包裹等常见前界是否都还成立。③EV-137 取候选二的理由是否充分：除 report 之外还有没有读这个字段的地方，文档里把伪造角色文件检测改指向写入前 Hook、未登记审查件判据与提交锚，这三道的覆盖面描述是否准确。④验证设计：变异表每一条的期望套件是否指向真正能区分的用例，E3、E4 两条能否钉住所声明的行为。⑤第 1 节列出的行号与事实是否属实，第 5 节的文档同步落点与反扫面有没有遗漏。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "9cee2163890af75a394d266cdc80b3e0e3920dfe",
+    "tree_hash": "8be82c3c3a92b7abf69059b16da17906b1207b47",
+    "dirty": true,
+    "subject_sha256": "d3e48c3d8d543824f6e42baee94291d65f73647dc63706b3530656f38c605fe4",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "9cee2163890af75a394d266cdc80b3e0e3920dfe",
+      "dirty": false,
+      "inputs_sha256": "be883bf13f2a7c44798be25b64146fad1bca763a8244afb645ed65b7e894ca46",
+      "built_at": "2026-09-26T12:26:06.710Z"
+    },
+    "after_tree_hash": "620341e22eb69020c44e2e4c17f097a5747f4ec4"
+  },
+  "started_at": "2026-09-26T13:57:32.048Z",
+  "finished_at": "2026-09-26T14:12:09.046Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 876.801,
+      "tool_calls": {
+        "run_command": 41,
+        "project_reads": 54
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0de01-c205-7d30-b6ba-9f489ed9d91b",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.11",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 319.062,
+      "tool_calls": {
+        "read": 34,
+        "grep": 12,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 301328,
+        "output_tokens": 36442,
+        "thinking_tokens": 30655,
+        "cache_read_tokens": 3512417,
+        "total_tokens": 337770
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "ed0a4424-3c10-41fa-b33d-da4113697294",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 498.884,
+      "tool_calls": {
+        "read": 36,
+        "grep": 9,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 28
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 19,
+        "inputTokens": 1806330,
+        "outputTokens": 35440,
+        "totalTokens": 1841770,
+        "cacheReadTokens": 1693952,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_049f38e3-734d-4dcf-bf18-471e9cf76b8b",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "留痕字段与误报小修/plan/_meta/brief-codex-20260926T135731Z.md",
+      "sha256": "32571d10e400eb4e42a0ee3cbb76fdb9415bfa2fe8852dd3ae096cb2d3961268"
+    },
+    {
+      "path": "留痕字段与误报小修/plan/_meta/brief-gemini-20260926T135731Z.md",
+      "sha256": "d37339f66a6e407e816573cea132b14212e367aa7ae257d978bcaf65a630c844"
+    },
+    {
+      "path": "留痕字段与误报小修/plan/_meta/brief-glm-20260926T135731Z.md",
+      "sha256": "57286cad1bd44c3a8b2cf05cb7f5366269cff4efdeb5544a3c04ef9f1c5bf0bc"
+    },
+    {
+      "path": "留痕字段与误报小修/plan/_meta/review-codex-20260926T135731Z.json",
+      "sha256": "898fa022fb92678edfd85fcdf211ac5486bc3226fe63a1a4e6ad4aaaab299ba9"
+    },
+    {
+      "path": "留痕字段与误报小修/plan/_meta/review-gemini-20260926T135731Z.json",
+      "sha256": "14bd57edb117b54a6f578c05c6e1c428f1a19497e52183bfe6e6aaff53c29a8d"
+    },
+    {
+      "path": "留痕字段与误报小修/plan/_meta/review-glm-20260926T135731Z.json",
+      "sha256": "4733585988304368fea8c579b22b587f764ec678eec41470e3e2ca43e1855912"
+    },
+    {
+      "path": "留痕字段与误报小修/plan/2026-09-26-留痕字段与误报小修-codex.md",
+      "sha256": "1606defbeeb191ee553a0ed1cdafc50d2af8c65b58a7a643dba3a3a8e6e68d67"
+    },
+    {
+      "path": "留痕字段与误报小修/plan/2026-09-26-留痕字段与误报小修-gemini.md",
+      "sha256": "8eac60f05d7c53b6a93cf62efc2c1cca75bd5ce18a34432e1402a2ecea5e20b9"
+    },
+    {
+      "path": "留痕字段与误报小修/plan/2026-09-26-留痕字段与误报小修-glm.md",
+      "sha256": "f6f2c083569362e356123e164deb82df99d5cd6e90e782b05aaf03ae30414f82"
+    },
+    {
+      "path": "留痕字段与误报小修/plan/2026-09-26-留痕字段与误报小修-claude.md",
+      "sha256": "d3e48c3d8d543824f6e42baee94291d65f73647dc63706b3530656f38c605fe4"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

@@ -1,0 +1,73 @@
+{
+  "agreed": [
+    "EV-128 取消回写与提交锚 runningRewriteViolation 的相容性论证成立：取消只更新 status/finished_at/gate.state 三格，artifacts 数组完全不动，因此在中途提交再取消后依然能被提交锚放行，且提交后状态变为 cancelled 能够受到终态不可变性的严密保护。",
+    "「取消是该轮唯一一次终态写入」论据充分，取消轮在 worker 正常收尾前被杀，此前仅有 running 骨架，cancel 回写作为收尾与 EV-133「收尾后不再更新」原则完全契合。",
+    "EV-127 全词匹配判据（候选 ②）正则设计稳妥，正确排除了中段路径截断导致的 56 处伪误报，否定后行断言对反引号、全角标点、汉字粘连及标准前导 ./ 的支持均经核实成立；九根目录之外的漏报在既有范围内完全可控。",
+    "EV-137 候选 ② 决策理由充分，明确指出了 run.json 终态冻结无法覆盖裁决期与闸门期的高风险窗口，将伪造角色文件防守客观指向 Hook 写入前拦截、gate --check-artifacts 与提交锚三道防线，覆盖面描述客观准确。",
+    "变异表 M1～M10 与期望用例对应关系严谨，具有专一鉴别力；E4 用例对取消轮提交锚生命周期的钉住设计完备。",
+    "第 1 节各处代码行号与历史留痕事实核对完全属实，第 5 节文档同步与反扫关键词覆盖全面。"
+  ],
+  "consulted": [
+    ".reviews/留痕字段与误报小修/plan/2026-09-26-留痕字段与误报小修-claude.md",
+    "src/trivium/parse.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/review.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/report.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/types.ts",
+    "src/trivium/status.ts",
+    "src/trivium/cli.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/parse.test.ts",
+    "doc/05_testing/REPORT_2026-09-26_trace_copy_fixes.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/07_manuals/MANUAL_user.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/run-protocol.ts:864-889，锁与闸门的清理位于取消流程末尾；代码注释明确指出闸门卡在 running 会把 Driver 永久锁死在已结束的运行上。finalizeCancelledRunMeta 虽声明「不报错」，但若内部在写 run.json 或更新 task.json 时抛出不可预期的 I/O 错误或锁超时，若未做显式捕获可能导致异常冒泡，跳过后续的锁与闸门回收。",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/留痕字段与误报小修/plan/2026-09-26-留痕字段与误报小修-claude.md:3.2",
+      "problem": "finalizeCancelledRunMeta 位于 cancelRun 的 patchStatus 之后、锁与闸门回收之前，若回写 run.json 或 updateTask 遭遇意外 I/O 异常，可能导致异常冒泡并阻断后续的主题锁与闸门释放，造成业务写锁永久悬挂。",
+      "severity": "minor",
+      "suggestion": "在 §3.2 中明确：finalizeCancelledRunMeta 内部必须对 writeRunMeta 和 updateTask 的所有潜在 I/O 异常进行兜底捕获，将其收口为 { kind: 'skipped', why: ... } 并记录警告，确保无论归档回写成败，cancelRun 都能无条件执行后半段的锁与闸门回收。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/status.ts:163-178，当 status.json 处于 phase: 'running' 且 worker_pid 缺失（同时无 worker.pid 文件）时，workerConfirmedGone 会确定性返回 { gone: false, why: '...拿不到 worker_pid：判不了' }。因此无需向调用方传 mock 参数即可构造出真实的未确认退出场景。",
+      "id": "AGY-02",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": ".reviews/留痕字段与误报小修/plan/2026-09-26-留痕字段与误报小修-claude.md:4.2",
+      "problem": "E3 计划直接给 finalizeCancelledRunMeta 传参 workerGone: false 进行测试，这仅覆盖了新函数的内部参数分支，无法验证 cancelRun 整体在集成层遇到未确认退出时的终端播报与跳过表现。",
+      "severity": "nit",
+      "suggestion": "在集成测试中可补充：构造一个缺少 worker_pid 的运行目录，调用真实 cancelRun，断言 workerConfirmedGone 判 gone 为 false 时，cancelRun 能如实输出跳过原因且 run.json 保持不变，实现声明行为的端到端覆盖。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/meta.ts:538-540，registerRun 对 findIndex 结果做了防范。updateTask 只改特定条目时也需遵循相同防御规范。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": ".reviews/留痕字段与误报小修/plan/2026-09-26-留痕字段与误报小修-claude.md:3.2",
+      "problem": "若 task.json.runs[] 因历史异常或目录破坏不存在当前 runId，直接按索引修改 status 键可能导致 TypeError。",
+      "severity": "nit",
+      "suggestion": "在实施说明中补充：updateTask 在查找同 run_id 项时，若未找到（findIndex === -1）应安全跳过改写并记录原因，不抛未捕获异常。"
+    }
+  ],
+  "not_covered": [
+    "未对本仓全部历史 438 份审查件与 180 份 run.json 执行全量重跑比对（已通过计划给出的读数分类、代码逻辑及代表性历史用例完成交叉核验）",
+    "未验证 Windows 平台下路径提取正则的反斜杠边界行为（已知该项目规范及平台均使用正斜杠相对路径）"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本实施计划整体设计严密、事实考证详实。EV-128 回写逻辑与提交锚相容性及 EV-133 不变量论证完全站得住脚；EV-127 全词匹配判据能有效清除截断误报且前界完备；EV-137 候选 ② 理由充分，各防线职责划分清晰。唯一需注意的是 cancelRun 中归档元数据回写时的异常隔离，确保极端 I/O 错误不阻断锁与闸门释放。同意实施（含建议项）。",
+  "verdict": "approve-with-nits"
+}

@@ -1,0 +1,109 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "五条意见均为 minor/nit，方向与论证扎实，无阻断。最重的一条：EV-128 的归档收尾步骤排在 patchStatus 之后，cancel 进程若在两步之间中断，status.json 已是 cancelled、第二次 --cancel 在 run-protocol.ts:804 提前返回，run.json 从此永远停在 running——恰是本主题要消灭的形态，且与计划自己引用的「第二次 --cancel 走 :804 终态分支」是同一机制。§2.1 四判据读数经我独立复算逐格吻合（101/93/64/64 件、152/138/95/96 条、95/81/39/39 仓内不存在、差异 56 条）；第 1 节全部行号与事实核实属实；F5 三道覆盖面描述准确。其余意见：新函数写侧失败路径未定义而插入点在锁/闸门回收之前（GLM-02）、runTerminal 读者行为翻转被「与改前相同」掩盖（GLM-03）、变异表 expect 与装置单值形态不匹配（GLM-04）、E3 的实现路径含糊（GLM-05）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "concurrency",
+      "location": "plan §3.2（插入位置「patchStatus 之后、回收锁与闸门之前」）",
+      "problem": "归档收尾排在 patchStatus 之后，使「status.json 先变终态、run.json 未写」的中断窗口不可恢复。推演：cancel 进程死在 patchStatus 与 finalizeCancelledRunMeta 之间时，status.json 已是 cancelled，而第二次 --cancel 对 status.json 已终态的运行在 run-protocol.ts:804 提前 return「已处于终态」，永远走不到新函数——run.json 永远停在 running，正是 EV-128 要消灭的形态换了个更窄的入口复发。若把 finalize 挪到 patchStatus 之前，中断后 status.json 仍 running，第二次 --cancel 能走全流程、由前提 4 幂等跳过 run.json 重写、最终一致。计划 §3.2 的 EV-133 论证里写了「第二次 --cancel 走 :804 的终态分支」，却没有把这句与「收尾排在 patchStatus 之后」连起来。同族残差：finalize 内部 run.json 与 task.json 两写之间中断也会留下 status 不一致（run.json=cancelled、task.json.runs[]=running），checkRunManifests 只核存在性与可读性、不比 status，不会拦。",
+      "evidence": "src/trivium/run-protocol.ts:804（status.json 已终态即提前 return，不进后续步骤）、:854（patchStatus 把 status.json 置 cancelled）、:862 起（锁与闸门回收在最后）；plan §3.2 的插入位置与「第二次 --cancel 走 :804 的终态分支，或被前提 4 挡下」；src/trivium/archive.ts:607-610（checkRunManifests 只核「run-<id>.json 必须在、必须可读」）。",
+      "suggestion": "二选一：把 finalizeCancelledRunMeta 挪到 patchStatus 之前（goneNow 在 :842 已算好，无依赖障碍；中断后可由第二次 --cancel 修复），或在 §6.2 明确登记该窗口及接受理由。若维持现序，同族的两写残差（run.json 与 task.json 之间）也应一并交代。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.2（前提与失败路径）与 §4.1 R4",
+      "problem": "新函数的写侧失败路径未定义，而插入点在锁与闸门回收之前。计划只定义了「前提不满足即跳过并 step，不报错、不改退出码」，R4 覆盖的也是读侧失败（文件不存在/不可解析/不合契约 → skipped 不抛）；写侧失败——writeRunMeta 内 validateRunMeta 抛错（meta.ts:377-380 直接 throw）、writeAtomic 或 updateTask 的 IO 失败——没有出口。一旦抛错，排在后面的锁回收与闸门回收（run-protocol.ts:862 起）被跳过，一次 --cancel 反而留下占着的主题锁与 running 闸门，把唯一的恢复路径变成新的卡死入口。cancelRun 对同类步骤的既有风格是 scrubRunDir 的 .catch(() => null)（:844）与 patchStatus 失败仅 warn（:859）。",
+      "evidence": "src/trivium/meta.ts:377-380（writeRunMeta 写前校验不合契约直接 throw）、src/trivium/run-protocol.ts:844（scrubRunDir .catch 兜底）、:859（patchStatus 失败 warn 不中断）、:862-888（锁与闸门回收在最后）；plan §3.2「前提（任一不满足即跳过并 step 一行原因，不报错、不改退出码）」与 §4.1 R4 的范围。",
+      "suggestion": "在 §3.2 补一句写侧失败的出口：与 patchStatus 同款降级（warn 后继续回收锁与闸门、退出码不变），或如 GLM-01 建议挪到回收之后；并考虑给 R 系列补一格写失败注入（mock writeAtomic 抛错）钉住不连坐。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §1.2 C7 与 §6.2「取消轮仍是最新可读留痕……与改前相同」",
+      "problem": "「与改前相同」的断言对 runTerminal 这一读者不成立。runTerminal 的判据是 m.status !== 'running'（run-protocol.ts:299-304 与 review.ts:1697-1703，acquireLock 用它判「该运行已终态、锁可回收」）：改前取消轮 run.json 恒 running ⇒ false；回写后变 cancelled ⇒ true。这是本次变更中唯一真正翻转判定结果的读者，方向良性（取消后残留的锁更快可回收），但 §6.2 的列举（gate / 当轮 Driver / Hook）恰好漏了它，读计划的人会以为全部读者行为不变。",
+      "evidence": "src/trivium/run-protocol.ts:299-304（startRun 的 runTerminal）、src/trivium/review.ts:1697-1703（同步路径的 runTerminal，判据同为 status !== 'running'）；plan §1.2 C7 与 §6.2 第三条。",
+      "suggestion": "在 §6.2 点名 runTerminal 对取消轮从「未终态」翻为「终态」并确认有意（或把它并进 E5 的断言范围）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.3 变异表 M5 / M7 / M8",
+      "problem": "三条变异的期望套件横跨单测与集成两个文件（M5「R2、E2」、M7「R1、E4」、M8「R5、E1」），而 mutation-check 装置每条 case 的 expect 只接受单个套件字符串：scripts/mutation-check.mjs:356 是 c.expect ? [c.expect] : spec.suites，spec 示例（:98-102）里 expect 也是单值。照表填两个套件写进规格会跑不通，只能现场改为「省略 expect 跑全部 suites」（基线与耗时变大）或收敛到一个文件——后者恰是计划自己引用的「别指到有冗余通道的用例」的教训，不如现在就在表里定下来。",
+      "evidence": "scripts/mutation-check.mjs:98-102（spec 示例 expect 为单值）、:356（c.expect ? [c.expect] : spec.suites）；plan §4.3 的 M5/M7/M8 行与「锚点写完代码后再定」。",
+      "suggestion": "每条变异的期望收敛到一个真正能区分的套件文件（如 M5 收 R2 或 E2 之一），或在 §4.3 注明装置的 expect 单值约束、说明届时靠 suites 全集兜底。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.2 E3",
+      "problem": "E3 的实现路径含糊：「测 finalizeCancelledRunMeta 的调用方：把『已确认退出』作为参数传进去（cancelRun 传 goneNow.gone），用例传 false」。cancelRun 的签名只有 (ctx, runId)，用例无法直接给它传 workerGone——goneNow 是它在 :842 内部算的。若实现者按字面理解为「直接调 finalizeCancelledRunMeta 传 false」，E3 就退化成 R 系列的单测、与接线无关（接线由 E1 覆盖的只剩正常路径）；若要真测「cancelRun 在 gone=false 时不写 run.json」，需要经夹具间接构造：status.json 的 phase 非 starting 非终态且读不到 worker_pid 时 workerConfirmedGone 返回 gone:false（status.ts:163-177「拿不到 pid……这一档没有证据」），这是可构造的，但计划没写构造方式。M4 的唯一期望套件是 E3，其鉴别力取决于这条用例到底钉在哪一层。",
+      "evidence": "src/trivium/run-protocol.ts:784（cancelRun 签名）、:842（goneNow 内部计算）；src/trivium/status.ts:163-177（无 pid 且非终态时 gone:false 的分支）；plan §3.2 接口注释「显式入参，E3 才测得到『没确认退出』那一支」与 §4.2 E3、§4.3 M4。",
+      "suggestion": "明确 E3 钉的是接线还是函数本体：若钉接线，写出夹具构造法（status.json 去掉 worker_pid 且 phase 置 running）；若钉函数本体，R 系列加一格 workerGone:false 即可，E3 不必另立。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§2.1 四判据读数经只读脚本独立复算逐格一致：438 份（结构化 383、解析降级 43、失败占位 12）、1892 条意见、被标 101/93/64/64、报出 152/138/95/96、仓内不存在 95/81/39/39、旧与②差异 56——实测可信，② 相对旧判据只少不多的结构性论证成立。",
+    "第 1 节的行号与事实全部核实属实：A1-A6（parse.ts:213/:225 正则原文、guard.ts:444-453/:834 告警去向、topic-args.ts:192 同形写法、parse.test.ts:127-134 既有用例形态、主设计:963）、C1-C12（cancelRun 全流程与 :804/:842/:854/:864、run.json 仅两次写入、worker 无 SIGTERM 处理器、worker 先写 run.json:1626 再改 status.json:519、schema 与 types.ts:1455 的 cancelled 枚举、四份 running 留痕的文档佐证）、F1-F6（写侧两处字面 false、读侧仅 report.ts:258、schema 必填无 description、测试三处行号）。",
+    "EV-128 的四条前提覆盖了 worker 收尾与取消的交错：workerConfirmedGone 确认退出后不存在活写者；C8 窗口（run.json 已终态、status.json 仍 running）由前提 4 挡下；并发两次 --cancel 幂等（writeRunMeta 原子替换、task.json 走任务锁、锁与闸门回收各有 run_id 守卫）。",
+    "提交锚相容性论证成立：HEAD 为 running 时 runningRewriteViolation 只核 run_id 不变与已登记条目不少不改（hooks.ts:487-511/:544-571），本步只改三格不碰 artifacts；HEAD 已终态时被 :510 拦任何改动。E4 的两段式断言（放行 + 终态后改动被拦）设计得当。",
+    "EV-133「取消是取消轮唯一一次终态写入、不属收尾后更新」的语义论证成立（GLM-01 指出的中断残差是另一回事，不动摇该论证本体）。",
+    "EV-137 的读侧唯一性核实：src/ 全仓 forged_role_file 仅四处（meta.ts:363、review.ts:1359 两处写，report.ts:258 唯一读，types.ts:1321 类型），D3 取② 不留死读侧；F5 三道覆盖面描述准确——hookPreWrite 规则 1（hooks.ts:589 起）、--check-artifacts 仅显式旗标时跑（cli.ts:1171）且入口资产确无调用（skills-src/ 内 check-artifacts 零命中）、未登记判据对 critics 之外角色失明（archive.ts:394 continue）、提交锚只核登记过的（archive.ts:380-382 注释自证）。",
+    "前提 3「只写 v2」的理由核实成立：readRunMeta 对 v1 走 migrateRunMetaV1 返回内存 v2 形状（meta.ts:519-520），不经原始 JSON 判 schema 直接写回确会把历史文件改成 v2；R3 用例能咬住用错读侧的实现。",
+    "EV-127 新正则的前界推演无误：反引号、全角括号/逗号、行首均能起匹配（不在 lookbehind 排除集内），../ 与绝对路径属计划已登记的漏报方向；U1-U7 每格都有鉴别力（含 M1/M2/M3 变异与用例的对应推演）。"
+  ],
+  "not_covered": [
+    "§2.3 用户点名的四组审查件的逐份读数未单独抽取核对（我复算的是全量聚合，与点名轮次的一致性由全量吻合蕴含，未逐条比对）。",
+    "LLD :563 的行号与原文未核对（只核了 :452-453）；run.v1.json 仅 grep 了 forged_role_file/cancelled 相关行，未整读。",
+    "scripts/mutation-check.mjs 只读了头部机制注释与 spec/expect 关键行（:95-102、:177-181、:322-356），未逐行读全；R1-R5、G1、U1-U7、E1-E5 均为计划中的未来用例，无可运行物。",
+    "M10b 夹具里的 run 20260925T053103Z 及其 evidence 副本未读；scratchpad 三个测量脚本（ev127-*.mjs）尚不存在于仓内，无法复核其实现。",
+    "§5 文档同步只核对了行号存在性与现行内容，未预演改后全文是否自洽；§3.2 引用的 run-protocol.ts:360-362 实际只覆盖 writeHandoff（:360），writeStatus 在 :371，属行号小偏差、不影响结论。"
+  ],
+  "consulted": [
+    ".reviews/留痕字段与误报小修/plan/2026-09-26-留痕字段与误报小修-claude.md",
+    "src/trivium/parse.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/status.ts",
+    "src/trivium/report.ts",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/cli.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/run.v1.json",
+    "skills/dual-critic/schema/review.v1.json",
+    "test/unit/parse.test.ts",
+    "test/unit/archive.test.ts",
+    "test/unit/run-meta.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/integration/run-protocol.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "scripts/mutation-check.mjs"
+  ]
+}
