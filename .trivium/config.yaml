@@ -131,8 +131,9 @@ profiles:
     # claude 档（M9 第 4 步）。slug 由 system/init 回读挣来（第 1 步报告 §4），
     # 不是文档推断——probe.cli.claude.models 为 []，猜错 slug 预检拦不下来。
     # 真实审查尺度的耗时与成本未测，第 6 步验收才会有第一份数据。
-    # 2026-09-27：claude-sonnet-5 → claude-opus-5-5（用户指定）。这个 slug 取的是官方模型 ID，
-    # **不是回读挣来的**——与上面的口径不同，猜错预检同样拦不下，首次真审时留意回读的模型名。
+    # 2026-09-27：claude-sonnet-5 → claude-opus-5-5（用户指定）。slug 取官方模型 ID（无日期后缀别名），
+    # 当日已按探针同口径回读核实：`claude -p --output-format stream-json --model claude-opus-5-5`，
+    # system/init.model == claude-opus-5-5、result 成功（约 $0.13）。flash 档的 claude-sonnet-5 同法核实（约 $0.20）。
     claude:
       plan: claude-opus-5-5
       code: claude-opus-5-5
