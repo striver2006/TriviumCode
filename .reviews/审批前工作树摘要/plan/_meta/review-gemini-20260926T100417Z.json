@@ -1,0 +1,87 @@
+{
+  "agreed": [
+    "基线落盘与不变性设计成立：在审查收尾时将 afterTreeHash 写入 run.json 的 snapshot.after_tree_hash（run.v2 可选字段），verifyRoundForApproval 与核心判定均不读取该字段；审批阶段纯只读不回写，EV-133 逐字节不变测试（test/integration/gate-loop.test.ts:256）保持成立。",
+    "严格比对助手杜绝「无改动」误报：新增 treeExists 显式核验基线对象存在性，diffTreesNameStatus 遇非零退出即抛错，异常统一转为 available: false 并输出警告与明确原因，彻底消除了既有 diffTrees 遇错返回空数组导致误报无改动的缺陷。",
+    "打印出口覆盖完整且不改变退出码：准确覆盖了仓内唯一会置 awaiting_approval 的两处停点（cli.ts:1249 与 cli.ts:1433）以及 approve 放行出口；拒绝、放弃与命令 A 等非停点路径按设计不予打印；出口处 try/catch 隔离确保摘要异常不影响退出码与闸门迁移。",
+    "验证矩阵严密：单测 10 项、集成测试 7 项与变异 8 项完整钉防了对象被清理、闸门期 commit 相对基线比对、退出码不因摘要失败翻转等关键边界。"
+  ],
+  "consulted": [
+    ".reviews/审批前工作树摘要/plan/2026-09-26-审批前工作树摘要-claude.md",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/integration/gate-loop.test.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/hook-config.ts",
+    "skills-src/partials/guard/l2-notice.md",
+    "skills/dual-critic/protocol/driver.snippet",
+    "src/trivium/init.ts",
+    "test/unit/init.test.ts",
+    "test/unit/hook-config.test.ts",
+    "src/trivium/agents/registry.ts",
+    "doc/08_project/BACKLOG.md",
+    "package.json",
+    "test/contract/entry-render-parity.test.ts",
+    "doc/07_manuals/QUICKSTART.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "skills-src/commands/approve.contract.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "读了 plan §2.1（声明 renderWorkTreeSummary(s: WorkTreeSummary, limit = 20): string，WorkTreeSummary 接口内无 driver 字段）与 plan §2.5（明确要求在停点上首句换成「（只告知，不影响审批）」、末句换成「审批时会再打印一次」；在审批通过时首句换成「（只告知，不影响本次审批）」、末句换成包含「<dual-abandon 写法> --topic <主题>」的作废引导）；对照 src/trivium/cli.ts:1270 与 :1574（abandon 等写法严格按当轮 Driver 派生）。若函数入参无上下文标识与 driver，无法在渲染阶段区分两类出口并生成对应的首尾句和具体命令写法。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": ".reviews/审批前工作树摘要/plan/2026-09-26-审批前工作树摘要-claude.md:73",
+      "problem": "renderWorkTreeSummary 函数签名缺少上下文类型与 Driver 标识参数，导致无法兑现 §2.5 规定的停点与审批通过时的差异化首尾文案及 abandon 命令渲染。",
+      "severity": "minor",
+      "suggestion": "为 renderWorkTreeSummary 补充可选选项参数，例如 options?: { context?: 'approval' | 'hold'; driver?: string | null; limit?: number }（或在 WorkTreeSummary 中补齐上下文与 driver 字段），使不同出口可正确派生对应的首尾提示与 abandon 调用语法。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读了 plan §7 D6（选项 (b) 决定修改 L2_AFTER_THE_FACT 与 driver.snippet:27，但草案中仅列出停点前段与 l2-notice，未给出这两处的逐字文本）；读了 src/trivium/hook-config.ts:426-427（L2_AFTER_THE_FACT 供 describeGuard 在无命令上下文时调用）与 skills/dual-critic/protocol/driver.snippet:27；读了 test/contract/entry-render-parity.test.ts:259-287（EV-132 契约测试直接将 driver.snippet 与 describeGuard 纳入用户可见表面做反向失实扫描）。若未明确给出包含「（命令 B / C / D 等待审批时）」限定的逐字规格，实施时容易因遗漏限定导致对命令 A 失实，或意外触碰契约断言。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": ".reviews/审批前工作树摘要/plan/2026-09-26-审批前工作树摘要-claude.md:274",
+      "problem": "D6 选项 (b) 缺乏 L2_AFTER_THE_FACT 与 driver.snippet:27 的具体逐字措辞草案，且测试清单中遗漏了 test/contract/entry-render-parity.test.ts。",
+      "severity": "minor",
+      "suggestion": "在 D6 措辞草案中补齐 L2_AFTER_THE_FACT 与 driver.snippet:27 的确切拟修改文本，确保显式嵌入「命令 B / C / D」限定以保持对命令 A 属实，并将 test/contract/entry-render-parity.test.ts 补充进 §3 验证清单。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读了 plan §2.4 表格（approve 出口描述为「:1598 复核全过之后、:1602 recordApproval 之前，逐阶段 readRunMeta(ref.layout, stage, v.runId) 再算摘要；落审批后，在「已通过」那句之前打印」）；读了 src/trivium/cli.ts:1558-1612。readRunMeta 包含文件系统 IO 与 JSON 解析，虽然 summarizeWorkTree 自身不抛错，但若调用点将 readRunMeta 置于审批落盘之前且未彻底防护，一旦 IO 异常可能导致审批被中断；若将摘要组装与打印放在 recordApproval 之后但未用 try/catch 隔离，抛错则会导致已落盘但退出码非 0 且无 JSON 产生。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": ".reviews/审批前工作树摘要/plan/2026-09-26-审批前工作树摘要-claude.md:101",
+      "problem": "approve 出口计算摘要时的错误防护闭环未在计划中明确定界，需确保 readRunMeta 与摘要构造的任何意外异常均不破坏已落盘的审批与退出状态。",
+      "severity": "minor",
+      "suggestion": "在计划中明确指出：在 approve 流程中，逐阶段 readRunMeta 以及摘要计算与渲染的整段逻辑必须完全置于内部独立 try/catch 中，任何异常仅输出警告并回退为 available: false 结构，绝对不影响 recordApproval 的调用时机、退出码与 JSON 输出。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读了 plan §2.1（指定使用 diff-tree -r --name-status --no-renames -z <基线> <当前>，并指出 -z 输出不加引号）与 src/trivium/util/git.ts:181-191。在 git 协议中，diff-tree 在 -z 模式下字段分隔符为 NUL（\\0），即输出为 [status]\\0[path]\\0...，状态码与路径之间不是 tab 或空格。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/审批前工作树摘要/plan/2026-09-26-审批前工作树摘要-claude.md:87",
+      "problem": "diffTreesNameStatus 解析 git diff-tree -z 输出时需显式按照成对 NUL（\\0）切割，避免假设行结构导致字段偏移。",
+      "severity": "nit",
+      "suggestion": "在 §2.2 diffTreesNameStatus 的实现说明中明确输出解析协议（按 \\0 成对读取 status 与 path），避免实施时误用行切割或 tab 分割。"
+    }
+  ],
+  "not_covered": [
+    "本次审查为基于提交 4a94e92 的静态代码与文档审查，未在各 Agent 载体（Codex、Antigravity、ZCode）的真实会话中实际触发执行审批命令。",
+    "未对特大工作树（数万文件）下 workTreeHash 的临时索引构建耗时进行实机性能压测。",
+    "除项目中已登记的探针路径与常规 .gitignore 规则外，未穷举极端复杂的嵌套 .gitignore 规则对工作树哈希比对边界的影响。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "实施计划设计清晰务实，折中方案（只打印摘要、不拦截、不改判定）方向正确，核心架构安全。\n基线取审查收尾快照落盘为 run.v2 可选字段，不影响任何判定且不破坏 EV-133 审批前后 run.json 逐字节不变的不变量。\n严格比对助手（treeExists + diffTreesNameStatus）彻底杜绝了异常被吞误报为「无改动」的隐患；三个打印出口覆盖了所有停点路径。\n发现的次要问题集中在：renderWorkTreeSummary 接口缺少上下文入参无法区分停点与审批首尾文案；D6 选项 (b) 缺乏通用常量与协议片段的逐字草案；approve 出口需明确将 readRunMeta 纳入安全兜底范围。\n带批注通过，建议在实施前将接口签名与文案草案补充完整。",
+  "verdict": "approve-with-nits"
+}
