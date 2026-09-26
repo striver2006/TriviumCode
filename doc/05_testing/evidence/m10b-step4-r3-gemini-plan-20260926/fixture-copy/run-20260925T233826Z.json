@@ -1,0 +1,195 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260925T233826Z",
+  "topic": "缓存过期策略",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "重点看惰性过期加写时头部清理能否兑现「过期条目在有限时间内释放」这一目标，以及 size 语义放宽、时钟回拨不处理这两处取舍是否站得住",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "gemini",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "critics_selected": [
+    "claude",
+    "codex"
+  ],
+  "snapshot": {
+    "git_head": "256754cdb3477bf2c5354b7e41195f3f64bcadc0",
+    "tree_hash": "301686df6e62caa9bf656e199000a31a010ba255",
+    "dirty": true,
+    "subject_sha256": "9612a9032c8a57f03096c474560e12ce4a053a124f6dd41b637239cd69e34eb4",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "da6476c57cf6ca1b9521353af31533a426c11429",
+      "dirty": false,
+      "inputs_sha256": "3c1024a35340acdb7aadae277a0dcd7b549d02ac704b138766c01c63005f3964",
+      "built_at": "2026-09-25T14:17:17.969Z"
+    }
+  },
+  "started_at": "2026-09-25T23:38:26.623Z",
+  "finished_at": "2026-09-25T23:42:03.446Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "claude": {
+      "vendor": "anthropic",
+      "cli_version": "2.1.281",
+      "model_requested": "claude-sonnet-5",
+      "model_effective": "claude-sonnet-5",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 216.673,
+      "tool_calls": {
+        "read": 5,
+        "grep": 1,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 6
+      },
+      "evidence_ok": true,
+      "usage": {
+        "cost_usd": 0.38229840000000004
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "c5f008d5-80cc-4623-a634-8e34860963be",
+      "peer_deny_applied": true,
+      "deny_skipped": 0,
+      "deny_rule_count": 12,
+      "deny_bytes": 398
+    },
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.156.1",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "deepseek",
+      "model_provider": "deepseek",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 101.225,
+      "tool_calls": {
+        "run_command": 6,
+        "project_reads": 9
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0daef-3cb2-7051-b211-50c06f4e5c11",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "claude": true,
+      "codex": false
+    },
+    "deny_skipped": {
+      "claude": 0,
+      "codex": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "claude": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "claude": {
+        "hit": false,
+        "hits": []
+      },
+      "codex": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "claude": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "缓存过期策略/plan/_meta/brief-claude-20260925T233826Z.md",
+      "sha256": "ad7bf03036f570b9b2bed40454ce682b475f24ca514845008337cc7ca00273e1"
+    },
+    {
+      "path": "缓存过期策略/plan/_meta/brief-codex-20260925T233826Z.md",
+      "sha256": "4e07383a66e057c859d6fef39629fa914144950b8047d884daed9ca09141e7c6"
+    },
+    {
+      "path": "缓存过期策略/plan/_meta/review-claude-20260925T233826Z.json",
+      "sha256": "43f83ac7316ecaf93d62318b86fbf87f60e805f28875cb75032ee99520d89d4a"
+    },
+    {
+      "path": "缓存过期策略/plan/_meta/review-codex-20260925T233826Z.json",
+      "sha256": "c92051d06da5f0ef422d13362c4345cb2169b63222d9f2db98a18b33a8f94146"
+    },
+    {
+      "path": "缓存过期策略/plan/2026-09-26-缓存过期策略-claude.md",
+      "sha256": "1cf7828290ee1837a12c69f795e3528c511df13a5bd20d73ba7d68b3c4b5d867"
+    },
+    {
+      "path": "缓存过期策略/plan/2026-09-26-缓存过期策略-codex.md",
+      "sha256": "08a1d5b920c7961e8f72db8bbfd2e863a3125a2edb187c3a803f650729358998"
+    },
+    {
+      "path": "缓存过期策略/plan/2026-09-26-缓存过期策略-gemini.md",
+      "sha256": "9612a9032c8a57f03096c474560e12ce4a053a124f6dd41b637239cd69e34eb4"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

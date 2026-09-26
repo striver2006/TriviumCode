@@ -1,0 +1,193 @@
+{
+  "at": "2026-09-25T23:43:48.931Z",
+  "tag": "pre-approve",
+  "fixture": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r3-dJbvIx",
+  "run_file": "run-20260925T233826Z.json",
+  "plan_files": [
+    "2026-09-26-缓存过期策略-claude.md",
+    "2026-09-26-缓存过期策略-codex.md",
+    "2026-09-26-缓存过期策略-gemini.md",
+    "2026-09-26-缓存过期策略-revised-gemini.md"
+  ],
+  "meta_files": [
+    "brief-claude-20260925T233826Z.md",
+    "brief-codex-20260925T233826Z.md",
+    "review-claude-20260925T233826Z.json",
+    "review-codex-20260925T233826Z.json",
+    "run-20260925T233826Z.json"
+  ],
+  "criteria": {
+    "draft_suffix_is_driver": {
+      "draft": "2026-09-26-缓存过期策略-gemini.md",
+      "ok": true
+    },
+    "run_driver": {
+      "got": "gemini",
+      "ok": true
+    },
+    "run_driver_enabled": {
+      "got": true,
+      "ok": true
+    },
+    "run_driver_guard_level": {
+      "expect": "L2",
+      "got": "L2",
+      "ok": true
+    },
+    "critics": {
+      "got": [
+        "claude",
+        "codex"
+      ],
+      "critics_selected": [
+        "claude",
+        "codex"
+      ],
+      "expect": [
+        "claude",
+        "codex"
+      ],
+      "excludes_driver": true
+    },
+    "disposition": {
+      "file": "2026-09-26-缓存过期策略-revised-gemini.md",
+      "role": "gemini",
+      "ok": true
+    },
+    "task_drivers_plan": {
+      "got": {
+        "driver": "gemini",
+        "claimed_at": "2026-09-25T23:37:18.995Z",
+        "claimed_by": "unknown-session"
+      },
+      "ok": true
+    },
+    "draft_is_last_artifact": {
+      "last": "缓存过期策略/plan/2026-09-26-缓存过期策略-gemini.md",
+      "draft": "缓存过期策略/plan/2026-09-26-缓存过期策略-gemini.md",
+      "index": 6,
+      "count": 7,
+      "ok": true
+    },
+    "ev107_all_ok": true,
+    "approvals": []
+  },
+  "ev107": [
+    {
+      "critic": "claude",
+      "model_requested": "claude-sonnet-5",
+      "model_effective": "claude-sonnet-5",
+      "model_effective_source": "envelope",
+      "expect": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "run_json": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "review_doc": {
+        "file": "2026-09-26-缓存过期策略-claude.md",
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "ok": {
+        "run_heterogeneous": true,
+        "run_override_reason": true,
+        "doc_heterogeneous": true,
+        "doc_override_reason": true
+      }
+    },
+    {
+      "critic": "codex",
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "trace",
+      "expect": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "run_json": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "review_doc": {
+        "file": "2026-09-26-缓存过期策略-codex.md",
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "ok": {
+        "run_heterogeneous": true,
+        "run_override_reason": true,
+        "doc_heterogeneous": true,
+        "doc_override_reason": true
+      }
+    }
+  ],
+  "run_entry": "B",
+  "run_status": "success",
+  "run_snapshot": {
+    "git_head": "256754cdb3477bf2c5354b7e41195f3f64bcadc0",
+    "tree_hash": "301686df6e62caa9bf656e199000a31a010ba255",
+    "dirty": true,
+    "subject_sha256": "9612a9032c8a57f03096c474560e12ce4a053a124f6dd41b637239cd69e34eb4",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "da6476c57cf6ca1b9521353af31533a426c11429",
+      "dirty": false,
+      "inputs_sha256": "3c1024a35340acdb7aadae277a0dcd7b549d02ac704b138766c01c63005f3964",
+      "built_at": "2026-09-25T14:17:17.969Z"
+    }
+  },
+  "run_gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "run_artifacts": [
+    {
+      "path": "缓存过期策略/plan/_meta/brief-claude-20260925T233826Z.md",
+      "sha256": "ad7bf03036f570b9b2bed40454ce682b475f24ca514845008337cc7ca00273e1"
+    },
+    {
+      "path": "缓存过期策略/plan/_meta/brief-codex-20260925T233826Z.md",
+      "sha256": "4e07383a66e057c859d6fef39629fa914144950b8047d884daed9ca09141e7c6"
+    },
+    {
+      "path": "缓存过期策略/plan/_meta/review-claude-20260925T233826Z.json",
+      "sha256": "43f83ac7316ecaf93d62318b86fbf87f60e805f28875cb75032ee99520d89d4a"
+    },
+    {
+      "path": "缓存过期策略/plan/_meta/review-codex-20260925T233826Z.json",
+      "sha256": "c92051d06da5f0ef422d13362c4345cb2169b63222d9f2db98a18b33a8f94146"
+    },
+    {
+      "path": "缓存过期策略/plan/2026-09-26-缓存过期策略-claude.md",
+      "sha256": "1cf7828290ee1837a12c69f795e3528c511df13a5bd20d73ba7d68b3c4b5d867"
+    },
+    {
+      "path": "缓存过期策略/plan/2026-09-26-缓存过期策略-codex.md",
+      "sha256": "08a1d5b920c7961e8f72db8bbfd2e863a3125a2edb187c3a803f650729358998"
+    },
+    {
+      "path": "缓存过期策略/plan/2026-09-26-缓存过期策略-gemini.md",
+      "sha256": "9612a9032c8a57f03096c474560e12ce4a053a124f6dd41b637239cd69e34eb4"
+    }
+  ],
+  "task_gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "file_sha256": {
+    "2026-09-26-缓存过期策略-claude.md": "1cf7828290ee1837a12c69f795e3528c511df13a5bd20d73ba7d68b3c4b5d867",
+    "2026-09-26-缓存过期策略-codex.md": "08a1d5b920c7961e8f72db8bbfd2e863a3125a2edb187c3a803f650729358998",
+    "2026-09-26-缓存过期策略-gemini.md": "9612a9032c8a57f03096c474560e12ce4a053a124f6dd41b637239cd69e34eb4",
+    "2026-09-26-缓存过期策略-revised-gemini.md": "6a06f167eb8c4fae83aba3bd7b888b48caae9b349dee367f9072f2f6464cac24"
+  }
+}

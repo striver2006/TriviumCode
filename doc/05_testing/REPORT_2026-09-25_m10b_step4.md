@@ -1,6 +1,6 @@
 # M10b 第 4 步 · 验收（AC-21 子句 ①、EV-77、EV-107、兼容）报告
 
-> **状态**：进行中。
+> **状态**：进行中（3-1、3-2、3-3 已结案；3-4、3-5 待用户在载体执笔）。
 > **上位**：计划 r5 §7（剧本、每轮判据、兼容白名单、EV-107 端到端），r10 §4（glm 轮载体证据、参数保真、尽力拦截观测）替换 r9 §4。
 > **日期**：2026-09-25 起　**起点**：`543e0ea`（`main`）；安装副本为 `da6476c` 构建（第 3 步结案后重装，之后只有文档提交）
 > **轮次顺序**（用户 2026-09-25 定，照 r5 §7.1 表）：3-1 claude plan（夹具）→ 3-2 claude code（兼容 J3）→ 3-3 gemini plan（名义 Driver）→ 3-4 codex code（真载体 + EV-77）→ 3-5 glm plan（真载体，J4）
@@ -151,7 +151,8 @@ TV gate --stage plan --topic 限流器重构 --await-approval
 #### 缺口（如实登记）
 
 - **构建标识取值判据不可在夹具里验证**：见上表。r5 §7.1 首行把 claude code 兼容轮的载体写作「本会话」，并未要求夹具；本轮按用户「三轮夹具审查」的安排在夹具里做，J3 的形状比对不受影响，
-  但「`snapshot.build.git_head` 与 `snapshot.git_head` 一致」这一格要在本仓内跑一次 claude code 轮才能核。是否补、何时补由用户定（可并入 M10b 之后第一次本仓代码双审，届时只读 run.json 两个字段）。
+  但「`snapshot.build.git_head` 与 `snapshot.git_head` 一致」这一格要在本仓内跑一次 claude code 轮才能核。
+  **用户 2026-09-26 定**：并入 M10b 之后第一次本仓代码双审，届时只读该轮 run.json 的 `snapshot.git_head` 与 `snapshot.build.git_head` 两个字段，结论追记到本节。
 
 #### 3-2 运行期实际命令行（J1）
 
@@ -172,3 +173,77 @@ TV gate --stage code --topic 限流器重构 --await-approval
 
 与渲染产物 `dual-review-code` 的步骤序一致（预检 → 解析 → `--start` → `--wait` 循环 → 应答 → `--check` → `--await-approval`，code 轮无认领步）；
 `base` 按契约无条件传（resolve 输出 `HEAD`），`critics` 无条件传，重跑时 resolve 输出的 `models.codex` 原样传给 `--model-codex`。
+
+### 1.3 3-3 · gemini（名义 Driver）· plan · 夹具（台账第 25 行）
+
+> **性质**（r5 §7.1）：夹具级、名义 Driver——`--driver gemini` 只是旗标声明，**全部执笔（原稿、裁决件）实际出自 Claude 会话**，Antigravity 未参与执笔；
+> 两侧审核者（claude、codex）是真实 CLI 调用。本轮**不是**「gemini 真载体跑通」，不挂 T2；r10 §4.2 的参数保真一格对名义 Driver 不设。
+
+- **夹具**：`/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r3-dJbvIx`（`setup.mjs` 以 mkdtemp 新建，**不复用** 3-1 夹具——那边 plan 阶段已由 claude 认领），
+  含一个不带过期的 LRU 缓存 `src/cache.ts`；主题 `缓存过期策略`。认领由 `setup.mjs` 执行：`topic claim --stage plan --driver gemini`，退 0。
+- **codex 模型**（用户 2026-09-26 定：deepseek-flash）：`init` 落盘的缺省配置是 `agents.codex.profile: qwen` + `profiles.*.codex: qwen3.8-max / qwen3.8-flash`，编排器显式传 `-p` / `-m`，
+  只改 `~/.codex` 的默认模型对夹具不生效。`setup.mjs` 把夹具配置里这三处一起换成 `deepseek` / `deepseek-flash`（与本仓 `.trivium/config.yaml` 同口径，免得组成 `-p qwen -m deepseek-flash`），
+  每处断言恰好命中一次，改前改后 sha256 记在 `01-setup-readout.json`。这一缺省与内置超时档的错配另登 BACKLOG EV-130。
+- **原稿**：`2026-09-26-缓存过期策略-gemini.md`，由 Claude 用 Write 落笔（稿首注明执笔实情）。
+- **run**：`20260925T233826Z`，`status: success`，耗时 3m38s（claude `claude-sonnet-5` 3m37s；codex `deepseek-flash` 1m41s）；两侧 `request-changes`，均结构化、零回退。
+  11 条全部接受；两侧同指的主问题是 §2「过期条目在有限时间内释放」与头部段清理机制不符（CLAUDE-01 ≡ CODEX-01，均 blocker）。
+- **evidence**：`doc/05_testing/evidence/m10b-step4-r3-gemini-plan-20260926/`——`setup.mjs` / `01-setup-readout.json`（搭建）、`extract.mjs` / `03-readout.json`（判据读数与 EV-107 逐格）、
+  `fixture-copy/`（原稿、两份审查文档、裁决件、run.json、task.json 原样副本；审批后另存 `03-readout-post-approve.json`、`task-post-approve.json`）。
+
+#### 3-3 判据（r5 §7.2）
+
+期望值先从代码推出、写死在 `extract.mjs` 里，不从 run.json 回读。
+
+| 判据 | 期望（出处） | 读数 | 成立 |
+| :--- | :--- | :--- | :-- |
+| 原稿后缀 = Driver | `-gemini` | `2026-09-26-缓存过期策略-gemini.md` | ✓ |
+| `run.json.driver` / `driver_enabled` | `gemini` / `true`（注册表 gemini `driverEnabled: true`） | `gemini` / `true` | ✓ |
+| `run.json.driver_guard_level` | `L2`：gemini 登记 `guardLevel: 'L2'`、`hookConfigTarget: null`；`effectiveGuardLevel` 对非 L1 直接返回登记值、不看 Hook 在场（`hook-config.ts:374`）——夹具 `init` 装了 claude / zcode 两份 Hook，与本格无关 | `L2`；预检 Driver 行「gemini · 护栏 L2（该载体没有 Hook 机制……）」 | ✓ |
+| 审核者集合不含 Driver | 不含 `gemini` | `critics_selected` 与 `critics` 键均为 `claude`、`codex` | ✓ |
+| 裁决件 `role` = Driver 且 `gate --check` 通过 | `gemini`；退 0 | `2026-09-26-缓存过期策略-revised-gemini.md`，`role: gemini`；`gate --check` `ok: true`，11 个编号齐全、`warnings: []` | ✓ |
+| `task.json.drivers.plan.driver` | `gemini` | `gemini`（`claimed_by: unknown-session`，认领在会话外的 `setup.mjs` 里执行，同 3-1） | ✓ |
+| `run.json.artifacts[]` 原稿条目 | 列表末尾 | 第 7 条（末尾，下标 6）`缓存过期策略/plan/2026-09-26-缓存过期策略-gemini.md`，sha256 与两份审查文档的 `snapshot_hash` 一致 | ✓ |
+| `run.json.gate.warnings` | 原稿在归档根内 ⇒ 无该字段 | 无该字段 | ✓ |
+| 停点话术 | 调用写法按 gemini 登记的 `entryInvocation: '/{name}'` ⇒ `/dual-approve`；末句取 `gateHoldNotice` 的 `l2-none` 档 | `通过：/dual-approve --topic 缓存过期策略 --stage plan [--reason <附言>]`；末句「在此期间不得修改业务文件——本载体没有 Hook 拦截（L2），全靠你自觉；越界不会被事前拦下，会在审批前复核与跑后漂移复算时暴露。」 | ✓ |
+| `approve` 复核：造缺件 | 退 2 | 用户在终端把裁决件移出后 `approve`：`[missing_disposition] 找不到第 1 轮的裁决件（应为 …-revised-gemini.md）`，「通过前复核未过，本次不放行」，`exit=2`；随后移回 | ✓ |
+| `approve` 复核：造改工件 | 退 2 | 用户在终端给 `_meta/review-claude-20260925T233826Z.json` 追加一个空格后 `approve`：「已被改动……记录 43f83ac7316e，现为 36bb69cf4b51」，`exit=2`；随后从备份复原，`shasum -a 256` 读回 `43f83ac7…d89d4a`，与登记一致（同一行命令尾部的 `# …` 注释在交互式 zsh 里被当成文件名、报了三条 `No such file or directory`，不影响读数） | ✓ |
+| 审批记录 | `task.json.approvals[]` 一条 | 复原后 `approve` 退 0；`approvals[0]`：`at 2026-09-26T00:03:47.230Z`、`stage plan`、`run_id 20260925T233826Z`、`decision approved`、`reason null`、`session_id null`（终端执行，无会话来源）；读数 `03-readout-post-approve.json` | ✓ |
+
+#### EV-107 端到端（r5 §7.4）
+
+当轮 Driver gemini 的厂商 `antigravity`，名义族 `/gemini/i`（`VENDOR_MODEL_FAMILY`）。逐侧按**生效模型**算期望：
+
+| 侧 | 生效模型（来源） | 期望 `heterogeneous` / `override_reason` | run.json | 审查文档 front-matter | 成立 |
+| :--- | :--- | :--- | :--- | :--- | :-- |
+| claude | `claude-sonnet-5`（envelope） | `true` / null | `true` / null | `heterogeneous: true`，无 `override_reason` 行 | ✓ ✓ ✓ ✓ |
+| codex | `deepseek-flash`（trace） | `true` / null | `true` / null | `heterogeneous: true`，无 `override_reason` 行 | ✓ ✓ ✓ ✓ |
+
+八格全部成立。**已登记错判形态的一个实例（不是回归）**：本轮原稿与裁决件实际出自 Claude，claude 侧审核者跑的也是 Claude 系模型，按事实是同族；
+但判定只看名义 Driver 的厂商族，于是记为 `true`。这正是 `isHeterogeneous` 文档块写明的「两层都是启发式、`true` 读作未检出同族」，与 r5 §7.4 边界句同性质，第 5 步追记到 EV-107 覆盖记录。
+
+#### 顺带
+
+- 两份审查文档与裁决件的文件名日期为 `2026-09-26`，run_id 为 `20260925T…`（UTC）——文件名取本地日期，与 3-2 同一口径。
+- codex 侧在「未覆盖范围」里记：`git rev-parse HEAD^{tree}` 与任务书标注的快照 tree 不同，自判「可能来自快照含未跟踪文件」、未定论、不影响结论。夹具里 `init` 产物与归档都未提交，快照含它们，属预期。
+- 命令 B 的渲染产物（claude 目标）里，预检一步不带 `--critics`（BACKLOG EV-126）；本轮按用户要求给预检也带上 `--critics claude,codex`，预检因此只核两侧，与后续入选集合一致。这是与渲染步骤序唯一的偏离。
+- 起草 3-5 操作卡时核出：命令 B 的入口描述写死「Antigravity + ZCode 背靠背双审」，C / D 早已泛化，glm 当 Driver 时标题与实际相反——登记 BACKLOG EV-131。
+- 起草 3-4 操作卡时核出：审批前复核（`verifyRoundForApproval`，`gate.ts:897`）只核裁决齐备与本轮登记工件的 sha256，**不看工作树**。所以 r5 §7.2.1「在 codex 会话里改业务文件，随后 approve 复核暴露」对闸门期的改动不成立，只有审查进行中的改动会被跑后复算发现。
+  3-4 卡因此把 EV-77 的写事件放在审查进行中，改一个不进 diff、不进 `--context` 的文件（判 `unrelated`，缺省 `on_drift: warn`，只告警、运行不作废）。这一更正的结论待 3-4 实测后写进 §1.4。
+- 3-4 / 3-5 操作卡：`evidence/m10b-step4-r4-codex-code-20260926/00-card.md`、`evidence/m10b-step4-r5-glm-plan-20260926/00-card.md`。
+
+#### 3-3 运行期实际命令行（J1）
+
+均在夹具根执行，`TV` 同 §1.1：
+
+```text
+node <已安装 trivium.cjs> init                                                  # setup.mjs 内
+node <已安装 trivium.cjs> topic claim --topic 缓存过期策略 --stage plan --driver gemini --json   # setup.mjs 内，排在换 codex 档之后
+TV preflight --stage plan --driver gemini --critics claude,codex --json
+TV topic resolve --stage plan --json -- '重点看惰性过期加写时头部清理能否兑现「过期条目在有限时间内释放」这一目标，以及 size 语义放宽、时钟回拨不处理这两处取舍是否站得住' --topic 缓存过期策略 --critics claude,codex --context src/cache.ts --driver gemini
+TV review --start --entry B --stage plan --topic 缓存过期策略 --driver gemini --focus '<同上>' --plan-file <夹具>/.reviews/缓存过期策略/plan/2026-09-26-缓存过期策略-gemini.md --context src/cache.ts --critics claude,codex --json
+TV review --wait 20260925T233826Z --timeout 180 --json                          # ×2（第 1 次退 73，第 2 次退 0）
+TV gate --stage plan --topic 缓存过期策略 --check --json
+TV gate --stage plan --topic 缓存过期策略 --await-approval
+```
+
+`--critics` 按契约由 resolve 输出的 `critics` 无条件传入，`subject_path` 传给 `--plan-file`，`task_goal` / `profile` / `models` 为空未传（codex 的 deepseek-flash 来自夹具配置缺省档，不是 `--model-codex`）。焦点由 Driver 代拟（用户授权代办发起）。
