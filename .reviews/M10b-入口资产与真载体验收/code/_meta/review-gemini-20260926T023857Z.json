@@ -1,0 +1,93 @@
+{
+  "agreed": [
+    "FR-28 判定非常克制诚实，维持「部分达成」，在 PRD 追溯矩阵子表中记为 ◐ 部分，明确四条命令与四载体仅覆盖 glm 命令 B 与 codex 命令 C，未做全称冒进",
+    "AC-21 达成判定逻辑清晰，准确区分存在量词（Given 指定某个已注册 Agent 为 Driver 走通命令 B）与全称量词，并详细附注了 gemini 仅名义、codex 走命令 C 的达成边界",
+    "对 L2 事后覆盖面与 EV-132 的揭露彻底且实事求是，在 QUICKSTART §5.2、RUNBOOK §十、主设计 8.5 等处统一写实了审批前复核不看工作树、跑后漂移复算不覆盖闸门期的缺陷，并明确告知用户自查 git status",
+    "四家载体的调用写法（claude/gemini/glm 写作 /{name}，codex 写作 ${name}）与入口安装路径、禁装 ~/.agents/skills 规约，与注册表 registry.ts 及 install.ts 实现严格一致",
+    "纪律 6 回溯对账表与 grep 锚自动化差集机制运转良好，全面清除了「待 M10b」「永真放行」等历史失实字面"
+  ],
+  "consulted": [
+    ".reviews/M10b-入口资产与真载体验收/code/_meta/changes-20260926T023857Z.diff",
+    "doc/05_testing/REPORT_2026-09-26_m10b_step5.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/README.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/03_api/README.md",
+    "doc/05_testing/CASE_manual_acceptance.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/evidence/m10b-step5-20260926/01-anchors.json",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/07_manuals/QUICKSTART.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/agents/registry.ts",
+    "src/install.ts",
+    "src/trivium/hook-config.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "skills-src/partials/guard/l2-notice.md",
+    ".reviews/README.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "对比阅读 `.reviews/README.md:3-5` 与 `REPORT_2026-09-26_m10b_step5.md:83`（D1 项）。`.reviews/README.md` 第 3 行正文仍记录「AC-21（仅子句 ③）与 AC-22 部分达成」，未同步本次回溯中 AC-21 已整体转为达成（含边界）的现状；第 5 行仍引用旧版 `PRD v1.4.7` 与 `设计 v1.3.37`。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "code",
+      "location": ".reviews/README.md:3-5",
+      "problem": "`.reviews/README.md` 抬头导语中的 AC-21 状态口径未同步至已达成，且上游规范依据版本滞后于生效的 PRD v1.4.8 与主设计 v1.3.43。",
+      "severity": "minor",
+      "suggestion": "将 `.reviews/README.md` 第 3 行的 AC-21 状态描述同步更新为已达成（含达成边界），并将第 5 行的规范依据版本升级至 PRD v1.4.8 与设计 v1.3.43。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "对比阅读 `doc/02_design/README.md:33` 与 `doc/02_design/LLD_orchestrator.md:645`。本次回溯已将 LLD_orchestrator.md 升版至 v1.1.3，并在主设计 24.2 登记；但 `doc/02_design/README.md` 仅将主设计版本跟进到 v1.3.43，第 33 行对 LLD 的引用仍停留在 `v1.1.0`。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "doc/02_design/README.md:33",
+      "problem": "`doc/02_design/README.md` 目录索引中对 `LLD_orchestrator.md` 的版本标注未同步，仍为 `v1.1.0`。",
+      "severity": "minor",
+      "suggestion": "将 `doc/02_design/README.md` 第 33 行的 `LLD_orchestrator.md` 版本标注由 `v1.1.0` 更新为当前生效的 `v1.1.3`。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查看主设计 15.3 节第 2972 行表格与第 16.1 节 M10b 行达成边界。AC-21 行第二列条件写为「四 Driver 各跑一轮」，而第三列和达成边界明确说明第 4 步五轮验收中 codex 跑的是 code 阶段（命令 C），gemini 跑的是名义 plan 夹具。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2972",
+      "problem": "AC-21 属于「走通命令 B」的验收项，条件列单写「四 Driver 各跑一轮」易被读者望文生义为「四家各自跑了一轮命令 B」，与第一列及第三列注记的实际实跑情况（codex 跑命令 C、gemini 仅名义）存在表述张力。",
+      "severity": "nit",
+      "suggestion": "在 15.3 节 AC-21 行第二列补充简要限定，如「四 Driver 验收覆盖（各一轮，见实跑说明）」，消除字面张力。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查看主设计 §24.2 表格第 3597 行。第一列写为 `[MANUAL_user.md](../07_manuals/MANUAL_user.md) v1.0.1`，而状态列写明随 M10b 第 5 步已升级到 v1.0.3。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:3597",
+      "problem": "§24.2 目标文档表中其他多版文档第一列均使用 `vX → vY` 格式，MANUAL_user.md 仍标为 `v1.0.1`，格式不统一。",
+      "severity": "nit",
+      "suggestion": "将第一列文件名后版本更新为 `v1.0.1 → v1.0.3`。"
+    }
+  ],
+  "not_covered": [
+    "受只读约束限制，未在物理终端上真实执行 `node dist/install.cjs` 并校验目标载体目录的文件写入与裁剪行为",
+    "未拉起实际外部 Agent GUI/CLI（如 ZCode 桌面端或 Codex CLI 交互进程）做交互级验证",
+    "未对已冻结正文的演进设计历史章节做全量文字核对（按方案 A 演进设计正文冻结，修正落主设计）"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最明显问题在于文档间极少数交叉引用遗漏：.reviews/README.md 抬头遗漏了 AC-21 达成口径更新及规范版本同步，doc/02_design/README.md 遗漏了 LLD_orchestrator.md 升至 v1.1.3 的标注。\n其余审查焦点表现优秀：\n1. 回溯严格守住边界，FR-28 坚持标为「部分达成」，AC-21 厘清了存在量词成立与实跑边界，完全没有把达成状态说过头；\n2. L2 事后覆盖面与 EV-132 的表述极其诚实，明确指出了审批前复核不看工作树、跑后漂移复算不覆盖闸门期的缺陷，并在全部操作手册中给出了明确自查告诫；\n3. 各载体调用写法与入口资产安装位置与注册表代码完全一致；\n4. 整体对账表详尽，自动化 grep 锚差集验证可靠。整体给出 approve-with-nits。",
+  "verdict": "approve-with-nits"
+}

@@ -1,0 +1,67 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最重一条是审查对象完整性而非内容失实：本步交付物 `.reviews/README.md`（对账表 D1～D3）已改在工作树，却不在被审补丁的 20 份文件里（diff 生成面排除归档目录），只读被审对象的双审会漏看这三处——其中 D3 是新写进用户向文档的判据式断言；我直读工作树核过，它与 `archive.ts` `writeMeta` 的拒写行为逐字一致，风险未兑现。四个审查焦点逐项成立：FR-28 恰当地停在部分达成（第 12 章子表「◐ 部分」、五成分三子句落点齐全无漏项）；AC-21 翻「已达成」但边界写得足，逐格与第 4 步报告 §1.5 的 J4 证据对上；EV-132 的表述与 `gateHoldNotice` 尾句、`verifyRoundForApproval` 不看工作树、`l2-notice.md:2` 三处代码/资产原文逐字一致，QUICKSTART §5.2 覆盖面表按实测写「不能」；四家调用写法、入口根、护栏等级与 `registry.ts` 完全一致，安装器与 `entry/` 渲染树同形。守卫措辞一族的剩余命中（PROTOCOL:286、hooks.json:15）确系「守卫若一律 exit 0」的反事实条件句，与 LLD v1.1.3 改准后的陈述句不矛盾，报告分类正确。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "doc/05_testing/REPORT_2026-09-26_m10b_step5.md §2（反向表）；.reviews/M10b-入口资产与真载体验收/code/_meta/changes-20260926T023857Z.diff（头部 files: 20）",
+      "problem": "本步交付物包含 `.reviews/README.md` 的三处改动（对账表 D1～D3，主设计 §24.2 也有该行），工作树确已修改，但被审补丁只列 20 份文件、不含它——编排器的 diff 生成面排除了 `.reviews/` 归档目录。本轮双审若只读被审对象，看不到这三处；其中 D3 把 `_meta/` 的保护口径改写为判据式（「经 `archive.writeMeta` 写出的文件名不得以任一已登记角色后缀结尾，违者拒写」），是一条新的规范性断言。我直读工作树核实：该句与 `src/trivium/archive.ts:249-254`（`looksLikeRoleArtifact` 命中即抛错拒写）一致，D1/D2 亦与现状相符，风险未兑现——但「changes.diff = 本步全部文档改动」这一审计假设在每个回溯步都会静默破例（凡改 `.reviews/README.md` 的步骤皆然），报告与 RUNBOOK 均未登记这条例外。",
+      "evidence": "git status 显示 `.reviews/README.md` 为 M 而 diff 头 `files: 20` 不含它（对 diff 全文 `grep '^diff --git'` 计 20 个边界、逐条核对清单）；实读工作树 `.reviews/README.md`（:10「自 M10b 起可用」、:77 工件表按 `<Driver>`/`<审核者>` 泛化、:87 判据式原文、:93/:96/:159 补 codex）与 `src/trivium/archive.ts`（:242-254）；对照报告 §2 反向表与主设计 §24.2 的 `.reviews/README.md` 行。",
+      "suggestion": "在第 5 步报告 §4「收尾事项 / 不在本步范围」或 §2 反向表加一句显式登记：「`.reviews/README.md` 属归档目录、不进 changes.diff，本轮改动以工作树直读核过」；若确认是编排器 diff 生成面的固有排除，值得在 RUNBOOK 或 `.reviews/README.md` 自身登记这条审计边界，让后续回溯步的审查者照例直读工作树。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "doc/05_testing/evidence/m10b-step5-20260926/anchors.mjs:83-87（selfCheck 段）",
+      "problem": "装置自检只对 pending 族断言「HEAD 必有命中」，guard / twoFamily / glmL1 三族没有同款非零断言。将来复用该装置时，若新增或改写的锚族模式拼错（HEAD 与改后同为 0），差集表会呈现 before 0 / after 0 的「干净」读数而静默通过——自检对这三族的失灵测不出来。本次运行四族 HEAD 命中分别为 23 / 4 / 27 / 1，均非零，风险未兑现。",
+      "evidence": "读 `anchors.mjs` 全文：:83 `selfCheck = { pending_hits_in_HEAD: count(before, 'pending'), ok: … }` 只 gate pending；读 `01-anchors.json` 的 summary（guard before=4、twoFamily before=27、glmL1 before=1）。",
+      "suggestion": "自检改为「每个族在 HEAD 必须非零」，对将来可能合法归零的族（如 twoFamily 在全量 N 方化后）在装置头注释按族写豁免理由；或至少在头注释写明「复用前先人工核各族 HEAD 命中非零」。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "FR-28 的判定边界守住了：条文与第 12 章子表第五行记「◐ 部分」而非 ✅（glm 命令 B、codex 命令 C、gemini 仅名义、命令 A / D 未在非 claude 载体实跑），与 16.1 M10b 行达成边界①、R-2、README 演进注记四处一致；子表五成分 + 三子句落点齐全，对账表无漏项。",
+    "AC-21 翻「已达成」有据且边界足：①的每格判据（原稿后缀 -glm 出自会话 Write、run.json.driver/driver_guard_level、critics 不含 Driver、裁决件 role=glm 且 gate --check 退 0、认领 claimed_by 出自该会话、停点 CLI 原文、approve 造缺件/改工件各退 2、主题与焦点逐字、无子代理、Write -codex.md 被 Hook 拒）在第 4 步报告 §1.5 逐一有读数；「不外推为四家都走过命令 B」「gemini 名义、codex 走的是命令 C」如实写入边界，验收方法列的「四 Driver 各跑一轮」与实跑清单一一对应。",
+    "EV-132 的表述与代码一致：`gate.ts:896-955` `verifyRoundForApproval` 五步只核裁决齐备与本轮登记工件 sha256、无工作树比对；`hook-config.ts:395` 尾句与 `skills-src/partials/guard/l2-notice.md:2` 原文与 EV-132 所指逐字对上；QUICKSTART §5.2 覆盖面表按 3-4 实测写「不能」并指向 EV-132，RUNBOOK §十第 1 条同口径；候选②（审批前复核加工作树比对）另起主题走计划双审的处置恰当。",
+    "各载体调用写法与入口位置与代码完全一致：`registry.ts` 四家的 entryInvocation（claude/gemini/glm `/{name}`、codex `${name}`）、entrySkillRoot（`.claude/skills`、`CODEX_HOME`→`.codex/skills`、`.gemini/config/skills`、`.zcode/skills`）、guardLevel（L1/L2/L2/L2）、hookConfigTarget（`.claude/settings.json`、null、null、`.zcode/config.json`）与 QUICKSTART §5.2、设计 7.4.1、PROTOCOL、AGENTS、README 全部对上；`install.ts` 头注释（运行时根必装且排除 `entry/`、另三家拍平、`--targets`）与 `skills/dual-critic/entry/` 下 3×7 份渲染产物同形；第 4 步报告五轮的停点话术行（L1 / l2-none / l2-hook 档与 `$dual-approve` 写法）逐字与 `gateHoldNotice` 四档对上。",
+    "守卫措辞一族的分类正确：LLD v1.1.3 改准的是陈述句（现行行为：wrapper 被删或去掉执行位 ⇒ 保守拦截，内容被替换才永真放行），而 PROTOCOL:286、hooks.json:15、主设计 8.5 的剩余命中是「守卫若一律 exit 0，那样 chmod -x 就会永真放行」的反事实条件句（描述被否决的设计），两者不矛盾——只改 LLD、其余三处归「成立不改」是对的。",
+    "`.reviews/README.md` D3 的判据式与 `archive.ts:249-254` 一致（`looksLikeRoleArtifact` 命中即抛错拒写），D1/D2 亦与现状相符（内容准确，缺的只是进了被审面，见 GLM-01）。",
+    "锚差集证据自洽：`01-anchors.json` 的 remaining 逐条与报告 §3 分类表对上（pending 12 = PRD 4 + 主设计 8，均系历史原句或更正注记的有意保留；guard 5 = 3 处反事实 + LLD 改准文与变更说明各一；twoFamily 19 逐文件清点一致，归 M11 的 N 方化；glmL1 3 处均为更正注记引述）；quotepath 事故（论域漏中文路径 106→108）的发现、归因与更正如实登记，比直接给结论可信。",
+    "EV-61 结案核对为真（`cli.ts:182/:220/:239` 均按注册表插值）；EV-77 结案保留「gemini 真载体未测」残余；EV-135 新立即关的理由（D-3 撤回后重开条件所依字段不复存在）成立；EV-129～134 的用户处置（132 分两步）如实回填。",
+    "QUICKSTART 抬头只写「ZCode、Codex 也能当 Driver」而不把 gemini 算进去、§5.2 明写 Antigravity「在自己的会话里执笔还没真跑过」——是收紧而非夸大，与「不得把达成状态说过头」的方向一致。"
+  ],
+  "not_covered": [
+    "未复跑 `npm run check` 与 `anchors.mjs`（审查侧禁止写命令）：2019/2017/0/2 的全量读数与差集重算采信落盘证据（`01-anchors.json`）与报告陈述，未独立复算；anchors.mjs 第一次运行（106 份论域）的读数已被覆盖，其差异过程只能采信报告 §3 的自述。",
+    "第 4 步报告仅精读 §1.3、§1.5 与五轮的停点话术行，§1.1/§1.2/§1.4 的其余判据（J3 白名单比对、EV-77 实验细节）与三轮 EV-107 的逐格读数未逐条复核，采信其表格；EV-82 的 T1～T3 只核对了设计与 BACKLOG 记载互符，未追溯 evidence/ 证据件与收口提交内容。",
+    "演进设计（2026-09-13）只读了 §14 里程碑表的 diff hunk，冻结正文未读；主设计与 PRD 按本步 diff hunk 及被点名的落点段落核对（8.5、7.1、7.4.1、15.3、16.1、§21、§24、12 章子表、AC-21/FR-20/S6），未整文重读未被本步触及的部分。",
+    "QUICKSTART / MANUAL / RUNBOOK / CASE 等门面文档只核了本步 diff 触及的段落与 §5.2 全节，未整文复查既有内容的准确性（以此前各轮回溯为准）。",
+    "gemini 交互模式加载、命令 A / D 在非 claude 载体的实跑本就未做（达成边界已写明），本审无法补测；ZCode Hook 五前提仅核对其与代码注释/报告记载互符，未在真桌面端复验。"
+  ],
+  "consulted": [
+    ".reviews/M10b-入口资产与真载体验收/code/_meta/changes-20260926T023857Z.diff",
+    ".reviews/M10b-入口资产与真载体验收/code/2026-09-25-M10b-入口资产与真载体验收-r3-glm.md",
+    ".reviews/M10b-入口资产与真载体验收/code/2026-09-25-M10b-入口资产与真载体验收-r3-response-claude.md",
+    ".reviews/README.md",
+    "doc/07_manuals/QUICKSTART.md",
+    "doc/05_testing/REPORT_2026-09-26_m10b_step5.md",
+    "doc/05_testing/REPORT_2026-09-25_m10b_step4.md",
+    "doc/05_testing/evidence/m10b-step5-20260926/anchors.mjs",
+    "doc/05_testing/evidence/m10b-step5-20260926/01-anchors.json",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/hook-config.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/cli.ts",
+    "src/install.ts",
+    "skills-src/partials/guard/l2-notice.md",
+    "skills/dual-critic/hooks/hooks.json"
+  ]
+}

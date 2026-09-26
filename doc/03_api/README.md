@@ -26,7 +26,7 @@
   [`.reviews/README.md`](../../.reviews/README.md)：
   `.reviews/<主题>/{plan,code,bug,verify}/<日期>-<主题>[-r<N>][-revised|-response]-<角色>.md`。
   角色取值即 Agent id：`claude` / `codex` / `gemini` / `glm` 四家均可为审核者（M8 / M9 起），
-  当轮 Driver 缺省是 `claude`，四家均可用作 Driver（M10a 第 3 步起；按运行 `--driver`、按阶段 `topic claim` 取值），在别家自己的 CLI 里执笔待 M10b，取值集**由 Agent 注册表统一派生**。
+  当轮 Driver 缺省是 `claude`，四家均可用作 Driver（M10a 第 3 步起；按运行 `--driver`、按阶段 `topic claim` 取值），M10b 起也可在别家自己的 CLI 里执笔（各载体的护栏等级见设计 8.5），取值集**由 Agent 注册表统一派生**。
   > 早期文档里的 `.reviews/PLAN.md` / `DIFF.patch` / `CODE_*.md` 平铺命名**已废弃**，
   > 与 PRD FR-08 及设计 §6.2 冲突，勿再沿用。
 - 工件数据字段统一用**蛇形命名法**（snake_case），与四份 JSON Schema 一致；

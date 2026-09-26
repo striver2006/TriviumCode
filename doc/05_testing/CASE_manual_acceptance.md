@@ -1,4 +1,4 @@
-# CASE：人工验收剧本（PRD 场景 S1～S5）
+# CASE：人工验收剧本（PRD 场景 S1～S6）
 
 > 对应 [设计 §17.3](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)。
 > 自动化测试（`npm run check`，712 例）与 `trivium doctor --selftest`（14 步）**覆盖不到**下面这些，
@@ -323,6 +323,46 @@ B 组要各跑两遍：一遍在 `awaiting_approval` 或 `running` 期间，一�
 >
 > 拦截是**启发式**的，不求完备——它挡住顺手的旁路。真绕过去了，改动仍会被跑后复算
 > 判成漂移，整次审查可能作废（剧本 3 验的就是这件事）。
+
+---
+
+## 剧本 7 · 换一家 Agent 主攻（S6 / AC-21 / FR-28）
+
+**验什么**：在另一家编程 Agent **自己的会话里**发起命令 B（或 C），由它起草与裁决、其余几家只读审查；
+工件命名、闸门停点、逐条裁决与 Claude Code 主攻时一致；护栏等级如实分级，并在停点话术里明示。
+M10b 第 4 步已按此验收过 ZCode（命令 B）与 Codex（命令 C）两家（[报告](./REPORT_2026-09-25_m10b_step4.md) §1.4、§1.5），这里是可复用的人工剧本。
+
+**前提**：该家的入口已装（`node dist/install.cjs --targets <id>`）；项目已 `init`（ZCode 主攻还要有 `.zcode/config.json`）；
+`TV preflight --stage plan --driver <id>` 退 0。
+
+**怎么做（以 ZCode 主攻命令 B 为例）**
+
+1. ZCode 桌面端打开项目，**先点信任、再新建会话**；第一句只发「本轮不要使用子代理（Agent 工具），所有操作由你直接执行。」
+2. 让会话认领：`.trivium/bin/trivium topic claim --topic <主题> --stage plan --driver glm --json`，期望退 0；
+3. 让会话用 Write 写原稿 `.reviews/<主题>/plan/<日期>-<主题>-glm.md`（先认领再写，否则会被 Hook 当成伪造件拦下）；
+4. 发 `/dual-review-plan <提示语> --topic <主题>`，等它走完预检 → 解析 → `--start` → `--wait` → 读审查 → 写 `…-revised-glm.md` → `gate --check` → `--await-approval`；
+5. （可选）让会话用 Write 新建一个 `…-codex.md`，应被 Hook 拒绝；
+6. 会话结束后**立刻**把 `~/.zcode/cli/rollout/model-io-sess_<id>.jsonl` 拷走——那个目录只留最近 3 个会话，拷完之前别再开 ZCode；
+7. 在终端里造缺件、造改工件各一次，`approve` 均应退 2；复原后由你决定是否审批。
+
+**Codex 主攻（命令 C）的差别**：`codex -s danger-full-access -C <项目根>` 起会话；调用写 `$dual-review-code …`；
+要先交代别的事就单独发一条，那一条里不要出现 `$名字`（一提到就会注入 skill 全文）；Codex 没有 Hook，第 5 步那类写入不会被拦——这是预期，不是缺陷。
+
+**判据**
+
+| # | 判据 | 怎么看 |
+| :--- | :--- | :--- |
+| 7.1 | 原稿、修订件（或应答件）的后缀 = 当轮 Driver，front-matter `role` 同 | 文件名与 front-matter |
+| 7.2 | `run.json.driver` = 该家、`driver_enabled: true`、`driver_guard_level` 与 QUICKSTART §5.2 的表一致 | `_meta/run-<run_id>.json` |
+| 7.3 | 审核者集合不含当轮 Driver（缺省即另外两家） | `critics_selected` |
+| 7.4 | plan / bug 阶段 `task.json.drivers.<阶段>.driver` = 该家 | `task.json` |
+| 7.5 | 停点话术的调用写法与末句按该家的等级措辞（ZCode「只作尽力拦截、不兜底」；Codex / Antigravity「没有 Hook 拦截」） | `--await-approval` 的 **CLI 原文**——会话转述时可能改措辞 |
+| 7.6 | 造缺件、造改工件各一次，`approve` 均退 2 | 终端输出 |
+| 7.7 | 提示语保真：会话留痕里你发出的原文，与 `run.json.topic`、BRIEF 第 2 段焦点逐字一致 | ZCode rollout；Codex 为 `~/.codex/sessions/**/rollout-*.jsonl` |
+| 7.8 | ZCode：会话留痕里 `review --start` 出自该会话，且没有 `model-io-sess_subagent_*` | rollout |
+
+> **已知边界**：闸门期改业务文件，事后两道机制都发现不了（BACKLOG EV-132），所以判据里不设这一格——它会「通过」。
+> Antigravity 目前只以名义 Driver 验收过，照本剧本在它自己的会话里跑属于首次，请照实记录。
 
 ---
 

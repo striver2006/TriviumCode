@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.2
+> - **当前版本**：v1.1.3
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.3（2026-09-26）随设计 v1.3.43 的 M10b 第 5 步纪律 6 回溯同步：2.6「当前边界」的「别家在自己的 CLI 里执笔在 M10b」改为已落地，指向主设计 7.4.1 与 8.5；Bash 侧保护集一节「删掉 wrapper 即永真放行」改准为「删掉或去掉执行位保守拦截，内容被替换才永真放行」（第 5 步 grep 锚的守卫措辞一族核出）。
 > - **变更说明**：v1.1.2（2026-09-24）随设计 v1.3.37 的 M10a 第 5 步纪律 6 回溯同步：2.6「当前边界」的 `driverEnabled` 现状句改准——M10a 第 3 步起四家均为真，`--driver` 取未启用值退 64；补 `topic claim` 按阶段声明一句。
 > - **变更说明**：v1.1.1（2026-09-20）随[设计 v1.3.30](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 的 M9 第 7 步纪律 6 回溯同步：
 >   2.6 的「当前边界」由「只启用两家审核者」改准为四家全部 `criticEnabled`（codex 随 M8 第 3 步、claude 随 M9 第 4 步），
@@ -126,7 +127,7 @@ graph TD
 > （gemini / glm 自 M7a，codex 自 M8 第 3 步，claude 自 M9 第 4 步），`defaultSelected` 为 codex / gemini / glm 三家；
 > `driverEnabled` 自 M10a 第 3 步起四家均为真——`--driver <id>` 取未登记或未启用的值退 64（M9 时是只校验已登记、
 > 未启用的放行并标注）；plan / bug 阶段在写原稿之前可经 `topic claim` 按阶段声明当轮 Driver（M10a 第 1 步）。
-> 别家在自己的 CLI 里执笔（入口资产、真载体下的 Hook）在 M10b。
+> 别家在自己的 CLI 里执笔（入口资产、真载体下的 Hook）已随 M10b（2026-09-26）落地：入口资产与安装目标见主设计 7.4.1，各载体的护栏等级（claude L1；glm L2 有尽力拦截的 Hook；codex / gemini L2 无 Hook）见 8.5。
 > M7a 当时是行为等价重构：登记四家而只启用两家审核者，为的是让注册表从第一天起就是完整的单一来源；
 > 之后每接一家只翻注册表的开关与补接入套件，本文其余描述的代码路径不因此改变。
 >
@@ -364,7 +365,7 @@ bashTimeoutFor  = min(600_000, waitTimeoutS × 1000 + 60_000)
 
 `bashTargetsProtected()` 命中则**任何时候**都 deny：整条命令任意位置出现角色后缀文件名；或按 `;`/`&&`/`||` 分段后（段首 `cd` 跟踪 cwd），路径 token 命中字面兜底 `MENTIONS_OWNED` 或解析后命中独占对象。
 
-`.trivium/bin` 也在保护集里——删掉 wrapper 会让 settings.json 里每条 Hook 的守卫永真放行。
+`.trivium/bin` 也在保护集里。（v1.1.3 改准：原句「删掉 wrapper 会让 settings.json 里每条 Hook 的守卫永真放行」自 AGY-03 修复起不成立——已初始化的项目里 wrapper 被删或去掉执行位，守卫**保守拦截**；wrapper **内容被替换**时守卫才永真放行，存在性检查看不见内容层的替换，见设计 8.5 R-r。）
 
 > **已知误拦，刻意接受**：`MENTIONS_OWNED` 是纯字面扫描，**区分不了「写它」与「说它」**。命令正文里出现 `_meta`、`task.json`、`state.json`、`.trivium`、`*-glm.md` 一律被拦，包括 commit message。
 > 出口是改用 Write/Edit 工具，提交说明写进文件再 `git commit -F <文件>`。

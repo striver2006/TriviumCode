@@ -53,7 +53,7 @@
 ## 项目概览
 
 TriviumCode 是「主攻 + 多审」（Driver-MultiCritic，沿用旧名 Driver-DualCritic）多智能体流水线编排器：
-缺省由 Claude Code 主攻执笔，Antigravity（`agy`）、ZCode、Codex 三家背靠背只读审查（Claude Code 也可作审核者，须 `--driver` 取另一家）；编排器侧已可按运行 / 按阶段指定别家为 Driver，别家在自己的 CLI 里执笔待 M10b。
+缺省由 Claude Code 主攻执笔，Antigravity（`agy`）、ZCode、Codex 三家背靠背只读审查（Claude Code 也可作审核者，须 `--driver` 取另一家）；编排器侧可按运行 / 按阶段指定别家为 Driver；M10b（2026-09-26）起别家也可在自己的 CLI 里执笔，各载体的护栏等级见 `doc/07_manuals/QUICKSTART.md` §5.2。
 TypeScript 编写，esbuild 打成**单文件零依赖 CJS**；仅支持 macOS + VS Code，
 Node ≥ 18（开发建议 ≥ 22）。
 

@@ -1,6 +1,6 @@
 # PROTOCOL：Driver-DualCritic 工件中继与协议契约
 
-> 依据 [设计 v1.3.37](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.7](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.43](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.8](../01_requirements/PRD_driver_dual_critic.md)。
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
 >
 > **⚠️ 本文描述的是当前真实生效的契约**（**`config.v2`** / **`run.v2`** / 四家审核者（缺省三家）/ `--driver <id>`）。
@@ -17,6 +17,9 @@
 > 它决定本轮谁是 Driver，进而决定**原稿与裁决件的后缀**（`locateSubject` 按它定位
 > 被审对象，写错后缀在 `review --start` 就退 65）、闸门按谁定位裁决件、以及留痕里
 > 记的发起方。规则细则见设计 §7.1。
+> **四家入口自 M10b 第 2 步起生效**：每家各有一套入口 skill（安装目标与调用写法见设计 7.4.1：claude / gemini / glm 写 `/dual-*`，codex 写 `$dual-*`），
+> 各自在 `preflight` / `topic resolve` / `review --start` 里写死本载体的 `--driver`；命令 A / B / D 的入口在写原稿之前跑 `topic claim`。
+> 选侧来自缺省集合时**先减去当轮 Driver**（D-4）。非 claude 载体上命令参数由 Driver 模型转抄，保真边界见设计 8.5。
 >
 > **裁决件 `role` 自 M9 第 6 步前置（EV-66）起放宽**：取值是**当轮 Driver 的 Agent id**，
 > schema 不枚举（`type: string`），「是否已登记」由代码层按注册表校验——与 `run.v2` 的
@@ -25,7 +28,7 @@
 >
 > **`addresses` 基数 1～3 已随 M7b 的 `--critics` 生效**（`minItems: 1`，上限即入选审核者数）。
 > **意见编号前缀已是四值**（`CODEX-` 随 M8、`CLAUDE-` 随 M9；取值由注册表派生、schema 不枚举）；
-> `--tier-*` / `--effort-*` 等旗标**尚未生效**，随 M10b / M11 并入本文。
+> `--tier-*` / `--effort-*` 等旗标**尚未生效**，随 M11 并入本文（v1.3.43 前写「M10b / M11」；M10b 份额是四家入口，已生效，见上）。
 > `--critics` 当前可选四家：codex / gemini / glm 为缺省集合（默认即三侧，D4-4），
 > claude 只在 `--driver` 取非 claude 时可入选（当轮 Driver 不得入选）。
 > **按本文实现的客户端不会被演进破坏**：读侧双读、旧形态长期兼容。
@@ -49,6 +52,8 @@
 | `trivium.run.v1` | `run.v1.json` | **已停写**（M7b 第 3 步前的编排器） | 只读：既有归档按写入时的规范解读，读进内存时迁移为 v2 形状 |
 | `trivium.config.v2` | `config.v2.json` | 人（`.trivium/config.yaml` / `config.local.yaml`） | `loadCtx` 四级合并后校验，不合法退 69 并逐条列出（未知字段、枚举值、区间） |
 | `trivium.config.v1` | `config.v1.json` | **已停写**（M7b 第 4 步前的形状） | 只读：`loadCtx` 在合并**之前**逐源迁成 v2，磁盘文件不动 |
+
+**`run.v2` 的可选字段 `driver_guard_level`**（M10b 第 3 步，B1）：取值 `L1` / `L2`，记当轮 Driver 的**有效**护栏等级（登记 L1 的载体在 Hook 配置不在场时记 `L2`；登记 L2 的恒 `L2`，不读探针字段），规范见设计 8.5。**可选**：早于该步的留痕没有它，缺席即「无从得知」，不等于 L1；`trivium report` 时间线对旧留痕显示「—」。其余字段不变。
 
 ### `trivium.run.v2` 的读侧分发（按阶段，设计 6.7.1）
 
@@ -351,6 +356,7 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 | `report --topic <t>` | 主题级复盘 |
 | `status` | 闸门、运行、降级与争议 |
 | `scrub [--dry-run] [--json]` | 对**整个运行根**做一次凭据清扫：遍历全部项目桶，**只抹凭据、一个目录都不删**（整删是 `run_dir_days` 的职责且按项目划界，跨仓删别人的目录是越权）。准入判据与会话启动清扫同源（`admitScrub`）：worker 现势活着的不动，状态读不到一律跳过并计数。**退出码恒 `0`**，理由见 §五末段。`--dry-run` 只预测**侧层**——运行目录那一层没有哨兵、每轮都复查，有没有活取决于正文是否命中密钥，不读正文答不了（BACKLOG EV-33） |
-| `init` | 在项目内布置运行时（幂等） |
+| `init` | 在项目内布置运行时（幂等）。M10b 第 3 步起两家 Hook 一起合并：`.claude/settings.json` 与 `.zcode/config.json`（ZCode 形态），只增不删、写盘前备份只在真正写入时发生 |
+| `hooks --agent <id> [--dry-run]` | 单独为一家渲染并合并 Hook 配置（M10b 第 3 步）：落点与形态取注册表 `hookConfigTarget`——claude 写 `.claude/settings.json`，glm 写 `.zcode/config.json`；codex / gemini 没有 Hook 机制，退 64 且零写入。`--dry-run` 零落盘。当轮 Driver 的判定**不读** `--agent`（设计 8.4 注记），它只选渲染目标 |
 
 参数细节见 `trivium --help`，它与实现同源、不会脱节。

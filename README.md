@@ -5,8 +5,8 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20VS%20Code-brightgreen.svg)](#-快速开始)
 [![Workflow](https://img.shields.io/badge/Architecture-Driver--DualCritic-orange.svg)](#-核心架构与流转时序)
-[![Agents](https://img.shields.io/badge/Agents-Claude%20Code%20%7C%20Antigravity%20%7C%20ZCode-purple.svg)](#-核心特性与创新)
-[![Status](https://img.shields.io/badge/Status-M0～M5%20%2B%20M7a%20%2B%20M7b%20已实现-brightgreen.svg)](./doc/02_design/README.md)
+[![Agents](https://img.shields.io/badge/Agents-Claude%20Code%20%7C%20Antigravity%20%7C%20ZCode%20%7C%20Codex-purple.svg)](#-核心特性与创新)
+[![Status](https://img.shields.io/badge/Status-M0～M5%20%2B%20M7a～M10b%20已实现-brightgreen.svg)](./doc/02_design/README.md)
 [![Roadmap](https://img.shields.io/badge/Roadmap-M6～M11%20多%20Agent%20演进中-blue.svg)](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)
 
 **面向 macOS + VS Code 原生开发流的「主攻 + 双审」（Driver-DualCritic）全自动多智能体协同流水线**
@@ -33,19 +33,24 @@
 > `--critics` 已可用，四家 Agent 均已启用为审核者；Antigravity、ZCode、Codex 三家
 > 同为**缺省入选集合**（不写 `--critics` 时默认跑这几侧，2026-09-16 决策 D4-4）；
 > **第四家（Claude Code 作审核者）已随 M9 接入**（2026-09-20 真实审查一次通过 `consulted` 交叉核对），
-> 但它是本会话的 Driver，入选须 `--driver` 取另一家——换一家 Agent 在自己的 CLI 里真正主攻待 M10b（编排器侧的判定与护栏已随 M10a 交付）。
+> 入选须由另一家当 Driver。**M10a（Driver 护栏与契约面）与 M10b（入口资产与真载体验收，2026-09-26）已合入**：四家都能在自己的会话里当 Driver——
+> ZCode（护栏 L2，有尽力拦截的 Hook）与 Codex（L2，没有 Hook）已在各自载体里真实验收，Antigravity 只以名义 Driver 验收过；
+> 护栏强度因载体而异，换谁主攻之前先读 [QUICKSTART §5.2](./doc/07_manuals/QUICKSTART.md)。
 > 规范与进度见[设计文档](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
 > **本 README 其余部分描述的都是当前可用的系统。**
 
-### 三个角色
+### 角色
 
 | 角色 | 产品 | 定位 | 产出后缀 |
 | :--- | :--- | :--- | :--- |
-| **Driver** | Claude Code（VS Code 插件） | 主攻与裁决。唯一执笔者，唯一有权改业务代码 | `-claude.md` |
+| **Driver** | 缺省 Claude Code（VS Code 插件）；M10b 起四家都可当 | 主攻与裁决。当轮唯一执笔者，唯一有权改业务代码 | 当轮 Driver 的后缀（缺省 `-claude.md`） |
 | **Critic-A** | Google Antigravity（CLI `agy`） | 独立审查员 A。工程调用链与依赖推演 | `-gemini.md` |
 | **Critic-B** | 智谱 ZCode（`zcode.cjs`） | 独立审查员 B。业务边界与防御性推演 | `-glm.md` |
+| **Critic-C** | OpenAI Codex CLI（多模型，经 provider 配置接入） | 独立审查员 C | `-codex.md` |
+| **Critic-D** | Claude Code（作审核者，须由另一家当 Driver） | 独立审查员 D | `-claude.md` |
 
-开发者只与 Claude Code 对话，全程不需要打开 Antigravity 或 ZCode 的窗口。
+缺省审核者是 Critic-A / B / C 三家（当轮 Driver 不入选）。缺省由 Claude Code 主攻时，开发者只与 Claude Code 对话，全程不需要打开别家的窗口；
+换别家主攻时，就在那一家自己的会话里发命令（QUICKSTART §5.2）。
 
 ---
 
@@ -108,7 +113,7 @@ TriviumCode **绝非**调用 LLM 补全接口，而是直接拉起各厂商**系
 
 辅助命令：`/dual-approve`（人工审批 / 拒绝）、`/dual-abandon`（放弃闸门）、`/dual-status`（状态查询）。
 
-**关于停点**：B/C/D 停在人工审批不是一句提示，而是三层机制——状态层写入 `awaiting_approval`，提示层输出统一停点话术，**强制层由 Claude Code Hook 在 `PreToolUse` 拒绝写入业务文件**。同时 Hook 会拒绝 Driver 在归档内写出审核者后缀的文件（全部已登记角色减当轮 Driver，Claude Code 执笔时即另三家），防止主脑自己编一份审查；Bash 侧另按命令文本字面拦全部角色后缀（启发式）。
+**关于停点**：B/C/D 停在人工审批不是一句提示，而是三层机制——状态层写入 `awaiting_approval`，提示层输出统一停点话术，**强制层由 Claude Code Hook 在 `PreToolUse` 拒绝写入业务文件**（这是 Claude Code 主攻、护栏 L1 时的情形；ZCode 主攻时 Hook 只作尽力拦截，Codex / Antigravity 主攻时没有 Hook，见 QUICKSTART §5.2）。同时 Hook 会拒绝 Driver 在归档内写出审核者后缀的文件（全部已登记角色减当轮 Driver，Claude Code 执笔时即另三家），防止主脑自己编一份审查；Bash 侧另按命令文本字面拦全部角色后缀（启发式）。
 
 **命令 D 不得由 A 或 C 代替**：命令 A 的链路不含独立根因审阶段，遇到待审根因材料一律引导至 D。
 
@@ -210,12 +215,12 @@ TriviumCode **绝非**调用 LLM 补全接口，而是直接拉起各厂商**系
 
 | 阶段 | 必备工件 |
 | :--- | :--- |
-| **`plan/`** 计划审四件套 | 原始计划 `-claude.md` · Antigravity 审查 `-gemini.md` · ZCode 审查 `-glm.md` · 修订计划 `-revised-claude.md`（含逐条裁决表） |
-| **`code/`** 代码审三件套 | Antigravity 审查 `-gemini.md` · ZCode 审查 `-glm.md` · 应答件 `-response-claude.md`（每条接受/驳回/暂缓 + 理由 + 修改计划） |
-| **`bug/`** 根因审四件套 | 根因原稿 `-claude.md` · 两份审查 · 修订根因 `-revised-claude.md` |
+| **`plan/`** 计划审 | 原始计划 `-<Driver>.md` · 每个入选审核者一份审查（缺省 `-codex.md` / `-gemini.md` / `-glm.md`） · 修订计划 `-revised-<Driver>.md`（含逐条裁决表） |
+| **`code/`** 代码审 | 每个入选审核者一份审查 · 应答件 `-response-<Driver>.md`（每条接受/驳回/暂缓 + 理由 + 修改计划） |
+| **`bug/`** 根因审 | 根因原稿 `-<Driver>.md` · 每个入选审核者一份审查 · 修订根因 `-revised-<Driver>.md` |
 | **`verify/`** 编译测试出口 | `-verify.md` + `_meta/verify-<run_id>.json`（含实际执行的命令与退出码） |
 
-`_meta/` 由编排器产出，存放送审包 `brief-*`、结构化结论 `review-*.json`、code 阶段的 `changes.diff`，以及运行元数据 `run-<run_id>.json`（快照哈希、两侧生效模型、起止时间、工具轨迹计数、降级原因、只读与隔离核验结论）。
+`_meta/` 由编排器产出，存放送审包 `brief-*`、结构化结论 `review-*.json`、code 阶段的 `changes.diff`，以及运行元数据 `run-<run_id>.json`（快照哈希、各侧生效模型、当轮 Driver 与其护栏等级、起止时间、工具轨迹计数、降级原因、只读与隔离核验结论）。
 
 完整规范见 [`.reviews/README.md`](./.reviews/README.md)。
 
@@ -354,7 +359,7 @@ verify:
 
 ### 5. 跑第一条任务
 
-在 VS Code 的 Claude Code 里：
+在 VS Code 的 Claude Code 里（别家主攻时的调用写法——例如 Codex 写 `$dual-review-plan`——见 QUICKSTART §5.2）：
 
 ```text
 /dual-review-plan 重点看并发安全与回滚路径 --topic 登录重构

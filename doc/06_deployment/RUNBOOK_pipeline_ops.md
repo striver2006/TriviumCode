@@ -365,3 +365,57 @@ trivium doctor --selftest --keep-fixture   # 保留夹具
   属于编排器缺陷，留下 `trivium status --json` 的输出再排查。
 - 探针结论与 [M0 坑清单](../05_testing/REPORT_2026-09-11_m0_probe.md)
   记载冲突——按实现纪律，**改适配层，不改外部产品，也不改验收口径**，同时回补设计文档。
+
+---
+
+## 十、别家主攻（L2 Driver）时的人工兜底
+
+ZCode、Codex、Antigravity 当 Driver 时，护栏等级是 **L2**（[QUICKSTART §5.2](../07_manuals/QUICKSTART.md)）：
+Hook 不保证拦得住写入——ZCode 的 Hook 只作尽力拦截，Codex 与 Antigravity 没有 Hook。下面几件事靠你。
+
+### 审批之前自己核
+
+1. **`git status --short`**：闸门期（等你审批时）业务文件不该有新改动。**这一格没有任何机制替你查**——审批前复核只核裁决与本轮登记的审查工件、不看工作树；跑后漂移复算只在审查运行收尾时做（BACKLOG EV-132）。
+   有改动就先问清来源，必要时 `--reject` 让它回到裁决。
+2. **`trivium gate --stage <阶段> --topic <主题> --check`**：裁决齐备（`approve` 也会复核这一格）。
+3. **提示语是不是你写的那句**：别家主攻时提示语由 Driver 模型转抄，看开场播报或 `run.json` 的 `topic` 与 BRIEF 第 2 段焦点。
+4. **`approve` 由你发起**。入口资产预批准了 `.trivium/bin/trivium`，L2 的 Driver 能自写裁决件、自己跑 `approve`——复核只保「裁决齐备」，不保「审批来自人」。
+   M10b 验收里，Codex 会话发起的审批与 ZCode 会话发起的认领，来源分别记为 `session_id: null` 与 `unknown-session`（这两家不向 shell 注入会话标识），会话里批的和终端里批的无从区分，对账只能看时间。
+
+### 审批之后
+
+审批前复核只核**本轮**、只在审批那一刻做；更早轮次与审批之后的改动，靠的是提交锚（`hook-pre-commit` 在每次提交时全量核对登记工件）——而**提交锚只在带 Hook 的载体会话里触发**。
+Codex / Antigravity 主攻的轮次，审批之后删改审查工件没有任何机制会发现（BACKLOG EV-132 同一范围）。出口二选一：在 Claude Code 会话里提交，让提交锚补上这一道；或者提交前自己核 `git status` 与归档里本轮的审查工件是否还在、没被改。
+
+### 护栏自身被动过手脚时，看不见
+
+Hook 与预检只做**存在性**检查：wrapper（`.trivium/bin/trivium`）内容被替换、全局安装副本被改、Hook 配置段里的命令或 matcher 被改，都看不见。
+怀疑时重跑安装器与 `init` 恢复，再跑 `doctor`。这一条对 L1 同样成立。
+
+### ZCode 的 Hook 配置：四态与手工清理
+
+| 状态 | 做法 | 要知道的 |
+| :--- | :--- | :--- |
+| 安装 | `init`，或 `.trivium/bin/trivium hooks --agent glm` | 装完在 ZCode 桌面端重新信任该工作区；信任前 Hook 不跑；要先信任、再开会话 |
+| 更新 | 重跑同一条命令，按识别标记原位替换 TriviumCode 那段 | 配置一变就退回待信任，要重新信任 |
+| 停用 | 删掉 TriviumCode 那段，或把 `hooks.enabled` 设为 `false` | 信任记录留在 ZCode 自己那里 |
+| 清理 | 卸载**不动**项目里的 `.zcode/config.json`，按下面手工清 | 残留的段在重新信任后会继续生效 |
+
+手工清理：打开 `.zcode/config.json`，删掉 `hooks.events` 下调用 `.trivium/bin/trivium gate hook-…` 的条目，其余键原样保留（或整体把 `hooks.enabled` 设为 `false`）；
+同目录的 `config.json.trivium-backup` 是写入前的备份，确认不需要后可删。还用 ZCode 的话，改完重新信任一次。
+
+**写盘前的备份只在真正写入时生成**（M10b 第 3 步起）：重跑 `init` / `hooks --agent` 判定「已就位」时不再覆写 `.claude/settings.json.trivium-backup` 与 `.zcode/config.json.trivium-backup`，上一份备份得以保留（旧版每次都先备份）。
+早就 `init` 过的项目，`.gitignore` 里这两行要手工补（QUICKSTART §3「升级与卸载」）。
+
+### 需要你在终端里执行的动作
+
+下面几类动作按规矩**不在会话里做**，由你在终端执行——会话里的常规写法会被 `hook-pre-bash` 按字面拦下（L1），或者本就不该由 Driver 动手（L2）：
+
+| 动作 | 为什么在终端 |
+| :--- | :--- |
+| 恢复被误改的受保护文件（归档内 `_meta/` 与角色后缀文件的 `git checkout --` / `git restore`） | 命令参数正是受保护路径，会话里会被同一条判据拦下；换写法绕过属于违规，不是出口 |
+| 验收或排障时故意造缺件、改工件，验证 `approve` 复核 | `_meta/` 是编排器独占对象；M10b 验收里 Codex 就拒绝了代做，改由用户在终端篡改 |
+| 清理孤儿原稿、撤回前留下的他家后缀文件 | 防的正是「会话自己删文件、反复翻转认领」 |
+| 删除临时夹具与运行目录（`~/.trivium/runs/<仓库>-<哈希>/`） | 破坏性动作；会话只核对路径、不执行 |
+
+终端里执行的命令**不要在行尾写 `# 注释`**：交互式 zsh 默认不开 `interactivecomments`，`#` 后面的词会被当成参数。

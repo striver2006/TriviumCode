@@ -2,19 +2,19 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.2
+> - **当前版本**：v1.0.3
 > - **状态**：草稿(Draft)
 >
-> **⚠️ 本手册描述的是当前可用的系统**：Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
+> **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
 >
-> 三审加严已随 M8 第 3 步可用（默认即三侧，D4-4）；第四家 Claude Code 作审核者已随 M9 接入，
-> 入选前提是 `--driver` 取另一家（它是本会话的 Driver）。换一家 Agent 在自己的 CLI 里主攻（M10b；编排器侧护栏已随 M10a 交付）、
-> 逐审核者选思考等级三档（M11）**尚未实现**，本手册不涉及，届时随各自里程碑写进本手册。
-> **本手册正文的安装、doctor 与示例仍以 Antigravity / ZCode 两家为主**，Codex 侧用法随 M10b 入口资产收口后补写。
+> 三审加严已随 M8 第 3 步可用（默认即三侧，D4-4）；第四家 Claude Code 作审核者已随 M9 接入，入选前提是由另一家当 Driver。
+> **换一家 Agent 在自己的会话里主攻已可用（M10b，2026-09-26）**：各载体的入口、调用写法与护栏等级（L1 / L2）见
+> [QUICKSTART §5.2](./QUICKSTART.md)，本手册 §八开头给出 L2 时哪几道护栏还在。逐审核者选思考等级三档（M11）**尚未实现**。
+> 本手册正文的示例以 Claude Code 主攻为主；Codex 侧的 provider 配置由 `doctor` 探测并给样例（v1.0.3 起不再写「随 M10b 补写」）。
 >
 > `--critics <id,…>` **已可用**，能从已启用的几家里指定本轮跑哪几侧
 > （选一侧不算降级）。参数规则见 §4.2。
-> （规范见[设计 v1.3.37](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
+> （规范见[设计 v1.3.43](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
 > 术语上，N 方化后「双审」的正确称谓是「**多审**」；命令名 `/dual-*` 与归档目录一律不改名。）
 
 ---
@@ -40,9 +40,11 @@
 
 | 角色 | 是谁 | 能做什么 |
 | :--- | :--- | :--- |
-| **Driver**（执笔者） | Claude Code | 唯一能改业务代码的人。写方案、写代码、读审查意见、逐条裁决 |
+| **Driver**（执笔者） | 缺省 Claude Code；M10b 起四家都可当 | 当轮唯一能改业务代码的人。写方案、写代码、读审查意见、逐条裁决 |
 | **Critic-A** | Google Antigravity（`agy`） | **只读**。独立审查，意见编号前缀 `AGY-` |
 | **Critic-B** | 智谱 ZCode（`zcode.cjs`） | **只读**。独立审查，意见编号前缀 `GLM-` |
+| **Critic-C** | OpenAI Codex CLI（多模型，经你配好的 provider 接入） | **只读**。独立审查，意见编号前缀 `CODEX-` |
+| **Critic-D** | Claude Code（作审核者，须由另一家当 Driver） | **只读**。独立审查，意见编号前缀 `CLAUDE-` |
 
 加一个本地编排器 `trivium`——它负责全部确定性逻辑：并行调度、超时、解析、落盘、防覆盖命名、闸门、留痕核验。
 
@@ -126,7 +128,7 @@ flowchart TD
 
 | | 安装 | 启用 |
 | :--- | :--- | :--- |
-| 做什么 | 把编排器和 skill 装到 `~/.claude/skills/` | 在项目里生成 `.trivium/`、注册 Hook |
+| 做什么 | 把编排器装到 `~/.claude/skills/dual-critic/`，把各家的入口 skill 装进各自的 skill 根（本机装了哪几家就装哪几家，`--targets` 可指定） | 在项目里生成 `.trivium/`、注册 Hook（`.claude/settings.json` 与 `.zcode/config.json`） |
 | 频率 | 每台机器一次（升级时重做） | 每个项目一次 |
 | 命令 | `npm run build && node dist/install.cjs` | `trivium init` |
 
@@ -139,6 +141,7 @@ flowchart TD
 | git | 项目必须是 git 仓库 | `git --version` |
 | Antigravity | `agy` 可调用且**已登录** | `agy --version` |
 | ZCode | 桌面端已装，CLI 凭据已配 | `ls ~/.zcode/cli/config.json` |
+| Codex CLI | `codex` 可调用，provider 由你自己配好（缺省三侧之一） | `codex --version` |
 
 **凭据由你自己配**。编排器只读取已有登录态，从不代你写凭据，也不会把凭据写进任何工件——落盘前有密钥扫描（10 条规则 + 熵判定），命中即拒绝落盘。
 
@@ -398,7 +401,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 | 字段 | 默认 | 说明 |
 | :--- | :--- | :--- |
-| `isolation.peer_artifact_globs` | `**/*-gemini.md`, `**/*-glm.md` | 对方产出的识别模式，用于生成禁读清单 |
+| `isolation.peer_artifact_globs` | `**/*-gemini.md`, `**/*-glm.md` | 对方产出的识别模式，用于生成禁读清单。**只是追加项**：禁读清单取「注册表派生的全部已登记角色 ∪ 这里配的模式」，四家（含 codex / claude）不写也会进清单；缺省值只列两家是历史遗留，不影响判定（v1.0.3 注明） |
 | `isolation.deny_via_cli` | `auto` | 是否用 CLI 的路径级 deny。**两侧实测均不支持，实际恒为降级** |
 | `isolation.context_max_docs` | 12 | 必读清单的文件数上限 |
 
@@ -455,7 +458,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 > **字段名自 `config.v2` 起由 `critics.*` 改为 `agents.*`**（旧名仍能跑：加载时自动在内存里迁移，
 > 磁盘文件不动）。`agents` 的键是 Agent id；只有**已定义配置形状**的 Agent 能配，
-> 当前是 gemini 与 glm——codex / claude 虽已登记在注册表里，形状要等后续里程碑才定义。
+> 四家现在都有（codex 随 M8、claude 随 M9；v1.0.3 起改准，此前写「当前是 gemini 与 glm」）。
 
 两个内置档位。两档的 Gemini 侧相同，差异只在 GLM 侧用不用 Flash：
 
@@ -505,9 +508,10 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 .reviews/<主题>/
 ├── task.json                                主题级元数据：各轮指针、闸门、审批、争议
 ├── plan/  code/  bug/  verify/
-│   ├── <日期>-<主题>-claude.md               ← 你/Driver 写的原稿
+│   ├── <日期>-<主题>-claude.md               ← 你/Driver 写的原稿（后缀 = 当轮 Driver）
 │   ├── <日期>-<主题>-gemini.md               ← Antigravity 的审查
 │   ├── <日期>-<主题>-glm.md                  ← ZCode 的审查
+│   ├── <日期>-<主题>-codex.md                ← Codex 的审查
 │   ├── <日期>-<主题>-revised-claude.md       ← 修订件（plan/bug，含逐条裁决）
 │   ├── <日期>-<主题>-response-claude.md      ← 应答件（code）
 │   └── _meta/                                 审计材料
@@ -636,7 +640,10 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 ## 八、五道护栏
 
-前四道由 Claude Code Hook 强制，**不靠模型自觉**。
+前四道由 Claude Code Hook 强制，**不靠模型自觉**——这是 Claude Code 主攻（护栏等级 L1）时的情形。
+**别家主攻时**：ZCode 的 Hook 只在五个前提下尽力拦截（桌面端、先信任再开会话、主代理、写工具在覆盖内、不超时），Codex 与 Antigravity 没有 Hook，
+下表前四道都要靠你和 Driver 自觉；事后机制只能发现审查进行中的越界，**闸门期改业务文件发现不了**（BACKLOG EV-132）——审批前自己看一眼 `git status`。
+细节见 [QUICKSTART §5.2](./QUICKSTART.md) 与 [RUNBOOK 第十节](../06_deployment/RUNBOOK_pipeline_ops.md)。
 
 | 什么时候 | 挡什么 | 怎么过 |
 | :--- | :--- | :--- |

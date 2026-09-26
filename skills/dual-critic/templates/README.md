@@ -22,7 +22,7 @@
 ## 命名与落盘
 
 **不要手工创建审查文档**——那是编排器从审查员的结构化输出渲染的，
-Claude Code Hook 会拦下 Driver 对它们的写入（AC-07）。
+Hook 会拦下 Driver 对它们的写入（AC-07；Claude Code 主攻时兜得住，ZCode 主攻时只作尽力拦截，Codex / Antigravity 主攻时没有 Hook、靠 `archive` 与事后核对，见设计 8.5）。
 受保护的后缀是**除当轮 Driver 之外的全部已登记角色**，权威判据是 `hooks.ts` 的
 `criticRoleSuffixes()`——**不要在这里枚举**：上一版枚举了 `-gemini.md` / `-glm.md` 两个，
 M8 接入 codex 之后就漏了一个，而漏掉的那一格没有任何判据看得见。

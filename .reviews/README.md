@@ -1,13 +1,13 @@
 # 多智能体协同审计与留痕目录 (.reviews)
 
-本目录是 **「主攻 + 多审」（Driver-MultiCritic）** 流水线对外的**事实来源**：全部审查结论、逐条裁决与审计材料都落在这里并纳入 Git 版本管理，验收标准（AC-01～AC-19；演进项 AC-20 / AC-24 已达成、AC-21（仅子句 ③）与 AC-22 部分达成，其余待实施）都从本目录读取。
+本目录是 **「主攻 + 多审」（Driver-MultiCritic）** 流水线对外的**事实来源**：全部审查结论、逐条裁决与审计材料都落在这里并纳入 Git 版本管理，验收标准（AC-01～AC-19；演进项 AC-20 / AC-21 / AC-24 已达成（AC-21 含达成边界，见 PRD）、AC-22 部分达成，其余待实施）都从本目录读取。
 
-> 规范依据：[PRD v1.4.7](../doc/01_requirements/PRD_driver_dual_critic.md) FR-08 / FR-09，[设计 v1.3.37](../doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6 章。
+> 规范依据：[PRD v1.4.8](../doc/01_requirements/PRD_driver_dual_critic.md) FR-08 / FR-09，[设计 v1.3.43](../doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6 章。
 >
 > **措辞说明**：N 方化后「双审」的正确称谓是「**多审**」，文档层面统称多审；
 > 但**命令名 `/dual-*`、本目录名 `.reviews/` 与运行时目录一律不改名**（兼容优先）。
 > **当前真实生效的是多审**：四家 Agent 均已启用为审核者，缺省集合为 codex / gemini / glm 三家（M8 D4-4）；
-> claude 作审核者须 `--driver` 取另一家（M9）；换一家 Agent 在自己的 CLI 里主攻仍为【待实施 · M10b】（编排器侧的判定与护栏已随 M10a 交付），见设计 16.1 与 §24 台账。
+> claude 作审核者须 `--driver` 取另一家（M9）；换一家 Agent 在自己的 CLI 里主攻自 M10b 起可用（2026-09-26；编排器侧的判定与护栏随 M10a 交付，各载体的护栏等级见设计 8.5 与 QUICKSTART §5.2），见设计 16.1 与 §24 台账。
 > 本目录内的文件**一律由编排器 `trivium` 的 `archive` 模块生成**，是唯一落盘出口；请勿手工创建或改名。
 
 ---
@@ -54,12 +54,12 @@
 Driver 产出起草件与裁决件（原稿、`-revised`、`-response`），审核者产出审查文档。
 
 **角色后缀是硬约束**：审查员不得产出 Driver 的后缀，Driver 不得产出审核者的后缀
-（由 Claude Code Hook 与 `archive` 双重拦截）。受保护的后缀集是**全部已登记角色减当轮 Driver**，
+（由 Hook 与 `archive` 双重拦截：Claude Code 主攻时 Hook 兜得住；ZCode 主攻时 Hook 只作尽力拦截；Codex / Antigravity 主攻时没有 Hook，只剩 `archive` 与事后核对，见设计 8.5）。受保护的后缀集是**全部已登记角色减当轮 Driver**，
 权威判据是 `hooks.ts` 的 `criticRoleSuffixes()`——**不要在这里枚举**，枚举过的地方
 在 M8 接入 codex 时漏过一次。
 
 > **后缀标识产出方，不标识发起方**。发起方（当轮 Driver）记在运行元数据里，两者**正交**——
-> M10a 起可按运行（`--driver`）或按阶段（`topic claim`）指定别家为 Driver（在别家自己的 CLI 里执笔待 M10b），
+> M10a 起可按运行（`--driver`）或按阶段（`topic claim`）指定别家为 Driver（M10b 起也可在别家自己的 CLI 里执笔），
 > 同一个后缀在不同运行中既可能是 Driver 也可能是审核者。
 > 这条正交性是禁读矩阵**不能按后缀差集生成**的根本原因。
 **只追加不覆盖**：既有工件无论是否已审批一律不覆盖，`archive` 以 `O_CREAT|O_EXCL` 原子创建，命中已存在文件即视为重跑并自动抬升 `-r<N>`（FR-25）。
@@ -70,11 +70,13 @@ Driver 产出起草件与裁决件（原稿、`-revised`、`-response`），审�
 
 | 阶段 | 必备工件 | 对应需求 |
 | :--- | :--- | :--- |
-| `plan/` | ①`…-claude.md` 原始计划 ②`…-gemini.md` ③`…-glm.md` ④`…-revised-claude.md` 修订计划（含逐条裁决） | FR-04 / AC-01 |
-| `code/` | ①`…-gemini.md` ②`…-glm.md` ③`…-response-claude.md` 应答件（逐条接受/驳回/暂缓 + 理由 + 修改计划） | FR-05 / AC-01 |
-| `bug/` | ①`…-claude.md` 根因原稿 ②`…-gemini.md` ③`…-glm.md` ④`…-revised-claude.md` 修订根因 | FR-22 / AC-15 |
+| `plan/` | ①`…-<Driver>.md` 原始计划 ②每个入选审核者一份 `…-<审核者>.md` ③`…-revised-<Driver>.md` 修订计划（含逐条裁决） | FR-04 / AC-01 |
+| `code/` | ①每个入选审核者一份 `…-<审核者>.md` ②`…-response-<Driver>.md` 应答件（逐条接受/驳回/暂缓 + 理由 + 修改计划） | FR-05 / AC-01 |
+| `bug/` | ①`…-<Driver>.md` 根因原稿 ②每个入选审核者一份 `…-<审核者>.md` ③`…-revised-<Driver>.md` 修订根因 | FR-22 / AC-15 |
+
+`<Driver>` 是当轮 Driver 的后缀（缺省 `claude`）；`<审核者>` 取入选的那几家（缺省三侧：`codex` / `gemini` / `glm`）。例如缺省配置下 plan 阶段是 `…-claude.md`、`…-codex.md`、`…-gemini.md`、`…-glm.md`、`…-revised-claude.md` 五份；glm 主攻时原稿与修订件换成 `…-glm.md` / `…-revised-glm.md`，审核者缺省去掉 glm。
 | `verify/` | `…-verify.md` + `_meta/verify-<run_id>.json`（含实际执行的命令与退出码）。不在 `--check-artifacts` 的阶段范围内（它只认 plan/code/bug），由提交时的留痕核对保护：verify 运行清单登记了它（锚②），它又位于 `_meta/` 内（锚①），见 §四末「提交时的留痕核对」 | FR-21 / AC-10 |
-| 每次运行 | `_meta/run-<run_id>.json`、两份 `brief-*`、两份 `review-*.json`（单审时缺失侧以 `review-<critic>-<run_id>.failed.json` 记录原因） | NFR-05 / AC-06 / AC-17 |
+| 每次运行 | `_meta/run-<run_id>.json`，每个入选审核者一份 `brief-*` 与一份 `review-*.json`（某侧失败时以 `review-<critic>-<run_id>.failed.json` 记录原因） | NFR-05 / AC-06 / AC-17 |
 
 缺件即失败。**审查结果为零条意见时文件照常落盘**并在元数据标 `empty_review: true`，不得删除该侧文件假装没跑（P5 不可伪装）。
 
@@ -82,21 +84,23 @@ Driver 产出起草件与裁决件（原稿、`-revised`、`-response`），审�
 
 ## 四、`_meta/` 审计材料
 
-`_meta/` 由**编排器**（而非任何 Agent）产出，是送审可审计性（AC-17）、生效模型可核对（AC-13 / AC-18）、单审可见（AC-06）的落点。因此它**不适用**第二节的角色后缀命名，且 `archive` 保证 `_meta/` 内不出现以 `-claude.md` / `-gemini.md` / `-glm.md` 结尾的文件。
+`_meta/` 由**编排器**（而非任何 Agent）产出，是送审可审计性（AC-17）、生效模型可核对（AC-13 / AC-18）、单审可见（AC-06）的落点。因此它**不适用**第二节的角色后缀命名：经编排器 `archive.writeMeta` 写出的文件名不得以任一已登记角色后缀结尾（后缀集由注册表派生，不在这里枚举），违者拒写。
 
 ```text
 <阶段>/_meta/
 ├── brief-gemini-<run_id>.md     # Critic-A 审查任务书：角色、焦点提示语、被审对象路径与 sha256、
 ├── brief-glm-<run_id>.md        # 必读清单、禁读清单、本侧审查镜头、输出契约
+├── brief-codex-<run_id>.md      # 每个入选审核者一份（此处以缺省三侧为例）
 ├── review-gemini-<run_id>.json  # 结构化审查结论原文（trivium.review.v1）
 ├── review-glm-<run_id>.json
+├── review-codex-<run_id>.json
 ├── changes-<run_id>.diff        # 仅 code 阶段：本轮被审补丁（受留痕核对保护）
 ├── changes.diff                 # 指向最新一轮的便利副本（人读用，不进保护集）
-└── run-<run_id>.json            # 运行元数据（trivium.run.v1）：快照哈希、两侧生效模型、
+└── run-<run_id>.json            # 运行元数据（trivium.run.v2；旧留痕为 v1）：快照哈希、各侧生效模型、
                                  # 起止时间、工具轨迹计数、降级原因、只读与隔离核验结论
 ```
 
-两份 `brief-*` 互相可见但**不含任何意见**（只有被审对象、镜头、清单与契约），因此不破坏背靠背隔离；AC-04 检查的是对方的 `*-gemini.md` / `*-glm.md` 及其摘录。
+各侧的 `brief-*` 互相可见但**不含任何意见**（只有被审对象、镜头、清单与契约），因此不破坏背靠背隔离；AC-04 检查的是对方的审查文档（`*-<审核者>.md`）及其摘录。
 
 ### 提交时的留痕核对（提交锚）
 
@@ -152,6 +156,9 @@ Driver 产出起草件与裁决件（原稿、`-revised`、`-response`），审�
     └── _meta/verify-20260910T151002Z.json
 ```
 
+> 上例写于只有两家审核者的时期。现在缺省三侧，每个审查阶段还会多一份 `…-codex.md`（Codex 审查），`_meta/` 里多一份 `brief-codex-*` 与 `review-codex-*`；
+> 换别家主攻时，原稿与修订件 / 应答件的后缀随当轮 Driver 变（见第三节）。
+
 ---
 
 ## 六、不进 Git 的部分
@@ -169,3 +176,8 @@ Driver 产出起草件与裁决件（原稿、`-revised`、`-response`），审�
 ## 七、复盘
 
 `trivium report --topic <主题>` 依据本目录生成人读复盘：时间线、每轮意见数与严重度分布、采纳率、被驳回项与理由、降级与告警清单、耗时与 token 汇总。
+
+---
+
+> **给审查本文件改动的人**：本文件位于归档根，code 阶段的被审补丁按 `diffExcludePrefixes` **无条件排除**归档根，所以任何一步改了本文件，改动都不会出现在送审补丁里。
+> 改动本文件的步骤须在其报告里注明，审查员请照例直读工作树核对（M10b 第 5 步代码双审 r4 GLM-01 核出）。

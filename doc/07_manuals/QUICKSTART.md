@@ -1,14 +1,13 @@
 # 快速上手：Driver-DualCritic 双审流水线
 
 > 目标：**15 分钟内**装好并跑通一条真实任务。
-> 依据 [设计 v1.3.37](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.7](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计 v1.3.43](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.8](../01_requirements/PRD_driver_dual_critic.md)。
 >
-> **本文描述的是当前可用的系统**：Claude Code 主攻 + 缺省三侧审查（Antigravity / ZCode / Codex，2026-09-16 起默认即三侧）。
-> 第四家（Claude Code 作审核者）已随 M9 接入，但它是本会话的 Driver，入选须 `--driver` 取另一家，本文不展开；
-> 换一家 Agent 在自己的 CLI 里主攻（M10b）与思考等级三档（M11）**还不能用**，按本文操作即可。
+> **本文描述的是当前可用的系统**：缺省由 Claude Code 主攻 + 缺省三侧审查（Antigravity / ZCode / Codex，2026-09-16 起默认即三侧）。
+> 第四家（Claude Code 作审核者）已随 M9 接入，入选须由另一家当 Driver。
+> **换一家 Agent 在自己的会话里主攻已可用（M10b，2026-09-26）**：ZCode、Codex 也能当 Driver，但**护栏强度不同**——先读 [§5.2](#52-换一家-agent-主攻护栏等级-l1--l2)。思考等级三档（M11）还不能用。
 > **`--critics <id,…>` 已可用**——从已启用的几家里选跑哪几侧（选一侧不算降级）。
-> **本文正文的安装与 doctor 步骤仍以 Antigravity / ZCode 两家为例**；Codex 侧的 provider 配置由
-> `doctor` 探测并给可粘贴样例（设计 16.2 纪律 5），完整指引随 M10b 入口资产收口后补写。
+> 本文正文以 Claude Code 主攻为例；Codex 侧的 provider 配置由 `doctor` 探测并给可粘贴样例（设计 16.2 纪律 5），不代写你的全局配置。
 
 这条流水线让 Claude Code 主攻写代码，**Google Antigravity** 与**智谱 ZCode** 两个
 独立审查员背靠背复审，结论逐条落盘留痕。你的角色是 Driver 的使用者——按 `/dual-*`
@@ -26,6 +25,7 @@
 | Claude Code | 已安装并能用 | — |
 | Antigravity CLI | `agy` 可调用且**已登录** | `agy --version` |
 | 智谱 ZCode | 桌面应用已安装，CLI 凭据已配置（0.16.9 起编排器还要按路径注入桌面端的 provider 配置，只判文件有无、不读内容） | `ls ~/.zcode/cli/config.json ~/.zcode/v2/provider_config.json` |
+| Codex CLI（缺省三侧之一） | `codex` 可调用，provider 已由你自己配好 | `codex --version`；配置怎么写看 `doctor` 给的样例 |
 
 **关于凭据**：两侧的登录由你自己完成（`agy` 的交互登录、ZCode 的 `zcode login` 或
 provider 配置）。编排器只读取已有登录态，从不代你写凭据，也不会把凭据写进任何工件——
@@ -39,16 +39,22 @@ provider 配置）。编排器只读取已有登录态，从不代你写凭据�
 git clone <本仓库> TriviumCode && cd TriviumCode
 npm install
 npm run build          # esbuild 打出单文件零依赖产物
-node dist/install.cjs  # 装到用户级目录
+node dist/install.cjs  # 装到用户级目录；只装部分家：--targets claude,glm
 ```
 
-安装器做三件事，全部幂等：
+安装器做这些事，全部幂等：
 
 | 装到哪 | 内容 |
 | :--- | :--- |
-| `~/.claude/skills/dual-critic/` | 核心 skill + 编排器 `scripts/trivium.cjs` + schema / 镜头 / 阶段要点 / 模板 / 协议片段 |
-| `~/.claude/skills/dual-*/` | 7 个入口 skill（`/dual-run`、`/dual-review-plan` …） |
-| `~/.gemini/config/agents/trivium-critic/` | Antigravity 的只读审查 Agent 定义 |
+| `~/.claude/skills/dual-critic/` | 核心 skill + 编排器 `scripts/trivium.cjs` + schema / 镜头 / 阶段要点 / 模板 / 协议片段（**每次必装**，不随任何一家） |
+| `~/.claude/skills/dual-*/` | Claude Code 的 7 个入口 skill（`/dual-run`、`/dual-review-plan` …） |
+| `~/.zcode/skills/dual-*/`、`~/.codex/skills/dual-*/`、`~/.gemini/config/skills/dual-*/` | 另三家当 Driver 时用的入口 skill（本机没装那一家就跳过；用法见 §5.2） |
+| `~/.gemini/config/agents/trivium-critic/` | Antigravity 的只读审查 Agent 定义（本机没有 `~/.gemini` 就不装） |
+
+> **跨产品副作用**：本机没装 Claude Code 时，核心 skill 仍会新建在 `~/.claude/skills/dual-critic/`（编排器本体在那里）。
+> 日后装上 Claude Code，它会把这个目录当成一个已安装的 skill（其 `SKILL.md` 标了不可调用），安装器会打印这条提示。
+>
+> **别往 `~/.agents/skills` 里装同名 skill**：Codex 与 ZCode 都会读那里，同名时 Codex 的 `$dual-…` 调用会直接失效且不报错。安装器装前会查重名，撞上就拒装。
 
 > `trivium` **不在 PATH 上**，这是有意的。项目内一律用 `.trivium/bin/trivium`
 > （下一步由 `init` 生成，内含 node 绝对路径——GUI 启动的进程不读你的 `~/.zshrc`）。
@@ -96,6 +102,7 @@ node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 ├── config.yaml          # 团队共享策略，进 Git
 └── config.local.yaml    # 探针结论，由上一步 doctor 写入，不进 Git
 .claude/settings.json    # 五个 Hook 的注册（随仓库分发）
+.zcode/config.json       # 同一组 Hook 的 ZCode 形态（只在 ZCode 主攻时起作用，见 §5.2）
 .gitignore               # 追加 .trivium 的本机状态项
 CLAUDE.md / AGENTS.md    # 追加协议片段，标记括起，可重复运行
 ```
@@ -128,9 +135,18 @@ git check-ignore -v .claude/settings.json   # 应命中 !.claude/settings.json �
 npm run build && node dist/install.cjs
 node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
-# 卸载：只删用户级的 skill 目录与只读 Agent 定义；项目内的 .trivium/ 与 Hook 不动
+# 卸载：只删用户级的 skill 目录与只读 Agent 定义；项目内的 .trivium/ 与 Hook
+# （.claude/settings.json、.zcode/config.json）不动
 node dist/install.cjs --uninstall
 ```
+
+> **早就 `init` 过的项目要手工补两行 `.gitignore`**：新版给两份 Hook 配置的备份加了忽略规则，
+> 但 `init` 只在忽略片段从未追加过时才追加，已追加过的项目不会自动补。在 `.gitignore` 的 TriviumCode 段里加上：
+>
+> ```text
+> .claude/settings.json.trivium-backup
+> .zcode/config.json.trivium-backup
+> ```
 
 > **`init` 不会改写已有 `config.yaml` 的内容**——唯一的例外是**版本迁移**：
 > 那份配置若仍是旧的 `trivium.config.v1` 形态，`init` 会把它一次性改写为 `config.v2`
@@ -176,7 +192,7 @@ plan 审查中 ｜ 已用 5m0s / 预算 15m0s（33%）｜ gemini 已完成 · gl
 1. Driver 把方案写成 `.reviews/<主题>/plan/<日期>-<主题>-claude.md`；
 2. 编排器冻结送审包（记 `subject_sha256` 与工作树 `tree_hash`），渲染两份 BRIEF；
 3. **两侧并行**独立审查，各自只读、背靠背——看不到对方的结论；
-4. 两份结论齐备后**同时**落盘为 `…-gemini.md` 与 `…-glm.md`；
+4. 各侧结论齐备后**同时**落盘为各自的审查文档（缺省三侧：`…-codex.md`、`…-gemini.md`、`…-glm.md`）；
 5. Driver 读两份全文，写 `…-revised-claude.md` **逐条裁决**（接受 / 驳回 / 暂缓 + 理由）；
 6. `gate --check` 硬校验裁决完整性：少一条、理由空洞、编号不存在，都退 2 并点名缺口。
 
@@ -196,6 +212,7 @@ plan 审查中 ｜ 已用 5m0s / 预算 15m0s（33%）｜ gemini 已完成 · gl
 | `/dual-status` | 看闸门、运行、降级与争议 |
 
 `<提示语>` 是必填的（FR-20）：它会**逐字**嵌进两侧 BRIEF 的第 2 段。换提示语必定重审。
+（这是 Claude Code 主攻时的说法；别家主攻时调用写法与「逐字」的边界见 §5.2。）
 
 **想只跑一侧**（省时间或省配额）：给 B/C/D 或 `/dual-run` 加 `--critics glm`（或 `gemini`）。
 `/dual-run` 的计划审与代码审两轮用的是同一组。
@@ -206,7 +223,7 @@ plan 审查中 ｜ 已用 5m0s / 预算 15m0s（33%）｜ gemini 已完成 · gl
 
 ## 5. 会挡你的四道护栏
 
-它们由 Claude Code Hook 强制，**不靠模型自觉**。
+它们由 Claude Code Hook 强制，**不靠模型自觉**。这是 Claude Code 主攻（护栏等级 L1）时的情形；换别家主攻时哪几道还在，见 §5.2。
 
 | 什么时候 | 挡什么 | 怎么过 |
 | :--- | :--- | :--- |
@@ -270,16 +287,99 @@ plan 审查中 ｜ 已用 5m0s / 预算 15m0s（33%）｜ gemini 已完成 · gl
 
 ---
 
+## 5.2 换一家 Agent 主攻：护栏等级 L1 / L2
+
+四家都能当 Driver（执笔与裁决的那一方）。换谁主攻，就在**那一家自己的会话里**、在项目根目录下发命令；
+编排器、归档、闸门都不变，**变的是护栏的强度**。
+
+### 各家的入口与等级
+
+`node dist/install.cjs` 按本机装了哪几家自动装入口；只装部分家用 `--targets`（见 §1）。
+
+| Driver | 入口装在 | 在它的会话里这样调用 | 护栏等级 |
+| :--- | :--- | :--- | :--- |
+| Claude Code（`claude`） | `~/.claude/skills/dual-*/` | `/dual-review-plan <提示语>` | **L1** |
+| ZCode 桌面端（`glm`） | `~/.zcode/skills/dual-*/` | `/dual-review-plan <提示语>` | **L2**，有尽力拦截的 Hook |
+| Codex CLI（`codex`） | `~/.codex/skills/dual-*/`（设了 `CODEX_HOME` 则在它下面） | `$dual-review-plan <提示语>` | **L2**，没有 Hook |
+| Antigravity（`gemini`） | `~/.gemini/config/skills/dual-*/` | `/dual-review-plan <提示语>` | **L2**，没有 Hook |
+
+其余几条命令同理（`/dual-approve` 在 Codex 里写 `$dual-approve`，闸门停点的提示会按当轮 Driver 给出正确写法）。
+Antigravity 目前只以「名义 Driver」验收过（在 Claude Code 会话里用 `--driver gemini` 声明），在它自己的会话里执笔还没真跑过。
+
+预检 `trivium preflight --stage plan --driver <id>` 的「当轮 Driver」一行会打出护栏等级；每次运行的 `run.json` 也记了 `driver_guard_level`。
+
+### L1 与 L2 是什么意思
+
+- **L1**（Claude Code）：Hook **兜得住**写入，§5 的四道护栏全部生效。项目里的 Hook 配置若被删掉，本次按 L2 计，预检会打 ⚠️，重跑 `init` 即可恢复。
+- **L2**（ZCode / Codex / Antigravity）：**不保证**事前拦得住。三条规矩要靠你和 Driver 自己守：审查进行中不改业务文件、闸门期不改业务文件、只写 Driver 自己后缀的原稿与裁决件。
+
+守不住时，事后机制**只覆盖一部分**：
+
+| 越界发生在 | 事后能不能发现 |
+| :--- | :--- |
+| 审查进行中改了业务文件 | **能**。跑后复算会比对：改到被审内容，整次作废；改了无关文件，记一条告警 |
+| 闸门期（等你审批时）改了业务文件 | **不能**。审批前复核只核裁决和审查工件，不看工作树，改了照样能审批通过（已登记待修：BACKLOG EV-132） |
+| 审批之前删改了本轮的审查工件 | **能**。审批前复核按 sha256 核对本轮登记的工件，不符即拒 |
+| 审批之后删改了审查工件（含更早轮次） | **要看是谁来提交**：只有带 Hook 的载体（Claude Code；满足下面五个前提的 ZCode）在会话里 `git commit` 时，提交锚才全量核对并拦下。Codex / Antigravity 没有 Hook，它们主攻的轮次审批之后再删改审查工件，**没有任何机制会发现**（与上一行同属 BACKLOG EV-132 的范围） |
+
+所以 **L2 主攻时，审批前自己看一眼 `git status`**；Codex / Antigravity 主攻的轮次，审批之后也要自己核一次，或者改在 Claude Code 会话里提交，让提交锚补上这一道。闸门停点那句提示会写「全靠你自觉」或「只作尽力拦截、不兜底」；
+它结尾「越界……会在审批前复核与跑后漂移复算时暴露」半句对闸门期不成立，以上表为准。
+另外，审批本身在任何等级下都不是机械保证（§5.1）——L2 的 Driver 同样能自写裁决件、自己跑 `approve`。
+
+### ZCode 的 Hook 只在五个前提下生效
+
+`init` 会把同一组 Hook 以 ZCode 的形态写进 `.zcode/config.json`。它要**同时**满足下面五条才会拦：
+
+1. 用**桌面端**会话——命令行模式下工作区 Hook 整体关闭；
+2. 工作区**已信任**，而且要**先点信任、再开会话**：信任提示可能在第一个会话开始之后才弹出，那个会话里的开场提示不会跑；改过配置要重新信任；
+3. 写入发生在**主代理**里——子代理的工具调用不过工作区 Hook。开场第一句可以直接告诉它「本轮不要使用子代理」；
+4. 用的是 Hook 覆盖到的写工具（精确名单；外挂的写工具拦不住）；
+5. Hook 没有超时——超时即放行，而且看不见。
+
+任一条不满足，它就退回「没有 Hook」的 L2。四种状态怎么操作：
+
+| 状态 | 做法 | 要知道的 |
+| :--- | :--- | :--- |
+| 安装 | `init`，或单独 `.trivium/bin/trivium hooks --agent glm` | 装完在 ZCode 桌面端重新信任该工作区；信任前 Hook 不跑 |
+| 更新 | 重跑同一条命令 | 配置一变就退回待信任，要重新信任 |
+| 停用 | 删掉 `.zcode/config.json` 里 TriviumCode 那一段，或把 `hooks.enabled` 设成 `false` | 信任记录留在 ZCode 自己那里，不影响别的项目 |
+| 清理 | 卸载不会动项目里的 `.zcode/config.json`，要手工删（见 RUNBOOK） | 残留的那段在重新信任后会继续生效 |
+
+`.zcode/config.json` 若被 `.gitignore` 忽略，`init` 会提示「只对本机生效、不随仓库分发」。
+
+### Codex 主攻的两点
+
+- **起会话时放开沙箱**：`codex -s danger-full-access -C <项目根>`。`review --start` 要在会话里拉起审核者的 CLI、写 `~/.trivium/runs/`、联网，
+  Codex 的缺省沙箱会挡住这些；不放开的话，就要逐次批准它的提权请求。M10b 的验收用的是前一种。
+- **一提到就注入**：Codex 会话里一条消息只要**提到** `$dual-review-code` 这类名字，那份 skill 就会整段注入上下文，哪怕你只是在交代别的事。
+  想先交代再调用，就分两条消息发，交代的那条里不要写 `$名字`。
+
+### 提示语是模型转抄的
+
+Claude Code 主攻时，`/dual-review-plan` 后面的提示语由 Claude Code 原样替换进命令；另三家不替换，靠 Driver 模型**转抄**，被改写了会静默接受。所以：
+
+- 提示语写平实些，少用引号、`$`、反引号这类特殊字符；
+- 开场播报会报主题和焦点，看一眼是不是你写的那句；
+- 什么都不写时它应当报错退出，而不是自己编一个。
+
+### 别家主攻时，缺省是两审
+
+缺省审核者集合会**先去掉当轮 Driver**：Codex 主攻时缺省就是 Antigravity + ZCode 两审，ZCode 主攻时是 Codex + Antigravity，以此类推。
+想要别的组合，四条命令都可以加 `--critics <id,…>`（不能含当轮 Driver），或者改 `.trivium/config.yaml` 的 `review.default_critics`。
+
+---
+
 ## 6. 产出在哪
 
 ```
 .reviews/<主题>/
 ├── task.json                      # 主题级元数据：各轮指针、闸门、审批、争议
 ├── plan/  code/  bug/  verify/
-│   ├── <日期>-<主题>-claude.md          # 原稿（plan / bug）
+│   ├── <日期>-<主题>-claude.md          # 原稿（plan / bug；后缀 = 当轮 Driver）
 │   ├── <日期>-<主题>-gemini.md          # Antigravity 审查
 │   ├── <日期>-<主题>-glm.md             # ZCode 审查
-│   ├── <日期>-<主题>-revised-claude.md  # 修订件（含逐条裁决）
+│   ├── <日期>-<主题>-codex.md           # Codex 审查
+│   ├── <日期>-<主题>-revised-claude.md  # 修订件（含逐条裁决；code 阶段是 -response-<Driver>.md）
 │   └── _meta/                            # 送审包、结构化结论、运行元数据、code 阶段的补丁
 ```
 
