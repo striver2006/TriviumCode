@@ -238,7 +238,8 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       打印进度后继续下一次 --wait。
 
   trivium review --status <run_id> [--json]    只读一次状态，不等待
-  trivium review --cancel <run_id>             取消运行并回收主题锁
+  trivium review --cancel <run_id>             取消运行、回收主题锁与闸门；工作进程确认退出后，
+                                               把仍为 running 的归档 run.json 标为 cancelled
 
   trivium preflight --stage plan|code|bug|all [--json] [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--skip-auth-check] [--refresh-auth]
       启动预检（FR-18 / AC-16）。失败时**不产生任何工件**。

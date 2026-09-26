@@ -1,0 +1,41 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "四处审查焦点逐一沿调用链核实，未发现需要修改的问题。① EV-128：finalizeCancelledRunMeta 排在 patchStatus 之前（run-protocol.ts:872-882），中断后 status.json 仍非终态、再跑 --cancel 即补齐；两步独立判据各自可重入（R5c 钉住两写之间中断），异常转 skipped 不抛、锁与闸门回收不被连坐（E6），workerGone 前提对 status 读不到/starting/非终态无 pid 均保守不写（E3，status.ts:155-178）。② task 登记以「run.json 已是 cancelled」为独立判据（不依赖第一步本次写没写）、按 run_id 精确匹配、找不到不新建不写盘（R5a/b/c），未发现漏掉的中断形态。③ 新正则前界 (?<![A-Za-z0-9_./-]) 与主设计 §6.5「字母数字 _ - . /」逐字符一致，test|tests 交替顺序由回溯兜住，U1–U7 覆盖、C4 用真实构建重扫 383 份实测 56 条截断误报全去且新报 0；不核范围与 EV-143 登记口径一致。④ hang 只进 StubMode 分支、仅 TRIVIUM_STUB_CRITIC 显式编码触发（生产 realAdapters 不经过），600s 兜底早于 plan 档 900s 超时不会挂死；E1 以纳秒 mtime 钉先后在串行 await 与 writeAtomic 下可靠、M12 变异实证有失败面；报告 §3 三项偏离登记属实。EV-137 的 report 读取移除干净（src 内 forged_role_file 仅剩两处写侧恒 false 与注释）。",
+  "findings": [],
+  "agreed": [
+    "EV-128 排序设计正确：归档侧收尾排在 status.json 落终态之前是「中断后可补齐」的充分条件——status.json 一旦终态，重跑 --cancel 会在终态分支早退；排在前面则两步独立判据（第一步看 run.json 仍 running，第二步看 run.json 已 cancelled）覆盖所有中断点位，R5c 与 E1/M12 变异共同钉住。",
+    "失败出口分层得当：finalizeCancelledRunMeta 两步各包一层 catch 转 FinalizeStep（只设一道、调用方不另包），锁与闸门回收排在其后照常执行——E6 实证 _meta 只读时仍退 0、锁已回收、status.json 为 cancelled、告警写明原因；闸门卡 running 会把 Driver 永久锁在不存在的运行上，不连坐是对的。",
+    "workerGone 用显式入参传入（而非函数内自判）使接线可被 E3/R6 守住；workerConfirmedGone 对「status.json 读不到」「starting」「非终态却拿不到 pid」一律 gone:false——归档回写与凭据抹除共用同一保守准入，未确认就可能还有写者、两个写者互相覆盖的注释与实际判据一致。",
+    "提交锚相容性核过：hooks.ts runningRewriteViolation 对 HEAD 为 running 的 run.json 只拦 run_id 变更与已登记 artifacts[] 条目消失/sha 变化，取消回写只改 status/finished_at/gate.state 三格、artifacts 原样，E4 以「运行中途入库→取消→hook-pre-commit 退 0→再提交→入库终态再改被拦」全链路实证。",
+    "task 登记同步的形态覆盖完整：R5a（命中只改一条且其它条目与其余键不变）、R5b（prepareRun 先写 run.json 后登记的中断形态——不新建条目、task.json 逐字节不变）、R5c（run.json 已 cancelled 登记仍 running——第一步跳过第二步补齐）、R6（未确认退出时第二步随第一步 skipped，登记不能先改）。updateTaskAsync 在 .task-<topic> 独立锁内读改原子替换，与主题锁回收无死锁交互。",
+    "EV-127 正则与设计口径一致且实测可信：前界排除类、九个根目录、前导 (?:\\.\\/)* 去掉后再比均与 §6.5 新增段及 parse.ts 注释互洽；ev127-measure.mjs 四判据交叉比较 + acceptance.mjs C4 用真实构建的 checkReviewIntegrity 重扫（added=0、removed 恰为 56 条截断误报），两个脚本方法独立、结论互证；「只进告警不改判定」与 guard/review 未改的事实一致。",
+    "EV-137 收口干净：report.ts 的读取移除后 src 内 forged_role_file 仅剩 meta.ts:364 与 review.ts:1360 两处写侧（恒 false 带旁注）与 types.ts 注释，G1 用手工置 true 钉住「report 不据它打旗标」；两份 schema 的 description 写明保留字段语义，§9 模块表 guard 行与 EV-73 并入的覆盖面评估口径一致。",
+    "hang 桩模式只影响测试设施：仅 StubMode 新增枚举值与 switch 分支，需 TRIVIUM_STUB_CRITIC 显式编码才生效，生产路径走 realAdapters 不经过该分支；doctor --selftest 14/14 不受影响；600s 兜底短于 plan 档 900s，桩先于 runner 超时返回、不会永久挂死；旧用例保留 timeout 模式的取舍（断言对象与时序无关）有说明。",
+    "报告 §3 偏离登记属实：§3.1 补桩的理由成立（timeout 模式立即返回、worker 转眼自收尾，E4/E5 靠时序侥幸会抖）；§3.2 的证伪有第 1 次验收 readout 落盘在案（C3 12/13），C3 按事实改写并经用户决定登 EV-144，r2 原文保留为记录的处理方式符合「实现偏离计划必须显式」的要求；§3.3 M12 取「写入时间钉先后、不加测试钩子」的取舍写明了它钉的是先后而非中断可补齐本身（后者由 R5c 与前提 4 分担）。",
+    "文档四方同步互洽：主设计 v1.3.47（§6.5/§6.7 注记/§7.1 --cancel 行/§9 模块表/变更记录）、PRD v1.4.11（FR-24 边界说明）、PROTOCOL 命令表、LLD v1.1.5（含去掉会漂移的行号链接）、MANUAL v1.0.5 与 cli.ts USAGE 的 --cancel 措辞相互一致；BACKLOG 五条状态改写（EV-127/128/137/133 两处/EV-73 并入）与新登 EV-142/143/144 均与实现现状对得上。"
+  ],
+  "not_covered": [
+    "未实际运行 npm run check、doctor --selftest、源码变异与零配额验收（审查员只读约束）；2102/2100/0/2、14/14、15/15、13/13 等读数采信实施报告与 evidence 目录下落盘的输出文件。",
+    "mutation-spec.json、mutation-output-run1.txt、ev127-detail.mjs、ev127-named.mjs、gen-mutation-spec.mjs、run-status-census.mjs 未逐行核对（变异规格的锚点唯一性声明采信报告；实测方法已通过 ev127-measure.mjs 与 acceptance.mjs 两个关键脚本核实）。",
+    "review.ts 的 worker 收尾路径（executeRun 写 run.json 的段）未逐行读；EV-142 声明的「worker 异常与 worker_lost 两处不写 run.json」依据 run-protocol.ts 的 catch 分支（:537-546）与 worker_lost 分支（:655-660）均只见 patchStatus 的事实核实，收尾写入的完整顺序未展开。",
+    "hooks.ts 只读了 runningRewriteViolation 的判据注释、调用点（:497-510）与 E4 集成实证，完整函数体未逐行读。",
+    "src/trivium/types.ts、report.ts、review.ts、cli.ts、adapters/stub.ts、run.v1/v2 schema 与五个测试文件，以及 PRD/LLD/PROTOCOL/MANUAL/BACKLOG/主设计等文档：均只经被审 diff 的变更段读过，未读工作树全文（调用链消费点已按需用 Grep 定向核实）。",
+    "gate-loop.test.ts 与 run-protocol.test.ts 只读了 diff 新增段（E1/E3/E6/E2 追加/E4/E5）及其依赖的夹具函数，既有用例未全读；真实配额下的端到端取消行为不在本轮零配额验收与本次审查范围内。",
+    "cancelRun 的既有分支（终态早退不回收遗留锁的窄窗口、workerGone=false 时仍回收锁与闸门的既有取消语义）非本补丁触碰面，未深挖。"
+  ],
+  "consulted": [
+    ".reviews/留痕字段与误报小修/code/_meta/changes-20260926T151155Z.diff",
+    "src/trivium/meta.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/status.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/archive.ts",
+    "test/unit/run-meta-cancel.test.ts",
+    "doc/05_testing/REPORT_2026-09-26_trace_field_fixes.md",
+    "doc/05_testing/evidence/trace-field-fixes-20260926/acceptance.mjs",
+    "doc/05_testing/evidence/trace-field-fixes-20260926/ev127-measure.mjs",
+    "AGENTS.md"
+  ]
+}

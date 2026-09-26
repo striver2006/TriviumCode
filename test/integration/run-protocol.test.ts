@@ -9,7 +9,9 @@ import { defaultConfig } from '../../src/trivium/config.js';
 import { acquireLock, inspectLock } from '../../src/trivium/lock.js';
 import { spawnDetached, processStartTime, processAlive } from '../../src/trivium/util/exec.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
-import type { Ctx } from '../../src/trivium/types.js';
+import { newRunMeta, readTask, registerRun, writeRunMeta } from '../../src/trivium/meta.js';
+import { metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
+import type { Ctx, RunMeta } from '../../src/trivium/types.js';
 
 /**
  * 协议层的自动化验证：用**假 worker**（一个长睡的 node 进程）代替真实双审，
@@ -232,6 +234,134 @@ test('--cancel 终止工作进程、标 cancelled、并回收主题锁', async (
   const s = await readStatus(runDirFor(ctx.config, ctx.projectRoot, 'R-CANCEL'));
   assert.equal(s?.phase, 'cancelled');
   assert.equal(await inspectLock(ctx.triviumDir, TOPIC), null, '锁应被回收——这是卡死时唯一的恢复路径');
+});
+
+/*
+ * ── EV-128：--cancel 的归档侧收尾（计划 r2 §4.2 E1 / E3 / E6）──
+ *
+ * `seedRun` 只布置运行目录；这里再按 prepareRun 的样子摆一份 v2 骨架 run.json 与 task.json 登记。
+ */
+async function seedArchive(ctx: Ctx, runId: string): Promise<{ layout: ArchiveLayout; runJson: string; taskJson: string; meta: RunMeta }> {
+  const layout: ArchiveLayout = { archiveRoot: ctx.archiveRoot, topic: TOPIC };
+  const meta = newRunMeta({
+    runId, topic: TOPIC, stage: 'plan', rerunIndex: 1, command: 'test', promptHint: '焦点', taskGoal: null,
+    criticsSelected: ['gemini', 'glm'], treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S',
+    denyPaths: [], driftPolicy: 'warn',
+  });
+  meta.artifacts = [{ path: `${TOPIC}/plan/_meta/brief-glm-${runId}.md`, sha256: 'a'.repeat(64) }];
+  await writeRunMeta(layout, 'plan', meta);
+  await registerRun(layout, meta, { triviumDir: ctx.triviumDir, heartbeatStaleMs: 120_000 });
+  return {
+    layout, meta,
+    runJson: path.join(metaDir(layout, 'plan'), `run-${runId}.json`),
+    taskJson: path.join(ctx.archiveRoot, TOPIC, 'task.json'),
+  };
+}
+
+/** 进程内捕获 stderr（step / warn 都走它），fn 结束后原样恢复 */
+async function captureStderr<T>(fn: () => Promise<T>): Promise<{ value: T; err: string }> {
+  const orig = process.stderr.write.bind(process.stderr);
+  let err = '';
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    err += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    return { value: await fn(), err };
+  } finally {
+    process.stderr.write = orig;
+  }
+}
+
+async function holdLock(ctx: Ctx, runId: string, pid: number): Promise<void> {
+  const lock = await acquireLock({
+    triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan',
+    runId, kind: 'run', heartbeatStaleMs: 120_000,
+  });
+  await fs.writeFile(
+    lock.path,
+    JSON.stringify({ ...lock.content, pid, pid_started_at: await processStartTime(pid) }, null, 2),
+    'utf8',
+  );
+}
+
+test('EV-128 E1：--cancel 把归档 run.json 与 task.json 登记收尾为 cancelled，且排在 status.json 之前写', async () => {
+  const ctx = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx, 'R-ARCH');
+  const a = await seedArchive(ctx, 'R-ARCH');
+  await holdLock(ctx, 'R-ARCH', pid);
+
+  const { value: code, err } = await captureStderr(() => cancelRun(ctx, 'R-ARCH'));
+  assert.equal(code, EXIT.OK);
+
+  const after = JSON.parse(await fs.readFile(a.runJson, 'utf8')) as RunMeta;
+  assert.equal(after.status, 'cancelled');
+  assert.equal(after.gate.state, 'cancelled');
+  assert.ok(after.finished_at, 'finished_at 应已写入');
+  assert.deepEqual(after.artifacts, a.meta.artifacts, 'artifacts[] 必须原样（提交锚只放行不删改登记的收尾）');
+  assert.equal((await readTask(a.layout)).runs.find((r) => r.run_id === 'R-ARCH')?.status, 'cancelled');
+  assert.match(err, /已把归档里的 run-R-ARCH\.json 收尾为 cancelled/);
+  assert.match(err, /已把 task\.json 的运行登记同步为 cancelled/);
+  assert.equal((await readStatus(runDir))?.phase, 'cancelled');
+  assert.equal(await inspectLock(ctx.triviumDir, TOPIC), null);
+
+  /*
+   * 顺序：归档侧必须先于 status.json 落终态（计划双审 r1 CODEX-01 ≡ GLM-01）。
+   * 排在后面时，进程死在两次写之间，再跑 --cancel 会在终态分支早退，run.json 永远停在 running。
+   * 中断本身在集成里造不出来（不为此往 cancelRun 加测试钩子），用两份文件的修改时间钉住先后。
+   * 前提：纳秒级时间戳（APFS / ext4 等）。粗粒度文件系统上两次写可能落进同一刻度，这里会假红、不会假绿
+   * （代码双审 r1 CODEX-04 ≡ AGY-01）；不放宽成「小于等于」，那会让 M12 在粗粒度卷上假绿。
+   */
+  const mt = async (p: string) => (await fs.stat(p, { bigint: true })).mtimeNs;
+  const statusMt = await mt(path.join(runDir, 'status.json'));
+  assert.ok((await mt(a.runJson)) < statusMt, 'run.json 应先于 status.json 写');
+  assert.ok((await mt(a.taskJson)) < statusMt, 'task.json 登记应先于 status.json 写');
+});
+
+test('EV-128 E3：工作进程未确认退出（运行中却拿不到 worker_pid）⇒ 归档 run.json 不写，输出写明原因', async () => {
+  const ctx = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx, 'R-UNSURE');
+  try {
+    // workerConfirmedGone：非终态且拿不到 pid ⇒ gone: false（没有证据）
+    const s = (await readStatus(runDir))!;
+    s.worker_pid = null;
+    s.worker_started_at = null;
+    await writeStatus(runDir, s);
+    await fs.rm(path.join(runDir, 'worker.pid'));
+    const a = await seedArchive(ctx, 'R-UNSURE');
+    const runBefore = await fs.readFile(a.runJson, 'utf8');
+    const taskBefore = await fs.readFile(a.taskJson, 'utf8');
+
+    const { value: code, err } = await captureStderr(() => cancelRun(ctx, 'R-UNSURE'));
+    assert.equal(code, EXIT.OK);
+    assert.equal(await fs.readFile(a.runJson, 'utf8'), runBefore, '未确认退出时 run.json 必须逐字节不变');
+    assert.equal(await fs.readFile(a.taskJson, 'utf8'), taskBefore);
+    assert.match(err, /归档 run-R-UNSURE\.json 未回写：工作进程未确认退出/);
+  } finally {
+    killQuietly(pid);
+  }
+});
+
+test('EV-128 E6：归档侧写失败（_meta 只读）不连坐锁与闸门回收：退 0、锁已回收、status.json 为 cancelled、告警写明原因', { skip: process.getuid?.() === 0 && 'root 下只读目录拦不住写入' }, async () => {
+  const ctx = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx, 'R-ROFS');
+  const a = await seedArchive(ctx, 'R-ROFS');
+  await holdLock(ctx, 'R-ROFS', pid);
+  const dir = path.dirname(a.runJson);
+  await fs.chmod(dir, 0o555);
+  try {
+    const { value: code, err } = await captureStderr(() => cancelRun(ctx, 'R-ROFS'));
+    assert.equal(code, EXIT.OK);
+    assert.equal(await inspectLock(ctx.triviumDir, TOPIC), null, '归档侧失败不得挡住锁回收');
+    assert.equal((await readStatus(runDir))?.phase, 'cancelled');
+    assert.match(err, /归档 run-R-ROFS\.json 未回写：回写 run\.json 出错：/);
+    // 单步写失败没有第二次机会，告警要当场说出来（代码双审 r1 CODEX-01）
+    assert.match(err, /这一步不会再有第二次机会.*请人工核对归档 run\.json 与 task\.json 的运行登记/);
+    assert.equal((JSON.parse(await fs.readFile(a.runJson, 'utf8')) as RunMeta).status, 'running');
+  } finally {
+    await fs.chmod(dir, 0o755);
+    killQuietly(pid);
+  }
 });
 
 test('--cancel 对已退出的工作进程也能清理状态与锁', async () => {

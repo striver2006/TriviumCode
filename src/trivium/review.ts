@@ -1356,6 +1356,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     deny_skipped: Object.fromEntries(
       sides.map((c) => [c, results[c]?.deny_skipped ?? 0]),
     ),
+    // 保留字段（EV-137）：run.v1 / v2 必填，写侧恒 false，不代表检测过
     forged_role_file: false,
     breached_files: verdict.breachedFiles,
     /*

@@ -245,7 +245,8 @@
           }
         },
         "forged_role_file": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "保留字段，恒为 false，不表示检测过（EV-137）。角色后缀伪造由写入前 Hook（带 Hook 的载体）、gate --check-artifacts 的未登记审查件判据与提交锚承担；report 不据它打旗标"
         },
         "breached_files": {
           "type": "array",
@@ -467,6 +468,7 @@
       }
     },
     "status": {
+      "description": "running 是骨架态（prepareRun 落盘）；success / failed 由 worker 收尾写；cancelled 由 review --cancel 在工作进程确认退出后写（EV-128），是取消轮唯一一次终态写入。已结束却仍为 running 的留痕表示没有走到收尾（worker 异常、worker_lost，或 EV-128 之前被取消），不回填",
       "enum": [
         "running",
         "success",

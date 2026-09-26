@@ -1,0 +1,152 @@
+{
+  "targets": [
+    "src/trivium/parse.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/report.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/parse.test.js",
+    "dist/test/test/unit/run-meta-cancel.test.js",
+    "dist/test/test/integration/run-protocol.test.js",
+    "dist/test/test/unit/report.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "正则前界改回 \\b ⇒ U1（skills-src 截成 src/…）",
+      "file": "src/trivium/parse.ts",
+      "find": "/(?<![A-Za-z0-9_./-])(?:\\.\\/)*((?:src|",
+      "replace": "/\\b((?:src|",
+      "expect": "dist/test/test/unit/parse.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "前界改成候选 ① 的 (?<![A-Za-z0-9_-])（不含 . 与 /）⇒ U3 / U4",
+      "file": "src/trivium/parse.ts",
+      "find": "/(?<![A-Za-z0-9_./-])(?:\\.\\/)*((?:src|",
+      "replace": "/(?<![A-Za-z0-9_-])(?:\\.\\/)*((?:src|",
+      "expect": "dist/test/test/unit/parse.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "去掉 (?:\\.\\/)*（前导 ./ 不再收）⇒ U5",
+      "file": "src/trivium/parse.ts",
+      "find": "/(?<![A-Za-z0-9_./-])(?:\\.\\/)*((?:src|",
+      "replace": "/(?<![A-Za-z0-9_./-])((?:src|",
+      "expect": "dist/test/test/unit/parse.test.js"
+    },
+    {
+      "id": "M4a",
+      "desc": "cancelRun 硬传 workerGone: true（接线失守）⇒ E3",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      workerGone: goneNow.gone,\n",
+      "replace": "      workerGone: true,\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "M4b",
+      "desc": "新函数忽略 workerGone ⇒ R6",
+      "file": "src/trivium/meta.ts",
+      "find": "  if (!i.workerGone) {\n",
+      "replace": "  if (false && !i.workerGone) {\n",
+      "expect": "dist/test/test/unit/run-meta-cancel.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "删掉「仍为 running」前提（终态也改写）⇒ R2",
+      "file": "src/trivium/meta.ts",
+      "find": "  if (meta.status !== 'running') return skipped(",
+      "replace": "  if (false && meta.status !== 'running') return skipped(",
+      "expect": "dist/test/test/unit/run-meta-cancel.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "删掉「只写 v2」前提 ⇒ R3（v1 形状随后仍过不了 v2 校验，这一条靠跳过原因咬住）",
+      "file": "src/trivium/meta.ts",
+      "find": "  if (schema !== 'trivium.run.v2') {\n",
+      "replace": "  if (false && schema !== 'trivium.run.v2') {\n",
+      "expect": "dist/test/test/unit/run-meta-cancel.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "回写时清空 artifacts[] ⇒ R1",
+      "file": "src/trivium/meta.ts",
+      "find": "  meta.gate.state = 'cancelled';\n  await writeRunMeta(",
+      "replace": "  meta.gate.state = 'cancelled';\n  meta.artifacts = [];\n  await writeRunMeta(",
+      "expect": "dist/test/test/unit/run-meta-cancel.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "不做 task.json 同步（条目不改、仍报 written）⇒ R5a",
+      "file": "src/trivium/meta.ts",
+      "find": "    entry.status = 'cancelled';\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/run-meta-cancel.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "task.json 同步改为依赖「第一步本次写了」⇒ R5c（中断后补不齐）",
+      "file": "src/trivium/meta.ts",
+      "find": "  const task = await cancelTaskEntryStep(i).catch(",
+      "replace": "  const task = runMeta.kind !== 'written' ? skipped('mut') : await cancelTaskEntryStep(i).catch(",
+      "expect": "dist/test/test/unit/run-meta-cancel.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "找不到条目时补登记 ⇒ R5b",
+      "file": "src/trivium/meta.ts",
+      "find": "    if (!entry) return false;\n",
+      "replace": "    if (!entry) { t.runs.push({ run_id: i.runId, stage: i.stage, rerun_index: 1, status: 'cancelled', review_mode: 'full', started_at: '' } as (typeof t.runs)[number]); outcome = { kind: 'written' }; return undefined; }\n",
+      "expect": "dist/test/test/unit/run-meta-cancel.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "去掉第一步的异常捕获 ⇒ R7（写失败时抛出）",
+      "file": "src/trivium/meta.ts",
+      "find": "  const runMeta = await cancelRunMetaStep(i).catch((e: unknown) => skippedFromError('回写 run.json ', e));\n",
+      "replace": "  const runMeta = await cancelRunMetaStep(i);\n",
+      "expect": "dist/test/test/unit/run-meta-cancel.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "归档侧收尾挪回 patchStatus 之后 ⇒ E1 的写入先后断言",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  /*\n   * 归档侧收尾（EV-128）：把仍为 running 的 run.json 标为 cancelled，并同步 task.json 的运行登记。\n   *\n   * **必须排在 patchStatus 之前**（计划双审 r1 CODEX-01 ≡ GLM-01）：status.json 一旦是终态，\n   * 再跑 --cancel 会在上面的终态分支早退。排在后面的话，本进程死在两次写之间，run.json 就永远停在 running。\n   * 排在前面，中断后 status.json 仍非终态，再跑一次会把没做完的那一步补上（两步各自可重入）。\n   *\n   * 函数自身不抛（异常转成 skipped），所以不再另包一层；锁与闸门回收照常在后面执行。\n   * layout 直接由 status.json / 交接文件里的主题构造：那是 startRun 解析好的主题名，不再过一遍会抛错的解析。\n   */\n  if (identity) {\n    const fin = await finalizeCancelledRunMeta({\n      layout: { archiveRoot: ctx.archiveRoot, topic: identity.topic },\n      stage: identity.stage,\n      runId,\n      lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },\n      workerGone: goneNow.gone,\n    });\n    reportFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 cancelled`, `归档 run-${runId}.json 未回写`);\n    reportFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 cancelled', 'task.json 的运行登记未改');\n  }\n\n  const patched = await patchStatus(runDir, (st) => {\n    st.phase = 'cancelled';\n    st.exit_code = EXIT.FAIL;\n    st.message = '被 --cancel 取消';\n  });\n",
+      "replace": "  const patched = await patchStatus(runDir, (st) => {\n    st.phase = 'cancelled';\n    st.exit_code = EXIT.FAIL;\n    st.message = '被 --cancel 取消';\n  });\n  /*\n   * 归档侧收尾（EV-128）：把仍为 running 的 run.json 标为 cancelled，并同步 task.json 的运行登记。\n   *\n   * **必须排在 patchStatus 之前**（计划双审 r1 CODEX-01 ≡ GLM-01）：status.json 一旦是终态，\n   * 再跑 --cancel 会在上面的终态分支早退。排在后面的话，本进程死在两次写之间，run.json 就永远停在 running。\n   * 排在前面，中断后 status.json 仍非终态，再跑一次会把没做完的那一步补上（两步各自可重入）。\n   *\n   * 函数自身不抛（异常转成 skipped），所以不再另包一层；锁与闸门回收照常在后面执行。\n   * layout 直接由 status.json / 交接文件里的主题构造：那是 startRun 解析好的主题名，不再过一遍会抛错的解析。\n   */\n  if (identity) {\n    const fin = await finalizeCancelledRunMeta({\n      layout: { archiveRoot: ctx.archiveRoot, topic: identity.topic },\n      stage: identity.stage,\n      runId,\n      lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },\n      workerGone: goneNow.gone,\n    });\n    reportFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 cancelled`, `归档 run-${runId}.json 未回写`);\n    reportFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 cancelled', 'task.json 的运行登记未改');\n  }\n\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "cancelRun 不调用归档侧收尾 ⇒ E1",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  if (identity) {\n    const fin = await finalizeCancelledRunMeta({",
+      "replace": "  if (identity && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n    const fin = await finalizeCancelledRunMeta({",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "report 恢复读取 forged_role_file ⇒ G1",
+      "file": "src/trivium/report.ts",
+      "find": "   * 这件事实际由写入前 Hook、`gate --check-artifacts` 的未登记审查件判据与提交锚承担。\n   */\n",
+      "replace": "   * 这件事实际由写入前 Hook、`gate --check-artifacts` 的未登记审查件判据与提交锚承担。\n   */\n  if (meta.guard.forged_role_file) base.guardFlags.push('角色后缀伪造');\n",
+      "expect": "dist/test/test/unit/report.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "consulted 一侧不做 ./ 归一 ⇒ U8（代码双审 r1 CODEX-02）",
+      "file": "src/trivium/parse.ts",
+      "find": "  const consulted = new Set((review.consulted ?? []).map(stripDotSlash));\n",
+      "replace": "  void stripDotSlash;\n  const consulted = new Set(review.consulted ?? []);\n",
+      "expect": "dist/test/test/unit/parse.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "写失败告警不再说明「没有第二次机会」⇒ E6（代码双审 r1 CODEX-01）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      `${notDone}：${r.why}——这一步不会再有第二次机会：status.json 随后落终态，再跑 --cancel 会早退，` +\n        '请人工核对归档 run.json 与 task.json 的运行登记',\n",
+      "replace": "      `${notDone}：${r.why}`,\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    }
+  ]
+}

@@ -101,6 +101,13 @@ export type StubMode =
    * 与 `peer_leak` / `peer_leak_via_command` 分列同理——每条形状要能单独触发。
    */
   | 'command_trace'
+  /**
+   * **一直挂着**，直到进程被杀（`review --cancel`）；兜底 10 分钟后按超时返回。
+   *
+   * 取消类用例要的是「worker 确实还在跑」：`timeout` 模式会立刻返回，worker 转眼就自己收尾，
+   * 用例能不能赶在它前面 `--cancel` 全凭时序，会抖（EV-128 实施时核出）。
+   */
+  | 'hang'
   /** 进程级失败 */
   | 'fail';
 
@@ -273,6 +280,13 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
       : {}),
     async run(_ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
       switch (spec.mode) {
+        case 'hang':
+          await new Promise((r) => setTimeout(r, 600_000));
+          return failedResult(critic, {
+            status: 'timeout',
+            reason: '桩挂起 600s 未被取消',
+            durationS: 600,
+          });
         case 'timeout':
           return failedResult(critic, {
             status: 'timeout',

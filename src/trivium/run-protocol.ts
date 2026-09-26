@@ -25,7 +25,7 @@ import {
   executeRun, prepareRun, repoId, type PreparedRun, type ReviewOptions, type RunContext,
 } from './review.js';
 import { resolveTopic } from './topic.js';
-import { readRunMeta } from './meta.js';
+import { finalizeCancelledRunMeta, readRunMeta, type FinalizeStep } from './meta.js';
 import { type AgentId } from './agents/registry.js';
 import { setGateChecked } from './state.js';
 import type { AdapterContext } from './adapters/base.js';
@@ -767,7 +767,8 @@ export async function statusRun(
 }
 
 /**
- * `review --cancel <runId>`：SIGTERM → 宽限 → SIGKILL，标 `cancelled`，回收锁。
+ * `review --cancel <runId>`：SIGTERM → 宽限 → SIGKILL → 归档 run.json 与 task.json 登记标 `cancelled`
+ * （工作进程已确认退出且仍为 running 时，EV-128）→ status.json 标 `cancelled` → 回收锁与闸门。
  *
  * 这是 GLM-04 场景（进程活着但不再进展）唯一的工具化恢复路径。
  */
@@ -779,6 +780,22 @@ async function readHandoffIdentity(runDir: string): Promise<{ topic: string; sta
   } catch {
     return null;
   }
+}
+
+/**
+ * 归档侧收尾每一步的播报：写了、按前提跳过用 step；异常转成的跳过用 warn。
+ *
+ * 异常那一档要把后果说出来（代码双审 r1 CODEX-01）：「中断后再跑 --cancel 可补齐」只对**进程中断**成立。
+ * 单步写失败时本进程照常往下走、把 status.json 落终态，之后再跑 --cancel 会在终态分支早退，这一步没有第二次机会。
+ */
+function reportFinalizeStep(r: FinalizeStep, done: string, notDone: string): void {
+  if (r.kind === 'written') step(done);
+  else if (r.error) {
+    warn(
+      `${notDone}：${r.why}——这一步不会再有第二次机会：status.json 随后落终态，再跑 --cancel 会早退，` +
+        '请人工核对归档 run.json 与 task.json 的运行登记',
+    );
+  } else step(`${notDone}：${r.why}`);
 }
 
 export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
@@ -849,6 +866,28 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
     for (const e of scrubbed?.runDir.errors ?? []) warn(`运行目录层脱敏失败：${e}`);
   } else {
     warn(`凭据副本未抹：${goneNow.why}——留给会话启动清扫`);
+  }
+
+  /*
+   * 归档侧收尾（EV-128）：把仍为 running 的 run.json 标为 cancelled，并同步 task.json 的运行登记。
+   *
+   * **必须排在 patchStatus 之前**（计划双审 r1 CODEX-01 ≡ GLM-01）：status.json 一旦是终态，
+   * 再跑 --cancel 会在上面的终态分支早退。排在后面的话，本进程死在两次写之间，run.json 就永远停在 running。
+   * 排在前面，中断后 status.json 仍非终态，再跑一次会把没做完的那一步补上（两步各自可重入）。
+   *
+   * 函数自身不抛（异常转成 skipped），所以不再另包一层；锁与闸门回收照常在后面执行。
+   * layout 直接由 status.json / 交接文件里的主题构造：那是 startRun 解析好的主题名，不再过一遍会抛错的解析。
+   */
+  if (identity) {
+    const fin = await finalizeCancelledRunMeta({
+      layout: { archiveRoot: ctx.archiveRoot, topic: identity.topic },
+      stage: identity.stage,
+      runId,
+      lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },
+      workerGone: goneNow.gone,
+    });
+    reportFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 cancelled`, `归档 run-${runId}.json 未回写`);
+    reportFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 cancelled', 'task.json 的运行登记未改');
   }
 
   const patched = await patchStatus(runDir, (st) => {

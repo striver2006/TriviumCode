@@ -67,6 +67,8 @@ async function seedRound(
     usage?: Record<string, unknown>;
     drift?: boolean;
     guardLevel?: 'L1' | 'L2';
+    /** 手工置 true：生产代码从不写 true，只用来钉「report 不据它打旗标」（EV-137） */
+    forgedRoleFile?: boolean;
   },
 ) {
   const meta = newRunMeta({
@@ -77,6 +79,7 @@ async function seedRound(
     ...(opts.guardLevel ? { driverGuardLevel: opts.guardLevel } : {}),
   });
   if (opts.drift) meta.snapshot.drift = { changed: true, files: ['x.ts'], policy: 'warn' };
+  if (opts.forgedRoleFile) meta.guard.forged_role_file = true;
 
   for (const [c, rv] of [['gemini', opts.gemini], ['glm', opts.glm]] as const) {
     if (c === 'glm' && opts.glmFailed) {
@@ -281,6 +284,20 @@ test('漂移与路径 deny 降级进告警清单', async () => {
   const r = await buildTopicReport(l);
   assert.ok(r.rounds[0]!.guardFlags.some((g) => /漂移 1 个文件/.test(g)));
   assert.match(renderTopicReport(r), /漂移 1 个文件/);
+});
+
+/*
+ * EV-137：guard.forged_role_file 是保留字段、写侧恒 false，全仓没有检测去置它。
+ * report 据它打「角色后缀伪造」旗标，等于替没做过的检测作证——所以不读。手工置 true 也不出这面旗。
+ */
+test('EV-137 G1：forged_role_file 即使为 true 也不打「角色后缀伪造」旗标（保留字段，不代表检测过）', async () => {
+  const l = await archive();
+  await seedRound(l, {
+    rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM'), forgedRoleFile: true,
+  });
+  const r = await buildTopicReport(l);
+  assert.ok(!r.rounds[0]!.guardFlags.some((g) => /角色后缀伪造/.test(g)), `guardFlags=${JSON.stringify(r.rounds[0]!.guardFlags)}`);
+  assert.doesNotMatch(renderTopicReport(r), /角色后缀伪造/);
 });
 
 // ── 多轮 ──

@@ -255,7 +255,11 @@ async function buildRound(
 
   if (meta.guard.readonly_breach) base.guardFlags.push('只读失守');
   if (meta.guard.peer_artifact_read) base.guardFlags.push('读到对方产出');
-  if (meta.guard.forged_role_file) base.guardFlags.push('角色后缀伪造');
+  /*
+   * `guard.forged_role_file` 不读（EV-137）：它是保留字段，写侧恒 false，全仓没有检测去置它。
+   * 据它打「角色后缀伪造」旗标，这一格永远不会亮，却让读报告的人以为检测过。
+   * 这件事实际由写入前 Hook、`gate --check-artifacts` 的未登记审查件判据与提交锚承担。
+   */
   if (meta.snapshot.drift.changed) {
     /*
      * 两个桶合并展示。归因分流激活时 `drift.files` 恒空（**扣除确诊失守后的余批**

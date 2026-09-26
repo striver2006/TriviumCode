@@ -66,7 +66,7 @@
           "description": "逐侧记录路径级 deny 是否实际生效。本机两侧均为 false（M0 实测）",
           "additionalProperties": { "type": "boolean" }
         },
-        "forged_role_file": { "type": "boolean" },
+        "forged_role_file": { "type": "boolean", "description": "保留字段，恒为 false，不表示检测过（EV-137）；report 不据它打旗标" },
         "breached_files": { "type": "array", "items": { "type": "string" } }
       }
     },
@@ -93,7 +93,7 @@
         "warnings": { "type": "array", "items": { "type": "string" } }
       }
     },
-    "status": { "enum": ["running", "success", "failed", "cancelled"] },
+    "status": { "enum": ["running", "success", "failed", "cancelled"], "description": "历史契约。v1 时代没有代码写 cancelled；已结束却仍为 running 的留痕表示没有走到收尾。EV-128 的取消回写只针对 run.v2，不改 v1 文件" },
     "skipped": { "type": "boolean" },
     "skip_reason": { "type": ["string", "null"] },
     "cache_hit": { "type": "boolean" }

@@ -1,0 +1,126 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  M1 ✓ 咬住（fail=4）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=1）
+  M4a ✓ 咬住（fail=1）
+  M4b ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=2）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=3）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=1）
+  M16 ✓ 咬住（fail=1）
+{
+  "总数": 17,
+  "咬住": 17,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "正则前界改回 \\b ⇒ U1（skills-src 截成 src/…）",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M2",
+      "desc": "前界改成候选 ① 的 (?<![A-Za-z0-9_-])（不含 . 与 /）⇒ U3 / U4",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "去掉 (?:\\.\\/)*（前导 ./ 不再收）⇒ U5",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4a",
+      "desc": "cancelRun 硬传 workerGone: true（接线失守）⇒ E3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4b",
+      "desc": "新函数忽略 workerGone ⇒ R6",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "删掉「仍为 running」前提（终态也改写）⇒ R2",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M6",
+      "desc": "删掉「只写 v2」前提 ⇒ R3（v1 形状随后仍过不了 v2 校验，这一条靠跳过原因咬住）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "回写时清空 artifacts[] ⇒ R1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "不做 task.json 同步（条目不改、仍报 written）⇒ R5a",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "task.json 同步改为依赖「第一步本次写了」⇒ R5c（中断后补不齐）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "找不到条目时补登记 ⇒ R5b",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "去掉第一步的异常捕获 ⇒ R7（写失败时抛出）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "归档侧收尾挪回 patchStatus 之后 ⇒ E1 的写入先后断言",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "cancelRun 不调用归档侧收尾 ⇒ E1",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M14",
+      "desc": "report 恢复读取 forged_role_file ⇒ G1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "consulted 一侧不做 ./ 归一 ⇒ U8（代码双审 r1 CODEX-02）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M16",
+      "desc": "写失败告警不再说明「没有第二次机会」⇒ E6（代码双审 r1 CODEX-01）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

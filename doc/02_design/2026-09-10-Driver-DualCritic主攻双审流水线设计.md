@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.46
+> - **当前版本**：v1.3.47
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -650,7 +650,7 @@ sequenceDiagram
 | `runner` | 两侧真并行（cwd 均为项目根）、超时（SIGTERM→SIGKILL）、瞬时故障重试一次、心跳输出 | 2×CriticRequest | 2×CriticResult | 只读校验 |
 | `parse` | JSON 抽取 + `trivium.review.v1` schema 校验 + 降级策略 | CriticResult | Review | 渲染 |
 | `render` | Review → 人读 Markdown（含 front-matter）；Driver 裁决件骨架生成 | Review | Markdown | 落盘 |
-| `guard` | 只读失守检测（指纹）、漂移判定、对方产出读取检测（轨迹）、伪造角色文件检测、Agent 证据下限校验（含项目文件读取下限） | 指纹 + 轨迹 | Verdict | 中止决策（交给 `gate`） |
+| `guard` | 只读失守检测（指纹）、漂移判定、对方产出读取检测（轨迹）、Agent 证据下限校验（含项目文件读取下限）。**不做**伪造角色文件检测（v1.3.47 更正，EV-137）：那由写入前 Hook（带 Hook 的载体）、`gate --check-artifacts` 的未登记审查件判据与提交锚承担，run.json 的 `guard.forged_role_file` 是恒 false 的保留字段 | 指纹 + 轨迹 | Verdict | 中止决策（交给 `gate`） |
 | `gate` | 闸门状态机；裁决完整性硬校验；Hook 子命令入口 | 归档 + state | 退出码 + 原因 | 生成裁决内容 |
 | `archive` | 唯一写 `.reviews/` 的模块：命名生成、防覆盖、原子落盘、`_meta/` 归档 | Review/Markdown | 文件路径 | 判定通过与否 |
 | `meta` | `run-<run_id>.json` 与 `task.json` 读写（NFR-05 / FR-24） | 运行事实 | JSON | — |
@@ -961,6 +961,9 @@ TriviumCode/
 ```
 
 `consulted`（可选但强烈要求）：审查员**实际读过**的项目文件相对路径清单，用于与工具轨迹交叉核对（11.4）、支撑 AC-11「结合整个项目评审」的验证（15.3）。`evidence` 字段引用的文件必须出现在 `consulted` 中。
+编排器对这一条的核对只是告警、不改判定，且只抽取**整段以九个常见根目录起头**（`src/ lib/ app/ test/ tests/ doc/ docs/ packages/ scripts/`，容许前导 `./`）的 ASCII 路径：
+根目录名出现在路径中段不算（v1.3.47 起，EV-127——此前 `\b` 起匹配会把 `skills-src/…` 截成并不存在的 `src/…` 误报）；
+其余路径（其它顶层目录、`../`、绝对路径、非 ASCII 文件名）不在核对范围，属已知漏报（BACKLOG EV-143）。
 
 约束（对应 FR-13）：
 
@@ -1108,6 +1111,15 @@ addresses:               # 本件应答的审查文档文件名，不是意见�
 > 其余一律 `false`——`gate --check` 通过、`--await-approval`、`approve` 都**不回写** run.json。这是有意的不变量：已提交的 run.json 受提交锚①保护
 > （HEAD 版本不是 `running` 即拦改动），收尾后的回写会把下一次提交拦下；`gate.warnings` 已是运行期标注通道，会被回灌成 `run_warning`。
 > 裁决是否齐备以 `gate --check` 的实时结果为准，闸门实时状态看 `trivium status`，审批事实看 `task.json.approvals[]`。v1.3.44 及以前本示例写 `true` / `awaiting_approval`，那个组合从未出现。
+>
+> **`status` 的四个值各由谁写**（v1.3.47，EV-128）：`running` 是 `prepareRun` 落的骨架；`success` / `failed` 由 worker 收尾写；
+> `cancelled` 由 `review --cancel` 写——工作进程已确认退出、run.json 是 run.v2 且仍为 `running` 时，只改 `status`、`finished_at`、`gate.state`（取 `cancelled`）三格，
+> `artifacts[]` 原样，并把 `task.json.runs[]` 同 run_id 那一条的 `status` 同步为 `cancelled`（这一步以 run.json 已是 `cancelled` 为独立判据，三种情形跳过：run.json 不是 `cancelled`、登记里找不到这轮——不新建、登记已不是 `running`）。
+> 取消轮走不到 worker 的收尾，这是它**唯一一次终态写入**，与上一段「收尾后不再更新」不冲突；提交锚对 HEAD 为 `running` 的版本只查 `run_id` 与已登记条目，
+> 所以运行中途提交过、之后被取消也能正常提交。这一步排在 status.json 落终态之前、两步各自判定，**进程中断**后再跑 `--cancel` 可补齐；
+> **单步写失败**只告警、不挡锁与闸门回收，但 status.json 随后照常落终态，这一步没有第二次机会，告警当场写明需人工核对（代码双审 r1 CODEX-01）；
+> 工作进程没确认退出时不写，那一份会一直停在 `running`。已结束却仍为 `running` 的旧留痕表示没有走到收尾（worker 异常、`worker_lost`——BACKLOG EV-142，或本版以前被取消），不回填。
+> `guard.forged_role_file` 是保留字段：run.v1 / v2 必填、写侧恒 `false`、不表示检测过，`report` 不据它打旗标（EV-137）。
 
 `prompt_hint` 与 `task_goal` 是两回事，不可互相顶替（RV-19）：前者是「本次审查焦点」，
 进 BRIEF 第 2 段；后者是「这次要达成什么」，进第 4 段（§9.4）。`task_goal` 记录本次实际
@@ -1437,7 +1449,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 | `review --start` | 预检通过后：冻结送审包 → 写 `run.json`（`status: running`）→ 以 `setsid`/双 fork 派生工作进程（真并行拉起两侧、回收、解析、落盘全部在该进程内完成，完成即退出）→ **立即返回** | `0` + `run_id`、`max_waits`（= ceil(总上限 / timeout) + 2） |
 | `review --wait <run_id> --timeout <s>` | 轮询 `~/.trivium/runs/<repo_id>/<run_id>/status.json`，最多等待 `<s>` 秒（默认见 `defaultConfig()` 的 `wait_timeout_s`，须小于 Bash 工具超时） | `0` 完成且工件已落盘；`73` 仍在运行（stdout 给出两侧状态、已用时/预算、心跳时间，JSON 另给 `progress_brief` 等结构化进度，见 7.5.1）；`75` 严格模式单侧失败；其余同 7.3 |
 | `review --status <run_id>` | 只读一次状态，不等待 | 同上 |
-| `review --cancel <run_id>` | 向工作进程发 SIGTERM → SIGKILL，标 `cancelled` | `0` |
+| `review --cancel <run_id>` | 向工作进程发 SIGTERM → SIGKILL；工作进程确认退出后，把仍为 `running` 的归档 run.json 与 `task.json` 登记标 `cancelled`（v1.3.47，EV-128，见 6.7 注记）；再把 status.json 标 `cancelled`、回收锁与闸门 | `0` |
 
 约束：① 工作进程写 `status.json` 心跳（每 30s），`--wait` 发现心跳超过 `heartbeat_stale_s`（默认 120s）未更新且进程不存在时判 `failed(worker_lost)`；② 工作进程生命周期等于一次运行，不监听、不接受新任务，因此不是 PRD Non-Goal 所指的常驻 Daemon；③ `hook-session-start` 若发现 `running` 状态的运行，以 `additionalContext` 提醒 Driver 先 `--wait`；④ `run.json` 的 `command` 字段记录是否经 `--start/--wait` 完成，便于审计。
 
@@ -3411,6 +3423,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.47** | 2026-09-26 | **留痕字段与误报小修（EV-127 / EV-128 / EV-137）。** 计划 `.reviews/留痕字段与误报小修/plan/`（r1 送审前用户定 D1～D5 全按建议，计划双审第 1 轮 run `20260926T135731Z` 14 条全接受，r2 定稿 `661be7b`，审批「修改后实施」）。三处都是「留痕与实际不符」。**一、§6.5（EV-127）**：evidence 路径抽取改为整段以九个根目录起头（前界不能是字母、数字、`_`、`-`、`.`、`/`，容许前导 `./`）；此前 `\b` 起匹配把 `skills-src/…`、`dist/test/…`、`ZCode.app/…` 截成并不存在的路径，本仓 383 份历史审查件实测 56 条误报全部去掉、新报 0 条；不核的范围写明（BACKLOG EV-143）。**二、6.7 注记与 7.1（EV-128）**：`review --cancel` 在工作进程确认退出后把仍为 `running` 的 run.v2 run.json 收尾为 `cancelled`（只改三格、`artifacts[]` 原样）并同步 `task.json` 登记；排在 status.json 落终态之前、两步各自可重入、自身不抛；取消轮唯一一次终态写入，与 EV-133 不冲突，提交锚放行；历史停在 `running` 的 4 份不回填；worker 异常与 `worker_lost` 同形两处登 EV-142。**三、§9 模块表与 6.7 注记（EV-137）**：`guard` 不做伪造角色文件检测，`forged_role_file` 为恒 false 的保留字段，`report` 不再读取；实际由写入前 Hook、`gate --check-artifacts` 未登记审查件判据与提交锚承担（后者要不要进 `gate --check` / `approve` 并进 EV-73）。run.v1 / v2 schema 给 `status` 与 `forged_role_file` 加 description；CLI 帮助 `--cancel` 一行同步。**四、代码双审 r1**（run `20260926T151155Z`，5 条全接受，审批通过）：CODEX-01「可重入」限定为进程中断——单步写失败没有第二次机会，`cancelRun` 告警当场要求人工核对（6.7 注记、LLD、MANUAL 同步）；CODEX-02 consulted 一侧同口径去前导 `./`（历史审查件无此形态，读数不变）；CODEX-03 task 登记同步写明三种跳过情形；CODEX-04 ≡ AGY-01 E1 注明依赖纳秒级时间戳 |
 | **v1.3.46** | 2026-09-26 | **审批前工作树摘要（EV-132 候选 ② 折中版）。** 计划 `.reviews/审批前工作树摘要/plan/`（r1 送审前用户定 D1～D6，计划双审第 1 轮 run `20260926T100417Z` 16 条全接受，r2 定稿 `12d54e2`，审批「开始实施」）。用户定原候选 ②「审批前复核加工作树比对、不一致即拒」不做，改为**审批时只打印工作树改动摘要，不拦、不改判定**。**一、8.5**：新增「审批时的工作树改动摘要」段——`approve` 通过（复核之后、落审批之前）与两个停点出口打印自审查收尾以来的改动；基线 `snapshot.after_tree_hash`、当前树同法 `workTreeHash`，闸门期提交的改动同样列出；四种取不到的原因、不报「无改动」；20 秒预算；人读 20 条、JSON 200 条；Hook 不算；盲区与 `git gc` 实测口径。「补偿的覆盖面」末句由「候选 ② 仍待办」改为折中版。**二、6.7.1**：新增 `snapshot.after_tree_hash` 行（可选，只供摘要作基线，不参与判定）。**三、15.3 AC-21、R18**：闸门期仍不拦、不兜底，审批时打印摘要、只告知。**四、运行时文案**（D6 (b)）：停点尾句共用前段、`L2_AFTER_THE_FACT`、`l2-notice`（重渲染 12 份）、`driver.snippet`（新一档指纹，本仓 AGENTS.md / GEMINI.md 原位升级）、注册表注释，闸门期一句改为「不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要」，共用措辞不就拦不拦表态；`dual-approve` 入口资产（4 份）写明摘要只告知。判定代码（`verifyRoundForApproval`、`judgeDrift`、`diffTrees`）一律未改；`diffTrees` 失败返回空的同族问题另登 BACKLOG EV-139，审批前单独看摘要的只读入口登 EV-140。**五、代码双审 r1**（run `20260926T111908Z`，7 条：接受 6、暂缓 1）：CODEX-01 ≡ GLM-01 照抄命令的注入面（形状闸 + 两个 tree 值加引号）、CODEX-02 预算注入自我暴露与「超过 0 秒」、CODEX-03 按进程组收尾与整体截止、GLM-02 「会列出」补取不到的情形、AGY-01 原因末尾补句号；CODEX-04（预算可配置与关闭开关）暂缓，登 EV-141 |
 | **v1.3.45** | 2026-09-26 | **留痕与文案小修（EV-129、EV-130 ①、EV-131、EV-132 ①、EV-133、EV-134）。** 计划 `.reviews/留痕与文案小修/plan/`（r1 计划双审 9 条全接受，r2 定稿 `0bf81e6`）。**一、EV-134（唯一改判定的一条）**：§7 第 3 步 `addresses` 由只核非空改为逐项比对——每项指向本轮有效侧（status ∈ {ok, parse_fallback}）的审查文档、不重复、份数 = 有效侧数，期望集取自 `run.json.artifacts[]`，期望集为空时只核非空并告警；§6.6 示例注释与 M7b 注记同步。**二、EV-133**：§7 第 6 步不再写「回写 `adjudication_complete`」，§6.7 示例改为实现里真实出现的组合并加注记（run.json 收尾后不再更新是有意的不变量）。**三、EV-132 ①**：8.5「补偿的覆盖面」按实现写实漂移复算的覆盖面（含未忽略的未跟踪文件，看不见被忽略的文件——更正「只看已跟踪文件」），并登记停点尾句、`l2-notice`、`run-enforce`、`describeGuard`、`driver.snippet` 按时点改写；15.3 AC-21 与 R18 两行注明文案已修、候选 ② 待办。**四、EV-131**：7.4 示例 `description` 去实名，7.4.1 括注改为已修。**五、EV-130**：11.5 profiles 示例补 codex 行与缺省注记。EV-129（写锁文案去重）只改实现，本文无契约文字。**六、代码双审 r1**（run `20260926T081442Z`，7 条全接受）：CODEX-01 核出 EV-79 口径段里「`judgeDrift`……只看已跟踪文件」的同一失实句，一并更正 |
 | **v1.3.44** | 2026-09-26 | **EV-136：glm 认证探活改走审查运行的选模路径。** 探活原以真实 HOME 拉起、注入个人 provider 配置，探的是个人缺省模型；2026-09-26 个人缺省指向已停用的 provider，预检连续在「ZCode 已认证」退 69，拦下所有含 glm 的审查，而审查要用的 GLM 订阅完好。改为与 `run()` 同形（副本 HOME、副本支不注入个人配置、两支都设落点根、临时目录用完即删），指纹带上探活模型，详情写明探的是哪条路径。用户定「先实施再代码双审」（它拦着审它自己的那一轮）；代码双审 r1（run `20260926T051412Z`，三侧 `approve-with-nits`，11 条全接受）后补：副本源损坏落成可读失败、退路支也设落点根、家目录归一 `~`、置首挪不动与副本支 `model_config_missing` 如实措辞。只改 11.3 第 7 条一处（本表外无契约文字变更）；残余登记 BACKLOG EV-136 |

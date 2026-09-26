@@ -1,0 +1,151 @@
+{
+  "C1_cancel": {
+    "code": 0,
+    "stdout": "已回收主题「验收-取消收尾」的锁\n运行 20260926T154338Z 已取消\n",
+    "stderr": "· 向工作进程组 44640 发送 SIGTERM（含两侧厂商子进程）\n· 已把归档里的 run-20260926T154338Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+  },
+  "C1_preCommit": {
+    "code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "C2_cancel": {
+    "code": 0,
+    "stdout": "运行 20260926T154338Z 已处于终态（cancelled），无需取消。\n  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。\n",
+    "stderr": ""
+  },
+  "C3_report": "# 复盘 · 验收-取消收尾\n\n- **生成时间**：2026-09-26T15:43:39.931Z\n- **主题创建**：2026-09-26T15:43:39.079Z\n- **当前闸门**：idle\n- **轮次总数**：0\n\n> 数据源只有 `.reviews/`。报告不重新调用任何 Agent，也不依赖本机临时目录——\n> 换一台机器、拿同一份归档，应得出同一份报告（设计原则 P4）。\n\n> ⚠️ 该主题下没有任何已产出审查工件的轮次\n\n## 一、时间线\n\n| 阶段 | 轮 | 运行 | 起始 | 状态 | Driver（护栏） | 审核者 | 完成度 | 耗时（较慢侧） |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n\n## 二、每轮意见数、严重度分布与裁决\n\n（无数据）\n\n## 三、被驳回与暂缓的意见\n\n（无——全部意见均被接受，或尚无裁决件）\n\n## 四、生效模型（AC-13 / AC-18 核对）\n\n| 阶段/轮 | 侧 | 请求 | 实际生效 | 证据 |\n| :--- | :--- | :--- | :--- | :--- |\n\n> `未回读到` 表示生效模型无法核实，一律不用请求值顶替（AC-13）。\n\n## 五、降级、告警与隔离结论\n\n（无）\n\n## 六、多审退化指标（§9.3）\n\n（无可比对的轮次：需要至少两侧都产出结构化结论）\n\n## 七、耗时与 token 汇总\n\n- **墙钟合计**（各轮取较慢侧）：0s\n\n- **token**：厂商未在产物中提供用量，无法汇总（不估算）\n\n## 八、编译测试出口\n\n- 尚无 verify 记录\n\n## 九、审批记录\n\n（无）\n\n",
+  "C4": {
+    "structured": 383,
+    "flaggedNew": 64,
+    "missNew": 96,
+    "nonexistentNew": 39,
+    "removed": [
+      "scripts/trivium.cjs @ .reviews/EV-111-构建标识HEAD误报/plan/_meta/review-codex-20260924T134342Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/EV-112-无副本审查运行载体落点/code/_meta/review-codex-20260924T164417Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/EV-112-无副本审查运行载体落点/plan/_meta/review-codex-20260924T152912Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/EV-112-无副本审查运行载体落点/plan/_meta/review-codex-20260924T155948Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/EV-112-无副本审查运行载体落点/plan/_meta/review-glm-20260924T152912Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/EV-112-无副本审查运行载体落点/plan/_meta/review-glm-20260924T155948Z.json",
+      "test/test/unit/registry-parity.test.js @ .reviews/EV-12-归属裁定与配套改动/code/_meta/review-codex-20260917T095646Z.json",
+      "test/src/trivium/guard.js @ .reviews/EV-122-未受控模型播报/code/_meta/review-codex-20260924T222959Z.json",
+      "src/commands/run.contract.md @ .reviews/EV-125-命令A支持选侧旗标/code/_meta/review-codex-20260925T102608Z.json",
+      "src/commands/run.contract.md @ .reviews/EV-125-命令A支持选侧旗标/code/_meta/review-gemini-20260925T102608Z.json",
+      "src/partials/run/claim-plan.md @ .reviews/EV-125-命令A支持选侧旗标/plan/_meta/review-codex-20260925T073426Z.json",
+      "src/commands/run.contract.md @ .reviews/EV-125-命令A支持选侧旗标/plan/_meta/review-codex-20260925T073426Z.json",
+      "src/partials/run/claim-plan.md @ .reviews/EV-125-命令A支持选侧旗标/plan/_meta/review-gemini-20260925T073426Z.json",
+      "src/commands/run.contract.md @ .reviews/EV-125-命令A支持选侧旗标/plan/_meta/review-gemini-20260925T073426Z.json",
+      "src/partials/review/body.md @ .reviews/EV-125-命令A支持选侧旗标/plan/_meta/review-gemini-20260925T073426Z.json",
+      "scripts/trivium.cjs @ .reviews/EV-74-探针喂真实契约文件/plan/_meta/review-glm-20260922T154900Z.json",
+      "test/test/unit/codex-write-verbs.test.js @ .reviews/EV-79-写命令判据两处缺口/code/_meta/review-codex-20260922T123905Z.json",
+      "test/src/trivium/adapters/base.js @ .reviews/EV-79-写命令判据两处缺口/code/_meta/review-gemini-20260922T134313Z.json",
+      "test/src/trivium/adapters/base.js @ .reviews/EV-79-写命令判据两处缺口/plan/_meta/review-codex-20260922T072219Z.json",
+      "test/src/trivium/adapters/base.js @ .reviews/EV-79-写命令判据两处缺口/plan/_meta/review-glm-20260922T061939Z.json",
+      "test/src/trivium/adapters/base.js @ .reviews/EV-79-写命令判据两处缺口/plan/_meta/review-glm-20260922T072219Z.json",
+      "scripts/trivium.cjs @ .reviews/EV-82-同形第二臂与构建标识/plan/_meta/review-codex-20260924T034019Z.json",
+      "scripts/trivium.cjs @ .reviews/EV-82-同形第二臂与构建标识/plan/_meta/review-glm-20260924T034019Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/EV-82-运行期选模观测/code/_meta/review-codex-20260924T074436Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/EV-82-运行期选模观测/plan/_meta/review-codex-20260924T065129Z.json",
+      "app/.../zcode.cjs @ .reviews/EV-82-运行期选模观测/plan/_meta/review-codex-20260924T065129Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/EV-82-运行期选模观测/plan/_meta/review-glm-20260924T065129Z.json",
+      "scripts/trivium.cjs @ .reviews/M10-任意Driver/code/_meta/review-codex-20260922T044914Z.json",
+      "test/src/trivium/hooks.js @ .reviews/M10-任意Driver/code/_meta/review-codex-20260923T030441Z.json",
+      "test/test/contract/bash-recovery-wording.test.js @ .reviews/M10-任意Driver/code/_meta/review-codex-20260923T030441Z.json",
+      "src/partials/guard/run-enforce.l1-hook.md @ .reviews/M10b-入口资产与真载体验收/code/_meta/review-codex-20260925T134359Z.json",
+      "scripts/trivium.cjs @ .reviews/M10b-入口资产与真载体验收/plan/_meta/review-codex-20260923T232849Z.json",
+      "src/a.ts @ .reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T115437Z.json",
+      "src/metadata.ts @ .reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T123853Z.json",
+      "src/a.ts.bak @ .reviews/M8-Codex审核者接入/code/_meta/review-gemini-20260915T130733Z.json",
+      "src/a.ts @ .reviews/M8-Codex审核者接入/code/_meta/review-glm-20260915T115437Z.json",
+      "src/c.ts @ .reviews/M8-Codex审核者接入/code/_meta/review-glm-20260915T115437Z.json",
+      "test/src/trivium/probes/claude.js @ .reviews/M9-ClaudeCode审核者接入/code/_meta/review-codex-20260917T151624Z.json",
+      "scripts/trivium.cjs @ .reviews/M9-Driver旗标全链路与选侧收口/code/_meta/review-codex-20260918T165302Z.json",
+      "test/test/unit/driver-wiring.test.js @ .reviews/M9-Driver旗标全链路与选侧收口/code/_meta/review-codex-20260918T191610Z.json",
+      "test/src/trivium/meta.js @ .reviews/M9-Driver旗标全链路与选侧收口/code/_meta/review-codex-20260918T191610Z.json",
+      "scripts/trivium.cjs @ .reviews/M9-Hook当轮Driver保护集/plan/_meta/review-codex-20260919T060422Z.json",
+      "scripts/trivium.cjs @ .reviews/M9-裁决件角色契约放宽/plan/_meta/review-glm-20260919T025314Z.json",
+      "test/skills/dual-critic/schema/review.v1.json @ .reviews/M9-验收实跑/code/_meta/review-codex-20260919T130240Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/zcode-provider配置注入/code/_meta/review-gemini-20260920T083936Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/zcode-模型覆盖落点/code/_meta/review-codex-20260921T132440Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/zcode-模型覆盖落点/code/_meta/review-codex-20260921T140524Z.json",
+      "app/Contents/Resources/glm/zcode.cjs @ .reviews/zcode-模型覆盖落点/plan/_meta/review-codex-20260921T095827Z.json",
+      "test/src/trivium/secrets.js @ .reviews/凭据副本残留与参数静默丢失/code/_meta/review-codex-20260917T045959Z.json",
+      "src/partials/guard/l2-notice.md @ .reviews/审批前工作树摘要/code/_meta/review-glm-20260926T111908Z.json",
+      "src/partials/guard/l2-notice.md @ .reviews/审批前工作树摘要/plan/_meta/review-codex-20260926T100417Z.json",
+      "src/commands/approve.contract.md @ .reviews/审批前工作树摘要/plan/_meta/review-codex-20260926T100417Z.json",
+      "src/commands/run.contract.md @ .reviews/留痕与文案小修/code/_meta/review-glm-20260926T081442Z.json",
+      "src/commands/run.contract.md @ .reviews/留痕与文案小修/plan/_meta/review-codex-20260926T064238Z.json",
+      "src/commands/run.contract.md @ .reviews/留痕与文案小修/plan/_meta/review-glm-20260926T064238Z.json",
+      "scripts/trivium.cjs @ .reviews/配置v2与动态多审/plan/_meta/review-glm-20260913T223700Z.json"
+    ],
+    "added": []
+  },
+  "summary": "13/13",
+  "results": [
+    {
+      "id": "C1 起点",
+      "ok": true,
+      "detail": "--start 之后 run.json 为 running"
+    },
+    {
+      "id": "C1 退出码",
+      "ok": true,
+      "detail": "--cancel 退 0"
+    },
+    {
+      "id": "C1 run.json",
+      "ok": true,
+      "detail": "status=cancelled，gate.state=cancelled，finished_at=2026-09-26T15:43:39.517Z"
+    },
+    {
+      "id": "C1 artifacts 原样",
+      "ok": true,
+      "detail": "2 条登记与已提交版本一致"
+    },
+    {
+      "id": "C1 task 登记",
+      "ok": true,
+      "detail": "task.json 该条为 cancelled"
+    },
+    {
+      "id": "C1 播报",
+      "ok": true,
+      "detail": "两步都有一行说明"
+    },
+    {
+      "id": "C1 提交锚放行",
+      "ok": true,
+      "detail": "hook-pre-commit 退 0"
+    },
+    {
+      "id": "C1 入库",
+      "ok": true,
+      "detail": "提交退 0，HEAD 里为 cancelled"
+    },
+    {
+      "id": "C2 终态早退",
+      "ok": true,
+      "detail": "退 0"
+    },
+    {
+      "id": "C2 不改写",
+      "ok": true,
+      "detail": "run.json 与 task.json 逐字节不变"
+    },
+    {
+      "id": "C3 report 不列无工件的取消轮",
+      "ok": true,
+      "detail": "report 退 0；轮次总数 0、不含 run 20260926T154338Z（取消轮没有审查文档，report 按工件枚举轮次）"
+    },
+    {
+      "id": "C4 读数",
+      "ok": true,
+      "detail": "结构化 383、被标 64、报出 96、仓内不存在 39（期望 383 / 64 / 96 / 39）"
+    },
+    {
+      "id": "C4 差异",
+      "ok": true,
+      "detail": "旧报新不报 56 条（期望 56）、新报 0 条（期望 0）"
+    }
+  ]
+}

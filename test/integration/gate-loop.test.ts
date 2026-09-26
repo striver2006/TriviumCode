@@ -741,6 +741,72 @@ test('--cancel 旧 run 不清掉新一轮的闸门', { skip: bundleMissing && bu
   assert.equal(after.gates[`${TOPIC}/plan`]?.run_id, 'R-NEW');
 });
 
+/*
+ * EV-128 E4：运行中途已提交 → --cancel 回写 → 再提交，提交锚放行；终态之后再改被拦。
+ *
+ * 提交锚对 HEAD 为 running 的 run.json 只查 run_id 与已登记条目（hooks.ts runningRewriteViolation），
+ * 回写只改 status / finished_at / gate.state 三格、artifacts[] 原样，所以这条最容易撞锚的序列也能正常提交。
+ * HEAD 已是终态（cancelled）时，锚拦任何改动——取消回写是唯一一次终态写入，之后同样不可改。
+ */
+test('EV-128 E4：running 的 run.json 已入库、--cancel 回写后提交锚放行；入库的 cancelled 版本再改被拦', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    // hang：worker 一直挂着，--cancel 之前它确实还在跑（timeout 模式立刻返回，赶不赶得上全凭时序）
+    { gemini: { mode: 'hang' }, glm: { mode: 'hang' } },
+  );
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string };
+  const runPath = path.join(fx.stageDir, '_meta', `run-${js.run_id}.json`);
+  assert.equal((JSON.parse(await fs.readFile(runPath, 'utf8')) as { status: string }).status, 'running');
+
+  const { run } = await import('../../src/trivium/util/exec.js');
+  const commit = async (msg: string) => {
+    await run('git', ['add', '-A', '--', '.reviews'], { cwd: fx.root, timeoutMs: 30_000 });
+    await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', msg, '--no-verify'], {
+      cwd: fx.root, timeoutMs: 30_000,
+    });
+  };
+  await commit('运行中途入库');
+  const headArtifacts = (JSON.parse(await fs.readFile(runPath, 'utf8')) as { artifacts: unknown[] }).artifacts;
+
+  const c = await cli(fx.root, ['review', '--cancel', js.run_id]);
+  assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+  const after = JSON.parse(await fs.readFile(runPath, 'utf8')) as { status: string; artifacts: unknown[] };
+  assert.equal(after.status, 'cancelled', `${c.stdout}${c.stderr}`);
+  assert.deepEqual(after.artifacts, headArtifacts);
+
+  const ok = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(ok.code, EXIT.OK, `取消回写是正常收尾，提交锚应放行：\n${ok.stdout}${ok.stderr}`);
+
+  await commit('取消后入库');
+  await fs.writeFile(runPath, (await fs.readFile(runPath, 'utf8')).replace('"cancelled"', '"success"'), 'utf8');
+  const blocked = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(blocked.code, EXIT.GATE_BLOCK, `入库的终态 run.json 再改必须被拦：\n${blocked.stdout}${blocked.stderr}`);
+});
+
+/*
+ * EV-128 E5：取消轮仍是该阶段「最新可读留痕」——gate 的当轮 Driver 与轮次读数不看 status（计划 r2 C7）。
+ * 本主题只让 run.json 如实记下 cancelled，不改 latestRunMeta 的取舍。
+ */
+test('EV-128 E5：取消轮回写为 cancelled 后，gate 仍把它当最新一轮（run_id / 轮次不变）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    { gemini: { mode: 'hang' }, glm: { mode: 'hang' } },
+  );
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string };
+  await cli(fx.root, ['review', '--cancel', js.run_id]);
+  const runPath = path.join(fx.stageDir, '_meta', `run-${js.run_id}.json`);
+  assert.equal((JSON.parse(await fs.readFile(runPath, 'utf8')) as { status: string }).status, 'cancelled');
+
+  const g = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION, '--json']);
+  const out = JSON.parse(extractJsonCandidate(g.stdout)!.json) as { run_id?: string; rerun_index?: number };
+  assert.equal(out.run_id, js.run_id, `gate 应仍取取消轮为最新留痕：\n${g.stdout}${g.stderr}`);
+  assert.equal(out.rerun_index, 1);
+});
+
 // ── worker 异常路径回收闸门（审查意见 GLM-r2-02 ≡ AGY-01）──
 
 test('心跳过期但进程仍在的 worker_lost：不做不可逆抹除，留给会话启动清扫（代码双审 r1 CODEX-01）', { skip: bundleMissing && bundleSkipReason }, async () => {
@@ -1189,9 +1255,13 @@ test('--cancel 已终态的运行：不改写历史、不动闸门（审查意�
   const statusPath = path.join(
     process.env['HOME'] ?? '', '.trivium', 'runs',
   );
+  const runJson = path.join(fx.stageDir, '_meta', `run-${runId}.json`);
+  const runBefore = await fs.readFile(runJson, 'utf8');
   const r = await cli(fx.root, ['review', '--cancel', runId]);
   assert.equal(r.code, EXIT.OK);
   assert.match(r.stdout + r.stderr, /已处于终态/);
+  // EV-128 E2：终态运行的归档 run.json 同样不追溯改写
+  assert.equal(await fs.readFile(runJson, 'utf8'), runBefore, '已终态运行的 run.json 必须逐字节不变');
   assert.match(r.stdout + r.stderr, /不会被追溯改写/);
 
   // 闸门仍停在「审完待裁决」——不该因为一次误敲的 --cancel 就被清掉

@@ -133,6 +133,53 @@ test('语义校验：evidence 引用的文件必须出现在 consulted', () => {
   assert.deepEqual(ok.evidenceNotInConsulted, []);
 });
 
+/*
+ * EV-127：evidence 路径必须整段以已知根目录起头。
+ * 旧判据用 `\b` 起匹配，根目录名出现在路径中段（`skills-src/`、`dist/test/`、`ZCode.app/`）也会截出一个
+ * 并不存在的路径，报「evidence 引用但未列入 consulted」。本仓历史审查件实测 56 条，全是这一类。
+ */
+function evidenceMissing(evidence: string, consulted: string[]): string[] {
+  const r = validReview({ consulted });
+  r.findings[0]!.evidence = evidence;
+  return checkReviewIntegrity(r, 'gemini').evidenceNotInConsulted;
+}
+
+test('EV-127 U1：skills-src/ 路径不再被截成 src/…（完整路径已列入 consulted）', () => {
+  const p = 'skills-src/commands/run.contract.md';
+  assert.deepEqual(evidenceMissing(`见 ${p} 第 3 段`, [p]), []);
+});
+
+test('EV-127 U2：不以已知根目录起头的路径不在核对范围（漏报方向，有意）', () => {
+  assert.deepEqual(evidenceMissing('见 skills-src/commands/run.contract.md 第 3 段', []), []);
+});
+
+test('EV-127 U3：dist/test/… 不再被截成 test/…', () => {
+  assert.deepEqual(evidenceMissing('跑了 dist/test/src/trivium/guard.js', []), []);
+});
+
+test('EV-127 U4：绝对路径里的 .app/ 不再被截成 app/…', () => {
+  assert.deepEqual(evidenceMissing('读了 /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs', []), []);
+});
+
+test('EV-127 U5：前导 ./ 照收，报的是去掉 ./ 之后的路径', () => {
+  assert.deepEqual(evidenceMissing('对照 ./test/unit/archive.test.ts 的断言', []), ['test/unit/archive.test.ts']);
+});
+
+test('EV-127 U6：全角括号、反引号、全角逗号、行首这些常见前界仍然有效', () => {
+  assert.deepEqual(
+    evidenceMissing('lib/d.js 开头；（src/a.ts）与 `doc/b.md`，test/c.ts:12', []),
+    ['doc/b.md', 'lib/d.js', 'src/a.ts', 'test/c.ts'],
+  );
+});
+
+test('EV-127 U7：前面紧跟下划线时不起匹配（与旧判据相同的对照格）', () => {
+  assert.deepEqual(evidenceMissing('见 foo_src/a.ts', []), []);
+});
+
+test('EV-127 U8：evidence 与 consulted 两侧都写前导 ./ 时对得上（consulted 同口径去 ./，代码双审 r1 CODEX-02）', () => {
+  assert.deepEqual(evidenceMissing('对照 ./src/a.ts 的实现', ['./src/a.ts']), []);
+});
+
 test('语义校验：零意见且未说明检查了什么会被标记', () => {
   const lazy = validReview({ findings: [], summary: '没问题', not_covered: [] });
   assert.equal(checkReviewIntegrity(lazy, 'gemini').emptyWithoutExplanation, true);

@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.4
+> - **当前版本**：v1.0.5
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -612,7 +612,11 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 按进程组杀掉 worker 及其拉起的 agy/zcode，回收锁与闸门。
 
-> 注意：被取消的运行，其 `run-<id>.json` 会**停在 `status: running`**——`cancelRun` 不回写它。这是已知的实现缺口，不影响后续使用。
+> 被取消的运行，其 `run-<id>.json` 会标为 `cancelled`（v1.0.5 起，设计 v1.3.47，EV-128；此前停在 `running`）。
+> 两种情形不写，输出会说明原因：工作进程没能确认已退出（可能还有写者），或 run.json 已是终态（不追溯改写）。
+> 没确认退出的那一份会一直停在 `running`；本版以前被取消的历史留痕也不回填。
+> 若输出里有「这一步不会再有第二次机会」的告警（写 run.json 或 task.json 时出错），再跑 `--cancel` 也补不回来，
+> 请对照告警自己核对归档里的 `run-<id>.json` 与 `task.json` 的运行登记。
 
 ### 场景 5 · 裁决写了但闸门不过
 

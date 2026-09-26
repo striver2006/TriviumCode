@@ -1318,6 +1318,14 @@ export interface RunMeta {
      * 字段缺失 = 早于本轮；某侧键缺失 = 那一侧没有这种概念（不注入 `--settings`）。
      */
     deny_skipped?: Partial<Record<CriticId, number>>;
+    /**
+     * **保留字段，恒为 false，不表示检测过**（EV-137）。run.v1 / v2 都把它列为必填，所以删不掉，
+     * 写侧（`newRunMeta` 与收尾）一律写 false，`report` 也不再据它打旗标。
+     *
+     * 「角色后缀伪造」实际由三道承担：①写入前 Hook（`hookPreWrite` 规则 1 与 Bash 侧字面拦，只在带 Hook 的载体上）；
+     * ②`gate --check-artifacts` 的未登记审查件判据（只在显式带该旗标时跑，对 `critics_selected` 之外的角色失明）；
+     * ③提交锚按登记 sha256 核对（只管登记过的）。
+     */
     forged_role_file: boolean;
     breached_files?: string[];
     /**
@@ -1449,9 +1457,14 @@ export interface RunMeta {
    * （`hooks.ts` `immutableChangeReason`，HEAD 版本不是 running 即拦改动），任何收尾后的回写都会把下一次提交拦下；
    * ②`warnings` 已是运行期标注通道，`loadRoundReviews` 把它当 `run_warning` 回灌进每次 `--check`，
    * 照旧设计把 `--check` 的告警写进来会重复上报。裁决是否齐备以 `gate --check` 的实时结果为准，
-   * 审批事实以 `task.json.approvals[]` 为准。同类的「收尾后不再更新」还有 EV-128（`review --cancel`）。
+   * 审批事实以 `task.json.approvals[]` 为准。EV-128 的 `review --cancel` 回写不属「收尾后更新」：取消轮走不到
+   * worker 的收尾，`--cancel` 那一次就是它唯一一次终态写入（只在仍为 running 时写，写完同样不再更新）。
    */
   gate: { adjudication_complete: boolean; state: string; warnings?: string[] };
+  /**
+   * `running` 是骨架态；`success` / `failed` 由 worker 收尾写；`cancelled` 由 `review --cancel` 在工作进程确认退出后写
+   * （`meta.ts` `finalizeCancelledRunMeta`，EV-128）。已结束却仍为 `running` 的留痕表示没有走到收尾，不回填。
+   */
   status: 'running' | 'success' | 'failed' | 'cancelled';
   skipped?: boolean;
   skip_reason?: string | null;

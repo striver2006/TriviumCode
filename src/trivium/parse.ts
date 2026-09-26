@@ -198,7 +198,10 @@ export interface ReviewIntegrity {
   badIds: string[];
   /** 重复编号 */
   duplicateIds: string[];
-  /** evidence 里引用了但没写进 consulted 的文件（§6.5 末句要求） */
+  /**
+   * evidence 里引用了但没写进 consulted 的文件（§6.5 末句要求）。
+   * 只核「整段以九个常见根目录起头的 ASCII 路径」，口径见 `checkReviewIntegrity` 里的 `pathRe`。
+   */
   evidenceNotInConsulted: string[];
   /** 无意见但也没说明检查了什么 */
   emptyWithoutExplanation: boolean;
@@ -221,8 +224,23 @@ export function checkReviewIntegrity(review: Review, critic: CriticId): ReviewIn
     seen.add(f.id);
   }
 
-  const consulted = new Set(review.consulted ?? []);
-  const pathRe = /\b((?:src|lib|app|test|tests|doc|docs|packages|scripts)\/[A-Za-z0-9_./-]+\.[A-Za-z0-9]+)\b/g;
+  // 与抽取侧同一口径去掉前导 `./`：两侧都写 `./src/…` 时不该对不上（代码双审 r1 CODEX-02）
+  const stripDotSlash = (p: string): string => p.replace(/^(?:\.\/)+/, '');
+  const consulted = new Set((review.consulted ?? []).map(stripDotSlash));
+  /*
+   * 路径必须**整段**以已知根目录起头（EV-127）：前一个字符不能是字母、数字、`_`、`-`、`.`、`/`，
+   * 允许前导 `./`（去掉后再比）。
+   *
+   * 上一版用 `\b` 起匹配，而 `-`、`.`、`/` 都不是单词字符，根目录名出现在路径**中段**时也会起匹配：
+   * `skills-src/commands/run.contract.md` 被截成 `src/commands/run.contract.md`，`dist/test/…` 截成
+   * `test/…`，`ZCode.app/Contents/…` 截成 `app/Contents/…`。本仓 383 份历史审查件实测，这类截断
+   * 误报 56 条，报出的都是另一个文件名；改后只少不多、新报 0 条。
+   *
+   * 不在核对范围（漏报方向，BACKLOG 已登记）：不以这九个根目录起头的路径（如 `skills-src/`、
+   * `dist/`）、`../` 与绝对路径、非 ASCII 文件名。这一项只进告警，不改判定。
+   */
+  const pathRe =
+    /(?<![A-Za-z0-9_./-])(?:\.\/)*((?:src|lib|app|test|tests|doc|docs|packages|scripts)\/[A-Za-z0-9_./-]+\.[A-Za-z0-9]+)\b/g;
   const missing = new Set<string>();
   for (const f of review.findings) {
     pathRe.lastIndex = 0;
