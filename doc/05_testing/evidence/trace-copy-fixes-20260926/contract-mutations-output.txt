@@ -1,0 +1,36 @@
+# 留痕与文案小修 · 入口资产 / 协议片段变异 · 2026-09-26T08:52:25.626Z
+目标：skills-src/commands/review-plan.contract.md（基线 sha256 cfc18a5eb4cb）
+目标：skills-src/partials/guard/l2-notice.md（基线 sha256 c1e6c7d7a7ff）
+目标：skills-src/partials/guard/run-enforce.l2-none.md（基线 sha256 2f052c086af2）
+目标：skills/dual-critic/protocol/driver.snippet（基线 sha256 96537caf971b）
+目标：skills-src/partials/review/body.md（基线 sha256 73b5fc08fb36）
+目标：doc/07_manuals/QUICKSTART.md（基线 sha256 cd24f891d29a）
+套件：dist/test/test/contract/entry-render-parity.test.js、dist/test/test/unit/init.test.js
+基线：fail=0；全部 find 恰好命中一处
+
+K1 ✓ 咬住（fail=2）——EV-131：命令 B 描述写回两家实名
+   期望红：EV-131：命令描述与一级标题不写死
+   实际红：EV-131：命令描述与一级标题不写死任何已登记 Agent 的产品名（缺省审核者随当轮 Driver 变） | 源 → 产物零 diff（改了源请跑 npm run render）
+K2 ✓ 咬住（fail=2）——EV-132 D2：l2-notice 改回「由 approve 前置复核……与跑后漂移复算暴露」
+   期望红：EV-132：L2 事后覆盖面的两族失实措辞
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | EV-132：L2 事后覆盖面的两族失实措辞在所有用户可见面都不再出现
+K3 ✓ 咬住（fail=2）——EV-132 D2：l2-notice 写回「只比已跟踪文件」（r1 CODEX-01 ≡ AGY-01 的原形）
+   期望红：EV-132：L2 事后覆盖面的两族失实措辞
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | EV-132：L2 事后覆盖面的两族失实措辞在所有用户可见面都不再出现
+K4 ✓ 咬住（fail=2）——EV-132 D3：run-enforce.l2-none 改回「越界只会在事后由 approve 前置复核与跑后漂移复算暴露」
+   期望红：EV-132：L2 事后覆盖面的两族失实措辞
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | EV-132：L2 事后覆盖面的两族失实措辞在所有用户可见面都不再出现
+K5 ✓ 咬住（fail=2）——EV-132 D4：driver.snippet 改回旧句（同时让当前正文指纹不在表里）
+   期望红：EV-132：L2 事后覆盖面的两族失实措辞；已知指纹表覆盖当前版
+   实际红：EV-132：L2 事后覆盖面的两族失实措辞在所有用户可见面都不再出现 | 已知指纹表覆盖当前版：改了协议片段忘了登记，这里当场变红（代码双审 GLM-03）
+K6 ✓ 咬住（fail=2）——EV-134：body.md 删掉 addresses 的填法说明
+   期望红：EV-134：命令 B / C / D 的写裁决件一步交代 addresses
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | EV-134：命令 B / C / D 的写裁决件一步交代 addresses 填审查文档文件名、不是意见编号
+K8 ✓ 咬住（fail=2）——EV-132：l2-notice 去掉命令限定、改回「复核会拦下」（代码双审 r1 GLM-02 + CODEX-04 的原形）
+   期望红：EV-132：L2 护栏段的审批两格带命令限定
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | EV-132：L2 护栏段的审批两格带命令限定（命令 A 没有审批停点），且不把事后核对说成「拦下」
+K7 ✓ 咬住（fail=1）——EV-132 D5：QUICKSTART §5.2 写回「它结尾……会在审批前复核与跑后漂移复算时暴露」
+   期望红：EV-132：L2 事后覆盖面的两族失实措辞
+   实际红：EV-132：L2 事后覆盖面的两族失实措辞在所有用户可见面都不再出现
+
+结论：8/8 全部咬住

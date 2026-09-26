@@ -12,7 +12,7 @@ import { applyProfileOverride, loadCtx, resolveAssetRoot, runRoot } from './conf
 import {
   AGENTS, ALL_AGENT_IDS, CRITIC_AGENT_IDS, DEFAULT_DRIVER, DRIVER_AGENT_IDS, agentById, entryCommandOf,
 } from './agents/registry.js';
-import { effectiveGuardLevel, gateHoldNotice } from './hook-config.js';
+import { effectiveGuardLevel, gateHoldNotice, L2_AFTER_THE_FACT } from './hook-config.js';
 import {
   runDoctor,
   renderDoctorReport,
@@ -986,7 +986,8 @@ async function cmdHooks(args: ParsedArgs): Promise<number> {
   if (!agent) throw usageError(`未登记的 Agent「${id}」。可用：${ALL_AGENT_IDS.join(' | ')}`);
   if (!agent.hookConfigTarget) {
     throw usageError(
-      `${id} 没有 Hook 机制，无从渲染（护栏等级 L2：写入没有事前拦截，靠审批前复核、_meta 唯一事实、防覆盖与跑后复算兜底）。\n` +
+      // 事后覆盖面与 describeGuard 同一句（EV-132 计划 r2 D7：不再把审批前复核列成业务写入越界的兜底）
+      `${id} 没有 Hook 机制，无从渲染（护栏等级 L2：写入没有事前拦截；${L2_AFTER_THE_FACT}）。\n` +
         `  登记了 Hook 目标的：${withHook.map((a) => a.id).join(' | ')}`,
     );
   }
@@ -1289,7 +1290,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       `找不到 ${stage} 阶段的运行元数据。请先跑一次双审，或用 --run-id 指定。`,
     );
   }
-  const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings } =
+  const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs } =
     await loadRoundReviews(ref.layout, stage, runId);
   for (const n of notes) step(n);
 
@@ -1298,7 +1299,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     driver: gateDriver,
     runIdPinned: Boolean(pinnedId),
     degraded, voidedSides, readonlyBreach, runWarnings,
-    expectedFallbackIds, missingSides, runId,
+    expectedFallbackIds, missingSides, runId, reviewDocs,
   });
 
   if (isJsonMode()) {

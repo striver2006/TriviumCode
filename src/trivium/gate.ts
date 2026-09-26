@@ -7,12 +7,12 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { DEFAULT_DRIVER, entryCommandOf, findingPrefixAlternation, type AgentId } from './agents/registry.js';
+import { agentById, DEFAULT_DRIVER, entryCommandOf, findingPrefixAlternation, type AgentId } from './agents/registry.js';
 import { DEFAULT_CRITICS, VOIDING_DENY_CATEGORIES, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
 import { checkRecordedArtifacts, listStageArtifacts, metaDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
 import { EXIT, TriviumError } from './exit-codes.js';
-import { dispositionKindForStage } from './naming.js';
+import { dispositionKindForStage, parseArtifactName } from './naming.js';
 import { parseReview } from './parse.js';
 import { validateDispositionFrontMatter } from './schemas.js';
 
@@ -49,7 +49,9 @@ export interface GateWarning {
     /** 排除作废侧后有效侧不足两家，共同阻断这一档**未执行**（设计 §12.1 的过渡处置） */
     | 'joint_check_degraded'
     /** 运行期写进 run.json `gate.warnings` 的标注，原样透传（如「本轮原稿不在保护集」） */
-    | 'run_warning';
+    | 'run_warning'
+    /** 本轮期望的审查文档集为空（run 元数据读不出，或没有一侧落了审查文档），`addresses` 只核非空（EV-134） */
+    | 'addresses_unchecked';
   message: string;
   ids?: string[];
 }
@@ -129,6 +131,13 @@ export interface GateCheckInput {
   missingSides?: CriticId[];
   /** 本轮 run_id：裁决件 front-matter 的 run_id 必须与之一致，否则把上一轮的裁决件抄过来也能过 */
   runId?: string;
+  /**
+   * 本轮**期望**裁决件 `addresses` 应答的审查文档文件名（EV-134，由 `loadRoundReviews` 派生，见 `expectedReviewDocs`）。
+   *
+   * **必填、可为 null**：做成可选参数，漏传就静默退回「只核非空」——本文件 `voidedSides` 那段注释记着同一个教训。
+   * null 或空数组都表示「期望集为空」（run 元数据读不出，或本轮没有一侧落了审查文档），此时只核非空并出一条告警。
+   */
+  reviewDocs: readonly string[] | null;
   /**
    * 本轮轮次是否由用户用 `--run-id` **钉住**（第 3 轮 GLM-04）。
    *
@@ -289,6 +298,10 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     }
     if (!Array.isArray(fm.addresses) || fm.addresses.length === 0) {
       mismatches.push('addresses 为空（必须列出本件应答的审查文档）');
+    } else {
+      const a = checkAddresses(fm.addresses, input.reviewDocs, layout, stage);
+      if (a.mismatch) mismatches.push(a.mismatch);
+      if (a.warning) warnings.push(a.warning);
     }
     if (mismatches.length > 0) {
       failures.push({
@@ -327,9 +340,11 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
      * 所以处置分两步：先看 `snapshot.drift` 与工作区，确有改动才谈清理。
      *
      * **`drift` 只能单向用**（EV-79 代码双审 r2 CODEX-09、r3 CODEX-r3-01）：
-     * `judgeDrift` 是 git 树比对，**只看已跟踪文件**，`ownPrefixes` 还显式排除归档根与
-     * `.trivium/`。于是 `dist/` 这类在 `.gitignore` 里的目录被真实递归删除同样 drift=false。
-     * 所以 drift=false **只排除了「已跟踪文件被改」这一种失守**，不足以推出误报——
+     * `judgeDrift` 是 git 树比对：`workTreeHash` 走临时索引 `add -A`，已跟踪文件与**未被忽略的**未跟踪文件
+     * 都在内，**看不见被 `.gitignore` 忽略的文件**，`ownPrefixes` 还显式排除归档根与 `.trivium/`。
+     * （此前这里写「只看已跟踪文件」，与实现相反；留痕与文案小修计划双审 r1 CODEX-01 ≡ AGY-01 更正。）
+     * 于是 `dist/` 这类在 `.gitignore` 里的目录被真实递归删除同样 drift=false。
+     * 所以 drift=false **只排除了「未被忽略的文件被改」这一种失守**，不足以推出误报——
      * 还要核调用记录本身是不是真的写、目标是否真实存在、是否被 ignore。
      * 拿 drift=false 直接判误报会把真失守降级，这正是本判据要防的事。
      *
@@ -340,7 +355,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
       message:
         '本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），裁决不得进入审批。' +
         '处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。' +
-        'drift 为 false 只排除了「已跟踪文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，' +
+        'drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，' +
         '还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。' +
         '调用记录（非文件路径）：' +
         (files.length > 0 ? files.slice(0, 8).join('、') + (files.length > 8 ? '…' : '') : '（run 元数据未记录）'),
@@ -703,6 +718,94 @@ function criticsOf(runMeta: RunMeta | null): readonly CriticId[] {
 }
 
 /**
+ * 本轮裁决件 `addresses` **应当**应答的审查文档文件名（EV-134，计划 r2 §6.4）。
+ *
+ * - **有效侧** = 入选侧里 `critics[c].status ∈ {ok, parse_fallback}` 的那些——审查文档落了盘的侧
+ *   （`review.ts` 对每个走到渲染的侧都 `writeArtifact`，失败 / 超时侧只落 `_meta/…failed.json`）。
+ *   解析回退侧、被判作废的侧、只读失守轮的各侧文档都在、意见也都要裁决，一律计入。
+ * - **文件名取自 `run.json.artifacts[]`**，不按日期现拼：审查文档的日期取落盘时的本地日期、会跨零点，
+ *   轮次撞名时实际落在抬升后的名字上；`artifacts[]` 登记的正是实际落盘名。
+ *   只取位于 `<主题>/<阶段>/` 根（不在 `_meta/`）、非裁决件、后缀属于有效侧的条目——
+ *   有效侧永远不含当轮 Driver，Driver 自己的原稿因此自然排除。
+ *
+ * 历史 171 份运行元数据复算过「有效侧数 = 阶段根登记文档数」零处不符（计划双审 r1 codex 侧）。
+ */
+export function expectedReviewDocs(layout: ArchiveLayout, stage: Stage, runMeta: RunMeta): string[] {
+  const effective = criticsOf(runMeta).filter((c) => {
+    const s = runMeta.critics[c]?.status;
+    return s === 'ok' || s === 'parse_fallback';
+  });
+  const roles = new Set<string>(effective.map((c) => agentById(c)?.suffix ?? c));
+  const stageRel = `${layout.topic}/${stage}`;
+  const out: string[] = [];
+  for (const a of runMeta.artifacts) {
+    const rel = a.path.split(path.sep).join('/');
+    if (path.posix.dirname(rel) !== stageRel) continue;
+    const base = path.posix.basename(rel);
+    const parsed = parseArtifactName(base);
+    if (!parsed || parsed.kind !== null || !roles.has(parsed.role)) continue;
+    if (!out.includes(base)) out.push(base);
+  }
+  return out;
+}
+
+/**
+ * `addresses` 的判据（EV-134 (a) 严格档，计划 r2 §6.4）：每项都指向本轮某个有效侧的审查文档、不重复、
+ * 份数 = 有效侧数。写法接受文件名，或以 `<主题>/<阶段>/<文件名>` 结尾的路径（glm 按模板照填的项目根相对路径）。
+ *
+ * 期望集为空（run 元数据读不出，或本轮没有一侧落了审查文档——纯文档跳过、全侧失败、停在 running 的骨架）时
+ * **退回只核非空**并出告警：schema 要求 `addresses` 至少一项，严格判在那种轮次上没有任何诚实的写法能过
+ * （计划双审 r1 CODEX-02）。
+ */
+function checkAddresses(
+  addresses: readonly unknown[],
+  expected: readonly string[] | null,
+  layout: ArchiveLayout,
+  stage: Stage,
+): { mismatch: string | null; warning: GateWarning | null } {
+  if (!expected || expected.length === 0) {
+    return {
+      mismatch: null,
+      warning: {
+        code: 'addresses_unchecked',
+        message:
+          '本轮没有可比对的审查文档（运行元数据读不出，或没有一侧落了审查文档），addresses 只核了非空。',
+      },
+    };
+  }
+  const stageTail = `${layout.topic}/${stage}/`;
+  const seen = new Set<string>();
+  const bad: string[] = [];
+  const dup: string[] = [];
+  for (const raw of addresses) {
+    const item = String(raw).trim().split('\\').join('/');
+    const base = path.posix.basename(item);
+    const pathOk = item === base || item === `${stageTail}${base}` || item.endsWith(`/${stageTail}${base}`);
+    if (!pathOk || !expected.includes(base)) {
+      bad.push(String(raw));
+      continue;
+    }
+    if (seen.has(base)) dup.push(String(raw));
+    seen.add(base);
+  }
+  const missing = expected.filter((e) => !seen.has(e));
+  if (bad.length === 0 && dup.length === 0 && missing.length === 0) return { mismatch: null, warning: null };
+
+  const parts: string[] = [];
+  if (missing.length > 0) parts.push(`缺：${missing.join('、')}`);
+  if (bad.length > 0) parts.push(`不是本轮的审查文档：${bad.slice(0, 6).join('、')}${bad.length > 6 ? ` 等 ${bad.length} 项` : ''}`);
+  if (dup.length > 0) parts.push(`重复：${dup.join('、')}`);
+  return {
+    mismatch:
+      `addresses 与本轮审查文档不符（${parts.join('；')}；份数 ${addresses.length}，本轮落了审查文档的有效侧 ${expected.length} 份）。` +
+      `addresses 应逐一列出本轮每个出了结论的审核者的审查文档文件名（不是意见编号）：${expected.join('、')}。` +
+      '若这是已提交的历史轮次，不要改已提交的裁决件——它按当时口径已审批，这条判据是 EV-134 之后才有的；' +
+      '若是在途轮次，把 addresses 改成上面这些文件名后重跑 --check',
+    warning: null,
+  };
+}
+
+/**
  * 从归档 `_meta/` 读回本轮各审核者的结构化结论。
  *
  * 对 `parse_fallback` 侧会用**当前**解析器重试一次原文。理由：解析降级往往是
@@ -746,6 +849,11 @@ export async function loadRoundReviews(
   readonlyBreach: { hit: boolean; files: string[] };
   /** run.json `gate.warnings`（读不到 run.json 时为空） */
   runWarnings: string[];
+  /**
+   * 本轮期望 `addresses` 应答的审查文档文件名（EV-134）；run.json 读不到时为 null。
+   * 在这里派生而不是让调用方算——理由同 `voidedSides`：两个 `--check` 调用点各自去算就会各自漏。
+   */
+  reviewDocs: string[] | null;
 }> {
   const reviews: Partial<Record<CriticId, Review | null>> = {};
   const notes: string[] = [];
@@ -842,8 +950,9 @@ export async function loadRoundReviews(
   };
 
   const runWarnings = [...(runMeta?.gate?.warnings ?? [])];
+  const reviewDocs = runMeta ? expectedReviewDocs(layout, stage, runMeta) : null;
 
-  return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings };
+  return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs };
 }
 
 /**
@@ -945,14 +1054,14 @@ export async function verifyRoundForApproval(i: ApprovalCheckInput): Promise<App
     );
   }
 
-  const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings } =
+  const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs } =
     await loadRoundReviews(layout, stage, runId);
   const result = await checkAdjudication({
     cfg, layout, stage, rerunIndex: runMeta.rerun_index, reviews,
     driver: runMeta.driver,
     runIdPinned: i.runIdPinned,
     degraded, voidedSides, readonlyBreach, runWarnings,
-    expectedFallbackIds, missingSides, runId,
+    expectedFallbackIds, missingSides, runId, reviewDocs,
   });
   const tampered = await checkRecordedArtifacts(layout, [
     { run_id: runId, stage, artifacts: runMeta.artifacts },

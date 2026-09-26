@@ -1,0 +1,151 @@
+{
+  "targets": [
+    "src/trivium/state.ts",
+    "src/trivium/config.ts",
+    "src/trivium/hook-config.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/init.ts",
+    "src/trivium/cli.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/state.test.js",
+    "dist/test/test/unit/hooks.test.js",
+    "dist/test/test/unit/config-schema.test.js",
+    "dist/test/test/unit/hook-config.test.js",
+    "dist/test/test/unit/init.test.js",
+    "dist/test/test/unit/gate.test.js",
+    "dist/test/test/unit/gate-addresses.test.js",
+    "dist/test/test/contract/entry-render-parity.test.js",
+    "dist/test/test/integration/gate-loop.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "EV-129：reason 尾句加回（审查中文案说两遍）⇒「Write 侧恰一次 / reason 不带后果句」",
+      "file": "src/trivium/state.ts",
+      "find": "        ? `主题「${gate.topic}」的 ${gate.stage} 阶段双审进行中`",
+      "replace": "        ? `主题「${gate.topic}」的 ${gate.stage} 阶段双审进行中，此时不得修改业务文件`",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "EV-130：codex 缺省改回 qwen3.8-max ⇒「缺省为 -p qwen -m qwen3.8-flash」",
+      "file": "src/trivium/config.ts",
+      "find": "（注册表 codex 注释 ②）。\n         */\n        codex: { plan: 'qwen3.8-flash', code: 'qwen3.8-flash', bug: 'qwen3.8-flash' },",
+      "replace": "（注册表 codex 注释 ②）。\n         */\n        codex: { plan: 'qwen3.8-max', code: 'qwen3.8-max', bug: 'qwen3.8-max' },",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "EV-132 D1：停点尾句改回「会在审批前复核与跑后漂移复算时暴露」⇒ 停点四档用例",
+      "file": "src/trivium/hook-config.ts",
+      "find": "  const gatePeriod = '此刻改业务文件，事后也没有机制会发现（审批前复核只核裁决与本轮审查工件，不看工作树），审批前请自己看一眼 `git status`。';",
+      "replace": "  const gatePeriod = '越界不会被事前拦下，会在审批前复核与跑后漂移复算时暴露。';",
+      "expect": "dist/test/test/unit/hook-config.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "EV-132 D7：describeGuard 事后覆盖面改回「靠审批前复核……与跑后复算兜底」⇒ D7 用例与两族否定断言",
+      "file": "src/trivium/hook-config.ts",
+      "find": "  '审查中的越界由跑后复算发现，闸门期改业务文件没有机制会发现，审查工件由审批前复核核本轮';",
+      "replace": "  '靠审批前复核、_meta 唯一事实、防覆盖与跑后复算兜底';",
+      "expect": "dist/test/test/unit/hook-config.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "EV-132 D4：删掉新追加的 AGENTS.md 指纹 ⇒「已知指纹表覆盖当前版」",
+      "file": "src/trivium/init.ts",
+      "find": "    'b8e7fadf1e997cea8357308e33104b686241d54ad197348ceca67831c60886a3', // critic + driver · EV-132\n  ]),\n  // M10b",
+      "replace": "  ]),\n  // M10b",
+      "expect": "dist/test/test/unit/init.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "EV-132 D6：只读失守文案改回「只排除了已跟踪文件被改」⇒ readonly_breach 用例的否定式锁",
+      "file": "src/trivium/gate.ts",
+      "find": "'drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」",
+      "replace": "'drift 为 false 只排除了「已跟踪文件被改」",
+      "expect": "dist/test/test/unit/gate.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "EV-133：--check 通过时回写 run.json ⇒「--check 前后 run.json 逐字节不变」",
+      "file": "src/trivium/cli.ts",
+      "find": "  const entry = result.ok ? (await readRunMeta(ref.layout, stage, runId))?.entry ?? null : null;",
+      "replace": "  if (result.ok) { const mm = await readRunMeta(ref.layout, stage, runId); if (mm) { mm.gate.adjudication_complete = true; const { writeRunMeta: wr } = await import('./meta.js'); await wr(ref.layout, stage, mm); } }\n  const entry = result.ok ? (await readRunMeta(ref.layout, stage, runId))?.entry ?? null : null;",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "EV-134：退回只核非空 ⇒「意见编号形态 ⇒ bad_front_matter」",
+      "file": "src/trivium/gate.ts",
+      "find": "    } else {\n      const a = checkAddresses(fm.addresses, input.reviewDocs, layout, stage);",
+      "replace": "    } else if (fm.addresses.length < 0) {\n      const a = checkAddresses(fm.addresses, input.reviewDocs, layout, stage);",
+      "expect": "dist/test/test/unit/gate-addresses.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "EV-134：不核缺项 ⇒「少一份 ⇒ 红」",
+      "file": "src/trivium/gate.ts",
+      "find": "  const missing = expected.filter((e) => !seen.has(e));",
+      "replace": "  const missing: string[] = [];",
+      "expect": "dist/test/test/unit/gate-addresses.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "EV-134：期望集把失败 / 超时侧也算进来 ⇒「单审降级只列幸存侧」",
+      "file": "src/trivium/gate.ts",
+      "find": "    return s === 'ok' || s === 'parse_fallback';",
+      "replace": "    return s !== undefined;",
+      "expect": "dist/test/test/unit/gate-addresses.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "EV-134：期望集漏掉解析回退侧 ⇒「parse_fallback 侧计入」",
+      "file": "src/trivium/gate.ts",
+      "find": "    return s === 'ok' || s === 'parse_fallback';",
+      "replace": "    return s === 'ok';",
+      "expect": "dist/test/test/unit/gate-addresses.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "EV-134：只比 basename、不核路径前缀 ⇒「指到别的阶段 ⇒ 红」",
+      "file": "src/trivium/gate.ts",
+      "find": "    const pathOk = item === base || item === `${stageTail}${base}` || item.endsWith(`/${stageTail}${base}`);",
+      "replace": "    const pathOk = item.length > 0;",
+      "expect": "dist/test/test/unit/gate-addresses.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "EV-134：期望集为空仍按严格判（r1 CODEX-02 之前的形态）⇒「期望集为空 ⇒ 只核非空」",
+      "file": "src/trivium/gate.ts",
+      "find": "  if (!expected || expected.length === 0) {",
+      "replace": "  if (!expected) {",
+      "expect": "dist/test/test/unit/gate-addresses.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "EV-134：不查重复 ⇒「重复 ⇒ 红」",
+      "file": "src/trivium/gate.ts",
+      "find": "    if (seen.has(base)) dup.push(String(raw));",
+      "replace": "    void dup;",
+      "expect": "dist/test/test/unit/gate-addresses.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "EV-134：期望集不排除裁决件（kind 非空也算）⇒「Driver 原稿、裁决件不算」",
+      "file": "src/trivium/gate.ts",
+      "find": "    if (!parsed || parsed.kind !== null || !roles.has(parsed.role)) continue;",
+      "replace": "    if (!parsed || !roles.has(parsed.role)) continue;",
+      "expect": "dist/test/test/unit/gate-addresses.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "EV-133：approve 通过复核后回写 run.json（代码双审 r1 CODEX-03 ≡ GLM-03 补的一格）⇒「三步之后 run.json 都不变」",
+      "file": "src/trivium/cli.ts",
+      "find": "      verified.set(stage, v.runId);",
+      "replace": "      { const mm = await readRunMeta(ref.layout, stage, v.runId); if (mm) { mm.gate.adjudication_complete = true; const { writeRunMeta: wr } = await import('./meta.js'); await wr(ref.layout, stage, mm); } }\n      verified.set(stage, v.runId);",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    }
+  ]
+}

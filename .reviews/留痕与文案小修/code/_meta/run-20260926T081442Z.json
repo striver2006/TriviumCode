@@ -1,0 +1,285 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260926T081442Z",
+  "topic": "留痕与文案小修",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点核实：addresses 新判据的期望集派生与空集兜底是否覆盖所有运行形态、两档出口文案是否准确；各处 L2 事后覆盖面新文案与漂移复算、审批前复核、提交锚的实际行为是否逐句对得上；协议片段指纹追加与根指令文件原位升级是否只动了协议块；run.json 收尾后不再更新这一不变量的回归用例是否真能钉住；变异与零配额验收的读数是否可信",
+  "task_goal": "留痕与文案小修 实施计划（r2 定稿）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "0bf81e6524deb9c698c68890d165604bd605a7b0",
+    "tree_hash": "eebbb87a1c5ebe8d5f6e5018d8d76f31e69a74e6",
+    "dirty": true,
+    "subject_sha256": "3bf113fcf4c0f7e41d4e92719a404801b961378ce638114a9ea78fbf011e49a1",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "0bf81e6524deb9c698c68890d165604bd605a7b0",
+      "dirty": true,
+      "inputs_sha256": "a601d0130bf9792af27f58e3a5ff6d4711796ecc1698b8ee02c310fac0d27e60",
+      "built_at": "2026-09-26T08:03:17.655Z"
+    }
+  },
+  "started_at": "2026-09-26T08:14:43.770Z",
+  "finished_at": "2026-09-26T08:29:37.582Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 893.58,
+      "tool_calls": {
+        "run_command": 44,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0dcc7-ea27-7250-b61f-5d6ac9717e5b",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.11",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 277.061,
+      "tool_calls": {
+        "read": 47,
+        "grep": 10,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 34
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 332505,
+        "output_tokens": 26839,
+        "thinking_tokens": 20383,
+        "cache_read_tokens": 6627325,
+        "total_tokens": 359344
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "9dcd66a8-3ab7-4217-9fd4-3ce15ea69fb2",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 644.414,
+      "tool_calls": {
+        "read": 19,
+        "grep": 17,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 23
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 29,
+        "inputTokens": 4111280,
+        "outputTokens": 43758,
+        "totalTokens": 4155038,
+        "cacheReadTokens": 3936832,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_a76d4de1-cd42-4d74-bf54-ebda05d377e3",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/留痕与文案小修/plan/2026-09-26-留痕与文案小修-gemini.md",
+    ".reviews/留痕与文案小修/plan/2026-09-26-留痕与文案小修-glm.md",
+    ".reviews/留痕与文案小修/plan/_meta/review-gemini-20260926T064238Z.json",
+    ".reviews/留痕与文案小修/plan/_meta/review-glm-20260926T064238Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "留痕与文案小修/code/_meta/changes-20260926T081442Z.diff",
+      "sha256": "3bf113fcf4c0f7e41d4e92719a404801b961378ce638114a9ea78fbf011e49a1"
+    },
+    {
+      "path": "留痕与文案小修/code/_meta/brief-codex-20260926T081442Z.md",
+      "sha256": "10e7c9a2a2333371c5c46934813dd32aecd938f5a5380cda4408301b8718374a"
+    },
+    {
+      "path": "留痕与文案小修/code/_meta/brief-gemini-20260926T081442Z.md",
+      "sha256": "da927e703d780f39903184530a16ee10bb22f205eb0096945fe13c0fa9d70577"
+    },
+    {
+      "path": "留痕与文案小修/code/_meta/brief-glm-20260926T081442Z.md",
+      "sha256": "e1b42af90ca79416e5ed5a3c4fb782eef1adfe0857cfecab1bac189705c5a1de"
+    },
+    {
+      "path": "留痕与文案小修/code/_meta/review-codex-20260926T081442Z.json",
+      "sha256": "a65a1df8bcbf05a786aeaccbf396eae602987d585ab70ba3060978b4ac6d2384"
+    },
+    {
+      "path": "留痕与文案小修/code/_meta/review-gemini-20260926T081442Z.json",
+      "sha256": "dec1b598c240bf614cc4b6deeeb9298da824d001e4cd5cd9f087b2a4f11afb0f"
+    },
+    {
+      "path": "留痕与文案小修/code/_meta/review-glm-20260926T081442Z.json",
+      "sha256": "374cc3539e1c8a467c682e59113514d4182af7d415b00ee5692cf0fa3c29c501"
+    },
+    {
+      "path": "留痕与文案小修/code/2026-09-26-留痕与文案小修-codex.md",
+      "sha256": "57699451c55e7e19e58638814e86f3b69a94848e4841c6633840c780a32ad846"
+    },
+    {
+      "path": "留痕与文案小修/code/2026-09-26-留痕与文案小修-gemini.md",
+      "sha256": "1c8ecb89d9b98f78ae9e2c4eaf57f8e64c3f1828ac7ae7ab0888ecc859b1397e"
+    },
+    {
+      "path": "留痕与文案小修/code/2026-09-26-留痕与文案小修-glm.md",
+      "sha256": "673a8c772e9eec7cd4a0deac6f114f7d4c5ebd7c2707104f49e742b28ffbe389"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}

@@ -1,0 +1,72 @@
+{
+  "at": "2026-09-26T08:55:06.698Z",
+  "results": [
+    {
+      "id": "A1 退出码",
+      "ok": true,
+      "detail": "EV-125-命令A支持选侧旗标 plan 20260925T073426Z：code=2（期望 2）"
+    },
+    {
+      "id": "A1 文案点名期望文件名",
+      "ok": true,
+      "detail": "点名 3 份：2026-09-25-EV-125-命令A支持选侧旗标-codex.md、2026-09-25-EV-125-命令A支持选侧旗标-gemini.md、2026-09-25-EV-125-命令A支持选侧旗标-glm.md"
+    },
+    {
+      "id": "A1 两档出口",
+      "ok": true,
+      "detail": "含「历史轮次不要改」与「在途轮次改写」"
+    },
+    {
+      "id": "A1 run.json 不变",
+      "ok": true,
+      "detail": "gate --check 前后逐字节一致"
+    },
+    {
+      "id": "A2 退出码",
+      "ok": true,
+      "detail": "EV-122-未受控模型播报 code 20260924T222959Z：code=2（期望 2）"
+    },
+    {
+      "id": "A2 文案点名期望文件名",
+      "ok": true,
+      "detail": "点名 3 份：2026-09-25-EV-122-未受控模型播报-codex.md、2026-09-25-EV-122-未受控模型播报-gemini.md、2026-09-25-EV-122-未受控模型播报-glm.md"
+    },
+    {
+      "id": "A2 两档出口",
+      "ok": true,
+      "detail": "含「历史轮次不要改」与「在途轮次改写」"
+    },
+    {
+      "id": "A2 run.json 不变",
+      "ok": true,
+      "detail": "gate --check 前后逐字节一致"
+    },
+    {
+      "id": "A3 退出码",
+      "ok": true,
+      "detail": "EV-136-glm探活选模路径 code 20260926T051412Z：code=0（期望 0）"
+    },
+    {
+      "id": "A3 run.json 不变",
+      "ok": true,
+      "detail": "gate --check 前后逐字节一致"
+    }
+  ],
+  "raw": {
+    "A1": {
+      "code": 2,
+      "stdout": "{\n  \"ok\": false,\n  \"stage\": \"plan\",\n  \"rerun_index\": 1,\n  \"run_id\": \"20260925T073426Z\",\n  \"failures\": [\n    {\n      \"code\": \"bad_front_matter\",\n      \"message\": \"裁决件 front-matter 与本轮不匹配：addresses 与本轮审查文档不符（缺：2026-09-25-EV-125-命令A支持选侧旗标-codex.md、2026-09-25-EV-125-命令A支持选侧旗标-gemini.md、2026-09-25-EV-125-命令A支持选侧旗标-glm.md；不是本轮的审查文档：CODEX-01、CODEX-02、CODEX-03、CODEX-04、CODEX-05、CODEX-06 等 13 项；份数 13，本轮落了审查文档的有效侧 3 份）。addresses 应逐一列出本轮每个出了结论的审核者的审查文档文件名（不是意见编号）：2026-09-25-EV-125-命令A支持选侧旗标-codex.md、2026-09-25-EV-125-命令A支持选侧旗标-gemini.md、2026-09-25-EV-125-命令A支持选侧旗标-glm.md。若这是已提交的历史轮次，不要改已提交的裁决件——它按当时口径已审批，这条判据是 EV-134 之后才有的；若是在途轮次，把 addresses 改成上面这些文件名后重跑 --check\"\n    }\n  ],\n  \"warnings\": [],\n  \"structured_ids\": [\n    \"CODEX-01\",\n    \"CODEX-02\",\n    \"CODEX-03\",\n    \"CODEX-04\",\n    \"CODEX-05\",\n    \"CODEX-06\",\n    \"CODEX-07\",\n    \"AGY-01\",\n    \"AGY-02\",\n    \"AGY-03\",\n    \"AGY-04\",\n    \"GLM-01\",\n    \"GLM-02\"\n  ],\n  \"fallback_ids\": [],\n  \"disposition\": \"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev134-accept-QmJjQT/.reviews/EV-125-命令A支持选侧旗标/plan/2026-09-25-EV-125-命令A支持选侧旗标-revised-claude.md\"\n}\n",
+      "stderr": ""
+    },
+    "A2": {
+      "code": 2,
+      "stdout": "{\n  \"ok\": false,\n  \"stage\": \"code\",\n  \"rerun_index\": 1,\n  \"run_id\": \"20260924T222959Z\",\n  \"failures\": [\n    {\n      \"code\": \"bad_front_matter\",\n      \"message\": \"裁决件 front-matter 与本轮不匹配：addresses 与本轮审查文档不符（缺：2026-09-25-EV-122-未受控模型播报-codex.md、2026-09-25-EV-122-未受控模型播报-gemini.md、2026-09-25-EV-122-未受控模型播报-glm.md；不是本轮的审查文档：CODEX-01、GLM-F01、GLM-F02、GLM-F03、GLM-F04；份数 5，本轮落了审查文档的有效侧 3 份）。addresses 应逐一列出本轮每个出了结论的审核者的审查文档文件名（不是意见编号）：2026-09-25-EV-122-未受控模型播报-codex.md、2026-09-25-EV-122-未受控模型播报-gemini.md、2026-09-25-EV-122-未受控模型播报-glm.md。若这是已提交的历史轮次，不要改已提交的裁决件——它按当时口径已审批，这条判据是 EV-134 之后才有的；若是在途轮次，把 addresses 改成上面这些文件名后重跑 --check\"\n    }\n  ],\n  \"warnings\": [\n    {\n      \"code\": \"run_warning\",\n      \"message\": \"构建时工作树有未提交改动：安装副本不对应任何一个提交\"\n    }\n  ],\n  \"structured_ids\": [\n    \"CODEX-01\"\n  ],\n  \"fallback_ids\": [\n    \"GLM-F01\",\n    \"GLM-F02\",\n    \"GLM-F03\",\n    \"GLM-F04\"\n  ],\n  \"disposition\": \"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev134-accept-QmJjQT/.reviews/EV-122-未受控模型播报/code/2026-09-25-EV-122-未受控模型播报-response-claude.md\"\n}\n",
+      "stderr": "· glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验\n"
+    },
+    "A3": {
+      "code": 0,
+      "stdout": "{\n  \"ok\": true,\n  \"stage\": \"code\",\n  \"rerun_index\": 1,\n  \"run_id\": \"20260926T051412Z\",\n  \"failures\": [],\n  \"warnings\": [\n    {\n      \"code\": \"run_warning\",\n      \"message\": \"构建时工作树有未提交改动：安装副本不对应任何一个提交\"\n    }\n  ],\n  \"structured_ids\": [\n    \"CODEX-01\",\n    \"CODEX-02\",\n    \"CODEX-03\",\n    \"CODEX-04\",\n    \"AGY-01\",\n    \"GLM-01\",\n    \"GLM-02\",\n    \"GLM-03\",\n    \"GLM-04\",\n    \"GLM-05\",\n    \"GLM-06\"\n  ],\n  \"fallback_ids\": [],\n  \"disposition\": \"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev134-accept-QmJjQT/.reviews/EV-136-glm探活选模路径/code/2026-09-26-EV-136-glm探活选模路径-response-claude.md\"\n}\n",
+      "stderr": "· 本轮已有人工审批记录，闸门状态保持不变（校验命令不撤销审批）\n⚠️  归档记着本轮已审批，但本机 state.json 里没有 EV-136-glm探活选模路径 / code 的闸门——可能是审批在别处做的，或本机状态被清过。Hook 据本机状态判，请人工确认护栏是否如你所想。\n"
+    }
+  }
+}

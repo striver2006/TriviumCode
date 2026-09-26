@@ -309,6 +309,23 @@ test('双审进行中也拦业务写入（就地模式下审查员在读真实�
   assert.match(r.stderr ?? '', /双审进行中/);
 });
 
+test('EV-129：审查中拦截文案不重复——Write 侧「不得修改业务文件」恰一次，Bash 侧不混入它', async () => {
+  const ctx = await fakeCtx();
+  await setGate({
+    triviumDir: ctx.triviumDir, topic: 't', stage: 'plan',
+    state: 'running', sessionId: SESSION, heartbeatStaleMs: STALE,
+  });
+  const count = (s: string, sub: string) => s.split(sub).length - 1;
+  const w = await hookPreWrite(ctx, writeInput('src/a.ts'));
+  assert.equal(w.exitCode, EXIT.GATE_BLOCK);
+  assert.equal(count(w.stderr ?? '', '不得修改业务文件'), 1, `Write 侧说了不止一遍：${w.stderr}`);
+
+  const b = await hookPreBash(ctx, bashInput('echo x > src/a.ts'));
+  assert.equal(b.exitCode, EXIT.GATE_BLOCK);
+  assert.equal(count(b.stderr ?? '', '不得修改业务文件'), 0, `Bash 侧混入了 Write 侧的后果句：${b.stderr}`);
+  assert.equal(count(b.stderr ?? '', '此时不得用 Bash 改动工作树'), 1, String(b.stderr));
+});
+
 test('配置关闭写锁时不拦', async () => {
   const ctx = await fakeCtx();
   ctx.config.gate.block_business_write_when_awaiting_approval = false;

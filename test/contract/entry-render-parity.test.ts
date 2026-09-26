@@ -8,6 +8,7 @@ import {
   type Carrier, type Contract, type EntrySources, type RenderedEntry,
 } from '../../src/entry-render.js';
 import { AGENTS, ALL_AGENT_IDS, agentById, guardProfileOf } from '../../src/trivium/agents/registry.js';
+import { describeGuard, gateHoldNotice } from '../../src/trivium/hook-config.js';
 
 /**
  * 入口资产单源渲染的契约（M10b 第 2 步；计划 r5 §5.1、r9 §2、r10 §2.4 / §3.1.3）。
@@ -53,6 +54,29 @@ test('论域：四家载体 × 七条命令，且覆盖全部可作 Driver 的 A
     assert.ok(src.carriers.some((c) => c.agent === a.id), `可作 Driver 的 ${a.id} 没有载体`);
   }
   for (const id of MAIN_COMMANDS) assert.ok(contractOf(id), `缺主命令契约 ${id}`);
+});
+
+test('EV-131：命令描述与一级标题不写死任何已登记 Agent 的产品名（缺省审核者随当轮 Driver 变）', () => {
+  /*
+   * 产品名从注册表 label 派生、不手抄：取「·」之后，去掉第一个词（厂商名）。
+   * 'Critic-B · 智谱 ZCode' ⇒ 'ZCode'；'Critic-D · Anthropic Claude Code' ⇒ 'Claude Code'。
+   * 第五家登记时自动覆盖；派生规则失效（label 改形）时下面的自检先红。
+   */
+  const names = AGENTS.map((a) => {
+    const tail = a.label.split('·')[1]?.trim() ?? '';
+    return tail.split(/\s+/).slice(1).join(' ');
+  });
+  assert.equal(names.length, AGENTS.length);
+  for (const [i, n] of names.entries()) assert.ok(n.length > 0, `${AGENTS[i]!.id} 的产品名派生为空（label=${AGENTS[i]!.label}）`);
+
+  for (const c of src.contracts) {
+    const desc = c.frontmatter.find(([k]) => k === 'description')?.[1] ?? '';
+    for (const n of names) assert.ok(!desc.includes(n), `${c.id} 的 description 写死了「${n}」：${desc}`);
+  }
+  for (const r of rendered) {
+    const h1 = r.content.split('\n').find((l) => l.startsWith('# ')) ?? '';
+    for (const n of names) assert.ok(!h1.includes(n), `${r.relPath} 的一级标题写死了「${n}」：${h1}`);
+  }
 });
 
 test('源 → 产物零 diff（改了源请跑 npm run render）', async () => {
@@ -229,6 +253,67 @@ test('护栏注入段与 r10 §3.1.3 的表一致', () => {
     assert.equal(r.content.includes(misfire), profile !== 'l2-none', `${r.relPath}：误拦提示只给有 Hook 的载体`);
     assert.equal(r.content.includes(l2), profile !== 'l1-hook', `${r.relPath}：L2 明示只给 L2 载体`);
     if (profile === 'l2-hook') assert.match(r.content, /五个前提/, `${r.relPath}：尽力拦截要写出五个生效前提`);
+  }
+});
+
+test('EV-132：L2 事后覆盖面的两族失实措辞在所有用户可见面都不再出现', async () => {
+  /*
+   * 族一（计划 r2 §4.4，GLM-02）：「前置复核 / 审批前复核」与「跑后（漂移）复算」并列作业务写入越界的兜底——
+   *   闸门期改业务文件两道都发现不了（M10b 第 4 步 3-4 实测）。旧写法三种形态都是「…复核…与跑后…复算」。
+   * 族二（CODEX-01 ≡ AGY-01）：「只比 / 只看已跟踪文件」——workTreeHash 走临时索引 add -A，未忽略的未跟踪文件也进比对。
+   */
+  const FAMILY_1 = /(前置|审批前)复核[^。；\n]*?与跑后(漂移)?复算/;
+  const FAMILY_2 = /只(比|看)已跟踪文件/;
+  const surfaces: Array<[string, string]> = rendered.map((r) => [r.relPath, r.content]);
+  surfaces.push(['driver.snippet', await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/protocol/driver.snippet'), 'utf8')]);
+  const qs = await fs.readFile(path.join(REPO_ROOT, 'doc/07_manuals/QUICKSTART.md'), 'utf8');
+  const s52 = qs.slice(qs.indexOf('## 5.2'), qs.indexOf('\n## 6.'));
+  assert.ok(s52.length > 200, '前提：切出了 QUICKSTART §5.2');
+  surfaces.push(['QUICKSTART §5.2', s52]);
+  const guards = [
+    { level: 'L1', registered: 'L1', profile: 'l1-hook', downgraded: false },
+    { level: 'L2', registered: 'L1', profile: 'l1-hook', downgraded: true },
+    { level: 'L2', registered: 'L2', profile: 'l2-hook', downgraded: false },
+    { level: 'L2', registered: 'L2', profile: 'l2-none', downgraded: false },
+  ] as const;
+  for (const g of guards) {
+    surfaces.push([`gateHoldNotice(${g.profile}${g.downgraded ? ',down' : ''})`, gateHoldNotice(g as never)]);
+    surfaces.push([`describeGuard(${g.profile}${g.downgraded ? ',down' : ''})`, describeGuard(AGENTS[0]!, g as never)]);
+  }
+  for (const [where, text] of surfaces) {
+    assert.doesNotMatch(text, FAMILY_1, `${where}：仍把审批前复核与跑后复算并列作兜底`);
+    assert.doesNotMatch(text, FAMILY_2, `${where}：仍写「只比已跟踪文件」`);
+  }
+});
+
+test('EV-132：L2 护栏段的审批两格带命令限定（命令 A 没有审批停点），且不把事后核对说成「拦下」', () => {
+  /*
+   * 代码双审 r1 GLM-02：l2-notice 经 main.l2-* 也注入命令 A，而命令 A 没有审批这一步——
+   * 不带限定的「闸门期 / 审批之前……复核」在 dual-run 产物里指向永不发生的复核。
+   * CODEX-04：「审批之前删改本轮的，复核会拦下」把事后核对说成拦截，与首句「不会被事前拦下」自相矛盾。
+   */
+  const l2 = rendered.filter((r) => MAIN_COMMANDS.includes(r.command) && guardProfileOf(agentById(r.agent)!) !== 'l1-hook');
+  assert.ok(l2.length > 0, '前提：有 L2 载体的主命令产物');
+  for (const r of l2) {
+    assert.match(r.content, /\*\*闸门期\*\*（命令 B \/ C \/ D 等待审批时）/, r.relPath);
+    assert.match(r.content, /命令 B \/ C \/ D 审批之前删改本轮的，审批前复核会发现不符并拒绝审批/, r.relPath);
+    assert.doesNotMatch(r.content, /复核会拦下/, r.relPath);
+  }
+  for (const r of l2.filter((x) => x.command === 'run')) {
+    assert.match(r.content, /命令 A 没有审批这一步：它的审查工件被删改，事后防线只剩带 Hook 载体的提交锚/, r.relPath);
+  }
+});
+
+test('EV-134：命令 B / C / D 的写裁决件一步交代 addresses 填审查文档文件名、不是意见编号', () => {
+  /*
+   * 此前入口资产只列「front-matter 含 … addresses」，从没说该填什么——本仓 65 份裁决件因此填成了意见编号。
+   * 闸门收紧后照旧写会当场判红，所以写法必须在执笔者读到的那一步里交代清楚。
+   */
+  const reviews = rendered.filter((r) => ['review-plan', 'review-code', 'review-bug'].includes(r.command));
+  assert.equal(reviews.length, src.carriers.length * 3);
+  for (const r of reviews) {
+    assert.match(r.content, /`addresses` 逐一列出本轮\*\*每个出了结论的审核者\*\*的审查文档文件名/, r.relPath);
+    assert.match(r.content, /\*\*不是意见编号\*\*/, r.relPath);
   }
 });
 

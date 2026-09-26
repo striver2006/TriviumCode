@@ -347,7 +347,21 @@ export function defaultConfig(): Config {
       default: {
         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
         glm: { plan: 'GLM-5.3', code: 'GLM-5.3', bug: 'GLM-5.3' },
-        codex: { plan: 'qwen3.8-max', code: 'qwen3.8-max', bug: 'qwen3.8-max' },
+        /*
+         * codex 缺省取 **flash**（EV-130，用户 2026-09-26 定候选 ①：`-p qwen -m qwen3.8-flash`）。
+         *
+         * 1. **依据**：M10b 第 4 步实测 qwen3.8-max 在 3-1 plan 轮用了 749s（内置 900s 档的 83%），
+         *    3-2 code 轮跑满 1200s 超时失败，换 flash 重跑 203s 就过；本仓 2026-09-16 实测 flash 419s / 1038s。
+         * 2. **已 init 的项目不受本改动影响**：`init` 把整份缺省冻进项目的 `.trivium/config.yaml`（注册表 codex 注释 ①），
+         *    要换就手改该文件里 `profiles.default.codex` 的三格，或每次加 `--model-codex`。另外缺省钉在 qwen 家族，
+         *    **新项目需要有 qwen 的可用额度**（本仓 2026-09-23 正因 qwen 额度耗尽换过 deepseek）；没有就同样按上面两种办法换，
+         *    缺了额度会在运行期而非预检才撞到端点失败。
+         * 3. **连带：default 与 flash 两档在 codex 侧从此同值**，`--profile flash` 不再换 codex 的模型——qwen 家族只有
+         *    max / flash 两个 slug，没有更便宜的档可换。与下面 flash 档注释里 claude 侧的退化同类，这次是明知接受。
+         *
+         * 残余：内置 code 档 1200s 对 flash 的 1038s 实测只余约 14%，偏紧未消除（注册表 codex 注释 ②）。
+         */
+        codex: { plan: 'qwen3.8-flash', code: 'qwen3.8-flash', bug: 'qwen3.8-flash' },
         /*
          * claude 档（M9 第 4 步）。三个 slug 都是**回读挣来的**，不是文档推断：
          * `probe.cli.claude.models` 为 `[]`，`checkModelAgainstCatalog` 对它落

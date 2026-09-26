@@ -1,6 +1,6 @@
 ---
 name: dual-review-plan
-description: 对已有计划做 Antigravity + ZCode 背靠背双审，并产出逐条裁决的修订计划（命令 B）
+description: 对已有计划做背靠背双审，并产出逐条裁决的修订计划（命令 B）
 argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--plan-file <路径>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]
 disable-model-invocation: true
 allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
@@ -8,7 +8,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 
 参数：$ARGUMENTS
 
-# 命令 B · 对已有计划做 Antigravity + ZCode 背靠背双审，并产出逐条裁决的修订计划（命令 B）
+# 命令 B · 对已有计划做背靠背双审，并产出逐条裁决的修订计划（命令 B）
 
 下文 `TV` 指 `.trivium/bin/trivium`——**一律用这个项目相对路径**，不依赖 `PATH`
 也不依赖 `${CLAUDE_SKILL_DIR}`（设计 §5.3 / §10.5）。
@@ -191,6 +191,8 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 不是固定的 `claude`；`role` 字段填同一个值，两者不一致闸门会判 `bad_front_matter`）：
 
 - front-matter 含 `schema` / `topic` / `stage` / `role` / `kind` / `run_id` / `addresses`；
+  `addresses` 逐一列出本轮**每个出了结论的审核者**的审查文档文件名（照抄归档里的名字；失败侧不列），**不是意见编号**——
+  份数不符、列了别的轮次或编号，闸门判 `bad_front_matter` 并给出期望的文件名；
 - 正文含一张裁决表，列名固定：意见编号 ｜ 来源 ｜ 严重度 ｜ 裁决 ｜ 理由 ｜ 落点；
 - **每个**意见编号都必须出现且仅出现一次，裁决取值为 接受 / 驳回 / 暂缓；
 - 三种裁决**都**要有非空理由；**接受**必须写明落点；

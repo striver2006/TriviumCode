@@ -642,7 +642,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 前四道由 Claude Code Hook 强制，**不靠模型自觉**——这是 Claude Code 主攻（护栏等级 L1）时的情形。
 **别家主攻时**：ZCode 的 Hook 只在五个前提下尽力拦截（桌面端、先信任再开会话、主代理、写工具在覆盖内、不超时），Codex 与 Antigravity 没有 Hook，
-下表前四道都要靠你和 Driver 自觉；事后机制只能发现审查进行中的越界，**闸门期改业务文件发现不了**（BACKLOG EV-132）——审批前自己看一眼 `git status`。
+下表前四道都要靠你和 Driver 自觉；事后机制只能发现审查进行中的越界，**闸门期改业务文件发现不了**（给审批前复核补工作树比对是 BACKLOG EV-132 候选 ②，未做；停点提示自设计 v1.3.45 起已如实这样写）——审批前自己看一眼 `git status`。
 细节见 [QUICKSTART §5.2](./QUICKSTART.md) 与 [RUNBOOK 第十节](../06_deployment/RUNBOOK_pipeline_ops.md)。
 
 | 什么时候 | 挡什么 | 怎么过 |

@@ -292,6 +292,10 @@ export async function listOpenGates(triviumDir: string): Promise<GateEntry[]> {
  *
  * 任一不成立都只提醒不加锁：把无关会话或过期闸门也锁上，会锁死开发者在同一仓库
  * 里的其它编辑（审核意见 RV-05）。
+ *
+ * **`reason` 只陈述状态，后果由调用方拼**（EV-129）：Write 拦截接「此时不得修改业务文件」，
+ * Bash 拦截接「此时不得用 Bash 改动工作树」。此前审查中那一支自带后果句，两处拦截各自再拼一次，
+ * 用户看到的是「……双审进行中，此时不得修改业务文件，此时不得修改业务文件。」
  */
 export function shouldLockWrites(
   gate: GateEntry | null,
@@ -326,7 +330,7 @@ export function shouldLockWrites(
     lock: true,
     reason:
       gate.state === 'running'
-        ? `主题「${gate.topic}」的 ${gate.stage} 阶段双审进行中，此时不得修改业务文件`
+        ? `主题「${gate.topic}」的 ${gate.stage} 阶段双审进行中`
         : `主题「${gate.topic}」的 ${gate.stage} 阶段闸门未审批`,
   };
 }

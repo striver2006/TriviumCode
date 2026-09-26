@@ -448,7 +448,8 @@
       ],
       "properties": {
         "adjudication_complete": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "运行期字段：只在本轮没有意见要裁决（纯文档跳过）时由编排器置 true，其余一律 false；run.json 收尾后不再更新（已提交的 run.json 受提交锚保护，不可改）。裁决是否齐备以 gate --check 的实时结果为准，审批事实以 task.json.approvals[] 为准（EV-133）"
         },
         "state": {
           "type": "string"

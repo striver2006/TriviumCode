@@ -1052,7 +1052,7 @@ export function classifyWriteCommands(
        * 从而穿过调用契约的 `exit_code === 0` 筛选；不带 `-f` 的同形态退 1、进不到这里。
        * 排障指纹（**只能用来排除一部分，不能用来坐实**，代码双审 CODEX-09）：
        * 该形态没有工作树改动，故 `snapshot.drift` 为 false。但反过来不成立——
-       * `judgeDrift` 是 git 树比对，**只看已跟踪文件**，`dist/` 之类在 `.gitignore`
+       * `judgeDrift` 是 git 树比对，**看不见被 `.gitignore` 忽略的文件**（未忽略的未跟踪文件在内），`dist/` 之类在 `.gitignore`
        * 里的目录被真实 `rm -rf` 掉同样 drift=false。所以 drift=false 时还须核
        * 目标是否真实存在、是否被 ignore；拿它直接判「误报」会把真失守降级。
        *

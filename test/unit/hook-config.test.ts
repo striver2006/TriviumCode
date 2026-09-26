@@ -292,11 +292,34 @@ test('停点后半句按有效等级四档措辞：只有真正 L1 才说「Hook
   assert.match(texts['l1']!, /^在此期间不得修改业务文件（Hook 会拦下；Hook 超时即放行/);
   for (const k of ['l1-down', 'l2-hook', 'l2-none']) {
     assert.doesNotMatch(texts[k]!, /Hook 会拦下/, `${k}：说「会拦下」而实际不拦，执笔者会放心去写`);
-    assert.match(texts[k]!, /审批前复核与跑后漂移复算/, `${k}：要说清越界靠什么暴露`);
+    /*
+     * EV-132 候选 ①：闸门期改业务文件，审批前复核与跑后复算两道都发现不了（M10b 第 4 步 3-4 实测）。
+     * 旧尾句「越界……会在审批前复核与跑后漂移复算时暴露」对闸门期不成立，这里钉住它不再回来。
+     */
+    assert.match(texts[k]!, /此刻改业务文件，事后也没有机制会发现/, `${k}：要写实闸门期无机制兜底`);
+    assert.doesNotMatch(texts[k]!, /会在审批前复核|复算时暴露/, `${k}：不得再宣称闸门期越界会被事后暴露`);
+    assert.match(texts[k]!, /审批之后删改审查工件/, `${k}：后段要说审批之后的情形`);
   }
+  // 后段按档分：三档互不相同，且各含本档的出口
+  assert.match(texts['l2-hook']!, /只有 Hook 生效的会话里提交时才会被核对/);
+  assert.match(texts['l2-none']!, /本载体上没有机制会发现；要让提交锚补上，就在 Claude Code 会话里提交/);
+  assert.match(texts['l1-down']!, /要先重跑 `init` 恢复 Hook/);
+  assert.equal(new Set(['l1-down', 'l2-hook', 'l2-none'].map((k) => texts[k])).size, 3);
   assert.match(texts['l1-down']!, /Hook 配置不在场（登记 L1，本次按 L2 计）/);
   assert.match(texts['l2-hook']!, /只作尽力拦截、不兜底/);
   assert.match(texts['l2-none']!, /没有 Hook 拦截/);
+});
+
+test('EV-132 D7：describeGuard 的 L1 降级与 l2-none 两档不再把审批前复核列成业务写入越界的兜底', async () => {
+  const root = await project();
+  const l1 = AGENTS.find((a) => a.guardLevel === 'L1')!;
+  const down = describeGuard(l1, await effectiveGuardLevel(root, l1));
+  const none = describeGuard(NO_HOOK, await effectiveGuardLevel(root, NO_HOOK));
+  for (const [k, t] of [['l1-down', down], ['l2-none', none]] as const) {
+    assert.doesNotMatch(t, /靠审批前复核/, `${k}：${t}`);
+    assert.match(t, /闸门期改业务文件没有机制会发现/, `${k}：${t}`);
+    assert.match(t, /审查中的越界由跑后复算发现/, `${k}：${t}`);
+  }
 });
 
 test('entryCommandOf：按当轮 Driver 的调用写法；取不到或未登记时回落缺省 Driver', () => {

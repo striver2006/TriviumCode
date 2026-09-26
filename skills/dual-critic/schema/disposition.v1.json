@@ -24,7 +24,7 @@
       "type": "array",
       "minItems": 1,
       "items": { "type": "string" },
-      "description": "本件应答的审查文档文件名。单审降级时只有一份"
+      "description": "本件应答的审查文档文件名（或以 <主题>/<阶段>/<文件名> 结尾的路径），不是意见编号。份数等于本轮落了审查文档的入选侧数（失败侧不计，解析回退侧计入）；逐项比对由 gate 按 run.json.artifacts[] 派生的期望集完成（EV-134），schema 只管形状"
     }
   }
 }

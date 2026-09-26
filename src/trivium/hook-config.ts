@@ -390,18 +390,41 @@ export async function effectiveGuardLevel(projectRoot: string, agent: AgentDescr
  *
  * 此前一律写「（Hook 会拦下）」：对 glm（L2，尽力拦截）、codex / gemini（L2，没有 Hook）以及 Hook 配置不在场的
  * claude 都不成立（第 2 步薄冒烟核出）。说「会拦下」而实际不拦，比不说更糟——执笔者会放心去写。
+ *
+ * ## 事后能发现什么，按时点写实（EV-132 候选 ①）
+ *
+ * 此前三档共用尾句「越界……会在审批前复核与跑后漂移复算时暴露」，对闸门期不成立：审批前复核只核裁决与本轮
+ * 审查工件的 sha256、不看工作树，跑后复算只在审查收尾时做（M10b 第 4 步 3-4 实测：闸门期改业务文件后 approve 退 0）。
+ * 停点时审查已经结束，接下来的两个时点是**闸门期**与**审批后**，于是尾句拆两段：
+ *   · 前段三档共用：闸门期改业务文件事后无从发现，请审批前自己看 `git status`；
+ *   · 后段按档分：审批之后删改审查工件靠提交锚，而提交锚只在带 Hook 的会话里提交时才跑。
  */
 export function gateHoldNotice(g: EffectiveGuard): string {
-  const tail = '越界不会被事前拦下，会在审批前复核与跑后漂移复算时暴露。';
+  const gatePeriod = '此刻改业务文件，事后也没有机制会发现（审批前复核只核裁决与本轮审查工件，不看工作树），审批前请自己看一眼 `git status`。';
   /*
    * L1 档也登记超时这一例外（代码双审 r3 GLM-06）：官方文档「A timed-out … hook doesn't block the tool call」。
    * 本仓 Hook 是毫秒级脚本、每条挂 15 / 30 秒超时，正常碰不到，但「会拦下」不写成无例外的断言。
    */
   if (g.level === 'L1') return '在此期间不得修改业务文件（Hook 会拦下；Hook 超时即放行，本仓 Hook 是毫秒级、正常碰不到）。';
-  if (g.downgraded) return `在此期间不得修改业务文件——本项目的 Hook 配置不在场（登记 L1，本次按 L2 计），靠你自觉；${tail}`;
-  if (g.profile === 'l2-hook') return `在此期间不得修改业务文件——本载体的 Hook 只作尽力拦截、不兜底（L2），靠你自觉；${tail}`;
-  return `在此期间不得修改业务文件——本载体没有 Hook 拦截（L2），全靠你自觉；${tail}`;
+  if (g.downgraded) {
+    return `在此期间不得修改业务文件——本项目的 Hook 配置不在场（登记 L1，本次按 L2 计），靠你自觉；${gatePeriod}` +
+      '审批之后删改审查工件，要先重跑 `init` 恢复 Hook，再在会话里提交才会被核对。';
+  }
+  if (g.profile === 'l2-hook') {
+    return `在此期间不得修改业务文件——本载体的 Hook 只作尽力拦截、不兜底（L2），靠你自觉；${gatePeriod}` +
+      '审批之后删改审查工件，只有 Hook 生效的会话里提交时才会被核对。';
+  }
+  return `在此期间不得修改业务文件——本载体没有 Hook 拦截（L2），全靠你自觉；${gatePeriod}` +
+    '审批之后删改审查工件，本载体上没有机制会发现；要让提交锚补上，就在 Claude Code 会话里提交。';
 }
+
+/**
+ * L2 下业务写入越界的事后覆盖面（`describeGuard` 的 L1 降级与 l2-none 两档共用，EV-132 计划 r2 D7）。
+ * 此前写「靠审批前复核、_meta 唯一事实、防覆盖与跑后复算兜底」，把审批前复核列成业务写入越界的兜底——
+ * 与被修的停点尾句同族：它不看工作树，闸门期越界发现不了。
+ */
+export const L2_AFTER_THE_FACT =
+  '审查中的越界由跑后复算发现，闸门期改业务文件没有机制会发现，审查工件由审批前复核核本轮';
 
 /**
  * 护栏等级的人读文案（与入口资产注入段同源：都按 {@link GuardProfile} 分三档，r10 §3.1.3）。
@@ -411,7 +434,7 @@ export function describeGuard(agent: AgentDescriptor, g: EffectiveGuard): string
   const target = agent.hookConfigTarget?.path ?? '';
   if (g.downgraded) {
     return `L2（登记 L1，但 ${target} 里的 TriviumCode Hook 不在场，本次按 L2 计：写入没有事前拦截，` +
-      '靠审批前复核、_meta 唯一事实、防覆盖与跑后复算兜底；修复：trivium init 或 trivium hooks --agent ' + agent.id + '）';
+      `${L2_AFTER_THE_FACT}；修复：trivium init 或 trivium hooks --agent ${agent.id}）`;
   }
   switch (g.profile) {
     case 'l1-hook':
@@ -419,6 +442,6 @@ export function describeGuard(agent: AgentDescriptor, g: EffectiveGuard): string
     case 'l2-hook':
       return `L2（有尽力拦截的 Hook：${target}，不兜底——只在桌面端、已信任、主代理、matcher 覆盖、不超时时生效）`;
     case 'l2-none':
-      return 'L2（该载体没有 Hook 机制，写入没有事前拦截，靠审批前复核、_meta 唯一事实、防覆盖与跑后复算兜底）';
+      return `L2（该载体没有 Hook 机制，写入没有事前拦截；${L2_AFTER_THE_FACT}）`;
   }
 }

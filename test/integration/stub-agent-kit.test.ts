@@ -576,7 +576,13 @@ async function writeDisposition(fx: FixtureRepo, meta: RunMeta): Promise<void> {
     'role: claude',
     'kind: response',
     `run_id: ${meta.run_id}`,
-    `addresses: [${ids.join(', ')}]`,
+    // EV-134：addresses 列本轮审查文档的文件名（不是意见编号）。取自 run.json 登记的阶段根工件，
+    // 测试自己筛、不借 gate 的派生函数——否则这一格与被测判据同义反复
+    `addresses: [${meta.artifacts
+      .map((a) => a.path.split(path.sep).join('/'))
+      .filter((p) => path.posix.dirname(p) === `${TOPIC}/code` && !/-response-/.test(p))
+      .map((p) => path.posix.basename(p))
+      .join(', ')}]`,
     '---',
     '',
     '# 逐条裁决',

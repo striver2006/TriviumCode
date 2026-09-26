@@ -73,7 +73,9 @@ export const VENDOR_MODEL_FAMILY: Readonly<Record<AgentVendor, RegExp>> = {
  * （闸门期写拦截 + Stop 阻断 + 提交完整性锚），没有已知的结构性旁路。
  * L2：**不宣称** Hook 兜得住写入。可以没有 Hook（codex、gemini），也可以有尽力拦截的
  * Hook（glm：只在桌面端、已信任、主代理、matcher 覆盖、不超时时生效）；无论有无，
- * 都靠 approve 前置复核、`_meta` 唯一事实来源、`O_EXCL` 防覆盖与跑后漂移复算补偿。
+ * 都靠事后机制补偿，而它们**按时点覆盖不同**（EV-132）：审查中的业务写入越界由跑后漂移复算发现；
+ * 闸门期改业务文件没有机制会发现（approve 前置复核只核裁决与本轮审查工件，不看工作树）；
+ * 审查工件的完整性靠 `_meta` 唯一事实来源、`O_EXCL` 防覆盖与前置复核（只核本轮）。
  * 这是「任意 Agent 可为 Driver」的固有代价，如实分级，不伪装成同等级强制。
  */
 export type GuardLevel = 'L1' | 'L2';
@@ -312,6 +314,8 @@ export const AGENTS: readonly AgentDescriptor[] = [
      * 距 code 档只剩约 14% 余量；`runner` 对超时**不重试**，`failure_policy` 默认 strict。
      * 翻转前这只砸在显式选它的人身上，翻转后落在**每个人每次的默认路径**上。
      * 本仓库把 `plan` 调到了 1500s 所以不吃紧，但内置默认是给别人用的。
+     * EV-130（2026-09-26）起内置缺省模型由 qwen3.8-max 改为 qwen3.8-flash（max 在 M10b 第 4 步实测跑满 code 档 1200s）；
+     * 上面的 1038s 本来就是 flash 的读数，偏紧的判断不变。
      */
     defaultSelected: true,
     driverEnabled: true, // M10a 第 3 步启用

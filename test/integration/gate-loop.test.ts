@@ -246,6 +246,38 @@ test('裁决齐备并通过校验 → 闸门回 idle，两个 Hook 一起放行'
 });
 
 /*
+ * EV-133：run.json 收尾后不再更新——这是有意的不变量，不是漏写。
+ *
+ * 设计原文要 `--check` 通过时回写 `gate.adjudication_complete=true`（含 warnings），但①已提交的 run.json
+ * 受提交锚①保护，收尾后的回写会把下一次提交拦下；②`gate.warnings` 是运行期标注通道，会被回灌成 run_warning。
+ * 用户 2026-09-26 定取 ②：不回写、注明语义（types.ts `RunMeta.gate` 注释、run.v1 / run.v2 schema）。
+ * 以后有人想「顺手补上回写」，先在这里红，并看到上面两条理由。
+ */
+test('EV-133：--check 通过、--await-approval、approve 三步之后 run.json 都逐字节不变（不回写 adjudication_complete）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * 注释、schema 与设计宣称的是三条路径都不回写（代码双审 r1 CODEX-03 ≡ GLM-03：第一版只钉了 --check 一条）。
+   * 走命令 B 的 entry 才立得起审批停点；首次提交之前的这段窗口提交锚管不到，正是最需要用例钉住的时段。
+   */
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root, 'B');
+  await writeDisposition(fx.stageDir, runId);
+  const runJson = path.join(fx.stageDir, '_meta', `run-${runId}.json`);
+  const before = await fs.readFile(runJson, 'utf8');
+  assert.equal((JSON.parse(before) as { gate: { adjudication_complete: boolean } }).gate.adjudication_complete, false);
+
+  const steps: Array<[string, string[]]> = [
+    ['gate --check', ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]],
+    ['gate --await-approval', ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--session-id', SESSION]],
+    ['approve', ['approve', '--topic', TOPIC, '--stage', 'plan', '--session-id', SESSION]],
+  ];
+  for (const [name, args] of steps) {
+    const r = await cli(fx.root, args);
+    assert.equal(r.code, EXIT.OK, `${name} 应成功：\n${r.stdout}${r.stderr}`);
+    assert.equal(await fs.readFile(runJson, 'utf8'), before, `${name} 之后 run.json 被改写了`);
+  }
+});
+
+/*
  * AGY-02：停点不能靠 Driver 记得走完流程。
  *
  * 原先 `gate --check` 通过后一律落回 idle，把「推进到人工审批态」交给随后那一步

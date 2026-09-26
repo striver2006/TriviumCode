@@ -1,0 +1,112 @@
+✓ 工作树干净、基线全绿（9 个套件）
+  M1 ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=6）
+  M9 ✓ 咬住（fail=1）
+  M10 ✖ **没红**——该守卫对这条变异无效
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=1）
+{
+  "总数": 15,
+  "咬住": 14,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "EV-129：reason 尾句加回（审查中文案说两遍）⇒「Write 侧恰一次 / reason 不带后果句」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "EV-130：codex 缺省改回 qwen3.8-max ⇒「缺省为 -p qwen -m qwen3.8-flash」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "EV-132 D1：停点尾句改回「会在审批前复核与跑后漂移复算时暴露」⇒ 停点四档用例",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "EV-132 D7：describeGuard 事后覆盖面改回「靠审批前复核……与跑后复算兜底」⇒ D7 用例与两族否定断言",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "EV-132 D4：删掉新追加的 AGENTS.md 指纹 ⇒「已知指纹表覆盖当前版」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "EV-132 D6：只读失守文案改回「只排除了已跟踪文件被改」⇒ readonly_breach 用例的否定式锁",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "EV-133：--check 通过时回写 run.json ⇒「--check 前后 run.json 逐字节不变」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "EV-134：退回只核非空 ⇒「意见编号形态 ⇒ bad_front_matter」",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M9",
+      "desc": "EV-134：不核缺项 ⇒「少一份 ⇒ 红」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "EV-134：期望集把失败 / 超时侧也算进来 ⇒「单审降级只列幸存侧」",
+      "verdict": "✖ **没红**——该守卫对这条变异无效",
+      "fail": 0
+    },
+    {
+      "id": "M11",
+      "desc": "EV-134：期望集漏掉解析回退侧 ⇒「parse_fallback 侧计入」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "EV-134：只比 basename、不核路径前缀 ⇒「指到别的阶段 ⇒ 红」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "EV-134：期望集为空仍按严格判（r1 CODEX-02 之前的形态）⇒「期望集为空 ⇒ 只核非空」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "EV-134：不查重复 ⇒「重复 ⇒ 红」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "EV-134：期望集不排除裁决件（kind 非空也算）⇒「Driver 原稿、裁决件不算」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

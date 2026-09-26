@@ -122,6 +122,14 @@ test('运行中的闸门也加锁（就地模式下审查员正在读真实工�
   assert.match(r.reason, /双审进行中/);
 });
 
+test('EV-129：加锁的两支 reason 只陈述状态，不带「不得……」后果句（后果由调用方拼）', () => {
+  for (const state of ['running', 'awaiting_approval'] as const) {
+    const r = shouldLockWrites(entry({ state }), { currentSessionId: 'S-CURRENT', scope: 'session', ttlHours: 24 });
+    assert.equal(r.lock, true);
+    assert.doesNotMatch(r.reason, /不得/, `${state}：${r.reason}`);
+  }
+});
+
 test('其它会话的闸门 → 只提醒不加锁（RV-05：不锁死开发者的其它编辑）', () => {
   const r = shouldLockWrites(entry({ session_id: 'S-OTHER' }), {
     currentSessionId: 'S-CURRENT', scope: 'session', ttlHours: 24,

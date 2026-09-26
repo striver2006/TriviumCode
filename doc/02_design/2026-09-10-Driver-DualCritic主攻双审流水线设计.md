@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.44
+> - **当前版本**：v1.3.45
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -1029,7 +1029,7 @@ stage: plan
 role: claude            # = 当轮 Driver 的 Agent id，与文件名后缀同指一人（M9 第 6 步起可变，示例仍用缺省 Driver）
 kind: revised            # revised | response
 run_id: 20260910T142310Z
-addresses:               # 本件应答的审查文档（当前恒两份；【待实施 · M7b】起 1～3 份，随入选审核者数）
+addresses:               # 本件应答的审查文档文件名，不是意见编号；份数 = 本轮落了审查文档的入选侧数（1～3，失败侧不计），闸门按 run.json.artifacts[] 逐项比对（EV-134，v1.3.45）
   - 2026-09-10-登录重构-gemini.md
   - 2026-09-10-登录重构-glm.md
 ---
@@ -1098,10 +1098,16 @@ addresses:               # 本件应答的审查文档（当前恒两份；【�
   "deny_paths": ["plan/2026-09-10-登录重构-glm.md"],
   "guard": {"readonly_breach": false, "peer_artifact_read": false, "peer_deny_applied": {"gemini": true, "glm": false}, "forged_role_file": false},
   "artifacts": [{"path":"plan/2026-09-10-登录重构-gemini.md","sha256":"…"}],
-  "gate": {"adjudication_complete": true, "state": "awaiting_approval"},
+  "gate": {"adjudication_complete": false, "state": "review_done_awaiting_disposition"},
   "status": "success"
 }
 ```
+
+> **`gate` 两个字段是运行期快照，收尾后不再更新**（EV-133，v1.3.45）。上面是实现里真实出现的组合：收尾把 `state` 置为
+> `review_done_awaiting_disposition`（失败轮为 `failed`）；`adjudication_complete` 只在纯文档跳过轮（`skipped_doc_only`，没有意见要裁决）为 `true`，
+> 其余一律 `false`——`gate --check` 通过、`--await-approval`、`approve` 都**不回写** run.json。这是有意的不变量：已提交的 run.json 受提交锚①保护
+> （HEAD 版本不是 `running` 即拦改动），收尾后的回写会把下一次提交拦下；`gate.warnings` 已是运行期标注通道，会被回灌成 `run_warning`。
+> 裁决是否齐备以 `gate --check` 的实时结果为准，闸门实时状态看 `trivium status`，审批事实看 `task.json.approvals[]`。v1.3.44 及以前本示例写 `true` / `awaiting_approval`，那个组合从未出现。
 
 `prompt_hint` 与 `task_goal` 是两回事，不可互相顶替（RV-19）：前者是「本次审查焦点」，
 进 BRIEF 第 2 段；后者是「这次要达成什么」，进第 4 段（§9.4）。`task_goal` 记录本次实际
@@ -1365,7 +1371,7 @@ SKILL.md 要求执行者把正文整段放进**一个**单引号参数、旗标�
 ```markdown
 ---
 name: dual-review-plan
-description: 对已有计划做 Antigravity + ZCode 背靠背双审，并产出逐条裁决的修订计划（命令 B）
+description: 对已有计划做背靠背双审，并产出逐条裁决的修订计划（命令 B）
 argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--plan-file <路径>] [--model-gemini <slug>] [--model-glm <id>] [--profile <档位>] [--only <一侧>] [--allow-single]
 disable-model-invocation: true      # 只允许人用 / 触发，Claude 不得自行发起双审
 allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
@@ -1399,7 +1405,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 
 #### 7.4.1 多载体入口资产与安装【已实现 · M10b 第 2 步】（v1.3.43 并入；演进设计 §7.5 安装目标表、§10.2 渲染落点的修正落本文，方案 A）
 
-上面的示例是 **claude 目标**那一份（`description` 里写死「Antigravity + ZCode」是遗留措辞，BACKLOG EV-131）。M10b 起四家各有一份，由同一份源渲染：
+上面的示例是 **claude 目标**那一份（`description` 原写死「Antigravity + ZCode」，v1.3.45 已去实名，与命令 C / D 同口径，EV-131；渲染断言「命令描述与一级标题不含已登记 Agent 的产品名」守着它）。M10b 起四家各有一份，由同一份源渲染：
 
 - **单源渲染**：源在 `skills-src/`（`commands/*.contract.md` 命令契约 + `partials/` 片段），`npm run render` 产出 claude 目标 `skills/dual-*/`（拍平布局）与另三家 `skills/dual-critic/entry/<agent>/dual-*/`。
   调用写法的唯一来源是注册表 `entryInvocation`，载体 yaml 再写 invocation 即报错；护栏段按载体的等级档注入三种之一（`l1-hook` / `l2-hook` / `l2-none`，见 8.5）。
@@ -1640,8 +1646,9 @@ stateDiagram-v2
 > **名义 Driver 的等级按注册表判定**，与实际执笔的载体无关（第 4 步 3-3：gemini 名义、实为 Claude 会话，读数 L2）。
 >
 > **补偿的覆盖面（v1.3.43，M10b 第 4 步 3-4 实测）**：补偿 ① 只核裁决与本轮登记工件、**不看工作树**；补偿 ③ 只在审查运行收尾时比「送审快照 vs 当时工作树」。
-> 所以**审查进行中**的越界由 ③ 发现（改到被审 diff 判 `subject_drift` 整次作废；改无关文件判 `unrelated`，缺省 `on_drift: warn` 只告警），
-> **闸门期**的越界两道都不发现——3-4 里闸门期改业务文件后 `approve` 退 0 放行。停点话术尾句与入口资产 L2 段「越界……会在审批前复核与跑后漂移复算时暴露」对闸门期不成立，登记 BACKLOG EV-132。
+> 所以**审查进行中**的越界由 ③ 发现（改到被审内容判 `subject_drift` 整次作废；改到 `--context` 或 diff 涉及的文件判 `related`，缺省 `on_drift_related: fail`；改别的文件判 `unrelated`，缺省 `on_drift: warn` 只告警）。
+> ③ 比对的是工作树：`workTreeHash` 走临时索引 `add -A`，已跟踪文件与**未被忽略的**未跟踪文件都在内，**看不见被 `.gitignore` 忽略的文件**、归档根与 `.trivium/`、探针登记的 scratch 路径（v1.3.45 更正：此前本仓注释与计划原稿写「只看已跟踪文件」，与实现相反）。
+> **闸门期**的越界两道都不发现——3-4 里闸门期改业务文件后 `approve` 退 0 放行。**v1.3.45 起文案按时点写实**（EV-132 候选 ①）：停点尾句（`gateHoldNotice`）写明闸门期无机制兜底、审批之后看由谁提交；入口资产 L2 段（`l2-notice`）按审查中 / 闸门期 / 审查工件三格写；命令 A 的 `run-enforce` 按护栏档分写「裁决未齐就收工」（l2-none 无机制拦，l2-hook 尽力 Stop 拦截）；`describeGuard` 与 `driver.snippet` 同步。给审批前复核补工作树比对是候选 ②，仍待办。
 > codex 真载体上 L2 实际靠 Driver 遵守入口资产条文：3-4 的两次越界请求（审查中、闸门期写无关业务文件）与一次改 `_meta/` 的请求，都被 Driver 依条文拒绝。
 > **R-e 自触发边界**：入口资产预批准了 `Bash(.trivium/bin/trivium:*)`，L2 Driver 可以自写裁决件再自跑 `approve`——复核只保「裁决齐备」、不保「审批来自人」（`approval.ts` 头注释），与 R18 并列。
 > **内容层替换看不见（R-r）**：Hook 与预检只做存在性检查——wrapper 内容被替换、全局安装副本被改、配置段里的命令或 matcher 被改，都看不见；如实登记为边界，不宣称能防。
@@ -1743,6 +1750,8 @@ Hook 行为约定：
 2. 定位本轮裁决件（plan/bug → *-revised-claude.md；code → *-response-claude.md）
    缺失 → FAIL(missing_disposition)
 3. 解析裁决件 front-matter：schema/topic/stage/kind/addresses 必须匹配本轮
+   （addresses：每项指向本轮某个有效侧的审查文档、不重复、份数 = 有效侧数；有效侧 = status ∈ {ok, parse_fallback}，
+    期望集取自 run.json.artifacts[]；期望集为空时只核非空并告警 addresses_unchecked——v1.3.45，EV-134）
 4. 解析裁决表 → 映射 DEC[id] = (裁决, 理由, 落点)
 5. 校验：
    a. IDS - DEC.keys ≠ ∅            → FAIL(missing_findings, 列出编号)
@@ -1754,7 +1763,7 @@ Hook 行为约定：
    f. 接受 且 落点为空               → FAIL(missing_action)
    g. 双方共同 blocker 被「驳回」     → joint_blocker_policy=warn: WARN + task.json.disputed=true /
                                        hard 且 location 精确相同: FAIL(joint_blocker_rejected)
-6. 通过 → 写 run 元数据 gate.adjudication_complete=true（含 warnings[]），返回 0，
+6. 通过 → 返回 0（不回写 run 元数据：gate.adjudication_complete 是运行期快照，见 6.7 注记，v1.3.45 / EV-133），
    并按 run 元数据记录的 entry 分流闸门：
      entry = B/C/D → 原子迁入 awaiting_approval（这三条命令的停点就是人工审批，
                      放回 idle 等于把停点丢掉，闸门写锁与 hook-stop 都不再守得住）
@@ -1765,7 +1774,7 @@ Hook 行为约定：
 
 **【待实施 · M7b】裁决完整性校验的 N 方化**：上述算法中「两侧意见的并集」与
 「`addresses` 恰两份」的口径，改为按 `run.json.critics_selected` 的 **N 侧**计算，
-`addresses` 的基数随之变为 1～3。
+`addresses` 的基数随之变为 1～3。（实现到 v1.3.44 为止只核了非空，这一格名存实亡；v1.3.45 起按有效侧逐项比对，EV-134，见上面第 3 步。）
 
 **这一条是 R-3 的正确性底线，不是措辞问题**：M7b 前的实现里存在按
 `['gemini','glm']` 字面循环收集意见的代码路径——**第三家审核者的意见对 gate 整体不可见，
@@ -2608,10 +2617,17 @@ profiles:
   default:                       # 日常
     gemini: {plan: gemini-3.8-flash-high, code: gemini-3.8-flash-high, bug: gemini-3.8-flash-high}
     glm:    {plan: GLM-5.3,               code: GLM-5.3,               bug: GLM-5.3}
+    codex:  {plan: qwen3.8-flash,         code: qwen3.8-flash,         bug: qwen3.8-flash}   # v1.3.45 起（EV-130）
   flash:                         # 省时省配额：只把 GLM 侧换成 Flash
     gemini: {plan: gemini-3.8-flash-high, code: gemini-3.8-flash-high, bug: gemini-3.8-flash-high}
     glm:    {plan: GLM-5.3-Flash,         code: GLM-5.3-Flash,         bug: GLM-5.3-Flash}
+    codex:  {plan: qwen3.8-flash,         code: qwen3.8-flash,         bug: qwen3.8-flash}
 ```
+
+> **codex 缺省（v1.3.45，EV-130 候选 ①）**：`agents.codex.profile: qwen` + 三阶段 `qwen3.8-flash`，即 `-p qwen -m qwen3.8-flash`。此前 default 档是 `qwen3.8-max`，
+> M10b 第 4 步实测它在 plan 档用到 83%、code 档跑满 1200s 超时。连带三条：①**已 init 的项目不受影响**——`init` 把整份缺省冻进项目配置，要换就手改该文件三格或每次 `--model-codex`；
+> ②缺省钉在 qwen 家族，新项目需要有 qwen 额度，缺了会在运行期才撞到端点失败；③default 与 flash 两档在 codex 侧同值，`--profile flash` 不再换 codex 的模型（qwen 家族只有 max / flash）。
+> 这三条只写在代码注释、本段与 BACKLOG，**不进** QUICKSTART / RUNBOOK（那等于候选 ③，未定）。示例上面两段的 claude 行略去。
 
 两档的 Gemini 侧相同，差异收敛到「GLM 侧用不用 Flash」这一个维度。档位级 `effort`
 字段已移除：它在实现里没有读取点，且 slug 自带 `-high/-medium/-low` 后缀时
@@ -2969,7 +2985,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | AC-18 模型异构默认与覆盖可见 | 默认不与当轮 Driver 厂商名义族同族（claude 为 Driver 时即非 Claude 系；启发式，见 11.5）；覆盖写入元数据与文档头 | 默认跑一次 + 显式覆盖跑一次，检查元数据 |
 | AC-19 等待期进度可读可预期 | `--wait` 返回结构化进度字段 + 单行摘要；启动播报 | 跑一次真实双审，核对每次等待返回与开场播报 |
 | **AC-20** Codex 真实审查（**至少两个模型家族各一次**）· **【已达成 · M8 第 4 步】**（2026-09-16，`qwen` 与 `deepseek` 两家族各一次真实代码审；证据链与三条达成边界见 [验收报告](../05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md)） | 证据链完整 + 沙箱负对照（**带正对照**） | **逐分量断言，不是「二元组任一分量不同即可」**：两次运行的 ① `model_provider` 互不相同、② `model_effective` 互不相同、③ 各自与本次**请求**的模型一致、④ 两侧 provider 的 `base_url`（**归一到 host**）互不相同——**任一侧 host 取不到（`null`）时本分量记「无法校验」，不得据此宣布 AC-20 达成**（本机 `gpt` profile 就是这一格：内置 provider 无 `[model_providers.*]` 段）；`project_reads` 达该族生效下限（`command-trace` 折减后）；沙箱负对照**须含正对照**——同一次调用里：①那条写命令**确实进了轨迹**、②**它自己的输出显示写入被拒**、③项目内哨兵 A 未创建。缺了①②，A 的缺席证明不了任何事（「被拒」与「没尝试」产出相同观测）。**注**：本条初稿写的是「允许写路径的 B 存在」，**已由 M8 第 4 步实跑证伪**——`-s read-only` 把整个文件系统置为只读，不存在「允许写的路径」，按那个形态执行本条恒不可满足（见 3.6 的再更正与 M6 报告 P-C2）；`profile_requested` 如实入档而生效模型仍以回读为准 |
-| **AC-21** 任一 Agent 作为 Driver 走通命令 B · **【已达成 · 子句 ③ M10a + 子句 ① ② M10b（2026-09-26，v1.3.43）】**（③审批前的裁决完整性由编排器无条件复核兜住——M10a 第 3 步；①由 M10b 第 4 步 3-5 glm 真载体走通命令 B 验收；②由 QUICKSTART §5.2 与按当轮 Driver 措辞的停点话术交付。达成边界：gemini 仅名义 Driver、codex 真载体走的是命令 C；停点尾句对闸门期的「事后暴露」不成立，BACKLOG EV-132；见 16.1 M10b 行。M10a 时点原文「①②均待 M10b，不得据此整体转为达成」保留为记录） | 四 Driver 各跑一轮（计划期口径；实跑见第三列，不是四家各跑一轮命令 B） | 工件命名 / 闸门 / 裁决语义与本文一致（claude/zcode 真实，codex/gemini 夹具级——计划期口径，「夹具级」与「真载体」是两个维度，codex 两者兼有；实跑：claude plan + code 夹具、gemini 名义 plan 夹具、codex 真载体 code 夹具、glm 真载体 plan，M10b 第 4 步报告 §1.1～§1.5） |
+| **AC-21** 任一 Agent 作为 Driver 走通命令 B · **【已达成 · 子句 ③ M10a + 子句 ① ② M10b（2026-09-26，v1.3.43）】**（③审批前的裁决完整性由编排器无条件复核兜住——M10a 第 3 步；①由 M10b 第 4 步 3-5 glm 真载体走通命令 B 验收；②由 QUICKSTART §5.2 与按当轮 Driver 措辞的停点话术交付。达成边界：gemini 仅名义 Driver、codex 真载体走的是命令 C；停点尾句对闸门期的「事后暴露」不成立，BACKLOG EV-132——v1.3.45 已按时点改写文案（候选 ①），闸门期仍无机制兜底（候选 ②待办）；见 16.1 M10b 行。M10a 时点原文「①②均待 M10b，不得据此整体转为达成」保留为记录） | 四 Driver 各跑一轮（计划期口径；实跑见第三列，不是四家各跑一轮命令 B） | 工件命名 / 闸门 / 裁决语义与本文一致（claude/zcode 真实，codex/gemini 夹具级——计划期口径，「夹具级」与「真载体」是两个维度，codex 两者兼有；实跑：claude plan + code 夹具、gemini 名义 plan 夹具、codex 真载体 code 夹具、glm 真载体 plan，M10b 第 4 步报告 §1.1～§1.5） |
 | **AC-22** 1～3 审核者动态生效 · **【部分达成 · M7b 第 5 步 + M8 第 3 步】**（选 1 / 2 侧 2026-09-14 实跑；选 3 侧自三家启用、D4-4 默认即三侧起可真跑；M9 起第四家 claude 可入选，须 `--driver` 取非 claude。「三个编号前缀都对闸门可见」是**逐轮核对项**，故不记完全达成——状态位自 M7b 起失实，M9 第 7 步改准） | 1 / 2 / 3 审各跑一轮 | `critics_selected` 如实；**1 审无降级标记**（`review_mode: full`、无 `degraded_reason`）；3 审三份审查齐备且 gate 差集覆盖三个前缀 |
 | **AC-23** 档位与精确覆盖生效可核对 · 【待实施 · M11】 | 两种发起方式各一次 | `--tier-<id> high` 与 `--model-<id> … --effort-<id> …` 的 `model_effective` / `effort_effective` / `tier_source` 回读一致 |
 | **AC-24** 新增 Agent 接入套件接入、核心流程零改动 · **【已达成 · M7b 第 6 步】** | 桩 Agent 夹具全链路 | 断言①overlay 脚本**实际触及的路径集** ⊆ 套件白名单（不是夹具树自比，那是同义反复；且自报清单须与**全树哈希差集**逐项相等，白名单每条还须被真正用到）；断言②`tsc --noEmit` → `preflight` → `topic resolve` → `review --start/--wait` → `gate --check` → `gate --check-artifacts` 在重打包产物上真实通过；断言③三侧产**三对**退化度。落点 `test/integration/stub-agent-kit.test.ts`。**证明边界**：桩不触发真实适配器路径（vendor 旗标、轨迹解析、effort 透传），也不触发第三家的探活与 CLI 版本校验（仍按厂商写死，EV-05），且**预检是以 `--skip-auth-check` 跑通的**。**对真检验已随 M8（codex，2026-09-16）与 M9（claude，2026-09-20）完成**，EV-05 的两项 preflight 写死已于 M8 第 3 步收敛。**本条达成 ≠ FR-31 达成**：它以桩为口径，不足以完整验收 FR-31 的「核心流程零改动」 |
@@ -3056,7 +3072,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
   收紧后的误杀面：`rm -rf <项目内、实际不存在的目录>` 会判写事件——它是**可达**的
   （`-f` 让目标不存在时也退 0，穿过「只喂成功命令」的契约）。
   排障指纹**只能单向用**：该形态必然 `snapshot.drift=false`，但反过来不成立——
-  `judgeDrift` 是 git 树比对、**只看已跟踪文件**，`dist/` 这类被 ignore 的目录
+  `judgeDrift` 是 git 树比对、**看不见被 `.gitignore` 忽略的文件**（未忽略的未跟踪文件在内，v1.3.45 更正），`dist/` 这类被 ignore 的目录
   被真实递归删除同样 drift=false。drift=false 时还须核目标是否真实存在、
   是否被 ignore；直接据此判「误报」会把真失守降级。
   **这条口径的落点有四处，不是三处**（r3 CODEX-r3-01）：`base.ts` 的收紧注释、
@@ -3349,7 +3365,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 | :--- | :--- | :--- | :--- | :--- |
 | R16 | Codex CLI 版本漂移（事件流 / 旗标随版本变，同 R2 性质） | 适配层易碎 | 全参数走探针 + 录制样本契约回放 + 预检校验关键 flag + 版本入档 | 3.6、11.1 |
 | R17 | 三审成本 = 双审 × 1.5（配额与等待心智） | 用户绕过流程 | **默认三侧（D4-4）+ 显式降回两侧的路径**（`--critics` 或 `review.default_critics`）；档位分级延续；代价四条写在 13.1.1 与注册表 `defaultSelected` 的说明里 | 11.5、18.1 #14 |
-| R18 | **L2 Driver 无事前写拦截**（codex / gemini 没有 Hook；glm 的 Hook 只作尽力拦截——v1.3.43 起 glm 归 L2） | 闸门期业务文件可被改，事后才发现（v1.3.43 更正：**闸门期**的改动事后两道都不发现，只有审查进行中的改动会被跑后复算发现，见 8.5「补偿的覆盖面」、BACKLOG EV-132） | `approve` 前置复核（【已实现 · M10a 第 3 步】；只核本轮、不查未登记件混入、不保审批来自人，见 8.4）+ 归档 `_meta/` 唯一事实 + `O_EXCL` 防覆盖 + 跑后漂移复算；**护栏差异在 QUICKSTART 明示**（✅ M10b 第 5 步：QUICKSTART §5.2 与闸门停点话术；R-e 自触发边界与 R18 并列，见 8.5） | 8.4、8.5 |
+| R18 | **L2 Driver 无事前写拦截**（codex / gemini 没有 Hook；glm 的 Hook 只作尽力拦截——v1.3.43 起 glm 归 L2） | 闸门期业务文件可被改，事后才发现（v1.3.43 更正：**闸门期**的改动事后两道都不发现，只有审查进行中的改动会被跑后复算发现，见 8.5「补偿的覆盖面」、BACKLOG EV-132；v1.3.45 起停点与入口资产文案按此写实） | `approve` 前置复核（【已实现 · M10a 第 3 步】；只核本轮、不查未登记件混入、不保审批来自人，见 8.4）+ 归档 `_meta/` 唯一事实 + `O_EXCL` 防覆盖 + 跑后漂移复算；**护栏差异在 QUICKSTART 明示**（✅ M10b 第 5 步：QUICKSTART §5.2 与闸门停点话术；R-e 自触发边界与 R18 并列，见 8.5） | 8.4、8.5 |
 | R19 | 四 Agent 配置面爆炸，v1→v2 迁移踩旧项目 | 旧项目升级即坏 | v1 全兼容读取（内存迁移）+ `init` 一次性改写 + 迁移夹具测试 | 13.1.1 |
 | R20 | Antigravity Driver 入口缺命令载体（无参数系统） | 四条命令语义靠口述，易走样 | M6 定形；最弱退路 = 协议片段契约 + 手动 CLI 调用；如实标注成熟度 | 8.5、18.1 #16 |
 | R21 | **N 方禁读矩阵手工维护漏项** | 隔离破洞 | deny 集合程序生成 + **禁止手工枚举**（16.2 纪律 7）+ `registry-parity` 测试 | 10.2 |
@@ -3393,6 +3409,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.45** | 2026-09-26 | **留痕与文案小修（EV-129、EV-130 ①、EV-131、EV-132 ①、EV-133、EV-134）。** 计划 `.reviews/留痕与文案小修/plan/`（r1 计划双审 9 条全接受，r2 定稿 `0bf81e6`）。**一、EV-134（唯一改判定的一条）**：§7 第 3 步 `addresses` 由只核非空改为逐项比对——每项指向本轮有效侧（status ∈ {ok, parse_fallback}）的审查文档、不重复、份数 = 有效侧数，期望集取自 `run.json.artifacts[]`，期望集为空时只核非空并告警；§6.6 示例注释与 M7b 注记同步。**二、EV-133**：§7 第 6 步不再写「回写 `adjudication_complete`」，§6.7 示例改为实现里真实出现的组合并加注记（run.json 收尾后不再更新是有意的不变量）。**三、EV-132 ①**：8.5「补偿的覆盖面」按实现写实漂移复算的覆盖面（含未忽略的未跟踪文件，看不见被忽略的文件——更正「只看已跟踪文件」），并登记停点尾句、`l2-notice`、`run-enforce`、`describeGuard`、`driver.snippet` 按时点改写；15.3 AC-21 与 R18 两行注明文案已修、候选 ② 待办。**四、EV-131**：7.4 示例 `description` 去实名，7.4.1 括注改为已修。**五、EV-130**：11.5 profiles 示例补 codex 行与缺省注记。EV-129（写锁文案去重）只改实现，本文无契约文字。**六、代码双审 r1**（run `20260926T081442Z`，7 条全接受）：CODEX-01 核出 EV-79 口径段里「`judgeDrift`……只看已跟踪文件」的同一失实句，一并更正 |
 | **v1.3.44** | 2026-09-26 | **EV-136：glm 认证探活改走审查运行的选模路径。** 探活原以真实 HOME 拉起、注入个人 provider 配置，探的是个人缺省模型；2026-09-26 个人缺省指向已停用的 provider，预检连续在「ZCode 已认证」退 69，拦下所有含 glm 的审查，而审查要用的 GLM 订阅完好。改为与 `run()` 同形（副本 HOME、副本支不注入个人配置、两支都设落点根、临时目录用完即删），指纹带上探活模型，详情写明探的是哪条路径。用户定「先实施再代码双审」（它拦着审它自己的那一轮）；代码双审 r1（run `20260926T051412Z`，三侧 `approve-with-nits`，11 条全接受）后补：副本源损坏落成可读失败、退路支也设落点根、家目录归一 `~`、置首挪不动与副本支 `model_config_missing` 如实措辞。只改 11.3 第 7 条一处（本表外无契约文字变更）；残余登记 BACKLOG EV-136 |
 | **v1.3.43** | 2026-09-26 | **M10b 第 5 步：纪律 6 回溯（M10b 份额），M10b 五步收口（纯文档，零业务代码改动）。** 本版是**状态翻转与并入登记**，契约文字只登记已落地的行为（第 2、3 步随代码提交的行为按纪律 6b 应在开工前并入，实际在本步补记，偏离如实登记于各段「M10b 第 2 步的变化」）。清单见第 5 步报告 `doc/05_testing/REPORT_2026-09-26_m10b_step5.md`。**一、16.1**：M10b 行翻「✅ 已达成」，补达成指针（第 1～5 步）、EV-82 的 T1 / T2 / T3（T2 判据在证据产生之后由用户拍板 D-1 修订，原断言不成立）、**五条达成边界**（真载体只覆盖 glm 命令 B 与 codex 命令 C、gemini 仅名义；L2 在 codex 上无事前拦截、靠 Driver 遵守条文；闸门期越界事后两道都不暴露 EV-132；参数转抄只核过两轮；构建标识一格未在本仓内核）；「完整前置清单以 BACKLOG 为准」改指 M10b r5 §3.2；「D4」按决策编号对照改「B1」；路线图 M10b 打 ✅；文档头现状段同步。**二、8.5 引言块翻为已实现**：Hook 多目标（注册表 `hookConfigTarget`、ZCode 形态、`hooks --agent`、备份只在真正写入时）；等级表与 L2 定义按 M10b r10 §3.1.1 改写（L1 = Hook 兜得住，L2 = 不宣称兜得住；glm 由「探针通过时 L1」改为 L2、写明 ZCode Hook 五个生效前提与写工具全集完备性不保证）；有效等级判定与明示（B1、四档停点话术、名义 Driver 按注册表判定）；**补偿的覆盖面**（3-4 实测：审查中越界由跑后复算发现，闸门期越界两道都不发现，EV-132）；R-e 自触发、R-r 内容层替换；Claude Code Hook 超时即放行与子代理会过 Hook（文档陈述）；**L2 的已知边界：参数经模型转抄**；zcode Hook 四态与已 init 项目的 gitignore 两行。**三、7.1 / 7.4**：选侧规则补 D-4（缺省集合先减当轮 Driver），并注明 EV-125 之后命令 A 也收 `--critics`；`--driver` 段、`topic claim` 段末追加「M10b 第 2 步的变化」；新增 **7.4.1 多载体入口资产与安装**（单源渲染、四家安装目标与调用写法表、`entry/` 不进运行时根、`~/.agents/skills` 禁装与同名症状、参数转抄、提到即注入）；「待实施 · M10b / M11」标记改为 M11。**四、其余**：术语表 Driver 行、R-2、1.4 交付范围、目录树与安装命令一句、3.3 追加「M10b 诊断」段（H0 / H2 排除、H3 层级命中成因改写、09-21 失效按 r7 §2.2 句式、未走形态换源）、13.1.1 `default_critics` 行补 D-4、8.4 注记「`--agent` 不进判定链」核对成立、§6 工件集表后加 N 侧口径注记（表内原文不改）、7.4.1 登记「工具词汇按 Claude Code 写」的已知边界、15.3 FR-28（仍部分达成）/ AC-21（已达成、含边界）、18.1 #16 **拍板 skills 优先**（M10b 第 1 步实测，用户选 C 路径落 A）、R18（glm 归 L2、闸门期更正、QUICKSTART 明示已交付）。**五、§24 台账**：24.1 两行转绿，新增「演进设计 §7.5 / §9.3 / §10.2 的 M10b 修正（方案 A）」一行——**以下修正落本文，演进设计正文冻结**（其 §14 表只回填状态列）；24.2 的 PRD v1.4.8、LLD v1.1.3、PROTOCOL、QUICKSTART、RUNBOOK、MANUAL v1.0.3、CASE（S6 剧本）、AGENTS、仓库根 `CLAUDE.md`（核对不改正文）、`skills/` 资产、`.reviews/README.md`、README、两份目录 README 同步并入 |
 | **v1.3.42** | 2026-09-25 | **EV-125：命令 A 接受 `--critics` / `--only` / `--allow-single`，计划审与代码审两轮共用同一组；命令 A 的预检挪到解析之后**（计划 `.reviews/EV-125-命令A支持选侧旗标/`：计划双审 1 轮 13 条全部接受，r2 定稿）。**一、缺口**：M10b 第 2 步取「缺省集合减当轮 Driver」让非 claude Driver 的命令 A 能跑通，但命令 A 拒收选侧旗标（GLM-02），于是非 claude 当 Driver 时 claude 永远入不了选、按轮控制侧数只能改配置；`--allow-single` 不在拒绝之列，却被 S2 / S6 的交接静默丢弃。**二、改动**：7.1 撤销拒绝段并登记撤销理由与残余（S6 漏传 `critics` 时两轮可能异侧，靠开场播报与两份留痕的 `critics_selected` 发现）；命令表 `/dual-run` 行补齐选侧旗标并改掉 `--model-gemini` / `--model-glm` 的旧口径；8.2 状态机补 S0.5 解析、原 S0 预检改为解析之后的 S0.6——`review --start` 只查当阶段 slug 且不探活，显式加进来的一家不在开跑前查就要到 S6 才暴露。**三、不改**：`critics.ts` 的判定与缺省减 Driver、`review --start`、B / C / D 的预检次序（同形缺口代价低，登记 BACKLOG）。 |

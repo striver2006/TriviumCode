@@ -26,7 +26,9 @@
 > `driver` 同口径。**不是「enum 四值」**：那等于在 schema 里抄第二份 id，第五家登记时必漏改。
 > 文件名后缀与 `role` 必须同指一人，闸门两头都比对，不一致即 `bad_front_matter`。
 >
-> **`addresses` 基数 1～3 已随 M7b 的 `--critics` 生效**（`minItems: 1`，上限即入选审核者数）。
+> **`addresses` 基数 1～3 已随 M7b 的 `--critics` 生效**（`minItems: 1`）。**份数等于本轮落了审查文档的入选侧数**
+> （status ∈ {ok, parse_fallback}，失败侧不计），每项是审查文档的文件名（或以 `<主题>/<阶段>/<文件名>` 结尾的路径）、**不是意见编号**；
+> 闸门按 `run.json.artifacts[]` 派生期望集逐项比对（设计 v1.3.45 / EV-134；此前只核非空）。
 > **意见编号前缀已是四值**（`CODEX-` 随 M8、`CLAUDE-` 随 M9；取值由注册表派生、schema 不枚举）；
 > `--tier-*` / `--effort-*` 等旗标**尚未生效**，随 M11 并入本文（v1.3.43 前写「M10b / M11」；M10b 份额是四家入口，已生效，见上）。
 > `--critics` 当前可选四家：codex / gemini / glm 为缺省集合（默认即三侧，D4-4），

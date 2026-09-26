@@ -1435,6 +1435,16 @@ export interface RunMeta {
     unattributed_drift_files?: string[];
   };
   artifacts: { path: string; sha256: string }[];
+  /**
+   * `adjudication_complete` 是**运行期字段**（EV-133）：只在本轮没有意见要裁决（纯文档跳过）时置 true，
+   * 其余一律 false，`--check` 通过、`--await-approval`、`approve` 都**不回写**。
+   *
+   * 不回写是有意的不变量，不是漏写：①run.json 收尾后不再更新——已提交的 run.json 受提交锚①保护
+   * （`hooks.ts` `immutableChangeReason`，HEAD 版本不是 running 即拦改动），任何收尾后的回写都会把下一次提交拦下；
+   * ②`warnings` 已是运行期标注通道，`loadRoundReviews` 把它当 `run_warning` 回灌进每次 `--check`，
+   * 照旧设计把 `--check` 的告警写进来会重复上报。裁决是否齐备以 `gate --check` 的实时结果为准，
+   * 审批事实以 `task.json.approvals[]` 为准。同类的「收尾后不再更新」还有 EV-128（`review --cancel`）。
+   */
   gate: { adjudication_complete: boolean; state: string; warnings?: string[] };
   status: 'running' | 'success' | 'failed' | 'cancelled';
   skipped?: boolean;

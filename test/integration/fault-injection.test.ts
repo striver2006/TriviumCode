@@ -244,7 +244,8 @@ test('归档外被审对象（--plan-file doc/…）不登记，run.json 与 gat
     [
       '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
       'role: claude', 'kind: revised', `run_id: ${meta.run_id}`,
-      'addresses:', '  - AGY-01', '  - GLM-01',
+      // EV-134：列审查文档文件名，不是意见编号
+      'addresses:', `  - ${today()}-${TOPIC}-gemini.md`, `  - ${today()}-${TOPIC}-glm.md`,
       '---', '',
       '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
       '| :--- | :--- | :--- | :--- | :--- | :--- |',
@@ -795,7 +796,8 @@ test('停点话术：调用写法与「不得修改业务文件」都按当轮 D
       [
         '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
         `role: ${drv.id}`, 'kind: revised', `run_id: ${meta.run_id}`,
-        'addresses:', '  - AGY-01', '  - GLM-01',
+        // EV-134：列审查文档文件名，不是意见编号
+        'addresses:', `  - ${today()}-${TOPIC}-gemini.md`, `  - ${today()}-${TOPIC}-glm.md`,
         '---', '',
         '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
         '| :--- | :--- | :--- | :--- | :--- | :--- |',

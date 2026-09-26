@@ -27,6 +27,12 @@ test('内置默认配置本身合法', () => {
   assert.deepEqual(validateConfig(defaultConfig()), []);
 });
 
+test('EV-130：codex 缺省为 -p qwen -m qwen3.8-flash（max 在 M10b 第 4 步实测跑满 code 档 1200s）', () => {
+  const cfg = defaultConfig();
+  assert.equal((cfg.agents.codex as { profile?: string } | undefined)?.profile, 'qwen');
+  assert.deepEqual(cfg.profiles['default']?.codex, { plan: 'qwen3.8-flash', code: 'qwen3.8-flash', bug: 'qwen3.8-flash' });
+});
+
 test('gate: "off" 用标量顶掉整个对象 → 退 69 并点名', async () => {
   const root = await projectWith('schema: trivium.config.v1\ngate: "off"\n');
   await assert.rejects(loadCtx({ cwd: root, allowUninitialized: true }), (e: { code?: number; message: string }) => {
