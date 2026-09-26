@@ -1,0 +1,177 @@
+{
+  "targets": [
+    "src/trivium/cli.ts",
+    "src/trivium/worktree-summary.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/review.ts",
+    "src/trivium/hook-config.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/worktree-summary.test.js",
+    "dist/test/test/unit/hook-config.test.js",
+    "dist/test/test/contract/entry-render-parity.test.js",
+    "dist/test/test/integration/gate-loop.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "摘要取不到时让 approve 退非零 ⇒ W5 / W7（摘要失败不得影响退出码）",
+      "file": "src/trivium/cli.ts",
+      "find": "    summaries[stage] = s;\n",
+      "replace": "    summaries[stage] = s;\n    if (!s.available) return EXIT.GATE_BLOCK;\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "去掉归档根 / .trivium 排除 ⇒ 单测 3",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "      .filter((c) => !isOwn(c.path))\n",
+      "replace": "      .filter((c) => c.path !== '' || isOwn(c.path))\n",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "比对改成相对 HEAD（闸门期提交的改动看不见）⇒ 单测 4",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "await diffTreesNameStatus(i.projectRoot, baseline, current, { timeoutMs: remaining() })",
+      "replace": "await diffTreesNameStatus(i.projectRoot, 'HEAD^{tree}', current, { timeoutMs: remaining() })",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M4a",
+      "desc": "严格助手退回宽松语义（diff-tree 失败返回 []）⇒ 单测 10",
+      "file": "src/trivium/util/git.ts",
+      "find": "  if (r.code !== 0) {\n    throw new Error(`git diff-tree 失败",
+      "replace": "  if (r.code !== 0) {\n    if (r.code !== 12345) return [];\n    throw new Error(`git diff-tree 失败",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M4b",
+      "desc": "去掉基线存在性预检（以单测 8 的不可达基线夹具为前提）⇒ 单测 8 不再报原因 2",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "      if (!(await treeExists(i.projectRoot, baseline, { timeoutMs: remaining() }))) {",
+      "replace": "      if (false && !(await treeExists(i.projectRoot, baseline, { timeoutMs: remaining() }))) {",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "收尾不落盘 after_tree_hash ⇒ W6 / W1",
+      "file": "src/trivium/review.ts",
+      "find": "  meta.snapshot.after_tree_hash = afterTreeHash;",
+      "replace": "  void afterTreeHash;",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "人读截断差一 ⇒ 单测 6",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "  const shown = s.files.slice(0, limit);",
+      "replace": "  const shown = s.files.slice(0, limit + 1);",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "--await-approval 不追加摘要 ⇒ W4",
+      "file": "src/trivium/cli.ts",
+      "find": "      printWorkTreeSummary(wts, { exit: 'hold', driver: gateDriver, topic });",
+      "replace": "      void wts;",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "隔离块缩到只包摘要计算、readRunMeta 移到块外并抛错（以 W7 的预算注入作触发）⇒ W7",
+      "file": "src/trivium/cli.ts",
+      "find": "  try {\n    const meta = await readRunMeta(layout, stage, runId);\n",
+      "replace": "  const meta = await readRunMeta(layout, stage, runId);\n  if (process.env['TRIVIUM_TEST_SUMMARY_BUDGET_MS'] === '1') throw new Error('readRunMeta 抛错（变异）');\n  try {\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "approve 的摘要挪到落审批之后打印 ⇒ W1（先打印、再落审批）",
+      "file": "src/trivium/cli.ts",
+      "find": "    if (!isJsonMode()) printWorkTreeSummary(s, { exit: 'approval', driver: vc.driver, topic });",
+      "replace": "    if (!isJsonMode()) setTimeout(() => printWorkTreeSummary(s, { exit: 'approval', driver: vc.driver, topic }), 300);",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "超时不区分、落成原因 3（代码双审 r1 起超时一律由整体截止先返回，变异落在截止那一路；catch 里的超时分支因此成为次要路径、不再单独变异）⇒ 单测 11",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "    timer = setTimeout(() => resolve({ ...withBase, reason: timeoutReason }), budgetMs);",
+      "replace": "    timer = setTimeout(() => resolve({ ...withBase, reason: `${REASON_GIT_FAILED_PREFIX}超时` }), budgetMs);",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "JSON 不截断 ⇒ 单测 6",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "      files: changed.slice(0, SUMMARY_JSON_LIMIT),",
+      "replace": "      files: changed,",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "停点共用前段改回「事后也没有机制会发现」⇒ hook-config 停点四档用例",
+      "file": "src/trivium/hook-config.ts",
+      "find": "  const gatePeriod = '此刻改了业务文件也不会让审批失败（审批前复核只核裁决与本轮审查工件，不看工作树）；审批时 approve 会列出自审查收尾以来改过的文件（只告知，被 .gitignore 忽略的看不见，取不到时如实报原因），看到不该有的改动由你决定。';",
+      "replace": "  const gatePeriod = '此刻改业务文件，事后也没有机制会发现（审批前复核只核裁决与本轮审查工件，不看工作树），审批前请自己看一眼 `git status`。';",
+      "expect": "dist/test/test/unit/hook-config.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "停点共用前段写成「不会被拦」（与 l2-hook 前缀「尽力拦截」矛盾，计划双审 GLM-02）⇒ hook-config 停点四档用例",
+      "file": "src/trivium/hook-config.ts",
+      "find": "  const gatePeriod = '此刻改了业务文件也不会让审批失败（",
+      "replace": "  const gatePeriod = '此刻改了业务文件不会被拦，也不会让审批失败（",
+      "expect": "dist/test/test/unit/hook-config.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "代码双审 r1 CODEX-03：显式超时的 git 调用不再按进程组收尾 ⇒ 慢过滤器用例的孤儿检查",
+      "file": "src/trivium/util/git.ts",
+      "find": "    ...(explicit ? { killTree: true, killGraceMs: 500 } : {}),",
+      "replace": "    ...(explicit ? { killGraceMs: 500 } : {}),",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "代码双审 r1 CODEX-03：去掉整体截止（推迟 60 s）⇒ 慢过滤器用例的返回时限",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "    timer = setTimeout(() => resolve({ ...withBase, reason: timeoutReason }), budgetMs);",
+      "replace": "    timer = setTimeout(() => resolve({ ...withBase, reason: timeoutReason }), budgetMs + 60_000);",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "代码双审 r1 CODEX-01 ≡ GLM-01：去掉对象名形状闸 ⇒ 含 shell 元字符 / 以 - 开头的基线用例",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "  if (!OBJECT_NAME_RE.test(i.afterTreeHash)) return { ...base, reason: REASON_BAD_BASELINE };",
+      "replace": "  if (i.afterTreeHash === '\\u0000') return { ...base, reason: REASON_BAD_BASELINE };",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M18",
+      "desc": "代码双审 r1 CODEX-01：照抄命令两个 tree 值不加引号 ⇒ 照抄命令用例",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "${shQuote(s.baseline_tree ?? '')} ${shQuote(s.current_tree ?? '')}",
+      "replace": "${s.baseline_tree} ${s.current_tree}",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M19",
+      "desc": "代码双审 r1 AGY-01：原因末尾不补句号 ⇒ 句号用例",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "    const reason = raw.endsWith('。') ? raw : `${raw}。`;",
+      "replace": "    const reason = raw;",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    },
+    {
+      "id": "M20",
+      "desc": "代码双审 r1 CODEX-02：预算被覆盖时渲染层不留痕 ⇒ 单测「r1 CODEX-02」可用分支的覆盖提示（超时分支的原因本身带提示，W7 咬不住它，见报告）",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "  const override = s.budget_overridden ? budgetOverrideNote(s.budget_ms) : '';",
+      "replace": "  const override = '';",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    }
+  ]
+}

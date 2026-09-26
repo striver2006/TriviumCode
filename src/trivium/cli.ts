@@ -44,6 +44,10 @@ import { scrubAllRunRoot } from './retention.js';
 import { wiredAdapter } from './adapters/index.js';
 import { COMMAND_ENTRIES, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
 import { emitJson, fail, isJsonMode, say, setOutputMode, step, warn } from './util/log.js';
+import {
+  renderWorkTreeSummary, summarizeWorkTree, summaryBudget, unavailableSummary,
+  type RenderOptions, type WorkTreeSummary,
+} from './worktree-summary.js';
 
 const VERSION = '0.1.0';
 
@@ -304,6 +308,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       人工审批 / 放弃闸门。三种结论均解除业务写锁，工件一律保留。
       通过（approve 不带 --reject）前复核本轮：裁决齐备 + 本轮 run.json 登记工件的 sha256。
       不通过退 2；推断不出 run_id 或运行元数据读不出退 65。拒绝与放弃不复核。
+      通过时先打印自审查收尾以来的工作树改动摘要（被 .gitignore 忽略的看不见），只告知、不影响审批结论。
       复核保的是「裁决齐备、本轮工件未被改」，不保「审批来自人」。
       通过必须带 --stage（一次放行哪一道要说清楚）；拒绝与放弃可以省略。
       审批附言一律走 --reason（写进审批记录）；多余的位置参数退 64，不会静默丢掉。
@@ -1010,6 +1015,47 @@ async function holdNoticeFor(projectRoot: string, driverId: string): Promise<str
   return gateHoldNotice(await effectiveGuardLevel(projectRoot, agent));
 }
 
+/**
+ * 审批时的工作树改动摘要（EV-132 候选 ② 折中版；计划 `.reviews/审批前工作树摘要/plan/` r2 §2.4）。
+ *
+ * **隔离块**（计划双审 AGY-03）：`readRunMeta` 与摘要计算整段在内，任何异常都转成 `available: false`，
+ * 不外溢到调用点——审批的落笔、退出码、闸门迁移、JSON 的其余字段都不受它影响。
+ * 基线取 run.json 的 `snapshot.after_tree_hash`；run.json 读不出时按「没有基线」报。
+ */
+async function workTreeSummaryFor(
+  ctx: Awaited<ReturnType<typeof loadCtx>>,
+  layout: Parameters<typeof readRunMeta>[0],
+  stage: Stage,
+  runId: string,
+): Promise<WorkTreeSummary> {
+  const archiveRootRel = path.relative(ctx.projectRoot, ctx.archiveRoot) || ctx.config.archive_root;
+  const budget = summaryBudget();
+  try {
+    const meta = await readRunMeta(layout, stage, runId);
+    return await summarizeWorkTree({
+      projectRoot: ctx.projectRoot,
+      archiveRootRel,
+      runId,
+      afterTreeHash: meta?.snapshot.after_tree_hash,
+      budgetMs: budget.ms,
+      budgetOverridden: budget.overridden,
+    });
+  } catch (e) {
+    return unavailableSummary(runId, archiveRootRel, e, budget);
+  }
+}
+
+/** 打印摘要：取不到时走 warn（stderr），其余走 say。渲染本身出错也只告警一行 */
+function printWorkTreeSummary(s: WorkTreeSummary, opts: RenderOptions): void {
+  try {
+    const r = renderWorkTreeSummary(s, opts);
+    if (r.warning) warn(r.text);
+    else say(r.text);
+  } catch (e) {
+    warn(`工作树改动摘要渲染失败：${e instanceof Error ? e.message : String(e)}。这不影响审批；请自行 git status 核对。`);
+  }
+}
+
 const HOOK_NAMES: readonly HookName[] = [
   'hook-pre-write', 'hook-pre-bash', 'hook-pre-commit', 'hook-stop', 'hook-session-start',
 ];
@@ -1275,9 +1321,17 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       `  放弃：${entryCommandOf(gateDriver, 'dual-abandon')} --topic ${topic}\n` +
       `  ${await holdNoticeFor(ctx.projectRoot, gateDriver)}` +
       preWarnings.map((w) => `\n  ⚠️ [${w.code}] ${w.message}`).join('');
+    // 停点上的工作树改动摘要：闸门已迁移完才算，只告知（审批前工作树摘要计划 r2 §2.4）
+    const wts = await workTreeSummaryFor(ctx, ref.layout, stage, runId);
     if (isJsonMode()) {
-      emitJson({ ok: true, state: 'awaiting_approval', stage, rerun_index: rerunIndex, message: msg, warnings: preWarnings });
-    } else say(msg);
+      emitJson({
+        ok: true, state: 'awaiting_approval', stage, rerun_index: rerunIndex, message: msg, warnings: preWarnings,
+        worktree_summary: wts,
+      });
+    } else {
+      say(msg);
+      printWorkTreeSummary(wts, { exit: 'hold', driver: gateDriver, topic });
+    }
     return EXIT.OK;
   }
 
@@ -1445,7 +1499,11 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
         `裁决齐备，已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
         `  停点话术：trivium gate --stage ${stage} --topic ${topic} --await-approval\n` +
         `  ${await holdNoticeFor(ctx.projectRoot, gateDriver)}`;
-      if (!isJsonMode()) say(msg);
+      if (!isJsonMode()) {
+        say(msg);
+        // 停点上的工作树改动摘要（计划 r2 §2.4）：JSON 模式本就不输出停点文字，这里同样不加
+        printWorkTreeSummary(await workTreeSummaryFor(ctx, ref.layout, stage, runId), { exit: 'hold', driver: gateDriver, topic });
+      }
       const { resetStopBlockCount } = await import('./lock.js');
       await resetStopBlockCount(ctx.triviumDir, topic, stage);
     }
@@ -1554,6 +1612,8 @@ async function cmdApproval(
    * approved 今天强制 `--stage`、实际只有一个阶段，这样写是为了不依赖这个前提。
    */
   const verified = new Map<Stage, string>();
+  // 复核时已拿到的主题定位与闸门项 Driver，留给下面的工作树摘要用，免得在隔离块外再取一次
+  const verifiedCtx = new Map<Stage, { layout: Parameters<typeof readRunMeta>[0]; driver: string | null }>();
   if (decision === 'approved') {
     for (const stage of stages) {
       const gate = await getGate(ctx.triviumDir, topic, stage);
@@ -1596,7 +1656,24 @@ async function cmdApproval(
         return EXIT.GATE_BLOCK;
       }
       verified.set(stage, v.runId);
+      verifiedCtx.set(stage, { layout: ref.layout, driver: gate.driver ?? null });
     }
+  }
+
+  /*
+   * ── 审批时的工作树改动摘要（EV-132 候选 ② 折中版，计划 r2 §2.4）──
+   *
+   * 只告知：复核**之后**另算，不进上面的判定；每阶段一个隔离块（`workTreeSummaryFor`）。
+   * **先打印、再落审批**（计划双审 CODEX-03）：摘要有总预算，被载体超时或 Ctrl-C 砍在这一段时
+   * 审批还没记录、闸门仍在等待，重跑即可；反过来先落审批，砍在打印段时审批已记录而 Driver 拿不到输出。
+   * run id 取复核所用的那个（闸门项 run_id，与 `verified` 同值）。
+   */
+  const summaries: Partial<Record<Stage, WorkTreeSummary>> = {};
+  for (const [stage, runId] of verified) {
+    const vc = verifiedCtx.get(stage)!;
+    const s = await workTreeSummaryFor(ctx, vc.layout, stage, runId);
+    summaries[stage] = s;
+    if (!isJsonMode()) printWorkTreeSummary(s, { exit: 'approval', driver: vc.driver, topic });
   }
 
   for (const stage of stages) {
@@ -1608,7 +1685,12 @@ async function cmdApproval(
     });
     say(out.message);
   }
-  if (isJsonMode()) emitJson({ ok: true, topic, stages, decision });
+  if (isJsonMode()) {
+    emitJson({
+      ok: true, topic, stages, decision,
+      ...(decision === 'approved' ? { worktree_summary: summaries } : {}),
+    });
+  }
   return EXIT.OK;
 }
 

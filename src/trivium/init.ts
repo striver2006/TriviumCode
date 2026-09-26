@@ -134,17 +134,20 @@ export const KNOWN_PROTOCOL_SHA256: Readonly<Record<string, ReadonlySet<string>>
     // ── 两段式（M10b 第 2 步起）：CLAUDE.md 只写 Driver 段 ──
     'c93b609aa97a2601f06e98d656cfeec8173e082ccd8ecff0858a676f4cffd02d', // driver
     '4b7f566f042998201ffcd882af88fd4ef711df01969e8bc3ed18e836dcee34e0', // driver · EV-132 按时点写实 L2 事后覆盖面
+    'e92ddb2fbfdd2905853262a5b1b98039e9435f553b6fb584aa7920463bb7d0cd', // driver · EV-132 ② 折中版：闸门期审批时打印工作树摘要
   ]),
   'AGENTS.md': new Set([
     '4aa6b8bc34f8f8f14156ee2dd3891dc758964c64f7843fb81ed5ba819761aa78', // AGENTS.md.snippet @2d7cbbc
     // ── 两段式（M10b 第 2 步起）──
     '6c284393db5cd8198c5b9509035c4f5a4444d2671f16eb0ae26d4e05f68c6204', // critic + driver
     'b8e7fadf1e997cea8357308e33104b686241d54ad197348ceca67831c60886a3', // critic + driver · EV-132
+    'c3926a651c052011c1eb5bb7aabdc4cd01565a72eb2bdb3e3cb5aae73b6f9483', // critic + driver · EV-132 ② 折中版
   ]),
   // M10b 第 2 步新登记的指令文件：没有单段时代
   'GEMINI.md': new Set([
     '6c284393db5cd8198c5b9509035c4f5a4444d2671f16eb0ae26d4e05f68c6204', // critic + driver
     'b8e7fadf1e997cea8357308e33104b686241d54ad197348ceca67831c60886a3', // critic + driver · EV-132
+    'c3926a651c052011c1eb5bb7aabdc4cd01565a72eb2bdb3e3cb5aae73b6f9483', // critic + driver · EV-132 ② 折中版
   ]),
 };
 

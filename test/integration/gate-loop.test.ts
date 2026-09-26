@@ -1720,3 +1720,161 @@ test('拒绝与放弃不复核：停点之后裁决件被删，reject 照常生�
   assert.equal(rej.code, EXIT.OK, `拒绝不该被复核挡住：\n${rej.stdout}${rej.stderr}`);
   assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'rejected');
 });
+
+// ─────────── 审批时的工作树改动摘要（EV-132 候选 ② 折中版，计划 `.reviews/审批前工作树摘要/plan/` r2 §3.2）───────────
+/*
+ * 闸门期改业务文件，审批前复核看不见（M10b 第 4 步 3-4：终端改 NOTES.md 后 approve 退 0）。
+ * 折中版只**告知**：approve 与停点把「自审查收尾以来工作树变了什么」打印出来，退出码与闸门迁移一律不变。
+ * W1～W8 钉的是两件事：列得出来；列不出来时不假称「无改动」、也不挡审批。
+ */
+
+/** 带额外环境变量调 CLI（摘要预算注入用，同 `TRIVIUM_STUB_CRITIC` 的注入惯例） */
+async function cliEnv(root: string, args: string[], extra: Record<string, string>) {
+  const { run } = await import('../../src/trivium/util/exec.js');
+  const { BUNDLE, ASSET_ROOT } = await import('../helpers/fixture.js');
+  return run(process.execPath, [BUNDLE, ...args], {
+    cwd: root,
+    env: { TRIVIUM_ASSET_ROOT: ASSET_ROOT, TRIVIUM_STUB_CRITIC: undefined, ...extra },
+    timeoutMs: 120_000,
+  });
+}
+
+const approveJson = (root: string) =>
+  cli(root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--session-id', SESSION, '--json']);
+
+type SummaryJson = { run_id: string; available: boolean; reason: string | null; total: number; truncated: boolean; baseline_tree: string | null; files: { status: string; path: string }[]; budget_ms: number; budget_overridden: boolean };
+
+const approvedLast = async (fx: Fx) => (await approvalsOf(fx.archiveRoot)).at(-1)?.decision === 'approved';
+
+test('W1：闸门期新建 NOTES.md ⇒ approve 仍退 0、照常落审批，输出里列出 NOTES.md', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  await fs.writeFile(path.join(fx.root, 'NOTES.md'), '闸门期追加的一行\n', 'utf8');
+  const r = await approveNow(fx.root);
+  assert.equal(r.code, EXIT.OK, `摘要只告知，不得挡审批：\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout, /工作树改动摘要（只告知，不影响审批结论）/);
+  assert.match(r.stdout, /\n {2}A {2}NOTES\.md\n/);
+  // 先打印摘要、再落审批（计划双审 CODEX-03）
+  assert.ok(r.stdout.indexOf('工作树改动摘要') < r.stdout.indexOf('已通过'), r.stdout);
+  assert.ok(await approvedLast(fx), '审批照常落盘');
+});
+
+test('W2：闸门期没有改动 ⇒ approve 退 0，输出「无改动」一行', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  const r = await approveNow(fx.root);
+  assert.equal(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+  assert.match(r.stdout, /未被 \.gitignore 忽略的文件无改动/);
+});
+
+test('W3：approve --json 带 worktree_summary（按阶段），含 total 与 truncated', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await toAwaitingApproval(fx);
+  await fs.writeFile(path.join(fx.root, 'NOTES.md'), 'x\n', 'utf8');
+  const r = await approveJson(fx.root);
+  assert.equal(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+  const js = JSON.parse(extractJsonCandidate(r.stdout)!.json) as { decision: string; worktree_summary: Record<string, SummaryJson> };
+  assert.equal(js.decision, 'approved');
+  const s = js.worktree_summary['plan']!;
+  assert.equal(s.run_id, runId);
+  assert.equal(s.available, true);
+  assert.deepEqual(s.files, [{ status: 'A', path: 'NOTES.md' }]);
+  assert.equal(s.total, 1);
+  assert.equal(s.truncated, false);
+  assert.equal(s.budget_ms, 20_000);
+  assert.equal(s.budget_overridden, false);
+});
+
+test('W4：停点出口也打印摘要——--check 自动立停点与 --await-approval 都列出改动', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root, 'C');
+  await writeDisposition(fx.stageDir, runId);
+  await fs.writeFile(path.join(fx.root, 'NOTES.md'), '裁决期改的\n', 'utf8');
+  const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
+  assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
+  assert.match(check.stdout, /\n {2}A {2}NOTES\.md\n/, check.stdout);
+  assert.match(check.stdout, /审批时会再列出一次/);
+
+  const aw = await awaitNow(fx.root);
+  assert.equal(aw.code, EXIT.OK, `${aw.stdout}${aw.stderr}`);
+  assert.match(aw.stdout, /\n {2}A {2}NOTES\.md\n/, aw.stdout);
+
+  const awj = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--json']);
+  assert.equal(awj.code, EXIT.OK, `${awj.stdout}${awj.stderr}`);
+  const js = JSON.parse(extractJsonCandidate(awj.stdout)!.json) as { worktree_summary: SummaryJson };
+  assert.deepEqual(js.worktree_summary.files, [{ status: 'A', path: 'NOTES.md' }]);
+});
+
+test('W5：基线被 git 清理 ⇒ approve 仍退 0、照常落审批，报「取不到」而不是「无改动」', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  const { run } = await import('../../src/trivium/util/exec.js');
+  // 收尾基线里含未跟踪的归档件，不等于 HEAD 的 tree，属不可达对象，gc 能清掉
+  const gc = await run('git', ['gc', '-q', '--prune=now'], { cwd: fx.root, timeoutMs: 60_000 });
+  assert.equal(gc.code, 0, gc.stderr);
+  const r = await approveNow(fx.root);
+  assert.equal(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /工作树改动摘要取不到：基线对象已不在对象库/);
+  assert.doesNotMatch(r.stdout + r.stderr, /无改动/);
+  assert.ok(await approvedLast(fx), '摘要取不到也不影响落审批');
+});
+
+test('W6：审查收尾把 after_tree_hash 落进 run.json，且过 run.v2 schema', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root, 'C');
+  const meta = JSON.parse(await fs.readFile(path.join(fx.stageDir, '_meta', `run-${runId}.json`), 'utf8')) as {
+    snapshot: { tree_hash: string; after_tree_hash?: string };
+  };
+  assert.match(meta.snapshot.after_tree_hash ?? '', /^[0-9a-f]{40}$/);
+  const { validateRunMeta } = await import('../../src/trivium/schemas.js');
+  assert.deepEqual(validateRunMeta(meta), []);
+});
+
+test('W7：摘要超时 ⇒ approve 退 0、照常落审批，报超时（先打印再落审批不让摘要挡住审批）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  const { SUMMARY_BUDGET_ENV } = await import('../../src/trivium/worktree-summary.js');
+  const r = await cliEnv(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--session-id', SESSION], { [SUMMARY_BUDGET_ENV]: '1' });
+  assert.equal(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /工作树改动摘要取不到：工作树摘要超时（超过 1 毫秒）。/);
+  // 代码双审 r1 CODEX-02：注入生效要自我暴露，不与真实超时同形
+  assert.match(r.stderr, new RegExp(`预算被 ${SUMMARY_BUDGET_ENV} 覆盖为 1 毫秒，这只应出现在测试里`));
+  assert.ok(await approvedLast(fx), '摘要超时也不影响落审批');
+});
+
+test('W8：同阶段重跑一轮后审批 ⇒ 摘要的 run id 与基线都取自闸门项指向的新一轮（计划双审 CODEX-09）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await toAwaitingApproval(fx);
+  assert.equal((await approveNow(fx.root)).code, EXIT.OK);
+
+  const runId2 = await runPlan(fx.root, 'C');
+  await fs.writeFile(
+    path.join(fx.stageDir, `${today()}-${TOPIC}-r2-revised-claude.md`),
+    [
+      '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
+      'role: claude', 'kind: revised', `run_id: ${runId2}`,
+      'addresses:', `  - ${today()}-${TOPIC}-r2-gemini.md`, `  - ${today()}-${TOPIC}-r2-glm.md`,
+      '---', '',
+      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- |',
+      '| AGY-01 | gemini | blocker | 接受 | 第二轮仍需补 | §1 |',
+      '| GLM-01 | glm | blocker | 接受 | 同上 | §1 |',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
+  assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
+  assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.run_id, runId2, '前提：闸门项指向新一轮');
+
+  await fs.writeFile(path.join(fx.root, 'NOTES.md'), 'y\n', 'utf8');
+  const r = await approveJson(fx.root);
+  assert.equal(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+  const s = (JSON.parse(extractJsonCandidate(r.stdout)!.json) as { worktree_summary: Record<string, SummaryJson> }).worktree_summary['plan']!;
+  assert.equal(s.run_id, runId2);
+  const meta2 = JSON.parse(await fs.readFile(path.join(fx.stageDir, '_meta', `run-${runId2}.json`), 'utf8')) as {
+    snapshot: { after_tree_hash: string };
+  };
+  assert.equal(s.baseline_tree, meta2.snapshot.after_tree_hash);
+  assert.deepEqual(s.files.map((f) => f.path), ['NOTES.md']);
+});

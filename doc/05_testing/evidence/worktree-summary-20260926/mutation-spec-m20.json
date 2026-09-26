@@ -1,0 +1,18 @@
+{
+  "targets": [
+    "src/trivium/worktree-summary.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/worktree-summary.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M20",
+      "desc": "代码双审 r1 CODEX-02：预算被覆盖时渲染层不留痕 ⇒ 单测「r1 CODEX-02」可用分支的覆盖提示（超时分支的原因本身带提示，W7 咬不住它，见报告）",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "  const override = s.budget_overridden ? budgetOverrideNote(s.budget_ms) : '';",
+      "replace": "  const override = '';",
+      "expect": "dist/test/test/unit/worktree-summary.test.js"
+    }
+  ]
+}

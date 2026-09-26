@@ -1,0 +1,27 @@
+# 审批前工作树摘要 · 入口资产 / 协议片段变异 · 2026-09-26T12:21:53.048Z
+目标：skills-src/partials/guard/l2-notice.md（基线 sha256 5a02a1636156）
+目标：skills-src/commands/approve.contract.md（基线 sha256 2f5e0b3e981e）
+目标：skills/dual-critic/protocol/driver.snippet（基线 sha256 a9329374bb03）
+套件：dist/test/test/contract/entry-render-parity.test.js、dist/test/test/unit/init.test.js
+基线：fail=0；全部 find 恰好命中一处
+
+K1 ✓ 咬住（fail=3）——M12：l2-notice 闸门期那一条去掉「（命令 B / C / D 等待审批时）」限定（计划双审 CODEX-01 ≡ AGY-02 的原形）
+   期望红：EV-132 ② 折中版：L2 闸门期那一条写；EV-132：L2 护栏段的审批两格带命令限定
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | EV-132：L2 护栏段的审批两格带命令限定（命令 A 没有审批停点），且不把事后核对说成「拦下」 | EV-132 ② 折中版：L2 闸门期那一条写「不会让审批失败、审批时列出改动」，不再说无机制发现，也不就拦不拦表态
+K2 ✓ 咬住（fail=2）——D6：l2-notice 闸门期那一条改回「没有机制会发现」
+   期望红：EV-132 ② 折中版：L2 闸门期那一条写
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | EV-132 ② 折中版：L2 闸门期那一条写「不会让审批失败、审批时列出改动」，不再说无机制发现，也不就拦不拦表态
+K6 ✓ 咬住（fail=2）——代码双审 r1 GLM-02：l2-notice 的「会列出」去掉「取不到时如实报原因」（改回无条件承诺）
+   期望红：EV-132 ② 折中版：L2 闸门期那一条写
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | EV-132 ② 折中版：L2 闸门期那一条写「不会让审批失败、审批时列出改动」，不再说无机制发现，也不就拦不拦表态
+K3 ✓ 咬住（fail=2）——D6：l2-notice 闸门期那一条写成「不拦」（计划双审 GLM-02 的原形）
+   期望红：EV-132 ② 折中版：L2 闸门期那一条写
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | EV-132 ② 折中版：L2 闸门期那一条写「不会让审批失败、审批时列出改动」，不再说无机制发现，也不就拦不拦表态
+K4 ✓ 咬住（fail=2）——计划双审 CODEX-06：dual-approve 删掉「摘要只告知、不改变审批结论」那一句
+   期望红：EV-132 ② 折中版：各载体的 dual-approve
+   实际红：源 → 产物零 diff（改了源请跑 npm run render） | EV-132 ② 折中版：各载体的 dual-approve 都交代摘要只告知、不改变审批结论（计划双审 CODEX-06）
+K5 ✓ 咬住（fail=1）——D6：driver.snippet 改回旧句（旧版指纹仍在已知表里，init.test 不会红，只能由专设断言咬住）
+   期望红：EV-132 ② 折中版：driver.snippet 的 L2 事后覆盖面同步改写
+   实际红：EV-132 ② 折中版：driver.snippet 的 L2 事后覆盖面同步改写（旧版指纹仍在已知表里，改回旧句不会让 init.test 变红，只能在这里钉）
+
+结论：6/6 全部咬住

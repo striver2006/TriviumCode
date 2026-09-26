@@ -1,0 +1,286 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260926T111908Z",
+  "topic": "审批前工作树摘要",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点看：①摘要是否真的只告知——approve 先打印再落审批、隔离块覆盖读运行留痕，任何失败都不改变退出码、闸门迁移与审批落盘；②失败面是否都不会被报成「无改动」：基线缺席、基线对象被 git 清理、git 出错、超时四种原因的判定，以及 cat-file 退出码的分档；③收尾新增的 after_tree_hash 是否确实不进任何判定，送审冻结与漂移复算的 workTreeHash 行为是否与改前一致；④运行时文案五处与重渲染的入口产物、协议片段新指纹、本仓 AGENTS.md 与 GEMINI.md 原位升级是否一致，改后措辞对命令 A 与命令 B/C/D 是否都属实；⑤新增测试与变异能否咬住上述边界",
+  "task_goal": "审批前工作树摘要 实施计划（r2 定稿）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "12d54e2fa3d4929b6375148ba0483744cef0282f",
+    "tree_hash": "f054b02afb78d15a432e270f82737e119ac3ecf7",
+    "dirty": true,
+    "subject_sha256": "2480c1757893a8bbf291e55e67fd02bd35910ded4a514ca5179d44f70ff9a9be",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "12d54e2fa3d4929b6375148ba0483744cef0282f",
+      "dirty": true,
+      "inputs_sha256": "b0ccdb4e9c6cdfb69faf5030c6fb10d2bba5a94f2b0e55b649fc4169da6c64a8",
+      "built_at": "2026-09-26T11:04:40.332Z"
+    },
+    "after_tree_hash": "ca285f066073fe2574d3236dbc023b242b5b7a86"
+  },
+  "started_at": "2026-09-26T11:19:09.357Z",
+  "finished_at": "2026-09-26T11:31:35.495Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 745.92,
+      "tool_calls": {
+        "run_command": 54,
+        "project_reads": 35
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0dd70-c2c3-7c20-b72a-c4bbfb3b0d1b",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.11",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 263.449,
+      "tool_calls": {
+        "read": 53,
+        "grep": 9,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 38
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 336388,
+        "output_tokens": 27132,
+        "thinking_tokens": 19837,
+        "cache_read_tokens": 6731203,
+        "total_tokens": 363520
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "d9bc452d-ef53-4909-97e6-4f671be9b25b",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 599.981,
+      "tool_calls": {
+        "read": 22,
+        "grep": 12,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 14
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 27,
+        "inputTokens": 3092697,
+        "outputTokens": 40320,
+        "totalTokens": 3133017,
+        "cacheReadTokens": 2943040,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_fd9d4733-b0a1-479e-8069-4ecdf7b8204a",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/审批前工作树摘要/plan/2026-09-26-审批前工作树摘要-gemini.md",
+    ".reviews/审批前工作树摘要/plan/2026-09-26-审批前工作树摘要-glm.md",
+    ".reviews/审批前工作树摘要/plan/_meta/review-gemini-20260926T100417Z.json",
+    ".reviews/审批前工作树摘要/plan/_meta/review-glm-20260926T100417Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "审批前工作树摘要/code/_meta/changes-20260926T111908Z.diff",
+      "sha256": "2480c1757893a8bbf291e55e67fd02bd35910ded4a514ca5179d44f70ff9a9be"
+    },
+    {
+      "path": "审批前工作树摘要/code/_meta/brief-codex-20260926T111908Z.md",
+      "sha256": "f76601ca0762c74b16d48f69975f264e119e631e8e1a8f4ab74290a85ce193be"
+    },
+    {
+      "path": "审批前工作树摘要/code/_meta/brief-gemini-20260926T111908Z.md",
+      "sha256": "6fe277b92326191b4eac71b7523f08163b1e995a61ec5d28e80e06f21c3f285b"
+    },
+    {
+      "path": "审批前工作树摘要/code/_meta/brief-glm-20260926T111908Z.md",
+      "sha256": "1e08684776041146615852034739a673902ea44dd1c6d205b3ef53822bb1642c"
+    },
+    {
+      "path": "审批前工作树摘要/code/_meta/review-codex-20260926T111908Z.json",
+      "sha256": "5bf09ef5e9fea79441f9239e470a1a2630b533a1abceb3f6a75e1f0cc9d5375a"
+    },
+    {
+      "path": "审批前工作树摘要/code/_meta/review-gemini-20260926T111908Z.json",
+      "sha256": "85b4f65f208569dba82b162fc1f7677d2d0c79723205d3d4953ce8bee1001bba"
+    },
+    {
+      "path": "审批前工作树摘要/code/_meta/review-glm-20260926T111908Z.json",
+      "sha256": "e48b69dd0aa2bf22ee759abed0c92af898305879bc01814e35e04d255340d3ba"
+    },
+    {
+      "path": "审批前工作树摘要/code/2026-09-26-审批前工作树摘要-codex.md",
+      "sha256": "f07442d72d04698a7c72f9be3f6e9c46bd51b013ed3672d49c70c678c5871a3c"
+    },
+    {
+      "path": "审批前工作树摘要/code/2026-09-26-审批前工作树摘要-gemini.md",
+      "sha256": "86dd7f50a498e01b91a32afaefea026e0e96bca9603c9fbb95f0a33c380a65b7"
+    },
+    {
+      "path": "审批前工作树摘要/code/2026-09-26-审批前工作树摘要-glm.md",
+      "sha256": "ff71792ec8e62938e12257d8fa4c83d24975b41d515830747f8f56db22ab8913"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}

@@ -296,7 +296,17 @@ test('停点后半句按有效等级四档措辞：只有真正 L1 才说「Hook
      * EV-132 候选 ①：闸门期改业务文件，审批前复核与跑后复算两道都发现不了（M10b 第 4 步 3-4 实测）。
      * 旧尾句「越界……会在审批前复核与跑后漂移复算时暴露」对闸门期不成立，这里钉住它不再回来。
      */
-    assert.match(texts[k]!, /此刻改业务文件，事后也没有机制会发现/, `${k}：要写实闸门期无机制兜底`);
+    /*
+     * EV-132 候选 ② 折中版（计划 `.reviews/审批前工作树摘要/plan/` r2 D6）：闸门期改业务文件不会让审批失败，
+     * 审批时 approve 会列出自审查收尾以来改过的文件（只告知）。共用前段不就「拦不拦」表态（计划双审 GLM-02）——
+     * l2-hook 档前缀是「尽力拦截」，再说「不会被拦」就同句自相矛盾。
+     */
+    assert.match(texts[k]!, /此刻改了业务文件也不会让审批失败/, `${k}：要写实闸门期改了也不会让审批失败`);
+    assert.match(texts[k]!, /审批时 approve 会列出自审查收尾以来改过的文件（只告知/, `${k}：要说审批时会列出改动`);
+    // 代码双审 r1 GLM-02：「会列出」不写成无条件承诺，取不到时如实报原因
+    assert.match(texts[k]!, /取不到时如实报原因/, `${k}：要交代取不到的情形`);
+    assert.doesNotMatch(texts[k]!, /不会被拦|不拦/, `${k}：共用前段不就拦不拦表态`);
+    assert.doesNotMatch(texts[k]!, /事后也没有机制会发现/, `${k}：摘要上线后这句不再属实`);
     assert.doesNotMatch(texts[k]!, /会在审批前复核|复算时暴露/, `${k}：不得再宣称闸门期越界会被事后暴露`);
     assert.match(texts[k]!, /审批之后删改审查工件/, `${k}：后段要说审批之后的情形`);
   }
@@ -317,7 +327,8 @@ test('EV-132 D7：describeGuard 的 L1 降级与 l2-none 两档不再把审批�
   const none = describeGuard(NO_HOOK, await effectiveGuardLevel(root, NO_HOOK));
   for (const [k, t] of [['l1-down', down], ['l2-none', none]] as const) {
     assert.doesNotMatch(t, /靠审批前复核/, `${k}：${t}`);
-    assert.match(t, /闸门期改业务文件没有机制会发现/, `${k}：${t}`);
+    assert.match(t, /闸门期改业务文件不会让审批失败，命令 B \/ C \/ D 审批时只打印工作树改动摘要/, `${k}：${t}`);
+    assert.doesNotMatch(t, /没有机制会发现/, `${k}：摘要上线后这句不再属实：${t}`);
     assert.match(t, /审查中的越界由跑后复算发现/, `${k}：${t}`);
   }
 });

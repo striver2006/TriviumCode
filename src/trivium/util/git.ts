@@ -18,11 +18,46 @@ export interface GitStatusEntry {
   path: string;
 }
 
-async function git(cwd: string, args: string[], env?: Record<string, string | undefined>) {
+async function git(
+  cwd: string,
+  args: string[],
+  env?: Record<string, string | undefined>,
+  /**
+   * 单次调用的超时；不传即缺省 120 s，与加这个参数之前逐字节相同（送审冻结、漂移复算都不传）。
+   *
+   * **显式传了才按进程组收尾**（审批前工作树摘要代码双审 r1 CODEX-03）：摘要按剩余预算传小值，
+   * 临时索引的 `add -A` 因此可能在中途被杀；git 在带清理过滤器的仓库里会派生子进程，
+   * 只杀直接子进程会把干活的那个遗弃给 init（架构纪律 5、`exec.ts` 的 killTree 注释）。
+   */
+  timeoutMs?: number,
+) {
   // core.quotePath=false：否则 git 会把非 ASCII 路径转成 C 风格八进制转义
   // （中文路径变成 "\344\270\216…"），下游拿到的路径无法用于文件系统操作。
   // 实跑时真的踩到过：漂移报告里的中文路径全是乱码。
-  return run('git', ['-c', 'core.quotePath=false', ...args], { cwd, env, timeoutMs: 120_000 });
+  const explicit = timeoutMs !== undefined;
+  return run('git', ['-c', 'core.quotePath=false', ...args], {
+    cwd,
+    env,
+    timeoutMs: timeoutMs ?? 120_000,
+    ...(explicit ? { killTree: true, killGraceMs: 500 } : {}),
+  });
+}
+
+/**
+ * git 调用因超时被杀。带 `timedOut` 标记，让调用方把「超时」与「git 报错」分成两种原因
+ * （审批前工作树摘要计划 r2 §2.2，计划双审 CODEX-02）。
+ */
+export class GitTimeoutError extends Error {
+  readonly timedOut = true;
+  constructor(what: string) {
+    super(`git ${what} 超时`);
+    this.name = 'GitTimeoutError';
+  }
+}
+
+export interface GitCallOptions {
+  /** 单次 git 调用的超时毫秒；缺省 120 s */
+  timeoutMs?: number;
 }
 
 export async function isGitRepo(cwd: string): Promise<boolean> {
@@ -51,17 +86,26 @@ export async function gitVersion(): Promise<string | null> {
  *
  * 步骤：复制当前索引到临时文件 → `add -A`（作用于临时索引）→ `write-tree`。
  * 全程 GIT_INDEX_FILE 指向临时文件，真实的 .git/index 分毫不动。
+ *
+ * `opts.timeoutMs` 只给审批时的工作树摘要用（按剩余预算传）；送审冻结与漂移复算不传，
+ * 行为与加这个参数之前逐字节相同。任一步超时抛 {@link GitTimeoutError}。
  */
-export async function workTreeHash(cwd: string): Promise<string> {
+export async function workTreeHash(cwd: string, opts: GitCallOptions = {}): Promise<string> {
   const tmpDir = await makeTempDir('trivium-index');
   const idx = path.join(tmpDir, 'index');
   try {
     const env = { GIT_INDEX_FILE: idx };
+    const t = opts.timeoutMs;
+    // 只有显式给了预算才区分超时：不传时连报错形态都保持原样（送审冻结与漂移复算不受影响）
+    const timed = t !== undefined;
     // 以 HEAD 为基线填充临时索引；空仓库（无 HEAD）时跳过，从零开始
-    await git(cwd, ['read-tree', 'HEAD'], env);
-    const add = await git(cwd, ['add', '-A', '--', '.'], env);
+    const rt = await git(cwd, ['read-tree', 'HEAD'], env, t);
+    if (timed && rt.timedOut) throw new GitTimeoutError('read-tree');
+    const add = await git(cwd, ['add', '-A', '--', '.'], env, t);
+    if (timed && add.timedOut) throw new GitTimeoutError('add');
     if (add.code !== 0) throw new Error(`git add to temp index failed: ${add.stderr.trim()}`);
-    const wt = await git(cwd, ['write-tree'], env);
+    const wt = await git(cwd, ['write-tree'], env, t);
+    if (timed && wt.timedOut) throw new GitTimeoutError('write-tree');
     if (wt.code !== 0) throw new Error(`git write-tree failed: ${wt.stderr.trim()}`);
     return wt.stdout.trim();
   } finally {
@@ -196,6 +240,64 @@ export async function diffTrees(cwd: string, treeA: string, treeB: string): Prom
   const r = await git(cwd, ['diff-tree', '-r', '--name-only', '--no-commit-id', treeA, treeB]);
   if (r.code !== 0) return [];
   return r.stdout.split('\n').filter(Boolean);
+}
+
+/**
+ * 对象在不在对象库里（`cat-file -e <对象名>`）：退 0 为 true、退 1 为 false，
+ * 其它情形（含超时、非 git 目录的 128）抛错——「查不了」不与「不在」同形。
+ *
+ * **不带 `^{tree}` 剥离**（本机 git 实测）：带剥离时对象缺失与「不是 git 仓库」都退 128，分不开；
+ * 不带时缺失退 1、非 git 目录退 128。类型不对（不是 tree）交给随后的 `diff-tree` 报错，不在这里判。
+ *
+ * 为审批前工作树摘要而设（计划 r2 §2.2）：基线是 `write-tree` 写出的不可达对象，可能被 git 清理。
+ */
+export async function treeExists(cwd: string, tree: string, opts: GitCallOptions = {}): Promise<boolean> {
+  const r = await git(cwd, ['cat-file', '-e', tree], undefined, opts.timeoutMs);
+  if (r.timedOut) throw new GitTimeoutError('cat-file');
+  if (r.code === 0) return true;
+  if (r.code === 1) return false;
+  throw new Error(`git cat-file 失败（退出码 ${r.code}）：${r.stderr.trim().split('\n')[0] ?? ''}`);
+}
+
+/**
+ * 两棵 tree 之间逐文件的变更状态（`diff-tree -r --name-status --no-renames -z`）。
+ *
+ * **非零退出即抛**——这是与 {@link diffTrees} 的唯一区别，也是它存在的理由：
+ * `diffTrees` 失败时返回 `[]`，基线对象被清理时它说「无变化」而不是「比不了」；
+ * 那条语义是 `judgeDrift` 的依赖，这里不去改它（审批前工作树摘要计划 r2 §2.2 / §6.3）。
+ *
+ * 解析协议（计划双审 AGY-04）：`-z` 下输出为 `状态\0路径\0` 成对出现；按 `\0` 切分、
+ * 丢弃末尾空段，段数为奇数即抛。`--no-renames` 保证不出现三段式；路径不加引号，不走 `unquoteGitPath`。
+ */
+export async function diffTreesNameStatus(
+  cwd: string,
+  treeA: string,
+  treeB: string,
+  opts: GitCallOptions = {},
+): Promise<Array<{ status: string; path: string }>> {
+  const r = await git(
+    cwd,
+    ['diff-tree', '-r', '--name-status', '--no-renames', '-z', '--no-commit-id', treeA, treeB],
+    undefined,
+    opts.timeoutMs,
+  );
+  if (r.timedOut) throw new GitTimeoutError('diff-tree');
+  if (r.code !== 0) {
+    throw new Error(`git diff-tree 失败（退出码 ${r.code}）：${r.stderr.trim().split('\n')[0] ?? ''}`);
+  }
+  return parseNameStatusZ(r.stdout);
+}
+
+/** `--name-status -z` 输出的成对解析；导出供单测直接喂畸形输入 */
+export function parseNameStatusZ(out: string): Array<{ status: string; path: string }> {
+  const parts = out.split('\0');
+  if (parts.length > 0 && parts[parts.length - 1] === '') parts.pop();
+  if (parts.length % 2 !== 0) {
+    throw new Error(`git diff-tree -z 输出段数为奇数（${parts.length}），无法成对解析为「状态、路径」`);
+  }
+  const res: Array<{ status: string; path: string }> = [];
+  for (let i = 0; i < parts.length; i += 2) res.push({ status: parts[i]!, path: parts[i + 1]! });
+  return res;
 }
 
 /**

@@ -15,7 +15,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit
 .trivium/bin/trivium approve {{ARGS}}
 ```
 
-把输出原样转述给用户。
+把输出原样转述给用户。输出里的工作树改动摘要只告知，不改变审批结论；不得据此改文件、拒绝放行或代替用户判断。
 
 - 通过：`--topic <主题> --stage <阶段> [--reason <附言>]`。**`--stage` 必填**：一次放行哪一道闸门要说清楚。
 - 拒绝：追加 `--reject --reason <理由>`。**拒绝必须给理由。** 拒绝与放弃可以省略 `--stage`。

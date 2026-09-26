@@ -304,6 +304,37 @@ test('EV-132：L2 护栏段的审批两格带命令限定（命令 A 没有审�
   }
 });
 
+test('EV-132 ② 折中版：L2 闸门期那一条写「不会让审批失败、审批时列出改动」，不再说无机制发现，也不就拦不拦表态', () => {
+  /*
+   * 计划 `.reviews/审批前工作树摘要/plan/` r2 D6：摘要上线后「闸门期改业务文件没有机制会发现」对命令 B / C / D 不再属实。
+   * 计划双审 CODEX-01 ≡ AGY-02：这一条要留在「（命令 B / C / D 等待审批时）」的限定里——l2-notice 也注入命令 A，
+   * 而命令 A 没有审批这一步。GLM-02：不写「不拦 / 不会被拦」，l2-hook 档有尽力拦截的 Hook。
+   */
+  const l2 = rendered.filter((r) => MAIN_COMMANDS.includes(r.command) && guardProfileOf(agentById(r.agent)!) !== 'l1-hook');
+  assert.ok(l2.length > 0, '前提：有 L2 载体的主命令产物');
+  for (const r of l2) {
+    const line = r.content.split('\n').find((l) => l.includes('**闸门期**（命令 B / C / D 等待审批时）'));
+    assert.ok(line, `${r.relPath}：缺闸门期那一条`);
+    assert.match(line!, /\*\*不会让审批失败\*\*/, r.relPath);
+    assert.match(line!, /审批时 `approve` 会列出自审查收尾以来改过的文件（只告知，被 \.gitignore 忽略的看不见，取不到时如实报原因）/, r.relPath);
+    assert.doesNotMatch(line!, /没有机制会发现|不会被拦|不拦/, r.relPath);
+  }
+});
+
+test('EV-132 ② 折中版：driver.snippet 的 L2 事后覆盖面同步改写（旧版指纹仍在已知表里，改回旧句不会让 init.test 变红，只能在这里钉）', async () => {
+  const snippet = await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/protocol/driver.snippet'), 'utf8');
+  assert.match(snippet, /闸门期改业务文件不会让审批失败（命令 B \/ C \/ D 审批时只打印工作树改动摘要）/);
+  assert.doesNotMatch(snippet, /闸门期改业务文件没有机制会发现/);
+});
+
+test('EV-132 ② 折中版：各载体的 dual-approve 都交代摘要只告知、不改变审批结论（计划双审 CODEX-06）', () => {
+  const approve = rendered.filter((r) => r.command === 'approve');
+  assert.equal(approve.length, src.carriers.length, '前提：每个载体一份 dual-approve 产物');
+  for (const r of approve) {
+    assert.match(r.content, /输出里的工作树改动摘要只告知，不改变审批结论；不得据此改文件、拒绝放行或代替用户判断/, r.relPath);
+  }
+});
+
 test('EV-134：命令 B / C / D 的写裁决件一步交代 addresses 填审查文档文件名、不是意见编号', () => {
   /*
    * 此前入口资产只列「front-matter 含 … addresses」，从没说该填什么——本仓 65 份裁决件因此填成了意见编号。

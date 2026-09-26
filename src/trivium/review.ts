@@ -1341,6 +1341,11 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     files: verdict.fingerprintChangedFiles,
     policy: verdict.drift.kind === 'related' ? cfg.review.on_drift_related : cfg.review.on_drift,
   };
+  /*
+   * 收尾复算的 tree 落盘，只供审批时的工作树改动摘要作基线（审批前工作树摘要计划 r2 §2.3）。
+   * 没有任何判定读它；与 drift 同一处写、同一次落盘，之后 run.json 不再更新（EV-133 的不变量不受影响）。
+   */
+  meta.snapshot.after_tree_hash = afterTreeHash;
   meta.guard = {
     readonly_breach: verdict.readonlyBreach,
     peer_artifact_read: verdict.peerArtifactRead,

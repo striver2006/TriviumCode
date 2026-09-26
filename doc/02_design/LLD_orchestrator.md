@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.3
+> - **当前版本**：v1.1.4
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.4（2026-09-26）随设计 v1.3.46（审批前工作树摘要，EV-132 候选 ② 折中版）同步：模块表登记 `worktree-summary.ts`；`util/git.ts` 补两个失败即抛的严格助手
 > - **变更说明**：v1.1.3（2026-09-26）随设计 v1.3.43 的 M10b 第 5 步纪律 6 回溯同步：2.6「当前边界」的「别家在自己的 CLI 里执笔在 M10b」改为已落地，指向主设计 7.4.1 与 8.5；Bash 侧保护集一节「删掉 wrapper 即永真放行」改准为「删掉或去掉执行位保守拦截，内容被替换才永真放行」（第 5 步 grep 锚的守卫措辞一族核出）。
 > - **变更说明**：v1.1.2（2026-09-24）随设计 v1.3.37 的 M10a 第 5 步纪律 6 回溯同步：2.6「当前边界」的 `driverEnabled` 现状句改准——M10a 第 3 步起四家均为真，`--driver` 取未启用值退 64；补 `topic claim` 按阶段声明一句。
 > - **变更说明**：v1.1.1（2026-09-20）随[设计 v1.3.30](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 的 M9 第 7 步纪律 6 回溯同步：
@@ -82,6 +83,7 @@ graph TD
 | `hooks.ts` | 1041 | 五个 Claude Code Hook 入口的全部判定逻辑。**全仓最大的文件** | `hookPreWrite()` `hookPreBash()` `hookPreCommit()` `hookStop()` `hookSessionStart()` |
 | `gate.ts` | 476 | 裁决完整性硬校验（11 个失败码）、共同 blocker 判定 | `checkAdjudication()` `findJointRejectedBlockers()` |
 | `approval.ts` | 138 | 人工审批的状态迁移与留痕 | `recordApproval()` |
+| `worktree-summary.ts` | 290 | 审批时的工作树改动摘要（EV-132 候选 ② 折中版）：以 `snapshot.after_tree_hash` 为基线比当前工作树，**只告知、不进任何判定、不抛错**（失败转原因之一），基线先过对象名形状闸，20 秒整体截止 | `summarizeWorkTree()` `renderWorkTreeSummary()` |
 | `guard.ts` | 225 | 只读失守 / 证据下限 / 泄漏 / 漂移的**判定**（不做处置） | `judgeRun()` `judgeSide()` |
 | `state.ts` | 300 | 闸门状态机、`state.json` 的读改写 | `setGateChecked()` `listOpenGates()` `shouldLockWrites()` |
 
@@ -150,7 +152,7 @@ graph TD
 | `types.ts` | 518 | 全部类型定义与编译期契约 |
 | `exit-codes.ts` | 67 | 九个退出码 |
 | `util/exec.ts` | 339 | 子进程执行、进程树杀灭、PID 复用识别 |
-| `util/git.ts` | 300 | 工作树哈希、补丁生成、变更列举 |
+| `util/git.ts` | 447 | 工作树哈希、补丁生成、变更列举；审批时摘要用的严格助手 `treeExists()` / `diffTreesNameStatus()`（失败即抛，与失败返回空的 `diffTrees()` 分开） |
 | `util/fsx.ts` `util/log.ts` | 119 / 39 | 文件系统与日志 |
 
 ---

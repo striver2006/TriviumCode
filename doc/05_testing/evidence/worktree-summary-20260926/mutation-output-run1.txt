@@ -1,0 +1,105 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=1）
+  M4a ✓ 咬住（fail=1）
+  M4b ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=8）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+{
+  "总数": 14,
+  "咬住": 14,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "摘要取不到时让 approve 退非零 ⇒ W5 / W7（摘要失败不得影响退出码）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "去掉归档根 / .trivium 排除 ⇒ 单测 3",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "比对改成相对 HEAD（闸门期提交的改动看不见）⇒ 单测 4",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4a",
+      "desc": "严格助手退回宽松语义（diff-tree 失败返回 []）⇒ 单测 10",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4b",
+      "desc": "去掉基线存在性预检（以单测 8 的不可达基线夹具为前提）⇒ 单测 8 不再报原因 2",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "收尾不落盘 after_tree_hash ⇒ W6 / W1",
+      "verdict": "✓ 咬住（fail=8）",
+      "fail": 8
+    },
+    {
+      "id": "M6",
+      "desc": "人读截断差一 ⇒ 单测 6",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "--await-approval 不追加摘要 ⇒ W4",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "隔离块缩到只包摘要计算、readRunMeta 移到块外并抛错（以 W7 的预算注入作触发）⇒ W7",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "approve 的摘要挪到落审批之后打印 ⇒ W1（先打印、再落审批）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "超时不区分、一律落原因 3 ⇒ 单测 11",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "JSON 不截断 ⇒ 单测 6",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "停点共用前段改回「事后也没有机制会发现」⇒ hook-config 停点四档用例",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "停点共用前段写成「不会被拦」（与 l2-hook 前缀「尽力拦截」矛盾，计划双审 GLM-02）⇒ hook-config 停点四档用例",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

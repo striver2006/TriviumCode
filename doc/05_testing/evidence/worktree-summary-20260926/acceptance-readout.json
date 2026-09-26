@@ -1,0 +1,111 @@
+{
+  "at": "2026-09-26T12:22:14.217Z",
+  "results": [
+    {
+      "id": "B1 停点",
+      "ok": true,
+      "detail": "--check 退 0"
+    },
+    {
+      "id": "B1 退出码",
+      "ok": true,
+      "detail": "approve 退 0（期望 0：摘要只告知）"
+    },
+    {
+      "id": "B1 列出改动",
+      "ok": true,
+      "detail": "列出 M README.md 与 A NOTES.md"
+    },
+    {
+      "id": "B1 先打印再落审批",
+      "ok": true,
+      "detail": "摘要在「已通过」之前"
+    },
+    {
+      "id": "B1 abandon 写法按 codex",
+      "ok": true,
+      "detail": "含 $dual-abandon"
+    },
+    {
+      "id": "B1 审批落盘",
+      "ok": true,
+      "detail": "task.json 最后一条为 approved"
+    },
+    {
+      "id": "B1 run.json 不变",
+      "ok": true,
+      "detail": "--check 之后到 approve 之后逐字节一致"
+    },
+    {
+      "id": "B2 无改动",
+      "ok": true,
+      "detail": "退 0，含「无改动」一行"
+    },
+    {
+      "id": "B3 基线被清",
+      "ok": true,
+      "detail": "gc 退 0，approve 退 0，报「基线对象已不在对象库」、不报「无改动」"
+    },
+    {
+      "id": "B3 审批落盘",
+      "ok": true,
+      "detail": "摘要取不到也照常落审批"
+    },
+    {
+      "id": "B4 实测记录",
+      "ok": true,
+      "detail": "缺省 gc --auto 后基线在=true；强制 gc.auto=1 后基线在=true；gc.pruneExpire=（未设，git 缺省 2.weeks.ago）"
+    },
+    {
+      "id": "B4 提交掉的改动仍列出",
+      "ok": true,
+      "detail": "approve 退 0，列出 M src/a.ts（git status 此时是干净的）"
+    },
+    {
+      "id": "B5 停点列出改动",
+      "ok": true,
+      "detail": "--check 退 0，列出 NOTES.md 并说审批时会再列出"
+    }
+  ],
+  "raw": {
+    "B1": {
+      "code": 0,
+      "stdout": "工作树改动摘要（只告知，不影响审批结论）：自审查收尾（run 20260926T122200Z）以来，2 个文件有变化\n  A  NOTES.md\n  M  README.md\n  （比对范围：未被 .gitignore 忽略的文件，不含 .reviews/ 与 .trivium/；闸门期提交过的改动同样列出）\n  若这些改动不该发生：请自行 git diff 核对，必要时 $dual-abandon --topic 验收-工作树摘要 作废本轮后重跑。\n已通过：主题「验收-工作树摘要」plan 阶段（验收）。\n  业务写锁已解除。全部工件保留。\n  可以继续下一阶段。\n",
+      "stderr": ""
+    },
+    "B2": {
+      "code": 0,
+      "stdout": "工作树改动摘要：自审查收尾（run 20260926T122203Z）以来，未被 .gitignore 忽略的文件无改动（不含 .reviews/ 与 .trivium/）。\n已通过：主题「验收-工作树摘要」plan 阶段（验收）。\n  业务写锁已解除。全部工件保留。\n  可以继续下一阶段。\n",
+      "stderr": ""
+    },
+    "B3": {
+      "code": 0,
+      "stdout": "已通过：主题「验收-工作树摘要」plan 阶段（验收）。\n  业务写锁已解除。全部工件保留。\n  可以继续下一阶段。\n",
+      "stderr": "⚠️  工作树改动摘要取不到：基线对象已不在对象库（可能被 git 清理）。这不影响审批；请自行 git status 核对。\n"
+    },
+    "B4_readings": {
+      "baseline": "23c42a61e7ef0d118cbe1b612e7e4cbee868350b",
+      "gc_auto_default": {
+        "code": 0,
+        "baseline_exists_after": true
+      },
+      "gc_auto_forced": {
+        "code": 0,
+        "baseline_exists_after": true
+      },
+      "count_objects": "count: 63\nsize: 260\nin-pack: 0\npacks: 0\nsize-pack: 0\nprune-packable: 0\ngarbage: 0\nsize-garbage: 0",
+      "gc_pruneExpire": "（未设，git 缺省 2.weeks.ago）"
+    },
+    "B4": {
+      "code": 0,
+      "stdout": "工作树改动摘要（只告知，不影响审批结论）：自审查收尾（run 20260926T122208Z）以来，1 个文件有变化\n  M  src/a.ts\n  （比对范围：未被 .gitignore 忽略的文件，不含 .reviews/ 与 .trivium/；闸门期提交过的改动同样列出）\n  若这些改动不该发生：请自行 git diff 核对，必要时 $dual-abandon --topic 验收-工作树摘要 作废本轮后重跑。\n已通过：主题「验收-工作树摘要」plan 阶段（验收）。\n  业务写锁已解除。全部工件保留。\n  可以继续下一阶段。\n",
+      "stderr": ""
+    },
+    "B4_git_status": "?? .reviews/\n?? .trivium/state.json\n",
+    "B5": {
+      "code": 0,
+      "stdout": "✓ 裁决完整性校验通过（2 条裁决，含 0 条降级编号）\n裁决齐备，已置为等待人工审批：验收-工作树摘要 / plan（第 1 轮）\n  停点话术：trivium gate --stage plan --topic 验收-工作树摘要 --await-approval\n  在此期间不得修改业务文件——本载体没有 Hook 拦截（L2），全靠你自觉；此刻改了业务文件也不会让审批失败（审批前复核只核裁决与本轮审查工件，不看工作树）；审批时 approve 会列出自审查收尾以来改过的文件（只告知，被 .gitignore 忽略的看不见，取不到时如实报原因），看到不该有的改动由你决定。审批之后删改审查工件，本载体上没有机制会发现；要让提交锚补上，就在 Claude Code 会话里提交。\n工作树改动摘要（只告知，不影响审批结论）：自审查收尾（run 20260926T122211Z）以来，1 个文件有变化\n  A  NOTES.md\n  （比对范围：未被 .gitignore 忽略的文件，不含 .reviews/ 与 .trivium/；闸门期提交过的改动同样列出）\n  审批时会再列出一次。\n",
+      "stderr": ""
+    }
+  }
+}

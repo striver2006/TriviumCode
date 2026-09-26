@@ -205,6 +205,8 @@ deny 核验完全由措施 b 承担。这一降级逐侧记于 `guard.verificati
      b. F 为空 → 无漂移（只有 Agent 临时文件）
      c. F 与 --context / diff 涉及文件相交 → review.on_drift_related（默认 fail）
      d. 其它 → review.on_drift（默认 warn），run.json 记 drift 并显著提示
+  4. tree_hash' 落盘为 snapshot.after_tree_hash（与 drift 同一次收尾写入）——
+     只供审批时的工作树改动摘要作基线，不参与任何判定（设计 8.5 / 6.7.1，EV-132 候选 ② 折中版）
 ```
 
 漂移判定**必须**剔除归档根：编排器自己写 `_meta/` 与 `task.json` 也会改变工作树，
@@ -351,9 +353,9 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 | `review --stage <s>` | 同步跑一次双审（手工调试用） |
 | `review --start / --wait / --status / --cancel` | 分段协议。`--start` 的返回恒带 `warnings`（EV-123）：拉起前按**当轮入选侧**复用预检的判定函数 `checkModelOverrideSource` 查出的只警告项，形状同预检；在派生之后随返回值到达（拦不住拉起，skill 在开场播报里念出并提示可 `--cancel`）；`finished_inline` 时为 `[]`；同步 `review --stage` 不做这项复查，它的 `--json` 另有既有的 `warnings: string[]`（运行期告警），与 `--start` **同键不同形**，不要按 `detail` 读 |
 | `review --worker <run_id>` | 工作进程入口，由 `--start` 派生。**不应由人直接调用** |
-| `gate --check` / `--check-artifacts` / `--await-approval` | 裁决完整性 / 最低工件集 / 置人工闸门 |
+| `gate --check` / `--check-artifacts` / `--await-approval` | 裁决完整性 / 最低工件集 / 置人工闸门。立停点时（`--await-approval`，以及命令 B / C / D 的 `--check` 通过后自动立）追加打印工作树改动摘要，`--await-approval --json` 带 `worktree_summary` 键；只告知，不参与判定、不改退出码 |
 | `gate hook-*` | Hook 入口，从 stdin 读事件。**不应由人直接调用** |
-| `approve` / `abandon` | 人工审批 / 放弃闸门。审批附言走 `--reason`；多余的位置参数退 64（EV-24），布尔旗标（`--reject` 等）不吞下一个 token、`=` 传值只认 true/false。**通过前复核**（M10a 第 3 步）：与 `gate --await-approval` 共用一份判定——本轮裁决齐备 + 本轮 `run.json.artifacts[]` 的 sha256 抽核；不通过退 2，推断不出 run_id 或运行元数据读不出退 65（出口是 abandon 后重跑）。拒绝与放弃不复核。复核不保证「审批来自人」 |
+| `approve` / `abandon` | 人工审批 / 放弃闸门。审批附言走 `--reason`；多余的位置参数退 64（EV-24），布尔旗标（`--reject` 等）不吞下一个 token、`=` 传值只认 true/false。**通过前复核**（M10a 第 3 步）：与 `gate --await-approval` 共用一份判定——本轮裁决齐备 + 本轮 `run.json.artifacts[]` 的 sha256 抽核；不通过退 2，推断不出 run_id 或运行元数据读不出退 65（出口是 abandon 后重跑）。拒绝与放弃不复核。复核不保证「审批来自人」。**通过时先打印工作树改动摘要**（复核之后、落审批之前）：自审查收尾以来改过的文件，基线 `snapshot.after_tree_hash`；`--json` 带 `worktree_summary`（按阶段，每阶段 `available` / `reason` / `run_id` / `baseline_tree` / `current_tree` / `total` / `truncated` / `files`（最多 200 条）/ `excluded_prefixes` / `budget_ms` / `budget_overridden`）。只告知，不参与判定、不改退出码；取不到时报原因，不报「无改动」 |
 | `verify --topic <t>` | 执行显式配置的编译测试命令并落盘记录 |
 | `report --topic <t>` | 主题级复盘 |
 | `status` | 闸门、运行、降级与争议 |

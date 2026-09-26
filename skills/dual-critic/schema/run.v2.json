@@ -117,6 +117,10 @@
         "subject_sha256": {
           "type": "string"
         },
+        "after_tree_hash": {
+          "description": "审查收尾复算时的工作树 tree（与 tree_hash 同法）；只供审批时的工作树摘要作基线，不参与任何判定；缺席 = 本字段之前的旧留痕或运行未走到复算",
+          "type": "string"
+        },
         "build": {
           "description": "运行中的编排器自带的构建标识（EV-82）。git_head 是被审项目的 HEAD，这一项才是编排器本体的构建来源；null = 构建时取不到 git；缺席 = 本字段之前的旧留痕",
           "type": [

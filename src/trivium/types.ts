@@ -1225,6 +1225,12 @@ export interface SnapshotMeta {
    * null = 构建时取不到 git；缺席 = 本字段之前的旧留痕。见 `build-stamp.ts`。
    */
   build?: BuildStamp | null;
+  /**
+   * 审查收尾复算时的工作树 tree（与 `tree_hash` 同法，`workTreeHash`）。**只供审批时的工作树改动摘要
+   * 作基线，不参与任何判定**（审批前工作树摘要计划 r2 §2.3，EV-132 候选 ② 折中版）。
+   * 与 `drift` 同一处写入、同一次收尾落盘；缺席 = 本字段之前的旧留痕或运行未走到复算。
+   */
+  after_tree_hash?: string;
 }
 
 /**
