@@ -13,16 +13,24 @@
 | 0.2 | 你 | 定审核者：claude / codex / gemini 任两家 | 建议 `claude,gemini`：两家在 3-1 / 3-3 的 plan 轮都在 4 分钟内交卷；选 codex 要先把夹具配置换档（同 3-3，见 EV-130），并定用哪个模型 |
 | 0.3 | 我 | 按 0.2 给你第 3 步要发的整句（主题、焦点、`--critics`） | 焦点避开写动词字面 |
 
+### 0 的执行结果（2026-09-26）
+
+- 0.1：夹具 `/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r5-SGJSG3`，基线提交 `89bf9d0`（含 init 产物与 `.zcode/config.json`），工作区干净；未认领、未调用 zcode。
+  夹具配置的 codex 档换成 deepseek / deepseek-flash（同 3-3）：codex 本轮不是审核者，换档只为入口 skill 的预检——它不带 `--critics`（EV-126），会按缺省集合减去 glm 探活 codex 与 gemini。
+- 0.2：用户定 `claude,gemini`。
+- 0.3：主题 `配置加载重构`；整句见下表第 3、4、6 步。
+- rollout 基线：`~/.zcode/cli/rollout/` 现有 3 份（`95a64b26…`、`baee857f…`、`e3671b27…`，均早于夹具搭建），`copy-rollout.mjs 0-baseline` 已记。新会话一建，最旧的那份会被 ZCode 删掉，属预期。
+
 ## 1. 桌面端步骤
 
 | # | 你做什么 | 期望 | 记录什么 |
 | :-- | :--- | :--- | :--- |
 | 1 | ZCode 桌面端打开夹具目录，**先点信任**，此时**还不要**新建会话 | 弹出工作区 Hook 的信任提示 | 有没有弹、点击时间（r10 §4.3：信任状态） |
 | 2 | 新建会话，第一句只发：「本轮不要使用子代理（Agent 工具），所有操作由你直接执行。」 | 会话应答 | — |
-| 3 | 发：「运行 `.trivium/bin/trivium topic claim --topic <主题> --stage plan --driver glm --json`，贴出输出。」 | 退 0，认领 plan 阶段为 glm | 输出原文 |
-| 4 | 发 0.3 给的写稿请求（按夹具 README 的需求写计划原稿，用 Write 落到 `.reviews/<主题>/plan/<日期>-<主题>-glm.md`，写完就停） | 写成。**必须先认领再写**：未认领时当轮 Driver 按缺省判为 claude，`-glm.md` 在保护集里，Hook 会拦 | 写没写成 |
+| 3 | 发：「运行 `.trivium/bin/trivium topic claim --topic 配置加载重构 --stage plan --driver glm --json`，贴出输出，然后停。」 | 退 0，认领 plan 阶段为 glm | 输出原文 |
+| 4 | 发：「按 README.md 的需求写一份实施计划原稿，用 Write 工具落到 `.reviews/配置加载重构/plan/2026-09-26-配置加载重构-glm.md`，写完就停，不要改别的文件，也不要调用任何 skill。」 | 写成。**必须先认领再写**：未认领时当轮 Driver 按缺省判为 claude，`-glm.md` 在保护集里，Hook 会拦 | 写没写成 |
 | 5 | **节点 ①**：原稿写完，告诉我「原稿写完了」 | 我把当时的 `~/.zcode/cli/rollout/model-io-sess_<id>.jsonl` 与同时段 `model-io-sess_subagent_*` 拷进本目录；拷完告诉你继续 | — |
-| 6 | 发 `/dual-review-plan <我在 0.3 给的整句>`，**原样照抄，记下实际发出的全文** | 会话按入口 skill 走：认领（已声明，幂等退 0）→ 预检 → 解析 → `--start` → `--wait` 循环；开场播报两侧模型 | 你发出的原文（参数保真要逐字比对）；播报原文 |
+| 6 | 发（**原样照抄，记下实际发出的全文**）：`/dual-review-plan 重点看环境变量覆盖的类型转换规则、文件缺失与 JSON 损坏两种状态的区分，以及只读与只加载一次的做法是否站得住 --topic 配置加载重构 --critics claude,gemini` | 会话按入口 skill 走：认领（已声明，幂等退 0）→ 预检 → 解析 → `--start` → `--wait` 循环；开场播报两侧模型 | 你发出的原文（参数保真要逐字比对）；播报原文 |
 | 7 | **节点 ②**：`--start` 返回后告诉我「起跑了」（不必暂停，`--wait` 期间我拷即可） | 我拷第二份 | — |
 | 8 | 等会话读完两份审查文档、写裁决件 `…-revised-glm.md` | 写成（自己后缀，Hook 不拦） | — |
 | 9 | **节点 ③**：裁决件写完告诉我 | 我拷第三份 | — |

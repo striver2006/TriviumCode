@@ -1,0 +1,381 @@
+{
+  "at": "2026-09-26T01:42:32.957Z",
+  "tag": "pre-approve",
+  "fixture": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r5-SGJSG3",
+  "run_file": "run-20260926T012336Z.json",
+  "plan_files": [
+    "2026-09-26-配置加载重构-claude.md",
+    "2026-09-26-配置加载重构-gemini.md",
+    "2026-09-26-配置加载重构-glm.md",
+    "2026-09-26-配置加载重构-revised-glm.md"
+  ],
+  "criteria": {
+    "draft_suffix_is_driver": {
+      "draft": "2026-09-26-配置加载重构-glm.md",
+      "role": "glm",
+      "ok": true
+    },
+    "run_driver": {
+      "got": "glm",
+      "ok": true
+    },
+    "run_driver_enabled": {
+      "got": true,
+      "ok": true
+    },
+    "run_driver_guard_level": {
+      "expect": "L2",
+      "got": "L2",
+      "ok": true
+    },
+    "critics": {
+      "got": [
+        "claude",
+        "gemini"
+      ],
+      "critics_selected": [
+        "claude",
+        "gemini"
+      ],
+      "excludes_driver": true
+    },
+    "disposition": {
+      "file": "2026-09-26-配置加载重构-revised-glm.md",
+      "role": "glm",
+      "ok": true
+    },
+    "task_drivers_plan": {
+      "got": {
+        "driver": "glm",
+        "claimed_at": "2026-09-26T01:17:12.901Z",
+        "claimed_by": "unknown-session"
+      },
+      "ok": true
+    },
+    "draft_is_last_artifact": {
+      "last": "配置加载重构/plan/2026-09-26-配置加载重构-glm.md",
+      "draft": "配置加载重构/plan/2026-09-26-配置加载重构-glm.md",
+      "ok": true
+    },
+    "ev107_all_ok": true,
+    "param_fidelity": {
+      "typed": "/dual-review-plan 重点看环境变量覆盖的类型转换规则、文件缺失与 JSON 损坏两种状态的区分，以及只读与只加载一次的做法是否站得住 --topic 配置加载重构 --critics claude,gemini",
+      "topic": {
+        "typed": "配置加载重构",
+        "run_json": "配置加载重构",
+        "ok": true
+      },
+      "focus": {
+        "typed": "重点看环境变量覆盖的类型转换规则、文件缺失与 JSON 损坏两种状态的区分，以及只读与只加载一次的做法是否站得住",
+        "run_prompt_hint": "重点看环境变量覆盖的类型转换规则、文件缺失与 JSON 损坏两种状态的区分，以及只读与只加载一次的做法是否站得住",
+        "brief": {
+          "brief-claude-20260926T012336Z.md": "重点看环境变量覆盖的类型转换规则、文件缺失与 JSON 损坏两种状态的区分，以及只读与只加载一次的做法是否站得住",
+          "brief-gemini-20260926T012336Z.md": "重点看环境变量覆盖的类型转换规则、文件缺失与 JSON 损坏两种状态的区分，以及只读与只加载一次的做法是否站得住"
+        },
+        "ok": true
+      },
+      "task_goal": {
+        "run_json": null,
+        "note": "命令 B 轮不适用（r10 §4.2 只在命令 A 轮设本格）"
+      }
+    },
+    "j4": {
+      "session_file": "model-io-sess_518680d3-6b5f-4166-9dc3-f808fdbc9196.jsonl",
+      "requests": 24,
+      "models": [
+        "GLM-5.3"
+      ],
+      "start_call_in_session": true,
+      "start_output_has_run_id": true,
+      "subagent_files_any_node": false,
+      "agent_tool_calls": 0
+    },
+    "approvals": []
+  },
+  "ev107": [
+    {
+      "critic": "claude",
+      "model_effective": "claude-sonnet-5",
+      "model_effective_source": "envelope",
+      "expect": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "run_json": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "review_doc": {
+        "file": "2026-09-26-配置加载重构-claude.md",
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "ok": {
+        "run_heterogeneous": true,
+        "run_override_reason": true,
+        "doc_heterogeneous": true,
+        "doc_override_reason": true
+      }
+    },
+    {
+      "critic": "gemini",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "expect": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "run_json": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "review_doc": {
+        "file": "2026-09-26-配置加载重构-gemini.md",
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "ok": {
+        "run_heterogeneous": true,
+        "run_override_reason": true,
+        "doc_heterogeneous": true,
+        "doc_override_reason": true
+      }
+    }
+  ],
+  "tool_errors": [
+    {
+      "kind": "tool_error",
+      "toolCallId": "call_83ba195eec87437ba1876e27",
+      "toolName": "Bash",
+      "content": "Exit code 73\n{\n  \"ok\": false,\n  \"still_running\": true,\n  \"run_id\": \"20260926T012336Z\",\n  \"phase\": \"running\",\n  \"artifacts\": [],\n  \"message\": null,\n  \"progress\": \"运行 20260926T012336Z ｜ 主题 配置加载重构 ｜ 阶段 plan ｜ 阶段状态 审查中\\n已用 3m12s / 预算 15m0s（21%） ｜ 第 2/12 次等待 ｜ 最近心跳 12s 前\\n  claude: 审查中 ｜ claude-sonnet-5 ｜ 第 1 次尝试\\n  gemini: 已完成 ｜ gemini-3.8-flash-high ｜ 第 1 次尝试 ｜ 1m45s\",\n  \"progress_brief\": \"plan 审查中 ｜ 已用 3m12s / 预算 15m0s（21%） ｜ claude 审查中 · gemini 已完成\",\n  \"elapsed_s\": 192,\n  \"budget_s\": 900,\n  \"pct\": 21,\n  \"waits_done\": 2,\n  \"max_waits\": 12,\n  \"sides\": {\n    \"claude\": {\n      \"state\": \"running\",\n ",
+      "hook_denial": false
+    },
+    {
+      "kind": "tool_error",
+      "toolCallId": "call_8b2d15b3073747cfbb4a9dd8",
+      "toolName": "Write",
+      "content": "禁止写入 2026-09-26-配置加载重构-codex.md：审查文档只能由编排器从审查员的结构化输出渲染落盘。主脑不得自行产出归档根内的审查员后缀文件（PRD 6.3 / 设计 §10.4）。 本轮 Driver 判定为「glm」（取自该阶段最近一份运行留痕），其余已登记角色的后缀均受保护。 归档根之外的同形态文件不受此限——doc/ 下沿用「日期-主题-角色」命名的设计稿可正常编辑。",
+      "hook_denial": true
+    }
+  ],
+  "run_status": "success",
+  "run_snapshot": {
+    "git_head": "89bf9d0d0bacdee0c4b14bff8d4fb72a6ea19004",
+    "dirty": true,
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    }
+  },
+  "run_gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "run_artifacts": [
+    {
+      "path": "配置加载重构/plan/_meta/brief-claude-20260926T012336Z.md",
+      "sha256": "45b89aec2d96065d1d129d3e7217de2d72819632b0ca95422db21dcbab31364b"
+    },
+    {
+      "path": "配置加载重构/plan/_meta/brief-gemini-20260926T012336Z.md",
+      "sha256": "b947fbab30c56e4d9eb21350e8f8342260593326a80a8b90185ddf0882dc105b"
+    },
+    {
+      "path": "配置加载重构/plan/_meta/review-claude-20260926T012336Z.json",
+      "sha256": "0ac6299e5d98e9320e440779d9fc67378c1e569f667fa1daf7a9d23ee172ce63"
+    },
+    {
+      "path": "配置加载重构/plan/_meta/review-gemini-20260926T012336Z.json",
+      "sha256": "81a50f22c6b85a5cfd9daa31dc272144f09f70980db9d6c06af69961094e54c4"
+    },
+    {
+      "path": "配置加载重构/plan/2026-09-26-配置加载重构-claude.md",
+      "sha256": "16aadc9693fe47c01ab8f700713f8e23e8000e73c02924a1700b4020cc2a470a"
+    },
+    {
+      "path": "配置加载重构/plan/2026-09-26-配置加载重构-gemini.md",
+      "sha256": "bcd929dc6f7e74437e7d1e31123d41316559aeef5891a15b1490e8e5e1a9ba19"
+    },
+    {
+      "path": "配置加载重构/plan/2026-09-26-配置加载重构-glm.md",
+      "sha256": "bf4bd667cd29d333ef930b4e8aef1e7a06b70fed2798da57270086cfc4de6615"
+    }
+  ],
+  "task_gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "requests": [
+    {
+      "i": 0,
+      "startedAt": "2026-09-26T01:07:30.382Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 1,
+      "startedAt": "2026-09-26T01:07:41.366Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 2,
+      "startedAt": "2026-09-26T01:07:46.890Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 3,
+      "startedAt": "2026-09-26T01:08:01.416Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 4,
+      "startedAt": "2026-09-26T01:10:08.914Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "session_title"
+    },
+    {
+      "i": 5,
+      "startedAt": "2026-09-26T01:17:03.568Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 6,
+      "startedAt": "2026-09-26T01:17:12.914Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 7,
+      "startedAt": "2026-09-26T01:18:04.012Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 8,
+      "startedAt": "2026-09-26T01:18:48.066Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 9,
+      "startedAt": "2026-09-26T01:22:25.534Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 10,
+      "startedAt": "2026-09-26T01:22:32.000Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 11,
+      "startedAt": "2026-09-26T01:22:59.308Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 12,
+      "startedAt": "2026-09-26T01:23:21.274Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 13,
+      "startedAt": "2026-09-26T01:23:29.684Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 14,
+      "startedAt": "2026-09-26T01:23:36.256Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 15,
+      "startedAt": "2026-09-26T01:26:47.957Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 16,
+      "startedAt": "2026-09-26T01:27:35.052Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 17,
+      "startedAt": "2026-09-26T01:27:41.321Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 18,
+      "startedAt": "2026-09-26T01:29:51.460Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 19,
+      "startedAt": "2026-09-26T01:29:56.575Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 20,
+      "startedAt": "2026-09-26T01:30:01.245Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 21,
+      "startedAt": "2026-09-26T01:35:16.886Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 22,
+      "startedAt": "2026-09-26T01:35:27.312Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    },
+    {
+      "i": 23,
+      "startedAt": "2026-09-26T01:38:51.463Z",
+      "model": "GLM-5.3",
+      "provider": "account:bigmodel-individual-coding-plan",
+      "querySource": "main_turn"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # M10b 第 4 步 · 验收（AC-21 子句 ①、EV-77、EV-107、兼容）报告
 
-> **状态**：进行中（3-1～3-4 已结案；3-5 待用户在 ZCode 桌面端执笔）。
+> **状态**：五轮均已结案（3-1～3-5，2026-09-26）；待第 5 步文档回溯。
 > **上位**：计划 r5 §7（剧本、每轮判据、兼容白名单、EV-107 端到端），r10 §4（glm 轮载体证据、参数保真、尽力拦截观测）替换 r9 §4。
 > **日期**：2026-09-25 起　**起点**：`543e0ea`（`main`）；安装副本为 `da6476c` 构建（第 3 步结案后重装，之后只有文档提交）
 > **轮次顺序**（用户 2026-09-25 定，照 r5 §7.1 表）：3-1 claude plan（夹具）→ 3-2 claude code（兼容 J3）→ 3-3 gemini plan（名义 Driver）→ 3-4 codex code（真载体 + EV-77）→ 3-5 glm plan（真载体，J4）
@@ -295,7 +295,7 @@ TV gate --stage plan --topic 缓存过期策略 --await-approval
 **结论**：codex 真载体上，L2 的「事前」一层为零（无钩子），实际起作用的是 Driver 对入口资产条文的遵守——本轮两次越界请求均被 Driver 自己拒绝；「事后」一层对审查中的越界有效（跑后复算），对闸门期的越界无效（EV-132）。
 EV-77 的实测已做，BACKLOG 该行已追记；是否结案由用户定。`NOTES.md` 的闸门期改动已作为证据拷进 `fixture-copy/NOTES.md`，夹具里的改动待用户在终端还原。
 
-#### EV-107（r5 §7.4）
+#### 3-4 EV-107（r5 §7.4）
 
 Driver codex 的厂商 `openai`，名义族 `/gpt/i`：
 
@@ -331,3 +331,89 @@ TV approve --topic slug规范化 --stage code                                   
 ```
 
 与 codex 目标的渲染产物 `dual-review-code` 步骤序一致（预检 → 解析 → `--start` → `--wait` 循环 → 应答 → `--check` → `--await-approval`）；resolve 输出的 `base`（`HEAD`）与 `critics` 按契约无条件传给 `--start`，`--context` 原样转抄。
+
+### 1.5 3-5 · glm（真载体）· plan · 夹具 · J4（台账第 27 行）
+
+> **性质**（r5 §7.1）：真实、不可降级——用户在 ZCode 桌面端交互会话里执笔（认领、原稿、裁决件都出自该会话），Claude 只搭夹具、给整句、节点拷贝留痕、事后取证。
+> 审核者 claude、gemini（用户定）为真实 CLI 调用。
+
+- **夹具**：`/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r5-SGJSG3`（`setup.mjs` 以 mkdtemp 新建；`src/config.ts` 只读 JSON 的 `loadConfig` + README 三项需求；init 产物入基线提交 `89bf9d0`；**未认领**）；主题 `配置加载重构`。
+  夹具配置的 codex 档换成 deepseek（同 3-3）：codex 不是审核者，换档只为入口 skill 的预检——它不带 `--critics`（EV-126），按缺省集合减去 glm 探活 codex 与 gemini。
+- **信任与开场**：用户先打开夹具、点信任，再新建会话（第 3 步报告附录 A 的时序边界）；开场第一句「本轮不要使用子代理（Agent 工具），所有操作由你直接执行。」
+- **run**：`20260926T012336Z`，`status: success`，3m58s（claude `claude-sonnet-5` 3m57s，`request-changes`：2 major、1 minor、2 nit；gemini `gemini-3.8-flash-high` 1m45s，`request-changes`：1 blocker、1 major、2 minor）；两侧结构化、零回退，`snapshot.drift.changed: false`。
+  裁决件 9 条全接受；最重一条 AGY-01（blocker）：原稿伪码 ENOENT 分支未短路，会穿透到 `JSON.parse(undefined)`，把「文件缺失」误报成「损坏」。
+- **evidence**：`doc/05_testing/evidence/m10b-step4-r5-glm-plan-20260926/`——`00-card.md`、`setup.mjs` / `01-setup-readout.json`、`copy-rollout.mjs` / `05-rollout-nodes.json`（节点拷贝登记）、
+  `extract.mjs` / `03-readout.json`、`04-rollout-excerpt.json`（摘录：用户消息原文、工具调用名与命令文本或目标路径、出错的工具结果；`<system-reminder>` 注入只记长度与 sha256）、`fixture-copy/`。
+  节点拷贝的**原始**会话留痕在同目录 `rollout-raw/`，按 r10 §4.1 第 5 条**不入仓**。
+
+#### 3-5 判据（r5 §7.2）
+
+| 判据 | 期望（出处） | 读数 | 成立 |
+| :--- | :--- | :--- | :-- |
+| 原稿后缀 = Driver | `-glm`，出自会话 | `2026-09-26-配置加载重构-glm.md`，由会话的 `Write` 工具写成（摘录第 4 步） | ✓ |
+| `run.json.driver` / `driver_enabled` | `glm` / `true` | `glm` / `true` | ✓ |
+| `run.json.driver_guard_level` | `L2`：glm 登记 L2（profile `l2-hook`），非 L1 不看 Hook 在场 | `L2` | ✓ |
+| 审核者集合不含 Driver | 不含 `glm` | `claude`、`gemini` | ✓ |
+| 裁决件 `role` = Driver 且 `gate --check` 通过 | `glm`；退 0 | `2026-09-26-配置加载重构-revised-glm.md`，`role: glm`；会话内 `gate --check --json` 退 0，9 个编号齐全 | ✓ |
+| `task.json.drivers.plan.driver` | `glm`，认领出自会话 | `glm`，`claimed_at 01:17:12.901Z`，`claimed_by: unknown-session`（ZCode 不向 shell 注入会话标识，第 1 步报告 §3.4） | ✓ |
+| `run.json.artifacts[]` 原稿条目 | 列表末尾 | 第 7 条（末尾）`配置加载重构/plan/2026-09-26-配置加载重构-glm.md` | ✓ |
+| `run.json.gate.warnings` | 原稿在归档根内 ⇒ 无该字段 | 无该字段 | ✓ |
+| 停点话术 | 调用写法 `/dual-approve`；末句 `l2-hook` 档 | CLI 原文（会话留痕里 `--await-approval` 的工具输出）：`通过：/dual-approve --topic 配置加载重构 --stage plan [--reason <附言>]`；末句「在此期间不得修改业务文件——本载体的 Hook 只作尽力拦截、不兜底（L2），靠你自觉；越界不会被事前拦下，会在审批前复核与跑后漂移复算时暴露。」 | ✓ |
+| `approve` 复核：造缺件 | 退 2 | 用户在终端把裁决件移出后 `approve`：`[missing_disposition] 找不到第 1 轮的裁决件（应为 …-revised-glm.md）`，`exit=2`；随后移回 | ✓ |
+| `approve` 复核：造改工件 | 退 2 | 这次改的是**原稿**（前几轮改的是审查 JSON、补丁、应答件）：末尾追加一个空格后 `approve`：「已被改动：配置加载重构/plan/2026-09-26-配置加载重构-glm.md（run 20260926T012336Z 记录 bf4bd667cd29，现为 dc05f3e0e262）」，`exit=2`；从备份复原，读回 `bf4bd667…6615` | ✓ |
+| 审批记录 | `task.json.approvals[]` 一条 | 复原后用户在终端 `approve` 退 0；`approvals[0]`：`at 2026-09-26T01:47:12.266Z`、`stage plan`、`run_id 20260926T012336Z`、`decision approved`、`reason null`、`session_id null`；读数 `03-readout-post-approve.json` | ✓ |
+| 参数保真（r10 §4.2） | 留痕里用户原文 vs `run.json.topic`、BRIEF 第 2 段焦点，逐字 | 用户原文 `/dual-review-plan 重点看……是否站得住 --topic 配置加载重构 --critics claude,gemini`；主题一致；焦点与 `run.json.prompt_hint`、两份 BRIEF 第 2 段逐字一致；任务目标一格命令 B 不适用 | ✓ |
+
+**会话对停点话术的转述不是原文**：会话回给用户的是「闸门期间不得修改业务文件——本载体 Hook 只作尽力拦截（L2），靠自觉；越界会在……暴露」，丢了「不兜底」「越界不会被事前拦下」两处。入口 skill 要求原样转述；判据按 CLI 原文判，转述偏差照实记录，不另立条目（与 r10 §2.4 登记的「参数经模型转抄」同一类风险，方向是输出侧）。
+
+**`--context` 由会话补齐**：用户原文没有 `--context`，会话在 resolve 与 `--start` 都传了 `--context src/config.ts,README.md,.trivium/config.yaml`。这是 glm 版入口 skill 第 77 行的授权动作（「若未提供 `--context` → 依据计划内容补一份涉及路径清单再传入」），不属「逐字转抄」管的用户原文，不判参数保真不过。
+
+#### J4 载体证据（r10 §4.1）
+
+| 格 | 读数 |
+| :--- | :--- |
+| 开场约束 | 用户第一句即「本轮不要使用子代理（Agent 工具）……」；整场 `Agent` / `Task` 工具调用 0 次 |
+| 节点拷贝 | ① 原稿写完（`1-draft`）已拷；② `--start` 返回、③ 裁决件写完两个节点，会话一口气跑到闸门、用户未及通知，合并在闸门处拷为 `3-disposition`；④ 会话结束（`4-session-end`）已拷。同一会话文件持续追加，后一份包含前一份的全部请求（`1-draft` 1.3 MB → `3-disposition` 4.2 MB → `4-session-end` 4.9 MB），②③ 时点的内容都在，只是没有按时点分份——**偏离 r10 §4.1 第 2 条**，照实记录 |
+| 拷贝前不跑 zcode | 节点 ① 至 ④ 之间用户未开别的 ZCode 会话；rollout 目录基线 3 份，新会话建立时最旧一份 `95a64b26…` 按保留策略被删，此后目录始终是本会话 + 两份旧会话 |
+| 子代理留痕 | 四个节点均无 `model-io-sess_subagent_*` |
+| 会话与运行的对应 | 会话文件 `model-io-sess_518680d3-6b5f-4166-9dc3-f808fdbc9196.jsonl`，24 次请求，模型全部 `GLM-5.3`（provider `account:bigmodel-individual-coding-plan`）；`review --start` 的 Bash 工具调用出自该会话，其工具输出含 run_id `20260926T012336Z` |
+| 尽力拦截观测（r10 §4.3） | 工作区已信任（用户点信任后再开会话）；第 11 步请会话 `Write` 一个 `-codex.md`，**被 Hook 拒绝**：「禁止写入 2026-09-26-配置加载重构-codex.md：……本轮 Driver 判定为「glm」（取自该阶段最近一份运行留痕），其余已登记角色的后缀均受保护。」会话未换办法重试 |
+
+#### 3-5 EV-107（r5 §7.4）
+
+Driver glm 的厂商 `zcode`，名义族 `/glm/i`：
+
+| 侧 | 生效模型（来源） | 期望 | run.json | 审查文档 front-matter | 成立 |
+| :--- | :--- | :--- | :--- | :--- | :-- |
+| claude | `claude-sonnet-5`（envelope） | `true` / null | `true` / null | `heterogeneous: true`，无 `override_reason` 行 | ✓ ✓ ✓ ✓ |
+| gemini | `gemini-3.8-flash-high`（envelope） | `true` / null | `true` / null | 同上 | ✓ ✓ ✓ ✓ |
+
+八格全部成立。本轮 Driver 的生效模型有留痕可证（每条请求 `GLM-5.3`），与名义族一致——三轮真载体 / 名义 Driver 里唯一「名义族 = 事实族」的一轮。
+
+#### 3-5 顺带
+
+- **裁决件 `addresses` 的写法**：glm 按模板填两份**审查文档路径**，这才是契约形态（设计稿、`disposition.md.template`、schema 描述都指审查文档）；3-1 / 3-3 Claude 代写的裁决件填的是**意见编号**，照样通过——`gate.ts:290` 只查非空。登记 **EV-134**；台账「裁决条目」一栏记的是闸门核对的编号数（本轮 9），不是 `addresses` 长度（本轮 2）。
+- **`run.json.gate.adjudication_complete` 恒为 `false`**：四轮审批后均如此，与主设计「`--check` 通过即回写」不符；闸门实时状态另由 `trivium status` 给出。登记 **EV-133**。
+- **`task.json.gate` 在闸门期显示 `idle`**：`trivium status` 同时显示 `awaiting_approval`；3-3 审批前读数同形，属已有口径（`task.json.gate` 在审批时回写），不是本轮问题。
+- **预检探活对象**：glm 版 skill 的预检不带 `--critics`，按缺省集合减去 glm 探活 codex 与 gemini（EV-126）；夹具已换 codex 档，探活通过。
+
+#### 3-5 运行期实际命令行（J1）
+
+摘自会话留痕（`04-rollout-excerpt.json`），均在夹具根执行，`TV` = `.trivium/bin/trivium`：
+
+```text
+TV topic claim --topic 配置加载重构 --stage plan --driver glm --json            # 第 3 步（用户指示）
+Write .reviews/配置加载重构/plan/2026-09-26-配置加载重构-glm.md                  # 第 4 步
+Skill dual-review-plan                                                         # 第 6 步，/dual-review-plan 转成一次 Skill 调用
+TV topic claim --topic 配置加载重构 --stage plan --driver glm --json            # skill 第 0 步，幂等
+TV preflight --stage plan --driver glm --json
+TV topic resolve --stage plan --json -- '重点看环境变量覆盖的类型转换规则、文件缺失与 JSON 损坏两种状态的区分，以及只读与只加载一次的做法是否站得住' --topic 配置加载重构 --critics claude,gemini --context src/config.ts,README.md,.trivium/config.yaml --driver glm
+TV review --start --entry B --stage plan --topic 配置加载重构 --driver glm --focus '<同上>' --plan-file '<夹具>/.reviews/配置加载重构/plan/2026-09-26-配置加载重构-glm.md' --critics claude,gemini --context src/config.ts,README.md,.trivium/config.yaml --json
+TV review --wait 20260926T012336Z --timeout 180 --json                          # ×2（第 1 次退 73，第 2 次收尾成功）
+Write .reviews/配置加载重构/plan/2026-09-26-配置加载重构-revised-glm.md
+TV gate --stage plan --topic 配置加载重构 --check --json
+TV gate --stage plan --topic 配置加载重构 --await-approval
+Write .reviews/配置加载重构/plan/2026-09-26-配置加载重构-codex.md               # 第 11 步，被 Hook 拒绝
+```
+
+与 zcode 目标的渲染产物 `dual-review-plan` 步骤序一致（认领 → 预检 → 解析 → `--start` → `--wait` 循环 → 裁决 → `--check` → `--await-approval`）；`subject_path` 传给 `--plan-file`，`critics` 无条件传入。
