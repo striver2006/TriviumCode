@@ -37,6 +37,7 @@ import {
 } from './zcode-trace.js';
 import {
   failedResult,
+  routeModel,
   TOOL_TRACE_CAPABILITY,
   type AdapterContext,
   type CarrierScrub,
@@ -419,7 +420,8 @@ export interface ZcodeInvokeOptions {
   /**
    * CLI 产物的落点根（EV-112）：给了就在清除面之后**设** `zcodeStorageRedirectEnv(storageRedirectRoot)` 的三个键。
    * 入参是与 HOME 同层的根（`zcodeHomeUnder(sideDir)`），不是 `.zcode`。
-   * 只有审查运行传（副本 / 无副本两支都传）；探活与探针不传——它们要测的是真实环境。
+   * 审查运行传（副本 / 无副本两支都传）；认证探活自 EV-136 起同样两支都传（它要探的是审查运行那条路径，
+   * 产物落进它自己的临时目录、随之删除）；旗标 / 模型探针不传——它们要测的是真实环境。
    */
   storageRedirectRoot?: string | null;
   timeoutMs: number;
@@ -879,6 +881,18 @@ export function zcodeOverrideSourcePath(): string {
 }
 
 /**
+ * 把文字里的用户家目录绝对路径归一成 `~`（EV-136 代码双审 r1 GLM-01）。
+ *
+ * 探活详情会进 preflight / doctor 输出，而那些输出常被抄进 git 里的 evidence——与 `preflight.ts` 的
+ * `displayHomePath` 同一关切。这里自持一份而不从 preflight 引：preflight 依赖适配层，反过来会成环。
+ * 家目录取不到或就是 `/` 时原样返回，免得把每个斜杠都换掉。
+ */
+export function tildeHome(text: string, home: string = os.homedir()): string {
+  if (!home || home === path.sep) return text;
+  return text.split(home).join('~');
+}
+
+/**
  * 为一次运行准备独立 HOME 与模型覆盖（`config_copy` 档）。
  *
  * 从用户的 `~/.zcode/cli/config.json` 拷一份到运行目录下的临时 HOME，只改 `model.main` / `model.lite`。
@@ -986,43 +1000,123 @@ export const zcodeAdapter: CriticAdapter = {
    *
    * 指纹取 `~/.zcode/cli/config.json`：CLI 的 provider 配置**独立于桌面端**，
    * 「桌面端已登录」不等于 CLI 可用（M0 实测），所以判据只认这个文件。
+   *
+   * ## 探的是审查运行将要用的那条选模路径（EV-136）
+   *
+   * 此前这里以 `homeDir: null` 拉起：个人 provider 配置（`~/.zcode/v2/provider_config.json`）被注入，
+   * 0.16.9 见它存在就直接用它的 `defaultModelSelection`（P-31）——探的是**个人缺省模型**。
+   * 而审查运行（`run()`）自 EV-82 起走副本 HOME、不注入个人配置，用的是 `cli/config.json` 的
+   * `model.main`，并按档位覆盖成请求模型。两条路径可以完全不相干：2026-09-26 个人缺省指向一个
+   * 已停用的 provider（TokenPlan / qwen3.8-max），探活连续报 `Model creation failed`、把每一轮含 glm
+   * 的审查都拦在预检，而审查真正要用的 GLM 订阅一切正常；反过来，个人缺省可用而 GLM 坏了时，
+   * 探活会放行一轮跑不通的审查。指纹早就只认 `cli/config.json`，拉起却不走它——自相矛盾。
+   *
+   * 现在与 `run()` 同一形态：`prepareZcodeHome`（按当前档位 plan 阶段的 glm 模型、请求置首）→
+   * 副本 HOME + 不注入个人配置。副本源缺失或档位没给模型时 `homeDir` 为 null，与 `run()` 在同一情形下的
+   * 退路相同（真实 HOME、注入个人配置）。**落点根两支都设**（代码双审 r1 CODEX-02 ≡ GLM-02）：`run()` 自 EV-112
+   * 起无副本支也设，把 CLI 产物拉回运行目录、并让启动期 beta 改写早退；探活照做，产物随临时目录一起删。
+   *
+   * ## 已知残余（代码双审 r1 CODEX-03、CODEX-04 ≡ GLM-03，BACKLOG EV-136）
+   *
+   * - **不分阶段**：取 plan 阶段的模型作代表（同一 provider 下各阶段只差模型档）；
+   * - **不分覆盖**：`--model-glm` 与主题级覆盖不进探活与指纹——`AuthProbe` 接口拿不到当轮生效模型。
+   *   档位模型坏而覆盖模型好 ⇒ 误拦；反之 ⇒ 放行。中期方向是由调用方按 `run()` 同一 `routeModel` 式子算好传入；
+   * - **不回读生效模型**：详情里的「模型 X」是请求的模型。置首挪不动时 0.16.9 会回落首个可见模型，
+   *   这一格在详情里如实注明「实际生效模型未核」，但正结论照常缓存。
+   *
+   * 指纹带上探活模型：换档位或改档位模型后缓存失效；格式一变，按旧路径探出来的缓存也随之作废。
    */
   authProbe(ctx: AdapterContext, projectRoot: string) {
     const cfg = ctx.cfg;
+    const model = routeModel(cfg, 'glm', 'plan').model;
     return {
       async fingerprint() {
         const f = zcodeOverrideSourcePath();
-        return (await exists(f)) ? sha256File(f) : null;
+        if (!(await exists(f))) return null;
+        /*
+         * 读不了就当「没有可用指纹」（代码双审 r1 CODEX-01）：缓存判失效、交给 probe() 报一条可读的失败，
+         * 而不是让异常穿过无兜底的 `probeAuth` 把整个预检崩成「内部错误」。
+         */
+        try {
+          return `${await sha256File(f)}|model=${model ?? ''}`;
+        } catch {
+          return null;
+        }
       },
       async probe() {
         const entry = cfg.probe.cli.zcode?.entrypoint ?? null;
         if (!entry) return { ok: false, detail: 'zcode 入口未记录' };
-        const out = await invokeZcode({
-          entry,
-          node: ctx.nodePath,
-          cwd: projectRoot,
-          prompt: '只回复 OK 两个字母，不要调用任何工具。',
-          readonlyArgs: readonlyArgsFromProbe(cfg.probe.cli.zcode?.readonly_flags ?? []),
-          homeDir: null,
+        /*
+         * 临时运行目录：副本 HOME 与 CLI 产物都落在它下面，副本里有凭据，用完即删。
+         * 删除只认 mkdtemp 的返回值（2026-09-20 事故后的规矩），不拼路径、不走别的变量。
+         */
+        const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-zcode-auth-'));
+        let out: ZcodeInvokeOutcome;
+        let prep: ZcodeHomePrep;
+        try {
           /*
-           * 180s，与搬家前 `preflight` 里的值一致（r9 双审 GLM-07）。
-           * M8 第 3 步把探活搬进适配器时手抄成了 120s——**一次搬家不该顺带改行为**。
-           * 本侧要起 node 子进程再拉 CLI，比 agy 慢，那 60 秒是当初特意给的。
+           * 副本准备会读并解析用户的 `cli/config.json`——改动前的探活不读它的内容（代码双审 r1 CODEX-01 ≡ GLM-04）。
+           * 文件损坏或不可读要落成一条可读的检查项失败，不能抛出去：`probeAuth` 没有兜底。
            */
-          timeoutMs: 180_000,
-        });
+          try {
+            prep = await prepareZcodeHome(runDir, model, { requestedFirst: true });
+          } catch (e) {
+            return {
+              ok: false,
+              detail: `副本源 ~/.zcode/cli/config.json 读取或解析失败：${tildeHome((e as Error).message)}（请检查该文件，或在 ZCode 里重新保存一次模型配置）`,
+            };
+          }
+          out = await invokeZcode({
+            entry,
+            node: ctx.nodePath,
+            cwd: projectRoot,
+            prompt: '只回复 OK 两个字母，不要调用任何工具。',
+            readonlyArgs: readonlyArgsFromProbe(cfg.probe.cli.zcode?.readonly_flags ?? []),
+            homeDir: prep.homeDir,
+            omitPersonalProviderConfig: prep.homeDir !== null,
+            storageRedirectRoot: zcodeHomeUnder(runDir),
+            /*
+             * 180s，与搬家前 `preflight` 里的值一致（r9 双审 GLM-07）。
+             * M8 第 3 步把探活搬进适配器时手抄成了 120s——**一次搬家不该顺带改行为**。
+             * 本侧要起 node 子进程再拉 CLI，比 agy 慢，那 60 秒是当初特意给的。
+             */
+            timeoutMs: 180_000,
+          });
+        } finally {
+          await fs.rm(runDir, { recursive: true, force: true });
+        }
         const ok = out.failureKind === 'none' && !out.timedOut && out.envelope !== null;
+        /*
+         * 说清探的是哪条路径，免得通过一格被读成「GLM 可用」：
+         *   · 退路支：真实 HOME 下由 ZCode 自选——个人配置在就用它的缺省，不在就 legacy 导入 `cli/config.json`
+         *     （代码双审 r1 GLM-05：不能一律说成「个人缺省」）；
+         *   · 限定失败：副本照建、不改 model.main（与 run() 同），CLI 用的是副本源原有的那个，不能报成请求的模型；
+         *   · 置首挪不动：请求模型可能没生效，如实注明（CODEX-03）。
+         * reason 里的家目录归一成 `~`（GLM-01）：详情会进预检输出，而预检输出常被抄进 evidence。
+         */
+        const probed =
+          prep.homeDir === null
+            ? `真实 HOME 下 ZCode 自选的缺省模型（${tildeHome(prep.reason ?? '')}）`
+            : prep.qualified === null
+              ? `cli/config.json 原有的 model.main（${tildeHome(prep.reason ?? '')}）`
+              : prep.reorder?.kind === 'not_movable'
+                ? `模型 ${prep.qualified}（置首未生效：${prep.reorder.reason ?? '挪不动'}；实际生效模型未核）`
+                : `模型 ${prep.qualified}`;
+        const cliSays = redactSecrets(out.stderr.slice(0, 200)).content;
         return {
           ok,
           detail: ok
-            ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
+            ? `探活通过（${Math.round(out.durationMs / 1000)}s，${probed}）`
             : out.failureKind === 'model_config_missing'
-              ? '缺 ~/.zcode/cli/config.json（CLI 的模型配置独立于桌面端，「已登录」不等于可用）'
+              ? prep.homeDir === null
+                ? `缺 ~/.zcode/cli/config.json（CLI 的模型配置独立于桌面端，「已登录」不等于可用；${probed}）`
+                : // 副本支：文件在（刚对它算过指纹），是内容里没有可用 provider（代码双审 r1 GLM-06）
+                  `副本源 ~/.zcode/cli/config.json 在，但 CLI 报模型配置缺失，provider 段可能不可用（${probed}）：${cliSays}`
               : // CLI 原话过一遍脱敏再进详情（r5 CODEX-06）：这段文字会进 doctor / preflight 输出，
                 // 而那些输出的实际流转方式是被人抄进 git 里的 evidence 目录，那条路上没有闸门
                 out.failureKind === 'provider_config_unresolved'
-                ? `${ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT}：${redactSecrets(out.stderr.slice(0, 200)).content}`
-                : `探活失败（${out.failureKind}）：${redactSecrets(out.stderr.slice(0, 200)).content}`,
+                ? `${ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT}（${probed}）：${cliSays}`
+                : `探活失败（${out.failureKind}，${probed}）：${cliSays}`,
         };
       },
     };

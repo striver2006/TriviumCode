@@ -114,10 +114,16 @@ profiles:
     # deepseek，正是因为 qwen 侧那四轮 8m36s → 56m → 62m → 118m53s；而 deepseek 档
     # 在本仓的耗时基线尚无系统记录。**本次换回后要重新观察 plan 档耗时**——
     # 今天刚因 codex 侧撞满 1800s 作废过一轮（台账第 18 行），预算已抬到 2700s。
+    #
+    # 2026-09-26：deepseek-flash → qwen3.8-flash（用户指定，与 EV-130 定的 init 缺省同一组合
+    # `-p qwen -m qwen3.8-flash`）。`agents.codex.profile` 已同批改回 qwen，两个维度同家族。
+    # 09-23「qwen 额度耗尽」的前提：当日预检的 codex 探活在 `-p qwen` 下通过，但探活用的是 profile
+    # 缺省模型、只证凭据可用，**不证 qwen3.8-flash 的额度**——真审时若撞额度，按 09-23 的做法再换。
+    # 回到 qwen 后，上面 qwen 侧那四轮耗时记录（8m36s → 118m53s）重新直接相关，撞满就调 review.timeout_s。
     codex:
-      plan: deepseek-flash
-      code: deepseek-flash
-      bug: deepseek-flash
+      plan: qwen3.8-flash
+      code: qwen3.8-flash
+      bug: qwen3.8-flash
     # claude 档（M9 第 4 步）。slug 由 system/init 回读挣来（第 1 步报告 §4），
     # 不是文档推断——probe.cli.claude.models 为 []，猜错 slug 预检拦不下来。
     # 真实审查尺度的耗时与成本未测，第 6 步验收才会有第一份数据。
@@ -142,10 +148,12 @@ profiles:
     # 真要让 flash 档在本侧有区分度，先给 qwen3.6-flash 跑一轮取数，再改这里。
     # 2026-09-23 随 default 档换到 deepseek 家族（qwen 额度耗尽）。本档与 default 同值的
     # 理由不变：deepseek 目录里更低的档在本仓同样没有实测数据，不拿没数据的档位填这一格。
+    # 2026-09-26 随 default 档回到 qwen3.8-flash（用户指定）。本档与 default 同值的理由同 09-21 那段：
+    # qwen3.6-flash 在本仓未实测，不拿没数据的档位填这一格。
     codex:
-      plan: deepseek-flash
-      code: deepseek-flash
-      bug: deepseek-flash
+      plan: qwen3.8-flash
+      code: qwen3.8-flash
+      bug: qwen3.8-flash
     # flash 档取 haiku，不跟 default 同值（计划双审 CODEX-05）：
     # haiku 是 probes/claude.ts 的 PROBE_MODEL、M6 起一直在用，回读记录早有。
     # 两档同值会让 flash 在 claude 侧形同虚设，而另两家的 flash 行都是真换了一档。
@@ -215,7 +223,10 @@ agents:
     # 2026-09-23：qwen → deepseek（用户指定，**qwen 额度耗尽**）。
     # 同批已把 profiles.default.codex 与 profiles.flash.codex 三阶段一并改成 deepseek-flash——
     # 只改一处会组成 `-p deepseek -m qwen3.8-flash`，正是下方 flash 档注释记着的实测被拒形态。
-    profile: deepseek
+    # 2026-09-26：deepseek → qwen（用户指定）。同批已把 profiles.default.codex 与 profiles.flash.codex
+    # 三阶段改回 qwen3.8-flash。当日先只改了模型槽、这一行留在 deepseek，预检当场以
+    # 「qwen3.8-flash 不在 profile deepseek 的模型目录中」退 64——两处必须同批改，这次是实测。
+    profile: qwen
     effort:
       plan: high
       code: high

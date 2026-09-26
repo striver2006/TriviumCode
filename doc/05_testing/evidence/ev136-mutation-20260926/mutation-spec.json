@@ -1,0 +1,116 @@
+{
+  "targets": [
+    "src/trivium/adapters/zcode.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/zcode-auth-probe.test.js",
+    "dist/test/test/unit/model-override-source.test.js",
+    "dist/test/test/unit/zcode-model-selection.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "副本支仍注入个人配置（EV-136 根因原形）⇒「不注入个人配置」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "            omitPersonalProviderConfig: prep.homeDir !== null,\n            storageRedirectRoot: zcodeHomeUnder(runDir),",
+      "replace": "            omitPersonalProviderConfig: false,\n            storageRedirectRoot: zcodeHomeUnder(runDir),",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "退回真实 HOME 拉起（改动前形态）⇒「走副本 HOME」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "            homeDir: prep.homeDir,\n            omitPersonalProviderConfig: prep.homeDir !== null,",
+      "replace": "            homeDir: null,\n            omitPersonalProviderConfig: prep.homeDir !== null,",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "不按档位覆盖模型 ⇒「副本 model.main = 档位模型」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "            prep = await prepareZcodeHome(runDir, model, { requestedFirst: true });",
+      "replace": "            prep = await prepareZcodeHome(runDir, model ? null : null, { requestedFirst: true });",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "探完不删临时目录（副本含凭据）⇒「临时副本 HOME 已清理」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "          await fs.rm(runDir, { recursive: true, force: true });",
+      "replace": "          void runDir;",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "退路支不设落点根（r1 CODEX-02 ≡ GLM-02 之前的形态）⇒「退路支也要设落点根」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "            storageRedirectRoot: zcodeHomeUnder(runDir),",
+      "replace": "            storageRedirectRoot: prep.homeDir !== null ? zcodeHomeUnder(runDir) : null,",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "指纹不含模型 ⇒「换档位模型后缓存失效」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "`${await sha256File(f)}|model=${model ?? ''}`",
+      "replace": "`${await sha256File(f)}|model=`",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "失败详情不说探的是哪条路径 ⇒「详情带上路径」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "`探活失败（${out.failureKind}，${probed}）：${cliSays}`",
+      "replace": "`探活失败（${out.failureKind}）：${cliSays}`",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "限定失败时把请求模型报成实际模型 ⇒「详情不冒充」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "              ? `cli/config.json 原有的 model.main（${tildeHome(prep.reason ?? '')}）`",
+      "replace": "              ? `模型 ${model}`",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "副本准备不兜底（r1 CODEX-01 ≡ GLM-04）⇒「副本源不是合法 JSON：不抛」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "          } catch (e) {\n            return {\n              ok: false,\n              detail: `副本源 ~/.zcode/cli/config.json 读取或解析失败：",
+      "replace": "          } catch (e) {\n            throw e;\n            return {\n              ok: false,\n              detail: `副本源 ~/.zcode/cli/config.json 读取或解析失败：",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "退路支原因不归一家目录（r1 GLM-01）⇒「详情不带家目录绝对路径」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "            ? `真实 HOME 下 ZCode 自选的缺省模型（${tildeHome(prep.reason ?? '')}）`",
+      "replace": "            ? `真实 HOME 下 ZCode 自选的缺省模型（${prep.reason ?? ''}）`",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "置首挪不动不注明（r1 CODEX-03）⇒「详情注明请求模型可能没生效」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "              : prep.reorder?.kind === 'not_movable'",
+      "replace": "              : prep.reorder?.kind === 'never-matches'",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "副本支 model_config_missing 仍说「缺文件」（r1 GLM-06）⇒「说文件在而 provider 不可用」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "            : out.failureKind === 'model_config_missing'\n              ? prep.homeDir === null",
+      "replace": "            : out.failureKind === 'model_config_missing'\n              ? prep.homeDir === null || true",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "指纹读失败不兜底（r1 CODEX-01）⇒「副本源读不了：指纹返回 null 而不是抛」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "        } catch {\n          return null;\n        }\n      },\n      async probe() {",
+      "replace": "        } catch (e) {\n          throw e;\n        }\n      },\n      async probe() {",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    }
+  ]
+}

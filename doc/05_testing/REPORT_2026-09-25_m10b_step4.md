@@ -153,6 +153,10 @@ TV gate --stage plan --topic 限流器重构 --await-approval
 - **构建标识取值判据不可在夹具里验证**：见上表。r5 §7.1 首行把 claude code 兼容轮的载体写作「本会话」，并未要求夹具；本轮按用户「三轮夹具审查」的安排在夹具里做，J3 的形状比对不受影响，
   但「`snapshot.build.git_head` 与 `snapshot.git_head` 一致」这一格要在本仓内跑一次 claude code 轮才能核。
   **用户 2026-09-26 定**：并入 M10b 之后第一次本仓代码双审，届时只读该轮 run.json 的 `snapshot.git_head` 与 `snapshot.build.git_head` 两个字段，结论追记到本节。
+  **追记（2026-09-26）**：M10b 之后第一次本仓代码双审是 EV-136（主题 `EV-136-glm探活选模路径`，run `20260926T051412Z`，claude 为 Driver）。只读其 run.json：
+  `snapshot.git_head = 85864c647f7a…`、`snapshot.build.git_head = 85864c647f7a…` ⇒ **两字段一致，本格判据成立**。
+  附注：同一对象里 `snapshot.build.dirty: true`（安装副本由含被审改动的未提交工作树构建，`gate --check` 同时给出 `run_warning`「安装副本不对应任何一个提交」）。
+  这与第 5 步 r4 的情形同形——被审改动本身在构建作用面内；判据只比两个 `git_head`，`dirty` 不在判据内，照实记下供读者自行掂量。
 
 #### 3-2 运行期实际命令行（J1）
 

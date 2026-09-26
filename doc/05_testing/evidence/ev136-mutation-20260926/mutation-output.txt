@@ -1,0 +1,98 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=7）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=2）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=2）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=1）
+{
+  "总数": 13,
+  "咬住": 13,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "副本支仍注入个人配置（EV-136 根因原形）⇒「不注入个人配置」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "退回真实 HOME 拉起（改动前形态）⇒「走副本 HOME」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "不按档位覆盖模型 ⇒「副本 model.main = 档位模型」",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M4",
+      "desc": "探完不删临时目录（副本含凭据）⇒「临时副本 HOME 已清理」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "退路支不设落点根（r1 CODEX-02 ≡ GLM-02 之前的形态）⇒「退路支也要设落点根」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M6",
+      "desc": "指纹不含模型 ⇒「换档位模型后缓存失效」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "失败详情不说探的是哪条路径 ⇒「详情带上路径」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "限定失败时把请求模型报成实际模型 ⇒「详情不冒充」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "副本准备不兜底（r1 CODEX-01 ≡ GLM-04）⇒「副本源不是合法 JSON：不抛」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M10",
+      "desc": "退路支原因不归一家目录（r1 GLM-01）⇒「详情不带家目录绝对路径」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "置首挪不动不注明（r1 CODEX-03）⇒「详情注明请求模型可能没生效」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "副本支 model_config_missing 仍说「缺文件」（r1 GLM-06）⇒「说文件在而 provider 不可用」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "指纹读失败不兜底（r1 CODEX-01）⇒「副本源读不了：指纹返回 null 而不是抛」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
