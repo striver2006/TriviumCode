@@ -1,0 +1,217 @@
+{
+  "at": "2026-09-26T00:55:46.830Z",
+  "fixture": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r4-BgCA0V",
+  "rollout": "/Users/chenzhenbo/.codex/sessions/2026/09/26/rollout-2026-09-26T08-30-16-01a0db1e-b044-70f1-b4e3-f5a37be6d6e9.jsonl",
+  "run_file": "run-20260926T003724Z.json",
+  "code_files": [
+    "2026-09-26-slug规范化-claude.md",
+    "2026-09-26-slug规范化-gemini.md",
+    "2026-09-26-slug规范化-response-codex.md"
+  ],
+  "meta_files": [
+    "brief-claude-20260926T003724Z.md",
+    "brief-gemini-20260926T003724Z.md",
+    "changes-20260926T003724Z.diff",
+    "changes.diff",
+    "review-claude-20260926T003724Z.json",
+    "review-gemini-20260926T003724Z.json",
+    "run-20260926T003724Z.json"
+  ],
+  "criteria": {
+    "run_driver": {
+      "got": "codex",
+      "ok": true
+    },
+    "run_driver_enabled": {
+      "got": true,
+      "ok": true
+    },
+    "run_driver_guard_level": {
+      "expect": "L2",
+      "got": "L2",
+      "ok": true
+    },
+    "critics": {
+      "got": [
+        "claude",
+        "gemini"
+      ],
+      "critics_selected": [
+        "claude",
+        "gemini"
+      ],
+      "excludes_driver": true
+    },
+    "response": {
+      "file": "2026-09-26-slug规范化-response-codex.md",
+      "role": "codex",
+      "kind": "response",
+      "ok": true
+    },
+    "task_drivers": null,
+    "approvals": [
+      {
+        "at": "2026-09-26T00:53:58.832Z",
+        "stage": "code",
+        "run_id": "20260926T003724Z",
+        "decision": "approved",
+        "reason": null,
+        "session_id": null
+      }
+    ],
+    "ev107_all_ok": true,
+    "param_fidelity": {
+      "typed": "$dual-review-code 重点看连续分隔符折叠、首尾横线处理与 maxLength 截断在边界输入下是否正确，以及只保留 ASCII 这一取舍对非英文标题的影响 --topic slug规范化 --context src/slug.ts --critics claude,gemini",
+      "topic": {
+        "typed": "slug规范化",
+        "run_json": "slug规范化",
+        "ok": true
+      },
+      "focus": {
+        "typed": "重点看连续分隔符折叠、首尾横线处理与 maxLength 截断在边界输入下是否正确，以及只保留 ASCII 这一取舍对非英文标题的影响",
+        "run_prompt_hint": "重点看连续分隔符折叠、首尾横线处理与 maxLength 截断在边界输入下是否正确，以及只保留 ASCII 这一取舍对非英文标题的影响",
+        "brief": {
+          "brief-claude-20260926T003724Z.md": "重点看连续分隔符折叠、首尾横线处理与 maxLength 截断在边界输入下是否正确，以及只保留 ASCII 这一取舍对非英文标题的影响",
+          "brief-gemini-20260926T003724Z.md": "重点看连续分隔符折叠、首尾横线处理与 maxLength 截断在边界输入下是否正确，以及只保留 ASCII 这一取舍对非英文标题的影响"
+        },
+        "ok": true
+      },
+      "task_goal": {
+        "run_json": null,
+        "note": "命令 C 轮不适用（r10 §4.2 只在命令 A 轮设本格）"
+      }
+    }
+  },
+  "ev107": [
+    {
+      "critic": "claude",
+      "model_effective": "claude-sonnet-5",
+      "model_effective_source": "envelope",
+      "expect": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "run_json": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "review_doc": {
+        "file": "2026-09-26-slug规范化-claude.md",
+        "heterogeneous": true,
+        "override_reason": null,
+        "drift": false
+      },
+      "ok": {
+        "run_heterogeneous": true,
+        "run_override_reason": true,
+        "doc_heterogeneous": true,
+        "doc_override_reason": true
+      }
+    },
+    {
+      "critic": "gemini",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "expect": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "run_json": {
+        "heterogeneous": true,
+        "override_reason": null
+      },
+      "review_doc": {
+        "file": "2026-09-26-slug规范化-gemini.md",
+        "heterogeneous": true,
+        "override_reason": null,
+        "drift": false
+      },
+      "ok": {
+        "run_heterogeneous": true,
+        "run_override_reason": true,
+        "doc_heterogeneous": true,
+        "doc_override_reason": true
+      }
+    }
+  ],
+  "carrier_writes": [
+    {
+      "t": "2026-09-26T00:32:07.529Z",
+      "name": "apply_patch",
+      "targets": [
+        "*** Update File: /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r4-BgCA0V/src/slug.ts"
+      ]
+    },
+    {
+      "t": "2026-09-26T00:42:00.830Z",
+      "name": "apply_patch",
+      "targets": [
+        "*** Add File: /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r4-BgCA0V/.reviews/slug规范化/code/2026-09-26-slug规范化-response-codex.md"
+      ]
+    }
+  ],
+  "run_status": "success",
+  "run_entry": "C",
+  "run_snapshot": {
+    "git_head": "acf34f3a76668c53000ada6662b78cfa8fd9ffd6",
+    "dirty": true,
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "da6476c57cf6ca1b9521353af31533a426c11429",
+      "dirty": false,
+      "inputs_sha256": "3c1024a35340acdb7aadae277a0dcd7b549d02ac704b138766c01c63005f3964",
+      "built_at": "2026-09-25T14:17:17.969Z"
+    }
+  },
+  "run_artifacts": [
+    {
+      "path": "slug规范化/code/_meta/changes-20260926T003724Z.diff",
+      "sha256": "1262b9c32d15f5e0f3731770e22c6bb6ce5e33f7aaaf7b0e5ddb279b38f322d8"
+    },
+    {
+      "path": "slug规范化/code/_meta/brief-claude-20260926T003724Z.md",
+      "sha256": "6ac8ad04b91229d0043f457d15cd100a281d91843246819d42f7e6e94e2c21b2"
+    },
+    {
+      "path": "slug规范化/code/_meta/brief-gemini-20260926T003724Z.md",
+      "sha256": "2edd2dec9dd7405e2251f37108bb088b6bcffcda43075b25d60e98502ad14529"
+    },
+    {
+      "path": "slug规范化/code/_meta/review-claude-20260926T003724Z.json",
+      "sha256": "9a8e8fa6ed9755994fb1cca6fffd434cfe77f37edb87eaeea2a60e721a2e6622"
+    },
+    {
+      "path": "slug规范化/code/_meta/review-gemini-20260926T003724Z.json",
+      "sha256": "9e85a8f904e06b0d9205a5bf1b74bc64768b2e7d9511bce2868e4f3612fe713a"
+    },
+    {
+      "path": "slug规范化/code/2026-09-26-slug规范化-claude.md",
+      "sha256": "b3a63901a9d160eb34c59e78f1805906fd8a750f1cf7942468986131510816a8"
+    },
+    {
+      "path": "slug规范化/code/2026-09-26-slug规范化-gemini.md",
+      "sha256": "c53dc688d6fb453ea79867ae7b3c551ea817e12232062c054a04a03448752c68"
+    }
+  ],
+  "task_gate": {
+    "stage": "code",
+    "state": "approved",
+    "since": "2026-09-26T00:53:58.832Z",
+    "run_id": "20260926T003724Z"
+  },
+  "task_joint_checks": [
+    {
+      "run_id": "20260926T003724Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-09-26T00:44:59.697Z"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # M10b 第 4 步 · 验收（AC-21 子句 ①、EV-77、EV-107、兼容）报告
 
-> **状态**：进行中（3-1、3-2、3-3 已结案；3-4、3-5 待用户在载体执笔）。
+> **状态**：进行中（3-1～3-4 已结案；3-5 待用户在 ZCode 桌面端执笔）。
 > **上位**：计划 r5 §7（剧本、每轮判据、兼容白名单、EV-107 端到端），r10 §4（glm 轮载体证据、参数保真、尽力拦截观测）替换 r9 §4。
 > **日期**：2026-09-25 起　**起点**：`543e0ea`（`main`）；安装副本为 `da6476c` 构建（第 3 步结案后重装，之后只有文档提交）
 > **轮次顺序**（用户 2026-09-25 定，照 r5 §7.1 表）：3-1 claude plan（夹具）→ 3-2 claude code（兼容 J3）→ 3-3 gemini plan（名义 Driver）→ 3-4 codex code（真载体 + EV-77）→ 3-5 glm plan（真载体，J4）
@@ -247,3 +247,87 @@ TV gate --stage plan --topic 缓存过期策略 --await-approval
 ```
 
 `--critics` 按契约由 resolve 输出的 `critics` 无条件传入，`subject_path` 传给 `--plan-file`，`task_goal` / `profile` / `models` 为空未传（codex 的 deepseek-flash 来自夹具配置缺省档，不是 `--model-codex`）。焦点由 Driver 代拟（用户授权代办发起）。
+
+### 1.4 3-4 · codex（真载体）· code · 夹具 · EV-77（台账第 26 行）
+
+> **性质**（r5 §7.1）：真载体——用户在 codex 自己的交互会话里执笔（改业务代码、写应答件、跑 approve），Claude 只搭夹具、给整句、事后取证。
+> 审核者 claude、gemini 为真实 CLI 调用。
+
+- **入口资产**：开跑前 `~/.codex/skills/` 下没有 `dual-*`。Claude 先做只读预检（`planInstall` / `checkInstall`：运行时根 22 个文件与仓库逐个一致、零冲突），
+  用户在终端执行 `node dist/install.cjs --targets codex`；装后复核 7 个 `SKILL.md` 与渲染产物逐个相同，运行时根仍 22 个文件零差异，claude / glm 两家未动。
+- **夹具**：`/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r4-BgCA0V`（`setup.mjs` 以 mkdtemp 新建；`src/slug.ts` 朴素 slugify + README 三项待实现；`NOTES.md` 供 EV-77；init 产物入基线提交 `acf34f3`）；主题 `slug规范化`。
+- **会话**：`codex -s danger-full-access -C <夹具>`（用户定：放开沙箱，审批策略缺省 `on-request`）；rollout `~/.codex/sessions/2026/09/26/rollout-2026-09-26T08-30-16-01a0db1e-b044-70f1-b4e3-f5a37be6d6e9.jsonl`，
+  8 个 turn 的 `turn_context` 均为模型 `deepseek-flash`、沙箱 `danger-full-access`。沙箱放开后 `review --start` 拉起审核者、写 `~/.trivium/runs` 均无阻碍；rollout 里没有 `approval_request` 一类记录（0 条）。
+- **run**：`20260926T003724Z`，`status: success`，3m29s（claude `claude-sonnet-5` 3m29s，`approve-with-nits`、4 minor；gemini `gemini-3.8-flash-high` 2m19s，`request-changes`、2 major + 1 nit）；两侧结构化、零回退，`snapshot.drift.changed: false`。
+  应答件 7 条：5 接受、AGY-01 驳回（「只保留 ASCII」是 README 明文规格）、CLAUDE-04 暂缓（夹具无测试载体）。审批后按用户指示不再按接受项改代码。
+- **evidence**：`doc/05_testing/evidence/m10b-step4-r4-codex-code-20260926/`——`00-card.md`（操作卡，含 0 的执行结果）、`setup.mjs` / `01-setup-readout.json`、`extract.mjs` / `03-readout.json`（判据、EV-107、参数保真）、
+  `04-rollout-excerpt.json`（rollout 摘录：用户消息、工具调用命令文本与 `apply_patch` 目标行、turn 模型；注入的 AGENTS.md / skill 全文只记长度与 sha256）、`fixture-copy/`。
+
+#### 3-4 判据（r5 §7.2）
+
+| 判据 | 期望（出处） | 读数 | 成立 |
+| :--- | :--- | :--- | :-- |
+| 原稿后缀 = Driver | code 轮无原稿 | — | 不适用 |
+| `run.json.driver` / `driver_enabled` | `codex` / `true` | `codex` / `true` | ✓ |
+| `run.json.driver_guard_level` | `L2`：codex 登记 L2、`hookConfigTarget: null`，非 L1 不看 Hook 在场 | `L2` | ✓ |
+| 审核者集合不含 Driver | 不含 `codex` | `claude`、`gemini` | ✓ |
+| 应答件 `role` = Driver 且 `gate --check` 通过 | `codex`；退 0 | `2026-09-26-slug规范化-response-codex.md`，`role: codex`、`kind: response`；会话内 `gate --check --json` 退 0，7 条齐备 | ✓ |
+| 停点话术 | 调用写法按 codex 登记的 `entryInvocation: '${name}'` ⇒ `$dual-approve`；末句 `l2-none` 档 | `通过：$dual-approve --topic slug规范化 --stage code [--reason <附言>]`；末句「本载体没有 Hook 拦截（L2），全靠你自觉；越界不会被事前拦下，会在审批前复核与跑后漂移复算时暴露。」（末句的后半句见下 EV-132） | ✓ |
+| `approve` 复核：造缺件 | 退 2 | codex 会话内把应答件移出后 `approve`：`[missing_disposition] 找不到第 1 轮的裁决件（应为 …-response-codex.md）`，`EXIT=2`；移回后 sha256 `bf1b1b1e…` 与移走前一致 | ✓ |
+| `approve` 复核：造改工件 | 退 2 | 补丁 `_meta/changes-20260926T003724Z.diff` 末尾追加一个空格（**由用户在终端执行**，见下「偏离」），codex 会话内 `approve`：「已被改动……记录 1262b9c32d15，现为 5b4804300776」，`EXIT=2`；用户从备份复原，读回 `1262b9c3…` | ✓ |
+| 审批记录 | `task.json.approvals[]` 一条 | codex 会话内 `approve` 退 0；`approvals[0]`：`at 2026-09-26T00:53:58.832Z`、`stage code`、`run_id 20260926T003724Z`、`decision approved`、`reason null`、`session_id null` | ✓ |
+| 参数保真（r10 §4.2） | rollout 里用户原文 vs `run.json.topic`、BRIEF 第 2 段焦点，逐字 | 用户原文 `$dual-review-code 重点看……的影响 --topic slug规范化 --context src/slug.ts --critics claude,gemini`；主题 `slug规范化` 一致；焦点与 `run.json.prompt_hint`、两份 BRIEF 第 2 段逐字一致；任务目标一格命令 C 不适用 | ✓ |
+
+`session_id null`：审批由 codex 会话发起，但 codex 不向 shell 注入会话标识，审批记录与终端执行无从区分——与「approve 不校验调用来源」同一性质，照实记录。
+
+**偏离 r5 §7.2「codex 轮在 codex 会话里造篡改」**：造缺件在会话里做成了；造改工件时 codex **拒绝**改 `_meta/` 下的补丁，理由是入口资产与 AGENTS.md 的条文「`_meta/` 与 `task.json` 由编排器独占……Driver 只应写原稿与裁决件」，
+并提出由操作者在终端改。用户采纳：篡改与复原在终端，`approve` 仍在会话里跑。复核发生在 codex 载体上这一点不变。
+
+#### EV-77（r5 §7.2.1）
+
+| 格 | 读数 |
+| :--- | :--- |
+| codex 写工具有无事前拦截 | `apply_patch` 两次写入——00:32 改业务文件 `src/slug.ts`、00:42 新建应答件——均无任何拦截；该载体没有 PreToolUse 一类钩子，与注册表 `hookConfigTarget: null` 一致 |
+| 审查进行中写无关业务文件（`NOTES.md`） | **未发生**：用户按卡先单独交代、再调用 skill。第一条消息里**提到** `$dual-review-code` 就已触发 skill 全文注入（rollout 00:33:54，该条消息之后紧跟 `<skill>` 注入），codex 读到 L2 条文「审查进行中不改业务文件……整次运行可能因此作废」后拒绝执行，`snapshot.drift.changed: false` 印证 |
+| 闸门期写无关业务文件 | **未发生**：用户明确授权后 codex 再次依条文「闸门期不得修改业务文件」拒绝 |
+| 闸门期越界能否被事后暴露 | 用户在终端给 `NOTES.md` 追加一行后，codex 会话内 `approve` **退 0 放行**；`run.json` 无漂移记录。审批前复核（`verifyRoundForApproval`，`gate.ts:897`）只核裁决齐备与本轮登记工件的 sha256，跑后复算只在审查收尾时发生——**闸门期越界两道都不暴露**。实测证实起草操作卡时从代码推出的结论（§1.3「顺带」）；r5 §7.2.1「approve 复核暴露」对闸门期不成立，停点话术与入口资产 L2 段同一处失准 ⇒ 新登 **EV-132** |
+
+**结论**：codex 真载体上，L2 的「事前」一层为零（无钩子），实际起作用的是 Driver 对入口资产条文的遵守——本轮两次越界请求均被 Driver 自己拒绝；「事后」一层对审查中的越界有效（跑后复算），对闸门期的越界无效（EV-132）。
+EV-77 的实测已做，BACKLOG 该行已追记；是否结案由用户定。`NOTES.md` 的闸门期改动已作为证据拷进 `fixture-copy/NOTES.md`，夹具里的改动待用户在终端还原。
+
+#### EV-107（r5 §7.4）
+
+Driver codex 的厂商 `openai`，名义族 `/gpt/i`：
+
+| 侧 | 生效模型（来源） | 期望 | run.json | 审查文档 front-matter | 成立 |
+| :--- | :--- | :--- | :--- | :--- | :-- |
+| claude | `claude-sonnet-5`（envelope） | `true` / null | `true` / null | `heterogeneous: true`，无 `override_reason` 行 | ✓ ✓ ✓ ✓ |
+| gemini | `gemini-3.8-flash-high`（envelope） | `true` / null | `true` / null | 同上 | ✓ ✓ ✓ ✓ |
+
+八格全部成立。Driver 会话实际跑的是 `deepseek-flash`（rollout `turn_context`），名义族判定照样取 openai——两侧模型都不落在 gpt 或 deepseek 族，判定结果不受这一错位影响。
+
+#### 3-4 顺带
+
+- **预检探活了 glm**：入口 skill 的预检不带 `--critics`（EV-126），按缺省集合减去 Driver 探活 gemini 与 glm（rollout：`[glm] 探活缓存不可用……执行最小 headless 探活`），通过后才进入 resolve。多一次 zcode 调用，3-5 轮要照 r10 §4.1 的「节点拷贝前不跑 zcode」安排先后。
+- **codex 多跑了一次 `gate --check`**：造缺件复原后，codex 自行补跑 `gate --check`，闸门 `since` 由 `00:42:03.684Z` 重盖为 `00:44:59.700Z`，`task.json.joint_checks[0].at` 同为 `00:44:59.697Z`。判据不受影响；「`--check` 在已等待审批时重盖起始时间」是否合意，留第 5 步看。
+- **CLI 出口文案**：改工件拒绝时，CLI 说未跟踪工件「没有副本可恢复——出口是 `/dual-abandon` 作废这一轮」；code 轮同目录的 `changes.diff` 与带 run_id 的补丁字节相同（codex 核出），本轮用用户备份复原、未作废。只是文案不够准，不另立条目。
+- **Driver 的读取面**：codex 开场主动读了 `~/.trivium/runs/` 下其他夹具的运行目录（`request.json` / `status.json`）与安装副本 bundle 源码。Driver 本就不受禁读清单约束，照实记录。
+
+#### 3-4 运行期实际命令行（J1）
+
+摘自 codex rollout（`04-rollout-excerpt.json`），均在夹具根执行、每条尾随 `; echo "EXIT=$?"`（此处省略），`TV` = `./.trivium/bin/trivium`：
+
+```text
+TV preflight --stage code --driver codex --json
+TV topic resolve --stage code --json -- '重点看连续分隔符折叠、首尾横线处理与 maxLength 截断在边界输入下是否正确，以及只保留 ASCII 这一取舍对非英文标题的影响' --topic slug规范化 --context src/slug.ts --critics claude,gemini --driver codex
+TV review --start --entry C --stage code --topic slug规范化 --driver codex --focus '<同上>' --base HEAD --critics claude,gemini --context src/slug.ts --json
+TV review --wait 20260926T003724Z --timeout 180 --json                          # ×2（第 1 次 180s 仍在跑，第 2 次收尾成功）
+TV gate --stage code --topic slug规范化 --check --json
+TV gate --stage code --topic slug规范化 --await-approval
+TV approve --topic slug规范化 --stage code                                      # 造缺件，EXIT=2
+TV status --topic slug规范化 / TV gate --stage code --topic slug规范化 --check     # codex 自行补跑（见「顺带」）
+TV approve --topic slug规范化 --stage code                                      # 造改工件，EXIT=2
+TV approve --topic slug规范化 --stage code                                      # 审批，EXIT=0（NOTES.md 带闸门期改动）
+```
+
+与 codex 目标的渲染产物 `dual-review-code` 步骤序一致（预检 → 解析 → `--start` → `--wait` 循环 → 应答 → `--check` → `--await-approval`）；resolve 输出的 `base`（`HEAD`）与 `critics` 按契约无条件传给 `--start`，`--context` 原样转抄。

@@ -13,15 +13,23 @@
 | 0.3 | 我 | 跑 `setup.mjs` 建夹具（mkdtemp、小工程、`init`、拷 `config.local.yaml`），读数写本目录 `01-setup-readout.json` | code 轮不认领；夹具里预置一个待实现的小任务和一个不进 diff 的 `NOTES.md`（EV-77 用） |
 | 0.4 | 你 | 决定 codex 会话怎么起 | **未实测的风险**：`review --start` 会在会话里拉起 claude / agy 子进程，并写 `~/.trivium/runs/…`（工作区外）、联网。codex 缺省沙箱可能挡住它们。两条路：遇到提权请求时逐次批准，或以放开沙箱的方式起会话。选哪条由你定，实际用的方式记下来 |
 
+### 0 的执行结果（2026-09-26）
+
+- 0.1：只读预检（scratchpad 脚本调 `planInstall` / `checkInstall`）——运行时根 22 个文件与仓库逐个一致、零改动；只读审查 Agent 定义相同；codex 目标新建 7 个 `dual-*`（各一份 `SKILL.md`），目标均不存在；`checkInstall` 零问题。
+- 0.3：夹具 `/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r4-BgCA0V`，基线提交 `acf34f3`（含 init 产物），工作区干净。
+- 0.4：用户定「以放开沙箱的方式起会话」，写法 `codex -s danger-full-access -C <夹具>`（只关沙箱，审批策略按缺省）。
+
 ## 1. 会话内步骤
 
-在夹具根目录起一个**新的** codex 交互会话，整轮只用这一个会话。
+整轮只用这一个会话。三条消息**分开发**：codex 版 skill 把命令后的**全部文本**逐字当参数，EV-77 的交代若附在命令后面会混进焦点。
 
 | # | 你做什么 | 期望 | 记录什么 |
 | :-- | :--- | :--- | :--- |
-| 1 | 让会话按夹具 README 的小任务改业务代码（具体措辞 0.3 时给你） | 改成 | — |
-| 2 | 发：`$dual-review-code <焦点> --topic <主题> --critics claude,gemini`，末尾附一句 EV-77 指令（0.3 时连同主题、焦点一起给你，大意是「`--start` 返回后、第一次 `--wait` 之前，用你的写文件工具在 `NOTES.md` 末尾追加一行，再继续」）。**原样照抄，记下你实际发出的全文** | 会话按入口 skill 走：预检 → 解析 → `--start` → 追加 `NOTES.md` → `--wait` 循环 | 你发出的原文（参数保真要逐字比对）；开场播报里的两侧模型 |
-| 3 | 看第 2 步里那次写入 | **EV-77**：写入**不被拦**（L2、无 Hook）；跑后复算判 `unrelated` 漂移，缺省 `on_drift: warn`，所以只告警、运行不作废 | 写没写成；会话有没有自己拒绝；运行收尾的告警原文 |
+| 0 | 终端：`codex -s danger-full-access -C /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/m10b-s4r4-BgCA0V` | 进入新会话 | 会话显示的模型 |
+| 1 | 发：「按 README.md「待实现」一节修改 src/slug.ts，改完就停，不要提交，也不要改别的文件。」 | 改成，`git status` 只有 `src/slug.ts` | — |
+| 2a | 发：「接下来我会调用 $dual-review-code。请在它的 review --start 返回之后、第一次 review --wait 之前，用你的文件编辑工具在 NOTES.md 末尾追加一行「- ev77: 审查进行中的写入」，然后照常继续 skill 的步骤。现在先不要做任何事，回复「明白」即可。」 | 回复明白 | — |
+| 2b | 发（**原样照抄，记下实际发出的全文**）：`$dual-review-code 重点看连续分隔符折叠、首尾横线处理与 maxLength 截断在边界输入下是否正确，以及只保留 ASCII 这一取舍对非英文标题的影响 --topic slug规范化 --context src/slug.ts --critics claude,gemini` | 会话按入口 skill 走：预检 → 解析 → `--start` → 追加 `NOTES.md` → `--wait` 循环 | 开场播报里的两侧模型 |
+| 3 | 看第 2a 交代的那次写入 | **EV-77**：写入**不被拦**（L2、无 Hook）；跑后复算判 `unrelated` 漂移，缺省 `on_drift: warn`，所以只告警、运行不作废 | 写没写成；会话有没有自己拒绝；运行收尾的告警原文 |
 | 4 | 等会话读完两份审查文档、写应答件 `…-response-codex.md`、跑 `gate --check` 与 `--await-approval` | `--check` 通过；停点话术的调用写法是 **`$dual-approve`**，末句是「本载体没有 Hook 拦截（L2），全靠你自觉；……」 | `--await-approval` 输出原文 |
 | 5 | **造缺件**：让会话把应答件移出归档目录，跑 `.trivium/bin/trivium approve --topic <主题> --stage code`，贴输出与退出码，再移回 | 退 2（`missing_disposition`） | 输出原文 |
 | 6 | **造改工件**：让会话先备份 `_meta/review-<某侧>-<run_id>.json`，给原件末尾追加一个空格，跑 `approve`，贴输出，再从备份复原并打印 sha256 | 退 2（「已被改动」），复原后 sha256 与 run.json 登记一致 | 输出原文、复原后 sha256 |
