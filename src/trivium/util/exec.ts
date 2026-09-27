@@ -261,8 +261,27 @@ export interface SpawnDetachedOptions {
    * 调用方据此区分「失败时子进程有没有起来」：建日志目录、开日志文件、`spawn` 没拿到 pid 这三处失败都在子进程诞生之前，
    * 回调不会被调；而 `finally` 里的 `handle.close()` 在子进程已起之后仍可能抛——所以「本函数有没有返回」不能当判据，
    * 「有没有调用本函数」也不准。回调自身抛错被吞掉，不影响已派生的子进程与返回值。
+   *
+   * 第二个参数是子进程句柄的退出观察（EV-150，派生后失败的孤儿worker计划 r2 §3.2）：调用方在本函数抛错之后
+   * 仍能据它确认子进程是否已退出——`handle.close()` 那一格拿不到返回值，只有这里交得出去。
    */
-  onSpawned?: (pid: number) => void;
+  onSpawned?: (pid: number, watch: DetachedChildWatch) => void;
+}
+
+/**
+ * 父进程对一个已派生子进程的退出观察（EV-150）。
+ *
+ * **为什么能拿它防 PID 复用**：本进程是子进程的父进程。Node 的 libuv 在 SIGCHLD 时 `waitpid` 回收子进程，
+ * 并在同一个回调里置上 `exitCode` / `signalCode`、发出 `'exit'`；JS 单线程，两者之间插不进别的 JS。
+ * 所以在 JS 看来 `hasExited()` 为假 ⇒ 子进程还没被回收（活着或是僵尸）⇒ 它的 pid 与以它为组号的进程组号
+ * 都不可能被别的进程占用。这比比对启动时刻强，也不依赖 `processStartTime`（它可能取不到）。
+ * 实测范围：Node v25.2.1 / macOS（计划 r2 §2.1 K2）。
+ */
+export interface DetachedChildWatch {
+  /** 父进程已观察到子进程退出（'exit' 事件已到） */
+  hasExited(): boolean;
+  /** 'exit' 事件到达时兑现 */
+  exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
 }
 
 export interface SpawnDetachedResult {
@@ -332,8 +351,16 @@ export async function spawnDetached(
       await handle.write(`[spawnDetached ${new Date().toISOString()}] ${msg}\n`).catch(() => undefined);
       throw new Error(msg);
     }
+    // 'exit' 是异步发出的，在这里同步挂上不会漏；子进程正常长跑时这个 Promise 一直悬着，无害（句柄已 unref）
+    const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+      child.once('exit', (code, signal) => resolve({ code, signal }));
+    });
+    const watch: DetachedChildWatch = {
+      hasExited: () => child.exitCode !== null || child.signalCode !== null,
+      exited,
+    };
     try {
-      opts.onSpawned?.(child.pid);
+      opts.onSpawned?.(child.pid, watch);
     } catch {
       /* 回调出错不改变「子进程已诞生」这一事实，也不连累返回值 */
     }
@@ -391,13 +418,16 @@ export async function processStartTime(pid: number): Promise<string | null> {
 }
 
 /**
- * 向工作进程**及其全部后代**发信号。
+ * 向一个进程**及其同组后代**发信号。
  *
  * `spawnDetached` 用 `detached: true`（即 POSIX `setsid`），所以工作进程是自己
- * 进程组的组长、pgid 等于它的 pid，它拉起的 agy / zcode 也在同一组里。
- * 只 `kill(pid)` 的话，两侧厂商进程会被**遗弃给 init 继续跑**——实测确认过：
- * `--cancel` 之后 `zcode-cli` 的 PPID 变成 1 且仍在消耗配额。
- * 取消的意义就是停止花钱，所以必须按进程组发。
+ * 进程组的组长、pgid 等于它的 pid；它以**不带** `killTree` 的 `run()` 拉起的子进程与它同组。
+ * 只 `kill(pid)` 的话，同组的子进程会被**遗弃给 init 继续跑**——`5476238` 实测过：
+ * `--cancel` 之后 `zcode-cli` 的 PPID 变成 1 且仍在消耗配额（那时它还在 worker 的组里）。
+ *
+ * **够不到的**：审查员适配器以 `run(…, { killTree: true })` 拉起厂商 CLI，那会让 CLI 以 `detached`
+ * 自成一组（`2b460ad` 起）；按 worker 的组发的信号到不了它们。零配额实测：worker 被按组 SIGTERM 后退出，
+ * `killTree` 拉起的子进程过继给 init 继续活着（派生后失败的孤儿worker计划 r2 §2.1）。行为修复见 BACKLOG EV-152。
  *
  * 返回是否至少送达了一个目标。组不存在（ESRCH）时退回单进程，
  * 因为组可能已经空了、也可能这个 pid 压根不是组长。
@@ -418,5 +448,62 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals): boolean {
       return false; // 已经退出了
     }
   }
+}
+
+export interface TerminateOptions {
+  /** 「确认已退出」的判据，由调用方给（父进程用子进程句柄；别的进程用 pid + 启动时刻） */
+  isGone: () => boolean | Promise<boolean>;
+  /** SIGTERM 之后至多等多久再升级 SIGKILL */
+  graceMs: number;
+  /** SIGKILL 之后至多等多久确认退出；0 = 不等 */
+  killWaitMs: number;
+  /** 轮询间隔，缺省 250 ms */
+  pollMs?: number;
+  /** 升级到 SIGKILL 之前回调一次（`cancelRun` 用它打那行 warn） */
+  onEscalate?: () => void;
+  /** 发信号的实现，缺省 `killProcessTree`；只为单测计数而开 */
+  signal?: (pid: number, sig: NodeJS.Signals) => boolean;
+}
+
+/**
+ * 按进程组终止并等待确认退出：SIGTERM → 宽限 → SIGKILL → 等待（EV-150，派生后失败的孤儿worker计划 r2 §3.2）。
+ *
+ * `review --cancel` 与 `--start` 派生后失败的收尾共用这一条链；判据由调用方给，两处不同：
+ * `--start` 是父进程，按子进程句柄判（不会误判复用）；`--cancel` 是别的进程，按 pid 加启动时刻判。
+ *
+ * **每次发信号之前先问 `isGone()`**：已退出就不再发。对按句柄判的调用方，这保证不会向一个已被回收、
+ * 可能已被复用的号发组信号。
+ *
+ * 只管这一个进程组：适配器以 `killTree` 拉起的厂商 CLI 自成一组，这里够不到（见 `killProcessTree`，EV-152）。
+ */
+export async function terminateProcessGroup(
+  pid: number,
+  o: TerminateOptions,
+): Promise<{ gone: boolean; escalated: boolean; signals: NodeJS.Signals[] }> {
+  // 实际发过的信号（按发出顺序）：调用方的播报要按事实说——一个都没发、发了却没确认退出，都不能说成「已终止」
+  // （EV-150 代码双审 r1 CODEX-01 ≡ GLM-01）
+  const signals: NodeJS.Signals[] = [];
+  const send = (p: number, sig: NodeJS.Signals): void => {
+    signals.push(sig);
+    (o.signal ?? killProcessTree)(p, sig);
+  };
+  const pollMs = o.pollMs ?? 250;
+  const waitGone = async (ms: number): Promise<boolean> => {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      if (await o.isGone()) return true;
+      await new Promise((r) => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
+    }
+    return o.isGone();
+  };
+
+  if (await o.isGone()) return { gone: true, escalated: false, signals };
+  send(pid, 'SIGTERM');
+  if (await waitGone(o.graceMs)) return { gone: true, escalated: false, signals };
+
+  o.onEscalate?.();
+  send(pid, 'SIGKILL');
+  if (o.killWaitMs <= 0) return { gone: await o.isGone(), escalated: true, signals };
+  return { gone: await waitGone(o.killWaitMs), escalated: true, signals };
 }
 

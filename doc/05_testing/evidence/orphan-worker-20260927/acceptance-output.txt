@@ -1,0 +1,17 @@
+✓ A1 hang 桩派生后失败 ⇒ run.json 与登记 failed + post_spawn_exception：退 1，run failed {"by":"post_spawn_exception","exit_code":1}
+✓ A1 闸门 idle、锁已放、status.json failed 且有 pid：闸门 idle，锁 无，status failed/22756
+✓ A1 进程表里没有该 run_id 的 worker（今天会留一个孤儿）：[]
+✓ A1 --wait 按终态返回（退 1、不说失联）、--cancel 说已处于终态、run.json 不再被改：--wait 退 1，--cancel 退 0，run.json 不变
+✓ A4 会话启动不再有指向那次失败运行的「状态读不到」「双审进行中」「抹除失败」提示：（无提示）
+✓ A3 正常重跑 ⇒ 退 0、只有新一轮的 worker、跑完退 0：start 退 0，worker [{"pid":23243,"id":"20260927T161133Z"}]，--wait 退 0
+✓ A3 report：时间线只列新一轮，未进时间线表一行本主题说明：[{"r":1,"runId":"20260927T161133Z"}] ｜ [{"r":1,"runId":"20260927T161131Z","label":"派生工作进程之后启动未完成，工作进程已终止（退出码 1）"}]
+✓ A2 ok 桩派生后失败 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档：run failed，闸门 idle，文档 2026-09-28-A2-诞生之后失败-ok-claude.md
+✓ A5 按 worker 进程组发 SIGTERM 仍够不到 killTree 拉起的子进程（如实保留，EV-152）：{"workerAlive":false,"workerGoneMs":662,"treeChildAlive":true,"treeChildPpidNow":1,"plainChildAlive":false,"survivors":[{"pid":23967,"pgid":23967,"ppid":1,"cmd":"/bin/sh -c sleep 120; : <MARK>-tree"}]}
+✓ A6 本仓 report 逐主题不变：基线 e49279a，54 个主题，rounds / unlistedRuns 不同的：无
+⚠️  运行元数据 20260927T000000Z（plan 阶段）读不出来，已跳过——留痕可能被改坏或不合契约
+✓ A7 (ii) 叠上取值面后 run-meta-strict / report 两个套件全绿（S3 / V9 不红）：pass 32，fail 0
+✓ A7 (i) 旧构建原样：新取值读成 null，resolveStageDriver 判 corrupt（回滚漏步的形态）：{"readable":false,"driver":"corrupt","label":null}
+✓ A7 (ii) 旧代码 + 取值面：可读、Driver 判定正常、report 有专门说明：{"readable":true,"driver":"ok:claude","label":"派生工作进程之后启动未完成，工作进程已终止（退出码 1）"}
+
+13/13
+exit=0

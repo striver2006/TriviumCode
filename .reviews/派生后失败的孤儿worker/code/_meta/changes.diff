@@ -1,0 +1,3308 @@
+# trivium changes.diff
+# run_id: 20260927T151757Z
+# base: HEAD
+# head: 31005b42b54e3e93f4ed0770850cd9eafde40705
+# files: 36
+#   doc/01_requirements/PRD_driver_dual_critic.md
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/LLD_orchestrator.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/05_testing/REPORT_2026-09-27_orphan_worker.md
+#   doc/05_testing/evidence/orphan-worker-20260927/acceptance-output.r0.txt
+#   doc/05_testing/evidence/orphan-worker-20260927/acceptance-output.txt
+#   doc/05_testing/evidence/orphan-worker-20260927/acceptance-readout.json
+#   doc/05_testing/evidence/orphan-worker-20260927/acceptance-readout.r0.json
+#   doc/05_testing/evidence/orphan-worker-20260927/acceptance.mjs
+#   doc/05_testing/evidence/orphan-worker-20260927/contract-mutation-output.txt
+#   doc/05_testing/evidence/orphan-worker-20260927/contract-mutation.mjs
+#   doc/05_testing/evidence/orphan-worker-20260927/focus-check.mjs
+#   doc/05_testing/evidence/orphan-worker-20260927/gen-mutation-spec.mjs
+#   doc/05_testing/evidence/orphan-worker-20260927/mutation-names-output.json
+#   doc/05_testing/evidence/orphan-worker-20260927/mutation-names-output.v1.json
+#   doc/05_testing/evidence/orphan-worker-20260927/mutation-names.mjs
+#   doc/05_testing/evidence/orphan-worker-20260927/mutation-output.txt
+#   doc/05_testing/evidence/orphan-worker-20260927/mutation-spec.json
+#   doc/05_testing/evidence/orphan-worker-20260927/probe-c2b-e49279a.out.json
+#   doc/05_testing/evidence/orphan-worker-20260927/probe-kill-reach.mjs
+#   doc/05_testing/evidence/orphan-worker-20260927/probe-kill-reach.out.json
+#   doc/05_testing/evidence/orphan-worker-20260927/repro-a7.mjs
+#   doc/07_manuals/MANUAL_user.md
+#   doc/08_project/BACKLOG.md
+#   skills/dual-critic/schema/run.v2.json
+#   src/trivium/meta.ts
+#   src/trivium/report.ts
+#   src/trivium/run-protocol.ts
+#   src/trivium/types.ts
+#   src/trivium/util/exec.ts
+#   test/integration/gate-loop.test.ts
+#   test/integration/run-protocol.test.ts
+#   test/integration/worker-detach.test.ts
+#   test/unit/report.test.ts
+#   test/unit/run-meta-strict.test.ts
+diff --git a/doc/01_requirements/PRD_driver_dual_critic.md b/doc/01_requirements/PRD_driver_dual_critic.md
+index dbf9223..59023a7 100644
+--- a/doc/01_requirements/PRD_driver_dual_critic.md
++++ b/doc/01_requirements/PRD_driver_dual_critic.md
+@@ -2,10 +2,10 @@
+ 
+ > - **作者 / 负责人**：Chen Zhenbo（依据原始需求整理）
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.4.14
++> - **当前版本**：v1.4.15
+ > - **状态**：**基线已实现、演进需求待实施(Baseline implemented, evolution pending)**
+ > - **来源**：[原始需求.txt](./原始需求.txt)；演进需求来源见 3.2 小节「多 Agent 演进需求」
+-> - **文档版本**：v1.4.14
++> - **文档版本**：v1.4.15
+ > - **⚠️ 实现状态**：FR-01～FR-26 与 AC-01～AC-19 是**已实现基线**；
+ >   **FR-27～FR-31 与 AC-20～AC-25 是演进需求**（各条标注了实现里程碑）：截至本版
+ >   **AC-20 已达成**（M8 第 4 步）、**AC-22 部分达成**（1／2／3 侧分支均可真跑，
+@@ -32,7 +32,7 @@
+ >   以及 M7b 六步（`run.v2`、`config.v2` 与其内存迁移、适配器接线收敛、多审退化逐对计算、
+ >   第 5 步的 `--critics` 入口——**这一步开始改变对外行为**——与第 6 步的接入套件验收装置）。
+ >   **不得据 FR-27～FR-31 判定系统现有能力，也不得把内部改动读成需求达成。**
+-> - **变更说明**：v1.4.14（2026-09-27）随主设计 v1.3.50（事后收尾余项，EV-145）同步。**只补 FR-24 的一句边界，不新增需求、不改判据**：准备阶段写完运行元数据之后失败（含 `review --start` 在拉起审查员之前失败）、同步路径异常的运行也记 `failed`，并注明是哪一种。v1.4.13（2026-09-27）随主设计 v1.3.49（闸门拦截不留骨架，EV-109 / EV-145 ①）同步。**只补 FR-24 的一句边界，不新增需求、不改判据**：被闸门拦下（上一轮未裁决直接重跑）的 `--start` 不写运行元数据、不算一次运行；AC-16 原文不动（它约束的是预检失败，`review` 自身失败出口的零工件口径在主设计验收表）。v1.4.12（2026-09-27）随主设计 v1.3.48（未收尾运行的留痕与复盘可见性，EV-142 / EV-144）同步。**只改 FR-24 的边界说明，不新增需求、不改判据**：worker 异常与 `--wait` 判 `worker_lost`（工作进程确认退出时）的运行也把成败状态（`failed`）写入主题子目录的运行元数据（此前停在 `running`）；复盘报告另列没有产出审查文档的运行。
++> - **变更说明**：v1.4.15（2026-09-27）随主设计 v1.3.51（派生后失败的孤儿worker，EV-150）同步。**只补 FR-24 的一句边界，不新增需求、不改判据**：`review --start` 在拉起工作进程之后启动未完成的运行，工作进程被终止并确认退出后同样记 `failed`，并注明是这一种。v1.4.14（2026-09-27）随主设计 v1.3.50（事后收尾余项，EV-145）同步。**只补 FR-24 的一句边界，不新增需求、不改判据**：准备阶段写完运行元数据之后失败（含 `review --start` 在拉起审查员之前失败）、同步路径异常的运行也记 `failed`，并注明是哪一种。v1.4.13（2026-09-27）随主设计 v1.3.49（闸门拦截不留骨架，EV-109 / EV-145 ①）同步。**只补 FR-24 的一句边界，不新增需求、不改判据**：被闸门拦下（上一轮未裁决直接重跑）的 `--start` 不写运行元数据、不算一次运行；AC-16 原文不动（它约束的是预检失败，`review` 自身失败出口的零工件口径在主设计验收表）。v1.4.12（2026-09-27）随主设计 v1.3.48（未收尾运行的留痕与复盘可见性，EV-142 / EV-144）同步。**只改 FR-24 的边界说明，不新增需求、不改判据**：worker 异常与 `--wait` 判 `worker_lost`（工作进程确认退出时）的运行也把成败状态（`failed`）写入主题子目录的运行元数据（此前停在 `running`）；复盘报告另列没有产出审查文档的运行。
+ > - **变更说明**：v1.4.11（2026-09-26）随主设计 v1.3.47（留痕字段与误报小修，EV-127 / EV-128 / EV-137）同步。**只改 FR-24 的边界说明，不新增需求、不改判据**：被 `review --cancel` 取消的运行，其成败状态（`cancelled`）也写入主题子目录的运行元数据（工作进程确认退出后写；此前停在 `running`）；worker 异常与 `worker_lost` 两种失败仍停在 `running`，已登记 BACKLOG EV-142。
+ > - **变更说明**：v1.4.10（2026-09-26）随主设计 v1.3.46（审批前工作树摘要，EV-132 候选 ② 折中版）同步。**只改 FR-28 / AC-21 的边界说明，不新增需求、不改判据**：审批时（`approve` 通过与两个闸门停点）打印自审查收尾以来的工作树改动摘要，只告知、不拦、不改退出码与闸门迁移；闸门期仍无机制拦截或兜底，原候选 ②「审批前复核加工作树比对、不一致即拒」用户定为不做。
+ > - **变更说明**：v1.4.9（2026-09-26）随主设计 v1.3.45（留痕与文案小修）同步。**只改 FR-28 / AC-21 的边界说明，不新增需求、不改判据**：闸门停点尾句与入口资产 L2 段已按审查中 / 闸门期 / 审批后三个时点写实（EV-132 候选 ①），闸门期无机制兜底这一事实仍在（候选 ② 待办）。
+@@ -192,7 +192,7 @@ AI 编程已从单次补全进入自主智能体阶段。开发者在 macOS + VS
+ ### 3.3 P2（锦上添花 · 可分期）
+ 
+ - [ ] **FR-23 可配置跳过纯文档审**：对仅含文档、注释或格式、且配置允许的代码 diff，可跳过代码双审。业务代码、依赖清单（锁文件除外）、CI 与权限相关文件变更不得跳过。
+-- [ ] **FR-24 运行元数据**：每次任务运行将所用模型、起止时间、成败状态写入该主题子目录，便于复盘。Token 与 CLI 版本为可选字段。被取消的运行记 `cancelled`（v1.4.11，EV-128）；worker 异常与 `worker_lost`（工作进程确认退出时）的运行记 `failed`（v1.4.12，EV-142），失联时进程还在则不写、仍为 `running`。准备阶段写完运行元数据之后失败、同步路径异常的运行同样记 `failed`（v1.4.14，EV-145）。
++- [ ] **FR-24 运行元数据**：每次任务运行将所用模型、起止时间、成败状态写入该主题子目录，便于复盘。Token 与 CLI 版本为可选字段。被取消的运行记 `cancelled`（v1.4.11，EV-128）；worker 异常与 `worker_lost`（工作进程确认退出时）的运行记 `failed`（v1.4.12，EV-142），失联时进程还在则不写、仍为 `running`。准备阶段写完运行元数据之后失败、同步路径异常的运行同样记 `failed`（v1.4.14，EV-145）；`review --start` 在拉起工作进程之后启动未完成的，终止工作进程并确认退出后同样记 `failed`（v1.4.15，EV-150）。
+ - [ ] **FR-25 阶段重跑不覆盖既有工件**：同一任务同一阶段允许重跑。重跑产生的新文件一律追加版本后缀（或等价的新文件名），既有工件无论是否已经人工审批均不得覆盖，避免同日重跑撞名覆盖审查或主脑文件。
+ - [ ] **FR-26 等待期进度反馈**：双审进行期间，用户必须按稳定节奏收到可读进度，每条能回答「跑到哪了 / 还要多久 / 两侧各自什么状态」。编排器在每次等待返回时给出成品单行摘要与结构化进度（已用、预算、百分比、第几次/共几次、两侧状态），主脑负责**向用户播报**而非仅打印到工具输出；启动时另播报一条含两侧生效模型与阶段预算的开场。反馈的最小间隔等于单次等待窗口——主脑只在工具调用返回时才能说话，这是平台约束（设计 7.5.1）。
+ 
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 7f014c7..be8d1de 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.50
++> - **当前版本**：v1.3.51
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -1128,11 +1128,12 @@ addresses:               # 本件应答的审查文档文件名，不是意见
+ > 三条事后收尾的第一步都在主题任务锁（与 task.json 同一把）里读、判、写，`--cancel` 与 `--wait` 同时收尾时谁先到记谁，每份 run.json 至多一次终态写入。
+ >
+ > **本进程的事后收尾**（v1.3.50，EV-145）：同一个函数体，写者就是发起这次运行的进程本身——还没有、也不会有 worker；`--cancel` / `--wait` 常常拿不到身份，拿到了也没有 pid、判「未确认退出」而跳过，本进程写完之后 run.json 又已是终态、按前提不追溯改写，所以不会有第二个写者。
+-> ③**准备阶段失败**：`prepareRun` 写完 run.json 骨架之后才失败（登记、任务目标落盘），或 `startRun` 在**子进程诞生之前**失败（副本源复查、交接文件、status.json，以及 `spawnDetached` 内部建日志目录、开日志文件、`spawn` 没拿到 pid）——`termination.by = prepare_exception`，审查员一个都没拉起。「子进程已诞生」以 `spawnDetached` 的 `onSpawned` 回调为准：它的 `finally` 在子进程已起之后仍可能抛，「有没有返回」不能当判据；诞生之后才失败的不收尾（worker 活着、会自己写终态，BACKLOG EV-150）。
++> ③**准备阶段失败**：`prepareRun` 写完 run.json 骨架之后才失败（登记、任务目标落盘），或 `startRun` 在**子进程诞生之前**失败（副本源复查、交接文件、status.json，以及 `spawnDetached` 内部建日志目录、开日志文件、`spawn` 没拿到 pid）——`termination.by = prepare_exception`，审查员一个都没拉起。「子进程已诞生」以 `spawnDetached` 的 `onSpawned` 回调为准：它的 `finally` 在子进程已起之后仍可能抛，「有没有返回」不能当判据；诞生之后才失败的见下面 ⑤。
+ > ④**同步路径异常**：`review --stage` 里 `executeRun` 抛错——`sync_exception`。
+ > 两条都带退出码（与抛出的错误同源），都**先回收闸门、再收尾、最后放锁**——与上面三条相反：这里没有 status.json、也没有下一次调用补齐的入口，收尾只有一次机会，进程若死在两步之间，宁可 run.json 留痕不准，也不让闸门停在 `running` 拦住业务写入到 TTL。放锁排在收尾之后，是为了放锁前把留痕写完；这段时间里新 `--start` 拿不到锁即退 70——这两条路的运行锁获取时不带 run_id（run_id 只在派生之后随 worker pid 写进锁内容），「运行已终态」的遗留锁判据用不上，持锁进程又活着，保守无害。骨架还没写就失败的不进收尾。
++> ⑤**派生后启动未完成**（v1.3.51，EV-150）：`review --start` 在**子进程诞生之后**失败（`spawnDetached` 关日志句柄、写 `worker.pid`、改写锁为 worker、在 status.json 记 `worker_pid`）——worker 已经在跑。此前这一格只回收闸门、放锁、报失败：孤儿照常跑完、事后把已回收的闸门置成待裁决，或与下一轮并发。现由 `settleOrphanedStart` 按序：①按进程组终止 worker，**以父进程手里的子进程句柄确认退出**（句柄未观察到退出 ⇒ 未被回收 ⇒ pid 与同号进程组不会被复用，不依赖可能取不到的启动时刻）；②**确认不了退出**时闸门与 run.json 一概不动（它若还活着就是写者），只尽力把 `worker_pid` 与启动时刻补记进 status.json、把仍是本进程内容的锁改记到 worker 名下，并给出 `--cancel` 出路；③回收闸门——**排在终止之后**，反过来排，孤儿收尾时 `expect: { runId }` 会把刚回收的闸门置成待裁决；④收尾为 `failed` + `termination.by = post_spawn_exception`，worker 已写下终态的不追溯改写、只指路；⑤status.json 已终态不动，属本进程收尾的落 `failed`，worker 已写 run.json 终态而 status.json 未到的只补 pid；⑥放锁，锁已改写成本轮 worker 的按 run_id + pid 复核后回收。锁已改写那一格，worker 被终止后新 `--start` 可按 `pid_gone` 当场接管锁与闸门；按 run_id 回收闸门、按 run_id 收尾、锁的双条件复核、`reclaimStaleLock` 复验四道守卫保证两轮不串写。目标不变量：**`--start` 非零退出 ⇔ 没有 worker 在跑**（确认不了退出那一格除外），skill 的「原样转述并停止」因而成立。终止只到 worker 这一组：适配器以 `killTree` 拉起的厂商 CLI 自成进程组，按组发的信号够不到它们（BACKLOG EV-152）；按时序推断，孤儿在失败点之后立即被终止时还没拉起任何 CLI。
+ > 「每份 run.json 至多一次终态写入」有一个已知例外：run_id 只到秒，准备阶段失败是亚秒级完成的，同一秒内重跑会用同名骨架覆盖刚写下的 `failed` + `termination`（BACKLOG EV-147）。
+-> 已结束却仍为 `running` 的留痕表示没有走到收尾：本版以前的 worker 异常 / `worker_lost` / 取消 / 准备阶段失败 / 同步路径异常、失联时工作进程未确认退出、`--start` 在子进程诞生之后才失败而孤儿 worker 被杀（EV-150）、worker 猝死而没人 `--wait`（EV-151）、纯文档跳过的终态写入本身失败，以及 v1.3.49 以前被闸门拦下留下的骨架，不回填。
++> 已结束却仍为 `running` 的留痕表示没有走到收尾：本版以前的 worker 异常 / `worker_lost` / 取消 / 准备阶段失败 / 同步路径异常、失联时工作进程未确认退出、本版以前 `--start` 在子进程诞生之后才失败的运行与确认不了工作进程退出的那一格（EV-150）、worker 猝死而没人 `--wait`（EV-151）、纯文档跳过的终态写入本身失败，以及 v1.3.49 以前被闸门拦下留下的骨架，不回填。
+ > **被闸门拦下的 `--start` 不写任何留痕**（v1.3.49，EV-109 / EV-145 ①）：`prepareRun` 在第一次落盘之前置闸门 `running`，槽位被上一轮待裁决占着即退 2，brief、补丁与便利副本、run.json、task.json 登记、运行目录一概不写；置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 自己回收闸门。此前骨架写在闸门判定之前，被 `latestRunMeta` 当成最新留痕，不带 `--run-id` 的 `gate` 随之指向一轮从未开跑的运行。
+ > `guard.forged_role_file` 是保留字段：run.v1 / v2 必填、写侧恒 `false`、不表示检测过，`report` 不据它打旗标（EV-137）。
+ 
+@@ -1187,7 +1188,7 @@ addresses:               # 本件应答的审查文档文件名，不是意见
+ | `critics.<id>.model_unenforced` | 没做模型覆盖、而实际模型与请求不同（EV-122）：`{ requested, effective, cause, reason }`。与 `model_override_applied` **互斥**：那一格要求本次尝试了覆盖，这一格要求没尝试——不并进那一格的 `false`，因为「覆盖没落实」查 CLI 读取点、「压根没做覆盖」查副本源在不在，两种成因同形就分不开。`requested` 与 `model_requested` 同源；判据只看 modelId 段；`cause` 取 `source_missing`（副本源 `cli/config.json` 不在）或 `qualify_failed`（请求的模型在副本源目录里限定失败），`guard` 按它分句；`reason` 只供人读、不参与判定、不保证文案稳定；它可能含副本源的 provider / 模型目录清单（`qualify_failed`）与真实 HOME 绝对路径（`source_missing`），随归档持久化、不含凭据——这是有意接受的内容面（代码双审 r1）：截断只能按文案切，而清单正是排查限定失败要用的那部分。内层四项必填。字段缺席＝做了覆盖、请求为空、没回读到生效模型、modelId 段相同、或该侧不产出（目前只有 zcode 侧产出，其余三家见 EV-91）。与 `carriers_landed` 同一口径：条件展开，缺席不压成 null | **可选** | 【已实现 · EV-122】`src/trivium/adapters/zcode.ts` `decideModelUnenforced` |
+ | `snapshot.build` | **运行中的编排器**自带的构建标识：`repo_root_commit`（构建来源仓的根提交，作仓库身份）、`git_head`、`dirty`、`inputs_sha256`（安装面路径集 `src/ scripts/ skills/ package.json package-lock.json tsconfig.json` 在构建时工作树上的指纹）、`built_at`。`snapshot.git_head` 是**被审项目**的 HEAD，这一项才是编排器本体是哪一版构建出来的。`null` = 构建时取不到 git（浅克隆、`git archive` 导出的树）；缺席 = 本字段之前的旧留痕。**谁消费**：收尾告警与 doctor，**只在本仓模式**下比对（被审项目根提交 = `repo_root_commit`；任一侧取不到根提交时按 `package.json` 的 `name` 兜底），外部项目只记不比。四条告警：构建标识缺失 / 构建时工作树有未提交改动 / 安装副本不是当前工作树构建的 / 安装副本与仓库 HEAD 不同版。**HEAD 只在作用面指纹未判定一致时才比**（EV-111）：指纹一致即构建输入与当前工作树一致，HEAD 不同只剩出处信息（两个字段照记），不告警，doctor 那一行补一句「（构建于 X，仓库 HEAD 已到 Y，作用面与构建时一致）」；否则构建后哪怕只有一次纯文档提交也会报「不同版」。作用面指纹重算取不到时记一条「比对未能完成」；仓库 HEAD 取不到时，**仅当指纹未判定一致**才记一条（指纹一致时 HEAD 不参与判定，谈不上「查不出」）；比对本身抛错另记一条「比对失败」——「查不出」不与「查过、没问题」同形。零告警 ⇔ 标识非空、构建时干净、指纹取得到且一致。均只告警、不阻断。仓库身份：浅克隆里取不到根提交，按包名兜底。指纹的覆盖边界（被忽略文件、`node_modules` 漂移、「改完装上再改回」）见 BACKLOG EV-114 | **可选**（写侧恒写，null 也写） | 【已实现 · EV-82 小主题第一段；HEAD 比对条件 · EV-111】`src/trivium/build-stamp.ts` |
+ | `snapshot.after_tree_hash` | 审查收尾复算漂移时的工作树 tree（与 `tree_hash` 同法，`workTreeHash`），与 `drift` 同一处写、同一次收尾落盘，之后 run.json 不再更新（EV-133 的不变量不受影响）。**只供审批时的工作树改动摘要作基线，不参与任何判定**（8.5）。缺席 = 本字段之前的旧留痕或运行未走到复算，摘要据此报「本轮没有审查收尾时的工作树基线」，不回落到 `tree_hash`。它是不可达的 git 对象，可能被 git 清理，摘要此时报「基线对象已不在对象库」 | **可选** | 【已实现 · v1.3.46，EV-132 候选 ② 折中版】`src/trivium/review.ts`、`src/trivium/worktree-summary.ts` |
+-| `termination` | 这一次终态由哪条事后收尾写的（6.7 注记）：`{ by, exit_code }`（`by` 取 `worker_exception` / `prepare_exception` / `sync_exception`）或 `{ by: "worker_lost", reason }`，两个形状各自 `additionalProperties: false`。`worker_exception` 由 worker 异常分支写、`worker_lost` 由 `--wait` 判失联且确认工作进程已退出时写、`prepare_exception` 由准备阶段写完骨架之后失败（含 `startRun` 在子进程诞生之前失败）时本进程写、`sync_exception` 由同步路径 `executeRun` 抛错时本进程写（后两者 v1.3.50，EV-145）；缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕。**只存结构化字段、不存异常原文**：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。第一个形状的 `by` 与 `types.ts` 的 `EXCEPTION_TERMINATION_BY`、`reason` 与 `status.ts` 的 `WORKER_LOST_REASONS` 逐项相等，由用例守住。**只增不减**：schema 在构建期内嵌进 bundle，旧 bundle 读不懂新取值（读成 null，当轮 Driver 判定随之判坏）；回滚代码时保留本 schema 的改动、重建并重装（事后收尾余项计划 r2 §6.3，零配额验收 A8 演练过） | **可选** | 【已实现 · v1.3.48，EV-142；扩值 v1.3.50，EV-145】`src/trivium/meta.ts`、`src/trivium/run-protocol.ts`、`src/trivium/review.ts` |
++| `termination` | 这一次终态由哪条事后收尾写的（6.7 注记）：`{ by, exit_code }`（`by` 取 `worker_exception` / `prepare_exception` / `sync_exception` / `post_spawn_exception`）或 `{ by: "worker_lost", reason }`，两个形状各自 `additionalProperties: false`。`worker_exception` 由 worker 异常分支写、`worker_lost` 由 `--wait` 判失联且确认工作进程已退出时写、`prepare_exception` 由准备阶段写完骨架之后失败（含 `startRun` 在子进程诞生之前失败）时本进程写、`sync_exception` 由同步路径 `executeRun` 抛错时本进程写（后两者 v1.3.50，EV-145）、`post_spawn_exception` 由 `--start` 在子进程诞生之后失败、终止工作进程并确认退出之后本进程写（v1.3.51，EV-150）；缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕。**只存结构化字段、不存异常原文**：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。第一个形状的 `by` 与 `types.ts` 的 `EXCEPTION_TERMINATION_BY`、`reason` 与 `status.ts` 的 `WORKER_LOST_REASONS` 逐项相等，由用例守住。**只增不减**：schema 在构建期内嵌进 bundle，旧 bundle 读不懂新取值（读成 null，当轮 Driver 判定随之判坏）；回滚代码时保留「取值面」——本 schema、`EXCEPTION_TERMINATION_BY`、`report` 的说明与对应用例——只回退行为代码，重建并重装（派生后失败的孤儿worker计划 r2 §6.3，零配额验收 A7 演练过；只留 schema 会让单一来源用例 S3 / V9 变红） | **可选** | 【已实现 · v1.3.48，EV-142；扩值 v1.3.50，EV-145；扩值 v1.3.51，EV-150】`src/trivium/meta.ts`、`src/trivium/run-protocol.ts`、`src/trivium/review.ts` |
+ 
+ `effort_effective` 必须**回读**而非采信请求值：部分厂商存在请求值归并映射
+ （如 DeepSeek 的 `medium/high/xhigh → high`），「请求 medium 实际生效 high」。
+@@ -1463,10 +1464,10 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
+ 
+ | 子命令 | 行为 | 返回 |
+ | :--- | :--- | :--- |
+-| `review --start` | 预检通过后：冻结送审包 → 置闸门 `running`（槽位被上一轮待裁决占着即退 2、不落盘，v1.3.49）→ 写 `run.json`（`status: running`）→ 以 `setsid`/双 fork 派生工作进程（真并行拉起两侧、回收、解析、落盘全部在该进程内完成，完成即退出）→ **立即返回**；写完骨架之后、子进程诞生之前失败时把骨架收尾为 `failed`（`prepare_exception`，v1.3.50） | `0` + `run_id`、`max_waits`（= ceil(总上限 / timeout) + 2） |
++| `review --start` | 预检通过后：冻结送审包 → 置闸门 `running`（槽位被上一轮待裁决占着即退 2、不落盘，v1.3.49）→ 写 `run.json`（`status: running`）→ 以 `setsid`/双 fork 派生工作进程（真并行拉起两侧、回收、解析、落盘全部在该进程内完成，完成即退出）→ **立即返回**；写完骨架之后、子进程诞生之前失败时把骨架收尾为 `failed`（`prepare_exception`，v1.3.50）；子进程诞生之后失败时先按进程组终止工作进程并以子进程句柄确认退出，再收尾为 `failed`（`post_spawn_exception`，v1.3.51，见 6.7 注记 ⑤） | `0` + `run_id`、`max_waits`（= ceil(总上限 / timeout) + 2） |
+ | `review --wait <run_id> --timeout <s>` | 轮询 `~/.trivium/runs/<repo_id>/<run_id>/status.json`，最多等待 `<s>` 秒（默认见 `defaultConfig()` 的 `wait_timeout_s`，须小于 Bash 工具超时） | `0` 完成且工件已落盘；`73` 仍在运行（stdout 给出两侧状态、已用时/预算、心跳时间，JSON 另给 `progress_brief` 等结构化进度，见 7.5.1）；`75` 严格模式单侧失败；其余同 7.3 |
+ | `review --status <run_id>` | 只读一次状态，不等待 | 同上 |
+-| `review --cancel <run_id>` | 向工作进程发 SIGTERM → SIGKILL；工作进程确认退出后，把仍为 `running` 的归档 run.json 与 `task.json` 登记标 `cancelled`（v1.3.47，EV-128，见 6.7 注记）；再把 status.json 标 `cancelled`、回收锁与闸门 | `0` |
++| `review --cancel <run_id>` | 向工作进程组发 SIGTERM → 宽限 5 s → SIGKILL（宽限期判据「不存活或不是同一进程」，v1.3.51；与 `--start` 派生后失败的收尾共用 `terminateProcessGroup`；够不到适配器以 `killTree` 拉起、自成进程组的厂商 CLI，BACKLOG EV-152）；工作进程确认退出后，把仍为 `running` 的归档 run.json 与 `task.json` 登记标 `cancelled`（v1.3.47，EV-128，见 6.7 注记）；再把 status.json 标 `cancelled`、回收锁与闸门 | `0` |
+ 
+ 约束：① 工作进程写 `status.json` 心跳（每 30s），`--wait` 在三种情形下判 `failed(worker_lost)`：进程不在或已不是同一进程（`pid_gone`，status.json 读不到时按 worker.pid 判）、进程活着但心跳超过 `heartbeat_stale_s`（默认 120s）未更新（`heartbeat_stale`）、status.json 与 pid 都拿不到（`no_status_file`）；判定时若工作进程已确认退出，先把归档 run.json 收尾为 `failed`（v1.3.48，EV-142，见 6.7 注记）；② 工作进程生命周期等于一次运行，不监听、不接受新任务，因此不是 PRD Non-Goal 所指的常驻 Daemon；③ `hook-session-start` 若发现 `running` 状态的运行，以 `additionalContext` 提醒 Driver 先 `--wait`；④ `run.json` 的 `command` 字段记录是否经 `--start/--wait` 完成，便于审计。
+ 
+@@ -3442,6 +3443,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.51** | 2026-09-27 | **派生后失败的孤儿worker（EV-150）。** 计划 `.reviews/派生后失败的孤儿worker/plan/`（D1～D8 送审前已定、全取建议项；计划双审第 1 轮 run `20260927T092419Z` 13 条接受 12、AGY-04 暂缓后经审批附言并入，r2 定稿 `31005b4`）。**一、6.7 注记新增 ⑤ 派生后启动未完成**：`review --start` 在子进程诞生之后失败时，`settleOrphanedStart` 先按进程组终止 worker、以父进程的子进程句柄确认退出，再回收闸门（排在终止之后，消除「孤儿事后把已回收的闸门置成待裁决」）、收尾为 `failed` + `termination.by = post_spawn_exception`、按形态处理 status.json（已终态不动）、放锁（锁已改写成 worker 的按 run_id + pid 复核后回收）；确认不了退出时闸门与 run.json 不动、pid 与启动时刻补记进 status.json、锁改记到 worker 名下。不变量：`--start` 非零退出 ⇔ 没有 worker 在跑。**二、`termination.by` 扩值** `post_spawn_exception`（6.7.1，schema 只增不减；回滚改为保留取值面）。**三、`util/exec.ts`**：`onSpawned` 追加子进程句柄的退出观察；新增 `terminateProcessGroup`，`review --cancel` 改用它，宽限期判据收紧为「不存活或不是同一进程」（此前 PID 被复用时会把 SIGKILL 打到无关进程；7.5 `--cancel` 行）。**四、改准不实说法**：`--cancel` 按 worker 进程组发的信号够不到适配器以 `killTree` 拉起、自成进程组的厂商 CLI（零配额实测），`killProcessTree` 文档块、`cancelRun` 注释与播报、LLD、MANUAL 同步；行为修复新登 BACKLOG EV-152。7.5 `review --start` 行同步 |
+ | **v1.3.50** | 2026-09-27 | **事后收尾余项（EV-145）。** 计划 `.reviews/事后收尾余项/plan/`（D1～D7 送审前已定、全取建议项；计划双审第 1 轮 run `20260927T052648Z` 7 条全接受，r2 定稿 `a89a46f`，审批「修改后实施」）。**一、6.7 注记：本进程的事后收尾两条**——准备阶段写完骨架之后失败（含 `startRun` 在子进程诞生之前失败）记 `prepare_exception`，同步路径 `executeRun` 抛错记 `sync_exception`；写者是本进程，先回收闸门、再收尾、最后放锁（与 `--cancel` / `--wait` / worker 三条次序相反，理由是没有补齐入口）；「子进程已诞生」以 `spawnDetached` 新增的可选回调 `onSpawned` 为准。**二、6.7.1**：`termination` 第一个形状的 `by` 扩为三值，与 `types.ts` 的 `EXCEPTION_TERMINATION_BY` 由用例守住同步；写明 schema 只增不减与回滚步骤。**三、7.5 `review --start` 一行**补收尾。**四、实施期修正一处既有缺陷**：`spawnDetached` 在 `spawn` 拿不到 pid 时直接抛错，而 `'error'` 监听挂在检查之后，二进制不存在即整个进程因未处理的 error 事件崩溃（实测），监听挪到检查之前。**不改**：子进程诞生之后才失败（worker 活着、会自己收尾；锁与闸门被提前放掉登 BACKLOG EV-150）、纯文档跳过分支（只有终态写入本身失败才会停在 `running`）、worker 猝死而没人 `--wait`（会话启动已提示 `--wait`，剩余缺口登 EV-151）、`latestRunMeta` 的选取（跳过终态骨架会让首轮失败落进 corrupt 分支）。代码双审 r1（run `20260927T074234Z`；codex 解析降级，实质 9 条全接受，审批「修改后提交」）修订：`spawnDetached` 在 pid 缺失时把 spawn 错误的成因（可执行文件路径、错误码）带进报错正文与 `worker.log`（此前只防崩、成因被空监听吞掉）；6.7 注记「先收尾、后放锁」的理由改准——这两条路的运行锁不带 run_id，尾窗里新 `--start` 只会退 70，计划 r2 写的「可按运行已终态接过锁」不成立；补「至多一次终态写入」的 EV-147 例外（同秒重跑覆盖）；「拿不到身份」的措辞改准。 |
+ | **v1.3.49** | 2026-09-27 | **闸门拦截不留骨架（EV-109 ≡ EV-145 ①）。** 计划 `.reviews/闸门拦截不留骨架/plan/`（D1～D5 送审前已定、全取建议项；计划双审第 1 轮 run `20260927T015234Z` 10 条全接受，r2 定稿 `1ee28b0`，审批「修改后实施」）。**一、`prepareRun` 把置闸门 `running` 的比较-交换挪到第一次落盘之前**：被拦（上一轮未裁决直接重跑，退 2）时一个文件都不写；置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 自己回收闸门（`state.ts` 新增 `releaseRunningGateEntry`，`run-protocol.ts` 的 `releaseRunningGate` 委托它，语义 `running → idle` 不变）。**二、消除一处既有误判**：此前被拦那次已写下 run.json 骨架（轮次 N+1），`latestRunMeta` 不看 `status` 取它当最新留痕，不带 `--run-id` 的 `gate --check` / `--await-approval` / `--check-artifacts` 与 `hook-stop` 的提示都指向它，被拦文案给的出路「补齐裁决件并通过 `gate --check`」走不通；code 阶段的便利副本 `changes.diff` 也被覆盖。**三、如实保留**：写完骨架之后登记失败时骨架留 `running`、只回收闸门，到下一次成功重跑前不带 `--run-id` 的 `gate` 指向它（EV-145 余项）。落点：6.7 注记末句、7.3 拒绝启动表一行、7.5 `review --start` 一行、验收表 AC-16 行。附带核出两条既有缺陷新登 BACKLOG（run_id 只到秒、同秒两次运行互相覆盖；留痕读不出时「重跑一次」的出口循环）。 |
+ | **v1.3.48** | 2026-09-27 | **未收尾运行的留痕与复盘可见性（EV-142 / EV-144）。** 计划 `.reviews/未收尾运行的留痕与复盘可见性/plan/`（r1 送审前用户授权按最优原则拍板 D1～D8、全取建议项，计划双审第 1 轮 run `20260926T235951Z` 8 条全接受，r2 定稿 `e22a174`，审批「修改后实施」）。**一、6.7 注记（EV-142）**：`failed` 另有两条事后收尾——worker 异常分支自己写、`--wait` 判 `worker_lost` 时用改写 status.json 之前的事实确认工作进程已退出才写（status.json 读不到时按 worker.pid 判，计划双审三侧同指的一格）；与取消回写共用按目标终态参数化的函数体，仍为 running 才写、只改三格加 `termination`、排在 status.json 落终态之前；三条事后收尾的第一步都在主题任务锁里判与写，每份 run.json 至多一次终态写入；心跳过期而进程还在时不写。**二、6.7.1**：新增可选字段 `termination`（结构化、不存异常原文，`reason` 与 `WORKER_LOST_REASONS` 由用例守住同步）。**三、7.5 约束①**：`worker_lost` 的三种原因改准。**四、§5.1、§13.2（EV-144）**：`report` 时间线不动，没产出审查文档的运行另列「未进时间线的运行」表并在「轮次总数」后注明「另有 K 次」；实测证实入选侧全部失败的轮次此前同样看不见。**五、故障表、验收表**：`worker_lost` 一行补 run.json 的收尾。新登 BACKLOG EV-145（prepare 阶段写完骨架后被闸门拦下等其它未收尾路径）、EV-146（`heartbeat_stale` 判失联后 `--cancel` 杀不掉挂住的 worker）。历史 4 份 `running` 不回填。读数：`npm run check` 2126 / 2124 / 0 / 2，源码变异 16/16 + 契约变异 1/1，零配额验收 18/18，selftest 14/14（报告 `doc/05_testing/REPORT_2026-09-27_unfinished_runs.md`）。代码双审 r1（run `20260927T005543Z`）4 条接受 3、驳回 1：只改注释里失效的行号引用与 LLD 行号，驳回「锁争用告警会冒出 --cancel 补救提示」（告警只取异常首行）。 |
+diff --git a/doc/02_design/LLD_orchestrator.md b/doc/02_design/LLD_orchestrator.md
+index cec67b9..593a2b1 100644
+--- a/doc/02_design/LLD_orchestrator.md
++++ b/doc/02_design/LLD_orchestrator.md
+@@ -2,8 +2,9 @@
+ 
+ > - **作者 / 负责人**：Driver（Claude）
+ > - **创建日期**：2026-09-13
+-> - **当前版本**：v1.1.8
++> - **当前版本**：v1.1.9
+ > - **状态**：草稿(Draft)
++> - **变更说明**：v1.1.9（2026-09-27）随设计 v1.3.51（派生后失败的孤儿worker，EV-150）同步：`startRun` 第 5 条补 `onSpawned` 的第二个参数（子进程句柄的退出观察），末句「`--cancel` 才能按进程组杀掉 agy/zcode」改准（适配器以 `killTree` 拉起的厂商 CLI 自成进程组，够不到，EV-152）；第 7 条「诞生之后才失败的不收尾」改为 `settleOrphanedStart` 的六步；4.2 引述块「仍会停在 `running` 的」去掉 EV-150 那一格、补「确认不了退出」一格；已知缺口表 `cancelRun` 一行补 EV-150 已修，新增「`--cancel` 够不到适配器拉起的厂商 CLI」一行（EV-152）；`startRun` 一节的四处行号锚点按修订后代码校准（其余章节的锚点仍有漂移，未改）。
+ > - **变更说明**：v1.1.8（2026-09-27）随设计 v1.3.50（事后收尾余项，EV-145）同步：`startRun` 第 5 条补 `spawnDetached` 的可选回调 `onSpawned`（拿到 pid 后调用，调用方据此区分子进程是否已诞生）与 `'error'` 监听前移；第 7 条补「子进程诞生之前失败的，回收闸门之后先把骨架收尾为 `failed` 再放锁」；零工件不变式段末句改为收尾；4.2 引述块「仍会停在 `running` 的」改准（纯文档跳过分支只有终态写入本身失败才会停在 `running`）；已知缺口表一行指向 EV-150 / EV-151。代码双审 r1 修订：第 5 条补 pid 缺失时成因进报错与 `worker.log`（CODEX-01）；4.2 引述块补「放锁前新 `--start` 退 70」并改准「够不着」的措辞（CODEX-02 / CODEX-05）；`startRun()` 与 `prepareRun()` 两节的行号锚点按现值校准并附函数名（CODEX-03 ≡ AGY-01 ≡ GLM-01）。
+ > - **变更说明**：v1.1.7（2026-09-27）随设计 v1.3.49（闸门拦截不留骨架，EV-109 / EV-145 ①）同步：`startRun` 时序图里 `setGateChecked(running)` 挪进 `prepareRun`、排在落盘送审包之前；`startRun` 第 2 条补「闸门由 `prepareRun` 自己回收」；零工件不变式补「置闸门是落盘之前的最后一步」一段；4.2 引述块里「prepare 阶段写完骨架后被拦」移出仍会停在 running 的列举；代码双审 r1（run `20260927T035514Z`）CODEX-04：同一列举补上 `startRun` 纯文档跳过分支里 `executeRun` 抛错这一格
+ > - **变更说明**：v1.1.6（2026-09-27）随设计 v1.3.48（未收尾运行的留痕与复盘可见性，EV-142 / EV-144）同步：4.2 `worker_lost` 一节补归档侧收尾（改写 status.json 之前判确认退出、status.json 读不到时按 worker.pid 判、`termination`、`WORKER_LOST_REASONS` 单一来源）；「同形两处仍未写」改为已修，函数体改名 `finalizeUnfinishedRunMeta`、第一步进主题任务锁；剩余未收尾路径指向 EV-145。代码双审 r1（run `20260927T005543Z`）CODEX-02：同段「三判据」的行号改为现值（`status.ts:205-249`，常量 `:187`）
+@@ -223,19 +224,19 @@ sequenceDiagram
+     W-->>D: exit 0（已落盘）
+ ```
+ 
+-#### 同步窗口 `startRun()`（[run-protocol.ts:290](../../src/trivium/run-protocol.ts#L290)）
++#### 同步窗口 `startRun()`（[run-protocol.ts:293](../../src/trivium/run-protocol.ts#L293)）
+ 
+ > 本节的行号锚点于 v1.1.8 按当时源码校准（此前已漂移 60～100 行，代码双审 r1 CODEX-03 ≡ AGY-01 ≡ GLM-01）；每处都附了函数或段落名，行号再漂时按名字找。
+ 
+ 顺序有讲究，逐条都有代价：
+ 
+-1. **先占主题锁再 prepare**（`run-protocol.ts:294-307`，`startRun` 开头的 `acquireLock`）——否则两个并发 `--start` 会各自冻结一份快照后才发现冲突。
++1. **先占主题锁再 prepare**（`run-protocol.ts:297-310`，`startRun` 开头的 `acquireLock`）——否则两个并发 `--start` 会各自冻结一份快照后才发现冲突。
+ 2. `prepareRun()`，失败则释放锁后抛。闸门不用这里管：被拦时没置上，置上之后的失败 `prepareRun` 自己回收（v1.1.7）。
+-3. **纯文档跳过必须在派生前收口**（`run-protocol.ts:327-346`，`if (rc.skipVerdict?.skipped)` 分支）：直接同步 `executeRun`，返回 `finishedInline: true`。
++3. **纯文档跳过必须在派生前收口**（`run-protocol.ts:330-349`，`if (rc.skipVerdict?.skipped)` 分支）：直接同步 `executeRun`，返回 `finishedInline: true`。
+ 4. 写 `request.json`（交接文件）与 `status.json`。
+-5. **派生工作进程**：`spawnDetached` 用 `detached: true` + `stdio: ['ignore', fd, fd]` + `unref()`，**绝不继承父进程管道**——继承会让 worker 在父进程退出后死于 SIGPIPE。detached 即 setsid，worker 自成进程组，`--cancel` 才能按进程组杀掉 agy/zcode。可选回调 `onSpawned(pid)` 在拿到 pid 之后、函数返回与 `finally` 关日志句柄之前调用（v1.1.8）：建日志目录、开日志文件、`spawn` 没拿到 pid 都在它之前失败，而 `finally` 在子进程已起之后仍可能抛，所以「子进程有没有诞生」以回调为准。`'error'` 监听挂在 pid 检查之前——此前挂在检查之后，二进制不存在时进程因未处理的 error 事件崩溃（v1.1.8 实测修正）；监听还留住错误对象，pid 缺失时等它到达（至多 1 秒）再抛，报错正文与 `worker.log` 都带上可执行文件路径与错误码（代码双审 r1 CODEX-01），成因不进归档。
+-6. **锁的所有权移交**（`run-protocol.ts:403-413`，「锁改记工作进程的 pid」一段）：`--start` 拿到锁后不 release，而是把锁文件内容改写成 worker 的 `pid` 与 `pid_started_at`。
+-7. 立即返回。若第 4~6 步失败，`releaseRunningGate` + 释放锁；子进程诞生之前（`onSpawned` 未调用）失败的，回收闸门之后先把 run.json 骨架收尾为 `failed`（`termination.by = prepare_exception`）再放锁；诞生之后才失败的不收尾——worker 活着、会自己写终态（锁与闸门被提前放掉见 BACKLOG EV-150）（v1.1.8，EV-145）。
++5. **派生工作进程**：`spawnDetached` 用 `detached: true` + `stdio: ['ignore', fd, fd]` + `unref()`，**绝不继承父进程管道**——继承会让 worker 在父进程退出后死于 SIGPIPE。detached 即 setsid，worker 自成进程组，`--cancel` 按进程组发信号，能连带 worker 以不带 `killTree` 的 `run()` 拉起的同组子进程；**够不到**审查员适配器以 `killTree: true` 拉起的厂商 CLI——那会让 CLI 自成一组（零配额实测，v1.1.9，BACKLOG EV-152）。可选回调 `onSpawned(pid, watch)` 在拿到 pid 之后、函数返回与 `finally` 关日志句柄之前调用（v1.1.8）：建日志目录、开日志文件、`spawn` 没拿到 pid 都在它之前失败，而 `finally` 在子进程已起之后仍可能抛，所以「子进程有没有诞生」以回调为准。第二个参数 `watch`（v1.1.9，EV-150）是父进程对子进程的退出观察：`hasExited()` 为假即子进程尚未被回收，其 pid 与同号进程组不会被复用——`--start` 派生后失败时据此终止并确认退出，不依赖可能取不到的启动时刻。`'error'` 监听挂在 pid 检查之前——此前挂在检查之后，二进制不存在时进程因未处理的 error 事件崩溃（v1.1.8 实测修正）；监听还留住错误对象，pid 缺失时等它到达（至多 1 秒）再抛，报错正文与 `worker.log` 都带上可执行文件路径与错误码（代码双审 r1 CODEX-01），成因不进归档。
++6. **锁的所有权移交**（`run-protocol.ts:413-423`，「锁改记工作进程的 pid」一段）：`--start` 拿到锁后不 release，而是把锁文件内容改写成 worker 的 `pid` 与 `pid_started_at`。
++7. 立即返回。若第 4~6 步失败，`releaseRunningGate` + 释放锁；子进程诞生之前（`onSpawned` 未调用）失败的，回收闸门之后先把 run.json 骨架收尾为 `failed`（`termination.by = prepare_exception`）再放锁；（v1.1.8，EV-145）。诞生之后才失败的（关日志句柄、写 `worker.pid`、改写锁、记 `worker_pid`）交给 `settleOrphanedStart`（v1.1.9，EV-150）：①`terminateProcessGroup` 按进程组终止 worker，以 `watch.hasExited` 确认退出（SIGTERM → 5 s → SIGKILL → 至多再等 5 s）；②确认不了退出时闸门与 run.json 不动，只尽力补记 `worker_pid` / `worker_started_at`、把仍是本进程内容的锁改记到 worker 名下，报错给出 `--cancel` 出路，不放锁；③回收闸门（排在终止之后）；④`finalizeFailedRunMeta`（`post_spawn_exception`），run.json 已被 worker 写成终态的只指路；⑤status.json 已终态不动、属本进程收尾的落 `failed`、worker 已写 run.json 终态的只补 pid；⑥`lock.release()`，锁已改写成本轮 worker 的按 run_id + pid 复核后 `reclaimStaleLock`。各步吞错打 warn，调用方随后抛原错误。
+ 
+ #### `prepareRun()` 的「零工件」不变式（[review.ts:542](../../src/trivium/review.ts#L542)）
+ 
+@@ -468,7 +469,7 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
+ > worker 的异常分支（`workerMain` 的 `catch`，排在 `patchStatus` 之前、`workerGone: true`——写者就是 worker 自己）与 `--wait` 判 `worker_lost`（见 4.2 轮询协议一节）各调一次；
+ > 第一步的读、判、写在主题任务锁（`taskLockName`，与 task.json 同一把）里，三条事后收尾同时到达时谁先到记谁；第二步只同步到本次目标终态，不照抄别的终态。
+ > **本进程的两条收尾（v1.1.8，EV-145）**：`prepareRun` 写完骨架之后失败、`startRun` 在子进程诞生之前失败记 `prepare_exception`，同步路径 `runReviewLocked` 里 `executeRun` 抛错记 `sync_exception`；`workerGone` 恒传 true（写者就是本进程；`--cancel` / `--wait` 常常拿不到身份，拿到了也没有 pid、判「未确认退出」而跳过，本进程写完之后 run.json 已是终态、不追溯改写），先回收闸门、再收尾、最后放锁（没有补齐入口，见 `meta.ts` 通用体文档块的两种次序）。放锁前这段时间新 `--start` 拿不到锁即退 70：这两条路的运行锁获取时不带 run_id，「运行已终态」的遗留锁判据用不上（代码双审 r1 CODEX-02）。
+-> 仍会停在 `running` 的：失联时进程还在（`heartbeat_stale`）、`--start` 在子进程诞生之后才失败而孤儿 worker 被杀（BACKLOG EV-150）、worker 猝死而没人 `--wait` / `--cancel`（EV-151）、`startRun` 纯文档跳过分支里终态写入**本身**失败（该分支第一步就写终态，其后的登记或闸门写入抛错时 run.json 已是 `success`）；被闸门拦下的那一格 v1.1.7 起不再写骨架。
++> 仍会停在 `running` 的：失联时进程还在（`heartbeat_stale`）、`--start` 派生后失败而工作进程确认不了退出（v1.1.9 起留给它，BACKLOG EV-150 结案注记）、worker 猝死而没人 `--wait` / `--cancel`（EV-151）、`startRun` 纯文档跳过分支里终态写入**本身**失败（该分支第一步就写终态，其后的登记或闸门写入抛错时 run.json 已是 `success`）；被闸门拦下的那一格 v1.1.7 起不再写骨架。
+ 
+ ### 4.3 锁的生命周期
+ 
+@@ -578,7 +579,8 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需
+ | :--- | :--- | :--- |
+ | **`task.json.disputes[]` 无任何写入点** | 全仓仅 `meta.ts:88`（类型）、`meta.ts:105`（初始化为 `[]`）、`report.ts:441`（读取），无一处 push | 只有 `disputed` 布尔位被写（`cli.ts:701`）。`report` 的「争议项：编号——说明」分支**永远打印不出具体编号** |
+ | ~~**`block_severities` 无消费方**~~ | ~~类型、默认值、schema 校验齐全，业务逻辑零引用~~ | **已解决（2026-09-16）**：该键连同 schema 定义一并删除，不做历史兼容（项目负责人明示接受）。防复发机制见配置键与消费方的对账测试 |
+-| ~~**`cancelRun` 不回写 `run.json`**~~ | ~~函数体内 `writeRunMeta` 零出现~~ | **已解决（2026-09-26，EV-128）**：工作进程确认退出后由 `finalizeCancelledRunMeta` 收尾为 `cancelled`。同形的 worker 异常与 `worker_lost` 已于 2026-09-27 修（EV-142，`finalizeFailedRunMeta`，工作进程确认退出才写）；准备阶段与同步路径的本进程收尾同日修（EV-145）；其余未收尾路径见 EV-150 / EV-151 |
++| ~~**`cancelRun` 不回写 `run.json`**~~ | ~~函数体内 `writeRunMeta` 零出现~~ | **已解决（2026-09-26，EV-128）**：工作进程确认退出后由 `finalizeCancelledRunMeta` 收尾为 `cancelled`。同形的 worker 异常与 `worker_lost` 已于 2026-09-27 修（EV-142，`finalizeFailedRunMeta`，工作进程确认退出才写）；准备阶段与同步路径的本进程收尾同日修（EV-145）；`--start` 派生后失败同日修（EV-150，`settleOrphanedStart`）；其余未收尾路径见 EV-151 |
++| **`--cancel` 够不到适配器拉起的厂商 CLI** | `run()` 在 `killTree: true` 时以 `detached` 派生（`util/exec.ts` `run` 的 `spawnOpts`），四个适配器都这么调；`cancelRun` / `terminateProcessGroup` 只按 worker 的组发信号。零配额实测：worker 退出后该子进程被过继给 init 继续活着（派生后失败的孤儿worker计划 r2 §2.1） | 被取消的运行可能留下仍在消耗配额的 CLI（真实 CLI 会不会因管道断开自行退出未实测）；凭据副本的清扫准入只核 worker（EV-38）。行为修复见 BACKLOG EV-152 |
+ | **协议片段无升级路径** | `appendSnippet`（`init.ts:63-66`）见标记即跳过，与 hooks 的「按名替换」不一致 | 已初始化项目的协议片段永不更新。实测某项目落后 18 行 |
+ | **人工审批无机械边界** | `recordApproval`（`approval.ts:54-86`）无任何调用者身份校验；skill 的 `allowed-tools` 预批准了 `Bash(.trivium/bin/trivium:*)` | Driver 自己一条命令就能关掉等人工审批的闸门。曾加过一次性确认码，因明文经 stdout 由 Driver 转述、构不成边界而**主动移除**——「虚假的安全感比没有护栏更糟」。真解需要宿主提供不经过模型的带外通道 |
+ | **路径级 deny 两侧实测均不可用** | agy 无此能力；ZCode 的 `--disallowed-tools "Read(<路径>)"` 语法被接受，但模型改用 `Bash(head -1)`/`Grep` 读到了目标文件 | `peer_deny_applied` 恒为 `false`，隔离是**降级运行**——只靠禁读清单 + 事后轨迹核验（风险 R13） |
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index e626bbf..8bda5d6 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -57,7 +57,7 @@
+ 
+ **`run.v2` 的可选字段 `driver_guard_level`**（M10b 第 3 步，B1）：取值 `L1` / `L2`，记当轮 Driver 的**有效**护栏等级（登记 L1 的载体在 Hook 配置不在场时记 `L2`；登记 L2 的恒 `L2`，不读探针字段），规范见设计 8.5。**可选**：早于该步的留痕没有它，缺席即「无从得知」，不等于 L1；`trivium report` 时间线对旧留痕显示「—」。其余字段不变。
+ 
+-**`run.v2` 的可选字段 `termination`**（设计 v1.3.48，EV-142；v1.3.50 扩值，EV-145）：`{ by, exit_code }`（`by` ∈ `worker_exception` / `prepare_exception` / `sync_exception`）或 `{ by: "worker_lost", reason }`（`reason` ∈ `no_status_file` / `heartbeat_stale` / `pid_gone`），记这一次 `failed` 由哪条事后收尾写：worker 异常分支自己写、`--wait` 判 `worker_lost` 且工作进程确认已退出时写、准备阶段写完骨架之后失败（含 `--start` 在子进程诞生之前失败）或同步路径异常时由本进程写；都只在 run.json 仍为 `running` 时写。**只增不减**：旧版本读不懂新取值，回滚代码时保留 schema 的改动。只存结构化字段、不存异常原文。缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕，规范见设计 6.7 注记与 6.7.1。
++**`run.v2` 的可选字段 `termination`**（设计 v1.3.48，EV-142；v1.3.50 扩值，EV-145；v1.3.51 扩值，EV-150）：`{ by, exit_code }`（`by` ∈ `worker_exception` / `prepare_exception` / `sync_exception` / `post_spawn_exception`）或 `{ by: "worker_lost", reason }`（`reason` ∈ `no_status_file` / `heartbeat_stale` / `pid_gone`），记这一次 `failed` 由哪条事后收尾写：worker 异常分支自己写、`--wait` 判 `worker_lost` 且工作进程确认已退出时写、准备阶段写完骨架之后失败（含 `--start` 在子进程诞生之前失败）或同步路径异常时由本进程写、`--start` 在子进程诞生之后失败时终止工作进程并确认退出之后由本进程写（`post_spawn_exception`）；都只在 run.json 仍为 `running` 时写。**只增不减**：旧版本读不懂新取值，回滚代码时保留取值面（schema、`EXCEPTION_TERMINATION_BY`、`report` 的说明与对应用例），只回退行为代码。只存结构化字段、不存异常原文。缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕，规范见设计 6.7 注记与 6.7.1。
+ 
+ ### `trivium.run.v2` 的读侧分发（按阶段，设计 6.7.1）
+ 
+@@ -254,6 +254,8 @@ trivium review --start --stage <s> --topic <t> --focus <hint> --json
+     先占主题锁 → prepareRun（冻结、渲染 BRIEF、置闸门 running——被拦即退 2 且不落盘、写 run.json 骨架）
+     → spawnDetached 工作进程 → 把锁改记 worker 的 pid → 立即返回
+     （写完骨架之后、子进程诞生之前失败：回收闸门后把骨架收尾为 failed，termination.by = prepare_exception，设计 v1.3.50）
++    （子进程诞生之后失败：先按进程组终止工作进程并以子进程句柄确认退出，再回收闸门、收尾为 failed，
++      termination.by = post_spawn_exception、status.json 已终态不动、放锁；确认不了退出则一概不回收，设计 v1.3.51）
+ 
+ 循环（至多 max_waits 次，每次的 Bash 工具超时必须设为 bash_timeout_ms）：
+   trivium review --wait <run_id> --timeout <wait_timeout_s>
+diff --git a/doc/07_manuals/MANUAL_user.md b/doc/07_manuals/MANUAL_user.md
+index 72a5a85..a5ce744 100644
+--- a/doc/07_manuals/MANUAL_user.md
++++ b/doc/07_manuals/MANUAL_user.md
+@@ -2,7 +2,7 @@
+ 
+ > - **作者 / 负责人**：Driver（Claude）
+ > - **创建日期**：2026-09-13
+-> - **当前版本**：v1.0.8
++> - **当前版本**：v1.0.9
+ > - **状态**：草稿(Draft)
+ >
+ > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
+@@ -614,7 +614,11 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ .trivium/bin/trivium review --cancel <run_id>
+ ```
+ 
+-按进程组杀掉 worker 及其拉起的 agy/zcode，回收锁与闸门。
++按进程组终止 worker（SIGTERM，5 秒后仍在则 SIGKILL），回收锁与闸门。
++
++> **已知缺口**（v1.0.9 起如实写明，BACKLOG EV-152）：审查员 CLI（agy / zcode / codex / claude）是以各自独立的进程组拉起的，
++> 按 worker 进程组发的信号**够不到它们**。取消之后若怀疑还有 CLI 在跑（`ps` 里 ppid 为 1 的 `agy` / `zcode-cli` 等），
++> 请在终端手工结束它们。此前本手册写的「连同 agy/zcode 一起杀掉」不准确。
+ 
+ > 被取消的运行，其 `run-<id>.json` 会标为 `cancelled`（v1.0.5 起，设计 v1.3.47，EV-128；此前停在 `running`）。
+ > 两种情形不写，输出会说明原因：工作进程没能确认已退出（可能还有写者），或 run.json 已是终态（不追溯改写）。
+@@ -630,7 +634,13 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ >
+ > **`review --start` 或同步 `review` 自己报错时**（v1.0.8 起，设计 v1.3.50，EV-145）：若已写下 `run-<id>.json`，它会标为 `failed`，
+ > 并在 `termination` 里注明是哪一种——`prepare_exception`（准备阶段失败，审查员一个都没拉起、没花配额）或 `sync_exception`（同步路径异常）；
+-> 报错下方会多两行说明收尾结果。`--start` 在审查员已被拉起之后才报错的少见情形不在此列：那时审查会照常跑完并自己收尾，见 BACKLOG EV-150。
++> 报错下方会多两行说明收尾结果。
++>
++> **`review --start` 在拉起工作进程之后才报错时**（v1.0.9 起，设计 v1.3.51，EV-150；少见，多半是磁盘或权限问题）：
++> 它会先终止那个工作进程、确认它已退出，再同样把 `run-<id>.json` 标为 `failed`（`post_spawn_exception`），
++> 锁与闸门一并收好——报错之后没有东西在后台跑，直接排查原因、重跑即可。
++> 报错里若写「未能确认退出」，说明那个进程没能被终止：按提示先 `trivium review --cancel <run_id>`（或在终端结束它），再重跑。
++> 若写「工作进程在被终止之前已跑完」，审查其实已经完成：按提示用 `--wait` 取结果、照常裁决。
+ 
+ ### 场景 5 · 裁决写了但闸门不过
+ 
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index f51037c..39f1068 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -132,7 +132,7 @@
+ | EV-35 | **done**（2026-09-17，同主题）：判据改为 `complete === true`；旧哨兵重扫一次即自愈，用例锁住三种形态 | **`complete` 字段加进来之前写的哨兵，被当成「已扫完」而永不复查。** 跳过判据写的是 `prev.complete !== false`，而哨兵是 `JSON.parse` 直转、不过校验——盘上真实存在该字段加进来**之前**的旧哨兵，对它们 `complete` 是 `undefined`，`!== false` 恒真。于是「这一侧没扫完」与「这一侧是旧版本写的、不知道扫没扫完」长成同一个样子。2026-09-17 实测代价：TriviumCode 桶里 2 个运行目录的 codex 状态库因此从未被处理，而清扫每轮都报「一切正常」。**这是 EV-04（`readRunMeta` 零校验）的同族形态**：读侧不校验 + 判据对缺字段取宽松默认 = 静默漏处理 | `scrub.ts` `sentinelSettled` |
+ | EV-36 | **done**（2026-09-17，同主题）：**两条登记候选都没采纳**——查清之后发现有第三条更干净：后验扫描的论域本就是「命中即删」，凡落进来的文件我们早已承诺「发现密钥就删掉它」；对一份扫不进去的二进制，我们判断不了它有没有密钥，**在一个命中即删的论域里保留它是自相矛盾的**，按 fail-closed 该当作可能命中处置。于是 `scanAndRemoveSecrets` 的「二进制跳过」改为「二进制整删」，一条规则同时覆盖两侧与将来的第三家，不必维护任何操作系统路径白名单，`complete` 也不再有永不收工的成因。**删得安全的依据是论域本身**：有跑后回读者的走 `redactUnder`（codex `sessions/`、zcode `rollout/` 与 `log/`），厂商缓存与随 CLI 分发的资产走 `exclude`，两者都在论域之外；`redactUnder` 下的二进制因此**仍只跳过不删**。**超大文件不在此列**，仍是跳过——那是「我们选择不读」而非「读不了」，为一个自设的内存上限删一份几十 MB 的排障材料，理由不成立。**连带撤掉**刚加的 codex 按名认 sqlite 那份判据：通用规则已覆盖，两个实现做同一件事正是本表顶部「重复实现」记的形态。原文如下 | **zcode 副本 HOME 里会积下 macOS / Python 的系统缓存，`complete` 因此恒为 false。** 2026-09-17 跨仓清扫实测：`UniClip` 一个运行目录的 glm 侧留下 36 条「跳过二进制」告警，全部来自 `home/Library/Caches/com.apple.python/**/*.pyc`（Xcode 自带的 Python 框架字节码）。形态与 codex 侧刚处理掉的那一批同构——**扫不进去、又没有任何回读者、于是哨兵永不收工、人读待办每轮复现同一行且没有动作能让它消失**。codex 侧的处置是「系统技能树整棵排除 + 自有状态库整删」；这一侧要先回答一个不同的问题：`Library/Caches` 是**操作系统**写进假 HOME 的，不是 zcode 的自有结构，按前缀排除它等于对「假 HOME 里可能出现的任意系统路径」开一个白名单口子。**修法方向未定**，两条候选：①把 `Library/` 整棵排除（简单，但白名单面随 macOS 变）；②改判据——二进制跳过不计入 `complete`，另立字段（改动面大，影响两侧）。**不在本轮拍板**：它触及 `complete` 的语义，而那正是 EV-35 刚咬住的地方 | `zcode.ts` `scrubZcodeHome` |
+ | EV-37 | todo | **`redactUnder` 面下的二进制仍是「永不收工」的残留成因，EV-32 只登记了超大日志那一格。** EV-36 把论域内扫不进去的二进制改为整删，但**回读面刻意不在删除面内**（codex `sessions/`、zcode `rollout/` 与 `log/` 是生效模型的回读来源与排障证据，删了会丢）。于是那几棵下面一旦出现二进制，`skipped++` ⇒ `complete = false` ⇒ 哨兵永不收工 ⇒ 每轮重扫同一批，形态与 EV-36 处理掉的那批完全一样、只是换了个位置。目前本机未实测到这种文件（回读面下都是 JSONL 文本），所以**没有实际发生的证据**，登记是为了不让这条边界随留痕沉底——EV-36 的收口叙述里如果只写「不再有收工成因」而不写排除面，下一个人会以为这类问题已经绝迹（代码双审 CODEX-05；设计 v1.3.16 第六条已随之收窄措辞）。**修法方向未定**：可能的路子是给回读面下的二进制单独一档（既不删也不计入 `complete`，另立字段），但那要先回答「一份读不进去的回读来源还算不算回读来源」 | `scrub.ts` `scanAndRemoveSecrets` 的 `redactUnder` 分支 |
+-| EV-38 | todo | **准入判据只核 worker 本身，不核它拉起的 CLI 子进程；跨仓清扫把撞上的窗口放大了。** `workerConfirmedGone` 的全部依据是 `processAlive(worker_pid)` 加终态判定；而审查 CLI 由 `exec.ts` 以 **detached 进程组**拉起，`killTree` 只在超时与正常取消链路上执行。若 worker 被外部强杀或崩溃而没走到收尾路径，孤儿子进程可能仍活着并继续往 `codexhome/` 写，而清扫按「pid 已不在」放行整删。**这是 EV-20 以来的既有限制、不是本轮引入**，但 `trivium scrub` 把触发面从本仓扩到全部项目桶、且由人在任意时刻发起，撞上「别的仓库正在跑、而 worker 刚死」这个窗口的概率确实变大。**本轮不加固**：提意见的一侧自陈低置信度、未实测构造孤儿场景，且加固要在哨兵或状态里记下 CLI 子进程 pid 并在准入时一并复核，那是一处契约面改动，不该顺手做。登记以使边界可见（代码双审 CODEX-06）| `status.ts` `workerConfirmedGone`、`util/exec.ts` |
++| EV-38 | todo（注记 2026-09-27：同源的「杀也杀不到」一面实测确认，见 EV-152） | **准入判据只核 worker 本身，不核它拉起的 CLI 子进程；跨仓清扫把撞上的窗口放大了。** `workerConfirmedGone` 的全部依据是 `processAlive(worker_pid)` 加终态判定；而审查 CLI 由 `exec.ts` 以 **detached 进程组**拉起，`killTree` 只在超时与正常取消链路上执行。若 worker 被外部强杀或崩溃而没走到收尾路径，孤儿子进程可能仍活着并继续往 `codexhome/` 写，而清扫按「pid 已不在」放行整删。**这是 EV-20 以来的既有限制、不是本轮引入**，但 `trivium scrub` 把触发面从本仓扩到全部项目桶、且由人在任意时刻发起，撞上「别的仓库正在跑、而 worker 刚死」这个窗口的概率确实变大。**本轮不加固**：提意见的一侧自陈低置信度、未实测构造孤儿场景，且加固要在哨兵或状态里记下 CLI 子进程 pid 并在准入时一并复核，那是一处契约面改动，不该顺手做。登记以使边界可见（代码双审 CODEX-06）| `status.ts` `workerConfirmedGone`、`util/exec.ts` |
+ | EV-39 | done | **`registry-parity` 第 6 条的黑名单不分厂商，第四、五家接入时会撞通用 token。** 现在 `BANNED_PROBE_TOKENS` 是扁平数组，任一适配器文件出现**任何一家**的 token 都判红。M10/M11 接入的家若也用 `--tools` / `read-only` 这类通用名（claude 系衍生 CLI 很可能有），它的适配器只能靠「透传探针值」侥幸通过；一旦要在报错文案里复述该旗标就会被误伤，而误伤时最可能的修法是**往黑名单里删条目**（削弱守卫）而不是加豁免。建议改为「token → 归属厂商」的映射（由注册表或探针字段派生更好，与纪律 10 一致），只对**该厂商自己的**适配器判红；`registry-parity` 的 `LITERAL_ALLOWLIST` 已有「按 file + 理由」的豁免结构可复用。**本轮暂缓的理由**：`adapters/claude.ts` 尚不存在，现在把 claude 的三个 token 限定到该文件等于让它们对空集生效——正是同一条测试的防空转腿要防的形态。**触发条件：M9 创建 `adapters/claude.ts` 的那一步一并做。** 来源：代码双审 CODEX-04（暂缓） **【2026-09-18 done · M9 第 3 步】落地形态与本条原句不同，如实记在这里。** 本条原句写的是「只对**该厂商自己的**适配器判红」，那是**弱的一版**——跨厂商错用（claude 的 token 抄进 `adapters/codex.ts`）会漏检。 计划双审裁决件 §2.5 已把它改成更强的一版：bullet 1「按归属厂商判红」管自家字面重建，bullet 3 排他式补跨家，**两者是合取**。 落地取那个合取：**主扫判定分三格**——①作废模板族全局生效不按厂商；②自家字面重建（违反判据二）；③跨厂商错用；**两种情形都红，但归因分开**。 **排他真正落在豁免面上**：`PROSE_EXCEPTIONS` 只能为 token 归属家自己的文件登记，跨家想豁免直接不允许——这才是比现状严的那一半， 正对着本条担心的「误伤时最省事的修法是往黑名单里删条目」。 **另加一条分解形判据，论域是**全部适配器文件 − `-trace`/`-events` 分类文件族**：把逗号连写的工具列表拆成三个独立字面量能逃过按空白切分的分词器（旧判据完全抓不到），而 trace 族按职责就要出现裸工具名做事件分类、故豁免。判据同时覆盖**逗号子集与重排**（`'Read,Grep'` / `'Glob,Read,Grep'`）并**去空白归一**（`'Read, Grep, Glob'`）。**本条此处的措辞在 r2 被打回过一次**：初版写「只对 `<cli>.ts` 精确匹配生效……文件面收窄」，那是 r1 修复**之前**的论域——r1 的 CODEX-05 ≡ AGY-01 ≡ GLM-04 正是要求扩到全域（codex 家配方无逗号项 ⇒ 分解形集合为空 ⇒ 跨厂商文件整段 no-op）；照旧文本去「对齐实现」会把论域收窄回去、**直接削掉刚补齐的跨厂商能力**，正是本条自己担心的「漏检时顺手削弱守卫」（代码双审 r2 AGY-03 ≡ GLM-07 ≡ CODEX-07）。 **归属映射的值直接引用探针常量本体**（不手抄），并新增四条腿：5a 键必须是注册表 cliName、5b 值必须与常量同一份、 5c **probes/ 下每个只读不变量常量都要登记归属**（第五家漏登记当场红）、5d **某家有 token 却没有适配器文件即判空转**（这正是本条当初暂缓那句话的机器化版本，文件一建就绿、理由消失变成可核的）。 **旧的「反向对账」腿已删**：改成从常量派生之后它恒真 ⇒ 就是空转，留着比没有更糟。 变异验证 4 条全部咬住，其中跨厂商错用与分解形规避两条是旧判据抓不到的新能力。 | `test/unit/registry-parity.test.ts` 第 6 条、设计 11.1 判据三 |
+ | EV-40 | **done**（2026-09-17，M9 第 2 步）：落 `ClaudeProbe.stream_json_requires_verbose`（三态）。**但本条原拟的判据被实测否证，必须连同结论一起读**：原文写「同一任务跑两次（带 / 不带 `--verbose`）**数事件条数**即可」，那建立在「不带就降级成少吐事件」这个假设上；`2.1.273` 实测是 **CLI 硬拒绝**——退 1、stdout 零事件、**零 API 调用**，stderr 为 `When using --print, --output-format=stream-json requires --verbose`。故落地判据改为「负对照是否被**干净拒绝**」（非零退出 **且** 零事件），比原拟更强，且负对照那一臂**不花钱**。判据抽成纯函数 `judgeVerboseBinding` 并锁四格三态（超时 / 干净拒绝 / 干净通过 / 两种不干净形态），变异验证过：把超时那格倒向 `true` 当场红。**刻意不匹配 stderr 文案**——本条的另一半正是为了消掉同族的字面反解。同批落地另两个字段：`PathDenyProbe.coverage_complete`（替掉 `method` 中文自由文本的 `includes('Grep 绕得过')` 反解；三态不压二值，`null` 不得与 `true` 合流）、`ClaudeProbe.strict_mcp_config_applied`（消解「适配层必须校验 MCP 硬前置、却被 `registry-parity` 第 6 条禁止写出那个字面量」的张力；消费方是 `claudeSeverity` 的新 blocker 分支与 M9 的 `availability()`，四条用例含「`null` 是没测到、不得当失守」与顺序断言，变异验证过）。落盘核验：`coverage_complete: false` / `stream_json_requires_verbose: true` / `strict_mcp_config_applied: true` | **`--verbose` 与 `stream-json` 的绑定关系没有机读落点，漂移不可见。** 设计 11.1 判据一第三类（厂商依赖关系与参数形态）如实登记了这一类「厂商事实但不进机读字段」的存在，其中 `--json-schema` 的形态有 `probe.cli.claude.json_schema_ok` 兜底，而**「不传 `--verbose` 就拿不到全量事件」这条只活在探针注释与实测报告里**——CLI 哪天改成默认全量或换个旗标名，探针不会发现，M9 只会白跑一次。补法成本极低：给 claude 探针加一条 stream 全量性判据，同一任务跑两次（带 / 不带 `--verbose`）数事件条数即可。来源：代码双审 CODEX-02（接受，判据已改两问式并登记第三类；本条是它引出的待办） | `src/trivium/probes/claude.ts`、`ClaudeProbe`、设计 11.1 判据一第三类 |
+ | EV-41 | **done**（2026-09-17，M9 第 1 步）：三种 prompt 载入形态在 `claude 2.1.273` 上**全部成立**。A（无位置参数、prompt 走管道）与 B（位置参数 `-`，codex 同款）均实测吃下 **31,913 字节**送审包（5~6s、约 $0.044/次），判据是「答出文档**最后一个**二级小节的标题」——整包送达且读到末尾才答得出；C（argv 直传）机制上同样成立。**没有做也不需要做分片或截断**：`getconf ARG_MAX` = 1048576，原条目「待定的是形态不是尺寸」经复核成立。**两处如实登记**：①形态 C 那次模型**拒绝回显哨兵**、判它是提示注入，故 C 的证据强度低于 A/B（只证明了送达，没正面完成任务），大包判据因此换掉；②**本步没有能区分「`-` 是 stdin 标记」与「`-` 被忽略而管道本来就会被读」的实验**，两次观测等价，取舍留给 `adapters/claude.ts`。证据见 `REPORT_2026-09-17_m9_claude_entry_probe.md` §1 | **M9 准入项：claude 的 `-p` 能否从 stdin 收 prompt 未实测。** 送审包是几十 KB 量级，适配层若把它整段放进 argv，就依赖一个没验过的形态。codex 侧走的是 `exec … -`（实测 78 KB 跑通），claude 侧同不同源不知道。**待定的是形态，不是尺寸**——本机 `getconf ARG_MAX` = 1048576，几十 KB 离上限差一个数量级，代码双审实测单个 1,000,000 字节的 argv 项 exec 成功，故设计 3.7.1 初稿「是在赌 ARG_MAX」的说法已撤（那会让 M9 先去做分片/截断，而该做的是先验 `… -`）。**触发条件：M9 写 `adapters/claude.ts` 之前先验这一条**；若不支持 stdin，则 BRIEF 内联进 argv 的尺寸上限要有明确判据，不能默认够用。来源：代码双审 r2 CODEX-07（接受；此前只活在 3.7.1 散文里，按本项目「登记才算承诺边界」的口径补登） | 设计 3.7.1、`adapters/claude.ts`（M9） |
+@@ -241,12 +241,13 @@
+ | EV-143 | todo（2026-09-26 登记，留痕字段与误报小修计划 r2 §6.3 第 2 条） | **evidence 与 consulted 核对的剩余误差。**EV-127 修掉中段截断后仍有三类：①不以九个根目录起头的仓内路径不核（`skills-src/`、`skills/` 等，漏报；本仓历史上这类都已列进 consulted 或不是入仓文件，但往后不保证）；②非 ASCII 文件名永远不核（字符类不含中文，主设计本身就是，漏报）；③意见描述假想场景时写的示例路径（`src/a.ts`、`src/leak.txt`）被当成引用（误报，本仓历史 96 条里 39 条仓内不存在）。候选：①从项目树取顶层目录作根集合；②字符类放开非 ASCII；③只核仓内存在的路径。都属收紧或改判据，要单独论证；这一项只进告警、不改判定 | `src/trivium/parse.ts` `checkReviewIntegrity` |
+ | EV-144 | **done（候选 ② 的变体 ②′）**（2026-09-27，主题 `未收尾运行的留痕与复盘可见性`，与 EV-142 同一计划与计划 / 代码双审）：时间线与轮次口径不动，`report` 在时间线下方另列「未进时间线的运行」表（该阶段可读 run.json 减去时间线选中者；预定轮次、起止、状态、按留痕事实给的说明），头部「轮次总数」后注明「另有 K 次」，`--json` 多 `unlistedRuns`；读不出的 run.json 进 notes。已核实：两侧都失败的轮次此前同样不可见（失败侧只写 `.failed.json`，夹具实测 `rounds: []`）（2026-09-26 登记，用户定；留痕字段与误报小修实施报告 §3.2） | **`report` 按审查文档枚举轮次，没有审查文档的运行在时间线里不可见。**`enumerateRounds` 先从阶段目录的审查文档收集轮次号，再从 `_meta/run-*.json` 反查每个轮次对应哪次运行；被 `--cancel` 的运行（EV-128 起 run.json 如实记 `cancelled`）以及 EV-142 那两种失败都没写出审查文档，于是整轮不出现——留痕写对了，复盘却看不见，「该阶段没跑过」与「跑了但被取消 / 失败」在报告里分不开。零配额验收实测：取消一轮后 `report` 报「轮次总数：0」。**难点**：没写出工件的运行不推高轮次号，随后的重跑沿用同一个轮次号，按轮组织的时间线装不下「同一轮多次运行」。候选：①时间线改为按运行列，无工件的运行标注原因；②时间线不动，只在报告告警段列出这类运行（run_id、状态、起止时间），代价小、足以让人看见。未核实：两侧都失败的轮次是否同样不可见（取决于失败侧写不写审查文档）。**触发条件：做 EV-142 时一并评估** | `src/trivium/report.ts` `enumerateRounds` / `buildTopicReport` |
+ | EV-145 | **done**（2026-09-27，主题 `事后收尾余项`（计划 r2 `a89a46f`，计划双审第 1 轮 run `20260927T052648Z` 7 条全接受、审批「修改后实施」））：余项与 ② 派生前、③ 由本进程收尾为 `failed`——`prepareRun` 写完骨架之后失败与 `startRun` 在**子进程诞生之前**失败（以 `spawnDetached` 新增的 `onSpawned` 回调为准，含它内部建日志目录、开日志文件、`spawn` 没拿到 pid 三格）记 `termination.by = prepare_exception`，同步路径 `executeRun` 抛错记 `sync_exception`，都带退出码、先回收闸门再收尾最后放锁；`by` 与 `types.ts` `EXCEPTION_TERMINATION_BY` 由用例守住同步，schema 只增不减。去向：② 子进程诞生之后才失败（实测 worker 活着、会自己收尾，真问题是锁与闸门被提前放掉）→ EV-150；④ → EV-151（实测会话启动已提示 `--wait`，缺口收窄为「下一次 `--start` 先回收遗留锁」）；纯文档跳过分支不另立条目——该分支第一步就写终态，其后失败时 run.json 已是 `success`，只有终态写入本身失败才会停在 `running`，事后收尾面对同一个失败面，不修。实施期另修一处既有缺陷：`spawnDetached` 的 `'error'` 监听挂在 pid 检查之后，二进制不存在即进程崩溃。历史留痕不回填（2026-09-27 登记，未收尾运行的留痕与复盘可见性计划 r2 §6.3 第 1 条；同日第 ① 格的「被闸门拦下」已修 ≡ EV-109，主题 `闸门拦截不留骨架`） | **其它「写了骨架却走不到收尾」的路，run.json 同样停在 `running`。**EV-128 / EV-142 修了取消、worker 异常、`worker_lost` 三条；还剩：①~~被闸门拦下留骨架~~（已修，≡ EV-109）；余项：写完骨架之后登记失败（`review.ts` :1016 的 `registerRun`、:1028 起的任务目标落盘）——闸门已由 `prepareRun` 回收，骨架如实留 `running`，到下一次成功重跑之前不带 `--run-id` 的 `gate` 指向它（闸门拦截不留骨架计划 r2 §3.5，用例 B5 钉住现状）；②`startRun` 在 `prepareRun` 之后失败（`run-protocol.ts` :429 主 `try` 的 `catch`，派生前后都有可能——派生成功后才失败时 worker 可能仍在跑，前提要另论；另含纯文档跳过分支里 `executeRun` 抛错——该分支只有 `finally` 放锁、没有 `catch`，骨架与登记已落盘，run.json 同样停在 `running`，闸门不涉及（跳过轮不置闸门），代码双审 r1 CODEX-04）；③同步路径 `runReviewLocked` 里 `executeRun` 抛错（`review.ts` :1749，只回收闸门）；④worker 猝死且没人跑 `--wait` / `--cancel`（会话启动清扫 `sweepDeadRunningGates` 只回收闸门）。（①的被拦一格已按「先置闸门再落盘」修毕，≡ EV-109；其余各格要的是事后收尾一族的修法。）候选：①余项与②派生前那一段可共用一个 `termination.by` 取值（如 `prepare_exception`），一次设计（闸门拦截不留骨架计划 r2 D3 / D4）；②～④复用 `finalizeUnfinishedRunMeta`，写入前提逐条论证 | `src/trivium/review.ts` `prepareRun` / `runReviewLocked`、`src/trivium/run-protocol.ts` `startRun`、`src/trivium/hooks.ts` `sweepDeadRunningGates` |
+-| EV-146 | todo（2026-09-27 登记，未收尾运行的留痕与复盘可见性计划 r2 §6.3 第 2 条） | **`heartbeat_stale` 判失联之后，`--cancel` 杀不掉挂住的 worker。**`--wait` 判 `worker_lost（heartbeat_stale）` 时进程还活着，status.json 却已被写成 `failed`；此后 `--cancel` 在 `cancelRun` 的终态分支早退（「已处于终态，无需取消」），挂住的 worker 没有工具化的杀法，只能手工结束，而手工结束之后也没人再收 run.json 的尾（EV-142 在进程未确认退出时不写）。候选：终态分支对「`worker_lost（heartbeat_stale）` 且进程仍在」开一条只杀进程、不改历史的例外，杀掉后按 EV-142 同一前提收尾。碰终态早退「不追溯改写」的语义，要单独论证 | `src/trivium/run-protocol.ts` `cancelRun`（终态早退分支） |
++| EV-146 | todo（2026-09-27 登记，未收尾运行的留痕与复盘可见性计划 r2 §6.3 第 2 条；注记（2026-09-27，派生后失败的孤儿worker计划 r2 D6 不并入）：`util/exec.ts` 新增的 `terminateProcessGroup`（SIGTERM → 宽限 → SIGKILL → 等待确认，判据由调用方给）可直接复用，`cancelRun` 已改用它；它杀掉的也只是 worker 这一组，够不到 `killTree` 拉起的厂商 CLI，见 EV-152） | **`heartbeat_stale` 判失联之后，`--cancel` 杀不掉挂住的 worker。**`--wait` 判 `worker_lost（heartbeat_stale）` 时进程还活着，status.json 却已被写成 `failed`；此后 `--cancel` 在 `cancelRun` 的终态分支早退（「已处于终态，无需取消」），挂住的 worker 没有工具化的杀法，只能手工结束，而手工结束之后也没人再收 run.json 的尾（EV-142 在进程未确认退出时不写）。候选：终态分支对「`worker_lost（heartbeat_stale）` 且进程仍在」开一条只杀进程、不改历史的例外，杀掉后按 EV-142 同一前提收尾。碰终态早退「不追溯改写」的语义，要单独论证 | `src/trivium/run-protocol.ts` `cancelRun`（终态早退分支） |
+ | EV-147 | todo（2026-09-27 登记，闸门拦截不留骨架计划 r2 §2.3 / §6.3 第 3 条） | **`run_id` 只到秒，同一秒内的两次运行互相覆盖。**`newRunId` 取 `toISOString` 去掉毫秒，`writeMeta` 是原子覆盖写、`registerRun` 按 run_id 幂等覆盖。零配额实测（同步 `review --stage` 连跑、第二次被闸门拦下且落在同一秒）：第 1 轮的 `run-<id>.json` 由 `success` / 登记 7 条被改写成 `running` / 登记 2 条，同名 brief 被替换，task.json 那一条被改成第 2 轮 `running`，第 1 轮的审查文档从此失去登记锚。真实审查一轮要几分钟，「被拦」这条触发面已由 EV-109 消除；剩余触发面：FR-23 纯文档跳过（即时完成）之后同一秒内再起一轮（按代码推出，未实测）、测试里的快桩；以及（2026-09-27 事后收尾余项代码双审 r1 CODEX-04 补登）`review --start` / 同步 `review` 在准备阶段失败（亚秒级完成）之后同一秒内重跑——EV-145 起那份运行已被本进程收尾为 `failed` + `termination`，同名骨架覆盖掉的就是这份终态留痕，从「骨架丢失」升级为「终态留痕丢失」，也破了「每份 run.json 至多一次终态写入」（按代码推出，未实测）。候选：`newRunId` 加毫秒或同秒冲突时抬一位；run.json 首次写入改为排他创建。碰 run_id 格式（文件名、排序、schema 描述、所有按 run_id 排序取最新的读者），要单独论证 | `src/trivium/meta.ts` :36 `newRunId`、`src/trivium/archive.ts` `writeMeta`、`src/trivium/meta.ts` `registerRun` |
+ | EV-148 | todo（2026-09-27 登记，闸门拦截不留骨架计划 r2 §2.4 / §6.3 第 4 条） | **留痕读不出时给的出口「重跑一次」是循环的。**阶段最新一份 run.json 读不出（改坏、不合契约）时，`gate --check` 退 65、`review --start` 与 `topic resolve` 退 2，三处文案都给「出口是重跑一次该阶段双审：新运行会先落一份可读的留痕」；但 `review --start` 在进 `prepareRun` 之前就按 `resolveStageDriver` 的 corrupt 判定抛出（`cli.ts` :548 起，`topic-args.ts` 同构），重跑到不了「先落一份可读骨架」那一步。零配额实测：plan 跑一轮、abandon、把 run.json 改成 `{}`，三条命令如上，出口指向自己。`cli.ts` 的 gate 读不出分支注释（「prepareRun 会先落一份骨架……闸门当场恢复」）与 `hooks.ts` 的同句也依赖这条走不通的路。候选：给 corrupt 判定一个人工确认的出口；或改写四处文案，只给真正走得通的路（删改 run.json 会撞提交锚，不能作为出口）。碰 M10a 第 1 步的 Driver 判定纪律（留痕坏了不按缺省、不退回声明），要单独论证 | `src/trivium/cli.ts`（`cmdReview` 的 corrupt 分支、`cmdGate` 的读不出分支）、`src/trivium/topic-args.ts`、`src/trivium/hooks.ts`、`src/trivium/driver-claim.ts` `resolveStageDriver` |
+ | EV-149 | todo（2026-09-27 登记，用户定；闸门拦截不留骨架实施报告 §3.3） | **`lock-cross-process.test.ts`「跨进程：多个进程同时回收同一把遗留锁，仍只有一个拿到」全量下偶发红。**闸门拦截不留骨架第 1 次全量里 5 个 worker 有 2 个拿到锁（id 0 与 id 3；另三个都报「已被占用：run_id R-3」），该套件单跑 6 次全绿、第 2 次全量全绿。本主题未动 `lock.ts`。**未核实的判断**：用例数的是「拿到过锁的进程数」，而赢家只持锁 900 ms 就释放；满载时若某个 worker 的 node 进程晚启动超过 900 ms，会在第一个赢家释放之后正常拿到锁——那是先后两次合法获取，不是互斥失效，用例却同样判两个赢家。也不能排除 `reclaimStaleLock` 的 rename → 复验 → 删除与 `fs.link` 之间真有窗口（那才是这条用例要防的，GLM-04）。用例没记获取与释放时刻，现有读数分不出这两种。候选：worker 记下获取与释放时刻，断言改为「任意两段持锁区间不重叠」；或加屏障，全部 worker 报到后才开始抢、赢家持锁到全部 worker 返回再释放。先改用例拿到区间读数，再判是否要动 `lock.ts` | `test/integration/lock-cross-process.test.ts` :216 起、`src/trivium/lock.ts` `reclaimStaleLock` / `acquireLock` |
+-| EV-150 | todo（2026-09-27 登记，事后收尾余项计划 r2 §2.3 / §6.4 第 2 条） | **`review --start` 在子进程诞生之后才失败：孤儿 worker 在锁与闸门都被放掉之后照常跑。**`startRun` 主 `catch` 在 worker 已派生时照样放锁、回收闸门并报失败。零配额实测（预建运行目录里放一个名为 `worker.pid` 的目录，派生后写 `worker.pid` EISDIR）：ok 桩下 `--start` 退 1，孤儿 worker 照常跑完、run.json `success`，它收尾时 `setGateChecked(expect: { runId })` 命中已回收为 idle 的本轮条目，**闸门被置成 `review_done_awaiting_disposition`**——Driver 看到的是启动失败，闸门却在等一轮裁决；hang 桩下孤儿活着时同阶段可再 `--start`，**两个 worker 并发**、两份 run.json 同为第 1 轮；status.json 没有 `worker_pid`、`worker.pid` 又没写成时，杀掉孤儿后 `--cancel` 杀不到也收不了尾（失败点在写 `worker.pid` 之后时 `--cancel` 能按它杀，但收尾仍要它确认退出）。触发面：`spawnDetached` 的 `finally` 关日志句柄（子进程已起）与 `startRun` 派生后那几步本地写入失败，罕见；`spawnDetached` 内部子进程诞生之前的三格已由事后收尾余项收尾，不在此列。候选：诞生之后失败时按进程组杀掉 worker、确认退出后收尾（`prepare_exception`）；或不放锁与闸门、把 run_id 交给调用方继续 `--wait`。碰 `--start` 的失败语义，单独论证 | `src/trivium/run-protocol.ts` `startRun`（主 `catch`、`childBorn` 为真的一侧） |
+-| EV-151 | todo（2026-09-27 登记，事后收尾余项计划 r2 §2.6 / §6.4 第 3 条） | **worker 猝死之后，下一次 `--start` 回收遗留锁时不收旧运行的尾。**零配额实测（hang 桩 + SIGKILL 进程组、不跑 `--wait` / `--cancel`）：会话启动 Hook 回收了闸门，并因锁文件还在提示「双审进行中（run …）——请先 trivium review --wait …」，照做即由 EV-142 的失联收尾写成 `failed`（`worker_lost` / `pid_gone`）；但若直接再 `--start`，`acquireLock` 按 `pid_gone` 回收遗留锁只 `warn` 一行，新一轮照常跑完，**旧 run.json 与登记一直停在 `running`**，直到有人对它补跑 `--wait`；运行目录过了 `retention.run_dir_days` 被清掉之后 `--wait` 找不到运行目录（退 65），就再也收不了。候选：遗留锁回收时按旧运行的运行目录复核 worker 已退出（判据与 `--wait` 的改写前判定同源、抽成共用函数），确认后收尾为 `failed`；或在会话启动清扫 `sweepDeadRunningGates` 的「有 `worker_pid`」分支里收尾。前者要让 `lock.ts` 的通用获取逻辑知道运行目录与归档，且持锁 pid 已死不等于 worker 已死（锁改记 worker pid 之前 `--start` 就死了、worker 却已派生——与 EV-150 同一个窗口）；后者意味着 Hook 写归档，要论证 Hook 的时间预算与跨会话改出归档改动。单独论证 | `src/trivium/lock.ts` `acquireLock`、`src/trivium/hooks.ts` `sweepDeadRunningGates`、`src/trivium/run-protocol.ts` `waitRun` |
++| EV-150 | **done**（2026-09-27，主题 `派生后失败的孤儿worker`（计划 r2 `31005b4`，计划双审第 1 轮 run `20260927T092419Z` 13 条接受 12、AGY-04 经审批附言并入））：`run-protocol.ts` 新增 `settleOrphanedStart`——子进程诞生之后失败时先按进程组终止 worker、以父进程的子进程句柄（`onSpawned` 第二个参数）确认退出，再回收闸门（排在终止之后）、收尾为 `failed` + `termination.by = post_spawn_exception`、status.json 已终态不动 / 本进程收尾落 `failed` / worker 已写 run.json 终态只补 pid、放锁（锁已改写成 worker 的按 run_id + pid 复核后回收）；`util/exec.ts` 新增 `terminateProcessGroup`，`--cancel` 改用它、宽限期判据收紧为「不存活或不是同一进程」。去向：**确认不了退出**那一格闸门与 run.json 留给它、pid 与启动时刻补记进 status.json、锁改记到它名下，报错给出 `--cancel` 出路（改写也失败时锁仍可能按 `pid_gone` 被回收，如实保留）；**`--start` 自身被信号杀掉**落在派生与改写锁之间的窗口不走 `catch`，归 EV-151 注记；实施中核出的「`--cancel` 够不到 `killTree` 拉起的厂商 CLI」另登 EV-152 | **`review --start` 在子进程诞生之后才失败：孤儿 worker 在锁与闸门都被放掉之后照常跑。**`startRun` 主 `catch` 在 worker 已派生时照样放锁、回收闸门并报失败。零配额实测（预建运行目录里放一个名为 `worker.pid` 的目录，派生后写 `worker.pid` EISDIR）：ok 桩下 `--start` 退 1，孤儿 worker 照常跑完、run.json `success`，它收尾时 `setGateChecked(expect: { runId })` 命中已回收为 idle 的本轮条目，**闸门被置成 `review_done_awaiting_disposition`**——Driver 看到的是启动失败，闸门却在等一轮裁决；hang 桩下孤儿活着时同阶段可再 `--start`，**两个 worker 并发**、两份 run.json 同为第 1 轮；status.json 没有 `worker_pid`、`worker.pid` 又没写成时，杀掉孤儿后 `--cancel` 杀不到也收不了尾（失败点在写 `worker.pid` 之后时 `--cancel` 能按它杀，但收尾仍要它确认退出）。触发面：`spawnDetached` 的 `finally` 关日志句柄（子进程已起）与 `startRun` 派生后那几步本地写入失败，罕见；`spawnDetached` 内部子进程诞生之前的三格已由事后收尾余项收尾，不在此列。候选：诞生之后失败时按进程组杀掉 worker、确认退出后收尾（`prepare_exception`）；或不放锁与闸门、把 run_id 交给调用方继续 `--wait`。碰 `--start` 的失败语义，单独论证 | `src/trivium/run-protocol.ts` `startRun`（主 `catch`、`childBorn` 为真的一侧） |
++| EV-151 | todo（2026-09-27 登记，事后收尾余项计划 r2 §2.6 / §6.4 第 3 条；注记（2026-09-27，EV-150 结案）：下文「锁改写成 worker pid 之前 `--start` 就死了、worker 却已派生」这个窗口里，由**异常**触发的部分已由 EV-150 关闭（`settleOrphanedStart` 终止 worker 再收尾）；剩下 `--start` 自身被信号杀掉（Ctrl-C、外部 SIGKILL）的部分，不走 `catch`） | **worker 猝死之后，下一次 `--start` 回收遗留锁时不收旧运行的尾。**零配额实测（hang 桩 + SIGKILL 进程组、不跑 `--wait` / `--cancel`）：会话启动 Hook 回收了闸门，并因锁文件还在提示「双审进行中（run …）——请先 trivium review --wait …」，照做即由 EV-142 的失联收尾写成 `failed`（`worker_lost` / `pid_gone`）；但若直接再 `--start`，`acquireLock` 按 `pid_gone` 回收遗留锁只 `warn` 一行，新一轮照常跑完，**旧 run.json 与登记一直停在 `running`**，直到有人对它补跑 `--wait`；运行目录过了 `retention.run_dir_days` 被清掉之后 `--wait` 找不到运行目录（退 65），就再也收不了。候选：遗留锁回收时按旧运行的运行目录复核 worker 已退出（判据与 `--wait` 的改写前判定同源、抽成共用函数），确认后收尾为 `failed`；或在会话启动清扫 `sweepDeadRunningGates` 的「有 `worker_pid`」分支里收尾。前者要让 `lock.ts` 的通用获取逻辑知道运行目录与归档，且持锁 pid 已死不等于 worker 已死（锁改记 worker pid 之前 `--start` 就死了、worker 却已派生——与 EV-150 同一个窗口）；后者意味着 Hook 写归档，要论证 Hook 的时间预算与跨会话改出归档改动。单独论证 | `src/trivium/lock.ts` `acquireLock`、`src/trivium/hooks.ts` `sweepDeadRunningGates`、`src/trivium/run-protocol.ts` `waitRun` |
++| EV-152 | todo（2026-09-27 登记，派生后失败的孤儿worker计划 r2 §2.1 / §6.4 第 5 条，D7） | **`--cancel` 按 worker 进程组发信号，够不到适配器以 `killTree` 拉起的厂商 CLI。**`run()` 在 `killTree: true` 时以 `detached` 派生、子进程自成进程组（`2b460ad`「子进程超时杀整棵树」起，晚于 `5476238`「`--cancel` 按进程组杀」），四个适配器（`agy.ts` / `codex.ts` / `zcode.ts` / `claude.ts`）都这么调；`cancelRun` 与 `terminateProcessGroup` 只按 worker 的组发。零配额实测（`probe-kill-reach.mjs`，Node v25.2.1 / macOS，两次读数相同）：worker 被按组 SIGTERM 后约 150 ms 退出，不带 `killTree` 的子进程随组退出，**`killTree` 拉起的子进程被过继给 init 继续活着**；它的超时计时器在 worker 进程里，随 worker 一起没了。真实 CLI 会不会因 stdout 管道断开而在下一次写输出时自行退出**未实测**（探针用的 `sleep` 不写输出）；`5476238` 记过 zcode-cli 在 worker 被杀后 ppid 变成 1 且继续消耗配额（那时它还在 worker 的组里）。`worker-detach.test.ts`「killProcessTree 杀整组」用的子进程不带 detached，与生产形状不符，所以一直绿。影响：`--cancel` 可能留下仍在消耗配额的 CLI；EV-146 的候选修法同样杀不到它们；凭据副本的清扫准入只核 worker（EV-38）。本主题只把 `killProcessTree` 文档块、`cancelRun` 注释与播报、LLD、MANUAL 里「连同 agy/zcode 一起杀」的说法改准。候选：worker 装 SIGTERM 处理器，转发给 runner 里在跑的 `run()`（它们各自有 `killProcessTree(child.pid)`）后再退出；或 worker 把各 CLI 的 pgid 记进运行目录，`--cancel` 逐组发。碰 worker 的信号语义与运行目录契约，单独论证 | `src/trivium/util/exec.ts` `run` / `killProcessTree`、`src/trivium/run-protocol.ts` `workerMain` / `cancelRun`、`src/trivium/adapters/*.ts` |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/skills/dual-critic/schema/run.v2.json b/skills/dual-critic/schema/run.v2.json
+index a034aca..5ea9467 100644
+--- a/skills/dual-critic/schema/run.v2.json
++++ b/skills/dual-critic/schema/run.v2.json
+@@ -468,7 +468,7 @@
+       }
+     },
+     "status": {
+-      "description": "running 是骨架态（prepareRun 落盘）；success / failed 由 worker 收尾写；另有几条事后收尾，都只在仍为 running 时写、是那份运行唯一一次终态写入：cancelled 由 review --cancel 在工作进程确认退出后写（EV-128）；failed 也可能由 worker 异常分支自己写、由 --wait 判 worker_lost 且确认工作进程已退出时写（EV-142），或由本进程在准备阶段写完骨架之后失败、startRun 在子进程诞生之前失败、同步路径 executeRun 抛错时写（EV-145），这几条都同时写 termination。已结束却仍为 running 的留痕表示没有走到收尾（本版以前的异常 / 失联 / 取消 / 准备阶段失败 / 同步路径异常、失联时工作进程未确认退出、--start 在子进程诞生之后才失败而孤儿 worker 被杀、worker 猝死而没人 --wait、纯文档跳过的终态写入本身失败，以及 EV-109 以前被闸门拦下留下的骨架），不回填",
++      "description": "running 是骨架态（prepareRun 落盘）；success / failed 由 worker 收尾写；另有几条事后收尾，都只在仍为 running 时写、是那份运行唯一一次终态写入：cancelled 由 review --cancel 在工作进程确认退出后写（EV-128）；failed 也可能由 worker 异常分支自己写、由 --wait 判 worker_lost 且确认工作进程已退出时写（EV-142），或由本进程在准备阶段写完骨架之后失败、startRun 在子进程诞生之前失败、同步路径 executeRun 抛错时写（EV-145），或由 review --start 在子进程诞生之后失败、终止工作进程并确认退出之后写（EV-150），这几条都同时写 termination。已结束却仍为 running 的留痕表示没有走到收尾（本版以前的异常 / 失联 / 取消 / 准备阶段失败 / 同步路径异常 / --start 在子进程诞生之后失败、失联时工作进程未确认退出、--start 派生后确认不了工作进程退出、worker 猝死而没人 --wait、纯文档跳过的终态写入本身失败，以及 EV-109 以前被闸门拦下留下的骨架），不回填",
+       "enum": [
+         "running",
+         "success",
+@@ -477,14 +477,14 @@
+       ]
+     },
+     "termination": {
+-      "description": "这一次终态由哪条事后收尾写的（EV-142 / EV-145）。带退出码的一族：by=worker_exception（worker 异常分支）、by=prepare_exception（准备阶段写完骨架之后失败，或 startRun 在子进程诞生之前失败，审查员一个都没拉起）、by=sync_exception（同步路径 executeRun 抛错）；另一形状 by=worker_lost（--wait 判失联且确认工作进程已退出，记失联原因）。缺席 = 正常收尾（worker 写 success / failed）、取消轮（status: cancelled 已说明来路）、或本字段之前的留痕。只存结构化字段、不存异常原文：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。第一个分支的 by 枚举须与 types.ts 的 EXCEPTION_TERMINATION_BY、reason 的枚举须与 status.ts 的 WORKER_LOST_REASONS 逐项相等（由 run-meta-strict.test.ts 守住）。只增不减：旧 bundle 读不懂新取值，回滚代码时保留本文件的改动",
++      "description": "这一次终态由哪条事后收尾写的（EV-142 / EV-145）。带退出码的一族：by=worker_exception（worker 异常分支）、by=prepare_exception（准备阶段写完骨架之后失败，或 startRun 在子进程诞生之前失败，审查员一个都没拉起）、by=sync_exception（同步路径 executeRun 抛错）、by=post_spawn_exception（review --start 在子进程诞生之后失败，工作进程已被终止并确认退出，EV-150）；另一形状 by=worker_lost（--wait 判失联且确认工作进程已退出，记失联原因）。缺席 = 正常收尾（worker 写 success / failed）、取消轮（status: cancelled 已说明来路）、或本字段之前的留痕。只存结构化字段、不存异常原文：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。第一个分支的 by 枚举须与 types.ts 的 EXCEPTION_TERMINATION_BY、reason 的枚举须与 status.ts 的 WORKER_LOST_REASONS 逐项相等（由 run-meta-strict.test.ts 守住）。只增不减：旧 bundle 读不懂新取值，回滚代码时保留本文件的改动",
+       "oneOf": [
+         {
+           "type": "object",
+           "required": ["by", "exit_code"],
+           "additionalProperties": false,
+           "properties": {
+-            "by": { "enum": ["worker_exception", "prepare_exception", "sync_exception"] },
++            "by": { "enum": ["worker_exception", "prepare_exception", "sync_exception", "post_spawn_exception"] },
+             "exit_code": { "type": "integer" }
+           }
+         },
+diff --git a/src/trivium/meta.ts b/src/trivium/meta.ts
+index 8611b94..73e5e8c 100644
+--- a/src/trivium/meta.ts
++++ b/src/trivium/meta.ts
+@@ -550,7 +550,9 @@ interface FinalizeInput {
+    * `waitRun` 传改写 status.json 之前的判定）；worker 自己在异常分支调用时恒传 true——它就是那个写者；
+    * 准备阶段（`prepareRun` 写完骨架之后、`startRun` 在子进程诞生之前）与同步路径在本进程里调用时也恒传 true——
+    * 还没有、也不会有 worker；`--cancel` / `--wait` 常常拿不到身份，拿到了也没有 pid、判「未确认退出」而跳过，
+-   * 本进程写完之后 run.json 又已是终态、按前提 4 不追溯改写（EV-145，事后收尾余项计划 r2 §3.5，代码双审 r1 CODEX-05）。
++   * 本进程写完之后 run.json 又已是终态、按前提 4 不追溯改写（EV-145，事后收尾余项计划 r2 §3.5，代码双审 r1 CODEX-05）；
++   * `--start` 在子进程诞生之后失败时也传 true——依据是父进程按子进程句柄**观察到**的退出，不是推断
++   * （EV-150，派生后失败的孤儿worker计划 r2 §3.5；确认不了退出时根本不调本函数）。
+    * 显式入参，接线才有用例守得住。
+    */
+   workerGone: boolean;
+@@ -569,9 +571,10 @@ export function finalizeCancelledRunMeta(i: FinalizeInput): Promise<{ runMeta: F
+ 
+ /**
+  * 把没走到 worker 收尾就失败的运行在归档侧收尾为 `failed`（EV-142，计划 r2 §3.2 / §3.3；EV-145）。
+- * 五个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
++ * 六个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
+  * 且确认工作进程已退出（`worker_lost`）、`prepareRun` 写完骨架之后失败与 `startRun` 在子进程诞生之前失败
+- * （都是 `prepare_exception`）、同步路径 `executeRun` 抛错（`sync_exception`）。
++ * （都是 `prepare_exception`）、同步路径 `executeRun` 抛错（`sync_exception`）、`startRun` 在子进程诞生之后失败
++ * 并终止工作进程、确认退出之后（`post_spawn_exception`，EV-150）。
+  */
+ export function finalizeFailedRunMeta(
+   i: FinalizeInput & { termination: RunTermination },
+@@ -623,6 +626,8 @@ export function finalizeLines(fin: { runMeta: FinalizeStep; task: FinalizeStep }
+  * - 准备阶段与同步路径：没有 status.json，`--cancel` / `--wait` 也够不着，收尾只有这一次机会，
+  *   所以**先回收闸门、再调本函数**（进程死在两步之间时，闸门停在 running 会拦住全部业务写入到 TTL，
+  *   run.json 停在 running 只是留痕不准），主题锁仍在本函数之后放。
++ *   `--start` 在子进程诞生之后失败（EV-150）也按这一组排：它有 status.json，但 pid 可能没落盘，
++ *   下一次 `--wait` / `--cancel` 未必补得齐；另多一条——先终止工作进程并确认退出，再回收闸门。
+  */
+ async function finalizeUnfinishedRunMeta(
+   i: FinalizeInput & { terminal: UnfinishedTerminal; termination?: RunTermination },
+diff --git a/src/trivium/report.ts b/src/trivium/report.ts
+index f7f5feb..228d799 100644
+--- a/src/trivium/report.ts
++++ b/src/trivium/report.ts
+@@ -428,6 +428,9 @@ function unlistedLabel(meta: RunMeta, failedSides: number, registeredReviewDocs:
+     label = `准备阶段失败，未拉起审查员（退出码 ${meta.termination.exit_code}）`;
+   } else if (meta.status === 'failed' && meta.termination?.by === 'sync_exception') {
+     label = `同步路径异常（退出码 ${meta.termination.exit_code}）`;
++  } else if (meta.status === 'failed' && meta.termination?.by === 'post_spawn_exception') {
++    // review --start 在子进程诞生之后失败，工作进程已被终止并确认退出（EV-150）
++    label = `派生工作进程之后启动未完成，工作进程已终止（退出码 ${meta.termination.exit_code}）`;
+   } else if (meta.status === 'failed' && meta.termination?.by === 'worker_lost') {
+     label = `worker 失联（${meta.termination.reason}）`;
+   } else if (meta.status === 'failed' && failedSides > 0 && registeredReviewDocs === 0) label = '入选侧全部失败';
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index 6e39f50..05c8677 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -15,12 +15,13 @@ import type { Config, CriticId, CriticRequest, Ctx, Stage, CommandEntry } from '
+ import { EXIT, TriviumError, envError, exitCodeOf, missingArtifact } from './exit-codes.js';
+ import { runRoot } from './config.js';
+ import { RUN_DIR_FILES } from './run-files.js';
+-import { acquireLock, inspectLock, reclaimStaleLock } from './lock.js';
++import { acquireLock, inspectLock, reclaimStaleLock, type LockHandle } from './lock.js';
+ import {
+-  computeMaxWaits, interpretStatus, newStatus, patchStatus, readStatus,
++  computeMaxWaits, interpretStatus, isTerminal, newStatus, patchStatus, readStatus,
+   renderProgress, renderProgressBrief, progressViewOf, workerConfirmedGone, writeStatus,
+   type ProgressBudget, type ProgressView, type RunStatus,
+ } from './status.js';
++import type { ArchiveLayout } from './archive.js';
+ import {
+   executeRun, prepareRun, repoId, type PreparedRun, type ReviewOptions, type RunContext,
+ } from './review.js';
+@@ -35,7 +36,9 @@ import { resolveAdapters } from './adapters/stub.js';
+ import { realAdapters, wiredAdapter } from './adapters/index.js';
+ import { scrubRunDir } from './scrub.js';
+ import { ensureDir, exists } from './util/fsx.js';
+-import { killProcessTree, processAlive, processStartTime, spawnDetached } from './util/exec.js';
++import {
++  processAlive, processStartTime, spawnDetached, terminateProcessGroup, type DetachedChildWatch,
++} from './util/exec.js';
+ import { fail, say, step, warn } from './util/log.js';
+ import { checkModelOverrideSource, collectWarnings, type PreflightWarning } from './preflight.js';
+ 
+@@ -363,11 +366,17 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
+    * （EV-145，事后收尾余项计划 r2 §3.3，计划双审 r1 CODEX-03 ≡ GLM-02）：
+    * - 为假：还没有 worker，写者就是本进程，把骨架收尾为 failed（`prepare_exception`）。这一侧含 `spawnDetached`
+    *   内部建日志目录、开日志文件、`spawn` 没拿到 pid 三处失败——它们都在子进程诞生之前；
+-   * - 为真：worker 活着、会自己写终态（实测：它照常跑完并写 success），这里再写 failed 会与它互相覆盖，不收尾。
+-   *   这一格锁与闸门被提前放掉的既有缺陷见 BACKLOG EV-150。
++   * - 为真：先终止 worker 并按子进程句柄确认退出，再收尾（`post_spawn_exception`）——见 `settleOrphanedStart`
++   *   （EV-150，派生后失败的孤儿worker计划 r2 §3.4）。此前这一格只放锁、回收闸门，孤儿 worker 照常跑完、
++   *   事后把已回收的闸门置成待裁决，或与下一轮并发。
+    * 不用「`spawnDetached` 有没有返回」判：它的 `finally` 在子进程已起之后仍可能因关日志句柄而抛。
++   * `spawnState.born` 与 `childBorn` 同时置位；前者多带子进程句柄，那一格拿不到返回值，只能从回调里留下
++   * （用对象持有：在回调里赋值的 `let` 会被控制流分析在 catch 里收窄成 null）。
+    */
+   let childBorn = false;
++  const spawnState: { born: { pid: number; watch: DetachedChildWatch } | null } = { born: null };
++  // 提到 try 之外：派生后失败时收尾要用（失败点在取到它之前则为 null）
++  let workerStartedAt: string | null = null;
+   try {
+     warnings = collectWarnings(await checkModelOverrideSource(rc.sides, rc.adapters));
+     await ensureDir(rc.runDirBase);
+@@ -393,15 +402,16 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
+       {
+         cwd: ctx.projectRoot,
+         logFile: workerLogPath(rc.runDirBase),
+-        onSpawned: () => {
++        onSpawned: (pid, watch) => {
+           childBorn = true;
++          spawnState.born = { pid, watch };
+         },
+       },
+     );
+     await fs.writeFile(workerPidPath(rc.runDirBase), `${spawned.pid}\n`, 'utf8');
+ 
+     // 锁改记工作进程的 pid：从此刻起锁的持有者是它，不是 --start
+-    const workerStartedAt = await processStartTime(spawned.pid);
++    workerStartedAt = await processStartTime(spawned.pid);
+     await fs.writeFile(
+       lock.path,
+       JSON.stringify(
+@@ -445,7 +455,20 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
+       ) as Partial<Record<CriticId, string>>,
+     };
+   } catch (e) {
+-    // prepareRun 之后才失败：闸门已经是 running，必须连它一起回收——排第一（见 meta.ts 通用体文档块的两种次序）
++    /*
++     * 子进程已诞生（EV-150）：worker 在跑，先终止它、按句柄确认退出，再回收闸门、收尾、处理 status.json、放锁。
++     * 次序的要点是「终止在回收闸门之前」：反过来，孤儿收尾时 `expect: { runId }` 只比 run_id，
++     * 会把刚回收成 idle 的本轮闸门置成待裁决（计划 r2 §2.2 / D4）。确认不了退出时一概不回收（D5）。
++     */
++    const born = spawnState.born;
++    if (born) {
++      await settleOrphanedStart({
++        ctx, topic: rc.ref.topic, stage: rc.stage, runId: rc.runId, layout: rc.ref.layout,
++        runDir: rc.runDirBase, lock, born, workerStartedAt, error: e,
++      });
++      throw e;
++    }
++    // prepareRun 之后、子进程诞生之前失败：闸门已经是 running，必须连它一起回收——排第一（见 meta.ts 通用体文档块的两种次序）
+     await releaseRunningGate(ctx, rc.runId, rc.ref.topic, rc.stage);
+     if (!childBorn) {
+       /*
+@@ -501,6 +524,157 @@ async function releaseRunningGate(
+   });
+ }
+ 
++export interface OrphanedStartInput {
++  ctx: Ctx;
++  topic: string;
++  stage: Stage;
++  runId: string;
++  layout: ArchiveLayout;
++  runDir: string;
++  /** `startRun` 开头拿到的运行锁（内容可能已被「锁改记工作进程的 pid」一段改写成 worker 的） */
++  lock: LockHandle;
++  born: { pid: number; watch: DetachedChildWatch };
++  /** `startRun` 已取到的 worker 启动时刻；失败点在取到它之前为 null */
++  workerStartedAt: string | null;
++  error: unknown;
++  /** 单测注入：缺省按子进程句柄终止并确认（`terminateProcessGroup`，宽限 5 s、SIGKILL 后再等 5 s） */
++  terminate?: () => Promise<{ gone: boolean; escalated: boolean }>;
++  /** 单测注入：缺省 `processStartTime` */
++  startTimeOf?: (pid: number) => Promise<string | null>;
++}
++
++/**
++ * `review --start` 在子进程诞生之后失败时的收尾（EV-150，派生后失败的孤儿worker计划 r2 §3.4）。
++ *
++ * 目标不变量：`--start` 非零退出 ⇔ 没有 worker 在跑，锁、闸门、留痕都已收拾好。按顺序：
++ *   1. 终止 worker 所在的进程组，按父进程手里的子进程句柄确认退出（不依赖启动时刻，它可能取不到）；
++ *   2. 确认不了退出（D5）：闸门、run.json、status.json 的 phase 一概不动——孤儿若还活着就是写者；只尽力把
++ *      pid 与启动时刻补记进 status.json、把仍是本进程内容的锁改写成 worker 的，让 `--cancel` 找得到它、
++ *      锁跟着它走（计划双审 r1 CODEX-02、AGY-01）。不放锁；
++ *   3. 回收闸门——**排在终止之后**：反过来排，孤儿收尾时会把刚回收的闸门置成待裁决（D4）；
++ *   4. 把 run.json 与登记收尾为 failed（`post_spawn_exception`）；run.json 已被 worker 写成终态的不追溯改写，只指路；
++ *   5. status.json：已终态不动；run.json 属本进程收尾的落 failed；worker 已写 run.json 终态而 status.json 未到的
++ *      只补 pid、不落 phase（计划双审 r1 AGY-02 ≡ GLM-01）；
++ *   6. 放锁：`release()` 删仍是本进程内容的锁；已改写成本轮 worker 的，按 run_id + pid 复核后回收。
++ *      锁已改写那一格，worker 被终止后新 `--start` 可按 pid_gone 当场接管——四道守卫保证两轮不串写
++ *      （按 run_id 回收闸门、按 run_id 收尾、这里的双条件复核、reclaimStaleLock 的复验；计划双审 r1 CODEX-01 ≡ GLM-05）。
++ * 每一步各自吞错、打 warn：调用方随即抛原错误，本函数不得改掉退出码。凭据副本不在这里抹（计划 r2 §3.4 末段）。
++ */
++export async function settleOrphanedStart(i: OrphanedStartInput): Promise<void> {
++  const { ctx, born } = i;
++  const heartbeatStaleMs = ctx.config.review.heartbeat_stale_s * 1000;
++  const soft = async (what: string, fn: () => Promise<unknown>): Promise<void> => {
++    try {
++      await fn();
++    } catch (err) {
++      warn(`${what}失败：${String((err as Error)?.message ?? err).split('\n')[0]}`);
++    }
++  };
++
++  // 1. 终止并确认
++  let t: { gone: boolean; escalated: boolean };
++  try {
++    t = await (i.terminate ?? (() => terminateProcessGroup(born.pid, {
++      isGone: born.watch.hasExited, graceMs: 5000, killWaitMs: 5000,
++    })))();
++  } catch (err) {
++    warn(`终止工作进程组 ${born.pid} 时出错：${String((err as Error)?.message ?? err).split('\n')[0]}`);
++    t = { gone: born.watch.hasExited(), escalated: false };
++  }
++  warn(
++    `--start 在派生工作进程之后失败：已终止工作进程组 ${born.pid}` +
++      `（SIGTERM${t.escalated ? '，未响应后 SIGKILL' : ''}）`,
++  );
++
++  // 2. 确认不了退出：留给它，不回收
++  if (!t.gone) {
++    const startedAt = i.workerStartedAt ?? (await (i.startTimeOf ?? processStartTime)(born.pid).catch(() => null));
++    await soft('补记 status.json 的 worker_pid', () =>
++      patchStatus(i.runDir, (s) => {
++        s.worker_pid ??= born.pid;
++        s.worker_started_at ??= startedAt;
++      }),
++    );
++    await soft('把主题锁改记到工作进程名下', async () => {
++      const cur = await inspectLock(ctx.triviumDir, i.topic);
++      if (cur && cur.pid === i.lock.content.pid && cur.acquired_at === i.lock.content.acquired_at) {
++        await fs.writeFile(
++          i.lock.path,
++          JSON.stringify({ ...i.lock.content, run_id: i.runId, pid: born.pid, pid_started_at: startedAt }, null, 2) + '\n',
++          'utf8',
++        );
++      }
++    });
++    warn(
++      `工作进程 ${born.pid} 未能确认退出：闸门与归档 run.json 留给它（它若还活着就是写者），主题锁已记在它名下。` +
++        `请 trivium review --cancel ${i.runId}，或手工结束进程组 ${born.pid} 之后 trivium review --wait ${i.runId}`,
++    );
++    return;
++  }
++
++  // 3. 回收闸门（终止之后）
++  await soft('回收闸门', () =>
++    releaseRunningGateEntry({ triviumDir: ctx.triviumDir, topic: i.topic, stage: i.stage, runId: i.runId, heartbeatStaleMs }),
++  );
++
++  // 4. 收尾 run.json 与登记（自身不抛）
++  const fin = await finalizeFailedRunMeta({
++    layout: i.layout, stage: i.stage, runId: i.runId,
++    lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs },
++    workerGone: true,
++    termination: { by: 'post_spawn_exception', exit_code: exitCodeOf(i.error) },
++  });
++  for (const line of finalizeLines(fin, i.runId, '派生后启动未完成')) warn(line);
++  const meta = await readRunMeta(i.layout, i.stage, i.runId).catch(() => null);
++  const workerWroteTerminal =
++    meta !== null && meta.status !== 'running' &&
++    !(meta.status === 'failed' && meta.termination?.by === 'post_spawn_exception');
++  const st = await readStatus(i.runDir);
++  if (workerWroteTerminal) {
++    warn(
++      st && isTerminal(st.phase)
++        ? `工作进程在被终止之前已跑完：用 trivium review --wait ${i.runId} 取结果`
++        : `工作进程在被终止之前已写下归档终态（${meta!.status}），审查文档已落盘，以归档 run.json 为准；` +
++            `此时 --wait 会判失联（pid_gone），但不改写 run.json`,
++    );
++  }
++
++  // 5. status.json：已终态不动
++  if (st && !isTerminal(st.phase)) {
++    await soft('写 status.json 终态', () =>
++      patchStatus(i.runDir, (s) => {
++        if (isTerminal(s.phase)) return;
++        s.worker_pid ??= born.pid;
++        s.worker_started_at ??= i.workerStartedAt;
++        if (workerWroteTerminal) return; // phase 该由 worker 写，本进程不替它下结论
++        s.phase = 'failed';
++        s.exit_code = exitCodeOf(i.error);
++        s.message = `启动未完成：已终止工作进程 ${born.pid}`;
++      }),
++    );
++  }
++
++  // 6. 放锁
++  await soft('释放主题锁', () => i.lock.release());
++  await soft('回收已改记到工作进程名下的主题锁', async () => {
++    const cur = await inspectLock(ctx.triviumDir, i.topic);
++    if (cur && cur.run_id === i.runId && cur.pid === born.pid) {
++      await reclaimStaleLock(i.lock.path, cur);
++    }
++  });
++}
++
++/**
++ * `--cancel` 宽限期内「工作进程已退出」的判据：不存活，**或不是同一进程**（EV-150，计划双审 r1 AGY-04，用户审批并入）。
++ *
++ * 此前只看存活：宽限期内 PID 若被复用，会把复用者当成 worker、升级 SIGKILL；而 `kill(-pid)` 在复用者不是组长时
++ * ESRCH、退回 `kill(pid)`，信号就打到了无关进程。与 `workerConfirmedGone`、`judgeStale` 同一口径。
++ */
++export async function workerGoneForCancel(pid: number, startedAt: string | null): Promise<boolean> {
++  const p = await processAlive(pid, startedAt);
++  return !p.alive || !p.sameProcess;
++}
++
+ // ─────────────────────── worker ───────────────────────
+ 
+ /**
+@@ -945,19 +1119,22 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
+   if (pid !== null) {
+     const live = await processAlive(pid, s?.worker_started_at ?? null);
+     if (live.alive && live.sameProcess) {
+-      // 按**进程组**发：只杀 worker 会把 agy / zcode 遗弃给 init 继续烧配额
+-      step(`向工作进程组 ${pid} 发送 SIGTERM（含两侧厂商子进程）`);
+-      killProcessTree(pid, 'SIGTERM');
+-      // 宽限 5s 后 SIGKILL
+-      const deadline = Date.now() + 5000;
+-      while (Date.now() < deadline) {
+-        if (!(await processAlive(pid, s?.worker_started_at ?? null)).alive) break;
+-        await new Promise((r) => setTimeout(r, 250));
+-      }
+-      if ((await processAlive(pid, s?.worker_started_at ?? null)).alive) {
+-        warn(`工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL`);
+-        killProcessTree(pid, 'SIGKILL');
+-      }
++      /*
++       * 按**进程组**发：只杀 worker 会把与它同组的子进程遗弃给 init。适配器以 `killTree` 拉起的厂商 CLI
++       * 自成一组，这里够不到（`killProcessTree` 文档块，BACKLOG EV-152）。
++       * SIGTERM → 宽限 5 s（每 250 ms 看一次）→ SIGKILL、之后不等：与 `--start` 派生后失败的收尾共用
++       * `terminateProcessGroup`（EV-150）。宽限期判据是「不存活或不是同一进程」——此前只看存活，
++       * PID 被复用时会把 SIGKILL 打到无关进程（计划双审 r1 AGY-04，用户审批并入）。
++       */
++      step(`向工作进程组 ${pid} 发送 SIGTERM`);
++      const startedAt = s?.worker_started_at ?? null;
++      await terminateProcessGroup(pid, {
++        isGone: () => workerGoneForCancel(pid, startedAt),
++        graceMs: 5000,
++        killWaitMs: 0,
++        pollMs: 250,
++        onEscalate: () => warn(`工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL`),
++      });
+     } else {
+       step(`工作进程 ${pid} 已不存在，仅做状态与锁的清理`);
+     }
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index cb8b822..743a9da 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -1255,13 +1255,17 @@ export type LegacyReviewMode = 'dual' | 'single';
+  *
+  * - `worker_exception`：worker 的异常分支（EV-142）；
+  * - `prepare_exception`：审查员一个都没拉起就失败——`prepareRun` 写完骨架之后、或 `startRun` 在子进程诞生之前；
+- * - `sync_exception`：同步路径 `executeRun` 抛错，审查员可能已经跑过（与 `worker_exception` 同义，只是不在 worker 里）。
++ * - `sync_exception`：同步路径 `executeRun` 抛错，审查员可能已经跑过（与 `worker_exception` 同义，只是不在 worker 里）；
++ * - `post_spawn_exception`：`review --start` 派生工作进程之后启动未完成，工作进程已被终止并按子进程句柄确认退出
++ *   （EV-150）。它可能已做了一部分准备；按时序推断还没有拉起审查员（派生后失败的孤儿worker计划 r2 §3.3），
++ *   但那是推断、不是构造保证，所以不与 `prepare_exception`（「未拉起审查员」）合并。
+  *
+  * 同一组值还出现在 run.v2 schema `termination` 第一个分支的 `by` 枚举里；schema 是 JSON、引用不了这里，
+  * 由 `run-meta-strict.test.ts` 的 S3 守住两边逐项相等（`worker_lost` 另算）。schema 只增不减：
+- * 旧 bundle 读不懂新取值，回滚要保留 schema 的改动（计划 r2 §6.3）。
++ * 旧 bundle 读不懂新取值，回滚要保留「取值面」——schema、本常量、`report` 的说明与对应用例——只回退行为代码
++ * （派生后失败的孤儿worker计划 r2 §6.3）。
+  */
+-export const EXCEPTION_TERMINATION_BY = ['worker_exception', 'prepare_exception', 'sync_exception'] as const;
++export const EXCEPTION_TERMINATION_BY = ['worker_exception', 'prepare_exception', 'sync_exception', 'post_spawn_exception'] as const;
+ export type ExceptionTerminationBy = (typeof EXCEPTION_TERMINATION_BY)[number];
+ 
+ /** run.json `termination`：这一次终态由哪条事后收尾写的（EV-142 / EV-145，见 `RunMeta.termination`） */
+@@ -1488,14 +1492,16 @@ export interface RunMeta {
+    * 由 `--wait` 判 `worker_lost` 且确认工作进程已退出时写（EV-142），或由本进程在准备阶段写完骨架之后失败、
+    * `startRun` 在子进程诞生之前失败、同步路径 `executeRun` 抛错时写（EV-145）——这几条都同时写 `termination`。
+    * 已结束却仍为 `running` 的留痕表示没有走到收尾（本版以前的异常 / 失联 / 取消 / 准备阶段失败 / 同步路径异常、
+-   * 失联时进程未确认退出、`--start` 在子进程诞生之后才失败而孤儿 worker 被杀、worker 猝死而没人 `--wait`、
++   * 失联时进程未确认退出、本版以前 `--start` 在子进程诞生之后才失败的运行与确认不了工作进程退出的那一格（EV-150）、
++   * worker 猝死而没人 `--wait`、
+    * 纯文档跳过的终态写入本身失败，以及 EV-109 以前被闸门拦下留下的骨架），不回填。
+    */
+   status: 'running' | 'success' | 'failed' | 'cancelled';
+   /**
+    * 这一次终态由哪条事后收尾写的（EV-142 / EV-145）。`worker_exception` 由 worker 异常分支写，`worker_lost` 由 `--wait`
+    * 判失联写，`prepare_exception` 由准备阶段写完骨架之后失败（含 `startRun` 在子进程诞生之前失败）时本进程写，
+-   * `sync_exception` 由同步路径 `executeRun` 抛错时本进程写；
++   * `sync_exception` 由同步路径 `executeRun` 抛错时本进程写，`post_spawn_exception` 由 `--start` 在子进程诞生之后失败、
++   * 终止工作进程并确认退出之后本进程写（EV-150）；
+    * 缺席 = 正常收尾（worker 写 `success` / `failed`）、取消轮（`status: cancelled` 已说明来路）、或本字段之前的留痕。
+    * 只存结构化字段、不存异常原文：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。
+    * `by` 的取值与 `EXCEPTION_TERMINATION_BY` 同源、`reason` 与 `status.ts` 的 `WORKER_LOST_REASONS` 同源，
+diff --git a/src/trivium/util/exec.ts b/src/trivium/util/exec.ts
+index d0cb116..59c920d 100644
+--- a/src/trivium/util/exec.ts
++++ b/src/trivium/util/exec.ts
+@@ -261,8 +261,27 @@ export interface SpawnDetachedOptions {
+    * 调用方据此区分「失败时子进程有没有起来」：建日志目录、开日志文件、`spawn` 没拿到 pid 这三处失败都在子进程诞生之前，
+    * 回调不会被调；而 `finally` 里的 `handle.close()` 在子进程已起之后仍可能抛——所以「本函数有没有返回」不能当判据，
+    * 「有没有调用本函数」也不准。回调自身抛错被吞掉，不影响已派生的子进程与返回值。
++   *
++   * 第二个参数是子进程句柄的退出观察（EV-150，派生后失败的孤儿worker计划 r2 §3.2）：调用方在本函数抛错之后
++   * 仍能据它确认子进程是否已退出——`handle.close()` 那一格拿不到返回值，只有这里交得出去。
+    */
+-  onSpawned?: (pid: number) => void;
++  onSpawned?: (pid: number, watch: DetachedChildWatch) => void;
++}
++
++/**
++ * 父进程对一个已派生子进程的退出观察（EV-150）。
++ *
++ * **为什么能拿它防 PID 复用**：本进程是子进程的父进程。Node 的 libuv 在 SIGCHLD 时 `waitpid` 回收子进程，
++ * 并在同一个回调里置上 `exitCode` / `signalCode`、发出 `'exit'`；JS 单线程，两者之间插不进别的 JS。
++ * 所以在 JS 看来 `hasExited()` 为假 ⇒ 子进程还没被回收（活着或是僵尸）⇒ 它的 pid 与以它为组号的进程组号
++ * 都不可能被别的进程占用。这比比对启动时刻强，也不依赖 `processStartTime`（它可能取不到）。
++ * 实测范围：Node v25.2.1 / macOS（计划 r2 §2.1 K2）。
++ */
++export interface DetachedChildWatch {
++  /** 父进程已观察到子进程退出（'exit' 事件已到） */
++  hasExited(): boolean;
++  /** 'exit' 事件到达时兑现 */
++  exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
+ }
+ 
+ export interface SpawnDetachedResult {
+@@ -332,8 +351,16 @@ export async function spawnDetached(
+       await handle.write(`[spawnDetached ${new Date().toISOString()}] ${msg}\n`).catch(() => undefined);
+       throw new Error(msg);
+     }
++    // 'exit' 是异步发出的，在这里同步挂上不会漏；子进程正常长跑时这个 Promise 一直悬着，无害（句柄已 unref）
++    const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
++      child.once('exit', (code, signal) => resolve({ code, signal }));
++    });
++    const watch: DetachedChildWatch = {
++      hasExited: () => child.exitCode !== null || child.signalCode !== null,
++      exited,
++    };
+     try {
+-      opts.onSpawned?.(child.pid);
++      opts.onSpawned?.(child.pid, watch);
+     } catch {
+       /* 回调出错不改变「子进程已诞生」这一事实，也不连累返回值 */
+     }
+@@ -391,13 +418,16 @@ export async function processStartTime(pid: number): Promise<string | null> {
+ }
+ 
+ /**
+- * 向工作进程**及其全部后代**发信号。
++ * 向一个进程**及其同组后代**发信号。
+  *
+  * `spawnDetached` 用 `detached: true`（即 POSIX `setsid`），所以工作进程是自己
+- * 进程组的组长、pgid 等于它的 pid，它拉起的 agy / zcode 也在同一组里。
+- * 只 `kill(pid)` 的话，两侧厂商进程会被**遗弃给 init 继续跑**——实测确认过：
+- * `--cancel` 之后 `zcode-cli` 的 PPID 变成 1 且仍在消耗配额。
+- * 取消的意义就是停止花钱，所以必须按进程组发。
++ * 进程组的组长、pgid 等于它的 pid；它以**不带** `killTree` 的 `run()` 拉起的子进程与它同组。
++ * 只 `kill(pid)` 的话，同组的子进程会被**遗弃给 init 继续跑**——`5476238` 实测过：
++ * `--cancel` 之后 `zcode-cli` 的 PPID 变成 1 且仍在消耗配额（那时它还在 worker 的组里）。
++ *
++ * **够不到的**：审查员适配器以 `run(…, { killTree: true })` 拉起厂商 CLI，那会让 CLI 以 `detached`
++ * 自成一组（`2b460ad` 起）；按 worker 的组发的信号到不了它们。零配额实测：worker 被按组 SIGTERM 后退出，
++ * `killTree` 拉起的子进程过继给 init 继续活着（派生后失败的孤儿worker计划 r2 §2.1）。行为修复见 BACKLOG EV-152。
+  *
+  * 返回是否至少送达了一个目标。组不存在（ESRCH）时退回单进程，
+  * 因为组可能已经空了、也可能这个 pid 压根不是组长。
+@@ -420,3 +450,54 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals): boolean {
+   }
+ }
+ 
++export interface TerminateOptions {
++  /** 「确认已退出」的判据，由调用方给（父进程用子进程句柄；别的进程用 pid + 启动时刻） */
++  isGone: () => boolean | Promise<boolean>;
++  /** SIGTERM 之后至多等多久再升级 SIGKILL */
++  graceMs: number;
++  /** SIGKILL 之后至多等多久确认退出；0 = 不等 */
++  killWaitMs: number;
++  /** 轮询间隔，缺省 250 ms */
++  pollMs?: number;
++  /** 升级到 SIGKILL 之前回调一次（`cancelRun` 用它打那行 warn） */
++  onEscalate?: () => void;
++  /** 发信号的实现，缺省 `killProcessTree`；只为单测计数而开 */
++  signal?: (pid: number, sig: NodeJS.Signals) => boolean;
++}
++
++/**
++ * 按进程组终止并等待确认退出：SIGTERM → 宽限 → SIGKILL → 等待（EV-150，派生后失败的孤儿worker计划 r2 §3.2）。
++ *
++ * `review --cancel` 与 `--start` 派生后失败的收尾共用这一条链；判据由调用方给，两处不同：
++ * `--start` 是父进程，按子进程句柄判（不会误判复用）；`--cancel` 是别的进程，按 pid 加启动时刻判。
++ *
++ * **每次发信号之前先问 `isGone()`**：已退出就不再发。对按句柄判的调用方，这保证不会向一个已被回收、
++ * 可能已被复用的号发组信号。
++ *
++ * 只管这一个进程组：适配器以 `killTree` 拉起的厂商 CLI 自成一组，这里够不到（见 `killProcessTree`，EV-152）。
++ */
++export async function terminateProcessGroup(
++  pid: number,
++  o: TerminateOptions,
++): Promise<{ gone: boolean; escalated: boolean }> {
++  const send = o.signal ?? killProcessTree;
++  const pollMs = o.pollMs ?? 250;
++  const waitGone = async (ms: number): Promise<boolean> => {
++    const deadline = Date.now() + ms;
++    while (Date.now() < deadline) {
++      if (await o.isGone()) return true;
++      await new Promise((r) => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
++    }
++    return o.isGone();
++  };
++
++  if (await o.isGone()) return { gone: true, escalated: false };
++  send(pid, 'SIGTERM');
++  if (await waitGone(o.graceMs)) return { gone: true, escalated: false };
++
++  o.onEscalate?.();
++  send(pid, 'SIGKILL');
++  if (o.killWaitMs <= 0) return { gone: await o.isGone(), escalated: true };
++  return { gone: await waitGone(o.killWaitMs), escalated: true };
++}
++
+diff --git a/test/integration/gate-loop.test.ts b/test/integration/gate-loop.test.ts
+index 2d856c7..610f3f8 100644
+--- a/test/integration/gate-loop.test.ts
++++ b/test/integration/gate-loop.test.ts
+@@ -2337,19 +2337,91 @@ test('事后收尾余项 P3b：spawnDetached 内部、子进程诞生之前失
+   }
+ });
+ 
+-test('事后收尾余项 P4：子进程诞生之后才失败（写 worker.pid EISDIR）⇒ 不收尾：刚返回时 run.json 仍是 running、没有 termination', { skip: bundleMissing && bundleSkipReason }, async () => {
++// ── EV-150（派生后失败的孤儿worker计划 r2 §4.2 P4 / P4b / P4c）：子进程诞生之后失败 ⇒ 终止 worker 并收尾 ──
++
++const HANG: StubConfig = { gemini: { mode: 'hang' }, glm: { mode: 'hang' } };
++
++/** 运行目录里的 status.json（夹具运行根是 `<root>-runs`，见 precreateRunDirs） */
++async function statusJsonOf(root: string, runId: string): Promise<{ phase: string; worker_pid: number | null } | null> {
++  const { repoId } = await import('../../src/trivium/review.js');
++  return fs.readFile(path.join(`${root}-runs`, repoId(root), runId, 'status.json'), 'utf8')
++    .then((t) => JSON.parse(t) as { phase: string; worker_pid: number | null })
++    .catch(() => null);
++}
++
++test('派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const { ids } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.pid')));
++  try {
++    const r = await startPlan(fx.root, HANG);
++    assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
++    const runId = await hitRunId(fx.stageDir, ids);
++    const m = await readRunJson(fx.stageDir, runId);
++    assert.equal(m.status, 'failed', 'EV-150：worker 已被终止并确认退出，本进程是唯一写者');
++    assert.equal(m.gate.state, 'failed');
++    assert.deepEqual(m.termination, { by: 'post_spawn_exception', exit_code: EXIT.FAIL });
++    assert.deepEqual((await taskRunsOf(fx.archiveRoot))?.map((t) => [t.run_id, t.status]), [[runId, 'failed']]);
++    assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'idle');
++    assert.ok(!(await fs.readdir(path.join(fx.root, '.trivium', 'lock'))).includes(`${TOPIC}.lock`), '主题锁必须已释放');
++    const st = await statusJsonOf(fx.root, runId);
++    assert.equal(st?.phase, 'failed');
++    assert.ok(st?.worker_pid, 'status.json 应补记 worker_pid');
++    assert.match(r.stderr, /已终止工作进程组/, r.stderr);
++    assert.match(r.stderr, /收尾为 failed（派生后启动未完成）/, r.stderr);
++
++    const w = await cli(fx.root, ['review', '--wait', runId, '--timeout', '5'], HANG);
++    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
++    assert.doesNotMatch(`${w.stdout}${w.stderr}`, /失联/, '按终态返回，不走失联路径');
++    const c = await cli(fx.root, ['review', '--cancel', runId], HANG);
++    assert.match(`${c.stdout}${c.stderr}`, /已处于终态/);
++    assert.deepEqual(await readRunJson(fx.stageDir, runId), m, '--wait / --cancel 之后 run.json 不再被改');
++  } finally {
++    assert.deepEqual(await killWorkersOf(ids), [], 'EV-150：--start 非零退出时不得留下孤儿 worker');
++  }
++});
++
++test('派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）', { skip: bundleMissing && bundleSkipReason }, async () => {
+   const fx = await makeFixture({ topic: TOPIC });
+   const { ids } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.pid')));
+   try {
+-    const r = await startPlan(fx.root, { gemini: { mode: 'hang' }, glm: { mode: 'hang' } });
++    const r = await startPlan(fx.root, STUB);
+     assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+     const runId = await hitRunId(fx.stageDir, ids);
++    const docsBefore = (await fs.readdir(fx.stageDir)).filter((n) => n.endsWith('.md')).sort();
++    await new Promise((res) => setTimeout(res, 3000)); // 今天的孤儿约 0.3 s 就跑完（计划 r2 §2.2）
++    const g = (await gatesOf(fx.root))[`${TOPIC}/plan`];
++    assert.equal(g?.state, 'idle', '今天这里会被孤儿置成 review_done_awaiting_disposition');
+     const m = await readRunJson(fx.stageDir, runId);
+-    assert.equal(m.status, 'running', 'worker 已诞生、是活着的写者：这里写 failed 会与它互相覆盖（计划 r2 §2.3 / D2，EV-150）');
+-    assert.equal(m.termination, undefined);
+-    assert.doesNotMatch(r.stderr, /收尾为 failed/, r.stderr);
++    assert.equal(m.status, 'failed', '今天这里会被孤儿改写成 success');
++    assert.deepEqual(m.termination, { by: 'post_spawn_exception', exit_code: EXIT.FAIL });
++    assert.deepEqual((await fs.readdir(fx.stageDir)).filter((n) => n.endsWith('.md')).sort(), docsBefore, '不应出现审查文档');
++  } finally {
++    assert.deepEqual(await killWorkersOf(ids), [], 'EV-150：--start 非零退出时不得留下孤儿 worker');
++  }
++});
++
++test('派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const { ids, dirs } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.pid')));
++  let second: string | null = null;
++  try {
++    const r = await startPlan(fx.root, HANG);
++    assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
++    const first = await hitRunId(fx.stageDir, ids);
++    for (const d of dirs) if (path.basename(d) !== first) await fs.rm(d, { recursive: true, force: true });
++    await new Promise((res) => setTimeout(res, 1100)); // 避开 run_id 同秒撞名（EV-147）
++    const r2 = await startPlan(fx.root, HANG);
++    assert.equal(r2.code, EXIT.OK, `${r2.stdout}${r2.stderr}`);
++    second = (JSON.parse(r2.stdout.slice(r2.stdout.indexOf('{'))) as { run_id: string }).run_id;
++    assert.notEqual(second, first);
++    const { run } = await import('../../src/trivium/util/exec.js');
++    const ps = await run('/bin/ps', ['-axo', 'pid=,command='], { timeoutMs: 10_000 });
++    const workers = ps.stdout.split('\n').map((l) => /review --worker (\S+)/.exec(l)?.[1]).filter((x) => x === first || x === second);
++    assert.deepEqual(workers, [second], '只应有新一轮的 worker');
+   } finally {
+-    await killWorkersOf(ids);
++    // 只做清理、不断言：--cancel 刚发完信号，进程表未必已刷新
++    if (second) await cli(fx.root, ['review', '--cancel', second], HANG);
++    await killWorkersOf(new Set([...ids, ...(second ? [second] : [])]));
+   }
+ });
+ 
+diff --git a/test/integration/run-protocol.test.ts b/test/integration/run-protocol.test.ts
+index c9f6e8b..6621e9c 100644
+--- a/test/integration/run-protocol.test.ts
++++ b/test/integration/run-protocol.test.ts
+@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
+ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+-import { bashTimeoutFor, cancelRun, runDirFor, statusRun, waitRun } from '../../src/trivium/run-protocol.js';
++import {
++  bashTimeoutFor, cancelRun, runDirFor, settleOrphanedStart, statusRun, waitRun, workerGoneForCancel,
++} from '../../src/trivium/run-protocol.js';
++import { getGate, setGate } from '../../src/trivium/state.js';
+ import { newStatus, readStatus, writeStatus } from '../../src/trivium/status.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
+ import { acquireLock, inspectLock } from '../../src/trivium/lock.js';
+@@ -499,3 +502,146 @@ test('--cancel 对已退出的工作进程也能清理状态与锁', async () =>
+   const s = await readStatus(runDirFor(ctx.config, ctx.projectRoot, 'R-DEADCANCEL'));
+   assert.equal(s?.phase, 'cancelled');
+ });
++
++/*
++ * ── EV-150：--start 在子进程诞生之后失败的收尾（派生后失败的孤儿worker计划 r2 §4.1 U5 / U6）──
++ *
++ * 改写锁之后、写 status.json、关日志句柄三个失败点零配额造不出（计划 r2 §2.3），
++ * 所以把 `settleOrphanedStart` 放到进程内夹具上、注入「终止结果」，逐格钉住次序、D5 与锁的回收。
++ */
++const FAKE_WORKER = 999_991; // 不存在的 pid：只被写进锁与 status.json，从不向它发信号（terminate 是注入的）
++
++async function seedOrphan(ctx: Ctx, runId: string, o: { lockAsWorker?: boolean } = {}) {
++  const a = await seedArchive(ctx, runId);
++  await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'running', runId, heartbeatStaleMs: 120_000 });
++  const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
++  await fs.mkdir(runDir, { recursive: true });
++  await writeStatus(runDir, newStatus({ runId, topic: TOPIC, stage: 'plan', sides: ['gemini', 'glm'], models: {} }));
++  const lock = await acquireLock({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', kind: 'run', heartbeatStaleMs: 120_000 });
++  if (o.lockAsWorker) {
++    // 失败点在 :405 之后：锁内容已改写成 worker 的（S5）
++    await fs.writeFile(lock.path, JSON.stringify({ ...lock.content, run_id: runId, pid: FAKE_WORKER, pid_started_at: 'T-worker' }, null, 2) + '\n', 'utf8');
++  }
++  return { ...a, runDir, lock };
++}
++
++const watchOf = (exited: boolean) => ({
++  hasExited: () => exited,
++  exited: new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(() => {}),
++});
++
++test('EV-150 U5①：确认退出 ⇒ 终止先于闸门回收；随后闸门 idle、run.json 与登记 failed（post_spawn_exception）、status.json failed、已改写成 worker 的锁按 run_id 回收', async () => {
++  const ctx = await fakeCtx();
++  const s = await seedOrphan(ctx, 'R-ORPH1', { lockAsWorker: true });
++  let gateAtTerminate: string | null = null;
++  const { err } = await captureStderr(() =>
++    settleOrphanedStart({
++      ctx, topic: TOPIC, stage: 'plan', runId: 'R-ORPH1', layout: s.layout, runDir: s.runDir, lock: s.lock,
++      born: { pid: FAKE_WORKER, watch: watchOf(true) }, workerStartedAt: 'T-worker', error: new Error('EISDIR'),
++      terminate: async () => {
++        // 计划双审 r1 AGY-03：终止发生时闸门必须仍是本轮 running——回收排在终止之后
++        const g = await getGate(ctx.triviumDir, TOPIC, 'plan');
++        gateAtTerminate = `${g?.state}/${g?.run_id}`;
++        return { gone: true, escalated: false };
++      },
++    }),
++  );
++  assert.equal(gateAtTerminate, 'running/R-ORPH1', '终止时闸门应仍为本轮 running');
++  assert.equal((await getGate(ctx.triviumDir, TOPIC, 'plan'))?.state, 'idle');
++  const m = JSON.parse(await fs.readFile(s.runJson, 'utf8')) as RunMeta;
++  assert.equal(m.status, 'failed');
++  assert.deepEqual(m.termination, { by: 'post_spawn_exception', exit_code: EXIT.FAIL });
++  assert.equal((await readTask(s.layout)).runs.find((r) => r.run_id === 'R-ORPH1')?.status, 'failed');
++  const st = await readStatus(s.runDir);
++  assert.equal(st?.phase, 'failed');
++  assert.equal(st?.worker_pid, FAKE_WORKER);
++  assert.equal(await inspectLock(ctx.triviumDir, TOPIC), null, '已改写成本轮 worker 的锁应被回收（release() 不删它）');
++  assert.match(err, /已终止工作进程组 999991/);
++  assert.match(err, /收尾为 failed（派生后启动未完成）/);
++});
++
++test('EV-150 U5②：确认不了退出 ⇒ 闸门、run.json、status.json 的 phase 不动；补记 worker_pid 与启动时刻；本进程内容的锁改记到 worker 名下；给出 --cancel 出路', async () => {
++  const ctx = await fakeCtx();
++  const s = await seedOrphan(ctx, 'R-ORPH2');
++  const runBefore = await fs.readFile(s.runJson, 'utf8');
++  const { err } = await captureStderr(() =>
++    settleOrphanedStart({
++      ctx, topic: TOPIC, stage: 'plan', runId: 'R-ORPH2', layout: s.layout, runDir: s.runDir, lock: s.lock,
++      born: { pid: FAKE_WORKER, watch: watchOf(false) }, workerStartedAt: null, error: new Error('EISDIR'),
++      terminate: async () => ({ gone: false, escalated: true }),
++      startTimeOf: async () => 'T-started',
++    }),
++  );
++  const g = await getGate(ctx.triviumDir, TOPIC, 'plan');
++  assert.equal(`${g?.state}/${g?.run_id}`, 'running/R-ORPH2', 'D5：闸门留给可能还活着的写者');
++  assert.equal(await fs.readFile(s.runJson, 'utf8'), runBefore, 'D5：run.json 逐字节不变');
++  const st = await readStatus(s.runDir);
++  assert.equal(st?.phase, 'starting', 'D5：status.json 的 phase 不动');
++  assert.equal(st?.worker_pid, FAKE_WORKER, '计划双审 r1 GLM-03：补记 worker_pid，--cancel 才找得到它');
++  assert.equal(st?.worker_started_at, 'T-started', '计划双审 r1 CODEX-02：连启动时刻一起补，--cancel 才有复用防护');
++  const lk = await inspectLock(ctx.triviumDir, TOPIC);
++  assert.deepEqual(
++    lk && { run_id: lk.run_id, pid: lk.pid, pid_started_at: lk.pid_started_at },
++    { run_id: 'R-ORPH2', pid: FAKE_WORKER, pid_started_at: 'T-started' },
++    '计划双审 r1 AGY-01：锁跟着可能还活着的 worker 走，本进程退出后不会按 pid_gone 被回收',
++  );
++  assert.match(err, /工作进程 999991 未能确认退出/);
++  assert.match(err, /trivium review --cancel R-ORPH2/);
++});
++
++test('EV-150 U5③：收尾窗口里主题锁已被新一轮接管 ⇒ 第 6 步不删它，新一轮的闸门也不动', async () => {
++  const ctx = await fakeCtx();
++  const s = await seedOrphan(ctx, 'R-ORPH3', { lockAsWorker: true });
++  // 新一轮按 pid_gone 接管了锁与闸门（计划双审 r1 CODEX-01 ≡ GLM-05）
++  const other = { ...s.lock.content, run_id: 'R-NEXT', pid: process.pid, acquired_at: new Date(Date.now() + 1000).toISOString() };
++  await fs.writeFile(s.lock.path, JSON.stringify(other, null, 2) + '\n', 'utf8');
++  await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'running', runId: 'R-NEXT', heartbeatStaleMs: 120_000 });
++  await captureStderr(() =>
++    settleOrphanedStart({
++      ctx, topic: TOPIC, stage: 'plan', runId: 'R-ORPH3', layout: s.layout, runDir: s.runDir, lock: s.lock,
++      born: { pid: FAKE_WORKER, watch: watchOf(true) }, workerStartedAt: null, error: new Error('x'),
++      terminate: async () => ({ gone: true, escalated: false }),
++    }),
++  );
++  assert.equal((await inspectLock(ctx.triviumDir, TOPIC))?.run_id, 'R-NEXT', '新持有者的锁不得被删');
++  const g = await getGate(ctx.triviumDir, TOPIC, 'plan');
++  assert.equal(`${g?.state}/${g?.run_id}`, 'running/R-NEXT', '新一轮的闸门不得被回收');
++  assert.equal((JSON.parse(await fs.readFile(s.runJson, 'utf8')) as RunMeta).status, 'failed', '本轮自己的 run.json 照常收尾');
++});
++
++test('EV-150 U5④：worker 在被终止之前已跑完（run.json 与 status.json 都是 success）⇒ 两者都不改写，指路 --wait', async () => {
++  const ctx = await fakeCtx();
++  const s = await seedOrphan(ctx, 'R-ORPH4');
++  const m = JSON.parse(await fs.readFile(s.runJson, 'utf8')) as RunMeta;
++  m.status = 'success';
++  m.finished_at = new Date().toISOString();
++  m.gate.state = 'review_done_awaiting_disposition';
++  await writeRunMeta(s.layout, 'plan', m);
++  const st0 = (await readStatus(s.runDir))!;
++  st0.phase = 'success';
++  st0.exit_code = 0;
++  await writeStatus(s.runDir, st0);
++  const runBefore = await fs.readFile(s.runJson, 'utf8');
++  const statusBefore = await fs.readFile(path.join(s.runDir, 'status.json'), 'utf8');
++  const { err } = await captureStderr(() =>
++    settleOrphanedStart({
++      ctx, topic: TOPIC, stage: 'plan', runId: 'R-ORPH4', layout: s.layout, runDir: s.runDir, lock: s.lock,
++      born: { pid: FAKE_WORKER, watch: watchOf(true) }, workerStartedAt: null, error: new Error('x'),
++      terminate: async () => ({ gone: true, escalated: false }),
++    }),
++  );
++  assert.equal(await fs.readFile(s.runJson, 'utf8'), runBefore, 'worker 写下的终态不追溯改写');
++  assert.equal(
++    await fs.readFile(path.join(s.runDir, 'status.json'), 'utf8'), statusBefore,
++    '计划双审 r1 AGY-02 ≡ GLM-01：status.json 已终态不动，不把 success 降成 failed',
++  );
++  assert.match(err, /工作进程在被终止之前已跑完：用 trivium review --wait R-ORPH4 取结果/);
++});
++
++test('EV-150 U6：--cancel 宽限期判据——存活但不是同一进程（PID 被复用）即算已退出；同一进程算未退出；不存在算已退出', async () => {
++  const real = await processStartTime(process.pid);
++  assert.ok(real, '取不到本进程启动时刻，用例前提不成立');
++  assert.equal(await workerGoneForCancel(process.pid, 'Thu Jan  1 00:00:00 1970'), true, '计划双审 r1 AGY-04：复用者不能被当成 worker 升级 SIGKILL');
++  assert.equal(await workerGoneForCancel(process.pid, real), false);
++  assert.equal(await workerGoneForCancel(999_993, null), true);
++});
+diff --git a/test/integration/worker-detach.test.ts b/test/integration/worker-detach.test.ts
+index 0ec890a..6daeec1 100644
+--- a/test/integration/worker-detach.test.ts
++++ b/test/integration/worker-detach.test.ts
+@@ -4,7 +4,9 @@ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import { fileURLToPath } from 'node:url';
+-import { killProcessTree, spawnDetached, processAlive, run } from '../../src/trivium/util/exec.js';
++import {
++  killProcessTree, spawnDetached, processAlive, run, terminateProcessGroup, type DetachedChildWatch,
++} from '../../src/trivium/util/exec.js';
+ 
+ /**
+  * R-A 的验收（修订版 M2 计划 §6）：两条断言，不是一条模糊判据。
+@@ -174,10 +176,12 @@ test('killProcessTree 杀整组：子孙进程不被遗弃给 init', async () =>
+   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-tree-'));
+ 
+   /*
+-   * 造一棵真进程树：detached 的父进程再 spawn 一个长睡子进程。
+-   * 这正是 worker → agy/zcode 的形状。只 kill 父进程的话，
+-   * 子进程会被 init 收养并继续跑——实测中 `--cancel` 之后 zcode-cli 的 PPID
+-   * 变成 1 且仍在消耗配额，就是这么来的。
++   * 造一棵真进程树：detached 的父进程再 spawn 一个长睡子进程（**不带** detached，与父进程同组）。
++   * 这是 worker 以不带 `killTree` 的 `run()` 拉起子进程的形状。只 kill 父进程的话，
++   * 子进程会被 init 收养并继续跑——`5476238` 实测中 `--cancel` 之后 zcode-cli 的 PPID
++   * 变成 1 且仍在消耗配额，就是这么来的（那时它还在 worker 的组里）。
++   * 注意：今天审查员适配器以 `killTree: true` 拉起厂商 CLI，那会让 CLI 自成一组，本用例的形状**不覆盖**它——
++   * 按 worker 的组发的信号到不了那一组（派生后失败的孤儿worker计划 r2 §2.1，BACKLOG EV-152）。
+    */
+   const script = path.join(dir, 'parent.mjs');
+   await fs.writeFile(
+@@ -306,3 +310,99 @@ test('EV-145 U2：二进制不存在（spawn 拿不到 pid）⇒ spawnDetached 
+   const log = await fs.readFile(path.join(dir, 'w.log'), 'utf8');
+   assert.match(log, /spawn 未返回 pid：\/nonexistent\/trivium-bin-xyz（ENOENT /, `worker.log 应留一行成因：${JSON.stringify(log)}`);
+ });
++
++// ── EV-150：子进程句柄的退出观察与按组终止（派生后失败的孤儿worker计划 r2 §3.2 / §4.1 U3 / U4）──
++
++/** 派生一个长睡子进程并拿到它的退出观察；`ignoreTerm` 为真时它忽略 SIGTERM，就绪后才返回 */
++async function spawnWatched(ignoreTerm = false): Promise<{ pid: number; watch: DetachedChildWatch; argPid: number }> {
++  const dir = await tmpDir();
++  const ready = path.join(dir, 'ready');
++  const script = path.join(dir, 'w.mjs');
++  await fs.writeFile(
++    script,
++    [
++      "import { writeFileSync } from 'node:fs';",
++      ignoreTerm ? "process.on('SIGTERM', () => {});" : '',
++      `writeFileSync(${JSON.stringify(ready)}, 'x');`,
++      'setInterval(() => {}, 1000);',
++    ].join('\n'),
++    'utf8',
++  );
++  let got: { pid: number; watch: DetachedChildWatch } | null = null;
++  const r = await spawnDetached(process.execPath, [script], {
++    cwd: dir,
++    logFile: path.join(dir, 'w.log'),
++    onSpawned: (pid, watch) => {
++      got = { pid, watch };
++    },
++  });
++  assert.ok(await waitFor(() => fs.access(ready).then(() => true, () => false), 10_000), '子进程没就绪，用例前提不成立');
++  const g = got as { pid: number; watch: DetachedChildWatch } | null;
++  assert.ok(g, 'onSpawned 应已调用');
++  return { pid: r.pid, watch: g.watch, argPid: g.pid };
++}
++
++test('EV-150 U3：onSpawned 的第二个参数——杀之前 hasExited 为假；按组 SIGTERM 后 exited 兑现、signal 为 SIGTERM、hasExited 为真', async () => {
++  const { pid, watch, argPid } = await spawnWatched();
++  try {
++    assert.equal(argPid, pid, '第一个参数仍是返回的 pid');
++    assert.equal(watch.hasExited(), false);
++    assert.equal(killProcessTree(pid, 'SIGTERM'), true);
++    const ev = await Promise.race([watch.exited, new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
++    assert.ok(ev, '3 s 内应观察到退出');
++    assert.equal(ev.signal, 'SIGTERM');
++    assert.equal(watch.hasExited(), true);
++  } finally {
++    killProcessTree(pid, 'SIGKILL');
++  }
++});
++
++test('EV-150 U4①：terminateProcessGroup——普通子进程 SIGTERM 即退，不升级', async () => {
++  const { pid, watch } = await spawnWatched();
++  try {
++    let escalations = 0;
++    const r = await terminateProcessGroup(pid, {
++      isGone: watch.hasExited, graceMs: 3000, killWaitMs: 3000, pollMs: 50, onEscalate: () => escalations++,
++    });
++    assert.deepEqual(r, { gone: true, escalated: false });
++    assert.equal(escalations, 0);
++  } finally {
++    killProcessTree(pid, 'SIGKILL');
++  }
++});
++
++test('EV-150 U4②：terminateProcessGroup——忽略 SIGTERM 的子进程在宽限后升级 SIGKILL，onEscalate 恰调一次', async () => {
++  const { pid, watch } = await spawnWatched(true);
++  try {
++    let escalations = 0;
++    const r = await terminateProcessGroup(pid, {
++      isGone: watch.hasExited, graceMs: 300, killWaitMs: 3000, pollMs: 50, onEscalate: () => escalations++,
++    });
++    assert.deepEqual(r, { gone: true, escalated: true });
++    assert.equal(escalations, 1);
++  } finally {
++    killProcessTree(pid, 'SIGKILL');
++  }
++});
++
++test('EV-150 U4③：terminateProcessGroup——判据恒为「未退出」时在宽限 + 等待之后如实返回 gone: false，不挂住', async () => {
++  const sent: NodeJS.Signals[] = [];
++  const t0 = Date.now();
++  const r = await terminateProcessGroup(999_999, {
++    isGone: () => false, graceMs: 200, killWaitMs: 300, pollMs: 50,
++    signal: (_pid, sig) => (sent.push(sig), true),
++  });
++  assert.deepEqual(r, { gone: false, escalated: true });
++  assert.deepEqual(sent, ['SIGTERM', 'SIGKILL']);
++  assert.ok(Date.now() - t0 < 2000, `应在宽限 + 等待之后返回，实为 ${Date.now() - t0} ms`);
++});
++
++test('EV-150 U4④：terminateProcessGroup——一开始就已退出时一个信号都不发（不向可能被复用的号发组信号）', async () => {
++  const sent: NodeJS.Signals[] = [];
++  const r = await terminateProcessGroup(999_999, {
++    isGone: () => true, graceMs: 200, killWaitMs: 200,
++    signal: (_pid, sig) => (sent.push(sig), true),
++  });
++  assert.deepEqual(r, { gone: true, escalated: false });
++  assert.deepEqual(sent, []);
++});
+diff --git a/test/unit/report.test.ts b/test/unit/report.test.ts
+index 8ff3cb5..7904cca 100644
+--- a/test/unit/report.test.ts
++++ b/test/unit/report.test.ts
+@@ -500,6 +500,16 @@ test('EV-145 V8：prepare_exception / sync_exception 写成的 failed ⇒ 说明
+   );
+ });
+ 
++test('EV-150 V8′：post_spawn_exception 写成的 failed ⇒ 说明写清「派生工作进程之后启动未完成，工作进程已终止」并带退出码', async () => {
++  const l = await archive();
++  await seedUnlisted(l, { runId: 'Q1', status: 'failed', termination: { by: 'post_spawn_exception', exit_code: 1 } });
++  const r = await buildTopicReport(l);
++  assert.deepEqual(
++    r.unlistedRuns.map((u) => [u.runId, u.label]),
++    [['Q1', '派生工作进程之后启动未完成，工作进程已终止（退出码 1）']],
++  );
++});
++
+ test('EV-145 V9：termination.by 的每一个取值都有专门的说明，不落进兜底「failed（gate.state=…）」', async () => {
+   const l = await archive();
+   const shapes: import('../../src/trivium/types.js').RunTermination[] = [
+diff --git a/test/unit/run-meta-strict.test.ts b/test/unit/run-meta-strict.test.ts
+index 445c3bc..3ce0396 100644
+--- a/test/unit/run-meta-strict.test.ts
++++ b/test/unit/run-meta-strict.test.ts
+@@ -166,6 +166,19 @@ test('EV-145 S1′：prepare_exception / sync_exception 与 worker_exception 同
+   }
+ });
+ 
++test('EV-150 S1″：post_spawn_exception 与另三个异常取值同形——带整数退出码通过；缺退出码、串形状、带自由文本都判错', () => {
++  const base = { ...terminationSample(), status: 'failed' };
++  assert.deepEqual(validateRunMeta({ ...base, termination: { by: 'post_spawn_exception', exit_code: 1 } }), []);
++  const bad: unknown[] = [
++    { by: 'post_spawn_exception' },
++    { by: 'post_spawn_exception', reason: 'pid_gone' },
++    { by: 'post_spawn_exception', exit_code: 1, detail: 'EISDIR …/worker.pid' },
++  ];
++  for (const t of bad) {
++    assert.ok(validateRunMeta({ ...base, termination: t }).length > 0, `应判错：${JSON.stringify(t)}`);
++  }
++});
++
+ test('EV-145 S3：schema 里 termination.by 的取值集合与 types.ts 的 EXCEPTION_TERMINATION_BY + worker_lost 逐项相等（单一来源）', async () => {
+   const schema = JSON.parse(
+     await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/run.v2.json'), 'utf8'),
+diff --git a/doc/05_testing/REPORT_2026-09-27_orphan_worker.md b/doc/05_testing/REPORT_2026-09-27_orphan_worker.md
+new file mode 100644
+index 0000000..5130e07
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-09-27_orphan_worker.md
+@@ -0,0 +1,99 @@
++# 派生后失败的孤儿 worker · 实施报告（EV-150）
++
++- **日期**：2026-09-27
++- **主题**：`派生后失败的孤儿worker`；计划 `.reviews/派生后失败的孤儿worker/plan/`（D1～D8 送审前已定、全取建议项 → 计划双审 run `20260927T092419Z`：codex / glm `approve-with-nits`、gemini `request-changes`，13 条接受 12、AGY-04 暂缓 → 用户审批通过，附言「AGY-04 并入」→ r2 定稿，提交 `31005b4`）
++- **起点**：`31005b4`（计划 r2 提交）；计划行号取自 `e49279a`（两者之间只有计划留痕，源码未变）
++- **状态**：实施完成，未提交；待用户终端重装后发起代码双审
++- **evidence**：`doc/05_testing/evidence/orphan-worker-20260927/`
++
++---
++
++## 1. 逐条落地（按 r2 章节）
++
++| r2 | 落点 | 验证 |
++| :--- | :--- | :--- |
++| §3.2 子进程句柄 | `util/exec.ts`：新增 `DetachedChildWatch`（`hasExited()` 读 `exitCode` / `signalCode`，`exited` 在 `'exit'` 到达时兑现）；`spawnDetached` 在拿到 pid 之后、调回调之前同步挂 `'exit'` 监听，`onSpawned(pid, watch)` 追加第二个参数 | U3、M7 |
++| §3.2 `terminateProcessGroup` | `util/exec.ts` 新增：每次发信号前先问 `isGone()`；SIGTERM 进程组 → 宽限轮询 → `onEscalate` + SIGKILL → 至多 `killWaitMs` 等待；`signal` 可注入（只为单测计数） | U4①～④、M8、M9 |
++| §3.2 `cancelRun` 改用 + AGY-04 | `run-protocol.ts`：`cancelRun` 的 SIGTERM / 宽限 / SIGKILL 一段改为调 `terminateProcessGroup`（`graceMs: 5000`、`killWaitMs: 0`、`pollMs: 250`、`onEscalate` 打原 warn）；判据抽成导出的 `workerGoneForCancel`——**不存活或不是同一进程**即算已退出 | 既有 `--cancel` 两条与 EV-128 E1 / E3 / E6 原样绿；U6、M15 |
++| §3.4 主 `catch` | `startRun`：`spawnState.born` 在 `onSpawned` 里与 `childBorn` 同时置位（用对象持有，免得控制流分析在 `catch` 里把它收窄成 null）；`workerStartedAt` 提到 `try` 之外；`catch` 里 `born` 在场即交给 `settleOrphanedStart` 后抛原错误，未诞生那一侧一行不改 | P4、P4b、P4c、M1 |
++| §3.4 `settleOrphanedStart` | `run-protocol.ts` 新增、导出（`terminate` / `startTimeOf` 可注入）：①终止并按句柄确认；②确认不了退出：补记 `worker_pid` / `worker_started_at`、仍是本进程内容的锁改记到 worker 名下、给出 `--cancel` 出路、不放锁；③回收闸门（终止之后）；④`finalizeFailedRunMeta`（`post_spawn_exception`），worker 已写终态时按 status.json 是否已终态分两种指路；⑤status.json 三分；⑥`release()` + 按 run_id + pid 复核回收已改写的锁。各步吞错打 warn | U5①～④、M2～M6、M11～M14 |
++| §3.6 取值面 | `types.ts` `EXCEPTION_TERMINATION_BY` 追加 `post_spawn_exception`（文档块与 `RunMeta.status` / `termination` 注释同步）；`run.v2.json` 的 `by` 枚举、`termination` 与 `status` 两处 description；`report.ts` `unlistedLabel` 加一支 | S1″、S3、V8′、V9；M10；契约 MC1 |
++| §3.7 注释 | `run-protocol.ts` `childBorn` 注释、主 `catch` 注释、`cancelRun` 注释与 step 文案（去掉「（含两侧厂商子进程）」）；`util/exec.ts` `killProcessTree` 文档块改准（D7）；`meta.ts` `workerGone` 第四类调用方、调用方六个、次序规约第二组加入本路径；`worker-detach.test.ts`「杀整组」用例注释改准 | 反扫（§4） |
++
++## 2. 读数
++
++| 项 | 读数 |
++| :--- | :--- |
++| `npm run check` | 第 1 次（文档同步之前）**2159 / 2157 / 0 / 2**，一次全绿（起点 2145 → 新增 14 条：S1″、V8′、U3、U4①～④、U5①～④、U6、P4b、P4c；P4 为改写，不计新增）；变异、契约变异、验收与文档同步之后第 2 次 **2159 / 2157 / 0 / 2**，两次读数相同（`lock-cross-process` 两次都绿，EV-149 没有复现） |
++| 受影响套件单跑 | `worker-detach` / `run-protocol` / `run-meta-strict` / `report` 70 / 70；`gate-loop` 里 P1～P6、P4b、P4c、B6、B7 共 11 / 11；每次跑完进程表里没有残留 `review --worker` |
++| 源码侧变异（`mutation-spec.json`，`scripts/mutation-check.mjs`；规格由 `gen-mutation-spec.mjs` 从源码截锚点并逐条核对唯一） | **15 / 15**（`mutation-output.txt`，基线四个套件全绿）：M1 fail=3、M2 fail=3、M3 fail=2、M4 fail=1（以上 `gate-loop.test`）、M5 fail=1、M6 fail=1（`run-protocol.test`）、M7 fail=3、M8 fail=2、M9 fail=1（`worker-detach.test`）、M10 fail=2（`report.test`）、M11 fail=2、M12～M15 各 fail=1（`run-protocol.test`）。每条只写一个期望套件 |
++| 失败用例名与文案（`mutation-names.mjs`，补上一主题报告 §3.3 的缺口） | M1 / M2 各红 P4、P4b、P4c 三条，M4 红 P4 一条；首行文案分别是「不得留下孤儿 worker」「今天这里会被孤儿置成 review_done_awaiting_disposition」「只应有新一轮的 worker」、M2 的 P4 为 `--cancel` 未见「已处于终态」、M4 为 status.json 的相等断言；三条**都没有**「预建窗口未命中」（`mutation-names-output.json`）。M1 的 P4 报的是 `finally` 里那条——`try` 里的状态断言先红，`finally` 的断言随后抛出、盖掉了前者，两者都是目标断言 |
++| 契约侧变异（`contract-mutation.mjs`） | **1 / 1**（MC1）：schema 的 `by` 枚举去掉 `post_spawn_exception` ⇒ S1″ 与 S3 两条红；被测产物是 `dist/test/skills/dual-critic/schema/run.v2.json` 这份拷贝，脚本断言它确实变了；恢复后逐字节核对 |
++| 零配额验收（`acceptance.mjs`，mkdtemp 夹具、桩审查员；A6 / A7 基线 `e49279a`） | **13 / 13**（`acceptance-readout.json`）；第 1 次 11 / 13，两条都是验收构造本身的问题，见 §3.4 |
++| `doctor --selftest`（仓库构建 + `TRIVIUM_ASSET_ROOT`） | **14 / 14** |
++| 环境 | git 2.54.0（Apple Git-157），Node v25.2.1，macOS |
++
++## 3. 偏离与如实登记
++
++### 3.1 与 r2 文字的小出入
++
++- **S1″、V8′ 另起用例**：r2 §4.1 写「S1′ / V8 追加」。上一主题的 S1′ / V8 原样保留，新取值的正反例与说明各写成一条独立用例，名字里带 EV-150，失败时能直接看出是哪一个取值的问题。
++- **`terminateProcessGroup` 在第一次 SIGTERM 之前也先问一次 `isGone()`**（r2 §3.2 写「每次发信号之前先问」，这里照做）。对 `cancelRun` 来说，这比原来多一次 `processAlive`（原来在前置判断之后直接发 SIGTERM）；若 worker 恰在两次判断之间退出，现在不再向它发 SIGTERM。时序与播报之外没有别的差别；与 AGY-04 那一处收紧一起，都是 `cancelRun` 相对「逐项等价」的偏离。
++- **`if (!childBorn)` 保留**：`born` 在场时 `catch` 先行返回，走到这一行时 `childBorn` 恒为假，条件形同恒真；保留它是为了不改动上一主题已审过的这一段，也给「`spawnState` 没置上而 `childBorn` 置上了」这种不应出现的形态留一道防线。
++- **P4c 的 `finally` 只做清理、不断言**：`--cancel` 刚发完信号，进程表未必已刷新；残留 worker 的断言放在 P4 / P4b，P4c 只断言「起跑时只有新一轮的 worker」。
++
++### 3.2 实测范围（计划双审 r1 CODEX-04）
++
++§2.1 K1 / K2、U3、U4 都只在 Node v25.2.1 / macOS 上跑过。本机只有这一个 Node（`/opt/homebrew/bin/node`），`engines.node` 声明 `>=18`；**最低支持版本上的 U3 未测**。「句柄未观察到退出 ⇒ 未被回收」依赖的是 libuv 在 SIGCHLD 回调里 `waitpid` 并同步置 `exitCode` / `signalCode` 的语义，不宣称在 Linux 上实测成立。
++
++### 3.3 只按代码或守卫论证、没有用例直接钉住的格
++
++- **收尾窗口内被新一轮接管**（计划双审 r1 CODEX-01 ≡ GLM-05）：锁已改写成 worker 内容的那一格，worker 被终止后新 `--start` 可按 `pid_gone` 当场接管锁与闸门。确定的并发时序零配额造不出；U5③ 钉住四道守卫里的第③道（第 6 步不删新持有者的锁、新一轮的闸门不动），其余三道（闸门回收按 run_id、收尾按 run_id、`reclaimStaleLock` 的复验）按代码论证。
++- **改写锁、写 status.json、关日志句柄三个失败点**：零配额造不出（计划 r2 §2.3），由 U5 注入覆盖 `settleOrphanedStart` 的各分支；`startRun` 里把它们接到 `settleOrphanedStart` 的那一段，只有 `worker.pid` 这一格被集成用例走到。
++- **「孤儿在加载阶段就被终止、来不及拉起审查员」**：按时序推断（计划 r2 §3.3）；P4b 把推断的后果钉成用例（改后 3 秒内 run.json 与闸门都不被改写），推断失守会红。
++
++### 3.4 验收第 1 次 11 / 13：两条都是构造问题
++
++读数留在 `acceptance-readout.r0.json` / `acceptance-output.r0.txt`，改法写进脚本注释：
++
++- **A4**：会话启动报了「59 个运行目录的状态读不到」和「worker.pid 脱敏失败：EISDIR」。前者是验收为命中 run_id 预建的 60 个运行目录里没用上的 59 个（第 1 版到 A3 才撤掉它们，而 A4 跑在 A3 之前）；后者是用上的那个目录里**人为放进去的 `worker.pid` 目录**——凭据清扫现在会按「status.json 终态 + pid 已不在」去处理这次运行（改前 status.json 停在 `running`、没有 pid，清扫从不碰它），读 `worker.pid` 时撞上了这个目录。真实失败里两者都不存在。改为在会话启动之前撤掉这两样，重跑后没有任何提示。
++- **A7 (ii)**：叠上取值面的旧树跑两个套件 30 / 32，红的是 `run-meta-strict` 里「收严回归锁」「收严生效」两条——它们读本仓 `.reviews/` 里的真实留痕，而第 1 版 `git archive` 没带 `.reviews/`。用 `repro-a7.mjs` 复现确认后，导出时带上 `.reviews/`，重跑 32 / 32。S3、V9 两次都是绿的。
++
++### 3.5 其它
++
++- `mutation-names.mjs` 第一版按 `error:` 截失败文案，与 `node --test` 缺省报告器的格式不符，一条都没截到（读数 `mutation-names-output.v1.json`，失败用例名是全的）；第二版改为截每个 ✖ 块之后第一行含 `Error` 的文字，并在整段输出里直接查「预建窗口未命中」，只跑 P4 那组用例。
++- 计划期探针 `probe-kill-reach.mjs` 第一版的收尾只结束了 `sh`，留下它名下一个 `sleep 120`（本探针自己的进程，按进程组号核对后结束）；已改为按进程组结束，之后两次运行（含验收 A5）都没有残留。
++- LLD：只校准了 `startRun` 一节的四处行号锚点；其余章节（worker 主体、`--wait`）的锚点仍有漂移，未改。
++
++## 4. 文档同步
++
++| 文件 | 落点 |
++| :--- | :--- |
++| 主设计 → v1.3.51 | 当前版本行；6.7 注记新增 ⑤「派生后启动未完成」、③末句改为指向 ⑤、「已结束却仍为 running」的列举改准；6.7.1 `termination` 行（四值、回滚改为保留取值面）；7.5 `review --start` 与 `review --cancel` 两行；变更记录 v1.3.51 行 |
++| PRD → v1.4.15 | 当前版本与文档版本行；变更说明；FR-24 补一句边界 |
++| LLD → v1.1.9 | 版本行与变更说明；`startRun` 第 5 条（`onSpawned` 第二参数、`--cancel` 够不到厂商 CLI）、第 7 条（`settleOrphanedStart` 六步）；四处行号锚点；4.2 引述块；已知缺口表 `cancelRun` 一行与新增 EV-152 一行 |
++| MANUAL → v1.0.9 | 版本行；取消一节改准并补「已知缺口」；场景 4 补「`--start` 在拉起工作进程之后才报错时」一段 |
++| PROTOCOL | :60 `termination` 段；`review --start` 流程补一段 |
++| run.v2 schema | `status` 与 `termination` 两处 description、`by` 枚举 |
++| BACKLOG | EV-150 done；EV-146 / EV-151 / EV-38 注记；新登 EV-152 |
++
++反扫（`-c core.quotepath=off`，`doc/`、`skills-src/`、`skills/`、`src/`、`test/`，排除 evidence 与历史报告）：「含两侧厂商子进程」「也在同一组里」「孤儿 worker 被杀」「诞生之后才失败的不收尾」「按进程组杀」零命中；「agy / zcode」剩余命中均与本主题无关（探针、轨迹、配置等既有说明）或是本次新写的说明。`.reviews/README.md`、skills-src、CLI 帮助不改（r2 §5）。本仓根 `CLAUDE.md` 不改（EV-138）。
++
++## 5. 证据文件
++
++| 文件 | 内容 |
++| :--- | :--- |
++| `probe-kill-reach.mjs`、`probe-kill-reach.out.json` | 计划 §2.1：K1（按 worker 组 SIGTERM 够不到 `killTree` 拉起的子进程）、K2（子进程句柄在杀之前 `exitCode` / `signalCode` 为 null，杀之后 `'exit'` 4 ms 到达） |
++| `probe-c2b-e49279a.out.json` | 计划 §2.2：上一主题探针 `evidence/residual-finalize-20260927/probe-residual.mjs` 的 C2b 两格在 `e49279a` 上重跑的读数 |
++| `focus-check.mjs` | 计划双审送审焦点的 Hook 判据实测 |
++| `gen-mutation-spec.mjs` → `mutation-spec.json`、`mutation-output.txt` | 源码侧变异规格生成、锚点唯一性核对与结果 |
++| `mutation-names.mjs`、`mutation-names-output.json`（第 1 版读数 `.v1.json`） | M1 / M2 / M4 的失败用例名与首行文案 |
++| `contract-mutation.mjs`、`contract-mutation-output.txt` | 契约侧 MC1 与结果 |
++| `acceptance.mjs`、`acceptance-readout.json`、`acceptance-output.txt`（第 1 次读数 `.r0`） | 零配额验收 A1～A7 |
++| `repro-a7.mjs` | §3.4 A7 (ii) 那两条红的复现 |
++
++## 6. 待办
++
++1. ~~文档同步之后第 2 次 `npm run check`~~——已跑，读数见 §2。
++2. 用户终端重装（`--targets claude,glm,codex,gemini`）→ 用户发起 `/dual-review-code`。
++3. 代码双审通过后提交；推送等用户确认。
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/acceptance-output.r0.txt b/doc/05_testing/evidence/orphan-worker-20260927/acceptance-output.r0.txt
+new file mode 100644
+index 0000000..179b7ce
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/acceptance-output.r0.txt
+@@ -0,0 +1,17 @@
++✓ A1 hang 桩派生后失败 ⇒ run.json 与登记 failed + post_spawn_exception：退 1，run failed {"by":"post_spawn_exception","exit_code":1}
++✓ A1 闸门 idle、锁已放、status.json failed 且有 pid：闸门 idle，锁 无，status failed/54668
++✓ A1 进程表里没有该 run_id 的 worker（今天会留一个孤儿）：[]
++✓ A1 --wait 按终态返回（退 1、不说失联）、--cancel 说已处于终态、run.json 不再被改：--wait 退 1，--cancel 退 0，run.json 不变
++✖ A4 会话启动不再有指向那次失败运行的「状态读不到」「双审进行中」提示：TriviumCode 待办： ｜   · 59 个运行目录的状态读不到（缺失或损坏），凭据副本未处理也不会自动重试——请人工检查后删除，首个：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150508Z ｜   · 1 个运行目录的凭据副本抹除失败（首个：worker.pid 脱敏失败：EISDIR: illegal operation on a directory, read，哨兵在 /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150507Z）——副本仍在盘上，下次会话启动会重试
++✓ A3 正常重跑 ⇒ 退 0、只有新一轮的 worker、跑完退 0：start 退 0，worker [{"pid":55139,"id":"20260927T150509Z"}]，--wait 退 0
++✓ A3 report：时间线只列新一轮，未进时间线表一行本主题说明：[{"r":1,"runId":"20260927T150509Z"}] ｜ [{"r":1,"runId":"20260927T150507Z","label":"派生工作进程之后启动未完成，工作进程已终止（退出码 1）"}]
++✓ A2 ok 桩派生后失败 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档：run failed，闸门 idle，文档 2026-09-27-A2-诞生之后失败-ok-claude.md
++✓ A5 按 worker 进程组发 SIGTERM 仍够不到 killTree 拉起的子进程（如实保留，EV-152）：{"workerAlive":false,"workerGoneMs":651,"treeChildAlive":true,"treeChildPpidNow":1,"plainChildAlive":false,"survivors":[{"pid":55982,"pgid":55982,"ppid":1,"cmd":"/bin/sh -c sleep 120; : <MARK>-tree"}]}
++✓ A6 本仓 report 逐主题不变：基线 e49279a，54 个主题，rounds / unlistedRuns 不同的：无
++⚠️  运行元数据 20260927T000000Z（plan 阶段）读不出来，已跳过——留痕可能被改坏或不合契约
++✖ A7 (ii) 叠上取值面后 run-meta-strict / report 两个套件全绿（S3 / V9 不红）：pass 30，fail 2
++✓ A7 (i) 旧构建原样：新取值读成 null，resolveStageDriver 判 corrupt（回滚漏步的形态）：{"readable":false,"driver":"corrupt","label":null}
++✓ A7 (ii) 旧代码 + 取值面：可读、Driver 判定正常、report 有专门说明：{"readable":true,"driver":"ok:claude","label":"派生工作进程之后启动未完成，工作进程已终止（退出码 1）"}
++
++11/13
++exit=1
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/acceptance-output.txt b/doc/05_testing/evidence/orphan-worker-20260927/acceptance-output.txt
+new file mode 100644
+index 0000000..743f034
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/acceptance-output.txt
+@@ -0,0 +1,17 @@
++✓ A1 hang 桩派生后失败 ⇒ run.json 与登记 failed + post_spawn_exception：退 1，run failed {"by":"post_spawn_exception","exit_code":1}
++✓ A1 闸门 idle、锁已放、status.json failed 且有 pid：闸门 idle，锁 无，status failed/58367
++✓ A1 进程表里没有该 run_id 的 worker（今天会留一个孤儿）：[]
++✓ A1 --wait 按终态返回（退 1、不说失联）、--cancel 说已处于终态、run.json 不再被改：--wait 退 1，--cancel 退 0，run.json 不变
++✓ A4 会话启动不再有指向那次失败运行的「状态读不到」「双审进行中」「抹除失败」提示：（无提示）
++✓ A3 正常重跑 ⇒ 退 0、只有新一轮的 worker、跑完退 0：start 退 0，worker [{"pid":58816,"id":"20260927T150624Z"}]，--wait 退 0
++✓ A3 report：时间线只列新一轮，未进时间线表一行本主题说明：[{"r":1,"runId":"20260927T150624Z"}] ｜ [{"r":1,"runId":"20260927T150622Z","label":"派生工作进程之后启动未完成，工作进程已终止（退出码 1）"}]
++✓ A2 ok 桩派生后失败 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档：run failed，闸门 idle，文档 2026-09-27-A2-诞生之后失败-ok-claude.md
++✓ A5 按 worker 进程组发 SIGTERM 仍够不到 killTree 拉起的子进程（如实保留，EV-152）：{"workerAlive":false,"workerGoneMs":664,"treeChildAlive":true,"treeChildPpidNow":1,"plainChildAlive":false,"survivors":[{"pid":59541,"pgid":59541,"ppid":1,"cmd":"/bin/sh -c sleep 120; : <MARK>-tree"}]}
++✓ A6 本仓 report 逐主题不变：基线 e49279a，54 个主题，rounds / unlistedRuns 不同的：无
++⚠️  运行元数据 20260927T000000Z（plan 阶段）读不出来，已跳过——留痕可能被改坏或不合契约
++✓ A7 (ii) 叠上取值面后 run-meta-strict / report 两个套件全绿（S3 / V9 不红）：pass 32，fail 0
++✓ A7 (i) 旧构建原样：新取值读成 null，resolveStageDriver 判 corrupt（回滚漏步的形态）：{"readable":false,"driver":"corrupt","label":null}
++✓ A7 (ii) 旧代码 + 取值面：可读、Driver 判定正常、report 有专门说明：{"readable":true,"driver":"ok:claude","label":"派生工作进程之后启动未完成，工作进程已终止（退出码 1）"}
++
++13/13
++exit=0
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/acceptance-readout.json b/doc/05_testing/evidence/orphan-worker-20260927/acceptance-readout.json
+new file mode 100644
+index 0000000..917c297
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/acceptance-readout.json
+@@ -0,0 +1,242 @@
++{
++  "at": "2026-09-27T15:06:38.188Z",
++  "baseRef": "e49279a",
++  "passed": 13,
++  "total": 13,
++  "results": [
++    {
++      "id": "A1 hang 桩派生后失败 ⇒ run.json 与登记 failed + post_spawn_exception",
++      "ok": true,
++      "detail": "退 1，run failed {\"by\":\"post_spawn_exception\",\"exit_code\":1}"
++    },
++    {
++      "id": "A1 闸门 idle、锁已放、status.json failed 且有 pid",
++      "ok": true,
++      "detail": "闸门 idle，锁 无，status failed/58367"
++    },
++    {
++      "id": "A1 进程表里没有该 run_id 的 worker（今天会留一个孤儿）",
++      "ok": true,
++      "detail": "[]"
++    },
++    {
++      "id": "A1 --wait 按终态返回（退 1、不说失联）、--cancel 说已处于终态、run.json 不再被改",
++      "ok": true,
++      "detail": "--wait 退 1，--cancel 退 0，run.json 不变"
++    },
++    {
++      "id": "A4 会话启动不再有指向那次失败运行的「状态读不到」「双审进行中」「抹除失败」提示",
++      "ok": true,
++      "detail": "（无提示）"
++    },
++    {
++      "id": "A3 正常重跑 ⇒ 退 0、只有新一轮的 worker、跑完退 0",
++      "ok": true,
++      "detail": "start 退 0，worker [{\"pid\":58816,\"id\":\"20260927T150624Z\"}]，--wait 退 0"
++    },
++    {
++      "id": "A3 report：时间线只列新一轮，未进时间线表一行本主题说明",
++      "ok": true,
++      "detail": "[{\"r\":1,\"runId\":\"20260927T150624Z\"}] ｜ [{\"r\":1,\"runId\":\"20260927T150622Z\",\"label\":\"派生工作进程之后启动未完成，工作进程已终止（退出码 1）\"}]"
++    },
++    {
++      "id": "A2 ok 桩派生后失败 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档",
++      "ok": true,
++      "detail": "run failed，闸门 idle，文档 2026-09-27-A2-诞生之后失败-ok-claude.md"
++    },
++    {
++      "id": "A5 按 worker 进程组发 SIGTERM 仍够不到 killTree 拉起的子进程（如实保留，EV-152）",
++      "ok": true,
++      "detail": "{\"workerAlive\":false,\"workerGoneMs\":664,\"treeChildAlive\":true,\"treeChildPpidNow\":1,\"plainChildAlive\":false,\"survivors\":[{\"pid\":59541,\"pgid\":59541,\"ppid\":1,\"cmd\":\"/bin/sh -c sleep 120; : <MARK>-tree\"}]}"
++    },
++    {
++      "id": "A6 本仓 report 逐主题不变",
++      "ok": true,
++      "detail": "基线 e49279a，54 个主题，rounds / unlistedRuns 不同的：无"
++    },
++    {
++      "id": "A7 (ii) 叠上取值面后 run-meta-strict / report 两个套件全绿（S3 / V9 不红）",
++      "ok": true,
++      "detail": "pass 32，fail 0"
++    },
++    {
++      "id": "A7 (i) 旧构建原样：新取值读成 null，resolveStageDriver 判 corrupt（回滚漏步的形态）",
++      "ok": true,
++      "detail": "{\"readable\":false,\"driver\":\"corrupt\",\"label\":null}"
++    },
++    {
++      "id": "A7 (ii) 旧代码 + 取值面：可读、Driver 判定正常、report 有专门说明",
++      "ok": true,
++      "detail": "{\"readable\":true,\"driver\":\"ok:claude\",\"label\":\"派生工作进程之后启动未完成，工作进程已终止（退出码 1）\"}"
++    }
++  ],
++  "readout": {
++    "A1": {
++      "startCode": 1,
++      "hit": true,
++      "stderrTail": [
++        "· 被审对象 .reviews/A1-诞生之后失败-hang/plan/2026-09-27-A1-诞生之后失败-hang-claude.md",
++        "⚠️  --start 在派生工作进程之后失败：已终止工作进程组 58367（SIGTERM）",
++        "⚠️  已把归档里的 run-20260927T150622Z.json 收尾为 failed（派生后启动未完成）",
++        "⚠️  已把 task.json 的运行登记同步为 failed（派生后启动未完成）",
++        "✗ 内部错误：EISDIR: illegal operation on a directory, open '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-bXlohq/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-f9098de8/20260927T150622Z/worker.pid'"
++      ],
++      "status": "failed",
++      "termination": {
++        "by": "post_spawn_exception",
++        "exit_code": 1
++      },
++      "task": [
++        {
++          "run_id": "20260927T150622Z",
++          "status": "failed"
++        }
++      ],
++      "gate": "idle",
++      "locks": [],
++      "statusJson": {
++        "phase": "failed",
++        "worker_pid": 58367,
++        "message": "启动未完成：已终止工作进程 58367"
++      },
++      "workers": [],
++      "wait": {
++        "code": 1,
++        "tail": [
++          "  gemini: 待启动 ｜ gemini-3.8-flash-high",
++          "  glm: 待启动 ｜ GLM-5.3"
++        ]
++      },
++      "cancel": {
++        "code": 0,
++        "tail": [
++          "运行 20260927T150622Z 已处于终态（failed），无需取消。",
++          "  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。"
++        ]
++      }
++    },
++    "A4": {
++      "ctx": ""
++    },
++    "A3": {
++      "startCode": 0,
++      "runId": "20260927T150624Z",
++      "workersRightAfterStart": [
++        {
++          "pid": 58816,
++          "id": "20260927T150624Z"
++        }
++      ],
++      "waitCode": 0,
++      "rounds": [
++        {
++          "r": 1,
++          "runId": "20260927T150624Z"
++        }
++      ],
++      "unlisted": [
++        {
++          "r": 1,
++          "runId": "20260927T150622Z",
++          "label": "派生工作进程之后启动未完成，工作进程已终止（退出码 1）"
++        }
++      ]
++    },
++    "A2": {
++      "startCode": 1,
++      "hit": true,
++      "rightAfter": "failed",
++      "after3s": {
++        "status": "failed",
++        "termination": {
++          "by": "post_spawn_exception",
++          "exit_code": 1
++        }
++      },
++      "gate": {
++        "topic": "A2-诞生之后失败-ok",
++        "stage": "plan",
++        "state": "idle",
++        "run_id": "20260927T150627Z",
++        "rerun_index": 1,
++        "since": "2026-09-27T15:06:27.744Z",
++        "session_id": "S-验收"
++      },
++      "docs": [
++        "2026-09-27-A2-诞生之后失败-ok-claude.md"
++      ]
++    },
++    "A5": {
++      "before": {
++        "worker": {
++          "pid": 59538,
++          "pgid": 59538
++        },
++        "treeChild": {
++          "pid": 59541,
++          "pgid": 59541,
++          "ppid": 59538
++        },
++        "plainChild": {
++          "pid": 59542,
++          "pgid": 59538,
++          "ppid": 59538
++        }
++      },
++      "after": {
++        "workerAlive": false,
++        "workerGoneMs": 664,
++        "treeChildAlive": true,
++        "treeChildPpidNow": 1,
++        "plainChildAlive": false,
++        "survivors": [
++          {
++            "pid": 59541,
++            "pgid": 59541,
++            "ppid": 1,
++            "cmd": "/bin/sh -c sleep 120; : <MARK>-tree"
++          }
++        ]
++      },
++      "k2": {
++        "exitEvent": {
++          "code": null,
++          "signal": "SIGTERM",
++          "ms": 5
++        },
++        "exitCode": null,
++        "signalCode": "SIGTERM",
++        "alive": false
++      }
++    },
++    "A6": {
++      "baseRef": "e49279a",
++      "topics": 54,
++      "diffs": []
++    },
++    "A7": {
++      "baseRef": "e49279a",
++      "valueFace": [
++        "skills/dual-critic/schema/run.v2.json",
++        "src/trivium/types.ts",
++        "src/trivium/report.ts",
++        "test/unit/run-meta-strict.test.ts",
++        "test/unit/report.test.ts"
++      ],
++      "faceSuites": {
++        "pass": 32,
++        "fail": 0
++      },
++      "pure": {
++        "readable": false,
++        "driver": "corrupt",
++        "label": null
++      },
++      "face": {
++        "readable": true,
++        "driver": "ok:claude",
++        "label": "派生工作进程之后启动未完成，工作进程已终止（退出码 1）"
++      }
++    }
++  }
++}
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/acceptance-readout.r0.json b/doc/05_testing/evidence/orphan-worker-20260927/acceptance-readout.r0.json
+new file mode 100644
+index 0000000..5f494f2
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/acceptance-readout.r0.json
+@@ -0,0 +1,242 @@
++{
++  "at": "2026-09-27T15:05:21.872Z",
++  "baseRef": "e49279a",
++  "passed": 11,
++  "total": 13,
++  "results": [
++    {
++      "id": "A1 hang 桩派生后失败 ⇒ run.json 与登记 failed + post_spawn_exception",
++      "ok": true,
++      "detail": "退 1，run failed {\"by\":\"post_spawn_exception\",\"exit_code\":1}"
++    },
++    {
++      "id": "A1 闸门 idle、锁已放、status.json failed 且有 pid",
++      "ok": true,
++      "detail": "闸门 idle，锁 无，status failed/54668"
++    },
++    {
++      "id": "A1 进程表里没有该 run_id 的 worker（今天会留一个孤儿）",
++      "ok": true,
++      "detail": "[]"
++    },
++    {
++      "id": "A1 --wait 按终态返回（退 1、不说失联）、--cancel 说已处于终态、run.json 不再被改",
++      "ok": true,
++      "detail": "--wait 退 1，--cancel 退 0，run.json 不变"
++    },
++    {
++      "id": "A4 会话启动不再有指向那次失败运行的「状态读不到」「双审进行中」提示",
++      "ok": false,
++      "detail": "TriviumCode 待办： ｜   · 59 个运行目录的状态读不到（缺失或损坏），凭据副本未处理也不会自动重试——请人工检查后删除，首个：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150508Z ｜   · 1 个运行目录的凭据副本抹除失败（首个：worker.pid 脱敏失败：EISDIR: illegal operation on a directory, read，哨兵在 /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150507Z）——副本仍在盘上，下次会话启动会重试"
++    },
++    {
++      "id": "A3 正常重跑 ⇒ 退 0、只有新一轮的 worker、跑完退 0",
++      "ok": true,
++      "detail": "start 退 0，worker [{\"pid\":55139,\"id\":\"20260927T150509Z\"}]，--wait 退 0"
++    },
++    {
++      "id": "A3 report：时间线只列新一轮，未进时间线表一行本主题说明",
++      "ok": true,
++      "detail": "[{\"r\":1,\"runId\":\"20260927T150509Z\"}] ｜ [{\"r\":1,\"runId\":\"20260927T150507Z\",\"label\":\"派生工作进程之后启动未完成，工作进程已终止（退出码 1）\"}]"
++    },
++    {
++      "id": "A2 ok 桩派生后失败 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档",
++      "ok": true,
++      "detail": "run failed，闸门 idle，文档 2026-09-27-A2-诞生之后失败-ok-claude.md"
++    },
++    {
++      "id": "A5 按 worker 进程组发 SIGTERM 仍够不到 killTree 拉起的子进程（如实保留，EV-152）",
++      "ok": true,
++      "detail": "{\"workerAlive\":false,\"workerGoneMs\":651,\"treeChildAlive\":true,\"treeChildPpidNow\":1,\"plainChildAlive\":false,\"survivors\":[{\"pid\":55982,\"pgid\":55982,\"ppid\":1,\"cmd\":\"/bin/sh -c sleep 120; : <MARK>-tree\"}]}"
++    },
++    {
++      "id": "A6 本仓 report 逐主题不变",
++      "ok": true,
++      "detail": "基线 e49279a，54 个主题，rounds / unlistedRuns 不同的：无"
++    },
++    {
++      "id": "A7 (ii) 叠上取值面后 run-meta-strict / report 两个套件全绿（S3 / V9 不红）",
++      "ok": false,
++      "detail": "pass 30，fail 2"
++    },
++    {
++      "id": "A7 (i) 旧构建原样：新取值读成 null，resolveStageDriver 判 corrupt（回滚漏步的形态）",
++      "ok": true,
++      "detail": "{\"readable\":false,\"driver\":\"corrupt\",\"label\":null}"
++    },
++    {
++      "id": "A7 (ii) 旧代码 + 取值面：可读、Driver 判定正常、report 有专门说明",
++      "ok": true,
++      "detail": "{\"readable\":true,\"driver\":\"ok:claude\",\"label\":\"派生工作进程之后启动未完成，工作进程已终止（退出码 1）\"}"
++    }
++  ],
++  "readout": {
++    "A1": {
++      "startCode": 1,
++      "hit": true,
++      "stderrTail": [
++        "· 被审对象 .reviews/A1-诞生之后失败-hang/plan/2026-09-27-A1-诞生之后失败-hang-claude.md",
++        "⚠️  --start 在派生工作进程之后失败：已终止工作进程组 54668（SIGTERM）",
++        "⚠️  已把归档里的 run-20260927T150507Z.json 收尾为 failed（派生后启动未完成）",
++        "⚠️  已把 task.json 的运行登记同步为 failed（派生后启动未完成）",
++        "✗ 内部错误：EISDIR: illegal operation on a directory, open '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150507Z/worker.pid'"
++      ],
++      "status": "failed",
++      "termination": {
++        "by": "post_spawn_exception",
++        "exit_code": 1
++      },
++      "task": [
++        {
++          "run_id": "20260927T150507Z",
++          "status": "failed"
++        }
++      ],
++      "gate": "idle",
++      "locks": [],
++      "statusJson": {
++        "phase": "failed",
++        "worker_pid": 54668,
++        "message": "启动未完成：已终止工作进程 54668"
++      },
++      "workers": [],
++      "wait": {
++        "code": 1,
++        "tail": [
++          "  gemini: 待启动 ｜ gemini-3.8-flash-high",
++          "  glm: 待启动 ｜ GLM-5.3"
++        ]
++      },
++      "cancel": {
++        "code": 0,
++        "tail": [
++          "运行 20260927T150507Z 已处于终态（failed），无需取消。",
++          "  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。"
++        ]
++      }
++    },
++    "A4": {
++      "ctx": "TriviumCode 待办：\n  · 59 个运行目录的状态读不到（缺失或损坏），凭据副本未处理也不会自动重试——请人工检查后删除，首个：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150508Z\n  · 1 个运行目录的凭据副本抹除失败（首个：worker.pid 脱敏失败：EISDIR: illegal operation on a directory, read，哨兵在 /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150507Z）——副本仍在盘上，下次会话启动会重试"
++    },
++    "A3": {
++      "startCode": 0,
++      "runId": "20260927T150509Z",
++      "workersRightAfterStart": [
++        {
++          "pid": 55139,
++          "id": "20260927T150509Z"
++        }
++      ],
++      "waitCode": 0,
++      "rounds": [
++        {
++          "r": 1,
++          "runId": "20260927T150509Z"
++        }
++      ],
++      "unlisted": [
++        {
++          "r": 1,
++          "runId": "20260927T150507Z",
++          "label": "派生工作进程之后启动未完成，工作进程已终止（退出码 1）"
++        }
++      ]
++    },
++    "A2": {
++      "startCode": 1,
++      "hit": true,
++      "rightAfter": "failed",
++      "after3s": {
++        "status": "failed",
++        "termination": {
++          "by": "post_spawn_exception",
++          "exit_code": 1
++        }
++      },
++      "gate": {
++        "topic": "A2-诞生之后失败-ok",
++        "stage": "plan",
++        "state": "idle",
++        "run_id": "20260927T150511Z",
++        "rerun_index": 1,
++        "since": "2026-09-27T15:05:12.202Z",
++        "session_id": "S-验收"
++      },
++      "docs": [
++        "2026-09-27-A2-诞生之后失败-ok-claude.md"
++      ]
++    },
++    "A5": {
++      "before": {
++        "worker": {
++          "pid": 55980,
++          "pgid": 55980
++        },
++        "treeChild": {
++          "pid": 55982,
++          "pgid": 55982,
++          "ppid": 55980
++        },
++        "plainChild": {
++          "pid": 55983,
++          "pgid": 55980,
++          "ppid": 55980
++        }
++      },
++      "after": {
++        "workerAlive": false,
++        "workerGoneMs": 651,
++        "treeChildAlive": true,
++        "treeChildPpidNow": 1,
++        "plainChildAlive": false,
++        "survivors": [
++          {
++            "pid": 55982,
++            "pgid": 55982,
++            "ppid": 1,
++            "cmd": "/bin/sh -c sleep 120; : <MARK>-tree"
++          }
++        ]
++      },
++      "k2": {
++        "exitEvent": {
++          "code": null,
++          "signal": "SIGTERM",
++          "ms": 4
++        },
++        "exitCode": null,
++        "signalCode": "SIGTERM",
++        "alive": false
++      }
++    },
++    "A6": {
++      "baseRef": "e49279a",
++      "topics": 54,
++      "diffs": []
++    },
++    "A7": {
++      "baseRef": "e49279a",
++      "valueFace": [
++        "skills/dual-critic/schema/run.v2.json",
++        "src/trivium/types.ts",
++        "src/trivium/report.ts",
++        "test/unit/run-meta-strict.test.ts",
++        "test/unit/report.test.ts"
++      ],
++      "faceSuites": {
++        "pass": 30,
++        "fail": 2
++      },
++      "pure": {
++        "readable": false,
++        "driver": "corrupt",
++        "label": null
++      },
++      "face": {
++        "readable": true,
++        "driver": "ok:claude",
++        "label": "派生工作进程之后启动未完成，工作进程已终止（退出码 1）"
++      }
++    }
++  }
++}
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/acceptance.mjs b/doc/05_testing/evidence/orphan-worker-20260927/acceptance.mjs
+new file mode 100644
+index 0000000..9ed7ef0
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/acceptance.mjs
+@@ -0,0 +1,365 @@
++#!/usr/bin/env node
++/**
++ * 「派生后失败的孤儿worker」零配额验收（计划 r2 §4.4 A1～A7）。
++ *
++ * **不碰真实 HOME、不改本仓归档**：用仓库构建出的 `skills/dual-critic/scripts/trivium.cjs`，资产根经 `TRIVIUM_ASSET_ROOT`
++ * 指向工作树；审核者换成桩（`TRIVIUM_STUB_CRITIC`），不发起任何模型调用。夹具、运行目录、旧构建都建在一个 mkdtemp 目录下；
++ * 收尾只删 mkdtemp 的返回值，并按本脚本观测到的 run_id 结束残留 worker。本仓归档只读（A6）。
++ *
++ *   A1 hang 桩派生后失败（写 worker.pid EISDIR）⇒ run.json / 登记 failed + post_spawn_exception、闸门 idle、锁已放、
++ *      status.json failed 有 pid、进程表里没有该 run_id 的 worker；--wait 按终态返回、--cancel 说已处于终态、run.json 不再被改
++ *   A2 ok 桩派生后失败 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（今天孤儿会跑完并改写）
++ *   A3 A1 之后隔 1.1 s 正常 --start ⇒ 只有一个 worker、正常跑完；report 时间线与未进时间线表（读数以实际为准）
++ *   A4 A1 之后会话启动 Hook ⇒ 不再有指向那次失败运行的「运行目录的状态读不到」「双审进行中」提示
++ *   A5 杀法够不到 killTree 拉起的 CLI（计划 r2 §2.1 K1）重跑一遍，读数不变（本主题不改那一格的行为）
++ *   A6 本仓归档只读：新旧两份构建逐主题 buildTopicReport，rounds 与 unlistedRuns 逐主题深相等
++ *   A7 回滚演练（计划 r2 §6.3，计划双审 r1 CODEX-03）：ACCEPT_BASE_REF（缺省 e49279a）原样构建 vs 叠上本主题「取值面」的构建；
++ *      后者 run-meta-strict / report 两个套件须全绿，读同一份 post_spawn_exception 的 run.json：前者 null、判 corrupt，后者可读、有专门说明
++ *
++ * 旧构建基线用固定提交（缺省 e49279a，可由 ACCEPT_BASE_REF 覆盖），不写 HEAD。
++ * 用法（在仓库根）：node acceptance.mjs <探针 probe-kill-reach.mjs 路径> [输出 JSON 路径]
++ */
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++import { promises as fs, existsSync } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { pathToFileURL } from 'node:url';
++
++const pexec = promisify(execFile);
++const ROOT = process.cwd();
++const PROBE = path.resolve(process.argv[2] ?? '');
++const OUT = process.argv[3] ?? null;
++const CLI = path.join(ROOT, 'skills/dual-critic/scripts/trivium.cjs');
++if (!existsSync(CLI)) throw new Error(`找不到仓库构建的 CLI：${CLI}（先 npm run build）`);
++if (!existsSync(PROBE)) throw new Error(`找不到探针：${PROBE}`);
++const imp = (p) => import(pathToFileURL(p).href);
++const { encodeStubConfig, STUB_ENV_VAR } = await imp(path.join(ROOT, 'dist/test/src/trivium/adapters/stub.js'));
++const { repoId } = await imp(path.join(ROOT, 'dist/test/src/trivium/review.js'));
++const { newRunId } = await imp(path.join(ROOT, 'dist/test/src/trivium/meta.js'));
++const SESSION = 'S-验收';
++const TD = '.' + 'trivium';
++const STATE = 'state' + '.json';
++const TASK = 'task' + '.json';
++const BASE_REF = process.env.ACCEPT_BASE_REF ?? 'e49279a';
++const LABEL = '派生工作进程之后启动未完成，工作进程已终止（退出码 1）';
++
++const results = [];
++const readout = {};
++const check = (id, ok, detail) => { results.push({ id, ok, detail }); console.log(`${ok ? '✓' : '✖'} ${id}：${detail}`); };
++
++async function sh(cwd, bin, args, env = {}) {
++  try {
++    const o = await pexec(bin, args, { cwd, env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024, timeout: 300_000 });
++    return { code: 0, stdout: o.stdout, stderr: o.stderr };
++  } catch (e) {
++    return { code: typeof e.code === 'number' ? e.code : null, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
++  }
++}
++async function hookSessionStart(cwd) {
++  const { spawn } = await import('node:child_process');
++  return new Promise((resolve) => {
++    const p = spawn(process.execPath, [CLI, 'gate', 'hook-session-start'], {
++      cwd, env: { ...process.env, TRIVIUM_ASSET_ROOT: path.join(ROOT, 'skills/dual-critic'), CLAUDE_SESSION_ID: SESSION },
++    });
++    let stdout = '';
++    p.stdout.on('data', (d) => (stdout += d));
++    p.stderr.on('data', () => {});
++    p.on('close', (code) => resolve({ code, ctx: jsonOf(stdout)?.hookSpecificOutput?.additionalContext ?? '' }));
++    p.stdin.end(JSON.stringify({ hook_event_name: 'SessionStart', session_id: SESSION }));
++  });
++}
++const OK = { gemini: { mode: 'ok', findings: 1 }, glm: { mode: 'ok', findings: 1 } };
++const HANG = { gemini: { mode: 'hang' }, glm: { mode: 'hang' } };
++const envFor = (stub) => ({ TRIVIUM_ASSET_ROOT: path.join(ROOT, 'skills/dual-critic'), [STUB_ENV_VAR]: encodeStubConfig(stub), CLAUDE_SESSION_ID: SESSION });
++const cli = (cwd, args, stub = OK) => sh(cwd, process.execPath, [CLI, ...args], envFor(stub));
++const git = (cwd, args) => sh(cwd, 'git', ['-c', 'user.email=a@a', '-c', 'user.name=a', ...args]);
++const readJson = async (p) => JSON.parse(await fs.readFile(p, 'utf8'));
++const jsonOf = (text) => { try { return JSON.parse(text.slice(text.indexOf('{'))); } catch { return null; } };
++const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
++const today = () => {
++  const d = new Date();
++  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
++};
++const killGroup = (pid) => { try { process.kill(-pid, 'SIGKILL'); } catch { try { process.kill(pid, 'SIGKILL'); } catch { /* 已不在 */ } } };
++const seenRunIds = new Set();
++const ls = async (d) => (await fs.readdir(d).catch(() => [])).sort();
++const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
++
++async function fixture(base, topic) {
++  const root = path.join(base, topic);
++  await fs.mkdir(path.join(root, 'src'), { recursive: true });
++  await fs.writeFile(path.join(root, 'src/a.ts'), 'export const a = 1;\n');
++  await fs.mkdir(path.join(root, TD), { recursive: true });
++  const runRoot = path.join(base, 'runs-' + topic);
++  await fs.writeFile(path.join(root, TD, 'config.yaml'), [
++    'runtime:', `  run_root: ${runRoot}`,
++    'review:', '  default_critics: [gemini, glm]',
++    '  timeout_s:', '    plan: 900', '    code: 900', '    bug: 900', '  wait_timeout_s: 30',
++    'verify:', '  build: []', '  test: []', '',
++  ].join('\n'));
++  await git(root, ['init', '-q', '-b', 'main']);
++  await git(root, ['add', '-A']);
++  await git(root, ['commit', '-q', '-m', 'baseline', '--no-verify']);
++  const topicDir = path.join(root, '.reviews', topic);
++  const stageDir = path.join(topicDir, 'plan');
++  await fs.mkdir(stageDir, { recursive: true });
++  await fs.writeFile(path.join(stageDir, `${today()}-${topic}-` + 'claude.md'), '# 待审计划\n\n## 一、目标\n\n验收。\n');
++  return { root, topic, topicDir, stageDir, runRoot };
++}
++async function start(fx, stub = OK) {
++  const r = await cli(fx.root, ['review', '--start', '--entry', 'B', '--stage', 'plan', '--topic', fx.topic, '--focus', '验收', '--session-id', SESSION, '--json'], stub);
++  const js = r.code === 0 ? jsonOf(r.stdout) : null;
++  if (js?.run_id) seenRunIds.add(js.run_id);
++  return { r, runId: js?.run_id ?? null, workerPid: js?.worker_pid ?? null };
++}
++async function waitDone(fx, runId, stub = OK) {
++  let w;
++  for (let i = 0; i < 10; i++) {
++    w = await cli(fx.root, ['review', '--wait', runId, '--timeout', '20'], stub);
++    if (w.code !== 73) break;
++  }
++  return w;
++}
++async function runMetas(stageDir) {
++  const o = {};
++  for (const n of await ls(path.join(stageDir, '_meta'))) {
++    const id = /^run-(.+)\.json$/.exec(n)?.[1];
++    if (!id) continue;
++    seenRunIds.add(id);
++    o[id] = await readJson(path.join(stageDir, '_meta', n)).catch(() => null);
++  }
++  return o;
++}
++const runFile = (fx, id) => path.join(fx.stageDir, '_meta', `run-${id}.json`);
++async function taskRuns(fx) {
++  const t = await readJson(path.join(fx.topicDir, TASK)).catch(() => null);
++  return t?.runs?.map((r) => ({ run_id: r.run_id, status: r.status })) ?? null;
++}
++async function gateOf(fx) {
++  const s = await readJson(path.join(fx.root, TD, STATE)).catch(() => null);
++  return s?.gates?.[`${fx.topic}/plan`] ?? null;
++}
++const locks = async (fx) => (await ls(path.join(fx.root, TD, 'lock'))).filter((n) => n.endsWith('.lock'));
++async function report(fx) {
++  const r = await cli(fx.root, ['report', '--topic', fx.topic, '--json']);
++  const j = jsonOf(r.stdout);
++  return {
++    rounds: (j?.rounds ?? []).map((x) => ({ r: x.rerunIndex, runId: x.runId })),
++    unlisted: (j?.unlistedRuns ?? []).map((x) => ({ r: x.rerunIndex, runId: x.runId, label: x.label })),
++  };
++}
++/** 预建从现在起 60 秒内每一秒可能用到的运行目录（项目根原样与 realpath 两种写法各一份） */
++async function precreate(fx, prep) {
++  const repos = new Set([repoId(fx.root), repoId(await fs.realpath(fx.root))]);
++  const dirs = [];
++  const ids = new Set();
++  const t0 = Date.now();
++  for (const repo of repos) {
++    for (let i = 0; i < 60; i++) {
++      const id = newRunId(new Date(t0 + i * 1000));
++      ids.add(id);
++      const d = path.join(fx.runRoot, repo, id);
++      await fs.mkdir(d, { recursive: true });
++      await prep(d);
++      dirs.push(d);
++    }
++  }
++  return { ids, dirs };
++}
++const onlyRun = async (fx) => {
++  const ms = await runMetas(fx.stageDir);
++  const ids = Object.keys(ms);
++  return ids.length === 1 ? { id: ids[0], meta: ms[ids[0]] } : { id: null, meta: null, all: ids };
++};
++const isPost = (m, code = 1) => m?.status === 'failed' && m?.gate?.state === 'failed' && eq(m?.termination, { by: 'post_spawn_exception', exit_code: code });
++async function statusJson(fx, runId) {
++  for (const repo of await ls(fx.runRoot)) {
++    const j = await readJson(path.join(fx.runRoot, repo, runId, 'status.json')).catch(() => null);
++    if (j) return j;
++  }
++  return null;
++}
++async function workersOf(base, ids) {
++  const ps = await sh(base, 'ps', ['-axo', 'pid=,command=']);
++  return ps.stdout.split('\n').map((l) => ({ pid: Number.parseInt(l.trim(), 10), id: /review --worker (\S+)/.exec(l)?.[1] })).filter((x) => x.id && ids.has(x.id));
++}
++
++const base = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-accept-orphan-'));
++try {
++  // ── A1 / A4 / A3（同一夹具，依次）──
++  {
++    const fx = await fixture(base, 'A1-诞生之后失败-hang');
++    const { ids, dirs } = await precreate(fx, (d) => fs.mkdir(path.join(d, 'worker.pid')));
++    const s = await start(fx, HANG);
++    const { id, meta, all } = await onlyRun(fx);
++    const hit = id !== null && ids.has(id);
++    const st = id ? await statusJson(fx, id) : null;
++    const workers = await workersOf(base, ids);
++    const before = id ? await fs.readFile(runFile(fx, id), 'utf8') : null;
++    const w = id ? await cli(fx.root, ['review', '--wait', id, '--timeout', '6'], HANG) : null;
++    const c = id ? await cli(fx.root, ['review', '--cancel', id], HANG) : null;
++    const after = id ? await fs.readFile(runFile(fx, id), 'utf8') : null;
++    readout.A1 = {
++      startCode: s.r.code, hit, all, stderrTail: s.r.stderr.split('\n').filter(Boolean).slice(-5),
++      status: meta?.status, termination: meta?.termination, task: await taskRuns(fx), gate: (await gateOf(fx))?.state,
++      locks: await locks(fx), statusJson: st && { phase: st.phase, worker_pid: st.worker_pid, message: st.message },
++      workers, wait: w && { code: w.code, tail: `${w.stdout}${w.stderr}`.split('\n').filter(Boolean).slice(-2) },
++      cancel: c && { code: c.code, tail: `${c.stdout}${c.stderr}`.split('\n').filter(Boolean).slice(-2) },
++    };
++    check('A1 hang 桩派生后失败 ⇒ run.json 与登记 failed + post_spawn_exception', hit && s.r.code !== 0 && isPost(meta) && eq((await taskRuns(fx))?.map((t) => t.status), ['failed']), hit ? `退 ${s.r.code}，run ${meta?.status} ${JSON.stringify(meta?.termination)}` : `预建窗口未命中：${JSON.stringify(all)}`);
++    check('A1 闸门 idle、锁已放、status.json failed 且有 pid', (await gateOf(fx))?.state === 'idle' && (await locks(fx)).length === 0 && st?.phase === 'failed' && Number.isInteger(st?.worker_pid), `闸门 ${(await gateOf(fx))?.state}，锁 ${(await locks(fx)).join(',') || '无'}，status ${st?.phase}/${st?.worker_pid}`);
++    check('A1 进程表里没有该 run_id 的 worker（今天会留一个孤儿）', workers.length === 0, JSON.stringify(workers));
++    check('A1 --wait 按终态返回（退 1、不说失联）、--cancel 说已处于终态、run.json 不再被改', w?.code === 1 && !/失联/.test(`${w?.stdout}${w?.stderr}`) && /已处于终态/.test(`${c?.stdout}${c?.stderr}`) && before === after, `--wait 退 ${w?.code}，--cancel 退 ${c?.code}，run.json ${before === after ? '不变' : '变了'}`);
++
++    // A4：会话启动。先撤掉构造本身留下的东西（第 1 次跑时它们各冒出一行提示，读数留 acceptance-readout.r0.json）：
++    // 没用上的 59 个预建运行目录（「状态读不到」）与用上的那个目录里人为放进去的 worker.pid 目录（凭据清扫读它 EISDIR）。
++    // 真实失败里二者都不存在。
++    for (const d of dirs) if (path.basename(d) !== id) await fs.rm(d, { recursive: true, force: true });
++    for (const repo of await ls(fx.runRoot)) {
++      const p = path.join(fx.runRoot, repo, id ?? '', 'worker.pid');
++      if (id && (await fs.stat(p).catch(() => null))?.isDirectory()) await fs.rm(p, { recursive: true, force: true });
++    }
++    const ss = await hookSessionStart(fx.root);
++    readout.A4 = { ctx: ss.ctx };
++    check('A4 会话启动不再有指向那次失败运行的「状态读不到」「双审进行中」「抹除失败」提示', !/运行目录的状态读不到/.test(ss.ctx) && !/双审进行中/.test(ss.ctx) && !/抹除失败/.test(ss.ctx), ss.ctx.split('\n').filter(Boolean).slice(0, 3).join(' ｜ ') || '（无提示）');
++
++    // A3：之后正常重跑（预建目录已在 A4 之前撤掉）
++    await sleep(1100);
++    const s2 = await start(fx, OK);
++    const concurrent = await workersOf(base, new Set([...(id ? [id] : []), ...(s2.runId ? [s2.runId] : [])]));
++    const w2 = s2.runId ? await waitDone(fx, s2.runId) : null;
++    const rep = await report(fx);
++    readout.A3 = { startCode: s2.r.code, runId: s2.runId, workersRightAfterStart: concurrent, waitCode: w2?.code, rounds: rep.rounds, unlisted: rep.unlisted };
++    check('A3 正常重跑 ⇒ 退 0、只有新一轮的 worker、跑完退 0', s2.r.code === 0 && concurrent.every((x) => x.id === s2.runId) && w2?.code === 0, `start 退 ${s2.r.code}，worker ${JSON.stringify(concurrent)}，--wait 退 ${w2?.code}`);
++    check('A3 report：时间线只列新一轮，未进时间线表一行本主题说明', eq(rep.rounds.map((x) => x.runId), [s2.runId]) && rep.unlisted.length === 1 && rep.unlisted[0].runId === id && rep.unlisted[0].label === LABEL, `${JSON.stringify(rep.rounds)} ｜ ${JSON.stringify(rep.unlisted)}`);
++  }
++
++  // ── A2 ──
++  {
++    const fx = await fixture(base, 'A2-诞生之后失败-ok');
++    const { ids } = await precreate(fx, (d) => fs.mkdir(path.join(d, 'worker.pid')));
++    const s = await start(fx, OK);
++    const { id, meta: m0 } = await onlyRun(fx);
++    await sleep(3000);
++    const m = id ? (await runMetas(fx.stageDir))[id] : null;
++    const docs = (await ls(fx.stageDir)).filter((n) => n.endsWith('.md'));
++    readout.A2 = { startCode: s.r.code, hit: id !== null && ids.has(id), rightAfter: m0?.status, after3s: m && { status: m.status, termination: m.termination }, gate: await gateOf(fx), docs };
++    check('A2 ok 桩派生后失败 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档', id !== null && ids.has(id) && s.r.code !== 0 && isPost(m) && (await gateOf(fx))?.state === 'idle' && docs.length === 1, `run ${m?.status}，闸门 ${(await gateOf(fx))?.state}，文档 ${docs.join(',')}`);
++  }
++
++  // ── A5：K1 重跑 ──
++  {
++    const r = await sh(ROOT, process.execPath, [PROBE, ROOT]);
++    const j = jsonOf(r.stdout);
++    readout.A5 = j && { before: j.K1_before, after: j.K1_after, k2: j.K2_afterKill };
++    check('A5 按 worker 进程组发 SIGTERM 仍够不到 killTree 拉起的子进程（如实保留，EV-152）', j?.K1_after?.workerAlive === false && j?.K1_after?.treeChildAlive === true && j?.K1_after?.plainChildAlive === false, JSON.stringify(j?.K1_after ?? r.stderr.slice(0, 200)));
++  }
++
++  // ── 旧构建（A6 / A7 共用）──
++  const VALUE_FACE = [
++    'skills/dual-critic/schema/run.v2.json',
++    'src/trivium/types.ts',
++    'src/trivium/report.ts',
++    'test/unit/run-meta-strict.test.ts',
++    'test/unit/report.test.ts',
++  ];
++  async function buildAt(dir, overlay) {
++    await fs.mkdir(dir, { recursive: true });
++    const tarPath = path.join(base, `${path.basename(dir)}.tar`);
++    // 带上 .reviews：run-meta-strict 的「收严回归锁」两条读本仓真实留痕，第 1 次跑没带它就红了（读数留 .r0）
++    const ar = await sh(ROOT, 'git', ['archive', '--format=tar', '-o', tarPath, BASE_REF, 'src', 'scripts', 'skills', 'skills-src', 'test', '.reviews', 'package.json', 'tsconfig.json']);
++    if (ar.code !== 0) throw new Error(`git archive 失败：${ar.stderr}`);
++    const ex = await sh(dir, 'tar', ['-xf', tarPath]);
++    if (ex.code !== 0) throw new Error(`解包失败：${ex.stderr}`);
++    for (const rel of overlay) await fs.copyFile(path.join(ROOT, rel), path.join(dir, rel));
++    await fs.symlink(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'));
++    const b = await sh(dir, process.execPath, ['scripts/build.mjs', '--with-tests']);
++    if (b.code !== 0) throw new Error(`旧构建失败：${b.stdout}${b.stderr}`);
++  }
++  const oldPure = path.join(base, 'old-pure');
++  const oldFace = path.join(base, 'old-with-value-face');
++  await buildAt(oldPure, []);
++  await buildAt(oldFace, VALUE_FACE);
++
++  // ── A6 ──
++  {
++    const oldReport = await imp(path.join(oldPure, 'dist/test/src/trivium/report.js'));
++    const newReport = await imp(path.join(ROOT, 'dist/test/src/trivium/report.js'));
++    const archiveRoot = path.join(ROOT, '.reviews');
++    const origErr = console.error;
++    console.error = () => {};
++    const diffs = [];
++    let topics = 0;
++    try {
++      for (const topic of (await fs.readdir(archiveRoot)).sort()) {
++        if (topic.startsWith('.') || !(await fs.stat(path.join(archiveRoot, topic))).isDirectory()) continue;
++        topics++;
++        const o = await oldReport.buildTopicReport({ archiveRoot, topic });
++        const n = await newReport.buildTopicReport({ archiveRoot, topic });
++        if (!eq(o.rounds, n.rounds) || !eq(o.unlistedRuns, n.unlistedRuns)) diffs.push(topic);
++      }
++    } finally {
++      console.error = origErr;
++    }
++    readout.A6 = { baseRef: BASE_REF, topics, diffs };
++    check('A6 本仓 report 逐主题不变', diffs.length === 0, `基线 ${BASE_REF}，${topics} 个主题，rounds / unlistedRuns 不同的：${diffs.join('、') || '无'}`);
++  }
++
++  // ── A7 ──
++  {
++    const suites = await sh(oldFace, process.execPath, ['--test', 'dist/test/test/unit/run-meta-strict.test.js', 'dist/test/test/unit/report.test.js']);
++    const failN = Number(/ℹ fail (\d+)/.exec(suites.stdout)?.[1] ?? -1);
++    const passN = Number(/ℹ pass (\d+)/.exec(suites.stdout)?.[1] ?? -1);
++    const newMeta = await imp(path.join(ROOT, 'dist/test/src/trivium/meta.js'));
++    const layout = { archiveRoot: path.join(base, 'a7-archive'), topic: 'A7-回滚演练' };
++    const m = newMeta.newRunMeta({
++      runId: '20260927T000000Z', topic: layout.topic, stage: 'plan', rerunIndex: 1, command: 'test', promptHint: '焦点', taskGoal: null,
++      criticsSelected: ['gemini', 'glm'], treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S', denyPaths: [], driftPolicy: 'warn',
++    });
++    m.status = 'failed';
++    m.gate.state = 'failed';
++    m.finished_at = new Date().toISOString();
++    m.termination = { by: 'post_spawn_exception', exit_code: 1 };
++    await newMeta.writeRunMeta(layout, 'plan', m);
++    const probe = async (dir) => {
++      const meta = await imp(path.join(dir, 'dist/test/src/trivium/meta.js'));
++      const claim = await imp(path.join(dir, 'dist/test/src/trivium/driver-claim.js'));
++      const rep = await imp(path.join(dir, 'dist/test/src/trivium/report.js'));
++      const origErr = console.error;
++      console.error = () => {};
++      try {
++        const read = await meta.readRunMeta(layout, 'plan', '20260927T000000Z');
++        const drv = await claim.resolveStageDriver(layout, 'plan');
++        const r = await rep.buildTopicReport(layout);
++        return { readable: read !== null, driver: drv.kind === 'ok' ? `ok:${drv.driver}` : drv.kind, label: r.unlistedRuns[0]?.label ?? null };
++      } finally {
++        console.error = origErr;
++      }
++    };
++    const pure = await probe(oldPure);
++    const face = await probe(oldFace);
++    readout.A7 = { baseRef: BASE_REF, valueFace: VALUE_FACE, faceSuites: { pass: passN, fail: failN }, pure, face };
++    check('A7 (ii) 叠上取值面后 run-meta-strict / report 两个套件全绿（S3 / V9 不红）', failN === 0 && passN > 0, `pass ${passN}，fail ${failN}`);
++    check('A7 (i) 旧构建原样：新取值读成 null，resolveStageDriver 判 corrupt（回滚漏步的形态）', !pure.readable && pure.driver === 'corrupt', JSON.stringify(pure));
++    check('A7 (ii) 旧代码 + 取值面：可读、Driver 判定正常、report 有专门说明', face.readable && face.driver.startsWith('ok:') && face.label === LABEL, JSON.stringify(face));
++  }
++} finally {
++  const ps = await sh(base, 'ps', ['-axo', 'pid=,command=']);
++  for (const l of ps.stdout.split('\n')) {
++    const m = /review --worker (\S+)/.exec(l);
++    if (m && seenRunIds.has(m[1])) killGroup(Number.parseInt(l.trim(), 10));
++  }
++  const fix = async (d) => {
++    await fs.chmod(d, 0o755).catch(() => {});
++    for (const e of await fs.readdir(d, { withFileTypes: true }).catch(() => [])) if (e.isDirectory() && !e.isSymbolicLink()) await fix(path.join(d, e.name));
++  };
++  await fix(base);
++  // 收尾只删 mkdtemp 的返回值
++  await fs.rm(base, { recursive: true, force: true });
++}
++
++const passed = results.filter((r) => r.ok).length;
++console.log(`\n${passed}/${results.length}`);
++if (OUT) await fs.writeFile(OUT, JSON.stringify({ at: new Date().toISOString(), baseRef: BASE_REF, passed, total: results.length, results, readout }, null, 2) + '\n');
++process.exit(passed === results.length ? 0 : 1);
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/contract-mutation-output.txt b/doc/05_testing/evidence/orphan-worker-20260927/contract-mutation-output.txt
+new file mode 100644
+index 0000000..ef82cb2
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/contract-mutation-output.txt
+@@ -0,0 +1,18 @@
++{
++  "baseline": {
++    "fail": 0
++  },
++  "results": [
++    {
++      "id": "MC1",
++      "desc": "schema 的 termination.by 枚举去掉 post_spawn_exception ⇒ S1″（新取值判错）与 S3（单一来源不等）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2,
++      "red": [
++        "EV-150 S1″：post_spawn_exception 与另三个异常取值同形——带整数退出码通过；缺退出码、串形状、带自由文本都判错",
++        "EV-145 S3：schema 里 termination.by 的取值集合与 types.ts 的 EXCEPTION_TERMINATION_BY + worker_lost 逐项相等（单一来源）"
++      ]
++    }
++  ]
++}
++contract exit=0
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/contract-mutation.mjs b/doc/05_testing/evidence/orphan-worker-20260927/contract-mutation.mjs
+new file mode 100644
+index 0000000..93658bf
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/contract-mutation.mjs
+@@ -0,0 +1,60 @@
++// 契约侧变异 MC1（派生后失败的孤儿worker计划 r2 §4.3）：run.v2 schema 的 termination.by 枚举去掉 post_spawn_exception
++// ⇒ S1″（新取值判错）与 S3（单一来源不等）应红。
++// scripts/mutation-check.mjs 只认 src/*.ts，而 schema 在测试产物里是 schemas.js 运行时 import 的一份拷贝
++// （dist/test/skills/dual-critic/schema/run.v2.json），所以单独做：
++// 备份 → 变异 → 重建测试产物 → 断言那份拷贝确实变了 → 跑 run-meta-strict → 恢复并逐字节核对 → 再重建。
++// 用法（在仓库根）：node contract-mutation.mjs
++import { execFileSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const SCHEMA = 'skills/dual-critic/schema/run.v2.json';
++const ARTIFACT = 'dist/test/skills/dual-critic/schema/run.v2.json';
++const SUITE = 'dist/test/test/unit/run-meta-strict.test.js';
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--with-tests'], { stdio: 'ignore' });
++const runSuite = () => {
++  try {
++    execFileSync(process.execPath, ['--test', SUITE], { stdio: 'pipe' });
++    return { fail: 0, names: [] };
++  } catch (e) {
++    const out = String(e.stdout);
++    return {
++      fail: Number(/ℹ fail (\d+)/.exec(out)?.[1] ?? 1),
++      // node --test 在末尾的失败汇总里会把失败项再列一遍，去重
++      names: [...new Set([...out.matchAll(/^✖ (.+?) \(\d/gm)].map((m) => m[1]))],
++    };
++  }
++};
++
++const original = fs.readFileSync(SCHEMA, 'utf8');
++const baseHash = sha(SCHEMA);
++build();
++const base = runSuite();
++if (base.fail !== 0) throw new Error(`基线不是全绿（fail=${base.fail}）`);
++const baseArt = sha(ARTIFACT);
++
++const find = '"by": { "enum": ["worker_exception", "prepare_exception", "sync_exception", "post_spawn_exception"] },';
++if (original.split(find).length - 1 !== 1) throw new Error('MC1 的 find 不唯一');
++const results = [];
++try {
++  fs.writeFileSync(SCHEMA, original.replace(find, '"by": { "enum": ["worker_exception", "prepare_exception", "sync_exception"] },'));
++  build();
++  if (sha(ARTIFACT) === baseArt) {
++    results.push({ id: 'MC1', verdict: '✖ 产物哈希未变——变异没进被测产物' });
++  } else {
++    const r = runSuite();
++    results.push({
++      id: 'MC1',
++      desc: 'schema 的 termination.by 枚举去掉 post_spawn_exception ⇒ S1″（新取值判错）与 S3（单一来源不等）',
++      verdict: r.fail > 0 ? `✓ 咬住（fail=${r.fail}）` : '✖ 没红',
++      fail: r.fail,
++      red: r.names,
++    });
++  }
++} finally {
++  fs.writeFileSync(SCHEMA, original);
++  if (sha(SCHEMA) !== baseHash) throw new Error('恢复 schema 后哈希不符——停下来人工处理');
++  build();
++}
++console.log(JSON.stringify({ baseline: { fail: base.fail }, results }, null, 2));
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/focus-check.mjs b/doc/05_testing/evidence/orphan-worker-20260927/focus-check.mjs
+new file mode 100644
+index 0000000..4cf8aeb
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/focus-check.mjs
+@@ -0,0 +1,20 @@
++#!/usr/bin/env node
++// 送审焦点实测：拼成真实的送审命令文本，过一遍 Hook 的写命令判据与受保护字样。
++// 用法：node focus-check.mjs <仓库根> <焦点文件>
++import { readFileSync } from 'node:fs';
++import path from 'node:path';
++
++const root = path.resolve(process.argv[2]);
++const focus = readFileSync(process.argv[3], 'utf8').trim();
++const { looksLikeWriteCommand } = await import(path.join(root, 'dist/test/src/trivium/hooks.js'));
++
++const bin = './.' + 'trivium/bin/trivium';
++const cmd = `${bin} review --start --entry B --stage plan --topic 派生后失败的孤儿worker --driver claude --focus '${focus}' --json`;
++const protectedWords = ['_meta', 'task' + '.json', 'state' + '.json', '-claude' + '.md', '-codex' + '.md', '-gemini' + '.md', '-glm' + '.md'];
++
++console.log(JSON.stringify({
++  chars: focus.length,
++  looksLikeWrite: looksLikeWriteCommand(cmd),
++  protectedHits: protectedWords.filter((w) => focus.includes(w)),
++  shellHazards: ["'", '`', '$', '>', '<', '\\'].filter((c) => focus.includes(c)),
++}, null, 2));
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/gen-mutation-spec.mjs b/doc/05_testing/evidence/orphan-worker-20260927/gen-mutation-spec.mjs
+new file mode 100644
+index 0000000..2f00e30
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/gen-mutation-spec.mjs
+@@ -0,0 +1,70 @@
++// 生成「派生后失败的孤儿worker」的源码变异规格（计划 r2 §4.3）：find 串从现行源码截取，逐条核对恰好出现一次，再落盘。
++// 用法（在仓库根）：node gen-mutation-spec.mjs <输出路径>
++import fs from 'node:fs';
++import path from 'node:path';
++
++const ROOT = process.cwd();
++const OUT = process.argv[2];
++const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
++
++const PROTO = 'src/trivium/run-protocol.ts';
++const REPORT = 'src/trivium/report.ts';
++const EXEC = 'src/trivium/util/exec.ts';
++const S = {
++  gateLoop: 'dist/test/test/integration/gate-loop.test.js',
++  proto: 'dist/test/test/integration/run-protocol.test.js',
++  report: 'dist/test/test/unit/report.test.js',
++  detach: 'dist/test/test/integration/worker-detach.test.js',
++};
++const NEVER = "process.env['TRIVIUM_MUT_NEVER'] === '1'";
++const RELEASE_GATE =
++  '    await releaseRunningGateEntry({ triviumDir: ctx.triviumDir, topic: i.topic, stage: i.stage, runId: i.runId, heartbeatStaleMs });\n';
++const STEP5 =
++  "  if (st && !isTerminal(st.phase)) {\n    await soft('写 status.json 终态', () =>\n      patchStatus(i.runDir, (s) => {\n        if (isTerminal(s.phase)) return;\n";
++
++const cases = [
++  { id: 'M1', desc: '主 catch 去掉「子进程已诞生」分支（回到今天：只回收闸门、放锁）⇒ P4（run.json 停在 running、留下孤儿）', file: PROTO,
++    find: '    if (born) {\n      await settleOrphanedStart({\n', replace: `    if (born && ${NEVER}) {\n      await settleOrphanedStart({\n`, expect: S.gateLoop },
++  { id: 'M2', desc: 'settleOrphanedStart 不终止、直接当已退出往下走 ⇒ P4b（孤儿跑完改写 run.json 与闸门）', file: PROTO,
++    find: '      isGone: born.watch.hasExited, graceMs: 5000, killWaitMs: 5000,\n', replace: '      isGone: () => true, graceMs: 5000, killWaitMs: 5000,\n', expect: S.gateLoop },
++  { id: 'M3', desc: '收尾时 by 写成 prepare_exception ⇒ P4（termination 深相等）', file: PROTO,
++    find: "    termination: { by: 'post_spawn_exception', exit_code: exitCodeOf(i.error) },\n",
++    replace: "    termination: { by: 'prepare_exception', exit_code: exitCodeOf(i.error) },\n", expect: S.gateLoop },
++  { id: 'M4', desc: '去掉第 5 步 status.json 落终态 ⇒ P4（status.json 与 --wait 断言）', file: PROTO,
++    find: '        if (workerWroteTerminal) return; // phase', replace: '        if (workerWroteTerminal || true) return; // phase', expect: S.gateLoop },
++  { id: 'M5', desc: '去掉第 6 步按 run_id 回收已改写成 worker 的锁 ⇒ U5①', file: PROTO,
++    find: '    if (cur && cur.run_id === i.runId && cur.pid === born.pid) {\n',
++    replace: `    if (cur && cur.run_id === i.runId && cur.pid === born.pid && ${NEVER}) {\n`, expect: S.proto },
++  { id: 'M6', desc: 'D5 分支照样回收闸门 ⇒ U5②', file: PROTO,
++    find: '  if (!t.gone) {\n', replace: '  if (!t.gone) {\n' + RELEASE_GATE, expect: S.proto },
++  { id: 'M7', desc: 'hasExited() 恒返回 false ⇒ U3', file: EXEC,
++    find: '      hasExited: () => child.exitCode !== null || child.signalCode !== null,\n', replace: '      hasExited: () => false,\n', expect: S.detach },
++  { id: 'M8', desc: 'terminateProcessGroup 不升级 SIGKILL ⇒ U4②', file: EXEC,
++    find: "  send(pid, 'SIGKILL');\n", replace: `  if (${NEVER}) send(pid, 'SIGKILL');\n`, expect: S.detach },
++  { id: 'M9', desc: 'terminateProcessGroup 发信号前不问 isGone() ⇒ U4④', file: EXEC,
++    find: "  if (await o.isGone()) return { gone: true, escalated: false };\n  send(pid, 'SIGTERM');\n", replace: "  send(pid, 'SIGTERM');\n", expect: S.detach },
++  { id: 'M10', desc: 'unlistedLabel 去掉 post_spawn_exception 分支 ⇒ V8′（落进兜底说明）', file: REPORT,
++    find: "  } else if (meta.status === 'failed' && meta.termination?.by === 'post_spawn_exception') {\n",
++    replace: "  } else if (meta.status === 'failed' && (meta.termination?.by as string | undefined) === '__never__') {\n", expect: S.report },
++  { id: 'M11', desc: '闸门回收挪到终止之前（计划双审 r1 AGY-03）⇒ U5①（终止时闸门已不是本轮 running）', file: PROTO,
++    find: '  // 1. 终止并确认\n', replace: '  // 1. 终止并确认\n' + RELEASE_GATE.replace(/^ {4}/, '  '), expect: S.proto },
++  { id: 'M12', desc: '去掉 D5 分支补记 worker_pid / worker_started_at（计划双审 r1 GLM-03 / CODEX-02）⇒ U5②', file: PROTO,
++    find: '        s.worker_pid ??= born.pid;\n        s.worker_started_at ??= startedAt;\n', replace: '        void s; void startedAt;\n', expect: S.proto },
++  { id: 'M13', desc: '去掉 D5 分支把锁改记到 worker 名下（计划双审 r1 AGY-01）⇒ U5②', file: PROTO,
++    find: '      if (cur && cur.pid === i.lock.content.pid && cur.acquired_at === i.lock.content.acquired_at) {\n',
++    replace: `      if (cur && cur.pid === i.lock.content.pid && cur.acquired_at === i.lock.content.acquired_at && ${NEVER}) {\n`, expect: S.proto },
++  { id: 'M14', desc: '第 5 步不判 status.json 已终态（计划双审 r1 AGY-02 ≡ GLM-01）⇒ U5④（success 被改写）', file: PROTO,
++    find: STEP5, replace: STEP5.replace('  if (st && !isTerminal(st.phase)) {\n', '  if (st) {\n').replace('        if (isTerminal(s.phase)) return;\n', ''), expect: S.proto },
++  { id: 'M15', desc: 'workerGoneForCancel 退回只看存活（计划双审 r1 AGY-04）⇒ U6', file: PROTO,
++    find: '  return !p.alive || !p.sameProcess;\n', replace: '  return !p.alive;\n', expect: S.proto },
++];
++
++for (const c of cases) {
++  const text = read(c.file);
++  const n = text.split(c.find).length - 1;
++  if (n !== 1) throw new Error(`${c.id} 的 find 在 ${c.file} 里出现 ${n} 次（应为 1）`);
++  if (c.find === c.replace) throw new Error(`${c.id} 的 replace 与 find 相同`);
++}
++const spec = { targets: [PROTO, REPORT, EXEC], suites: Object.values(S), cases };
++fs.writeFileSync(OUT, JSON.stringify(spec, null, 2) + '\n');
++console.log(`${cases.length} 条，锚点全部唯一 → ${OUT}`);
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/mutation-names-output.json b/doc/05_testing/evidence/orphan-worker-20260927/mutation-names-output.json
+new file mode 100644
+index 0000000..cb19e48
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/mutation-names-output.json
+@@ -0,0 +1,52 @@
++[
++  {
++    "id": "M1",
++    "desc": "主 catch 去掉「子进程已诞生」分支（回到今天：只回收闸门、放锁）⇒ P4（run.json 停在 running、留下孤儿）",
++    "suite": "dist/test/test/integration/gate-loop.test.js",
++    "pattern": "派生后失败的孤儿worker P4",
++    "fail": 3,
++    "red": [
++      "派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker",
++      "派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）",
++      "派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）"
++    ],
++    "firstLines": [
++      "AssertionError [ERR_ASSERTION]: EV-150：--start 非零退出时不得留下孤儿 worker",
++      "AssertionError [ERR_ASSERTION]: 今天这里会被孤儿置成 review_done_awaiting_disposition",
++      "AssertionError [ERR_ASSERTION]: 只应有新一轮的 worker"
++    ],
++    "windowMiss": false
++  },
++  {
++    "id": "M2",
++    "desc": "settleOrphanedStart 不终止、直接当已退出往下走 ⇒ P4b（孤儿跑完改写 run.json 与闸门）",
++    "suite": "dist/test/test/integration/gate-loop.test.js",
++    "pattern": "派生后失败的孤儿worker P4",
++    "fail": 3,
++    "red": [
++      "派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker",
++      "派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）",
++      "派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）"
++    ],
++    "firstLines": [
++      "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /已处于终态/. Input:",
++      "AssertionError [ERR_ASSERTION]: 今天这里会被孤儿置成 review_done_awaiting_disposition",
++      "AssertionError [ERR_ASSERTION]: 只应有新一轮的 worker"
++    ],
++    "windowMiss": false
++  },
++  {
++    "id": "M4",
++    "desc": "去掉第 5 步 status.json 落终态 ⇒ P4（status.json 与 --wait 断言）",
++    "suite": "dist/test/test/integration/gate-loop.test.js",
++    "pattern": "派生后失败的孤儿worker P4",
++    "fail": 1,
++    "red": [
++      "派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker"
++    ],
++    "firstLines": [
++      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
++    ],
++    "windowMiss": false
++  }
++]
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/mutation-names-output.v1.json b/doc/05_testing/evidence/orphan-worker-20260927/mutation-names-output.v1.json
+new file mode 100644
+index 0000000..c591f09
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/mutation-names-output.v1.json
+@@ -0,0 +1,39 @@
++[
++  {
++    "id": "M1",
++    "desc": "主 catch 去掉「子进程已诞生」分支（回到今天：只回收闸门、放锁）⇒ P4（run.json 停在 running、留下孤儿）",
++    "suite": "dist/test/test/integration/gate-loop.test.js",
++    "fail": 3,
++    "red": [
++      "派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker",
++      "派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）",
++      "派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）"
++    ],
++    "firstLines": [],
++    "windowMiss": false
++  },
++  {
++    "id": "M2",
++    "desc": "settleOrphanedStart 不终止、直接当已退出往下走 ⇒ P4b（孤儿跑完改写 run.json 与闸门）",
++    "suite": "dist/test/test/integration/gate-loop.test.js",
++    "fail": 3,
++    "red": [
++      "派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker",
++      "派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）",
++      "派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）"
++    ],
++    "firstLines": [],
++    "windowMiss": false
++  },
++  {
++    "id": "M4",
++    "desc": "去掉第 5 步 status.json 落终态 ⇒ P4（status.json 与 --wait 断言）",
++    "suite": "dist/test/test/integration/gate-loop.test.js",
++    "fail": 1,
++    "red": [
++      "派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker"
++    ],
++    "firstLines": [],
++    "windowMiss": false
++  }
++]
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/mutation-names.mjs b/doc/05_testing/evidence/orphan-worker-20260927/mutation-names.mjs
+new file mode 100644
+index 0000000..07cfa52
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/mutation-names.mjs
+@@ -0,0 +1,52 @@
++// 补上一主题报告 §3.3 的判定缺口（派生后失败的孤儿worker计划 r2 §4.3）：变异装置只记 fail 数，
++// 这里对指定几条变异（默认 M1、M2、M4）各跑一次期望套件，存下**失败用例名与首行断言文案**，
++// 确认它们是因目标断言而红、不是因「预建窗口未命中」。
++// 逐条：备份 → 变异（find 须唯一）→ 重建 → 跑期望套件 → 恢复并逐字节核对 → 最后重建一次。
++// 用法（在仓库根，变异装置不在跑、全量检查不在跑）：node mutation-names.mjs <规格路径> [M1,M2,M4]
++import { execFileSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const spec = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
++const want = new Set((process.argv[3] ?? 'M1,M2,M4').split(','));
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--with-tests'], { stdio: 'ignore' });
++// 第二版：第一版按 `error:` 截文案，与 node --test 缺省 spec 报告器的格式不符、一条都没截到；
++// 改为截每个 ✖ 块之后第一行含 Error 的文字，并在整段输出里直接查「预建窗口未命中」。
++// 可选第 4 个参数：--test-name-pattern，只跑相关用例省时间。
++const PATTERN = process.argv[4] ?? null;
++const runSuite = (suite) => {
++  const args = ['--test', ...(PATTERN ? [`--test-name-pattern=${PATTERN}`] : []), suite];
++  try {
++    execFileSync(process.execPath, args, { stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 });
++    return { fail: 0, red: [], firstLines: [], windowMiss: false };
++  } catch (e) {
++    const out = String(e.stdout);
++    const names = [...new Set([...out.matchAll(/^✖ (.+?) \(\d/gm)].map((m) => m[1]))];
++    const msgs = [...out.matchAll(/^✖ .+?\(\d[^\n]*\n(?:[^\n]*\n){0,3}?\s*([^\n]*Error[^\n]*)/gm)].map((m) => m[1].trim().slice(0, 200));
++    return {
++      fail: Number(/ℹ fail (\d+)/.exec(out)?.[1] ?? 1),
++      red: names,
++      firstLines: [...new Set(msgs)].slice(0, 8),
++      windowMiss: out.includes('预建窗口未命中'),
++    };
++  }
++};
++
++const results = [];
++for (const c of spec.cases.filter((x) => want.has(x.id))) {
++  const original = fs.readFileSync(c.file, 'utf8');
++  const baseHash = sha(c.file);
++  if (original.split(c.find).length - 1 !== 1) throw new Error(`${c.id} 的 find 不唯一`);
++  try {
++    fs.writeFileSync(c.file, original.replace(c.find, c.replace));
++    build();
++    const r = runSuite(c.expect);
++    results.push({ id: c.id, desc: c.desc, suite: c.expect, pattern: PATTERN, ...r });
++  } finally {
++    fs.writeFileSync(c.file, original);
++    if (sha(c.file) !== baseHash) throw new Error(`恢复 ${c.file} 后哈希不符——停下来人工处理`);
++  }
++}
++build();
++console.log(JSON.stringify(results, null, 2));
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/mutation-output.txt b/doc/05_testing/evidence/orphan-worker-20260927/mutation-output.txt
+new file mode 100644
+index 0000000..9b34c31
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/mutation-output.txt
+@@ -0,0 +1,113 @@
++✓ 工作树干净、基线全绿（4 个套件）
++  M1 ✓ 咬住（fail=3）
++  M2 ✓ 咬住（fail=3）
++  M3 ✓ 咬住（fail=2）
++  M4 ✓ 咬住（fail=1）
++  M5 ✓ 咬住（fail=1）
++  M6 ✓ 咬住（fail=1）
++  M7 ✓ 咬住（fail=3）
++  M8 ✓ 咬住（fail=2）
++  M9 ✓ 咬住（fail=1）
++  M10 ✓ 咬住（fail=2）
++  M11 ✓ 咬住（fail=2）
++  M12 ✓ 咬住（fail=1）
++  M13 ✓ 咬住（fail=1）
++  M14 ✓ 咬住（fail=1）
++  M15 ✓ 咬住（fail=1）
++{
++  "总数": 15,
++  "咬住": 15,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "主 catch 去掉「子进程已诞生」分支（回到今天：只回收闸门、放锁）⇒ P4（run.json 停在 running、留下孤儿）",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M2",
++      "desc": "settleOrphanedStart 不终止、直接当已退出往下走 ⇒ P4b（孤儿跑完改写 run.json 与闸门）",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M3",
++      "desc": "收尾时 by 写成 prepare_exception ⇒ P4（termination 深相等）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M4",
++      "desc": "去掉第 5 步 status.json 落终态 ⇒ P4（status.json 与 --wait 断言）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M5",
++      "desc": "去掉第 6 步按 run_id 回收已改写成 worker 的锁 ⇒ U5①",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M6",
++      "desc": "D5 分支照样回收闸门 ⇒ U5②",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M7",
++      "desc": "hasExited() 恒返回 false ⇒ U3",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M8",
++      "desc": "terminateProcessGroup 不升级 SIGKILL ⇒ U4②",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M9",
++      "desc": "terminateProcessGroup 发信号前不问 isGone() ⇒ U4④",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M10",
++      "desc": "unlistedLabel 去掉 post_spawn_exception 分支 ⇒ V8′（落进兜底说明）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M11",
++      "desc": "闸门回收挪到终止之前（计划双审 r1 AGY-03）⇒ U5①（终止时闸门已不是本轮 running）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M12",
++      "desc": "去掉 D5 分支补记 worker_pid / worker_started_at（计划双审 r1 GLM-03 / CODEX-02）⇒ U5②",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M13",
++      "desc": "去掉 D5 分支把锁改记到 worker 名下（计划双审 r1 AGY-01）⇒ U5②",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M14",
++      "desc": "第 5 步不判 status.json 已终态（计划双审 r1 AGY-02 ≡ GLM-01）⇒ U5④（success 被改写）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M15",
++      "desc": "workerGoneForCancel 退回只看存活（计划双审 r1 AGY-04）⇒ U6",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
++exit=0
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/mutation-spec.json b/doc/05_testing/evidence/orphan-worker-20260927/mutation-spec.json
+new file mode 100644
+index 0000000..11a5612
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/mutation-spec.json
+@@ -0,0 +1,135 @@
++{
++  "targets": [
++    "src/trivium/run-protocol.ts",
++    "src/trivium/report.ts",
++    "src/trivium/util/exec.ts"
++  ],
++  "suites": [
++    "dist/test/test/integration/gate-loop.test.js",
++    "dist/test/test/integration/run-protocol.test.js",
++    "dist/test/test/unit/report.test.js",
++    "dist/test/test/integration/worker-detach.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "主 catch 去掉「子进程已诞生」分支（回到今天：只回收闸门、放锁）⇒ P4（run.json 停在 running、留下孤儿）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "    if (born) {\n      await settleOrphanedStart({\n",
++      "replace": "    if (born && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n      await settleOrphanedStart({\n",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "settleOrphanedStart 不终止、直接当已退出往下走 ⇒ P4b（孤儿跑完改写 run.json 与闸门）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "      isGone: born.watch.hasExited, graceMs: 5000, killWaitMs: 5000,\n",
++      "replace": "      isGone: () => true, graceMs: 5000, killWaitMs: 5000,\n",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "收尾时 by 写成 prepare_exception ⇒ P4（termination 深相等）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "    termination: { by: 'post_spawn_exception', exit_code: exitCodeOf(i.error) },\n",
++      "replace": "    termination: { by: 'prepare_exception', exit_code: exitCodeOf(i.error) },\n",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "去掉第 5 步 status.json 落终态 ⇒ P4（status.json 与 --wait 断言）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "        if (workerWroteTerminal) return; // phase",
++      "replace": "        if (workerWroteTerminal || true) return; // phase",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "去掉第 6 步按 run_id 回收已改写成 worker 的锁 ⇒ U5①",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "    if (cur && cur.run_id === i.runId && cur.pid === born.pid) {\n",
++      "replace": "    if (cur && cur.run_id === i.runId && cur.pid === born.pid && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
++      "expect": "dist/test/test/integration/run-protocol.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "D5 分支照样回收闸门 ⇒ U5②",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "  if (!t.gone) {\n",
++      "replace": "  if (!t.gone) {\n    await releaseRunningGateEntry({ triviumDir: ctx.triviumDir, topic: i.topic, stage: i.stage, runId: i.runId, heartbeatStaleMs });\n",
++      "expect": "dist/test/test/integration/run-protocol.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "hasExited() 恒返回 false ⇒ U3",
++      "file": "src/trivium/util/exec.ts",
++      "find": "      hasExited: () => child.exitCode !== null || child.signalCode !== null,\n",
++      "replace": "      hasExited: () => false,\n",
++      "expect": "dist/test/test/integration/worker-detach.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "terminateProcessGroup 不升级 SIGKILL ⇒ U4②",
++      "file": "src/trivium/util/exec.ts",
++      "find": "  send(pid, 'SIGKILL');\n",
++      "replace": "  if (process.env['TRIVIUM_MUT_NEVER'] === '1') send(pid, 'SIGKILL');\n",
++      "expect": "dist/test/test/integration/worker-detach.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "terminateProcessGroup 发信号前不问 isGone() ⇒ U4④",
++      "file": "src/trivium/util/exec.ts",
++      "find": "  if (await o.isGone()) return { gone: true, escalated: false };\n  send(pid, 'SIGTERM');\n",
++      "replace": "  send(pid, 'SIGTERM');\n",
++      "expect": "dist/test/test/integration/worker-detach.test.js"
++    },
++    {
++      "id": "M10",
++      "desc": "unlistedLabel 去掉 post_spawn_exception 分支 ⇒ V8′（落进兜底说明）",
++      "file": "src/trivium/report.ts",
++      "find": "  } else if (meta.status === 'failed' && meta.termination?.by === 'post_spawn_exception') {\n",
++      "replace": "  } else if (meta.status === 'failed' && (meta.termination?.by as string | undefined) === '__never__') {\n",
++      "expect": "dist/test/test/unit/report.test.js"
++    },
++    {
++      "id": "M11",
++      "desc": "闸门回收挪到终止之前（计划双审 r1 AGY-03）⇒ U5①（终止时闸门已不是本轮 running）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "  // 1. 终止并确认\n",
++      "replace": "  // 1. 终止并确认\n  await releaseRunningGateEntry({ triviumDir: ctx.triviumDir, topic: i.topic, stage: i.stage, runId: i.runId, heartbeatStaleMs });\n",
++      "expect": "dist/test/test/integration/run-protocol.test.js"
++    },
++    {
++      "id": "M12",
++      "desc": "去掉 D5 分支补记 worker_pid / worker_started_at（计划双审 r1 GLM-03 / CODEX-02）⇒ U5②",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "        s.worker_pid ??= born.pid;\n        s.worker_started_at ??= startedAt;\n",
++      "replace": "        void s; void startedAt;\n",
++      "expect": "dist/test/test/integration/run-protocol.test.js"
++    },
++    {
++      "id": "M13",
++      "desc": "去掉 D5 分支把锁改记到 worker 名下（计划双审 r1 AGY-01）⇒ U5②",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "      if (cur && cur.pid === i.lock.content.pid && cur.acquired_at === i.lock.content.acquired_at) {\n",
++      "replace": "      if (cur && cur.pid === i.lock.content.pid && cur.acquired_at === i.lock.content.acquired_at && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
++      "expect": "dist/test/test/integration/run-protocol.test.js"
++    },
++    {
++      "id": "M14",
++      "desc": "第 5 步不判 status.json 已终态（计划双审 r1 AGY-02 ≡ GLM-01）⇒ U5④（success 被改写）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "  if (st && !isTerminal(st.phase)) {\n    await soft('写 status.json 终态', () =>\n      patchStatus(i.runDir, (s) => {\n        if (isTerminal(s.phase)) return;\n",
++      "replace": "  if (st) {\n    await soft('写 status.json 终态', () =>\n      patchStatus(i.runDir, (s) => {\n",
++      "expect": "dist/test/test/integration/run-protocol.test.js"
++    },
++    {
++      "id": "M15",
++      "desc": "workerGoneForCancel 退回只看存活（计划双审 r1 AGY-04）⇒ U6",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "  return !p.alive || !p.sameProcess;\n",
++      "replace": "  return !p.alive;\n",
++      "expect": "dist/test/test/integration/run-protocol.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/probe-c2b-e49279a.out.json b/doc/05_testing/evidence/orphan-worker-20260927/probe-c2b-e49279a.out.json
+new file mode 100644
+index 0000000..6e53fef
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/probe-c2b-e49279a.out.json
+@@ -0,0 +1,208 @@
++{
++  "C2b_ok": {
++    "startCode": 1,
++    "startMsg": [
++      "· 主题 C2b-派生后失败-ok ｜ 阶段 plan ｜ 第 1 轮 ｜ run 20260927T090754Z",
++      "· 被审对象 .reviews/C2b-派生后失败-ok/plan/2026-09-27-C2b-派生后失败-ok-claude.md",
++      "✗ 内部错误：EISDIR: illegal operation on a directory, open '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-residual-vOF7Lq/runs-C2b-派生后失败-ok/C2b-派生后失败-ok-f08cdefe/20260927T090754Z/worker.pid'"
++    ],
++    "startMs": 289,
++    "rightAfterStart": {
++      "runMetas": {
++        "20260927T090754Z": {
++          "status": "running",
++          "gate": "running",
++          "r": 1,
++          "finished_at": null,
++          "termination": null,
++          "skipped": null,
++          "artifacts": 2
++        }
++      },
++      "task": [
++        {
++          "run_id": "20260927T090754Z",
++          "stage": "plan",
++          "r": 1,
++          "status": "running"
++        }
++      ],
++      "gate": {
++        "state": "idle",
++        "run_id": "20260927T090754Z",
++        "rerun_index": 1
++      },
++      "locks": []
++    },
++    "after6s": {
++      "runMetas": {
++        "20260927T090754Z": {
++          "status": "success",
++          "gate": "review_done_awaiting_disposition",
++          "r": 1,
++          "finished_at": "2026-09-27T09:07:54.307Z",
++          "termination": null,
++          "skipped": null,
++          "artifacts": 7
++        }
++      },
++      "task": [
++        {
++          "run_id": "20260927T090754Z",
++          "stage": "plan",
++          "r": 1,
++          "status": "success"
++        }
++      ],
++      "gate": {
++        "state": "review_done_awaiting_disposition",
++        "run_id": "20260927T090754Z",
++        "rerun_index": 1
++      },
++      "locks": []
++    },
++    "docs": [
++      "2026-09-27-C2b-派生后失败-ok-claude.md",
++      "2026-09-27-C2b-派生后失败-ok-gemini.md",
++      "2026-09-27-C2b-派生后失败-ok-glm.md"
++    ],
++    "report": {
++      "code": 0,
++      "rounds": [
++        {
++          "stage": "plan",
++          "r": 1,
++          "runId": "20260927T090754Z",
++          "status": "success"
++        }
++      ],
++      "unlisted": []
++    }
++  },
++  "C2b_hang": {
++    "startCode": 1,
++    "startMsg": [
++      "· 主题 C2b-派生后失败-hang ｜ 阶段 plan ｜ 第 1 轮 ｜ run 20260927T090800Z",
++      "· 被审对象 .reviews/C2b-派生后失败-hang/plan/2026-09-27-C2b-派生后失败-hang-claude.md",
++      "✗ 内部错误：EISDIR: illegal operation on a directory, open '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-residual-vOF7Lq/runs-C2b-派生后失败-hang/C2b-派生后失败-hang-c360baa2/20260927T090800Z/worker.pid'"
++    ],
++    "runMetas": {
++      "20260927T090800Z": {
++        "status": "running",
++        "gate": "running",
++        "r": 1,
++        "finished_at": null,
++        "termination": null,
++        "skipped": null,
++        "artifacts": 2
++      }
++    },
++    "task": [
++      {
++        "run_id": "20260927T090800Z",
++        "stage": "plan",
++        "r": 1,
++        "status": "running"
++      }
++    ],
++    "gate": {
++      "state": "idle",
++      "run_id": "20260927T090800Z",
++      "rerun_index": 1
++    },
++    "locks": [],
++    "runDirFiles": [
++      "request.json",
++      "status.json",
++      "worker.log",
++      "worker.pid"
++    ],
++    "statusJson": {
++      "phase": "running",
++      "worker_pid": null
++    },
++    "orphanPid": 19640,
++    "orphanAlive": true,
++    "secondStart": {
++      "code": 0,
++      "msg": null,
++      "runId": "20260927T090803Z"
++    },
++    "afterSecondStart": {
++      "runMetas": {
++        "20260927T090800Z": {
++          "status": "running",
++          "gate": "running",
++          "r": 1,
++          "finished_at": null,
++          "termination": null,
++          "skipped": null,
++          "artifacts": 2
++        },
++        "20260927T090803Z": {
++          "status": "running",
++          "gate": "running",
++          "r": 1,
++          "finished_at": null,
++          "termination": null,
++          "skipped": null,
++          "artifacts": 2
++        }
++      },
++      "task": [
++        {
++          "run_id": "20260927T090800Z",
++          "stage": "plan",
++          "r": 1,
++          "status": "running"
++        },
++        {
++          "run_id": "20260927T090803Z",
++          "stage": "plan",
++          "r": 1,
++          "status": "running"
++        }
++      ],
++      "gate": {
++        "state": "running",
++        "run_id": "20260927T090803Z",
++        "rerun_index": 1
++      },
++      "locks": [
++        "C2b-派生后失败-hang.lock"
++      ]
++    },
++    "afterKill": {
++      "orphanAlive": false,
++      "cancel": {
++        "code": 0,
++        "tail": [
++          "⚠️  凭据副本未抹：运行处于 running 却拿不到 worker_pid：判不了——留给会话启动清扫",
++          "· 归档 run-20260927T090800Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）",
++          "· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记",
++          "· 闸门未回收：闸门当前记着 run 20260927T090803Z，不是 20260927T090800Z"
++        ]
++      },
++      "runMetas": {
++        "20260927T090800Z": {
++          "status": "running",
++          "gate": "running",
++          "r": 1,
++          "finished_at": null,
++          "termination": null,
++          "skipped": null,
++          "artifacts": 2
++        },
++        "20260927T090803Z": {
++          "status": "running",
++          "gate": "running",
++          "r": 1,
++          "finished_at": null,
++          "termination": null,
++          "skipped": null,
++          "artifacts": 2
++        }
++      }
++    }
++  }
++}
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/probe-kill-reach.mjs b/doc/05_testing/evidence/orphan-worker-20260927/probe-kill-reach.mjs
+new file mode 100644
+index 0000000..505610f
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/probe-kill-reach.mjs
+@@ -0,0 +1,95 @@
++#!/usr/bin/env node
++/**
++ * 只读实测（不碰真实 HOME、不改本仓）：派生后失败的孤儿 worker（EV-150）计划 §2 的两格。
++ *
++ *   K1 杀法够不够得到：按 spawnDetached 派生一个「worker」，它用 run() 以 killTree:true（审查员适配器的写法）
++ *      与不带 killTree 各拉起一个子进程；然后照 cancelRun 的杀法 killProcessTree(worker, SIGTERM)，
++ *      宽限 5 s 后看三者谁还活着、各自的进程组号。
++ *   K2 父进程手里的子进程句柄：detached + unref 之后，exitCode / signalCode 在被回收之前是否恒为 null，
++ *      按进程组发 SIGTERM 后 'exit' 事件是否到达、多久到达。
++ *
++ * 用法：node probe-kill-reach.mjs <仓库根>
++ * 收尾：只结束命令行里带本次随机标记的进程；只删 mkdtemp 的返回值。
++ */
++import { spawn, execFileSync } from 'node:child_process';
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { randomUUID } from 'node:crypto';
++
++const ROOT = path.resolve(process.argv[2] ?? '.');
++const EXEC = path.join(ROOT, 'dist/test/src/trivium/util/exec.js');
++const { spawnDetached, killProcessTree } = await import(EXEC);
++const MARK = 'probe-kill-reach-' + randomUUID().slice(0, 8);
++const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
++const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
++const psRows = () =>
++  execFileSync('/bin/ps', ['-axo', 'pid=,pgid=,ppid=,command='], { encoding: 'utf8' })
++    .split('\n').map((l) => l.trim()).filter(Boolean)
++    .map((l) => { const m = /^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(l); return m && { pid: +m[1], pgid: +m[2], ppid: +m[3], cmd: m[4] }; })
++    .filter(Boolean);
++const mine = () => psRows().filter((r) => r.cmd.includes(MARK) && !r.cmd.includes('probe-kill-reach.mjs'));
++
++const out = { node: process.version, platform: process.platform };
++const base = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-probe-kill-reach-'));
++try {
++  // ── K1 ──
++  const workerJs = path.join(base, 'worker.mjs');
++  await fs.writeFile(workerJs, [
++    `import { run } from ${JSON.stringify(EXEC)};`,
++    `// ${MARK}-worker`,
++    `void run('/bin/sh', ['-c', 'sleep 120; : ${MARK}-tree'], { killTree: true, timeoutMs: 600000 });`,
++    `void run('/bin/sh', ['-c', 'sleep 120; : ${MARK}-plain'], { timeoutMs: 600000 });`,
++    `setInterval(() => {}, 1000);`,
++  ].join('\n'));
++  const w = await spawnDetached(process.execPath, [workerJs, MARK + '-worker'], { cwd: base, logFile: path.join(base, 'worker.log') });
++  let rows = [];
++  for (let i = 0; i < 40; i++) {
++    rows = mine();
++    if (rows.some((r) => r.cmd.includes(MARK + '-tree')) && rows.some((r) => r.cmd.includes(MARK + '-plain'))) break;
++    await sleep(100);
++  }
++  const pick = (tag) => rows.find((r) => r.cmd.includes(`${MARK}-${tag}`) && r.cmd.startsWith('/bin/sh'));
++  const before = { worker: rows.find((r) => r.pid === w.pid) ?? null, tree: pick('tree') ?? null, plain: pick('plain') ?? null };
++  out.K1_before = {
++    worker: before.worker && { pid: before.worker.pid, pgid: before.worker.pgid },
++    treeChild: before.tree && { pid: before.tree.pid, pgid: before.tree.pgid, ppid: before.tree.ppid },
++    plainChild: before.plain && { pid: before.plain.pid, pgid: before.plain.pgid, ppid: before.plain.ppid },
++  };
++  // 照 cancelRun：SIGTERM 进程组 → 宽限 5 s（worker 一退即止）
++  out.K1_killDelivered = killProcessTree(w.pid, 'SIGTERM');
++  const t0 = Date.now();
++  while (Date.now() - t0 < 5000 && alive(w.pid)) await sleep(100);
++  await sleep(500);
++  const after = mine();
++  out.K1_after = {
++    workerAlive: alive(w.pid),
++    workerGoneMs: Date.now() - t0,
++    treeChildAlive: before.tree ? alive(before.tree.pid) : null,
++    treeChildPpidNow: before.tree ? after.find((r) => r.pid === before.tree.pid)?.ppid ?? null : null,
++    plainChildAlive: before.plain ? alive(before.plain.pid) : null,
++    survivors: after.map((r) => ({ pid: r.pid, pgid: r.pgid, ppid: r.ppid, cmd: r.cmd.replace(MARK, '<MARK>').slice(0, 80) })),
++  };
++
++  // ── K2 ──
++  const k2 = spawn(process.execPath, ['-e', `setInterval(()=>{},1000) // ${MARK}-k2`], { detached: true, stdio: 'ignore' });
++  k2.unref();
++  const exited = new Promise((resolve) => k2.once('exit', (code, signal) => resolve({ code, signal, at: Date.now() })));
++  await sleep(300);
++  out.K2_beforeKill = { pid: k2.pid, exitCode: k2.exitCode, signalCode: k2.signalCode, alive: alive(k2.pid) };
++  const t1 = Date.now();
++  process.kill(-k2.pid, 'SIGTERM');
++  const ev = await Promise.race([exited, sleep(3000).then(() => null)]);
++  out.K2_afterKill = {
++    exitEvent: ev && { code: ev.code, signal: ev.signal, ms: ev.at - t1 },
++    exitCode: k2.exitCode, signalCode: k2.signalCode, alive: alive(k2.pid),
++  };
++} finally {
++  for (const r of mine()) {
++    process.stderr.write(`收尾：结束 ${r.pid}（${r.cmd.replace(MARK, '<MARK>').slice(0, 60)}）\n`);
++    // 按进程组结束：sh 名下的 sleep 与它同组（组号 = sh 的 pid，K1_before 已记下）
++    try { process.kill(-r.pgid, 'SIGKILL'); } catch { try { process.kill(r.pid, 'SIGKILL'); } catch { /* 已不在 */ } }
++  }
++  await fs.rm(base, { recursive: true, force: true });
++}
++console.log(JSON.stringify(out, null, 2));
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/probe-kill-reach.out.json b/doc/05_testing/evidence/orphan-worker-20260927/probe-kill-reach.out.json
+new file mode 100644
+index 0000000..1d244df
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/probe-kill-reach.out.json
+@@ -0,0 +1,52 @@
++{
++  "node": "v25.2.1",
++  "platform": "darwin",
++  "K1_before": {
++    "worker": {
++      "pid": 18233,
++      "pgid": 18233
++    },
++    "treeChild": {
++      "pid": 18235,
++      "pgid": 18235,
++      "ppid": 18233
++    },
++    "plainChild": {
++      "pid": 18236,
++      "pgid": 18233,
++      "ppid": 18233
++    }
++  },
++  "K1_killDelivered": true,
++  "K1_after": {
++    "workerAlive": false,
++    "workerGoneMs": 650,
++    "treeChildAlive": true,
++    "treeChildPpidNow": 1,
++    "plainChildAlive": false,
++    "survivors": [
++      {
++        "pid": 18235,
++        "pgid": 18235,
++        "ppid": 1,
++        "cmd": "/bin/sh -c sleep 120; : <MARK>-tree"
++      }
++    ]
++  },
++  "K2_beforeKill": {
++    "pid": 18254,
++    "exitCode": null,
++    "signalCode": null,
++    "alive": true
++  },
++  "K2_afterKill": {
++    "exitEvent": {
++      "code": null,
++      "signal": "SIGTERM",
++      "ms": 4
++    },
++    "exitCode": null,
++    "signalCode": "SIGTERM",
++    "alive": false
++  }
++}
+diff --git a/doc/05_testing/evidence/orphan-worker-20260927/repro-a7.mjs b/doc/05_testing/evidence/orphan-worker-20260927/repro-a7.mjs
+new file mode 100644
+index 0000000..f924e4f
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-worker-20260927/repro-a7.mjs
+@@ -0,0 +1,30 @@
++// 复现 A7 (ii)：e49279a + 取值面四处，跑两个套件，列出失败用例名与首行文案。收尾只删 mkdtemp 返回值。
++import { execFileSync } from 'node:child_process';
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++
++const ROOT = process.cwd();
++const BASE = process.env.ACCEPT_BASE_REF ?? 'e49279a';
++const FACE = process.argv.slice(2);
++const base = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-repro-a7-'));
++try {
++  const tar = path.join(base, 'src.tar');
++  execFileSync('git', ['archive', '--format=tar', '-o', tar, BASE, 'src', 'scripts', 'skills', 'skills-src', 'test', 'package.json', 'tsconfig.json'], { cwd: ROOT });
++  const dir = path.join(base, 'tree');
++  await fs.mkdir(dir);
++  execFileSync('tar', ['-xf', tar], { cwd: dir });
++  for (const rel of FACE) await fs.copyFile(path.join(ROOT, rel), path.join(dir, rel));
++  await fs.symlink(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'));
++  execFileSync(process.execPath, ['scripts/build.mjs', '--with-tests'], { cwd: dir, stdio: 'ignore' });
++  let out = '';
++  try {
++    out = String(execFileSync(process.execPath, ['--test', 'dist/test/test/unit/run-meta-strict.test.js', 'dist/test/test/unit/report.test.js'], { cwd: dir, stdio: 'pipe' }));
++  } catch (e) {
++    out = String(e.stdout);
++  }
++  const blocks = [...out.matchAll(/^✖ (.+?) \(\d[^\n]*\n((?:[^\n]*\n){0,12})/gm)].map((m) => ({ name: m[1], head: m[2].split('\n').slice(0, 10).join('\n') }));
++  console.log(JSON.stringify({ face: FACE, summary: out.split('\n').filter((l) => /^ℹ (pass|fail)/.test(l)), failed: blocks.slice(0, 4) }, null, 2));
++} finally {
++  await fs.rm(base, { recursive: true, force: true });
++}

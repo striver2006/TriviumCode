@@ -166,6 +166,19 @@ test('EV-145 S1′：prepare_exception / sync_exception 与 worker_exception 同
   }
 });
 
+test('EV-150 S1″：post_spawn_exception 与另三个异常取值同形——带整数退出码通过；缺退出码、串形状、带自由文本都判错', () => {
+  const base = { ...terminationSample(), status: 'failed' };
+  assert.deepEqual(validateRunMeta({ ...base, termination: { by: 'post_spawn_exception', exit_code: 1 } }), []);
+  const bad: unknown[] = [
+    { by: 'post_spawn_exception' },
+    { by: 'post_spawn_exception', reason: 'pid_gone' },
+    { by: 'post_spawn_exception', exit_code: 1, detail: 'EISDIR …/worker.pid' },
+  ];
+  for (const t of bad) {
+    assert.ok(validateRunMeta({ ...base, termination: t }).length > 0, `应判错：${JSON.stringify(t)}`);
+  }
+});
+
 test('EV-145 S3：schema 里 termination.by 的取值集合与 types.ts 的 EXCEPTION_TERMINATION_BY + worker_lost 逐项相等（单一来源）', async () => {
   const schema = JSON.parse(
     await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/run.v2.json'), 'utf8'),

@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.8
+> - **当前版本**：v1.1.9
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.9（2026-09-27）随设计 v1.3.51（派生后失败的孤儿worker，EV-150）同步：`startRun` 第 5 条补 `onSpawned` 的第二个参数（子进程句柄的退出观察），末句「`--cancel` 才能按进程组杀掉 agy/zcode」改准（适配器以 `killTree` 拉起的厂商 CLI 自成进程组，够不到，EV-152）；第 7 条「诞生之后才失败的不收尾」改为 `settleOrphanedStart` 的六步；4.2 引述块「仍会停在 `running` 的」去掉 EV-150 那一格、补「确认不了退出」一格；已知缺口表 `cancelRun` 一行补 EV-150 已修，新增「`--cancel` 够不到适配器拉起的厂商 CLI」一行（EV-152）；`startRun` 一节的四处行号锚点按修订后代码校准（其余章节的锚点仍有漂移，未改）。
 > - **变更说明**：v1.1.8（2026-09-27）随设计 v1.3.50（事后收尾余项，EV-145）同步：`startRun` 第 5 条补 `spawnDetached` 的可选回调 `onSpawned`（拿到 pid 后调用，调用方据此区分子进程是否已诞生）与 `'error'` 监听前移；第 7 条补「子进程诞生之前失败的，回收闸门之后先把骨架收尾为 `failed` 再放锁」；零工件不变式段末句改为收尾；4.2 引述块「仍会停在 `running` 的」改准（纯文档跳过分支只有终态写入本身失败才会停在 `running`）；已知缺口表一行指向 EV-150 / EV-151。代码双审 r1 修订：第 5 条补 pid 缺失时成因进报错与 `worker.log`（CODEX-01）；4.2 引述块补「放锁前新 `--start` 退 70」并改准「够不着」的措辞（CODEX-02 / CODEX-05）；`startRun()` 与 `prepareRun()` 两节的行号锚点按现值校准并附函数名（CODEX-03 ≡ AGY-01 ≡ GLM-01）。
 > - **变更说明**：v1.1.7（2026-09-27）随设计 v1.3.49（闸门拦截不留骨架，EV-109 / EV-145 ①）同步：`startRun` 时序图里 `setGateChecked(running)` 挪进 `prepareRun`、排在落盘送审包之前；`startRun` 第 2 条补「闸门由 `prepareRun` 自己回收」；零工件不变式补「置闸门是落盘之前的最后一步」一段；4.2 引述块里「prepare 阶段写完骨架后被拦」移出仍会停在 running 的列举；代码双审 r1（run `20260927T035514Z`）CODEX-04：同一列举补上 `startRun` 纯文档跳过分支里 `executeRun` 抛错这一格
 > - **变更说明**：v1.1.6（2026-09-27）随设计 v1.3.48（未收尾运行的留痕与复盘可见性，EV-142 / EV-144）同步：4.2 `worker_lost` 一节补归档侧收尾（改写 status.json 之前判确认退出、status.json 读不到时按 worker.pid 判、`termination`、`WORKER_LOST_REASONS` 单一来源）；「同形两处仍未写」改为已修，函数体改名 `finalizeUnfinishedRunMeta`、第一步进主题任务锁；剩余未收尾路径指向 EV-145。代码双审 r1（run `20260927T005543Z`）CODEX-02：同段「三判据」的行号改为现值（`status.ts:205-249`，常量 `:187`）
@@ -223,19 +224,19 @@ sequenceDiagram
     W-->>D: exit 0（已落盘）
 ```
 
-#### 同步窗口 `startRun()`（[run-protocol.ts:290](../../src/trivium/run-protocol.ts#L290)）
+#### 同步窗口 `startRun()`（[run-protocol.ts:293](../../src/trivium/run-protocol.ts#L293)）
 
 > 本节的行号锚点于 v1.1.8 按当时源码校准（此前已漂移 60～100 行，代码双审 r1 CODEX-03 ≡ AGY-01 ≡ GLM-01）；每处都附了函数或段落名，行号再漂时按名字找。
 
 顺序有讲究，逐条都有代价：
 
-1. **先占主题锁再 prepare**（`run-protocol.ts:294-307`，`startRun` 开头的 `acquireLock`）——否则两个并发 `--start` 会各自冻结一份快照后才发现冲突。
+1. **先占主题锁再 prepare**（`run-protocol.ts:297-310`，`startRun` 开头的 `acquireLock`）——否则两个并发 `--start` 会各自冻结一份快照后才发现冲突。
 2. `prepareRun()`，失败则释放锁后抛。闸门不用这里管：被拦时没置上，置上之后的失败 `prepareRun` 自己回收（v1.1.7）。
-3. **纯文档跳过必须在派生前收口**（`run-protocol.ts:327-346`，`if (rc.skipVerdict?.skipped)` 分支）：直接同步 `executeRun`，返回 `finishedInline: true`。
+3. **纯文档跳过必须在派生前收口**（`run-protocol.ts:330-349`，`if (rc.skipVerdict?.skipped)` 分支）：直接同步 `executeRun`，返回 `finishedInline: true`。
 4. 写 `request.json`（交接文件）与 `status.json`。
-5. **派生工作进程**：`spawnDetached` 用 `detached: true` + `stdio: ['ignore', fd, fd]` + `unref()`，**绝不继承父进程管道**——继承会让 worker 在父进程退出后死于 SIGPIPE。detached 即 setsid，worker 自成进程组，`--cancel` 才能按进程组杀掉 agy/zcode。可选回调 `onSpawned(pid)` 在拿到 pid 之后、函数返回与 `finally` 关日志句柄之前调用（v1.1.8）：建日志目录、开日志文件、`spawn` 没拿到 pid 都在它之前失败，而 `finally` 在子进程已起之后仍可能抛，所以「子进程有没有诞生」以回调为准。`'error'` 监听挂在 pid 检查之前——此前挂在检查之后，二进制不存在时进程因未处理的 error 事件崩溃（v1.1.8 实测修正）；监听还留住错误对象，pid 缺失时等它到达（至多 1 秒）再抛，报错正文与 `worker.log` 都带上可执行文件路径与错误码（代码双审 r1 CODEX-01），成因不进归档。
-6. **锁的所有权移交**（`run-protocol.ts:403-413`，「锁改记工作进程的 pid」一段）：`--start` 拿到锁后不 release，而是把锁文件内容改写成 worker 的 `pid` 与 `pid_started_at`。
-7. 立即返回。若第 4~6 步失败，`releaseRunningGate` + 释放锁；子进程诞生之前（`onSpawned` 未调用）失败的，回收闸门之后先把 run.json 骨架收尾为 `failed`（`termination.by = prepare_exception`）再放锁；诞生之后才失败的不收尾——worker 活着、会自己写终态（锁与闸门被提前放掉见 BACKLOG EV-150）（v1.1.8，EV-145）。
+5. **派生工作进程**：`spawnDetached` 用 `detached: true` + `stdio: ['ignore', fd, fd]` + `unref()`，**绝不继承父进程管道**——继承会让 worker 在父进程退出后死于 SIGPIPE。detached 即 setsid，worker 自成进程组，`--cancel` 按进程组发信号，能连带 worker 以不带 `killTree` 的 `run()` 拉起的同组子进程；**够不到**审查员适配器以 `killTree: true` 拉起的厂商 CLI——那会让 CLI 自成一组（零配额实测，v1.1.9，BACKLOG EV-152）。可选回调 `onSpawned(pid, watch)` 在拿到 pid 之后、函数返回与 `finally` 关日志句柄之前调用（v1.1.8）：建日志目录、开日志文件、`spawn` 没拿到 pid 都在它之前失败，而 `finally` 在子进程已起之后仍可能抛，所以「子进程有没有诞生」以回调为准。第二个参数 `watch`（v1.1.9，EV-150）是父进程对子进程的退出观察：`hasExited()` 为假即子进程尚未被回收，其 pid 与同号进程组不会被复用——`--start` 派生后失败时据此终止并确认退出，不依赖可能取不到的启动时刻。`'error'` 监听挂在 pid 检查之前——此前挂在检查之后，二进制不存在时进程因未处理的 error 事件崩溃（v1.1.8 实测修正）；监听还留住错误对象，pid 缺失时等它到达（至多 1 秒）再抛，报错正文与 `worker.log` 都带上可执行文件路径与错误码（代码双审 r1 CODEX-01），成因不进归档。
+6. **锁的所有权移交**（`run-protocol.ts:413-423`，「锁改记工作进程的 pid」一段）：`--start` 拿到锁后不 release，而是把锁文件内容改写成 worker 的 `pid` 与 `pid_started_at`。
+7. 立即返回。若第 4~6 步失败，`releaseRunningGate` + 释放锁；子进程诞生之前（`onSpawned` 未调用）失败的，回收闸门之后先把 run.json 骨架收尾为 `failed`（`termination.by = prepare_exception`）再放锁；（v1.1.8，EV-145）。诞生之后才失败的（关日志句柄、写 `worker.pid`、改写锁、记 `worker_pid`）交给 `settleOrphanedStart`（v1.1.9，EV-150）：①`terminateProcessGroup` 按进程组终止 worker，以 `watch.hasExited` 确认退出（SIGTERM → 5 s → SIGKILL → 至多再等 5 s）；②确认不了退出时闸门与 run.json 不动，只尽力补记 `worker_pid` / `worker_started_at`、把仍是本进程内容的锁改记到 worker 名下，报错给出 `--cancel` 出路，不放锁；③回收闸门（排在终止之后）；④`finalizeFailedRunMeta`（`post_spawn_exception`），run.json 已被 worker 写成终态的只指路；⑤status.json 已终态不动、属本进程收尾的落 `failed`、worker 已写 run.json 终态的与回读 run.json 读不出的只补 pid；⑥`lock.release()`，锁已改写成本轮 worker 的按 run_id + pid 复核后 `reclaimStaleLock`。各步吞错打 warn，调用方随后抛原错误；播报按事实分句（`terminateProcessGroup` 返回实际发过的 `signals`），D5 末句按改写锁的结果说（代码双审 r1）。这条失败路径最长约 20 s 才返回。
 
 #### `prepareRun()` 的「零工件」不变式（[review.ts:542](../../src/trivium/review.ts#L542)）
 
@@ -468,7 +469,7 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
 > worker 的异常分支（`workerMain` 的 `catch`，排在 `patchStatus` 之前、`workerGone: true`——写者就是 worker 自己）与 `--wait` 判 `worker_lost`（见 4.2 轮询协议一节）各调一次；
 > 第一步的读、判、写在主题任务锁（`taskLockName`，与 task.json 同一把）里，三条事后收尾同时到达时谁先到记谁；第二步只同步到本次目标终态，不照抄别的终态。
 > **本进程的两条收尾（v1.1.8，EV-145）**：`prepareRun` 写完骨架之后失败、`startRun` 在子进程诞生之前失败记 `prepare_exception`，同步路径 `runReviewLocked` 里 `executeRun` 抛错记 `sync_exception`；`workerGone` 恒传 true（写者就是本进程；`--cancel` / `--wait` 常常拿不到身份，拿到了也没有 pid、判「未确认退出」而跳过，本进程写完之后 run.json 已是终态、不追溯改写），先回收闸门、再收尾、最后放锁（没有补齐入口，见 `meta.ts` 通用体文档块的两种次序）。放锁前这段时间新 `--start` 拿不到锁即退 70：这两条路的运行锁获取时不带 run_id，「运行已终态」的遗留锁判据用不上（代码双审 r1 CODEX-02）。
-> 仍会停在 `running` 的：失联时进程还在（`heartbeat_stale`）、`--start` 在子进程诞生之后才失败而孤儿 worker 被杀（BACKLOG EV-150）、worker 猝死而没人 `--wait` / `--cancel`（EV-151）、`startRun` 纯文档跳过分支里终态写入**本身**失败（该分支第一步就写终态，其后的登记或闸门写入抛错时 run.json 已是 `success`）；被闸门拦下的那一格 v1.1.7 起不再写骨架。
+> 仍会停在 `running` 的：失联时进程还在（`heartbeat_stale`）、`--start` 派生后失败而工作进程确认不了退出（v1.1.9 起留给它，BACKLOG EV-150 结案注记）、worker 猝死而没人 `--wait` / `--cancel`（EV-151）、`startRun` 纯文档跳过分支里终态写入**本身**失败（该分支第一步就写终态，其后的登记或闸门写入抛错时 run.json 已是 `success`）；被闸门拦下的那一格 v1.1.7 起不再写骨架。
 
 ### 4.3 锁的生命周期
 
@@ -578,7 +579,8 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 | :--- | :--- | :--- |
 | **`task.json.disputes[]` 无任何写入点** | 全仓仅 `meta.ts:88`（类型）、`meta.ts:105`（初始化为 `[]`）、`report.ts:441`（读取），无一处 push | 只有 `disputed` 布尔位被写（`cli.ts:701`）。`report` 的「争议项：编号——说明」分支**永远打印不出具体编号** |
 | ~~**`block_severities` 无消费方**~~ | ~~类型、默认值、schema 校验齐全，业务逻辑零引用~~ | **已解决（2026-09-16）**：该键连同 schema 定义一并删除，不做历史兼容（项目负责人明示接受）。防复发机制见配置键与消费方的对账测试 |
-| ~~**`cancelRun` 不回写 `run.json`**~~ | ~~函数体内 `writeRunMeta` 零出现~~ | **已解决（2026-09-26，EV-128）**：工作进程确认退出后由 `finalizeCancelledRunMeta` 收尾为 `cancelled`。同形的 worker 异常与 `worker_lost` 已于 2026-09-27 修（EV-142，`finalizeFailedRunMeta`，工作进程确认退出才写）；准备阶段与同步路径的本进程收尾同日修（EV-145）；其余未收尾路径见 EV-150 / EV-151 |
+| ~~**`cancelRun` 不回写 `run.json`**~~ | ~~函数体内 `writeRunMeta` 零出现~~ | **已解决（2026-09-26，EV-128）**：工作进程确认退出后由 `finalizeCancelledRunMeta` 收尾为 `cancelled`。同形的 worker 异常与 `worker_lost` 已于 2026-09-27 修（EV-142，`finalizeFailedRunMeta`，工作进程确认退出才写）；准备阶段与同步路径的本进程收尾同日修（EV-145）；`--start` 派生后失败同日修（EV-150，`settleOrphanedStart`）；其余未收尾路径见 EV-151 |
+| **`--cancel` 够不到适配器拉起的厂商 CLI** | `run()` 在 `killTree: true` 时以 `detached` 派生（`util/exec.ts` `run` 的 `spawnOpts`），四个适配器都这么调；`cancelRun` / `terminateProcessGroup` 只按 worker 的组发信号。零配额实测：worker 退出后该子进程被过继给 init 继续活着（派生后失败的孤儿worker计划 r2 §2.1） | 被取消的运行可能留下仍在消耗配额的 CLI（真实 CLI 会不会因管道断开自行退出未实测）；凭据副本的清扫准入只核 worker（EV-38）。行为修复见 BACKLOG EV-152 |
 | **协议片段无升级路径** | `appendSnippet`（`init.ts:63-66`）见标记即跳过，与 hooks 的「按名替换」不一致 | 已初始化项目的协议片段永不更新。实测某项目落后 18 行 |
 | **人工审批无机械边界** | `recordApproval`（`approval.ts:54-86`）无任何调用者身份校验；skill 的 `allowed-tools` 预批准了 `Bash(.trivium/bin/trivium:*)` | Driver 自己一条命令就能关掉等人工审批的闸门。曾加过一次性确认码，因明文经 stdout 由 Driver 转述、构不成边界而**主动移除**——「虚假的安全感比没有护栏更糟」。真解需要宿主提供不经过模型的带外通道 |
 | **路径级 deny 两侧实测均不可用** | agy 无此能力；ZCode 的 `--disallowed-tools "Read(<路径>)"` 语法被接受，但模型改用 `Bash(head -1)`/`Grep` 读到了目标文件 | `peer_deny_applied` 恒为 `false`，隔离是**降级运行**——只靠禁读清单 + 事后轨迹核验（风险 R13） |

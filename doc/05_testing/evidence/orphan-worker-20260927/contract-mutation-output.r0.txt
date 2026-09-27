@@ -1,0 +1,18 @@
+{
+  "baseline": {
+    "fail": 0
+  },
+  "results": [
+    {
+      "id": "MC1",
+      "desc": "schema 的 termination.by 枚举去掉 post_spawn_exception ⇒ S1″（新取值判错）与 S3（单一来源不等）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2,
+      "red": [
+        "EV-150 S1″：post_spawn_exception 与另三个异常取值同形——带整数退出码通过；缺退出码、串形状、带自由文本都判错",
+        "EV-145 S3：schema 里 termination.by 的取值集合与 types.ts 的 EXCEPTION_TERMINATION_BY + worker_lost 逐项相等（单一来源）"
+      ]
+    }
+  ]
+}
+contract exit=0

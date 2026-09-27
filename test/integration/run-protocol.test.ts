@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { bashTimeoutFor, cancelRun, runDirFor, statusRun, waitRun } from '../../src/trivium/run-protocol.js';
+import {
+  bashTimeoutFor, cancelRun, runDirFor, settleOrphanedStart, statusRun, waitRun, workerGoneForCancel,
+} from '../../src/trivium/run-protocol.js';
+import { getGate, setGate } from '../../src/trivium/state.js';
 import { newStatus, readStatus, writeStatus } from '../../src/trivium/status.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { acquireLock, inspectLock } from '../../src/trivium/lock.js';
@@ -498,4 +501,188 @@ test('--cancel 对已退出的工作进程也能清理状态与锁', async () =>
   assert.equal(code, EXIT.OK, '进程已死也应能正常清理');
   const s = await readStatus(runDirFor(ctx.config, ctx.projectRoot, 'R-DEADCANCEL'));
   assert.equal(s?.phase, 'cancelled');
+});
+
+/*
+ * ── EV-150：--start 在子进程诞生之后失败的收尾（派生后失败的孤儿worker计划 r2 §4.1 U5 / U6）──
+ *
+ * 改写锁之后、写 status.json、关日志句柄三个失败点零配额造不出（计划 r2 §2.3），
+ * 所以把 `settleOrphanedStart` 放到进程内夹具上、注入「终止结果」，逐格钉住次序、D5 与锁的回收。
+ */
+const FAKE_WORKER = 999_991; // 不存在的 pid：只被写进锁与 status.json，从不向它发信号（terminate 是注入的）
+
+async function seedOrphan(ctx: Ctx, runId: string, o: { lockAsWorker?: boolean } = {}) {
+  const a = await seedArchive(ctx, runId);
+  await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'running', runId, heartbeatStaleMs: 120_000 });
+  const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
+  await fs.mkdir(runDir, { recursive: true });
+  await writeStatus(runDir, newStatus({ runId, topic: TOPIC, stage: 'plan', sides: ['gemini', 'glm'], models: {} }));
+  const lock = await acquireLock({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', kind: 'run', heartbeatStaleMs: 120_000 });
+  if (o.lockAsWorker) {
+    // 失败点在 :405 之后：锁内容已改写成 worker 的（S5）
+    await fs.writeFile(lock.path, JSON.stringify({ ...lock.content, run_id: runId, pid: FAKE_WORKER, pid_started_at: 'T-worker' }, null, 2) + '\n', 'utf8');
+  }
+  return { ...a, runDir, lock };
+}
+
+const watchOf = (exited: boolean) => ({
+  hasExited: () => exited,
+  exited: new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(() => {}),
+});
+
+test('EV-150 U5①：确认退出 ⇒ 终止先于闸门回收；随后闸门 idle、run.json 与登记 failed（post_spawn_exception）、status.json failed、已改写成 worker 的锁按 run_id 回收', async () => {
+  const ctx = await fakeCtx();
+  const s = await seedOrphan(ctx, 'R-ORPH1', { lockAsWorker: true });
+  let gateAtTerminate: string | null = null;
+  const { err } = await captureStderr(() =>
+    settleOrphanedStart({
+      ctx, topic: TOPIC, stage: 'plan', runId: 'R-ORPH1', layout: s.layout, runDir: s.runDir, lock: s.lock,
+      born: { pid: FAKE_WORKER, watch: watchOf(true) }, workerStartedAt: 'T-worker', error: new Error('EISDIR'),
+      terminate: async () => {
+        // 计划双审 r1 AGY-03：终止发生时闸门必须仍是本轮 running——回收排在终止之后
+        const g = await getGate(ctx.triviumDir, TOPIC, 'plan');
+        gateAtTerminate = `${g?.state}/${g?.run_id}`;
+        return { gone: true, escalated: false, signals: ['SIGTERM'] };
+      },
+    }),
+  );
+  assert.equal(gateAtTerminate, 'running/R-ORPH1', '终止时闸门应仍为本轮 running');
+  assert.equal((await getGate(ctx.triviumDir, TOPIC, 'plan'))?.state, 'idle');
+  const m = JSON.parse(await fs.readFile(s.runJson, 'utf8')) as RunMeta;
+  assert.equal(m.status, 'failed');
+  assert.deepEqual(m.termination, { by: 'post_spawn_exception', exit_code: EXIT.FAIL });
+  assert.equal((await readTask(s.layout)).runs.find((r) => r.run_id === 'R-ORPH1')?.status, 'failed');
+  const st = await readStatus(s.runDir);
+  assert.equal(st?.phase, 'failed');
+  assert.equal(st?.worker_pid, FAKE_WORKER);
+  assert.equal(await inspectLock(ctx.triviumDir, TOPIC), null, '已改写成本轮 worker 的锁应被回收（release() 不删它）');
+  assert.match(err, /已终止工作进程组 999991（SIGTERM）/);
+  assert.match(err, /收尾为 failed（派生后启动未完成）/);
+});
+
+test('EV-150 U5②：确认不了退出 ⇒ 闸门、run.json、status.json 的 phase 不动；补记 worker_pid 与启动时刻；本进程内容的锁改记到 worker 名下；给出 --cancel 出路', async () => {
+  const ctx = await fakeCtx();
+  const s = await seedOrphan(ctx, 'R-ORPH2');
+  const runBefore = await fs.readFile(s.runJson, 'utf8');
+  const { err } = await captureStderr(() =>
+    settleOrphanedStart({
+      ctx, topic: TOPIC, stage: 'plan', runId: 'R-ORPH2', layout: s.layout, runDir: s.runDir, lock: s.lock,
+      born: { pid: FAKE_WORKER, watch: watchOf(false) }, workerStartedAt: null, error: new Error('EISDIR'),
+      terminate: async () => ({ gone: false, escalated: true, signals: ['SIGTERM', 'SIGKILL'] }),
+      startTimeOf: async () => 'T-started',
+    }),
+  );
+  const g = await getGate(ctx.triviumDir, TOPIC, 'plan');
+  assert.equal(`${g?.state}/${g?.run_id}`, 'running/R-ORPH2', 'D5：闸门留给可能还活着的写者');
+  assert.equal(await fs.readFile(s.runJson, 'utf8'), runBefore, 'D5：run.json 逐字节不变');
+  const st = await readStatus(s.runDir);
+  assert.equal(st?.phase, 'starting', 'D5：status.json 的 phase 不动');
+  assert.equal(st?.worker_pid, FAKE_WORKER, '计划双审 r1 GLM-03：补记 worker_pid，--cancel 才找得到它');
+  assert.equal(st?.worker_started_at, 'T-started', '计划双审 r1 CODEX-02：连启动时刻一起补，--cancel 才有复用防护');
+  const lk = await inspectLock(ctx.triviumDir, TOPIC);
+  assert.deepEqual(
+    lk && { run_id: lk.run_id, pid: lk.pid, pid_started_at: lk.pid_started_at },
+    { run_id: 'R-ORPH2', pid: FAKE_WORKER, pid_started_at: 'T-started' },
+    '计划双审 r1 AGY-01：锁跟着可能还活着的 worker 走，本进程退出后不会按 pid_gone 被回收',
+  );
+  assert.match(err, /工作进程 999991 未能确认退出/);
+  // 代码双审 r1 CODEX-01 ≡ GLM-01：没确认退出就不能说「已终止」；锁改写成功才说「已记在它名下」
+  assert.match(err, /已向工作进程组 999991 发送 SIGTERM、SIGKILL，未能确认退出/);
+  assert.doesNotMatch(err, /已终止工作进程组/);
+  assert.match(err, /主题锁已记在它名下/);
+  assert.match(err, /trivium review --cancel R-ORPH2/);
+});
+
+test('EV-150 U5③：收尾窗口里主题锁已被新一轮接管 ⇒ 第 6 步不删它，新一轮的闸门也不动', async () => {
+  const ctx = await fakeCtx();
+  const s = await seedOrphan(ctx, 'R-ORPH3', { lockAsWorker: true });
+  // 新一轮按 pid_gone 接管了锁与闸门（计划双审 r1 CODEX-01 ≡ GLM-05）
+  const other = { ...s.lock.content, run_id: 'R-NEXT', pid: process.pid, acquired_at: new Date(Date.now() + 1000).toISOString() };
+  await fs.writeFile(s.lock.path, JSON.stringify(other, null, 2) + '\n', 'utf8');
+  await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'running', runId: 'R-NEXT', heartbeatStaleMs: 120_000 });
+  await captureStderr(() =>
+    settleOrphanedStart({
+      ctx, topic: TOPIC, stage: 'plan', runId: 'R-ORPH3', layout: s.layout, runDir: s.runDir, lock: s.lock,
+      born: { pid: FAKE_WORKER, watch: watchOf(true) }, workerStartedAt: null, error: new Error('x'),
+      terminate: async () => ({ gone: true, escalated: false, signals: [] }),
+    }),
+  );
+  assert.equal((await inspectLock(ctx.triviumDir, TOPIC))?.run_id, 'R-NEXT', '新持有者的锁不得被删');
+  const g = await getGate(ctx.triviumDir, TOPIC, 'plan');
+  assert.equal(`${g?.state}/${g?.run_id}`, 'running/R-NEXT', '新一轮的闸门不得被回收');
+  assert.equal((JSON.parse(await fs.readFile(s.runJson, 'utf8')) as RunMeta).status, 'failed', '本轮自己的 run.json 照常收尾');
+});
+
+test('EV-150 U5④：worker 在被终止之前已跑完（run.json 与 status.json 都是 success）⇒ 两者都不改写，指路 --wait', async () => {
+  const ctx = await fakeCtx();
+  const s = await seedOrphan(ctx, 'R-ORPH4');
+  const m = JSON.parse(await fs.readFile(s.runJson, 'utf8')) as RunMeta;
+  m.status = 'success';
+  m.finished_at = new Date().toISOString();
+  m.gate.state = 'review_done_awaiting_disposition';
+  await writeRunMeta(s.layout, 'plan', m);
+  const st0 = (await readStatus(s.runDir))!;
+  st0.phase = 'success';
+  st0.exit_code = 0;
+  await writeStatus(s.runDir, st0);
+  const runBefore = await fs.readFile(s.runJson, 'utf8');
+  const statusBefore = await fs.readFile(path.join(s.runDir, 'status.json'), 'utf8');
+  const { err } = await captureStderr(() =>
+    settleOrphanedStart({
+      ctx, topic: TOPIC, stage: 'plan', runId: 'R-ORPH4', layout: s.layout, runDir: s.runDir, lock: s.lock,
+      born: { pid: FAKE_WORKER, watch: watchOf(true) }, workerStartedAt: null, error: new Error('x'),
+      terminate: async () => ({ gone: true, escalated: false, signals: [] }),
+    }),
+  );
+  assert.equal(await fs.readFile(s.runJson, 'utf8'), runBefore, 'worker 写下的终态不追溯改写');
+  assert.equal(
+    await fs.readFile(path.join(s.runDir, 'status.json'), 'utf8'), statusBefore,
+    '计划双审 r1 AGY-02 ≡ GLM-01：status.json 已终态不动，不把 success 降成 failed',
+  );
+  assert.match(err, /工作进程在被终止之前已跑完：用 trivium review --wait R-ORPH4 取结果/);
+  // 代码双审 r1 CODEX-01：一个信号都没发时说「已自行退出」，不说「已终止」
+  assert.match(err, /工作进程 999991 在被终止之前已自行退出/);
+  assert.doesNotMatch(err, /已终止工作进程组/);
+});
+
+test('EV-150 U5⑤：回读 run.json 读不出（不可解析）⇒ status.json 的 phase 不动、只补 pid，并告警人工核对（代码双审 r1 CODEX-03）', async () => {
+  const ctx = await fakeCtx();
+  const s = await seedOrphan(ctx, 'R-ORPH5');
+  await fs.writeFile(s.runJson, '{ 这不是 JSON', 'utf8');
+  const { err } = await captureStderr(() =>
+    settleOrphanedStart({
+      ctx, topic: TOPIC, stage: 'plan', runId: 'R-ORPH5', layout: s.layout, runDir: s.runDir, lock: s.lock,
+      born: { pid: FAKE_WORKER, watch: watchOf(true) }, workerStartedAt: null, error: new Error('x'),
+      terminate: async () => ({ gone: true, escalated: false, signals: ['SIGTERM'] }),
+    }),
+  );
+  const st = await readStatus(s.runDir);
+  assert.equal(st?.phase, 'starting', '读不出时不替它下结论：phase 不落 failed');
+  assert.equal(st?.worker_pid, FAKE_WORKER, 'pid 照补');
+  assert.match(err, /归档 run-R-ORPH5\.json 读不出：status\.json 的 phase 不替它下结论/);
+});
+
+test('EV-150 U5⑥：确认不了退出、锁已不归本进程也不归 worker ⇒ 不说「已记在它名下」，如实说明锁的归属与并发风险（代码双审 r1 GLM-01 第 2 点）', async () => {
+  const ctx = await fakeCtx();
+  const s = await seedOrphan(ctx, 'R-ORPH6');
+  const other = { ...s.lock.content, run_id: 'R-OTHER', pid: FAKE_WORKER + 1, acquired_at: new Date(Date.now() + 1000).toISOString() };
+  await fs.writeFile(s.lock.path, JSON.stringify(other, null, 2) + '\n', 'utf8');
+  const { err } = await captureStderr(() =>
+    settleOrphanedStart({
+      ctx, topic: TOPIC, stage: 'plan', runId: 'R-ORPH6', layout: s.layout, runDir: s.runDir, lock: s.lock,
+      born: { pid: FAKE_WORKER, watch: watchOf(false) }, workerStartedAt: 'T', error: new Error('x'),
+      terminate: async () => ({ gone: false, escalated: true, signals: ['SIGTERM', 'SIGKILL'] }),
+    }),
+  );
+  assert.doesNotMatch(err, /主题锁已记在它名下/);
+  assert.match(err, /主题锁当前不归本进程也不归它——本进程退出后可能按 pid_gone 被回收/);
+  assert.equal((await inspectLock(ctx.triviumDir, TOPIC))?.run_id, 'R-OTHER', '别人的锁不改写');
+});
+
+test('EV-150 U6：--cancel 宽限期判据——存活但不是同一进程（PID 被复用）即算已退出；同一进程算未退出；不存在算已退出', async () => {
+  const real = await processStartTime(process.pid);
+  assert.ok(real, '取不到本进程启动时刻，用例前提不成立');
+  assert.equal(await workerGoneForCancel(process.pid, 'Thu Jan  1 00:00:00 1970'), true, '计划双审 r1 AGY-04：复用者不能被当成 worker 升级 SIGKILL');
+  assert.equal(await workerGoneForCancel(process.pid, real), false);
+  assert.equal(await workerGoneForCancel(999_993, null), true);
 });

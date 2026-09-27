@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.8
+> - **当前版本**：v1.0.9
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -614,7 +614,11 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 .trivium/bin/trivium review --cancel <run_id>
 ```
 
-按进程组杀掉 worker 及其拉起的 agy/zcode，回收锁与闸门。
+按进程组终止 worker（SIGTERM，5 秒后仍在则 SIGKILL），回收锁与闸门。
+
+> **已知缺口**（v1.0.9 起如实写明，BACKLOG EV-152）：审查员 CLI（agy / zcode / codex / claude）是以各自独立的进程组拉起的，
+> 按 worker 进程组发的信号**够不到它们**。取消之后若怀疑还有 CLI 在跑（`ps` 里 ppid 为 1 的 `agy` / `zcode-cli` 等），
+> 请在终端手工结束它们。此前本手册写的「连同 agy/zcode 一起杀掉」不准确。
 
 > 被取消的运行，其 `run-<id>.json` 会标为 `cancelled`（v1.0.5 起，设计 v1.3.47，EV-128；此前停在 `running`）。
 > 两种情形不写，输出会说明原因：工作进程没能确认已退出（可能还有写者），或 run.json 已是终态（不追溯改写）。
@@ -630,7 +634,13 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 >
 > **`review --start` 或同步 `review` 自己报错时**（v1.0.8 起，设计 v1.3.50，EV-145）：若已写下 `run-<id>.json`，它会标为 `failed`，
 > 并在 `termination` 里注明是哪一种——`prepare_exception`（准备阶段失败，审查员一个都没拉起、没花配额）或 `sync_exception`（同步路径异常）；
-> 报错下方会多两行说明收尾结果。`--start` 在审查员已被拉起之后才报错的少见情形不在此列：那时审查会照常跑完并自己收尾，见 BACKLOG EV-150。
+> 报错下方会多两行说明收尾结果。
+>
+> **`review --start` 在拉起工作进程之后才报错时**（v1.0.9 起，设计 v1.3.51，EV-150；少见，多半是磁盘或权限问题）：
+> 它会先终止那个工作进程、确认它已退出，再同样把 `run-<id>.json` 标为 `failed`（`post_spawn_exception`），
+> 锁与闸门一并收好——报错之后没有东西在后台跑，直接排查原因、重跑即可。
+> 报错里若写「未能确认退出」，说明那个进程没能被终止：按提示先 `trivium review --cancel <run_id>`（或在终端结束它），再重跑。
+> 若写「工作进程在被终止之前已跑完」，审查其实已经完成：按提示用 `--wait` 取结果、照常裁决。
 
 ### 场景 5 · 裁决写了但闸门不过
 

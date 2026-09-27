@@ -1,0 +1,39 @@
+[
+  {
+    "id": "M1",
+    "desc": "主 catch 去掉「子进程已诞生」分支（回到今天：只回收闸门、放锁）⇒ P4（run.json 停在 running、留下孤儿）",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "fail": 3,
+    "red": [
+      "派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker",
+      "派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）",
+      "派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）"
+    ],
+    "firstLines": [],
+    "windowMiss": false
+  },
+  {
+    "id": "M2",
+    "desc": "settleOrphanedStart 不终止、直接当已退出往下走 ⇒ P4b（孤儿跑完改写 run.json 与闸门）",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "fail": 3,
+    "red": [
+      "派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker",
+      "派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）",
+      "派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）"
+    ],
+    "firstLines": [],
+    "windowMiss": false
+  },
+  {
+    "id": "M4",
+    "desc": "去掉第 5 步 status.json 落终态 ⇒ P4（status.json 与 --wait 断言）",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "fail": 1,
+    "red": [
+      "派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker"
+    ],
+    "firstLines": [],
+    "windowMiss": false
+  }
+]

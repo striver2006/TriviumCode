@@ -15,12 +15,13 @@ import type { Config, CriticId, CriticRequest, Ctx, Stage, CommandEntry } from '
 import { EXIT, TriviumError, envError, exitCodeOf, missingArtifact } from './exit-codes.js';
 import { runRoot } from './config.js';
 import { RUN_DIR_FILES } from './run-files.js';
-import { acquireLock, inspectLock, reclaimStaleLock } from './lock.js';
+import { acquireLock, inspectLock, reclaimStaleLock, type LockHandle } from './lock.js';
 import {
-  computeMaxWaits, interpretStatus, newStatus, patchStatus, readStatus,
+  computeMaxWaits, interpretStatus, isTerminal, newStatus, patchStatus, readStatus,
   renderProgress, renderProgressBrief, progressViewOf, workerConfirmedGone, writeStatus,
   type ProgressBudget, type ProgressView, type RunStatus,
 } from './status.js';
+import type { ArchiveLayout } from './archive.js';
 import {
   executeRun, prepareRun, repoId, type PreparedRun, type ReviewOptions, type RunContext,
 } from './review.js';
@@ -35,7 +36,9 @@ import { resolveAdapters } from './adapters/stub.js';
 import { realAdapters, wiredAdapter } from './adapters/index.js';
 import { scrubRunDir } from './scrub.js';
 import { ensureDir, exists } from './util/fsx.js';
-import { killProcessTree, processAlive, processStartTime, spawnDetached } from './util/exec.js';
+import {
+  processAlive, processStartTime, spawnDetached, terminateProcessGroup, type DetachedChildWatch,
+} from './util/exec.js';
 import { fail, say, step, warn } from './util/log.js';
 import { checkModelOverrideSource, collectWarnings, type PreflightWarning } from './preflight.js';
 
@@ -363,11 +366,17 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
    * （EV-145，事后收尾余项计划 r2 §3.3，计划双审 r1 CODEX-03 ≡ GLM-02）：
    * - 为假：还没有 worker，写者就是本进程，把骨架收尾为 failed（`prepare_exception`）。这一侧含 `spawnDetached`
    *   内部建日志目录、开日志文件、`spawn` 没拿到 pid 三处失败——它们都在子进程诞生之前；
-   * - 为真：worker 活着、会自己写终态（实测：它照常跑完并写 success），这里再写 failed 会与它互相覆盖，不收尾。
-   *   这一格锁与闸门被提前放掉的既有缺陷见 BACKLOG EV-150。
+   * - 为真：先终止 worker 并按子进程句柄确认退出，再收尾（`post_spawn_exception`）——见 `settleOrphanedStart`
+   *   （EV-150，派生后失败的孤儿worker计划 r2 §3.4）。此前这一格只放锁、回收闸门，孤儿 worker 照常跑完、
+   *   事后把已回收的闸门置成待裁决，或与下一轮并发。
    * 不用「`spawnDetached` 有没有返回」判：它的 `finally` 在子进程已起之后仍可能因关日志句柄而抛。
+   * `spawnState.born` 与 `childBorn` 同时置位；前者多带子进程句柄，那一格拿不到返回值，只能从回调里留下
+   * （用对象持有：在回调里赋值的 `let` 会被控制流分析在 catch 里收窄成 null）。
    */
   let childBorn = false;
+  const spawnState: { born: { pid: number; watch: DetachedChildWatch } | null } = { born: null };
+  // 提到 try 之外：派生后失败时收尾要用（失败点在取到它之前则为 null）
+  let workerStartedAt: string | null = null;
   try {
     warnings = collectWarnings(await checkModelOverrideSource(rc.sides, rc.adapters));
     await ensureDir(rc.runDirBase);
@@ -393,15 +402,16 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
       {
         cwd: ctx.projectRoot,
         logFile: workerLogPath(rc.runDirBase),
-        onSpawned: () => {
+        onSpawned: (pid, watch) => {
           childBorn = true;
+          spawnState.born = { pid, watch };
         },
       },
     );
     await fs.writeFile(workerPidPath(rc.runDirBase), `${spawned.pid}\n`, 'utf8');
 
     // 锁改记工作进程的 pid：从此刻起锁的持有者是它，不是 --start
-    const workerStartedAt = await processStartTime(spawned.pid);
+    workerStartedAt = await processStartTime(spawned.pid);
     await fs.writeFile(
       lock.path,
       JSON.stringify(
@@ -445,7 +455,20 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
       ) as Partial<Record<CriticId, string>>,
     };
   } catch (e) {
-    // prepareRun 之后才失败：闸门已经是 running，必须连它一起回收——排第一（见 meta.ts 通用体文档块的两种次序）
+    /*
+     * 子进程已诞生（EV-150）：worker 在跑，先终止它、按句柄确认退出，再回收闸门、收尾、处理 status.json、放锁。
+     * 次序的要点是「终止在回收闸门之前」：反过来，孤儿收尾时 `expect: { runId }` 只比 run_id，
+     * 会把刚回收成 idle 的本轮闸门置成待裁决（计划 r2 §2.2 / D4）。确认不了退出时一概不回收（D5）。
+     */
+    const born = spawnState.born;
+    if (born) {
+      await settleOrphanedStart({
+        ctx, topic: rc.ref.topic, stage: rc.stage, runId: rc.runId, layout: rc.ref.layout,
+        runDir: rc.runDirBase, lock, born, workerStartedAt, error: e,
+      });
+      throw e;
+    }
+    // prepareRun 之后、子进程诞生之前失败：闸门已经是 running，必须连它一起回收——排第一（见 meta.ts 通用体文档块的两种次序）
     await releaseRunningGate(ctx, rc.runId, rc.ref.topic, rc.stage);
     if (!childBorn) {
       /*
@@ -499,6 +522,192 @@ async function releaseRunningGate(
     topic, stage, runId,
     heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
   });
+}
+
+export interface OrphanedStartInput {
+  ctx: Ctx;
+  topic: string;
+  stage: Stage;
+  runId: string;
+  layout: ArchiveLayout;
+  runDir: string;
+  /** `startRun` 开头拿到的运行锁（内容可能已被「锁改记工作进程的 pid」一段改写成 worker 的） */
+  lock: LockHandle;
+  born: { pid: number; watch: DetachedChildWatch };
+  /** `startRun` 已取到的 worker 启动时刻；失败点在取到它之前为 null */
+  workerStartedAt: string | null;
+  error: unknown;
+  /** 单测注入：缺省按子进程句柄终止并确认（`terminateProcessGroup`，宽限 5 s、SIGKILL 后再等 5 s） */
+  terminate?: () => Promise<{ gone: boolean; escalated: boolean; signals: NodeJS.Signals[] }>;
+  /** 单测注入：缺省 `processStartTime` */
+  startTimeOf?: (pid: number) => Promise<string | null>;
+}
+
+/**
+ * `review --start` 在子进程诞生之后失败时的收尾（EV-150，派生后失败的孤儿worker计划 r2 §3.4）。
+ *
+ * 目标不变量：`--start` 非零退出 ⇔ 没有 worker 在跑，锁、闸门、留痕都已收拾好。按顺序：
+ *   1. 终止 worker 所在的进程组，按父进程手里的子进程句柄确认退出（不依赖启动时刻，它可能取不到）；
+ *   2. 确认不了退出（D5）：闸门、run.json、status.json 的 phase 一概不动——孤儿若还活着就是写者；只尽力把
+ *      pid 与启动时刻补记进 status.json、把仍是本进程内容的锁改写成 worker 的，让 `--cancel` 找得到它、
+ *      锁跟着它走（计划双审 r1 CODEX-02、AGY-01）。不放锁；
+ *   3. 回收闸门——**排在终止之后**：反过来排，孤儿收尾时会把刚回收的闸门置成待裁决（D4）；
+ *   4. 把 run.json 与登记收尾为 failed（`post_spawn_exception`）；run.json 已被 worker 写成终态的不追溯改写，只指路；
+ *   5. status.json：已终态不动；run.json 属本进程收尾的落 failed；worker 已写 run.json 终态而 status.json 未到的、
+ *      以及回读 run.json 读不出的，只补 pid、不落 phase（计划双审 r1 AGY-02 ≡ GLM-01；代码双审 r1 CODEX-03）；
+ *   6. 放锁：`release()` 删仍是本进程内容的锁；已改写成本轮 worker 的，按 run_id + pid 复核后回收。
+ *      锁已改写那一格，worker 被终止后新 `--start` 可按 pid_gone 当场接管——四道守卫保证两轮不串写
+ *      （按 run_id 回收闸门、按 run_id 收尾、这里的双条件复核、reclaimStaleLock 的复验；计划双审 r1 CODEX-01 ≡ GLM-05）。
+ * 每一步各自吞错、打 warn：调用方随即抛原错误，本函数不得改掉退出码。凭据副本不在这里抹（计划 r2 §3.4 末段）。
+ */
+export async function settleOrphanedStart(i: OrphanedStartInput): Promise<void> {
+  const { ctx, born } = i;
+  const heartbeatStaleMs = ctx.config.review.heartbeat_stale_s * 1000;
+  const soft = async (what: string, fn: () => Promise<unknown>): Promise<void> => {
+    try {
+      await fn();
+    } catch (err) {
+      warn(`${what}失败：${String((err as Error)?.message ?? err).split('\n')[0]}`);
+    }
+  };
+
+  // 1. 终止并确认
+  let t: { gone: boolean; escalated: boolean; signals: NodeJS.Signals[] } | null;
+  try {
+    t = await (i.terminate ?? (() => terminateProcessGroup(born.pid, {
+      isGone: born.watch.hasExited, graceMs: 5000, killWaitMs: 5000,
+    })))();
+  } catch (err) {
+    warn(`终止工作进程组 ${born.pid} 时出错：${String((err as Error)?.message ?? err).split('\n')[0]}`);
+    t = null; // 发过哪些信号不得而知：下面只按句柄判退出，不再补「已终止」
+  }
+  const gone = t ? t.gone : born.watch.hasExited();
+  /*
+   * 播报按事实分句（代码双审 r1 CODEX-01 ≡ GLM-01）：一个信号都没发、发了却没确认退出、终止本身出错，
+   * 都不能说成「已终止」——MANUAL 正教用户按这些字样分辨结局。
+   */
+  const sent = t?.signals.join('、') ?? '';
+  if (t && gone && t.signals.length === 0) {
+    warn(`--start 在派生工作进程之后失败：工作进程 ${born.pid} 在被终止之前已自行退出`);
+  } else if (t && gone) {
+    warn(`--start 在派生工作进程之后失败：已终止工作进程组 ${born.pid}（${sent}）`);
+  } else if (t) {
+    warn(`--start 在派生工作进程之后失败：已向工作进程组 ${born.pid} 发送 ${sent || '（无）'}，未能确认退出`);
+  } else if (gone) {
+    warn(`--start 在派生工作进程之后失败：工作进程 ${born.pid} 已退出（终止过程出错，见上一行）`);
+  }
+
+  // 2. 确认不了退出：留给它，不回收
+  if (!gone) {
+    const startedAt = i.workerStartedAt ?? (await (i.startTimeOf ?? processStartTime)(born.pid).catch(() => null));
+    await soft('补记 status.json 的 worker_pid', () =>
+      patchStatus(i.runDir, (s) => {
+        s.worker_pid ??= born.pid;
+        s.worker_started_at ??= startedAt;
+      }),
+    );
+    /*
+     * 改写锁的结果要记下来，末句按它说（代码双审 r1 GLM-01 第 2 点）：改写失败或锁已不归本进程时
+     * 还说「已记在它名下」，恰在用户要照着手工处理的这条路上误导。
+     */
+    let lockOutcome: 'rewritten' | 'already_worker' | 'foreign' | 'failed' = 'failed';
+    try {
+      const cur = await inspectLock(ctx.triviumDir, i.topic);
+      if (cur && cur.pid === i.lock.content.pid && cur.acquired_at === i.lock.content.acquired_at) {
+        await fs.writeFile(
+          i.lock.path,
+          JSON.stringify({ ...i.lock.content, run_id: i.runId, pid: born.pid, pid_started_at: startedAt }, null, 2) + '\n',
+          'utf8',
+        );
+        lockOutcome = 'rewritten';
+      } else if (cur && cur.run_id === i.runId && cur.pid === born.pid) {
+        lockOutcome = 'already_worker';
+      } else {
+        lockOutcome = 'foreign';
+      }
+    } catch (err) {
+      warn(`把主题锁改记到工作进程名下失败：${String((err as Error)?.message ?? err).split('\n')[0]}`);
+    }
+    const lockLine =
+      lockOutcome === 'rewritten' || lockOutcome === 'already_worker'
+        ? '主题锁已记在它名下'
+        : `主题锁${lockOutcome === 'foreign' ? '当前不归本进程也不归它' : '仍是本进程的内容'}——本进程退出后可能按 pid_gone 被回收，它若还活着会与新一轮并发`;
+    warn(
+      `工作进程 ${born.pid} 未能确认退出：闸门与归档 run.json 留给它（它若还活着就是写者），${lockLine}。` +
+        `请 trivium review --cancel ${i.runId}，或手工结束进程组 ${born.pid} 之后 trivium review --wait ${i.runId}`,
+    );
+    return;
+  }
+
+  // 3. 回收闸门（终止之后）
+  await soft('回收闸门', () =>
+    releaseRunningGateEntry({ triviumDir: ctx.triviumDir, topic: i.topic, stage: i.stage, runId: i.runId, heartbeatStaleMs }),
+  );
+
+  // 4. 收尾 run.json 与登记（自身不抛）
+  const fin = await finalizeFailedRunMeta({
+    layout: i.layout, stage: i.stage, runId: i.runId,
+    lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs },
+    workerGone: true,
+    termination: { by: 'post_spawn_exception', exit_code: exitCodeOf(i.error) },
+  });
+  for (const line of finalizeLines(fin, i.runId, '派生后启动未完成')) warn(line);
+  const meta = await readRunMeta(i.layout, i.stage, i.runId).catch(() => null);
+  /*
+   * 回读读不出（`readRunMeta` 对读不到、不合契约都返回 null）是第三态，不并进「本进程收尾」：
+   * 盘上可能是 worker 写下的终态，此时把 status.json 落成 failed 会与它结论相反（代码双审 r1 CODEX-03）。
+   */
+  const metaUnreadable = meta === null;
+  const workerWroteTerminal =
+    meta !== null && meta.status !== 'running' &&
+    !(meta.status === 'failed' && meta.termination?.by === 'post_spawn_exception');
+  const st = await readStatus(i.runDir);
+  if (metaUnreadable) {
+    warn(`归档 run-${i.runId}.json 读不出：status.json 的 phase 不替它下结论，请人工核对归档 run.json 与 task.json 的运行登记`);
+  }
+  if (workerWroteTerminal) {
+    warn(
+      st && isTerminal(st.phase)
+        ? `工作进程在被终止之前已跑完：用 trivium review --wait ${i.runId} 取结果`
+        : `工作进程在被终止之前已写下归档终态（${meta!.status}），审查文档已落盘，以归档 run.json 为准；` +
+            `此时 --wait 会判失联（pid_gone），但不改写 run.json`,
+    );
+  }
+
+  // 5. status.json：已终态不动
+  if (st && !isTerminal(st.phase)) {
+    await soft('写 status.json 终态', () =>
+      patchStatus(i.runDir, (s) => {
+        if (isTerminal(s.phase)) return;
+        s.worker_pid ??= born.pid;
+        s.worker_started_at ??= i.workerStartedAt;
+        if (workerWroteTerminal || metaUnreadable) return; // phase 该由 worker 写 / 读不出，本进程不替它下结论
+        s.phase = 'failed';
+        s.exit_code = exitCodeOf(i.error);
+        s.message = `启动未完成：已终止工作进程 ${born.pid}`;
+      }),
+    );
+  }
+
+  // 6. 放锁
+  await soft('释放主题锁', () => i.lock.release());
+  await soft('回收已改记到工作进程名下的主题锁', async () => {
+    const cur = await inspectLock(ctx.triviumDir, i.topic);
+    if (cur && cur.run_id === i.runId && cur.pid === born.pid) {
+      await reclaimStaleLock(i.lock.path, cur);
+    }
+  });
+}
+
+/**
+ * `--cancel` 宽限期内「工作进程已退出」的判据：不存活，**或不是同一进程**（EV-150，计划双审 r1 AGY-04，用户审批并入）。
+ *
+ * 此前只看存活：宽限期内 PID 若被复用，会把复用者当成 worker、升级 SIGKILL；而 `kill(-pid)` 在复用者不是组长时
+ * ESRCH、退回 `kill(pid)`，信号就打到了无关进程。与 `workerConfirmedGone`、`judgeStale` 同一口径。
+ */
+export async function workerGoneForCancel(pid: number, startedAt: string | null): Promise<boolean> {
+  const p = await processAlive(pid, startedAt);
+  return !p.alive || !p.sameProcess;
 }
 
 // ─────────────────────── worker ───────────────────────
@@ -945,19 +1154,22 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
   if (pid !== null) {
     const live = await processAlive(pid, s?.worker_started_at ?? null);
     if (live.alive && live.sameProcess) {
-      // 按**进程组**发：只杀 worker 会把 agy / zcode 遗弃给 init 继续烧配额
-      step(`向工作进程组 ${pid} 发送 SIGTERM（含两侧厂商子进程）`);
-      killProcessTree(pid, 'SIGTERM');
-      // 宽限 5s 后 SIGKILL
-      const deadline = Date.now() + 5000;
-      while (Date.now() < deadline) {
-        if (!(await processAlive(pid, s?.worker_started_at ?? null)).alive) break;
-        await new Promise((r) => setTimeout(r, 250));
-      }
-      if ((await processAlive(pid, s?.worker_started_at ?? null)).alive) {
-        warn(`工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL`);
-        killProcessTree(pid, 'SIGKILL');
-      }
+      /*
+       * 按**进程组**发：只杀 worker 会把与它同组的子进程遗弃给 init。适配器以 `killTree` 拉起的厂商 CLI
+       * 自成一组，这里够不到（`killProcessTree` 文档块，BACKLOG EV-152）。
+       * SIGTERM → 宽限 5 s（每 250 ms 看一次）→ SIGKILL、之后不等：与 `--start` 派生后失败的收尾共用
+       * `terminateProcessGroup`（EV-150）。宽限期判据是「不存活或不是同一进程」——此前只看存活，
+       * PID 被复用时会把 SIGKILL 打到无关进程（计划双审 r1 AGY-04，用户审批并入）。
+       */
+      step(`向工作进程组 ${pid} 发送 SIGTERM`);
+      const startedAt = s?.worker_started_at ?? null;
+      await terminateProcessGroup(pid, {
+        isGone: () => workerGoneForCancel(pid, startedAt),
+        graceMs: 5000,
+        killWaitMs: 0,
+        pollMs: 250,
+        onEscalate: () => warn(`工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL`),
+      });
     } else {
       step(`工作进程 ${pid} 已不存在，仅做状态与锁的清理`);
     }

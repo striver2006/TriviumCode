@@ -1,0 +1,52 @@
+{
+  "node": "v25.2.1",
+  "platform": "darwin",
+  "K1_before": {
+    "worker": {
+      "pid": 18233,
+      "pgid": 18233
+    },
+    "treeChild": {
+      "pid": 18235,
+      "pgid": 18235,
+      "ppid": 18233
+    },
+    "plainChild": {
+      "pid": 18236,
+      "pgid": 18233,
+      "ppid": 18233
+    }
+  },
+  "K1_killDelivered": true,
+  "K1_after": {
+    "workerAlive": false,
+    "workerGoneMs": 650,
+    "treeChildAlive": true,
+    "treeChildPpidNow": 1,
+    "plainChildAlive": false,
+    "survivors": [
+      {
+        "pid": 18235,
+        "pgid": 18235,
+        "ppid": 1,
+        "cmd": "/bin/sh -c sleep 120; : <MARK>-tree"
+      }
+    ]
+  },
+  "K2_beforeKill": {
+    "pid": 18254,
+    "exitCode": null,
+    "signalCode": null,
+    "alive": true
+  },
+  "K2_afterKill": {
+    "exitEvent": {
+      "code": null,
+      "signal": "SIGTERM",
+      "ms": 4
+    },
+    "exitCode": null,
+    "signalCode": "SIGTERM",
+    "alive": false
+  }
+}

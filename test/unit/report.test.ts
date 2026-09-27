@@ -500,6 +500,16 @@ test('EV-145 V8：prepare_exception / sync_exception 写成的 failed ⇒ 说明
   );
 });
 
+test('EV-150 V8′：post_spawn_exception 写成的 failed ⇒ 说明写清「派生工作进程之后启动未完成，工作进程已终止」并带退出码', async () => {
+  const l = await archive();
+  await seedUnlisted(l, { runId: 'Q1', status: 'failed', termination: { by: 'post_spawn_exception', exit_code: 1 } });
+  const r = await buildTopicReport(l);
+  assert.deepEqual(
+    r.unlistedRuns.map((u) => [u.runId, u.label]),
+    [['Q1', '派生工作进程之后启动未完成，工作进程已终止（退出码 1）']],
+  );
+});
+
 test('EV-145 V9：termination.by 的每一个取值都有专门的说明，不落进兜底「failed（gate.state=…）」', async () => {
   const l = await archive();
   const shapes: import('../../src/trivium/types.js').RunTermination[] = [

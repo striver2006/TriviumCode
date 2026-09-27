@@ -428,6 +428,9 @@ function unlistedLabel(meta: RunMeta, failedSides: number, registeredReviewDocs:
     label = `准备阶段失败，未拉起审查员（退出码 ${meta.termination.exit_code}）`;
   } else if (meta.status === 'failed' && meta.termination?.by === 'sync_exception') {
     label = `同步路径异常（退出码 ${meta.termination.exit_code}）`;
+  } else if (meta.status === 'failed' && meta.termination?.by === 'post_spawn_exception') {
+    // review --start 在子进程诞生之后失败，工作进程已被终止并确认退出（EV-150）
+    label = `派生工作进程之后启动未完成，工作进程已终止（退出码 ${meta.termination.exit_code}）`;
   } else if (meta.status === 'failed' && meta.termination?.by === 'worker_lost') {
     label = `worker 失联（${meta.termination.reason}）`;
   } else if (meta.status === 'failed' && failedSides > 0 && registeredReviewDocs === 0) label = '入选侧全部失败';

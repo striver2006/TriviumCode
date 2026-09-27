@@ -1,0 +1,208 @@
+{
+  "C2b_ok": {
+    "startCode": 1,
+    "startMsg": [
+      "· 主题 C2b-派生后失败-ok ｜ 阶段 plan ｜ 第 1 轮 ｜ run 20260927T090754Z",
+      "· 被审对象 .reviews/C2b-派生后失败-ok/plan/2026-09-27-C2b-派生后失败-ok-claude.md",
+      "✗ 内部错误：EISDIR: illegal operation on a directory, open '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-residual-vOF7Lq/runs-C2b-派生后失败-ok/C2b-派生后失败-ok-f08cdefe/20260927T090754Z/worker.pid'"
+    ],
+    "startMs": 289,
+    "rightAfterStart": {
+      "runMetas": {
+        "20260927T090754Z": {
+          "status": "running",
+          "gate": "running",
+          "r": 1,
+          "finished_at": null,
+          "termination": null,
+          "skipped": null,
+          "artifacts": 2
+        }
+      },
+      "task": [
+        {
+          "run_id": "20260927T090754Z",
+          "stage": "plan",
+          "r": 1,
+          "status": "running"
+        }
+      ],
+      "gate": {
+        "state": "idle",
+        "run_id": "20260927T090754Z",
+        "rerun_index": 1
+      },
+      "locks": []
+    },
+    "after6s": {
+      "runMetas": {
+        "20260927T090754Z": {
+          "status": "success",
+          "gate": "review_done_awaiting_disposition",
+          "r": 1,
+          "finished_at": "2026-09-27T09:07:54.307Z",
+          "termination": null,
+          "skipped": null,
+          "artifacts": 7
+        }
+      },
+      "task": [
+        {
+          "run_id": "20260927T090754Z",
+          "stage": "plan",
+          "r": 1,
+          "status": "success"
+        }
+      ],
+      "gate": {
+        "state": "review_done_awaiting_disposition",
+        "run_id": "20260927T090754Z",
+        "rerun_index": 1
+      },
+      "locks": []
+    },
+    "docs": [
+      "2026-09-27-C2b-派生后失败-ok-claude.md",
+      "2026-09-27-C2b-派生后失败-ok-gemini.md",
+      "2026-09-27-C2b-派生后失败-ok-glm.md"
+    ],
+    "report": {
+      "code": 0,
+      "rounds": [
+        {
+          "stage": "plan",
+          "r": 1,
+          "runId": "20260927T090754Z",
+          "status": "success"
+        }
+      ],
+      "unlisted": []
+    }
+  },
+  "C2b_hang": {
+    "startCode": 1,
+    "startMsg": [
+      "· 主题 C2b-派生后失败-hang ｜ 阶段 plan ｜ 第 1 轮 ｜ run 20260927T090800Z",
+      "· 被审对象 .reviews/C2b-派生后失败-hang/plan/2026-09-27-C2b-派生后失败-hang-claude.md",
+      "✗ 内部错误：EISDIR: illegal operation on a directory, open '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-residual-vOF7Lq/runs-C2b-派生后失败-hang/C2b-派生后失败-hang-c360baa2/20260927T090800Z/worker.pid'"
+    ],
+    "runMetas": {
+      "20260927T090800Z": {
+        "status": "running",
+        "gate": "running",
+        "r": 1,
+        "finished_at": null,
+        "termination": null,
+        "skipped": null,
+        "artifacts": 2
+      }
+    },
+    "task": [
+      {
+        "run_id": "20260927T090800Z",
+        "stage": "plan",
+        "r": 1,
+        "status": "running"
+      }
+    ],
+    "gate": {
+      "state": "idle",
+      "run_id": "20260927T090800Z",
+      "rerun_index": 1
+    },
+    "locks": [],
+    "runDirFiles": [
+      "request.json",
+      "status.json",
+      "worker.log",
+      "worker.pid"
+    ],
+    "statusJson": {
+      "phase": "running",
+      "worker_pid": null
+    },
+    "orphanPid": 19640,
+    "orphanAlive": true,
+    "secondStart": {
+      "code": 0,
+      "msg": null,
+      "runId": "20260927T090803Z"
+    },
+    "afterSecondStart": {
+      "runMetas": {
+        "20260927T090800Z": {
+          "status": "running",
+          "gate": "running",
+          "r": 1,
+          "finished_at": null,
+          "termination": null,
+          "skipped": null,
+          "artifacts": 2
+        },
+        "20260927T090803Z": {
+          "status": "running",
+          "gate": "running",
+          "r": 1,
+          "finished_at": null,
+          "termination": null,
+          "skipped": null,
+          "artifacts": 2
+        }
+      },
+      "task": [
+        {
+          "run_id": "20260927T090800Z",
+          "stage": "plan",
+          "r": 1,
+          "status": "running"
+        },
+        {
+          "run_id": "20260927T090803Z",
+          "stage": "plan",
+          "r": 1,
+          "status": "running"
+        }
+      ],
+      "gate": {
+        "state": "running",
+        "run_id": "20260927T090803Z",
+        "rerun_index": 1
+      },
+      "locks": [
+        "C2b-派生后失败-hang.lock"
+      ]
+    },
+    "afterKill": {
+      "orphanAlive": false,
+      "cancel": {
+        "code": 0,
+        "tail": [
+          "⚠️  凭据副本未抹：运行处于 running 却拿不到 worker_pid：判不了——留给会话启动清扫",
+          "· 归档 run-20260927T090800Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）",
+          "· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记",
+          "· 闸门未回收：闸门当前记着 run 20260927T090803Z，不是 20260927T090800Z"
+        ]
+      },
+      "runMetas": {
+        "20260927T090800Z": {
+          "status": "running",
+          "gate": "running",
+          "r": 1,
+          "finished_at": null,
+          "termination": null,
+          "skipped": null,
+          "artifacts": 2
+        },
+        "20260927T090803Z": {
+          "status": "running",
+          "gate": "running",
+          "r": 1,
+          "finished_at": null,
+          "termination": null,
+          "skipped": null,
+          "artifacts": 2
+        }
+      }
+    }
+  }
+}

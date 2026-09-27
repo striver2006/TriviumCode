@@ -4,7 +4,9 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { killProcessTree, spawnDetached, processAlive, run } from '../../src/trivium/util/exec.js';
+import {
+  killProcessTree, spawnDetached, processAlive, run, terminateProcessGroup, type DetachedChildWatch,
+} from '../../src/trivium/util/exec.js';
 
 /**
  * R-A 的验收（修订版 M2 计划 §6）：两条断言，不是一条模糊判据。
@@ -174,10 +176,12 @@ test('killProcessTree 杀整组：子孙进程不被遗弃给 init', async () =>
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-tree-'));
 
   /*
-   * 造一棵真进程树：detached 的父进程再 spawn 一个长睡子进程。
-   * 这正是 worker → agy/zcode 的形状。只 kill 父进程的话，
-   * 子进程会被 init 收养并继续跑——实测中 `--cancel` 之后 zcode-cli 的 PPID
-   * 变成 1 且仍在消耗配额，就是这么来的。
+   * 造一棵真进程树：detached 的父进程再 spawn 一个长睡子进程（**不带** detached，与父进程同组）。
+   * 这是 worker 以不带 `killTree` 的 `run()` 拉起子进程的形状。只 kill 父进程的话，
+   * 子进程会被 init 收养并继续跑——`5476238` 实测中 `--cancel` 之后 zcode-cli 的 PPID
+   * 变成 1 且仍在消耗配额，就是这么来的（那时它还在 worker 的组里）。
+   * 注意：今天审查员适配器以 `killTree: true` 拉起厂商 CLI，那会让 CLI 自成一组，本用例的形状**不覆盖**它——
+   * 按 worker 的组发的信号到不了那一组（派生后失败的孤儿worker计划 r2 §2.1，BACKLOG EV-152）。
    */
   const script = path.join(dir, 'parent.mjs');
   await fs.writeFile(
@@ -305,4 +309,100 @@ test('EV-145 U2：二进制不存在（spawn 拿不到 pid）⇒ spawnDetached �
   assert.match(r.stdout, /caught:spawn 未返回 pid：\/nonexistent\/trivium-bin-xyz（ENOENT /, r.stdout);
   const log = await fs.readFile(path.join(dir, 'w.log'), 'utf8');
   assert.match(log, /spawn 未返回 pid：\/nonexistent\/trivium-bin-xyz（ENOENT /, `worker.log 应留一行成因：${JSON.stringify(log)}`);
+});
+
+// ── EV-150：子进程句柄的退出观察与按组终止（派生后失败的孤儿worker计划 r2 §3.2 / §4.1 U3 / U4）──
+
+/** 派生一个长睡子进程并拿到它的退出观察；`ignoreTerm` 为真时它忽略 SIGTERM，就绪后才返回 */
+async function spawnWatched(ignoreTerm = false): Promise<{ pid: number; watch: DetachedChildWatch; argPid: number }> {
+  const dir = await tmpDir();
+  const ready = path.join(dir, 'ready');
+  const script = path.join(dir, 'w.mjs');
+  await fs.writeFile(
+    script,
+    [
+      "import { writeFileSync } from 'node:fs';",
+      ignoreTerm ? "process.on('SIGTERM', () => {});" : '',
+      `writeFileSync(${JSON.stringify(ready)}, 'x');`,
+      'setInterval(() => {}, 1000);',
+    ].join('\n'),
+    'utf8',
+  );
+  let got: { pid: number; watch: DetachedChildWatch } | null = null;
+  const r = await spawnDetached(process.execPath, [script], {
+    cwd: dir,
+    logFile: path.join(dir, 'w.log'),
+    onSpawned: (pid, watch) => {
+      got = { pid, watch };
+    },
+  });
+  assert.ok(await waitFor(() => fs.access(ready).then(() => true, () => false), 10_000), '子进程没就绪，用例前提不成立');
+  const g = got as { pid: number; watch: DetachedChildWatch } | null;
+  assert.ok(g, 'onSpawned 应已调用');
+  return { pid: r.pid, watch: g.watch, argPid: g.pid };
+}
+
+test('EV-150 U3：onSpawned 的第二个参数——杀之前 hasExited 为假；按组 SIGTERM 后 exited 兑现、signal 为 SIGTERM、hasExited 为真', async () => {
+  const { pid, watch, argPid } = await spawnWatched();
+  try {
+    assert.equal(argPid, pid, '第一个参数仍是返回的 pid');
+    assert.equal(watch.hasExited(), false);
+    assert.equal(killProcessTree(pid, 'SIGTERM'), true);
+    const ev = await Promise.race([watch.exited, new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
+    assert.ok(ev, '3 s 内应观察到退出');
+    assert.equal(ev.signal, 'SIGTERM');
+    assert.equal(watch.hasExited(), true);
+  } finally {
+    killProcessTree(pid, 'SIGKILL');
+  }
+});
+
+test('EV-150 U4①：terminateProcessGroup——普通子进程 SIGTERM 即退，不升级', async () => {
+  const { pid, watch } = await spawnWatched();
+  try {
+    let escalations = 0;
+    const r = await terminateProcessGroup(pid, {
+      isGone: watch.hasExited, graceMs: 3000, killWaitMs: 3000, pollMs: 50, onEscalate: () => escalations++,
+    });
+    assert.deepEqual(r, { gone: true, escalated: false, signals: ['SIGTERM'] });
+    assert.equal(escalations, 0);
+  } finally {
+    killProcessTree(pid, 'SIGKILL');
+  }
+});
+
+test('EV-150 U4②：terminateProcessGroup——忽略 SIGTERM 的子进程在宽限后升级 SIGKILL，onEscalate 恰调一次', async () => {
+  const { pid, watch } = await spawnWatched(true);
+  try {
+    let escalations = 0;
+    const r = await terminateProcessGroup(pid, {
+      isGone: watch.hasExited, graceMs: 300, killWaitMs: 3000, pollMs: 50, onEscalate: () => escalations++,
+    });
+    assert.deepEqual(r, { gone: true, escalated: true, signals: ['SIGTERM', 'SIGKILL'] });
+    assert.equal(escalations, 1);
+  } finally {
+    killProcessTree(pid, 'SIGKILL');
+  }
+});
+
+test('EV-150 U4③：terminateProcessGroup——判据恒为「未退出」时在宽限 + 等待之后如实返回 gone: false，不挂住', async () => {
+  const sent: NodeJS.Signals[] = [];
+  const t0 = Date.now();
+  const r = await terminateProcessGroup(999_999, {
+    isGone: () => false, graceMs: 200, killWaitMs: 300, pollMs: 50,
+    signal: (_pid, sig) => (sent.push(sig), true),
+  });
+  assert.deepEqual(r, { gone: false, escalated: true, signals: ['SIGTERM', 'SIGKILL'] });
+  assert.deepEqual(sent, ['SIGTERM', 'SIGKILL']);
+  assert.ok(Date.now() - t0 < 2000, `应在宽限 + 等待之后返回，实为 ${Date.now() - t0} ms`);
+});
+
+test('EV-150 U4④：terminateProcessGroup——一开始就已退出时一个信号都不发（不向可能被复用的号发组信号）', async () => {
+  const sent: NodeJS.Signals[] = [];
+  const r = await terminateProcessGroup(999_999, {
+    isGone: () => true, graceMs: 200, killWaitMs: 200,
+    signal: (_pid, sig) => (sent.push(sig), true),
+  });
+  assert.deepEqual(r, { gone: true, escalated: false, signals: [] });
+  assert.deepEqual(sent, []);
 });

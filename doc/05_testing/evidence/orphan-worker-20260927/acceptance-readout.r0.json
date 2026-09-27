@@ -1,0 +1,242 @@
+{
+  "at": "2026-09-27T15:05:21.872Z",
+  "baseRef": "e49279a",
+  "passed": 11,
+  "total": 13,
+  "results": [
+    {
+      "id": "A1 hang 桩派生后失败 ⇒ run.json 与登记 failed + post_spawn_exception",
+      "ok": true,
+      "detail": "退 1，run failed {\"by\":\"post_spawn_exception\",\"exit_code\":1}"
+    },
+    {
+      "id": "A1 闸门 idle、锁已放、status.json failed 且有 pid",
+      "ok": true,
+      "detail": "闸门 idle，锁 无，status failed/54668"
+    },
+    {
+      "id": "A1 进程表里没有该 run_id 的 worker（今天会留一个孤儿）",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "id": "A1 --wait 按终态返回（退 1、不说失联）、--cancel 说已处于终态、run.json 不再被改",
+      "ok": true,
+      "detail": "--wait 退 1，--cancel 退 0，run.json 不变"
+    },
+    {
+      "id": "A4 会话启动不再有指向那次失败运行的「状态读不到」「双审进行中」提示",
+      "ok": false,
+      "detail": "TriviumCode 待办： ｜   · 59 个运行目录的状态读不到（缺失或损坏），凭据副本未处理也不会自动重试——请人工检查后删除，首个：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150508Z ｜   · 1 个运行目录的凭据副本抹除失败（首个：worker.pid 脱敏失败：EISDIR: illegal operation on a directory, read，哨兵在 /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150507Z）——副本仍在盘上，下次会话启动会重试"
+    },
+    {
+      "id": "A3 正常重跑 ⇒ 退 0、只有新一轮的 worker、跑完退 0",
+      "ok": true,
+      "detail": "start 退 0，worker [{\"pid\":55139,\"id\":\"20260927T150509Z\"}]，--wait 退 0"
+    },
+    {
+      "id": "A3 report：时间线只列新一轮，未进时间线表一行本主题说明",
+      "ok": true,
+      "detail": "[{\"r\":1,\"runId\":\"20260927T150509Z\"}] ｜ [{\"r\":1,\"runId\":\"20260927T150507Z\",\"label\":\"派生工作进程之后启动未完成，工作进程已终止（退出码 1）\"}]"
+    },
+    {
+      "id": "A2 ok 桩派生后失败 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档",
+      "ok": true,
+      "detail": "run failed，闸门 idle，文档 2026-09-27-A2-诞生之后失败-ok-claude.md"
+    },
+    {
+      "id": "A5 按 worker 进程组发 SIGTERM 仍够不到 killTree 拉起的子进程（如实保留，EV-152）",
+      "ok": true,
+      "detail": "{\"workerAlive\":false,\"workerGoneMs\":651,\"treeChildAlive\":true,\"treeChildPpidNow\":1,\"plainChildAlive\":false,\"survivors\":[{\"pid\":55982,\"pgid\":55982,\"ppid\":1,\"cmd\":\"/bin/sh -c sleep 120; : <MARK>-tree\"}]}"
+    },
+    {
+      "id": "A6 本仓 report 逐主题不变",
+      "ok": true,
+      "detail": "基线 e49279a，54 个主题，rounds / unlistedRuns 不同的：无"
+    },
+    {
+      "id": "A7 (ii) 叠上取值面后 run-meta-strict / report 两个套件全绿（S3 / V9 不红）",
+      "ok": false,
+      "detail": "pass 30，fail 2"
+    },
+    {
+      "id": "A7 (i) 旧构建原样：新取值读成 null，resolveStageDriver 判 corrupt（回滚漏步的形态）",
+      "ok": true,
+      "detail": "{\"readable\":false,\"driver\":\"corrupt\",\"label\":null}"
+    },
+    {
+      "id": "A7 (ii) 旧代码 + 取值面：可读、Driver 判定正常、report 有专门说明",
+      "ok": true,
+      "detail": "{\"readable\":true,\"driver\":\"ok:claude\",\"label\":\"派生工作进程之后启动未完成，工作进程已终止（退出码 1）\"}"
+    }
+  ],
+  "readout": {
+    "A1": {
+      "startCode": 1,
+      "hit": true,
+      "stderrTail": [
+        "· 被审对象 .reviews/A1-诞生之后失败-hang/plan/2026-09-27-A1-诞生之后失败-hang-claude.md",
+        "⚠️  --start 在派生工作进程之后失败：已终止工作进程组 54668（SIGTERM）",
+        "⚠️  已把归档里的 run-20260927T150507Z.json 收尾为 failed（派生后启动未完成）",
+        "⚠️  已把 task.json 的运行登记同步为 failed（派生后启动未完成）",
+        "✗ 内部错误：EISDIR: illegal operation on a directory, open '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150507Z/worker.pid'"
+      ],
+      "status": "failed",
+      "termination": {
+        "by": "post_spawn_exception",
+        "exit_code": 1
+      },
+      "task": [
+        {
+          "run_id": "20260927T150507Z",
+          "status": "failed"
+        }
+      ],
+      "gate": "idle",
+      "locks": [],
+      "statusJson": {
+        "phase": "failed",
+        "worker_pid": 54668,
+        "message": "启动未完成：已终止工作进程 54668"
+      },
+      "workers": [],
+      "wait": {
+        "code": 1,
+        "tail": [
+          "  gemini: 待启动 ｜ gemini-3.8-flash-high",
+          "  glm: 待启动 ｜ GLM-5.3"
+        ]
+      },
+      "cancel": {
+        "code": 0,
+        "tail": [
+          "运行 20260927T150507Z 已处于终态（failed），无需取消。",
+          "  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。"
+        ]
+      }
+    },
+    "A4": {
+      "ctx": "TriviumCode 待办：\n  · 59 个运行目录的状态读不到（缺失或损坏），凭据副本未处理也不会自动重试——请人工检查后删除，首个：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150508Z\n  · 1 个运行目录的凭据副本抹除失败（首个：worker.pid 脱敏失败：EISDIR: illegal operation on a directory, read，哨兵在 /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-orphan-hqjq4V/runs-A1-诞生之后失败-hang/A1-诞生之后失败-hang-e280583c/20260927T150507Z）——副本仍在盘上，下次会话启动会重试"
+    },
+    "A3": {
+      "startCode": 0,
+      "runId": "20260927T150509Z",
+      "workersRightAfterStart": [
+        {
+          "pid": 55139,
+          "id": "20260927T150509Z"
+        }
+      ],
+      "waitCode": 0,
+      "rounds": [
+        {
+          "r": 1,
+          "runId": "20260927T150509Z"
+        }
+      ],
+      "unlisted": [
+        {
+          "r": 1,
+          "runId": "20260927T150507Z",
+          "label": "派生工作进程之后启动未完成，工作进程已终止（退出码 1）"
+        }
+      ]
+    },
+    "A2": {
+      "startCode": 1,
+      "hit": true,
+      "rightAfter": "failed",
+      "after3s": {
+        "status": "failed",
+        "termination": {
+          "by": "post_spawn_exception",
+          "exit_code": 1
+        }
+      },
+      "gate": {
+        "topic": "A2-诞生之后失败-ok",
+        "stage": "plan",
+        "state": "idle",
+        "run_id": "20260927T150511Z",
+        "rerun_index": 1,
+        "since": "2026-09-27T15:05:12.202Z",
+        "session_id": "S-验收"
+      },
+      "docs": [
+        "2026-09-27-A2-诞生之后失败-ok-claude.md"
+      ]
+    },
+    "A5": {
+      "before": {
+        "worker": {
+          "pid": 55980,
+          "pgid": 55980
+        },
+        "treeChild": {
+          "pid": 55982,
+          "pgid": 55982,
+          "ppid": 55980
+        },
+        "plainChild": {
+          "pid": 55983,
+          "pgid": 55980,
+          "ppid": 55980
+        }
+      },
+      "after": {
+        "workerAlive": false,
+        "workerGoneMs": 651,
+        "treeChildAlive": true,
+        "treeChildPpidNow": 1,
+        "plainChildAlive": false,
+        "survivors": [
+          {
+            "pid": 55982,
+            "pgid": 55982,
+            "ppid": 1,
+            "cmd": "/bin/sh -c sleep 120; : <MARK>-tree"
+          }
+        ]
+      },
+      "k2": {
+        "exitEvent": {
+          "code": null,
+          "signal": "SIGTERM",
+          "ms": 4
+        },
+        "exitCode": null,
+        "signalCode": "SIGTERM",
+        "alive": false
+      }
+    },
+    "A6": {
+      "baseRef": "e49279a",
+      "topics": 54,
+      "diffs": []
+    },
+    "A7": {
+      "baseRef": "e49279a",
+      "valueFace": [
+        "skills/dual-critic/schema/run.v2.json",
+        "src/trivium/types.ts",
+        "src/trivium/report.ts",
+        "test/unit/run-meta-strict.test.ts",
+        "test/unit/report.test.ts"
+      ],
+      "faceSuites": {
+        "pass": 30,
+        "fail": 2
+      },
+      "pure": {
+        "readable": false,
+        "driver": "corrupt",
+        "label": null
+      },
+      "face": {
+        "readable": true,
+        "driver": "ok:claude",
+        "label": "派生工作进程之后启动未完成，工作进程已终止（退出码 1）"
+      }
+    }
+  }
+}

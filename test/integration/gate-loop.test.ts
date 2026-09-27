@@ -2337,19 +2337,91 @@ test('事后收尾余项 P3b：spawnDetached 内部、子进程诞生之前失�
   }
 });
 
-test('事后收尾余项 P4：子进程诞生之后才失败（写 worker.pid EISDIR）⇒ 不收尾：刚返回时 run.json 仍是 running、没有 termination', { skip: bundleMissing && bundleSkipReason }, async () => {
+// ── EV-150（派生后失败的孤儿worker计划 r2 §4.2 P4 / P4b / P4c）：子进程诞生之后失败 ⇒ 终止 worker 并收尾 ──
+
+const HANG: StubConfig = { gemini: { mode: 'hang' }, glm: { mode: 'hang' } };
+
+/** 运行目录里的 status.json（夹具运行根是 `<root>-runs`，见 precreateRunDirs） */
+async function statusJsonOf(root: string, runId: string): Promise<{ phase: string; worker_pid: number | null } | null> {
+  const { repoId } = await import('../../src/trivium/review.js');
+  return fs.readFile(path.join(`${root}-runs`, repoId(root), runId, 'status.json'), 'utf8')
+    .then((t) => JSON.parse(t) as { phase: string; worker_pid: number | null })
+    .catch(() => null);
+}
+
+test('派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   const { ids } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.pid')));
   try {
-    const r = await startPlan(fx.root, { gemini: { mode: 'hang' }, glm: { mode: 'hang' } });
+    const r = await startPlan(fx.root, HANG);
     assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
     const runId = await hitRunId(fx.stageDir, ids);
     const m = await readRunJson(fx.stageDir, runId);
-    assert.equal(m.status, 'running', 'worker 已诞生、是活着的写者：这里写 failed 会与它互相覆盖（计划 r2 §2.3 / D2，EV-150）');
-    assert.equal(m.termination, undefined);
-    assert.doesNotMatch(r.stderr, /收尾为 failed/, r.stderr);
+    assert.equal(m.status, 'failed', 'EV-150：worker 已被终止并确认退出，本进程是唯一写者');
+    assert.equal(m.gate.state, 'failed');
+    assert.deepEqual(m.termination, { by: 'post_spawn_exception', exit_code: EXIT.FAIL });
+    assert.deepEqual((await taskRunsOf(fx.archiveRoot))?.map((t) => [t.run_id, t.status]), [[runId, 'failed']]);
+    assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'idle');
+    assert.ok(!(await fs.readdir(path.join(fx.root, '.trivium', 'lock'))).includes(`${TOPIC}.lock`), '主题锁必须已释放');
+    const st = await statusJsonOf(fx.root, runId);
+    assert.equal(st?.phase, 'failed');
+    assert.ok(st?.worker_pid, 'status.json 应补记 worker_pid');
+    assert.match(r.stderr, /已终止工作进程组/, r.stderr);
+    assert.match(r.stderr, /收尾为 failed（派生后启动未完成）/, r.stderr);
+
+    const w = await cli(fx.root, ['review', '--wait', runId, '--timeout', '5'], HANG);
+    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
+    assert.doesNotMatch(`${w.stdout}${w.stderr}`, /失联/, '按终态返回，不走失联路径');
+    const c = await cli(fx.root, ['review', '--cancel', runId], HANG);
+    assert.match(`${c.stdout}${c.stderr}`, /已处于终态/);
+    assert.deepEqual(await readRunJson(fx.stageDir, runId), m, '--wait / --cancel 之后 run.json 不再被改');
   } finally {
-    await killWorkersOf(ids);
+    assert.deepEqual(await killWorkersOf(ids), [], 'EV-150：--start 非零退出时不得留下孤儿 worker');
+  }
+});
+
+test('派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const { ids } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.pid')));
+  try {
+    const r = await startPlan(fx.root, STUB);
+    assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+    const runId = await hitRunId(fx.stageDir, ids);
+    const docsBefore = (await fs.readdir(fx.stageDir)).filter((n) => n.endsWith('.md')).sort();
+    await new Promise((res) => setTimeout(res, 3000)); // 今天的孤儿约 0.3 s 就跑完（计划 r2 §2.2）
+    const g = (await gatesOf(fx.root))[`${TOPIC}/plan`];
+    assert.equal(g?.state, 'idle', '今天这里会被孤儿置成 review_done_awaiting_disposition');
+    const m = await readRunJson(fx.stageDir, runId);
+    assert.equal(m.status, 'failed', '今天这里会被孤儿改写成 success');
+    assert.deepEqual(m.termination, { by: 'post_spawn_exception', exit_code: EXIT.FAIL });
+    assert.deepEqual((await fs.readdir(fx.stageDir)).filter((n) => n.endsWith('.md')).sort(), docsBefore, '不应出现审查文档');
+  } finally {
+    assert.deepEqual(await killWorkersOf(ids), [], 'EV-150：--start 非零退出时不得留下孤儿 worker');
+  }
+});
+
+test('派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const { ids, dirs } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.pid')));
+  let second: string | null = null;
+  try {
+    const r = await startPlan(fx.root, HANG);
+    assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+    const first = await hitRunId(fx.stageDir, ids);
+    for (const d of dirs) if (path.basename(d) !== first) await fs.rm(d, { recursive: true, force: true });
+    await new Promise((res) => setTimeout(res, 1100)); // 避开 run_id 同秒撞名（EV-147）
+    const r2 = await startPlan(fx.root, HANG);
+    assert.equal(r2.code, EXIT.OK, `${r2.stdout}${r2.stderr}`);
+    second = (JSON.parse(r2.stdout.slice(r2.stdout.indexOf('{'))) as { run_id: string }).run_id;
+    assert.notEqual(second, first);
+    const { run } = await import('../../src/trivium/util/exec.js');
+    const ps = await run('/bin/ps', ['-axo', 'pid=,command='], { timeoutMs: 10_000 });
+    const workers = ps.stdout.split('\n').map((l) => /review --worker (\S+)/.exec(l)?.[1]).filter((x) => x === first || x === second);
+    assert.deepEqual(workers, [second], '只应有新一轮的 worker');
+  } finally {
+    // 只做清理、不断言：--cancel 刚发完信号，进程表未必已刷新
+    if (second) await cli(fx.root, ['review', '--cancel', second], HANG);
+    await killWorkersOf(new Set([...ids, ...(second ? [second] : [])]));
   }
 });
 

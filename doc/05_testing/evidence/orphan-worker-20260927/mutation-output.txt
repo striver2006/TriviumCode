@@ -1,0 +1,134 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  M1 ✓ 咬住（fail=3）
+  M2 ✓ 咬住（fail=4）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=3）
+  M8 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=2）
+  M11 ✓ 咬住（fail=2）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=1）
+  M16 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=1）
+  M18 ✓ 咬住（fail=1）
+{
+  "总数": 18,
+  "咬住": 18,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "主 catch 去掉「子进程已诞生」分支（回到今天：只回收闸门、放锁）⇒ P4（run.json 停在 running、留下孤儿）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M2",
+      "desc": "settleOrphanedStart 不终止、直接当已退出往下走 ⇒ P4b（孤儿跑完改写 run.json 与闸门）",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M3",
+      "desc": "收尾时 by 写成 prepare_exception ⇒ P4（termination 深相等）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "去掉第 5 步 status.json 落终态 ⇒ P4（status.json 与 --wait 断言）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "去掉第 6 步按 run_id 回收已改写成 worker 的锁 ⇒ U5①",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "D5 分支照样回收闸门 ⇒ U5②",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "hasExited() 恒返回 false ⇒ U3",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M8",
+      "desc": "terminateProcessGroup 不升级 SIGKILL ⇒ U4②",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "terminateProcessGroup 发信号前不问 isGone() ⇒ U4④",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "unlistedLabel 去掉 post_spawn_exception 分支 ⇒ V8′（落进兜底说明）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M11",
+      "desc": "闸门回收挪到终止之前（计划双审 r1 AGY-03）⇒ U5①（终止时闸门已不是本轮 running）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M12",
+      "desc": "去掉 D5 分支补记 worker_pid / worker_started_at（计划双审 r1 GLM-03 / CODEX-02）⇒ U5②",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "去掉 D5 分支把锁改记到 worker 名下（计划双审 r1 AGY-01）⇒ U5②",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "第 5 步不判 status.json 已终态（计划双审 r1 AGY-02 ≡ GLM-01）⇒ U5④（success 被改写）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "workerGoneForCancel 退回只看存活（计划双审 r1 AGY-04）⇒ U6",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M16",
+      "desc": "第 1 步播报不看结果、一律说「已终止」（代码双审 r1 CODEX-01 ≡ GLM-01）⇒ U5②④",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "回读 run.json 读不出并回「本进程收尾」、照样落 failed（代码双审 r1 CODEX-03）⇒ U5⑤",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M18",
+      "desc": "D5 末句不看改写锁的结果、一律说「已记在它名下」（代码双审 r1 GLM-01 第 2 点）⇒ U5⑥",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0

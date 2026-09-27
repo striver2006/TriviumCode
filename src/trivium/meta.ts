@@ -550,7 +550,9 @@ interface FinalizeInput {
    * `waitRun` 传改写 status.json 之前的判定）；worker 自己在异常分支调用时恒传 true——它就是那个写者；
    * 准备阶段（`prepareRun` 写完骨架之后、`startRun` 在子进程诞生之前）与同步路径在本进程里调用时也恒传 true——
    * 还没有、也不会有 worker；`--cancel` / `--wait` 常常拿不到身份，拿到了也没有 pid、判「未确认退出」而跳过，
-   * 本进程写完之后 run.json 又已是终态、按前提 4 不追溯改写（EV-145，事后收尾余项计划 r2 §3.5，代码双审 r1 CODEX-05）。
+   * 本进程写完之后 run.json 又已是终态、按前提 4 不追溯改写（EV-145，事后收尾余项计划 r2 §3.5，代码双审 r1 CODEX-05）；
+   * `--start` 在子进程诞生之后失败时也传 true——依据是父进程按子进程句柄**观察到**的退出，不是推断
+   * （EV-150，派生后失败的孤儿worker计划 r2 §3.5；确认不了退出时根本不调本函数）。
    * 显式入参，接线才有用例守得住。
    */
   workerGone: boolean;
@@ -569,9 +571,10 @@ export function finalizeCancelledRunMeta(i: FinalizeInput): Promise<{ runMeta: F
 
 /**
  * 把没走到 worker 收尾就失败的运行在归档侧收尾为 `failed`（EV-142，计划 r2 §3.2 / §3.3；EV-145）。
- * 五个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
+ * 六个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
  * 且确认工作进程已退出（`worker_lost`）、`prepareRun` 写完骨架之后失败与 `startRun` 在子进程诞生之前失败
- * （都是 `prepare_exception`）、同步路径 `executeRun` 抛错（`sync_exception`）。
+ * （都是 `prepare_exception`）、同步路径 `executeRun` 抛错（`sync_exception`）、`startRun` 在子进程诞生之后失败
+ * 并终止工作进程、确认退出之后（`post_spawn_exception`，EV-150）。
  */
 export function finalizeFailedRunMeta(
   i: FinalizeInput & { termination: RunTermination },
@@ -623,6 +626,8 @@ export function finalizeLines(fin: { runMeta: FinalizeStep; task: FinalizeStep }
  * - 准备阶段与同步路径：没有 status.json，`--cancel` / `--wait` 也够不着，收尾只有这一次机会，
  *   所以**先回收闸门、再调本函数**（进程死在两步之间时，闸门停在 running 会拦住全部业务写入到 TTL，
  *   run.json 停在 running 只是留痕不准），主题锁仍在本函数之后放。
+ *   `--start` 在子进程诞生之后失败（EV-150）也按这一组排：它有 status.json，但 pid 可能没落盘，
+ *   下一次 `--wait` / `--cancel` 未必补得齐；另多一条——先终止工作进程并确认退出，再回收闸门。
  */
 async function finalizeUnfinishedRunMeta(
   i: FinalizeInput & { terminal: UnfinishedTerminal; termination?: RunTermination },
