@@ -1,0 +1,95 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一条：§3.3 的 worker_lost 写入前提有一个未登记的洞——status.json 缺失/损坏但 worker.pid 指向的进程已死时，interpretStatus 正是据此判 pid_gone（已有正向死亡证据），而计划的 gonePre 因 workerConfirmedGone 对 null status 短路判「否」，run.json 将永远停在 running，与 §3.4 第一行「pid_gone ⇒ --wait 写 failed」直接矛盾（CODEX-01）。其余四个焦点核实通过：worker 异常路前提、第一步进锁、EV-128/EV-133/提交锚兼容、termination 结构化取舍、②′ 集合定义与 P1 核实、变异表 M1～M16 的可区分性、§1/§2 行号与基线读数，均与我读到的代码一致。另有一条 minor（§3.4 第三行的 task.json 后果未登记）与两条 nit（回滚成本未记账、worker_lost reason 枚举双份耦合）。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.3（worker_lost 分支写入前提）与 §3.4 第一行",
+      "problem": "§3.3 伪代码 pre = readStatus(runDir)，当 status.json 缺失或损坏时 pre 为 null，workerConfirmedGone(null, fallbackPid) 在第一行就短路返回「否」，根本不会走到 pid 检查。但 interpretStatus 情形 A 正是在「status.json 读不到 + fallbackPid 进程已死」时判 worker_lost/pid_gone——也就是说这一子格里 worker 之死是有正向证据的（这正是判失联的依据），计划的接线却把证据丢掉了。后果：worker 在第一次写 status.json 之前被 SIGKILL/OOM 杀死（spawn → rebuildContext → 首次 patchStatus 之间有真实窗口），run.json 永远停在 running——patchStatus 之后 status.json 是 failed，下一次 --wait 按终态返回、--cancel 在 :821 早退，再没有任何写者。§3.3 的跳过清单只列了「status.json 读不到（no_status_file）」（连 pid 都没有那一格），没有覆盖这一格；§3.4 第一行「先 --wait 判 worker_lost（pid_gone）⇒ --wait 写 failed」对这一子格是假命题；§4.2 的 L1～L3 也没有构造它的用例（L1 有 status.json、L3 无 pid）。",
+      "evidence": "读 src/trivium/status.ts：:95-103 readStatus 对缺失与不可解析都返回 null；:160-161 workerConfirmedGone 首行 if (!status) return gone:false，短路在 pid 检查之前；:208-220 interpretStatus 情形 A：raw 为 null 且 fallbackPid 进程已死 ⇒ worker_lost/pid_gone。读 src/trivium/run-protocol.ts :608-620（fallbackPid 来自 worker.pid，独立于 status.json）、:821 一带（终态早退）。被审计划 §3.3 伪代码与跳过清单、§3.4 表格第一行、§4.2 L1/L3 构造。",
+      "suggestion": "二选一并写进 r2：(a) pre 为 null 时改用 processAlive(fallbackPid, worker.pid 的 started_at) 直接判（与情形 A 同源），确认死亡则照常写，并补一条「无 status.json + pid_gone ⇒ run.json 收尾为 failed」的集成用例；(b) 明确接受不写，把这一子格列进 §3.3 跳过清单与 §6.2，并把 §3.4 第一行的表述收窄为「status.json 在场的 pid_gone」。倾向 (a)：证据已经在手，不写没有道理。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "concurrency",
+      "location": "plan §3.4（第三行）与 §6.2",
+      "problem": "§3.4 第三行「--cancel 杀进程期间 worker 正在 catch 里」只论证了 run.json 不会两边都写，没核 task.json 的后果：worker 若在 step1（run.json → failed）之后、step2 之前被 SIGTERM 杀死，--cancel 的 step2 按 §3.1 的参数化判据「run.json 已是本次目标终态（cancelled）」会跳过（run.json 是 failed 不是 cancelled），此后 status.json 被 --cancel 写成 cancelled、--wait 按终态返回、--cancel 在 :821 早退——task.json 那条登记永久停在 running，没有任何写者再补。这与 §6.2 第三条（W2 的 success + registerRun 抛错）同属「如实保留的不一致」，但 §6.2 只登记了 success 那一例，没有登记这个 failed 竞态实例。窗口极小、后果也轻（report 与提交锚都以 run.json 为准），但按焦点②「序列是否穷尽」的标准，这一格的后果应当被点名而不是被「不会两边都写」盖过去。",
+      "evidence": "读 src/trivium/run-protocol.ts :833-848（--cancel 的 SIGTERM 与宽限）、:881-898（finalize 排在 patchStatus 之前、workerGone: goneNow.gone）；src/trivium/meta.ts :622-642（step2 判据与跳过）；被审计划 §3.1（step2 只同步同一终态）、§3.4 第三行、§6.2 第三条；test/unit/run-meta-cancel.test.ts R2 的跳过语义。",
+      "suggestion": "不改代码，只在 §6.2 补一句：--cancel 撞进 worker catch 的两次写之间时，run.json 如实记 failed、task.json 登记可能停在 running，与 W2 同类、不修；顺带在 §3.4 第三行点明「不会两边都写」只覆盖 run.json。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §6.1（风险与边界）",
+      "problem": "计划没有回滚成本核算。本主题会向会提交的归档写入一个新顶层键（termination），属于对外契约变更，按本镜头的核算：旧 schema 顶层 additionalProperties: true（run.v2.json :26），新代码写出的带 termination 的 run.json 在旧代码下照样过校验；旧 report 不读 unlistedRuns；types.ts 旧类型只是少一个可选字段。回滚 = git revert，零数据迁移、无丢失、用户无需操作。结论是好的，但计划只字未提，r2 补一行即可让后人不必重算。",
+      "evidence": "读 skills/dual-critic/schema/run.v2.json :26（顶层 additionalProperties: true）；src/trivium/meta.ts :515-524（readRunMeta 校验失败返回 null，额外键不影响校验）；src/trivium/report.ts（report 只读归档、新增字段为纯读取侧追加）。被审计划 §3.5、§6.1 全文无回滚叙述。",
+      "suggestion": "在 §6.1 加一行：本变更为纯追加（可选字段 + 读取侧新表），回滚即 revert，已写入的 termination 键在旧代码下仍合契约、被自然忽略，无迁移成本。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §3.5（schema 改法）",
+      "problem": "termination.reason 的三值枚举是 interpretStatus 的 worker_lost reason 字面值在 run.v2.json 里的第二份拷贝。今天两者恰好一致（status.ts StatusReading 的联合就是这三个值），但将来若给 interpretStatus 加第四种失联原因，schema 不会报错、S1 也不会红——写出的 run.json 会因 reason 超出枚举而不合契约，readRunMeta 返回 null，这份已收尾的 run.json 对所有读者反而变成「读不到」。这与本仓纪律 12 反对的「两份事实源、改一漏二」同形（虽然纪律 12 的字面范围是 Agent 身份）。",
+      "evidence": "读 src/trivium/status.ts :185-193（StatusReading 的 reason 联合）、skills/dual-critic/schema/run.v2.json（status 枚举与 description 的先例）、src/trivium/meta.ts :520-524（不合契约 ⇒ readRunMeta 返回 null）；被审计划 §3.5 的 schema 形状描述与 §4.1 S1。",
+      "suggestion": "低成本兜底即可：在 termination 的 schema description 或 types.ts 注释里写明「reason 枚举须与 status.ts 的 worker_lost reason 保持同步，新增原因先改这里」；或在 step1 写前对 mutation 后的整体再过一次 validateRunMeta（F1 已断言结果过校验，顺手前置为防御）。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "D1（worker 异常路）三点设计均核实成立：workerGone:true 的替代论证（worker 活着时 --cancel 与 --wait 的新写入都要求确认退出，它是唯一写者）、「仍为 running 才写」（W2 时序属实——review.ts :1627 writeRunMeta 在 :1628 registerRun 之前，异常晚于终态写时前提 4 挡下）、排在 patchStatus 之前（与 EV-128 在 cancelRun :881-898 的既有排序同一理由）。",
+    "D2 取 (a) 的机制核实：L3 所述「运行中无 pid + 心跳过期」一格改写前判否、改写后判是，与 status.ts :155-178（终态分支 :176）逐行相符；两次判定并存的方向是归档侧取更严前提、凭据抹除维持 EV-20 现状，计划对分歧的记录（L3、§3.3）是诚实的；「确认不了就不写」的边界与 EV-128 同口径，且残留正由 EV-144 新表兜底可见，可以接受。",
+    "D3 进锁方案与 lock.ts 兼容：task 锁是 .task-<topic>（meta.ts :33），与 worker 整轮持有的主题锁不同名、无死锁；持有者猝死由 judgeStale 按 pid 回收（lock.ts :200-212），--cancel/--wait 不会吃满 20×150ms 重试预算；「今天唯一会双写的格子是两个事后写者同时读到 running」判断准确，顺序撞车确实不会双写。",
+    "EV-128 既有行为不变的论断属实：run-meta-cancel.test.ts 的 R1～R7 没有断言 step2 那句「不是 cancelled」的措辞（已 grep 核实），R1 的逐键深比较恰好同时守住「取消轮不写 termination」；提交锚 runningRewriteViolation 只查 run_id 与已登记 artifacts[]（hooks.ts :544-571 已核），新增顶层键与三格改动都放行，EV-133 的「至多一次终态写入」由锁从约定升级为保证。",
+    "termination 只存结构化字段的取舍站得住：writeRunMeta 复用 archive.writeMeta 的密钥扫描（meta.ts :372-383 已核），§2.1 那份历史 running 的异常正是密钥扫描拦截——自由文本进归档既有本机路径泄漏面、又会把整次终态写入拖回 running，两条理由都经代码与历史留痕印证。",
+    "EV-144 取 ②′：集合定义「可读 run.json 减去时间线选中者」与 enumerateRounds（report.ts :101-133）的实际行为一致；R3（失败/取消不推高轮次号，archive.ts :66-84）导致的双表同轮次号现象由表后注明覆盖，不构成误导；P1「入选侧全部失败今天看不见」经 runner.ts :364（okSides 为 0 必 abort）与 review.ts :1249-1258（失败侧只写 .failed.json）核实成立；历史 v1 run.json 的顶层键（run_id/rerun_index/status/gate/started_at/finished_at）与小表所需字段同名，A6 的 4 条预期可实现。",
+    "验证设计：M2/M6/M7 的期望套件各指向真正能区分的用例（W2 的纳秒 mtime 排序、L3 构造的改写前后判定差、F6 的占锁窗口），M1～M16 逐条推过变异后果均能咬住所指套件；行号抽查（run-protocol/meta/status/hooks/report/review/archive/cli/runner/run.v2/types 共二十余处）与基线 2103/2101/0/2、上一主题 E1 时间戳前提、hang 桩模式均属实；验收全程桩 + 只读，零配额口径成立，无更便宜的等价路径可替。",
+    "§6.3 两条新登 BACKLOG 的机制核实：P4（prepareRun 在 review.ts :907-951 写骨架与登记、:1002 一带闸门抛 GATE_BLOCK）与 heartbeat_stale 后 --cancel 杀不掉挂住 worker（status.json 已 failed ⇒ :821 早退）均与代码相符，不并入本主题、单独论证的拆分理由是成立的。"
+  ],
+  "not_covered": [
+    "§5 文档同步表里主设计（:1454、:2892、:658、:2689、:3232）、PRD :194、LLD :268/:454-459/:569、MANUAL :610-618/:566-572、PROTOCOL :263/:58/:360 的行号锚点未逐一核对，只抽查了主设计 :1115-1121（属实）。",
+    "§2 的实测读数本身（P1～P4 夹具读数、§2.1 四份历史 running 的归类表、§2.3 的 176 份/4 份统计）未复算——我只按代码核实了这些读数背后的机制成立；运行目录证据（~/.trivium/runs）在禁读清单内，未曾也无法核对。",
+    "未跑任何构建与测试（只读审查）：F6/F7 的时序可行性、L4/W2 的纳秒时间戳前提、A3 的 SIGSTOP 构造是按 lock.ts 与上一主题报告的既有前提推断，未实测。",
+    "test/integration/run-protocol.test.ts 只读了 :188、E1/E3/E6 与 seedRun 的存在性，计划点名的 :812、:851 两条既有用例细节未读；gate-loop.test.ts 只核了 :256 与用例清单。",
+    "上一主题变异规格 gen-mutation-spec.mjs 的 find 锚点失效清单（C4/D4 所述）未逐条核对——计划自述那是历史证据、本主题新写一份，风险已自报。",
+    "另一家审查员的镜头角度（如实现选型、需求覆盖）未代查；本侧只覆盖了环境假设、成本/配额与回滚核算，外加焦点五条的代码核实。"
+  ],
+  "consulted": [
+    ".reviews/未收尾运行的留痕与复盘可见性/plan/2026-09-27-未收尾运行的留痕与复盘可见性-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/status.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/report.ts",
+    "src/trivium/review.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/types.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/run.v1.json",
+    "test/unit/run-meta-cancel.test.ts",
+    "test/unit/report.test.ts",
+    "test/integration/run-protocol.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-09-26_trace_field_fixes.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md"
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "agreed": [
+    "EV-142 两条路的写入前提设计合理严密：worker 异常分支在 patchStatus 之前由 worker 自己写并以 workerGone: true 替代确认退出，严格遵守「仍为 running 才写」以防改写已成功终态（W2）；worker_lost 分支使用改写前 status.json 调 workerConfirmedGone，杜绝了误将刚改写的 failed 认作终态而假定进程已退出的隐患；确认不了（如 heartbeat_stale 且进程仍在）不写归档，保持了审慎保守的边界，与 EV-128 对未确认退出的处理完全对齐。",
+    "与 --cancel 交错的并发控制完备：第 3.4 节序列推演穷尽；第一步将「读-判-写」纳入 .task-${topic} 主题任务短临界区锁，通过锁内原子校验 meta.status === 'running' 保证了每份 run.json 至多一次终态写入；锁争用失败转为 skipped 告警，不抛异常也不阻断闸门和锁的回收，既有容错口径未被破坏；提交锚 runningRewriteViolation 只校验 run_id 与已登记条目不删改，放行条件完全满足；EV-128 既有签名与行为完全保持不变。",
+    "通用收尾函数与 termination 字段设计精准：第二步任务登记只同步本次目标终态（不照抄其他终态），有效守住了 R2 单测不变量，防止静默掩盖历史或并发不一致；termination 仅记录结构化信息（退出码/失联原因），坚决不记录异常原文，彻底规避了本机路径泄露与密钥扫描拦截风险；run.v2 schema 采用双分支 oneOf + additionalProperties: false 约束，规范严谨。",
+    "EV-144 取 ②′ 方案切实有效：「可读运行元数据减去时间线选中者」集合定义准确无误；小表采用「预定轮次」并附带说明文字，清晰解除了同一轮次号在上下两张表中分别出现的认知混淆；对「入选侧全部失败今天在时间线看不见」的源码与实测核实完全属实，纳入小表弥补了复盘盲区。",
+    "验证与留痕体系完备：变异表 M1～M16 套件指向精确，特别是 M2（时间戳前后）、M6（改写前后判定差）、M7（占锁窗口）均有扎实的区分机制；第 1、2 节涉及的源码行号与历史数据全部核实准确；第 5 节文档落点全面覆盖；第 6.3 节新登的两条 BACKLOG 剖析深刻且边界划定清晰。"
+  ],
+  "consulted": [
+    ".reviews/未收尾运行的留痕与复盘可见性/plan/2026-09-27-未收尾运行的留痕与复盘可见性-claude.md",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/status.ts",
+    "src/trivium/review.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/types.ts",
+    "src/trivium/report.ts",
+    "src/trivium/cli.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/run-meta-cancel.test.ts",
+    "test/unit/report.test.ts",
+    "test/integration/run-protocol.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "scripts/mutation-check.mjs"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/run-protocol.ts:691-695、src/trivium/run-protocol.ts:791-799 与 plan §3.3",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §3.3",
+      "problem": "waitRun 失联分支中，收尾两步结果的播报通道描述存在轻微歧义：一方面在 :691 提到将两步结果追加进抛出的 TriviumError 报错正文，另一方面又提出让 reportFinalizeStep 传后缀参数来打印告警。若同时调 reportFinalizeStep 打印 warn 并将相同说明塞进 TriviumError.message，CLI 顶层捕获打印时可能在控制台造成重复告警输出。",
+      "severity": "nit",
+      "suggestion": "实施 §3.3 时理顺 waitRun 收尾结果的通知通道：若由 reportFinalizeStep 负责控制台告警/信息输出，则抛出的 TriviumError 正文只需附带简洁状态提示，避免在 stderr 重复输出相同告警文字。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/status.ts:159 与 src/trivium/status.ts:219",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §1.1 L2/L3 & §3.3",
+      "problem": "计划在 §3.3 归纳「确认不了不写」的情形时，将「status.json 读不到」完全等同于「no_status_file」。然而源码中当 status.json 读不到但通过 fallbackPid 查到进程已不存在时，失联原因会被标为 pid_gone（status.ts:219）；此时若传 pre=null 给 workerConfirmedGone，会因首行 if (!status) 拦截而同样返回 gone: false。虽然行为上维持了「无 status 不回写」的正确边界，但成因归纳存在轻微疏漏。",
+      "severity": "nit",
+      "suggestion": "在计划定稿或代码实现注释中微调说明，明确指出：无论失联原因为何（包含依赖 fallbackPid 判定为 pid_gone 的情形），只要 status.json 读不到（pre === null），均属于缺乏 status 事实证据而无法确认退出、因而跳过归档回写。"
+    }
+  ],
+  "not_covered": [
+    "未在 APFS/ext4 以外的粗粒度文件系统上实际验证纳秒时间戳先后比对的边界稳定性（依赖 L4/W2 既有工程假设）",
+    "未对超大规模历史运行（成千上万份 run.json）下 enumerateRounds 与集合差集计算的耗时与内存开销做微基准压测（当前仓库规模在数百次量级，风险较低）",
+    "未覆盖 Windows 平台下进程树终止（SIGKILL/SIGTERM 模拟）的平台差异行为"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "实施计划整体设计非常扎实、论证严谨，五处审查焦点全部通过严密的代码与逻辑核验。\nEV-142 两条路径的写入前提清晰且安全；第一步纳入短临界区锁有效保证了至多一次终态写入，对 EV-133、EV-128 及提交锚放行条件无任何破坏；termination 仅存结构化字段成功规避了密钥扫描和路径泄漏风险；EV-144 ②′ 集合定义准确、说明充分，填补了全败及取消轮的复盘盲区；变异用例与文档落点完备。发现两处细微措辞与实现提示（nit），整体结论为 approve-with-nits。",
+  "verdict": "approve-with-nits"
+}
