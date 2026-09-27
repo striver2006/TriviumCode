@@ -1,0 +1,54 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "五个审查焦点逐一对照真实源码核实，未发现正确性、并发或测试构造问题：三处本进程收尾都是「先回收闸门、再收尾、最后放锁」，与 meta.ts 通用体改写后的两种次序一致；prepareRun 在 startRun 主 try 与 runReviewLocked 的 try 之外，两处捕获不会对同一份 run.json 收尾两次（P6 钉住）；onSpawned 时点与 childBorn 判据正确，'error' 监听前移是对既有崩溃缺陷的正确修复且成功路径行为不变；termination.by 的 schema 枚举、EXCEPTION_TERMINATION_BY 与 report 说明三处一致，S3/S1′/V8/V9 守卫成立，A8 回滚演练结论有读数支撑；60 秒预建窗口的前提（夹具 realpath、run_root 前缀）成立，未命中是明确红而非假绿，报告 §3.3 对变异缺口的登记如实。唯一意见：LLD v1.1.8 编辑过的章节内四处既有源码行号引用已漂移（GLM-01，minor）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/02_design/LLD_orchestrator.md:233-241（startRun 步骤列表与零工件不变式段）",
+      "problem": "v1.1.8 改写的两节里，既有的源码行号引用已与当前代码不符：「纯文档跳过必须在派生前收口（run-protocol.ts:258-276）」现在指向 StartOutcome 接口定义（实际跳过分支在 327-346）；「锁的所有权移交（run-protocol.ts:304-313）」现在是 acquireLock 的 runTerminal 回调（实际移交在 403-413）；零工件不变式段头的链接 review.ts:275 现在是 goalFromPlanDoc 的注释（prepareRun 实际在 ~536 起）；「review.ts:488-491」现在是 RunContext 接口字段。漂移均系既有、非本次引入（计划 r2 §1.1 P3 记载基线上跳过分支已在 :325-344），但本次恰好编辑了这两节，未顺手校正——照链接跳过去看到的是毫不相关的代码，会误导后来者。",
+      "evidence": "实读 src/trivium/run-protocol.ts:252-316（StartOutcome 与 runTerminal 回调）、:327-346（跳过分支 try/finally）、:401-413（锁改记 worker pid），src/trivium/review.ts:268-281（goalFromPlanDoc 区域）、:484-491（RunContext 字段）、:536-539 一带（prepareRun 起点附近），与 LLD 对应段落逐一比对；并与 .reviews/事后收尾余项/plan/2026-09-27-事后收尾余项-r2-claude.md §1.1 P3 的基线行号记载交叉印证。",
+      "suggestion": "下次触碰 LLD 的 startRun 一节时把四处引用改准，或降级为函数名/锚点引用（如「startRun 的跳过分支」「锁移交段」），避免精确行号随源码继续漂移；不必为此单独返工本次提交。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "三处收尾次序一致且无双收尾：prepareRun 的 catch 先 releaseRunningGateEntry 再 finalizeFailedRunMeta（review.ts:1051-1077，锁归调用方）；startRun 主 catch 先 releaseRunningGate、childBorn 为假才收尾、最后 lock.release()（run-protocol.ts:447-468）；runReviewLocked 的 catch 先内联回收闸门再收尾（review.ts:1777-1812），与 meta.ts:618-623 改写后的「按有没有补齐入口分两种次序」完全对应。prepareRun 在 startRun 主 try 之外（run-protocol.ts:309-317）、也在 runReviewLocked 的 try 之外（review.ts:1774-1775），它的失败只由自己的 catch 收尾一次，P6 以「stderr 恰一行收尾、无『同步路径异常』」钉住。",
+    "workerGone: true 的前提成立：派生前失败时交接文件/status.json 要么未写、要么无 worker_pid，--wait 判「未确认退出」不写、--cancel 退 65 或杀不到（计划 §3.5 论证与验收 A3a/A3b 读数互证）；即便有并发写者，第一步「仍为 running 才写」+ 主题任务锁保证至多一次终态写入。",
+    "onSpawned 时点正确：挂在 pid 检查之后、unref/return/finally 之前，回调自身抛错被吞且不影响返回值（exec.ts:314-320）；spawnDetached 内部建日志目录、开日志文件、spawn 无 pid 三格都在回调之前，childBorn 判据覆盖准确；「函数有没有返回」确实不能当判据（finally 的 handle.close() 在子进程已起后仍可能抛），注释论证与代码一致。",
+    "'error' 监听挪到 pid 检查之前是对既有缺陷的正确修复：原次序下 pid 缺失即 throw、监从未挂上，Node 异步补发的 'error' 无监听者即进程崩溃、调用方 catch 一行跑不到；前移后抛错路径有监听兜底、成功路径行为不变（监听两种挂法都在）。U2 用子进程钉住不崩，M11 变异把监听挪回即红。",
+    "termination.by 三处同步：schema 第一个 oneOf 分支的 enum 与 types.ts:1264 的 EXCEPTION_TERMINATION_BY 逐项相等（另含 worker_lost 分支），report.ts:376-380 两个新分支的文案与 V8/P1/P5 断言、MANUAL、PROTOCOL :60、设计 6.7.1 一致；exitCodeOf（exit-codes.ts:48-50）与 cli.ts:1990-1996 顶层处理逐字同口径。",
+    "S3（schema 分支收集 const/enum 与常量+worker_lost 逐项相等）、S1′（新取值同形正反例）、V9（每个 by 都有专门说明、不落兜底）守卫成立；A8 回滚演练的结论可信：旧构建原样读新取值为 null 且 resolveStageDriver 判 corrupt，换上本主题 schema 后可读、判 ok:claude、report 落兜底——「回滚保留 schema 改动」的步骤被钉住。",
+    "60 秒预建窗口的构造前提成立：makeFixture 已 realpath 夹具根（fixture.ts:77-78）且 run_root 即 <root>-runs，gate-loop 侧只算一种 repoId 写法有据；窗口未命中时 hitRunId 以明确文案失败、不进后续断言，是可诊断的红而非假绿；报告 §3.3 对「M3/M4/M8 的红可能是窗口未命中而非目标断言、装置只记 fail 数」的登记与 mutation-output.txt 实际内容相符，推断链（基线同构造全绿、变异不碰 run_id 生成）成立。",
+    "尾窗论证与 lock.ts 事实一致：judgeStale 对「持锁进程活着、run 已终态」判 heartbeat_dead（lock.ts:80-81），release 只删 pid 与 acquired_at 都仍是自己的锁（lock.ts:185-191），与 startRun 主 catch 注释、计划 §3.3/§6.1 的描述吻合。",
+    "workerMain 的 exitCode 替换为 exitCodeOf 等值重构；describeFinalizeStep 改为委托 describeFinalizeStepWith，noSecondChance 半句字面保留，EV-142 的 W1/L1 断言不受影响；finalizeLines 两行播报与 MANUAL「报错下方会多两行」一致。",
+    "文档版本号链一致（主设计 v1.3.50、PRD v1.4.14、LLD v1.1.8、MANUAL v1.0.8、schema description）；BACKLOG EV-145 结案口径与代码现状一致，EV-150/EV-151 两条新登的实测描述（含触发面、与本次修毕三格的边界划分）同探针读数吻合；纯文档跳过分支「第一步就写终态」（review.ts:1097-1102）与 EV-145 结案注记的论证相符。"
+  ],
+  "not_covered": [
+    "未实跑任何测试、变异或验收脚本（只读审查）：npm run check 2145/2143/0/2、变异 11/11、契约变异 1/1、验收 21/21、selftest 14/14 均采信报告与 evidence 文件，未独立复现。",
+    "四个测试文件的新增用例内容经补丁完整 hunk 核对，但未单独打开 .ts 原文件；其依赖的既有夹具与辅助函数（runPlan、writeDisposition、gatesOf、startWithTopicDirReadonly 的恢复权限细节、NOT_ROOT_SKIP）未逐一独立核读。",
+    "cancelRun / waitRun 的全文未读，「--cancel / --wait 够不着」只经计划 §1.1 C6 的行号级记载与验收 A3a/A3b/A6 读数交叉印证；status.ts 的 workerConfirmedGone 与 WORKER_LOST_REASONS 全文未读（S2 既有守卫不在本次改动面）。",
+    "hooks.ts（sweepDeadRunningGates、findRunningRuns）未读，EV-151 的描述按计划与探针读数采信；schemas.ts 的构建期内嵌机制未直接核读（按计划 T2 与 A8 演练结果采信）。",
+    "PROTOCOL 头部「依据设计 v1.3.43 / PRD v1.4.8」为既有滞后（该文档声明以设计为准、不随每次同步升版），未计入意见；PRD/MANUAL 未改动段落的历史准确性不在本次核对范围。",
+    "另一位审查员的产出按背靠背约束未读、未引用。"
+  ],
+  "consulted": [
+    ".reviews/事后收尾余项/code/_meta/changes-20260927T074234Z.diff",
+    ".reviews/事后收尾余项/plan/2026-09-27-事后收尾余项-r2-claude.md",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/types.ts",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/cli.ts",
+    "test/helpers/fixture.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/08_project/BACKLOG.md"
+  ]
+}

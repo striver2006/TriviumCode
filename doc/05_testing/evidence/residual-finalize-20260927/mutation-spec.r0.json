@@ -1,0 +1,103 @@
+{
+  "targets": [
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/report.ts",
+    "src/trivium/util/exec.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/gate-loop.test.js",
+    "dist/test/test/unit/report.test.js",
+    "dist/test/test/integration/worker-detach.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "prepareRun 的 catch 不收尾 ⇒ P1（骨架停在 running）",
+      "file": "src/trivium/review.ts",
+      "find": "    if (skeletonWritten) {\n",
+      "replace": "    if (skeletonWritten && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "prepareRun 收尾时 by 写成 worker_exception ⇒ P1（termination 深相等）",
+      "file": "src/trivium/review.ts",
+      "find": "        termination: { by: 'prepare_exception', exit_code: exitCodeOf(e) },\n      });\n      for (const line of finalizeLines(fin, runId, '准备阶段失败')) warn(line);",
+      "replace": "        termination: { by: 'worker_exception', exit_code: exitCodeOf(e) },\n      });\n      for (const line of finalizeLines(fin, runId, '准备阶段失败')) warn(line);",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "startRun 主 catch 不收尾 ⇒ P3（派生前失败的骨架停在 running）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    if (!childBorn) {\n",
+      "replace": "    if (!childBorn && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "startRun 主 catch 去掉 !childBorn（子进程诞生之后也收尾）⇒ P4（刚返回时已是 failed）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    if (!childBorn) {\n",
+      "replace": "    if (!childBorn || true) {\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "runReviewLocked 的 catch 不收尾（workerGone 恒假 ⇒ 第一步跳过）⇒ P5",
+      "file": "src/trivium/review.ts",
+      "find": "      workerGone: true,\n      termination: { by: 'sync_exception', exit_code: exitCodeOf(e) },",
+      "replace": "      workerGone: process.env['TRIVIUM_MUT_NEVER'] === '1',\n      termination: { by: 'sync_exception', exit_code: exitCodeOf(e) },",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "同步路径收尾时 by 写成 prepare_exception ⇒ P5（termination 深相等）",
+      "file": "src/trivium/review.ts",
+      "find": "      termination: { by: 'sync_exception', exit_code: exitCodeOf(e) },",
+      "replace": "      termination: { by: 'prepare_exception', exit_code: exitCodeOf(e) },",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "unlistedLabel 去掉 prepare_exception 分支 ⇒ V8（落进兜底说明）",
+      "file": "src/trivium/report.ts",
+      "find": "  } else if (meta.status === 'failed' && meta.termination?.by === 'prepare_exception') {\n",
+      "replace": "  } else if (meta.status === 'failed' && (meta.termination?.by as string | undefined) === '__never__') {\n",
+      "expect": "dist/test/test/unit/report.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "startRun 改回在调用 spawnDetached 之前置位（r1 的判据）⇒ P3b（子进程未诞生的一格不收尾）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    const spawned = await spawnDetached(\n",
+      "replace": "    childBorn = true;\n    const spawned = await spawnDetached(\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "spawnDetached 把 onSpawned 挪到建日志目录之前 ⇒ U1（诞生之前的失败也触发回调）",
+      "file": "src/trivium/util/exec.ts",
+      "find": "  const { promises: fsp } = await import('node:fs');\n  await fsp.mkdir(pathDirname(opts.logFile), { recursive: true });\n",
+      "replace": "  const { promises: fsp } = await import('node:fs');\n  opts.onSpawned?.(-1);\n  await fsp.mkdir(pathDirname(opts.logFile), { recursive: true });\n",
+      "expect": "dist/test/test/integration/worker-detach.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "prepareRun 去掉 skeletonWritten 守卫 ⇒ B7（骨架之前的失败多出一行「未回写：归档里没有」）",
+      "file": "src/trivium/review.ts",
+      "find": "    if (skeletonWritten) {\n",
+      "replace": "    if (skeletonWritten || true) {\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "spawnDetached 的 'error' 监听挪回 pid 检查之后（实施期修正的既有缺陷）⇒ U2（ENOENT 时进程崩溃）",
+      "file": "src/trivium/util/exec.ts",
+      "find": "    child.once('error', () => { /* 已由 pid 缺失路径报告 */ });\n    if (child.pid === undefined) throw new Error('spawn 未返回 pid');\n",
+      "replace": "    if (child.pid === undefined) throw new Error('spawn 未返回 pid');\n    child.once('error', () => { /* 已由 pid 缺失路径报告 */ });\n",
+      "expect": "dist/test/test/integration/worker-detach.test.js"
+    }
+  ]
+}

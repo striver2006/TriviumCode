@@ -547,7 +547,10 @@ interface FinalizeInput {
   lock: TaskLock;
   /**
    * 「没有另一个写者」：别的进程调用时传「工作进程已确认退出」的结论（`cancelRun` 传 `workerConfirmedGone(...).gone`，
-   * `waitRun` 传改写 status.json 之前的判定）；worker 自己在异常分支调用时恒传 true——它就是那个写者。
+   * `waitRun` 传改写 status.json 之前的判定）；worker 自己在异常分支调用时恒传 true——它就是那个写者；
+   * 准备阶段（`prepareRun` 写完骨架之后、`startRun` 在子进程诞生之前）与同步路径在本进程里调用时也恒传 true——
+   * 还没有、也不会有 worker；`--cancel` / `--wait` 常常拿不到身份，拿到了也没有 pid、判「未确认退出」而跳过，
+   * 本进程写完之后 run.json 又已是终态、按前提 4 不追溯改写（EV-145，事后收尾余项计划 r2 §3.5，代码双审 r1 CODEX-05）。
    * 显式入参，接线才有用例守得住。
    */
   workerGone: boolean;
@@ -565,14 +568,40 @@ export function finalizeCancelledRunMeta(i: FinalizeInput): Promise<{ runMeta: F
 }
 
 /**
- * 把没走到 worker 收尾就失败的运行在归档侧收尾为 `failed`（EV-142，计划 r2 §3.2 / §3.3）。
- * 两个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
- * 且确认工作进程已退出（`termination.by = worker_lost`）。
+ * 把没走到 worker 收尾就失败的运行在归档侧收尾为 `failed`（EV-142，计划 r2 §3.2 / §3.3；EV-145）。
+ * 五个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
+ * 且确认工作进程已退出（`worker_lost`）、`prepareRun` 写完骨架之后失败与 `startRun` 在子进程诞生之前失败
+ * （都是 `prepare_exception`）、同步路径 `executeRun` 抛错（`sync_exception`）。
  */
 export function finalizeFailedRunMeta(
   i: FinalizeInput & { termination: RunTermination },
 ): Promise<{ runMeta: FinalizeStep; task: FinalizeStep }> {
   return finalizeUnfinishedRunMeta({ ...i, terminal: 'failed' });
+}
+
+/**
+ * 事后收尾一步 → 一句话。异常转成的跳过要把后果说出来，而后果因调用方的处境而异（有没有 status.json、
+ * 随后会发生什么），所以那半句由调用方传入（事后收尾余项计划 r2 §3.6）。同族措辞的唯一来源，三个使用者：
+ * `run-protocol.ts` 的 `reportFinalizeStep`（`--cancel`，再按 step / warn 分流）与 `describeFinalizeStep`
+ * （worker 异常分支、`--wait` 判失联），以及下面的 `finalizeLines`（准备阶段与同步路径）（代码双审 r1 CODEX-06）。
+ */
+export function describeFinalizeStepWith(r: FinalizeStep, done: string, notDone: string, noSecondChance: string): string {
+  if (r.kind === 'written') return done;
+  if (r.error) return `${notDone}：${r.why}——${noSecondChance}`;
+  return `${notDone}：${r.why}`;
+}
+
+/**
+ * 准备阶段与同步路径的收尾播报：两步各一句（EV-145，事后收尾余项计划 r2 §3.6，计划双审 r1 AGY-01）。
+ * `scene` 由调用方给（「准备阶段失败」或「同步路径异常」）——`FinalizeStep` 本身不带场景信息。
+ * 这两处没有 status.json、也没有补齐入口，调用方随即以原错误退出，异常转成的跳过没有第二次机会。
+ */
+export function finalizeLines(fin: { runMeta: FinalizeStep; task: FinalizeStep }, runId: string, scene: string): string[] {
+  const noSecondChance = '这一步不会再有第二次机会：本进程随即以原错误退出，请人工核对归档 run.json 与 task.json 的运行登记';
+  return [
+    describeFinalizeStepWith(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed（${scene}）`, `归档 run-${runId}.json 未回写`, noSecondChance),
+    describeFinalizeStepWith(fin.task, `已把 task.json 的运行登记同步为 failed（${scene}）`, 'task.json 的运行登记未改', noSecondChance),
+  ];
 }
 
 /**
@@ -585,8 +614,15 @@ export function finalizeFailedRunMeta(
  * 这一步没有第二次机会——调用方的告警会当场说出来，要人工对账。
  *
  * **自身不抛**：两步各包一层捕获，任何异常都转成该步的 skipped。只设这一道——
- * 调用方不再另包，免得两层互为冗余（r1 CODEX-02 ≡ AGY-01 ≡ GLM-02）。锁与闸门回收排在它之后，
- * 归档侧失败不得连坐那两项：闸门卡在 running 会把 Driver 永久锁在一个已经不存在的运行上。
+ * 调用方不再另包，免得两层互为冗余（r1 CODEX-02 ≡ AGY-01 ≡ GLM-02）。
+ * 归档侧失败不得连坐锁与闸门回收：闸门卡在 running 会把 Driver 永久锁在一个已经不存在的运行上。
+ *
+ * **调用次序按「有没有下一次补齐的入口」分两种**（事后收尾余项计划 r2 §3.2，计划双审 r1 CODEX-01）：
+ * - `--cancel` / `--wait` / worker 异常分支：本函数排在 status.json 落终态**之前**，锁与闸门回收排在它**之后**——
+ *   进程中断时 status.json 仍非终态，下一次调用能把没做完的一步补上；
+ * - 准备阶段与同步路径：没有 status.json，`--cancel` / `--wait` 也够不着，收尾只有这一次机会，
+ *   所以**先回收闸门、再调本函数**（进程死在两步之间时，闸门停在 running 会拦住全部业务写入到 TTL，
+ *   run.json 停在 running 只是留痕不准），主题锁仍在本函数之后放。
  */
 async function finalizeUnfinishedRunMeta(
   i: FinalizeInput & { terminal: UnfinishedTerminal; termination?: RunTermination },

@@ -52,7 +52,10 @@ import {
 import { diffAgainst, headSha } from './util/git.js';
 import { collectBuildStampNotices, embeddedBuildStamp } from './build-stamp.js';
 import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
-import { newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta, type TaskLock } from './meta.js';
+import {
+  finalizeFailedRunMeta, finalizeLines, newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta,
+  type TaskLock,
+} from './meta.js';
 import { acquireLock } from './lock.js';
 import { measureAllPairs, renderDivergence } from './divergence.js';
 import { agentConfigOf, resolveAssetRoot, resolveReviewSchemaPath, runRoot, vendorProfileOf } from './config.js';
@@ -63,6 +66,7 @@ import { workTreeHash } from './util/git.js';
 import {
   EXIT,
   envError,
+  exitCodeOf,
   missingArtifact as missingArtifactError,
   usageError,
   TriviumError,
@@ -532,6 +536,8 @@ export async function resolveSubjectArtifactRelPath(archiveRoot: string, subject
  * task.json 登记、运行目录一概不写；闸门状态文件只有那次判负的比较-交换，它也会刷新 `updated_at`，闸门项不变
  * （代码双审 r1 GLM-01）。置闸门（含比较-交换本身）之后的任何失败由本函数回收闸门，
  * 所以对调用方而言「抛错 ⇒ 闸门不归本轮」（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §3.1 / §3.2，r1 CODEX-01）。
+ * 写完 run.json 骨架之后才失败的，回收闸门之后再把骨架收尾为 `failed`（`termination.by = prepare_exception`，
+ * EV-145，事后收尾余项计划 r2 §3.2）。
  */
 export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const { ctx, stage } = opts;
@@ -893,6 +899,9 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    * 什么都不改，报错原样抛出。
    */
   const holdsGate = !skipVerdict?.skipped;
+  const taskLock: TaskLock = { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 };
+  /** 骨架已写成：之后的失败要把它收尾为 failed；之前的失败没有 run.json 可收（EV-145，事后收尾余项计划 r2 §3.2） */
+  let skeletonWritten = false;
   try {
     if (holdsGate) {
       const g = await setGateChecked({
@@ -923,7 +932,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
      *
      * 置闸门之后的任何失败都由这里回收闸门，调用方的契约「prepareRun 抛错 ⇒ 闸门不归本轮」因此不变：
      * `startRun` 的 prepare catch 只放锁、同步路径的 prepareRun 在 executeRun 的 try 之外（计划 r2 §3.2）。
-     * 写完骨架之后才失败（登记、任务目标落盘）时骨架如实留 running，只回收闸门（计划 r2 D3，BACKLOG EV-145 余项）。
+     * 写完骨架之后才失败（登记、任务目标落盘）时，回收闸门之后再把骨架收尾为 failed（事后收尾余项计划 r2 §3.2；
+     * 闸门拦截不留骨架计划 r2 D3 当时只回收闸门、骨架留 running，留给 EV-145 余项）。
      */
     // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）。
     // 它会抛（目录里有删不掉的东西），所以放在 try 里，抛了也经下面的回收（计划 r2 §3.1，r1 AGY-02 ≡ GLM-02）
@@ -1012,7 +1022,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       meta.skip_reason = skipVerdict.reasons.join('；');
     }
     await writeRunMeta(ref.layout, stage, meta);
-    const taskLock: TaskLock = { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 };
+    skeletonWritten = true;
     await registerRun(ref.layout, meta, taskLock);
 
     /*
@@ -1045,6 +1055,23 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
         triviumDir: ctx.triviumDir, topic: ref.topic, stage, runId,
         heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
       });
+    }
+    /*
+     * 写完骨架之后才失败（登记、任务目标落盘）：把骨架收尾为 failed（EV-145，事后收尾余项计划 r2 §3.2）。
+     *
+     * - 写者就是本进程：还没派生任何 worker；`--cancel` / `--wait` 靠 status.json 或交接文件拿身份，此刻两份都不存在（计划 r2 §3.5）。
+     * - 排在闸门回收**之后**，与 `--cancel` / `--wait` / worker 那三条相反：这里没有 status.json、没有补齐入口，
+     *   收尾只有这一次机会，进程若死在两步之间，宁可 run.json 留痕不准，也不让闸门停在 running 拦住全部业务写入到 TTL。
+     * - 骨架之前的失败（重置计数、补丁 / brief 的密钥扫描、骨架自己的写前校验）没有 run.json 可收，不调——调了只多一行「归档里没有」。
+     * - 主题锁由调用方在本函数抛出之后放（`startRun` 的 prepare catch、同步路径 `runReview` 的 finally）。
+     */
+    if (skeletonWritten) {
+      const fin = await finalizeFailedRunMeta({
+        layout: ref.layout, stage, runId, lock: taskLock,
+        workerGone: true,
+        termination: { by: 'prepare_exception', exit_code: exitCodeOf(e) },
+      });
+      for (const line of finalizeLines(fin, runId, '准备阶段失败')) warn(line);
     }
     throw e;
   }
@@ -1767,6 +1794,20 @@ async function runReviewLocked(opts: ReviewOptions): Promise<ReviewOutcome> {
     }).catch(() => {
       /* 回收失败不该盖过真正的错误 */
     });
+    /*
+     * 同步路径的事后收尾（EV-145，事后收尾余项计划 r2 §3.4）：把仍为 running 的 run.json 收尾为 failed（`sync_exception`）。
+     * 写者就是本进程——同步路径从不写 status.json 与交接文件，`--cancel` / `--wait` 够不着；没有 worker。
+     * 「仍为 running 才写」挡住 executeRun 已写完终态、之后的登记或闸门写入才抛的那一格，不追溯改写。
+     * 与上面的闸门回收同一次序（先回收、再收尾，见 meta.ts 通用体文档块）；主题锁由 `runReview` 的 finally 在其后放。
+     * `prepareRun` 在 try 之外，它的失败由它自己的 catch 收尾，不会走到这里、不重复。
+     */
+    const fin = await finalizeFailedRunMeta({
+      layout: rc.ref.layout, stage: rc.stage, runId: rc.runId,
+      lock: { triviumDir: rc.ctx.triviumDir, heartbeatStaleMs: rc.cfg.review.heartbeat_stale_s * 1000 },
+      workerGone: true,
+      termination: { by: 'sync_exception', exit_code: exitCodeOf(e) },
+    });
+    for (const line of finalizeLines(fin, rc.runId, '同步路径异常')) warn(line);
     throw e;
   }
 }

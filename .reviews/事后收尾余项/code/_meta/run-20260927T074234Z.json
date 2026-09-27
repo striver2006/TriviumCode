@@ -1,0 +1,290 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260927T074234Z",
+  "topic": "事后收尾余项",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "一、三处本进程收尾（准备阶段写完骨架之后、启动时子进程诞生之前、同步路径异常）的写入前提与次序：先回收闸门、再收尾、最后放锁，是否与 meta.ts 通用体文档块改写后的两种次序一致；准备阶段与同步路径两处捕获会不会对同一份运行元数据收尾两次。 二、spawnDetached 新增的 onSpawned 回调时点与 startRun 的 childBorn 判据；实施期计划外修正（error 事件监听挪到 pid 检查之前）是否正确、有没有副作用（报告 §3.1）。 三、termination.by 扩值：schema 枚举、types.ts 的 EXCEPTION_TERMINATION_BY、report 说明三处是否一致，S3 与 V9 守卫是否够；回滚步骤与验收 A8 演练的结论是否成立。 四、用例构造是否可靠：P1 至 P6 与 U1、U2，尤其预建运行目录的 60 秒窗口与命中前置断言在满载下会不会抖；变异判定的缺口（报告 §3.3）如实与否。 五、主设计、PRD、LLD、MANUAL、PROTOCOL 与 BACKLOG（EV-145 结案、新登 EV-150 与 EV-151）的措辞与代码是否一致，行号与版本号是否准确。",
+  "task_goal": "事后收尾余项 实施计划（r2 定稿）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "a89a46f777fa85b9ab41beb26c39e535628abb86",
+    "tree_hash": "88b9c5c86a3875e99da8499fc8b11438dab515b2",
+    "dirty": true,
+    "subject_sha256": "057d6e3c3482ab92dd82de4387cc2b5ae664fab7ad7e6fa6b1c8e3ac9e3a6a3c",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "a89a46f777fa85b9ab41beb26c39e535628abb86",
+      "dirty": true,
+      "inputs_sha256": "f8923c24ebb72e8adb47257e664613ecfa325f9c75f0322dac49f7c8db65e589",
+      "built_at": "2026-09-27T07:10:48.504Z"
+    },
+    "after_tree_hash": "576767fa8069980c24ffa9f59e385bba7b45e0bc"
+  },
+  "started_at": "2026-09-27T07:42:36.083Z",
+  "finished_at": "2026-09-27T07:58:32.963Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "parse_fallback",
+      "exit_code": 0,
+      "duration_s": 956.57,
+      "tool_calls": {
+        "run_command": 57,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "JSON 不符合 trivium.review.v1：/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}; /findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}; /findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}; /findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}; /findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+      "empty_review": false,
+      "parse_fallback": true,
+      "session_id": "01a0e1d0-dc82-7142-993d-453936dc1244",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.12",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 274.159,
+      "tool_calls": {
+        "read": 48,
+        "grep": 5,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 22
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 323965,
+        "output_tokens": 28079,
+        "thinking_tokens": 20211,
+        "cache_read_tokens": 6539601,
+        "total_tokens": 352044
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "81c64b6d-d1a1-4c6b-a79f-5c4b378f251f",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 565.937,
+      "tool_calls": {
+        "read": 20,
+        "grep": 7,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 12
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 21,
+        "inputTokens": 2855793,
+        "outputTokens": 37420,
+        "totalTokens": 2893213,
+        "cacheReadTokens": 2634752,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_3b0ccb2a-0c48-4a2a-956d-dfb55c29304e",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/事后收尾余项/plan/2026-09-27-事后收尾余项-gemini.md",
+    ".reviews/事后收尾余项/plan/2026-09-27-事后收尾余项-glm.md",
+    ".reviews/事后收尾余项/plan/_meta/review-gemini-20260927T052648Z.json",
+    ".reviews/事后收尾余项/plan/_meta/review-glm-20260927T052648Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "事后收尾余项/code/_meta/changes-20260927T074234Z.diff",
+      "sha256": "057d6e3c3482ab92dd82de4387cc2b5ae664fab7ad7e6fa6b1c8e3ac9e3a6a3c"
+    },
+    {
+      "path": "事后收尾余项/code/_meta/brief-codex-20260927T074234Z.md",
+      "sha256": "9d9a4d46c8d3e4608c4d9ecc49d4e1e9986baed765de50d8e356030999ffc57f"
+    },
+    {
+      "path": "事后收尾余项/code/_meta/brief-gemini-20260927T074234Z.md",
+      "sha256": "284fd0004115a74c43835e094884d7e460a4199b331c53bae075d6828679f210"
+    },
+    {
+      "path": "事后收尾余项/code/_meta/brief-glm-20260927T074234Z.md",
+      "sha256": "cbf6f21ee6ad76b16533d5e9165c3ec7772e17bfc24b4833854fae548e6130a1"
+    },
+    {
+      "path": "事后收尾余项/code/_meta/review-codex-20260927T074234Z.json",
+      "sha256": "b5da9e51a5cd084f6cd1bb9f7342dcdb199679876dec7bad8f5a83f46e67b2ef"
+    },
+    {
+      "path": "事后收尾余项/code/_meta/review-codex-20260927T074234Z.fallback-items.md",
+      "sha256": "3d705b5bf911274da1258307c1964f79cc142e1a79826bfd18f476230c16ec26"
+    },
+    {
+      "path": "事后收尾余项/code/_meta/review-gemini-20260927T074234Z.json",
+      "sha256": "a86f38e79e3db4807437363351596dd1310e466a38bdb2af26de8768c7f185e4"
+    },
+    {
+      "path": "事后收尾余项/code/_meta/review-glm-20260927T074234Z.json",
+      "sha256": "b781ec329a0716a57605e2f2921067ebc524155d1abe6b68a22773397d1575d2"
+    },
+    {
+      "path": "事后收尾余项/code/2026-09-27-事后收尾余项-codex.md",
+      "sha256": "a67da3036ffb6c057abb046fa69bab1aa8041048b318303c249c1a842652896b"
+    },
+    {
+      "path": "事后收尾余项/code/2026-09-27-事后收尾余项-gemini.md",
+      "sha256": "2c9852eb14c2ff3818569e89111b0228d38dcd2602bd55b614d0f5e0fbd119b6"
+    },
+    {
+      "path": "事后收尾余项/code/2026-09-27-事后收尾余项-glm.md",
+      "sha256": "8ea76d5c5ef4161398cfbb62e2f0ebe5326c701ba86d83b59654181e77ff035f"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}

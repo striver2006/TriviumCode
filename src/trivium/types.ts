@@ -1250,9 +1250,23 @@ export type ReviewMode = 'full' | 'partial';
  */
 export type LegacyReviewMode = 'dual' | 'single';
 
-/** run.json `termination`：这一次终态由哪条事后收尾写的（EV-142，见 `RunMeta.termination`） */
+/**
+ * `termination.by` 里「带退出码」那一族的取值——**唯一来源**（事后收尾余项计划 r2 §3.1，D1）。
+ *
+ * - `worker_exception`：worker 的异常分支（EV-142）；
+ * - `prepare_exception`：审查员一个都没拉起就失败——`prepareRun` 写完骨架之后、或 `startRun` 在子进程诞生之前；
+ * - `sync_exception`：同步路径 `executeRun` 抛错，审查员可能已经跑过（与 `worker_exception` 同义，只是不在 worker 里）。
+ *
+ * 同一组值还出现在 run.v2 schema `termination` 第一个分支的 `by` 枚举里；schema 是 JSON、引用不了这里，
+ * 由 `run-meta-strict.test.ts` 的 S3 守住两边逐项相等（`worker_lost` 另算）。schema 只增不减：
+ * 旧 bundle 读不懂新取值，回滚要保留 schema 的改动（计划 r2 §6.3）。
+ */
+export const EXCEPTION_TERMINATION_BY = ['worker_exception', 'prepare_exception', 'sync_exception'] as const;
+export type ExceptionTerminationBy = (typeof EXCEPTION_TERMINATION_BY)[number];
+
+/** run.json `termination`：这一次终态由哪条事后收尾写的（EV-142 / EV-145，见 `RunMeta.termination`） */
 export type RunTermination =
-  | { by: 'worker_exception'; exit_code: number }
+  | { by: ExceptionTerminationBy; exit_code: number }
   | { by: 'worker_lost'; reason: WorkerLostReason };
 
 export interface RunMeta {
@@ -1464,24 +1478,28 @@ export interface RunMeta {
    * ②`warnings` 已是运行期标注通道，`loadRoundReviews` 把它当 `run_warning` 回灌进每次 `--check`，
    * 照旧设计把 `--check` 的告警写进来会重复上报。裁决是否齐备以 `gate --check` 的实时结果为准，
    * 审批事实以 `task.json.approvals[]` 为准。事后收尾不属「收尾后更新」：`review --cancel`（EV-128）、worker 异常与
-   * `--wait` 判 `worker_lost`（EV-142）三条路都只在 run.json 仍为 running 时写——那份运行走不到 worker 的收尾，
-   * 这一次就是它唯一一次终态写入，写完同样不再更新（第一步在主题任务锁里判与写，保证至多一次）。
+   * `--wait` 判 `worker_lost`（EV-142）、准备阶段与同步路径的本进程收尾（EV-145）都只在 run.json 仍为 running 时写——
+   * 那份运行走不到 worker 的收尾，这一次就是它唯一一次终态写入，写完同样不再更新（第一步在主题任务锁里判与写，保证至多一次）。
    */
   gate: { adjudication_complete: boolean; state: string; warnings?: string[] };
   /**
-   * `running` 是骨架态；`success` / `failed` 由 worker 收尾写；另有三条事后收尾（`meta.ts` `finalizeUnfinishedRunMeta`）：
+   * `running` 是骨架态；`success` / `failed` 由 worker 收尾写；另有几条事后收尾（`meta.ts` `finalizeUnfinishedRunMeta`）：
    * `cancelled` 由 `review --cancel` 在工作进程确认退出后写（EV-128）；`failed` 还可能由 worker 异常分支自己写、
-   * 或由 `--wait` 判 `worker_lost` 且确认工作进程已退出时写（EV-142，同时写 `termination`）。
-   * 已结束却仍为 `running` 的留痕表示没有走到收尾（本版以前的异常 / 失联 / 取消、失联时进程未确认退出，
-   * 本版以前 prepare 阶段写完骨架后被闸门拦下，或准备阶段写完骨架之后登记失败），不回填。
-   * 被闸门拦下的 `--start` 自 EV-109 起不写骨架。
+   * 由 `--wait` 判 `worker_lost` 且确认工作进程已退出时写（EV-142），或由本进程在准备阶段写完骨架之后失败、
+   * `startRun` 在子进程诞生之前失败、同步路径 `executeRun` 抛错时写（EV-145）——这几条都同时写 `termination`。
+   * 已结束却仍为 `running` 的留痕表示没有走到收尾（本版以前的异常 / 失联 / 取消 / 准备阶段失败 / 同步路径异常、
+   * 失联时进程未确认退出、`--start` 在子进程诞生之后才失败而孤儿 worker 被杀、worker 猝死而没人 `--wait`、
+   * 纯文档跳过的终态写入本身失败，以及 EV-109 以前被闸门拦下留下的骨架），不回填。
    */
   status: 'running' | 'success' | 'failed' | 'cancelled';
   /**
-   * 这一次终态由哪条事后收尾写的（EV-142）。**只**由 worker 异常分支与 `--wait` 判 `worker_lost` 两条路写；
+   * 这一次终态由哪条事后收尾写的（EV-142 / EV-145）。`worker_exception` 由 worker 异常分支写，`worker_lost` 由 `--wait`
+   * 判失联写，`prepare_exception` 由准备阶段写完骨架之后失败（含 `startRun` 在子进程诞生之前失败）时本进程写，
+   * `sync_exception` 由同步路径 `executeRun` 抛错时本进程写；
    * 缺席 = 正常收尾（worker 写 `success` / `failed`）、取消轮（`status: cancelled` 已说明来路）、或本字段之前的留痕。
    * 只存结构化字段、不存异常原文：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。
-   * `reason` 取值与 `status.ts` 的 `WORKER_LOST_REASONS` 同源，run.v2 schema 的枚举由用例守住与它逐项相等。
+   * `by` 的取值与 `EXCEPTION_TERMINATION_BY` 同源、`reason` 与 `status.ts` 的 `WORKER_LOST_REASONS` 同源，
+   * run.v2 schema 的两处枚举由用例守住与它们逐项相等。
    */
   termination?: RunTermination;
   skipped?: boolean;

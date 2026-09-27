@@ -41,6 +41,14 @@ export class TriviumError extends Error {
   }
 }
 
+/**
+ * 一次异常最终会让进程以哪个退出码收场：受控错误取其 `code`，其余一律 `FAIL`。
+ * 与 cli 顶层的处理同一口径；事后收尾把它记进 `termination.exit_code`（EV-142 / EV-145）。
+ */
+export function exitCodeOf(e: unknown): ExitCode {
+  return e instanceof TriviumError ? e.code : EXIT.FAIL;
+}
+
 export const usageError = (m: string, d?: unknown) => new TriviumError(EXIT.USAGE, m, d);
 export const missingArtifact = (m: string, d?: unknown) => new TriviumError(EXIT.MISSING_ARTIFACT, m, d);
 export const envError = (m: string, d?: unknown) => new TriviumError(EXIT.ENV, m, d);

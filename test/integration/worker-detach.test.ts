@@ -240,3 +240,69 @@ test('killProcessTree 拒绝 pid <= 1，绝不误杀 init 或整个会话', () =
   assert.equal(killProcessTree(-5, 'SIGKILL'), false);
   assert.equal(killProcessTree(process.pid, 'SIGKILL'), false, '绝不对自己发信号');
 });
+
+// ── EV-145：onSpawned 的调用时点，与 spawn 失败不崩进程（事后收尾余项计划 r2 §3.3 / §4.1 U1）──
+
+test('EV-145 U1：onSpawned 在拿到 pid 时恰好调用一次；建日志目录就失败时抛错且不调用', async () => {
+  const dir = await tmpDir();
+  const workerScript = path.join(dir, 'w.mjs');
+  await fs.writeFile(workerScript, 'setTimeout(() => process.exit(0), 5000);', 'utf8');
+
+  const seen: number[] = [];
+  const r = await spawnDetached(process.execPath, [workerScript], {
+    cwd: dir,
+    logFile: path.join(dir, 'w.log'),
+    onSpawned: (pid) => seen.push(pid),
+  });
+  try {
+    assert.deepEqual(seen, [r.pid], '子进程诞生时回调恰好一次，参数就是返回的 pid');
+  } finally {
+    try {
+      process.kill(r.pid, 'SIGKILL');
+    } catch {
+      /* 已退出 */
+    }
+  }
+
+  // 日志路径的父级是一个普通文件：建日志目录失败，子进程从未诞生
+  const blocker = path.join(dir, 'not-a-dir');
+  await fs.writeFile(blocker, 'x', 'utf8');
+  const seen2: number[] = [];
+  await assert.rejects(
+    spawnDetached(process.execPath, [workerScript], {
+      cwd: dir,
+      logFile: path.join(blocker, 'w.log'),
+      onSpawned: (pid) => seen2.push(pid),
+    }),
+  );
+  assert.deepEqual(seen2, [], '子进程诞生之前的失败不得触发回调——startRun 据此把骨架收尾为 failed');
+});
+
+test('EV-145 U2：二进制不存在（spawn 拿不到 pid）⇒ spawnDetached 抛错被调用方接住，进程不因未处理的 error 事件崩溃', async () => {
+  const dir = await tmpDir();
+  const script = path.join(dir, 'spawn-enoent.mjs');
+  await fs.writeFile(
+    script,
+    `const { spawnDetached } = await import(${JSON.stringify(EXEC_MODULE)});
+     let born = false;
+     try {
+       await spawnDetached('/nonexistent/trivium-bin-xyz', [], { logFile: ${JSON.stringify(path.join(dir, 'w.log'))}, onSpawned: () => { born = true; } });
+       console.log('returned');
+     } catch (e) {
+       console.log('caught:' + e.message);
+     }
+     await new Promise((r) => setTimeout(r, 300));
+     console.log(born ? 'born' : 'not-born');
+     console.log('alive');`,
+    'utf8',
+  );
+  const r = await run(process.execPath, [script], { timeoutMs: 20_000 });
+  assert.equal(r.code, 0, `进程不应崩溃：\n${r.stdout}\n${r.stderr}`);
+  assert.match(r.stdout, /caught/);
+  assert.match(r.stdout, /not-born/);
+  assert.match(r.stdout, /alive/);
+  // 代码双审 r1 CODEX-01：不崩之外还要可诊断——成因（错误码与可执行文件路径）进报错正文与 worker.log
+  assert.match(r.stdout, /caught:spawn 未返回 pid：\/nonexistent\/trivium-bin-xyz（ENOENT /, r.stdout);
+  const log = await fs.readFile(path.join(dir, 'w.log'), 'utf8');
+  assert.match(log, /spawn 未返回 pid：\/nonexistent\/trivium-bin-xyz（ENOENT /, `worker.log 应留一行成因：${JSON.stringify(log)}`);
+});

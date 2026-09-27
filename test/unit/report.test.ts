@@ -10,7 +10,7 @@ import { promises as fs } from 'node:fs';
 import { acceptanceRate, buildTopicReport, renderTopicReport, type RoundReport } from '../../src/trivium/report.js';
 import { newRunMeta, writeRunMeta, registerRun, type TaskMeta } from '../../src/trivium/meta.js';
 import { writeArtifact, writeMeta, type ArchiveLayout } from '../../src/trivium/archive.js';
-import { CRITICS, type Review } from '../../src/trivium/types.js';
+import { CRITICS, EXCEPTION_TERMINATION_BY, type Review } from '../../src/trivium/types.js';
 import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
 
 /**
@@ -485,4 +485,33 @@ test('EV-144 V7：所有运行都进了时间线 ⇒ 不渲染下表，头部也
   const md = renderTopicReport(r);
   assert.doesNotMatch(md, /未进时间线的运行/);
   assert.doesNotMatch(md, /另有 \d+ 次运行/);
+});
+
+// ── EV-145：准备阶段与同步路径的事后收尾（事后收尾余项计划 r2 §4.1 V8 / V9）──
+
+test('EV-145 V8：prepare_exception / sync_exception 写成的 failed ⇒ 说明分别写清「未拉起审查员」与「同步路径异常」并带退出码', async () => {
+  const l = await archive();
+  await seedUnlisted(l, { runId: 'P1', status: 'failed', termination: { by: 'prepare_exception', exit_code: 1 } });
+  await seedUnlisted(l, { runId: 'P2', status: 'failed', termination: { by: 'sync_exception', exit_code: 70 } });
+  const r = await buildTopicReport(l);
+  assert.deepEqual(
+    r.unlistedRuns.map((u) => [u.runId, u.label]),
+    [['P1', '准备阶段失败，未拉起审查员（退出码 1）'], ['P2', '同步路径异常（退出码 70）']],
+  );
+});
+
+test('EV-145 V9：termination.by 的每一个取值都有专门的说明，不落进兜底「failed（gate.state=…）」', async () => {
+  const l = await archive();
+  const shapes: import('../../src/trivium/types.js').RunTermination[] = [
+    ...EXCEPTION_TERMINATION_BY.map((by) => ({ by, exit_code: 1 })),
+    { by: 'worker_lost', reason: 'pid_gone' },
+  ];
+  for (const [i, t] of shapes.entries()) {
+    await seedUnlisted(l, { runId: `T${i}`, status: 'failed', termination: t });
+  }
+  const r = await buildTopicReport(l);
+  assert.equal(r.unlistedRuns.length, shapes.length);
+  for (const u of r.unlistedRuns) {
+    assert.ok(!u.label.startsWith('failed（gate.state='), `${JSON.stringify(u.termination)} 落进了兜底说明：${u.label}`);
+  }
 });

@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.7
+> - **当前版本**：v1.0.8
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -627,6 +627,10 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 > 进程还活着、只是心跳过期（`heartbeat_stale`）时不写，报错里会写「工作进程未确认退出」。
 > 失联判定之后 status.json 已是终态，再跑 `--cancel` 会说「已处于终态」、不做任何事；心跳过期而进程一直挂着时，
 > 目前只能在终端手工结束那个进程（BACKLOG EV-146）。
+>
+> **`review --start` 或同步 `review` 自己报错时**（v1.0.8 起，设计 v1.3.50，EV-145）：若已写下 `run-<id>.json`，它会标为 `failed`，
+> 并在 `termination` 里注明是哪一种——`prepare_exception`（准备阶段失败，审查员一个都没拉起、没花配额）或 `sync_exception`（同步路径异常）；
+> 报错下方会多两行说明收尾结果。`--start` 在审查员已被拉起之后才报错的少见情形不在此列：那时审查会照常跑完并自己收尾，见 BACKLOG EV-150。
 
 ### 场景 5 · 裁决写了但闸门不过
 

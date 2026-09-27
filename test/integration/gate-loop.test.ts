@@ -2101,13 +2101,31 @@ async function startWithTopicDirReadonly(root: string, archiveRoot: string) {
   }
 }
 
+/** run.json 里本组用例要看的几项 */
+interface RunMetaLike {
+  status: string;
+  finished_at: string | null;
+  gate: { state: string };
+  termination?: unknown;
+  artifacts: { path: string }[];
+}
+const readRunJson = async (stageDir: string, runId: string) =>
+  JSON.parse(await fs.readFile(path.join(stageDir, '_meta', `run-${runId}.json`), 'utf8')) as RunMetaLike;
+
+/** report --json 里某次运行在「未进时间线的运行」表中的说明 */
+async function unlistedLabelOf(root: string, runId: string): Promise<string | undefined> {
+  const rep = await cli(root, ['report', '--topic', TOPIC, '--json']);
+  const rj = JSON.parse(extractJsonCandidate(rep.stdout)!.json) as { unlistedRuns: { runId: string; label: string }[] };
+  return rj.unlistedRuns.find((u) => u.runId === runId)?.label;
+}
+
 const runMetaIds = async (stageDir: string) =>
   (await fs.readdir(path.join(stageDir, '_meta')).catch(() => [] as string[]))
     .map((n) => /^run-(.+)\.json$/.exec(n)?.[1])
     .filter((x): x is string => x !== undefined)
     .sort();
 
-test('闸门拦截不留骨架 B5：置闸门之后登记失败 ⇒ 闸门回收为 idle、锁已放、骨架如实留 running；重跑前不带 --run-id 的 gate 指向这份骨架', { skip: NOT_ROOT_SKIP }, async () => {
+test('事后收尾余项 P1（原闸门拦截不留骨架 B5）：置闸门之后登记失败 ⇒ 闸门回收为 idle、锁已放、骨架收尾为 failed（prepare_exception）；重跑前不带 --run-id 的 gate 仍指向它', { skip: NOT_ROOT_SKIP }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   const r = await startWithTopicDirReadonly(fx.root, fx.archiveRoot);
   assert.notEqual(r.code, EXIT.OK, `登记写不进时 --start 应失败：\n${r.stdout}${r.stderr}`);
@@ -2122,14 +2140,28 @@ test('闸门拦截不留骨架 B5：置闸门之后登记失败 ⇒ 闸门回收
   const lockDir = path.join(fx.root, '.trivium', 'lock');
   assert.ok(!(await fs.readdir(lockDir).catch(() => [] as string[])).includes(`${TOPIC}.lock`), '主题锁必须已释放');
 
-  // D3 (a)：骨架如实留 running，不在本主题收尾为终态
-  const skeleton = JSON.parse(await fs.readFile(path.join(fx.stageDir, '_meta', `run-${skeletonId}.json`), 'utf8')) as { status: string };
-  assert.equal(skeleton.status, 'running');
+  // 事后收尾余项计划 r2 §3.2：写完骨架之后才失败的，回收闸门之后由 prepareRun 自己把骨架收尾为 failed
+  // （闸门拦截不留骨架计划 r2 D3 当时只回收闸门、骨架留 running，EV-145 余项在这里落地）
+  const skeleton = await readRunJson(fx.stageDir, skeletonId);
+  assert.equal(skeleton.status, 'failed');
+  assert.equal(skeleton.gate.state, 'failed');
+  assert.ok(skeleton.finished_at, 'finished_at 应写上');
+  assert.deepEqual(skeleton.termination, { by: 'prepare_exception', exit_code: EXIT.FAIL });
+  assert.deepEqual(
+    skeleton.artifacts.map((a) => path.basename(a.path)).sort(),
+    [`brief-gemini-${skeletonId}.md`, `brief-glm-${skeletonId}.md`],
+    'artifacts 原样',
+  );
+  assert.equal(await fs.stat(path.join(fx.archiveRoot, TOPIC, TASK_NAME)).catch(() => null), null, '登记没写成：主题任务文件不存在，收尾也不新建');
+  assert.match(r.stderr, /收尾为 failed（准备阶段失败）/, r.stderr);
 
-  // 计划 r2 §3.5（r1 CODEX-03）：到下一次成功重跑之前，最新留痕是这份骨架——钉住现状，EV-145 余项落地时随之改
+  // 计划 r2 D5：不改 latestRunMeta——到下一次成功重跑之前，不带 --run-id 的 gate 仍指向这份（已收尾的）骨架
   const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json', '--session-id', SESSION]);
   const cj = JSON.parse(extractJsonCandidate(check.stdout)!.json) as { run_id: string };
   assert.equal(cj.run_id, skeletonId);
+
+  // report 的说明写清「没拉起审查员」
+  assert.equal(await unlistedLabelOf(fx.root, skeletonId), '准备阶段失败，未拉起审查员（退出码 1）');
 });
 
 test('闸门拦截不留骨架 B6：上一轮已审批（槽位 approved）时置闸门之后失败 ⇒ 回收为 idle，不恢复成 approved（D2 (a)）', { skip: NOT_ROOT_SKIP }, async () => {
@@ -2160,6 +2192,7 @@ test('闸门拦截不留骨架 B7：置闸门之后重置收工阻断计数失�
   await fs.writeFile(path.join(sub, 'n'), '1\n', 'utf8');
   await fs.chmod(sub, 0o555);
   const before = await listFiles(fx.archiveRoot);
+  let stderr = '';
   try {
     const r = await cli(
       fx.root,
@@ -2167,6 +2200,7 @@ test('闸门拦截不留骨架 B7：置闸门之后重置收工阻断计数失�
       STUB,
     );
     assert.notEqual(r.code, EXIT.OK, `计数删不掉时 --start 应失败：\n${r.stdout}${r.stderr}`);
+    stderr = r.stderr;
   } finally {
     await fs.chmod(sub, 0o755);
   }
@@ -2175,4 +2209,188 @@ test('闸门拦截不留骨架 B7：置闸门之后重置收工阻断计数失�
   assert.equal(g.state, 'idle', '重置计数排在 try 里：抛了也要回收闸门（r1 AGY-02 ≡ GLM-02）');
   assert.ok(!(await fs.readdir(path.join(fx.root, '.trivium', 'lock'))).includes(`${TOPIC}.lock`), '主题锁必须已释放');
   assert.deepEqual(await listFiles(fx.archiveRoot), before, '重置计数在落盘段之前，失败时 .reviews/ 不得多出文件');
+  // 事后收尾余项计划 r2 §3.2 / §4.2：骨架还没写就失败，不进收尾（否则只会多一行「归档里没有」）
+  assert.doesNotMatch(stderr, /收尾为 failed|未回写/, stderr);
+});
+
+// ── 事后收尾余项（EV-145 余项，计划 r2 §4.2 P2～P6）：准备阶段与同步路径的本进程收尾 ──
+
+type TaskRunLike = { run_id: string; status: string };
+const taskRunsOf = async (archiveRoot: string): Promise<TaskRunLike[] | null> =>
+  fs.readFile(path.join(archiveRoot, TOPIC, TASK_NAME), 'utf8')
+    .then((t) => (JSON.parse(t) as { runs: TaskRunLike[] }).runs)
+    .catch(() => null);
+
+/**
+ * 预建运行目录（计划 r2 §4.2，r1 CODEX-02）：run_id 只到秒、生成时刻不可预知，所以把从现在起 60 秒内每一秒
+ * 可能用到的运行目录都建出来，交给 `prep` 做手脚。夹具根已 realpath（`makeFixture`），CLI 算 repoId 用的是同一个。
+ * 60 秒远大于满载下一次 `--start` 从这里到落骨架的耗时；用例里只起一次 `--start`，不存在误命中第二次运行的问题。
+ */
+async function precreateRunDirs(root: string, prep: (dir: string) => Promise<void>): Promise<{ ids: Set<string>; dirs: string[] }> {
+  const { repoId } = await import('../../src/trivium/review.js');
+  const { newRunId } = await import('../../src/trivium/meta.js');
+  const base = path.join(`${root}-runs`, repoId(root));
+  const ids = new Set<string>();
+  const dirs: string[] = [];
+  const t0 = Date.now();
+  for (let i = 0; i < 60; i++) {
+    const id = newRunId(new Date(t0 + i * 1000));
+    ids.add(id);
+    const d = path.join(base, id);
+    await fs.mkdir(d, { recursive: true });
+    await prep(d);
+    dirs.push(d);
+  }
+  return { ids, dirs };
+}
+
+/**
+ * 命中前置断言：本次 `--start` 写下的唯一一份骨架必须落在预建集合里。不命中就以明确文案失败、不进后续断言——
+ * 免得把「窗口没命中」读成变异逃逸或反向误红（r1 CODEX-02）。
+ */
+async function hitRunId(stageDir: string, ids: Set<string>): Promise<string> {
+  const all = await runMetaIds(stageDir);
+  assert.equal(all.length, 1, `预建窗口未命中：_meta 里应恰有一份本次的骨架，实为 ${all.join(', ') || '无'}`);
+  assert.ok(ids.has(all[0]!), `预建窗口未命中：run ${all[0]} 不在预建集合里`);
+  return all[0]!;
+}
+
+/** 结束预建集合里任何 run_id 的残留 worker（P4 必做；命中断言失败时也要跑，§2.3 附记的教训） */
+async function killWorkersOf(ids: Set<string>): Promise<number[]> {
+  const { run, killProcessTree } = await import('../../src/trivium/util/exec.js');
+  const ps = await run('/bin/ps', ['-axo', 'pid=,command='], { timeoutMs: 10_000 });
+  const pids: number[] = [];
+  for (const line of ps.stdout.split('\n')) {
+    const m = /review --worker (\S+)/.exec(line);
+    if (m && ids.has(m[1]!)) {
+      const pid = Number.parseInt(line.trim(), 10);
+      if (pid > 0) {
+        pids.push(pid);
+        killProcessTree(pid, 'SIGKILL');
+      }
+    }
+  }
+  return pids;
+}
+
+const startPlan = (root: string, stub: StubConfig = STUB) =>
+  cli(root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'], stub);
+
+const syncPlan = (root: string) =>
+  cli(root, ['review', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION], STUB);
+
+test('事后收尾余项 P2：第 1 轮已审批后第 2 轮登记失败 ⇒ 第 2 轮骨架收尾为 prepare_exception；主题任务文件与第 1 轮 run.json 逐字节不变', { skip: NOT_ROOT_SKIP }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const r1 = await runPlan(fx.root, 'B');
+  await writeDisposition(fx.stageDir, r1);
+  assert.equal((await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION])).code, EXIT.OK);
+  assert.equal((await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--session-id', SESSION])).code, EXIT.OK);
+  const taskBefore = await fs.readFile(path.join(fx.archiveRoot, TOPIC, TASK_NAME));
+  const r1Before = await fs.readFile(path.join(fx.stageDir, '_meta', `run-${r1}.json`));
+
+  await new Promise((res) => setTimeout(res, 1100)); // 避开 run_id 同秒撞名（EV-147）
+  const r = await startWithTopicDirReadonly(fx.root, fx.archiveRoot);
+  assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+  const r2 = (await runMetaIds(fx.stageDir)).at(-1)!;
+  assert.notEqual(r2, r1);
+  const m2 = await readRunJson(fx.stageDir, r2);
+  assert.equal(m2.status, 'failed');
+  assert.deepEqual(m2.termination, { by: 'prepare_exception', exit_code: EXIT.FAIL });
+  assert.deepEqual(await fs.readFile(path.join(fx.archiveRoot, TOPIC, TASK_NAME)), taskBefore, '本次条目不存在：第二步跳过、不新建');
+  assert.deepEqual(await fs.readFile(path.join(fx.stageDir, '_meta', `run-${r1}.json`)), r1Before, '第 1 轮不受影响');
+  assert.match(r.stderr, /task\.json 的运行登记未改：task\.json 无此运行的登记/, r.stderr);
+});
+
+test('事后收尾余项 P3：startRun 派生前失败（写交接文件 EACCES）⇒ 骨架与登记收尾为 failed（prepare_exception），闸门 idle、锁已放', { skip: NOT_ROOT_SKIP }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const { ids, dirs } = await precreateRunDirs(fx.root, (d) => fs.chmod(d, 0o555));
+  let r: Awaited<ReturnType<typeof cli>>;
+  try {
+    r = await startPlan(fx.root);
+  } finally {
+    for (const d of dirs) await fs.chmod(d, 0o755).catch(() => {});
+  }
+  assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+  const runId = await hitRunId(fx.stageDir, ids);
+  const m = await readRunJson(fx.stageDir, runId);
+  assert.equal(m.status, 'failed');
+  assert.deepEqual(m.termination, { by: 'prepare_exception', exit_code: EXIT.FAIL });
+  assert.deepEqual((await taskRunsOf(fx.archiveRoot))?.map((t) => [t.run_id, t.status]), [[runId, 'failed']]);
+  assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'idle');
+  assert.ok(!(await fs.readdir(path.join(fx.root, '.trivium', 'lock'))).includes(`${TOPIC}.lock`), '主题锁必须已释放');
+  assert.match(r.stderr, /收尾为 failed（准备阶段失败）/, r.stderr);
+});
+
+test('事后收尾余项 P3b：spawnDetached 内部、子进程诞生之前失败（开日志文件 EISDIR）⇒ 同样收尾为 prepare_exception，且没有 worker', { skip: NOT_ROOT_SKIP }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const { ids } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.log')));
+  try {
+    const r = await startPlan(fx.root);
+    assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+    const runId = await hitRunId(fx.stageDir, ids);
+    const m = await readRunJson(fx.stageDir, runId);
+    assert.equal(m.status, 'failed', '计划 r2 §3.3（r1 CODEX-03 ≡ GLM-02）：子进程没诞生，这一格归派生前、要收尾');
+    assert.deepEqual(m.termination, { by: 'prepare_exception', exit_code: EXIT.FAIL });
+    assert.deepEqual((await taskRunsOf(fx.archiveRoot))?.map((t) => t.status), ['failed']);
+  } finally {
+    assert.deepEqual(await killWorkersOf(ids), [], '子进程诞生之前失败，不应有 worker');
+  }
+});
+
+test('事后收尾余项 P4：子进程诞生之后才失败（写 worker.pid EISDIR）⇒ 不收尾：刚返回时 run.json 仍是 running、没有 termination', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const { ids } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.pid')));
+  try {
+    const r = await startPlan(fx.root, { gemini: { mode: 'hang' }, glm: { mode: 'hang' } });
+    assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+    const runId = await hitRunId(fx.stageDir, ids);
+    const m = await readRunJson(fx.stageDir, runId);
+    assert.equal(m.status, 'running', 'worker 已诞生、是活着的写者：这里写 failed 会与它互相覆盖（计划 r2 §2.3 / D2，EV-150）');
+    assert.equal(m.termination, undefined);
+    assert.doesNotMatch(r.stderr, /收尾为 failed/, r.stderr);
+  } finally {
+    await killWorkersOf(ids);
+  }
+});
+
+test('事后收尾余项 P5：同步路径 executeRun 抛错（写审查文档 EACCES）⇒ 骨架与登记收尾为 failed（sync_exception），闸门 idle', { skip: NOT_ROOT_SKIP }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await fs.mkdir(path.join(fx.stageDir, '_meta'), { recursive: true });
+  await fs.chmod(fx.stageDir, 0o555); // 审查文档写不进阶段目录；_meta 仍可写
+  let r: Awaited<ReturnType<typeof cli>>;
+  try {
+    r = await syncPlan(fx.root);
+  } finally {
+    await fs.chmod(fx.stageDir, 0o755);
+  }
+  assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+  const ids = await runMetaIds(fx.stageDir);
+  assert.equal(ids.length, 1);
+  const m = await readRunJson(fx.stageDir, ids[0]!);
+  assert.equal(m.status, 'failed');
+  assert.equal(m.gate.state, 'failed');
+  assert.deepEqual(m.termination, { by: 'sync_exception', exit_code: EXIT.FAIL });
+  assert.deepEqual((await taskRunsOf(fx.archiveRoot))?.map((t) => t.status), ['failed']);
+  assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'idle');
+  assert.match(r.stderr, /收尾为 failed（同步路径异常）/, r.stderr);
+  assert.equal(await unlistedLabelOf(fx.root, ids[0]!), '同步路径异常（退出码 1）');
+});
+
+test('事后收尾余项 P6：同步路径在准备阶段就失败（登记写不进）⇒ 只由 prepareRun 收尾一次（prepare_exception），同步路径的 catch 不再收', { skip: NOT_ROOT_SKIP }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const topicDir = path.join(fx.archiveRoot, TOPIC);
+  await fs.chmod(topicDir, 0o555);
+  let r: Awaited<ReturnType<typeof cli>>;
+  try {
+    r = await syncPlan(fx.root);
+  } finally {
+    await fs.chmod(topicDir, 0o755);
+  }
+  assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+  const ids = await runMetaIds(fx.stageDir);
+  assert.equal(ids.length, 1);
+  const m = await readRunJson(fx.stageDir, ids[0]!);
+  assert.deepEqual(m.termination, { by: 'prepare_exception', exit_code: EXIT.FAIL });
+  assert.equal((r.stderr.match(/收尾为 failed/g) ?? []).length, 1, r.stderr);
+  assert.doesNotMatch(r.stderr, /同步路径异常/, r.stderr);
 });

@@ -12,7 +12,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type { Config, CriticId, CriticRequest, Ctx, Stage, CommandEntry } from './types.js';
-import { EXIT, TriviumError, envError, missingArtifact } from './exit-codes.js';
+import { EXIT, TriviumError, envError, exitCodeOf, missingArtifact } from './exit-codes.js';
 import { runRoot } from './config.js';
 import { RUN_DIR_FILES } from './run-files.js';
 import { acquireLock, inspectLock, reclaimStaleLock } from './lock.js';
@@ -25,7 +25,9 @@ import {
   executeRun, prepareRun, repoId, type PreparedRun, type ReviewOptions, type RunContext,
 } from './review.js';
 import { resolveTopic } from './topic.js';
-import { finalizeCancelledRunMeta, finalizeFailedRunMeta, readRunMeta, type FinalizeStep } from './meta.js';
+import {
+  describeFinalizeStepWith, finalizeCancelledRunMeta, finalizeFailedRunMeta, finalizeLines, readRunMeta, type FinalizeStep,
+} from './meta.js';
 import { type AgentId } from './agents/registry.js';
 import { releaseRunningGateEntry, setGateChecked } from './state.js';
 import type { AdapterContext } from './adapters/base.js';
@@ -356,6 +358,16 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
    * 抛错时闸门会停到 `approval_lock_ttl_h`，而清扫此时拿不到 `worker_pid`、要过 TTL 才回收。
    */
   let warnings: PreflightWarning[];
+  /*
+   * 子进程**已诞生**（`spawnDetached` 拿到 pid 时经 `onSpawned` 置位）。主 `catch` 据此决定收不收归档 run.json
+   * （EV-145，事后收尾余项计划 r2 §3.3，计划双审 r1 CODEX-03 ≡ GLM-02）：
+   * - 为假：还没有 worker，写者就是本进程，把骨架收尾为 failed（`prepare_exception`）。这一侧含 `spawnDetached`
+   *   内部建日志目录、开日志文件、`spawn` 没拿到 pid 三处失败——它们都在子进程诞生之前；
+   * - 为真：worker 活着、会自己写终态（实测：它照常跑完并写 success），这里再写 failed 会与它互相覆盖，不收尾。
+   *   这一格锁与闸门被提前放掉的既有缺陷见 BACKLOG EV-150。
+   * 不用「`spawnDetached` 有没有返回」判：它的 `finally` 在子进程已起之后仍可能因关日志句柄而抛。
+   */
+  let childBorn = false;
   try {
     warnings = collectWarnings(await checkModelOverrideSource(rc.sides, rc.adapters));
     await ensureDir(rc.runDirBase);
@@ -378,7 +390,13 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
     const spawned = await spawnDetached(
       ctx.config.runtime.node ?? process.execPath,
       [selfScript, 'review', '--worker', rc.runId],
-      { cwd: ctx.projectRoot, logFile: workerLogPath(rc.runDirBase) },
+      {
+        cwd: ctx.projectRoot,
+        logFile: workerLogPath(rc.runDirBase),
+        onSpawned: () => {
+          childBorn = true;
+        },
+      },
     );
     await fs.writeFile(workerPidPath(rc.runDirBase), `${spawned.pid}\n`, 'utf8');
 
@@ -427,8 +445,26 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
       ) as Partial<Record<CriticId, string>>,
     };
   } catch (e) {
-    // prepareRun 之后才失败：闸门已经是 running，必须连它一起回收
+    // prepareRun 之后才失败：闸门已经是 running，必须连它一起回收——排第一（见 meta.ts 通用体文档块的两种次序）
     await releaseRunningGate(ctx, rc.runId, rc.ref.topic, rc.stage);
+    if (!childBorn) {
+      /*
+       * 子进程诞生之前失败：没有 worker；`--cancel` / `--wait` 要么拿不到身份，要么拿到身份却没有 pid、判「未确认退出」，
+       * 本进程写完之后 run.json 又已是终态（前提 4 不追溯改写），所以不会有第二个写者（计划 r2 §3.5，代码双审 r1 CODEX-05）。
+       * 收尾只有这一次机会，放锁排在收尾之后：放锁前把留痕写完。这段时间里新 `--start` 拿不到锁即退 70——
+       * 本把运行锁获取时没带 run_id（run_id 只在派生之后随 worker pid 写进锁内容），`judgeStale` 的「运行已终态」判据用不上，
+       * 持锁进程又活着；保守、无害。计划 r2 §3.3 写的「尾窗里新 --start 可按 runTerminal 接过锁」不成立（代码双审 r1 CODEX-02）。
+       */
+      const fin = await finalizeFailedRunMeta({
+        layout: rc.ref.layout,
+        stage: rc.stage,
+        runId: rc.runId,
+        lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 },
+        workerGone: true,
+        termination: { by: 'prepare_exception', exit_code: exitCodeOf(e) },
+      });
+      for (const line of finalizeLines(fin, rc.runId, '准备阶段失败')) warn(line);
+    }
     await lock.release();
     throw e;
   }
@@ -534,7 +570,7 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
     return outcome.exitCode;
   } catch (e) {
     const msg = e instanceof TriviumError ? e.message : `工作进程异常：${(e as Error).message}`;
-    const exitCode = e instanceof TriviumError ? e.code : EXIT.FAIL;
+    const exitCode = exitCodeOf(e);
     fail(msg);
     /*
      * 归档侧收尾（EV-142，计划 r2 §3.2）：把仍为 running 的 run.json 收尾为 failed，并同步 task.json 的运行登记。
@@ -853,13 +889,13 @@ async function readHandoffIdentity(runDir: string): Promise<{ topic: string; sta
  * 单步写失败时本进程照常往下走、把 status.json 落终态，之后再跑 --cancel 会在终态分支早退，这一步没有第二次机会。
  */
 function reportFinalizeStep(r: FinalizeStep, done: string, notDone: string): void {
-  if (r.kind === 'written') step(done);
-  else if (r.error) {
-    warn(
-      `${notDone}：${r.why}——这一步不会再有第二次机会：status.json 随后落终态，再跑 --cancel 会早退，` +
-        '请人工核对归档 run.json 与 task.json 的运行登记',
-    );
-  } else step(`${notDone}：${r.why}`);
+  // 文案经 meta.ts 的 describeFinalizeStepWith 出（三处同族措辞的唯一来源，代码双审 r1 CODEX-06），这里只分流 step / warn
+  const line = describeFinalizeStepWith(
+    r, done, notDone,
+    '这一步不会再有第二次机会：status.json 随后落终态，再跑 --cancel 会早退，请人工核对归档 run.json 与 task.json 的运行登记',
+  );
+  if (r.kind === 'skipped' && r.error) warn(line);
+  else step(line);
 }
 
 /**
@@ -868,11 +904,10 @@ function reportFinalizeStep(r: FinalizeStep, done: string, notDone: string): voi
  * 异常转成的跳过同样要把后果说出来：调用方随后就把 status.json 落终态，这一步没有第二次机会。
  */
 function describeFinalizeStep(r: FinalizeStep, done: string, notDone: string): string {
-  if (r.kind === 'written') return done;
-  if (r.error) {
-    return `${notDone}：${r.why}——这一步不会再有第二次机会：status.json 随后落终态，请人工核对归档 run.json 与 task.json 的运行登记`;
-  }
-  return `${notDone}：${r.why}`;
+  return describeFinalizeStepWith(
+    r, done, notDone,
+    '这一步不会再有第二次机会：status.json 随后落终态，请人工核对归档 run.json 与 task.json 的运行登记',
+  );
 }
 
 export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {

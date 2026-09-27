@@ -57,7 +57,7 @@
 
 **`run.v2` 的可选字段 `driver_guard_level`**（M10b 第 3 步，B1）：取值 `L1` / `L2`，记当轮 Driver 的**有效**护栏等级（登记 L1 的载体在 Hook 配置不在场时记 `L2`；登记 L2 的恒 `L2`，不读探针字段），规范见设计 8.5。**可选**：早于该步的留痕没有它，缺席即「无从得知」，不等于 L1；`trivium report` 时间线对旧留痕显示「—」。其余字段不变。
 
-**`run.v2` 的可选字段 `termination`**（设计 v1.3.48，EV-142）：`{ by: "worker_exception", exit_code }` 或 `{ by: "worker_lost", reason }`（`reason` ∈ `no_status_file` / `heartbeat_stale` / `pid_gone`），记这一次 `failed` 由哪条事后收尾写：worker 异常分支自己写，或 `--wait` 判 `worker_lost` 且工作进程确认已退出时写；两条都只在 run.json 仍为 `running` 时写。只存结构化字段、不存异常原文。缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕，规范见设计 6.7 注记与 6.7.1。
+**`run.v2` 的可选字段 `termination`**（设计 v1.3.48，EV-142；v1.3.50 扩值，EV-145）：`{ by, exit_code }`（`by` ∈ `worker_exception` / `prepare_exception` / `sync_exception`）或 `{ by: "worker_lost", reason }`（`reason` ∈ `no_status_file` / `heartbeat_stale` / `pid_gone`），记这一次 `failed` 由哪条事后收尾写：worker 异常分支自己写、`--wait` 判 `worker_lost` 且工作进程确认已退出时写、准备阶段写完骨架之后失败（含 `--start` 在子进程诞生之前失败）或同步路径异常时由本进程写；都只在 run.json 仍为 `running` 时写。**只增不减**：旧版本读不懂新取值，回滚代码时保留 schema 的改动。只存结构化字段、不存异常原文。缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕，规范见设计 6.7 注记与 6.7.1。
 
 ### `trivium.run.v2` 的读侧分发（按阶段，设计 6.7.1）
 
@@ -253,6 +253,7 @@ trivium review --start --stage <s> --topic <t> --focus <hint> --json
   → { run_id, max_waits, wait_timeout_s, bash_timeout_ms, worker_pid, run_dir }
     先占主题锁 → prepareRun（冻结、渲染 BRIEF、置闸门 running——被拦即退 2 且不落盘、写 run.json 骨架）
     → spawnDetached 工作进程 → 把锁改记 worker 的 pid → 立即返回
+    （写完骨架之后、子进程诞生之前失败：回收闸门后把骨架收尾为 failed，termination.by = prepare_exception，设计 v1.3.50）
 
 循环（至多 max_waits 次，每次的 Bash 工具超时必须设为 bash_timeout_ms）：
   trivium review --wait <run_id> --timeout <wait_timeout_s>

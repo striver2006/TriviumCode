@@ -255,6 +255,14 @@ export interface SpawnDetachedOptions {
   env?: Record<string, string | undefined>;
   /** 日志文件路径。stdout/stderr 都重定向到它 */
   logFile: string;
+  /**
+   * 子进程**已诞生**（拿到 pid）时同步回调一次，在函数返回与 `finally` 关日志句柄之前（EV-145，事后收尾余项计划 r2 §3.3）。
+   *
+   * 调用方据此区分「失败时子进程有没有起来」：建日志目录、开日志文件、`spawn` 没拿到 pid 这三处失败都在子进程诞生之前，
+   * 回调不会被调；而 `finally` 里的 `handle.close()` 在子进程已起之后仍可能抛——所以「本函数有没有返回」不能当判据，
+   * 「有没有调用本函数」也不准。回调自身抛错被吞掉，不影响已派生的子进程与返回值。
+   */
+  onSpawned?: (pid: number) => void;
 }
 
 export interface SpawnDetachedResult {
@@ -297,10 +305,38 @@ export async function spawnDetached(
       detached: true,
       stdio: ['ignore', handle.fd, handle.fd],
     });
-    if (child.pid === undefined) throw new Error('spawn 未返回 pid');
-    // spawn 失败时 Node 会**异步**再发一次 'error'；没有监听者就是未捕获异常，
-    // 会盖掉上面那条本该返回的退出码
-    child.once('error', () => { /* 已由 pid 缺失路径报告 */ });
+    /*
+     * spawn 失败时 Node 会**异步**再发一次 'error'；没有监听者就是未捕获异常，
+     * 会盖掉下面那条本该抛出的错误、让调用方的 catch 一行都跑不到。
+     * 监听必须挂在 pid 检查**之前**：原先挂在检查之后，pid 缺失时直接抛、监听从没挂上，
+     * 二进制不存在（ENOENT）即整个进程崩溃退 1（事后收尾余项实施时实测）。
+     *
+     * 监听还要把错误对象留住（代码双审 r1 CODEX-01）：只挡住崩溃而把错误吞掉，现场就只剩「没拿到 pid」
+     * 与一份空日志，看不出是哪个可执行文件不在——而 `runtime.node` / wrapper 里钉死的 node 路径随升级消失，
+     * 正是这一格的常见触发面。成因只进报错正文与 `worker.log`，不进归档（`termination` 只存结构化字段）。
+     */
+    const seen: { err?: NodeJS.ErrnoException } = {};
+    const errorArrived = new Promise<void>((resolve) => {
+      child.once('error', (err: NodeJS.ErrnoException) => {
+        seen.err = err;
+        resolve();
+      });
+    });
+    if (child.pid === undefined) {
+      // 'error' 在下一拍才到：等它（至多 1 秒，防它不来），把成因带进报错与日志
+      await Promise.race([errorArrived, new Promise<void>((r) => setTimeout(r, 1000))]);
+      const cause = seen.err
+        ? [seen.err.code, seen.err.message].filter(Boolean).join(' ')
+        : '成因未知：1 秒内没等到 error 事件';
+      const msg = `spawn 未返回 pid：${bin}（${cause}）`;
+      await handle.write(`[spawnDetached ${new Date().toISOString()}] ${msg}\n`).catch(() => undefined);
+      throw new Error(msg);
+    }
+    try {
+      opts.onSpawned?.(child.pid);
+    } catch {
+      /* 回调出错不改变「子进程已诞生」这一事实，也不连累返回值 */
+    }
     // 父进程不等它，也不因它而延迟退出
     child.unref();
     return { pid: child.pid, commandLine: formatCommand(bin, args) };

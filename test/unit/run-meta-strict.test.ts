@@ -24,6 +24,7 @@ import { promises as fs } from 'node:fs';
 import { validateRunMeta } from '../../src/trivium/schemas.js';
 import { newRunMeta } from '../../src/trivium/meta.js';
 import { WORKER_LOST_REASONS } from '../../src/trivium/status.js';
+import { EXCEPTION_TERMINATION_BY } from '../../src/trivium/types.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 
 /** 递归找出归档里的全部运行记录 */
@@ -146,5 +147,35 @@ test('EV-142 S2：schema 里 termination.reason 的枚举与 status.ts 的 WORKE
     [...lost.properties.reason.enum].sort(),
     [...WORKER_LOST_REASONS].sort(),
     '给 interpretStatus 加了失联原因却没同步 run.v2 schema：写出的 run.json 会不合契约、被读成 null',
+  );
+});
+
+test('EV-145 S1′：prepare_exception / sync_exception 与 worker_exception 同形——带整数退出码通过；缺退出码、串形状、带自由文本都判错', () => {
+  const base = { ...terminationSample(), status: 'failed' };
+  for (const by of ['prepare_exception', 'sync_exception']) {
+    assert.deepEqual(validateRunMeta({ ...base, termination: { by, exit_code: 1 } }), [], `${by} 应通过`);
+  }
+  const bad: unknown[] = [
+    { by: 'prepare_exception' },
+    { by: 'sync_exception', reason: 'pid_gone' },
+    { by: 'prepare_exception', exit_code: 1, detail: '/private/var/folders/…' },
+    { by: 'sync_exception', exit_code: 'EACCES' },
+  ];
+  for (const t of bad) {
+    assert.ok(validateRunMeta({ ...base, termination: t }).length > 0, `应判错：${JSON.stringify(t)}`);
+  }
+});
+
+test('EV-145 S3：schema 里 termination.by 的取值集合与 types.ts 的 EXCEPTION_TERMINATION_BY + worker_lost 逐项相等（单一来源）', async () => {
+  const schema = JSON.parse(
+    await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/run.v2.json'), 'utf8'),
+  ) as { properties: { termination: { oneOf: { properties: { by: { const?: string; enum?: string[] } } }[] } } };
+  const fromSchema = schema.properties.termination.oneOf.flatMap((b) =>
+    b.properties.by.enum ?? (b.properties.by.const !== undefined ? [b.properties.by.const] : []),
+  );
+  assert.deepEqual(
+    [...fromSchema].sort(),
+    [...EXCEPTION_TERMINATION_BY, 'worker_lost'].sort(),
+    '给 termination.by 加了取值却只改了一边：写出的 run.json 会不合契约、被读成 null（事后收尾余项计划 r2 §3.1）',
   );
 });

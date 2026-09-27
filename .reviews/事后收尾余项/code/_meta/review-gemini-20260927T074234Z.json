@@ -1,0 +1,54 @@
+{
+  "agreed": [
+    "三处本进程收尾严格遵循「先回收闸门、再收尾、最后放锁」次序，确保了进程异常时不挂住业务闸门，且收尾均在任务锁内幂等执行，互斥清晰，无重复收尾风险。",
+    "spawnDetached 的 onSpawned 回调切分精确，实施期计划外修正将 error 事件监听挂在 pid 检查之前，妥善解决了 spawn 异常时 Node.js 异步派发 error 导致进程直接崩溃的问题，并在 U2 中用独立子进程严密锁定。",
+    "termination.by 扩值在 schema、types.ts 和 report.ts 中完全一致，且由单元测试 S3（schema ↔ types）与 V9（report 兜底防落）形成双重自动守卫；回滚方案论证清晰并通过 A8 真实演练验证。",
+    "集成用例 P1-P6 与 U1、U2 构造可靠，预建目录 60 秒窗口结合 hitRunId 命中前置断言有效消除了偶发系统调度的误报隐患，并在 finally 中严格清理残留进程；变异测试缺口披露实事求是。",
+    "各文档版本号、变更记录、BACKLOG 条目结案与新登（EV-150 / EV-151）表述完整严密。"
+  ],
+  "consulted": [
+    ".reviews/事后收尾余项/plan/2026-09-27-事后收尾余项-r2-claude.md",
+    "doc/05_testing/REPORT_2026-09-27_residual_finalize.md",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/types.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/report.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/run-meta-strict.test.ts",
+    "test/unit/report.test.ts",
+    "test/integration/worker-detach.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/05_testing/evidence/residual-finalize-20260927/acceptance.mjs",
+    "doc/05_testing/evidence/residual-finalize-20260927/mutation-spec.json",
+    "doc/05_testing/evidence/residual-finalize-20260927/mutation-output.txt",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 doc/02_design/LLD_orchestrator.md:226-236 与 src/trivium/run-protocol.ts:285-415，startRun 函数实际位于 :290，占锁位于 :295-307，纯文档跳过位于 :327-346，锁所有权移交位于 :404-413，而 LLD 中仍保留旧版行号 :223、:228-240、:258-276、:304-313；另外行 238 引用的 review.ts:275 实际为 542。",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "doc/02_design/LLD_orchestrator.md:226-236",
+      "problem": "LLD 中 startRun 同步窗口小节的历史行号引用严重漂移（如小节标题链接写 run-protocol.ts:223，实际为 290；第 1 条写 228-240，实际为 295-307；第 3 条写 258-276，实际为 327-346；第 6 条写 304-313，实际为 404-413）。本次 PR 恰好修改了该小节的第 5 条与第 7 条，但未顺带修正周围各条已漂移 60-100 行的历史行号引用，容易对阅读代码的开发者造成困惑。",
+      "severity": "nit",
+      "suggestion": "在 doc/02_design/LLD_orchestrator.md 中将 startRun 同步窗口各条步骤引用的 run-protocol.ts 与 review.ts 行号同步更新为当前最新源码位置。"
+    }
+  ],
+  "not_covered": [
+    "未覆盖真实各厂商 CLI（Claude、Antigravity、ZCode、Codex）的真实远程在线调用，仅在单机环境与桩环境下验证收尾流程。",
+    "未覆盖进程在执行 finalizeUnfinishedRunMeta 内部两步（写 run.json 与 写 task.json）之间被操作系统强行 SIGKILL 的极微小故障窗口模拟。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "整体实现高度严谨，针对 EV-145 提出的三处本进程收尾（准备阶段写完骨架后、派生前子进程未诞生、同步路径异常）次序均正确实现为「先回收闸门、再收尾、最后放锁」，不会对同一元数据重复收尾。\nspawnDetached 回调 onSpawned 切分时点准确，实施期前移 error 事件监听修复了 Node.js 异步 error 导致未捕获异常崩溃的既有缺陷，安全无副作用。\ntermination.by 扩值三处完全一致，S3 与 V9 守卫充分，回滚演练 A8 结论确凿；用例预建 60 秒窗口与命中前置断言有效防止了满载抖动。\n仅发现 LLD 中 startRun 步骤周围的历史行号引用存在 60-100 行的历史漂移（AGY-01，nit），建议顺带校准。综合评定为 approve-with-nits。",
+  "verdict": "approve-with-nits"
+}

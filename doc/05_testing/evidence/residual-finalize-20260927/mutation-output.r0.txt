@@ -1,0 +1,84 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  M1 ✓ 咬住（fail=3）
+  M2 ✓ 咬住（fail=3）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=2）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+{
+  "总数": 11,
+  "咬住": 11,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "prepareRun 的 catch 不收尾 ⇒ P1（骨架停在 running）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M2",
+      "desc": "prepareRun 收尾时 by 写成 worker_exception ⇒ P1（termination 深相等）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M3",
+      "desc": "startRun 主 catch 不收尾 ⇒ P3（派生前失败的骨架停在 running）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "startRun 主 catch 去掉 !childBorn（子进程诞生之后也收尾）⇒ P4（刚返回时已是 failed）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "runReviewLocked 的 catch 不收尾（workerGone 恒假 ⇒ 第一步跳过）⇒ P5",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "同步路径收尾时 by 写成 prepare_exception ⇒ P5（termination 深相等）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "unlistedLabel 去掉 prepare_exception 分支 ⇒ V8（落进兜底说明）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "startRun 改回在调用 spawnDetached 之前置位（r1 的判据）⇒ P3b（子进程未诞生的一格不收尾）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "spawnDetached 把 onSpawned 挪到建日志目录之前 ⇒ U1（诞生之前的失败也触发回调）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M10",
+      "desc": "prepareRun 去掉 skeletonWritten 守卫 ⇒ B7（骨架之前的失败多出一行「未回写：归档里没有」）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "spawnDetached 的 'error' 监听挪回 pid 检查之后（实施期修正的既有缺陷）⇒ U2（ENOENT 时进程崩溃）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

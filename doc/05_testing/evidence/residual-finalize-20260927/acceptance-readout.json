@@ -1,0 +1,283 @@
+{
+  "at": "2026-09-27T08:46:52.635Z",
+  "baseRef": "53eaab8",
+  "passed": 21,
+  "total": 21,
+  "results": [
+    {
+      "id": "A1 首轮登记失败 ⇒ 骨架收尾为 prepare_exception",
+      "ok": true,
+      "detail": "退 1，run failed {\"by\":\"prepare_exception\",\"exit_code\":1}"
+    },
+    {
+      "id": "A1 闸门 idle、锁已放、主题任务文件未建",
+      "ok": true,
+      "detail": "闸门 idle，锁 无"
+    },
+    {
+      "id": "A1 report 说明「准备阶段失败，未拉起审查员（退出码 1）」",
+      "ok": true,
+      "detail": "[{\"r\":1,\"runId\":\"20260927T084626Z\",\"label\":\"准备阶段失败，未拉起审查员（退出码 1）\"}]"
+    },
+    {
+      "id": "A1 会话启动仍报「运行目录的状态读不到」（如实保留，D2 子项）",
+      "ok": true,
+      "detail": "  · 1 个运行目录的状态读不到（缺失或损坏），凭据副本未处理也不会自动重试——请人工检查后删除，首个：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-residual-W6K6UE/runs-A1-首轮登记失败/A1-首轮登记失败-01137318/20260927T084626Z"
+    },
+    {
+      "id": "A2 第 2 轮骨架收尾为 prepare_exception、第 1 轮逐字节不变",
+      "ok": true,
+      "detail": "第 2 轮 failed"
+    },
+    {
+      "id": "A2 不带 --run-id 的 gate --check 仍指向第 2 轮骨架（D5）",
+      "ok": true,
+      "detail": "run_id 20260927T084631Z"
+    },
+    {
+      "id": "A2 正常重跑后时间线 r1、r2，未进时间线表一行准备阶段失败",
+      "ok": true,
+      "detail": "[{\"r\":1,\"runId\":\"20260927T084627Z\"},{\"r\":2,\"runId\":\"20260927T084632Z\"}] ｜ [{\"r\":2,\"runId\":\"20260927T084631Z\",\"label\":\"准备阶段失败，未拉起审查员（退出码 1）\"}]"
+    },
+    {
+      "id": "A3a 写交接文件 EACCES ⇒ 骨架与登记收尾为 prepare_exception",
+      "ok": true,
+      "detail": "run failed {\"by\":\"prepare_exception\",\"exit_code\":1}"
+    },
+    {
+      "id": "A3a 之后 --wait / --cancel 不再改 run.json，且没有 worker",
+      "ok": true,
+      "detail": "--wait 退 1、--cancel 退 65，run.json 不变，worker 无"
+    },
+    {
+      "id": "A3b spawnDetached 内部开日志文件 EISDIR ⇒ 骨架与登记收尾为 prepare_exception",
+      "ok": true,
+      "detail": "run failed {\"by\":\"prepare_exception\",\"exit_code\":1}"
+    },
+    {
+      "id": "A3b 之后 --wait / --cancel 不再改 run.json，且没有 worker",
+      "ok": true,
+      "detail": "--wait 退 73、--cancel 退 0，run.json 不变，worker 无"
+    },
+    {
+      "id": "A4 子进程诞生之后失败 ⇒ 不收尾（running、无 termination）",
+      "ok": true,
+      "detail": "run running"
+    },
+    {
+      "id": "A4 孤儿 worker 活着、锁已放（EV-150 现状，如实记录）",
+      "ok": true,
+      "detail": "孤儿 17480，锁 无"
+    },
+    {
+      "id": "A5 同步路径异常 ⇒ run.json 与登记 failed + sync_exception",
+      "ok": true,
+      "detail": "退 1，run failed {\"by\":\"sync_exception\",\"exit_code\":1}"
+    },
+    {
+      "id": "A5 report 说明「同步路径异常（退出码 1）」",
+      "ok": true,
+      "detail": "[{\"r\":1,\"runId\":\"20260927T084644Z\",\"label\":\"同步路径异常（退出码 1）\"}]"
+    },
+    {
+      "id": "A6 会话启动提示 --wait（行为不变）",
+      "ok": true,
+      "detail": "  · 已回收 A6-worker猝死/plan 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁 ｜   · A6-worker猝死/plan 双审进行中（run 20260927T084644Z）——请先 trivium review --wait 20260927T084644Z"
+    },
+    {
+      "id": "A6 直接再 --start 后旧 run.json 仍 running（EV-151 现状）",
+      "ok": true,
+      "detail": "第二次退 0，旧 run running"
+    },
+    {
+      "id": "A6 补跑 --wait 收尾为 worker_lost / pid_gone",
+      "ok": true,
+      "detail": "--wait 退 1，旧 run failed"
+    },
+    {
+      "id": "A7 本仓 report 逐主题不变",
+      "ok": true,
+      "detail": "基线 53eaab8，53 个主题，rounds / unlistedRuns 不同的：无"
+    },
+    {
+      "id": "A8 (i) 旧构建原样：新取值读成 null，resolveStageDriver 判 corrupt（回滚漏步的形态）",
+      "ok": true,
+      "detail": "{\"readable\":false,\"driver\":\"corrupt\",\"label\":null}"
+    },
+    {
+      "id": "A8 (ii) 旧代码 + 本主题 schema：可读、Driver 判定正常、report 落兜底说明（回滚步骤成立）",
+      "ok": true,
+      "detail": "{\"readable\":true,\"driver\":\"ok:claude\",\"label\":\"failed（gate.state=failed）\"}"
+    }
+  ],
+  "readout": {
+    "A1": {
+      "startCode": 1,
+      "stderrTail": [
+        "⚠️  已把归档里的 run-20260927T084626Z.json 收尾为 failed（准备阶段失败）",
+        "⚠️  task.json 的运行登记未改：task.json 无此运行的登记（不新建条目）",
+        "✗ 内部错误：EACCES: permission denied, open '/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-residual-W6K6UE/A1-首轮登记失败/.reviews/A1-首轮登记失败/task.json.tmp-13989-1790498787041'"
+      ],
+      "status": "failed",
+      "termination": {
+        "by": "prepare_exception",
+        "exit_code": 1
+      },
+      "task": null,
+      "gate": "idle",
+      "locks": [],
+      "unlisted": [
+        {
+          "r": 1,
+          "runId": "20260927T084626Z",
+          "label": "准备阶段失败，未拉起审查员（退出码 1）"
+        }
+      ],
+      "sessionStart": "TriviumCode 待办：\n  · 1 个运行目录的状态读不到（缺失或损坏），凭据副本未处理也不会自动重试——请人工检查后删除，首个：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-residual-W6K6UE/runs-A1-首轮登记失败/A1-首轮登记失败-01137318/20260927T084626Z"
+    },
+    "A2": {
+      "checkCode": 0,
+      "approveCode": 0,
+      "r1": "20260927T084627Z",
+      "r2": "20260927T084631Z",
+      "r2meta": {
+        "status": "failed",
+        "termination": {
+          "by": "prepare_exception",
+          "exit_code": 1
+        }
+      },
+      "gateCheck": {
+        "code": 2,
+        "run_id": "20260927T084631Z"
+      },
+      "r3": "20260927T084632Z",
+      "rounds": [
+        {
+          "r": 1,
+          "runId": "20260927T084627Z"
+        },
+        {
+          "r": 2,
+          "runId": "20260927T084632Z"
+        }
+      ],
+      "unlisted": [
+        {
+          "r": 2,
+          "runId": "20260927T084631Z",
+          "label": "准备阶段失败，未拉起审查员（退出码 1）"
+        }
+      ]
+    },
+    "A3a": {
+      "what": "写交接文件 EACCES",
+      "startCode": 1,
+      "hit": true,
+      "status": "failed",
+      "termination": {
+        "by": "prepare_exception",
+        "exit_code": 1
+      },
+      "task": [
+        {
+          "run_id": "20260927T084635Z",
+          "status": "failed"
+        }
+      ],
+      "gate": "idle",
+      "locks": [],
+      "waitCode": 1,
+      "cancelCode": 65,
+      "worker": false
+    },
+    "A3b": {
+      "what": "spawnDetached 内部开日志文件 EISDIR",
+      "startCode": 1,
+      "hit": true,
+      "status": "failed",
+      "termination": {
+        "by": "prepare_exception",
+        "exit_code": 1
+      },
+      "task": [
+        {
+          "run_id": "20260927T084636Z",
+          "status": "failed"
+        }
+      ],
+      "gate": "idle",
+      "locks": [],
+      "waitCode": 73,
+      "cancelCode": 0,
+      "worker": false
+    },
+    "A4": {
+      "startCode": 1,
+      "hit": true,
+      "status": "running",
+      "termination": null,
+      "orphan": 17480,
+      "locks": [],
+      "gate": "idle"
+    },
+    "A5": {
+      "code": 1,
+      "stderrTail": [
+        "⚠️  已把归档里的 run-20260927T084644Z.json 收尾为 failed（同步路径异常）",
+        "⚠️  已把 task.json 的运行登记同步为 failed（同步路径异常）",
+        "✗ 内部错误：EACCES: permission denied, open '/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-residual-W6K6UE/A5-同步路径异常/.reviews/A5-同步路径异常/plan/2026-09-27-A5-同步路径异常-gemini.md'"
+      ],
+      "status": "failed",
+      "termination": {
+        "by": "sync_exception",
+        "exit_code": 1
+      },
+      "task": [
+        {
+          "run_id": "20260927T084644Z",
+          "status": "failed"
+        }
+      ],
+      "gate": "idle",
+      "unlisted": [
+        {
+          "r": 1,
+          "runId": "20260927T084644Z",
+          "label": "同步路径异常（退出码 1）"
+        }
+      ]
+    },
+    "A6": {
+      "sessionStart": "TriviumCode 待办：\n  · 已回收 A6-worker猝死/plan 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁\n  · A6-worker猝死/plan 双审进行中（run 20260927T084644Z）——请先 trivium review --wait 20260927T084644Z",
+      "secondStart": 0,
+      "oldAfterSecondStart": "running",
+      "waitCode": 1,
+      "oldAfterWait": {
+        "status": "failed",
+        "termination": {
+          "by": "worker_lost",
+          "reason": "pid_gone"
+        }
+      }
+    },
+    "A7": {
+      "baseRef": "53eaab8",
+      "topics": 53,
+      "diffs": []
+    },
+    "A8": {
+      "baseRef": "53eaab8",
+      "pure": {
+        "readable": false,
+        "driver": "corrupt",
+        "label": null
+      },
+      "swap": {
+        "readable": true,
+        "driver": "ok:claude",
+        "label": "failed（gate.state=failed）"
+      }
+    }
+  }
+}

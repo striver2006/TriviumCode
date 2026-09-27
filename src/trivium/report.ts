@@ -423,6 +423,11 @@ function unlistedLabel(meta: RunMeta, failedSides: number, registeredReviewDocs:
   if (meta.status === 'cancelled') label = '被 review --cancel 取消';
   else if (meta.status === 'failed' && meta.termination?.by === 'worker_exception') {
     label = `worker 异常（退出码 ${meta.termination.exit_code}）`;
+  } else if (meta.status === 'failed' && meta.termination?.by === 'prepare_exception') {
+    // 准备阶段写完骨架之后失败、或 startRun 在子进程诞生之前失败：审查员一个都没拉起、没花配额（EV-145）
+    label = `准备阶段失败，未拉起审查员（退出码 ${meta.termination.exit_code}）`;
+  } else if (meta.status === 'failed' && meta.termination?.by === 'sync_exception') {
+    label = `同步路径异常（退出码 ${meta.termination.exit_code}）`;
   } else if (meta.status === 'failed' && meta.termination?.by === 'worker_lost') {
     label = `worker 失联（${meta.termination.reason}）`;
   } else if (meta.status === 'failed' && failedSides > 0 && registeredReviewDocs === 0) label = '入选侧全部失败';
