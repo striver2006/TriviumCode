@@ -1,0 +1,279 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260927T092419Z",
+  "topic": "派生后失败的孤儿worker",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "请重点看五处：1. 失败语义：子进程诞生之后启动失败时，先终止工作进程组、按父进程持有的子进程句柄确认退出，再回收闸门、收尾运行元数据、状态文件落终态、最后放锁——这个次序能否真正保证「启动非零退出即没有工作进程在跑」；确认不了退出时一概不回收，会不会留下新的并发或锁死形态。2. 进程号复用的论证：父进程未观察到退出事件即子进程未被回收、进程号与同号进程组不会被复用，这一依据在 Node 实现与 macOS、Linux 上是否成立；抽出的按组终止函数改由取消路径共用之后，是否与现行取消行为逐项等价。3. 写入前提：工作进程确认退出后由启动进程作为唯一写者，与取消、等待两条事后路径及会话启动清扫并发时，闸门、运行元数据、主题任务登记、状态文件会不会互相覆盖；已被改写成工作进程内容的那把主题锁按 run_id 回收是否安全。4. 实测新发现：适配器以独立进程组拉起厂商 CLI，按工作进程组发的信号够不到它们；本主题只改准说法、另登 BACKLOG 的取舍是否合理，「孤儿在加载阶段就被终止、来不及拉起审查员」这一按时序的推断是否站得住。5. 验证设计：预建运行目录加命中前置断言、hang 与 ok 两种桩各钉什么，零配额造不出的三个失败点改用进程内注入是否够，变异表有没有咬不住的格；新增终止取值的 schema 只增不减与回滚演练是否完整。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "e49279a3431b20bf26c5c303d3f2c09415af0be9",
+    "tree_hash": "0bbb0380a7d3fe64ae0562c0efeb7fdb8c94297a",
+    "dirty": true,
+    "subject_sha256": "0b3f27d2ae449bef5e3f8f5600962f547bba50dd2597b3cd76ad7dcda7471bd9",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "e49279a3431b20bf26c5c303d3f2c09415af0be9",
+      "dirty": false,
+      "inputs_sha256": "57b99739f4880f774c8d11ff65ed24d2ac42d60c6a5367d109938dcf0ad4445f",
+      "built_at": "2026-09-27T08:51:12.627Z"
+    },
+    "after_tree_hash": "2a3d1c96a76b93adc815fbbd9fae001cfb081e6e"
+  },
+  "started_at": "2026-09-27T09:24:21.068Z",
+  "finished_at": "2026-09-27T09:35:00.167Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 418.455,
+      "tool_calls": {
+        "run_command": 11,
+        "project_reads": 12
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0e22e-0490-7852-b79f-3ad8a6fdbf11",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.12",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 302.62,
+      "tool_calls": {
+        "read": 41,
+        "grep": 1,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 341083,
+        "output_tokens": 54476,
+        "thinking_tokens": 48223,
+        "cache_read_tokens": 4501470,
+        "total_tokens": 395559
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "bd6ae631-800d-45d7-85a6-1b97d9b01e35",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 638.349,
+      "tool_calls": {
+        "read": 20,
+        "grep": 8,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 19,
+        "inputTokens": 2080309,
+        "outputTokens": 42990,
+        "totalTokens": 2123299,
+        "cacheReadTokens": 1954944,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_c7a325f5-c2b5-49a2-9447-c975ff372450",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "派生后失败的孤儿worker/plan/_meta/brief-codex-20260927T092419Z.md",
+      "sha256": "ad1a373b2b325ae44c164c1d06f9e2dd2b48fc193724c43315b1066cad9bb9ee"
+    },
+    {
+      "path": "派生后失败的孤儿worker/plan/_meta/brief-gemini-20260927T092419Z.md",
+      "sha256": "09f82656aa3f875d7c4086f0e6b43143f5efa2edce12096cc40e2c9c1a1b7f31"
+    },
+    {
+      "path": "派生后失败的孤儿worker/plan/_meta/brief-glm-20260927T092419Z.md",
+      "sha256": "db8e147d5f4c17b5293d1ad452e0e5734190b885f701860db21df6208aa55212"
+    },
+    {
+      "path": "派生后失败的孤儿worker/plan/_meta/review-codex-20260927T092419Z.json",
+      "sha256": "06741335dd2fb2c4f3192f15facc67f63aa1ab5f450877329113a3ce3dce0c3e"
+    },
+    {
+      "path": "派生后失败的孤儿worker/plan/_meta/review-gemini-20260927T092419Z.json",
+      "sha256": "71e6f340e7e2fd78c036fa9525d25cdb654bb5795415429161df6399bc38004b"
+    },
+    {
+      "path": "派生后失败的孤儿worker/plan/_meta/review-glm-20260927T092419Z.json",
+      "sha256": "b1639c3e16ae3915215ad1b2fb57ab32eab302ca82d32748a9c2de85b68d8c60"
+    },
+    {
+      "path": "派生后失败的孤儿worker/plan/2026-09-27-派生后失败的孤儿worker-codex.md",
+      "sha256": "45ace4472d89cb693bae7ec5c9dd84a6296453f52e55ffc80663ac60e7c21928"
+    },
+    {
+      "path": "派生后失败的孤儿worker/plan/2026-09-27-派生后失败的孤儿worker-gemini.md",
+      "sha256": "89fe258aa4c8ae9755bf53cbd10a566be37cf4f3629a0dd6dfa804897f1196ba"
+    },
+    {
+      "path": "派生后失败的孤儿worker/plan/2026-09-27-派生后失败的孤儿worker-glm.md",
+      "sha256": "55d29bc3543cf8b0ce8eeddeeb026aa5fbc94302347ff4f544172af264e6c206"
+    },
+    {
+      "path": "派生后失败的孤儿worker/plan/2026-09-27-派生后失败的孤儿worker-claude.md",
+      "sha256": "0b3f27d2ae449bef5e3f8f5600962f547bba50dd2597b3cd76ad7dcda7471bd9"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

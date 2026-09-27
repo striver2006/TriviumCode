@@ -1,0 +1,154 @@
+---
+schema: trivium.review.v1
+topic: 派生后失败的孤儿worker
+stage: plan
+role: codex
+vendor: openai
+agent_cli: codex/0.157.1
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260927T092419Z
+rerun_index: 1
+snapshot_hash: sha256:0b3f27d2ae449bef5e3f8f5600962f547bba50dd2597b3cd76ad7dcda7471bd9
+blind: true
+started_at: 2026-09-27T09:24:21.256Z
+finished_at: 2026-09-27T09:35:00.167Z
+duration_s: 418
+tool_calls:
+  run_command: 11
+  project_reads: 12
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 1
+  minor: 2
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0e22e-0490-7852-b79f-3ad8a6fdbf11
+---
+
+# 计划审查：派生后失败的孤儿worker
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20260927T092419Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+方向与次序（D1/D3/D4/D5）站得住：我逐条对照了 startRun 主 catch、cancelRun 的杀进程链、judgeStale、workerConfirmedGone、releaseRunningGate 与 P3/P3b/P4 现形，计划对现状（S1～S6、W1～W7、K1～K3）的引用全部属实，§3.2 的「未回收⇒pid 不复用」论证与 libuv 回收语义一致且 isGone 前置检查保证不会向可能复用的号发组信号。最值钱的三条意见都不动摇决策：①§3.4 第 6 步「收尾期间新 --start 拿不到锁即退 70」在锁已改写的一格是错的——worker 在第 1 步被终止后锁的 pid 已死，judgeStale 先于 runTerminal 判 pid_gone，新一轮可即刻接管，§3.5 写入前提表缺这一类并发写者；②D5 分支只补记 worker_pid 不补 worker_started_at，之后 --cancel 失去 PID 复用防护；③回滚配方（回退代码、保留 schema）会让 S3 契约测试必红，§6.3 没算这笔。均为论证与口径修补，不要求重排方案。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 4 条：重要 1 ｜ 次要 2 ｜ 吹毛求疵 1）
+
+### CODEX-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.4 第 6 步括号论证与 §3.5 写入前提表` |
+| 类别 | concurrency ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：第 6 步用「放锁排在最后：收尾期间新 --start 拿不到锁即退 70（S1：锁里没有 run_id）」为整个收尾窗口的独占性辩护，但这只对「锁未被改写」的失败点成立。在改写锁之后失败的格（:415 patchStatus），锁内容 pid 已是 worker 的；settleOrphanedStart 第 1 步终止 worker 后，锁的持有 pid 立即死亡，此时并发的新 --start 走 acquireLock→judgeStale，pid 不存在直接返回 'pid_gone'（该判据排在 runTerminal/心跳之前），会回收这把锁并开新一轮——「拿不到锁即退 70、保守无害」这句在恰恰需要回收锁的那一格不成立。§3.5 的闸门/run.json/status.json 三行只论证了 --cancel、--wait、会话清扫这三类并发读者，没把「settle 窗口内已接管主题的新一轮 --start」列进写者论证。我核对后认为实际数据不会被串写（releaseRunningGateEntry 只收仍记本 runId 且仍 running 的条目、第 4 步按 runId 键、第 6 步 inspectLock 比对 run_id+pid、reclaimStaleLock 有 rename→复验），但计划用一条错误的不变量做安全论证，且这条并发格没有任何用例（P4c 是顺序两跑，不是这个窗口）。
+
+**依据**：读 src/trivium/lock.ts（judgeStale：`if (!live.alive) return 'pid_gone'` 在 runTerminal 判据之前；reclaimStaleLock 的复验）、src/trivium/run-protocol.ts（startRun :294-307 锁获取不传 runId、:405-413 改写锁为 worker pid、:447-470 主 catch；releaseRunningGate 文档块「只回收仍记着本 runId 且仍是 running 的闸门」）、被审计划 §3.4/§3.5 原文。
+
+**建议**：改准第 6 步的括号：区分「锁未改写（持锁 pid 是本进程、活着，新 --start 退 70）」与「锁已改写（第 1 步终止后按 pid_gone 可被回收、新一轮可并发接管）」两种形态；§3.5 表补一行「settle 窗口内的新 --start」，把上述四道既有守卫（runId 匹配的闸门回收、按 runId 键的收尾、inspectLock 双条件、rename→复验）点名为这一格的依据；并在 P4/P4c 之外说明是否需要一格用例钉「旧 settle 期间新 --start 接管后互不串写」，若判定不测，在报告里如实记为按守卫论证。
+
+### CODEX-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.4 第 2 步（D5 不回收分支）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：确认不了退出时只「尽力把 worker_pid 记进 status.json」，不记 worker_started_at。给出的出路是 --cancel，而 cancelRun 取 pid 后走 processAlive(pid, s?.worker_started_at ?? null)——started_at 为 null 时 sameProcess 直接判真，没有任何 PID 复用防护；一旦这个 D5 运行长期无人处理、pid 被复用，按那条出路执行的 --cancel 会对无关进程发进程组 SIGTERM/SIGKILL。第 5 步（确认退出分支）明确「worker_started_at 为空时补」，第 2 步不对称。D5 触发时子进程大概率确实还活着（SIGKILL 都杀不动），实际风险窗口小，所以只列 minor。
+
+**依据**：读 src/trivium/util/exec.ts（processAlive：`if (!expectedStartedAt) return { alive: true, sameProcess: true, startedAt }`；processStartTime 对活 pid 可查）、src/trivium/run-protocol.ts cancelRun（:938-947 用 s?.worker_started_at ?? null 判后才杀）、被审计划 §3.4 第 2/5 步与 §6.2。
+
+**建议**：第 2 步补记 pid 时一并尽力取 `processStartTime(born.pid)` 写入 worker_started_at（settle 时点进程多半还在、查得到）；或 §3.4/§6.2 明确写出「D5 格不补 started_at，--cancel 在该格退化为无复用防护的按 pid 杀」并说明为何接受。
+
+### CODEX-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §6.3 回滚` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：回滚配方「回退代码提交但保留 run.v2.json 的本次改动」会让仓库自身的契约测试红：run-meta-strict.test.ts 的 S3 断言 schema 的 by 枚举与 types.ts 的 EXCEPTION_TERMINATION_BY **逐项相等**——回退代码意味着常量里没有了 post_spawn_exception，保留 schema 意味着枚举里有它。§6.3 只算了「旧 bundle 读不懂新取值」的数据面成本，没算「照此回滚后 npm run check 必红、且报错指向『单一来源被破坏』」这个回滚成本：应急回滚的人会被自己的闸门绊住，而「补回 schema 改动」的既有出口话术方向恰好相反。上一主题回滚没有这个问题（它没新增取值后又回退），这次是第一格。
+
+**依据**：读 test/unit/run-meta-strict.test.ts :169-178（S3：`[...EXCEPTION_TERMINATION_BY, 'worker_lost'].sort()` 与 schema 枚举逐项相等）、src/trivium/types.ts（EXCEPTION_TERMINATION_BY 文档块自己写着「schema 只增不减：旧 bundle 读不懂新取值，回滚要保留 schema 的改动」）、skills/dual-critic/schema/run.v2.json（termination 第一个分支的 by 枚举）、被审计划 §3.6/§6.3。
+
+**建议**：§6.3 二选一并写死：回滚时 types.ts 的常量**连同 schema**一起保留（纯加值、无行为，report/EXCEPTION 分支缺席不影响运行），只回退行为代码；或保留「只回退代码」的配方但补一句「此后 S3 必红属预期伴生，勿按它去改 schema」，并把该形态纳入回滚演练断言。
+
+### CODEX-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.2 与 §2.1 的实测环境` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | low |
+
+**问题**：§2.1 的读数取自 Node v25.2.1 / darwin，而项目声明 Node ≥ 18（开发建议 ≥ 22），且 runtime.node 可钉别的路径。§3.2 的核心依据（libuv 在 SIGCHLD 回调里 waitpid、置 exitCode/signalCode、发 'exit'，JS 侧观察不到「已回收未发事件」的窗口）是稳定语义，跨 18～25 成立的可能性很高；但按本项目自己的纪律 1（行为语义以实测为准），这条支撑 D3 全部论证的依据只在一个版本上量过一次。
+
+**依据**：读 src/trivium/util/exec.ts（spawnDetached 现状、processAlive 文档块引 GLM-04 的 macOS PID 复用坑）、AGENTS.md 已知坑与架构纪律 1、被审计划 §2.1 表头与 §3.2。
+
+**建议**：不必加设计面：在实施报告里把 U3（watch.hasExited/exited 时序）在缺省支持版本（Node 18 或仓库实际最低支持版本）上各跑一次留读数即可；顺带在 §3.2 注明结论未含 Linux（本项目仅支持 macOS，写明即可，勿默默宣称跨平台成立）。
+
+## 认为正确的部分
+
+- §1 的现状表（S1～S6、W1～W7、K1～K3）我逐条对了 run-protocol.ts、exec.ts、lock.ts、status.ts、review.ts、hooks 侧引用，行号与语义全部属实，没有一处把现状说反。
+- §3.1 的次序（终止并确认退出→闸门→run.json→status.json→锁）确实从根上消除 §2.2 ok 桩那格「闸门在等裁决而 Driver 看到启动失败」的成因；D5 不回收分支保持了『活 worker 是唯一写者』前提，与上一主题 D2 的理由同构、结论正确。
+- §3.2 的 PID 复用论证成立：'exit' 前 hasExited() 为假⇒未被 waitpid 回收⇒pid 与同号进程组不可复用；terminateProcessGroup「每次发信号前先问 isGone」保证句柄路径下不会向可能复用的号发组信号；unref 不影响 'exit' 到达有 K2 读数支撑。
+- D3 的 cancelRun 等价性逐项核对属实：同样的 SIGTERM→5s 宽限→250ms 轮询→升级前 warn→SIGKILL 后不等；grace 循环只查 .alive 不查 sameProcess 这个既有特性在新 isGone 定义下原样保留，等价没有偷偷变严或变松。
+- 焦点 4：§3.3「按时序推断 worker 还没拉起审查员」站得住——失败点距派生一两次本地写，ok 桩整轮才 ~300 ms，且 P4b 把结论本身钉成用例（改后 run.json 保持 failed、闸门保持 idle），推断失守会红；「不修行为、改准说法、新登 EV-152」的取舍与零配额验收一致，SIGPIPE/EPIPE 未实测一处也如实写进了探针结论与 BACKLOG。
+- 配额与耗时成本核算干净：全部新用例走桩、零烧配额；失败路径最坏 +10 s、常态百毫秒级写在 §6.1；EV-152 里被遗弃 CLI 继续烧配额是既有行为，本主题不使其恶化。
+- schema 只增不减、S3/V9 按常量自动覆盖、回滚暴露面「只有本仓这一格失败才会写出新取值」的判断与 types.ts 现有文档块的口径一致。
+
+## 未覆盖范围（本侧盲区）
+
+- 只读审查，未执行任何探针：§2.1/§2.2 读数与 §2.3「另三格造不出」的构造性论断按正文与既有证据文件采信，未独立复算。
+- §5 文档同步表的行号（主设计 :1130/:1190/:1466、LLD :236/:238/:471、MANUAL :617/:633、PROTOCOL :60/:256）未逐条展开核对。
+- 上一主题 r2 计划与代码双审应答件全文未读（依赖任务书节选与 BACKLOG EV-145/150/151 条目交叉）。
+- scripts/mutation-check.mjs 的实现细节与「find 锚点唯一性」的生成脚本机制未核，M1～M10 的咬合判断按代码现状推演。
+- 镜头外区域：Hook 拦截语义、gate/approve 闭环、入口 skill 措辞、其它审查员的关注面。
+
+## 实际查阅的项目文件
+
+- `.reviews/派生后失败的孤儿worker/plan/2026-09-27-派生后失败的孤儿worker-claude.md`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/util/exec.ts`
+- `src/trivium/lock.ts`
+- `src/trivium/status.ts`
+- `src/trivium/types.ts`
+- `src/trivium/report.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/review.ts`
+- `skills/dual-critic/schema/run.v2.json`
+- `test/integration/gate-loop.test.ts`
+- `test/unit/run-meta-strict.test.ts`
+- `doc/08_project/BACKLOG.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":11,"project_reads":12}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

@@ -1,0 +1,179 @@
+---
+schema: trivium.review.v1
+topic: 派生后失败的孤儿worker
+stage: plan
+role: glm
+vendor: zcode
+agent_cli: zcode/0.16.9
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260927T092419Z
+rerun_index: 1
+snapshot_hash: sha256:0b3f27d2ae449bef5e3f8f5600962f547bba50dd2597b3cd76ad7dcda7471bd9
+blind: true
+started_at: 2026-09-27T09:24:21.256Z
+finished_at: 2026-09-27T09:35:00.167Z
+duration_s: 638
+tool_calls:
+  read: 20
+  grep: 8
+  glob: 0
+  run_command: 0
+  project_reads: 21
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 3
+  nit: 2
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+heterogeneous: true
+session_id: sess_c7a325f5-c2b5-49a2-9447-c975ff372450
+---
+
+# 计划审查：派生后失败的孤儿worker
+
+> Critic-B · 智谱 ZCode ｜ 模型 `bigmodel-coding-plan/GLM-5.3`
+> ｜ 运行 `20260927T092419Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+计划可实施：§1 现状事实表（S/W/K 共 16 条）逐条对照源码无误，D3 的「逐项等价」经核属实（cancelRun 现行轮询判据确实只看 .alive），PID 复用论证（句柄未观察到退出 ⇒ 未回收 ⇒ 号不被占用）成立，写入前提主体成立（finalize 自身不抛、任务锁与运行锁不同名、reclaimStaleLock 复验后删）。最重的一条（GLM-01）：D4 窄窗口里 worker 已把 run.json 写成 success 而第 5 步仍会把 status.json 无条件落成 failed，与「已跑完：用 --wait 取结果」的指路矛盾——只有零耗时桩能撞上，但 §6.2 只记了 run.json/闸门那一半。其余为 schema status description 漏同步且 grep 反扫盖不到 skills/（GLM-02）、D5 补记 worker_pid 无断言无变异（GLM-03）、两处论证措辞与实际不符（GLM-04/05，实际无害）。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 5 条：次要 3 ｜ 吹毛求疵 2）
+
+### GLM-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.4 第 4/5 步（D4 窄窗口）、§6.2 第三条` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：worker 在被终止前已把 run.json 写成 success、但还没写 status.json 终态（executeRun 内部先 writeRunMeta/setGateChecked，workerMain 在其返回后才 patchStatus 终态）时：第 4 步按前提 4 跳过 run.json 并打「工作进程在被终止之前已跑完：用 --wait <run_id> 取结果」，随后第 5 步却无条件把 status.json 落成 failed——用户照指路跑 --wait 会按 status 终态拿到退 1 的 failed，与 run.json 的 success 及在场的审查文档矛盾。§6.2 只记了这一窗口里 run.json/闸门的错位，没记 status.json 这一半；这也与 D4 自己的「worker 已写终态则保留它写的那一对」口径不一致。
+
+**依据**：src/trivium/run-protocol.ts:551-557（workerMain 的 status 终态写在 executeRun 返回之后）；src/trivium/review.ts:1685-1705（executeRun 末尾 writeRunMeta → registerRun → setGateChecked）；src/trivium/meta.ts:636-641（前提 4：run.json 已终态一律跳过、不追溯改写）；被审计划 §3.4 第 5 步为无条件 patchStatus 置 failed、§3.8 改后表无此格、§6.2 第三条只覆盖闸门。
+
+**建议**：第 5 步加一道与第 4 步同源的护栏：run.json 已是 success 时跳过 status.json 改写（或把 status 落成 worker 的结论 success），并把这一格补进 §6.2 的如实保留清单。窗口本身零耗时桩才够得着，不必为此加用例，计划文字改准即可。
+
+### GLM-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5「run.v2 schema」行与 §5 末段 grep 反扫面` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：run.v2.json 的 status 字段描述里也列着「--start 在子进程诞生之后才失败而孤儿 worker 被杀（EV-150）」作为「已结束却仍为 running」的来源之一；本主题落地后该来源收口，这句会变成与行为不符的旧说法——恰是 D7 要消除的那一类。但 §5 对 schema 只列了 :480（termination description）与 :487（by 枚举），且实施 grep 反扫的面（doc/、skills-src/、src/、test/）不含 skills/，这条不会被机械兜住。
+
+**依据**：skills/dual-critic/schema/run.v2.json:471（status description 原文含该短语，与主设计 :1135 同源）；被审计划 §5 的 run.v2 schema 行只覆盖 :480/:487；§5 末段 grep 面清单不含 skills/。
+
+**建议**：§5 的 run.v2 schema 行补上 status description 的同步（照主设计 :1135 的「本版以前…」改法），并把 grep 反扫面纳入 skills/（至少该 schema 文件）。
+
+### GLM-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.4 第 2 步（D5）、§4.1 U5②、§4.3 变异表` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：D5 分支「尽力把 worker_pid 记进 status.json」是报错里指的出路（--cancel <run_id>）能找到进程的唯一依据（EISDIR 格里 worker.pid 文件与 status.worker_pid 都没写成），但 U5② 的断言清单（闸门仍 running、run.json 仍 running、锁原样、stderr 含 pid 与出路）不含「status.json 已补记 worker_pid」，变异表也没有对应条目——实现时静默丢掉这一步不会红。
+
+**依据**：被审计划 §3.4 第 2 步原文与 §4.1 U5② 断言清单；src/trivium/run-protocol.ts:938-943（cancelRun 的 pid 只取 status.worker_pid ?? worker.pid 文件，两处都缺时拿不到 pid）。
+
+**建议**：U5② 补一条「D5 分支后 status.json 的 worker_pid 已记为 born.pid」的断言（patch 失败吞掉的格无法断言，可只断言注入成功路径）；如认为不值得测，在 §4.1 写明理由。变异表可顺手加「去掉补记」一条指向 U5②。
+
+### GLM-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.5「status.json（第 5 步）」行` |
+| 类别 | concurrency ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：该行称并发交错时「后写者胜出只影响 message 文案，不影响『终态』这一结论」——不准确：cancelRun 的 patchStatus 不受 goneNow 约束、无条件写 phase: cancelled，与本路径第 5 步的 phase: failed 交错时，phase 本身（连同 termination 语义：run.json 说 post_spawn_exception 而 status 说被取消）取决于次序，不止 message。下游无害（一切消费者按任一终态处理、复盘以 run.json 为权威），但 §3.5 是写入前提的正式论证，宜说准。
+
+**依据**：src/trivium/run-protocol.ts:1005-1009（patchStatus cancelled 无条件执行）；被审计划 §3.5 status 行原文。
+
+**建议**：把该格的措辞改为「后写者胜出可能让 phase 在 cancelled / failed 间取其一、message 随之，终态这一结论不受影响」，不必改行为或加用例。
+
+### GLM-05 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.4 第 6 步的论证` |
+| 类别 | concurrency ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：「放锁排在最后：收尾期间新 --start 拿不到锁即退 70（保守无害）」这一前提只对失败点在改写锁（:405）之前成立。失败点在改写锁之后时锁内容是 worker 的，第 1 步确认 worker 退出后，并发的新 --start 会按 pid_gone 当场回收遗留锁并起跑，收尾期间并非拿不到锁。实际后果无害（run.json/闸门/登记各按 run_id 隔离，第 6 步 inspect 的 run_id+pid 条件也不会匹配新持有者），但论证与实际不符，且这一格正是 U5① 注入钉住的那格。
+
+**依据**：src/trivium/lock.ts:68-89、:199-213（judgeStale 对已死 pid 判 pid_gone，acquireLock 随即回收重建）；被审计划 §3.4 第 6 步原文；src/trivium/run-protocol.ts:405-413（锁改写为 worker 内容）。
+
+**建议**：把第 6 步那句论证改准：排除力只来自「锁仍记 --start 自己的 pid」那一侧；锁已改写为 worker 内容时新 --start 可按 pid_gone 接锁，并说明为何无害（run_id 隔离 + inspect 条件不匹配）。只改文字。
+
+## 认为正确的部分
+
+- §1 现状事实表逐条核对源码无误：S1-S6（startRun 次序与失败点、release 语义、spawnDetached 不交句柄）、W1-W7（worker 收尾只比 run_id、无信号处理器全仓 grep 证实、cancel/wait/清扫三读者）、K1-K3（killTree→detached 自成组，四个适配器的行号都对上）。
+- D3「逐项等价」成立：cancelRun 现行轮询判据确为 processAlive(...).alive（run-protocol.ts:953-957，不含 sameProcess），计划的 isGone 取反与之严格对应；killWaitMs: 0 对应 SIGKILL 后不等；前置 sameProcess 判断留在 cancelRun 的安排也保住了既有复用防护。
+- PID 复用论证成立：spawnDetached 从 spawn 拿到 pid 到调用 onSpawned 之间无 await（exec.ts:301-341），'exit' 监听同步挂上不会漏；JS 单线程下 hasExited() 为假 ⇒ 未被 waitpid 回收 ⇒ 僵尸占号 ⇒ pid 与同号组号不会被占用。§2.1 K2 实测与之互证。
+- 写入前提主体成立：finalizeUnfinishedRunMeta 两步各自捕获、自身不抛（meta.ts:627-633），第一步读判写在主题任务锁里且与 run 锁不同名不会自锁（meta.ts:643-646）；release 只删自己的锁（lock.ts:185-191）、reclaimStaleLock 复验后删并放回错拿的（lock.ts:97-127）；worker 确认退出后 --start 是唯一非常规写者。
+- §3.3 时序推断与 D7 取舍合理：失败点距派生仅一两次本地写、SIGTERM 百毫秒级送达（§2.1 读数），worker 加载 bundle 之前到不了拉起 CLI 的地方；计划如实写成「按时序推断，未构造出反例」，行为修复留给新登 EV-152、本主题只改不实说法，边界干净。
+- 验证设计扎实：预建运行目录 + 命中前置断言 + finally 里 killWorkersOf 并断言空列表；hang 桩钉「终止并收尾」、ok 桩钉「孤儿不改写闸门与 run.json」分工正确；三格造不出的失败点用 U5 进程内注入钉第 6 步与 D5（与 E1/E3/E6 的既有 precedents 同型）；M1-M10 加契约变异、A6/A7 回滚演练与上一主题同标准，A7 把「旧代码 + 保留 schema」两种形态都演到了。
+- D2 不沿用 prepare_exception 的理由（字面失实风险不该进留痕）与 schema 只增不减、回滚保留 schema 改动的安排正确；S3/V9 按常量比对遍历（run-meta-strict.test.ts:169、report.test.ts:503 已核实），常量加值即自动覆盖。
+
+## 未覆盖范围（本侧盲区）
+
+- 只读审查：未运行任何探针、测试或变异，§2 的实测读数按计划自述采信。
+- 未读上一主题报告 doc/05_testing/REPORT_2026-09-27_residual_finalize.md 与 .reviews/事后收尾余项 的 plan r2、response 全文，只按当前源码（e49279a）核对了被引结论在代码里的落点。
+- 未逐行核对 PRD / MANUAL / PROTOCOL 的被引段落（只验证了主设计 :1131/:1135 与 LLD :238/:471 的引文存在且措辞如计划所述）。
+- PID/进程组号不被复用的内核层依据按 POSIX 僵尸语义与 Node libuv 行为论证接受，未查系统文献、未在 Linux 侧实测（本仓目标环境为 macOS）。
+- settleOrphanedStart 第 1/3/6 步自身抛错（如 setGateChecked 全局锁争用耗尽）时的语义未逐项推演，只在 GLM-01/GLM-05 侧面触及；步骤 2/5 的吞错策略计划已写明。
+- 未评估 --start --json 的机器消费方对新增 warn 行的呈现细节（计划 §3.7 已按「随原样转述带出」论证，人读面成立）。
+
+## 实际查阅的项目文件
+
+- `.reviews/派生后失败的孤儿worker/plan/2026-09-27-派生后失败的孤儿worker-claude.md`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/util/exec.ts`
+- `src/trivium/lock.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/status.ts`
+- `src/trivium/review.ts`
+- `src/trivium/types.ts`
+- `src/trivium/report.ts`
+- `src/trivium/hooks.ts`
+- `src/trivium/exit-codes.ts`
+- `src/trivium/adapters/agy.ts`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/adapters/codex.ts`
+- `src/trivium/adapters/zcode.ts`
+- `skills/dual-critic/schema/run.v2.json`
+- `skills/dual-critic/SKILL.md`
+- `test/integration/gate-loop.test.ts`
+- `test/integration/worker-detach.test.ts`
+- `test/integration/run-protocol.test.ts`
+- `test/unit/run-meta-strict.test.ts`
+- `test/unit/report.test.ts`
+- `doc/08_project/BACKLOG.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/02_design/LLD_orchestrator.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":20,"grep":8,"glob":0,"run_command":0,"project_reads":21}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*
