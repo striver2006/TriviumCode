@@ -1,0 +1,94 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "方向与选型成立：修法①按父进程句柄转发、不动契约面，覆盖矩阵 a～i 逐格核实无误，5 s 预算关系自洽，退出形态与今天同构的论证成立。最危险一条是 GLM-02：I1 与 M5 把「未响应 SIGTERM」的断言写在 stdout，而该行走 warn 恒进 stderr，照计划字面实施则断言恒真、M5 变异假绿，「重新自杀」这格没有变异守护（M5 下 I1 其余断言全绿：CLI 已被转发杀掉、worker 被 cancelRun 升级 SIGKILL，归档照常 cancelled）。其次是 GLM-01：「冻结保证取消仍由 cancelRun 收尾」的声称对不经 run() 的收尾段不成立——executeRun 过 runBothSides 之后的漂移复算与终态落盘、workerMain 的 catch 收尾都不受冻结约束，取消恰落在该段时改后存在今天（内核级立即终止）没有的推进窗口，归档可能记非 cancelled 或 run.json/status.json 劈叉。另两条 nit：导出的 installWorkerSigtermForwarding 无用例消费、A6 未写比对流与 pid 归一化。四条均为点状修正，不动结构与选型，修后可实施。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4.1 / §7.1（对照 src/trivium/review.ts:1140-1705、src/trivium/run-protocol.ts:760-778 与 :1142-1146）",
+      "problem": "冻结的保证范围声称过强。冻结只约束经 run() 的链路（不派生、不兑现）；executeRun 在 runBothSides 返回之后的整段收尾——漂移复算（workTreeHash / diffAgainst）、批量哈希、writeRunMeta / registerRun / setGateChecked（review.ts:1143-1705）——以及 workerMain 的 catch 收尾、status.json 终态写入（run-protocol.ts:780-818）全部不经 run()，冻结对它们零约束；且 SIGTERM 处理器要等事件循环检查点，信号到达与处理器首行之间已排队的回调可先执行。于是「--cancel 恰落在两侧 CLI 已结束、worker 收尾中」的窗口里：今天 SIGTERM 是内核级立即终止、推进窗口为 0，改后链路可在处理器接管前的若干 tick 里推进，极端时 run.json / status.json 抢到 worker 侧终态——cancelRun 或走终态早退（归档记 success/failed 而非 cancelled，且早退分支不回收锁与闸门，只能靠 stale 锁回收 / 闸门 TTL 与会话启动清扫兜底），或 patchStatus（run-protocol.ts:1217，无终态守卫）把 worker 刚写的终态覆盖成 cancelled（run.json 与 status.json 劈叉）。§7.1 说「守它的是 I1 的 run.json cancelled 断言与 M3」——I1 两侧 hang_cli 悬着、恰好不覆盖收尾段，守不到这一格。另：§4.1 称「cancelRun 随后按『run.json 已终态』跳过（前提 4）」，实际 cancelRun 的早退判据是 status.json 的 phase（run-protocol.ts:1142-1146），「前提 4」是 finalizeCancelledRunMeta 的写前校验，论证链上的判据刻画有混。",
+      "evidence": "读了 src/trivium/review.ts（:1085-1164 executeRun 开头、:1655-1714 终态落盘段——runBothSides 于 :1127 await，writeRunMeta 于 :1687，中间是成段异步 I/O）、src/trivium/run-protocol.ts（:760-778 正常路径 status.json 终态、:780-818 catch 收尾、:1142-1146 cancelRun 的 status.phase 早退、:1217-1221 无守卫的 cancelled patchStatus）。窗口宽度按 Node 信号回调需事件循环检查点、与已就绪 I/O 回调竞争的语义推断，未实测撞窗口；「收尾段不经 run()」是代码事实。",
+      "suggestion": "不必改结构（收口这一格的代价与收益不成比例），但计划应如实界定冻结论域：把「处理器首行起、且只对经 run() 的链路」写准；§4.4 补「取消落在收尾段（两侧 CLI 已结束、终态写入已在飞）」一格的今天/改后对照与取舍（接受差异并如实记录，或论证与今天等价）；§7.1 撤回「I1 守住」的说法，将这一格列进报告的「按代码论证、无用例直接钉住」清单——与上一主题报告 §3.3 的先例同型。§4.1 那句「按 run.json 已终态跳过」改成 status.json 判据。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §5.2 I1 / §5.3 M5",
+      "problem": "I1 断言「stdout 不含『未响应 SIGTERM』」、M5 期望「I1：stdout 出现『未响应 SIGTERM』」，但那行播报来自 cancelRun 的 onEscalate warn（run-protocol.ts:1171），而 warn 恒写 process.stderr（log.ts:24-26），非 --json 模式下只有 say 走 stdout；集成用例经 cli() 调真实打包 CLI，返回的是 run() 的分管道 stdout/stderr（fixture.ts:162-174），两流不合并。照计划字面实施：I1 的该断言恒真；M5 变异（处理器末尾不重新自杀）下该文案只出现在 stderr，stdout 断言仍绿——而 M5 下 I1 的其余断言全部照常绿（CLI 已被处理器转发杀掉故进程表无残留、cancelRun 5 s 后 SIGKILL worker、run.json/status.json 照常由 cancelRun 收尾成 cancelled、锁闸门照常回收、worker.log 照常含转发行），M5 变异假绿，「重新自杀」这一格失去变异守护。",
+      "evidence": "读了 src/trivium/util/log.ts（warn/step/fail 恒 stderr，say 仅非 json 模式走 stdout）、test/helpers/fixture.ts:160-174（cli() 经 run() 拿分管道 stdout/stderr）、src/trivium/run-protocol.ts:1164-1172（step「发送 SIGTERM」与 onEscalate 的 warn）；并核了 gate-loop.test.ts:727-765、:774-790 既有取消类用例的断言风格（字段断言与 assert.match，非逐行比对）。",
+      "suggestion": "I1 的该断言与 M5 的期望文案都改指 stderr（或明确写成「stdout+stderr 合并后不含/出现」）；实施时先在未变异构建上确认该文案确实落在被断言的流里。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §4.2",
+      "problem": "installWorkerSigtermForwarding 注明「导出供用例在子进程里装」，但 §5 的用例清单没有任何一条引用它：U7 各格子进程只 import dist/test/src/trivium/util/exec.js（§5.1 说明），处理器行为由 I1/I2 集成覆盖，M1 变异删的是 workerMain 里的调用点。导出成为无测试消费的面。",
+      "evidence": "对照 plan §4.2 的导出声明与 §5.1/§5.2/§5.3 全部用例与变异的期望套件（U7→worker-detach、U8→run-protocol、I1/I2/M1/M5→gate-loop），无一处 import run-protocol 的该导出；既有先例 worker-detach.test.ts 的 U3/U4 直接进程内调用 terminateProcessGroup（不经该导出）。",
+      "suggestion": "要么补一条真正在子进程里装它的单测（如「装上后发 SIGTERM，进程先转发登记再以 signal: SIGTERM 退出」的零 CLI 形态），要么去掉导出、只作为 workerMain 内部的私有步骤。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §5.4 A6",
+      "problem": "A6「新旧两份构建的 --cancel stdout 逐行相同」未写明比对哪条流与 pid 归一化。cancelRun 的过程播报大多走 stderr（step「向工作进程组 <pid> 发送 SIGTERM」含每次不同的 pid），stdout 在非 --json 模式下实际只有末尾 say 的两三行——逐行比对 stdout 字面上成立但覆盖面近零（比不到过程行为）；若实施者改比 stderr，不做 pid 归一化则必假。验收实际钉住什么完全取决于这条怎么落地。",
+      "evidence": "读了 src/trivium/util/log.ts（say/step/warn 的分流感）与 src/trivium/run-protocol.ts:1164-1253（cancelRun 全部播报的构成：step/warn 走 stderr、say 走 stdout）。",
+      "suggestion": "A6 写明比对流与归一化口径，例如「stdout 逐行相同 + stderr 归一化 pid/时间戳后逐行相同」，或明确只钉 say 行并说明为什么足够。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "修法①的选型论证成立：按父进程句柄判退出沿用 DetachedChildWatch 的既有论证（exec.ts:275-277），不新增运行目录文件、不动契约面，登记在 spawn 之后同步完成故 f 格无窗口——spawn 与 Map.set 之间插不进别的 JS，正确。",
+    "覆盖矩阵 a～i 逐格核实无误：h 格「组长退出后不再对该组发信号」的防复用论证与 killProcessTree 既有 ESRCH 回退（exec.ts:440-450）自洽；b/c/d 同归「处理器跑不到」正确（Node 信号处理器在事件循环上执行，事件循环堵住即覆盖不到，§2.5 按代码论证的处理方式恰当）；e 格「settleOrphanedStart 时 worker 尚无 CLI」有上一主题 P4b 背书；i 格（前台 Ctrl-C 遗弃 CLI）推断成立，且计划准确地把「探活超时」排除在外——run() 自带计时器按 CLI 自己的组发信号（exec.ts:208-230），那条路够得到。",
+    "时间预算自洽：处理器最坏 2 s + 1 s ≈ 3 s、看门狗 3.5 s、U8 上界 4 s，均落在 cancelRun 与 settleOrphanedStart 的 graceMs 5000（run-protocol.ts:1168、:578）之内；killWaitMs cancelRun 为 0、settleOrphanedStart 为 5000 的现状差异已如实保留。",
+    "「重新自杀后退出形态与今天一致」成立：移除监听恢复缺省动作再 process.kill(self, SIGTERM)，H1 实测 signal: SIGTERM；workerMain 的 finally 在今天被 SIGTERM 杀死时本就不跑、锁与闸门由 cancelRun 回收（run-protocol.ts:1224-1252），改后同构。",
+    "「不处理 SIGINT/SIGHUP」论证成立：spawnDetached 即 setsid、worker 无控制终端（exec.ts:293-326），编排器全文只经 terminateProcessGroup/killProcessTree 发 SIGTERM 与 SIGKILL。",
+    "U7 必须在子进程里跑的判断正确：冻结标志是模块级的，与既有 U4 可进程内跑的差异正是「是否置位冻结」；U7①～⑤ 的断言（组空、信号序列、500 ms 不兑现、登记空零信号、不带 killTree 不进登记）与 M1～M8 中除 M5（见 GLM-02）外的变异对应关系逐条核过，都能咬住；terminateProcessGroup 的 signal 注入（exec.ts:465）支持 U7④ 的零信号断言。",
+    "「覆盖不到的 SIGKILL 格只放零配额验收 A3 如实记录、不写成用例」（D7）的理由成立——写成断言等于锁住缺陷，修法②落地时要反着改。",
+    "处理器往 stderr 写行会直通 worker.log（spawnDetached 的 stdio 用日志文件 fd），I1 的 worker.log 断言可测；test/ 里对 worker.log 的既有断言均为 assert.match 包含式（全量 grep 核实），新增行不会撞；cancelRun 侧 :218/:494 等用例也是字段断言非逐行比对，§4.3 的新增提示行不撞。",
+    "§1 现状清单 R1～R6、C1～C9 逐条与代码相符（行号与事实均核，含四家适配器审查调用 killTree: true 的 grep 命中、cli.ts:433-434 worker 入口、status.ts:30-56 无 schema、run-files.ts 的 RUN_DIR_FILES 四文件）。",
+    "零配额验收设计成立：A4 旧构建对照（dbd1a8a 即起点）与 I1「今天这里会找到两组」互证；A5 的两个探针手搭 worker、不经 workerMain，前提实测确不随本主题变化；A7 靠「cancelled 已是终态则清扫与 Hook 均不动」成立。"
+  ],
+  "not_covered": [
+    "GLM-01 的竞态窗口按 Node 事件循环与 libuv 信号排队语义推断，未实测复现；实际宽度与撞中概率未量化。",
+    "未读主设计、LLD、MANUAL、PRD、PROTOCOL 的现行版本，§6 文档同步表里的落点行号与既有措辞未逐一核对。",
+    "未读 hooks.ts 的 sweepDeadRunningGates、freeze.ts、state.ts 的实现（C7/C8 按 status.ts / run-files.ts / retention.ts 侧与计划引用核对）。",
+    "未读 gate-loop.test.ts 的 P4 系列（:2352 起）与 scripts/mutation-check.mjs、gen-mutation-spec.mjs 本体——变异机制的可行性判断基于上一主题报告的 15/15 读数与规格描述。",
+    "BACKLOG 文件未读，EV-146/EV-38/EV-152 的现状与「另登合并论证」的处置按计划与报告核对。",
+    "只读审查：未运行任何构建、测试、探针或变异；所有「保持绿」的判断是静态推断。",
+    "agy/codex/zcode/claude 四家适配器仅 grep 核实 killTree 调用行与计划引用的行号，未整读其输出形态与凭据副本准备细节（D3 的判断依赖计划的 §2 实测，未复跑）。"
+  ],
+  "consulted": [
+    "src/trivium/util/exec.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/review.ts",
+    "src/trivium/status.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/run-files.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/util/log.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/claude.ts",
+    "test/integration/worker-detach.test.ts",
+    "test/integration/run-protocol.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/helpers/fixture.ts",
+    "doc/05_testing/evidence/orphan-worker-20260927/probe-kill-reach.mjs",
+    "doc/05_testing/REPORT_2026-09-27_orphan_worker.md"
+  ]
+}

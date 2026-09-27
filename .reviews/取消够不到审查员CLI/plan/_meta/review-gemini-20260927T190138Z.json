@@ -1,0 +1,104 @@
+{
+  "agreed": [
+    "放弃向组长已退出的进程组继续发信号（覆盖矩阵 h 格）的决策充分成立：父进程无法获知孙进程生命周期，一旦进程组解散且组号被复用，盲目发信号将存在误伤风险，首拍 SIGTERM 已覆盖同组子孙，此取舍遵循防误杀第一原则。",
+    "将修法 ②（持久化记录与外部清理）另登 BACKLOG 并与 EV-146 / EV-38 合并论证的决策合理，避免了在当前小主题内不必要地膨胀 status.json 契约面与改写终态早退逻辑。",
+    "U7 单测针对被杀子进程所在 run() 的 Promise 悬挂设计了 500ms 的 pending 检查，能够有效从底层咬住 finish() 的冻结行为。",
+    "按父进程手里的直接子进程句柄观察 exitCode / signalCode 作为退出判据，彻底规避了 PID 复用风险，论证坚固。",
+    "实事求是记录了 macOS 管道 stdin 下 pty 模式无法工作的旁证事实并登记 BACKLOG，边界划定清晰。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "src/trivium/util/exec.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/stub.ts",
+    "test/integration/worker-detach.test.ts",
+    "test/integration/run-protocol.test.ts",
+    "doc/05_testing/evidence/orphan-worker-20260927/probe-kill-reach.mjs",
+    "doc/05_testing/evidence/orphan-worker-20260927/acceptance.mjs",
+    "doc/05_testing/REPORT_2026-09-27_orphan_worker.md",
+    ".reviews/取消够不到审查员CLI/plan/2026-09-28-取消够不到审查员CLI-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §0 与 plan §5.2，桩的 hang_cli 模式是本主题才计划在 src/trivium/adapters/stub.ts 中新增的模式；而查阅基线 dbd1a8a 源码 src/trivium/adapters/stub.ts 的 StubMode 枚举定义，其中只有 hang，根本没有 hang_cli。在旧构建上运行 A1（两侧使用 hang_cli），旧桩代码会因未识别该 mode 而走 default（返回 ok）或抛错，不可能拉起真实子进程树，因此 A4 无法如预期观测到「CLI 两组都活着」。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §5.4 A4",
+      "problem": "验收 A4（旧构建对照）依赖本主题新增的桩模式 hang_cli，在旧基线 dbd1a8a 上无法运行，新旧对照前提不成立。",
+      "severity": "major",
+      "suggestion": "修正 A4 的旧构建验收方式。旧构建应通过配置通用自定义脚本命令拉起子进程树，或通过外置探针驱动（类似 doc/05_testing/evidence/orphan-worker-20260927/probe-kill-reach.mjs）使用旧构建的 run() 真实拉起进程树后再调用旧构建的 --cancel 进行对比，避免在新旧对照中调用旧构建尚未具备的内部桩模式。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §4.2，计划明确宣称「以 SIGTERM 重新自杀，退出形态与今天相同（H1 读数：signal: SIGTERM）」；但查阅 plan §5.1（U7、U8）、plan §5.2（I1、I2）与 plan §5.3（M1～M8），U7 仅测 shutdownTrackedTrees 函数，I1 / I2 仅测 review --cancel CLI 命令，而 cancelRun 判定 worker 退出的依据 workerGoneForCancel（src/trivium/run-protocol.ts :708）只比对进程存活与启动时刻，对退出是因 signal 还是 exitCode 毫无感知。若实现误写成 process.exit(143)，现有测试全绿。",
+      "id": "AGY-02",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §4.2, §5.1, §5.2, §5.3",
+      "problem": "全套单测、集成测试与变异均未对「重新自杀后的退出形态（signal: SIGTERM, code: null）」建立任何断言，使得重新自杀形态失守无法被自动化拦截。",
+      "severity": "major",
+      "suggestion": "新增一个针对 installWorkerSigtermForwarding 的单测（在子进程中派生安装该处理器的进程，向其发送 SIGTERM，并在父进程中严格断言其退出形态为 code === null && signal === 'SIGTERM'）；并在变异检查中增加对应条目（如将重新自杀替换为 process.exit(143) 时该用例必须变红）。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §4.2，步骤 2 起了一个 3500ms 的看门狗无条件调用步骤 4；步骤 3 await shutdownTrackedTrees(...)；步骤 4 在 finally 里移除监听并自杀，万一还在则 process.exit(143)。若步骤 3 在预算内（如百毫秒）正常完成，计划未声明清除看门狗定时器；若看门狗超时触发步骤 4 时步骤 3 恰好结算进入 finally，看门狗回调与 finally 会并发执行步骤 4，在没有门禁的情况下重入并可能调用 process.exit(143) 破坏退出形态。",
+      "id": "AGY-03",
+      "kind": "concurrency",
+      "layer": "plan",
+      "location": "plan §4.2",
+      "problem": "看门狗与步骤 4 finally 重新自杀之间缺乏清理与防重入机制，存在退出逻辑被重复触发甚至落入 process.exit(143) 的时序风险。",
+      "severity": "major",
+      "suggestion": "明确在进入步骤 4 时（无论是正常路径还是超时路径）首先清理看门狗定时器（clearTimeout）；并在步骤 4 前增加防重入布尔守卫（例如 if (exiting) return; exiting = true;）；规范化「万一进程还在」的等待机制，避免同步调用 process.exit(143)。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/review.ts 行 1127 至 1700，在 runBothSides 返回之后到 writeRunMeta 之间，存在解析 reviews、resolveSubjectArtifactRelPath、collectBuildStampNotices 等异步 I/O 链路。若 SIGTERM 在两侧审查 CLI 刚刚退出、runBothSides 已经兑现的窗口内到达，liveTrees 已为空，shutdownTrackedTrees 立即完成并自杀，但在事件循环排队期间，executeRun 依然可能在进程被杀前将归档写为 success 或 failed，使 cancelRun 误判终态而无法收尾（破坏 EV-128）。",
+      "id": "AGY-04",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4.1",
+      "problem": "冻结机制仅在底层的 run() 和 finish() 中挂起 Promise，在 executeRun 已经结束 runBothSides 的收尾窗口内对归档写入缺乏防线。",
+      "severity": "major",
+      "suggestion": "冻结不能仅依赖底层的 Promise 挂起机制，应在 review.ts 的 executeRun 及 writeRunMeta 写入前检查全局或上下文的终止/取消标志；一旦检测到 worker 正在终止，立即短路放弃写入归档终态，确保归档收尾完全由 cancelRun 主导。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §4.1 与 §4.2，计划说明对登记子进程「并行调 terminateProcessGroup」，预算单组最坏 3000ms。但 U7 各格均只有单个子进程，I2 中也只有一侧为 ignoreTerm: true。若开发者在实现 shutdownTrackedTrees 时误用串行循环（for...of 逐个 await），当双侧 CLI 均忽略 SIGTERM 时总耗时将翻倍至 6000ms，超过 cancelRun 的 5000ms 宽限期并引发误杀。现有用例和变异无法发现串行化缺陷。",
+      "id": "AGY-05",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §5.1 U7, §5.2 I2",
+      "problem": "用例未覆盖多个 CLI 进程组同时需要超时升级 SIGKILL 的场景，无法守住「并行终止」以防止耗时击穿取消宽限期。",
+      "severity": "minor",
+      "suggestion": "在单测 U7 或集成测试中，增加同时拉起两个忽略 SIGTERM 的子进程组的测试用例，断言 shutdownTrackedTrees 的整体耗时必须在单组超时预算内（< 3500ms），锁定并行调用的契约。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查阅 src/trivium/run-protocol.ts 行 720-835，workerMain 包含正常的 return 和主 catch 路径。计划在 workerMain 第一行安装 SIGTERM 处理器，但仅在 SIGTERM 触发后的步骤 4 中进行 process.removeListener。若 worker 正常运行完毕或在测试上下文中调用 workerMain，该监听器将一直挂在全局 process 上，污染后续测试。",
+      "id": "AGY-06",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §4.2",
+      "problem": "installWorkerSigtermForwarding 未在正常退出或异常收尾路径提供卸载机制，存在进程级监听器泄漏隐患。",
+      "severity": "minor",
+      "suggestion": "installWorkerSigtermForwarding 应返回卸载函数或导出对应的 uninstall 函数，并在 workerMain 的 finally 块中确保卸载，保持环境整洁。"
+    }
+  ],
+  "not_covered": [
+    "未在 Linux 或除 Node v25.2.1 以外的环境实测真实进程组信号与句柄回收。",
+    "未在真机环境接入厂商真实 CLI 模拟网络超时和中断行为（遵循 D3 决策）。",
+    "未对高频并发派生并立即取消的极端毫秒级压力边界进行系统性压测。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本实施计划整体架构方向明确，合理定性了边界并复用了父进程句柄机制，但在验证可行性、断言严密性与并发时序上存在重要漏洞：\n最危险的一条是验收 A4 依赖本主题新增的内部桩模式 hang_cli，在旧基线 dbd1a8a 上无法跑通，新旧构建对照前提失守（AGY-01）；\n同时，重新自杀的退出形态（signal: SIGTERM）缺乏任何单测与变异断言防线，若误写为 process.exit(143) 无法被捕获（AGY-02）；\n看门狗缺乏 clearTimeout 与防重入门禁，有并发重入和破坏退出形态的风险（AGY-03）；\n冻结机制未覆盖 runBothSides 返回后与归档写入之间的竞态窗口（AGY-04）；并行终止也缺乏多组超时用例约束（AGY-05）。建议修订计划完善后实施。",
+  "verdict": "request-changes"
+}
