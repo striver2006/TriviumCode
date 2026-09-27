@@ -1,0 +1,95 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "以「资源与生命周期 / 环境与运行兼容」镜头审了本补丁。核心结论：prepareRun 的重排经逐行多集合对账（HEAD 版 vs 工作树版，去缩进比较）核实为纯移动——被拦文案、expect 集合与 HEAD 逐字一致，跳过轮不置闸门（holdsGate）保留，落盘段内容只是整体缩进进 try，return 挪进 try 不改变返回值，`g.applied` 改判 `holdsGate` 在 try 内与原条件等价（applied=false 在 try 之前已抛）；`releaseRunningGateEntry` 与原 `releaseRunningGate` 内联 CAS 同义（比 runId、槽位缺失不造条目、自身吞错、idle 保留 run_id），run-protocol 三处调用点与 runReviewLocked 的内联回收均未受影响；catch 只在 holdsGate 时回收并原样 rethrow，startRun 的 prepare catch 只放锁的契约在各失败点成立（唯一例外见 CODEX-01 的窄缝）。B1/B4 的零工件口径（闸门项级比较——判负 CAS 会整文件重写 state.json、刷新 updated_at，已在注释如实记载；task.json 逐字节；运行根目录集合；1.1 s 隔秒防同秒撞名假绿）能真实咬住 M1 回退（变异读数 fail=2 佐证）；U1 五格覆盖回收函数全部分支；B2 不带 entry 断言 idle 符合 entry 缺席的既有时序语义，且报告 §3.1 已如实登记与 r2 措辞的出入；B5～B7 用 chmod 0o555 与 root 跳过的构造在本仓 macOS-only 前提下可靠（registerRun 的 writeAtomic 同目录临时文件必撞 EACCES，已核对 fsx.ts）；A6 以 git archive HEAD 独立解包构建旧版、进程内双 import 逐主题比对 rounds/unlistedRuns，做法成立。types / run.v2 schema 保留「本版以前被拦」一格与历史留痕（A6 读到 EV-79 实例）相符，恰当。提的 5 条全部是 minor/nit：一条契约面的窄缝（置闸门调用本身落在 try 之外），三条 BACKLOG 记录的失真或遗漏，一条重复 CAS 的漂移隐患。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/review.ts:888-918（holdsGate 块在 try 之外）；src/trivium/lock.ts:262-279（withGlobalLock 的 finally）",
+      "problem": "函数文档与 startRun 依赖的新契约「prepareRun 抛错 ⇒ 闸门不归本轮」有一个窄缝：置闸门的 `setGateChecked` 调用本身排在落盘段 try 之外（try 从 :918 才开始）。`setGateChecked` 经 `updateState` → `withGlobalLock`，其 finally 里 `handle.release()` 又读锁文件并 unlink——若比较-交换已经写盘（闸门已是本轮的 running）而 release 抛错（EIO / 锁文件恰被 stale 回收方抢先删除后 readLock 抛等），异常绕过 :1032 的 catch，闸门带着本轮 runId 悬在 running，调用方按契约只放主题锁。窗口极窄、非本次引入的回归（旧代码同样在外），但旧契约没有「抛错 ⇒ 闸门不归本轮」这句全称承诺，新注释把话说满了。",
+      "evidence": "src/trivium/review.ts:888（const holdsGate）与 :918（try {）之间的 setGateChecked/被拦 throw；src/trivium/state.ts:146-152（updateState 在 withGlobalLock 内写盘）；src/trivium/lock.ts:274-278（finally await handle.release() 不吞错）、:185-191（release 里 readLock + rm，可抛）；src/trivium/run-protocol.ts:308-315（startRun 的 prepare catch 只放锁，注释明言「置上之后的失败它自己回收」）。",
+      "suggestion": "把整个 `if (holdsGate) { setGateChecked … 被拦 throw }` 块并入现有 try（被拦 throw 进 catch 后 release 因 CAS 的 runId+running 守卫对他人待裁决槽位是 no-op，行为不变、契约变全闭合）；或者维持现状，但把文档措辞收准到「置闸门成功之后抛 ⇒ 闸门由本函数回收」。二选一，别留全称承诺与实现的错位。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/08_project/BACKLOG.md EV-145 行（余项叙述句）",
+      "problem": "EV-145 改写后残留一句「①最容易发生，正解多半是『先查闸门再写骨架』，与事后收尾是两种修法」。①的「被闸门拦下」一格本主题已经修完，而修法恰恰就是这句「先查闸门再写骨架」——留在余项叙述里，后来的人会以为还有一格「最容易发生」的未修问题与一个新修法候选，与实际相悖。",
+      "evidence": "doc/08_project/BACKLOG.md:243（EV-145 现行文本：①已划掉标已修，但该总结句与候选句未随之清理）；对照 src/trivium/review.ts:888-918 的实现正是「先置闸门、后写骨架」。",
+      "suggestion": "删去或改写该句为历史注记（「①已按『先查闸门再落盘』修毕」），并核对候选段与新余项的对应关系。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/08_project/BACKLOG.md EV-145 行 ②（『run-protocol.ts :430 的 catch』）",
+      "problem": "行号差一格：`} catch (e) {` 在 run-protocol.ts:429，:430 是 catch 体内第一行注释。本仓上一个主题（v1.3.48 代码双审 CODEX-02）刚以同样理由修过 LLD 的失效行号，同类引用应当一次写准。",
+      "evidence": "src/trivium/run-protocol.ts:427-433 实读：429 为 catch 行；doc/08_project/BACKLOG.md:243 写作 :430；设计文档变更记录 v1.3.48 行（catch 行号修正是先例）。",
+      "suggestion": "改为 :429，或改用不带行号的锚（『startRun 主 try 的 catch』），少一处会漂移的坐标。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/08_project/BACKLOG.md EV-145 行 ②；src/trivium/run-protocol.ts:325-343（纯文档跳过分支）",
+      "problem": "EV-145 余项②把「startRun 在 prepareRun 之后失败」括注为「:430 的 catch，派生前后都有可能」，漏了一条不经该 catch 的路：跳过分支在 `executeRun(rc)` 内抛（finally 只放锁、没有 catch、不回收也不需要回收闸门，但骨架此刻已写）——run.json 同样停在 running，且这条既不在①～④任何一格的描述里，也不归 sweep 管。本主题文档（LLD 4.2 引述块）逐项列举了仍停在 running 的路，同样没有它。",
+      "evidence": "src/trivium/run-protocol.ts:325-343（skip 分支：try { executeRun(rc) … } finally { lock.release() }，无 catch）；src/trivium/review.ts:918-1032（骨架与登记在 prepareRun 的 try 段已成功落盘）；doc/08_project/BACKLOG.md:243 与 doc/02_design/LLD_orchestrator.md 4.2 的列举面。",
+      "suggestion": "在 EV-145 余项里给这条单独一格（或并入②并把「prepareRun 之后、派生之前/跳过分支」写实），避免将来做「余项一次设计」时又漏一条——这正是 EV-145 当年被拆出来登记的原因。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/review.ts:1741-1757（runReviewLocked 的内联回收）",
+      "problem": "`releaseRunningGateEntry` 抽出来的同时，`runReviewLocked` 里那份逐字相同的回收 CAS（expect running + runId + allowMissing:false + 吞错）原样保留，同一语义现存两份。本主题自己的决策 D1 论证过「两处判定同一个状态集合，将来改一处漏一处」——同一个论据适用于这里；LLD §4.2 又恰好把这里列为「回收闸门」的语义出处之一。",
+      "evidence": "src/trivium/review.ts:1747-1756（内联 setGateChecked 回收）与 src/trivium/state.ts:322-344（releaseRunningGateEntry）逐字段对照相同；实施报告 §1 表格「runReviewLocked 的内联回收不动」并称 hooks.ts:298 的「四处 setGateChecked」计数不变。",
+      "suggestion": "让 runReviewLocked 的 catch 改调 releaseRunningGateEntry；注意这会同时改掉 hooks.ts:298 注释的「四处」计数与 registry-parity 类对账口径，需一并同步——若因此得不偿失，就在内联处加一行「与 state.ts releaseRunningGateEntry 同形，改一处须改两处」的互相指认注释。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "重排核实为纯移动：以「去缩进逐行多集合对账」比对 HEAD 版与工作树版的 prepareRun，代码行的增删只有 holdsGate/try/catch/release 五处新增与 reset 两处搬移；被拦文案与 expect 集合 `[idle,running,approved,rejected,abandoned]` 与 HEAD 逐字一致；跳过轮不置闸门语义保留；return 进 try 不改变返回值；`g.applied→holdsGate` 的条件替换在 throw-before-try 的前提下语义等价。",
+    "releaseRunningGateEntry 与原内联 CAS 同义（比较 runId、allowMissing:false 不造条目、自身吞错、idle 条目保留本 run_id），run-protocol 三处调用点与 releaseRunningGate 薄壳的早退守卫不变；U1 五格恰好覆盖回收的全部分支，M5/M6 各咬一格。",
+    "B1/B4 的断言设计经得起推敲：闸门项级而非文件字节（判负 CAS 会重写 state.json、刷新 updated_at——该事实在测试注释里如实记载）、task.json 逐字节、运行根目录集合、1.1 s 隔秒使同秒假绿不可能；M1 的 fail=2 佐证了回退会被咬住。",
+    "B2 断言 entry 缺席回收 idle 合理（该用例的 runPlan 本就不带 --entry，B/C/D 才立 awaiting_approval），且报告 §3.1 如实登记了与 r2 文字（awaiting_approval）的出入，A2 走 --entry B 补上了那条路。",
+    "B5～B7 的失败构造在 macOS + 非 root 下可靠：writeAtomic 同目录临时文件必撞 EACCES；fs.rm(force:true) 只吞 ENOENT、EACCES 会抛；root 跳过守卫齐全；M4「靠主题锁不放咬住」的推理链成立（catch 吞错后 startRun 在主 try 外崩于 undefined，锁不释放，B5 的锁断言判红）。",
+    "types / run.v2 schema 的 status 描述保留「本版以前 prepare 阶段写完骨架后被闸门拦下」一格是恰当的：历史归档确有该形态留痕（A6 断言 EV-79 20260922T134058Z 仍在未进时间线表），删格会让描述对历史失实。",
+    "A6 的做法（git archive HEAD 解包独立构建旧版、symlink node_modules、进程内双 import、逐主题比 rounds/unlistedRuns、对真实 .reviews 只读）方法上成立，能钉住「本主题不改 report 行为」。"
+  ],
+  "not_covered": [
+    "未复跑 `npm run check`、变异与零配额验收（只读审查）；报告读数（2133/2131/0/2、变异 7/7、验收 13/13、selftest 14/14、四套件 133/133）只与 evidence 文件文本核对，未复现。",
+    "计划 r2 定稿全文未逐条对照（只读被审 diff 引用的段落与实施报告 §1 落点表）；「实现与 r2 一致」仅在被审五问涉及的面内成立。",
+    "gate.ts / approve 链对 latestRunMeta 的其余读者未逐一排查是否受重排影响（除 B2/B5 已断言的 `gate --check` 面）。",
+    "evidence 探针脚本（probe-gate-block / probe-runid-collision / probe-corrupt-rerun）的内部实现细节未逐行审读，只核对了头部声明、用法与读数 JSON 的自洽。",
+    "跨平台面：本仓 macOS-only，B5～B7 依赖 POSIX chmod/getuid、探针依赖 mkdtemp/xcrun 环境，未评估 Windows/Linux 语义；Node 兼容面只核了 `Array.at`/`fs.rm`/`getuid` 在 ≥18 的可用性，读数环境为 v25.2.1。",
+    "EV-147 / EV-148 两条新登的机理叙述（同秒覆盖循环、corrupt 出口循环）只核对了被点名文件的相关代码位置与文案（cli.ts:548 起、meta.ts:36、writeMeta 覆盖写），未跑探针复现。"
+  ],
+  "consulted": [
+    "src/trivium/review.ts",
+    "src/trivium/state.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/util/fsx.ts",
+    "test/helpers/fixture.ts",
+    "test/integration/no-artifacts.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance.mjs",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/闸门拦截不留骨架/code/_meta/changes-20260927T035514Z.diff"
+  ]
+}

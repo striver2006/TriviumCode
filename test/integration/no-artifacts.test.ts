@@ -190,6 +190,57 @@ test('主题锁被占 → 退 70，且不覆盖已有工件', { skip: bundleMiss
   }
 });
 
+/*
+ * ── 上一轮未裁决直接重跑 → 退 2 且零工件（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §4.2 B1 / B4）──
+ *
+ * 此前闸门判定排在落盘段之后：被拦那次已写下 brief、run.json 骨架、task.json 登记与运行目录，
+ * AC-16「任一失败出口不留半套工件」的列举里偏偏没有退 2 这一格（EV-109）。
+ *
+ * 闸门状态只比闸门项，不比文件字节：判负的比较-交换也会刷新 `updated_at`、整文件重写（计划 r2 S1，
+ * r1 CODEX-01 ≡ AGY-01 ≡ GLM-01）。两次运行之间隔 1.1 s：run_id 只到秒，同秒撞名时旧顺序下的覆盖会让
+ * 文件集合看起来不变（计划 r2 §2.3），断言就假绿了。
+ */
+async function assertBlockedLeavesNoTrace(fx: Awaited<ReturnType<typeof makeFixture>>, reviewArgs: string[], what: string) {
+  const stub = { gemini: { mode: 'ok' as const }, glm: { mode: 'ok' as const } };
+  const first = await cli(fx.root, ['review', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x'], stub, 180_000);
+  assert.equal(first.code, EXIT.OK, `第 1 轮应成功：\n${first.stdout}${first.stderr}`);
+  await new Promise((r) => setTimeout(r, 1100));
+
+  const statePath = path.join(fx.root, '.trivium', 'state.json');
+  const gateOf = async () =>
+    (JSON.parse(await fs.readFile(statePath, 'utf8')) as { gates: Record<string, unknown> }).gates;
+  const taskPath = path.join(fx.archiveRoot, TOPIC, 'task.json');
+  const runRoot = `${fx.root}-runs`;
+  const gatesBefore = await gateOf();
+  assert.equal((gatesBefore[`${TOPIC}/plan`] as { state: string }).state, 'review_done_awaiting_disposition', '前提：上一轮待裁决');
+  const taskBefore = await fs.readFile(taskPath);
+  const runsBefore = await listFiles(runRoot);
+
+  const r = await assertNoTrace(fx.root, fx.archiveRoot, () => cli(fx.root, reviewArgs, stub, 180_000), EXIT.GATE_BLOCK, what);
+  assert.match(r.stdout + r.stderr, /尚未裁决/);
+  assert.deepEqual(await fs.readFile(taskPath), taskBefore, `${what}：task.json 不得多出登记`);
+  assert.deepEqual(await gateOf(), gatesBefore, `${what}：闸门项不得改动`);
+  assert.deepEqual(await listFiles(runRoot), runsBefore, `${what}：不得在项目外建运行目录`);
+}
+
+test('上一轮未裁决 → review --start 退 2 且零工件（B1，EV-109）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await assertBlockedLeavesNoTrace(
+    fx,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x'],
+    '异步路径被闸门拦下',
+  );
+});
+
+test('上一轮未裁决 → 同步 review --stage 退 2 且零工件（B4，EV-109）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await assertBlockedLeavesNoTrace(
+    fx,
+    ['review', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x'],
+    '同步路径被闸门拦下',
+  );
+});
+
 test('草稿已有且成功跑完 → 重跑抬升 -r2，原文件字节不变（FR-25）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   const stub = { gemini: { mode: 'ok' as const }, glm: { mode: 'ok' as const } };

@@ -255,6 +255,41 @@ export async function setGate(i: SetGateInput): Promise<GateEntry> {
   return r.entry!;
 }
 
+/**
+ * 回收某次运行留下的 `running` 闸门：置回 `idle`（审查意见 GLM-r2-02 ≡ AGY-01 起的既有语义）。
+ *
+ * 只回收**仍记着本 `runId` 且仍是 `running`** 的闸门：新一轮若已接管，那是它的护栏。
+ * 槽位不存在时**不**凭空造一条 idle 记录（审查意见 AGY-02）——`allowMissing` 缺省为 true
+ * 对「首次置 running」合适，对回收则不然。
+ *
+ * 自身不抛：回收失败不该盖过调用方手里真正的错误——闸门还有 TTL 兜底，而错误信息只有一次机会。
+ *
+ * 放在这里而不是 `run-protocol.ts`：`prepareRun`（`review.ts`）置闸门之后失败也要回收
+ * （EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §3.2），而 `review.ts` 不依赖 `run-protocol.ts`。
+ * `run-protocol.ts` 的 `releaseRunningGate` 委托本函数，三处调用点语义不变。
+ *
+ * `review.ts` 的 `runReviewLocked` 里另有一份同形的内联回收（同步路径 `executeRun` 抛错时），
+ * **改一处须改两处**（代码双审 r1 CODEX-05）。
+ */
+export async function releaseRunningGateEntry(i: {
+  triviumDir: string;
+  topic: string;
+  stage: Stage;
+  runId: string;
+  heartbeatStaleMs: number;
+}): Promise<void> {
+  try {
+    await setGateChecked({
+      triviumDir: i.triviumDir,
+      topic: i.topic, stage: i.stage, state: 'idle', runId: i.runId,
+      heartbeatStaleMs: i.heartbeatStaleMs,
+      expect: { state: ['running'], runId: i.runId, allowMissing: false },
+    });
+  } catch {
+    // 见文档块：不盖过真正的错误
+  }
+}
+
 export async function getGate(
   triviumDir: string,
   topic: string,

@@ -251,7 +251,7 @@ Hook 另有三档语义：`0` 放行或判定不了 ｜ `2` 明确判定拦截 �
 ```text
 trivium review --start --stage <s> --topic <t> --focus <hint> --json
   → { run_id, max_waits, wait_timeout_s, bash_timeout_ms, worker_pid, run_dir }
-    先占主题锁 → prepareRun（冻结、渲染 BRIEF、写 run.json 骨架）
+    先占主题锁 → prepareRun（冻结、渲染 BRIEF、置闸门 running——被拦即退 2 且不落盘、写 run.json 骨架）
     → spawnDetached 工作进程 → 把锁改记 worker 的 pid → 立即返回
 
 循环（至多 max_waits 次，每次的 Bash 工具超时必须设为 bash_timeout_ms）：

@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.48
+> - **当前版本**：v1.3.49
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -1126,7 +1126,8 @@ addresses:               # 本件应答的审查文档文件名，不是意见�
 > 进程还在（`heartbeat_stale`）、连 pid 都没有、非终态却拿不到 pid 时不写，报错正文写明未确认退出。凭据副本的抹除判定仍用改写之后那次，不变。
 > 两条都排在 status.json 落终态之前，进程中断后下一次 `--wait` 可补齐；结果分别进 status.json 的 `message` 与 `--wait` 的报错正文。
 > 三条事后收尾的第一步都在主题任务锁（与 task.json 同一把）里读、判、写，`--cancel` 与 `--wait` 同时收尾时谁先到记谁，每份 run.json 至多一次终态写入。
-> 已结束却仍为 `running` 的留痕表示没有走到收尾：本版以前的 worker 异常 / `worker_lost` / 取消、失联时工作进程未确认退出，或 prepare 阶段写完骨架后被拦（BACKLOG EV-145），不回填。
+> 已结束却仍为 `running` 的留痕表示没有走到收尾：本版以前的 worker 异常 / `worker_lost` / 取消、失联时工作进程未确认退出、v1.3.49 以前 prepare 阶段写完骨架后被闸门拦下，或准备阶段写完骨架之后登记失败（BACKLOG EV-145 余项），不回填。
+> **被闸门拦下的 `--start` 不写任何留痕**（v1.3.49，EV-109 / EV-145 ①）：`prepareRun` 在第一次落盘之前置闸门 `running`，槽位被上一轮待裁决占着即退 2，brief、补丁与便利副本、run.json、task.json 登记、运行目录一概不写；置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 自己回收闸门。此前骨架写在闸门判定之前，被 `latestRunMeta` 当成最新留痕，不带 `--run-id` 的 `gate` 随之指向一轮从未开跑的运行。
 > `guard.forged_role_file` 是保留字段：run.v1 / v2 必填、写侧恒 `false`、不表示检测过，`report` 不据它打旗标（EV-137）。
 
 `prompt_hint` 与 `task_goal` 是两回事，不可互相顶替（RV-19）：前者是「本次审查焦点」，
@@ -1383,6 +1384,7 @@ SKILL.md 要求执行者把正文整段放进**一个**单引号参数、旗标�
 | `--profile` 档位不存在 | 报错并列出 `config.yaml` 已定义的档位，退出码 `64`；**不**静默回退到 `default` | AGY-04 / GLM-05 |
 | 主题名非法 | 报错并给出修正建议，退出码 `64` | PRD 第 8 章 |
 | 归档根不可写 / 非 git 仓库 | 报错，退出码 `69` | — |
+| 该阶段上一轮审查意见尚未裁决（闸门 `review_done_awaiting_disposition` / `awaiting_approval`） | 退 `2`，给出 `gate --check` 与 `abandon` 两条出路；零工件——闸门在任何落盘之前判定（v1.3.49） | GLM-r2-01 ③ / EV-109 |
 
 退出码约定：`0` 成功；`1` 一般失败；`2` 闸门阻断（供 Hook 使用，Hook 子命令以 wrapper 保证只返回 `0`/`2`，内部异常一律 `1`）；`64` 参数错误；`65` 前置产物缺失；`69` 环境/预检失败；`70` 同主题已有运行持锁（12.6）；`73` 运行仍在进行（仅 `review --wait`）；`75` 超时或单侧失败且为严格模式。
 
@@ -1455,7 +1457,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 
 | 子命令 | 行为 | 返回 |
 | :--- | :--- | :--- |
-| `review --start` | 预检通过后：冻结送审包 → 写 `run.json`（`status: running`）→ 以 `setsid`/双 fork 派生工作进程（真并行拉起两侧、回收、解析、落盘全部在该进程内完成，完成即退出）→ **立即返回** | `0` + `run_id`、`max_waits`（= ceil(总上限 / timeout) + 2） |
+| `review --start` | 预检通过后：冻结送审包 → 置闸门 `running`（槽位被上一轮待裁决占着即退 2、不落盘，v1.3.49）→ 写 `run.json`（`status: running`）→ 以 `setsid`/双 fork 派生工作进程（真并行拉起两侧、回收、解析、落盘全部在该进程内完成，完成即退出）→ **立即返回** | `0` + `run_id`、`max_waits`（= ceil(总上限 / timeout) + 2） |
 | `review --wait <run_id> --timeout <s>` | 轮询 `~/.trivium/runs/<repo_id>/<run_id>/status.json`，最多等待 `<s>` 秒（默认见 `defaultConfig()` 的 `wait_timeout_s`，须小于 Bash 工具超时） | `0` 完成且工件已落盘；`73` 仍在运行（stdout 给出两侧状态、已用时/预算、心跳时间，JSON 另给 `progress_brief` 等结构化进度，见 7.5.1）；`75` 严格模式单侧失败；其余同 7.3 |
 | `review --status <run_id>` | 只读一次状态，不等待 | 同上 |
 | `review --cancel <run_id>` | 向工作进程发 SIGTERM → SIGKILL；工作进程确认退出后，把仍为 `running` 的归档 run.json 与 `task.json` 登记标 `cancelled`（v1.3.47，EV-128，见 6.7 注记）；再把 status.json 标 `cancelled`、回收锁与闸门 | `0` |
@@ -3005,7 +3007,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | AC-13 按任务指定模型 | 路由优先级四级 + ZCode 覆盖两档 + 生效值回读 | `run.json` 中两侧 `model_effective` 不同且与指定一致 |
 | AC-14 命令 D 人工闸门 | 同 AC-02 | 跑 `/dual-review-bug` 后尝试改代码，应被 deny |
 | AC-15 命令 D 工件齐全 | `bug/` 四件套，修订不覆盖原稿 | 目录校验 + 原稿哈希未变 |
-| AC-16 预检失败即中止 | 预检在送审前，失败零工件；**`review` 自身的任一失败出口（64/65/69/70）同样不得留半套工件** | 断网/改坏路径后启动，检查无任何文件生成；另需覆盖「第一侧送审包已渲染、第二侧才失败」这一形态——按失败出口逐个比对 `.reviews/` 前后文件集合应逐字节一致（`test/integration/no-artifacts.test.ts`） |
+| AC-16 预检失败即中止 | 预检在送审前，失败零工件；**`review` 自身的任一失败出口（2/64/65/69/70）同样不得留半套工件**（2 即上一轮未裁决被闸门拦下，v1.3.49 补入） | 断网/改坏路径后启动，检查无任何文件生成；另需覆盖「第一侧送审包已渲染、第二侧才失败」这一形态——按失败出口逐个比对 `.reviews/` 前后文件集合应逐字节一致（`test/integration/no-artifacts.test.ts`） |
 | AC-17 送审材料固定且自包含 | 送审包落 `_meta/` + `subject_sha256` + `tree_hash` 漂移检测 | 审查中修改被审对象，运行应判 `subject_drift` 作废；修改无关文件，应出 `drift` 警告并列出文件；结论只对应 `run.json.snapshot` 记录的哈希 |
 | AC-18 模型异构默认与覆盖可见 | 默认不与当轮 Driver 厂商名义族同族（claude 为 Driver 时即非 Claude 系；启发式，见 11.5）；覆盖写入元数据与文档头 | 默认跑一次 + 显式覆盖跑一次，检查元数据 |
 | AC-19 等待期进度可读可预期 | `--wait` 返回结构化进度字段 + 单行摘要；启动播报 | 跑一次真实双审，核对每次等待返回与开场播报 |
@@ -3434,6 +3436,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.49** | 2026-09-27 | **闸门拦截不留骨架（EV-109 ≡ EV-145 ①）。** 计划 `.reviews/闸门拦截不留骨架/plan/`（D1～D5 送审前已定、全取建议项；计划双审第 1 轮 run `20260927T015234Z` 10 条全接受，r2 定稿 `1ee28b0`，审批「修改后实施」）。**一、`prepareRun` 把置闸门 `running` 的比较-交换挪到第一次落盘之前**：被拦（上一轮未裁决直接重跑，退 2）时一个文件都不写；置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 自己回收闸门（`state.ts` 新增 `releaseRunningGateEntry`，`run-protocol.ts` 的 `releaseRunningGate` 委托它，语义 `running → idle` 不变）。**二、消除一处既有误判**：此前被拦那次已写下 run.json 骨架（轮次 N+1），`latestRunMeta` 不看 `status` 取它当最新留痕，不带 `--run-id` 的 `gate --check` / `--await-approval` / `--check-artifacts` 与 `hook-stop` 的提示都指向它，被拦文案给的出路「补齐裁决件并通过 `gate --check`」走不通；code 阶段的便利副本 `changes.diff` 也被覆盖。**三、如实保留**：写完骨架之后登记失败时骨架留 `running`、只回收闸门，到下一次成功重跑前不带 `--run-id` 的 `gate` 指向它（EV-145 余项）。落点：6.7 注记末句、7.3 拒绝启动表一行、7.5 `review --start` 一行、验收表 AC-16 行。附带核出两条既有缺陷新登 BACKLOG（run_id 只到秒、同秒两次运行互相覆盖；留痕读不出时「重跑一次」的出口循环）。 |
 | **v1.3.48** | 2026-09-27 | **未收尾运行的留痕与复盘可见性（EV-142 / EV-144）。** 计划 `.reviews/未收尾运行的留痕与复盘可见性/plan/`（r1 送审前用户授权按最优原则拍板 D1～D8、全取建议项，计划双审第 1 轮 run `20260926T235951Z` 8 条全接受，r2 定稿 `e22a174`，审批「修改后实施」）。**一、6.7 注记（EV-142）**：`failed` 另有两条事后收尾——worker 异常分支自己写、`--wait` 判 `worker_lost` 时用改写 status.json 之前的事实确认工作进程已退出才写（status.json 读不到时按 worker.pid 判，计划双审三侧同指的一格）；与取消回写共用按目标终态参数化的函数体，仍为 running 才写、只改三格加 `termination`、排在 status.json 落终态之前；三条事后收尾的第一步都在主题任务锁里判与写，每份 run.json 至多一次终态写入；心跳过期而进程还在时不写。**二、6.7.1**：新增可选字段 `termination`（结构化、不存异常原文，`reason` 与 `WORKER_LOST_REASONS` 由用例守住同步）。**三、7.5 约束①**：`worker_lost` 的三种原因改准。**四、§5.1、§13.2（EV-144）**：`report` 时间线不动，没产出审查文档的运行另列「未进时间线的运行」表并在「轮次总数」后注明「另有 K 次」；实测证实入选侧全部失败的轮次此前同样看不见。**五、故障表、验收表**：`worker_lost` 一行补 run.json 的收尾。新登 BACKLOG EV-145（prepare 阶段写完骨架后被闸门拦下等其它未收尾路径）、EV-146（`heartbeat_stale` 判失联后 `--cancel` 杀不掉挂住的 worker）。历史 4 份 `running` 不回填。读数：`npm run check` 2126 / 2124 / 0 / 2，源码变异 16/16 + 契约变异 1/1，零配额验收 18/18，selftest 14/14（报告 `doc/05_testing/REPORT_2026-09-27_unfinished_runs.md`）。代码双审 r1（run `20260927T005543Z`）4 条接受 3、驳回 1：只改注释里失效的行号引用与 LLD 行号，驳回「锁争用告警会冒出 --cancel 补救提示」（告警只取异常首行）。 |
 | **v1.3.47** | 2026-09-26 | **留痕字段与误报小修（EV-127 / EV-128 / EV-137）。** 计划 `.reviews/留痕字段与误报小修/plan/`（r1 送审前用户定 D1～D5 全按建议，计划双审第 1 轮 run `20260926T135731Z` 14 条全接受，r2 定稿 `661be7b`，审批「修改后实施」）。三处都是「留痕与实际不符」。**一、§6.5（EV-127）**：evidence 路径抽取改为整段以九个根目录起头（前界不能是字母、数字、`_`、`-`、`.`、`/`，容许前导 `./`）；此前 `\b` 起匹配把 `skills-src/…`、`dist/test/…`、`ZCode.app/…` 截成并不存在的路径，本仓 383 份历史审查件实测 56 条误报全部去掉、新报 0 条；不核的范围写明（BACKLOG EV-143）。**二、6.7 注记与 7.1（EV-128）**：`review --cancel` 在工作进程确认退出后把仍为 `running` 的 run.v2 run.json 收尾为 `cancelled`（只改三格、`artifacts[]` 原样）并同步 `task.json` 登记；排在 status.json 落终态之前、两步各自可重入、自身不抛；取消轮唯一一次终态写入，与 EV-133 不冲突，提交锚放行；历史停在 `running` 的 4 份不回填；worker 异常与 `worker_lost` 同形两处登 EV-142。**三、§9 模块表与 6.7 注记（EV-137）**：`guard` 不做伪造角色文件检测，`forged_role_file` 为恒 false 的保留字段，`report` 不再读取；实际由写入前 Hook、`gate --check-artifacts` 未登记审查件判据与提交锚承担（后者要不要进 `gate --check` / `approve` 并进 EV-73）。run.v1 / v2 schema 给 `status` 与 `forged_role_file` 加 description；CLI 帮助 `--cancel` 一行同步。**四、代码双审 r1**（run `20260926T151155Z`，5 条全接受，审批通过）：CODEX-01「可重入」限定为进程中断——单步写失败没有第二次机会，`cancelRun` 告警当场要求人工核对（6.7 注记、LLD、MANUAL 同步）；CODEX-02 consulted 一侧同口径去前导 `./`（历史审查件无此形态，读数不变）；CODEX-03 task 登记同步写明三种跳过情形；CODEX-04 ≡ AGY-01 E1 注明依赖纳秒级时间戳 |
 | **v1.3.46** | 2026-09-26 | **审批前工作树摘要（EV-132 候选 ② 折中版）。** 计划 `.reviews/审批前工作树摘要/plan/`（r1 送审前用户定 D1～D6，计划双审第 1 轮 run `20260926T100417Z` 16 条全接受，r2 定稿 `12d54e2`，审批「开始实施」）。用户定原候选 ②「审批前复核加工作树比对、不一致即拒」不做，改为**审批时只打印工作树改动摘要，不拦、不改判定**。**一、8.5**：新增「审批时的工作树改动摘要」段——`approve` 通过（复核之后、落审批之前）与两个停点出口打印自审查收尾以来的改动；基线 `snapshot.after_tree_hash`、当前树同法 `workTreeHash`，闸门期提交的改动同样列出；四种取不到的原因、不报「无改动」；20 秒预算；人读 20 条、JSON 200 条；Hook 不算；盲区与 `git gc` 实测口径。「补偿的覆盖面」末句由「候选 ② 仍待办」改为折中版。**二、6.7.1**：新增 `snapshot.after_tree_hash` 行（可选，只供摘要作基线，不参与判定）。**三、15.3 AC-21、R18**：闸门期仍不拦、不兜底，审批时打印摘要、只告知。**四、运行时文案**（D6 (b)）：停点尾句共用前段、`L2_AFTER_THE_FACT`、`l2-notice`（重渲染 12 份）、`driver.snippet`（新一档指纹，本仓 AGENTS.md / GEMINI.md 原位升级）、注册表注释，闸门期一句改为「不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要」，共用措辞不就拦不拦表态；`dual-approve` 入口资产（4 份）写明摘要只告知。判定代码（`verifyRoundForApproval`、`judgeDrift`、`diffTrees`）一律未改；`diffTrees` 失败返回空的同族问题另登 BACKLOG EV-139，审批前单独看摘要的只读入口登 EV-140。**五、代码双审 r1**（run `20260926T111908Z`，7 条：接受 6、暂缓 1）：CODEX-01 ≡ GLM-01 照抄命令的注入面（形状闸 + 两个 tree 值加引号）、CODEX-02 预算注入自我暴露与「超过 0 秒」、CODEX-03 按进程组收尾与整体截止、GLM-02 「会列出」补取不到的情形、AGY-01 原因末尾补句号；CODEX-04（预算可配置与关闭开关）暂缓，登 EV-141 |

@@ -1473,7 +1473,8 @@ export interface RunMeta {
    * `cancelled` 由 `review --cancel` 在工作进程确认退出后写（EV-128）；`failed` 还可能由 worker 异常分支自己写、
    * 或由 `--wait` 判 `worker_lost` 且确认工作进程已退出时写（EV-142，同时写 `termination`）。
    * 已结束却仍为 `running` 的留痕表示没有走到收尾（本版以前的异常 / 失联 / 取消、失联时进程未确认退出，
-   * 或 prepare 阶段被拦），不回填。
+   * 本版以前 prepare 阶段写完骨架后被闸门拦下，或准备阶段写完骨架之后登记失败），不回填。
+   * 被闸门拦下的 `--start` 自 EV-109 起不写骨架。
    */
   status: 'running' | 'success' | 'failed' | 'cancelled';
   /**

@@ -2,7 +2,7 @@
  * `review`：一次双审运行的编排（设计 §8.2 S2 / 第 9~11 章）。
  *
  * 顺序有讲究，不能调：
- *   冻结 → 生成两侧送审包 → 写 run.json 骨架 → **并行**拉起两侧 →
+ *   冻结 → 生成两侧送审包 → 置闸门 running → 写 run.json 骨架 → **并行**拉起两侧 →
  *   复算快照 → 解析 → guard 判定 → 两侧齐备后**同时**落盘 → 收尾元数据
  *
  * 「两侧齐备后同时落盘」是背靠背隔离的第 ② 道（§10.1）：审查进行中，对方本次结论
@@ -57,7 +57,7 @@ import { acquireLock } from './lock.js';
 import { measureAllPairs, renderDivergence } from './divergence.js';
 import { agentConfigOf, resolveAssetRoot, resolveReviewSchemaPath, runRoot, vendorProfileOf } from './config.js';
 import { resolveCriticSelection } from './critics.js';
-import { setGateChecked } from './state.js';
+import { releaseRunningGateEntry, setGateChecked } from './state.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
 import { workTreeHash } from './util/git.js';
 import {
@@ -524,9 +524,14 @@ export async function resolveSubjectArtifactRelPath(archiveRoot: string, subject
 }
 
 /**
- * 准备阶段：可用性检查 → 定位被审对象 → 冻结 → 渲染两侧送审包 → 写 run.json 骨架。
+ * 准备阶段：可用性检查 → 定位被审对象 → 冻结 → 渲染两侧送审包 → 置闸门 running → 写 run.json 骨架。
  *
  * 这一段**不拉起任何 Agent**，因此可以在 `--start` 的同步窗口内完成并秒级返回。
+ *
+ * 被闸门拦下（上一轮未裁决直接重跑，退 2）时**不写任何审查工件与留痕**——brief、补丁与便利副本、run.json、
+ * task.json 登记、运行目录一概不写；闸门状态文件只有那次判负的比较-交换，它也会刷新 `updated_at`，闸门项不变
+ * （代码双审 r1 GLM-01）。置闸门（含比较-交换本身）之后的任何失败由本函数回收闸门，
+ * 所以对调用方而言「抛错 ⇒ 闸门不归本轮」（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §3.1 / §3.2，r1 CODEX-01）。
  */
 export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const { ctx, stage } = opts;
@@ -863,158 +868,186 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const primarySnap = snapshots[sides[0]!]!;
 
   /*
-   * ── 到这里为止**一个文件都没写**。从这一行开始才落盘。──
-   * 顺序：建阶段目录 → 写两份 brief → 建运行目录 → 写 run.json
-   */
-  await ensureDir(ref.stageDirAbs);
-  /*
-   * `_meta/` 里的被审补丁与两份 brief 也要进 `run.json.artifacts`（审查意见 GLM-r2-05）。
+   * ── 闸门在第一次落盘之前置 running（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §3.1）──
    *
-   * 原先保护集只有两份渲染后的审查文档，于是「审查文档删不掉也改不掉」，
-   * 但「**审的是什么**」既不受核对保护、又在重跑时被同名覆盖——
-   * hook 文案承诺的范围与实现不符。
-   */
-  const metaArtifacts: { path: string; sha256: string }[] = [];
-  // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前
-  if (pendingDiff) {
-    /*
-     * 补丁按**新增行**扫密钥（`scanDiffSecrets` 的文件头写了理由）：删除行与上下文行的内容
-     * 已经在 HEAD 里，扫它们只会让路过密钥夹具的改动送不进审查、让删除凭据的提交过不了检查。
-     */
-    const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text, { scan: 'added-lines' });
-    metaPaths.push(w.absPath);
-    metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
-    /*
-     * 另留一份 `changes.diff` 便于人读（`.reviews/README.md` 记载的就是这个名字）。
-     * 它**不进保护集**：它只是指向最新一轮的便利副本，会被下一轮覆盖，
-     * 受保护的是上面那份带 run_id 的。补丁头部自带 run_id，不会认错是哪一轮。
-     */
-    const alias = await writeMeta(ref.layout, stage, 'changes.diff', pendingDiff.text, { scan: 'added-lines' });
-    metaPaths.push(alias.absPath);
-  }
-  for (const b of pendingBriefs) {
-    /*
-     * BRIEF 把补丁节选逐字嵌在散文中间，所以同样按 hunk 分档扫（散文整份扫、hunk 内只看新增行）。
-     * 少了这一条，放宽只是把拒绝点从补丁搬到 BRIEF——报错还指向一个开发者没亲手写过的文件，
-     * 而且此时补丁已经落盘，留下半套 `_meta` 工件（代码双审 r2 CODEX-07）。
-     */
-    const w = await writeMeta(ref.layout, stage, b.fileName, b.text, { scan: 'added-lines' });
-    metaPaths.push(w.absPath);
-    metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
-  }
-  await ensureDir(runDirBase);
-
-  // ── run.json 骨架（status: running），崩溃后也能取证 ──
-  const meta = newRunMeta({
-    runId, topic: ref.topic, stage, rerunIndex,
-    command: opts.command,
-    promptHint: opts.promptHint,
-    taskGoal,
-    entry: opts.entry ?? null,
-    /*
-     * 入选集合就是 `sides`——`--only` 收窄后的那一份，不是当前启用的全集。
-     * 两者分开记，`gate` 才能把「入选但失败」与「压根没入选」判成两回事（§6.7.1）。
-     */
-    criticsSelected: sides,
-    /*
-     * 发起方与它的启用状态一起落盘（M9 第 5 步）。
-     *
-     * `driver_enabled: false` 是 M9 刻意接受的形态：那时只校验「已登记」，
-     * 不校验 `driverEnabled`（校验了 M9 第 6 步就跑不成），放行的代价由留痕兜住。
-     * M10a 第 3 步起入口的 `resolveDriver` 对未启用者退 64，新运行这里恒为 true；
-     * 历史归档里的 false 仍是合法留痕。
-     */
-    driver,
-    driverEnabled,
-    /*
-     * 有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而 Hook 配置当前不在场即记 L2。
-     * 在这里取，而不是信预检那一次：预检与 `--start` 之间配置可能被改，留痕要记的是**本次运行时**的事实。
-     */
-    ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),
-    treeHash: primarySnap.treeHash,
-    gitHead: primarySnap.gitHead,
-    dirty: primarySnap.dirty,
-    subjectSha256: primarySnap.subjectSha256,
-    denyPaths: primarySnap.denyPaths,
-    build: embeddedBuildStamp(),
-    driftPolicy: cfg.review.on_drift,
-  });
-  meta.artifacts = [...metaArtifacts];
-
-  // FR-23：跳过也要留痕，且必须写明命中的规则供人复核（§6.4）
-  if (skipVerdict?.skipped) {
-    meta.skipped = true;
-    meta.skip_reason = skipVerdict.reasons.join('；');
-  }
-  await writeRunMeta(ref.layout, stage, meta);
-  const taskLock: TaskLock = { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 };
-  await registerRun(ref.layout, meta, taskLock);
-
-  /*
-   * 任务目标落进 task.json，供本主题后续阶段复用——但**只落显式传入的那一个**。
-   *
-   * 从 plan 原稿推导出来的值不写回：它是个尽力而为的猜测（一个标题而已），
-   * 一旦持久化就会永久占位，把日后真正传进来的 `--goal` 挡在门外——
-   * 上面那条「已有则不覆盖」的规则会站在错误的一边。推导每次现算即可，成本几乎为零。
-   *
-   * 同理只在首次落：`/dual-run <任务目标>` 说的那句话是主题存在的理由，
-   * 后续各阶段带着各自的 --focus 跑，不该把它一次次冲刷掉。
-   */
-  if (clampGoal(opts.taskGoal)) {
-    const { updateTask } = await import('./meta.js');
-    await updateTask(ref.layout, (t) => {
-      if (!t.goal) t.goal = taskGoal;
-    }, taskLock);
-  }
-
-  /*
-   * ── 闸门状态必须写进 state.json，不能只写进 run.json ──
-   *
-   * 四个 Hook 都是读 `state.json` 判定的（listOpenGates）。原先 review 只在
-   * run.json 里记 `gate.state`，state.json 压根没被创建，于是
+   * 闸门状态必须写进 state.json，不能只写进 run.json：四个 Hook 都是读 `state.json` 判定的（listOpenGates）。
+   * 原先 review 只在 run.json 里记 `gate.state`，state.json 压根没被创建，于是
    * `hook-pre-write`（审查期禁写）、`hook-pre-commit`（裁决未齐备禁提交）、
    * `hook-stop`（裁决未齐备禁收工）**三个 Hook 全部无事可判、一律退 0**。
    * 那是整条流水线最核心的护栏（AC-02 / AC-12 / §8.5），实测确认过是静默失效的。
+   *
+   * 置 running 前先确认槽位不是**别的 run** 的待裁决状态（审查意见 GLM-r2-01 ③）。
+   * `state.json` 每个 <主题>/<阶段> 只有一个槽位。旧一轮审完未裁决就直接重跑，
+   * 无条件覆盖会把待裁决状态无声抹掉，而 `gate --check` 只校验最新轮——
+   * 旧那一轮从此既逃过裁决、也不再拦提交。
+   *
+   * **位置**：在 skipVerdict 之后（跳过轮不置闸门），在第一次落盘之前。此前它排在落盘段之后，
+   * 被拦时已写下 brief、补丁与便利副本 `changes.diff`、run.json 骨架、task.json 登记与运行目录（EV-109）；
+   * 那份骨架又被 `latestRunMeta` 当成最新留痕，不带 --run-id 的 gate 随之指向一轮从未开跑的运行，
+   * 被拦文案给的出路「补齐裁决件并通过 gate --check」走不通。比较-交换是唯一判定点，
+   * 不另加只读预查：两处判定同一个状态集合，将来改一处漏一处（计划 r2 D1）。
+   *
+   * **比较-交换本身也在 try 里**（代码双审 r1 CODEX-01）：它经 `withGlobalLock` 写盘，写盘之后放锁若抛错，
+   * 闸门已是本轮的 running 而异常绕过回收；并入 try 后由下面的 catch 一并回收。被拦时抛的 GATE_BLOCK
+   * 同样进 catch，回收按 `expect: { state: ['running'], runId: 本轮 }` 比较——槽位是别的 run 的待裁决状态，
+   * 什么都不改，报错原样抛出。
    */
-  if (!skipVerdict?.skipped) {
+  const holdsGate = !skipVerdict?.skipped;
+  try {
+    if (holdsGate) {
+      const g = await setGateChecked({
+        triviumDir: ctx.triviumDir,
+        topic: ref.topic, stage,
+        state: 'running',
+        runId, rerunIndex,
+        sessionId: opts.sessionId ?? null,
+        heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
+        expect: { state: ['idle', 'running', 'approved', 'rejected', 'abandoned'] },
+      });
+      if (!g.applied) {
+        throw new TriviumError(
+          EXIT.GATE_BLOCK,
+          `上一轮（run ${g.entry?.run_id ?? '未知'}，第 ${g.entry?.rerun_index ?? '?'} 轮）的审查意见尚未裁决，不能直接重跑。\n` +
+            `  ${g.skipped ?? ''}\n` +
+            `  补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${ref.topic} --check\` 后再来，\n` +
+            `  或用 \`trivium abandon --topic ${ref.topic} --stage ${stage}\` 显式作废那一轮（工件保留）。`,
+        );
+      }
+    }
+
     /*
-     * 置 running 前先确认槽位不是**别的 run** 的待裁决状态（审查意见 GLM-r2-01 ③）。
+     * ── 到这里为止**不写任何审查工件与留痕**（brief、补丁与便利副本、run.json、task.json 登记、运行目录）；
+     * 闸门状态文件只多了上面那次比较-交换（判负时也会刷新 `updated_at`，闸门项不变——代码双审 r1 GLM-01）。
+     * 闸门已归本轮（跳过轮除外），从这里开始才落盘。──
+     * 顺序：重置收工阻断计数 → 建阶段目录 → 写补丁与 brief → 建运行目录 → 写 run.json → 登记
      *
-     * `state.json` 每个 <主题>/<阶段> 只有一个槽位。旧一轮审完未裁决就直接重跑，
-     * 无条件覆盖会把待裁决状态无声抹掉，而 `gate --check` 只校验最新轮——
-     * 旧那一轮从此既逃过裁决、也不再拦提交。
+     * 置闸门之后的任何失败都由这里回收闸门，调用方的契约「prepareRun 抛错 ⇒ 闸门不归本轮」因此不变：
+     * `startRun` 的 prepare catch 只放锁、同步路径的 prepareRun 在 executeRun 的 try 之外（计划 r2 §3.2）。
+     * 写完骨架之后才失败（登记、任务目标落盘）时骨架如实留 running，只回收闸门（计划 r2 D3，BACKLOG EV-145 余项）。
      */
-    const g = await setGateChecked({
-      triviumDir: ctx.triviumDir,
-      topic: ref.topic, stage,
-      state: 'running',
-      runId, rerunIndex,
-      sessionId: opts.sessionId ?? null,
-      heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
-      expect: { state: ['idle', 'running', 'approved', 'rejected', 'abandoned'] },
-    });
-    if (g.applied) {
-      // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）
+    // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）。
+    // 它会抛（目录里有删不掉的东西），所以放在 try 里，抛了也经下面的回收（计划 r2 §3.1，r1 AGY-02 ≡ GLM-02）
+    if (holdsGate) {
       const { resetStopBlockCount } = await import('./lock.js');
       await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);
     }
-    if (!g.applied) {
-      throw new TriviumError(
-        EXIT.GATE_BLOCK,
-        `上一轮（run ${g.entry?.run_id ?? '未知'}，第 ${g.entry?.rerun_index ?? '?'} 轮）的审查意见尚未裁决，不能直接重跑。\n` +
-          `  ${g.skipped ?? ''}\n` +
-          `  补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${ref.topic} --check\` 后再来，\n` +
-          `  或用 \`trivium abandon --topic ${ref.topic} --stage ${stage}\` 显式作废那一轮（工件保留）。`,
-      );
+    await ensureDir(ref.stageDirAbs);
+    /*
+     * `_meta/` 里的被审补丁与两份 brief 也要进 `run.json.artifacts`（审查意见 GLM-r2-05）。
+     *
+     * 原先保护集只有两份渲染后的审查文档，于是「审查文档删不掉也改不掉」，
+     * 但「**审的是什么**」既不受核对保护、又在重跑时被同名覆盖——
+     * hook 文案承诺的范围与实现不符。
+     */
+    const metaArtifacts: { path: string; sha256: string }[] = [];
+    // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前
+    if (pendingDiff) {
+      /*
+       * 补丁按**新增行**扫密钥（`scanDiffSecrets` 的文件头写了理由）：删除行与上下文行的内容
+       * 已经在 HEAD 里，扫它们只会让路过密钥夹具的改动送不进审查、让删除凭据的提交过不了检查。
+       */
+      const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text, { scan: 'added-lines' });
+      metaPaths.push(w.absPath);
+      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
+      /*
+       * 另留一份 `changes.diff` 便于人读（`.reviews/README.md` 记载的就是这个名字）。
+       * 它**不进保护集**：它只是指向最新一轮的便利副本，会被下一轮覆盖，
+       * 受保护的是上面那份带 run_id 的。补丁头部自带 run_id，不会认错是哪一轮。
+       */
+      const alias = await writeMeta(ref.layout, stage, 'changes.diff', pendingDiff.text, { scan: 'added-lines' });
+      metaPaths.push(alias.absPath);
     }
-  }
+    for (const b of pendingBriefs) {
+      /*
+       * BRIEF 把补丁节选逐字嵌在散文中间，所以同样按 hunk 分档扫（散文整份扫、hunk 内只看新增行）。
+       * 少了这一条，放宽只是把拒绝点从补丁搬到 BRIEF——报错还指向一个开发者没亲手写过的文件，
+       * 而且此时补丁已经落盘，留下半套 `_meta` 工件（代码双审 r2 CODEX-07）。
+       */
+      const w = await writeMeta(ref.layout, stage, b.fileName, b.text, { scan: 'added-lines' });
+      metaPaths.push(w.absPath);
+      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
+    }
+    await ensureDir(runDirBase);
 
-  return {
-    opts, cfg, ctx, stage, ref, adapterCtx, adapters, sides,
-    runId, rerunIndex, subjectPath, runDirBase,
-    requests, snapshots, primarySnap, metaPaths, meta,
-    pendingDiff, skipVerdict,
-  };
+    // ── run.json 骨架（status: running），崩溃后也能取证 ──
+    const meta = newRunMeta({
+      runId, topic: ref.topic, stage, rerunIndex,
+      command: opts.command,
+      promptHint: opts.promptHint,
+      taskGoal,
+      entry: opts.entry ?? null,
+      /*
+       * 入选集合就是 `sides`——`--only` 收窄后的那一份，不是当前启用的全集。
+       * 两者分开记，`gate` 才能把「入选但失败」与「压根没入选」判成两回事（§6.7.1）。
+       */
+      criticsSelected: sides,
+      /*
+       * 发起方与它的启用状态一起落盘（M9 第 5 步）。
+       *
+       * `driver_enabled: false` 是 M9 刻意接受的形态：那时只校验「已登记」，
+       * 不校验 `driverEnabled`（校验了 M9 第 6 步就跑不成），放行的代价由留痕兜住。
+       * M10a 第 3 步起入口的 `resolveDriver` 对未启用者退 64，新运行这里恒为 true；
+       * 历史归档里的 false 仍是合法留痕。
+       */
+      driver,
+      driverEnabled,
+      /*
+       * 有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而 Hook 配置当前不在场即记 L2。
+       * 在这里取，而不是信预检那一次：预检与 `--start` 之间配置可能被改，留痕要记的是**本次运行时**的事实。
+       */
+      ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),
+      treeHash: primarySnap.treeHash,
+      gitHead: primarySnap.gitHead,
+      dirty: primarySnap.dirty,
+      subjectSha256: primarySnap.subjectSha256,
+      denyPaths: primarySnap.denyPaths,
+      build: embeddedBuildStamp(),
+      driftPolicy: cfg.review.on_drift,
+    });
+    meta.artifacts = [...metaArtifacts];
+
+    // FR-23：跳过也要留痕，且必须写明命中的规则供人复核（§6.4）
+    if (skipVerdict?.skipped) {
+      meta.skipped = true;
+      meta.skip_reason = skipVerdict.reasons.join('；');
+    }
+    await writeRunMeta(ref.layout, stage, meta);
+    const taskLock: TaskLock = { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 };
+    await registerRun(ref.layout, meta, taskLock);
+
+    /*
+     * 任务目标落进 task.json，供本主题后续阶段复用——但**只落显式传入的那一个**。
+     *
+     * 从 plan 原稿推导出来的值不写回：它是个尽力而为的猜测（一个标题而已），
+     * 一旦持久化就会永久占位，把日后真正传进来的 `--goal` 挡在门外——
+     * 上面那条「已有则不覆盖」的规则会站在错误的一边。推导每次现算即可，成本几乎为零。
+     *
+     * 同理只在首次落：`/dual-run <任务目标>` 说的那句话是主题存在的理由，
+     * 后续各阶段带着各自的 --focus 跑，不该把它一次次冲刷掉。
+     */
+    if (clampGoal(opts.taskGoal)) {
+      const { updateTask } = await import('./meta.js');
+      await updateTask(ref.layout, (t) => {
+        if (!t.goal) t.goal = taskGoal;
+      }, taskLock);
+    }
+
+    return {
+      opts, cfg, ctx, stage, ref, adapterCtx, adapters, sides,
+      runId, rerunIndex, subjectPath, runDirBase,
+      requests, snapshots, primarySnap, metaPaths, meta,
+      pendingDiff, skipVerdict,
+    };
+  } catch (e) {
+    // 比较-交换起的任何失败：闸门由本函数回收（只回收仍记着本 runId 且仍是 running 的——被拦时槽位是别的 run，不动）
+    if (holdsGate) {
+      await releaseRunningGateEntry({
+        triviumDir: ctx.triviumDir, topic: ref.topic, stage, runId,
+        heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
+      });
+    }
+    throw e;
+  }
 }
 
 /**
@@ -1721,6 +1754,10 @@ async function runReviewLocked(opts: ReviewOptions): Promise<ReviewOutcome> {
      * 上一批只给 worker 那条路加了回收，漏了这里——而 `prepareRun` 在这条路上
      * 同样置了 `running`。异常一抛，闸门就挂在 running 上直到 24h TTL，
      * 业务写入全程被拦。
+     *
+     * 与 `state.ts` 的 `releaseRunningGateEntry` 同形（`running → idle`、比 runId、槽位不存在不造条目、吞错），
+     * **改一处须改两处**。这里没改调它：`hooks.ts` 头注释按「`review.ts` 的四处 `setGateChecked`」计数引用
+     * 这一处（闸门拦截不留骨架计划 r2 §3.2；代码双审 r1 CODEX-05 取只加互指注释）。
      */
     await setGateChecked({
       triviumDir: rc.ctx.triviumDir,

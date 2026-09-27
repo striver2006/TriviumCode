@@ -6,6 +6,7 @@ import { promises as fs } from 'node:fs';
 import {
   setGate, StateCorruptError,
   setGateChecked, getGate, listOpenGates, readState, shouldLockWrites, gateKey, type GateEntry,
+  releaseRunningGateEntry,
 } from '../../src/trivium/state.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 
@@ -278,4 +279,40 @@ test('比较与写入在同一把锁内：并发的条件迁移只会成功一�
     }),
   ]);
   assert.equal(results.filter((r) => r.applied).length, 1, '只该有一个成功翻转');
+});
+
+// ── U1：releaseRunningGateEntry（闸门拦截不留骨架计划 r2 §3.2 / §4.1）──
+
+test('U1 releaseRunningGateEntry：只回收仍记着本 runId 且仍是 running 的闸门，槽位不存在时不造条目，自身不抛', async () => {
+  const dir = await tmp();
+  const rel = (topic: string, runId: string) =>
+    releaseRunningGateEntry({ triviumDir: dir, topic, stage: 'plan', runId, heartbeatStaleMs: STALE });
+
+  // ① running + run 相符 ⇒ idle，run_id 保留
+  await setGate({ triviumDir: dir, topic: 'a', stage: 'plan', state: 'running', runId: 'R1', heartbeatStaleMs: STALE });
+  await rel('a', 'R1');
+  assert.equal((await getGate(dir, 'a', 'plan'))?.state, 'idle');
+  assert.equal((await getGate(dir, 'a', 'plan'))?.run_id, 'R1');
+
+  // ② running 但记着别的 run ⇒ 不动（新一轮的护栏不该被旧 run 清掉）
+  await setGate({ triviumDir: dir, topic: 'b', stage: 'plan', state: 'running', runId: 'R-NEW', heartbeatStaleMs: STALE });
+  await rel('b', 'R-OLD');
+  assert.equal((await getGate(dir, 'b', 'plan'))?.state, 'running');
+  assert.equal((await getGate(dir, 'b', 'plan'))?.run_id, 'R-NEW');
+
+  // ③ run 相符但已不是 running（例如已被收尾推进）⇒ 不动
+  await setGate({
+    triviumDir: dir, topic: 'c', stage: 'plan', state: 'review_done_awaiting_disposition', runId: 'R1', heartbeatStaleMs: STALE,
+  });
+  await rel('c', 'R1');
+  assert.equal((await getGate(dir, 'c', 'plan'))?.state, 'review_done_awaiting_disposition');
+
+  // ④ 槽位不存在 ⇒ 不凭空造一条 idle
+  await rel('d', 'R1');
+  assert.equal(await getGate(dir, 'd', 'plan'), null);
+
+  // ⑤ 闸门状态文件读不出 ⇒ 不抛（回收失败不盖过调用方手里真正的错误）
+  const bad = await tmp();
+  await fs.writeFile(path.join(bad, 'state.json'), '{坏了', 'utf8');
+  await releaseRunningGateEntry({ triviumDir: bad, topic: 'a', stage: 'plan', runId: 'R1', heartbeatStaleMs: STALE });
 });

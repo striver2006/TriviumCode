@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.6
+> - **当前版本**：v1.1.7
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.7（2026-09-27）随设计 v1.3.49（闸门拦截不留骨架，EV-109 / EV-145 ①）同步：`startRun` 时序图里 `setGateChecked(running)` 挪进 `prepareRun`、排在落盘送审包之前；`startRun` 第 2 条补「闸门由 `prepareRun` 自己回收」；零工件不变式补「置闸门是落盘之前的最后一步」一段；4.2 引述块里「prepare 阶段写完骨架后被拦」移出仍会停在 running 的列举；代码双审 r1（run `20260927T035514Z`）CODEX-04：同一列举补上 `startRun` 纯文档跳过分支里 `executeRun` 抛错这一格
 > - **变更说明**：v1.1.6（2026-09-27）随设计 v1.3.48（未收尾运行的留痕与复盘可见性，EV-142 / EV-144）同步：4.2 `worker_lost` 一节补归档侧收尾（改写 status.json 之前判确认退出、status.json 读不到时按 worker.pid 判、`termination`、`WORKER_LOST_REASONS` 单一来源）；「同形两处仍未写」改为已修，函数体改名 `finalizeUnfinishedRunMeta`、第一步进主题任务锁；剩余未收尾路径指向 EV-145。代码双审 r1（run `20260927T005543Z`）CODEX-02：同段「三判据」的行号改为现值（`status.ts:205-249`，常量 `:187`）
 > - **变更说明**：v1.1.5（2026-09-26）随设计 v1.3.47（留痕字段与误报小修）同步：「`cancelRun` 不回写 `run.json`」两处由已知缺口改为已修（EV-128，`meta.ts` `finalizeCancelledRunMeta`），保留 worker 异常与 `worker_lost` 同形两处仍未写的说明（EV-142）；旧的 `run-protocol.ts:680` 链接改准
 > - **变更说明**：v1.1.4（2026-09-26）随设计 v1.3.46（审批前工作树摘要，EV-132 候选 ② 折中版）同步：模块表登记 `worktree-summary.ts`；`util/git.ts` 补两个失败即抛的严格助手
@@ -200,8 +201,7 @@ sequenceDiagram
 
     D->>S: review --start --entry B --stage plan
     S->>S: acquireLock(topic)  ← 先占锁再 prepare
-    S->>S: prepareRun：校验 → 冻结 → 渲染 BRIEF → 落盘送审包
-    S->>S: setGateChecked(running)
+    S->>S: prepareRun：校验 → 冻结 → 渲染 BRIEF → setGateChecked(running) → 落盘送审包
     S->>W: spawnDetached(--worker runId)
     S->>S: 锁所有权移交给 worker 的 pid
     S-->>D: 立即返回 runId / maxWaits / bashTimeoutMs
@@ -227,7 +227,7 @@ sequenceDiagram
 顺序有讲究，逐条都有代价：
 
 1. **先占主题锁再 prepare**（`run-protocol.ts:228-240`）——否则两个并发 `--start` 会各自冻结一份快照后才发现冲突。
-2. `prepareRun()`，失败则释放锁后抛。
+2. `prepareRun()`，失败则释放锁后抛。闸门不用这里管：被拦时没置上，置上之后的失败 `prepareRun` 自己回收（v1.1.7）。
 3. **纯文档跳过必须在派生前收口**（`run-protocol.ts:258-276`）：直接同步 `executeRun`，返回 `finishedInline: true`。
 4. 写 `request.json`（交接文件）与 `status.json`。
 5. **派生工作进程**：`spawnDetached` 用 `detached: true` + `stdio: ['ignore', fd, fd]` + `unref()`，**绝不继承父进程管道**——继承会让 worker 在父进程退出后死于 SIGPIPE。detached 即 setsid，worker 自成进程组，`--cancel` 才能按进程组杀掉 agy/zcode。
@@ -237,6 +237,8 @@ sequenceDiagram
 #### `prepareRun()` 的「零工件」不变式（[review.ts:275](../../src/trivium/review.ts#L275)）
 
 第 11 步之前**一个文件都没写**（`review.ts:488-491`）。校验、定位被审对象、冻结、渲染 BRIEF 全在内存里完成，确认全部成功后才统一落盘。这是审查意见 GLM-04 的修复——原先 `locateSubject` 抛 65 或第二侧 `routeModel` 抛 69 时，会留下「目录 + 单侧 brief」的半套工件。
+
+**置闸门是落盘之前的最后一步**（v1.1.7，EV-109 / EV-145 ①）：`setGateChecked(running)` 排在计算段之后、第一次落盘之前，被拦（上一轮未裁决，退 2）时零工件；此前它排在落盘段之后，被拦那次已写下 brief、便利副本 `changes.diff`、run.json 骨架、task.json 登记与运行目录。置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 经 `state.ts` 的 `releaseRunningGateEntry` 回收闸门；写完骨架之后才失败（登记、任务目标落盘）时骨架如实留 `running`。
 
 **`run_id` 生成**（[meta.ts:31](../../src/trivium/meta.ts#L31)）：UTC 紧凑时间戳 `20260910T142310Z`，可排序、可直接做文件名。
 
@@ -462,7 +464,7 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
 > **同形两处已修（v1.1.6，EV-142）**：函数体改为按目标终态参数化的 `finalizeUnfinishedRunMeta`，对外两个薄导出——`finalizeCancelledRunMeta`（签名与行为不变）、`finalizeFailedRunMeta`（写 `failed` 并记 `termination`）。
 > worker 的异常分支（`workerMain` 的 `catch`，排在 `patchStatus` 之前、`workerGone: true`——写者就是 worker 自己）与 `--wait` 判 `worker_lost`（见 4.2 轮询协议一节）各调一次；
 > 第一步的读、判、写在主题任务锁（`taskLockName`，与 task.json 同一把）里，三条事后收尾同时到达时谁先到记谁；第二步只同步到本次目标终态，不照抄别的终态。
-> 仍会停在 `running` 的：失联时进程还在（`heartbeat_stale`），以及 prepare 阶段写完骨架后被拦、同步路径异常、worker 猝死而没人 `--wait` / `--cancel`（BACKLOG EV-145）。
+> 仍会停在 `running` 的：失联时进程还在（`heartbeat_stale`），以及准备阶段写完骨架之后登记失败、`startRun` 纯文档跳过分支里 `executeRun` 抛错（该分支只有 `finally`）、同步路径异常、worker 猝死而没人 `--wait` / `--cancel`（BACKLOG EV-145 余项；被闸门拦下的那一格 v1.1.7 起不再写骨架）。
 
 ### 4.3 锁的生命周期
 

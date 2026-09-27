@@ -1,0 +1,57 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=3）
+  M4 ✓ 咬住（fail=2）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+{
+  "总数": 7,
+  "咬住": 7,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "置闸门挪回 registerRun 之后（原位置）⇒ B1（被拦时已写下 brief、骨架、登记、运行目录）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "置闸门挪到 brief 之后、骨架之前 ⇒ B3（便利副本被覆盖、新补丁与 brief 落盘）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "落盘段的 catch 不回收闸门 ⇒ B5（闸门停在 running）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M4",
+      "desc": "落盘段的 catch 吞掉异常不再抛 ⇒ B5（startRun 拿到 undefined 在 try 外崩溃，主题锁不放）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M5",
+      "desc": "releaseRunningGateEntry 去掉 runId 比较 ⇒ U1 ②（旧 run 清掉新一轮的护栏）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "releaseRunningGateEntry 的 allowMissing 回到缺省 true ⇒ U1 ④（槽位不存在时凭空造 idle）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "重置收工阻断计数移回 try 之外 ⇒ B7（它抛错时闸门停在 running）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0

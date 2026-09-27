@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { bundleMissing, bundleSkipReason, cli, makeFixture, today } from '../helpers/fixture.js';
+import { bundleMissing, bundleSkipReason, cli, listFiles, makeFixture, today } from '../helpers/fixture.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID } from '../../src/trivium/gate.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
@@ -633,7 +633,7 @@ test('gate.block_commit 为 false 时完全不拦（用户显式关掉的开关�
 
 test('旧轮未裁决就重跑 → 拒绝启动，并指出两条正当出路', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
-  await runPlan(fx.root); // r1 审完，闸门停在 review_done_awaiting_disposition
+  const runId = await runPlan(fx.root); // r1 审完，闸门停在 review_done_awaiting_disposition
 
   const again = await cli(
     fx.root,
@@ -655,6 +655,29 @@ test('旧轮未裁决就重跑 → 拒绝启动，并指出两条正当出路', 
     gates: Record<string, { state: string }>;
   };
   assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'review_done_awaiting_disposition');
+
+  /*
+   * B2（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §4.2）：被拦文案给的出路必须走得通。
+   *
+   * 此前被拦那次在闸门判定之前已写下 run.json 骨架（rerun_index 2），`latestRunMeta` 取它当最新留痕，
+   * 于是补上第 1 轮裁决件之后，不带 --run-id 的 `gate --check` 仍去查第 2 轮、退 2「缺裁决件」。
+   * 现在被拦时一个文件都不写，最新留痕仍是第 1 轮。
+   */
+  await writeDisposition(fx.stageDir, runId);
+  const check = await cli(
+    fx.root,
+    ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json', '--session-id', SESSION],
+  );
+  assert.equal(check.code, EXIT.OK, `补齐第 1 轮裁决件后，不带 --run-id 的 gate --check 应通过：\n${check.stdout}${check.stderr}`);
+  const cj = JSON.parse(extractJsonCandidate(check.stdout)!.json) as { run_id: string; rerun_index: number };
+  assert.equal(cj.run_id, runId, '校验的必须是第 1 轮，而不是被拦的那一次');
+  assert.equal(cj.rerun_index, 1);
+  // runPlan 不带 --entry：通过后按 entry 缺席回 idle（B/C/D 才立 awaiting_approval）
+  const st2 = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
+    gates: Record<string, { state: string; run_id: string }>;
+  };
+  assert.equal(st2.gates[`${TOPIC}/plan`]?.state, 'idle');
+  assert.equal(st2.gates[`${TOPIC}/plan`]?.run_id, runId);
 });
 
 test('显式 abandon 之后可以重跑', { skip: bundleMissing && bundleSkipReason }, async () => {
@@ -2057,4 +2080,99 @@ test('W8：同阶段重跑一轮后审批 ⇒ 摘要的 run id 与基线都取�
   };
   assert.equal(s.baseline_tree, meta2.snapshot.after_tree_hash);
   assert.deepEqual(s.files.map((f) => f.path), ['NOTES.md']);
+});
+
+// ── 闸门拦截不留骨架（EV-109 / EV-145 ①，计划 r2 §4.2 B5～B7）：置闸门之后的失败由 prepareRun 自己回收 ──
+
+const NOT_ROOT_SKIP = (bundleMissing && bundleSkipReason) || (process.getuid?.() === 0 && 'root 下只读目录拦不住写入');
+
+/** 主题目录只读（阶段目录仍可写）：brief 与骨架写得进去，task.json 的原子写（同目录临时文件）写不进 ⇒ registerRun 抛 */
+async function startWithTopicDirReadonly(root: string, archiveRoot: string) {
+  const topicDir = path.join(archiveRoot, TOPIC);
+  await fs.chmod(topicDir, 0o555);
+  try {
+    return await cli(
+      root,
+      ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+      STUB,
+    );
+  } finally {
+    await fs.chmod(topicDir, 0o755);
+  }
+}
+
+const runMetaIds = async (stageDir: string) =>
+  (await fs.readdir(path.join(stageDir, '_meta')).catch(() => [] as string[]))
+    .map((n) => /^run-(.+)\.json$/.exec(n)?.[1])
+    .filter((x): x is string => x !== undefined)
+    .sort();
+
+test('闸门拦截不留骨架 B5：置闸门之后登记失败 ⇒ 闸门回收为 idle、锁已放、骨架如实留 running；重跑前不带 --run-id 的 gate 指向这份骨架', { skip: NOT_ROOT_SKIP }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const r = await startWithTopicDirReadonly(fx.root, fx.archiveRoot);
+  assert.notEqual(r.code, EXIT.OK, `登记写不进时 --start 应失败：\n${r.stdout}${r.stderr}`);
+
+  const ids = await runMetaIds(fx.stageDir);
+  assert.equal(ids.length, 1, `骨架写在登记之前，应恰有一份：${ids.join(', ')}`);
+  const skeletonId = ids[0]!;
+  const g = (await gatesOf(fx.root))[`${TOPIC}/plan`];
+  assert.ok(g, '首轮置过闸门，回收后留一条 idle 条目（计划 r2 §3.2 / D2）');
+  assert.equal(g.state, 'idle', '置闸门之后的失败必须回收，不能停在 running 直到 TTL');
+  assert.equal(g.run_id, skeletonId);
+  const lockDir = path.join(fx.root, '.trivium', 'lock');
+  assert.ok(!(await fs.readdir(lockDir).catch(() => [] as string[])).includes(`${TOPIC}.lock`), '主题锁必须已释放');
+
+  // D3 (a)：骨架如实留 running，不在本主题收尾为终态
+  const skeleton = JSON.parse(await fs.readFile(path.join(fx.stageDir, '_meta', `run-${skeletonId}.json`), 'utf8')) as { status: string };
+  assert.equal(skeleton.status, 'running');
+
+  // 计划 r2 §3.5（r1 CODEX-03）：到下一次成功重跑之前，最新留痕是这份骨架——钉住现状，EV-145 余项落地时随之改
+  const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json', '--session-id', SESSION]);
+  const cj = JSON.parse(extractJsonCandidate(check.stdout)!.json) as { run_id: string };
+  assert.equal(cj.run_id, skeletonId);
+});
+
+test('闸门拦截不留骨架 B6：上一轮已审批（槽位 approved）时置闸门之后失败 ⇒ 回收为 idle，不恢复成 approved（D2 (a)）', { skip: NOT_ROOT_SKIP }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const r1 = await runPlan(fx.root, 'B');
+  await writeDisposition(fx.stageDir, r1);
+  const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
+  assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
+  const ok = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--session-id', SESSION]);
+  assert.equal(ok.code, EXIT.OK, `${ok.stdout}${ok.stderr}`);
+  assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'approved', '前提：槽位已是 approved');
+
+  await new Promise((res) => setTimeout(res, 1100)); // 避开 run_id 同秒撞名（计划 r2 §2.3）
+  const r = await startWithTopicDirReadonly(fx.root, fx.archiveRoot);
+  assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
+  const ids = await runMetaIds(fx.stageDir);
+  const g = (await gatesOf(fx.root))[`${TOPIC}/plan`];
+  assert.equal(g?.state, 'idle');
+  assert.equal(g?.run_id, ids.at(-1), '回收后的条目记的是失败那一次');
+});
+
+test('闸门拦截不留骨架 B7：置闸门之后重置收工阻断计数失败 ⇒ 同样回收闸门、锁已放、零工件', { skip: NOT_ROOT_SKIP }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  // resetStopBlockCount 递归删除 lock/stopblock-<主题>-<阶段>：里面放一个只读子目录和一个文件，删除必 EACCES；lock/ 本身仍可写
+  const blockDir = path.join(fx.root, '.trivium', 'lock', `stopblock-${TOPIC}-plan`);
+  const sub = path.join(blockDir, 'sub');
+  await fs.mkdir(sub, { recursive: true });
+  await fs.writeFile(path.join(sub, 'n'), '1\n', 'utf8');
+  await fs.chmod(sub, 0o555);
+  const before = await listFiles(fx.archiveRoot);
+  try {
+    const r = await cli(
+      fx.root,
+      ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+      STUB,
+    );
+    assert.notEqual(r.code, EXIT.OK, `计数删不掉时 --start 应失败：\n${r.stdout}${r.stderr}`);
+  } finally {
+    await fs.chmod(sub, 0o755);
+  }
+  const g = (await gatesOf(fx.root))[`${TOPIC}/plan`];
+  assert.ok(g, '闸门置过，回收后留一条 idle');
+  assert.equal(g.state, 'idle', '重置计数排在 try 里：抛了也要回收闸门（r1 AGY-02 ≡ GLM-02）');
+  assert.ok(!(await fs.readdir(path.join(fx.root, '.trivium', 'lock'))).includes(`${TOPIC}.lock`), '主题锁必须已释放');
+  assert.deepEqual(await listFiles(fx.archiveRoot), before, '重置计数在落盘段之前，失败时 .reviews/ 不得多出文件');
 });

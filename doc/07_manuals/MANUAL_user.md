@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.6
+> - **当前版本**：v1.0.7
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -649,6 +649,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 直接再发一次同样的命令。工件不会被覆盖，自动抬 `-r2`。
 
 但**上一轮的裁决必须先补齐**——闸门是 `review_done_awaiting_disposition` 时重跑会被拒绝并提示「上一轮尚未裁决」。
+被拒绝的那次不会留下任何文件（v1.0.7 起），补齐裁决后直接跑 `gate --check` 即可，不用 `--run-id`。
 
 ---
 

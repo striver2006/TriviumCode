@@ -293,6 +293,27 @@ test('未提交的对方审查产出不得进补丁（经被审对象泄漏）',
   assert.match(diff, /src\/a\.ts/, '真正的代码变更仍须在内');
 });
 
+test('上一轮未裁决时 code 阶段被闸门拦下 → changes.diff 便利副本逐字节不变、不写新补丁与 brief（B3，EV-109）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await codeFixture();
+  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 2;\n');
+  const { exitCode } = await runCode(fx.root, fx.codeDir);
+  assert.equal(exitCode, EXIT.OK, '前提：第 1 轮成功、闸门停在待裁决');
+  const metaDir = path.join(fx.codeDir, '_meta');
+  const aliasBefore = await fs.readFile(path.join(metaDir, 'changes.diff'));
+  const metaBefore = (await fs.readdir(metaDir)).sort();
+
+  /*
+   * 此前闸门判定排在落盘段之后：被拦那次已把便利副本覆盖成它自己的补丁（头部 run_id 换成被拦那次），
+   * `.reviews/README.md` 说它「指向最新一轮」，此后指向一轮从未开跑的运行（闸门拦截不留骨架计划 r2 §2.1 G2）。
+   */
+  await new Promise((r) => setTimeout(r, 1100)); // 避开 run_id 同秒撞名（计划 r2 §2.3）
+  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 3;\n');
+  const again = await cli(fx.root, ['review', '--start', '--stage', 'code', '--topic', TOPIC, '--focus', '看变更', '--json'], STUB);
+  assert.equal(again.code, EXIT.GATE_BLOCK, `应被闸门拦下：\n${again.stdout}${again.stderr}`);
+  assert.deepEqual(await fs.readFile(path.join(metaDir, 'changes.diff')), aliasBefore, '便利副本不得被被拦的那次覆盖');
+  assert.deepEqual((await fs.readdir(metaDir)).sort(), metaBefore, '不得写新的 changes-*.diff、brief 与 run.json');
+});
+
 test('坏 --base → 在冻结前失败且零工件（审查意见 GLM-r2-04）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await codeFixture();
   await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 5;\n', 'utf8');

@@ -1,0 +1,254 @@
+{
+  "G1_block": {
+    "r1": "20260927T024643Z",
+    "secondStartCode": 2,
+    "secondStartMsg": [
+      "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。",
+      "  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}"
+    ],
+    "extraMetaFiles": [],
+    "skeleton": null,
+    "taskRunsBefore": [
+      {
+        "run_id": "20260927T024643Z",
+        "stage": "plan",
+        "r": 1,
+        "status": "success"
+      }
+    ],
+    "taskRunsAfter": [
+      {
+        "run_id": "20260927T024643Z",
+        "stage": "plan",
+        "r": 1,
+        "status": "success"
+      }
+    ],
+    "gateBefore": {
+      "state": "review_done_awaiting_disposition",
+      "run_id": "20260927T024643Z",
+      "rerun_index": 1
+    },
+    "gateAfter": {
+      "state": "review_done_awaiting_disposition",
+      "run_id": "20260927T024643Z",
+      "rerun_index": 1
+    },
+    "extraRunDirs": []
+  },
+  "G1_gateCheckNoRunIdBeforeDisposition": {
+    "code": 2,
+    "run_id": "20260927T024643Z",
+    "rerun_index": 1,
+    "ok": false,
+    "failures": [
+      "missing_disposition"
+    ]
+  },
+  "G1_checkArtifacts": {
+    "code": 65,
+    "text": [
+      "✗ plan 阶段第 1 轮缺件：裁决件 …-revised-claude.md",
+      "  轮次取自最新一次运行。若那一轮尚未产出工件（例如 worker 中途崩溃），可用 --run-id <id> 指定更早的完整轮次。"
+    ]
+  },
+  "G1_gateCheckNoRunIdAfterDisposition": {
+    "code": 0,
+    "run_id": "20260927T024643Z",
+    "rerun_index": 1,
+    "ok": true,
+    "failures": []
+  },
+  "G1_gateAfterNoRunIdCheck": {
+    "state": "awaiting_approval",
+    "run_id": "20260927T024643Z",
+    "rerun_index": 1
+  },
+  "G1_awaitNoRunId": {
+    "code": 0,
+    "text": [
+      "已置为等待人工审批：G1-闸门拦重跑 / plan（第 1 轮）",
+      "  通过：/dual-approve --topic G1-闸门拦重跑 --stage plan [--reason <附言>]",
+      "  拒绝：/dual-approve --topic G1-闸门拦重跑 --stage plan --reject --reason <理由>"
+    ]
+  },
+  "G1_gateCheckWithRunId": {
+    "code": 0,
+    "run_id": "20260927T024643Z",
+    "rerun_index": 1,
+    "ok": true,
+    "failures": []
+  },
+  "G1_gateAfterRunIdCheck": {
+    "state": "awaiting_approval",
+    "run_id": "20260927T024643Z",
+    "rerun_index": 1
+  },
+  "G1_report": {
+    "code": 0,
+    "rounds": [
+      {
+        "stage": "plan",
+        "r": 1,
+        "runId": "20260927T024643Z",
+        "status": "success"
+      }
+    ],
+    "unlisted": []
+  },
+  "G1_topicResolve": {
+    "code": 0,
+    "driver": "claude"
+  },
+  "G1_status": {
+    "code": 0,
+    "keys": [
+      "ok",
+      "topics"
+    ],
+    "text": "{\"ok\":true,\"topics\":[{\"topic\":\"G1-闸门拦重跑\",\"open_gates\":[{\"stage\":\"plan\",\"state\":\"awaiting_approval\",\"since\":\"2026-09-27T02:46:46.932Z\"}],\"runs\":1,\"degradations\":0,\"disputed\":false,\"approvals\":0}]}"
+  },
+  "G1_realRerun": {
+    "startCode": 0,
+    "startMsg": null,
+    "rerun_index": 2,
+    "status": "success",
+    "docs": [
+      "2026-09-27-G1-闸门拦重跑-claude.md",
+      "2026-09-27-G1-闸门拦重跑-gemini.md",
+      "2026-09-27-G1-闸门拦重跑-glm.md",
+      "2026-09-27-G1-闸门拦重跑-r2-gemini.md",
+      "2026-09-27-G1-闸门拦重跑-r2-glm.md",
+      "2026-09-27-G1-闸门拦重跑-revised-claude.md"
+    ]
+  },
+  "G1_reportAfterRerun": {
+    "code": 0,
+    "rounds": [
+      {
+        "stage": "plan",
+        "r": 1,
+        "runId": "20260927T024643Z",
+        "status": "success"
+      },
+      {
+        "stage": "plan",
+        "r": 2,
+        "runId": "20260927T024647Z",
+        "status": "success"
+      }
+    ],
+    "unlisted": []
+  },
+  "G2": {
+    "firstStartCode": 0,
+    "firstStartMsg": null,
+    "secondStartCode": 2,
+    "extraMetaFiles": [],
+    "aliasHeadBefore": "# run_id: 20260927T024650Z",
+    "aliasHeadAfter": "# run_id: 20260927T024650Z",
+    "aliasOverwritten": false
+  },
+  "G3": {
+    "startCode": 1,
+    "startMsg": [
+      "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。",
+      "  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}",
+      "  这只应出现在测试里。若这是真实审查，请立即清除该环境变量并重跑。"
+    ],
+    "metaFiles": [
+      "brief-gemini-20260927T024652Z.md",
+      "brief-glm-20260927T024652Z.md",
+      "run-20260927T024652Z.json"
+    ],
+    "skeleton": {
+      "status": "running",
+      "rerun_index": 1
+    },
+    "taskJson": null,
+    "gate": {
+      "state": "idle",
+      "run_id": "20260927T024652Z",
+      "rerun_index": 1
+    },
+    "lockFiles": [],
+    "report": {
+      "code": 0,
+      "rounds": [],
+      "unlisted": [
+        {
+          "r": 1,
+          "runId": "20260927T024652Z",
+          "status": "running",
+          "label": "进行中，或没走到收尾"
+        }
+      ]
+    }
+  },
+  "G3_after": {
+    "startCode": 0,
+    "startMsg": null,
+    "rerun_index": 1,
+    "status": "success"
+  },
+  "G4a": {
+    "firstCode": 0,
+    "secondCode": 2,
+    "blockedRunIdInMsg": "20260927T024655Z",
+    "firstRunFile": "run-20260927T024655Z.json",
+    "firstRunBefore": {
+      "status": "success",
+      "rerun_index": 1,
+      "artifacts": 7
+    },
+    "firstRunAfter": {
+      "status": "success",
+      "rerun_index": 1,
+      "artifacts": 7
+    },
+    "extraMetaFiles": [],
+    "skeleton": null,
+    "gate": {
+      "state": "review_done_awaiting_disposition",
+      "run_id": "20260927T024655Z",
+      "rerun_index": 1
+    },
+    "gateCheckNoRunId": {
+      "code": 2,
+      "rerun_index": 1,
+      "failures": [
+        "missing_disposition"
+      ]
+    }
+  },
+  "G4b": {
+    "firstCode": 0,
+    "secondCode": 2,
+    "blockedRunIdInMsg": "20260927T024656Z",
+    "firstRunFile": "run-20260927T024656Z.json",
+    "firstRunBefore": {
+      "status": "success",
+      "rerun_index": 1,
+      "artifacts": 7
+    },
+    "firstRunAfter": {
+      "status": "success",
+      "rerun_index": 1,
+      "artifacts": 7
+    },
+    "extraMetaFiles": [],
+    "skeleton": null,
+    "gate": {
+      "state": "review_done_awaiting_disposition",
+      "run_id": "20260927T024656Z",
+      "rerun_index": 1
+    },
+    "gateCheckNoRunId": {
+      "code": 2,
+      "rerun_index": 1,
+      "failures": [
+        "missing_disposition"
+      ]
+    }
+  }
+}

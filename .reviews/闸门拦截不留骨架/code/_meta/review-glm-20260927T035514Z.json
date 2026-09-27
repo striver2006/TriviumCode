@@ -1,0 +1,74 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "实现忠实于计划 r2：比较-交换原样前移（expect 集合、被拦文案、跳过轮不置闸门一字未改），落盘段仅整体缩进进 try，return 值不变；releaseRunningGateEntry 与原内联实现逐语义等价，三处既有调用点与 runReviewLocked 内联回收未受影响；B1~B7/U1 的断言口径有据（闸门项级比对正对应「判负 CAS 也刷新 updated_at」的事实），变异 M1~M7 各自区分——我独立推演各条 fail 数与 mutation-output.txt 完全一致（含 M4 靠「吞异常→startRun 的 prepare catch 不触发→锁不放→B5/B7 锁断言红」的链条，成立）；A6 的旧构建取自 git archive HEAD、基线正确；文档与 BACKLOG 的事实（EV-109 结案、EV-145 余项行号、EV-147/148 与代码相符）核实无误。仅两条 nit：①review.ts 两处「一个文件都没写／一个文件都不写」在搬移后字面失实（判负的 CAS 也会重写 state.json 的 updated_at，闸门项不变）——正是 r2 曾因此退回字节级断言的那个坑，措辞应收窄到「审查工件」；②EV-149 与报告 §3.3 把偶发红用例写作 :152 起，该用例实际在 lock-cross-process.test.ts:216。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/review.ts:531（prepareRun 文档块）与 :911（搬移后的段落注释）",
+      "problem": "两处「一个文件都没写／被拦时一个文件都不写」在本次重排后字面失实：setGateChecked 经 updateState（state.ts:139-153）在 mutate 判负提前返回后仍无条件刷新 updated_at 并整文件重写 state.json——被拦那次也写盘，置闸门成功那次更是已经写过。准确的声称是「不写任何审查工件／留痕（state.json 仅可能刷新 updated_at，闸门项逐字段不变）」。计划 r2 §4.2/§6.2 与 no-artifacts.test.ts B1/B4 的注释都如实写了这一点，唯独代码内这两处字符串与已登记口径不一致。风险：后来者按注释写字面断言（如对 state.json 做字节级零工件比对），会踩 r1 三侧同指、r2 专门退回过的同一个坑。",
+      "evidence": "读 src/trivium/state.ts:139-153、:202-249（updateState 无条件落盘；mutate 判负只影响 gates 不影响写盘）；读 src/trivium/review.ts:866-918（:911 注释位于置闸门成功之后，而 CAS 刚写过 state.json；:531 文档块称被拦时「一个文件都不写」）；读 doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance-readout.json 的 A1 格（被拦前后 gates 条目含 since 逐字段相同，与「整文件重写但闸门项不变」互证）；读 .reviews/闸门拦截不留骨架/plan/2026-09-27-闸门拦截不留骨架-r2-claude.md §4.2/§6.2（该事实已登记）。未运行任何命令，结论全部来自读码。",
+      "suggestion": "把两处措辞收窄为「不写任何审查工件（brief、补丁与便利副本、run.json、task.json、运行目录）」，并在 :911 注释或文档块补半句「state.json 的 updated_at 在判负时也会刷新、闸门项不变」，与设计 6.7 注记的枚举式写法及 B1/B4 注释对齐。纯注释改动，不动行为。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/08_project/BACKLOG.md:247（EV-149 的落点列）；同错见 doc/05_testing/REPORT_2026-09-27_gate_block_no_skeleton.md §3.3",
+      "problem": "EV-149 与实施报告都把偶发红用例引作「lock-cross-process.test.ts :152 起」，但所述用例「跨进程：多个进程同时回收同一把遗留锁，仍只有一个拿到」实际从 :216 开始（5 个 worker、赢家持锁 900ms、赢家计数断言在 :243-248）；:152 落在同文件另一条用例「临界区串行化」的断言段里。该文件本次未改，行号是登记时写错的。失效行号引用正是 v1.3.48 代码双审接受修掉的同类问题；EV-149 将来要按这个指针去改用例，指错位置会先浪费一次定位。",
+      "evidence": "读 test/integration/lock-cross-process.test.ts:55-156 与 :216-250（:123 起是「临界区串行化」，:152 是其断言行；:216 才是 EV-149 描述的遗留锁回收用例，5 workers/:240、900ms/:237、断言/:243-248）；读 doc/08_project/BACKLOG.md:247 与 doc/05_testing/REPORT_2026-09-27_gate_block_no_skeleton.md §3.3（两处均写「:152 起」）；diff 文件清单（changes-20260927T035514Z.diff 头部 26 个文件）不含该测试文件，行号在本次变更内稳定。",
+      "suggestion": "把 EV-149 落点列与报告 §3.3 的「:152 起」改为「:216 起」（或去掉行号只留用例名）。EV-149 的其余事实（套件单跑 6 次全绿、4 条用例、900ms 持锁、赢家计数的两种解释与候选）与我读到的用例形态相符，不需改。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "焦点①重排忠实：与 HEAD 版逐行比对，expect 集合 ['idle','running','approved','rejected','abandoned']、被拦文案与退 2、跳过轮不置闸门一字未改；落盘段（建目录→补丁与便利副本→brief→运行目录→骨架→登记→任务目标）仅整体缩进两格；try 范围恰好覆盖置闸门之后的全部失败点（resetStopBlockCount 是 try 首句，fs.rm 非根下必抛 EACCES，lock.ts:321-327）；return 挪进 try 不改返回值（同一对象字面量，成功返回不经 catch）。resetStopBlockCount 从「置闸门成功后、写在登记之后」挪到 try 首句是计划内的显式改动（r2 §3.1，r1 AGY-02 ≡ GLM-02），由 B7/M7 钉住。",
+    "焦点②回收语义等价：releaseRunningGateEntry（state.ts:271-288）与原 releaseRunningGate 内联体逐语义相同——expect {state:['running'], runId, allowMissing:false}（比较 runId、槽位不存在不造条目）、自身吞错；run-protocol.ts 的包装只保留「身份不全就不动」一层，三处调用点（:431 startRun 主 catch、:583 worker finally、:731 --wait 失联）不变；runReviewLocked 的内联回收（review.ts:1739-1758）未动、prepareRun 仍在 executeRun 的 try 之外；startRun 的 prepare catch 只放锁这一契约在各失败点成立（被拦没置上、置上后的失败由 prepareRun 自回收、双重回收因 expect 也不会误伤）。",
+    "焦点③用例钉得住：B1/B4 的闸门项级（非文件字节）口径有 S1 事实支撑，task.json 逐字节、运行根目录集合、1.1s 间隔避开同秒撞名都有注释交代且必要（EV-147）；B2 断言 idle 与 runPlan 不带 --entry 的实际语义一致（报告 §3.1 如实登记了与 r2 文字的出入）；B3 对唯一可被覆盖的文件（changes.diff）做逐字节比对，弥补了 B1/B4 只比集合的盲区；B5-B7 的失败注入点成立（writeAtomic 临时文件落同目录故 topicDir 只读必使 registerRun 抛、stopblock 只读子目录必使递归删抛、withTopicLock 在 finally 放锁故任务锁不残留），断言自校验（骨架恰一份、锁不残留、闸门 idle 且记失败那次）；NOT_ROOT_SKIP 覆盖全部权限型用例（B5/B6/B7），B1-B4/U1 不依赖权限拒绝；U1 五格恰好覆盖 CAS 的全部分支（命中/runId 不符/状态不符/槽位不存在/底层抛被吞）。",
+    "焦点④变异与验收：M1-M7 各自可区分——我按源码独立推演每条变异下各期望套件的红数（M1=2、M2=1、M3=3、M4=2、M5=1、M6=1、M7=1，含 B6 在 M4 下应通过、只靠 B5/B7 的锁断言咬住），与 mutation-output.txt 逐条一致，读数可信；mutation-check.mjs 的「工作树干净」是哨兵判据而非 git 判据（本仓典型场景就是未提交改动，注释写明），无虚报；A1-A6 判据充分（A1 连 status 的 runs 计数、A2 走 approve 全链并核 report 两轮且 unlisted 为空、A4 钉住 EV-145 余项现状含 report 文案），A6 用 git archive HEAD 建旧构建、对真实归档只读逐主题深比 rounds/unlistedRuns、并锚住 EV-79 历史骨架仍在未进时间线表——基线正确，无发现漏洞（比较面限于 rounds/unlistedRuns 属可接受范围，与「不改 report」的声称相称）。",
+    "焦点⑤文档与留痕：设计 6.7 注记/7.3 拒绝启动表/7.5 review --start 行/AC-16 行、PRD v1.4.13、MANUAL v1.0.7、PROTOCOL :254、types.ts:1477 与 run.v2 schema 均在工作树落地且与代码行为一致（7.3 行「退 2 + 两条出路 + 零工件」与被拦文案逐点对应）；schema/types 保留「本版以前被拦」一格恰当——本仓归档确有历史 running 骨架（A6 实测 EV-79 20260922T134058Z 仍在未进时间线表），删掉会对历史留痕失实，该偏离已在报告 §3.1 登记；BACKLOG EV-109 结案描述准确，EV-145 余项行号与现码相符（review.ts:1007 registerRun、:1019 updateTask、run-protocol.ts:430 catch、review.ts:1740 executeRun），EV-147（newRunId 去毫秒、writeMeta 允许覆盖、registerRun 按 run_id 幂等覆盖）与 EV-148（cli.ts:547-561 corrupt 分支先于 prepareRun 抛出、出口文案自指）逐点核码属实；报告读数自洽（2133=2126+7 条新用例、第一次全量的偶发红如实记录并登 EV-149）。",
+    "hooks.ts:298「review.ts 的四处 setGateChecked」计数在搬移后仍准确（:890/:1069/:1636/:1749），计划 r2 §3.2 的这条预判兑现。"
+  ],
+  "not_covered": [
+    "只读审查，未运行任何测试/构建/探针：全量 2133/2131/0/2、变异 7/7、验收 13/13、selftest 14/14 均取自报告与证据文件，未独立复跑（变异各条 fail 数已用独立推演交叉核过）。",
+    "LLD_orchestrator.md 与 PRD_driver_dual_critic.md 只经 diff hunk 核对（未直接打开工作树文件核全文）；主设计也只读了本次变更涉及的段落。",
+    "证据目录中 probe-gate-block.mjs、probe-gate-block.out.json、probe-gate-block.after.json、probe-corrupt-rerun.mjs 未逐行读（probe-runid-collision.mjs 已全文读）；A6 的 52 个主题清单未逐主题复核。",
+    "EV-148 涉及的 topic-args.ts、driver-claim.ts、gate.ts:213 兜底文案、hooks.ts 的 sweepDeadRunningGates 未读，「四处文案」只核了 cli.ts:547-561 一处；EV-149 的 reclaimStaleLock（lock.ts:97）只确认存在，未审其窗口。",
+    "B5-B7 在 root 下的跳过路径、以及 1.1s 间隔对 EV-147 未实测分支（纯文档跳过后同秒再起一轮）的充分性，按代码推出、未实测。",
+    "未复核被审 diff 的 sha256 内容哈希（以「diff 各 hunk 与工作树逐处一致」代替完整性校验）。"
+  ],
+  "consulted": [
+    ".reviews/闸门拦截不留骨架/code/_meta/changes-20260927T035514Z.diff",
+    ".reviews/闸门拦截不留骨架/plan/2026-09-27-闸门拦截不留骨架-r2-claude.md",
+    "src/trivium/review.ts",
+    "src/trivium/state.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/types.ts",
+    "test/unit/state.test.ts",
+    "test/integration/no-artifacts.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/lock-cross-process.test.ts",
+    "test/helpers/fixture.ts",
+    "scripts/mutation-check.mjs",
+    "doc/05_testing/REPORT_2026-09-27_gate_block_no_skeleton.md",
+    "doc/05_testing/evidence/gate-block-no-skeleton-20260927/mutation-spec.json",
+    "doc/05_testing/evidence/gate-block-no-skeleton-20260927/mutation-output.txt",
+    "doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance.mjs",
+    "doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance-readout.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md"
+  ]
+}

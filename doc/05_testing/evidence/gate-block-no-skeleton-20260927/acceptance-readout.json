@@ -1,0 +1,192 @@
+{
+  "at": "2026-09-27T04:34:16.880Z",
+  "passed": 13,
+  "total": 13,
+  "results": [
+    {
+      "id": "A1 被拦退 2",
+      "ok": true,
+      "detail": "第二次 --start 退 2"
+    },
+    {
+      "id": "A1 零工件",
+      "ok": true,
+      "detail": "_meta/ 5→5 份，task.json 逐字节不变，运行根 4→4"
+    },
+    {
+      "id": "A1 闸门项不变",
+      "ok": true,
+      "detail": "review_done_awaiting_disposition（run 20260927T043400Z）"
+    },
+    {
+      "id": "A1 status 的 runs 仍为 1",
+      "ok": true,
+      "detail": "runs = 1"
+    },
+    {
+      "id": "A2 不带 --run-id 的 gate --check 通过且校验第 1 轮",
+      "ok": true,
+      "detail": "退 0，run_id 20260927T043400Z，第 1 轮"
+    },
+    {
+      "id": "A2 放行后重跑为第 2 轮",
+      "ok": true,
+      "detail": "approve 退 0，重跑 rerun_index 2"
+    },
+    {
+      "id": "A2 report 时间线两行、未进时间线为空",
+      "ok": true,
+      "detail": "rounds [1,2]，unlisted 0"
+    },
+    {
+      "id": "A3 code 被拦：便利副本与 _meta/ 不变",
+      "ok": true,
+      "detail": "第二次退 2，changes.diff 不变，_meta/ 7→7"
+    },
+    {
+      "id": "A4 非零退出、闸门回收为 idle、锁已放",
+      "ok": true,
+      "detail": "退 1，闸门 idle（run 20260927T043412Z），锁 已放"
+    },
+    {
+      "id": "A4 骨架如实留 running，report 说明未改",
+      "ok": true,
+      "detail": "骨架 running，未进时间线 [\"进行中，或没走到收尾\"]"
+    },
+    {
+      "id": "A5 同步路径被拦零工件",
+      "ok": true,
+      "detail": "第二次退 2，.reviews/ 9→9，task.json 不变"
+    },
+    {
+      "id": "A6 本仓 report 逐主题不变",
+      "ok": true,
+      "detail": "52 个主题，rounds / unlistedRuns 不同的：无"
+    },
+    {
+      "id": "A6 历史被拦骨架照旧在未进时间线表里",
+      "ok": true,
+      "detail": "EV-79 20260922T134058Z：进行中，或没走到收尾"
+    }
+  ],
+  "readout": {
+    "A1": {
+      "firstWait": 0,
+      "secondStart": 2,
+      "gateBefore": {
+        "topic": "A1-闸门拦重跑",
+        "stage": "plan",
+        "state": "review_done_awaiting_disposition",
+        "run_id": "20260927T043400Z",
+        "rerun_index": 1,
+        "since": "2026-09-27T04:34:00.520Z",
+        "session_id": "S-验收"
+      },
+      "gateAfter": {
+        "topic": "A1-闸门拦重跑",
+        "stage": "plan",
+        "state": "review_done_awaiting_disposition",
+        "run_id": "20260927T043400Z",
+        "rerun_index": 1,
+        "since": "2026-09-27T04:34:00.520Z",
+        "session_id": "S-验收"
+      },
+      "runsCount": 1
+    },
+    "A2": {
+      "approve": 0,
+      "rerunStart": 0,
+      "rerunWait": 0,
+      "rerunIndex": 2,
+      "report": {
+        "code": 0,
+        "rounds": [
+          {
+            "stage": "plan",
+            "r": 1,
+            "runId": "20260927T043400Z"
+          },
+          {
+            "stage": "plan",
+            "r": 2,
+            "runId": "20260927T043405Z"
+          }
+        ],
+        "unlisted": []
+      }
+    },
+    "A3": {
+      "firstStart": 0,
+      "secondStart": 2,
+      "metaBefore": 7,
+      "metaAfter": 7
+    },
+    "A4": {
+      "start": 1,
+      "ids": [
+        "20260927T043412Z"
+      ],
+      "gate": {
+        "topic": "A4-登记写失败",
+        "stage": "plan",
+        "state": "idle",
+        "run_id": "20260927T043412Z",
+        "rerun_index": 1,
+        "since": "2026-09-27T04:34:12.453Z",
+        "session_id": "S-验收"
+      },
+      "locks": [],
+      "report": {
+        "code": 0,
+        "rounds": [],
+        "unlisted": [
+          {
+            "r": 1,
+            "runId": "20260927T043412Z",
+            "status": "running",
+            "label": "进行中，或没走到收尾"
+          }
+        ]
+      }
+    },
+    "A5": {
+      "first": 0,
+      "second": 2
+    },
+    "A6": {
+      "baseRef": "1ee28b0",
+      "topics": 52,
+      "diffs": [],
+      "unlisted": [
+        {
+          "topic": "EV-74-探针喂真实契约文件",
+          "runId": "20260922T164557Z",
+          "stage": "plan",
+          "status": "running",
+          "label": "进行中，或没走到收尾"
+        },
+        {
+          "topic": "EV-79-写命令判据两处缺口",
+          "runId": "20260922T134058Z",
+          "stage": "code",
+          "status": "running",
+          "label": "进行中，或没走到收尾"
+        },
+        {
+          "topic": "M4-M5实现",
+          "runId": "20260911T023018Z",
+          "stage": "code",
+          "status": "running",
+          "label": "进行中，或没走到收尾"
+        },
+        {
+          "topic": "凭据副本残留与参数静默丢失",
+          "runId": "20260917T024844Z",
+          "stage": "code",
+          "status": "running",
+          "label": "进行中，或没走到收尾"
+        }
+      ]
+    }
+  }
+}

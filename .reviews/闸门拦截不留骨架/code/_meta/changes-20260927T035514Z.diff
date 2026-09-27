@@ -1,0 +1,2839 @@
+# trivium changes.diff
+# run_id: 20260927T035514Z
+# base: HEAD
+# head: 6868ff99b06c51b61301bb20b0ffe2fdcebab833
+# files: 26
+#   doc/01_requirements/PRD_driver_dual_critic.md
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/LLD_orchestrator.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/05_testing/REPORT_2026-09-27_gate_block_no_skeleton.md
+#   doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance-readout.json
+#   doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance.mjs
+#   doc/05_testing/evidence/gate-block-no-skeleton-20260927/gen-mutation-spec.mjs
+#   doc/05_testing/evidence/gate-block-no-skeleton-20260927/mutation-output.txt
+#   doc/05_testing/evidence/gate-block-no-skeleton-20260927/mutation-spec.json
+#   doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-corrupt-rerun.mjs
+#   doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.after.json
+#   doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.mjs
+#   doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.out.json
+#   doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-runid-collision.mjs
+#   doc/07_manuals/MANUAL_user.md
+#   doc/08_project/BACKLOG.md
+#   skills/dual-critic/schema/run.v2.json
+#   src/trivium/review.ts
+#   src/trivium/run-protocol.ts
+#   src/trivium/state.ts
+#   src/trivium/types.ts
+#   test/integration/code-stage.test.ts
+#   test/integration/gate-loop.test.ts
+#   test/integration/no-artifacts.test.ts
+#   test/unit/state.test.ts
+diff --git a/doc/01_requirements/PRD_driver_dual_critic.md b/doc/01_requirements/PRD_driver_dual_critic.md
+index bf70378..8de122a 100644
+--- a/doc/01_requirements/PRD_driver_dual_critic.md
++++ b/doc/01_requirements/PRD_driver_dual_critic.md
+@@ -2,10 +2,10 @@
+ 
+ > - **作者 / 负责人**：Chen Zhenbo（依据原始需求整理）
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.4.12
++> - **当前版本**：v1.4.13
+ > - **状态**：**基线已实现、演进需求待实施(Baseline implemented, evolution pending)**
+ > - **来源**：[原始需求.txt](./原始需求.txt)；演进需求来源见 3.2 小节「多 Agent 演进需求」
+-> - **文档版本**：v1.4.12
++> - **文档版本**：v1.4.13
+ > - **⚠️ 实现状态**：FR-01～FR-26 与 AC-01～AC-19 是**已实现基线**；
+ >   **FR-27～FR-31 与 AC-20～AC-25 是演进需求**（各条标注了实现里程碑）：截至本版
+ >   **AC-20 已达成**（M8 第 4 步）、**AC-22 部分达成**（1／2／3 侧分支均可真跑，
+@@ -32,7 +32,7 @@
+ >   以及 M7b 六步（`run.v2`、`config.v2` 与其内存迁移、适配器接线收敛、多审退化逐对计算、
+ >   第 5 步的 `--critics` 入口——**这一步开始改变对外行为**——与第 6 步的接入套件验收装置）。
+ >   **不得据 FR-27～FR-31 判定系统现有能力，也不得把内部改动读成需求达成。**
+-> - **变更说明**：v1.4.12（2026-09-27）随主设计 v1.3.48（未收尾运行的留痕与复盘可见性，EV-142 / EV-144）同步。**只改 FR-24 的边界说明，不新增需求、不改判据**：worker 异常与 `--wait` 判 `worker_lost`（工作进程确认退出时）的运行也把成败状态（`failed`）写入主题子目录的运行元数据（此前停在 `running`）；复盘报告另列没有产出审查文档的运行。
++> - **变更说明**：v1.4.13（2026-09-27）随主设计 v1.3.49（闸门拦截不留骨架，EV-109 / EV-145 ①）同步。**只补 FR-24 的一句边界，不新增需求、不改判据**：被闸门拦下（上一轮未裁决直接重跑）的 `--start` 不写运行元数据、不算一次运行；AC-16 原文不动（它约束的是预检失败，`review` 自身失败出口的零工件口径在主设计验收表）。v1.4.12（2026-09-27）随主设计 v1.3.48（未收尾运行的留痕与复盘可见性，EV-142 / EV-144）同步。**只改 FR-24 的边界说明，不新增需求、不改判据**：worker 异常与 `--wait` 判 `worker_lost`（工作进程确认退出时）的运行也把成败状态（`failed`）写入主题子目录的运行元数据（此前停在 `running`）；复盘报告另列没有产出审查文档的运行。
+ > - **变更说明**：v1.4.11（2026-09-26）随主设计 v1.3.47（留痕字段与误报小修，EV-127 / EV-128 / EV-137）同步。**只改 FR-24 的边界说明，不新增需求、不改判据**：被 `review --cancel` 取消的运行，其成败状态（`cancelled`）也写入主题子目录的运行元数据（工作进程确认退出后写；此前停在 `running`）；worker 异常与 `worker_lost` 两种失败仍停在 `running`，已登记 BACKLOG EV-142。
+ > - **变更说明**：v1.4.10（2026-09-26）随主设计 v1.3.46（审批前工作树摘要，EV-132 候选 ② 折中版）同步。**只改 FR-28 / AC-21 的边界说明，不新增需求、不改判据**：审批时（`approve` 通过与两个闸门停点）打印自审查收尾以来的工作树改动摘要，只告知、不拦、不改退出码与闸门迁移；闸门期仍无机制拦截或兜底，原候选 ②「审批前复核加工作树比对、不一致即拒」用户定为不做。
+ > - **变更说明**：v1.4.9（2026-09-26）随主设计 v1.3.45（留痕与文案小修）同步。**只改 FR-28 / AC-21 的边界说明，不新增需求、不改判据**：闸门停点尾句与入口资产 L2 段已按审查中 / 闸门期 / 审批后三个时点写实（EV-132 候选 ①），闸门期无机制兜底这一事实仍在（候选 ② 待办）。
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index d4ab501..ce06573 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.48
++> - **当前版本**：v1.3.49
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -1126,7 +1126,8 @@ addresses:               # 本件应答的审查文档文件名，不是意见
+ > 进程还在（`heartbeat_stale`）、连 pid 都没有、非终态却拿不到 pid 时不写，报错正文写明未确认退出。凭据副本的抹除判定仍用改写之后那次，不变。
+ > 两条都排在 status.json 落终态之前，进程中断后下一次 `--wait` 可补齐；结果分别进 status.json 的 `message` 与 `--wait` 的报错正文。
+ > 三条事后收尾的第一步都在主题任务锁（与 task.json 同一把）里读、判、写，`--cancel` 与 `--wait` 同时收尾时谁先到记谁，每份 run.json 至多一次终态写入。
+-> 已结束却仍为 `running` 的留痕表示没有走到收尾：本版以前的 worker 异常 / `worker_lost` / 取消、失联时工作进程未确认退出，或 prepare 阶段写完骨架后被拦（BACKLOG EV-145），不回填。
++> 已结束却仍为 `running` 的留痕表示没有走到收尾：本版以前的 worker 异常 / `worker_lost` / 取消、失联时工作进程未确认退出、v1.3.49 以前 prepare 阶段写完骨架后被闸门拦下，或准备阶段写完骨架之后登记失败（BACKLOG EV-145 余项），不回填。
++> **被闸门拦下的 `--start` 不写任何留痕**（v1.3.49，EV-109 / EV-145 ①）：`prepareRun` 在第一次落盘之前置闸门 `running`，槽位被上一轮待裁决占着即退 2，brief、补丁与便利副本、run.json、task.json 登记、运行目录一概不写；置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 自己回收闸门。此前骨架写在闸门判定之前，被 `latestRunMeta` 当成最新留痕，不带 `--run-id` 的 `gate` 随之指向一轮从未开跑的运行。
+ > `guard.forged_role_file` 是保留字段：run.v1 / v2 必填、写侧恒 `false`、不表示检测过，`report` 不据它打旗标（EV-137）。
+ 
+ `prompt_hint` 与 `task_goal` 是两回事，不可互相顶替（RV-19）：前者是「本次审查焦点」，
+@@ -1383,6 +1384,7 @@ SKILL.md 要求执行者把正文整段放进**一个**单引号参数、旗标
+ | `--profile` 档位不存在 | 报错并列出 `config.yaml` 已定义的档位，退出码 `64`；**不**静默回退到 `default` | AGY-04 / GLM-05 |
+ | 主题名非法 | 报错并给出修正建议，退出码 `64` | PRD 第 8 章 |
+ | 归档根不可写 / 非 git 仓库 | 报错，退出码 `69` | — |
++| 该阶段上一轮审查意见尚未裁决（闸门 `review_done_awaiting_disposition` / `awaiting_approval`） | 退 `2`，给出 `gate --check` 与 `abandon` 两条出路；零工件——闸门在任何落盘之前判定（v1.3.49） | GLM-r2-01 ③ / EV-109 |
+ 
+ 退出码约定：`0` 成功；`1` 一般失败；`2` 闸门阻断（供 Hook 使用，Hook 子命令以 wrapper 保证只返回 `0`/`2`，内部异常一律 `1`）；`64` 参数错误；`65` 前置产物缺失；`69` 环境/预检失败；`70` 同主题已有运行持锁（12.6）；`73` 运行仍在进行（仅 `review --wait`）；`75` 超时或单侧失败且为严格模式。
+ 
+@@ -1455,7 +1457,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
+ 
+ | 子命令 | 行为 | 返回 |
+ | :--- | :--- | :--- |
+-| `review --start` | 预检通过后：冻结送审包 → 写 `run.json`（`status: running`）→ 以 `setsid`/双 fork 派生工作进程（真并行拉起两侧、回收、解析、落盘全部在该进程内完成，完成即退出）→ **立即返回** | `0` + `run_id`、`max_waits`（= ceil(总上限 / timeout) + 2） |
++| `review --start` | 预检通过后：冻结送审包 → 置闸门 `running`（槽位被上一轮待裁决占着即退 2、不落盘，v1.3.49）→ 写 `run.json`（`status: running`）→ 以 `setsid`/双 fork 派生工作进程（真并行拉起两侧、回收、解析、落盘全部在该进程内完成，完成即退出）→ **立即返回** | `0` + `run_id`、`max_waits`（= ceil(总上限 / timeout) + 2） |
+ | `review --wait <run_id> --timeout <s>` | 轮询 `~/.trivium/runs/<repo_id>/<run_id>/status.json`，最多等待 `<s>` 秒（默认见 `defaultConfig()` 的 `wait_timeout_s`，须小于 Bash 工具超时） | `0` 完成且工件已落盘；`73` 仍在运行（stdout 给出两侧状态、已用时/预算、心跳时间，JSON 另给 `progress_brief` 等结构化进度，见 7.5.1）；`75` 严格模式单侧失败；其余同 7.3 |
+ | `review --status <run_id>` | 只读一次状态，不等待 | 同上 |
+ | `review --cancel <run_id>` | 向工作进程发 SIGTERM → SIGKILL；工作进程确认退出后，把仍为 `running` 的归档 run.json 与 `task.json` 登记标 `cancelled`（v1.3.47，EV-128，见 6.7 注记）；再把 status.json 标 `cancelled`、回收锁与闸门 | `0` |
+@@ -3005,7 +3007,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
+ | AC-13 按任务指定模型 | 路由优先级四级 + ZCode 覆盖两档 + 生效值回读 | `run.json` 中两侧 `model_effective` 不同且与指定一致 |
+ | AC-14 命令 D 人工闸门 | 同 AC-02 | 跑 `/dual-review-bug` 后尝试改代码，应被 deny |
+ | AC-15 命令 D 工件齐全 | `bug/` 四件套，修订不覆盖原稿 | 目录校验 + 原稿哈希未变 |
+-| AC-16 预检失败即中止 | 预检在送审前，失败零工件；**`review` 自身的任一失败出口（64/65/69/70）同样不得留半套工件** | 断网/改坏路径后启动，检查无任何文件生成；另需覆盖「第一侧送审包已渲染、第二侧才失败」这一形态——按失败出口逐个比对 `.reviews/` 前后文件集合应逐字节一致（`test/integration/no-artifacts.test.ts`） |
++| AC-16 预检失败即中止 | 预检在送审前，失败零工件；**`review` 自身的任一失败出口（2/64/65/69/70）同样不得留半套工件**（2 即上一轮未裁决被闸门拦下，v1.3.49 补入） | 断网/改坏路径后启动，检查无任何文件生成；另需覆盖「第一侧送审包已渲染、第二侧才失败」这一形态——按失败出口逐个比对 `.reviews/` 前后文件集合应逐字节一致（`test/integration/no-artifacts.test.ts`） |
+ | AC-17 送审材料固定且自包含 | 送审包落 `_meta/` + `subject_sha256` + `tree_hash` 漂移检测 | 审查中修改被审对象，运行应判 `subject_drift` 作废；修改无关文件，应出 `drift` 警告并列出文件；结论只对应 `run.json.snapshot` 记录的哈希 |
+ | AC-18 模型异构默认与覆盖可见 | 默认不与当轮 Driver 厂商名义族同族（claude 为 Driver 时即非 Claude 系；启发式，见 11.5）；覆盖写入元数据与文档头 | 默认跑一次 + 显式覆盖跑一次，检查元数据 |
+ | AC-19 等待期进度可读可预期 | `--wait` 返回结构化进度字段 + 单行摘要；启动播报 | 跑一次真实双审，核对每次等待返回与开场播报 |
+@@ -3434,6 +3436,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.49** | 2026-09-27 | **闸门拦截不留骨架（EV-109 ≡ EV-145 ①）。** 计划 `.reviews/闸门拦截不留骨架/plan/`（D1～D5 送审前已定、全取建议项；计划双审第 1 轮 run `20260927T015234Z` 10 条全接受，r2 定稿 `1ee28b0`，审批「修改后实施」）。**一、`prepareRun` 把置闸门 `running` 的比较-交换挪到第一次落盘之前**：被拦（上一轮未裁决直接重跑，退 2）时一个文件都不写；置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 自己回收闸门（`state.ts` 新增 `releaseRunningGateEntry`，`run-protocol.ts` 的 `releaseRunningGate` 委托它，语义 `running → idle` 不变）。**二、消除一处既有误判**：此前被拦那次已写下 run.json 骨架（轮次 N+1），`latestRunMeta` 不看 `status` 取它当最新留痕，不带 `--run-id` 的 `gate --check` / `--await-approval` / `--check-artifacts` 与 `hook-stop` 的提示都指向它，被拦文案给的出路「补齐裁决件并通过 `gate --check`」走不通；code 阶段的便利副本 `changes.diff` 也被覆盖。**三、如实保留**：写完骨架之后登记失败时骨架留 `running`、只回收闸门，到下一次成功重跑前不带 `--run-id` 的 `gate` 指向它（EV-145 余项）。落点：6.7 注记末句、7.3 拒绝启动表一行、7.5 `review --start` 一行、验收表 AC-16 行。附带核出两条既有缺陷新登 BACKLOG（run_id 只到秒、同秒两次运行互相覆盖；留痕读不出时「重跑一次」的出口循环）。 |
+ | **v1.3.48** | 2026-09-27 | **未收尾运行的留痕与复盘可见性（EV-142 / EV-144）。** 计划 `.reviews/未收尾运行的留痕与复盘可见性/plan/`（r1 送审前用户授权按最优原则拍板 D1～D8、全取建议项，计划双审第 1 轮 run `20260926T235951Z` 8 条全接受，r2 定稿 `e22a174`，审批「修改后实施」）。**一、6.7 注记（EV-142）**：`failed` 另有两条事后收尾——worker 异常分支自己写、`--wait` 判 `worker_lost` 时用改写 status.json 之前的事实确认工作进程已退出才写（status.json 读不到时按 worker.pid 判，计划双审三侧同指的一格）；与取消回写共用按目标终态参数化的函数体，仍为 running 才写、只改三格加 `termination`、排在 status.json 落终态之前；三条事后收尾的第一步都在主题任务锁里判与写，每份 run.json 至多一次终态写入；心跳过期而进程还在时不写。**二、6.7.1**：新增可选字段 `termination`（结构化、不存异常原文，`reason` 与 `WORKER_LOST_REASONS` 由用例守住同步）。**三、7.5 约束①**：`worker_lost` 的三种原因改准。**四、§5.1、§13.2（EV-144）**：`report` 时间线不动，没产出审查文档的运行另列「未进时间线的运行」表并在「轮次总数」后注明「另有 K 次」；实测证实入选侧全部失败的轮次此前同样看不见。**五、故障表、验收表**：`worker_lost` 一行补 run.json 的收尾。新登 BACKLOG EV-145（prepare 阶段写完骨架后被闸门拦下等其它未收尾路径）、EV-146（`heartbeat_stale` 判失联后 `--cancel` 杀不掉挂住的 worker）。历史 4 份 `running` 不回填。读数：`npm run check` 2126 / 2124 / 0 / 2，源码变异 16/16 + 契约变异 1/1，零配额验收 18/18，selftest 14/14（报告 `doc/05_testing/REPORT_2026-09-27_unfinished_runs.md`）。代码双审 r1（run `20260927T005543Z`）4 条接受 3、驳回 1：只改注释里失效的行号引用与 LLD 行号，驳回「锁争用告警会冒出 --cancel 补救提示」（告警只取异常首行）。 |
+ | **v1.3.47** | 2026-09-26 | **留痕字段与误报小修（EV-127 / EV-128 / EV-137）。** 计划 `.reviews/留痕字段与误报小修/plan/`（r1 送审前用户定 D1～D5 全按建议，计划双审第 1 轮 run `20260926T135731Z` 14 条全接受，r2 定稿 `661be7b`，审批「修改后实施」）。三处都是「留痕与实际不符」。**一、§6.5（EV-127）**：evidence 路径抽取改为整段以九个根目录起头（前界不能是字母、数字、`_`、`-`、`.`、`/`，容许前导 `./`）；此前 `\b` 起匹配把 `skills-src/…`、`dist/test/…`、`ZCode.app/…` 截成并不存在的路径，本仓 383 份历史审查件实测 56 条误报全部去掉、新报 0 条；不核的范围写明（BACKLOG EV-143）。**二、6.7 注记与 7.1（EV-128）**：`review --cancel` 在工作进程确认退出后把仍为 `running` 的 run.v2 run.json 收尾为 `cancelled`（只改三格、`artifacts[]` 原样）并同步 `task.json` 登记；排在 status.json 落终态之前、两步各自可重入、自身不抛；取消轮唯一一次终态写入，与 EV-133 不冲突，提交锚放行；历史停在 `running` 的 4 份不回填；worker 异常与 `worker_lost` 同形两处登 EV-142。**三、§9 模块表与 6.7 注记（EV-137）**：`guard` 不做伪造角色文件检测，`forged_role_file` 为恒 false 的保留字段，`report` 不再读取；实际由写入前 Hook、`gate --check-artifacts` 未登记审查件判据与提交锚承担（后者要不要进 `gate --check` / `approve` 并进 EV-73）。run.v1 / v2 schema 给 `status` 与 `forged_role_file` 加 description；CLI 帮助 `--cancel` 一行同步。**四、代码双审 r1**（run `20260926T151155Z`，5 条全接受，审批通过）：CODEX-01「可重入」限定为进程中断——单步写失败没有第二次机会，`cancelRun` 告警当场要求人工核对（6.7 注记、LLD、MANUAL 同步）；CODEX-02 consulted 一侧同口径去前导 `./`（历史审查件无此形态，读数不变）；CODEX-03 task 登记同步写明三种跳过情形；CODEX-04 ≡ AGY-01 E1 注明依赖纳秒级时间戳 |
+ | **v1.3.46** | 2026-09-26 | **审批前工作树摘要（EV-132 候选 ② 折中版）。** 计划 `.reviews/审批前工作树摘要/plan/`（r1 送审前用户定 D1～D6，计划双审第 1 轮 run `20260926T100417Z` 16 条全接受，r2 定稿 `12d54e2`，审批「开始实施」）。用户定原候选 ②「审批前复核加工作树比对、不一致即拒」不做，改为**审批时只打印工作树改动摘要，不拦、不改判定**。**一、8.5**：新增「审批时的工作树改动摘要」段——`approve` 通过（复核之后、落审批之前）与两个停点出口打印自审查收尾以来的改动；基线 `snapshot.after_tree_hash`、当前树同法 `workTreeHash`，闸门期提交的改动同样列出；四种取不到的原因、不报「无改动」；20 秒预算；人读 20 条、JSON 200 条；Hook 不算；盲区与 `git gc` 实测口径。「补偿的覆盖面」末句由「候选 ② 仍待办」改为折中版。**二、6.7.1**：新增 `snapshot.after_tree_hash` 行（可选，只供摘要作基线，不参与判定）。**三、15.3 AC-21、R18**：闸门期仍不拦、不兜底，审批时打印摘要、只告知。**四、运行时文案**（D6 (b)）：停点尾句共用前段、`L2_AFTER_THE_FACT`、`l2-notice`（重渲染 12 份）、`driver.snippet`（新一档指纹，本仓 AGENTS.md / GEMINI.md 原位升级）、注册表注释，闸门期一句改为「不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要」，共用措辞不就拦不拦表态；`dual-approve` 入口资产（4 份）写明摘要只告知。判定代码（`verifyRoundForApproval`、`judgeDrift`、`diffTrees`）一律未改；`diffTrees` 失败返回空的同族问题另登 BACKLOG EV-139，审批前单独看摘要的只读入口登 EV-140。**五、代码双审 r1**（run `20260926T111908Z`，7 条：接受 6、暂缓 1）：CODEX-01 ≡ GLM-01 照抄命令的注入面（形状闸 + 两个 tree 值加引号）、CODEX-02 预算注入自我暴露与「超过 0 秒」、CODEX-03 按进程组收尾与整体截止、GLM-02 「会列出」补取不到的情形、AGY-01 原因末尾补句号；CODEX-04（预算可配置与关闭开关）暂缓，登 EV-141 |
+diff --git a/doc/02_design/LLD_orchestrator.md b/doc/02_design/LLD_orchestrator.md
+index 8af08e8..5323e23 100644
+--- a/doc/02_design/LLD_orchestrator.md
++++ b/doc/02_design/LLD_orchestrator.md
+@@ -2,8 +2,9 @@
+ 
+ > - **作者 / 负责人**：Driver（Claude）
+ > - **创建日期**：2026-09-13
+-> - **当前版本**：v1.1.6
++> - **当前版本**：v1.1.7
+ > - **状态**：草稿(Draft)
++> - **变更说明**：v1.1.7（2026-09-27）随设计 v1.3.49（闸门拦截不留骨架，EV-109 / EV-145 ①）同步：`startRun` 时序图里 `setGateChecked(running)` 挪进 `prepareRun`、排在落盘送审包之前；`startRun` 第 2 条补「闸门由 `prepareRun` 自己回收」；零工件不变式补「置闸门是落盘之前的最后一步」一段；4.2 引述块里「prepare 阶段写完骨架后被拦」移出仍会停在 running 的列举
+ > - **变更说明**：v1.1.6（2026-09-27）随设计 v1.3.48（未收尾运行的留痕与复盘可见性，EV-142 / EV-144）同步：4.2 `worker_lost` 一节补归档侧收尾（改写 status.json 之前判确认退出、status.json 读不到时按 worker.pid 判、`termination`、`WORKER_LOST_REASONS` 单一来源）；「同形两处仍未写」改为已修，函数体改名 `finalizeUnfinishedRunMeta`、第一步进主题任务锁；剩余未收尾路径指向 EV-145。代码双审 r1（run `20260927T005543Z`）CODEX-02：同段「三判据」的行号改为现值（`status.ts:205-249`，常量 `:187`）
+ > - **变更说明**：v1.1.5（2026-09-26）随设计 v1.3.47（留痕字段与误报小修）同步：「`cancelRun` 不回写 `run.json`」两处由已知缺口改为已修（EV-128，`meta.ts` `finalizeCancelledRunMeta`），保留 worker 异常与 `worker_lost` 同形两处仍未写的说明（EV-142）；旧的 `run-protocol.ts:680` 链接改准
+ > - **变更说明**：v1.1.4（2026-09-26）随设计 v1.3.46（审批前工作树摘要，EV-132 候选 ② 折中版）同步：模块表登记 `worktree-summary.ts`；`util/git.ts` 补两个失败即抛的严格助手
+@@ -200,8 +201,7 @@ sequenceDiagram
+ 
+     D->>S: review --start --entry B --stage plan
+     S->>S: acquireLock(topic)  ← 先占锁再 prepare
+-    S->>S: prepareRun：校验 → 冻结 → 渲染 BRIEF → 落盘送审包
+-    S->>S: setGateChecked(running)
++    S->>S: prepareRun：校验 → 冻结 → 渲染 BRIEF → setGateChecked(running) → 落盘送审包
+     S->>W: spawnDetached(--worker runId)
+     S->>S: 锁所有权移交给 worker 的 pid
+     S-->>D: 立即返回 runId / maxWaits / bashTimeoutMs
+@@ -227,7 +227,7 @@ sequenceDiagram
+ 顺序有讲究，逐条都有代价：
+ 
+ 1. **先占主题锁再 prepare**（`run-protocol.ts:228-240`）——否则两个并发 `--start` 会各自冻结一份快照后才发现冲突。
+-2. `prepareRun()`，失败则释放锁后抛。
++2. `prepareRun()`，失败则释放锁后抛。闸门不用这里管：被拦时没置上，置上之后的失败 `prepareRun` 自己回收（v1.1.7）。
+ 3. **纯文档跳过必须在派生前收口**（`run-protocol.ts:258-276`）：直接同步 `executeRun`，返回 `finishedInline: true`。
+ 4. 写 `request.json`（交接文件）与 `status.json`。
+ 5. **派生工作进程**：`spawnDetached` 用 `detached: true` + `stdio: ['ignore', fd, fd]` + `unref()`，**绝不继承父进程管道**——继承会让 worker 在父进程退出后死于 SIGPIPE。detached 即 setsid，worker 自成进程组，`--cancel` 才能按进程组杀掉 agy/zcode。
+@@ -238,6 +238,8 @@ sequenceDiagram
+ 
+ 第 11 步之前**一个文件都没写**（`review.ts:488-491`）。校验、定位被审对象、冻结、渲染 BRIEF 全在内存里完成，确认全部成功后才统一落盘。这是审查意见 GLM-04 的修复——原先 `locateSubject` 抛 65 或第二侧 `routeModel` 抛 69 时，会留下「目录 + 单侧 brief」的半套工件。
+ 
++**置闸门是落盘之前的最后一步**（v1.1.7，EV-109 / EV-145 ①）：`setGateChecked(running)` 排在计算段之后、第一次落盘之前，被拦（上一轮未裁决，退 2）时零工件；此前它排在落盘段之后，被拦那次已写下 brief、便利副本 `changes.diff`、run.json 骨架、task.json 登记与运行目录。置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 经 `state.ts` 的 `releaseRunningGateEntry` 回收闸门；写完骨架之后才失败（登记、任务目标落盘）时骨架如实留 `running`。
++
+ **`run_id` 生成**（[meta.ts:31](../../src/trivium/meta.ts#L31)）：UTC 紧凑时间戳 `20260910T142310Z`，可排序、可直接做文件名。
+ 
+ **code 阶段的补丁只算一次**（`review.ts:341-347`）后透传给两侧——逐侧各自 `git diff` 会让两次之间的工作树变动导致两侧拿到不同的 `subject_sha256`，那等于两侧审的不是同一段变更。
+@@ -462,7 +464,7 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
+ > **同形两处已修（v1.1.6，EV-142）**：函数体改为按目标终态参数化的 `finalizeUnfinishedRunMeta`，对外两个薄导出——`finalizeCancelledRunMeta`（签名与行为不变）、`finalizeFailedRunMeta`（写 `failed` 并记 `termination`）。
+ > worker 的异常分支（`workerMain` 的 `catch`，排在 `patchStatus` 之前、`workerGone: true`——写者就是 worker 自己）与 `--wait` 判 `worker_lost`（见 4.2 轮询协议一节）各调一次；
+ > 第一步的读、判、写在主题任务锁（`taskLockName`，与 task.json 同一把）里，三条事后收尾同时到达时谁先到记谁；第二步只同步到本次目标终态，不照抄别的终态。
+-> 仍会停在 `running` 的：失联时进程还在（`heartbeat_stale`），以及 prepare 阶段写完骨架后被拦、同步路径异常、worker 猝死而没人 `--wait` / `--cancel`（BACKLOG EV-145）。
++> 仍会停在 `running` 的：失联时进程还在（`heartbeat_stale`），以及准备阶段写完骨架之后登记失败、同步路径异常、worker 猝死而没人 `--wait` / `--cancel`（BACKLOG EV-145 余项；被闸门拦下的那一格 v1.1.7 起不再写骨架）。
+ 
+ ### 4.3 锁的生命周期
+ 
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index 491ecec..572dae1 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -251,7 +251,7 @@ Hook 另有三档语义：`0` 放行或判定不了 ｜ `2` 明确判定拦截 
+ ```text
+ trivium review --start --stage <s> --topic <t> --focus <hint> --json
+   → { run_id, max_waits, wait_timeout_s, bash_timeout_ms, worker_pid, run_dir }
+-    先占主题锁 → prepareRun（冻结、渲染 BRIEF、写 run.json 骨架）
++    先占主题锁 → prepareRun（冻结、渲染 BRIEF、置闸门 running——被拦即退 2 且不落盘、写 run.json 骨架）
+     → spawnDetached 工作进程 → 把锁改记 worker 的 pid → 立即返回
+ 
+ 循环（至多 max_waits 次，每次的 Bash 工具超时必须设为 bash_timeout_ms）：
+diff --git a/doc/07_manuals/MANUAL_user.md b/doc/07_manuals/MANUAL_user.md
+index c4a94d7..17c06a5 100644
+--- a/doc/07_manuals/MANUAL_user.md
++++ b/doc/07_manuals/MANUAL_user.md
+@@ -2,7 +2,7 @@
+ 
+ > - **作者 / 负责人**：Driver（Claude）
+ > - **创建日期**：2026-09-13
+-> - **当前版本**：v1.0.6
++> - **当前版本**：v1.0.7
+ > - **状态**：草稿(Draft)
+ >
+ > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
+@@ -649,6 +649,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ 直接再发一次同样的命令。工件不会被覆盖，自动抬 `-r2`。
+ 
+ 但**上一轮的裁决必须先补齐**——闸门是 `review_done_awaiting_disposition` 时重跑会被拒绝并提示「上一轮尚未裁决」。
++被拒绝的那次不会留下任何文件（v1.0.7 起），补齐裁决后直接跑 `gate --check` 即可，不用 `--run-id`。
+ 
+ ---
+ 
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 6996957..05d98be 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -204,7 +204,7 @@
+ | EV-106 | done | **M10a 第 3 步收紧 `--driver` 之后，设计文档里 M9 时点的描述与代码不一致，移交第 5 步回溯。** 第 3 步把 `resolveDriver` 对 `driverEnabled: false` 由「放行 + 标注」收紧为退 64，四家翻开；用户可见面（USAGE、PROTOCOL `:16` / `:349`）本步已同步，而 LLD `:126-127` 与主设计 `:1126` / `:1199` 仍写「只校验已登记，未启用的放行并在预检与留痕里标注」。按 M10 计划 r7 §6.2 设计回溯统一归第 5 步，登记为第 3 步计划 r3 §5 偏差 8。**在第 5 步完成前这三处是失实描述**，引用它们的人以代码与 PROTOCOL 为准。同批待回溯：MANUAL §8.2「复核只保裁决齐备与本轮工件哈希一致，不保审批来自人」那半句（r7 §6.2）。**追加（2026-09-23，M10a 第 4 步 EV-62）**：判据改为按当轮 Driver 厂商的名义模型族判定之后，下列文字仍把「同源」写成「非 Claude 系」或把同族等同于 Claude 系——PRD FR-17、AC-18；主设计 `:166`、`:2486-2487`、`:2783`、`:2832`；演进设计 §5 `:283`（补一句「Driver 一侧今天按厂商名义族近似」，指向 EV-107）；`README.md:89`；`doc/05_testing/CASE_manual_acceptance.md` 的 4.3 行（`:207`）与其后「若把某侧显式指定为 `claude-*` slug……写 `heterogeneous: false`」一段（`:211-213`，要改写成「与当轮 Driver 厂商名义族同族时」的口径，不能只换一个词）。**验收剧本那两处须在 M10b 真载体验收之前改**。豁免边界：`doc/02_design/reference/` 下的调研答卷（该目录 README 明示不作为实现依据）与 `doc/05_testing/` 下的历史测试报告属冻结材料，不回溯。以上清单按「Claude 系」等字面扫出，同义不同词形的说法没有扫全，回溯时按语义再过一遍 **【2026-09-24 done · M10a 第 5 步段二】逐项对账**（完整对账表、反向表与 grep 锚差集见 `doc/05_testing/REPORT_2026-09-24_m10a_step5.md`）：LLD `:126-127` → 2.6「当前边界」改准（v1.1.2）；主设计 `:1126` → 6.7.1 `driver` 行、`:1199` → 7.1 `--driver` 段（v1.3.37）；MANUAL §8.2 → 补「批准前的复核保什么、不保什么」（v1.0.2）；PRD FR-17 / AC-18 → 名义族口径（v1.4.7）；主设计 `:166` → 1.2 FR-17 行、`:2486-2487` → 11.5 两条（另补「两层启发式、历史文案并存」一条）、`:2783` → 15.1 FR-17 行、`:2832` → 15.3 AC-18 行；演进设计 §5 `:283`（即 §5.4 末条）→ **没有改演进设计正文**：它自 v1.0.0 冻结，按方案 A（用户拍板）修正落主设计 11.5，并在主设计 §24.1 新增一行注明；`README.md:89` → 改写；验收剧本 4.3 行与其后 `claude-*` 段 → 整段改写为「与当轮 Driver 厂商名义族同族」口径，并补 codex 为 Driver 的例子。**同义词形补扫**：grep 锚 B3（`Claude 系` / `非 Claude` / `claude-*` / `heterogeneous: false`）改动后的残余命中逐条归类见报告，**本条点名之外没有再发现失实的同源口径**；**本条点名的各处，没有漏掉的**。本条之外同步改准的门面与契约句（主设计与 PRD 的其余状态位与契约句、根 `CLAUDE.md`、协议片段、`AGENTS.md`、`.reviews/README.md`、PROTOCOL、QUICKSTART、RUNBOOK 一句、两份 README）见报告。 | `doc/02_design/LLD_orchestrator.md:126-127`、`doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1126/1199`、`doc/07_manuals/MANUAL_user.md` §8.2；EV-62 追加项见条目内 |
+ | EV-107 | todo | **`isHeterogeneous` 的 Driver 模型族是按厂商名义族近似的，不是按生效模型判定。** 演进设计 §5 要求「模型族按生效模型判定，不按 Agent」；审核者一侧做到了，Driver 一侧做不到，因为编排器不采集 Driver 的生效模型。EV-62（M10a 第 4 步）改为「审核者生效模型 vs 当轮 Driver 厂商的名义模型族（`VENDOR_MODEL_FAMILY`）」，两层都是启发式。名义族**不是** `agents.codex.profile` 意义上的「家族」：后者描述审核者调用连到哪家 provider，与 Driver 会话无关。**已知会错的形态**（可达性按本机探针的模型目录判，不是全称）：①**可达**：driver=codex 时，gemini 审核者经显式覆盖跑 `gpt-oss-120b-medium` 被判同族，而 codex Driver 实际多半跑 qwen；driver=claude 而 Claude Code 实际接别家模型时，gemini 审核者经显式覆盖跑 `claude-*` 被判同族。②**本机目录下不可达**：driver=codex 而审核者跑 qwen 会被判异构——能跑 qwen 的只有 codex 审核者（此时被排除），zcode 目录出现 qwen 系之后才可达（它支持自定义 provider）。③模型名不含族名：如 OpenAI 的 `o` 系列不含 `gpt`；补模式的触发条件：根本解落地前，出现 openai Driver 的真实运行且审核者经显式覆盖用了 o 系列（计划双审 r1 AGY-04，暂缓）。④取不到模型名时一律判异构。「新增检出」那一格（非 anthropic Driver 下的名义族同族）在内置配置下不可达，只对显式覆盖生效。`heterogeneous` 只驱动告警与留痕，不拦闸门。**根本解**：采集 Driver 的生效模型（会话声明，或各家载体可回读时回读），再按两侧生效模型比族。**触发条件**：M10b 真载体验收时，或有人依据 `heterogeneous` 做门禁判定之前。来源：M10a 第 4 步（EV-62），计划双审 r1 CODEX-04、r2 GLM-01。**追加（2026-09-24，M10a 第 5 步）**：设计与需求文字已按名义族口径回溯（主设计 11.5、PRD FR-17 / AC-18），并写明两层启发式；根本解仍待本条。另点名第 4 步报告那条「真实的覆盖空白」：**非缺省 Driver 下 `run.json` 与审查文档的 `heterogeneous` / `override_reason` 取值没有端到端用例**，由 M10b 真载体轮实跑承接。**追加（2026-09-26，M10b 第 4 步端到端覆盖；不结案）**：上述覆盖空白已由五格补上——M10b r5 §4.7 前置臂（`--driver codex`，gemini 被显式指定 `gpt-oss-120b-medium` ⇒ `false` + `override_reason` 非空，「新增检出」一格；glm ⇒ `true`，第 1 步报告 §5.1）、第 4 步 3-3（gemini 名义 Driver，claude / codex 两侧）、3-4（codex 真载体，claude / gemini 两侧）、3-5（glm 真载体，claude / gemini 两侧），三轮各八格（run.json 与审查文档 front-matter 各两字段 × 两侧）全部与「生效模型 vs Driver 厂商名义族」算出的期望一致（第 4 步报告 §1.3～§1.5）。**两个错判形态的实例都已出现**：3-3 原稿与裁决件实出 Claude、claude 侧审核者跑 Claude 系模型，按事实同族却记 `true`；3-4 codex 会话实跑 `deepseek-flash`，名义族仍取 openai。只有 3-5 的名义族与事实族一致（ZCode 会话留痕逐请求记 `GLM-5.3`）。补的是用例，不改判定性质 | `src/trivium/agents/registry.ts` `VENDOR_MODEL_FAMILY`、`src/trivium/adapters/base.ts` `isHeterogeneous` |
+ | EV-108 | todo | **提交锚的剩余边界两格：只剩写侧，锚②够不着。** M10a 第 2 步（EV-55）删掉提交锚的后缀支之后，审查文档与原稿的不可变性只剩锚②（`run.json.artifacts[]` 的 sha256 登记）一道。已提交版本为 running 的运行清单已收窄为「同一 run_id、已登记条目逐条保留且 sha 不变、只许追加」（代码双审 r3 CODEX-01 ≡ GLM-01），仍够不着的两格：①收尾**新追加**的登记条目在追加那一刻可被同步改写（改文件与改登记同时发生，锚②拿到的就是改过的 sha）；②审查文档已落盘、登记尚未发生时进程崩溃，且该状态被提交——此后这批文档既不在 `_meta/`（位置判据失明）也不在登记里（锚②失明）（代码双审 r3 GLM-02）。两格都只剩写侧兜底：Write / Edit 精确拦，Bash 启发式拦。**后续可行方向**：崩溃轮收尾补登记，或登记时点前移。**触发条件**：有人把提交锚当成审查文档的唯一保护来依赖之前，或写侧拦截被改动时。来源：由 EV-55 拆出（M10a 第 5 步，计划 r2 §4.1），原文照 EV-55 进展段 | `src/trivium/hooks.ts` `immutableChangeReason` / `runningRewriteViolation`；`src/trivium/review.ts` 收尾登记段 |
+-| EV-109 | todo | **`review --start` 先落盘、后检查闸门槽位：被拒的那次留下半套工件与一条永远 running 的运行记录。** `prepareRun` 的顺序是：写被审补丁与便利副本 `changes.diff` → 写各侧 brief → 写 run.json 骨架（`status: running`）→ `registerRun` 登记进 `task.json.runs[]` → **然后**才 `setGateChecked` 检查该阶段槽位；槽位是别的 run 的待裁决状态时抛退 2（「上一轮……尚未裁决，不能直接重跑」）。此时已经落下的东西不会被回收，于是：①`_meta/` 下多出一份补丁与三份 brief，提交之后按位置判据成为不可变工件；②一条 `status: running` 的运行记录永远不会被收尾，`status` 的「运行 N 次」会把它数进去；③它**不消耗 `rerun_index`**，下一次真跑与它同号；④会话启动提示持续报「运行目录的状态读不到」（本仓实例：EV-79 code 档的 `20260922T134058Z`，2026-09-22）。**与 AC-16 同精神**：AC-16 要求 `review` 的失败出口（64 / 65 / 69 / 70）不留半套工件，退 2 这一格不在它的列举里，`no-artifacts` 用例也没覆盖。**修法方向**：把槽位检查提到任何落盘之前（或拒绝时回收本轮已落的工件与登记），并把退 2 这一格补进 AC-16 的零工件用例。**存量处置**：`20260922T134058Z` 那条孤儿记录与运行目录由用户在终端人工检查后清理，不由会话代删。**口径**：这类被拒的 `--start` 不计入双审轮次（`doc/08_project/M10a-轮次台账.md` §0，2026-09-24 用户拍板）。**触发条件**：下次改 `prepareRun` 或 `review --start` 的状态机时；或再出现一次同形孤儿记录时。来源：EV-79 code 档实遇，M10a 轮次台账 §0 登记，2026-09-24 用户拍板「登记」 | `src/trivium/review.ts` `prepareRun`（落盘段在前、`setGateChecked` 在后）；`test/integration/no-artifacts.test.ts` |
++| EV-109 | **done**（2026-09-27，主题 `闸门拦截不留骨架`（计划 r2 `1ee28b0`，计划双审第 1 轮 run `20260927T015234Z` 10 条全接受、审批「修改后实施」）：`prepareRun` 把置闸门 running 的比较-交换挪到第一次落盘之前，被拦时零工件；置闸门之后的失败由 `prepareRun` 自己回收闸门；零工件用例补上退 2 两格（`no-artifacts.test.ts` B1 / B4）；同一件事 2026-09-27 另登过一次（EV-145 第 ① 格），一并结案。存量 `20260922T134058Z` 仍由用户在终端人工处置） | **`review --start` 先落盘、后检查闸门槽位：被拒的那次留下半套工件与一条永远 running 的运行记录。** `prepareRun` 的顺序是：写被审补丁与便利副本 `changes.diff` → 写各侧 brief → 写 run.json 骨架（`status: running`）→ `registerRun` 登记进 `task.json.runs[]` → **然后**才 `setGateChecked` 检查该阶段槽位；槽位是别的 run 的待裁决状态时抛退 2（「上一轮……尚未裁决，不能直接重跑」）。此时已经落下的东西不会被回收，于是：①`_meta/` 下多出一份补丁与三份 brief，提交之后按位置判据成为不可变工件；②一条 `status: running` 的运行记录永远不会被收尾，`status` 的「运行 N 次」会把它数进去；③它**不消耗 `rerun_index`**，下一次真跑与它同号；④会话启动提示持续报「运行目录的状态读不到」（本仓实例：EV-79 code 档的 `20260922T134058Z`，2026-09-22）。**与 AC-16 同精神**：AC-16 要求 `review` 的失败出口（64 / 65 / 69 / 70）不留半套工件，退 2 这一格不在它的列举里，`no-artifacts` 用例也没覆盖。**修法方向**：把槽位检查提到任何落盘之前（或拒绝时回收本轮已落的工件与登记），并把退 2 这一格补进 AC-16 的零工件用例。**存量处置**：`20260922T134058Z` 那条孤儿记录与运行目录由用户在终端人工检查后清理，不由会话代删。**口径**：这类被拒的 `--start` 不计入双审轮次（`doc/08_project/M10a-轮次台账.md` §0，2026-09-24 用户拍板）。**触发条件**：下次改 `prepareRun` 或 `review --start` 的状态机时；或再出现一次同形孤儿记录时。来源：EV-79 code 档实遇，M10a 轮次台账 §0 登记，2026-09-24 用户拍板「登记」 | `src/trivium/review.ts` `prepareRun`（落盘段在前、`setGateChecked` 在后）；`test/integration/no-artifacts.test.ts` |
+ | EV-110 | **done**（2026-09-24，EV-82 第三段 `EV-82-置首修法` r3 §5：`ZCODE_LOG_DIR` 并入 `ZCODE_DIR_ENV_KEYS`，所有拉起路径一律清；副本路径收口；审查运行未建副本时的日志落点由 **EV-112** 收口（2026-09-25：审查运行两支都把日志 / 存储根 / 会话库指到运行目录）） | **审查臂继承宿主的 `ZCODE_LOG_DIR`：日志落到副本 HOME 与清扫面之外，`modelFromLog` 静默落空。** CLI 的日志目录取 `logDir ?? ZCODE_LOG_DIR ?? <HOME>/.zcode/cli/log`（包内字面，EV-82 第二段代码双审 r1 codex 核实）。EV-82 第二段只在两条探针臂里清它（`ZCODE_PROBE_EXTRA_CLEARED_ENV`，计划 r2 §2「本段不改审查臂」）；审查臂经 `zcodeProviderEnv` 原样继承。宿主一旦预置：①审查臂从 `<副本 HOME>/.zcode/cli/log` 读启动事件读不到，生效模型只剩 rollout 一个来源，而 EV-82 的「真实运行启动即回落」正是用 `modelFromLog` 核实的；②CLI 日志（可能含送审包全文）落在 `scrubZcodeHome` 的论域之外，跑后留存。与 `ZCODE_DATA_BASE_DIR` 当初进清除清单的理由同构（glm）。**现状**：doctor 在宿主预置时出 ⚠️（只报键名）。**候选修法**：把它并进 `ZCODE_DIR_ENV_KEYS`，一行改动、方向 fail-safe（清掉只会把日志拉回副本 HOME）。来源：EV-82 第二段代码双审 r1 CODEX-01 ≡ GLM-04 | `src/trivium/adapters/zcode.ts`（`zcodeProviderEnv` / `ZCODE_DIR_ENV_KEYS`）、`src/trivium/probes/zcode.ts` |
+ | EV-111 | **done**（2026-09-24，实施提交 `1b7cfed`；零配额验收通过，读数见 `doc/05_testing/evidence/ev111-acceptance-20260924/`：构建于 `1b7cfed`，纯文档提交 `53d12e0` 后 doctor 零告警并补出处句）（主题 `EV-111-构建标识HEAD误报` r2，代码双审 r1 6 条全接受：HEAD 只在作用面指纹未判定一致时才比；指纹一致时 HEAD 取不到也不记「比对未能完成」；doctor 在这一格补出处句。已核「作用面一致而 HEAD 不同」的五种情形（纯文档提交 / 构建时脏后提交 / HEAD 挪到同作用面提交 / 改了又改回 / 同根另一克隆），都不说明副本过期；指纹的覆盖边界另立 **EV-114**。实遇五次（台账第 8、10、11、14 行与本主题计划双审第 1 轮）。**不解除** M10b r7 §3.7 的规避：r5 §7.3 白名单行比的是字段不是告警） | **构建标识在纯文档提交后误报「安装副本与仓库 HEAD 不同版」。** 实遇：EV-82 第二段计划双审第 1 轮收尾（台账第 8 行），中间只有一次纯文档提交、安装作用面未变，告警仍报出。成因：HEAD 比对不看作用面，而 `inputs_sha256` 已覆盖作用面（src、scripts、skills、package.json、package-lock.json、tsconfig.json）。**候选修法**：本仓模式下 `inputs_sha256` 与当前作用面一致时，HEAD 不同降为提示或不报；要先核「作用面一致而 HEAD 不同」是否还有别的含义（如构建时工作树脏）。EV-82 第二段计划 r2 §9 登记，不在该段改 | `src/trivium/build-stamp.ts`（`buildStampWarnings`） |
+ | EV-112 | **done**（2026-09-25，主题 `EV-112-无副本审查运行载体落点`：计划双审 2 轮 26 条全接受，r3 定稿 `b739c50`；代码双审 r1 6 条全接受（codex 1 条 major：反向核只盖 rollout），实施提交 `1d80e23`；变异 16 条全咬住；**零配额验收 E1 通过**，读数见 `doc/05_testing/evidence/ev112-acceptance-20260925/01-e1-readout.md`：无副本支产物落进运行目录、副本支设与不设三键布局逐字相同、真实 HOME 按内容核零写入。**现象比登记时大**：不止日志，rollout、会话库、artifacts、workflow、memories 全部留在真实 `~/.zcode`；修法是审查运行两支都**设**日志目录 / 存储根 / 会话库三键到运行目录，清除面扩为十一键，落点自检（合取 + 无副本支反向核日志与 rollout）进 run.json 的 `carriers_landed`，见计划 r3 与设计 v1.3.39。**登记留痕**：计划 r3 §5.2 的消费方清单漏列五处（`zcode-model-selection.test.ts:201` 键集全等、`zcode-runtime-selection.test.ts:324`、`storageRedirectRoot` 的 U3 / U4 / U5、`zcodeStorageRedirectEnv` 的 U2 / U5、`carriers_landed` 的 `stub.ts`），见代码双审应答件；§8 残余登记为 EV-115～EV-120，另加 EV-121。**E2 真实配额验收通过**（run `20260924T172304Z`，单侧 glm；审查运行期间暂挪 `~/.zcode/cli/config.json` 进入无副本支，跑完复原），读数见同目录 `02-e2-readout.md`：日志、rollout、会话库、memories 落进运行目录，落点自检全真无泄漏，真实 HOME 按内容核零写入；artifacts / workflow 本轮未产生。**成因更正**：下文现象栏的「未指定模型」一因在流水线里走不到（`review.ts` 派发前即拒空模型），唯一可达成因是副本源缺失。E2 附带实测登记 EV-122） | **无副本的审查运行把含送审包全文的 CLI 日志持久留在真实 `~/.zcode/cli/log`。** 审查运行未指定模型、或副本源 `~/.zcode/cli/config.json` 缺失时，`prepareZcodeHome` 返回 `homeDir: null`，`invokeZcode` 不改 HOME、不省略个人键，CLI 用真实 HOME 跑完整 turn；按 `scrubZcodeHome` 自己的文档，`log/` 与 `rollout/` 逐字含送审包全文，而清扫只管 `<runDir>/<side>/home`，这条路径整份留在用户真实目录。EV-110 并入 `ZCODE_LOG_DIR` 后，宿主原本能把它重定向到临时卷的办法也失效。**候选修法**（codex 建议）：给无副本那一支**设**（而非清）`ZCODE_LOG_DIR=<runDir>/<side>/home/.zcode/cli/log`，并把 `modelFromLog` 的回读路径改成读同一处，使该路径与副本路径同形、日志落进清扫面；rollout 目录是否同样可重定向需先核包内字面。来源：EV-82 第三段代码双审 r1 CODEX-04 | `src/trivium/adapters/zcode.ts`（`invokeZcode`、`zcodeAdapter.run` 的日志回读、`scrubZcodeHome`） |
+@@ -240,8 +240,11 @@
+ | EV-142 | **done**（2026-09-27，主题 `未收尾运行的留痕与复盘可见性`（计划 r2 `e22a174`，计划双审 r1 run `20260926T235951Z` 8 条全接受、审批「修改后实施」）；代码双审 r1（run `20260927T005543Z`）4 条接受 3、驳回 1，审批通过）：`meta.ts` 函数体改为按目标终态参数化的 `finalizeUnfinishedRunMeta`，新增 `finalizeFailedRunMeta`；worker 异常分支自己写（排在 `patchStatus` 之前）、`--wait` 判 `worker_lost` 时用改写 status.json 之前的事实确认工作进程已退出才写（status.json 读不到时按 worker.pid 判）；第一步进主题任务锁；run.v2 新增可选 `termination`；心跳过期而进程还在时不写；历史 4 份 running 不回填；其余未收尾路径登 EV-145、失联后 `--cancel` 杀不掉挂住进程登 EV-146（2026-09-26 登记，留痕字段与误报小修计划 r2 §6.3 第 1 条） | **worker 抛异常与 `--wait` 判 `worker_lost` 两处也不写 run.json，被判失败的运行在归档里停在 `running`。**EV-128 只修了 `review --cancel` 那一路；`run-protocol.ts` 的 worker `catch` 分支与 `worker_lost` 分支都只改 status.json 为 `failed`。本仓 4 份停在 `running` 的历史留痕分不出是哪一种。候选：复用 `finalizeCancelledRunMeta` 的前提与写法、把终态参数化（`failed`）。**难点在前提**：`worker_lost` 靠心跳判，进程可能还活着，「工作进程已确认退出」这一前提要另论，不能照搬 | `src/trivium/run-protocol.ts` `workerMain` 的 `catch`、`waitRun` 的 `worker_lost` 分支、`src/trivium/meta.ts` `finalizeCancelledRunMeta` |
+ | EV-143 | todo（2026-09-26 登记，留痕字段与误报小修计划 r2 §6.3 第 2 条） | **evidence 与 consulted 核对的剩余误差。**EV-127 修掉中段截断后仍有三类：①不以九个根目录起头的仓内路径不核（`skills-src/`、`skills/` 等，漏报；本仓历史上这类都已列进 consulted 或不是入仓文件，但往后不保证）；②非 ASCII 文件名永远不核（字符类不含中文，主设计本身就是，漏报）；③意见描述假想场景时写的示例路径（`src/a.ts`、`src/leak.txt`）被当成引用（误报，本仓历史 96 条里 39 条仓内不存在）。候选：①从项目树取顶层目录作根集合；②字符类放开非 ASCII；③只核仓内存在的路径。都属收紧或改判据，要单独论证；这一项只进告警、不改判定 | `src/trivium/parse.ts` `checkReviewIntegrity` |
+ | EV-144 | **done（候选 ② 的变体 ②′）**（2026-09-27，主题 `未收尾运行的留痕与复盘可见性`，与 EV-142 同一计划与计划 / 代码双审）：时间线与轮次口径不动，`report` 在时间线下方另列「未进时间线的运行」表（该阶段可读 run.json 减去时间线选中者；预定轮次、起止、状态、按留痕事实给的说明），头部「轮次总数」后注明「另有 K 次」，`--json` 多 `unlistedRuns`；读不出的 run.json 进 notes。已核实：两侧都失败的轮次此前同样不可见（失败侧只写 `.failed.json`，夹具实测 `rounds: []`）（2026-09-26 登记，用户定；留痕字段与误报小修实施报告 §3.2） | **`report` 按审查文档枚举轮次，没有审查文档的运行在时间线里不可见。**`enumerateRounds` 先从阶段目录的审查文档收集轮次号，再从 `_meta/run-*.json` 反查每个轮次对应哪次运行；被 `--cancel` 的运行（EV-128 起 run.json 如实记 `cancelled`）以及 EV-142 那两种失败都没写出审查文档，于是整轮不出现——留痕写对了，复盘却看不见，「该阶段没跑过」与「跑了但被取消 / 失败」在报告里分不开。零配额验收实测：取消一轮后 `report` 报「轮次总数：0」。**难点**：没写出工件的运行不推高轮次号，随后的重跑沿用同一个轮次号，按轮组织的时间线装不下「同一轮多次运行」。候选：①时间线改为按运行列，无工件的运行标注原因；②时间线不动，只在报告告警段列出这类运行（run_id、状态、起止时间），代价小、足以让人看见。未核实：两侧都失败的轮次是否同样不可见（取决于失败侧写不写审查文档）。**触发条件：做 EV-142 时一并评估** | `src/trivium/report.ts` `enumerateRounds` / `buildTopicReport` |
+-| EV-145 | todo（2026-09-27 登记，未收尾运行的留痕与复盘可见性计划 r2 §6.3 第 1 条） | **其它「写了骨架却走不到收尾」的路，run.json 同样停在 `running`。**EV-128 / EV-142 修了取消、worker 异常、`worker_lost` 三条；还剩：①`prepareRun` 在 `review.ts` :949 写骨架、:951 登记之后，:1002 闸门拦下「上一轮未裁决直接重跑」——零配额实测退 2，归档多出一份 `running` 的 run.json（`rerun_index` 为下一轮），:951 / :965 的 task.json 写失败同形；②`startRun` 在 `prepareRun` 之后失败（`run-protocol.ts` :427 的 `catch`，派生前后都有可能——派生成功后才失败时 worker 可能仍在跑，前提要另论）；③同步路径 `runReviewLocked` 里 `executeRun` 抛错（只回收闸门）；④worker 猝死且没人跑 `--wait` / `--cancel`（会话启动清扫 `sweepDeadRunningGates` 只回收闸门）。①最容易发生，正解多半是「先查闸门再写骨架」，与事后收尾是两种修法。候选：①把闸门检查挪到骨架写入之前，或在拦下时就地收尾；②～④复用 `finalizeUnfinishedRunMeta`，写入前提逐条论证 | `src/trivium/review.ts` `prepareRun` / `runReviewLocked`、`src/trivium/run-protocol.ts` `startRun`、`src/trivium/hooks.ts` `sweepDeadRunningGates` |
++| EV-145 | todo（2026-09-27 登记，未收尾运行的留痕与复盘可见性计划 r2 §6.3 第 1 条；同日第 ① 格的「被闸门拦下」已修 ≡ EV-109，主题 `闸门拦截不留骨架`，其余照旧） | **其它「写了骨架却走不到收尾」的路，run.json 同样停在 `running`。**EV-128 / EV-142 修了取消、worker 异常、`worker_lost` 三条；还剩：①~~被闸门拦下留骨架~~（已修，≡ EV-109）；余项：写完骨架之后登记失败（`review.ts` :1007 的 `registerRun`、:1019 起的任务目标落盘）——闸门已由 `prepareRun` 回收，骨架如实留 `running`，到下一次成功重跑之前不带 `--run-id` 的 `gate` 指向它（闸门拦截不留骨架计划 r2 §3.5，用例 B5 钉住现状）；②`startRun` 在 `prepareRun` 之后失败（`run-protocol.ts` :430 的 `catch`，派生前后都有可能——派生成功后才失败时 worker 可能仍在跑，前提要另论）；③同步路径 `runReviewLocked` 里 `executeRun` 抛错（`review.ts` :1740，只回收闸门）；④worker 猝死且没人跑 `--wait` / `--cancel`（会话启动清扫 `sweepDeadRunningGates` 只回收闸门）。①最容易发生，正解多半是「先查闸门再写骨架」，与事后收尾是两种修法。候选：①余项与②派生前那一段可共用一个 `termination.by` 取值（如 `prepare_exception`），一次设计（闸门拦截不留骨架计划 r2 D3 / D4）；②～④复用 `finalizeUnfinishedRunMeta`，写入前提逐条论证 | `src/trivium/review.ts` `prepareRun` / `runReviewLocked`、`src/trivium/run-protocol.ts` `startRun`、`src/trivium/hooks.ts` `sweepDeadRunningGates` |
+ | EV-146 | todo（2026-09-27 登记，未收尾运行的留痕与复盘可见性计划 r2 §6.3 第 2 条） | **`heartbeat_stale` 判失联之后，`--cancel` 杀不掉挂住的 worker。**`--wait` 判 `worker_lost（heartbeat_stale）` 时进程还活着，status.json 却已被写成 `failed`；此后 `--cancel` 在 `cancelRun` 的终态分支早退（「已处于终态，无需取消」），挂住的 worker 没有工具化的杀法，只能手工结束，而手工结束之后也没人再收 run.json 的尾（EV-142 在进程未确认退出时不写）。候选：终态分支对「`worker_lost（heartbeat_stale）` 且进程仍在」开一条只杀进程、不改历史的例外，杀掉后按 EV-142 同一前提收尾。碰终态早退「不追溯改写」的语义，要单独论证 | `src/trivium/run-protocol.ts` `cancelRun`（终态早退分支） |
++| EV-147 | todo（2026-09-27 登记，闸门拦截不留骨架计划 r2 §2.3 / §6.3 第 3 条） | **`run_id` 只到秒，同一秒内的两次运行互相覆盖。**`newRunId` 取 `toISOString` 去掉毫秒，`writeMeta` 是原子覆盖写、`registerRun` 按 run_id 幂等覆盖。零配额实测（同步 `review --stage` 连跑、第二次被闸门拦下且落在同一秒）：第 1 轮的 `run-<id>.json` 由 `success` / 登记 7 条被改写成 `running` / 登记 2 条，同名 brief 被替换，task.json 那一条被改成第 2 轮 `running`，第 1 轮的审查文档从此失去登记锚。真实审查一轮要几分钟，「被拦」这条触发面已由 EV-109 消除；剩余触发面：FR-23 纯文档跳过（即时完成）之后同一秒内再起一轮（按代码推出，未实测）、测试里的快桩。候选：`newRunId` 加毫秒或同秒冲突时抬一位；run.json 首次写入改为排他创建。碰 run_id 格式（文件名、排序、schema 描述、所有按 run_id 排序取最新的读者），要单独论证 | `src/trivium/meta.ts` :36 `newRunId`、`src/trivium/archive.ts` `writeMeta`、`src/trivium/meta.ts` `registerRun` |
++| EV-148 | todo（2026-09-27 登记，闸门拦截不留骨架计划 r2 §2.4 / §6.3 第 4 条） | **留痕读不出时给的出口「重跑一次」是循环的。**阶段最新一份 run.json 读不出（改坏、不合契约）时，`gate --check` 退 65、`review --start` 与 `topic resolve` 退 2，三处文案都给「出口是重跑一次该阶段双审：新运行会先落一份可读的留痕」；但 `review --start` 在进 `prepareRun` 之前就按 `resolveStageDriver` 的 corrupt 判定抛出（`cli.ts` :548 起，`topic-args.ts` 同构），重跑到不了「先落一份可读骨架」那一步。零配额实测：plan 跑一轮、abandon、把 run.json 改成 `{}`，三条命令如上，出口指向自己。`cli.ts` 的 gate 读不出分支注释（「prepareRun 会先落一份骨架……闸门当场恢复」）与 `hooks.ts` 的同句也依赖这条走不通的路。候选：给 corrupt 判定一个人工确认的出口；或改写四处文案，只给真正走得通的路（删改 run.json 会撞提交锚，不能作为出口）。碰 M10a 第 1 步的 Driver 判定纪律（留痕坏了不按缺省、不退回声明），要单独论证 | `src/trivium/cli.ts`（`cmdReview` 的 corrupt 分支、`cmdGate` 的读不出分支）、`src/trivium/topic-args.ts`、`src/trivium/hooks.ts`、`src/trivium/driver-claim.ts` `resolveStageDriver` |
++| EV-149 | todo（2026-09-27 登记，用户定；闸门拦截不留骨架实施报告 §3.3） | **`lock-cross-process.test.ts`「跨进程：多个进程同时回收同一把遗留锁，仍只有一个拿到」全量下偶发红。**闸门拦截不留骨架第 1 次全量里 5 个 worker 有 2 个拿到锁（id 0 与 id 3；另三个都报「已被占用：run_id R-3」），该套件单跑 6 次全绿、第 2 次全量全绿。本主题未动 `lock.ts`。**未核实的判断**：用例数的是「拿到过锁的进程数」，而赢家只持锁 900 ms 就释放；满载时若某个 worker 的 node 进程晚启动超过 900 ms，会在第一个赢家释放之后正常拿到锁——那是先后两次合法获取，不是互斥失效，用例却同样判两个赢家。也不能排除 `reclaimStaleLock` 的 rename → 复验 → 删除与 `fs.link` 之间真有窗口（那才是这条用例要防的，GLM-04）。用例没记获取与释放时刻，现有读数分不出这两种。候选：worker 记下获取与释放时刻，断言改为「任意两段持锁区间不重叠」；或加屏障，全部 worker 报到后才开始抢、赢家持锁到全部 worker 返回再释放。先改用例拿到区间读数，再判是否要动 `lock.ts` | `test/integration/lock-cross-process.test.ts` :152 起、`src/trivium/lock.ts` `reclaimStaleLock` / `acquireLock` |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/skills/dual-critic/schema/run.v2.json b/skills/dual-critic/schema/run.v2.json
+index 3b4c142..f5c0634 100644
+--- a/skills/dual-critic/schema/run.v2.json
++++ b/skills/dual-critic/schema/run.v2.json
+@@ -468,7 +468,7 @@
+       }
+     },
+     "status": {
+-      "description": "running 是骨架态（prepareRun 落盘）；success / failed 由 worker 收尾写；另有三条事后收尾，都只在仍为 running 时写、是那份运行唯一一次终态写入：cancelled 由 review --cancel 在工作进程确认退出后写（EV-128）；failed 也可能由 worker 异常分支自己写、或由 --wait 判 worker_lost 且确认工作进程已退出时写（EV-142，同时写 termination）。已结束却仍为 running 的留痕表示没有走到收尾（本版以前的 worker 异常 / worker_lost / 取消、失联时工作进程未确认退出，或 prepare 阶段被拦），不回填",
++      "description": "running 是骨架态（prepareRun 落盘）；success / failed 由 worker 收尾写；另有三条事后收尾，都只在仍为 running 时写、是那份运行唯一一次终态写入：cancelled 由 review --cancel 在工作进程确认退出后写（EV-128）；failed 也可能由 worker 异常分支自己写、或由 --wait 判 worker_lost 且确认工作进程已退出时写（EV-142，同时写 termination）。已结束却仍为 running 的留痕表示没有走到收尾（本版以前的 worker 异常 / worker_lost / 取消、失联时工作进程未确认退出，本版以前 prepare 阶段写完骨架后被闸门拦下，或准备阶段写完骨架之后登记失败），不回填；被闸门拦下的 --start 自 EV-109 起不写骨架",
+       "enum": [
+         "running",
+         "success",
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index 170bdaf..f2f36c7 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -2,7 +2,7 @@
+  * `review`：一次双审运行的编排（设计 §8.2 S2 / 第 9~11 章）。
+  *
+  * 顺序有讲究，不能调：
+- *   冻结 → 生成两侧送审包 → 写 run.json 骨架 → **并行**拉起两侧 →
++ *   冻结 → 生成两侧送审包 → 置闸门 running → 写 run.json 骨架 → **并行**拉起两侧 →
+  *   复算快照 → 解析 → guard 判定 → 两侧齐备后**同时**落盘 → 收尾元数据
+  *
+  * 「两侧齐备后同时落盘」是背靠背隔离的第 ② 道（§10.1）：审查进行中，对方本次结论
+@@ -57,7 +57,7 @@ import { acquireLock } from './lock.js';
+ import { measureAllPairs, renderDivergence } from './divergence.js';
+ import { agentConfigOf, resolveAssetRoot, resolveReviewSchemaPath, runRoot, vendorProfileOf } from './config.js';
+ import { resolveCriticSelection } from './critics.js';
+-import { setGateChecked } from './state.js';
++import { releaseRunningGateEntry, setGateChecked } from './state.js';
+ import { ensureDir, sha256, sha256File } from './util/fsx.js';
+ import { workTreeHash } from './util/git.js';
+ import {
+@@ -524,9 +524,12 @@ export async function resolveSubjectArtifactRelPath(archiveRoot: string, subject
+ }
+ 
+ /**
+- * 准备阶段：可用性检查 → 定位被审对象 → 冻结 → 渲染两侧送审包 → 写 run.json 骨架。
++ * 准备阶段：可用性检查 → 定位被审对象 → 冻结 → 渲染两侧送审包 → 置闸门 running → 写 run.json 骨架。
+  *
+  * 这一段**不拉起任何 Agent**，因此可以在 `--start` 的同步窗口内完成并秒级返回。
++ *
++ * 被闸门拦下（上一轮未裁决直接重跑，退 2）时**一个文件都不写**；置闸门之后的任何失败由本函数回收闸门，
++ * 所以对调用方而言「抛错 ⇒ 闸门不归本轮」（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §3.1 / §3.2）。
+  */
+ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+   const { ctx, stage } = opts;
+@@ -863,127 +866,27 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+   const primarySnap = snapshots[sides[0]!]!;
+ 
+   /*
+-   * ── 到这里为止**一个文件都没写**。从这一行开始才落盘。──
+-   * 顺序：建阶段目录 → 写两份 brief → 建运行目录 → 写 run.json
+-   */
+-  await ensureDir(ref.stageDirAbs);
+-  /*
+-   * `_meta/` 里的被审补丁与两份 brief 也要进 `run.json.artifacts`（审查意见 GLM-r2-05）。
+-   *
+-   * 原先保护集只有两份渲染后的审查文档，于是「审查文档删不掉也改不掉」，
+-   * 但「**审的是什么**」既不受核对保护、又在重跑时被同名覆盖——
+-   * hook 文案承诺的范围与实现不符。
+-   */
+-  const metaArtifacts: { path: string; sha256: string }[] = [];
+-  // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前
+-  if (pendingDiff) {
+-    /*
+-     * 补丁按**新增行**扫密钥（`scanDiffSecrets` 的文件头写了理由）：删除行与上下文行的内容
+-     * 已经在 HEAD 里，扫它们只会让路过密钥夹具的改动送不进审查、让删除凭据的提交过不了检查。
+-     */
+-    const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text, { scan: 'added-lines' });
+-    metaPaths.push(w.absPath);
+-    metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
+-    /*
+-     * 另留一份 `changes.diff` 便于人读（`.reviews/README.md` 记载的就是这个名字）。
+-     * 它**不进保护集**：它只是指向最新一轮的便利副本，会被下一轮覆盖，
+-     * 受保护的是上面那份带 run_id 的。补丁头部自带 run_id，不会认错是哪一轮。
+-     */
+-    const alias = await writeMeta(ref.layout, stage, 'changes.diff', pendingDiff.text, { scan: 'added-lines' });
+-    metaPaths.push(alias.absPath);
+-  }
+-  for (const b of pendingBriefs) {
+-    /*
+-     * BRIEF 把补丁节选逐字嵌在散文中间，所以同样按 hunk 分档扫（散文整份扫、hunk 内只看新增行）。
+-     * 少了这一条，放宽只是把拒绝点从补丁搬到 BRIEF——报错还指向一个开发者没亲手写过的文件，
+-     * 而且此时补丁已经落盘，留下半套 `_meta` 工件（代码双审 r2 CODEX-07）。
+-     */
+-    const w = await writeMeta(ref.layout, stage, b.fileName, b.text, { scan: 'added-lines' });
+-    metaPaths.push(w.absPath);
+-    metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
+-  }
+-  await ensureDir(runDirBase);
+-
+-  // ── run.json 骨架（status: running），崩溃后也能取证 ──
+-  const meta = newRunMeta({
+-    runId, topic: ref.topic, stage, rerunIndex,
+-    command: opts.command,
+-    promptHint: opts.promptHint,
+-    taskGoal,
+-    entry: opts.entry ?? null,
+-    /*
+-     * 入选集合就是 `sides`——`--only` 收窄后的那一份，不是当前启用的全集。
+-     * 两者分开记，`gate` 才能把「入选但失败」与「压根没入选」判成两回事（§6.7.1）。
+-     */
+-    criticsSelected: sides,
+-    /*
+-     * 发起方与它的启用状态一起落盘（M9 第 5 步）。
+-     *
+-     * `driver_enabled: false` 是 M9 刻意接受的形态：那时只校验「已登记」，
+-     * 不校验 `driverEnabled`（校验了 M9 第 6 步就跑不成），放行的代价由留痕兜住。
+-     * M10a 第 3 步起入口的 `resolveDriver` 对未启用者退 64，新运行这里恒为 true；
+-     * 历史归档里的 false 仍是合法留痕。
+-     */
+-    driver,
+-    driverEnabled,
+-    /*
+-     * 有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而 Hook 配置当前不在场即记 L2。
+-     * 在这里取，而不是信预检那一次：预检与 `--start` 之间配置可能被改，留痕要记的是**本次运行时**的事实。
+-     */
+-    ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),
+-    treeHash: primarySnap.treeHash,
+-    gitHead: primarySnap.gitHead,
+-    dirty: primarySnap.dirty,
+-    subjectSha256: primarySnap.subjectSha256,
+-    denyPaths: primarySnap.denyPaths,
+-    build: embeddedBuildStamp(),
+-    driftPolicy: cfg.review.on_drift,
+-  });
+-  meta.artifacts = [...metaArtifacts];
+-
+-  // FR-23：跳过也要留痕，且必须写明命中的规则供人复核（§6.4）
+-  if (skipVerdict?.skipped) {
+-    meta.skipped = true;
+-    meta.skip_reason = skipVerdict.reasons.join('；');
+-  }
+-  await writeRunMeta(ref.layout, stage, meta);
+-  const taskLock: TaskLock = { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 };
+-  await registerRun(ref.layout, meta, taskLock);
+-
+-  /*
+-   * 任务目标落进 task.json，供本主题后续阶段复用——但**只落显式传入的那一个**。
+-   *
+-   * 从 plan 原稿推导出来的值不写回：它是个尽力而为的猜测（一个标题而已），
+-   * 一旦持久化就会永久占位，把日后真正传进来的 `--goal` 挡在门外——
+-   * 上面那条「已有则不覆盖」的规则会站在错误的一边。推导每次现算即可，成本几乎为零。
+-   *
+-   * 同理只在首次落：`/dual-run <任务目标>` 说的那句话是主题存在的理由，
+-   * 后续各阶段带着各自的 --focus 跑，不该把它一次次冲刷掉。
+-   */
+-  if (clampGoal(opts.taskGoal)) {
+-    const { updateTask } = await import('./meta.js');
+-    await updateTask(ref.layout, (t) => {
+-      if (!t.goal) t.goal = taskGoal;
+-    }, taskLock);
+-  }
+-
+-  /*
+-   * ── 闸门状态必须写进 state.json，不能只写进 run.json ──
++   * ── 闸门在第一次落盘之前置 running（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §3.1）──
+    *
+-   * 四个 Hook 都是读 `state.json` 判定的（listOpenGates）。原先 review 只在
+-   * run.json 里记 `gate.state`，state.json 压根没被创建，于是
++   * 闸门状态必须写进 state.json，不能只写进 run.json：四个 Hook 都是读 `state.json` 判定的（listOpenGates）。
++   * 原先 review 只在 run.json 里记 `gate.state`，state.json 压根没被创建，于是
+    * `hook-pre-write`（审查期禁写）、`hook-pre-commit`（裁决未齐备禁提交）、
+    * `hook-stop`（裁决未齐备禁收工）**三个 Hook 全部无事可判、一律退 0**。
+    * 那是整条流水线最核心的护栏（AC-02 / AC-12 / §8.5），实测确认过是静默失效的。
++   *
++   * 置 running 前先确认槽位不是**别的 run** 的待裁决状态（审查意见 GLM-r2-01 ③）。
++   * `state.json` 每个 <主题>/<阶段> 只有一个槽位。旧一轮审完未裁决就直接重跑，
++   * 无条件覆盖会把待裁决状态无声抹掉，而 `gate --check` 只校验最新轮——
++   * 旧那一轮从此既逃过裁决、也不再拦提交。
++   *
++   * **位置**：在 skipVerdict 之后（跳过轮不置闸门），在第一次落盘之前。此前它排在落盘段之后，
++   * 被拦时已写下 brief、补丁与便利副本 `changes.diff`、run.json 骨架、task.json 登记与运行目录（EV-109）；
++   * 那份骨架又被 `latestRunMeta` 当成最新留痕，不带 --run-id 的 gate 随之指向一轮从未开跑的运行，
++   * 被拦文案给的出路「补齐裁决件并通过 gate --check」走不通。比较-交换是唯一判定点，
++   * 不另加只读预查：两处判定同一个状态集合，将来改一处漏一处（计划 r2 D1）。
+    */
+-  if (!skipVerdict?.skipped) {
+-    /*
+-     * 置 running 前先确认槽位不是**别的 run** 的待裁决状态（审查意见 GLM-r2-01 ③）。
+-     *
+-     * `state.json` 每个 <主题>/<阶段> 只有一个槽位。旧一轮审完未裁决就直接重跑，
+-     * 无条件覆盖会把待裁决状态无声抹掉，而 `gate --check` 只校验最新轮——
+-     * 旧那一轮从此既逃过裁决、也不再拦提交。
+-     */
++  const holdsGate = !skipVerdict?.skipped;
++  if (holdsGate) {
+     const g = await setGateChecked({
+       triviumDir: ctx.triviumDir,
+       topic: ref.topic, stage,
+@@ -993,11 +896,6 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+       heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
+       expect: { state: ['idle', 'running', 'approved', 'rejected', 'abandoned'] },
+     });
+-    if (g.applied) {
+-      // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）
+-      const { resetStopBlockCount } = await import('./lock.js');
+-      await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);
+-    }
+     if (!g.applied) {
+       throw new TriviumError(
+         EXIT.GATE_BLOCK,
+@@ -1009,12 +907,138 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+     }
+   }
+ 
+-  return {
+-    opts, cfg, ctx, stage, ref, adapterCtx, adapters, sides,
+-    runId, rerunIndex, subjectPath, runDirBase,
+-    requests, snapshots, primarySnap, metaPaths, meta,
+-    pendingDiff, skipVerdict,
+-  };
++  /*
++   * ── 到这里为止**一个文件都没写**；闸门已归本轮（跳过轮除外）。从这里开始才落盘。──
++   * 顺序：重置收工阻断计数 → 建阶段目录 → 写补丁与 brief → 建运行目录 → 写 run.json → 登记
++   *
++   * 置闸门之后的任何失败都由这里回收闸门，调用方的契约「prepareRun 抛错 ⇒ 闸门不归本轮」因此不变：
++   * `startRun` 的 prepare catch 只放锁、同步路径的 prepareRun 在 executeRun 的 try 之外（计划 r2 §3.2）。
++   * 写完骨架之后才失败（登记、任务目标落盘）时骨架如实留 running，只回收闸门（计划 r2 D3，BACKLOG EV-145 余项）。
++   */
++  try {
++    // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）。
++    // 它会抛（目录里有删不掉的东西），所以放在 try 里，抛了也经下面的回收（计划 r2 §3.1，r1 AGY-02 ≡ GLM-02）
++    if (holdsGate) {
++      const { resetStopBlockCount } = await import('./lock.js');
++      await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);
++    }
++    await ensureDir(ref.stageDirAbs);
++    /*
++     * `_meta/` 里的被审补丁与两份 brief 也要进 `run.json.artifacts`（审查意见 GLM-r2-05）。
++     *
++     * 原先保护集只有两份渲染后的审查文档，于是「审查文档删不掉也改不掉」，
++     * 但「**审的是什么**」既不受核对保护、又在重跑时被同名覆盖——
++     * hook 文案承诺的范围与实现不符。
++     */
++    const metaArtifacts: { path: string; sha256: string }[] = [];
++    // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前
++    if (pendingDiff) {
++      /*
++       * 补丁按**新增行**扫密钥（`scanDiffSecrets` 的文件头写了理由）：删除行与上下文行的内容
++       * 已经在 HEAD 里，扫它们只会让路过密钥夹具的改动送不进审查、让删除凭据的提交过不了检查。
++       */
++      const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text, { scan: 'added-lines' });
++      metaPaths.push(w.absPath);
++      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
++      /*
++       * 另留一份 `changes.diff` 便于人读（`.reviews/README.md` 记载的就是这个名字）。
++       * 它**不进保护集**：它只是指向最新一轮的便利副本，会被下一轮覆盖，
++       * 受保护的是上面那份带 run_id 的。补丁头部自带 run_id，不会认错是哪一轮。
++       */
++      const alias = await writeMeta(ref.layout, stage, 'changes.diff', pendingDiff.text, { scan: 'added-lines' });
++      metaPaths.push(alias.absPath);
++    }
++    for (const b of pendingBriefs) {
++      /*
++       * BRIEF 把补丁节选逐字嵌在散文中间，所以同样按 hunk 分档扫（散文整份扫、hunk 内只看新增行）。
++       * 少了这一条，放宽只是把拒绝点从补丁搬到 BRIEF——报错还指向一个开发者没亲手写过的文件，
++       * 而且此时补丁已经落盘，留下半套 `_meta` 工件（代码双审 r2 CODEX-07）。
++       */
++      const w = await writeMeta(ref.layout, stage, b.fileName, b.text, { scan: 'added-lines' });
++      metaPaths.push(w.absPath);
++      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
++    }
++    await ensureDir(runDirBase);
++
++    // ── run.json 骨架（status: running），崩溃后也能取证 ──
++    const meta = newRunMeta({
++      runId, topic: ref.topic, stage, rerunIndex,
++      command: opts.command,
++      promptHint: opts.promptHint,
++      taskGoal,
++      entry: opts.entry ?? null,
++      /*
++       * 入选集合就是 `sides`——`--only` 收窄后的那一份，不是当前启用的全集。
++       * 两者分开记，`gate` 才能把「入选但失败」与「压根没入选」判成两回事（§6.7.1）。
++       */
++      criticsSelected: sides,
++      /*
++       * 发起方与它的启用状态一起落盘（M9 第 5 步）。
++       *
++       * `driver_enabled: false` 是 M9 刻意接受的形态：那时只校验「已登记」，
++       * 不校验 `driverEnabled`（校验了 M9 第 6 步就跑不成），放行的代价由留痕兜住。
++       * M10a 第 3 步起入口的 `resolveDriver` 对未启用者退 64，新运行这里恒为 true；
++       * 历史归档里的 false 仍是合法留痕。
++       */
++      driver,
++      driverEnabled,
++      /*
++       * 有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而 Hook 配置当前不在场即记 L2。
++       * 在这里取，而不是信预检那一次：预检与 `--start` 之间配置可能被改，留痕要记的是**本次运行时**的事实。
++       */
++      ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),
++      treeHash: primarySnap.treeHash,
++      gitHead: primarySnap.gitHead,
++      dirty: primarySnap.dirty,
++      subjectSha256: primarySnap.subjectSha256,
++      denyPaths: primarySnap.denyPaths,
++      build: embeddedBuildStamp(),
++      driftPolicy: cfg.review.on_drift,
++    });
++    meta.artifacts = [...metaArtifacts];
++
++    // FR-23：跳过也要留痕，且必须写明命中的规则供人复核（§6.4）
++    if (skipVerdict?.skipped) {
++      meta.skipped = true;
++      meta.skip_reason = skipVerdict.reasons.join('；');
++    }
++    await writeRunMeta(ref.layout, stage, meta);
++    const taskLock: TaskLock = { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 };
++    await registerRun(ref.layout, meta, taskLock);
++
++    /*
++     * 任务目标落进 task.json，供本主题后续阶段复用——但**只落显式传入的那一个**。
++     *
++     * 从 plan 原稿推导出来的值不写回：它是个尽力而为的猜测（一个标题而已），
++     * 一旦持久化就会永久占位，把日后真正传进来的 `--goal` 挡在门外——
++     * 上面那条「已有则不覆盖」的规则会站在错误的一边。推导每次现算即可，成本几乎为零。
++     *
++     * 同理只在首次落：`/dual-run <任务目标>` 说的那句话是主题存在的理由，
++     * 后续各阶段带着各自的 --focus 跑，不该把它一次次冲刷掉。
++     */
++    if (clampGoal(opts.taskGoal)) {
++      const { updateTask } = await import('./meta.js');
++      await updateTask(ref.layout, (t) => {
++        if (!t.goal) t.goal = taskGoal;
++      }, taskLock);
++    }
++
++    return {
++      opts, cfg, ctx, stage, ref, adapterCtx, adapters, sides,
++      runId, rerunIndex, subjectPath, runDirBase,
++      requests, snapshots, primarySnap, metaPaths, meta,
++      pendingDiff, skipVerdict,
++    };
++  } catch (e) {
++    // 置了 running 之后失败：闸门由本函数回收（只回收仍记着本 runId 且仍是 running 的）
++    if (holdsGate) {
++      await releaseRunningGateEntry({
++        triviumDir: ctx.triviumDir, topic: ref.topic, stage, runId,
++        heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,
++      });
++    }
++    throw e;
++  }
+ }
+ 
+ /**
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index 640970d..635df92 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -27,7 +27,7 @@ import {
+ import { resolveTopic } from './topic.js';
+ import { finalizeCancelledRunMeta, finalizeFailedRunMeta, readRunMeta, type FinalizeStep } from './meta.js';
+ import { type AgentId } from './agents/registry.js';
+-import { setGateChecked } from './state.js';
++import { releaseRunningGateEntry, setGateChecked } from './state.js';
+ import type { AdapterContext } from './adapters/base.js';
+ import { resolveAdapters } from './adapters/stub.js';
+ import { realAdapters, wiredAdapter } from './adapters/index.js';
+@@ -308,7 +308,9 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
+   try {
+     rc = await prepareRun(opts);
+   } catch (e) {
+-    await lock.release(); // 准备失败就别占着锁
++    // 准备失败就别占着锁。闸门不用管：prepareRun 抛错时闸门不归本轮——被拦时没置上，
++    // 置上之后的失败它自己回收（闸门拦截不留骨架计划 r2 §3.2）
++    await lock.release();
+     throw e;
+   }
+ 
+@@ -445,6 +447,9 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
+  *
+  * 只回收仍记着本 `runId` 且仍是 `running` 的闸门：新一轮若已接管，那是它的护栏。
+  * 不区分异常种类——没有 worker 接手的 `running` 一律回收。
++ *
++ * 实现在 `state.ts` 的 `releaseRunningGateEntry`（`prepareRun` 置闸门之后失败也用它，
++ * 闸门拦截不留骨架计划 r2 §3.2）；这里只补「身份不全就不动」这一层，三处调用点不变。
+  */
+ async function releaseRunningGate(
+   ctx: Ctx,
+@@ -453,18 +458,11 @@ async function releaseRunningGate(
+   stage: Stage | undefined,
+ ): Promise<void> {
+   if (!topic || !stage) return;
+-  try {
+-    await setGateChecked({
+-      triviumDir: ctx.triviumDir,
+-      topic, stage, state: 'idle', runId,
+-      heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+-      // 槽位不存在时**不要**凭空造一条 idle 记录（审查意见 AGY-02）：
+-      // allowMissing 默认 true 对 prepareRun（首轮槽位本就是空的）合适，对回收则不然
+-      expect: { state: ['running'], runId, allowMissing: false },
+-    });
+-  } catch {
+-    // 回收失败不该盖过真正的错误——闸门还有 TTL 兜底，但错误信息只有一次机会
+-  }
++  await releaseRunningGateEntry({
++    triviumDir: ctx.triviumDir,
++    topic, stage, runId,
++    heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
++  });
+ }
+ 
+ // ─────────────────────── worker ───────────────────────
+diff --git a/src/trivium/state.ts b/src/trivium/state.ts
+index 53ec175..da07b1a 100644
+--- a/src/trivium/state.ts
++++ b/src/trivium/state.ts
+@@ -255,6 +255,38 @@ export async function setGate(i: SetGateInput): Promise<GateEntry> {
+   return r.entry!;
+ }
+ 
++/**
++ * 回收某次运行留下的 `running` 闸门：置回 `idle`（审查意见 GLM-r2-02 ≡ AGY-01 起的既有语义）。
++ *
++ * 只回收**仍记着本 `runId` 且仍是 `running`** 的闸门：新一轮若已接管，那是它的护栏。
++ * 槽位不存在时**不**凭空造一条 idle 记录（审查意见 AGY-02）——`allowMissing` 缺省为 true
++ * 对「首次置 running」合适，对回收则不然。
++ *
++ * 自身不抛：回收失败不该盖过调用方手里真正的错误——闸门还有 TTL 兜底，而错误信息只有一次机会。
++ *
++ * 放在这里而不是 `run-protocol.ts`：`prepareRun`（`review.ts`）置闸门之后失败也要回收
++ * （EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §3.2），而 `review.ts` 不依赖 `run-protocol.ts`。
++ * `run-protocol.ts` 的 `releaseRunningGate` 委托本函数，三处调用点语义不变。
++ */
++export async function releaseRunningGateEntry(i: {
++  triviumDir: string;
++  topic: string;
++  stage: Stage;
++  runId: string;
++  heartbeatStaleMs: number;
++}): Promise<void> {
++  try {
++    await setGateChecked({
++      triviumDir: i.triviumDir,
++      topic: i.topic, stage: i.stage, state: 'idle', runId: i.runId,
++      heartbeatStaleMs: i.heartbeatStaleMs,
++      expect: { state: ['running'], runId: i.runId, allowMissing: false },
++    });
++  } catch {
++    // 见文档块：不盖过真正的错误
++  }
++}
++
+ export async function getGate(
+   triviumDir: string,
+   topic: string,
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 862d9b5..c5cf3cf 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -1473,7 +1473,8 @@ export interface RunMeta {
+    * `cancelled` 由 `review --cancel` 在工作进程确认退出后写（EV-128）；`failed` 还可能由 worker 异常分支自己写、
+    * 或由 `--wait` 判 `worker_lost` 且确认工作进程已退出时写（EV-142，同时写 `termination`）。
+    * 已结束却仍为 `running` 的留痕表示没有走到收尾（本版以前的异常 / 失联 / 取消、失联时进程未确认退出，
+-   * 或 prepare 阶段被拦），不回填。
++   * 本版以前 prepare 阶段写完骨架后被闸门拦下，或准备阶段写完骨架之后登记失败），不回填。
++   * 被闸门拦下的 `--start` 自 EV-109 起不写骨架。
+    */
+   status: 'running' | 'success' | 'failed' | 'cancelled';
+   /**
+diff --git a/test/integration/code-stage.test.ts b/test/integration/code-stage.test.ts
+index c388d4c..0f3b488 100644
+--- a/test/integration/code-stage.test.ts
++++ b/test/integration/code-stage.test.ts
+@@ -293,6 +293,27 @@ test('未提交的对方审查产出不得进补丁（经被审对象泄漏）',
+   assert.match(diff, /src\/a\.ts/, '真正的代码变更仍须在内');
+ });
+ 
++test('上一轮未裁决时 code 阶段被闸门拦下 → changes.diff 便利副本逐字节不变、不写新补丁与 brief（B3，EV-109）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await codeFixture();
++  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 2;\n');
++  const { exitCode } = await runCode(fx.root, fx.codeDir);
++  assert.equal(exitCode, EXIT.OK, '前提：第 1 轮成功、闸门停在待裁决');
++  const metaDir = path.join(fx.codeDir, '_meta');
++  const aliasBefore = await fs.readFile(path.join(metaDir, 'changes.diff'));
++  const metaBefore = (await fs.readdir(metaDir)).sort();
++
++  /*
++   * 此前闸门判定排在落盘段之后：被拦那次已把便利副本覆盖成它自己的补丁（头部 run_id 换成被拦那次），
++   * `.reviews/README.md` 说它「指向最新一轮」，此后指向一轮从未开跑的运行（闸门拦截不留骨架计划 r2 §2.1 G2）。
++   */
++  await new Promise((r) => setTimeout(r, 1100)); // 避开 run_id 同秒撞名（计划 r2 §2.3）
++  await fs.writeFile(path.join(fx.root, 'src/app.ts'), 'export const x = 3;\n');
++  const again = await cli(fx.root, ['review', '--start', '--stage', 'code', '--topic', TOPIC, '--focus', '看变更', '--json'], STUB);
++  assert.equal(again.code, EXIT.GATE_BLOCK, `应被闸门拦下：\n${again.stdout}${again.stderr}`);
++  assert.deepEqual(await fs.readFile(path.join(metaDir, 'changes.diff')), aliasBefore, '便利副本不得被被拦的那次覆盖');
++  assert.deepEqual((await fs.readdir(metaDir)).sort(), metaBefore, '不得写新的 changes-*.diff、brief 与 run.json');
++});
++
+ test('坏 --base → 在冻结前失败且零工件（审查意见 GLM-r2-04）', { skip: bundleMissing && bundleSkipReason }, async () => {
+   const fx = await codeFixture();
+   await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 5;\n', 'utf8');
+diff --git a/test/integration/gate-loop.test.ts b/test/integration/gate-loop.test.ts
+index 2fc8c48..0875444 100644
+--- a/test/integration/gate-loop.test.ts
++++ b/test/integration/gate-loop.test.ts
+@@ -2,7 +2,7 @@ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+-import { bundleMissing, bundleSkipReason, cli, makeFixture, today } from '../helpers/fixture.js';
++import { bundleMissing, bundleSkipReason, cli, listFiles, makeFixture, today } from '../helpers/fixture.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import { APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID } from '../../src/trivium/gate.js';
+ import { extractJsonCandidate } from '../../src/trivium/parse.js';
+@@ -633,7 +633,7 @@ test('gate.block_commit 为 false 时完全不拦（用户显式关掉的开关
+ 
+ test('旧轮未裁决就重跑 → 拒绝启动，并指出两条正当出路', { skip: bundleMissing && bundleSkipReason }, async () => {
+   const fx = await makeFixture({ topic: TOPIC });
+-  await runPlan(fx.root); // r1 审完，闸门停在 review_done_awaiting_disposition
++  const runId = await runPlan(fx.root); // r1 审完，闸门停在 review_done_awaiting_disposition
+ 
+   const again = await cli(
+     fx.root,
+@@ -655,6 +655,29 @@ test('旧轮未裁决就重跑 → 拒绝启动，并指出两条正当出路',
+     gates: Record<string, { state: string }>;
+   };
+   assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'review_done_awaiting_disposition');
++
++  /*
++   * B2（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §4.2）：被拦文案给的出路必须走得通。
++   *
++   * 此前被拦那次在闸门判定之前已写下 run.json 骨架（rerun_index 2），`latestRunMeta` 取它当最新留痕，
++   * 于是补上第 1 轮裁决件之后，不带 --run-id 的 `gate --check` 仍去查第 2 轮、退 2「缺裁决件」。
++   * 现在被拦时一个文件都不写，最新留痕仍是第 1 轮。
++   */
++  await writeDisposition(fx.stageDir, runId);
++  const check = await cli(
++    fx.root,
++    ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json', '--session-id', SESSION],
++  );
++  assert.equal(check.code, EXIT.OK, `补齐第 1 轮裁决件后，不带 --run-id 的 gate --check 应通过：\n${check.stdout}${check.stderr}`);
++  const cj = JSON.parse(extractJsonCandidate(check.stdout)!.json) as { run_id: string; rerun_index: number };
++  assert.equal(cj.run_id, runId, '校验的必须是第 1 轮，而不是被拦的那一次');
++  assert.equal(cj.rerun_index, 1);
++  // runPlan 不带 --entry：通过后按 entry 缺席回 idle（B/C/D 才立 awaiting_approval）
++  const st2 = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
++    gates: Record<string, { state: string; run_id: string }>;
++  };
++  assert.equal(st2.gates[`${TOPIC}/plan`]?.state, 'idle');
++  assert.equal(st2.gates[`${TOPIC}/plan`]?.run_id, runId);
+ });
+ 
+ test('显式 abandon 之后可以重跑', { skip: bundleMissing && bundleSkipReason }, async () => {
+@@ -2058,3 +2081,98 @@ test('W8：同阶段重跑一轮后审批 ⇒ 摘要的 run id 与基线都取
+   assert.equal(s.baseline_tree, meta2.snapshot.after_tree_hash);
+   assert.deepEqual(s.files.map((f) => f.path), ['NOTES.md']);
+ });
++
++// ── 闸门拦截不留骨架（EV-109 / EV-145 ①，计划 r2 §4.2 B5～B7）：置闸门之后的失败由 prepareRun 自己回收 ──
++
++const NOT_ROOT_SKIP = (bundleMissing && bundleSkipReason) || (process.getuid?.() === 0 && 'root 下只读目录拦不住写入');
++
++/** 主题目录只读（阶段目录仍可写）：brief 与骨架写得进去，task.json 的原子写（同目录临时文件）写不进 ⇒ registerRun 抛 */
++async function startWithTopicDirReadonly(root: string, archiveRoot: string) {
++  const topicDir = path.join(archiveRoot, TOPIC);
++  await fs.chmod(topicDir, 0o555);
++  try {
++    return await cli(
++      root,
++      ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
++      STUB,
++    );
++  } finally {
++    await fs.chmod(topicDir, 0o755);
++  }
++}
++
++const runMetaIds = async (stageDir: string) =>
++  (await fs.readdir(path.join(stageDir, '_meta')).catch(() => [] as string[]))
++    .map((n) => /^run-(.+)\.json$/.exec(n)?.[1])
++    .filter((x): x is string => x !== undefined)
++    .sort();
++
++test('闸门拦截不留骨架 B5：置闸门之后登记失败 ⇒ 闸门回收为 idle、锁已放、骨架如实留 running；重跑前不带 --run-id 的 gate 指向这份骨架', { skip: NOT_ROOT_SKIP }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const r = await startWithTopicDirReadonly(fx.root, fx.archiveRoot);
++  assert.notEqual(r.code, EXIT.OK, `登记写不进时 --start 应失败：\n${r.stdout}${r.stderr}`);
++
++  const ids = await runMetaIds(fx.stageDir);
++  assert.equal(ids.length, 1, `骨架写在登记之前，应恰有一份：${ids.join(', ')}`);
++  const skeletonId = ids[0]!;
++  const g = (await gatesOf(fx.root))[`${TOPIC}/plan`];
++  assert.ok(g, '首轮置过闸门，回收后留一条 idle 条目（计划 r2 §3.2 / D2）');
++  assert.equal(g.state, 'idle', '置闸门之后的失败必须回收，不能停在 running 直到 TTL');
++  assert.equal(g.run_id, skeletonId);
++  const lockDir = path.join(fx.root, '.trivium', 'lock');
++  assert.ok(!(await fs.readdir(lockDir).catch(() => [] as string[])).includes(`${TOPIC}.lock`), '主题锁必须已释放');
++
++  // D3 (a)：骨架如实留 running，不在本主题收尾为终态
++  const skeleton = JSON.parse(await fs.readFile(path.join(fx.stageDir, '_meta', `run-${skeletonId}.json`), 'utf8')) as { status: string };
++  assert.equal(skeleton.status, 'running');
++
++  // 计划 r2 §3.5（r1 CODEX-03）：到下一次成功重跑之前，最新留痕是这份骨架——钉住现状，EV-145 余项落地时随之改
++  const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json', '--session-id', SESSION]);
++  const cj = JSON.parse(extractJsonCandidate(check.stdout)!.json) as { run_id: string };
++  assert.equal(cj.run_id, skeletonId);
++});
++
++test('闸门拦截不留骨架 B6：上一轮已审批（槽位 approved）时置闸门之后失败 ⇒ 回收为 idle，不恢复成 approved（D2 (a)）', { skip: NOT_ROOT_SKIP }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const r1 = await runPlan(fx.root, 'B');
++  await writeDisposition(fx.stageDir, r1);
++  const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
++  assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
++  const ok = await cli(fx.root, ['approve', '--topic', TOPIC, '--stage', 'plan', '--session-id', SESSION]);
++  assert.equal(ok.code, EXIT.OK, `${ok.stdout}${ok.stderr}`);
++  assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'approved', '前提：槽位已是 approved');
++
++  await new Promise((res) => setTimeout(res, 1100)); // 避开 run_id 同秒撞名（计划 r2 §2.3）
++  const r = await startWithTopicDirReadonly(fx.root, fx.archiveRoot);
++  assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
++  const ids = await runMetaIds(fx.stageDir);
++  const g = (await gatesOf(fx.root))[`${TOPIC}/plan`];
++  assert.equal(g?.state, 'idle');
++  assert.equal(g?.run_id, ids.at(-1), '回收后的条目记的是失败那一次');
++});
++
++test('闸门拦截不留骨架 B7：置闸门之后重置收工阻断计数失败 ⇒ 同样回收闸门、锁已放、零工件', { skip: NOT_ROOT_SKIP }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  // resetStopBlockCount 递归删除 lock/stopblock-<主题>-<阶段>：里面放一个只读子目录和一个文件，删除必 EACCES；lock/ 本身仍可写
++  const blockDir = path.join(fx.root, '.trivium', 'lock', `stopblock-${TOPIC}-plan`);
++  const sub = path.join(blockDir, 'sub');
++  await fs.mkdir(sub, { recursive: true });
++  await fs.writeFile(path.join(sub, 'n'), '1\n', 'utf8');
++  await fs.chmod(sub, 0o555);
++  const before = await listFiles(fx.archiveRoot);
++  try {
++    const r = await cli(
++      fx.root,
++      ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
++      STUB,
++    );
++    assert.notEqual(r.code, EXIT.OK, `计数删不掉时 --start 应失败：\n${r.stdout}${r.stderr}`);
++  } finally {
++    await fs.chmod(sub, 0o755);
++  }
++  const g = (await gatesOf(fx.root))[`${TOPIC}/plan`];
++  assert.ok(g, '闸门置过，回收后留一条 idle');
++  assert.equal(g.state, 'idle', '重置计数排在 try 里：抛了也要回收闸门（r1 AGY-02 ≡ GLM-02）');
++  assert.ok(!(await fs.readdir(path.join(fx.root, '.trivium', 'lock'))).includes(`${TOPIC}.lock`), '主题锁必须已释放');
++  assert.deepEqual(await listFiles(fx.archiveRoot), before, '重置计数在落盘段之前，失败时 .reviews/ 不得多出文件');
++});
+diff --git a/test/integration/no-artifacts.test.ts b/test/integration/no-artifacts.test.ts
+index 900fe51..d1cb26c 100644
+--- a/test/integration/no-artifacts.test.ts
++++ b/test/integration/no-artifacts.test.ts
+@@ -190,6 +190,57 @@ test('主题锁被占 → 退 70，且不覆盖已有工件', { skip: bundleMiss
+   }
+ });
+ 
++/*
++ * ── 上一轮未裁决直接重跑 → 退 2 且零工件（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §4.2 B1 / B4）──
++ *
++ * 此前闸门判定排在落盘段之后：被拦那次已写下 brief、run.json 骨架、task.json 登记与运行目录，
++ * AC-16「任一失败出口不留半套工件」的列举里偏偏没有退 2 这一格（EV-109）。
++ *
++ * 闸门状态只比闸门项，不比文件字节：判负的比较-交换也会刷新 `updated_at`、整文件重写（计划 r2 S1，
++ * r1 CODEX-01 ≡ AGY-01 ≡ GLM-01）。两次运行之间隔 1.1 s：run_id 只到秒，同秒撞名时旧顺序下的覆盖会让
++ * 文件集合看起来不变（计划 r2 §2.3），断言就假绿了。
++ */
++async function assertBlockedLeavesNoTrace(fx: Awaited<ReturnType<typeof makeFixture>>, reviewArgs: string[], what: string) {
++  const stub = { gemini: { mode: 'ok' as const }, glm: { mode: 'ok' as const } };
++  const first = await cli(fx.root, ['review', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x'], stub, 180_000);
++  assert.equal(first.code, EXIT.OK, `第 1 轮应成功：\n${first.stdout}${first.stderr}`);
++  await new Promise((r) => setTimeout(r, 1100));
++
++  const statePath = path.join(fx.root, '.trivium', 'state.json');
++  const gateOf = async () =>
++    (JSON.parse(await fs.readFile(statePath, 'utf8')) as { gates: Record<string, unknown> }).gates;
++  const taskPath = path.join(fx.archiveRoot, TOPIC, 'task.json');
++  const runRoot = `${fx.root}-runs`;
++  const gatesBefore = await gateOf();
++  assert.equal((gatesBefore[`${TOPIC}/plan`] as { state: string }).state, 'review_done_awaiting_disposition', '前提：上一轮待裁决');
++  const taskBefore = await fs.readFile(taskPath);
++  const runsBefore = await listFiles(runRoot);
++
++  const r = await assertNoTrace(fx.root, fx.archiveRoot, () => cli(fx.root, reviewArgs, stub, 180_000), EXIT.GATE_BLOCK, what);
++  assert.match(r.stdout + r.stderr, /尚未裁决/);
++  assert.deepEqual(await fs.readFile(taskPath), taskBefore, `${what}：task.json 不得多出登记`);
++  assert.deepEqual(await gateOf(), gatesBefore, `${what}：闸门项不得改动`);
++  assert.deepEqual(await listFiles(runRoot), runsBefore, `${what}：不得在项目外建运行目录`);
++}
++
++test('上一轮未裁决 → review --start 退 2 且零工件（B1，EV-109）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  await assertBlockedLeavesNoTrace(
++    fx,
++    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x'],
++    '异步路径被闸门拦下',
++  );
++});
++
++test('上一轮未裁决 → 同步 review --stage 退 2 且零工件（B4，EV-109）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  await assertBlockedLeavesNoTrace(
++    fx,
++    ['review', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x'],
++    '同步路径被闸门拦下',
++  );
++});
++
+ test('草稿已有且成功跑完 → 重跑抬升 -r2，原文件字节不变（FR-25）', { skip: bundleMissing && bundleSkipReason }, async () => {
+   const fx = await makeFixture({ topic: TOPIC });
+   const stub = { gemini: { mode: 'ok' as const }, glm: { mode: 'ok' as const } };
+diff --git a/test/unit/state.test.ts b/test/unit/state.test.ts
+index 4d7e0eb..b20f86f 100644
+--- a/test/unit/state.test.ts
++++ b/test/unit/state.test.ts
+@@ -6,6 +6,7 @@ import { promises as fs } from 'node:fs';
+ import {
+   setGate, StateCorruptError,
+   setGateChecked, getGate, listOpenGates, readState, shouldLockWrites, gateKey, type GateEntry,
++  releaseRunningGateEntry,
+ } from '../../src/trivium/state.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ 
+@@ -279,3 +280,39 @@ test('比较与写入在同一把锁内：并发的条件迁移只会成功一
+   ]);
+   assert.equal(results.filter((r) => r.applied).length, 1, '只该有一个成功翻转');
+ });
++
++// ── U1：releaseRunningGateEntry（闸门拦截不留骨架计划 r2 §3.2 / §4.1）──
++
++test('U1 releaseRunningGateEntry：只回收仍记着本 runId 且仍是 running 的闸门，槽位不存在时不造条目，自身不抛', async () => {
++  const dir = await tmp();
++  const rel = (topic: string, runId: string) =>
++    releaseRunningGateEntry({ triviumDir: dir, topic, stage: 'plan', runId, heartbeatStaleMs: STALE });
++
++  // ① running + run 相符 ⇒ idle，run_id 保留
++  await setGate({ triviumDir: dir, topic: 'a', stage: 'plan', state: 'running', runId: 'R1', heartbeatStaleMs: STALE });
++  await rel('a', 'R1');
++  assert.equal((await getGate(dir, 'a', 'plan'))?.state, 'idle');
++  assert.equal((await getGate(dir, 'a', 'plan'))?.run_id, 'R1');
++
++  // ② running 但记着别的 run ⇒ 不动（新一轮的护栏不该被旧 run 清掉）
++  await setGate({ triviumDir: dir, topic: 'b', stage: 'plan', state: 'running', runId: 'R-NEW', heartbeatStaleMs: STALE });
++  await rel('b', 'R-OLD');
++  assert.equal((await getGate(dir, 'b', 'plan'))?.state, 'running');
++  assert.equal((await getGate(dir, 'b', 'plan'))?.run_id, 'R-NEW');
++
++  // ③ run 相符但已不是 running（例如已被收尾推进）⇒ 不动
++  await setGate({
++    triviumDir: dir, topic: 'c', stage: 'plan', state: 'review_done_awaiting_disposition', runId: 'R1', heartbeatStaleMs: STALE,
++  });
++  await rel('c', 'R1');
++  assert.equal((await getGate(dir, 'c', 'plan'))?.state, 'review_done_awaiting_disposition');
++
++  // ④ 槽位不存在 ⇒ 不凭空造一条 idle
++  await rel('d', 'R1');
++  assert.equal(await getGate(dir, 'd', 'plan'), null);
++
++  // ⑤ 闸门状态文件读不出 ⇒ 不抛（回收失败不盖过调用方手里真正的错误）
++  const bad = await tmp();
++  await fs.writeFile(path.join(bad, 'state.json'), '{坏了', 'utf8');
++  await releaseRunningGateEntry({ triviumDir: bad, topic: 'a', stage: 'plan', runId: 'R1', heartbeatStaleMs: STALE });
++});
+diff --git a/doc/05_testing/REPORT_2026-09-27_gate_block_no_skeleton.md b/doc/05_testing/REPORT_2026-09-27_gate_block_no_skeleton.md
+new file mode 100644
+index 0000000..68d3911
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-09-27_gate_block_no_skeleton.md
+@@ -0,0 +1,77 @@
++# 闸门拦截不留骨架 · 实施报告（EV-109 ≡ EV-145 ①）
++
++- **日期**：2026-09-27
++- **主题**：`闸门拦截不留骨架`；计划 `.reviews/闸门拦截不留骨架/plan/`（D1～D5 送审前已定、全取建议项 → 计划双审 run `20260927T015234Z` 三侧 `approve-with-nits`、10 条全接受 → r2 定稿，提交 `1ee28b0`；用户审批「修改后实施」）
++- **起点**：`1ee28b0`（计划 r2 提交）；计划行号取自 `bcb454e`（两者之间只有计划留痕，源码未变）
++- **状态**：实施完成，待代码双审
++- **evidence**：`doc/05_testing/evidence/gate-block-no-skeleton-20260927/`
++
++---
++
++## 1. 逐条落地（按 r2 章节）
++
++| r2 | 落点 | 验证 |
++| :--- | :--- | :--- |
++| §3.1 置闸门挪到第一次落盘之前 | `review.ts` `prepareRun`：闸门比较-交换（`expect` 集合与被拦文案一字不改）搬到 `primarySnap` 之后、建阶段目录之前；重置收工阻断计数挪进 `try` 首句；落盘段（建目录 → 补丁与便利副本 → brief → 运行目录 → 骨架 → 登记 → 任务目标）与 `return` 包进 `try`，`catch` 里 `holdsGate` 为真时回收闸门再抛。重排用一次性脚本按锚点切段（每个锚点核对唯一），落盘段原样整体缩进两格 | B1～B7 |
++| §3.2 回收函数 | `state.ts` 新增 `releaseRunningGateEntry`（`running → idle`，`expect` 带 `runId`、`allowMissing: false`，自身吞错）；`run-protocol.ts` 的 `releaseRunningGate` 改为委托它，三处调用点不变；`runReviewLocked` 的内联回收不动（`hooks.ts` :298「`review.ts` 的四处 `setGateChecked`」计数不变） | U1 |
++| §3.6 注释 | `review.ts` 模块头流程与 `prepareRun` 文档块补「置闸门 running」一步与零工件口径；`startRun` 的 prepare catch 注释写明闸门不归它管；`types.ts` `status` 注释与 run.v2 schema `status` description 同步（见 §3.1） | — |
++| §4 验证 | U1（`state.test.ts`）；B1 / B4（`no-artifacts.test.ts`）；B2（`gate-loop.test.ts` :634 原用例追加）；B3（`code-stage.test.ts`）；B5 / B6 / B7（`gate-loop.test.ts` 末尾） | §2 |
++| §5 文档 | 见 §4 | 反扫 |
++
++## 2. 读数
++
++| 项 | 读数 |
++| :--- | :--- |
++| `npm run check` | 第 1 次 **2133 / 2130 / 1 / 2**（起点 2126 → 新增 7 条：U1、B1、B3、B4、B5、B6、B7；B2 追加在既有用例里）。红的 1 条是 `lock-cross-process.test.ts`「跨进程：多个进程同时回收同一把遗留锁，仍只有一个拿到」（5 个进程里 2 个拿到锁），见 §3.3；文档同步后第 2 次 **2133 / 2131 / 0 / 2** 全绿 |
++| `doctor --selftest`（仓库构建 + `TRIVIUM_ASSET_ROOT`） | **14 / 14** |
++| 受影响四个套件单跑（`state` / `no-artifacts` / `code-stage` / `gate-loop`） | **133 / 133** |
++| 源码侧变异（`mutation-spec.json`，`scripts/mutation-check.mjs`；规格由 `gen-mutation-spec.mjs` 从源码截锚点并逐条核对唯一） | **7 / 7**（`mutation-output.txt`）：M1（`no-artifacts.test`，B1）fail=2、M2（`code-stage.test`，B3）fail=1、M3 fail=3 与 M4 fail=2（`gate-loop.test`，B5）、M5 / M6（`state.test`，U1）各 fail=1、M7（`gate-loop.test`，B7）fail=1。每条只写一个期望套件 |
++| 零配额验收（`acceptance.mjs`，mkdtemp 夹具、桩审查员） | **13 / 13**，第 1 次即过（`acceptance-readout.json`） |
++| 改后探针（`probe-gate-block.mjs` 在改后构建上重跑，`probe-gate-block.after.json`；改前读数 `probe-gate-block.out.json`） | G1 被拦零新增文件、零新增运行目录、task.json 仍 1 条；补第 1 轮裁决件后不带 `--run-id` 的 `gate --check` 退 0（第 1 轮）；G2 便利副本不变；G3 闸门回收为 `idle`、骨架 `running`；G4a 同秒被拦不再覆盖第 1 轮（run.json 仍 `success`、登记 7 条） |
++| 环境 | git 2.54.0（Apple Git-157），Node v25.2.1 |
++
++## 3. 偏离与如实登记
++
++### 3.1 与 r2 文字的小出入
++
++- **B2 的闸门终态**：r2 §4.2 写「闸门进 `awaiting_approval`」。`gate-loop.test.ts` :634 那条既有用例的 `runPlan` 不带 `--entry`，`gate --check` 通过后按 entry 缺席回 `idle`（B/C/D 才立 `awaiting_approval`）。用例按实际语义断言 `idle` 且 `run_id` 为第 1 轮；「校验的是第 1 轮」这一主判据不变。零配额验收 A2 走 `--entry B`，读到的是 `awaiting_approval → approve` 这条路。
++- **`types.ts` 与 schema 的 `status` 描述**：r2 §3.6 写把「或 prepare 阶段被拦」改为「或准备阶段写完骨架之后登记失败」。本仓归档里确有一份历史被拦骨架（EV-79 `20260922T134058Z`，A6 读到它仍在未进时间线表里），直接删掉这一格会让描述对历史留痕失实，所以写成「本版以前 prepare 阶段写完骨架后被闸门拦下，或准备阶段写完骨架之后登记失败」，并补「被闸门拦下的 `--start` 自 EV-109 起不写骨架」。主设计 6.7 注记同一口径。
++- **B6 的构造**：r2 写「可选」，已写并纳入全量；两次运行之间隔 1.1 s（与 B3 / B4 同理，避开 run_id 同秒撞名）。
++
++### 3.2 探针读数的来历
++
++`probe-gate-block.out.json` 是计划期在 `bcb454e` 构建上跑的最后一次读数（计划 §2.1 / §2.2 引用的就是这一次）。`probe-runid-collision.mjs` 与 `probe-corrupt-rerun.mjs` 计划期的读数只记在计划 §2.3 / §2.4 正文里，没有另存文件；改后构建上 collision 探针已复现不出（被拦那次不再写文件），corrupt 探针与本主题改动正交（EV-148）。
++
++### 3.3 全量里的一次偶发红（与本主题无关）
++
++`lock-cross-process.test.ts` :152「跨进程：多个进程同时回收同一把遗留锁，仍只有一个拿到」在第 1 次全量里 5 个进程有 2 个拿到锁。本主题没动 `lock.ts`（主题锁的获取与遗留锁回收）；该套件单跑 6 次 6 次全绿（每次 4 / 4）。判断是全量满载并行下的时序偶发。本仓文档与以往报告里没有这条用例偶发的记录，**本报告首次记下**。用户定登记 BACKLOG，已登 **EV-149**：用例数的是「拿到过锁的进程数」而赢家只持锁 900 ms，满载时晚启动的 worker 可能在第一个赢家释放后合法拿到锁（先后两次获取、不是互斥失效）；但也不能排除回收与 `fs.link` 之间真有窗口——用例没记持锁区间，现有读数分不出，候选是先改用例记区间、断言区间不重叠。
++
++## 4. 文档同步
++
++| 文件 | 落点 |
++| :--- | :--- |
++| 主设计 → v1.3.49 | 当前版本行；6.7 注记末句改写并另起「被闸门拦下的 `--start` 不写任何留痕」一段；7.3 拒绝启动表加「上一轮审查意见尚未裁决」一行；7.5 `review --start` 一行补「置闸门 running」；验收表 AC-16 行「2/64/65/69/70」；变更记录 v1.3.49 行 |
++| PRD → v1.4.13 | 当前版本与文档版本行；变更说明补 FR-24 的一句边界（被闸门拦下的 `--start` 不写运行元数据、不算一次运行），AC-16 原文不动 |
++| LLD → v1.1.7 | 版本行与变更说明；`startRun` 时序图 `setGateChecked(running)` 挪进 `prepareRun`；`startRun` 第 2 条；零工件不变式补「置闸门是落盘之前的最后一步」；4.2 引述块 |
++| MANUAL → v1.0.7 | 版本行；场景 7 补「被拒绝的那次不会留下任何文件，补齐裁决后直接跑 `gate --check`」 |
++| PROTOCOL | :254 的 `review --start` 流程 |
++| run.v2 schema | `status` description（见 §3.1） |
++| BACKLOG | EV-109 done；EV-145 第 ① 格改写为余项（写完骨架之后登记失败）、行号更新；新登 EV-147（run_id 只到秒、同秒两次运行互相覆盖）、EV-148（留痕读不出时「重跑一次」的出口循环）、EV-149（`lock-cross-process` 那条全量下偶发红，用户定登记） |
++
++反扫（`-c core.quotepath=off`，`doc/`、`skills-src/`、`src/`、`test/`）：「prepare 阶段」「64/65/69/70」「写 run.json 骨架」「setGateChecked(running)」剩余命中均为本次新写的说明或历史记录。`.reviews/README.md`、skills-src、CLI 帮助不改（r2 §5）。本仓根 `CLAUDE.md` 不改（EV-138）。
++
++## 5. 证据文件
++
++| 文件 | 内容 |
++| :--- | :--- |
++| `probe-gate-block.mjs`、`probe-gate-block.out.json`、`probe-gate-block.after.json` | 计划 §2.1 / §2.2：G1～G4 夹具实测，改前（`bcb454e` 构建）与改后两份读数 |
++| `probe-runid-collision.mjs` | 计划 §2.3：同秒被拦覆盖第 1 轮（EV-147） |
++| `probe-corrupt-rerun.mjs` | 计划 §2.4：留痕读不出时「重跑一次」出口循环（EV-148） |
++| `gen-mutation-spec.mjs` → `mutation-spec.json`、`mutation-output.txt` | 源码侧变异规格生成、锚点唯一性核对与 7 / 7 结果 |
++| `acceptance.mjs`、`acceptance-readout.json` | 零配额验收 A1～A6（13 / 13） |
++
++## 6. 待办
++
++1. ~~文档同步后重跑全量~~——已跑，2133 / 2131 / 0 / 2（§2）。
++2. 用户终端重装（`--targets claude,glm,codex,gemini`）→ 用户敲 `/dual-review-code`。
++3. ~~§3.3 那条偶发红是否登记 BACKLOG~~——用户定登记，EV-149。
+diff --git a/doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance-readout.json b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance-readout.json
+new file mode 100644
+index 0000000..dc127a4
+--- /dev/null
++++ b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance-readout.json
+@@ -0,0 +1,191 @@
++{
++  "at": "2026-09-27T02:42:19.063Z",
++  "passed": 13,
++  "total": 13,
++  "results": [
++    {
++      "id": "A1 被拦退 2",
++      "ok": true,
++      "detail": "第二次 --start 退 2"
++    },
++    {
++      "id": "A1 零工件",
++      "ok": true,
++      "detail": "_meta/ 5→5 份，task.json 逐字节不变，运行根 4→4"
++    },
++    {
++      "id": "A1 闸门项不变",
++      "ok": true,
++      "detail": "review_done_awaiting_disposition（run 20260927T024204Z）"
++    },
++    {
++      "id": "A1 status 的 runs 仍为 1",
++      "ok": true,
++      "detail": "runs = 1"
++    },
++    {
++      "id": "A2 不带 --run-id 的 gate --check 通过且校验第 1 轮",
++      "ok": true,
++      "detail": "退 0，run_id 20260927T024204Z，第 1 轮"
++    },
++    {
++      "id": "A2 放行后重跑为第 2 轮",
++      "ok": true,
++      "detail": "approve 退 0，重跑 rerun_index 2"
++    },
++    {
++      "id": "A2 report 时间线两行、未进时间线为空",
++      "ok": true,
++      "detail": "rounds [1,2]，unlisted 0"
++    },
++    {
++      "id": "A3 code 被拦：便利副本与 _meta/ 不变",
++      "ok": true,
++      "detail": "第二次退 2，changes.diff 不变，_meta/ 7→7"
++    },
++    {
++      "id": "A4 非零退出、闸门回收为 idle、锁已放",
++      "ok": true,
++      "detail": "退 1，闸门 idle（run 20260927T024215Z），锁 已放"
++    },
++    {
++      "id": "A4 骨架如实留 running，report 说明未改",
++      "ok": true,
++      "detail": "骨架 running，未进时间线 [\"进行中，或没走到收尾\"]"
++    },
++    {
++      "id": "A5 同步路径被拦零工件",
++      "ok": true,
++      "detail": "第二次退 2，.reviews/ 9→9，task.json 不变"
++    },
++    {
++      "id": "A6 本仓 report 逐主题不变",
++      "ok": true,
++      "detail": "52 个主题，rounds / unlistedRuns 不同的：无"
++    },
++    {
++      "id": "A6 历史被拦骨架照旧在未进时间线表里",
++      "ok": true,
++      "detail": "EV-79 20260922T134058Z：进行中，或没走到收尾"
++    }
++  ],
++  "readout": {
++    "A1": {
++      "firstWait": 0,
++      "secondStart": 2,
++      "gateBefore": {
++        "topic": "A1-闸门拦重跑",
++        "stage": "plan",
++        "state": "review_done_awaiting_disposition",
++        "run_id": "20260927T024204Z",
++        "rerun_index": 1,
++        "since": "2026-09-27T02:42:04.641Z",
++        "session_id": "S-验收"
++      },
++      "gateAfter": {
++        "topic": "A1-闸门拦重跑",
++        "stage": "plan",
++        "state": "review_done_awaiting_disposition",
++        "run_id": "20260927T024204Z",
++        "rerun_index": 1,
++        "since": "2026-09-27T02:42:04.641Z",
++        "session_id": "S-验收"
++      },
++      "runsCount": 1
++    },
++    "A2": {
++      "approve": 0,
++      "rerunStart": 0,
++      "rerunWait": 0,
++      "rerunIndex": 2,
++      "report": {
++        "code": 0,
++        "rounds": [
++          {
++            "stage": "plan",
++            "r": 1,
++            "runId": "20260927T024204Z"
++          },
++          {
++            "stage": "plan",
++            "r": 2,
++            "runId": "20260927T024209Z"
++          }
++        ],
++        "unlisted": []
++      }
++    },
++    "A3": {
++      "firstStart": 0,
++      "secondStart": 2,
++      "metaBefore": 7,
++      "metaAfter": 7
++    },
++    "A4": {
++      "start": 1,
++      "ids": [
++        "20260927T024215Z"
++      ],
++      "gate": {
++        "topic": "A4-登记写失败",
++        "stage": "plan",
++        "state": "idle",
++        "run_id": "20260927T024215Z",
++        "rerun_index": 1,
++        "since": "2026-09-27T02:42:15.978Z",
++        "session_id": "S-验收"
++      },
++      "locks": [],
++      "report": {
++        "code": 0,
++        "rounds": [],
++        "unlisted": [
++          {
++            "r": 1,
++            "runId": "20260927T024215Z",
++            "status": "running",
++            "label": "进行中，或没走到收尾"
++          }
++        ]
++      }
++    },
++    "A5": {
++      "first": 0,
++      "second": 2
++    },
++    "A6": {
++      "topics": 52,
++      "diffs": [],
++      "unlisted": [
++        {
++          "topic": "EV-74-探针喂真实契约文件",
++          "runId": "20260922T164557Z",
++          "stage": "plan",
++          "status": "running",
++          "label": "进行中，或没走到收尾"
++        },
++        {
++          "topic": "EV-79-写命令判据两处缺口",
++          "runId": "20260922T134058Z",
++          "stage": "code",
++          "status": "running",
++          "label": "进行中，或没走到收尾"
++        },
++        {
++          "topic": "M4-M5实现",
++          "runId": "20260911T023018Z",
++          "stage": "code",
++          "status": "running",
++          "label": "进行中，或没走到收尾"
++        },
++        {
++          "topic": "凭据副本残留与参数静默丢失",
++          "runId": "20260917T024844Z",
++          "stage": "code",
++          "status": "running",
++          "label": "进行中，或没走到收尾"
++        }
++      ]
++    }
++  }
++}
+diff --git a/doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance.mjs b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance.mjs
+new file mode 100644
+index 0000000..5d78413
+--- /dev/null
++++ b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/acceptance.mjs
+@@ -0,0 +1,287 @@
++#!/usr/bin/env node
++/**
++ * 「闸门拦截不留骨架」零配额验收（计划 r2 §4.4 A1～A6）。
++ *
++ * **不碰真实 HOME、不改本仓归档**：用仓库构建出的 `skills/dual-critic/scripts/trivium.cjs`，资产根经 `TRIVIUM_ASSET_ROOT`
++ * 指向工作树；审核者换成桩（`TRIVIUM_STUB_CRITIC`），不发起任何模型调用。夹具、运行目录、旧构建都建在一个 mkdtemp 目录下；
++ * 收尾只删 mkdtemp 的返回值。本仓归档只读（A6）。
++ *
++ *   A1 plan 第 1 轮成功未裁决，再 --start ⇒ 退 2；_meta/、task.json（逐字节）、闸门项、运行根目录集合全不变；status --json 的 runs 仍为 1
++ *   A2 接 A1：补第 1 轮裁决件 → 不带 --run-id 的 gate --check 通过（run_id 为第 1 轮）→ approve → 再跑一轮 ⇒ rerun_index 2；
++ *      report 时间线 r1、r2 两行、unlistedRuns 为空
++ *   A3 code 阶段被拦 ⇒ changes.diff 便利副本逐字节不变、_meta/ 文件集合不变
++ *   A4 置闸门之后登记失败（主题目录只读）⇒ 非零退出；闸门项 idle 非 running；主题锁已放；骨架 running；report 说明「进行中，或没走到收尾」
++ *   A5 同步 review --stage 被拦（与第 1 轮隔 1.1 s）⇒ 零工件
++ *   A6 本仓归档只读：新旧两份构建逐主题 buildTopicReport，rounds 与 unlistedRuns 逐主题深相等（本主题不改 report）
++ *
++ * 用法（在仓库根）：node acceptance.mjs [输出 JSON 路径]
++ */
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++import { promises as fs, existsSync } from 'node:fs';
++import { createHash } from 'node:crypto';
++import os from 'node:os';
++import path from 'node:path';
++import { pathToFileURL } from 'node:url';
++
++const pexec = promisify(execFile);
++const ROOT = process.cwd();
++const OUT = process.argv[2] ?? null;
++const CLI = path.join(ROOT, 'skills/dual-critic/scripts/trivium.cjs');
++if (!existsSync(CLI)) throw new Error(`找不到仓库构建的 CLI：${CLI}（先 npm run build）`);
++const { encodeStubConfig, STUB_ENV_VAR } = await import(pathToFileURL(path.join(ROOT, 'dist/test/src/trivium/adapters/stub.js')).href);
++const SESSION = 'S-验收';
++const TD = '.' + 'trivium';
++
++const results = [];
++const readout = {};
++const check = (id, ok, detail) => { results.push({ id, ok, detail }); console.log(`${ok ? '✓' : '✖'} ${id}：${detail}`); };
++
++async function sh(cwd, bin, args, env = {}) {
++  try {
++    const o = await pexec(bin, args, { cwd, env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 });
++    return { code: 0, stdout: o.stdout, stderr: o.stderr };
++  } catch (e) {
++    return { code: typeof e.code === 'number' ? e.code : null, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
++  }
++}
++const envFor = (stub) => ({ TRIVIUM_ASSET_ROOT: path.join(ROOT, 'skills/dual-critic'), [STUB_ENV_VAR]: encodeStubConfig(stub), CLAUDE_SESSION_ID: SESSION });
++const cli = (cwd, args, stub = OK) => sh(cwd, process.execPath, [CLI, ...args], envFor(stub));
++const git = (cwd, args) => sh(cwd, 'git', ['-c', 'user.email=a@a', '-c', 'user.name=a', ...args]);
++const readJson = async (p) => JSON.parse(await fs.readFile(p, 'utf8'));
++const jsonOf = (text) => { try { return JSON.parse(text.slice(text.indexOf('{'))); } catch { return null; } };
++const sha = async (p) => createHash('sha256').update(await fs.readFile(p)).digest('hex');
++const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
++const OK = { gemini: { mode: 'ok', findings: 1 }, glm: { mode: 'ok', findings: 1 } };
++const today = () => {
++  const d = new Date();
++  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
++};
++
++async function listRec(dir, prefix = '') {
++  let out = [];
++  let ents = [];
++  try { ents = await fs.readdir(dir, { withFileTypes: true }); } catch { return out; }
++  for (const e of ents) {
++    const rel = prefix ? `${prefix}/${e.name}` : e.name;
++    if (e.isDirectory()) out = out.concat(await listRec(path.join(dir, e.name), rel));
++    else out.push(rel);
++  }
++  return out.sort();
++}
++
++async function fixture(base, topic) {
++  const root = path.join(base, topic);
++  await fs.mkdir(path.join(root, 'src'), { recursive: true });
++  await fs.writeFile(path.join(root, 'src/a.ts'), 'export const a = 1;\n');
++  await fs.mkdir(path.join(root, TD), { recursive: true });
++  const runRoot = path.join(base, 'runs-' + topic);
++  await fs.writeFile(path.join(root, TD, 'config.yaml'), [
++    'runtime:', `  run_root: ${runRoot}`,
++    'review:', '  default_critics: [gemini, glm]',
++    '  timeout_s:', '    plan: 900', '    code: 900', '    bug: 900', '  wait_timeout_s: 30',
++    'verify:', '  build: []', '  test: []', '',
++  ].join('\n'));
++  await git(root, ['init', '-q', '-b', 'main']);
++  await git(root, ['add', '-A']);
++  await git(root, ['commit', '-q', '-m', 'baseline', '--no-verify']);
++  const topicDir = path.join(root, '.reviews', topic);
++  const stageDir = path.join(topicDir, 'plan');
++  await fs.mkdir(stageDir, { recursive: true });
++  await fs.writeFile(path.join(stageDir, `${today()}-${topic}-` + 'claude.md'), '# 待审计划\n\n## 一、目标\n\n验收。\n');
++  return { root, topicDir, stageDir, runRoot, taskJson: path.join(topicDir, 'task.json'), stateJson: path.join(root, TD, 'state' + '.json') };
++}
++
++async function start(root, topic, stage = 'plan', entry = 'B') {
++  const r = await cli(root, ['review', '--start', '--entry', entry, '--stage', stage, '--topic', topic, '--focus', '验收', '--session-id', SESSION, '--json']);
++  return { r, runId: r.code === 0 ? jsonOf(r.stdout)?.run_id ?? null : null };
++}
++async function waitDone(root, runId) {
++  let w;
++  for (let i = 0; i < 12; i++) {
++    w = await cli(root, ['review', '--wait', runId, '--timeout', '20']);
++    if (w.code !== 73) break;
++  }
++  return w;
++}
++const gateEntry = async (fx, topic, stage) => (await readJson(fx.stateJson).catch(() => null))?.gates?.[`${topic}/${stage}`] ?? null;
++async function writeDisposition(stageDir, topic, runId) {
++  await fs.writeFile(
++    path.join(stageDir, `${today()}-${topic}-revised-` + 'claude.md'),
++    [
++      '---', 'schema: trivium.disposition.v1', `topic: ${topic}`, 'stage: plan',
++      'role: claude', 'kind: revised', `run_id: ${runId}`,
++      'addresses:', `  - ${today()}-${topic}-gemini.md`, `  - ${today()}-${topic}-glm.md`,
++      '---', '',
++      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
++      '| :--- | :--- | :--- | :--- | :--- | :--- |',
++      '| AGY-01 | gemini | blocker | 接受 | 确实漏了这一处，需要补 | §1 |',
++      '| GLM-01 | glm | blocker | 接受 | 同一处问题，一并补上 | §1 |',
++      '',
++    ].join('\n'),
++    'utf8',
++  );
++}
++async function reportJson(root, topic) {
++  const r = await cli(root, ['report', '--topic', topic, '--json']);
++  const j = jsonOf(r.stdout);
++  return {
++    code: r.code,
++    rounds: (j?.rounds ?? []).map((x) => ({ stage: x.stage, r: x.rerunIndex, runId: x.runId })),
++    unlisted: (j?.unlistedRuns ?? []).map((x) => ({ r: x.rerunIndex, runId: x.runId, status: x.status, label: x.label })),
++  };
++}
++
++const base = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-accept-gateblock-'));
++try {
++  // ── A1 / A2 ──
++  {
++    const topic = 'A1-闸门拦重跑';
++    const fx = await fixture(base, topic);
++    const s1 = await start(fx.root, topic);
++    const w1 = await waitDone(fx.root, s1.runId);
++    const metaDir = path.join(fx.stageDir, '_meta');
++    const before = {
++      meta: await listRec(metaDir), task: await sha(fx.taskJson), gate: await gateEntry(fx, topic, 'plan'), runs: await listRec(fx.runRoot),
++    };
++    await sleep(1100);
++    const s2 = await start(fx.root, topic);
++    const after = {
++      meta: await listRec(metaDir), task: await sha(fx.taskJson), gate: await gateEntry(fx, topic, 'plan'), runs: await listRec(fx.runRoot),
++    };
++    const st = jsonOf((await cli(fx.root, ['status', '--topic', topic, '--json'])).stdout);
++    const runsCount = st?.topics?.find((t) => t.topic === topic)?.runs ?? null;
++    readout.A1 = { firstWait: w1?.code, secondStart: s2.r.code, gateBefore: before.gate, gateAfter: after.gate, runsCount };
++    check('A1 被拦退 2', s2.r.code === 2 && /尚未裁决/.test(s2.r.stdout + s2.r.stderr), `第二次 --start 退 ${s2.r.code}`);
++    check('A1 零工件', JSON.stringify(before.meta) === JSON.stringify(after.meta) && before.task === after.task
++      && JSON.stringify(before.runs) === JSON.stringify(after.runs),
++      `_meta/ ${before.meta.length}→${after.meta.length} 份，task.json 逐字节${before.task === after.task ? '不变' : '变了'}，运行根 ${before.runs.length}→${after.runs.length}`);
++    check('A1 闸门项不变', JSON.stringify(before.gate) === JSON.stringify(after.gate), `${after.gate?.state}（run ${after.gate?.run_id}）`);
++    check('A1 status 的 runs 仍为 1', runsCount === 1, `runs = ${runsCount}`);
++
++    await writeDisposition(fx.stageDir, topic, s1.runId);
++    const c = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', topic, '--check', '--json', '--session-id', SESSION]);
++    const cj = jsonOf(c.stdout);
++    check('A2 不带 --run-id 的 gate --check 通过且校验第 1 轮', c.code === 0 && cj?.run_id === s1.runId && cj?.rerun_index === 1,
++      `退 ${c.code}，run_id ${cj?.run_id}，第 ${cj?.rerun_index} 轮`);
++    const ap = await cli(fx.root, ['approve', '--topic', topic, '--stage', 'plan', '--session-id', SESSION]);
++    await sleep(1100);
++    const s3 = await start(fx.root, topic);
++    const w3 = s3.runId ? await waitDone(fx.root, s3.runId) : null;
++    const m3 = s3.runId ? await readJson(path.join(metaDir, `run-${s3.runId}.json`)).catch(() => null) : null;
++    const rep = await reportJson(fx.root, topic);
++    readout.A2 = { approve: ap.code, rerunStart: s3.r.code, rerunWait: w3?.code, rerunIndex: m3?.rerun_index, report: rep };
++    check('A2 放行后重跑为第 2 轮', ap.code === 0 && s3.r.code === 0 && m3?.rerun_index === 2, `approve 退 ${ap.code}，重跑 rerun_index ${m3?.rerun_index}`);
++    check('A2 report 时间线两行、未进时间线为空', rep.rounds.length === 2 && rep.rounds[0].runId === s1.runId && rep.rounds[1].runId === s3.runId
++      && rep.unlisted.length === 0, `rounds ${JSON.stringify(rep.rounds.map((x) => x.r))}，unlisted ${rep.unlisted.length}`);
++  }
++
++  // ── A3 ──
++  {
++    const topic = 'A3-code便利副本';
++    const fx = await fixture(base, topic);
++    await git(fx.root, ['add', '-A']);
++    await git(fx.root, ['commit', '-q', '-m', 'plan', '--no-verify']);
++    await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 2;\n');
++    const s1 = await start(fx.root, topic, 'code', 'C');
++    if (s1.runId) await waitDone(fx.root, s1.runId);
++    const codeMeta = path.join(fx.topicDir, 'code', '_meta');
++    const aliasBefore = await sha(path.join(codeMeta, 'changes.diff')).catch(() => null);
++    const metaBefore = await listRec(codeMeta);
++    await sleep(1100);
++    await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 3;\n');
++    const s2 = await start(fx.root, topic, 'code', 'C');
++    const aliasAfter = await sha(path.join(codeMeta, 'changes.diff')).catch(() => null);
++    const metaAfter = await listRec(codeMeta);
++    readout.A3 = { firstStart: s1.r.code, secondStart: s2.r.code, metaBefore: metaBefore.length, metaAfter: metaAfter.length };
++    check('A3 code 被拦：便利副本与 _meta/ 不变', s1.r.code === 0 && s2.r.code === 2 && aliasBefore !== null && aliasBefore === aliasAfter
++      && JSON.stringify(metaBefore) === JSON.stringify(metaAfter), `第二次退 ${s2.r.code}，changes.diff ${aliasBefore === aliasAfter ? '不变' : '变了'}，_meta/ ${metaBefore.length}→${metaAfter.length}`);
++  }
++
++  // ── A4 ──
++  {
++    const topic = 'A4-登记写失败';
++    const fx = await fixture(base, topic);
++    await fs.chmod(fx.topicDir, 0o555);
++    let s;
++    try {
++      s = await start(fx.root, topic);
++    } finally {
++      await fs.chmod(fx.topicDir, 0o755);
++    }
++    const metaDir = path.join(fx.stageDir, '_meta');
++    const ids = (await listRec(metaDir)).map((n) => /^run-(.+)\.json$/.exec(n)?.[1]).filter(Boolean);
++    const skel = ids[0] ? await readJson(path.join(metaDir, `run-${ids[0]}.json`)) : null;
++    const g = await gateEntry(fx, topic, 'plan');
++    const locks = await fs.readdir(path.join(fx.root, TD, 'lock')).catch(() => []);
++    const rep = await reportJson(fx.root, topic);
++    readout.A4 = { start: s.r.code, ids, gate: g, locks, report: rep };
++    check('A4 非零退出、闸门回收为 idle、锁已放', s.r.code !== 0 && g?.state === 'idle' && g?.run_id === ids[0] && !locks.includes(`${topic}.lock`),
++      `退 ${s.r.code}，闸门 ${g?.state}（run ${g?.run_id}），锁 ${locks.includes(`${topic}.lock`) ? '残留' : '已放'}`);
++    check('A4 骨架如实留 running，report 说明未改', ids.length === 1 && skel?.status === 'running'
++      && rep.unlisted.length === 1 && rep.unlisted[0].label === '进行中，或没走到收尾', `骨架 ${skel?.status}，未进时间线 ${JSON.stringify(rep.unlisted.map((u) => u.label))}`);
++  }
++
++  // ── A5 ──
++  {
++    const topic = 'A5-同步路径';
++    const fx = await fixture(base, topic);
++    const args = ['review', '--stage', 'plan', '--topic', topic, '--focus', '验收', '--entry', 'B', '--session-id', SESSION];
++    const r1 = await cli(fx.root, args);
++    const archive = path.join(fx.root, '.reviews');
++    const before = { files: await listRec(archive), task: await sha(fx.taskJson), gate: await gateEntry(fx, topic, 'plan'), runs: await listRec(fx.runRoot) };
++    await sleep(1100);
++    const r2 = await cli(fx.root, args);
++    const after = { files: await listRec(archive), task: await sha(fx.taskJson), gate: await gateEntry(fx, topic, 'plan'), runs: await listRec(fx.runRoot) };
++    readout.A5 = { first: r1.code, second: r2.code };
++    check('A5 同步路径被拦零工件', r1.code === 0 && r2.code === 2 && JSON.stringify(before.files) === JSON.stringify(after.files)
++      && before.task === after.task && JSON.stringify(before.gate) === JSON.stringify(after.gate) && JSON.stringify(before.runs) === JSON.stringify(after.runs),
++      `第二次退 ${r2.code}，.reviews/ ${before.files.length}→${after.files.length}，task.json ${before.task === after.task ? '不变' : '变了'}`);
++  }
++
++  // ── A6 ──
++  {
++    const oldRoot = path.join(base, 'old-build');
++    await fs.mkdir(oldRoot, { recursive: true });
++    const archivePath = path.join(base, 'head.tar');
++    const ar = await sh(ROOT, 'git', ['archive', '--format=tar', '-o', archivePath, 'HEAD', 'src', 'scripts', 'skills', 'skills-src', 'test', 'package.json', 'tsconfig.json']);
++    if (ar.code !== 0) throw new Error(`git archive 失败：${ar.stderr}`);
++    const ex = await sh(oldRoot, 'tar', ['-xf', archivePath]);
++    if (ex.code !== 0) throw new Error(`解包失败：${ex.stderr}`);
++    await fs.symlink(path.join(ROOT, 'node_modules'), path.join(oldRoot, 'node_modules'));
++    const b = await sh(oldRoot, process.execPath, ['scripts/build.mjs', '--with-tests']);
++    if (b.code !== 0) throw new Error(`旧构建失败：${b.stdout}${b.stderr}`);
++    const oldReport = await import(pathToFileURL(path.join(oldRoot, 'dist/test/src/trivium/report.js')).href);
++    const newReport = await import(pathToFileURL(path.join(ROOT, 'dist/test/src/trivium/report.js')).href);
++    const archiveRoot = path.join(ROOT, '.reviews');
++    const origErr = console.error;
++    console.error = () => {};
++    const diffs = [];
++    const unlisted = [];
++    let topics = 0;
++    try {
++      for (const topic of (await fs.readdir(archiveRoot)).sort()) {
++        if (topic.startsWith('.') || !(await fs.stat(path.join(archiveRoot, topic))).isDirectory()) continue;
++        topics++;
++        const o = await oldReport.buildTopicReport({ archiveRoot, topic });
++        const n = await newReport.buildTopicReport({ archiveRoot, topic });
++        if (JSON.stringify(o.rounds) !== JSON.stringify(n.rounds) || JSON.stringify(o.unlistedRuns) !== JSON.stringify(n.unlistedRuns)) diffs.push(topic);
++        for (const u of n.unlistedRuns) unlisted.push({ topic, runId: u.runId, stage: u.stage, status: u.status, label: u.label });
++      }
++    } finally {
++      console.error = origErr;
++    }
++    readout.A6 = { topics, diffs, unlisted };
++    check('A6 本仓 report 逐主题不变', diffs.length === 0, `${topics} 个主题，rounds / unlistedRuns 不同的：${diffs.join('、') || '无'}`);
++    const ev79 = unlisted.find((u) => u.runId === '20260922T134058Z');
++    check('A6 历史被拦骨架照旧在未进时间线表里', Boolean(ev79) && ev79.label === '进行中，或没走到收尾', `EV-79 20260922T134058Z：${ev79?.label ?? '未找到'}`);
++  }
++} finally {
++  await fs.chmod(base, 0o755).catch(() => {});
++  await fs.rm(base, { recursive: true, force: true });
++}
++
++const passed = results.filter((r) => r.ok).length;
++console.log(`\n${passed}/${results.length}`);
++if (OUT) await fs.writeFile(OUT, JSON.stringify({ at: new Date().toISOString(), passed, total: results.length, results, readout }, null, 2) + '\n');
++process.exit(passed === results.length ? 0 : 1);
+diff --git a/doc/05_testing/evidence/gate-block-no-skeleton-20260927/gen-mutation-spec.mjs b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/gen-mutation-spec.mjs
+new file mode 100644
+index 0000000..1f49254
+--- /dev/null
++++ b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/gen-mutation-spec.mjs
+@@ -0,0 +1,98 @@
++// 生成「闸门拦截不留骨架」的源码变异规格（计划 r2 §4.3）：find 串从现行源码截取，逐条核对恰好出现一次，再落盘。
++// 用法（在仓库根）：node gen-mutation-spec.mjs <输出路径>
++import fs from 'node:fs';
++import path from 'node:path';
++
++const ROOT = process.cwd();
++const OUT = process.argv[2];
++const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
++
++const REVIEW = 'src/trivium/review.ts';
++const STATE = 'src/trivium/state.ts';
++const S = {
++  state: 'dist/test/test/unit/state.test.js',
++  noArtifacts: 'dist/test/test/integration/no-artifacts.test.js',
++  codeStage: 'dist/test/test/integration/code-stage.test.js',
++  gateLoop: 'dist/test/test/integration/gate-loop.test.js',
++};
++
++const review = read(REVIEW);
++const at = (needle, from = 0) => {
++  const i = review.indexOf(needle, from);
++  if (i < 0) throw new Error(`锚点没找到：${needle.slice(0, 50)}`);
++  return i;
++};
++const indent2 = (s) => s.split('\n').map((l) => (l.trim() ? '  ' + l : l)).join('\n');
++
++// 闸门块：从 holdsGate 声明到它的 if 块收尾（不含随后的空行）
++const DECL = '  const holdsGate = !skipVerdict?.skipped;\n';
++const gateStart = at(DECL);
++const ifStart = gateStart + DECL.length;
++const ifEnd = at('\n  }\n\n  /*\n   * ── 到这里为止**一个文件都没写**', ifStart) + '\n  }\n'.length;
++const gateIf = review.slice(ifStart, ifEnd); // "  if (holdsGate) {...}\n"
++
++// M1：闸门块挪回 registerRun 之后（原位置）
++const REG = '    await registerRun(ref.layout, meta, taskLock);\n';
++const regEnd = at(REG, ifEnd) + REG.length;
++const m1find = review.slice(gateStart, regEnd);
++const m1replace = DECL + review.slice(ifEnd, regEnd) + indent2(gateIf);
++
++// M2：闸门块挪到 brief 之后、建运行目录与骨架之前
++const RUNDIR = '    await ensureDir(runDirBase);\n';
++const runDirAt = at(RUNDIR, ifEnd);
++const m2find = review.slice(gateStart, runDirAt + RUNDIR.length);
++const m2replace = DECL + review.slice(ifEnd, runDirAt) + indent2(gateIf) + RUNDIR;
++
++// M7：重置收工阻断计数移回 try 之外（闸门写入成功之后、try 之前）
++const RESET_IN_TRY =
++  '  try {\n' +
++  '    // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）。\n' +
++  '    // 它会抛（目录里有删不掉的东西），所以放在 try 里，抛了也经下面的回收（计划 r2 §3.1，r1 AGY-02 ≡ GLM-02）\n' +
++  '    if (holdsGate) {\n' +
++  "      const { resetStopBlockCount } = await import('./lock.js');\n" +
++  '      await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);\n' +
++  '    }\n';
++const RESET_OUTSIDE =
++  '  if (holdsGate) {\n' +
++  "    const { resetStopBlockCount } = await import('./lock.js');\n" +
++  '    await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);\n' +
++  '  }\n' +
++  '  try {\n';
++
++const CATCH =
++  '  } catch (e) {\n' +
++  '    // 置了 running 之后失败：闸门由本函数回收（只回收仍记着本 runId 且仍是 running 的）\n' +
++  '    if (holdsGate) {\n' +
++  '      await releaseRunningGateEntry({\n';
++
++const cases = [
++  { id: 'M1', desc: '置闸门挪回 registerRun 之后（原位置）⇒ B1（被拦时已写下 brief、骨架、登记、运行目录）', file: REVIEW,
++    find: m1find, replace: m1replace, expect: S.noArtifacts },
++  { id: 'M2', desc: '置闸门挪到 brief 之后、骨架之前 ⇒ B3（便利副本被覆盖、新补丁与 brief 落盘）', file: REVIEW,
++    find: m2find, replace: m2replace, expect: S.codeStage },
++  { id: 'M3', desc: '落盘段的 catch 不回收闸门 ⇒ B5（闸门停在 running）', file: REVIEW,
++    find: CATCH, replace: CATCH.replace('    if (holdsGate) {\n', "    if (holdsGate && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n"),
++    expect: S.gateLoop },
++  { id: 'M4', desc: '落盘段的 catch 吞掉异常不再抛 ⇒ B5（startRun 拿到 undefined 在 try 外崩溃，主题锁不放）', file: REVIEW,
++    find: '      });\n    }\n    throw e;\n  }\n}\n\n/**\n * 执行阶段',
++    replace: '      });\n    }\n    void e;\n    return undefined as never;\n  }\n}\n\n/**\n * 执行阶段',
++    expect: S.gateLoop },
++  { id: 'M5', desc: 'releaseRunningGateEntry 去掉 runId 比较 ⇒ U1 ②（旧 run 清掉新一轮的护栏）', file: STATE,
++    find: "      expect: { state: ['running'], runId: i.runId, allowMissing: false },\n",
++    replace: "      expect: { state: ['running'], allowMissing: false },\n", expect: S.state },
++  { id: 'M6', desc: 'releaseRunningGateEntry 的 allowMissing 回到缺省 true ⇒ U1 ④（槽位不存在时凭空造 idle）', file: STATE,
++    find: "      expect: { state: ['running'], runId: i.runId, allowMissing: false },\n",
++    replace: "      expect: { state: ['running'], runId: i.runId },\n", expect: S.state },
++  { id: 'M7', desc: '重置收工阻断计数移回 try 之外 ⇒ B7（它抛错时闸门停在 running）', file: REVIEW,
++    find: RESET_IN_TRY, replace: RESET_OUTSIDE, expect: S.gateLoop },
++];
++
++for (const c of cases) {
++  const text = read(c.file);
++  const n = text.split(c.find).length - 1;
++  if (n !== 1) throw new Error(`${c.id} 的 find 在 ${c.file} 里出现 ${n} 次（应为 1）`);
++  if (c.find === c.replace) throw new Error(`${c.id} 的 replace 与 find 相同`);
++}
++const spec = { targets: [REVIEW, STATE], suites: Object.values(S), cases };
++fs.writeFileSync(OUT, JSON.stringify(spec, null, 2) + '\n');
++console.log(`${cases.length} 条，锚点全部唯一 → ${OUT}`);
+diff --git a/doc/05_testing/evidence/gate-block-no-skeleton-20260927/mutation-output.txt b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/mutation-output.txt
+new file mode 100644
+index 0000000..5a14584
+--- /dev/null
++++ b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/mutation-output.txt
+@@ -0,0 +1,57 @@
++✓ 工作树干净、基线全绿（4 个套件）
++  M1 ✓ 咬住（fail=2）
++  M2 ✓ 咬住（fail=1）
++  M3 ✓ 咬住（fail=3）
++  M4 ✓ 咬住（fail=2）
++  M5 ✓ 咬住（fail=1）
++  M6 ✓ 咬住（fail=1）
++  M7 ✓ 咬住（fail=1）
++{
++  "总数": 7,
++  "咬住": 7,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "置闸门挪回 registerRun 之后（原位置）⇒ B1（被拦时已写下 brief、骨架、登记、运行目录）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M2",
++      "desc": "置闸门挪到 brief 之后、骨架之前 ⇒ B3（便利副本被覆盖、新补丁与 brief 落盘）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M3",
++      "desc": "落盘段的 catch 不回收闸门 ⇒ B5（闸门停在 running）",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M4",
++      "desc": "落盘段的 catch 吞掉异常不再抛 ⇒ B5（startRun 拿到 undefined 在 try 外崩溃，主题锁不放）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M5",
++      "desc": "releaseRunningGateEntry 去掉 runId 比较 ⇒ U1 ②（旧 run 清掉新一轮的护栏）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M6",
++      "desc": "releaseRunningGateEntry 的 allowMissing 回到缺省 true ⇒ U1 ④（槽位不存在时凭空造 idle）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M7",
++      "desc": "重置收工阻断计数移回 try 之外 ⇒ B7（它抛错时闸门停在 running）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
++exit=0
+diff --git a/doc/05_testing/evidence/gate-block-no-skeleton-20260927/mutation-spec.json b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/mutation-spec.json
+new file mode 100644
+index 0000000..2c8bbb5
+--- /dev/null
++++ b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/mutation-spec.json
+@@ -0,0 +1,70 @@
++{
++  "targets": [
++    "src/trivium/review.ts",
++    "src/trivium/state.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/state.test.js",
++    "dist/test/test/integration/no-artifacts.test.js",
++    "dist/test/test/integration/code-stage.test.js",
++    "dist/test/test/integration/gate-loop.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "置闸门挪回 registerRun 之后（原位置）⇒ B1（被拦时已写下 brief、骨架、登记、运行目录）",
++      "file": "src/trivium/review.ts",
++      "find": "  const holdsGate = !skipVerdict?.skipped;\n  if (holdsGate) {\n    const g = await setGateChecked({\n      triviumDir: ctx.triviumDir,\n      topic: ref.topic, stage,\n      state: 'running',\n      runId, rerunIndex,\n      sessionId: opts.sessionId ?? null,\n      heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,\n      expect: { state: ['idle', 'running', 'approved', 'rejected', 'abandoned'] },\n    });\n    if (!g.applied) {\n      throw new TriviumError(\n        EXIT.GATE_BLOCK,\n        `上一轮（run ${g.entry?.run_id ?? '未知'}，第 ${g.entry?.rerun_index ?? '?'} 轮）的审查意见尚未裁决，不能直接重跑。\\n` +\n          `  ${g.skipped ?? ''}\\n` +\n          `  补齐裁决件并通过 \\`trivium gate --stage ${stage} --topic ${ref.topic} --check\\` 后再来，\\n` +\n          `  或用 \\`trivium abandon --topic ${ref.topic} --stage ${stage}\\` 显式作废那一轮（工件保留）。`,\n      );\n    }\n  }\n\n  /*\n   * ── 到这里为止**一个文件都没写**；闸门已归本轮（跳过轮除外）。从这里开始才落盘。──\n   * 顺序：重置收工阻断计数 → 建阶段目录 → 写补丁与 brief → 建运行目录 → 写 run.json → 登记\n   *\n   * 置闸门之后的任何失败都由这里回收闸门，调用方的契约「prepareRun 抛错 ⇒ 闸门不归本轮」因此不变：\n   * `startRun` 的 prepare catch 只放锁、同步路径的 prepareRun 在 executeRun 的 try 之外（计划 r2 §3.2）。\n   * 写完骨架之后才失败（登记、任务目标落盘）时骨架如实留 running，只回收闸门（计划 r2 D3，BACKLOG EV-145 余项）。\n   */\n  try {\n    // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）。\n    // 它会抛（目录里有删不掉的东西），所以放在 try 里，抛了也经下面的回收（计划 r2 §3.1，r1 AGY-02 ≡ GLM-02）\n    if (holdsGate) {\n      const { resetStopBlockCount } = await import('./lock.js');\n      await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);\n    }\n    await ensureDir(ref.stageDirAbs);\n    /*\n     * `_meta/` 里的被审补丁与两份 brief 也要进 `run.json.artifacts`（审查意见 GLM-r2-05）。\n     *\n     * 原先保护集只有两份渲染后的审查文档，于是「审查文档删不掉也改不掉」，\n     * 但「**审的是什么**」既不受核对保护、又在重跑时被同名覆盖——\n     * hook 文案承诺的范围与实现不符。\n     */\n    const metaArtifacts: { path: string; sha256: string }[] = [];\n    // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前\n    if (pendingDiff) {\n      /*\n       * 补丁按**新增行**扫密钥（`scanDiffSecrets` 的文件头写了理由）：删除行与上下文行的内容\n       * 已经在 HEAD 里，扫它们只会让路过密钥夹具的改动送不进审查、让删除凭据的提交过不了检查。\n       */\n      const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text, { scan: 'added-lines' });\n      metaPaths.push(w.absPath);\n      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });\n      /*\n       * 另留一份 `changes.diff` 便于人读（`.reviews/README.md` 记载的就是这个名字）。\n       * 它**不进保护集**：它只是指向最新一轮的便利副本，会被下一轮覆盖，\n       * 受保护的是上面那份带 run_id 的。补丁头部自带 run_id，不会认错是哪一轮。\n       */\n      const alias = await writeMeta(ref.layout, stage, 'changes.diff', pendingDiff.text, { scan: 'added-lines' });\n      metaPaths.push(alias.absPath);\n    }\n    for (const b of pendingBriefs) {\n      /*\n       * BRIEF 把补丁节选逐字嵌在散文中间，所以同样按 hunk 分档扫（散文整份扫、hunk 内只看新增行）。\n       * 少了这一条，放宽只是把拒绝点从补丁搬到 BRIEF——报错还指向一个开发者没亲手写过的文件，\n       * 而且此时补丁已经落盘，留下半套 `_meta` 工件（代码双审 r2 CODEX-07）。\n       */\n      const w = await writeMeta(ref.layout, stage, b.fileName, b.text, { scan: 'added-lines' });\n      metaPaths.push(w.absPath);\n      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });\n    }\n    await ensureDir(runDirBase);\n\n    // ── run.json 骨架（status: running），崩溃后也能取证 ──\n    const meta = newRunMeta({\n      runId, topic: ref.topic, stage, rerunIndex,\n      command: opts.command,\n      promptHint: opts.promptHint,\n      taskGoal,\n      entry: opts.entry ?? null,\n      /*\n       * 入选集合就是 `sides`——`--only` 收窄后的那一份，不是当前启用的全集。\n       * 两者分开记，`gate` 才能把「入选但失败」与「压根没入选」判成两回事（§6.7.1）。\n       */\n      criticsSelected: sides,\n      /*\n       * 发起方与它的启用状态一起落盘（M9 第 5 步）。\n       *\n       * `driver_enabled: false` 是 M9 刻意接受的形态：那时只校验「已登记」，\n       * 不校验 `driverEnabled`（校验了 M9 第 6 步就跑不成），放行的代价由留痕兜住。\n       * M10a 第 3 步起入口的 `resolveDriver` 对未启用者退 64，新运行这里恒为 true；\n       * 历史归档里的 false 仍是合法留痕。\n       */\n      driver,\n      driverEnabled,\n      /*\n       * 有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而 Hook 配置当前不在场即记 L2。\n       * 在这里取，而不是信预检那一次：预检与 `--start` 之间配置可能被改，留痕要记的是**本次运行时**的事实。\n       */\n      ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),\n      treeHash: primarySnap.treeHash,\n      gitHead: primarySnap.gitHead,\n      dirty: primarySnap.dirty,\n      subjectSha256: primarySnap.subjectSha256,\n      denyPaths: primarySnap.denyPaths,\n      build: embeddedBuildStamp(),\n      driftPolicy: cfg.review.on_drift,\n    });\n    meta.artifacts = [...metaArtifacts];\n\n    // FR-23：跳过也要留痕，且必须写明命中的规则供人复核（§6.4）\n    if (skipVerdict?.skipped) {\n      meta.skipped = true;\n      meta.skip_reason = skipVerdict.reasons.join('；');\n    }\n    await writeRunMeta(ref.layout, stage, meta);\n    const taskLock: TaskLock = { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 };\n    await registerRun(ref.layout, meta, taskLock);\n",
++      "replace": "  const holdsGate = !skipVerdict?.skipped;\n\n  /*\n   * ── 到这里为止**一个文件都没写**；闸门已归本轮（跳过轮除外）。从这里开始才落盘。──\n   * 顺序：重置收工阻断计数 → 建阶段目录 → 写补丁与 brief → 建运行目录 → 写 run.json → 登记\n   *\n   * 置闸门之后的任何失败都由这里回收闸门，调用方的契约「prepareRun 抛错 ⇒ 闸门不归本轮」因此不变：\n   * `startRun` 的 prepare catch 只放锁、同步路径的 prepareRun 在 executeRun 的 try 之外（计划 r2 §3.2）。\n   * 写完骨架之后才失败（登记、任务目标落盘）时骨架如实留 running，只回收闸门（计划 r2 D3，BACKLOG EV-145 余项）。\n   */\n  try {\n    // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）。\n    // 它会抛（目录里有删不掉的东西），所以放在 try 里，抛了也经下面的回收（计划 r2 §3.1，r1 AGY-02 ≡ GLM-02）\n    if (holdsGate) {\n      const { resetStopBlockCount } = await import('./lock.js');\n      await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);\n    }\n    await ensureDir(ref.stageDirAbs);\n    /*\n     * `_meta/` 里的被审补丁与两份 brief 也要进 `run.json.artifacts`（审查意见 GLM-r2-05）。\n     *\n     * 原先保护集只有两份渲染后的审查文档，于是「审查文档删不掉也改不掉」，\n     * 但「**审的是什么**」既不受核对保护、又在重跑时被同名覆盖——\n     * hook 文案承诺的范围与实现不符。\n     */\n    const metaArtifacts: { path: string; sha256: string }[] = [];\n    // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前\n    if (pendingDiff) {\n      /*\n       * 补丁按**新增行**扫密钥（`scanDiffSecrets` 的文件头写了理由）：删除行与上下文行的内容\n       * 已经在 HEAD 里，扫它们只会让路过密钥夹具的改动送不进审查、让删除凭据的提交过不了检查。\n       */\n      const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text, { scan: 'added-lines' });\n      metaPaths.push(w.absPath);\n      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });\n      /*\n       * 另留一份 `changes.diff` 便于人读（`.reviews/README.md` 记载的就是这个名字）。\n       * 它**不进保护集**：它只是指向最新一轮的便利副本，会被下一轮覆盖，\n       * 受保护的是上面那份带 run_id 的。补丁头部自带 run_id，不会认错是哪一轮。\n       */\n      const alias = await writeMeta(ref.layout, stage, 'changes.diff', pendingDiff.text, { scan: 'added-lines' });\n      metaPaths.push(alias.absPath);\n    }\n    for (const b of pendingBriefs) {\n      /*\n       * BRIEF 把补丁节选逐字嵌在散文中间，所以同样按 hunk 分档扫（散文整份扫、hunk 内只看新增行）。\n       * 少了这一条，放宽只是把拒绝点从补丁搬到 BRIEF——报错还指向一个开发者没亲手写过的文件，\n       * 而且此时补丁已经落盘，留下半套 `_meta` 工件（代码双审 r2 CODEX-07）。\n       */\n      const w = await writeMeta(ref.layout, stage, b.fileName, b.text, { scan: 'added-lines' });\n      metaPaths.push(w.absPath);\n      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });\n    }\n    await ensureDir(runDirBase);\n\n    // ── run.json 骨架（status: running），崩溃后也能取证 ──\n    const meta = newRunMeta({\n      runId, topic: ref.topic, stage, rerunIndex,\n      command: opts.command,\n      promptHint: opts.promptHint,\n      taskGoal,\n      entry: opts.entry ?? null,\n      /*\n       * 入选集合就是 `sides`——`--only` 收窄后的那一份，不是当前启用的全集。\n       * 两者分开记，`gate` 才能把「入选但失败」与「压根没入选」判成两回事（§6.7.1）。\n       */\n      criticsSelected: sides,\n      /*\n       * 发起方与它的启用状态一起落盘（M9 第 5 步）。\n       *\n       * `driver_enabled: false` 是 M9 刻意接受的形态：那时只校验「已登记」，\n       * 不校验 `driverEnabled`（校验了 M9 第 6 步就跑不成），放行的代价由留痕兜住。\n       * M10a 第 3 步起入口的 `resolveDriver` 对未启用者退 64，新运行这里恒为 true；\n       * 历史归档里的 false 仍是合法留痕。\n       */\n      driver,\n      driverEnabled,\n      /*\n       * 有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而 Hook 配置当前不在场即记 L2。\n       * 在这里取，而不是信预检那一次：预检与 `--start` 之间配置可能被改，留痕要记的是**本次运行时**的事实。\n       */\n      ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),\n      treeHash: primarySnap.treeHash,\n      gitHead: primarySnap.gitHead,\n      dirty: primarySnap.dirty,\n      subjectSha256: primarySnap.subjectSha256,\n      denyPaths: primarySnap.denyPaths,\n      build: embeddedBuildStamp(),\n      driftPolicy: cfg.review.on_drift,\n    });\n    meta.artifacts = [...metaArtifacts];\n\n    // FR-23：跳过也要留痕，且必须写明命中的规则供人复核（§6.4）\n    if (skipVerdict?.skipped) {\n      meta.skipped = true;\n      meta.skip_reason = skipVerdict.reasons.join('；');\n    }\n    await writeRunMeta(ref.layout, stage, meta);\n    const taskLock: TaskLock = { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 };\n    await registerRun(ref.layout, meta, taskLock);\n    if (holdsGate) {\n      const g = await setGateChecked({\n        triviumDir: ctx.triviumDir,\n        topic: ref.topic, stage,\n        state: 'running',\n        runId, rerunIndex,\n        sessionId: opts.sessionId ?? null,\n        heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,\n        expect: { state: ['idle', 'running', 'approved', 'rejected', 'abandoned'] },\n      });\n      if (!g.applied) {\n        throw new TriviumError(\n          EXIT.GATE_BLOCK,\n          `上一轮（run ${g.entry?.run_id ?? '未知'}，第 ${g.entry?.rerun_index ?? '?'} 轮）的审查意见尚未裁决，不能直接重跑。\\n` +\n            `  ${g.skipped ?? ''}\\n` +\n            `  补齐裁决件并通过 \\`trivium gate --stage ${stage} --topic ${ref.topic} --check\\` 后再来，\\n` +\n            `  或用 \\`trivium abandon --topic ${ref.topic} --stage ${stage}\\` 显式作废那一轮（工件保留）。`,\n        );\n      }\n    }\n",
++      "expect": "dist/test/test/integration/no-artifacts.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "置闸门挪到 brief 之后、骨架之前 ⇒ B3（便利副本被覆盖、新补丁与 brief 落盘）",
++      "file": "src/trivium/review.ts",
++      "find": "  const holdsGate = !skipVerdict?.skipped;\n  if (holdsGate) {\n    const g = await setGateChecked({\n      triviumDir: ctx.triviumDir,\n      topic: ref.topic, stage,\n      state: 'running',\n      runId, rerunIndex,\n      sessionId: opts.sessionId ?? null,\n      heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,\n      expect: { state: ['idle', 'running', 'approved', 'rejected', 'abandoned'] },\n    });\n    if (!g.applied) {\n      throw new TriviumError(\n        EXIT.GATE_BLOCK,\n        `上一轮（run ${g.entry?.run_id ?? '未知'}，第 ${g.entry?.rerun_index ?? '?'} 轮）的审查意见尚未裁决，不能直接重跑。\\n` +\n          `  ${g.skipped ?? ''}\\n` +\n          `  补齐裁决件并通过 \\`trivium gate --stage ${stage} --topic ${ref.topic} --check\\` 后再来，\\n` +\n          `  或用 \\`trivium abandon --topic ${ref.topic} --stage ${stage}\\` 显式作废那一轮（工件保留）。`,\n      );\n    }\n  }\n\n  /*\n   * ── 到这里为止**一个文件都没写**；闸门已归本轮（跳过轮除外）。从这里开始才落盘。──\n   * 顺序：重置收工阻断计数 → 建阶段目录 → 写补丁与 brief → 建运行目录 → 写 run.json → 登记\n   *\n   * 置闸门之后的任何失败都由这里回收闸门，调用方的契约「prepareRun 抛错 ⇒ 闸门不归本轮」因此不变：\n   * `startRun` 的 prepare catch 只放锁、同步路径的 prepareRun 在 executeRun 的 try 之外（计划 r2 §3.2）。\n   * 写完骨架之后才失败（登记、任务目标落盘）时骨架如实留 running，只回收闸门（计划 r2 D3，BACKLOG EV-145 余项）。\n   */\n  try {\n    // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）。\n    // 它会抛（目录里有删不掉的东西），所以放在 try 里，抛了也经下面的回收（计划 r2 §3.1，r1 AGY-02 ≡ GLM-02）\n    if (holdsGate) {\n      const { resetStopBlockCount } = await import('./lock.js');\n      await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);\n    }\n    await ensureDir(ref.stageDirAbs);\n    /*\n     * `_meta/` 里的被审补丁与两份 brief 也要进 `run.json.artifacts`（审查意见 GLM-r2-05）。\n     *\n     * 原先保护集只有两份渲染后的审查文档，于是「审查文档删不掉也改不掉」，\n     * 但「**审的是什么**」既不受核对保护、又在重跑时被同名覆盖——\n     * hook 文案承诺的范围与实现不符。\n     */\n    const metaArtifacts: { path: string; sha256: string }[] = [];\n    // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前\n    if (pendingDiff) {\n      /*\n       * 补丁按**新增行**扫密钥（`scanDiffSecrets` 的文件头写了理由）：删除行与上下文行的内容\n       * 已经在 HEAD 里，扫它们只会让路过密钥夹具的改动送不进审查、让删除凭据的提交过不了检查。\n       */\n      const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text, { scan: 'added-lines' });\n      metaPaths.push(w.absPath);\n      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });\n      /*\n       * 另留一份 `changes.diff` 便于人读（`.reviews/README.md` 记载的就是这个名字）。\n       * 它**不进保护集**：它只是指向最新一轮的便利副本，会被下一轮覆盖，\n       * 受保护的是上面那份带 run_id 的。补丁头部自带 run_id，不会认错是哪一轮。\n       */\n      const alias = await writeMeta(ref.layout, stage, 'changes.diff', pendingDiff.text, { scan: 'added-lines' });\n      metaPaths.push(alias.absPath);\n    }\n    for (const b of pendingBriefs) {\n      /*\n       * BRIEF 把补丁节选逐字嵌在散文中间，所以同样按 hunk 分档扫（散文整份扫、hunk 内只看新增行）。\n       * 少了这一条，放宽只是把拒绝点从补丁搬到 BRIEF——报错还指向一个开发者没亲手写过的文件，\n       * 而且此时补丁已经落盘，留下半套 `_meta` 工件（代码双审 r2 CODEX-07）。\n       */\n      const w = await writeMeta(ref.layout, stage, b.fileName, b.text, { scan: 'added-lines' });\n      metaPaths.push(w.absPath);\n      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });\n    }\n    await ensureDir(runDirBase);\n",
++      "replace": "  const holdsGate = !skipVerdict?.skipped;\n\n  /*\n   * ── 到这里为止**一个文件都没写**；闸门已归本轮（跳过轮除外）。从这里开始才落盘。──\n   * 顺序：重置收工阻断计数 → 建阶段目录 → 写补丁与 brief → 建运行目录 → 写 run.json → 登记\n   *\n   * 置闸门之后的任何失败都由这里回收闸门，调用方的契约「prepareRun 抛错 ⇒ 闸门不归本轮」因此不变：\n   * `startRun` 的 prepare catch 只放锁、同步路径的 prepareRun 在 executeRun 的 try 之外（计划 r2 §3.2）。\n   * 写完骨架之后才失败（登记、任务目标落盘）时骨架如实留 running，只回收闸门（计划 r2 D3，BACKLOG EV-145 余项）。\n   */\n  try {\n    // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）。\n    // 它会抛（目录里有删不掉的东西），所以放在 try 里，抛了也经下面的回收（计划 r2 §3.1，r1 AGY-02 ≡ GLM-02）\n    if (holdsGate) {\n      const { resetStopBlockCount } = await import('./lock.js');\n      await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);\n    }\n    await ensureDir(ref.stageDirAbs);\n    /*\n     * `_meta/` 里的被审补丁与两份 brief 也要进 `run.json.artifacts`（审查意见 GLM-r2-05）。\n     *\n     * 原先保护集只有两份渲染后的审查文档，于是「审查文档删不掉也改不掉」，\n     * 但「**审的是什么**」既不受核对保护、又在重跑时被同名覆盖——\n     * hook 文案承诺的范围与实现不符。\n     */\n    const metaArtifacts: { path: string; sha256: string }[] = [];\n    // 补丁先写：两侧 brief 都引用它的路径，落盘顺序上它该在前\n    if (pendingDiff) {\n      /*\n       * 补丁按**新增行**扫密钥（`scanDiffSecrets` 的文件头写了理由）：删除行与上下文行的内容\n       * 已经在 HEAD 里，扫它们只会让路过密钥夹具的改动送不进审查、让删除凭据的提交过不了检查。\n       */\n      const w = await writeMeta(ref.layout, stage, pendingDiff.fileName, pendingDiff.text, { scan: 'added-lines' });\n      metaPaths.push(w.absPath);\n      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });\n      /*\n       * 另留一份 `changes.diff` 便于人读（`.reviews/README.md` 记载的就是这个名字）。\n       * 它**不进保护集**：它只是指向最新一轮的便利副本，会被下一轮覆盖，\n       * 受保护的是上面那份带 run_id 的。补丁头部自带 run_id，不会认错是哪一轮。\n       */\n      const alias = await writeMeta(ref.layout, stage, 'changes.diff', pendingDiff.text, { scan: 'added-lines' });\n      metaPaths.push(alias.absPath);\n    }\n    for (const b of pendingBriefs) {\n      /*\n       * BRIEF 把补丁节选逐字嵌在散文中间，所以同样按 hunk 分档扫（散文整份扫、hunk 内只看新增行）。\n       * 少了这一条，放宽只是把拒绝点从补丁搬到 BRIEF——报错还指向一个开发者没亲手写过的文件，\n       * 而且此时补丁已经落盘，留下半套 `_meta` 工件（代码双审 r2 CODEX-07）。\n       */\n      const w = await writeMeta(ref.layout, stage, b.fileName, b.text, { scan: 'added-lines' });\n      metaPaths.push(w.absPath);\n      metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });\n    }\n    if (holdsGate) {\n      const g = await setGateChecked({\n        triviumDir: ctx.triviumDir,\n        topic: ref.topic, stage,\n        state: 'running',\n        runId, rerunIndex,\n        sessionId: opts.sessionId ?? null,\n        heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000,\n        expect: { state: ['idle', 'running', 'approved', 'rejected', 'abandoned'] },\n      });\n      if (!g.applied) {\n        throw new TriviumError(\n          EXIT.GATE_BLOCK,\n          `上一轮（run ${g.entry?.run_id ?? '未知'}，第 ${g.entry?.rerun_index ?? '?'} 轮）的审查意见尚未裁决，不能直接重跑。\\n` +\n            `  ${g.skipped ?? ''}\\n` +\n            `  补齐裁决件并通过 \\`trivium gate --stage ${stage} --topic ${ref.topic} --check\\` 后再来，\\n` +\n            `  或用 \\`trivium abandon --topic ${ref.topic} --stage ${stage}\\` 显式作废那一轮（工件保留）。`,\n        );\n      }\n    }\n    await ensureDir(runDirBase);\n",
++      "expect": "dist/test/test/integration/code-stage.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "落盘段的 catch 不回收闸门 ⇒ B5（闸门停在 running）",
++      "file": "src/trivium/review.ts",
++      "find": "  } catch (e) {\n    // 置了 running 之后失败：闸门由本函数回收（只回收仍记着本 runId 且仍是 running 的）\n    if (holdsGate) {\n      await releaseRunningGateEntry({\n",
++      "replace": "  } catch (e) {\n    // 置了 running 之后失败：闸门由本函数回收（只回收仍记着本 runId 且仍是 running 的）\n    if (holdsGate && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n      await releaseRunningGateEntry({\n",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "落盘段的 catch 吞掉异常不再抛 ⇒ B5（startRun 拿到 undefined 在 try 外崩溃，主题锁不放）",
++      "file": "src/trivium/review.ts",
++      "find": "      });\n    }\n    throw e;\n  }\n}\n\n/**\n * 执行阶段",
++      "replace": "      });\n    }\n    void e;\n    return undefined as never;\n  }\n}\n\n/**\n * 执行阶段",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "releaseRunningGateEntry 去掉 runId 比较 ⇒ U1 ②（旧 run 清掉新一轮的护栏）",
++      "file": "src/trivium/state.ts",
++      "find": "      expect: { state: ['running'], runId: i.runId, allowMissing: false },\n",
++      "replace": "      expect: { state: ['running'], allowMissing: false },\n",
++      "expect": "dist/test/test/unit/state.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "releaseRunningGateEntry 的 allowMissing 回到缺省 true ⇒ U1 ④（槽位不存在时凭空造 idle）",
++      "file": "src/trivium/state.ts",
++      "find": "      expect: { state: ['running'], runId: i.runId, allowMissing: false },\n",
++      "replace": "      expect: { state: ['running'], runId: i.runId },\n",
++      "expect": "dist/test/test/unit/state.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "重置收工阻断计数移回 try 之外 ⇒ B7（它抛错时闸门停在 running）",
++      "file": "src/trivium/review.ts",
++      "find": "  try {\n    // 新一轮开始，上一轮的收工阻断计数作废（否则跨轮累积后首次 Stop 就超限放行）。\n    // 它会抛（目录里有删不掉的东西），所以放在 try 里，抛了也经下面的回收（计划 r2 §3.1，r1 AGY-02 ≡ GLM-02）\n    if (holdsGate) {\n      const { resetStopBlockCount } = await import('./lock.js');\n      await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);\n    }\n",
++      "replace": "  if (holdsGate) {\n    const { resetStopBlockCount } = await import('./lock.js');\n    await resetStopBlockCount(ctx.triviumDir, ref.topic, stage);\n  }\n  try {\n",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-corrupt-rerun.mjs b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-corrupt-rerun.mjs
+new file mode 100644
+index 0000000..7c587fd
+--- /dev/null
++++ b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-corrupt-rerun.mjs
+@@ -0,0 +1,75 @@
++#!/usr/bin/env node
++/**
++ * 只读实测：阶段最新一份 run.json 读不出来时，提示里给的出口「重跑一次该阶段双审」走不走得通。
++ * 构造：plan 跑一轮成功并 abandon（闸门不挡），把那份 run.json 改成不合契约的 {}，再 review --start。
++ * 收尾只删 mkdtemp 的返回值。用法：node probe-corrupt-rerun.mjs <仓库根>
++ */
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++
++const pexec = promisify(execFile);
++const ROOT = path.resolve(process.argv[2] ?? '.');
++const CLI = path.join(ROOT, 'skills/dual-critic/scripts/trivium.cjs');
++const { encodeStubConfig, STUB_ENV_VAR } = await import(path.join(ROOT, 'dist/test/src/trivium/adapters/stub.js'));
++const TD = '.' + 'trivium';
++const OK = { gemini: { mode: 'ok' }, glm: { mode: 'ok' } };
++async function sh(cwd, bin, args, env = {}) {
++  try {
++    const o = await pexec(bin, args, { cwd, env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 });
++    return { code: 0, stdout: o.stdout, stderr: o.stderr };
++  } catch (e) {
++    return { code: typeof e.code === 'number' ? e.code : null, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
++  }
++}
++const cli = (cwd, args) => sh(cwd, process.execPath, [CLI, ...args], {
++  TRIVIUM_ASSET_ROOT: path.join(ROOT, 'skills/dual-critic'), [STUB_ENV_VAR]: encodeStubConfig(OK), CLAUDE_SESSION_ID: 'S-probe',
++});
++const git = (cwd, args) => sh(cwd, 'git', ['-c', 'user.email=a@a', '-c', 'user.name=a', ...args]);
++const today = () => {
++  const d = new Date();
++  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
++};
++const pick = (r) => (r.stdout + r.stderr).split('\n').filter((l) => l && !/桩|STUB|注入配置|只应出现|同步模式/.test(l)).slice(0, 5);
++
++const out = {};
++const base = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-probe-corrupt-'));
++try {
++  const topic = 'K-留痕坏损重跑';
++  const root = path.join(base, topic);
++  await fs.mkdir(path.join(root, 'src'), { recursive: true });
++  await fs.writeFile(path.join(root, 'src/a.ts'), 'export const a = 1;\n');
++  await fs.mkdir(path.join(root, TD), { recursive: true });
++  await fs.writeFile(path.join(root, TD, 'config.yaml'), [
++    'runtime:', `  run_root: ${path.join(base, 'runs')}`,
++    'review:', '  default_critics: [gemini, glm]', '  wait_timeout_s: 30',
++    'verify:', '  build: []', '  test: []', '',
++  ].join('\n'));
++  await git(root, ['init', '-q', '-b', 'main']);
++  await git(root, ['add', '-A']);
++  await git(root, ['commit', '-q', '-m', 'baseline', '--no-verify']);
++  const stageDir = path.join(root, '.reviews', topic, 'plan');
++  await fs.mkdir(stageDir, { recursive: true });
++  await fs.writeFile(path.join(stageDir, `${today()}-${topic}-` + 'claude.md'), '# 待审计划\n\n实测。\n');
++  const r1 = await cli(root, ['review', '--stage', 'plan', '--topic', topic, '--focus', '实测', '--entry', 'B']);
++  const ab = await cli(root, ['abandon', '--topic', topic, '--stage', 'plan', '--reason', '实测']);
++  const metaDir = path.join(stageDir, '_meta');
++  const runFile = (await fs.readdir(metaDir)).find((n) => /^run-/.test(n));
++  await fs.writeFile(path.join(metaDir, runFile), '{}\n');
++  const g = await cli(root, ['gate', '--stage', 'plan', '--topic', topic, '--check']);
++  await new Promise((r) => setTimeout(r, 1100));
++  const r2 = await cli(root, ['review', '--start', '--entry', 'B', '--stage', 'plan', '--topic', topic, '--focus', '实测']);
++  const tr = await cli(root, ['topic', 'resolve', '--stage', 'plan', '--json', '--', '实测', '--topic', topic]);
++  out.K = {
++    firstCode: r1.code, abandonCode: ab.code,
++    gateCheck: { code: g.code, msg: pick(g) },
++    rerunStart: { code: r2.code, msg: pick(r2) },
++    topicResolve: { code: tr.code, msg: pick(tr) },
++    metaAfter: (await fs.readdir(metaDir)).filter((n) => /^run-/.test(n)),
++  };
++} finally {
++  await fs.rm(base, { recursive: true, force: true });
++}
++console.log(JSON.stringify(out, null, 2));
+diff --git a/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.after.json b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.after.json
+new file mode 100644
+index 0000000..dba1ba8
+--- /dev/null
++++ b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.after.json
+@@ -0,0 +1,254 @@
++{
++  "G1_block": {
++    "r1": "20260927T024643Z",
++    "secondStartCode": 2,
++    "secondStartMsg": [
++      "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。",
++      "  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}"
++    ],
++    "extraMetaFiles": [],
++    "skeleton": null,
++    "taskRunsBefore": [
++      {
++        "run_id": "20260927T024643Z",
++        "stage": "plan",
++        "r": 1,
++        "status": "success"
++      }
++    ],
++    "taskRunsAfter": [
++      {
++        "run_id": "20260927T024643Z",
++        "stage": "plan",
++        "r": 1,
++        "status": "success"
++      }
++    ],
++    "gateBefore": {
++      "state": "review_done_awaiting_disposition",
++      "run_id": "20260927T024643Z",
++      "rerun_index": 1
++    },
++    "gateAfter": {
++      "state": "review_done_awaiting_disposition",
++      "run_id": "20260927T024643Z",
++      "rerun_index": 1
++    },
++    "extraRunDirs": []
++  },
++  "G1_gateCheckNoRunIdBeforeDisposition": {
++    "code": 2,
++    "run_id": "20260927T024643Z",
++    "rerun_index": 1,
++    "ok": false,
++    "failures": [
++      "missing_disposition"
++    ]
++  },
++  "G1_checkArtifacts": {
++    "code": 65,
++    "text": [
++      "✗ plan 阶段第 1 轮缺件：裁决件 …-revised-claude.md",
++      "  轮次取自最新一次运行。若那一轮尚未产出工件（例如 worker 中途崩溃），可用 --run-id <id> 指定更早的完整轮次。"
++    ]
++  },
++  "G1_gateCheckNoRunIdAfterDisposition": {
++    "code": 0,
++    "run_id": "20260927T024643Z",
++    "rerun_index": 1,
++    "ok": true,
++    "failures": []
++  },
++  "G1_gateAfterNoRunIdCheck": {
++    "state": "awaiting_approval",
++    "run_id": "20260927T024643Z",
++    "rerun_index": 1
++  },
++  "G1_awaitNoRunId": {
++    "code": 0,
++    "text": [
++      "已置为等待人工审批：G1-闸门拦重跑 / plan（第 1 轮）",
++      "  通过：/dual-approve --topic G1-闸门拦重跑 --stage plan [--reason <附言>]",
++      "  拒绝：/dual-approve --topic G1-闸门拦重跑 --stage plan --reject --reason <理由>"
++    ]
++  },
++  "G1_gateCheckWithRunId": {
++    "code": 0,
++    "run_id": "20260927T024643Z",
++    "rerun_index": 1,
++    "ok": true,
++    "failures": []
++  },
++  "G1_gateAfterRunIdCheck": {
++    "state": "awaiting_approval",
++    "run_id": "20260927T024643Z",
++    "rerun_index": 1
++  },
++  "G1_report": {
++    "code": 0,
++    "rounds": [
++      {
++        "stage": "plan",
++        "r": 1,
++        "runId": "20260927T024643Z",
++        "status": "success"
++      }
++    ],
++    "unlisted": []
++  },
++  "G1_topicResolve": {
++    "code": 0,
++    "driver": "claude"
++  },
++  "G1_status": {
++    "code": 0,
++    "keys": [
++      "ok",
++      "topics"
++    ],
++    "text": "{\"ok\":true,\"topics\":[{\"topic\":\"G1-闸门拦重跑\",\"open_gates\":[{\"stage\":\"plan\",\"state\":\"awaiting_approval\",\"since\":\"2026-09-27T02:46:46.932Z\"}],\"runs\":1,\"degradations\":0,\"disputed\":false,\"approvals\":0}]}"
++  },
++  "G1_realRerun": {
++    "startCode": 0,
++    "startMsg": null,
++    "rerun_index": 2,
++    "status": "success",
++    "docs": [
++      "2026-09-27-G1-闸门拦重跑-claude.md",
++      "2026-09-27-G1-闸门拦重跑-gemini.md",
++      "2026-09-27-G1-闸门拦重跑-glm.md",
++      "2026-09-27-G1-闸门拦重跑-r2-gemini.md",
++      "2026-09-27-G1-闸门拦重跑-r2-glm.md",
++      "2026-09-27-G1-闸门拦重跑-revised-claude.md"
++    ]
++  },
++  "G1_reportAfterRerun": {
++    "code": 0,
++    "rounds": [
++      {
++        "stage": "plan",
++        "r": 1,
++        "runId": "20260927T024643Z",
++        "status": "success"
++      },
++      {
++        "stage": "plan",
++        "r": 2,
++        "runId": "20260927T024647Z",
++        "status": "success"
++      }
++    ],
++    "unlisted": []
++  },
++  "G2": {
++    "firstStartCode": 0,
++    "firstStartMsg": null,
++    "secondStartCode": 2,
++    "extraMetaFiles": [],
++    "aliasHeadBefore": "# run_id: 20260927T024650Z",
++    "aliasHeadAfter": "# run_id: 20260927T024650Z",
++    "aliasOverwritten": false
++  },
++  "G3": {
++    "startCode": 1,
++    "startMsg": [
++      "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。",
++      "  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}",
++      "  这只应出现在测试里。若这是真实审查，请立即清除该环境变量并重跑。"
++    ],
++    "metaFiles": [
++      "brief-gemini-20260927T024652Z.md",
++      "brief-glm-20260927T024652Z.md",
++      "run-20260927T024652Z.json"
++    ],
++    "skeleton": {
++      "status": "running",
++      "rerun_index": 1
++    },
++    "taskJson": null,
++    "gate": {
++      "state": "idle",
++      "run_id": "20260927T024652Z",
++      "rerun_index": 1
++    },
++    "lockFiles": [],
++    "report": {
++      "code": 0,
++      "rounds": [],
++      "unlisted": [
++        {
++          "r": 1,
++          "runId": "20260927T024652Z",
++          "status": "running",
++          "label": "进行中，或没走到收尾"
++        }
++      ]
++    }
++  },
++  "G3_after": {
++    "startCode": 0,
++    "startMsg": null,
++    "rerun_index": 1,
++    "status": "success"
++  },
++  "G4a": {
++    "firstCode": 0,
++    "secondCode": 2,
++    "blockedRunIdInMsg": "20260927T024655Z",
++    "firstRunFile": "run-20260927T024655Z.json",
++    "firstRunBefore": {
++      "status": "success",
++      "rerun_index": 1,
++      "artifacts": 7
++    },
++    "firstRunAfter": {
++      "status": "success",
++      "rerun_index": 1,
++      "artifacts": 7
++    },
++    "extraMetaFiles": [],
++    "skeleton": null,
++    "gate": {
++      "state": "review_done_awaiting_disposition",
++      "run_id": "20260927T024655Z",
++      "rerun_index": 1
++    },
++    "gateCheckNoRunId": {
++      "code": 2,
++      "rerun_index": 1,
++      "failures": [
++        "missing_disposition"
++      ]
++    }
++  },
++  "G4b": {
++    "firstCode": 0,
++    "secondCode": 2,
++    "blockedRunIdInMsg": "20260927T024656Z",
++    "firstRunFile": "run-20260927T024656Z.json",
++    "firstRunBefore": {
++      "status": "success",
++      "rerun_index": 1,
++      "artifacts": 7
++    },
++    "firstRunAfter": {
++      "status": "success",
++      "rerun_index": 1,
++      "artifacts": 7
++    },
++    "extraMetaFiles": [],
++    "skeleton": null,
++    "gate": {
++      "state": "review_done_awaiting_disposition",
++      "run_id": "20260927T024656Z",
++      "rerun_index": 1
++    },
++    "gateCheckNoRunId": {
++      "code": 2,
++      "rerun_index": 1,
++      "failures": [
++        "missing_disposition"
++      ]
++    }
++  }
++}
+diff --git a/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.mjs b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.mjs
+new file mode 100644
+index 0000000..ba24689
+--- /dev/null
++++ b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.mjs
+@@ -0,0 +1,272 @@
++#!/usr/bin/env node
++/**
++ * 只读实测（不碰真实 HOME、不改本仓归档）：用仓库构建的 CLI + 桩审查员，在 mkdtemp 夹具里核对
++ *   G1 plan 阶段：一轮成功、未裁决，直接再 --start ⇒ 被拦留下了什么（_meta 新文件、run.json、task.json、state.json、运行目录）；
++ *      随后 gate --check / --check-artifacts / --await-approval 不带 --run-id 读到的是哪一轮；
++ *      补上第 1 轮裁决件后 gate --check（不带 / 带 --run-id）；report 的时间线与未进时间线表；topic resolve 的当轮 Driver；
++ *      abandon 后真跑一轮 ⇒ 新一轮的 rerun_index 与被拦骨架是否相同
++ *   G2 code 阶段：一轮成功、未裁决，改工作树后再 --start ⇒ changes.diff 便利副本是否被被拦的那次覆盖
++ *   G3 registerRun 写失败（主题目录只读 ⇒ task.json 写不进）⇒ 退出码、留下的 run.json 与 _meta、闸门槽位
++ *   G4 同步路径 review --stage（runReviewLocked）被拦 ⇒ 是否同样留骨架
++ * 收尾只删 mkdtemp 的返回值。
++ *
++ * 用法：node probe-gate-block.mjs <仓库根>
++ */
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++
++const pexec = promisify(execFile);
++const ROOT = path.resolve(process.argv[2] ?? '.');
++const CLI = path.join(ROOT, 'skills/dual-critic/scripts/trivium.cjs');
++const { encodeStubConfig, STUB_ENV_VAR } = await import(path.join(ROOT, 'dist/test/src/trivium/adapters/stub.js'));
++const SESSION = 'S-probe';
++const TD = '.' + 'trivium';
++
++async function sh(cwd, bin, args, env = {}) {
++  try {
++    const o = await pexec(bin, args, { cwd, env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 });
++    return { code: 0, stdout: o.stdout, stderr: o.stderr };
++  } catch (e) {
++    return { code: typeof e.code === 'number' ? e.code : null, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
++  }
++}
++const OK = { gemini: { mode: 'ok' }, glm: { mode: 'ok' } };
++const envFor = (stub) => ({ TRIVIUM_ASSET_ROOT: path.join(ROOT, 'skills/dual-critic'), [STUB_ENV_VAR]: encodeStubConfig(stub), CLAUDE_SESSION_ID: SESSION });
++const cli = (cwd, args, stub = OK) => sh(cwd, process.execPath, [CLI, ...args], envFor(stub));
++const git = (cwd, args) => sh(cwd, 'git', ['-c', 'user.email=a@a', '-c', 'user.name=a', ...args]);
++const readJson = async (p) => JSON.parse(await fs.readFile(p, 'utf8'));
++const lines = (r, n = 4) => (r.stdout + r.stderr).split('\n').filter(Boolean).slice(0, n);
++const jsonOf = (r) => { try { return JSON.parse(r.stdout.slice(r.stdout.indexOf('{'))); } catch { return null; } };
++const today = () => {
++  const d = new Date();
++  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
++};
++const out = {};
++
++async function fixture(base, topic) {
++  const root = path.join(base, topic);
++  await fs.mkdir(path.join(root, 'src'), { recursive: true });
++  await fs.writeFile(path.join(root, 'src/a.ts'), 'export const a = 1;\n');
++  await fs.mkdir(path.join(root, TD), { recursive: true });
++  await fs.writeFile(path.join(root, TD, 'config.yaml'), [
++    'runtime:', `  run_root: ${path.join(base, 'runs-' + topic)}`,
++    'review:', '  default_critics: [gemini, glm]',
++    '  timeout_s:', '    plan: 900', '    code: 900', '    bug: 900', '  wait_timeout_s: 30',
++    'verify:', '  build: []', '  test: []', '',
++  ].join('\n'));
++  await git(root, ['init', '-q', '-b', 'main']);
++  await git(root, ['add', '-A']);
++  await git(root, ['commit', '-q', '-m', 'baseline', '--no-verify']);
++  const topicDir = path.join(root, '.reviews', topic);
++  const stageDir = path.join(topicDir, 'plan');
++  await fs.mkdir(stageDir, { recursive: true });
++  await fs.writeFile(path.join(stageDir, `${today()}-${topic}-` + 'claude.md'), '# 待审计划\n\n## 一、目标\n\n实测。\n');
++  return { root, topicDir, stageDir, runRoot: path.join(base, 'runs-' + topic) };
++}
++
++async function start(root, topic, stage = 'plan', entry = 'B') {
++  const r = await cli(root, ['review', '--start', '--entry', entry, '--stage', stage, '--topic', topic, '--focus', '实测', '--session-id', SESSION, '--json']);
++  const js = r.code === 0 ? jsonOf(r) : null;
++  return { r, runId: js?.run_id ?? null };
++}
++async function waitDone(root, runId) {
++  let w;
++  for (let i = 0; i < 10; i++) {
++    w = await cli(root, ['review', '--wait', runId, '--timeout', '20']);
++    if (w.code !== 73) break;
++  }
++  return w;
++}
++const ls = async (d) => (await fs.readdir(d).catch(() => [])).sort();
++async function listRunDirs(runRoot) {
++  const out = [];
++  for (const repo of await ls(runRoot)) for (const id of await ls(path.join(runRoot, repo))) out.push(id);
++  return out.sort();
++}
++async function gateOf(root, topic, stage) {
++  const s = await readJson(path.join(root, TD, 'state.json')).catch(() => null);
++  const g = s?.gates?.[`${topic}/${stage}`];
++  return g ? { state: g.state, run_id: g.run_id, rerun_index: g.rerun_index } : null;
++}
++async function taskRuns(topicDir) {
++  const t = await readJson(path.join(topicDir, 'task.json')).catch(() => null);
++  return t?.runs?.map((r) => ({ run_id: r.run_id, stage: r.stage, r: r.rerun_index, status: r.status })) ?? null;
++}
++async function writeDisposition(stageDir, topic, runId) {
++  await fs.writeFile(
++    path.join(stageDir, `${today()}-${topic}-revised-` + 'claude.md'),
++    [
++      '---', 'schema: trivium.disposition.v1', `topic: ${topic}`, 'stage: plan',
++      'role: claude', 'kind: revised', `run_id: ${runId}`,
++      'addresses:', `  - ${today()}-${topic}-gemini.md`, `  - ${today()}-${topic}-glm.md`,
++      '---', '',
++      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
++      '| :--- | :--- | :--- | :--- | :--- | :--- |',
++      '| AGY-01 | gemini | blocker | 接受 | 确实漏了这一处，需要补 | §1 |',
++      '| GLM-01 | glm | blocker | 接受 | 同一处问题，一并补上 | §1 |',
++      '',
++    ].join('\n'),
++    'utf8',
++  );
++}
++async function report(root, topic) {
++  const r = await cli(root, ['report', '--topic', topic, '--json']);
++  const j = jsonOf(r);
++  return {
++    code: r.code,
++    rounds: (j?.rounds ?? []).map((x) => ({ stage: x.stage, r: x.rerunIndex, runId: x.runId, status: x.status })),
++    unlisted: (j?.unlistedRuns ?? []).map((x) => ({ r: x.rerunIndex, runId: x.runId, status: x.status, label: x.label })),
++  };
++}
++const gateCheck = async (root, topic, extra = []) => {
++  const r = await cli(root, ['gate', '--stage', 'plan', '--topic', topic, '--check', '--json', '--session-id', SESSION, ...extra]);
++  const j = jsonOf(r);
++  return { code: r.code, run_id: j?.run_id ?? null, rerun_index: j?.rerun_index ?? null, ok: j?.ok ?? null, failures: (j?.failures ?? []).map((f) => f.code ?? f).slice(0, 5), text: j ? undefined : lines(r, 3) };
++};
++
++const base = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-probe-gateblock-'));
++try {
++  // ── G1 ──
++  {
++    const topic = 'G1-闸门拦重跑';
++    const fx = await fixture(base, topic);
++    const s1 = await start(fx.root, topic);
++    await waitDone(fx.root, s1.runId);
++    const metaDir = path.join(fx.stageDir, '_meta');
++    const before = { meta: await ls(metaDir), runDirs: await listRunDirs(fx.runRoot), gate: await gateOf(fx.root, topic, 'plan'), task: await taskRuns(fx.topicDir) };
++    const s2 = await start(fx.root, topic);
++    const afterMeta = await ls(metaDir);
++    const extraMeta = afterMeta.filter((n) => !before.meta.includes(n));
++    const skel = extraMeta.find((n) => /^run-/.test(n));
++    const skelJson = skel ? await readJson(path.join(metaDir, skel)) : null;
++    const runDirsAfter = await listRunDirs(fx.runRoot);
++    out.G1_block = {
++      r1: s1.runId,
++      secondStartCode: s2.r.code,
++      secondStartMsg: lines(s2.r, 2),
++      extraMetaFiles: extraMeta,
++      skeleton: skelJson && { run_id: skelJson.run_id, status: skelJson.status, rerun_index: skelJson.rerun_index, gate: skelJson.gate.state, artifacts: skelJson.artifacts.map((a) => path.basename(a.path)) },
++      taskRunsBefore: before.task, taskRunsAfter: await taskRuns(fx.topicDir),
++      gateBefore: before.gate, gateAfter: await gateOf(fx.root, topic, 'plan'),
++      extraRunDirs: runDirsAfter.filter((d) => !before.runDirs.includes(d)),
++    };
++    // 被拦之后，不带 --run-id 的三条闸门命令读到哪一轮
++    out.G1_gateCheckNoRunIdBeforeDisposition = await gateCheck(fx.root, topic);
++    const ca = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', topic, '--check-artifacts']);
++    out.G1_checkArtifacts = { code: ca.code, text: lines(ca, 2) };
++    await writeDisposition(fx.stageDir, topic, s1.runId);
++    out.G1_gateCheckNoRunIdAfterDisposition = await gateCheck(fx.root, topic);
++    out.G1_gateAfterNoRunIdCheck = await gateOf(fx.root, topic, 'plan');
++    const aw = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', topic, '--await-approval', '--session-id', SESSION]);
++    out.G1_awaitNoRunId = { code: aw.code, text: lines(aw, 3) };
++    out.G1_gateCheckWithRunId = await gateCheck(fx.root, topic, ['--run-id', s1.runId]);
++    out.G1_gateAfterRunIdCheck = await gateOf(fx.root, topic, 'plan');
++    out.G1_report = await report(fx.root, topic);
++    const tr = await cli(fx.root, ['topic', 'resolve', '--stage', 'plan', '--json', '--', '实测', '--topic', topic]);
++    out.G1_topicResolve = { code: tr.code, driver: jsonOf(tr)?.driver ?? null, text: jsonOf(tr) ? undefined : lines(tr, 2) };
++    const st = await cli(fx.root, ['status', '--topic', topic, '--json']);
++    const sj = jsonOf(st);
++    out.G1_status = { code: st.code, keys: sj ? Object.keys(sj) : null, text: sj ? JSON.stringify(sj).slice(0, 600) : lines(st, 6) };
++    // 放行之后真跑一轮：轮次号与被拦骨架是否相同
++    const gnow = await gateOf(fx.root, topic, 'plan');
++    if (gnow?.state !== 'approved' && gnow?.state !== 'idle') {
++      await cli(fx.root, ['abandon', '--topic', topic, '--stage', 'plan', '--reason', '实测']);
++    }
++    const s3 = await start(fx.root, topic);
++    if (s3.runId) await waitDone(fx.root, s3.runId);
++    const m3 = s3.runId ? await readJson(path.join(metaDir, `run-${s3.runId}.json`)) : null;
++    out.G1_realRerun = { startCode: s3.r.code, startMsg: s3.runId ? null : lines(s3.r, 2), rerun_index: m3?.rerun_index ?? null, status: m3?.status ?? null, docs: (await ls(fx.stageDir)).filter((n) => n.endsWith('.md')) };
++    out.G1_reportAfterRerun = await report(fx.root, topic);
++  }
++
++  // ── G2 code 阶段便利副本 ──
++  {
++    const topic = 'G2-code便利副本';
++    const fx = await fixture(base, topic);
++    await git(fx.root, ['add', '-A']);
++    await git(fx.root, ['commit', '-q', '-m', 'plan', '--no-verify']);
++    await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 2;\n');
++    const s1 = await start(fx.root, topic, 'code', 'C');
++    if (s1.runId) await waitDone(fx.root, s1.runId);
++    const codeMeta = path.join(fx.topicDir, 'code', '_meta');
++    const aliasBefore = await fs.readFile(path.join(codeMeta, 'changes.diff'), 'utf8').catch(() => null);
++    const metaBefore = await ls(codeMeta);
++    await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 3;\n');
++    const s2 = await start(fx.root, topic, 'code', 'C');
++    const aliasAfter = await fs.readFile(path.join(codeMeta, 'changes.diff'), 'utf8').catch(() => null);
++    out.G2 = {
++      firstStartCode: s1.r.code, firstStartMsg: s1.runId ? null : lines(s1.r, 3),
++      secondStartCode: s2.r.code,
++      extraMetaFiles: (await ls(codeMeta)).filter((n) => !metaBefore.includes(n)),
++      aliasHeadBefore: aliasBefore?.split('\n').find((l) => /^# run/.test(l)) ?? null,
++      aliasHeadAfter: aliasAfter?.split('\n').find((l) => /^# run/.test(l)) ?? null,
++      aliasOverwritten: aliasBefore !== null && aliasAfter !== aliasBefore,
++    };
++  }
++
++  // ── G3 registerRun 写失败 ──
++  {
++    const topic = 'G3-登记写失败';
++    const fx = await fixture(base, topic);
++    await fs.chmod(fx.topicDir, 0o555); // 阶段目录 plan/ 仍可写；task.json 的原子写（同目录临时文件）写不进
++    const s = await start(fx.root, topic);
++    await fs.chmod(fx.topicDir, 0o755);
++    const metaDir = path.join(fx.stageDir, '_meta');
++    const metas = await ls(metaDir);
++    const skel = metas.find((n) => /^run-/.test(n));
++    const j = skel ? await readJson(path.join(metaDir, skel)) : null;
++    out.G3 = {
++      startCode: s.r.code, startMsg: lines(s.r, 3),
++      metaFiles: metas,
++      skeleton: j && { status: j.status, rerun_index: j.rerun_index },
++      taskJson: await taskRuns(fx.topicDir),
++      gate: await gateOf(fx.root, topic, 'plan'),
++      lockFiles: await ls(path.join(fx.root, TD, 'lock')),
++      report: await report(fx.root, topic),
++    };
++    // 登记失败之后再正常跑一轮：能否启动、轮次号
++    const s2 = await start(fx.root, topic);
++    if (s2.runId) await waitDone(fx.root, s2.runId);
++    const m2 = s2.runId ? await readJson(path.join(metaDir, `run-${s2.runId}.json`)).catch(() => null) : null;
++    out.G3_after = { startCode: s2.r.code, startMsg: s2.runId ? null : lines(s2.r, 3), rerun_index: m2?.rerun_index ?? null, status: m2?.status ?? null };
++  }
++
++  // ── G4 同步路径被拦：a 同一秒内再跑（run_id 撞车）；b 隔 1.2 s 再跑 ──
++  for (const [tag, gapMs] of [['a', 0], ['b', 1200]]) {
++    const topic = `G4${tag}-同步路径`;
++    const fx = await fixture(base, topic);
++    const r1 = await cli(fx.root, ['review', '--stage', 'plan', '--topic', topic, '--focus', '实测', '--entry', 'B', '--session-id', SESSION]);
++    const metaDir = path.join(fx.stageDir, '_meta');
++    const before = await ls(metaDir);
++    const firstRun = before.find((n) => /^run-/.test(n));
++    const firstJson = firstRun ? await readJson(path.join(metaDir, firstRun)) : null;
++    if (gapMs) await new Promise((r) => setTimeout(r, gapMs));
++    const r2 = await cli(fx.root, ['review', '--stage', 'plan', '--topic', topic, '--focus', '实测', '--entry', 'B', '--session-id', SESSION]);
++    const extra = (await ls(metaDir)).filter((n) => !before.includes(n));
++    const skel = extra.find((n) => /^run-/.test(n));
++    const j = skel ? await readJson(path.join(metaDir, skel)) : null;
++    const firstAfter = firstRun ? await readJson(path.join(metaDir, firstRun)) : null;
++    out[`G4${tag}`] = {
++      firstCode: r1.code, secondCode: r2.code,
++      blockedRunIdInMsg: /上一轮（run (\S+)，/.exec(r2.stdout + r2.stderr)?.[1] ?? null,
++      firstRunFile: firstRun,
++      firstRunBefore: firstJson && { status: firstJson.status, rerun_index: firstJson.rerun_index, artifacts: firstJson.artifacts.length },
++      firstRunAfter: firstAfter && { status: firstAfter.status, rerun_index: firstAfter.rerun_index, artifacts: firstAfter.artifacts.length },
++      extraMetaFiles: extra,
++      skeleton: j && { status: j.status, rerun_index: j.rerun_index },
++      gate: await gateOf(fx.root, topic, 'plan'),
++      gateCheckNoRunId: await (async () => {
++        const r = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', topic, '--check', '--json', '--session-id', SESSION]);
++        const jj = jsonOf(r);
++        return { code: r.code, rerun_index: jj?.rerun_index ?? null, failures: (jj?.failures ?? []).map((f) => f.code ?? f).slice(0, 4) };
++      })(),
++    };
++  }
++} finally {
++  await fs.chmod(base, 0o755).catch(() => {});
++  await fs.rm(base, { recursive: true, force: true });
++}
++console.log(JSON.stringify(out, null, 2));
+diff --git a/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.out.json b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.out.json
+new file mode 100644
+index 0000000..5819849
+--- /dev/null
++++ b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-gate-block.out.json
+@@ -0,0 +1,306 @@
++{
++  "G1_block": {
++    "r1": "20260927T013208Z",
++    "secondStartCode": 2,
++    "secondStartMsg": [
++      "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。",
++      "  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}"
++    ],
++    "extraMetaFiles": [
++      "brief-gemini-20260927T013210Z.md",
++      "brief-glm-20260927T013210Z.md",
++      "run-20260927T013210Z.json"
++    ],
++    "skeleton": {
++      "run_id": "20260927T013210Z",
++      "status": "running",
++      "rerun_index": 2,
++      "gate": "running",
++      "artifacts": [
++        "brief-gemini-20260927T013210Z.md",
++        "brief-glm-20260927T013210Z.md"
++      ]
++    },
++    "taskRunsBefore": [
++      {
++        "run_id": "20260927T013208Z",
++        "stage": "plan",
++        "r": 1,
++        "status": "success"
++      }
++    ],
++    "taskRunsAfter": [
++      {
++        "run_id": "20260927T013208Z",
++        "stage": "plan",
++        "r": 1,
++        "status": "success"
++      },
++      {
++        "run_id": "20260927T013210Z",
++        "stage": "plan",
++        "r": 2,
++        "status": "running"
++      }
++    ],
++    "gateBefore": {
++      "state": "review_done_awaiting_disposition",
++      "run_id": "20260927T013208Z",
++      "rerun_index": 1
++    },
++    "gateAfter": {
++      "state": "review_done_awaiting_disposition",
++      "run_id": "20260927T013208Z",
++      "rerun_index": 1
++    },
++    "extraRunDirs": [
++      "20260927T013210Z"
++    ]
++  },
++  "G1_gateCheckNoRunIdBeforeDisposition": {
++    "code": 2,
++    "run_id": "20260927T013210Z",
++    "rerun_index": 2,
++    "ok": false,
++    "failures": [
++      "missing_disposition"
++    ]
++  },
++  "G1_checkArtifacts": {
++    "code": 65,
++    "text": [
++      "✗ plan 阶段第 2 轮缺件：审查 …-gemini.md / 审查 …-glm.md / 裁决件 …-revised-claude.md",
++      "  轮次取自最新一次运行。若那一轮尚未产出工件（例如 worker 中途崩溃），可用 --run-id <id> 指定更早的完整轮次。"
++    ]
++  },
++  "G1_gateCheckNoRunIdAfterDisposition": {
++    "code": 2,
++    "run_id": "20260927T013210Z",
++    "rerun_index": 2,
++    "ok": false,
++    "failures": [
++      "missing_disposition"
++    ]
++  },
++  "G1_gateAfterNoRunIdCheck": {
++    "state": "review_done_awaiting_disposition",
++    "run_id": "20260927T013208Z",
++    "rerun_index": 1
++  },
++  "G1_awaitNoRunId": {
++    "code": 2,
++    "text": [
++      "✗ 裁决完整性校验未通过，共 1 项：",
++      "  [missing_disposition] 找不到第 2 轮的裁决件（应为 …-r2-revised-claude.md）。计划/根因审必须产出裁决件，即使全部驳回也要写明「无修改及原因」（§6.6 规则 6）。",
++      "  轮次取自最新一次运行。若那一轮尚未产出工件（例如 worker 中途崩溃），可用 --run-id <id> 指回更早的完整轮次，而不是在这一轮补一份裁决件。"
++    ]
++  },
++  "G1_gateCheckWithRunId": {
++    "code": 0,
++    "run_id": "20260927T013208Z",
++    "rerun_index": 1,
++    "ok": true,
++    "failures": []
++  },
++  "G1_gateAfterRunIdCheck": {
++    "state": "awaiting_approval",
++    "run_id": "20260927T013208Z",
++    "rerun_index": 1
++  },
++  "G1_report": {
++    "code": 0,
++    "rounds": [
++      {
++        "stage": "plan",
++        "r": 1,
++        "runId": "20260927T013208Z",
++        "status": "success"
++      }
++    ],
++    "unlisted": [
++      {
++        "r": 2,
++        "runId": "20260927T013210Z",
++        "status": "running",
++        "label": "进行中，或没走到收尾"
++      }
++    ]
++  },
++  "G1_topicResolve": {
++    "code": 0,
++    "driver": "claude"
++  },
++  "G1_status": {
++    "code": 0,
++    "keys": [
++      "ok",
++      "topics"
++    ],
++    "text": "{\"ok\":true,\"topics\":[{\"topic\":\"G1-闸门拦重跑\",\"open_gates\":[{\"stage\":\"plan\",\"state\":\"awaiting_approval\",\"since\":\"2026-09-27T01:32:11.258Z\"}],\"runs\":2,\"degradations\":0,\"disputed\":false,\"approvals\":0}]}"
++  },
++  "G1_realRerun": {
++    "startCode": 0,
++    "startMsg": null,
++    "rerun_index": 2,
++    "status": "success",
++    "docs": [
++      "2026-09-27-G1-闸门拦重跑-claude.md",
++      "2026-09-27-G1-闸门拦重跑-gemini.md",
++      "2026-09-27-G1-闸门拦重跑-glm.md",
++      "2026-09-27-G1-闸门拦重跑-r2-gemini.md",
++      "2026-09-27-G1-闸门拦重跑-r2-glm.md",
++      "2026-09-27-G1-闸门拦重跑-revised-claude.md"
++    ]
++  },
++  "G1_reportAfterRerun": {
++    "code": 0,
++    "rounds": [
++      {
++        "stage": "plan",
++        "r": 1,
++        "runId": "20260927T013208Z",
++        "status": "success"
++      },
++      {
++        "stage": "plan",
++        "r": 2,
++        "runId": "20260927T013211Z",
++        "status": "success"
++      }
++    ],
++    "unlisted": [
++      {
++        "r": 2,
++        "runId": "20260927T013210Z",
++        "status": "running",
++        "label": "进行中，或没走到收尾"
++      }
++    ]
++  },
++  "G2": {
++    "firstStartCode": 0,
++    "firstStartMsg": null,
++    "secondStartCode": 2,
++    "extraMetaFiles": [
++      "brief-gemini-20260927T013216Z.md",
++      "brief-glm-20260927T013216Z.md",
++      "changes-20260927T013216Z.diff",
++      "run-20260927T013216Z.json"
++    ],
++    "aliasHeadBefore": "# run_id: 20260927T013214Z",
++    "aliasHeadAfter": "# run_id: 20260927T013216Z",
++    "aliasOverwritten": true
++  },
++  "G3": {
++    "startCode": 1,
++    "startMsg": [
++      "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。",
++      "  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}",
++      "  这只应出现在测试里。若这是真实审查，请立即清除该环境变量并重跑。"
++    ],
++    "metaFiles": [
++      "brief-gemini-20260927T013217Z.md",
++      "brief-glm-20260927T013217Z.md",
++      "run-20260927T013217Z.json"
++    ],
++    "skeleton": {
++      "status": "running",
++      "rerun_index": 1
++    },
++    "taskJson": null,
++    "gate": null,
++    "lockFiles": [],
++    "report": {
++      "code": 0,
++      "rounds": [],
++      "unlisted": [
++        {
++          "r": 1,
++          "runId": "20260927T013217Z",
++          "status": "running",
++          "label": "进行中，或没走到收尾"
++        }
++      ]
++    }
++  },
++  "G3_after": {
++    "startCode": 0,
++    "startMsg": null,
++    "rerun_index": 1,
++    "status": "success"
++  },
++  "G4a": {
++    "firstCode": 0,
++    "secondCode": 2,
++    "blockedRunIdInMsg": "20260927T013219Z",
++    "firstRunFile": "run-20260927T013219Z.json",
++    "firstRunBefore": {
++      "status": "success",
++      "rerun_index": 1,
++      "artifacts": 7
++    },
++    "firstRunAfter": {
++      "status": "success",
++      "rerun_index": 1,
++      "artifacts": 7
++    },
++    "extraMetaFiles": [
++      "brief-gemini-20260927T013220Z.md",
++      "brief-glm-20260927T013220Z.md",
++      "run-20260927T013220Z.json"
++    ],
++    "skeleton": {
++      "status": "running",
++      "rerun_index": 2
++    },
++    "gate": {
++      "state": "review_done_awaiting_disposition",
++      "run_id": "20260927T013219Z",
++      "rerun_index": 1
++    },
++    "gateCheckNoRunId": {
++      "code": 2,
++      "rerun_index": 2,
++      "failures": [
++        "missing_disposition"
++      ]
++    }
++  },
++  "G4b": {
++    "firstCode": 0,
++    "secondCode": 2,
++    "blockedRunIdInMsg": "20260927T013220Z",
++    "firstRunFile": "run-20260927T013220Z.json",
++    "firstRunBefore": {
++      "status": "success",
++      "rerun_index": 1,
++      "artifacts": 7
++    },
++    "firstRunAfter": {
++      "status": "success",
++      "rerun_index": 1,
++      "artifacts": 7
++    },
++    "extraMetaFiles": [
++      "brief-gemini-20260927T013222Z.md",
++      "brief-glm-20260927T013222Z.md",
++      "run-20260927T013222Z.json"
++    ],
++    "skeleton": {
++      "status": "running",
++      "rerun_index": 2
++    },
++    "gate": {
++      "state": "review_done_awaiting_disposition",
++      "run_id": "20260927T013220Z",
++      "rerun_index": 1
++    },
++    "gateCheckNoRunId": {
++      "code": 2,
++      "rerun_index": 2,
++      "failures": [
++        "missing_disposition"
++      ]
++    }
++  }
++}
+diff --git a/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-runid-collision.mjs b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-runid-collision.mjs
+new file mode 100644
+index 0000000..a9dbc1c
+--- /dev/null
++++ b/doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-runid-collision.mjs
+@@ -0,0 +1,98 @@
++#!/usr/bin/env node
++/**
++ * 只读实测：同步 review 连跑两次，第二次被闸门拦下。两次落在同一秒时 run_id 相同（newRunId 只到秒），
++ * 核对被拦那次的骨架是否按同名覆盖了第 1 轮的 run.json 与 brief。最多试 12 次，撞上一次即停。
++ * 收尾只删 mkdtemp 的返回值。用法：node probe-runid-collision.mjs <仓库根>
++ */
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++
++const pexec = promisify(execFile);
++const ROOT = path.resolve(process.argv[2] ?? '.');
++const CLI = path.join(ROOT, 'skills/dual-critic/scripts/trivium.cjs');
++const { encodeStubConfig, STUB_ENV_VAR } = await import(path.join(ROOT, 'dist/test/src/trivium/adapters/stub.js'));
++const SESSION = 'S-probe';
++const TD = '.' + 'trivium';
++const OK = { gemini: { mode: 'ok' }, glm: { mode: 'ok' } };
++
++async function sh(cwd, bin, args, env = {}) {
++  try {
++    const o = await pexec(bin, args, { cwd, env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 });
++    return { code: 0, stdout: o.stdout, stderr: o.stderr };
++  } catch (e) {
++    return { code: typeof e.code === 'number' ? e.code : null, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
++  }
++}
++const cli = (cwd, args) => sh(cwd, process.execPath, [CLI, ...args], {
++  TRIVIUM_ASSET_ROOT: path.join(ROOT, 'skills/dual-critic'), [STUB_ENV_VAR]: encodeStubConfig(OK), CLAUDE_SESSION_ID: SESSION,
++});
++const git = (cwd, args) => sh(cwd, 'git', ['-c', 'user.email=a@a', '-c', 'user.name=a', ...args]);
++const readJson = async (p) => JSON.parse(await fs.readFile(p, 'utf8'));
++const jsonOf = (r) => { try { return JSON.parse(r.stdout.slice(r.stdout.indexOf('{'))); } catch { return null; } };
++const ls = async (d) => (await fs.readdir(d).catch(() => [])).sort();
++const sha = async (p) => (await import('node:crypto')).createHash('sha256').update(await fs.readFile(p)).digest('hex').slice(0, 12);
++const today = () => {
++  const d = new Date();
++  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
++};
++
++async function fixture(base, topic) {
++  const root = path.join(base, topic);
++  await fs.mkdir(path.join(root, 'src'), { recursive: true });
++  await fs.writeFile(path.join(root, 'src/a.ts'), 'export const a = 1;\n');
++  await fs.mkdir(path.join(root, TD), { recursive: true });
++  await fs.writeFile(path.join(root, TD, 'config.yaml'), [
++    'runtime:', `  run_root: ${path.join(base, 'runs-' + topic)}`,
++    'review:', '  default_critics: [gemini, glm]',
++    '  timeout_s:', '    plan: 900', '    code: 900', '    bug: 900', '  wait_timeout_s: 30',
++    'verify:', '  build: []', '  test: []', '',
++  ].join('\n'));
++  await git(root, ['init', '-q', '-b', 'main']);
++  await git(root, ['add', '-A']);
++  await git(root, ['commit', '-q', '-m', 'baseline', '--no-verify']);
++  const topicDir = path.join(root, '.reviews', topic);
++  const stageDir = path.join(topicDir, 'plan');
++  await fs.mkdir(stageDir, { recursive: true });
++  await fs.writeFile(path.join(stageDir, `${today()}-${topic}-` + 'claude.md'), '# 待审计划\n\n## 一、目标\n\n实测。\n');
++  return { root, topicDir, stageDir };
++}
++
++const out = {};
++const base = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-probe-collide-'));
++try {
++  for (let i = 0; i < 12; i++) {
++    const topic = `C${i}-撞秒`;
++    const fx = await fixture(base, topic);
++    const args = ['review', '--stage', 'plan', '--topic', topic, '--focus', '实测', '--entry', 'B', '--session-id', SESSION];
++    const r1 = await cli(fx.root, args);
++    const metaDir = path.join(fx.stageDir, '_meta');
++    const before = await ls(metaDir);
++    const firstRun = before.find((n) => /^run-/.test(n));
++    const firstJson = await readJson(path.join(metaDir, firstRun));
++    const briefs = before.filter((n) => /^brief-/.test(n));
++    const briefShaBefore = Object.fromEntries(await Promise.all(briefs.map(async (b) => [b, await sha(path.join(metaDir, b))])));
++    const r2 = await cli(fx.root, args);
++    const after = await ls(metaDir);
++    if (after.length !== before.length) continue; // 没撞秒，换下一个夹具
++    const j = await readJson(path.join(metaDir, firstRun));
++    const task = await readJson(path.join(fx.topicDir, 'task.json')).catch(() => null);
++    out.collision = {
++      attempt: i, firstCode: r1.code, secondCode: r2.code, runFile: firstRun,
++      before: { status: firstJson.status, rerun_index: firstJson.rerun_index, artifacts: firstJson.artifacts.map((a) => path.basename(a.path)) },
++      after: { status: j.status, rerun_index: j.rerun_index, artifacts: j.artifacts.map((a) => path.basename(a.path)) },
++      briefsChanged: await Promise.all(briefs.map(async (b) => [b, briefShaBefore[b] !== (await sha(path.join(metaDir, b)))])),
++      taskRuns: task?.runs?.map((r) => ({ run_id: r.run_id, r: r.rerun_index, status: r.status })) ?? null,
++      gateCheckNoRunId: (() => null)(),
++    };
++    const g = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', topic, '--check', '--json']);
++    out.collision.gateCheckNoRunId = { code: g.code, failures: jsonOf(g)?.failures?.map((f) => f.code) ?? null };
++    break;
++  }
++  if (!out.collision) out.collision = 'no collision in 12 attempts';
++} finally {
++  await fs.rm(base, { recursive: true, force: true });
++}
++console.log(JSON.stringify(out, null, 2));

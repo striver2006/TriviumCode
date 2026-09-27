@@ -1,0 +1,286 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260927T035514Z",
+  "topic": "闸门拦截不留骨架",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "请重点看五处：①prepareRun 的重排：比较-交换挪到计算段之后、第一次落盘之前，除顺序外是否一字未改（被拦文案、expect 集合、跳过轮不置闸门、落盘段内容只是整体缩进进 try）；try 的范围是否恰好覆盖置闸门之后的全部失败点（重置收工阻断计数、建目录、补丁与便利副本、brief、运行目录、骨架、登记、任务目标）；return 挪进 try 有没有改变返回值。②回收语义：catch 只在 holdsGate 为真时回收、回收后原样抛出；releaseRunningGateEntry 与原 releaseRunningGate 是否同义（比较 runId、槽位不存在不造条目、自身吞错），三处既有调用点与 runReviewLocked 的内联回收是否未受影响；startRun 的 prepare catch 只放锁这一契约在各失败点是否都成立。③用例能否钉住行为：B1 与 B4 的零工件断言口径（闸门项级而非文件字节、主题任务文件逐字节、运行根目录集合、两次运行隔 1.1 秒避开同秒撞名），B2 在不带 entry 时断言 idle 是否合理，B3 的便利副本断言，B5 到 B7 用主题目录只读、计数目录删不掉来构造置闸门之后的失败是否可靠、root 下跳过是否齐全，U1 五格是否覆盖回收函数的全部分支。④变异与验收：M1 到 M7 每条的期望套件是否真能区分，M4 靠主题锁不放才咬住这条链是否成立；验收 A1 到 A6 的判据是否充分，A6 新旧构建逐主题比对 report 的做法有无漏洞。⑤文档与留痕：主设计 6.7 注记、7.3、7.5、AC-16 行与 LLD、PRD、MANUAL、PROTOCOL 的改写是否与代码一致，types 与 run.v2 schema 的 status 描述保留「本版以前被拦」一格是否恰当；BACKLOG 的 EV-109 结案、EV-145 余项与行号、新登 EV-147 到 EV-149 的事实与候选是否准确；实施报告的读数与偏离登记是否属实。",
+  "task_goal": "闸门拦截不留骨架 实施计划（r2 定稿）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "6868ff99b06c51b61301bb20b0ffe2fdcebab833",
+    "tree_hash": "e8e044fa04cf3adc54a7f566173c4c3a3d2681c8",
+    "dirty": true,
+    "subject_sha256": "1b55f48dd516f49babcdb91cc8f24f5e08e81e60341dcf9c2e43b90d86f0ef03",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "6868ff99b06c51b61301bb20b0ffe2fdcebab833",
+      "dirty": true,
+      "inputs_sha256": "3abd88171ae15bb595aed2e680faeae48f9618b82272feacd525352145d859b1",
+      "built_at": "2026-09-27T02:48:03.069Z"
+    },
+    "after_tree_hash": "a94e5d3105bf12ddd8db0f172b58f9aba296697c"
+  },
+  "started_at": "2026-09-27T03:55:15.415Z",
+  "finished_at": "2026-09-27T04:10:45.282Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 929.644,
+      "tool_calls": {
+        "run_command": 44,
+        "project_reads": 19
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0e100-b836-7c10-8ceb-bc354521afcf",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.11",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 179.7,
+      "tool_calls": {
+        "read": 22,
+        "grep": 2,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 9
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 308023,
+        "output_tokens": 32125,
+        "thinking_tokens": 26296,
+        "cache_read_tokens": 3218849,
+        "total_tokens": 340148
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "e9aca955-685e-4605-bc6a-323735ff614b",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 626.436,
+      "tool_calls": {
+        "read": 22,
+        "grep": 19,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 26
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 22,
+        "inputTokens": 3024859,
+        "outputTokens": 47834,
+        "totalTokens": 3072693,
+        "cacheReadTokens": 2849216,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_1aef0997-574f-4c23-bd9b-63a94183e8d2",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/闸门拦截不留骨架/plan/2026-09-27-闸门拦截不留骨架-gemini.md",
+    ".reviews/闸门拦截不留骨架/plan/2026-09-27-闸门拦截不留骨架-glm.md",
+    ".reviews/闸门拦截不留骨架/plan/_meta/review-gemini-20260927T015234Z.json",
+    ".reviews/闸门拦截不留骨架/plan/_meta/review-glm-20260927T015234Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "闸门拦截不留骨架/code/_meta/changes-20260927T035514Z.diff",
+      "sha256": "1b55f48dd516f49babcdb91cc8f24f5e08e81e60341dcf9c2e43b90d86f0ef03"
+    },
+    {
+      "path": "闸门拦截不留骨架/code/_meta/brief-codex-20260927T035514Z.md",
+      "sha256": "987901aaa5992e8f1e035ca735c69d8c7cea138499be4d35b5b0e472361a2f56"
+    },
+    {
+      "path": "闸门拦截不留骨架/code/_meta/brief-gemini-20260927T035514Z.md",
+      "sha256": "42d93fca6e7c688163e022e10997987e65383cf9381228326a3179a97b048fdf"
+    },
+    {
+      "path": "闸门拦截不留骨架/code/_meta/brief-glm-20260927T035514Z.md",
+      "sha256": "fc9d6d9d365c1e85b32f276f0ebd3c1871d79d4fb2b417892b3072f0d9771e94"
+    },
+    {
+      "path": "闸门拦截不留骨架/code/_meta/review-codex-20260927T035514Z.json",
+      "sha256": "b707dc9e7ee21bd6dd3826057e3baff8e8e440db8339f6581b6889450ef83220"
+    },
+    {
+      "path": "闸门拦截不留骨架/code/_meta/review-gemini-20260927T035514Z.json",
+      "sha256": "29776795d5218bdc5c69523da8e7762ea5700761017e3ee21e0e0cae0342500e"
+    },
+    {
+      "path": "闸门拦截不留骨架/code/_meta/review-glm-20260927T035514Z.json",
+      "sha256": "d87fc627c35e38dff19fbcf6f2185b5f281b6af979ab9cf0d5f4e948b39261ff"
+    },
+    {
+      "path": "闸门拦截不留骨架/code/2026-09-27-闸门拦截不留骨架-codex.md",
+      "sha256": "d2e17b9f01c2ee2845a0089f2d50ee0a38203da7739d981435e91ecf78b021f6"
+    },
+    {
+      "path": "闸门拦截不留骨架/code/2026-09-27-闸门拦截不留骨架-gemini.md",
+      "sha256": "530796fa50d40fdfab1153ffb4fc4a515cf66bff411ccea2e4e6c1368650aced"
+    },
+    {
+      "path": "闸门拦截不留骨架/code/2026-09-27-闸门拦截不留骨架-glm.md",
+      "sha256": "1b0825a0af5f81b82397662efdec04bda2fe441aeaf78b7ce57084caa7ffe109"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}

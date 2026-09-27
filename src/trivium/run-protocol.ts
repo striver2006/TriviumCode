@@ -27,7 +27,7 @@ import {
 import { resolveTopic } from './topic.js';
 import { finalizeCancelledRunMeta, finalizeFailedRunMeta, readRunMeta, type FinalizeStep } from './meta.js';
 import { type AgentId } from './agents/registry.js';
-import { setGateChecked } from './state.js';
+import { releaseRunningGateEntry, setGateChecked } from './state.js';
 import type { AdapterContext } from './adapters/base.js';
 import { resolveAdapters } from './adapters/stub.js';
 import { realAdapters, wiredAdapter } from './adapters/index.js';
@@ -308,7 +308,9 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
   try {
     rc = await prepareRun(opts);
   } catch (e) {
-    await lock.release(); // 准备失败就别占着锁
+    // 准备失败就别占着锁。闸门不用管：prepareRun 抛错时闸门不归本轮——被拦时没置上，
+    // 置上之后的失败它自己回收（闸门拦截不留骨架计划 r2 §3.2）
+    await lock.release();
     throw e;
   }
 
@@ -445,6 +447,9 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
  *
  * 只回收仍记着本 `runId` 且仍是 `running` 的闸门：新一轮若已接管，那是它的护栏。
  * 不区分异常种类——没有 worker 接手的 `running` 一律回收。
+ *
+ * 实现在 `state.ts` 的 `releaseRunningGateEntry`（`prepareRun` 置闸门之后失败也用它，
+ * 闸门拦截不留骨架计划 r2 §3.2）；这里只补「身份不全就不动」这一层，三处调用点不变。
  */
 async function releaseRunningGate(
   ctx: Ctx,
@@ -453,18 +458,11 @@ async function releaseRunningGate(
   stage: Stage | undefined,
 ): Promise<void> {
   if (!topic || !stage) return;
-  try {
-    await setGateChecked({
-      triviumDir: ctx.triviumDir,
-      topic, stage, state: 'idle', runId,
-      heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
-      // 槽位不存在时**不要**凭空造一条 idle 记录（审查意见 AGY-02）：
-      // allowMissing 默认 true 对 prepareRun（首轮槽位本就是空的）合适，对回收则不然
-      expect: { state: ['running'], runId, allowMissing: false },
-    });
-  } catch {
-    // 回收失败不该盖过真正的错误——闸门还有 TTL 兜底，但错误信息只有一次机会
-  }
+  await releaseRunningGateEntry({
+    triviumDir: ctx.triviumDir,
+    topic, stage, runId,
+    heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+  });
 }
 
 // ─────────────────────── worker ───────────────────────
