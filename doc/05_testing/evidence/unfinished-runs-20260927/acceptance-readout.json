@@ -1,0 +1,182 @@
+{
+  "at": "2026-09-27T00:44:53.982Z",
+  "passed": 18,
+  "total": 18,
+  "results": [
+    {
+      "id": "A1 退出码",
+      "ok": true,
+      "detail": "--wait 退 1"
+    },
+    {
+      "id": "A1 run.json",
+      "ok": true,
+      "detail": "status=failed gate.state=failed termination={\"by\":\"worker_exception\",\"exit_code\":1}"
+    },
+    {
+      "id": "A1 task 登记",
+      "ok": true,
+      "detail": "task.json 该条为 failed"
+    },
+    {
+      "id": "A1 message",
+      "ok": true,
+      "detail": "--wait --json 的 message 带收尾结果"
+    },
+    {
+      "id": "A2 退出码",
+      "ok": true,
+      "detail": "--wait 退 1"
+    },
+    {
+      "id": "A2 run.json",
+      "ok": true,
+      "detail": "status=failed termination={\"by\":\"worker_lost\",\"reason\":\"pid_gone\"}，artifacts 与已提交版本一致"
+    },
+    {
+      "id": "A2 提交锚放行",
+      "ok": true,
+      "detail": "hook-pre-commit 退 0"
+    },
+    {
+      "id": "A2 入库",
+      "ok": true,
+      "detail": "提交退 0"
+    },
+    {
+      "id": "A2 之后 --cancel",
+      "ok": true,
+      "detail": "终态早退，run.json 逐字节不变"
+    },
+    {
+      "id": "A3 判心跳过期",
+      "ok": true,
+      "detail": "--wait 退 1"
+    },
+    {
+      "id": "A3 run.json 不写",
+      "ok": true,
+      "detail": "进程还在：run.json 逐字节不变，输出写明未确认退出"
+    },
+    {
+      "id": "A4 时间线",
+      "ok": true,
+      "detail": "时间线只列重跑那次（r1）"
+    },
+    {
+      "id": "A4 下表",
+      "ok": true,
+      "detail": "失败那次：{\"stage\":\"plan\",\"runId\":\"20260927T004446Z\",\"rerunIndex\":1,\"status\":\"failed\",\"startedAt\":\"2026-09-27T00:44:46.820Z\",\"finishedAt\":\"2026-09-27T00:44:46.965Z\",\"termination\":null,\"registeredReviewDocs\":0,\"label\":\"入选侧全部失败\"}"
+    },
+    {
+      "id": "A4 头部",
+      "ok": true,
+      "detail": "头部注明另有 1 次"
+    },
+    {
+      "id": "A5 头部",
+      "ok": true,
+      "detail": "「轮次总数：0」后注明另有 1 次"
+    },
+    {
+      "id": "A5 下表",
+      "ok": true,
+      "detail": "表里一行被取消"
+    },
+    {
+      "id": "A6 时间线逐主题不变",
+      "ok": true,
+      "detail": "51 个主题，rounds 不同的：无"
+    },
+    {
+      "id": "A6 下表 = 4 份历史 running + 本主题自身",
+      "ok": true,
+      "detail": "历史 4 条（均为「进行中，或没走到收尾」），本主题自身 0 条，其它 0 条"
+    }
+  ],
+  "readout": {
+    "A1": {
+      "waitCode": 1,
+      "message": "工作进程异常：EACCES: permission denied, open '/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-unfinished-accept-oSoBdu/A1-worker异常/.reviews/A1-worker异常/plan/2026-09-27-A1-worker异常-gemini.md' ｜ 已把归档里的 run-20260927T004440Z.json 收尾为 failed ｜ 已把 task.json 的运行登记同步为 failed",
+      "status": "failed",
+      "gate": "failed",
+      "termination": {
+        "by": "worker_exception",
+        "exit_code": 1
+      }
+    },
+    "A2_wait": {
+      "code": 1,
+      "stderr": "✗ 运行 20260927T004442Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-unfinished-accept-oSoBdu/runs-A2-worker失联/A2-worker失联-67536969/20260927T004442Z/worker.log\n  已把归档里的 run-20260927T004442Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n"
+    },
+    "A2_preCommit": {
+      "code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "A3_wait": {
+      "code": 1,
+      "stderr": "✗ 运行 20260927T004443Z 的工作进程失联（heartbeat_stale）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-unfinished-accept-oSoBdu/runs-A3-心跳过期/A3-心跳过期-9d304dd0/20260927T004443Z/worker.log\n  归档 run-20260927T004443Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  task.json 的运行登记未改：归档 run.json 不是 failed（running），不改登记\n  凭据副本未抹：工作进程 46637 仍在（heartbeat_stale），留给会话启动清扫\n"
+    },
+    "A4": {
+      "rounds": [
+        {
+          "runId": "20260927T004449Z",
+          "r": 1
+        }
+      ],
+      "unlisted": [
+        {
+          "stage": "plan",
+          "runId": "20260927T004446Z",
+          "rerunIndex": 1,
+          "status": "failed",
+          "startedAt": "2026-09-27T00:44:46.820Z",
+          "finishedAt": "2026-09-27T00:44:46.965Z",
+          "termination": null,
+          "registeredReviewDocs": 0,
+          "label": "入选侧全部失败"
+        }
+      ]
+    },
+    "A5": [
+      "- **轮次总数**：0（另有 1 次运行未产出审查文档，见时间线下方）",
+      "### 未进时间线的运行（没有产出审查文档）",
+      "| plan | r1 | `20260927T004451Z` | 2026-09-27T00:44:51.928Z | 2026-09-27T00:44:52.366Z | cancelled | 被 review --cancel 取消 |"
+    ],
+    "A6": {
+      "topics": 51,
+      "roundsDiff": [],
+      "unlisted": [
+        {
+          "topic": "EV-74-探针喂真实契约文件",
+          "runId": "20260922T164557Z",
+          "stage": "plan",
+          "status": "running",
+          "label": "进行中，或没走到收尾"
+        },
+        {
+          "topic": "EV-79-写命令判据两处缺口",
+          "runId": "20260922T134058Z",
+          "stage": "code",
+          "status": "running",
+          "label": "进行中，或没走到收尾"
+        },
+        {
+          "topic": "M4-M5实现",
+          "runId": "20260911T023018Z",
+          "stage": "code",
+          "status": "running",
+          "label": "进行中，或没走到收尾"
+        },
+        {
+          "topic": "凭据副本残留与参数静默丢失",
+          "runId": "20260917T024844Z",
+          "stage": "code",
+          "status": "running",
+          "label": "进行中，或没走到收尾"
+        }
+      ]
+    }
+  }
+}

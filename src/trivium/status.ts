@@ -177,6 +177,16 @@ export async function workerConfirmedGone(
   return { gone: false, why: `运行处于 ${status.phase} 却拿不到 worker_pid：判不了` };
 }
 
+/**
+ * `worker_lost` 的三种原因——**唯一来源**（EV-142，计划双审 r1 CODEX-04）。
+ *
+ * 同一组值还出现在 run.v2 schema 的 `termination.reason` 枚举里：`--wait` 判失联后把原因写进归档 run.json。
+ * schema 是 JSON、引用不了这里，所以由 `run-meta-strict.test.ts` 的 S2 守住两边逐项相等——
+ * 在这里加第四种原因而漏改 schema，写出的 run.json 会不合契约、被 `readRunMeta` 读成 null。
+ */
+export const WORKER_LOST_REASONS = ['no_status_file', 'heartbeat_stale', 'pid_gone'] as const;
+export type WorkerLostReason = (typeof WORKER_LOST_REASONS)[number];
+
 export type StatusReading =
   /** 已完成（成功或失败），可以收工 */
   | { kind: 'terminal'; status: RunStatus }
@@ -185,7 +195,7 @@ export type StatusReading =
   /** 本次轮询拿不到有效信息，但工作进程还活着 → 继续等 */
   | { kind: 'inconclusive'; reason: 'no_status_file' | 'unparsable' }
   /** 工作进程没了却没留下终态 → worker_lost */
-  | { kind: 'worker_lost'; reason: 'no_status_file' | 'heartbeat_stale' | 'pid_gone' };
+  | { kind: 'worker_lost'; reason: WorkerLostReason };
 
 /**
  * 解释一次轮询结果。这是 `--wait` 的唯一判定入口。

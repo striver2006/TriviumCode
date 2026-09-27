@@ -378,3 +378,111 @@ test('裁决件读不到不让整份复盘崩溃', async () => {
   );
   assert.equal(r.rounds[0]!.disposals, null);
 });
+
+// ── EV-144：没进时间线的运行（计划 r2 §3.6 / §4.1 V1～V7）──
+
+/** 摆一份没产出审查文档的运行：只有 run.json（与可选的 .failed.json 登记），阶段目录里没有它的审查文档 */
+async function seedUnlisted(
+  l: ArchiveLayout,
+  opts: {
+    runId: string;
+    rerunIndex?: number;
+    status: 'running' | 'success' | 'failed' | 'cancelled';
+    gateState?: string;
+    termination?: import('../../src/trivium/types.js').RunTermination;
+    /** 入选侧全部失败：每侧登记一份 .failed.json */
+    allSidesFailed?: boolean;
+  },
+) {
+  const meta = newRunMeta({
+    runId: opts.runId, topic: l.topic, stage: 'plan', rerunIndex: opts.rerunIndex ?? 1,
+    command: 'test', promptHint: '焦点', taskGoal: null, criticsSelected: ['gemini', 'glm'],
+    treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S', denyPaths: [], driftPolicy: 'warn',
+  });
+  meta.status = opts.status;
+  meta.gate.state = opts.gateState ?? (opts.status === 'running' ? 'running' : opts.status);
+  if (opts.status !== 'running') meta.finished_at = '2026-09-27T01:00:00.000Z';
+  if (opts.termination) meta.termination = opts.termination;
+  if (opts.allSidesFailed) {
+    for (const c of ['gemini', 'glm'] as const) {
+      const w = await writeMeta(l, 'plan', `review-${c}-${opts.runId}.failed.json`,
+        JSON.stringify({ critic: c, status: 'failed', fail_reason: '桩注入的进程级失败' }) + '\n');
+      meta.artifacts.push({ path: w.relPath, sha256: w.sha256 });
+    }
+  }
+  await writeRunMeta(l, 'plan', meta);
+  return meta;
+}
+
+test('EV-144 V1：只有一份被取消的运行 ⇒ 轮次 0，另列一条「被 review --cancel 取消」，头部注明另有 1 次', async () => {
+  const l = await archive();
+  await seedUnlisted(l, { runId: 'C1', status: 'cancelled' });
+  const r = await buildTopicReport(l);
+  assert.equal(r.rounds.length, 0);
+  assert.equal(r.unlistedRuns.length, 1);
+  assert.equal(r.unlistedRuns[0]!.runId, 'C1');
+  assert.equal(r.unlistedRuns[0]!.label, '被 review --cancel 取消');
+  assert.ok(r.notes.some((n) => /没有任何已产出审查工件的轮次（另有 1 次运行未产出审查文档/.test(n)), r.notes.join(' | '));
+  const md = renderTopicReport(r);
+  assert.match(md, /\*\*轮次总数\*\*：0（另有 1 次运行未产出审查文档，见时间线下方）/);
+  assert.match(md, /### 未进时间线的运行（没有产出审查文档）/);
+  assert.match(md, /\| plan \| r1 \| `C1` \|.*\| cancelled \| 被 review --cancel 取消 \|/);
+});
+
+test('EV-144 V2：入选侧全部失败 + 同轮次号的成功重跑 ⇒ 时间线只列重跑，失败那次进下表且预定轮次同为 r1', async () => {
+  const l = await archive();
+  await seedUnlisted(l, { runId: 'A1', status: 'failed', allSidesFailed: true });
+  await seedRound(l, { rerunIndex: 1, runId: 'A2', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM') });
+  const r = await buildTopicReport(l);
+  assert.deepEqual(r.rounds.map((d) => d.runId), ['A2']);
+  assert.equal(r.unlistedRuns.length, 1, JSON.stringify(r.unlistedRuns));
+  assert.equal(r.unlistedRuns[0]!.runId, 'A1');
+  assert.equal(r.unlistedRuns[0]!.rerunIndex, 1);
+  assert.equal(r.unlistedRuns[0]!.label, '入选侧全部失败');
+  assert.match(renderTopicReport(r), /同一轮次号可能在上下两张表里各出现一次/);
+});
+
+test('EV-144 V3：停在 running 的运行 ⇒ 说明「进行中，或没走到收尾」（report 只读归档，分不出这两种）', async () => {
+  const l = await archive();
+  await seedUnlisted(l, { runId: 'U1', status: 'running' });
+  const r = await buildTopicReport(l);
+  assert.equal(r.unlistedRuns[0]!.label, '进行中，或没走到收尾');
+  assert.equal(r.unlistedRuns[0]!.finishedAt, null);
+});
+
+test('EV-144 V4：两条事后收尾写成的 failed ⇒ 说明分别带退出码与失联原因', async () => {
+  const l = await archive();
+  await seedUnlisted(l, { runId: 'W1', status: 'failed', termination: { by: 'worker_exception', exit_code: 69 } });
+  await seedUnlisted(l, { runId: 'W2', status: 'failed', termination: { by: 'worker_lost', reason: 'pid_gone' } });
+  const r = await buildTopicReport(l);
+  assert.deepEqual(
+    r.unlistedRuns.map((u) => [u.runId, u.label]),
+    [['W1', 'worker 异常（退出码 69）'], ['W2', 'worker 失联（pid_gone）']],
+  );
+  assert.deepEqual(r.unlistedRuns[1]!.termination, { by: 'worker_lost', reason: 'pid_gone' });
+});
+
+test('EV-144 V5：纯文档跳过（success、skipped_doc_only）⇒ 说明「纯文档跳过（FR-23）」', async () => {
+  const l = await archive();
+  await seedUnlisted(l, { runId: 'D1', status: 'success', gateState: 'skipped_doc_only' });
+  const r = await buildTopicReport(l);
+  assert.equal(r.unlistedRuns[0]!.label, '纯文档跳过（FR-23）');
+});
+
+test('EV-144 V6：读不出来的 run.json 不进下表，进 notes（此前被静默跳过）', async () => {
+  const l = await archive();
+  await fs.writeFile(path.join(l.archiveRoot, TOPIC, 'plan', '_meta', 'run-BAD.json'), '{ 坏掉的', 'utf8');
+  const r = await buildTopicReport(l);
+  assert.equal(r.unlistedRuns.length, 0);
+  assert.ok(r.notes.some((n) => /plan\/_meta\/run-BAD\.json` 读不出来/.test(n)), r.notes.join(' | '));
+});
+
+test('EV-144 V7：所有运行都进了时间线 ⇒ 不渲染下表，头部也没有「另有」半句（防噪声）', async () => {
+  const l = await archive();
+  await seedRound(l, { rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM') });
+  const r = await buildTopicReport(l);
+  assert.equal(r.unlistedRuns.length, 0);
+  const md = renderTopicReport(r);
+  assert.doesNotMatch(md, /未进时间线的运行/);
+  assert.doesNotMatch(md, /另有 \d+ 次运行/);
+});

@@ -20,6 +20,7 @@ import {
 
 export type { AgentId, AgentVendor };
 import type { BuildStamp } from './build-stamp.js';
+import type { WorkerLostReason } from './status.js';
 
 export type Stage = 'plan' | 'code' | 'bug';
 export type StageOrVerify = Stage | 'verify';
@@ -1249,6 +1250,11 @@ export type ReviewMode = 'full' | 'partial';
  */
 export type LegacyReviewMode = 'dual' | 'single';
 
+/** run.json `termination`：这一次终态由哪条事后收尾写的（EV-142，见 `RunMeta.termination`） */
+export type RunTermination =
+  | { by: 'worker_exception'; exit_code: number }
+  | { by: 'worker_lost'; reason: WorkerLostReason };
+
 export interface RunMeta {
   schema: 'trivium.run.v2';
   run_id: string;
@@ -1457,15 +1463,26 @@ export interface RunMeta {
    * （`hooks.ts` `immutableChangeReason`，HEAD 版本不是 running 即拦改动），任何收尾后的回写都会把下一次提交拦下；
    * ②`warnings` 已是运行期标注通道，`loadRoundReviews` 把它当 `run_warning` 回灌进每次 `--check`，
    * 照旧设计把 `--check` 的告警写进来会重复上报。裁决是否齐备以 `gate --check` 的实时结果为准，
-   * 审批事实以 `task.json.approvals[]` 为准。EV-128 的 `review --cancel` 回写不属「收尾后更新」：取消轮走不到
-   * worker 的收尾，`--cancel` 那一次就是它唯一一次终态写入（只在仍为 running 时写，写完同样不再更新）。
+   * 审批事实以 `task.json.approvals[]` 为准。事后收尾不属「收尾后更新」：`review --cancel`（EV-128）、worker 异常与
+   * `--wait` 判 `worker_lost`（EV-142）三条路都只在 run.json 仍为 running 时写——那份运行走不到 worker 的收尾，
+   * 这一次就是它唯一一次终态写入，写完同样不再更新（第一步在主题任务锁里判与写，保证至多一次）。
    */
   gate: { adjudication_complete: boolean; state: string; warnings?: string[] };
   /**
-   * `running` 是骨架态；`success` / `failed` 由 worker 收尾写；`cancelled` 由 `review --cancel` 在工作进程确认退出后写
-   * （`meta.ts` `finalizeCancelledRunMeta`，EV-128）。已结束却仍为 `running` 的留痕表示没有走到收尾，不回填。
+   * `running` 是骨架态；`success` / `failed` 由 worker 收尾写；另有三条事后收尾（`meta.ts` `finalizeUnfinishedRunMeta`）：
+   * `cancelled` 由 `review --cancel` 在工作进程确认退出后写（EV-128）；`failed` 还可能由 worker 异常分支自己写、
+   * 或由 `--wait` 判 `worker_lost` 且确认工作进程已退出时写（EV-142，同时写 `termination`）。
+   * 已结束却仍为 `running` 的留痕表示没有走到收尾（本版以前的异常 / 失联 / 取消、失联时进程未确认退出，
+   * 或 prepare 阶段被拦），不回填。
    */
   status: 'running' | 'success' | 'failed' | 'cancelled';
+  /**
+   * 这一次终态由哪条事后收尾写的（EV-142）。**只**由 worker 异常分支与 `--wait` 判 `worker_lost` 两条路写；
+   * 缺席 = 正常收尾（worker 写 `success` / `failed`）、取消轮（`status: cancelled` 已说明来路）、或本字段之前的留痕。
+   * 只存结构化字段、不存异常原文：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。
+   * `reason` 取值与 `status.ts` 的 `WORKER_LOST_REASONS` 同源，run.v2 schema 的枚举由用例守住与它逐项相等。
+   */
+  termination?: RunTermination;
   skipped?: boolean;
   skip_reason?: string | null;
   cache_hit?: boolean;

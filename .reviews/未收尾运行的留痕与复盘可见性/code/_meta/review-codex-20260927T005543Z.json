@@ -1,0 +1,83 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "未发现 major 及以上问题。四个焦点逐一核实均成立：两条新收尾路径（worker 异常 catch、--wait 失联分支）都把 finalize 排在 status.json 落终态之前；失联分支用改写前事实判「已退出」，status.json 读不到时按 worker.pid 单独判活、只在确认不存在时写；取消回写经目标终态参数化后 R1–R7 语义不变，锁争用失败告警写清了「没有第二次机会」的后果；termination 与 WORKER_LOST_REASONS 单源有 S2 机器对账；report 下表集合定义与说明文字只按留痕事实写，变异表期望套件与 V/F/L/W 用例一一对得上。仅三条 nit，均为行号引用与告警文案层面的瑕疵。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/run-protocol.ts:689",
+      "problem": "本补丁新增的注释写「下面 :680 那次判定读的是本函数自己刚写成 failed 的 status.json」，但它所指的凭据抹除准入判定（workerConfirmedGone(meta0, ...)）实际在 :746——正是本补丁向上插入约 60 行所致，引用落地当天即失真。本仓注释大量使用行号锚（如 meta.ts:605 的 :1627、LLD 的 status.ts:165-196），新注释第一天就漂移会成为后续排障的负资产。",
+      "evidence": "读 src/trivium/run-protocol.ts:684-762（worker_lost 分支全文），grep 定位 workerConfirmedGone(meta0 在 :746；对照被审 diff 的 run-protocol.ts hunk 中该注释为本次新增。",
+      "suggestion": "行号类引用改为指名调用（如「下面 workerConfirmedGone(meta0, ...) 那次判定」），或在提交前重算行号；不必为此单独发版，可顺手修。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/02_design/LLD_orchestrator.md:269",
+      "problem": "LLD v1.1.6 改写了 worker_lost 一节的同一句话（新增 WORKER_LOST_REASONS 单一来源句），却保留「三判据（status.ts:165-196）」的行号——interpretStatus 现位于 src/trivium/status.ts:205-247，WORKER_LOST_REASONS 常量在 :187，165-196 整段都不含三判据。该行号在本补丁之前已漂移，但本次编辑同段文字时未一并改准，与项目「改代码先回补文档且写准」的纪律不符。",
+      "evidence": "grep src/trivium/status.ts：WORKER_LOST_REASONS 在 :187、interpretStatus 在 :205；读 doc/02_design/LLD_orchestrator.md:269 的 v1.1.6 段落。",
+      "suggestion": "把行号同步为现值（常量 :187；三判据 :205-247），与 v1.1.5 改准 run-protocol.ts:680 同一处理。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/lock.ts:219",
+      "problem": "锁争用重试耗尽时 acquireLock 抛出的通用文案内含「若确认该运行已卡死，可用 trivium review --cancel <run_id> 取消」。该文案经 skippedFromError 原样进入三条事后收尾的告警：在 --cancel 自己的 finalize 失败告警里出现「请用 --cancel 取消」，而同一告警后半句（reportFinalizeStep 补的）又说「再跑 --cancel 会早退」——同一段文字前后矛盾，故障现场会误导操作者。焦点②问的「告警是否说清后果」做到了（后半句把「没有第二次机会、需人工核对」写得很清楚），但补救指引在调用方语境下是错的。",
+      "evidence": "读 src/trivium/lock.ts:153-233（acquireLock 抛错文案）、src/trivium/meta.ts:549-556（skippedFromError 原样拼接）、src/trivium/run-protocol.ts:855-872（reportFinalizeStep 与 describeFinalizeStep 的 error 分支文案）。",
+      "suggestion": "给 acquireLock 增加可覆盖的 remediation 提示参数，或由各调用方捕获 EXIT.LOCKED 后替换为与本出口相符的一句（--cancel 场景应指向「锁持有者是谁、为何需人工核对」而非「再跑一次 --cancel」）。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "顺序与前提（焦点①）成立：workerMain catch（run-protocol.ts:537-577）与 waitRun 失联分支（:684-762）都把 finalize 排在 patchStatus 之前，进程死在两次写之间可由下一次 --wait/--cancel 补齐；失联分支用改写前的 pre 判「已退出」，status.json 读不到时 processAlive(fallbackPid, null) 只在 !alive 时写，PID 复用两个方向（有 startedAt 比对 / 无则保守跳过）都处理正确；L1/L2/L3/L5 四格互补、X1/X2 钉住撞车语义，提交锚只查 run_id 与 artifacts[] 登记（hooks.ts:544），收尾改写放行有据。",
+    "参数化后取消行为不变（焦点②）：finalizeCancelledRunMeta 签名未动、R1–R7 原样绿；第二步「只认本次目标终态」保住了「run.json 已 success ⇒ 登记不改」的 R2 语义（F4 反向钉住 cancelled 不照抄 failed）；第一步进 .task-<topic> 锁、与 updateTaskAsync 同一把锁两次各取不嵌套，无自锁；dead-holder 锁由 judgeStale 的 pid_gone/pid_reused 即时回收，20×150ms 重试预算足够。",
+    "termination 单一来源形态正确（焦点③）：WORKER_LOST_REASONS（status.ts:187）+ S2 逐项对账 schema 枚举 + S1 守两形状、多键/by 越值/reason 越枚举全判错；「只存结构化字段、不存异常原文」的取舍写进了 schema description，取舍理由（本机路径进归档、撞密钥扫描）成立。",
+    "report 下表（焦点④）集合定义干净：该阶段可读 run.json 减去时间线选中者，读不出的进 notes 不再静默跳过；说明文字只按留痕事实写——running 不硬断「未收尾」而写「进行中，或没走到收尾」，与 P4（不读本机运行目录）自洽；「另有 K 次」在头部与空主题 note 两处口径一致；emitJson 直接展开 TopicReport，PROTOCOL 声称的 --json 字段 unlistedRuns 真实存在。",
+    "变异表期望套件与用例对得上：M1–M3→gate-loop(W1)、M4–M6/M17→run-protocol(L1/L2/L3/L5)、M7–M10→run-meta-failed(F6/F1/F3/F4)、M11→run-meta-cancel(R1)、M12–M15→report(V1/V2/V3)、M16→run-meta-strict(S1)；报告 §3.2 如实登记 M2 与 W1/W2 同用例、装置分不清哪条断言先红——这个披露比硬凑区分度更有价值，我认可其结论「M2 咬住成立」。",
+    "文档同步面完整：主设计 6.7 注记/6.7.1/7.5/故障表、PRD FR-24、LLD 4.2 与已知缺口表、MANUAL 场景 4、PROTOCOL 三处、BACKLOG EV-142/144 状态翻转与 EV-145/146 新登，互相之间无矛盾；历史 4 份 running 不回填的口径各处一致。"
+  ],
+  "not_covered": [
+    "只读环境无法构建与执行测试：npm run check 的 2126/2124/0/2、源码变异 16/16、契约变异 1/1、零配额验收 18/18 均采信实施报告与 evidence 目录原文，未独立复跑任何一条。",
+    "X1 的提交锚放行只读了 runningRewriteViolation 判据与用例文本，未真实起 hook-pre-commit 进程验证；EV-20 凭据抹除与 sweepDeadRunningGates 路径同理，仅读代码核对。",
+    "F7 撞车用例为同进程 Promise.all；两个真实 CLI 进程并发 --wait/--cancel 的跨进程竞态未实测（设计上有任务锁兜底，预期无碍）。",
+    "未评审另一位审查员的结论（背靠背协议禁止），也未读 plan 阶段两份历史审查件与 _meta 结构化原文。",
+    "非 macOS 平台未评估（项目自述仅支持 macOS + VS Code，mtimeNs、ps -o lstart= 等均以 macOS 为基准）；Node 版本兼容性以项目声明 ≥18 为准，未实测最低版本。",
+    "report 下表对 v1 历史留痕的展示只核对了 readRunMeta 的迁移路径，未用真实 v1 归档样本跑过 buildTopicReport。"
+  ],
+  "consulted": [
+    ".reviews/未收尾运行的留痕与复盘可见性/code/_meta/changes-20260927T005543Z.diff",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/meta.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts",
+    "src/trivium/report.ts",
+    "src/trivium/types.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/review.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/run-meta-failed.test.ts",
+    "test/unit/run-meta-cancel.test.ts",
+    "test/unit/run-meta-strict.test.ts",
+    "test/unit/report.test.ts",
+    "test/integration/run-protocol.test.ts",
+    "test/integration/gate-loop.test.ts"
+  ]
+}

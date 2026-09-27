@@ -1,0 +1,119 @@
+✓ 工作树干净、基线全绿（5 个套件）
+  M1 ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=4）
+  M5 ✓ 咬住（fail=2）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=3）
+  M10 ✓ 咬住（fail=2）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=6）
+  M13 ✓ 咬住（fail=2）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=1）
+{
+  "总数": 16,
+  "咬住": 16,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "worker 异常分支不调 finalizeFailedRunMeta ⇒ W1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "worker 异常分支的收尾挪到 patchStatus 之后 ⇒ W1 / W2（同一条用例：顺序由 W2 的修改时间断言钉，message 断言随之也红）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "worker 异常分支不传 termination ⇒ W1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "worker_lost 分支不调收尾 ⇒ L1",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M5",
+      "desc": "worker_lost 分支硬传 workerGone: true ⇒ L2（heartbeat_stale 且进程在）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M6",
+      "desc": "worker_lost 分支改用改写之后的判定（phase 已是 failed）⇒ L3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "第一步去掉主题任务锁 ⇒ F6",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "通用函数写死 cancelled（忽略目标终态）⇒ F1",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "第二步判据写死 cancelled ⇒ F3",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M10",
+      "desc": "第二步放宽为「run.json 是任一终态就照抄」⇒ F4",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M11",
+      "desc": "取消轮也写 termination ⇒ R1（其余逐键不变）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "report 不收 unlistedRuns ⇒ V1",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M13",
+      "desc": "unlistedRuns 不减去时间线选中的运行 ⇒ V2",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M14",
+      "desc": "头部「轮次总数」不追加「另有 K 次」⇒ V1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "running 的说明改成断言式「未收尾」⇒ V3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "worker_lost 分支去掉「status.json 读不到时按 worker.pid 判」那一格 ⇒ L5",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

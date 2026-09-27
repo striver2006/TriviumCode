@@ -1,0 +1,144 @@
+{
+  "targets": [
+    "src/trivium/meta.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/report.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/run-meta-failed.test.js",
+    "dist/test/test/unit/run-meta-cancel.test.js",
+    "dist/test/test/unit/report.test.js",
+    "dist/test/test/integration/run-protocol.test.js",
+    "dist/test/test/integration/gate-loop.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "worker 异常分支不调 finalizeFailedRunMeta ⇒ W1",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    if (id0) {\n      const fin = await finalizeFailedRunMeta({\n",
+      "replace": "    if (id0 && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n      const fin = await finalizeFailedRunMeta({\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "worker 异常分支的收尾挪到 patchStatus 之后 ⇒ W1 / W2（同一条用例：顺序由 W2 的修改时间断言钉，message 断言随之也红）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    const notes: string[] = [];\n    const st0 = await readStatus(runDir);\n    const id0 = st0 ? { topic: st0.topic, stage: st0.stage } : await readHandoffIdentity(runDir);\n    if (id0) {\n      const fin = await finalizeFailedRunMeta({\n        layout: { archiveRoot: ctx.archiveRoot, topic: id0.topic },\n        stage: id0.stage,\n        runId,\n        lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },\n        workerGone: true,\n        termination: { by: 'worker_exception', exit_code: exitCode },\n      });\n      notes.push(\n        describeFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`),\n        describeFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改'),\n      );\n    }\n    // 终态必须写下来，否则 --wait 只能等到心跳过期才判失联\n    await patchStatus(runDir, (s) => {\n      s.phase = 'failed';\n      s.exit_code = exitCode;\n      s.message = [msg, ...notes].join(' ｜ ');\n    });\n",
+      "replace": "    // 终态必须写下来，否则 --wait 只能等到心跳过期才判失联\n    await patchStatus(runDir, (s) => {\n      s.phase = 'failed';\n      s.exit_code = exitCode;\n      s.message = msg;\n    });\n    const notes: string[] = [];\n    const st0 = await readStatus(runDir);\n    const id0 = st0 ? { topic: st0.topic, stage: st0.stage } : await readHandoffIdentity(runDir);\n    if (id0) {\n      const fin = await finalizeFailedRunMeta({\n        layout: { archiveRoot: ctx.archiveRoot, topic: id0.topic },\n        stage: id0.stage,\n        runId,\n        lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },\n        workerGone: true,\n        termination: { by: 'worker_exception', exit_code: exitCode },\n      });\n      notes.push(\n        describeFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`),\n        describeFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改'),\n      );\n    }\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "worker 异常分支不传 termination ⇒ W1",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        workerGone: true,\n        termination: { by: 'worker_exception', exit_code: exitCode },\n",
+      "replace": "        workerGone: true,\n        termination: undefined as never,\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "worker_lost 分支不调收尾 ⇒ L1",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      if (id0) {\n        const fin = await finalizeFailedRunMeta({\n",
+      "replace": "      if (id0 && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n        const fin = await finalizeFailedRunMeta({\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "worker_lost 分支硬传 workerGone: true ⇒ L2（heartbeat_stale 且进程在）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "          workerGone: goneForArchive,\n",
+      "replace": "          workerGone: true,\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "worker_lost 分支改用改写之后的判定（phase 已是 failed）⇒ L3",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "          ? (await workerConfirmedGone(pre, fallbackPid)).gone\n",
+      "replace": "          ? (await workerConfirmedGone({ ...pre, phase: 'failed' }, fallbackPid)).gone\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "第一步去掉主题任务锁 ⇒ F6",
+      "file": "src/trivium/meta.ts",
+      "find": "  return withTopicLock(\n    { triviumDir: i.lock.triviumDir, topic: taskLockName(i.layout.topic), heartbeatStaleMs: i.lock.heartbeatStaleMs },\n",
+      "replace": "  return (async (fn: () => Promise<FinalizeStep>) => fn())(\n",
+      "expect": "dist/test/test/unit/run-meta-failed.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "通用函数写死 cancelled（忽略目标终态）⇒ F1",
+      "file": "src/trivium/meta.ts",
+      "find": "      meta.status = i.terminal;\n",
+      "replace": "      meta.status = 'cancelled';\n",
+      "expect": "dist/test/test/unit/run-meta-failed.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "第二步判据写死 cancelled ⇒ F3",
+      "file": "src/trivium/meta.ts",
+      "find": "  if (m?.status !== i.terminal) {\n",
+      "replace": "  if (m?.status !== 'cancelled') {\n",
+      "expect": "dist/test/test/unit/run-meta-failed.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "第二步放宽为「run.json 是任一终态就照抄」⇒ F4",
+      "file": "src/trivium/meta.ts",
+      "find": "  if (m?.status !== i.terminal) {\n",
+      "replace": "  if (m === null || m.status === 'running') {\n",
+      "expect": "dist/test/test/unit/run-meta-failed.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "取消轮也写 termination ⇒ R1（其余逐键不变）",
+      "file": "src/trivium/meta.ts",
+      "find": "  return finalizeUnfinishedRunMeta({ ...i, terminal: 'cancelled' });\n",
+      "replace": "  return finalizeUnfinishedRunMeta({ ...i, terminal: 'cancelled', termination: { by: 'worker_exception', exit_code: 0 } });\n",
+      "expect": "dist/test/test/unit/run-meta-cancel.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "report 不收 unlistedRuns ⇒ V1",
+      "file": "src/trivium/report.ts",
+      "find": "    unlistedRuns.push(...(await collectUnlistedRuns(layout, stage, listed, notes)));\n",
+      "replace": "    void listed;\n",
+      "expect": "dist/test/test/unit/report.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "unlistedRuns 不减去时间线选中的运行 ⇒ V2",
+      "file": "src/trivium/report.ts",
+      "find": "    if (runId === undefined || listed.has(runId)) continue;\n",
+      "replace": "    if (runId === undefined) continue;\n",
+      "expect": "dist/test/test/unit/report.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "头部「轮次总数」不追加「另有 K 次」⇒ V1",
+      "file": "src/trivium/report.ts",
+      "find": "      (r.unlistedRuns.length > 0 ? `（另有",
+      "replace": "      (false ? `（另有",
+      "expect": "dist/test/test/unit/report.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "running 的说明改成断言式「未收尾」⇒ V3",
+      "file": "src/trivium/report.ts",
+      "find": "  else if (meta.status === 'running') label = '进行中，或没走到收尾';\n",
+      "replace": "  else if (meta.status === 'running') label = '未收尾';\n",
+      "expect": "dist/test/test/unit/report.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "worker_lost 分支去掉「status.json 读不到时按 worker.pid 判」那一格 ⇒ L5",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "          : fallbackPid !== null && !(await processAlive(fallbackPid, null)).alive;\n",
+      "replace": "          : false;\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    }
+  ]
+}

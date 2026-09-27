@@ -1,0 +1,2883 @@
+# trivium changes.diff
+# run_id: 20260927T005543Z
+# base: HEAD
+# head: 04d05e01101e1c35ed6454f568ddfa04b1e5bb9b
+# files: 28
+#   doc/01_requirements/PRD_driver_dual_critic.md
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/LLD_orchestrator.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/05_testing/REPORT_2026-09-27_unfinished_runs.md
+#   doc/05_testing/evidence/unfinished-runs-20260927/acceptance-readout.json
+#   doc/05_testing/evidence/unfinished-runs-20260927/acceptance.mjs
+#   doc/05_testing/evidence/unfinished-runs-20260927/contract-mutation-output.txt
+#   doc/05_testing/evidence/unfinished-runs-20260927/contract-mutation.mjs
+#   doc/05_testing/evidence/unfinished-runs-20260927/gen-mutation-spec.mjs
+#   doc/05_testing/evidence/unfinished-runs-20260927/mutation-output.txt
+#   doc/05_testing/evidence/unfinished-runs-20260927/mutation-spec.json
+#   doc/05_testing/evidence/unfinished-runs-20260927/probe-unfinished.mjs
+#   doc/05_testing/evidence/unfinished-runs-20260927/report-invisible-census.mjs
+#   doc/05_testing/evidence/unfinished-runs-20260927/running-census.mjs
+#   doc/07_manuals/MANUAL_user.md
+#   doc/08_project/BACKLOG.md
+#   skills/dual-critic/schema/run.v2.json
+#   src/trivium/meta.ts
+#   src/trivium/report.ts
+#   src/trivium/run-protocol.ts
+#   src/trivium/status.ts
+#   src/trivium/types.ts
+#   test/integration/gate-loop.test.ts
+#   test/integration/run-protocol.test.ts
+#   test/unit/report.test.ts
+#   test/unit/run-meta-failed.test.ts
+#   test/unit/run-meta-strict.test.ts
+diff --git a/doc/01_requirements/PRD_driver_dual_critic.md b/doc/01_requirements/PRD_driver_dual_critic.md
+index f946a58..bf70378 100644
+--- a/doc/01_requirements/PRD_driver_dual_critic.md
++++ b/doc/01_requirements/PRD_driver_dual_critic.md
+@@ -2,10 +2,10 @@
+ 
+ > - **作者 / 负责人**：Chen Zhenbo（依据原始需求整理）
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.4.11
++> - **当前版本**：v1.4.12
+ > - **状态**：**基线已实现、演进需求待实施(Baseline implemented, evolution pending)**
+ > - **来源**：[原始需求.txt](./原始需求.txt)；演进需求来源见 3.2 小节「多 Agent 演进需求」
+-> - **文档版本**：v1.4.11
++> - **文档版本**：v1.4.12
+ > - **⚠️ 实现状态**：FR-01～FR-26 与 AC-01～AC-19 是**已实现基线**；
+ >   **FR-27～FR-31 与 AC-20～AC-25 是演进需求**（各条标注了实现里程碑）：截至本版
+ >   **AC-20 已达成**（M8 第 4 步）、**AC-22 部分达成**（1／2／3 侧分支均可真跑，
+@@ -32,6 +32,7 @@
+ >   以及 M7b 六步（`run.v2`、`config.v2` 与其内存迁移、适配器接线收敛、多审退化逐对计算、
+ >   第 5 步的 `--critics` 入口——**这一步开始改变对外行为**——与第 6 步的接入套件验收装置）。
+ >   **不得据 FR-27～FR-31 判定系统现有能力，也不得把内部改动读成需求达成。**
++> - **变更说明**：v1.4.12（2026-09-27）随主设计 v1.3.48（未收尾运行的留痕与复盘可见性，EV-142 / EV-144）同步。**只改 FR-24 的边界说明，不新增需求、不改判据**：worker 异常与 `--wait` 判 `worker_lost`（工作进程确认退出时）的运行也把成败状态（`failed`）写入主题子目录的运行元数据（此前停在 `running`）；复盘报告另列没有产出审查文档的运行。
+ > - **变更说明**：v1.4.11（2026-09-26）随主设计 v1.3.47（留痕字段与误报小修，EV-127 / EV-128 / EV-137）同步。**只改 FR-24 的边界说明，不新增需求、不改判据**：被 `review --cancel` 取消的运行，其成败状态（`cancelled`）也写入主题子目录的运行元数据（工作进程确认退出后写；此前停在 `running`）；worker 异常与 `worker_lost` 两种失败仍停在 `running`，已登记 BACKLOG EV-142。
+ > - **变更说明**：v1.4.10（2026-09-26）随主设计 v1.3.46（审批前工作树摘要，EV-132 候选 ② 折中版）同步。**只改 FR-28 / AC-21 的边界说明，不新增需求、不改判据**：审批时（`approve` 通过与两个闸门停点）打印自审查收尾以来的工作树改动摘要，只告知、不拦、不改退出码与闸门迁移；闸门期仍无机制拦截或兜底，原候选 ②「审批前复核加工作树比对、不一致即拒」用户定为不做。
+ > - **变更说明**：v1.4.9（2026-09-26）随主设计 v1.3.45（留痕与文案小修）同步。**只改 FR-28 / AC-21 的边界说明，不新增需求、不改判据**：闸门停点尾句与入口资产 L2 段已按审查中 / 闸门期 / 审批后三个时点写实（EV-132 候选 ①），闸门期无机制兜底这一事实仍在（候选 ② 待办）。
+@@ -191,7 +192,7 @@ AI 编程已从单次补全进入自主智能体阶段。开发者在 macOS + VS
+ ### 3.3 P2（锦上添花 · 可分期）
+ 
+ - [ ] **FR-23 可配置跳过纯文档审**：对仅含文档、注释或格式、且配置允许的代码 diff，可跳过代码双审。业务代码、依赖清单（锁文件除外）、CI 与权限相关文件变更不得跳过。
+-- [ ] **FR-24 运行元数据**：每次任务运行将所用模型、起止时间、成败状态写入该主题子目录，便于复盘。Token 与 CLI 版本为可选字段。被取消的运行记 `cancelled`（v1.4.11，EV-128）；worker 异常与 `worker_lost` 的运行目前仍停在 `running`（EV-142）。
++- [ ] **FR-24 运行元数据**：每次任务运行将所用模型、起止时间、成败状态写入该主题子目录，便于复盘。Token 与 CLI 版本为可选字段。被取消的运行记 `cancelled`（v1.4.11，EV-128）；worker 异常与 `worker_lost`（工作进程确认退出时）的运行记 `failed`（v1.4.12，EV-142），失联时进程还在则不写、仍为 `running`。
+ - [ ] **FR-25 阶段重跑不覆盖既有工件**：同一任务同一阶段允许重跑。重跑产生的新文件一律追加版本后缀（或等价的新文件名），既有工件无论是否已经人工审批均不得覆盖，避免同日重跑撞名覆盖审查或主脑文件。
+ - [ ] **FR-26 等待期进度反馈**：双审进行期间，用户必须按稳定节奏收到可读进度，每条能回答「跑到哪了 / 还要多久 / 两侧各自什么状态」。编排器在每次等待返回时给出成品单行摘要与结构化进度（已用、预算、百分比、第几次/共几次、两侧状态），主脑负责**向用户播报**而非仅打印到工具输出；启动时另播报一条含两侧生效模型与阶段预算的开场。反馈的最小间隔等于单次等待窗口——主脑只在工具调用返回时才能说话，这是平台约束（设计 7.5.1）。
+ 
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 5c05a31..081f729 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.47
++> - **当前版本**：v1.3.48
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -655,7 +655,7 @@ sequenceDiagram
+ | `archive` | 唯一写 `.reviews/` 的模块：命名生成、防覆盖、原子落盘、`_meta/` 归档 | Review/Markdown | 文件路径 | 判定通过与否 |
+ | `meta` | `run-<run_id>.json` 与 `task.json` 读写（NFR-05 / FR-24） | 运行事实 | JSON | — |
+ | `verify` | 真实执行项目编译与测试命令，记录命令、退出码、耗时、输出摘要 | Config.verify | 验证记录 | 判定是否合入 |
+-| `report` | 主题级复盘报告（时间线、采纳分布、争议清单、降级记录） | 归档 | Markdown | — |
++| `report` | 主题级复盘报告（时间线、采纳分布、争议清单、降级记录；没产出审查文档的运行另列「未进时间线的运行」，v1.3.48） | 归档 | Markdown | — |
+ 
+ ### 5.1.1 接入套件：新增一家 Agent 要改什么【已实现 · M7a + M7b 第 6 步】
+ 
+@@ -1118,7 +1118,15 @@ addresses:               # 本件应答的审查文档文件名，不是意见
+ > 取消轮走不到 worker 的收尾，这是它**唯一一次终态写入**，与上一段「收尾后不再更新」不冲突；提交锚对 HEAD 为 `running` 的版本只查 `run_id` 与已登记条目，
+ > 所以运行中途提交过、之后被取消也能正常提交。这一步排在 status.json 落终态之前、两步各自判定，**进程中断**后再跑 `--cancel` 可补齐；
+ > **单步写失败**只告警、不挡锁与闸门回收，但 status.json 随后照常落终态，这一步没有第二次机会，告警当场写明需人工核对（代码双审 r1 CODEX-01）；
+-> 工作进程没确认退出时不写，那一份会一直停在 `running`。已结束却仍为 `running` 的旧留痕表示没有走到收尾（worker 异常、`worker_lost`——BACKLOG EV-142，或本版以前被取消），不回填。
++> 工作进程没确认退出时不写，那一份会一直停在 `running`。
++>
++> **`failed` 另有两条事后收尾**（v1.3.48，EV-142）：与取消回写同一个函数体（`meta.ts` `finalizeUnfinishedRunMeta`，按目标终态参数化），同样只在 run.v2 且仍为 `running` 时写、同样只改三格（取 `failed`）加一个可选键 `termination`（6.7.1），task.json 登记只同步到同一终态。
++> ①**worker 异常**：worker 的异常分支自己写（写者就是 worker，`termination.by = worker_exception` 记退出码）；异常晚于收尾写 run.json 时（其后的登记、闸门写入、播报都可能抛）run.json 已是终态，不追溯改写。
++> ②**`--wait` 判 `worker_lost`**：用**改写 status.json 之前**的事实判工作进程是否已退出——有 pid 且进程确已不在；status.json 读不到时按 worker.pid 判（与失联判定同源）——确认才写（`termination.by = worker_lost` 记失联原因）；
++> 进程还在（`heartbeat_stale`）、连 pid 都没有、非终态却拿不到 pid 时不写，报错正文写明未确认退出。凭据副本的抹除判定仍用改写之后那次，不变。
++> 两条都排在 status.json 落终态之前，进程中断后下一次 `--wait` 可补齐；结果分别进 status.json 的 `message` 与 `--wait` 的报错正文。
++> 三条事后收尾的第一步都在主题任务锁（与 task.json 同一把）里读、判、写，`--cancel` 与 `--wait` 同时收尾时谁先到记谁，每份 run.json 至多一次终态写入。
++> 已结束却仍为 `running` 的留痕表示没有走到收尾：本版以前的 worker 异常 / `worker_lost` / 取消、失联时工作进程未确认退出，或 prepare 阶段写完骨架后被拦（BACKLOG EV-145），不回填。
+ > `guard.forged_role_file` 是保留字段：run.v1 / v2 必填、写侧恒 `false`、不表示检测过，`report` 不据它打旗标（EV-137）。
+ 
+ `prompt_hint` 与 `task_goal` 是两回事，不可互相顶替（RV-19）：前者是「本次审查焦点」，
+@@ -1172,6 +1180,7 @@ addresses:               # 本件应答的审查文档文件名，不是意见
+ | `critics.<id>.model_unenforced` | 没做模型覆盖、而实际模型与请求不同（EV-122）：`{ requested, effective, cause, reason }`。与 `model_override_applied` **互斥**：那一格要求本次尝试了覆盖，这一格要求没尝试——不并进那一格的 `false`，因为「覆盖没落实」查 CLI 读取点、「压根没做覆盖」查副本源在不在，两种成因同形就分不开。`requested` 与 `model_requested` 同源；判据只看 modelId 段；`cause` 取 `source_missing`（副本源 `cli/config.json` 不在）或 `qualify_failed`（请求的模型在副本源目录里限定失败），`guard` 按它分句；`reason` 只供人读、不参与判定、不保证文案稳定；它可能含副本源的 provider / 模型目录清单（`qualify_failed`）与真实 HOME 绝对路径（`source_missing`），随归档持久化、不含凭据——这是有意接受的内容面（代码双审 r1）：截断只能按文案切，而清单正是排查限定失败要用的那部分。内层四项必填。字段缺席＝做了覆盖、请求为空、没回读到生效模型、modelId 段相同、或该侧不产出（目前只有 zcode 侧产出，其余三家见 EV-91）。与 `carriers_landed` 同一口径：条件展开，缺席不压成 null | **可选** | 【已实现 · EV-122】`src/trivium/adapters/zcode.ts` `decideModelUnenforced` |
+ | `snapshot.build` | **运行中的编排器**自带的构建标识：`repo_root_commit`（构建来源仓的根提交，作仓库身份）、`git_head`、`dirty`、`inputs_sha256`（安装面路径集 `src/ scripts/ skills/ package.json package-lock.json tsconfig.json` 在构建时工作树上的指纹）、`built_at`。`snapshot.git_head` 是**被审项目**的 HEAD，这一项才是编排器本体是哪一版构建出来的。`null` = 构建时取不到 git（浅克隆、`git archive` 导出的树）；缺席 = 本字段之前的旧留痕。**谁消费**：收尾告警与 doctor，**只在本仓模式**下比对（被审项目根提交 = `repo_root_commit`；任一侧取不到根提交时按 `package.json` 的 `name` 兜底），外部项目只记不比。四条告警：构建标识缺失 / 构建时工作树有未提交改动 / 安装副本不是当前工作树构建的 / 安装副本与仓库 HEAD 不同版。**HEAD 只在作用面指纹未判定一致时才比**（EV-111）：指纹一致即构建输入与当前工作树一致，HEAD 不同只剩出处信息（两个字段照记），不告警，doctor 那一行补一句「（构建于 X，仓库 HEAD 已到 Y，作用面与构建时一致）」；否则构建后哪怕只有一次纯文档提交也会报「不同版」。作用面指纹重算取不到时记一条「比对未能完成」；仓库 HEAD 取不到时，**仅当指纹未判定一致**才记一条（指纹一致时 HEAD 不参与判定，谈不上「查不出」）；比对本身抛错另记一条「比对失败」——「查不出」不与「查过、没问题」同形。零告警 ⇔ 标识非空、构建时干净、指纹取得到且一致。均只告警、不阻断。仓库身份：浅克隆里取不到根提交，按包名兜底。指纹的覆盖边界（被忽略文件、`node_modules` 漂移、「改完装上再改回」）见 BACKLOG EV-114 | **可选**（写侧恒写，null 也写） | 【已实现 · EV-82 小主题第一段；HEAD 比对条件 · EV-111】`src/trivium/build-stamp.ts` |
+ | `snapshot.after_tree_hash` | 审查收尾复算漂移时的工作树 tree（与 `tree_hash` 同法，`workTreeHash`），与 `drift` 同一处写、同一次收尾落盘，之后 run.json 不再更新（EV-133 的不变量不受影响）。**只供审批时的工作树改动摘要作基线，不参与任何判定**（8.5）。缺席 = 本字段之前的旧留痕或运行未走到复算，摘要据此报「本轮没有审查收尾时的工作树基线」，不回落到 `tree_hash`。它是不可达的 git 对象，可能被 git 清理，摘要此时报「基线对象已不在对象库」 | **可选** | 【已实现 · v1.3.46，EV-132 候选 ② 折中版】`src/trivium/review.ts`、`src/trivium/worktree-summary.ts` |
++| `termination` | 这一次终态由哪条事后收尾写的（6.7 注记）：`{ by: "worker_exception", exit_code }` 或 `{ by: "worker_lost", reason }`，两个形状各自 `additionalProperties: false`。只由 worker 异常分支与 `--wait` 判 `worker_lost` 且确认工作进程已退出两条路写；缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕。**只存结构化字段、不存异常原文**：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。`reason` 的枚举与 `status.ts` 的 `WORKER_LOST_REASONS` 逐项相等，由用例守住 | **可选** | 【已实现 · v1.3.48，EV-142】`src/trivium/meta.ts`、`src/trivium/run-protocol.ts` |
+ 
+ `effort_effective` 必须**回读**而非采信请求值：部分厂商存在请求值归并映射
+ （如 DeepSeek 的 `medium/high/xhigh → high`），「请求 medium 实际生效 high」。
+@@ -1451,7 +1460,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
+ | `review --status <run_id>` | 只读一次状态，不等待 | 同上 |
+ | `review --cancel <run_id>` | 向工作进程发 SIGTERM → SIGKILL；工作进程确认退出后，把仍为 `running` 的归档 run.json 与 `task.json` 登记标 `cancelled`（v1.3.47，EV-128，见 6.7 注记）；再把 status.json 标 `cancelled`、回收锁与闸门 | `0` |
+ 
+-约束：① 工作进程写 `status.json` 心跳（每 30s），`--wait` 发现心跳超过 `heartbeat_stale_s`（默认 120s）未更新且进程不存在时判 `failed(worker_lost)`；② 工作进程生命周期等于一次运行，不监听、不接受新任务，因此不是 PRD Non-Goal 所指的常驻 Daemon；③ `hook-session-start` 若发现 `running` 状态的运行，以 `additionalContext` 提醒 Driver 先 `--wait`；④ `run.json` 的 `command` 字段记录是否经 `--start/--wait` 完成，便于审计。
++约束：① 工作进程写 `status.json` 心跳（每 30s），`--wait` 在三种情形下判 `failed(worker_lost)`：进程不在或已不是同一进程（`pid_gone`，status.json 读不到时按 worker.pid 判）、进程活着但心跳超过 `heartbeat_stale_s`（默认 120s）未更新（`heartbeat_stale`）、status.json 与 pid 都拿不到（`no_status_file`）；判定时若工作进程已确认退出，先把归档 run.json 收尾为 `failed`（v1.3.48，EV-142，见 6.7 注记）；② 工作进程生命周期等于一次运行，不监听、不接受新任务，因此不是 PRD Non-Goal 所指的常驻 Daemon；③ `hook-session-start` 若发现 `running` 状态的运行，以 `additionalContext` 提醒 Driver 先 `--wait`；④ `run.json` 的 `command` 字段记录是否经 `--start/--wait` 完成，便于审计。
+ 
+ ### 7.5.1 等待期进度反馈
+ 
+@@ -2686,7 +2695,7 @@ profiles:
+ | B/C/D 缺提示语 | 拒绝启动（退出 64） | 无工件 | FR-20 |
+ | B/C/D 找不到前置产物 | 拒绝启动（退出 65），说明缺什么 | 无工件 | FR-12 / FR-22 |
+ | 人工在闸门拒绝 / 放弃 | 状态置 `rejected` / `abandoned`，写入理由；**解除业务写锁**；流水线不自动进入编码/改码/修复 | 已有工件保留 | FR-12 / FR-22 |
+-| 运行进行中 Driver 会话结束或 `--wait` 心跳失联 | 工作进程独立于会话继续跑完；`hook-session-start` 提醒 `--wait`；心跳失联判 `failed(worker_lost)` | `run.json` 记 `status` | 7.5 |
++| 运行进行中 Driver 会话结束或 `--wait` 心跳失联 | 工作进程独立于会话继续跑完；`hook-session-start` 提醒 `--wait`；心跳失联判 `failed(worker_lost)` | `run.json` 记 `status`（工作进程确认退出时由 `--wait` 收尾为 `failed` 并记 `termination`；进程还在则不写，v1.3.48） | 7.5 |
+ | 主脑试图伪造审查文件 | Hook `deny` | — | PRD 6.3 |
+ 
+ **演进增补行**（细则见演进设计 §12；状态位于 M9 第 7 步按现状改准——M7b / M8 各行此前一直挂着「待实施」）：
+@@ -2890,6 +2899,8 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
+ 3. **`task.json`**：主题级汇总与闸门/审批/争议记录。
+ 
+ `trivium report --topic <主题>` 生成人读复盘：时间线、每轮意见数与严重度分布、采纳率、被驳回项与理由、降级与告警清单、耗时与 token 汇总。
++时间线按审查文档枚举轮次；没产出审查文档的运行（被取消、worker 异常 / 失联、入选侧全部失败、纯文档跳过、没走到收尾的旧留痕）不占轮次号、不进时间线，
++另列在时间线下方的「未进时间线的运行」表（预定轮次、起止、状态、按留痕事实给的说明），头部「轮次总数」后注明「另有 K 次」（v1.3.48，EV-144）。
+ 
+ ---
+ 
+@@ -3229,7 +3240,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
+ | `sh -c 'git commit -m x'` 绕过前缀匹配提交 | `hook-pre-commit` 仍触发（已去掉 `if`，改进程内判定），裁决未齐备时 exit 2 |
+ | 已初始化项目中删除或 `chmod -x` wrapper 后再调用工具 | 四个拦截型 Hook 的 `sh -c` 守卫 exit 2 并打印修复指引，**不得**放行 |
+ | 单次 `review --wait` 超过 `wait_timeout_s` | 返回 73 并给出进度，工作进程继续；再次 `--wait` 最终返回 0 |
+-| 工作进程被杀且心跳过期 | `failed(worker_lost)`，锁被回收 |
++| 工作进程被杀且心跳过期 | `failed(worker_lost)`，锁被回收；归档 run.json 收尾为 `failed`、`termination.by = worker_lost`（v1.3.48） |
+ | 同主题并发 `--start` | 第二次返回 70 并提示现有 `run_id` |
+ | 新会话在他人闸门未审批时写业务文件 | **不** deny，仅会话开始时提醒 |
+ | 裁决表写「不接受」 | 归一化为「驳回」通过；理由仅含空洞词表时 warn 不 FAIL |
+@@ -3423,6 +3434,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.48** | 2026-09-27 | **未收尾运行的留痕与复盘可见性（EV-142 / EV-144）。** 计划 `.reviews/未收尾运行的留痕与复盘可见性/plan/`（r1 送审前用户授权按最优原则拍板 D1～D8、全取建议项，计划双审第 1 轮 run `20260926T235951Z` 8 条全接受，r2 定稿 `e22a174`，审批「修改后实施」）。**一、6.7 注记（EV-142）**：`failed` 另有两条事后收尾——worker 异常分支自己写、`--wait` 判 `worker_lost` 时用改写 status.json 之前的事实确认工作进程已退出才写（status.json 读不到时按 worker.pid 判，计划双审三侧同指的一格）；与取消回写共用按目标终态参数化的函数体，仍为 running 才写、只改三格加 `termination`、排在 status.json 落终态之前；三条事后收尾的第一步都在主题任务锁里判与写，每份 run.json 至多一次终态写入；心跳过期而进程还在时不写。**二、6.7.1**：新增可选字段 `termination`（结构化、不存异常原文，`reason` 与 `WORKER_LOST_REASONS` 由用例守住同步）。**三、7.5 约束①**：`worker_lost` 的三种原因改准。**四、§5.1、§13.2（EV-144）**：`report` 时间线不动，没产出审查文档的运行另列「未进时间线的运行」表并在「轮次总数」后注明「另有 K 次」；实测证实入选侧全部失败的轮次此前同样看不见。**五、故障表、验收表**：`worker_lost` 一行补 run.json 的收尾。新登 BACKLOG EV-145（prepare 阶段写完骨架后被闸门拦下等其它未收尾路径）、EV-146（`heartbeat_stale` 判失联后 `--cancel` 杀不掉挂住的 worker）。历史 4 份 `running` 不回填。读数：`npm run check` 2126 / 2124 / 0 / 2，源码变异 16/16 + 契约变异 1/1，零配额验收 18/18，selftest 14/14（报告 `doc/05_testing/REPORT_2026-09-27_unfinished_runs.md`）。 |
+ | **v1.3.47** | 2026-09-26 | **留痕字段与误报小修（EV-127 / EV-128 / EV-137）。** 计划 `.reviews/留痕字段与误报小修/plan/`（r1 送审前用户定 D1～D5 全按建议，计划双审第 1 轮 run `20260926T135731Z` 14 条全接受，r2 定稿 `661be7b`，审批「修改后实施」）。三处都是「留痕与实际不符」。**一、§6.5（EV-127）**：evidence 路径抽取改为整段以九个根目录起头（前界不能是字母、数字、`_`、`-`、`.`、`/`，容许前导 `./`）；此前 `\b` 起匹配把 `skills-src/…`、`dist/test/…`、`ZCode.app/…` 截成并不存在的路径，本仓 383 份历史审查件实测 56 条误报全部去掉、新报 0 条；不核的范围写明（BACKLOG EV-143）。**二、6.7 注记与 7.1（EV-128）**：`review --cancel` 在工作进程确认退出后把仍为 `running` 的 run.v2 run.json 收尾为 `cancelled`（只改三格、`artifacts[]` 原样）并同步 `task.json` 登记；排在 status.json 落终态之前、两步各自可重入、自身不抛；取消轮唯一一次终态写入，与 EV-133 不冲突，提交锚放行；历史停在 `running` 的 4 份不回填；worker 异常与 `worker_lost` 同形两处登 EV-142。**三、§9 模块表与 6.7 注记（EV-137）**：`guard` 不做伪造角色文件检测，`forged_role_file` 为恒 false 的保留字段，`report` 不再读取；实际由写入前 Hook、`gate --check-artifacts` 未登记审查件判据与提交锚承担（后者要不要进 `gate --check` / `approve` 并进 EV-73）。run.v1 / v2 schema 给 `status` 与 `forged_role_file` 加 description；CLI 帮助 `--cancel` 一行同步。**四、代码双审 r1**（run `20260926T151155Z`，5 条全接受，审批通过）：CODEX-01「可重入」限定为进程中断——单步写失败没有第二次机会，`cancelRun` 告警当场要求人工核对（6.7 注记、LLD、MANUAL 同步）；CODEX-02 consulted 一侧同口径去前导 `./`（历史审查件无此形态，读数不变）；CODEX-03 task 登记同步写明三种跳过情形；CODEX-04 ≡ AGY-01 E1 注明依赖纳秒级时间戳 |
+ | **v1.3.46** | 2026-09-26 | **审批前工作树摘要（EV-132 候选 ② 折中版）。** 计划 `.reviews/审批前工作树摘要/plan/`（r1 送审前用户定 D1～D6，计划双审第 1 轮 run `20260926T100417Z` 16 条全接受，r2 定稿 `12d54e2`，审批「开始实施」）。用户定原候选 ②「审批前复核加工作树比对、不一致即拒」不做，改为**审批时只打印工作树改动摘要，不拦、不改判定**。**一、8.5**：新增「审批时的工作树改动摘要」段——`approve` 通过（复核之后、落审批之前）与两个停点出口打印自审查收尾以来的改动；基线 `snapshot.after_tree_hash`、当前树同法 `workTreeHash`，闸门期提交的改动同样列出；四种取不到的原因、不报「无改动」；20 秒预算；人读 20 条、JSON 200 条；Hook 不算；盲区与 `git gc` 实测口径。「补偿的覆盖面」末句由「候选 ② 仍待办」改为折中版。**二、6.7.1**：新增 `snapshot.after_tree_hash` 行（可选，只供摘要作基线，不参与判定）。**三、15.3 AC-21、R18**：闸门期仍不拦、不兜底，审批时打印摘要、只告知。**四、运行时文案**（D6 (b)）：停点尾句共用前段、`L2_AFTER_THE_FACT`、`l2-notice`（重渲染 12 份）、`driver.snippet`（新一档指纹，本仓 AGENTS.md / GEMINI.md 原位升级）、注册表注释，闸门期一句改为「不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要」，共用措辞不就拦不拦表态；`dual-approve` 入口资产（4 份）写明摘要只告知。判定代码（`verifyRoundForApproval`、`judgeDrift`、`diffTrees`）一律未改；`diffTrees` 失败返回空的同族问题另登 BACKLOG EV-139，审批前单独看摘要的只读入口登 EV-140。**五、代码双审 r1**（run `20260926T111908Z`，7 条：接受 6、暂缓 1）：CODEX-01 ≡ GLM-01 照抄命令的注入面（形状闸 + 两个 tree 值加引号）、CODEX-02 预算注入自我暴露与「超过 0 秒」、CODEX-03 按进程组收尾与整体截止、GLM-02 「会列出」补取不到的情形、AGY-01 原因末尾补句号；CODEX-04（预算可配置与关闭开关）暂缓，登 EV-141 |
+ | **v1.3.45** | 2026-09-26 | **留痕与文案小修（EV-129、EV-130 ①、EV-131、EV-132 ①、EV-133、EV-134）。** 计划 `.reviews/留痕与文案小修/plan/`（r1 计划双审 9 条全接受，r2 定稿 `0bf81e6`）。**一、EV-134（唯一改判定的一条）**：§7 第 3 步 `addresses` 由只核非空改为逐项比对——每项指向本轮有效侧（status ∈ {ok, parse_fallback}）的审查文档、不重复、份数 = 有效侧数，期望集取自 `run.json.artifacts[]`，期望集为空时只核非空并告警；§6.6 示例注释与 M7b 注记同步。**二、EV-133**：§7 第 6 步不再写「回写 `adjudication_complete`」，§6.7 示例改为实现里真实出现的组合并加注记（run.json 收尾后不再更新是有意的不变量）。**三、EV-132 ①**：8.5「补偿的覆盖面」按实现写实漂移复算的覆盖面（含未忽略的未跟踪文件，看不见被忽略的文件——更正「只看已跟踪文件」），并登记停点尾句、`l2-notice`、`run-enforce`、`describeGuard`、`driver.snippet` 按时点改写；15.3 AC-21 与 R18 两行注明文案已修、候选 ② 待办。**四、EV-131**：7.4 示例 `description` 去实名，7.4.1 括注改为已修。**五、EV-130**：11.5 profiles 示例补 codex 行与缺省注记。EV-129（写锁文案去重）只改实现，本文无契约文字。**六、代码双审 r1**（run `20260926T081442Z`，7 条全接受）：CODEX-01 核出 EV-79 口径段里「`judgeDrift`……只看已跟踪文件」的同一失实句，一并更正 |
+diff --git a/doc/02_design/LLD_orchestrator.md b/doc/02_design/LLD_orchestrator.md
+index 39d85c0..8ab803b 100644
+--- a/doc/02_design/LLD_orchestrator.md
++++ b/doc/02_design/LLD_orchestrator.md
+@@ -2,8 +2,9 @@
+ 
+ > - **作者 / 负责人**：Driver（Claude）
+ > - **创建日期**：2026-09-13
+-> - **当前版本**：v1.1.5
++> - **当前版本**：v1.1.6
+ > - **状态**：草稿(Draft)
++> - **变更说明**：v1.1.6（2026-09-27）随设计 v1.3.48（未收尾运行的留痕与复盘可见性，EV-142 / EV-144）同步：4.2 `worker_lost` 一节补归档侧收尾（改写 status.json 之前判确认退出、status.json 读不到时按 worker.pid 判、`termination`、`WORKER_LOST_REASONS` 单一来源）；「同形两处仍未写」改为已修，函数体改名 `finalizeUnfinishedRunMeta`、第一步进主题任务锁；剩余未收尾路径指向 EV-145
+ > - **变更说明**：v1.1.5（2026-09-26）随设计 v1.3.47（留痕字段与误报小修）同步：「`cancelRun` 不回写 `run.json`」两处由已知缺口改为已修（EV-128，`meta.ts` `finalizeCancelledRunMeta`），保留 worker 异常与 `worker_lost` 同形两处仍未写的说明（EV-142）；旧的 `run-protocol.ts:680` 链接改准
+ > - **变更说明**：v1.1.4（2026-09-26）随设计 v1.3.46（审批前工作树摘要，EV-132 候选 ② 折中版）同步：模块表登记 `worktree-summary.ts`；`util/git.ts` 补两个失败即抛的严格助手
+ > - **变更说明**：v1.1.3（2026-09-26）随设计 v1.3.43 的 M10b 第 5 步纪律 6 回溯同步：2.6「当前边界」的「别家在自己的 CLI 里执笔在 M10b」改为已落地，指向主设计 7.4.1 与 8.5；Bash 侧保护集一节「删掉 wrapper 即永真放行」改准为「删掉或去掉执行位保守拦截，内容被替换才永真放行」（第 5 步 grep 锚的守卫措辞一族核出）。
+@@ -265,7 +266,9 @@ sequenceDiagram
+ 
+ 每 2000ms 调 `interpretStatus()`，四种读数：`terminal` / `worker_lost` / `running` / `inconclusive`。窗口用尽返回 **`EXIT.STILL_RUNNING`(73)** —— 这是**预期**返回，不是失败。
+ 
+-`worker_lost` 三判据（`status.ts:165-196`）：无 status 且无 pid → `no_status_file`；pid 不存在**或不是同一进程**（比对启动时刻，防 macOS PID 复用）→ `pid_gone`；进程活着但心跳超 `heartbeat_stale_s` → `heartbeat_stale`。
++`worker_lost` 三判据（`status.ts:165-196`）：无 status 且无 pid → `no_status_file`；pid 不存在**或不是同一进程**（比对启动时刻，防 macOS PID 复用）→ `pid_gone`；进程活着但心跳超 `heartbeat_stale_s` → `heartbeat_stale`。三个原因字面值的唯一来源是 `status.ts` 的 `WORKER_LOST_REASONS`（run.v2 `termination.reason` 的枚举由 `run-meta-strict.test.ts` 守住与它逐项相等）。
++
++判 `worker_lost` 之后（v1.1.6 起，EV-142）：先用**改写 status.json 之前**的事实判工作进程是否已退出——status.json 在时照旧 `workerConfirmedGone(pre, worker.pid)`（改写之前 phase 非终态，只剩「有 pid 且进程确已不在」一种依据）；status.json 读不到而 worker.pid 已知时按 `processAlive(worker.pid, null)` 判，不存在才算——确认退出就调 `meta.ts` 的 `finalizeFailedRunMeta`（`termination: { by: 'worker_lost', reason }`），再 `patchStatus` 置 `failed`；进程还在、连 pid 都没有、非终态却拿不到 pid 时不写。两步结果只拼进抛出的报错正文。其后回收闸门、按**改写之后**的 status.json 判抹不抹凭据副本（EV-20，不变）。
+ 
+ **两个窗口参数的算法**：
+ 
+@@ -456,7 +459,10 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
+ > 再按 run_id 把 `task.json.runs[]` 那一条同步为 `cancelled`（以 run.json 已是 `cancelled` 为独立判据；run.json 不是 cancelled、登记里找不到、登记已不是 running 三种情形跳过）。两步自身不抛，失败只告警、不挡锁与闸门回收。
+ > 排在 `patchStatus` 之前是为了**进程中断**可恢复：status.json 一旦终态，再跑 `--cancel` 会在终态分支早退。
+ > **单步写失败不可恢复**：异常转成跳过后 status.json 照常落终态，这一步没有第二次机会，`cancelRun` 的告警当场要求人工核对（代码双审 r1 CODEX-01）。
+-> **仍未写的同形两处**：worker 抛异常、`--wait` 判 `worker_lost`，都只改 status.json，run.json 停在 `running`（BACKLOG EV-142）。
++> **同形两处已修（v1.1.6，EV-142）**：函数体改为按目标终态参数化的 `finalizeUnfinishedRunMeta`，对外两个薄导出——`finalizeCancelledRunMeta`（签名与行为不变）、`finalizeFailedRunMeta`（写 `failed` 并记 `termination`）。
++> worker 的异常分支（`workerMain` 的 `catch`，排在 `patchStatus` 之前、`workerGone: true`——写者就是 worker 自己）与 `--wait` 判 `worker_lost`（见 4.2 轮询协议一节）各调一次；
++> 第一步的读、判、写在主题任务锁（`taskLockName`，与 task.json 同一把）里，三条事后收尾同时到达时谁先到记谁；第二步只同步到本次目标终态，不照抄别的终态。
++> 仍会停在 `running` 的：失联时进程还在（`heartbeat_stale`），以及 prepare 阶段写完骨架后被拦、同步路径异常、worker 猝死而没人 `--wait` / `--cancel`（BACKLOG EV-145）。
+ 
+ ### 4.3 锁的生命周期
+ 
+@@ -566,7 +572,7 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需
+ | :--- | :--- | :--- |
+ | **`task.json.disputes[]` 无任何写入点** | 全仓仅 `meta.ts:88`（类型）、`meta.ts:105`（初始化为 `[]`）、`report.ts:441`（读取），无一处 push | 只有 `disputed` 布尔位被写（`cli.ts:701`）。`report` 的「争议项：编号——说明」分支**永远打印不出具体编号** |
+ | ~~**`block_severities` 无消费方**~~ | ~~类型、默认值、schema 校验齐全，业务逻辑零引用~~ | **已解决（2026-09-16）**：该键连同 schema 定义一并删除，不做历史兼容（项目负责人明示接受）。防复发机制见配置键与消费方的对账测试 |
+-| ~~**`cancelRun` 不回写 `run.json`**~~ | ~~函数体内 `writeRunMeta` 零出现~~ | **已解决（2026-09-26，EV-128）**：工作进程确认退出后由 `finalizeCancelledRunMeta` 收尾为 `cancelled`。同形的 worker 异常与 `worker_lost` 仍停在 `running`（EV-142） |
++| ~~**`cancelRun` 不回写 `run.json`**~~ | ~~函数体内 `writeRunMeta` 零出现~~ | **已解决（2026-09-26，EV-128）**：工作进程确认退出后由 `finalizeCancelledRunMeta` 收尾为 `cancelled`。同形的 worker 异常与 `worker_lost` 已于 2026-09-27 修（EV-142，`finalizeFailedRunMeta`，工作进程确认退出才写）；其余未收尾路径见 EV-145 |
+ | **协议片段无升级路径** | `appendSnippet`（`init.ts:63-66`）见标记即跳过，与 hooks 的「按名替换」不一致 | 已初始化项目的协议片段永不更新。实测某项目落后 18 行 |
+ | **人工审批无机械边界** | `recordApproval`（`approval.ts:54-86`）无任何调用者身份校验；skill 的 `allowed-tools` 预批准了 `Bash(.trivium/bin/trivium:*)` | Driver 自己一条命令就能关掉等人工审批的闸门。曾加过一次性确认码，因明文经 stdout 由 Driver 转述、构不成边界而**主动移除**——「虚假的安全感比没有护栏更糟」。真解需要宿主提供不经过模型的带外通道 |
+ | **路径级 deny 两侧实测均不可用** | agy 无此能力；ZCode 的 `--disallowed-tools "Read(<路径>)"` 语法被接受，但模型改用 `Bash(head -1)`/`Grep` 读到了目标文件 | `peer_deny_applied` 恒为 `false`，隔离是**降级运行**——只靠禁读清单 + 事后轨迹核验（风险 R13） |
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index 783e362..491ecec 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -57,6 +57,8 @@
+ 
+ **`run.v2` 的可选字段 `driver_guard_level`**（M10b 第 3 步，B1）：取值 `L1` / `L2`，记当轮 Driver 的**有效**护栏等级（登记 L1 的载体在 Hook 配置不在场时记 `L2`；登记 L2 的恒 `L2`，不读探针字段），规范见设计 8.5。**可选**：早于该步的留痕没有它，缺席即「无从得知」，不等于 L1；`trivium report` 时间线对旧留痕显示「—」。其余字段不变。
+ 
++**`run.v2` 的可选字段 `termination`**（设计 v1.3.48，EV-142）：`{ by: "worker_exception", exit_code }` 或 `{ by: "worker_lost", reason }`（`reason` ∈ `no_status_file` / `heartbeat_stale` / `pid_gone`），记这一次 `failed` 由哪条事后收尾写：worker 异常分支自己写，或 `--wait` 判 `worker_lost` 且工作进程确认已退出时写；两条都只在 run.json 仍为 `running` 时写。只存结构化字段、不存异常原文。缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕，规范见设计 6.7 注记与 6.7.1。
++
+ ### `trivium.run.v2` 的读侧分发（按阶段，设计 6.7.1）
+ 
+ 审查阶段（`plan` / `code` / `bug`）只认 `run.v1`（迁移为内存 v2）与 `run.v2`，
+@@ -259,8 +261,9 @@ trivium review --start --stage <s> --topic <t> --focus <hint> --json
+ 
+ 约束：
+ 
+-- 工作进程每 30s 写一次心跳到 `status.json`；心跳超过 `heartbeat_stale_s`（默认 120s）
+-  未更新且进程不存在 → 判 `failed(worker_lost)`。
++- 工作进程每 30s 写一次心跳到 `status.json`；`--wait` 在进程不在或已不是同一进程（`pid_gone`）、
++  进程活着但心跳超过 `heartbeat_stale_s`（默认 120s）未更新（`heartbeat_stale`）、status.json 与 pid 都拿不到（`no_status_file`）
++  三种情形下判 `failed(worker_lost)`；工作进程确认已退出时先把归档 run.json 收尾为 `failed`（设计 v1.3.48，EV-142）。
+ - 进程存活性比对 `ps -p <pid> -o lstart=`，**不能只看 `kill(pid,0)`**：macOS 会复用 PID。
+ - stdio 必须重定向到日志文件。继承父进程管道会让 worker 在父退出后死于 SIGPIPE；
+   管道 EOF 不闭合则派生方会挂到 worker 退出。
+@@ -357,7 +360,7 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一
+ | `gate hook-*` | Hook 入口，从 stdin 读事件。**不应由人直接调用** |
+ | `approve` / `abandon` | 人工审批 / 放弃闸门。审批附言走 `--reason`；多余的位置参数退 64（EV-24），布尔旗标（`--reject` 等）不吞下一个 token、`=` 传值只认 true/false。**通过前复核**（M10a 第 3 步）：与 `gate --await-approval` 共用一份判定——本轮裁决齐备 + 本轮 `run.json.artifacts[]` 的 sha256 抽核；不通过退 2，推断不出 run_id 或运行元数据读不出退 65（出口是 abandon 后重跑）。拒绝与放弃不复核。复核不保证「审批来自人」。**通过时先打印工作树改动摘要**（复核之后、落审批之前）：自审查收尾以来改过的文件，基线 `snapshot.after_tree_hash`；`--json` 带 `worktree_summary`（按阶段，每阶段 `available` / `reason` / `run_id` / `baseline_tree` / `current_tree` / `total` / `truncated` / `files`（最多 200 条）/ `excluded_prefixes` / `budget_ms` / `budget_overridden`）。只告知，不参与判定、不改退出码；取不到时报原因，不报「无改动」 |
+ | `verify --topic <t>` | 执行显式配置的编译测试命令并落盘记录 |
+-| `report --topic <t>` | 主题级复盘 |
++| `report --topic <t>` | 主题级复盘；没产出审查文档的运行另列「未进时间线的运行」，`--json` 输出多一个 `unlistedRuns` 字段（设计 v1.3.48，EV-144） |
+ | `status` | 闸门、运行、降级与争议 |
+ | `scrub [--dry-run] [--json]` | 对**整个运行根**做一次凭据清扫：遍历全部项目桶，**只抹凭据、一个目录都不删**（整删是 `run_dir_days` 的职责且按项目划界，跨仓删别人的目录是越权）。准入判据与会话启动清扫同源（`admitScrub`）：worker 现势活着的不动，状态读不到一律跳过并计数。**退出码恒 `0`**，理由见 §五末段。`--dry-run` 只预测**侧层**——运行目录那一层没有哨兵、每轮都复查，有没有活取决于正文是否命中密钥，不读正文答不了（BACKLOG EV-33） |
+ | `init` | 在项目内布置运行时（幂等）。M10b 第 3 步起两家 Hook 一起合并：`.claude/settings.json` 与 `.zcode/config.json`（ZCode 形态），只增不删、写盘前备份只在真正写入时发生 |
+diff --git a/doc/07_manuals/MANUAL_user.md b/doc/07_manuals/MANUAL_user.md
+index 97fc897..c4a94d7 100644
+--- a/doc/07_manuals/MANUAL_user.md
++++ b/doc/07_manuals/MANUAL_user.md
+@@ -2,7 +2,7 @@
+ 
+ > - **作者 / 负责人**：Driver（Claude）
+ > - **创建日期**：2026-09-13
+-> - **当前版本**：v1.0.5
++> - **当前版本**：v1.0.6
+ > - **状态**：草稿(Draft)
+ >
+ > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
+@@ -572,6 +572,10 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ 
+ 给出时间线、每轮意见数与严重度分布、采纳率、被驳回项与理由、生效模型核对、降级与告警清单、双审退化指标、耗时汇总。
+ 
++时间线按审查文档数轮次。没产出审查文档的运行——被取消、worker 异常或失联、入选侧全部失败、纯文档跳过、没走到收尾的旧留痕——
++不占轮次号，列在时间线下方的「未进时间线的运行」表里，头部「轮次总数」后会注明「另有 K 次」（v1.0.6 起，EV-144）。
++所以「轮次总数：0」不等于这个阶段没跑过；同一轮次号也可能在上下两张表里各出现一次（失败那次与随后的重跑）。
++
+ > **⚠️ 已知缺口**：报告里的「争议项」只会显示一个布尔标记，**永远打印不出具体编号**——`disputes[]` 数组在代码里没有任何写入点。
+ 
+ ---
+@@ -617,6 +621,12 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ > 没确认退出的那一份会一直停在 `running`；本版以前被取消的历史留痕也不回填。
+ > 若输出里有「这一步不会再有第二次机会」的告警（写 run.json 或 task.json 时出错），再跑 `--cancel` 也补不回来，
+ > 请对照告警自己核对归档里的 `run-<id>.json` 与 `task.json` 的运行登记。
++>
++> **`--wait` 报「工作进程失联」或 worker 异常时**（v1.0.6 起，设计 v1.3.48，EV-142）：归档里的 `run-<id>.json` 会标为 `failed`，
++> 并在 `termination` 里记下是哪一种（worker 异常记退出码、失联记原因）；失联时只在工作进程确认已退出才写——
++> 进程还活着、只是心跳过期（`heartbeat_stale`）时不写，报错里会写「工作进程未确认退出」。
++> 失联判定之后 status.json 已是终态，再跑 `--cancel` 会说「已处于终态」、不做任何事；心跳过期而进程一直挂着时，
++> 目前只能在终端手工结束那个进程（BACKLOG EV-146）。
+ 
+ ### 场景 5 · 裁决写了但闸门不过
+ 
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 106dd20..6dfedd0 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -228,7 +228,7 @@
+ | EV-130 | **候选 ① done**（2026-09-26，代码双审 r1（run `20260926T081442Z`）7 条全接受、审批通过；主题 `留痕与文案小修`（计划 r2 `0bf81e6`，计划双审 r1 9 条全接受、审批「修改后开始实施，不再二审」）：`profiles.default.codex` 三阶段改 `qwen3.8-flash`，缺省调用 `-p qwen -m qwen3.8-flash`；取值旁注释写明依据、已 init 项目不受影响、**新项目需有 qwen 额度**（外部可得性残余，计划双审 r1 CODEX-04）、default 与 flash 两档在 codex 侧同值；主设计 11.5 同步，不进 QUICKSTART / RUNBOOK。候选 ② ③ 仍未定） | **`init` 落盘的缺省配置把 codex 钉在 `-p qwen -m qwen3.8-max`，与内置超时档错配，且不跟随个人 codex 默认。** `defaultConfig()` 的 `agents.codex.profile: 'qwen'`（`config.ts` :330）与 `profiles.default.codex` 三阶段 `qwen3.8-max`（:350），内置 `timeout_s: { plan: 900, code: 1200 }`（:282）。M10b 第 4 步实测：3-1 plan 轮 codex 用时 749s（预算的 83%），3-2 code 轮第 1 轮跑满 1200s 超时失败、换 `qwen3.8-flash` 重跑才过；本仓自己早已改成 flash / deepseek 档（`.trivium/config.yaml` 注释记 2026-09-16 max 撞满 1500s）。另一面：编排器显式传 `-p` / `-m`，用户只改 `~/.codex/config.toml` 的默认模型对已 init 的项目**不生效**，而没有任何提示——3-3 轮搭夹具时核出，靠 `setup.mjs` 改夹具配置三处才换到 deepseek-flash。候选：①缺省档改 flash（`profiles.flash` 已是 `qwen3.8-flash`）；②缺省不写 codex 模型槽、交给个人配置（要核 slug 预检与 `model_requested` 留痕怎么取值）；③只在 QUICKSTART / RUNBOOK 写明「改 codex 模型要改项目配置两处」。与 registry.ts codex 条目注释 ② 同源，注意 `init` 冻结缺省的连带（同一注释 ①）。来源：M10b 第 4 步报告 §1.2、§1.3 | `src/trivium/config.ts` :282 / :330 / :350、`src/trivium/agents/registry.ts` codex 条目注释 |
+ | EV-131 | **done**（2026-09-26，代码双审 r1（run `20260926T081442Z`）7 条全接受、审批通过；主题 `留痕与文案小修`（计划 r2 `0bf81e6`，计划双审 r1 9 条全接受、审批「修改后开始实施，不再二审」）：命令 B 描述去实名，重渲染 4 份产物；新增渲染断言「七条契约的 description 与全部产物的一级标题不含注册表 label 派生出的产品名」） | **命令 B 的入口描述写死「Antigravity + ZCode 背靠背双审」。** `skills-src/commands/review-plan.contract.md` :3 的 `description` 渲染进各载体 SKILL.md 的 front-matter 与一级标题（已安装的 claude、zcode 两份逐字相同）。命令 C / D 的描述早已泛化为「背靠背双审」，只有 B 留着两家实名；而缺省审核者现为 codex / gemini / glm 减去当轮 Driver（r11 D-4），glm 当 Driver 时 ZCode 根本不入选，标题与实际相反。只影响措辞；`description` 同时是载体挑 skill 的依据，改后要重渲染并重装。候选修法：与 C / D 同口径去掉实名；补一格渲染断言「命令描述不含已登记 Agent 的显示名」。来源：M10b 第 4 步 3-5 操作卡起草时核出 | `skills-src/commands/review-plan.contract.md` :3 |
+ | EV-132 | **候选 ① done；候选 ② 折中版 done**（2026-09-26，主题 `审批前工作树摘要`：计划 r2 `12d54e2`，计划双审第 1 轮 16 条全接受、审批「开始实施」。`approve` 通过时（复核之后、落审批之前）与两个停点出口打印自审查收尾以来的工作树改动摘要，只告知、不改退出码与闸门迁移；基线为新增的 run.v2 可选字段 `snapshot.after_tree_hash`（收尾复算的 tree，不参与判定）；取不到时报四种原因之一、不报「无改动」；20 秒总预算；停点尾句、`l2-notice`、`L2_AFTER_THE_FACT`、`driver.snippet`（新一档指纹）、`dual-approve` 入口资产同步；设计 v1.3.46、PRD v1.4.10。闸门期仍不拦、不兜底。代码双审 r1（run `20260926T111908Z`）7 条：接受 6（照抄命令形状闸与加引号、预算注入自我暴露、按进程组收尾与整体截止、「会列出」补取不到、原因补句号）、暂缓 1（CODEX-04 → EV-141），审批通过。另登 EV-139、EV-140、EV-141）（2026-09-26 用户定：原候选 ②「审批前复核加工作树比对、不一致即拒」**不做**，改为**审批时只打印一段工作树改动摘要、不拦、不改判定**，另起会话处理；理由：影响面只在 L2 Driver 的闸门期，审批人唯一且可自查，改判定的误伤面与成本不值。仍属行为变更，照规矩走计划双审。代码双审 r1（run `20260926T081442Z`）7 条全接受、审批通过；r1 GLM-02 / CODEX-04 另补：l2-notice 审批两格加「命令 B / C / D」限定、写明命令 A 无审批时的事后防线，「复核会拦下」改为「审批前复核会发现不符并拒绝审批」；主题 `留痕与文案小修`（计划 r2 `0bf81e6`，计划双审 r1 9 条全接受、审批「修改后开始实施，不再二审」）：停点尾句按闸门期 / 审批后按档写实；`l2-notice` 按审查中 / 闸门期 / 审查工件三格写；`run-enforce` 按护栏档分写命令 A 的「裁决未齐就收工」；`describeGuard` 与 `hooks --agent` 提示不再把审批前复核列成业务写入越界的兜底；`driver.snippet` 同步并追加三档指纹、本仓根 AGENTS.md / GEMINI.md 原位升级；QUICKSTART §5.2 补命令 A 一行。**计划双审 r1 CODEX-01 ≡ AGY-01 核出**：漂移复算不是「只比已跟踪文件」——`workTreeHash` 走临时索引 `add -A`，未忽略的未跟踪文件也进比对，盲区是被 .gitignore 忽略的文件；`gate.ts` 注释与只读失守文案、`base.ts` 注释里的同一失实一并更正。两族失实措辞由否定式渲染断言守住。候选 ② 另起主题） | **L2 文案宣称「闸门期越界会在审批前复核与跑后漂移复算时暴露」，实测两道都不暴露。** 审批前复核（`verifyRoundForApproval`，`gate.ts` :897）只核裁决齐备与本轮登记工件的 sha256，不看工作树；跑后漂移复算只在审查运行收尾时比「送审快照 vs 当时工作树」。所以**闸门期**改业务文件哪一道都不会发现。M10b 第 4 步 3-4 实测：闸门期操作者在终端给 `NOTES.md` 追加一行，codex 会话里 `approve` 退 0 放行、`run.json` 无任何漂移记录。受影响的文案两处：停点话术尾句（`hook-config.ts` :395 `gateHoldNotice`）、入口资产 `partials/guard/l2-notice.md` :2（开列「闸门期不改业务文件」后说越界由这两道暴露）；`run-enforce.l2-none.md` :2 同形措辞但所指是另两条规则（含「裁决未完成不得收工」，approve 确能查出），改时一并核、未必要改。**更正（2026-09-26，留痕与文案小修计划 §4.1）**：「approve 确能查出」对命令 A 不成立——命令 A 没有审批这一步；l2-none 上「裁决未齐就收工」没有机制拦，只会在 `trivium status` 留下未关闭闸门，l2-hook（glm）有尽力的 Stop 拦截。反方向也有偏差：`l2-notice.md` 写「整次运行可能因此作废」，未区分文件是否在 diff / `--context` 内——改无关文件判 `unrelated`、缺省 `on_drift: warn` 只告警；3-4 的 codex 两次据此拒写无关文件。候选：①文案按「审查中 / 闸门期」分开写实，闸门期写明「无事后机制兜底，靠自觉」；②给审批前复核加工作树比对（冻结时 tree hash vs 审批时，排除归档根与 `.trivium/`），改的是判定、要走计划双审。（2026-09-26 用户改为折中：审批时只打印工作树改动摘要，不拦、不改判定——见状态列）r5 §7.2.1「approve 复核暴露」同一处失准，第 5 步回溯时更正。来源：M10b 第 4 步报告 §1.4。**追加（2026-09-26，M10b 第 5 步代码双审 r4 CODEX-01）**：同一失准还有第三个落点——「审批之后删改审查工件」。审批前复核只核本轮、只在审批那一刻；更早轮次与审批后的改动靠提交锚（`hookPreCommit` 是锚②全量核对的唯一调用点），而它只在带 Hook 的载体会话里由提交触发。Codex / Antigravity 主攻的轮次，审批之后删改审查工件无人发现。第 5 步把 QUICKSTART §5.2 覆盖面表里原写的「任何时候删改审查工件都能发现」拆成审批前 / 审批后两行，RUNBOOK §十补「审批之后」一节；候选 ① 的文案修正须把这一格与停点尾句、`l2-notice.md` 一并覆盖 | `src/trivium/hook-config.ts` :395、`skills-src/partials/guard/l2-notice.md`、`src/trivium/gate.ts` :897 |
+-| EV-133 | **done（候选 ②）**（2026-09-26，代码双审 r1（run `20260926T081442Z`）7 条全接受、审批通过；r1 CODEX-03 ≡ GLM-03 另补：回归用例扩到 --check、--await-approval、approve 三步；主题 `留痕与文案小修`（计划 r2 `0bf81e6`，计划双审 r1 9 条全接受、审批「修改后开始实施，不再二审」）：不回写，注明语义——run.v1 / run.v2 schema description、`types.ts` `RunMeta.gate` 注释、主设计 §7 第 6 步与 §6.7 示例；新增回归用例「`--check` 通过前后 run.json 逐字节不变」钉住「收尾后不再更新」这条有意的不变量（与 EV-128 同类——EV-128 后按「取消轮唯一一次终态写入、不属收尾后更新」落地，不冲突）） | **`gate --check` 通过后不回写 `run.json.gate.adjudication_complete`。** 主设计 §7（裁决完整性校验算法第 6 步）写「通过 → 写 run 元数据 `gate.adjudication_complete=true`（含 `warnings[]`）」；实现里只有「没有意见可裁决」一支（`review.ts` :1041）写 `true`，`--check` 通过、`--await-approval`、`approve` 都不回写。M10b 第 4 步 3-1 / 3-3 / 3-4 / 3-5 四轮审批后的 run.json 均停在 `adjudication_complete: false`、`state: review_done_awaiting_disposition`（闸门实时状态另由 `trivium status` 给出，是 `approved`）。代码里没有读该字段的地方，判定不受影响，但留痕读者会被误导。候选：①`--check` 通过时按设计回写（注意 run.json 已登记的工件哈希不含 run.json 自身，回写不触发改工件复核）；②删字段或在 schema 注明「只在无意见时为 true」。与 EV-128（`review --cancel` 不回写 run.json）同一类「run.json 收尾后不再更新」（EV-128 已按「取消轮唯一一次终态写入」落地，不属收尾后更新）。来源：M10b 第 4 步报告 §1.5 | `src/trivium/review.ts` :1041、`src/trivium/gate.ts`（`--check` 通过分支）、主设计 §7 |
++| EV-133 | **done（候选 ②）**（2026-09-26，代码双审 r1（run `20260926T081442Z`）7 条全接受、审批通过；r1 CODEX-03 ≡ GLM-03 另补：回归用例扩到 --check、--await-approval、approve 三步；主题 `留痕与文案小修`（计划 r2 `0bf81e6`，计划双审 r1 9 条全接受、审批「修改后开始实施，不再二审」）：不回写，注明语义——run.v1 / run.v2 schema description、`types.ts` `RunMeta.gate` 注释、主设计 §7 第 6 步与 §6.7 示例；新增回归用例「`--check` 通过前后 run.json 逐字节不变」钉住「收尾后不再更新」这条有意的不变量（与 EV-128 同类——EV-128 后按「取消轮唯一一次终态写入、不属收尾后更新」落地，不冲突）） | **`gate --check` 通过后不回写 `run.json.gate.adjudication_complete`。** 主设计 §7（裁决完整性校验算法第 6 步）写「通过 → 写 run 元数据 `gate.adjudication_complete=true`（含 `warnings[]`）」；实现里只有「没有意见可裁决」一支（`review.ts` :1041）写 `true`，`--check` 通过、`--await-approval`、`approve` 都不回写。M10b 第 4 步 3-1 / 3-3 / 3-4 / 3-5 四轮审批后的 run.json 均停在 `adjudication_complete: false`、`state: review_done_awaiting_disposition`（闸门实时状态另由 `trivium status` 给出，是 `approved`）。代码里没有读该字段的地方，判定不受影响，但留痕读者会被误导。候选：①`--check` 通过时按设计回写（注意 run.json 已登记的工件哈希不含 run.json 自身，回写不触发改工件复核）；②删字段或在 schema 注明「只在无意见时为 true」。与 EV-128（`review --cancel` 不回写 run.json）同一类「run.json 收尾后不再更新」（EV-128 已按「取消轮唯一一次终态写入」落地，不属收尾后更新；EV-142 的 worker 异常 / `worker_lost` 收尾同一口径，且三条事后收尾的判与写在主题任务锁里，保证至多一次）。来源：M10b 第 4 步报告 §1.5 | `src/trivium/review.ts` :1041、`src/trivium/gate.ts`（`--check` 通过分支）、主设计 §7 |
+ | EV-134 | **done（(a) 严格）**（2026-09-26，代码双审 r1（run `20260926T081442Z`）7 条全接受、审批通过；本轮应答件是按新判据核对的第一份裁决件；主题 `留痕与文案小修`（计划 r2 `0bf81e6`，计划双审 r1 9 条全接受、审批「修改后开始实施，不再二审」）：`addresses` 每项须指向本轮有效侧（status ∈ {ok, parse_fallback}）的审查文档、不重复、份数 = 有效侧数，写法接受文件名或以 `<主题>/<阶段>/<文件名>` 结尾的路径；期望集由 `loadRoundReviews` 从 `run.json.artifacts[]` 派生、作为 `GateCheckInput` 必填字段传入；期望集为空时只核非空并告警 `addresses_unchecked`（r1 CODEX-02）；失败文案给出期望文件名与「历史轮次不要改 / 在途轮次改写」两档出口（r1 CODEX-03）。入口资产 `body.md` 写明填法。历史 154 份裁决件中 65 份填的是意见编号——显式重跑 `--check` 才会读到，零配额验收读数见测试报告） | **裁决件 `addresses` 只校验非空，不核内容与份数。** 设计稿（裁决完整性校验第 3 步「addresses 必须匹配本轮」、§M7b「基数按 `critics_selected` 的 N 侧」）、模板 `disposition.md.template` 与 schema 描述（「本件应答的审查文档文件名」）都指审查文档；`gate.ts` :290 只查 `Array.isArray && length > 0`。M10b 第 4 步里 Claude 代写的 3-1 / 3-3 裁决件把**意见编号**填进 `addresses`（3-3 共 11 项），照样 `gate --check` 通过；3-5 glm 按模板填两份审查文档路径，才是契约形态。判定不受影响（编号齐全靠裁决表与 `structured_ids`），但这一格名存实亡；另，M10b 轮次台账 §1 注「裁决条目 = addresses 长度」的括注随之不准，实际记的是闸门核对的编号数。候选：每项须指向本轮某入选审核者的审查文档（文件名或归档相对路径），份数 = 有效侧数；不合即 `bad_front_matter`。收紧前先扫历史留痕会不会集体读不过（`gate --check` 只核本轮，影响面应只在新裁决件）。来源：M10b 第 4 步报告 §1.5 | `src/trivium/gate.ts` :290、`skills/dual-critic/schema/disposition.v1.json`、`templates/disposition.md.template` |
+ | EV-135 | **已关闭**（2026-09-26，注记；M10b r10 §3.3 要求在 BACKLOG 注明） | **M10 计划 r1 裁决件的 AGY-05 暂缓条，其重开条件随 D-3 失效。** 原条主张「整体撤掉 `guardLevel` 动态降级、直接静态定值」，暂缓至「第 1 步 zcode Hook 实测给出 `hooks_deny_ok` 落 true / false / null 哪一格」再定（`.reviews/M10-任意Driver/plan/2026-09-21-M10-任意Driver-revised-claude.md` 第 45 行；重开条件见 M10b r5 §4.3.4）。M10b 第 1 步报告 §3.5 给出「true，有五个前提」；用户 2026-09-25 拍板 D-2 = (b)（glm 登记为 L2、保留尽力拦截 Hook）与 D-3 = 撤回 `hooks_deny_ok` 自动探针（r10 §3.1、§3.3），`effectiveGuardLevel` 只对登记 L1 的载体按 Hook 配置在场降级、不再读探针字段。原条针对的「glm 按探针结论动态定级」已随 D-2 / D-3 撤掉（glm 静态登记 L2），重开条件所依赖的字段不再存在，本条无需再开；现存的「登记 L1 的载体在 Hook 配置不在场时降为 L2」只作用于 claude、按配置在场判定而非探针，不在原条论域内。 | `src/trivium/hook-config.ts` `effectiveGuardLevel`；M10b r10 §3.1、§3.3 |
+ | EV-136 | **done**（2026-09-26 用户定：一定要修；流程取「先实施再代码双审」，不走计划双审——它拦着所有含 glm 的审查，包括审它自己的那一轮。代码双审 r1（主题 `EV-136-glm探活选模路径`，run `20260926T051412Z`）三侧 `approve-with-nits`、11 条全接受，用户审批通过、无附言；按应答件修订后读数见本行末） | **glm 认证探活探的不是审查运行那条选模路径。** `authProbe.probe()`（`zcode.ts`）以 `homeDir: null` 拉起，个人 provider 配置 `~/.zcode/v2/provider_config.json` 被注入，0.16.9 见它存在就直接用它的 `defaultModelSelection`（P-31）——探的是**个人缺省模型**；而审查运行（`run()`）自 EV-82 起走副本 HOME、不注入个人配置、用 `cli/config.json` 的 `model.main` 并按档位覆盖。同一个探活的指纹早就只认 `cli/config.json`，拉起却不走它，自相矛盾。实遇（2026-09-26）：个人缺省指向已停用的「百炼TokenPlan」provider（`qwen3.8-max`，`enabled: false`，当日 02:58Z 起），`preflight` 连续三次在「ZCode 已认证」报 `Model creation failed` 退 69，「留痕与文案小修」计划双审起不来；而审查实际要用的 GLM 订阅（`bigmodel-coding-plan/GLM-5.3`）完好。桌面端把缺省模型改选 GLM-5.3 不写个人配置的 `defaultModelSelection`（只写 `v2/setting.json`），绕不过去。反方向同样成立：个人缺省可用而 GLM 坏了时，探活会放行一轮跑不通的审查。**修法**：探活与 `run()` 同一形态——`mkdtemp` 临时运行目录 → `prepareZcodeHome`（当前档位 plan 阶段的 glm 模型、请求置首）→ 副本 HOME + 副本支不注入个人配置 + **两支都设落点根**（r1 CODEX-02 ≡ GLM-02）；副本源缺失 / 档位无模型时退回与 `run()` 相同的真实 HOME 退路；探完只删 `mkdtemp` 返回值（副本含凭据）；副本源损坏或读不了时落成一条可读失败、指纹返回 null（r1 CODEX-01 ≡ GLM-04）；详情写明探的是哪条路径——「模型 X」、置首挪不动时注明「实际生效模型未核」（CODEX-03）、限定失败时「副本原有的 model.main」、退路时「真实 HOME 下 ZCode 自选的缺省模型」（GLM-05），失败分支同样带上（GLM-06），家目录归一 `~`（GLM-01）；指纹带上探活模型（换档位即失效，格式变化也让按旧路径探出的缓存作废）。用例 10 条（`test/unit/zcode-auth-probe.test.ts`，临时 HOME 下恒摆个人配置，否则注入与否观测相同），变异 13/13（`doc/05_testing/evidence/ev136-mutation-20260926/`），全量 2029/2027/0/2；主设计 v1.3.44 回补 11.3 第 7 条。实机（修订前的构建）：`preflight` 读数「ZCode 已认证 · 探活通过（6s，模型 bigmodel-coding-plan/GLM-5.3）」，本轮代码双审 glm 侧生效模型即 `bigmodel-coding-plan/GLM-5.3`。变异 M4 故意不删临时目录，历轮变异在系统临时目录留下若干只含夹具假凭据的 `trivium-zcode-auth-*`，未用通配删除。**残余**（r1 CODEX-03、CODEX-04 ≡ GLM-03）：①不分阶段，只取 plan 阶段模型作代表；②不分命令行 / 主题级覆盖——`--model-glm` 与主题级覆盖不进探活与指纹，档位模型坏而覆盖模型好 ⇒ 误拦，反之 ⇒ 放行；中期方向是由调用方按 `run()` 同一 `routeModel` 式子算好当轮模型传给 `authProbe`、指纹随之派生（要改 `AuthProbe` 接口与四家适配器）；③不回读生效模型，正结论照常缓存。旗标 / 模型探针（`probes/zcode.ts`）仍测真实环境，是有意的，不在本条 | `src/trivium/adapters/zcode.ts` `authProbe`、`ZcodeInvokeOptions.storageRedirectRoot` 注释 |
+@@ -237,9 +237,11 @@
+ | EV-139 | todo（2026-09-26 登记，审批前工作树摘要计划 r2 §6.3） | **`diffTrees` 失败时返回 `[]`，`judgeDrift` 因此会把「比不了」判成「无漂移」。**`util/git.ts` 的 `diffTrees` 在 `diff-tree` 非零退出时返回空数组；`judgeDrift` 第 3.a 步拿它列变更文件，空 ⇒ 第 3.b 步判 `none`。送审快照 `tree_hash` 是 `write-tree` 写出的不可达对象，审查运行期间若被 git 清理，或 git 本身出错，跑后漂移复算会静默报「无漂移」。审批时的工作树摘要为此另立了失败即抛的 `diffTreesNameStatus`，没有改 `diffTrees`——改它等于改漂移判定。候选：①`judgeDrift` 改用严格助手，比不了时判一种新结论（如 `unknown`，按 `on_drift` 处置并告警）；②只加告警、不改结论。要单独走计划 | `src/trivium/util/git.ts` `diffTrees`、`src/trivium/freeze.ts` `judgeDrift` |
+ | EV-140 | todo（2026-09-26 登记，审批前工作树摘要计划 r2 §6.2 / §6.3；由用户定要不要） | **审批前单独看工作树改动摘要，没有只读入口。**`approve` 没有确认步骤：摘要在落审批之前打印，但同一条命令里人来不及中止；「看了再批」的时点目前只有停点那次打印（`--await-approval` 与 `--check` 自动立停点），停点之后到审批之间的改动要到 `approve` 才看得到。候选：①`approve --dry-run`（只复核并打印摘要，不落审批）；②`trivium status --topic <t>` 对等待审批的闸门带摘要；③维持现状，文档写明「审批后发现不该有的改动，用 abandon 作废本轮」 | `src/trivium/cli.ts` `cmdApproval`、`src/trivium/status.ts` |
+ | EV-141 | todo（2026-09-26 登记，审批前工作树摘要代码双审 r1 CODEX-04 暂缓） | **审批时的工作树摘要没有开关、预算不可配置，每轮扫两到三次工作树。**`worktree-summary.ts` 的 20 秒预算是常量，只有测试注入变量能改；`--check` 立停点、`--await-approval`、`approve` 各算一次，每次都要临时索引 `add -A` 重新哈希整棵未忽略的工作树。`add -A` 常态超过 20 秒的大仓里，摘要会次次报超时、三个出口各白等 20 秒。候选：①config.v2 加 `review.worktree_summary_budget_s` 与关闭档（schema、迁移、文档、`init` 缺省一并走）；②超时时报实测耗时，让「这仓太大」成为可读事实；③同轮同基线的第二次打印跳过或标「本轮已列过」（会改变 W4 已确认的双打印行为）。触发条件：出现 `add -A` 常态超过 20 秒的真实项目，或用户提出 | `src/trivium/worktree-summary.ts`、`src/trivium/cli.ts`、`skills/dual-critic/schema/config.v2.json` |
+-| EV-142 | todo（2026-09-26 登记，留痕字段与误报小修计划 r2 §6.3 第 1 条） | **worker 抛异常与 `--wait` 判 `worker_lost` 两处也不写 run.json，被判失败的运行在归档里停在 `running`。**EV-128 只修了 `review --cancel` 那一路；`run-protocol.ts` 的 worker `catch` 分支与 `worker_lost` 分支都只改 status.json 为 `failed`。本仓 4 份停在 `running` 的历史留痕分不出是哪一种。候选：复用 `finalizeCancelledRunMeta` 的前提与写法、把终态参数化（`failed`）。**难点在前提**：`worker_lost` 靠心跳判，进程可能还活着，「工作进程已确认退出」这一前提要另论，不能照搬 | `src/trivium/run-protocol.ts` `workerMain` 的 `catch`、`waitRun` 的 `worker_lost` 分支、`src/trivium/meta.ts` `finalizeCancelledRunMeta` |
++| EV-142 | **实施完成，待代码双审**（2026-09-27，主题 `未收尾运行的留痕与复盘可见性`（计划 r2 `e22a174`，计划双审 r1 run `20260926T235951Z` 8 条全接受、审批「修改后实施」））：`meta.ts` 函数体改为按目标终态参数化的 `finalizeUnfinishedRunMeta`，新增 `finalizeFailedRunMeta`；worker 异常分支自己写（排在 `patchStatus` 之前）、`--wait` 判 `worker_lost` 时用改写 status.json 之前的事实确认工作进程已退出才写（status.json 读不到时按 worker.pid 判）；第一步进主题任务锁；run.v2 新增可选 `termination`；心跳过期而进程还在时不写；历史 4 份 running 不回填；其余未收尾路径登 EV-145、失联后 `--cancel` 杀不掉挂住进程登 EV-146（2026-09-26 登记，留痕字段与误报小修计划 r2 §6.3 第 1 条） | **worker 抛异常与 `--wait` 判 `worker_lost` 两处也不写 run.json，被判失败的运行在归档里停在 `running`。**EV-128 只修了 `review --cancel` 那一路；`run-protocol.ts` 的 worker `catch` 分支与 `worker_lost` 分支都只改 status.json 为 `failed`。本仓 4 份停在 `running` 的历史留痕分不出是哪一种。候选：复用 `finalizeCancelledRunMeta` 的前提与写法、把终态参数化（`failed`）。**难点在前提**：`worker_lost` 靠心跳判，进程可能还活着，「工作进程已确认退出」这一前提要另论，不能照搬 | `src/trivium/run-protocol.ts` `workerMain` 的 `catch`、`waitRun` 的 `worker_lost` 分支、`src/trivium/meta.ts` `finalizeCancelledRunMeta` |
+ | EV-143 | todo（2026-09-26 登记，留痕字段与误报小修计划 r2 §6.3 第 2 条） | **evidence 与 consulted 核对的剩余误差。**EV-127 修掉中段截断后仍有三类：①不以九个根目录起头的仓内路径不核（`skills-src/`、`skills/` 等，漏报；本仓历史上这类都已列进 consulted 或不是入仓文件，但往后不保证）；②非 ASCII 文件名永远不核（字符类不含中文，主设计本身就是，漏报）；③意见描述假想场景时写的示例路径（`src/a.ts`、`src/leak.txt`）被当成引用（误报，本仓历史 96 条里 39 条仓内不存在）。候选：①从项目树取顶层目录作根集合；②字符类放开非 ASCII；③只核仓内存在的路径。都属收紧或改判据，要单独论证；这一项只进告警、不改判定 | `src/trivium/parse.ts` `checkReviewIntegrity` |
+-| EV-144 | todo（2026-09-26 登记，用户定；留痕字段与误报小修实施报告 §3.2） | **`report` 按审查文档枚举轮次，没有审查文档的运行在时间线里不可见。**`enumerateRounds` 先从阶段目录的审查文档收集轮次号，再从 `_meta/run-*.json` 反查每个轮次对应哪次运行；被 `--cancel` 的运行（EV-128 起 run.json 如实记 `cancelled`）以及 EV-142 那两种失败都没写出审查文档，于是整轮不出现——留痕写对了，复盘却看不见，「该阶段没跑过」与「跑了但被取消 / 失败」在报告里分不开。零配额验收实测：取消一轮后 `report` 报「轮次总数：0」。**难点**：没写出工件的运行不推高轮次号，随后的重跑沿用同一个轮次号，按轮组织的时间线装不下「同一轮多次运行」。候选：①时间线改为按运行列，无工件的运行标注原因；②时间线不动，只在报告告警段列出这类运行（run_id、状态、起止时间），代价小、足以让人看见。未核实：两侧都失败的轮次是否同样不可见（取决于失败侧写不写审查文档）。**触发条件：做 EV-142 时一并评估** | `src/trivium/report.ts` `enumerateRounds` / `buildTopicReport` |
++| EV-144 | **实施完成，待代码双审（候选 ② 的变体 ②′）**（2026-09-27，主题 `未收尾运行的留痕与复盘可见性`，与 EV-142 同一计划与双审）：时间线与轮次口径不动，`report` 在时间线下方另列「未进时间线的运行」表（该阶段可读 run.json 减去时间线选中者；预定轮次、起止、状态、按留痕事实给的说明），头部「轮次总数」后注明「另有 K 次」，`--json` 多 `unlistedRuns`；读不出的 run.json 进 notes。已核实：两侧都失败的轮次此前同样不可见（失败侧只写 `.failed.json`，夹具实测 `rounds: []`）（2026-09-26 登记，用户定；留痕字段与误报小修实施报告 §3.2） | **`report` 按审查文档枚举轮次，没有审查文档的运行在时间线里不可见。**`enumerateRounds` 先从阶段目录的审查文档收集轮次号，再从 `_meta/run-*.json` 反查每个轮次对应哪次运行；被 `--cancel` 的运行（EV-128 起 run.json 如实记 `cancelled`）以及 EV-142 那两种失败都没写出审查文档，于是整轮不出现——留痕写对了，复盘却看不见，「该阶段没跑过」与「跑了但被取消 / 失败」在报告里分不开。零配额验收实测：取消一轮后 `report` 报「轮次总数：0」。**难点**：没写出工件的运行不推高轮次号，随后的重跑沿用同一个轮次号，按轮组织的时间线装不下「同一轮多次运行」。候选：①时间线改为按运行列，无工件的运行标注原因；②时间线不动，只在报告告警段列出这类运行（run_id、状态、起止时间），代价小、足以让人看见。未核实：两侧都失败的轮次是否同样不可见（取决于失败侧写不写审查文档）。**触发条件：做 EV-142 时一并评估** | `src/trivium/report.ts` `enumerateRounds` / `buildTopicReport` |
++| EV-145 | todo（2026-09-27 登记，未收尾运行的留痕与复盘可见性计划 r2 §6.3 第 1 条） | **其它「写了骨架却走不到收尾」的路，run.json 同样停在 `running`。**EV-128 / EV-142 修了取消、worker 异常、`worker_lost` 三条；还剩：①`prepareRun` 在 `review.ts` :949 写骨架、:951 登记之后，:1002 闸门拦下「上一轮未裁决直接重跑」——零配额实测退 2，归档多出一份 `running` 的 run.json（`rerun_index` 为下一轮），:951 / :965 的 task.json 写失败同形；②`startRun` 在 `prepareRun` 之后失败（`run-protocol.ts` :427 的 `catch`，派生前后都有可能——派生成功后才失败时 worker 可能仍在跑，前提要另论）；③同步路径 `runReviewLocked` 里 `executeRun` 抛错（只回收闸门）；④worker 猝死且没人跑 `--wait` / `--cancel`（会话启动清扫 `sweepDeadRunningGates` 只回收闸门）。①最容易发生，正解多半是「先查闸门再写骨架」，与事后收尾是两种修法。候选：①把闸门检查挪到骨架写入之前，或在拦下时就地收尾；②～④复用 `finalizeUnfinishedRunMeta`，写入前提逐条论证 | `src/trivium/review.ts` `prepareRun` / `runReviewLocked`、`src/trivium/run-protocol.ts` `startRun`、`src/trivium/hooks.ts` `sweepDeadRunningGates` |
++| EV-146 | todo（2026-09-27 登记，未收尾运行的留痕与复盘可见性计划 r2 §6.3 第 2 条） | **`heartbeat_stale` 判失联之后，`--cancel` 杀不掉挂住的 worker。**`--wait` 判 `worker_lost（heartbeat_stale）` 时进程还活着，status.json 却已被写成 `failed`；此后 `--cancel` 在 `cancelRun` 的终态分支早退（「已处于终态，无需取消」），挂住的 worker 没有工具化的杀法，只能手工结束，而手工结束之后也没人再收 run.json 的尾（EV-142 在进程未确认退出时不写）。候选：终态分支对「`worker_lost（heartbeat_stale）` 且进程仍在」开一条只杀进程、不改历史的例外，杀掉后按 EV-142 同一前提收尾。碰终态早退「不追溯改写」的语义，要单独论证 | `src/trivium/run-protocol.ts` `cancelRun`（终态早退分支） |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/skills/dual-critic/schema/run.v2.json b/skills/dual-critic/schema/run.v2.json
+index ad477e0..3b4c142 100644
+--- a/skills/dual-critic/schema/run.v2.json
++++ b/skills/dual-critic/schema/run.v2.json
+@@ -468,7 +468,7 @@
+       }
+     },
+     "status": {
+-      "description": "running 是骨架态（prepareRun 落盘）；success / failed 由 worker 收尾写；cancelled 由 review --cancel 在工作进程确认退出后写（EV-128），是取消轮唯一一次终态写入。已结束却仍为 running 的留痕表示没有走到收尾（worker 异常、worker_lost，或 EV-128 之前被取消），不回填",
++      "description": "running 是骨架态（prepareRun 落盘）；success / failed 由 worker 收尾写；另有三条事后收尾，都只在仍为 running 时写、是那份运行唯一一次终态写入：cancelled 由 review --cancel 在工作进程确认退出后写（EV-128）；failed 也可能由 worker 异常分支自己写、或由 --wait 判 worker_lost 且确认工作进程已退出时写（EV-142，同时写 termination）。已结束却仍为 running 的留痕表示没有走到收尾（本版以前的 worker 异常 / worker_lost / 取消、失联时工作进程未确认退出，或 prepare 阶段被拦），不回填",
+       "enum": [
+         "running",
+         "success",
+@@ -476,6 +476,29 @@
+         "cancelled"
+       ]
+     },
++    "termination": {
++      "description": "这一次终态由哪条事后收尾写的（EV-142）。只由 worker 异常分支（by=worker_exception，记退出码）与 --wait 判 worker_lost 且确认工作进程已退出（by=worker_lost，记失联原因）两条路写。缺席 = 正常收尾（worker 写 success / failed）、取消轮（status: cancelled 已说明来路）、或本字段之前的留痕。只存结构化字段、不存异常原文：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。reason 的枚举须与 status.ts 的 WORKER_LOST_REASONS 逐项相等（由 run-meta-strict.test.ts 守住）",
++      "oneOf": [
++        {
++          "type": "object",
++          "required": ["by", "exit_code"],
++          "additionalProperties": false,
++          "properties": {
++            "by": { "const": "worker_exception" },
++            "exit_code": { "type": "integer" }
++          }
++        },
++        {
++          "type": "object",
++          "required": ["by", "reason"],
++          "additionalProperties": false,
++          "properties": {
++            "by": { "const": "worker_lost" },
++            "reason": { "enum": ["no_status_file", "heartbeat_stale", "pid_gone"] }
++          }
++        }
++      ]
++    },
+     "skipped": {
+       "type": "boolean"
+     },
+diff --git a/src/trivium/meta.ts b/src/trivium/meta.ts
+index 62b2d00..17c6ee1 100644
+--- a/src/trivium/meta.ts
++++ b/src/trivium/meta.ts
+@@ -8,7 +8,7 @@
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import type {
+-  AgentId, CriticId, LegacyReviewMode, RunMeta, Stage, StageOrVerify, CommandEntry,
++  AgentId, CriticId, LegacyReviewMode, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
+ } from './types.js';
+ import type { BuildStamp } from './build-stamp.js';
+ import { writeAtomic } from './util/fsx.js';
+@@ -30,7 +30,7 @@ export interface TaskLock {
+  * 复用会自锁。`.` 开头保证不与任何主题撞名（§6.1 禁止主题以 `.` 开头），
+  * `hook-session-start` 枚举锁目录时也会跳过它。
+  */
+-const taskLockName = (topic: string): string => `.task-${topic}`;
++export const taskLockName = (topic: string): string => `.task-${topic}`;
+ 
+ /** run_id 形如 20260910T142310Z：UTC 紧凑时间戳，可排序、可做文件名 */
+ export function newRunId(now: Date = new Date()): string {
+@@ -523,13 +523,16 @@ export async function readRunMeta(
+   return null;
+ }
+ 
+-// ─────────────────────── --cancel 的归档侧收尾（EV-128） ───────────────────────
++// ─────────────────────── 事后收尾：--cancel（EV-128）、worker 异常与 worker_lost（EV-142） ───────────────────────
+ 
+-/** `finalizeCancelledRunMeta` 每一步的结果；`error` 为真表示是异常转成的跳过 */
++/** 事后收尾每一步的结果；`error` 为真表示是异常转成的跳过 */
+ export type FinalizeStep =
+   | { kind: 'written' }
+   | { kind: 'skipped'; why: string; error?: boolean };
+ 
++/** 事后收尾能写的两种终态。`success` 只由 worker 正常收尾写 */
++type UnfinishedTerminal = 'cancelled' | 'failed';
++
+ const skipped = (why: string): FinalizeStep => ({ kind: 'skipped', why });
+ const skippedFromError = (what: string, e: unknown): FinalizeStep => ({
+   kind: 'skipped',
+@@ -537,94 +540,138 @@ const skippedFromError = (what: string, e: unknown): FinalizeStep => ({
+   error: true,
+ });
+ 
++interface FinalizeInput {
++  layout: ArchiveLayout;
++  stage: Stage;
++  runId: string;
++  lock: TaskLock;
++  /**
++   * 「没有另一个写者」：别的进程调用时传「工作进程已确认退出」的结论（`cancelRun` 传 `workerConfirmedGone(...).gone`，
++   * `waitRun` 传改写 status.json 之前的判定）；worker 自己在异常分支调用时恒传 true——它就是那个写者。
++   * 显式入参，接线才有用例守得住。
++   */
++  workerGone: boolean;
++}
++
+ /**
+- * 把被 `review --cancel` 的运行在归档侧收尾（EV-128，计划 r2 §3.2）。
++ * 把被 `review --cancel` 的运行在归档侧收尾（EV-128，计划 r2 §3.2）。签名与行为自 EV-128 起不变。
+  *
+  * 取消轮从来走不到 worker 的收尾：worker 被杀在收尾之前，run.json 停在骨架的 `running`。
+  * 这里补上它**唯一一次**终态写入，写完同样不再更新——与 EV-133「收尾后不再更新」不冲突。
++ * 不写 `termination`：`status: cancelled` 已说明来路。
++ */
++export function finalizeCancelledRunMeta(i: FinalizeInput): Promise<{ runMeta: FinalizeStep; task: FinalizeStep }> {
++  return finalizeUnfinishedRunMeta({ ...i, terminal: 'cancelled' });
++}
++
++/**
++ * 把没走到 worker 收尾就失败的运行在归档侧收尾为 `failed`（EV-142，计划 r2 §3.2 / §3.3）。
++ * 两个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
++ * 且确认工作进程已退出（`termination.by = worker_lost`）。
++ */
++export function finalizeFailedRunMeta(
++  i: FinalizeInput & { termination: RunTermination },
++): Promise<{ runMeta: FinalizeStep; task: FinalizeStep }> {
++  return finalizeUnfinishedRunMeta({ ...i, terminal: 'failed' });
++}
++
++/**
++ * 事后收尾的通用体：按「目标终态」参数化（计划 r2 §3.1，D4 取 (a)）。
+  *
+- * **两步各自独立判定，对进程中断可重入**：`cancelRun` 把本函数排在 `patchStatus` 之前，
+- * 进程死在任意两次写之间时 status.json 仍非终态，再跑一次 `--cancel` 会把没做完的那一步补上
+- * （上一版排在 `patchStatus` 之后，中断即永久停在 running——计划双审 r1 CODEX-01 ≡ GLM-01）。
+- * **对单步写失败不可重入**（代码双审 r1 CODEX-01）：异常转成 skipped 后 `cancelRun` 照常落终态，
+- * 之后 `--cancel` 在终态分支早退，这一步没有第二次机会——`cancelRun` 的告警会当场说出来，要人工对账。
++ * **两步各自独立判定，对进程中断可重入**：调用方都把本函数排在把 status.json 落终态之前，
++ * 进程死在任意两次写之间时 status.json 仍非终态，再跑一次 `--cancel` / `--wait` 会把没做完的那一步补上
++ * （EV-128 上一版排在 `patchStatus` 之后，中断即永久停在 running——计划双审 r1 CODEX-01 ≡ GLM-01）。
++ * **对单步写失败不可重入**（代码双审 r1 CODEX-01）：异常转成 skipped 后调用方照常落终态，
++ * 这一步没有第二次机会——调用方的告警会当场说出来，要人工对账。
+  *
+  * **自身不抛**：两步各包一层捕获，任何异常都转成该步的 skipped。只设这一道——
+  * 调用方不再另包，免得两层互为冗余（r1 CODEX-02 ≡ AGY-01 ≡ GLM-02）。锁与闸门回收排在它之后，
+  * 归档侧失败不得连坐那两项：闸门卡在 running 会把 Driver 永久锁在一个已经不存在的运行上。
+  */
+-export async function finalizeCancelledRunMeta(i: {
+-  layout: ArchiveLayout;
+-  stage: Stage;
+-  runId: string;
+-  lock: TaskLock;
+-  /** `cancelRun` 传 `workerConfirmedGone(...).gone`；显式入参，接线才有用例守得住 */
+-  workerGone: boolean;
+-}): Promise<{ runMeta: FinalizeStep; task: FinalizeStep }> {
+-  const runMeta = await cancelRunMetaStep(i).catch((e: unknown) => skippedFromError('回写 run.json ', e));
+-  const task = await cancelTaskEntryStep(i).catch((e: unknown) => skippedFromError('同步 task.json ', e));
++async function finalizeUnfinishedRunMeta(
++  i: FinalizeInput & { terminal: UnfinishedTerminal; termination?: RunTermination },
++): Promise<{ runMeta: FinalizeStep; task: FinalizeStep }> {
++  const runMeta = await unfinishedRunMetaStep(i).catch((e: unknown) => skippedFromError('回写 run.json ', e));
++  const task = await unfinishedTaskEntryStep(i).catch((e: unknown) => skippedFromError('同步 task.json ', e));
+   return { runMeta, task };
+ }
+ 
+ /**
+  * 第一步：run.json。四个前提任一不满足即跳过、不改文件：
+- *   1. 工作进程已确认退出——没确认到就可能还有写者（进程组里的后代、正要收尾的 worker），两个写者会互相覆盖；
++ *   1. 没有另一个写者（`workerGone`）——没确认到就可能还有写者（进程组里的后代、正要收尾的 worker），两个写者会互相覆盖；
+  *   2. 主题与阶段已知（由调用方给出）；
+  *   3. 原始 JSON 是 run.v2——`readRunMeta` 读进来的 v1 是**迁移后的内存形状**，写回会把历史文件改成 v2；
+- *   4. 合契约且仍为 `running`——已是终态（含 worker 先写完 run.json、status.json 还没改的窗口）一律不动。
++ *   4. 合契约且仍为 `running`——已是终态（含 worker 先写完 run.json、status.json 还没改的窗口，
++ *      以及 worker 在 :1627 写完终态之后才抛的异常）一律不动。
+  *
+- * 只改三格：`status`、`finished_at`、`gate.state`。`artifacts[]` 原样——提交锚对 HEAD 为 running 的
+- * run.json 只查 `run_id` 与已登记条目（`hooks.ts` `runningRewriteViolation`），所以「运行中途提交过、之后被取消」
+- * 也能正常提交。`gate.warnings` 不追加：它会被回灌成 `run_warning`（EV-133）。
++ * **读 → 判 → 写整段在主题任务锁里**（EV-142，计划 r2 §3.4）：事后写者有三个（`--cancel`、worker 异常分支、
++ * `--wait` 判失联），`--cancel` 与 `--wait` 可能在 worker 死后同时读到 running；不进锁就会两边都写、后写者改掉
++ * 前者的 `status` / `finished_at`。锁与 task.json 同一把（`taskLockName`，与 worker 长持的运行锁不同名、不会自锁），
++ * 两步各取一次、不嵌套。争用重试用尽即抛、转成带异常的跳过。
++ *
++ * 只改三格：`status`、`finished_at`、`gate.state`（取目标终态），给了 `termination` 再加这一键。`artifacts[]` 原样——
++ * 提交锚对 HEAD 为 running 的 run.json 只查 `run_id` 与已登记条目（`hooks.ts` `runningRewriteViolation`），
++ * 所以「运行中途提交过、之后被取消 / 失败」也能正常提交。`gate.warnings` 不追加：它会被回灌成 `run_warning`（EV-133）。
+  */
+-async function cancelRunMetaStep(i: {
+-  layout: ArchiveLayout; stage: Stage; runId: string; workerGone: boolean;
++async function unfinishedRunMetaStep(i: {
++  layout: ArchiveLayout; stage: Stage; runId: string; lock: TaskLock; workerGone: boolean;
++  terminal: UnfinishedTerminal; termination?: RunTermination;
+ }): Promise<FinalizeStep> {
+   if (!i.workerGone) {
+     return skipped('工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）');
+   }
+   const { metaDir } = await import('./archive.js');
+   const p = path.join(metaDir(i.layout, i.stage), runMetaFileName(i.runId));
+-  let text: string;
+-  try {
+-    text = await fs.readFile(p, 'utf8');
+-  } catch {
+-    return skipped(`归档里没有 ${runMetaFileName(i.runId)}`);
+-  }
+-  let raw: unknown;
+-  try {
+-    raw = JSON.parse(text);
+-  } catch {
+-    return skipped(`${runMetaFileName(i.runId)} 不可解析，不动它`);
+-  }
+-  const schema = (raw as { schema?: unknown } | null)?.schema;
+-  if (schema !== 'trivium.run.v2') {
+-    return skipped(`schema 为 ${JSON.stringify(schema)}，只回写 run.v2（不改历史形状）`);
+-  }
+-  if (validateRunMeta(raw).length > 0) return skipped('不合 trivium.run.v2 契约，不动它');
+-  const meta = raw as RunMeta;
+-  if (meta.status !== 'running') return skipped(`已是终态（${meta.status}），不追溯改写`);
+-
+-  meta.status = 'cancelled';
+-  meta.finished_at = new Date().toISOString();
+-  meta.gate.state = 'cancelled';
+-  await writeRunMeta(i.layout, i.stage, meta);
+-  return { kind: 'written' };
++  return withTopicLock(
++    { triviumDir: i.lock.triviumDir, topic: taskLockName(i.layout.topic), heartbeatStaleMs: i.lock.heartbeatStaleMs },
++    async (): Promise<FinalizeStep> => {
++      let text: string;
++      try {
++        text = await fs.readFile(p, 'utf8');
++      } catch {
++        return skipped(`归档里没有 ${runMetaFileName(i.runId)}`);
++      }
++      let raw: unknown;
++      try {
++        raw = JSON.parse(text);
++      } catch {
++        return skipped(`${runMetaFileName(i.runId)} 不可解析，不动它`);
++      }
++      const schema = (raw as { schema?: unknown } | null)?.schema;
++      if (schema !== 'trivium.run.v2') {
++        return skipped(`schema 为 ${JSON.stringify(schema)}，只回写 run.v2（不改历史形状）`);
++      }
++      if (validateRunMeta(raw).length > 0) return skipped('不合 trivium.run.v2 契约，不动它');
++      const meta = raw as RunMeta;
++      if (meta.status !== 'running') return skipped(`已是终态（${meta.status}），不追溯改写`);
++
++      meta.status = i.terminal;
++      meta.finished_at = new Date().toISOString();
++      meta.gate.state = i.terminal;
++      if (i.termination) meta.termination = i.termination;
++      await writeRunMeta(i.layout, i.stage, meta);
++      return { kind: 'written' };
++    },
++  );
+ }
+ 
+ /**
+- * 第二步：task.json 的运行登记。**不依赖第一步这一次写没写**——run.json 已是 `cancelled`
+- * （这一次或上一次写的）、登记仍为 `running` 就补上，于是两次写之间被打断也能由下一次 `--cancel` 补齐。
++ * 第二步：task.json 的运行登记。**不依赖第一步这一次写没写**——run.json 已是**本次目标终态**
++ * （这一次或上一次写的）、登记仍为 `running` 就补上，于是两次写之间被打断也能由下一次调用补齐。
++ *
++ * 只认目标终态、不照抄别的终态（计划 r2 §3.1）：放宽成「run.json 是任一终态就照抄」会让
++ * 「run.json 已 success ⇒ 登记不改」（R2）换语义。run.json 已终态、登记停在 running 的另两种形态
++ * （worker 写完 success 后 `registerRun` 抛错；`--cancel` 撞进 worker 异常分支的两次写之间）如实保留，见计划 §6.2。
+  *
+  * 按 run_id 精确匹配；找不到就跳过——`prepareRun` 先写 run.json、后登记，中间被打断会留下这种形态，
+  * 这里不新建条目、不取末条（r1 CODEX-04 ≡ AGY-03）。只改这一条的 `status`，不走 `registerRun` 的整条覆盖。
+  */
+-async function cancelTaskEntryStep(i: {
+-  layout: ArchiveLayout; stage: Stage; runId: string; lock: TaskLock;
++async function unfinishedTaskEntryStep(i: {
++  layout: ArchiveLayout; stage: Stage; runId: string; lock: TaskLock; terminal: UnfinishedTerminal;
+ }): Promise<FinalizeStep> {
+   const m = await readRunMeta(i.layout, i.stage, i.runId);
+-  if (m?.status !== 'cancelled') {
+-    return skipped(`归档 run.json 不是 cancelled（${m ? m.status : '读不到'}），不改登记`);
++  if (m?.status !== i.terminal) {
++    return skipped(`归档 run.json 不是 ${i.terminal}（${m ? m.status : '读不到'}），不改登记`);
+   }
+   let outcome: FinalizeStep = skipped('task.json 无此运行的登记（不新建条目）');
+   await updateTaskAsync(i.layout, async (t) => {
+@@ -634,7 +681,7 @@ async function cancelTaskEntryStep(i: {
+       outcome = skipped(`登记已是 ${entry.status}，不改`);
+       return false;
+     }
+-    entry.status = 'cancelled';
++    entry.status = i.terminal;
+     outcome = { kind: 'written' };
+     return undefined;
+   }, i.lock);
+diff --git a/src/trivium/report.ts b/src/trivium/report.ts
+index 270bffe..77a6b29 100644
+--- a/src/trivium/report.ts
++++ b/src/trivium/report.ts
+@@ -83,11 +83,35 @@ export interface RoundReport {
+   notes: string[];
+ }
+ 
++/**
++ * 没进时间线的运行（EV-144，计划 r2 §3.6）：该阶段 `_meta/` 下可读的 run.json 里，时间线没选中的那些。
++ *
++ * 时间线按审查文档枚举轮次（`enumerateRounds`），没产出审查文档的运行——被取消、worker 异常 / 失联、
++ * 入选侧全部失败、纯文档跳过、以及没走到收尾的旧留痕——在那里整个看不见。它们也**不占轮次号**
++ * （`resolveRerunIndex` 只看审查文档），之后的重跑沿用同一个号，所以这里记的是「预定轮次」。
++ */
++export interface UnlistedRun {
++  stage: Stage;
++  runId: string;
++  /** 预定轮次：这次运行开始时算出的轮次号，之后的重跑可能沿用同一个号 */
++  rerunIndex: number;
++  status: RunMeta['status'];
++  startedAt: string;
++  finishedAt: string | null;
++  termination: RunMeta['termination'] | null;
++  /** artifacts[] 里登记的、属于本轮入选审核者的审查文档条数；正常为 0，非 0 说明时间线选错了 */
++  registeredReviewDocs: number;
++  /** 按事实给的一句说明，不推测 */
++  label: string;
++}
++
+ export interface TopicReport {
+   topic: string;
+   generatedAt: string;
+   task: TaskMeta;
+   rounds: RoundReport[];
++  /** 没进时间线的运行（EV-144） */
++  unlistedRuns: UnlistedRun[];
+   verify: VerifyRecord | null;
+   /** 最近一份 verify 记录存在但读不出来——与「从未验证」必须区分开 */
+   verifyUnreadable: string | null;
+@@ -393,24 +417,97 @@ async function loadLatestVerify(
+   }
+ }
+ 
++/** 一次没进时间线的运行的说明（EV-144）。只按留痕里的事实写，分不出的就说分不出 */
++function unlistedLabel(meta: RunMeta, failedSides: number, registeredReviewDocs: number): string {
++  let label: string;
++  if (meta.status === 'cancelled') label = '被 review --cancel 取消';
++  else if (meta.status === 'failed' && meta.termination?.by === 'worker_exception') {
++    label = `worker 异常（退出码 ${meta.termination.exit_code}）`;
++  } else if (meta.status === 'failed' && meta.termination?.by === 'worker_lost') {
++    label = `worker 失联（${meta.termination.reason}）`;
++  } else if (meta.status === 'failed' && failedSides > 0 && registeredReviewDocs === 0) label = '入选侧全部失败';
++  else if (meta.gate.state === 'skipped_doc_only') label = '纯文档跳过（FR-23）';
++  // report 只读归档、不读本机运行目录（P4），分不出「真在跑」与「没走到收尾」，两种都说
++  else if (meta.status === 'running') label = '进行中，或没走到收尾';
++  else label = `${meta.status}（gate.state=${meta.gate.state}）`;
++  if (registeredReviewDocs > 0) label += '；登记了审查文档却未进时间线，请核对';
++  return label;
++}
++
++/**
++ * 列出该阶段没进时间线的运行（EV-144，计划 r2 §3.6）：`_meta/` 下所有可读 run.json 减去时间线选中的那几份。
++ * 读不出的 run.json 记进 notes——`enumerateRounds` 那里是静默跳过的。
++ */
++async function collectUnlistedRuns(
++  layout: ArchiveLayout,
++  stage: Stage,
++  listed: ReadonlySet<string>,
++  notes: string[],
++): Promise<UnlistedRun[]> {
++  let files: string[] = [];
++  try {
++    files = await fs.readdir(metaDir(layout, stage));
++  } catch {
++    return []; // 阶段还没跑过
++  }
++  const out: UnlistedRun[] = [];
++  for (const f of files.sort()) {
++    const runId = /^run-(.+)\.json$/.exec(f)?.[1];
++    if (runId === undefined || listed.has(runId)) continue;
++    const meta = await readRunMeta(layout, stage, runId);
++    if (!meta) {
++      notes.push(`\`${stage}/_meta/${f}\` 读不出来（不可解析或不合契约），未列入报告`);
++      continue;
++    }
++    const names = meta.artifacts.map((a) => path.basename(a.path));
++    const failedSides = names.filter((n) => n.endsWith('.failed.json')).length;
++    // 只数本轮入选审核者后缀的审查文档：plan / bug 成功轮还会登记 Driver 自己的原稿，那不是审查文档
++    const registeredReviewDocs = meta.artifacts.filter(
++      (a) => !a.path.includes('/_meta/') && meta.critics_selected.some((c) => a.path.endsWith(`-${c}.md`)),
++    ).length;
++    out.push({
++      stage,
++      runId,
++      rerunIndex: meta.rerun_index,
++      status: meta.status,
++      startedAt: meta.started_at,
++      finishedAt: meta.finished_at,
++      termination: meta.termination ?? null,
++      registeredReviewDocs,
++      label: unlistedLabel(meta, failedSides, registeredReviewDocs),
++    });
++  }
++  return out;
++}
++
+ export async function buildTopicReport(layout: ArchiveLayout): Promise<TopicReport> {
+   const notes: string[] = [];
+   const task = await readTask(layout);
+   const rounds: RoundReport[] = [];
++  const unlistedRuns: UnlistedRun[] = [];
+ 
+   for (const stage of STAGES) {
+-    for (const { rerunIndex, runId } of await enumerateRounds(layout, stage)) {
++    const enumerated = await enumerateRounds(layout, stage);
++    for (const { rerunIndex, runId } of enumerated) {
+       rounds.push(await buildRound(layout, stage, rerunIndex, runId));
+     }
++    const listed = new Set(enumerated.map((r) => r.runId).filter((x): x is string => x !== null));
++    unlistedRuns.push(...(await collectUnlistedRuns(layout, stage, listed, notes)));
+   }
+ 
+-  if (rounds.length === 0) notes.push('该主题下没有任何已产出审查工件的轮次');
++  if (rounds.length === 0) {
++    notes.push(
++      '该主题下没有任何已产出审查工件的轮次' +
++        (unlistedRuns.length > 0 ? `（另有 ${unlistedRuns.length} 次运行未产出审查文档，见时间线下方）` : ''),
++    );
++  }
+ 
+   return {
+     topic: layout.topic,
+     generatedAt: new Date().toISOString(),
+     task,
+     rounds,
++    unlistedRuns,
+     ...(await (async () => {
+       const v = await loadLatestVerify(layout, notes);
+       return { verify: v.record, verifyUnreadable: v.unreadable };
+@@ -442,7 +539,8 @@ export function renderTopicReport(r: TopicReport): string {
+     `- **生成时间**：${r.generatedAt}`,
+     `- **主题创建**：${r.task.created_at}`,
+     `- **当前闸门**：${r.task.gate.state}${r.task.gate.stage ? `（${r.task.gate.stage}）` : ''}`,
+-    `- **轮次总数**：${r.rounds.length}`,
++    `- **轮次总数**：${r.rounds.length}` +
++      (r.unlistedRuns.length > 0 ? `（另有 ${r.unlistedRuns.length} 次运行未产出审查文档，见时间线下方）` : ''),
+     '',
+     '> 数据源只有 `.reviews/`。报告不重新调用任何 Agent，也不依赖本机临时目录——',
+     '> 换一台机器、拿同一份归档，应得出同一份报告（设计原则 P4）。',
+@@ -472,6 +570,30 @@ export function renderTopicReport(r: TopicReport): string {
+   }
+   L.push('');
+ 
++  /*
++   * 没进时间线的运行（EV-144）。时间线与轮次口径不动，另列一张表：「轮次总数：0」不该被读成「这个阶段没跑过」。
++   * 没有这类运行时整节不渲染，免得每份报告都多一块空表。
++   */
++  if (r.unlistedRuns.length > 0) {
++    L.push(
++      '### 未进时间线的运行（没有产出审查文档）',
++      '',
++      '| 阶段 | 预定轮次 | 运行 | 起始 | 结束 | 状态 | 说明 |',
++      '| :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
++    );
++    for (const u of r.unlistedRuns) {
++      L.push(
++        `| ${u.stage} | r${u.rerunIndex} | \`${u.runId}\` | ${u.startedAt} | ${u.finishedAt ?? '—'} | ` +
++          `${u.status} | ${u.label} |`,
++      );
++    }
++    L.push(
++      '',
++      '> 这些运行不占轮次号：之后的重跑沿用同一个号，所以同一轮次号可能在上下两张表里各出现一次。',
++      '',
++    );
++  }
++
+   // ── 二、每轮意见与裁决 ──
+   L.push('## 二、每轮意见数、严重度分布与裁决', '');
+   if (r.rounds.length === 0) {
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index 9897333..a3b0732 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -25,7 +25,7 @@ import {
+   executeRun, prepareRun, repoId, type PreparedRun, type ReviewOptions, type RunContext,
+ } from './review.js';
+ import { resolveTopic } from './topic.js';
+-import { finalizeCancelledRunMeta, readRunMeta, type FinalizeStep } from './meta.js';
++import { finalizeCancelledRunMeta, finalizeFailedRunMeta, readRunMeta, type FinalizeStep } from './meta.js';
+ import { type AgentId } from './agents/registry.js';
+ import { setGateChecked } from './state.js';
+ import type { AdapterContext } from './adapters/base.js';
+@@ -536,14 +536,43 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
+     return outcome.exitCode;
+   } catch (e) {
+     const msg = e instanceof TriviumError ? e.message : `工作进程异常：${(e as Error).message}`;
++    const exitCode = e instanceof TriviumError ? e.code : EXIT.FAIL;
+     fail(msg);
++    /*
++     * 归档侧收尾（EV-142，计划 r2 §3.2）：把仍为 running 的 run.json 收尾为 failed，并同步 task.json 的运行登记。
++     *
++     * - `workerGone: true`：此刻的写者就是 worker 自己；另两个事后写者（`--cancel`、`--wait` 判失联）都要求确认 worker
++     *   已退出才写，worker 活着的这段时间里它是唯一写者。
++     * - 仍为 running 才写（函数内前提 4）：异常可能晚于 executeRun 收尾时的 run.json 终态写入（其后的 registerRun /
++     *   闸门写入 / 播报都可能抛），那时 run.json 已是 success / failed，不追溯改写。
++     * - **排在 patchStatus 之前**：worker 若死在两次写之间，status.json 仍非终态，之后 `--wait` 判 pid_gone 会补齐；
++     *   反过来排，`--wait` 按终态直接返回、`--cancel` 终态早退，run.json 永远停在 running（与 EV-128 同一理由）。
++     * 结果追加进 status.json 的 message：worker.log 没人看，`--wait --json` 会原样带出 message。
++     */
++    const notes: string[] = [];
++    const st0 = await readStatus(runDir);
++    const id0 = st0 ? { topic: st0.topic, stage: st0.stage } : await readHandoffIdentity(runDir);
++    if (id0) {
++      const fin = await finalizeFailedRunMeta({
++        layout: { archiveRoot: ctx.archiveRoot, topic: id0.topic },
++        stage: id0.stage,
++        runId,
++        lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },
++        workerGone: true,
++        termination: { by: 'worker_exception', exit_code: exitCode },
++      });
++      notes.push(
++        describeFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`),
++        describeFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改'),
++      );
++    }
+     // 终态必须写下来，否则 --wait 只能等到心跳过期才判失联
+     await patchStatus(runDir, (s) => {
+       s.phase = 'failed';
+-      s.exit_code = e instanceof TriviumError ? e.code : EXIT.FAIL;
+-      s.message = msg;
++      s.exit_code = exitCode;
++      s.message = [msg, ...notes].join(' ｜ ');
+     });
+-    return e instanceof TriviumError ? e.code : EXIT.FAIL;
++    return exitCode;
+   } finally {
+     clearInterval(heartbeat);
+     const st = await readStatus(runDir);
+@@ -653,6 +682,43 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
+       };
+     }
+     if (reading.kind === 'worker_lost') {
++      /*
++       * 归档侧收尾（EV-142，计划 r2 §3.3）：确认工作进程已退出时，把仍为 running 的 run.json 收尾为 failed。
++       *
++       * **用改写 status.json 之前的事实判「已退出」**：此刻 phase 非终态，`workerConfirmedGone` 走不到
++       * 「终态且从未记下 pid」那一支，判「已退出」只剩「有 pid 且进程确已不在」一种依据。下面 :680 那次判定读的是
++       * 本函数自己刚写成 failed 的 status.json，拿不到 pid 时会下「已不在」的结论——那次只管抹凭据副本（EV-20），不动它。
++       * status.json 读不到而 worker.pid 已知时（worker 在第一次写 status.json 之前就死了），`workerConfirmedGone(null)`
++       * 首行即判「否」、不看 worker.pid，而 `interpretStatus` 正是拿 worker.pid 判出「已死」才报 pid_gone——
++       * 证据在手，这里用同源的 `processAlive` 单独判（计划双审 r1 CODEX-01 ≡ GLM-01 ≡ AGY-02）：不存在才算已退出，
++       * 进程在（含 PID 被复用成别的活进程）照样不写。
++       * **排在 patchStatus 之前**：本进程若死在两次写之间，下一次 `--wait` 仍会判失联并补齐；反过来排就没有第二次机会。
++       * 结果只拼进下面抛出的报错正文（唯一的播报通道，r1 AGY-01）。
++       */
++      const pre = await readStatus(runDir);
++      const goneForArchive =
++        pre !== null
++          ? (await workerConfirmedGone(pre, fallbackPid)).gone
++          : fallbackPid !== null && !(await processAlive(fallbackPid, null)).alive;
++      const id0 = pre
++        ? { topic: pre.topic, stage: pre.stage }
++        : last
++          ? { topic: last.topic, stage: last.stage }
++          : await readHandoffIdentity(runDir);
++      let archiveNote = '';
++      if (id0) {
++        const fin = await finalizeFailedRunMeta({
++          layout: { archiveRoot: ctx.archiveRoot, topic: id0.topic },
++          stage: id0.stage,
++          runId,
++          lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 },
++          workerGone: goneForArchive,
++          termination: { by: 'worker_lost', reason: reading.reason },
++        });
++        archiveNote =
++          `\n  ${describeFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`)}` +
++          `\n  ${describeFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改')}`;
++      }
+       await patchStatus(runDir, (s) => {
+         s.phase = 'failed';
+         s.exit_code = EXIT.FAIL;
+@@ -691,7 +757,7 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
+       throw new TriviumError(
+         EXIT.FAIL,
+         `运行 ${runId} 的工作进程失联（${reading.reason}）。` +
+-          `\n  日志：${workerLogPath(runDir)}` + scrubNote,
++          `\n  日志：${workerLogPath(runDir)}` + archiveNote + scrubNote,
+       );
+     }
+     if (reading.kind === 'running') last = reading.status;
+@@ -798,6 +864,19 @@ function reportFinalizeStep(r: FinalizeStep, done: string, notDone: string): voi
+   } else step(`${notDone}：${r.why}`);
+ }
+ 
++/**
++ * 事后收尾每一步的一句话说明，给 worker 异常分支（拼进 status.json message）与 `--wait` 失联分支（拼进报错正文）用
++ * （EV-142）。这两处都只有一个出口，所以返回字符串、不自己打印；`--cancel` 仍走上面的 `reportFinalizeStep`。
++ * 异常转成的跳过同样要把后果说出来：调用方随后就把 status.json 落终态，这一步没有第二次机会。
++ */
++function describeFinalizeStep(r: FinalizeStep, done: string, notDone: string): string {
++  if (r.kind === 'written') return done;
++  if (r.error) {
++    return `${notDone}：${r.why}——这一步不会再有第二次机会：status.json 随后落终态，请人工核对归档 run.json 与 task.json 的运行登记`;
++  }
++  return `${notDone}：${r.why}`;
++}
++
+ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
+   const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
+   const s = await readStatus(runDir);
+diff --git a/src/trivium/status.ts b/src/trivium/status.ts
+index 249b43b..db91de8 100644
+--- a/src/trivium/status.ts
++++ b/src/trivium/status.ts
+@@ -177,6 +177,16 @@ export async function workerConfirmedGone(
+   return { gone: false, why: `运行处于 ${status.phase} 却拿不到 worker_pid：判不了` };
+ }
+ 
++/**
++ * `worker_lost` 的三种原因——**唯一来源**（EV-142，计划双审 r1 CODEX-04）。
++ *
++ * 同一组值还出现在 run.v2 schema 的 `termination.reason` 枚举里：`--wait` 判失联后把原因写进归档 run.json。
++ * schema 是 JSON、引用不了这里，所以由 `run-meta-strict.test.ts` 的 S2 守住两边逐项相等——
++ * 在这里加第四种原因而漏改 schema，写出的 run.json 会不合契约、被 `readRunMeta` 读成 null。
++ */
++export const WORKER_LOST_REASONS = ['no_status_file', 'heartbeat_stale', 'pid_gone'] as const;
++export type WorkerLostReason = (typeof WORKER_LOST_REASONS)[number];
++
+ export type StatusReading =
+   /** 已完成（成功或失败），可以收工 */
+   | { kind: 'terminal'; status: RunStatus }
+@@ -185,7 +195,7 @@ export type StatusReading =
+   /** 本次轮询拿不到有效信息，但工作进程还活着 → 继续等 */
+   | { kind: 'inconclusive'; reason: 'no_status_file' | 'unparsable' }
+   /** 工作进程没了却没留下终态 → worker_lost */
+-  | { kind: 'worker_lost'; reason: 'no_status_file' | 'heartbeat_stale' | 'pid_gone' };
++  | { kind: 'worker_lost'; reason: WorkerLostReason };
+ 
+ /**
+  * 解释一次轮询结果。这是 `--wait` 的唯一判定入口。
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index c06fb87..862d9b5 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -20,6 +20,7 @@ import {
+ 
+ export type { AgentId, AgentVendor };
+ import type { BuildStamp } from './build-stamp.js';
++import type { WorkerLostReason } from './status.js';
+ 
+ export type Stage = 'plan' | 'code' | 'bug';
+ export type StageOrVerify = Stage | 'verify';
+@@ -1249,6 +1250,11 @@ export type ReviewMode = 'full' | 'partial';
+  */
+ export type LegacyReviewMode = 'dual' | 'single';
+ 
++/** run.json `termination`：这一次终态由哪条事后收尾写的（EV-142，见 `RunMeta.termination`） */
++export type RunTermination =
++  | { by: 'worker_exception'; exit_code: number }
++  | { by: 'worker_lost'; reason: WorkerLostReason };
++
+ export interface RunMeta {
+   schema: 'trivium.run.v2';
+   run_id: string;
+@@ -1457,15 +1463,26 @@ export interface RunMeta {
+    * （`hooks.ts` `immutableChangeReason`，HEAD 版本不是 running 即拦改动），任何收尾后的回写都会把下一次提交拦下；
+    * ②`warnings` 已是运行期标注通道，`loadRoundReviews` 把它当 `run_warning` 回灌进每次 `--check`，
+    * 照旧设计把 `--check` 的告警写进来会重复上报。裁决是否齐备以 `gate --check` 的实时结果为准，
+-   * 审批事实以 `task.json.approvals[]` 为准。EV-128 的 `review --cancel` 回写不属「收尾后更新」：取消轮走不到
+-   * worker 的收尾，`--cancel` 那一次就是它唯一一次终态写入（只在仍为 running 时写，写完同样不再更新）。
++   * 审批事实以 `task.json.approvals[]` 为准。事后收尾不属「收尾后更新」：`review --cancel`（EV-128）、worker 异常与
++   * `--wait` 判 `worker_lost`（EV-142）三条路都只在 run.json 仍为 running 时写——那份运行走不到 worker 的收尾，
++   * 这一次就是它唯一一次终态写入，写完同样不再更新（第一步在主题任务锁里判与写，保证至多一次）。
+    */
+   gate: { adjudication_complete: boolean; state: string; warnings?: string[] };
+   /**
+-   * `running` 是骨架态；`success` / `failed` 由 worker 收尾写；`cancelled` 由 `review --cancel` 在工作进程确认退出后写
+-   * （`meta.ts` `finalizeCancelledRunMeta`，EV-128）。已结束却仍为 `running` 的留痕表示没有走到收尾，不回填。
++   * `running` 是骨架态；`success` / `failed` 由 worker 收尾写；另有三条事后收尾（`meta.ts` `finalizeUnfinishedRunMeta`）：
++   * `cancelled` 由 `review --cancel` 在工作进程确认退出后写（EV-128）；`failed` 还可能由 worker 异常分支自己写、
++   * 或由 `--wait` 判 `worker_lost` 且确认工作进程已退出时写（EV-142，同时写 `termination`）。
++   * 已结束却仍为 `running` 的留痕表示没有走到收尾（本版以前的异常 / 失联 / 取消、失联时进程未确认退出，
++   * 或 prepare 阶段被拦），不回填。
+    */
+   status: 'running' | 'success' | 'failed' | 'cancelled';
++  /**
++   * 这一次终态由哪条事后收尾写的（EV-142）。**只**由 worker 异常分支与 `--wait` 判 `worker_lost` 两条路写；
++   * 缺席 = 正常收尾（worker 写 `success` / `failed`）、取消轮（`status: cancelled` 已说明来路）、或本字段之前的留痕。
++   * 只存结构化字段、不存异常原文：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。
++   * `reason` 取值与 `status.ts` 的 `WORKER_LOST_REASONS` 同源，run.v2 schema 的枚举由用例守住与它逐项相等。
++   */
++  termination?: RunTermination;
+   skipped?: boolean;
+   skip_reason?: string | null;
+   cache_hit?: boolean;
+diff --git a/test/integration/gate-loop.test.ts b/test/integration/gate-loop.test.ts
+index 48305af..2fc8c48 100644
+--- a/test/integration/gate-loop.test.ts
++++ b/test/integration/gate-loop.test.ts
+@@ -807,6 +807,116 @@ test('EV-128 E5：取消轮回写为 cancelled 后，gate 仍把它当最新一
+   assert.equal(out.rerun_index, 1);
+ });
+ 
++/*
++ * ── EV-142：worker 异常与 worker_lost 的归档侧收尾（计划 r2 §4.2 W1 / W2 / X1 / X2）──
++ */
++
++/** 循环 --wait 直到不再是 73；返回最后一次的结果 */
++async function waitUntilDone(root: string, runId: string, stub: StubConfig | null, json = false) {
++  let w = await cli(root, ['review', '--wait', runId, '--timeout', '20', ...(json ? ['--json'] : [])], stub, 60_000);
++  for (let i = 0; i < 10 && w.code === EXIT.STILL_RUNNING; i++) {
++    w = await cli(root, ['review', '--wait', runId, '--timeout', '20', ...(json ? ['--json'] : [])], stub, 60_000);
++  }
++  return w;
++}
++
++test('EV-142 W1 / W2：worker 写审查文档时抛异常 ⇒ 归档 run.json 收尾为 failed、带 termination，且先于 status.json 写', { skip: (bundleMissing && bundleSkipReason) || (process.getuid?.() === 0 && 'root 下只读目录拦不住写入') }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  // 审查文档写不进阶段目录（EACCES），_meta/ 仍可写：worker 在收尾前抛异常（与本仓那份历史留痕同形——落盘被拒）
++  await fs.mkdir(path.join(fx.stageDir, '_meta'), { recursive: true });
++  await fs.chmod(fx.stageDir, 0o555);
++  try {
++    const started = await cli(
++      fx.root,
++      ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
++      STUB,
++    );
++    assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
++    const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string; run_dir: string };
++    const runPath = path.join(fx.stageDir, '_meta', `run-${js.run_id}.json`);
++    const skeleton = JSON.parse(await fs.readFile(runPath, 'utf8')) as { artifacts: unknown[] };
++
++    const w = await waitUntilDone(fx.root, js.run_id, STUB, true);
++    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
++    const out = JSON.parse(extractJsonCandidate(w.stdout)!.json) as { message: string | null };
++    assert.match(out.message ?? '', /工作进程异常/);
++    assert.match(out.message ?? '', /已把归档里的 run-\S+\.json 收尾为 failed/, 'worker.log 没人看，收尾结果要进 message');
++
++    const after = JSON.parse(await fs.readFile(runPath, 'utf8')) as {
++      status: string; gate: { state: string }; termination?: unknown; artifacts: unknown[];
++    };
++    assert.equal(after.status, 'failed');
++    assert.equal(after.gate.state, 'failed');
++    assert.deepEqual(after.termination, { by: 'worker_exception', exit_code: EXIT.FAIL });
++    assert.deepEqual(after.artifacts, skeleton.artifacts, 'artifacts[] 必须原样');
++    const task = JSON.parse(await fs.readFile(path.join(fx.root, '.reviews', TOPIC, 'task.json'), 'utf8')) as {
++      runs: { run_id: string; status: string }[];
++    };
++    assert.equal(task.runs.find((r) => r.run_id === js.run_id)?.status, 'failed');
++
++    // W2：归档侧先于 status.json 落终态（前提：纳秒级时间戳；粗粒度文件系统上假红、不会假绿）
++    const mt = async (p: string) => (await fs.stat(p, { bigint: true })).mtimeNs;
++    assert.ok((await mt(runPath)) < (await mt(path.join(js.run_dir, 'status.json'))), 'run.json 应先于 status.json 写');
++  } finally {
++    await fs.chmod(fx.stageDir, 0o755);
++  }
++});
++
++test('EV-142 X1：running 的 run.json 已入库、worker 被杀后 --wait 收尾为 failed ⇒ 提交锚放行；随后 --cancel 终态早退、run.json 不动', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const HANG: StubConfig = { gemini: { mode: 'hang' }, glm: { mode: 'hang' } };
++  const started = await cli(
++    fx.root,
++    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
++    HANG,
++  );
++  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string; worker_pid: number };
++  const runPath = path.join(fx.stageDir, '_meta', `run-${js.run_id}.json`);
++
++  const { run, killProcessTree } = await import('../../src/trivium/util/exec.js');
++  await run('git', ['add', '-A', '--', '.reviews'], { cwd: fx.root, timeoutMs: 30_000 });
++  await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', '运行中途入库', '--no-verify'], {
++    cwd: fx.root, timeoutMs: 30_000,
++  });
++
++  killProcessTree(js.worker_pid, 'SIGKILL');
++  await new Promise((r) => setTimeout(r, 500));
++  const w = await cli(fx.root, ['review', '--wait', js.run_id, '--timeout', '20'], null, 60_000);
++  assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
++  const after = JSON.parse(await fs.readFile(runPath, 'utf8')) as { status: string; termination?: unknown };
++  assert.equal(after.status, 'failed', `${w.stdout}${w.stderr}`);
++  assert.deepEqual(after.termination, { by: 'worker_lost', reason: 'pid_gone' });
++
++  const ok = await hook(fx.root, 'hook-pre-commit', commitEvent);
++  assert.equal(ok.code, EXIT.OK, `失联收尾是正常的唯一一次终态写入，提交锚应放行：\n${ok.stdout}${ok.stderr}`);
++
++  const before = await fs.readFile(runPath, 'utf8');
++  const c = await cli(fx.root, ['review', '--cancel', js.run_id]);
++  assert.equal(c.code, EXIT.OK);
++  assert.match(c.stdout + c.stderr, /已处于终态（failed）/);
++  assert.equal(await fs.readFile(runPath, 'utf8'), before, '失联之后再 --cancel 不得改写 run.json');
++});
++
++test('EV-142 X2：先 --cancel 后 --wait ⇒ --wait 按终态返回、不进失联分支，run.json 仍是 cancelled 且逐字节不变', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const HANG: StubConfig = { gemini: { mode: 'hang' }, glm: { mode: 'hang' } };
++  const started = await cli(
++    fx.root,
++    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
++    HANG,
++  );
++  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string };
++  const runPath = path.join(fx.stageDir, '_meta', `run-${js.run_id}.json`);
++  const c = await cli(fx.root, ['review', '--cancel', js.run_id]);
++  assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
++  const before = await fs.readFile(runPath, 'utf8');
++  assert.equal((JSON.parse(before) as { status: string }).status, 'cancelled');
++
++  const w = await cli(fx.root, ['review', '--wait', js.run_id, '--timeout', '20'], null, 60_000);
++  assert.doesNotMatch(w.stdout + w.stderr, /失联|worker_lost/);
++  assert.equal(await fs.readFile(runPath, 'utf8'), before);
++});
++
+ // ── worker 异常路径回收闸门（审查意见 GLM-r2-02 ≡ AGY-01）──
+ 
+ test('心跳过期但进程仍在的 worker_lost：不做不可逆抹除，留给会话启动清扫（代码双审 r1 CODEX-01）', { skip: bundleMissing && bundleSkipReason }, async () => {
+diff --git a/test/integration/run-protocol.test.ts b/test/integration/run-protocol.test.ts
+index 33c8d40..c9f6e8b 100644
+--- a/test/integration/run-protocol.test.ts
++++ b/test/integration/run-protocol.test.ts
+@@ -364,6 +364,130 @@ test('EV-128 E6：归档侧写失败（_meta 只读）不连坐锁与闸门回
+   }
+ });
+ 
++/*
++ * ── EV-142：--wait 判 worker_lost 时的归档侧收尾（计划 r2 §3.3 / §4.2 L1～L5）──
++ */
++
++/** 把 status.json 的心跳改成一小时前（writeStatus 会刷新心跳，所以直接写文件） */
++async function staleHeartbeat(runDir: string, patch: (s: Record<string, unknown>) => void = () => {}): Promise<void> {
++  const p = path.join(runDir, 'status.json');
++  const s = JSON.parse(await fs.readFile(p, 'utf8')) as Record<string, unknown>;
++  s['heartbeat_at'] = new Date(Date.now() - 3_600_000).toISOString();
++  patch(s);
++  await fs.writeFile(p, JSON.stringify(s, null, 2) + '\n', 'utf8');
++}
++
++/** waitRun 预期抛失联；返回报错正文 */
++async function lostMessage(ctx: Ctx, runId: string): Promise<string> {
++  let message = '';
++  await assert.rejects(waitRun(ctx, runId, 10), (e: { code?: number; message: string }) => {
++    assert.equal(e.code, EXIT.FAIL);
++    message = e.message;
++    return true;
++  });
++  return message;
++}
++
++test('EV-142 L1：worker 被杀后 --wait 判 pid_gone ⇒ 归档 run.json 收尾为 failed、带 termination，task.json 同步', async () => {
++  const ctx = await fakeCtx();
++  const { pid, runDir } = await seedRun(ctx, 'R-LOST-ARCH');
++  const a = await seedArchive(ctx, 'R-LOST-ARCH');
++  killQuietly(pid);
++  await new Promise((r) => setTimeout(r, 300));
++
++  const message = await lostMessage(ctx, 'R-LOST-ARCH');
++  const after = JSON.parse(await fs.readFile(a.runJson, 'utf8')) as RunMeta;
++  assert.equal(after.status, 'failed');
++  assert.equal(after.gate.state, 'failed');
++  assert.ok(after.finished_at);
++  assert.deepEqual(after.termination, { by: 'worker_lost', reason: 'pid_gone' });
++  assert.deepEqual(after.artifacts, a.meta.artifacts, 'artifacts[] 必须原样');
++  assert.equal((await readTask(a.layout)).runs.find((r) => r.run_id === 'R-LOST-ARCH')?.status, 'failed');
++  assert.match(message, /已把归档里的 run-R-LOST-ARCH\.json 收尾为 failed/);
++  assert.match(message, /已把 task\.json 的运行登记同步为 failed/);
++  assert.equal((await readStatus(runDir))?.phase, 'failed');
++
++  /*
++   * L4：归档侧必须先于 status.json 落终态（计划 r2 §3.3）——反过来排，下一次 --wait 按终态直接返回，没有第二次机会。
++   * 前提同 E1：纳秒级时间戳；粗粒度文件系统上会假红、不会假绿。
++   */
++  const mt = async (p: string) => (await fs.stat(p, { bigint: true })).mtimeNs;
++  const statusMt = await mt(path.join(runDir, 'status.json'));
++  assert.ok((await mt(a.runJson)) < statusMt, 'run.json 应先于 status.json 写');
++  assert.ok((await mt(a.taskJson)) < statusMt, 'task.json 登记应先于 status.json 写');
++});
++
++test('EV-142 L2：进程还活着、只是心跳过期（heartbeat_stale）⇒ 归档 run.json 不写，报错写明未确认退出', async () => {
++  const ctx = await fakeCtx();
++  const { pid, runDir } = await seedRun(ctx, 'R-STALE-ARCH');
++  try {
++    const a = await seedArchive(ctx, 'R-STALE-ARCH');
++    await staleHeartbeat(runDir);
++    const runBefore = await fs.readFile(a.runJson, 'utf8');
++    const taskBefore = await fs.readFile(a.taskJson, 'utf8');
++
++    const message = await lostMessage(ctx, 'R-STALE-ARCH');
++    assert.match(message, /heartbeat_stale/);
++    assert.equal(await fs.readFile(a.runJson, 'utf8'), runBefore, '进程还在，可能还有写者，run.json 必须逐字节不变');
++    assert.equal(await fs.readFile(a.taskJson, 'utf8'), taskBefore);
++    assert.match(message, /归档 run-R-STALE-ARCH\.json 未回写：工作进程未确认退出/);
++  } finally {
++    killQuietly(pid);
++  }
++});
++
++test('EV-142 L3：运行中却拿不到 pid、心跳过期 ⇒ 用改写前的 status.json 判「未确认」，run.json 不写', async () => {
++  /*
++   * 这一格改写前后判定不一致：改写前 phase 为 running 且无 pid ⇒ workerConfirmedGone 判「否」；
++   * waitRun 把 status.json 写成 failed 之后再判，会走「终态且从未记下 pid ⇒ 已不在」那一支判「是」。
++   * 归档写入必须用前者（计划 r2 §3.3），否则就替没确认的事作证。
++   */
++  const ctx = await fakeCtx();
++  const { pid, runDir } = await seedRun(ctx, 'R-NOPID-ARCH');
++  try {
++    await fs.rm(path.join(runDir, 'worker.pid'));
++    await staleHeartbeat(runDir, (s) => { s['worker_pid'] = null; s['worker_started_at'] = null; });
++    const a = await seedArchive(ctx, 'R-NOPID-ARCH');
++    const runBefore = await fs.readFile(a.runJson, 'utf8');
++
++    const message = await lostMessage(ctx, 'R-NOPID-ARCH');
++    assert.match(message, /heartbeat_stale/);
++    assert.equal(await fs.readFile(a.runJson, 'utf8'), runBefore);
++    assert.match(message, /未回写：工作进程未确认退出/);
++  } finally {
++    killQuietly(pid);
++  }
++});
++
++test('EV-142 L5：status.json 读不到、worker.pid 指向的进程已死（pid_gone）⇒ 也收尾为 failed；进程活着则不判失联', async () => {
++  /*
++   * worker 在第一次写 status.json 之前就死了（计划双审 r1 CODEX-01 ≡ GLM-01 ≡ AGY-02）：
++   * interpretStatus 拿 worker.pid 判出「已死」才报 pid_gone，证据在手；workerConfirmedGone(null) 却首行判「否」。
++   * 身份取交接文件（startRun 在写 status.json 之前就写好了）。
++   */
++  const ctx = await fakeCtx();
++  const { pid, runDir } = await seedRun(ctx, 'R-NOSTATUS-ARCH');
++  await fs.rm(path.join(runDir, 'status.json'));
++  await fs.writeFile(path.join(runDir, 'request.json'), JSON.stringify({ topic: TOPIC, stage: 'plan' }) + '\n', 'utf8');
++  const a = await seedArchive(ctx, 'R-NOSTATUS-ARCH');
++
++  // 对照：进程还活着 ⇒ 情形 A 判 inconclusive，窗口用尽退 73，run.json 不动
++  const runBefore = await fs.readFile(a.runJson, 'utf8');
++  const alive = await waitRun(ctx, 'R-NOSTATUS-ARCH', 2);
++  assert.equal(alive.exitCode, EXIT.STILL_RUNNING);
++  assert.equal(await fs.readFile(a.runJson, 'utf8'), runBefore);
++
++  killQuietly(pid);
++  await new Promise((r) => setTimeout(r, 300));
++  const message = await lostMessage(ctx, 'R-NOSTATUS-ARCH');
++  assert.match(message, /pid_gone/);
++  const after = JSON.parse(await fs.readFile(a.runJson, 'utf8')) as RunMeta;
++  assert.equal(after.status, 'failed');
++  assert.deepEqual(after.termination, { by: 'worker_lost', reason: 'pid_gone' });
++  assert.equal((await readTask(a.layout)).runs.find((r) => r.run_id === 'R-NOSTATUS-ARCH')?.status, 'failed');
++  assert.doesNotMatch(message, /未确认退出/, '失联原因是 pid_gone，却又说未确认退出——两句互相矛盾（r1 GLM-01）');
++});
++
+ test('--cancel 对已退出的工作进程也能清理状态与锁', async () => {
+   const ctx = await fakeCtx();
+   const { pid } = await seedRun(ctx, 'R-DEADCANCEL', 100);
+diff --git a/test/unit/report.test.ts b/test/unit/report.test.ts
+index a0eb2b5..8a31f49 100644
+--- a/test/unit/report.test.ts
++++ b/test/unit/report.test.ts
+@@ -378,3 +378,111 @@ test('裁决件读不到不让整份复盘崩溃', async () => {
+   );
+   assert.equal(r.rounds[0]!.disposals, null);
+ });
++
++// ── EV-144：没进时间线的运行（计划 r2 §3.6 / §4.1 V1～V7）──
++
++/** 摆一份没产出审查文档的运行：只有 run.json（与可选的 .failed.json 登记），阶段目录里没有它的审查文档 */
++async function seedUnlisted(
++  l: ArchiveLayout,
++  opts: {
++    runId: string;
++    rerunIndex?: number;
++    status: 'running' | 'success' | 'failed' | 'cancelled';
++    gateState?: string;
++    termination?: import('../../src/trivium/types.js').RunTermination;
++    /** 入选侧全部失败：每侧登记一份 .failed.json */
++    allSidesFailed?: boolean;
++  },
++) {
++  const meta = newRunMeta({
++    runId: opts.runId, topic: l.topic, stage: 'plan', rerunIndex: opts.rerunIndex ?? 1,
++    command: 'test', promptHint: '焦点', taskGoal: null, criticsSelected: ['gemini', 'glm'],
++    treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S', denyPaths: [], driftPolicy: 'warn',
++  });
++  meta.status = opts.status;
++  meta.gate.state = opts.gateState ?? (opts.status === 'running' ? 'running' : opts.status);
++  if (opts.status !== 'running') meta.finished_at = '2026-09-27T01:00:00.000Z';
++  if (opts.termination) meta.termination = opts.termination;
++  if (opts.allSidesFailed) {
++    for (const c of ['gemini', 'glm'] as const) {
++      const w = await writeMeta(l, 'plan', `review-${c}-${opts.runId}.failed.json`,
++        JSON.stringify({ critic: c, status: 'failed', fail_reason: '桩注入的进程级失败' }) + '\n');
++      meta.artifacts.push({ path: w.relPath, sha256: w.sha256 });
++    }
++  }
++  await writeRunMeta(l, 'plan', meta);
++  return meta;
++}
++
++test('EV-144 V1：只有一份被取消的运行 ⇒ 轮次 0，另列一条「被 review --cancel 取消」，头部注明另有 1 次', async () => {
++  const l = await archive();
++  await seedUnlisted(l, { runId: 'C1', status: 'cancelled' });
++  const r = await buildTopicReport(l);
++  assert.equal(r.rounds.length, 0);
++  assert.equal(r.unlistedRuns.length, 1);
++  assert.equal(r.unlistedRuns[0]!.runId, 'C1');
++  assert.equal(r.unlistedRuns[0]!.label, '被 review --cancel 取消');
++  assert.ok(r.notes.some((n) => /没有任何已产出审查工件的轮次（另有 1 次运行未产出审查文档/.test(n)), r.notes.join(' | '));
++  const md = renderTopicReport(r);
++  assert.match(md, /\*\*轮次总数\*\*：0（另有 1 次运行未产出审查文档，见时间线下方）/);
++  assert.match(md, /### 未进时间线的运行（没有产出审查文档）/);
++  assert.match(md, /\| plan \| r1 \| `C1` \|.*\| cancelled \| 被 review --cancel 取消 \|/);
++});
++
++test('EV-144 V2：入选侧全部失败 + 同轮次号的成功重跑 ⇒ 时间线只列重跑，失败那次进下表且预定轮次同为 r1', async () => {
++  const l = await archive();
++  await seedUnlisted(l, { runId: 'A1', status: 'failed', allSidesFailed: true });
++  await seedRound(l, { rerunIndex: 1, runId: 'A2', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM') });
++  const r = await buildTopicReport(l);
++  assert.deepEqual(r.rounds.map((d) => d.runId), ['A2']);
++  assert.equal(r.unlistedRuns.length, 1, JSON.stringify(r.unlistedRuns));
++  assert.equal(r.unlistedRuns[0]!.runId, 'A1');
++  assert.equal(r.unlistedRuns[0]!.rerunIndex, 1);
++  assert.equal(r.unlistedRuns[0]!.label, '入选侧全部失败');
++  assert.match(renderTopicReport(r), /同一轮次号可能在上下两张表里各出现一次/);
++});
++
++test('EV-144 V3：停在 running 的运行 ⇒ 说明「进行中，或没走到收尾」（report 只读归档，分不出这两种）', async () => {
++  const l = await archive();
++  await seedUnlisted(l, { runId: 'U1', status: 'running' });
++  const r = await buildTopicReport(l);
++  assert.equal(r.unlistedRuns[0]!.label, '进行中，或没走到收尾');
++  assert.equal(r.unlistedRuns[0]!.finishedAt, null);
++});
++
++test('EV-144 V4：两条事后收尾写成的 failed ⇒ 说明分别带退出码与失联原因', async () => {
++  const l = await archive();
++  await seedUnlisted(l, { runId: 'W1', status: 'failed', termination: { by: 'worker_exception', exit_code: 69 } });
++  await seedUnlisted(l, { runId: 'W2', status: 'failed', termination: { by: 'worker_lost', reason: 'pid_gone' } });
++  const r = await buildTopicReport(l);
++  assert.deepEqual(
++    r.unlistedRuns.map((u) => [u.runId, u.label]),
++    [['W1', 'worker 异常（退出码 69）'], ['W2', 'worker 失联（pid_gone）']],
++  );
++  assert.deepEqual(r.unlistedRuns[1]!.termination, { by: 'worker_lost', reason: 'pid_gone' });
++});
++
++test('EV-144 V5：纯文档跳过（success、skipped_doc_only）⇒ 说明「纯文档跳过（FR-23）」', async () => {
++  const l = await archive();
++  await seedUnlisted(l, { runId: 'D1', status: 'success', gateState: 'skipped_doc_only' });
++  const r = await buildTopicReport(l);
++  assert.equal(r.unlistedRuns[0]!.label, '纯文档跳过（FR-23）');
++});
++
++test('EV-144 V6：读不出来的 run.json 不进下表，进 notes（此前被静默跳过）', async () => {
++  const l = await archive();
++  await fs.writeFile(path.join(l.archiveRoot, TOPIC, 'plan', '_meta', 'run-BAD.json'), '{ 坏掉的', 'utf8');
++  const r = await buildTopicReport(l);
++  assert.equal(r.unlistedRuns.length, 0);
++  assert.ok(r.notes.some((n) => /plan\/_meta\/run-BAD\.json` 读不出来/.test(n)), r.notes.join(' | '));
++});
++
++test('EV-144 V7：所有运行都进了时间线 ⇒ 不渲染下表，头部也没有「另有」半句（防噪声）', async () => {
++  const l = await archive();
++  await seedRound(l, { rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM') });
++  const r = await buildTopicReport(l);
++  assert.equal(r.unlistedRuns.length, 0);
++  const md = renderTopicReport(r);
++  assert.doesNotMatch(md, /未进时间线的运行/);
++  assert.doesNotMatch(md, /另有 \d+ 次运行/);
++});
+diff --git a/test/unit/run-meta-strict.test.ts b/test/unit/run-meta-strict.test.ts
+index ac99d52..855d6ad 100644
+--- a/test/unit/run-meta-strict.test.ts
++++ b/test/unit/run-meta-strict.test.ts
+@@ -22,6 +22,8 @@ import assert from 'node:assert/strict';
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import { validateRunMeta } from '../../src/trivium/schemas.js';
++import { newRunMeta } from '../../src/trivium/meta.js';
++import { WORKER_LOST_REASONS } from '../../src/trivium/status.js';
+ import { REPO_ROOT } from '../helpers/fixture.js';
+ 
+ /** 递归找出归档里的全部运行记录 */
+@@ -107,3 +109,42 @@ test('收严生效：guard 里出现未声明的键必须判错，而不是静
+       '「新增 guard 字段必须同步 schema」又变回一句没有代码支撑的话',
+   );
+ });
++
++// ── EV-142：termination（计划 r2 §3.5 / §4.1 S1、S2）──
++
++function terminationSample(): Record<string, unknown> {
++  return newRunMeta({
++    runId: '20260927T000000Z', topic: 't', stage: 'plan', rerunIndex: 1, command: 'test', promptHint: null, taskGoal: null,
++    criticsSelected: ['gemini'], treeHash: 'T', gitHead: null, dirty: false, subjectSha256: 'S', denyPaths: [], driftPolicy: 'warn',
++  }) as unknown as Record<string, unknown>;
++}
++
++test('EV-142 S1：termination 两种形状通过；多键、by 取别的值、reason 越出枚举都判错；缺席照样通过', () => {
++  const base = { ...terminationSample(), status: 'failed' };
++  assert.deepEqual(validateRunMeta(base), [], '缺席：正常收尾、取消轮与旧留痕都没有这一键');
++  assert.deepEqual(validateRunMeta({ ...base, termination: { by: 'worker_exception', exit_code: 1 } }), []);
++  assert.deepEqual(validateRunMeta({ ...base, termination: { by: 'worker_lost', reason: 'pid_gone' } }), []);
++  const bad: unknown[] = [
++    { by: 'worker_exception', exit_code: 1, detail: '/private/var/folders/…' }, // 不存自由文本
++    { by: 'worker_lost', reason: 'pid_gone', exit_code: 1 },
++    { by: 'cancel' },
++    { by: 'worker_lost', reason: 'oom' },
++    { by: 'worker_exception', exit_code: '1' },
++  ];
++  for (const t of bad) {
++    assert.ok(validateRunMeta({ ...base, termination: t }).length > 0, `应判错：${JSON.stringify(t)}`);
++  }
++});
++
++test('EV-142 S2：schema 里 termination.reason 的枚举与 status.ts 的 WORKER_LOST_REASONS 逐项相等（单一来源）', async () => {
++  const schema = JSON.parse(
++    await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/run.v2.json'), 'utf8'),
++  ) as { properties: { termination: { oneOf: { properties: { by: { const: string }; reason?: { enum: string[] } } }[] } } };
++  const lost = schema.properties.termination.oneOf.find((b) => b.properties.by.const === 'worker_lost');
++  assert.ok(lost?.properties.reason, 'schema 里没找到 worker_lost 分支的 reason');
++  assert.deepEqual(
++    [...lost.properties.reason.enum].sort(),
++    [...WORKER_LOST_REASONS].sort(),
++    '给 interpretStatus 加了失联原因却没同步 run.v2 schema：写出的 run.json 会不合契约、被读成 null',
++  );
++});
+diff --git a/doc/05_testing/REPORT_2026-09-27_unfinished_runs.md b/doc/05_testing/REPORT_2026-09-27_unfinished_runs.md
+new file mode 100644
+index 0000000..93437e9
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-09-27_unfinished_runs.md
+@@ -0,0 +1,74 @@
++# 未收尾运行的留痕与复盘可见性 · 实施报告（EV-142 / EV-144）
++
++- **日期**：2026-09-27
++- **主题**：`未收尾运行的留痕与复盘可见性`；计划 `.reviews/未收尾运行的留痕与复盘可见性/plan/`（r1 送审前用户授权按最优原则拍板 D1～D8、全取建议项 → 计划双审 run `20260926T235951Z` 8 条全接受 → r2 定稿，提交 `e22a174`；用户审批「修改后实施」）
++- **起点**：`e22a174`；计划行号取自 `9003a0e`（两者之间只有计划留痕与用户自己的两条 `.trivium/config.yaml` 提交，源码未变）
++- **状态**：实施完成，**未提交**，待代码双审
++- **evidence**：`doc/05_testing/evidence/unfinished-runs-20260927/`
++
++---
++
++## 1. 逐条落地（按 r2 章节）
++
++| r2 | 落点 | 验证 |
++| :--- | :--- | :--- |
++| §3.1 通用收尾 | `meta.ts`：函数体改为按目标终态参数化的 `finalizeUnfinishedRunMeta`（内部），对外 `finalizeCancelledRunMeta`（签名与行为不变）与新增 `finalizeFailedRunMeta`；两步辅助函数改名 `unfinishedRunMetaStep` / `unfinishedTaskEntryStep`；第一步的读、判、写整段进 `withTopicLock(taskLockName)`；第二步判据改为「run.json 已是本次目标终态」；`taskLockName` 改为导出（F6 要占这把锁） | `run-meta-failed.test.ts` F1～F7；既有 R1～R7 原样绿 |
++| §3.2 worker 异常 | `run-protocol.ts` `workerMain` 的 `catch`：在 `patchStatus` 之前取身份（status.json，读不到则交接文件）、调 `finalizeFailedRunMeta({ workerGone: true, termination: { by: 'worker_exception', exit_code } })`，两步结果经新增的 `describeFinalizeStep` 拼进 status.json 的 `message` | `gate-loop.test.ts` W1 / W2 |
++| §3.3 `worker_lost` | `waitRun` 的 `worker_lost` 分支：改写 status.json 之前判「已退出」——status.json 在时 `workerConfirmedGone(pre, fallbackPid)`，读不到而 worker.pid 已知时 `processAlive(fallbackPid, null)` 不存在才算；身份取 `pre` → `last` → 交接文件；两步结果只拼进报错正文（不调 `reportFinalizeStep`）；:680 的凭据抹除判定原样 | `run-protocol.test.ts` L1（含 L4 的顺序断言）/ L2 / L3 / L5 |
++| §3.4 撞车 | 由 §3.1 的锁承担；顺序撞车两格由用例钉住 | F7；`gate-loop.test.ts` X1 / X2 |
++| §3.5 `termination` | `status.ts` 导出 `WORKER_LOST_REASONS` 并派生 `WorkerLostReason`；`types.ts` 新增 `RunTermination` 与 `RunMeta.termination?`；run.v2 schema 新增 `termination`（`oneOf` 两形状、各自 `additionalProperties: false`）并改写 `status` description | `run-meta-strict.test.ts` S1 / S2 |
++| §3.6 EV-144 | `report.ts`：新增 `UnlistedRun`、`TopicReport.unlistedRuns`、`collectUnlistedRuns`（可读 run.json 减去时间线选中者，读不出的进 notes）、`unlistedLabel`；渲染在时间线表后加「未进时间线的运行」小节与表后注、头部「轮次总数」与空主题 note 追加「另有 K 次」 | `report.test.ts` V1～V7；既有 15 条原样绿 |
++| §5 文档 | 主设计 v1.3.48（6.7 注记、6.7.1 `termination` 行、7.5 约束①、§5.1 `report` 行、§13.2、故障表、验收表、变更记录）；PRD v1.4.12（变更说明、FR-24）；LLD v1.1.6（`worker_lost` 一节、引述块、已知缺口表一行）；MANUAL v1.0.6（场景 4、§6.4）；PROTOCOL（`termination` 段、`worker_lost` 约束、命令表 `report` 行）；BACKLOG（EV-142 / EV-144 状态、EV-133 一句、新登 EV-145 / EV-146） | §5 反扫词表逐词 grep，剩余命中均为历史说明或本次新写的说明 |
++
++## 2. 读数
++
++| 项 | 读数 |
++| :--- | :--- |
++| `npm run check` | **2126 / 2124 / 0 / 2**（起点 2103 → 新增 23 条：F 7、S 2、V 7、L 4、W 1、X 2）。实施后跑一次，文档同步后再跑一次，两次读数相同 |
++| `doctor --selftest`（仓库构建 + `TRIVIUM_ASSET_ROOT`） | **14/14** |
++| 源码侧变异（`mutation-spec.json`，`scripts/mutation-check.mjs`；规格由 `gen-mutation-spec.mjs` 从源码截锚点并逐条核对唯一） | **16/16**（`mutation-output.txt`）：M1～M3（`gate-loop.test`，W1 / W2）、M4～M6、M17（`run-protocol.test`，L1 / L2 / L3 / L5）、M7～M10（`run-meta-failed.test`，F6 / F1 / F3 / F4）、M11（`run-meta-cancel.test`，R1）、M12～M15（`report.test`，V1 / V2 / V1 / V3）。每条只写一个期望套件 |
++| 契约侧变异（`contract-mutation.mjs`） | **1/1**（`contract-mutation-output.txt`）：M16 去掉 `termination` 的 `additionalProperties: false` ⇒ S1 红 |
++| 零配额验收（`acceptance.mjs`，mkdtemp 夹具、桩审查员） | **18/18**，第 1 次即过（`acceptance-readout.json`） |
++| 环境 | git 2.54.0（Apple Git-157），Node v25.2.1 |
++
++## 3. 偏离与如实登记
++
++### 3.1 契约侧变异脚本第一版判错了被测产物
++
++M16 第一次跑报「产物哈希未变」：脚本假定 schema 经 `import` 内联进 `dist/test/src/trivium/schemas.js`，实际构建把 schema 拷成 `dist/test/skills/dual-critic/schema/run.v2.json`、由 `schemas.js` 运行时 import。改为比对那份拷贝后 M16 咬住（fail=1）。第一次那轮的变异已按哈希恢复，`run.v2.json` 的改动只剩本主题的正式修改。
++
++### 3.2 M2 与 W1 / W2 同一条用例
++
++W1（内容）与 W2（顺序）为省一次真实 CLI 夹具合在一条用例里。M2 把收尾挪到 `patchStatus` 之后时，`message` 也随之拿不到收尾结果（`notes` 在 `patchStatus` 时还是空的），于是 W1 的 message 断言与 W2 的修改时间断言都会红——装置只报 fail=1，分不出是哪一条断言先红。M2「咬住」成立，但它的区分依据不只是顺序，如实登记。
++
++### 3.3 与 r2 文字的小出入
++
++- `RunTermination` 定义在 `types.ts`（r2 §3.1 的代码示意写在 `meta.ts`）：`RunMeta.termination` 要用它，放在类型模块里免得 `types.ts` 反向依赖 `meta.ts`。
++- L4（顺序）并进了 L1 那条用例，没有单列——构造完全相同。集成用例计数因此是 L 4 条。
++- `reportFinalizeStep` 未改（r2 §3.3 AGY-01 落点：它只服务 `--cancel`）；另两处用新增的 `describeFinalizeStep` 返回字符串。
++- 「入选侧全部失败」的判据：`failed`、无 `termination`、登记了 `.failed.json`、没登记本轮入选审核者后缀的审查文档。
++- A6 读的是 51 个主题（含本主题）：本主题的计划双审轮已有审查文档、在时间线里，所以「本主题自身」条目为 0，下表合计恰为 4 份历史 running。
++
++### 3.4 工作树里不属于本主题的改动
++
++实施期间 `.trivium/config.yaml` 出现 26 行新增，不是本主题写的（用户在 IDE 里的编辑），不纳入本主题提交。
++
++## 4. 文档同步
++
++见 §1 最后一行。主设计 7.1 命令表 `review --cancel` 那一格未改：取消的行为本主题没变。
++
++## 5. 证据文件
++
++| 文件 | 内容 |
++| :--- | :--- |
++| `running-census.mjs` | 计划 §2.1：归档里 `running` 的 run.json 与本机运行目录对照 |
++| `report-invisible-census.mjs` | 计划 §2.3：逐主题 `buildTopicReport`，列时间线没选中的运行（实施前构建） |
++| `probe-unfinished.mjs` | 计划 §2.2：P1～P4 夹具实测（实施前构建） |
++| `gen-mutation-spec.mjs` → `mutation-spec.json`、`mutation-output.txt` | 源码侧变异规格生成、锚点唯一性核对与 16/16 结果 |
++| `contract-mutation.mjs`、`contract-mutation-output.txt` | 契约侧 M16 与结果 |
++| `acceptance.mjs`、`acceptance-readout.json` | 零配额验收 A1～A6（18/18） |
++
++## 6. 待办
++
++1. 用户终端重装（`--targets claude,glm,codex,gemini`，`install` 与 `.trivium/bin` 不写在同一条命令里）→ 用户敲 `/dual-review-code`。
++2. 代码双审通过后按指示提交、推送；从已提交状态重建，用户重装，复核安装副本一致。
+diff --git a/doc/05_testing/evidence/unfinished-runs-20260927/acceptance-readout.json b/doc/05_testing/evidence/unfinished-runs-20260927/acceptance-readout.json
+new file mode 100644
+index 0000000..051d401
+--- /dev/null
++++ b/doc/05_testing/evidence/unfinished-runs-20260927/acceptance-readout.json
+@@ -0,0 +1,182 @@
++{
++  "at": "2026-09-27T00:44:53.982Z",
++  "passed": 18,
++  "total": 18,
++  "results": [
++    {
++      "id": "A1 退出码",
++      "ok": true,
++      "detail": "--wait 退 1"
++    },
++    {
++      "id": "A1 run.json",
++      "ok": true,
++      "detail": "status=failed gate.state=failed termination={\"by\":\"worker_exception\",\"exit_code\":1}"
++    },
++    {
++      "id": "A1 task 登记",
++      "ok": true,
++      "detail": "task.json 该条为 failed"
++    },
++    {
++      "id": "A1 message",
++      "ok": true,
++      "detail": "--wait --json 的 message 带收尾结果"
++    },
++    {
++      "id": "A2 退出码",
++      "ok": true,
++      "detail": "--wait 退 1"
++    },
++    {
++      "id": "A2 run.json",
++      "ok": true,
++      "detail": "status=failed termination={\"by\":\"worker_lost\",\"reason\":\"pid_gone\"}，artifacts 与已提交版本一致"
++    },
++    {
++      "id": "A2 提交锚放行",
++      "ok": true,
++      "detail": "hook-pre-commit 退 0"
++    },
++    {
++      "id": "A2 入库",
++      "ok": true,
++      "detail": "提交退 0"
++    },
++    {
++      "id": "A2 之后 --cancel",
++      "ok": true,
++      "detail": "终态早退，run.json 逐字节不变"
++    },
++    {
++      "id": "A3 判心跳过期",
++      "ok": true,
++      "detail": "--wait 退 1"
++    },
++    {
++      "id": "A3 run.json 不写",
++      "ok": true,
++      "detail": "进程还在：run.json 逐字节不变，输出写明未确认退出"
++    },
++    {
++      "id": "A4 时间线",
++      "ok": true,
++      "detail": "时间线只列重跑那次（r1）"
++    },
++    {
++      "id": "A4 下表",
++      "ok": true,
++      "detail": "失败那次：{\"stage\":\"plan\",\"runId\":\"20260927T004446Z\",\"rerunIndex\":1,\"status\":\"failed\",\"startedAt\":\"2026-09-27T00:44:46.820Z\",\"finishedAt\":\"2026-09-27T00:44:46.965Z\",\"termination\":null,\"registeredReviewDocs\":0,\"label\":\"入选侧全部失败\"}"
++    },
++    {
++      "id": "A4 头部",
++      "ok": true,
++      "detail": "头部注明另有 1 次"
++    },
++    {
++      "id": "A5 头部",
++      "ok": true,
++      "detail": "「轮次总数：0」后注明另有 1 次"
++    },
++    {
++      "id": "A5 下表",
++      "ok": true,
++      "detail": "表里一行被取消"
++    },
++    {
++      "id": "A6 时间线逐主题不变",
++      "ok": true,
++      "detail": "51 个主题，rounds 不同的：无"
++    },
++    {
++      "id": "A6 下表 = 4 份历史 running + 本主题自身",
++      "ok": true,
++      "detail": "历史 4 条（均为「进行中，或没走到收尾」），本主题自身 0 条，其它 0 条"
++    }
++  ],
++  "readout": {
++    "A1": {
++      "waitCode": 1,
++      "message": "工作进程异常：EACCES: permission denied, open '/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-unfinished-accept-oSoBdu/A1-worker异常/.reviews/A1-worker异常/plan/2026-09-27-A1-worker异常-gemini.md' ｜ 已把归档里的 run-20260927T004440Z.json 收尾为 failed ｜ 已把 task.json 的运行登记同步为 failed",
++      "status": "failed",
++      "gate": "failed",
++      "termination": {
++        "by": "worker_exception",
++        "exit_code": 1
++      }
++    },
++    "A2_wait": {
++      "code": 1,
++      "stderr": "✗ 运行 20260927T004442Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-unfinished-accept-oSoBdu/runs-A2-worker失联/A2-worker失联-67536969/20260927T004442Z/worker.log\n  已把归档里的 run-20260927T004442Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n"
++    },
++    "A2_preCommit": {
++      "code": 0,
++      "stdout": "",
++      "stderr": ""
++    },
++    "A3_wait": {
++      "code": 1,
++      "stderr": "✗ 运行 20260927T004443Z 的工作进程失联（heartbeat_stale）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-unfinished-accept-oSoBdu/runs-A3-心跳过期/A3-心跳过期-9d304dd0/20260927T004443Z/worker.log\n  归档 run-20260927T004443Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  task.json 的运行登记未改：归档 run.json 不是 failed（running），不改登记\n  凭据副本未抹：工作进程 46637 仍在（heartbeat_stale），留给会话启动清扫\n"
++    },
++    "A4": {
++      "rounds": [
++        {
++          "runId": "20260927T004449Z",
++          "r": 1
++        }
++      ],
++      "unlisted": [
++        {
++          "stage": "plan",
++          "runId": "20260927T004446Z",
++          "rerunIndex": 1,
++          "status": "failed",
++          "startedAt": "2026-09-27T00:44:46.820Z",
++          "finishedAt": "2026-09-27T00:44:46.965Z",
++          "termination": null,
++          "registeredReviewDocs": 0,
++          "label": "入选侧全部失败"
++        }
++      ]
++    },
++    "A5": [
++      "- **轮次总数**：0（另有 1 次运行未产出审查文档，见时间线下方）",
++      "### 未进时间线的运行（没有产出审查文档）",
++      "| plan | r1 | `20260927T004451Z` | 2026-09-27T00:44:51.928Z | 2026-09-27T00:44:52.366Z | cancelled | 被 review --cancel 取消 |"
++    ],
++    "A6": {
++      "topics": 51,
++      "roundsDiff": [],
++      "unlisted": [
++        {
++          "topic": "EV-74-探针喂真实契约文件",
++          "runId": "20260922T164557Z",
++          "stage": "plan",
++          "status": "running",
++          "label": "进行中，或没走到收尾"
++        },
++        {
++          "topic": "EV-79-写命令判据两处缺口",
++          "runId": "20260922T134058Z",
++          "stage": "code",
++          "status": "running",
++          "label": "进行中，或没走到收尾"
++        },
++        {
++          "topic": "M4-M5实现",
++          "runId": "20260911T023018Z",
++          "stage": "code",
++          "status": "running",
++          "label": "进行中，或没走到收尾"
++        },
++        {
++          "topic": "凭据副本残留与参数静默丢失",
++          "runId": "20260917T024844Z",
++          "stage": "code",
++          "status": "running",
++          "label": "进行中，或没走到收尾"
++        }
++      ]
++    }
++  }
++}
+diff --git a/doc/05_testing/evidence/unfinished-runs-20260927/acceptance.mjs b/doc/05_testing/evidence/unfinished-runs-20260927/acceptance.mjs
+new file mode 100644
+index 0000000..4865fe7
+--- /dev/null
++++ b/doc/05_testing/evidence/unfinished-runs-20260927/acceptance.mjs
+@@ -0,0 +1,268 @@
++#!/usr/bin/env node
++/**
++ * 「未收尾运行的留痕与复盘可见性」零配额验收（计划 r2 §4.4 A1～A6）。
++ *
++ * **不碰真实 HOME、不改本仓归档**：用仓库构建出的 `skills/dual-critic/scripts/trivium.cjs`，资产根经 `TRIVIUM_ASSET_ROOT`
++ * 指向工作树；审核者换成桩（`TRIVIUM_STUB_CRITIC`），不发起任何模型调用。夹具、运行目录、旧构建都建在一个 mkdtemp 目录下；
++ * 收尾只删 mkdtemp 的返回值。本仓归档只读（A6）。
++ *
++ *   A1 worker 异常（阶段目录只读、写审查文档 EACCES）⇒ run.json failed + termination(worker_exception)、task.json failed、
++ *      `--wait --json` 的 message 说明已收尾
++ *   A2 worker_lost（hang + SIGKILL 进程组，运行中途先提交一次）⇒ run.json failed + termination(worker_lost, pid_gone)；
++ *      提交锚放行并真实提交；随后 `--cancel` 终态早退、run.json 逐字节不变
++ *   A3 heartbeat_stale（SIGSTOP 冻住 worker、stale 阈值 2 s）⇒ run.json 逐字节不变，输出写明未确认退出
++ *   A4 入选侧全部失败后成功重跑 ⇒ report 时间线只列重跑（r1），「未进时间线的运行」一行（失败那次，r1，入选侧全部失败），头部「另有 1 次」
++ *   A5 取消一轮 ⇒ report「轮次总数：0（另有 1 次…）」，表里一行「被 review --cancel 取消」
++ *   A6 本仓归档只读：新旧两份构建逐主题 `buildTopicReport`，rounds 深相等（主判据）；新构建的 unlistedRuns 逐条核对
++ *      = 4 份历史 running + 本主题自身在验收时点尚无审查文档的运行（若有）
++ *
++ * 用法（在仓库根）：node acceptance.mjs [输出 JSON 路径]
++ */
++import { execFile, spawn } from 'node:child_process';
++import { promisify } from 'node:util';
++import { promises as fs, existsSync } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { pathToFileURL } from 'node:url';
++
++const pexec = promisify(execFile);
++const ROOT = process.cwd();
++const OUT = process.argv[2] ?? null;
++const CLI = path.join(ROOT, 'skills/dual-critic/scripts/trivium.cjs');
++if (!existsSync(CLI)) throw new Error(`找不到仓库构建的 CLI：${CLI}（先 npm run build）`);
++const { encodeStubConfig, STUB_ENV_VAR } = await import(pathToFileURL(path.join(ROOT, 'dist/test/src/trivium/adapters/stub.js')).href);
++const SESSION = 'S-验收';
++const THIS_TOPIC = '未收尾运行的留痕与复盘可见性';
++const HISTORICAL_RUNNING = ['20260922T164557Z', '20260922T134058Z', '20260911T023018Z', '20260917T024844Z'];
++
++const results = [];
++const readout = {};
++const check = (id, ok, detail) => { results.push({ id, ok, detail }); console.log(`${ok ? '✓' : '✖'} ${id}：${detail}`); };
++
++async function sh(cwd, bin, args, env = {}) {
++  try {
++    const o = await pexec(bin, args, { cwd, env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 });
++    return { code: 0, stdout: o.stdout, stderr: o.stderr };
++  } catch (e) {
++    return { code: typeof e.code === 'number' ? e.code : null, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
++  }
++}
++const envFor = (stub) => ({ TRIVIUM_ASSET_ROOT: path.join(ROOT, 'skills/dual-critic'), [STUB_ENV_VAR]: encodeStubConfig(stub), CLAUDE_SESSION_ID: SESSION });
++const cli = (cwd, args, stub) => sh(cwd, process.execPath, [CLI, ...args], envFor(stub));
++const git = (cwd, args) => sh(cwd, 'git', ['-c', 'user.email=a@a', '-c', 'user.name=a', ...args]);
++const readJson = async (p) => JSON.parse(await fs.readFile(p, 'utf8'));
++const jsonOf = (text) => JSON.parse(text.slice(text.indexOf('{')));
++const OK = { gemini: { mode: 'ok', findings: 1 }, glm: { mode: 'ok', findings: 1 } };
++const HANG = { gemini: { mode: 'hang' }, glm: { mode: 'hang' } };
++const FAIL = { gemini: { mode: 'fail' }, glm: { mode: 'fail' } };
++
++function preCommit(cwd) {
++  return new Promise((resolve) => {
++    const p = spawn(process.execPath, [CLI, 'gate', 'hook-pre-commit'], { cwd, env: { ...process.env, ...envFor(null) } });
++    let stdout = '';
++    let stderr = '';
++    p.stdout.on('data', function (d) { stdout += d; });
++    p.stderr.on('data', function (d) { stderr += d; });
++    p.on('close', function (code) { resolve({ code, stdout, stderr }); });
++    p.stdin.end(JSON.stringify({ session_id: SESSION, tool_name: 'Bash', tool_input: { command: 'git commit -m x' } }));
++  });
++}
++
++async function fixture(base, topic, extraReview = []) {
++  const root = path.join(base, topic);
++  await fs.mkdir(path.join(root, 'src'), { recursive: true });
++  await fs.writeFile(path.join(root, 'src/a.ts'), 'export const a = 1;\n');
++  await fs.mkdir(path.join(root, '.trivium'), { recursive: true });
++  await fs.writeFile(path.join(root, '.trivium/config.yaml'), [
++    'runtime:', `  run_root: ${path.join(base, 'runs-' + topic)}`,
++    'review:', '  default_critics: [gemini, glm]', ...extraReview.map((l) => '  ' + l),
++    '  timeout_s:', '    plan: 900', '    code: 900', '    bug: 900', '  wait_timeout_s: 30',
++    'verify:', '  build: []', '  test: []', '',
++  ].join('\n'));
++  await git(root, ['init', '-q', '-b', 'main']);
++  await git(root, ['add', '-A']);
++  await git(root, ['commit', '-q', '-m', 'baseline', '--no-verify']);
++  const stageDir = path.join(root, '.reviews', topic, 'plan');
++  await fs.mkdir(stageDir, { recursive: true });
++  const today = new Date().toISOString().slice(0, 10);
++  await fs.writeFile(path.join(stageDir, `${today}-${topic}-` + 'claude.md'), '# 待审计划\n\n## 一、目标\n\n验收。\n');
++  return { root, stageDir, taskJson: path.join(root, '.reviews', topic, 'task.json') };
++}
++
++async function start(root, topic, stub) {
++  const r = await cli(root, ['review', '--start', '--entry', 'B', '--stage', 'plan', '--topic', topic, '--focus', '验收', '--session-id', SESSION, '--json'], stub);
++  if (r.code !== 0) throw new Error(`review --start 失败：${r.stdout}${r.stderr}`);
++  const js = jsonOf(r.stdout);
++  return { runId: js.run_id, workerPid: js.worker_pid, runDir: js.run_dir };
++}
++async function waitDone(root, runId, stub, json = false) {
++  let w;
++  for (let i = 0; i < 10; i++) {
++    w = await cli(root, ['review', '--wait', runId, '--timeout', '20', ...(json ? ['--json'] : [])], stub);
++    if (w.code !== 73) break;
++  }
++  return w;
++}
++const killGroup = (pid, sig) => { try { process.kill(-pid, sig); } catch { try { process.kill(pid, sig); } catch { /* 已不在 */ } } };
++
++const base = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-unfinished-accept-'));
++try {
++  // ── A1 ──
++  {
++    const topic = 'A1-worker异常';
++    const fx = await fixture(base, topic);
++    await fs.mkdir(path.join(fx.stageDir, '_meta'), { recursive: true });
++    await fs.chmod(fx.stageDir, 0o555);
++    try {
++      const s = await start(fx.root, topic, OK);
++      const w = await waitDone(fx.root, s.runId, OK, true);
++      const out = jsonOf(w.stdout);
++      const m = await readJson(path.join(fx.stageDir, '_meta', `run-${s.runId}.json`));
++      const t = await readJson(fx.taskJson);
++      readout.A1 = { waitCode: w.code, message: out.message, status: m.status, gate: m.gate.state, termination: m.termination ?? null };
++      check('A1 退出码', w.code === 1, `--wait 退 ${w.code}`);
++      check('A1 run.json', m.status === 'failed' && m.gate.state === 'failed' && !!m.finished_at
++        && JSON.stringify(m.termination) === JSON.stringify({ by: 'worker_exception', exit_code: 1 }),
++        `status=${m.status} gate.state=${m.gate.state} termination=${JSON.stringify(m.termination)}`);
++      check('A1 task 登记', t.runs.find(function (r) { return r.run_id === s.runId; })?.status === 'failed', 'task.json 该条为 failed');
++      check('A1 message', /工作进程异常/.test(out.message ?? '') && /收尾为 failed/.test(out.message ?? ''), '--wait --json 的 message 带收尾结果');
++    } finally {
++      await fs.chmod(fx.stageDir, 0o755);
++    }
++  }
++
++  // ── A2 ──
++  {
++    const topic = 'A2-worker失联';
++    const fx = await fixture(base, topic);
++    const s = await start(fx.root, topic, HANG);
++    const runJson = path.join(fx.stageDir, '_meta', `run-${s.runId}.json`);
++    await git(fx.root, ['add', '-A', '--', '.reviews']);
++    await git(fx.root, ['commit', '-q', '-m', '运行中途入库', '--no-verify']);
++    const headArtifacts = JSON.parse((await git(fx.root, ['show', `HEAD:.reviews/${topic}/plan/_meta/run-${s.runId}.json`])).stdout).artifacts;
++    killGroup(s.workerPid, 'SIGKILL');
++    await new Promise((r) => setTimeout(r, 500));
++    const w = await cli(fx.root, ['review', '--wait', s.runId, '--timeout', '20'], HANG);
++    const m = await readJson(runJson);
++    readout.A2_wait = { code: w.code, stderr: w.stderr };
++    check('A2 退出码', w.code === 1 && /失联（pid_gone）/.test(w.stdout + w.stderr), `--wait 退 ${w.code}`);
++    check('A2 run.json', m.status === 'failed' && JSON.stringify(m.termination) === JSON.stringify({ by: 'worker_lost', reason: 'pid_gone' })
++      && JSON.stringify(m.artifacts) === JSON.stringify(headArtifacts),
++      `status=${m.status} termination=${JSON.stringify(m.termination)}，artifacts 与已提交版本一致`);
++    const pc = await preCommit(fx.root);
++    readout.A2_preCommit = pc;
++    check('A2 提交锚放行', pc.code === 0, `hook-pre-commit 退 ${pc.code}`);
++    await git(fx.root, ['add', '-A', '--', '.reviews']);
++    const cm = await git(fx.root, ['commit', '-q', '-m', '失联收尾后入库', '--no-verify']);
++    check('A2 入库', cm.code === 0, `提交退 ${cm.code}`);
++    const before = await fs.readFile(runJson, 'utf8');
++    const c = await cli(fx.root, ['review', '--cancel', s.runId], HANG);
++    check('A2 之后 --cancel', c.code === 0 && /已处于终态（failed）/.test(c.stdout + c.stderr) && (await fs.readFile(runJson, 'utf8')) === before,
++      '终态早退，run.json 逐字节不变');
++  }
++
++  // ── A3 ──
++  {
++    const topic = 'A3-心跳过期';
++    const fx = await fixture(base, topic, ['heartbeat_stale_s: 2']);
++    const s = await start(fx.root, topic, HANG);
++    const runJson = path.join(fx.stageDir, '_meta', `run-${s.runId}.json`);
++    try {
++      for (let i = 0; i < 100; i++) {
++        const st = await readJson(path.join(s.runDir, 'status.json')).catch(() => null);
++        if (st?.phase === 'running') break;
++        await new Promise((r) => setTimeout(r, 30));
++      }
++      process.kill(s.workerPid, 'SIGSTOP');
++      const before = await fs.readFile(runJson, 'utf8');
++      await new Promise((r) => setTimeout(r, 2500));
++      const w = await cli(fx.root, ['review', '--wait', s.runId, '--timeout', '10'], HANG);
++      readout.A3_wait = { code: w.code, stderr: w.stderr };
++      check('A3 判心跳过期', /heartbeat_stale/.test(w.stdout + w.stderr), `--wait 退 ${w.code}`);
++      check('A3 run.json 不写', (await fs.readFile(runJson, 'utf8')) === before && /工作进程未确认退出/.test(w.stdout + w.stderr),
++        '进程还在：run.json 逐字节不变，输出写明未确认退出');
++    } finally {
++      try { process.kill(s.workerPid, 'SIGCONT'); } catch { /* 已不在 */ }
++      killGroup(s.workerPid, 'SIGKILL');
++    }
++  }
++
++  // ── A4 ──
++  {
++    const topic = 'A4-全失败后重跑';
++    const fx = await fixture(base, topic);
++    const s1 = await start(fx.root, topic, FAIL);
++    await waitDone(fx.root, s1.runId, FAIL);
++    const s2 = await start(fx.root, topic, OK);
++    await waitDone(fx.root, s2.runId, OK);
++    const rj = jsonOf((await cli(fx.root, ['report', '--topic', topic, '--json'], OK)).stdout);
++    const md = (await cli(fx.root, ['report', '--topic', topic], OK)).stdout;
++    readout.A4 = { rounds: rj.rounds.map((r) => ({ runId: r.runId, r: r.rerunIndex })), unlisted: rj.unlistedRuns };
++    check('A4 时间线', rj.rounds.length === 1 && rj.rounds[0].runId === s2.runId && rj.rounds[0].rerunIndex === 1, `时间线只列重跑那次（r1）`);
++    check('A4 下表', rj.unlistedRuns.length === 1 && rj.unlistedRuns[0].runId === s1.runId && rj.unlistedRuns[0].rerunIndex === 1
++      && rj.unlistedRuns[0].label === '入选侧全部失败', `失败那次：${JSON.stringify(rj.unlistedRuns[0] ?? null)}`);
++    check('A4 头部', /\*\*轮次总数\*\*：1（另有 1 次运行未产出审查文档/.test(md), '头部注明另有 1 次');
++  }
++
++  // ── A5 ──
++  {
++    const topic = 'A5-取消';
++    const fx = await fixture(base, topic);
++    const s = await start(fx.root, topic, HANG);
++    await cli(fx.root, ['review', '--cancel', s.runId], HANG);
++    const md = (await cli(fx.root, ['report', '--topic', topic], HANG)).stdout;
++    readout.A5 = md.split('\n').filter((l) => /轮次总数|未进时间线|被 review --cancel 取消/.test(l));
++    check('A5 头部', /\*\*轮次总数\*\*：0（另有 1 次运行未产出审查文档，见时间线下方）/.test(md), '「轮次总数：0」后注明另有 1 次');
++    check('A5 下表', new RegExp(`\\| plan \\| r1 \\| \`${s.runId}\` \\|.*\\| cancelled \\| 被 review --cancel 取消 \\|`).test(md), '表里一行被取消');
++  }
++
++  // ── A6 ──
++  {
++    // 旧构建：HEAD（本主题实施前的已提交代码）导出到 mkdtemp，node_modules 链回仓库，只构建测试产物
++    const oldRoot = path.join(base, 'old-build');
++    await fs.mkdir(oldRoot, { recursive: true });
++    const archivePath = path.join(base, 'head.tar');
++    const ar = await sh(ROOT, 'git', ['archive', '--format=tar', '-o', archivePath, 'HEAD', 'src', 'scripts', 'skills', 'skills-src', 'test', 'package.json', 'tsconfig.json']);
++    if (ar.code !== 0) throw new Error(`git archive 失败：${ar.stderr}`);
++    const ex = await sh(oldRoot, 'tar', ['-xf', archivePath]);
++    if (ex.code !== 0) throw new Error(`解包失败：${ex.stderr}`);
++    await fs.symlink(path.join(ROOT, 'node_modules'), path.join(oldRoot, 'node_modules'));
++    const b = await sh(oldRoot, process.execPath, ['scripts/build.mjs', '--with-tests']);
++    if (b.code !== 0) throw new Error(`旧构建失败：${b.stdout}${b.stderr}`);
++    const oldReport = await import(pathToFileURL(path.join(oldRoot, 'dist/test/src/trivium/report.js')).href);
++    const newReport = await import(pathToFileURL(path.join(ROOT, 'dist/test/src/trivium/report.js')).href);
++    const archiveRoot = path.join(ROOT, '.reviews');
++    const origErr = console.error;
++    console.error = () => {};
++    const diffs = [];
++    const unlisted = [];
++    let topics = 0;
++    try {
++      for (const topic of (await fs.readdir(archiveRoot)).sort()) {
++        if (topic.startsWith('.') || !(await fs.stat(path.join(archiveRoot, topic))).isDirectory()) continue;
++        topics++;
++        const o = await oldReport.buildTopicReport({ archiveRoot, topic });
++        const n = await newReport.buildTopicReport({ archiveRoot, topic });
++        if (JSON.stringify(o.rounds) !== JSON.stringify(n.rounds)) diffs.push(topic);
++        for (const u of n.unlistedRuns) unlisted.push({ topic, runId: u.runId, stage: u.stage, status: u.status, label: u.label });
++      }
++    } finally {
++      console.error = origErr;
++    }
++    readout.A6 = { topics, roundsDiff: diffs, unlisted };
++    check('A6 时间线逐主题不变', diffs.length === 0, `${topics} 个主题，rounds 不同的：${diffs.join('、') || '无'}`);
++    const historical = unlisted.filter((u) => HISTORICAL_RUNNING.includes(u.runId));
++    const own = unlisted.filter((u) => u.topic === THIS_TOPIC);
++    const other = unlisted.filter((u) => !HISTORICAL_RUNNING.includes(u.runId) && u.topic !== THIS_TOPIC);
++    check('A6 下表 = 4 份历史 running + 本主题自身', historical.length === 4 && other.length === 0
++      && historical.every((u) => u.status === 'running' && u.label === '进行中，或没走到收尾'),
++      `历史 ${historical.length} 条（均为「进行中，或没走到收尾」），本主题自身 ${own.length} 条，其它 ${other.length} 条`);
++  }
++} finally {
++  await fs.rm(base, { recursive: true, force: true });
++}
++
++const passed = results.filter((r) => r.ok).length;
++console.log(`\n${passed}/${results.length}`);
++if (OUT) await fs.writeFile(OUT, JSON.stringify({ at: new Date().toISOString(), passed, total: results.length, results, readout }, null, 2) + '\n');
++process.exit(passed === results.length ? 0 : 1);
+diff --git a/doc/05_testing/evidence/unfinished-runs-20260927/contract-mutation-output.txt b/doc/05_testing/evidence/unfinished-runs-20260927/contract-mutation-output.txt
+new file mode 100644
+index 0000000..95af5fa
+--- /dev/null
++++ b/doc/05_testing/evidence/unfinished-runs-20260927/contract-mutation-output.txt
+@@ -0,0 +1,13 @@
++{
++  "baseline": {
++    "fail": 0
++  },
++  "results": [
++    {
++      "id": "M16",
++      "desc": "termination 的 worker_exception 分支去掉 additionalProperties: false ⇒ S1",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/unfinished-runs-20260927/contract-mutation.mjs b/doc/05_testing/evidence/unfinished-runs-20260927/contract-mutation.mjs
+new file mode 100644
+index 0000000..184da14
+--- /dev/null
++++ b/doc/05_testing/evidence/unfinished-runs-20260927/contract-mutation.mjs
+@@ -0,0 +1,48 @@
++// 契约侧变异 M16（计划 r2 §4.3）：run.v2 schema 的 termination 去掉 additionalProperties: false ⇒ S1 应红。
++// scripts/mutation-check.mjs 只认 src/*.ts（被测产物按 .ts → dist/test/*.js 映射），而 schema 在测试产物里是
++// schemas.js 运行时 import 的一份拷贝（dist/test/skills/dual-critic/schema/run.v2.json，第一版误以为内联进 schemas.js、
++// 产物哈希判「未变」），所以单独做：备份 → 变异 → 重建测试产物 → 断言那份拷贝确实变了 → 跑 run-meta-strict → 恢复并逐字节核对 → 再重建。
++// 用法（在仓库根）：node contract-mutation.mjs
++import { execFileSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const SCHEMA = 'skills/dual-critic/schema/run.v2.json';
++const ARTIFACT = 'dist/test/skills/dual-critic/schema/run.v2.json';
++const SUITE = 'dist/test/test/unit/run-meta-strict.test.js';
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--with-tests'], { stdio: 'ignore' });
++const runSuite = () => {
++  try {
++    execFileSync(process.execPath, ['--test', SUITE], { stdio: 'pipe' });
++    return 0;
++  } catch (e) {
++    return Number(/ℹ fail (\d+)/.exec(String(e.stdout))?.[1] ?? 1);
++  }
++};
++
++const original = fs.readFileSync(SCHEMA, 'utf8');
++const baseHash = sha(SCHEMA);
++build();
++const baseFail = runSuite();
++if (baseFail !== 0) throw new Error(`基线不是全绿（fail=${baseFail}）`);
++const baseArt = sha(ARTIFACT);
++
++const find = '"required": ["by", "exit_code"],\n          "additionalProperties": false,\n';
++if (original.split(find).length - 1 !== 1) throw new Error('M16 的 find 不唯一');
++const results = [];
++try {
++  fs.writeFileSync(SCHEMA, original.replace(find, '"required": ["by", "exit_code"],\n'));
++  build();
++  if (sha(ARTIFACT) === baseArt) {
++    results.push({ id: 'M16', verdict: '✖ 产物哈希未变——变异没进被测产物' });
++  } else {
++    const fail = runSuite();
++    results.push({ id: 'M16', desc: 'termination 的 worker_exception 分支去掉 additionalProperties: false ⇒ S1', verdict: fail > 0 ? `✓ 咬住（fail=${fail}）` : '✖ 没红', fail });
++  }
++} finally {
++  fs.writeFileSync(SCHEMA, original);
++  if (sha(SCHEMA) !== baseHash) throw new Error('恢复 schema 后哈希不符——停下来人工处理');
++  build();
++}
++console.log(JSON.stringify({ baseline: { fail: baseFail }, results }, null, 2));
+diff --git a/doc/05_testing/evidence/unfinished-runs-20260927/gen-mutation-spec.mjs b/doc/05_testing/evidence/unfinished-runs-20260927/gen-mutation-spec.mjs
+new file mode 100644
+index 0000000..791280a
+--- /dev/null
++++ b/doc/05_testing/evidence/unfinished-runs-20260927/gen-mutation-spec.mjs
+@@ -0,0 +1,89 @@
++// 生成「未收尾运行的留痕与复盘可见性」的源码变异规格（计划 r2 §4.3）：find 串从现行源码截取，逐条核对恰好出现一次，再落盘。
++// 用法（在仓库根）：node gen-mutation-spec.mjs <输出路径>
++// M16（schema）不在这里：装置只认 src/*.ts，见同目录 contract-mutation.mjs。
++import fs from 'node:fs';
++import path from 'node:path';
++
++const ROOT = process.cwd();
++const OUT = process.argv[2];
++const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
++
++const META = 'src/trivium/meta.ts';
++const PROTO = 'src/trivium/run-protocol.ts';
++const REPORT = 'src/trivium/report.ts';
++const S = {
++  failed: 'dist/test/test/unit/run-meta-failed.test.js',
++  cancel: 'dist/test/test/unit/run-meta-cancel.test.js',
++  report: 'dist/test/test/unit/report.test.js',
++  proto: 'dist/test/test/integration/run-protocol.test.js',
++  gateLoop: 'dist/test/test/integration/gate-loop.test.js',
++};
++
++// M2：worker 异常分支的归档侧收尾整块挪到 patchStatus 之后（message 随之不再带收尾结果）
++const proto = read(PROTO);
++const m2Start = proto.indexOf('    const notes: string[] = [];\n');
++const m2Patch = proto.indexOf('    // 终态必须写下来，否则 --wait 只能等到心跳过期才判失联\n', m2Start);
++const m2End = proto.indexOf('    });\n', m2Patch) + '    });\n'.length;
++if (m2Start < 0 || m2Patch < 0) throw new Error('M2 锚点没找到');
++const m2find = proto.slice(m2Start, m2End);
++const m2patchText = proto.slice(m2Patch, m2End).replace('s.message = [msg, ...notes].join(\' ｜ \');', 's.message = msg;');
++if (m2patchText === proto.slice(m2Patch, m2End)) throw new Error('M2 的 message 行没替换上');
++const m2replace = m2patchText + proto.slice(m2Start, m2Patch);
++
++const cases = [
++  { id: 'M1', desc: 'worker 异常分支不调 finalizeFailedRunMeta ⇒ W1', file: PROTO,
++    find: '    if (id0) {\n      const fin = await finalizeFailedRunMeta({\n',
++    replace: "    if (id0 && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n      const fin = await finalizeFailedRunMeta({\n",
++    expect: S.gateLoop },
++  { id: 'M2', desc: 'worker 异常分支的收尾挪到 patchStatus 之后 ⇒ W1 / W2（同一条用例：顺序由 W2 的修改时间断言钉，message 断言随之也红）', file: PROTO,
++    find: m2find, replace: m2replace, expect: S.gateLoop },
++  { id: 'M3', desc: 'worker 异常分支不传 termination ⇒ W1', file: PROTO,
++    find: "        workerGone: true,\n        termination: { by: 'worker_exception', exit_code: exitCode },\n",
++    replace: '        workerGone: true,\n        termination: undefined as never,\n', expect: S.gateLoop },
++  { id: 'M4', desc: 'worker_lost 分支不调收尾 ⇒ L1', file: PROTO,
++    find: '      if (id0) {\n        const fin = await finalizeFailedRunMeta({\n',
++    replace: "      if (id0 && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n        const fin = await finalizeFailedRunMeta({\n",
++    expect: S.proto },
++  { id: 'M5', desc: 'worker_lost 分支硬传 workerGone: true ⇒ L2（heartbeat_stale 且进程在）', file: PROTO,
++    find: '          workerGone: goneForArchive,\n', replace: '          workerGone: true,\n', expect: S.proto },
++  { id: 'M6', desc: 'worker_lost 分支改用改写之后的判定（phase 已是 failed）⇒ L3', file: PROTO,
++    find: '          ? (await workerConfirmedGone(pre, fallbackPid)).gone\n',
++    replace: "          ? (await workerConfirmedGone({ ...pre, phase: 'failed' }, fallbackPid)).gone\n", expect: S.proto },
++  { id: 'M7', desc: '第一步去掉主题任务锁 ⇒ F6', file: META,
++    find: '  return withTopicLock(\n    { triviumDir: i.lock.triviumDir, topic: taskLockName(i.layout.topic), heartbeatStaleMs: i.lock.heartbeatStaleMs },\n',
++    replace: '  return (async (fn: () => Promise<FinalizeStep>) => fn())(\n', expect: S.failed },
++  { id: 'M8', desc: '通用函数写死 cancelled（忽略目标终态）⇒ F1', file: META,
++    find: '      meta.status = i.terminal;\n', replace: "      meta.status = 'cancelled';\n", expect: S.failed },
++  { id: 'M9', desc: '第二步判据写死 cancelled ⇒ F3', file: META,
++    find: '  if (m?.status !== i.terminal) {\n', replace: "  if (m?.status !== 'cancelled') {\n", expect: S.failed },
++  { id: 'M10', desc: '第二步放宽为「run.json 是任一终态就照抄」⇒ F4', file: META,
++    find: '  if (m?.status !== i.terminal) {\n', replace: "  if (m === null || m.status === 'running') {\n", expect: S.failed },
++  { id: 'M11', desc: '取消轮也写 termination ⇒ R1（其余逐键不变）', file: META,
++    find: "  return finalizeUnfinishedRunMeta({ ...i, terminal: 'cancelled' });\n",
++    replace: "  return finalizeUnfinishedRunMeta({ ...i, terminal: 'cancelled', termination: { by: 'worker_exception', exit_code: 0 } });\n",
++    expect: S.cancel },
++  { id: 'M12', desc: 'report 不收 unlistedRuns ⇒ V1', file: REPORT,
++    find: '    unlistedRuns.push(...(await collectUnlistedRuns(layout, stage, listed, notes)));\n',
++    replace: '    void listed;\n', expect: S.report },
++  { id: 'M13', desc: 'unlistedRuns 不减去时间线选中的运行 ⇒ V2', file: REPORT,
++    find: '    if (runId === undefined || listed.has(runId)) continue;\n',
++    replace: '    if (runId === undefined) continue;\n', expect: S.report },
++  { id: 'M14', desc: '头部「轮次总数」不追加「另有 K 次」⇒ V1', file: REPORT,
++    find: '      (r.unlistedRuns.length > 0 ? `（另有',
++    replace: '      (false ? `（另有', expect: S.report },
++  { id: 'M15', desc: 'running 的说明改成断言式「未收尾」⇒ V3', file: REPORT,
++    find: "  else if (meta.status === 'running') label = '进行中，或没走到收尾';\n",
++    replace: "  else if (meta.status === 'running') label = '未收尾';\n", expect: S.report },
++  { id: 'M17', desc: 'worker_lost 分支去掉「status.json 读不到时按 worker.pid 判」那一格 ⇒ L5', file: PROTO,
++    find: '          : fallbackPid !== null && !(await processAlive(fallbackPid, null)).alive;\n',
++    replace: '          : false;\n', expect: S.proto },
++];
++
++for (const c of cases) {
++  const text = read(c.file);
++  const n = text.split(c.find).length - 1;
++  if (n !== 1) throw new Error(`${c.id} 的 find 在 ${c.file} 里出现 ${n} 次（应为 1）`);
++}
++const spec = { targets: [META, PROTO, REPORT], suites: Object.values(S), cases };
++fs.writeFileSync(OUT, JSON.stringify(spec, null, 2) + '\n');
++console.log(`${cases.length} 条，锚点全部唯一 → ${OUT}`);
+diff --git a/doc/05_testing/evidence/unfinished-runs-20260927/mutation-output.txt b/doc/05_testing/evidence/unfinished-runs-20260927/mutation-output.txt
+new file mode 100644
+index 0000000..3ffc89f
+--- /dev/null
++++ b/doc/05_testing/evidence/unfinished-runs-20260927/mutation-output.txt
+@@ -0,0 +1,119 @@
++✓ 工作树干净、基线全绿（5 个套件）
++  M1 ✓ 咬住（fail=1）
++  M2 ✓ 咬住（fail=1）
++  M3 ✓ 咬住（fail=1）
++  M4 ✓ 咬住（fail=4）
++  M5 ✓ 咬住（fail=2）
++  M6 ✓ 咬住（fail=1）
++  M7 ✓ 咬住（fail=2）
++  M8 ✓ 咬住（fail=2）
++  M9 ✓ 咬住（fail=3）
++  M10 ✓ 咬住（fail=2）
++  M11 ✓ 咬住（fail=1）
++  M12 ✓ 咬住（fail=6）
++  M13 ✓ 咬住（fail=2）
++  M14 ✓ 咬住（fail=1）
++  M15 ✓ 咬住（fail=1）
++  M17 ✓ 咬住（fail=1）
++{
++  "总数": 16,
++  "咬住": 16,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "worker 异常分支不调 finalizeFailedRunMeta ⇒ W1",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M2",
++      "desc": "worker 异常分支的收尾挪到 patchStatus 之后 ⇒ W1 / W2（同一条用例：顺序由 W2 的修改时间断言钉，message 断言随之也红）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M3",
++      "desc": "worker 异常分支不传 termination ⇒ W1",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M4",
++      "desc": "worker_lost 分支不调收尾 ⇒ L1",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M5",
++      "desc": "worker_lost 分支硬传 workerGone: true ⇒ L2（heartbeat_stale 且进程在）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M6",
++      "desc": "worker_lost 分支改用改写之后的判定（phase 已是 failed）⇒ L3",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M7",
++      "desc": "第一步去掉主题任务锁 ⇒ F6",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M8",
++      "desc": "通用函数写死 cancelled（忽略目标终态）⇒ F1",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M9",
++      "desc": "第二步判据写死 cancelled ⇒ F3",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M10",
++      "desc": "第二步放宽为「run.json 是任一终态就照抄」⇒ F4",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M11",
++      "desc": "取消轮也写 termination ⇒ R1（其余逐键不变）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M12",
++      "desc": "report 不收 unlistedRuns ⇒ V1",
++      "verdict": "✓ 咬住（fail=6）",
++      "fail": 6
++    },
++    {
++      "id": "M13",
++      "desc": "unlistedRuns 不减去时间线选中的运行 ⇒ V2",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M14",
++      "desc": "头部「轮次总数」不追加「另有 K 次」⇒ V1",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M15",
++      "desc": "running 的说明改成断言式「未收尾」⇒ V3",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M17",
++      "desc": "worker_lost 分支去掉「status.json 读不到时按 worker.pid 判」那一格 ⇒ L5",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/unfinished-runs-20260927/mutation-spec.json b/doc/05_testing/evidence/unfinished-runs-20260927/mutation-spec.json
+new file mode 100644
+index 0000000..311cefa
+--- /dev/null
++++ b/doc/05_testing/evidence/unfinished-runs-20260927/mutation-spec.json
+@@ -0,0 +1,144 @@
++{
++  "targets": [
++    "src/trivium/meta.ts",
++    "src/trivium/run-protocol.ts",
++    "src/trivium/report.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/run-meta-failed.test.js",
++    "dist/test/test/unit/run-meta-cancel.test.js",
++    "dist/test/test/unit/report.test.js",
++    "dist/test/test/integration/run-protocol.test.js",
++    "dist/test/test/integration/gate-loop.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "worker 异常分支不调 finalizeFailedRunMeta ⇒ W1",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "    if (id0) {\n      const fin = await finalizeFailedRunMeta({\n",
++      "replace": "    if (id0 && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n      const fin = await finalizeFailedRunMeta({\n",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "worker 异常分支的收尾挪到 patchStatus 之后 ⇒ W1 / W2（同一条用例：顺序由 W2 的修改时间断言钉，message 断言随之也红）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "    const notes: string[] = [];\n    const st0 = await readStatus(runDir);\n    const id0 = st0 ? { topic: st0.topic, stage: st0.stage } : await readHandoffIdentity(runDir);\n    if (id0) {\n      const fin = await finalizeFailedRunMeta({\n        layout: { archiveRoot: ctx.archiveRoot, topic: id0.topic },\n        stage: id0.stage,\n        runId,\n        lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },\n        workerGone: true,\n        termination: { by: 'worker_exception', exit_code: exitCode },\n      });\n      notes.push(\n        describeFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`),\n        describeFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改'),\n      );\n    }\n    // 终态必须写下来，否则 --wait 只能等到心跳过期才判失联\n    await patchStatus(runDir, (s) => {\n      s.phase = 'failed';\n      s.exit_code = exitCode;\n      s.message = [msg, ...notes].join(' ｜ ');\n    });\n",
++      "replace": "    // 终态必须写下来，否则 --wait 只能等到心跳过期才判失联\n    await patchStatus(runDir, (s) => {\n      s.phase = 'failed';\n      s.exit_code = exitCode;\n      s.message = msg;\n    });\n    const notes: string[] = [];\n    const st0 = await readStatus(runDir);\n    const id0 = st0 ? { topic: st0.topic, stage: st0.stage } : await readHandoffIdentity(runDir);\n    if (id0) {\n      const fin = await finalizeFailedRunMeta({\n        layout: { archiveRoot: ctx.archiveRoot, topic: id0.topic },\n        stage: id0.stage,\n        runId,\n        lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },\n        workerGone: true,\n        termination: { by: 'worker_exception', exit_code: exitCode },\n      });\n      notes.push(\n        describeFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`),\n        describeFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改'),\n      );\n    }\n",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "worker 异常分支不传 termination ⇒ W1",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "        workerGone: true,\n        termination: { by: 'worker_exception', exit_code: exitCode },\n",
++      "replace": "        workerGone: true,\n        termination: undefined as never,\n",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "worker_lost 分支不调收尾 ⇒ L1",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "      if (id0) {\n        const fin = await finalizeFailedRunMeta({\n",
++      "replace": "      if (id0 && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n        const fin = await finalizeFailedRunMeta({\n",
++      "expect": "dist/test/test/integration/run-protocol.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "worker_lost 分支硬传 workerGone: true ⇒ L2（heartbeat_stale 且进程在）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "          workerGone: goneForArchive,\n",
++      "replace": "          workerGone: true,\n",
++      "expect": "dist/test/test/integration/run-protocol.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "worker_lost 分支改用改写之后的判定（phase 已是 failed）⇒ L3",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "          ? (await workerConfirmedGone(pre, fallbackPid)).gone\n",
++      "replace": "          ? (await workerConfirmedGone({ ...pre, phase: 'failed' }, fallbackPid)).gone\n",
++      "expect": "dist/test/test/integration/run-protocol.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "第一步去掉主题任务锁 ⇒ F6",
++      "file": "src/trivium/meta.ts",
++      "find": "  return withTopicLock(\n    { triviumDir: i.lock.triviumDir, topic: taskLockName(i.layout.topic), heartbeatStaleMs: i.lock.heartbeatStaleMs },\n",
++      "replace": "  return (async (fn: () => Promise<FinalizeStep>) => fn())(\n",
++      "expect": "dist/test/test/unit/run-meta-failed.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "通用函数写死 cancelled（忽略目标终态）⇒ F1",
++      "file": "src/trivium/meta.ts",
++      "find": "      meta.status = i.terminal;\n",
++      "replace": "      meta.status = 'cancelled';\n",
++      "expect": "dist/test/test/unit/run-meta-failed.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "第二步判据写死 cancelled ⇒ F3",
++      "file": "src/trivium/meta.ts",
++      "find": "  if (m?.status !== i.terminal) {\n",
++      "replace": "  if (m?.status !== 'cancelled') {\n",
++      "expect": "dist/test/test/unit/run-meta-failed.test.js"
++    },
++    {
++      "id": "M10",
++      "desc": "第二步放宽为「run.json 是任一终态就照抄」⇒ F4",
++      "file": "src/trivium/meta.ts",
++      "find": "  if (m?.status !== i.terminal) {\n",
++      "replace": "  if (m === null || m.status === 'running') {\n",
++      "expect": "dist/test/test/unit/run-meta-failed.test.js"
++    },
++    {
++      "id": "M11",
++      "desc": "取消轮也写 termination ⇒ R1（其余逐键不变）",
++      "file": "src/trivium/meta.ts",
++      "find": "  return finalizeUnfinishedRunMeta({ ...i, terminal: 'cancelled' });\n",
++      "replace": "  return finalizeUnfinishedRunMeta({ ...i, terminal: 'cancelled', termination: { by: 'worker_exception', exit_code: 0 } });\n",
++      "expect": "dist/test/test/unit/run-meta-cancel.test.js"
++    },
++    {
++      "id": "M12",
++      "desc": "report 不收 unlistedRuns ⇒ V1",
++      "file": "src/trivium/report.ts",
++      "find": "    unlistedRuns.push(...(await collectUnlistedRuns(layout, stage, listed, notes)));\n",
++      "replace": "    void listed;\n",
++      "expect": "dist/test/test/unit/report.test.js"
++    },
++    {
++      "id": "M13",
++      "desc": "unlistedRuns 不减去时间线选中的运行 ⇒ V2",
++      "file": "src/trivium/report.ts",
++      "find": "    if (runId === undefined || listed.has(runId)) continue;\n",
++      "replace": "    if (runId === undefined) continue;\n",
++      "expect": "dist/test/test/unit/report.test.js"
++    },
++    {
++      "id": "M14",
++      "desc": "头部「轮次总数」不追加「另有 K 次」⇒ V1",
++      "file": "src/trivium/report.ts",
++      "find": "      (r.unlistedRuns.length > 0 ? `（另有",
++      "replace": "      (false ? `（另有",
++      "expect": "dist/test/test/unit/report.test.js"
++    },
++    {
++      "id": "M15",
++      "desc": "running 的说明改成断言式「未收尾」⇒ V3",
++      "file": "src/trivium/report.ts",
++      "find": "  else if (meta.status === 'running') label = '进行中，或没走到收尾';\n",
++      "replace": "  else if (meta.status === 'running') label = '未收尾';\n",
++      "expect": "dist/test/test/unit/report.test.js"
++    },
++    {
++      "id": "M17",
++      "desc": "worker_lost 分支去掉「status.json 读不到时按 worker.pid 判」那一格 ⇒ L5",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "          : fallbackPid !== null && !(await processAlive(fallbackPid, null)).alive;\n",
++      "replace": "          : false;\n",
++      "expect": "dist/test/test/integration/run-protocol.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/unfinished-runs-20260927/probe-unfinished.mjs b/doc/05_testing/evidence/unfinished-runs-20260927/probe-unfinished.mjs
+new file mode 100644
+index 0000000..e05ee24
+--- /dev/null
++++ b/doc/05_testing/evidence/unfinished-runs-20260927/probe-unfinished.mjs
+@@ -0,0 +1,183 @@
++#!/usr/bin/env node
++/**
++ * 只读实测（不碰真实 HOME、不改本仓归档）：用仓库构建的 CLI + 桩审查员，在 mkdtemp 夹具里核对
++ *   P1 入选侧全部失败（两侧 fail）⇒ run.json 状态、是否有审查文档、report 时间线是否列它、轮次总数；
++ *      随后再跑一轮成功 ⇒ 新一轮的 rerun_index 是否与失败轮相同、report 列的是哪一次
++ *   P2 worker 抛异常（阶段目录只读 ⇒ 写审查文档 EACCES）⇒ status.json 与 run.json 各是什么
++ *   P3 worker 被 SIGKILL 后 --wait 判 worker_lost ⇒ status.json 与 run.json 各是什么
++ *   P4 prepareRun 在骨架写入之后被闸门拦下（上一轮未裁决直接重跑）⇒ 归档里是否多出一份 running 的 run.json
++ * 收尾只删 mkdtemp 的返回值。
++ *
++ * 用法：node probe-unfinished.mjs <仓库根>
++ */
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++
++const pexec = promisify(execFile);
++const ROOT = path.resolve(process.argv[2] ?? '.');
++const CLI = path.join(ROOT, 'skills/dual-critic/scripts/trivium.cjs');
++const { encodeStubConfig, STUB_ENV_VAR } = await import(path.join(ROOT, 'dist/test/src/trivium/adapters/stub.js'));
++const SESSION = 'S-probe';
++
++async function sh(cwd, bin, args, env = {}) {
++  try {
++    const o = await pexec(bin, args, { cwd, env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 });
++    return { code: 0, stdout: o.stdout, stderr: o.stderr };
++  } catch (e) {
++    return { code: typeof e.code === 'number' ? e.code : null, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
++  }
++}
++const envFor = (stub) => ({ TRIVIUM_ASSET_ROOT: path.join(ROOT, 'skills/dual-critic'), [STUB_ENV_VAR]: encodeStubConfig(stub), CLAUDE_SESSION_ID: SESSION });
++const cli = (cwd, args, stub) => sh(cwd, process.execPath, [CLI, ...args], envFor(stub));
++const git = (cwd, args) => sh(cwd, 'git', ['-c', 'user.email=a@a', '-c', 'user.name=a', ...args]);
++const readJson = async (p) => JSON.parse(await fs.readFile(p, 'utf8'));
++const out = {};
++
++async function fixture(base, topic) {
++  const root = path.join(base, topic);
++  await fs.mkdir(path.join(root, 'src'), { recursive: true });
++  await fs.writeFile(path.join(root, 'src/a.ts'), 'export const a = 1;\n');
++  await fs.mkdir(path.join(root, '.trivium'), { recursive: true });
++  await fs.writeFile(path.join(root, '.trivium/config.yaml'), [
++    'runtime:', `  run_root: ${path.join(base, 'runs-' + topic)}`,
++    'review:', '  default_critics: [gemini, glm]',
++    '  timeout_s:', '    plan: 900', '    code: 900', '    bug: 900', '  wait_timeout_s: 30',
++    'verify:', '  build: []', '  test: []', '',
++  ].join('\n'));
++  await git(root, ['init', '-q', '-b', 'main']);
++  await git(root, ['add', '-A']);
++  await git(root, ['commit', '-q', '-m', 'baseline', '--no-verify']);
++  const stageDir = path.join(root, '.reviews', topic, 'plan');
++  await fs.mkdir(stageDir, { recursive: true });
++  const today = new Date().toISOString().slice(0, 10);
++  await fs.writeFile(path.join(stageDir, `${today}-${topic}-` + 'claude.md'), '# 待审计划\n\n## 一、目标\n\n实测。\n');
++  return { root, stageDir };
++}
++
++async function start(root, topic, stub) {
++  const r = await cli(root, ['review', '--start', '--entry', 'B', '--stage', 'plan', '--topic', topic, '--focus', '实测', '--session-id', SESSION, '--json'], stub);
++  if (r.code !== 0) return { r, runId: null };
++  const js = JSON.parse(r.stdout.slice(r.stdout.indexOf('{')));
++  return { r, runId: js.run_id, workerPid: js.worker_pid, runDir: js.run_dir };
++}
++async function waitDone(root, runId, stub) {
++  let w;
++  for (let i = 0; i < 10; i++) {
++    w = await cli(root, ['review', '--wait', runId, '--timeout', '20'], stub);
++    if (w.code !== 73) break;
++  }
++  return w;
++}
++async function runMetaOf(stageDir, runId) {
++  return readJson(path.join(stageDir, '_meta', `run-${runId}.json`)).catch(() => null);
++}
++async function mdDocs(stageDir) {
++  return (await fs.readdir(stageDir)).filter((n) => n.endsWith('.md')).sort();
++}
++async function report(root, topic, stub) {
++  const r = await cli(root, ['report', '--topic', topic, '--json'], stub);
++  try {
++    const j = JSON.parse(r.stdout.slice(r.stdout.indexOf('{')));
++    return { code: r.code, rounds: (j.rounds ?? []).map((x) => ({ stage: x.stage, r: x.rerunIndex, runId: x.runId, status: x.status })), notes: j.notes };
++  } catch {
++    const text = await cli(root, ['report', '--topic', topic], stub);
++    return { code: r.code, raw: (text.stdout + text.stderr).split('\n').filter((l) => /轮次总数|^\| plan|⚠️/.test(l)) };
++  }
++}
++
++const base = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-probe-unfinished-'));
++try {
++  // ── P1 ──
++  {
++    const topic = 'P1-全失败';
++    const { root, stageDir } = await fixture(base, topic);
++    const FAIL = { gemini: { mode: 'fail' }, glm: { mode: 'fail' } };
++    const s = await start(root, topic, FAIL);
++    const w = await waitDone(root, s.runId, FAIL);
++    const m = await runMetaOf(stageDir, s.runId);
++    out.P1 = {
++      waitCode: w.code,
++      run: m && { status: m.status, gate: m.gate.state, rerun: m.rerun_index, sides: Object.fromEntries(Object.entries(m.critics).map(([c, v]) => [c, v.status])), artifacts: m.artifacts.map((a) => path.basename(a.path)) },
++      docs: await mdDocs(stageDir),
++      report: await report(root, topic, FAIL),
++    };
++    const OK = { gemini: { mode: 'ok', findings: 1 }, glm: { mode: 'ok', findings: 1 } };
++    const s2 = await start(root, topic, OK);
++    const w2 = await waitDone(root, s2.runId, OK);
++    const m2 = await runMetaOf(stageDir, s2.runId);
++    out.P1_rerun = { startCode: s2.r.code, startErr: s2.runId ? null : (s2.r.stdout + s2.r.stderr).slice(0, 600), waitCode: w2?.code, rerun: m2?.rerun_index, status: m2?.status, docs: await mdDocs(stageDir), report: await report(root, topic, OK) };
++  }
++
++  // ── P2 ──
++  {
++    const topic = 'P2-worker异常';
++    const { root, stageDir } = await fixture(base, topic);
++    await fs.mkdir(path.join(stageDir, '_meta'), { recursive: true });
++    await fs.chmod(stageDir, 0o555); // 审查文档写不进阶段目录；_meta 仍可写
++    const OK = { gemini: { mode: 'ok', findings: 1 }, glm: { mode: 'ok', findings: 1 } };
++    const s = await start(root, topic, OK);
++    const w = s.runId ? await waitDone(root, s.runId, OK) : null;
++    await fs.chmod(stageDir, 0o755);
++    const m = s.runId ? await runMetaOf(stageDir, s.runId) : null;
++    const st = s.runDir ? await readJson(path.join(s.runDir, 'status.json')).catch(() => null) : null;
++    const task = await readJson(path.join(root, '.reviews', topic, 'task.json')).catch(() => null);
++    out.P2 = {
++      startCode: s.r.code, startErr: s.runId ? null : (s.r.stdout + s.r.stderr).slice(0, 600),
++      waitCode: w?.code, waitTail: w ? (w.stdout + w.stderr).split('\n').filter(Boolean).slice(-4) : null,
++      statusJson: st && { phase: st.phase, message: st.message },
++      run: m && { status: m.status, gate: m.gate.state, finished_at: m.finished_at },
++      taskEntry: task?.runs?.find((x) => x.run_id === s.runId)?.status ?? null,
++      report: await report(root, topic, OK),
++    };
++  }
++
++  // ── P3 ──
++  {
++    const topic = 'P3-worker失联';
++    const { root, stageDir } = await fixture(base, topic);
++    const HANG = { gemini: { mode: 'hang' }, glm: { mode: 'hang' } };
++    const s = await start(root, topic, HANG);
++    await new Promise((r) => setTimeout(r, 800));
++    try { process.kill(-s.workerPid, 'SIGKILL'); } catch { try { process.kill(s.workerPid, 'SIGKILL'); } catch { /* 已不在 */ } }
++    await new Promise((r) => setTimeout(r, 500));
++    const w = await cli(root, ['review', '--wait', s.runId, '--timeout', '20'], HANG);
++    const m = await runMetaOf(stageDir, s.runId);
++    const st = await readJson(path.join(s.runDir, 'status.json')).catch(() => null);
++    out.P3 = {
++      waitCode: w.code, waitTail: (w.stdout + w.stderr).split('\n').filter(Boolean).slice(-3),
++      statusJson: st && { phase: st.phase, message: st.message },
++      run: m && { status: m.status, gate: m.gate.state, finished_at: m.finished_at },
++      report: await report(root, topic, HANG),
++    };
++    // 失联判定之后再 --cancel：看是否在终态分支早退
++    const c = await cli(root, ['review', '--cancel', s.runId], HANG);
++    out.P3_cancelAfterLost = { code: c.code, tail: (c.stdout + c.stderr).split('\n').filter(Boolean).slice(-3), run: (await runMetaOf(stageDir, s.runId))?.status };
++  }
++
++  // ── P4 ──
++  {
++    const topic = 'P4-闸门拦重跑';
++    const { root, stageDir } = await fixture(base, topic);
++    const OK = { gemini: { mode: 'ok', findings: 1 }, glm: { mode: 'ok', findings: 1 } };
++    const s1 = await start(root, topic, OK);
++    await waitDone(root, s1.runId, OK);
++    const before = (await fs.readdir(path.join(stageDir, '_meta'))).filter((n) => /^run-/.test(n));
++    const s2 = await start(root, topic, OK); // 上一轮未裁决，应被拦
++    const after = (await fs.readdir(path.join(stageDir, '_meta'))).filter((n) => /^run-/.test(n));
++    const extra = after.filter((n) => !before.includes(n));
++    const extraMeta = [];
++    for (const n of extra) {
++      const j = await readJson(path.join(stageDir, '_meta', n));
++      extraMeta.push({ file: n, status: j.status, rerun: j.rerun_index });
++    }
++    out.P4 = { secondStartCode: s2.r.code, secondStartMsg: (s2.r.stdout + s2.r.stderr).split('\n').filter(Boolean).slice(0, 2), runJsonBefore: before.length, runJsonAfter: after.length, extra: extraMeta };
++  }
++} finally {
++  // 收尾只删 mkdtemp 的返回值
++  await fs.chmod(base, 0o755).catch(() => {});
++  await fs.rm(base, { recursive: true, force: true });
++}
++console.log(JSON.stringify(out, null, 2));
+diff --git a/doc/05_testing/evidence/unfinished-runs-20260927/report-invisible-census.mjs b/doc/05_testing/evidence/unfinished-runs-20260927/report-invisible-census.mjs
+new file mode 100644
+index 0000000..8431d45
+--- /dev/null
++++ b/doc/05_testing/evidence/unfinished-runs-20260927/report-invisible-census.mjs
+@@ -0,0 +1,60 @@
++// 只读：对本仓归档逐主题跑 buildTopicReport（仓库构建产物 dist/test），
++// 列出时间线里不出现的运行（归档里有 run-*.json、但 report 的轮次没选中它）。
++// 用法：node report-invisible-census.mjs <仓库根>
++import fs from 'node:fs';
++import path from 'node:path';
++import { pathToFileURL } from 'node:url';
++
++const repo = path.resolve(process.argv[2] ?? '.');
++const archiveRoot = path.join(repo, '.reviews');
++const { buildTopicReport } = await import(pathToFileURL(path.join(repo, 'dist/test/src/trivium/report.js')).href);
++
++// report 的告警会走 stderr；这里只要数据
++const origErr = console.error;
++console.error = () => {};
++
++const STAGES = ['plan', 'code', 'bug'];
++const rows = [];
++let totalRuns = 0;
++let topics = 0;
++for (const topic of fs.readdirSync(archiveRoot).sort()) {
++  const tdir = path.join(archiveRoot, topic);
++  if (topic.startsWith('.') || !fs.statSync(tdir).isDirectory()) continue;
++  topics++;
++  const rep = await buildTopicReport({ archiveRoot, topic });
++  const shown = new Set(rep.rounds.map((r) => `${r.stage}/${r.runId}`));
++  for (const stage of STAGES) {
++    const md = path.join(tdir, stage, '_meta');
++    if (!fs.existsSync(md)) continue;
++    const metas = fs.readdirSync(md).filter((f) => /^run-.+\.json$/.test(f)).sort();
++    const parsed = metas.map((f) => {
++      const id = f.slice(4, -5);
++      try { return { id, j: JSON.parse(fs.readFileSync(path.join(md, f), 'utf8')) }; } catch { return { id, j: null }; }
++    });
++    for (const { id, j } of parsed) {
++      totalRuns++;
++      if (shown.has(`${stage}/${id}`)) continue;
++      if (!j) { rows.push({ topic, stage, id, kind: '不可解析' }); continue; }
++      const sideStates = Object.entries(j.critics ?? {}).map(([c, v]) => `${c}:${v.status}`).join(',');
++      const hasDoc = (j.artifacts ?? []).some((a) => /\.md$/.test(a.path) && !a.path.includes('/_meta/') && /-(gemini|glm|codex|claude)\.md$/.test(a.path));
++      const failedJson = (j.artifacts ?? []).filter((a) => /\.failed\.json$/.test(a.path)).length;
++      const sameIdxShown = parsed.some((p) => p.j && p.id !== id && p.j.rerun_index === j.rerun_index && shown.has(`${stage}/${p.id}`));
++      let kind;
++      if (j.status === 'running') kind = 'running（未收尾）';
++      else if (j.status === 'cancelled') kind = 'cancelled';
++      else if (j.gate?.state === 'skipped_doc_only') kind = '纯文档跳过';
++      else if (j.status === 'failed' && failedJson > 0 && !hasDoc) kind = '入选侧全部失败';
++      else kind = `其它（status=${j.status} gate=${j.gate?.state} hasDoc=${hasDoc}）`;
++      rows.push({ topic, stage, id, rerun: j.rerun_index, status: j.status, kind, sideStates, sameIdxShown });
++    }
++  }
++}
++console.error = origErr;
++
++console.log(`主题 ${topics}；审查阶段 run.json ${totalRuns}；时间线不出现的 ${rows.length}`);
++const byKind = {};
++for (const r of rows) byKind[r.kind] = (byKind[r.kind] ?? 0) + 1;
++console.log('按类：', JSON.stringify(byKind));
++for (const r of rows) {
++  console.log(`- ${r.topic} ${r.stage} ${r.id} r${r.rerun ?? '?'} ${r.kind} ｜ 同轮次号另有进时间线的运行=${r.sameIdxShown ? '是' : '否'} ｜ ${r.sideStates ?? ''}`);
++}
+diff --git a/doc/05_testing/evidence/unfinished-runs-20260927/running-census.mjs b/doc/05_testing/evidence/unfinished-runs-20260927/running-census.mjs
+new file mode 100644
+index 0000000..bcc4702
+--- /dev/null
++++ b/doc/05_testing/evidence/unfinished-runs-20260927/running-census.mjs
+@@ -0,0 +1,55 @@
++// 只读：列出本仓归档里 status 为 running 的 run.json，并核对同阶段是否有同 rerun_index 的其它运行、
++// 是否有该 run_id 的审查文档、运行目录（~/.trivium/runs/<id>）是否还在。
++import fs from 'node:fs';
++import path from 'node:path';
++import os from 'node:os';
++
++const root = process.argv[2] ?? '.reviews';
++const runsRoot = path.join(os.homedir(), '.trivium', 'runs');
++
++function* walk(d) {
++  for (const e of fs.readdirSync(d, { withFileTypes: true })) {
++    const p = path.join(d, e.name);
++    if (e.isDirectory()) yield* walk(p);
++    else yield p;
++  }
++}
++
++const all = [];
++for (const f of walk(root)) {
++  const m = /\/_meta\/run-(.+)\.json$/.exec(f);
++  if (!m) continue;
++  let j;
++  try { j = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { continue; }
++  all.push({ f, id: m[1], j });
++}
++
++const running = all.filter((x) => x.j.status === 'running');
++console.log(`run.json 总数 ${all.length}，running ${running.length}`);
++for (const r of running) {
++  const stageDir = path.dirname(path.dirname(r.f));
++  const docs = fs.readdirSync(stageDir).filter((n) => n.endsWith('.md'));
++  const sameIdx = all
++    .filter((x) => path.dirname(x.f) === path.dirname(r.f) && x.j.rerun_index === r.j.rerun_index && x.id !== r.id)
++    .map((x) => `${x.id}(${x.j.status})`);
++  const metaFiles = fs.readdirSync(path.dirname(r.f)).filter((n) => n.includes(r.id));
++  const runDir = path.join(runsRoot, r.id);
++  let runDirInfo = '运行目录不在';
++  if (fs.existsSync(runDir)) {
++    const st = path.join(runDir, 'status.json');
++    runDirInfo = fs.existsSync(st) ? `status.json phase=${JSON.parse(fs.readFileSync(st, 'utf8')).phase}` : '运行目录在、无 status.json';
++    const log = path.join(runDir, 'worker.log');
++    if (fs.existsSync(log)) {
++      const t = fs.readFileSync(log, 'utf8').trim().split('\n').slice(-3).join(' ⏎ ');
++      runDirInfo += ` ｜ worker.log 末 3 行：${t.slice(0, 400)}`;
++    }
++  }
++  console.log('---');
++  console.log(path.relative('.', r.f));
++  console.log(`  schema=${r.j.schema} rerun=${r.j.rerun_index} started=${r.j.started_at} gate.state=${r.j.gate?.state}`);
++  console.log(`  critics 键=${Object.keys(r.j.critics ?? {}).join(',') || '（空）'} selected=${(r.j.critics_selected ?? []).join(',')}`);
++  console.log(`  artifacts 条目=${r.j.artifacts.length}；_meta 下带本 id 的文件=${metaFiles.join(', ')}`);
++  console.log(`  同阶段同轮次的其它运行=${sameIdx.join(', ') || '无'}`);
++  console.log(`  阶段目录 .md 数=${docs.length}`);
++  console.log(`  ${runDirInfo}`);
++}
+diff --git a/test/unit/run-meta-failed.test.ts b/test/unit/run-meta-failed.test.ts
+new file mode 100644
+index 0000000..80c5d13
+--- /dev/null
++++ b/test/unit/run-meta-failed.test.ts
+@@ -0,0 +1,160 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import {
++  finalizeCancelledRunMeta, finalizeFailedRunMeta, newRunMeta, readTask, registerRun, taskLockName, writeRunMeta,
++  type TaskLock,
++} from '../../src/trivium/meta.js';
++import { metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
++import { withTopicLock } from '../../src/trivium/lock.js';
++import { validateRunMeta } from '../../src/trivium/schemas.js';
++import type { RunMeta, RunTermination } from '../../src/trivium/types.js';
++
++/**
++ * EV-142：没走到 worker 收尾就失败的运行，归档侧收尾为 failed（计划 r2 §3.1 / §4.1 F1～F7）。
++ *
++ * 直测 `finalizeFailedRunMeta`：目标终态参数化、`termination` 只由这条路写、第二步只同步同一终态、
++ * 第一步在主题任务锁里判与写。经 worker 异常分支与 `--wait` 失联分支的接线由
++ * `test/integration/gate-loop.test.ts` 的 W1 / W2 与 `run-protocol.test.ts` 的 L1～L5 守。
++ */
++
++const TOPIC = '失败收尾';
++const RUN = '20260927T000000Z';
++const LOST: RunTermination = { by: 'worker_lost', reason: 'pid_gone' };
++
++async function setup(): Promise<{ layout: ArchiveLayout; lock: TaskLock; runJson: string; taskJson: string }> {
++  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-failed-')));
++  const layout: ArchiveLayout = { archiveRoot: path.join(root, '.reviews'), topic: TOPIC };
++  const lock: TaskLock = { triviumDir: path.join(root, '.trivium'), heartbeatStaleMs: 120_000 };
++  return {
++    layout, lock,
++    runJson: path.join(metaDir(layout, 'plan'), `run-${RUN}.json`),
++    taskJson: path.join(layout.archiveRoot, TOPIC, 'task.json'),
++  };
++}
++
++type Env = Awaited<ReturnType<typeof setup>>;
++
++async function seed(env: Env, over: (m: RunMeta) => void = () => {}): Promise<RunMeta> {
++  const m = newRunMeta({
++    runId: RUN, topic: TOPIC, stage: 'plan', rerunIndex: 1, command: 'test', promptHint: '焦点', taskGoal: null,
++    criticsSelected: ['gemini', 'glm'], treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S',
++    denyPaths: [], driftPolicy: 'warn',
++  });
++  m.artifacts = [{ path: `${TOPIC}/plan/_meta/brief-glm-${RUN}.md`, sha256: 'a'.repeat(64) }];
++  await writeRunMeta(env.layout, 'plan', m); // 先落骨架、再登记，与 prepareRun 同序
++  await registerRun(env.layout, m, env.lock);
++  over(m);
++  await writeRunMeta(env.layout, 'plan', m); // over 只改 run.json，登记保持骨架期的 running
++  return m;
++}
++
++const fail = (env: Env, termination: RunTermination = LOST, workerGone = true) =>
++  finalizeFailedRunMeta({ layout: env.layout, stage: 'plan', runId: RUN, lock: env.lock, workerGone, termination });
++
++const readRun = async (env: Env) => JSON.parse(await fs.readFile(env.runJson, 'utf8')) as RunMeta;
++
++test('F1：v2 骨架 ⇒ 两步都写；status / gate.state 为 failed、带 termination，其余逐键不变且过 run.v2 校验', async () => {
++  const env = await setup();
++  const before = await seed(env);
++  const termination: RunTermination = { by: 'worker_exception', exit_code: 69 };
++  const r = await fail(env, termination);
++  assert.deepEqual(r, { runMeta: { kind: 'written' }, task: { kind: 'written' } });
++
++  const after = await readRun(env);
++  assert.deepEqual(validateRunMeta(after), []);
++  assert.equal(after.status, 'failed');
++  assert.equal(after.gate.state, 'failed');
++  assert.deepEqual(after.termination, termination);
++  assert.ok(after.finished_at && !Number.isNaN(Date.parse(after.finished_at)));
++  const strip = (m: RunMeta) => {
++    const { termination: _t, ...rest } = m;
++    return { ...rest, status: null, finished_at: null, gate: { ...m.gate, state: null } };
++  };
++  assert.deepEqual(strip(after), strip(before));
++  assert.equal((await readTask(env.layout)).runs.find((e) => e.run_id === RUN)?.status, 'failed');
++});
++
++test('F2：run.json 已是 success（worker 写完收尾之后才抛的异常）⇒ 不追溯改写，run.json 与 task.json 逐字节不变', async () => {
++  const env = await setup();
++  await seed(env, (m) => { m.status = 'success'; m.gate.state = 'review_done_awaiting_disposition'; });
++  const runBefore = await fs.readFile(env.runJson, 'utf8');
++  const taskBefore = await fs.readFile(env.taskJson, 'utf8');
++  const r = await fail(env, { by: 'worker_exception', exit_code: 70 });
++  assert.match(r.runMeta.kind === 'skipped' ? r.runMeta.why : '', /已是终态（success）/);
++  assert.equal(r.task.kind, 'skipped');
++  assert.equal(await fs.readFile(env.runJson, 'utf8'), runBefore);
++  assert.equal(await fs.readFile(env.taskJson, 'utf8'), taskBefore);
++});
++
++test('F3：run.json 已是 failed、登记仍 running（上一次在两次写之间被打断）⇒ 第一步跳过、第二步把登记补成 failed', async () => {
++  const env = await setup();
++  await seed(env, (m) => { m.status = 'failed'; m.gate.state = 'failed'; m.finished_at = new Date().toISOString(); });
++  assert.equal((await readTask(env.layout)).runs[0]?.status, 'running');
++  const r = await fail(env);
++  assert.equal(r.runMeta.kind, 'skipped');
++  assert.equal(r.task.kind, 'written');
++  assert.equal((await readTask(env.layout)).runs[0]?.status, 'failed');
++});
++
++test('F4：run.json 已是 cancelled、登记 running ⇒ 第二步也跳过（只同步目标终态 failed，不照抄别的终态）', async () => {
++  const env = await setup();
++  await seed(env, (m) => { m.status = 'cancelled'; m.gate.state = 'cancelled'; m.finished_at = new Date().toISOString(); });
++  const taskBefore = await fs.readFile(env.taskJson, 'utf8');
++  const r = await fail(env);
++  assert.equal(r.runMeta.kind, 'skipped');
++  assert.equal(r.task.kind, 'skipped');
++  assert.match(r.task.kind === 'skipped' ? r.task.why : '', /不是 failed（cancelled）/);
++  assert.equal(await fs.readFile(env.taskJson, 'utf8'), taskBefore);
++});
++
++test('F5：工作进程未确认退出 ⇒ 不写 run.json，原因写明「未确认」，文件逐字节不变', async () => {
++  const env = await setup();
++  await seed(env);
++  const runBefore = await fs.readFile(env.runJson, 'utf8');
++  const r = await fail(env, LOST, false);
++  assert.match(r.runMeta.kind === 'skipped' ? r.runMeta.why : '', /未确认退出/);
++  assert.equal(await fs.readFile(env.runJson, 'utf8'), runBefore);
++  assert.equal(r.task.kind, 'skipped');
++});
++
++test('F6：第一步在主题任务锁里判与写——锁被占着时不写，放锁后才写', async () => {
++  const env = await setup();
++  await seed(env);
++  let release!: () => void;
++  const held = new Promise<void>((r) => { release = r; });
++  let acquired!: () => void;
++  const isHeld = new Promise<void>((r) => { acquired = r; });
++  const holder = withTopicLock(
++    { triviumDir: env.lock.triviumDir, topic: taskLockName(TOPIC), heartbeatStaleMs: env.lock.heartbeatStaleMs },
++    async () => { acquired(); await held; },
++  );
++  await isHeld;
++  const pending = fail(env);
++  await new Promise((r) => setTimeout(r, 400));
++  assert.equal((await readRun(env)).status, 'running', '锁被占着时不得写 run.json');
++  release();
++  await holder;
++  const r = await pending;
++  assert.equal(r.runMeta.kind, 'written');
++  assert.equal((await readRun(env)).status, 'failed');
++});
++
++test('F7：取消与失败两个收尾同时发起 ⇒ 恰一个写 run.json，另一个读到终态跳过；run.json 只有一种终态', async () => {
++  const env = await setup();
++  await seed(env);
++  const [a, b] = await Promise.all([
++    finalizeCancelledRunMeta({ layout: env.layout, stage: 'plan', runId: RUN, lock: env.lock, workerGone: true }),
++    fail(env),
++  ]);
++  const written = [a, b].filter((x) => x.runMeta.kind === 'written');
++  assert.equal(written.length, 1, JSON.stringify([a.runMeta, b.runMeta]));
++  const loser = [a, b].find((x) => x.runMeta.kind === 'skipped')!;
++  assert.match(loser.runMeta.kind === 'skipped' ? loser.runMeta.why : '', /已是终态/);
++  const final = await readRun(env);
++  assert.ok(final.status === 'cancelled' || final.status === 'failed');
++  // 登记跟着赢家的终态走
++  assert.equal((await readTask(env.layout)).runs[0]?.status, final.status);
++});

@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.5
+> - **当前版本**：v1.1.6
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.6（2026-09-27）随设计 v1.3.48（未收尾运行的留痕与复盘可见性，EV-142 / EV-144）同步：4.2 `worker_lost` 一节补归档侧收尾（改写 status.json 之前判确认退出、status.json 读不到时按 worker.pid 判、`termination`、`WORKER_LOST_REASONS` 单一来源）；「同形两处仍未写」改为已修，函数体改名 `finalizeUnfinishedRunMeta`、第一步进主题任务锁；剩余未收尾路径指向 EV-145。代码双审 r1（run `20260927T005543Z`）CODEX-02：同段「三判据」的行号改为现值（`status.ts:205-249`，常量 `:187`）
 > - **变更说明**：v1.1.5（2026-09-26）随设计 v1.3.47（留痕字段与误报小修）同步：「`cancelRun` 不回写 `run.json`」两处由已知缺口改为已修（EV-128，`meta.ts` `finalizeCancelledRunMeta`），保留 worker 异常与 `worker_lost` 同形两处仍未写的说明（EV-142）；旧的 `run-protocol.ts:680` 链接改准
 > - **变更说明**：v1.1.4（2026-09-26）随设计 v1.3.46（审批前工作树摘要，EV-132 候选 ② 折中版）同步：模块表登记 `worktree-summary.ts`；`util/git.ts` 补两个失败即抛的严格助手
 > - **变更说明**：v1.1.3（2026-09-26）随设计 v1.3.43 的 M10b 第 5 步纪律 6 回溯同步：2.6「当前边界」的「别家在自己的 CLI 里执笔在 M10b」改为已落地，指向主设计 7.4.1 与 8.5；Bash 侧保护集一节「删掉 wrapper 即永真放行」改准为「删掉或去掉执行位保守拦截，内容被替换才永真放行」（第 5 步 grep 锚的守卫措辞一族核出）。
@@ -265,7 +266,9 @@ sequenceDiagram
 
 每 2000ms 调 `interpretStatus()`，四种读数：`terminal` / `worker_lost` / `running` / `inconclusive`。窗口用尽返回 **`EXIT.STILL_RUNNING`(73)** —— 这是**预期**返回，不是失败。
 
-`worker_lost` 三判据（`status.ts:165-196`）：无 status 且无 pid → `no_status_file`；pid 不存在**或不是同一进程**（比对启动时刻，防 macOS PID 复用）→ `pid_gone`；进程活着但心跳超 `heartbeat_stale_s` → `heartbeat_stale`。
+`worker_lost` 三判据（`status.ts:205-249` `interpretStatus`）：无 status 且无 pid → `no_status_file`；pid 不存在**或不是同一进程**（比对启动时刻，防 macOS PID 复用）→ `pid_gone`；进程活着但心跳超 `heartbeat_stale_s` → `heartbeat_stale`。三个原因字面值的唯一来源是 `status.ts:187` 的 `WORKER_LOST_REASONS`（run.v2 `termination.reason` 的枚举由 `run-meta-strict.test.ts` 守住与它逐项相等）。
+
+判 `worker_lost` 之后（v1.1.6 起，EV-142）：先用**改写 status.json 之前**的事实判工作进程是否已退出——status.json 在时照旧 `workerConfirmedGone(pre, worker.pid)`（改写之前 phase 非终态，只剩「有 pid 且进程确已不在」一种依据）；status.json 读不到而 worker.pid 已知时按 `processAlive(worker.pid, null)` 判，不存在才算——确认退出就调 `meta.ts` 的 `finalizeFailedRunMeta`（`termination: { by: 'worker_lost', reason }`），再 `patchStatus` 置 `failed`；进程还在、连 pid 都没有、非终态却拿不到 pid 时不写。两步结果只拼进抛出的报错正文。其后回收闸门、按**改写之后**的 status.json 判抹不抹凭据副本（EV-20，不变）。
 
 **两个窗口参数的算法**：
 
@@ -456,7 +459,10 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
 > 再按 run_id 把 `task.json.runs[]` 那一条同步为 `cancelled`（以 run.json 已是 `cancelled` 为独立判据；run.json 不是 cancelled、登记里找不到、登记已不是 running 三种情形跳过）。两步自身不抛，失败只告警、不挡锁与闸门回收。
 > 排在 `patchStatus` 之前是为了**进程中断**可恢复：status.json 一旦终态，再跑 `--cancel` 会在终态分支早退。
 > **单步写失败不可恢复**：异常转成跳过后 status.json 照常落终态，这一步没有第二次机会，`cancelRun` 的告警当场要求人工核对（代码双审 r1 CODEX-01）。
-> **仍未写的同形两处**：worker 抛异常、`--wait` 判 `worker_lost`，都只改 status.json，run.json 停在 `running`（BACKLOG EV-142）。
+> **同形两处已修（v1.1.6，EV-142）**：函数体改为按目标终态参数化的 `finalizeUnfinishedRunMeta`，对外两个薄导出——`finalizeCancelledRunMeta`（签名与行为不变）、`finalizeFailedRunMeta`（写 `failed` 并记 `termination`）。
+> worker 的异常分支（`workerMain` 的 `catch`，排在 `patchStatus` 之前、`workerGone: true`——写者就是 worker 自己）与 `--wait` 判 `worker_lost`（见 4.2 轮询协议一节）各调一次；
+> 第一步的读、判、写在主题任务锁（`taskLockName`，与 task.json 同一把）里，三条事后收尾同时到达时谁先到记谁；第二步只同步到本次目标终态，不照抄别的终态。
+> 仍会停在 `running` 的：失联时进程还在（`heartbeat_stale`），以及 prepare 阶段写完骨架后被拦、同步路径异常、worker 猝死而没人 `--wait` / `--cancel`（BACKLOG EV-145）。
 
 ### 4.3 锁的生命周期
 
@@ -566,7 +572,7 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 | :--- | :--- | :--- |
 | **`task.json.disputes[]` 无任何写入点** | 全仓仅 `meta.ts:88`（类型）、`meta.ts:105`（初始化为 `[]`）、`report.ts:441`（读取），无一处 push | 只有 `disputed` 布尔位被写（`cli.ts:701`）。`report` 的「争议项：编号——说明」分支**永远打印不出具体编号** |
 | ~~**`block_severities` 无消费方**~~ | ~~类型、默认值、schema 校验齐全，业务逻辑零引用~~ | **已解决（2026-09-16）**：该键连同 schema 定义一并删除，不做历史兼容（项目负责人明示接受）。防复发机制见配置键与消费方的对账测试 |
-| ~~**`cancelRun` 不回写 `run.json`**~~ | ~~函数体内 `writeRunMeta` 零出现~~ | **已解决（2026-09-26，EV-128）**：工作进程确认退出后由 `finalizeCancelledRunMeta` 收尾为 `cancelled`。同形的 worker 异常与 `worker_lost` 仍停在 `running`（EV-142） |
+| ~~**`cancelRun` 不回写 `run.json`**~~ | ~~函数体内 `writeRunMeta` 零出现~~ | **已解决（2026-09-26，EV-128）**：工作进程确认退出后由 `finalizeCancelledRunMeta` 收尾为 `cancelled`。同形的 worker 异常与 `worker_lost` 已于 2026-09-27 修（EV-142，`finalizeFailedRunMeta`，工作进程确认退出才写）；其余未收尾路径见 EV-145 |
 | **协议片段无升级路径** | `appendSnippet`（`init.ts:63-66`）见标记即跳过，与 hooks 的「按名替换」不一致 | 已初始化项目的协议片段永不更新。实测某项目落后 18 行 |
 | **人工审批无机械边界** | `recordApproval`（`approval.ts:54-86`）无任何调用者身份校验；skill 的 `allowed-tools` 预批准了 `Bash(.trivium/bin/trivium:*)` | Driver 自己一条命令就能关掉等人工审批的闸门。曾加过一次性确认码，因明文经 stdout 由 Driver 转述、构不成边界而**主动移除**——「虚假的安全感比没有护栏更糟」。真解需要宿主提供不经过模型的带外通道 |
 | **路径级 deny 两侧实测均不可用** | agy 无此能力；ZCode 的 `--disallowed-tools "Read(<路径>)"` 语法被接受，但模型改用 `Bash(head -1)`/`Grep` 读到了目标文件 | `peer_deny_applied` 恒为 `false`，隔离是**降级运行**——只靠禁读清单 + 事后轨迹核验（风险 R13） |

@@ -83,11 +83,35 @@ export interface RoundReport {
   notes: string[];
 }
 
+/**
+ * 没进时间线的运行（EV-144，计划 r2 §3.6）：该阶段 `_meta/` 下可读的 run.json 里，时间线没选中的那些。
+ *
+ * 时间线按审查文档枚举轮次（`enumerateRounds`），没产出审查文档的运行——被取消、worker 异常 / 失联、
+ * 入选侧全部失败、纯文档跳过、以及没走到收尾的旧留痕——在那里整个看不见。它们也**不占轮次号**
+ * （`resolveRerunIndex` 只看审查文档），之后的重跑沿用同一个号，所以这里记的是「预定轮次」。
+ */
+export interface UnlistedRun {
+  stage: Stage;
+  runId: string;
+  /** 预定轮次：这次运行开始时算出的轮次号，之后的重跑可能沿用同一个号 */
+  rerunIndex: number;
+  status: RunMeta['status'];
+  startedAt: string;
+  finishedAt: string | null;
+  termination: RunMeta['termination'] | null;
+  /** artifacts[] 里登记的、属于本轮入选审核者的审查文档条数；正常为 0，非 0 说明时间线选错了 */
+  registeredReviewDocs: number;
+  /** 按事实给的一句说明，不推测 */
+  label: string;
+}
+
 export interface TopicReport {
   topic: string;
   generatedAt: string;
   task: TaskMeta;
   rounds: RoundReport[];
+  /** 没进时间线的运行（EV-144） */
+  unlistedRuns: UnlistedRun[];
   verify: VerifyRecord | null;
   /** 最近一份 verify 记录存在但读不出来——与「从未验证」必须区分开 */
   verifyUnreadable: string | null;
@@ -393,24 +417,97 @@ async function loadLatestVerify(
   }
 }
 
+/** 一次没进时间线的运行的说明（EV-144）。只按留痕里的事实写，分不出的就说分不出 */
+function unlistedLabel(meta: RunMeta, failedSides: number, registeredReviewDocs: number): string {
+  let label: string;
+  if (meta.status === 'cancelled') label = '被 review --cancel 取消';
+  else if (meta.status === 'failed' && meta.termination?.by === 'worker_exception') {
+    label = `worker 异常（退出码 ${meta.termination.exit_code}）`;
+  } else if (meta.status === 'failed' && meta.termination?.by === 'worker_lost') {
+    label = `worker 失联（${meta.termination.reason}）`;
+  } else if (meta.status === 'failed' && failedSides > 0 && registeredReviewDocs === 0) label = '入选侧全部失败';
+  else if (meta.gate.state === 'skipped_doc_only') label = '纯文档跳过（FR-23）';
+  // report 只读归档、不读本机运行目录（P4），分不出「真在跑」与「没走到收尾」，两种都说
+  else if (meta.status === 'running') label = '进行中，或没走到收尾';
+  else label = `${meta.status}（gate.state=${meta.gate.state}）`;
+  if (registeredReviewDocs > 0) label += '；登记了审查文档却未进时间线，请核对';
+  return label;
+}
+
+/**
+ * 列出该阶段没进时间线的运行（EV-144，计划 r2 §3.6）：`_meta/` 下所有可读 run.json 减去时间线选中的那几份。
+ * 读不出的 run.json 记进 notes——`enumerateRounds` 那里是静默跳过的。
+ */
+async function collectUnlistedRuns(
+  layout: ArchiveLayout,
+  stage: Stage,
+  listed: ReadonlySet<string>,
+  notes: string[],
+): Promise<UnlistedRun[]> {
+  let files: string[] = [];
+  try {
+    files = await fs.readdir(metaDir(layout, stage));
+  } catch {
+    return []; // 阶段还没跑过
+  }
+  const out: UnlistedRun[] = [];
+  for (const f of files.sort()) {
+    const runId = /^run-(.+)\.json$/.exec(f)?.[1];
+    if (runId === undefined || listed.has(runId)) continue;
+    const meta = await readRunMeta(layout, stage, runId);
+    if (!meta) {
+      notes.push(`\`${stage}/_meta/${f}\` 读不出来（不可解析或不合契约），未列入报告`);
+      continue;
+    }
+    const names = meta.artifacts.map((a) => path.basename(a.path));
+    const failedSides = names.filter((n) => n.endsWith('.failed.json')).length;
+    // 只数本轮入选审核者后缀的审查文档：plan / bug 成功轮还会登记 Driver 自己的原稿，那不是审查文档
+    const registeredReviewDocs = meta.artifacts.filter(
+      (a) => !a.path.includes('/_meta/') && meta.critics_selected.some((c) => a.path.endsWith(`-${c}.md`)),
+    ).length;
+    out.push({
+      stage,
+      runId,
+      rerunIndex: meta.rerun_index,
+      status: meta.status,
+      startedAt: meta.started_at,
+      finishedAt: meta.finished_at,
+      termination: meta.termination ?? null,
+      registeredReviewDocs,
+      label: unlistedLabel(meta, failedSides, registeredReviewDocs),
+    });
+  }
+  return out;
+}
+
 export async function buildTopicReport(layout: ArchiveLayout): Promise<TopicReport> {
   const notes: string[] = [];
   const task = await readTask(layout);
   const rounds: RoundReport[] = [];
+  const unlistedRuns: UnlistedRun[] = [];
 
   for (const stage of STAGES) {
-    for (const { rerunIndex, runId } of await enumerateRounds(layout, stage)) {
+    const enumerated = await enumerateRounds(layout, stage);
+    for (const { rerunIndex, runId } of enumerated) {
       rounds.push(await buildRound(layout, stage, rerunIndex, runId));
     }
+    const listed = new Set(enumerated.map((r) => r.runId).filter((x): x is string => x !== null));
+    unlistedRuns.push(...(await collectUnlistedRuns(layout, stage, listed, notes)));
   }
 
-  if (rounds.length === 0) notes.push('该主题下没有任何已产出审查工件的轮次');
+  if (rounds.length === 0) {
+    notes.push(
+      '该主题下没有任何已产出审查工件的轮次' +
+        (unlistedRuns.length > 0 ? `（另有 ${unlistedRuns.length} 次运行未产出审查文档，见时间线下方）` : ''),
+    );
+  }
 
   return {
     topic: layout.topic,
     generatedAt: new Date().toISOString(),
     task,
     rounds,
+    unlistedRuns,
     ...(await (async () => {
       const v = await loadLatestVerify(layout, notes);
       return { verify: v.record, verifyUnreadable: v.unreadable };
@@ -442,7 +539,8 @@ export function renderTopicReport(r: TopicReport): string {
     `- **生成时间**：${r.generatedAt}`,
     `- **主题创建**：${r.task.created_at}`,
     `- **当前闸门**：${r.task.gate.state}${r.task.gate.stage ? `（${r.task.gate.stage}）` : ''}`,
-    `- **轮次总数**：${r.rounds.length}`,
+    `- **轮次总数**：${r.rounds.length}` +
+      (r.unlistedRuns.length > 0 ? `（另有 ${r.unlistedRuns.length} 次运行未产出审查文档，见时间线下方）` : ''),
     '',
     '> 数据源只有 `.reviews/`。报告不重新调用任何 Agent，也不依赖本机临时目录——',
     '> 换一台机器、拿同一份归档，应得出同一份报告（设计原则 P4）。',
@@ -471,6 +569,30 @@ export function renderTopicReport(r: TopicReport): string {
     );
   }
   L.push('');
+
+  /*
+   * 没进时间线的运行（EV-144）。时间线与轮次口径不动，另列一张表：「轮次总数：0」不该被读成「这个阶段没跑过」。
+   * 没有这类运行时整节不渲染，免得每份报告都多一块空表。
+   */
+  if (r.unlistedRuns.length > 0) {
+    L.push(
+      '### 未进时间线的运行（没有产出审查文档）',
+      '',
+      '| 阶段 | 预定轮次 | 运行 | 起始 | 结束 | 状态 | 说明 |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
+    );
+    for (const u of r.unlistedRuns) {
+      L.push(
+        `| ${u.stage} | r${u.rerunIndex} | \`${u.runId}\` | ${u.startedAt} | ${u.finishedAt ?? '—'} | ` +
+          `${u.status} | ${u.label} |`,
+      );
+    }
+    L.push(
+      '',
+      '> 这些运行不占轮次号：之后的重跑沿用同一个号，所以同一轮次号可能在上下两张表里各出现一次。',
+      '',
+    );
+  }
 
   // ── 二、每轮意见与裁决 ──
   L.push('## 二、每轮意见数、严重度分布与裁决', '');

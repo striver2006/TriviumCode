@@ -22,6 +22,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { validateRunMeta } from '../../src/trivium/schemas.js';
+import { newRunMeta } from '../../src/trivium/meta.js';
+import { WORKER_LOST_REASONS } from '../../src/trivium/status.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 
 /** 递归找出归档里的全部运行记录 */
@@ -105,5 +107,44 @@ test('收严生效：guard 里出现未声明的键必须判错，而不是静�
     validateRunMeta(tampered).length > 0,
     'guard 多出一个未声明的键却校验通过——收严没生效，' +
       '「新增 guard 字段必须同步 schema」又变回一句没有代码支撑的话',
+  );
+});
+
+// ── EV-142：termination（计划 r2 §3.5 / §4.1 S1、S2）──
+
+function terminationSample(): Record<string, unknown> {
+  return newRunMeta({
+    runId: '20260927T000000Z', topic: 't', stage: 'plan', rerunIndex: 1, command: 'test', promptHint: null, taskGoal: null,
+    criticsSelected: ['gemini'], treeHash: 'T', gitHead: null, dirty: false, subjectSha256: 'S', denyPaths: [], driftPolicy: 'warn',
+  }) as unknown as Record<string, unknown>;
+}
+
+test('EV-142 S1：termination 两种形状通过；多键、by 取别的值、reason 越出枚举都判错；缺席照样通过', () => {
+  const base = { ...terminationSample(), status: 'failed' };
+  assert.deepEqual(validateRunMeta(base), [], '缺席：正常收尾、取消轮与旧留痕都没有这一键');
+  assert.deepEqual(validateRunMeta({ ...base, termination: { by: 'worker_exception', exit_code: 1 } }), []);
+  assert.deepEqual(validateRunMeta({ ...base, termination: { by: 'worker_lost', reason: 'pid_gone' } }), []);
+  const bad: unknown[] = [
+    { by: 'worker_exception', exit_code: 1, detail: '/private/var/folders/…' }, // 不存自由文本
+    { by: 'worker_lost', reason: 'pid_gone', exit_code: 1 },
+    { by: 'cancel' },
+    { by: 'worker_lost', reason: 'oom' },
+    { by: 'worker_exception', exit_code: '1' },
+  ];
+  for (const t of bad) {
+    assert.ok(validateRunMeta({ ...base, termination: t }).length > 0, `应判错：${JSON.stringify(t)}`);
+  }
+});
+
+test('EV-142 S2：schema 里 termination.reason 的枚举与 status.ts 的 WORKER_LOST_REASONS 逐项相等（单一来源）', async () => {
+  const schema = JSON.parse(
+    await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/run.v2.json'), 'utf8'),
+  ) as { properties: { termination: { oneOf: { properties: { by: { const: string }; reason?: { enum: string[] } } }[] } } };
+  const lost = schema.properties.termination.oneOf.find((b) => b.properties.by.const === 'worker_lost');
+  assert.ok(lost?.properties.reason, 'schema 里没找到 worker_lost 分支的 reason');
+  assert.deepEqual(
+    [...lost.properties.reason.enum].sort(),
+    [...WORKER_LOST_REASONS].sort(),
+    '给 interpretStatus 加了失联原因却没同步 run.v2 schema：写出的 run.json 会不合契约、被读成 null',
   );
 });

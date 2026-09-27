@@ -1,0 +1,286 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260927T005543Z",
+  "topic": "未收尾运行的留痕与复盘可见性",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "请重点看四处：①worker 异常分支与失联分支的写入前提与顺序：收尾是否都排在运行目录状态文件落终态之前，失联分支用改写之前的状态判断工作进程是否已退出、状态文件读不到时按 worker 进程号判的那一格是否只在进程确已不存在时写；②通用收尾函数把第一步放进主题任务锁之后，取消回写的既有行为是否真的不变，锁争用失败时的告警是否说清后果；③termination 字段、schema 与失联原因常量的单一来源；④report 新增的未进时间线运行表：集合定义、说明文字是否只按留痕事实写，以及变异表各条期望套件是否指向真正能区分的用例（M2 的区分依据见报告 3.2）。",
+  "task_goal": "未收尾运行的留痕与复盘可见性 实施计划（r2 定稿）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "04d05e01101e1c35ed6454f568ddfa04b1e5bb9b",
+    "tree_hash": "91dd34a157aab3c33e9c52d64b57680224d13cd5",
+    "dirty": true,
+    "subject_sha256": "4cf848e2c871878da278521ab94648d5fd7add92ca8f7a2251650118180f9ab5",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "e22a174b87dea1afd44edb61bdd521efe3b3873a",
+      "dirty": true,
+      "inputs_sha256": "0bef358cc11b5969c2122f778a6e446fb4401383c642e548e46df9d1ae1c6322",
+      "built_at": "2026-09-27T00:49:23.818Z"
+    },
+    "after_tree_hash": "735a8c8b4d8323cb442b7c15fb1e51f18851c500"
+  },
+  "started_at": "2026-09-27T00:55:44.494Z",
+  "finished_at": "2026-09-27T01:12:32.592Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "kimi-for-coding",
+      "model_effective": "kimi-for-coding",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1007.842,
+      "tool_calls": {
+        "run_command": 46,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0e05c-5e69-7c21-ae51-0375e69cc00a",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.11",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 272.556,
+      "tool_calls": {
+        "read": 47,
+        "grep": 14,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 34
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 1114625,
+        "output_tokens": 39846,
+        "thinking_tokens": 33401,
+        "cache_read_tokens": 8658564,
+        "total_tokens": 1154471
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "b4ad98e7-8cfc-4e22-bea2-73c9c1123f6c",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 604.06,
+      "tool_calls": {
+        "read": 18,
+        "grep": 8,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 20
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 16,
+        "inputTokens": 1973092,
+        "outputTokens": 45359,
+        "totalTokens": 2018451,
+        "cacheReadTokens": 1789952,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_719351c6-c32c-4653-b549-6fa76e5c2301",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/未收尾运行的留痕与复盘可见性/plan/2026-09-27-未收尾运行的留痕与复盘可见性-gemini.md",
+    ".reviews/未收尾运行的留痕与复盘可见性/plan/2026-09-27-未收尾运行的留痕与复盘可见性-glm.md",
+    ".reviews/未收尾运行的留痕与复盘可见性/plan/_meta/review-gemini-20260926T235951Z.json",
+    ".reviews/未收尾运行的留痕与复盘可见性/plan/_meta/review-glm-20260926T235951Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "未收尾运行的留痕与复盘可见性/code/_meta/changes-20260927T005543Z.diff",
+      "sha256": "4cf848e2c871878da278521ab94648d5fd7add92ca8f7a2251650118180f9ab5"
+    },
+    {
+      "path": "未收尾运行的留痕与复盘可见性/code/_meta/brief-codex-20260927T005543Z.md",
+      "sha256": "3672ff11935406752b028e2dbe5d3cfa79133f3c1bc5b9d7d3c90c4ec16fb944"
+    },
+    {
+      "path": "未收尾运行的留痕与复盘可见性/code/_meta/brief-gemini-20260927T005543Z.md",
+      "sha256": "431610504cc2d022fc167f4e0c245a33bc29c1695da72caef5c48fc664f23ac1"
+    },
+    {
+      "path": "未收尾运行的留痕与复盘可见性/code/_meta/brief-glm-20260927T005543Z.md",
+      "sha256": "6ab23b15ccacdf6e497d0274f32cfda0c5c3afa07782040bc2106d6077d66504"
+    },
+    {
+      "path": "未收尾运行的留痕与复盘可见性/code/_meta/review-codex-20260927T005543Z.json",
+      "sha256": "e19170cc24439017e3ebeca5dbf81dc8e0bae576268a74d0a43b5ae79d10d200"
+    },
+    {
+      "path": "未收尾运行的留痕与复盘可见性/code/_meta/review-gemini-20260927T005543Z.json",
+      "sha256": "04d0e34c45420a711b9ac6826a0950366cef902d050fe46171a176b2c9a01b63"
+    },
+    {
+      "path": "未收尾运行的留痕与复盘可见性/code/_meta/review-glm-20260927T005543Z.json",
+      "sha256": "be4c47c8061c228a4fae69472eb9d078264ab3fb2f3a1c7a37a276f1c22a8578"
+    },
+    {
+      "path": "未收尾运行的留痕与复盘可见性/code/2026-09-27-未收尾运行的留痕与复盘可见性-codex.md",
+      "sha256": "7ab910c5b562bf01991e87c741357d122a7554d0b8b3cb4f5eda9122e6ec122b"
+    },
+    {
+      "path": "未收尾运行的留痕与复盘可见性/code/2026-09-27-未收尾运行的留痕与复盘可见性-gemini.md",
+      "sha256": "381dc333b227c565347a56fbe53070862a6c76c79f92145d89811d76fae3bc7c"
+    },
+    {
+      "path": "未收尾运行的留痕与复盘可见性/code/2026-09-27-未收尾运行的留痕与复盘可见性-glm.md",
+      "sha256": "ea21af69e299f2213457817dc317619ea3ee40a85eb0855a0c2cdfbcfe1ba087"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}

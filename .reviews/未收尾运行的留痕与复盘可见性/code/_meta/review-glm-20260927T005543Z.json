@@ -1,0 +1,57 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "四个焦点逐一核实通过，无正确性/并发/安全问题。①两条 failed 事后收尾都排在 status.json 落终态之前，且「仍为 running 才写」使异常晚于 review.ts:1627 收尾的形态不追溯改写；②失联分支用改写前的 status.json 判「已退出」，status.json 读不到时仅 worker.pid 进程确不存在才写（PID 复用成活进程不写，方向保守）；③通用收尾参数化后 cancel 签名/文案/所写三格逐字不变，新增任务锁与 updateTaskAsync 同名同源、无嵌套自锁，锁争用失败三个出口都说清「没有第二次机会」；④termination 三处表示由 S2 守住同步、只存结构化字段不存异常原文；⑤report 未进时间线表的集合与说明均按留痕事实，unlistedRuns 经 emitJson 展开确进 --json；17 条变异的期望套件逐条核对都能真正区分（M2 合并区分已如实登记）。\n仅 1 条 nit：新注释里的「:680」行号引用因自身插入已失效，指向错误位置。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/run-protocol.ts:689",
+      "problem": "waitRun 失联分支的新注释用行号「下面 :680 那次判定」指向 EV-20 凭据抹除准入的 workerConfirmedGone(meta0, fallbackPid) 判定，但该判定经本次插入的收尾块推移后实际位于 :746，:680 附近是轮询循环的窗口参数，行号引用已失效。这条注释的全部价值在于区分「改写前 / 改写后」两次极易混淆的判定，错指针会把下一个读者引去错误位置。同文件族里 LLD v1.1.5 变更说明刚记载过修掉一次同样指向 run-protocol.ts:680 的失效链接，本次又以行号形式新引入一个。",
+      "evidence": "实读 src/trivium/run-protocol.ts 全文：注释块在 685-697 行（「下面 :680 那次判定读的是本函数自己刚写成 failed 的 status.json」），其指向的 const gone = await workerConfirmedGone(meta0, fallbackPid) 在 746 行；680 行附近是 pollMs/deadline 一带，无对应代码。对照 meta.ts 注释里的「:1627」经实核仍准确（review.ts:1627 正是 writeRunMeta）。",
+      "suggestion": "把行号引用改为符号/语义引用（如「下面 EV-20 抹除准入那次 workerConfirmedGone(meta0, …) 判定」），或更正行号；meta.ts 的「:1627」建议一并改成语义引用，避免下一次插入重蹈。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "worker 异常分支与 --wait 失联分支的归档收尾都排在 patchStatus 之前（run-protocol.ts:552-575、:698-726），W2/L4 用纳秒级 mtime 断言钉住顺序；「异常晚于收尾写 run.json」由前提 4（仍为 running 才写）拦下不追溯改写，review.ts:1627/:1628 实核为 writeRunMeta→registerRun 的顺序支撑该前提。",
+    "失联分支的「已退出」判定用改写之前的 status.json：pre 在时走 workerConfirmedGone（非终态只剩「有 pid 且进程确已不在」一种依据），pre 读不到而 worker.pid 已知时以 processAlive(fallbackPid, null) 判、不存在才算——与 interpretStatus 同源且保守（PID 复用成活进程不写；processAlive 的 kill(pid,0)+EPERM 语义实核无出错误判为死的路径）；L3 的「非终态拿不到 pid」格判「判不了」不写，M6 变异精确区分改写前后两种判定，M5/M17 分别咬住 workerGone 硬传与去掉无 status 那格。",
+    "finalizeUnfinishedRunMeta 参数化后 cancel 侧行为不变：签名五字段相同、各类跳过文案逐字相同（对照 diff 上下文）、只改的三格取 terminal 对 cancelled 等值；R1~R7 未改动照常在册。新增行为面只有第一步进主题任务锁，锁名与 updateTaskAsync 同为 taskLockName(topic)（meta.ts:33、:266-267、:625-626），与 worker 长持的运行锁不同名、两步各取一次不嵌套，无自锁与死锁路径（worker 异常从 withTopicLock 回调抛出时其 finally 已放锁）。",
+    "锁争用重试用尽（withTopicLock 缺省 20×150ms）即抛、转成带异常的跳过，三个出口都当场说清后果：--cancel 的 reportFinalizeStep 与 worker/--wait 的 describeFinalizeStep 均含「这一步不会再有第二次机会：status.json 随后落终态……请人工核对归档 run.json 与 task.json 的运行登记」；遗留锁由 acquireLock 按 pid_gone/pid_reused 回收，worker 被杀后残留的任务锁不阻塞后续收尾。",
+    "termination 单一来源成立：WORKER_LOST_REASONS 为唯一常量、派生 WorkerLostReason 类型并收窄 interpretStatus 的联合（status.ts:187-198），schema 枚举由 S2 双向排序对比守住；schema 两个分支各 additionalProperties: false、S1 的五个反例（多键、混合键、by 越值、reason 越枚举、exit_code 字符串）覆盖到位；只存结构化字段不存异常原文，规避把本机绝对路径带进归档与撞密钥扫描令终态写入跳过的风险；types→status 为 type-only 导入，无运行时循环依赖；schema 未枚举任何 Agent 身份，纪律 12 无违反。",
+    "report 的未进时间线集合定义正确：该阶段可读 run.json 减去 enumerateRounds 选中者（同轮多 run 时字典序即时间序、最新者进时间线，V2 的 A1/A2 场景成立）；label 全部按留痕事实（cancelled / termination 退出码与原因 / .failed.json 登记的入选侧全部失败 / skipped_doc_only），running 的「进行中，或没走到收尾」如实写两可、registeredReviewDocs>0 时追加「请核对」；读不出的 run.json 进 notes 不再静默；无这类运行时整节不渲染防噪声；cli.ts:1799-1802 的 emitJson 展开 TopicReport，unlistedRuns 确实进 --json，PROTOCOL 宣称属实。",
+    "变异规格 17 条逐条核对期望套件均能真正区分：M1/M3→W1、M4→L1、M6→L3、M7→F6（去锁后 400ms 内即写入，第一断言必红）、M8→F1、M9→F3、M10→F4、M11→R1（strip 断言未剥 termination，取消轮多写该键必红）、M12/M13/M14→V1/V2、M15→V3、M16→S1、M17→L5；M2 的合并区分（message 断言与 mtime 断言同用例）已在实施报告 §3.2 如实登记，不构成虚报。",
+    "文档同步面抽查一致：PRD v1.4.12 FR-24 边界、主设计 v1.3.48 的 6.7 注记/6.7.1 termination 行/7.5 约束①/§13.2、LLD v1.1.6、MANUAL v1.0.6 场景 4、PROTOCOL 的 termination 段与 worker_lost 三原因、BACKLOG 的 EV-142/144 状态更新与 EV-145/146 新登，均与实现相符；run.v2.json 工作树实件与 diff 一致，SKILL.md 对 run.v2 仅目录级描述、无字段面需同步。"
+  ],
+  "not_covered": [
+    "未复跑任何测试/变异/验收：npm run check 2126/2124/0/2、源码变异 16/16、契约变异 1/1、零配额验收 18/18、selftest 14/14 均取自实施报告与 evidence 文本，未在本机重新执行。",
+    "evidence 目录下 probe-unfinished.mjs、running-census.mjs、report-invisible-census.mjs、acceptance.mjs、gen-mutation-spec.mjs 未逐行审读（只读了 mutation-spec.json 全文与报告转述的结论）。",
+    "四个被改测试文件（run-protocol.test.ts / gate-loop.test.ts / report.test.ts / run-meta-strict.test.ts）经 changes.diff 的新增段审读，其存量用例未逐行重读；hooks.ts 只核了 runningRewriteViolation 一段，其余 Hook 拦截逻辑未重审。",
+    "真机并发压制（--cancel 与 --wait 同秒到达、worker 在自身收尾两步之间被 SIGKILL）只经 F7/X1/X2 用例与代码推演覆盖，未实机复现；skill 渲染产物与 dist 构建产物未核（本 diff 未触及，契约测试在位）。",
+    "doc/02_design/README.md 等索引页记载的版本号（主设计 v1.3.43、LLD v1.1.3）滞后于现值，属既有状态、非本 diff 引入，未展开核查其维护约定。"
+  ],
+  "consulted": [
+    ".reviews/未收尾运行的留痕与复盘可见性/code/_meta/changes-20260927T005543Z.diff",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/meta.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/report.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/util/exec.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/run-meta-failed.test.ts",
+    "test/unit/run-meta-cancel.test.ts",
+    "doc/05_testing/evidence/unfinished-runs-20260927/mutation-spec.json",
+    "doc/05_testing/REPORT_2026-09-27_unfinished_runs.md"
+  ]
+}

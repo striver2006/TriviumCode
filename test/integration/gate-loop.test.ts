@@ -807,6 +807,116 @@ test('EV-128 E5：取消轮回写为 cancelled 后，gate 仍把它当最新一�
   assert.equal(out.rerun_index, 1);
 });
 
+/*
+ * ── EV-142：worker 异常与 worker_lost 的归档侧收尾（计划 r2 §4.2 W1 / W2 / X1 / X2）──
+ */
+
+/** 循环 --wait 直到不再是 73；返回最后一次的结果 */
+async function waitUntilDone(root: string, runId: string, stub: StubConfig | null, json = false) {
+  let w = await cli(root, ['review', '--wait', runId, '--timeout', '20', ...(json ? ['--json'] : [])], stub, 60_000);
+  for (let i = 0; i < 10 && w.code === EXIT.STILL_RUNNING; i++) {
+    w = await cli(root, ['review', '--wait', runId, '--timeout', '20', ...(json ? ['--json'] : [])], stub, 60_000);
+  }
+  return w;
+}
+
+test('EV-142 W1 / W2：worker 写审查文档时抛异常 ⇒ 归档 run.json 收尾为 failed、带 termination，且先于 status.json 写', { skip: (bundleMissing && bundleSkipReason) || (process.getuid?.() === 0 && 'root 下只读目录拦不住写入') }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  // 审查文档写不进阶段目录（EACCES），_meta/ 仍可写：worker 在收尾前抛异常（与本仓那份历史留痕同形——落盘被拒）
+  await fs.mkdir(path.join(fx.stageDir, '_meta'), { recursive: true });
+  await fs.chmod(fx.stageDir, 0o555);
+  try {
+    const started = await cli(
+      fx.root,
+      ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+      STUB,
+    );
+    assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
+    const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string; run_dir: string };
+    const runPath = path.join(fx.stageDir, '_meta', `run-${js.run_id}.json`);
+    const skeleton = JSON.parse(await fs.readFile(runPath, 'utf8')) as { artifacts: unknown[] };
+
+    const w = await waitUntilDone(fx.root, js.run_id, STUB, true);
+    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
+    const out = JSON.parse(extractJsonCandidate(w.stdout)!.json) as { message: string | null };
+    assert.match(out.message ?? '', /工作进程异常/);
+    assert.match(out.message ?? '', /已把归档里的 run-\S+\.json 收尾为 failed/, 'worker.log 没人看，收尾结果要进 message');
+
+    const after = JSON.parse(await fs.readFile(runPath, 'utf8')) as {
+      status: string; gate: { state: string }; termination?: unknown; artifacts: unknown[];
+    };
+    assert.equal(after.status, 'failed');
+    assert.equal(after.gate.state, 'failed');
+    assert.deepEqual(after.termination, { by: 'worker_exception', exit_code: EXIT.FAIL });
+    assert.deepEqual(after.artifacts, skeleton.artifacts, 'artifacts[] 必须原样');
+    const task = JSON.parse(await fs.readFile(path.join(fx.root, '.reviews', TOPIC, 'task.json'), 'utf8')) as {
+      runs: { run_id: string; status: string }[];
+    };
+    assert.equal(task.runs.find((r) => r.run_id === js.run_id)?.status, 'failed');
+
+    // W2：归档侧先于 status.json 落终态（前提：纳秒级时间戳；粗粒度文件系统上假红、不会假绿）
+    const mt = async (p: string) => (await fs.stat(p, { bigint: true })).mtimeNs;
+    assert.ok((await mt(runPath)) < (await mt(path.join(js.run_dir, 'status.json'))), 'run.json 应先于 status.json 写');
+  } finally {
+    await fs.chmod(fx.stageDir, 0o755);
+  }
+});
+
+test('EV-142 X1：running 的 run.json 已入库、worker 被杀后 --wait 收尾为 failed ⇒ 提交锚放行；随后 --cancel 终态早退、run.json 不动', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const HANG: StubConfig = { gemini: { mode: 'hang' }, glm: { mode: 'hang' } };
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    HANG,
+  );
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string; worker_pid: number };
+  const runPath = path.join(fx.stageDir, '_meta', `run-${js.run_id}.json`);
+
+  const { run, killProcessTree } = await import('../../src/trivium/util/exec.js');
+  await run('git', ['add', '-A', '--', '.reviews'], { cwd: fx.root, timeoutMs: 30_000 });
+  await run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', '运行中途入库', '--no-verify'], {
+    cwd: fx.root, timeoutMs: 30_000,
+  });
+
+  killProcessTree(js.worker_pid, 'SIGKILL');
+  await new Promise((r) => setTimeout(r, 500));
+  const w = await cli(fx.root, ['review', '--wait', js.run_id, '--timeout', '20'], null, 60_000);
+  assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
+  const after = JSON.parse(await fs.readFile(runPath, 'utf8')) as { status: string; termination?: unknown };
+  assert.equal(after.status, 'failed', `${w.stdout}${w.stderr}`);
+  assert.deepEqual(after.termination, { by: 'worker_lost', reason: 'pid_gone' });
+
+  const ok = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(ok.code, EXIT.OK, `失联收尾是正常的唯一一次终态写入，提交锚应放行：\n${ok.stdout}${ok.stderr}`);
+
+  const before = await fs.readFile(runPath, 'utf8');
+  const c = await cli(fx.root, ['review', '--cancel', js.run_id]);
+  assert.equal(c.code, EXIT.OK);
+  assert.match(c.stdout + c.stderr, /已处于终态（failed）/);
+  assert.equal(await fs.readFile(runPath, 'utf8'), before, '失联之后再 --cancel 不得改写 run.json');
+});
+
+test('EV-142 X2：先 --cancel 后 --wait ⇒ --wait 按终态返回、不进失联分支，run.json 仍是 cancelled 且逐字节不变', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const HANG: StubConfig = { gemini: { mode: 'hang' }, glm: { mode: 'hang' } };
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    HANG,
+  );
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string };
+  const runPath = path.join(fx.stageDir, '_meta', `run-${js.run_id}.json`);
+  const c = await cli(fx.root, ['review', '--cancel', js.run_id]);
+  assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+  const before = await fs.readFile(runPath, 'utf8');
+  assert.equal((JSON.parse(before) as { status: string }).status, 'cancelled');
+
+  const w = await cli(fx.root, ['review', '--wait', js.run_id, '--timeout', '20'], null, 60_000);
+  assert.doesNotMatch(w.stdout + w.stderr, /失联|worker_lost/);
+  assert.equal(await fs.readFile(runPath, 'utf8'), before);
+});
+
 // ── worker 异常路径回收闸门（审查意见 GLM-r2-02 ≡ AGY-01）──
 
 test('心跳过期但进程仍在的 worker_lost：不做不可逆抹除，留给会话启动清扫（代码双审 r1 CODEX-01）', { skip: bundleMissing && bundleSkipReason }, async () => {

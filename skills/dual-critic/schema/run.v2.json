@@ -468,12 +468,35 @@
       }
     },
     "status": {
-      "description": "running 是骨架态（prepareRun 落盘）；success / failed 由 worker 收尾写；cancelled 由 review --cancel 在工作进程确认退出后写（EV-128），是取消轮唯一一次终态写入。已结束却仍为 running 的留痕表示没有走到收尾（worker 异常、worker_lost，或 EV-128 之前被取消），不回填",
+      "description": "running 是骨架态（prepareRun 落盘）；success / failed 由 worker 收尾写；另有三条事后收尾，都只在仍为 running 时写、是那份运行唯一一次终态写入：cancelled 由 review --cancel 在工作进程确认退出后写（EV-128）；failed 也可能由 worker 异常分支自己写、或由 --wait 判 worker_lost 且确认工作进程已退出时写（EV-142，同时写 termination）。已结束却仍为 running 的留痕表示没有走到收尾（本版以前的 worker 异常 / worker_lost / 取消、失联时工作进程未确认退出，或 prepare 阶段被拦），不回填",
       "enum": [
         "running",
         "success",
         "failed",
         "cancelled"
+      ]
+    },
+    "termination": {
+      "description": "这一次终态由哪条事后收尾写的（EV-142）。只由 worker 异常分支（by=worker_exception，记退出码）与 --wait 判 worker_lost 且确认工作进程已退出（by=worker_lost，记失联原因）两条路写。缺席 = 正常收尾（worker 写 success / failed）、取消轮（status: cancelled 已说明来路）、或本字段之前的留痕。只存结构化字段、不存异常原文：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。reason 的枚举须与 status.ts 的 WORKER_LOST_REASONS 逐项相等（由 run-meta-strict.test.ts 守住）",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["by", "exit_code"],
+          "additionalProperties": false,
+          "properties": {
+            "by": { "const": "worker_exception" },
+            "exit_code": { "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["by", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "by": { "const": "worker_lost" },
+            "reason": { "enum": ["no_status_file", "heartbeat_stale", "pid_gone"] }
+          }
+        }
       ]
     },
     "skipped": {

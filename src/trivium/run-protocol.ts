@@ -25,7 +25,7 @@ import {
   executeRun, prepareRun, repoId, type PreparedRun, type ReviewOptions, type RunContext,
 } from './review.js';
 import { resolveTopic } from './topic.js';
-import { finalizeCancelledRunMeta, readRunMeta, type FinalizeStep } from './meta.js';
+import { finalizeCancelledRunMeta, finalizeFailedRunMeta, readRunMeta, type FinalizeStep } from './meta.js';
 import { type AgentId } from './agents/registry.js';
 import { setGateChecked } from './state.js';
 import type { AdapterContext } from './adapters/base.js';
@@ -536,14 +536,43 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
     return outcome.exitCode;
   } catch (e) {
     const msg = e instanceof TriviumError ? e.message : `工作进程异常：${(e as Error).message}`;
+    const exitCode = e instanceof TriviumError ? e.code : EXIT.FAIL;
     fail(msg);
+    /*
+     * 归档侧收尾（EV-142，计划 r2 §3.2）：把仍为 running 的 run.json 收尾为 failed，并同步 task.json 的运行登记。
+     *
+     * - `workerGone: true`：此刻的写者就是 worker 自己；另两个事后写者（`--cancel`、`--wait` 判失联）都要求确认 worker
+     *   已退出才写，worker 活着的这段时间里它是唯一写者。
+     * - 仍为 running 才写（函数内前提 4）：异常可能晚于 executeRun 收尾时的 run.json 终态写入（其后的 registerRun /
+     *   闸门写入 / 播报都可能抛），那时 run.json 已是 success / failed，不追溯改写。
+     * - **排在 patchStatus 之前**：worker 若死在两次写之间，status.json 仍非终态，之后 `--wait` 判 pid_gone 会补齐；
+     *   反过来排，`--wait` 按终态直接返回、`--cancel` 终态早退，run.json 永远停在 running（与 EV-128 同一理由）。
+     * 结果追加进 status.json 的 message：worker.log 没人看，`--wait --json` 会原样带出 message。
+     */
+    const notes: string[] = [];
+    const st0 = await readStatus(runDir);
+    const id0 = st0 ? { topic: st0.topic, stage: st0.stage } : await readHandoffIdentity(runDir);
+    if (id0) {
+      const fin = await finalizeFailedRunMeta({
+        layout: { archiveRoot: ctx.archiveRoot, topic: id0.topic },
+        stage: id0.stage,
+        runId,
+        lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },
+        workerGone: true,
+        termination: { by: 'worker_exception', exit_code: exitCode },
+      });
+      notes.push(
+        describeFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`),
+        describeFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改'),
+      );
+    }
     // 终态必须写下来，否则 --wait 只能等到心跳过期才判失联
     await patchStatus(runDir, (s) => {
       s.phase = 'failed';
-      s.exit_code = e instanceof TriviumError ? e.code : EXIT.FAIL;
-      s.message = msg;
+      s.exit_code = exitCode;
+      s.message = [msg, ...notes].join(' ｜ ');
     });
-    return e instanceof TriviumError ? e.code : EXIT.FAIL;
+    return exitCode;
   } finally {
     clearInterval(heartbeat);
     const st = await readStatus(runDir);
@@ -653,6 +682,43 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
       };
     }
     if (reading.kind === 'worker_lost') {
+      /*
+       * 归档侧收尾（EV-142，计划 r2 §3.3）：确认工作进程已退出时，把仍为 running 的 run.json 收尾为 failed。
+       *
+       * **用改写 status.json 之前的事实判「已退出」**：此刻 phase 非终态，`workerConfirmedGone` 走不到
+       * 「终态且从未记下 pid」那一支，判「已退出」只剩「有 pid 且进程确已不在」一种依据。下面抹凭据副本前的
+       * `workerConfirmedGone(meta0, …)` 那次判定读的是本函数自己刚写成 failed 的 status.json，拿不到 pid 时会下「已不在」的结论——那次只管抹凭据副本（EV-20），不动它。
+       * status.json 读不到而 worker.pid 已知时（worker 在第一次写 status.json 之前就死了），`workerConfirmedGone(null)`
+       * 首行即判「否」、不看 worker.pid，而 `interpretStatus` 正是拿 worker.pid 判出「已死」才报 pid_gone——
+       * 证据在手，这里用同源的 `processAlive` 单独判（计划双审 r1 CODEX-01 ≡ GLM-01 ≡ AGY-02）：不存在才算已退出，
+       * 进程在（含 PID 被复用成别的活进程）照样不写。
+       * **排在 patchStatus 之前**：本进程若死在两次写之间，下一次 `--wait` 仍会判失联并补齐；反过来排就没有第二次机会。
+       * 结果只拼进下面抛出的报错正文（唯一的播报通道，r1 AGY-01）。
+       */
+      const pre = await readStatus(runDir);
+      const goneForArchive =
+        pre !== null
+          ? (await workerConfirmedGone(pre, fallbackPid)).gone
+          : fallbackPid !== null && !(await processAlive(fallbackPid, null)).alive;
+      const id0 = pre
+        ? { topic: pre.topic, stage: pre.stage }
+        : last
+          ? { topic: last.topic, stage: last.stage }
+          : await readHandoffIdentity(runDir);
+      let archiveNote = '';
+      if (id0) {
+        const fin = await finalizeFailedRunMeta({
+          layout: { archiveRoot: ctx.archiveRoot, topic: id0.topic },
+          stage: id0.stage,
+          runId,
+          lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: cfg.review.heartbeat_stale_s * 1000 },
+          workerGone: goneForArchive,
+          termination: { by: 'worker_lost', reason: reading.reason },
+        });
+        archiveNote =
+          `\n  ${describeFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`)}` +
+          `\n  ${describeFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改')}`;
+      }
       await patchStatus(runDir, (s) => {
         s.phase = 'failed';
         s.exit_code = EXIT.FAIL;
@@ -691,7 +757,7 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
       throw new TriviumError(
         EXIT.FAIL,
         `运行 ${runId} 的工作进程失联（${reading.reason}）。` +
-          `\n  日志：${workerLogPath(runDir)}` + scrubNote,
+          `\n  日志：${workerLogPath(runDir)}` + archiveNote + scrubNote,
       );
     }
     if (reading.kind === 'running') last = reading.status;
@@ -796,6 +862,19 @@ function reportFinalizeStep(r: FinalizeStep, done: string, notDone: string): voi
         '请人工核对归档 run.json 与 task.json 的运行登记',
     );
   } else step(`${notDone}：${r.why}`);
+}
+
+/**
+ * 事后收尾每一步的一句话说明，给 worker 异常分支（拼进 status.json message）与 `--wait` 失联分支（拼进报错正文）用
+ * （EV-142）。这两处都只有一个出口，所以返回字符串、不自己打印；`--cancel` 仍走上面的 `reportFinalizeStep`。
+ * 异常转成的跳过同样要把后果说出来：调用方随后就把 status.json 落终态，这一步没有第二次机会。
+ */
+function describeFinalizeStep(r: FinalizeStep, done: string, notDone: string): string {
+  if (r.kind === 'written') return done;
+  if (r.error) {
+    return `${notDone}：${r.why}——这一步不会再有第二次机会：status.json 随后落终态，请人工核对归档 run.json 与 task.json 的运行登记`;
+  }
+  return `${notDone}：${r.why}`;
 }
 
 export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {

@@ -57,6 +57,8 @@
 
 **`run.v2` 的可选字段 `driver_guard_level`**（M10b 第 3 步，B1）：取值 `L1` / `L2`，记当轮 Driver 的**有效**护栏等级（登记 L1 的载体在 Hook 配置不在场时记 `L2`；登记 L2 的恒 `L2`，不读探针字段），规范见设计 8.5。**可选**：早于该步的留痕没有它，缺席即「无从得知」，不等于 L1；`trivium report` 时间线对旧留痕显示「—」。其余字段不变。
 
+**`run.v2` 的可选字段 `termination`**（设计 v1.3.48，EV-142）：`{ by: "worker_exception", exit_code }` 或 `{ by: "worker_lost", reason }`（`reason` ∈ `no_status_file` / `heartbeat_stale` / `pid_gone`），记这一次 `failed` 由哪条事后收尾写：worker 异常分支自己写，或 `--wait` 判 `worker_lost` 且工作进程确认已退出时写；两条都只在 run.json 仍为 `running` 时写。只存结构化字段、不存异常原文。缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕，规范见设计 6.7 注记与 6.7.1。
+
 ### `trivium.run.v2` 的读侧分发（按阶段，设计 6.7.1）
 
 审查阶段（`plan` / `code` / `bug`）只认 `run.v1`（迁移为内存 v2）与 `run.v2`，
@@ -259,8 +261,9 @@ trivium review --start --stage <s> --topic <t> --focus <hint> --json
 
 约束：
 
-- 工作进程每 30s 写一次心跳到 `status.json`；心跳超过 `heartbeat_stale_s`（默认 120s）
-  未更新且进程不存在 → 判 `failed(worker_lost)`。
+- 工作进程每 30s 写一次心跳到 `status.json`；`--wait` 在进程不在或已不是同一进程（`pid_gone`）、
+  进程活着但心跳超过 `heartbeat_stale_s`（默认 120s）未更新（`heartbeat_stale`）、status.json 与 pid 都拿不到（`no_status_file`）
+  三种情形下判 `failed(worker_lost)`；工作进程确认已退出时先把归档 run.json 收尾为 `failed`（设计 v1.3.48，EV-142）。
 - 进程存活性比对 `ps -p <pid> -o lstart=`，**不能只看 `kill(pid,0)`**：macOS 会复用 PID。
 - stdio 必须重定向到日志文件。继承父进程管道会让 worker 在父退出后死于 SIGPIPE；
   管道 EOF 不闭合则派生方会挂到 worker 退出。
@@ -357,7 +360,7 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 | `gate hook-*` | Hook 入口，从 stdin 读事件。**不应由人直接调用** |
 | `approve` / `abandon` | 人工审批 / 放弃闸门。审批附言走 `--reason`；多余的位置参数退 64（EV-24），布尔旗标（`--reject` 等）不吞下一个 token、`=` 传值只认 true/false。**通过前复核**（M10a 第 3 步）：与 `gate --await-approval` 共用一份判定——本轮裁决齐备 + 本轮 `run.json.artifacts[]` 的 sha256 抽核；不通过退 2，推断不出 run_id 或运行元数据读不出退 65（出口是 abandon 后重跑）。拒绝与放弃不复核。复核不保证「审批来自人」。**通过时先打印工作树改动摘要**（复核之后、落审批之前）：自审查收尾以来改过的文件，基线 `snapshot.after_tree_hash`；`--json` 带 `worktree_summary`（按阶段，每阶段 `available` / `reason` / `run_id` / `baseline_tree` / `current_tree` / `total` / `truncated` / `files`（最多 200 条）/ `excluded_prefixes` / `budget_ms` / `budget_overridden`）。只告知，不参与判定、不改退出码；取不到时报原因，不报「无改动」 |
 | `verify --topic <t>` | 执行显式配置的编译测试命令并落盘记录 |
-| `report --topic <t>` | 主题级复盘 |
+| `report --topic <t>` | 主题级复盘；没产出审查文档的运行另列「未进时间线的运行」，`--json` 输出多一个 `unlistedRuns` 字段（设计 v1.3.48，EV-144） |
 | `status` | 闸门、运行、降级与争议 |
 | `scrub [--dry-run] [--json]` | 对**整个运行根**做一次凭据清扫：遍历全部项目桶，**只抹凭据、一个目录都不删**（整删是 `run_dir_days` 的职责且按项目划界，跨仓删别人的目录是越权）。准入判据与会话启动清扫同源（`admitScrub`）：worker 现势活着的不动，状态读不到一律跳过并计数。**退出码恒 `0`**，理由见 §五末段。`--dry-run` 只预测**侧层**——运行目录那一层没有哨兵、每轮都复查，有没有活取决于正文是否命中密钥，不读正文答不了（BACKLOG EV-33） |
 | `init` | 在项目内布置运行时（幂等）。M10b 第 3 步起两家 Hook 一起合并：`.claude/settings.json` 与 `.zcode/config.json`（ZCode 形态），只增不删、写盘前备份只在真正写入时发生 |

@@ -8,7 +8,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type {
-  AgentId, CriticId, LegacyReviewMode, RunMeta, Stage, StageOrVerify, CommandEntry,
+  AgentId, CriticId, LegacyReviewMode, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
 } from './types.js';
 import type { BuildStamp } from './build-stamp.js';
 import { writeAtomic } from './util/fsx.js';
@@ -30,7 +30,7 @@ export interface TaskLock {
  * 复用会自锁。`.` 开头保证不与任何主题撞名（§6.1 禁止主题以 `.` 开头），
  * `hook-session-start` 枚举锁目录时也会跳过它。
  */
-const taskLockName = (topic: string): string => `.task-${topic}`;
+export const taskLockName = (topic: string): string => `.task-${topic}`;
 
 /** run_id 形如 20260910T142310Z：UTC 紧凑时间戳，可排序、可做文件名 */
 export function newRunId(now: Date = new Date()): string {
@@ -523,12 +523,15 @@ export async function readRunMeta(
   return null;
 }
 
-// ─────────────────────── --cancel 的归档侧收尾（EV-128） ───────────────────────
+// ─────────────────────── 事后收尾：--cancel（EV-128）、worker 异常与 worker_lost（EV-142） ───────────────────────
 
-/** `finalizeCancelledRunMeta` 每一步的结果；`error` 为真表示是异常转成的跳过 */
+/** 事后收尾每一步的结果；`error` 为真表示是异常转成的跳过 */
 export type FinalizeStep =
   | { kind: 'written' }
   | { kind: 'skipped'; why: string; error?: boolean };
+
+/** 事后收尾能写的两种终态。`success` 只由 worker 正常收尾写 */
+type UnfinishedTerminal = 'cancelled' | 'failed';
 
 const skipped = (why: string): FinalizeStep => ({ kind: 'skipped', why });
 const skippedFromError = (what: string, e: unknown): FinalizeStep => ({
@@ -537,94 +540,138 @@ const skippedFromError = (what: string, e: unknown): FinalizeStep => ({
   error: true,
 });
 
+interface FinalizeInput {
+  layout: ArchiveLayout;
+  stage: Stage;
+  runId: string;
+  lock: TaskLock;
+  /**
+   * 「没有另一个写者」：别的进程调用时传「工作进程已确认退出」的结论（`cancelRun` 传 `workerConfirmedGone(...).gone`，
+   * `waitRun` 传改写 status.json 之前的判定）；worker 自己在异常分支调用时恒传 true——它就是那个写者。
+   * 显式入参，接线才有用例守得住。
+   */
+  workerGone: boolean;
+}
+
 /**
- * 把被 `review --cancel` 的运行在归档侧收尾（EV-128，计划 r2 §3.2）。
+ * 把被 `review --cancel` 的运行在归档侧收尾（EV-128，计划 r2 §3.2）。签名与行为自 EV-128 起不变。
  *
  * 取消轮从来走不到 worker 的收尾：worker 被杀在收尾之前，run.json 停在骨架的 `running`。
  * 这里补上它**唯一一次**终态写入，写完同样不再更新——与 EV-133「收尾后不再更新」不冲突。
+ * 不写 `termination`：`status: cancelled` 已说明来路。
+ */
+export function finalizeCancelledRunMeta(i: FinalizeInput): Promise<{ runMeta: FinalizeStep; task: FinalizeStep }> {
+  return finalizeUnfinishedRunMeta({ ...i, terminal: 'cancelled' });
+}
+
+/**
+ * 把没走到 worker 收尾就失败的运行在归档侧收尾为 `failed`（EV-142，计划 r2 §3.2 / §3.3）。
+ * 两个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
+ * 且确认工作进程已退出（`termination.by = worker_lost`）。
+ */
+export function finalizeFailedRunMeta(
+  i: FinalizeInput & { termination: RunTermination },
+): Promise<{ runMeta: FinalizeStep; task: FinalizeStep }> {
+  return finalizeUnfinishedRunMeta({ ...i, terminal: 'failed' });
+}
+
+/**
+ * 事后收尾的通用体：按「目标终态」参数化（计划 r2 §3.1，D4 取 (a)）。
  *
- * **两步各自独立判定，对进程中断可重入**：`cancelRun` 把本函数排在 `patchStatus` 之前，
- * 进程死在任意两次写之间时 status.json 仍非终态，再跑一次 `--cancel` 会把没做完的那一步补上
- * （上一版排在 `patchStatus` 之后，中断即永久停在 running——计划双审 r1 CODEX-01 ≡ GLM-01）。
- * **对单步写失败不可重入**（代码双审 r1 CODEX-01）：异常转成 skipped 后 `cancelRun` 照常落终态，
- * 之后 `--cancel` 在终态分支早退，这一步没有第二次机会——`cancelRun` 的告警会当场说出来，要人工对账。
+ * **两步各自独立判定，对进程中断可重入**：调用方都把本函数排在把 status.json 落终态之前，
+ * 进程死在任意两次写之间时 status.json 仍非终态，再跑一次 `--cancel` / `--wait` 会把没做完的那一步补上
+ * （EV-128 上一版排在 `patchStatus` 之后，中断即永久停在 running——计划双审 r1 CODEX-01 ≡ GLM-01）。
+ * **对单步写失败不可重入**（代码双审 r1 CODEX-01）：异常转成 skipped 后调用方照常落终态，
+ * 这一步没有第二次机会——调用方的告警会当场说出来，要人工对账。
  *
  * **自身不抛**：两步各包一层捕获，任何异常都转成该步的 skipped。只设这一道——
  * 调用方不再另包，免得两层互为冗余（r1 CODEX-02 ≡ AGY-01 ≡ GLM-02）。锁与闸门回收排在它之后，
  * 归档侧失败不得连坐那两项：闸门卡在 running 会把 Driver 永久锁在一个已经不存在的运行上。
  */
-export async function finalizeCancelledRunMeta(i: {
-  layout: ArchiveLayout;
-  stage: Stage;
-  runId: string;
-  lock: TaskLock;
-  /** `cancelRun` 传 `workerConfirmedGone(...).gone`；显式入参，接线才有用例守得住 */
-  workerGone: boolean;
-}): Promise<{ runMeta: FinalizeStep; task: FinalizeStep }> {
-  const runMeta = await cancelRunMetaStep(i).catch((e: unknown) => skippedFromError('回写 run.json ', e));
-  const task = await cancelTaskEntryStep(i).catch((e: unknown) => skippedFromError('同步 task.json ', e));
+async function finalizeUnfinishedRunMeta(
+  i: FinalizeInput & { terminal: UnfinishedTerminal; termination?: RunTermination },
+): Promise<{ runMeta: FinalizeStep; task: FinalizeStep }> {
+  const runMeta = await unfinishedRunMetaStep(i).catch((e: unknown) => skippedFromError('回写 run.json ', e));
+  const task = await unfinishedTaskEntryStep(i).catch((e: unknown) => skippedFromError('同步 task.json ', e));
   return { runMeta, task };
 }
 
 /**
  * 第一步：run.json。四个前提任一不满足即跳过、不改文件：
- *   1. 工作进程已确认退出——没确认到就可能还有写者（进程组里的后代、正要收尾的 worker），两个写者会互相覆盖；
+ *   1. 没有另一个写者（`workerGone`）——没确认到就可能还有写者（进程组里的后代、正要收尾的 worker），两个写者会互相覆盖；
  *   2. 主题与阶段已知（由调用方给出）；
  *   3. 原始 JSON 是 run.v2——`readRunMeta` 读进来的 v1 是**迁移后的内存形状**，写回会把历史文件改成 v2；
- *   4. 合契约且仍为 `running`——已是终态（含 worker 先写完 run.json、status.json 还没改的窗口）一律不动。
+ *   4. 合契约且仍为 `running`——已是终态（含 worker 先写完 run.json、status.json 还没改的窗口，
+ *      以及 worker 在 `executeRun` 收尾写完 run.json 终态之后才抛的异常）一律不动。
  *
- * 只改三格：`status`、`finished_at`、`gate.state`。`artifacts[]` 原样——提交锚对 HEAD 为 running 的
- * run.json 只查 `run_id` 与已登记条目（`hooks.ts` `runningRewriteViolation`），所以「运行中途提交过、之后被取消」
- * 也能正常提交。`gate.warnings` 不追加：它会被回灌成 `run_warning`（EV-133）。
+ * **读 → 判 → 写整段在主题任务锁里**（EV-142，计划 r2 §3.4）：事后写者有三个（`--cancel`、worker 异常分支、
+ * `--wait` 判失联），`--cancel` 与 `--wait` 可能在 worker 死后同时读到 running；不进锁就会两边都写、后写者改掉
+ * 前者的 `status` / `finished_at`。锁与 task.json 同一把（`taskLockName`，与 worker 长持的运行锁不同名、不会自锁），
+ * 两步各取一次、不嵌套。争用重试用尽即抛、转成带异常的跳过。
+ *
+ * 只改三格：`status`、`finished_at`、`gate.state`（取目标终态），给了 `termination` 再加这一键。`artifacts[]` 原样——
+ * 提交锚对 HEAD 为 running 的 run.json 只查 `run_id` 与已登记条目（`hooks.ts` `runningRewriteViolation`），
+ * 所以「运行中途提交过、之后被取消 / 失败」也能正常提交。`gate.warnings` 不追加：它会被回灌成 `run_warning`（EV-133）。
  */
-async function cancelRunMetaStep(i: {
-  layout: ArchiveLayout; stage: Stage; runId: string; workerGone: boolean;
+async function unfinishedRunMetaStep(i: {
+  layout: ArchiveLayout; stage: Stage; runId: string; lock: TaskLock; workerGone: boolean;
+  terminal: UnfinishedTerminal; termination?: RunTermination;
 }): Promise<FinalizeStep> {
   if (!i.workerGone) {
     return skipped('工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）');
   }
   const { metaDir } = await import('./archive.js');
   const p = path.join(metaDir(i.layout, i.stage), runMetaFileName(i.runId));
-  let text: string;
-  try {
-    text = await fs.readFile(p, 'utf8');
-  } catch {
-    return skipped(`归档里没有 ${runMetaFileName(i.runId)}`);
-  }
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    return skipped(`${runMetaFileName(i.runId)} 不可解析，不动它`);
-  }
-  const schema = (raw as { schema?: unknown } | null)?.schema;
-  if (schema !== 'trivium.run.v2') {
-    return skipped(`schema 为 ${JSON.stringify(schema)}，只回写 run.v2（不改历史形状）`);
-  }
-  if (validateRunMeta(raw).length > 0) return skipped('不合 trivium.run.v2 契约，不动它');
-  const meta = raw as RunMeta;
-  if (meta.status !== 'running') return skipped(`已是终态（${meta.status}），不追溯改写`);
+  return withTopicLock(
+    { triviumDir: i.lock.triviumDir, topic: taskLockName(i.layout.topic), heartbeatStaleMs: i.lock.heartbeatStaleMs },
+    async (): Promise<FinalizeStep> => {
+      let text: string;
+      try {
+        text = await fs.readFile(p, 'utf8');
+      } catch {
+        return skipped(`归档里没有 ${runMetaFileName(i.runId)}`);
+      }
+      let raw: unknown;
+      try {
+        raw = JSON.parse(text);
+      } catch {
+        return skipped(`${runMetaFileName(i.runId)} 不可解析，不动它`);
+      }
+      const schema = (raw as { schema?: unknown } | null)?.schema;
+      if (schema !== 'trivium.run.v2') {
+        return skipped(`schema 为 ${JSON.stringify(schema)}，只回写 run.v2（不改历史形状）`);
+      }
+      if (validateRunMeta(raw).length > 0) return skipped('不合 trivium.run.v2 契约，不动它');
+      const meta = raw as RunMeta;
+      if (meta.status !== 'running') return skipped(`已是终态（${meta.status}），不追溯改写`);
 
-  meta.status = 'cancelled';
-  meta.finished_at = new Date().toISOString();
-  meta.gate.state = 'cancelled';
-  await writeRunMeta(i.layout, i.stage, meta);
-  return { kind: 'written' };
+      meta.status = i.terminal;
+      meta.finished_at = new Date().toISOString();
+      meta.gate.state = i.terminal;
+      if (i.termination) meta.termination = i.termination;
+      await writeRunMeta(i.layout, i.stage, meta);
+      return { kind: 'written' };
+    },
+  );
 }
 
 /**
- * 第二步：task.json 的运行登记。**不依赖第一步这一次写没写**——run.json 已是 `cancelled`
- * （这一次或上一次写的）、登记仍为 `running` 就补上，于是两次写之间被打断也能由下一次 `--cancel` 补齐。
+ * 第二步：task.json 的运行登记。**不依赖第一步这一次写没写**——run.json 已是**本次目标终态**
+ * （这一次或上一次写的）、登记仍为 `running` 就补上，于是两次写之间被打断也能由下一次调用补齐。
+ *
+ * 只认目标终态、不照抄别的终态（计划 r2 §3.1）：放宽成「run.json 是任一终态就照抄」会让
+ * 「run.json 已 success ⇒ 登记不改」（R2）换语义。run.json 已终态、登记停在 running 的另两种形态
+ * （worker 写完 success 后 `registerRun` 抛错；`--cancel` 撞进 worker 异常分支的两次写之间）如实保留，见计划 §6.2。
  *
  * 按 run_id 精确匹配；找不到就跳过——`prepareRun` 先写 run.json、后登记，中间被打断会留下这种形态，
  * 这里不新建条目、不取末条（r1 CODEX-04 ≡ AGY-03）。只改这一条的 `status`，不走 `registerRun` 的整条覆盖。
  */
-async function cancelTaskEntryStep(i: {
-  layout: ArchiveLayout; stage: Stage; runId: string; lock: TaskLock;
+async function unfinishedTaskEntryStep(i: {
+  layout: ArchiveLayout; stage: Stage; runId: string; lock: TaskLock; terminal: UnfinishedTerminal;
 }): Promise<FinalizeStep> {
   const m = await readRunMeta(i.layout, i.stage, i.runId);
-  if (m?.status !== 'cancelled') {
-    return skipped(`归档 run.json 不是 cancelled（${m ? m.status : '读不到'}），不改登记`);
+  if (m?.status !== i.terminal) {
+    return skipped(`归档 run.json 不是 ${i.terminal}（${m ? m.status : '读不到'}），不改登记`);
   }
   let outcome: FinalizeStep = skipped('task.json 无此运行的登记（不新建条目）');
   await updateTaskAsync(i.layout, async (t) => {
@@ -634,7 +681,7 @@ async function cancelTaskEntryStep(i: {
       outcome = skipped(`登记已是 ${entry.status}，不改`);
       return false;
     }
-    entry.status = 'cancelled';
+    entry.status = i.terminal;
     outcome = { kind: 'written' };
     return undefined;
   }, i.lock);

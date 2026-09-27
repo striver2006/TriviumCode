@@ -364,6 +364,130 @@ test('EV-128 E6：归档侧写失败（_meta 只读）不连坐锁与闸门回�
   }
 });
 
+/*
+ * ── EV-142：--wait 判 worker_lost 时的归档侧收尾（计划 r2 §3.3 / §4.2 L1～L5）──
+ */
+
+/** 把 status.json 的心跳改成一小时前（writeStatus 会刷新心跳，所以直接写文件） */
+async function staleHeartbeat(runDir: string, patch: (s: Record<string, unknown>) => void = () => {}): Promise<void> {
+  const p = path.join(runDir, 'status.json');
+  const s = JSON.parse(await fs.readFile(p, 'utf8')) as Record<string, unknown>;
+  s['heartbeat_at'] = new Date(Date.now() - 3_600_000).toISOString();
+  patch(s);
+  await fs.writeFile(p, JSON.stringify(s, null, 2) + '\n', 'utf8');
+}
+
+/** waitRun 预期抛失联；返回报错正文 */
+async function lostMessage(ctx: Ctx, runId: string): Promise<string> {
+  let message = '';
+  await assert.rejects(waitRun(ctx, runId, 10), (e: { code?: number; message: string }) => {
+    assert.equal(e.code, EXIT.FAIL);
+    message = e.message;
+    return true;
+  });
+  return message;
+}
+
+test('EV-142 L1：worker 被杀后 --wait 判 pid_gone ⇒ 归档 run.json 收尾为 failed、带 termination，task.json 同步', async () => {
+  const ctx = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx, 'R-LOST-ARCH');
+  const a = await seedArchive(ctx, 'R-LOST-ARCH');
+  killQuietly(pid);
+  await new Promise((r) => setTimeout(r, 300));
+
+  const message = await lostMessage(ctx, 'R-LOST-ARCH');
+  const after = JSON.parse(await fs.readFile(a.runJson, 'utf8')) as RunMeta;
+  assert.equal(after.status, 'failed');
+  assert.equal(after.gate.state, 'failed');
+  assert.ok(after.finished_at);
+  assert.deepEqual(after.termination, { by: 'worker_lost', reason: 'pid_gone' });
+  assert.deepEqual(after.artifacts, a.meta.artifacts, 'artifacts[] 必须原样');
+  assert.equal((await readTask(a.layout)).runs.find((r) => r.run_id === 'R-LOST-ARCH')?.status, 'failed');
+  assert.match(message, /已把归档里的 run-R-LOST-ARCH\.json 收尾为 failed/);
+  assert.match(message, /已把 task\.json 的运行登记同步为 failed/);
+  assert.equal((await readStatus(runDir))?.phase, 'failed');
+
+  /*
+   * L4：归档侧必须先于 status.json 落终态（计划 r2 §3.3）——反过来排，下一次 --wait 按终态直接返回，没有第二次机会。
+   * 前提同 E1：纳秒级时间戳；粗粒度文件系统上会假红、不会假绿。
+   */
+  const mt = async (p: string) => (await fs.stat(p, { bigint: true })).mtimeNs;
+  const statusMt = await mt(path.join(runDir, 'status.json'));
+  assert.ok((await mt(a.runJson)) < statusMt, 'run.json 应先于 status.json 写');
+  assert.ok((await mt(a.taskJson)) < statusMt, 'task.json 登记应先于 status.json 写');
+});
+
+test('EV-142 L2：进程还活着、只是心跳过期（heartbeat_stale）⇒ 归档 run.json 不写，报错写明未确认退出', async () => {
+  const ctx = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx, 'R-STALE-ARCH');
+  try {
+    const a = await seedArchive(ctx, 'R-STALE-ARCH');
+    await staleHeartbeat(runDir);
+    const runBefore = await fs.readFile(a.runJson, 'utf8');
+    const taskBefore = await fs.readFile(a.taskJson, 'utf8');
+
+    const message = await lostMessage(ctx, 'R-STALE-ARCH');
+    assert.match(message, /heartbeat_stale/);
+    assert.equal(await fs.readFile(a.runJson, 'utf8'), runBefore, '进程还在，可能还有写者，run.json 必须逐字节不变');
+    assert.equal(await fs.readFile(a.taskJson, 'utf8'), taskBefore);
+    assert.match(message, /归档 run-R-STALE-ARCH\.json 未回写：工作进程未确认退出/);
+  } finally {
+    killQuietly(pid);
+  }
+});
+
+test('EV-142 L3：运行中却拿不到 pid、心跳过期 ⇒ 用改写前的 status.json 判「未确认」，run.json 不写', async () => {
+  /*
+   * 这一格改写前后判定不一致：改写前 phase 为 running 且无 pid ⇒ workerConfirmedGone 判「否」；
+   * waitRun 把 status.json 写成 failed 之后再判，会走「终态且从未记下 pid ⇒ 已不在」那一支判「是」。
+   * 归档写入必须用前者（计划 r2 §3.3），否则就替没确认的事作证。
+   */
+  const ctx = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx, 'R-NOPID-ARCH');
+  try {
+    await fs.rm(path.join(runDir, 'worker.pid'));
+    await staleHeartbeat(runDir, (s) => { s['worker_pid'] = null; s['worker_started_at'] = null; });
+    const a = await seedArchive(ctx, 'R-NOPID-ARCH');
+    const runBefore = await fs.readFile(a.runJson, 'utf8');
+
+    const message = await lostMessage(ctx, 'R-NOPID-ARCH');
+    assert.match(message, /heartbeat_stale/);
+    assert.equal(await fs.readFile(a.runJson, 'utf8'), runBefore);
+    assert.match(message, /未回写：工作进程未确认退出/);
+  } finally {
+    killQuietly(pid);
+  }
+});
+
+test('EV-142 L5：status.json 读不到、worker.pid 指向的进程已死（pid_gone）⇒ 也收尾为 failed；进程活着则不判失联', async () => {
+  /*
+   * worker 在第一次写 status.json 之前就死了（计划双审 r1 CODEX-01 ≡ GLM-01 ≡ AGY-02）：
+   * interpretStatus 拿 worker.pid 判出「已死」才报 pid_gone，证据在手；workerConfirmedGone(null) 却首行判「否」。
+   * 身份取交接文件（startRun 在写 status.json 之前就写好了）。
+   */
+  const ctx = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx, 'R-NOSTATUS-ARCH');
+  await fs.rm(path.join(runDir, 'status.json'));
+  await fs.writeFile(path.join(runDir, 'request.json'), JSON.stringify({ topic: TOPIC, stage: 'plan' }) + '\n', 'utf8');
+  const a = await seedArchive(ctx, 'R-NOSTATUS-ARCH');
+
+  // 对照：进程还活着 ⇒ 情形 A 判 inconclusive，窗口用尽退 73，run.json 不动
+  const runBefore = await fs.readFile(a.runJson, 'utf8');
+  const alive = await waitRun(ctx, 'R-NOSTATUS-ARCH', 2);
+  assert.equal(alive.exitCode, EXIT.STILL_RUNNING);
+  assert.equal(await fs.readFile(a.runJson, 'utf8'), runBefore);
+
+  killQuietly(pid);
+  await new Promise((r) => setTimeout(r, 300));
+  const message = await lostMessage(ctx, 'R-NOSTATUS-ARCH');
+  assert.match(message, /pid_gone/);
+  const after = JSON.parse(await fs.readFile(a.runJson, 'utf8')) as RunMeta;
+  assert.equal(after.status, 'failed');
+  assert.deepEqual(after.termination, { by: 'worker_lost', reason: 'pid_gone' });
+  assert.equal((await readTask(a.layout)).runs.find((r) => r.run_id === 'R-NOSTATUS-ARCH')?.status, 'failed');
+  assert.doesNotMatch(message, /未确认退出/, '失联原因是 pid_gone，却又说未确认退出——两句互相矛盾（r1 GLM-01）');
+});
+
 test('--cancel 对已退出的工作进程也能清理状态与锁', async () => {
   const ctx = await fakeCtx();
   const { pid } = await seedRun(ctx, 'R-DEADCANCEL', 100);
