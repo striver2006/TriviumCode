@@ -124,10 +124,13 @@ profiles:
     # 2026-09-27：qwen3.8-flash → k3（用户指定，Kimi K3 1M 版；目录里另有 k3-256k，未选）。
     # `agents.codex.profile` 已同批改成 kimi，两个维度同家族。上面 qwen 侧的耗时记录不再直接相关，
     # 而 kimi 家族在本仓**没有真实审查的耗时基线**（只有探活记录）——撞满就调 review.timeout_s。
+    #
+    # 2026-09-27（同日稍后）：k3 → kimi-for-coding（用户指定），k3 移到 pro 档。
+    # 仍是 kimi 家族，agents.codex.profile 不动；kimi-for-coding 是该 profile 的缺省模型，探活用的就是它。
     codex:
-      plan: k3
-      code: k3
-      bug: k3
+      plan: kimi-for-coding
+      code: kimi-for-coding
+      bug: kimi-for-coding
     # claude 档（M9 第 4 步）。slug 由 system/init 回读挣来（第 1 步报告 §4），
     # 不是文档推断——probe.cli.claude.models 为 []，猜错 slug 预检拦不下来。
     # 真实审查尺度的耗时与成本未测，第 6 步验收才会有第一份数据。
@@ -160,6 +163,8 @@ profiles:
     # 2026-09-27 随 default 档换到 kimi 家族（用户指定），本档取 kimi-for-coding（K2.8，1M）。
     # **本档自此与 default 不同值**，上面几段「同值是结果不是漏改」的理由不再适用。
     # kimi-for-coding 是 kimi profile 的缺省模型，探活用的就是它，但同样没有真实审查的耗时数据。
+    # 同日稍后 default 档也改成 kimi-for-coding（用户指定），**本档又与 default 同值，是结果不是漏改**：
+    # kimi 目录里剩下的 kimi-for-coding-highspeed 在本仓未实测，不拿没数据的档位填这一格。
     codex:
       plan: kimi-for-coding
       code: kimi-for-coding
@@ -171,6 +176,33 @@ profiles:
       plan: claude-sonnet-5
       code: claude-sonnet-5
       bug: claude-sonnet-5
+  # pro 档（2026-09-27 用户指定新增）：按需 `--profile pro` 单次切档，active_profile 仍为 default。
+  # 取值原则（用户裁定）：**只换模型目录里确有比 default 更高档的格**，其余与 default 同值。
+  pro:
+    # 与 default 同值（用户指定）：目录（agy models）里唯一的 pro 系 3.1-pro 比 3.8-flash 旧两代，
+    # 起初填过它，同日按用户意见改回 gemini-3.8-flash-high。
+    gemini:
+      plan: gemini-3.8-flash-high
+      code: gemini-3.8-flash-high
+      bug: gemini-3.8-flash-high
+    # glm 格**同值是结果不是漏改**：GLM-5.3 已是模型目录顶档，没有更高的档可填。
+    # codex 格取 k3（kimi 目录顶档），default 档同日改为 kimi-for-coding 后两档由此拉开；
+    # 同为 kimi 家族，agents.codex.profile 不用动。
+    glm:
+      plan: GLM-5.3
+      code: GLM-5.3
+      bug: GLM-5.3
+    codex:
+      plan: k3
+      code: k3
+      bug: k3
+    # 2026-09-27 按探针同口径回读核实：`claude -p --output-format stream-json --model claude-fable-5-1`，
+    # system/init.model == claude-fable-5-1、result 成功、modelUsage 只含该模型。
+    # **单价明显高于 opus-5-5**：同一句最小调用约 $0.83（opus-5-5 约 $0.13），真审成本相应放大。
+    claude:
+      plan: claude-fable-5-1
+      code: claude-fable-5-1
+      bug: claude-fable-5-1
 active_profile: default
 gate:
   require_adjudication: true
