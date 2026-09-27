@@ -1,0 +1,49 @@
+{
+  "agreed": [
+    "焦点一写入前提成立：准备阶段、派生前及同步路径下均无活跃 worker；在交接文件已写而 status.json 未写那一格，cancelRun 因 workerConfirmedGone 为 false 跳过回写，waitRun 因 goneForArchive 为 false 跳过回写，均不产生并发写者；且收尾在持有主题锁期间完成，排除了并发重跑干扰。",
+    "焦点二派生前后切分准确：判据取「调用派生之前」而非「返回之后」成功避免了 spawnDetached 在进程派生后因 handle.close() 抛错时引发与真实运行 worker 的双写冲突；实测确认派生后 worker 会自行终态收尾，当前真正缺陷是主 catch 误放锁与闸门，另登 EV-150 处理定位精准。",
+    "焦点三顺序合理且无重复：先回收闸门（防止写锁阻塞业务直到 TTL）、再持锁收尾、最后释放主题锁的先后顺序两害相权取其轻；同步路径中 prepareRun 在 try 之外执行，自身抛错不进 runReviewLocked catch，两处捕获互不重复，且有前提 4 终态防护。",
+    "焦点四 termination 扩值与守卫完备：prepare_exception（未拉起）与 sync_exception（同步执行）命名直观，S3（schema 枚举 ↔ 常量对账）与 V9（report 兜底防护）构成闭环，回滚只退代码不退 schema 符合数据契约只增不减原则。",
+    "焦点五决策与实测核对无误：D4 依托会话启动提示 --wait 不做第四格、D5 避免改动 latestRunMeta 引发 Driver 判定死锁的论证充分；§1 与 §2 的行号与实测读数与 53eaab8 提交逐一核实完全一致；变异表 M1～M7 靶向明确，咬不住的几格坦诚说明且提供了 B7 断言补强方案。"
+  ],
+  "consulted": [
+    ".reviews/事后收尾余项/plan/2026-09-27-事后收尾余项-claude.md",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/types.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/run-meta-strict.test.ts",
+    "src/trivium/report.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/cli.ts",
+    "test/integration/gate-loop.test.ts",
+    "src/trivium/status.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "在被审文档 .reviews/事后收尾余项/plan/2026-09-27-事后收尾余项-claude.md 的 §3.2 与 §3.3 伪代码中，收尾后播报写为 for (const line of finalizeLines(fin, runId)) warn(line);。然而在 src/trivium/meta.ts:543-576 中，fin 的返回值类型为 { runMeta: FinalizeStep; task: FinalizeStep }，FinalizeStep 仅记录 { kind: 'written' } 或跳过原因，不包含本次是 prepare_exception 还是 sync_exception 的调用上下文；而计划 §3.6 明确要求写了时播报为「已把归档里的 run-<id>.json 收尾为 failed（准备阶段失败 / 同步路径异常）」。若按伪代码签名实现，函数体无法推知括号内该填入哪一种描述。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": ".reviews/事后收尾余项/plan/2026-09-27-事后收尾余项-claude.md:203",
+      "problem": "finalizeLines 伪代码的调用签名 finalizeLines(fin, runId) 缺少场景上下文入参，无法产出 §3.6 承诺的区分文案（「准备阶段失败」与「同步路径异常」）。",
+      "severity": "nit",
+      "suggestion": "将 finalizeLines 签名设计为接收第三个描述参数（如 contextDesc: string 或传入 termination），调用处显式传入 '准备阶段失败' 或 '同步路径异常'，使伪代码与 §3.6 播报契约严丝合缝。"
+    }
+  ],
+  "not_covered": [
+    "未在真实 macOS 多进程并发环境下运行极端 I/O 故障注入（仅核对了代码路径与现有桩实测逻辑）。",
+    "未对历史旧版本 run.v1 数据的迁移回读执行全量回归跑批（依赖已有单测覆盖）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "实施计划针对 EV-145 剩余的事后收尾路径论证周密、边界清晰。\n对五个焦点的核对全部成立：写入前提在无状态文件/交接文件下排除了并发 --cancel/--wait 干扰；派生切分取调用前有效避免了与活 worker 双写；先回收闸门再收尾最后放锁的顺序稳妥；termination 扩值、守卫及回滚代价处置合理；不做第四格与不改 latestRunMeta 论证充分，代码行号与实测读数全部核实无误。\n仅有一处 nit：§3.2/§3.3 伪代码调用的 finalizeLines(fin, runId) 未显式传入区分「准备阶段失败」或「同步路径异常」的场景文本，建议实施时把场景文本或 termination 补入形参。整体质量极高，予以批准。",
+  "verdict": "approve-with-nits"
+}
