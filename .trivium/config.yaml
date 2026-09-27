@@ -29,7 +29,7 @@ review:
     # 与 --context 线性增长，不是挂死（被掐断时仍在正常产出）；2700 对已观测的 30m 留约 3 成余量。
     # **再撞先收窄 --context 与焦点，别再往上加**——1500→1800 那次只调数字，一个主题后就被打穿。
     # code 3600（由 7200 砍半）是明知的取舍：qwen 侧曾有一轮代码双审跑到 118m53s。
-    # 现役 kimi 家族尚无真审耗时基线，撞满就调这里。
+    # 现役 qwen 家族撞满就调这里。
     plan: 2700
     code: 3600
     bug: 1800
@@ -80,11 +80,11 @@ profiles:
       plan: GLM-5.3
       code: GLM-5.3
       bug: GLM-5.3
-    # 须与 agents.codex.profile 同家族，见该处注释。kimi-for-coding 是 kimi profile 的缺省模型。
+    # 须与 agents.codex.profile 同家族，见该处注释。qwen3.8-flash 是 qwen profile 的缺省模型。
     codex:
-      plan: kimi-for-coding
-      code: kimi-for-coding
-      bug: kimi-for-coding
+      plan: qwen3.8-flash
+      code: qwen3.8-flash
+      bug: qwen3.8-flash
     # claude 三档 slug 都须回读核实：probe.cli.claude.models 为 []，预检校验不了，猜错也拦不下。
     # 核法：`claude -p --output-format stream-json --model <slug>`，看 system/init.model 与 result。
     # 2026-09-27 已核：opus-5-5（约 $0.13）、sonnet-5（约 $0.20）、fable-5-1（约 $0.83）。
@@ -101,12 +101,11 @@ profiles:
       plan: GLM-5.3-Flash
       code: GLM-5.3-Flash
       bug: GLM-5.3-Flash
-    # 与 default 同值是结果不是漏改：kimi 目录里剩下的 kimi-for-coding-highspeed 未实测，
-    # 不拿没数据的档位填这一格。
+    # 与 default 同值是结果不是漏改：qwen 目录里 3.8-flash 已是现役最低一档。
     codex:
-      plan: kimi-for-coding
-      code: kimi-for-coding
-      bug: kimi-for-coding
+      plan: qwen3.8-flash
+      code: qwen3.8-flash
+      bug: qwen3.8-flash
     # 不与 default 同值（计划双审 CODEX-05）：同值会让 flash 在 claude 侧形同虚设。
     claude:
       plan: claude-sonnet-5
@@ -125,9 +124,9 @@ profiles:
       code: GLM-5.3
       bug: GLM-5.3
     codex:
-      plan: k3
-      code: k3
-      bug: k3
+      plan: qwen3.8-max
+      code: qwen3.8-max
+      bug: qwen3.8-max
     claude:
       plan: claude-fable-5-1
       code: claude-fable-5-1
@@ -189,7 +188,7 @@ agents:
     bin: null
     # profile 决定 provider 家族与模型目录（目录随 profile 分层）。**换家族必须与 profiles.*.codex
     # 同批改**：只改一处，要么被端点拒绝，要么预检以「不在该 profile 的模型目录中」退 64（均实测）。
-    profile: kimi
+    profile: qwen
     effort:
       plan: high
       code: high
