@@ -1,0 +1,75 @@
+{
+  "agreed": [
+    "修法取舍极佳：将置闸门 running 的原子 CAS 移至计算段后、第一次落盘前，作为唯一判定点且不加多余的只读预查，从根源上做到了拦截时真正的零工件（不建目录、不落补丁及 brief、不覆盖便利副本、不写 run.json 与 task.json）。",
+    "竞态逐格分析完备：对两个 --start 并发（主题锁排他）、gate --check/--await-approval（全局状态锁原子排他）、会话启动清扫（TTL 保护）以及写锁 Hook 窗口的处理分析严密闭合。",
+    "否决方案论据充分：对 ①a（先预查后置）、②（就地收尾）、③（被拦时删除）的否决理由深入且切中要害，尤其是指出就地收尾会污染 latestRunMeta 与轮次、删除会破坏 Git 提交锚等关键事实。",
+    "既有误判分析透彻：精准指出旧版下被拦后不带 --run-id 的 gate 子命令指向被拦骨架而导致出口失效的缺陷，改后最新留痕保持上一轮真实运行，误判彻底消除；同时 approve/abandon 与 Driver 判定的不受影响论证成立。",
+    "留痕与轮次兼容性自洽：被拦运行不写留痕，完全不碰 Git 提交锚；与 EV-133、EV-142 正交；不推高 resolveRerunIndex；EV-109 与 EV-145 ① 结案与余项规划清晰；附带核出的 §2.3（同秒覆盖）与 §2.4（留痕损坏循环出口）实测属实且新登合理。"
+  ],
+  "consulted": [
+    ".reviews/闸门拦截不留骨架/plan/2026-09-27-闸门拦截不留骨架-claude.md",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/state.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/report.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/types.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/state.test.ts",
+    "test/integration/no-artifacts.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/code-stage.test.ts",
+    ".reviews/README.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/state.ts:146-151，updateState 在全局锁内无条件执行 `s.updated_at = new Date().toISOString()` 并写入 state.json；即便 setGateChecked 因 expect 不满足而未修改 s.gates，updated_at 时间戳依然被刷新并落盘。因此被拦后 state.json 文件内容并非逐字节不变。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §4.2 B1",
+      "problem": "B1 用例声明断言 state.json 逐字节不变，但 updateState 无条件更新 updated_at 会使该逐字节比对断言假红",
+      "severity": "minor",
+      "suggestion": "将 B1 对 state.json 的断言口径修正为断言其 gates 字典与执行前深度相等（或比较时排除 updated_at 字段），避免直接对文件做全文逐字节比对。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §3.1 代码草案，setGateChecked 成功后紧接着调用 resetStopBlockCount，但落盘段的 try 块在此之后才开启。若 resetStopBlockCount（或动态 import）发生 IO/权限等异常，异常在 try 块外抛出，catch 无法介入，导致刚置为 running 的闸门未能调用 releaseRunningGateEntry 回收，遗留悬挂 running 闸门。",
+      "id": "AGY-02",
+      "kind": "concurrency",
+      "layer": "plan",
+      "location": "plan §3.1",
+      "problem": "resetStopBlockCount 位于 try 块外，若其执行失败会导致已置 running 的闸门漏回收",
+      "severity": "minor",
+      "suggestion": "将 resetStopBlockCount 的调用移入落盘段 try 块内部首行，确保一旦 setGateChecked 成功写入 running，后续任何步骤故障均能触发 releaseRunningGateEntry 回收。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/run-protocol.ts，内部 releaseRunningGate 实际只有 3 处调用（:429 startRun prepare 后的 catch、:585 workerMain 异常收尾、:733 waitWorker lost）；第 4 处是在 src/trivium/review.ts:1725 的内联回收。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §3.2",
+      "problem": "run-protocol.ts 内部调用点计数描述为 4 个，实际为 3 个",
+      "severity": "nit",
+      "suggestion": "将 plan §3.2 文本中 run-protocol.ts 的调用点计数修正为 3 处，保持与源码严格一致。"
+    }
+  ],
+  "not_covered": [
+    "未在 macOS 真实多进程/多终端环境下物理触发高并发下的 gate --check 与 review --start 纳秒级交错实测（依赖理论 CAS 语义与既有用例覆盖）",
+    "未覆盖除 bcb454e 以外历史提交节点的归档逆向解析测试"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "计划整体架构设计扎实、论据严密，将 CAS 移至落盘前的方向完全正确且彻底消除了既有误判。最需要注意的是：plan §4.2 B1 断言 state.json 逐字节不变与 updateState 无条件刷新 updated_at 存在冲突，需修正断言粒度；此外 §3.1 的 resetStopBlockCount 建议纳入 try 块保护以防异常时闸门漏回收。整体质量极高，建议 Approve with nits。",
+  "verdict": "approve-with-nits"
+}

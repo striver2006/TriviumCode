@@ -1,0 +1,99 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最值得先改的一条：B1（连同 B4、A1 的同款断言）要求被拦后 state.json「逐字节不变」，但 setGateChecked 判负时 updateState 仍会刷新 updated_at 并整文件重写，照写出来的用例会对着正确实现打红（计划自己的 G1 读数只敢写「闸门项逐字段不变」，正是这个原因）。其余三条都是小处：§3.1 草图把 resetStopBlockCount 留在 try 之外，留出一条「置 running 后抛错却不回收」的缝隙；§3.4 未列 approve/abandon/--cancel 这几个不持主题锁的写者（逐个核实均安全，只缺一行说明）；§3.2「四个调用点」实为三处。修法方向与全部决策（D1 ①b、D2 (a)、D3 (a)、D4、D5）经逐条对码成立，§1/§2/§5 抽核的行号与引文无一失实，§7 对三种备选的否决理由站得住。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.2 B1（同 B4、§4.4 A1）",
+      "problem": "B1 计划断言被拦后「task.json 与 state.json 逐字节不变」，B4 与 A1 的「state.json …全不变」同款。但 setGateChecked 的比较-交换经 updateState 执行：expect 不中时 mutate 提前返回、不改 gates，updateState 仍会置 s.updated_at = new Date() 并 writeAtomic 整文件重写。被拦那一次（改前改后同理）state.json 的闸门条目不变、文件字节必变。该断言对正确实现也会失败，实施者会误以为行为没修对。",
+      "evidence": "src/trivium/state.ts :139-153（updateState 在 mutate 后无条件更新 updated_at 并 writeAtomic）、:202-249（setGateChecked 判负只是提前 return mutate，updateState 照跑）；计划 §2.1 G1 自己的实测读数也只写「state.json 闸门项逐字段不变」，措辞精确避开了文件级不变。",
+      "suggestion": "把断言口径改为「gates[<主题>/<阶段>] 条目逐字段不变（或 gates 对象不变）」，A1 的「state.json …全不变」同步改写；若想保留文件级断言，需显式豁免 updated_at。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.1 代码草图（resetStopBlockCount 的位置）",
+      "problem": "草图把 resetStopBlockCount 放在 if (holdsGate) 块内、try 之前：CAS 成功置 running 之后、进入落盘段 try 之前，若 resetStopBlockCount 抛错（它写 .trivium 下计数文件，磁盘满/权限可致败），异常不经 catch 的回收——「prepareRun 抛错 ⇒ 闸门不归本轮」这一新契约在该缝隙不成立，闸门停 running 到 TTL。今天同位失败同样卡 running，不是回归，但新契约宣称自我回收，这一例外既未登记也无测试覆盖。",
+      "evidence": "src/trivium/review.ts :996-1000（现状 reset 在 if (g.applied) 内、函数尾部）；src/trivium/run-protocol.ts :307-313（startRun 的 prepare catch 只放锁，不回收闸门）；src/trivium/cli.ts :1508-1509（resetStopBlockCount 是真实的异步写）。",
+      "suggestion": "把 resetStopBlockCount 挪进 try 作为首句（语义不变：仍在 applied 之后、落盘之前），或在 §6.2 如实登记这条不回收的例外。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "concurrency",
+      "location": "plan §3.4 竞态逐格表",
+      "problem": "表格以「逐格」呈现但只列了 S3 ②③、清扫与写锁 Hook，未提同样不持主题锁的闸门写者 approve / abandon / review --cancel / --wait 失联回收。逐一核实均安全：approve 被 assertGateDecidable 与 expect:['awaiting_approval'] 挡住；abandon 显式跳过 running；--cancel 与 --wait 失联回收都带 expect.runId 且需在毫秒窗口内操作一个尚无运行目录的 run_id（与今天同暴露）。无行为缺口，但「穷尽」的表述缺少这半句论证。",
+      "evidence": "src/trivium/cli.ts :1589-1595（abandon 跳过 running 并指向 --cancel）、:1620-1622（approve 先 assertGateDecidable，running 非待批先报状态）；src/trivium/approval.ts :206-217（expect.state 按 decision 取 awaiting_approval / ABANDONABLE）；src/trivium/hooks.ts :1711-1750（清扫 TTL 判据用 g.since，新置条目必不过）。",
+      "suggestion": "在 §3.4 补一行：approve/abandon/--cancel/--wait 失联这几个写者各自的守卫（expect 状态集、expect.runId、运行目录前提），说明为何不入表。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.2 第 2 条",
+      "problem": "「run-protocol.ts 的 releaseRunningGate 改为委托它，签名与四个调用点不变」——实际只有三个调用点（startRun 主 catch :429、worker finally :585、--wait 失联一族 :733），D2 自己写的也是「三处回收」。按「四个」去找第四处会白找。",
+      "evidence": "src/trivium/run-protocol.ts :429、:585、:733（grep 全仓仅这三处调用 releaseRunningGate）；plan §7 D2 (a)「三处回收都是这个语义」。",
+      "suggestion": "把「四个调用点」改为「三处调用点」，与 D2 的表述对齐。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "D1 ①b 的方向与论证成立：setGateChecked 的读、比、写确在同一把全局锁内（state.ts :139-153、:202-249），是天然的唯一判定点；不加只读预查的取舍（两处判定同一状态集、将来改一处漏一处）合理。",
+    "§7 对 ①a/②/③ 的否决理由逐条核实站得住：①a 的竞态窗口真实存在（S3 ②③ 不持主题锁）；② 的要害——latestRunMeta 不看 status 且兼作当轮 Driver 来源（meta.ts :478-501、driver-claim.ts :111-145）——波及面判断准确；③ 的 manifest_missing 永久拦提交陷阱正是 cli.ts :1130-1133 注释记载的形态，便利副本被覆盖后不可复原也属实。",
+    "「prepareRun 抛错 ⇒ 闸门不归本轮」契约对两条调用方都成立：startRun 的 prepare catch 只放锁（run-protocol.ts :307-313），同步路径 prepareRun 在内层 try 之外、外层 finally 放锁（review.ts :1706-1710）——前提正是 §3.1 的自我回收；回收函数挪进 state.ts 以委托共用不改变三处既有回收的语义。",
+    "hooks.ts :298「review.ts 的四处 setGateChecked」计数在搬移后确实不变（:987/:1045/:1636/:1725 四处，搬移不增减）；runReviewLocked :1725-1732 内联回收不动的判断正确。",
+    "D2 (a) 的代价论证属实：OPEN_STATES 三态之外 idle 与四个终态对所有 Hook 等价（state.ts :274-283、:300-336）；「本机闸门指向另一次运行」告警已存在（cli.ts :1466-1470）且与今天 startRun 主 catch 回收后的形态相同，代价可接受。",
+    "D3 (a) 的边界论证成立：走到 registerRun/任务目标落盘失败时槽位已归本轮，不存在 §2.2 那种「待裁决旧轮被骨架顶掉」的误判；留待与 ②③ 共用 termination.by 一次设计、不先加一个再泛化，是正确的取舍。B5 的夹具构造与代码一致（task.json 在主题根 meta.ts :181，阶段目录预建且可写时 brief/骨架可写、登记必败）。",
+    "§2.2 误判消失的论证成立：B2 期待的 run_id=第 1 轮、rerun_index=1 与 cmdGate 的取数逻辑（cli.ts :1094-1106、:1161-1162）一致；approve/abandon 以闸门项自身 run_id 为准（:1620、:1643）不受影响；当轮 Driver 判定走 latestRunMeta 不受影响；hook-stop 文案不带 --run-id（hooks.ts :1459-1463）、Skill 第 6 步正是不带 --run-id 的 gate --check（body.md :169-173）均核实。",
+    "留痕兼容的论证成立：被拦的运行无 run.json，EV-133/EV-142 的事后收尾没有对象；resolveRerunIndex 只按非当轮 Driver 审查文档计轮（archive.ts :66-84）；report 未进时间线表按可读 run.json 枚举（report.ts :441-481）；提交锚无新影响（hooks.ts :471-571）。EV-145 改写为余项、EV-109 与 ① 一并结案的处置与 BACKLOG 各行现状吻合。",
+    "§2.3/§2.4 两条附带发现与新登理由成立：run_id 秒级（meta.ts :36-38）+ writeAtomic 覆盖（archive.ts :261）+ registerRun 同 run_id 幂等覆盖（meta.ts :691-692）推出同秒互覆成立；「重跑一次」出口循环的四处文案（cli.ts :560、:1142-1148，hooks.ts :636，topic-args.ts :515）与 review --start 在 prepareRun 之前即按 corrupt 抛出（cli.ts :547-562）核实无误，且与本主题正交。",
+    "§1/§2/§5 的行号与引文抽核全部属实：review.ts P1-P3/P4、run-protocol P5/P7、state S1/S2、hooks S4/R3/R9、cli R2/R5/R8、meta R1/P8、archive R6/R10、gate.ts :213、types.ts :1470-1477、run.v2.json :471、主设计 :1129/:1377-1385/:1458/:3008、PRD :195 与 PRD AC-16 只约束预检的口径、LLD :203-204/:230/:237-239/:465、MANUAL :651、PROTOCOL :254、body.md 步 3/6/7、preflight 零命中（E1）、no-artifacts 现覆盖 64/65/69/70（EXIT.LOCKED=70 在 :168-186）。",
+    "变异表 M1-M6 的期望套件判别力成立：M1 由 B1 的文件集+task.json 字节断言咬住（同秒撞名时文件集不变但 task.json 条目必变，B4 隔 1.1 s 的设计正确避免了假绿）；M2 由 B3 的 changes.diff 逐字节断言咬住；M3/M4 由 B5 咬住；M5/M6 由 U1 的 runId/allowMissing 两格咬住。"
+  ],
+  "not_covered": [
+    "未实际重跑 §2 的三份探针（脚本在 Driver 会话 scratchpad、未进仓）：G1-G4 与 §2.2/§2.3/§2.4 的读数只按代码机制复核（全部自洽），读数本身未独立复现。",
+    "上一主题的报告全文与 .reviews/未收尾运行的留痕与复盘可见性/ 的计划 r2、代码双审应答件未读（相容性只按 BACKLOG 行与 types.ts/report.ts/run-protocol.ts 代码核对）。",
+    "scripts/mutation-check.mjs 与 gen-mutation-spec.mjs 装置未逐行核（M1-M6 的判别力按用例语义评估）；test/unit/state.test.ts 与 test/integration/code-stage.test.ts 只确认存在与既有形态，未通读。",
+    "doctor --selftest 14 步、QUICKSTART §5.2、run.v1 schema 的 status description（计划声明不改）、EV-146/EV-143/EV-138~141 现状未逐一深核。",
+    "并发行为未做动态验证（无故障注入），§3.4 各格结论基于静态读码与各写者的 expect 守卫推演。"
+  ],
+  "consulted": [
+    ".reviews/闸门拦截不留骨架/plan/2026-09-27-闸门拦截不留骨架-claude.md",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/state.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/report.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/types.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/SKILL.md",
+    "skills-src/partials/review/body.md",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/no-artifacts.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/07_manuals/MANUAL_user.md"
+  ]
+}

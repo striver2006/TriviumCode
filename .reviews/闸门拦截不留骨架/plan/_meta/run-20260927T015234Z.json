@@ -1,0 +1,279 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260927T015234Z",
+  "topic": "闸门拦截不留骨架",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "请重点看五处：①修法取舍：把置闸门 running 的比较-交换挪到计算段之后、第一次落盘之前，作为唯一判定点、不加只读预查，被拦时零工件；第 3.4 节的竞态逐格是否穷尽（特别是不持主题锁的 gate --check 与 --await-approval 与它交错，以及会话启动清扫、写锁 Hook 在置闸门与运行目录状态文件写出之间的窗口）；第 7 节否决「先预查后置」「就地收尾」「被拦时删除」三种方案的理由站不站得住。②置闸门之后落盘失败的回收：由 prepareRun 自己回收、回到 idle 而不恢复原条目，调用方「prepareRun 抛错即闸门不归本轮」的契约对 startRun 与同步路径是否都成立；回收函数挪进 state 模块共用是否改变现有三处回收的语义；首轮失败留下一条 idle 条目、原为 approved 时本机副本变 idle，这些代价能否接受。③第 2.2 节核出的既有误判：被拦之后不带 --run-id 的 gate 三个子命令与 hook-stop 提示都指向被拦骨架，改后是否确实消失；当轮 Driver 判定、approve 与 abandon 不受影响的论证是否成立；主题任务文件登记写失败时只回收闸门、骨架如实留 running，这一取舍会不会留下同类误判。④留痕兼容：被拦那次不再写运行元数据、brief、补丁与便利副本、主题任务文件登记与运行目录，与提交锚、EV-133 收尾后不再更新、EV-142 事后收尾、report 未进时间线表、resolveRerunIndex 的轮次口径是否相容；EV-109 与 EV-145 第 ① 格同时结案、EV-145 改写为余项是否准确。⑤验证与留痕：U1 与 B1 到 B6 能否钉住所声明的行为，变异表每条的期望套件是否指向真正能区分的用例；第 1、2 节的行号与实测读数是否属实；第 2.3、2.4 节两条附带发现的实测与新登理由是否成立；第 5 节的文档落点与反扫面有没有遗漏。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "bcb454e5fb1349873238da28c3fb6b2c395e6166",
+    "tree_hash": "c125970e11476b622ed6ccbde51e83c95010c0c2",
+    "dirty": true,
+    "subject_sha256": "a625d480abe02c097d28f69415ab1868833884eb8fe2c0ae5b969898322acb0a",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "bcb454e5fb1349873238da28c3fb6b2c395e6166",
+      "dirty": false,
+      "inputs_sha256": "537f38a2b81bbc1385d7cff112aee2b7ba18f0a7ae13dd09a866589c76e63dd7",
+      "built_at": "2026-09-27T01:19:36.312Z"
+    },
+    "after_tree_hash": "057e367d67d7596ef9bc5a28711975e4fc587caa"
+  },
+  "started_at": "2026-09-27T01:52:36.051Z",
+  "finished_at": "2026-09-27T02:07:26.484Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "kimi-for-coding",
+      "model_effective": "kimi-for-coding",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 890.226,
+      "tool_calls": {
+        "run_command": 28,
+        "project_reads": 32
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0e090-6cd3-7361-9afb-050a2b63d1f5",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.11",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 198.616,
+      "tool_calls": {
+        "read": 31,
+        "grep": 6,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 494599,
+        "output_tokens": 33104,
+        "thinking_tokens": 28230,
+        "cache_read_tokens": 3160961,
+        "total_tokens": 527703
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "14de1d4f-6b1a-4d49-957d-c4590d643051",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 579.549,
+      "tool_calls": {
+        "read": 46,
+        "grep": 8,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 28
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 19,
+        "inputTokens": 2177349,
+        "outputTokens": 46043,
+        "totalTokens": 2223392,
+        "cacheReadTokens": 2039488,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_6ead87ef-e0c5-490b-bb69-38de213ecdcd",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "闸门拦截不留骨架/plan/_meta/brief-codex-20260927T015234Z.md",
+      "sha256": "4e351ce01139f2f8bf8ed520aa1ca3129ae1320c1458a753802ac5775e6f4f01"
+    },
+    {
+      "path": "闸门拦截不留骨架/plan/_meta/brief-gemini-20260927T015234Z.md",
+      "sha256": "9da8c109400864f87621be81155fab8a3aeea4b3e29b456fe5dcb7995093ec0d"
+    },
+    {
+      "path": "闸门拦截不留骨架/plan/_meta/brief-glm-20260927T015234Z.md",
+      "sha256": "537cadc4362c59af2ea9bc7e67060ad59d4fbc3a82f2ab4a2deff22f2f19bf7f"
+    },
+    {
+      "path": "闸门拦截不留骨架/plan/_meta/review-codex-20260927T015234Z.json",
+      "sha256": "11e2b06a1330382e0b1db293cbd22ce716a7367dc52fd7243572d01d38c9a0c5"
+    },
+    {
+      "path": "闸门拦截不留骨架/plan/_meta/review-gemini-20260927T015234Z.json",
+      "sha256": "63cb44583f8cd41bf1f9c3da15d323702c602c0b04bac057ed31be11b32ab8c0"
+    },
+    {
+      "path": "闸门拦截不留骨架/plan/_meta/review-glm-20260927T015234Z.json",
+      "sha256": "f337be0940aab030d0b94895dc4e1ecd37316c58815f74d8392b127e613df7be"
+    },
+    {
+      "path": "闸门拦截不留骨架/plan/2026-09-27-闸门拦截不留骨架-codex.md",
+      "sha256": "f37511dbc8ff6d9fd622a1845748a1bd8a8cc68751ed86ceba4d4d141863b1db"
+    },
+    {
+      "path": "闸门拦截不留骨架/plan/2026-09-27-闸门拦截不留骨架-gemini.md",
+      "sha256": "1890b693caf926e61231454fe13596e1faa3d4803d007dea4ebcc33a2b05bea2"
+    },
+    {
+      "path": "闸门拦截不留骨架/plan/2026-09-27-闸门拦截不留骨架-glm.md",
+      "sha256": "928c52dede9dc218a703f2fe5d044b55ec993a77a0ef15a8909964628b99a7f9"
+    },
+    {
+      "path": "闸门拦截不留骨架/plan/2026-09-27-闸门拦截不留骨架-claude.md",
+      "sha256": "a625d480abe02c097d28f69415ab1868833884eb8fe2c0ae5b969898322acb0a"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
