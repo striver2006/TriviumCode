@@ -25,29 +25,11 @@ review:
   parallel: true
   failure_policy: strict
   timeout_s:
-    # 2026-09-22 用户裁定三阶段全调：plan 1500→1800、code 7200→3600、bug 1200→1800。
-    #
-    # plan 抬高的由来：EV-79 主题 plan r2 那轮 codex 侧（qwen3.8-flash）撞满 1500s
-    # 脚本级超时导致整轮作废，而同轮 gemini 2m49s、glm 20m34s 都交了卷。成因是 r2 稿比
-    # r1 长一倍多，而 codex 侧的做法是在编译产物上做内存补丁逐格实测——稿子变长，
-    # 它的实测量同步变长。抬到 1800 后重跑，codex 16m36s 交卷（未用上 --allow-single）。
-    #
-    # 2026-09-23 再抬 1800→2700：**同一形态第三次致废**（EV-74 主题 plan r3，
-    # codex 撞满 1800s；台账第 4、9、18 行，三次全是 plan 档、全是 codex 侧）。
-    # 这次先查了成因再调，不是又一次盲调——运行目录实测：
-    #   · 本轮 stdout.jsonl 633KB vs 同主题上一轮 192KB（3.3 倍）
-    #   · command_execution 74 次 vs 34 次（2.2 倍）
-    #   · **无 turn.completed、无 trace.json** ⇒ 被掐断时仍在正常产出，不是挂死
-    # 所以瓶颈是**核查面**而非故障：每轮稿子与 --context 都在涨，codex 的逐格实测
-    # 随之线性涨。2700s 对已观测的 30m 留约 3 成余量。
-    # **这条处置的限度要写明**：它治的是「这一次不够用」，不治「核查面每轮都在涨」。
-    # 下次再撞，先收窄 --context 与焦点，别再往上加——
-    # 1500→1800 那次就是只调数字、没动增长本身，一个主题之后就被打穿。
-    #
-    # code 砍半是**明知有张力的取舍**：profiles 段 codex 档的注释记着 M9 第 1～2 步
-    # 代码双审四轮 8m36s → 56m → 62m → 118m53s，最后一轮离旧的 7200s 只剩 66 秒——
-    # 按 3600s 那一轮会直接超时作废。真撞上就调这里，不要默默换家族
-    # （换家族要连 agents.codex.profile 一起改）。
+    # plan 2700：codex 侧曾三次撞满 plan 预算致整轮作废（台账第 4、9、18 行）。成因是核查面随稿子
+    # 与 --context 线性增长，不是挂死（被掐断时仍在正常产出）；2700 对已观测的 30m 留约 3 成余量。
+    # **再撞先收窄 --context 与焦点，别再往上加**——1500→1800 那次只调数字，一个主题后就被打穿。
+    # code 3600（由 7200 砍半）是明知的取舍：qwen 侧曾有一轮代码双审跑到 118m53s。
+    # 现役 kimi 家族尚无真审耗时基线，撞满就调这里。
     plan: 2700
     code: 3600
     bug: 1800
@@ -98,45 +80,14 @@ profiles:
       plan: GLM-5.3
       code: GLM-5.3
       bug: GLM-5.3
-    # 2026-09-21 用户指定改回 qwen 家族（`agents.codex.profile` 同步改成 qwen），三阶段统一 flash 档。
-    # **不是 max**：2026-09-16 实测 qwen3.8-max 在 effort=high 下撞满过 plan 阶段的 1500s 预算、
-    # 零产出，而 qwen3.8-flash 同期 419s / 1038s 交卷——本轮先按 max 配过一版，随即按此实测改回 flash。
-    # 仍未消除的风险：2026-09-18 换去 deepseek 的原因是 codex 侧（那时正是 qwen3.8-flash）在
-    # M9 第 1～2 步的代码双审四轮里耗时 8m36s → 56m → 62m → 118m53s，最后一轮离 code 阶段
-    # 7200s 预算只剩 66 秒。**2026-09-22 用户把 code 预算由 7200s 降到 3600s**（此前是 2026-09-21
-    # 裁定维持 7200s）——按 3600s，上面那轮 118m53s 会直接超时作废。**这个张力是明知的取舍，
-    # 不是漏改**：真撞上就调 review.timeout_s.code，
-    # 不要默默换家族——换家族要连 agents.codex.profile 一起改（模型槽与 `-p` 是两个维度，见 flash 档注释）。
-    #
-    # 2026-09-23：qwen3.8-flash → deepseek-flash（用户指定，**qwen 额度耗尽**）。
-    # `agents.codex.profile` 已同批改成 deepseek，两个维度同家族。
-    # **换回 deepseek 意味着上面那段耗时记录重新相关**：2026-09-18 之所以从 qwen 换去
-    # deepseek，正是因为 qwen 侧那四轮 8m36s → 56m → 62m → 118m53s；而 deepseek 档
-    # 在本仓的耗时基线尚无系统记录。**本次换回后要重新观察 plan 档耗时**——
-    # 今天刚因 codex 侧撞满 1800s 作废过一轮（台账第 18 行），预算已抬到 2700s。
-    #
-    # 2026-09-26：deepseek-flash → qwen3.8-flash（用户指定，与 EV-130 定的 init 缺省同一组合
-    # `-p qwen -m qwen3.8-flash`）。`agents.codex.profile` 已同批改回 qwen，两个维度同家族。
-    # 09-23「qwen 额度耗尽」的前提：当日预检的 codex 探活在 `-p qwen` 下通过，但探活用的是 profile
-    # 缺省模型、只证凭据可用，**不证 qwen3.8-flash 的额度**——真审时若撞额度，按 09-23 的做法再换。
-    # 回到 qwen 后，上面 qwen 侧那四轮耗时记录（8m36s → 118m53s）重新直接相关，撞满就调 review.timeout_s。
-    #
-    # 2026-09-27：qwen3.8-flash → k3（用户指定，Kimi K3 1M 版；目录里另有 k3-256k，未选）。
-    # `agents.codex.profile` 已同批改成 kimi，两个维度同家族。上面 qwen 侧的耗时记录不再直接相关，
-    # 而 kimi 家族在本仓**没有真实审查的耗时基线**（只有探活记录）——撞满就调 review.timeout_s。
-    #
-    # 2026-09-27（同日稍后）：k3 → kimi-for-coding（用户指定），k3 移到 pro 档。
-    # 仍是 kimi 家族，agents.codex.profile 不动；kimi-for-coding 是该 profile 的缺省模型，探活用的就是它。
+    # 须与 agents.codex.profile 同家族，见该处注释。kimi-for-coding 是 kimi profile 的缺省模型。
     codex:
       plan: kimi-for-coding
       code: kimi-for-coding
       bug: kimi-for-coding
-    # claude 档（M9 第 4 步）。slug 由 system/init 回读挣来（第 1 步报告 §4），
-    # 不是文档推断——probe.cli.claude.models 为 []，猜错 slug 预检拦不下来。
-    # 真实审查尺度的耗时与成本未测，第 6 步验收才会有第一份数据。
-    # 2026-09-27：claude-sonnet-5 → claude-opus-5-5（用户指定）。slug 取官方模型 ID（无日期后缀别名），
-    # 当日已按探针同口径回读核实：`claude -p --output-format stream-json --model claude-opus-5-5`，
-    # system/init.model == claude-opus-5-5、result 成功（约 $0.13）。flash 档的 claude-sonnet-5 同法核实（约 $0.20）。
+    # claude 三档 slug 都须回读核实：probe.cli.claude.models 为 []，预检校验不了，猜错也拦不下。
+    # 核法：`claude -p --output-format stream-json --model <slug>`，看 system/init.model 与 result。
+    # 2026-09-27 已核：opus-5-5（约 $0.13）、sonnet-5（约 $0.20）、fable-5-1（约 $0.83）。
     claude:
       plan: claude-opus-5-5
       code: claude-opus-5-5
@@ -150,44 +101,25 @@ profiles:
       plan: GLM-5.3-Flash
       code: GLM-5.3-Flash
       bug: GLM-5.3-Flash
-    # 必须跟着 agents.codex.profile 一起换家族：模型槽与 `-p` 是两个维度，
-    # 留成 deepseek-flash 就会组成 `-p qwen -m deepseek-flash`，实测被端点直接拒绝
-    # （见 probes/codex.ts 的跨家族记录）。2026-09-21 随 default 档回到 qwen。
-    # **本档与 default 同为 qwen3.8-flash 是结果，不是漏改**：用户已把 default 统一到 flash 档，
-    # qwen 目录里更低的一档 qwen3.6-flash 在本仓从未实测过，不拿没数据的档位去填这一格。
-    # 真要让 flash 档在本侧有区分度，先给 qwen3.6-flash 跑一轮取数，再改这里。
-    # 2026-09-23 随 default 档换到 deepseek 家族（qwen 额度耗尽）。本档与 default 同值的
-    # 理由不变：deepseek 目录里更低的档在本仓同样没有实测数据，不拿没数据的档位填这一格。
-    # 2026-09-26 随 default 档回到 qwen3.8-flash（用户指定）。本档与 default 同值的理由同 09-21 那段：
-    # qwen3.6-flash 在本仓未实测，不拿没数据的档位填这一格。
-    # 2026-09-27 随 default 档换到 kimi 家族（用户指定），本档取 kimi-for-coding（K2.8，1M）。
-    # **本档自此与 default 不同值**，上面几段「同值是结果不是漏改」的理由不再适用。
-    # kimi-for-coding 是 kimi profile 的缺省模型，探活用的就是它，但同样没有真实审查的耗时数据。
-    # 同日稍后 default 档也改成 kimi-for-coding（用户指定），**本档又与 default 同值，是结果不是漏改**：
-    # kimi 目录里剩下的 kimi-for-coding-highspeed 在本仓未实测，不拿没数据的档位填这一格。
+    # 与 default 同值是结果不是漏改：kimi 目录里剩下的 kimi-for-coding-highspeed 未实测，
+    # 不拿没数据的档位填这一格。
     codex:
       plan: kimi-for-coding
       code: kimi-for-coding
       bug: kimi-for-coding
-    # flash 档不跟 default 同值（计划双审 CODEX-05）：两档同值会让 flash 在 claude 侧形同虚设，
-    # 而另两家的 flash 行都是真换了一档。原先取 haiku（probes/claude.ts 的 PROBE_MODEL、M6 起一直在用）；
-    # 2026-09-27 随 default 升到 opus-5-5，本档改为 claude-sonnet-5（用户指定），仍与 default 不同值。
+    # 不与 default 同值（计划双审 CODEX-05）：同值会让 flash 在 claude 侧形同虚设。
     claude:
       plan: claude-sonnet-5
       code: claude-sonnet-5
       bug: claude-sonnet-5
-  # pro 档（2026-09-27 用户指定新增）：按需 `--profile pro` 单次切档，active_profile 仍为 default。
-  # 取值原则（用户裁定）：**只换模型目录里确有比 default 更高档的格**，其余与 default 同值。
+  # pro 档：按需 `--profile pro` 单次切档。取值原则：只换模型目录里确有比 default 更高档的格。
+  # gemini / glm 与 default 同值是结果不是漏改：gemini 目录里的 3.1-pro 比 3.8-flash 旧两代，
+  # GLM-5.3 已是顶档。claude-fable-5-1 单价明显高于 opus-5-5，真审成本相应放大。
   pro:
-    # 与 default 同值（用户指定）：目录（agy models）里唯一的 pro 系 3.1-pro 比 3.8-flash 旧两代，
-    # 起初填过它，同日按用户意见改回 gemini-3.8-flash-high。
     gemini:
       plan: gemini-3.8-flash-high
       code: gemini-3.8-flash-high
       bug: gemini-3.8-flash-high
-    # glm 格**同值是结果不是漏改**：GLM-5.3 已是模型目录顶档，没有更高的档可填。
-    # codex 格取 k3（kimi 目录顶档），default 档同日改为 kimi-for-coding 后两档由此拉开；
-    # 同为 kimi 家族，agents.codex.profile 不用动。
     glm:
       plan: GLM-5.3
       code: GLM-5.3
@@ -196,9 +128,6 @@ profiles:
       plan: k3
       code: k3
       bug: k3
-    # 2026-09-27 按探针同口径回读核实：`claude -p --output-format stream-json --model claude-fable-5-1`，
-    # system/init.model == claude-fable-5-1、result 成功、modelUsage 只含该模型。
-    # **单价明显高于 opus-5-5**：同一句最小调用约 $0.83（opus-5-5 约 $0.13），真审成本相应放大。
     claude:
       plan: claude-fable-5-1
       code: claude-fable-5-1
@@ -254,22 +183,12 @@ agents:
     entry: null
     max_turns: 40
     unsupported_override: reject
-  # 显式钉住，不靠代码内置默认兜底。gemini 与 glm 本来就是显式的，唯独 codex 此前
-  # 靠默认值——改一行代码默认就能悄悄改掉本仓库的审查模型，而本文件看起来什么都没发生。
-  # profile 决定 provider 家族，也决定模型目录（目录随 profile 分层，slug 猜不出家族）。
+  # 显式钉住，不靠代码内置默认兜底——否则改一行代码默认就能悄悄换掉本仓的审查模型。
   codex:
     vendor: openai
     bin: null
-    # 2026-09-21：deepseek → qwen（用户指定）。这一行决定 provider 家族与模型目录，
-    # 必须与 profiles.*.codex 的 slug 同家族，否则端点直接拒绝。
-    # 2026-09-23：qwen → deepseek（用户指定，**qwen 额度耗尽**）。
-    # 同批已把 profiles.default.codex 与 profiles.flash.codex 三阶段一并改成 deepseek-flash——
-    # 只改一处会组成 `-p deepseek -m qwen3.8-flash`，正是下方 flash 档注释记着的实测被拒形态。
-    # 2026-09-26：deepseek → qwen（用户指定）。同批已把 profiles.default.codex 与 profiles.flash.codex
-    # 三阶段改回 qwen3.8-flash。当日先只改了模型槽、这一行留在 deepseek，预检当场以
-    # 「qwen3.8-flash 不在 profile deepseek 的模型目录中」退 64——两处必须同批改，这次是实测。
-    # 2026-09-27：qwen → kimi（用户指定）。同批已把 profiles.default.codex 改成 k3、
-    # profiles.flash.codex 改成 kimi-for-coding，两者都在 kimi 的模型目录里。
+    # profile 决定 provider 家族与模型目录（目录随 profile 分层）。**换家族必须与 profiles.*.codex
+    # 同批改**：只改一处，要么被端点拒绝，要么预检以「不在该 profile 的模型目录中」退 64（均实测）。
     profile: kimi
     effort:
       plan: high
