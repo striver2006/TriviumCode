@@ -6,7 +6,8 @@ import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as childProcess from 'node:child_process';
 import {
-  bashTimeoutFor, cancelRun, lostWorkerGoneFrom, runDirFor, settleOrphanedStart, statusRun, waitRun, workerGoneForCancel,
+  bashTimeoutFor, cancelRun, classifyLostCancel, lostWorkerGoneFrom, runDirFor, settleOrphanedStart, statusRun, waitRun,
+  workerGoneForCancel,
   WORKER_TERM_GRACE_MS, WORKER_TREE_GRACE_MS, WORKER_TREE_KILL_WAIT_MS,
 } from '../../src/trivium/run-protocol.js';
 import { getGate, setGate } from '../../src/trivium/state.js';
@@ -902,7 +903,7 @@ test('EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如�
     assert.equal(await readText(lockFile(ctx)), lockBefore, '未确认退出时锁不动');
     assert.equal(await readText(r.statusPath), statusBefore);
     assert.match(first.err, /已向工作进程组 \d+ 发送 SIGTERM、SIGKILL，未能确认退出：归档 run\.json、主题任务文件的运行登记与主题锁都不动/);
-    assert.match(first.err, /可以再跑一次 --cancel（仍会入这一格）；若改为在终端手工结束它.*BACKLOG EV-159/);
+    assert.match(first.err, /可以再跑一次 --cancel（仍会入这一格，再次尝试结束）；若改为在终端手工结束它，之后再跑 --cancel 会判它已不在（gone 格），按前提补收归档 run\.json 与运行登记（EV-159）/);
     assert.match(first.out, /未能确认工作进程 \d+ 退出，归档与主题锁未动/);
     assert.equal((await processAlive(r.pid)).alive, true, '桩没有真的发信号，假 worker 仍在');
 
@@ -976,7 +977,7 @@ test('EV-146 K5：不入本格的各格——没有 lost（不读文案）、原
   assert.match(r.out, /已处于终态（failed），无需取消/);
 });
 
-test('EV-146 K5′：身份判不上（mismatch）时，status.json 里记着的活 CLI 组也不结束（代码双审 r1 CODEX-02）；同形但身份缺失（no_identity）而 worker 已不在时照旧按记录结束', async () => {
+test('EV-146 K5′：身份判不上（mismatch）时，status.json 里记着的活 CLI 组也不结束（代码双审 r1 CODEX-02）；同形但两种启动时刻缺失、worker 已不在时改判 gone（EV-159）、照旧按记录结束 CLI 并尝试补收', async () => {
   const spawnGroup = async (mark: string) => {
     const c = childProcess.spawn('sh', ['-c', 'sleep 600; : "$0"', mark], { detached: true, stdio: 'ignore' });
     c.unref();
@@ -1004,7 +1005,7 @@ test('EV-146 K5′：身份判不上（mismatch）时，status.json 里记着的
     for (const g of [g1.pgid, ...groupsWithMark(mark1)]) killGroup(g);
   }
 
-  // no_identity 且 worker 已不在：沿用 EV-154 终态分支自己的判断（workerConfirmedGone 判已不在）⇒ 照旧按记录结束
+  // 两种启动时刻都缺失、worker 已不在：EV-159 起 classifyLostCancel 改判 gone（不再是 no_identity），CLI 照旧按记录结束、并尝试补收 run.json
   const ctx = await fakeCtx();
   const { pid, runDir } = await seedRun(ctx, 'R-K5P-N');
   const mark2 = `trivium-k5p-${process.pid}-${Date.now()}-b`;
@@ -1018,10 +1019,15 @@ test('EV-146 K5′：身份判不上（mismatch）时，status.json 里记着的
     s.worker_started_at = null;
     s.sides.gemini!.cli = g2;
     await writeStatus(runDir, s);
+    assert.deepEqual(await classifyLostCancel(s), { kind: 'gone', pid: s.worker_pid }, 'EV-159：两时刻缺失+已死 ⇒ gone，不是 no_identity');
     const r = await captureOut(() => cancelRun(ctx, 'R-K5P-N'));
     assert.match(r.err, /按记录结束审查员 CLI：gemini 侧进程组/, r.err);
     await new Promise((res) => setTimeout(res, 100));
-    assert.equal(groupMemberCount(g2.pgid), 0, 'no_identity 而 worker 已不在：照旧结束 CLI');
+    assert.equal(groupMemberCount(g2.pgid), 0, '两时刻缺失而 worker 已不在：照旧结束 CLI');
+    // 没有 seedArchive，run.json 不存在 ⇒ finalizeLostAndReclaimLock 的第一步按前提跳过，不报错
+    assert.match(r.err, /归档 run-R-K5P-N\.json 未回写：归档里没有 run-R-K5P-N\.json/, r.err);
+    assert.match(r.out, /工作进程 \d+ 已不在。/, r.out);
+    assert.doesNotMatch(r.out, /无需取消/, r.out);
   } finally {
     for (const g of [g2.pgid, ...groupsWithMark(mark2)]) killGroup(g);
   }
@@ -1096,18 +1102,26 @@ test('EV-146 K7：worker 挂住之前已写下归档终态（success）⇒ run.j
   }
 });
 
-test('EV-146 K8：本格之后再跑一次 --cancel ⇒ worker 已不在（gone 格），走原有终态早退、什么都不写', async () => {
+test('EV-159 N2：alive 格成功之后再跑一次 --cancel ⇒ worker 已不在（gone 格），按前提跳过（已是终态，不追溯改写）、可重入、逐字节不变', async () => {
   const ctx = await fakeCtx();
   const r = await lostScenario(ctx, 'R-K8');
   try {
     await captureOut(() => cancelRun(ctx, 'R-K8'));
     const runAfter = await readText(r.a.runJson);
+    const taskAfter = await readText(r.a.taskJson);
     const statusAfter = await readText(r.statusPath);
+    const lockAfter = await inspectLock(ctx.triviumDir, TOPIC);
+    assert.equal(lockAfter, null, '前提：第一次已回收锁');
     const again = await captureOut(() => cancelRun(ctx, 'R-K8'));
     assert.equal(again.value, EXIT.OK);
-    assert.match(again.out, /运行 R-K8 已处于终态（failed），无需取消。/);
-    assert.equal(await readText(r.a.runJson), runAfter);
-    assert.equal(await readText(r.statusPath), statusAfter);
+    assert.match(again.err, /归档 run-R-K8\.json 未回写：已是终态（failed），不追溯改写/, again.err);
+    assert.match(again.err, /task\.json 的运行登记未改：登记已是 failed，不改/, again.err);
+    assert.match(again.out, /运行 R-K8 已被 --wait 判为失联（heartbeat_stale）：工作进程 \d+ 已不在。/, again.out);
+    assert.match(again.out, /归档 run\.json 与运行登记见上方输出/, again.out);
+    assert.doesNotMatch(again.out, /无需取消|已按前提补收/, again.out);
+    assert.equal(await readText(r.a.runJson), runAfter, '第二次不改写 run.json');
+    assert.equal(await readText(r.a.taskJson), taskAfter, '第二次不改写 task.json');
+    assert.equal(await readText(r.statusPath), statusAfter, 'status.json 一个字节都不写');
   } finally {
     killQuietly(r.pid);
   }
@@ -1121,13 +1135,110 @@ test('EV-146 K9：本格的归档写失败（归档元数据目录只读）⇒ �
   try {
     const { value: code, err } = await captureOut(() => cancelRun(ctx, 'R-K9'));
     assert.equal(code, EXIT.OK);
-    assert.match(err, /归档 run-R-K9\.json 未回写：回写 run\.json 出错：.*——这一步不会再有第二次机会：status\.json 已是终态、工作进程已不在，再跑 --cancel 不会补这一步（BACKLOG EV-159）/);
+    assert.match(
+      err,
+      /归档 run-R-K9\.json 未回写：回写 run\.json 出错：.*——这一步可以再跑一次 --cancel 重试：只要 run\.json 仍为 running，再跑一次会落进会重试这一步的格（本次工作进程已被结束过，下一次判格时它已经不在了，通常是 gone 格；EV-159 起 gone 格与 alive 格一样会重试这一步）。若这次写失败的原因是持续性故障（比如目录只读），重试不会自愈，请人工核对归档 run\.json 与 task\.json 的运行登记/,
+    );
     assert.doesNotMatch(err, /status\.json 随后落终态/, '主路径那半句不适用于本格');
+    assert.doesNotMatch(err, /不会再有第二次机会/, '旧版否定句已改为肯定句（GLM-03）');
     assert.equal(await inspectLock(ctx.triviumDir, TOPIC), null, '归档侧失败不连坐锁回收');
   } finally {
     await fs.chmod(dir, 0o755);
     killQuietly(r.pid);
   }
+});
+
+// ─────────── EV-159：失联worker退出后补收（gone 格补收；计划 r2 §4.1） ───────────
+
+test('EV-159 N1：worker 自己死了（不经 cancelLostWorker）⇒ classifyLostCancel 直接判 gone，--cancel 按 EV-142 前提补收 run.json 与登记、回收锁；不说「无需取消」', async () => {
+  const ctx = await fakeCtx();
+  const r = await lostScenario(ctx, 'R-N1');
+  killQuietly(r.pid);
+  await new Promise((res) => setTimeout(res, 300));
+  const s = (await readStatus(r.runDir))!;
+  assert.deepEqual(await classifyLostCancel(s), { kind: 'gone', pid: r.pid }, '前提：worker 已死，直接落 gone 格');
+  const { value: code, out, err } = await captureOut(() => cancelRun(ctx, 'R-N1'));
+  assert.equal(code, EXIT.OK);
+  const meta = JSON.parse(await readText(r.a.runJson)) as RunMeta;
+  assert.equal(meta.status, 'failed');
+  assert.equal(meta.gate.state, 'failed');
+  assert.deepEqual(meta.termination, { by: 'worker_lost', reason: 'heartbeat_stale' });
+  assert.deepEqual(meta.artifacts, r.a.meta.artifacts, 'artifacts[] 必须原样');
+  assert.equal((await readTask(r.a.layout)).runs.find((x) => x.run_id === 'R-N1')?.status, 'failed');
+  assert.equal(await inspectLock(ctx.triviumDir, TOPIC), null, '锁应按 run_id + pid 复核后回收');
+  const statusNow = JSON.parse(await readText(r.statusPath)) as RunStatus;
+  assert.equal(statusNow.phase, 'failed');
+  assert.equal(statusNow.lost?.reason, 'heartbeat_stale', 'status.json 保持失联判定时的样子（不追溯改写）');
+  assert.match(err, /已把归档里的 run-R-N1\.json 收尾为 failed/);
+  assert.match(err, /已把 task\.json 的运行登记同步为 failed/);
+  assert.match(out, /已回收主题「协议用例」的锁/);
+  assert.match(out, /运行 R-N1 已被 --wait 判为失联（heartbeat_stale）：工作进程 \d+ 已不在。/);
+  assert.match(out, /归档 run\.json 与运行登记见上方输出/);
+  assert.doesNotMatch(out, /无需取消/);
+});
+
+test('EV-159 N3：gone 格下锁已不归本运行的 worker（run_id 相同而 pid 不同 / run_id 不同）⇒ 不动它、如实说明；归档照常补收', async () => {
+  for (const [id, o] of [
+    ['R-N3-PID', { lockPid: process.pid }],
+    ['R-N3-RUN', { lockRunId: 'R-N3-SOMEONE-ELSE' }],
+  ] as const) {
+    const ctx = await fakeCtx();
+    const r = await lostScenario(ctx, id, o);
+    killQuietly(r.pid);
+    await new Promise((res) => setTimeout(res, 300));
+    const lockBefore = await readText(lockFile(ctx));
+    const { value: code, err } = await captureOut(() => cancelRun(ctx, id));
+    assert.equal(code, EXIT.OK);
+    assert.equal(await readText(lockFile(ctx)), lockBefore, `${id}：不是本运行 worker 的锁，不动`);
+    assert.match(err, /主题锁已不归本运行的工作进程（run_id .+，pid \d+），不动/, id);
+    assert.equal((JSON.parse(await readText(r.a.runJson)) as RunMeta).status, 'failed', id);
+    assert.equal((await readTask(r.a.layout)).runs.find((x) => x.run_id === id)?.status, 'failed', id);
+  }
+});
+
+test('EV-159 N4：gone 格归档写失败（归档元数据目录只读）⇒ 告警带「可以再跑一次 --cancel 重试」的措辞，不是「没有第二次机会」；锁照常回收', { skip: process.getuid?.() === 0 && 'root 下只读目录拦不住写入' }, async () => {
+  const ctx = await fakeCtx();
+  const r = await lostScenario(ctx, 'R-N4');
+  killQuietly(r.pid);
+  await new Promise((res) => setTimeout(res, 300));
+  const dir = path.dirname(r.a.runJson);
+  await fs.chmod(dir, 0o555);
+  try {
+    const { value: code, err } = await captureOut(() => cancelRun(ctx, 'R-N4'));
+    assert.equal(code, EXIT.OK);
+    assert.match(err, /归档 run-R-N4\.json 未回写：回写 run\.json 出错：.*可以再跑一次 --cancel 重试/);
+    assert.doesNotMatch(err, /不会再有第二次机会/);
+    assert.equal(await inspectLock(ctx.triviumDir, TOPIC), null, '归档侧失败不连坐锁回收');
+  } finally {
+    await fs.chmod(dir, 0o755);
+  }
+});
+
+test('EV-159 classifyLostCancel 矩阵：pid 不合法（不管死活）⇒ no_identity；pid 合法+两时刻缺失+活着 ⇒ no_identity；+已死 ⇒ gone（新增）；pid 合法+有时刻+已死 ⇒ gone（既有行为，回归）', async () => {
+  const ctx = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx, 'R-N-MATRIX');
+  const s = (await readStatus(runDir))!;
+  s.phase = 'failed';
+  s.lost = { reason: 'heartbeat_stale', at: new Date().toISOString() };
+
+  // pid 不合法：非整数字符串、以及 <= 1——不管死活都判不了
+  const badPidStr = { ...s };
+  (badPidStr as unknown as { worker_pid: unknown }).worker_pid = String(pid);
+  assert.deepEqual(await classifyLostCancel(badPidStr), { kind: 'no_identity' }, 'pid 为字符串');
+  assert.deepEqual(await classifyLostCancel({ ...s, worker_pid: 1 }), { kind: 'no_identity' }, 'pid 为 1（init/launchd）');
+
+  // pid 合法 + 两时刻缺失 + 进程还在 ⇒ no_identity（维持现状：判不了是不是同一进程）
+  const bothMissingAlive = { ...s, worker_pid: pid, worker_started_at: null, worker_started_at_canonical: null };
+  assert.deepEqual(await classifyLostCancel(bothMissingAlive), { kind: 'no_identity' }, '前提：worker 还活着');
+
+  // pid 合法 + 有启动时刻 + 已死 ⇒ gone（既有行为，回归）
+  const withTime = { ...s, worker_pid: pid };
+  killQuietly(pid);
+  await new Promise((res) => setTimeout(res, 300));
+  assert.deepEqual(await classifyLostCancel(withTime), { kind: 'gone', pid }, '既有行为：有启动时刻、已死 ⇒ gone');
+
+  // pid 合法 + 两时刻缺失 + 已死 ⇒ gone（EV-159 新增收窄）
+  assert.deepEqual(await classifyLostCancel(bothMissingAlive), { kind: 'gone', pid }, 'EV-159：两时刻缺失但已死 ⇒ 改判 gone');
 });
 
 // ─────────── EV-158：worker 与主题锁的启动时刻规范化（worker启动时刻规范化计划 r2 §5.1 U4 ②、C5、U9） ───────────

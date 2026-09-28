@@ -1,0 +1,162 @@
+---
+schema: trivium.review.v1
+topic: 失联worker退出后补收
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.157.1
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260928T151256Z
+rerun_index: 1
+snapshot_hash: sha256:eea99145b4e9d1426c51e8eca15a53b01dd30ff174cc25071f36a5e5dee01e4e
+blind: true
+started_at: 2026-09-28T15:12:57.893Z
+finished_at: 2026-09-28T15:24:20.540Z
+duration_s: 596
+tool_calls:
+  run_command: 38
+  project_reads: 26
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 1
+  minor: 3
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0e893-8967-75a2-82e6-2cf5f71f06b9
+---
+
+# 代码审查：失联worker退出后补收
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20260928T151256Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+最要紧的一条：这次改的是 `review --cancel` 终态分支的对外行为（多出一个会补收归档的 `gone` 格、并把「两种启动时刻都缺失 + 进程不在」从 no_identity 改判成 gone），但 doc/03_api/PROTOCOL_dual_critic_relay.md:360 那一行专门承载 --cancel 终态语义，本次没同步，而实施报告 §4 记的是「PROTOCOL 不改（无锚点，grep 已核）」——那条目里明写「终态分支只结束进程、不写 status.json 与归档」，已经不准确。代码侧我没有找到会让线上出错的缺陷：抽出的 finalizeLostAndReclaimLock 与原 alive 格第 4、5 步逐字相同，可重入与逐字节不变的断言齐备，新收窄分支不调 ps、因此不引入 TZ/区域设置耦合。次要在「已不在」的证据强度：收窄后的 gone 判据是单次 kill(pid,0)，比本仓对『为写归档而判退出』一贯要求的严格形态弱，且输出与文档都没说这一格是没有身份佐证下判的。另有两处文档层面的小问题。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 4 条：重要 1 ｜ 次要 3）
+
+### CODEX-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/03_api/PROTOCOL_dual_critic_relay.md:360 与 doc/07_manuals/MANUAL_user.md:624、:657（被审 diff 未含这两处）` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：`--cancel` 终态分支的对外语义变了（新增 `gone` 格补收 run.json/登记并回收锁；「两种启动时刻都缺失 + 进程不在」由 no_identity 改判 gone），但 PROTOCOL 的 `review --cancel` 条目没同步：该条目仍写「终态分支只结束进程、不写 status.json 与归档」，且 EV-146 段只描述「工作进程仍是同一进程」那一格。实施报告 §4 记「PROTOCOL 不改（无锚点，grep 已核）」与这一行不符——锚点是有的。MANUAL_user.md:624 同样仍以「已处于终态，无需取消」概括失联后再跑 --cancel 的后果，:657 说第二形态「只能在终端手工结束」也没提「worker 一旦已不在，再跑 --cancel 会自动按记录结束 CLI」。契约文档没有测试守（test/contract/ 与 test/unit/ 里没有任何文件引用 PROTOCOL_dual_critic_relay.md），这类漂移只能靠人记得同步。
+
+**依据**：读了 doc/03_api/PROTOCOL_dual_critic_relay.md:360 全文（确含 --cancel 终态分支与各格的逐条描述）、doc/07_manuals/MANUAL_user.md:618-660、doc/05_testing/REPORT_2026-09-28_lost_worker_gone_finalize.md §4、src/trivium/run-protocol.ts:1661-1730（终态分支实际输出），并用 grep 核过 test/contract/ 与 test/unit/ 无 PROTOCOL 引用；AGENTS.md 改动同步清单要求 CLI 行为面变更同步 PROTOCOL。
+
+**建议**：在 PROTOCOL 的 `review --cancel` 条目里补 `gone` 格的结论（补收 run.json/task.json 为 failed、termination 沿用 worker_lost/heartbeat_stale、按 run_id+pid 回收锁、status.json 与闸门不动、退出码仍 0），并把「两种启动时刻都缺失且进程不在 ⇒ 落 gone」这一改判写明；MANUAL_user.md:624 与 :657 各加一句限定；同时把报告 §4 的「PROTOCOL 不改（无锚点）」改准。不需要为此新增契约测试（是否要建机器对账请单独裁决）。
+
+### CODEX-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/run-protocol.ts:1439（classifyLostCancel 的 `return (await processAlive(pid)).alive ? … : { kind: 'gone', pid };`）` |
+| 类别 | concurrency ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：这一支的「已不在」只有单次 `kill(pid, 0)` 的证据：EPERM 与任何非 ESRCH 异常之外的失败都算「不存在」，没有任何身份佐证，而它现在的下游后果不再是「只结束进程」，而是**不可逆的归档写**（run.json / task.json 补收为 failed）加**主题锁回收**。本仓对「为写归档而判工作进程已退出」一贯要求更强判据——EV-146 另立 `lostWorkerGoneFrom` 严格三态（`ps` 取不到启动时刻不算已退出），EV-158 给每个 mismatch 格带 `basis` 说明比对依据；这一条最弱的判据反而没有对应的说明或出口。实际暴露面很窄（两时刻都为 null 只出自 `--start` 两次 `ps` 同时失败，或升级窗口旧版写下的记录），且 `finalizeFailedRunMeta` 的前提 4 与主题任务锁能挡住「别的活 worker 正在收尾自己那一轮」，所以我不把它判成 blocker。
+
+**依据**：读了 src/trivium/run-protocol.ts:1396-1470（判格与两种依据的分写）、src/trivium/util/exec.ts:504-525（processAlive 对 EPERM/异常的处置）、src/trivium/meta.ts:645-712（前提 1 与前提 4、读判写在主题任务锁里）、src/trivium/lock.ts:115-146 与 :283-298（judgeStale / withTopicLock）；并对照 doc/02_design 同名设计文件 7.5「失联后取消挂住的工作进程」段对严格判据的表述。
+
+**建议**：方向二选一并写进设计/LLD：①这一格也走严格形态（先试 `processStartTime`，取到时刻却无记录可比时降为提示、不补收），与 EV-146 的三态口径对齐；②承认这就是最弱判据，但在补收前的播报里如实说明「本格的『已不在』没有启动时刻佐证（成因：写记录时 ps 取不到 / 升级窗口旧版写下的记录）」，并在设计 7.5 与 LLD 4.2 引述块里点名这条判据与 alive 格不同源——现在两处文档都没说这句。
+
+### CODEX-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1481-1487` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：v1.3.54「失联后取消挂住的工作进程」那一段被从「**如实保留**：…补收之前被中断——」处用破折号截断，续写内容另起一段且没有加粗段首标记。这破坏了本文「每个版本的注记写在自己那一段里、段首是 **粗体主题**（vN，EV-xxx，计划 …）」的既有约定：读者扫段首索引时看不到 v1.3.56 这一处变更挂在哪个主题下，只能读完整段才知道后半截是本轮改的；下一次（v1.3.57）要再改这一段时更容易改错位置或把续写段当独立段丢掉。
+
+**依据**：读了设计文件 1478-1490 现状与 `git diff` 该文件的对应块（确认基线里那段是一整段、本轮被拆成两段），并对照同节相邻的 v1.3.53 / v1.3.55 段与 §24 台账的段首形态。另：doc/05_testing/evidence/lost-worker-gone-finalize-20260928/gen-mutation-spec.mjs 的 M1/M2 描述指向用例 N6/N7，而 test/integration/run-protocol.test.ts 里只有 N1～N4 加「classifyLostCancel 矩阵」（N1 定义还在 N2 之后）——同类「靠记性的编号」漂移，顺带提一句。
+
+**建议**：把 v1.3.56 的续写并回它自己的段落（恢复为一个完整段，段内注明「v1.3.56 起 …」），或改成既有形态的独立粗体段「**失联后取消的 `gone` 格补收**（v1.3.56，EV-159 …）」；顺手把变异规格里指向不存在用例号的描述改准，并重新生成 spec 与读数。
+
+### CODEX-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/…设计.md:1482 与 doc/02_design/LLD_orchestrator.md:479（「仍如实保留的只剩两处…毫秒级窗口」一句）` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | low |
+
+**问题**：「只剩确认退出到补收之间被中断的毫秒级窗口」这句把残余格说小了：那一格在 EV-159 之后多数情况下**是可重试的**（再跑 `--cancel` 落 gone 格补收），真正不可重试的是另一格——判格时该 pid 已被别的活进程复用，于是落 `no_identity` 或 `mismatch`，`finalizeLostAndReclaimLock` 永远进不去，run.json 停在 `running`（`mismatch` 是用户决策不补收，`no_identity` 这条是新增窄分支带出的形态）。反过来，「毫秒级窗口」这一表述也会让后来的人以为本轮已把中断可重入性收干净，从而在 EV-151/第二形态附近重复登记同一条。
+
+**依据**：读了 src/trivium/run-protocol.ts:1429-1445（no_identity 需进程还在、mismatch 一律不补收）、:1484-1520（finalizeLostAndReclaimLock 的重试语义）、:1153-1180 区间的 EV-159 N1/N2 用例（N2 断言可重入），以及 LLD_orchestrator.md:476-487「仍会停在 running 的」清单与 BACKLOG.md EV-159 行。pid 秒级复用作为残余在 EV-158 段已承认，但没归到「补收不可重试」这一面。
+
+**建议**：把这两处「仍如实保留」的清单改准：明确「中断后重跑通常可补（gone 格）；不可补的是重跑时 pid 已被别的活进程占用而落 mismatch / no_identity 那一格」，并注明它是否并入 EV-151 或另登一条；不要用「毫秒级窗口」概括。
+
+## 认为正确的部分
+
+- `finalizeLostAndReclaimLock` 的抽取是逐字搬迁（含 termination 固定值、`workerGone: true`、按 run_id + pid 复核再回收锁的三段判断），alive 格行为不变，没有夹带改动。
+- `no_identity` 的收窄方向正确：pid 不合法一律先判 no_identity（不看死活），有记录时仍走 `processMatchesRecord`，只在「两种启动时刻都缺失」这一窄支才退化成判「在不在」，且进程还在时维持原处置（不发信号、不补收）——fail-safe 取向与 EV-146/E-158 一致。
+- 结论句不复述归档结果（只说「见上方输出」）从根子上排除了「归档缺失 / 已是终态两种 skip 情形说假话」，比按 FinalizeStep 动态分流文案更稳；G1 的 CLI 结束先于补收播报的顺序断言也补上了。
+- 新增收窄分支不调 `ps`，只用 `kill(pid,0)`，因此这一格的判定与调用方终端的 TZ / 区域设置无关——这是本次改动里对环境耦合最省事的一种写法，且没有把 legacy/canonical 盘上契约改松。
+- 测试与证据的分层合理：矩阵用例钉住四格、N1/N3/N4 钉住写与锁、N2/G2 钉住逐字节幂等、G1 用真实 bundle + hang_cli 桩验孤儿 CLI 真被结束；变异前先跑基线全绿并校验 find 串唯一（gen-mutation-spec.mjs 末尾的两道断言），M8 用「复制派发行」的形态确实让 alive 分支先返回、达到挪位效果——这些我都核过源码。
+- `mismatch` 格连记录里的 CLI 也不结束、终态 CLI 结束块对 gone 格仍生效（`workerConfirmedGone` 在不在时必判 gone），LLD 里那句「CLI 结束在调用方已做过」与实际代码相符。
+
+## 未覆盖范围（本侧盲区）
+
+- 没有执行 `npm run typecheck` / `npm run build` / 全量测试（沙箱只读，且审查进行中不应触发构建）；报告里 2225/2227、变异 8/8、零配额验收 6/6 我只核对了读数文件内部一致性，未复现。
+- 未读被禁清单列出的另一位审查员的产出与 `.reviews/失联worker退出后补收/plan/` 下对方历史件；计划 r2 原文也未读，因此「实现是否偏离计划」只依据 diff 与文档中被引述的计划章节号判断。
+- 未追 `waitRun` 的 pid_gone 分支、`sweepDeadRunningGates`、`admitScrub` 与 `retention.ts` 的到期整删在新 gone 格下的交互（只确认 EV-142 调用方计数改为八个、`meta.ts` 文档块与代码一致）。
+- 四个厂商适配器与 runner/探针未审；`AsyncLocalStorage` 侧归属、`terminateRecordedCliGroups` 的宽限链本轮未改，我只读了它在终态分支的调用点。
+- 未验证 Windows/Linux（项目声明仅 macOS），也未实测僵尸进程与 `kill(pid,0)`、`ps lstart` 在本机的真实返回形态——CODEX-02 的判断依据是既有代码注释与文档口径，不是我这轮的新实测。
+- 未核 PROTOCOL/QUICKSTART 之外的文档（README、doc/01_requirements、PRD）是否另有「终态分支不写归档」的表述残留，只 grep 了 skills-src、skills、doc/03_api、doc/04_development、doc/07_manuals。
+
+## 实际查阅的项目文件
+
+- `.reviews/失联worker退出后补收/code/_meta/changes-20260928T151256Z.diff`
+- `AGENTS.md`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/util/exec.ts`
+- `src/trivium/status.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/lock.ts`
+- `test/integration/run-protocol.test.ts`
+- `test/integration/gate-loop.test.ts`
+- `test/helpers/proc.ts`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/02_design/LLD_orchestrator.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `doc/07_manuals/MANUAL_user.md`
+- `doc/08_project/BACKLOG.md`
+- `doc/05_testing/REPORT_2026-09-28_lost_worker_gone_finalize.md`
+- `doc/05_testing/evidence/lost-worker-gone-finalize-20260928/gen-mutation-spec.mjs`
+- `doc/05_testing/evidence/lost-worker-gone-finalize-20260928/mutation-spec.json`
+- `doc/05_testing/evidence/lost-worker-gone-finalize-20260928/mutation-output.txt`
+- `doc/05_testing/evidence/lost-worker-gone-finalize-20260928/acceptance.mjs`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":38,"project_reads":26}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

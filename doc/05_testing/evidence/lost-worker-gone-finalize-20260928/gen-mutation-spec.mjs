@@ -1,0 +1,65 @@
+// 生成「失联worker退出后补收」的源码变异规格（计划 r2 §4.3）：find 串从现行源码截取，逐条核对恰好出现一次，再落盘。
+// 照搬 evidence/worker-start-canonical-20260928/gen-mutation-spec.mjs 的形态。
+// 用法（在仓库根）：node gen-mutation-spec.mjs <输出路径>
+import fs from 'node:fs';
+import path from 'node:path';
+
+const ROOT = process.cwd();
+const OUT = process.argv[2];
+const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
+
+const PROTO = 'src/trivium/run-protocol.ts';
+const S = {
+  proto: 'dist/test/test/integration/run-protocol.test.js',
+  gateLoop: 'dist/test/test/integration/gate-loop.test.js',
+};
+
+const cases = [
+  { id: 'M1', desc: "classifyLostCancel 两时刻缺失分支恒返回 no_identity（去掉 processAlive 改判）⇒ 'EV-159 classifyLostCancel 矩阵'、'EV-146 K5′'（R-K5P-N）", file: PROTO,
+    find: "    return (await processAlive(pid)).alive ? { kind: 'no_identity' } : { kind: 'gone', pid };\n",
+    replace: "    return { kind: 'no_identity' } as LostCancelCell;\n", expect: S.proto },
+  { id: 'M2', desc: "classifyLostCancel 两时刻缺失分支恒返回 gone（不管死活）⇒ 'EV-159 classifyLostCancel 矩阵'", file: PROTO,
+    find: "    return (await processAlive(pid)).alive ? { kind: 'no_identity' } : { kind: 'gone', pid };\n",
+    replace: "    return { kind: 'gone', pid } as LostCancelCell;\n", expect: S.proto },
+  { id: 'M3', desc: 'cancelRun 不调用 finalizeGoneWorker（gone 格仍走旧的「无需取消」）⇒ N1', file: PROTO,
+    find: "    if (cell.kind === 'gone') return finalizeGoneWorker(ctx, runId, s, cell);\n",
+    replace: '', expect: S.proto },
+  { id: 'M4', desc: 'finalizeGoneWorker 不调用 finalizeLostAndReclaimLock（只播报不写）⇒ N1', file: PROTO,
+    find: '  await finalizeLostAndReclaimLock(ctx, runId, s, cell.pid);\n',
+    replace: '', expect: S.proto },
+  { id: 'M5', desc: 'finalizeLostAndReclaimLock 的 termination.reason 恒为别的值 ⇒ N1', file: PROTO,
+    find: "    termination: { by: 'worker_lost', reason: 'heartbeat_stale' },\n",
+    replace: "    termination: { by: 'worker_lost', reason: 'pid_gone' },\n", expect: S.proto },
+  { id: 'M6', desc: 'finalizeLostAndReclaimLock 跳过锁复核（去掉整段）⇒ N1 / N3', file: PROTO,
+    find:
+      '  const existing = await inspectLock(ctx.triviumDir, s.topic);\n' +
+      '  if (existing && existing.run_id === runId && existing.pid === pid) {\n' +
+      '    if (await reclaimStaleLock(lockPathFor(ctx.triviumDir, s.topic), existing)) {\n' +
+      '      say(`已回收主题「${s.topic}」的锁`);\n' +
+      '    } else {\n' +
+      "      step('主题锁在回收时已被别的进程动过，未回收');\n" +
+      '    }\n' +
+      '  } else if (existing) {\n' +
+      '    step(`主题锁已不归本运行的工作进程（run_id ${existing.run_id ?? \'无\'}，pid ${existing.pid}），不动`);\n' +
+      '  }\n',
+    replace: '', expect: S.proto },
+  { id: 'M7', desc: 'finalizeLostAndReclaimLock 的锁复核不比对 pid（只比 run_id）⇒ N3', file: PROTO,
+    find: '  if (existing && existing.run_id === runId && existing.pid === pid) {\n',
+    replace: '  if (existing && existing.run_id === runId) {\n', expect: S.proto },
+  { id: 'M8', desc: 'finalizeGoneWorker 在 CLI 结束块之前调用（改变接线顺序）⇒ G1 的 CLI 结束断言 + 顺序断言', file: PROTO,
+    find: "    if (cell.kind === 'alive') return cancelLostWorker(ctx, runId, runDir, s, cell, o);\n",
+    replace:
+      "    if (cell.kind === 'alive') return cancelLostWorker(ctx, runId, runDir, s, cell, o);\n" +
+      "    if (cell.kind === 'gone') return finalizeGoneWorker(ctx, runId, s, cell);\n",
+    expect: S.gateLoop },
+];
+
+for (const c of cases) {
+  const text = read(c.file);
+  const n = text.split(c.find).length - 1;
+  if (n !== 1) throw new Error(`${c.id} 的 find 在 ${c.file} 里出现 ${n} 次（应为 1）`);
+  if (c.find === c.replace) throw new Error(`${c.id} 的 replace 与 find 相同`);
+}
+const spec = { targets: [PROTO], suites: [...new Set(Object.values(S))], cases };
+fs.writeFileSync(OUT, JSON.stringify(spec, null, 2) + '\n');
+console.log(`${cases.length} 条，锚点全部唯一 → ${OUT}`);

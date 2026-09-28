@@ -573,11 +573,13 @@ export function finalizeCancelledRunMeta(i: FinalizeInput): Promise<{ runMeta: F
 
 /**
  * 把没走到 worker 收尾就失败的运行在归档侧收尾为 `failed`（EV-142，计划 r2 §3.2 / §3.3；EV-145）。
- * 七个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
+ * 八个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
  * 且确认工作进程已退出（`worker_lost`）、`prepareRun` 写完骨架之后失败与 `startRun` 在子进程诞生之前失败
  * （都是 `prepare_exception`）、同步路径 `executeRun` 抛错（`sync_exception`）、`startRun` 在子进程诞生之后失败
  * 并终止工作进程、确认退出之后（`post_spawn_exception`，EV-150）、`--cancel` 在 `--wait` 判 heartbeat_stale 之后
- * 结束仍挂着的工作进程并确认退出之后（沿用 `worker_lost` / `heartbeat_stale`，EV-146）。
+ * 结束仍挂着的工作进程并确认退出之后（沿用 `worker_lost` / `heartbeat_stale`，EV-146）、`--cancel` 在
+ * `--wait` 判 heartbeat_stale 之后发现工作进程已不在（同样沿用 `worker_lost` / `heartbeat_stale`，EV-159，
+ * 经 `run-protocol.ts` 的 `finalizeLostAndReclaimLock`）。
  */
 export function finalizeFailedRunMeta(
   i: FinalizeInput & { termination: RunTermination },

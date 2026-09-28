@@ -2889,6 +2889,102 @@ test('EV-146 J3：本格不抹凭据副本（用户决策 7）——--wait 与 -
 });
 
 /*
+ * ── EV-159：失联worker退出后补收（失联worker退出后补收计划 r2 §4.2 G1～G2）──
+ *
+ * 复用 J1 的 heartbeat_stale 现场，但不经 --cancel 结束 worker——直接按组 SIGKILL（模拟终端手工结束），
+ * 两侧 CLI 组因此真的成为孤儿（手工结束不经 EV-152 的 SIGTERM 转发链）；随后跑 --cancel，落 gone 格。
+ */
+
+test('EV-159 G1：worker 被手工结束（未经 --cancel）⇒ --cancel 落 gone 格：按记录结束两侧 CLI、补收 run.json 与登记、回收锁；CLI 结束先于归档补收播报', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await lostHungRun({ gemini: { mode: 'hang_cli', blockAfterMs: 300 }, glm: { mode: 'hang_cli' } });
+  try {
+    assert.equal(r.w.code, EXIT.FAIL, r.wOut);
+    assert.match(r.wOut, /worker_lost|失联（heartbeat_stale）/, r.wOut);
+    assert.ok(!pidGone(r.js.worker_pid), 'heartbeat_stale 时 worker 应仍活着（用例前提）');
+    for (const g of r.groups) assert.equal(groupMemberCount(g), 2, `组 ${g} 应仍活着（用例前提）`);
+
+    process.kill(-r.js.worker_pid, 'SIGKILL');
+    await new Promise((res) => setTimeout(res, 300));
+    assert.ok(pidGone(r.js.worker_pid), '前提：worker 已被手工结束');
+    for (const g of r.groups) assert.equal(groupMemberCount(g), 2, `组 ${g} 应仍是孤儿、还活着（手工结束够不到 CLI，用例前提）`);
+
+    const sp = path.join(r.js.run_dir, 'status.json');
+    const statusBefore = await fs.readFile(sp, 'utf8');
+    const gateBefore = (await gatesOf(r.fx.root))[`${TOPIC}/plan`];
+
+    const t0 = Date.now();
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    const ms = Date.now() - t0;
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    const merged = c.stdout + c.stderr;
+    assert.equal((merged.match(/按记录结束审查员 CLI/g) ?? []).length, 2, merged);
+    await new Promise((res) => setTimeout(res, 100));
+    assert.deepEqual(r.groups.map((g) => groupMemberCount(g)), [0, 0], `两组都应已空：\n${merged}`);
+    const meta = await readRunJson(r.fx.stageDir, r.js.run_id);
+    assert.equal(meta.status, 'failed');
+    assert.deepEqual(meta.termination, { by: 'worker_lost', reason: 'heartbeat_stale' });
+    assert.equal(await taskRunStatus(r.fx.archiveRoot, r.js.run_id), 'failed');
+    await assert.rejects(fs.access(lockPathOf(r.fx.root)), '锁应已回收');
+    assert.equal(await fs.readFile(sp, 'utf8'), statusBefore, 'status.json 一个字节都不写');
+    assert.deepEqual((await gatesOf(r.fx.root))[`${TOPIC}/plan`], gateBefore, '闸门不动');
+    assert.doesNotMatch(c.stdout, /无需取消/, c.stdout);
+    assert.match(c.stdout, /工作进程 \d+ 已不在。/, c.stdout);
+
+    // 顺序断言（计划双审 r1 CODEX-03 ≡ GLM-04）：CLI 结束先于归档补收，防 finalizeGoneWorker 被误挪到 CLI 结束块之前
+    const cliIdx = merged.indexOf('按记录结束审查员 CLI');
+    const archiveIdx = merged.indexOf(`已把归档里的 run-${r.js.run_id}.json 收尾为 failed`);
+    assert.ok(cliIdx >= 0 && archiveIdx >= 0 && cliIdx < archiveIdx, `CLI 结束应先于归档补收播报：\n${merged}`);
+
+    // 计时只防挂死：本格不走 SIGTERM 宽限链（worker 已死），只有 CLI 宽限链 + 归档写入
+    const hangBound = 30_000;
+    assert.ok(ms < hangBound, `--cancel 耗时 ${ms} ms，超过防挂死上界 ${hangBound}`);
+  } finally {
+    try {
+      process.kill(-r.js.worker_pid, 'SIGKILL');
+    } catch {
+      /* 已不在 */
+    }
+    cleanupGroups(r);
+  }
+});
+
+test('EV-159 G2：G1 场景上 --cancel 之后再跑一次 ⇒ 幂等，run.json / task.json / status.json 均逐字节不变，输出不再说「已把归档……收尾为 failed」', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await lostHungRun({ gemini: { mode: 'hang_cli', blockAfterMs: 300 }, glm: { mode: 'hang_cli' } });
+  try {
+    process.kill(-r.js.worker_pid, 'SIGKILL');
+    await new Promise((res) => setTimeout(res, 300));
+    const first = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    assert.equal(first.code, EXIT.OK, `${first.stdout}${first.stderr}`);
+
+    const sp = path.join(r.js.run_dir, 'status.json');
+    const runJsonPath = path.join(r.fx.stageDir, '_meta', `run-${r.js.run_id}.json`);
+    const [statusAfter, runAfter, taskAfter] = await Promise.all([
+      fs.readFile(sp, 'utf8'),
+      fs.readFile(runJsonPath, 'utf8'),
+      fs.readFile(path.join(r.fx.archiveRoot, TOPIC, 'task.json'), 'utf8'),
+    ]);
+
+    const second = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    assert.equal(second.code, EXIT.OK, `${second.stdout}${second.stderr}`);
+    const merged2 = second.stdout + second.stderr;
+    assert.doesNotMatch(merged2, /已把归档里的 run-.+\.json 收尾为 failed/, merged2);
+    assert.match(merged2, /已是终态（failed），不追溯改写/, merged2);
+    assert.doesNotMatch(merged2, /无需取消/, merged2);
+
+    assert.equal(await fs.readFile(sp, 'utf8'), statusAfter, 'status.json 逐字节不变');
+    assert.equal(await fs.readFile(runJsonPath, 'utf8'), runAfter, 'run.json 逐字节不变');
+    assert.equal(await fs.readFile(path.join(r.fx.archiveRoot, TOPIC, 'task.json'), 'utf8'), taskAfter, 'task.json 逐字节不变');
+  } finally {
+    try {
+      process.kill(-r.js.worker_pid, 'SIGKILL');
+    } catch {
+      /* 已不在 */
+    }
+    cleanupGroups(r);
+  }
+});
+
+/*
  * ── EV-158：写者与读者的 TZ / 区域设置不同（worker启动时刻规范化计划 r2 §5.2 I1～I7）──
  *
  * `--start` 在 W 下跑、被测读者在 R 下跑（`test/helpers/start-env.ts`）；每格先对 worker pid 做 P0（两个环境的缺省形态

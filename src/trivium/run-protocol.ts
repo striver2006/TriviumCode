@@ -1341,8 +1341,10 @@ export async function statusRun(
  *
  * 这是 GLM-04 场景（进程活着但不再进展）唯一的工具化恢复路径。
  *
- * 已终态的运行不追溯改写，只有一格例外（EV-146）：`--wait` 判 heartbeat_stale 写成 failed、而工作进程仍是同一活进程——
- * 由 `cancelLostWorker` 结束它与它拉起的审查员 CLI、补收归档 run.json、回收锁，status.json 不写（见 `classifyLostCancel`）。
+ * 已终态的运行不追溯改写，只有两格例外：`alive` 格（EV-146）——`--wait` 判 heartbeat_stale 写成 failed、而工作进程
+ * 仍是同一活进程，由 `cancelLostWorker` 结束它与它拉起的审查员 CLI、补收归档 run.json、回收锁；`gone` 格（EV-159）——
+ * 工作进程已确认不在（自己死了、被手工结束，或 `cancelLostWorker` 确认退出之后被中断），由 `finalizeGoneWorker`
+ * 补收归档 run.json、回收锁（不发信号，本来就没有活进程可杀）。两格 status.json 都不写（见 `classifyLostCancel`）。
  */
 /** status.json 读不到时，从交接文件取主题与阶段（它在派生前就写好了） */
 async function readHandoffIdentity(runDir: string): Promise<{ topic: string; stage: Stage } | null> {
@@ -1394,8 +1396,10 @@ function describeFinalizeStep(r: FinalizeStep, done: string, notDone: string): s
  * `--cancel` 碰到终态运行时先判的格（EV-146，失联后取消挂住的worker计划 r2 §4.3）。只有 `alive` 一格会发信号。
  *
  * - `none`：不是「status.json 为 failed + `lost.reason` 为 heartbeat_stale」——走原有终态早退；
- * - `no_identity`：是，但 status.json 里的身份两项不合形状（pid 须为 > 1 的整数、启动时刻须为非空字符串）——判不了就不发信号；
- * - `gone`：是，pid 上已没有活进程——走原有终态早退（run.json 的补收暂缓，BACKLOG EV-159）；
+ * - `no_identity`：是，但 status.json 里的身份两项不合形状（pid 须为 > 1 的整数、启动时刻须为非空字符串），或
+ *   pid 合法但两种启动时刻都缺失且进程还在（判不了是不是同一进程）——判不了就不发信号；
+ * - `gone`：是，pid 上已没有活进程（含「pid 合法但两种启动时刻都缺失、进程也不在」，EV-159 收窄）——
+ *   按 EV-142 的前提补收 run.json 与登记，锁按 alive 格同一复核回收（EV-159）；
  * - `mismatch`：是，pid 上有活进程而启动时刻不符——`basis` 为 canonical 时是 PID 复用或本次取不到启动时刻；为 legacy
  *   （旧版写下、没有规范化启动时刻的记录）时还可能是本命令的 TZ / 区域设置与 `--start` 不同（EV-158 的残余）；
  * - `alive`：本格，交给 `cancelLostWorker`。
@@ -1417,18 +1421,22 @@ export type LostCancelCell =
  * - **只认 status.json 的记录**：不回落 `worker.pid` 文件（那里没有启动时刻，等于「身份缺失 = 相符」），也不取锁里的
  *   启动时刻——`startRun` 用同一次取值写两处，`ps` 失败时同为 null，不是第二份证据（计划双审 r1 CODEX-04 驳回的理由）。
  * - 身份判据经 `processMatchesRecord`（与主路径、锁同一读法，EV-158）：有规范化启动时刻只按它比，没有才退回缺省环境比较。
+ * - **pid 合法但两种启动时刻都缺失时改判「在不在」**（EV-159，失联worker退出后补收计划 r2 §3.1）：这只挡住了
+ *   「是不是同一进程」的判断，不挡「在不在」——`processAlive(pid)` 不传期望启动时刻，只取 `.alive`（不受
+ *   「期望为假值即相符」那个 quirk 影响，quirk 只作用于 `.sameProcess`）；进程不在就归 `gone`（一并补收），
+ *   进程还在则仍是 `no_identity`（判不了身份，不发信号，维持现状——PID 有可能已被别的进程复用）。
  */
 export async function classifyLostCancel(s: RunStatus): Promise<LostCancelCell> {
   const lost = lostOf(s);
   if (s.phase !== 'failed' || lost?.reason !== 'heartbeat_stale') return { kind: 'none' };
   const pid: unknown = s.worker_pid;
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 1) {
+    return { kind: 'no_identity' };
+  }
   const legacy: unknown = s.worker_started_at;
   const legacyOk = typeof legacy === 'string' && legacy.trim().length > 0;
-  if (
-    typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 1 ||
-    (canonicalStartOf(s.worker_started_at_canonical) === null && !legacyOk)
-  ) {
-    return { kind: 'no_identity' };
+  if (canonicalStartOf(s.worker_started_at_canonical) === null && !legacyOk) {
+    return (await processAlive(pid)).alive ? { kind: 'no_identity' } : { kind: 'gone', pid };
   }
   const rec: RecordedStart = { canonical: s.worker_started_at_canonical, legacy: legacyOk ? (legacy as string) : null };
   const live = await processMatchesRecord(pid, rec);
@@ -1469,6 +1477,69 @@ export async function lostWorkerGone(
 /** `cancelRun` 的可选参数：只给单测替换「结束工作进程」这一步（与 `settleOrphanedStart` 的 `terminate` 注入同形） */
 export interface CancelOptions {
   terminateWorker?: (pid: number, rec: RecordedStart) => Promise<{ gone: boolean; escalated: boolean; signals: NodeJS.Signals[] }>;
+}
+
+/**
+ * 按 EV-142 的前提把仍为 running 的 run.json 与 task.json 登记补收为 failed（termination 固定
+ * worker_lost / heartbeat_stale），再按 run_id + pid 复核回收主题锁——alive 格（`cancelLostWorker`，EV-146）
+ * 与 gone 格（`finalizeGoneWorker`，EV-159）的第 4、5 步逐字相同，抽成一份（失联worker退出后补收计划 r2 §3.2）。
+ * 返回两步的 `FinalizeStep`，供单测直接钉住每一步的结果；**调用方的结论句一律不复述这两步的结果，只说
+ * 「见上方输出」**——`reportFinalizeStep` 已经把结果如实播报在前面几行，在结论句里再断言一次会在「已是终态」
+ * 「归档里没有文件」这两种非错误跳过情形下说假话（计划双审 r1 CODEX-01 ≡ AGY-01 ≡ GLM-02）。
+ */
+async function finalizeLostAndReclaimLock(
+  ctx: Ctx,
+  runId: string,
+  s: RunStatus,
+  pid: number,
+): Promise<{ runMeta: FinalizeStep; task: FinalizeStep }> {
+  const fin = await finalizeFailedRunMeta({
+    layout: { archiveRoot: ctx.archiveRoot, topic: s.topic },
+    stage: s.stage,
+    runId,
+    lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },
+    workerGone: true,
+    termination: { by: 'worker_lost', reason: 'heartbeat_stale' },
+  });
+  const noSecondChance =
+    '这一步可以再跑一次 --cancel 重试：只要 run.json 仍为 running，再跑一次会落进会重试这一步的格' +
+    '（本次工作进程已被结束过，下一次判格时它已经不在了，通常是 gone 格；EV-159 起 gone 格与 alive 格一样会重试这一步）。' +
+    '若这次写失败的原因是持续性故障（比如目录只读），重试不会自愈，请人工核对归档 run.json 与 task.json 的运行登记';
+  reportFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`, noSecondChance);
+  reportFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改', noSecondChance);
+
+  // 按 run_id + pid 复核回收主题锁：本格可能发生在 --start 之后很久，锁若已被新一轮接管或改写，都不是本运行 worker 的
+  const existing = await inspectLock(ctx.triviumDir, s.topic);
+  if (existing && existing.run_id === runId && existing.pid === pid) {
+    if (await reclaimStaleLock(lockPathFor(ctx.triviumDir, s.topic), existing)) {
+      say(`已回收主题「${s.topic}」的锁`);
+    } else {
+      step('主题锁在回收时已被别的进程动过，未回收');
+    }
+  } else if (existing) {
+    step(`主题锁已不归本运行的工作进程（run_id ${existing.run_id ?? '无'}，pid ${existing.pid}），不动`);
+  }
+  return fin;
+}
+
+/**
+ * gone 格：--wait 判 heartbeat_stale 之后，工作进程确认已不在（EV-159，失联worker退出后补收计划 r2 §3.3）。
+ * 形态：worker 自己死了、被手工结束，或 `cancelLostWorker` 确认退出之后、补收之前本进程被中断。
+ * 只做 `finalizeLostAndReclaimLock` 那一步——不发信号（本来就没有活进程可杀）。status.json 不写、
+ * 闸门不动、凭据副本不抹，与 alive 格同口径；CLI 记录的结束在调用方已经做过（`cancelRun` 终态分支里
+ * `workerConfirmedGone` 守卫的那段——`gone` 格的各种形态下该判据必为真），本函数不重复。**只对 gone 格成立**：
+ * `alive` 格在 `cancelRun` 里更早 `return` 进 `cancelLostWorker`，到不了那段共享块，它的 CLI 结束是
+ * `cancelLostWorker` 第 3 步自己无条件做的，两者不是同一处（代码双审 r1 GLM-01）。
+ *
+ * 结论句沿用 `cancelLostWorker` 的范式——不复述 `finalizeLostAndReclaimLock` 两步的结果，只说「见上方输出」：
+ * 可重入（已是终态）与归档缺失（没有 run.json）都走 skip、由 `reportFinalizeStep` 在前面如实播报，结论句里
+ * 再断言一次「已补收」会在这两种情形下说假话（计划双审 r1 CODEX-01 ≡ AGY-01 ≡ GLM-02）。
+ */
+async function finalizeGoneWorker(ctx: Ctx, runId: string, s: RunStatus, cell: { pid: number }): Promise<number> {
+  await finalizeLostAndReclaimLock(ctx, runId, s, cell.pid);
+  say(`运行 ${runId} 已被 --wait 判为失联（heartbeat_stale）：工作进程 ${cell.pid} 已不在。`);
+  say('  status.json 的 phase 与 message 保持失联判定时的样子（不追溯改写）；归档 run.json 与运行登记见上方输出。');
+  return EXIT.OK;
 }
 
 /**
@@ -1537,8 +1608,8 @@ async function cancelLostWorker(
   } else {
     warn(
       `已向工作进程组 ${pid} 发送 ${sent}，未能确认退出：归档 run.json、主题任务文件的运行登记与主题锁都不动（它若还活着就是写者）。` +
-        '可以再跑一次 --cancel（仍会入这一格）；若改为在终端手工结束它，之后再跑 --cancel 只会结束审查员 CLI，' +
-        '归档 run.json 与运行登记要人工核对（BACKLOG EV-159）',
+        '可以再跑一次 --cancel（仍会入这一格，再次尝试结束）；若改为在终端手工结束它，之后再跑 --cancel 会判它已不在' +
+        '（gone 格），按前提补收归档 run.json 与运行登记（EV-159）',
     );
   }
 
@@ -1551,32 +1622,8 @@ async function cancelLostWorker(
     return EXIT.OK;
   }
 
-  // 4. 补收 run.json 与登记（EV-142 的前提：写者已被本格结束，并按 pid + 启动时刻观察到它退出）
-  const fin = await finalizeFailedRunMeta({
-    layout: { archiveRoot: ctx.archiveRoot, topic: s.topic },
-    stage: s.stage,
-    runId,
-    lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },
-    workerGone: true,
-    termination: { by: 'worker_lost', reason: 'heartbeat_stale' },
-  });
-  const noSecondChance =
-    '这一步不会再有第二次机会：status.json 已是终态、工作进程已不在，再跑 --cancel 不会补这一步（BACKLOG EV-159），' +
-    '请人工核对归档 run.json 与 task.json 的运行登记';
-  reportFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`, noSecondChance);
-  reportFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改', noSecondChance);
-
-  // 5. 按 run_id + pid 复核回收主题锁：本格可能发生在 --start 之后很久，锁若已被新一轮接管或改写，都不是本运行 worker 的
-  const existing = await inspectLock(ctx.triviumDir, s.topic);
-  if (existing && existing.run_id === runId && existing.pid === pid) {
-    if (await reclaimStaleLock(lockPathFor(ctx.triviumDir, s.topic), existing)) {
-      say(`已回收主题「${s.topic}」的锁`);
-    } else {
-      step('主题锁在回收时已被别的进程动过，未回收');
-    }
-  } else if (existing) {
-    step(`主题锁已不归本运行的工作进程（run_id ${existing.run_id ?? '无'}，pid ${existing.pid}），不动`);
-  }
+  // 4、5. 补收 run.json 与登记、按 run_id + pid 复核回收主题锁——与 gone 格（EV-159）共用，见 finalizeLostAndReclaimLock
+  await finalizeLostAndReclaimLock(ctx, runId, s, pid);
 
   // 结论按三态说（代码双审 r1 CODEX-01）：「已结束仍挂着的」只在确实发过信号时说
   say(
@@ -1637,6 +1684,12 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
     ) {
       reportRecordedCliGroups(await terminateRecordedCliGroups(s), true, runDir);
     }
+    /*
+     * gone 格（EV-159，失联worker退出后补收计划 r2 §3.4）：工作进程已确认不在——按 EV-142 的前提补收 run.json
+     * 与登记。排在 CLI 结束块之后：两段各自的 stdout/stderr 顺序与 alive 格「先报 worker 结束、再报 CLI 结束、
+     * 再报补收」的顺序呼应。
+     */
+    if (cell.kind === 'gone') return finalizeGoneWorker(ctx, runId, s, cell);
     /*
      * 失联判定之后身份判不上 / 身份没记下（EV-146，计划双审 r1 AGY-01）：不跌回「无需取消」——worker 可能还挂着、
      * 锁与归档都没动，结论要如实说。

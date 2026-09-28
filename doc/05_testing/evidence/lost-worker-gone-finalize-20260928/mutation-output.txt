@@ -1,0 +1,63 @@
+✓ 工作树干净、基线全绿（2 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=5）
+  M4 ✓ 咬住（fail=5）
+  M5 ✓ 咬住（fail=2）
+  M6 ✓ 咬住（fail=8）
+  M7 ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=1）
+{
+  "总数": 8,
+  "咬住": 8,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "classifyLostCancel 两时刻缺失分支恒返回 no_identity（去掉 processAlive 改判）⇒ matrix / N7",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "classifyLostCancel 两时刻缺失分支恒返回 gone（不管死活）⇒ matrix / N6",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "cancelRun 不调用 finalizeGoneWorker（gone 格仍走旧的「无需取消」）⇒ N1",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M4",
+      "desc": "finalizeGoneWorker 不调用 finalizeLostAndReclaimLock（只播报不写）⇒ N1",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M5",
+      "desc": "finalizeLostAndReclaimLock 的 termination.reason 恒为别的值 ⇒ N1",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M6",
+      "desc": "finalizeLostAndReclaimLock 跳过锁复核（去掉整段）⇒ N1 / N3",
+      "verdict": "✓ 咬住（fail=8）",
+      "fail": 8
+    },
+    {
+      "id": "M7",
+      "desc": "finalizeLostAndReclaimLock 的锁复核不比对 pid（只比 run_id）⇒ N3",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "finalizeGoneWorker 在 CLI 结束块之前调用（改变接线顺序）⇒ G1 的 CLI 结束断言 + 顺序断言",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

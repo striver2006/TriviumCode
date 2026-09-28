@@ -1,0 +1,8 @@
+✓ 构建：新旧 bundle sha256 不同（new 92fb621de20e / old 11e464d38324）；桩相对 fc42d30 无 diff true
+✓ 前提：旧 --wait 判失联原因 heartbeat_stale（应为 heartbeat_stale，次序颠倒会判 pid_gone，GLM-01）；run.json 仍 running true；worker 仍活 true
+✓ A1：--cancel 退 0；run.json 为 failed、termination {"by":"worker_lost","reason":"heartbeat_stale"}；task.json 登记 failed；stdout 不含「无需取消」
+✓ A2：旧版读新版补收过的归档：--cancel 退 0（不应报错）；run.json 逐字节不变 true
+✓ A3：再跑一次 --cancel 退 0；status/run/task 逐字节不变 true/true/true；stderr 含「已是终态，不追溯改写」；stdout 不含「无需取消」
+✓ A4：doctor --selftest 退 0、14/14
+
+6 / 6
