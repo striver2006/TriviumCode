@@ -4,7 +4,9 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { bundleMissing, bundleSkipReason, cli, listFiles, makeFixture, today } from '../helpers/fixture.js';
 import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
-import { WORKER_TERM_GRACE_MS } from '../../src/trivium/run-protocol.js';
+import {
+  WORKER_TERM_GRACE_MS, WORKER_TREE_GRACE_MS, WORKER_TREE_KILL_WAIT_MS,
+} from '../../src/trivium/run-protocol.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID } from '../../src/trivium/gate.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
@@ -2533,4 +2535,205 @@ test('EV-152 I2：一侧 CLI 忽略 SIGTERM——worker 在宽限内升级 SIGKI
   // 计时只防挂住，不承担判据：主判据是上面 stderr 的因果断言（变异 M5 靠它咬住）。实测约 3.6 s；
   // 上界放宽到宽限 + 2 s，满载下也不该假红（代码双审 r1 CODEX-05 ≡ GLM-03）。若因果判据成立而这条超界，按 EV-149 口径先存读数
   assert.ok(r.ms < WORKER_TERM_GRACE_MS + 2000, `--cancel 耗时 ${r.ms} ms（因果判据已过；超界先存读数、别当实现回归）`);
+});
+
+/*
+ * ── EV-154：worker 跑不到自己的 SIGTERM 处理器的那几格，--cancel 按 status.json 的逐侧 CLI 记录结束 CLI
+ *    （CLI进程组记录计划 r2 §5.2 I3～I7）──
+ *
+ * 判据沿用 I1 / I2：按标记认出两侧组长、按组号枚举成员判「组空」。记录本身也是断言对象：
+ * 组号集合必须正是按标记找到的那两组、启动时刻必须已记下。
+ */
+
+type SideCli = { pgid: number; started_at: string | null } | null | undefined;
+
+async function sidesCliOf(runDir: string): Promise<Record<string, SideCli>> {
+  const s = JSON.parse(await fs.readFile(path.join(runDir, 'status.json'), 'utf8')) as {
+    sides: Record<string, { cli?: SideCli }>;
+  };
+  return Object.fromEntries(Object.entries(s.sides).map(([k, v]) => [k, v.cli]));
+}
+
+const pidGone = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code !== 'EPERM';
+  }
+};
+
+/** 起一轮两侧 hang_cli，等两组组长出现、等 status.json 两侧都记下组号与启动时刻 */
+async function startWithRecordedClis(stub: StubConfig) {
+  const fx = await makeFixture({ topic: TOPIC });
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    stub,
+  );
+  assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string; run_dir: string; worker_pid: number };
+  const mark = `trivium-stub-cli:${js.run_dir}`;
+  let groups: number[] = [];
+  for (let i = 0; i < 100 && groups.length < 2; i++) {
+    groups = groupsWithMark(mark);
+    if (groups.length < 2) await new Promise((r) => setTimeout(r, 100));
+  }
+  let rec: Record<string, SideCli> = {};
+  for (let i = 0; i < 100; i++) {
+    rec = await sidesCliOf(js.run_dir).catch(() => ({}));
+    const vals = Object.values(rec);
+    if (vals.length === 2 && vals.every((v) => v && v.started_at)) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return { fx, js, mark, groups, rec };
+}
+
+/** 按组 SIGKILL worker 并等它确认不在（它不是本进程的子进程，由 init 回收） */
+async function killWorker(pid: number): Promise<void> {
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    /* 已不在 */
+  }
+  for (let i = 0; i < 100 && !pidGone(pid); i++) await new Promise((r) => setTimeout(r, 50));
+  assert.ok(pidGone(pid), `worker ${pid} 应已不在（用例前提）`);
+}
+
+function assertRecorded(r: Awaited<ReturnType<typeof startWithRecordedClis>>): void {
+  assert.equal(r.groups.length, 2, '桩 CLI 没起来：两侧的组长都应出现，用例前提不成立');
+  const pgids = Object.values(r.rec).map((v) => v?.pgid).sort();
+  assert.deepEqual(pgids, [...r.groups].sort(), `status.json 两侧的记录应正是这两组：${JSON.stringify(r.rec)}`);
+  for (const [side, v] of Object.entries(r.rec)) assert.ok(v?.started_at, `${side} 侧的启动时刻应已记下：${JSON.stringify(r.rec)}`);
+}
+
+function cleanupGroups(r: { mark: string; groups: number[] }): void {
+  for (const g of [...new Set([...r.groups, ...groupsWithMark(r.mark)])]) killGroup(g);
+}
+
+test('EV-154 I3：worker 先被强杀，再 --cancel ⇒ 按记录逐组结束两侧 CLI（忽略 SIGTERM 的那组升级 SIGKILL），收尾 cancelled 并清掉已结束的记录', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis({ gemini: { mode: 'hang_cli', ignoreTerm: true }, glm: { mode: 'hang_cli' } });
+  try {
+    assertRecorded(r);
+    await killWorker(r.js.worker_pid);
+    for (const g of r.groups) assert.equal(groupMemberCount(g), 2, `worker 被强杀后组 ${g} 仍应活着（用例前提）`);
+
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    await new Promise((res) => setTimeout(res, 100));
+    assert.deepEqual(r.groups.map((g) => groupMemberCount(g)), [0, 0], `两组都应已空：\n${c.stderr}`);
+    assert.equal((c.stderr.match(/按记录结束审查员 CLI/g) ?? []).length, 2, c.stderr);
+    assert.match(c.stderr, /gemini 侧进程组 \d+（SIGTERM、SIGKILL）/, c.stderr);
+    assert.match(c.stderr, /glm 侧进程组 \d+（SIGTERM）/, c.stderr);
+    assert.doesNotMatch(c.stderr, /没有在跑的审查员 CLI 记录|判不了|读不懂|组里还有/, c.stderr);
+    const status = JSON.parse(await fs.readFile(path.join(r.js.run_dir, 'status.json'), 'utf8')) as { phase: string };
+    assert.equal(status.phase, 'cancelled');
+    assert.equal((await readRunJson(r.fx.stageDir, r.js.run_id)).status, 'cancelled', 'worker 已确认不在，EV-128 收尾照走');
+    assert.deepEqual(await sidesCliOf(r.js.run_dir), { gemini: null, glm: null }, '已确认结束的记录清成 null（计划双审 r1 AGY-02）');
+  } finally {
+    cleanupGroups(r);
+  }
+});
+
+test('EV-154 I4：worker 的事件循环被堵住 ⇒ --cancel 升级 SIGKILL，随后按记录结束两侧 CLI', { skip: bundleMissing && bundleSkipReason }, async () => {
+  // 桩先等两侧记录（含启动时刻）都落盘、再过 300 ms 才堵住，不与补写赛跑（计划双审 r1 CODEX-04、代码双审 r1 CODEX-03）
+  const r = await startWithRecordedClis({ gemini: { mode: 'hang_cli', blockAfterMs: 300 }, glm: { mode: 'hang_cli' } });
+  try {
+    assert.equal(r.groups.length, 2, '桩 CLI 没起来，用例前提不成立');
+    for (const [side, v] of Object.entries(r.rec)) {
+      assert.ok(v?.started_at, `${side} 侧的启动时刻没记下：块先于补写落地（f′ 格），用例前提不成立`);
+    }
+    await new Promise((res) => setTimeout(res, 1000)); // 等块生效（记录落盘后 300 ms 堵住）
+    const t0 = Date.now();
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    const ms = Date.now() - t0;
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    assert.match(c.stderr, /未响应 SIGTERM/, '升级确实发生（堵住的 worker 跑不到处理器）');
+    await new Promise((res) => setTimeout(res, 100));
+    assert.deepEqual(r.groups.map((g) => groupMemberCount(g)), [0, 0], `两组都应已空：\n${c.stderr}`);
+    assert.equal((c.stderr.match(/按记录结束审查员 CLI/g) ?? []).length, 2, c.stderr);
+    // 计时只防挂住：宽限 5 s + CLI 宽限链 3 s + 余量
+    const bound = WORKER_TERM_GRACE_MS + WORKER_TREE_GRACE_MS + WORKER_TREE_KILL_WAIT_MS + 3000;
+    assert.ok(ms < bound, `--cancel 耗时 ${ms} ms，上界 ${bound}`);
+  } finally {
+    try {
+      process.kill(-r.js.worker_pid, 'SIGKILL');
+    } catch {
+      /* 已不在 */
+    }
+    cleanupGroups(r);
+  }
+});
+
+test('EV-154 I5：worker 被强杀后 --wait 先判失联（不结束进程），之后 --cancel 在终态早退分支里按记录结束 CLI、不改 status.json', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis({ gemini: { mode: 'hang_cli' }, glm: { mode: 'hang_cli' } });
+  try {
+    assertRecorded(r);
+    await killWorker(r.js.worker_pid);
+    const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '20'], null, 60_000);
+    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
+    assert.match(w.stderr, /失联/);
+    for (const g of r.groups) assert.equal(groupMemberCount(g), 2, `--wait 不结束进程（用户决策 5）：组 ${g} 应仍活着`);
+
+    const sp = path.join(r.js.run_dir, 'status.json');
+    const before = await fs.readFile(sp, 'utf8');
+    assert.equal((JSON.parse(before) as { phase: string }).phase, 'failed');
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    assert.match(c.stdout, /已处于终态（failed），无需取消/);
+    assert.equal((c.stderr.match(/按记录结束审查员 CLI/g) ?? []).length, 2, c.stderr);
+    await new Promise((res) => setTimeout(res, 100));
+    assert.deepEqual(r.groups.map((g) => groupMemberCount(g)), [0, 0], `两组都应已空：\n${c.stderr}`);
+    assert.equal(await fs.readFile(sp, 'utf8'), before, '终态早退分支不写 status.json（不追溯改写）');
+  } finally {
+    cleanupGroups(r);
+  }
+});
+
+test('EV-154 I6：worker 已死而 CLI 还活着 ⇒ 会话启动清扫不结束进程、也不抹凭据副本（EV-38）；CLI 结束后再清扫即抹', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis({ gemini: { mode: 'hang_cli' }, glm: { mode: 'hang_cli' } });
+  try {
+    assertRecorded(r);
+    await killWorker(r.js.worker_pid);
+    const carrier = path.join(r.js.run_dir, 'glm', 'home', '.zcode', 'cli', 'config.json');
+    await fs.mkdir(path.dirname(carrier), { recursive: true });
+    await fs.writeFile(carrier, '{"provider":{"k":{"apiKey":"fake"}}}');
+
+    const h1 = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
+    assert.equal(h1.code, 0, `${h1.stdout}${h1.stderr}`);
+    for (const g of r.groups) assert.equal(groupMemberCount(g), 2, `会话启动清扫不结束进程（用户决策 5）：组 ${g} 应仍活着`);
+    await fs.access(carrier); // CLI 还活着：不抹
+
+    for (const g of r.groups) killGroup(g);
+    for (let i = 0; i < 40 && r.groups.some((g) => groupMemberCount(g) > 0); i++) await new Promise((res) => setTimeout(res, 50));
+    const h2 = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
+    assert.equal(h2.code, 0, `${h2.stdout}${h2.stderr}`);
+    await assert.rejects(fs.access(carrier), 'CLI 结束之后清扫放行');
+  } finally {
+    cleanupGroups(r);
+  }
+});
+
+test('EV-154 I7：CLI 自然结束 ⇒ status.json 里该侧的记录清成 null', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const stub: StubConfig = { gemini: { mode: 'hang_cli', sleepS: 1 }, glm: { mode: 'hang_cli', sleepS: 1 } };
+  const fx = await makeFixture({ topic: TOPIC });
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    stub,
+  );
+  assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string; run_dir: string };
+  try {
+    let seen = false;
+    for (let i = 0; i < 40 && !seen; i++) {
+      seen = Object.values(await sidesCliOf(js.run_dir).catch(() => ({}))).some((v) => v && v.pgid);
+      if (!seen) await new Promise((res) => setTimeout(res, 50));
+    }
+    assert.ok(seen, '运行中应能看到记录（用例前提）');
+    await waitUntilDone(fx.root, js.run_id, stub);
+    assert.deepEqual(await sidesCliOf(js.run_dir), { gemini: null, glm: null });
+  } finally {
+    for (const g of groupsWithMark(`trivium-stub-cli:${js.run_dir}`)) killGroup(g);
+  }
 });

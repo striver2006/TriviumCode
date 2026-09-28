@@ -17,9 +17,9 @@ import { runRoot } from './config.js';
 import { RUN_DIR_FILES } from './run-files.js';
 import { acquireLock, inspectLock, reclaimStaleLock, type LockHandle } from './lock.js';
 import {
-  computeMaxWaits, interpretStatus, isTerminal, newStatus, patchStatus, readStatus,
-  renderProgress, renderProgressBrief, progressViewOf, workerConfirmedGone, writeStatus,
-  type ProgressBudget, type ProgressView, type RunStatus,
+  cliRecordsOf, computeMaxWaits, interpretStatus, isTerminal, judgeCliGroup, newStatus, patchStatus, rawCliOf, readStatus,
+  renderProgress, renderProgressBrief, progressViewOf, syncCliRecords, workerConfirmedGone, writeStatus,
+  type CliGroupRecord, type CliGroupVerdict, type ProgressBudget, type ProgressView, type RunStatus,
 } from './status.js';
 import type { ArchiveLayout } from './archive.js';
 import {
@@ -37,7 +37,8 @@ import { realAdapters, wiredAdapter } from './adapters/index.js';
 import { scrubRunDir } from './scrub.js';
 import { ensureDir, exists } from './util/fsx.js';
 import {
-  processAlive, processStartTime, shutdownTrackedTrees, spawnDetached, terminateProcessGroup, type DetachedChildWatch,
+  processAlive, processGroupMemberCount, processStartTime, shutdownTrackedTrees, spawnDetached, terminateProcessGroup,
+  trackedTrees, watchTrackedTrees, type DetachedChildWatch,
 } from './util/exec.js';
 import { fail, say, step, warn } from './util/log.js';
 import { checkModelOverrideSource, collectWarnings, type PreflightWarning } from './preflight.js';
@@ -727,6 +728,126 @@ export async function workerGoneForCancel(pid: number, startedAt: string | null)
   return !p.alive || !p.sameProcess;
 }
 
+// ─────────────────────── 按记录结束审查员 CLI（EV-154） ───────────────────────
+
+export interface RecordedCliGroupOutcome {
+  side: CriticId;
+  pgid: number;
+  verdict: CliGroupVerdict;
+  /** 实际发过的信号（按发出顺序）；只有判 alive 的组才会发 */
+  signals: NodeJS.Signals[];
+  /** 组长已确认退出（没发信号的组：verdict 为 gone 时为真） */
+  gone: boolean;
+  /** 收尾后该组号下仍有的非僵尸成员数（组长已退出而组员还在，计划双审 r1 GLM-01）；没发信号或取不到时为 null */
+  membersLeft: number | null;
+}
+
+export interface RecordedCliOutcome {
+  groups: RecordedCliGroupOutcome[];
+  /** status.json 里 cli 键在而形状读不懂的侧（GLM-02）：不发信号 */
+  malformed: CriticId[];
+  /** 形状坏的侧读到的原始值（截断），播报时如实带出（代码双审 r1 CODEX-04） */
+  malformedRaw: Partial<Record<CriticId, string>>;
+}
+
+/**
+ * 按 status.json 的逐侧记录结束审查员 CLI 进程组（EV-154，CLI进程组记录计划 r2 §4.4）。`--cancel` 在 worker 跑不到
+ * 自己的 SIGTERM 处理器的那几格用它：worker 被升级 SIGKILL、worker 此前已不在（含 status 已被 `--wait` 判失联写成终态）。
+ *
+ * - **只对判 `alive` 的组发信号**（用户决策 4：组长活着且规范化启动时刻相符）；`reused` / `unverifiable` / 形状坏的一个信号都不发。
+ * - 宽限链与 worker 处理器同一组常量（`WORKER_TREE_GRACE_MS` → SIGKILL → `WORKER_TREE_KILL_WAIT_MS`，用户决策 5），
+ *   `isGone` 每次发信号前复核组长与启动时刻；各组并行（串行时两组都忽略 SIGTERM 会让耗时翻倍，EV-152 AGY-05）。
+ * - **`isGone` 只认 `gone` 与 `reused`**（代码双审 r1 GLM-01）：入判 `alive` 时身份已确认，轮询中组长仍活着就不可能被复用，
+ *   此时 `unverifiable` 只意味着 `ps` 这一次没取到，继续按原链升级；原先写成 `!== 'alive'`，`ps` 瞬时失败会提前收手、
+ *   不升级 SIGKILL，随后「组长已退出」的告警与事实不符。入判就不是 `alive` 的记录在上面一步已返回，一个信号都不发。
+ * - `isGone` 按组长判：组长服从 SIGTERM 而组员忽略时不升级。所以收尾后数一次组成员，交给调用方如实报——
+ *   **不据此再发信号**：组长一退出就判不了组号是否已被别的组接手（决策 4「不去猜」）。
+ */
+export async function terminateRecordedCliGroups(
+  s: RunStatus | null,
+  o: {
+    signal?: (pid: number, sig: NodeJS.Signals) => boolean;
+    graceMs?: number;
+    killWaitMs?: number;
+    pollMs?: number;
+    /** 判定实现，缺省 `judgeCliGroup`；只为单测模拟「ps 瞬时失败」而开（GLM-01） */
+    judge?: (r: CliGroupRecord) => Promise<CliGroupVerdict>;
+  } = {},
+): Promise<RecordedCliOutcome> {
+  const { records, malformed } = cliRecordsOf(s);
+  const judge = o.judge ?? judgeCliGroup;
+  const groups = await Promise.all(
+    records.map(async (r): Promise<RecordedCliGroupOutcome> => {
+      const verdict = await judge(r);
+      if (verdict !== 'alive') {
+        return { side: r.side, pgid: r.pgid, verdict, signals: [], gone: verdict === 'gone', membersLeft: null };
+      }
+      const t = await terminateProcessGroup(r.pgid, {
+        isGone: async () => {
+          const v = await judge(r);
+          return v === 'gone' || v === 'reused';
+        },
+        graceMs: o.graceMs ?? WORKER_TREE_GRACE_MS,
+        killWaitMs: o.killWaitMs ?? WORKER_TREE_KILL_WAIT_MS,
+        pollMs: o.pollMs ?? 250,
+        ...(o.signal ? { signal: o.signal } : {}),
+      });
+      const membersLeft = t.gone ? await processGroupMemberCount(r.pgid) : null;
+      return { side: r.side, pgid: r.pgid, verdict, signals: t.signals, gone: t.gone, membersLeft };
+    }),
+  );
+  const malformedRaw: Partial<Record<CriticId, string>> = {};
+  for (const side of malformed) malformedRaw[side] = rawCliOf(s, side);
+  return { groups, malformed, malformedRaw };
+}
+
+/**
+ * 按事实播报 `terminateRecordedCliGroups` 的结果（step / warn 都写 stderr）。
+ * `quietWhenEmpty`：终态早退分支里一条记录都没有时不出声，那一支原有的输出保持逐行不变。
+ */
+function reportRecordedCliGroups(r: RecordedCliOutcome, quietWhenEmpty: boolean, runDir: string): void {
+  if (r.groups.length === 0 && r.malformed.length === 0) {
+    if (!quietWhenEmpty) {
+      warn(
+        'status.json 里没有在跑的审查员 CLI 记录——CLI 已先结束，或派生后来不及记下；后者本命令够不到，' +
+          '请用 ps 核对 ppid 为 1 的 CLI 进程（设计 7.5「审查员 CLI 进程组记录」的如实保留清单）',
+      );
+    }
+    return;
+  }
+  for (const g of r.groups) {
+    if (g.verdict === 'gone') continue; // 记录是旧的，CLI 已自己结束
+    if (g.verdict === 'reused') {
+      step(`${g.side} 侧记录的进程组 ${g.pgid} 已被别的进程占用，不发信号`);
+      continue;
+    }
+    if (g.verdict === 'unverifiable') {
+      warn(`${g.side} 侧审查员 CLI 进程组 ${g.pgid} 的启动时刻没记下，判不了是不是同一进程，不发信号——请用 ps 核对`);
+      continue;
+    }
+    step(`按记录结束审查员 CLI：${g.side} 侧进程组 ${g.pgid}（${g.signals.join('、') || '未发信号'}）`);
+    if (!g.gone) warn(`${g.side} 侧审查员 CLI 进程组 ${g.pgid} 未能确认退出——请用 ps 核对`);
+    else if (g.membersLeft !== null && g.membersLeft > 0) {
+      warn(
+        `${g.side} 侧审查员 CLI 进程组 ${g.pgid} 的组长已退出，组里还有 ${g.membersLeft} 个成员，未对它们发信号——请用 ps 核对`,
+      );
+    }
+  }
+  for (const side of r.malformed) {
+    // 带上定位与原始值（代码双审 r1 CODEX-04）：这一格不自愈，出口是人把该侧 cli 改回 null，或等 run_dir_days 整删
+    warn(`${side} 侧的 CLI 记录读不懂（${r.malformedRaw[side] ?? '?'}，${path.join(runDir, RUN_DIR_FILES.status)}），不发信号——请用 ps 核对`);
+  }
+}
+
+/** 已确认结束、可以从 status.json 清掉的侧记录（AGY-02）：判 gone 的，或发过信号后组长确认退出且组里没有遗留成员的 */
+function settledCliSides(r: RecordedCliOutcome | null): Map<CriticId, number> {
+  const m = new Map<CriticId, number>();
+  for (const g of r?.groups ?? []) {
+    if (g.verdict === 'gone' || (g.verdict === 'alive' && g.gone && g.membersLeft === 0)) m.set(g.side, g.pgid);
+  }
+  return m;
+}
+
 // ─────────────────────── worker ───────────────────────
 
 /**
@@ -793,6 +914,16 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
   // 第一件事装 SIGTERM 处理器（EV-152）：此后以 killTree 拉起的 CLI 都在它的登记里
   const uninstallSigterm = installWorkerSigtermForwarding();
   const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
+  /*
+   * CLI 进程组记录（EV-154，CLI进程组记录计划 r2 §4.3）：liveTrees 一变（派生、取到启动时刻、退出）就把它的投影写进
+   * status.json 的 sides[c].cli。必须在任何 CLI 派生之前装上；投影在 mutate 里现取，写下去的总是那一刻的登记。
+   * 不挪进 SIGTERM 处理器：终止中 run() 悬空，取启动时刻的 ps 跑不完（用户决策 3）。
+   */
+  const unwatchTrees = watchTrackedTrees(() => {
+    patchStatus(runDir, (s) => syncCliRecords(s, trackedTrees())).catch((e: unknown) => {
+      if (process.env['TRIVIUM_DEBUG']) console.error('[cli-record]', e);
+    });
+  });
   const heartbeat = setInterval(() => {
     // 只刷心跳，不改语义。--wait 靠它判定「还活着」。
     // 必须 catch：Node ≥ 18 默认 unhandled rejection 即崩，磁盘满 / 目录被删时
@@ -893,6 +1024,7 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
   } finally {
     // 收到 SIGTERM 且有 CLI 在跑时本函数被冻结、走不到这里；没有 CLI 时进程在处理器的微任务里就结束了——卸载不会抢在转发之前
     uninstallSigterm();
+    unwatchTrees();
     clearInterval(heartbeat);
     const st = await readStatus(runDir);
     // status 读不到（被清理工具删了）时从交接文件取身份，否则锁与闸门都漏回收
@@ -1215,49 +1347,61 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
    * 运行事后被记成取消，归档里的事实就不再是当时发生的事实（P6 只追加不覆盖）。
    * 也不该动闸门：那一轮的闸门可能正等着裁决，凭什么因为一次误敲的 --cancel 就清掉。
    */
+  const pidFromFile = await fs
+    .readFile(workerPidPath(runDir), 'utf8')
+    .then((t) => Number.parseInt(t, 10) || null)
+    .catch(() => null);
   if (s && ['success', 'failed', 'cancelled'].includes(s.phase)) {
+    /*
+     * 终态早退分支里的 CLI（EV-154 D3，CLI进程组记录计划 r2 §4.4 第 3 处）：worker 被强杀后 `--wait` 判 `pid_gone`，
+     * 会先于用户的 `--cancel` 把 status 写成 failed——只做非终态分支的话，「worker 已不在」这一格在实际序列里多半走不到。
+     * worker 确认已不在、且还有记录时按记录结束 CLI。**只结束进程**：status.json、归档、锁与闸门一概不写（不追溯改写）。
+     * worker 还活着（`heartbeat_stale`，EV-146）或判不了时不动；一条记录都没有时不出声，下面两行原样输出。
+     */
+    const recs = cliRecordsOf(s);
+    if (recs.records.length + recs.malformed.length > 0 && (await workerConfirmedGone(s, pidFromFile)).gone) {
+      reportRecordedCliGroups(await terminateRecordedCliGroups(s), true, runDir);
+    }
     say(`运行 ${runId} 已处于终态（${s.phase}），无需取消。`);
     say('  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。');
     return EXIT.OK;
   }
-  const pid =
-    s?.worker_pid ??
-    (await fs
-      .readFile(workerPidPath(runDir), 'utf8')
-      .then((t) => Number.parseInt(t, 10) || null)
-      .catch(() => null));
+  const pid = s?.worker_pid ?? pidFromFile;
 
+  /** worker 的处理器跑不到的那几格里按记录结束 CLI 的结果；主路径收尾时据它清掉已确认结束的记录（AGY-02） */
+  let cliOutcome: RecordedCliOutcome | null = null;
   if (pid !== null) {
     const live = await processAlive(pid, s?.worker_started_at ?? null);
     if (live.alive && live.sameProcess) {
       /*
        * 按**进程组**发：只杀 worker 会把与它同组的子进程遗弃给 init。适配器以 `killTree` 拉起的厂商 CLI
        * 自成一组，按组发到不了它们——由 worker 的 SIGTERM 处理器转发（`installWorkerSigtermForwarding`，EV-152）；
-       * 升级到 SIGKILL 时处理器跑不到，那一格仍够不到，下面 onEscalate 如实提示。
+       * 升级到 SIGKILL 时处理器跑不到，随后按 status.json 的逐侧记录结束（EV-154）。
        * SIGTERM → 宽限 5 s（每 250 ms 看一次）→ SIGKILL、之后不等：与 `--start` 派生后失败的收尾共用
        * `terminateProcessGroup`（EV-150）。宽限期判据是「不存活或不是同一进程」——此前只看存活，
        * PID 被复用时会把 SIGKILL 打到无关进程（计划双审 r1 AGY-04，用户审批并入）。
        */
       step(`向工作进程组 ${pid} 发送 SIGTERM`);
       const startedAt = s?.worker_started_at ?? null;
-      await terminateProcessGroup(pid, {
+      const t = await terminateProcessGroup(pid, {
         isGone: () => workerGoneForCancel(pid, startedAt),
         graceMs: WORKER_TERM_GRACE_MS,
         // SIGKILL 之后刻意不等（EV-150 起如此）：随后由 workerConfirmedGone 判是否已退出，没确认就不抹、不收尾
         killWaitMs: 0,
         pollMs: 250,
         onEscalate: () =>
-          warn(
-            `工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL——它拉起的审查员 CLI 可能未被结束，` +
-              '请用 ps 核对 ppid 为 1 的 CLI 进程（BACKLOG EV-154）',
-          ),
+          warn(`工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI`),
       });
+      if (t.escalated) {
+        // b 格（EV-154）：worker 的处理器没跑成，记录是它最后写下的样子
+        cliOutcome = await terminateRecordedCliGroups(await readStatus(runDir));
+        reportRecordedCliGroups(cliOutcome, false, runDir);
+      }
     } else {
       step(`工作进程 ${pid} 已不存在，仅做状态与锁的清理`);
-      warn(
-        '工作进程在本次取消之前已退出；它若是被强杀或崩溃的，拉起的审查员 CLI 可能仍在，本命令够不到' +
-          '（请用 ps 核对 ppid 为 1 的 CLI 进程，BACKLOG EV-154）',
-      );
+      // c 格（EV-154）：worker 在本次取消之前已退出（被强杀、崩溃）
+      cliOutcome = await terminateRecordedCliGroups(await readStatus(runDir));
+      reportRecordedCliGroups(cliOutcome, false, runDir);
     }
   }
 
@@ -1300,10 +1444,19 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
     reportFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 cancelled', 'task.json 的运行登记未改');
   }
 
+  const settled = settledCliSides(cliOutcome);
   const patched = await patchStatus(runDir, (st) => {
     st.phase = 'cancelled';
     st.exit_code = EXIT.FAIL;
     st.message = '被 --cancel 取消';
+    /*
+     * 已确认结束的 CLI 记录清成 null（计划双审 r1 AGY-02）：不留一个陈旧组号让之后的清扫反复核对进程表。
+     * 判不了、未确认退出、组员残留、形状坏的原样保留——它们是之后清扫准入的依据。只清与本次所判同一组号的那一侧。
+     */
+    for (const [side, pgid] of settled) {
+      const cur = st.sides[side];
+      if (cur?.cli && cur.cli.pgid === pgid) cur.cli = null;
+    }
   });
   if (!patched) warn(`运行 ${runId} 没有 status.json，终态未落盘；仅回收锁与闸门`);
 

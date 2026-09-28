@@ -1,0 +1,286 @@
+[
+  {
+    "id": "M1",
+    "desc": "runOneSide 不包 withTreeTag ⇒ I3（记录缺席）",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-154",
+    "fail": 5,
+    "red": [
+      "EV-154 I3：worker 先被强杀，再 --cancel ⇒ 按记录逐组结束两侧 CLI（忽略 SIGTERM 的那组升级 SIGKILL），收尾 cancelled 并清掉已结束的记录",
+      "EV-154 I4：worker 的事件循环被堵住 ⇒ --cancel 升级 SIGKILL，随后按记录结束两侧 CLI",
+      "EV-154 I5：worker 被强杀后 --wait 先判失联（不结束进程），之后 --cancel 在终态早退分支里按记录结束 CLI、不改 status.json",
+      "EV-154 I6：worker 已死而 CLI 还活着 ⇒ 会话启动清扫不结束进程、也不抹凭据副本（EV-38）；CLI 结束后再清扫即抹",
+      "EV-154 I7：CLI 自然结束 ⇒ status.json 里该侧的记录清成 null"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: status.json 两侧的记录应正是这两组：{\"gemini\":null,\"glm\":null}",
+      "AssertionError [ERR_ASSERTION]: gemini 侧的启动时刻没记下：块先于补写落地（f′ 格），用例前提不成立",
+      "AssertionError [ERR_ASSERTION]: 运行中应能看到记录（用例前提）"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M2",
+    "desc": "取到启动时刻之后不通知 ⇒ U10（通知次数不足、记录停在 started_at: null）",
+    "suite": "dist/test/test/unit/cli-group-record.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 U10：liveTrees 的投影——withTreeTag 标侧、有观察者时派生即通知并补规范化启动时刻、退出时删除并通知；没有观察者不取启动时刻"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 取到启动时刻后再通知一次"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M3",
+    "desc": "删除条目之后不通知 ⇒ I7（CLI 自然结束后记录不清）",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 I7：CLI 自然结束 ⇒ status.json 里该侧的记录清成 null"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M4",
+    "desc": "syncCliRecords 不按 tag 匹配（首条给每一侧）⇒ U11",
+    "suite": "dist/test/test/unit/cli-group-record.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 U11：syncCliRecords 按侧名投影、每侧取最近登记的一个、没有则清成 null"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 同一侧两条取后登记的"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M5",
+    "desc": "cancelRun「已不存在」分支不按记录结束 ⇒ I3",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 I3：worker 先被强杀，再 --cancel ⇒ 按记录逐组结束两侧 CLI（忽略 SIGTERM 的那组升级 SIGKILL），收尾 cancelled 并清掉已结束的记录"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 两组都应已空："
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M6",
+    "desc": "cancelRun 升级 SIGKILL 之后不按记录结束 ⇒ I4",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 I4：worker 的事件循环被堵住 ⇒ --cancel 升级 SIGKILL，随后按记录结束两侧 CLI"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 两组都应已空："
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M7",
+    "desc": "judgeCliGroup 不比启动时刻（不符也判 alive）⇒ U13",
+    "suite": "dist/test/test/unit/cli-group-record.test.js",
+    "pattern": "EV-154",
+    "fail": 2,
+    "red": [
+      "EV-154 U13：judgeCliGroup——组长在且规范化启动时刻相符才是 alive；不符 reused、没记下 unverifiable、不在 gone",
+      "EV-154 U15（不发信号的格）：reused、unverifiable、形状坏、已退出的记录一个信号都不发"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: 不该发任何信号：[[21734,\"SIGTERM\"],[21734,\"SIGKILL\"]]"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M8",
+    "desc": "admitScrub 不问 CLI 组 ⇒ U14",
+    "suite": "dist/test/test/unit/retention.test.js",
+    "pattern": "EV-154",
+    "fail": 2,
+    "red": [
+      "EV-154 U14：记录里的 CLI 组还活着 ⇒ 会话启动清扫与 trivium scrub 都不抹、计入 deferred；组结束后再跑即抹",
+      "EV-154 U14：判不了（启动时刻没记下且组长还在）与记录读不懂（计划双审 r1 GLM-02）都不抹；启动时刻不符（组号已被复用）放行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: CLI 还在用那份副本",
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M9",
+    "desc": "terminateRecordedCliGroups 不升级 SIGKILL ⇒ U15",
+    "suite": "dist/test/test/unit/cli-group-record.test.js",
+    "pattern": "EV-154",
+    "fail": 2,
+    "red": [
+      "EV-154 U15：terminateRecordedCliGroups 只对 alive 的组走宽限链（含升级 SIGKILL），各组并行；收尾后数组成员",
+      "EV-154 U17（代码双审 r1 GLM-01）：入判 alive 之后轮询中 ps 瞬时失败（判 unverifiable）——继续按原链升级 SIGKILL，不提前收手"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: glm 应确认退出",
+      "AssertionError [ERR_ASSERTION]: 判不了不是「已不在」：宽限尽头照常升级"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M10",
+    "desc": "unverifiable 在取消侧当 alive（照发信号）⇒ U15（不发信号的格）。r1 时是等价变异（isGone 第二道门挡住）；代码双审 r1 GLM-01 收紧 isGone 之后应咬住",
+    "suite": "dist/test/test/unit/cli-group-record.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 U15（不发信号的格）：reused、unverifiable、形状坏、已退出的记录一个信号都不发"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 不该发任何信号：[[23053,\"SIGTERM\"],[23053,\"SIGKILL\"]]"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M11",
+    "desc": "unverifiable 在准入侧当已不在 ⇒ U14",
+    "suite": "dist/test/test/unit/retention.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 U14：判不了（启动时刻没记下且组长还在）与记录读不懂（计划双审 r1 GLM-02）都不抹；启动时刻不符（组号已被复用）放行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M12",
+    "desc": "workerMain 不装观察者 ⇒ I3（记录缺席）",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-154",
+    "fail": 5,
+    "red": [
+      "EV-154 I3：worker 先被强杀，再 --cancel ⇒ 按记录逐组结束两侧 CLI（忽略 SIGTERM 的那组升级 SIGKILL），收尾 cancelled 并清掉已结束的记录",
+      "EV-154 I4：worker 的事件循环被堵住 ⇒ --cancel 升级 SIGKILL，随后按记录结束两侧 CLI",
+      "EV-154 I5：worker 被强杀后 --wait 先判失联（不结束进程），之后 --cancel 在终态早退分支里按记录结束 CLI、不改 status.json",
+      "EV-154 I6：worker 已死而 CLI 还活着 ⇒ 会话启动清扫不结束进程、也不抹凭据副本（EV-38）；CLI 结束后再清扫即抹",
+      "EV-154 I7：CLI 自然结束 ⇒ status.json 里该侧的记录清成 null"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: status.json 两侧的记录应正是这两组：{}",
+      "AssertionError [ERR_ASSERTION]: gemini 侧的启动时刻没记下：块先于补写落地（f′ 格），用例前提不成立",
+      "AssertionError [ERR_ASSERTION]: 运行中应能看到记录（用例前提）"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M13",
+    "desc": "终态早退分支不按记录结束（D3）⇒ I5",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 I5：worker 被强杀后 --wait 先判失联（不结束进程），之后 --cancel 在终态早退分支里按记录结束 CLI、不改 status.json"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M14",
+    "desc": "没有观察者时也取启动时刻 ⇒ U10",
+    "suite": "dist/test/test/unit/cli-group-record.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 U10：liveTrees 的投影——withTreeTag 标侧、有观察者时派生即通知并补规范化启动时刻、退出时删除并通知；没有观察者不取启动时刻"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 没有观察者时不取启动时刻"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M15",
+    "desc": "processStartTime 的 canonical 不钉环境（计划双审 r1 CODEX-01）⇒ U16",
+    "suite": "dist/test/test/unit/cli-group-record.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 U16（计划双审 r1 CODEX-01）：规范化启动时刻与调用方的 TZ / 区域设置无关；不带选项的则随之变化"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 规范化的两次应相同（lun. 28 sept. 13:00:35 2026 / Mon Sep 28 00:00:35 2026）"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M16",
+    "desc": "收尾后不数组成员（计划双审 r1 GLM-01）⇒ U15 变体",
+    "suite": "dist/test/test/unit/cli-group-record.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 U15 变体（计划双审 r1 GLM-01）：组长服从 SIGTERM 而组员忽略——判 gone，但如实数出遗留成员"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 应数出遗留的组员：{\"side\":\"glm\",\"pgid\":31531,\"verdict\":\"alive\",\"signals\":[\"SIGTERM\"],\"gone\":true,\"membersLeft\":0}"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M17",
+    "desc": "准入侧把形状坏的记录当没有（计划双审 r1 GLM-02）⇒ U14",
+    "suite": "dist/test/test/unit/retention.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 U14：判不了（启动时刻没记下且组长还在）与记录读不懂（计划双审 r1 GLM-02）都不抹；启动时刻不符（组号已被复用）放行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M18",
+    "desc": "--cancel 主路径不清已确认结束的记录（计划双审 r1 AGY-02）⇒ I3",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 I3：worker 先被强杀，再 --cancel ⇒ 按记录逐组结束两侧 CLI（忽略 SIGTERM 的那组升级 SIGKILL），收尾 cancelled 并清掉已结束的记录"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 已确认结束的记录清成 null（计划双审 r1 AGY-02）"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M19",
+    "desc": "isGone 改回 !== alive（轮询中判不了即收手，代码双审 r1 GLM-01）⇒ U17",
+    "suite": "dist/test/test/unit/cli-group-record.test.js",
+    "pattern": "EV-154",
+    "fail": 1,
+    "red": [
+      "EV-154 U17（代码双审 r1 GLM-01）：入判 alive 之后轮询中 ps 瞬时失败（判 unverifiable）——继续按原链升级 SIGKILL，不提前收手"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 判不了不是「已不在」：宽限尽头照常升级"
+    ],
+    "windowMiss": false
+  }
+]

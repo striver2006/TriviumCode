@@ -410,3 +410,90 @@ test('scrubAllRunRoot：只脱敏了交接包的目录进 runDirRedacted 而非 
   assert.equal(r.settled, 1, '侧层确实已收工');
   assert.ok(!(await fs.readFile(path.join(d, 'request.json'), 'utf8')).includes('Qx7mZp2L'), '交接包仍要被脱敏');
 });
+
+// ── EV-154 / EV-38：准入还要核审查员 CLI 的进程组记录（CLI进程组记录计划 r2 §4.5、§5.1 U14）──
+
+const CLI_MARK = `trivium-u14-${process.pid}-${Date.now()}`;
+
+/** 起一个 detached 的活进程组（sh + sleep），返回组号、规范化启动时刻与结束函数 */
+async function liveCliGroup(tag: string) {
+  const { spawn } = await import('node:child_process');
+  const child = spawn('/bin/sh', ['-c', 'sleep 600; : "$0"', `${CLI_MARK}-${tag}`], { detached: true, stdio: 'ignore' });
+  const exited = new Promise<void>((r) => child.once('exit', () => r()));
+  const pgid = child.pid!;
+  const startedAt = await processStartTime(pgid, { canonical: true });
+  return {
+    pgid,
+    startedAt,
+    stop: async () => {
+      try {
+        process.kill(-pgid, 'SIGKILL');
+      } catch {
+        /* 已不在 */
+      }
+      await exited;
+    },
+  };
+}
+
+/** 给终态目录的 glm 侧写一条 CLI 记录（worker_pid 为 null：终态且从未记下 pid ⇒ workerConfirmedGone 放行） */
+async function withCliRecord(d: string, cli: unknown) {
+  const sp = path.join(d, 'status.json');
+  const s = JSON.parse(await fs.readFile(sp, 'utf8')) as { sides: Record<string, Record<string, unknown>> };
+  s.sides['glm']!['cli'] = cli;
+  await fs.writeFile(sp, JSON.stringify(s), 'utf8');
+}
+
+test('EV-154 U14：记录里的 CLI 组还活着 ⇒ 会话启动清扫与 trivium scrub 都不抹、计入 deferred；组结束后再跑即抹', async () => {
+  const g = await liveCliGroup('a');
+  try {
+    const { cfg, projectRoot, b } = await bucket();
+    const { d, carrier } = await runDirWith(b, 'R-cli-alive', 'success');
+    await withCliRecord(d, { pgid: g.pgid, started_at: g.startedAt });
+
+    const p = await pruneRunDirs(cfg, projectRoot, { adapters: wiredAdapter });
+    assert.deepEqual(p.scrubbed, [], 'CLI 还在用那份副本');
+    assert.deepEqual(p.deferred, [d]);
+    assert.equal(p.deferredCli.length, 1, '第四格单列并带成因（代码双审 r1 CODEX-01）');
+    assert.equal(p.deferredCli[0]!.dir, d);
+    assert.match(p.deferredCli[0]!.detail, new RegExp(`glm 侧审查员 CLI 进程组 ${g.pgid} 仍在`));
+    await fs.access(carrier);
+
+    const s = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
+    assert.deepEqual(s.scrubbed, []);
+    assert.deepEqual(s.deferred, [d]);
+    await fs.access(carrier);
+
+    await g.stop();
+    const again = await pruneRunDirs(cfg, projectRoot, { adapters: wiredAdapter });
+    assert.deepEqual(again.scrubbed, [d], '组长不在了即放行');
+    await assert.rejects(fs.access(carrier));
+  } finally {
+    await g.stop();
+  }
+});
+
+test('EV-154 U14：判不了（启动时刻没记下且组长还在）与记录读不懂（计划双审 r1 GLM-02）都不抹；启动时刻不符（组号已被复用）放行', async () => {
+  const g = await liveCliGroup('b');
+  try {
+    const { cfg, projectRoot, b } = await bucket();
+    const unv = await runDirWith(b, 'R-cli-unverifiable', 'success');
+    await withCliRecord(unv.d, { pgid: g.pgid, started_at: null });
+    const bad = await runDirWith(b, 'R-cli-malformed', 'success');
+    await withCliRecord(bad.d, { pgid: 'not-a-number' });
+    const reused = await runDirWith(b, 'R-cli-reused', 'success');
+    await withCliRecord(reused.d, { pgid: g.pgid, started_at: 'Thu Jan  1 00:00:00 1970' });
+
+    const r = await pruneRunDirs(cfg, projectRoot, { adapters: wiredAdapter });
+    assert.deepEqual([...r.deferred].sort(), [unv.d, bad.d].sort());
+    const why = Object.fromEntries(r.deferredCli.map((x) => [x.dir, x.detail]));
+    assert.match(why[unv.d] ?? '', /判不了/);
+    assert.match(why[bad.d] ?? '', /读不懂（glm：\{"pgid":"not-a-number"\}）/, '形状坏的带原始值（代码双审 r1 CODEX-04）');
+    assert.deepEqual(r.scrubbed, [reused.d], '组号已是别的进程：原来那组已不在');
+    await fs.access(unv.carrier);
+    await fs.access(bad.carrier);
+    await assert.rejects(fs.access(reused.carrier));
+  } finally {
+    await g.stop();
+  }
+});

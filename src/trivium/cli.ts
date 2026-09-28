@@ -1881,6 +1881,7 @@ async function cmdScrub(args: ParsedArgs): Promise<number> {
       scrub_failed: r.scrubFailed,
       unknown: r.unknown,
       deferred: r.deferred,
+      deferred_cli: r.deferredCli,
       incomplete: r.incomplete,
       unreadable_buckets: r.unreadableBuckets,
     });
@@ -1907,12 +1908,17 @@ async function cmdScrub(args: ParsedArgs): Promise<number> {
       say(`  · 另 ${r.runDirRedacted.length} 个运行目录只做了交接包脱敏（未发现待抹的凭据副本）`);
     }
   }
-  if (r.deferred.length > 0) {
+  const cliHeld = new Set(r.deferredCli.map((x) => x.dir));
+  const deferredWorker = r.deferred.filter((d) => !cliHeld.has(d));
+  if (deferredWorker.length > 0) {
     say(
-      `  · ${r.deferred.length} 个运行目录准入未过（正在启动／状态判不了／进程仍在），未动——` +
-        `多为瞬态，下次再跑会重判；持续出现请人工检查，首个：${r.deferred[0]}`,
+      `  · ${deferredWorker.length} 个运行目录准入未过（正在启动／状态判不了／进程仍在），未动——` +
+        `多为瞬态，下次再跑会重判；持续出现请人工检查，首个：${deferredWorker[0]}`,
     );
   }
+  // 第四格：审查员 CLI 进程组记录（EV-154 / EV-38，代码双审 r1 CODEX-01），逐条带成因
+  for (const x of r.deferredCli) say(`  · 因审查员 CLI 未动：${x.dir}（${x.detail}）`);
+  if (r.deferredCli.length > 0) say('    CLI 结束后再跑会重判；「记录读不懂」不会自愈，需把该侧 cli 改回 null 或等 run_dir_days 整删');
   if (r.unknown.length > 0) {
     say(
       `  · ${r.unknown.length} 个运行目录的状态读不到（缺失或损坏），未处理——` +

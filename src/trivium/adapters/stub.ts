@@ -21,6 +21,7 @@
  * 绝不能在真实审查里生效而无人知晓。
  */
 import path from 'node:path';
+import { promises as fsp } from 'node:fs';
 import { agentById, DEFAULT_DRIVER } from '../agents/registry.js';
 import { CRITICS, type CriticId, type CriticRequest, type CriticResult } from '../types.js';
 import {
@@ -116,6 +117,7 @@ export type StubMode =
    * `hang` 在进程内 `setTimeout`，不起子进程，测不出「worker 被取消时够不到它拉起的 CLI」。这里保留 `sh` + `sleep`
    * 两层，让组里有不带标记的成员，用例按组号判「组空」才测得到「按组」；标记带 `out_dir`，用例据此认出本运行的组长。
    * `ignoreTerm` 为真时命令前加 `trap '' TERM;`（`sleep` 继承忽略），模拟不响应 SIGTERM 的 CLI。
+   * `sleepS` 改睡眠秒数（造「CLI 自然结束」）；`blockAfterMs` 在派生之后把 worker 的事件循环堵住（EV-154）。
    */
   | 'hang_cli'
   /** 进程级失败 */
@@ -155,6 +157,14 @@ export interface StubSpec {
   modelOverrideSource?: string;
   /** `hang_cli` 模式下让子进程忽略 SIGTERM（EV-152） */
   ignoreTerm?: boolean;
+  /** `hang_cli` 模式下子进程 `sleep` 的秒数，缺省 600；给小值即造「CLI 自然结束」（EV-154） */
+  sleepS?: number;
+  /**
+   * `hang_cli` 模式下派生 CLI 之后再过这么多毫秒，在 worker 主线程 `Atomics.wait` 600 s，把事件循环堵住（EV-154）：
+   * 造「worker 活着、SIGTERM 处理器跑不到、`--cancel` 被迫升级 SIGKILL」这一格（CLI进程组记录计划 r2 §2 Q3）。
+   * 计时起点是「本运行全部侧的 CLI 记录（含启动时刻）都已落盘」（至多等 10 s），不与补写赛跑（代码双审 r1 CODEX-03）。
+   */
+  blockAfterMs?: number;
   note?: string;
 }
 
@@ -301,11 +311,37 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
           });
         case 'hang_cli': {
           // 标记走 `$0`（sh -c 的第一个位置参数），进 argv、不经 shell 解析路径
-          const body = `${spec.ignoreTerm ? "trap '' TERM; " : ''}sleep 600; : "$0"`;
-          const r = await run('/bin/sh', ['-c', body, `trivium-stub-cli:${req.out_dir}`], {
+          const sleepS = Number.isFinite(spec.sleepS) && (spec.sleepS as number) > 0 ? spec.sleepS : 600;
+          const body = `${spec.ignoreTerm ? "trap '' TERM; " : ''}sleep ${sleepS}; : "$0"`;
+          const pending = run('/bin/sh', ['-c', body, `trivium-stub-cli:${req.out_dir}`], {
             killTree: true,
             timeoutMs: 610_000,
           });
+          if (spec.blockAfterMs !== undefined) {
+            /*
+             * 同步点（代码双审 r1 CODEX-03）：先等本运行 status.json 里全部侧的 cli.started_at 都已落盘（至多 10 s），
+             * 再过 blockAfterMs 毫秒堵住事件循环——不与「取到启动时刻再补写」赛跑。等不到时仍按时堵住（那是 f′ 格）。
+             * 运行目录 = out_dir 的上两级（review.ts 的 out_dir 为 <运行目录>/<侧>/out）。
+             * 堵住之后 SIGTERM 处理器、心跳、一切回调都跑不到，只有 SIGKILL 能结束 worker（EV-154）。
+             */
+            const statusFile = path.join(req.out_dir, '..', '..', 'status.json');
+            const blockAfterMs = spec.blockAfterMs;
+            void (async () => {
+              const deadline = Date.now() + 10_000;
+              while (Date.now() < deadline) {
+                try {
+                  const st = JSON.parse(await fsp.readFile(statusFile, 'utf8')) as { sides?: Record<string, { cli?: { started_at?: string | null } | null }> };
+                  const sides = Object.values(st.sides ?? {});
+                  if (sides.length > 0 && sides.every((x) => x?.cli?.started_at)) break;
+                } catch {
+                  /* 还没写出来或撕裂读：再等 */
+                }
+                await new Promise((r) => setTimeout(r, 50));
+              }
+              setTimeout(() => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 600_000), blockAfterMs);
+            })();
+          }
+          const r = await pending;
           return failedResult(critic, {
             status: 'timeout',
             reason: `桩 CLI 挂起未被取消（code=${r.code} signal=${r.signal}）`,

@@ -1,0 +1,27 @@
+{
+  "targets": [
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/cli-group-record.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M10a",
+      "desc": "unverifiable 在取消侧当 alive——verdict 过滤与 isGone 两道门一起放开 ⇒ U15（不发信号的格）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      if (verdict !== 'alive') {\n        return { side: r.side, pgid: r.pgid, verdict, signals: [], gone: verdict === 'gone', membersLeft: null };\n      }\n      const t = await terminateProcessGroup(r.pgid, {\n        isGone: async () => (await judgeCliGroup(r)) !== 'alive',\n",
+      "replace": "      if (verdict !== 'alive' && verdict !== 'unverifiable') {\n        return { side: r.side, pgid: r.pgid, verdict, signals: [], gone: verdict === 'gone', membersLeft: null };\n      }\n      const t = await terminateProcessGroup(r.pgid, {\n        isGone: async () => { const v = await judgeCliGroup(r); return v !== 'alive' && v !== 'unverifiable'; },\n",
+      "expect": "dist/test/test/unit/cli-group-record.test.js"
+    },
+    {
+      "id": "M10b",
+      "desc": "judgeCliGroup 对 started_at: null 判 alive ⇒ U13 / U15",
+      "file": "src/trivium/status.ts",
+      "find": "  if (r.started_at === null) return 'unverifiable';\n",
+      "replace": "  if (r.started_at === null) return 'alive';\n",
+      "expect": "dist/test/test/unit/cli-group-record.test.js"
+    }
+  ]
+}

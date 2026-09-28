@@ -1,0 +1,387 @@
+{
+  "results": [
+    {
+      "id": "构建",
+      "ok": true,
+      "detail": "新旧 bundle sha256 不同（new 4540ecb80f43 / old 046a65fd1418）"
+    },
+    {
+      "id": "B1",
+      "ok": true,
+      "detail": "记录与组相符 true；worker 被强杀后组成员 [2,2]、--cancel 后 [0,0]；「按记录结束」2 行；status cancelled；取消后记录 {\"gemini\":null,\"glm\":null}"
+    },
+    {
+      "id": "B2",
+      "ok": true,
+      "detail": "旧构建：--cancel 后组成员 [2,2]、组长 ppid [1,1]、旧提示在场 true（复现上一主题 A3）"
+    },
+    {
+      "id": "B3",
+      "ok": true,
+      "detail": "记录与组相符 true；升级 SIGKILL true；--cancel 后组成员 [0,0]；「按记录结束」2 行；5208 ms"
+    },
+    {
+      "id": "B4",
+      "ok": true,
+      "detail": "旧构建：升级 SIGKILL true；--cancel 后组成员 [2,2]（CLI 留下）"
+    },
+    {
+      "id": "B5",
+      "ok": true,
+      "detail": "新：CLI 活着时 scrub 后载体在 true、deferred 含该目录 true、CLI 结束后再 scrub 载体在 false；旧：CLI 活着时 scrub 后载体在 false（EV-38 原貌）"
+    },
+    {
+      "id": "B6",
+      "ok": true,
+      "detail": "--wait 退 1 后组成员 [2,2]；会话启动 Hook 后 [2,2]；--cancel（终态分支）后 [0,0]；status.json 字节不变 true"
+    },
+    {
+      "id": "B7",
+      "ok": true,
+      "detail": "运行结束后两侧记录 {\"gemini\":null,\"glm\":null}"
+    },
+    {
+      "id": "B8",
+      "ok": true,
+      "detail": "hang：退出码 0/0、stdout 同 true、stderr 同 true；hang_cli：退出码 0/0、stdout 同 true、stderr 同 true"
+    },
+    {
+      "id": "B9",
+      "ok": true,
+      "detail": "Q1 true Q2 true Q3 true Q4 true；残留 []"
+    },
+    {
+      "id": "B10",
+      "ok": true,
+      "detail": "旧构建读新 status.json：--status 退 73（新 73）、cli 键原样透出 true；scrub 退 0；--cancel 退 0"
+    }
+  ],
+  "readout": {
+    "base_ref": "b6a555b",
+    "node": "v25.2.1",
+    "platform": "darwin",
+    "overlay": {
+      "file": "src/trivium/adapters/stub.ts",
+      "diff": "diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts\nindex ea1b939..faf5ded 100644\n--- a/src/trivium/adapters/stub.ts\n+++ b/src/trivium/adapters/stub.ts\n@@ -116,6 +116,7 @@ export type StubMode =\n    * `hang` 在进程内 `setTimeout`，不起子进程，测不出「worker 被取消时够不到它拉起的 CLI」。这里保留 `sh` + `sleep`\n    * 两层，让组里有不带标记的成员，用例按组号判「组空」才测得到「按组」；标记带 `out_dir`，用例据此认出本运行的组长。\n    * `ignoreTerm` 为真时命令前加 `trap '' TERM;`（`sleep` 继承忽略），模拟不响应 SIGTERM 的 CLI。\n+   * `sleepS` 改睡眠秒数（造「CLI 自然结束」）；`blockAfterMs` 在派生之后把 worker 的事件循环堵住（EV-154）。\n    */\n   | 'hang_cli'\n   /** 进程级失败 */\n@@ -155,6 +156,14 @@ export interface StubSpec {\n   modelOverrideSource?: string;\n   /** `hang_cli` 模式下让子进程忽略 SIGTERM（EV-152） */\n   ignoreTerm?: boolean;\n+  /** `hang_cli` 模式下子进程 `sleep` 的秒数，缺省 600；给小值即造「CLI 自然结束」（EV-154） */\n+  sleepS?: number;\n+  /**\n+   * `hang_cli` 模式下派生 CLI 之后再过这么多毫秒，在 worker 主线程 `Atomics.wait` 600 s，把事件循环堵住（EV-154）：\n+   * 造「worker 活着、SIGTERM 处理器跑不到、`--cancel` 被迫升级 SIGKILL」这一格（CLI进程组记录计划 r2 §2 Q3）。\n+   * 要留够时间让 CLI 记录（含启动时刻）先落盘，否则就成了 f′ 格。\n+   */\n+  blockAfterMs?: number;\n   note?: string;\n }\n \n@@ -301,11 +310,17 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter\n           });\n         case 'hang_cli': {\n           // 标记走 `$0`（sh -c 的第一个位置参数），进 argv、不经 shell 解析路径\n-          const body = `${spec.ignoreTerm ? \"trap '' TERM; \" : ''}sleep 600; : \"$0\"`;\n-          const r = await run('/bin/sh', ['-c', body, `trivium-stub-cli:${req.out_dir}`], {\n+          const sleepS = Number.isFinite(spec.sleepS) && (spec.sleepS as number) > 0 ? spec.sleepS : 600;\n+          const body = `${spec.ignoreTerm ? \"trap '' TERM; \" : ''}sleep ${sleepS}; : \"$0\"`;\n+          const pending = run('/bin/sh', ['-c', body, `trivium-stub-cli:${req.out_dir}`], {\n             killTree: true,\n             timeoutMs: 610_000,\n           });\n+          if (spec.blockAfterMs !== undefined) {\n+            // 堵住事件循环（EV-154）：此后 SIGTERM 处理器、心跳、一切回调都跑不到，只有 SIGKILL 能结束 worker\n+            setTimeout(() => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 600_000), spec.blockAfterMs);\n+          }\n+          const r = await pending;\n           return failedResult(critic, {\n             status: 'timeout',\n             reason: `桩 CLI 挂起未被取消（code=${r.code} signal=${r.signal}）`,\n"
+    },
+    "bundles": {
+      "new": {
+        "path": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
+        "sha256": "4540ecb80f4345a45962f428f90610ac186522a9766d2a4cd63e5c8948d53e32"
+      },
+      "old": {
+        "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-cli-pgroup-JWw0nG/old/skills/dual-critic/scripts/trivium.cjs",
+        "sha256": "046a65fd141890a84e5ab288f29678eca9d334055e9461b9b82b6f82865e4a54",
+        "from": "b6a555b",
+        "overlay": [
+          "src/trivium/adapters/stub.ts"
+        ]
+      }
+    },
+    "B1": {
+      "runId": "20260928T025511Z",
+      "groups": [
+        36634,
+        36636
+      ],
+      "rec": {
+        "gemini": {
+          "pgid": 36634,
+          "started_at": "Mon Sep 28 02:55:11 2026"
+        },
+        "glm": {
+          "pgid": 36636,
+          "started_at": "Mon Sep 28 02:55:11 2026"
+        }
+      },
+      "recOk": true,
+      "workerGone": true,
+      "before": [
+        2,
+        2
+      ],
+      "leaderPpids": [
+        1,
+        1
+      ],
+      "after": [
+        0,
+        0
+      ],
+      "cancelCode": 0,
+      "cancelStderr": "· 工作进程 36587 已不存在，仅做状态与锁的清理\n· 按记录结束审查员 CLI：gemini 侧进程组 36634（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 36636（SIGTERM）\n· 已把归档里的 run-20260928T025511Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+      "byRecord": 2,
+      "oldHint": false,
+      "statusPhase": "cancelled",
+      "sidesCliAfter": {
+        "gemini": null,
+        "glm": null
+      }
+    },
+    "B2": {
+      "runId": "20260928T025513Z",
+      "groups": [
+        37088,
+        37089
+      ],
+      "rec": null,
+      "recOk": false,
+      "workerGone": true,
+      "before": [
+        2,
+        2
+      ],
+      "leaderPpids": [
+        1,
+        1
+      ],
+      "after": [
+        2,
+        2
+      ],
+      "cancelCode": 0,
+      "cancelStderr": "· 工作进程 37040 已不存在，仅做状态与锁的清理\n⚠️  工作进程在本次取消之前已退出；它若是被强杀或崩溃的，拉起的审查员 CLI 可能仍在，本命令够不到（请用 ps 核对 ppid 为 1 的 CLI 进程，BACKLOG EV-154）\n· 已把归档里的 run-20260928T025513Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+      "byRecord": 0,
+      "oldHint": true,
+      "statusPhase": "cancelled",
+      "sidesCliAfter": {}
+    },
+    "B3": {
+      "runId": "20260928T025517Z",
+      "groups": [
+        37547,
+        37549
+      ],
+      "rec": {
+        "gemini": {
+          "pgid": 37547,
+          "started_at": "Mon Sep 28 02:55:17 2026"
+        },
+        "glm": {
+          "pgid": 37549,
+          "started_at": "Mon Sep 28 02:55:17 2026"
+        }
+      },
+      "recOk": true,
+      "after": [
+        0,
+        0
+      ],
+      "ms": 5208,
+      "cancelCode": 0,
+      "escalated": true,
+      "byRecord": 2,
+      "cancelStderr": "· 向工作进程组 37500 发送 SIGTERM\n⚠️  工作进程组 37500 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI\n· 按记录结束审查员 CLI：gemini 侧进程组 37547（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 37549（SIGTERM）\n· 已把归档里的 run-20260928T025517Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+    },
+    "B4": {
+      "runId": "20260928T025528Z",
+      "groups": [
+        38204,
+        38205
+      ],
+      "rec": null,
+      "recOk": false,
+      "after": [
+        2,
+        2
+      ],
+      "ms": 5171,
+      "cancelCode": 0,
+      "escalated": true,
+      "byRecord": 0,
+      "cancelStderr": "· 向工作进程组 38157 发送 SIGTERM\n⚠️  工作进程组 38157 未响应 SIGTERM，发送 SIGKILL——它拉起的审查员 CLI 可能未被结束，请用 ps 核对 ppid 为 1 的 CLI 进程（BACKLOG EV-154）\n· 已把归档里的 run-20260928T025528Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+    },
+    "B5": {
+      "new": {
+        "runDir": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-cli-pgroup-JWw0nG/runs-B5-new/B5-new-073e54f4/20260928T025539Z",
+        "code1": 0,
+        "deferred1": [
+          "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-cli-pgroup-JWw0nG/runs-B5-new/B5-new-073e54f4/20260928T025539Z"
+        ],
+        "scrubbed1": [],
+        "carrierAfter1": true,
+        "alive1": [
+          2,
+          2
+        ],
+        "code2": 0,
+        "carrierAfter2": false
+      },
+      "old": {
+        "runDir": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-cli-pgroup-JWw0nG/runs-B5-old/B5-old-7a330380/20260928T025541Z",
+        "code1": 0,
+        "deferred1": [],
+        "scrubbed1": [
+          "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-cli-pgroup-JWw0nG/runs-B5-old/B5-old-7a330380/20260928T025541Z"
+        ],
+        "carrierAfter1": false,
+        "alive1": [
+          2,
+          2
+        ],
+        "code2": 0,
+        "carrierAfter2": false
+      }
+    },
+    "B6": {
+      "waitCode": 1,
+      "waitStderr": "✗ 运行 20260928T025545Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-cli-pgroup-JWw0nG/runs-B6/B6-a0a57a8e/20260928T025545Z/worker.log\n  已把归档里的 run-20260928T025545Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n",
+      "hookCode": 0,
+      "afterWait": [
+        2,
+        2
+      ],
+      "afterHook": [
+        2,
+        2
+      ],
+      "cancelStdout": "运行 20260928T025545Z 已处于终态（failed），无需取消。\n  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。\n",
+      "cancelStderr": "· 按记录结束审查员 CLI：gemini 侧进程组 39657（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 39659（SIGTERM）\n",
+      "afterCancel": [
+        0,
+        0
+      ],
+      "statusBytesSame": true
+    },
+    "B7": {
+      "waitCode": 75,
+      "sidesCli": {
+        "gemini": null,
+        "glm": null
+      }
+    },
+    "B8": {
+      "hang": {
+        "new": {
+          "stdout": "已回收主题「B8-hang-new」的锁\n运行 20260928T025551Z 已取消\n",
+          "stderr": "· 向工作进程组 40973 发送 SIGTERM\n· 已把归档里的 run-20260928T025551Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+          "code": 0
+        },
+        "old": {
+          "stdout": "已回收主题「B8-hang-old」的锁\n运行 20260928T025553Z 已取消\n",
+          "stderr": "· 向工作进程组 41408 发送 SIGTERM\n· 已把归档里的 run-20260928T025553Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+          "code": 0
+        },
+        "normalized": {
+          "new": {
+            "stdout": "已回收主题「B8-<T>-<B>」的锁\n运行 <RUN> 已取消\n",
+            "stderr": "· 向工作进程组 <N> 发送 SIGTERM\n· 已把归档里的 run-<RUN>.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+          },
+          "old": {
+            "stdout": "已回收主题「B8-<T>-<B>」的锁\n运行 <RUN> 已取消\n",
+            "stderr": "· 向工作进程组 <N> 发送 SIGTERM\n· 已把归档里的 run-<RUN>.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+          }
+        },
+        "same": {
+          "stdout": true,
+          "stderr": true
+        }
+      },
+      "hang_cli": {
+        "new": {
+          "stdout": "已回收主题「B8-hang_cli-new」的锁\n运行 20260928T025555Z 已取消\n",
+          "stderr": "· 向工作进程组 41843 发送 SIGTERM\n· 已把归档里的 run-20260928T025555Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+          "code": 0
+        },
+        "old": {
+          "stdout": "已回收主题「B8-hang_cli-old」的锁\n运行 20260928T025557Z 已取消\n",
+          "stderr": "· 向工作进程组 42287 发送 SIGTERM\n· 已把归档里的 run-20260928T025557Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+          "code": 0
+        },
+        "normalized": {
+          "new": {
+            "stdout": "已回收主题「B8-<T>-<B>」的锁\n运行 <RUN> 已取消\n",
+            "stderr": "· 向工作进程组 <N> 发送 SIGTERM\n· 已把归档里的 run-<RUN>.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+          },
+          "old": {
+            "stdout": "已回收主题「B8-<T>-<B>」的锁\n运行 <RUN> 已取消\n",
+            "stderr": "· 向工作进程组 <N> 发送 SIGTERM\n· 已把归档里的 run-<RUN>.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+          }
+        },
+        "same": {
+          "stdout": true,
+          "stderr": true
+        }
+      }
+    },
+    "B9": {
+      "node": "v25.2.1",
+      "platform": "darwin",
+      "Q1": {
+        "seen": [
+          null,
+          null,
+          "gemini",
+          "glm",
+          "gemini",
+          "glm",
+          "gemini",
+          "glm",
+          "gemini",
+          "glm"
+        ],
+        "ok": true
+      },
+      "Q2": {
+        "workerPid": 42397,
+        "cliPid": 42398,
+        "before": {
+          "lstart": "Mon Sep 28 10:55:58 2026",
+          "ppid": 42397
+        },
+        "after": {
+          "lstart": "Mon Sep 28 10:55:58 2026",
+          "ppid": 1
+        },
+        "ok": true
+      },
+      "Q3": {
+        "aliveAfterTerm": true,
+        "exit": {
+          "code": null,
+          "signal": "SIGKILL",
+          "afterKillMs": 3
+        },
+        "log": [
+          "ready",
+          "blocking"
+        ],
+        "ok": true
+      },
+      "Q4": {
+        "lstart": {
+          "default": "Mon Sep 28 10:55:58 2026",
+          "TZ_UTC": "Mon Sep 28 02:55:58 2026",
+          "TZ_Tokyo": "Mon Sep 28 11:55:58 2026",
+          "LC_fr": "lun. 28 sept. 10:55:58 2026",
+          "LC_TIME_zh": "一  9月/28 10:55:58 2026",
+          "canonical": "Mon Sep 28 02:55:58 2026",
+          "canonical_from_tokyo_fr": "Mon Sep 28 02:55:58 2026"
+        },
+        "ok": true
+      },
+      "leftover": []
+    },
+    "B10": {
+      "rec": {
+        "gemini": {
+          "pgid": 42800,
+          "started_at": "Mon Sep 28 02:56:03 2026"
+        },
+        "glm": {
+          "pgid": 42802,
+          "started_at": "Mon Sep 28 02:56:03 2026"
+        }
+      },
+      "newStatusCode": 73,
+      "oldStatusCode": 73,
+      "oldCliKey": true,
+      "oldScrubCode": 0,
+      "oldScrubOk": true,
+      "oldCancelCode": 0,
+      "oldCancelStdout": "已回收主题「B10」的锁\n运行 20260928T025603Z 已取消\n",
+      "oldCancelStderr": "· 工作进程 42753 已不存在，仅做状态与锁的清理\n⚠️  工作进程在本次取消之前已退出；它若是被强杀或崩溃的，拉起的审查员 CLI 可能仍在，本命令够不到（请用 ps 核对 ppid 为 1 的 CLI 进程，BACKLOG EV-154）\n· 已把归档里的 run-20260928T025603Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+    },
+    "leftover_groups": []
+  }
+}

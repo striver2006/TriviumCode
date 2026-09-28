@@ -1,0 +1,97 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "从「资源与生命周期 / 环境耦合」这一侧通读补丁与其上下游（exec.ts 的登记与观察者、status.ts 的记录三态与判定、run-protocol.ts 的三处消费点与收尾清记录、retention.ts 的准入、stub 的新旗标、U10～U16 与 I3～I7、变异规格与 Q4 探针读数），主链路的判据是自洽且 fail-safe 的：登记面唯一（liveTrees 派生）、只对组长活着且规范化启动时刻相符的组发信号、`kill(-1)`/`kill(-0)` 由 pgid>1 挡住、僵尸不计入组员、终态早退分支只结束进程不写历史。最该处理的一条是 CODEX-01：新增的第四类 deferred（CLI 组仍活着／读不懂）在设计 §10.5 的分档枚举、hooks.ts 与 cli.ts 的文案里都没出现，且 `cliGroupsConfirmedGone` 的 why 被丢弃——「分档必须闭合 + 带取证路径」这条既有纪律在新增档上没照做。次之为 CODEX-02（U16 这一条腿咬不住 canonical 钉环境，而 `reused` 在凭据侧是放行的 fail-open 方向）与 CODEX-04（形状坏的记录让该目录永久 deferred，无任何出口）。均为可改可不改的收口项，不阻塞提交。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/retention.ts:106-121（admitScrub）；src/trivium/hooks.ts:1549-1558；src/trivium/cli.ts:1910-1914",
+      "problem": "新增的第四类 deferred 成因没有进任何一处枚举，而它的判据说明被丢弃了。`admitScrub` 里 CLI 那一半不通过时只 `out.deferred.push(dir)`，`cliGroupsConfirmedGone` 返回的 `why`（哪一侧、哪个组号、是「仍在」「判不了」还是「读不懂」）不进任何留痕；`ScrubTally.deferred` 是裸的 string[]。于是人读输出两处都自称是全景：hooks.ts 的注释明写「准入未过而 status 读得到的**三类**（starting / 拿不到 pid / 进程仍活）」、渲染文案写「（正在启动／状态判不了／进程仍在），未动——**多为瞬态，下次会话会再判一次**」，而其中「记录读不懂」这一类根本不自愈（没有命令能改写 status.json 里的 cli 键，`trivium scrub` 也没有 force 口，见 cli.ts 的 scrub USAGE 只有 --dry-run），它会一直挂着直到 30 天到期整删。同一形状项目在 `incomplete` 那一档是刻意反着做的（成因带取证路径随计数带出）。",
+      "evidence": "读了 src/trivium/retention.ts（admitScrub 新增分支与 deferred 定义）、src/trivium/hooks.ts:1494-1558、src/trivium/cli.ts:1883/1910-1914 与 scrub 的 USAGE 段、src/trivium/status.ts 的 cliGroupsConfirmedGone（确认它返回 why 而调用方丢弃）；对照设计 §10.5 凭据行（doc/02_design/…设计.md:2224，本轮只改了准入句，分档枚举仍是「deferred（准入未过而状态读得到：starting／拿不到 pid／终态但进程仍活）」三格）与 LLD v1.1.11 那句「不通过计入 deferred」。",
+      "suggestion": "两件事一起做：deferred 改为带成因（与 incomplete 同形：dir + detail），detail 直接用 cliGroupsConfirmedGone 的 why；hooks/cli 两处文案的分类句补上第四格并改掉「多为瞬态」里对不自愈那格的误导；设计 §10.5 的分档枚举与 MANUAL 的「计入准入未过」句同步。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/cli-group-record.test.ts 的 U16；src/trivium/util/exec.ts:526-539（processStartTime canonical）；src/trivium/status.ts judgeCliGroup / cliGroupsConfirmedGone",
+      "problem": "U16 这条腿咬不住它声称钉住的东西。用例在两个非缺省环境（Tokyo+fr_FR、New_York+C）下各取一次 canonical 值并断言相等——可即使把 canonical 分支的 env 整个去掉（M15 的变异形态），两次取值都按同一个「当下缺省环境」计算，照样相等；断言 p1≠p2 也只在进程缺省环境本身随 TZ/locale 变时成立。也就是说「LC_ALL=C、TZ=UTC0 真能把 BSD ps 的 lstart 钉住」这个前提，测试构建里没有任何东西在守，它只活在 evidence 的 Q4 读数里（我在 acceptance-readout.json 里核到 rec.*.started_at 是 `Mon Sep 28 02:55:11 2026`，即 UTC0 确实生效）。要紧的是失败方向：若某版 macOS 的 ps 不再吃这组环境变量，记录与判定会按各自的缺省环境取，字符串不符就判 `reused`；`reused` 在取消侧只是不发信号（无害），在准入侧却是 `cliGroupsConfirmedGone` 的**放行**，于是凭据副本可能在 CLI 还活着时被不可逆地抹掉——这与本项目「确认不在才抹」的口径相反。",
+      "evidence": "读了 test/unit/cli-group-record.test.ts 的 U16 全文（补丁第 3135 行起）、src/trivium/util/exec.ts 的 processStartTime 与 RunOptions.env 合并语义（缺省值会被覆盖、不污染 process.env，这一条是干净的）、src/trivium/status.ts 的 judgeCliGroup 与 cliGroupsConfirmedGone（确认 reused→gone 放行）、doc/05_testing/evidence/cli-pgroup-record-20260928/probe-record.mjs 的 Q4 与 acceptance-readout.json 的 B1/B3 读数、mutation-spec.json 的 M15 期望。",
+      "suggestion": "把 U16 改成能真咬的形态：同一进程下断言 canonical 值等于「在干净缺省环境下取到的非 canonical 值」，并断言它与调用方当前 TZ/locale 下的非 canonical 值**不等**（后者作前提，取不到差异时显式 skip 而不是静默通过）；另给 canonical 的字符串形态一个格式断言，形态不符就退回 null（→ unverifiable，fail-safe 方向），而不是拿去比相等再判 reused。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/stub.ts:310-323（hang_cli 的 blockAfterMs）；test/integration/gate-loop.test.ts 的 I4",
+      "problem": "I4 的前提建立在一次赛跑上：`blockAfterMs: 3000` 与「取到启动时刻后补写」同在一个事件循环上，桩先跑 `run()`、再在派生后挂一个 3 s 的 `Atomics.wait`。满载全量时那次 `ps`（timeoutMs 10 s）只要慢过 3 s，status.json 里的 started_at 就停在 null，I4 的前提高级断言直接把用例判红——而本仓已为此类「满载下取值慢、单跑即绿」登过 EV-149 与 EV-153，等于又埋一颗同族。测试自己的注释承认了这个窗口，但没有任何机制把它关小。",
+      "evidence": "读了 src/trivium/adapters/stub.ts 的 hang_cli 分支（sleepS / blockAfterMs 的实现与 610 s 超时）、test/integration/gate-loop.test.ts 的 startWithRecordedClis 与 I4（注释「块时点 3 s：它与取到启动时刻再补写在同一事件循环上赛跑」）、src/trivium/util/exec.ts 的 processStartTime 用 run() 且 timeoutMs 10_000、BACKLOG 的 EV-149/EV-153 两条偶发红条目、REPORT §2 的 I4 约 9.5 s 读数。",
+      "suggestion": "把赛跑换成同步点：让桩在派生后先等自己那组的记录落盘（例如按 out_dir 轮询 status.json 的 cli.started_at 非空，或观察者取到启动时刻后写一个约定标记文件）再执行 Atomics.wait；轮询超时则显式 skip 并说明落进了 f′ 格，不要让它变成全量里的偶发红。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/run-protocol.ts:1427-1440（settledCliSides 与写 cancelled 那次 patchStatus）",
+      "problem": "收尾只清「已确认结束」的记录，其余原样留给清扫准入——方向是对的，但对 `malformed` 这一格没有任何出口：`cliRecordsOf` 永远把它归到 malformed，`cliGroupsConfirmedGone` 永远判不可抹，而 `--cancel` 只结束进程不清键、`trivium scrub` 只有 --dry-run 没有 force，于是那一份凭据副本会一直 deferred 到 30 天到期整删（整删那一支又不核 CLI，EV-157 已登）。播报本身也没带出定位信息：「〈侧〉侧的 CLI 记录读不懂，不发信号」既不给 run 目录也不给原始值，人只能自己去翻 status.json（与 CODEX-01 是同一条缺口的两端）。",
+      "evidence": "读了 src/trivium/run-protocol.ts 的 settledCliSides / reportRecordedCliGroups / cancelRun 主路径（确认 malformed 与 unverifiable 都不被清）、src/trivium/status.ts 的 cliRecordsOf（形状坏→malformed→准入不可抹）、src/trivium/retention.ts 的 pruneRunDirs 到期整删只看 workerStillAlive、src/trivium/scrub.ts 与 cli.ts 的 scrub USAGE（确认没有面向人的 force 口）。",
+      "suggestion": "给这一格一个出口并写进 MANUAL：要么在 `--cancel` 里把「判不了/读不懂但组长已不在」的记录也清成 null 并把原值留进 worker.log 或告警正文，要么给 `trivium scrub` 一个显式放弃记录的人工档位（带留痕），二选一都要在设计 §10.5 写明边界；顺带把 malformed 告警补上 run 目录与读到的原始值。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "登记面唯一这一条守得住：记录由 `liveTrees` 派生（`trackedTrees()` 投影 + `watchTrackedTrees` 单观察者，第二个抛错），没有另建同职登记，符合 EV-154 结案注记与 BACKLOG 顶部「重复实现」的告诫。",
+    "`AsyncLocalStorage` 只做侧归属、不改四个适配器，且传播断了的 fail-safe 方向选得对：tag 为 null ⇒ 不进记录 ⇒ 取消侧如实提示、准入侧退回只核 worker，不会误发信号也不会误判放行。",
+    "观察者「派生当时即写、取到启动时刻再补一次」而不是挪进 SIGTERM 处理器，是对的：终止中 `run()` 已冻结，取启动时刻的 `ps` 跑不到，这一点设计 7.5 与 LLD 都写清了理由。",
+    "`cliRecordsOf` 强制 `pgid` 为 >1 的整数，挡住了 `kill(-1)`（发给全系统进程）与 `kill(-0)`（发给自己的组）两种灾难形态，U12 也把 0/1/小数/字符串钉在 malformed 里。",
+    "`judgeCliGroup` 不借 `processAlive` 的 `sameProcess`（那里「启动时刻缺失 = 相符」）、并在 `ps` 取不到时复看一次存活再判 unverifiable 而不是 reused，是把 fail-open 方向掰回 fail-safe 的关键一步，REPORT §3.1 也如实登记了这处对 r2 的偏离。",
+    "`processGroupMemberCount` 按 `stat=` 排除僵尸，避免把「刚退出未被回收的组长」报成组员残留；`isGone` 按组长判所以「组长服从 SIGTERM 而组员忽略」那格由 U15 变体专门数出来并如实告警。",
+    "终态早退分支「只结束进程、不写 status.json / 归档 / 锁 / 闸门」，并把它放在 `workerConfirmedGone` 通过之后，既补上了 EV-146 说明的常见序列（`--wait` 先写 failed），又没破坏「不追溯改写」的既有语义；I5 断言 status.json 逐字节不变，这条钉得很实。",
+    "EV-157 / EV-158 两条另登而不是顺手做（`--cancel`/`--wait` 准入与到期整删不核 CLI、`worker_started_at` 仍按缺省环境取），边界可见，且 LLD 已知缺口表补了两行，与「不扩面」的计划一致。"
+  ],
+  "not_covered": [
+    "沙箱不允许执行 `/bin/ps`（EPERM），我无法在本机独立复测 `LC_ALL=C`/`TZ=UTC0` 对 BSD ps 的 lstart 形态是否生效，CODEX-02 的「前提今天成立」只依据 evidence 里的 B1/B3 读数与 Q4 探针脚本，未复核原始完整输出。",
+    "没有实跑 `npm run check`、也没有实跑 I3～I4 / B1～B10，全量 2187/2185/0/2 与变异 18+2 条全部采信 evidence 落盘读数。",
+    "四个厂商适配器（agy/codex/zcode/claude）内部的派生细节只读了 killTree 调用点，未逐一核到「适配器的探活与鉴权调用是否都落在 `withTreeTag` 之内」；`pty: true` 的 agy 形态下组长是 `script` 包装、记录的是包装的组号（EV-156 已登 pty 跑不起来），未实测。",
+    "未覆盖 Linux 分支（`processStartTime` 的 lstart 形态、`script` 的 -c 形态在 Linux 上不同），本仓仅支持 macOS，我没有 Linux 环境。",
+    "未审 gate / hook / 归档面：本次不新增归档字段，我只确认了 status.json 无机读 schema（读侧 JSON.parse 直转），契约面只核到 PROTOCOL 的 `--wait/--status --json` 多出 cli 键这一句。",
+    "未核 `--cancel` 之外的其它 CLI 参数/退出码同步面（本次不改参数与退出码），也没核 skills-src 入口文案（grep 未发现过期文案，但未逐份读）。"
+  ],
+  "consulted": [
+    ".reviews/CLI进程组记录/code/_meta/changes-20260928T030117Z.diff",
+    "src/trivium/util/exec.ts",
+    "src/trivium/status.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/scrub.ts",
+    "test/unit/cli-group-record.test.ts",
+    "test/unit/retention.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/helpers/proc.ts",
+    "doc/05_testing/REPORT_2026-09-28_cli_pgroup_record.md",
+    "doc/05_testing/evidence/cli-pgroup-record-20260928/probe-record.mjs",
+    "doc/05_testing/evidence/cli-pgroup-record-20260928/acceptance-readout.json",
+    "doc/05_testing/evidence/cli-pgroup-record-20260928/mutation-spec.json",
+    "doc/05_testing/evidence/cli-pgroup-record-20260928/mutation-spec-m10.json",
+    "doc/05_testing/evidence/cli-pgroup-record-20260928/check-1.txt",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md"
+  ]
+}

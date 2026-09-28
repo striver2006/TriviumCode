@@ -1492,6 +1492,7 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
   let unknown = 0;
   let unknownDirs: string[] = [];
   let deferred: string[] = [];
+  let deferredCli: { dir: string; detail: string }[] = [];
   let incomplete: { dir: string; detail?: string }[] = [];
   /** 清扫本身抛了：原先只在 DEBUG 下打印，新职责（凭据抹除）挂上来之后不能再静默（CODEX-06） */
   let retentionError: string | null = null;
@@ -1506,6 +1507,7 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
     unknown = r.unknown.length;
     unknownDirs = r.unknown;
     deferred = r.deferred;
+    deferredCli = r.deferredCli;
     incomplete = r.incomplete;
   } catch (e) {
     retentionError = (e as Error).message;
@@ -1546,15 +1548,27 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
         `请人工检查后删除，首个：${unknownDirs[0]}`,
     );
   }
-  if (deferred.length > 0) {
+  const cliHeld = new Set(deferredCli.map((x) => x.dir));
+  const deferredWorker = deferred.filter((d) => !cliHeld.has(d));
+  if (deferredWorker.length > 0) {
     /*
      * 准入未过而 status 读得到的三类（starting / 拿不到 pid / 终态但进程仍活）。
      * 不抹是既定安全决策，但此前它们哪一格都不进——其中 starting 类可能已经写下了
      * 凭据副本（准备阶段崩溃），对所有入口都不可见地躺到 TTL（代码双审 GLM-04）。
      */
     lines.push(
-      `  · ${deferred.length} 个运行目录准入未过（正在启动／状态判不了／进程仍在），未动——` +
-        `多为瞬态，下次会话会再判一次；持续出现请人工检查，首个：${deferred[0]}`,
+      `  · ${deferredWorker.length} 个运行目录准入未过（正在启动／状态判不了／进程仍在），未动——` +
+        `多为瞬态，下次会话会再判一次；持续出现请人工检查，首个：${deferredWorker[0]}`,
+    );
+  }
+  if (deferredCli.length > 0) {
+    /*
+     * 第四格（EV-154 / EV-38，代码双审 r1 CODEX-01）：worker 已不在，但记录里的审查员 CLI 进程组仍活着、判不了、或记录读不懂。
+     * 成因逐条带出：CLI 还活着的在它结束后自愈；「读不懂」不自愈，要人把该侧 cli 改回 null，或等 run_dir_days 整删。
+     */
+    lines.push(
+      `  · ${deferredCli.length} 个运行目录因审查员 CLI 进程组记录未动（CLI 仍在／判不了／记录读不懂）——` +
+        `CLI 结束后下次会话会再判；记录读不懂的不会自愈。首个：${deferredCli[0]!.dir}（${deferredCli[0]!.detail}）`,
     );
   }
   if (incomplete.length > 0) {

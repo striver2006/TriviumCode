@@ -16,7 +16,7 @@ import { promises as fs } from 'node:fs';
 import type { CriticId, Stage } from './types.js';
 import { writeAtomic, exists } from './util/fsx.js';
 import { RUN_DIR_FILES } from './run-files.js';
-import { processAlive } from './util/exec.js';
+import { processAlive, processStartTime, type TrackedTree } from './util/exec.js';
 
 export type RunPhase =
   | 'starting'
@@ -33,6 +33,19 @@ export interface SideStatus {
   attempt: number;
   elapsed_s: number;
   note?: string | null;
+  /**
+   * 该侧正在跑的审查员 CLI 进程组（EV-154，CLI进程组记录计划 r2 §4.3）。worker 从 `liveTrees` 派生、派生当时即写，
+   * CLI 退出时清成 null。缺席（旧版 worker 写的）与 null 读者一律当「没有记录」；旧版读者忽略这个键。
+   */
+  cli?: CliGroupRecord | null;
+}
+
+/** 一侧审查员 CLI 的进程组记录（EV-154） */
+export interface CliGroupRecord {
+  /** 进程组号 = 组长 pid（`killTree` ⇒ `detached` ⇒ 组长） */
+  pgid: number;
+  /** 组长的规范化启动时刻（`processStartTime(…, { canonical: true })`）；null = 尚未取到或取不到 */
+  started_at: string | null;
 }
 
 export interface RunStatus {
@@ -175,6 +188,115 @@ export async function workerConfirmedGone(
    */
   if (isTerminal(status.phase)) return { gone: true, why: '运行已终态且从未记下 worker_pid' };
   return { gone: false, why: `运行处于 ${status.phase} 却拿不到 worker_pid：判不了` };
+}
+
+// ─────────────────────── 审查员 CLI 进程组记录（EV-154） ───────────────────────
+
+/**
+ * 把 `liveTrees` 的投影写成逐侧记录（worker 的观察者在 `patchStatus` 的 mutate 里调，CLI进程组记录计划 r2 §4.3）。
+ *
+ * 每侧取 tag 等于侧名、**最近登记**的那一个；没有则 null（用户决策 1「每侧一份」）。今天每侧同一时刻只有一个
+ * `killTree` 的 `run()`；日后若并发派生两个，记录取后登记的，它退出后投影回落到前一个。tag 为 null（侧外派生）
+ * 或不在 `sides` 里的条目忽略。mutate 在写之前同步读快照，所以不论通知与写入怎么交错，最后写下去的都是当时的投影。
+ */
+export function syncCliRecords(s: RunStatus, trees: readonly TrackedTree[]): void {
+  for (const [critic, side] of Object.entries(s.sides) as Array<[CriticId, SideStatus | undefined]>) {
+    if (!side) continue;
+    const t = trees.filter((x) => x.tag === critic).at(-1);
+    side.cli = t ? { pgid: t.pgid, started_at: t.startedAt } : null;
+  }
+}
+
+/**
+ * 读逐侧记录，三态（计划双审 r1 GLM-02）：键缺席或 null ⇒ 没有记录；形状合法 ⇒ `records`；
+ * 键在而形状不合法（手改坏的、未来版本改了形状）⇒ `malformed`——取消侧不发信号，准入侧判不可抹（读不懂就是判不了）。
+ * pgid 必须是 >1 的整数：`kill(-1)` 是发给全部进程，`kill(-0)` 是发给自己的组。
+ */
+export function cliRecordsOf(s: RunStatus | null): {
+  records: Array<{ side: CriticId } & CliGroupRecord>;
+  malformed: CriticId[];
+} {
+  const records: Array<{ side: CriticId } & CliGroupRecord> = [];
+  const malformed: CriticId[] = [];
+  const sides = s?.sides;
+  if (!sides || typeof sides !== 'object') return { records, malformed };
+  for (const [critic, side] of Object.entries(sides) as Array<[CriticId, SideStatus | undefined]>) {
+    const cli: unknown = side?.cli;
+    if (cli === undefined || cli === null) continue;
+    const r = cli as { pgid?: unknown; started_at?: unknown };
+    const okPgid = typeof r.pgid === 'number' && Number.isInteger(r.pgid) && r.pgid > 1;
+    const okStart = r.started_at === null || typeof r.started_at === 'string';
+    if (typeof cli === 'object' && okPgid && okStart) {
+      records.push({ side: critic, pgid: r.pgid as number, started_at: r.started_at as string | null });
+    } else {
+      malformed.push(critic);
+    }
+  }
+  return { records, malformed };
+}
+
+/** 某侧 `cli` 键的原始值（JSON，截断到 200 字），供形状坏时如实带出（代码双审 r1 CODEX-04） */
+export function rawCliOf(s: RunStatus | null, side: CriticId): string {
+  let t: string;
+  try {
+    t = JSON.stringify((s?.sides?.[side] as { cli?: unknown } | undefined)?.cli) ?? 'undefined';
+  } catch {
+    t = '（无法序列化）';
+  }
+  return t.length > 200 ? `${t.slice(0, 200)}…` : t;
+}
+
+export type CliGroupVerdict = 'alive' | 'gone' | 'reused' | 'unverifiable';
+
+/**
+ * 一条 CLI 记录现在指向什么（用户决策 4：组长活着且启动时刻相符才算同一组）：
+ * 组长不在 ⇒ `gone`；在而 `started_at` 为 null ⇒ `unverifiable`；在而规范化启动时刻不符（或取不到）⇒ `reused`；相符 ⇒ `alive`。
+ *
+ * 不借 `processAlive` 的 `sameProcess`：`started_at` 为 null 时它给 true（等于「缺失 = 相符」），而且它取启动时刻不带
+ * 规范化环境。`unverifiable` 在 pid 被复用且占有者活着期间一直是 `unverifiable`——没有比对基准就判不出 `reused`（AGY-01）。
+ */
+export async function judgeCliGroup(r: CliGroupRecord): Promise<CliGroupVerdict> {
+  let alive: boolean;
+  try {
+    process.kill(r.pgid, 0);
+    alive = true;
+  } catch (e) {
+    alive = (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+  if (!alive) return 'gone';
+  if (r.started_at === null) return 'unverifiable';
+  const now = await processStartTime(r.pgid, { canonical: true });
+  if (now === null) {
+    // 取 ps 的这一刻进程恰好退出，或 ps 本身失败：再看一次存活，仍在就判不了
+    try {
+      process.kill(r.pgid, 0);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EPERM') return 'gone';
+    }
+    return 'unverifiable';
+  }
+  return now === r.started_at ? 'alive' : 'reused';
+}
+
+/**
+ * 凭据清扫准入里「CLI 那一半」（EV-38，CLI进程组记录计划 r2 §4.5）：任一记录判 `alive` 或 `unverifiable`、
+ * 或有形状坏的记录 ⇒ 不可抹。`reused` 与 `gone` 放行——前者组号已不是那一组，后者组长已退出
+ * （组长已退出而组员还在的那一格如实保留，用户决策 4）。
+ */
+export async function cliGroupsConfirmedGone(s: RunStatus | null): Promise<{ gone: boolean; why: string }> {
+  const { records, malformed } = cliRecordsOf(s);
+  if (malformed.length > 0) {
+    const raw = malformed.map((side) => `${side}：${rawCliOf(s, side)}`).join('；');
+    return { gone: false, why: `CLI 记录读不懂（${raw}）：判不了` };
+  }
+  for (const r of records) {
+    const v = await judgeCliGroup(r);
+    if (v === 'alive') return { gone: false, why: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 仍在` };
+    if (v === 'unverifiable') {
+      return { gone: false, why: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 仍有活进程、启动时刻没记下：判不了` };
+    }
+  }
+  return { gone: true, why: '记录里没有仍在的审查员 CLI' };
 }
 
 /**

@@ -19,7 +19,7 @@ import { promises as fs } from 'node:fs';
 import type { Config } from './types.js';
 import { runRoot } from './config.js';
 import { repoId } from './review.js';
-import { isTerminal, readStatus, workerConfirmedGone, type RunStatus } from './status.js';
+import { cliGroupsConfirmedGone, isTerminal, readStatus, workerConfirmedGone, type RunStatus } from './status.js';
 import { processAlive } from './util/exec.js';
 import { RUN_DIR_FILES } from './run-files.js';
 import { scrubDidWork, scrubRunDir, sideLayerPending, type AdapterLookup } from './scrub.js';
@@ -69,6 +69,12 @@ export interface ScrubTally {
    */
   deferred: string[];
   /**
+   * `deferred` 里因**审查员 CLI 进程组记录**而不抹的那一部分，带成因（EV-154 / EV-38，代码双审 r1 CODEX-01）：
+   * CLI 组仍活着、启动时刻没记下而组长还在（判不了）、或记录读不懂。它们同时也在 `deferred` 里（分档仍闭合），
+   * 单列是因为成因要随计数带出——「读不懂」那一格不会自愈，不能混在「多为瞬态」里。
+   */
+  deferredCli: { dir: string; detail: string }[];
+  /**
    * 抹过但没扫完——那几份仍未脱敏。`detail` 区分两种成因：
    * 侧层（超大 / 回读面下的二进制 / 读不了）留空，取证去该侧的 `scrub.json`；
    * 运行目录层带上首条告警原文，因为**那一层刻意不写哨兵**，按「详见该侧 scrub.json」
@@ -83,7 +89,7 @@ export interface PruneResult extends ScrubTally {
 }
 
 const emptyTally = (): ScrubTally => ({
-  scrubbed: [], runDirRedacted: [], scrubFailed: [], unknown: [], deferred: [], incomplete: [],
+  scrubbed: [], runDirRedacted: [], scrubFailed: [], unknown: [], deferred: [], deferredCli: [], incomplete: [],
 });
 
 /**
@@ -103,9 +109,23 @@ async function workerStillAlive(status: RunStatus | null): Promise<boolean> {
  * 判据与 `waitRun` / `cancelRun` 共用 `workerConfirmedGone`（代码双审 r2 三侧收敛）。
  * 终态也要看进程：`waitRun` 判 `heartbeat_stale` 时会把**活着的**进程写成 failed。
  * 调用前假定已确认 worker 不活（`workerStillAlive` 为 false）。
+ * 自 EV-154 / EV-38 起还要问 status.json 里的审查员 CLI 进程组记录（`cliGroupsConfirmedGone`）；这一半
+ * 只在这里问——`waitRun` / `cancelRun` 自己的准入暂不核 CLI（CLI进程组记录计划 r2 §7.3，另登 BACKLOG）。
  */
 async function admitScrub(dir: string, status: RunStatus | null, out: ScrubTally): Promise<boolean> {
   const gone = await workerConfirmedGone(status, await readWorkerPid(dir));
+  /*
+   * worker 不在还不够：它以 killTree 拉起的审查员 CLI 可能还活着、还在用（或往回写）这份副本（EV-38）。
+   * 记录里的 CLI 组仍活着、判不了、或记录读不懂 ⇒ 不抹（CLI进程组记录计划 r2 §4.5）。走到这里 status 必然读得到。
+   */
+  if (gone.gone) {
+    const cli = await cliGroupsConfirmedGone(status);
+    if (!cli.gone) {
+      out.deferred.push(dir);
+      out.deferredCli.push({ dir, detail: cli.why });
+      return false;
+    }
+  }
   if (gone.gone) return true;
   // 「没有证据说它死了」与「它还活着」是两回事：前者要让人知道，后者是正常状态。
   // 两种都要落格，否则看过的目录会有一类哪一格都不进（代码双审 GLM-04）。

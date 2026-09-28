@@ -9,6 +9,7 @@ import type { AdapterTable, AdapterContext } from './adapters/base.js';
 import type { CriticId, CriticRequest, CriticResult, ReviewMode, ScrubOutcome } from './types.js';
 import { clearScrubSentinel, describeScrubFailure, scrubSideDir } from './scrub.js';
 import { step, warn } from './util/log.js';
+import { withTreeTag } from './util/exec.js';
 
 /**
  * 是否属于**瞬时**故障（§12.3）。
@@ -139,7 +140,8 @@ async function runOneSide(
     let hasThrown = false;
     let attemptResult: CriticResult | undefined;
     try {
-      attemptResult = await adapter.run(input.ctx, req);
+      // 侧归属（EV-154）：适配器在这里面以 killTree 拉起的 CLI 带上侧名，worker 据此写 status.json 的 sides[c].cli
+      attemptResult = await withTreeTag(critic, () => adapter.run(input.ctx, req));
     } catch (e) {
       thrown = e;
       hasThrown = true;

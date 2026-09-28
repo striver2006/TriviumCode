@@ -7,6 +7,7 @@
  */
 import { spawn } from 'node:child_process';
 import type { ChildProcess, SpawnOptions } from 'node:child_process';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 export interface RunOptions {
   cwd?: string;
@@ -52,6 +53,8 @@ export interface RunOptions {
    *
    * 这样拉起的子进程还会登记进本进程的 `liveTrees`：它不在调用方的进程组里，调用方被按组杀时够不到它，
    * 所以 worker 收到 SIGTERM 时要靠 `shutdownTrackedTrees` 按组终止它们（EV-152）。
+   * 有观察者（`watchTrackedTrees`，只有 worker 装）时，登记还会被投影进 status.json 的逐侧记录，
+   * 供 worker 自己跑不到处理器时由 `--cancel` 与清扫准入跨进程读取（EV-154）。
    */
   killTree?: boolean;
 }
@@ -74,11 +77,71 @@ export interface RunResult {
 
 const DEFAULT_MAX_BUFFER = 32 * 1024 * 1024;
 
+interface LiveTree {
+  child: ChildProcess;
+  /** 派生时 `withTreeTag` 的 store；不在任何一侧之内派生（探活、git）时为 null */
+  tag: string | null;
+  /** 组长的规范化启动时刻（`processStartTime(…, { canonical: true })`）；没有观察者、尚未取到或取不到时为 null */
+  startedAt: string | null;
+}
+
 /**
  * 本进程以 `killTree` 拉起、尚未观察到退出的子进程（EV-152，取消够不到审查员CLI计划 r2 §4.1）。
- * 键是 pid，也是它的进程组号（`detached` ⇒ 组长）。只在本进程内有意义：worker 收到 SIGTERM 时据此按组终止它们。
+ * 键是 pid，也是它的进程组号（`detached` ⇒ 组长）。worker 收到 SIGTERM 时据此按组终止它们。
+ *
+ * **它是 CLI 的唯一登记**（EV-154，CLI进程组记录计划 r2 §4.1，用户决策 2）：跨进程的记录（status.json 的 `sides[c].cli`）
+ * 由它派生——`trackedTrees()` 给出投影、`watchTrackedTrees` 在变化时通知——不另建一份同职登记。
  */
-const liveTrees = new Map<number, ChildProcess>();
+const liveTrees = new Map<number, LiveTree>();
+
+/**
+ * 侧归属（EV-154 D1）：`runner.ts` 的 `runOneSide` 把 `adapter.run` 包进 `withTreeTag(critic, …)`，
+ * `run()` 派生时读它。用 `AsyncLocalStorage` 而不是经 `AdapterContext` 穿回调：侧名只在 `runOneSide` 显式可得，
+ * 穿回调要改四个适配器与桩、漏一处就静默少一侧，回调本身也会成为第二个登记入口。
+ * 传播断了（未知的调度形态、未测的 Node 版本）时 tag 为 null、这一组不进记录——fail-safe：取消侧退回如实提示，准入侧退回只核 worker。
+ */
+const treeTagStore = new AsyncLocalStorage<string>();
+
+/** 登记变化的唯一观察者（只有 worker 装）；没有观察者时不取启动时刻 */
+let treeListener: (() => void) | null = null;
+
+function notifyTrees(): void {
+  const l = treeListener;
+  if (!l) return;
+  try {
+    l();
+  } catch {
+    /* 观察者出错不连累 run() 与 worker（CLI进程组记录计划双审 r1 AGY-03） */
+  }
+}
+
+/** 在 fn 之内以 `killTree` 派生的子进程都带上 tag（`runOneSide` 用它标侧，EV-154） */
+export function withTreeTag<T>(tag: string, fn: () => Promise<T>): Promise<T> {
+  return treeTagStore.run(tag, fn);
+}
+
+/** `liveTrees` 的只读投影（按登记先后）。键即进程组号 */
+export interface TrackedTree {
+  pgid: number;
+  tag: string | null;
+  startedAt: string | null;
+}
+
+export function trackedTrees(): TrackedTree[] {
+  return [...liveTrees].map(([pgid, e]) => ({ pgid, tag: e.tag, startedAt: e.startedAt }));
+}
+
+/**
+ * 装唯一观察者：登记、取到启动时刻、删除时各同步调用一次；返回卸载函数（EV-154）。
+ * 已有观察者时抛错——两个写者各写一份投影，就是两份登记。
+ */
+export function watchTrackedTrees(listener: () => void): () => void {
+  if (treeListener) throw new Error('watchTrackedTrees：已有观察者');
+  treeListener = listener;
+  return () => {
+    if (treeListener === listener) treeListener = null;
+  };
+}
 
 /**
  * 置位后本进程进入「终止中」：`run()` 不再派生，已在跑的 `run()` 不再兑现。只由 `shutdownTrackedTrees` 置位，不复位——
@@ -147,10 +210,27 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     // 登记与派生之间插不进别的 JS（spawn 是同步的），所以 SIGTERM 处理器看得到每一个已派生的组
     if (killTree && child.pid !== undefined) {
       const pid = child.pid;
-      liveTrees.set(pid, child);
+      const entry: LiveTree = { child, tag: treeTagStore.getStore() ?? null, startedAt: null };
+      liveTrees.set(pid, entry);
       child.once('exit', () => {
-        if (liveTrees.get(pid) === child) liveTrees.delete(pid);
+        if (liveTrees.get(pid) === entry) {
+          liveTrees.delete(pid);
+          notifyTrees();
+        }
       });
+      /*
+       * 有观察者（worker）时：派生当时先通知一次（组号即刻落盘、启动时刻为 null），再取规范化启动时刻、取到后补一次
+       * （EV-154 D2，用户决策 3「派生当时写下」）。没有观察者（前台探活、测试进程）就不多一次 ps。
+       */
+      if (treeListener) {
+        notifyTrees();
+        processStartTime(pid, { canonical: true })
+          .then((t) => {
+            entry.startedAt = t;
+            if (liveTrees.get(pid) === entry) notifyTrees();
+          })
+          .catch(() => undefined);
+      }
     }
 
     let stdout = '';
@@ -440,12 +520,38 @@ export async function processAlive(
   };
 }
 
-/** 取进程启动时刻。macOS/BSD 与 Linux 的 ps 都支持 `-o lstart=` */
-export async function processStartTime(pid: number): Promise<string | null> {
-  const r = await run('/bin/ps', ['-p', String(pid), '-o', 'lstart='], { timeoutMs: 10_000 });
+/**
+ * 取进程启动时刻。macOS/BSD 与 Linux 的 ps 都支持 `-o lstart=`
+ *
+ * **`lstart` 的字符串随 TZ 与区域设置变化**（CLI进程组记录计划 r2 §2 Q4 实测：同一进程在 `TZ=UTC`、`TZ=Asia/Tokyo`、
+ * `LC_ALL=fr_FR.UTF-8`、`LC_TIME=zh_CN.UTF-8` 下各不相同），而写记录与读记录的往往是环境不同的两个进程。
+ * `canonical` 时以 `LC_ALL=C`、`TZ=UTC0` 调 ps，结果与调用方环境无关——CLI 进程组记录的写与判只经这一形态（EV-154，
+ * 计划双审 r1 CODEX-01）。不带选项时行为不变：既有 `worker_started_at` 仍按缺省环境取（同一缺陷，另登 BACKLOG）。
+ */
+export async function processStartTime(pid: number, o: { canonical?: boolean } = {}): Promise<string | null> {
+  const r = await run('/bin/ps', ['-p', String(pid), '-o', 'lstart='], {
+    timeoutMs: 10_000,
+    ...(o.canonical ? { env: { LC_ALL: 'C', TZ: 'UTC0' } } : {}),
+  });
   if (r.code !== 0) return null;
   const t = r.stdout.trim();
   return t.length > 0 ? t : null;
+}
+
+/**
+ * 进程组 `pgid` 现有的**非僵尸**成员数（按 `ps -axo pgid=,stat=` 枚举；取不到时为 null）。与 `test/helpers/proc.ts` 的
+ * `groupMemberCount` 同一判据，另排除僵尸——刚退出、尚未被回收的组长不算遗留。
+ * `--cancel` 按记录结束 CLI 之后用它如实报「组长已退出而组员还在」（EV-154，计划双审 r1 GLM-01）。
+ */
+export async function processGroupMemberCount(pgid: number): Promise<number | null> {
+  const r = await run('/bin/ps', ['-axo', 'pgid=,stat='], { timeoutMs: 10_000 });
+  if (r.code !== 0) return null;
+  let n = 0;
+  for (const line of r.stdout.split('\n')) {
+    const m = /^\s*(\d+)\s+(\S+)/.exec(line);
+    if (m && Number(m[1]) === pgid && !m[2]!.startsWith('Z')) n++;
+  }
+  return n;
 }
 
 /**
@@ -460,7 +566,8 @@ export async function processStartTime(pid: number): Promise<string | null> {
  * 自成一组（`2b460ad` 起）；按 worker 的组发的信号到不了它们（零配额实测：worker 被按组 SIGTERM 后退出，
  * `killTree` 拉起的子进程过继给 init 继续活着，派生后失败的孤儿worker计划 r2 §2.1）。
  * 自 EV-152 起由 worker 自己的 SIGTERM 处理器转发（`shutdownTrackedTrees`）；worker 被 SIGKILL、崩溃或事件循环
- * 堵住时处理器跑不到，那几格仍够不到（取消够不到审查员CLI计划 r2 §3.2，BACKLOG EV-154）。
+ * 堵住时处理器跑不到，那几格自 EV-154 起由 `--cancel` 按 status.json 的逐侧 CLI 记录逐组结束
+ * （`terminateRecordedCliGroups`，CLI进程组记录计划 r2 §4.4）。
  *
  * 返回是否至少送达了一个目标。组不存在（ESRCH）时退回单进程，
  * 因为组可能已经空了、也可能这个 pid 压根不是组长。
@@ -508,7 +615,11 @@ export interface TerminateOptions {
  * 可能已被复用的号发组信号。
  *
  * 只管这一个进程组：适配器以 `killTree` 拉起的厂商 CLI 自成一组，按 worker 的组发够不到它们——由 worker 的
- * SIGTERM 处理器经 `shutdownTrackedTrees` 转发；升级到 SIGKILL 时处理器跑不到（见 `killProcessTree`，EV-152）。
+ * SIGTERM 处理器经 `shutdownTrackedTrees` 转发；升级到 SIGKILL 时处理器跑不到，由 `--cancel` 按记录另行结束
+ * （见 `killProcessTree`，EV-152 / EV-154）。
+ *
+ * **`isGone` 按组长判**：组长服从 SIGTERM 而组员忽略时，宽限轮询在组长退出那一刻即返回、不升级 SIGKILL。
+ * 调用方若要如实报告，得自己再数一次组成员（`processGroupMemberCount`，EV-154 计划双审 r1 GLM-01）。
  */
 export async function terminateProcessGroup(
   pid: number,
@@ -583,7 +694,7 @@ export interface TreeShutdownResult {
 export async function shutdownTrackedTrees(o: TreeShutdownOptions): Promise<TreeShutdownResult> {
   treeShutdown = true;
   const pending: Array<[number, ChildProcess]> = [];
-  for (const [pid, child] of liveTrees) {
+  for (const [pid, { child }] of liveTrees) {
     if (child.exitCode === null && child.signalCode === null) pending.push([pid, child]);
   }
   const signals: Record<number, NodeJS.Signals[]> = {};

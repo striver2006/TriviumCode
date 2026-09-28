@@ -1,0 +1,141 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  M1 ✓ 咬住（fail=5）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=2）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=5）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=1）
+  M16 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=1）
+  M18 ✓ 咬住（fail=1）
+  M19 ✓ 咬住（fail=1）
+{
+  "总数": 19,
+  "咬住": 19,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "runOneSide 不包 withTreeTag ⇒ I3（记录缺席）",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M2",
+      "desc": "取到启动时刻之后不通知 ⇒ U10（通知次数不足、记录停在 started_at: null）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "删除条目之后不通知 ⇒ I7（CLI 自然结束后记录不清）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "syncCliRecords 不按 tag 匹配（首条给每一侧）⇒ U11",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "cancelRun「已不存在」分支不按记录结束 ⇒ I3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "cancelRun 升级 SIGKILL 之后不按记录结束 ⇒ I4",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "judgeCliGroup 不比启动时刻（不符也判 alive）⇒ U13",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "admitScrub 不问 CLI 组 ⇒ U14",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "terminateRecordedCliGroups 不升级 SIGKILL ⇒ U15",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M10",
+      "desc": "unverifiable 在取消侧当 alive（照发信号）⇒ U15（不发信号的格）。r1 时是等价变异（isGone 第二道门挡住）；代码双审 r1 GLM-01 收紧 isGone 之后应咬住",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "unverifiable 在准入侧当已不在 ⇒ U14",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "workerMain 不装观察者 ⇒ I3（记录缺席）",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M13",
+      "desc": "终态早退分支不按记录结束（D3）⇒ I5",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "没有观察者时也取启动时刻 ⇒ U10",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "processStartTime 的 canonical 不钉环境（计划双审 r1 CODEX-01）⇒ U16",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M16",
+      "desc": "收尾后不数组成员（计划双审 r1 GLM-01）⇒ U15 变体",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "准入侧把形状坏的记录当没有（计划双审 r1 GLM-02）⇒ U14",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M18",
+      "desc": "--cancel 主路径不清已确认结束的记录（计划双审 r1 AGY-02）⇒ I3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M19",
+      "desc": "isGone 改回 !== alive（轮询中判不了即收手，代码双审 r1 GLM-01）⇒ U17",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0
