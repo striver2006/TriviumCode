@@ -1,0 +1,143 @@
+---
+schema: trivium.review.v1
+topic: worker启动时刻规范化
+stage: plan
+role: glm
+vendor: zcode
+agent_cli: zcode/0.16.9
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260928T110842Z
+rerun_index: 1
+snapshot_hash: sha256:88c5d085b6972b67266173a81daa4d38d69006c174225742938a397e735666cc
+blind: true
+started_at: 2026-09-28T11:08:44.037Z
+finished_at: 2026-09-28T11:18:11.727Z
+duration_s: 568
+tool_calls:
+  read: 16
+  grep: 13
+  glob: 1
+  run_command: 0
+  project_reads: 19
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 2
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: sess_69c93fdf-f8af-400c-a89f-edded2404f29
+---
+
+# 计划审查：worker启动时刻规范化
+
+> Critic-B · 智谱 ZCode ｜ 模型 `bigmodel-coding-plan/GLM-5.3`
+> ｜ 运行 `20260928T110842Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+逐条对照 6b89cc0 源码核实：消费方清单（8 个身份判据 + 2 处只看存活）与全仓 grep 完全吻合，三个写者、D4 锁改写陷阱、patchStatus 整份读改写（A7 依据）、fallbackPidStartedAt 生产不传等关键事实全部属实；「有规范化只比规范化、否则逐字退回」的双形态读法与现行各判据语义逐项对得上，未见会导致返工的设计问题。三条小问题：A4 验收格按字面构造不出（一把遗留锁喂不了两次「回收并起跑」）；§6 引用的 PROTOCOL「status.json 字段表」不存在；§4.2.1「两次 ps 一定是同一进程」的论证跨不过 await 边界。整体方向正确，建议带三条修正后实施。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 3 条：次要 2 ｜ 吹毛求疵 1）
+
+### GLM-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5.4 A4（验收格「遗留锁，旧写新读」）` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：A4 要用一把遗留锁让「新 --start（W 与 R 各一次）」两次都按 pid_gone 回收并起跑，但这在一把锁上构造不出来：第一次新 --start 回收成功后会写下自己的新锁并派生活 worker，第二次 --start（无论哪个环境）对这把活锁走 judgeStale 判 not-stale、退出码 70，根本到不了 pid_gone 回收。照字面写验收脚本必有一格判据落空。
+
+**依据**：src/trivium/lock.ts:165-229（acquireLock：EEXIST → judgeStale，非 stale 在 attempt≥retries 时抛 EXIT.LOCKED(70)，仅 stale 才 reclaimStaleLock 后重试）；src/trivium/run-protocol.ts:434-448（--start 拿到锁后改写为 worker 持有并派生，此后锁为活锁）。两文件均实际读过。
+
+**建议**：A4 明确写成两把各自独立的旧格式遗留锁（或两轮「构造遗留锁 → 跑一次新 --start → 整轮收尾清理」的序列），每把遗留锁只喂一次新 --start；判据本身（每次都按 pid_gone 回收并起跑、与旧版相同）不用改。
+
+### GLM-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §6（PROTOCOL 同步条目）` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§6 要往「PROTOCOL 的 status.json 字段表」加 worker_started_at_canonical，但 PROTOCOL_dual_critic_relay.md 里没有这样一张表：全文没有 worker_started_at 字样，status.json 的对外键（cli、lost）都是在 :360 的命令行内以「对外 JSON 形状的加法」一句带出，不是表格。照计划执行要么找不到落点，要么凭空造一张表、改变该文档的既有结构。
+
+**依据**：对 doc/03_api/PROTOCOL_dual_critic_relay.md grep worker_started_at 零命中；:270 的「进程存活性比对」约束句与 :360 的 --wait --json / --status --json 加法句式是实际存在的同步点（均实际读过）。
+
+**建议**：把 §6 的 PROTOCOL 落点改写为两处既有锚点：:270 约束句补规范化形态与两个新字段；:360 按 cli / lost 的既有句式补一句「--wait --json 与 --status --json 的 status 多出 worker_started_at_canonical 键（加法，旧调用方忽略）」，不新增字段表。
+
+### GLM-03 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.2 第 1 条（processStartTimes 两次 ps 的同一性论证）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：「未观察到 'exit' 之前 pid 不会被复用，两次取到的一定是同一进程」的论证跨不过 await 边界：DetachedChildWatch 的「hasExited() 为假 ⇒ 未被回收」只在单一 JS 时刻成立（exec.ts:385-389 的文档块自己写明这是『在 JS 看来』），Promise.all 的两次 ps 之间事件循环可以处理 SIGCHLD、libuv 完成 waitpid，此后 pid 即可复用。实际风险可忽略（macOS pid 顺序分配，毫秒窗内绕整圈不现实），即便发生后果也不比今天单次取值更糟；但『一定』这个措辞会被实现注释与后续审查当绝对不变量引用。
+
+**依据**：src/trivium/util/exec.ts:382-396（DetachedChildWatch 文档块：论证以 JS 单线程观察为界）、:500-539（processAlive/processStartTime 均含 await，期间事件循环可推进）。实际读过该文件。
+
+**建议**：实施时把该处注释的真实边界写出来：常态路径是父进程、子进程刚派生未退出；跨 await 后依赖的是「复用需 pid 空间绕圈」的概率边界而非绝对不变量；两形态因进程退出一成一败（null）时按 g 格退回，D3 已覆盖。
+
+## 认为正确的部分
+
+- 消费方与写者清单逐行准确：全仓 grep 核对，比启动时刻的正是 C1～C8 八处，另有 sweepDeadRunningGates（hooks.ts:1748）与 waitRun 补收（run-protocol.ts:1154）两处只看存活，judgeCliGroup（status.ts:283）已是规范化形态——没有遗漏的第九处身份消费方。
+- D4 抓住的真实陷阱与修法正确：run-protocol.ts:437 与 :638 的 spread 锁改写今天只覆盖 pid_started_at，新增字段后确实会把 --start 的规范化时刻挂在 worker 的 pid 上；集成断言因同一秒 lstart 相同而咬不住（I1 的论证成立），收成纯函数 workerLockContent + U4 + M2 直接钉住是对的。
+- 双形态读法与各现行判据逐项对得上：processAlive 的 EPERM 算活、期望假值即相符、取不到而期望非空 ⇒ sameProcess:false，以及 judgeStale 三判据、classifyLostCancel 类型守卫、lostWorkerGoneFrom 严格三态，§4.4/§4.6 的映射与源码语义一致（含 C8 只在 C7 判 alive 后才走到、须同换读法的论证）。
+- A7 的前提成立：status.ts:142-162 的 patchStatus 是整份 JSON 对象的读改写（readStatus → mutate → writeStatus），旧版确会保留不认识的键；旧版锁改写只基于自己 acquireLock 的内存内容（无新键），§7.2「不会把新键带到错误的 pid 上」的论证核实无误。
+- 测试办法可行：U16（cli-group-record.test.ts:236-261）已证明进程内改 process.env 能改到 ps 的环境（run() 在 exec.ts:194 拷贝 process.env 再叠加）；W/R 环境选择避开「缺省=规范化」的 UTC+C 巧合，且 U2 断言退回路径与 processAlive 逐字一致、U5 用删字段造 d 格回归，设计周到。
+- 不改 sweepDeadRunningGates 与 waitRun 补收两处是对的：前者确实只取 .alive（其文档块与实现不符，只改注释的处置恰当）；processAlive 不改签名、另立 processMatchesRecord 收八个消费方，避免把两处只看存活的调用卷进改签名。
+- §8 对 EV-159 的差距分析与 BACKLOG EV-159 原文一致（严格判据、legacy 假阳性、无 lost 形态、秒级精度四项残余）；BACKLOG EV-158 注记里 classifyLostCancel 的消费与 C7 改法对得上，D7 放宽守卫的理由（canonical 有而 legacy 为 null 的记录今天被误判 no_identity）在源码 :1394-1401 得到印证。
+- D5 只缓存规范化形态、不缓存缺省形态的取舍正确：缺省形态随 process.env 变（U16 依赖这一点），缓存会改今天的行为；缓存命中还少一处终止中悬空，§7.5 的冻结分析成立。
+
+## 未覆盖范围（本侧盲区）
+
+- 只读审查：未跑 npm run build / test / check，2203/2201 基线读数与 §2 探针「三次读数相同」均取计划自述，未复测。
+- 未读 .reviews/ 下被引的历史计划与双审件（CLI进程组记录 r2、失联后取消挂住的worker r2 等），相关背景以当前源码与 REPORT/BACKLOG/设计/LLD/PROTOCOL/MANUAL 的被引段落为准。
+- PRD 未逐条核（计划预计不改、仅信其 grep 结论）；主设计 / LLD / MANUAL 只核了被引行（设计 §7.5、LLD :599、MANUAL :652 均存在且内容相符），未通读全文。
+- §5.3 变异规格的锚点可生成性与唯一性要到实施时才能验，本次只核了 M1～M19 与 U/I/A 格在逻辑上闭合。
+- hooks.json、skills-src、gate.ts、state.json 链路按本主题范围不触及，未展开审查；real-CLI 行为（用户决策不做实测）未覆盖。
+
+## 实际查阅的项目文件
+
+- `src/trivium/util/exec.ts`
+- `src/trivium/lock.ts`
+- `src/trivium/status.ts`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/retention.ts`
+- `src/trivium/hooks.ts`
+- `test/helpers/fixture.ts`
+- `test/helpers/proc.ts`
+- `test/unit/cli-group-record.test.ts`
+- `test/unit/lock.test.ts`
+- `doc/08_project/BACKLOG.md`
+- `doc/05_testing/REPORT_2026-09-28_cli_pgroup_record.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `doc/07_manuals/MANUAL_user.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/02_design/LLD_orchestrator.md`
+- `README.md`
+- `doc/README.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":16,"grep":13,"glob":1,"run_command":0,"project_reads":19}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

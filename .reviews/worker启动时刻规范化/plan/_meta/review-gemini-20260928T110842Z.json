@@ -1,0 +1,72 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "实施计划整体设计严密、推演充分，核心改动收敛清晰。\n准确识别出 D4 锁改写时展开旧锁内容残留 --start 规范化时间导致活锁被误回收的隐蔽缺陷，并设计了纯函数隔离与变异测试钉死；\nC8 严格退出判据与 C7 保持同 basis 比较，有效杜绝了因形态不一致引发的 run.json 虚假补收风险；\n覆盖矩阵完整兼顾了新旧双向兼容与回滚路径；\n所提意见主要涉及 canonicalStartOf 空白字符修剪一致性、助手函数 Promise.all 容错契约以及无谓的 ps 派生消除。",
+  "findings": [
+    {
+      "id": "AGY-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4.1",
+      "problem": "canonicalStartOf 判定非空字符串后直接返回原值 v，未做 trim() 处理，存在首尾带空白字符时与 processStartTime 产出比对失真的风险。",
+      "evidence": "查阅 src/trivium/util/exec.ts:537，processStartTime 获取的启动时刻经过了 r.stdout.trim() 处理；而计划 §4.1 中 canonicalStartOf(v: unknown): string | null 判定 typeof v === 'string' && v.trim().length > 0 后直接返回 v。若 status.json 或锁文件中存入的值因手工改动或外部输入带有首尾空白，直接比对（===）将判定为不一致，误判为非同一进程。",
+      "suggestion": "canonicalStartOf 应返回 v.trim() 而非原值 v，确保进入 processMatchesRecord 参与比对的 expected 始终为修剪后的规范形态。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §4.2、§4.3、§5.1 U10",
+      "problem": "processStartTimes 并发取值未明确异常隔离，且 processMatchesRecord 单测注入签名在主契约中未作规范声明。",
+      "evidence": "参考 src/trivium/run-protocol.ts:621 既有逻辑，启动时刻获取皆附带 .catch(() => null) 防御；计划 §4.2 提出 processStartTimes 以 Promise.all 并发取 legacy 与 canonical，若任一进程派生抛出异常将导致整个 Promise reject。此外，计划 §4.3 给出的 processMatchesRecord 函数签名未列出第三参，但在 §5.1 U10 中却引用了可选第三参 o.startTimeOf，且该参数仅对规范化分支生效，接口语义存在模糊。",
+      "suggestion": "在 §4.2 明确 processStartTimes 内部对两路获取均附加 .catch(() => null)，保证方法永不 reject；在 §4.3 显式定义第三个可选参数签名，并建议命名为 canonicalStartTimeOf 以准确反映其仅作用于规范化取值的行为。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "performance",
+      "location": "plan §4.5",
+      "problem": "sweepDeadRunningGates 维持现有调用会导致无实际价值的 /bin/ps 派生性能浪费。",
+      "evidence": "查阅 src/trivium/hooks.ts:1748，调用为 alive = (await processAlive(st.worker_pid, st.worker_started_at ?? null)).alive。在 src/trivium/util/exec.ts:514 中，传入非空期望时间会触发 processStartTime 派生 /bin/ps，但 hooks.ts 随后丢弃了 sameProcess 仅读取 .alive。计划 §4.5 决策代码不改仅改注释，导致拦截链路仍在白白派生 ps 子进程。",
+      "suggestion": "建议在 §4.5 中将调用改为 processAlive(st.worker_pid, null)，在维持「仅查存活、保守不回收」语义的前提下消除无谓的 ps 进程派生。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "D4 决策敏锐抓住了 spread 改写锁内容（{ ...lock.content, run_id, pid, pid_started_at }）会残留 --start 自身 pid_started_at_canonical 的隐蔽陷阱，抽象出 workerLockContent 纯函数显式重写四个字段，并用 U4 与变异 M2/M17 严密盯防，彻底排除了活锁被当成遗留锁误回收的风险。",
+    "C8 严格退出判据（lostWorkerGone）与 C7（classifyLostCancel）统一迁移至 processMatchesRecord 读法，保证使用同一 basis 下的 startedAt 与 expected 校验，杜绝了 C7 认规范化存活而 C8 认缺省失配导致活 worker 仍在跑时提前补收 run.json 的严重并发两写者缺陷。",
+    "字段扩展严格遵照「不改动既有字段形态与含义、新字段缺席或失效时退回 legacy 缺省比较」的原则，对覆盖矩阵 a～j、升级窗口（d 格）与回滚（e/f 格）的边界论证客观扎实。",
+    "D5 对 acquireLock 中本进程的规范化启动时间增加进程内缓存，有效避免了在 withGlobalLock 高并发争用重试时重复派生 ps 的开销。"
+  ],
+  "not_covered": [
+    "真实开发环境下各厂商 CLI（如 Antigravity、ZCode、Codex）在不同系统区域设置或时钟偏移场景下的真实端到端表现（依赖桩适配器与进程环境变量模拟）。",
+    "macOS 下极端高并发 PID 瞬间耗尽复用且恰好在同一秒内启动的微秒级碰撞窗口（j 格）。",
+    "跨越数小时的升级窗口遗留锁（d 格）在真实用户终端混合操作下的长期驻留场景。"
+  ],
+  "consulted": [
+    ".reviews/worker启动时刻规范化/plan/2026-09-28-worker启动时刻规范化-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/05_testing/REPORT_2026-09-28_cli_pgroup_record.md",
+    "scripts/mutation-check.mjs",
+    "test/helpers/fixture.ts",
+    "test/helpers/proc.ts",
+    "test/unit/cli-group-record.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/status.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/hooks.ts"
+  ]
+}
