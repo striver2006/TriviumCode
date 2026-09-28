@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { groupsWithMark, killGroup } from '../helpers/proc.js';
 import {
   killProcessTree, spawnDetached, processAlive, run, terminateProcessGroup, type DetachedChildWatch,
 } from '../../src/trivium/util/exec.js';
@@ -180,8 +181,9 @@ test('killProcessTree 杀整组：子孙进程不被遗弃给 init', async () =>
    * 这是 worker 以不带 `killTree` 的 `run()` 拉起子进程的形状。只 kill 父进程的话，
    * 子进程会被 init 收养并继续跑——`5476238` 实测中 `--cancel` 之后 zcode-cli 的 PPID
    * 变成 1 且仍在消耗配额，就是这么来的（那时它还在 worker 的组里）。
-   * 注意：今天审查员适配器以 `killTree: true` 拉起厂商 CLI，那会让 CLI 自成一组，本用例的形状**不覆盖**它——
-   * 按 worker 的组发的信号到不了那一组（派生后失败的孤儿worker计划 r2 §2.1，BACKLOG EV-152）。
+   * 注意：审查员适配器以 `killTree: true` 拉起厂商 CLI，那会让 CLI 自成一组，本用例的形状**不覆盖**它——
+   * 按 worker 的组发的信号到不了那一组，由 worker 的 SIGTERM 处理器转发（EV-152）；那一形状见本文件 U7 与
+   * gate-loop 的 I1 / I2。
    */
   const script = path.join(dir, 'parent.mjs');
   await fs.writeFile(
@@ -405,4 +407,158 @@ test('EV-150 U4④：terminateProcessGroup——一开始就已退出时一个�
   });
   assert.deepEqual(r, { gone: true, escalated: false, signals: [] });
   assert.deepEqual(sent, []);
+});
+
+// ─────────── EV-152：shutdownTrackedTrees（取消够不到审查员CLI计划 r2 §5.1 U7） ───────────
+
+/**
+ * 冻结标志是模块级的，**不能在测试进程里置位**：每格在子进程里跑。子进程自己以 killTree 形态派生（组长），
+ * 它名下不带 killTree 的后代与它同组；带 killTree 的孙进程各自成组。收尾按组号结束：本次标记认得出的组、
+ * 以及子进程自己那一组。
+ */
+interface ShutdownScenario {
+  groups: number[];
+  signals: Record<string, string[]>;
+  remaining: number[];
+  [k: string]: unknown;
+}
+
+/** 子进程脚本的公共前段：导入被测模块、按标记找组长、数组员（`rows` / `members` 与 `test/helpers/proc.ts` 同源；在子进程里跑，必须自包含） */
+function scenarioPrelude(): string {
+  return [
+    `import { run, shutdownTrackedTrees } from ${JSON.stringify(EXEC_MODULE)};`,
+    "import { execFileSync } from 'node:child_process';",
+    "import { existsSync } from 'node:fs';",
+    'const MARK = process.argv[2];',
+    'const sleep = (ms) => new Promise((r) => setTimeout(r, ms));',
+    'function rows() {',
+    "  const out = execFileSync('/bin/ps', ['-axo', 'pid=,pgid=,command='], { encoding: 'utf8' });",
+    '  const res = [];',
+    "  for (const l of out.split('\\n')) { const m = /^\\s*(\\d+)\\s+(\\d+)\\s+(.*)$/.exec(l); if (m) res.push({ pid: +m[1], pgid: +m[2], cmd: m[3] }); }",
+    '  return res;',
+    '}',
+    'const members = (pgid) => rows().filter((r) => r.pgid === pgid).length;',
+    'async function leader(tag) {',
+    '  for (let i = 0; i < 100; i++) {',
+    "    const r = rows().find((x) => x.cmd.includes(MARK + '-' + tag) && x.cmd.startsWith('/bin/sh'));",
+    '    if (r) { await sleep(100); return r.pid; }',
+    '    await sleep(50);',
+    '  }',
+    "  throw new Error('组长没起来：' + tag);",
+    '}',
+    "const tree = (tag, ignoreTerm) => run('/bin/sh', ['-c', (ignoreTerm ? \"trap '' TERM; \" : '') + 'sleep 600; : \"$0\"', MARK + '-' + tag], { killTree: true, timeoutMs: 600000 });",
+  ].join('\n');
+}
+
+async function runScenario(body: string): Promise<ShutdownScenario> {
+  const dir = await tmpDir();
+  const mark = `trivium-u7-${path.basename(dir)}`;
+  const script = path.join(dir, 'scenario.mjs');
+  await fs.writeFile(script, `${scenarioPrelude()}\n${body}\nprocess.exit(0);\n`, 'utf8');
+  try {
+    const r = await run(process.execPath, [script, mark], { killTree: true, timeoutMs: 30_000 });
+    const stdout = r.stdout.trim();
+    assert.equal(r.code, 0, `场景子进程应退 0：${r.stderr}${stdout}`);
+    return JSON.parse(stdout.split('\n').pop()!) as ShutdownScenario;
+  } finally {
+    // 收尾按组号结束带本次标记的组：场景子进程名下不带 killTree 的后代（U7⑤）在场景子进程自己那一组里，标记也认得出
+    for (const g of groupsWithMark(mark)) killGroup(g);
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
+test('EV-152 U7①：shutdownTrackedTrees——killTree 拉起的静默子进程被按组终止（组空），那个 run() 此后不兑现（冻结）', async () => {
+  const r = await runScenario([
+    "const p = tree('a', false);",
+    'let resolved = false; p.then(() => { resolved = true; });',
+    "const pgid = await leader('a');",
+    'const before = members(pgid);',
+    'const res = await shutdownTrackedTrees({ graceMs: 3000, killWaitMs: 1000 });',
+    'let after = members(pgid);',
+    'for (let i = 0; i < 20 && after > 0; i++) { await sleep(50); after = members(pgid); }',
+    'await sleep(500);',
+    'console.log(JSON.stringify({ ...res, pgid, before, after, resolved }));',
+  ].join('\n'));
+  assert.equal(r['before'], 2, '组里应有 sh 与 sleep 两个成员，用例前提');
+  assert.deepEqual(r.groups, [r['pgid']]);
+  assert.deepEqual(r.signals[String(r['pgid'])], ['SIGTERM']);
+  assert.deepEqual(r.remaining, []);
+  assert.equal(r['after'], 0, '整组都应结束，不只是带标记的组长');
+  assert.equal(r['resolved'], false, '冻结之后被杀子进程的 run() 不得兑现（否则 runner 会往下走、抢先写归档终态）');
+});
+
+test('EV-152 U7②：shutdownTrackedTrees——忽略 SIGTERM 的组在宽限后升级 SIGKILL，组空', async () => {
+  const r = await runScenario([
+    "tree('b', true);",
+    "const pgid = await leader('b');",
+    'const res = await shutdownTrackedTrees({ graceMs: 300, killWaitMs: 2000 });',
+    'let after = members(pgid);',
+    'for (let i = 0; i < 20 && after > 0; i++) { await sleep(50); after = members(pgid); }',
+    'console.log(JSON.stringify({ ...res, pgid, after }));',
+  ].join('\n'));
+  assert.deepEqual(r.signals[String(r['pgid'])], ['SIGTERM', 'SIGKILL']);
+  assert.deepEqual(r.remaining, []);
+  assert.equal(r['after'], 0);
+});
+
+test('EV-152 U7③：冻结之后再调 run()——不派生、不兑现', async () => {
+  const r = await runScenario([
+    'await shutdownTrackedTrees({ graceMs: 100, killWaitMs: 100 });',
+    // 绝对路径、落在本格的 mkdtemp 里：变异（M4）让 run() 照常派生时，文件不能落进测试进程的 cwd（仓库根）
+    "const f = new URL('./u7c-created', import.meta.url).pathname;",
+    "const p = run('/bin/sh', ['-c', ': > \"$0\"', f]);",
+    'let resolved = false; p.then(() => { resolved = true; });',
+    'await sleep(300);',
+    'console.log(JSON.stringify({ groups: [], signals: {}, remaining: [], created: existsSync(f), resolved }));',
+  ].join('\n'));
+  assert.equal(r['created'], false, '冻结之后 run() 不得派生');
+  assert.equal(r['resolved'], false);
+});
+
+test('EV-152 U7④：登记为空——立即返回，一个信号都不发', async () => {
+  const r = await runScenario([
+    'let sent = 0;',
+    'const t0 = Date.now();',
+    'const res = await shutdownTrackedTrees({ graceMs: 1000, killWaitMs: 1000, signal: () => { sent++; return true; } });',
+    'console.log(JSON.stringify({ ...res, sent, ms: Date.now() - t0 }));',
+  ].join('\n'));
+  assert.deepEqual(r.groups, []);
+  assert.equal(r['sent'], 0);
+  assert.ok((r['ms'] as number) < 500, `应立即返回，实为 ${String(r['ms'])} ms`);
+});
+
+test('EV-152 U7⑤：不带 killTree 的 run() 不进登记', async () => {
+  const r = await runScenario([
+    "run('/bin/sh', ['-c', 'sleep 600; : \"$0\"', MARK + '-plain'], { timeoutMs: 600000 });",
+    "tree('d', false);",
+    "const pgid = await leader('d');",
+    "let plain = 0;",
+    "for (let i = 0; i < 50 && !plain; i++) { const x = rows().find((y) => y.cmd.includes(MARK + '-plain') && y.cmd.startsWith('/bin/sh')); if (x) plain = x.pid; else await sleep(50); }",
+    'const res = await shutdownTrackedTrees({ graceMs: 1000, killWaitMs: 1000 });',
+    'console.log(JSON.stringify({ ...res, pgid, plain }));',
+  ].join('\n'));
+  assert.ok((r['plain'] as number) > 0, '不带 killTree 的子进程没起来，用例前提不成立');
+  assert.deepEqual(r.groups, [r['pgid']], '登记里只应有 killTree 那一组');
+});
+
+test('EV-152 U7⑥：两组都忽略 SIGTERM——并行终止，总耗时在单组预算之内（串行会约翻倍）', async () => {
+  const r = await runScenario([
+    "tree('e1', true); tree('e2', true);",
+    "const g1 = await leader('e1'); const g2 = await leader('e2');",
+    'const t0 = Date.now();',
+    'const res = await shutdownTrackedTrees({ graceMs: 2000, killWaitMs: 500 });',
+    'const ms = Date.now() - t0;',
+    'let after = members(g1) + members(g2);',
+    'for (let i = 0; i < 20 && after > 0; i++) { await sleep(50); after = members(g1) + members(g2); }',
+    'console.log(JSON.stringify({ ...res, ms, after }));',
+  ].join('\n'));
+  assert.equal(r.groups.length, 2);
+  assert.deepEqual(r.remaining, []);
+  assert.equal(r['after'], 0);
+  // 并行约 grace + 几十毫秒 ≈ 2.05 s；串行约 2 × grace ≈ 4.1 s。上界取 grace + killWait + 1000 = 3.5 s，两侧各留约 1.4 s
+  // （计划双审 r1 AGY-05；代码双审 r1 CODEX-05 把原来 1.5 s / 上界 2.5 s 的参数拉开，免得满载下假红）。这条是变异 M10 唯一的咬合点
+  assert.ok(
+    (r['ms'] as number) < 2000 + 500 + 1000,
+    `并行终止应在单组预算内，实为 ${String(r['ms'])} ms（预期：并行约 2050 ms、串行约 4100 ms；介于两者之间先按 EV-149 口径存读数）`,
+  );
 });

@@ -1,0 +1,93 @@
+{
+  "targets": [
+    "src/trivium/run-protocol.ts",
+    "src/trivium/util/exec.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/gate-loop.test.js",
+    "dist/test/test/integration/run-protocol.test.js",
+    "dist/test/test/integration/worker-detach.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "workerMain 不装 SIGTERM 处理器 ⇒ I1（CLI 两组留下）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  const uninstallSigterm = installWorkerSigtermForwarding();\n",
+      "replace": "  const uninstallSigterm = process.env['TRIVIUM_MUT_NEVER'] === '1' ? installWorkerSigtermForwarding() : () => undefined;\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "shutdownTrackedTrees 不升级 SIGKILL ⇒ U7②",
+      "file": "src/trivium/util/exec.ts",
+      "find": "        ...(o.signal ? { signal: o.signal } : {}),\n",
+      "replace": "        signal: (p: number, s: NodeJS.Signals) => (s === 'SIGKILL' ? false : (o.signal ?? killProcessTree)(p, s)),\n",
+      "expect": "dist/test/test/integration/worker-detach.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "finish() 冻结时照常 resolve ⇒ U7①",
+      "file": "src/trivium/util/exec.ts",
+      "find": "      if (treeShutdown) return;\n",
+      "replace": "      if (treeShutdown && process.env['TRIVIUM_MUT_NEVER'] === '1') return;\n",
+      "expect": "dist/test/test/integration/worker-detach.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "run() 冻结后照常派生 ⇒ U7③",
+      "file": "src/trivium/util/exec.ts",
+      "find": "  if (treeShutdown) return new Promise<RunResult>(() => {});\n",
+      "replace": "  if (treeShutdown && process.env['TRIVIUM_MUT_NEVER'] === '1') return new Promise<RunResult>(() => {});\n",
+      "expect": "dist/test/test/integration/worker-detach.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "处理器末尾不重新自杀、也不兜底退出（worker 留着）⇒ I1（--cancel 升级 SIGKILL，stderr 出现「未响应 SIGTERM」）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    if (exiting) return;\n    exiting = true;\n",
+      "replace": "    if (exiting || !(process.env['TRIVIUM_MUT_NEVER'] === '1')) return;\n    exiting = true;\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "run() 不登记 killTree 子进程 ⇒ U7①",
+      "file": "src/trivium/util/exec.ts",
+      "find": "    if (killTree && child.pid !== undefined) {\n",
+      "replace": "    if (killTree && child.pid !== undefined && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
+      "expect": "dist/test/test/integration/worker-detach.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "WORKER_TREE_GRACE_MS 改成 5000 ⇒ U8",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "export const WORKER_TREE_GRACE_MS = 2000;",
+      "replace": "export const WORKER_TREE_GRACE_MS = 5000;",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "登记也收不带 killTree 的子进程 ⇒ U7⑤",
+      "file": "src/trivium/util/exec.ts",
+      "find": "    if (killTree && child.pid !== undefined) {\n",
+      "replace": "    if (child.pid !== undefined) {\n",
+      "expect": "dist/test/test/integration/worker-detach.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "重新自杀改成同步 process.exit(143)（计划双审 r1 AGY-02 ≡ CODEX-06）⇒ U9①",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    process.kill(process.pid, 'SIGTERM');\n",
+      "replace": "    process.exit(143);\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "并行终止改成（等效的）逐个进行：第 k 组推迟 k ×（宽限 + SIGKILL 后等待）才开始（计划双审 r1 AGY-05）⇒ U7⑥",
+      "file": "src/trivium/util/exec.ts",
+      "find": "    pending.map(async ([pid, child]) => {\n",
+      "replace": "    pending.map(async ([pid, child], idx) => {\n      await new Promise((r) => setTimeout(r, idx * (o.graceMs + o.killWaitMs)));\n",
+      "expect": "dist/test/test/integration/worker-detach.test.js"
+    }
+  ]
+}

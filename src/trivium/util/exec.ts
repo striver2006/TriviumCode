@@ -6,7 +6,7 @@
  * 绝不 shell out 到 `timeout`。这同时也是设计 §12.2「脚本级 timeout」的落点。
  */
 import { spawn } from 'node:child_process';
-import type { SpawnOptions } from 'node:child_process';
+import type { ChildProcess, SpawnOptions } from 'node:child_process';
 
 export interface RunOptions {
   cwd?: string;
@@ -49,6 +49,9 @@ export interface RunOptions {
    * 实现是让子进程成为自己进程组的组长（`detached: true`），超时按进程组发信号。
    * 厂商 CLI 都会再派生子进程（pty 模式下直接子进程更只是 `script` 包装），
    * 只 `kill(pid)` 会把真正烧配额的那个遗弃给 init。适配器一律打开它。
+   *
+   * 这样拉起的子进程还会登记进本进程的 `liveTrees`：它不在调用方的进程组里，调用方被按组杀时够不到它，
+   * 所以 worker 收到 SIGTERM 时要靠 `shutdownTrackedTrees` 按组终止它们（EV-152）。
    */
   killTree?: boolean;
 }
@@ -71,6 +74,22 @@ export interface RunResult {
 
 const DEFAULT_MAX_BUFFER = 32 * 1024 * 1024;
 
+/**
+ * 本进程以 `killTree` 拉起、尚未观察到退出的子进程（EV-152，取消够不到审查员CLI计划 r2 §4.1）。
+ * 键是 pid，也是它的进程组号（`detached` ⇒ 组长）。只在本进程内有意义：worker 收到 SIGTERM 时据此按组终止它们。
+ */
+const liveTrees = new Map<number, ChildProcess>();
+
+/**
+ * 置位后本进程进入「终止中」：`run()` 不再派生，已在跑的 `run()` 不再兑现。只由 `shutdownTrackedTrees` 置位，不复位——
+ * 置位的调用方必须随后结束本进程（见 `shutdownTrackedTrees` 文档块首句）。
+ *
+ * **对全部 `run()` 生效，不只是 `killTree` 派生的**（显式决定，计划双审 r1 CODEX-04）：worker 一旦进入终止中，
+ * 就不该再有任何外部落地。代价是收尾路径上不带 `killTree` 的调用（`processStartTime` 的 `ps`、git 等）也会悬空，
+ * 由 worker 的重新自杀与看门狗兜底——**日后在 worker 侧新增的 `run()` 调用者须知晓：终止中它不会跑完**。
+ */
+let treeShutdown = false;
+
 /** 供人读/归档的命令行拼装，含最小引号处理。不用于实际执行（执行一律走 argv 数组，无 shell） */
 export function formatCommand(bin: string, args: readonly string[]): string {
   const q = (s: string) => (/^[A-Za-z0-9_\-./:=@]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
@@ -84,6 +103,8 @@ export function formatCommand(bin: string, args: readonly string[]): string {
  * 伪终端模式下改为执行 `script -q /dev/null <bin> <args...>`（macOS BSD script 语法）。
  */
 export function run(bin: string, args: readonly string[], opts: RunOptions = {}): Promise<RunResult> {
+  // 终止中（EV-152）：不再派生，也不兑现——进程随即退出，悬着的 Promise 无害（见 shutdownTrackedTrees）
+  if (treeShutdown) return new Promise<RunResult>(() => {});
   const {
     cwd,
     env,
@@ -123,6 +144,14 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
   return new Promise<RunResult>((resolve) => {
     const startedAt = Date.now();
     const child = spawn(realBin, realArgs, spawnOpts);
+    // 登记与派生之间插不进别的 JS（spawn 是同步的），所以 SIGTERM 处理器看得到每一个已派生的组
+    if (killTree && child.pid !== undefined) {
+      const pid = child.pid;
+      liveTrees.set(pid, child);
+      child.once('exit', () => {
+        if (liveTrees.get(pid) === child) liveTrees.delete(pid);
+      });
+    }
 
     let stdout = '';
     let stderr = '';
@@ -175,6 +204,8 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
       if (softTimer) clearTimeout(softTimer);
       if (hardTimer) clearTimeout(hardTimer);
       if (exitTimer) clearTimeout(exitTimer);
+      // 终止中不兑现：兑现了调用方就会往下走（抹副本、重试、写归档终态），取消就不再由 cancelRun 收尾（EV-152）
+      if (treeShutdown) return;
       if (lineBuf.length > 0 && onStdoutLine) onStdoutLine(lineBuf);
       if (errLineBuf.length > 0 && onStderrLine) onStderrLine(errLineBuf);
       resolve({
@@ -425,9 +456,11 @@ export async function processStartTime(pid: number): Promise<string | null> {
  * 只 `kill(pid)` 的话，同组的子进程会被**遗弃给 init 继续跑**——`5476238` 实测过：
  * `--cancel` 之后 `zcode-cli` 的 PPID 变成 1 且仍在消耗配额（那时它还在 worker 的组里）。
  *
- * **够不到的**：审查员适配器以 `run(…, { killTree: true })` 拉起厂商 CLI，那会让 CLI 以 `detached`
- * 自成一组（`2b460ad` 起）；按 worker 的组发的信号到不了它们。零配额实测：worker 被按组 SIGTERM 后退出，
- * `killTree` 拉起的子进程过继给 init 继续活着（派生后失败的孤儿worker计划 r2 §2.1）。行为修复见 BACKLOG EV-152。
+ * **按组发够不到的**：审查员适配器以 `run(…, { killTree: true })` 拉起厂商 CLI，那会让 CLI 以 `detached`
+ * 自成一组（`2b460ad` 起）；按 worker 的组发的信号到不了它们（零配额实测：worker 被按组 SIGTERM 后退出，
+ * `killTree` 拉起的子进程过继给 init 继续活着，派生后失败的孤儿worker计划 r2 §2.1）。
+ * 自 EV-152 起由 worker 自己的 SIGTERM 处理器转发（`shutdownTrackedTrees`）；worker 被 SIGKILL、崩溃或事件循环
+ * 堵住时处理器跑不到，那几格仍够不到（取消够不到审查员CLI计划 r2 §3.2，BACKLOG EV-154）。
  *
  * 返回是否至少送达了一个目标。组不存在（ESRCH）时退回单进程，
  * 因为组可能已经空了、也可能这个 pid 压根不是组长。
@@ -474,7 +507,8 @@ export interface TerminateOptions {
  * **每次发信号之前先问 `isGone()`**：已退出就不再发。对按句柄判的调用方，这保证不会向一个已被回收、
  * 可能已被复用的号发组信号。
  *
- * 只管这一个进程组：适配器以 `killTree` 拉起的厂商 CLI 自成一组，这里够不到（见 `killProcessTree`，EV-152）。
+ * 只管这一个进程组：适配器以 `killTree` 拉起的厂商 CLI 自成一组，按 worker 的组发够不到它们——由 worker 的
+ * SIGTERM 处理器经 `shutdownTrackedTrees` 转发；升级到 SIGKILL 时处理器跑不到（见 `killProcessTree`，EV-152）。
  */
 export async function terminateProcessGroup(
   pid: number,
@@ -505,5 +539,71 @@ export async function terminateProcessGroup(
   send(pid, 'SIGKILL');
   if (o.killWaitMs <= 0) return { gone: await o.isGone(), escalated: true, signals };
   return { gone: await waitGone(o.killWaitMs), escalated: true, signals };
+}
+
+export interface TreeShutdownOptions {
+  /** 每组 SIGTERM 之后至多等多久再升级 SIGKILL */
+  graceMs: number;
+  /** SIGKILL 之后至多再等多久 */
+  killWaitMs: number;
+  /** 轮询间隔，缺省 50 ms */
+  pollMs?: number;
+  /** 发信号的实现，缺省 `killProcessTree`；只为单测计数而开 */
+  signal?: (pid: number, sig: NodeJS.Signals) => boolean;
+}
+
+export interface TreeShutdownResult {
+  /** 开始时在登记里、尚未退出的组 */
+  groups: number[];
+  /** 每组实际发过的信号（按发出顺序） */
+  signals: Record<number, NodeJS.Signals[]>;
+  /** 预算用尽仍未观察到组长退出的组 */
+  remaining: number[];
+}
+
+/**
+ * **调用即本进程进入终止中，不可撤销：此后 `run()` 不再派生、已在跑的不再兑现；调用方必须随后结束本进程。**
+ * 否则本进程会带着一地永不兑现的 Promise 活下去（代码双审 r1 CODEX-02）。今天唯一的调用方是 worker 的
+ * SIGTERM 处理器（`installWorkerSigtermForwarding`，随后必重新自杀）；日后复用它的入口（如 BACKLOG EV-155 的前台路径）
+ * 同样要守这条。不设复位口：复位口只为测试开，却会给生产代码一个能把冻结撤掉的入口。
+ *
+ * 冻结本进程并按组终止登记里尚未退出的 `killTree` 子进程（EV-152，取消够不到审查员CLI计划 r2 §4.1）。
+ *
+ * - **进门同步置位冻结**：此后 `run()` 不再派生、已在跑的不再兑现。被杀的 CLI 一 `'close'`，`run()` 若照常兑现，
+ *   runner 就会抹副本、判重试（重试会再派生一个 CLI），两侧都结束后 `executeRun` 写归档终态——`--cancel` 看到的
+ *   就成了 worker 写下的终态，取消不再由 `cancelRun` 收尾（EV-128）。
+ * - **判退出用父进程句柄**（`exitCode` / `signalCode`）：本进程是这些 CLI 的父进程，未观察到 `'exit'` ⇒ 未被回收
+ *   ⇒ pid 与同号进程组不会被复用（与 `DetachedChildWatch` 同一论证），不需要启动时刻。
+ * - **并行**终止各组：串行时两组都忽略 SIGTERM，耗时翻倍，会击穿 `--cancel` 的 5 s 宽限（计划双审 r1 AGY-05）。
+ * - 组长退出之后不再对该组发信号：本进程判不了组是否已空，空了之后组号可能被复用。**组长一退出（含处理器运行之前
+ *   已自己正常退出），该组就从 `liveTrees` 删掉、不在遍历面上——同组遗留的后代一律收不到信号，与它们是否忽略 SIGTERM
+ *   无关**（覆盖矩阵 h 格，如实保留；代码双审 r1 CODEX-01 ≡ GLM-02）。组长还活着时，首个 SIGTERM 按组发，组员与组长同时收到。
+ * - 登记为空时立即返回，一个信号都不发。
+ */
+export async function shutdownTrackedTrees(o: TreeShutdownOptions): Promise<TreeShutdownResult> {
+  treeShutdown = true;
+  const pending: Array<[number, ChildProcess]> = [];
+  for (const [pid, child] of liveTrees) {
+    if (child.exitCode === null && child.signalCode === null) pending.push([pid, child]);
+  }
+  const signals: Record<number, NodeJS.Signals[]> = {};
+  const outcomes = await Promise.all(
+    pending.map(async ([pid, child]) => {
+      const t = await terminateProcessGroup(pid, {
+        isGone: () => child.exitCode !== null || child.signalCode !== null,
+        graceMs: o.graceMs,
+        killWaitMs: o.killWaitMs,
+        pollMs: o.pollMs ?? 50,
+        ...(o.signal ? { signal: o.signal } : {}),
+      });
+      signals[pid] = t.signals;
+      return { pid, gone: t.gone };
+    }),
+  );
+  return {
+    groups: pending.map(([pid]) => pid),
+    signals,
+    remaining: outcomes.filter((x) => !x.gone).map((x) => x.pid),
+  };
 }
 

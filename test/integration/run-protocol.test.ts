@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import * as childProcess from 'node:child_process';
 import {
   bashTimeoutFor, cancelRun, runDirFor, settleOrphanedStart, statusRun, waitRun, workerGoneForCancel,
+  WORKER_TERM_GRACE_MS, WORKER_TREE_GRACE_MS, WORKER_TREE_KILL_WAIT_MS,
 } from '../../src/trivium/run-protocol.js';
 import { getGate, setGate } from '../../src/trivium/state.js';
 import { newStatus, readStatus, writeStatus } from '../../src/trivium/status.js';
@@ -12,6 +15,7 @@ import { defaultConfig } from '../../src/trivium/config.js';
 import { acquireLock, inspectLock } from '../../src/trivium/lock.js';
 import { spawnDetached, processStartTime, processAlive } from '../../src/trivium/util/exec.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
+import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
 import { newRunMeta, readTask, registerRun, writeRunMeta } from '../../src/trivium/meta.js';
 import { metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
 import type { Ctx, RunMeta } from '../../src/trivium/types.js';
@@ -685,4 +689,83 @@ test('EV-150 U6：--cancel 宽限期判据——存活但不是同一进程（PI
   assert.equal(await workerGoneForCancel(process.pid, 'Thu Jan  1 00:00:00 1970'), true, '计划双审 r1 AGY-04：复用者不能被当成 worker 升级 SIGKILL');
   assert.equal(await workerGoneForCancel(process.pid, real), false);
   assert.equal(await workerGoneForCancel(999_993, null), true);
+});
+
+// ─────────── EV-152：worker 的 SIGTERM 处理器（取消够不到审查员CLI计划 r2 §5.1 U8 / U9） ───────────
+
+test('EV-152 U8：worker 处理器的预算落在取消宽限之内（转发宽限 + SIGKILL 后等待 + 1 s 余量 ≤ WORKER_TERM_GRACE_MS）', () => {
+  assert.ok(
+    WORKER_TREE_GRACE_MS + WORKER_TREE_KILL_WAIT_MS + 1000 <= WORKER_TERM_GRACE_MS,
+    '处理器超预算时 --cancel 会升级 SIGKILL，处理器跑不到、CLI 遗留',
+  );
+});
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const RP_MODULE = path.resolve(HERE, '../../src/trivium/run-protocol.js');
+const EXEC_MODULE = path.resolve(HERE, '../../src/trivium/util/exec.js');
+
+/**
+ * 在子进程里装处理器，父进程发 SIGTERM（可连发两次），观察子进程的退出形态。
+ * 冻结标志是模块级的，不能在测试进程里置位，所以处理器一定装在子进程里。
+ */
+async function sigtermScenario(withTree: boolean, twice: boolean) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-u9-'));
+  const mark = `trivium-u9-${path.basename(dir)}`;
+  const script = path.join(dir, 'worker-like.mjs');
+  await fs.writeFile(script, [
+    `import { installWorkerSigtermForwarding } from ${JSON.stringify(RP_MODULE)};`,
+    `import { run } from ${JSON.stringify(EXEC_MODULE)};`,
+    'installWorkerSigtermForwarding();',
+    withTree
+      ? `run('/bin/sh', ['-c', "trap '' TERM; sleep 600; : \\"$0\\"", ${JSON.stringify(mark + '-tree')}], { killTree: true, timeoutMs: 600000 });`
+      : '',
+    'setInterval(() => {}, 1000);',
+    "setTimeout(() => process.stdout.write('READY\\n'), 300);",
+  ].join('\n'), 'utf8');
+  const child = childProcess.spawn(process.execPath, [script, mark], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '';
+  let stderr = '';
+  child.stdout!.setEncoding('utf8').on('data', (c: string) => { stdout += c; });
+  child.stderr!.setEncoding('utf8').on('data', (c: string) => { stderr += c; });
+  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((r) =>
+    child.once('exit', (code, signal) => r({ code, signal })));
+  try {
+    for (let i = 0; i < 100 && !stdout.includes('READY'); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(stdout.includes('READY'), `子进程没就绪，用例前提不成立：${stderr}`);
+    const treeGroups = withTree ? groupsWithMark(`${mark}-tree`) : [];
+    if (withTree) {
+      assert.equal(treeGroups.length, 1, '孙进程组没起来，用例前提不成立');
+      assert.equal(groupMemberCount(treeGroups[0]!), 2, '孙进程组应有 sh 与 sleep 两个成员');
+    }
+    const t0 = Date.now();
+    process.kill(child.pid!, 'SIGTERM');
+    if (twice) {
+      await new Promise((r) => setTimeout(r, 200));
+      try { process.kill(child.pid!, 'SIGTERM'); } catch { /* 已退出 */ }
+    }
+    const ev = await Promise.race([exited, new Promise<null>((r) => setTimeout(() => r(null), 8000))]);
+    const ms = Date.now() - t0;
+    await new Promise((r) => setTimeout(r, 100));
+    return { ev, ms, stderr, treeMembersAfter: treeGroups.map((g) => groupMemberCount(g)) };
+  } finally {
+    for (const g of groupsWithMark(mark)) killGroup(g);
+    killGroup(child.pid!);
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
+test('EV-152 U9①：处理器——登记为空时收到 SIGTERM 即以 signal: SIGTERM 退出（退出形态与今天相同，不是 exit(143)）', async () => {
+  const r = await sigtermScenario(false, false);
+  assert.ok(r.ev, '8 s 内应观察到退出');
+  assert.deepEqual(r.ev, { code: null, signal: 'SIGTERM' }, '计划双审 r1 CODEX-06 ≡ AGY-02：重新自杀的退出形态');
+  assert.match(r.stderr, /没有在跑的审查员 CLI/);
+});
+
+test('EV-152 U9②：处理器——连发两次 SIGTERM 只处理第一次：忽略 SIGTERM 的 CLI 组被升级 SIGKILL 结束（组空），worker 仍以 signal: SIGTERM 在宽限内退出', async () => {
+  const r = await sigtermScenario(true, true);
+  assert.ok(r.ev, '8 s 内应观察到退出');
+  assert.deepEqual(r.ev, { code: null, signal: 'SIGTERM' });
+  assert.deepEqual(r.treeMembersAfter, [0], '第二次 SIGTERM 若走了缺省动作，worker 会在转发中途死掉、留下 CLI 组');
+  assert.match(r.stderr, /已按组终止审查员 CLI \d+（SIGTERM、SIGKILL）/);
+  assert.ok(r.ms < WORKER_TERM_GRACE_MS - 500, `应在取消宽限内退出，实为 ${r.ms} ms`);
 });

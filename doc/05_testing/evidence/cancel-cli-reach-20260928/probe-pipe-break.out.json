@@ -1,0 +1,521 @@
+{
+  "node": "v25.2.1",
+  "platform": "darwin",
+  "P": [
+    {
+      "id": "P1",
+      "what": "sh 每 0.5 s 往 stdout 写一行",
+      "pty": false,
+      "before": {
+        "worker": 84060,
+        "cliPid": 84061,
+        "cliPgid": 84061,
+        "members": [
+          {
+            "pid": 84061,
+            "ppid": 84060,
+            "stat": "Ss",
+            "cmd": "/bin/sh -c while :; do echo tick; sleep 0.5; done; : <MARK>-P1"
+          },
+          {
+            "pid": 84070,
+            "ppid": 84061,
+            "stat": "S",
+            "cmd": "sleep 0.5"
+          }
+        ],
+        "tagged": [
+          {
+            "pid": 84061,
+            "pgid": 84061,
+            "ppid": 84060,
+            "cmd": "/bin/sh -c while :; do echo tick; sleep 0.5; done; : <MARK>-P1"
+          }
+        ]
+      },
+      "after": {
+        "1s": {
+          "workerAlive": false,
+          "groupMembers": [],
+          "tagged": []
+        },
+        "3s": {
+          "workerAlive": false,
+          "groupMembers": [],
+          "tagged": []
+        },
+        "6s": {
+          "workerAlive": false,
+          "groupMembers": [],
+          "tagged": []
+        }
+      }
+    },
+    {
+      "id": "P2",
+      "what": "node 每 0.5 s 往 stdout 写一行（不接 error）",
+      "pty": false,
+      "before": {
+        "worker": 84116,
+        "cliPid": 84117,
+        "cliPgid": 84117,
+        "members": [
+          {
+            "pid": 84117,
+            "ppid": 84116,
+            "stat": "Ss",
+            "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){pr"
+          }
+        ],
+        "tagged": [
+          {
+            "pid": 84117,
+            "pgid": 84117,
+            "ppid": 84116,
+            "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){pr"
+          }
+        ]
+      },
+      "after": {
+        "1s": {
+          "workerAlive": false,
+          "groupMembers": [],
+          "tagged": []
+        },
+        "3s": {
+          "workerAlive": false,
+          "groupMembers": [],
+          "tagged": []
+        },
+        "6s": {
+          "workerAlive": false,
+          "groupMembers": [],
+          "tagged": []
+        }
+      }
+    },
+    {
+      "id": "P3",
+      "what": "node 每 0.5 s 往 stdout 写一行，吞掉 stdout 的 error",
+      "pty": false,
+      "before": {
+        "worker": 84155,
+        "cliPid": 84156,
+        "cliPgid": 84156,
+        "members": [
+          {
+            "pid": 84156,
+            "ppid": 84155,
+            "stat": "Ss",
+            "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e process.stdout.on('error'"
+          }
+        ],
+        "tagged": [
+          {
+            "pid": 84156,
+            "pgid": 84156,
+            "ppid": 84155,
+            "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e process.stdout.on('error'"
+          }
+        ]
+      },
+      "after": {
+        "1s": {
+          "workerAlive": false,
+          "groupMembers": [
+            {
+              "pid": 84156,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e process.stdout.on('error'"
+            }
+          ],
+          "tagged": [
+            {
+              "pid": 84156,
+              "pgid": 84156,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e process.stdout.on('error'"
+            }
+          ]
+        },
+        "3s": {
+          "workerAlive": false,
+          "groupMembers": [
+            {
+              "pid": 84156,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e process.stdout.on('error'"
+            }
+          ],
+          "tagged": [
+            {
+              "pid": 84156,
+              "pgid": 84156,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e process.stdout.on('error'"
+            }
+          ]
+        },
+        "6s": {
+          "workerAlive": false,
+          "groupMembers": [
+            {
+              "pid": 84156,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e process.stdout.on('error'"
+            }
+          ],
+          "tagged": [
+            {
+              "pid": 84156,
+              "pgid": 84156,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e process.stdout.on('error'"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "P4",
+      "what": "node 每 0.5 s 只往 stderr 写一行（不接 error）",
+      "pty": false,
+      "before": {
+        "worker": 84262,
+        "cliPid": 84263,
+        "cliPgid": 84263,
+        "members": [
+          {
+            "pid": 84263,
+            "ppid": 84262,
+            "stat": "Ss",
+            "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){pr"
+          }
+        ],
+        "tagged": [
+          {
+            "pid": 84263,
+            "pgid": 84263,
+            "ppid": 84262,
+            "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){pr"
+          }
+        ]
+      },
+      "after": {
+        "1s": {
+          "workerAlive": false,
+          "groupMembers": [],
+          "tagged": []
+        },
+        "3s": {
+          "workerAlive": false,
+          "groupMembers": [],
+          "tagged": []
+        },
+        "6s": {
+          "workerAlive": false,
+          "groupMembers": [],
+          "tagged": []
+        }
+      }
+    },
+    {
+      "id": "P5",
+      "what": "node 静默（不写输出，模拟长时间等模型回包）",
+      "pty": false,
+      "before": {
+        "worker": 84417,
+        "cliPid": 84422,
+        "cliPgid": 84422,
+        "members": [
+          {
+            "pid": 84422,
+            "ppid": 84417,
+            "stat": "Ss",
+            "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){},"
+          }
+        ],
+        "tagged": [
+          {
+            "pid": 84422,
+            "pgid": 84422,
+            "ppid": 84417,
+            "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){},"
+          }
+        ]
+      },
+      "after": {
+        "1s": {
+          "workerAlive": false,
+          "groupMembers": [
+            {
+              "pid": 84422,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){},"
+            }
+          ],
+          "tagged": [
+            {
+              "pid": 84422,
+              "pgid": 84422,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){},"
+            }
+          ]
+        },
+        "3s": {
+          "workerAlive": false,
+          "groupMembers": [
+            {
+              "pid": 84422,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){},"
+            }
+          ],
+          "tagged": [
+            {
+              "pid": 84422,
+              "pgid": 84422,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){},"
+            }
+          ]
+        },
+        "6s": {
+          "workerAlive": false,
+          "groupMembers": [
+            {
+              "pid": 84422,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){},"
+            }
+          ],
+          "tagged": [
+            {
+              "pid": 84422,
+              "pgid": 84422,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/opt/homebrew/Cellar/node/25.2.1/bin/node -e setInterval(function(){},"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "P6",
+      "what": "sh 忽略 SIGPIPE 后每 0.5 s 往 stdout 写一行（写失败即忽略）",
+      "pty": false,
+      "before": {
+        "worker": 84489,
+        "cliPid": 84490,
+        "cliPgid": 84490,
+        "members": [
+          {
+            "pid": 84490,
+            "ppid": 84489,
+            "stat": "Ss",
+            "cmd": "/bin/sh -c trap '' PIPE; while :; do echo tick 2>/dev/null; sleep 0.5;"
+          },
+          {
+            "pid": 84498,
+            "ppid": 84490,
+            "stat": "S",
+            "cmd": "sleep 0.5"
+          }
+        ],
+        "tagged": [
+          {
+            "pid": 84490,
+            "pgid": 84490,
+            "ppid": 84489,
+            "cmd": "/bin/sh -c trap '' PIPE; while :; do echo tick 2>/dev/null; sleep 0.5;"
+          }
+        ]
+      },
+      "after": {
+        "1s": {
+          "workerAlive": false,
+          "groupMembers": [
+            {
+              "pid": 84490,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/bin/sh -c trap '' PIPE; while :; do echo tick 2>/dev/null; sleep 0.5;"
+            },
+            {
+              "pid": 84506,
+              "ppid": 84490,
+              "stat": "S",
+              "cmd": "sleep 0.5"
+            }
+          ],
+          "tagged": [
+            {
+              "pid": 84490,
+              "pgid": 84490,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/bin/sh -c trap '' PIPE; while :; do echo tick 2>/dev/null; sleep 0.5;"
+            }
+          ]
+        },
+        "3s": {
+          "workerAlive": false,
+          "groupMembers": [
+            {
+              "pid": 84490,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/bin/sh -c trap '' PIPE; while :; do echo tick 2>/dev/null; sleep 0.5;"
+            },
+            {
+              "pid": 84520,
+              "ppid": 84490,
+              "stat": "S",
+              "cmd": "sleep 0.5"
+            }
+          ],
+          "tagged": [
+            {
+              "pid": 84490,
+              "pgid": 84490,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/bin/sh -c trap '' PIPE; while :; do echo tick 2>/dev/null; sleep 0.5;"
+            }
+          ]
+        },
+        "6s": {
+          "workerAlive": false,
+          "groupMembers": [
+            {
+              "pid": 84490,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/bin/sh -c trap '' PIPE; while :; do echo tick 2>/dev/null; sleep 0.5;"
+            },
+            {
+              "pid": 84540,
+              "ppid": 84490,
+              "stat": "S",
+              "cmd": "sleep 0.5"
+            }
+          ],
+          "tagged": [
+            {
+              "pid": 84490,
+              "pgid": 84490,
+              "ppid": 1,
+              "stat": "Ss",
+              "cmd": "/bin/sh -c trap '' PIPE; while :; do echo tick 2>/dev/null; sleep 0.5;"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "P7",
+      "what": "pty 包装（script）下 sh 每 0.5 s 写一行",
+      "pty": true,
+      "error": "假 CLI 没起来",
+      "workerLog": ""
+    },
+    {
+      "id": "P8",
+      "what": "pty 包装（script）下 sh 静默",
+      "pty": true,
+      "error": "假 CLI 没起来",
+      "workerLog": ""
+    }
+  ],
+  "H": [
+    {
+      "id": "H1",
+      "workerSignal": "SIGTERM",
+      "workerExit": {
+        "code": null,
+        "signal": "SIGTERM",
+        "ms": 1583
+      },
+      "kids": [
+        {
+          "pid": 84833,
+          "pgid": 84833,
+          "tag": "plain"
+        },
+        {
+          "pid": 84834,
+          "pgid": 84834,
+          "tag": "ignterm"
+        }
+      ],
+      "kidGroupsAfter": {
+        "plain": [],
+        "ignterm": []
+      }
+    },
+    {
+      "id": "H2",
+      "workerSignal": "SIGKILL",
+      "workerExit": {
+        "code": null,
+        "signal": "SIGKILL",
+        "ms": 4
+      },
+      "kids": [
+        {
+          "pid": 84853,
+          "pgid": 84853,
+          "tag": "plain"
+        },
+        {
+          "pid": 84854,
+          "pgid": 84854,
+          "tag": "ignterm"
+        }
+      ],
+      "kidGroupsAfter": {
+        "plain": [
+          {
+            "pid": 84853,
+            "ppid": 1,
+            "stat": "Ss",
+            "cmd": "/bin/sh -c sleep 120; : <MARK>-H2-plain"
+          },
+          {
+            "pid": 84855,
+            "ppid": 84853,
+            "stat": "S",
+            "cmd": "sleep 120"
+          }
+        ],
+        "ignterm": [
+          {
+            "pid": 84854,
+            "ppid": 1,
+            "stat": "Ss",
+            "cmd": "/bin/sh -c trap '' TERM; sleep 120; : <MARK>-H2-ignterm"
+          },
+          {
+            "pid": 84856,
+            "ppid": 84854,
+            "stat": "S",
+            "cmd": "sleep 120"
+          }
+        ]
+      }
+    }
+  ]
+}

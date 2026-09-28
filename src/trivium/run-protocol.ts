@@ -37,13 +37,30 @@ import { realAdapters, wiredAdapter } from './adapters/index.js';
 import { scrubRunDir } from './scrub.js';
 import { ensureDir, exists } from './util/fsx.js';
 import {
-  processAlive, processStartTime, spawnDetached, terminateProcessGroup, type DetachedChildWatch,
+  processAlive, processStartTime, shutdownTrackedTrees, spawnDetached, terminateProcessGroup, type DetachedChildWatch,
 } from './util/exec.js';
 import { fail, say, step, warn } from './util/log.js';
 import { checkModelOverrideSource, collectWarnings, type PreflightWarning } from './preflight.js';
 
 /** 心跳间隔：设计 §7.5 规定 30s */
 const HEARTBEAT_MS = 30_000;
+
+/**
+ * 向工作进程组发 SIGTERM 之后等多久再升级 SIGKILL：`--cancel` 与 `--start` 派生后失败的收尾共用（EV-152 起具名）。
+ * worker 的 SIGTERM 处理器必须在这之内做完（转发给 CLI 并重新自杀），否则被升级 SIGKILL、处理器跑不到。
+ */
+export const WORKER_TERM_GRACE_MS = 5000;
+/** worker 收到 SIGTERM 后，转发给它拉起的 CLI 进程组，等多久再 SIGKILL（EV-152） */
+export const WORKER_TREE_GRACE_MS = 2000;
+/** 对 CLI 进程组发 SIGKILL 之后至多再等多久（EV-152） */
+export const WORKER_TREE_KILL_WAIT_MS = 1000;
+/**
+ * `--start` 派生后失败的收尾里，对工作进程组发 SIGKILL 之后至多再等多久确认退出（EV-150 起就是 5 s，EV-152 代码双审
+ * r1 CODEX-06 起具名）。与 `WORKER_TERM_GRACE_MS` 数值相同、语义无关——那个是 SIGTERM 之后的宽限。
+ * 设计 7.5 `review --start` 行「失败路径最长约 20 s」= 宽限 5 s + 本常量 5 s + 取启动时刻的 `ps` 至多 10 s。
+ * `--cancel` 那边 SIGKILL 之后刻意不等（`killWaitMs: 0`，见 `cancelRun`）。
+ */
+export const ORPHAN_KILL_CONFIRM_MS = 5000;
 
 export const runDirFor = (cfg: Config, projectRoot: string, runId: string): string =>
   path.join(runRoot(cfg), repoId(projectRoot), runId);
@@ -575,7 +592,7 @@ export async function settleOrphanedStart(i: OrphanedStartInput): Promise<void> 
   let t: { gone: boolean; escalated: boolean; signals: NodeJS.Signals[] } | null;
   try {
     t = await (i.terminate ?? (() => terminateProcessGroup(born.pid, {
-      isGone: born.watch.hasExited, graceMs: 5000, killWaitMs: 5000,
+      isGone: born.watch.hasExited, graceMs: WORKER_TERM_GRACE_MS, killWaitMs: ORPHAN_KILL_CONFIRM_MS,
     })))();
   } catch (err) {
     warn(`终止工作进程组 ${born.pid} 时出错：${String((err as Error)?.message ?? err).split('\n')[0]}`);
@@ -713,11 +730,68 @@ export async function workerGoneForCancel(pid: number, startedAt: string | null)
 // ─────────────────────── worker ───────────────────────
 
 /**
+ * 装上 worker 的 SIGTERM 处理器，返回卸载函数（EV-152，取消够不到审查员CLI计划 r2 §4.2）。
+ * `workerMain` 第一行装、`finally` 卸；U9 在子进程里直接装它。
+ *
+ * 为什么要它：适配器以 `killTree` 拉起的厂商 CLI 自成进程组，`--cancel` 按 worker 的组发的 SIGTERM 到不了它们；
+ * 没有处理器时 worker 按缺省动作立刻死掉，CLI 过继给 init、超时计时器随 worker 一起没了，静默阶段的 CLI 会一直跑、
+ * 配额照烧（计划 r2 §2.2）。处理器：
+ *   1. 只处理第一次（`process.on` + 进门标志，不用 `once`：第二次 SIGTERM 若走缺省动作，会在转发中途把 worker 杀掉）；
+ *   2. 起看门狗，预算 `WORKER_TREE_GRACE_MS + WORKER_TREE_KILL_WAIT_MS + 500` ms，到点无条件退出；
+ *   3. `shutdownTrackedTrees`：冻结经 `run()` 的链路，并行按组终止登记的 CLI（按父进程句柄判退出），结果写 worker.log；
+ *   4. `exitOnce`：防重入 → 清看门狗 → 移除监听 → 以 SIGTERM 重新自杀（退出形态与今天相同）→ 1 s 后仍在才 `exit(143)`。
+ * 保证范围：自处理器首行起经 `run()` 的链路不再推进。信号到达与处理器执行之间至多一次事件循环迭代，其间已就绪的回调
+ * 可先行——今天（缺省动作）这段窗口为零，落在归档终态写入最后一步上时归档可能不是 cancelled（计划 r2 §4.4 a″，如实保留）。
+ * worker 被 SIGKILL、崩溃或事件循环堵住时处理器跑不到（覆盖矩阵 b / c / d 格）。
+ */
+export function installWorkerSigtermForwarding(): () => void {
+  let handling = false;
+  let exiting = false;
+  let watchdog: NodeJS.Timeout | undefined;
+  const exitOnce = (): void => {
+    if (exiting) return;
+    exiting = true;
+    if (watchdog) clearTimeout(watchdog);
+    process.removeListener('SIGTERM', onTerm);
+    process.kill(process.pid, 'SIGTERM');
+    // 病态兜底：移除最后一个监听后缺省处置应已恢复、上一行即结束进程（计划 r2 §2.5 实测）；不同步调用
+    setTimeout(() => process.exit(143), 1000);
+  };
+  const onTerm = (): void => {
+    if (handling) return;
+    handling = true;
+    watchdog = setTimeout(exitOnce, WORKER_TREE_GRACE_MS + WORKER_TREE_KILL_WAIT_MS + 500);
+    void (async () => {
+      try {
+        const r = await shutdownTrackedTrees({ graceMs: WORKER_TREE_GRACE_MS, killWaitMs: WORKER_TREE_KILL_WAIT_MS });
+        if (r.groups.length === 0) {
+          process.stderr.write('[worker] 收到 SIGTERM：没有在跑的审查员 CLI\n');
+        } else {
+          const seq = r.groups.map((g) => `${g}（${(r.signals[g] ?? []).join('、') || '无'}）`).join('，');
+          process.stderr.write(`[worker] 收到 SIGTERM：已按组终止审查员 CLI ${seq}\n`);
+          if (r.remaining.length > 0) process.stderr.write(`[worker] 未能确认退出：${r.remaining.join('，')}\n`);
+        }
+      } catch (e) {
+        process.stderr.write(`[worker] 转发 SIGTERM 出错：${(e as Error)?.message ?? String(e)}\n`);
+      } finally {
+        exitOnce();
+      }
+    })();
+  };
+  process.on('SIGTERM', onTerm);
+  return () => {
+    if (!handling) process.removeListener('SIGTERM', onTerm);
+  };
+}
+
+/**
  * `review --worker <runId>`：工作进程本体。**不应由人直接调用**。
  *
  * 它继承 `--start` 已经冻结好的送审包，跑完 `executeRun` 后写终态并释放锁。
  */
 export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
+  // 第一件事装 SIGTERM 处理器（EV-152）：此后以 killTree 拉起的 CLI 都在它的登记里
+  const uninstallSigterm = installWorkerSigtermForwarding();
   const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
   const heartbeat = setInterval(() => {
     // 只刷心跳，不改语义。--wait 靠它判定「还活着」。
@@ -817,6 +891,8 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
     });
     return exitCode;
   } finally {
+    // 收到 SIGTERM 且有 CLI 在跑时本函数被冻结、走不到这里；没有 CLI 时进程在处理器的微任务里就结束了——卸载不会抢在转发之前
+    uninstallSigterm();
     clearInterval(heartbeat);
     const st = await readStatus(runDir);
     // status 读不到（被清理工具删了）时从交接文件取身份，否则锁与闸门都漏回收
@@ -1156,7 +1232,8 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
     if (live.alive && live.sameProcess) {
       /*
        * 按**进程组**发：只杀 worker 会把与它同组的子进程遗弃给 init。适配器以 `killTree` 拉起的厂商 CLI
-       * 自成一组，这里够不到（`killProcessTree` 文档块，BACKLOG EV-152）。
+       * 自成一组，按组发到不了它们——由 worker 的 SIGTERM 处理器转发（`installWorkerSigtermForwarding`，EV-152）；
+       * 升级到 SIGKILL 时处理器跑不到，那一格仍够不到，下面 onEscalate 如实提示。
        * SIGTERM → 宽限 5 s（每 250 ms 看一次）→ SIGKILL、之后不等：与 `--start` 派生后失败的收尾共用
        * `terminateProcessGroup`（EV-150）。宽限期判据是「不存活或不是同一进程」——此前只看存活，
        * PID 被复用时会把 SIGKILL 打到无关进程（计划双审 r1 AGY-04，用户审批并入）。
@@ -1165,13 +1242,22 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
       const startedAt = s?.worker_started_at ?? null;
       await terminateProcessGroup(pid, {
         isGone: () => workerGoneForCancel(pid, startedAt),
-        graceMs: 5000,
+        graceMs: WORKER_TERM_GRACE_MS,
+        // SIGKILL 之后刻意不等（EV-150 起如此）：随后由 workerConfirmedGone 判是否已退出，没确认就不抹、不收尾
         killWaitMs: 0,
         pollMs: 250,
-        onEscalate: () => warn(`工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL`),
+        onEscalate: () =>
+          warn(
+            `工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL——它拉起的审查员 CLI 可能未被结束，` +
+              '请用 ps 核对 ppid 为 1 的 CLI 进程（BACKLOG EV-154）',
+          ),
       });
     } else {
       step(`工作进程 ${pid} 已不存在，仅做状态与锁的清理`);
+      warn(
+        '工作进程在本次取消之前已退出；它若是被强杀或崩溃的，拉起的审查员 CLI 可能仍在，本命令够不到' +
+          '（请用 ps 核对 ppid 为 1 的 CLI 进程，BACKLOG EV-154）',
+      );
     }
   }
 

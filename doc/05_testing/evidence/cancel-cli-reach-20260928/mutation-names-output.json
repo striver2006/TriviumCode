@@ -1,0 +1,98 @@
+[
+  {
+    "id": "M1",
+    "desc": "workerMain 不装 SIGTERM 处理器 ⇒ I1（CLI 两组留下）",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-152",
+    "fail": 2,
+    "red": [
+      "EV-152 I1：--cancel 结束 worker 以 killTree 拉起的两侧审查员 CLI（整组），归档仍由 cancelRun 收尾为 cancelled",
+      "EV-152 I2：一侧 CLI 忽略 SIGTERM——worker 在宽限内升级 SIGKILL 结束它，--cancel 不被升级"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 两组都应已空："
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M5",
+    "desc": "处理器末尾不重新自杀、也不兜底退出（worker 留着）⇒ I1（--cancel 升级 SIGKILL，stderr 出现「未响应 SIGTERM」）",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-152",
+    "fail": 2,
+    "red": [
+      "EV-152 I1：--cancel 结束 worker 以 killTree 拉起的两侧审查员 CLI（整组），归档仍由 cancelRun 收尾为 cancelled",
+      "EV-152 I2：一侧 CLI 忽略 SIGTERM——worker 在宽限内升级 SIGKILL 结束它，--cancel 不被升级"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: worker 应在宽限内自己退出，不被升级 SIGKILL",
+      "AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /未响应 SIGTERM/. Input:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M6",
+    "desc": "run() 不登记 killTree 子进程 ⇒ U7①",
+    "suite": "dist/test/test/integration/worker-detach.test.js",
+    "pattern": "EV-152",
+    "fail": 4,
+    "red": [
+      "EV-152 U7①：shutdownTrackedTrees——killTree 拉起的静默子进程被按组终止（组空），那个 run() 此后不兑现（冻结）",
+      "EV-152 U7②：shutdownTrackedTrees——忽略 SIGTERM 的组在宽限后升级 SIGKILL，组空",
+      "EV-152 U7⑤：不带 killTree 的 run() 不进登记",
+      "EV-152 U7⑥：两组都忽略 SIGTERM——并行终止，总耗时在单组预算之内（串行会约翻倍）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+      "AssertionError [ERR_ASSERTION]: 登记里只应有 killTree 那一组",
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M7",
+    "desc": "WORKER_TREE_GRACE_MS 改成 5000 ⇒ U8",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-152",
+    "fail": 2,
+    "red": [
+      "EV-152 U8：worker 处理器的预算落在取消宽限之内（转发宽限 + SIGKILL 后等待 + 1 s 余量 ≤ WORKER_TERM_GRACE_MS）",
+      "EV-152 U9②：处理器——连发两次 SIGTERM 只处理第一次：忽略 SIGTERM 的 CLI 组被升级 SIGKILL 结束（组空），worker 仍以 signal: SIGTERM 在宽限内退出"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 处理器超预算时 --cancel 会升级 SIGKILL，处理器跑不到、CLI 遗留",
+      "AssertionError [ERR_ASSERTION]: 应在取消宽限内退出，实为 5057 ms"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M9",
+    "desc": "重新自杀改成同步 process.exit(143)（计划双审 r1 AGY-02 ≡ CODEX-06）⇒ U9①",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-152",
+    "fail": 2,
+    "red": [
+      "EV-152 U9①：处理器——登记为空时收到 SIGTERM 即以 signal: SIGTERM 退出（退出形态与今天相同，不是 exit(143)）",
+      "EV-152 U9②：处理器——连发两次 SIGTERM 只处理第一次：忽略 SIGTERM 的 CLI 组被升级 SIGKILL 结束（组空），worker 仍以 signal: SIGTERM 在宽限内退出"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 计划双审 r1 CODEX-06 ≡ AGY-02：重新自杀的退出形态",
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M10",
+    "desc": "并行终止改成（等效的）逐个进行：第 k 组推迟 k ×（宽限 + SIGKILL 后等待）才开始（计划双审 r1 AGY-05）⇒ U7⑥",
+    "suite": "dist/test/test/integration/worker-detach.test.js",
+    "pattern": "EV-152",
+    "fail": 1,
+    "red": [
+      "EV-152 U7⑥：两组都忽略 SIGTERM——并行终止，总耗时在单组预算之内（串行会约翻倍）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 并行终止应在单组预算内，实为 4555 ms（预期：并行约 2050 ms、串行约 4100 ms；介于两者之间先按 EV-149 口径存读数）"
+    ],
+    "windowMiss": false
+  }
+]

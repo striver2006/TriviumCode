@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.9
+> - **当前版本**：v1.0.10
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -614,11 +614,16 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 .trivium/bin/trivium review --cancel <run_id>
 ```
 
-按进程组终止 worker（SIGTERM，5 秒后仍在则 SIGKILL），回收锁与闸门。
+按进程组终止 worker（SIGTERM，5 秒后仍在则 SIGKILL），回收锁与闸门。worker 收到 SIGTERM 时会先结束它拉起的审查员 CLI
+（agy / zcode / codex / claude 各在独立的进程组里，按 worker 的组发信号够不到它们）：先发 SIGTERM，2 秒后仍在则 SIGKILL，
+确认之后 worker 自己再退出（v1.0.10 起，设计 v1.3.52，EV-152）。真实 CLI 对 SIGTERM 的反应没有实测过，不响应时靠那次 SIGKILL 结束。
 
-> **已知缺口**（v1.0.9 起如实写明，BACKLOG EV-152）：审查员 CLI（agy / zcode / codex / claude）是以各自独立的进程组拉起的，
-> 按 worker 进程组发的信号**够不到它们**。取消之后若怀疑还有 CLI 在跑（`ps` 里 ppid 为 1 的 `agy` / `zcode-cli` 等），
-> 请在终端手工结束它们。此前本手册写的「连同 agy/zcode 一起杀掉」不准确。
+> **已知缺口**（BACKLOG EV-154）：两种情形下 worker 来不及结束 CLI，`--cancel` 会在 stderr 如实提示——
+> 出现「未响应 SIGTERM，发送 SIGKILL」（worker 5 秒内没退出，被强杀），或「工作进程在本次取消之前已退出」（worker 此前已被强杀或崩溃）。
+> 这时请在终端用 `ps` 找 ppid 为 1 的 `agy` / `zcode-cli` / `codex` / `claude` 进程，手工结束它们。
+> 另有两种较窄的形态**不会打提示**：CLI 进程本身先于 worker 退出、它名下遗留的子进程；CLI 自己脱离进程组的后代。
+> 所以取消之后想确信没有残留，最稳的办法仍是用 `ps` 查一遍 ppid 为 1 的 CLI 进程。
+> v1.0.9 那一版这里写的是「一律够不到」；自 v1.0.10 起常见情形由 worker 结束，会打提示的是上面两种。
 
 > 被取消的运行，其 `run-<id>.json` 会标为 `cancelled`（v1.0.5 起，设计 v1.3.47，EV-128；此前停在 `running`）。
 > 两种情形不写，输出会说明原因：工作进程没能确认已退出（可能还有写者），或 run.json 已是终态（不追溯改写）。

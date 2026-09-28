@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { bundleMissing, bundleSkipReason, cli, listFiles, makeFixture, today } from '../helpers/fixture.js';
+import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
+import { WORKER_TERM_GRACE_MS } from '../../src/trivium/run-protocol.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID } from '../../src/trivium/gate.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
@@ -2465,4 +2467,70 @@ test('事后收尾余项 P6：同步路径在准备阶段就失败（登记写�
   assert.deepEqual(m.termination, { by: 'prepare_exception', exit_code: EXIT.FAIL });
   assert.equal((r.stderr.match(/收尾为 failed/g) ?? []).length, 1, r.stderr);
   assert.doesNotMatch(r.stderr, /同步路径异常/, r.stderr);
+});
+
+/*
+ * ── EV-152：--cancel 结束 worker 以 killTree 拉起的审查员 CLI（取消够不到审查员CLI计划 r2 §5.2 I1 / I2）──
+ *
+ * 桩 `hang_cli` 以仓库的 run() 按 killTree 真实拉起 `sh -c 'sleep 600; : "$0"' trivium-stub-cli:<out_dir>`：
+ * 组长 sh 带标记，组员 sleep 不带。判据是「按组号枚举，成员为零」，不是「带标记的那层没了」（计划双审 r1 CODEX-03）。
+ * 「未响应 SIGTERM」出自 warn，恒写 stderr（GLM-02）。
+ */
+
+async function cancelReachesCli(stub: StubConfig) {
+  const fx = await makeFixture({ topic: TOPIC });
+  const started = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    stub,
+  );
+  assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
+  const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string; run_dir: string };
+  const mark = `trivium-stub-cli:${js.run_dir}`;
+  let groups: number[] = [];
+  try {
+    for (let i = 0; i < 100 && groups.length < 2; i++) {
+      groups = groupsWithMark(mark);
+      if (groups.length < 2) await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.equal(groups.length, 2, '桩 CLI 没起来：两侧的组长都应出现，用例前提不成立');
+    for (const g of groups) assert.equal(groupMemberCount(g), 2, `组 ${g} 应有 sh 与 sleep 两个成员，用例前提不成立`);
+
+    const t0 = Date.now();
+    const c = await cli(fx.root, ['review', '--cancel', js.run_id]);
+    const ms = Date.now() - t0;
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    await new Promise((r) => setTimeout(r, 100));
+    const counts = groups.map((g) => groupMemberCount(g));
+    const workerLog = await fs.readFile(path.join(js.run_dir, 'worker.log'), 'utf8').catch(() => '');
+    const status = JSON.parse(await fs.readFile(path.join(js.run_dir, 'status.json'), 'utf8')) as { phase: string };
+    const meta = await readRunJson(fx.stageDir, js.run_id);
+    return { fx, js, c, ms, counts, workerLog, status, meta };
+  } finally {
+    // 残留按组号结束；今天（无处理器）这里会找到两组
+    const left = groupsWithMark(mark);
+    for (const g of [...new Set([...groups, ...left])]) killGroup(g);
+  }
+}
+
+test('EV-152 I1：--cancel 结束 worker 以 killTree 拉起的两侧审查员 CLI（整组），归档仍由 cancelRun 收尾为 cancelled', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await cancelReachesCli({ gemini: { mode: 'hang_cli' }, glm: { mode: 'hang_cli' } });
+  assert.deepEqual(r.counts, [0, 0], `两组都应已空：\n${r.workerLog}`);
+  assert.doesNotMatch(r.c.stderr, /未响应 SIGTERM/, 'worker 应在宽限内自己退出，不被升级 SIGKILL');
+  assert.match(r.workerLog, /收到 SIGTERM：已按组终止审查员 CLI/);
+  assert.equal(r.status.phase, 'cancelled');
+  assert.equal(r.meta.status, 'cancelled', '冻结没让 worker 抢先把归档写成 failed（EV-128 语义不变）');
+  assert.equal((await gatesOf(r.fx.root))[`${TOPIC}/plan`]?.state, 'idle');
+});
+
+test('EV-152 I2：一侧 CLI 忽略 SIGTERM——worker 在宽限内升级 SIGKILL 结束它，--cancel 不被升级', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await cancelReachesCli({ gemini: { mode: 'hang_cli', ignoreTerm: true }, glm: { mode: 'hang_cli' } });
+  assert.deepEqual(r.counts, [0, 0], `两组都应已空：\n${r.workerLog}`);
+  // 主判据是因果的：stderr 不含「未响应 SIGTERM」即 worker 在宽限内自己退了（计划双审 r1 CODEX-05）
+  assert.doesNotMatch(r.c.stderr, /未响应 SIGTERM/);
+  assert.match(r.workerLog, /（SIGTERM、SIGKILL）/, '忽略 SIGTERM 的那一组应被升级 SIGKILL');
+  assert.equal(r.meta.status, 'cancelled');
+  // 计时只防挂住，不承担判据：主判据是上面 stderr 的因果断言（变异 M5 靠它咬住）。实测约 3.6 s；
+  // 上界放宽到宽限 + 2 s，满载下也不该假红（代码双审 r1 CODEX-05 ≡ GLM-03）。若因果判据成立而这条超界，按 EV-149 口径先存读数
+  assert.ok(r.ms < WORKER_TERM_GRACE_MS + 2000, `--cancel 耗时 ${r.ms} ms（因果判据已过；超界先存读数、别当实现回归）`);
 });

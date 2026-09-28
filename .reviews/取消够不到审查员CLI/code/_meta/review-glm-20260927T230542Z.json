@@ -1,0 +1,77 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "五个焦点逐一核实后实现是稳的：冻结标志全仓单写点、只由 worker 的 SIGTERM 处理器置位，无误触发；转发链路不经 run()（killProcessTree 直发、父进程句柄判退出），冻结不会自锁；处理器两级防重入 + 3.5 s 看门狗落在 5 s 宽限内，U8 用常量钉住；登记在 spawn 与 set 之间无 JS 可插入；变异 10/10 咬住且五条有失败用例名佐证，旧构建对照与 A6 归一化可信。三条非阻断意见：MANUAL「只剩上面两种情形」把覆盖不到的格说过头（GLM-01）；「只有忽略 SIGTERM 的组员会漏」把「组长已退出后整组零信号」那一格说窄（GLM-02）；I2/U9② 的墙钟断言余量在全量负载下偏紧（GLM-03）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "doc/07_manuals/MANUAL_user.md:624",
+      "problem": "MANUAL 的已知缺口段末句「自 v1.0.10 起只剩上面两种情形」说过头。设计 §7.5「工作进程的信号语义」自己如实保留的覆盖不到的格里，还有两格会在 **没有任何 stderr 提示** 的情况下遗留 CLI：①组长 CLI 已退出而同组仍有后代（见 GLM-02，且 worker.log 的转发行只在 worker.log 里、用户终端看不到）；②CLI 自己 setsid 出去的后代。这两格里 worker 都在宽限内正常退出，`--cancel` 不打「未响应 SIGTERM」也不打「工作进程在本次取消之前已退出」，用户按 MANUAL 相信「只剩两种情形」就不会去 ps 核对，静默 CLI 继续烧配额——而这段手册存在的意义正是告诉用户什么时候该手工清理。",
+      "evidence": "doc/07_manuals/MANUAL_user.md:621-624（两情形+末句）；src/trivium/run-protocol.ts cancelRun 的 onEscalate 与 else 分支（仅这两处打提示，已读）；src/trivium/run-protocol.ts installWorkerSigtermForwarding 的 stderr 输出目的地是 worker 的 stderr＝worker.log（spawnDetached 重定向，src/trivium/util/exec.ts:355）；设计 §7.5 信号语义段的「覆盖不到的格」清单（被审 diff 行 65）；src/trivium/util/log.ts warn 恒写 stderr、但 worker 侧 [worker] 行不经 warn 出现在用户终端。",
+      "suggestion": "把末句改软并补窄格：例如「常见的剩上面两种情形；另有两组窄形态（组长退出后同组遗留的后代、CLI 自己 setsid 出去的后代，见设计 7.5）同样不会被打提示」，或在取消一节统一给一句「取消后想确信没有残留，可 ps 查 ppid 为 1 的 CLI」。PROTOCOL `--cancel` 行的「那时以及…已被强杀时 CLI 够不到」同族但语气较弱，可顺手核对。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/util/exec.ts:573",
+      "problem": "shutdownTrackedTrees 文档块写「首个 SIGTERM 按组发，组员与组长同时收到；**只有忽略 SIGTERM 的组员会漏**」，设计 §7.5 同格写「组长 CLI 已退出而同组有**忽略 SIGTERM 的**后代」。这只对「处理器运行时组长还活着」的子格成立。另一子格是：组长在处理器运行**之前**已退出（含正常退出）——'exit' 已到、liveTrees 已删（或被 exitCode 过滤），该组从 pending 里消失、**一个信号都不发**，此时同组遗留的任何后代无论是否响应 SIGTERM 都收不到信号（响应的也没人给它发）。exec.ts:228-233 的 exitTimer 注释明说「孙进程拖住管道不闭合」是真实形状，所以「响应但遗留」的组员并非纯理论。这一格与取消无关地预存（正常收尾同样遗留），但措辞把它说窄了会让后来的人低估遗留面。",
+      "evidence": "src/trivium/util/exec.ts:576-581（按句柄过滤 + liveTrees，已读全文）；src/trivium/util/exec.ts:150-152（'exit' 删除先于句柄可观察，二者同步）；src/trivium/util/exec.ts:228-233（孙进程遗留的真实形状自认）；被审 diff 行 65（设计 §7.5 覆盖不到的格的措辞）。",
+      "suggestion": "把 exec.ts 该行与设计 §7.5 的 h 格措辞改为「组长已退出（含处理器运行前已正常退出）后同组遗留的后代——整组不会再收到任何信号，是否响应 SIGTERM 无关」；GLM-01 的 MANUAL 修订可引用同一句。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/integration/gate-loop.test.ts:674",
+      "problem": "I2 的墙钟断言 `r.ms < WORKER_TERM_GRACE_MS - 500`（4500 ms）余量偏紧：报告实测 I2 约 3.6 s（acceptance A2 为 2199 ms），而 `--cancel` 全程含 node 启动、250 ms 轮询且每轮 `workerGoneForCancel` 起一次 ps（processStartTime 经 run()，timeoutMs 10 s）、终态后还有 finalize 多次 fs 写与 scrubRunDir——全量并行负载下本项目已有两类同族偶发红（EV-149、EV-153）。该断言的因果判据（stderr 不含「未响应 SIGTERM」）已在场且足够，墙钟只是弱冗余，假红时归因成本高。U9② 与 acceptance A2 同形（U9② 余量大、风险低）。",
+      "evidence": "test/integration/gate-loop.test.ts:666-675（断言与注释，经被审 diff 核对）；src/trivium/run-protocol.ts:1236-1246（cancelRun 轮询与收尾链）；src/trivium/util/exec.ts:443-448（processStartTime 每次 ps）；REPORT_2026-09-28_cancel_cli_reach.md §2（I2 约 3.6 s 读数）；doc/08_project/BACKLOG.md EV-149/EV-153（同族负载偶发红先例）。",
+      "suggestion": "二选一：把上界放宽到「WORKER_TERM_GRACE_MS + 固定收尾余量（如 2000 ms）」，只保留「远小于升级所需」的意图；或删掉墙钟断言、让 stderr 判据与 worker.log 的信号序列独担。若日后全量偶发红，按 EV-149 先例先存完整文案再判。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "冻结语义的实现与论证一致：treeShutdown 全仓唯一写点在 shutdownTrackedTrees 进门（exec.ts:577），只有 worker 的 SIGTERM 处理器调它，不存在没收到 SIGTERM 就误触发的通道；对全部 run() 生效（含 ps/git）的代价与「新增调用者须知晓」都写进了文档块（CODEX-04 的显式决定）。",
+    "转发链路不会自锁：killProcessTree 直接 process.kill、判退出用父进程句柄，全程不经 run()；冻结后 terminateProcessGroup 照常工作，cancelRun 侧的 ps 在 CLI 进程里、不受 worker 冻结影响。",
+    "finish() 冻结检查排在清计时器之后、resolve 之前（exec.ts:200-210），配合 runner.ts:129-184 的重试面（adapter.run 不 resolve 即不重试、不重派生）、「两侧 CLI 在跑时 executeRun 走不到归档终态写入」的论证成立，I1 还断言了归档仍由 cancelRun 收尾为 cancelled（EV-128 语义不变）。",
+    "处理器时序严密：handling 进门标志同步置位、第二次 SIGTERM 被仍在的监听吞掉（U9② 钉住）、exitOnce 的 exiting 防重入、看门狗 3500 ms = 2+1+0.5 覆盖最坏路径、卸载函数的 if(!handling) 保险与「finally 抢不到转发之前」的论证相符；重新自杀的退出形态（signal: SIGTERM 而非 exit(143)）由 U9① + 变异 M9 双向钉住。",
+    "登记的同步性成立（spawn 与 set 之间无 JS 可插入）、'exit' 删除带同对象判据防 pid 复用误删；并行终止（AGY-05）由 U7⑥ + M10 咬住；组长退出后停发信号的防 pgid 复用判据与 EV-150 同一论证。",
+    "hang_cli 桩的形状选得对：真实子进程、标记走 $0 进 argv 不经 shell、sh+sleep 两层让组里有不带标记的成员——按组号判「组空」才测得到「按组」语义（计划双审 CODEX-03）；ignoreTerm 用 trap '' TERM 模拟不响应侧。",
+    "变异证据可信：装置七道闸（备份单射、产物哈希、基线全绿、逐字节恢复、cases⊆targets、find 唯一）方法论读过成立，10/10 咬住，且 M1/M5/M6/M7/M9 另存失败用例名与首行断言文案、确认是目标断言红而非前置失败。",
+    "旧构建对照可信：git archive 固定提交 + 只叠 stub.ts、叠加面 diff 存进读数、新旧 sha256 断言不同；A4 实测旧构建两组各留 2 人（缺口在场）；A6 第 1 次假红成因（裸主题名漏归一）查明修掉且 r0 读数留档——归一化的自我修正过程诚实。",
+    "cancelRun 两处新 warn 的文案与 MANUAL 引文逐字对上，warn 恒写 stderr（log.ts:24），I 系用例的 stderr 断言判据成立；WORKER_TERM_GRACE_MS 抽成具名常量后 cancelRun 与 settleOrphanedStart 共用，U8 用常量不等式钉住预算。",
+    "BACKLOG 三个新条目（EV-154 连带 EV-38/EV-146 注记、EV-155 按代码推断标注未实测、EV-156 实测）与报告 §3.2「只按代码论证、无用例钉住的格」清单互相对得上，没有把推断写成已验。"
+  ],
+  "not_covered": [
+    "真实厂商 CLI（agy/zcode/codex/claude）对 SIGTERM 的处置未实测——本审查同样不花配额，采信报告「不响应时由 2 s 后 SIGKILL 兜底」的论证与 A2/I2 的桩形态。",
+    "「移除最后一个监听即恢复缺省处置」只在 Node v25.2.1 / macOS 量过，Node 18 未测（报告 §3.2 已如实登记）。",
+    "取消落在收尾段的推进窗口（a″）与 CLI 自己 setsid 出去后代（g 格）零配额造不出确定时序，未构造复现，按代码论证采信。",
+    "未重跑 npm run check、验收脚本与变异装置（只读审查）；读数采信报告与 evidence 文件（acceptance-readout.json 的 A1-A7 结论行已逐一核对）。",
+    "probe-pipe-break 的 P1-P8/H1-H2 只核对了 A5 摘要与输出 tail，未逐条重演；dbg-pty、gen-mutation-spec 的运行时行为未独立复跑。",
+    "必读清单中的 README.md、doc/README.md、doc/01_requirements/README.md、doc/02_design/README.md、cli.ts、review.ts 全文未逐行读（只读了 review.ts 的 executeRun/writeMeta 衔接区与相关 grep），与被审面无直接关联的章节未覆盖。",
+    "证据文件中 acceptance-readout.r0.json 与 probe-pipe-break.out.r1/r2.json 只经报告描述与 diff 尾部节选了解，未整读。"
+  ],
+  "consulted": [
+    ".reviews/取消够不到审查员CLI/code/_meta/changes-20260927T230542Z.diff",
+    "src/trivium/util/exec.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/review.ts",
+    "src/trivium/util/log.ts",
+    "src/trivium/status.ts",
+    "scripts/mutation-check.mjs",
+    "test/helpers/fixture.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/worker-detach.test.ts",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/05_testing/evidence/cancel-cli-reach-20260928/acceptance-readout.json",
+    "CLAUDE.md"
+  ]
+}

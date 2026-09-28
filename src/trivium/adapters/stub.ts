@@ -31,6 +31,7 @@ import {
   type CriticAdapter,
 } from './base.js';
 import { warn } from '../util/log.js';
+import { run } from '../util/exec.js';
 
 export const STUB_ENV_VAR = 'TRIVIUM_STUB_CRITIC';
 
@@ -108,6 +109,15 @@ export type StubMode =
    * 用例能不能赶在它前面 `--cancel` 全凭时序，会抖（EV-128 实施时核出）。
    */
   | 'hang'
+  /**
+   * 与 `hang` 同为「一直挂着」，但**真实拉起一个子进程**：以仓库的 `run()` 按 `killTree: true`（适配器的写法）
+   * 派生 `sh -c 'sleep 600; : "$0"' trivium-stub-cli:<out_dir>`，一直等它结束（EV-152，取消够不到审查员CLI计划 r2 §5.2）。
+   *
+   * `hang` 在进程内 `setTimeout`，不起子进程，测不出「worker 被取消时够不到它拉起的 CLI」。这里保留 `sh` + `sleep`
+   * 两层，让组里有不带标记的成员，用例按组号判「组空」才测得到「按组」；标记带 `out_dir`，用例据此认出本运行的组长。
+   * `ignoreTerm` 为真时命令前加 `trap '' TERM;`（`sleep` 继承忽略），模拟不响应 SIGTERM 的 CLI。
+   */
+  | 'hang_cli'
   /** 进程级失败 */
   | 'fail';
 
@@ -143,6 +153,8 @@ export interface StubSpec {
    * 只为集成用例咬住 `review --start` 的副本源复查：`--start` 路径上唯一的注入通道是本环境变量。
    */
   modelOverrideSource?: string;
+  /** `hang_cli` 模式下让子进程忽略 SIGTERM（EV-152） */
+  ignoreTerm?: boolean;
   note?: string;
 }
 
@@ -287,6 +299,19 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
             reason: '桩挂起 600s 未被取消',
             durationS: 600,
           });
+        case 'hang_cli': {
+          // 标记走 `$0`（sh -c 的第一个位置参数），进 argv、不经 shell 解析路径
+          const body = `${spec.ignoreTerm ? "trap '' TERM; " : ''}sleep 600; : "$0"`;
+          const r = await run('/bin/sh', ['-c', body, `trivium-stub-cli:${req.out_dir}`], {
+            killTree: true,
+            timeoutMs: 610_000,
+          });
+          return failedResult(critic, {
+            status: 'timeout',
+            reason: `桩 CLI 挂起未被取消（code=${r.code} signal=${r.signal}）`,
+            durationS: Math.round(r.durationMs / 1000),
+          });
+        }
         case 'timeout':
           return failedResult(critic, {
             status: 'timeout',

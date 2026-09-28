@@ -1,0 +1,77 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=2）
+  M6 ✓ 咬住（fail=4）
+  M7 ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=2）
+  M10 ✓ 咬住（fail=1）
+{
+  "总数": 10,
+  "咬住": 10,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "workerMain 不装 SIGTERM 处理器 ⇒ I1（CLI 两组留下）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "shutdownTrackedTrees 不升级 SIGKILL ⇒ U7②",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "finish() 冻结时照常 resolve ⇒ U7①",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "run() 冻结后照常派生 ⇒ U7③",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "处理器末尾不重新自杀、也不兜底退出（worker 留着）⇒ I1（--cancel 升级 SIGKILL，stderr 出现「未响应 SIGTERM」）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M6",
+      "desc": "run() 不登记 killTree 子进程 ⇒ U7①",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M7",
+      "desc": "WORKER_TREE_GRACE_MS 改成 5000 ⇒ U8",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "登记也收不带 killTree 的子进程 ⇒ U7⑤",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "重新自杀改成同步 process.exit(143)（计划双审 r1 AGY-02 ≡ CODEX-06）⇒ U9①",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M10",
+      "desc": "并行终止改成（等效的）逐个进行：第 k 组推迟 k ×（宽限 + SIGKILL 后等待）才开始（计划双审 r1 AGY-05）⇒ U7⑥",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

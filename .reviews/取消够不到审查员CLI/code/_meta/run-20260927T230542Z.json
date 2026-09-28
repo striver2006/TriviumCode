@@ -1,0 +1,286 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260927T230542Z",
+  "topic": "取消够不到审查员CLI",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点看五处：一，冻结对全部 run() 生效、finish 不兑现，会不会在没收到 SIGTERM 时误触发，或漏掉本该兑现的调用；二，处理器只处理第一次、看门狗、exitOnce 防重入与卸载的时序是否严密，重新自杀之后的退出形态；三，登记在派生之后同步完成、退出时删除，并行终止与组长退出后不再发信号的判据；四，桩 hang_cli、按组号判组空的用例与十条变异能否真正咬住，旧构建对照与归一化是否可信；五，文档与 BACKLOG 里覆盖不到的各格是否写准、有没有说过头。",
+  "task_goal": "取消够不到审查员 CLI 实施计划（r2 定稿）",
+  "entry": "C",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "8267ffa86d6e5790b03b8b6f601521c8c1763426",
+    "tree_hash": "71ba2a03cff8e88c7da6ea934ec4ab26f23c1367",
+    "dirty": true,
+    "subject_sha256": "8a20a6e012ff8a928bfc1dd93629c21512d93a2e692329a594e33af184044838",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "8267ffa86d6e5790b03b8b6f601521c8c1763426",
+      "dirty": true,
+      "inputs_sha256": "23138d64ce6145ce643c9bb819965a318765da60339fb754748d717f58dd5a4c",
+      "built_at": "2026-09-27T22:56:32.378Z"
+    },
+    "after_tree_hash": "d334cd4b11349a2b7268536d0612b39ab1db83f0"
+  },
+  "started_at": "2026-09-27T23:05:44.259Z",
+  "finished_at": "2026-09-27T23:23:21.179Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1056.661,
+      "tool_calls": {
+        "run_command": 46,
+        "project_reads": 46
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0e51e-038c-7a63-ac97-c315d6798235",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.12",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 194.428,
+      "tool_calls": {
+        "read": 33,
+        "grep": 6,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 19
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 489349,
+        "output_tokens": 31848,
+        "thinking_tokens": 27030,
+        "cache_read_tokens": 5195770,
+        "total_tokens": 521197
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "9209b0b7-b52c-4f40-9943-5231bb4caec2",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 582.803,
+      "tool_calls": {
+        "read": 15,
+        "grep": 9,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 14
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 18,
+        "inputTokens": 2158769,
+        "outputTokens": 38258,
+        "totalTokens": 2197027,
+        "cacheReadTokens": 2013504,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_bc5d4aa6-4945-44c0-b5b5-b0f43f47e5b4",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/取消够不到审查员CLI/plan/2026-09-28-取消够不到审查员CLI-gemini.md",
+    ".reviews/取消够不到审查员CLI/plan/2026-09-28-取消够不到审查员CLI-glm.md",
+    ".reviews/取消够不到审查员CLI/plan/_meta/review-gemini-20260927T190138Z.json",
+    ".reviews/取消够不到审查员CLI/plan/_meta/review-glm-20260927T190138Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "取消够不到审查员CLI/code/_meta/changes-20260927T230542Z.diff",
+      "sha256": "8a20a6e012ff8a928bfc1dd93629c21512d93a2e692329a594e33af184044838"
+    },
+    {
+      "path": "取消够不到审查员CLI/code/_meta/brief-codex-20260927T230542Z.md",
+      "sha256": "6d03cb99e1e420c81ecc19f06a179791c493c5c7c5c55984607b51c792c45fd1"
+    },
+    {
+      "path": "取消够不到审查员CLI/code/_meta/brief-gemini-20260927T230542Z.md",
+      "sha256": "4ef118875092987c47ffd28637881a682f14dd325022f616251ae450c8a8aa22"
+    },
+    {
+      "path": "取消够不到审查员CLI/code/_meta/brief-glm-20260927T230542Z.md",
+      "sha256": "67f2a7b457cb43eb6e30e66b278dac0b03383cc6795bf6c4d8550c15f95ddcdb"
+    },
+    {
+      "path": "取消够不到审查员CLI/code/_meta/review-codex-20260927T230542Z.json",
+      "sha256": "abbf4ff61ffe3c5151bd17a5416fcd2dac4eb19ac5e97c5831e48c866b1771f2"
+    },
+    {
+      "path": "取消够不到审查员CLI/code/_meta/review-gemini-20260927T230542Z.json",
+      "sha256": "9cff8478f3eafbe6b4a4acae827bf0c113b5421d7820583faa71087bc2da45bb"
+    },
+    {
+      "path": "取消够不到审查员CLI/code/_meta/review-glm-20260927T230542Z.json",
+      "sha256": "34f99d2783c0dfccf5f1a9103cbeb5a40dce6f1f019c53624627f5f75403629c"
+    },
+    {
+      "path": "取消够不到审查员CLI/code/2026-09-28-取消够不到审查员CLI-codex.md",
+      "sha256": "9a41a2b4c00042faec7caf6c3a3a591f099047aca208304d6f61ee04c8bfd552"
+    },
+    {
+      "path": "取消够不到审查员CLI/code/2026-09-28-取消够不到审查员CLI-gemini.md",
+      "sha256": "0b91ea0b8ebc372c52b42e9650ded728afedad867dad2026d8d7f45019f07bae"
+    },
+    {
+      "path": "取消够不到审查员CLI/code/2026-09-28-取消够不到审查员CLI-glm.md",
+      "sha256": "0e5af2cd503fd52fef9718fe3d0cd8db8229c382a0a651f11c965a2ef0fe1b33"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}
