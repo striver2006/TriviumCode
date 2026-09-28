@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "CLI进程组记录",
+  "goal": "主题「CLI进程组记录」：解决 BACKLOG EV-154（worker 被 SIGKILL、崩溃或事件循环堵住时，它以 killTree 拉起的审查员 CLI 无人能结束），连同 EV-38（凭据清扫准入只核 worker、不核 CLI）；EV-146 只论证、不实施。 开工前先读：记忆 m10b-next-after-ev82.md 的最后两段、pipeline-known-pitfalls…",
+  "created_at": "2026-09-28T01:44:02.516Z",
+  "updated_at": "2026-09-28T04:10:35.232Z",
+  "runs": [
+    {
+      "run_id": "20260928T015235Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-28T01:52:36.993Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260928T030117Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-28T03:01:19.411Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260928T040648Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-28T04:10:35.232Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-09-28T01:44:02.516Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-09-28T02:08:12.045Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20260928T015235Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-28T02:08:09.465Z"
+    },
+    {
+      "run_id": "20260928T030117Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-09-28T03:19:05.015Z"
+    }
+  ]
+}
