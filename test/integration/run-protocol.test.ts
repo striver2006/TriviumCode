@@ -11,7 +11,8 @@ import {
   WORKER_TERM_GRACE_MS, WORKER_TREE_GRACE_MS, WORKER_TREE_KILL_WAIT_MS,
 } from '../../src/trivium/run-protocol.js';
 import { getGate, setGate } from '../../src/trivium/state.js';
-import { newStatus, readStatus, writeStatus, type RunStatus } from '../../src/trivium/status.js';
+import { newStatus, readStatus, staleThresholdWithinHeartbeat, writeStatus, type RunStatus } from '../../src/trivium/status.js';
+import { checkHeartbeatThreshold } from '../../src/trivium/preflight.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { acquireLock, inspectLock } from '../../src/trivium/lock.js';
 import { spawnDetached, processStartTime, processStartTimes, processAlive } from '../../src/trivium/util/exec.js';
@@ -851,6 +852,29 @@ test('EV-146 K2：--wait 判失联时记下结构化的 lost；heartbeat_stale �
   const m3 = await lostMessage(ctx3, 'R-K2-GONE');
   assert.equal((await readStatus(runDir))?.lost?.reason, 'pid_gone');
   assert.doesNotMatch(m3, /判定依据|trivium review --cancel/);
+});
+
+/*
+ * EV-160 R1（心跳阈值事前告警计划 r2 §6.1）：`--wait` 报错里「阈值不大于心跳间隔」那一句与预检 / `--start` 的「失联阈值」
+ * 只警告项共用同一判据。边界全集在 status.test.ts 的 U1 里纯内存跑；这里只取四个阈值（含等于间隔与略大于间隔两个边界），
+ * 每个都真跑一次 waitRun——心跳被改到一小时前，四个阈值都会判 heartbeat_stale。
+ */
+test('EV-160 R1：--wait 那一句、共享判据、预检告警三者对同一阈值给出同一结论（2 / 30 / 30.5 / 120）', async () => {
+  const cases: Array<[number, boolean]> = [[2, true], [30, true], [30.5, false], [120, false]];
+  for (const [staleS, expected] of cases) {
+    const ctx = await fakeCtx();
+    ctx.config.review.heartbeat_stale_s = staleS;
+    const r = await lostScenario(ctx, `R-R1-${String(staleS).replace('.', '_')}`);
+    try {
+      const sentence = r.message.includes('——阈值不大于心跳间隔：健康的工作进程也会被判失联');
+      assert.match(r.message, new RegExp(`失联阈值 heartbeat_stale_s = ${String(staleS).replace('.', '\\.')} s；工作进程的心跳间隔是 30 s）`));
+      assert.equal(staleThresholdWithinHeartbeat(staleS), expected, `共享判据（阈值 ${staleS}）`);
+      assert.equal(sentence, expected, `--wait 那一句（阈值 ${staleS}）：\n${r.message}`);
+      assert.equal(checkHeartbeatThreshold(ctx.config) !== null, expected, `预检告警（阈值 ${staleS}）`);
+    } finally {
+      killQuietly(r.pid);
+    }
+  }
 });
 
 test('EV-146 K3：本格主线——结束 worker、补收 run.json 与登记（worker_lost / heartbeat_stale）、按 run_id + pid 回收锁；status.json 逐字节不变、闸门不动', async () => {

@@ -17,7 +17,8 @@ import { promises as fs, constants as fsConstants } from 'node:fs';
 import type { AuthCacheEntry, CommonProbe, Config, CriticId, Ctx, Stage } from './types.js';
 import { DEFAULT_CRITICS, STAGES } from './types.js';
 import { EXIT, TriviumError } from './exit-codes.js';
-import { patchProbe, probeIsFresh, staleCliProbes } from './config.js';
+import { DEFAULT_HEARTBEAT_STALE_S, patchProbe, probeIsFresh, staleCliProbes } from './config.js';
+import { WORKER_HEARTBEAT_MS, staleThresholdWithinHeartbeat } from './status.js';
 import { ALL_CLI_NAMES, DEFAULT_DRIVER, agentById, agentByCliName, type AgentId } from './agents/registry.js';
 import { realAdapters } from './adapters/index.js';
 import { routeModel, type AdapterContext, type AdapterTable, type CriticAdapter } from './adapters/base.js';
@@ -600,6 +601,32 @@ export async function checkModelOverrideSource(
   return out;
 }
 
+/**
+ * 失联阈值不大于 worker 心跳间隔时给警告（EV-160，心跳阈值事前告警计划 r2 §3.2）。**只警告、不拒跑**。
+ *
+ * 判据是共享的 `staleThresholdWithinHeartbeat`，与 `--wait` 判 heartbeat_stale 时报错里那一句同一来源。
+ * 两个调用点用的是**同一个函数**：预检 ④‴ 与 `startRun`（派生之前，与副本源复查同一次汇总）。
+ * 同步 `review --stage` 不调：那条路径没有 worker、没有心跳、没有 `--wait`，后果句在那里不成立（计划 r2 §3.4）。
+ *
+ * 只读配置，不花配额、不读盘。阈值配小对短临界区锁持有超时的影响与心跳间隔无关，不在这条里说（计划 r2 §5，BACKLOG 另登）。
+ */
+export function checkHeartbeatThreshold(cfg: Config): CheckResult | null {
+  const staleS = cfg.review.heartbeat_stale_s;
+  if (!staleThresholdWithinHeartbeat(staleS)) return null;
+  const beatS = WORKER_HEARTBEAT_MS / 1000;
+  return {
+    name: '失联阈值',
+    ok: true,
+    warn: true,
+    detail:
+      `⚠️ review.heartbeat_stale_s = ${staleS} s，不大于工作进程的心跳间隔 ${beatS} s：工作进程每 ${beatS} s 才刷新一次 status.json，` +
+      `每一轮审查里它的未更新时长都会反复越过这个阈值（阈值越接近 ${beatS} s，越过的时段越短、被轮询碰上的机会越小），` +
+      '--wait 轮询到就判 heartbeat_stale——健康的工作进程也会被判失联。' +
+      '失联报错会推荐 trivium review --cancel，照做会结束一个健康的轮次。' +
+      `把阈值调回 ${DEFAULT_HEARTBEAT_STALE_S} 以上（缺省值）即可避免；若是有意为之（比如构造失联的测试），可忽略这条。`,
+  };
+}
+
 /** `warn` 项的汇总：预检与 `--start` 同形（EV-123） */
 export function collectWarnings(checks: readonly CheckResult[]): PreflightWarning[] {
   return checks.filter((c) => c.warn).map((c) => ({ name: c.name, detail: c.detail }));
@@ -747,6 +774,11 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
   }
   // ④″ 模型覆盖副本源（EV-123）：只警告、不拒跑；不花配额，放在探活之前
   if (checks.every((c) => c.ok)) checks.push(...(await checkModelOverrideSource(selected, opts.adapters)));
+  // ④‴ 失联阈值（EV-160）：只警告、不拒跑；只读配置，与 scope 无关（哪个阶段都会走到 --start）
+  if (checks.every((c) => c.ok)) {
+    const h = checkHeartbeatThreshold(cfg);
+    if (h) checks.push(h);
+  }
   // ⑤ 模型 slug（按本次实际生效值）
   if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected));
   // ⑥ 归档与 git（无残留探测）

@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.14
+> - **当前版本**：v1.0.15
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -411,7 +411,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | :--- | :--- | :--- |
 | `review.timeout_s` | plan 900 / code 1200 / bug 1200 | 仓库大、补丁大时调大。**改大会连带改变 `max_waits`** |
 | `review.wait_timeout_s` | **180** | 每次等待窗口，**同时是你能收到进度的最小间隔**。调小反馈更密，代价是往返变多 |
-| `review.heartbeat_stale_s` | 120 | 超过这个时间没心跳判 worker 失联 |
+| `review.heartbeat_stale_s` | 120 | 超过这个时间没心跳判 worker 失联。工作进程每 30 秒写一次心跳，配成不大于 30 秒时，健康的工作进程也会被判失联——预检与 `review --start` 会出一条只警告项「失联阈值」（v1.0.15 起，设计 v1.3.57，EV-160），不拦截；有意为之（如构造失联的测试）可忽略 |
 | `review.failure_policy` | `strict` | 一侧失败即中止。改 `degrade` 则继续出单审 |
 | `review.allow_partial_flag` | `true` | 是否允许命令行 `--allow-single`。设 `false` 则命令行也开不回来。**旧名 `allow_single_flag` 仍可用**（加载时自动迁移） |
 | `review.default_critics` | `[gemini, glm]` | 不给 `--critics` 时的默认审核者集合。**已接线**：它就是缺省跑哪几侧的来源 |
@@ -642,7 +642,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 > 并在 `termination` 里记下是哪一种（worker 异常记退出码、失联记原因）；失联时只在工作进程确认已退出才写——
 > 进程还活着、只是心跳过期（`heartbeat_stale`）时不写，报错里会写「工作进程未确认退出」。
 > **心跳过期而工作进程还活着**（v1.0.12 起，设计 v1.3.54，EV-146）：`--wait` 的报错先列判定依据——工作进程的 pid、status.json 多久没更新、
-> 失联阈值 `heartbeat_stale_s` 与工作进程的心跳间隔（30 秒）；阈值不大于 30 秒时会点明「健康的工作进程也会被判失联」（把阈值调回 120 以上即可避免）。
+> 失联阈值 `heartbeat_stale_s` 与工作进程的心跳间隔（30 秒）；阈值不大于 30 秒时会点明「健康的工作进程也会被判失联」（把阈值调回 120 以上即可避免）。这样配时，预检与 `review --start` 事前就会给一条「失联阈值」警告（v1.0.15 起，设计 v1.3.57，EV-160），与这一句用的是同一个判据。
 > 确认它卡死、要结束这一轮，就照报错里的出口再跑 `trivium review --cancel <run_id>`：它会结束那个工作进程与它拉起的审查员 CLI、
 > 把归档里的 `run-<id>.json` 与 task.json 的运行登记补收为 `failed`（`termination` 仍记 `worker_lost` / `heartbeat_stale`）、回收主题锁；
 > status.json 保持失联判定时的样子，闸门不动，凭据副本留给下次会话启动的清扫。输出按事实分几种：

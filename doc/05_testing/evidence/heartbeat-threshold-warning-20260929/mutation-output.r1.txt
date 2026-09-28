@@ -1,0 +1,92 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  N1 ✓ 咬住（fail=1）
+  N2 ✓ 咬住（fail=1）
+  N3 ✓ 咬住（fail=1）
+  N4 ✓ 咬住（fail=2）
+  N5 ✓ 咬住（fail=2）
+  N6 ✓ 咬住（fail=1）
+  N7 ✓ 咬住（fail=3）
+  N8 ✓ 咬住（fail=1）
+  N9 ✓ 咬住（fail=1）
+  N10 ✓ 咬住（fail=1）
+  N11 ✓ 咬住（fail=1）
+  N12 ✓ 咬住（fail=1）
+{
+  "总数": 12,
+  "咬住": 12,
+  "逐条": [
+    {
+      "id": "N1",
+      "desc": "判定函数 <= 改成 <（等于间隔不再算）⇒ U1（30）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N2",
+      "desc": "判定函数恒 false ⇒ U1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N3",
+      "desc": "判定函数恒 true ⇒ U1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N4",
+      "desc": "预检不收 ④‴ 的项 ⇒ P1",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "N5",
+      "desc": "startRun 汇总时丢掉阈值项 ⇒ I1",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "N6",
+      "desc": "--wait 那一句改回行内比较且口径不同（< 而非 <=）⇒ R1（30）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N7",
+      "desc": "告警项去掉 warn: true ⇒ P1（不进 warnings / assertWarnInvariant）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "N8",
+      "desc": "正文里的阈值写死 120（不打印生效值）⇒ U2（29.5）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N9",
+      "desc": "正文去掉出口句 ⇒ U2",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N10",
+      "desc": "④‴ 挪到短路之外（前面失败也出）⇒ P4",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N11",
+      "desc": "finished_inline 分支也带阈值项 ⇒ I6",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N12",
+      "desc": "缺省配置的阈值与缺省值常量脱钩 ⇒ U2",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0

@@ -18,7 +18,8 @@ import { RUN_DIR_FILES } from './run-files.js';
 import { acquireLock, inspectLock, lockPathFor, reclaimStaleLock, workerLockContent, type LockHandle } from './lock.js';
 import {
   cliRecordsOf, computeMaxWaits, interpretStatus, isTerminal, judgeCliGroup, lostOf, newStatus, patchStatus, rawCliOf, readStatus,
-  renderProgress, renderProgressBrief, progressViewOf, syncCliRecords, workerConfirmedGone, workerStartOf, writeStatus,
+  renderProgress, renderProgressBrief, progressViewOf, staleThresholdWithinHeartbeat, syncCliRecords, workerConfirmedGone,
+  workerStartOf, writeStatus, WORKER_HEARTBEAT_MS,
   type CliGroupRecord, type CliGroupVerdict, type ProgressBudget, type ProgressView, type RunStatus, type WorkerLostRecord,
 } from './status.js';
 import type { ArchiveLayout } from './archive.js';
@@ -42,10 +43,7 @@ import {
   type RecordedStart,
 } from './util/exec.js';
 import { fail, say, step, warn } from './util/log.js';
-import { checkModelOverrideSource, collectWarnings, type PreflightWarning } from './preflight.js';
-
-/** 心跳间隔：设计 §7.5 规定 30s */
-const HEARTBEAT_MS = 30_000;
+import { checkHeartbeatThreshold, checkModelOverrideSource, collectWarnings, type PreflightWarning } from './preflight.js';
 
 /**
  * 向工作进程组发 SIGTERM 之后等多久再升级 SIGKILL：`--cancel` 与 `--start` 派生后失败的收尾共用（EV-152 起具名）。
@@ -379,6 +377,9 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
    * **必须在主 `try` 之内**（代码双审 r1 CODEX-01 ≡ AGY-01 ≡ GLM-01）：此刻 `prepareRun` 已把闸门置成
    * `running`，失败要连闸门一起回收——那正是主 `catch` 做的事。上一版单独包了一个只放锁的 `catch`，
    * 抛错时闸门会停到 `approval_lock_ttl_h`，而清扫此时拿不到 `worker_pid`、要过 TTL 才回收。
+   *
+   * **失联阈值（EV-160）同一次汇总**：与预检 ④‴ 同一个 `checkHeartbeatThreshold`，顺序与预检相同（副本源在前、阈值在后）。
+   * 只读配置、不抛。FR-23 跳过分支（上方 `finishedInline`）不走这里：那一支没有 worker、没有 `--wait`，`warnings` 仍为 `[]`。
    */
   let warnings: PreflightWarning[];
   /*
@@ -399,7 +400,11 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
   let workerStartedAt: string | null = null;
   let workerStartedAtCanonical: string | null = null;
   try {
-    warnings = collectWarnings(await checkModelOverrideSource(rc.sides, rc.adapters));
+    const heartbeatWarn = checkHeartbeatThreshold(cfg);
+    warnings = collectWarnings([
+      ...(await checkModelOverrideSource(rc.sides, rc.adapters)),
+      ...(heartbeatWarn ? [heartbeatWarn] : []),
+    ]);
     await ensureDir(rc.runDirBase);
     await writeHandoff(rc);
 
@@ -960,7 +965,7 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
     patchStatus(runDir, () => {}).catch((e: unknown) => {
       if (process.env['TRIVIUM_DEBUG']) console.error('[heartbeat]', e);
     });
-  }, HEARTBEAT_MS);
+  }, WORKER_HEARTBEAT_MS);
 
   try {
     const rc = await rebuildContext(ctx, runId);
@@ -1212,7 +1217,8 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
       /*
        * heartbeat_stale 而 worker 仍在：先列判定依据、再给 --cancel 出口（EV-146，计划 r2 §4.2，计划双审 r1 CODEX-01）。
        * 这是工具第一次向人推荐一个会结束进程的动作，「卡死」与「只是慢」要在推荐的同一屏里分得清：心跳年龄、生效阈值、
-       * 心跳间隔；阈值不大于心跳间隔时健康的 worker 也会被判失联（事前告警见 BACKLOG EV-160）。
+       * 心跳间隔；阈值不大于心跳间隔时健康的 worker 也会被判失联。这一句的判据是共享的 `staleThresholdWithinHeartbeat`，
+       * 与预检 / `--start` 的「失联阈值」只警告项同一来源（EV-160，心跳阈值事前告警计划 r2 §3.3）。
        * heartbeat_stale 只出自情形 C（status.json 可读），所以 pre 不为 null。
        */
       let cancelHint = '';
@@ -1222,8 +1228,8 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
         const staleS = cfg.review.heartbeat_stale_s;
         cancelHint =
           `\n  判定依据：工作进程 ${lostPid ?? '?'} 仍在，status.json 已 ${Number.isFinite(ageMs) ? Math.round(ageMs / 1000) : '?'} s 未更新` +
-          `（失联阈值 heartbeat_stale_s = ${staleS} s；工作进程的心跳间隔是 ${HEARTBEAT_MS / 1000} s）` +
-          (staleS * 1000 <= HEARTBEAT_MS ? '——阈值不大于心跳间隔：健康的工作进程也会被判失联' : '') +
+          `（失联阈值 heartbeat_stale_s = ${staleS} s；工作进程的心跳间隔是 ${WORKER_HEARTBEAT_MS / 1000} s）` +
+          (staleThresholdWithinHeartbeat(staleS) ? '——阈值不大于心跳间隔：健康的工作进程也会被判失联' : '') +
           `\n  若确认它卡死、要结束这一轮：trivium review --cancel ${runId}——会结束它与它拉起的审查员 CLI，并补收归档 run.json；` +
           '它若只是慢，这样做会结束一个仍在推进的轮次';
       }

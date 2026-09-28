@@ -1,0 +1,49 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "未发现问题，建议合入。EV-160 的实现与已批准计划一致：判据收成 status.ts 单一出处（毫秒比较、无余量的 <= 边界为计划 D1 明确决策），--wait 报错、预检 ④‴、startRun 派生前复查三个消费方都传秒、无单位错配，--wait 输出逐字不变有新旧构建逐字对账（A5）背书。只警告语义（ok:true + warn:true）不影响退出码与后续短路，finished_inline 返回 []。旧 HEARTBEAT_MS 常量删净且由 U4 正反断言守住，无循环依赖，配置契约未动（number + exclusiveMinimum:0，小数阈值可达、边界用例有意义）。残余风险如实登记（EV-161 我在 lock.ts 核实 judgeStale 确按该阈值收 critical 锁；EV-162 留白与 D1 论证自洽）。测试咬合力由变异 12/12 与全量 2241/2239/0/2 两次支撑。",
+  "findings": [],
+  "agreed": [
+    "单一来源成立：src/trivium/status.ts:363-381 的 WORKER_HEARTBEAT_MS 与 staleThresholdWithinHeartbeat（s*1000 <= 30_000，毫秒比较），三个消费方——run-protocol.ts:1231-1232 的 --wait 报错那一句、preflight.ts:613 的 checkHeartbeatThreshold、run-protocol.ts:968 的 worker 心跳定时器——全部传秒，无单位错配；run-protocol.ts 本地 HEARTBEAT_MS 已删净，U4 用「不得回退」两条负向断言加两条正向断言守住。",
+    "startRun 接线位置正确：主 try 之内、FR-23 跳过分支之后、写 request.json/status.json 之前（run-protocol.ts:402-407），与副本源同一次 collectWarnings 且顺序一致（副本源在前，P1 有断言）；finished_inline 分支返回 []（I6 有断言）；人读模式经 cli.ts:682 既有两空格缩进循环逐条打印（I5 有断言）。",
+    "只警告语义正确：checkHeartbeatThreshold 返回 ok:true + warn:true，不进 exitCode、不阻断 ⑤ 之后的检查；④‴ 挂在与 ④′/④″ 相同的 checks.every(ok) 短路之后（P4 守住），符合设计 §8.1 为它新补的「本次配置会误导后续判定」口径，且满足既有的 ⚠️ 必带 warn 机器断言（assertWarnInvariant）。",
+    "--wait 输出逐字不变有证据：acceptance A5 用旧（4097aaa）新两份构建对同一失联场景逐字比对（含归一化）相同；判据边界（30 出、30.001 不出）与 interpretStatus 的严格 > 判失联（status.ts:429）方向一致，30 ⇒ true 是 status.ts 文档串里写明的刻意决策。",
+    "无循环依赖与契约面收束：status.ts 不 import preflight/config；preflight.ts 新增的两个 import 均为叶子依赖；config.v2.json 的 heartbeat_stale_s 仍为 type:number + exclusiveMinimum:0，小数阈值可达，30.5/0.001 一类边界用例在配置面上成立；schema、CLI 参数、退出码、skill 资产均未动。",
+    "残余风险如实登记且属实：EV-161（critical 锁持有超时借用 heartbeat_stale_s）我在 lock.ts:132-136 核实 judgeStale 确按 now-acquired_at > heartbeatStaleMs 收 critical 锁，文档只论证不改行为是合理取舍；EV-162 ((30,60) 不告警) 与 D1「不留余量」的论证自洽，避免告警正文在边界段失实。",
+    "文档同步齐备且树内一致：设计 v1.3.57（§7.5 约束①、§8.1 表第五行与「上表五行」、版本记录）、LLD v1.1.15（startRun 第 4 条、4.2 引述块、已知缺口表 EV-160 行划掉并新增锁持有超时行）、MANUAL v1.0.15（配置表与 --wait 失联报错段）、PROTOCOL（--start warnings 说明与心跳判定段）、BACKLOG（EV-160 done、EV-161/162 新登）逐一 grep 核对相符。",
+    "测试有真实咬合力：变异 12/12 全咬住且咬在目标断言上（边界 <= 改 <、判定恒真/恒假、④‴ 不收项、startRun 丢项、warn 旗标、正文写死/去出口句、短路挪位、finished_inline 带项、缺省值脱钩）；集成走真实 bundle + 桩（I1-I6 覆盖 --start JSON/人读、预检进出项与逐项同形、同步 review --stage 不出、纯文档跳过），R1 用四个阈值把 --wait 那一句、共享判据、预检告警三者的同结论性钉在一起；全量 2241/2239/0/2 两次（check-1/check-2.txt）。"
+  ],
+  "not_covered": [
+    "未亲自重跑构建、测试或变异（审查员只读）：读数取自报告与 evidence 文件（check-2.txt 尾部汇总、mutation-output.txt、acceptance-readout.json），bundle sha256 与工作树 tree 哈希未独立复算，工作树一致性以会话起始 git 快照（HEAD 4097aaa、改动文件清单与 diff 吻合）为准。",
+    "acceptance.mjs / gen-mutation-spec.mjs / mutation-spec.json 的脚本逻辑未逐行审，只核了变异清单与 12/12 读数；check-1.txt 全文未读（以 check-2 尾部为准）；mutation-names-output.json、acceptance-output(.r0) 未逐条展开。",
+    "计划 r2 原文属禁读清单未读：「实现与计划一致」的判断依据是报告 §1 逐条映射、§3.1 三处已披露偏离（U4 断言形态、I4 夹具改桩、N6 咬合套件选择）以及实现对设计/LLD/PROTOCOL 的相符性，未对照计划原文复核。",
+    "预检人读模式（非 --json）对新项的渲染未单独验证（走 renderPreflight 既有通用路径，A0/A1/A2 对账的是 --json stdout）；--status --json、hook 路径、doctor 非自检入口未逐项过——本补丁不触这些面，判断为无影响。",
+    "安全镜头：本补丁无新攻击面（纯配置数值读取与输出拼接，无鉴权/路径/反序列化变化），未做额外渗透性检查。"
+  ],
+  "consulted": [
+    ".reviews/心跳阈值事前告警/code/_meta/changes-20260928T170313Z.diff",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/REPORT_2026-09-29_heartbeat_threshold_warning.md",
+    "doc/05_testing/evidence/heartbeat-threshold-warning-20260929/acceptance-readout.json",
+    "doc/05_testing/evidence/heartbeat-threshold-warning-20260929/mutation-output.txt",
+    "doc/05_testing/evidence/heartbeat-threshold-warning-20260929/check-2.txt",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "skills/dual-critic/schema/config.v2.json",
+    "src/trivium/cli.ts",
+    "src/trivium/config.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts",
+    "test/integration/heartbeat-threshold-warning.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/status.test.ts"
+  ]
+}

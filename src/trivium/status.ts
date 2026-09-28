@@ -355,6 +355,27 @@ export function lostOf(s: RunStatus | null): WorkerLostRecord | null {
   return okReason && okAt ? { reason: r.reason as WorkerLostReason, at: r.at as string } : null;
 }
 
+/**
+ * worker 刷新 status.json 心跳的间隔：设计 §7.5 规定 30 s。
+ * EV-160 起从 `run-protocol.ts` 挪到这里共享——worker 的心跳定时器、`--wait` 判 heartbeat_stale 的报错、
+ * 预检与 `--start` 的「失联阈值」只警告项都取它。
+ */
+export const WORKER_HEARTBEAT_MS = 30_000;
+
+/**
+ * 失联阈值没有盖住一个心跳周期（EV-160，心跳阈值事前告警计划 r2 §2）：健康的 worker 两次心跳之间的未更新时长
+ * 每个周期都会越过它，`--wait` 轮询到就判 heartbeat_stale。只凭配置就能下的确定结论，所以**不留余量**
+ * （阈值只比间隔大一点时，要一次心跳迟到才会被判——那取决于运行期，配置层判不出来，计划 r2 D1）。
+ * **30 s 这一格属保守多告警的一侧**（代码双审 r1 CODEX-01）：失联判定是严格大于，等于间隔时未更新时长只在心跳回调延迟与
+ * 一次读写耗时那几毫秒里越过阈值，`--wait` 每 2 s 一次的轮询很少碰上；「没盖住一个周期」仍只凭配置成立，所以照样算。
+ *
+ * `--wait` 的判定依据行与预检 / `--start` 的只警告项（`checkHeartbeatThreshold`）都经这里判，不得各写一份。
+ * 比较在毫秒上做：`30` ⇒ true（等于间隔），`30.001` ⇒ false。
+ */
+export function staleThresholdWithinHeartbeat(heartbeatStaleS: number): boolean {
+  return heartbeatStaleS * 1000 <= WORKER_HEARTBEAT_MS;
+}
+
 export type StatusReading =
   /** 已完成（成功或失败），可以收工 */
   | { kind: 'terminal'; status: RunStatus }

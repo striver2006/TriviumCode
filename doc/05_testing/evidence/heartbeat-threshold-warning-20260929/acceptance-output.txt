@@ -1,0 +1,12 @@
+✓ 构建：新旧 bundle sha256 不同（new 3b82fc72be20 / old 64184e848be4）；桩相对 4097aaa 无 diff true
+✓ A0：新构建 120 s 预检连跑两次：退 0/0，stdout 逐字相同 true
+✓ A1：2 s 预检：退 0/0；新有「失联阈值」true、旧没有 true；删掉这一项后新旧 JSON 逐字相同 true
+✓ A2：120 s 预检：退 0/0，新旧 stdout 逐字相同 true
+✓ A6：边界：30 s 新出 true、旧不出 true；30.5 s 新旧都不出且 stdout 逐字相同 true
+✓ A3：2 s --start：退 0/0；新 warnings 失联阈值、旧 []；其余键归一化后相同 true；--start stderr 相同 true；--cancel 退 0/0、输出相同 true
+✓ A4：120 s --start：退 0/0；新旧 warnings 都是 []；其余键相同 true；stderr 相同 true；--cancel 输出相同 true
+✓ A5：--wait 判失联：退 1/1；报错含判定依据与「阈值不大于心跳间隔」那一句；归一化后新旧逐字相同 true
+✓ A7：同步 review：退 0/0；stdout 相同 true、stderr 相同 true；新构建输出不含「失联阈值」
+✓ A8：doctor --selftest 退 0、14/14
+
+10 / 10

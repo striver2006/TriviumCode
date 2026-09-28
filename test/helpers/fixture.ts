@@ -8,6 +8,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { existsSync } from 'node:fs';
+import YAML from 'yaml';
 import { fileURLToPath } from 'node:url';
 import { run } from '../../src/trivium/util/exec.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
@@ -194,4 +195,89 @@ export async function listFiles(dir: string): Promise<string[]> {
   };
   await walk(dir);
   return out.sort();
+}
+
+export const FAKE_CLI_VERSION = '9.9.9';
+
+/**
+ * 往夹具的本机配置里塞一整份「已探过」的探针结论。
+ *
+ * **三侧都要塞**：预检第一步是探针新鲜度，缺任何一侧都会**快速失败**，
+ * 后面的检查根本不执行——那时断言「只读能力这一项在不在」验的就不是接线了。
+ * 假 CLI 用真文件：`checkCliVersions` 会 `exists()` 并真取一次版本，
+ * 写个不存在的路径会让预检死在版本检查而不是我们要测的那一项。
+ *
+ * `over` 叠加到 codex 那一段（`codex-wiring.test.ts` 用它构造各种探针读数）。
+ * 原是 `codex-wiring.test.ts` 的私有夹具；EV-160 的集成测试与验收脚本要同一份，代码双审 r1 CODEX-02 起收进这里。
+ */
+export async function seedFakeProbes(root: string, over: Record<string, unknown> = {}): Promise<void> {
+  const fakeDir = path.join(root, 'fake');
+  await fs.mkdir(fakeDir, { recursive: true });
+  const fakeAgy = path.join(fakeDir, 'agy');
+  await fs.writeFile(fakeAgy, `#!/bin/sh\necho ${FAKE_CLI_VERSION}\n`, { mode: 0o755 });
+  const fakeZcode = path.join(fakeDir, 'zcode.js');
+  await fs.writeFile(fakeZcode, `console.log('zcode ${FAKE_CLI_VERSION}');\n`, 'utf8');
+  const fakeCodex = path.join(fakeDir, 'codex');
+  await fs.writeFile(fakeCodex, `#!/bin/sh\necho codex-cli ${FAKE_CLI_VERSION}\n`, { mode: 0o755 });
+
+  const now = new Date().toISOString();
+  const common = (entrypoint: string) => ({
+    entrypoint,
+    version: FAKE_CLI_VERSION,
+    probed_at: now,
+    path_deny: { supported: false, rule_syntax: null },
+    scratch_paths: [],
+    isolation: 'home_copy',
+  });
+
+  const p = path.join(root, '.trivium', 'config.local.yaml');
+  const raw = await fs.readFile(p, 'utf8').catch(() => '');
+  const doc = (YAML.parse(raw) ?? {}) as Record<string, any>;
+  doc['probe'] = {
+    generated_at: now,
+    cli: {
+      agy: {
+        ...common(fakeAgy),
+        version_probe: { runner: null, args: ['--version'], extract: null },
+        models: ['gemini-3.8-flash-high'],
+        headless_read_ok: true,
+        agent: 'trivium-critic',
+      },
+      zcode: {
+        ...common(fakeZcode),
+        version_probe: { runner: 'node', args: ['version'], extract: String.raw`(\d+\.\d+\.\d+)` },
+        models: ['GLM-5.3'],
+        readonly_flags: ['--mode plan', '--disallowed-tools Write,Edit'],
+        response_field: '.response',
+      },
+      codex: {
+        ...common(fakeCodex),
+        version_probe: { runner: null, args: ['--version'], extract: String.raw`(\d+\.\d+\.\d+)` },
+        models: ['qwen3.8-max'],
+        exec_headless_read_ok: true,
+        json_event_types: [],
+        json_item_types: [],
+        trace_path_structured: false,
+        rejected_command_in_trace: false,
+        readonly_flags: ['-s', 'read-only'],
+        profile_flag: true,
+        unknown_profile_rejected: false,
+        profiles: ['qwen'],
+        providers: [{ profile: 'qwen', provider: 'qwen', model: 'qwen3.8-max', credentialed: true }],
+        config_override: true,
+        effort_validated: false,
+        model_catalog_path: null,
+        ...over,
+      },
+    },
+  };
+  // 模型档位也得给 codex 配上，否则 routeModel 取不到值、slug 校验先失败
+  doc['profiles'] = {
+    default: {
+      gemini: { plan: 'gemini-3.8-flash-high' },
+      glm: { plan: 'GLM-5.3' },
+      codex: { plan: 'qwen3.8-max' },
+    },
+  };
+  await fs.writeFile(p, YAML.stringify(doc), 'utf8');
 }

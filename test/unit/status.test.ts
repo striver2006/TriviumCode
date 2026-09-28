@@ -6,9 +6,11 @@ import { promises as fs } from 'node:fs';
 import {
   newStatus, writeStatus, readStatus, patchStatus, interpretStatus,
   renderProgress, renderProgressBrief, fmtDuration, computeMaxWaits, statusPath, isTerminal, lostOf,
+  staleThresholdWithinHeartbeat, WORKER_HEARTBEAT_MS,
   type ProgressBudget, type RunStatus,
 } from '../../src/trivium/status.js';
 import { processStartTime } from '../../src/trivium/util/exec.js';
+import { REPO_ROOT } from '../helpers/fixture.js';
 
 async function runDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'trivium-status-'));
@@ -290,4 +292,20 @@ test('EV-146 K1：lostOf——形状合法才返回，读不懂就当没有（fa
   for (const reason of ['no_status_file', 'heartbeat_stale', 'pid_gone'] as const) {
     assert.deepEqual(lostOf(withLost({ reason, at })), { reason, at });
   }
+});
+
+// ── EV-160：失联阈值与心跳间隔的共享判据（心跳阈值事前告警计划 r2 §6.1） ──
+
+test('EV-160 U1：staleThresholdWithinHeartbeat 的边界——等于间隔算、略大于不算，非整数秒按毫秒比', () => {
+  assert.equal(WORKER_HEARTBEAT_MS, 30_000, '心跳间隔 30 s（设计 §7.5）');
+  for (const s of [0.001, 2, 29.5, 30]) assert.equal(staleThresholdWithinHeartbeat(s), true, `阈值 ${s} s 没盖住一个心跳周期`);
+  for (const s of [30.001, 30.5, 31, 60, 120]) assert.equal(staleThresholdWithinHeartbeat(s), false, `阈值 ${s} s 盖住了一个心跳周期`);
+});
+
+test('EV-160 U4：心跳间隔与判据只有一处出处——run-protocol.ts 不再自带常量或行内比较', async () => {
+  const src = await fs.readFile(path.join(REPO_ROOT, 'src/trivium/run-protocol.ts'), 'utf8');
+  assert.doesNotMatch(src, /\bconst HEARTBEAT_MS\b/, '心跳间隔回到了 run-protocol.ts 的本地常量');
+  assert.doesNotMatch(src, /\*\s*1000\s*<=?\s*(?:WORKER_)?HEARTBEAT_MS/, '「阈值不大于心跳间隔」又写成了行内比较');
+  assert.match(src, /staleThresholdWithinHeartbeat\(staleS\)/, '--wait 那一句要经共享判据');
+  assert.match(src, /setInterval\([\s\S]*?\}, WORKER_HEARTBEAT_MS\)/, 'worker 心跳定时器要用共享常量');
 });

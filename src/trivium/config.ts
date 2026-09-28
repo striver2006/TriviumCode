@@ -239,6 +239,12 @@ export function migrateProbeSection(raw: unknown): { probe: unknown; note: strin
 }
 
 /**
+ * `review.heartbeat_stale_s` 的缺省值（秒）：四个 worker 心跳周期（EV-160 起具名）。
+ * 缺省配置与预检 / `--start` 的「失联阈值」只警告项的出口句（「调回 N 以上」）都取它，不各写一份字面量。
+ */
+export const DEFAULT_HEARTBEAT_STALE_S = 120;
+
+/**
  * 内置默认配置。
  *
  * profiles 的模型 slug 已对照本机 `agy models` 与 ZCode 模型目录校验过存在性；
@@ -287,7 +293,7 @@ export function defaultConfig(): Config {
        * 折中：更短（如 60s）会让 code 阶段逼近百次往返，收益却是边际的。
        */
       wait_timeout_s: 180,
-      heartbeat_stale_s: 120,
+      heartbeat_stale_s: DEFAULT_HEARTBEAT_STALE_S,
       retry: { transient_max: 1 },
       cache: false,
       min_tool_calls: perStage(5),

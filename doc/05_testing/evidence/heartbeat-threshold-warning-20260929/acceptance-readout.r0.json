@@ -1,0 +1,297 @@
+{
+  "results": [
+    {
+      "id": "构建",
+      "ok": true,
+      "detail": "新旧 bundle sha256 不同（new 1e43895f3daa / old 64184e848be4）；桩相对 4097aaa 无 diff true"
+    },
+    {
+      "id": "A0",
+      "ok": true,
+      "detail": "新构建 120 s 预检连跑两次：退 0/0，stdout 逐字相同 true"
+    },
+    {
+      "id": "A1",
+      "ok": true,
+      "detail": "2 s 预检：退 0/0；新有「失联阈值」true、旧没有 true；删掉这一项后新旧 JSON 逐字相同 true"
+    },
+    {
+      "id": "A2",
+      "ok": true,
+      "detail": "120 s 预检：退 0/0，新旧 stdout 逐字相同 true"
+    },
+    {
+      "id": "A6",
+      "ok": true,
+      "detail": "边界：30 s 新出 true、旧不出 true；30.5 s 新旧都不出且 stdout 逐字相同 true"
+    },
+    {
+      "id": "A3",
+      "ok": false,
+      "detail": "2 s --start：退 0/0；新 warnings 失联阈值、旧 []；其余键归一化后相同 false；--start stderr 相同 true；--cancel 退 0/0、输出相同 false"
+    },
+    {
+      "id": "A4",
+      "ok": false,
+      "detail": "120 s --start：退 0/0；新旧 warnings 都是 []；其余键相同 false；stderr 相同 true；--cancel 输出相同 false"
+    },
+    {
+      "id": "A5",
+      "ok": false,
+      "detail": "--wait 判失联：退 1/1；报错含判定依据与「阈值不大于心跳间隔」那一句；归一化后新旧逐字相同 false"
+    },
+    {
+      "id": "A7",
+      "ok": true,
+      "detail": "同步 review：退 0/0；stdout 相同 true、stderr 相同 true；新构建输出不含「失联阈值」"
+    },
+    {
+      "id": "A8",
+      "ok": true,
+      "detail": "doctor --selftest 退 0、14/14"
+    }
+  ],
+  "readout": {
+    "base_ref": "4097aaa",
+    "node": "v25.2.1",
+    "platform": "darwin",
+    "bundles": {
+      "new": {
+        "path": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
+        "sha256": "1e43895f3daae0e10ad241ea11869c75fa69ec3a6a741c4a5a759c5ce17a33a1"
+      },
+      "old": {
+        "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-hb-threshold-4dEp5w/old/skills/dual-critic/scripts/trivium.cjs",
+        "sha256": "64184e848be4865ce91ef2a8907f3eda55a44acb5206d30756a0bc067c35f7e0",
+        "from": "4097aaa"
+      }
+    },
+    "A0": {
+      "codes": [
+        0,
+        0
+      ],
+      "same": true,
+      "json": {
+        "ok": true,
+        "scope": "plan",
+        "checks": [
+          {
+            "name": "当轮 Driver",
+            "ok": true,
+            "warn": true,
+            "detail": "⚠️ claude · 护栏 L2（登记 L1，但 .claude/settings.json 里的 TriviumCode Hook 不在场，本次按 L2 计：写入没有事前拦截，审查中的越界由跑后复算发现；闸门期改业务文件不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要；审查工件由审批前复核核本轮；修复：trivium init 或 trivium hooks --agent claude）"
+          },
+          {
+            "name": "探针结论新鲜",
+            "ok": true,
+            "detail": "过期或未探：claude（其余在 TTL 内；跑 doctor --only <名> 可单独补）"
+          },
+          {
+            "name": "Codex 可调用",
+            "ok": true,
+            "detail": "codex 9.9.9"
+          },
+          {
+            "name": "Antigravity 可调用",
+            "ok": true,
+            "detail": "agy 9.9.9"
+          },
+          {
+            "name": "ZCode 可调用",
+            "ok": true,
+            "detail": "zcode 9.9.9"
+          },
+          {
+            "name": "只读能力可用",
+            "ok": true,
+            "detail": "Antigravity 均报告可用"
+          },
+          {
+            "name": "模型 slug 合法",
+            "ok": true,
+            "detail": "已校验 1 个阶段 × 1 侧"
+          },
+          {
+            "name": "归档与 git 可用",
+            "ok": true,
+            "detail": "归档根 /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-hb-threshold-4dEp5w/A0/.reviews"
+          },
+          {
+            "name": "探活",
+            "ok": true,
+            "warn": true,
+            "detail": "⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。"
+          }
+        ],
+        "warnings": [
+          {
+            "name": "当轮 Driver",
+            "detail": "⚠️ claude · 护栏 L2（登记 L1，但 .claude/settings.json 里的 TriviumCode Hook 不在场，本次按 L2 计：写入没有事前拦截，审查中的越界由跑后复算发现；闸门期改业务文件不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要；审查工件由审批前复核核本轮；修复：trivium init 或 trivium hooks --agent claude）"
+          },
+          {
+            "name": "探活",
+            "detail": "⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。"
+          }
+        ],
+        "exit_code": 0
+      }
+    },
+    "A1": {
+      "codes": [
+        0,
+        0
+      ],
+      "newWarnings": [
+        {
+          "name": "当轮 Driver",
+          "detail": "⚠️ claude · 护栏 L2（登记 L1，但 .claude/settings.json 里的 TriviumCode Hook 不在场，本次按 L2 计：写入没有事前拦截，审查中的越界由跑后复算发现；闸门期改业务文件不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要；审查工件由审批前复核核本轮；修复：trivium init 或 trivium hooks --agent claude）"
+        },
+        {
+          "name": "失联阈值",
+          "detail": "⚠️ review.heartbeat_stale_s = 2 s，不大于工作进程的心跳间隔 30 s：工作进程每 30 s 才刷新一次 status.json，每一轮审查里它的未更新时长都会反复越过这个阈值，--wait 轮询到就判 heartbeat_stale——健康的工作进程也会被判失联。失联报错会推荐 trivium review --cancel，照做会结束一个健康的轮次。把阈值调回 120 以上（缺省值）即可避免；若是有意为之（比如构造失联的测试），可忽略这条。"
+        },
+        {
+          "name": "探活",
+          "detail": "⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。"
+        }
+      ],
+      "oldWarnings": [
+        {
+          "name": "当轮 Driver",
+          "detail": "⚠️ claude · 护栏 L2（登记 L1，但 .claude/settings.json 里的 TriviumCode Hook 不在场，本次按 L2 计：写入没有事前拦截，审查中的越界由跑后复算发现；闸门期改业务文件不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要；审查工件由审批前复核核本轮；修复：trivium init 或 trivium hooks --agent claude）"
+        },
+        {
+          "name": "探活",
+          "detail": "⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。"
+        }
+      ],
+      "sameAfterDrop": true,
+      "newItem": {
+        "name": "失联阈值",
+        "ok": true,
+        "warn": true,
+        "detail": "⚠️ review.heartbeat_stale_s = 2 s，不大于工作进程的心跳间隔 30 s：工作进程每 30 s 才刷新一次 status.json，每一轮审查里它的未更新时长都会反复越过这个阈值，--wait 轮询到就判 heartbeat_stale——健康的工作进程也会被判失联。失联报错会推荐 trivium review --cancel，照做会结束一个健康的轮次。把阈值调回 120 以上（缺省值）即可避免；若是有意为之（比如构造失联的测试），可忽略这条。"
+      }
+    },
+    "A2": {
+      "codes": [
+        0,
+        0
+      ],
+      "same": true
+    },
+    "A6": {
+      "at30": {
+        "newItem": true,
+        "oldItem": false,
+        "codes": [
+          0,
+          0
+        ]
+      },
+      "at30_5": {
+        "newItem": false,
+        "oldItem": false,
+        "codes": [
+          0,
+          0
+        ],
+        "same": true
+      }
+    },
+    "A3": {
+      "codes": [
+        0,
+        0
+      ],
+      "cancelCodes": [
+        0,
+        0
+      ],
+      "newWarnings": [
+        {
+          "name": "失联阈值",
+          "detail": "⚠️ review.heartbeat_stale_s = 2 s，不大于工作进程的心跳间隔 30 s：工作进程每 30 s 才刷新一次 status.json，每一轮审查里它的未更新时长都会反复越过这个阈值，--wait 轮询到就判 heartbeat_stale——健康的工作进程也会被判失联。失联报错会推荐 trivium review --cancel，照做会结束一个健康的轮次。把阈值调回 120 以上（缺省值）即可避免；若是有意为之（比如构造失联的测试），可忽略这条。"
+        }
+      ],
+      "oldWarnings": [],
+      "restSame": false,
+      "startStderrSame": true,
+      "cancelSame": false,
+      "diffs": {
+        "start": [
+          "{\"ok\":true,\"run_id\":\"〈RUN〉\",\"max_waits\":62,\"wait_timeout_s\":30,\"bash_timeout_ms\":90000,\"stage_timeout_s\":900,\"models\":{\"gemini\":\"gemini-3.8-flash-high\",\"glm\":\"GLM-5.3\"},\"worker_pid\": 〈PID〉,\"run_dir\":\"〈RUNROOT〉/A3-new-b6411890/〈RUN〉\"}",
+          "{\"ok\":true,\"run_id\":\"〈RUN〉\",\"max_waits\":62,\"wait_timeout_s\":30,\"bash_timeout_ms\":90000,\"stage_timeout_s\":900,\"models\":{\"gemini\":\"gemini-3.8-flash-high\",\"glm\":\"GLM-5.3\"},\"worker_pid\": 〈PID〉,\"run_dir\":\"〈RUNROOT〉/A3-old-fef170e2/〈RUN〉\"}"
+        ],
+        "startStderr": [
+          "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\n  注入配置：{\"gemini\":{\"mode\":\"hang\"},\"glm\":{\"mode\":\"hang\"}}\n  这只应出现在测试里。若这是真实审查，请立即清除该环境变量并重跑。\n· 主题 阈值验收 ｜ 阶段 plan ｜ 第 1 轮 ｜ run 〈RUN〉\n· 被审对象 .reviews/阈值验收/plan/2026-09-29-阈值验收-claude.md\n",
+          "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\n  注入配置：{\"gemini\":{\"mode\":\"hang\"},\"glm\":{\"mode\":\"hang\"}}\n  这只应出现在测试里。若这是真实审查，请立即清除该环境变量并重跑。\n· 主题 阈值验收 ｜ 阶段 plan ｜ 第 1 轮 ｜ run 〈RUN〉\n· 被审对象 .reviews/阈值验收/plan/2026-09-29-阈值验收-claude.md\n"
+        ],
+        "cancel": [
+          "已回收主题「阈值验收」的锁\n运行 〈RUN〉 已取消\n· 向工作进程组 78250 发送 SIGTERM\n· 已把归档里的 run-〈RUN〉.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+          "已回收主题「阈值验收」的锁\n运行 〈RUN〉 已取消\n· 向工作进程组 78567 发送 SIGTERM\n· 已把归档里的 run-〈RUN〉.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+        ]
+      }
+    },
+    "A4": {
+      "codes": [
+        0,
+        0
+      ],
+      "cancelCodes": [
+        0,
+        0
+      ],
+      "newWarnings": [],
+      "oldWarnings": [],
+      "restSame": false,
+      "startStderrSame": true,
+      "cancelSame": false,
+      "diffs": {
+        "start": [
+          "{\"ok\":true,\"run_id\":\"〈RUN〉\",\"max_waits\":62,\"wait_timeout_s\":30,\"bash_timeout_ms\":90000,\"stage_timeout_s\":900,\"models\":{\"gemini\":\"gemini-3.8-flash-high\",\"glm\":\"GLM-5.3\"},\"worker_pid\": 〈PID〉,\"run_dir\":\"〈RUNROOT〉/A4-new-73fe2e3c/〈RUN〉\"}",
+          "{\"ok\":true,\"run_id\":\"〈RUN〉\",\"max_waits\":62,\"wait_timeout_s\":30,\"bash_timeout_ms\":90000,\"stage_timeout_s\":900,\"models\":{\"gemini\":\"gemini-3.8-flash-high\",\"glm\":\"GLM-5.3\"},\"worker_pid\": 〈PID〉,\"run_dir\":\"〈RUNROOT〉/A4-old-37697df3/〈RUN〉\"}"
+        ],
+        "startStderr": [
+          "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\n  注入配置：{\"gemini\":{\"mode\":\"hang\"},\"glm\":{\"mode\":\"hang\"}}\n  这只应出现在测试里。若这是真实审查，请立即清除该环境变量并重跑。\n· 主题 阈值验收 ｜ 阶段 plan ｜ 第 1 轮 ｜ run 〈RUN〉\n· 被审对象 .reviews/阈值验收/plan/2026-09-29-阈值验收-claude.md\n",
+          "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\n  注入配置：{\"gemini\":{\"mode\":\"hang\"},\"glm\":{\"mode\":\"hang\"}}\n  这只应出现在测试里。若这是真实审查，请立即清除该环境变量并重跑。\n· 主题 阈值验收 ｜ 阶段 plan ｜ 第 1 轮 ｜ run 〈RUN〉\n· 被审对象 .reviews/阈值验收/plan/2026-09-29-阈值验收-claude.md\n"
+        ],
+        "cancel": [
+          "已回收主题「阈值验收」的锁\n运行 〈RUN〉 已取消\n· 向工作进程组 79140 发送 SIGTERM\n· 已把归档里的 run-〈RUN〉.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+          "已回收主题「阈值验收」的锁\n运行 〈RUN〉 已取消\n· 向工作进程组 79457 发送 SIGTERM\n· 已把归档里的 run-〈RUN〉.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+        ]
+      }
+    },
+    "A5": {
+      "codes": [
+        1,
+        1
+      ],
+      "same": false,
+      "new": "✗ 运行 〈RUN〉 的工作进程失联（heartbeat_stale）。\n  日志：〈RUNROOT〉/A5-new-9b84e1ae/〈RUN〉/worker.log\n  归档 run-〈RUN〉.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  task.json 的运行登记未改：归档 run.json 不是 failed（running），不改登记\n  判定依据：工作进程 〈PID〉 仍在，status.json 已 N s 未更新（失联阈值 heartbeat_stale_s = 2 s；工作进程的心跳间隔是 30 s）——阈值不大于心跳间隔：健康的工作进程也会被判失联\n  若确认它卡死、要结束这一轮：trivium review --cancel 〈RUN〉——会结束它与它拉起的审查员 CLI，并补收归档 run.json；它若只是慢，这样做会结束一个仍在推进的轮次\n  凭据副本未抹：工作进程 〈PID〉 仍在（heartbeat_stale），留给会话启动清扫\n",
+      "old": "✗ 运行 〈RUN〉 的工作进程失联（heartbeat_stale）。\n  日志：〈RUNROOT〉/A5-old-73e9ece7/〈RUN〉/worker.log\n  归档 run-〈RUN〉.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  task.json 的运行登记未改：归档 run.json 不是 failed（running），不改登记\n  判定依据：工作进程 〈PID〉 仍在，status.json 已 N s 未更新（失联阈值 heartbeat_stale_s = 2 s；工作进程的心跳间隔是 30 s）——阈值不大于心跳间隔：健康的工作进程也会被判失联\n  若确认它卡死、要结束这一轮：trivium review --cancel 〈RUN〉——会结束它与它拉起的审查员 CLI，并补收归档 run.json；它若只是慢，这样做会结束一个仍在推进的轮次\n  凭据副本未抹：工作进程 〈PID〉 仍在（heartbeat_stale），留给会话启动清扫\n"
+    },
+    "A7": {
+      "codes": [
+        0,
+        0
+      ],
+      "stdoutSame": true,
+      "stderrSame": true,
+      "diffs": null
+    },
+    "A8": {
+      "code": 0,
+      "tail": [
+        "· ✓ 裁决齐备后放行提交",
+        "· ✓ 裁决齐备后放行收工",
+        "· ✓ 禁止主脑自行产出 -gemini.md（AC-07）",
+        "· ✓ 编译测试出口真实执行并落盘（AC-10）",
+        "· ✓ 复盘可生成（含时间线与采纳率）",
+        "· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）"
+      ]
+    },
+    "leftover_groups": []
+  }
+}

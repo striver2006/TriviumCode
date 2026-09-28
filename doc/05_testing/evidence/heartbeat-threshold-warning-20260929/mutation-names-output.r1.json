@@ -1,0 +1,178 @@
+[
+  {
+    "id": "N1",
+    "desc": "判定函数 <= 改成 <（等于间隔不再算）⇒ U1（30）",
+    "suite": "dist/test/test/unit/status.test.js",
+    "pattern": "EV-160",
+    "fail": 1,
+    "red": [
+      "EV-160 U1：staleThresholdWithinHeartbeat 的边界——等于间隔算、略大于不算，非整数秒按毫秒比"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 阈值 30 s 没盖住一个心跳周期"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N2",
+    "desc": "判定函数恒 false ⇒ U1",
+    "suite": "dist/test/test/unit/status.test.js",
+    "pattern": "EV-160",
+    "fail": 1,
+    "red": [
+      "EV-160 U1：staleThresholdWithinHeartbeat 的边界——等于间隔算、略大于不算，非整数秒按毫秒比"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 阈值 0.001 s 没盖住一个心跳周期"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N3",
+    "desc": "判定函数恒 true ⇒ U1",
+    "suite": "dist/test/test/unit/status.test.js",
+    "pattern": "EV-160",
+    "fail": 1,
+    "red": [
+      "EV-160 U1：staleThresholdWithinHeartbeat 的边界——等于间隔算、略大于不算，非整数秒按毫秒比"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 阈值 30.001 s 盖住了一个心跳周期"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N4",
+    "desc": "预检不收 ④‴ 的项 ⇒ P1",
+    "suite": "dist/test/test/unit/preflight.test.js",
+    "pattern": "EV-160",
+    "fail": 2,
+    "red": [
+      "EV-160 P1：阈值 2 s ⇒ 预检照常通过、退出码不变，「失联阈值」进 warnings，排在副本源之后、探活之前",
+      "EV-160 P3：预检侧的边界——30 s（等于间隔）出、30.5 s（略大于）不出"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 当轮 Driver、版本漂移检查覆盖面、Antigravity 模型覆盖副本源、探活",
+      "AssertionError [ERR_ASSERTION]: 阈值 30 s"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N5",
+    "desc": "startRun 汇总时丢掉阈值项 ⇒ I1",
+    "suite": "dist/test/test/integration/heartbeat-threshold-warning.test.js",
+    "pattern": "EV-160",
+    "fail": 2,
+    "red": [
+      "EV-160 I1：阈值 2 s ⇒ --start 退 0、warnings 恰一项「失联阈值」，worker 照常拉起",
+      "EV-160 I5：人读模式 --start 逐条打印警告行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: []",
+      "AssertionError [ERR_ASSERTION]: 已启动运行 20260928T165434Z（工作进程 pid 66230）"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N6",
+    "desc": "--wait 那一句改回行内比较且口径不同（< 而非 <=）⇒ R1（30）",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-160",
+    "fail": 1,
+    "red": [
+      "EV-160 R1：--wait 那一句、共享判据、预检告警三者对同一阈值给出同一结论（2 / 30 / 30.5 / 120）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: --wait 那一句（阈值 30）："
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N7",
+    "desc": "告警项去掉 warn: true ⇒ P1（不进 warnings / assertWarnInvariant）",
+    "suite": "dist/test/test/unit/preflight.test.js",
+    "pattern": "EV-160",
+    "fail": 3,
+    "red": [
+      "EV-160 U2：checkHeartbeatThreshold——盖住一个心跳周期就不出项；没盖住出 ok:true 的 warn 项，正文四项齐备",
+      "EV-160 P1：阈值 2 s ⇒ 预检照常通过、退出码不变，「失联阈值」进 warnings，排在副本源之后、探活之前",
+      "EV-160 P3：预检侧的边界——30 s（等于间隔）出、30.5 s（略大于）不出"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: 当轮 Driver、版本漂移检查覆盖面、Antigravity 模型覆盖副本源、探活",
+      "AssertionError [ERR_ASSERTION]: 阈值 30 s"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N8",
+    "desc": "正文里的阈值写死 120（不打印生效值）⇒ U2（29.5）",
+    "suite": "dist/test/test/unit/preflight.test.js",
+    "pattern": "EV-160",
+    "fail": 1,
+    "red": [
+      "EV-160 U2：checkHeartbeatThreshold——盖住一个心跳周期就不出项；没盖住出 ok:true 的 warn 项，正文四项齐备"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: ⚠️ review.heartbeat_stale_s = 120 s，不大于工作进程的心跳间隔 30 s：工作进程每 30 s 才刷新一次 status.json，每一轮审查里它的未更新时长都会反复越过这个阈值，--wait 轮询到就判 heartbeat_stale——健康的工作进程也会被判失联。失联报错会推荐 trivium r"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N9",
+    "desc": "正文去掉出口句 ⇒ U2",
+    "suite": "dist/test/test/unit/preflight.test.js",
+    "pattern": "EV-160",
+    "fail": 1,
+    "red": [
+      "EV-160 U2：checkHeartbeatThreshold——盖住一个心跳周期就不出项；没盖住出 ok:true 的 warn 项，正文四项齐备"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: ⚠️ review.heartbeat_stale_s = 30 s，不大于工作进程的心跳间隔 30 s：工作进程每 30 s 才刷新一次 status.json，每一轮审查里它的未更新时长都会反复越过这个阈值，--wait 轮询到就判 heartbeat_stale——健康的工作进程也会被判失联。失联报错会推荐 trivium re"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N10",
+    "desc": "④‴ 挪到短路之外（前面失败也出）⇒ P4",
+    "suite": "dist/test/test/unit/preflight.test.js",
+    "pattern": "EV-160",
+    "fail": 1,
+    "red": [
+      "EV-160 P4：前面有失败项（探针缺失）时不出——与 ④′ / ④″ 同一短路"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 失败之后不再出只警告项"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N11",
+    "desc": "finished_inline 分支也带阈值项 ⇒ I6",
+    "suite": "dist/test/test/integration/heartbeat-threshold-warning.test.js",
+    "pattern": "EV-160",
+    "fail": 1,
+    "red": [
+      "EV-160 I6：2 s 阈值 + 纯文档跳过 ⇒ finished_inline，warnings 仍为空数组（那一支没有 worker 与 --wait）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: finished_inline 支不带阈值项"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N12",
+    "desc": "缺省配置的阈值与缺省值常量脱钩 ⇒ U2",
+    "suite": "dist/test/test/unit/preflight.test.js",
+    "pattern": "EV-160",
+    "fail": 1,
+    "red": [
+      "EV-160 U2：checkHeartbeatThreshold——盖住一个心跳周期就不出项；没盖住出 ok:true 的 warn 项，正文四项齐备"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 缺省配置与出口句的缺省值同源"
+    ],
+    "windowMiss": false
+  }
+]

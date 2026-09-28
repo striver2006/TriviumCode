@@ -1,0 +1,112 @@
+{
+  "targets": [
+    "src/trivium/status.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/config.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/status.test.js",
+    "dist/test/test/unit/preflight.test.js",
+    "dist/test/test/integration/run-protocol.test.js",
+    "dist/test/test/integration/heartbeat-threshold-warning.test.js"
+  ],
+  "cases": [
+    {
+      "id": "N1",
+      "desc": "判定函数 <= 改成 <（等于间隔不再算）⇒ U1（30）",
+      "file": "src/trivium/status.ts",
+      "find": "  return heartbeatStaleS * 1000 <= WORKER_HEARTBEAT_MS;\n",
+      "replace": "  return heartbeatStaleS * 1000 < WORKER_HEARTBEAT_MS;\n",
+      "expect": "dist/test/test/unit/status.test.js"
+    },
+    {
+      "id": "N2",
+      "desc": "判定函数恒 false ⇒ U1",
+      "file": "src/trivium/status.ts",
+      "find": "  return heartbeatStaleS * 1000 <= WORKER_HEARTBEAT_MS;\n",
+      "replace": "  return process.env['TRIVIUM_MUT_NEVER'] === '1' && heartbeatStaleS * 1000 <= WORKER_HEARTBEAT_MS;\n",
+      "expect": "dist/test/test/unit/status.test.js"
+    },
+    {
+      "id": "N3",
+      "desc": "判定函数恒 true ⇒ U1",
+      "file": "src/trivium/status.ts",
+      "find": "  return heartbeatStaleS * 1000 <= WORKER_HEARTBEAT_MS;\n",
+      "replace": "  return process.env['TRIVIUM_MUT_NEVER'] !== '1' || heartbeatStaleS * 1000 <= WORKER_HEARTBEAT_MS;\n",
+      "expect": "dist/test/test/unit/status.test.js"
+    },
+    {
+      "id": "N4",
+      "desc": "预检不收 ④‴ 的项 ⇒ P1",
+      "file": "src/trivium/preflight.ts",
+      "find": "    if (h) checks.push(h);\n",
+      "replace": "    if (h && process.env['TRIVIUM_MUT_NEVER'] === '1') checks.push(h);\n",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "N5",
+      "desc": "startRun 汇总时丢掉阈值项 ⇒ I1",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      ...(heartbeatWarn ? [heartbeatWarn] : []),\n",
+      "replace": "      ...(heartbeatWarn && process.env['TRIVIUM_MUT_NEVER'] === '1' ? [heartbeatWarn] : []),\n",
+      "expect": "dist/test/test/integration/heartbeat-threshold-warning.test.js"
+    },
+    {
+      "id": "N6",
+      "desc": "--wait 那一句改回行内比较且口径不同（< 而非 <=）⇒ R1（30）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "          (staleThresholdWithinHeartbeat(staleS) ? '——阈值不大于心跳间隔",
+      "replace": "          (staleS * 1000 < WORKER_HEARTBEAT_MS ? '——阈值不大于心跳间隔",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N7",
+      "desc": "告警项去掉 warn: true ⇒ P1（不进 warnings / assertWarnInvariant）",
+      "file": "src/trivium/preflight.ts",
+      "find": "    name: '失联阈值',\n    ok: true,\n    warn: true,\n",
+      "replace": "    name: '失联阈值',\n    ok: true,\n",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "N8",
+      "desc": "正文里的阈值写死 120（不打印生效值）⇒ U2（29.5）",
+      "file": "src/trivium/preflight.ts",
+      "find": "`⚠️ review.heartbeat_stale_s = ${staleS} s，",
+      "replace": "`⚠️ review.heartbeat_stale_s = 120 s，",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "N9",
+      "desc": "正文去掉出口句 ⇒ U2",
+      "file": "src/trivium/preflight.ts",
+      "find": "      `把阈值调回 ${DEFAULT_HEARTBEAT_STALE_S} 以上（缺省值）即可避免；若是有意为之（比如构造失联的测试），可忽略这条。`,\n",
+      "replace": "      '',\n",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "N10",
+      "desc": "④‴ 挪到短路之外（前面失败也出）⇒ P4",
+      "file": "src/trivium/preflight.ts",
+      "find": "  if (checks.every((c) => c.ok)) {\n    const h = checkHeartbeatThreshold(cfg);\n",
+      "replace": "  {\n    const h = checkHeartbeatThreshold(cfg);\n",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "N11",
+      "desc": "finished_inline 分支也带阈值项 ⇒ I6",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        warnings: [],\n",
+      "replace": "        warnings: collectWarnings(checkHeartbeatThreshold(cfg) ? [checkHeartbeatThreshold(cfg)!] : []),\n",
+      "expect": "dist/test/test/integration/heartbeat-threshold-warning.test.js"
+    },
+    {
+      "id": "N12",
+      "desc": "缺省配置的阈值与缺省值常量脱钩 ⇒ U2",
+      "file": "src/trivium/config.ts",
+      "find": "      heartbeat_stale_s: DEFAULT_HEARTBEAT_STALE_S,\n",
+      "replace": "      heartbeat_stale_s: 180,\n",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    }
+  ]
+}

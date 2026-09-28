@@ -6,9 +6,9 @@ import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import {
   parsePreflightScope, checkModelSlugs, runPreflight, commitAuthCache, renderPreflight, checkZcodeRuntimeSelection,
-  type PreflightResult } from '../../src/trivium/preflight.js';
+  checkHeartbeatThreshold, type PreflightResult } from '../../src/trivium/preflight.js';
 import type { CriticAdapter } from '../../src/trivium/adapters/base.js';
-import { TRIVIUM_DIR, defaultConfig, patchProbe } from '../../src/trivium/config.js';
+import { DEFAULT_HEARTBEAT_STALE_S, TRIVIUM_DIR, defaultConfig, patchProbe } from '../../src/trivium/config.js';
 import { runDoctor } from '../../src/trivium/doctor.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
@@ -947,4 +947,82 @@ test('现有 ⚠️ 项一律标 warn：C5、覆盖面、探活已跳过', async
   assert.equal(d.checks.find((c) => c.name === '当轮 Driver')?.warn, undefined);
   assertWarnInvariant(r);
   assertWarnInvariant(d);
+});
+
+// ── EV-160：失联阈值不大于心跳间隔 ⇒ 只警告项（心跳阈值事前告警计划 r2 §6.1） ──
+
+const withStale = (s: number) => (c: Config): void => {
+  probeWithVersionProbe(c, { runner: null, args: ['--version'], extract: '(' });
+  c.review.heartbeat_stale_s = s;
+};
+
+test('EV-160 U2：checkHeartbeatThreshold——盖住一个心跳周期就不出项；没盖住出 ok:true 的 warn 项，正文四项齐备', () => {
+  const cfg = defaultConfig();
+  assert.equal(cfg.review.heartbeat_stale_s, DEFAULT_HEARTBEAT_STALE_S, '缺省配置与出口句的缺省值同源');
+  for (const s of [120, 30.5]) {
+    cfg.review.heartbeat_stale_s = s;
+    assert.equal(checkHeartbeatThreshold(cfg), null, `阈值 ${s} s 不出项`);
+  }
+  for (const s of [30, 29.5, 2]) {
+    cfg.review.heartbeat_stale_s = s;
+    const item = checkHeartbeatThreshold(cfg);
+    assert.ok(item, `阈值 ${s} s 必须出项`);
+    assert.equal(item!.name, '失联阈值');
+    assert.equal(item!.ok, true, '只警告、不拒跑');
+    assert.equal(item!.warn, true);
+    assert.ok(item!.detail.startsWith('⚠️ '), item!.detail);
+    // 生效阈值（按配置原值打印，非整数不取整）与心跳间隔
+    assert.ok(item!.detail.includes(`review.heartbeat_stale_s = ${s} s，不大于工作进程的心跳间隔 30 s`), item!.detail);
+    // 后果：每一轮越过阈值 ⇒ 被判失联；失联报错推荐 --cancel；照做结束健康轮次
+    assert.match(item!.detail, /每一轮审查里它的未更新时长都会反复越过这个阈值/);
+    // 等于间隔那一格按概率（判定是严格大于）：正文要说出「越接近越难碰上」，不把保守多告警写成必然（代码双审 r1 CODEX-01）
+    assert.match(item!.detail, /阈值越接近 30 s，越过的时段越短、被轮询碰上的机会越小/);
+    assert.match(item!.detail, /健康的工作进程也会被判失联/);
+    assert.match(item!.detail, /失联报错会推荐 trivium review --cancel，照做会结束一个健康的轮次/);
+    // 出口：调回缺省值以上；有意为之可忽略
+    assert.ok(item!.detail.includes(`把阈值调回 ${DEFAULT_HEARTBEAT_STALE_S} 以上（缺省值）即可避免`), item!.detail);
+    assert.match(item!.detail, /若是有意为之（比如构造失联的测试），可忽略这条/);
+  }
+});
+
+test('EV-160 P1：阈值 2 s ⇒ 预检照常通过、退出码不变，「失联阈值」进 warnings，排在副本源之后、探活之前', async () => {
+  const ctx = await fakeCtx(withStale(2));
+  const r = await runPreflight({
+    ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'],
+    adapters: { gemini: overrideOnly(await missingPath()) },
+  });
+  assert.equal(r.ok, true, '只警告、不拒跑');
+  assert.equal(r.exitCode, EXIT.OK);
+  assert.ok(r.warnings.some((w) => w.name === '失联阈值'), r.warnings.map((w) => w.name).join('、'));
+  const idx = (pred: (n: string) => boolean) => r.checks.findIndex((c) => pred(c.name));
+  const hb = idx((n) => n === '失联阈值');
+  assert.ok(idx((n) => n.endsWith('模型覆盖副本源')) < hb, '副本源在前（与 startRun 的汇总顺序一致）');
+  assert.ok(hb < idx((n) => n === '探活'), '排在探活之前：不花配额的项不该等到最贵的一项之后');
+  assertWarnInvariant(r);
+});
+
+test('EV-160 P2：阈值 120 s（缺省）⇒ 不出「失联阈值」', async () => {
+  const ctx = await fakeCtx(withStale(120));
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {} });
+  assert.equal(r.ok, true);
+  assert.equal(r.checks.some((c) => c.name === '失联阈值'), false);
+  assertWarnInvariant(r);
+});
+
+test('EV-160 P3：预检侧的边界——30 s（等于间隔）出、30.5 s（略大于）不出', async () => {
+  for (const [s, expected] of [[30, true], [30.5, false]] as const) {
+    const ctx = await fakeCtx(withStale(s));
+    const r = await runPreflight({ ctx, scope: 'all', skipAuthCheck: true, critics: ['gemini'], adapters: {} });
+    assert.equal(r.warnings.some((w) => w.name === '失联阈值'), expected, `阈值 ${s} s`);
+  }
+});
+
+test('EV-160 P4：前面有失败项（探针缺失）时不出——与 ④′ / ④″ 同一短路', async () => {
+  const ctx = await fakeCtx((c) => {
+    withStale(2)(c);
+    c.probe.generated_at = null;
+  });
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {} });
+  assert.equal(r.ok, false, '前提：探针缺失即失败');
+  assert.equal(r.checks.some((c) => c.name === '失联阈值'), false, '失败之后不再出只警告项');
 });
