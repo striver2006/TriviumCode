@@ -5,7 +5,7 @@ import { promises as fs } from 'node:fs';
 import { bundleMissing, bundleSkipReason, cli, listFiles, makeFixture, today } from '../helpers/fixture.js';
 import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
 import {
-  WORKER_TERM_GRACE_MS, WORKER_TREE_GRACE_MS, WORKER_TREE_KILL_WAIT_MS,
+  ORPHAN_KILL_CONFIRM_MS, WORKER_TERM_GRACE_MS, WORKER_TREE_GRACE_MS, WORKER_TREE_KILL_WAIT_MS,
 } from '../../src/trivium/run-protocol.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID } from '../../src/trivium/gate.js';
@@ -2563,9 +2563,12 @@ const pidGone = (pid: number): boolean => {
   }
 };
 
-/** 起一轮两侧 hang_cli，等两组组长出现、等 status.json 两侧都记下组号与启动时刻 */
-async function startWithRecordedClis(stub: StubConfig) {
-  const fx = await makeFixture({ topic: TOPIC });
+/**
+ * 起一轮两侧 hang_cli，等两组组长出现、等 status.json 两侧都记下组号与启动时刻。
+ * `extraReview` 透传给夹具的 `review:` 段（EV-146 J 组用它把 `heartbeat_stale_s` 调小）
+ */
+async function startWithRecordedClis(stub: StubConfig, extraReview?: string[]) {
+  const fx = await makeFixture({ topic: TOPIC, ...(extraReview ? { extraReview } : {}) });
   const started = await cli(
     fx.root,
     ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
@@ -2735,5 +2738,148 @@ test('EV-154 I7：CLI 自然结束 ⇒ status.json 里该侧的记录清成 null
     assert.deepEqual(await sidesCliOf(js.run_dir), { gemini: null, glm: null });
   } finally {
     for (const g of groupsWithMark(`trivium-stub-cli:${js.run_dir}`)) killGroup(g);
+  }
+});
+
+/*
+ * ── EV-146：--wait 判 heartbeat_stale 之后 --cancel 结束仍挂着的 worker（失联后取消挂住的worker计划 r2 §5.2 J1～J3）──
+ *
+ * `heartbeat_stale_s: 2` 而 worker 心跳 30 s 一次：记录落盘之后 2 s 不写即判失联。J1 / J3 让 gemini 侧 `blockAfterMs`
+ * 把 worker 的事件循环堵住（SIGTERM 处理器跑不到）；J2 不堵，是「心跳只是慢」那一格（计划 r2 §2 P1）。
+ */
+
+const STALE_2S = ['heartbeat_stale_s: 2'];
+
+/** 起两侧 hang_cli、等记录落盘、等心跳过期，跑 --wait 判 heartbeat_stale；返回判失联之后的现场 */
+async function lostHungRun(stub: StubConfig) {
+  const r = await startWithRecordedClis(stub, STALE_2S);
+  assertRecorded(r);
+  await new Promise((res) => setTimeout(res, 3000)); // 记录落盘后 300 ms 堵住（J1 / J3）；3 s 足以越过 2 s 阈值
+  const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '10'], null, 60_000);
+  return { ...r, w, wOut: w.stdout + w.stderr };
+}
+
+const taskRunStatus = async (archiveRoot: string, runId: string) =>
+  (JSON.parse(await fs.readFile(path.join(archiveRoot, TOPIC, 'task.json'), 'utf8')) as {
+    runs: { run_id: string; status: string }[];
+  }).runs.find((x) => x.run_id === runId)?.status;
+
+const lockPathOf = (root: string) => path.join(root, '.trivium', 'lock', `${TOPIC}.lock`);
+
+test('EV-146 J1：worker 事件循环被堵住、--wait 判 heartbeat_stale ⇒ --cancel 升级 SIGKILL 结束它、按记录结束两侧 CLI、补收 run.json 与登记、回收锁；status.json 与闸门不动，之后能重新起跑', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await lostHungRun({ gemini: { mode: 'hang_cli', blockAfterMs: 300 }, glm: { mode: 'hang_cli' } });
+  let restarted: { run_id: string; run_dir: string } | null = null;
+  try {
+    // 前提：判的是心跳过期、worker 与两组都还活着、锁挂在它名下（EV-146 原文的死路）
+    assert.equal(r.w.code, EXIT.FAIL, r.wOut);
+    assert.match(r.wOut, /worker_lost|失联（heartbeat_stale）/, r.wOut);
+    assert.match(r.wOut, /判定依据：工作进程 \d+ 仍在.*——阈值不大于心跳间隔：健康的工作进程也会被判失联/, r.wOut);
+    assert.match(r.wOut, new RegExp(`trivium review --cancel ${r.js.run_id}`), r.wOut);
+    assert.ok(!pidGone(r.js.worker_pid), 'heartbeat_stale 时 worker 应仍活着（用例前提）');
+    for (const g of r.groups) assert.equal(groupMemberCount(g), 2, `组 ${g} 应仍活着（用例前提）`);
+    const blocked = await cli(r.fx.root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'], STUB);
+    assert.equal(blocked.code, EXIT.LOCKED, `锁被挂住的 worker 持着，新 --start 退 70（用例前提）：${blocked.stdout}${blocked.stderr}`);
+
+    const sp = path.join(r.js.run_dir, 'status.json');
+    const statusBefore = await fs.readFile(sp, 'utf8');
+    assert.equal((JSON.parse(statusBefore) as { lost?: { reason?: string } }).lost?.reason, 'heartbeat_stale');
+    const gateBefore = (await gatesOf(r.fx.root))[`${TOPIC}/plan`];
+
+    const t0 = Date.now();
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    const ms = Date.now() - t0;
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    assert.match(c.stderr, /未响应 SIGTERM/, '升级确实发生（堵住的 worker 跑不到处理器）');
+    assert.match(c.stderr, /工作进程组 \d+ 已结束（SIGTERM、SIGKILL）/, c.stderr);
+    assert.equal((c.stderr.match(/按记录结束审查员 CLI/g) ?? []).length, 2, c.stderr);
+    assert.match(c.stdout, /已结束仍挂着的工作进程 \d+/, c.stdout);
+    assert.ok(pidGone(r.js.worker_pid), 'worker 应已不在');
+    await new Promise((res) => setTimeout(res, 100));
+    assert.deepEqual(r.groups.map((g) => groupMemberCount(g)), [0, 0], `两组都应已空：\n${c.stderr}`);
+    const meta = await readRunJson(r.fx.stageDir, r.js.run_id);
+    assert.equal(meta.status, 'failed');
+    assert.deepEqual(meta.termination, { by: 'worker_lost', reason: 'heartbeat_stale' });
+    assert.equal(await taskRunStatus(r.fx.archiveRoot, r.js.run_id), 'failed');
+    await assert.rejects(fs.access(lockPathOf(r.fx.root)), '锁应已回收');
+    assert.equal(await fs.readFile(sp, 'utf8'), statusBefore, 'status.json 一个字节都不写');
+    assert.deepEqual((await gatesOf(r.fx.root))[`${TOPIC}/plan`], gateBefore, '闸门不动');
+    /*
+     * 计时只防挂死（计划双审 r1 CODEX-03、代码双审 r1 CODEX-04）：主判据是上面的信号序列、组成员数与 run.json 三格。
+     * 常量之和约 13 s（宽限 + SIGKILL 后确认 + CLI 宽限链），但每轮轮询都要起 ps、单次 ps 上限 10 s，满载下不是常量之和；
+     * 上界取 60 s，只拦「挂住不返回」。实测耗时见实施报告
+     */
+    const hangBound = 60_000;
+    assert.ok(ms < hangBound, `--cancel 耗时 ${ms} ms，超过防挂死上界 ${hangBound}（常量之和 ${WORKER_TERM_GRACE_MS + ORPHAN_KILL_CONFIRM_MS + WORKER_TREE_GRACE_MS + WORKER_TREE_KILL_WAIT_MS} ms）`);
+
+    // 死路解开：同阶段能重新起跑
+    const again = await cli(r.fx.root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'], STUB);
+    assert.equal(again.code, EXIT.OK, `${again.stdout}${again.stderr}`);
+    restarted = JSON.parse(extractJsonCandidate(again.stdout)!.json) as { run_id: string; run_dir: string };
+    await waitUntilDone(r.fx.root, restarted.run_id, STUB);
+  } finally {
+    try {
+      process.kill(-r.js.worker_pid, 'SIGKILL');
+    } catch {
+      /* 已不在 */
+    }
+    cleanupGroups(r);
+  }
+});
+
+test('EV-146 J2：心跳只是慢（事件循环没堵住）也被判 heartbeat_stale ⇒ --cancel 不升级，worker 的处理器自己收拾 CLI 并退出；输出如实说「可能只是心跳慢」', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await lostHungRun({ gemini: { mode: 'hang_cli' }, glm: { mode: 'hang_cli' } });
+  try {
+    assert.equal(r.w.code, EXIT.FAIL, r.wOut);
+    assert.match(r.wOut, /heartbeat_stale/, `前提：健康的 worker 也被判心跳过期（计划 r2 §2 P1）：${r.wOut}`);
+    assert.ok(!pidGone(r.js.worker_pid), '用例前提：worker 活着');
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    assert.doesNotMatch(c.stderr, /未响应 SIGTERM/, '事件循环没堵住：宽限内自己退出，不升级');
+    assert.match(c.stderr, /工作进程在宽限内响应 SIGTERM 退出（SIGTERM）——它的事件循环没有被堵住，失联判定可能只是心跳慢/, c.stderr);
+    const workerLog = await fs.readFile(path.join(r.js.run_dir, 'worker.log'), 'utf8').catch(() => '');
+    assert.match(workerLog, /收到 SIGTERM：已按组终止审查员 CLI/, '处理器自己收拾 CLI 的因果证据');
+    await new Promise((res) => setTimeout(res, 100));
+    assert.deepEqual(r.groups.map((g) => groupMemberCount(g)), [0, 0], `两组都应已空：\n${c.stderr}\n${workerLog}`);
+    const meta = await readRunJson(r.fx.stageDir, r.js.run_id);
+    assert.equal(meta.status, 'failed');
+    assert.deepEqual(meta.termination, { by: 'worker_lost', reason: 'heartbeat_stale' });
+    await assert.rejects(fs.access(lockPathOf(r.fx.root)), '锁应已回收');
+  } finally {
+    try {
+      process.kill(-r.js.worker_pid, 'SIGKILL');
+    } catch {
+      /* 已不在 */
+    }
+    cleanupGroups(r);
+  }
+});
+
+test('EV-146 J3：本格不抹凭据副本（用户决策 7）——--wait 与 --cancel 之后载体仍在；worker 与 CLI 都结束之后，会话启动清扫放行', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis({ gemini: { mode: 'hang_cli', blockAfterMs: 300 }, glm: { mode: 'hang_cli' } }, STALE_2S);
+  try {
+    assertRecorded(r);
+    const carrier = path.join(r.js.run_dir, 'glm', 'home', '.zcode', 'cli', 'config.json');
+    await fs.mkdir(path.dirname(carrier), { recursive: true });
+    await fs.writeFile(carrier, '{"provider":{"k":{"apiKey":"fake"}}}');
+    await new Promise((res) => setTimeout(res, 3000));
+    const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '10'], null, 60_000);
+    assert.match(w.stdout + w.stderr, /heartbeat_stale/, `前提：${w.stdout}${w.stderr}`);
+    await fs.access(carrier); // --wait：worker 仍在，不抹（既有行为）
+
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    assert.ok(pidGone(r.js.worker_pid), '前提：worker 已被本格结束');
+    await fs.access(carrier); // 本格不抹，留给会话启动清扫
+
+    const h = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
+    assert.equal(h.code, 0, `${h.stdout}${h.stderr}`);
+    await assert.rejects(fs.access(carrier), 'worker 与 CLI 都已不在，admitScrub 放行');
+  } finally {
+    try {
+      process.kill(-r.js.worker_pid, 'SIGKILL');
+    } catch {
+      /* 已不在 */
+    }
+    cleanupGroups(r);
   }
 });

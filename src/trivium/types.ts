@@ -1490,7 +1490,8 @@ export interface RunMeta {
    * `running` 是骨架态；`success` / `failed` 由 worker 收尾写；另有几条事后收尾（`meta.ts` `finalizeUnfinishedRunMeta`）：
    * `cancelled` 由 `review --cancel` 在工作进程确认退出后写（EV-128）；`failed` 还可能由 worker 异常分支自己写、
    * 由 `--wait` 判 `worker_lost` 且确认工作进程已退出时写（EV-142），或由本进程在准备阶段写完骨架之后失败、
-   * `startRun` 在子进程诞生之前失败、同步路径 `executeRun` 抛错时写（EV-145）——这几条都同时写 `termination`。
+   * `startRun` 在子进程诞生之前失败、同步路径 `executeRun` 抛错时写（EV-145），或由 `review --cancel` 在 `--wait` 判
+   * heartbeat_stale 之后结束仍挂着的工作进程并确认退出时写（EV-146）——这几条都同时写 `termination`。
    * 已结束却仍为 `running` 的留痕表示没有走到收尾（本版以前的异常 / 失联 / 取消 / 准备阶段失败 / 同步路径异常、
    * 失联时进程未确认退出、本版以前 `--start` 在子进程诞生之后才失败的运行与确认不了工作进程退出的那一格（EV-150）、
    * worker 猝死而没人 `--wait`、
@@ -1499,7 +1500,7 @@ export interface RunMeta {
   status: 'running' | 'success' | 'failed' | 'cancelled';
   /**
    * 这一次终态由哪条事后收尾写的（EV-142 / EV-145）。`worker_exception` 由 worker 异常分支写，`worker_lost` 由 `--wait`
-   * 判失联写，`prepare_exception` 由准备阶段写完骨架之后失败（含 `startRun` 在子进程诞生之前失败）时本进程写，
+   * 判失联写（或由 `review --cancel` 在 `--wait` 判 heartbeat_stale 之后结束仍挂着的工作进程时照写同一取值，EV-146），`prepare_exception` 由准备阶段写完骨架之后失败（含 `startRun` 在子进程诞生之前失败）时本进程写，
    * `sync_exception` 由同步路径 `executeRun` 抛错时本进程写，`post_spawn_exception` 由 `--start` 在子进程诞生之后失败、
    * 终止工作进程并确认退出之后本进程写（EV-150）；
    * 缺席 = 正常收尾（worker 写 `success` / `failed`）、取消轮（`status: cancelled` 已说明来路）、或本字段之前的留痕。

@@ -1,0 +1,48 @@
+[
+  {
+    "id": "N7",
+    "desc": "结束工作进程不升级 SIGKILL（SIGKILL 发不出去）⇒ J1",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-146 J",
+    "fail": 2,
+    "red": [
+      "EV-146 J1：worker 事件循环被堵住、--wait 判 heartbeat_stale ⇒ --cancel 升级 SIGKILL 结束它、按记录结束两侧 CLI、补收 run.json 与登记、回收锁；status.json 与闸门不动，之后能重新起跑",
+      "EV-146 J3：本格不抹凭据副本（用户决策 7）——--wait 与 --cancel 之后载体仍在；worker 与 CLI 都结束之后，会话启动清扫放行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: · 运行 20260928T052853Z 已被 --wait 判为失联（heartbeat_stale，判定于 2026-09-28T05:28:56.629Z；status.json 最近一次写入于 2026-09-28T05:28:56.629Z），但工作进程 36290 仍是同一进程：按取消意图结束它——向工作进程组发送 SI",
+      "AssertionError [ERR_ASSERTION]: 前提：worker 已被本格结束"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N8",
+    "desc": "不按记录结束 CLI ⇒ J1（两组仍在）",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-146 J",
+    "fail": 2,
+    "red": [
+      "EV-146 J1：worker 事件循环被堵住、--wait 判 heartbeat_stale ⇒ --cancel 升级 SIGKILL 结束它、按记录结束两侧 CLI、补收 run.json 与登记、回收锁；status.json 与闸门不动，之后能重新起跑",
+      "EV-146 J3：本格不抹凭据副本（用户决策 7）——--wait 与 --cancel 之后载体仍在；worker 与 CLI 都结束之后，会话启动清扫放行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: · 运行 20260928T052932Z 已被 --wait 判为失联（heartbeat_stale，判定于 2026-09-28T05:29:35.455Z；status.json 最近一次写入于 2026-09-28T05:29:35.455Z），但工作进程 39266 仍是同一进程：按取消意图结束它——向工作进程组发送 SI",
+      "AssertionError [ERR_ASSERTION]: Missing expected rejection: worker 与 CLI 都已不在，admitScrub 放行"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N14",
+    "desc": "本格抹凭据副本 ⇒ J3",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-146 J",
+    "fail": 1,
+    "red": [
+      "EV-146 J3：本格不抹凭据副本（用户决策 7）——--wait 与 --cancel 之后载体仍在；worker 与 CLI 都结束之后，会话启动清扫放行"
+    ],
+    "firstLines": [
+      "Error: ENOENT: no such file or directory, access '/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-fx-7Bx6YK-runs/trivium-fx-7Bx6YK-79a7b69d/20260928T053011Z/glm/home/.zcode/cli/config"
+    ],
+    "windowMiss": false
+  }
+]

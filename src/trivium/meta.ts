@@ -552,7 +552,9 @@ interface FinalizeInput {
    * 还没有、也不会有 worker；`--cancel` / `--wait` 常常拿不到身份，拿到了也没有 pid、判「未确认退出」而跳过，
    * 本进程写完之后 run.json 又已是终态、按前提 4 不追溯改写（EV-145，事后收尾余项计划 r2 §3.5，代码双审 r1 CODEX-05）；
    * `--start` 在子进程诞生之后失败时也传 true——依据是父进程按子进程句柄**观察到**的退出，不是推断
-   * （EV-150，派生后失败的孤儿worker计划 r2 §3.5；确认不了退出时根本不调本函数）。
+   * （EV-150，派生后失败的孤儿worker计划 r2 §3.5；确认不了退出时根本不调本函数）；
+   * `--cancel` 结束失联后仍挂着的工作进程（EV-146）也传 true——依据是它按 pid + 启动时刻**观察到**的退出
+   * （失联后取消挂住的worker计划 r2 §4.4 第 4 步；确认不了退出时同样不调本函数）。
    * 显式入参，接线才有用例守得住。
    */
   workerGone: boolean;
@@ -571,10 +573,11 @@ export function finalizeCancelledRunMeta(i: FinalizeInput): Promise<{ runMeta: F
 
 /**
  * 把没走到 worker 收尾就失败的运行在归档侧收尾为 `failed`（EV-142，计划 r2 §3.2 / §3.3；EV-145）。
- * 六个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
+ * 七个调用方：worker 的异常分支（`termination.by = worker_exception`）、`--wait` 判 `worker_lost`
  * 且确认工作进程已退出（`worker_lost`）、`prepareRun` 写完骨架之后失败与 `startRun` 在子进程诞生之前失败
  * （都是 `prepare_exception`）、同步路径 `executeRun` 抛错（`sync_exception`）、`startRun` 在子进程诞生之后失败
- * 并终止工作进程、确认退出之后（`post_spawn_exception`，EV-150）。
+ * 并终止工作进程、确认退出之后（`post_spawn_exception`，EV-150）、`--cancel` 在 `--wait` 判 heartbeat_stale 之后
+ * 结束仍挂着的工作进程并确认退出之后（沿用 `worker_lost` / `heartbeat_stale`，EV-146）。
  */
 export function finalizeFailedRunMeta(
   i: FinalizeInput & { termination: RunTermination },

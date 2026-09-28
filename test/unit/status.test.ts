@@ -5,7 +5,7 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   newStatus, writeStatus, readStatus, patchStatus, interpretStatus,
-  renderProgress, renderProgressBrief, fmtDuration, computeMaxWaits, statusPath, isTerminal,
+  renderProgress, renderProgressBrief, fmtDuration, computeMaxWaits, statusPath, isTerminal, lostOf,
   type ProgressBudget, type RunStatus,
 } from '../../src/trivium/status.js';
 import { processStartTime } from '../../src/trivium/util/exec.js';
@@ -274,4 +274,20 @@ test('窗口收窄到 180s 后 max_waits 自适应（本项目 timeout_s 覆盖�
 test('max_waits 对异常入参不炸（除零保护）', () => {
   assert.ok(computeMaxWaits(900, 0, 1) > 0);
   assert.equal(computeMaxWaits(900, 540, -3), computeMaxWaits(900, 540, 0));
+});
+
+test('EV-146 K1：lostOf——形状合法才返回，读不懂就当没有（fail-safe 方向是不杀）', () => {
+  const at = '2026-09-28T04:40:00.000Z';
+  const withLost = (lost: unknown): RunStatus => ({ ...base(), lost } as unknown as RunStatus);
+  assert.equal(lostOf(null), null);
+  assert.equal(lostOf(base()), null, '缺席（旧版 --wait 写的）');
+  assert.equal(lostOf(withLost(null)), null);
+  assert.equal(lostOf(withLost('heartbeat_stale')), null, '非对象');
+  assert.equal(lostOf(withLost({ reason: 'heartbeat_slow', at })), null, 'reason 不在枚举里');
+  assert.equal(lostOf(withLost({ reason: 'heartbeat_stale' })), null, '缺 at');
+  assert.equal(lostOf(withLost({ reason: 'heartbeat_stale', at: 42 })), null, 'at 非字符串');
+  assert.equal(lostOf(withLost({ reason: 'heartbeat_stale', at: '  ' })), null, 'at 为空串');
+  for (const reason of ['no_status_file', 'heartbeat_stale', 'pid_gone'] as const) {
+    assert.deepEqual(lostOf(withLost({ reason, at })), { reason, at });
+  }
 });

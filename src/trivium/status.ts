@@ -66,6 +66,21 @@ export interface RunStatus {
   /** 终态时填：退出码，供 `--wait` 原样透出 */
   exit_code: number | null;
   message: string | null;
+  /**
+   * `--wait` 判 `worker_lost` 时记下的结构化事实（EV-146，失联后取消挂住的worker计划 r2 §4.1）：原因与判定时刻，
+   * 与 `phase: failed`、`message` 在同一次写入里落盘。`--cancel` 据它判「失联后仍挂着的 worker」那一格，不读 `message`。
+   * 缺席（旧版 `--wait` 写的、或不是 `--wait` 判失联写的终态）与 null 读者一律当「没有」；旧版读者忽略这个键。
+   * worker 恢复后自己的写入会保留它（读改写不删不认识的键），所以它说的是「曾被判失联」，不是「现在仍失联」。
+   * `--wait --json` 与 `--status --json` 整份透出 status，这个键因此也是对外 JSON 形状的加法。
+   */
+  lost?: WorkerLostRecord | null;
+}
+
+/** status.json `lost` 的形状（EV-146） */
+export interface WorkerLostRecord {
+  reason: WorkerLostReason;
+  /** 判定时刻（ISO 8601） */
+  at: string;
 }
 
 export const statusPath = (runDir: string): string => path.join(runDir, RUN_DIR_FILES.status);
@@ -308,6 +323,20 @@ export async function cliGroupsConfirmedGone(s: RunStatus | null): Promise<{ gon
  */
 export const WORKER_LOST_REASONS = ['no_status_file', 'heartbeat_stale', 'pid_gone'] as const;
 export type WorkerLostReason = (typeof WORKER_LOST_REASONS)[number];
+
+/**
+ * 读 status.json 的 `lost`（EV-146）：形状合法（`reason` ∈ `WORKER_LOST_REASONS`、`at` 为非空字符串）才返回，否则 null。
+ * 读不懂就当没有——`--cancel` 据它决定要不要对一个已判终态的运行发信号，fail-safe 方向是「不杀」
+ * （与 `cliRecordsOf` 对形状坏的 CLI 记录不发信号同一口径）。
+ */
+export function lostOf(s: RunStatus | null): WorkerLostRecord | null {
+  const v: unknown = s?.lost;
+  if (v === null || typeof v !== 'object') return null;
+  const r = v as { reason?: unknown; at?: unknown };
+  const okReason = typeof r.reason === 'string' && (WORKER_LOST_REASONS as readonly string[]).includes(r.reason);
+  const okAt = typeof r.at === 'string' && r.at.trim().length > 0;
+  return okReason && okAt ? { reason: r.reason as WorkerLostReason, at: r.at as string } : null;
+}
 
 export type StatusReading =
   /** 已完成（成功或失败），可以收工 */

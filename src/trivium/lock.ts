@@ -43,6 +43,11 @@ const lockDir = (triviumDir: string): string => path.join(triviumDir, 'lock');
 /** 主题名允许中文与 `.`，但不允许路径分隔符（topic 校验已保证），可直接做文件名 */
 const lockPath = (triviumDir: string, topic: string): string =>
   path.join(lockDir(triviumDir), `${topic}.lock`);
+/**
+ * 主题锁文件的路径——锁名规则的唯一来源，供本模块之外需要直接回收 / 删除锁文件的地方用
+ * （`run-protocol.ts` 的 worker 收尾、`--cancel` 两处；失联后取消挂住的worker 代码双审 r1 CODEX-05）
+ */
+export const lockPathFor = lockPath;
 
 async function readLock(p: string): Promise<LockContent | null> {
   try {

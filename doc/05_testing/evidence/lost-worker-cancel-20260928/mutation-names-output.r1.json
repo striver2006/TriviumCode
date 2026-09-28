@@ -1,0 +1,218 @@
+[
+  {
+    "id": "N1",
+    "desc": "waitRun 不记 lost ⇒ K2 / K3（本格判不出）",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 6,
+    "red": [
+      "EV-146 K2：--wait 判失联时记下结构化的 lost；heartbeat_stale 的报错先列事实再给 --cancel 出口，pid_gone 不给",
+      "EV-146 K3：本格主线——结束 worker、补收 run.json 与登记（worker_lost / heartbeat_stale）、按 run_id + pid 回收锁；status.json 逐字节不变、闸门不动",
+      "EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如实说明；再跑一次仍入本格（判格可重入）",
+      "EV-146 K6：锁已不归本运行的 worker（run_id 相同而 pid 不同 / run_id 不同）⇒ 不动它、如实说明；worker 与归档照常收尾",
+      "EV-146 K7：worker 挂住之前已写下归档终态（success）⇒ run.json 不追溯改写、如实说明；worker 照样结束、锁照样回收",
+      "EV-146 K9：本格的归档写失败（归档元数据目录只读）⇒ 告警带本格自己的「没有第二次机会」半句，不是主路径那句；锁照常回收"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: 挂住的 worker 应已被结束",
+      "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /已向工作进程组 \\d+ 发送 SIGTERM、SIGKILL，未能确认退出：归档 run\\.json、主题任务文件的运行登记与主题锁都不动/. Input:",
+      "AssertionError [ERR_ASSERTION]: R-K6-PID",
+      "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /归档 run-R-K7\\.json 未回写：已是终态（success），不追溯改写/. Input:",
+      "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /归档 run-R-K9\\.json 未回写：回写 run\\.json 出错：.*——这一步不会再有第二次机会：status\\.json 已是终态、工作进程已不在，再跑 --cancel 不会补这一步（BACKLOG EV-159）/. In"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N2",
+    "desc": "lostOf 不校验 reason 枚举 ⇒ K1",
+    "suite": "dist/test/test/unit/status.test.js",
+    "pattern": "EV-146",
+    "fail": 1,
+    "red": [
+      "EV-146 K1：lostOf——形状合法才返回，读不懂就当没有（fail-safe 方向是不杀）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: reason 不在枚举里"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N3",
+    "desc": "判格不看 lost.reason（任何 lost 都算）⇒ K5②",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 1,
+    "red": [
+      "EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: R-K5-2：不入本格就不对 worker 发信号"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N4",
+    "desc": "判格不看 phase（success 也算）⇒ K5③",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 1,
+    "red": [
+      "EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: R-K5-3：不入本格就不对 worker 发信号"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N5",
+    "desc": "判格不看启动时刻（活着即算同一进程）⇒ K5④",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 1,
+    "red": [
+      "EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: R-K5-4：run.json 不动"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N6",
+    "desc": "身份守卫只判类型（空串启动时刻、pid 为 1 放行）⇒ K5⑤",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 1,
+    "red": [
+      "EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: R-K5-5b：不入本格就不对 worker 发信号"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N9",
+    "desc": "未确认退出也往下走（补收 run.json、回收锁；计划 r2 的 N9 与 N10 在早退结构下是同一处）⇒ K4",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 1,
+    "red": [
+      "EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如实说明；再跑一次仍入本格（判格可重入）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 未确认退出时 run.json 必须逐字节不变"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N10",
+    "desc": "确认退出后也不补收（workerGone 传 false）⇒ K3",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 4,
+    "red": [
+      "EV-146 K3：本格主线——结束 worker、补收 run.json 与登记（worker_lost / heartbeat_stale）、按 run_id + pid 回收锁；status.json 逐字节不变、闸门不动",
+      "EV-146 K6：锁已不归本运行的 worker（run_id 相同而 pid 不同 / run_id 不同）⇒ 不动它、如实说明；worker 与归档照常收尾",
+      "EV-146 K7：worker 挂住之前已写下归档终态（success）⇒ run.json 不追溯改写、如实说明；worker 照样结束、锁照样回收",
+      "EV-146 K9：本格的归档写失败（归档元数据目录只读）⇒ 告警带本格自己的「没有第二次机会」半句，不是主路径那句；锁照常回收"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: R-K6-PID",
+      "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /归档 run-R-K7\\.json 未回写：已是终态（success），不追溯改写/. Input:",
+      "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /归档 run-R-K9\\.json 未回写：回写 run\\.json 出错：.*——这一步不会再有第二次机会：status\\.json 已是终态、工作进程已不在，再跑 --cancel 不会补这一步（BACKLOG EV-159）/. In"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N11",
+    "desc": "锁只比 run_id 不比 pid ⇒ K6",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 1,
+    "red": [
+      "EV-146 K6：锁已不归本运行的 worker（run_id 相同而 pid 不同 / run_id 不同）⇒ 不动它、如实说明；worker 与归档照常收尾"
+    ],
+    "firstLines": [
+      "Error: ENOENT: no such file or directory, open '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-proto-jxOXJr/.trivium/lock/协议用例.lock'"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N12",
+    "desc": "termination 写成别的取值 ⇒ K3",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 1,
+    "red": [
+      "EV-146 K3：本格主线——结束 worker、补收 run.json 与登记（worker_lost / heartbeat_stale）、按 run_id + pid 回收锁；status.json 逐字节不变、闸门不动"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N13",
+    "desc": "本格改写 status.json（phase 置 cancelled）——同时让第二次调用不再入格 ⇒ K3 / K4",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 3,
+    "red": [
+      "EV-146 K3：本格主线——结束 worker、补收 run.json 与登记（worker_lost / heartbeat_stale）、按 run_id + pid 回收锁；status.json 逐字节不变、闸门不动",
+      "EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如实说明；再跑一次仍入本格（判格可重入）",
+      "EV-146 K8：本格之后再跑一次 --cancel ⇒ worker 已不在（gone 格），走原有终态早退、什么都不写"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: status.json 一个字节都不写（不追溯改写）",
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /运行 R-K8 已处于终态（failed），无需取消。/. Input:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N15",
+    "desc": "heartbeat_stale 报错不带事实行与出口行 ⇒ K2",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 1,
+    "red": [
+      "EV-146 K2：--wait 判失联时记下结构化的 lost；heartbeat_stale 的报错先列事实再给 --cancel 出口，pid_gone 不给"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /判定依据：工作进程 34077 仍在，status\\.json 已 \\d+ s 未更新（失联阈值 heartbeat_stale_s = 120 s；工作进程的心跳间隔是 30 s）/. Input:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N16a",
+    "desc": "mismatch 跌回「无需取消」（计划双审 r1 AGY-01）⇒ K5④",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 1,
+    "red": [
+      "EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /上有活进程，但启动时刻与 status\\.json 的记录不符：可能是 PID 已被复用，也可能是本命令的 TZ \\/ 区域设置与 --start 不同（BACKLOG EV-158）——不对它发信号/. Input:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "N16b",
+    "desc": "no_identity 跌回「无需取消」（计划双审 r1 AGY-01）⇒ K5⑤",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": "EV-146",
+    "fail": 1,
+    "red": [
+      "EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: R-K5-5a"
+    ],
+    "windowMiss": false
+  }
+]

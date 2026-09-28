@@ -1,0 +1,12 @@
+✓ 构建：新旧 bundle sha256 不同（new f6bfc4105625 / old 418d7a1d2c5b）；桩相对 50cb380 无 diff、不叠加 true
+✓ C1：--wait 退 1（heartbeat_stale true、出口句 true、lost "heartbeat_stale"）；判失联后 --start 退 70；--cancel 退 0、升级 true、按记录 2 行、5402 ms；worker 不在 true、组成员 [0,0]；run.json {"status":"failed","termination":{"by":"worker_lost","reason":"heartbeat_stale"}}、登记 failed、锁在 false、status.json 不变 true；之后 --start 退 0
+✓ C4：再 --cancel 退 0、终态早退 true、status.json 不变 true、run.json 不变 true
+✓ C2：旧构建：--wait 退 1、无 lost 键 true；--cancel 终态早退 true；worker 仍在 true、组成员 [2,2]；run.json running、锁在 true；之后 --start 退 70（EV-146 原文）
+✓ C3：新：升级 false、说「宽限内响应」true、处理器跑了 true、worker 不在 true、组 [0,0]、run.json failed；旧：终态早退 true、worker 仍在 true、组 [2,2]、run.json running
+✓ C5：B3 新 true / 旧 true；B6 新 true / 旧 true（本主题不改这两格）
+✓ C6：--wait 后载体在 true；--cancel（本格）后载体在 true；trivium scrub 后载体在 false
+✓ C7：hang：退出码 0/0、stdout 同 true、stderr 同 true；hang_cli：退出码 0/0、stdout 同 true、stderr 同 true
+✓ C8：新构建写下 lost "heartbeat_stale"；旧构建 --status 退 1（新 1）、lost 原样透出 "heartbeat_stale"；旧 --cancel 退 0、终态早退 true
+
+9 / 9
+exit=0

@@ -15,11 +15,11 @@ import type { Config, CriticId, CriticRequest, Ctx, Stage, CommandEntry } from '
 import { EXIT, TriviumError, envError, exitCodeOf, missingArtifact } from './exit-codes.js';
 import { runRoot } from './config.js';
 import { RUN_DIR_FILES } from './run-files.js';
-import { acquireLock, inspectLock, reclaimStaleLock, type LockHandle } from './lock.js';
+import { acquireLock, inspectLock, lockPathFor, reclaimStaleLock, type LockHandle } from './lock.js';
 import {
-  cliRecordsOf, computeMaxWaits, interpretStatus, isTerminal, judgeCliGroup, newStatus, patchStatus, rawCliOf, readStatus,
+  cliRecordsOf, computeMaxWaits, interpretStatus, isTerminal, judgeCliGroup, lostOf, newStatus, patchStatus, rawCliOf, readStatus,
   renderProgress, renderProgressBrief, progressViewOf, syncCliRecords, workerConfirmedGone, writeStatus,
-  type CliGroupRecord, type CliGroupVerdict, type ProgressBudget, type ProgressView, type RunStatus,
+  type CliGroupRecord, type CliGroupVerdict, type ProgressBudget, type ProgressView, type RunStatus, type WorkerLostRecord,
 } from './status.js';
 import type { ArchiveLayout } from './archive.js';
 import {
@@ -56,10 +56,11 @@ export const WORKER_TREE_GRACE_MS = 2000;
 /** 对 CLI 进程组发 SIGKILL 之后至多再等多久（EV-152） */
 export const WORKER_TREE_KILL_WAIT_MS = 1000;
 /**
- * `--start` 派生后失败的收尾里，对工作进程组发 SIGKILL 之后至多再等多久确认退出（EV-150 起就是 5 s，EV-152 代码双审
- * r1 CODEX-06 起具名）。与 `WORKER_TERM_GRACE_MS` 数值相同、语义无关——那个是 SIGTERM 之后的宽限。
+ * 对工作进程组发 SIGKILL 之后至多再等多久确认退出。两个使用方：`--start` 派生后失败的收尾（EV-150 起就是 5 s，EV-152
+ * 代码双审 r1 CODEX-06 起具名）与失联后取消挂住的 worker（`cancelLostWorker`，EV-146）——两处之后的步骤都以
+ * 「确认退出」为前提，确认就在这里做。与 `WORKER_TERM_GRACE_MS` 数值相同、语义无关——那个是 SIGTERM 之后的宽限。
  * 设计 7.5 `review --start` 行「失败路径最长约 20 s」= 宽限 5 s + 本常量 5 s + 取启动时刻的 `ps` 至多 10 s。
- * `--cancel` 那边 SIGKILL 之后刻意不等（`killWaitMs: 0`，见 `cancelRun`）。
+ * `--cancel` 主路径 SIGKILL 之后刻意不等（`killWaitMs: 0`，见 `cancelRun`），之后另由 `workerConfirmedGone` 复判。
  */
 export const ORPHAN_KILL_CONFIRM_MS = 5000;
 
@@ -1037,7 +1038,7 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
     // 释放锁：工作进程是最终持有者
     const cur = await inspectLock(ctx.triviumDir, id?.topic ?? '');
     if (cur && cur.pid === process.pid) {
-      await fs.rm(path.join(ctx.triviumDir, 'lock', `${cur.topic}.lock`), { force: true });
+      await fs.rm(lockPathFor(ctx.triviumDir, cur.topic), { force: true });
     }
   }
 }
@@ -1170,11 +1171,34 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
           `\n  ${describeFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`)}` +
           `\n  ${describeFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改')}`;
       }
+      /*
+       * 失联的结构化事实 `lost` 与 failed 同一次写入（EV-146，计划 r2 §4.1）：`--cancel` 据它判「失联后仍挂着的 worker」
+       * 那一格，不读 message。`no_status_file` 时没有 status.json，patchStatus 不执行 mutate，这一条只进报错正文。
+       */
       await patchStatus(runDir, (s) => {
         s.phase = 'failed';
         s.exit_code = EXIT.FAIL;
         s.message = `worker_lost（${reading.reason}）`;
+        s.lost = { reason: reading.reason, at: new Date().toISOString() };
       });
+      /*
+       * heartbeat_stale 而 worker 仍在：先列判定依据、再给 --cancel 出口（EV-146，计划 r2 §4.2，计划双审 r1 CODEX-01）。
+       * 这是工具第一次向人推荐一个会结束进程的动作，「卡死」与「只是慢」要在推荐的同一屏里分得清：心跳年龄、生效阈值、
+       * 心跳间隔；阈值不大于心跳间隔时健康的 worker 也会被判失联（事前告警见 BACKLOG EV-160）。
+       * heartbeat_stale 只出自情形 C（status.json 可读），所以 pre 不为 null。
+       */
+      let cancelHint = '';
+      if (reading.reason === 'heartbeat_stale' && !goneForArchive) {
+        const lostPid = pre?.worker_pid ?? fallbackPid;
+        const ageMs = pre ? Date.now() - new Date(pre.heartbeat_at).getTime() : Number.NaN;
+        const staleS = cfg.review.heartbeat_stale_s;
+        cancelHint =
+          `\n  判定依据：工作进程 ${lostPid ?? '?'} 仍在，status.json 已 ${Number.isFinite(ageMs) ? Math.round(ageMs / 1000) : '?'} s 未更新` +
+          `（失联阈值 heartbeat_stale_s = ${staleS} s；工作进程的心跳间隔是 ${HEARTBEAT_MS / 1000} s）` +
+          (staleS * 1000 <= HEARTBEAT_MS ? '——阈值不大于心跳间隔：健康的工作进程也会被判失联' : '') +
+          `\n  若确认它卡死、要结束这一轮：trivium review --cancel ${runId}——会结束它与它拉起的审查员 CLI，并补收归档 run.json；` +
+          '它若只是慢，这样做会结束一个仍在推进的轮次';
+      }
       /*
        * worker 没了就不会再有人回收闸门，只能在这里收。
        * 主题/阶段从 status.json 现读，不能用 `last`——worker 若在第一次
@@ -1208,7 +1232,7 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
       throw new TriviumError(
         EXIT.FAIL,
         `运行 ${runId} 的工作进程失联（${reading.reason}）。` +
-          `\n  日志：${workerLogPath(runDir)}` + archiveNote + scrubNote,
+          `\n  日志：${workerLogPath(runDir)}` + archiveNote + cancelHint + scrubNote,
       );
     }
     if (reading.kind === 'running') last = reading.status;
@@ -1288,6 +1312,9 @@ export async function statusRun(
  * （工作进程已确认退出且仍为 running 时，EV-128）→ status.json 标 `cancelled` → 回收锁与闸门。
  *
  * 这是 GLM-04 场景（进程活着但不再进展）唯一的工具化恢复路径。
+ *
+ * 已终态的运行不追溯改写，只有一格例外（EV-146）：`--wait` 判 heartbeat_stale 写成 failed、而工作进程仍是同一活进程——
+ * 由 `cancelLostWorker` 结束它与它拉起的审查员 CLI、补收归档 run.json、回收锁，status.json 不写（见 `classifyLostCancel`）。
  */
 /** status.json 读不到时，从交接文件取主题与阶段（它在派生前就写好了） */
 async function readHandoffIdentity(runDir: string): Promise<{ topic: string; stage: Stage } | null> {
@@ -1305,12 +1332,18 @@ async function readHandoffIdentity(runDir: string): Promise<{ topic: string; sta
  * 异常那一档要把后果说出来（代码双审 r1 CODEX-01）：「中断后再跑 --cancel 可补齐」只对**进程中断**成立。
  * 单步写失败时本进程照常往下走、把 status.json 落终态，之后再跑 --cancel 会在终态分支早退，这一步没有第二次机会。
  */
-function reportFinalizeStep(r: FinalizeStep, done: string, notDone: string): void {
+function reportFinalizeStep(
+  r: FinalizeStep,
+  done: string,
+  notDone: string,
+  /**
+   * 「没有第二次机会」那半句：后果因处境而异。缺省是主路径的处境（主路径输出逐字不变）；
+   * 失联后取消那一格传自己的（status.json 早已是终态，EV-146，计划双审 r1 AGY-03）
+   */
+  noSecondChance = '这一步不会再有第二次机会：status.json 随后落终态，再跑 --cancel 会早退，请人工核对归档 run.json 与 task.json 的运行登记',
+): void {
   // 文案经 meta.ts 的 describeFinalizeStepWith 出（三处同族措辞的唯一来源，代码双审 r1 CODEX-06），这里只分流 step / warn
-  const line = describeFinalizeStepWith(
-    r, done, notDone,
-    '这一步不会再有第二次机会：status.json 随后落终态，再跑 --cancel 会早退，请人工核对归档 run.json 与 task.json 的运行登记',
-  );
+  const line = describeFinalizeStepWith(r, done, notDone, noSecondChance);
   if (r.kind === 'skipped' && r.error) warn(line);
   else step(line);
 }
@@ -1327,7 +1360,193 @@ function describeFinalizeStep(r: FinalizeStep, done: string, notDone: string): s
   );
 }
 
-export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
+// ─────────────────────── 失联后取消挂住的 worker（EV-146） ───────────────────────
+
+/**
+ * `--cancel` 碰到终态运行时先判的格（EV-146，失联后取消挂住的worker计划 r2 §4.3）。只有 `alive` 一格会发信号。
+ *
+ * - `none`：不是「status.json 为 failed + `lost.reason` 为 heartbeat_stale」——走原有终态早退；
+ * - `no_identity`：是，但 status.json 里的身份两项不合形状（pid 须为 > 1 的整数、启动时刻须为非空字符串）——判不了就不发信号；
+ * - `gone`：是，pid 上已没有活进程——走原有终态早退（run.json 的补收暂缓，BACKLOG EV-159）；
+ * - `mismatch`：是，pid 上有活进程而启动时刻不符——PID 复用，或本命令的 TZ / 区域设置与 `--start` 不同（EV-158）；
+ * - `alive`：本格，交给 `cancelLostWorker`。
+ */
+export type LostCancelCell =
+  | { kind: 'none' }
+  | { kind: 'no_identity' }
+  | { kind: 'gone'; pid: number }
+  | { kind: 'mismatch'; pid: number }
+  | { kind: 'alive'; pid: number; startedAt: string; lost: WorkerLostRecord };
+
+/**
+ * 判格。判据全取 status.json 的结构化字段与进程事实，**不读 message**（用户决策 2）：
+ * `phase === 'failed'`、`lostOf(s).reason === 'heartbeat_stale'`、`worker_pid` / `worker_started_at`、`processAlive`。
+ *
+ * - **类型守卫**（计划双审 r1 AGY-02 ≡ GLM-02）：`processAlive` 对假值启动时刻给 `sameProcess: true`，空串会被当成
+ *   「有身份且相符」；pid 为 1 是 init / launchd；status.json 只有 TS 接口、`readStatus` 不校验。
+ * - **只认 status.json 的两项**：不回落 `worker.pid` 文件（那里没有启动时刻，等于「身份缺失 = 相符」），也不取锁里的
+ *   `pid_started_at`——`startRun` 用同一个变量写两处，`ps` 失败时同为 null，不是第二份证据（计划双审 r1 CODEX-04 驳回的理由）。
+ * - 身份判据沿用 `processAlive(worker_pid, worker_started_at)`（与主路径、锁同一口径），不为本格另立规范化锚点（计划 r2 D2）。
+ */
+export async function classifyLostCancel(s: RunStatus): Promise<LostCancelCell> {
+  const lost = lostOf(s);
+  if (s.phase !== 'failed' || lost?.reason !== 'heartbeat_stale') return { kind: 'none' };
+  const pid: unknown = s.worker_pid;
+  const startedAt: unknown = s.worker_started_at;
+  if (
+    typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 1 ||
+    typeof startedAt !== 'string' || startedAt.trim().length === 0
+  ) {
+    return { kind: 'no_identity' };
+  }
+  const live = await processAlive(pid, startedAt);
+  if (!live.alive) return { kind: 'gone', pid };
+  if (!live.sameProcess) return { kind: 'mismatch', pid };
+  return { kind: 'alive', pid, startedAt, lost };
+}
+
+/**
+ * 本格「工作进程已退出」的严格判据（EV-146，代码双审 r1 GLM-01）的纯函数核：
+ * 进程不存在 ⇒ 已退出；存在且取到的启动时刻与记录不同 ⇒ 已退出（pid 已被别的进程占用）；
+ * 存在而**启动时刻取不到**（`ps` 瞬时失败）⇒ **未退出**。
+ *
+ * 共享的 `workerGoneForCancel` 把「取不到」并入「不是同一进程」算已退出；本格随后要补收 run.json、回收锁，
+ * 那样会在 worker 其实还活着时破坏 EV-142「没有另一个写者」的前提，所以另立严格判据（共享判据不改，改动面更大）。
+ * 与 EV-154 代码双审 r1 GLM-01 对 CLI 那一侧的收紧同一取向：轮询中判不了不算已不在。
+ */
+export function lostWorkerGoneFrom(p: { alive: boolean; startedAt: string | null }, expectedStartedAt: string): boolean {
+  if (!p.alive) return true;
+  return p.startedAt !== null && p.startedAt !== expectedStartedAt;
+}
+
+/** `lostWorkerGoneFrom` 接上 `processAlive`：`terminateProcessGroup` 的 `isGone` 与抛错后的复判都用它 */
+async function lostWorkerGone(pid: number, startedAt: string): Promise<boolean> {
+  return lostWorkerGoneFrom(await processAlive(pid, startedAt), startedAt);
+}
+
+/** `cancelRun` 的可选参数：只给单测替换「结束工作进程」这一步（与 `settleOrphanedStart` 的 `terminate` 注入同形） */
+export interface CancelOptions {
+  terminateWorker?: (pid: number, startedAt: string) => Promise<{ gone: boolean; escalated: boolean; signals: NodeJS.Signals[] }>;
+}
+
+/**
+ * 失联后取消挂住的 worker（EV-146，计划 r2 §4.4）：status.json 已被 `--wait` 判 heartbeat_stale 写成 failed，
+ * 而工作进程仍是同一活进程（多半是事件循环被堵住，SIGTERM 处理器跑不到）。按用户决策 3 的次序：
+ *   1. 开场先列事实（判定时刻、status.json 最近一次写入；判定之后又写过就说它可能只是慢——在发信号之前说，计划双审 r1 CODEX-01）；
+ *   2. 按组结束工作进程：宽限同主路径，SIGKILL 之后**等确认**（`ORPHAN_KILL_CONFIRM_MS`）——后面几步都以「确认退出」为前提；
+ *   3. 按 status.json 的记录结束审查员 CLI（没确认退出也照做，与主路径 b 格同口径，D4）；
+ *   4. 确认退出后按 EV-142 的前提补收 run.json 与登记为 failed（`termination` 同 `--wait`：worker_lost / heartbeat_stale，D5）；
+ *   5. 确认退出后按 run_id + pid 复核回收主题锁（D10）。
+ * **不做**：status.json 一个字节都不写（phase / message 不改写、CLI 记录也不清——终态分支不追溯改写，也让本格可重入：
+ * 未确认退出后再跑一次仍入本格）；闸门不动（`--wait` 判失联时已回收）；凭据副本不抹（留给会话启动清扫，EV-157 范围不动）。
+ * 退出码两种结局都是 0（与主路径同口径，D6），结局写在 stdout 的结论句里。
+ */
+async function cancelLostWorker(
+  ctx: Ctx,
+  runId: string,
+  runDir: string,
+  s: RunStatus,
+  cell: { pid: number; startedAt: string; lost: WorkerLostRecord },
+  o: CancelOptions,
+): Promise<number> {
+  const { pid, startedAt, lost } = cell;
+  step(
+    `运行 ${runId} 已被 --wait 判为失联（heartbeat_stale，判定于 ${lost.at}；status.json 最近一次写入于 ${s.heartbeat_at}），` +
+      `但工作进程 ${pid} 仍是同一进程：按取消意图结束它——向工作进程组发送 SIGTERM`,
+  );
+  // `--wait` 自己那次写入会把 heartbeat_at 刷成判定后几毫秒，所以留 1 s 余量；只影响这一句的措辞
+  const lostAtMs = Date.parse(lost.at);
+  const lastWriteMs = Date.parse(s.heartbeat_at);
+  if (Number.isFinite(lostAtMs) && Number.isFinite(lastWriteMs) && lastWriteMs - lostAtMs > 1000) {
+    warn('失联判定之后工作进程又写过 status.json，它可能只是心跳慢；仍按取消结束它');
+  }
+
+  // 2. 按组结束工作进程并确认退出
+  let t: { gone: boolean; escalated: boolean; signals: NodeJS.Signals[] } | null;
+  try {
+    t = await (o.terminateWorker ?? ((p: number, at: string) => terminateProcessGroup(p, {
+      isGone: () => lostWorkerGone(p, at),
+      graceMs: WORKER_TERM_GRACE_MS,
+      killWaitMs: ORPHAN_KILL_CONFIRM_MS,
+      pollMs: 250,
+      onEscalate: () => warn(`工作进程组 ${p} 未响应 SIGTERM（事件循环被堵住时处理器跑不到），发送 SIGKILL`),
+    })))(pid, startedAt);
+  } catch (err) {
+    warn(`结束工作进程组 ${pid} 时出错：${String((err as Error)?.message ?? err).split('\n')[0]}`);
+    t = null;
+  }
+  const gone = t ? t.gone : await lostWorkerGone(pid, startedAt).catch(() => false);
+  const sent = t?.signals.join('、') || '（无）';
+  /*
+   * 播报按三态分（代码双审 r1 CODEX-01 ≡ GLM-01）：`terminateProcessGroup` 首检即「已不在」时一个信号都没发
+   * （判格之后它自己退出了，或 pid 已被别的进程占用），不能说成「响应 SIGTERM」「处理器已收拾 CLI」「仍挂着」。
+   */
+  const noSignalSent = t !== null && t.signals.length === 0;
+  const handlerRan = gone && t !== null && !t.escalated && !noSignalSent;
+  if (gone && noSignalSent) {
+    step(`未及发信号，工作进程 ${pid} 已不在（在判格之后自己退出了，或它的 pid 已被别的进程占用）`);
+  } else if (handlerRan) {
+    step(
+      `工作进程在宽限内响应 SIGTERM 退出（${sent}）——它的事件循环没有被堵住，失联判定可能只是心跳慢；` +
+        '它的 SIGTERM 处理器已按自己的登记结束审查员 CLI（见 worker.log）',
+    );
+  } else if (gone) {
+    step(`工作进程组 ${pid} 已结束（${sent}）`);
+  } else {
+    warn(
+      `已向工作进程组 ${pid} 发送 ${sent}，未能确认退出：归档 run.json、主题任务文件的运行登记与主题锁都不动（它若还活着就是写者）。` +
+        '可以再跑一次 --cancel（仍会入这一格）；若改为在终端手工结束它，之后再跑 --cancel 只会结束审查员 CLI，' +
+        '归档 run.json 与运行登记要人工核对（BACKLOG EV-159）',
+    );
+  }
+
+  // 3. 按记录结束 CLI（没确认退出也照做，D4）。只有 worker 的处理器确实跑过（发了 SIGTERM、宽限内退出）时无记录才不出声——
+  //    零信号那一格正是 worker 被外部结束、CLI 可能成孤儿的形态，要照常提示（代码双审 r1 CODEX-01）
+  reportRecordedCliGroups(await terminateRecordedCliGroups(await readStatus(runDir)), handlerRan, runDir);
+
+  if (!gone) {
+    say(`运行 ${runId} 已被 --wait 判为失联（heartbeat_stale）：未能确认工作进程 ${pid} 退出，归档与主题锁未动。`);
+    return EXIT.OK;
+  }
+
+  // 4. 补收 run.json 与登记（EV-142 的前提：写者已被本格结束，并按 pid + 启动时刻观察到它退出）
+  const fin = await finalizeFailedRunMeta({
+    layout: { archiveRoot: ctx.archiveRoot, topic: s.topic },
+    stage: s.stage,
+    runId,
+    lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 },
+    workerGone: true,
+    termination: { by: 'worker_lost', reason: 'heartbeat_stale' },
+  });
+  const noSecondChance =
+    '这一步不会再有第二次机会：status.json 已是终态、工作进程已不在，再跑 --cancel 不会补这一步（BACKLOG EV-159），' +
+    '请人工核对归档 run.json 与 task.json 的运行登记';
+  reportFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`, noSecondChance);
+  reportFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改', noSecondChance);
+
+  // 5. 按 run_id + pid 复核回收主题锁：本格可能发生在 --start 之后很久，锁若已被新一轮接管或改写，都不是本运行 worker 的
+  const existing = await inspectLock(ctx.triviumDir, s.topic);
+  if (existing && existing.run_id === runId && existing.pid === pid) {
+    if (await reclaimStaleLock(lockPathFor(ctx.triviumDir, s.topic), existing)) {
+      say(`已回收主题「${s.topic}」的锁`);
+    } else {
+      step('主题锁在回收时已被别的进程动过，未回收');
+    }
+  } else if (existing) {
+    step(`主题锁已不归本运行的工作进程（run_id ${existing.run_id ?? '无'}，pid ${existing.pid}），不动`);
+  }
+
+  // 结论按三态说（代码双审 r1 CODEX-01）：「已结束仍挂着的」只在确实发过信号时说
+  say(
+    noSignalSent
+      ? `运行 ${runId} 已被 --wait 判为失联（heartbeat_stale）：工作进程 ${pid} 在发信号之前已不在，未对它发信号。`
+      : `运行 ${runId} 已被 --wait 判为失联（heartbeat_stale）：已结束仍挂着的工作进程 ${pid}。`,
+  );
+  say('  status.json 的 phase 与 message 保持失联判定时的样子（不追溯改写）；归档 run.json 与运行登记见上方输出。');
+  return EXIT.OK;
+}
+
+export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}): Promise<number> {
   const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
   const s = await readStatus(runDir);
   /*
@@ -1353,14 +1572,44 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
     .catch(() => null);
   if (s && ['success', 'failed', 'cancelled'].includes(s.phase)) {
     /*
+     * 失联后仍挂着的 worker（EV-146，计划 r2 §4.3）：status.json 为 failed、`lost.reason` 为 heartbeat_stale、worker 仍是
+     * 同一活进程——这是终态分支里唯一会对工作进程发信号的一格，交给 cancelLostWorker。
+     */
+    const cell = await classifyLostCancel(s);
+    if (cell.kind === 'alive') return cancelLostWorker(ctx, runId, runDir, s, cell, o);
+    /*
      * 终态早退分支里的 CLI（EV-154 D3，CLI进程组记录计划 r2 §4.4 第 3 处）：worker 被强杀后 `--wait` 判 `pid_gone`，
      * 会先于用户的 `--cancel` 把 status 写成 failed——只做非终态分支的话，「worker 已不在」这一格在实际序列里多半走不到。
      * worker 确认已不在、且还有记录时按记录结束 CLI。**只结束进程**：status.json、归档、锁与闸门一概不写（不追溯改写）。
-     * worker 还活着（`heartbeat_stale`，EV-146）或判不了时不动；一条记录都没有时不出声，下面两行原样输出。
+     * 失联后身份判不上（mismatch）时**跳过**（代码双审 r1 CODEX-02）：workerConfirmedGone 对「活着而启动时刻不符」同样判
+     * 「已不存在」，会按记录结束一个可能还活着的 worker 名下的 CLI；而 --wait 判 heartbeat_stale 那一刻身份是对得上的，
+     * 此刻对不上更可能是本命令的环境与 --start 不同（EV-158），不是 worker 死后 pid 被复用——一个信号都不发，让人先核对环境。
+     * 一条记录都没有时不出声。
      */
     const recs = cliRecordsOf(s);
-    if (recs.records.length + recs.malformed.length > 0 && (await workerConfirmedGone(s, pidFromFile)).gone) {
+    if (
+      cell.kind !== 'mismatch' &&
+      recs.records.length + recs.malformed.length > 0 && (await workerConfirmedGone(s, pidFromFile)).gone
+    ) {
       reportRecordedCliGroups(await terminateRecordedCliGroups(s), true, runDir);
+    }
+    /*
+     * 失联判定之后身份判不上 / 身份没记下（EV-146，计划双审 r1 AGY-01）：不跌回「无需取消」——worker 可能还挂着、
+     * 锁与归档都没动，结论要如实说。
+     */
+    if (cell.kind === 'mismatch') {
+      warn(
+        `工作进程 ${cell.pid} 上有活进程，但启动时刻与 status.json 的记录不符：可能是 PID 已被复用，` +
+          '也可能是本命令的 TZ / 区域设置与 --start 不同（BACKLOG EV-158）——不对它发信号，本次也未结束它名下的审查员 CLI。' +
+          '若确认是后者，请在与 --start 相同的环境里再跑一次 --cancel；若确认是前者，请用 ps 核对 ppid 为 1 的审查员 CLI',
+      );
+      say(`运行 ${runId} 已被 --wait 判为失联（heartbeat_stale），但工作进程的身份与记录不符，未对工作进程与它名下的审查员 CLI 发信号；归档 run.json 与主题锁未动。`);
+      return EXIT.OK;
+    }
+    if (cell.kind === 'no_identity') {
+      warn('status.json 里工作进程的 pid 或启动时刻缺失 / 形状不对，判不了是不是同一进程，不发信号——请用 ps 核对');
+      say(`运行 ${runId} 已被 --wait 判为失联（heartbeat_stale），但 status.json 没记下可核对的工作进程身份，未对工作进程发信号；归档 run.json 与主题锁未动。`);
+      return EXIT.OK;
     }
     say(`运行 ${runId} 已处于终态（${s.phase}），无需取消。`);
     say('  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。');
@@ -1466,7 +1715,7 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<number> {
   if (topic) {
     const existing = await inspectLock(ctx.triviumDir, topic);
     if (existing && existing.run_id === runId) {
-      await reclaimStaleLock(path.join(ctx.triviumDir, 'lock', `${topic}.lock`), existing);
+      await reclaimStaleLock(lockPathFor(ctx.triviumDir, topic), existing);
       say(`已回收主题「${topic}」的锁`);
     }
     /*

@@ -1,0 +1,149 @@
+{
+  "targets": [
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/gate-loop.test.js",
+    "dist/test/test/integration/run-protocol.test.js",
+    "dist/test/test/unit/status.test.js"
+  ],
+  "cases": [
+    {
+      "id": "N1",
+      "desc": "waitRun 不记 lost ⇒ K2 / K3（本格判不出）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        s.lost = { reason: reading.reason, at: new Date().toISOString() };\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N2",
+      "desc": "lostOf 不校验 reason 枚举 ⇒ K1",
+      "file": "src/trivium/status.ts",
+      "find": "  const okReason = typeof r.reason === 'string' && (WORKER_LOST_REASONS as readonly string[]).includes(r.reason);\n",
+      "replace": "  const okReason = typeof r.reason === 'string';\n",
+      "expect": "dist/test/test/unit/status.test.js"
+    },
+    {
+      "id": "N3",
+      "desc": "判格不看 lost.reason（任何 lost 都算）⇒ K5②",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  if (s.phase !== 'failed' || lost?.reason !== 'heartbeat_stale') return { kind: 'none' };\n",
+      "replace": "  if (s.phase !== 'failed' || !lost) return { kind: 'none' };\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N4",
+      "desc": "判格不看 phase（success 也算）⇒ K5③",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  if (s.phase !== 'failed' || lost?.reason !== 'heartbeat_stale') return { kind: 'none' };\n",
+      "replace": "  if (lost?.reason !== 'heartbeat_stale') return { kind: 'none' };\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N5",
+      "desc": "判格不看启动时刻（活着即算同一进程）⇒ K5④",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  if (!live.sameProcess) return { kind: 'mismatch', pid };\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N6",
+      "desc": "身份守卫只判类型（空串启动时刻、pid 为 1 放行）⇒ K5⑤",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 1 ||\n    typeof startedAt !== 'string' || startedAt.trim().length === 0\n",
+      "replace": "    typeof pid !== 'number' || typeof startedAt !== 'string'\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N7",
+      "desc": "结束工作进程不升级 SIGKILL（SIGKILL 发不出去）⇒ J1",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      onEscalate: () => warn(`工作进程组 ${p} 未响应 SIGTERM（事件循环被堵住时处理器跑不到），发送 SIGKILL`),\n",
+      "replace": "      onEscalate: () => warn(`工作进程组 ${p} 未响应 SIGTERM（事件循环被堵住时处理器跑不到），发送 SIGKILL`),\n      signal: (q: number, sg: NodeJS.Signals) => { if (sg === 'SIGKILL') return false; try { process.kill(-q, sg); return true; } catch { return false; } },\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "N8",
+      "desc": "不按记录结束 CLI ⇒ J1（两组仍在）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  reportRecordedCliGroups(await terminateRecordedCliGroups(await readStatus(runDir)), !(t?.escalated ?? false), runDir);\n",
+      "replace": "  if (process.env['TRIVIUM_MUT_NEVER'] === '1') reportRecordedCliGroups(await terminateRecordedCliGroups(await readStatus(runDir)), !(t?.escalated ?? false), runDir);\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "N9",
+      "desc": "未确认退出也往下走（补收 run.json、回收锁；计划 r2 的 N9 与 N10 在早退结构下是同一处）⇒ K4",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  if (!gone) {\n    say(",
+      "replace": "  if (!gone && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n    say(",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N10",
+      "desc": "确认退出后也不补收（workerGone 传 false）⇒ K3",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    workerGone: true,\n    termination: { by: 'worker_lost', reason: 'heartbeat_stale' },\n",
+      "replace": "    workerGone: false,\n    termination: { by: 'worker_lost', reason: 'heartbeat_stale' },\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N11",
+      "desc": "锁只比 run_id 不比 pid ⇒ K6",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  if (existing && existing.run_id === runId && existing.pid === pid) {\n",
+      "replace": "  if (existing && existing.run_id === runId) {\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N12",
+      "desc": "termination 写成别的取值 ⇒ K3",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    termination: { by: 'worker_lost', reason: 'heartbeat_stale' },\n",
+      "replace": "    termination: { by: 'worker_exception', exit_code: 1 },\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N13",
+      "desc": "本格改写 status.json（phase 置 cancelled）——同时让第二次调用不再入格 ⇒ K3 / K4",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  // 3. 按记录结束 CLI（没确认退出也照做，D4）。没升级时 worker 的处理器已按句柄收拾过，无记录就不出声\n",
+      "replace": "  await patchStatus(runDir, (x) => { x.phase = 'cancelled'; });\n  // 3. 按记录结束 CLI（没确认退出也照做，D4）。没升级时 worker 的处理器已按句柄收拾过，无记录就不出声\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N14",
+      "desc": "本格抹凭据副本 ⇒ J3",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  say(`运行 ${runId} 已被 --wait 判为失联（heartbeat_stale）：已结束仍挂着的工作进程 ${pid}。`);\n",
+      "replace": "  await scrubRunDir(runDir, wiredAdapter).catch(() => null);\n  say(`运行 ${runId} 已被 --wait 判为失联（heartbeat_stale）：已结束仍挂着的工作进程 ${pid}。`);\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "N15",
+      "desc": "heartbeat_stale 报错不带事实行与出口行 ⇒ K2",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      if (reading.reason === 'heartbeat_stale' && !goneForArchive) {\n",
+      "replace": "      if (reading.reason === 'heartbeat_stale' && !goneForArchive && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N16a",
+      "desc": "mismatch 跌回「无需取消」（计划双审 r1 AGY-01）⇒ K5④",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    if (cell.kind === 'mismatch') {\n",
+      "replace": "    if (cell.kind === 'mismatch' && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "N16b",
+      "desc": "no_identity 跌回「无需取消」（计划双审 r1 AGY-01）⇒ K5⑤",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    if (cell.kind === 'no_identity') {\n",
+      "replace": "    if (cell.kind === 'no_identity' && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    }
+  ]
+}

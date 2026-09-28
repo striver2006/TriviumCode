@@ -6,11 +6,11 @@ import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as childProcess from 'node:child_process';
 import {
-  bashTimeoutFor, cancelRun, runDirFor, settleOrphanedStart, statusRun, waitRun, workerGoneForCancel,
+  bashTimeoutFor, cancelRun, lostWorkerGoneFrom, runDirFor, settleOrphanedStart, statusRun, waitRun, workerGoneForCancel,
   WORKER_TERM_GRACE_MS, WORKER_TREE_GRACE_MS, WORKER_TREE_KILL_WAIT_MS,
 } from '../../src/trivium/run-protocol.js';
 import { getGate, setGate } from '../../src/trivium/state.js';
-import { newStatus, readStatus, writeStatus } from '../../src/trivium/status.js';
+import { newStatus, readStatus, writeStatus, type RunStatus } from '../../src/trivium/status.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { acquireLock, inspectLock } from '../../src/trivium/lock.js';
 import { spawnDetached, processStartTime, processAlive } from '../../src/trivium/util/exec.js';
@@ -768,4 +768,362 @@ test('EV-152 U9②：处理器——连发两次 SIGTERM 只处理第一次：�
   assert.deepEqual(r.treeMembersAfter, [0], '第二次 SIGTERM 若走了缺省动作，worker 会在转发中途死掉、留下 CLI 组');
   assert.match(r.stderr, /已按组终止审查员 CLI \d+（SIGTERM、SIGKILL）/);
   assert.ok(r.ms < WORKER_TERM_GRACE_MS - 500, `应在取消宽限内退出，实为 ${r.ms} ms`);
+});
+
+/*
+ * ── EV-146：失联后取消挂住的 worker（失联后取消挂住的worker计划 r2 §5.1 K2～K9）──
+ *
+ * 假 worker（`seedRun`）没有 SIGTERM 处理器、收到 SIGTERM 即退——正是「事件循环没堵住」那一支的最小形态；
+ * 堵住那一支由 `gate-loop.test.ts` 的 J1 用真实 worker 造。新增用例一律 K 编号，不与既有 U / L / E 撞号（计划双审 r1 CODEX-06）。
+ */
+
+/** 进程内同时捕获 stdout（say）与 stderr（step / warn），fn 结束后原样恢复 */
+async function captureOut<T>(fn: () => Promise<T>): Promise<{ value: T; out: string; err: string }> {
+  const o = process.stdout.write.bind(process.stdout);
+  const e = process.stderr.write.bind(process.stderr);
+  let out = '';
+  let err = '';
+  const sink = (append: (t: string) => void) =>
+    ((chunk: string | Uint8Array) => {
+      append(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+      return true;
+    }) as typeof process.stdout.write;
+  process.stdout.write = sink((t) => { out += t; });
+  process.stderr.write = sink((t) => { err += t; });
+  try {
+    return { value: await fn(), out, err };
+  } finally {
+    process.stdout.write = o;
+    process.stderr.write = e;
+  }
+}
+
+const readText = (p: string): Promise<string> => fs.readFile(p, 'utf8');
+const lockFile = (ctx: Ctx): string => path.join(ctx.triviumDir, 'lock', `${TOPIC}.lock`);
+
+/**
+ * 摆出「--wait 判 heartbeat_stale 之后」的样子：假 worker 活着、骨架 run.json 与登记为 running、锁记在 worker 名下，
+ * 心跳改成一小时前、真跑一次 waitRun 让它判失联（status.json 由 waitRun 自己写成 failed + lost）
+ */
+async function lostScenario(ctx: Ctx, runId: string, o: { lockPid?: number; lockRunId?: string } = {}) {
+  const { pid, runDir } = await seedRun(ctx, runId);
+  const a = await seedArchive(ctx, runId);
+  await holdLock(ctx, o.lockRunId ?? runId, o.lockPid ?? pid);
+  await staleHeartbeat(runDir);
+  const message = await lostMessage(ctx, runId);
+  assert.match(message, /heartbeat_stale/, `前提：判的是心跳过期：${message}`);
+  return { pid, runDir, a, message, statusPath: path.join(runDir, 'status.json') };
+}
+
+test('EV-146 K2：--wait 判失联时记下结构化的 lost；heartbeat_stale 的报错先列事实再给 --cancel 出口，pid_gone 不给', async () => {
+  // 阈值 120 s（大于 30 s 心跳间隔）：有事实行与出口行，没有「健康的工作进程也会被判失联」
+  const ctx = await fakeCtx();
+  const r = await lostScenario(ctx, 'R-K2-STALE');
+  try {
+    const s = JSON.parse(await readText(r.statusPath)) as RunStatus;
+    assert.equal(s.lost?.reason, 'heartbeat_stale');
+    assert.ok(Number.isFinite(Date.parse(s.lost?.at ?? '')), `lost.at 应可解析：${JSON.stringify(s.lost)}`);
+    assert.match(r.message, new RegExp(`判定依据：工作进程 ${r.pid} 仍在，status\\.json 已 \\d+ s 未更新（失联阈值 heartbeat_stale_s = 120 s；工作进程的心跳间隔是 30 s）`));
+    assert.doesNotMatch(r.message, /健康的工作进程也会被判失联/);
+    assert.match(r.message, /若确认它卡死、要结束这一轮：trivium review --cancel R-K2-STALE——会结束它与它拉起的审查员 CLI，并补收归档 run\.json；它若只是慢/);
+  } finally {
+    killQuietly(r.pid);
+  }
+
+  // 阈值 2 s（不大于心跳间隔）：事实行点明健康的工作进程也会被判失联
+  const ctx2 = await fakeCtx();
+  ctx2.config.review.heartbeat_stale_s = 2;
+  const r2 = await lostScenario(ctx2, 'R-K2-LOW');
+  try {
+    assert.match(r2.message, /失联阈值 heartbeat_stale_s = 2 s；工作进程的心跳间隔是 30 s）——阈值不大于心跳间隔：健康的工作进程也会被判失联/);
+  } finally {
+    killQuietly(r2.pid);
+  }
+
+  // pid_gone：记下 lost，但没有事实行与出口行（worker 已不在，没有可结束的进程）
+  const ctx3 = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx3, 'R-K2-GONE');
+  killQuietly(pid);
+  await new Promise((res) => setTimeout(res, 300));
+  const m3 = await lostMessage(ctx3, 'R-K2-GONE');
+  assert.equal((await readStatus(runDir))?.lost?.reason, 'pid_gone');
+  assert.doesNotMatch(m3, /判定依据|trivium review --cancel/);
+});
+
+test('EV-146 K3：本格主线——结束 worker、补收 run.json 与登记（worker_lost / heartbeat_stale）、按 run_id + pid 回收锁；status.json 逐字节不变、闸门不动', async () => {
+  const ctx = await fakeCtx();
+  const r = await lostScenario(ctx, 'R-K3');
+  try {
+    const statusBefore = await readText(r.statusPath);
+    const gateBefore = await getGate(ctx.triviumDir, TOPIC, 'plan');
+    const { value: code, out, err } = await captureOut(() => cancelRun(ctx, 'R-K3'));
+    assert.equal(code, EXIT.OK);
+    assert.equal((await processAlive(r.pid)).alive, false, '挂住的 worker 应已被结束');
+    const meta = JSON.parse(await readText(r.a.runJson)) as RunMeta;
+    assert.equal(meta.status, 'failed');
+    assert.equal(meta.gate.state, 'failed');
+    assert.deepEqual(meta.termination, { by: 'worker_lost', reason: 'heartbeat_stale' });
+    assert.deepEqual(meta.artifacts, r.a.meta.artifacts, 'artifacts[] 必须原样');
+    assert.equal((await readTask(r.a.layout)).runs.find((x) => x.run_id === 'R-K3')?.status, 'failed');
+    assert.equal(await inspectLock(ctx.triviumDir, TOPIC), null, '锁应按 run_id + pid 复核后回收');
+    assert.equal(await readText(r.statusPath), statusBefore, 'status.json 一个字节都不写（不追溯改写）');
+    assert.deepEqual(await getGate(ctx.triviumDir, TOPIC, 'plan'), gateBefore, '闸门不动');
+    assert.match(err, /运行 R-K3 已被 --wait 判为失联（heartbeat_stale，判定于 .+；status\.json 最近一次写入于 .+），但工作进程 \d+ 仍是同一进程/);
+    assert.match(err, /工作进程在宽限内响应 SIGTERM 退出（SIGTERM）——它的事件循环没有被堵住，失联判定可能只是心跳慢/);
+    assert.match(err, /已把归档里的 run-R-K3\.json 收尾为 failed/);
+    assert.match(err, /的运行登记同步为 failed/);
+    assert.match(out, /已回收主题「协议用例」的锁/);
+    assert.match(out, /运行 R-K3 已被 --wait 判为失联（heartbeat_stale）：已结束仍挂着的工作进程 \d+。/);
+    assert.doesNotMatch(out, /无需取消/);
+  } finally {
+    killQuietly(r.pid);
+  }
+});
+
+test('EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如实说明；再跑一次仍入本格（判格可重入）', async () => {
+  const ctx = await fakeCtx();
+  const r = await lostScenario(ctx, 'R-K4');
+  try {
+    const runBefore = await readText(r.a.runJson);
+    const taskBefore = await readText(r.a.taskJson);
+    const lockBefore = await readText(lockFile(ctx));
+    const statusBefore = await readText(r.statusPath);
+    let calls = 0;
+    const terminateWorker = async () => {
+      calls++;
+      return { gone: false, escalated: true, signals: ['SIGTERM', 'SIGKILL'] as NodeJS.Signals[] };
+    };
+    const first = await captureOut(() => cancelRun(ctx, 'R-K4', { terminateWorker }));
+    assert.equal(first.value, EXIT.OK);
+    assert.equal(await readText(r.a.runJson), runBefore, '未确认退出时 run.json 必须逐字节不变');
+    assert.equal(await readText(r.a.taskJson), taskBefore);
+    assert.equal(await readText(lockFile(ctx)), lockBefore, '未确认退出时锁不动');
+    assert.equal(await readText(r.statusPath), statusBefore);
+    assert.match(first.err, /已向工作进程组 \d+ 发送 SIGTERM、SIGKILL，未能确认退出：归档 run\.json、主题任务文件的运行登记与主题锁都不动/);
+    assert.match(first.err, /可以再跑一次 --cancel（仍会入这一格）；若改为在终端手工结束它.*BACKLOG EV-159/);
+    assert.match(first.out, /未能确认工作进程 \d+ 退出，归档与主题锁未动/);
+    assert.equal((await processAlive(r.pid)).alive, true, '桩没有真的发信号，假 worker 仍在');
+
+    const second = await captureOut(() => cancelRun(ctx, 'R-K4', { terminateWorker }));
+    assert.equal(second.value, EXIT.OK);
+    assert.equal(calls, 2, '第二次 --cancel 仍入本格、再次尝试结束（CODEX-06 ③）');
+    assert.match(second.out, /未能确认工作进程 \d+ 退出/);
+  } finally {
+    killQuietly(r.pid);
+  }
+});
+
+/** 不入本格的各格：直接把 status.json 摆成给定形状（不经 waitRun），看 --cancel 不发信号、什么都不写 */
+async function notThisCell(runId: string, shape: (s: RunStatus, pid: number) => void) {
+  const ctx = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx, runId);
+  const a = await seedArchive(ctx, runId);
+  await holdLock(ctx, runId, pid);
+  const s = (await readStatus(runDir))!;
+  s.phase = 'failed';
+  s.exit_code = EXIT.FAIL;
+  s.message = 'worker_lost（heartbeat_stale）';
+  s.lost = { reason: 'heartbeat_stale', at: new Date().toISOString() };
+  shape(s, pid);
+  await writeStatus(runDir, s);
+  const statusPath = path.join(runDir, 'status.json');
+  const before = { run: await readText(a.runJson), lock: await readText(lockFile(ctx)), status: await readText(statusPath) };
+  try {
+    const r = await captureOut(() => cancelRun(ctx, runId));
+    assert.equal(r.value, EXIT.OK);
+    assert.equal((await processAlive(pid)).alive, true, `${runId}：不入本格就不对 worker 发信号`);
+    assert.equal(await readText(a.runJson), before.run, `${runId}：run.json 不动`);
+    assert.equal(await readText(lockFile(ctx)), before.lock, `${runId}：锁不动`);
+    assert.equal(await readText(statusPath), before.status, `${runId}：status.json 不动`);
+    return r;
+  } finally {
+    killQuietly(pid);
+  }
+}
+
+test('EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」', async () => {
+  // ① 没有 lost、message 恰好是人读的失联文案：证明判据不读 message
+  let r = await notThisCell('R-K5-1', (s) => { delete s.lost; });
+  assert.match(r.out, /已处于终态（failed），无需取消/);
+  // ② 原因是 pid_gone（用活着的假 worker 构造）
+  r = await notThisCell('R-K5-2', (s) => { s.lost = { reason: 'pid_gone', at: new Date().toISOString() }; });
+  assert.match(r.out, /已处于终态（failed），无需取消/);
+  // ③ worker 恢复后写回了 success（c″-恢复）
+  r = await notThisCell('R-K5-3', (s) => { s.phase = 'success'; s.exit_code = EXIT.OK; });
+  assert.match(r.out, /已处于终态（success），无需取消/);
+  // ④ 启动时刻不符（PID 复用 / EV-158 环境错配）
+  r = await notThisCell('R-K5-4', (s) => { s.worker_started_at = 'Thu Jan  1 00:00:00 1970'; });
+  assert.match(r.err, /上有活进程，但启动时刻与 status\.json 的记录不符：可能是 PID 已被复用，也可能是本命令的 TZ \/ 区域设置与 --start 不同（BACKLOG EV-158）——不对它发信号/);
+  assert.match(r.out, /已被 --wait 判为失联（heartbeat_stale），但工作进程的身份与记录不符，未对工作进程与它名下的审查员 CLI 发信号；归档 run\.json 与主题锁未动/);
+  assert.doesNotMatch(r.out, /无需取消/, 'AGY-01：不跌回「无需取消」');
+  // ⑤ 身份不合形状（AGY-02 ≡ GLM-02）：启动时刻 null / 空串、pid 为 1 / 字符串
+  const shapes: Array<[string, (s: RunStatus, pid: number) => void]> = [
+    ['R-K5-5a', (s) => { s.worker_started_at = null; }],
+    ['R-K5-5b', (s) => { s.worker_started_at = ''; }],
+    ['R-K5-5c', (s) => { s.worker_pid = 1; }],
+    ['R-K5-5d', (s, pid) => { (s as unknown as { worker_pid: unknown }).worker_pid = String(pid); }],
+  ];
+  for (const [id, shape] of shapes) {
+    r = await notThisCell(id, shape);
+    assert.match(r.err, /status\.json 里工作进程的 pid 或启动时刻缺失 \/ 形状不对，判不了是不是同一进程，不发信号/, id);
+    assert.match(r.out, /但 status\.json 没记下可核对的工作进程身份，未对工作进程发信号；归档 run\.json 与主题锁未动/, id);
+    assert.doesNotMatch(r.out, /无需取消/, id);
+  }
+  // ⑥ lost 形状坏（缺 at）：读不懂就当没有
+  r = await notThisCell('R-K5-6', (s) => { (s as unknown as { lost: unknown }).lost = { reason: 'heartbeat_stale' }; });
+  assert.match(r.out, /已处于终态（failed），无需取消/);
+});
+
+test('EV-146 K5′：身份判不上（mismatch）时，status.json 里记着的活 CLI 组也不结束（代码双审 r1 CODEX-02）；同形但身份缺失（no_identity）而 worker 已不在时照旧按记录结束', async () => {
+  const spawnGroup = async (mark: string) => {
+    const c = childProcess.spawn('sh', ['-c', 'sleep 600; : "$0"', mark], { detached: true, stdio: 'ignore' });
+    c.unref();
+    const pgid = c.pid!;
+    let started: string | null = null;
+    for (let i = 0; i < 20 && !started; i++) {
+      started = await processStartTime(pgid, { canonical: true });
+      if (!started) await new Promise((res) => setTimeout(res, 50));
+    }
+    return { pgid, started_at: started };
+  };
+
+  // mismatch：假 worker 活着而启动时刻被改掉，gemini 侧记着一个活的 CLI 组 ⇒ 组仍在，stderr 不出现「按记录结束」
+  const mark1 = `trivium-k5p-${process.pid}-${Date.now()}-a`;
+  const g1 = await spawnGroup(mark1);
+  try {
+    const r = await notThisCell('R-K5P-M', (s) => {
+      s.worker_started_at = 'Thu Jan  1 00:00:00 1970';
+      s.sides.gemini!.cli = g1;
+    });
+    assert.doesNotMatch(r.err, /按记录结束审查员 CLI/, r.err);
+    assert.match(r.err, /本次也未结束它名下的审查员 CLI/, r.err);
+    assert.equal(groupMemberCount(g1.pgid) > 0, true, 'mismatch 格不对记录里的 CLI 发信号');
+  } finally {
+    for (const g of [g1.pgid, ...groupsWithMark(mark1)]) killGroup(g);
+  }
+
+  // no_identity 且 worker 已不在：沿用 EV-154 终态分支自己的判断（workerConfirmedGone 判已不在）⇒ 照旧按记录结束
+  const ctx = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx, 'R-K5P-N');
+  const mark2 = `trivium-k5p-${process.pid}-${Date.now()}-b`;
+  const g2 = await spawnGroup(mark2);
+  try {
+    killQuietly(pid);
+    await new Promise((res) => setTimeout(res, 300));
+    const s = (await readStatus(runDir))!;
+    s.phase = 'failed';
+    s.lost = { reason: 'heartbeat_stale', at: new Date().toISOString() };
+    s.worker_started_at = null;
+    s.sides.gemini!.cli = g2;
+    await writeStatus(runDir, s);
+    const r = await captureOut(() => cancelRun(ctx, 'R-K5P-N'));
+    assert.match(r.err, /按记录结束审查员 CLI：gemini 侧进程组/, r.err);
+    await new Promise((res) => setTimeout(res, 100));
+    assert.equal(groupMemberCount(g2.pgid), 0, 'no_identity 而 worker 已不在：照旧结束 CLI');
+  } finally {
+    for (const g of [g2.pgid, ...groupsWithMark(mark2)]) killGroup(g);
+  }
+});
+
+test('EV-146 K10：结束工作进程时一个信号都没发就判已不在（零信号）⇒ 不说「响应 SIGTERM」「处理器已收拾」，无记录告警照常打，结论不说「已结束仍挂着的」（代码双审 r1 CODEX-01）', async () => {
+  const ctx = await fakeCtx();
+  const r = await lostScenario(ctx, 'R-K10');
+  try {
+    const terminateWorker = async () => ({ gone: true, escalated: false, signals: [] as NodeJS.Signals[] });
+    const { value: code, out, err } = await captureOut(() => cancelRun(ctx, 'R-K10', { terminateWorker }));
+    assert.equal(code, EXIT.OK);
+    assert.match(err, /未及发信号，工作进程 \d+ 已不在（在判格之后自己退出了，或它的 pid 已被别的进程占用）/, err);
+    assert.doesNotMatch(err, /响应 SIGTERM|已按自己的登记结束/, err);
+    assert.match(err, /status\.json 里没有在跑的审查员 CLI 记录/, '零信号那一格要照常提示 CLI 可能成孤儿');
+    assert.match(out, /工作进程 \d+ 在发信号之前已不在，未对它发信号。/, out);
+    assert.doesNotMatch(out, /已结束仍挂着的工作进程/, out);
+  } finally {
+    killQuietly(r.pid);
+  }
+});
+
+test('EV-146 K11：本格的退出判据是严格的——进程在而启动时刻取不到（ps 瞬时失败）不算已退出；不存在或启动时刻不同才算（代码双审 r1 GLM-01）', () => {
+  const at = 'Mon Sep 28 10:04:56 2026';
+  assert.equal(lostWorkerGoneFrom({ alive: false, startedAt: null }, at), true, '进程不存在');
+  assert.equal(lostWorkerGoneFrom({ alive: true, startedAt: 'Tue Sep 29 01:00:00 2026' }, at), true, 'pid 已被别的进程占用');
+  assert.equal(lostWorkerGoneFrom({ alive: true, startedAt: null }, at), false, 'ps 取不到启动时刻：判不了，不算已退出');
+  assert.equal(lostWorkerGoneFrom({ alive: true, startedAt: at }, at), false, '同一进程仍在');
+});
+
+test('EV-146 K6：锁已不归本运行的 worker（run_id 相同而 pid 不同 / run_id 不同）⇒ 不动它、如实说明；worker 与归档照常收尾', async () => {
+  for (const [id, o] of [
+    ['R-K6-PID', { lockPid: process.pid }],
+    ['R-K6-RUN', { lockRunId: 'R-SOMEONE-ELSE' }],
+  ] as const) {
+    const ctx = await fakeCtx();
+    const r = await lostScenario(ctx, id, o);
+    try {
+      const lockBefore = await readText(lockFile(ctx));
+      const { value: code, err } = await captureOut(() => cancelRun(ctx, id));
+      assert.equal(code, EXIT.OK);
+      assert.equal(await readText(lockFile(ctx)), lockBefore, `${id}：不是本运行 worker 的锁，不动`);
+      assert.match(err, /主题锁已不归本运行的工作进程（run_id .+，pid \d+），不动/, id);
+      assert.equal((await processAlive(r.pid)).alive, false, id);
+      assert.equal((JSON.parse(await readText(r.a.runJson)) as RunMeta).status, 'failed', id);
+    } finally {
+      killQuietly(r.pid);
+    }
+  }
+});
+
+test('EV-146 K7：worker 挂住之前已写下归档终态（success）⇒ run.json 不追溯改写、如实说明；worker 照样结束、锁照样回收', async () => {
+  const ctx = await fakeCtx();
+  const { pid, runDir } = await seedRun(ctx, 'R-K7');
+  try {
+    const a = await seedArchive(ctx, 'R-K7');
+    await writeRunMeta(a.layout, 'plan', {
+      ...a.meta, status: 'success', finished_at: new Date().toISOString(),
+      gate: { ...a.meta.gate, state: 'review_done_awaiting_disposition' },
+    });
+    const runBefore = await readText(a.runJson);
+    await holdLock(ctx, 'R-K7', pid);
+    await staleHeartbeat(runDir);
+    await lostMessage(ctx, 'R-K7');
+    const { err } = await captureOut(() => cancelRun(ctx, 'R-K7'));
+    assert.equal(await readText(a.runJson), runBefore, '已是终态的 run.json 不追溯改写');
+    assert.match(err, /归档 run-R-K7\.json 未回写：已是终态（success），不追溯改写/);
+    assert.equal((await processAlive(pid)).alive, false);
+    assert.equal(await inspectLock(ctx.triviumDir, TOPIC), null);
+  } finally {
+    killQuietly(pid);
+  }
+});
+
+test('EV-146 K8：本格之后再跑一次 --cancel ⇒ worker 已不在（gone 格），走原有终态早退、什么都不写', async () => {
+  const ctx = await fakeCtx();
+  const r = await lostScenario(ctx, 'R-K8');
+  try {
+    await captureOut(() => cancelRun(ctx, 'R-K8'));
+    const runAfter = await readText(r.a.runJson);
+    const statusAfter = await readText(r.statusPath);
+    const again = await captureOut(() => cancelRun(ctx, 'R-K8'));
+    assert.equal(again.value, EXIT.OK);
+    assert.match(again.out, /运行 R-K8 已处于终态（failed），无需取消。/);
+    assert.equal(await readText(r.a.runJson), runAfter);
+    assert.equal(await readText(r.statusPath), statusAfter);
+  } finally {
+    killQuietly(r.pid);
+  }
+});
+
+test('EV-146 K9：本格的归档写失败（归档元数据目录只读）⇒ 告警带本格自己的「没有第二次机会」半句，不是主路径那句；锁照常回收', { skip: process.getuid?.() === 0 && 'root 下只读目录拦不住写入' }, async () => {
+  const ctx = await fakeCtx();
+  const r = await lostScenario(ctx, 'R-K9');
+  const dir = path.dirname(r.a.runJson);
+  await fs.chmod(dir, 0o555);
+  try {
+    const { value: code, err } = await captureOut(() => cancelRun(ctx, 'R-K9'));
+    assert.equal(code, EXIT.OK);
+    assert.match(err, /归档 run-R-K9\.json 未回写：回写 run\.json 出错：.*——这一步不会再有第二次机会：status\.json 已是终态、工作进程已不在，再跑 --cancel 不会补这一步（BACKLOG EV-159）/);
+    assert.doesNotMatch(err, /status\.json 随后落终态/, '主路径那半句不适用于本格');
+    assert.equal(await inspectLock(ctx.triviumDir, TOPIC), null, '归档侧失败不连坐锁回收');
+  } finally {
+    await fs.chmod(dir, 0o755);
+    killQuietly(r.pid);
+  }
 });

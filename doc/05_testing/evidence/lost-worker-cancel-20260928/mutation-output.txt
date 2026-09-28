@@ -1,0 +1,148 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  N1 ✓ 咬住（fail=7）
+  N2 ✓ 咬住（fail=1）
+  N3 ✓ 咬住（fail=1）
+  N4 ✓ 咬住（fail=1）
+  N5 ✓ 咬住（fail=2）
+  N6 ✓ 咬住（fail=1）
+  N7 ✓ 咬住（fail=2）
+  N8 ✓ 咬住（fail=2）
+  N9 ✓ 咬住（fail=1）
+  N10 ✓ 咬住（fail=4）
+  N11 ✓ 咬住（fail=1）
+  N12 ✓ 咬住（fail=1）
+  N13 ✓ 咬住（fail=3）
+  N14 ✓ 咬住（fail=1）
+  N15 ✓ 咬住（fail=1）
+  N16a ✓ 咬住（fail=2）
+  N16b ✓ 咬住（fail=1）
+  N17 ✓ 咬住（fail=1）
+  N18 ✓ 咬住（fail=1）
+  N19 ✓ 咬住（fail=1）
+{
+  "总数": 20,
+  "咬住": 20,
+  "逐条": [
+    {
+      "id": "N1",
+      "desc": "waitRun 不记 lost ⇒ K2 / K3（本格判不出）",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "N2",
+      "desc": "lostOf 不校验 reason 枚举 ⇒ K1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N3",
+      "desc": "判格不看 lost.reason（任何 lost 都算）⇒ K5②",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N4",
+      "desc": "判格不看 phase（success 也算）⇒ K5③",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N5",
+      "desc": "判格不看启动时刻（活着即算同一进程）⇒ K5④",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "N6",
+      "desc": "身份守卫只判类型（空串启动时刻、pid 为 1 放行）⇒ K5⑤",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N7",
+      "desc": "结束工作进程不升级 SIGKILL（SIGKILL 发不出去）⇒ J1",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "N8",
+      "desc": "不按记录结束 CLI ⇒ J1（两组仍在）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "N9",
+      "desc": "未确认退出也往下走（补收 run.json、回收锁；计划 r2 的 N9 与 N10 在早退结构下是同一处）⇒ K4",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N10",
+      "desc": "确认退出后也不补收（workerGone 传 false）⇒ K3",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "N11",
+      "desc": "锁只比 run_id 不比 pid ⇒ K6",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N12",
+      "desc": "termination 写成别的取值 ⇒ K3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N13",
+      "desc": "本格改写 status.json（phase 置 cancelled）——同时让第二次调用不再入格 ⇒ K3 / K4",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "N14",
+      "desc": "本格抹凭据副本 ⇒ J3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N15",
+      "desc": "heartbeat_stale 报错不带事实行与出口行 ⇒ K2",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N16a",
+      "desc": "mismatch 跌回「无需取消」（计划双审 r1 AGY-01）⇒ K5④",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "N16b",
+      "desc": "no_identity 跌回「无需取消」（计划双审 r1 AGY-01）⇒ K5⑤",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N17",
+      "desc": "零信号已不在当成「宽限内响应」播报、无记录告警静音（代码双审 r1 CODEX-01）⇒ K10",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N18",
+      "desc": "mismatch 格照旧按记录结束 CLI（代码双审 r1 CODEX-02）⇒ K5′",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "N19",
+      "desc": "严格判据把「ps 取不到启动时刻」当已退出（代码双审 r1 GLM-01）⇒ K11",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0
