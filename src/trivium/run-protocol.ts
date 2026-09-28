@@ -15,10 +15,10 @@ import type { Config, CriticId, CriticRequest, Ctx, Stage, CommandEntry } from '
 import { EXIT, TriviumError, envError, exitCodeOf, missingArtifact } from './exit-codes.js';
 import { runRoot } from './config.js';
 import { RUN_DIR_FILES } from './run-files.js';
-import { acquireLock, inspectLock, lockPathFor, reclaimStaleLock, type LockHandle } from './lock.js';
+import { acquireLock, inspectLock, lockPathFor, reclaimStaleLock, workerLockContent, type LockHandle } from './lock.js';
 import {
   cliRecordsOf, computeMaxWaits, interpretStatus, isTerminal, judgeCliGroup, lostOf, newStatus, patchStatus, rawCliOf, readStatus,
-  renderProgress, renderProgressBrief, progressViewOf, syncCliRecords, workerConfirmedGone, writeStatus,
+  renderProgress, renderProgressBrief, progressViewOf, syncCliRecords, workerConfirmedGone, workerStartOf, writeStatus,
   type CliGroupRecord, type CliGroupVerdict, type ProgressBudget, type ProgressView, type RunStatus, type WorkerLostRecord,
 } from './status.js';
 import type { ArchiveLayout } from './archive.js';
@@ -37,8 +37,9 @@ import { realAdapters, wiredAdapter } from './adapters/index.js';
 import { scrubRunDir } from './scrub.js';
 import { ensureDir, exists } from './util/fsx.js';
 import {
-  processAlive, processGroupMemberCount, processStartTime, shutdownTrackedTrees, spawnDetached, terminateProcessGroup,
-  trackedTrees, watchTrackedTrees, type DetachedChildWatch,
+  canonicalStartOf, processAlive, processGroupMemberCount, processMatchesRecord, processStartTime, processStartTimes,
+  shutdownTrackedTrees, spawnDetached, terminateProcessGroup, trackedTrees, watchTrackedTrees, type DetachedChildWatch,
+  type RecordedStart,
 } from './util/exec.js';
 import { fail, say, step, warn } from './util/log.js';
 import { checkModelOverrideSource, collectWarnings, type PreflightWarning } from './preflight.js';
@@ -394,8 +395,9 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
    */
   let childBorn = false;
   const spawnState: { born: { pid: number; watch: DetachedChildWatch } | null } = { born: null };
-  // 提到 try 之外：派生后失败时收尾要用（失败点在取到它之前则为 null）
+  // 提到 try 之外：派生后失败时收尾要用（失败点在取到它之前则为 null）。两种形态同一次取、同一处写（EV-158）
   let workerStartedAt: string | null = null;
+  let workerStartedAtCanonical: string | null = null;
   try {
     warnings = collectWarnings(await checkModelOverrideSource(rc.sides, rc.adapters));
     await ensureDir(rc.runDirBase);
@@ -429,12 +431,19 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
     );
     await fs.writeFile(workerPidPath(rc.runDirBase), `${spawned.pid}\n`, 'utf8');
 
-    // 锁改记工作进程的 pid：从此刻起锁的持有者是它，不是 --start
-    workerStartedAt = await processStartTime(spawned.pid);
+    /*
+     * 锁改记工作进程的 pid：从此刻起锁的持有者是它，不是 --start。
+     * 启动时刻两种形态同一次取（EV-158）：缺省形态的取法不变，规范化形态是新字段；锁与 status.json 各写一份、同指这个 pid。
+     * 锁的改写经 workerLockContent：lock.content 带着 --start 自己的规范化启动时刻，必须显式覆盖（计划 r2 D4）。
+     * 非原子写：并发者撕裂读判 unparsable，由 acquireLock 的 2 s 新鲜度防御兜住、不回收（计划 r2 §7.5，代码双审 r1 CODEX-03）。
+     */
+    ({ legacy: workerStartedAt, canonical: workerStartedAtCanonical } = await processStartTimes(spawned.pid));
     await fs.writeFile(
       lock.path,
       JSON.stringify(
-        { ...lock.content, run_id: rc.runId, pid: spawned.pid, pid_started_at: workerStartedAt },
+        workerLockContent(lock.content, {
+          runId: rc.runId, pid: spawned.pid, startedAt: workerStartedAt, startedAtCanonical: workerStartedAtCanonical,
+        }),
         null,
         2,
       ) + '\n',
@@ -444,6 +453,7 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
     await patchStatus(rc.runDirBase, (s) => {
       s.worker_pid = spawned.pid;
       s.worker_started_at = workerStartedAt;
+      s.worker_started_at_canonical = workerStartedAtCanonical;
       s.phase = 'running';
     });
 
@@ -483,7 +493,7 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
     if (born) {
       await settleOrphanedStart({
         ctx, topic: rc.ref.topic, stage: rc.stage, runId: rc.runId, layout: rc.ref.layout,
-        runDir: rc.runDirBase, lock, born, workerStartedAt, error: e,
+        runDir: rc.runDirBase, lock, born, workerStartedAt, workerStartedAtCanonical, error: e,
       });
       throw e;
     }
@@ -555,11 +565,15 @@ export interface OrphanedStartInput {
   born: { pid: number; watch: DetachedChildWatch };
   /** `startRun` 已取到的 worker 启动时刻；失败点在取到它之前为 null */
   workerStartedAt: string | null;
+  /** `startRun` 已取到的 worker 规范化启动时刻（EV-158）；失败点在取到它之前、或取不到时为 null；缺省视同 null */
+  workerStartedAtCanonical?: string | null;
   error: unknown;
   /** 单测注入：缺省按子进程句柄终止并确认（`terminateProcessGroup`，宽限 5 s、SIGKILL 后再等 5 s） */
   terminate?: () => Promise<{ gone: boolean; escalated: boolean; signals: NodeJS.Signals[] }>;
   /** 单测注入：缺省 `processStartTime` */
   startTimeOf?: (pid: number) => Promise<string | null>;
+  /** 单测注入：缺省 `processStartTime(pid, { canonical: true })`（EV-158） */
+  canonicalStartTimeOf?: (pid: number) => Promise<string | null>;
 }
 
 /**
@@ -619,10 +633,14 @@ export async function settleOrphanedStart(i: OrphanedStartInput): Promise<void> 
   // 2. 确认不了退出：留给它，不回收
   if (!gone) {
     const startedAt = i.workerStartedAt ?? (await (i.startTimeOf ?? processStartTime)(born.pid).catch(() => null));
+    const startedAtCanonical =
+      i.workerStartedAtCanonical ??
+      (await (i.canonicalStartTimeOf ?? ((p: number) => processStartTime(p, { canonical: true })))(born.pid).catch(() => null));
     await soft('补记 status.json 的 worker_pid', () =>
       patchStatus(i.runDir, (s) => {
         s.worker_pid ??= born.pid;
         s.worker_started_at ??= startedAt;
+        s.worker_started_at_canonical ??= startedAtCanonical;
       }),
     );
     /*
@@ -633,9 +651,17 @@ export async function settleOrphanedStart(i: OrphanedStartInput): Promise<void> 
     try {
       const cur = await inspectLock(ctx.triviumDir, i.topic);
       if (cur && cur.pid === i.lock.content.pid && cur.acquired_at === i.lock.content.acquired_at) {
+        // 经 workerLockContent：i.lock.content 带着本进程的规范化启动时刻，必须显式覆盖（EV-158 计划 r2 D4）。
+        // 非原子写，撕裂读由 acquireLock 的 2 s 新鲜度防御兜住（计划 r2 §7.5，代码双审 r1 CODEX-03）
         await fs.writeFile(
           i.lock.path,
-          JSON.stringify({ ...i.lock.content, run_id: i.runId, pid: born.pid, pid_started_at: startedAt }, null, 2) + '\n',
+          JSON.stringify(
+            workerLockContent(i.lock.content, {
+              runId: i.runId, pid: born.pid, startedAt, startedAtCanonical,
+            }),
+            null,
+            2,
+          ) + '\n',
           'utf8',
         );
         lockOutcome = 'rewritten';
@@ -700,6 +726,7 @@ export async function settleOrphanedStart(i: OrphanedStartInput): Promise<void> 
         if (isTerminal(s.phase)) return;
         s.worker_pid ??= born.pid;
         s.worker_started_at ??= i.workerStartedAt;
+        s.worker_started_at_canonical ??= i.workerStartedAtCanonical ?? null;
         if (workerWroteTerminal || metaUnreadable) return; // phase 该由 worker 写 / 读不出，本进程不替它下结论
         s.phase = 'failed';
         s.exit_code = exitCodeOf(i.error);
@@ -723,9 +750,10 @@ export async function settleOrphanedStart(i: OrphanedStartInput): Promise<void> 
  *
  * 此前只看存活：宽限期内 PID 若被复用，会把复用者当成 worker、升级 SIGKILL；而 `kill(-pid)` 在复用者不是组长时
  * ESRCH、退回 `kill(pid)`，信号就打到了无关进程。与 `workerConfirmedGone`、`judgeStale` 同一口径。
+ * 身份按 status.json 的记录比（`processMatchesRecord`，EV-158）：有规范化启动时刻只按它比，与主路径判存活那一处同一份记录。
  */
-export async function workerGoneForCancel(pid: number, startedAt: string | null): Promise<boolean> {
-  const p = await processAlive(pid, startedAt);
+export async function workerGoneForCancel(pid: number, rec: RecordedStart): Promise<boolean> {
+  const p = await processMatchesRecord(pid, rec);
   return !p.alive || !p.sameProcess;
 }
 
@@ -1368,15 +1396,16 @@ function describeFinalizeStep(r: FinalizeStep, done: string, notDone: string): s
  * - `none`：不是「status.json 为 failed + `lost.reason` 为 heartbeat_stale」——走原有终态早退；
  * - `no_identity`：是，但 status.json 里的身份两项不合形状（pid 须为 > 1 的整数、启动时刻须为非空字符串）——判不了就不发信号；
  * - `gone`：是，pid 上已没有活进程——走原有终态早退（run.json 的补收暂缓，BACKLOG EV-159）；
- * - `mismatch`：是，pid 上有活进程而启动时刻不符——PID 复用，或本命令的 TZ / 区域设置与 `--start` 不同（EV-158）；
+ * - `mismatch`：是，pid 上有活进程而启动时刻不符——`basis` 为 canonical 时是 PID 复用或本次取不到启动时刻；为 legacy
+ *   （旧版写下、没有规范化启动时刻的记录）时还可能是本命令的 TZ / 区域设置与 `--start` 不同（EV-158 的残余）；
  * - `alive`：本格，交给 `cancelLostWorker`。
  */
 export type LostCancelCell =
   | { kind: 'none' }
   | { kind: 'no_identity' }
   | { kind: 'gone'; pid: number }
-  | { kind: 'mismatch'; pid: number }
-  | { kind: 'alive'; pid: number; startedAt: string; lost: WorkerLostRecord };
+  | { kind: 'mismatch'; pid: number; basis: 'canonical' | 'legacy' }
+  | { kind: 'alive'; pid: number; rec: RecordedStart; lost: WorkerLostRecord };
 
 /**
  * 判格。判据全取 status.json 的结构化字段与进程事实，**不读 message**（用户决策 2）：
@@ -1384,25 +1413,28 @@ export type LostCancelCell =
  *
  * - **类型守卫**（计划双审 r1 AGY-02 ≡ GLM-02）：`processAlive` 对假值启动时刻给 `sameProcess: true`，空串会被当成
  *   「有身份且相符」；pid 为 1 是 init / launchd；status.json 只有 TS 接口、`readStatus` 不校验。
- * - **只认 status.json 的两项**：不回落 `worker.pid` 文件（那里没有启动时刻，等于「身份缺失 = 相符」），也不取锁里的
- *   `pid_started_at`——`startRun` 用同一个变量写两处，`ps` 失败时同为 null，不是第二份证据（计划双审 r1 CODEX-04 驳回的理由）。
- * - 身份判据沿用 `processAlive(worker_pid, worker_started_at)`（与主路径、锁同一口径），不为本格另立规范化锚点（计划 r2 D2）。
+ *   自 EV-158 起两种形态有其一即可（worker启动时刻规范化计划 r2 D7）：规范化启动时刻有（`canonicalStartOf`），或缺省形态是非空字符串。
+ * - **只认 status.json 的记录**：不回落 `worker.pid` 文件（那里没有启动时刻，等于「身份缺失 = 相符」），也不取锁里的
+ *   启动时刻——`startRun` 用同一次取值写两处，`ps` 失败时同为 null，不是第二份证据（计划双审 r1 CODEX-04 驳回的理由）。
+ * - 身份判据经 `processMatchesRecord`（与主路径、锁同一读法，EV-158）：有规范化启动时刻只按它比，没有才退回缺省环境比较。
  */
 export async function classifyLostCancel(s: RunStatus): Promise<LostCancelCell> {
   const lost = lostOf(s);
   if (s.phase !== 'failed' || lost?.reason !== 'heartbeat_stale') return { kind: 'none' };
   const pid: unknown = s.worker_pid;
-  const startedAt: unknown = s.worker_started_at;
+  const legacy: unknown = s.worker_started_at;
+  const legacyOk = typeof legacy === 'string' && legacy.trim().length > 0;
   if (
     typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 1 ||
-    typeof startedAt !== 'string' || startedAt.trim().length === 0
+    (canonicalStartOf(s.worker_started_at_canonical) === null && !legacyOk)
   ) {
     return { kind: 'no_identity' };
   }
-  const live = await processAlive(pid, startedAt);
+  const rec: RecordedStart = { canonical: s.worker_started_at_canonical, legacy: legacyOk ? (legacy as string) : null };
+  const live = await processMatchesRecord(pid, rec);
   if (!live.alive) return { kind: 'gone', pid };
-  if (!live.sameProcess) return { kind: 'mismatch', pid };
-  return { kind: 'alive', pid, startedAt, lost };
+  if (!live.sameProcess) return { kind: 'mismatch', pid, basis: live.basis };
+  return { kind: 'alive', pid, rec, lost };
 }
 
 /**
@@ -1419,14 +1451,24 @@ export function lostWorkerGoneFrom(p: { alive: boolean; startedAt: string | null
   return p.startedAt !== null && p.startedAt !== expectedStartedAt;
 }
 
-/** `lostWorkerGoneFrom` 接上 `processAlive`：`terminateProcessGroup` 的 `isGone` 与抛错后的复判都用它 */
-async function lostWorkerGone(pid: number, startedAt: string): Promise<boolean> {
-  return lostWorkerGoneFrom(await processAlive(pid, startedAt), startedAt);
+/**
+ * `lostWorkerGoneFrom` 接上 `processMatchesRecord`：`terminateProcessGroup` 的 `isGone` 与抛错后的复判都用它。
+ * 取到的形态与记录值出自同一 basis（EV-158）：判格按规范化判了 `alive`，这里也按规范化判退出，不会拿缺省形态去配规范化记录。
+ * `expected` 为 null 只可能出自「判格之后记录被改成两种形态都没有」，按严格判据无从比较：只认「不在」。
+ */
+export async function lostWorkerGone(
+  pid: number,
+  rec: RecordedStart,
+  o: { canonicalStartTimeOf?: (pid: number) => Promise<string | null> } = {},
+): Promise<boolean> {
+  const m = await processMatchesRecord(pid, rec, o);
+  if (m.expected === null) return !m.alive;
+  return lostWorkerGoneFrom(m, m.expected);
 }
 
 /** `cancelRun` 的可选参数：只给单测替换「结束工作进程」这一步（与 `settleOrphanedStart` 的 `terminate` 注入同形） */
 export interface CancelOptions {
-  terminateWorker?: (pid: number, startedAt: string) => Promise<{ gone: boolean; escalated: boolean; signals: NodeJS.Signals[] }>;
+  terminateWorker?: (pid: number, rec: RecordedStart) => Promise<{ gone: boolean; escalated: boolean; signals: NodeJS.Signals[] }>;
 }
 
 /**
@@ -1446,10 +1488,10 @@ async function cancelLostWorker(
   runId: string,
   runDir: string,
   s: RunStatus,
-  cell: { pid: number; startedAt: string; lost: WorkerLostRecord },
+  cell: { pid: number; rec: RecordedStart; lost: WorkerLostRecord },
   o: CancelOptions,
 ): Promise<number> {
-  const { pid, startedAt, lost } = cell;
+  const { pid, rec, lost } = cell;
   step(
     `运行 ${runId} 已被 --wait 判为失联（heartbeat_stale，判定于 ${lost.at}；status.json 最近一次写入于 ${s.heartbeat_at}），` +
       `但工作进程 ${pid} 仍是同一进程：按取消意图结束它——向工作进程组发送 SIGTERM`,
@@ -1464,18 +1506,18 @@ async function cancelLostWorker(
   // 2. 按组结束工作进程并确认退出
   let t: { gone: boolean; escalated: boolean; signals: NodeJS.Signals[] } | null;
   try {
-    t = await (o.terminateWorker ?? ((p: number, at: string) => terminateProcessGroup(p, {
-      isGone: () => lostWorkerGone(p, at),
+    t = await (o.terminateWorker ?? ((p: number, r: RecordedStart) => terminateProcessGroup(p, {
+      isGone: () => lostWorkerGone(p, r),
       graceMs: WORKER_TERM_GRACE_MS,
       killWaitMs: ORPHAN_KILL_CONFIRM_MS,
       pollMs: 250,
       onEscalate: () => warn(`工作进程组 ${p} 未响应 SIGTERM（事件循环被堵住时处理器跑不到），发送 SIGKILL`),
-    })))(pid, startedAt);
+    })))(pid, rec);
   } catch (err) {
     warn(`结束工作进程组 ${pid} 时出错：${String((err as Error)?.message ?? err).split('\n')[0]}`);
     t = null;
   }
-  const gone = t ? t.gone : await lostWorkerGone(pid, startedAt).catch(() => false);
+  const gone = t ? t.gone : await lostWorkerGone(pid, rec).catch(() => false);
   const sent = t?.signals.join('、') || '（无）';
   /*
    * 播报按三态分（代码双审 r1 CODEX-01 ≡ GLM-01）：`terminateProcessGroup` 首检即「已不在」时一个信号都没发
@@ -1584,6 +1626,8 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
      * 失联后身份判不上（mismatch）时**跳过**（代码双审 r1 CODEX-02）：workerConfirmedGone 对「活着而启动时刻不符」同样判
      * 「已不存在」，会按记录结束一个可能还活着的 worker 名下的 CLI；而 --wait 判 heartbeat_stale 那一刻身份是对得上的，
      * 此刻对不上更可能是本命令的环境与 --start 不同（EV-158），不是 worker 死后 pid 被复用——一个信号都不发，让人先核对环境。
+     * EV-158 之后环境差异只对旧版写下、没有规范化启动时刻的记录成立；规范化记录不符的成因是复用或本次取不到启动时刻，
+     * 后者照「取不到时保持今天口径」同样不发（worker启动时刻规范化计划 r2 D6）。
      * 一条记录都没有时不出声。
      */
     const recs = cliRecordsOf(s);
@@ -1598,10 +1642,19 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
      * 锁与归档都没动，结论要如实说。
      */
     if (cell.kind === 'mismatch') {
+      /*
+       * 告警按比对依据分写（EV-158，计划 r2 D6），处置不变：两种依据下都一个信号都不发、也不结束 CLI。
+       * 规范化记录不符时环境差异已不可能是成因，只剩 PID 复用与「本次取不到启动时刻」；后者照 §4.6 不改口径，所以不放开结束 CLI。
+       */
       warn(
-        `工作进程 ${cell.pid} 上有活进程，但启动时刻与 status.json 的记录不符：可能是 PID 已被复用，` +
-          '也可能是本命令的 TZ / 区域设置与 --start 不同（BACKLOG EV-158）——不对它发信号，本次也未结束它名下的审查员 CLI。' +
-          '若确认是后者，请在与 --start 相同的环境里再跑一次 --cancel；若确认是前者，请用 ps 核对 ppid 为 1 的审查员 CLI',
+        cell.basis === 'canonical'
+          ? `工作进程 ${cell.pid} 上有活进程，但启动时刻与 status.json 的规范化记录不符：PID 已被复用，或本次取不到它的启动时刻` +
+              '——不对它发信号，本次也未结束它名下的审查员 CLI；请用 ps 核对它与 ppid 为 1 的审查员 CLI'
+          : // 旧版写下的记录：原句逐字保留（EV-146 起的输出与用例不变），句末补一句成因
+            `工作进程 ${cell.pid} 上有活进程，但启动时刻与 status.json 的记录不符：可能是 PID 已被复用，` +
+              '也可能是本命令的 TZ / 区域设置与 --start 不同（BACKLOG EV-158）——不对它发信号，本次也未结束它名下的审查员 CLI。' +
+              '若确认是后者，请在与 --start 相同的环境里再跑一次 --cancel；若确认是前者，请用 ps 核对 ppid 为 1 的审查员 CLI' +
+              '（这份记录没有规范化启动时刻——由升级前的旧版写下，或写时取不到——所以只能按缺省环境比较）',
       );
       say(`运行 ${runId} 已被 --wait 判为失联（heartbeat_stale），但工作进程的身份与记录不符，未对工作进程与它名下的审查员 CLI 发信号；归档 run.json 与主题锁未动。`);
       return EXIT.OK;
@@ -1620,7 +1673,9 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
   /** worker 的处理器跑不到的那几格里按记录结束 CLI 的结果；主路径收尾时据它清掉已确认结束的记录（AGY-02） */
   let cliOutcome: RecordedCliOutcome | null = null;
   if (pid !== null) {
-    const live = await processAlive(pid, s?.worker_started_at ?? null);
+    // 身份按 status.json 的记录比：有规范化启动时刻只按它比，没有（旧版写的）退回缺省比较（EV-158）
+    const rec: RecordedStart = s ? workerStartOf(s) : { legacy: null };
+    const live = await processMatchesRecord(pid, rec);
     if (live.alive && live.sameProcess) {
       /*
        * 按**进程组**发：只杀 worker 会把与它同组的子进程遗弃给 init。适配器以 `killTree` 拉起的厂商 CLI
@@ -1631,9 +1686,8 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
        * PID 被复用时会把 SIGKILL 打到无关进程（计划双审 r1 AGY-04，用户审批并入）。
        */
       step(`向工作进程组 ${pid} 发送 SIGTERM`);
-      const startedAt = s?.worker_started_at ?? null;
       const t = await terminateProcessGroup(pid, {
-        isGone: () => workerGoneForCancel(pid, startedAt),
+        isGone: () => workerGoneForCancel(pid, rec),
         graceMs: WORKER_TERM_GRACE_MS,
         // SIGKILL 之后刻意不等（EV-150 起如此）：随后由 workerConfirmedGone 判是否已退出，没确认就不抹、不收尾
         killWaitMs: 0,

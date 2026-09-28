@@ -1,0 +1,169 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=8）
+  M5 ✓ 咬住（fail=7）
+  M6 ✓ 咬住（fail=4）
+  M7a ✓ 咬住（fail=2）
+  M7b ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=2）
+  M16 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=1）
+  M18 ✓ 咬住（fail=1）
+  M19 ✓ 咬住（fail=1）
+  M20 ✓ 咬住（fail=1）
+  M21 ✓ 咬住（fail=2）
+  M22 ✓ 咬住（fail=1）
+{
+  "总数": 23,
+  "咬住": 23,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "startRun 的 patchStatus 不写 worker_started_at_canonical ⇒ I1",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "workerLockContent 不覆盖规范化启动时刻（沿用 --start 的）⇒ U4 ①",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "acquireLock 的规范化启动时刻恒 null ⇒ U5 ①",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "processMatchesRecord 忽略规范化字段（恒走缺省比较）⇒ U1",
+      "verdict": "✓ 咬住（fail=8）",
+      "fail": 8
+    },
+    {
+      "id": "M5",
+      "desc": "规范化那一支以缺省环境取（去掉 canonical 选项）⇒ U1",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M6",
+      "desc": "规范化字段缺席时判「不是同一进程」（去掉退回）⇒ U2",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M7a",
+      "desc": "canonicalStartOf 接受空串 / 全空白 ⇒ U3",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M7b",
+      "desc": "canonicalStartOf 返回原值、不 trim（计划双审 r1 AGY-01）⇒ U3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "C1 interpretStatus 改回缺省比较 ⇒ U7",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "C2 workerConfirmedGone 改回缺省比较 ⇒ U6 ①",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "C3 workerStillAlive 改回缺省比较 ⇒ U6 ②④",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "C4 judgeStale 改回缺省比较 ⇒ U5 ②",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "C5 --cancel 主路径改回缺省比较 ⇒ C5 / C6 用例",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "C6 workerGoneForCancel 改回缺省比较 ⇒ U8",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "C7 classifyLostCancel 改回缺省比较 ⇒ U8",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "C8 lostWorkerGone 改回缺省比较 ⇒ U8",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M16",
+      "desc": "settleOrphanedStart 确认不了退出一支不补记规范化启动时刻 ⇒ U4 ②",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "settleOrphanedStart 改写锁时规范化值恒 null ⇒ U4 ②",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M18",
+      "desc": "classifyLostCancel 的类型守卫仍只认缺省字段（D7）⇒ U8",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M19",
+      "desc": "D6：mismatch 告警不分比对依据 ⇒ U9",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M20",
+      "desc": "judgeStale 忽略 sameProcess（活着即持有者，计划双审 r1 CODEX-03）⇒ U5 ⑤",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M21",
+      "desc": "workerConfirmedGone 只看 alive（计划双审 r1 CODEX-03）⇒ U6 ④",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M22",
+      "desc": "settleOrphanedStart 确认退出一支不补规范化启动时刻 ⇒ U4 ②′",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+EXIT=0

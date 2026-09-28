@@ -1,0 +1,36 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "本次代码变更完整落实了 EV-158 及其已批准实施计划（r2 定稿），未发现偏离或契约漂移。\n通过引入 status.json 与锁文件的规范化启动时刻可选字段，并将跨进程身份比对统一收敛至 processMatchesRecord，彻底解决了写者与读者因 TZ/区域设置不同导致活 worker 被误判为不同进程的缺陷。\n锁改写经由 workerLockContent 显式覆盖四个键，有效阻断了持锁者规范化时间污染 worker 的隐患。\n八个消费方适配清晰，严格退出判据基准保持一致，旧记录退回与回滚路径论证严密，测试与 23 项变异咬合完备。",
+  "findings": [],
+  "agreed": [
+    "字段扩展与防污染设计：status.json 与锁文件增加可选规范化字段且保留缺省字段，通过 workerLockContent 纯函数显式覆盖 run_id/pid 与两种启动时刻，防止解构复制时将 --start 自身规范化时间带入 worker 导致锁被当成遗留锁回收。",
+    "读法收敛与平滑降级：在 exec.ts 中收敛 processMatchesRecord 作为跨进程身份校验的唯一读法，有规范化记录即只比规范化，缺失时原样退回 processAlive，保证升级窗口期在跑运行与旧锁行为不变。",
+    "消费方边界与告警精确：八个消费方全面适配，classifyLostCancel 守卫合理放宽为两种形态有其一；mismatch 告警按比对依据分写，规范化记录不符时不归咎于环境且依然保持不发信号、不结束 CLI 的防御性原则；严格退出判据基准与判格取值同一 basis。",
+    "测试设计与变异保障：通过 start-env.ts 构造了错开的 W/R 环境对并增加 P0 断言避免 libc 回退导致的测试静默变真；23 条变异测试与 10 格新旧构建零配额验收覆盖了新写新读、旧写新读、新写旧读及读改写保留全路径。"
+  ],
+  "not_covered": [
+    "真实厂商 CLI（Antigravity、ZCode、Codex）消耗真实配额的端到端调用（按用户决策保持零配额，依赖真实 bundle + 桩夹具验证）。",
+    "Node.js 18 / 20 运行时兼容性（当前本机验证环境为 Node v25.2.1）。",
+    "同一秒内 PID 迅速复用（因系统 ps lstart 精度为秒级，属已知且如实保留的系统级边界）。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/worker启动时刻规范化/code/_meta/changes-20260928T120630Z.diff",
+    ".reviews/worker启动时刻规范化/plan/2026-09-28-worker启动时刻规范化-r2-claude.md",
+    "src/trivium/lock.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/status.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/hooks.ts",
+    "test/helpers/start-env.ts",
+    "test/unit/start-canonical.test.ts",
+    "doc/05_testing/REPORT_2026-09-28_worker_start_canonical.md"
+  ]
+}

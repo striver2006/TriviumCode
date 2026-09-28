@@ -1,0 +1,346 @@
+[
+  {
+    "id": "M2",
+    "desc": "workerLockContent 不覆盖规范化启动时刻（沿用 --start 的）⇒ U4 ①",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U4 ①（D4）：workerLockContent 显式覆盖四个键——不把 --start 自己的规范化启动时刻带到 worker 的 pid 上"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M3",
+    "desc": "acquireLock 的规范化启动时刻恒 null ⇒ U5 ①",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U5（acquireLock 与 judgeStale，C4）：锁带本进程的规范化启动时刻；异环境不回收；删掉新字段即回到今天（pid_reused）；短锁同样带；规范化值不符（k 格）判 pid_reused"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 锁的规范化启动时刻应是本进程的"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M4",
+    "desc": "processMatchesRecord 忽略规范化字段（恒走缺省比较）⇒ U1",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 8,
+    "red": [
+      "EV-158 U1（b 格）：W 下造的完整记录，R 下判同一进程、比的是规范化形态；W 下判也相同",
+      "EV-158 U3（D3，计划双审 r1 AGY-01）：规范化字段缺席 / null / 空串 / 全空白 / 非字符串 ⇒ 当「没有」退回缺省比较；首尾带空白 ⇒ 按 trim 后的值比",
+      "EV-158 U5（acquireLock 与 judgeStale，C4）：锁带本进程的规范化启动时刻；异环境不回收；删掉新字段即回到今天（pid_reused）；短锁同样带；规范化值不符（k 格）判 pid_reused",
+      "EV-158 U6 ①③④（workerConfirmedGone，C2）：W 下写、R 下判 ⇒ 不可抹；删掉新字段 ⇒ 回到今天（可抹）；规范化值不符（k 格）⇒ 可抹",
+      "EV-158 U7（interpretStatus 情形 C，C1）：W 下写、R 下判 ⇒ running 而不是 worker_lost；删掉新字段 ⇒ pid_gone（今天的行为）",
+      "EV-158 U8（C6 / C7 / C8 的纯判定）：workerGoneForCancel、classifyLostCancel、lostWorkerGone 在 R 下都认得 W 下写的记录；旧记录退回、basis 如实",
+      "EV-158 U10（h 格，计划双审 r1 AGY-02）：规范化取不到 ⇒ alive、不是同一进程（与今天「期望非空而取不到」同口径）；严格判据判未退出",
+      "EV-158 U6 ②④（workerStillAlive + admitScrub，C3）：W 下写、R 下清扫 ⇒ 跨仓清扫计 alive、会话启动清扫不抹；删掉新字段或规范化值不符 ⇒ 回到可抹"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: R / W 下都应判同一进程：{\"alive\":true,\"sameProcess\":false,\"startedAt\":\"Mo. 28 Sep. 07:58:17 2026\",\"expected\":\"lun. 28 sept. 20:58:17 2026\",\"basis\":\"legacy\"}",
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+      "AssertionError [ERR_ASSERTION]: b 格：异环境的判旧不回收活锁",
+      "AssertionError [ERR_ASSERTION]: b 格：工作进程 68934 已不存在",
+      "AssertionError [ERR_ASSERTION]: b 格：{\"kind\":\"worker_lost\",\"reason\":\"pid_gone\"}",
+      "AssertionError [ERR_ASSERTION]: b 格：宽限期判据不把活 worker 当已退出",
+      "AssertionError [ERR_ASSERTION]: 只有新版写下的那一份算活着：{\"buckets\":[\"some-canon-project-c0d06157\"],\"visited\":3,\"alive\":0,\"eligible\":[\"/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-canon-ret-mxqB4z/so"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M5",
+    "desc": "规范化那一支以缺省环境取（去掉 canonical 选项）⇒ U1",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 7,
+    "red": [
+      "EV-158 U1（b 格）：W 下造的完整记录，R 下判同一进程、比的是规范化形态；W 下判也相同",
+      "EV-158 U3（D3，计划双审 r1 AGY-01）：规范化字段缺席 / null / 空串 / 全空白 / 非字符串 ⇒ 当「没有」退回缺省比较；首尾带空白 ⇒ 按 trim 后的值比",
+      "EV-158 U5（acquireLock 与 judgeStale，C4）：锁带本进程的规范化启动时刻；异环境不回收；删掉新字段即回到今天（pid_reused）；短锁同样带；规范化值不符（k 格）判 pid_reused",
+      "EV-158 U6 ①③④（workerConfirmedGone，C2）：W 下写、R 下判 ⇒ 不可抹；删掉新字段 ⇒ 回到今天（可抹）；规范化值不符（k 格）⇒ 可抹",
+      "EV-158 U7（interpretStatus 情形 C，C1）：W 下写、R 下判 ⇒ running 而不是 worker_lost；删掉新字段 ⇒ pid_gone（今天的行为）",
+      "EV-158 U8（C6 / C7 / C8 的纯判定）：workerGoneForCancel、classifyLostCancel、lostWorkerGone 在 R 下都认得 W 下写的记录；旧记录退回、basis 如实",
+      "EV-158 U6 ②④（workerStillAlive + admitScrub，C3）：W 下写、R 下清扫 ⇒ 跨仓清扫计 alive、会话启动清扫不抹；删掉新字段或规范化值不符 ⇒ 回到可抹"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: R / W 下都应判同一进程：{\"alive\":true,\"sameProcess\":false,\"startedAt\":\"Mo. 28 Sep. 07:58:18 2026\",\"expected\":\"Mon Sep 28 11:58:18 2026\",\"basis\":\"canonical\"}",
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+      "AssertionError [ERR_ASSERTION]: b 格：异环境的判旧不回收活锁",
+      "AssertionError [ERR_ASSERTION]: b 格：工作进程 69326 已不存在",
+      "AssertionError [ERR_ASSERTION]: b 格：{\"kind\":\"worker_lost\",\"reason\":\"pid_gone\"}",
+      "AssertionError [ERR_ASSERTION]: b 格：宽限期判据不把活 worker 当已退出",
+      "AssertionError [ERR_ASSERTION]: 只有新版写下的那一份算活着：{\"buckets\":[\"some-canon-project-c0d06157\"],\"visited\":3,\"alive\":0,\"eligible\":[\"/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-canon-ret-1PE5FI/so"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M6",
+    "desc": "规范化字段缺席时判「不是同一进程」（去掉退回）⇒ U2",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 4,
+    "red": [
+      "EV-158 U2（c / d 格回归）：只有缺省形态（旧版写下）⇒ 退回缺省比较，与 processAlive 逐字相同——W 下同一进程、R 下不是",
+      "EV-158 U3（D3，计划双审 r1 AGY-01）：规范化字段缺席 / null / 空串 / 全空白 / 非字符串 ⇒ 当「没有」退回缺省比较；首尾带空白 ⇒ 按 trim 后的值比",
+      "EV-158 U5（acquireLock 与 judgeStale，C4）：锁带本进程的规范化启动时刻；异环境不回收；删掉新字段即回到今天（pid_reused）；短锁同样带；规范化值不符（k 格）判 pid_reused",
+      "EV-158 U6 ①③④（workerConfirmedGone，C2）：W 下写、R 下判 ⇒ 不可抹；删掉新字段 ⇒ 回到今天（可抹）；规范化值不符（k 格）⇒ 可抹"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: c 格：同环境照旧不回收",
+      "AssertionError [ERR_ASSERTION]: c 格"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M7a",
+    "desc": "canonicalStartOf 接受空串 / 全空白 ⇒ U3",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-158 U3（D3，计划双审 r1 AGY-01）：规范化字段缺席 / null / 空串 / 全空白 / 非字符串 ⇒ 当「没有」退回缺省比较；首尾带空白 ⇒ 按 trim 后的值比",
+      "EV-158 U8（C6 / C7 / C8 的纯判定）：workerGoneForCancel、classifyLostCancel、lostWorkerGone 在 R 下都认得 W 下写的记录；旧记录退回、basis 如实"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: \"\"",
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M7b",
+    "desc": "canonicalStartOf 返回原值、不 trim（计划双审 r1 AGY-01）⇒ U3",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U3（D3，计划双审 r1 AGY-01）：规范化字段缺席 / null / 空串 / 全空白 / 非字符串 ⇒ 当「没有」退回缺省比较；首尾带空白 ⇒ 按 trim 后的值比"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M8",
+    "desc": "C1 interpretStatus 改回缺省比较 ⇒ U7",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U7（interpretStatus 情形 C，C1）：W 下写、R 下判 ⇒ running 而不是 worker_lost；删掉新字段 ⇒ pid_gone（今天的行为）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: b 格：{\"kind\":\"worker_lost\",\"reason\":\"pid_gone\"}"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M9",
+    "desc": "C2 workerConfirmedGone 改回缺省比较 ⇒ U6 ①",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U6 ①③④（workerConfirmedGone，C2）：W 下写、R 下判 ⇒ 不可抹；删掉新字段 ⇒ 回到今天（可抹）；规范化值不符（k 格）⇒ 可抹"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: b 格：工作进程 71412 已不存在"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M10",
+    "desc": "C3 workerStillAlive 改回缺省比较 ⇒ U6 ②④",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U6 ②④（workerStillAlive + admitScrub，C3）：W 下写、R 下清扫 ⇒ 跨仓清扫计 alive、会话启动清扫不抹；删掉新字段或规范化值不符 ⇒ 回到可抹"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 只有新版写下的那一份算活着：{\"buckets\":[\"some-canon-project-c0d06157\"],\"visited\":3,\"alive\":0,\"eligible\":[\"/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-canon-ret-HR9IZM/so"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M11",
+    "desc": "C4 judgeStale 改回缺省比较 ⇒ U5 ②",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U5（acquireLock 与 judgeStale，C4）：锁带本进程的规范化启动时刻；异环境不回收；删掉新字段即回到今天（pid_reused）；短锁同样带；规范化值不符（k 格）判 pid_reused"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: b 格：异环境的判旧不回收活锁"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M12",
+    "desc": "C5 --cancel 主路径改回缺省比较 ⇒ C5 / C6 用例",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 C5 / C6：--cancel 主路径在与 --start 不同的环境里——新版记录 ⇒ 向活 worker 发 SIGTERM 并确认退出、收尾 cancelled；旧版记录 ⇒ 仍当它已不存在（今天的行为）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: · 工作进程 73087 已不存在，仅做状态与锁的清理"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M13",
+    "desc": "C6 workerGoneForCancel 改回缺省比较 ⇒ U8",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U8（C6 / C7 / C8 的纯判定）：workerGoneForCancel、classifyLostCancel、lostWorkerGone 在 R 下都认得 W 下写的记录；旧记录退回、basis 如实"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: b 格：宽限期判据不把活 worker 当已退出"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M14",
+    "desc": "C7 classifyLostCancel 改回缺省比较 ⇒ U8",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U8（C6 / C7 / C8 的纯判定）：workerGoneForCancel、classifyLostCancel、lostWorkerGone 在 R 下都认得 W 下写的记录；旧记录退回、basis 如实"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: b 格：{\"kind\":\"mismatch\",\"pid\":73827,\"basis\":\"legacy\"}"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M15",
+    "desc": "C8 lostWorkerGone 改回缺省比较 ⇒ U8",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-158 U8（C6 / C7 / C8 的纯判定）：workerGoneForCancel、classifyLostCancel、lostWorkerGone 在 R 下都认得 W 下写的记录；旧记录退回、basis 如实",
+      "EV-158 U10（h 格，计划双审 r1 AGY-02）：规范化取不到 ⇒ alive、不是同一进程（与今天「期望非空而取不到」同口径）；严格判据判未退出"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: b 格：严格退出判据不把活 worker 当已退出",
+      "AssertionError [ERR_ASSERTION]: 严格判据沿用：取不到不算已退出"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M16",
+    "desc": "settleOrphanedStart 确认不了退出一支不补记规范化启动时刻 ⇒ U4 ②",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U4 ②：settleOrphanedStart 确认不了退出 ⇒ status.json 补记规范化启动时刻、改写后的锁带 worker 的而不是本进程的；已有值不覆盖（??=）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M17",
+    "desc": "settleOrphanedStart 改写锁时规范化值恒 null ⇒ U4 ②",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U4 ②：settleOrphanedStart 确认不了退出 ⇒ status.json 补记规范化启动时刻、改写后的锁带 worker 的而不是本进程的；已有值不覆盖（??=）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: D4：锁改写不把 --start 的规范化启动时刻带到 worker 的 pid 上"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M18",
+    "desc": "classifyLostCancel 的类型守卫仍只认缺省字段（D7）⇒ U8",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U8（C6 / C7 / C8 的纯判定）：workerGoneForCancel、classifyLostCancel、lostWorkerGone 在 R 下都认得 W 下写的记录；旧记录退回、basis 如实"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: D7：{\"kind\":\"no_identity\"}"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M19",
+    "desc": "D6：mismatch 告警不分比对依据 ⇒ U9",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U9（D6）：失联后取消那一格判 mismatch ⇒ 告警按比对依据分写，两种依据下都不对 worker 与记录里的 CLI 发信号"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: ⚠️  工作进程 77969 上有活进程，但启动时刻与 status.json 的记录不符：可能是 PID 已被复用，也可能是本命令的 TZ / 区域设置与 --start 不同（BACKLOG EV-158）——不对它发信号，本次也未结束它名下的审查员 CLI。若确认是后者，请在与 --start 相同的环境里再跑一次 --canc"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M20",
+    "desc": "judgeStale 忽略 sameProcess（活着即持有者，计划双审 r1 CODEX-03）⇒ U5 ⑤",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U5（acquireLock 与 judgeStale，C4）：锁带本进程的规范化启动时刻；异环境不回收；删掉新字段即回到今天（pid_reused）；短锁同样带；规范化值不符（k 格）判 pid_reused"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M21",
+    "desc": "workerConfirmedGone 只看 alive（计划双审 r1 CODEX-03）⇒ U6 ④",
+    "suite": "dist/test/test/unit/start-canonical.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-158 U6 ①③④（workerConfirmedGone，C2）：W 下写、R 下判 ⇒ 不可抹；删掉新字段 ⇒ 回到今天（可抹）；规范化值不符（k 格）⇒ 可抹",
+      "EV-158 U6 ②④（workerStillAlive + admitScrub，C3）：W 下写、R 下清扫 ⇒ 跨仓清扫计 alive、会话启动清扫不抹；删掉新字段或规范化值不符 ⇒ 回到可抹"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: d 格：旧记录在异环境下仍判已不在（今天的行为）",
+      "AssertionError [ERR_ASSERTION]: d 格：旧记录异环境下照旧可抹（今天的行为）"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M22",
+    "desc": "settleOrphanedStart 确认退出一支不补规范化启动时刻 ⇒ U4 ②′",
+    "suite": "dist/test/test/integration/run-protocol.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-158 U4 ②′：settleOrphanedStart 确认退出一支 ⇒ status.json 为 null 的规范化字段按 startRun 已取到的值补上"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    ],
+    "windowMiss": false
+  }
+]

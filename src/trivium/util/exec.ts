@@ -496,6 +496,10 @@ function pathDirname(p: string): string {
  * 单看 `kill(pid, 0)` 不够：macOS 的 PID 复用很频繁，worker 异常死后其 PID
  * 可能被无关进程占用，此时 `kill` 成功会让遗留锁永不回收、主题被永久锁死
  * （审查意见 GLM-04）。因此要比对进程的**启动时刻**。
+ *
+ * 启动时刻按**调用方的缺省环境**取，与期望值逐字比——只对同一环境写下的期望值成立。跨进程比对记录里的身份
+ * 请用 `processMatchesRecord`（EV-158）：记录里有规范化启动时刻时它只比规范化形态，没有时才退回本函数。
+ * 本函数仍直接服务两处只看 `.alive` 的调用（会话启动的闸门回收、`--wait` 补收判据）。
  */
 export async function processAlive(
   pid: number,
@@ -525,8 +529,14 @@ export async function processAlive(
  *
  * **`lstart` 的字符串随 TZ 与区域设置变化**（CLI进程组记录计划 r2 §2 Q4 实测：同一进程在 `TZ=UTC`、`TZ=Asia/Tokyo`、
  * `LC_ALL=fr_FR.UTF-8`、`LC_TIME=zh_CN.UTF-8` 下各不相同），而写记录与读记录的往往是环境不同的两个进程。
- * `canonical` 时以 `LC_ALL=C`、`TZ=UTC0` 调 ps，结果与调用方环境无关——CLI 进程组记录的写与判只经这一形态（EV-154，
- * 计划双审 r1 CODEX-01）。不带选项时行为不变：既有 `worker_started_at` 仍按缺省环境取（同一缺陷，另登 BACKLOG）。
+ * `canonical` 时以 `LC_ALL=C`、`TZ=UTC0` 调 ps，结果与调用方环境无关——CLI 进程组记录（EV-154，计划双审 r1 CODEX-01）、
+ * worker 与主题锁的规范化启动时刻（EV-158）的写与判只经这一形态。不带选项时行为不变（既有 `worker_started_at` /
+ * `pid_started_at` 仍按缺省环境取，形态与含义不动）。
+ *
+ * **规范化形态是盘上契约**（worker启动时刻规范化计划 r2 §4.1，计划双审 r1 CODEX-01）：它被写进 status.json 与锁文件
+ * （`worker_started_at_canonical`、`pid_started_at_canonical`、`sides[c].cli.started_at`），新读者「有就只比它」。
+ * 就地改这组旗标或环境（换 `-o` 字段、换 `LC_ALL` / `TZ`、改 trim），旧版规范化写下、新版读的记录会**同环境也全判
+ * 不是同一进程**——方向是最坏的一侧（抹凭据、回收活锁）。任何变更必须换新字段名，禁止就地改。
  */
 export async function processStartTime(pid: number, o: { canonical?: boolean } = {}): Promise<string | null> {
   const r = await run('/bin/ps', ['-p', String(pid), '-o', 'lstart='], {
@@ -536,6 +546,85 @@ export async function processStartTime(pid: number, o: { canonical?: boolean } =
   if (r.code !== 0) return null;
   const t = r.stdout.trim();
   return t.length > 0 ? t : null;
+}
+
+/**
+ * 同一进程的两种启动时刻：缺省环境下的（既有字段的取法）与规范化的（EV-158 新字段）。两路并发取，**各自吞错、永不 reject**
+ * （计划双审 r1 AGY-02）——调用方在写既有字段的同一处一并写新字段，一路失败不能连累另一路。
+ *
+ * 两次 `ps` 取到的是不是同一进程（计划双审 r1 GLM-03）：常态是调用方刚派生、子进程未退出，或取的是自己。跨过 await 之后
+ * 「未观察到 'exit' ⇒ 未被回收」不再是绝对不变量，依赖的是「pid 空间在几毫秒内绕一圈」的概率边界。进程恰好在两次之间
+ * 退出时两路一成一败：规范化为 null ⇒ 读者退回缺省比较；缺省为 null ⇒ 读者只比规范化——都不比单次取值更糟。
+ */
+export async function processStartTimes(pid: number): Promise<{ legacy: string | null; canonical: string | null }> {
+  const [legacy, canonical] = await Promise.all([
+    processStartTime(pid).catch(() => null),
+    processStartTime(pid, { canonical: true }).catch(() => null),
+  ]);
+  return { legacy, canonical };
+}
+
+/**
+ * 记录里的规范化启动时刻「有没有」（EV-158，计划 r2 §4.1 D3）：trim 后非空的字符串才算有、并按 trim 后的值比
+ * （计划双审 r1 AGY-01：写者产出本就 trim 过，手改带首尾空白时不因空白误判）；缺席（旧版写的）、null（写时取不到）、
+ * 空串、非字符串一律当「没有」——读者据此退回缺省比较，即今天的行为。
+ */
+export function canonicalStartOf(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return t.length > 0 ? t : null;
+}
+
+/** 记录里的启动时刻：规范化形态（EV-158 起写，可能缺席或不合形状）与写者缺省环境下的形态（旧有） */
+export interface RecordedStart {
+  canonical?: unknown;
+  legacy: string | null | undefined;
+}
+
+export interface RecordMatch {
+  alive: boolean;
+  sameProcess: boolean;
+  /** 按 `basis` 取到的那个形态；进程不在或取不到时为 null */
+  startedAt: string | null;
+  /** 参与比较的记录值（basis 为 canonical 时是 trim 后的值）；legacy 且记录为假值时为 null */
+  expected: string | null;
+  /** 比的是哪一种形态——告警措辞据它分写（计划 r2 D6），判据不读人读文案 */
+  basis: 'canonical' | 'legacy';
+}
+
+/**
+ * 进程 `pid` 是不是记录 `rec` 里的那一个——**跨进程身份比对的唯一读法**（EV-158，worker启动时刻规范化计划 r2 §4.3）。
+ *
+ * - 记录里有规范化启动时刻（`canonicalStartOf`）⇒ **只**按规范化形态比：读者自己也以 `LC_ALL=C`、`TZ=UTC0` 取，
+ *   与写者、读者各自的 TZ / 区域设置无关；不再看缺省字段。活着而取不到 ⇒ `sameProcess: false`（与今天「期望非空而取不到」同口径）。
+ * - 没有（旧版写的、写时取不到、形状不对）⇒ 原样退回 `processAlive(pid, legacy)`——逐字是今天的行为，含「期望为假值即相符」。
+ *
+ * 规范化形态是盘上契约，见 `processStartTime` 文档块。第三参只为单测模拟「规范化取不到」而开，缺省一支不起作用。
+ */
+export async function processMatchesRecord(
+  pid: number,
+  rec: RecordedStart,
+  o: { canonicalStartTimeOf?: (pid: number) => Promise<string | null> } = {},
+): Promise<RecordMatch> {
+  const expected = canonicalStartOf(rec.canonical);
+  if (expected === null) {
+    const legacy = rec.legacy ?? null;
+    const p = await processAlive(pid, legacy);
+    return { ...p, expected: legacy || null, basis: 'legacy' };
+  }
+  let alive: boolean;
+  try {
+    process.kill(pid, 0);
+    alive = true;
+  } catch (e) {
+    // EPERM 表示进程存在但不属于当前用户——仍算存活（与 processAlive 同）
+    alive = (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+  if (!alive) return { alive: false, sameProcess: false, startedAt: null, expected, basis: 'canonical' };
+  const startedAt = await (o.canonicalStartTimeOf ?? ((p: number) => processStartTime(p, { canonical: true })))(pid).catch(
+    () => null,
+  );
+  return { alive: true, sameProcess: startedAt !== null && startedAt === expected, startedAt, expected, basis: 'canonical' };
 }
 
 /**

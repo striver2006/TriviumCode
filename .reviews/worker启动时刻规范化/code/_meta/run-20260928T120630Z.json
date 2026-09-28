@@ -1,0 +1,286 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260928T120630Z",
+  "topic": "worker启动时刻规范化",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「worker启动时刻规范化」：解决 BACKLOG EV-158（worker_started_at 与主题锁的 pid_started_at 按写者自己的缺省环境取 ps lstart，读者在各自环境里重取、按字符串比；TZ 或区域设置不同的两个进程之间，活着的 worker 会被判「不是同一进程」）。 开工前先读：记忆 m10b-next-after-ev82.md 的最后两段、pipe…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "6b89cc0b7846387b32e14c95ef598a0401783226",
+    "tree_hash": "c510af77ea4dfa1d0556376b5850ff1afcc51f6b",
+    "dirty": true,
+    "subject_sha256": "bdfa668b28e2d7dd9cae2da741ab9fa7d0250eb82e13782ab7a14e0b4092e8b0",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "6b89cc0b7846387b32e14c95ef598a0401783226",
+      "dirty": false,
+      "inputs_sha256": "c19c1519ef6f03f8422eec9cfeb78d3b820967e62ae72aa8efca6cfc094aba62",
+      "built_at": "2026-09-28T10:25:28.142Z"
+    },
+    "after_tree_hash": "7eaae449497aa30bdc98d8d3af680540016c503e"
+  },
+  "started_at": "2026-09-28T12:06:32.534Z",
+  "finished_at": "2026-09-28T12:15:52.915Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 560.144,
+      "tool_calls": {
+        "run_command": 28,
+        "project_reads": 14
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0e7e8-dd5d-7140-81dd-7097e287b000",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.12",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 295.376,
+      "tool_calls": {
+        "read": 27,
+        "grep": 7,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 316668,
+        "output_tokens": 21836,
+        "thinking_tokens": 17874,
+        "cache_read_tokens": 3616663,
+        "total_tokens": 338504
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "62c4fd17-68ff-4cdc-8f85-73b94d6d60c1",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 479.387,
+      "tool_calls": {
+        "read": 19,
+        "grep": 8,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 13
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 24,
+        "inputTokens": 2239341,
+        "outputTokens": 20911,
+        "totalTokens": 2260252,
+        "cacheReadTokens": 2106880,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "sess_20d66098-8af8-444e-a650-f6a8f37a06af",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/worker启动时刻规范化/plan/2026-09-28-worker启动时刻规范化-gemini.md",
+    ".reviews/worker启动时刻规范化/plan/2026-09-28-worker启动时刻规范化-glm.md",
+    ".reviews/worker启动时刻规范化/plan/_meta/review-gemini-20260928T110842Z.json",
+    ".reviews/worker启动时刻规范化/plan/_meta/review-glm-20260928T110842Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "worker启动时刻规范化/code/_meta/changes-20260928T120630Z.diff",
+      "sha256": "bdfa668b28e2d7dd9cae2da741ab9fa7d0250eb82e13782ab7a14e0b4092e8b0"
+    },
+    {
+      "path": "worker启动时刻规范化/code/_meta/brief-codex-20260928T120630Z.md",
+      "sha256": "e42bcab49a86593cb5b3996ae767a77d3b91d1b258b81a09ad46e6935cd02a22"
+    },
+    {
+      "path": "worker启动时刻规范化/code/_meta/brief-gemini-20260928T120630Z.md",
+      "sha256": "7ff5996a17c378f233d96d427780038bbe001cc6b2e232b74c4ffc4171c38f7e"
+    },
+    {
+      "path": "worker启动时刻规范化/code/_meta/brief-glm-20260928T120630Z.md",
+      "sha256": "994f3274e63a2adffcdd103a5d8c04b1afa5f7aa22623a3444ed292e7b31f85b"
+    },
+    {
+      "path": "worker启动时刻规范化/code/_meta/review-codex-20260928T120630Z.json",
+      "sha256": "4c96898edbab5e6103258271cf456a6703a4cb350381e5520c127daf4347b285"
+    },
+    {
+      "path": "worker启动时刻规范化/code/_meta/review-gemini-20260928T120630Z.json",
+      "sha256": "eec9e7f873c0dbf999180d912339c7c9e926002403265ca3f0fef480a0e9dcf6"
+    },
+    {
+      "path": "worker启动时刻规范化/code/_meta/review-glm-20260928T120630Z.json",
+      "sha256": "564e461e1c1e06436ae657976cfb1a6e7ec61a79f0eed27c788af1a74406e654"
+    },
+    {
+      "path": "worker启动时刻规范化/code/2026-09-28-worker启动时刻规范化-codex.md",
+      "sha256": "5d9ea0b96d6b7011d81e1c1eb139bb1169e2ac599346d32d135befd08c67e492"
+    },
+    {
+      "path": "worker启动时刻规范化/code/2026-09-28-worker启动时刻规范化-gemini.md",
+      "sha256": "3daae619e4516970699a474ac89a3882e0964898cf8b4acb8be3dd587f0d2e00"
+    },
+    {
+      "path": "worker启动时刻规范化/code/2026-09-28-worker启动时刻规范化-glm.md",
+      "sha256": "a125738b13b615c0d0073f755d401615661f113d39b17fa46bfbfec65de15543"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装"
+    ]
+  },
+  "status": "success"
+}

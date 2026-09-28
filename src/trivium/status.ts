@@ -16,7 +16,7 @@ import { promises as fs } from 'node:fs';
 import type { CriticId, Stage } from './types.js';
 import { writeAtomic, exists } from './util/fsx.js';
 import { RUN_DIR_FILES } from './run-files.js';
-import { processAlive, processStartTime, type TrackedTree } from './util/exec.js';
+import { processAlive, processMatchesRecord, processStartTime, type RecordedStart, type TrackedTree } from './util/exec.js';
 
 export type RunPhase =
   | 'starting'
@@ -54,9 +54,16 @@ export interface RunStatus {
   topic: string;
   stage: Stage;
   phase: RunPhase;
-  /** 工作进程 pid 与其启动时刻——判定失联时要能识别 PID 复用 */
+  /** 工作进程 pid 与其启动时刻（`--start` 的缺省环境下取）——判定失联时要能识别 PID 复用 */
   worker_pid: number | null;
   worker_started_at: string | null;
+  /**
+   * 工作进程的**规范化**启动时刻（`processStartTime(…, { canonical: true })`，EV-158，worker启动时刻规范化计划 r2 §4.1），
+   * 与 `worker_pid` / `worker_started_at` 同一次写入。null = 写时取不到；缺席 = 旧版写的。有它时身份判据只按它比
+   * （`processMatchesRecord`），与 `--start` 和读者各自的 TZ / 区域设置无关；旧版读者忽略这个键。
+   * `--wait --json` 与 `--status --json` 整份透出 status，这个键因此也是对外 JSON 形状的加法。
+   */
+  worker_started_at_canonical?: string | null;
   started_at: string;
   /** 每次心跳更新，`--wait` 据此判定失联 */
   heartbeat_at: string;
@@ -105,6 +112,7 @@ export function newStatus(i: {
     phase: 'starting',
     worker_pid: null,
     worker_started_at: null,
+    worker_started_at_canonical: null,
     started_at: now,
     heartbeat_at: now,
     sides,
@@ -161,6 +169,15 @@ export async function patchStatus(
   }
 }
 
+/**
+ * status.json 里工作进程的身份记录（EV-158）：规范化启动时刻与缺省环境下的启动时刻，交给 `processMatchesRecord`。
+ * 身份消费方（`workerConfirmedGone`、`interpretStatus`、`workerStillAlive`、`--cancel` 主路径与失联后取消那一格）都经它取，
+ * 两个字段不会各取各的。
+ */
+export function workerStartOf(s: RunStatus, legacyFallback: string | null = null): RecordedStart {
+  return { canonical: s.worker_started_at_canonical, legacy: s.worker_started_at ?? legacyFallback };
+}
+
 export const TERMINAL_PHASES: readonly RunPhase[] = ['success', 'failed', 'cancelled'];
 export const isTerminal = (p: RunPhase): boolean => TERMINAL_PHASES.includes(p);
 
@@ -190,7 +207,7 @@ export async function workerConfirmedGone(
   }
   const pid = status.worker_pid ?? fallbackPid;
   if (pid !== null && pid !== undefined) {
-    const live = await processAlive(pid, status.worker_started_at ?? null);
+    const live = await processMatchesRecord(pid, workerStartOf(status));
     if (live.alive && live.sameProcess) return { gone: false, why: `工作进程 ${pid} 仍在` };
     return { gone: true, why: `工作进程 ${pid} 已不存在` };
   }
@@ -359,6 +376,11 @@ export async function interpretStatus(
     heartbeatStaleMs: number;
     /** status.json 尚未出现时的兜底 pid 来源（`--start` 写的 worker.pid） */
     fallbackPid?: number | null;
+    /**
+     * 兜底 pid 的启动时刻：**调用方自己环境下取的缺省形态**，只供同进程构造（单测）。按读者缺省环境比，是规范化读法
+     * （`processMatchesRecord`）之外的入口——生产代码不传，也不得传锁或 status.json 里别的进程写下的启动时刻：
+     * 跨进程的身份一律经 status.json 的两个字段（EV-158，worker启动时刻规范化代码双审 r1 CODEX-01）。
+     */
     fallbackPidStartedAt?: string | null;
     now?: number;
   },
@@ -389,7 +411,8 @@ export async function interpretStatus(
 
   const pid = raw.worker_pid ?? opts.fallbackPid ?? null;
   if (pid !== null) {
-    const live = await processAlive(pid, raw.worker_started_at ?? opts.fallbackPidStartedAt ?? null);
+    // 有规范化启动时刻只按它比；没有（旧版写的）退回缺省比较（EV-158）
+    const live = await processMatchesRecord(pid, workerStartOf(raw, opts.fallbackPidStartedAt ?? null));
     // 进程没了却没留终态 → 失联（无论心跳是否还新鲜）
     if (!live.alive || !live.sameProcess) return { kind: 'worker_lost', reason: 'pid_gone' };
   }

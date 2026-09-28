@@ -1,0 +1,12 @@
+✓ 构建：新旧 bundle sha256 不同（new 90166dd17fc9 / old a4b8aa094a94）；桩相对 6b89cc0 无 diff、不叠加 true
+✓ P0：W "lun. 28 sept. 21:34:57 2026" / R "Mo. 28 Sep. 08:34:57 2026" / 规范化 "Mon Sep 28 12:34:57 2026"
+✓ A1：新字段 status "Mon Sep 28 12:34:58 2026" / 锁 "Mon Sep 28 12:34:58 2026"（worker 规范化 "Mon Sep 28 12:34:58 2026"）；R 下：--wait 退 73、会话启动清扫退 0 未回收闸门 true、副本仍在 true、scrub alive 1、同阶段 --start 退 70、--cancel 退 0 发 SIGTERM true、worker 不在 true、组成员 [0,0]、status cancelled、run.json cancelled
+✓ A2：旧版写下的 status.json / 锁没有新字段 true；新读者（W）：--wait 退 73、同阶段 --start 退 70、--cancel 发 SIGTERM true、worker 不在 true、组成员 [0,0]、status cancelled
+✓ A3：旧版写下、R 下读：新 --wait 退 1（判 pid_gone true、worker 其实活着 true、run.json failed）；旧 --wait 退 1（true、true、failed）——与旧版相同，不改善也不恶化
+✓ A4：第一轮（新 --start 在 W）：遗留锁无新字段 true、--start 退 0、按 pid_gone 回收 true、新锁归新 worker true；第二轮（R）：true、退 0、true、true
+✓ A5：旧读者（W）：--wait 退 73、同阶段 --start 退 70、--cancel 发 SIGTERM true、worker 不在 true、组成员 [0,0]、status cancelled
+✓ A7：旧版 --cancel 读改写 status.json（写成 cancelled）之后规范化字段 "Mon Sep 28 12:35:18 2026"，与写下时逐字相同 true
+✓ A6：新版写下、旧读者 R 下：--wait 退 1、判 pid_gone true（worker 其实活着 true）——回滚即回到 EV-158 的现状
+✓ A8：doctor --selftest 退 0、14/14
+
+10 / 10

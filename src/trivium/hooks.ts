@@ -1715,9 +1715,9 @@ export async function runHook(
 /**
  * 回收「闸门还是 running、但工作进程早已不存在」的遗留状态（审查意见 GLM-06）。
  *
- * 判据用 `status.json` 里记的 `worker_pid` + `worker_started_at`，
- * 经 `processAlive` 比对启动时间——macOS 会复用 PID，只看 `kill(pid,0)` 会把
- * 别人的新进程当成我们的 worker 还活着。
+ * 判据**只看存活**：取 `status.json` 的 `worker_pid` 经 `processAlive` 判 `.alive`，启动时刻不参与判定
+ * （原注释写「比对启动时间」，与实现不符；worker启动时刻规范化计划 r2 §4.5 更正）。macOS 会复用 PID：复用者活着时
+ * 这里把它当 worker 仍在、不回收闸门——保守方向，`approval_lock_ttl_h` 兜底。也因此它不受 TZ / 区域设置影响（EV-158）。
  *
  * 拿不准的一律**不回收**：宁可多拦一会儿（还有 TTL 兜底），
  * 也不能在 worker 其实还在跑的时候把护栏撤了。
@@ -1745,7 +1745,8 @@ async function sweepDeadRunningGates(ctx: Ctx): Promise<string[]> {
         if (!(ageH > ctx.config.gate.approval_lock_ttl_h)) continue;
         alive = false;
       } else {
-        alive = (await processAlive(st.worker_pid, st.worker_started_at ?? null)).alive;
+        // 只取 .alive：不传启动时刻，免得被误读成在比身份（worker启动时刻规范化代码双审 r1 CODEX-02）
+        alive = (await processAlive(st.worker_pid, null)).alive;
       }
     } catch {
       continue; // 判不了就不回收

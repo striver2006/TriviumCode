@@ -164,11 +164,14 @@ export async function cli(
   args: string[],
   stub: StubConfig | null = null,
   timeoutMs = 120_000,
+  /** 再叠加一层环境变量（EV-158：让写者与读者的 TZ / 区域设置不同）；undefined 值表示删除该变量 */
+  extraEnv: Record<string, string | undefined> = {},
 ) {
   // run() 的 env 是「叠加到 process.env 之上」，undefined 表示删除该变量
   const env: Record<string, string | undefined> = {
     TRIVIUM_ASSET_ROOT: ASSET_ROOT,
     [STUB_ENV_VAR]: stub ? encodeStubConfig(stub) : undefined,
+    ...extraEnv,
   };
   return run(process.execPath, [BUNDLE, ...args], { cwd: root, env, timeoutMs });
 }

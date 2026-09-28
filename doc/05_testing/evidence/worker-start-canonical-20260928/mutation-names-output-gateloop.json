@@ -1,0 +1,18 @@
+[
+  {
+    "id": "M1",
+    "desc": "startRun 的 patchStatus 不写 worker_started_at_canonical ⇒ I1",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "pattern": "EV-158",
+    "fail": 2,
+    "red": [
+      "EV-158 I1～I5：--start 在 W 下写两种启动时刻；R 下的 --wait、会话启动清扫、trivium scrub、同阶段 --start 都认得活 worker，R 下的 --cancel 对它发 SIGTERM 并收尾",
+      "EV-158 I6（C7 / C8）：--wait 在 W 下判 heartbeat_stale，--cancel 在 R 下 ⇒ 入失联后取消那一格（不再判 mismatch），结束 worker 与两侧 CLI、补收 run.json 为 failed"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: status.json 的规范化启动时刻应是 worker 的",
+      "AssertionError [ERR_ASSERTION]: b 格：R 下不应判 mismatch：⚠️  工作进程 75713 上有活进程，但启动时刻与 status.json 的记录不符：可能是 PID 已被复用，也可能是本命令的 TZ / 区域设置与 --start 不同（BACKLOG EV-158）——不对它发信号，本次也未结束它名下的审查员 CLI。若确认是后者，请在与 --sta"
+    ],
+    "windowMiss": false
+  }
+]

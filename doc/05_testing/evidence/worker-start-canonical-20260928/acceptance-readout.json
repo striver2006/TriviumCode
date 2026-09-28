@@ -1,0 +1,245 @@
+{
+  "results": [
+    {
+      "id": "构建",
+      "ok": true,
+      "detail": "新旧 bundle sha256 不同（new 90166dd17fc9 / old a4b8aa094a94）；桩相对 6b89cc0 无 diff、不叠加 true"
+    },
+    {
+      "id": "P0",
+      "ok": true,
+      "detail": "W \"lun. 28 sept. 21:34:57 2026\" / R \"Mo. 28 Sep. 08:34:57 2026\" / 规范化 \"Mon Sep 28 12:34:57 2026\""
+    },
+    {
+      "id": "A1",
+      "ok": true,
+      "detail": "新字段 status \"Mon Sep 28 12:34:58 2026\" / 锁 \"Mon Sep 28 12:34:58 2026\"（worker 规范化 \"Mon Sep 28 12:34:58 2026\"）；R 下：--wait 退 73、会话启动清扫退 0 未回收闸门 true、副本仍在 true、scrub alive 1、同阶段 --start 退 70、--cancel 退 0 发 SIGTERM true、worker 不在 true、组成员 [0,0]、status cancelled、run.json cancelled"
+    },
+    {
+      "id": "A2",
+      "ok": true,
+      "detail": "旧版写下的 status.json / 锁没有新字段 true；新读者（W）：--wait 退 73、同阶段 --start 退 70、--cancel 发 SIGTERM true、worker 不在 true、组成员 [0,0]、status cancelled"
+    },
+    {
+      "id": "A3",
+      "ok": true,
+      "detail": "旧版写下、R 下读：新 --wait 退 1（判 pid_gone true、worker 其实活着 true、run.json failed）；旧 --wait 退 1（true、true、failed）——与旧版相同，不改善也不恶化"
+    },
+    {
+      "id": "A4",
+      "ok": true,
+      "detail": "第一轮（新 --start 在 W）：遗留锁无新字段 true、--start 退 0、按 pid_gone 回收 true、新锁归新 worker true；第二轮（R）：true、退 0、true、true"
+    },
+    {
+      "id": "A5",
+      "ok": true,
+      "detail": "旧读者（W）：--wait 退 73、同阶段 --start 退 70、--cancel 发 SIGTERM true、worker 不在 true、组成员 [0,0]、status cancelled"
+    },
+    {
+      "id": "A7",
+      "ok": true,
+      "detail": "旧版 --cancel 读改写 status.json（写成 cancelled）之后规范化字段 \"Mon Sep 28 12:35:18 2026\"，与写下时逐字相同 true"
+    },
+    {
+      "id": "A6",
+      "ok": true,
+      "detail": "新版写下、旧读者 R 下：--wait 退 1、判 pid_gone true（worker 其实活着 true）——回滚即回到 EV-158 的现状"
+    },
+    {
+      "id": "A8",
+      "ok": true,
+      "detail": "doctor --selftest 退 0、14/14"
+    }
+  ],
+  "readout": {
+    "base_ref": "6b89cc0",
+    "node": "v25.2.1",
+    "platform": "darwin",
+    "env": {
+      "W": {
+        "TZ": "Asia/Tokyo",
+        "LC_ALL": "fr_FR.UTF-8"
+      },
+      "R": {
+        "TZ": "America/New_York",
+        "LANG": "de_DE.UTF-8"
+      }
+    },
+    "overlay": {
+      "files": [],
+      "stubDiffVsBase": ""
+    },
+    "bundles": {
+      "new": {
+        "path": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
+        "sha256": "90166dd17fc9e6307cc610fad4a597637c8bbda446ddef3f8b8f67827c026096"
+      },
+      "old": {
+        "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-start-canon-QBWdvn/old/skills/dual-critic/scripts/trivium.cjs",
+        "sha256": "a4b8aa094a940e71ea5d043451e2d257fdb08e9a7d84fc5aead25323a268e1ca",
+        "from": "6b89cc0",
+        "overlay": []
+      }
+    },
+    "P0": {
+      "w": "lun. 28 sept. 21:34:57 2026",
+      "r": "Mo. 28 Sep. 08:34:57 2026",
+      "canonical": "Mon Sep 28 12:34:57 2026"
+    },
+    "A1": {
+      "forms": {
+        "w": "lun. 28 sept. 21:34:58 2026",
+        "r": "Mo. 28 Sep. 08:34:58 2026",
+        "canonical": "Mon Sep 28 12:34:58 2026"
+      },
+      "written": {
+        "status": {
+          "legacy": "lun. 28 sept. 21:34:58 2026",
+          "canonical": "Mon Sep 28 12:34:58 2026"
+        },
+        "lock": {
+          "pid": 77233,
+          "legacy": "lun. 28 sept. 21:34:58 2026",
+          "canonical": "Mon Sep 28 12:34:58 2026"
+        }
+      },
+      "wait": {
+        "code": 73,
+        "lost": false
+      },
+      "hook": {
+        "code": 0,
+        "swept": false
+      },
+      "carrierKept": true,
+      "scrub": {
+        "code": 0,
+        "alive": 1
+      },
+      "startAgain": 70,
+      "cancel": {
+        "code": 0,
+        "stdout": "已回收主题「A1」的锁\n运行 20260928T123458Z 已取消\n",
+        "stderr": "· 向工作进程组 77233 发送 SIGTERM\n· 已把归档里的 run-20260928T123458Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+        "sigterm": true,
+        "saidGone": false,
+        "workerGone": true,
+        "members": [
+          0,
+          0
+        ],
+        "phase": "cancelled",
+        "runJson": "cancelled"
+      }
+    },
+    "A2": {
+      "forms": {
+        "w": "lun. 28 sept. 21:35:04 2026",
+        "r": "Mo. 28 Sep. 08:35:04 2026",
+        "canonical": "Mon Sep 28 12:35:04 2026"
+      },
+      "noNewKeys": true,
+      "wait": {
+        "code": 73
+      },
+      "startAgain": 70,
+      "cancel": {
+        "code": 0,
+        "stdout": "已回收主题「A2」的锁\n运行 20260928T123503Z 已取消\n",
+        "stderr": "· 向工作进程组 77947 发送 SIGTERM\n· 已把归档里的 run-20260928T123503Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+        "sigterm": true,
+        "saidGone": false,
+        "workerGone": true,
+        "members": [
+          0,
+          0
+        ],
+        "phase": "cancelled",
+        "runJson": "cancelled"
+      }
+    },
+    "A3": {
+      "new": {
+        "code": 1,
+        "lost": true,
+        "workerAlive": true,
+        "runJson": "failed"
+      },
+      "old": {
+        "code": 1,
+        "lost": true,
+        "workerAlive": true,
+        "runJson": "failed"
+      }
+    },
+    "A4": {
+      "W": {
+        "oldWait": 1,
+        "leftoverLockPid": 79425,
+        "leftoverHasCanonical": false,
+        "newStart": 0,
+        "reclaimed": true,
+        "newLockPid": 79807,
+        "newWorker": 79807,
+        "newLockCanonical": "Mon Sep 28 12:35:13 2026"
+      },
+      "R": {
+        "oldWait": 1,
+        "leftoverLockPid": 80199,
+        "leftoverHasCanonical": false,
+        "newStart": 0,
+        "reclaimed": true,
+        "newLockPid": 80577,
+        "newWorker": 80577,
+        "newLockCanonical": "Mon Sep 28 12:35:16 2026"
+      }
+    },
+    "A5": {
+      "forms": {
+        "w": "lun. 28 sept. 21:35:18 2026",
+        "r": "Mo. 28 Sep. 08:35:18 2026",
+        "canonical": "Mon Sep 28 12:35:18 2026"
+      },
+      "wait": {
+        "code": 73
+      },
+      "startAgain": 70,
+      "cancel": {
+        "code": 0,
+        "stdout": "已回收主题「A5」的锁\n运行 20260928T123517Z 已取消\n",
+        "stderr": "· 向工作进程组 81121 发送 SIGTERM\n· 已把归档里的 run-20260928T123517Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+        "sigterm": true,
+        "saidGone": false,
+        "workerGone": true,
+        "members": [
+          0,
+          0
+        ],
+        "phase": "cancelled",
+        "runJson": "cancelled"
+      }
+    },
+    "A7": {
+      "before": "Mon Sep 28 12:35:18 2026",
+      "after": "Mon Sep 28 12:35:18 2026",
+      "phaseAfter": "cancelled"
+    },
+    "A6": {
+      "code": 1,
+      "lost": true,
+      "workerAlive": true
+    },
+    "A8": {
+      "code": 0,
+      "tail": [
+        "· ✓ 裁决齐备后放行提交",
+        "· ✓ 裁决齐备后放行收工",
+        "· ✓ 禁止主脑自行产出 -gemini.md（AC-07）",
+        "· ✓ 编译测试出口真实执行并落盘（AC-10）",
+        "· ✓ 复盘可生成（含时间线与采纳率）",
+        "· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）"
+      ]
+    },
+    "leftover_groups": []
+  }
+}

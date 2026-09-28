@@ -4,6 +4,8 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { bundleMissing, bundleSkipReason, cli, listFiles, makeFixture, today } from '../helpers/fixture.js';
 import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
+import { ENV_R, ENV_W, assertEnvPairDistinct, withEnv } from '../helpers/start-env.js';
+import { processStartTime } from '../../src/trivium/util/exec.js';
 import {
   ORPHAN_KILL_CONFIRM_MS, WORKER_TERM_GRACE_MS, WORKER_TREE_GRACE_MS, WORKER_TREE_KILL_WAIT_MS,
 } from '../../src/trivium/run-protocol.js';
@@ -2567,12 +2569,14 @@ const pidGone = (pid: number): boolean => {
  * 起一轮两侧 hang_cli，等两组组长出现、等 status.json 两侧都记下组号与启动时刻。
  * `extraReview` 透传给夹具的 `review:` 段（EV-146 J 组用它把 `heartbeat_stale_s` 调小）
  */
-async function startWithRecordedClis(stub: StubConfig, extraReview?: string[]) {
+async function startWithRecordedClis(stub: StubConfig, extraReview?: string[], extraEnv: Record<string, string | undefined> = {}) {
   const fx = await makeFixture({ topic: TOPIC, ...(extraReview ? { extraReview } : {}) });
   const started = await cli(
     fx.root,
     ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
     stub,
+    120_000,
+    extraEnv,
   );
   assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
   const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string; run_dir: string; worker_pid: number };
@@ -2874,6 +2878,158 @@ test('EV-146 J3：本格不抹凭据副本（用户决策 7）——--wait 与 -
     const h = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
     assert.equal(h.code, 0, `${h.stdout}${h.stderr}`);
     await assert.rejects(fs.access(carrier), 'worker 与 CLI 都已不在，admitScrub 放行');
+  } finally {
+    try {
+      process.kill(-r.js.worker_pid, 'SIGKILL');
+    } catch {
+      /* 已不在 */
+    }
+    cleanupGroups(r);
+  }
+});
+
+/*
+ * ── EV-158：写者与读者的 TZ / 区域设置不同（worker启动时刻规范化计划 r2 §5.2 I1～I7）──
+ *
+ * `--start` 在 W 下跑、被测读者在 R 下跑（`test/helpers/start-env.ts`）；每格先对 worker pid 做 P0（两个环境的缺省形态
+ * 确实不同、且都不等于规范化形态，计划双审 r1 CODEX-02）。两侧都是 hang_cli：worker 与 CLI 一直活着，读者误判就会动手。
+ */
+
+const HANG2: StubConfig = { gemini: { mode: 'hang_cli' }, glm: { mode: 'hang_cli' } };
+
+/** 以 Hook 身份在给定环境里调用 */
+async function hookIn(root: string, name: string, input: unknown, extraEnv: Record<string, string | undefined>) {
+  const { run } = await import('../../src/trivium/util/exec.js');
+  const { BUNDLE, ASSET_ROOT } = await import('../helpers/fixture.js');
+  return run(process.execPath, [BUNDLE, 'gate', name], {
+    cwd: root,
+    env: { TRIVIUM_ASSET_ROOT: ASSET_ROOT, CLAUDE_SESSION_ID: SESSION, TRIVIUM_STUB_CRITIC: undefined, ...extraEnv },
+    stdin: JSON.stringify(input),
+    timeoutMs: 30_000,
+  });
+}
+
+test('EV-158 I1～I5：--start 在 W 下写两种启动时刻；R 下的 --wait、会话启动清扫、trivium scrub、同阶段 --start 都认得活 worker，R 下的 --cancel 对它发 SIGTERM 并收尾', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis(HANG2, undefined, ENV_W);
+  try {
+    assertRecorded(r);
+    const wpid = r.js.worker_pid;
+    const forms = await assertEnvPairDistinct(wpid);
+
+    // I1：写者——两种形态同指 worker；缺省形态的取法没变（W 下）
+    const status = JSON.parse(await fs.readFile(path.join(r.js.run_dir, 'status.json'), 'utf8')) as Record<string, unknown>;
+    const lockBefore = await fs.readFile(lockPathOf(r.fx.root), 'utf8');
+    const lock = JSON.parse(lockBefore) as Record<string, unknown>;
+    assert.equal(status['worker_started_at_canonical'], forms.canonical, 'status.json 的规范化启动时刻应是 worker 的');
+    assert.equal(status['worker_started_at'], forms.w, '缺省字段仍按 --start 的环境取');
+    assert.equal(lock['pid'], wpid);
+    assert.equal(lock['pid_started_at_canonical'], forms.canonical, '锁的规范化启动时刻应是 worker 的');
+    assert.equal(lock['pid_started_at'], forms.w);
+
+    // I2（C1）：R 下 --wait ⇒ 仍在跑，不判失联
+    const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '3'], null, 60_000, ENV_R);
+    assert.equal(w.code, EXIT.STILL_RUNNING, `b 格：R 下 --wait 不应判失联：${w.stdout}${w.stderr}`);
+    assert.equal((JSON.parse(await fs.readFile(path.join(r.js.run_dir, 'status.json'), 'utf8')) as { phase: string }).phase, 'running');
+    assert.equal((await readRunJson(r.fx.stageDir, r.js.run_id)).status, 'running', 'run.json 不被写成 failed');
+
+    // I3（C2 / C3）：R 下会话启动清扫与 trivium scrub ⇒ 副本不抹、计 alive、闸门不回收
+    const carrier = path.join(r.js.run_dir, 'glm', 'home', '.zcode', 'cli', 'config.json');
+    await fs.mkdir(path.dirname(carrier), { recursive: true });
+    await fs.writeFile(carrier, '{"provider":{"k":{"apiKey":"fake"}}}');
+    const h = await hookIn(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' }, ENV_R);
+    assert.equal(h.code, EXIT.OK, `${h.stdout}${h.stderr}`);
+    assert.doesNotMatch(h.stdout, /已回收/, h.stdout);
+    await fs.access(carrier);
+    const sc = await cli(r.fx.root, ['scrub', '--json'], null, 60_000, ENV_R);
+    assert.equal(sc.code, EXIT.OK, `${sc.stdout}${sc.stderr}`);
+    const scj = JSON.parse(extractJsonCandidate(sc.stdout)!.json) as { alive: number; scrubbed: string[]; eligible: string[] };
+    assert.equal(scj.alive, 1, `b 格：跨仓清扫应把它计为进行中：${sc.stdout}`);
+    assert.deepEqual(scj.scrubbed, []);
+    await fs.access(carrier);
+    assert.equal((await gatesOf(r.fx.root))[`${TOPIC}/plan`]?.state, 'running', '闸门不被当遗留回收');
+
+    // I4（C4）：R 下同阶段再 --start ⇒ 退 70，锁逐字节不变
+    const again = await cli(r.fx.root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'], STUB, 120_000, ENV_R);
+    assert.equal(again.code, EXIT.LOCKED, `b 格：R 下的 --start 不应回收活 worker 的锁：${again.stdout}${again.stderr}`);
+    assert.equal(await fs.readFile(lockPathOf(r.fx.root), 'utf8'), lockBefore);
+
+    // I5（C5 / C6）：R 下 --cancel ⇒ 向活 worker 发 SIGTERM，worker 与两组都结束，收尾 cancelled
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id], null, 120_000, ENV_R);
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    assert.match(c.stderr, new RegExp(`向工作进程组 ${wpid} 发送 SIGTERM`), c.stderr);
+    assert.doesNotMatch(c.stderr, /已不存在，仅做状态与锁的清理/, c.stderr);
+    for (let i = 0; i < 40 && !pidGone(wpid); i++) await new Promise((res) => setTimeout(res, 50));
+    assert.ok(pidGone(wpid), 'worker 应已结束');
+    await new Promise((res) => setTimeout(res, 100));
+    assert.deepEqual(r.groups.map((g) => groupMemberCount(g)), [0, 0], `两组都应已空：\n${c.stderr}`);
+    assert.equal((JSON.parse(await fs.readFile(path.join(r.js.run_dir, 'status.json'), 'utf8')) as { phase: string }).phase, 'cancelled');
+    assert.equal((await readRunJson(r.fx.stageDir, r.js.run_id)).status, 'cancelled');
+  } finally {
+    try {
+      process.kill(-r.js.worker_pid, 'SIGKILL');
+    } catch {
+      /* 已不在 */
+    }
+    cleanupGroups(r);
+  }
+});
+
+test('EV-158 I6（C7 / C8）：--wait 在 W 下判 heartbeat_stale，--cancel 在 R 下 ⇒ 入失联后取消那一格（不再判 mismatch），结束 worker 与两侧 CLI、补收 run.json 为 failed', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis({ gemini: { mode: 'hang_cli', blockAfterMs: 300 }, glm: { mode: 'hang_cli' } }, STALE_2S, ENV_W);
+  try {
+    assertRecorded(r);
+    await assertEnvPairDistinct(r.js.worker_pid);
+    await new Promise((res) => setTimeout(res, 3000));
+    const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '10'], null, 60_000, ENV_W);
+    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
+    assert.match(w.stdout + w.stderr, /heartbeat_stale/, '前提：判的是心跳过期');
+
+    const t0 = Date.now();
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id], null, 120_000, ENV_R);
+    const ms = Date.now() - t0;
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    assert.doesNotMatch(c.stderr, /启动时刻与 status\.json 的(规范化)?记录不符/, `b 格：R 下不应判 mismatch：${c.stderr}`);
+    assert.match(c.stdout, /已结束仍挂着的工作进程 \d+/, c.stdout);
+    assert.ok(pidGone(r.js.worker_pid), 'worker 应已不在');
+    await new Promise((res) => setTimeout(res, 100));
+    assert.deepEqual(r.groups.map((g) => groupMemberCount(g)), [0, 0], `两组都应已空：\n${c.stderr}`);
+    const meta = await readRunJson(r.fx.stageDir, r.js.run_id);
+    assert.equal(meta.status, 'failed');
+    assert.deepEqual(meta.termination, { by: 'worker_lost', reason: 'heartbeat_stale' });
+    assert.ok(ms < 60_000, `--cancel 耗时 ${ms} ms，超过防挂死上界（同 EV-146 J1）`);
+  } finally {
+    try {
+      process.kill(-r.js.worker_pid, 'SIGKILL');
+    } catch {
+      /* 已不在 */
+    }
+    cleanupGroups(r);
+  }
+});
+
+test('EV-158 I7（d 格回归）：删掉 status.json 里的规范化字段（模拟旧版写下；--wait 不读锁）⇒ R 下 --wait 仍判失联 pid_gone，与今天相同', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis(HANG2, undefined, ENV_W);
+  try {
+    assertRecorded(r);
+    await assertEnvPairDistinct(r.js.worker_pid);
+    const sp = path.join(r.js.run_dir, 'status.json');
+    // worker 的读改写可能与本次改写交错：改完回读确认键已不在
+    for (let i = 0; i < 5; i++) {
+      const s = JSON.parse(await fs.readFile(sp, 'utf8')) as Record<string, unknown>;
+      delete s['worker_started_at_canonical'];
+      await fs.writeFile(sp, JSON.stringify(s, null, 2) + '\n', 'utf8');
+      await new Promise((res) => setTimeout(res, 100));
+      if (!('worker_started_at_canonical' in (JSON.parse(await fs.readFile(sp, 'utf8')) as object))) break;
+    }
+    assert.ok(!('worker_started_at_canonical' in (JSON.parse(await fs.readFile(sp, 'utf8')) as object)), '前提：新字段已删');
+    const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '3'], null, 60_000, ENV_R);
+    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
+    assert.match(w.stdout + w.stderr, /失联（pid_gone）/, 'd 格：旧记录在异环境下仍判失联（EV-158 的残余，升级窗口）');
+    // 同一份旧记录在 W 下就判得对：只是按缺省环境比较
+    assert.equal(
+      await withEnv(ENV_W, () => processStartTime(r.js.worker_pid)),
+      (JSON.parse(await fs.readFile(sp, 'utf8')) as { worker_started_at: string }).worker_started_at,
+    );
   } finally {
     try {
       process.kill(-r.js.worker_pid, 'SIGKILL');

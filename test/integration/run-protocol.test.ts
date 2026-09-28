@@ -13,7 +13,8 @@ import { getGate, setGate } from '../../src/trivium/state.js';
 import { newStatus, readStatus, writeStatus, type RunStatus } from '../../src/trivium/status.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { acquireLock, inspectLock } from '../../src/trivium/lock.js';
-import { spawnDetached, processStartTime, processAlive } from '../../src/trivium/util/exec.js';
+import { spawnDetached, processStartTime, processStartTimes, processAlive } from '../../src/trivium/util/exec.js';
+import { ENV_R, ENV_W, assertEnvPairDistinct, withEnv } from '../helpers/start-env.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
 import { newRunMeta, readTask, registerRun, writeRunMeta } from '../../src/trivium/meta.js';
@@ -686,9 +687,10 @@ test('EV-150 U5⑥：确认不了退出、锁已不归本进程也不归 worker 
 test('EV-150 U6：--cancel 宽限期判据——存活但不是同一进程（PID 被复用）即算已退出；同一进程算未退出；不存在算已退出', async () => {
   const real = await processStartTime(process.pid);
   assert.ok(real, '取不到本进程启动时刻，用例前提不成立');
-  assert.equal(await workerGoneForCancel(process.pid, 'Thu Jan  1 00:00:00 1970'), true, '计划双审 r1 AGY-04：复用者不能被当成 worker 升级 SIGKILL');
-  assert.equal(await workerGoneForCancel(process.pid, real), false);
-  assert.equal(await workerGoneForCancel(999_993, null), true);
+  // EV-158 起入参是整份记录；这里只带缺省形态（旧版写下的记录），判据与改签名之前逐字相同
+  assert.equal(await workerGoneForCancel(process.pid, { legacy: 'Thu Jan  1 00:00:00 1970' }), true, '计划双审 r1 AGY-04：复用者不能被当成 worker 升级 SIGKILL');
+  assert.equal(await workerGoneForCancel(process.pid, { legacy: real }), false);
+  assert.equal(await workerGoneForCancel(999_993, { legacy: null }), true);
 });
 
 // ─────────── EV-152：worker 的 SIGTERM 处理器（取消够不到审查员CLI计划 r2 §5.1 U8 / U9） ───────────
@@ -1125,5 +1127,138 @@ test('EV-146 K9：本格的归档写失败（归档元数据目录只读）⇒ �
   } finally {
     await fs.chmod(dir, 0o755);
     killQuietly(r.pid);
+  }
+});
+
+// ─────────── EV-158：worker 与主题锁的启动时刻规范化（worker启动时刻规范化计划 r2 §5.1 U4 ②、C5、U9） ───────────
+
+test('EV-158 U4 ②：settleOrphanedStart 确认不了退出 ⇒ status.json 补记规范化启动时刻、改写后的锁带 worker 的而不是本进程的；已有值不覆盖（??=）', async () => {
+  const ctx = await fakeCtx();
+  const s = await seedOrphan(ctx, 'R-C158-ORPH');
+  const selfCanonical = await processStartTime(process.pid, { canonical: true });
+  assert.equal(s.lock.content.pid_started_at_canonical, selfCanonical, '前提：--start 拿到的锁带着本进程的规范化启动时刻');
+  await captureStderr(() =>
+    settleOrphanedStart({
+      ctx, topic: TOPIC, stage: 'plan', runId: 'R-C158-ORPH', layout: s.layout, runDir: s.runDir, lock: s.lock,
+      born: { pid: FAKE_WORKER, watch: watchOf(false) }, workerStartedAt: null, error: new Error('EISDIR'),
+      terminate: async () => ({ gone: false, escalated: true, signals: ['SIGTERM', 'SIGKILL'] }),
+      startTimeOf: async () => 'T-started',
+      canonicalStartTimeOf: async () => 'C-started',
+    }),
+  );
+  const st = await readStatus(s.runDir);
+  assert.equal(st?.worker_started_at_canonical, 'C-started');
+  const lk = await inspectLock(ctx.triviumDir, TOPIC);
+  assert.deepEqual(
+    lk && { pid: lk.pid, pid_started_at: lk.pid_started_at, pid_started_at_canonical: lk.pid_started_at_canonical },
+    { pid: FAKE_WORKER, pid_started_at: 'T-started', pid_started_at_canonical: 'C-started' },
+    'D4：锁改写不把 --start 的规范化启动时刻带到 worker 的 pid 上',
+  );
+
+  // 已有值不覆盖：status.json 已由 startRun 写全（失败点在 patchStatus 之后）
+  const ctx2 = await fakeCtx();
+  const s2 = await seedOrphan(ctx2, 'R-C158-ORPH2');
+  const pre = (await readStatus(s2.runDir))!;
+  pre.worker_pid = FAKE_WORKER;
+  pre.worker_started_at = 'T-pre';
+  pre.worker_started_at_canonical = 'C-pre';
+  await writeStatus(s2.runDir, pre);
+  await captureStderr(() =>
+    settleOrphanedStart({
+      ctx: ctx2, topic: TOPIC, stage: 'plan', runId: 'R-C158-ORPH2', layout: s2.layout, runDir: s2.runDir, lock: s2.lock,
+      born: { pid: FAKE_WORKER, watch: watchOf(false) }, workerStartedAt: 'T-pre', workerStartedAtCanonical: 'C-pre', error: new Error('x'),
+      terminate: async () => ({ gone: false, escalated: true, signals: ['SIGTERM', 'SIGKILL'] }),
+      canonicalStartTimeOf: async () => 'C-other',
+    }),
+  );
+  assert.equal((await readStatus(s2.runDir))?.worker_started_at_canonical, 'C-pre', '??=：已有值不覆盖');
+});
+
+test('EV-158 U4 ②′：settleOrphanedStart 确认退出一支 ⇒ status.json 为 null 的规范化字段按 startRun 已取到的值补上', async () => {
+  const ctx = await fakeCtx();
+  const s = await seedOrphan(ctx, 'R-C158-ORPH3', { lockAsWorker: true });
+  await captureStderr(() =>
+    settleOrphanedStart({
+      ctx, topic: TOPIC, stage: 'plan', runId: 'R-C158-ORPH3', layout: s.layout, runDir: s.runDir, lock: s.lock,
+      born: { pid: FAKE_WORKER, watch: watchOf(true) }, workerStartedAt: 'T-worker', workerStartedAtCanonical: 'C-worker',
+      error: new Error('EISDIR'),
+      terminate: async () => ({ gone: true, escalated: false, signals: ['SIGTERM'] }),
+    }),
+  );
+  const st = await readStatus(s.runDir);
+  assert.equal(st?.phase, 'failed');
+  assert.equal(st?.worker_started_at_canonical, 'C-worker');
+});
+
+/** W 下起假 worker 并把 status.json 的两种启动时刻都按 W 写（新版写下的样子）；legacyOnly 时删掉规范化字段（旧版写下） */
+async function seedRunUnderW(ctx: Ctx, runId: string, o: { legacyOnly?: boolean } = {}) {
+  const r = await withEnv(ENV_W, () => seedRun(ctx, runId));
+  await assertEnvPairDistinct(r.pid);
+  const s = (await readStatus(r.runDir))!;
+  const t = await withEnv(ENV_W, () => processStartTimes(r.pid));
+  s.worker_started_at = t.legacy;
+  if (o.legacyOnly) delete s.worker_started_at_canonical;
+  else s.worker_started_at_canonical = t.canonical;
+  await writeStatus(r.runDir, s);
+  return r;
+}
+
+test('EV-158 C5 / C6：--cancel 主路径在与 --start 不同的环境里——新版记录 ⇒ 向活 worker 发 SIGTERM 并确认退出、收尾 cancelled；旧版记录 ⇒ 仍当它已不存在（今天的行为）', async () => {
+  const ctx = await fakeCtx();
+  const r = await seedRunUnderW(ctx, 'R-C158-CANCEL');
+  try {
+    const { value, err } = await captureOut(() => withEnv(ENV_R, () => cancelRun(ctx, 'R-C158-CANCEL')));
+    assert.equal(value, EXIT.OK);
+    assert.match(err, new RegExp(`向工作进程组 ${r.pid} 发送 SIGTERM`), err);
+    assert.doesNotMatch(err, /已不存在，仅做状态与锁的清理/, err);
+    for (let i = 0; i < 40 && (await processAlive(r.pid)).alive; i++) await new Promise((res) => setTimeout(res, 50));
+    assert.equal((await processAlive(r.pid)).alive, false, 'b 格：worker 被结束');
+    assert.equal((await readStatus(r.runDir))?.phase, 'cancelled');
+  } finally {
+    killQuietly(r.pid);
+  }
+
+  const ctx2 = await fakeCtx();
+  const old = await seedRunUnderW(ctx2, 'R-C158-CANCEL-OLD', { legacyOnly: true });
+  try {
+    const { err } = await captureOut(() => withEnv(ENV_R, () => cancelRun(ctx2, 'R-C158-CANCEL-OLD')));
+    assert.match(err, new RegExp(`工作进程 ${old.pid} 已不存在，仅做状态与锁的清理`), 'd 格：旧记录在异环境下仍判错（EV-158 的残余，升级窗口）');
+    assert.equal((await processAlive(old.pid)).alive, true, 'd 格：没有对它发信号');
+  } finally {
+    killQuietly(old.pid);
+  }
+});
+
+test('EV-158 U9（D6）：失联后取消那一格判 mismatch ⇒ 告警按比对依据分写，两种依据下都不对 worker 与记录里的 CLI 发信号', async () => {
+  const c = childProcess.spawn('sh', ['-c', 'sleep 600; : "$0"', `trivium-c158-u9-${process.pid}-${Date.now()}`], { detached: true, stdio: 'ignore' });
+  c.unref();
+  const pgid = c.pid!;
+  let started: string | null = null;
+  for (let i = 0; i < 20 && !started; i++) {
+    started = await processStartTime(pgid, { canonical: true });
+    if (!started) await new Promise((res) => setTimeout(res, 50));
+  }
+  try {
+    // basis = canonical：规范化值不符（PID 复用 / 取不到）——不再提环境
+    let r = await notThisCell('R-C158-U9-C', (s) => {
+      s.worker_started_at_canonical = 'Thu Jan  1 00:00:00 1970';
+      s.sides.gemini!.cli = { pgid, started_at: started };
+    });
+    assert.match(r.err, /上有活进程，但启动时刻与 status\.json 的规范化记录不符：PID 已被复用，或本次取不到它的启动时刻——不对它发信号，本次也未结束它名下的审查员 CLI/, r.err);
+    assert.doesNotMatch(r.err, /TZ \/ 区域设置|BACKLOG EV-158|按记录结束审查员 CLI/, r.err);
+    assert.match(r.out, /但工作进程的身份与记录不符，未对工作进程与它名下的审查员 CLI 发信号/);
+    assert.ok(groupMemberCount(pgid) > 0, 'basis = canonical 的 mismatch 同样不结束记录里的 CLI');
+    // basis = legacy：旧版写下的记录——原句逐字保留，句末补成因
+    r = await notThisCell('R-C158-U9-L', (s) => {
+      s.worker_started_at = 'Thu Jan  1 00:00:00 1970';
+      delete s.worker_started_at_canonical;
+      s.sides.gemini!.cli = { pgid, started_at: started };
+    });
+    assert.match(r.err, /也可能是本命令的 TZ \/ 区域设置与 --start 不同（BACKLOG EV-158）——不对它发信号/, r.err);
+    assert.match(r.err, /这份记录没有规范化启动时刻——由升级前的旧版写下，或写时取不到——所以只能按缺省环境比较/, r.err);
+    assert.doesNotMatch(r.err, /按记录结束审查员 CLI/, r.err);
+    assert.ok(groupMemberCount(pgid) > 0);
+  } finally {
+    killGroup(pgid);
   }
 });

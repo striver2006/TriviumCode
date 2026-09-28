@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto';
 import type { Stage } from './types.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { ensureDir, exists } from './util/fsx.js';
-import { processAlive, processStartTime } from './util/exec.js';
+import { processMatchesRecord, processStartTime } from './util/exec.js';
 import { warn } from './util/log.js';
 
 export interface LockContent {
@@ -26,11 +26,51 @@ export interface LockContent {
   stage: Stage | null;
   run_id: string | null;
   pid: number;
-  /** 持锁进程的启动时刻，用于识别 PID 复用（GLM-04） */
+  /** 持锁进程的启动时刻（持锁进程的缺省环境下取），用于识别 PID 复用（GLM-04） */
   pid_started_at: string | null;
+  /**
+   * 持锁进程的**规范化**启动时刻（`processStartTime(…, { canonical: true })`，EV-158，worker启动时刻规范化计划 r2 §4.1）。
+   * null = 写时取不到；缺席 = 旧版写的。有它时 `judgeStale` 只按它比，与持锁者、判定者各自的 TZ / 区域设置无关；旧版读者忽略这个键。
+   */
+  pid_started_at_canonical?: string | null;
   acquired_at: string;
   /** 长持锁（工作进程）还是短临界区（状态文件读改写） */
   kind: 'run' | 'critical';
+}
+
+/**
+ * 把 `--start` 拿到的锁内容改写成工作进程的（EV-158，计划 r2 §4.2 D4）。`startRun` 与 `settleOrphanedStart` 两处都经它。
+ *
+ * **四个键都显式覆盖，新字段值为 null 也写 null**：入参 `content` 是 `--start` 自己 `acquireLock` 写下的，带着 `--start` 进程的
+ * `pid_started_at_canonical`。只覆盖 `pid_started_at` 的话，锁就成了「worker 的 pid + `--start` 的规范化启动时刻」——
+ * `judgeStale` 按规范化比、判 `pid_reused`，下一个 `--start` 会把活 worker 的锁当遗留锁回收。
+ * 两处调用方都以非原子的 `fs.writeFile` 落盘：并发者撕裂读判 `unparsable`，由 `acquireLock` 对修改不足 2 s 的不可解析锁
+ * 不回收的防御兜住（计划 r2 §7.5，代码双审 r1 CODEX-03）。
+ */
+export function workerLockContent(
+  content: LockContent,
+  w: { runId: string; pid: number; startedAt: string | null; startedAtCanonical: string | null },
+): LockContent {
+  return {
+    ...content,
+    run_id: w.runId,
+    pid: w.pid,
+    pid_started_at: w.startedAt,
+    pid_started_at_canonical: w.startedAtCanonical,
+  };
+}
+
+/**
+ * 本进程的规范化启动时刻，进程内缓存（EV-158，计划 r2 §4.2 D5）：`withGlobalLock` 争用时每次尝试都重建锁内容，
+ * 不缓存就是每次多一次 `ps` 派生。进程的启动时刻终生不变、规范化形态与环境无关，缓存不改语义；取不到（null）不缓存。
+ * 缺省形态**不**缓存——它随 `process.env` 变，缓存就改了今天的行为。
+ */
+let selfCanonicalCache: string | null = null;
+async function selfCanonicalStartTime(): Promise<string | null> {
+  if (selfCanonicalCache !== null) return selfCanonicalCache;
+  const t = await processStartTime(process.pid, { canonical: true }).catch(() => null);
+  if (t !== null) selfCanonicalCache = t;
+  return t;
 }
 
 export interface LockHandle {
@@ -77,7 +117,11 @@ export async function judgeStale(
   // 锁文件存在但内容坏了：无法判定持有者，只能视为遗留（否则永久锁死）
   if (!lock) return 'unparsable';
 
-  const live = await processAlive(lock.pid, lock.pid_started_at);
+  // 有规范化启动时刻就只按它比，没有（旧版写的）退回缺省环境比较（EV-158）
+  const live = await processMatchesRecord(lock.pid, {
+    canonical: lock.pid_started_at_canonical,
+    legacy: lock.pid_started_at,
+  });
   if (!live.alive) return 'pid_gone';
   // PID 存在但启动时刻不符 → 是被复用的无关进程，不是原持有者
   if (!live.sameProcess) return 'pid_reused';
@@ -169,6 +213,7 @@ export async function acquireLock(opts: AcquireOptions): Promise<LockHandle> {
       run_id: opts.runId ?? null,
       pid: process.pid,
       pid_started_at: await processStartTime(process.pid),
+      pid_started_at_canonical: await selfCanonicalStartTime(),
       acquired_at: new Date().toISOString(),
       kind: opts.kind ?? 'critical',
     };

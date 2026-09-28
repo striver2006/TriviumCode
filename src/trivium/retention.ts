@@ -19,8 +19,8 @@ import { promises as fs } from 'node:fs';
 import type { Config } from './types.js';
 import { runRoot } from './config.js';
 import { repoId } from './review.js';
-import { cliGroupsConfirmedGone, isTerminal, readStatus, workerConfirmedGone, type RunStatus } from './status.js';
-import { processAlive } from './util/exec.js';
+import { cliGroupsConfirmedGone, isTerminal, readStatus, workerConfirmedGone, workerStartOf, type RunStatus } from './status.js';
+import { processMatchesRecord } from './util/exec.js';
 import { RUN_DIR_FILES } from './run-files.js';
 import { scrubDidWork, scrubRunDir, sideLayerPending, type AdapterLookup } from './scrub.js';
 
@@ -98,7 +98,8 @@ const emptyTally = (): ScrubTally => ({
  */
 async function workerStillAlive(status: RunStatus | null): Promise<boolean> {
   if (!status || isTerminal(status.phase) || !status.worker_pid) return false;
-  const a = await processAlive(status.worker_pid, status.worker_started_at ?? null);
+  // 身份判据与 workerConfirmedGone 同源：有规范化启动时刻只按它比（EV-158）
+  const a = await processMatchesRecord(status.worker_pid, workerStartOf(status));
   return a.alive && a.sameProcess;
 }
 
