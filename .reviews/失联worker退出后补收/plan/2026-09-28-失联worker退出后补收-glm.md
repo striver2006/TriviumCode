@@ -1,0 +1,148 @@
+---
+schema: trivium.review.v1
+topic: 失联worker退出后补收
+stage: plan
+role: glm
+vendor: zcode
+agent_cli: zcode/0.16.9
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260928T142320Z
+rerun_index: 1
+snapshot_hash: sha256:a34b837f32a723aa17574328616613326534c7c1f1394d1018e2dbc71a3958ad
+blind: true
+started_at: 2026-09-28T14:23:21.622Z
+finished_at: 2026-09-28T14:32:40.040Z
+duration_s: 558
+tool_calls:
+  read: 12
+  grep: 11
+  glob: 3
+  run_command: 0
+  project_reads: 14
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 2
+  minor: 2
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: sess_9a06fb75-e69f-4eca-97e1-a90b9d479f17
+---
+
+# 计划审查：失联worker退出后补收
+
+> Critic-B · 智谱 ZCode ｜ 模型 `bigmodel-coding-plan/GLM-5.3`
+> ｜ 运行 `20260928T142320Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+最危险的一条在 §5.4 A1：步骤按字面次序（先 kill -9、再让旧版 --wait 判失联）搭不出 gone 格现场——interpretStatus 判进程死亡优先于判心跳过期（status.ts:417），旧版会写下 pid_gone 而非 heartbeat_stale，新 --cancel 落 none 格说「无需取消」，A1 的判据无法达成。其次 §3.3 finalizeGoneWorker 的结论句无条件宣称「已按前提补收」，在可重入再跑（步骤行说「已是终态，不追溯改写」）与写失败（步骤行 warn「未回写」）两种结局下都不实，违背用户决策 6，且 §5.1 N2/G2 的断言与谎报结论共存、咬不住。两条 minor：§3.2 noSecondChance 新文案首句自相矛盾（前半句否定可重试、括号内肯定）；§5.3 M8 依赖的「G1 输出顺序断言」在 §5.2 没有承诺，按现规格 M8 无牙。方向本身核实为安全：no_identity 收窄不引入新判定能力、幂等与两写者防护已有机制兜住、现状引文与全部锚点抽查属实。
+
+**结论**：`request-changes`
+
+## 审查意见（共 4 条：重要 2 ｜ 次要 2）
+
+### GLM-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5.4 A1（对照 src/trivium/status.ts:413-420）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：A1 的构造次序按字面执行会判错失联原因：步骤列为「心跳阈值调小 + 强杀 worker（kill -9）；旧构建 --wait 判 heartbeat_stale」，但 interpretStatus 在情形 C 里先查进程、后查心跳——进程已死时无条件判 pid_gone（status.ts:417，注释明说「无论心跳是否还新鲜」）。先杀再判 ⇒ 旧版写下的 lost.reason 是 pid_gone，新构建 --cancel 的 classifyLostCancel 首行（lost?.reason !== 'heartbeat_stale'，run-protocol.ts:1423）落 none 格、输出「无需取消」——A1 自己的判据（补收为 failed、输出不说无需取消）无法成立。可行次序必须是：worker 仍活时旧版 --wait 判 heartbeat_stale（此刻旧版自身的补收因 workerGone=false 跳过、run.json 停在 running，正是要的现场），随后才 kill -9，再跑新 --cancel。§5.2 G1 正是这个次序（「造出 heartbeat_stale 现场（worker 与两侧 CLI 组都活着）……直接按组 SIGKILL」），A1 文本与之矛盾。
+
+**依据**：src/trivium/status.ts:413-420：`if (!live.alive || !live.sameProcess) return { kind: 'worker_lost', reason: 'pid_gone' };` 位于 `if (stale) return { kind: 'worker_lost', reason: 'heartbeat_stale' };` 之前；test/integration/run-protocol.test.ts:846-852（K2-GONE）实证 worker 已死 ⇒ lost.reason 为 pid_gone；计划 §5.4 A1 与 §5.2 G1 原文对照。
+
+**建议**：A1 步骤改写为「旧版 --wait 在 worker 仍活时判 heartbeat_stale 并写 status.json + lost（其自身补收因 workerGone=false 跳过）→ kill -9 → 新构建 --cancel」，并明确「强杀必须发生在失联判定之后」这一时序约束；A3（复用 A1 产物）随之成立。
+
+### GLM-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.3 finalizeGoneWorker 草案` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：结论 say() 无条件说「工作进程 N 已不在，已按前提补收归档 run.json 与运行登记」，在两种真实结局下不实：① 可重入再跑——两步各自走 skip（「已是终态（failed），不追溯改写」），结论仍宣称已补收，同一次输出自相矛盾；② 写失败——步骤行 warn「归档 run-…json 未回写」，结论仍说已补收，这是失败路径上的主动误导。直接违背用户决策 6「输出按事实说（补收了/按前提跳过/写失败）」。且 §5.1 N2 / §5.2 G2 的断言（匹配「已是终态…不追溯改写」、不匹配「无需取消」）与谎报结论可以同时成立——现有测试规格咬不住这句话。
+
+**依据**：计划 §3.3 草案：finalizeLostAndReclaimLock 返回 void，结论句不依赖两步结果；src/trivium/meta.ts:690（已是终态 ⇒ skip）、:676（无文件 ⇒ skip）；src/trivium/run-protocol.ts:1363-1377（reportFinalizeStep 三态分流 step/warn）；对照 alive 格结论句 run-protocol.ts:1587「归档 run.json 与运行登记见上方输出」——不替步骤行下结论的既有范式。
+
+**建议**：结论句按 fin 两步的实际结果分流（补收了 / 按前提跳过 / 写失败），或照 alive 格 :1587 改为「见上方输出」式的指路句；N2/G2 补一条「结论句与步骤行不矛盾」的断言防回归。
+
+### GLM-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3.2 noSecondChance 新文案` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：草案首句自相矛盾：「这一步没写成可以再跑一次 --cancel 重试（status.json 已是终态，但只要 run.json 仍为 running，再跑一次仍会落进同一格并重试这一步，EV-159 起可重入）」——前半句否定可重试、括号内肯定可重试。这句正是用户决策 6 点名要改准的「能不能重试」，N4 还要断言「文案里说明重试而不是没有第二次机会」，含混首句可能被正则误放行。
+
+**依据**：计划 §3.2 代码草案原文；对照被替换的现行原文 src/trivium/run-protocol.ts:1563-1565「这一步不会再有第二次机会：status.json 已是终态、工作进程已不在，再跑 --cancel 不会补这一步（BACKLOG EV-159）」——本次改写的目的就是翻转这句话的真值。
+
+**建议**：首句改为肯定形态（如「这一步可以再跑一次 --cancel 重试」），保留「持续性故障（比如目录只读）重试不自愈、请人工核对」的后半句；K9/N4 断言对齐新文案。
+
+### GLM-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5.3 M8 ↔ §5.2 G1` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：M8 变异（finalizeGoneWorker 提到 CLI 结束块之前、改变接线顺序）的「预期咬住」列写着「集成 G1 的输出顺序断言」，但 §5.2 G1 的判据只列结果事实（CLI 两组按记录结束、run.json 补收、task.json 同步、锁回收、status.json 与闸门不动），没有承诺任何输出顺序断言——按现规格 M8 变异后全部既有断言仍绿，M8 无牙。§3.4 把「排在 CLI 结束块之后」列为刻意设计，说明这是需要守卫的行为。
+
+**依据**：计划 §5.2 G1 判据清单与 §5.3 M8 行对照；§3.4「顺序刻意排在 CLI 结束块之后」的论证段；§5.1 N1 同样只断言结果不断言次序。
+
+**建议**：G1 显式加一条顺序断言（如合并输出中「按记录结束审查员 CLI」的位置先于「已把归档里的 run-…json 收尾为 failed」），并在 §5.3 M8 行里指名该断言。
+
+## 认为正确的部分
+
+- §3.1 收窄的安全性论证核实无误：processAlive 的 .alive 由 kill(pid,0)（util/exec.ts:508-515）在「期望为假值即相符」quirk 早退（:519）之前算出，只取 .alive 不受 quirk 影响；PID 复用方向落在 alive ⇒ no_identity（安全侧），不会误进 gone。
+- 幂等与两写者防护核实：unfinishedRunMetaStep「已是终态 ⇒ skip」（meta.ts:690）、「归档里没有文件 ⇒ skip」（:676），task 步按 run.json 终态独立判定（:717-727）；且读-判-写整段在主题任务锁里（meta.ts:669-670，EV-142），两个 --cancel 并发已被既有机制串行化——新增 gone 入口不需要新并发机制。
+- §4.5 第二形态暂缓的论证成立：与 worker 异常分支补收失败同构（均无 lost、结构化字段逐位相同），误写 termination 不可逆；与 BACKLOG EV-159 的 EV-158 注记 ①②③④ 逐点对上（严格形态经 classifyLostCancel 的 !live.alive 实现；legacy 假阳性被 mismatch 格挡住；无 lost 照旧；秒级精度不碰）。
+- 现状引文与锚点抽查全部属实：§1 三段代码引文与行号（run-protocol.ts:1421-1438/:1611-1670/:1486-1589）、:1344「只有一格例外」、K4/K5′/K8/K9 断言原文与行号（test/integration/run-protocol.test.ts:905/:1007-1028/:1108/:1124）、MANUAL_user.md:651/:657、LLD_orchestrator.md:478/:601、设计文档当前 v1.3.55（EV-146 段在 :1479 标 v1.3.54，新增 v1.3.56 推演正确）、五个测试助手与 lostHungRun/J1、mutation-check.mjs 与既有证据骨架均在。
+- D-B 抽共享函数、D-C 不重复 CLI 结束、接线排在 CLI 结束块之后的次序论证，均与代码事实一致（两处第 4/5 步逐字相同；CLI 结束判据 cell.kind !== 'mismatch'' 本就覆盖 gone 格）。
+- K5′ 的 R-K5P-N 场景确实无 seedArchive（test/integration/run-protocol.test.ts:1008-1020 只调 fakeCtx+seedRun），新增 gone 补收在该场景走「归档里没有 run-….json」跳过分支，既有 assert.match 不受影响——计划 §1.5 的判断核实无误。
+
+## 未覆盖范围（本侧盲区）
+
+- §4.5 中「worker 异常分支不写 lost、其补收失败与第二形态同构」的半边只对照了设计文档（:1131）与 status.ts 的 lostOf/WORKER_LOST_REASONS（:341-356），未逐行读 workerMain 的 catch 分支原文。
+- 任务目标提到的三份记忆文件（m10b-next-after-ev82.md、pipeline-known-pitfalls.md、reply-in-chinese.md）在本会话的记忆目录中不存在，未能预读。
+- 未运行任何构建/测试（计划阶段只读审查）；§5.3 变异锚点的可截取性只确认 gen-mutation-spec.mjs 存在，未读其实现。
+- PRD 未全文核对（计划自己也标注实施时再核）；PROTOCOL_dual_critic_relay.md「无锚点」采信计划的 grep 结论未复核。
+- G1 在 gate-loop.test.ts 的落地细节（按组 SIGKILL 的助手、计时上界）只确认 lostHungRun 与相关 helper 存在，未逐一读实现。
+
+## 实际查阅的项目文件
+
+- `.reviews/失联worker退出后补收/plan/2026-09-28-失联worker退出后补收-claude.md`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/util/exec.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/status.ts`
+- `test/integration/run-protocol.test.ts`
+- `test/integration/gate-loop.test.ts`
+- `doc/02_design/LLD_orchestrator.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/07_manuals/MANUAL_user.md`
+- `doc/08_project/BACKLOG.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":12,"grep":11,"glob":3,"run_command":0,"project_reads":14}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*
