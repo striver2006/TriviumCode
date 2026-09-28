@@ -1,0 +1,175 @@
+---
+schema: trivium.review.v1
+topic: 失联后取消挂住的worker
+stage: plan
+role: glm
+vendor: zcode
+agent_cli: zcode/0.16.9
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+model_route: config_copy
+run_id: 20260928T044009Z
+rerun_index: 1
+snapshot_hash: sha256:22f1530bd6db325cce58d03905b239103bfc8895a565b64fd771a4fae0356259
+blind: true
+started_at: 2026-09-28T04:40:11.391Z
+finished_at: 2026-09-28T04:51:35.575Z
+duration_s: 684
+tool_calls:
+  read: 27
+  grep: 9
+  glob: 2
+  run_command: 0
+  project_reads: 22
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 2
+  nit: 3
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: sess_a2a531dc-ae7c-4667-87c3-089be26c3b7c
+---
+
+# 计划审查：失联后取消挂住的worker
+
+> Critic-B · 智谱 ZCode ｜ 模型 `bigmodel-coding-plan/GLM-5.3`
+> ｜ 运行 `20260928T044009Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+最危险的一条（GLM-01，minor）：「闸门不动」的前提「--wait 判失联时已回收」存在毫秒级中断窗口——waitRun 写 failed+lost（run-protocol.ts:1173）与回收闸门（:1184）之间被打断时，本格 cancel 清完 worker/run.json/锁后独留 running 闸门，Driver 业务写入被 hook 拦到下次会话启动的 sweepDeadRunningGates 或 TTL 才解；建议只在 §7.5 如实保留，不改行为。GLM-02（minor）：classifyLostCancel 未显式排除空串/非字符串 worker_started_at，而 processAlive 对假值 expectedStartedAt 给 sameProcess:true（exec.ts:515），会让本格对未经身份核验的 pid 发 SIGKILL，与本格「身份判不上就不发信号」自相矛盾，判据应收紧。其余三条 nit 是引用与表述精度（GLM-03 文件归属、GLM-04 no_status_file 落不了盘、GLM-05 U8 指代）。计划其余部分质量高：W1–W5/C1–C5 现状断言、常量值、积木签名、测试助手与既有用例行号我逐条对源码核实全部相符；D1/D2/D5/D6 的取舍论证有代码佐证；C8 回滚方向（--status --json 原样透出，cli.ts:479）成立。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 5 条：次要 2 ｜ 吹毛求疵 3）
+
+### GLM-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.4 第 6 步与 §7.5（对照 src/trivium/run-protocol.ts:1173-1184）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：「闸门不动（--wait 判失联时已回收）」把一个有中断窗口的前提说成了无条件事实。waitRun 失联分支里写 failed+lost（:1173-1177 的 patchStatus）与回收闸门（:1184 的 releaseRunningGate）是两次独立写入，中间被 Ctrl-C/信号打断时：failed+lost 已落盘、worker 仍活，本格 --cancel 会结束 worker、补收 run.json、回收锁——唯独闸门停在 running。cancelRun 主路径的注释（:1472-1475）与 meta.ts:621 都写明这个状态「会把 Driver 永久锁在一个已经不存在的运行上」（业务写入被 hook 拦）。自愈路径存在但不显眼：下次会话启动的 sweepDeadRunningGates（hooks.ts:1715-1764）按「running 且 worker 已死」回收，shouldLockWrites 另有 TTL 兜底。计划 §7.5 列了同量级的毫秒窗口（判定与发信号之间、本格第 2 步到第 4 步之间），唯独漏了这一条，且再跑 --cancel 也永远走不到收闸门（终态分支）。注：同窗口今天的后果更差（闸门、worker、锁全卡），本主题是严格改进——问题只在如实保留清单缺项，不在行为。
+
+**依据**：src/trivium/run-protocol.ts:1173-1184（写 failed 与 releaseRunningGate 两步无原子性）、:1472-1490（主路径 --cancel 收闸门及其理由注释）；src/trivium/meta.ts:621（闸门卡 running 的后果）；src/trivium/hooks.ts:1715-1764（sweepDeadRunningGates 的自愈路径与 TTL 注记）；被审计划 §4.4 第 6 步、§7.5
+
+**建议**：不必改行为（用户决策 4 已定闸门不动）：在 §7.5 如实保留清单补一行——「--wait 死在写 failed 与回收闸门之间时，闸门停在 running，本格不收，留待下次会话启动的 sweepDeadRunningGates 或 approval_lock TTL 解开」。若 Driver 认为本格应复用 releaseRunningGateEntry（带 expect { state: running, runId } 守卫，只回收本 run 的 running 闸门、新一轮已接管时不误伤），那是对用户决策 4 的重开，须单独提请用户裁决，不要在实施时顺手做。
+
+### GLM-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.3 classifyLostCancel（对照 src/trivium/util/exec.ts:514-515）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：判格的身份判据只写「缺任一项 ⇒ no_identity」，未显式排除 worker_started_at 为空串（或非字符串）的形态。processAlive 在 expectedStartedAt 为假值时直接返回 sameProcess: true（exec.ts:515，`if (!expectedStartedAt) return { alive: true, sameProcess: true, … }`）——若实现按 `!= null` 判「有身份」，空串会让判格得 alive，对一个未经身份核验的 pid 走 SIGTERM→SIGKILL 链。这与本格自己立的两条 fail-safe 原则方向相反：形状坏的 lost 读不懂就当没有（§4.1）、不回落 worker.pid 正是因为「身份缺失 = 相符」不可接受（§4.3 自己引用了这一行为）。同一形态在 workerConfirmedGone 等既有消费方同样存在，但那些不主动发信号；本格是发 SIGKILL 的一格，判据应显式收紧。手改/未来版本写坏 status.json 才会触发，故 minor。
+
+**依据**：src/trivium/util/exec.ts:514-515（expectedStartedAt 假值 ⇒ sameProcess: true，无需比对）；被审计划 §4.3（判据只列「缺任一项」，未含非空/类型校验）、§4.1（lostOf 形状坏即当没有的口径）
+
+**建议**：把「有身份」显式定义为：worker_pid 为正整数、worker_started_at 为非空字符串，否则归 no_identity（与 lostOf / cliRecordsOf 的形状校验同族）；U5 相应加一格——started_at 置空串 ⇒ no_identity + 告警、假 worker 不被发信号（可并入 U5⑤ 的参数化）。
+
+### GLM-03 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §1.4 第 3 行` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：「run-protocol.test.ts :1388 的『--cancel 已终态的运行：不改写历史』」文件归属错误：该用例实际在 test/integration/gate-loop.test.ts:1388（标题为「--cancel 已终态的运行：不改写历史、不动闸门（审查意见 GLM-04）」），而 run-protocol.test.ts 全文只有 772 行，行号越界。§5.2 里同一「:1388」出现在 gate-loop 语境（EV-152/EV-154/EV-142 系列之间）则是对的——两处不一致，实施者按 §1.4 去错误文件找会扑空，还可能误判用例不存在。
+
+**依据**：test/integration/gate-loop.test.ts:1388（用例在此，逐字核对）；test/integration/run-protocol.test.ts 全文 772 行（读取时确认，1375 偏移已越界）
+
+**建议**：§1.4 该行的出处改为 gate-loop.test.ts :1388。
+
+### GLM-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §4.1「三种原因都记（事实就是事实）」` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：「三种原因都记」对 no_status_file 在实现上不可达：该原因只在 status.json 文件不存在时产生（status.ts:339-348 情形 A，且仅当连 fallbackPid 都没有），而记 lost 的唯一通道是 patchStatus 的读改写——readStatus 为 null 时 mutate 根本不执行（status.ts:130-140），lost 无处落盘，事实只进报错正文。U2 也只对 heartbeat_stale 与文件存在那一支的 pid_gone 断言记录。无功能影响（消费方只认 heartbeat_stale），但计划把一个写不进去的写入说成了设计事实，报告与文档同步时可能照抄。
+
+**依据**：src/trivium/status.ts:339-348（no_status_file ⇒ 文件缺席）、:130-140（patchStatus 读不到 status.json 即返回 null，mutate 不跑）
+
+**建议**：把该句改为「三种原因都记；其中 no_status_file 时 status.json 本就不存在，patchStatus 无处写，该事实只进报错正文」。
+
+### GLM-05 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §1.3 第 2 条「（U8 守）」` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：「预算 WORKER_TREE_GRACE_MS + WORKER_TREE_KILL_WAIT_MS + 500 落在 WORKER_TERM_GRACE_MS 之内（U8 守）」的「U8」指代错误：本计划 §5.1 的 U8 是「再跑一次 ⇒ 终态早退」，不守信号预算；守预算的是上一主题留下的既有用例（应落在本计划 §5.2「既有须保持绿」清单内的 EV-152 系列）。沿用了上一稿的用例编号而不给出处，读者对不上号。
+
+**依据**：被审计划 §5.1 U8（内容为再跑一次的早退断言，与信号预算无关）；src/trivium/run-protocol.ts:884（处理器看门狗预算即该三常量之和 +500）
+
+**建议**：括注改为指向 §5.2 既有清单里的具体用例（EV-152 I1/I2 或实际守预算的那条）。
+
+## 认为正确的部分
+
+- §1 现状断言逐条与 50cb380 源码相符，行号精确：W1（interpretStatus :327-371，情形 C 先判 pid_gone）、W2（waitRun 失联分支的次序：finalize → patchStatus failed → releaseRunningGate → 凭据准入 → 抛错）、W3（HEARTBEAT_MS 30s 不可配、heartbeat_stale_s 缺省 120、patchStatus 保留未知键）、W5（judgeStale 对活进程仅 runTerminal 时回收；70 报错原文在 lock.ts:216-221 逐字一致）、C1（终态分支 :1354-1367）、C2（主路径 killWaitMs:0 :1386-1394）、C4（主路径锁只比 run_id :1467-1468 vs EV-150 双比 :712-716）、ORPHAN_KILL_CONFIRM_MS 的 :58-64 文档块原文。
+- D1/D2 的取舍成立：不回落 worker.pid 的论证有 exec.ts:515 佐证；lost 形状坏即当没有，与 EV-154「形状坏的 CLI 记录不发信号」同一 fail-safe 口径；D2 拒绝另立规范化锚点的理由（同一条 --cancel 里两套身份判据互相矛盾）与 workerConfirmedGone 的实际行为一致。
+- D5 只改 description 不动枚举可行：run.v2.json 的 status（:471）/termination（:480）description 落点存在，termination.by 的 oneOf 常量、reason 枚举与 WORKER_LOST_REASONS 逐项相等、「只增不减」注记核实，S2/S3 不受影响。
+- D6 退出码论证属实：主路径 cancelRun 即便 SIGKILL 后未确认退出也无条件 EXIT.OK（:1493），本格两种结局退 0 与之同口径。
+- C8 回滚方向可行：--status --json 原样透出整个 status 对象（cli.ts:479），readStatus 不校验未知键，旧构建对带 lost 的 status.json 会透传且 --cancel 走终态早退不报错。
+- 测试设计可测性强且依赖真实存在：U5①（message 恰为 human 文案证明不解析）、U5⑥（形状坏）、逐字节比较、N11 变异对 U6；fakeCtx/seedRun/seedArchive/holdLock/staleHeartbeat/captureStderr 全部在 run-protocol.test.ts 中真实定义；引用的既有用例行号（L2 :427、gate-loop :949/:2638/:2668）全部对上；J1 期望的两行「按记录结束审查员 CLI」与 reportRecordedCliGroups 实际输出（:828）吻合，J2 的「不出声」预期与 gone 记录静默跳过（:819）及 worker 处理器清记录链路（watchTrackedTrees → syncCliRecords）吻合，worker.log 文案（:892）逐字存在。
+- §7.4 EV-142 前提的论证与 meta.ts 实现一致（第一步在主题任务锁内判与写、仍为 running 才写、workerGone 为 observed 退出、worker 异常分支的 terminateProcessGroup 收尾是 soft 不抛）；§7.1 误判代价与 EV-128/EV-150 同窗口的类比成立；§7.3 对 EV-158 两个方向的分析与 workerConfirmedGone 在错配环境判 gone:true 的实际行为相符。
+- EV-159 暂缓的边界写清了假阳性风险（EV-158 方向一会让活 worker 被判已不在 ⇒ 在它活着时写 run.json，正是 EV-142 要防的两写者），BACKLOG 三条目（EV-146/157/158）的转述与原文一致，EV-146 的候选修法即本计划所做之事。
+
+## 未覆盖范围（本侧盲区）
+
+- 只读审查：未运行任何构建/测试/探针——全量基线 2188/2186/0/2、doctor 14/14、P1/P2 读数均接受计划自述，未独立复现。
+- 上一主题验收 B3/B6/B8 的原判据未逐字核对（REPORT_2026-09-28_cli_pgroup_record 对应小节只做了定位尝试），C5/C7「照原判据重跑」的等价性以计划自述为准。
+- 变异规格生成脚本（evidence/cli-pgroup-record-20260928/gen-mutation-spec.mjs、mutation-names.mjs）未读，N1–N15 的锚点唯一性与「无前置失败」留待实施期核对。
+- test/unit/status.test.ts 现有内容、test/helpers/proc.ts、types.ts :1488-1510、PROTOCOL/主设计/LLD/MANUAL 的对应章节未读，计划对这些文件的「只改说明文字/不改」判断按引用核实接受；skills/dual-critic/schema/ 下确无 status.json 契约这一点未逐文件验证（按计划自述接受）。
+- 并发双 --cancel 同时落在本格未作为意见提出：reclaimStaleLock 的 rename 竞态有「别人先动手了」兜底（lock.ts:97-127）、finalize 在主题任务锁内仍为 running 才写，与主路径同暴露面，按既有口径接受；跨进程 patchStatus 丢更新（worker 心跳与 --wait 写 failed 竞写）同样系既有形态，且被覆盖时退回主路径取消，语义自洽。
+
+## 实际查阅的项目文件
+
+- `.reviews/失联后取消挂住的worker/plan/2026-09-28-失联后取消挂住的worker-claude.md`
+- `CLAUDE.md`
+- `AGENTS.md`
+- `README.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `doc/08_project/BACKLOG.md`
+- `src/trivium/status.ts`
+- `src/trivium/lock.ts`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/util/exec.ts`
+- `src/trivium/meta.ts`
+- `src/trivium/state.ts`
+- `src/trivium/hooks.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/config.ts`
+- `src/trivium/report.ts`
+- `src/trivium/adapters/stub.ts`
+- `test/integration/run-protocol.test.ts`
+- `test/integration/gate-loop.test.ts`
+- `skills/dual-critic/schema/run.v2.json`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":27,"grep":9,"glob":2,"run_command":0,"project_reads":22}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

@@ -1,0 +1,71 @@
+{
+  "agreed": [
+    "在 status.json 中新增结构化字段 lost: { reason, at }，由 --wait 判定 worker_lost 时一次性写入，不解析 message 人读文案，且对未知字段自然保留，契约扩展平滑且向后兼容。",
+    "身份判据严格要求 status.json 中的 worker_pid 与 worker_started_at 同时存在且经 processAlive 校验，坚决不回落 worker.pid 文件，有效防范了 PID 复用场景下的误杀风险。",
+    "动作次序严谨：先结束工作进程并强制等待确认退出（ORPHAN_KILL_CONFIRM_MS），确认退出后再补收 run.json/task.json 登记，最后按 run_id + pid 双重校验回收主题锁，严格遵守 EV-142 不变量并消除了新一轮运行抢锁时的并发覆盖竞态。",
+    "克制且自洽的边界设计：status.json 坚持终态不追溯改写，凭据副本交由后续清扫放行处理；将 c″-已死格暂缓新登为 EV-159 的理由充分（防止在 EV-158 错配环境下因假阴性引发双写者冲突）。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/失联后取消挂住的worker/plan/2026-09-28-失联后取消挂住的worker-claude.md",
+    "src/trivium/status.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/types.ts",
+    "src/trivium/report.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "doc/05_testing/REPORT_2026-09-28_cli_pgroup_record.md",
+    "test/integration/gate-loop.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅了计划 §4.3 代码段（第 147-154 行）、§7.3 方向一，以及 src/trivium/run-protocol.ts:1354-1368 终态早退现有实现和单测 U5④/⑤ 断言。当 classifyLostCancel 返回 mismatch 时，D3 会按记录终止审查员 CLI，但随后直接跌落至 say('运行 ' + runId + ' 已处于终态（failed），无需取消。')。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": ".reviews/失联后取消挂住的worker/plan/2026-09-28-失联后取消挂住的worker-claude.md §4.3",
+      "problem": "classifyLostCancel 异常分支（mismatch 与 no_identity）直接跌落至原有终态早退逻辑，导致终端输出自相矛盾且掩盖了失联未清理状态。在 mismatch（环境错配、活 worker 仍在）下，前置 warn 明确建议用户换环境再跑取消，且 D3 实质性地终止了审查员 CLI，但随后的 stdout 却固定输出「已处于终态，无需取消。已完成的运行不会被追溯改写」。在终端中同时出现「请再跑一次取消」与「无需取消」，让用户误以为系统已认为无需处置或锁已释放，而实际上活 worker 挂住且主题锁未被回收。",
+      "severity": "major",
+      "suggestion": "对失联判定下未入本格的异常格（mismatch 与 no_identity），收敛其终态输出逻辑，避免跌落至正常完成运行的「无需取消」文案。在执行完 D3 结束 CLI 后，输出如实反映当前未清理状态的结论（如说明因身份不符/缺失未予终止工作进程，归档与主题锁未动），消除认知冲突。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅了计划 §4.3；对照了 src/trivium/status.ts:227（cliRecordsOf 对 pgid 的严格判定 typeof r.pgid === 'number' && Number.isInteger(r.pgid) && r.pgid > 1）及 src/trivium/util/exec.ts:576。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/失联后取消挂住的worker/plan/2026-09-28-失联后取消挂住的worker-claude.md §4.3",
+      "problem": "计划在 §4.3 指出「缺任一项 ⇒ no_identity」，但未明确类型判据细节。由于 status.json 没有全局 JSON Schema 严格校验，反序列化可能读入脏数据（如 worker_pid 为字符串、小数、负数，或 worker_pid === 1 即 init/launchd 进程，或 worker_started_at 为空字符串）。若实现时仅做宽松的 falsy 判定（如 !s.worker_pid），遇到 worker_pid === 1 或非数字时可能绕过守卫进而向非法 pid 触发进程判定或发信号。",
+      "severity": "minor",
+      "suggestion": "在 §4.3 明确 classifyLostCancel 的前置类型守卫：要求 typeof s.worker_pid === 'number' && Number.isInteger(s.worker_pid) && s.worker_pid > 1 且 typeof s.worker_started_at === 'string' && s.worker_started_at.trim().length > 0，不满足时一律归入 no_identity。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查阅了计划 §4.4 第 4 步；对照了 src/trivium/run-protocol.ts:1308-1316（reportFinalizeStep）与 src/trivium/meta.ts:591-595（describeFinalizeStepWith）。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/失联后取消挂住的worker/plan/2026-09-28-失联后取消挂住的worker-claude.md §4.4",
+      "problem": "计划 §4.4 第 4 步指出「播报用 describeFinalizeStepWith，『没有第二次机会』那半句换成本格的处境」，但未说明调用端如何分流输出。describeFinalizeStepWith 仅构造单行说明字符串，现有主路径的 reportFinalizeStep 封装了依据 r.kind === 'skipped' && r.error 区分 warn 与 step 的逻辑。本格若未明确定义同形包装函数，实施时易漏掉正常写成（step）与异常跳过（warn）的分流输出。",
+      "severity": "minor",
+      "suggestion": "在 §4.4 明确定义或指出封装类似 reportLostFinalizeStep 的分流函数，对 finalizeFailedRunMeta 返回的 runMeta 与 task 两步依据 r.kind === 'skipped' && r.error 分流至 warn 与 step。"
+    }
+  ],
+  "not_covered": [
+    "未在各厂商 CLI 真实环境下验证心跳超时与进程组退出（严格遵守零配额约束，依赖桩适配器与假 worker 读数）",
+    "未真机测算 EV-158（worker_started_at 区域设置/时区敏感性）在多终端环境下的具体字符差异表现",
+    "未实际执行编译与端到端测试套件（只读审查员权限受限，无执行环境）"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本实施计划整体架构严密、不变量清晰，对 EV-142 并发纪律、身份防复用与释放主题锁时序的推演非常扎实。\n主要问题在于 §4.3 中对 mismatch 与 no_identity 异常分支的处理直接跌落至原有终态早退逻辑，导致命令在终止审查员 CLI 并警告用户换环境重跑后，紧接着在 stdout 宣称「无需取消」，存在明显的文案自相矛盾并掩盖了挂住的 worker 与锁仍未释放的处境。\n此外，针对 status.json 脏数据的 worker_pid 类型守卫与收尾播报的 warn/step 分流建议进一步补强。\n建议修订上述交互与边界定义后通过。",
+  "verdict": "request-changes"
+}
