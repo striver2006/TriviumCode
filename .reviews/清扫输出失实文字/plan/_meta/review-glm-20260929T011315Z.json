@@ -1,0 +1,64 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最危险的一条也只是测试实施细节（T1 整段逐行断言隐含桶内 readdir 顺序假设），方向与范围无可挑剔。两处失实的机制链经代码逐条核实成立：retention.ts 到期分支（:229-234）在 workerStillAlive 之外问 cliGroupsConfirmedGone，malformed 记录永远入 blockers（status.ts :339-341），「或等 run_dir_days 整删」这条出口对「记录读不懂」确实永走不通。§2.3「会话启动第四格核后不改」的论证与 judgeCliGroup 实现一致（先判组长，组长不在即 gone，与 started_at 无关；例外格已由 EV-154/AGY-01 登记）。§1.3「零覆盖」、验收骨架先例（含 hookSessionStart）、文档同步清单完备性（全域 grep 无遗漏，主设计 :3480 与 LLD :7 属历史变更记录）均独立复核无误。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.1（T1 / T2「stdout 整段逐行等于期望」）",
+      "problem": "整段逐行断言隐含第四格两条「因审查员 CLI 未动」行的相对顺序假设，而顺序来源是桶内 fs.readdir——scrubAllRunRoot 只对桶名 buckets.sort()，桶内 entries 未排序，Node 的 readdir 不承诺顺序。既有的 scrub-admission U3 恰好用 Object.fromEntries 做无序比较规避了同一问题；新单测若把 A、D 两行的相对顺序写死进期望串，顺序不稳时 T1/T2 假红且难定位（整段比对只红一行）。",
+      "evidence": "src/trivium/retention.ts 的 scrubAllRunRoot：桶名 buckets.sort()（:318）而桶内 entries 来自 readdir（:323）未排序；test/unit/scrub-admission.test.ts :317 的 U3 以 Object.fromEntries(s.deferredCli.map(...)) 无序断言 detail；plan §4.1 T1 断言 stdout「整段逐行等于」且期望含「两行『因审查员 CLI 未动』」。",
+      "suggestion": "§4.1 写明两行顺序的钉法：按构造目录名的字典序（A/D 前缀命名）并在计划里注明该假设，或对这两行做无序归组后再比对整段。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.1（CLI 组挂起 sh -c 'sleep 120; : \"$0\"'）",
+      "problem": "挂起窗口 120 秒偏短：mutation-check 装置 11 条变异每条都重跑 build --with-tests 加套件，高负载环境下 T1/T2 若超过 120 秒才跑到断言，A 组已退出、第四格消失，整段比对假红。上一主题 evidence 的 hang_cli 桩挂 600 秒。",
+      "evidence": "plan §4.1「CLI 组是真实的 detached sh -c 'sleep 120; : \"$0\"'」与 §4.2「装置每条都跑 build.mjs --with-tests」；doc/05_testing/evidence/cancel-wait-cli-admission-20260929/acceptance.mjs :6 注释——hang_cli 桩以仓库 run() 按 killTree 真实拉起 sh -c 'sleep 600'。",
+      "suggestion": "挂起时长对齐既有桩取 600 秒（或任何远超套件单次运行时长的值），成本为零。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "失实判断成立：retention.ts 到期分支（:229-234）在 workerStillAlive 之外问 cliGroupsConfirmedGone、挡住即 kept 并落回未到期路径；cliRecordsOf 对形状坏记录永远 push 进 malformed（status.ts :339-341、:263-265），cliGroupsConfirmedGone 把 malformed 全部入 blockers——「或等 run_dir_days 整删」对「记录读不懂」永走不通，cli.ts :329 帮助句的失实同源。",
+    "§2.3 会话启动第四格「核后不改」的论证与代码一致：judgeCliGroup 先 process.kill 判组长、组长不在即 gone（status.ts :290-298），与 started_at 无关；「会再判」不承诺放行；组号被活进程占用且 started_at 为 null 的例外已由 EV-154 用户决策 4 / AGY-01 登记，不另登是对的。我独立复核后同意不改。",
+    "§1.3「现有测试零覆盖」属实：test/ 全域 grep 无 cmdScrub 人读输出断言，gate-loop EV-158 I3 只跑 scrub --json（test/integration/gate-loop.test.ts :3039），usage-registry-parity 不涉这两句。",
+    "验证设计的数量声明全部复算一致：T4 的 --json 15 个键（cli.ts :1876-1892 逐一数过）、T5 的 scrub 一节 10 行（:326-335）、§2.2 显示宽度 88→151（CJK 记 2 逐字复算，恰为 151）；四种帮助入口（--help / scrub --help / help / 无参数）都 say(USAGE) 且退 0（cli.ts :1959-1961）。",
+    "验收与变异骨架有直接先例：evidence/cancel-wait-cli-admission-20260929/ 的 acceptance.mjs（git archive 固定基线不写 HEAD、node_modules 软链、TRIVIUM_ASSET_ROOT 各指各的、归一化后逐行多重集差、hookSessionStart 已有实现——B8 有现成形态可照搬）与 gen-mutation-spec.mjs、mutation-names.mjs 齐备；hang_cli 是桩适配器模式（TRIVIUM_STUB_CRITIC 的 mode），在 171e38c 已有，「不叠加任何文件」可行；build.mjs :90 确为 bundle 输出行，--with-tests 重建 bundle 成立。",
+    "文档同步清单无遗漏：全域 grep「或等 run_dir_days 整删／一直躺到／躺到 retention」只命中计划 §1.2/§5 已列的位置，外加三处历史留痕（主设计 :3480 v1.3.58 变更记录、LLD :7 v1.1.16 变更说明行、上一主题 evidence 与报告）——不改是对的，计划以新增 v1.3.59/v1.1.17/v1.0.17 版本行的方式处理正确；skills-src/ 与 skills 正文无引用，仅打包产物 trivium.cjs 随构建自动更新。",
+    "D5（不为可测性重构 cmdScrub、新单测经真实 bundle 跑）与「C 格不进 T1」的裁剪合理：scrub-admission U1/U3 确实把 A/C/D 三格的 why/detail 文字逐字断言（scrub-admission.test.ts :196-226、:309-317），B4 验收覆盖 C 格整行。",
+    "范围忠实于用户决策与 BACKLOG EV-164 登记的候选方案（行数/位置/触发条件不变、验收把两处加进允许差异恰为两对）；makeFixture 的 run_root=${root}-runs（fixture.ts :95）、worker 用已退出 pid、E 放别的项目桶补跨仓一格，现场设计与判据自洽；§6 风险登记（宽度折行、调用方匹配、历史留痕、回滚）覆盖到位，src/ 全域确认两句旧文字只存在于要改的两处、doctor --selftest 实现不断言它们。"
+  ],
+  "not_covered": [
+    "只读审查，未跑任何构建/测试/验收装置：所有「应红」「差恰为一对」的判断是对代码与既有 evidence 形态的静态核对，非实测读数。",
+    "USAGE 其余 157 行与 QUICKSTART、README、PRD 未逐行读，仅按相关短语 grep（无命中）确认不被本主题波及。",
+    "doctor --selftest 的 14 步实现未逐行读（仅 grep 相关短语无命中），确认它不断言这两句。",
+    "验收归一化 \\\\d{3,7} 会吞掉三位数计数差异的边界（B 格对计数类不一致不敏感）未深究——单测 T1/T2 不做数字归一化、逐行精确断言可兜住。",
+    "B4/B5 现场（强杀 worker 后改 status.json 的 started_at 为 null / 记录形状坏）的可操作性沿用上一主题 age() 的同类手法，未在新现场下复演。"
+  ],
+  "consulted": [
+    ".reviews/清扫输出失实文字/plan/2026-09-29-清扫输出失实文字-claude.md",
+    "src/trivium/cli.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/status.ts",
+    "src/trivium/hooks.ts",
+    "scripts/build.mjs",
+    "test/helpers/fixture.ts",
+    "test/unit/scrub-admission.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/evidence/cancel-wait-cli-admission-20260929/acceptance.mjs"
+  ]
+}
