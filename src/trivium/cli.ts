@@ -180,8 +180,7 @@ function rejectExtraPositionals(args: ParsedArgs): void {
   );
 }
 
-// `trivium scrub` 一节里「副本会一直躺到 retention.run_dir_days 整删」自 EV-157 起对「记录里的审查员 CLI 仍在 / 判不了 / 读不懂」的
-// 目录不成立（到期也保留）；清扫子命令的输出（含帮助）属用户冻结面，逐字保留，与第四格提示那一行同登 BACKLOG EV-164 待定（代码双审 r1 CODEX-04）
+// `trivium scrub` 一节的动机句带限定（EV-164）：记录里的审查员 CLI 仍在 / 判不了 / 读不懂的目录到期也保留，不在「躺到整删」之列
 const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编排器
 
 用法：
@@ -326,7 +325,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
   trivium scrub [--dry-run] [--json]
       对**整个运行根**做一次凭据清扫：只抹凭据、**不删任何目录**（BACKLOG EV-33）。
       会话启动清扫只覆盖本项目的桶，别的仓库遗留的副本要等它自己再开一次会话；
-      不再回到那个仓库时，副本会一直躺到 retention.run_dir_days 整删。这条命令补那一格。
+      不再回到那个仓库时，副本会一直躺到 retention.run_dir_days 整删（那一轮记录里的审查员 CLI 仍在、判不了或读不懂时，到期也不删）。这条命令补那一格。
       --dry-run  列出「侧层本会抹哪些运行目录」，不动盘上任何文件。
                  **只预测侧层**：运行目录那一层（request.json 等）没有哨兵、每轮都复查，
                  有没有活取决于正文是否命中密钥，不读正文答不了——预览不该为此整份读它们。
@@ -1922,10 +1921,9 @@ async function cmdScrub(args: ParsedArgs): Promise<number> {
     );
   }
   // 第四格：审查员 CLI 进程组记录（EV-154 / EV-38，代码双审 r1 CODEX-01），逐条带成因
-  // 下面那句的「或等 run_dir_days 整删」自 EV-157 起不再成立（读不懂的到期也保留）；清扫子命令的输出属用户冻结面，
-  // 逐字保留、登记 BACKLOG EV-164 待用户定（取消与失联的凭据准入核CLI计划 r2 §3.7 D3）
+  // 提示行只给走得通的出口（EV-164）：「记录读不懂」到期整删也保留（EV-157），出口只有把该侧 cli 改回 null
   for (const x of r.deferredCli) say(`  · 因审查员 CLI 未动：${x.dir}（${x.detail}）`);
-  if (r.deferredCli.length > 0) say('    CLI 结束后再跑会重判；「记录读不懂」不会自愈，需把该侧 cli 改回 null 或等 run_dir_days 整删');
+  if (r.deferredCli.length > 0) say('    CLI 结束后再跑会重判；「记录读不懂」不会自愈，需把该侧 cli 改回 null（到期整删也会保留它）');
   if (r.unknown.length > 0) {
     say(
       `  · ${r.unknown.length} 个运行目录的状态读不到（缺失或损坏），未处理——` +

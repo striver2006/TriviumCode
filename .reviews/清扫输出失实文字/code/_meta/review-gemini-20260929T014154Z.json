@@ -1,0 +1,37 @@
+{
+  "agreed": [
+    "精准解决 EV-164：cli.ts 中提示行去除了走不通的「或等 run_dir_days 整删」，明确为「需把该侧 cli 改回 null（到期整删也会保留它）」；USAGE 动机句准确限定「（那一轮记录里的审查员 CLI 仍在、判不了或读不懂时，到期也不删）」，修正失实的同时保持单行（宽度 151 未创新高）。",
+    "契约面零漂移：业务判据、运行目录分档、--json 输出字段集（15个键）、admitScrub detail 文本以及退出码保持逐字不变，代码修改范围严格限定于人读字符串及旁边两处注释。",
+    "测试设计严谨扎实：新集成测试 scrub-output-text.test.ts 采用双桶定序（aa- / bb-）消除了 readdir 未排序的不确定性，对真跑、dry-run、无第四格、json 及 help 等分支做全量逐字锁定，同时在 finally 中妥当清理进程组。",
+    "文档与证据闭环完整：主设计 v1.3.59、LLD v1.1.17、MANUAL v1.0.17、PROTOCOL、BACKLOG 均完成对应版本与内容同步；变异规格（11/11 命中）与验收比对（12/12 通过）证据完整。"
+  ],
+  "consulted": [
+    "src/trivium/cli.ts",
+    "test/integration/scrub-output-text.test.ts",
+    "doc/05_testing/REPORT_2026-09-29_scrub_output_text.md",
+    "doc/05_testing/evidence/scrub-output-text-20260929/acceptance.mjs",
+    "doc/05_testing/evidence/scrub-output-text-20260929/gen-mutation-spec.mjs",
+    "doc/05_testing/evidence/scrub-output-text-20260929/check-1.txt",
+    "doc/05_testing/evidence/scrub-output-text-20260929/mutation-names-output.json",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/清扫输出失实文字/plan/2026-09-29-清扫输出失实文字-r2-claude.md",
+    "src/trivium/retention.ts",
+    "src/trivium/hooks.ts",
+    "test/helpers/run-ctx.ts",
+    "test/helpers/proc.ts",
+    "test/helpers/fixture.ts"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未在真实各厂商生产环境 CLI（Antigravity、ZCode、Codex、Claude Code）上消耗配额执行端到端真机审查，仅在零配额桩与本地真实进程下完成整条测试闭环。",
+    "未涉及 EV-165（准入对组长已退组员仍在的组放行）与 EV-163（到期整删对挂住 worker 照删）的业务逻辑变更，这些已按计划如实作为独立议题留在 BACKLOG 待用户裁定。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本次代码变更严格遵照已批准的实施计划（r2）执行，精准解决了 BACKLOG EV-164 中 trivium scrub 的两处失实文案。src/trivium/cli.ts 中提示行与 USAGE 动机句的修改干净克制，未改动任何业务判据、分档逻辑、--json 输出契约及退出码；新增集成测试 test/integration/scrub-output-text.test.ts（T1～T6）通过真实 bundle 对人读输出进行了整段逐字断言，且进程清理完善；配套的源码变异（11/11）与零配额验收（12/12）验证完备；主设计、LLD、PROTOCOL、MANUAL、BACKLOG 及测试报告各文档同步准确。未发现任何缺陷或偏差，予以通过。",
+  "verdict": "approve"
+}

@@ -1,0 +1,176 @@
+[
+  {
+    "id": "M1",
+    "desc": "提示行改回旧文字（「或等 run_dir_days 整删」）⇒ T1 / T2",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-164 T1：真跑，A / D / E 三格——stdout 整段逐字（新提示行恰一次，其余人读行不变）；A / D 不抹、E 已抹",
+      "EV-164 T2：--dry-run，同一现场——stdout 整段逐字（预览行、第四格与新提示行）；盘上什么都不动"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M2",
+    "desc": "帮助动机句改回旧文字 ⇒ T5",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句带限定、仍是一行，其余 9 行不变）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M3",
+    "desc": "提示行触发条件恒假 ⇒ T1 / T2",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-164 T1：真跑，A / D / E 三格——stdout 整段逐字（新提示行恰一次，其余人读行不变）；A / D 不抹、E 已抹",
+      "EV-164 T2：--dry-run，同一现场——stdout 整段逐字（预览行、第四格与新提示行）；盘上什么都不动"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M4",
+    "desc": "提示行触发条件恒真 ⇒ T3",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-164 T3：没有第四格——stdout 整段逐字，不打提示行（触发条件不变）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M5",
+    "desc": "提示行挪到第四格逐条之前（位置）⇒ T1 / T2",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-164 T1：真跑，A / D / E 三格——stdout 整段逐字（新提示行恰一次，其余人读行不变）；A / D 不抹、E 已抹",
+      "EV-164 T2：--dry-run，同一现场——stdout 整段逐字（预览行、第四格与新提示行）；盘上什么都不动"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M6",
+    "desc": "「侧层已收工」一行改一个字（其余人读行）⇒ T1 / T2 / T3",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 3,
+    "red": [
+      "EV-164 T1：真跑，A / D / E 三格——stdout 整段逐字（新提示行恰一次，其余人读行不变）；A / D 不抹、E 已抹",
+      "EV-164 T2：--dry-run，同一现场——stdout 整段逐字（预览行、第四格与新提示行）；盘上什么都不动",
+      "EV-164 T3：没有第四格——stdout 整段逐字，不打提示行（触发条件不变）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M7",
+    "desc": "「因审查员 CLI 未动」模板改一个字 ⇒ T1 / T2",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-164 T1：真跑，A / D / E 三格——stdout 整段逐字（新提示行恰一次，其余人读行不变）；A / D 不抹、E 已抹",
+      "EV-164 T2：--dry-run，同一现场——stdout 整段逐字（预览行、第四格与新提示行）；盘上什么都不动"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M8",
+    "desc": "dry-run 的「预览只预测侧层」一行改一个字 ⇒ T2",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-164 T2：--dry-run，同一现场——stdout 整段逐字（预览行、第四格与新提示行）；盘上什么都不动"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M9",
+    "desc": "帮助 --dry-run 说明行改一个字（其余帮助行）⇒ T5",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句带限定、仍是一行，其余 9 行不变）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M10",
+    "desc": "帮助动机句拆成两行（行数）⇒ T5",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句带限定、仍是一行，其余 9 行不变）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M11",
+    "desc": "--json 的 deferred_cli 键改名 ⇒ T4",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-164 T4：--json，同一现场——15 个键不变，deferred_cli 的 detail 逐字，没有任何人读行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M12",
+    "desc": "会话启动第四格「CLI 结束后下次会话会再判」改一个字 ⇒ T7",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-164 T7：会话启动提示第四格整行逐字（「CLI 结束后下次会话会再判；记录读不懂的不会自愈」不改）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 第四格那一行应逐字不变，实得："
+    ],
+    "windowMiss": false
+  }
+]

@@ -1,0 +1,98 @@
+{
+  "targets": [
+    "src/trivium/cli.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/scrub-output-text.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "提示行改回旧文字（「或等 run_dir_days 整删」）⇒ T1 / T2",
+      "file": "src/trivium/cli.ts",
+      "find": "需把该侧 cli 改回 null（到期整删也会保留它）');\n",
+      "replace": "需把该侧 cli 改回 null 或等 run_dir_days 整删');\n",
+      "expect": "dist/test/test/integration/scrub-output-text.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "帮助动机句改回旧文字 ⇒ T5",
+      "file": "src/trivium/cli.ts",
+      "find": "整删（那一轮记录里的审查员 CLI 仍在、判不了或读不懂时，到期也不删）。这条命令补那一格。\n",
+      "replace": "整删。这条命令补那一格。\n",
+      "expect": "dist/test/test/integration/scrub-output-text.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "提示行触发条件恒假 ⇒ T1 / T2",
+      "file": "src/trivium/cli.ts",
+      "find": "  if (r.deferredCli.length > 0) say('    CLI 结束后再跑会重判；",
+      "replace": "  if (r.deferredCli.length > 0 && process.env['TRIVIUM_MUT_NEVER'] === '1') say('    CLI 结束后再跑会重判；",
+      "expect": "dist/test/test/integration/scrub-output-text.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "提示行触发条件恒真 ⇒ T3",
+      "file": "src/trivium/cli.ts",
+      "find": "  if (r.deferredCli.length > 0) say('    CLI 结束后再跑会重判；",
+      "replace": "  if (r.deferredCli.length > 0 || process.env['TRIVIUM_MUT_NEVER'] !== '1') say('    CLI 结束后再跑会重判；",
+      "expect": "dist/test/test/integration/scrub-output-text.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "提示行挪到第四格逐条之前（位置）⇒ T1 / T2",
+      "file": "src/trivium/cli.ts",
+      "find": "  for (const x of r.deferredCli) say(`  · 因审查员 CLI 未动：${x.dir}（${x.detail}）`);\n  if (r.deferredCli.length > 0) say('    CLI 结束后再跑会重判；「记录读不懂」不会自愈，需把该侧 cli 改回 null（到期整删也会保留它）');\n",
+      "replace": "  if (r.deferredCli.length > 0) say('    CLI 结束后再跑会重判；「记录读不懂」不会自愈，需把该侧 cli 改回 null（到期整删也会保留它）');\n  for (const x of r.deferredCli) say(`  · 因审查员 CLI 未动：${x.dir}（${x.detail}）`);\n",
+      "expect": "dist/test/test/integration/scrub-output-text.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "「侧层已收工」一行改一个字（其余人读行）⇒ T1 / T2 / T3",
+      "file": "src/trivium/cli.ts",
+      "find": "  · 侧层已收工 ${r.settled} 个",
+      "replace": "  · 侧层已完工 ${r.settled} 个",
+      "expect": "dist/test/test/integration/scrub-output-text.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "「因审查员 CLI 未动」模板改一个字 ⇒ T1 / T2",
+      "file": "src/trivium/cli.ts",
+      "find": "  · 因审查员 CLI 未动：${x.dir}",
+      "replace": "  · 因审查员CLI 未动：${x.dir}",
+      "expect": "dist/test/test/integration/scrub-output-text.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "dry-run 的「预览只预测侧层」一行改一个字 ⇒ T2",
+      "file": "src/trivium/cli.ts",
+      "find": "    预览只预测侧层：运行目录层是否有活",
+      "replace": "    预览只预测侧层：运行目录层有没有活",
+      "expect": "dist/test/test/integration/scrub-output-text.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "帮助 --dry-run 说明行改一个字（其余帮助行）⇒ T5",
+      "file": "src/trivium/cli.ts",
+      "find": "      --dry-run  列出「侧层本会抹哪些运行目录」",
+      "replace": "      --dry-run  列出「侧层将会抹哪些运行目录」",
+      "expect": "dist/test/test/integration/scrub-output-text.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "帮助动机句拆成两行（行数）⇒ T5",
+      "file": "src/trivium/cli.ts",
+      "find": "整删（那一轮记录里的审查员 CLI 仍在、判不了或读不懂时，到期也不删）。这条命令补那一格。\n",
+      "replace": "整删（那一轮记录里的审查员 CLI 仍在、判不了或读不懂时，到期也不删）。\n      这条命令补那一格。\n",
+      "expect": "dist/test/test/integration/scrub-output-text.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "--json 的 deferred_cli 键改名 ⇒ T4",
+      "file": "src/trivium/cli.ts",
+      "find": "      deferred_cli: r.deferredCli,\n",
+      "replace": "      deferred_clis: r.deferredCli,\n",
+      "expect": "dist/test/test/integration/scrub-output-text.test.js"
+    }
+  ]
+}

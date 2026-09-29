@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "清扫输出失实文字",
+  "goal": "〈 主题「清扫输出失实文字」：解决 BACKLOG EV-164（trivium scrub 有两处人读文字自 EV-157 起失实：第四格之后那一行提示里的「或等 run_dir_days 整删」，以及帮助里 scrub 一节的「副本会一直躺到 retention.run_dir_days 整删」。审查员 CLI 仍在、判不了或记录读不懂的运行目录到期也不删，这两句给出的出口走不通）。 开工前先…",
+  "created_at": "2026-09-29T01:04:34.773Z",
+  "updated_at": "2026-09-29T02:06:32.599Z",
+  "runs": [
+    {
+      "run_id": "20260929T011315Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T01:13:17.158Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260929T014154Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T01:41:56.479Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260929T020201Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T02:06:32.599Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-09-29T01:04:34.774Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-09-29T01:29:43.034Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20260929T011315Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-29T01:28:09.905Z"
+    },
+    {
+      "run_id": "20260929T014154Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-29T01:53:10.183Z"
+    }
+  ]
+}
