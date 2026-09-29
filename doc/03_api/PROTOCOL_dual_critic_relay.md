@@ -268,6 +268,7 @@ trivium review --start --stage <s> --topic <t> --focus <hint> --json
   进程活着但心跳超过 `heartbeat_stale_s`（默认 120s）未更新（`heartbeat_stale`）、status.json 与 pid 都拿不到（`no_status_file`）
   三种情形下判 `failed(worker_lost)`；工作进程确认已退出时先把归档 run.json 收尾为 `failed`（设计 v1.3.48，EV-142）。
   `heartbeat_stale_s` 不大于心跳间隔（30 s）时健康的工作进程也会被判失联：`--wait` 的报错当场点明，预检与 `--start` 事前出只警告项「失联阈值」，两处共用 `status.ts` 的 `staleThresholdWithinHeartbeat`（设计 v1.3.57，EV-160）。
+  同一阈值也是 `state.json` / `task.json` 短临界区锁（`kind: 'critical'`）的持有超时，但锁这一面取 `max(heartbeat_stale_s, 30 s)`（`lock.ts` `criticalHoldTimeoutMs`，下限即心跳间隔；设计 v1.3.62，EV-161）：阈值不小于 30 s 时两者相同，更小时只有失联判定用原阈值；锁文件格式与退出码 `70` 不变。
 - 进程存活性比对 `ps -p <pid> -o lstart=`，**不能只看 `kill(pid,0)`**：macOS 会复用 PID。`lstart` 随 TZ 与区域设置变化：status.json 的 `worker_started_at_canonical` 与锁文件的 `pid_started_at_canonical`（EV-158，设计 v1.3.55）记以 `LC_ALL=C`、`TZ=UTC0` 取的规范化启动时刻，有它时身份只按它比（读者也按规范化环境取），缺席（旧版写的）才退回按读者缺省环境比 `worker_started_at` / `pid_started_at`。规范化形态是盘上契约：变更须换新字段名，禁止就地改。
 - stdio 必须重定向到日志文件。继承父进程管道会让 worker 在父退出后死于 SIGPIPE；
   管道 EOF 不闭合则派生方会挂到 worker 退出。

@@ -1,0 +1,40 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "未发现问题。核心修复正确且落点唯一：criticalHoldTimeoutMs = max(heartbeat_stale_s×1000, WORKER_HEARTBEAT_MS) 只在 judgeStale 的 critical 年龄判据一处生效——全仓核实 judgeStale 的唯一调用方是 acquireLock，全部锁调用方（approval/cli/hooks/meta/review/run-protocol/state/verify）都传配置原值，无第二处绕过下限；worker 失联面 interpretStatus 原样用阈值，S1 用例与变异 M7 双向钉死。阈值 ≥ 30s 时判定逐字不变由 U3 的「改前谓词」参考对照与验收 A2～A5 新旧构建归一化逐字相同双重佐证；A1 行为方向正确（旧构建回收活锁丢更新写声明、新构建退 70 且锁文件逐字节不变）。lock→status 单向导入无循环依赖，NaN/Infinity 语义与原先一致（age > NaN 恒假）。RUNBOOK「约 3～4 秒后退 70」与 withTopicLock 20×150ms、withGlobalLock 40×100ms 的缺省重试预算吻合。变异 8/8 咬住、check 2281/2279/0/2、验收 9/9 且证据链内部自洽（四个变异锚点串与现行源码逐字核对过）。六处文档同步齐整、版本链一致，preflight 仅改文档块、输出零变化（A6 逐字相同）。",
+  "findings": [],
+  "agreed": [
+    "落点选择正确：下限收在 judgeStale 一处而不是 29 处调用方或配置读取层——同一阈值还原样喂 interpretStatus 判 worker 失联，那一面不取下限；grep 全 src 证实没有任何调用方在传给锁之前预乘下限，也没有别处直接拿阈值判锁年龄（judgeStale 唯一调用方是 lock.ts 内部的 acquireLock）。",
+    "U3 是高质量的回归钉法：对阈值 ≥ 下限的每一格用「改前那一行谓词 age > heartbeatStaleMs」做参考对照逐格断言相等，这正是「判定逐字不变」的可执行化；U2 钉住下侧边界（FLOOR−1 / =FLOOR / FLOOR+1，严格大于语义），M5（> 改 >=）被咬住证明边界测试有效。",
+    "X1/X2 的重放判据数学上正确：O_APPEND 单行写、单进程内 +/− 保序，任何保序交错下「重放计数最大值」都能如实检出真实重叠，且配合 counter 终值断言与 stderr 无「回收主题」告警断言三重钉住跨进程丢更新——M1x 变异（撤销修复）fail=2 证明这两条用例改前必红。",
+    "变异装置可信：gen-mutation-spec.mjs 从现行源码截整行做锚点并断言文件内恰好一次、find≠replace，M1～M7 覆盖撤销修复、max→min、下限−1、恒返常量、边界运算符、run 锁误伤、失联面误加下限七个方向，8/8 咬住且失败用例名与计划预期逐条对上。",
+    "零配额验收设计严谨：A0 前置闸先对账新旧构建的依赖 sha256 才开跑；A1 用真实 topic claim → withTopicLock(.task-<主题>) CLI 入口加带标记的独立进程组活持有者，预置锁含规范化启动时刻；收尾结束持有者进程组并核对进程表零残留。",
+    "文档「新下限只进文档、不进告警与 70 正文」的口径被严格执行：preflight.ts 只改文档块（A6 新旧预检 JSON 逐字相同佐证），A1 新构建的 70 正文与旧构建同形；RUNBOOK 的「约 3～4 秒后退 70，稍后重试」如实告知了 30 s 下限对等待者的代价，与两个临界区封装的缺省重试预算吻合。",
+    "raceWorkers 的 __stderr 改动是纯加键（展开顺序在后、恒为真实 stderr），既有用例只读 ok 等键，不受影响。",
+    "无循环依赖：lock.ts → status.ts 单向（status.ts 的导入集合不含 lock.ts），check-1 全量构建与 typecheck 通过；WORKER_HEARTBEAT_MS 复用不另起常量，A0 静态核对（导入存在、无 30_000/30000 字面）兜住等价变异。"
+  ],
+  "not_covered": [
+    "只读审查：未实际运行测试、变异与验收脚本，读数以证据文件交叉核对为据（变异锚点串逐字对照现行源码、check-1 统计行、acceptance readout 与脚本逻辑互证）。",
+    "check-1.txt 未逐行核对全部 2281 条用例输出，只核了统计行（tests 2281 / pass 2279 / fail 0 / skipped 2）与关键行。",
+    "PRD 全文未逐字读，以报告 §3.2 的核验记录（PRD 不涉锁持有超时）为据；QUICKSTART、LLD 与主设计全文未通读，只读了被改段落及其上下文（判据表、缺口表、§12.6、§21 台账）。",
+    "config.ts persistProbe / patchProbe 用硬编码 120_000 而非用户配置值（doctor 探针回填路径的既有形态，120 s ≥ 30 s 改前改后行为一致且方向更保守）——与 MANUAL「这个值也是短临界区锁的持有超时」在用户配亚秒阈值时的该路径上严格说不精确，因属既有行为、本次计划明确不改配置读取层，未列为意见，仅在此如实登记。",
+    "test/unit/status.test.ts 的 S1 与测试报告、其余证据文件（acceptance-output.txt、mutation-spec.json、mutation-names-output.json）经被审 diff 全文核实，未另行直读工作树对应文件。",
+    "另一位审查员的产出按禁读清单全部未读，背靠背独立性保持。"
+  ],
+  "consulted": [
+    ".reviews/临界区锁超时下限/code/_meta/changes-20260929T091044Z.diff",
+    "src/trivium/lock.ts",
+    "src/trivium/status.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/config.ts",
+    "test/unit/lock.test.ts",
+    "test/integration/lock-cross-process.test.ts",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/mutation-output.txt",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/gen-mutation-spec.mjs",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/acceptance.mjs",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/check-1.txt",
+    "doc/02_design/README.md",
+    "CLAUDE.md",
+    "README.md"
+  ]
+}

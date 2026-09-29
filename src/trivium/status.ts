@@ -460,6 +460,8 @@ export function lostOf(s: RunStatus | null): WorkerLostRecord | null {
  * worker 刷新 status.json 心跳的间隔：设计 §7.5 规定 30 s。
  * EV-160 起从 `run-protocol.ts` 挪到这里共享——worker 的心跳定时器、`--wait` 判 heartbeat_stale 的报错、
  * 预检与 `--start` 的「失联阈值」只警告项都取它。
+ * **它同时是短临界区锁的持有超时下限**（`lock.ts` `criticalHoldTimeoutMs`，EV-161）：改这个值会连带移动锁下限，
+ * 须按「下限要覆盖最长临界区（JSON 读改写，至多一次阶段目录扫描）」重新论证（代码双审 r1 CODEX-01）。
  */
 export const WORKER_HEARTBEAT_MS = 30_000;
 

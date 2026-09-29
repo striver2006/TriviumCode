@@ -1,0 +1,77 @@
+{
+  "targets": [
+    "src/trivium/lock.ts",
+    "src/trivium/status.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/lock.test.js",
+    "dist/test/test/unit/status.test.js",
+    "dist/test/test/integration/lock-cross-process.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "年龄判据改回 opts.heartbeatStaleMs（撤销本修复）⇒ U2 / U6 / U8",
+      "file": "src/trivium/lock.ts",
+      "find": "  if (Number.isFinite(age) && age > criticalHoldTimeoutMs(opts.heartbeatStaleMs) && lock.kind === 'critical') {\n",
+      "replace": "  if (Number.isFinite(age) && age > opts.heartbeatStaleMs && lock.kind === 'critical') {\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M1x",
+      "desc": "同 M1，跨进程 ⇒ X1 / X2（丢更新或回收告警）",
+      "file": "src/trivium/lock.ts",
+      "find": "  if (Number.isFinite(age) && age > criticalHoldTimeoutMs(opts.heartbeatStaleMs) && lock.kind === 'critical') {\n",
+      "replace": "  if (Number.isFinite(age) && age > opts.heartbeatStaleMs && lock.kind === 'critical') {\n",
+      "expect": "dist/test/test/integration/lock-cross-process.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "Math.max 改 Math.min ⇒ U1 / U2 / U3",
+      "file": "src/trivium/lock.ts",
+      "find": "  return Math.max(heartbeatStaleMs, WORKER_HEARTBEAT_MS);\n",
+      "replace": "  return Math.min(heartbeatStaleMs, WORKER_HEARTBEAT_MS);\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "下限改成 WORKER_HEARTBEAT_MS − 1 ⇒ U1 / U2（F 那一格）",
+      "file": "src/trivium/lock.ts",
+      "find": "  return Math.max(heartbeatStaleMs, WORKER_HEARTBEAT_MS);\n",
+      "replace": "  return Math.max(heartbeatStaleMs, WORKER_HEARTBEAT_MS - 1);\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "函数恒返回 WORKER_HEARTBEAT_MS（忽略阈值）⇒ U1 / U3",
+      "file": "src/trivium/lock.ts",
+      "find": "  return Math.max(heartbeatStaleMs, WORKER_HEARTBEAT_MS);\n",
+      "replace": "  return WORKER_HEARTBEAT_MS;\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "年龄判据 > 改 >= ⇒ U2（age = F）/ U3（age = T）",
+      "file": "src/trivium/lock.ts",
+      "find": "  if (Number.isFinite(age) && age > criticalHoldTimeoutMs(opts.heartbeatStaleMs) && lock.kind === 'critical') {\n",
+      "replace": "  if (Number.isFinite(age) && age >= criticalHoldTimeoutMs(opts.heartbeatStaleMs) && lock.kind === 'critical') {\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "年龄判据去掉 kind === 'critical' ⇒ U4（run 锁按年龄判了）",
+      "file": "src/trivium/lock.ts",
+      "find": "  if (Number.isFinite(age) && age > criticalHoldTimeoutMs(opts.heartbeatStaleMs) && lock.kind === 'critical') {\n",
+      "replace": "  if (Number.isFinite(age) && age > criticalHoldTimeoutMs(opts.heartbeatStaleMs)) {\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "下限误加到 worker 失联判定 ⇒ S1",
+      "file": "src/trivium/status.ts",
+      "find": "  const stale = Number.isFinite(age) && age > opts.heartbeatStaleMs;\n",
+      "replace": "  const stale = Number.isFinite(age) && age > Math.max(opts.heartbeatStaleMs, WORKER_HEARTBEAT_MS);\n",
+      "expect": "dist/test/test/unit/status.test.js"
+    }
+  ]
+}

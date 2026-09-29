@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.19
+> - **当前版本**：v1.1.20
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.20（2026-09-29）随设计 v1.3.62（临界区锁超时下限，EV-161）同步：4.3 判据表 `heartbeat_dead` 一行补「短临界区的持有超时取 `max(阈值, 30 s)`（`criticalHoldTimeoutMs`）」；已知缺口表「短临界区锁的持有超时借用 `heartbeat_stale_s`」一行改为已解决；2.7 表 `lock.ts` 行数与职责。
 > - **变更说明**：v1.1.19（2026-09-29）随设计 v1.3.61（清扫帮助主句失实，EV-166）同步：已知缺口表「`trivium scrub` 人读提示里『或等 run_dir_days 整删』半句失实」一行补注——帮助动机句的主句「副本会一直躺到 retention.run_dir_days 整删」另有失实成因（整删只在该仓库自己的会话启动时跑），v1.1.19 起改写为「到期整删也只在它的会话启动时跑…不再回到那个仓库就没有任何自动清理」；只改文字，判据与行为不变。
 > - **变更说明**：v1.1.18（2026-09-29）随设计 v1.3.60（组长已退组员仍在的准入，EV-165）同步：275 行 `CliGroupVerdict` 补 `orphaned` / `orphan_unverifiable` 两态；287 行与 487 行「`--cancel` 引述块」改为对 `alive`/`orphaned` 都发信号、准入与 `settledCliSides` 已收口；已知缺口表 602 行「组长已退出而组员还在」的如实保留措辞改为「已收口」、604 行「凭据准入对『组长已退出、组员仍在』的组放行」改为已解决，新增「worker 存活期间自身子进程退出盲区」与「`processGroupMemberCount` 僵尸排除无专门测试」两行暂缓。
 > - **变更说明**：v1.1.17（2026-09-29）随设计 v1.3.59（清扫输出失实文字，EV-164）同步：已知缺口表「`trivium scrub` 人读提示里『或等 run_dir_days 整删』半句失实」一行改为已解决（提示行与帮助动机句改准，其余输出逐字不变）；判据与行为不变。
@@ -160,7 +161,7 @@ graph TD
 | 模块 | 行数 | 职责 |
 | :--- | ---: | :--- |
 | `config.ts` | 494 | 四级配置合并（内置默认 → `config.yaml` → `config.local.yaml` → 命令行）、**v1 → v2 内存迁移**（`migrateConfigV1`，逐源且在合并之前）、按 vendor 收窄的配置取值（`agentConfigOf`）、探针回填与时效 |
-| `lock.ts` | 327 | 主题锁（长持锁 / 短临界区）、遗留锁回收、免锁计数 |
+| `lock.ts` | 394 | 主题锁（长持锁 / 短临界区）、遗留锁回收（短临界区的持有超时有 30 s 下限，`criticalHoldTimeoutMs`，v1.1.20）、免锁计数 |
 | `freeze.ts` | 249 | 快照冻结、禁读清单枚举、漂移判定 |
 | `brief.ts` | 310 | 八段送审任务书渲染 |
 | `secrets.ts` | 140 | 落盘前的密钥扫描（10 条规则 + 熵判定） |
@@ -509,7 +510,7 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
 | :--- | :--- |
 | `pid_gone` | 持有者进程没了 |
 | `pid_reused` | PID 还在但启动时刻对不上——是被系统复用的无关进程（macOS 必需） |
-| `heartbeat_dead` | 运行已终态，或短临界区持有超过心跳阈值 |
+| `heartbeat_dead` | 运行已终态，或短临界区持有超过持有超时 `max(heartbeat_stale_s, 30 s)`（`criticalHoldTimeoutMs`，下限即 `WORKER_HEARTBEAT_MS`；v1.1.20，EV-161）。只对 `critical` 锁按年龄判；同一阈值判 worker 失联时不取下限 |
 | `unparsable` | 锁文件内容坏了（但**刚写下不到 2s 的不算**，那可能是别人正在写） |
 
 **回收用 rename → 复验 → 删除**，不直接 unlink：两个并发者都判定为遗留时，第二个可能删掉第一个刚创建的新锁。复验不符时把别人的新锁**放回去**。
@@ -609,7 +610,7 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 | ~~**`worker_started_at` 对 TZ / 区域设置敏感**~~ | `--start` 按缺省环境取 worker 的 `ps lstart` 写进 status.json，`--cancel` / `--wait` / 会话启动清扫 / `trivium scrub` 在各自环境里重取、按字符串比；CLI 进程组记录已改用规范化环境，worker 这一面没改（会让旧版写下的记录与新版读法不符） | 环境不同 ⇒ 活着的 worker 判「不是同一进程」⇒ `--cancel` 不对 worker 发信号、三处准入在 worker 还活着时抹凭据；v1.1.11 起 `--cancel` 的「已不存在」分支与终态分支也消费这一判据，环境错配时会按记录对还活着的 worker 名下的 CLI 发信号（worker 随后看到 CLI 退出，可能重试或写 failed；代码双审 r1 GLM-02）。修 EV-158 时须一并复核这两处。v1.1.12 起 `classifyLostCancel` 也消费它：环境错配时失联后仍挂着的 worker 判 `mismatch`、不对它发信号，打告警指出两种可能（PID 复用 / 环境不同）并让人在与 `--start` 相同的环境里再跑。**已解决（2026-09-28，EV-158，v1.1.13）**：status.json 与锁文件另记规范化启动时刻，身份读法收成 `processMatchesRecord`（有规范化只比它）。残余：升级窗口里旧版写下的记录退回缺省比较，异环境仍判错（与旧版相同）；回滚后回到旧行为 |
 | **`--wait` 判 `heartbeat_stale` 之后 worker 已不在时，run.json 没有补收入口（第二形态）** | 第一形态（worker 自己死了 / 被手工结束 / `cancelLostWorker` 确认退出之后、补收之前被中断）v1.1.14 起已修：`gone` 格经 `finalizeLostAndReclaimLock` 补收。第二形态——升级前旧版判失联、status.json 没有 `lost` 字段的运行——仍落 `none` 格 | 第二形态的判据不得解析 message，而它与「本版 worker 异常分支补收失败」在结构化字段上不可区分，误写成因不可逆，**暂缓**，见 BACKLOG EV-159 注记 |
 | ~~**`heartbeat_stale_s` 不大于 worker 心跳间隔时事前不告警**~~ | ~~配置只约束 `> 0`，`HEARTBEAT_MS` 是 30 s 常量；这样配时每一轮都会被判 `heartbeat_stale`~~ | **已解决（2026-09-29，EV-160）**：预检 ④‴ 与 `startRun` 出只警告项「失联阈值」（`checkHeartbeatThreshold`），判据与 `--wait` 报错那一句共用 `staleThresholdWithinHeartbeat`；不拦截、配置契约不改；`(30 s, 60 s)` 不告警（要一次心跳迟到才会被判，配置层判不出，BACKLOG 另登） |
-| **短临界区锁的持有超时借用 `heartbeat_stale_s`** | `lock.ts` `judgeStale` 对 `critical` 锁按 `now − acquired_at > heartbeatStaleMs` 判 `heartbeat_dead`；临界区不写心跳，危险临界值是最长临界区的持续时间（毫秒到数十毫秒），与 30 s 心跳间隔无关 | 阈值配到与临界区同量级（亚秒）时，一次正常的慢写可能被并发者回收 ⇒ 两个持有者并存、丢更新，而且静默。亚秒阈值一定会出「失联阈值」告警，但正文只说 worker 失联。如实保留（心跳阈值事前告警计划 r2 §5，BACKLOG 另登） |
+| ~~**短临界区锁的持有超时借用 `heartbeat_stale_s`**~~ | ~~`lock.ts` `judgeStale` 对 `critical` 锁按 `now − acquired_at > heartbeatStaleMs` 判 `heartbeat_dead`；临界区不写心跳，危险临界值是最长临界区的持续时间（毫秒到数十毫秒），与 30 s 心跳间隔无关~~ | **已解决（2026-09-29，EV-161）**：年龄判据改比 `criticalHoldTimeoutMs(阈值)` = `max(阈值, WORKER_HEARTBEAT_MS)`，亚秒阈值下活着的临界区 30 s 内不再被回收；阈值 ≥ 30 s 时判定不变，worker 失联判定不取下限（临界区锁超时下限计划 r2） |
 | **取消落在收尾段时归档可能不是 `cancelled`** | 两侧 CLI 已结束、worker 在解析与归档时，信号到达与 SIGTERM 处理器执行之间至多一次事件循环迭代，其间已就绪的回调可先行（没有处理器时这段窗口为零）；按代码论证，造不出确定时序 | 最坏：worker 把 run.json 与 status.json 都写成终态 ⇒ `--cancel` 终态早退，归档记 `success` / `failed`；只写了 run.json ⇒ status.json 被写成 `cancelled`，两边劈叉。如实保留（取消够不到审查员CLI计划 r2 §4.4 a″） |
 | **协议片段无升级路径** | `appendSnippet`（`init.ts:63-66`）见标记即跳过，与 hooks 的「按名替换」不一致 | 已初始化项目的协议片段永不更新。实测某项目落后 18 行 |
 | **人工审批无机械边界** | `recordApproval`（`approval.ts:54-86`）无任何调用者身份校验；skill 的 `allowed-tools` 预批准了 `Bash(.trivium/bin/trivium:*)` | Driver 自己一条命令就能关掉等人工审批的闸门。曾加过一次性确认码，因明文经 stdout 由 Driver 转述、构不成边界而**主动移除**——「虚假的安全感比没有护栏更糟」。真解需要宿主提供不经过模型的带外通道 |

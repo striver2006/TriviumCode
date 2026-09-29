@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.19
+> - **当前版本**：v1.0.20
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -414,7 +414,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | :--- | :--- | :--- |
 | `review.timeout_s` | plan 900 / code 1200 / bug 1200 | 仓库大、补丁大时调大。**改大会连带改变 `max_waits`** |
 | `review.wait_timeout_s` | **180** | 每次等待窗口，**同时是你能收到进度的最小间隔**。调小反馈更密，代价是往返变多 |
-| `review.heartbeat_stale_s` | 120 | 超过这个时间没心跳判 worker 失联。工作进程每 30 秒写一次心跳，配成不大于 30 秒时，健康的工作进程也会被判失联——预检与 `review --start` 会出一条只警告项「失联阈值」（v1.0.15 起，设计 v1.3.57，EV-160），不拦截；有意为之（如构造失联的测试）可忽略 |
+| `review.heartbeat_stale_s` | 120 | 超过这个时间没心跳判 worker 失联。工作进程每 30 秒写一次心跳，配成不大于 30 秒时，健康的工作进程也会被判失联——预检与 `review --start` 会出一条只警告项「失联阈值」（v1.0.15 起，设计 v1.3.57，EV-160），不拦截；有意为之（如构造失联的测试）可忽略。这个值也是 `state.json` / `task.json` 短临界区锁的持有超时，但那一面有 30 秒下限：阈值配得再小，活着的临界区持有者 30 秒内也不会被别的命令回收（v1.0.20 起，设计 v1.3.62，EV-161；此前配到亚秒时一次正常的慢写就可能被回收、丢更新）。阈值不小于 30 秒时两者相同 |
 | `review.failure_policy` | `strict` | 一侧失败即中止。改 `degrade` 则继续出单审 |
 | `review.allow_partial_flag` | `true` | 是否允许命令行 `--allow-single`。设 `false` 则命令行也开不回来。**旧名 `allow_single_flag` 仍可用**（加载时自动迁移） |
 | `review.default_critics` | `[gemini, glm]` | 不给 `--critics` 时的默认审核者集合。**已接线**：它就是缺省跑哪几侧的来源 |

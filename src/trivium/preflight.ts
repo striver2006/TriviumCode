@@ -608,7 +608,8 @@ export async function checkModelOverrideSource(
  * 两个调用点用的是**同一个函数**：预检 ④‴ 与 `startRun`（派生之前，与副本源复查同一次汇总）。
  * 同步 `review --stage` 不调：那条路径没有 worker、没有心跳、没有 `--wait`，后果句在那里不成立（计划 r2 §3.4）。
  *
- * 只读配置，不花配额、不读盘。阈值配小对短临界区锁持有超时的影响与心跳间隔无关，不在这条里说（计划 r2 §5，BACKLOG 另登）。
+ * 只读配置，不花配额、不读盘。阈值配小不再波及短临界区锁：它的持有超时有 30 s 下限（`lock.ts` `criticalHoldTimeoutMs`，EV-161），
+ * 所以这条告警只讲 worker 失联；下限不进本告警正文（临界区锁超时下限计划 r2 §4）。
  */
 export function checkHeartbeatThreshold(cfg: Config): CheckResult | null {
   const staleS = cfg.review.heartbeat_stale_s;

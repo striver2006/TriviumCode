@@ -1,0 +1,63 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  M1 ✓ 咬住（fail=3）
+  M1x ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=5）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=2）
+  M5 ✓ 咬住（fail=2）
+  M6 ✓ 咬住（fail=2）
+  M7 ✓ 咬住（fail=1）
+{
+  "总数": 8,
+  "咬住": 8,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "年龄判据改回 opts.heartbeatStaleMs（撤销本修复）⇒ U2 / U6 / U8",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M1x",
+      "desc": "同 M1，跨进程 ⇒ X1 / X2（丢更新或回收告警）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "Math.max 改 Math.min ⇒ U1 / U2 / U3",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M3",
+      "desc": "下限改成 WORKER_HEARTBEAT_MS − 1 ⇒ U1 / U2（F 那一格）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "函数恒返回 WORKER_HEARTBEAT_MS（忽略阈值）⇒ U1 / U3",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M5",
+      "desc": "年龄判据 > 改 >= ⇒ U2（age = F）/ U3（age = T）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M6",
+      "desc": "年龄判据去掉 kind === 'critical' ⇒ U4（run 锁按年龄判了）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M7",
+      "desc": "下限误加到 worker 失联判定 ⇒ S1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

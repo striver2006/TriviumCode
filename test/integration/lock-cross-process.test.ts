@@ -81,7 +81,8 @@ async function raceWorkers(
   return results.map((r, i) => {
     const line = r.stdout.trim().split('\n').filter(Boolean).pop();
     assert.ok(line, `worker ${i} 没有输出结果行；stderr=${r.stderr}`);
-    return JSON.parse(line) as Record<string, unknown>;
+    // `__stderr`：各进程的 stderr 原文（EV-161 X1 / X2 查回收告警用；其余用例不读它）
+    return { ...(JSON.parse(line) as Record<string, unknown>), __stderr: r.stderr };
   });
 }
 
@@ -247,4 +248,63 @@ test('跨进程：多个进程同时回收同一把遗留锁，仍只有一个�
     `回收遗留锁的竞争也只应有一个赢家，实际 ${winners.length} 个：${JSON.stringify(results)}`,
   );
   assert.equal(await inspectLock(dir, TOPIC), null, '赢家 release 后不应残留');
+});
+
+/*
+ * EV-161（临界区锁超时下限计划 r2 §6.2）：亚秒阈值（heartbeat_stale_s: 0.05）下，持有 250 ms 的慢临界区
+ * 远超阈值、远不到 30 s 下限——改前等待者会判 heartbeat_dead 把活锁回收，两个持有者并存、丢更新；改后必须串行。
+ * 每个进程进出临界区时往同一日志以 O_APPEND 各写一行，重放得「区内人数」的最大值。
+ */
+const SUB_SECOND_MS = 50;
+
+async function slowCriticalRace(lockCall: 'withTopicLock' | 'withGlobalLock'): Promise<void> {
+  const dir = await tmpTrivium();
+  const counter = path.join(dir, 'counter.json');
+  const trace = path.join(dir, 'trace.log');
+  await fs.writeFile(counter, JSON.stringify({ n: 0 }), 'utf8');
+  const N = 4;
+  const opts =
+    lockCall === 'withTopicLock'
+      ? `{ triviumDir: dir, topic: ${JSON.stringify(TOPIC)}, heartbeatStaleMs: ${SUB_SECOND_MS}, retries: 200, retryDelayMs: 50 }`
+      : `{ triviumDir: dir, heartbeatStaleMs: ${SUB_SECOND_MS}, retries: 200, retryDelayMs: 50 }`;
+  const results = await raceWorkers(
+    dir,
+    `const fsp = (await import('node:fs')).promises;
+     const { appendFileSync } = await import('node:fs');
+     const counter = ${JSON.stringify(counter)};
+     const trace = ${JSON.stringify(trace)};
+     await lock.${lockCall}(${opts}, async () => {
+       appendFileSync(trace, '+' + id + '\\n');
+       const cur = JSON.parse(await fsp.readFile(counter, 'utf8'));
+       await new Promise((r) => setTimeout(r, 250));
+       await fsp.writeFile(counter, JSON.stringify({ n: cur.n + 1 }));
+       appendFileSync(trace, '-' + id + '\\n');
+     });
+     return { ok: true };`,
+    N,
+  );
+
+  assert.equal(results.filter((r) => r['ok'] === true).length, N, `全部应成功：${JSON.stringify(results)}`);
+  let inside = 0;
+  let maxInside = 0;
+  const lines = (await fs.readFile(trace, 'utf8')).split('\n').filter(Boolean);
+  for (const l of lines) {
+    inside += l.startsWith('+') ? 1 : -1;
+    maxInside = Math.max(maxInside, inside);
+  }
+  assert.equal(lines.length, 2 * N, `每个进程进出各一行：${lines.join(' ')}`);
+  assert.equal(maxInside, 1, `亚秒阈值下临界区仍须串行，实际同时 ${maxInside} 个：${lines.join(' ')}`);
+  const final = JSON.parse(await fs.readFile(counter, 'utf8')) as { n: number };
+  assert.equal(final.n, N, `${N} 个进程各加一应得 ${N}，实际 ${final.n} —— 少了就是丢更新`);
+  for (const r of results) {
+    assert.doesNotMatch(String(r['__stderr']), /回收主题/, `活着的慢临界区不得被回收：${String(r['__stderr'])}`);
+  }
+}
+
+test('EV-161 X1：跨进程——亚秒阈值下慢临界区（withTopicLock）不被并发者回收、不丢更新', async () => {
+  await slowCriticalRace('withTopicLock');
+});
+
+test('EV-161 X2：跨进程——亚秒阈值下慢临界区（withGlobalLock）不被并发者回收、不丢更新', async () => {
+  await slowCriticalRace('withGlobalLock');
 });

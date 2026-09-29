@@ -20,6 +20,7 @@ import { EXIT, TriviumError } from './exit-codes.js';
 import { ensureDir, exists } from './util/fsx.js';
 import { processMatchesRecord, processStartTime } from './util/exec.js';
 import { warn } from './util/log.js';
+import { WORKER_HEARTBEAT_MS } from './status.js';
 
 export interface LockContent {
   topic: string;
@@ -105,8 +106,23 @@ export type StaleReason =
   | null;
 
 /**
+ * 短临界区锁（`kind: 'critical'`）的持有超时：`max(heartbeat_stale_s, worker 心跳间隔)`（EV-161，临界区锁超时下限计划 r2 §3）。
+ *
+ * 临界区持有期间不写心跳，正常时长是毫秒到数十毫秒；原先直接拿 `heartbeat_stale_s` 当持有超时，配置只约束 `> 0`，
+ * 配到亚秒（如 `0.05`）时一次正常的慢写就会被并发者判 `heartbeat_dead` 回收 ⇒ 两个持有者并存、丢更新，而且静默。
+ * 下限就是 `WORKER_HEARTBEAT_MS`（不另起常量）：阈值 ≥ 30 s（含缺省 120）时取阈值本身，判定与原先逐字相同；
+ * 只有更小的阈值在锁这一面被抬到 30 s。**只用于锁**——同一个阈值还原样喂 `interpretStatus` 判 worker 失联，那一面不取下限，
+ * 所以下限落在这里而不是各调用方或配置读取层（计划 r2 §3.2）。非有限值与原先同为「不回收」（`age > NaN` 为假）。
+ */
+export function criticalHoldTimeoutMs(heartbeatStaleMs: number): number {
+  return Math.max(heartbeatStaleMs, WORKER_HEARTBEAT_MS);
+}
+
+/**
  * 判定既有锁是否为遗留锁。三条判据**取任一**成立即可回收。
  *
+ * @param heartbeatStaleMs 调用方传入的 `heartbeat_stale_s × 1000`；对 `critical` 锁的年龄判据经 `criticalHoldTimeoutMs`
+ *                         取 30 s 下限（EV-161），`run` 锁不走年龄判据。
  * @param runTerminal 该 `run_id` 是否已被标为终态（由调用方查 `run.json` 得出）。
  *                    这一条让早期猝死不必等满心跳 TTL（AGY-06）。
  */
@@ -130,8 +146,8 @@ export async function judgeStale(
   if (opts.runTerminal === true) return 'heartbeat_dead';
 
   const age = (opts.now ?? Date.now()) - new Date(lock.acquired_at).getTime();
-  if (Number.isFinite(age) && age > opts.heartbeatStaleMs && lock.kind === 'critical') {
-    // 短临界区本应毫秒级完成，持有超过心跳阈值说明持有者卡死了
+  if (Number.isFinite(age) && age > criticalHoldTimeoutMs(opts.heartbeatStaleMs) && lock.kind === 'critical') {
+    // 短临界区本应毫秒级完成，持有超过持有超时（阈值与心跳间隔取大，EV-161）说明持有者卡死了
     return 'heartbeat_dead';
   }
   return null;
@@ -190,6 +206,7 @@ export interface AcquireOptions {
   stage?: Stage | null;
   runId?: string | null;
   kind?: 'run' | 'critical';
+  /** `heartbeat_stale_s × 1000`，只交给 `judgeStale`；对 `critical` 锁的年龄判据取 30 s 下限（`criticalHoldTimeoutMs`，EV-161） */
   heartbeatStaleMs: number;
   /** 该 run_id 是否已终态，交给 judgeStale 的第 3 条判据 */
   runTerminal?: (runId: string | null) => Promise<boolean>;

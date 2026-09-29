@@ -1,0 +1,39 @@
+{
+  "agreed": [
+    "criticalHoldTimeoutMs 落点极为精准：仅在 lock.ts 内 judgeStale 的年龄判据处对 kind === 'critical' 取 30s 下限，既避免修改 29 处调用方，又没有侵入配置层或将下限误泄露到 status.ts 的 worker 失联判定中。",
+    "直接复用 status.ts 既有的 WORKER_HEARTBEAT_MS 常量，不另起常量或增加配置字段，符合架构纪律，保持了心跳间隔概念的单一来源。",
+    "测试防护网非常严密：单元测试（U1~U8、S1）、跨进程并发集成测试（X1、X2）与源码变异测试（M1~M7）全方位咬住逻辑；M7 明确钉住 worker 失联判定未被下限污染。",
+    "零配额验收测试设计精巧：通过比对新旧构建在亚秒阈值下的行为差异，确证了活临界区锁在下限内不再被误回收（退 70 且锁文件未损坏），同时保证死进程立即回收、旧版正常场景行为逐字不变。",
+    "文档同步齐备严谨：主设计 v1.3.62、LLD v1.1.20、MANUAL v1.0.20、PROTOCOL 与 RUNBOOK 均同步更新，且如实记录了新下限的可见面决策。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/lock.ts",
+    "src/trivium/status.ts",
+    "src/trivium/preflight.ts",
+    "test/unit/lock.test.ts",
+    "test/unit/status.test.ts",
+    "test/integration/lock-cross-process.test.ts",
+    "doc/05_testing/REPORT_2026-09-29_critical_lock_floor.md",
+    ".reviews/临界区锁超时下限/plan/2026-09-29-临界区锁超时下限-r2-claude.md",
+    ".reviews/临界区锁超时下限/code/_meta/changes-20260929T091044Z.diff",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/acceptance.mjs",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/acceptance-readout.json",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/check-1.txt",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/mutation-output.txt"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未覆盖真实大模型厂商 CLI 的联网并发运行（按计划采用零配额验收与本地进程模拟，不消耗真实 API 配额）",
+    "未测试除 macOS 以外的操作系统的进程存活性与启动时刻检测（项目环境明确限定为 macOS）",
+    "未覆盖持有临界区锁超过 30 秒以上的极端活进程死锁/卡死防护（属租约续期/fencing范畴，计划 r2 §2.4 已明确界定超出 EV-161 范围）"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "代码变更完整且严谨地实现了计划 r2 规定的临界区锁超时下限（EV-161）。\n通过在 lock.ts 中新增 criticalHoldTimeoutMs 并将 kind: 'critical' 的超时判据与 WORKER_HEARTBEAT_MS 取大，\n彻底消除了小阈值（如亚秒）下正常慢写被并发者误判为 heartbeat_dead 导致并发更新丢失的隐患。\n改动落点单一精确，未破坏对外配置契约，未侵入 29 处调用方，且 status.ts 的 worker 失联判定未受污染。\n测试套件（单测、跨进程并发集成、8/8 变异测试、9/9 零配额验收）全部通过，文档同步齐备，批准通过。",
+  "verdict": "approve"
+}

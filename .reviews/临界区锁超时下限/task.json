@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "临界区锁超时下限",
+  "goal": "主题「临界区锁超时下限」：解决 BACKLOG EV-161（短临界区锁的持有超时借用 review.heartbeat_stale_s：lock.ts 的 judgeStale 对 kind 为 critical 的锁按「现在减 acquired_at 超过阈值」判 heartbeat_dead，而临界区持有期间不写心跳、正常时长是毫秒到数十毫秒，与 30 秒心跳间隔无关；配置只约束阈值大于 0…",
+  "created_at": "2026-09-29T08:33:08.737Z",
+  "updated_at": "2026-09-29T09:35:58.655Z",
+  "runs": [
+    {
+      "run_id": "20260929T084121Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T08:41:22.664Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260929T091044Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T09:10:48.970Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260929T092953Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T09:35:58.655Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-09-29T08:33:08.737Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-09-29T08:56:36.636Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20260929T084121Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-29T08:56:32.372Z"
+    },
+    {
+      "run_id": "20260929T091044Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-29T09:21:42.292Z"
+    }
+  ]
+}

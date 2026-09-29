@@ -161,6 +161,21 @@ test('情形 C3：进程活着但心跳过期 → worker_lost（卡死在某处�
   if (r.kind === 'worker_lost') assert.equal(r.reason, 'heartbeat_stale');
 });
 
+test('EV-161 S1：worker 失联判定不取锁的 30 s 下限——阈值 2 s、心跳 5 s 未更新即判 heartbeat_stale', async () => {
+  const d = await runDir();
+  const s = base();
+  s.phase = 'running';
+  s.worker_pid = process.pid;
+  s.worker_started_at = await processStartTime(process.pid);
+  await writeStatus(d, s);
+  const t = Date.parse((await readStatus(d))!.heartbeat_at);
+  const fresh = await interpretStatus(d, { heartbeatStaleMs: 2_000, now: t + 1_000 });
+  assert.equal(fresh.kind, 'running', '1 s 未更新、阈值 2 s：仍在跑');
+  const r = await interpretStatus(d, { heartbeatStaleMs: 2_000, now: t + 5_000 });
+  assert.equal(r.kind, 'worker_lost', '5 s 未更新超过 2 s 阈值就判失联，远未到 30 s');
+  if (r.kind === 'worker_lost') assert.equal(r.reason, 'heartbeat_stale');
+});
+
 test('情形 C4：PID 被复用（启动时刻不符）→ worker_lost', async () => {
   const d = await runDir();
   const s = base();

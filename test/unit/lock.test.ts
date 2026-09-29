@@ -4,9 +4,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
-  acquireLock, inspectLock, judgeStale, reclaimStaleLock, withTopicLock,
+  acquireLock, criticalHoldTimeoutMs, inspectLock, judgeStale, reclaimStaleLock, withTopicLock,
   bumpStopBlockCount, resetStopBlockCount, type LockContent,
 } from '../../src/trivium/lock.js';
+import { WORKER_HEARTBEAT_MS } from '../../src/trivium/status.js';
 import { processStartTime } from '../../src/trivium/util/exec.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 
@@ -258,6 +259,148 @@ test('不同主题的锁互不影响', async () => {
   assert.ok(a && b);
   await a.release();
   await b.release();
+});
+
+// ── EV-161：短临界区锁的持有超时 = max(heartbeat_stale_s, worker 心跳间隔)（临界区锁超时下限计划 r2 §6.1）──
+
+/** 下限：从 status.ts 导入，测试里不写 30000 */
+const FLOOR = WORKER_HEARTBEAT_MS;
+/** 亚秒阈值（`heartbeat_stale_s: 0.05`） */
+const SUB_MS = 50;
+
+async function liveLock(kind: 'critical' | 'run', acquiredAt: number): Promise<LockContent> {
+  return {
+    topic: TOPIC, stage: null, run_id: null, pid: process.pid,
+    pid_started_at: await processStartTime(process.pid),
+    acquired_at: new Date(acquiredAt).toISOString(), kind,
+  };
+}
+
+test('EV-161 U1：下限的来源就是 WORKER_HEARTBEAT_MS，取大不取小', () => {
+  assert.equal(criticalHoldTimeoutMs(1), WORKER_HEARTBEAT_MS);
+  assert.equal(criticalHoldTimeoutMs(SUB_MS), WORKER_HEARTBEAT_MS);
+  assert.equal(criticalHoldTimeoutMs(WORKER_HEARTBEAT_MS - 1), WORKER_HEARTBEAT_MS);
+  assert.equal(criticalHoldTimeoutMs(WORKER_HEARTBEAT_MS), WORKER_HEARTBEAT_MS);
+  assert.equal(criticalHoldTimeoutMs(WORKER_HEARTBEAT_MS + 1), WORKER_HEARTBEAT_MS + 1);
+  assert.equal(criticalHoldTimeoutMs(120_000), 120_000);
+  // 非有限值与原先同为「不回收」（age > NaN 为假），靠 Math.max 的 NaN 传播成立（代码双审 r1 CODEX-03）
+  assert.ok(Number.isNaN(criticalHoldTimeoutMs(Number.NaN)));
+  assert.equal(criticalHoldTimeoutMs(Number.POSITIVE_INFINITY), Number.POSITIVE_INFINITY);
+});
+
+test('EV-161 U1′：阈值为 NaN 时 critical 活锁照旧不按年龄回收', async () => {
+  const t0 = Date.now();
+  const lock = await liveLock('critical', t0);
+  assert.equal(await judgeStale(lock, { heartbeatStaleMs: Number.NaN, now: t0 + 10 * 120_000 }), null);
+});
+
+test('EV-161 U2：阈值低于下限时 critical 锁按下限判，持有未过下限不回收', async () => {
+  const t0 = Date.now();
+  const lock = await liveLock('critical', t0);
+  const at = async (age: number) => judgeStale(lock, { heartbeatStaleMs: SUB_MS, now: t0 + age });
+  assert.equal(await at(1_000), null, '持有 1 s（远超 50 ms 阈值）不得回收');
+  assert.equal(await at(FLOOR - 1), null);
+  assert.equal(await at(FLOOR), null, '等于下限不回收（严格大于）');
+  assert.equal(await at(FLOOR + 1), 'heartbeat_dead', '过了下限照常判');
+});
+
+test('EV-161 U3：阈值等于、高于下限时与原判据逐字相同', async () => {
+  const t0 = Date.now();
+  const lock = await liveLock('critical', t0);
+  for (const T of [FLOOR, FLOOR + 1, 45_000, 120_000]) {
+    for (const age of [T - 1, T, T + 1, FLOOR - 1, FLOOR, FLOOR + 1, 10 * T]) {
+      // 参考谓词就是改前那一行：age > heartbeatStaleMs
+      const expected = age > T ? 'heartbeat_dead' : null;
+      assert.equal(
+        await judgeStale(lock, { heartbeatStaleMs: T, now: t0 + age }), expected,
+        `阈值 ${T} ms、持有 ${age} ms 应与原判据相同`,
+      );
+    }
+  }
+});
+
+test('EV-161 U4：run 锁不受影响（不走年龄判据）', async () => {
+  const t0 = Date.now();
+  const lock = await liveLock('run', t0);
+  for (const T of [SUB_MS, 2_000, 120_000]) {
+    for (const age of [FLOOR + 1, 10 * FLOOR, 10 * T]) {
+      assert.equal(
+        await judgeStale(lock, { heartbeatStaleMs: T, now: t0 + age }), null,
+        `run 锁在阈值 ${T} ms、持有 ${age} ms 时也不能按年龄判遗留`,
+      );
+    }
+  }
+});
+
+test('EV-161 U5：小阈值下其余判据不变（pid_gone / pid_reused / runTerminal / unparsable）', async () => {
+  const now = new Date().toISOString();
+  const gone: LockContent = {
+    topic: TOPIC, stage: null, run_id: null, pid: 2 ** 22, pid_started_at: null, acquired_at: now, kind: 'critical',
+  };
+  assert.equal(await judgeStale(gone, { heartbeatStaleMs: SUB_MS }), 'pid_gone');
+  const reused: LockContent = { ...gone, pid: process.pid, pid_started_at: 'Thu Jan  1 00:00:00 1970' };
+  assert.equal(await judgeStale(reused, { heartbeatStaleMs: SUB_MS }), 'pid_reused');
+  const live = await liveLock('critical', Date.now());
+  assert.equal(
+    await judgeStale(live, { heartbeatStaleMs: SUB_MS, runTerminal: true, now: Date.parse(live.acquired_at) }),
+    'heartbeat_dead', '运行已终态仍立即回收，不等下限',
+  );
+  assert.equal(await judgeStale(null, { heartbeatStaleMs: SUB_MS }), 'unparsable');
+});
+
+test('EV-161 U6：acquireLock 在亚秒阈值下不回收刚取不久的活锁，锁文件逐字节不变', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  const text = JSON.stringify(await liveLock('critical', Date.now() - 1_000), null, 2) + '\n';
+  await fs.writeFile(lockFile(dir), text);
+  await assert.rejects(
+    acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: SUB_MS, retries: 0 }),
+    (e: { code?: number }) => e.code === EXIT.LOCKED,
+    '持有 1 s 的活临界区不得被 50 ms 阈值回收',
+  );
+  assert.equal(await fs.readFile(lockFile(dir), 'utf8'), text, '锁文件必须原样留着');
+});
+
+test('EV-161 U7：acquireLock 在亚秒阈值下过了下限照常回收', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  const old = await liveLock('critical', Date.now() - (FLOOR + 5_000));
+  await fs.writeFile(lockFile(dir), JSON.stringify(old, null, 2) + '\n');
+  const h = await acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: SUB_MS, retries: 0 });
+  assert.equal(h.content.pid, process.pid);
+  assert.notEqual(h.content.acquired_at, old.acquired_at, '应是回收后新建的锁');
+  await h.release();
+});
+
+test('EV-161 U8：同进程并发——亚秒阈值下慢临界区不被并发者回收、不丢更新', async () => {
+  const dir = await tmpTrivium();
+  let inside = 0;
+  let maxInside = 0;
+  let counter = 0;
+  const order: string[] = [];
+  const body = (name: string, holdMs: number) => async () => {
+    inside++;
+    maxInside = Math.max(maxInside, inside);
+    order.push(`${name}+`);
+    const cur = counter;
+    await new Promise((r) => setTimeout(r, holdMs));
+    counter = cur + 1;
+    order.push(`${name}-`);
+    inside--;
+  };
+  let entered!: () => void;
+  const aIn = new Promise<void>((r) => { entered = r; });
+  const a = withTopicLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: SUB_MS }, async () => {
+    entered();
+    await body('A', 300)();
+  });
+  await aIn;
+  await new Promise((r) => setTimeout(r, SUB_MS));
+  const b = withTopicLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: SUB_MS }, body('B', 10));
+  await Promise.all([a, b]);
+  assert.equal(maxInside, 1, `临界区最多一个持有者，实际 ${maxInside}（${order.join(' ')}）`);
+  assert.deepEqual(order, ['A+', 'A-', 'B+', 'B-'], 'B 必须在 A 放锁之后进');
+  assert.equal(counter, 2, '读改写不丢更新');
 });
 
 // ── hook-stop 阻断计数：免锁自增 ──

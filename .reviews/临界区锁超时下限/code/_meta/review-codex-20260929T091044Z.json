@@ -1,0 +1,81 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "核心修复成立：下限只落在 judgeStale 的年龄判据一处，run 锁、pid 判据、runTerminal 逃逸、worker 失联判定（interpretStatus）均不受影响，且各有用例钉住（U3 逐字对照原谓词、S1/M7 反向验证下限没漏进失联面）。lock.ts 新增对 status.ts 的导入不构成循环（status.ts 及其全部依赖 fsx/exec/run-files 都不引 lock），CJS 单文件 bundle 下 WORKER_HEARTBEAT_MS 初始化顺序安全。测试面扎实：X1/X2 真起 OS 进程 + trace 重放断言串行，M1x 证明改前必红；证据自洽（check-1 2281/2279/0/2 与新增 11 条吻合、变异 8/8、验收 9/9、leftover []、起点 53d7476 与工作树逐文件对账一致、LLD 的 394 行与 wc -l 吻合）。最重的一条是次要：WORKER_HEARTBEAT_MS 的文档块把消费方枚举成了封闭清单，而本次给它添了第五个语义角色（临界区持有超时下限）却没有登记——调心跳间隔的人看不到锁下限会跟着动。另两条是证据 nit。无阻断项。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/status.ts:459-465（WORKER_HEARTBEAT_MS 文档块）",
+      "problem": "EV-160 把 WORKER_HEARTBEAT_MS 挪到 status.ts 时，文档块写了一份消费方枚举：「worker 的心跳定时器、--wait 判 heartbeat_stale 的报错、预检与 --start 的失联阈值只警告项都取它」。本次 EV-161 给它加了第五个消费方——lock.ts 的 criticalHoldTimeoutMs 把它当临界区持有超时的**安全下限**——但 status.ts 本文件在补丁里一字未改，枚举没有登记这个新角色，也没有点明「改这个常量的值会连带移动锁下限」。这不是纯文档洁癖：下限的安全语义（「必须大于最长临界区时长」，毫秒级）与心跳间隔的语义（worker 进度刷新频率）是两回事，未来若有人为更密的进度反馈把心跳间隔调小（比如 10 s），锁下限会跟着静默落到 10 s，EV-161 对亚秒阈值的保护随之减弱；而 test/unit/status.test.ts 的 EV-160 U4 用源码正则只钉了 run-protocol.ts 的定时器用法，U1 只钉「下限来源是该常量」，没有任何一处钉「下限不得低于临界区安全时长」。锁侧的注释写得再全，改心跳间隔的人读的也是 status.ts 这一头。",
+      "evidence": "读 src/trivium/status.ts:459-465：文档块只列三类消费方；读 src/trivium/lock.ts:23 确认新增 import { WORKER_HEARTBEAT_MS } from './status.js' 且 108-120 的下限全靠它；grep 全仓 WORKER_HEARTBEAT_MS 的消费点（lock.ts、preflight.ts、run-protocol.ts、两份测试）确认 status.ts 未被本补丁修改（changes.diff 的 files 清单里也没有 src/trivium/status.ts）；读 test/unit/status.test.ts:315/325（EV-160 U1/U4）确认既有源码对账不覆盖锁侧用法。",
+      "suggestion": "在 status.ts 的 WORKER_HEARTBEAT_MS 文档块补一句消费方登记：它同时是 lock.ts criticalHoldTimeoutMs 的临界区持有超时下限（EV-161），改这个值会移动锁下限、需按「下限须覆盖最长临界区（含阶段目录扫描）」重新论证。不需要改任何代码与判据。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "doc/05_testing/evidence/critical-lock-floor-20260929/gen-mutation-spec.mjs 与 mutation-spec.json、mutation-names-output.json 的 M2 / M6 desc 字段",
+      "problem": "变异规格 desc 里「⇒ U1 / U2 / U3」这类箭头后是预期咬住集，但与实际观测不一致：M2（Math.max 改 Math.min）实际红 5 条（U1/U2/U3/U6/U8），M6 实际还红了既有用例「短临界区持有过久」（报告 §2 自己列了）。实施报告 §2 的「失败用例名」一格用的是实测集，是对的；但三个证据文件里嵌的 desc 仍是低估的预测集。日后有人拿 spec 的 desc 复算/对账装置结论，会把「观测多于预测」误读成装置漂移或套件污染，反而要重跑一轮才能排除——证据件的自洽性正是这类留痕要买的东西。",
+      "evidence": "读 gen-mutation-spec.mjs:42-53：M2 desc 写 ⇒ U1 / U2 / U3、M6 写 ⇒ U4；读 mutation-names-output.json：M2 fail=5、red 数组含 U6/U8，M6 fail=2；读 mutation-output.txt 计数吻合；读 REPORT_2026-09-29_critical_lock_floor.md §2（同一目录工作树文件）：明写 M2 fail=5、M6 咬住 U4 与既有用例。",
+      "suggestion": "把三条证据件的 desc 改成实测集，或在报告 §2 一句话点明「desc 为计划期预测、以 names-output 的 red 为准」。方向即可，不必重造装置。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/lock.ts:108-120 与 test/unit/lock.test.ts 的 U1",
+      "problem": "criticalHoldTimeoutMs 的文档承诺「非有限值与原先同为不回收（age > NaN 为假）」，这条语义全靠 Math.max(NaN, x) 返回 NaN 的 IEEE 细节成立，而 U1 的取值格（1、SUB_MS、FLOOR±1、120_000）全是有限值，没有任何用例钉 NaN/Infinity 这一格。配置契约虽然挡住 NaN（heartbeat_stale_s 只约束 > 0），但这句承诺写在注释里，下一次重构若给函数加 Number.isFinite 防御或改 clamp 写法，会静默改变「非有限 ⇒ 不回收」的形态且测试全绿——这正是「文档承诺强于测试守卫」的形态。属可选加固，非本补丁引入的缺陷（改前同样无此用例）。",
+      "evidence": "读 src/trivium/lock.ts:108-120 确认该句在文档块中；读 test/unit/lock.test.ts:279-286 的 U1 全格取值确认无 NaN/Infinity；变异规格（gen-mutation-spec.mjs）也没有覆盖非有限形态的条目；读 src/trivium/config.ts 确认配置层只约束 > 0、NaN 到不了生产路径，故仅定 nit。",
+      "suggestion": "U1 加两格：criticalHoldTimeoutMs(NaN) 为 NaN、(Infinity) 为 Infinity，把注释承诺变成断言。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "下限落点选得对：只改 judgeStale 年龄判据一处、不动 29 处调用方与配置读取层，同一阈值喂 interpretStatus 的失联面保持原值——U3 拿改前谓词 age > T 做了边界穷举（T 与 age 各取 ±1），「阈值 ≥ 30 s 判定逐字不变」是机器核过的，不是口头承诺。",
+    "S1 + 变异 M7 构成下限不泄漏到 worker 失联面的双向锁；A6 证明 EV-160 告警输出新旧逐字相同（只改了代码旁注释），与计划 r2 §4「下限不进告警」的决策一致。",
+    "无循环导入、初始化顺序安全：lock.ts → status.ts 单向，status.ts 的依赖（types 为 type-only、fsx、exec、run-files）都不引 lock.ts，esbuild 单文件 CJS 下 WORKER_HEARTBEAT_MS 在消费点前已定义；typecheck/构建有 check-1 佐证。",
+    "X1/X2 是本主题里质量最高的部分：真起 4 个 OS 进程、自旋屏障、O_APPEND trace 重放 maxInside 断言串行，还核了 stderr 无回收告警——三重独立判据，M1x 实证改前必红（fail=2、windowMiss=false，竞争窗口真的被压到了）。等待预算（200×50 ms）对总时长（≈4×300 ms）余量 8 倍，负载抖动不会造成偶发红，只会弱化竞争强度，不产生假失败。",
+    "资源与生命周期面干净：验收脚本的持有者全部独立进程组、finally 里 kill(-pid) + ps 标记残留核对（leftover []）、mkdtemp 整删；raceWorkers 的 60 s 超时远大于重试预算上限（10 s），不会留孤儿子进程。",
+    "读数对账一致：check-1.txt 的 2281/2279/0/2 与「起点 2270 + 新增 11 条」吻合，U1-U8/S1/X1/X2 逐条可见耗时且全绿；acceptance-readout.json base_ref=53d7476、9/9；LLD 声称的 lock.ts 394 行与 wc -l 吻合；工作树 git status 与补丁 files 清单逐一对应，无快照漂移。",
+    "跨平台面无新增风险：判据全走 ISO-8601 UTC（toISOString/new Date），无 locale/TZ 依赖；证据脚本用 /bin/ps、/bin/realpath 且 realpath 有 try/catch 兜底，项目本身 macOS-only（AGENTS.md），可接受。"
+  ],
+  "not_covered": [
+    "计划文档（.reviews/临界区锁超时下限/plan/ 的 r2 定稿与 gemini/glm 的历史审查件）在禁读清单内，未读；「实现与计划 r2 各节一致」的核对只依据 changes.diff 正文与报告 §1 的自述，未逐条对计划原文。",
+    "未重跑 npm run check / 变异 / 验收（只读沙箱 + 耗时考虑），全部读数采信证据文件；证据文件与工作树的交叉一致性已查，但「check-1.txt 确由该工作树产出」只能靠内容与时间线间接支持。",
+    "镜头外的回归面（编排器并发语义、闸门闭环、registry 纪律逐条对账）只顺带核了与本补丁直接相关处；未系统复查 29 处 heartbeatStaleMs 调用方的语义逐一是否应当取下限（现状按计划 r2 是有意「全取同一下限」，未质疑）。",
+    "既有的相邻问题确认与本补丁无关、未展开：config.ts:817/834 persistProbe/patchProbe 的 heartbeatStaleMs 缺省硬编码 120_000（doctor.ts:500 走缺省），该面锁超时不随配置动、下限自然也无意义——保守方向、改动前即如此，不在 EV-161 范围。",
+    "系统时钟回拨对 age 判据的影响（负 age 永不按年龄回收）是改前既有语义，本补丁未改变其形态，未作为意见提出。",
+    "skills-src/ 与入口 SKILL.md 未改（本补丁不涉入口措辞），未复查渲染产物漂移。"
+  ],
+  "consulted": [
+    ".reviews/临界区锁超时下限/code/_meta/changes-20260929T091044Z.diff",
+    "src/trivium/lock.ts",
+    "src/trivium/status.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/config.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/run-files.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/log.ts",
+    "test/unit/lock.test.ts",
+    "test/unit/status.test.ts",
+    "test/integration/lock-cross-process.test.ts",
+    "scripts/mutation-check.mjs",
+    "doc/05_testing/REPORT_2026-09-29_critical_lock_floor.md",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/acceptance.mjs",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/acceptance-readout.json",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/check-1.txt",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/mutation-output.txt",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/mutation-names-output.json",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/gen-mutation-spec.mjs",
+    "doc/05_testing/evidence/critical-lock-floor-20260929/mutation-spec.json"
+  ]
+}

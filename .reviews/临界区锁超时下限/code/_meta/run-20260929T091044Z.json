@@ -1,0 +1,286 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260929T091044Z",
+  "topic": "临界区锁超时下限",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「临界区锁超时下限」：解决 BACKLOG EV-161（短临界区锁的持有超时借用 review.heartbeat_stale_s：lock.ts 的 judgeStale 对 kind 为 critical 的锁按「现在减 acquired_at 超过阈值」判 heartbeat_dead，而临界区持有期间不写心跳、正常时长是毫秒到数十毫秒，与 30 秒心跳间隔无关；配置只约束阈值大于 0…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "53d7476124a497b6449b7f6d99ef1747e5c923a9",
+    "tree_hash": "d35b5435e532fb1220ccae95e721c889e4889ac0",
+    "dirty": true,
+    "subject_sha256": "5e2c7bf91c68a36eec8a994405ab5527fc183a395d3e2789d712b0a89dc5884e",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "53d7476124a497b6449b7f6d99ef1747e5c923a9",
+      "dirty": false,
+      "inputs_sha256": "18495d45c8bc8dd6687332b026b43554b4f2b27aa0d09b4359a6b4409574fa29",
+      "built_at": "2026-09-29T08:11:09.874Z"
+    },
+    "after_tree_hash": "07e8ab46d416bf134de2ff5f7384ed294a3b2663"
+  },
+  "started_at": "2026-09-29T09:10:48.970Z",
+  "finished_at": "2026-09-29T09:21:02.854Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 613.115,
+      "tool_calls": {
+        "run_command": 30,
+        "project_reads": 22
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0ec6e-5b68-7451-94f2-d428a182f36b",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.13",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 246.332,
+      "tool_calls": {
+        "read": 23,
+        "grep": 8,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 198806,
+        "output_tokens": 14430,
+        "thinking_tokens": 10533,
+        "cache_read_tokens": 2474999,
+        "total_tokens": 213236
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "6062808f-34e0-47da-9e97-28abeb72a6bd",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 481.163,
+      "tool_calls": {
+        "read": 14,
+        "grep": 4,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 14
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 8,
+        "inputTokens": 695089,
+        "outputTokens": 24750,
+        "totalTokens": 719839,
+        "cacheReadTokens": 580288,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "sess_0b953bb4-5e87-4a0c-8021-de283d342691",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/临界区锁超时下限/plan/2026-09-29-临界区锁超时下限-gemini.md",
+    ".reviews/临界区锁超时下限/plan/2026-09-29-临界区锁超时下限-glm.md",
+    ".reviews/临界区锁超时下限/plan/_meta/review-gemini-20260929T084121Z.json",
+    ".reviews/临界区锁超时下限/plan/_meta/review-glm-20260929T084121Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "临界区锁超时下限/code/_meta/changes-20260929T091044Z.diff",
+      "sha256": "5e2c7bf91c68a36eec8a994405ab5527fc183a395d3e2789d712b0a89dc5884e"
+    },
+    {
+      "path": "临界区锁超时下限/code/_meta/brief-codex-20260929T091044Z.md",
+      "sha256": "8e4e13e94c4da732a844ebc17abf9b13733c64b425c74571cff5b90ec2530594"
+    },
+    {
+      "path": "临界区锁超时下限/code/_meta/brief-gemini-20260929T091044Z.md",
+      "sha256": "2e6d7d05971b104c94e1957e6c2c6b1e52559578a50586d127f904a816fe9567"
+    },
+    {
+      "path": "临界区锁超时下限/code/_meta/brief-glm-20260929T091044Z.md",
+      "sha256": "ba1be2bfbc5e3b174f1787a4919862857a41cd2bf2a59701551c1b4d2dca3a69"
+    },
+    {
+      "path": "临界区锁超时下限/code/_meta/review-codex-20260929T091044Z.json",
+      "sha256": "3715c22b70542d686749b4ee60df54e437fdf645ec7560a73640b5ac9b64c004"
+    },
+    {
+      "path": "临界区锁超时下限/code/_meta/review-gemini-20260929T091044Z.json",
+      "sha256": "3b62cc9eeb8a359b6705e20e884e3450d2e67ebbd798f542fbdfe0c8c2b823e2"
+    },
+    {
+      "path": "临界区锁超时下限/code/_meta/review-glm-20260929T091044Z.json",
+      "sha256": "21c3bfb7ffdcf83ea539a135aeb34fd1c411bc5f9267b16945d4a436ee194372"
+    },
+    {
+      "path": "临界区锁超时下限/code/2026-09-29-临界区锁超时下限-codex.md",
+      "sha256": "3ddcb0ac1473f7260cd0e7ce1f8b3681d507cf78e969a9f17613e6645c6cc749"
+    },
+    {
+      "path": "临界区锁超时下限/code/2026-09-29-临界区锁超时下限-gemini.md",
+      "sha256": "6bfb63e24dbe64e008123ce61a105616614de70581a2aab7413e3d754e1771f6"
+    },
+    {
+      "path": "临界区锁超时下限/code/2026-09-29-临界区锁超时下限-glm.md",
+      "sha256": "8334c43bbe16f4116c52015e9cbba87f33ca2e616f20039ca798b98857e36f72"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装"
+    ]
+  },
+  "status": "success"
+}

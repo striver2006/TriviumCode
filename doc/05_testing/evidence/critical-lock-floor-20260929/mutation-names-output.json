@@ -1,0 +1,137 @@
+[
+  {
+    "id": "M1",
+    "desc": "年龄判据改回 opts.heartbeatStaleMs（撤销本修复）⇒ U2 / U6 / U8",
+    "suite": "dist/test/test/unit/lock.test.js",
+    "pattern": null,
+    "fail": 3,
+    "red": [
+      "EV-161 U2：阈值低于下限时 critical 锁按下限判，持有未过下限不回收",
+      "EV-161 U6：acquireLock 在亚秒阈值下不回收刚取不久的活锁，锁文件逐字节不变",
+      "EV-161 U8：同进程并发——亚秒阈值下慢临界区不被并发者回收、不丢更新"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 持有 1 s（远超 50 ms 阈值）不得回收",
+      "AssertionError [ERR_ASSERTION]: Missing expected rejection: 持有 1 s 的活临界区不得被 50 ms 阈值回收",
+      "AssertionError [ERR_ASSERTION]: 临界区最多一个持有者，实际 2（A+ B+ B- A-）"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M1x",
+    "desc": "同 M1，跨进程 ⇒ X1 / X2（丢更新或回收告警）",
+    "suite": "dist/test/test/integration/lock-cross-process.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-161 X1：跨进程——亚秒阈值下慢临界区（withTopicLock）不被并发者回收、不丢更新",
+      "EV-161 X2：跨进程——亚秒阈值下慢临界区（withGlobalLock）不被并发者回收、不丢更新"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 亚秒阈值下临界区仍须串行，实际同时 4 个：+0 +3 +2 +1 -0 -3 -2 -1",
+      "AssertionError [ERR_ASSERTION]: 亚秒阈值下临界区仍须串行，实际同时 4 个：+2 +0 +3 +1 -2 -0 -3 -1"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M2",
+    "desc": "Math.max 改 Math.min ⇒ U1 / U2 / U3 / U6 / U8（亚秒阈值直接生效，1 s 与 300 ms 的活锁被回收）",
+    "suite": "dist/test/test/unit/lock.test.js",
+    "pattern": null,
+    "fail": 5,
+    "red": [
+      "EV-161 U1：下限的来源就是 WORKER_HEARTBEAT_MS，取大不取小",
+      "EV-161 U2：阈值低于下限时 critical 锁按下限判，持有未过下限不回收",
+      "EV-161 U3：阈值等于、高于下限时与原判据逐字相同",
+      "EV-161 U6：acquireLock 在亚秒阈值下不回收刚取不久的活锁，锁文件逐字节不变",
+      "EV-161 U8：同进程并发——亚秒阈值下慢临界区不被并发者回收、不丢更新"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: 持有 1 s（远超 50 ms 阈值）不得回收",
+      "AssertionError [ERR_ASSERTION]: 阈值 30001 ms、持有 30001 ms 应与原判据相同",
+      "AssertionError [ERR_ASSERTION]: Missing expected rejection: 持有 1 s 的活临界区不得被 50 ms 阈值回收",
+      "AssertionError [ERR_ASSERTION]: 临界区最多一个持有者，实际 2（A+ B+ B- A-）"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M3",
+    "desc": "下限改成 WORKER_HEARTBEAT_MS − 1 ⇒ U1 / U2（F 那一格）",
+    "suite": "dist/test/test/unit/lock.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-161 U1：下限的来源就是 WORKER_HEARTBEAT_MS，取大不取小",
+      "EV-161 U2：阈值低于下限时 critical 锁按下限判，持有未过下限不回收"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: 等于下限不回收（严格大于）"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M4",
+    "desc": "函数恒返回 WORKER_HEARTBEAT_MS（忽略阈值）⇒ U1 / U1′ / U3",
+    "suite": "dist/test/test/unit/lock.test.js",
+    "pattern": null,
+    "fail": 3,
+    "red": [
+      "EV-161 U1：下限的来源就是 WORKER_HEARTBEAT_MS，取大不取小",
+      "EV-161 U1′：阈值为 NaN 时 critical 活锁照旧不按年龄回收",
+      "EV-161 U3：阈值等于、高于下限时与原判据逐字相同"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: 阈值 30001 ms、持有 30001 ms 应与原判据相同"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M5",
+    "desc": "年龄判据 > 改 >= ⇒ U2（age = F）/ U3（age = T）",
+    "suite": "dist/test/test/unit/lock.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-161 U2：阈值低于下限时 critical 锁按下限判，持有未过下限不回收",
+      "EV-161 U3：阈值等于、高于下限时与原判据逐字相同"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 等于下限不回收（严格大于）",
+      "AssertionError [ERR_ASSERTION]: 阈值 30000 ms、持有 30000 ms 应与原判据相同"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M6",
+    "desc": "年龄判据去掉 kind === 'critical' ⇒ U4 与既有「短临界区持有过久」（run 锁按年龄判了）",
+    "suite": "dist/test/test/unit/lock.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "短临界区持有过久 → heartbeat_dead（长持锁不受此限）",
+      "EV-161 U4：run 锁不受影响（不走年龄判据）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 长持锁的工作进程本来就会持有很久，不能因此判遗留",
+      "AssertionError [ERR_ASSERTION]: run 锁在阈值 50 ms、持有 30001 ms 时也不能按年龄判遗留"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M7",
+    "desc": "下限误加到 worker 失联判定 ⇒ S1",
+    "suite": "dist/test/test/unit/status.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-161 S1：worker 失联判定不取锁的 30 s 下限——阈值 2 s、心跳 5 s 未更新即判 heartbeat_stale"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 5 s 未更新超过 2 s 阈值就判失联，远未到 30 s"
+    ],
+    "windowMiss": false
+  }
+]

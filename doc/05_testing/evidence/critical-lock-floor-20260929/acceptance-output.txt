@@ -1,0 +1,11 @@
+✓ A0 前置闸：归档与工作树的 package.json / package-lock.json 逐字节相同 true
+✓ A0 静态：lock.ts 从 status.js 导入 WORKER_HEARTBEAT_MS true；不含 30_000 / 30000 字面 true；新旧 bundle sha256 不同（new ad916327b8da / old a0c56b0bd341）
+✓ A1：旧：退 0、回收 heartbeat_dead true、锁不在 true、已写声明 true；新：退 70、无回收 true、锁文件逐字节不变 true、未写声明 true
+✓ A2：新旧都退 0/0、都回收 heartbeat_dead、输出归一化后逐字相同 true
+✓ A3：新旧都退 0/0、都按 pid_gone 回收、输出归一化后逐字相同 true
+✓ A4：新旧都退 70/70、锁文件都不变、输出归一化后逐字相同 true
+✓ A5：缺省配置三格（无预置 / 活 1 s / 活 130 s）新旧退出码 0/0、70/70、0/0，输出逐字相同 true/true/true
+✓ A6：T = 0.05 预检：退 0/0，JSON 逐字相同 true，含「失联阈值」true
+✓ A7：doctor --selftest 退 0，14/14
+
+合计 9 / 9；残留持有者进程 0 个
