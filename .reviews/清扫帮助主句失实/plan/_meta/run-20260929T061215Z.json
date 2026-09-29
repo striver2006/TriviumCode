@@ -1,0 +1,279 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260929T061215Z",
+  "topic": "清扫帮助主句失实",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「清扫帮助主句失实」：解决 BACKLOG EV-166（trivium scrub 帮助里「不再回到那个仓库时，副本会一直躺到 retention.run_dir_days 整删」这句主句本身失实：到期整删与会话启动的凭据抹除都只在该项目自己的会话启动 Hook 里跑、论域只有本项目的桶，trivium scrub 只抹凭据不删目录，所以不回到那个仓库就不会有任何自动清理，读者可能误以为废弃…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "48a7e4dc4ac8b24de29c8f63691de554e4e5a8a3",
+    "tree_hash": "cd2b077524b55512775ac35455badf4ee9ded470",
+    "dirty": true,
+    "subject_sha256": "2c4a1bd07cbafbbc066126e4dcd741e47f07590e09763df4df74fb7322b913fe",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "48a7e4dc4ac8b24de29c8f63691de554e4e5a8a3",
+      "dirty": false,
+      "inputs_sha256": "8a679251a48bce7790c3c012aef4ff12054e07f2af59a7c7c05fd105d890b0a3",
+      "built_at": "2026-09-29T05:14:08.522Z"
+    },
+    "after_tree_hash": "09f1465247d4aba3a7b374820a3b854431cb6c26"
+  },
+  "started_at": "2026-09-29T06:12:16.529Z",
+  "finished_at": "2026-09-29T06:26:12.830Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 582.496,
+      "tool_calls": {
+        "run_command": 30,
+        "project_reads": 37
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0ebca-e1dc-7440-a33b-c0e106d84336",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.13",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 393.238,
+      "tool_calls": {
+        "read": 30,
+        "grep": 20,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 25
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 458252,
+        "output_tokens": 29768,
+        "thinking_tokens": 22782,
+        "cache_read_tokens": 4804139,
+        "total_tokens": 488020
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "126971d3-865d-4f83-9d8b-5e6087fd34c2",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 836.054,
+      "tool_calls": {
+        "read": 19,
+        "grep": 25,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 29
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 11,
+        "inputTokens": 956766,
+        "outputTokens": 39202,
+        "totalTokens": 995968,
+        "cacheReadTokens": 847296,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_cc57777e-dcaf-45c6-b1d3-a6647be86067",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "清扫帮助主句失实/plan/_meta/brief-codex-20260929T061215Z.md",
+      "sha256": "879c6840d6c78408428c4cadfe9d1ace57ebbb691bc136446e57675c46f49bf2"
+    },
+    {
+      "path": "清扫帮助主句失实/plan/_meta/brief-gemini-20260929T061215Z.md",
+      "sha256": "0402245187b1be700afdac924a57f4bd0d6375c7872d7e7e44c138865fbea140"
+    },
+    {
+      "path": "清扫帮助主句失实/plan/_meta/brief-glm-20260929T061215Z.md",
+      "sha256": "1ee03cecb45facaa5ecc1d3e0299d384819049c76a169f6b59ce6d9283ca2f00"
+    },
+    {
+      "path": "清扫帮助主句失实/plan/_meta/review-codex-20260929T061215Z.json",
+      "sha256": "0696192cc4fb794186bcb82838e2c344d4a8f66a3a52c62715b01e3e8418c67b"
+    },
+    {
+      "path": "清扫帮助主句失实/plan/_meta/review-gemini-20260929T061215Z.json",
+      "sha256": "b2947834811d406879ac46a0ab771e51368a878efe0212c1de155f94879a6c6e"
+    },
+    {
+      "path": "清扫帮助主句失实/plan/_meta/review-glm-20260929T061215Z.json",
+      "sha256": "60231d1ab9cc9ffc813e86ba937fbf1f4350a54892d6ca6959296d515cf2f51f"
+    },
+    {
+      "path": "清扫帮助主句失实/plan/2026-09-29-清扫帮助主句失实-codex.md",
+      "sha256": "a1be861929721542c5efe7b1f9fd0515056678c73fef1e5c519da7e900feb841"
+    },
+    {
+      "path": "清扫帮助主句失实/plan/2026-09-29-清扫帮助主句失实-gemini.md",
+      "sha256": "01ff0c1aaf8079ea4400c6d0379a277dbe8ad387ef7390fff511dd9b060f9c62"
+    },
+    {
+      "path": "清扫帮助主句失实/plan/2026-09-29-清扫帮助主句失实-glm.md",
+      "sha256": "86187452645c3370aaecccd91c6c517e99c6a39da6210f7343d2e5dd3b82cd2a"
+    },
+    {
+      "path": "清扫帮助主句失实/plan/2026-09-29-清扫帮助主句失实-claude.md",
+      "sha256": "2c4a1bd07cbafbbc066126e4dcd741e47f07590e09763df4df74fb7322b913fe"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

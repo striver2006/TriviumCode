@@ -1,0 +1,40 @@
+{
+  "agreed": [
+    "认可新动机句方案乙（§2.1）：显示宽度（145~147 < 151）不突破 USAGE 最宽行，保留并压缩 EV-164 限定语信息，前后语义连贯，消除了对「废弃项目桶会自动整删」的误解，且句尾用「只补抹凭据」呼应首行「只抹凭据、不删任何目录」。",
+    "认可泛称注释 C1～C6 全部不改的判据与逐条论证（§2.4）：核实代码（retention.ts:211-235 与 status.ts:365-393），status 读不到的目录在会话启动时确实会在到期后被 pruneRunDirs 整删，其语境均在本项目开会话的前提下，未作出失实承诺。",
+    "认可范围控制与不做清单（§0）：严格遵循走向 ①，不扩展到跨仓整删（走向 ②）；不并入用户明确排除的 EV-167、EV-163 等其他待办。",
+    "认可验证与回归防护体系（§4）：T5 整段逐字更新 + 新增 T8（全文无「躺到」+「整删」且钉住关键语义子串）形成双重守卫；M1～M9 变异覆盖关键破损形态；B0～B11 零配额验收通过与 48a7e4d 基线 bundle 对照，严格保障其余输出面零差异。",
+    "认可文档同步清单（§5）：全面覆盖主设计（v1.3.61）、LLD（v1.1.19）、MANUAL（v1.0.19）、RUNBOOK、PROTOCOL 与 BACKLOG，且对 MANUAL:636 历史叙述采取补指向而非改写历史事实的严谨处置。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/清扫帮助主句失实/plan/2026-09-29-清扫帮助主句失实-claude.md",
+    "src/trivium/cli.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/status.ts",
+    "test/integration/scrub-output-text.test.ts",
+    "test/contract/orchestrator-logs-parity.test.ts",
+    "scripts/mutation-check.mjs",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/05_testing/evidence/scrub-output-text-20260929/acceptance.mjs",
+    "doc/05_testing/evidence/scrub-output-text-20260929/gen-mutation-spec.mjs"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未在真实终端实际运行旧版本 bundle（48a7e4d）与新构建生成 diff 脚本（本次为只读计划审查，无执行与写权限，以代码与设计推演为主）。",
+    "未核验暂缓清单中其他 EV 编号（如 EV-163 到期整删终态进程、EV-167 设计 README 版本指针等）的实施细节，仅核对它们确实不在本轮改动范围内。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本计划针对 BACKLOG EV-166 的失实问题进行了精准界定与收敛修复，严格遵循走向 ①（只改文字、不引入跨仓整删）；新动机句取方案乙（行宽 145~147 < 151）不仅没有产生新的最宽行，而且保留并紧凑重组了 EV-164 的限定语，彻底消除了读者对「废弃项目桶会自动整删」的虚假预期；相关注释与文档同步（主设计、LLD、MANUAL、RUNBOOK、PROTOCOL、BACKLOG）覆盖周密；C1～C6 六处泛称注释逐句论证严谨，不改理由充分；单测（新增 T8 钉住语义要素与无「躺到整删」承诺）、变异（M1～M9）与零配额验收（B0～B11 基于 48a7e4d 的真机双 bundle 差异归一化比对）防护网极其完备，未发现任何返工风险，同意进入实施。",
+  "verdict": "approve"
+}

@@ -1,0 +1,63 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "整体成立。§1.1 事实底座（pruneRunDirs 唯一调用方 hooks.ts:1502、scrubAllRunRoot 唯一调用方 cli.ts:1872、runRoot 其余两处都拼本项目桶、repoId 由绝对路径派生）、F1～F5 与 MANUAL:636 / PROTOCOL:369 / LLD:607 / BACKLOG EV-33·EV-164·EV-166 的行号原文、C1～C6 六条「不改」论证、T5/T6/T8 与 M1～M9 的应红对应、基线纠错（orphan 报告确把 2269/2267 写倒）逐条对照代码核实无误；全仓 grep「躺到」的命中面与计划清扫面一致（README、skills-src、PRD 零命中，「PRD 不改」正确）；宽度算术独立复核成立（旧句 151、新句乙 149）。最危险的一条仅 nit 级：B1 的「最宽行仍为 151」依赖未写明的宽度计数约定（「…」记 1 还是 2），上一主题 acceptance.mjs 没有现成宽度函数可继承，从零实现可能自伤。放行，补一句口径即可。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.3 B1",
+      "problem": "B1 新增断言「新句宽度 ≤ 新帮助最宽行且最宽行仍为 151」，但宽度函数的字符口径没写进计划，而 151 这个绝对值恰恰依赖口径：preflight 那行（cli.ts:248）共 147 字符，「名称」「模型」4 个全宽字符之外还有一个二义宽度字符「…」（U+2026）——记 1 时该行=151、记 2 时=152，「恰有两行 151」只在前一约定下成立。上一主题的 acceptance.mjs 里没有任何宽度计算（grep「宽度|width|151」零命中），这次是从零实现；口径不钉死，验收脚本按另一约定写就自己红给自己看。",
+      "evidence": "手算复核：F1（cli.ts:328，不含二义宽度字符）=151 稳健、新句乙=149 稳健、preflight 行（cli.ts:248）=147 字符 +4（名称/模型）+1（若「…」记宽）；doc/05_testing/evidence/scrub-output-text-20260929/acceptance.mjs 全文无宽度函数（grep 零命中），故「实测最宽 151」所用约定只存在于计划作者的临时脚本里，计划文本未沉淀。",
+      "suggestion": "在 §4.3 写明宽度口径（如：East Asian Width 的 W/F 记 2、其余含二义 A 记 1；或指明复用计划做「159 行 / 最宽 151」实测的同一脚本），或把绝对值断言改成相对断言：新句宽度 ≤ 新帮助最宽行，且新帮助最宽行宽度 == 旧帮助最宽行宽度——后者对口径不敏感，同样守住「不产生新的最宽行」。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§1.1 事实底座逐条核实成立：src/ 内 pruneRunDirs( 唯一调用方 hooks.ts:1502、scrubAllRunRoot( 唯一调用方 cli.ts:1872、runRoot( 其余两处（review.ts:766 / run-protocol.ts:67）都拼本项目桶；repoId＝目录名+绝对路径 sha256 前 8 位（review.ts:335-336），「仓库挪位旧桶没人清」由代码直接成立。",
+    "F1～F5 五处失实句的行号与原文逐字对上（cli.ts:183/:328、retention.ts:287-292、MANUAL:372-374、RUNBOOK:223-225）；MANUAL:636、PROTOCOL:369、LLD:607、BACKLOG EV-33(:131)/EV-164(:262)/EV-166(:266) 的处置判断（历史引述补指向 / 契约汇总要改 / 原文只加注记）都与各自文件的性质相称。",
+    "清扫面完备：全仓 grep「躺到」的命中（src 7 处、test 3 处、doc 11 个文件）全部落在计划的 F/C/§5 清单或「历史留痕不动」的变更记录、旧报告、evidence 里；README.md、skills-src/、PRD 零命中——「PRD 不改」核实正确，设计文档活文仅 §5 三处锚点待补且 :2257/:2881/:1477 都实际存在。",
+    "宽度结论独立复核成立：旧句 151（与 v1.3.59 变更记录「显示宽度 151，等于 USAGE 现有最宽行」互证）、写法乙 149、不产生新的最宽行；键名 retention.run_dir_days 放不进 151 预算是算术事实，MANUAL §五与 RUNBOOK 仍有键名的兜底也核实（RUNBOOK:224 现文即含键名）。",
+    "C1～C6 六条「不改」逐条对照代码后全部同意：六处语境均为本项目自己的会话或本仓正在开发的运行，无「不再回到那个仓库」前提；C1 的判据链（mtime 判到期 + cliGroupsConfirmedGone 无记录 ⇒ gone，status.ts:363-393 blockers 为空即 gone）与 retention.ts:212-235 一致，C4 的 CLI 挡住情形确由同段 run-protocol.ts:1269-1272 写明。",
+    "测试设计自洽：scrub-output-text.test.ts 现有 T1～T7 与 MOTIVE(:27-28)/OLD_MOTIVE(:29)/T5(:213-234)/T6(:262) 锚点全对上，文件尚无 T8 无编号冲突；T8 三段子串与新句逐字吻合、负向扫描（任一行同含「躺到」与「整删」）当前帮助仅 F1 命中；M1～M9 与应红用例的对应逐条走查一致（M4 折行只红 T5、M7 帮助别处只红 T8，与 T5 只钉 scrub 一节、T8 全文扫描的分工吻合）；test/ 内没有其他用例钉 USAGE 帮助文本。",
+    "基线纠错属实：orphan 报告 :97-100 各行均为「总数/通过」序而 :101/:170 写成「2267 / 2269」，计划纠正为 2269 条、2267 过、0 败、2 跳过（2267+2=2269 自洽），§4.4 预期 +T8 → 2270 口径一致；LLD v1.1.18、MANUAL v1.0.18、设计变更记录顶端 v1.3.60 三个版本基线核实。",
+    "D4 同意保留：RUNBOOK 补「仓库挪了位置旧桶同样不会再被清」是 repoId 派生规则的直接推论，属运维排查口径（「为什么这个桶一直没人清」），无行为面、无越权；F4 尾巴「要清掉目录，人工确认后自己删」与 RUNBOOK:246「状态读不到」档的处置同口径，不新增操作面。"
+  ],
+  "not_covered": [
+    "未实跑 npm test 与未构建 bundle：全量基线 2269/2267/0/2 取自 orphan 报告与计划的对读，「--help 共 159 行、最宽恰两行 151」未用 bundle 独立复测（宽度为静态手算复核）。",
+    "scripts/mutation-check.mjs 只核了存在性，未读其实现；上一主题 gen-mutation-spec.mjs / mutation-names.mjs 同样只核存在与目录结构，「从源码截锚点并核唯一」的机制按计划描述采信。",
+    "C1 论证中 cliRecordsOf(null) 的实现体未读，「status 为 null ⇒ 无记录 ⇒ gone」按 status.ts:363-393 的 blockers 为空路径推断。",
+    "QUICKSTART、CONTRIBUTING 等其余手册正文未逐页重读（仅 grep 确认无「躺到 / 不再回到那个仓库」的动机句副本）。",
+    "并发与幂等面本轮不适用（纯文字改动、无判据与行为变更），未做针对性审查。"
+  ],
+  "consulted": [
+    ".reviews/清扫帮助主句失实/plan/2026-09-29-清扫帮助主句失实-claude.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-09-29_orphan_cli_admission.md",
+    "doc/05_testing/REPORT_2026-09-29_scrub_output_text.md",
+    "doc/05_testing/evidence/scrub-output-text-20260929/acceptance.mjs",
+    "src/trivium/cli.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/status.ts",
+    "src/trivium/scrub.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/review.ts",
+    "test/integration/scrub-output-text.test.ts",
+    "test/contract/orchestrator-logs-parity.test.ts"
+  ]
+}
