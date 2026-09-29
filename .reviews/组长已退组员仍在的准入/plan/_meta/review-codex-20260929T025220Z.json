@@ -1,0 +1,105 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "方向正确、判据单一来源的取舍我认同，D1/D2/D3 的实现形状也站得住。但有六条需要先处理，最危险的一条是：新阻挡态只在「status.json 记录仍在」时生效，而组长一退出，worker 自己就把该侧 cli 记录清成 null（exec.ts:215-219 的 exit 事件 → run-protocol.ts:963 观察者 → status.ts:234 syncCliRecords → status.ts:258 跳过 ⇒ 放行）。工作进程仍活着、只有 CLI 组长退出、同组后代过继给 init 继续用副本——这一形态本轮既没进方案，也没在 §4 如实保留清单里登记，而 §3.2 的 K5 用 startWithRecordedClis（worker 活着）+ killLeaderOnly 正好撞上它：断言「副本不抹」很可能不成立，或靠时序侥幸通过。次危险：§2.3 把 orphaned 并入既有告警「未对它们发信号」，而这批组员恰恰收到过组信号——这与上一主题刚修的 EV-164 同类（话比事实强），且与用户决策「既有输出逐字不变」正面冲突，计划把它判成「语义完全贴合」是错的。另：作为推翻 EV-154 决策 4 依据的探针产物没有进仓（evidence/orphan-cli-admission-20260929/ 不存在），ps 成本在清扫与轮询两处被成倍低估，源码注释里那份「用户决策 4 如实保留」的旧论证未列入同步面。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §0 背景 / §2.5 不改的地方 / §4 风险与如实保留",
+      "problem": "新阻挡态以「status.json 里还留着该侧 cli 记录」为前提，但工作进程活着时组长一退出，记录就被 worker 主动清成 null，五处准入随即一律放行——即「工作进程存活 + CLI 组长已退 + 同组后代仍在用/写回副本」这一形态本轮修不到，而它正是 BACKLOG EV-165 描述的形态（组员仍在用那份副本会被抹掉）。计划既没把它列入方案，也没写进 §4 如实保留清单，等于留下一格无声的洞。",
+      "evidence": "src/trivium/util/exec.ts:213-219（killTree 派生即 liveTrees.set，child.once('exit') 里 liveTrees.delete(pid) + notifyTrees()）；src/trivium/run-protocol.ts:963-964（worker 的唯一观察者把 trackedTrees() 经 patchStatus 写进 status.json）；src/trivium/status.ts:234-240（syncCliRecords：该侧没有对应条目就把 side.cli 置 null）；src/trivium/status.ts:258（cliRecordsOf 对 null 直接 continue ⇒ 不产生记录）；src/trivium/util/exec.ts:779-780 既有注释明写「组长一退出……该组就从 liveTrees 删掉、不在遍历面上——同组遗留的后代一律收不到信号……覆盖矩阵 h 格，如实保留」；doc/08_project/BACKLOG.md:263（EV-165 的成因句是「组员若仍在用副本（或往回写）会照抹」）。",
+      "suggestion": "不必扩范围（用户已定只做 EV-165），但必须把这一格显式收进 §4 如实保留清单并回补 BACKLOG/设计 §7.5「如实保留」句：说明本轮的判定面只覆盖「记录仍在的孤儿组」（工作进程被 SIGKILL/堵住而来不及清记录那一族），工作进程存活那一形态靠记录清除逃逸、留作后续；并顺手说明为什么不能靠「组长退出时不清记录」来补（会引出 stale 记录与复用判据的第二轮），以免下一轮把它当新想法再议一遍。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3.2（K5 用例）",
+      "problem": "K5 用 startWithRecordedClis 起一轮 hang_cli、再 killLeaderOnly 杀掉组长，随后断言「该侧凭据副本不抹」。在该夹具里工作进程是活着的事件循环，组长被杀会触发 exit 事件并清掉该侧 cli 记录（见 CODEX-01），scrub 于是判放行——用例要么直接失败，要么依赖「清记录」与「跑 scrub」的赛跑侥幸通过。计划连「心跳仍新鲜时先 --cancel worker 或直接等失联，视夹具复杂度取更简单的一条」这句也说明它自己没定下走哪条路。",
+      "evidence": "test/integration/gate-loop.test.ts:2569-2580（startWithRecordedClis 起两侧 hang_cli 并等两侧记录落盘，worker 在跑）、:2610（assertRecorded 断言两侧都记下了组号与启动时刻）；src/trivium/adapters/stub.ts:114-115、:317（hang_cli 以 run(…, {killTree:true}) 派生 sh -c 'sleep 600…'）；src/trivium/util/exec.ts:213-219 与 src/trivium/status.ts:234-240、:258（组长退出 ⇒ 记录被清）。",
+      "suggestion": "在 K5/K6 的用例前提里把「被杀组长那一刻工作进程已不可写 status.json」钉死（例如先按 CODEX-01 建议选定的路径：SIGKILL/堵住 worker，或直接改用 seed 记录 + 真实孤儿组的构造），并在杀组长之后、跑 scrub 之前加一条硬断言：status.json 该侧 cli 记录仍在（pgid 未变）。否则这条集成用例守不住它声称守住的东西。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §2.3 与用户决策「既有输出逐字不变」",
+      "problem": "计划把 orphaned 组并入既有告警句「组长已退出，组里还有 N 个成员，未对它们发信号——请用 ps 核对」，并称其「语义完全贴合」。按 §2.2，orphaned 组是走过 terminateProcessGroup、真真切切收过 SIGTERM（必要时 SIGKILL）组信号的一族；这条句子在新形态下失实。而它属于「既有输出逐字不变」的冻结面，Driver 无权自改，两个用户决策在这里正面冲突，计划没有把冲突交给用户裁。",
+      "evidence": "src/trivium/run-protocol.ts:857-867（现有播报：共用 step「按记录结束审查员 CLI…」+ membersLeft>0 的「未对它们发信号」告警）；src/trivium/run-protocol.ts:719-721 附近的既有纪律「播报要按事实说——一个都没发、发了却没确认退出，都不能说成已终止」（terminateProcessGroup 的 signals 语义）；src/trivium/run-protocol.ts:796（既有注释自认「随后『组长已退出』的告警与事实不符」是要避免的形态）；doc/08_project/BACKLOG.md:255（EV-157 行记录了 EV-164 正是「清扫输出失实文字」主题，2026-09-29 已修）。",
+      "suggestion": "把这条列为「用户已定」清单里的待裁项并显式提出：要么为 orphaned 组新增一句措辞（属「新增成因」，不违反既有输出不变），要么让该句在 verdict==='orphaned' 时不发（只留「未能确认退出」）；不要由 Driver 自行按「贴合」处理——上一主题刚因同类失实文字立了 EV-164，这条大概率在代码双审被再次打回，属可预见的返工。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "performance",
+      "location": "plan §1.2 代价句 / §2.2 / §2.5（会话启动清扫）",
+      "problem": "成本只按「组长不在时多一次 ps」逐条记，实际是两处成倍：①会话启动清扫与 trivium scrub 遍历运行根下全部项目桶的全部运行目录，已结束的跑占了绝大多数、其 CLI 组长普遍已退，每个有记录的目录都要新起一次 /bin/ps -axo pgid=,stat= 全系统进程枚举（超时上限 10 s）；②terminateRecordedCliGroups 对 orphaned 组走 terminateProcessGroup 的宽限轮询，每次 isGone 都调 judge，即每 250 ms 一次 ps、最长约 3 秒一组。D2 的 out 出参只免掉了 cliGroupsConfirmedGone 的第二次 ps，免不掉轮询里的那几十次。",
+      "evidence": "src/trivium/util/exec.ts:636-644（processGroupMemberCount：run('/bin/ps',['-axo','pgid=,stat='],{timeoutMs:10_000}) 全量枚举 + 逐行匹配）；src/trivium/retention.ts:331-356（scrubAllRunRoot 对每个 bucket 的每个 dir 调 admitScrub ⇒ scrubAdmission ⇒ cliGroupsConfirmedGone ⇒ judgeCliGroup）、:200-241（pruneRunDirs 逐 dir 调 cliGroupsConfirmedGone）；src/trivium/util/exec.ts:717-742（terminateProcessGroup 的 waitGone 每 pollMs 调一次 isGone）；src/trivium/run-protocol.ts:822-826（isGone = judge(r)，本轮计划对其新分支同样触发计数）；doc/02_design 主设计 §7.5 行 1477 与 cli.ts:1915-1926 的清扫播报面。",
+      "suggestion": "计划里补一段成本核算（每次清扫新增多少 ps 调用、量级与上限），并考虑把成员计数抽成「一次 ps 快照 + 按 pgid 派生计数」的批量读法（同一次清扫内复用，仍是单一判据、不新增旗标），或至少在 §3.4 的零配额验收里测并如实记录会话启动清扫的耗时前后差；轮询路径可考虑沿用 exec.ts:743 一带既有轮询节奏或对 orphaned 用更大 pollMs——但要先量化再决定，别默认「一次 ps 无所谓」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §1.1 / §1.2 的 orphan_unverifiable 分支；§4「orphan_unverifiable 不去猜」",
+      "problem": "组长不在这一支对 ps 失败直接判 orphan_unverifiable，没有沿用同函数「组长在而启动时刻取不到」那一支的重检写法（再看一次 kill(pgid,0)），也没有任何重试。后果是一次瞬时 ps 失败/超时就把该侧长期挡在准入外：会话启动清扫反复挡住、到期整删也不做，而计划的出口只是「用 ps 核对」（CLI 侧还有「人工把该侧 cli 改回 null」那一档，判不了这一档按既有决策不设放弃档位）。计划把这一格写成「维持保守」，但没有比较更便宜的等价路径。",
+      "evidence": "src/trivium/status.ts:296-311（既有 unverifiable 一支：processStartTime 取不到时再 kill(pgid,0) 重检，仍不在则判 gone——同一函数里对『ps 这一刻失败/进程恰好退出』的区分手法）；src/trivium/util/exec.ts:636-637（run 非零即返回 null，超时也算）；src/trivium/retention.ts:222-241（判不了 ⇒ 到期不删、计入 kept、落回 deferredCli）；RUNBOOK 分档表 doc/06_deployment/RUNBOOK_pipeline_ops.md:245（「因审查员 CLI 未动」的出口是 CLI 结束后重跑重判）。",
+      "suggestion": "两个便宜选项写进计划让用户/双审选一个：①null 时同一次调用内重数一次（成本最多 +1 次 ps，仍不猜）；②照计划直接判 orphan_unverifiable，但在 §4 明写「一次瞬时 ps 失败会把该侧挡到下次清扫重判」这一后果，并在 RUNBOOK 那一档补上「判不了」的重判预期。现在的写法两条都没落，属于未决策。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §0 背景论证句 / §3.3 / §5 文档同步",
+      "problem": "三处对证据与同步面的交代不实或不完备：①作为推翻 EV-154 决策 4 依据的探针，计划称读数「均已拷进 evidence/orphan-cli-admission-20260929/」，仓库里该目录不存在（本轮主题目录下只有 plan/ 与 task.json），探针留在会话 scratchpad 里，而本仓同类主题的 probe-fork-race.mjs 都是随证据进仓的；②§3.3 引用生成脚本路径写作 `evidence/取消与失联的凭据准入核CLI…/gen-mutation-spec.mjs`，实际在 doc/05_testing/evidence/cancel-wait-cli-admission-20260929/；③§4 说新窗口的概率「与既有 reused 判据窗口同量级」，但既有 reused 窗口的安全性来自组长活着时占住该 pid 号（exec.ts:749-750 的论证），而 §7.2 的探针只在「组里还有成员」的前提下测零复用——成员降到 0 之后到 SIGKILL 升级之间的空档是新论证面，不能用同一句话覆盖；④§5 文档同步没把「源码注释里那份旧论证」列入同步面。",
+      "evidence": "本审查实测：`ls .reviews/组长已退组员仍在的准入/` 只有 plan/ 与 task.json；`ls doc/05_testing/evidence/` 有 cancel-wait-cli-admission-20260929/、无 orphan-cli-admission-20260929/；该目录内含 gen-mutation-spec.mjs 与 probe-fork-race.mjs（探针进仓的先例）；src/trivium/util/exec.ts:747-751（「组长活着就不可能被复用」的既有论证）；需同步的旧论证注释：src/trivium/status.ts:325-326、src/trivium/run-protocol.ts:792-797、:879-882、:1265-1270、:1801-1803、src/trivium/util/exec.ts:779-781。",
+      "suggestion": "把探针脚本与两份读数按既有命名规范落进 doc/05_testing/evidence/<主题>-<日期>/（这属审查工件、不属业务代码，不违反「不新增运行目录文件」），并在设计 §7.5 引它的读数来支撑决策 4 的撤回；§3.3 的路径改成实际路径；§4 把「成员已归零后的空档」与「既有 reused 窗口」分成两句、各自说明依据（前者若确无实测就明写未实测）；§5 增列一份「源码注释同步清单」，含上面逐行——本仓把注释当契约（EV-164 就是为一句失实注释立的项）。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "判据单一来源的取法正确：只改 judgeCliGroup 与 cliGroupsConfirmedGone，五处消费方（会话启动清扫、trivium scrub、到期整删、--wait 挂载点②、--cancel 挂载点③）零改动即继承新阻挡态——我核过 src/trivium/retention.ts:117、:229 与 src/trivium/run-protocol.ts:1264、:1803 确实都走这一条路径，§2.5 的「不改的地方」清单与实际调用面一致。",
+    "D1（新增两个值而不是一个）理由成立：orphaned 与 orphan_unverifiable 在「--cancel 是否发信号」上行为不同，合并会让消费方各自再判子情形，与既有 reused/unverifiable 的细分风格一致。",
+    "D2（可选 out 出参 + memberCountOf 依赖注入）的形状与既有写法同构：我核过 processMatchesRecord 的 canonicalStartTimeOf（src/trivium/util/exec.ts:604-628）确是同一手法；且「少一个可选参数的函数可赋给多一个可选参数的函数类型」这句对 terminateRecordedCliGroups 的 judge 覆盖类型（run-protocol.ts:807-812）成立，现有测试的 judge 桩签名不会因此变红。",
+    "D3（把 orphaned 并入 alive 的 terminateProcessGroup 调用）的内核前提成立：killProcessTree 发的是组信号（exec.ts:664-680），isGone 的 'gone'||'reused' 判据对两支同形，不新增常量、不改宽限链，符合最小改动。",
+    "orphan_unverifiable 复用 CliBlocker.kind:'unverifiable' 而不新增 kind 是合适的：我核过 run-protocol.ts:1272 的 --cancel 出口提示与 retention/cli.ts 的 deferredCli 播报只按 kind 分流，新增 kind 会波及 cli.ts 与 RUNBOOK 分档表，而处置确实相同。",
+    "§2.4 收口 settledCliSides 与准入口径分叉、并同步改掉 run-protocol.ts:879-882 那句「有意分叉」的注释，是本主题该做的收尾；§4 把 EV-161/162/163/166/167 列为超范围暂缓也与 BACKLOG 现状一致。",
+    "§3.4 的新旧构建对照（旧基线固定 eeceeaa、格 H 上旧构建照抹照删、如实记录旧构建实际读数而不预设）是正确的证伪设计；D4「不新增桩选项、改用单 pid SIGKILL 造孤儿组」省配额的方向也对——问题只在 CODEX-02 说的夹具时序前提。"
+  ],
+  "not_covered": [
+    "未做真实厂商 CLI 实测（遵循用户「不花配额」决策），因此「真实 CLI 收到组信号后是否会带走/留下后代」仍按计划自己的如实保留未验证。",
+    "未运行任何测试（typecheck/build/test 一律没跑），§3.1 的 U0/U1/U2/U3/U4/U5 分格是否真能构造、格 A/B/Br/C/D/E 的既有断言会不会因新分支变红，只做了代码面推断，没有实证。",
+    "未审 `ps -axo pgid=,stat=` 在非 macOS/非 BSD 形态下的可用性（项目仅支持 macOS + VS Code，故判为不成风险），也没量化实际 ps 单次耗时（CODEX-04 只给机制与次数，数字留给实施）。",
+    "未覆盖 EV-163/161/162/166/167 与 EV-159 第二形态的正确性（计划声明暂缓，我未复核暂缓理由）。",
+    "未复核 skills-src/ 与入口 SKILL.md 的渲染面（本轮计划不改入口命令，故未展开），也未核对 LLD/MANUAL/PROTOCOL 中每一处需要改写的具体行号（只核了主设计 §7.5 行 1477/1471/2253 的存在性）。",
+    "未审 worker 侧 SIGTERM 处理器（shutdownTrackedTrees）与本轮改动的交互细节，只在 CODEX-01/02 里指出了它自认的 h 格遗留面。"
+  ],
+  "consulted": [
+    "AGENTS.md",
+    "src/trivium/status.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/adapters/stub.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/05_testing/evidence/cancel-wait-cli-admission-20260929/",
+    ".reviews/组长已退组员仍在的准入/plan/2026-09-29-组长已退组员仍在的准入-claude.md"
+  ]
+}

@@ -1,0 +1,279 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260929T025220Z",
+  "topic": "组长已退组员仍在的准入",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「组长已退组员仍在的准入」：解决 BACKLOG EV-165（凭据准入与到期整删只看审查员 CLI 的组长：组长已退出而组里还有成员时判已结束、放行，组员若仍在用或写回副本会被抹掉；--cancel 在同一次调用里已数出成员，却不挡准入）。判据单一来源，只改 judgeCliGroup 与 cliGroupsConfirmedGone；--cancel 对这种组也按组结束（撤回 EV-154…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "eeceeaac84be433ae8259aa11b4d3a86f4712ac8",
+    "tree_hash": "c05437622e180e8487894d39c80e602afe19cb0a",
+    "dirty": true,
+    "subject_sha256": "6c29c13f01643dfa658f3f9efbc19d5aa2d291026ab8f0a0c42dc91cb5f2c944",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "eeceeaac84be433ae8259aa11b4d3a86f4712ac8",
+      "dirty": false,
+      "inputs_sha256": "d9288417fd8b7efc262da33478439050f6b13f084ca83f889195fc377ce1cace",
+      "built_at": "2026-09-29T02:16:57.261Z"
+    },
+    "after_tree_hash": "18ab3afbf6a677fd8ade16bfb990df580dee64ac"
+  },
+  "started_at": "2026-09-29T02:52:21.856Z",
+  "finished_at": "2026-09-29T03:05:02.391Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 381.723,
+      "tool_calls": {
+        "run_command": 18,
+        "project_reads": 22
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0eb13-db9e-7c10-80c8-8ed6faf7597e",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.12",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 420.207,
+      "tool_calls": {
+        "read": 47,
+        "grep": 24,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 26
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 910424,
+        "output_tokens": 46105,
+        "thinking_tokens": 37254,
+        "cache_read_tokens": 8159950,
+        "total_tokens": 956529
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "cee1b7a8-3ad2-4e5d-9563-c9fef327e685",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 760.273,
+      "tool_calls": {
+        "read": 9,
+        "grep": 11,
+        "glob": 6,
+        "run_command": 0,
+        "project_reads": 13
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 12,
+        "inputTokens": 928461,
+        "outputTokens": 35175,
+        "totalTokens": 963636,
+        "cacheReadTokens": 844544,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_9878bccd-e406-49aa-a97f-7d92db051171",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "组长已退组员仍在的准入/plan/_meta/brief-codex-20260929T025220Z.md",
+      "sha256": "cdfdd7db8387dad7b3661cff496e4c1f531dca40d172c371ff1f9505e2bcffde"
+    },
+    {
+      "path": "组长已退组员仍在的准入/plan/_meta/brief-gemini-20260929T025220Z.md",
+      "sha256": "466f18a8c736a07b3a766bee66fd8aaf9b856df3638e42cecf4eceb0edbe1bb6"
+    },
+    {
+      "path": "组长已退组员仍在的准入/plan/_meta/brief-glm-20260929T025220Z.md",
+      "sha256": "4c136951795e241dd42844221ddb511eff325909513997b1caa12711d2ae9588"
+    },
+    {
+      "path": "组长已退组员仍在的准入/plan/_meta/review-codex-20260929T025220Z.json",
+      "sha256": "afd0930863fe3f0411d1e0904717e3116201b4afb87782befde47c4bd88a81ae"
+    },
+    {
+      "path": "组长已退组员仍在的准入/plan/_meta/review-gemini-20260929T025220Z.json",
+      "sha256": "1857c70447ea3ef57155e44ef4c133e2b3d49cac7ba2fd3addcba19d969934aa"
+    },
+    {
+      "path": "组长已退组员仍在的准入/plan/_meta/review-glm-20260929T025220Z.json",
+      "sha256": "2f88f05cb2c9686e4c02aa969b26274e4d7abaf89e90b43d585da310f1627d40"
+    },
+    {
+      "path": "组长已退组员仍在的准入/plan/2026-09-29-组长已退组员仍在的准入-codex.md",
+      "sha256": "53aed10d4c7307583690d2b3fea4d746ae217076c9eb68edafbcc0148e2974ad"
+    },
+    {
+      "path": "组长已退组员仍在的准入/plan/2026-09-29-组长已退组员仍在的准入-gemini.md",
+      "sha256": "a4d66ae87cb92cbfa894c799b559f2a9a956638d730fa1cc541aa0f77abae5e3"
+    },
+    {
+      "path": "组长已退组员仍在的准入/plan/2026-09-29-组长已退组员仍在的准入-glm.md",
+      "sha256": "39f6edd53023983aa6e21d46e9ea565da2ed08682d68bb0d28a4215ebbe66cff"
+    },
+    {
+      "path": "组长已退组员仍在的准入/plan/2026-09-29-组长已退组员仍在的准入-claude.md",
+      "sha256": "6c29c13f01643dfa658f3f9efbc19d5aa2d291026ab8f0a0c42dc91cb5f2c944"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
