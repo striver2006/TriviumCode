@@ -1564,7 +1564,8 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
   if (deferredCli.length > 0) {
     /*
      * 第四格（EV-154 / EV-38，代码双审 r1 CODEX-01）：worker 已不在，但记录里的审查员 CLI 进程组仍活着、判不了、或记录读不懂。
-     * 成因逐条带出：CLI 还活着的在它结束后自愈；「读不懂」不自愈，要人把该侧 cli 改回 null，或等 run_dir_days 整删。
+     * 成因逐条带出：CLI 还活着的在它结束后自愈；「读不懂」不自愈，出口只有人把该侧 cli 改回 null——到期整删也保留它（EV-157）。
+     * 到期而被 CLI 挡下的目录也落在这一格（`pruneRunDirs` 把它们落回未到期路径，取消与失联的凭据准入核CLI计划 r2 §3.3）。
      */
     lines.push(
       `  · ${deferredCli.length} 个运行目录因审查员 CLI 进程组记录未动（CLI 仍在／判不了／记录读不懂）——` +

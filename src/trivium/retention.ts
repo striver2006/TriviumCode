@@ -19,7 +19,7 @@ import { promises as fs } from 'node:fs';
 import type { Config } from './types.js';
 import { runRoot } from './config.js';
 import { repoId } from './review.js';
-import { cliGroupsConfirmedGone, isTerminal, readStatus, workerConfirmedGone, workerStartOf, type RunStatus } from './status.js';
+import { cliGroupsConfirmedGone, isTerminal, readStatus, scrubAdmission, workerStartOf, type RunStatus } from './status.js';
 import { processMatchesRecord } from './util/exec.js';
 import { RUN_DIR_FILES } from './run-files.js';
 import { scrubDidWork, scrubRunDir, sideLayerPending, type AdapterLookup } from './scrub.js';
@@ -107,27 +107,25 @@ async function workerStillAlive(status: RunStatus | null): Promise<boolean> {
  * 抹除的准入判据——两条清扫路径共用，拆成独立一件是因为**预览也要走它**：
  * 不走，`--dry-run` 的清单会把 status 读不到的目录算进「本会抹」。
  *
- * 判据与 `waitRun` / `cancelRun` 共用 `workerConfirmedGone`（代码双审 r2 三侧收敛）。
+ * 判据与 `waitRun` / `cancelRun` 同一个函数 `scrubAdmission`（代码双审 r2 三侧收敛；EV-157 起连 CLI 一半也同源）。
  * 终态也要看进程：`waitRun` 判 `heartbeat_stale` 时会把**活着的**进程写成 failed。
  * 调用前假定已确认 worker 不活（`workerStillAlive` 为 false）。
- * 自 EV-154 / EV-38 起还要问 status.json 里的审查员 CLI 进程组记录（`cliGroupsConfirmedGone`）；这一半
- * 只在这里问——`waitRun` / `cancelRun` 自己的准入暂不核 CLI（CLI进程组记录计划 r2 §7.3，另登 BACKLOG）。
+ * worker 一半之外还问 status.json 里的审查员 CLI 进程组记录（EV-154 / EV-38）；到期整删只问 CLI 一半
+ * （`cliGroupsConfirmedGone`，取消与失联的凭据准入核CLI计划 r2 §3.3）。
  */
 async function admitScrub(dir: string, status: RunStatus | null, out: ScrubTally): Promise<boolean> {
-  const gone = await workerConfirmedGone(status, await readWorkerPid(dir));
+  const a = await scrubAdmission(status, await readWorkerPid(dir));
+  if (a.admit) return true;
   /*
    * worker 不在还不够：它以 killTree 拉起的审查员 CLI 可能还活着、还在用（或往回写）这份副本（EV-38）。
    * 记录里的 CLI 组仍活着、判不了、或记录读不懂 ⇒ 不抹（CLI进程组记录计划 r2 §4.5）。走到这里 status 必然读得到。
+   * `detail` 取 `why`（只含第一个阻挡项）而不是逐侧列全：它进 `trivium scrub` 与会话启动的人读输出，逐字不变（EV-157 计划 r2 §3.2）。
    */
-  if (gone.gone) {
-    const cli = await cliGroupsConfirmedGone(status);
-    if (!cli.gone) {
-      out.deferred.push(dir);
-      out.deferredCli.push({ dir, detail: cli.why });
-      return false;
-    }
+  if (a.worker.gone) {
+    out.deferred.push(dir);
+    out.deferredCli.push({ dir, detail: a.cli!.why });
+    return false;
   }
-  if (gone.gone) return true;
   // 「没有证据说它死了」与「它还活着」是两回事：前者要让人知道，后者是正常状态。
   // 两种都要落格，否则看过的目录会有一类哪一格都不进（代码双审 GLM-04）。
   if (status) out.deferred.push(dir);
@@ -176,7 +174,7 @@ async function applyScrub(
  * 两件事，两套判据：
  *
  * - **到期整删**：沿用原判据（终态或 worker 已死，且最后活动早于保留期；status 读不到按 mtime）。
- *   `run_dir_days <= 0` 关闭这一支。
+ *   `run_dir_days <= 0` 关闭这一支。记录里的审查员 CLI 仍活着、判不了或读不懂时同样保留（EV-157）。
  * - **凭据抹除**（EV-20，挂载点 ④）：对**未到期**的目录逐侧调适配器抹载体。
  *   与整删解耦——它是安全底线，不该挂在一个可以关掉的档位上（计划双审 CODEX-04）；
  *   判据比整删**更严**：抹除不可逆，`status.json` 读不到（缺失或损坏）一律**跳过并计数**，
@@ -223,13 +221,20 @@ export async function pruneRunDirs(
 
     // ── 到期整删 ──
     if (days > 0 && now - lastActive > ttlMs) {
-      if (!opts.dryRun) await fs.rm(dir, { recursive: true, force: true });
-      out.removed.push(dir);
-      continue;
+      /*
+       * 到期也不删还在用的目录（EV-157，取消与失联的凭据准入核CLI计划 r2 §3.3）：记录里的审查员 CLI 仍活着、
+       * 判不了、或记录读不懂 ⇒ 当作仍在用。worker 一半仍是上面的 workerStillAlive（D2）；CLI 一半与凭据抹除的准入
+       * 同一个函数。被挡下的落回下面「未到期」那条路：计入 kept，再由 admitScrub 以同一判据记进 deferredCli。
+       */
+      if ((await cliGroupsConfirmedGone(status)).gone) {
+        if (!opts.dryRun) await fs.rm(dir, { recursive: true, force: true });
+        out.removed.push(dir);
+        continue;
+      }
     }
     out.kept++;
 
-    // ── 未到期：凭据抹除 ──
+    // ── 未到期（或到期而 CLI 挡住）：凭据抹除 ──
     if (!opts.adapters || opts.dryRun) continue;
     if (await admitScrub(dir, status, out)) await applyScrub(dir, opts.adapters, out, opts.sizeCap);
   }
@@ -281,7 +286,8 @@ export interface SweepResult extends ScrubTally {
  *
  * 会话启动清扫（`pruneRunDirs`）沿用整删的作用域 `<run_root>/<repoId>/`——**只有本项目的桶**。
  * 于是在别的仓库干活的会话不会抹这个仓库遗留的副本；崩溃、断电之后若不再回到同一个仓库
- * 开会话，副本就一直躺到 `run_dir_days` 整删（计划双审 CODEX-04 ②）。
+ * 开会话，副本就一直躺到 `run_dir_days` 整删（计划双审 CODEX-04 ②）——那一轮记录里的审查员 CLI 仍在、判不了或读不懂时
+ * 到期也不删（EV-157），副本随之留到 CLI 结束之后的下一次清扫，读不懂的留到人把该侧 cli 改回 null（BACKLOG EV-164）。
  * 2026-09-17 实测：`UniClip` 桶下 20 个运行目录各留着一份 `home/.zcode/cli/config.json`，
  * 零哨兵——从没被抹过，因为我只在 TriviumCode 里开会话。
  *

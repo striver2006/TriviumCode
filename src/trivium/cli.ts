@@ -180,6 +180,8 @@ function rejectExtraPositionals(args: ParsedArgs): void {
   );
 }
 
+// `trivium scrub` 一节里「副本会一直躺到 retention.run_dir_days 整删」自 EV-157 起对「记录里的审查员 CLI 仍在 / 判不了 / 读不懂」的
+// 目录不成立（到期也保留）；清扫子命令的输出（含帮助）属用户冻结面，逐字保留，与第四格提示那一行同登 BACKLOG EV-164 待定（代码双审 r1 CODEX-04）
 const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编排器
 
 用法：
@@ -1920,6 +1922,8 @@ async function cmdScrub(args: ParsedArgs): Promise<number> {
     );
   }
   // 第四格：审查员 CLI 进程组记录（EV-154 / EV-38，代码双审 r1 CODEX-01），逐条带成因
+  // 下面那句的「或等 run_dir_days 整删」自 EV-157 起不再成立（读不懂的到期也保留）；清扫子命令的输出属用户冻结面，
+  // 逐字保留、登记 BACKLOG EV-164 待用户定（取消与失联的凭据准入核CLI计划 r2 §3.7 D3）
   for (const x of r.deferredCli) say(`  · 因审查员 CLI 未动：${x.dir}（${x.detail}）`);
   if (r.deferredCli.length > 0) say('    CLI 结束后再跑会重判；「记录读不懂」不会自愈，需把该侧 cli 改回 null 或等 run_dir_days 整删');
   if (r.unknown.length > 0) {

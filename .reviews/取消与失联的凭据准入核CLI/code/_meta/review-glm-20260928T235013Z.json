@@ -1,0 +1,37 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "未发现会让线上出错或误导后续改动的问题。三处凭据准入（--cancel 挂载点③、--wait 挂载点②、清扫 admitScrub）经 scrubAdmission 同源落地正确，worker 一半先判、CLI 一半后判；到期整删除外只问 cliGroupsConfirmedGone，与设计 v1.3.58 / LLD v1.1.16 的 D2 口径一致。人读输出契约守住：cliGroupsConfirmedGone 的 why 逐字保持旧规则，scrubHoldWhy 在 worker 一半未过的格逐字回落 worker.why（U7 与 gate-loop 既有断言双锚定），trivium scrub 输出新旧 diff 0 行（A7）。--cancel 的 CLI 一半判在按记录结束之后、归档收尾只取 adm.worker，被挡侧记录原样留存并经 K1/K3 的会话启动 Hook 实测交接闭环。类型与安全面干净：盘上任意形状 fail-safe 归 malformed，非空断言均有约定与用例锚定。",
+  "findings": [],
+  "agreed": [
+    "scrubAdmission 的分层（workerConfirmedGone 通过才问 cliGroupsConfirmedGone，未过时 cli 为 null）与 EV-157 之前 admitScrub「gone 之后才问」的求值顺序一致，U2 逐字断言锚定了这一约定，retention.ts admitScrub 的 a.cli! 断言因此安全",
+    "cliGroupsConfirmedGone 从「读到第一个阻挡项即返回」改为逐条判完收 blockers，why 仍按旧规则生成（malformed 优先拼接、否则取首个 blocker 的 detail），U1 对五种形态逐字断言；清扫两条路径的分档与 detail（取 why）不变，验收 A7 新旧构建输出逐字相同",
+    "--cancel 挂载点③ 判在 terminateRecordedCliGroups 之后（K4 证明按记录结束之后即放行），归档收尾只取 adm.worker（U5 五格 run.json 都收尾 cancelled，D5）；patchStatus 只清 settledCliSides 命中的侧，被挡侧记录留存（K1/K3 + 会话启动 Hook 先挡、CLI 结束后放行的闭环实测）",
+    "--wait 挂载点② 判的是本函数写 failed 之后重读的 meta0，与旧版同参同点；worker 一半未过（heartbeat_stale 仍在格）时告警逐字不变（U7 + gate-loop.test.ts:980 既有断言），退出码不变（U6 断言 EXIT.FAIL、A8 新旧同为 1/0）",
+    "到期整删：A/C/D 格不删、计入 kept、落回未到期路径经同一 admitScrub 进 deferredCli，dry-run 与真跑同判据（U4、验收 A3/A4）；status 读不到时 cliRecordsOf 返回空记录放行，沿用「按 mtime 整删」旧判据",
+    "安全与空值面：cliRecordsOf 对盘上任意 JSON 形状 fail-safe 归 malformed（pgid 必须是 >1 整数）；rawCliOf 经 JSON.stringify 转义并截断 200 字，无终端注入面；blockers[0]!、deferredCli[0]! 都在 length>0 分支内",
+    "EV-164（trivium scrub 提示「或等 run_dir_days 整删」半句失实）逐字保留并代码旁注明、登 BACKLOG 待用户定；EV-163（终态而工作进程仍活照删）如实登记暂缓；主设计、LLD、MANUAL、hooks/run-protocol 注释的同义说法已同步改准",
+    "测试会失败性成立：五格用真实 detached 进程组与真实 ps 判定；U5 A 格注入 terminateCli 的理由成立（真进程在 SIGKILL 之下必死，零配额造不出「未确认退出」），注入只影响 settled 记录、准入判的仍是真组现势；16 条源码变异全咬住且失败在目标断言，验收新旧构建对照 10/10，A6 判据写错后如实登记并重跑"
+  ],
+  "not_covered": [
+    "验收与变异脚本的源码（acceptance.mjs、gen-mutation-spec.mjs、mutation-names.mjs、mutation-spec.json、mutation-output.txt、两份 .r0）只抽读了 check-2.txt、acceptance-readout.json 与报告中转述，脚本判据本身是否测对了东西未逐行核对",
+    "未独立复跑 npm run check / 单测 / 验收（只读审查），全绿结论取自 check-2.txt（2253/2251/0/2）与报告读数",
+    "scrub.ts、四个适配器的 scrubRunDir、哨兵与 run-files 内部未读（本主题未改动这些文件）",
+    "worker 心跳与收尾路径（workerMain、settleOrphanedStart、同步 review --stage 前台 Ctrl-C 格）未审——不在本主题范围（EV-145/EV-150/EV-155 另登）",
+    "真实厂商 CLI 对 SIGTERM 的处置未实测（用户决策不花配额），桩为 sh+sleep",
+    "到期整删在「终态而 worker 仍活 + pruneRunDirs 的 status 快照早于 worker 更新」的窗口未深挖，它与 EV-163 同伞（该条已登记暂缓），未另立意见",
+    "skills/ 渲染产物与 skills-src/ 未核（报告称本主题不改，git status 也未见相关改动）"
+  ],
+  "consulted": [
+    ".reviews/取消与失联的凭据准入核CLI/code/_meta/changes-20260928T235013Z.diff",
+    "src/trivium/status.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/hooks.ts",
+    "test/unit/scrub-admission.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/05_testing/REPORT_2026-09-29_cancel_wait_cli_admission.md",
+    "doc/05_testing/evidence/cancel-wait-cli-admission-20260929/check-2.txt",
+    "doc/05_testing/evidence/cancel-wait-cli-admission-20260929/acceptance-readout.json"
+  ]
+}

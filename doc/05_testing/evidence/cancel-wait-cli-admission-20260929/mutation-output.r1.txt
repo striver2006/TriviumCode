@@ -1,0 +1,119 @@
+✓ 工作树干净、基线全绿（2 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=7）
+  M10 ✓ 咬住（fail=7）
+  M11 ✓ 咬住（fail=2）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=2）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=1）
+  M16 ✓ 咬住（fail=1）
+{
+  "总数": 16,
+  "咬住": 16,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "cancelRun 抹除改看 worker 一半（回到 EV-157 之前）⇒ U5 A / C / D",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "waitRun 抹除改看 worker 一半 ⇒ U6",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "到期整删去掉 CLI 一问 ⇒ U4",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "到期整删被挡下后 continue（不计 kept、不走凭据准入）⇒ U4",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "cancelRun 归档收尾改传 admit（D5）⇒ U5 归档断言",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "scrubAdmission 在 worker 一半未过时也判 CLI ⇒ U2（cli 为 null）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "why 改为全部阻挡项连写 ⇒ U1 / U3（why 逐字）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "scrubHoldWhy 只取第一条 ⇒ U2 / U5′（两侧都在告警里）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "unverifiable 不挡 ⇒ U1 / U3～U6 的 C 格",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M10",
+      "desc": "形状坏不挡 ⇒ U1 / U3～U6 的 D 格",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M11",
+      "desc": "scrubHoldWhy 在 worker 一半未过时改写文字 ⇒ U2 / U7（逐字不变）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M12",
+      "desc": "admitScrub 的 deferredCli.detail 改为逐侧连写 ⇒ U3（detail 逐字）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "cancelRun 告警退回 worker.why（不带 CLI 事实）⇒ U5",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M14",
+      "desc": "waitRun 说明退回 worker.why ⇒ U6",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "同 M9，期望既有 retention 套件（EV-154 U14）也咬住",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M16",
+      "desc": "同 M10，期望既有 retention 套件（EV-154 U14）也咬住",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

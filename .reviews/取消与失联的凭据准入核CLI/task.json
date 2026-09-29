@@ -1,0 +1,83 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "取消与失联的凭据准入核CLI",
+  "goal": "主题「取消与失联的凭据准入核CLI」：解决 BACKLOG EV-157（取消子命令与等待子命令判失联时，自己的凭据准入只核工作进程、不核审查员 CLI；运行目录到期整删只看工作进程是否存活。工作进程已不在而审查员 CLI 还活着时，这几处照样抹副本或删目录：CLI 以鉴权错误失败，或把凭据写回侧目录而哨兵已记 ok，之后的清扫跳过该侧）。 开工前先读：记忆 m10b-next-after-ev8…",
+  "created_at": "2026-09-28T23:06:25.220Z",
+  "updated_at": "2026-09-29T00:35:41.688Z",
+  "runs": [
+    {
+      "run_id": "20260928T231329Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-28T23:13:31.401Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260928T235013Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-28T23:50:15.317Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260929T001536Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "full",
+      "started_at": "2026-09-29T00:20:02.223Z"
+    },
+    {
+      "run_id": "20260929T003106Z",
+      "stage": "verify",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T00:35:41.688Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-09-28T23:06:25.220Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-09-28T23:24:54.060Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20260928T231329Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-28T23:24:49.758Z"
+    },
+    {
+      "run_id": "20260928T235013Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-09-29T00:03:41.978Z"
+    }
+  ]
+}

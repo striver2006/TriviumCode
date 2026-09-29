@@ -3135,3 +3135,135 @@ test('EV-158 I7（d 格回归）：删掉 status.json 里的规范化字段（�
     cleanupGroups(r);
   }
 });
+
+/*
+ * ── EV-157：--cancel 与 --wait 判失联自己的凭据准入核审查员 CLI（取消与失联的凭据准入核CLI计划 r2 §4.2 K1～K4）──
+ *
+ * 两侧 hang_cli，按组 SIGKILL worker（它的 SIGTERM 处理器跑不到，两组 CLI 过继给 init 继续活着），glm 侧放一份 zcode 载体。
+ * 「留给会话启动清扫」的交接载荷是 status.json 里被挡侧的 cli 记录（计划双审 r1 GLM-03）：结束两组之前先跑一次会话启动
+ * Hook、断言载体仍在，再结束两组验放行——记录若被过早清掉，第一次 Hook 就会把载体抹掉。
+ */
+
+async function plantCarrier(runDir: string): Promise<string> {
+  const carrier = path.join(runDir, 'glm', 'home', '.zcode', 'cli', 'config.json');
+  await fs.mkdir(path.dirname(carrier), { recursive: true });
+  await fs.writeFile(carrier, '{"provider":{"k":{"apiKey":"fake"}}}');
+  return carrier;
+}
+
+const carrierExists = (p: string) => fs.access(p).then(() => true, () => false);
+
+async function endGroupsAndWait(groups: number[]): Promise<void> {
+  for (const g of groups) killGroup(g);
+  for (let i = 0; i < 40 && groups.some((g) => groupMemberCount(g) > 0); i++) await new Promise((res) => setTimeout(res, 50));
+  assert.deepEqual(groups.map((g) => groupMemberCount(g)), [0, 0], '两组应已结束（用例前提）');
+}
+
+test('EV-157 K1：worker 已死而两侧 CLI 仍活 ⇒ --wait 判失联不抹、正文逐侧带组号、不结束进程、记录留存；会话启动清扫同样挡住；CLI 结束后清扫即抹', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis(HANG2);
+  try {
+    assertRecorded(r);
+    await killWorker(r.js.worker_pid);
+    const carrier = await plantCarrier(r.js.run_dir);
+
+    const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '20'], null, 60_000);
+    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
+    const out = w.stdout + w.stderr;
+    assert.match(out, /失联（pid_gone）/);
+    const line = out.split('\n').find((l) => l.includes('凭据副本未抹')) ?? '';
+    assert.match(line, new RegExp(`工作进程 ${r.js.worker_pid} 已不存在，但审查员 CLI 未确认结束——`), out);
+    for (const [side, v] of Object.entries(r.rec)) {
+      assert.ok(line.includes(`${side} 侧审查员 CLI 进程组 ${v!.pgid} 仍在`), `${side} 侧要带组号\n${out}`);
+    }
+    assert.match(line, /（pid_gone），留给会话启动清扫$/, out);
+    assert.match(out, new RegExp(`其中仍在的审查员 CLI 可用 trivium review --cancel ${r.js.run_id} 按记录结束`), '给出 --cancel 出口（代码双审 r1 CODEX-02）');
+    assert.ok(await carrierExists(carrier), 'CLI 仍活：副本不抹');
+    for (const g of r.groups) assert.equal(groupMemberCount(g), 2, `--wait 不结束进程：组 ${g} 应仍活着`);
+    assert.deepEqual(await sidesCliOf(r.js.run_dir), r.rec, '被挡侧记录原样留存（GLM-03）');
+
+    const h1 = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
+    assert.equal(h1.code, 0, `${h1.stdout}${h1.stderr}`);
+    assert.ok(await carrierExists(carrier), '会话启动清扫据留存的记录同样挡住');
+
+    await endGroupsAndWait(r.groups);
+    const h2 = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
+    assert.equal(h2.code, 0, `${h2.stdout}${h2.stderr}`);
+    assert.ok(!(await carrierExists(carrier)), 'CLI 结束之后清扫放行');
+  } finally {
+    cleanupGroups(r);
+  }
+});
+
+test('EV-157 K2：worker 与两侧 CLI 都已结束 ⇒ --wait 判失联照抹，正文没有「凭据副本未抹」', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis(HANG2);
+  try {
+    assertRecorded(r);
+    await killWorker(r.js.worker_pid);
+    await endGroupsAndWait(r.groups);
+    const carrier = await plantCarrier(r.js.run_dir);
+    const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '20'], null, 60_000);
+    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
+    assert.doesNotMatch(w.stdout + w.stderr, /凭据副本未抹/);
+    assert.ok(!(await carrierExists(carrier)), 'CLI 已结束：照抹');
+  } finally {
+    cleanupGroups(r);
+  }
+});
+
+test('EV-157 K3：worker 已死、两侧记录判不了（启动时刻没记下）⇒ --cancel 不发信号也不抹、一行告警逐侧列出、记录留存、归档照收尾；会话启动清扫同样挡住；CLI 结束后即抹', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis(HANG2);
+  try {
+    assertRecorded(r);
+    await killWorker(r.js.worker_pid);
+    // worker 已死，没有并发写者：把两侧记录的启动时刻抹成 null（C 格）
+    const sp = path.join(r.js.run_dir, 'status.json');
+    const s = JSON.parse(await fs.readFile(sp, 'utf8')) as { sides: Record<string, { cli?: { started_at: string | null } }> };
+    for (const v of Object.values(s.sides)) v.cli!.started_at = null;
+    await fs.writeFile(sp, JSON.stringify(s, null, 2) + '\n', 'utf8');
+    const recC = await sidesCliOf(r.js.run_dir);
+    const carrier = await plantCarrier(r.js.run_dir);
+
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    assert.equal((c.stderr.match(/判不了是不是同一进程，不发信号/g) ?? []).length, 2, c.stderr);
+    const lines = c.stderr.split('\n').filter((l) => l.includes('凭据副本未抹'));
+    assert.equal(lines.length, 1, c.stderr);
+    for (const [side, v] of Object.entries(recC)) {
+      assert.ok(lines[0]!.includes(`${side} 侧审查员 CLI 进程组 ${v!.pgid} 仍有活进程、启动时刻没记下：判不了`), c.stderr);
+    }
+    assert.match(lines[0]!, /——留给会话启动清扫$/);
+    assert.ok(await carrierExists(carrier), '判不了：副本不抹');
+    for (const g of r.groups) assert.equal(groupMemberCount(g), 2, `判不了的组不发信号：组 ${g} 应仍活着`);
+    assert.equal((await readRunJson(r.fx.stageDir, r.js.run_id)).status, 'cancelled', '归档收尾只看 worker 一半（D5）');
+    assert.deepEqual(await sidesCliOf(r.js.run_dir), recC, '被挡侧记录原样留存（GLM-03）');
+
+    const h1 = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
+    assert.equal(h1.code, 0, `${h1.stdout}${h1.stderr}`);
+    assert.ok(await carrierExists(carrier), '会话启动清扫据留存的记录同样挡住');
+
+    await endGroupsAndWait(r.groups);
+    const h2 = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
+    assert.equal(h2.code, 0, `${h2.stdout}${h2.stderr}`);
+    assert.ok(!(await carrierExists(carrier)), 'CLI 结束之后清扫放行');
+  } finally {
+    cleanupGroups(r);
+  }
+});
+
+test('EV-157 K4：worker 已死、两侧 CLI 仍活 ⇒ --cancel 按记录结束两组之后照抹，没有「凭据副本未抹」', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis(HANG2);
+  try {
+    assertRecorded(r);
+    await killWorker(r.js.worker_pid);
+    const carrier = await plantCarrier(r.js.run_dir);
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    assert.equal((c.stderr.match(/按记录结束审查员 CLI/g) ?? []).length, 2, c.stderr);
+    await new Promise((res) => setTimeout(res, 100));
+    assert.deepEqual(r.groups.map((g) => groupMemberCount(g)), [0, 0], `两组都应已空：\n${c.stderr}`);
+    assert.doesNotMatch(c.stderr, /凭据副本未抹/, '准入判的是按记录结束之后的事实');
+    assert.ok(!(await carrierExists(carrier)), '照抹');
+  } finally {
+    cleanupGroups(r);
+  }
+});

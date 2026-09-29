@@ -1,0 +1,284 @@
+[
+  {
+    "id": "M1",
+    "desc": "cancelRun 抹除改看 worker 一半（回到 EV-157 之前）⇒ U5 A / C / D",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-157 U5：--cancel（worker 已不在）五格——A / C / D 不抹、告警逐侧带组号与成因、被挡侧记录留存；B / E 照抹；归档在五格里都收尾为 cancelled",
+      "EV-157 U5′：--cancel 两侧都挡住（判不了 + 读不懂）⇒ 一行告警逐侧列出"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 格 A：载体应在",
+      "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M2",
+    "desc": "waitRun 抹除改看 worker 一半 ⇒ U6",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-157 U6：--wait 判失联（pid_gone）五格——A / C / D 不抹、正文逐侧说明、不结束进程、记录留存；B / E 照抹；归档在五格里都收尾为 failed"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 格 A"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M3",
+    "desc": "到期整删去掉 CLI 一问 ⇒ U4",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-157 U4：到期整删——A / C / D 格不删、计入 kept 并进 deferredCli；B / E 照删；dry-run 下 A 格不进 removed"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: dry-run 与真跑同判据"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M4",
+    "desc": "到期整删被挡下后 continue（不计 kept、不走凭据准入）⇒ U4",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-157 U4：到期整删——A / C / D 格不删、计入 kept 并进 deferredCli；B / E 照删；dry-run 下 A 格不进 removed"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M5",
+    "desc": "cancelRun 归档收尾改传 admit（D5）⇒ U5 归档断言",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-157 U5：--cancel（worker 已不在）五格——A / C / D 不抹、告警逐侧带组号与成因、被挡侧记录留存；B / E 照抹；归档在五格里都收尾为 cancelled"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 格 A：run.json"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M6",
+    "desc": "scrubAdmission 在 worker 一半未过时也判 CLI ⇒ U2（cli 为 null）",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-157 U2：scrubAdmission——worker 已不在 × 五格；worker 仍在时不判 CLI（cli 为 null）；scrubHoldWhy 两种形态"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M7",
+    "desc": "why 改为全部阻挡项连写 ⇒ U1 / U3（why 逐字）",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-157 U1：cliGroupsConfirmedGone 五格的 gone 与 blockers；why 逐字保持「第一个阻挡项」的旧文字"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M8",
+    "desc": "scrubHoldWhy 只取第一条 ⇒ U2 / U5′（两侧都在告警里）",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-157 U2：scrubAdmission——worker 已不在 × 五格；worker 仍在时不判 CLI（cli 为 null）；scrubHoldWhy 两种形态",
+      "EV-157 U5′：--cancel 两侧都挡住（判不了 + 读不懂）⇒ 一行告警逐侧列出"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: · 工作进程 9527 已不存在，仅做状态与锁的清理"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M9",
+    "desc": "unverifiable 不挡 ⇒ U1 / U3～U6 的 C 格",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 7,
+    "red": [
+      "EV-157 U1：cliGroupsConfirmedGone 五格的 gone 与 blockers；why 逐字保持「第一个阻挡项」的旧文字",
+      "EV-157 U2：scrubAdmission——worker 已不在 × 五格；worker 仍在时不判 CLI（cli 为 null）；scrubHoldWhy 两种形态",
+      "EV-157 U3：admitScrub 行为不变——worker 已不在 × 五格的分档与 detail 文字（会话启动清扫与 trivium scrub 两条路径）；worker 仍在而记录形状坏只进 deferred",
+      "EV-157 U4：到期整删——A / C / D 格不删、计入 kept 并进 deferredCli；B / E 照删；dry-run 下 A 格不进 removed",
+      "EV-157 U5：--cancel（worker 已不在）五格——A / C / D 不抹、告警逐侧带组号与成因、被挡侧记录留存；B / E 照抹；归档在五格里都收尾为 cancelled",
+      "EV-157 U5′：--cancel 两侧都挡住（判不了 + 读不懂）⇒ 一行告警逐侧列出",
+      "EV-157 U6：--wait 判失联（pid_gone）五格——A / C / D 不抹、正文逐侧说明、不结束进程、记录留存；B / E 照抹；归档在五格里都收尾为 failed"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: 格 C",
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+      "AssertionError [ERR_ASSERTION]: dry-run 与真跑同判据",
+      "AssertionError [ERR_ASSERTION]: 格 C：载体应在",
+      "AssertionError [ERR_ASSERTION]: · 工作进程 10027 已不存在，仅做状态与锁的清理"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M10",
+    "desc": "形状坏不挡 ⇒ U1 / U3～U6 的 D 格",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 7,
+    "red": [
+      "EV-157 U1：cliGroupsConfirmedGone 五格的 gone 与 blockers；why 逐字保持「第一个阻挡项」的旧文字",
+      "EV-157 U2：scrubAdmission——worker 已不在 × 五格；worker 仍在时不判 CLI（cli 为 null）；scrubHoldWhy 两种形态",
+      "EV-157 U3：admitScrub 行为不变——worker 已不在 × 五格的分档与 detail 文字（会话启动清扫与 trivium scrub 两条路径）；worker 仍在而记录形状坏只进 deferred",
+      "EV-157 U4：到期整删——A / C / D 格不删、计入 kept 并进 deferredCli；B / E 照删；dry-run 下 A 格不进 removed",
+      "EV-157 U5：--cancel（worker 已不在）五格——A / C / D 不抹、告警逐侧带组号与成因、被挡侧记录留存；B / E 照抹；归档在五格里都收尾为 cancelled",
+      "EV-157 U5′：--cancel 两侧都挡住（判不了 + 读不懂）⇒ 一行告警逐侧列出",
+      "EV-157 U6：--wait 判失联（pid_gone）五格——A / C / D 不抹、正文逐侧说明、不结束进程、记录留存；B / E 照抹；归档在五格里都收尾为 failed"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "AssertionError [ERR_ASSERTION]: 格 D",
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+      "AssertionError [ERR_ASSERTION]: dry-run 与真跑同判据",
+      "AssertionError [ERR_ASSERTION]: 格 D：载体应在",
+      "AssertionError [ERR_ASSERTION]: · 工作进程 10541 已不存在，仅做状态与锁的清理"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M11",
+    "desc": "scrubHoldWhy 在 worker 一半未过时改写文字 ⇒ U2 / U7（逐字不变）",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-157 U2：scrubAdmission——worker 已不在 × 五格；worker 仍在时不判 CLI（cli 为 null）；scrubHoldWhy 两种形态",
+      "EV-157 U7：worker 仍在（heartbeat_stale）时 --wait 的「凭据副本未抹」逐字不变"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: worker 一半未过时逐字是 worker.why",
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M12",
+    "desc": "admitScrub 的 deferredCli.detail 改为逐侧连写 ⇒ U3（detail 逐字）",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-157 U3：admitScrub 行为不变——worker 已不在 × 五格的分档与 detail 文字（会话启动清扫与 trivium scrub 两条路径）；worker 仍在而记录形状坏只进 deferred"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: detail 逐字是 why"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M13",
+    "desc": "cancelRun 告警退回 worker.why（不带 CLI 事实）⇒ U5",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-157 U5：--cancel（worker 已不在）五格——A / C / D 不抹、告警逐侧带组号与成因、被挡侧记录留存；B / E 照抹；归档在五格里都收尾为 cancelled",
+      "EV-157 U5′：--cancel 两侧都挡住（判不了 + 读不懂）⇒ 一行告警逐侧列出"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 格 A：告警要带侧、组号与成因",
+      "AssertionError [ERR_ASSERTION]: · 工作进程 12152 已不存在，仅做状态与锁的清理"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M14",
+    "desc": "waitRun 说明退回 worker.why ⇒ U6",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-157 U6：--wait 判失联（pid_gone）五格——A / C / D 不抹、正文逐侧说明、不结束进程、记录留存；B / E 照抹；归档在五格里都收尾为 failed"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M15",
+    "desc": "同 M9，期望既有 retention 套件（EV-154 U14）也咬住",
+    "suite": "dist/test/test/unit/retention.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-154 U14：判不了（启动时刻没记下且组长还在）与记录读不懂（计划双审 r1 GLM-02）都不抹；启动时刻不符（组号已被复用）放行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M16",
+    "desc": "同 M10，期望既有 retention 套件（EV-154 U14）也咬住",
+    "suite": "dist/test/test/unit/retention.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-154 U14：判不了（启动时刻没记下且组长还在）与记录读不懂（计划双审 r1 GLM-02）都不抹；启动时刻不符（组号已被复用）放行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M17",
+    "desc": "--wait 的 --cancel 出口句恒不出（代码双审 r1 CODEX-02）⇒ U6 A 格",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-157 U6：--wait 判失联（pid_gone）五格——A / C / D 不抹、正文逐侧说明、不结束进程、记录留存；B / E 照抹；归档在五格里都收尾为 failed"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M18",
+    "desc": "--wait 的 --cancel 出口句对判不了 / 读不懂也出 ⇒ U6 C / D 格",
+    "suite": "dist/test/test/unit/scrub-admission.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-157 U6：--wait 判失联（pid_gone）五格——A / C / D 不抹、正文逐侧说明、不结束进程、记录留存；B / E 照抹；归档在五格里都收尾为 failed"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 格 C：没有判「仍在」的组，不给 --cancel 出口"
+    ],
+    "windowMiss": false
+  }
+]

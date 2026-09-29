@@ -13,12 +13,12 @@ import {
 import { getGate, setGate } from '../../src/trivium/state.js';
 import { newStatus, readStatus, staleThresholdWithinHeartbeat, writeStatus, type RunStatus } from '../../src/trivium/status.js';
 import { checkHeartbeatThreshold } from '../../src/trivium/preflight.js';
-import { defaultConfig } from '../../src/trivium/config.js';
 import { acquireLock, inspectLock } from '../../src/trivium/lock.js';
 import { spawnDetached, processStartTime, processStartTimes, processAlive } from '../../src/trivium/util/exec.js';
 import { ENV_R, ENV_W, assertEnvPairDistinct, withEnv } from '../helpers/start-env.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
+import { captureStderr, fakeCtx } from '../helpers/run-ctx.js';
 import { newRunMeta, readTask, registerRun, writeRunMeta } from '../../src/trivium/meta.js';
 import { metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
 import type { Ctx, RunMeta } from '../../src/trivium/types.js';
@@ -31,19 +31,6 @@ import type { Ctx, RunMeta } from '../../src/trivium/types.js';
  */
 
 const TOPIC = '协议用例';
-
-async function fakeCtx(): Promise<Ctx> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-proto-'));
-  const cfg = defaultConfig();
-  cfg.runtime.run_root = path.join(root, 'runs');
-  return {
-    config: cfg,
-    projectRoot: root,
-    archiveRoot: path.join(root, '.reviews'),
-    triviumDir: path.join(root, '.trivium'),
-    sources: ['<test>'],
-  };
-}
 
 /** 起一个长睡的假 worker，并把运行目录布置成 --start 之后的样子 */
 async function seedRun(ctx: Ctx, runId: string, sleepMs = 60_000) {
@@ -266,21 +253,6 @@ async function seedArchive(ctx: Ctx, runId: string): Promise<{ layout: ArchiveLa
     runJson: path.join(metaDir(layout, 'plan'), `run-${runId}.json`),
     taskJson: path.join(ctx.archiveRoot, TOPIC, 'task.json'),
   };
-}
-
-/** 进程内捕获 stderr（step / warn 都走它），fn 结束后原样恢复 */
-async function captureStderr<T>(fn: () => Promise<T>): Promise<{ value: T; err: string }> {
-  const orig = process.stderr.write.bind(process.stderr);
-  let err = '';
-  process.stderr.write = ((chunk: string | Uint8Array) => {
-    err += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
-    return true;
-  }) as typeof process.stderr.write;
-  try {
-    return { value: await fn(), err };
-  } finally {
-    process.stderr.write = orig;
-  }
 }
 
 async function holdLock(ctx: Ctx, runId: string, pid: number): Promise<void> {

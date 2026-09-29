@@ -1,0 +1,404 @@
+{
+  "results": [
+    {
+      "id": "构建",
+      "ok": true,
+      "detail": "新旧 bundle sha256 不同（new 614c0c80f138 / old bedcff8c449b）；桩相对 08396d2 无 diff true"
+    },
+    {
+      "id": "A1",
+      "ok": true,
+      "detail": "新：--wait 后载体在 true、两组成员 [2,2]、记录留存 true、两侧组号都在正文里 true；旧：载体在 false；归一化后新有旧无 2 行（「凭据副本未抹」true、--cancel 出口 true）、旧有新无 0 行"
+    },
+    {
+      "id": "A2",
+      "ok": true,
+      "detail": "新：--cancel 后载体在 true、两组成员 [2,2]；旧：载体在 false；run.json 新 cancelled / 旧 cancelled；新有旧无 1 行、旧有新无 0 行"
+    },
+    {
+      "id": "A3",
+      "ok": true,
+      "detail": "新：Hook 后目录在 true、载体在 true；旧：目录在 false；新有旧无「第四格」true、旧有新无「已清理 1 个」true（其余 0 / 0 行）"
+    },
+    {
+      "id": "A4",
+      "ok": true,
+      "detail": "新：--wait 之后会话启动清扫仍挡住 true、结束两组后即抹 true；--cancel 之后仍挡住 true、结束两组后即抹 true；到期目录在两组结束后被删 true"
+    },
+    {
+      "id": "A5",
+      "ok": true,
+      "detail": "K4（--cancel 按记录结束之后）：退出码 0/0、载体都已抹 true、差异 0+0 行；K2（--wait 之前两组已结束）：退出码 1/1、载体都已抹 true、差异 0+0 行"
+    },
+    {
+      "id": "A6",
+      "ok": true,
+      "detail": "hang 常态 --cancel：退出码 0/0、差异 0+0 行；hangcli 常态 --cancel：退出码 0/0、差异 0+0 行；hang_cli sleepS:1 跑完：退出码 75/75、差异 0+0 行"
+    },
+    {
+      "id": "A7",
+      "ok": true,
+      "detail": "CLI 仍活：退出码 0/0、载体都在 true、差异 0+0 行；CLI 结束后：退出码 0/0、载体都已抹 true、差异 0+0 行；D3 那一行逐字保留 true"
+    },
+    {
+      "id": "A8",
+      "ok": true,
+      "detail": "A1 --wait 退出码 新 1 / 旧 1；A2 --cancel 退出码 新 0 / 旧 0"
+    },
+    {
+      "id": "A9",
+      "ok": true,
+      "detail": "doctor --selftest 退 0、14/14"
+    }
+  ],
+  "readout": {
+    "base_ref": "08396d2",
+    "node": "v25.2.1",
+    "platform": "darwin",
+    "bundles": {
+      "new": {
+        "path": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
+        "sha256": "614c0c80f138e29a0d3648a6812d44d31918cff960e932d469acbd9481d56170"
+      },
+      "old": {
+        "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/old-build/skills/dual-critic/scripts/trivium.cjs",
+        "sha256": "bedcff8c449b34917ad91a06484373023a2b4c72f6fd89a151ead5c0bcd5fce0",
+        "from": "08396d2"
+      },
+      "stubDiff": ""
+    },
+    "A1": {
+      "new": {
+        "runDir": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A1-new/A1-new-db8c8a0c/20260929T000904Z",
+        "groups": [
+          16450,
+          16452
+        ],
+        "rec": {
+          "gemini": {
+            "pgid": 16450,
+            "started_at": "Tue Sep 29 00:09:04 2026"
+          },
+          "glm": {
+            "pgid": 16452,
+            "started_at": "Tue Sep 29 00:09:04 2026"
+          }
+        },
+        "workerGone": true,
+        "code": 1,
+        "stdout": "",
+        "stderr": "✗ 运行 20260929T000904Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A1-new/A1-new-db8c8a0c/20260929T000904Z/worker.log\n  已把归档里的 run-20260929T000904Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n  凭据副本未抹：工作进程 16400 已不存在，但审查员 CLI 未确认结束——gemini 侧审查员 CLI 进程组 16450 仍在；glm 侧审查员 CLI 进程组 16452 仍在（pid_gone），留给会话启动清扫\n  其中仍在的审查员 CLI 可用 trivium review --cancel 20260929T000904Z 按记录结束（本命令不结束任何进程）；结束之后下一次会话启动清扫会重判，放行即抹副本\n",
+        "carrierAfterWait": true,
+        "aliveAfterWait": [
+          2,
+          2
+        ],
+        "recRetained": true,
+        "hook1": 0,
+        "carrierAfterHook1": true,
+        "ended": [
+          0,
+          0
+        ],
+        "hook2": 0,
+        "carrierAfterHook2": false
+      },
+      "old": {
+        "runDir": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A1-old/A1-old-47036252/20260929T000906Z",
+        "groups": [
+          17001,
+          17003
+        ],
+        "rec": {
+          "gemini": {
+            "pgid": 17001,
+            "started_at": "Tue Sep 29 00:09:06 2026"
+          },
+          "glm": {
+            "pgid": 17003,
+            "started_at": "Tue Sep 29 00:09:06 2026"
+          }
+        },
+        "workerGone": true,
+        "code": 1,
+        "stdout": "",
+        "stderr": "✗ 运行 20260929T000906Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A1-old/A1-old-47036252/20260929T000906Z/worker.log\n  已把归档里的 run-20260929T000906Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n",
+        "carrierAfterWait": false,
+        "aliveAfterWait": [
+          2,
+          2
+        ],
+        "recRetained": true,
+        "hook1": 0,
+        "carrierAfterHook1": false,
+        "ended": [
+          0,
+          0
+        ],
+        "hook2": 0,
+        "carrierAfterHook2": false
+      },
+      "diff": {
+        "onlyNew": [
+          "  凭据副本未抹：工作进程 〈N〉 已不存在，但审查员 CLI 未确认结束——gemini 侧审查员 CLI 进程组 〈N〉 仍在；glm 侧审查员 CLI 进程组 〈N〉 仍在（pid_gone），留给会话启动清扫",
+          "  其中仍在的审查员 CLI 可用 trivium review --cancel 〈RUN〉 按记录结束（本命令不结束任何进程）；结束之后下一次会话启动清扫会重判，放行即抹副本"
+        ],
+        "onlyOld": []
+      }
+    },
+    "A2": {
+      "new": {
+        "groups": [
+          17551,
+          17553
+        ],
+        "code": 0,
+        "stdout": "已回收主题「准入验收」的锁\n运行 20260929T000908Z 已取消\n",
+        "stderr": "· 工作进程 17503 已不存在，仅做状态与锁的清理\n⚠️  gemini 侧审查员 CLI 进程组 17551 的启动时刻没记下，判不了是不是同一进程，不发信号——请用 ps 核对\n⚠️  glm 侧审查员 CLI 进程组 17553 的启动时刻没记下，判不了是不是同一进程，不发信号——请用 ps 核对\n⚠️  凭据副本未抹：工作进程 17503 已不存在，但审查员 CLI 未确认结束——gemini 侧审查员 CLI 进程组 17551 仍有活进程、启动时刻没记下：判不了；glm 侧审查员 CLI 进程组 17553 仍有活进程、启动时刻没记下：判不了——留给会话启动清扫\n· 已把归档里的 run-20260929T000908Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+        "carrierAfterCancel": true,
+        "aliveAfterCancel": [
+          2,
+          2
+        ],
+        "runJsonStatus": "cancelled",
+        "hook1": 0,
+        "carrierAfterHook1": true,
+        "ended": [
+          0,
+          0
+        ],
+        "hook2": 0,
+        "carrierAfterHook2": false
+      },
+      "old": {
+        "groups": [
+          18103,
+          18105
+        ],
+        "code": 0,
+        "stdout": "已回收主题「准入验收」的锁\n运行 20260929T000910Z 已取消\n",
+        "stderr": "· 工作进程 18055 已不存在，仅做状态与锁的清理\n⚠️  gemini 侧审查员 CLI 进程组 18103 的启动时刻没记下，判不了是不是同一进程，不发信号——请用 ps 核对\n⚠️  glm 侧审查员 CLI 进程组 18105 的启动时刻没记下，判不了是不是同一进程，不发信号——请用 ps 核对\n· 已把归档里的 run-20260929T000910Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+        "carrierAfterCancel": false,
+        "aliveAfterCancel": [
+          2,
+          2
+        ],
+        "runJsonStatus": "cancelled",
+        "hook1": 0,
+        "carrierAfterHook1": false,
+        "ended": [
+          0,
+          0
+        ],
+        "hook2": 0,
+        "carrierAfterHook2": false
+      },
+      "diff": {
+        "onlyNew": [
+          "⚠️  凭据副本未抹：工作进程 〈N〉 已不存在，但审查员 CLI 未确认结束——gemini 侧审查员 CLI 进程组 〈N〉 仍有活进程、启动时刻没记下：判不了；glm 侧审查员 CLI 进程组 〈N〉 仍有活进程、启动时刻没记下：判不了——留给会话启动清扫"
+        ],
+        "onlyOld": []
+      }
+    },
+    "A3": {
+      "new": {
+        "code1": 0,
+        "ctx1": "TriviumCode 待办：\n  · 1 个运行目录因审查员 CLI 进程组记录未动（CLI 仍在／判不了／记录读不懂）——CLI 结束后下次会话会再判；记录读不懂的不会自愈。首个：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A3-new/A3-new-905c17e9/20260929T000912Z（gemini 侧审查员 CLI 进程组 18643 仍在）\n  · 已回收 准入验收/plan 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁\n  · 准入验收/plan 双审进行中（run 20260929T000912Z）——请先 trivium review --wait 20260929T000912Z",
+        "dirAfter1": true,
+        "carrierAfter1": true,
+        "alive1": [
+          2,
+          2
+        ],
+        "ended": [
+          0,
+          0
+        ],
+        "code2": 0,
+        "ctx2": "TriviumCode 待办：\n  · 已清理 1 个超过 30 天的运行目录（retention.run_dir_days）\n  · 准入验收/plan 双审进行中（run 20260929T000912Z）——请先 trivium review --wait 20260929T000912Z",
+        "dirAfter2": false
+      },
+      "old": {
+        "code1": 0,
+        "ctx1": "TriviumCode 待办：\n  · 已清理 1 个超过 30 天的运行目录（retention.run_dir_days）\n  · 已回收 准入验收/plan 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁\n  · 准入验收/plan 双审进行中（run 20260929T000915Z）——请先 trivium review --wait 20260929T000915Z",
+        "dirAfter1": false,
+        "carrierAfter1": false,
+        "alive1": [
+          2,
+          2
+        ],
+        "ended": [
+          0,
+          0
+        ],
+        "code2": null,
+        "ctx2": null,
+        "dirAfter2": false
+      },
+      "diff": {
+        "onlyNew": [
+          "  · 1 个运行目录因审查员 CLI 进程组记录未动（CLI 仍在／判不了／记录读不懂）——CLI 结束后下次会话会再判；记录读不懂的不会自愈。首个：〈BASE〉/runs-A3-〈B〉/A3-〈B〉-〈H〉/〈RUN〉（gemini 侧审查员 CLI 进程组 〈N〉 仍在）"
+        ],
+        "onlyOld": [
+          "  · 已清理 1 个超过 30 天的运行目录（retention.run_dir_days）"
+        ]
+      }
+    },
+    "A5": {
+      "k4": {
+        "new": {
+          "code": 0,
+          "stdout": "已回收主题「准入验收」的锁\n运行 20260929T000916Z 已取消\n",
+          "stderr": "· 工作进程 19550 已不存在，仅做状态与锁的清理\n· 按记录结束审查员 CLI：gemini 侧进程组 19598（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 19600（SIGTERM）\n· 已把归档里的 run-20260929T000916Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+          "carrier": false,
+          "after": [
+            0,
+            0
+          ]
+        },
+        "old": {
+          "code": 0,
+          "stdout": "已回收主题「准入验收」的锁\n运行 20260929T000919Z 已取消\n",
+          "stderr": "· 工作进程 20014 已不存在，仅做状态与锁的清理\n· 按记录结束审查员 CLI：gemini 侧进程组 20062（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 20064（SIGTERM）\n· 已把归档里的 run-20260929T000919Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+          "carrier": false,
+          "after": [
+            0,
+            0
+          ]
+        },
+        "diff": {
+          "onlyNew": [],
+          "onlyOld": []
+        }
+      },
+      "k2": {
+        "new": {
+          "code": 1,
+          "stdout": "",
+          "stderr": "✗ 运行 20260929T000921Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A5k2-new/A5k2-new-ebe7707c/20260929T000921Z/worker.log\n  已把归档里的 run-20260929T000921Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n",
+          "carrier": false
+        },
+        "old": {
+          "code": 1,
+          "stdout": "",
+          "stderr": "✗ 运行 20260929T000923Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A5k2-old/A5k2-old-d7aecfb0/20260929T000923Z/worker.log\n  已把归档里的 run-20260929T000923Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n",
+          "carrier": false
+        },
+        "diff": {
+          "onlyNew": [],
+          "onlyOld": []
+        }
+      }
+    },
+    "A6": {
+      "hang": {
+        "new": {
+          "code": 0,
+          "stdout": "已回收主题「准入验收」的锁\n运行 20260929T000925Z 已取消\n",
+          "stderr": "· 向工作进程组 21379 发送 SIGTERM\n· 已把归档里的 run-20260929T000925Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+        },
+        "old": {
+          "code": 0,
+          "stdout": "已回收主题「准入验收」的锁\n运行 20260929T000927Z 已取消\n",
+          "stderr": "· 向工作进程组 21891 发送 SIGTERM\n· 已把归档里的 run-20260929T000927Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+        },
+        "diff": {
+          "onlyNew": [],
+          "onlyOld": []
+        }
+      },
+      "hangcli": {
+        "new": {
+          "code": 0,
+          "stdout": "已回收主题「准入验收」的锁\n运行 20260929T000930Z 已取消\n",
+          "stderr": "· 向工作进程组 22348 发送 SIGTERM\n· 已把归档里的 run-20260929T000930Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+        },
+        "old": {
+          "code": 0,
+          "stdout": "已回收主题「准入验收」的锁\n运行 20260929T000932Z 已取消\n",
+          "stderr": "· 向工作进程组 22803 发送 SIGTERM\n· 已把归档里的 run-20260929T000932Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+        },
+        "diff": {
+          "onlyNew": [],
+          "onlyOld": []
+        }
+      },
+      "done": {
+        "new": {
+          "code": 75,
+          "stdout": "运行 20260929T000934Z ｜ 主题 准入验收 ｜ 阶段 plan ｜ 阶段状态 失败\n已用 2s / 预算 15m0s（0%） ｜ 第 1/92 次等待 ｜ 最近心跳 1s 前\n  gemini: 超时 ｜ gemini-3.8-flash-high ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n  glm: 超时 ｜ GLM-5.3 ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n",
+          "stderr": "",
+          "status": null
+        },
+        "old": {
+          "code": 75,
+          "stdout": "运行 20260929T000937Z ｜ 主题 准入验收 ｜ 阶段 plan ｜ 阶段状态 失败\n已用 2s / 预算 15m0s（0%） ｜ 第 1/92 次等待 ｜ 最近心跳 1s 前\n  gemini: 超时 ｜ gemini-3.8-flash-high ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n  glm: 超时 ｜ GLM-5.3 ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n",
+          "stderr": "",
+          "status": null
+        },
+        "diff": {
+          "onlyNew": [],
+          "onlyOld": []
+        }
+      }
+    },
+    "A7": {
+      "new": {
+        "s1": {
+          "code": 0,
+          "stdout": "运行根：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A7-new\n项目桶 1 个 ｜ 运行目录 1 个 ｜ 进行中跳过 0 个\n  · 侧层已收工 0 个（哨兵已记完成；运行目录层仍会复查，那层不写哨兵）\n  · 没有需要抹的凭据副本\n  · 因审查员 CLI 未动：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A7-new/A7-new-c36517a9/20260929T000941Z（gemini 侧审查员 CLI 进程组 24533 仍在）\n    CLI 结束后再跑会重判；「记录读不懂」不会自愈，需把该侧 cli 改回 null 或等 run_dir_days 整删\n",
+          "stderr": ""
+        },
+        "s2": {
+          "code": 0,
+          "stdout": "运行根：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A7-new\n项目桶 1 个 ｜ 运行目录 1 个 ｜ 进行中跳过 0 个\n  · 侧层已收工 0 个（哨兵已记完成；运行目录层仍会复查，那层不写哨兵）\n  · 已抹除 1 个运行目录的凭据副本\n",
+          "stderr": ""
+        },
+        "carrier1": true,
+        "carrier2": false,
+        "ended": [
+          0,
+          0
+        ]
+      },
+      "old": {
+        "s1": {
+          "code": 0,
+          "stdout": "运行根：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A7-old\n项目桶 1 个 ｜ 运行目录 1 个 ｜ 进行中跳过 0 个\n  · 侧层已收工 0 个（哨兵已记完成；运行目录层仍会复查，那层不写哨兵）\n  · 没有需要抹的凭据副本\n  · 因审查员 CLI 未动：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A7-old/A7-old-e17a2704/20260929T000943Z（gemini 侧审查员 CLI 进程组 25048 仍在）\n    CLI 结束后再跑会重判；「记录读不懂」不会自愈，需把该侧 cli 改回 null 或等 run_dir_days 整删\n",
+          "stderr": ""
+        },
+        "s2": {
+          "code": 0,
+          "stdout": "运行根：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev157-doDpkW/runs-A7-old\n项目桶 1 个 ｜ 运行目录 1 个 ｜ 进行中跳过 0 个\n  · 侧层已收工 0 个（哨兵已记完成；运行目录层仍会复查，那层不写哨兵）\n  · 已抹除 1 个运行目录的凭据副本\n",
+          "stderr": ""
+        },
+        "carrier1": true,
+        "carrier2": false,
+        "ended": [
+          0,
+          0
+        ]
+      },
+      "diff1": {
+        "onlyNew": [],
+        "onlyOld": []
+      },
+      "diff2": {
+        "onlyNew": [],
+        "onlyOld": []
+      }
+    },
+    "A9": {
+      "code": 0,
+      "tail": [
+        "· ✓ 裁决齐备后放行提交",
+        "· ✓ 裁决齐备后放行收工",
+        "· ✓ 禁止主脑自行产出 -gemini.md（AC-07）",
+        "· ✓ 编译测试出口真实执行并落盘（AC-10）",
+        "· ✓ 复盘可生成（含时间线与采纳率）",
+        "· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）"
+      ]
+    },
+    "leftover_groups": []
+  }
+}

@@ -310,25 +310,86 @@ export async function judgeCliGroup(r: CliGroupRecord): Promise<CliGroupVerdict>
   return now === r.started_at ? 'alive' : 'reused';
 }
 
+/** 挡住凭据抹除 / 到期整删的一条 CLI 记录（EV-157，取消与失联的凭据准入核CLI计划 r2 §3.1） */
+export interface CliBlocker {
+  side: CriticId;
+  /** 形状坏的记录没有可信的组号，为 null */
+  pgid: number | null;
+  kind: 'alive' | 'unverifiable' | 'malformed';
+  /** 单条的事实句：哪一侧、哪个进程组、为什么挡住 */
+  detail: string;
+}
+
 /**
  * 凭据清扫准入里「CLI 那一半」（EV-38，CLI进程组记录计划 r2 §4.5）：任一记录判 `alive` 或 `unverifiable`、
  * 或有形状坏的记录 ⇒ 不可抹。`reused` 与 `gone` 放行——前者组号已不是那一组，后者组长已退出
  * （组长已退出而组员还在的那一格如实保留，用户决策 4）。
+ *
+ * **唯一来源**（EV-157）：凭据抹除的三处准入经 `scrubAdmission` 问它，`pruneRunDirs` 的到期整删直接问它。
+ * 逐条判完、收齐 `blockers`（形状坏的在前，其余按记录顺序），供 `--cancel` / `--wait` 的告警逐侧列出；
+ * `why` 逐字保持 EV-157 之前「读到第一个阻挡项即返回」的文字——它经 `admitScrub` 进 `trivium scrub` 与会话启动的人读输出，
+ * 用户决策「清扫子命令的输出格式不改」（计划 r2 §3.1）。
+ * 形状坏的措辞因此有两份，是有意的（代码双审 r1 CODEX-06）：`why` 把全部形状坏的侧合成一句（旧文字，冻结面），
+ * `detail` 是新告警里的逐侧单句；二者都由 scrub-admission U1 逐字钉住。
  */
-export async function cliGroupsConfirmedGone(s: RunStatus | null): Promise<{ gone: boolean; why: string }> {
+export async function cliGroupsConfirmedGone(
+  s: RunStatus | null,
+): Promise<{ gone: boolean; why: string; blockers: CliBlocker[] }> {
   const { records, malformed } = cliRecordsOf(s);
-  if (malformed.length > 0) {
-    const raw = malformed.map((side) => `${side}：${rawCliOf(s, side)}`).join('；');
-    return { gone: false, why: `CLI 记录读不懂（${raw}）：判不了` };
-  }
+  const blockers: CliBlocker[] = malformed.map((side) => ({
+    side, pgid: null, kind: 'malformed', detail: `${side} 侧的 CLI 记录读不懂（${rawCliOf(s, side)}）：判不了`,
+  }));
   for (const r of records) {
     const v = await judgeCliGroup(r);
-    if (v === 'alive') return { gone: false, why: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 仍在` };
-    if (v === 'unverifiable') {
-      return { gone: false, why: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 仍有活进程、启动时刻没记下：判不了` };
+    if (v === 'alive') {
+      blockers.push({ side: r.side, pgid: r.pgid, kind: 'alive', detail: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 仍在` });
+    } else if (v === 'unverifiable') {
+      blockers.push({
+        side: r.side, pgid: r.pgid, kind: 'unverifiable',
+        detail: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 仍有活进程、启动时刻没记下：判不了`,
+      });
     }
   }
-  return { gone: true, why: '记录里没有仍在的审查员 CLI' };
+  if (blockers.length === 0) return { gone: true, why: '记录里没有仍在的审查员 CLI', blockers };
+  const why =
+    malformed.length > 0
+      ? `CLI 记录读不懂（${malformed.map((side) => `${side}：${rawCliOf(s, side)}`).join('；')}）：判不了`
+      : blockers[0]!.detail;
+  return { gone: false, why, blockers };
+}
+
+/** 凭据抹除的准入结果（EV-157，计划 r2 §3.1） */
+export interface ScrubAdmission {
+  admit: boolean;
+  /** worker 一半，原样是 `workerConfirmedGone` 的结果——`cancelRun` 的归档收尾只用这一半（D5） */
+  worker: { gone: boolean; why: string };
+  /** CLI 一半；worker 一半未通过时不判（null），与 EV-157 之前 `admitScrub` 只在 gone 之后才问一致 */
+  cli: { gone: boolean; why: string; blockers: CliBlocker[] } | null;
+}
+
+/**
+ * 凭据副本抹除的准入——**唯一来源**（EV-20 + EV-38 + EV-157）：会话启动清扫与 `trivium scrub`（`admitScrub`）、
+ * `review --cancel` 的挂载点 ③、`review --wait` 判失联的挂载点 ② 共用。worker 确认已不在（`workerConfirmedGone`），
+ * 且 status.json 记录里的审查员 CLI 进程组没有仍在、判不了或读不懂的（`cliGroupsConfirmedGone`），才准入。
+ *
+ * worker 已不在而 CLI 还活着时抹副本，CLI 会以鉴权错误失败，或把凭据写回侧目录而哨兵已记 ok、之后的清扫跳过该侧
+ * （EV-157）。只读进程表，不结束任何进程（用户决策）。到期整删的 worker 一半是 `workerStillAlive`、不走这里，
+ * CLI 一半与这里同一个函数（计划 r2 D2）。
+ */
+export async function scrubAdmission(status: RunStatus | null, fallbackPid: number | null): Promise<ScrubAdmission> {
+  const worker = await workerConfirmedGone(status, fallbackPid);
+  if (!worker.gone) return { admit: false, worker, cli: null };
+  const cli = await cliGroupsConfirmedGone(status);
+  return { admit: cli.gone, worker, cli };
+}
+
+/**
+ * 未准入时的事实句（`--cancel` 的告警、`--wait` 的报错正文共用，计划 r2 §3.6 D4）：
+ * worker 一半未过 ⇒ `worker.why` 原样（EV-157 之前的输出逐字不变）；CLI 挡住 ⇒ 逐侧列出全部阻挡项。
+ */
+export function scrubHoldWhy(a: ScrubAdmission): string {
+  if (!a.worker.gone || !a.cli || a.cli.gone) return a.worker.why;
+  return `${a.worker.why}，但审查员 CLI 未确认结束——${a.cli.blockers.map((b) => b.detail).join('；')}`;
 }
 
 /**

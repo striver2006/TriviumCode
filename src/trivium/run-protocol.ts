@@ -18,8 +18,8 @@ import { RUN_DIR_FILES } from './run-files.js';
 import { acquireLock, inspectLock, lockPathFor, reclaimStaleLock, workerLockContent, type LockHandle } from './lock.js';
 import {
   cliRecordsOf, computeMaxWaits, interpretStatus, isTerminal, judgeCliGroup, lostOf, newStatus, patchStatus, rawCliOf, readStatus,
-  renderProgress, renderProgressBrief, progressViewOf, staleThresholdWithinHeartbeat, syncCliRecords, workerConfirmedGone,
-  workerStartOf, writeStatus, WORKER_HEARTBEAT_MS,
+  renderProgress, renderProgressBrief, progressViewOf, scrubAdmission, scrubHoldWhy, staleThresholdWithinHeartbeat, syncCliRecords,
+  workerConfirmedGone, workerStartOf, writeStatus, WORKER_HEARTBEAT_MS,
   type CliGroupRecord, type CliGroupVerdict, type ProgressBudget, type ProgressView, type RunStatus, type WorkerLostRecord,
 } from './status.js';
 import type { ArchiveLayout } from './archive.js';
@@ -868,12 +868,19 @@ function reportRecordedCliGroups(r: RecordedCliOutcome, quietWhenEmpty: boolean,
     }
   }
   for (const side of r.malformed) {
-    // 带上定位与原始值（代码双审 r1 CODEX-04）：这一格不自愈，出口是人把该侧 cli 改回 null，或等 run_dir_days 整删
+    // 带上定位与原始值（代码双审 r1 CODEX-04）：这一格不自愈，出口只有人把该侧 cli 改回 null——到期整删也保留它（EV-157）
     warn(`${side} 侧的 CLI 记录读不懂（${r.malformedRaw[side] ?? '?'}，${path.join(runDir, RUN_DIR_FILES.status)}），不发信号——请用 ps 核对`);
   }
 }
 
-/** 已确认结束、可以从 status.json 清掉的侧记录（AGY-02）：判 gone 的，或发过信号后组长确认退出且组里没有遗留成员的 */
+/**
+ * 已确认结束、可以从 status.json 清掉的侧记录（AGY-02）：判 gone 的，或发过信号后组长确认退出且组里没有遗留成员的。
+ *
+ * **与凭据准入的口径有意分叉**（取消与失联的凭据准入核CLI代码双审 r1 CODEX-01）：这里要 `membersLeft === 0` 才清记录，
+ * 而 `cancelRun` 挂载点 ③ 的 `scrubAdmission` 只按组长判（`judgeCliGroup`），组长已退出而组员还在时照样放行抹副本。
+ * `membersLeft` 只用于告警与是否清记录；准入与 `admitScrub`、到期整删同源（用户决策），「组长已退、组员仍在」是 EV-154
+ * 用户决策 4 如实保留的一格。要让准入也挡住这一格，须改 `judgeCliGroup`、四处一起变——见 BACKLOG EV-165。
+ */
 function settledCliSides(r: RecordedCliOutcome | null): Map<CriticId, number> {
   const m = new Map<CriticId, number>();
   for (const g of r?.groups ?? []) {
@@ -1172,7 +1179,7 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
        *
        * **用改写 status.json 之前的事实判「已退出」**：此刻 phase 非终态，`workerConfirmedGone` 走不到
        * 「终态且从未记下 pid」那一支，判「已退出」只剩「有 pid 且进程确已不在」一种依据。下面抹凭据副本前的
-       * `workerConfirmedGone(meta0, …)` 那次判定读的是本函数自己刚写成 failed 的 status.json，拿不到 pid 时会下「已不在」的结论——那次只管抹凭据副本（EV-20），不动它。
+       * `scrubAdmission(meta0, …)`（worker 一半即 `workerConfirmedGone`）那次判定读的是本函数自己刚写成 failed 的 status.json，拿不到 pid 时会下「已不在」的结论——那次只管抹凭据副本（EV-20），不动它。
        * status.json 读不到而 worker.pid 已知时（worker 在第一次写 status.json 之前就死了），`workerConfirmedGone(null)`
        * 首行即判「否」、不看 worker.pid，而 `interpretStatus` 正是拿 worker.pid 判出「已死」才报 pid_gone——
        * 证据在手，这里用同源的 `processAlive` 单独判（计划双审 r1 CODEX-01 ≡ GLM-01 ≡ AGY-02）：不存在才算已退出，
@@ -1246,15 +1253,27 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
        *
        * **动手前复核进程确实不在**（代码双审 r1 CODEX-01）：`heartbeat_stale` 这一档的语义是
        * 「进程活着但心跳过期」——它可能只是被同步段堵住了，codex/zcode 子进程还在用那份副本，
-       * 此刻整删载体会让该侧以莫名的鉴权错误失败。不可逆动作的准入判据与 ④ 清扫同源：
-       * pid 现势不活（或已非同一进程）才抹；否则只记一句，留给会话启动清扫。
+       * 此刻整删载体会让该侧以莫名的鉴权错误失败。不可逆动作的准入判据与 ④ 清扫同一个函数（`scrubAdmission`）：
+       * pid 现势不活（或已非同一进程），且 status.json 记录里的审查员 CLI 进程组没有仍在、判不了或读不懂的才抹
+       * （EV-157：worker 被强杀之后它拉起的 CLI 常常还活着，本命令不结束任何进程）；否则只记一句，留给会话启动清扫——
+       * 挡住准入的记录原样留在 status.json 里（下面那次 patchStatus 不动 cli），会话启动清扫据它重判。
        * 失败不改变本分支的结论（本来就是失联），只在报错里附一句。
        */
       let scrubNote = '';
-      // 准入判据与会话启动清扫同源；pid 取不到时回落 worker.pid，两者都没有就不抹（代码双审 r2）
-      const gone = await workerConfirmedGone(meta0, fallbackPid);
-      if (!gone.gone) {
-        scrubNote = `\n  凭据副本未抹：${gone.why}（${reading.reason}），留给会话启动清扫`;
+      // pid 取不到时回落 worker.pid，两者都没有就不抹（代码双审 r2）
+      const adm = await scrubAdmission(meta0, fallbackPid);
+      if (!adm.admit) {
+        scrubNote = `\n  凭据副本未抹：${scrubHoldWhy(adm)}（${reading.reason}），留给会话启动清扫`;
+        /*
+         * 出口（代码双审 r1 CODEX-02）：会话启动清扫不结束进程，记录里仍在的 CLI 只有 `--cancel` 能按记录结束——终态早退分支对
+         * 「工作进程确认已不在且有记录」逐组结束（EV-154 D3）。只对判「仍在」的组成立：判不了、读不懂的 `--cancel` 同样不发信号，
+         * 那两种时不给这句。本命令仍不结束任何进程。
+         */
+        if (adm.cli?.blockers.some((b) => b.kind === 'alive')) {
+          scrubNote +=
+            `\n  其中仍在的审查员 CLI 可用 trivium review --cancel ${runId} 按记录结束（本命令不结束任何进程）；` +
+            '结束之后下一次会话启动清扫会重判，放行即抹副本';
+        }
       } else {
         const scrubbed = await scrubRunDir(runDir, wiredAdapter).catch(() => null);
         const scrubFailed = Object.values(scrubbed?.sides ?? {}).filter((o) => o && !o.ok).length;
@@ -1483,6 +1502,11 @@ export async function lostWorkerGone(
 /** `cancelRun` 的可选参数：只给单测替换「结束工作进程」这一步（与 `settleOrphanedStart` 的 `terminate` 注入同形） */
 export interface CancelOptions {
   terminateWorker?: (pid: number, rec: RecordedStart) => Promise<{ gone: boolean; escalated: boolean; signals: NodeJS.Signals[] }>;
+  /**
+   * 主路径 b / c 格按记录结束 CLI 的实现，缺省 `terminateRecordedCliGroups`。只为单测造「发了信号而未确认退出、组仍活着」
+   * ——真实进程在 SIGKILL 之下必死，零配额造不出（取消与失联的凭据准入核CLI计划 r2 §3.8 D6）
+   */
+  terminateCli?: (s: RunStatus | null) => Promise<RecordedCliOutcome>;
 }
 
 /**
@@ -1756,24 +1780,29 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
       });
       if (t.escalated) {
         // b 格（EV-154）：worker 的处理器没跑成，记录是它最后写下的样子
-        cliOutcome = await terminateRecordedCliGroups(await readStatus(runDir));
+        cliOutcome = await (o.terminateCli ?? terminateRecordedCliGroups)(await readStatus(runDir));
         reportRecordedCliGroups(cliOutcome, false, runDir);
       }
     } else {
       step(`工作进程 ${pid} 已不存在，仅做状态与锁的清理`);
       // c 格（EV-154）：worker 在本次取消之前已退出（被强杀、崩溃）
-      cliOutcome = await terminateRecordedCliGroups(await readStatus(runDir));
+      cliOutcome = await (o.terminateCli ?? terminateRecordedCliGroups)(await readStatus(runDir));
       reportRecordedCliGroups(cliOutcome, false, runDir);
     }
   }
 
   /*
    * 凭据抹除的挂载点 ③（EV-20）：`--cancel` 是 SIGKILL 的唯一入口，runner 的 finally
-   * 在这条路上跑不到。准入判据与另两处同源——SIGKILL 之后再确认一次，没确认到就不抹
-   * （进程组里可能还有没收到信号的后代，代码双审 r2）。
+   * 在这条路上跑不到。准入与另两处同一个函数（`scrubAdmission`）——SIGKILL 之后再确认一次，没确认到就不抹
+   * （进程组里可能还有没收到信号的后代，代码双审 r2）。CLI 一半判的是上面按记录结束**之后**的事实（EV-157）：
+   * 已结束的组判 gone 放行；判不了、读不懂（没发信号）与未确认退出的组挡住——它们不在 settledCliSides 里，
+   * 下面收尾那次 patchStatus 不清，原样留给会话启动清扫重判。
+   * 归档收尾只看 worker 一半（`adm.worker`，计划 r2 D5）：run.json 的 cancelled 说的是 worker 的事实。
+   * 准入只按组长判：上面算出的 `membersLeft > 0`（组长已退、组员仍在）不挡准入——与 `settledCliSides` 有意分叉，见其文档块与 EV-165。
    */
-  const goneNow = await workerConfirmedGone(await readStatus(runDir), pid);
-  if (goneNow.gone) {
+  const adm = await scrubAdmission(await readStatus(runDir), pid);
+  const goneNow = adm.worker;
+  if (adm.admit) {
     const scrubbed = await scrubRunDir(runDir, wiredAdapter).catch(() => null);
     for (const [side, o] of Object.entries(scrubbed?.sides ?? {})) {
       if (o && !o.ok) warn(`${side} 侧凭据副本抹除失败：${o.errors[0] ?? '原因未记录'}（下次会话启动会重试）`);
@@ -1781,7 +1810,7 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
     // 运行目录那一层没有哨兵可留，不在这里报就是三条通道全灭
     for (const e of scrubbed?.runDir.errors ?? []) warn(`运行目录层脱敏失败：${e}`);
   } else {
-    warn(`凭据副本未抹：${goneNow.why}——留给会话启动清扫`);
+    warn(`凭据副本未抹：${scrubHoldWhy(adm)}——留给会话启动清扫`);
   }
 
   /*

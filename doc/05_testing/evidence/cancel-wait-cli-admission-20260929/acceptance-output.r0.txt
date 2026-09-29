@@ -1,0 +1,12 @@
+✓ 构建：新旧 bundle sha256 不同（new ea555ddc19f1 / old bedcff8c449b）；桩相对 08396d2 无 diff true
+✓ A1：新：--wait 后载体在 true、两组成员 [2,2]、记录留存 true、两侧组号都在正文里 true；旧：载体在 false；归一化后新有旧无 1 行（「凭据副本未抹」true）、旧有新无 0 行
+✓ A2：新：--cancel 后载体在 true、两组成员 [2,2]；旧：载体在 false；run.json 新 cancelled / 旧 cancelled；新有旧无 1 行、旧有新无 0 行
+✓ A3：新：Hook 后目录在 true、载体在 true；旧：目录在 false；新有旧无「第四格」true、旧有新无「已清理 1 个」true（其余 0 / 0 行）
+✓ A4：新：--wait 之后会话启动清扫仍挡住 true、结束两组后即抹 true；--cancel 之后仍挡住 true、结束两组后即抹 true；到期目录在两组结束后被删 true
+✓ A5：K4（--cancel 按记录结束之后）：退出码 0/0、载体都已抹 true、差异 0+0 行；K2（--wait 之前两组已结束）：退出码 1/1、载体都已抹 true、差异 0+0 行
+✖ A6：hang 常态 --cancel：退出码 0/0、差异 0+0 行；hangcli 常态 --cancel：退出码 0/0、差异 0+0 行；hang_cli sleepS:1 跑完：退出码 75/75、差异 0+0 行
+✓ A7：CLI 仍活：退出码 0/0、载体都在 true、差异 0+0 行；CLI 结束后：退出码 0/0、载体都已抹 true、差异 0+0 行；D3 那一行逐字保留 true
+✓ A8：A1 --wait 退出码 新 1 / 旧 1；A2 --cancel 退出码 新 0 / 旧 0
+✓ A9：doctor --selftest 退 0、14/14
+
+9 / 10 通过；残留进程组 []

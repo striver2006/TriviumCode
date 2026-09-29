@@ -1,0 +1,290 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260928T235013Z",
+  "topic": "取消与失联的凭据准入核CLI",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「取消与失联的凭据准入核CLI」：解决 BACKLOG EV-157（取消子命令与等待子命令判失联时，自己的凭据准入只核工作进程、不核审查员 CLI；运行目录到期整删只看工作进程是否存活。工作进程已不在而审查员 CLI 还活着时，这几处照样抹副本或删目录：CLI 以鉴权错误失败，或把凭据写回侧目录而哨兵已记 ok，之后的清扫跳过该侧）。 开工前先读：记忆 m10b-next-after-ev8…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "08396d2ef5dd8c291dd0f7c294b875ca43f7874c",
+    "tree_hash": "e1d5d898dc7765b821a95615e74abe8efc6c733b",
+    "dirty": true,
+    "subject_sha256": "0712799cb1b2bbacaf97c5997712885a576340c0eb59b8ec508cd8e98977cd46",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "08396d2ef5dd8c291dd0f7c294b875ca43f7874c",
+      "dirty": false,
+      "inputs_sha256": "72727fbf6f57f85ba5142ebd9bd4c628a6571945a0fe39414ac20832b917d82d",
+      "built_at": "2026-09-28T20:56:32.020Z"
+    },
+    "after_tree_hash": "f71b5fc3ccba115c4f1c59a9d7b10ea07da5ae15"
+  },
+  "started_at": "2026-09-28T23:50:15.317Z",
+  "finished_at": "2026-09-29T00:01:52.238Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "parse_fallback",
+      "exit_code": 0,
+      "duration_s": 696.688,
+      "tool_calls": {
+        "run_command": 47,
+        "project_reads": 39
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "JSON 不符合 trivium.review.v1：/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}; /findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}; /findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}; /findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}; /findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+      "empty_review": false,
+      "parse_fallback": true,
+      "session_id": "01a0ea6d-21bd-7012-bf20-6630cd51c57a",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.12",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 142.49,
+      "tool_calls": {
+        "read": 15,
+        "grep": 6,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 12
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 625627,
+        "output_tokens": 22693,
+        "thinking_tokens": 18382,
+        "cache_read_tokens": 2469997,
+        "total_tokens": 648320
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "18876374-e3b6-441f-bf14-a9a925d75ea1",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 338.534,
+      "tool_calls": {
+        "read": 11,
+        "grep": 4,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 8
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 13,
+        "inputTokens": 1274771,
+        "outputTokens": 26362,
+        "totalTokens": 1301133,
+        "cacheReadTokens": 1140032,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "sess_a717e215-ab35-45df-a897-796b39a2f757",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/取消与失联的凭据准入核CLI/plan/2026-09-29-取消与失联的凭据准入核CLI-gemini.md",
+    ".reviews/取消与失联的凭据准入核CLI/plan/2026-09-29-取消与失联的凭据准入核CLI-glm.md",
+    ".reviews/取消与失联的凭据准入核CLI/plan/_meta/review-gemini-20260928T231329Z.json",
+    ".reviews/取消与失联的凭据准入核CLI/plan/_meta/review-glm-20260928T231329Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "取消与失联的凭据准入核CLI/code/_meta/changes-20260928T235013Z.diff",
+      "sha256": "0712799cb1b2bbacaf97c5997712885a576340c0eb59b8ec508cd8e98977cd46"
+    },
+    {
+      "path": "取消与失联的凭据准入核CLI/code/_meta/brief-codex-20260928T235013Z.md",
+      "sha256": "43c1b76680c51887b47762f19c1346a225b30beb2a779f3639cfd9e974c8b06c"
+    },
+    {
+      "path": "取消与失联的凭据准入核CLI/code/_meta/brief-gemini-20260928T235013Z.md",
+      "sha256": "e06c4878e97866ac0d06330df04561f9ed52e5461383f091311cd2bcf6554257"
+    },
+    {
+      "path": "取消与失联的凭据准入核CLI/code/_meta/brief-glm-20260928T235013Z.md",
+      "sha256": "517859825ba3139cdff197aceb7eb4dbf1e009d96778b925c8b9cb6e8df21683"
+    },
+    {
+      "path": "取消与失联的凭据准入核CLI/code/_meta/review-codex-20260928T235013Z.json",
+      "sha256": "ab21ed66c46a9579b76870ea4aaff421f83a181a99e41e4d82773aa9666ffafc"
+    },
+    {
+      "path": "取消与失联的凭据准入核CLI/code/_meta/review-codex-20260928T235013Z.fallback-items.md",
+      "sha256": "ffed17507db92e3948691d41dda8c83028bd2b7288453fe80c57afaeffe51d3b"
+    },
+    {
+      "path": "取消与失联的凭据准入核CLI/code/_meta/review-gemini-20260928T235013Z.json",
+      "sha256": "ca6f567cde8833f9e471fe65fdde5b8c5d3dba27b6b7bc7a45db148166aa130a"
+    },
+    {
+      "path": "取消与失联的凭据准入核CLI/code/_meta/review-glm-20260928T235013Z.json",
+      "sha256": "3926bbc42c546040c502e2474eedba6540989fb09eebedcca20bce0a4b0832b8"
+    },
+    {
+      "path": "取消与失联的凭据准入核CLI/code/2026-09-29-取消与失联的凭据准入核CLI-codex.md",
+      "sha256": "4c5fd1ad6d598087806b4bc3ead9818ce73e52bd29c06ad4a37b70ec31406b34"
+    },
+    {
+      "path": "取消与失联的凭据准入核CLI/code/2026-09-29-取消与失联的凭据准入核CLI-gemini.md",
+      "sha256": "2e3e6382562e895622ddcc87e3581677163a4c9c1b31ca741d412a31298ab830"
+    },
+    {
+      "path": "取消与失联的凭据准入核CLI/code/2026-09-29-取消与失联的凭据准入核CLI-glm.md",
+      "sha256": "cf8b606c42f6521083c3ed77f08a849653baf011e0f17d04ef78e99d8ffbe3ae"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装"
+    ]
+  },
+  "status": "success"
+}

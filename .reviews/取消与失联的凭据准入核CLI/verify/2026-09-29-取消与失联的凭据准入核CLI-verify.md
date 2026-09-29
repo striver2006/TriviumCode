@@ -1,0 +1,311 @@
+# 编译测试记录 · 取消与失联的凭据准入核CLI
+
+- **运行**：`20260929T001536Z`
+- **结论**：❌ 失败
+- **起止**：2026-09-29T00:15:36.492Z → 2026-09-29T00:20:02.216Z
+- **项目根**：`/Users/chenzhenbo/Work/TriviumCode`
+
+## 一、执行的命令
+
+| # | 组 | 命令 | 退出码 | 耗时 | 命令 sha256 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | build | `npm run typecheck` | 0 | 1.5s | `982c1455e5e7` |
+| 2 | build | `npm run build` | 0 | 0.8s | `16c0e4305ac2` |
+| 3 | test | `npm test` | 1 | 263.4s | `328e123c6385` |
+
+> `命令 sha256` 取命令原文，用于与配置对账（AC-10）。
+
+## 二、输出摘要
+
+### `npm test`（test，退出码 1）
+
+**stdout（尾部）**
+
+```text
+…（已省略前 2249 行）
+✔ 凭据替换：四种位置的凭据全换成哨兵；非凭据值原样；所有键一律保留 (0.874167ms)
+✔ 凭据替换：不改入参（返回新对象） (0.241833ms)
+✔ 判据：写出 v2 ⇒ 只比 modelId 段；没写出 ⇒ 按停止形态分三态 (0.368875ms)
+✔ 同形臂：CLI 读到副本 model.main（非首位）⇒ config_copy；副本里无真实凭据（假入口见到就退 99） (67.761459ms)
+✔ 同形臂：回落首位 ⇒ global，文案并列 H2 与「替换破坏导入」两种成因（GLM-01 / GLM-07） (68.238959ms)
+✔ 同形臂：跑到模型层却没写 v2 ⇒ global；崩溃 ⇒ null；超时 ⇒ null (643.76125ms)
+✔ 同形臂：显式 model 参数优先于 pickNonFirstModel（CODEX-10） (85.520166ms)
+✔ 同形臂早退：副本源缺失 / 请求模型不在目录 / 挑不出非首位 ⇒ 不拉起、null（CODEX-02） (22.30875ms)
+✔ 同形臂：宿主预置的凭据 env 键被登记（GLM-04），且进不了子进程 (73.609833ms)
+✔ 同形臂：临时根跑后被清（只认 makeTempDir 的返回值） (67.324083ms)
+✔ 结构兜底：每个 provider 的 options.apiKey 无条件写哨兵，不存在也补上；其它键不动；返回改写路径（CODEX-01 / r2 CODEX-02） (0.381792ms)
+✔ 残余扫描：论域是 provider.<id> 减 models 与 name；URL、baseURL、哨兵、短值、UUID、无 scheme 端点都不算；Bearer 前缀剥掉再测（r2 CODEX-01 / GLM-01 / GLM-02 / CODEX-04） (0.164125ms)
+✔ 凭据替换：短键 key / auth / session / passphrase 只按全名精确匹配（r2 GLM-02） (0.127583ms)
+✔ 同形臂：副本里残留疑似凭据（无凭据形态键名、不带点的长十六进制值）⇒ 不拉起、null、why 列出路径（CODEX-01） (8.409375ms)
+✔ 同形臂：provider 级（options 之外）的疑似凭据也拦下（r2 CODEX-01 ≡ GLM-02） (8.853834ms)
+✔ 对照：只换 options.apiKey 与全量替换，同形臂判定相同（CODEX-04 ≡ GLM-02 ①；计划 §4 第二段第一刀的基线） (146.86925ms)
+✔ 收窄档仍换 headers 容器：Authorization 的 Bearer 串不得原样进副本（r2 GLM-01） (73.610125ms)
+✔ 两臂行为对拍：四种停止形态各钉期望值，再断言两臂一致（GLM-02 ② / r2 CODEX-07） (479.51875ms)
+✔ listPersonalProviderIds：只返回 provider 键名，不返回任何值 (1.687125ms)
+✔ 限定：裸名在恰好一个 provider 下 → 补该 provider 键 (1.126125ms)
+✔ 限定：裸名没有任何 provider 提供 → null 并说明 (0.118667ms)
+✔ 限定：裸名在多个 provider 下都有 → null，要求写全限定 (0.069667ms)
+✔ 限定：全限定形态原样通过 (0.047167ms)
+✔ 限定：全限定但 provider 键不在副本源里 → null（探针 model_id_form 的 UUID 形态就是这种输入） (0.052208ms)
+✔ 限定：provider 在、模型不在其 models 里 → null (0.0425ms)
+✔ 限定：空段一律判不成立 (0.054042ms)
+✔ 副本：限定成功 → route config_copy，model.main/lite 写请求模型，其余键原样 (9.605625ms)
+✔ 副本：限定失败 → 仍建副本（隔离照做）、model 段不动、route global 并给理由 (2.376ms)
+✔ 副本：未指定模型 / 源文件不存在 → 不建副本 (1.874292ms)
+✔ 注入：omitPersonal 为真时个人键恒 undefined，即使真实用户目录下个人文件存在 (1.330375ms)
+✔ 注入：不省略时仍按真实用户目录派生（探活与探针走这条） (0.940834ms)
+✔ 注入：门控仍是逐键——个人在、内置不在时，个人照常注入（撤回 D-3 的守卫） (1.268291ms)
+✔ 注入：七个目录 / 路径键与四个落点开关键恒出现且为 undefined——宿主预置也进不了子进程（EV-110 加 ZCODE_LOG_DIR；EV-112 扩到十一键） (0.392417ms)
+✔ 端到端：omitPersonalProviderConfig + 宿主预置十一个目录 / 路径键与落点开关键 → 子进程一个都拿不到（EV-110、EV-112） (65.673958ms)
+✔ run()：副本 HOME 下拉起时个人键被删（即使真实用户目录下个人文件存在），route 记 config_copy (68.319417ms)
+✔ run() 负格：请求模型不在副本源目录 → route global，且 model_override_applied **缺席**（不是 null） (67.904083ms)
+✔ run() 限定失败·回读到别的模型 → model_unenforced 产出，cause 为 qualify_failed、requested 是请求原值 (74.15925ms)
+✔ run() 限定失败·回落模型的 modelId 段恰与请求相同 → 不产出（跑的就是请求的模型） (65.043167ms)
+✔ run() 做了覆盖且没落实 → 只有 model_override_applied: false，model_unenforced 缺席（互斥） (70.240667ms)
+✔ decideModelUnenforced：四条合取，任一不成立即缺席 (0.090625ms)
+✔ decideModelUnenforced：modelId 段不同 ⇒ 四字段原样产出 (0.045916ms)
+✔ run() 正格：回读生效模型与请求一致 → true；不一致 → false (135.727042ms)
+✔ run() 正格：回读 providerId 是 UUID 形态、modelId 一致 → 仍 true，trace.json 记形态差（r2 AGY-03） (84.548875ms)
+✔ 比对判据只取 modelId 段：两种 providerId 形态并存时不得判成未生效（P-31） (0.164667ms)
+✔ 比对：一致 → true；providerId 形态不同 → 仍 true 只记 note；模型不同 → false (0.088208ms)
+✔ 比对：尝试了但没回读到 → 不产出 true/false 带 note；没尝试 / 没请求 → 静默 (0.10975ms)
+✔ 清扫：三份已知凭据载体全部按名整删，各自计入 deleted（AGY-05） (7.195875ms)
+✔ 清扫：载体不在就跳过，不报错也不虚报删除（幂等） (7.783875ms)
+✔ 探针辅助：buildProbeCliConfig 按白名单重建——apiKey 是哨兵，headers/token 等一律不带，baseURL 与目录保留 (0.406416ms)
+✔ 探针辅助：pickNonFirstModel 挑第一个有两个以上模型的 provider 的第二个模型 (0.126458ms)
+✔ 探针臂：CLI 读到副本 model.main（非首位模型）→ config_copy；副本里绝无真实凭据（假入口见到就退 99） (96.722375ms)
+✔ 探针臂：写出的 providerId 是 UUID 形态、modelId 仍是请求值 → config_copy，形态差只进 why（r2 CODEX-03） (71.455583ms)
+✔ 探针臂：CLI 没读 model.main、回落首位模型 → global（非首位请求才分得出来） (72.149584ms)
+✔ 探针臂：CLI 跑到模型层却没写 v2 → global（导入确实没发生） (70.878958ms)
+✔ 探针臂：拉起崩溃（无输出退 137）→ null 未判定，不得记成有定论的 global（codex 子项 02） (63.053875ms)
+✔ 探针臂：拉起超时被杀 → null 未判定（timedOut 那一支，不得记成 global） (510.051375ms)
+✔ 探针臂：内置 provider 配置定位失败（P-28 形态）→ null 未判定 (70.815541ms)
+✔ 探针臂：只读参数透传到 argv，且宿主的 ZCODE_API_KEY / ZCODE_BASE_URL 进不了子进程（AGY-02 / 子项 03） (79.098583ms)
+✔ 探针臂：副本 HOME 跑后被清（只认 makeTempDir 的返回值） (70.451666ms)
+✔ 探针臂：源里有免密 provider（apiKeyRequired:false）→ 探针副本带上该键、导入被拒、如实 global（r3 CODEX-01） (65.298209ms)
+✔ 成员规则与导入器同源：deleted 成员不计、modelId 取 id 而非键名、account:/builtin: 与非 custom 的 provider 不进注册表（r3 CODEX-02） (0.143834ms)
+✔ 切分与包内 okt 同规则——第一个 /：模型键名含 / 时限定与比对都不切错（r3 CODEX-03） (0.04875ms)
+✔ 探针臂：目录里没有非首位模型 → 未判定（null），不写结论 (4.057167ms)
+✔ 守卫：judgeSide 原样透传四种情况，本层不做归一 (10.025542ms)
+✔ 守卫：覆盖没落实 → 播报一条，点明 FR-06 / NFR-06 失效；其余三种不出声 (1.470958ms)
+✔ 守卫：不判失守、不动证据判定 (0.398375ms)
+✔ 守卫：model_unenforced 在 ⇒ 播报一句，含 critic、请求值、生效值、reason 原文与 FR-06 / NFR-06 (0.501ms)
+✔ 守卫：按 cause 给排查指向，两种不串 (0.306834ms)
+✔ 守卫：两值之外的 cause（只可能来自未校验的桩注入）⇒ 主句照常、不拼出 undefined（代码双审 r1 CODEX-01） (0.272458ms)
+✔ 守卫：model_unenforced 缺席 ⇒ 不出声；覆盖没落实那句也不引出它 (0.347959ms)
+✔ 内置配置路径按入口派生：Resources/glm/zcode.cjs → Resources/config/provider/zcode-builtin.json (3.154042ms)
+✔ 个人配置路径跟用户目录走，不跟入口走（config_copy 的假 HOME 下也要指向真实那份） (0.44325ms)
+✔ 软链入口先 realpath 再取兄弟目录：派生落在真实安装布局上，不落在软链所在目录 (11.019416ms)
+✔ 入口不存在（软链断了 / 布局变了）时回落到词法路径，不抛 (0.71625ms)
+✔ 两份都在 → 两个变量都给，值为绝对路径 (4.419416ms)
+✔ 文件不在 → 该键值为 undefined（不是缺席）：宿主环境里预置的同名变量必须被删掉 (7.183583ms)
+✔ invokeZcode 把内置变量递给子进程，且 HOME 副本覆盖不影响它 (65.042417ms)
+✔ 内置文件不在 → 不注入，CLI 原话进 failureKind=provider_config_unresolved（退出码非 0 且 stderr 命中） (75.07825ms)
+✔ 退出码门控：正常退 0 而 stderr 里出现同一名词（诊断行）→ 不判成布局失败 (74.227834ms)
+✔ 宿主环境预置了同名变量 → 子进程必须拿不到：只追加不清除等于原样透传 (83.681625ms)
+✔ U1 zcodeStorageRedirectEnv：恰好三键，布局与「HOME=<root> 时 CLI 的缺省值」逐字相同；入参是 .zcode 本身时抛错（含尾斜杠） (0.581916ms)
+✔ U2 invokeZcode 先清后设：宿主预置十一键诱饵 ⇒ 给落点根时子进程拿到编排器的三个值、其余八个为 null；不给时十一个全 null；HOME 不受落点根影响 (141.305ms)
+✔ ZCODE_BETA_ARGV_RE 与包内 RMi 同形：…/zcode-beta 结尾或后跟「.」命中，目录段 …/zcode-beta/… 不命中 (0.248625ms)
+✔ failureKind 的判据只认英文名词片段，中文前缀换了也认得出 (0.082458ms)
+✔ P-29：provider 配置定位失败时七个候选全部 indeterminate，一个都不算接受 (427.952209ms)
+✔ 旗标探针：宿主预置 ZCODE_DATA_BASE_DIR / ZCODE_API_KEY → 七次拉起的子进程一个都拿不到（代码双审 r1 codex 子项 01 ≡ AGY-01） (429.675ms)
+✔ P-28 / P-30：内置文件在 → 参数解析结论可判；只注入内置那份、个人那份一次都不给 (533.602375ms)
+✔ defaultProbe 的 zcode 段带 provider_config: null（未探过 ≠ 未找到） (0.537417ms)
+✔ 未识别的失败形态 → 全部 indeterminate，一条都不回落成接受 (499.68375ms)
+· 探测运行环境…
+· 探测 ZCode（zcode.cjs）…
+✔ 旗标本轮未判定 → 出 warnings，而不是拦人 (660.692458ms)
+· 探测运行环境…
+· 探测 ZCode（zcode.cjs）…
+✔ 旗标探针退 0 → 仍记接受，但要出声（零配额前提被打破） (924.256917ms)
+· 探测运行环境…
+· 探测 ZCode（zcode.cjs）…
+✔ 宿主预置两个 provider 变量 → doctor note 说明编排器独占（RUNBOOK 口径的运行时半边） (542.762333ms)
+· 探测运行环境…
+· 探测 ZCode（zcode.cjs）…
+✔ warnings 不影响阻断判定：有告警但 blockers 为空 (527.255917ms)
+✔ version 探针：宿主预置的两个 provider 键、全部目录 / 路径键与落点开关键（EV-112 起十一个）、两个凭据键一律进不了子进程（代码双审 r1 codex 子项 06） (47.54375ms)
+✔ 接线：probeZcode 把本轮 readonly_flags 经 readonlyArgsFromProbe 递给探针臂，并透传 cliConfigPath (469.239167ms)
+✔ 接线：探针臂判 null（未判定）→ 结论保留旧值、note 说明、不出 ⚠️ (500.312917ms)
+✔ 接线：探针臂判 global → 结论写 global 且出 ⚠️ (516.661834ms)
+✔ 同形臂接线：与白名单臂同一门控；原样支一次、置首支一次（显式传 variant）；结论写进 model_override_full_copy (551.829167ms)
+✔ 同形臂接线：两臂本轮都非 null 且不同 ⇒ 出 EV-94 ② 不一致告警 (475.726791ms)
+✔ 同形臂接线：本轮判不出 ⇒ 保留上一轮的值，且不拿旧值去比、不出不一致告警（CODEX-06） (491.002666ms)
+✔ 运行期接线：两臂 note 各带运行期读数；配置层 config_copy 而运行期选了别的 ⇒ 按臂出 ⚠️ (457.612541ms)
+✔ 运行期接线：运行期与请求 modelId 段一致、或配置层不是 config_copy ⇒ 不出运行期 ⚠️ (882.017542ms)
+✔ 运行期接线：桩不给 runtimeSelected ⇒ note 写「未采集」 (474.314792ms)
+✔ 运行期接线：config_copy 且启动阶段选定为空（no_model_field）⇒ 单列 ⚠️（代码双审 r1 CODEX-03） (450.204667ms)
+✔ 运行期接线：配置层未判定（null）而运行期 ok≠请求 ⇒ 不叠加 ⚠️，但 note 带读数（代码双审 r1 GLM-02） (464.210417ms)
+✔ U7 宿主预置十一键中的任一个 ⇒ doctor 出信息级 note（EV-110 / EV-112），只报键名不报值、不再说「持久留存」；都不预置不出 (5767.668333ms)
+✔ U7 探针入口命中 beta 改写的 argv 判据 ⇒ doctor 出信息级 note，只报命中、不报路径全文；不命中不出 (931.944459ms)
+✔ runtime_selection 接线：原样支回落、置首支选中 ⇒ reorder_needed 写进结论，运行期 ⚠️ 由它那条 note 合并说明 (478.659084ms)
+✔ runtime_selection 接线：两支都没选中 ⇒ reorder_ineffective，note 带 ⚠️ (520.080291ms)
+✔ runtime_selection 接线：判不出（置首支恒等）⇒ 不覆盖旧值，note 说明保留，运行期 ⚠️ 照旧 (482.171792ms)
+✔ 运行期读数：无日志目录 ⇒ no_log_dir (4.405583ms)
+✔ 运行期读数：目录在、没有 .jsonl ⇒ no_log_file (4.496791ms)
+✔ 运行期读数：有日志、没有启动事件 ⇒ no_event（事件名只出现在别的字段里也不算） (3.75825ms)
+✔ 运行期读数：启动事件在、context.model 缺失或为空串 ⇒ no_model_field (4.975709ms)
+✔ 运行期读数：正常 ⇒ ok，只返回 context.model 一个字段 (1.3085ms)
+✔ 运行期读数：多文件取排序最新的一份 (2.54475ms)
+✔ 运行期读数：同一文件多条启动事件取最后一条 (1.7245ms)
+✔ 运行期读数：末行截断（超时被杀）跳过，不抛、不影响前面的读数 (1.297916ms)
+✔ describeRuntimeSelection：每种成因各有一句，ok 带模型 (0.367333ms)
+✔ 置首：provider 与成员都挪到首位；只动顺序——键集合、每个值、嵌套原样；不改入参 (0.357834ms)
+✔ 置首：成员 id 与键名不同时按 id 定位；id 带首尾空白按 trim 后比 (0.099334ms)
+✔ 置首：跳过 deleted 成员；重复 id 取第一个匹配键（导入器先到先得） (0.072708ms)
+✔ 置首挪不动不当成功：找不到 provider / 成员、恒等、整数样键名 ⇒ applied:false 带原因，原样返回 (0.186709ms)
+✔ 置首：provider 键带首尾空白也能定位，重建时保留原始键（代码双审 r1 CODEX-02 ≡ GLM-03） (0.076709ms)
+✔ 置首：多个 provider 键 trim 后同名 ⇒ 挪不动（导入器取哪个未核实，不猜） (0.05775ms)
+✔ catalogFirstNote：只在请求 modelId 段等于首个有成员 provider 的首个成员时标注（代码双审 r1 CODEX-04） (0.178583ms)
+✔ 同形臂 as-is：配置读取层写出请求值（config_copy），运行期却回落首位——两层分开报 (79.412417ms)
+✔ 同形臂 requested-first：只挪顺序，运行期回落就落在请求模型上 (84.891875ms)
+✔ 同形臂 requested-first 挪不动（请求本就在首位）⇒ applied:false 带原因，照常拉起 (89.004542ms)
+✔ 同形臂 requested-first 限定失败 ⇒ 不拉起，variant 带原因、运行期 not_launched (5.644583ms)
+✔ 白名单臂：显式 opts.model 优先于 pickNonFirstModel，运行期读数接入 (79.174166ms)
+✔ 两臂早退 ⇒ runtimeSelected 为 not_launched (5.831833ms)
+✔ 拉起了但没写日志 ⇒ no_log_dir（与 not_launched 区分） (64.271041ms)
+✔ 宿主预置 ZCODE_LOG_DIR：两臂都清掉它，日志仍落进副本 HOME、宿主目录不被写 (164.658375ms)
+✔ 两臂：显式请求目录首位 ⇒ 结论照出、why 标注无判别力；非首位不标（代码双审 r1 CODEX-04） (241.333459ms)
+✔ 同形臂：置首生效 ⇒ why 标注配置层判据按构造失明；原样不标 (168.662417ms)
+✔ prepareZcodeHome requestedFirst：transformCopy 收到的已是置首后的对象，盘上键序与 prep.reorder 一致 (3.232583ms)
+✔ prepareZcodeHome：不传 requestedFirst ⇒ reorder 为 null、键序原样；限定失败 ⇒ reorder 为 null、照常建副本 (4.294417ms)
+✔ 审查臂：非首位请求 ⇒ 置首后运行期回落正好落在请求上；trace 记 reorder 与「请求模型已置首」事实句；守卫字段 kind=applied (89.79975ms)
+✔ 审查臂：请求本在首位（恒等路径）⇒ kind=identity、覆盖照样落实、不写置首事实句、守卫不告警 (85.628542ms)
+✔ reorderHint：缺席 ⇒ 空串（告警维持原文）；在场按 kind 分三句，不看 reason 文案 (0.286541ms)
+✔ judgeRuntimeSelection：按序五格（r3 §4.2），只比 modelId 段 (0.673792ms)
+✔ 同形臂：doctor 的两支——原样支 variant 由臂自行合成，置首支 kind=applied（本机形态） (144.480166ms)
+✔ 抠 envelope：容忍前置告警行（不能用 JSON.parse(trim) ） (1.423041ms)
+✔ 抠 envelope：字符串里的花括号不破坏配平 (1.154958ms)
+✔ 抠 envelope：转义引号不破坏配平 (0.184209ms)
+✔ 抠 envelope：无 JSON 时返回 null 而非抛异常 (0.0705ms)
+✔ 解析 envelope：正文在 .response，且记录全部字段名 (0.102833ms)
+✔ 回读生效模型：envelope 没有 model 字段，只能从日志 context.model 取（AC-13） (0.159625ms)
+✔ 按 sessionId 过滤：共享 HOME 下多会话交织不得混入 (0.071583ms)
+✔ 只统计 completed 的工具调用，failed 不算证据 (0.058958ms)
+✔ 写工具与 Bash 计入 writeEvents（只读失守信号） (0.074791ms)
+✔ 解析 turn.failed 的结构化根因 (0.085584ms)
+✔ sessionId 传 null 时全收（独立 HOME 下日志天然隔离） (0.056667ms)
+✔ rollout：工具参数里的路径可提取（标准日志没有这个信息） (0.211667ms)
+✔ rollout：回读生效模型的全限定形态与来源档位 (0.085667ms)
+✔ rollout：写工具与 Bash 计入 writeEvents (0.876625ms)
+✔ rollout：坏行与无 toolCalls 的行被跳过而非抛异常 (0.170541ms)
+✔ 模型名补全：短名按探针回读的 providerId 补前缀 (8.387375ms)
+✔ 模型名补全：已是全限定形态时原样返回 (0.06725ms)
+✔ 模型名补全：探针没给出前缀时原样传，不瞎猜 (0.041ms)
+✔ 模型名补全：providerId 含斜杠时只切最后一段 (0.044625ms)
+✔ 模型名补全：null 模型返回 null (0.04375ms)
+ℹ tests 2253
+ℹ suites 0
+ℹ pass 2250
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 2
+ℹ todo 0
+ℹ duration_ms 262760.060333
+
+✖ failing tests:
+
+test at dist/test/test/unit/scrub-admission.test.js:130:1
+✖ EV-157 U1：cliGroupsConfirmedGone 五格的 gone 与 blockers；why 逐字保持「第一个阻挡项」的旧文字 (1929.33425ms)
+  AssertionError [ERR_ASSERTION]: 组 38186 应已空（用例前提）
+  
+  1 !== 0
+  
+      at goneGroup (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/unit/scrub-admission.test.js:51:10)
+      at async recordFor (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/unit/scrub-admission.test.js:88:17)
+      at async TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/unit/scrub-admission.test.js:135:21)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+```
+
+**stderr（尾部）**
+
+```text
+npm warn Unknown user config "lockfile". This will stop working in the next major version of npm.
+
+  skills/dual-critic/scripts/trivium.cjs  1.4mb ⚠️
+
+⚡ Done in 24ms
+
+  dist/install.cjs  288.1kb
+
+⚡ Done in 6ms
+
+  dist/test/test/integration/gate-loop.test.js        513.0kb
+  dist/test/src/trivium/cli.js                        239.5kb
+  dist/test/test/unit/hooks.test.js                   225.8kb
+  dist/test/test/integration/run-protocol.test.js     222.6kb
+  dist/test/src/trivium/run-protocol.js               222.5kb
+  dist/test/src/trivium/review.js                     204.7kb
+  dist/test/test/unit/registry-parity.test.js         204.2kb
+  dist/test/src/trivium/hooks.js                      187.1kb
+  dist/test/src/trivium/probes/zcode.js               183.8kb
+  dist/test/src/trivium/adapters/zcode.js             177.8kb
+  dist/test/src/trivium/adapters/base.js              166.6kb
+  dist/test/src/trivium/probes/claude.js              149.2kb
+  dist/test/test/unit/zcode-model-selection.test.js   143.1kb
+  dist/test/src/trivium/types.js                      138.5kb
+  dist/test/test/unit/preflight.test.js               137.0kb
+  dist/test/test/unit/zcode-provider-env.test.js      135.1kb
+  dist/test/test/integration/fault-injection.test.js  131.9kb
+  dist/test/test/unit/gate.test.js                    124.4kb
+  dist/test/test/unit/claude-events.test.js           122.6kb
+  dist/test/test/unit/driver-wiring.test.js           118.7kb
+  ...and 173 more output files...
+
+⚡ Done in 57ms
+```
+
+### `npm run typecheck`（build，退出码 0）
+
+**stdout（尾部）**
+
+```text
+
+> triviumcode@0.1.0 typecheck
+> tsc --noEmit
+```
+
+**stderr（尾部）**
+
+```text
+npm warn Unknown user config "lockfile". This will stop working in the next major version of npm.
+```
+
+### `npm run build`（build，退出码 0）
+
+**stdout（尾部）**
+
+```text
+
+> triviumcode@0.1.0 build
+> node scripts/build.mjs
+
+构建标识：08396d2（作用面内有未提交改动），inputs c17896abf46c
+```
+
+**stderr（尾部）**
+
+```text
+npm warn Unknown user config "lockfile". This will stop working in the next major version of npm.
+
+  skills/dual-critic/scripts/trivium.cjs  1.4mb ⚠️
+
+⚡ Done in 27ms
+
+  dist/install.cjs  288.1kb
+
+⚡ Done in 24ms
+```
+
+---
+
+> ❌ 有命令非零退出，全流程状态为 `failed`。已产生的计划 / 审查 / 应答工件全部保留，
+> 不因本次失败而删改（设计 §14.2）。修复后重跑会另起一份记录，本文件不被覆盖。

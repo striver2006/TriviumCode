@@ -1,0 +1,157 @@
+{
+  "targets": [
+    "src/trivium/status.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/run-protocol.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/scrub-admission.test.js",
+    "dist/test/test/unit/retention.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "cancelRun 抹除改看 worker 一半（回到 EV-157 之前）⇒ U5 A / C / D",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  if (adm.admit) {\n    const scrubbed",
+      "replace": "  if (adm.worker.gone) {\n    const scrubbed",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "waitRun 抹除改看 worker 一半 ⇒ U6",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      if (!adm.admit) {\n        scrubNote",
+      "replace": "      if (!adm.worker.gone) {\n        scrubNote",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "到期整删去掉 CLI 一问 ⇒ U4",
+      "file": "src/trivium/retention.ts",
+      "find": "      if ((await cliGroupsConfirmedGone(status)).gone) {\n",
+      "replace": "      if (process.env['TRIVIUM_MUT_NEVER'] !== '1' || (await cliGroupsConfirmedGone(status)).gone) {\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "到期整删被挡下后 continue（不计 kept、不走凭据准入）⇒ U4",
+      "file": "src/trivium/retention.ts",
+      "find": "        out.removed.push(dir);\n        continue;\n      }\n    }\n    out.kept++;\n",
+      "replace": "        out.removed.push(dir);\n        continue;\n      }\n      continue;\n    }\n    out.kept++;\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "cancelRun 归档收尾改传 admit（D5）⇒ U5 归档断言",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  const goneNow = adm.worker;\n",
+      "replace": "  const goneNow = { gone: adm.admit, why: adm.worker.why };\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "scrubAdmission 在 worker 一半未过时也判 CLI ⇒ U2（cli 为 null）",
+      "file": "src/trivium/status.ts",
+      "find": "  if (!worker.gone) return { admit: false, worker, cli: null };\n",
+      "replace": "  if (!worker.gone) return { admit: false, worker, cli: await cliGroupsConfirmedGone(status) };\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "why 改为全部阻挡项连写 ⇒ U1 / U3（why 逐字）",
+      "file": "src/trivium/status.ts",
+      "find": "      : blockers[0]!.detail;\n",
+      "replace": "      : blockers.map((b) => b.detail).join('；');\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "scrubHoldWhy 只取第一条 ⇒ U2 / U5′（两侧都在告警里）",
+      "file": "src/trivium/status.ts",
+      "find": "${a.cli.blockers.map((b) => b.detail).join('；')}",
+      "replace": "${a.cli.blockers[0]!.detail}",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "unverifiable 不挡 ⇒ U1 / U3～U6 的 C 格",
+      "file": "src/trivium/status.ts",
+      "find": "    } else if (v === 'unverifiable') {\n",
+      "replace": "    } else if (v === 'unverifiable' && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "形状坏不挡 ⇒ U1 / U3～U6 的 D 格",
+      "file": "src/trivium/status.ts",
+      "find": "  const blockers: CliBlocker[] = malformed.map((side) => ({\n",
+      "replace": "  const blockers: CliBlocker[] = malformed.filter(() => process.env['TRIVIUM_MUT_NEVER'] === '1').map((side) => ({\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "scrubHoldWhy 在 worker 一半未过时改写文字 ⇒ U2 / U7（逐字不变）",
+      "file": "src/trivium/status.ts",
+      "find": "  if (!a.worker.gone || !a.cli || a.cli.gone) return a.worker.why;\n",
+      "replace": "  if (!a.worker.gone || !a.cli || a.cli.gone) return `准入未过：${a.worker.why}`;\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "admitScrub 的 deferredCli.detail 改为逐侧连写 ⇒ U3（detail 逐字）",
+      "file": "src/trivium/retention.ts",
+      "find": "    out.deferredCli.push({ dir, detail: a.cli!.why });\n",
+      "replace": "    out.deferredCli.push({ dir, detail: a.cli!.blockers.map((b) => b.detail).join('；') });\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "cancelRun 告警退回 worker.why（不带 CLI 事实）⇒ U5",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    warn(`凭据副本未抹：${scrubHoldWhy(adm)}——留给会话启动清扫`);\n",
+      "replace": "    warn(`凭据副本未抹：${adm.worker.why}——留给会话启动清扫`);\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "waitRun 说明退回 worker.why ⇒ U6",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        scrubNote = `\\n  凭据副本未抹：${scrubHoldWhy(adm)}（${reading.reason}），留给会话启动清扫`;\n",
+      "replace": "        scrubNote = `\\n  凭据副本未抹：${adm.worker.why}（${reading.reason}），留给会话启动清扫`;\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "同 M9，期望既有 retention 套件（EV-154 U14）也咬住",
+      "file": "src/trivium/status.ts",
+      "find": "    } else if (v === 'unverifiable') {\n",
+      "replace": "    } else if (v === 'unverifiable' && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
+      "expect": "dist/test/test/unit/retention.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "同 M10，期望既有 retention 套件（EV-154 U14）也咬住",
+      "file": "src/trivium/status.ts",
+      "find": "  const blockers: CliBlocker[] = malformed.map((side) => ({\n",
+      "replace": "  const blockers: CliBlocker[] = malformed.filter(() => process.env['TRIVIUM_MUT_NEVER'] === '1').map((side) => ({\n",
+      "expect": "dist/test/test/unit/retention.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "--wait 的 --cancel 出口句恒不出（代码双审 r1 CODEX-02）⇒ U6 A 格",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        if (adm.cli?.blockers.some((b) => b.kind === 'alive')) {\n",
+      "replace": "        if (process.env['TRIVIUM_MUT_NEVER'] === '1' && adm.cli?.blockers.some((b) => b.kind === 'alive')) {\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M18",
+      "desc": "--wait 的 --cancel 出口句对判不了 / 读不懂也出 ⇒ U6 C / D 格",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        if (adm.cli?.blockers.some((b) => b.kind === 'alive')) {\n",
+      "replace": "        if (adm.cli?.blockers.some((b) => b.kind !== 'malformed' || true)) {\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    }
+  ]
+}
