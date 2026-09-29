@@ -1,0 +1,90 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最危险的一条：D3 要改 `trivium scrub` 人读输出 :1924 的半句，与用户已冻结的「新增告警之外的输出逐字不变」正面冲突，且 §4.4 的 A7「与旧逐行相同」在 D3 采纳时不可能成立（GLM-01/02）——这是决策权归属与验收口径两处要在 r2 定稿前钉死的点。其次是「留给会话启动清扫」的交接载荷（被挡侧 cli 记录留存）无用例钉住，K1/K3 收尾步存在平凡通过（GLM-03）。其余方向经源码逐行核对全部成立：三处判据同源的落点与 admitScrub 逐行搬移、到期整删只加 CLI 一半并落回未到期路径（kept 只计一次、dryRun 同判据、opts.now 注入可行）、--cancel 归档收尾不连坐、D7 暂缓论证、行号引用与测试基建（killGroup / startWithRecordedClis / EV-154 U14 / evidence 变异工具先例）全部命中。四条意见均 minor/nit，不阻实施方向。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3.7 / §7 D3",
+      "problem": "D3 提议改 `trivium scrub` 人读输出（cli.ts:1924）的半句，与用户已定决策「清扫子命令的输出格式不改；新增告警之外的输出逐字不变」正面冲突；计划把取舍交给「审查员判断」，但这是用户已冻结的决策面，审查员与 Driver 都无权代为解冻。内容上改准是对的（§3.3 落地后「记录读不懂」的目录到期也不删，原句给出的出口确实失实），冲突双方都成立时，裁决权应显式交回用户。",
+      "evidence": "src/trivium/cli.ts:1923-1924：第四格循环后 `if (r.deferredCli.length > 0) say('…「记录读不懂」不会自愈，需把该侧 cli 改回 null 或等 run_dir_days 整删')`——deferredCli>0 即打印，不限形状坏；doc/07_manuals/MANUAL_user.md:632 有同义句；计划「用户已定」块明文「清扫子命令的输出格式不改，新增告警之外的输出逐字不变」，§3.7 自认「与『输出逐字不变』有冲突」。",
+      "suggestion": "修订稿把 D3 写成「偏离用户决策、待闸门明示批准」的显式条目，与计划自列的替代方案（保留原句 + BACKLOG 登记文案失实）并列交用户二选一；审查员可附倾向（本侧倾向改准），但不代决。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.4（A7 与「其余输出逐字不变」判法）",
+      "problem": "验收口径自相矛盾：A7（`trivium scrub`，worker 已死、CLI 仍活）的第一轮必然打印 cli.ts:1924 那行提示，D3 采纳后新旧构建该行不同；而 §4.4 的 diff 白名单只允许「§3.6 的那一行（A1/A2）或第四格那一行（A3）」，未含这半句。照稿执行要么 A7 验收误判失败，要么实施者把差异静默归一化掉、留下失实的「逐字不变」证据。",
+      "evidence": "src/trivium/cli.ts:1924 的触发条件是 `r.deferredCli.length > 0`，A7 第一轮（worker 死、CLI 活）deferredCli 非空、必打印；计划 §4.4 A7 行预期「与旧逐行相同」、结尾白名单句未列该半句。",
+      "suggestion": "§4.4 按裁决分支写死：D3 获准 ⇒ 把该半句列入允许差异并在 A7 标注（首轮 scrub 输出含此差异）；D3 被驳 ⇒ 白名单不变。不留给实施期现场解释。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §4.2 K1/K3、§4.1 U5/U6",
+      "problem": "「不抹、留给会话启动清扫」这条承诺的载荷是 status.json 里被挡侧 cli 记录的留存，计划的用例没有一处钉住它：cancelRun 的 patchStatus 只清已确认结束（settled）的侧，waitRun 的 patchStatus 不动 cli——现状支持交接；但 K1/K3 的收尾步「先结束两组再跑会话启动 Hook ⇒ 载体已抹」在「记录被过早清掉」的回归下照样通过（无记录 ⇒ E 格放行），U5/U6 的断言清单也不含记录留存。未来若有人放宽 settled 判据，EV-157 在取消/等待两处修住的洞会从会话启动那侧静默重开，而本主题全部验收仍绿。",
+      "evidence": "src/trivium/run-protocol.ts:877-882（settledCliSides 只收判 gone、或发信号后确认退出且无组员残留的侧）、:1810-1821（patchStatus 只对 settled 侧清 null，注释明言「判不了、未确认退出、组员残留、形状坏的原样保留」）、:1211-1216（waitRun 的 patchStatus 只写 phase/exit_code/message/lost）；test/integration/gate-loop.test.ts:2639 只断言了反向那一半（「已确认结束的记录清成 null」）。",
+      "suggestion": "K3（或 U5）在结束两组之前加一步断言：status.json 两侧仍带本次挡住准入的 cli 记录；或先跑一次会话启动清扫、断言载体仍在，再结束两组验放行。把交接载荷钉进用例。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §4.1 U5",
+      "problem": "U5 写「夹具同 `run-protocol.test.ts` 的 `fakeCtx` / `seedRun` 形态」，但该文件在 `test/integration/`（fakeCtx:35、seedRun:49），`test/unit/` 下不存在 run-protocol.test.ts；新文件又定在 `test/unit/scrub-admission.test.ts`，两目录的测试产物路径不同、不能跨目录 import 测试局部夹具，计划未说明是「同形态复制」还是挪目录。",
+      "evidence": "test/unit/ 目录清单无 run-protocol.test.ts；test/integration/run-protocol.test.ts:35（fakeCtx）、:49（seedRun）。",
+      "suggestion": "U5 注明夹具出处目录与「复制形态进 unit 新文件」的意图，或把 U5 直接放进 integration 侧文件；顺带写明其 seedRun 需要改成 worker 已死的变体（现夹具起的是活 worker）。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "D1 单一来源形状成立：scrubAdmission 是 admitScrub 前半段的逐行搬移（retention.ts:116-136 现状核对无误）；cliGroupsConfirmedGone 增量返回 blockers 且 why 逐字保持——今天的 early-return 语义（形状坏优先合并、其余按记录序取第一条，status.ts:318-332）与 §3.1 的生成规则等价",
+    "D2 到期整删只加 CLI 一半、被挡下落回未到期路径成立：pruneRunDirs 的线性结构（retention.ts:219-234）支持该落法，kept 只加一次、dryRun 与真跑同判据（:233 dryRun 本就不进 admitScrub）、status 为 null 时 cliRecordsOf 返回空放行与今天按 mtime 删一致；opts.now 注入（:189）使 U4「now 推到保留期之后」可行",
+    "D5 归档收尾只看 worker 一半与代码事实相符：finalizeCancelledRunMeta 消费的是 goneNow.gone（run-protocol.ts:1803），waitRun 的 goneForArchive 本就是另一次独立判定（:1184-1187）",
+    "D6 注入口可行：CancelOptions 已有 terminateWorker 同形先例（run-protocol.ts:1484-1486），注入类型与 terminateRecordedCliGroups 的签名（:800-810）兼容，且 b/c 格两处调用点（:1759/:1765）形态一致",
+    "D7 暂缓并新登 EV-163 的论证成立：workerStillAlive 对终态恒 false（retention.ts:99-104），--wait 判 heartbeat_stale 会把活 worker 写成 failed，到期整删确有同形缺口，修它要动整删语义、不属 EV-157",
+    "判定时机的分析准确：--cancel 的准入在按记录结束 CLI（b/c 格 :1757-1766）之后、记录清理（:1810-1821）之前，此刻 judgeCliGroup 对已结束组判 gone 放行，常态格输出不变的论证成立",
+    "行号引用抽验全部命中（挂载点② :1253-1267、③ :1775-1785、admitScrub :116-136、cliGroupsConfirmedGone :318-333、注释 :871、cli.ts :1924、hooks.ts :1567、MANUAL :632）",
+    "测试基建与先例齐备：test/helpers/proc.ts 的 killGroup、gate-loop 的 startWithRecordedClis/killWorker/groupMemberCount 与 hang_cli 桩（:2479 注释确认 sleep 600 形态）、retention.test.ts 的 EV-154 U14 两条（:447/:476）、evidence 目录 gen-mutation-spec.mjs / mutation-names.mjs 的逐主题先例（cli-pgroup-record-20260928）",
+    "§6.2 如实保留清单如实：组长已退出而组员还在判 gone 放行（judgeCliGroup 只看组长）与 admitScrub 今天同口径；两次判定之间的窗口（先抹副本后删目录）确实无害"
+  ],
+  "not_covered": [
+    "未实际构建或运行任何命令（审查只读）；§4.4 旧构建（08396d2）的行为差异未实测复核，仅据当前源码推演",
+    "§5 文档同步的具体行号（主设计 :1477/:2253、LLD :601、PROTOCOL :369）未逐一核对原文，只核了 MANUAL :632 与 BACKLOG EV-157 条目",
+    "§4.3 M1-M12 变异锚点在源码中的唯一性未逐一预核（属实施期 gen-mutation-spec 装置的职责）",
+    "doctor --selftest 14 步是否覆盖新判据路径未核；真实厂商 CLI 行为按计划不实测，未覆盖",
+    "另一侧审查员的视角（背靠背约定，不看）"
+  ],
+  "consulted": [
+    ".reviews/取消与失联的凭据准入核CLI/plan/2026-09-29-取消与失联的凭据准入核CLI-claude.md",
+    "src/trivium/status.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/hooks.ts",
+    "scripts/mutation-check.mjs",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-09-28_cli_pgroup_record.md",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/run-protocol.test.ts",
+    "test/unit/retention.test.ts",
+    "test/helpers/proc.ts"
+  ]
+}

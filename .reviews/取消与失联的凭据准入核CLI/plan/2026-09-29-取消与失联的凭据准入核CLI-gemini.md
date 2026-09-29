@@ -1,0 +1,109 @@
+---
+schema: trivium.review.v1
+topic: 取消与失联的凭据准入核CLI
+stage: plan
+role: gemini
+vendor: antigravity
+agent_cli: agy/1.2.12
+model_requested: gemini-3.8-flash-high
+model_effective: gemini-3.8-flash-high
+model_effective_source: envelope
+effort: high
+run_id: 20260928T231329Z
+rerun_index: 1
+snapshot_hash: sha256:90740e4d18ef5c3fda76a35e9d0331de1d76267da05dcf5992a02c88d9e6827e
+blind: true
+started_at: 2026-09-28T23:13:31.572Z
+finished_at: 2026-09-28T23:21:08.782Z
+duration_s: 300
+tool_calls:
+  read: 31
+  grep: 17
+  glob: 1
+  run_command: 0
+  project_reads: 24
+evidence_ok: true
+verdict: approve
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 0
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: ea9f1d30-f6e2-4a41-bed3-53e0cf02fc78
+---
+
+# 计划审查：取消与失联的凭据准入核CLI
+
+> Critic-A · Google Antigravity ｜ 模型 `gemini-3.8-flash-high`
+> ｜ 运行 `20260928T231329Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+结论：批准（approve）。本实施计划对 BACKLOG EV-157 的范围收敛清晰、单一来源抽取准确、到期整删边界明确且自洽。
+核心判据：单一来源 scrubAdmission 组合 workerConfirmedGone 与 cliGroupsConfirmedGone，使挂载点 ②（waitRun）、③（cancelRun）、④（admitScrub）归一；
+边界严谨：cancelRun 归档收尾坚持只看 worker 一半（D5），避免了因 CLI 阻塞而导致 run.json 悬停 running 的状态污染；
+决策 D3 审慎且必须：赞同修改 cli.ts:1924「或等 run_dir_days 整删」这一已被本主题变为虚假的引导文案，格式未变且消除了误导用户的死路；
+到期整删回落合理：被 CLI 阻挡的过期目录落回未到期路径走 admitScrub（D2），复用既有提示，且与 worker 侧暂缓项 EV-163（D7）边界清晰；
+验证矩阵完备：单测 U1-U7、集成 K1-K4、源码变异 M1-M12、零配额 A1-A8 及 14 项 doctor 自检覆盖了全部五格（A-E）与各分支交互。
+
+**结论**：`approve`
+
+## 审查意见
+
+本侧**未发现问题**。
+
+> 这不等于「没审」：请对照下方「未覆盖范围」判断这一结论的边界。
+
+## 认为正确的部分
+
+- D1 单一来源：将凭据准入抽取为 scrubAdmission（worker 一半先过才查 CLI 一半），cliGroupsConfirmedGone 扩展返回 blockers 数组同时保持既有 why 首项文字完全不变，三处消费点（cancelRun ③、waitRun ②、admitScrub ④）完全同源且兼顾历史输出兼容性。
+- D2 到期整删回落与 D7 边界：pruneRunDirs 到期整删维持 worker 一半为 workerStillAlive、仅引入 CLI 一半判据，被阻挡的过期目录计入 kept 并自然落入未到期凭据准入路径，复用既有第四格 deferredCli 提示；将到期整删中涉及 heartbeat_stale worker 的改动拆出登记 EV-163，严守了 EV-157 的范围约束。
+- D3 文案真实性修正：赞同修改 cli.ts:1924、两处注释及 MANUAL_user.md:632 中「或等 run_dir_days 整删」为「到期整删也会保留它」。在到期整删不再删除读不懂/活着 CLI 目录的前提下，保留原句会向用户提供走不通的虚假出口；改准属于修正失实，不改变输出行数与触发时机。
+- D5 归档收尾解耦：cancelRun 中的 finalizeCancelledRunMeta 维持 workerGone: adm.worker.gone，正确区分了「工作进程已被取消收尾」与「凭据副本因 CLI 存活暂缓抹除」两个不同维度的生命周期事实，防止了归档元数据异常悬停。
+- D6 测试注入口与验证闭环：在 CancelOptions 中新增可选 terminateCli（缺省 terminateRecordedCliGroups），在不引入非生产逻辑的前提下解决了 SIGKILL 下真实子进程必死导致 A 格在 --cancel 无法零配额复现的问题；U1-U7、K1-K4 与 M1-M12 的分层覆盖严密。
+
+## 未覆盖范围（本侧盲区）
+
+- 真实厂商 CLI（Antigravity agy、ZCode 桌面端、Codex CLI、Claude Code）在外部强杀 worker 后的真实子进程树行为与配额消耗（本轮为零配额审查，验证均基于桩脚本与进程表探针）。
+- Linux 或 Windows 操作系统下的进程组与启动时刻比对表现（本项目仅以 macOS Sonoma+ 为目标平台，ps -axo pgid=,stat= 与 LC_ALL=C TZ=UTC0 规范化环境未在非 macOS 验证）。
+- D7 暂缓的 EV-163（当 --wait 将心跳超时的存活 worker 标记为 failed 时，30 天后 pruneRunDirs 可能会删除仍存活 worker 运行目录的问题），本轮按用户决策仅登记暂缓，未对修复方案展开详细推演。
+- 跨宿主并发调用 pruneRunDirs 时的极端竞争窗口（由于 pruneRunDirs 挂在各会话启动期，单机多会话同时触发时对同一过期目录的 unlink/rm 竞争）。
+
+## 实际查阅的项目文件
+
+- `CLAUDE.md`
+- `README.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `doc/02_design/LLD_orchestrator.md`
+- `doc/05_testing/REPORT_2026-09-28_cli_pgroup_record.md`
+- `doc/07_manuals/MANUAL_user.md`
+- `src/trivium/status.ts`
+- `src/trivium/retention.ts`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/hooks.ts`
+- `test/helpers/proc.ts`
+- `scripts/mutation-check.mjs`
+- `test/unit/cli-group-record.test.ts`
+- `test/unit/retention.test.ts`
+- `test/integration/run-protocol.test.ts`
+- `test/unit/registry-parity.test.ts`
+- `skills/dual-critic/schema/review.v1.json`
+- `.reviews/取消与失联的凭据准入核CLI/plan/2026-09-29-取消与失联的凭据准入核CLI-claude.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":31,"grep":17,"glob":1,"run_command":0,"project_reads":24}
+
+---
+
+*本文档由 TriviumCode 编排器从 `gemini` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*
