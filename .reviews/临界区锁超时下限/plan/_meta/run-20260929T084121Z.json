@@ -1,0 +1,279 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260929T084121Z",
+  "topic": "临界区锁超时下限",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「临界区锁超时下限」：解决 BACKLOG EV-161（短临界区锁的持有超时借用 review.heartbeat_stale_s：lock.ts 的 judgeStale 对 kind 为 critical 的锁按「现在减 acquired_at 超过阈值」判 heartbeat_dead，而临界区持有期间不写心跳、正常时长是毫秒到数十毫秒，与 30 秒心跳间隔无关；配置只约束阈值大于 0…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "53d7476124a497b6449b7f6d99ef1747e5c923a9",
+    "tree_hash": "d46132b6dd24458373ed14bebd57244075ab1ba4",
+    "dirty": true,
+    "subject_sha256": "563477ba06a4a7e236282acb851e992c54979362f92b86821b732327dcf0519e",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "53d7476124a497b6449b7f6d99ef1747e5c923a9",
+      "dirty": false,
+      "inputs_sha256": "18495d45c8bc8dd6687332b026b43554b4f2b27aa0d09b4359a6b4409574fa29",
+      "built_at": "2026-09-29T08:11:09.874Z"
+    },
+    "after_tree_hash": "e99003c3995fb29b5ad23c64ad52818c70b085d2"
+  },
+  "started_at": "2026-09-29T08:41:22.664Z",
+  "finished_at": "2026-09-29T08:54:08.768Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 638.785,
+      "tool_calls": {
+        "run_command": 23,
+        "project_reads": 34
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0ec53-63a8-7d31-ac66-1d1c3e727ebd",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.13",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 295.055,
+      "tool_calls": {
+        "read": 31,
+        "grep": 14,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 27
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 256333,
+        "output_tokens": 25631,
+        "thinking_tokens": 20873,
+        "cache_read_tokens": 3664814,
+        "total_tokens": 281964
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "8316beb3-e410-4abb-b1b7-a6c8c783466d",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 765.834,
+      "tool_calls": {
+        "read": 15,
+        "grep": 21,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 26
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 13,
+        "inputTokens": 966134,
+        "outputTokens": 38281,
+        "totalTokens": 1004415,
+        "cacheReadTokens": 871296,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_ef968a78-bf79-4de6-baaa-e1eb5b09b757",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "临界区锁超时下限/plan/_meta/brief-codex-20260929T084121Z.md",
+      "sha256": "864f083c4090528dad149f2f9794123547a9af164d2d44a42de4d4036fcac759"
+    },
+    {
+      "path": "临界区锁超时下限/plan/_meta/brief-gemini-20260929T084121Z.md",
+      "sha256": "5819f288a0641019a3c416ad9cab08f3fb48b21017081e8af7e390192e05b37b"
+    },
+    {
+      "path": "临界区锁超时下限/plan/_meta/brief-glm-20260929T084121Z.md",
+      "sha256": "357eab092c8ab835ed1c308948b06c5dec3086d0b1946277cb1043a9f732ec8b"
+    },
+    {
+      "path": "临界区锁超时下限/plan/_meta/review-codex-20260929T084121Z.json",
+      "sha256": "7c4b15e60e19be9f22126e8816b69ac079d1117ab83e85c1314300938f6d2aa3"
+    },
+    {
+      "path": "临界区锁超时下限/plan/_meta/review-gemini-20260929T084121Z.json",
+      "sha256": "cf585b152c7138b16404aad4750ac3c238e27b8e1ed6cbb4b4a9b272bf0cbac3"
+    },
+    {
+      "path": "临界区锁超时下限/plan/_meta/review-glm-20260929T084121Z.json",
+      "sha256": "c088d447b976a884cd6676193a3ca0a0d4b455dd6ba61b4b8b887aa86f120da4"
+    },
+    {
+      "path": "临界区锁超时下限/plan/2026-09-29-临界区锁超时下限-codex.md",
+      "sha256": "f94b20d3388a0450efbba1f0d266c1be3c9944660691bc1d69af42c6c4406b95"
+    },
+    {
+      "path": "临界区锁超时下限/plan/2026-09-29-临界区锁超时下限-gemini.md",
+      "sha256": "611f64280942d5bdbf7387b11b2340853ae74ca029b0ab98d4e63db7b04fa556"
+    },
+    {
+      "path": "临界区锁超时下限/plan/2026-09-29-临界区锁超时下限-glm.md",
+      "sha256": "43df4ce6f8b0d0a8aa1212ed8b07fc29be0040dc222f2506ae4678aee8c46b91"
+    },
+    {
+      "path": "临界区锁超时下限/plan/2026-09-29-临界区锁超时下限-claude.md",
+      "sha256": "563477ba06a4a7e236282acb851e992c54979362f92b86821b732327dcf0519e"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

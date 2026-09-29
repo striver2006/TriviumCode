@@ -1,0 +1,45 @@
+{
+  "agreed": [
+    "准确将下限与阈值比较收敛于 lock.ts 的 judgeStale（criticalHoldTimeoutMs = Math.max(heartbeatStaleMs, WORKER_HEARTBEAT_MS)），实现单一来源，避免修改 29 处调用方引发遗漏，且完全不影响 worker 失联判定（status.ts interpretStatus）与 --wait 行为。",
+    "严格遵循用户决策，复用 status.ts 的 WORKER_HEARTBEAT_MS，不引入冗余常量；依赖闭包单向清晰，不引入循环依赖，且不破坏现行 config.v2.json 配置契约。",
+    "详尽排查了全仓所有使用小心跳阈值的用例与 evidence 脚本，确认其均依赖 run 锁或 pid_gone，不依赖 critical 锁的年龄回收；针对 gate-loop.test.ts :951 的极端时序分支进行了诚实透彻的耗时影响分析，论证了既有用例期望不变。",
+    "验证矩阵设计严密：U1～U9 覆盖边界与原判据等价性，X1～X2 覆盖真实跨进程高并发竞争，M1～M7 变异设计完备（特别是新增 S1 单测防范下限误加至 worker 失联判定），A0～A7 提供了基于真实 CLI（topic claim）的零配额验收。",
+    "文档同步清单（主设计 §12.6、LLD §4.3、MANUAL、PROTOCOL、RUNBOOK、BACKLOG、实施报告）覆盖完整且定位精准。"
+  ],
+  "consulted": [
+    ".reviews/临界区锁超时下限/plan/2026-09-29-临界区锁超时下限-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "package.json",
+    "scripts/build.mjs",
+    "scripts/mutation-check.mjs",
+    "src/trivium/cli.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/state.ts",
+    "src/trivium/status.ts",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/REPORT_2026-09-29_heartbeat_threshold_warning.md",
+    "doc/05_testing/evidence/worker-start-canonical-20260928/gen-mutation-spec.mjs",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/lock-cross-process.test.ts",
+    "test/unit/lock.test.ts",
+    "test/unit/status.test.ts"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未在真实环境中物理执行 node scripts/mutation-check.mjs 与跨进程抢锁测试（审查员处于只读环境，无法执行写/改动命令）。",
+    "未覆盖超出 EV-161 范围的长临界区租约续期机制与 fencing 重构（属于后续理论窗口，计划已明确排除）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "计划方案审慎、落点精确且论证严密。针对短临界区锁超时脱钩（EV-161），在 lock.ts 内单点引入 criticalHoldTimeoutMs = max(threshold, WORKER_HEARTBEAT_MS)，不破坏配置契约且不影响 worker 失联判定。仓内小阈值用例与时序影响排查详实诚实，单测、跨进程竞态、变异咬住与零配额验收设计完备，文档同步清单齐备，无返工风险，予以批准。",
+  "verdict": "approve"
+}

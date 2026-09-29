@@ -1,0 +1,59 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最危险的结论先说：未发现会导致返工的问题，事实基础逐条核实全部成立。judgeStale 的 heartbeatStaleMs 生产消费点唯一（lock.ts:252），29 处 heartbeat_stale_s×1000 与 withTopicLock/withGlobalLock 调用方枚举无遗漏；status.ts 依赖闭包只引 node 内建与 types/util/fsx/run-files/util/exec，lock.ts→status.ts 不成环；config.v2.json 的 heartbeat_stale_s 为 type:number exclusiveMinimum:0，验收用 T=0.05 配置合法；回收告警经 warn() 写 stderr（util/log.ts:24-26），A1/X1 的 stderr 断言可测；topic claim 入口存在（cli.ts:841/:936）并按 ctx.config 传阈值。§5「仓内无小阈值+critical 锁+期望回收的用例」经全仓 grep 独立复核成立（test/ 直接数值 heartbeatStaleMs 全为 120_000）；§5.4「断言不依赖闸门回收」有 meta.ts:640-641 的 .catch(skippedFromError) 与 state.ts:281-290 吞错两处兜底支撑。mutation 规格按文本锚点校验唯一（gen-mutation-spec.mjs:99-101），M11/M20 锚文本不在本次改动面上。仅 1 条 nit：§7 把 LLD 已知缺口表那一行写作「EV-161 一行」，而该行行题不含 EV-161 字样，按字面 grep 会零命中。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §7 文档同步表（LLD 行）",
+      "problem": "计划写「『已知缺口』表 EV-161 一行改为已解决」，但 LLD_orchestrator.md 全文不含「EV-161」字样；该行实际行题是「短临界区锁的持有超时借用 heartbeat_stale_s」（LLD_orchestrator.md:612，v1.1.15 随 EV-160 新增，结论栏现写「如实保留……BACKLOG 另登」）。实施者若按 EV-161 去 grep LLD 会扑空，需回头按表题找行。",
+      "evidence": "读 doc/02_design/LLD_orchestrator.md：grep「EV-161」零命中；grep「持有超时」命中 :11（v1.1.15 变更说明，写明新增此行）与 :612（已知缺口表行本体）；EV-161 字样只在 doc/08_project/BACKLOG.md:259 与 heartbeat-threshold-warning 报告里。",
+      "suggestion": "§7 该行把定位措辞改成行题（「短临界区锁的持有超时借用 heartbeat_stale_s」，LLD :612）或「v1.1.15 新增的那行」，并提示把结论栏的「如实保留」一并改为「已解决」；纯措辞校准，不影响方案正确性。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§3.2 落点论证成立：heartbeatStaleMs 在 lock.ts 内只有 judgeStale 一个生产消费点（lock.ts:252，其余出现是接口定义与注释），同一值还要原样喂 interpretStatus（status.ts:532）判 worker 失联，能在「锁」与「失联」间区分的只有锁模块；落在年龄判据那一行恰好只碰 critical 锁，run 锁与其余判据在代码上碰不到。",
+    "29 处调用方计数属实（grep heartbeat_stale_s \\* 1000 得 29 处、7 文件）；withTopicLock 仅 meta.ts:266/:671 两处、withGlobalLock 仅 state.ts:146 与 config.ts:820/:837（动态导入），L5 枚举无遗漏。",
+    "§3.3 导入方向无环：status.ts 只依赖 node 内建与 types/util/fsx/run-files/util/exec（util/fsx、util/exec 只引 node 内建，run-files 无模块导入），lock.ts→status.ts 不成环；config.ts 对 lock.js 的动态导入不受影响。",
+    "§2.1 判定矩阵与 §3.1 的 NaN/Infinity 语义保持（Math.max(NaN,F)=NaN、age>NaN 为假）与 lock.ts:132-136 现码吻合；runTerminal 立即回收（:130）、unparsable 2s 防御（:257）、重试预算（withTopicLock 20×150、withGlobalLock 40×100）均不动，与 §0 承诺一致。",
+    "验收前提全部可测：heartbeat_stale_s 为 type:number、exclusiveMinimum:0（config.v2.json:167-170），T=0.05 合法；回收告警经 warn() 落 stderr（util/log.ts:24-26）；topic claim 入口存在（cli.ts:841，分发 :936）且该流程按 ctx.config.review.heartbeat_stale_s×1000 传 TaskLock（cli.ts:903 同型写法）。",
+    "§5 盘点独立复核成立：test/ 全部直接数值 heartbeatStaleMs 均为 120_000，小阈值只经配置（heartbeat_stale_s: 2）出现在计划列出的 gate-loop/run-protocol/heartbeat-threshold-warning 与 evidence 脚本里；gate-loop:951 的断言集（退出码、heartbeat_stale、凭据副本未抹、无 scrub.json）确实不依赖闸门回收，锁失败转 skipped（meta.ts:640-641 .catch(skippedFromError)）与吞错（state.ts:281-290）两处兜底属实；J1 :2773 的「新 --start 退 70」确实靠 run 锁持有者活着（:2784-2785），不经年龄判据。",
+    "§5.3 的 mutation 锚点论断成立：gen-mutation-spec.mjs 按文本锚点校验唯一出现（worker-start-canonical-20260928 版 :99-101），M11/M20 的锚文本在 judgeStale 的 pid 比对段（lock.ts:121-127），不在本次改动面上，行号漂移无影响；scripts/mutation-check.mjs 存在。",
+    "§4 的 EV-160 五句核对与 preflight.ts:604-627 原文一致（含 :611 文档块末句），只改注释不动输出、A6 用 preflight --json 逐字比对钉住，处理得当。",
+    "§2.2/§2.4 对代价与剩余风险的陈述诚实：小阈值下卡死的活持有者从约 2 s 推迟到 30 s 才可回收，与缺省 120 s 用户今天的行为同型；双持有者窗口收窄而非消除，不虚报；BACKLOG EV-161 登记内容（doc/08_project/BACKLOG.md:259）与所选候选 max(阈值,下限) 一致。"
+  ],
+  "not_covered": [
+    "静态审查、零执行：未跑任何构建/测试/mutation/acceptance，§6 全部用例只做了可构造性与语义盯防的推演（如 U6/U7 与 acquireLock 的 EEXIST→judgeStale→70/回收-重试路径对照）。",
+    "§5.1/§5.2 清单抽查而非逐行：实读 gate-loop:951 与 J1 段、run-protocol.test.ts 的 holdLock（:261 kind:'run'），但 J2/J3/G1/G2/I6、heartbeat-threshold-warning.test.ts、preflight.test.ts、status.test.ts 及四个 evidence 脚本的小阈值处未逐行读（已用全仓 grep heartbeatStaleMs: 数值扫描兜底互洽）。",
+    "文档同步目标只核了存在性与版本链衔接（主设计 §12.6 在 :2795、LLD:612 行在、MANUAL_user.md:417 行在、v1.3.61/v1.1.19 与计划的 v1.3.62/v1.1.20 衔接），未核 PROTOCOL :268-270、RUNBOOK 遗留锁判据表、主设计 §12.6 正文的具体行文。",
+    "hooks.ts 侧调用点未逐处读：hook 的 30 s 预算与全局锁重试预算（约 4-6 s）的相互作用按 lock.ts:344 注释与重试参数推演，未读 hooks.ts:1760 上下文。",
+    "M1-M7 各变异与 U1-U9/X1-X2/S1 的咬合按语义逐一静态核对（含 M2 的 min 逃逸格、M4 的 T=120000/age=60000 格），未实际执行变异验证。"
+  ],
+  "consulted": [
+    "src/trivium/lock.ts",
+    "src/trivium/status.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/config.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/state.ts",
+    "src/trivium/util/log.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/run-files.ts",
+    "src/trivium/cli.ts",
+    "test/unit/lock.test.ts",
+    "test/integration/lock-cross-process.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/run-protocol.test.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/05_testing/evidence/worker-start-canonical-20260928/gen-mutation-spec.mjs"
+  ]
+}
