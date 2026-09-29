@@ -16,7 +16,9 @@ import { promises as fs } from 'node:fs';
 import type { CriticId, Stage } from './types.js';
 import { writeAtomic, exists } from './util/fsx.js';
 import { RUN_DIR_FILES } from './run-files.js';
-import { processAlive, processMatchesRecord, processStartTime, type RecordedStart, type TrackedTree } from './util/exec.js';
+import {
+  processAlive, processGroupMemberCount, processMatchesRecord, processStartTime, type RecordedStart, type TrackedTree,
+} from './util/exec.js';
 
 export type RunPhase =
   | 'starting'
@@ -278,16 +280,37 @@ export function rawCliOf(s: RunStatus | null, side: CriticId): string {
   return t.length > 200 ? `${t.slice(0, 200)}…` : t;
 }
 
-export type CliGroupVerdict = 'alive' | 'gone' | 'reused' | 'unverifiable';
+export type CliGroupVerdict = 'alive' | 'gone' | 'reused' | 'unverifiable' | 'orphaned' | 'orphan_unverifiable';
 
 /**
- * 一条 CLI 记录现在指向什么（用户决策 4：组长活着且启动时刻相符才算同一组）：
- * 组长不在 ⇒ `gone`；在而 `started_at` 为 null ⇒ `unverifiable`；在而规范化启动时刻不符（或取不到）⇒ `reused`；相符 ⇒ `alive`。
+ * 一条 CLI 记录现在指向什么（EV-165 起：组长不在时不再直接放行，改按组号下的非僵尸成员数判；代码双审 r1 CODEX-01
+ * 核出下面三分法此前被误写成两分法——`reused` 放行准入、`unverifiable` 阻挡准入，两者语义相反，不能合并）：
+ * 组长在——`started_at` 为 null ⇒ `unverifiable`（判不了）；规范化启动时刻取不到、复检后组长仍在 ⇒ 同样 `unverifiable`
+ * （判不了，与「启动时刻没记下」同一档，**不是** `reused`）；规范化启动时刻不符 ⇒ `reused`（组号已被复用）；
+ * 相符 ⇒ `alive`。组长不在（含「复检确认组长已退出」这条路径，与 `!alive` 分支是同一个事实、必须共用同一判据）——
+ * 非僵尸成员数为 0 ⇒ `gone`（视同已结束）；> 0 ⇒ `orphaned`（组号仍有效，只是组长换了后代占着，不是新的复用）；
+ * 成员数取不到（`ps` 失败）⇒ `orphan_unverifiable`（判不了，按挡住处理，不去猜）。
+ *
+ * 组员仍在时组号不会被复用（零配额实测，`doc/05_testing/evidence/orphan-cli-admission-20260929/`：连续造 30/40 个
+ * 「组长已退、只剩带标记非僵尸成员」的孤儿组，派生进程到 pid 空间回绕一整圈，零个新进程拿到仍有成员的组号）——
+ * 这正是 EV-154 用户决策 4「组长已退出而组员还在的那一格如实保留……不去猜组号是否已被接手」的前提被推翻之处：
+ * 不需要猜，组号下的非僵尸成员必是原组的后代。
  *
  * 不借 `processAlive` 的 `sameProcess`：`started_at` 为 null 时它给 true（等于「缺失 = 相符」），而且它取启动时刻不带
  * 规范化环境。`unverifiable` 在 pid 被复用且占有者活着期间一直是 `unverifiable`——没有比对基准就判不出 `reused`（AGY-01）。
  */
-export async function judgeCliGroup(r: CliGroupRecord): Promise<CliGroupVerdict> {
+export async function judgeCliGroup(
+  r: CliGroupRecord,
+  o: { memberCountOf?: (pgid: number) => Promise<number | null>; out?: { membersLeft?: number | null } } = {},
+): Promise<CliGroupVerdict> {
+  const memberCountOf = o.memberCountOf ?? processGroupMemberCount;
+  /** 组长确认不在（无论从哪条路径发现的）：按非僵尸成员数判 gone / orphaned / orphan_unverifiable，只数、不猜 */
+  const leaderGone = async (): Promise<CliGroupVerdict> => {
+    const n = await memberCountOf(r.pgid);
+    if (o.out) o.out.membersLeft = n;
+    if (n === null) return 'orphan_unverifiable';
+    return n > 0 ? 'orphaned' : 'gone';
+  };
   let alive: boolean;
   try {
     process.kill(r.pgid, 0);
@@ -295,15 +318,15 @@ export async function judgeCliGroup(r: CliGroupRecord): Promise<CliGroupVerdict>
   } catch (e) {
     alive = (e as NodeJS.ErrnoException).code === 'EPERM';
   }
-  if (!alive) return 'gone';
+  if (!alive) return leaderGone();
   if (r.started_at === null) return 'unverifiable';
   const now = await processStartTime(r.pgid, { canonical: true });
   if (now === null) {
-    // 取 ps 的这一刻进程恰好退出，或 ps 本身失败：再看一次存活，仍在就判不了
+    // 取 ps 的这一刻进程恰好退出，或 ps 本身失败：再看一次存活，确认组长已不在就与 !alive 分支同源处理
     try {
       process.kill(r.pgid, 0);
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EPERM') return 'gone';
+      if ((e as NodeJS.ErrnoException).code !== 'EPERM') return leaderGone();
     }
     return 'unverifiable';
   }
@@ -315,15 +338,15 @@ export interface CliBlocker {
   side: CriticId;
   /** 形状坏的记录没有可信的组号，为 null */
   pgid: number | null;
-  kind: 'alive' | 'unverifiable' | 'malformed';
+  kind: 'alive' | 'orphaned' | 'unverifiable' | 'malformed';
   /** 单条的事实句：哪一侧、哪个进程组、为什么挡住 */
   detail: string;
 }
 
 /**
- * 凭据清扫准入里「CLI 那一半」（EV-38，CLI进程组记录计划 r2 §4.5）：任一记录判 `alive` 或 `unverifiable`、
- * 或有形状坏的记录 ⇒ 不可抹。`reused` 与 `gone` 放行——前者组号已不是那一组，后者组长已退出
- * （组长已退出而组员还在的那一格如实保留，用户决策 4）。
+ * 凭据清扫准入里「CLI 那一半」（EV-38，CLI进程组记录计划 r2 §4.5；EV-165 起 `orphaned` 同样阻挡）：任一记录判
+ * `alive`、`orphaned`、`orphan_unverifiable`（按 `unverifiable` 归档），或有形状坏的记录 ⇒ 不可抹。`reused` 与
+ * `gone` 放行——前者组号已不是那一组，后者组长已退出且组号下已没有非僵尸成员（视同已结束）。
  *
  * **唯一来源**（EV-157）：凭据抹除的三处准入经 `scrubAdmission` 问它，`pruneRunDirs` 的到期整删直接问它。
  * 逐条判完、收齐 `blockers`（形状坏的在前，其余按记录顺序），供 `--cancel` / `--wait` 的告警逐侧列出；
@@ -331,22 +354,39 @@ export interface CliBlocker {
  * 用户决策「清扫子命令的输出格式不改」（计划 r2 §3.1）。
  * 形状坏的措辞因此有两份，是有意的（代码双审 r1 CODEX-06）：`why` 把全部形状坏的侧合成一句（旧文字，冻结面），
  * `detail` 是新告警里的逐侧单句；二者都由 scrub-admission U1 逐字钉住。
+ * `orphan_unverifiable` 复用 `kind: 'unverifiable'`——对下游（`--cancel` 出口提示、清扫的 `deferredCli`）处置相同，
+ * 只有 `detail` 文案不同（组长已退出，成员数取不到，与「组长在、启动时刻没记下」是两种不同的判不了成因）。
+ *
+ * `o.memberCountOf` 只为单测零配额构造 `orphan_unverifiable` 而开（穿到 `judgeCliGroup`，见其文档块），
+ * 生产路径不传、缺省走真实 `processGroupMemberCount`。
  */
 export async function cliGroupsConfirmedGone(
   s: RunStatus | null,
+  o: { memberCountOf?: (pgid: number) => Promise<number | null> } = {},
 ): Promise<{ gone: boolean; why: string; blockers: CliBlocker[] }> {
   const { records, malformed } = cliRecordsOf(s);
   const blockers: CliBlocker[] = malformed.map((side) => ({
     side, pgid: null, kind: 'malformed', detail: `${side} 侧的 CLI 记录读不懂（${rawCliOf(s, side)}）：判不了`,
   }));
   for (const r of records) {
-    const v = await judgeCliGroup(r);
+    const out: { membersLeft?: number | null } = {};
+    const v = await judgeCliGroup(r, { out, ...(o.memberCountOf ? { memberCountOf: o.memberCountOf } : {}) });
     if (v === 'alive') {
       blockers.push({ side: r.side, pgid: r.pgid, kind: 'alive', detail: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 仍在` });
     } else if (v === 'unverifiable') {
       blockers.push({
         side: r.side, pgid: r.pgid, kind: 'unverifiable',
         detail: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 仍有活进程、启动时刻没记下：判不了`,
+      });
+    } else if (v === 'orphaned') {
+      blockers.push({
+        side: r.side, pgid: r.pgid, kind: 'orphaned',
+        detail: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 的组长已退出，组里还有 ${out.membersLeft} 个成员`,
+      });
+    } else if (v === 'orphan_unverifiable') {
+      blockers.push({
+        side: r.side, pgid: r.pgid, kind: 'unverifiable',
+        detail: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 的组长已退出，组里的非僵尸成员数取不到：判不了`,
       });
     }
   }

@@ -215,18 +215,25 @@ test('EV-154 U15（不发信号的格）：reused、unverifiable、形状坏、�
   }
 });
 
-test('EV-154 U15 变体（计划双审 r1 GLM-01）：组长服从 SIGTERM 而组员忽略——判 gone，但如实数出遗留成员', async () => {
-  // 组长 sh 在 wait 中收到 SIGTERM 即退出；后台子 shell 忽略 TERM 后 exec sleep，sleep 继承忽略
+test('EV-165 U15 变体（取代 EV-154 版，计划双审 r1 GLM-04）：组长服从 SIGTERM 而组员忽略——升级 SIGKILL 结束残留成员', async () => {
+  /*
+   * 组长 sh 在 wait 中收到 SIGTERM 即退出；后台子 shell 忽略 TERM 后 exec sleep，sleep 继承忽略。
+   * EV-154 时代的契约是「组长一退出就判 gone，isGone 立即为真，不再升级」（旧断言：signals 只有 SIGTERM、
+   * membersLeft>=1 且不再处理）。EV-165 起 judgeCliGroup 在组长确认不在时改按非僵尸成员数判——这里成员数 > 0，
+   * 判 orphaned 而不是 gone，isGone（只认 gone/reused）持续为假，terminateProcessGroup 会继续升级到 SIGKILL
+   * 直至成员归零，这是本主题要改变的确切行为，旧断言与新代码矛盾、不能共存。
+   */
   const g = spawnGroup('u15e', `(trap '' TERM; exec sleep 600) & wait`);
   try {
     await until(() => groupMemberCount(g.pgid), (n) => n >= 2, 3000);
     assert.ok(groupMemberCount(g.pgid) >= 2, '组里应有组长与后台子进程（用例前提）');
     const s = statusWith({ glm: { pgid: g.pgid, started_at: await processStartTime(g.pgid, { canonical: true }) } });
-    const r = await terminateRecordedCliGroups(s, { graceMs: 1500, killWaitMs: 500, pollMs: 50 });
+    const r = await terminateRecordedCliGroups(s, { graceMs: 300, killWaitMs: 1000, pollMs: 50 });
     const one = r.groups[0]!;
-    assert.equal(one.gone, true, '组长已退出');
-    assert.deepEqual(one.signals, ['SIGTERM'], '按组长判，不升级');
-    assert.ok((one.membersLeft ?? 0) >= 1, `应数出遗留的组员：${JSON.stringify(one)}`);
+    assert.equal(one.verdict, 'alive', '入判时组长仍活着');
+    assert.equal(one.gone, true, '升级 SIGKILL 后组应确认清空');
+    assert.deepEqual(one.signals, ['SIGTERM', 'SIGKILL'], '组长退出但成员仍在（判 orphaned）⇒ 继续升级，不再停在 SIGTERM');
+    assert.equal(one.membersLeft, 0, 'SIGKILL 后不应再有遗留成员');
   } finally {
     killGroup(g.pgid);
     cleanup();

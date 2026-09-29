@@ -788,14 +788,20 @@ export interface RecordedCliOutcome {
  * 按 status.json 的逐侧记录结束审查员 CLI 进程组（EV-154，CLI进程组记录计划 r2 §4.4）。`--cancel` 在 worker 跑不到
  * 自己的 SIGTERM 处理器的那几格用它：worker 被升级 SIGKILL、worker 此前已不在（含 status 已被 `--wait` 判失联写成终态）。
  *
- * - **只对判 `alive` 的组发信号**（用户决策 4：组长活着且规范化启动时刻相符）；`reused` / `unverifiable` / 形状坏的一个信号都不发。
+ * - **对判 `alive` 或 `orphaned` 的组发信号**（EV-165 起：组长活着且规范化启动时刻相符，或组长已退出但组号下还有
+ *   非僵尸成员——两者都通过组号仍然有效）；`reused` / `unverifiable` / `orphan_unverifiable` / 形状坏的一个信号都不发。
  * - 宽限链与 worker 处理器同一组常量（`WORKER_TREE_GRACE_MS` → SIGKILL → `WORKER_TREE_KILL_WAIT_MS`，用户决策 5），
  *   `isGone` 每次发信号前复核组长与启动时刻；各组并行（串行时两组都忽略 SIGTERM 会让耗时翻倍，EV-152 AGY-05）。
- * - **`isGone` 只认 `gone` 与 `reused`**（代码双审 r1 GLM-01）：入判 `alive` 时身份已确认，轮询中组长仍活着就不可能被复用，
- *   此时 `unverifiable` 只意味着 `ps` 这一次没取到，继续按原链升级；原先写成 `!== 'alive'`，`ps` 瞬时失败会提前收手、
- *   不升级 SIGKILL，随后「组长已退出」的告警与事实不符。入判就不是 `alive` 的记录在上面一步已返回，一个信号都不发。
- * - `isGone` 按组长判：组长服从 SIGTERM 而组员忽略时不升级。所以收尾后数一次组成员，交给调用方如实报——
- *   **不据此再发信号**：组长一退出就判不了组号是否已被别的组接手（决策 4「不去猜」）。
+ * - **`isGone` 只认 `gone` 与 `reused`**（代码双审 r1 GLM-01）：入判 `alive` 或 `orphaned` 时身份已确认，轮询中组号
+ *   仍有非僵尸成员就不可能被复用（EV-165 实测），此时 `unverifiable` / `orphan_unverifiable` 只意味着 `ps` 这一次
+ *   没取到，继续按原链升级；原先写成 `!== 'alive'`，`ps` 瞬时失败会提前收手、不升级 SIGKILL，随后「组长已退出」的
+ *   告警与事实不符。入判就不是 `alive`/`orphaned` 的记录在上面一步已返回，一个信号都不发。
+ * - **`alive` 来源不再只按组长判**（EV-165 前的旧语义：组长服从 SIGTERM 即判终止条件成立、不管组员；代码双审 r1
+ *   AGY-02≡GLM-01 核出这句旧文案残留自相矛盾，已改准）：组长退出但组员仍在非僵尸存活时，`judge` 现在返回 `orphaned`
+ *   而不是 `gone`，`isGone`（只认 `gone`/`reused`）仍为假，宽限耗尽会继续升级到 SIGKILL 直至成员归零——组长退出、
+ *   组员忽略 SIGTERM 不再是终止条件。对 `orphaned` 来源（组长一开始就不在），`isGone` 等的同样是成员数归零（`gone`）
+ *   或组号被复用（`reused`，理论上因组员仍在而不会发生，见 EV-165 实测）。收尾后数一次组成员，交给调用方如实报——
+ *   组员仍未清零（宽限耗尽仍未确认退出）时走既有「未能确认退出」告警。
  */
 export async function terminateRecordedCliGroups(
   s: RunStatus | null,
@@ -813,7 +819,7 @@ export async function terminateRecordedCliGroups(
   const groups = await Promise.all(
     records.map(async (r): Promise<RecordedCliGroupOutcome> => {
       const verdict = await judge(r);
-      if (verdict !== 'alive') {
+      if (verdict !== 'alive' && verdict !== 'orphaned') {
         return { side: r.side, pgid: r.pgid, verdict, signals: [], gone: verdict === 'gone', membersLeft: null };
       }
       const t = await terminateProcessGroup(r.pgid, {
@@ -859,6 +865,10 @@ function reportRecordedCliGroups(r: RecordedCliOutcome, quietWhenEmpty: boolean,
       warn(`${g.side} 侧审查员 CLI 进程组 ${g.pgid} 的启动时刻没记下，判不了是不是同一进程，不发信号——请用 ps 核对`);
       continue;
     }
+    if (g.verdict === 'orphan_unverifiable') {
+      warn(`${g.side} 侧审查员 CLI 进程组 ${g.pgid} 的组长已退出，组里的非僵尸成员数取不到，判不了是否还有遗留，不发信号——请用 ps 核对`);
+      continue;
+    }
     step(`按记录结束审查员 CLI：${g.side} 侧进程组 ${g.pgid}（${g.signals.join('、') || '未发信号'}）`);
     if (!g.gone) warn(`${g.side} 侧审查员 CLI 进程组 ${g.pgid} 未能确认退出——请用 ps 核对`);
     else if (g.membersLeft !== null && g.membersLeft > 0) {
@@ -874,17 +884,19 @@ function reportRecordedCliGroups(r: RecordedCliOutcome, quietWhenEmpty: boolean,
 }
 
 /**
- * 已确认结束、可以从 status.json 清掉的侧记录（AGY-02）：判 gone 的，或发过信号后组长确认退出且组里没有遗留成员的。
+ * 已确认结束、可以从 status.json 清掉的侧记录（AGY-02）：判 gone 的，或发过信号后组长（`alive` 来源）／组号
+ * （`orphaned` 来源）确认清空且组里没有遗留成员的。
  *
- * **与凭据准入的口径有意分叉**（取消与失联的凭据准入核CLI代码双审 r1 CODEX-01）：这里要 `membersLeft === 0` 才清记录，
- * 而 `cancelRun` 挂载点 ③ 的 `scrubAdmission` 只按组长判（`judgeCliGroup`），组长已退出而组员还在时照样放行抹副本。
- * `membersLeft` 只用于告警与是否清记录；准入与 `admitScrub`、到期整删同源（用户决策），「组长已退、组员仍在」是 EV-154
- * 用户决策 4 如实保留的一格。要让准入也挡住这一格，须改 `judgeCliGroup`、四处一起变——见 BACKLOG EV-165。
+ * **已与凭据准入的口径收口**（EV-165）：`judgeCliGroup` 现在同时判组长与非僵尸成员数，`orphaned` 与准入侧的
+ * `cliGroupsConfirmedGone` 用的是同一个判据，不再像 EV-154 时那样「组长已退、组员仍在」被准入放行、这里却要
+ * 求成员归零才清记录——两处现在口径一致：只有组真的确认清空（`gone`）才会既放行抹除凭据、也清掉记录。
  */
 function settledCliSides(r: RecordedCliOutcome | null): Map<CriticId, number> {
   const m = new Map<CriticId, number>();
   for (const g of r?.groups ?? []) {
-    if (g.verdict === 'gone' || (g.verdict === 'alive' && g.gone && g.membersLeft === 0)) m.set(g.side, g.pgid);
+    if (g.verdict === 'gone' || ((g.verdict === 'alive' || g.verdict === 'orphaned') && g.gone && g.membersLeft === 0)) {
+      m.set(g.side, g.pgid);
+    }
   }
   return m;
 }
@@ -1265,11 +1277,13 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
       if (!adm.admit) {
         scrubNote = `\n  凭据副本未抹：${scrubHoldWhy(adm)}（${reading.reason}），留给会话启动清扫`;
         /*
-         * 出口（代码双审 r1 CODEX-02）：会话启动清扫不结束进程，记录里仍在的 CLI 只有 `--cancel` 能按记录结束——终态早退分支对
-         * 「工作进程确认已不在且有记录」逐组结束（EV-154 D3）。只对判「仍在」的组成立：判不了、读不懂的 `--cancel` 同样不发信号，
-         * 那两种时不给这句。本命令仍不结束任何进程。
+         * 出口（代码双审 r1 CODEX-02；EV-165 起把 `orphaned` 也算进「--cancel 能处理」）：会话启动清扫不结束进程，
+         * 记录里仍在的 CLI 只有 `--cancel` 能按记录结束——终态早退分支对「工作进程确认已不在且有记录」逐组结束
+         * （EV-154 D3），组长已退出但组号下还有非僵尸成员的组（`orphaned`）同样按组结束（EV-165）。只对判「仍在」
+         * 或「组长已退、组员仍在」的组成立：判不了、读不懂的 `--cancel` 同样不发信号，那两种时不给这句。
+         * 本命令仍不结束任何进程。
          */
-        if (adm.cli?.blockers.some((b) => b.kind === 'alive')) {
+        if (adm.cli?.blockers.some((b) => b.kind === 'alive' || b.kind === 'orphaned')) {
           scrubNote +=
             `\n  其中仍在的审查员 CLI 可用 trivium review --cancel ${runId} 按记录结束（本命令不结束任何进程）；` +
             '结束之后下一次会话启动清扫会重判，放行即抹副本';
@@ -1798,7 +1812,9 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
    * 已结束的组判 gone 放行；判不了、读不懂（没发信号）与未确认退出的组挡住——它们不在 settledCliSides 里，
    * 下面收尾那次 patchStatus 不清，原样留给会话启动清扫重判。
    * 归档收尾只看 worker 一半（`adm.worker`，计划 r2 D5）：run.json 的 cancelled 说的是 worker 的事实。
-   * 准入只按组长判：上面算出的 `membersLeft > 0`（组长已退、组员仍在）不挡准入——与 `settledCliSides` 有意分叉，见其文档块与 EV-165。
+   * 已收口（EV-165）：`judgeCliGroup` 现在同时判组长与非僵尸成员数，组长已退出但组号下还有非僵尸成员的组
+   * （`orphaned`）与准入侧同源阻挡，不再与 `settledCliSides` 分叉——上面已经按组结束过这类组，这里的复判
+   * 读到的是结束之后的事实。
    */
   const adm = await scrubAdmission(await readStatus(runDir), pid);
   const goneNow = adm.worker;

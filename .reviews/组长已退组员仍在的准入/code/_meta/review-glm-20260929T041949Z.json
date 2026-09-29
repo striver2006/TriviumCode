@@ -1,0 +1,60 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "判据与行为面核实无误：leaderGone 闭包让 !alive 与 now===null 复检两入口共用同一判据（AGY-01 修复确已落地），五处消费方经 scrubAdmission/cliGroupsConfirmedGone 零改动继承新判据，挂载点③准入判在按记录结束之后、settledCliSides 与准入口径已收口，「组员仍在 ⇒ 组号不被复用」的前提有两轮 pid 回绕实测支撑，K5/K6/U5″/B3 多层验证互相咬合。仅两条 minor，都在注释与测试面：① terminateRecordedCliGroups 与 terminateProcessGroup 两处 isGone 文档块残留 EV-154「按组长判、不升级」旧语义，与本轮「组长退、组员在 ⇒ 升级 SIGKILL」自相矛盾或失实；② reportRecordedCliGroups 新增的 orphan_unverifiable warn 文案被 MANUAL 逐字引用却无任何用例钉住，报告称零配额不可构造，与测试内既有 terminateCli 注入先例矛盾。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/run-protocol.ts:799",
+      "problem": "EV-165 改了 terminateRecordedCliGroups 传入的 isGone 判据（只认 gone/reused），但两处描述这条 isGone 的文档块没改干净，留下与代码相反的旧语义。其一，run-protocol.ts:799 同一句内自相矛盾：「组长服从 SIGTERM 而组员忽略时**不升级**（这一格 judge 会返回 orphaned，isGone 仍为假，**继续升级**……）」——「不升级」是 EV-154 旧文案残留，新行为恰是升级（U15 变体重写后的断言 signals=['SIGTERM','SIGKILL'] 证实）。其二，util/exec.ts:710-711 的 terminateProcessGroup 文档块（本文件本次零改动、被新判据连带失实）仍写「**isGone 按组长判**：组长服从 SIGTERM 而组员忽略时，宽限轮询在组长退出那一刻即返回、不升级 SIGKILL」——而 exec.ts:736-739 的实现是宽限耗尽即升级，新 isGone 在「组长退、组员在」时持续为假，会走到 SIGKILL。这两处正是后来者理解「--cancel 对孤儿组到底发不发、升不升级」的最权威注释位，会让人误解本主题的核心行为。",
+      "evidence": "读 src/trivium/run-protocol.ts:787-802（注释原文与 820-834 行实现：isGone 为 `v==='gone'||v==='reused'`，833 行收尾数成员）；读 src/trivium/util/exec.ts:709-742（terminateProcessGroup 文档块与 waitGone/升级实现）；读 test/unit/cli-group-record.test.ts 的 U15 变体（diff，新断言「继续升级，不再停在 SIGTERM」）。三处互相印证：代码升级、一处注释半句说升级半句说不升级、另一处注释整体说不升级。",
+      "suggestion": "把 run-protocol.ts:799 那句的「按组长判」「不升级」旧短语删掉或改写为「宽限内 isGone 为假不提前升级、宽限耗尽即升级 SIGKILL」的准确表述；util/exec.ts:710-711 的例子按新 isGone 语义改准（「调用方若要如实报告，得自己再数一次组成员」那半句仍成立，可保留）。方向性修改即可，无需动代码行为。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/run-protocol.ts:867",
+      "problem": "reportRecordedCliGroups 新增的 orphan_unverifiable 告警文案（「组长已退出，组里的非僵尸成员数取不到，判不了是否还有遗留，不发信号——请用 ps 核对」）没有任何用例钉住，而 MANUAL v1.0.18 已把这句话逐字引用进手册——它已是用户可见的契约面文案，措辞漂移不会被任何测试发现。报告 §3.3 对此的不可行论证（「该函数未导出，只能通过 cancelRun 的完整链路间接触发，而构造一个『真实孤儿组 + 真实 ps 失败』的组合超出零配额可行范围」）不成立：不需要真实孤儿组加真实 ps 失败，既有 U5 的 A 格就是用 CancelOptions.terminateCli 注入伪造的 RecordedCliOutcome 走完整 cancelRun 链路触发 reportRecordedCliGroups 播报的先例。",
+      "evidence": "读 src/trivium/run-protocol.ts:846-882（warn 在 866-869 行）；读 doc/07_manuals/MANUAL_user.md 的 v1.0.18 diff 段（新增引用「组长已退出，组里的非僵尸成员数取不到，判不了是否还有遗留」（v1.0.18 起，EV-165））；grep test/unit/scrub-admission.test.ts 的 terminateCli 用法（603-611 行：A 格注入 verdict:'alive'、gone:false 的伪造 outcome 经 cancelRun 断言 stderr 告警）；读 REPORT_2026-09-29_orphan_cli_admission.md §3.3 第二条 bullet 的不可构造论证。另核实 U1′ 已逐字钉住的是 cliGroupsConfirmedGone 层的 detail/why 文案，与 run-protocol.ts:867 这句是两句不同文案，后者确无钉住。",
+      "suggestion": "仿照 U5 A 格的手法，用 terminateCli 返回一个 verdict:'orphan_unverifiable'、gone:false、membersLeft:null 的伪造 outcome，经 cancelRun 在 captureStderr 里断言 stderr 那句 warn 逐字（与项目在 EV-164 用 T1~T7 整段钉住清扫人读输出的同一纪律）；同时更正报告 §3.3 的不可行论证，避免后来者沿用错误结论。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "judgeCliGroup 的 leaderGone 闭包（status.ts:306-311）让「!alive 分支」与「now===null 复检确认组长已不在」两条路径共用同一判据，计划双审 AGY-01 阻断的修复确实落在代码上，且组长在而 ps 取不到时如实回落 unverifiable、EPERM 处理与既有判据一致。",
+    "五处消费方（会话启动清扫、trivium scrub、--cancel 挂载点③、--wait 挂载点②、到期整删）确经 scrubAdmission/cliGroupsConfirmedGone 零改动继承新判据：retention.ts:229 的 pruneRunDirs 直接问同一函数，U3′/U4′/B1/B2 证实 H 格分别落 deferred/kept。",
+    "terminateRecordedCliGroups 对 orphaned 组发组信号的误伤面推理成立：组员仍在 ⇒ 组号仍被占用 ⇒ 新进程拿不到该号（probe-pgid-reuse 两轮实测 99680/99744 次派生、pid 回绕一整圈、pidEqualsLiveOrphanPgid 零反例），该前提同时支撑 reused 放行路径的正确性；kill(-pgid) 打到的必是原组后代。",
+    "挂载点③的准入判在按记录结束之后（run-protocol.ts:1817 重新 readStatus），settledCliSides 收紧到 membersLeft===0 才清记录（run-protocol.ts:895），与准入不再分叉；U5″/K6/验收 B3 三层（单元、集成真实 bundle、新旧构建对照）互相咬合。",
+    "测试前提先 killWorker 再单 pid 杀组长（K5/K6 与 acceptance orphanedRun 的注释都写明理由），与 liveTrees 观察者「worker 存活期间组长一退出就清记录」的真实行为一致，修正了计划 r1 的错误前提。",
+    "超范围项如实登记不夸大：worker 存活期间孙辈盲区登 EV-168、processGroupMemberCount 僵尸排除无专门测试登 EV-169；报告 §3.3 亦如实承认 now===null 复检分支与（除 GLM-02 指出的论证错误外）变异盲区。"
+  ],
+  "not_covered": [
+    "「组员仍在 ⇒ 组号不被复用」的内核前提仅在本机 darwin / Node v25.2.1 两轮实测（各约 10 万派生）上成立，未核 XNU 其它版本的 pid/pgid 分配行为；若该前提不成立，orphaned 发信号与 reused 放行两条的安全性都会受影响。",
+    "judgeCliGroup 的 now===null 复检分支 return leaderGone() 那一行无专门用例（Driver 已登记）；我确认了零配额下确需让 processStartTime 失败与组长退出同窗口出现、可靠构造困难，未自行另造验证。",
+    "未执行任何测试与验收脚本（审查只读）：npm run check 的 2268/2266、B1~B6 读数、9/9 变异结果均取自报告与证据文件，未复跑核实。",
+    "reportRecordedCliGroups 的 orphaned/alive 来源下「组长已退出，组里还有 N 个成员，未对它们发信号」告警的极小概率 TOCTOU 可达性只做了推演，设计 7.5 已按「alive 来源极小概率窗口、orphaned 来源实践中不可达」登记，未再深挖。",
+    "hooks.ts / cli.ts / skills-src/ 等本次零改动文件只核对了「第四格文案属 EV-164 冻结面、新成因经逐条 detail 带出」的结论，未读全量上下文；真实厂商 CLI 对组信号的处置（EV-152 起已知未实测）仍不在覆盖面内。"
+  ],
+  "consulted": [
+    ".reviews/组长已退组员仍在的准入/code/_meta/changes-20260929T041949Z.diff",
+    "src/trivium/status.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/retention.ts",
+    "test/unit/scrub-admission.test.ts",
+    "test/unit/cli-group-record.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "doc/05_testing/REPORT_2026-09-29_orphan_cli_admission.md",
+    "doc/05_testing/evidence/orphan-cli-admission-20260929/mutation-spec.json",
+    "doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-readout.json",
+    "doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.out.json",
+    "doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.out2.json",
+    "AGENTS.md"
+  ]
+}

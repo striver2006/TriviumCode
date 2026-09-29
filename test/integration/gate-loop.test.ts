@@ -3159,6 +3159,35 @@ async function endGroupsAndWait(groups: number[]): Promise<void> {
   assert.deepEqual(groups.map((g) => groupMemberCount(g)), [0, 0], '两组应已结束（用例前提）');
 }
 
+/**
+ * 等 `pgid` 组内派生出子进程（`hang_cli` 的 `sh` 组长 fork `sleep` 需要一点时间）——杀组长之前必须等到，否则组长
+ * 还没来得及 fork 子进程就被 SIGKILL 会把整个组一起端掉，之后等「成员数变为非零」的循环毫无意义只会白等到超时
+ * （代码双审 r1 AGY-01 核出：`killLeaderOnly` 调用前缺这一步，与 `test/unit/scrub-admission.test.ts` 的
+ * `orphanedGroup` 已经修过的同一形态竞态不一致）。
+ */
+async function untilTwoMembers(pgid: number): Promise<void> {
+  for (let i = 0; i < 100 && groupMemberCount(pgid) < 2; i++) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(groupMemberCount(pgid), 2, `组 ${pgid} 派生子进程后应有两个成员（用例前提）`);
+}
+
+/**
+ * 单 pid（非组）SIGKILL 组长，制造「组长已退、组员仍在」（EV-165 K5/K6）——只杀 `pgid` 这一个进程，不带负号；
+ * `hang_cli` 桩以 `sh`（组长）+ `sleep`（子进程，同组）两层构造，杀掉 `sh` 不影响 `sleep`。
+ *
+ * **前提是 worker 已经不在**（计划双审 r1 CODEX-01≡CODEX-02≡AGY-02≡GLM-03）：worker 存活时，它跟踪的直接子进程
+ * （这里的 `sh`）一退出就会触发 `liveTrees` 的 `'exit'` 监听、把该侧记录清成 null——组员是否存活与此无关，worker 完全
+ * 不知道孙辈的存在。所以本函数只能在 `killWorker` 之后调用，让记录原样留在 status.json 上。
+ */
+async function killLeaderOnly(pgid: number): Promise<void> {
+  try {
+    process.kill(pgid, 'SIGKILL');
+  } catch {
+    /* 已不在 */
+  }
+  for (let i = 0; i < 100 && !pidGone(pgid); i++) await new Promise((r) => setTimeout(r, 50));
+  assert.ok(pidGone(pgid), `组长 ${pgid} 应已不在（用例前提）`);
+}
+
 test('EV-157 K1：worker 已死而两侧 CLI 仍活 ⇒ --wait 判失联不抹、正文逐侧带组号、不结束进程、记录留存；会话启动清扫同样挡住；CLI 结束后清扫即抹', { skip: bundleMissing && bundleSkipReason }, async () => {
   const r = await startWithRecordedClis(HANG2);
   try {
@@ -3263,6 +3292,88 @@ test('EV-157 K4：worker 已死、两侧 CLI 仍活 ⇒ --cancel 按记录结束
     assert.deepEqual(r.groups.map((g) => groupMemberCount(g)), [0, 0], `两组都应已空：\n${c.stderr}`);
     assert.doesNotMatch(c.stderr, /凭据副本未抹/, '准入判的是按记录结束之后的事实');
     assert.ok(!(await carrierExists(carrier)), '照抹');
+  } finally {
+    cleanupGroups(r);
+  }
+});
+
+/*
+ * ── EV-165：组长已退组员仍在的准入（组长已退组员仍在的准入计划 r2 §3.2 K5/K6）──
+ *
+ * 前提沿用 K1～K4 的夹具，额外在 worker 已死之后对 glm 侧单 pid SIGKILL 组长（`gemini` 侧组长保持存活作对照）：
+ * 记录原样留在 status.json 上（组长已死这一刻 worker 已经不在，不会有观察者把它清成 null），组号下的 `sleep`
+ * 仍然存活——这正是 `judgeCliGroup` 新增的 `orphaned` 阻挡态。
+ */
+
+test('EV-165 K5：worker 已死、glm 侧组长已退但组员仍在（gemini 侧组长仍活）⇒ --wait 判失联两侧都不抹、glm 侧正文带精确成员数、都不结束进程；会话启动清扫同样挡住；组员结束后清扫即抹', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis(HANG2);
+  try {
+    assertRecorded(r);
+    await killWorker(r.js.worker_pid);
+    const carrier = await plantCarrier(r.js.run_dir);
+    const glmPgid = r.rec.glm!.pgid;
+    const gemPgid = r.rec.gemini!.pgid;
+
+    await untilTwoMembers(glmPgid);
+    await killLeaderOnly(glmPgid);
+    const n = groupMemberCount(glmPgid);
+    assert.ok(n > 0, `glm 侧组 ${glmPgid} 应仍有非僵尸成员（用例前提）：${n}`);
+    assert.equal(groupMemberCount(gemPgid), 2, 'gemini 侧组长应仍活着（对照，用例前提）');
+
+    const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '20'], null, 60_000);
+    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
+    const out = w.stdout + w.stderr;
+    assert.match(out, /失联（pid_gone）/);
+    const line = out.split('\n').find((l) => l.includes('凭据副本未抹')) ?? '';
+    assert.ok(
+      line.includes(`glm 侧审查员 CLI 进程组 ${glmPgid} 的组长已退出，组里还有 ${n} 个成员`),
+      `glm 侧要带「组长已退出」与精确成员数\n${out}`,
+    );
+    assert.ok(line.includes(`gemini 侧审查员 CLI 进程组 ${gemPgid} 仍在`), `gemini 侧仍走既有 alive 文案\n${out}`);
+    assert.match(
+      out,
+      new RegExp(`其中仍在的审查员 CLI 可用 trivium review --cancel ${r.js.run_id} 按记录结束`),
+      '出口提示对 alive 与 orphaned 都成立',
+    );
+    assert.ok(await carrierExists(carrier), 'CLI 仍在（含 orphaned）：副本不抹');
+    assert.equal(groupMemberCount(gemPgid), 2, '--wait 不结束进程：gemini 侧组长应仍活着');
+    assert.ok(groupMemberCount(glmPgid) > 0, '--wait 不结束进程：glm 侧组员应仍活着');
+
+    const h1 = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
+    assert.equal(h1.code, 0, `${h1.stdout}${h1.stderr}`);
+    assert.ok(await carrierExists(carrier), '会话启动清扫据 orphaned 记录同样挡住');
+
+    await endGroupsAndWait([glmPgid, gemPgid]);
+    const h2 = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
+    assert.equal(h2.code, 0, `${h2.stdout}${h2.stderr}`);
+    assert.ok(!(await carrierExists(carrier)), '组员结束之后清扫放行');
+  } finally {
+    cleanupGroups(r);
+  }
+});
+
+test('EV-165 K6：worker 已死、glm 侧组长已退但组员仍在 ⇒ --cancel 按组结束组员（组信号打到 pgid 仍有效）之后照抹；gemini 侧走既有 alive 路径不受影响', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis(HANG2);
+  try {
+    assertRecorded(r);
+    await killWorker(r.js.worker_pid);
+    const carrier = await plantCarrier(r.js.run_dir);
+    const glmPgid = r.rec.glm!.pgid;
+    const gemPgid = r.rec.gemini!.pgid;
+
+    await untilTwoMembers(glmPgid);
+    await killLeaderOnly(glmPgid);
+    assert.ok(groupMemberCount(glmPgid) > 0, `glm 侧组 ${glmPgid} 应仍有非僵尸成员（用例前提）`);
+
+    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
+    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
+    assert.equal((c.stderr.match(/按记录结束审查员 CLI/g) ?? []).length, 2, `两侧都应按记录结束（alive 与 orphaned 都发信号）：\n${c.stderr}`);
+    await new Promise((res) => setTimeout(res, 100));
+    assert.equal(groupMemberCount(glmPgid), 0, 'glm 侧组员应已被组信号结束（组号仍有效，打到了 sleep 头上）');
+    assert.equal(groupMemberCount(gemPgid), 0, 'gemini 侧（既有 alive 路径）应已结束');
+    assert.doesNotMatch(c.stderr, /凭据副本未抹/, '两侧都已结束：照抹');
+    assert.ok(!(await carrierExists(carrier)), '照抹');
+    assert.deepEqual(await sidesCliOf(r.js.run_dir), { gemini: null, glm: null }, 'settledCliSides：两侧记录都应清成 null');
   } finally {
     cleanupGroups(r);
   }

@@ -1,0 +1,205 @@
+{
+  "results": [
+    {
+      "id": "构建",
+      "ok": true,
+      "detail": "新旧 bundle sha256 不同（new e6713d1cfb2d / old 4c1890f0ccbd）"
+    },
+    {
+      "id": "B1",
+      "ok": true,
+      "detail": "新：孤儿组成员数 1、Hook 后载体在 true（H 格挡住 true）；旧：载体在 false（应为 false，旧版放行抹除）；组结束后新构建再清扫即抹 true"
+    },
+    {
+      "id": "B2",
+      "ok": true,
+      "detail": "新：到期整删后目录在 true（H 格挡住）、两组结束后再整删即删 true；旧：目录在 false（应为 false，旧版照删）"
+    },
+    {
+      "id": "B3",
+      "ok": true,
+      "detail": "新：--cancel 之后 glm 侧组员 0（应已被组信号结束）、gemini 侧 0、照抹 true；旧：glm 侧组员遗留 1（旧版从不按记录结束孤儿组，组长已不在即判 gone 直接抹除，组员照样烧配额）、gemini 侧 0"
+    },
+    {
+      "id": "B4",
+      "ok": true,
+      "detail": "常态 --cancel（两组都活）：退出码 0/0、差异 0+0 行；常态跑完（两组自然结束）：退出码 75/75、差异 0+0 行"
+    },
+    {
+      "id": "B5",
+      "ok": true,
+      "detail": "新：--wait 退出码 1（判失联退 1）、载体不抹 true、glm 侧组员仍在 1、正文带精确成员数 true；旧：退出码 1（判失联同样退 1，但两侧都判 gone 照抹）、载体不抹 false（应为 false）"
+    },
+    {
+      "id": "B6",
+      "ok": true,
+      "detail": "doctor --selftest 退 0、14/14"
+    }
+  ],
+  "readout": {
+    "base_ref": "eeceeaa",
+    "node": "v25.2.1",
+    "platform": "darwin",
+    "bundles": {
+      "new": {
+        "path": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
+        "sha256": "e6713d1cfb2d8d03fd6c198f19ca5d4044b4feec321d3fa2add9abb73033b8d5"
+      },
+      "old": {
+        "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-EZAat3/old-build/skills/dual-critic/scripts/trivium.cjs",
+        "sha256": "4c1890f0ccbdf70b88b2522e38236d5342ffe521afd1b3b7583d8a6e8eaaad9e",
+        "from": "eeceeaa"
+      }
+    },
+    "B1": {
+      "new": {
+        "glmMembersAfterOrphan": 1,
+        "code1": 0,
+        "ctx1": "TriviumCode 待办：\n  · 1 个运行目录因审查员 CLI 进程组记录未动（CLI 仍在／判不了／记录读不懂）——CLI 结束后下次会话会再判；记录读不懂的不会自愈。首个：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-EZAat3/runs-B1-new/B1-new-0f82683c/20260929T035724Z（glm 侧审查员 CLI 进程组 24187 的组长已退出，组里还有 1 个成员）\n  · 已回收 孤儿组验收/plan 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁\n  · 孤儿组验收/plan 双审进行中（run 20260929T035724Z）——请先 trivium review --wait 20260929T035724Z",
+        "carrierAfterHook1": true,
+        "ended": [
+          0
+        ],
+        "code2": 0,
+        "carrierAfterHook2": false
+      },
+      "old": {
+        "glmMembersAfterOrphan": 1,
+        "code1": 0,
+        "ctx1": "TriviumCode 待办：\n  · 已抹除 1 个运行目录的凭据副本\n  · 已回收 孤儿组验收/plan 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁\n  · 孤儿组验收/plan 双审进行中（run 20260929T035726Z）——请先 trivium review --wait 20260929T035726Z",
+        "carrierAfterHook1": false,
+        "ended": [
+          0
+        ],
+        "code2": 0,
+        "carrierAfterHook2": false
+      },
+      "diff": {
+        "onlyNew": [
+          "  · 1 个运行目录因审查员 CLI 进程组记录未动（CLI 仍在／判不了／记录读不懂）——CLI 结束后下次会话会再判；记录读不懂的不会自愈。首个：〈BASE〉/runs-B1-〈B〉/B1-〈B〉-〈H〉/〈RUN〉（glm 侧审查员 CLI 进程组 〈N〉 的组长已退出，组里还有 1 个成员）"
+        ],
+        "onlyOld": [
+          "  · 已抹除 1 个运行目录的凭据副本"
+        ]
+      }
+    },
+    "B2": {
+      "new": {
+        "code1": 0,
+        "dirAfter1": true,
+        "carrierAfter1": true,
+        "ended": [
+          0,
+          0
+        ],
+        "code2": 0,
+        "dirAfter2": false
+      },
+      "old": {
+        "code1": 0,
+        "dirAfter1": false,
+        "carrierAfter1": false,
+        "ended": [
+          0,
+          0
+        ],
+        "code2": null,
+        "dirAfter2": false
+      }
+    },
+    "B3": {
+      "new": {
+        "code": 0,
+        "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035733Z 已取消\n",
+        "stderr": "· 工作进程 26348 已不存在，仅做状态与锁的清理\n· 按记录结束审查员 CLI：gemini 侧进程组 26399（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 26401（SIGTERM）\n· 已把归档里的 run-20260929T035733Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+        "glmMembersAfter": 0,
+        "gemMembersAfter": 0,
+        "carrierAfter": false,
+        "glmPgid": 26401,
+        "gemPgid": 26399
+      },
+      "old": {
+        "code": 0,
+        "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035735Z 已取消\n",
+        "stderr": "· 工作进程 26814 已不存在，仅做状态与锁的清理\n· 按记录结束审查员 CLI：gemini 侧进程组 26862（SIGTERM）\n· 已把归档里的 run-20260929T035735Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
+        "glmMembersAfter": 1,
+        "gemMembersAfter": 0,
+        "carrierAfter": false,
+        "glmPgid": 26864,
+        "gemPgid": 26862
+      }
+    },
+    "B4": {
+      "cancel": {
+        "new": {
+          "code": 0,
+          "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035737Z 已取消\n",
+          "stderr": "· 向工作进程组 27273 发送 SIGTERM\n· 已把归档里的 run-20260929T035737Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+        },
+        "old": {
+          "code": 0,
+          "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035739Z 已取消\n",
+          "stderr": "· 向工作进程组 27720 发送 SIGTERM\n· 已把归档里的 run-20260929T035739Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+        },
+        "diff": {
+          "onlyNew": [],
+          "onlyOld": []
+        }
+      },
+      "done": {
+        "new": {
+          "code": 75,
+          "stdout": "运行 20260929T035741Z ｜ 主题 孤儿组验收 ｜ 阶段 plan ｜ 阶段状态 失败\n已用 2s / 预算 15m0s（0%） ｜ 第 1/92 次等待 ｜ 最近心跳 1s 前\n  gemini: 超时 ｜ gemini-3.8-flash-high ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n  glm: 超时 ｜ GLM-5.3 ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n",
+          "stderr": ""
+        },
+        "old": {
+          "code": 75,
+          "stdout": "运行 20260929T035745Z ｜ 主题 孤儿组验收 ｜ 阶段 plan ｜ 阶段状态 失败\n已用 2s / 预算 15m0s（0%） ｜ 第 1/92 次等待 ｜ 最近心跳 1s 前\n  gemini: 超时 ｜ gemini-3.8-flash-high ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n  glm: 超时 ｜ GLM-5.3 ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n",
+          "stderr": ""
+        },
+        "diff": {
+          "onlyNew": [],
+          "onlyOld": []
+        }
+      }
+    },
+    "B5": {
+      "new": {
+        "code": 1,
+        "stdout": "",
+        "stderr": "✗ 运行 20260929T035748Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-EZAat3/runs-B5-new/B5-new-4452f417/20260929T035748Z/worker.log\n  已把归档里的 run-20260929T035748Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n  凭据副本未抹：工作进程 29403 已不存在，但审查员 CLI 未确认结束——glm 侧审查员 CLI 进程组 29453 的组长已退出，组里还有 1 个成员（pid_gone），留给会话启动清扫\n  其中仍在的审查员 CLI 可用 trivium review --cancel 20260929T035748Z 按记录结束（本命令不结束任何进程）；结束之后下一次会话启动清扫会重判，放行即抹副本\n",
+        "carrierAfter": true,
+        "glmMembersAfter": 1,
+        "ended": [
+          0
+        ],
+        "glmPgid": 29453,
+        "glmMembersAtCheck": 1
+      },
+      "old": {
+        "code": 1,
+        "stdout": "",
+        "stderr": "✗ 运行 20260929T035750Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-EZAat3/runs-B5-old/B5-old-16428d47/20260929T035750Z/worker.log\n  已把归档里的 run-20260929T035750Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n",
+        "carrierAfter": false,
+        "glmMembersAfter": 1,
+        "ended": [
+          0
+        ],
+        "glmPgid": 29917,
+        "glmMembersAtCheck": 1
+      }
+    },
+    "B6": {
+      "code": 0,
+      "tail": [
+        "· ✓ 裁决齐备后放行提交",
+        "· ✓ 裁决齐备后放行收工",
+        "· ✓ 禁止主脑自行产出 -gemini.md（AC-07）",
+        "· ✓ 编译测试出口真实执行并落盘（AC-10）",
+        "· ✓ 复盘可生成（含时间线与采纳率）",
+        "· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）"
+      ]
+    },
+    "leftover_groups": []
+  }
+}

@@ -1,0 +1,70 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  M1 ✓ 咬住（fail=4）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=7）
+  M4 ✓ 咬住（fail=7）
+  M5 ✓ 咬住（fail=5）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=1）
+{
+  "总数": 9,
+  "咬住": 9,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "leaderGone 不再把成员数带出 out（U0/U1′ 的 out.membersLeft 与 why 里的精确数字咬不住）",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M2",
+      "desc": "成员计数取不到时不再判 orphan_unverifiable（回落到 gone，判不了被静默放行）⇒ U0/U1′ 的 Hu",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "成员数 > 0 时不再判 orphaned（永远视同已结束）⇒ U0/U1′/U3′/U4′/U5″/U6′ 的 H 格",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M4",
+      "desc": "组长不在时不再数成员，直接判 gone（回到 EV-165 之前）⇒ U0/U1′/U3′/U4′/U5″/U6′ 的 H 格",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M5",
+      "desc": "cliGroupsConfirmedGone 的 orphaned 分支不再产生阻挡 ⇒ U1′/U3′/U4′/U5″/U6′",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M6",
+      "desc": "cliGroupsConfirmedGone 的 orphan_unverifiable 分支不再产生阻挡 ⇒ U1′ 的 Hu（memberCountOf 注入）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "terminateRecordedCliGroups 回到只对 alive 发信号，orphaned 组不再按组结束 ⇒ U5″（--cancel 结束 H 格组员后照抹）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "settledCliSides 不再为 orphaned 来源清记录 ⇒ U5″（--cancel 结束组员之后记录应清 null）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "--wait 的 --cancel 出口只认 alive，orphaned 不再给出口 ⇒ U6′",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

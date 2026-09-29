@@ -5,14 +5,14 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import {
-  cliGroupsConfirmedGone, newStatus, readStatus, scrubAdmission, scrubHoldWhy, writeStatus, type RunStatus,
+  cliGroupsConfirmedGone, judgeCliGroup, newStatus, readStatus, scrubAdmission, scrubHoldWhy, writeStatus, type RunStatus,
 } from '../../src/trivium/status.js';
 import { pruneRunDirs, scrubAllRunRoot } from '../../src/trivium/retention.js';
 import { cancelRun, runDirFor, waitRun, type RecordedCliOutcome } from '../../src/trivium/run-protocol.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { captureStderr, fakeCtx } from '../helpers/run-ctx.js';
 import { repoId } from '../../src/trivium/review.js';
-import { processStartTime } from '../../src/trivium/util/exec.js';
+import { processGroupMemberCount, processStartTime } from '../../src/trivium/util/exec.js';
 import { wiredAdapter } from '../../src/trivium/adapters/index.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { newRunMeta, registerRun, writeRunMeta } from '../../src/trivium/meta.js';
@@ -86,6 +86,73 @@ async function goneGroup(tag: string): Promise<{ pgid: number; startedAt: string
   return { pgid, startedAt };
 }
 
+/**
+ * 单 pid（非组）SIGKILL 组长，制造「组长已退、组员仍在」（EV-165）——只杀 `pgid` 这一个进程，不带负号，
+ * 不影响同组的其他成员。带上限轮询确认组长确已不在，不做单次断言（计划双审 r1 AGY-05/GLM-04：`goneGroup` 的教训是
+ * 组空判定要能容忍系统抖动，组长退出判定同理）。
+ */
+async function killLeaderOnly(pgid: number): Promise<void> {
+  try {
+    process.kill(pgid, 'SIGKILL');
+  } catch {
+    /* 已不在 */
+  }
+  for (let i = 0; i < 100; i++) {
+    try {
+      process.kill(pgid, 0);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EPERM') return;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.fail(`组长 ${pgid} 应已不在（用例前提）`);
+}
+
+/** 组号下现有的非僵尸成员数，带上限轮询等待到目标条件（复用 `killLeaderOnly` 同款节奏） */
+async function untilMemberCount(pgid: number, ok: (n: number) => boolean, ms = 3000): Promise<number> {
+  const deadline = Date.now() + ms;
+  let n = (await processGroupMemberCount(pgid)) ?? -1;
+  while (!ok(n) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 50));
+    n = (await processGroupMemberCount(pgid)) ?? -1;
+  }
+  return n;
+}
+
+/**
+ * 「组长已退、组员仍在」（EV-165 `orphaned` 格）：复用 `liveGroup`（组长 `sh` + 子进程 `sleep 120`，同组），
+ * 单 pid SIGKILL 组长，`sleep` 留在同一个 `pgid` 下继续跑——组号仍然有效，只是组长换了后代占着。
+ */
+async function orphanedGroup(tag: string): Promise<Group> {
+  const g = await liveGroup(tag);
+  // sh 派生 sleep 子进程需要时间：太早杀组长会连子进程一起端掉（组还没来得及有第二个成员）
+  const before = await untilMemberCount(g.pgid, (x) => x >= 2);
+  assert.equal(before, 2, `组 ${g.pgid} 派生 sleep 子进程后应有两个成员（用例前提）：${before}`);
+  await killLeaderOnly(g.pgid);
+  const n = await untilMemberCount(g.pgid, (x) => x > 0);
+  assert.ok(n > 0, `组 ${g.pgid} 应仍有非僵尸成员（用例前提）：${n}`);
+  return g;
+}
+
+/**
+ * 「组长已退、组员也已自然退出」（EV-165 `orphaned` 之后归零，视同 `gone`）：子进程只睡 1 秒，
+ * 杀组长之后等它自然结束——不强行构造真实僵尸态（macOS 上窗口短且不确定，见计划 r2 §3.1／§4），
+ * 直接让成员计数在真实场景下归零，与「判据只认这个数字，不关心 0 是怎么来的」的设计一致。
+ */
+async function orphanedThenEmptyGroup(tag: string): Promise<{ pgid: number; startedAt: string | null }> {
+  const child = spawn('/bin/sh', ['-c', 'sleep 1; : "$0"', `${MARK}:${tag}`], { detached: true, stdio: 'ignore' });
+  const pgid = child.pid!;
+  const startedAt = await processStartTime(pgid, { canonical: true });
+  // 同 orphanedGroup：先等 sleep 子进程真正派生出来，再杀组长，否则会连子进程一起端掉、测不出「先孤儿、后自然退出」
+  const before = await untilMemberCount(pgid, (x) => x >= 2);
+  assert.equal(before, 2, `组 ${pgid} 派生 sleep 子进程后应有两个成员（用例前提）：${before}`);
+  await killLeaderOnly(pgid);
+  const n = await untilMemberCount(pgid, (x) => x === 0, 5000);
+  assert.equal(n, 0, `组 ${pgid} 的成员应已自然退出（用例前提）`);
+  assert.ok(startedAt, `组长 ${pgid} 的启动时刻应已取到（用例前提）`);
+  return { pgid, startedAt };
+}
+
 /** 一个已退出的 worker pid，连同它生前的两种启动时刻 */
 async function deadWorker(): Promise<{ pid: number; legacy: string | null; canonical: string | null }> {
   const c = spawn('/bin/sh', ['-c', 'sleep 30'], { stdio: 'ignore' });
@@ -119,9 +186,9 @@ async function liveWorker(tag: string) {
 }
 
 type CliValue = unknown;
-type Cell = 'A' | 'B' | 'Br' | 'C' | 'D' | 'E';
+type Cell = 'A' | 'B' | 'Br' | 'C' | 'D' | 'E' | 'H' | 'Hz';
 
-/** 按格造 glm 侧的 cli 记录；返回记录值与需要收尾的组 */
+/** 按格造 glm 侧的 cli 记录；返回记录值与需要收尾的组（EV-165 新增 H / Hz 两格） */
 async function recordFor(cell: Cell, tag: string): Promise<{ cli: CliValue; group: Group | null; pgid: number | null }> {
   switch (cell) {
     case 'A': {
@@ -144,6 +211,14 @@ async function recordFor(cell: Cell, tag: string): Promise<{ cli: CliValue; grou
       return { cli: { pgid: 'not-a-number' }, group: null, pgid: null };
     case 'E':
       return { cli: null, group: null, pgid: null };
+    case 'H': {
+      const g = await orphanedGroup(tag);
+      return { cli: { pgid: g.pgid, started_at: g.startedAt }, group: g, pgid: g.pgid };
+    }
+    case 'Hz': {
+      const g = await orphanedThenEmptyGroup(tag);
+      return { cli: { pgid: g.pgid, started_at: g.startedAt }, group: null, pgid: g.pgid };
+    }
   }
 }
 
@@ -179,6 +254,49 @@ function tracker() {
 }
 
 const uniq = async (): Promise<string> => fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-scrub-adm-')));
+
+// ─────────────────────────── U0：judgeCliGroup 的三个新分支（EV-165） ───────────────────────────
+
+test('EV-165 U0：judgeCliGroup——组长已退且组里还有非僵尸成员判 orphaned（out 带出成员数）；成员归零判 gone；成员计数取不到判 orphan_unverifiable（依赖注入，零配额）', async () => {
+  const tmp = await uniq();
+  const t = tracker();
+  try {
+    const h = t.add({ group: await orphanedGroup(`${tmp}:u0h`) });
+    const out: { membersLeft?: number | null } = {};
+    const startedAt = h.group!.startedAt;
+    const v = await judgeCliGroup({ pgid: h.group!.pgid, started_at: startedAt }, { out });
+    assert.equal(v, 'orphaned');
+    assert.ok((out.membersLeft ?? 0) > 0, `out.membersLeft 应带出实测成员数：${JSON.stringify(out)}`);
+
+    const hz = await orphanedThenEmptyGroup(`${tmp}:u0hz`);
+    const outHz: { membersLeft?: number | null } = {};
+    assert.equal(await judgeCliGroup({ pgid: hz.pgid, started_at: hz.startedAt }, { out: outHz }), 'gone', '成员数归零视同已结束');
+    assert.equal(outHz.membersLeft, 0);
+
+    // orphan_unverifiable：成员计数取不到（ps 失败），用依赖注入零配额构造——不强行造真实 ps 故障
+    const hu = await orphanedGroup(`${tmp}:u0hu`);
+    t.add({ group: hu });
+    const outHu: { membersLeft?: number | null } = {};
+    const vHu = await judgeCliGroup(
+      { pgid: hu.pgid, started_at: hu.startedAt },
+      { memberCountOf: async () => null, out: outHu },
+    );
+    assert.equal(vHu, 'orphan_unverifiable');
+    assert.equal(outHu.membersLeft, null);
+
+    // now===null 复检分支也要走同一条 leaderGone 路径（AGY-01≡CODEX-05）：用注入的 memberCountOf 直接钉住契约，
+    // 不依赖真的让 processStartTime 瞬时失败——那条分支已由既有 U17（ps 瞬时失败但组长仍在）覆盖了「组长仍在」的一半，
+    // 这里只需确认「组长确认不在」时，不论从 !alive 分支还是 now===null 分支进来，产出的是同一个 leaderGone 判据。
+    const memberCountOf = async (pgid: number): Promise<number | null> => (pgid === hu.pgid ? 3 : null);
+    assert.equal(
+      await judgeCliGroup({ pgid: hu.pgid, started_at: hu.startedAt }, { memberCountOf }),
+      'orphaned',
+      '组长确认不在时，注入的成员数直接决定 verdict——与 !alive 分支同一判据',
+    );
+  } finally {
+    await t.cleanup(tmp);
+  }
+});
 
 // ─────────────────────────── U1 / U2：判据本身 ───────────────────────────
 
@@ -230,13 +348,43 @@ test('EV-157 U1：cliGroupsConfirmedGone 五格的 gone 与 blockers；why 逐�
   }
 });
 
+test('EV-165 U1′：cliGroupsConfirmedGone 新增 H / Hz 两格——组长已退、组员仍在阻挡且带精确成员数；成员归零放行', async () => {
+  const tmp = await uniq();
+  const t = tracker();
+  try {
+    const h = t.add(await recordFor('H', `${tmp}:u1h`));
+    const hz = await recordFor('Hz', `${tmp}:u1hz`);
+
+    const rh = await cliGroupsConfirmedGone(statusWith({ cli: { glm: h.cli } }));
+    assert.equal(rh.gone, false);
+    const n = await processGroupMemberCount(h.pgid!);
+    assert.equal(rh.why, `glm 侧审查员 CLI 进程组 ${h.pgid} 的组长已退出，组里还有 ${n} 个成员`);
+    assert.deepEqual(rh.blockers, [
+      { side: 'glm', pgid: h.pgid, kind: 'orphaned', detail: rh.why },
+    ]);
+
+    const rhz = await cliGroupsConfirmedGone(statusWith({ cli: { glm: hz.cli } }));
+    assert.deepEqual(rhz, { gone: true, why: '记录里没有仍在的审查员 CLI', blockers: [] }, '成员归零视同已结束，放行');
+
+    // orphan_unverifiable：成员计数取不到——真实让 ps 失败不现实（零配额、不影响系统），用 memberCountOf 依赖注入
+    // 穿透 cliGroupsConfirmedGone（新增的可选第二参数，只为测试开，生产路径不传）
+    const hu = t.add(await recordFor('H', `${tmp}:u1hu`));
+    const rhu = await cliGroupsConfirmedGone(statusWith({ cli: { glm: hu.cli } }), { memberCountOf: async () => null });
+    assert.equal(rhu.gone, false);
+    assert.equal(rhu.why, `glm 侧审查员 CLI 进程组 ${hu.pgid} 的组长已退出，组里的非僵尸成员数取不到：判不了`);
+    assert.deepEqual(rhu.blockers, [{ side: 'glm', pgid: hu.pgid, kind: 'unverifiable', detail: rhu.why }]);
+  } finally {
+    await t.cleanup(tmp);
+  }
+});
+
 test('EV-157 U2：scrubAdmission——worker 已不在 × 五格；worker 仍在时不判 CLI（cli 为 null）；scrubHoldWhy 两种形态', async () => {
   const tmp = await uniq();
   const t = tracker();
   const w = await liveWorker(`${tmp}:u2w`);
   try {
     const dead = await deadWorker();
-    const expect: Record<Cell, boolean> = { A: false, B: true, Br: true, C: false, D: false, E: true };
+    const expect: Record<Cell, boolean> = { A: false, B: true, Br: true, C: false, D: false, E: true, H: false, Hz: true };
     for (const cell of Object.keys(expect) as Cell[]) {
       const r = t.add(await recordFor(cell, `${tmp}:u2${cell}`));
       const a = await scrubAdmission(statusWith({ worker: dead, cli: { glm: r.cli } }), null);
@@ -330,6 +478,34 @@ test('EV-157 U3：admitScrub 行为不变——worker 已不在 × 五格的分�
   }
 });
 
+test('EV-165 U3′：会话启动清扫 / trivium scrub 新增 H / Hz 两格——H 不抹并进 deferredCli 带精确成员数；Hz 照抹', async () => {
+  const tmp = await uniq();
+  const t = tracker();
+  try {
+    const dead = await deadWorker();
+    const { cfg, projectRoot, b } = await bucket();
+    const h = t.add(await recordFor('H', `${tmp}:u3h`));
+    const hz = await recordFor('Hz', `${tmp}:u3hz`);
+    const dirH = await runDirWith(b, 'R-H', statusWith({ worker: dead, cli: { glm: h.cli } }));
+    const dirHz = await runDirWith(b, 'R-Hz', statusWith({ worker: dead, cli: { glm: hz.cli } }));
+    const n = await processGroupMemberCount(h.pgid!);
+    const detailH = `glm 侧审查员 CLI 进程组 ${h.pgid} 的组长已退出，组里还有 ${n} 个成员`;
+
+    const s = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
+    assert.ok(s.deferred.includes(dirH.d), 'H 格不抹');
+    assert.ok(s.scrubbed.includes(dirHz.d), 'Hz 格照抹');
+    assert.equal(s.deferredCli.find((x) => x.dir === dirH.d)?.detail, detailH);
+    assert.ok(await exists(dirH.carrier), 'H 格载体应在');
+    assert.ok(!(await exists(dirHz.carrier)), 'Hz 格载体应已抹');
+
+    const p = await pruneRunDirs(cfg, projectRoot, { adapters: wiredAdapter });
+    assert.ok(p.deferred.includes(dirH.d));
+    assert.equal(p.deferredCli.find((x) => x.dir === dirH.d)?.detail, detailH);
+  } finally {
+    await t.cleanup(tmp);
+  }
+});
+
 test('EV-157 U4：到期整删——A / C / D 格不删、计入 kept 并进 deferredCli；B / E 照删；dry-run 下 A 格不进 removed', async () => {
   const tmp = await uniq();
   const t = tracker();
@@ -354,6 +530,29 @@ test('EV-157 U4：到期整删——A / C / D 格不删、计入 kept 并进 def
     assert.deepEqual([...r.deferredCli.map((x) => x.dir)].sort(), [dirs.A!, dirs.C!, dirs.D!].sort(), '落回未到期路径：第四格如实带出');
     for (const c of ['A', 'C', 'D'] as Cell[]) assert.ok(await exists(dirs[c]!), `格 ${c} 目录在`);
     for (const c of ['B', 'Br', 'E'] as Cell[]) assert.ok(!(await exists(dirs[c]!)), `格 ${c} 目录已删`);
+  } finally {
+    await t.cleanup(tmp);
+  }
+});
+
+test('EV-165 U4′：到期整删新增 H / Hz 两格——H 不删、计入 kept 并进 deferredCli；Hz 照删', async () => {
+  const tmp = await uniq();
+  const t = tracker();
+  try {
+    const dead = await deadWorker();
+    const { cfg, projectRoot, b } = await bucket();
+    const h = t.add(await recordFor('H', `${tmp}:u4h`));
+    const hz = await recordFor('Hz', `${tmp}:u4hz`);
+    const dirH = (await runDirWith(b, 'R-H', statusWith({ worker: dead, cli: { glm: h.cli } }))).d;
+    const dirHz = (await runDirWith(b, 'R-Hz', statusWith({ worker: dead, cli: { glm: hz.cli } }))).d;
+    const later = Date.now() + (cfg.retention.run_dir_days + 5) * DAY;
+
+    const r = await pruneRunDirs(cfg, projectRoot, { now: later, adapters: wiredAdapter });
+    assert.ok(r.removed.includes(dirHz), 'Hz 格到期照删');
+    assert.ok(!r.removed.includes(dirH), 'H 格到期不删');
+    assert.ok(r.deferredCli.some((x) => x.dir === dirH), 'H 格落回未到期路径、第四格带出');
+    assert.ok(await exists(dirH), 'H 格目录在');
+    assert.ok(!(await exists(dirHz)), 'Hz 格目录已删');
   } finally {
     await t.cleanup(tmp);
   }
@@ -439,6 +638,56 @@ test('EV-157 U5：--cancel（worker 已不在）五格——A / C / D 不抹、�
   }
 });
 
+test('EV-165 U5‴（代码双审 r1 GLM-02）：reportRecordedCliGroups 对 orphan_unverifiable 的 warn 文案逐字——仿 U5 A 格用 terminateCli 注入伪造 outcome，不需要真实孤儿组也不需要真实 ps 失败', async () => {
+  const tmp = await uniq();
+  const t = tracker();
+  try {
+    const ctx = await fakeCtx();
+    const c = t.add(await recordFor('C', `${tmp}:u5trip`));
+    const runId = 'R-CANCEL-ORPHAN-UNVERIFIABLE';
+    const x = await seedDeadRun(ctx, runId, { glm: c.cli });
+    const o = {
+      terminateCli: async (): Promise<RecordedCliOutcome> => ({
+        groups: [{ side: 'glm', pgid: c.pgid!, verdict: 'orphan_unverifiable', signals: [], gone: false, membersLeft: null }],
+        malformed: [], malformedRaw: {},
+      }),
+    };
+    const { value: code, err } = await captureStderr(() => cancelRun(ctx, runId, o));
+    assert.equal(code, EXIT.OK, err);
+    assert.ok(
+      err.includes(`glm 侧审查员 CLI 进程组 ${c.pgid} 的组长已退出，组里的非僵尸成员数取不到，判不了是否还有遗留，不发信号——请用 ps 核对`),
+      `应逐字打出 orphan_unverifiable 的 warn 文案（MANUAL v1.0.18 已引用，是契约面文案）：\n${err}`,
+    );
+    // 准入随后独立复查真实记录（格 C：组长活着、启动时刻未记下，同样阻挡）：副本不抹，与本测试要钉的 warn 文案互不影响
+    assert.ok(await exists(x.carrier), '副本不抹');
+  } finally {
+    await t.cleanup(tmp);
+  }
+});
+
+test('EV-165 U5″：--cancel（worker 已不在）新增 H 格——按组结束组员（组信号打到 pgid 仍有效）之后照抹，记录清 null', async () => {
+  const tmp = await uniq();
+  const t = tracker();
+  try {
+    const ctx = await fakeCtx();
+    const h = t.add(await recordFor('H', `${tmp}:u5h`));
+    const runId = 'R-CANCEL-H';
+    const x = await seedDeadRun(ctx, runId, { glm: h.cli });
+
+    const { value: code, err } = await captureStderr(() => cancelRun(ctx, runId));
+    assert.equal(code, EXIT.OK, err);
+    const line = err.split('\n').find((l) => l.includes('凭据副本未抹'));
+    assert.equal(line, undefined, `H 格：--cancel 应已按组结束组员、照抹\n${err}`);
+    assert.ok(!(await exists(x.carrier)), 'H 格：--cancel 结束组员之后应照抹');
+    const n = await untilMemberCount(h.pgid!, (v) => v === 0);
+    assert.equal(n, 0, '组员应已被组信号结束');
+    assert.equal(await glmCli(x.runDir), null, 'settledCliSides：组已确认清空，记录应清成 null');
+    assert.equal((await readRunJson(x.runJson)).status, 'cancelled');
+  } finally {
+    await t.cleanup(tmp);
+  }
+});
+
 test('EV-157 U5′：--cancel 两侧都挡住（判不了 + 读不懂）⇒ 一行告警逐侧列出', async () => {
   const tmp = await uniq();
   const t = tracker();
@@ -506,6 +755,42 @@ test('EV-157 U6：--wait 判失联（pid_gone）五格——A / C / D 不抹、�
       if (r.group) assert.ok(groupMemberCount(r.pgid!) > 0, `格 ${cell}：--wait 不结束任何进程`);
       assert.equal((await readRunJson(x.runJson)).status, 'failed', `格 ${cell}：run.json`);
     }
+  } finally {
+    await t.cleanup(tmp);
+  }
+});
+
+test('EV-165 U6′：--wait 判失联新增 H 格——不抹、正文带精确成员数、不结束进程；--cancel 出口对 orphaned 也给出（不只 alive）', async () => {
+  const tmp = await uniq();
+  const t = tracker();
+  try {
+    const ctx = await fakeCtx();
+    const h = t.add(await recordFor('H', `${tmp}:u6h`));
+    const runId = 'R-WAIT-H';
+    const x = await seedDeadRun(ctx, runId, { glm: h.cli });
+    let message = '';
+    await assert.rejects(waitRun(ctx, runId, 10), (e: { code?: number; message: string }) => {
+      assert.equal(e.code, EXIT.FAIL);
+      message = e.message;
+      return true;
+    });
+    assert.match(message, /失联（pid_gone）/);
+    assert.ok(await exists(x.carrier), 'H 格：不抹');
+    const n = await processGroupMemberCount(h.pgid!);
+    const line = message.split('\n').find((l) => l.includes('凭据副本未抹'));
+    assert.equal(
+      line,
+      `  凭据副本未抹：工作进程 ${x.dead.pid} 已不存在，但审查员 CLI 未确认结束——` +
+        `glm 侧审查员 CLI 进程组 ${h.pgid} 的组长已退出，组里还有 ${n} 个成员（pid_gone），留给会话启动清扫`,
+    );
+    // 出口（EV-165：orphaned 同样给出，不只 alive——terminateRecordedCliGroups 现在也会对它发信号）
+    const exit = message.split('\n').find((l) => l.includes('按记录结束'));
+    assert.equal(
+      exit,
+      `  其中仍在的审查员 CLI 可用 trivium review --cancel ${runId} 按记录结束（本命令不结束任何进程）；结束之后下一次会话启动清扫会重判，放行即抹副本`,
+    );
+    assert.ok(groupMemberCount(h.pgid!) > 0, 'H 格：--wait 不结束任何进程');
+    assert.equal((await readRunJson(x.runJson)).status, 'failed');
   } finally {
     await t.cleanup(tmp);
   }

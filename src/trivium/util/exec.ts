@@ -707,8 +707,13 @@ export interface TerminateOptions {
  * SIGTERM 处理器经 `shutdownTrackedTrees` 转发；升级到 SIGKILL 时处理器跑不到，由 `--cancel` 按记录另行结束
  * （见 `killProcessTree`，EV-152 / EV-154）。
  *
- * **`isGone` 按组长判**：组长服从 SIGTERM 而组员忽略时，宽限轮询在组长退出那一刻即返回、不升级 SIGKILL。
- * 调用方若要如实报告，得自己再数一次组成员（`processGroupMemberCount`，EV-154 计划双审 r1 GLM-01）。
+ * **`isGone` 的判据完全由调用方给，本函数不关心它看的是什么**：早期唯一的调用形态是「只按组长判」——组长服从
+ * SIGTERM 而组员忽略时，宽限轮询在组长退出那一刻即返回、不升级 SIGKILL，调用方若要如实报告，得自己再数一次组成员
+ * （`processGroupMemberCount`，EV-154 计划双审 r1 GLM-01）。**EV-165 起并非所有调用方都是这个形态**：
+ * `terminateRecordedCliGroups` 传入的 `isGone` 经 `judgeCliGroup` 同时判组长与非僵尸成员数（只认 `gone`/`reused`
+ * 才算已不在），组长退出但组员仍在时判 `orphaned`、`isGone` 仍为假，宽限轮询会继续升级到 SIGKILL 直至成员归零——
+ * 这种调用方式下不再需要「再数一次组成员」才能如实报告，因为「组员还在」本身已经是 `isGone` 判据的一部分
+ * （代码双审 r1 GLM-01≡AGY-02 核出本段旧文案对新调用方已经失实，改准）。
  */
 export async function terminateProcessGroup(
   pid: number,

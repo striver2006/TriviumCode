@@ -1,0 +1,2442 @@
+# trivium changes.diff
+# run_id: 20260929T041949Z
+# base: HEAD
+# head: eeceeaac84be433ae8259aa11b4d3a86f4712ac8
+# files: 23
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/LLD_orchestrator.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/05_testing/REPORT_2026-09-29_orphan_cli_admission.md
+#   doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-output.r0.txt
+#   doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-output.txt
+#   doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-readout.json
+#   doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-readout.r0.json
+#   doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance.mjs
+#   doc/05_testing/evidence/orphan-cli-admission-20260929/gen-mutation-spec.mjs
+#   doc/05_testing/evidence/orphan-cli-admission-20260929/mutation-output.txt
+#   doc/05_testing/evidence/orphan-cli-admission-20260929/mutation-spec.json
+#   doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.mjs
+#   doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.out.json
+#   doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.out2.json
+#   doc/06_deployment/RUNBOOK_pipeline_ops.md
+#   doc/07_manuals/MANUAL_user.md
+#   doc/08_project/BACKLOG.md
+#   src/trivium/run-protocol.ts
+#   src/trivium/status.ts
+#   test/integration/gate-loop.test.ts
+#   test/unit/cli-group-record.test.ts
+#   test/unit/scrub-admission.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index ed263443..b2ab8fab 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.59
++> - **当前版本**：v1.3.60
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -1468,13 +1468,13 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
+ | `review --start` | 预检通过后：冻结送审包 → 置闸门 `running`（槽位被上一轮待裁决占着即退 2、不落盘，v1.3.49）→ 写 `run.json`（`status: running`）→ 以 `setsid`/双 fork 派生工作进程（真并行拉起两侧、回收、解析、落盘全部在该进程内完成，完成即退出）→ **立即返回**；写完骨架之后、子进程诞生之前失败时把骨架收尾为 `failed`（`prepare_exception`，v1.3.50）；子进程诞生之后失败时先按进程组终止工作进程并以子进程句柄确认退出，再收尾为 `failed`（`post_spawn_exception`，v1.3.51，见 6.7 注记 ⑤）；这条失败路径最长约 20 s 才返回（宽限 `WORKER_TERM_GRACE_MS` 5 s + SIGKILL 后确认 `ORPHAN_KILL_CONFIRM_MS` 5 s + 确认不了时取启动时刻的 `ps` 至多 10 s），仍在 Bash 缺省 120 s 工具超时之内 | `0` + `run_id`、`max_waits`（= ceil(总上限 / timeout) + 2） |
+ | `review --wait <run_id> --timeout <s>` | 轮询 `~/.trivium/runs/<repo_id>/<run_id>/status.json`，最多等待 `<s>` 秒（默认见 `defaultConfig()` 的 `wait_timeout_s`，须小于 Bash 工具超时） | `0` 完成且工件已落盘；`73` 仍在运行（stdout 给出两侧状态、已用时/预算、心跳时间，JSON 另给 `progress_brief` 等结构化进度，见 7.5.1）；`75` 严格模式单侧失败；其余同 7.3 |
+ | `review --status <run_id>` | 只读一次状态，不等待 | 同上 |
+-| `review --cancel <run_id>` | 向工作进程组发 SIGTERM → 宽限 5 s → SIGKILL（宽限期判据「不存活或不是同一进程」，v1.3.51；与 `--start` 派生后失败的收尾共用 `terminateProcessGroup`）；适配器以 `killTree` 拉起、自成进程组的厂商 CLI 按 worker 的组发够不到，由工作进程的 SIGTERM 处理器先按组终止它们（宽限 2 s → SIGKILL → 至多再等 1 s，按父进程句柄判退出；真实 CLI 对 SIGTERM 的处置未实测，不响应时由 SIGKILL 兜底）再以 SIGTERM 退出（v1.3.52，EV-152）；工作进程被升级 SIGKILL 之后、或此前已不在（含 status 已被 `--wait` 判失联写成 failed 的终态分支）时，按 status.json 的逐侧 CLI 进程组记录逐组结束审查员 CLI（组长活着且规范化启动时刻相符才发信号，宽限链同工作进程处理器；终态分支只结束进程、不写 status.json 与归档；判不了、记录读不懂、组长退出而组员还在、没有记录时 stderr 如实提示；v1.3.53，EV-154，见「审查员 CLI 进程组记录」）；工作进程确认退出后，把仍为 `running` 的归档 run.json 与 `task.json` 登记标 `cancelled`（v1.3.47，EV-128，见 6.7 注记）；再把 status.json 标 `cancelled`、回收锁与闸门；**失联后仍挂着的工作进程**（v1.3.54，EV-146）：status.json 为 failed、`lost.reason` 为 `heartbeat_stale`（`--wait` 判失联时写的结构化事实）且工作进程仍是同一进程时，终态分支例外地按组结束它（宽限 5 s → SIGKILL → 至多再等 5 s 确认退出），再按记录结束审查员 CLI、把仍为 `running` 的 run.json 与登记补收为 `failed`（`termination` 沿用 `worker_lost` / `heartbeat_stale`）、按 run_id + pid 回收锁；status.json 一个字节都不写、闸门不动、凭据副本不抹；确认不了退出时 run.json 与锁都不动；身份判不上（PID 复用，或 TZ / 区域设置与 `--start` 不同，EV-158）或 status.json 没记下可核对的身份时不对工作进程发信号、如实说明，不再说「无需取消」；这一格最长约宽限 5 s + SIGKILL 后确认 ≤5 s + CLI 宽限链 3 s，另加若干次 `ps`（单次上限 10 s），在 Bash 缺省 120 s 工具超时之内（验收实测约 5.4 s）；见「失联后取消挂住的工作进程」 | `0` |
++| `review --cancel <run_id>` | 向工作进程组发 SIGTERM → 宽限 5 s → SIGKILL（宽限期判据「不存活或不是同一进程」，v1.3.51；与 `--start` 派生后失败的收尾共用 `terminateProcessGroup`）；适配器以 `killTree` 拉起、自成进程组的厂商 CLI 按 worker 的组发够不到，由工作进程的 SIGTERM 处理器先按组终止它们（宽限 2 s → SIGKILL → 至多再等 1 s，按父进程句柄判退出；真实 CLI 对 SIGTERM 的处置未实测，不响应时由 SIGKILL 兜底）再以 SIGTERM 退出（v1.3.52，EV-152）；工作进程被升级 SIGKILL 之后、或此前已不在（含 status 已被 `--wait` 判失联写成 failed 的终态分支）时，按 status.json 的逐侧 CLI 进程组记录逐组结束审查员 CLI（组长活着且规范化启动时刻相符、或组长已退出但组号下还有非僵尸成员时都发信号，宽限链同工作进程处理器，v1.3.60 起后者同样按组结束，EV-165；终态分支只结束进程、不写 status.json 与归档；判不了、记录读不懂、成员计数取不到、没有记录时 stderr 如实提示；v1.3.53，EV-154，见「审查员 CLI 进程组记录」）；工作进程确认退出后，把仍为 `running` 的归档 run.json 与 `task.json` 登记标 `cancelled`（v1.3.47，EV-128，见 6.7 注记）；再把 status.json 标 `cancelled`、回收锁与闸门；**失联后仍挂着的工作进程**（v1.3.54，EV-146）：status.json 为 failed、`lost.reason` 为 `heartbeat_stale`（`--wait` 判失联时写的结构化事实）且工作进程仍是同一进程时，终态分支例外地按组结束它（宽限 5 s → SIGKILL → 至多再等 5 s 确认退出），再按记录结束审查员 CLI、把仍为 `running` 的 run.json 与登记补收为 `failed`（`termination` 沿用 `worker_lost` / `heartbeat_stale`）、按 run_id + pid 回收锁；status.json 一个字节都不写、闸门不动、凭据副本不抹；确认不了退出时 run.json 与锁都不动；身份判不上（PID 复用，或 TZ / 区域设置与 `--start` 不同，EV-158）或 status.json 没记下可核对的身份时不对工作进程发信号、如实说明，不再说「无需取消」；这一格最长约宽限 5 s + SIGKILL 后确认 ≤5 s + CLI 宽限链 3 s，另加若干次 `ps`（单次上限 10 s），在 Bash 缺省 120 s 工具超时之内（验收实测约 5.4 s）；见「失联后取消挂住的工作进程」 | `0` |
+ 
+ 约束：① 工作进程写 `status.json` 心跳（每 30s），`--wait` 在三种情形下判 `failed(worker_lost)`：进程不在或已不是同一进程（`pid_gone`，status.json 读不到时按 worker.pid 判）、进程活着但心跳超过 `heartbeat_stale_s`（默认 120s）未更新（`heartbeat_stale`）、status.json 与 pid 都拿不到（`no_status_file`）；判定时若工作进程已确认退出，先把归档 run.json 收尾为 `failed`（v1.3.48，EV-142，见 6.7 注记）；心跳间隔 `WORKER_HEARTBEAT_MS`（30 s）与「阈值没有盖住一个心跳周期」的判据 `staleThresholdWithinHeartbeat`（`heartbeat_stale_s × 1000 ≤ 30 000`，不留余量）都在 `status.ts` 单一出处，`--wait` 判 heartbeat_stale 时报错里「阈值不大于心跳间隔」那一句与预检 / `review --start` 的「失联阈值」只警告项共用它（v1.3.57，EV-160，见 8.1）；② 工作进程生命周期等于一次运行，不监听、不接受新任务，因此不是 PRD Non-Goal 所指的常驻 Daemon；③ `hook-session-start` 若发现 `running` 状态的运行，以 `additionalContext` 提醒 Driver 先 `--wait`；④ `run.json` 的 `command` 字段记录是否经 `--start/--wait` 完成，便于审计。
+ 
+ **工作进程的信号语义**（v1.3.52，EV-152）：工作进程只处理 SIGTERM（它由 `detached` 即 `setsid` 派生、没有控制终端，编排器自己只发 SIGTERM / SIGKILL）。处理器只处理第一次：①一执行就冻结经 `run()` 的全部链路——此后不再派生、已在跑的不再兑现，所以两侧 CLI 还有在跑的时候 `executeRun` 走不到归档终态写入，取消仍由 `--cancel` 收尾为 `cancelled`；②并行按组终止它以 `killTree` 拉起、尚未退出的 CLI（宽限 `WORKER_TREE_GRACE_MS` 2 s → SIGKILL → 至多再等 `WORKER_TREE_KILL_WAIT_MS` 1 s，按父进程手里的子进程句柄判退出、不涉 PID 复用），结果写 `worker.log`；③以 SIGTERM 重新自杀，退出形态与没有处理器时相同，另有 3.5 s 看门狗与 1 s 后 `exit(143)` 的病态兜底。预算（约 3 s）落在 `--cancel` 与 `--start` 派生后失败收尾的宽限 `WORKER_TERM_GRACE_MS`（5 s）之内。**覆盖不到的格**（如实保留）：工作进程被 SIGKILL、崩溃或事件循环堵住时处理器跑不到——自 v1.3.53 起由 `--cancel` 按 CLI 进程组记录另行结束（见下段）；取消落在收尾段（两侧 CLI 已结束、归档终态写入已在飞）时，信号到达与处理器执行之间至多一次事件循环迭代的推进窗口，最坏归档不是 `cancelled`；组长 CLI 一退出（含处理器运行之前已自己正常退出），该组就从登记里删掉、整组收不到信号，同组遗留的后代一律够不到，与它们是否忽略 SIGTERM 无关；CLI 自己 `setsid` 出去的后代；前台同步路径被 Ctrl-C（EV-155）。其中「组长先退后的遗留」与「`setsid` 出去的后代」两格，工作进程照常在宽限内退出，`--cancel` **不会打任何提示**。**日后在工作进程侧新增的 `run()` 调用者须知晓：终止中它会悬空、不会跑完。**
+ 
+-**审查员 CLI 进程组记录**（v1.3.53，EV-154 / EV-38，计划 `.reviews/CLI进程组记录/plan/` r2）：工作进程把它以 `killTree` 拉起的审查员 CLI 记进 status.json 的逐侧字段 `sides[c].cli = { pgid, started_at }`（没有在跑的 CLI 时为 null；旧版读者忽略这个键）。**登记面只有一份**：记录由 `util/exec.ts` 的 `liveTrees` 派生——条目补上侧归属与启动时刻，工作进程装唯一观察者（`watchTrackedTrees`），派生、取到启动时刻、退出时各把投影（`trackedTrees`）写一次，不另建同职登记。**侧归属**经 `AsyncLocalStorage`：`runner` 的 `runOneSide` 把 `adapter.run` 包进 `withTreeTag(侧名, …)`，`run()` 派生时读它，四个适配器不改；传播断了时这一组不进记录（fail-safe：取消侧退回如实提示、准入侧退回只核工作进程）。**派生当时即写**（组号先落盘、启动时刻为 null，取到后再补）；不挪进 SIGTERM 处理器——终止中 `run()` 悬空，取启动时刻的 `ps` 跑不完。**启动时刻按 `LC_ALL=C`、`TZ=UTC0` 取**：`ps lstart` 的字符串随 TZ 与区域设置变化，而写记录与读记录的是环境不同的两个进程。**复用判据**：组长不在 ⇒ 已不在；在而启动时刻没记下 ⇒ 判不了；在而不符 ⇒ 组号已被复用；相符才算同一组、才发组信号。**两个消费方**：①`--cancel` 在工作进程被升级 SIGKILL 之后、或工作进程此前已不在时按记录并行逐组结束（宽限 2 s → SIGKILL → 至多再等 1 s），收尾后数一次组成员，组长已退出而组员还在时如实告警、不再发信号；轮询中判「是否已不在」只认「已不在」与「组号已被复用」——入判时身份已确认，之后 `ps` 瞬时失败（判不了）不算已不在，照常升级（代码双审 r1 GLM-01）；主路径写 `cancelled` 时把已确认结束的记录清成 null；②会话启动清扫与 `trivium scrub` 的凭据准入（`admitScrub`）在记录里的 CLI 组仍活着、判不了或记录读不懂时判为不可抹，计入 `deferred`。**v1.3.58 起（EV-157）凭据抹除的三处准入同源**：会话启动清扫与 `trivium scrub`、`--cancel` 主路径（挂载点 ③，判的是按记录结束 CLI **之后**的事实）、`--wait` 判失联（挂载点 ②，不结束任何进程）都经 `status.ts` 的 `scrubAdmission`——工作进程一半 `workerConfirmedGone`，通过才问 CLI 一半 `cliGroupsConfirmedGone`；后两处被 CLI 挡住时不抹、按事实告警（逐侧列出哪一侧、哪个进程组、为什么），挡住准入的记录原样留在 status.json 里交给会话启动清扫重判；`--wait` 在阻挡项里有判「仍在」的组时另给一行 `--cancel` 出口（终态分支会按记录结束它们；不结束的话孤儿 CLI 手上的凭据仍有效、配额照烧，代码双审 r1 CODEX-02 / CODEX-03）；`--cancel` 的归档收尾仍只看工作进程一半；准入只按组长判，与 `settledCliSides`「组员清零才清记录」有意分叉（EV-165，待定）。**到期整删**在工作进程一半（`workerStillAlive`，不改）之外问同一个 `cliGroupsConfirmedGone`：记录里的 CLI 仍活着、判不了或读不懂 ⇒ 当作仍在用，不删、计入 kept，并落回未到期那条路由凭据准入记进 `deferredCli`（会话启动提示第四格如实带出）。`--wait` 判失联与会话启动清扫都不结束进程。**如实保留**：派生到记录落盘之间被 SIGKILL（一次 `patchStatus` 的窗口）；启动时刻未取到（不发信号、不抹）；记录形状读不懂（不发信号、不抹，告警带 status.json 路径与原始值；不自愈，出口只有人把该侧 `cli` 改回 null——v1.3.58 起到期整删也保留它；`trivium scrub` 人读提示里「或等 run_dir_days 整删」那半句随之失实，v1.3.59 起改为「需把该侧 cli 改回 null（到期整删也会保留它）」，帮助里的动机句同样加了限定（EV-164）；不设人工放弃档位）；组长已退出而组员还在（不去猜组号是否已被接手）；CLI 自己 `setsid` 出去的后代；启动时刻只有秒级精度；`--cancel` / `--wait` 自己的凭据准入与到期整删不核 CLI（v1.3.58 已修，EV-157）、`worker_started_at` 同样对 TZ / 区域设置敏感（v1.3.55 已修，EV-158）；到期整删的工作进程一半对「终态而工作进程仍活」照删（EV-163，暂缓）；`AsyncLocalStorage` 的传播只在 Node v25.2.1 上实测。
++**审查员 CLI 进程组记录**（v1.3.53，EV-154 / EV-38，计划 `.reviews/CLI进程组记录/plan/` r2）：工作进程把它以 `killTree` 拉起的审查员 CLI 记进 status.json 的逐侧字段 `sides[c].cli = { pgid, started_at }`（没有在跑的 CLI 时为 null；旧版读者忽略这个键）。**登记面只有一份**：记录由 `util/exec.ts` 的 `liveTrees` 派生——条目补上侧归属与启动时刻，工作进程装唯一观察者（`watchTrackedTrees`），派生、取到启动时刻、退出时各把投影（`trackedTrees`）写一次，不另建同职登记。**侧归属**经 `AsyncLocalStorage`：`runner` 的 `runOneSide` 把 `adapter.run` 包进 `withTreeTag(侧名, …)`，`run()` 派生时读它，四个适配器不改；传播断了时这一组不进记录（fail-safe：取消侧退回如实提示、准入侧退回只核工作进程）。**派生当时即写**（组号先落盘、启动时刻为 null，取到后再补）；不挪进 SIGTERM 处理器——终止中 `run()` 悬空，取启动时刻的 `ps` 跑不完。**启动时刻按 `LC_ALL=C`、`TZ=UTC0` 取**：`ps lstart` 的字符串随 TZ 与区域设置变化，而写记录与读记录的是环境不同的两个进程。**复用判据**（v1.3.60 起，EV-165 改写）：组长在——启动时刻没记下 ⇒ 判不了（`unverifiable`）；不符（或取不到、复检后组长仍在）⇒ 组号已被复用（`reused`）；相符 ⇒ `alive`，才发组信号。组长不在——不再直接放行，改按组号下的非僵尸成员数判：为 0 ⇒ 视同已结束（`gone`）；> 0 ⇒ 组号仍有效、只是组长换了后代占着（`orphaned`，**同样阻挡准入、同样发组信号**）；取不到（`ps` 失败）⇒ 判不了（`orphan_unverifiable`，阻挡但不发信号，不去猜）。组员仍在时组号不会被复用（零配额实测，`doc/05_testing/evidence/orphan-cli-admission-20260929/`：连续造 30/40 个孤儿组、派生进程到 pid 空间回绕一整圈，零个新进程拿到仍有成员的组号）——这是 EV-154 用户决策 4「组长已退出而组员还在的那一格如实保留……不去猜组号是否已被接手」的前提被推翻之处。**两个消费方**：①`--cancel` 在工作进程被升级 SIGKILL 之后、或工作进程此前已不在时按记录并行逐组结束（宽限 2 s → SIGKILL → 至多再等 1 s），对判 `alive` 或 `orphaned` 的组都发信号（同一条 `isGone` 判据：`gone` 或 `reused` 才算已不在）；收尾后数一次组成员，仍有残留时如实告警（这一句现在对 `alive` 来源的极小概率 TOCTOU 窗口仍成立，对 `orphaned` 来源实践中不可达）；轮询中判「是否已不在」只认「已不在」与「组号已被复用」——入判时身份已确认，之后 `ps` 瞬时失败（判不了）不算已不在，照常升级（代码双审 r1 GLM-01）；主路径写 `cancelled` 时把已确认结束的记录清成 null；②会话启动清扫与 `trivium scrub` 的凭据准入（`admitScrub`）在记录里的 CLI 组仍活着、组长已退出而组员还在、判不了或记录读不懂时判为不可抹，计入 `deferred`。**v1.3.58 起（EV-157）凭据抹除的三处准入同源**：会话启动清扫与 `trivium scrub`、`--cancel` 主路径（挂载点 ③，判的是按记录结束 CLI **之后**的事实）、`--wait` 判失联（挂载点 ②，不结束任何进程）都经 `status.ts` 的 `scrubAdmission`——工作进程一半 `workerConfirmedGone`，通过才问 CLI 一半 `cliGroupsConfirmedGone`；后两处被 CLI 挡住时不抹、按事实告警（逐侧列出哪一侧、哪个进程组、为什么），挡住准入的记录原样留在 status.json 里交给会话启动清扫重判；`--wait` 在阻挡项里有判「仍在」的组时另给一行 `--cancel` 出口（终态分支会按记录结束它们；不结束的话孤儿 CLI 手上的凭据仍有效、配额照烧，代码双审 r1 CODEX-02 / CODEX-03）；`--cancel` 的归档收尾仍只看工作进程一半；**v1.3.60 起（EV-165）准入与 `settledCliSides` 已收口**：`judgeCliGroup` 同时判组长与非僵尸成员数，`orphaned` 组与准入侧同一判据，不再像此前那样「组员清零才清记录」与「组长已退、组员仍在照样放行抹副本」分叉。**到期整删**在工作进程一半（`workerStillAlive`，不改）之外问同一个 `cliGroupsConfirmedGone`：记录里的 CLI 仍活着、判不了或读不懂 ⇒ 当作仍在用，不删、计入 kept，并落回未到期那条路由凭据准入记进 `deferredCli`（会话启动提示第四格如实带出）。`--wait` 判失联与会话启动清扫都不结束进程。**如实保留**：派生到记录落盘之间被 SIGKILL（一次 `patchStatus` 的窗口）；启动时刻未取到（不发信号、不抹）；记录形状读不懂（不发信号、不抹，告警带 status.json 路径与原始值；不自愈，出口只有人把该侧 `cli` 改回 null——v1.3.58 起到期整删也保留它；`trivium scrub` 人读提示里「或等 run_dir_days 整删」那半句随之失实，v1.3.59 起改为「需把该侧 cli 改回 null（到期整删也会保留它）」，帮助里的动机句同样加了限定（EV-164）；不设人工放弃档位）；CLI 自己 `setsid` 出去的后代；启动时刻只有秒级精度；`--cancel` / `--wait` 自己的凭据准入与到期整删不核 CLI（v1.3.58 已修，EV-157）、`worker_started_at` 同样对 TZ / 区域设置敏感（v1.3.55 已修，EV-158）；到期整删的工作进程一半对「终态而工作进程仍活」照删（EV-163，暂缓）；`AsyncLocalStorage` 的传播只在 Node v25.2.1 上实测；**worker 存活期间的自身子进程退出盲区**（v1.3.60 起如实登记，EV-165 计划 r2 §4；不会导致误抹凭据，因为五处准入都先判 `workerConfirmedGone`）：`run()` 的 `killTree` 跟踪面（`liveTrees`）只认自己派生的直接子进程是否退出，对它的孙辈毫无感知——worker 存活期间 CLI 组长一退出，worker 就把该侧记录清成 `null`，此后即使孙辈仍在跑，也不会被判 `orphaned`；只有 worker 已经不在场、来不及处理 CLI 退出事件时，记录才会原样留到下一次准入检查，`orphaned` 判据才有机会生效。
+ 
+ **失联后取消挂住的工作进程**（v1.3.54，EV-146，计划 `.reviews/失联后取消挂住的worker/plan/` r2）：`--wait` 判 `worker_lost` 时在写 `failed` 的同一次写入里记 status.json 的可选字段 `lost = { reason, at }`（旧版读者忽略；`no_status_file` 时没有 status.json 可写；`--wait --json` / `--status --json` 整份透出 status，是对外 JSON 形状的加法）。`heartbeat_stale` 而工作进程仍在时，报错先列判定依据（status.json 多久未更新、生效阈值 `heartbeat_stale_s`、工作进程心跳间隔 30 s，阈值不大于间隔时点明「健康的工作进程也会被判失联」），再给出口「`trivium review --cancel <run>`——会结束它与它拉起的审查员 CLI 并补收归档 run.json；它若只是慢，这样做会结束一个仍在推进的轮次」。**`--cancel` 的终态分支先判格**（`classifyLostCancel`，只取结构化事实、不读 `message`）：phase 为 `failed`、`lost.reason` 为 `heartbeat_stale`、status.json 里 `worker_pid` 为 > 1 的整数且 `worker_started_at` 为非空字符串（不回落 `worker.pid` 文件，也不取锁里同一个值）、`processAlive` 判同一活进程——这一格由 `cancelLostWorker` 处理：①开场先列判定时刻与 status.json 最近一次写入（判定之后又写过就说它可能只是慢）；②按组 SIGTERM → 宽限 `WORKER_TERM_GRACE_MS` → SIGKILL → 至多再等 `ORPHAN_KILL_CONFIRM_MS` 确认退出（宽限内自己退出 ⇒ 事件循环没堵住、它的 SIGTERM 处理器已收拾 CLI，输出如实说「失联判定可能只是心跳慢」；一个信号都没发就判已不在 ⇒ 说「未及发信号，工作进程已不在」，不说响应 SIGTERM；判「已退出」用严格判据——进程不存在，或取到的启动时刻与记录不同才算，`ps` 取不到启动时刻不算，代码双审 r1 CODEX-01 ≡ GLM-01）；③按记录结束审查员 CLI（没确认退出也照做）；④确认退出后按 EV-142 的前提把仍为 `running` 的 run.json 与登记补收为 `failed`（已是终态不追溯改写）；⑤确认退出后按 run_id + pid 复核回收主题锁。**不做**：status.json 一个字节都不写（phase / message 不改写、CLI 记录也不清——也让判格可重入：确认不了退出时再跑一次仍入本格）；闸门不动（`--wait` 判失联时已回收）；凭据副本不抹（留给会话启动清扫与 `trivium scrub` 的 `admitScrub`，EV-157 范围不动）。两种结局都退 0，结局写在 stdout 的结论句里。身份判不上（`mismatch`：PID 被复用，或本命令的 TZ / 区域设置与 `--start` 不同，EV-158）时一个信号都不发——连它名下记录里的审查员 CLI 也不结束（`--wait` 判 heartbeat_stale 时身份是对得上的，此刻对不上更可能是环境不同、worker 还活着；代码双审 r1 CODEX-02）；身份缺失 / 形状不对（`no_identity`，成因多为 `--start` 取启动时刻的 `ps` 失败）时不对工作进程发信号，CLI 沿用 EV-154 终态分支自己的判断（`workerConfirmedGone` 判工作进程已不在才按记录结束，否则不动、请人用 ps 核对，代码双审 r1 GLM-02）。两格的 stdout 都说「未对工作进程发信号；归档 run.json 与主题锁未动」，不再说「无需取消」。**误判的代价**：心跳只是慢（阈值配得比心跳间隔小、机器休眠唤醒、心跳写失败）时，结束的是一个本可自己跑完的轮次——与对正常运行中的轮次 `--cancel` 同价。**如实保留**：`--wait` 判 `heartbeat_stale` 之后工作进程自己死了、被手工结束，或本格在确认退出之后、补收之前被中断——run.json 停在 `running`，再跑 `--cancel`（v1.3.56 起会补收，见下方 v1.3.56 段，EV-159 第一形态）；`--wait` 死在写 `failed` 与回收闸门之间时闸门停在 running，本格不收，结束工作进程之后由下次会话启动的 `sweepDeadRunningGates` 回收；升级前已被旧版 `--wait` 判失联、工作进程还挂着的运行没有 `lost`，本格进不去，`--cancel` 仍说「无需取消」，要在终端手工结束（不读 `message` 做提示——用户决策「只取结构化事实」；并入 BACKLOG EV-159 第二形态，v1.3.56 起暂缓）；阈值不大于心跳间隔时事前不告警（v1.3.57 起预检与 `--start` 出只警告项「失联阈值」，EV-160）；归档里看不出「之后被 `--cancel` 结束」（`termination` 沿用 `worker_lost`，不新增取值）。
+ 
+@@ -2250,7 +2250,7 @@ flowchart LR
+ 
+ | 项 | 措施 |
+ | :--- | :--- |
+-| 凭据 | 一律走各 CLI 自身登录态或环境变量注入子进程；**禁止**写入 `.reviews/`、`_meta/`、`run.json`（NFR-04）。`ZCODE_API_KEY` 等从 `.env`/Keychain 读取，`.env` 已在 `.gitignore`。**运行目录里的凭据副本**（codex 为隔离拷进 `<侧>/codexhome/` 的三份 toml/json、zcode 为模型覆盖拷进 `<侧>/home/.zcode/cli/config.json` 的那份）**随该侧运行结束整份删除**（`runner` 每次尝试的 `finally`，含超时、无最终回复、准备中途失败、重试的每一轮），`worker_lost`、`review --cancel`、会话启动清扫三处兜底；「哪一侧放了什么载体」由该侧适配器的 `scrubRunDir` 回答，agy 侧无副本。抹除失败不判该侧失败，但进 `status.json` 侧 note、`--wait` 的终态 message 与会话启动待办（EV-20）。**告警与错误分档**：超过 32 MB 的文件跳过、读目录失败只记告警（不影响 `ok`），载体删不掉、命中却处理不了才是错误（`ok:false`、清扫重试）——第一次真跑就撞上 codex 的 21 MB 插件目录缓存，记成失败会让一条假失败在待办里挂 30 天。**不可逆动作的准入判据只有一处** `workerConfirmedGone`，`waitRun` 的 `worker_lost`、`review --cancel`、会话启动清扫三处共用（v1.3.53 起会话启动清扫与 `trivium scrub` 另问审查员 CLI 进程组记录：CLI 组仍活着、判不了或记录读不懂 ⇒ 不抹、计入 `deferred`，EV-38；v1.3.58 起 `waitRun` / `--cancel` 两处同样核 CLI——三处经同一函数 `scrubAdmission`，被 CLI 挡住时不抹、按事实告警、留给会话启动清扫，到期整删对记录里仍在的 CLI 同样保留，EV-157；见 7.5「审查员 CLI 进程组记录」）：`starting` 不抹；有 pid 就按进程判（**终态也要判**——`waitRun` 判 `heartbeat_stale` 时正是把活着的进程写成 `failed`）；拿不到 pid 时只有终态才敢下「已经不在」的结论；`status.json` 读不到一律不抹并计数。另分档可见性：`ok`（有没有出错）、`complete`（扫完了没有——**论域内**的二进制已改整删，故成因只剩超大文件与回读面下的二进制，清扫据此不判「已处理」）、`unknown`（状态读不到）、`deferred`（准入未过而状态读得到：`starting`／拿不到 pid／终态但进程仍活；v1.3.53 起另有第四格——worker 已不在而记录里的审查员 CLI 进程组仍活着、判不了或记录读不懂，这一格同时进 `deferredCli` 并逐条带成因，人读输出单列一行，因为「记录读不懂」不自愈）。**分档必须闭合**：看过的每个目录都要落进恰好一格，否则人读输出自称全景却漏掉一类，而 `starting` 类可能已经写下了副本（代码双审 GLM-04）。各档在会话启动待办里各占一行。`incomplete` 还要按成因带出取证路径：侧层翻该侧哨兵，运行目录层**没有哨兵可翻**，必须把告警原文随计数一起带出（CODEX-04 ≡ AGY-02 ≡ GLM-03）。**清扫有两个入口，作用域不同而判据同源**：会话启动清扫只覆盖本项目桶（它是 pull 式时机，把整台机器卷进来会让「开个会话」变成全盘遍历）；显式子命令 `trivium scrub [--dry-run]` 遍历整个 `run_root` 的全部项目桶、**只抹凭据不删任何目录**（整删是 `run_dir_days` 的职责且按项目划界，跨仓删别人的目录是越权）——EV-33 据此收口。`complete` 的判据是 `=== true` 而不是 `!== false`：哨兵不过校验，该字段加进来之前的旧哨兵对它取 `undefined`，按后者写会把「不知道扫没扫完」当成「扫完了」而永不复查（EV-35 实测 2 个目录中招）。**`--dry-run` 只预测侧层**：运行目录那一层没有哨兵、每轮都复查，有没有活取决于正文是否命中密钥，不读正文答不了，而预览不该为此整份读它们——这条边界写进字段文档与人读文案，不靠「真跑会跳过」这种含糊说法带过（CODEX-03 ≡ AGY-01）。真跑那一层的实际动作由 `runDirRedacted` 单列一格如实记账，不并进「已抹除凭据副本」——那一格一份载体都没抹，并进去就是话比事实强（GLM-06）。桶级 `readdir` 失败同样要记账：整棵没进论域而命令报 ok，是同一形状的缺口高了一层（CODEX-01） |
++| 凭据 | 一律走各 CLI 自身登录态或环境变量注入子进程；**禁止**写入 `.reviews/`、`_meta/`、`run.json`（NFR-04）。`ZCODE_API_KEY` 等从 `.env`/Keychain 读取，`.env` 已在 `.gitignore`。**运行目录里的凭据副本**（codex 为隔离拷进 `<侧>/codexhome/` 的三份 toml/json、zcode 为模型覆盖拷进 `<侧>/home/.zcode/cli/config.json` 的那份）**随该侧运行结束整份删除**（`runner` 每次尝试的 `finally`，含超时、无最终回复、准备中途失败、重试的每一轮），`worker_lost`、`review --cancel`、会话启动清扫三处兜底；「哪一侧放了什么载体」由该侧适配器的 `scrubRunDir` 回答，agy 侧无副本。抹除失败不判该侧失败，但进 `status.json` 侧 note、`--wait` 的终态 message 与会话启动待办（EV-20）。**告警与错误分档**：超过 32 MB 的文件跳过、读目录失败只记告警（不影响 `ok`），载体删不掉、命中却处理不了才是错误（`ok:false`、清扫重试）——第一次真跑就撞上 codex 的 21 MB 插件目录缓存，记成失败会让一条假失败在待办里挂 30 天。**不可逆动作的准入判据只有一处** `workerConfirmedGone`，`waitRun` 的 `worker_lost`、`review --cancel`、会话启动清扫三处共用（v1.3.53 起会话启动清扫与 `trivium scrub` 另问审查员 CLI 进程组记录：CLI 组仍活着、判不了或记录读不懂 ⇒ 不抹、计入 `deferred`，EV-38；v1.3.58 起 `waitRun` / `--cancel` 两处同样核 CLI——三处经同一函数 `scrubAdmission`，被 CLI 挡住时不抹、按事实告警、留给会话启动清扫，到期整删对记录里仍在的 CLI 同样保留，EV-157；v1.3.60 起「组长已退出、组员仍在」同样挡住，EV-165；见 7.5「审查员 CLI 进程组记录」）：`starting` 不抹；有 pid 就按进程判（**终态也要判**——`waitRun` 判 `heartbeat_stale` 时正是把活着的进程写成 `failed`）；拿不到 pid 时只有终态才敢下「已经不在」的结论；`status.json` 读不到一律不抹并计数。另分档可见性：`ok`（有没有出错）、`complete`（扫完了没有——**论域内**的二进制已改整删，故成因只剩超大文件与回读面下的二进制，清扫据此不判「已处理」）、`unknown`（状态读不到）、`deferred`（准入未过而状态读得到：`starting`／拿不到 pid／终态但进程仍活；v1.3.53 起另有第四格——worker 已不在而记录里的审查员 CLI 进程组仍活着、判不了或记录读不懂，这一格同时进 `deferredCli` 并逐条带成因，人读输出单列一行，因为「记录读不懂」不自愈）。**分档必须闭合**：看过的每个目录都要落进恰好一格，否则人读输出自称全景却漏掉一类，而 `starting` 类可能已经写下了副本（代码双审 GLM-04）。各档在会话启动待办里各占一行。`incomplete` 还要按成因带出取证路径：侧层翻该侧哨兵，运行目录层**没有哨兵可翻**，必须把告警原文随计数一起带出（CODEX-04 ≡ AGY-02 ≡ GLM-03）。**清扫有两个入口，作用域不同而判据同源**：会话启动清扫只覆盖本项目桶（它是 pull 式时机，把整台机器卷进来会让「开个会话」变成全盘遍历）；显式子命令 `trivium scrub [--dry-run]` 遍历整个 `run_root` 的全部项目桶、**只抹凭据不删任何目录**（整删是 `run_dir_days` 的职责且按项目划界，跨仓删别人的目录是越权）——EV-33 据此收口。`complete` 的判据是 `=== true` 而不是 `!== false`：哨兵不过校验，该字段加进来之前的旧哨兵对它取 `undefined`，按后者写会把「不知道扫没扫完」当成「扫完了」而永不复查（EV-35 实测 2 个目录中招）。**`--dry-run` 只预测侧层**：运行目录那一层没有哨兵、每轮都复查，有没有活取决于正文是否命中密钥，不读正文答不了，而预览不该为此整份读它们——这条边界写进字段文档与人读文案，不靠「真跑会跳过」这种含糊说法带过（CODEX-03 ≡ AGY-01）。真跑那一层的实际动作由 `runDirRedacted` 单列一格如实记账，不并进「已抹除凭据副本」——那一格一份载体都没抹，并进去就是话比事实强（GLM-06）。桶级 `readdir` 失败同样要记账：整棵没进论域而命令报 ok，是同一形状的缺口高了一层（CODEX-01） |
+ | 密钥扫描 | `archive` 落盘前对 Markdown/JSON 做正则密钥扫描（常见 token 形态 + `ZCODE_API_KEY` 的 `<id>.<secret>` 形态）；命中则拒绝落盘并提示。**补丁与 BRIEF 按 hunk 分档扫**：diff hunk 内只看新增行，hunk 外（BRIEF 的散文）整份扫。删除行与上下文行的内容已经在 HEAD 里，扫它们拦不住已发生的泄露，却会拦住路过的人——动一下密钥夹具文件就送不进审查，**删掉一个真泄露的凭据更会让补丁被拒**（安全修复过不了安全检查）。两个落点一套判据：只改补丁不改 BRIEF 的话，拒绝点只是从补丁搬到 BRIEF。**代价登记在 EV-34**：内容级凭据此前被冻结阶段拦住因而不出网，现在会随送审包到达厂商端点。**PEM 私钥的判据是「标记 + 密钥材料」而非「标记」**：只认标记会把任何**谈论** PEM 的文本判成泄露（实撞：审查员引用一句标记行，整份审查文档拒绝落盘、三侧配额作废），而标签写死枚举又让 pkcs8 的 `ENCRYPTED PRIVATE KEY` 完全隐形；改为标签通配 + **正文起点**紧跟 40+ 连续 base64、且其中至少有一个非十六进制字符（纯 hex 的 40/64 位串是 git SHA-1 与 SHA-256，本项目留痕里密度极高；只要求「附近有长串」等于没收口）。检出与脱敏共用同一条正文判据，脱敏段只吃 base64 与换行、**不吃引号与逗号**——否则相邻的 JSON 字段会被整个吞进占位串而 JSON 仍然合法，无人会发现。**运行目录**：该侧自有目录（`codexhome/`、`home/`）里载体之外的普通文件过同一套规则，命中即删；**模型 I/O 日志例外**（codex `sessions/`、zcode `.zcode/cli/rollout/` 与 `log/`）——逐字含送审包全文、夹具密钥会误命中、又是生效模型与工具参数的回读来源，命中**就地脱敏**不删；厂商缓存（codex `cache/` `plugins/`、zcode `plugins/` `db/`）与二进制（前 8 KB 含 NUL）不扫。编排器自写的 `<侧>/out/stdout.jsonl` / `stdout.json` / `trace.json` / `rollout.jsonl` 是排障依据，命中处就地脱敏（只换值、留键名与结构；PEM 私钥整段抹），清单与适配器写入点由 `orchestrator-logs-parity` 对账；`out/` 里的审查结果一个不碰。规则认得任意层 JSON 转义过的 `\"`，否则落进 JSONL 的凭据整条隐形 |
+ | 提示注入 | 被审内容以数据块包裹并声明不可执行；审查员工具层禁写；审查员输出只经 schema 解析后使用，不作为指令回灌 Driver |
+ | 出网 | 审查子进程不额外提供通用网络工具；模型调用走各自运行时 |
+@@ -3477,6 +3477,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.60** | 2026-09-29 | **组长已退组员仍在的准入（EV-165）。** 计划 `.reviews/组长已退组员仍在的准入/plan/` r2（计划双审第 1 轮 run `20260929T025220Z`：三侧 `request-changes`，15 条含 1 阻断、6 重要、6 次要、1 吹毛求疵全接受）。**一、判据单一来源**：`CliGroupVerdict` 新增 `orphaned`（组长不在、组号下有非僵尸成员）/ `orphan_unverifiable`（组长不在、成员计数取不到）；`judgeCliGroup` 组长确认不在时改按 `processGroupMemberCount` 判（抽出 `leaderGone` 闭包，`!alive` 分支与 `now===null` 复检分支共用，AGY-01 阻断）；新增可选 `out` 出参带出成员数、`memberCountOf` 依赖注入供零配额测试；`cliGroupsConfirmedGone` 新增两分支生成阻挡项（`orphan_unverifiable` 复用 `kind:'unverifiable'`），新增可选第二参数穿透 `memberCountOf`（实施期新增，为测试可达性）。**二、消费方**：`terminateRecordedCliGroups` 对 `alive`/`orphaned` 都发组信号（同一条 `isGone`：`gone`/`reused` 才算已不在）；`settledCliSides`、`--wait` 的 `--cancel` 出口提示同步纳入 `orphaned`；四处既有消费方（会话启动清扫、`trivium scrub`、到期整删、`--wait` 判失联的准入本身）零改动、经 `scrubAdmission`/`cliGroupsConfirmedGone` 自动继承新判据。**三、如实登记**：`orphaned` 触发既有「组长已退出、组里还有 N 个成员，未对它们发信号」告警在新判据下基本不可达且措辞会失实，代码双审前已在计划里删除该错误论证（CODEX-03≡AGY-04≡GLM-04）；worker 存活期间自身子进程退出盲区（`liveTrees` 只跟踪直接子进程）与 `processGroupMemberCount` 僵尸排除无专门测试两项超范围暂缓，登新 BACKLOG。**四、测试**：单元 `judgeCliGroup`/`cliGroupsConfirmedGone` 新分支、`cli-group-record.test.ts` 既有 U15 变体按新契约重写（组长退出但成员仍在 ⇒ 升级 SIGKILL 而非停在 SIGTERM）、集成 K5/K6（真实 `hang_cli` 桩，先结束 worker 再单 pid SIGKILL 组长造孤儿组，避免 worker 存活时观察者清记录）；源码变异 9/9；零配额验收对旧构建 `eeceeaa`：新版孤儿组不抹不删、`--cancel` 结束组员后照抹，旧版照抹照删、组员遗留继续烧配额。读数见 `doc/05_testing/REPORT_2026-09-29_orphan_cli_admission.md` |
+ | **v1.3.59** | 2026-09-29 | **清扫输出失实文字（EV-164）。** 计划 `.reviews/清扫输出失实文字/plan/` r2（计划双审第 1 轮 run `20260929T011315Z`：三侧 `approve-with-nits`，9 条接受 8、驳回 1——AGY-01 说 `--json` 有 16 个键，实为 15 个）。用户解冻 `trivium scrub` 的两处人读文字、只改文字：第四格之后的提示行由「…需把该侧 cli 改回 null 或等 run_dir_days 整删」改为「…需把该侧 cli 改回 null（到期整删也会保留它）」；帮助里 `trivium scrub` 一节的动机句加限定「（那一轮记录里的审查员 CLI 仍在、判不了或读不懂时，到期也不删）」，仍是一行（显示宽度 151，等于 USAGE 现有最宽行）。行数、位置、触发条件、`--json`、退出码与其余输出逐字不变；判据与行为不改。会话启动提示第四格逐句核过（「CLI 结束后下次会话会再判」对仍在与判不了都成立，不承诺放行），不失实，不改。新增 `test/integration/scrub-output-text.test.ts` T1～T7（经真实 bundle，stdout 整段逐字，此前没有任何用例守着 `trivium scrub` 的人读输出；T7 钉住核后不改的会话启动第四格）。代码双审 r1（run `20260929T014154Z`：gemini `approve`，codex / glm `approve-with-nits`，6 条接受 5、暂缓 1）：用例派生即登记清理、去掉 USAGE 全局行数魔数、补 T7；帮助主句「不再回到那个仓库时…躺到整删」本身另有失实成因（整删只在该项目再开会话时跑、只进本项目桶），本版未改主句，登 EV-166；设计索引版本指针过期登 EV-167。读数见 `doc/05_testing/REPORT_2026-09-29_scrub_output_text.md` |
+ | **v1.3.58** | 2026-09-29 | **取消与失联的凭据准入核审查员 CLI（EV-157）。** 计划 `.reviews/取消与失联的凭据准入核CLI/plan/` r2（计划双审第 1 轮 run `20260928T231329Z`：gemini `approve`、codex / glm `approve-with-nits`，8 条全接受）。**一、单一来源**：`status.ts` 新增 `scrubAdmission(status, fallbackPid)`＝`workerConfirmedGone` 通过才问 `cliGroupsConfirmedGone`，会话启动清扫与 `trivium scrub`（`admitScrub`，分档与文字不变）、`--cancel` 挂载点 ③、`--wait` 判失联挂载点 ② 共用；`cliGroupsConfirmedGone` 改为逐条判完、另返回全部阻挡项 `blockers`，`why` 逐字保持旧文字（它进清扫子命令的人读输出）；文案函数 `scrubHoldWhy`：工作进程一半未过时原样、CLI 挡住时逐侧列出。**二、取消与等待**：被 CLI 挡住（仍在 / 判不了 / 读不懂）时不抹，`--cancel` 告警、`--wait` 在报错正文里各多一行「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧〉——留给会话启动清扫」；不新增任何结束进程的动作，`--cancel` 判的是按记录结束 CLI 之后的事实；归档收尾只看工作进程一半；挡住准入的记录原样留在 status.json 里交给会话启动清扫。**三、到期整删**：工作进程一半仍是 `workerStillAlive`，另问同一个 `cliGroupsConfirmedGone`，挡住 ⇒ 不删、计入 kept、落回未到期路径进 `deferredCli`。**四、如实登记**：记录读不懂的运行目录自此永不整删，`trivium scrub` 提示里「或等 run_dir_days 整删」半句失实——属用户冻结的清扫子命令输出面，逐字保留，登 EV-164；到期整删的工作进程一半对「终态而工作进程仍活」照删，登 EV-163（暂缓）。**五、代码双审 r1**（run `20260928T235013Z`：gemini / glm `approve` 零意见，codex 解析回退、原文 7 条全接受）：`--wait` 在有判「仍在」的组时给 `--cancel` 出口（CODEX-02）；孤儿 CLI 继续用凭据烧配额登为 EV-157 残余（CODEX-03）；`trivium scrub --help` 的「躺到整删」动机句并入 EV-164、MANUAL / RUNBOOK 加限定（CODEX-04）；RUNBOOK 分档表补第四格（CODEX-05）；准入对「组长已退、组员仍在」放行登 EV-165（CODEX-01，取备选、不改判据）；共享用例夹具 `test/helpers/run-ctx.ts`（CODEX-07）。读数见 `doc/05_testing/REPORT_2026-09-29_cancel_wait_cli_admission.md` |
+ | **v1.3.57** | 2026-09-29 | **心跳阈值事前告警（EV-160）。** 计划 `.reviews/心跳阈值事前告警/plan/` r2（计划双审第 1 轮 run `20260928T162126Z`：三侧 `approve-with-nits`，9 条（去重后 7 条）全接受）。**一、单一来源**：心跳间隔常量从 `run-protocol.ts` 挪到 `status.ts`（`WORKER_HEARTBEAT_MS`），新增判据 `staleThresholdWithinHeartbeat(s)`＝`s × 1000 ≤ 30 000`；worker 心跳定时器、`--wait` 报错里「阈值不大于心跳间隔」那一句都改用它，输出逐字不变；缺省值具名为 `config.ts` 的 `DEFAULT_HEARTBEAT_STALE_S`（120）。**二、只警告项「失联阈值」**：`checkHeartbeatThreshold(cfg)`，预检 ④‴（④″ 之后、探活之前、同一短路）与 `startRun`（派生前、与副本源复查同一次 `collectWarnings`）两处调用；正文说生效阈值、心跳间隔、后果（每一轮都会越过阈值、`--wait` 轮询到就判失联，失联报错推荐 `--cancel`、照做结束健康轮次）与出口（调回缺省值以上；有意为之可忽略）。不拦截：`ok` 与退出码不变，`--start` 照常拉起；配置契约不改。**三、不留余量**（D1）：`(30 s, 60 s)` 要一次心跳迟到才会被判，取决于运行期、配置层判不出，并进来会让正文与 `--wait` 那一句失实。30 s 这一格属保守多告警的一侧：失联判定是严格大于，等于间隔时未更新时长只在心跳抖动的几毫秒里越过阈值，正文据此补「阈值越接近 30 s，越过的时段越短、被轮询碰上的机会越小」（代码双审 r1 CODEX-01）；探针夹具收进 `test/helpers` 的 `seedFakeProbes`，集成测试与验收脚本共用（CODEX-02）。**四、锁**：短临界区锁的持有超时借用 `heartbeat_stale_s`，危险临界值是临界区时长而不是心跳间隔，亚秒级阈值才有误回收风险——只论证、不改，登记 BACKLOG。读数见 `doc/05_testing/REPORT_2026-09-29_heartbeat_threshold_warning.md` |
+diff --git a/doc/02_design/LLD_orchestrator.md b/doc/02_design/LLD_orchestrator.md
+index 579c685d..9c6ad0f7 100644
+--- a/doc/02_design/LLD_orchestrator.md
++++ b/doc/02_design/LLD_orchestrator.md
+@@ -2,8 +2,9 @@
+ 
+ > - **作者 / 负责人**：Driver（Claude）
+ > - **创建日期**：2026-09-13
+-> - **当前版本**：v1.1.17
++> - **当前版本**：v1.1.18
+ > - **状态**：草稿(Draft)
++> - **变更说明**：v1.1.18（2026-09-29）随设计 v1.3.60（组长已退组员仍在的准入，EV-165）同步：275 行 `CliGroupVerdict` 补 `orphaned` / `orphan_unverifiable` 两态；287 行与 487 行「`--cancel` 引述块」改为对 `alive`/`orphaned` 都发信号、准入与 `settledCliSides` 已收口；已知缺口表 602 行「组长已退出而组员还在」的如实保留措辞改为「已收口」、604 行「凭据准入对『组长已退出、组员仍在』的组放行」改为已解决，新增「worker 存活期间自身子进程退出盲区」与「`processGroupMemberCount` 僵尸排除无专门测试」两行暂缓。
+ > - **变更说明**：v1.1.17（2026-09-29）随设计 v1.3.59（清扫输出失实文字，EV-164）同步：已知缺口表「`trivium scrub` 人读提示里『或等 run_dir_days 整删』半句失实」一行改为已解决（提示行与帮助动机句改准，其余输出逐字不变）；判据与行为不变。
+ > - **变更说明**：v1.1.16（2026-09-29）随设计 v1.3.58（取消与失联的凭据准入核CLI，EV-157）同步：`waitRun` 判失联一段的凭据准入改经 `scrubAdmission`（工作进程一半 + CLI 一半），被 CLI 挡住时报错正文多一行、记录留存；4.2 `cancelRun` 两处引述块改为准入经 `scrubAdmission`、判在按记录结束之后、归档收尾只看工作进程一半；已知缺口表「`--cancel` / `--wait` 自己的凭据准入与到期整删不核审查员 CLI」一行改为已解决，新增「到期整删的工作进程一半对终态而仍活的工作进程照删」（EV-163，暂缓）与「`trivium scrub` 提示里『或等 run_dir_days 整删』半句失实」（EV-164，待用户定）两行。代码双审 r1 修订：`waitRun` 一段补 `--cancel` 出口句；`cancelRun` 引述块补「准入只按组长判、与 `settledCliSides` 有意分叉」；已知缺口表补 EV-157 残余（孤儿 CLI 继续用凭据烧配额）与 EV-165 一行，EV-164 一行的登记面扩到 `trivium scrub --help` 的动机句。
+ > - **变更说明**：v1.1.15（2026-09-29）随设计 v1.3.57（心跳阈值事前告警，EV-160）同步：`startRun` 第 4 条补「派生前的只警告项复查」（副本源与失联阈值同一次 `collectWarnings`）；4.2「失联后取消」引述块的心跳间隔改指 `status.ts` 的 `WORKER_HEARTBEAT_MS` 与共享判据 `staleThresholdWithinHeartbeat`；已知缺口表「`heartbeat_stale_s` 不大于 worker 心跳间隔时事前不告警」一行改为已解决，新增「短临界区锁的持有超时借用失联阈值」一行（如实保留，BACKLOG 另登）。
+@@ -272,7 +273,7 @@ sequenceDiagram
+ - `rebuildContext()` 读 `request.json` 重建上下文，**绝不重新 prepare**。
+ - `finally` 里清心跳 → `releaseRunningGate` → 删主题锁（仅当锁的 pid 是自己）。
+ - **SIGTERM 处理器**（v1.1.10，EV-152，`installWorkerSigtermForwarding`）：第一行装、`finally` 首行卸。只处理第一次（`process.on` + 进门标志；第二次若走缺省动作会在转发中途杀掉 worker）。处理器 → `util/exec.ts` 的 `shutdownTrackedTrees`：进门同步置冻结标志——此后 `run()` 不派生、已在跑的不兑现（**对全部 `run()` 生效**，所以 `runBothSides` 的 `allSettled` 返回不了、`executeRun` 走不到归档终态写入，取消仍由 `cancelRun` 收尾；代价是收尾路径上的 `ps` / git 调用也会悬空——**worker 侧新增的 `run()` 调用者须知晓**）；再对 `liveTrees`（`run()` 在 `killTree` 派生后同步登记、`'exit'` 时删除）里尚未退出的子进程**并行** `terminateProcessGroup`（宽限 `WORKER_TREE_GRACE_MS` 2 s → SIGKILL → 至多 `WORKER_TREE_KILL_WAIT_MS` 1 s，判据是父进程句柄的 `exitCode` / `signalCode`，组长退出后不再对该组发信号——组长一退出该组就从登记里删掉，同组遗留的后代整组收不到信号，与是否忽略 SIGTERM 无关），结果写 `worker.log`。`shutdownTrackedTrees` 的契约首句：调用即本进程进入终止中、不可撤销，调用方必须随后结束本进程（不设测试复位口；代码双审 r1 CODEX-02）。最后 `exitOnce`：防重入 → 清 3.5 s 看门狗 → 移除监听 → `process.kill(self, 'SIGTERM')`（退出形态与没有处理器时相同）→ 1 s 后仍在才 `exit(143)`。预算落在 `WORKER_TERM_GRACE_MS`（5 s）之内，由用例 U8 钉住。
+-- **CLI 进程组记录**（v1.1.11，EV-154 / EV-38，`.reviews/CLI进程组记录/plan/` r2）：`liveTrees` 的条目是 `{ child, tag, startedAt }`——`tag` 取派生时 `withTreeTag` 的 `AsyncLocalStorage` store（`runner.ts` `runOneSide` 把 `adapter.run` 包进 `withTreeTag(critic, …)`，四个适配器不改；侧外派生的探活与 git 为 null），`startedAt` 是组长的规范化启动时刻（`processStartTime(pid, { canonical: true })`，以 `LC_ALL=C`、`TZ=UTC0` 调 `ps`——`lstart` 随 TZ 与区域设置变化）。`workerMain` 在 SIGTERM 处理器之后装**唯一观察者**（`watchTrackedTrees`，第二个会抛错），`finally` 卸。有观察者时 `run()` 派生当时即通知、再异步取启动时刻（`.catch` 兜底）取到后补一次通知，`'exit'` 删除条目后再通知；没有观察者（前台进程）不取启动时刻。观察者把 `trackedTrees()` 的投影经 `patchStatus` 写进 status.json：`status.ts` `syncCliRecords` 每侧取 tag 等于侧名、最近登记的一个，没有则 null。读侧 `cliRecordsOf` 三态（缺席或 null ⇒ 没有；合法 ⇒ records；键在而形状坏 ⇒ malformed），`judgeCliGroup` 判 `alive` / `gone` / `reused` / `unverifiable`（自己判存活与规范化启动时刻，不借 `processAlive` 的 `sameProcess`），`cliGroupsConfirmedGone` 供清扫准入（`retention.ts` `admitScrub`：worker 已不在之后再问它，不通过计入 `deferred` 并另进 `deferredCli`（`{ dir, detail }`，`detail` 即它的 `why`），会话启动待办与 `trivium scrub` 单列这一格、逐条带成因，代码双审 r1 CODEX-01）。
++- **CLI 进程组记录**（v1.1.11，EV-154 / EV-38，`.reviews/CLI进程组记录/plan/` r2）：`liveTrees` 的条目是 `{ child, tag, startedAt }`——`tag` 取派生时 `withTreeTag` 的 `AsyncLocalStorage` store（`runner.ts` `runOneSide` 把 `adapter.run` 包进 `withTreeTag(critic, …)`，四个适配器不改；侧外派生的探活与 git 为 null），`startedAt` 是组长的规范化启动时刻（`processStartTime(pid, { canonical: true })`，以 `LC_ALL=C`、`TZ=UTC0` 调 `ps`——`lstart` 随 TZ 与区域设置变化）。`workerMain` 在 SIGTERM 处理器之后装**唯一观察者**（`watchTrackedTrees`，第二个会抛错），`finally` 卸。有观察者时 `run()` 派生当时即通知、再异步取启动时刻（`.catch` 兜底）取到后补一次通知，`'exit'` 删除条目后再通知；没有观察者（前台进程）不取启动时刻。观察者把 `trackedTrees()` 的投影经 `patchStatus` 写进 status.json：`status.ts` `syncCliRecords` 每侧取 tag 等于侧名、最近登记的一个，没有则 null。读侧 `cliRecordsOf` 三态（缺席或 null ⇒ 没有；合法 ⇒ records；键在而形状坏 ⇒ malformed），`judgeCliGroup` 判 `alive` / `gone` / `reused` / `unverifiable` / `orphaned` / `orphan_unverifiable`（自己判存活与规范化启动时刻，不借 `processAlive` 的 `sameProcess`；v1.1.18 起，EV-165：组长确认不在时改按 `processGroupMemberCount` 判非僵尸成员数——为 0 判 `gone`、> 0 判 `orphaned`、取不到判 `orphan_unverifiable`，抽出 `leaderGone` 闭包供 `!alive` 分支与 `now===null` 复检分支共用），`cliGroupsConfirmedGone` 供清扫准入（`retention.ts` `admitScrub`：worker 已不在之后再问它，不通过计入 `deferred` 并另进 `deferredCli`（`{ dir, detail }`，`detail` 即它的 `why`），会话启动待办与 `trivium scrub` 单列这一格、逐条带成因，代码双审 r1 CODEX-01）。
+ 
+ #### `executeRun()` 的漂移复算（[review.ts:676-696](../../src/trivium/review.ts#L676-L696)）
+ 
+@@ -284,7 +285,7 @@ sequenceDiagram
+ 
+ `worker_lost` 三判据（`status.ts:205-249` `interpretStatus`）：无 status 且无 pid → `no_status_file`；pid 不存在**或不是同一进程**（比对启动时刻，防 macOS PID 复用）→ `pid_gone`；进程活着但心跳超 `heartbeat_stale_s` → `heartbeat_stale`。三个原因字面值的唯一来源是 `status.ts:187` 的 `WORKER_LOST_REASONS`（run.v2 `termination.reason` 的枚举由 `run-meta-strict.test.ts` 守住与它逐项相等）。
+ 
+-判 `worker_lost` 之后（v1.1.6 起，EV-142）：先用**改写 status.json 之前**的事实判工作进程是否已退出——status.json 在时照旧 `workerConfirmedGone(pre, worker.pid)`（改写之前 phase 非终态，只剩「有 pid 且进程确已不在」一种依据）；status.json 读不到而 worker.pid 已知时按 `processAlive(worker.pid, null)` 判，不存在才算——确认退出就调 `meta.ts` 的 `finalizeFailedRunMeta`（`termination: { by: 'worker_lost', reason }`），再 `patchStatus` 置 `failed`；进程还在、连 pid 都没有、非终态却拿不到 pid 时不写。两步结果只拼进抛出的报错正文。其后回收闸门、按**改写之后**的 status.json 判抹不抹凭据副本（EV-20）：v1.1.16 起（EV-157）经 `status.ts` 的 `scrubAdmission`——工作进程一半 `workerConfirmedGone`，通过才问 `cliGroupsConfirmedGone`；记录里的审查员 CLI 进程组仍在、判不了或读不懂时不抹，报错正文多一行「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧 detail〉（〈reason〉），留给会话启动清扫」（`scrubHoldWhy`；工作进程一半未过时文字不变）。本命令不结束任何进程；这一支的 `patchStatus` 不动 `cli`，挡住准入的记录原样留给会话启动清扫重判。阻挡项里有判「仍在」（`alive`）的组时再加一行出口「其中仍在的审查员 CLI 可用 trivium review --cancel 〈run_id〉 按记录结束（本命令不结束任何进程）；结束之后下一次会话启动清扫会重判，放行即抹副本」——`--cancel` 的终态早退分支会按记录结束它们（EV-154 D3）；只有判不了 / 读不懂时不加（`--cancel` 也不对它们发信号，代码双审 r1 CODEX-02）。
++判 `worker_lost` 之后（v1.1.6 起，EV-142）：先用**改写 status.json 之前**的事实判工作进程是否已退出——status.json 在时照旧 `workerConfirmedGone(pre, worker.pid)`（改写之前 phase 非终态，只剩「有 pid 且进程确已不在」一种依据）；status.json 读不到而 worker.pid 已知时按 `processAlive(worker.pid, null)` 判，不存在才算——确认退出就调 `meta.ts` 的 `finalizeFailedRunMeta`（`termination: { by: 'worker_lost', reason }`），再 `patchStatus` 置 `failed`；进程还在、连 pid 都没有、非终态却拿不到 pid 时不写。两步结果只拼进抛出的报错正文。其后回收闸门、按**改写之后**的 status.json 判抹不抹凭据副本（EV-20）：v1.1.16 起（EV-157）经 `status.ts` 的 `scrubAdmission`——工作进程一半 `workerConfirmedGone`，通过才问 `cliGroupsConfirmedGone`；记录里的审查员 CLI 进程组仍在、判不了或读不懂时不抹，报错正文多一行「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧 detail〉（〈reason〉），留给会话启动清扫」（`scrubHoldWhy`；工作进程一半未过时文字不变）。本命令不结束任何进程；这一支的 `patchStatus` 不动 `cli`，挡住准入的记录原样留给会话启动清扫重判。阻挡项里有判「仍在」（`alive`）或「组长已退出、组员仍在」（`orphaned`，v1.1.18 起，EV-165）的组时再加一行出口「其中仍在的审查员 CLI 可用 trivium review --cancel 〈run_id〉 按记录结束（本命令不结束任何进程）；结束之后下一次会话启动清扫会重判，放行即抹副本」——`--cancel` 的终态早退分支会按记录结束它们（EV-154 D3，`orphaned` 组同样按组发信号）；只有判不了 / 读不懂时不加（`--cancel` 也不对它们发信号，代码双审 r1 CODEX-02）。
+ 
+ **两个窗口参数的算法**：
+ 
+@@ -484,7 +485,7 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
+ > **`cancelRun` 按记录结束审查员 CLI（v1.1.11 起，EV-154）。**
+ > worker 跑不到自己的 SIGTERM 处理器的那几格，`cancelRun` 调 `terminateRecordedCliGroups(读到的 status)`：①worker 活着、`terminateProcessGroup` 返回 `escalated`（宽限 5 s 后升级 SIGKILL）；②worker 此前已不在（「已不存在」分支）；③**终态早退分支里 `workerConfirmedGone(s, worker.pid)` 为真且有记录**（worker 被强杀后 `--wait` 判 `pid_gone` 先把 status 写成 failed 的常见序列）——这一处只结束进程，status.json、归档、锁与闸门都不写，没有记录时不出声。
+ > 结束函数只对判 `alive`（组长活着且规范化启动时刻相符）的组走 `terminateProcessGroup`（`WORKER_TREE_GRACE_MS` → SIGKILL → `WORKER_TREE_KILL_WAIT_MS`，`isGone` 每次复核、只认 `gone` 与 `reused`——轮询中 `ps` 瞬时失败判 `unverifiable` 不算已不在，代码双审 r1 GLM-01），各组并行；`isGone` 按组长判，所以收尾后按 `ps -axo pgid=,stat=` 数一次非僵尸成员（`processGroupMemberCount`），非零如实告警、不再发信号。`reused` 只报一行、`unverifiable` 与形状坏的告警（后者带 status.json 路径与原始值，代码双审 r1 CODEX-04）、都不发信号；一条记录都没有时告警「没有在跑的审查员 CLI 记录」。主路径写 `cancelled` 的那次 `patchStatus` 把已确认结束（判 `gone`，或发过信号、组长确认退出且没有遗留成员）的侧记录清成 null，其余保留给清扫准入。
+-> `cancelRun` 自己的凭据准入 v1.1.16 起（EV-157）经 `scrubAdmission`，判在上面按记录结束 CLI **之后**：已结束的组判 `gone` 放行；判不了、读不懂（没发信号）与发了信号而未确认退出的组挡住——告警「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧〉——留给会话启动清扫」，这些组不在 `settledCliSides` 里，收尾那次 `patchStatus` 不清、原样留给会话启动清扫。`CancelOptions.terminateCli` 只为单测造「未确认退出」而开（缺省 `terminateRecordedCliGroups`）。**准入只按组长判，与 `settledCliSides` 有意分叉**（代码双审 r1 CODEX-01）：上面算出 `membersLeft > 0`（组长已退、组员仍在）时告警、不清记录，但准入照样放行——准入与 `admitScrub`、到期整删同源（用户决策），「组长已退、组员仍在」是 EV-154 决策 4 如实保留的格；要挡住须改 `judgeCliGroup`、四处一起变（BACKLOG EV-165）。
++> `cancelRun` 自己的凭据准入 v1.1.16 起（EV-157）经 `scrubAdmission`，判在上面按记录结束 CLI **之后**：已结束的组判 `gone` 放行；判不了、读不懂（没发信号）与发了信号而未确认退出的组挡住——告警「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧〉——留给会话启动清扫」，这些组不在 `settledCliSides` 里，收尾那次 `patchStatus` 不清、原样留给会话启动清扫。`CancelOptions.terminateCli` 只为单测造「未确认退出」而开（缺省 `terminateRecordedCliGroups`）。**准入与 `settledCliSides` 已收口**（v1.1.18 起，EV-165；此前有意分叉，代码双审 r1 CODEX-01）：`judgeCliGroup` 现在同时判组长与非僵尸成员数，`orphaned` 组（组长已退、组员仍在）与准入侧同一判据——阻挡准入，`--cancel` 也会对它按组发信号；结束后 `membersLeft === 0` 才清记录，与放行抹除凭据的判据不再分叉。
+ 
+ > **`cancelRun` 结束失联后仍挂着的 worker（v1.1.12 起，EV-146）。**
+ > `waitRun` 判 `worker_lost` 时在写 `failed` 的同一次 `patchStatus` 里记 `status.lost = { reason, at }`（`status.ts` `lostOf` 读，形状不对即当没有）；`heartbeat_stale` 而 worker 仍在时，报错先列判定依据（心跳年龄、`heartbeat_stale_s`、`WORKER_HEARTBEAT_MS`；「阈值不大于心跳间隔」那一句经 `status.ts` 的 `staleThresholdWithinHeartbeat` 判，与预检 / `--start` 的「失联阈值」只警告项同一来源，v1.1.15 起，EV-160）再给 `--cancel` 出口。
+@@ -599,9 +600,9 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需
+ | **`task.json.disputes[]` 无任何写入点** | 全仓仅 `meta.ts:88`（类型）、`meta.ts:105`（初始化为 `[]`）、`report.ts:441`（读取），无一处 push | 只有 `disputed` 布尔位被写（`cli.ts:701`）。`report` 的「争议项：编号——说明」分支**永远打印不出具体编号** |
+ | ~~**`block_severities` 无消费方**~~ | ~~类型、默认值、schema 校验齐全，业务逻辑零引用~~ | **已解决（2026-09-16）**：该键连同 schema 定义一并删除，不做历史兼容（项目负责人明示接受）。防复发机制见配置键与消费方的对账测试 |
+ | ~~**`cancelRun` 不回写 `run.json`**~~ | ~~函数体内 `writeRunMeta` 零出现~~ | **已解决（2026-09-26，EV-128）**：工作进程确认退出后由 `finalizeCancelledRunMeta` 收尾为 `cancelled`。同形的 worker 异常与 `worker_lost` 已于 2026-09-27 修（EV-142，`finalizeFailedRunMeta`，工作进程确认退出才写）；准备阶段与同步路径的本进程收尾同日修（EV-145）；`--start` 派生后失败同日修（EV-150，`settleOrphanedStart`）；其余未收尾路径见 EV-151 |
+-| **worker 被 SIGKILL / 崩溃 / 事件循环堵住时，`--cancel` 够不到它拉起的厂商 CLI**（v1.1.11 起已覆盖：按 CLI 进程组记录另行结束，见 4.2 `cancelRun` 引述块；余项：派生到记录落盘之间被 SIGKILL、启动时刻未取到、组长已退出而组员还在、`setsid` 出去的后代，均如实提示或如实保留） | `run()` 在 `killTree: true` 时以 `detached` 派生，CLI 自成一组；`cancelRun` / `terminateProcessGroup` 只按 worker 的组发信号。EV-152（v1.1.10）起常态格由 worker 的 SIGTERM 处理器转发，但处理器在这几格跑不到。零配额验收（`evidence/cancel-cli-reach-20260928/` A3）：按组 SIGKILL worker 后两组桩 CLI 都活着、组长 ppid = 1 | 静默阶段的 CLI 会一直跑、配额照烧；`--cancel` 在升级 SIGKILL 与「worker 已不在」两格只打如实提示；凭据副本的清扫准入只核 worker（EV-38）。行为修复见 BACKLOG EV-154（与 EV-146 / EV-38 共用 CLI 进程组记录） |
++| **worker 被 SIGKILL / 崩溃 / 事件循环堵住时，`--cancel` 够不到它拉起的厂商 CLI**（v1.1.11 起已覆盖：按 CLI 进程组记录另行结束，见 4.2 `cancelRun` 引述块；「组长已退出而组员还在」一格 v1.1.18 起已收口（EV-165）；余项：派生到记录落盘之间被 SIGKILL、启动时刻未取到、`setsid` 出去的后代，均如实提示或如实保留） | `run()` 在 `killTree: true` 时以 `detached` 派生，CLI 自成一组；`cancelRun` / `terminateProcessGroup` 只按 worker 的组发信号。EV-152（v1.1.10）起常态格由 worker 的 SIGTERM 处理器转发，但处理器在这几格跑不到。零配额验收（`evidence/cancel-cli-reach-20260928/` A3）：按组 SIGKILL worker 后两组桩 CLI 都活着、组长 ppid = 1 | 静默阶段的 CLI 会一直跑、配额照烧；`--cancel` 在升级 SIGKILL 与「worker 已不在」两格只打如实提示；凭据副本的清扫准入只核 worker（EV-38）。行为修复见 BACKLOG EV-154（与 EV-146 / EV-38 共用 CLI 进程组记录） |
+ | ~~**`--cancel` / `--wait` 自己的凭据准入与到期整删不核审查员 CLI**~~ | EV-38 只在 `admitScrub`（会话启动清扫与 `trivium scrub`）加了 CLI 那一半（用户决策 5 只列两处消费方）；`cancelRun` 与 `waitRun` 的 `worker_lost` 分支仍只按 `workerConfirmedGone` 抹，`pruneRunDirs` 的到期整删只看 `workerStillAlive` | worker 已死而 CLI 还活着时这两处照抹：CLI 以鉴权错误失败，或把凭据写回侧目录而哨兵已记 ok、之后的清扫跳过该侧。`--cancel` 那一处在按记录结束 CLI 之后残留面很小。另登 BACKLOG（CLI进程组记录计划 r2 §7.3）。**已解决（2026-09-29，EV-157，v1.1.16）**：三处凭据准入经 `scrubAdmission` 同源，到期整删另问同一个 `cliGroupsConfirmedGone`、挡住即 kept。残余（代码双审 r1 CODEX-03）：`--wait` 判失联而 CLI 仍活时副本不抹，孤儿 CLI 手上的凭据仍有效、配额照烧，直到有人 `--cancel`（按记录结束，`--wait` 的报错正文给出这条出口）或手工结束——这是「不抹、`--wait` 不结束进程」两条用户决策的直接后果 |
+-| **凭据准入对「组长已退出、组员仍在」的组放行** | `judgeCliGroup` 只看组长：组长不在即 `gone`，四处（会话启动清扫、`trivium scrub`、`--cancel`、`--wait`）与到期整删都放行；`--cancel` 同一次调用里已数出的 `membersLeft > 0` 只用于告警与是否清记录（`settledCliSides`） | 组员若仍在用副本会照抹。EV-154 用户决策 4 如实保留的格；改判据会同时改 `admitScrub` 与到期整删的行为，**待用户定**，见 BACKLOG EV-165 |
++| ~~**凭据准入对「组长已退出、组员仍在」的组放行**~~ | `judgeCliGroup` 只看组长：组长不在即 `gone`，四处（会话启动清扫、`trivium scrub`、`--cancel`、`--wait`）与到期整删都放行；`--cancel` 同一次调用里已数出的 `membersLeft > 0` 只用于告警与是否清记录（`settledCliSides`） | **已解决（2026-09-29，EV-165，v1.1.18）**：`judgeCliGroup` 组长确认不在时改按非僵尸成员数判（`orphaned`/`orphan_unverifiable`），五处准入同源阻挡，`--cancel` 按组结束组员后照抹。**残余**（暂缓，新登 BACKLOG）：worker 存活期间 `liveTrees` 只跟踪直接子进程、对孙辈无感知——组长在 worker 活着时退出会被观察者清记录，`orphaned` 判据够不到那一格（不影响凭据安全，因为准入先判 `workerConfirmedGone`）；`processGroupMemberCount` 的僵尸排除逻辑无专门测试 |
+ | **到期整删的工作进程一半对「终态而工作进程仍活」照删** | `pruneRunDirs` 的保留判据 `workerStillAlive` 对终态一律返回 false；`--wait` 判 `heartbeat_stale` 时把活着的工作进程写成 `failed`（EV-146 那一格） | 挂住的工作进程无人 `--cancel` 而过了保留期时，到期整删会删掉它仍在用的运行目录。改成 `workerConfirmedGone` 口径会让「status 读不到 / 非终态而拿不到 pid」的过期目录永远删不掉，是整删语义的改动。**暂缓**，见 BACKLOG EV-163 |
+ | ~~**`trivium scrub` 人读提示里「或等 run_dir_days 整删」半句失实**~~ | v1.1.16 起记录读不懂的运行目录到期也不删，出口只有把该侧 `cli` 改回 null；`cli.ts` 第四格之后那一行与 `trivium scrub --help` 的动机句（「副本会一直躺到 retention.run_dir_days 整删」，代码双审 r1 CODEX-04）都属清扫子命令的输出面，用户定了逐字不变 | 人读提示给出一条走不通的出口。逐字保留、代码旁注明，**待用户定**是否解冻，见 BACKLOG EV-164。**已解决（2026-09-29，EV-164，v1.1.17）**：用户解冻，只改文字——提示行改为「…需把该侧 cli 改回 null（到期整删也会保留它）」，帮助的动机句加限定「（那一轮记录里的审查员 CLI 仍在、判不了或读不懂时，到期也不删）」；行数、位置、触发条件、`--json` 与其余输出逐字不变，由 `scrub-output-text` T1～T7 整段逐字钉住。帮助主句「不再回到那个仓库时…躺到整删」本身另有失实成因（整删只在该项目再开会话时跑），未改，见 BACKLOG EV-166 |
+ | ~~**`worker_started_at` 对 TZ / 区域设置敏感**~~ | `--start` 按缺省环境取 worker 的 `ps lstart` 写进 status.json，`--cancel` / `--wait` / 会话启动清扫 / `trivium scrub` 在各自环境里重取、按字符串比；CLI 进程组记录已改用规范化环境，worker 这一面没改（会让旧版写下的记录与新版读法不符） | 环境不同 ⇒ 活着的 worker 判「不是同一进程」⇒ `--cancel` 不对 worker 发信号、三处准入在 worker 还活着时抹凭据；v1.1.11 起 `--cancel` 的「已不存在」分支与终态分支也消费这一判据，环境错配时会按记录对还活着的 worker 名下的 CLI 发信号（worker 随后看到 CLI 退出，可能重试或写 failed；代码双审 r1 GLM-02）。修 EV-158 时须一并复核这两处。v1.1.12 起 `classifyLostCancel` 也消费它：环境错配时失联后仍挂着的 worker 判 `mismatch`、不对它发信号，打告警指出两种可能（PID 复用 / 环境不同）并让人在与 `--start` 相同的环境里再跑。**已解决（2026-09-28，EV-158，v1.1.13）**：status.json 与锁文件另记规范化启动时刻，身份读法收成 `processMatchesRecord`（有规范化只比它）。残余：升级窗口里旧版写下的记录退回缺省比较，异环境仍判错（与旧版相同）；回滚后回到旧行为 |
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index d5e1bc2a..f73c60c0 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -358,7 +358,7 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一
+ | `topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。`--stage` 也接受 `all`（命令 A 用）。`--` 之后按 argv 逐个 token 解析、不再分词（EV-18）：正文整段放进一个单引号参数，旗标放在引号之外；`--topic` 字样被包进正文而未显式给主题时退 64。`--args` 传法已删 |
+ | `topic claim --topic <主题> --stage <s> --driver <id> [--session-id <id>]` | 为该**阶段**声明当轮 Driver（M10a 第 1 步，EV-72）。plan / bug 原稿写在 `review --start` 之前，那一刻该阶段零留痕、判定回落缺省 Driver，非缺省 Driver 写不出自己的原稿。`--stage` **必填不默认**：声明直接决定 Write / Edit 侧的保护集。判定顺序自上而下：**留痕优先**——该阶段已有运行留痕且与 `--driver` 不同 ⇒ 退 64（出口是新开主题或换阶段）；已声明同值 ⇒ 幂等退 0 且**不刷新** `claimed_at`；该阶段子树里已存在**他家角色后缀**的文件 ⇒ 退 64（那些文件可能是撤回前的旧声明留下的，也可能是尚无声明时写下、仍在使用的原稿；出口是由用户确认去留、在终端处理后重试。不在会话里删它们来换回认领——这条限制防的正是会话自己反复翻转声明，见设计 7.1 `topic claim` 段）；其余合法认领放行。撤回的旧声明整条追加进 `drivers[<阶段>].history`，不覆盖。`--session-id` 落进 `claimed_by`，与 `approvals[].session_id` 同一个用途：自声明边界要让事后对得上账 |
+ | `review --stage <s>` | 同步跑一次双审（手工调试用） |
+-| `review --start / --wait / --status / --cancel` | 分段协议。`--start` 的返回恒带 `warnings`（EV-123）：拉起前按**当轮入选侧**复用预检的判定函数 `checkModelOverrideSource` 查出的只警告项，以及 `checkHeartbeatThreshold` 的「失联阈值」（`heartbeat_stale_s` 不大于工作进程心跳间隔 30 s 时出；只读配置、与入选侧无关；设计 v1.3.57，EV-160），两者同一次汇总，形状同预检；在派生之后随返回值到达（拦不住拉起，skill 在开场播报里念出并提示可 `--cancel`）；`finished_inline` 时为 `[]`；同步 `review --stage` 不做这项复查，它的 `--json` 另有既有的 `warnings: string[]`（运行期告警），与 `--start` **同键不同形**，不要按 `detail` 读。`--cancel`：向工作进程组发 SIGTERM，工作进程先按组终止它以 `killTree` 拉起的审查员 CLI（宽限 2 s → SIGKILL，真实 CLI 对 SIGTERM 的处置未实测）再以 SIGTERM 退出；5 s 内没退出即升级 SIGKILL；那时以及工作进程此前已不在时（含 status 已被 `--wait` 判失联写成 failed、走终态早退分支的情形），按 status.json 的逐侧 CLI 进程组记录逐组结束审查员 CLI（组长活着且规范化启动时刻相符才发信号，宽限链同上；终态分支只结束进程、不写 status.json（`gone` 格自 EV-159 起补收归档 run.json / task.json，见下方「失联后仍挂着的工作进程」段末句，status.json 仍不写）；判不了、记录读不懂、组长退出而组员还在、没有记录时 stderr 如实提示；设计 v1.3.53，EV-154）；CLI 先于工作进程退出后遗留的子进程、CLI 自己脱离进程组的后代也够不到，这两格不打提示（设计 7.5「工作进程的信号语义」）。`--wait --json` 的 `sides` 与 `--status --json` 的 `status.sides` 每侧多一个 `cli` 键（`{ pgid, started_at }` 或 null，设计 v1.3.53；加法，旧调用方忽略）；status 另多一个 `worker_started_at_canonical` 键（字符串或 null，设计 v1.3.55，EV-158；加法，旧调用方忽略）。（EV-128，设计 v1.3.47）工作进程确认退出后，把仍为 `running` 的归档 run.json（仅 run.v2）收尾为 `cancelled`（只改 `status` / `finished_at` / `gate.state`，`artifacts[]` 原样）并同步 `task.json` 登记（run.json 不是 cancelled、登记里找不到、登记已不是 running 时跳过），再把 status.json 标 `cancelled`、回收锁与闸门；没确认退出或 run.json 已是终态时不写，输出写明原因；单步写失败只告警、没有第二次机会，告警要求人工核对。**失联后仍挂着的工作进程**（设计 v1.3.54，EV-146）：`--wait` 判 `worker_lost` 时在 status.json 记 `lost = { reason, at }`（`--wait --json` / `--status --json` 的 `status` 因此多出 `lost` 键，对外 JSON 形状的加法，旧调用方忽略）；`heartbeat_stale` 的报错先列判定依据再给 `--cancel` 出口。之后 `--cancel` 在 status.json 为 failed、`lost.reason` 为 `heartbeat_stale`、工作进程仍是同一进程时，按组结束它（宽限 5 s → SIGKILL → 至多再等 5 s 确认）、按记录结束审查员 CLI、把仍为 `running` 的 run.json 与登记补收为 `failed`（`termination` 同 `--wait`）、按 run_id + pid 回收锁；status.json 不写、闸门不动、凭据副本不抹；确认不了退出时 run.json 与锁不动；身份判不上（`mismatch`）时连记录里的审查员 CLI 也不结束，身份缺失（`no_identity`）时 CLI 沿用 EV-154 终态分支自己的判断；两格 stdout 都说「未对工作进程……发信号」而不是「无需取消」；一个信号都没发就判已不在时说「未及发信号」。退出码仍为 0。**`gone` 格补收**（设计 v1.3.56，EV-159 第一形态）：`worker_pid` 上已没有活进程时（含「两种启动时刻都缺失」这一收窄进来的子情形），`--cancel` 与 `alive` 格一样按 EV-142 的前提把仍为 `running` 的 run.json 与登记补收为 `failed`（`termination` 同 `worker_lost` / `heartbeat_stale`）、按 run_id + pid 回收锁；status.json 不写、闸门不动、凭据不抹；stdout 说「工作进程 N 已不在」，不说「无需取消」，也不复述归档补收的结果（只说「见上方输出」，那两行由前面的收尾步骤播报）；已是终态或归档缺失时按前提跳过、如实说明，可重入。`mismatch` 与「两种启动时刻都缺失但进程还在」的 `no_identity` 不在此列，一律不补收。**凭据副本的准入**（设计 v1.3.58，EV-157）：`--cancel` 主路径与 `--wait` 判失联抹凭据副本之前，与会话启动清扫 / `scrub` 同一判据——工作进程确认已不在，且 status.json 记录里的审查员 CLI 进程组没有仍在、判不了或读不懂的（`--cancel` 判的是按记录结束之后的事实）；被 CLI 挡住时不抹，`--cancel` 的 stderr、`--wait` 的报错正文各多一行「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧〉…留给会话启动清扫」，退出码、归档收尾与其余输出不变；工作进程一半未过时那一行的文字与此前相同。`--wait` 在阻挡项里有判「仍在」的组时再多一行 `--cancel` 出口（`--cancel` 的终态分支会按记录结束它们；判不了 / 读不懂时不给，代码双审 r1 CODEX-02） |
++| `review --start / --wait / --status / --cancel` | 分段协议。`--start` 的返回恒带 `warnings`（EV-123）：拉起前按**当轮入选侧**复用预检的判定函数 `checkModelOverrideSource` 查出的只警告项，以及 `checkHeartbeatThreshold` 的「失联阈值」（`heartbeat_stale_s` 不大于工作进程心跳间隔 30 s 时出；只读配置、与入选侧无关；设计 v1.3.57，EV-160），两者同一次汇总，形状同预检；在派生之后随返回值到达（拦不住拉起，skill 在开场播报里念出并提示可 `--cancel`）；`finished_inline` 时为 `[]`；同步 `review --stage` 不做这项复查，它的 `--json` 另有既有的 `warnings: string[]`（运行期告警），与 `--start` **同键不同形**，不要按 `detail` 读。`--cancel`：向工作进程组发 SIGTERM，工作进程先按组终止它以 `killTree` 拉起的审查员 CLI（宽限 2 s → SIGKILL，真实 CLI 对 SIGTERM 的处置未实测）再以 SIGTERM 退出；5 s 内没退出即升级 SIGKILL；那时以及工作进程此前已不在时（含 status 已被 `--wait` 判失联写成 failed、走终态早退分支的情形），按 status.json 的逐侧 CLI 进程组记录逐组结束审查员 CLI（组长活着且规范化启动时刻相符、或组长已退出但组号下还有非僵尸成员时都发信号，宽限链同上，v1.3.60 起后者同样按组结束，EV-165；终态分支只结束进程、不写 status.json（`gone` 格自 EV-159 起补收归档 run.json / task.json，见下方「失联后仍挂着的工作进程」段末句，status.json 仍不写）；判不了、记录读不懂、成员计数取不到、没有记录时 stderr 如实提示；设计 v1.3.53，EV-154）；CLI 先于工作进程退出后遗留的子进程、CLI 自己脱离进程组的后代也够不到，这两格不打提示（设计 7.5「工作进程的信号语义」）。`--wait --json` 的 `sides` 与 `--status --json` 的 `status.sides` 每侧多一个 `cli` 键（`{ pgid, started_at }` 或 null，设计 v1.3.53；加法，旧调用方忽略）；status 另多一个 `worker_started_at_canonical` 键（字符串或 null，设计 v1.3.55，EV-158；加法，旧调用方忽略）。（EV-128，设计 v1.3.47）工作进程确认退出后，把仍为 `running` 的归档 run.json（仅 run.v2）收尾为 `cancelled`（只改 `status` / `finished_at` / `gate.state`，`artifacts[]` 原样）并同步 `task.json` 登记（run.json 不是 cancelled、登记里找不到、登记已不是 running 时跳过），再把 status.json 标 `cancelled`、回收锁与闸门；没确认退出或 run.json 已是终态时不写，输出写明原因；单步写失败只告警、没有第二次机会，告警要求人工核对。**失联后仍挂着的工作进程**（设计 v1.3.54，EV-146）：`--wait` 判 `worker_lost` 时在 status.json 记 `lost = { reason, at }`（`--wait --json` / `--status --json` 的 `status` 因此多出 `lost` 键，对外 JSON 形状的加法，旧调用方忽略）；`heartbeat_stale` 的报错先列判定依据再给 `--cancel` 出口。之后 `--cancel` 在 status.json 为 failed、`lost.reason` 为 `heartbeat_stale`、工作进程仍是同一进程时，按组结束它（宽限 5 s → SIGKILL → 至多再等 5 s 确认）、按记录结束审查员 CLI、把仍为 `running` 的 run.json 与登记补收为 `failed`（`termination` 同 `--wait`）、按 run_id + pid 回收锁；status.json 不写、闸门不动、凭据副本不抹；确认不了退出时 run.json 与锁不动；身份判不上（`mismatch`）时连记录里的审查员 CLI 也不结束，身份缺失（`no_identity`）时 CLI 沿用 EV-154 终态分支自己的判断；两格 stdout 都说「未对工作进程……发信号」而不是「无需取消」；一个信号都没发就判已不在时说「未及发信号」。退出码仍为 0。**`gone` 格补收**（设计 v1.3.56，EV-159 第一形态）：`worker_pid` 上已没有活进程时（含「两种启动时刻都缺失」这一收窄进来的子情形），`--cancel` 与 `alive` 格一样按 EV-142 的前提把仍为 `running` 的 run.json 与登记补收为 `failed`（`termination` 同 `worker_lost` / `heartbeat_stale`）、按 run_id + pid 回收锁；status.json 不写、闸门不动、凭据不抹；stdout 说「工作进程 N 已不在」，不说「无需取消」，也不复述归档补收的结果（只说「见上方输出」，那两行由前面的收尾步骤播报）；已是终态或归档缺失时按前提跳过、如实说明，可重入。`mismatch` 与「两种启动时刻都缺失但进程还在」的 `no_identity` 不在此列，一律不补收。**凭据副本的准入**（设计 v1.3.58，EV-157）：`--cancel` 主路径与 `--wait` 判失联抹凭据副本之前，与会话启动清扫 / `scrub` 同一判据——工作进程确认已不在，且 status.json 记录里的审查员 CLI 进程组没有仍在、判不了或读不懂的（`--cancel` 判的是按记录结束之后的事实）；被 CLI 挡住时不抹，`--cancel` 的 stderr、`--wait` 的报错正文各多一行「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧〉…留给会话启动清扫」，退出码、归档收尾与其余输出不变；工作进程一半未过时那一行的文字与此前相同。`--wait` 在阻挡项里有判「仍在」或「组长已退出、组员仍在」（`orphaned`，v1.3.60 起，EV-165）的组时再多一行 `--cancel` 出口（`--cancel` 的终态分支会按记录结束它们；判不了 / 读不懂时不给，代码双审 r1 CODEX-02） |
+ | `review --worker <run_id>` | 工作进程入口，由 `--start` 派生。**不应由人直接调用** |
+ | `gate --check` / `--check-artifacts` / `--await-approval` | 裁决完整性 / 最低工件集 / 置人工闸门。立停点时（`--await-approval`，以及命令 B / C / D 的 `--check` 通过后自动立）追加打印工作树改动摘要，`--await-approval --json` 带 `worktree_summary` 键；只告知，不参与判定、不改退出码 |
+ | `gate hook-*` | Hook 入口，从 stdin 读事件。**不应由人直接调用** |
+diff --git a/doc/06_deployment/RUNBOOK_pipeline_ops.md b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+index 3ccb5977..b4969adb 100644
+--- a/doc/06_deployment/RUNBOOK_pipeline_ops.md
++++ b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+@@ -242,7 +242,7 @@ trivium scrub             # 遍历全部项目桶，只抹凭据、一个目录
+ | 另 N 个只做了交接包脱敏 | 一份载体都没抹，只脱敏了 `request.json` 那一层 | 无 |
+ | 侧层已收工 N 个 | 哨兵已记完成；**运行目录层仍会复查**（那层不写哨兵） | 无 |
+ | 准入未过 N 个 | 正在启动／状态判不了／进程仍在，未动 | 多为瞬态，再跑一次重判；持续出现才人工看 |
+-| 因审查员 CLI 未动 | 工作进程已不在，但 status.json 记录里的审查员 CLI 进程组仍在／判不了／记录读不懂（逐条带成因；会话启动清扫里到期被挡下的目录也落在这一格，EV-157） | CLI 结束后再跑即重判；「记录读不懂」不自愈，核对进程确已不在后把该侧 `cli` 改回 null——到期整删也会保留它 |
++| 因审查员 CLI 未动 | 工作进程已不在，但 status.json 记录里的审查员 CLI 进程组仍在／组长已退出但组员仍在（`orphaned`，带精确成员数，EV-165）／判不了／记录读不懂（逐条带成因；会话启动清扫里到期被挡下的目录也落在这一格，EV-157） | CLI 结束后再跑即重判（组长已退出、组员仍在的组也可用 `trivium review --cancel` 按组结束）；「记录读不懂」不自愈，核对进程确已不在后把该侧 `cli` 改回 null——到期整删也会保留它 |
+ | 状态读不到 N 个 | `status.json` 缺失或损坏，**不会自愈也不会重试** | 人工确认后删掉那些目录 |
+ | 仍有文件未扫描 N 个 | 那几份未脱敏 | 侧层成因翻该侧 `scrub.json`；运行目录层成因直接看行内带出的告警 |
+ | 项目桶读不了 | 整棵没进论域，其中的副本一个没抹 | 查权限后重跑 |
+diff --git a/doc/07_manuals/MANUAL_user.md b/doc/07_manuals/MANUAL_user.md
+index f8a69220..791f3b99 100644
+--- a/doc/07_manuals/MANUAL_user.md
++++ b/doc/07_manuals/MANUAL_user.md
+@@ -2,7 +2,7 @@
+ 
+ > - **作者 / 负责人**：Driver（Claude）
+ > - **创建日期**：2026-09-13
+-> - **当前版本**：v1.0.17
++> - **当前版本**：v1.0.18
+ > - **状态**：草稿(Draft)
+ >
+ > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
+@@ -623,21 +623,25 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ > stderr 每组一行「按记录结束审查员 CLI：〈侧〉侧进程组 N（信号序列）」。**`--wait` 报「工作进程失联」之后也可以再跑一次 `--cancel`**：
+ > 失联原因是工作进程已不在（`pid_gone`）时，它会说「已处于终态，无需取消」，但仍会按记录结束遗留的 CLI（不改运行的状态与归档）；
+ > 失联原因是心跳过期而工作进程还活着（`heartbeat_stale`）时，见下文「`--wait` 报「工作进程失联」或 worker 异常时」那一段。
+-> 只有记录对得上（组长还活着、启动时刻相符）才发信号。下面几种 stderr 提示意味着仍要你手工核对——用 `ps` 找 ppid 为 1 的
+-> `agy` / `zcode-cli` / `codex` / `claude` 进程：「启动时刻没记下，判不了」「CLI 记录读不懂」「组长已退出，组里还有 N 个成员」「未能确认退出」
+-> 「没有在跑的审查员 CLI 记录」（CLI 已先结束，或 worker 派生后没来得及记下）。另有两种较窄的形态**不会打提示**：
++> 记录对得上（组长还活着、启动时刻相符）才发信号；v1.0.18 起（设计 v1.3.60，EV-165）组长已经退出、但组号下还有非僵尸成员时**同样发信号**——
++> 组号仍然有效，组员是原组的后代（不是新进程凑巧撞上同一个号）。下面几种 stderr 提示意味着仍要你手工核对——用 `ps` 找 ppid 为 1 的
++> `agy` / `zcode-cli` / `codex` / `claude` 进程：「启动时刻没记下，判不了」「CLI 记录读不懂」「组长已退出，组里还有 N 个成员」「组长已退出，
++> 组里的非僵尸成员数取不到，判不了是否还有遗留」（v1.0.18 起，EV-165）「未能确认退出」「没有在跑的审查员 CLI 记录」
++> （CLI 已先结束，或 worker 派生后没来得及记下）。另有两种较窄的形态**不会打提示**：
+ > CLI 进程本身先于 worker 退出、它名下遗留的子进程；CLI 自己脱离进程组的后代。所以取消之后想确信没有残留，最稳的办法仍是用 `ps` 查一遍。
+ > 会话启动清扫与 `trivium scrub` 在记录里的 CLI 还活着时不会抹那一轮的凭据副本，单列一行「因审查员 CLI 进程组记录未动」并带出成因，等 CLI 结束后的下一次清扫再抹。
+ > 「CLI 记录读不懂」（手改坏了，或新旧版本混跑写出了旧版读不懂的形状）**不会自愈**：告警里带着 status.json 的路径与读到的原始值，
+ > 核对进程确已不在后，把该侧的 `cli` 改回 `null` 即可放行；不处理的话，它会一直不抹，v1.0.16 起（设计 v1.3.58，EV-157）`run_dir_days` 到期也不删那个运行目录——
+ > 出口只有改回 `null`。v1.0.17 起（设计 v1.3.59，EV-164）`trivium scrub` 的提示与帮助也这么写：第四格之后那一行是「需把该侧 cli 改回 null（到期整删也会保留它）」，
+ > 帮助里「副本会一直躺到 retention.run_dir_days 整删」带上了同样的限定；v1.0.16 那一版提示里的「或等 run_dir_days 整删」是走不通的出口。
+-> **`--cancel` 与 `--wait` 报失联时抹凭据副本，也先看这份记录**（v1.0.16 起，设计 v1.3.58，EV-157）：工作进程已不在、而记录里的 CLI 还活着、
+-> 判不了或读不懂时，这两处都不抹副本，多一行「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧：哪一侧、哪个进程组、为什么〉——留给会话启动清扫」
+-> （`--wait` 写在报错正文里，句末带失联原因）。`--cancel` 判的是它按记录结束 CLI **之后**的事实，所以记录对得上的 CLI 被它结束之后照常抹；
+-> 留下的只有判不了、读不懂与未能确认退出的那几组。`--wait` 不结束任何进程，CLI 活着就不抹。这几组的记录会原样留在 `status.json` 里，
+-> CLI 结束之后的下一次会话启动清扫（或 `trivium scrub`）再抹；`run_dir_days` 到期整删同样先看它，CLI 还在就保留那个运行目录。
+-> `--wait` 在记录里有「仍在」的 CLI 时还会多给一行出口：「其中仍在的审查员 CLI 可用 trivium review --cancel 〈run_id〉 按记录结束……」——
++> **`--cancel` 与 `--wait` 报失联时抹凭据副本，也先看这份记录**（v1.0.16 起，设计 v1.3.58，EV-157；v1.0.18 起「组长已退出、组员仍在」
++> 同样挡住，EV-165）：工作进程已不在、而记录里的 CLI 还活着、组长已退出但组员仍在、判不了或读不懂时，这两处都不抹副本，多一行
++> 「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧：哪一侧、哪个进程组、为什么〉——留给会话启动清扫」
++> （`--wait` 写在报错正文里，句末带失联原因）。`--cancel` 判的是它按记录结束 CLI **之后**的事实，所以记录对得上的 CLI、以及组长已退出
++> 但组员仍在的组（按组信号结束）被它结束之后都照常抹；留下的只有判不了、读不懂与未能确认退出的那几组。`--wait` 不结束任何进程，CLI 活着
++> 或组员仍在就不抹。这几组的记录会原样留在 `status.json` 里，CLI 结束之后的下一次会话启动清扫（或 `trivium scrub`）再抹；`run_dir_days`
++> 到期整删同样先看它，CLI 还在就保留那个运行目录。
++> `--wait` 在记录里有「仍在」或「组长已退出、组员仍在」的 CLI 时还会多给一行出口：「其中仍在的审查员 CLI 可用 trivium review --cancel 〈run_id〉 按记录结束……」——
+ > `--wait` 自己不结束任何进程，而那些 CLI 手上的凭据副本没抹，**不结束它们就会一直用着凭据、烧着配额**；跑一次 `--cancel` 会按记录结束它们（不改运行的状态与归档），
+ > 之后的会话启动清扫再抹副本。判不了、读不懂的那几组 `--cancel` 也不发信号，仍要你用 `ps` 核对。
+ > v1.0.10 那一版这里写的是「这两种情形 CLI 够不到、只打提示」；v1.0.9 那一版写的是「一律够不到」。
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 4f59659e..d7bfaf7b 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -249,10 +249,10 @@
+ | EV-151 | todo（2026-09-27 登记，事后收尾余项计划 r2 §2.6 / §6.4 第 3 条；注记（2026-09-27，EV-150 结案）：下文「锁改写成 worker pid 之前 `--start` 就死了、worker 却已派生」这个窗口里，由**异常**触发的部分已由 EV-150 关闭（`settleOrphanedStart` 终止 worker 再收尾）；剩下 `--start` 自身被信号杀掉（Ctrl-C、外部 SIGKILL）的部分，不走 `catch`） | **worker 猝死之后，下一次 `--start` 回收遗留锁时不收旧运行的尾。**零配额实测（hang 桩 + SIGKILL 进程组、不跑 `--wait` / `--cancel`）：会话启动 Hook 回收了闸门，并因锁文件还在提示「双审进行中（run …）——请先 trivium review --wait …」，照做即由 EV-142 的失联收尾写成 `failed`（`worker_lost` / `pid_gone`）；但若直接再 `--start`，`acquireLock` 按 `pid_gone` 回收遗留锁只 `warn` 一行，新一轮照常跑完，**旧 run.json 与登记一直停在 `running`**，直到有人对它补跑 `--wait`；运行目录过了 `retention.run_dir_days` 被清掉之后 `--wait` 找不到运行目录（退 65），就再也收不了。候选：遗留锁回收时按旧运行的运行目录复核 worker 已退出（判据与 `--wait` 的改写前判定同源、抽成共用函数），确认后收尾为 `failed`；或在会话启动清扫 `sweepDeadRunningGates` 的「有 `worker_pid`」分支里收尾。前者要让 `lock.ts` 的通用获取逻辑知道运行目录与归档，且持锁 pid 已死不等于 worker 已死（锁改记 worker pid 之前 `--start` 就死了、worker 却已派生——与 EV-150 同一个窗口）；后者意味着 Hook 写归档，要论证 Hook 的时间预算与跨会话改出归档改动。单独论证 | `src/trivium/lock.ts` `acquireLock`、`src/trivium/hooks.ts` `sweepDeadRunningGates`、`src/trivium/run-protocol.ts` `waitRun` |
+ | EV-152 | **done**（2026-09-28，主题 `取消够不到审查员CLI`（计划 r2 `8267ffa`，计划双审第 1 轮 run `20260927T190138Z` 16 条全接受、审批通过））：修法 ①——worker 装 SIGTERM 处理器（`installWorkerSigtermForwarding`）：处理器一执行就冻结经 `run()` 的链路（不再派生、已在跑的不再兑现），按父进程句柄并行终止 `killTree` 登记的 CLI 进程组（宽限 2 s → SIGKILL → 至多再等 1 s），再以 SIGTERM 重新自杀，退出形态不变；`--cancel` 与派生后失败的收尾共用宽限常量 `WORKER_TERM_GRACE_MS`（5 s）。零配额实测：会写输出且不处理写错误的 CLI 在管道断开后自行退出，静默的、吞写错误的、忽略 SIGPIPE 的都活着。去向：worker 被 SIGKILL（`--cancel` 升级、外部强杀）、崩溃或事件循环堵住时处理器跑不到 → EV-154（`--cancel` 在这两格如实提示）；取消落在收尾段（两侧 CLI 已结束）时处理器执行之前至多一次事件循环迭代的推进窗口，最坏归档不是 `cancelled`——如实保留、无用例可钉；组长 CLI 一退出（含处理器运行前已正常退出）该组即从登记删除、同组遗留的后代整组收不到信号（与是否忽略 SIGTERM 无关）、CLI 自己 `setsid` 出去的后代——够不到、`--cancel` 也不打提示，如实保留（代码双审 r1 CODEX-01 ≡ GLM-02 改准）；真实厂商 CLI 对 SIGTERM 的处置未实测（不花配额），不响应时由 SIGKILL 兜底；前台同步路径 Ctrl-C → EV-155；`pty: true` 跑不起来 → EV-156 | **`--cancel` 按 worker 进程组发信号，够不到适配器以 `killTree` 拉起的厂商 CLI。**`run()` 在 `killTree: true` 时以 `detached` 派生、子进程自成进程组（`2b460ad`「子进程超时杀整棵树」起，晚于 `5476238`「`--cancel` 按进程组杀」），四个适配器（`agy.ts` / `codex.ts` / `zcode.ts` / `claude.ts`）都这么调；`cancelRun` 与 `terminateProcessGroup` 只按 worker 的组发。零配额实测（`probe-kill-reach.mjs`，Node v25.2.1 / macOS，两次读数相同）：worker 被按组 SIGTERM 后约 150 ms 退出，不带 `killTree` 的子进程随组退出，**`killTree` 拉起的子进程被过继给 init 继续活着**；它的超时计时器在 worker 进程里，随 worker 一起没了。真实 CLI 会不会因 stdout 管道断开而在下一次写输出时自行退出**未实测**（探针用的 `sleep` 不写输出）；`5476238` 记过 zcode-cli 在 worker 被杀后 ppid 变成 1 且继续消耗配额（那时它还在 worker 的组里）。`worker-detach.test.ts`「killProcessTree 杀整组」用的子进程不带 detached，与生产形状不符，所以一直绿。影响：`--cancel` 可能留下仍在消耗配额的 CLI；EV-146 的候选修法同样杀不到它们；凭据副本的清扫准入只核 worker（EV-38）。本主题只把 `killProcessTree` 文档块、`cancelRun` 注释与播报、LLD、MANUAL 里「连同 agy/zcode 一起杀」的说法改准。候选：worker 装 SIGTERM 处理器，转发给 runner 里在跑的 `run()`（它们各自有 `killProcessTree(child.pid)`）后再退出；或 worker 把各 CLI 的 pgid 记进运行目录，`--cancel` 逐组发。碰 worker 的信号语义与运行目录契约，单独论证 | `src/trivium/util/exec.ts` `run` / `killProcessTree`、`src/trivium/run-protocol.ts` `workerMain` / `cancelRun`、`src/trivium/adapters/*.ts` |
+ | EV-153 | todo（2026-09-28 登记，派生后失败的孤儿worker实施报告 §7；用户定单独登记、不并进 EV-149） | **全量检查里 `state.test.ts`「并发 setGate 不丢更新（经短临界区串行化，GLM-08）」偶发红一次，成因未判清。**该用例（`test/unit/state.test.ts` :94）在同一进程里并发 8 个 `setGate`，都经 `updateState` → `withGlobalLock`（`lock.ts` :262，缺省重试 40 次、间隔 100 ms）串行化，断言 8 条都保留。2026-09-27 派生后失败的孤儿worker 代码双审修订后第 1 次全量红了这一条（`evidence/orphan-worker-20260927/check-r1.txt`），本主题没有改 `state.ts`、`lock.ts` 与该用例；单跑连续 5 次全绿，随后两次全量也都绿。**只截了失败用例名、没截断言文案**，所以分不出是哪一种：①短临界区的重试预算在满载下耗尽、抛 `EXIT.LOCKED`（每次尝试还要起一次 `ps` 取启动时刻，满载下更慢）——用例预算问题，行为上说得过去；②8 条写入丢了几条——闸门状态文件的真缺陷。按代码推断更像①：写者同进程、pid 不会判 `pid_gone`，用例 `STALE` 为 120 s、不会判 `heartbeat_dead`，看不到丢更新的通道；但没有文案，不能排除②。与 EV-149 同是「满载下锁争用、单跑即绿」，但 EV-149 是跨进程用例的计数口径问题，这条若是②则是产品缺陷，故单独登记。候选：先写一个脚本在满载下（与全量并行、或加人为负载）循环跑这一条，存下完整失败文案，判清①②再定修法——①则调用例的重试预算或把 `acquireLock` 的启动时刻取值挪出重试循环，②则查 `updateState` 的读改写窗口 | `test/unit/state.test.ts` :94、`src/trivium/state.ts` `updateState`、`src/trivium/lock.ts` `withGlobalLock` / `acquireLock` |
+-| EV-154 | **done**（2026-09-28，主题 `CLI进程组记录`（用户决策 1～8 送审前已定；计划双审第 1 轮 run `20260928T015235Z` 三侧 `approve-with-nits`，9 条全接受，r2 定稿））：worker 在派生审查员 CLI 的当时把 `{ pgid, started_at }` 记进 status.json 的 `sides[c].cli`——记录由 `util/exec.ts` 的 `liveTrees` 派生（条目补侧归属与启动时刻、唯一观察者 `watchTrackedTrees`、投影 `trackedTrees`，不另建登记），侧归属经 `AsyncLocalStorage`（`runOneSide` 包 `withTreeTag`，四个适配器不改），启动时刻按 `LC_ALL=C`、`TZ=UTC0` 取（实测 `ps lstart` 随 TZ 与区域设置变化）；`--cancel` 在 worker 被升级 SIGKILL 之后、worker 此前已不在（含 `--wait` 判失联后的终态早退分支，只结束进程、不改历史）时按记录逐组结束（组长活着且启动时刻相符才发信号，宽限链同 worker 处理器；收尾后数组成员，组员残留如实告警）；主路径清掉已确认结束的记录。零配额验收 `evidence/cli-pgroup-record-20260928/` B1：上一主题 A3 那一格（按组 SIGKILL worker 之后两组桩 CLI 都活着）已翻过来。去向：派生到记录落盘之间被 SIGKILL、启动时刻未取到（不发信号、如实提示）、组长已退出而组员还在（用户决策 4，不去猜）、`setsid` 出去的后代、秒级启动时刻精度——如实保留；`--wait` 判失联与会话启动清扫不结束进程（用户决策 5）；`--cancel` / `--wait` 自己的准入与到期整删不核 CLI → EV-157（2026-09-29 已修）；`worker_started_at` 对环境敏感 → EV-158；EV-146 注记；真实厂商 CLI 未实测（不花配额） | **worker 被 SIGKILL、崩溃或事件循环堵住时，它以 `killTree` 拉起的审查员 CLI 无人能结束。**EV-152 的修法是 worker 自己的 SIGTERM 处理器转发，这几格处理器跑不到：`--cancel` 宽限 5 s 后升级 SIGKILL（worker 事件循环被堵住、或处理器超预算）；worker 先被外部强杀或崩溃、之后再 `--cancel`；worker 死后没人 `--cancel`（只有 `--wait` 判失联与会话启动清扫）。零配额验收（`evidence/cancel-cli-reach-20260928/` A3）：按组 SIGKILL worker 后两组桩 CLI 都活着、组长 ppid = 1；`--cancel` 在升级 SIGKILL 与「worker 已不在」两格只打如实提示（请用 `ps` 核对 ppid 为 1 的 CLI）。静默阶段的 CLI 会一直跑、配额照烧（zcode 整段都是静默形态）。**与 `liveTrees` 的关系**（代码双审 r1 CODEX-03）：本进程内的 CLI 登记面唯一来源是 EV-152 落地的 `util/exec.ts` `liveTrees`（派生后同步登记、`'exit'` 时删除、判退出用父进程句柄）；跨进程可见只需在派生 / 退出时把它的条目（补上侧归属与启动时刻）落进 status.json，不要另建一份同职登记——若仍要走下面的 `onSpawn`，先说明为什么不能由 `liveTrees` 派生（例如侧归属只有适配器知道）。**待论证**（CODEX-01）：「CLI 退出时清空」会与 `liveTrees` 一样漏掉「组长先退出、同组后代遗留」那一格，要覆盖它就得在组长退出后仍保留组号、改按「组里还有活成员」判。候选（取消够不到审查员CLI计划 r2 D2）：worker 在派生 CLI 时把 pid 与启动时刻记进 status.json 的侧字段 `sides[c].cli`（`{ pid, started_at }`，无则 null；`run()` 新增 `onSpawn` 回调，经 `AdapterContext` 穿到四个适配器，CLI 退出时清空）；`--cancel` 在 worker 已不在 / 升级 SIGKILL 之后读记录逐组结束；复用判据沿用 worker 的「组长活着且启动时刻相符才发组信号」。不新增运行目录文件（新增要改 `RUN_DIR_FILES`、`freeze.ts` 禁读分类与 `run-files-parity`）。EV-146（`heartbeat_stale` 后杀挂住的 worker）与 EV-38（清扫准入核 CLI）要的是同一份记录。**待验证前提**：真实厂商 CLI 对 SIGTERM 的处置（EV-152 未花配额实测，计划双审 r1 CODEX-02） | `src/trivium/util/exec.ts` `run`、`src/trivium/status.ts` `SideStatus`、`src/trivium/run-protocol.ts` `cancelRun`、`src/trivium/adapters/*.ts` |
++| EV-154 | **done**（2026-09-28，主题 `CLI进程组记录`（用户决策 1～8 送审前已定；计划双审第 1 轮 run `20260928T015235Z` 三侧 `approve-with-nits`，9 条全接受，r2 定稿））：worker 在派生审查员 CLI 的当时把 `{ pgid, started_at }` 记进 status.json 的 `sides[c].cli`——记录由 `util/exec.ts` 的 `liveTrees` 派生（条目补侧归属与启动时刻、唯一观察者 `watchTrackedTrees`、投影 `trackedTrees`，不另建登记），侧归属经 `AsyncLocalStorage`（`runOneSide` 包 `withTreeTag`，四个适配器不改），启动时刻按 `LC_ALL=C`、`TZ=UTC0` 取（实测 `ps lstart` 随 TZ 与区域设置变化）；`--cancel` 在 worker 被升级 SIGKILL 之后、worker 此前已不在（含 `--wait` 判失联后的终态早退分支，只结束进程、不改历史）时按记录逐组结束（组长活着且启动时刻相符才发信号，宽限链同 worker 处理器；收尾后数组成员，组员残留如实告警）；主路径清掉已确认结束的记录。零配额验收 `evidence/cli-pgroup-record-20260928/` B1：上一主题 A3 那一格（按组 SIGKILL worker 之后两组桩 CLI 都活着）已翻过来。去向：派生到记录落盘之间被 SIGKILL、启动时刻未取到（不发信号、如实提示）、`setsid` 出去的后代、秒级启动时刻精度——如实保留；组长已退出而组员还在 → EV-165（2026-09-29 已修，用户决策 4 的这一半被撤回）；`--wait` 判失联与会话启动清扫不结束进程（用户决策 5）；`--cancel` / `--wait` 自己的准入与到期整删不核 CLI → EV-157（2026-09-29 已修）；`worker_started_at` 对环境敏感 → EV-158；EV-146 注记；真实厂商 CLI 未实测（不花配额） | **worker 被 SIGKILL、崩溃或事件循环堵住时，它以 `killTree` 拉起的审查员 CLI 无人能结束。**EV-152 的修法是 worker 自己的 SIGTERM 处理器转发，这几格处理器跑不到：`--cancel` 宽限 5 s 后升级 SIGKILL（worker 事件循环被堵住、或处理器超预算）；worker 先被外部强杀或崩溃、之后再 `--cancel`；worker 死后没人 `--cancel`（只有 `--wait` 判失联与会话启动清扫）。零配额验收（`evidence/cancel-cli-reach-20260928/` A3）：按组 SIGKILL worker 后两组桩 CLI 都活着、组长 ppid = 1；`--cancel` 在升级 SIGKILL 与「worker 已不在」两格只打如实提示（请用 `ps` 核对 ppid 为 1 的 CLI）。静默阶段的 CLI 会一直跑、配额照烧（zcode 整段都是静默形态）。**与 `liveTrees` 的关系**（代码双审 r1 CODEX-03）：本进程内的 CLI 登记面唯一来源是 EV-152 落地的 `util/exec.ts` `liveTrees`（派生后同步登记、`'exit'` 时删除、判退出用父进程句柄）；跨进程可见只需在派生 / 退出时把它的条目（补上侧归属与启动时刻）落进 status.json，不要另建一份同职登记——若仍要走下面的 `onSpawn`，先说明为什么不能由 `liveTrees` 派生（例如侧归属只有适配器知道）。**待论证**（CODEX-01）：「CLI 退出时清空」会与 `liveTrees` 一样漏掉「组长先退出、同组后代遗留」那一格，要覆盖它就得在组长退出后仍保留组号、改按「组里还有活成员」判。候选（取消够不到审查员CLI计划 r2 D2）：worker 在派生 CLI 时把 pid 与启动时刻记进 status.json 的侧字段 `sides[c].cli`（`{ pid, started_at }`，无则 null；`run()` 新增 `onSpawn` 回调，经 `AdapterContext` 穿到四个适配器，CLI 退出时清空）；`--cancel` 在 worker 已不在 / 升级 SIGKILL 之后读记录逐组结束；复用判据沿用 worker 的「组长活着且启动时刻相符才发组信号」。不新增运行目录文件（新增要改 `RUN_DIR_FILES`、`freeze.ts` 禁读分类与 `run-files-parity`）。EV-146（`heartbeat_stale` 后杀挂住的 worker）与 EV-38（清扫准入核 CLI）要的是同一份记录。**待验证前提**：真实厂商 CLI 对 SIGTERM 的处置（EV-152 未花配额实测，计划双审 r1 CODEX-02） | `src/trivium/util/exec.ts` `run`、`src/trivium/status.ts` `SideStatus`、`src/trivium/run-protocol.ts` `cancelRun`、`src/trivium/adapters/*.ts` |
+ | EV-155 | todo（2026-09-28 登记，取消够不到审查员CLI计划 r2 §7.3，D6；按代码推断，未实测） | **前台同步路径被 Ctrl-C 时遗弃以 `killTree` 拉起的审查员 CLI。**同步 `review --stage` 与预检 / `doctor` 的探活（`agy.ts` :206、`codex.ts` :325、`claude.ts` :747、`zcode.ts` :1069）在前台进程里以 `killTree` 拉起 CLI；终端的 SIGINT 发给前台进程组，而 CLI 在自己的会话（`detached` 即 `setsid`）里收不到，Node 缺省动作退出后 CLI 过继给 init，超时计时器随之没了。EV-152 的处理器只装在 worker。候选：前台入口也装 SIGINT / SIGTERM 处理器、复用 `shutdownTrackedTrees`——**它的契约是「调用即本进程进入终止中、不可撤销，调用方必须随后退出」**，前台入口复用后若不退出，就会带着一地永不兑现的 `run()` 活着（代码双审 r1 CODEX-02）；先零配额实测（桩 + 前台进程收 SIGINT）确认形态 | `src/trivium/util/exec.ts` `shutdownTrackedTrees`、`src/trivium/cli.ts`、`src/trivium/review.ts` 同步路径、`src/trivium/preflight.ts` |
+ | EV-156 | todo（2026-09-28 登记，取消够不到审查员CLI计划 r2 §2.3，D6；实测） | **`run()` 的 `pty: true` 在 macOS 上跑不起来。**`run()` 给子进程的 stdin 恒为管道，BSD `script` 在管道 stdin 下直接退 1（stderr `script: tcgetattr/ioctl: Operation not supported on socket`，取消够不到审查员CLI计划期实测 `dbg-pty.mjs`）。本机 `pty_required: false`，生产形状不含 pty，所以一直没暴露；但 agy 探针一旦记成 `pty_required: true`，审查调用会整侧失败。候选：pty 模式下 stdin 改为 `ignore` 或由 `script` 自带的 tty 处理；或确认 agy 已不需要 pty 后删掉这条路径 | `src/trivium/util/exec.ts` `run`（`pty` 分支）、`src/trivium/adapters/agy.ts` :114、`src/trivium/probes/agy.ts` |
+-| EV-157 | **done**（2026-09-29，主题 `取消与失联的凭据准入核CLI`（用户决策送审前已定；计划双审第 1 轮 run `20260928T231329Z`：gemini `approve`、codex / glm `approve-with-nits`，8 条全接受，r2 定稿））：凭据抹除的准入抽成单一来源 `status.ts` `scrubAdmission`（`workerConfirmedGone` 通过才问 `cliGroupsConfirmedGone`），会话启动清扫与 `trivium scrub`（`admitScrub`，分档与文字不变）、`--cancel` 挂载点 ③（判在按记录结束 CLI 之后）、`--wait` 判失联挂载点 ② 共用；`cliGroupsConfirmedGone` 逐条判完、另返回全部阻挡项，`why` 逐字保持旧文字；被 CLI 挡住（仍在 / 判不了 / 读不懂）时不抹，`--cancel` 告警、`--wait` 报错正文各多一行逐侧带组号与成因（`scrubHoldWhy`），挡住准入的记录原样留在 status.json 里交给会话启动清扫；不新增结束进程的动作；`--cancel` 的归档收尾只看工作进程一半；`cancelLostWorker` 那一格不动。到期整删在 `workerStillAlive` 之外问同一个 `cliGroupsConfirmedGone`，挡住 ⇒ 不删、计入 kept、落回未到期路径进 `deferredCli`。残余（代码双审 r1 CODEX-03）：`--wait` 判失联而 CLI 仍活时副本不抹，孤儿 CLI 手上的凭据仍有效、配额照烧，直到有人 `--cancel`（按记录结束；`--wait` 在有判「仍在」的组时给出这条出口，CODEX-02）或手工结束——「不抹、`--wait` 不结束进程」两条用户决策的直接后果。去向：到期整删的工作进程一半 → EV-163（暂缓）；`trivium scrub` 提示「或等 run_dir_days 整删」半句与帮助里「躺到整删」的动机句失实 → EV-164（2026-09-29 已修，主题 `清扫输出失实文字`）；准入对「组长已退、组员仍在」放行 → EV-165（待用户定）；读数见 `doc/05_testing/REPORT_2026-09-29_cancel_wait_cli_admission.md`。原登记：todo（2026-09-28 登记，CLI进程组记录计划 r2 §7.3，D4；用户决策 5 只列两处消费方；注记（2026-09-28，失联后取消挂住的worker）：`--cancel` 结束失联后仍挂着的 worker 那一格不走凭据准入、不抹副本，结束之后留给 `admitScrub`，范围不动） | **`--cancel` / `--wait` 自己的凭据准入与到期整删不核审查员 CLI。**EV-38 只在 `admitScrub`（会话启动清扫与 `trivium scrub`）加了 CLI 那一半；`cancelRun`（`workerConfirmedGone` 之后即抹）与 `waitRun` 的 `worker_lost` 分支仍只核 worker，`pruneRunDirs` 的到期整删只看 `workerStillAlive`。worker 已死而 CLI 还活着时这两处照抹：CLI 以鉴权错误失败（对已取消 / 已失联的运行反而让它停止烧配额），或把凭据写回侧目录而哨兵已记 ok、之后的清扫跳过该侧（EV-38 原文担心的形态）。`--cancel` 那一处在按记录结束 CLI 之后残留只有判不了与未确认退出的组；`--wait` 那一处残留面更大。到期整删：`run_dir_days` 缺省 30 天，孤儿 CLI 活过保留期而目录无活动没有现实触发面。候选：三处准入都改为 `workerConfirmedGone` + `cliGroupsConfirmedGone`（与 `admitScrub` 同源）；到期整删对「记录里的 CLI 仍活着」按 `workerStillAlive` 同样 kept | `src/trivium/run-protocol.ts` `cancelRun` / `waitRun`、`src/trivium/retention.ts` `pruneRunDirs` |
++| EV-157 | **done**（2026-09-29，主题 `取消与失联的凭据准入核CLI`（用户决策送审前已定；计划双审第 1 轮 run `20260928T231329Z`：gemini `approve`、codex / glm `approve-with-nits`，8 条全接受，r2 定稿））：凭据抹除的准入抽成单一来源 `status.ts` `scrubAdmission`（`workerConfirmedGone` 通过才问 `cliGroupsConfirmedGone`），会话启动清扫与 `trivium scrub`（`admitScrub`，分档与文字不变）、`--cancel` 挂载点 ③（判在按记录结束 CLI 之后）、`--wait` 判失联挂载点 ② 共用；`cliGroupsConfirmedGone` 逐条判完、另返回全部阻挡项，`why` 逐字保持旧文字；被 CLI 挡住（仍在 / 判不了 / 读不懂）时不抹，`--cancel` 告警、`--wait` 报错正文各多一行逐侧带组号与成因（`scrubHoldWhy`），挡住准入的记录原样留在 status.json 里交给会话启动清扫；不新增结束进程的动作；`--cancel` 的归档收尾只看工作进程一半；`cancelLostWorker` 那一格不动。到期整删在 `workerStillAlive` 之外问同一个 `cliGroupsConfirmedGone`，挡住 ⇒ 不删、计入 kept、落回未到期路径进 `deferredCli`。残余（代码双审 r1 CODEX-03）：`--wait` 判失联而 CLI 仍活时副本不抹，孤儿 CLI 手上的凭据仍有效、配额照烧，直到有人 `--cancel`（按记录结束；`--wait` 在有判「仍在」的组时给出这条出口，CODEX-02）或手工结束——「不抹、`--wait` 不结束进程」两条用户决策的直接后果。去向：到期整删的工作进程一半 → EV-163（暂缓）；`trivium scrub` 提示「或等 run_dir_days 整删」半句与帮助里「躺到整删」的动机句失实 → EV-164（2026-09-29 已修，主题 `清扫输出失实文字`）；准入对「组长已退、组员仍在」放行 → EV-165（2026-09-29 已修，主题 `组长已退组员仍在的准入`）；读数见 `doc/05_testing/REPORT_2026-09-29_cancel_wait_cli_admission.md`。原登记：todo（2026-09-28 登记，CLI进程组记录计划 r2 §7.3，D4；用户决策 5 只列两处消费方；注记（2026-09-28，失联后取消挂住的worker）：`--cancel` 结束失联后仍挂着的 worker 那一格不走凭据准入、不抹副本，结束之后留给 `admitScrub`，范围不动） | **`--cancel` / `--wait` 自己的凭据准入与到期整删不核审查员 CLI。**EV-38 只在 `admitScrub`（会话启动清扫与 `trivium scrub`）加了 CLI 那一半；`cancelRun`（`workerConfirmedGone` 之后即抹）与 `waitRun` 的 `worker_lost` 分支仍只核 worker，`pruneRunDirs` 的到期整删只看 `workerStillAlive`。worker 已死而 CLI 还活着时这两处照抹：CLI 以鉴权错误失败（对已取消 / 已失联的运行反而让它停止烧配额），或把凭据写回侧目录而哨兵已记 ok、之后的清扫跳过该侧（EV-38 原文担心的形态）。`--cancel` 那一处在按记录结束 CLI 之后残留只有判不了与未确认退出的组；`--wait` 那一处残留面更大。到期整删：`run_dir_days` 缺省 30 天，孤儿 CLI 活过保留期而目录无活动没有现实触发面。候选：三处准入都改为 `workerConfirmedGone` + `cliGroupsConfirmedGone`（与 `admitScrub` 同源）；到期整删对「记录里的 CLI 仍活着」按 `workerStillAlive` 同样 kept | `src/trivium/run-protocol.ts` `cancelRun` / `waitRun`、`src/trivium/retention.ts` `pruneRunDirs` |
+ | EV-158 | **done**（2026-09-28，主题 `worker启动时刻规范化`（用户决策送审前已定；计划双审第 1 轮 run `20260928T110842Z` 三侧 `approve-with-nits`，9 条接受 8、驳回 1）：status.json 与锁文件另记规范化启动时刻 `worker_started_at_canonical` / `pid_started_at_canonical`（既有字段不变），身份读法收成 `processMatchesRecord`——有规范化只比它，没有退回缺省比较；八个消费方（含 `classifyLostCancel` / `lostWorkerGone` 与 `--cancel` 的「已不存在」分支、终态分支所依的 `workerConfirmedGone`）都经它；设计 v1.3.55。残余如实保留：升级窗口里旧版写下的记录与遗留锁在异环境下仍判错（与旧版相同）；回滚回到旧行为；同一秒内 pid 复用。）原登记：todo（2026-09-28 登记，CLI进程组记录计划双审 r1 CODEX-01 核实时发现，计划 r2 §7.3；实测；注记（2026-09-28，失联后取消挂住的worker 计划 r2 §7.3）：`--cancel` 的判格 `classifyLostCancel` 也消费该判据——`--cancel` 的环境与 `--start` 不同时，失联后仍挂着的 worker 判 `mismatch`、不对它发信号（打告警、让人换回 `--start` 的环境再跑），它名下记录里的 CLI 也不结束（代码双审 r1 CODEX-02）；`--wait` 的环境不同时则判 `pid_gone`、根本进不了那一格。修本条时一并复核） | **`worker_started_at` 对 TZ / 区域设置敏感：环境不同的进程之间，活着的 worker 会被判「不是同一进程」。**`--start` 以缺省环境取 worker 的 `ps -o lstart=` 写进 status.json，`--cancel`、`--wait`、会话启动清扫、`trivium scrub` 在各自环境里重取、按字符串比。实测同一进程：缺省 `Mon Sep 28 10:04:56 2026`、`TZ=UTC` 为 `02:04:56`、`TZ=Asia/Tokyo` 为 `11:04:56`、`LC_ALL=fr_FR.UTF-8` 为 `lun. 28 sept. …`、`LC_TIME=zh_CN.UTF-8` 为 `一  9月/28 …`。后果：环境不同 ⇒ `processAlive(..).sameProcess` 为假 ⇒ `--cancel` 当 worker 已不在（不对它发信号）、`workerConfirmedGone` 判「已不存在」⇒ **三处准入在 worker 还活着时抹凭据**；锁的 `pid_gone` 判定同理。**自 EV-154 起还多一个消费方**（CLI进程组记录代码双审 r1 GLM-02）：`--cancel` 的「已不存在」分支与终态早退分支据此按记录结束 CLI，环境错配时会对还活着的 worker 名下的 CLI 发信号（worker 随后看到 CLI 退出，可能重试或写 failed）——修本条时须一并复核这两处。CLI 进程组记录已改用 `processStartTime(pid, { canonical: true })`（`LC_ALL=C`、`TZ=UTC0`）。候选：worker 与锁的启动时刻同样改用规范化形态——要论证过渡（升级窗口里旧版写下的记录与新版读法不符，在跑的运行会全判「不是同一进程」；可在比对时两种形态都试） | `src/trivium/util/exec.ts` `processAlive` / `processStartTime`、`src/trivium/run-protocol.ts` `startRun`、`src/trivium/status.ts` `workerConfirmedGone`、`src/trivium/lock.ts` |
+ | EV-159 | **第一形态 done**（2026-09-28，主题 `失联worker退出后补收`（计划 r2，计划双审第 1 轮 run `20260928T142320Z`：codex `approve-with-nits`、gemini / glm `request-changes`，10 条（去重后 8 条）全接受）：`classifyLostCancel` 收窄 `no_identity`（pid 合法+两时刻缺失时改问 `processAlive(pid).alive`，不在则归 `gone`）；`--cancel` 终态分支新增 `gone` 格（`finalizeGoneWorker`），与 `alive` 格共用抽出的 `finalizeLostAndReclaimLock`，按 EV-142 前提补收 run.json / task.json 为 `failed`（`termination` 沿用 `worker_lost` / `heartbeat_stale`，不新增取值）、按 run_id+pid 复核回收锁；status.json 不写、闸门不动、凭据不抹；可重入；结论句一律只说「见上方输出」，不复述归档结果（避免可重入 / 归档缺失两种非错误跳过说假话）。`mismatch` 一律不补收。读数见 `doc/05_testing/REPORT_2026-09-28_lost_worker_gone_finalize.md`）。**第二形态 暂缓**（本主题计划 §3.6 论证：升级前旧版判失联、无 `lost` 字段的运行，其结构化特征——status.json 终态 + run.json 仍 running + worker 已不在——与「本版 worker 异常分支补收失败」逐位相同，判据不许读 message，无法区分；误写 `termination` 成因不可逆，风险不对称，维持现状） | **`--wait` 判 `heartbeat_stale` 之后 worker 已不在时，run.json 没有补收入口。**第一形态（已修）：worker 自己死了、被手工结束，或 `--cancel` 结束它之后、补收之前被中断——归 `gone` 格，补收为 `failed`。第二形态（暂缓）：升级前已被旧版 `--wait` 判失联、worker 还挂着的运行没有 `lost`，新版 `--cancel` 判 `none`、仍说「无需取消」，只能手工结束——不读 `message` 做提示（用户决策「只取结构化事实」），与「本版 worker 异常分支补收失败」结构化不可区分，暂不做 | `src/trivium/run-protocol.ts` `cancelRun`（终态分支）、`classifyLostCancel`、`finalizeLostAndReclaimLock`、`finalizeGoneWorker` |
+ | EV-160 | **done**（2026-09-29，主题 `心跳阈值事前告警`（用户决策送审前已定；计划双审第 1 轮 run `20260928T162126Z` 三侧 `approve-with-nits`，9 条全接受，r2 定稿））：心跳间隔常量挪到 `status.ts`（`WORKER_HEARTBEAT_MS`）、判据抽成 `staleThresholdWithinHeartbeat`（`s × 1000 ≤ 30 000`，不留余量），`--wait` 报错那一句改用它、输出逐字不变；新增只警告项「失联阈值」（`preflight.ts` `checkHeartbeatThreshold`）：预检 ④‴ 与 `startRun`（派生前，与副本源复查同一次汇总）各调一次，同步 `review --stage` 不调、`finished_inline` 仍为 `[]`；不拦截、配置契约不改；缺省值具名 `DEFAULT_HEARTBEAT_STALE_S`。去向：`(30 s, 60 s)` 不告警 → EV-162；锁的持有超时借用阈值 → EV-161；读数见 `doc/05_testing/REPORT_2026-09-29_heartbeat_threshold_warning.md`；2026-09-28 登记，失联后取消挂住的worker 计划双审 r1 CODEX-02 暂缓） | **`heartbeat_stale_s` 不大于工作进程心跳间隔（30 s）时，预检与 `--start` 都不告警。**配置只约束 `> 0`（`config.v2.json`），`HEARTBEAT_MS` 是 30 s 常量；这样配时每一轮都会被 `--wait` 判 `heartbeat_stale`，而自 EV-146 起失联报错会推荐 `--cancel`。EV-146 已在判失联那一刻的报错里点明「阈值不大于心跳间隔：健康的工作进程也会被判失联」；候选：预检与 `--start` 的 `warnings` 加一条（形状同既有警告，skill 已会原样转述）。不属 EV-146 | `src/trivium/preflight.ts`、`src/trivium/run-protocol.ts` `startRun` |
+@@ -260,7 +260,9 @@
+ | EV-162 | todo（2026-09-29 登记，心跳阈值事前告警计划 r2 §2.1 / §8 第 2 条，只登记、不建议做） | **`heartbeat_stale_s` 在 (30 s, 60 s) 时不告警。**阈值盖住了一个心跳周期、盖不住一次迟到或写失败的心跳（worker 的心跳写失败被 `catch` 吞掉）；风险取决于运行期负载与磁盘，配置层判不出来，并进 EV-160 那一条会让正文「每一轮都会越过阈值」与 `--wait` 报错那一句在这一段失实。缺省 120 与 EV-160 的出口句（调回 120 以上）已覆盖；这一段被判失联时 `--wait` 的判定依据行会当场列出心跳年龄、阈值与间隔。要做需另起一种措辞不同的告警（「一次心跳迟到就会被判」） | `src/trivium/preflight.ts` `checkHeartbeatThreshold`、`src/trivium/status.ts` `staleThresholdWithinHeartbeat` |
+ | EV-163 | todo（2026-09-29 登记，取消与失联的凭据准入核CLI计划 r2 §6.3 D7，暂缓） | **到期整删的工作进程一半对「终态而工作进程仍活」照删。**`pruneRunDirs` 的保留判据 `workerStillAlive` 对终态一律返回 false；`--wait` 判 `heartbeat_stale` 时正是把**活着的**工作进程写成 `failed`（EV-146 那一格）。挂住的工作进程若一直无人 `--cancel`，`run_dir_days` 过后到期整删会删掉它仍在用的运行目录。与 EV-157 同形（还在用的目录被删），但判的是工作进程而不是 CLI。候选：到期整删的工作进程一半改成 `workerConfirmedGone` 口径——要同时论证「status 读不到 / 非终态而拿不到 pid」的过期目录怎么收（按 `workerConfirmedGone` 它们永远删不掉），是整删语义的改动。现实触发面：一个挂住 30 天的工作进程 | `src/trivium/retention.ts` `pruneRunDirs` / `workerStillAlive` |
+ | EV-164 | **done**（2026-09-29，主题 `清扫输出失实文字`（用户解冻这两处输出、只改文字；计划双审第 1 轮 run `20260929T011315Z` 三侧 `approve-with-nits`，9 条接受 8、驳回 1，r2 定稿））：`cli.ts` 第四格之后的提示行改为「CLI 结束后再跑会重判；「记录读不懂」不会自愈，需把该侧 cli 改回 null（到期整删也会保留它）」；`USAGE` 里 `trivium scrub` 一节的动机句加限定「（那一轮记录里的审查员 CLI 仍在、判不了或读不懂时，到期也不删）」，仍是一行。行数、位置、触发条件、`--json`、退出码与其余输出逐字不变，判据与行为不改；会话启动提示第四格逐句核过、不失实、不改。新增 `test/integration/scrub-output-text.test.ts` T1～T7（经真实 bundle，stdout 整段逐字；T7 钉住会话启动第四格）；零配额验收对照旧构建 `171e38c`：`scrub` 人读输出与帮助只有这两对差异。**范围**（代码双审 r1 CODEX-01）：帮助那句只加了 CLI 那一格的限定；主句「不再回到那个仓库时，副本会一直躺到 run_dir_days 整删」本身另有失实成因（整删只在该项目再开会话时跑）→ EV-166，本条未改主句。读数见 `doc/05_testing/REPORT_2026-09-29_scrub_output_text.md`。原登记：todo（2026-09-29 登记，取消与失联的凭据准入核CLI计划 r2 §3.7 D3，计划双审 r1 GLM-01；待用户定） | **`trivium scrub` 人读提示里「或等 run_dir_days 整删」半句失实。**EV-157 起记录读不懂的运行目录到期也不删（用户决策：判不了或读不懂的到期整删当作仍在用），而 `cli.ts` 第四格之后那一行仍写「「记录读不懂」不会自愈，需把该侧 cli 改回 null 或等 run_dir_days 整删」。那一行属清扫子命令的人读输出，用户送审前定了「清扫子命令的输出格式不改、新增告警之外的输出逐字不变」；冲突双方都成立（审查员倾向改准），解冻权在用户，本主题逐字保留、代码旁注明。注释（`hooks.ts`、`run-protocol.ts`、`retention.ts`）、MANUAL、RUNBOOK、主设计的同义说法已改准。**同一处置的第二处**（代码双审 r1 CODEX-04）：`trivium scrub --help` 的动机句「不再回到那个仓库时，副本会一直躺到 retention.run_dir_days 整删」对这些目录同样不成立（到期也保留），同属清扫子命令的输出面，逐字保留、代码旁注明。候选：把半句改成「（到期整删也会保留它）」、帮助那句加同样的限定，行数、位置、触发条件不变；验收要把这两处加进允许差异 | `src/trivium/cli.ts`（`trivium scrub` 第四格之后的提示行；`USAGE` 里 `trivium scrub` 一节的动机句） |
+-| EV-165 | todo（2026-09-29 登记，取消与失联的凭据准入核CLI代码双审 r1 CODEX-01；**待用户定**） | **凭据准入对「组长已退出、组员仍在」的 CLI 组放行。**`judgeCliGroup` 只看组长：组长不在即 `gone`，于是会话启动清扫、`trivium scrub`、`--cancel`、`--wait` 的凭据准入与到期整删都放行——组员若仍在用副本（或往回写）会照抹。`--cancel` 在同一次调用里已数出 `membersLeft > 0`（`terminateRecordedCliGroups` 组长确认退出后数成员），但只用于告警与 `settledCliSides` 不清记录，与准入口径有意分叉（EV-157 用户决策「准入同源、`admitScrub` 行为不变」）。这一格是 EV-154 用户决策 4 如实保留的（当时论证的是「不据此发信号」）；进程组在组里还有成员时组号不会被复用，所以「组长已退而组号下还有成员」必是原组的后代，挡住准入不需要去猜。候选：`judgeCliGroup` 在组长不在时按 `ps -axo pgid=,stat=` 数一次非僵尸成员，非零判一个新的阻挡态；代价是组长不在时多一次 `ps`（会话启动清扫路径也要付），并同时改 `admitScrub`、到期整删与 `--cancel` / `--wait` 的行为 | `src/trivium/status.ts` `judgeCliGroup` / `cliGroupsConfirmedGone`、`src/trivium/run-protocol.ts` `settledCliSides` |
++| EV-165 | **done**（2026-09-29，主题 `组长已退组员仍在的准入`（计划双审第 1 轮 run `20260929T025220Z`：三侧 `request-changes`，15 条含 1 阻断、6 重要、6 次要、1 吹毛求疵全接受，r2 定稿））：`CliGroupVerdict` 新增 `orphaned`（组长不在、组号下有非僵尸成员）/ `orphan_unverifiable`（组长不在、成员计数取不到）；`judgeCliGroup` 组长确认不在时改按 `processGroupMemberCount` 判（抽出 `leaderGone` 闭包，`!alive` 分支与 `now===null` 复检分支共用同一判据——r1 曾漏了后者，AGY-01 阻断核出）；`cliGroupsConfirmedGone` 新增两分支生成阻挡项（`orphan_unverifiable` 复用 `kind:'unverifiable'`），并新增可选第二参数穿透 `memberCountOf`（供测试零配额构造）；`terminateRecordedCliGroups` 对 `alive`/`orphaned` 都发组信号（同一条 `isGone`：`gone`/`reused` 才算已不在，`kill(-pgid,sig)` 对组员仍在的组号仍然有效）；`settledCliSides`、`--wait` 的 `--cancel` 出口提示同步纳入 `orphaned`。判据单一来源，四处既有消费方（会话启动清扫、`trivium scrub`、到期整删、`--wait` 判失联的准入本身）零改动、经 `scrubAdmission`/`cliGroupsConfirmedGone` 自动继承。前提依据：零配额实测（`doc/05_testing/evidence/orphan-cli-admission-20260929/`）连续造 30/40 个孤儿组、派生进程到 pid 空间回绕一整圈，零个新进程拿到仍有成员的组号——推翻 EV-154 用户决策 4「不去猜组号是否已被接手」的保守前提。撤回 EV-154 决策 4 的一半：`--cancel` 现在对孤儿组也按组结束（发信号前复核组长仍不在、组号下仍有成员）；`--wait` 与会话启动清扫仍不结束任何进程（决策未变）。单元测试新增 U0/U1′/U3′/U4′/U5″/U6′、既有 `cli-group-record.test.ts` U15 变体按新契约重写（组长退出但成员仍在 ⇒ 升级 SIGKILL 而非停在 SIGTERM，AGY-03 核出遗漏）；集成 K5/K6（真实 `hang_cli` 桩，先 `killWorker` 再单 pid SIGKILL 组长造孤儿组——worker 存活时杀组长会被 `liveTrees` 的观察者清记录，CODEX-01≡CODEX-02≡AGY-02≡GLM-03 核出 r1 前提错误）；源码变异 9/9；零配额验收对旧构建 `eeceeaa`：新版孤儿组不抹不删、`--cancel` 结束组员后照抹，旧版照抹照删、组员遗留继续烧配额，其余输出与退出码逐字相同。**如实登记两项超范围、暂缓**：`liveTrees` 只跟踪直接子进程、对孙辈无感知（worker 存活期间组长退出会被清记录，`orphaned` 判据够不到那一格；不影响凭据安全，因为准入先判 `workerConfirmedGone`）→ EV-168；`processGroupMemberCount` 的僵尸排除逻辑无专门测试（EV-154 遗留）→ EV-169。读数见 `doc/05_testing/REPORT_2026-09-29_orphan_cli_admission.md`。原登记：todo（2026-09-29 登记，取消与失联的凭据准入核CLI代码双审 r1 CODEX-01；待用户定） | **凭据准入对「组长已退出、组员仍在」的 CLI 组放行。**`judgeCliGroup` 只看组长：组长不在即 `gone`，于是会话启动清扫、`trivium scrub`、`--cancel`、`--wait` 的凭据准入与到期整删都放行——组员若仍在用副本（或往回写）会照抹。`--cancel` 在同一次调用里已数出 `membersLeft > 0`（`terminateRecordedCliGroups` 组长确认退出后数成员），但只用于告警与 `settledCliSides` 不清记录，与准入口径有意分叉（EV-157 用户决策「准入同源、`admitScrub` 行为不变」）。这一格是 EV-154 用户决策 4 如实保留的（当时论证的是「不据此发信号」）；进程组在组里还有成员时组号不会被复用，所以「组长已退而组号下还有成员」必是原组的后代，挡住准入不需要去猜。候选：`judgeCliGroup` 在组长不在时按 `ps -axo pgid=,stat=` 数一次非僵尸成员，非零判一个新的阻挡态；代价是组长不在时多一次 `ps`（会话启动清扫路径也要付），并同时改 `admitScrub`、到期整删与 `--cancel` / `--wait` 的行为 | `src/trivium/status.ts` `judgeCliGroup` / `cliGroupsConfirmedGone`、`src/trivium/run-protocol.ts` `settledCliSides` |
++| EV-168 | todo（2026-09-29 登记，组长已退组员仍在的准入计划 r2 §4，代码双审 CODEX-01；暂缓） | **worker 存活期间的自身子进程退出盲区：`liveTrees` 只跟踪直接子进程，对孙辈无感知。**`run()` 的 `killTree` 跟踪面（`util/exec.ts` `liveTrees`）以派生的直接子进程 pid 为键，`child.once('exit')` 一触发就删除条目、通知观察者；worker 存活期间据此把该侧 status.json 的 `cli` 字段清成 `null`（`syncCliRecords`）——这只认「我自己派生的那一个进程」是否退出，完全不知道它是否有存活的子孙。只要 worker 还在，CLI 组长（如 `sh`）一退出，记录就没了，无论 `sleep` 之类的孙辈是否还在跑，EV-165 的 `orphaned` 判据永远够不到这一格（它只能判定「记录仍在」时的现状）。**不会导致凭据被误抹**：五处准入都先判 `workerConfirmedGone`，worker 活着时压根不会碰 CLI 一半。但意味着：worker 之后如果也死了（此时记录已是 `null`），这些孙辈会成为「记录里从未存在过」的进程，之后的清扫、到期整删都意识不到它们，也不会被 EV-165 的新判据挡住。候选：把 `liveTrees` 的跟踪粒度从单个 pid 改为按进程组（`killTree` 派生时记录组号而非仅 pid，退出判据也从「这一个 pid 是否还在」改为「这个组号下是否还有非僵尸成员」）——改动面涉及 `liveTrees` 的核心数据结构与四个适配器的派生路径，超出「只改 `judgeCliGroup` 与 `cliGroupsConfirmedGone`」的范围，单独论证 | `src/trivium/util/exec.ts` `liveTrees` / `run()` 的 `child.once('exit')` 处理 |
++| EV-169 | todo（2026-09-29 登记，组长已退组员仍在的准入计划 r2 §4，代码双审 AGY-05；暂缓） | **`processGroupMemberCount` 的僵尸排除逻辑没有专门测试（EV-154 遗留，非本轮引入）。**该函数按 `ps -axo pgid=,stat=` 排除 `STAT` 列以 `Z` 开头的僵尸进程，但目前的用例都只验证「有非僵尸成员」或「组已空」两种边界，没有一条用例构造出「组里只剩僵尸」这一具体形态来验证排除逻辑本身生效。真实僵尸态在 macOS 上窗口短且不确定（受 launchd 回收孤儿进程的速度影响，`scrub-admission.test.ts` 的 `goneGroup` 夹具历史上已经因组空判定的时序问题红过一次），零配额可靠构造有困难。EV-165 的 `Hz` 格改用 `memberCountOf` 依赖注入覆盖「成员数=0」这个契约点在 `judgeCliGroup` 里的处理，绕开了这个函数本身。候选：研究 macOS 上可靠构造僵尸态的方法（如父进程故意不回收子进程一段时间），或改用真实 `ps` 输出的录制样本做 `processGroupMemberCount` 的单元测试 | `src/trivium/util/exec.ts` `processGroupMemberCount` |
+ | EV-166 | todo（2026-09-29 登记，清扫输出失实文字代码双审 r1 CODEX-01；**待用户定**） | **「不再回到那个仓库时，副本会一直躺到 run_dir_days 整删」这个主句本身失实。**到期整删的唯一入口是会话启动 Hook（`hooks.ts` 调 `pruneRunDirs`，传 `ctx.projectRoot`），论域只有本项目的桶（`retention.ts` `path.join(runRoot(cfg), repoId(projectRoot))`）；`trivium scrub` 只抹凭据、不删目录。所以不回到那个仓库，那个桶就永远不会被整删——副本（`trivium scrub` 没跑过时）与运行目录一直在盘上。EV-164 只给这句加了 CLI 那一格的限定（用户给定的限定语），没有改主句；带安全含义：读者可能以为废弃仓库的副本 30 天后随目录消失。两种走向待定：① 只改文字（如「不再回到那个仓库就不会有任何自动清理」），同步下列各处；② 让跨仓整删真的存在（行为面改动，要论证跨仓删别人目录的越权问题——EV-33 当初正因此只抹不删） | `src/trivium/cli.ts`（`USAGE` 里 `trivium scrub` 一节的动机句）、MANUAL :374、RUNBOOK :224、`src/trivium/retention.ts` `scrubAllRunRoot` 文档块、本表 EV-33 原文 |
+ | EV-167 | todo（2026-09-29 登记，清扫输出失实文字代码双审 r1 GLM-02，暂缓） | **设计文档索引的版本指针过期。**`doc/02_design/README.md` 写主设计 v1.3.43、LLD v1.1.3，实际已是 v1.3.59 / v1.1.17；v1.3.44 起的各主题都没同步它——它不在任何主题的「文档同步」清单里，只能靠记性。候选：索引不写死版本号，或由脚本对账 | `doc/02_design/README.md` |
+ 
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index e6be229d..31b95d06 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -788,14 +788,18 @@ export interface RecordedCliOutcome {
+  * 按 status.json 的逐侧记录结束审查员 CLI 进程组（EV-154，CLI进程组记录计划 r2 §4.4）。`--cancel` 在 worker 跑不到
+  * 自己的 SIGTERM 处理器的那几格用它：worker 被升级 SIGKILL、worker 此前已不在（含 status 已被 `--wait` 判失联写成终态）。
+  *
+- * - **只对判 `alive` 的组发信号**（用户决策 4：组长活着且规范化启动时刻相符）；`reused` / `unverifiable` / 形状坏的一个信号都不发。
++ * - **对判 `alive` 或 `orphaned` 的组发信号**（EV-165 起：组长活着且规范化启动时刻相符，或组长已退出但组号下还有
++ *   非僵尸成员——两者都通过组号仍然有效）；`reused` / `unverifiable` / `orphan_unverifiable` / 形状坏的一个信号都不发。
+  * - 宽限链与 worker 处理器同一组常量（`WORKER_TREE_GRACE_MS` → SIGKILL → `WORKER_TREE_KILL_WAIT_MS`，用户决策 5），
+  *   `isGone` 每次发信号前复核组长与启动时刻；各组并行（串行时两组都忽略 SIGTERM 会让耗时翻倍，EV-152 AGY-05）。
+- * - **`isGone` 只认 `gone` 与 `reused`**（代码双审 r1 GLM-01）：入判 `alive` 时身份已确认，轮询中组长仍活着就不可能被复用，
+- *   此时 `unverifiable` 只意味着 `ps` 这一次没取到，继续按原链升级；原先写成 `!== 'alive'`，`ps` 瞬时失败会提前收手、
+- *   不升级 SIGKILL，随后「组长已退出」的告警与事实不符。入判就不是 `alive` 的记录在上面一步已返回，一个信号都不发。
+- * - `isGone` 按组长判：组长服从 SIGTERM 而组员忽略时不升级。所以收尾后数一次组成员，交给调用方如实报——
+- *   **不据此再发信号**：组长一退出就判不了组号是否已被别的组接手（决策 4「不去猜」）。
++ * - **`isGone` 只认 `gone` 与 `reused`**（代码双审 r1 GLM-01）：入判 `alive` 或 `orphaned` 时身份已确认，轮询中组号
++ *   仍有非僵尸成员就不可能被复用（EV-165 实测），此时 `unverifiable` / `orphan_unverifiable` 只意味着 `ps` 这一次
++ *   没取到，继续按原链升级；原先写成 `!== 'alive'`，`ps` 瞬时失败会提前收手、不升级 SIGKILL，随后「组长已退出」的
++ *   告警与事实不符。入判就不是 `alive`/`orphaned` 的记录在上面一步已返回，一个信号都不发。
++ * - `isGone` 对 `alive` 来源按组长判：组长服从 SIGTERM 而组员忽略时不升级（这一格 `judge` 会返回 `orphaned`，`isGone`
++ *   仍为假，继续升级——EV-165 起「组长退出、组员忽略」不再是终止条件，见下）。对 `orphaned` 来源，组长本来就不在，
++ *   `isGone` 等的是成员数归零（`gone`）或组号被复用（`reused`，理论上因组员仍在而不会发生，见 EV-165 实测）。
++ *   收尾后数一次组成员，交给调用方如实报——组员仍未清零（宽限耗尽仍未确认退出）时走既有「未能确认退出」告警。
+  */
+ export async function terminateRecordedCliGroups(
+   s: RunStatus | null,
+@@ -813,7 +817,7 @@ export async function terminateRecordedCliGroups(
+   const groups = await Promise.all(
+     records.map(async (r): Promise<RecordedCliGroupOutcome> => {
+       const verdict = await judge(r);
+-      if (verdict !== 'alive') {
++      if (verdict !== 'alive' && verdict !== 'orphaned') {
+         return { side: r.side, pgid: r.pgid, verdict, signals: [], gone: verdict === 'gone', membersLeft: null };
+       }
+       const t = await terminateProcessGroup(r.pgid, {
+@@ -859,6 +863,10 @@ function reportRecordedCliGroups(r: RecordedCliOutcome, quietWhenEmpty: boolean,
+       warn(`${g.side} 侧审查员 CLI 进程组 ${g.pgid} 的启动时刻没记下，判不了是不是同一进程，不发信号——请用 ps 核对`);
+       continue;
+     }
++    if (g.verdict === 'orphan_unverifiable') {
++      warn(`${g.side} 侧审查员 CLI 进程组 ${g.pgid} 的组长已退出，组里的非僵尸成员数取不到，判不了是否还有遗留，不发信号——请用 ps 核对`);
++      continue;
++    }
+     step(`按记录结束审查员 CLI：${g.side} 侧进程组 ${g.pgid}（${g.signals.join('、') || '未发信号'}）`);
+     if (!g.gone) warn(`${g.side} 侧审查员 CLI 进程组 ${g.pgid} 未能确认退出——请用 ps 核对`);
+     else if (g.membersLeft !== null && g.membersLeft > 0) {
+@@ -874,17 +882,19 @@ function reportRecordedCliGroups(r: RecordedCliOutcome, quietWhenEmpty: boolean,
+ }
+ 
+ /**
+- * 已确认结束、可以从 status.json 清掉的侧记录（AGY-02）：判 gone 的，或发过信号后组长确认退出且组里没有遗留成员的。
++ * 已确认结束、可以从 status.json 清掉的侧记录（AGY-02）：判 gone 的，或发过信号后组长（`alive` 来源）／组号
++ * （`orphaned` 来源）确认清空且组里没有遗留成员的。
+  *
+- * **与凭据准入的口径有意分叉**（取消与失联的凭据准入核CLI代码双审 r1 CODEX-01）：这里要 `membersLeft === 0` 才清记录，
+- * 而 `cancelRun` 挂载点 ③ 的 `scrubAdmission` 只按组长判（`judgeCliGroup`），组长已退出而组员还在时照样放行抹副本。
+- * `membersLeft` 只用于告警与是否清记录；准入与 `admitScrub`、到期整删同源（用户决策），「组长已退、组员仍在」是 EV-154
+- * 用户决策 4 如实保留的一格。要让准入也挡住这一格，须改 `judgeCliGroup`、四处一起变——见 BACKLOG EV-165。
++ * **已与凭据准入的口径收口**（EV-165）：`judgeCliGroup` 现在同时判组长与非僵尸成员数，`orphaned` 与准入侧的
++ * `cliGroupsConfirmedGone` 用的是同一个判据，不再像 EV-154 时那样「组长已退、组员仍在」被准入放行、这里却要
++ * 求成员归零才清记录——两处现在口径一致：只有组真的确认清空（`gone`）才会既放行抹除凭据、也清掉记录。
+  */
+ function settledCliSides(r: RecordedCliOutcome | null): Map<CriticId, number> {
+   const m = new Map<CriticId, number>();
+   for (const g of r?.groups ?? []) {
+-    if (g.verdict === 'gone' || (g.verdict === 'alive' && g.gone && g.membersLeft === 0)) m.set(g.side, g.pgid);
++    if (g.verdict === 'gone' || ((g.verdict === 'alive' || g.verdict === 'orphaned') && g.gone && g.membersLeft === 0)) {
++      m.set(g.side, g.pgid);
++    }
+   }
+   return m;
+ }
+@@ -1265,11 +1275,13 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
+       if (!adm.admit) {
+         scrubNote = `\n  凭据副本未抹：${scrubHoldWhy(adm)}（${reading.reason}），留给会话启动清扫`;
+         /*
+-         * 出口（代码双审 r1 CODEX-02）：会话启动清扫不结束进程，记录里仍在的 CLI 只有 `--cancel` 能按记录结束——终态早退分支对
+-         * 「工作进程确认已不在且有记录」逐组结束（EV-154 D3）。只对判「仍在」的组成立：判不了、读不懂的 `--cancel` 同样不发信号，
+-         * 那两种时不给这句。本命令仍不结束任何进程。
++         * 出口（代码双审 r1 CODEX-02；EV-165 起把 `orphaned` 也算进「--cancel 能处理」）：会话启动清扫不结束进程，
++         * 记录里仍在的 CLI 只有 `--cancel` 能按记录结束——终态早退分支对「工作进程确认已不在且有记录」逐组结束
++         * （EV-154 D3），组长已退出但组号下还有非僵尸成员的组（`orphaned`）同样按组结束（EV-165）。只对判「仍在」
++         * 或「组长已退、组员仍在」的组成立：判不了、读不懂的 `--cancel` 同样不发信号，那两种时不给这句。
++         * 本命令仍不结束任何进程。
+          */
+-        if (adm.cli?.blockers.some((b) => b.kind === 'alive')) {
++        if (adm.cli?.blockers.some((b) => b.kind === 'alive' || b.kind === 'orphaned')) {
+           scrubNote +=
+             `\n  其中仍在的审查员 CLI 可用 trivium review --cancel ${runId} 按记录结束（本命令不结束任何进程）；` +
+             '结束之后下一次会话启动清扫会重判，放行即抹副本';
+@@ -1798,7 +1810,9 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
+    * 已结束的组判 gone 放行；判不了、读不懂（没发信号）与未确认退出的组挡住——它们不在 settledCliSides 里，
+    * 下面收尾那次 patchStatus 不清，原样留给会话启动清扫重判。
+    * 归档收尾只看 worker 一半（`adm.worker`，计划 r2 D5）：run.json 的 cancelled 说的是 worker 的事实。
+-   * 准入只按组长判：上面算出的 `membersLeft > 0`（组长已退、组员仍在）不挡准入——与 `settledCliSides` 有意分叉，见其文档块与 EV-165。
++   * 已收口（EV-165）：`judgeCliGroup` 现在同时判组长与非僵尸成员数，组长已退出但组号下还有非僵尸成员的组
++   * （`orphaned`）与准入侧同源阻挡，不再与 `settledCliSides` 分叉——上面已经按组结束过这类组，这里的复判
++   * 读到的是结束之后的事实。
+    */
+   const adm = await scrubAdmission(await readStatus(runDir), pid);
+   const goneNow = adm.worker;
+diff --git a/src/trivium/status.ts b/src/trivium/status.ts
+index f2fcbf83..2998c14e 100644
+--- a/src/trivium/status.ts
++++ b/src/trivium/status.ts
+@@ -16,7 +16,9 @@ import { promises as fs } from 'node:fs';
+ import type { CriticId, Stage } from './types.js';
+ import { writeAtomic, exists } from './util/fsx.js';
+ import { RUN_DIR_FILES } from './run-files.js';
+-import { processAlive, processMatchesRecord, processStartTime, type RecordedStart, type TrackedTree } from './util/exec.js';
++import {
++  processAlive, processGroupMemberCount, processMatchesRecord, processStartTime, type RecordedStart, type TrackedTree,
++} from './util/exec.js';
+ 
+ export type RunPhase =
+   | 'starting'
+@@ -278,16 +280,35 @@ export function rawCliOf(s: RunStatus | null, side: CriticId): string {
+   return t.length > 200 ? `${t.slice(0, 200)}…` : t;
+ }
+ 
+-export type CliGroupVerdict = 'alive' | 'gone' | 'reused' | 'unverifiable';
++export type CliGroupVerdict = 'alive' | 'gone' | 'reused' | 'unverifiable' | 'orphaned' | 'orphan_unverifiable';
+ 
+ /**
+- * 一条 CLI 记录现在指向什么（用户决策 4：组长活着且启动时刻相符才算同一组）：
+- * 组长不在 ⇒ `gone`；在而 `started_at` 为 null ⇒ `unverifiable`；在而规范化启动时刻不符（或取不到）⇒ `reused`；相符 ⇒ `alive`。
++ * 一条 CLI 记录现在指向什么（EV-165 起：组长不在时不再直接放行，改按组号下的非僵尸成员数判）：
++ * 组长在——`started_at` 为 null ⇒ `unverifiable`；规范化启动时刻不符（或取不到、且复检后组长仍在）⇒ `reused`；
++ * 相符 ⇒ `alive`。组长不在（含「取不到启动时刻、复检发现组长已退出」这条路径，两者是同一个事实、必须共用同一判据）——
++ * 非僵尸成员数为 0 ⇒ `gone`（视同已结束）；> 0 ⇒ `orphaned`（组号仍有效，只是组长换了后代占着，不是新的复用）；
++ * 成员数取不到（`ps` 失败）⇒ `orphan_unverifiable`（判不了，按挡住处理，不去猜）。
++ *
++ * 组员仍在时组号不会被复用（零配额实测，`doc/05_testing/evidence/orphan-cli-admission-20260929/`：连续造 30/40 个
++ * 「组长已退、只剩带标记非僵尸成员」的孤儿组，派生进程到 pid 空间回绕一整圈，零个新进程拿到仍有成员的组号）——
++ * 这正是 EV-154 用户决策 4「组长已退出而组员还在的那一格如实保留……不去猜组号是否已被接手」的前提被推翻之处：
++ * 不需要猜，组号下的非僵尸成员必是原组的后代。
+  *
+  * 不借 `processAlive` 的 `sameProcess`：`started_at` 为 null 时它给 true（等于「缺失 = 相符」），而且它取启动时刻不带
+  * 规范化环境。`unverifiable` 在 pid 被复用且占有者活着期间一直是 `unverifiable`——没有比对基准就判不出 `reused`（AGY-01）。
+  */
+-export async function judgeCliGroup(r: CliGroupRecord): Promise<CliGroupVerdict> {
++export async function judgeCliGroup(
++  r: CliGroupRecord,
++  o: { memberCountOf?: (pgid: number) => Promise<number | null>; out?: { membersLeft?: number | null } } = {},
++): Promise<CliGroupVerdict> {
++  const memberCountOf = o.memberCountOf ?? processGroupMemberCount;
++  /** 组长确认不在（无论从哪条路径发现的）：按非僵尸成员数判 gone / orphaned / orphan_unverifiable，只数、不猜 */
++  const leaderGone = async (): Promise<CliGroupVerdict> => {
++    const n = await memberCountOf(r.pgid);
++    if (o.out) o.out.membersLeft = n;
++    if (n === null) return 'orphan_unverifiable';
++    return n > 0 ? 'orphaned' : 'gone';
++  };
+   let alive: boolean;
+   try {
+     process.kill(r.pgid, 0);
+@@ -295,15 +316,15 @@ export async function judgeCliGroup(r: CliGroupRecord): Promise<CliGroupVerdict>
+   } catch (e) {
+     alive = (e as NodeJS.ErrnoException).code === 'EPERM';
+   }
+-  if (!alive) return 'gone';
++  if (!alive) return leaderGone();
+   if (r.started_at === null) return 'unverifiable';
+   const now = await processStartTime(r.pgid, { canonical: true });
+   if (now === null) {
+-    // 取 ps 的这一刻进程恰好退出，或 ps 本身失败：再看一次存活，仍在就判不了
++    // 取 ps 的这一刻进程恰好退出，或 ps 本身失败：再看一次存活，确认组长已不在就与 !alive 分支同源处理
+     try {
+       process.kill(r.pgid, 0);
+     } catch (e) {
+-      if ((e as NodeJS.ErrnoException).code !== 'EPERM') return 'gone';
++      if ((e as NodeJS.ErrnoException).code !== 'EPERM') return leaderGone();
+     }
+     return 'unverifiable';
+   }
+@@ -315,15 +336,15 @@ export interface CliBlocker {
+   side: CriticId;
+   /** 形状坏的记录没有可信的组号，为 null */
+   pgid: number | null;
+-  kind: 'alive' | 'unverifiable' | 'malformed';
++  kind: 'alive' | 'orphaned' | 'unverifiable' | 'malformed';
+   /** 单条的事实句：哪一侧、哪个进程组、为什么挡住 */
+   detail: string;
+ }
+ 
+ /**
+- * 凭据清扫准入里「CLI 那一半」（EV-38，CLI进程组记录计划 r2 §4.5）：任一记录判 `alive` 或 `unverifiable`、
+- * 或有形状坏的记录 ⇒ 不可抹。`reused` 与 `gone` 放行——前者组号已不是那一组，后者组长已退出
+- * （组长已退出而组员还在的那一格如实保留，用户决策 4）。
++ * 凭据清扫准入里「CLI 那一半」（EV-38，CLI进程组记录计划 r2 §4.5；EV-165 起 `orphaned` 同样阻挡）：任一记录判
++ * `alive`、`orphaned`、`orphan_unverifiable`（按 `unverifiable` 归档），或有形状坏的记录 ⇒ 不可抹。`reused` 与
++ * `gone` 放行——前者组号已不是那一组，后者组长已退出且组号下已没有非僵尸成员（视同已结束）。
+  *
+  * **唯一来源**（EV-157）：凭据抹除的三处准入经 `scrubAdmission` 问它，`pruneRunDirs` 的到期整删直接问它。
+  * 逐条判完、收齐 `blockers`（形状坏的在前，其余按记录顺序），供 `--cancel` / `--wait` 的告警逐侧列出；
+@@ -331,16 +352,23 @@ export interface CliBlocker {
+  * 用户决策「清扫子命令的输出格式不改」（计划 r2 §3.1）。
+  * 形状坏的措辞因此有两份，是有意的（代码双审 r1 CODEX-06）：`why` 把全部形状坏的侧合成一句（旧文字，冻结面），
+  * `detail` 是新告警里的逐侧单句；二者都由 scrub-admission U1 逐字钉住。
++ * `orphan_unverifiable` 复用 `kind: 'unverifiable'`——对下游（`--cancel` 出口提示、清扫的 `deferredCli`）处置相同，
++ * 只有 `detail` 文案不同（组长已退出，成员数取不到，与「组长在、启动时刻没记下」是两种不同的判不了成因）。
++ *
++ * `o.memberCountOf` 只为单测零配额构造 `orphan_unverifiable` 而开（穿到 `judgeCliGroup`，见其文档块），
++ * 生产路径不传、缺省走真实 `processGroupMemberCount`。
+  */
+ export async function cliGroupsConfirmedGone(
+   s: RunStatus | null,
++  o: { memberCountOf?: (pgid: number) => Promise<number | null> } = {},
+ ): Promise<{ gone: boolean; why: string; blockers: CliBlocker[] }> {
+   const { records, malformed } = cliRecordsOf(s);
+   const blockers: CliBlocker[] = malformed.map((side) => ({
+     side, pgid: null, kind: 'malformed', detail: `${side} 侧的 CLI 记录读不懂（${rawCliOf(s, side)}）：判不了`,
+   }));
+   for (const r of records) {
+-    const v = await judgeCliGroup(r);
++    const out: { membersLeft?: number | null } = {};
++    const v = await judgeCliGroup(r, { out, ...(o.memberCountOf ? { memberCountOf: o.memberCountOf } : {}) });
+     if (v === 'alive') {
+       blockers.push({ side: r.side, pgid: r.pgid, kind: 'alive', detail: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 仍在` });
+     } else if (v === 'unverifiable') {
+@@ -348,6 +376,16 @@ export async function cliGroupsConfirmedGone(
+         side: r.side, pgid: r.pgid, kind: 'unverifiable',
+         detail: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 仍有活进程、启动时刻没记下：判不了`,
+       });
++    } else if (v === 'orphaned') {
++      blockers.push({
++        side: r.side, pgid: r.pgid, kind: 'orphaned',
++        detail: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 的组长已退出，组里还有 ${out.membersLeft} 个成员`,
++      });
++    } else if (v === 'orphan_unverifiable') {
++      blockers.push({
++        side: r.side, pgid: r.pgid, kind: 'unverifiable',
++        detail: `${r.side} 侧审查员 CLI 进程组 ${r.pgid} 的组长已退出，组里的非僵尸成员数取不到：判不了`,
++      });
+     }
+   }
+   if (blockers.length === 0) return { gone: true, why: '记录里没有仍在的审查员 CLI', blockers };
+diff --git a/test/integration/gate-loop.test.ts b/test/integration/gate-loop.test.ts
+index 64cfcc15..08bc8ff7 100644
+--- a/test/integration/gate-loop.test.ts
++++ b/test/integration/gate-loop.test.ts
+@@ -3159,6 +3159,24 @@ async function endGroupsAndWait(groups: number[]): Promise<void> {
+   assert.deepEqual(groups.map((g) => groupMemberCount(g)), [0, 0], '两组应已结束（用例前提）');
+ }
+ 
++/**
++ * 单 pid（非组）SIGKILL 组长，制造「组长已退、组员仍在」（EV-165 K5/K6）——只杀 `pgid` 这一个进程，不带负号；
++ * `hang_cli` 桩以 `sh`（组长）+ `sleep`（子进程，同组）两层构造，杀掉 `sh` 不影响 `sleep`。
++ *
++ * **前提是 worker 已经不在**（计划双审 r1 CODEX-01≡CODEX-02≡AGY-02≡GLM-03）：worker 存活时，它跟踪的直接子进程
++ * （这里的 `sh`）一退出就会触发 `liveTrees` 的 `'exit'` 监听、把该侧记录清成 null——组员是否存活与此无关，worker 完全
++ * 不知道孙辈的存在。所以本函数只能在 `killWorker` 之后调用，让记录原样留在 status.json 上。
++ */
++async function killLeaderOnly(pgid: number): Promise<void> {
++  try {
++    process.kill(pgid, 'SIGKILL');
++  } catch {
++    /* 已不在 */
++  }
++  for (let i = 0; i < 100 && !pidGone(pgid); i++) await new Promise((r) => setTimeout(r, 50));
++  assert.ok(pidGone(pgid), `组长 ${pgid} 应已不在（用例前提）`);
++}
++
+ test('EV-157 K1：worker 已死而两侧 CLI 仍活 ⇒ --wait 判失联不抹、正文逐侧带组号、不结束进程、记录留存；会话启动清扫同样挡住；CLI 结束后清扫即抹', { skip: bundleMissing && bundleSkipReason }, async () => {
+   const r = await startWithRecordedClis(HANG2);
+   try {
+@@ -3267,3 +3285,88 @@ test('EV-157 K4：worker 已死、两侧 CLI 仍活 ⇒ --cancel 按记录结束
+     cleanupGroups(r);
+   }
+ });
++
++/*
++ * ── EV-165：组长已退组员仍在的准入（组长已退组员仍在的准入计划 r2 §3.2 K5/K6）──
++ *
++ * 前提沿用 K1～K4 的夹具，额外在 worker 已死之后对 glm 侧单 pid SIGKILL 组长（`gemini` 侧组长保持存活作对照）：
++ * 记录原样留在 status.json 上（组长已死这一刻 worker 已经不在，不会有观察者把它清成 null），组号下的 `sleep`
++ * 仍然存活——这正是 `judgeCliGroup` 新增的 `orphaned` 阻挡态。
++ */
++
++test('EV-165 K5：worker 已死、glm 侧组长已退但组员仍在（gemini 侧组长仍活）⇒ --wait 判失联两侧都不抹、glm 侧正文带精确成员数、都不结束进程；会话启动清扫同样挡住；组员结束后清扫即抹', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const r = await startWithRecordedClis(HANG2);
++  try {
++    assertRecorded(r);
++    await killWorker(r.js.worker_pid);
++    const carrier = await plantCarrier(r.js.run_dir);
++    const glmPgid = r.rec.glm!.pgid;
++    const gemPgid = r.rec.gemini!.pgid;
++
++    await killLeaderOnly(glmPgid);
++    let n = groupMemberCount(glmPgid);
++    for (let i = 0; i < 40 && n === 0; i++) {
++      await new Promise((res) => setTimeout(res, 50));
++      n = groupMemberCount(glmPgid);
++    }
++    assert.ok(n > 0, `glm 侧组 ${glmPgid} 应仍有非僵尸成员（用例前提）：${n}`);
++    assert.equal(groupMemberCount(gemPgid), 2, 'gemini 侧组长应仍活着（对照，用例前提）');
++
++    const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '20'], null, 60_000);
++    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
++    const out = w.stdout + w.stderr;
++    assert.match(out, /失联（pid_gone）/);
++    const line = out.split('\n').find((l) => l.includes('凭据副本未抹')) ?? '';
++    assert.ok(
++      line.includes(`glm 侧审查员 CLI 进程组 ${glmPgid} 的组长已退出，组里还有 ${n} 个成员`),
++      `glm 侧要带「组长已退出」与精确成员数\n${out}`,
++    );
++    assert.ok(line.includes(`gemini 侧审查员 CLI 进程组 ${gemPgid} 仍在`), `gemini 侧仍走既有 alive 文案\n${out}`);
++    assert.match(
++      out,
++      new RegExp(`其中仍在的审查员 CLI 可用 trivium review --cancel ${r.js.run_id} 按记录结束`),
++      '出口提示对 alive 与 orphaned 都成立',
++    );
++    assert.ok(await carrierExists(carrier), 'CLI 仍在（含 orphaned）：副本不抹');
++    assert.equal(groupMemberCount(gemPgid), 2, '--wait 不结束进程：gemini 侧组长应仍活着');
++    assert.ok(groupMemberCount(glmPgid) > 0, '--wait 不结束进程：glm 侧组员应仍活着');
++
++    const h1 = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
++    assert.equal(h1.code, 0, `${h1.stdout}${h1.stderr}`);
++    assert.ok(await carrierExists(carrier), '会话启动清扫据 orphaned 记录同样挡住');
++
++    await endGroupsAndWait([glmPgid, gemPgid]);
++    const h2 = await hook(r.fx.root, 'hook-session-start', { hook_event_name: 'SessionStart' });
++    assert.equal(h2.code, 0, `${h2.stdout}${h2.stderr}`);
++    assert.ok(!(await carrierExists(carrier)), '组员结束之后清扫放行');
++  } finally {
++    cleanupGroups(r);
++  }
++});
++
++test('EV-165 K6：worker 已死、glm 侧组长已退但组员仍在 ⇒ --cancel 按组结束组员（组信号打到 pgid 仍有效）之后照抹；gemini 侧走既有 alive 路径不受影响', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const r = await startWithRecordedClis(HANG2);
++  try {
++    assertRecorded(r);
++    await killWorker(r.js.worker_pid);
++    const carrier = await plantCarrier(r.js.run_dir);
++    const glmPgid = r.rec.glm!.pgid;
++    const gemPgid = r.rec.gemini!.pgid;
++
++    await killLeaderOnly(glmPgid);
++    for (let i = 0; i < 40 && groupMemberCount(glmPgid) === 0; i++) await new Promise((res) => setTimeout(res, 50));
++    assert.ok(groupMemberCount(glmPgid) > 0, `glm 侧组 ${glmPgid} 应仍有非僵尸成员（用例前提）`);
++
++    const c = await cli(r.fx.root, ['review', '--cancel', r.js.run_id]);
++    assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
++    assert.equal((c.stderr.match(/按记录结束审查员 CLI/g) ?? []).length, 2, `两侧都应按记录结束（alive 与 orphaned 都发信号）：\n${c.stderr}`);
++    await new Promise((res) => setTimeout(res, 100));
++    assert.equal(groupMemberCount(glmPgid), 0, 'glm 侧组员应已被组信号结束（组号仍有效，打到了 sleep 头上）');
++    assert.equal(groupMemberCount(gemPgid), 0, 'gemini 侧（既有 alive 路径）应已结束');
++    assert.doesNotMatch(c.stderr, /凭据副本未抹/, '两侧都已结束：照抹');
++    assert.ok(!(await carrierExists(carrier)), '照抹');
++    assert.deepEqual(await sidesCliOf(r.js.run_dir), { gemini: null, glm: null }, 'settledCliSides：两侧记录都应清成 null');
++  } finally {
++    cleanupGroups(r);
++  }
++});
+diff --git a/test/unit/cli-group-record.test.ts b/test/unit/cli-group-record.test.ts
+index c27b89d8..e869cd5f 100644
+--- a/test/unit/cli-group-record.test.ts
++++ b/test/unit/cli-group-record.test.ts
+@@ -215,18 +215,25 @@ test('EV-154 U15（不发信号的格）：reused、unverifiable、形状坏、
+   }
+ });
+ 
+-test('EV-154 U15 变体（计划双审 r1 GLM-01）：组长服从 SIGTERM 而组员忽略——判 gone，但如实数出遗留成员', async () => {
+-  // 组长 sh 在 wait 中收到 SIGTERM 即退出；后台子 shell 忽略 TERM 后 exec sleep，sleep 继承忽略
++test('EV-165 U15 变体（取代 EV-154 版，计划双审 r1 GLM-04）：组长服从 SIGTERM 而组员忽略——升级 SIGKILL 结束残留成员', async () => {
++  /*
++   * 组长 sh 在 wait 中收到 SIGTERM 即退出；后台子 shell 忽略 TERM 后 exec sleep，sleep 继承忽略。
++   * EV-154 时代的契约是「组长一退出就判 gone，isGone 立即为真，不再升级」（旧断言：signals 只有 SIGTERM、
++   * membersLeft>=1 且不再处理）。EV-165 起 judgeCliGroup 在组长确认不在时改按非僵尸成员数判——这里成员数 > 0，
++   * 判 orphaned 而不是 gone，isGone（只认 gone/reused）持续为假，terminateProcessGroup 会继续升级到 SIGKILL
++   * 直至成员归零，这是本主题要改变的确切行为，旧断言与新代码矛盾、不能共存。
++   */
+   const g = spawnGroup('u15e', `(trap '' TERM; exec sleep 600) & wait`);
+   try {
+     await until(() => groupMemberCount(g.pgid), (n) => n >= 2, 3000);
+     assert.ok(groupMemberCount(g.pgid) >= 2, '组里应有组长与后台子进程（用例前提）');
+     const s = statusWith({ glm: { pgid: g.pgid, started_at: await processStartTime(g.pgid, { canonical: true }) } });
+-    const r = await terminateRecordedCliGroups(s, { graceMs: 1500, killWaitMs: 500, pollMs: 50 });
++    const r = await terminateRecordedCliGroups(s, { graceMs: 300, killWaitMs: 1000, pollMs: 50 });
+     const one = r.groups[0]!;
+-    assert.equal(one.gone, true, '组长已退出');
+-    assert.deepEqual(one.signals, ['SIGTERM'], '按组长判，不升级');
+-    assert.ok((one.membersLeft ?? 0) >= 1, `应数出遗留的组员：${JSON.stringify(one)}`);
++    assert.equal(one.verdict, 'alive', '入判时组长仍活着');
++    assert.equal(one.gone, true, '升级 SIGKILL 后组应确认清空');
++    assert.deepEqual(one.signals, ['SIGTERM', 'SIGKILL'], '组长退出但成员仍在（判 orphaned）⇒ 继续升级，不再停在 SIGTERM');
++    assert.equal(one.membersLeft, 0, 'SIGKILL 后不应再有遗留成员');
+   } finally {
+     killGroup(g.pgid);
+     cleanup();
+diff --git a/test/unit/scrub-admission.test.ts b/test/unit/scrub-admission.test.ts
+index 7b563518..fa17bbe0 100644
+--- a/test/unit/scrub-admission.test.ts
++++ b/test/unit/scrub-admission.test.ts
+@@ -5,14 +5,14 @@ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import { spawn } from 'node:child_process';
+ import {
+-  cliGroupsConfirmedGone, newStatus, readStatus, scrubAdmission, scrubHoldWhy, writeStatus, type RunStatus,
++  cliGroupsConfirmedGone, judgeCliGroup, newStatus, readStatus, scrubAdmission, scrubHoldWhy, writeStatus, type RunStatus,
+ } from '../../src/trivium/status.js';
+ import { pruneRunDirs, scrubAllRunRoot } from '../../src/trivium/retention.js';
+ import { cancelRun, runDirFor, waitRun, type RecordedCliOutcome } from '../../src/trivium/run-protocol.js';
+ import { defaultConfig } from '../../src/trivium/config.js';
+ import { captureStderr, fakeCtx } from '../helpers/run-ctx.js';
+ import { repoId } from '../../src/trivium/review.js';
+-import { processStartTime } from '../../src/trivium/util/exec.js';
++import { processGroupMemberCount, processStartTime } from '../../src/trivium/util/exec.js';
+ import { wiredAdapter } from '../../src/trivium/adapters/index.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import { newRunMeta, registerRun, writeRunMeta } from '../../src/trivium/meta.js';
+@@ -86,6 +86,73 @@ async function goneGroup(tag: string): Promise<{ pgid: number; startedAt: string
+   return { pgid, startedAt };
+ }
+ 
++/**
++ * 单 pid（非组）SIGKILL 组长，制造「组长已退、组员仍在」（EV-165）——只杀 `pgid` 这一个进程，不带负号，
++ * 不影响同组的其他成员。带上限轮询确认组长确已不在，不做单次断言（计划双审 r1 AGY-05/GLM-04：`goneGroup` 的教训是
++ * 组空判定要能容忍系统抖动，组长退出判定同理）。
++ */
++async function killLeaderOnly(pgid: number): Promise<void> {
++  try {
++    process.kill(pgid, 'SIGKILL');
++  } catch {
++    /* 已不在 */
++  }
++  for (let i = 0; i < 100; i++) {
++    try {
++      process.kill(pgid, 0);
++    } catch (e) {
++      if ((e as NodeJS.ErrnoException).code !== 'EPERM') return;
++    }
++    await new Promise((r) => setTimeout(r, 50));
++  }
++  assert.fail(`组长 ${pgid} 应已不在（用例前提）`);
++}
++
++/** 组号下现有的非僵尸成员数，带上限轮询等待到目标条件（复用 `killLeaderOnly` 同款节奏） */
++async function untilMemberCount(pgid: number, ok: (n: number) => boolean, ms = 3000): Promise<number> {
++  const deadline = Date.now() + ms;
++  let n = (await processGroupMemberCount(pgid)) ?? -1;
++  while (!ok(n) && Date.now() < deadline) {
++    await new Promise((r) => setTimeout(r, 50));
++    n = (await processGroupMemberCount(pgid)) ?? -1;
++  }
++  return n;
++}
++
++/**
++ * 「组长已退、组员仍在」（EV-165 `orphaned` 格）：复用 `liveGroup`（组长 `sh` + 子进程 `sleep 120`，同组），
++ * 单 pid SIGKILL 组长，`sleep` 留在同一个 `pgid` 下继续跑——组号仍然有效，只是组长换了后代占着。
++ */
++async function orphanedGroup(tag: string): Promise<Group> {
++  const g = await liveGroup(tag);
++  // sh 派生 sleep 子进程需要时间：太早杀组长会连子进程一起端掉（组还没来得及有第二个成员）
++  const before = await untilMemberCount(g.pgid, (x) => x >= 2);
++  assert.equal(before, 2, `组 ${g.pgid} 派生 sleep 子进程后应有两个成员（用例前提）：${before}`);
++  await killLeaderOnly(g.pgid);
++  const n = await untilMemberCount(g.pgid, (x) => x > 0);
++  assert.ok(n > 0, `组 ${g.pgid} 应仍有非僵尸成员（用例前提）：${n}`);
++  return g;
++}
++
++/**
++ * 「组长已退、组员也已自然退出」（EV-165 `orphaned` 之后归零，视同 `gone`）：子进程只睡 1 秒，
++ * 杀组长之后等它自然结束——不强行构造真实僵尸态（macOS 上窗口短且不确定，见计划 r2 §3.1／§4），
++ * 直接让成员计数在真实场景下归零，与「判据只认这个数字，不关心 0 是怎么来的」的设计一致。
++ */
++async function orphanedThenEmptyGroup(tag: string): Promise<{ pgid: number; startedAt: string | null }> {
++  const child = spawn('/bin/sh', ['-c', 'sleep 1; : "$0"', `${MARK}:${tag}`], { detached: true, stdio: 'ignore' });
++  const pgid = child.pid!;
++  const startedAt = await processStartTime(pgid, { canonical: true });
++  // 同 orphanedGroup：先等 sleep 子进程真正派生出来，再杀组长，否则会连子进程一起端掉、测不出「先孤儿、后自然退出」
++  const before = await untilMemberCount(pgid, (x) => x >= 2);
++  assert.equal(before, 2, `组 ${pgid} 派生 sleep 子进程后应有两个成员（用例前提）：${before}`);
++  await killLeaderOnly(pgid);
++  const n = await untilMemberCount(pgid, (x) => x === 0, 5000);
++  assert.equal(n, 0, `组 ${pgid} 的成员应已自然退出（用例前提）`);
++  assert.ok(startedAt, `组长 ${pgid} 的启动时刻应已取到（用例前提）`);
++  return { pgid, startedAt };
++}
++
+ /** 一个已退出的 worker pid，连同它生前的两种启动时刻 */
+ async function deadWorker(): Promise<{ pid: number; legacy: string | null; canonical: string | null }> {
+   const c = spawn('/bin/sh', ['-c', 'sleep 30'], { stdio: 'ignore' });
+@@ -119,9 +186,9 @@ async function liveWorker(tag: string) {
+ }
+ 
+ type CliValue = unknown;
+-type Cell = 'A' | 'B' | 'Br' | 'C' | 'D' | 'E';
++type Cell = 'A' | 'B' | 'Br' | 'C' | 'D' | 'E' | 'H' | 'Hz';
+ 
+-/** 按格造 glm 侧的 cli 记录；返回记录值与需要收尾的组 */
++/** 按格造 glm 侧的 cli 记录；返回记录值与需要收尾的组（EV-165 新增 H / Hz 两格） */
+ async function recordFor(cell: Cell, tag: string): Promise<{ cli: CliValue; group: Group | null; pgid: number | null }> {
+   switch (cell) {
+     case 'A': {
+@@ -144,6 +211,14 @@ async function recordFor(cell: Cell, tag: string): Promise<{ cli: CliValue; grou
+       return { cli: { pgid: 'not-a-number' }, group: null, pgid: null };
+     case 'E':
+       return { cli: null, group: null, pgid: null };
++    case 'H': {
++      const g = await orphanedGroup(tag);
++      return { cli: { pgid: g.pgid, started_at: g.startedAt }, group: g, pgid: g.pgid };
++    }
++    case 'Hz': {
++      const g = await orphanedThenEmptyGroup(tag);
++      return { cli: { pgid: g.pgid, started_at: g.startedAt }, group: null, pgid: g.pgid };
++    }
+   }
+ }
+ 
+@@ -180,6 +255,49 @@ function tracker() {
+ 
+ const uniq = async (): Promise<string> => fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-scrub-adm-')));
+ 
++// ─────────────────────────── U0：judgeCliGroup 的三个新分支（EV-165） ───────────────────────────
++
++test('EV-165 U0：judgeCliGroup——组长已退且组里还有非僵尸成员判 orphaned（out 带出成员数）；成员归零判 gone；成员计数取不到判 orphan_unverifiable（依赖注入，零配额）', async () => {
++  const tmp = await uniq();
++  const t = tracker();
++  try {
++    const h = t.add({ group: await orphanedGroup(`${tmp}:u0h`) });
++    const out: { membersLeft?: number | null } = {};
++    const startedAt = h.group!.startedAt;
++    const v = await judgeCliGroup({ pgid: h.group!.pgid, started_at: startedAt }, { out });
++    assert.equal(v, 'orphaned');
++    assert.ok((out.membersLeft ?? 0) > 0, `out.membersLeft 应带出实测成员数：${JSON.stringify(out)}`);
++
++    const hz = await orphanedThenEmptyGroup(`${tmp}:u0hz`);
++    const outHz: { membersLeft?: number | null } = {};
++    assert.equal(await judgeCliGroup({ pgid: hz.pgid, started_at: hz.startedAt }, { out: outHz }), 'gone', '成员数归零视同已结束');
++    assert.equal(outHz.membersLeft, 0);
++
++    // orphan_unverifiable：成员计数取不到（ps 失败），用依赖注入零配额构造——不强行造真实 ps 故障
++    const hu = await orphanedGroup(`${tmp}:u0hu`);
++    t.add({ group: hu });
++    const outHu: { membersLeft?: number | null } = {};
++    const vHu = await judgeCliGroup(
++      { pgid: hu.pgid, started_at: hu.startedAt },
++      { memberCountOf: async () => null, out: outHu },
++    );
++    assert.equal(vHu, 'orphan_unverifiable');
++    assert.equal(outHu.membersLeft, null);
++
++    // now===null 复检分支也要走同一条 leaderGone 路径（AGY-01≡CODEX-05）：用注入的 memberCountOf 直接钉住契约，
++    // 不依赖真的让 processStartTime 瞬时失败——那条分支已由既有 U17（ps 瞬时失败但组长仍在）覆盖了「组长仍在」的一半，
++    // 这里只需确认「组长确认不在」时，不论从 !alive 分支还是 now===null 分支进来，产出的是同一个 leaderGone 判据。
++    const memberCountOf = async (pgid: number): Promise<number | null> => (pgid === hu.pgid ? 3 : null);
++    assert.equal(
++      await judgeCliGroup({ pgid: hu.pgid, started_at: hu.startedAt }, { memberCountOf }),
++      'orphaned',
++      '组长确认不在时，注入的成员数直接决定 verdict——与 !alive 分支同一判据',
++    );
++  } finally {
++    await t.cleanup(tmp);
++  }
++});
++
+ // ─────────────────────────── U1 / U2：判据本身 ───────────────────────────
+ 
+ test('EV-157 U1：cliGroupsConfirmedGone 五格的 gone 与 blockers；why 逐字保持「第一个阻挡项」的旧文字', async () => {
+@@ -230,13 +348,43 @@ test('EV-157 U1：cliGroupsConfirmedGone 五格的 gone 与 blockers；why 逐
+   }
+ });
+ 
++test('EV-165 U1′：cliGroupsConfirmedGone 新增 H / Hz 两格——组长已退、组员仍在阻挡且带精确成员数；成员归零放行', async () => {
++  const tmp = await uniq();
++  const t = tracker();
++  try {
++    const h = t.add(await recordFor('H', `${tmp}:u1h`));
++    const hz = await recordFor('Hz', `${tmp}:u1hz`);
++
++    const rh = await cliGroupsConfirmedGone(statusWith({ cli: { glm: h.cli } }));
++    assert.equal(rh.gone, false);
++    const n = await processGroupMemberCount(h.pgid!);
++    assert.equal(rh.why, `glm 侧审查员 CLI 进程组 ${h.pgid} 的组长已退出，组里还有 ${n} 个成员`);
++    assert.deepEqual(rh.blockers, [
++      { side: 'glm', pgid: h.pgid, kind: 'orphaned', detail: rh.why },
++    ]);
++
++    const rhz = await cliGroupsConfirmedGone(statusWith({ cli: { glm: hz.cli } }));
++    assert.deepEqual(rhz, { gone: true, why: '记录里没有仍在的审查员 CLI', blockers: [] }, '成员归零视同已结束，放行');
++
++    // orphan_unverifiable：成员计数取不到——真实让 ps 失败不现实（零配额、不影响系统），用 memberCountOf 依赖注入
++    // 穿透 cliGroupsConfirmedGone（新增的可选第二参数，只为测试开，生产路径不传）
++    const hu = t.add(await recordFor('H', `${tmp}:u1hu`));
++    const rhu = await cliGroupsConfirmedGone(statusWith({ cli: { glm: hu.cli } }), { memberCountOf: async () => null });
++    assert.equal(rhu.gone, false);
++    assert.equal(rhu.why, `glm 侧审查员 CLI 进程组 ${hu.pgid} 的组长已退出，组里的非僵尸成员数取不到：判不了`);
++    assert.deepEqual(rhu.blockers, [{ side: 'glm', pgid: hu.pgid, kind: 'unverifiable', detail: rhu.why }]);
++  } finally {
++    await t.cleanup(tmp);
++  }
++});
++
+ test('EV-157 U2：scrubAdmission——worker 已不在 × 五格；worker 仍在时不判 CLI（cli 为 null）；scrubHoldWhy 两种形态', async () => {
+   const tmp = await uniq();
+   const t = tracker();
+   const w = await liveWorker(`${tmp}:u2w`);
+   try {
+     const dead = await deadWorker();
+-    const expect: Record<Cell, boolean> = { A: false, B: true, Br: true, C: false, D: false, E: true };
++    const expect: Record<Cell, boolean> = { A: false, B: true, Br: true, C: false, D: false, E: true, H: false, Hz: true };
+     for (const cell of Object.keys(expect) as Cell[]) {
+       const r = t.add(await recordFor(cell, `${tmp}:u2${cell}`));
+       const a = await scrubAdmission(statusWith({ worker: dead, cli: { glm: r.cli } }), null);
+@@ -330,6 +478,34 @@ test('EV-157 U3：admitScrub 行为不变——worker 已不在 × 五格的分
+   }
+ });
+ 
++test('EV-165 U3′：会话启动清扫 / trivium scrub 新增 H / Hz 两格——H 不抹并进 deferredCli 带精确成员数；Hz 照抹', async () => {
++  const tmp = await uniq();
++  const t = tracker();
++  try {
++    const dead = await deadWorker();
++    const { cfg, projectRoot, b } = await bucket();
++    const h = t.add(await recordFor('H', `${tmp}:u3h`));
++    const hz = await recordFor('Hz', `${tmp}:u3hz`);
++    const dirH = await runDirWith(b, 'R-H', statusWith({ worker: dead, cli: { glm: h.cli } }));
++    const dirHz = await runDirWith(b, 'R-Hz', statusWith({ worker: dead, cli: { glm: hz.cli } }));
++    const n = await processGroupMemberCount(h.pgid!);
++    const detailH = `glm 侧审查员 CLI 进程组 ${h.pgid} 的组长已退出，组里还有 ${n} 个成员`;
++
++    const s = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
++    assert.ok(s.deferred.includes(dirH.d), 'H 格不抹');
++    assert.ok(s.scrubbed.includes(dirHz.d), 'Hz 格照抹');
++    assert.equal(s.deferredCli.find((x) => x.dir === dirH.d)?.detail, detailH);
++    assert.ok(await exists(dirH.carrier), 'H 格载体应在');
++    assert.ok(!(await exists(dirHz.carrier)), 'Hz 格载体应已抹');
++
++    const p = await pruneRunDirs(cfg, projectRoot, { adapters: wiredAdapter });
++    assert.ok(p.deferred.includes(dirH.d));
++    assert.equal(p.deferredCli.find((x) => x.dir === dirH.d)?.detail, detailH);
++  } finally {
++    await t.cleanup(tmp);
++  }
++});
++
+ test('EV-157 U4：到期整删——A / C / D 格不删、计入 kept 并进 deferredCli；B / E 照删；dry-run 下 A 格不进 removed', async () => {
+   const tmp = await uniq();
+   const t = tracker();
+@@ -359,6 +535,29 @@ test('EV-157 U4：到期整删——A / C / D 格不删、计入 kept 并进 def
+   }
+ });
+ 
++test('EV-165 U4′：到期整删新增 H / Hz 两格——H 不删、计入 kept 并进 deferredCli；Hz 照删', async () => {
++  const tmp = await uniq();
++  const t = tracker();
++  try {
++    const dead = await deadWorker();
++    const { cfg, projectRoot, b } = await bucket();
++    const h = t.add(await recordFor('H', `${tmp}:u4h`));
++    const hz = await recordFor('Hz', `${tmp}:u4hz`);
++    const dirH = (await runDirWith(b, 'R-H', statusWith({ worker: dead, cli: { glm: h.cli } }))).d;
++    const dirHz = (await runDirWith(b, 'R-Hz', statusWith({ worker: dead, cli: { glm: hz.cli } }))).d;
++    const later = Date.now() + (cfg.retention.run_dir_days + 5) * DAY;
++
++    const r = await pruneRunDirs(cfg, projectRoot, { now: later, adapters: wiredAdapter });
++    assert.ok(r.removed.includes(dirHz), 'Hz 格到期照删');
++    assert.ok(!r.removed.includes(dirH), 'H 格到期不删');
++    assert.ok(r.deferredCli.some((x) => x.dir === dirH), 'H 格落回未到期路径、第四格带出');
++    assert.ok(await exists(dirH), 'H 格目录在');
++    assert.ok(!(await exists(dirHz)), 'Hz 格目录已删');
++  } finally {
++    await t.cleanup(tmp);
++  }
++});
++
+ // ─────────────────────────── U5 / U6 / U7：--cancel 与 --wait ───────────────────────────
+ 
+ /** worker 已死的运行目录（status running），glm 侧一份载体，连同归档骨架 */
+@@ -439,6 +638,29 @@ test('EV-157 U5：--cancel（worker 已不在）五格——A / C / D 不抹、
+   }
+ });
+ 
++test('EV-165 U5″：--cancel（worker 已不在）新增 H 格——按组结束组员（组信号打到 pgid 仍有效）之后照抹，记录清 null', async () => {
++  const tmp = await uniq();
++  const t = tracker();
++  try {
++    const ctx = await fakeCtx();
++    const h = t.add(await recordFor('H', `${tmp}:u5h`));
++    const runId = 'R-CANCEL-H';
++    const x = await seedDeadRun(ctx, runId, { glm: h.cli });
++
++    const { value: code, err } = await captureStderr(() => cancelRun(ctx, runId));
++    assert.equal(code, EXIT.OK, err);
++    const line = err.split('\n').find((l) => l.includes('凭据副本未抹'));
++    assert.equal(line, undefined, `H 格：--cancel 应已按组结束组员、照抹\n${err}`);
++    assert.ok(!(await exists(x.carrier)), 'H 格：--cancel 结束组员之后应照抹');
++    const n = await untilMemberCount(h.pgid!, (v) => v === 0);
++    assert.equal(n, 0, '组员应已被组信号结束');
++    assert.equal(await glmCli(x.runDir), null, 'settledCliSides：组已确认清空，记录应清成 null');
++    assert.equal((await readRunJson(x.runJson)).status, 'cancelled');
++  } finally {
++    await t.cleanup(tmp);
++  }
++});
++
+ test('EV-157 U5′：--cancel 两侧都挡住（判不了 + 读不懂）⇒ 一行告警逐侧列出', async () => {
+   const tmp = await uniq();
+   const t = tracker();
+@@ -511,6 +733,42 @@ test('EV-157 U6：--wait 判失联（pid_gone）五格——A / C / D 不抹、
+   }
+ });
+ 
++test('EV-165 U6′：--wait 判失联新增 H 格——不抹、正文带精确成员数、不结束进程；--cancel 出口对 orphaned 也给出（不只 alive）', async () => {
++  const tmp = await uniq();
++  const t = tracker();
++  try {
++    const ctx = await fakeCtx();
++    const h = t.add(await recordFor('H', `${tmp}:u6h`));
++    const runId = 'R-WAIT-H';
++    const x = await seedDeadRun(ctx, runId, { glm: h.cli });
++    let message = '';
++    await assert.rejects(waitRun(ctx, runId, 10), (e: { code?: number; message: string }) => {
++      assert.equal(e.code, EXIT.FAIL);
++      message = e.message;
++      return true;
++    });
++    assert.match(message, /失联（pid_gone）/);
++    assert.ok(await exists(x.carrier), 'H 格：不抹');
++    const n = await processGroupMemberCount(h.pgid!);
++    const line = message.split('\n').find((l) => l.includes('凭据副本未抹'));
++    assert.equal(
++      line,
++      `  凭据副本未抹：工作进程 ${x.dead.pid} 已不存在，但审查员 CLI 未确认结束——` +
++        `glm 侧审查员 CLI 进程组 ${h.pgid} 的组长已退出，组里还有 ${n} 个成员（pid_gone），留给会话启动清扫`,
++    );
++    // 出口（EV-165：orphaned 同样给出，不只 alive——terminateRecordedCliGroups 现在也会对它发信号）
++    const exit = message.split('\n').find((l) => l.includes('按记录结束'));
++    assert.equal(
++      exit,
++      `  其中仍在的审查员 CLI 可用 trivium review --cancel ${runId} 按记录结束（本命令不结束任何进程）；结束之后下一次会话启动清扫会重判，放行即抹副本`,
++    );
++    assert.ok(groupMemberCount(h.pgid!) > 0, 'H 格：--wait 不结束任何进程');
++    assert.equal((await readRunJson(x.runJson)).status, 'failed');
++  } finally {
++    await t.cleanup(tmp);
++  }
++});
++
+ test('EV-157 U7：worker 仍在（heartbeat_stale）时 --wait 的「凭据副本未抹」逐字不变', async () => {
+   const tmp = await uniq();
+   const w = await liveWorker(`${tmp}:u7w`);
+diff --git a/doc/05_testing/REPORT_2026-09-29_orphan_cli_admission.md b/doc/05_testing/REPORT_2026-09-29_orphan_cli_admission.md
+new file mode 100644
+index 00000000..3d700bf2
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-09-29_orphan_cli_admission.md
+@@ -0,0 +1,145 @@
++# REPORT：组长已退组员仍在的准入（EV-165）实施报告
++
++> - **日期**：2026-09-29
++> - **主题**：`组长已退组员仍在的准入`（命令 A，`/dual-run`）
++> - **起点**：`eeceeaa`；计划 `.reviews/组长已退组员仍在的准入/plan/2026-09-29-组长已退组员仍在的准入-r2-claude.md`（计划双审第 1 轮
++>   run `20260929T025220Z`，codex/gemini/glm 三侧 `request-changes`，15 条含 1 阻断、6 重要、6 次要、1 吹毛求疵，**全部接受**）
++> - **证据目录**：`doc/05_testing/evidence/orphan-cli-admission-20260929/`
++> - **范围**：只解决 BACKLOG EV-165；判据单一来源，只改 `judgeCliGroup` 与 `cliGroupsConfirmedGone`；`--cancel` 对孤儿组也按组
++>   结束（撤回 EV-154 用户决策 4 的一半）；`--wait` 与会话启动清扫仍不结束任何进程；不新增归档字段形状；不花配额
++
++## 1. 计划双审：15 条全接受
++
++计划 r1 送审后三侧给出 15 条意见，**全部接受**，其中最关键的三类问题：
++
++1. **AGY-01（阻断）≡ CODEX-05**：r1 的 `judgeCliGroup` 只在 `!alive` 分支接了成员计数判断，`processStartTime` 复检发现组长
++   已死那条路径（`now===null` 分支）仍然照旧直接返回 `gone`，绕开了新判据。这是真实的功能性漏洞。修法：抽出 `leaderGone`
++   闭包，两个来源共用同一判据。
++2. **CODEX-01≡CODEX-02≡AGY-02≡GLM-03（重要/次要）**：r1 计划的集成测试前提（worker 存活时直接杀 CLI 组长）不成立——
++   `run()` 的 `killTree` 跟踪面（`liveTrees`）只认自己派生的**直接子进程**是否退出，worker 存活期间组长一退出就会被
++   `syncCliRecords` 把该侧记录清成 `null`，孤儿态根本留不下来。修法：先 `killWorker`、再单 pid SIGKILL 组长。
++3. **CODEX-03≡AGY-04≡GLM-04（重要/次要/吹毛求疵）**：r1 §2.3 声称孤儿组终止失败时复用既有「组长已退出，组里还有 N 个
++   成员，未对它们发信号」告警、且「语义完全贴合」——这个论证在新判据下不成立（该分支基本不可达，且「未对它们发信号」
++   在已发过信号后是失实的）。修法：删除该错误论证，不新增文案（既有「未能确认退出」分支已经准确覆盖这一格）。
++
++裁决件：`.reviews/组长已退组员仍在的准入/plan/2026-09-29-组长已退组员仍在的准入-revised-claude.md`；`gate --check` 通过。
++修订稿 r2 落地了全部 15 条，另在 §4 新增两项超范围暂缓（见 §6）。
++
++## 2. 判据设计（落地即 r2 §1～§2，未偏离）
++
++- `CliGroupVerdict` 新增 `orphaned`（组长不在、组号下有非僵尸成员）/ `orphan_unverifiable`（组长不在、成员计数取不到）。
++- `judgeCliGroup`（`status.ts`）新增可选 `o.memberCountOf` / `o.out` 参数；抽出 `leaderGone` 闭包，`!alive` 分支与
++  `now===null` 复检确认组长已死的分支共用它。
++- `cliGroupsConfirmedGone` 新增两个分支生成阻挡项（`orphan_unverifiable` 复用 `kind:'unverifiable'`）；**实施期新增**
++  （计划未列，r2 送审后为补齐 GLM-04/CODEX-03 遗留的测试可达性缺口而加）：新增可选第二参数把 `memberCountOf` 穿透给
++  `judgeCliGroup`，只为单测零配额构造 `orphan_unverifiable`，生产路径不传。
++- `terminateRecordedCliGroups`（`run-protocol.ts`）对判 `alive` 或 `orphaned` 的组都发信号（同一条 `isGone`：只认
++  `gone`/`reused`）；`settledCliSides`、`--wait` 的 `--cancel` 出口提示同步纳入 `orphaned`。
++- 四处既有消费方（会话启动清扫、`trivium scrub`、到期整删、`--wait` 判失联的准入本身）**零改动**：全部经
++  `scrubAdmission` / `cliGroupsConfirmedGone` 自动继承新判据，验收 B1/B2/B4 逐条证实。
++
++## 3. 测试
++
++### 3.1 单元（`test/unit/scrub-admission.test.ts`、`test/unit/cli-group-record.test.ts`）
++
++新增 U0（`judgeCliGroup` 三个新分支，含 `out` 出参与 `memberCountOf` 依赖注入）、U1′（`cliGroupsConfirmedGone` 的
++`orphaned`/`orphan_unverifiable` 两格）、U3′（会话启动清扫/`trivium scrub`）、U4′（到期整删）、U5″（`--cancel` 结束
++孤儿组之后照抹、记录清 null）、U6′（`--wait` 正文带精确成员数、出口对 `orphaned` 也给出）；既有 U1～U7 五格逐条重跑
++未受影响。真实进程构造：`orphanedGroup`（`liveGroup` 起组、单 pid SIGKILL 组长、带上限轮询确认组员仍在）、
++`orphanedThenEmptyGroup`（子进程短命、杀组长后等它自然退出到 0，不强行构造真实僵尸态）。
++
++`cli-group-record.test.ts` 既有「EV-154 U15 变体」按新契约重写（AGY-03 核出的遗漏）：组长服从 SIGTERM、组员忽略 ⇒
++旧契约「判 gone、停在 SIGTERM、如实数出遗留成员」不再成立，新契约是「判 orphaned、继续升级 SIGKILL、最终成员归零」。
++
++### 3.2 集成（`test/integration/gate-loop.test.ts`，真实 bundle）
++
++新增 K5（`--wait` 判失联）、K6（`--cancel`）：`startWithRecordedClis` 起两侧 `hang_cli` → `killWorker` → 对 `glm` 侧
++单 pid SIGKILL 组长（`gemini` 侧保持存活作对照）→ 断言两侧分别的阻挡文案、出口提示、`--cancel` 按组结束组员之后照抹。
++未新增桩选项（D4 采纳）：`hang_cli` 桩本来就是 `sh`（组长）+ `sleep`（子进程，同组）两层结构，单 pid SIGKILL 组长即可
++构造孤儿组。
++
++### 3.3 源码变异
++
++`doc/05_testing/evidence/orphan-cli-admission-20260929/gen-mutation-spec.mjs` 从当前源码截 9 条锚点（`status.ts` 6 条、
++`run-protocol.ts` 3 条），覆盖 `leaderGone` 的两个分支、`out` 赋值、`cliGroupsConfirmedGone` 的两个新分支、
++`terminateRecordedCliGroups` 的入口条件、`settledCliSides` 的新析取项、`--wait` 出口条件；**9 / 9 全部咬住**。
++
++**如实登记两处未纳入变异规格**（不夸大覆盖）：
++- `judgeCliGroup` 的 `now===null` 复检分支里 `return leaderGone()`那一行——需要真实构造「`processStartTime` 瞬时失败、
++  复检又确认组长已死」这个时序窗口，零配额下无法可靠构造（现有 `memberCountOf` 依赖注入只覆盖 `!alive` 分支）；此行为
++  由 AGY-01 的问题描述与代码审查确认正确，未被专门用例钉住。
++- `reportRecordedCliGroups` 里 `orphan_unverifiable` 的 warn 文案——该函数未导出，只能通过 `cancelRun` 的完整链路间接
++  触发，而构造一个「真实孤儿组 + 真实 ps 失败」的组合超出零配额可行范围；该分支的结构性正确性（不发信号、`gone:false`）
++  已由 `terminateRecordedCliGroups` 的入口条件变异（M7）与既有 `unverifiable` 同构逻辑保证。
++
++### 3.4 零配额验收（新旧构建对照，旧构建基线 `eeceeaa`）
++
++`doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance.mjs`，B1～B6，**7 / 7 通过**，两次独立运行读数一致，
++残留进程组 `[]`：
++
++| 项 | 新构建 | 旧构建 |
++| :--- | :--- | :--- |
++| B1 会话启动清扫 | 孤儿组挡住、不抹，`ctx1` 带「组长已退出，组里还有 1 个成员」；组结束后再清扫即抹 | 放行、照抹 |
++| B2 到期整删（31 天） | 目录在（H 格挡住）；组结束后再整删即删 | 目录已删 |
++| B3 `--cancel` | 按组结束孤儿组组员（成员数 0）之后照抹 | 组长已退直接判 `gone` 放行抹除，**组员遗留继续跑**（旧版问题现状） |
++| B4 常态回归（两组都活 / 两组自然结束） | 退出码与输出逐字相同 | 同左 |
++| B5 `--wait` 判失联 | 退出码 1、不抹、正文带精确成员数「组里还有 1 个成员」 | 退出码 1、两侧判 `gone` 照抹 |
++| B6 doctor 自检 | 14 / 14 | — |
++
++## 4. `npm run check` 读数（多次，逐次递增新增用例数）
++
++| 阶段 | 读数 |
++| :--- | :--- |
++| 生产代码改动 + `cli-group-record` U15 变体重写（未加 H/Hz 新用例前） | 2260 / 2258 / 0 / 2 |
++| 加完 U0/U1′/U3′/U4′/U5″（未加 K5/K6、U6′ 前） | 2265 / 2263 / 0 / 2 |
++| 加完 K5/K6（未加 U6′、未做变异前） | 2267 / 2265 / 0 / 2 |
++| 加完 U6′、`cliGroupsConfirmedGone` 测试用 DI 参数、源码变异与文档同步之后（最终） | **2268 / 2266 / 0 / 2** |
++
++`dist/test` 每次改动 `src/*.ts` 或 `test/*.ts` 后均用 `node scripts/build.mjs --tests-only` 重编（教训：`npm run build`
++只重建 bundle，不重建 `dist/test`，首次诊断脚本因此拿到过旧代码，已按坑清单核对更正）。
++
++## 5. 与用户决策的对照
++
++- 只做 EV-165；EV-163/161/162/166/167/EV-159 第二形态均未并入。
++- 组员全僵尸视同已结束：`Hz` 格（真实构造，短命子进程自然退出到 0）验证。
++- 成员计数取不到视同判不了、按挡住处理：`orphan_unverifiable`，U0/U1′ 用 `memberCountOf` 依赖注入验证。
++- `--cancel` 对孤儿组按组结束：U5″/K6/验收 B3 验证；宽限链与既有 `alive` 来源共用同一条 `terminateProcessGroup` 调用与
++  `isGone` 判据（未新增常量）。
++- `--wait` 与会话启动清扫仍不结束任何进程：K5/U6′/验收 B1/B5 逐条断言组员在检查前后成员数不变。
++- status.json 形状、哨兵语义、`scrub` 子命令 JSON 字段均未改；新增告警与新成因之外的输出逐字不变（既有 U1～U7 五格、
++  K1～K4、`cli-group-record.test.ts` 除 U15 变体外的用例全部重跑确认）。
++- 不花配额做真实 CLI 实测：全部构造用 `sh`/`sleep`/`node -e` 等本地进程，`hang_cli` 桩。
++
++## 6. 如实登记：两项超范围、暂缓（已登 BACKLOG）
++
++- **EV-168**：worker 存活期间的自身子进程退出盲区。`liveTrees` 只跟踪直接子进程，对孙辈毫无感知——worker 活着时 CLI
++  组长一退出，记录就被清成 `null`，`orphaned` 判据够不到「worker 仍在场」这一段。**不影响凭据安全**（五处准入都先判
++  `workerConfirmedGone`，worker 活着时压根不会碰 CLI 一半），但意味着 worker 之后若也死了，这些孙辈会成为「记录里从未
++  存在过」的进程，后续清扫意识不到它们。修法要改 `liveTrees` 的跟踪粒度（单 pid → 进程组），超出本轮范围。
++- **EV-169**：`processGroupMemberCount` 的僵尸排除逻辑（`STAT` 列 `Z` 前缀过滤）没有专门测试——EV-154 遗留、非本轮
++  引入。真实僵尸态在 macOS 上窗口短且不确定，本轮 `Hz` 格改用依赖注入覆盖「成员数=0」这个契约点在 `judgeCliGroup` 里
++  的处理，绕开了这个函数本身。
++
++## 7. 文档同步
++
++- 主设计 v1.3.59 → **v1.3.60**：§7.5「审查员 CLI 进程组记录」复用判据段改写（三态 → 五态）、两个消费方段落更新、
++  「已收口」替换「有意分叉」；`--cancel` 命令表行、10.5 凭据行同步；新增 v1.3.60 变更记录条目；新增「worker 存活期间
++  自身子进程退出盲区」如实保留句。
++- LLD v1.1.17 → **v1.1.18**：275/287/487 行引述块同步；已知缺口表两行改为已解决（含残余登记）。
++- PROTOCOL：`--cancel` 段与 `--wait` 出口段同步纳入 `orphaned`。
++- MANUAL v1.0.17 → **v1.0.18**：「只有记录对得上才发信号」改为「或组长已退出但组员仍在」；补新告警文案；凭据准入段
++  落三处同步（不抹的条件、结束后照抹的条件、`--cancel` 出口条件）。
++- RUNBOOK：分档表「因审查员 CLI 未动」一行补 `orphaned` 成因与出口提示。
++- BACKLOG：EV-165 改 `done`（正文按最终实现改写）；EV-157/EV-154 两处交叉引用同步；新登 EV-168、EV-169。
++- PRD：核对后无字面涉及，不改（与近期同类主题一致）。
++
++## 8. verify（出口）
++
++`trivium verify`（`npm run typecheck` && `npm run build` && `npm test`）：**通过**。typecheck 干净；build 产出新构建标识
++（工作树未提交，作用面内有改动，符合预期）；`npm test` **2268 / 2266 / 0 / 2**（2 条 skipped 与既有基线一致，非本主题
++引入）。留痕：`.reviews/组长已退组员仍在的准入/verify/`。
++
++## 9. 结论
++
++计划双审 15 条全接受、代码实现完成、单元+集成+变异+零配额验收+doctor 自检全部通过、全量测试无回归、文档六处同步完毕。
++**未提交、未推送、未审批**，等待用户指示。
+diff --git a/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-output.r0.txt b/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-output.r0.txt
+new file mode 100644
+index 00000000..91c63c06
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-output.r0.txt
+@@ -0,0 +1,9 @@
++✓ 构建：新旧 bundle sha256 不同（new e6713d1cfb2d / old 4c1890f0ccbd）
++✓ B1：新：孤儿组成员数 1、Hook 后载体在 true（H 格挡住 true）；旧：载体在 false（应为 false，旧版放行抹除）；组结束后新构建再清扫即抹 true
++✓ B2：新：到期整删后目录在 true（H 格挡住）、两组结束后再整删即删 true；旧：目录在 false（应为 false，旧版照删）
++✓ B3：新：--cancel 之后 glm 侧组员 0（应已被组信号结束）、gemini 侧 0、照抹 true；旧：glm 侧组员遗留 1（旧版从不按记录结束孤儿组，组长已不在即判 gone 直接抹除，组员照样烧配额）、gemini 侧 0
++✓ B4：常态 --cancel（两组都活）：退出码 0/0、差异 0+0 行；常态跑完（两组自然结束）：退出码 75/75、差异 0+0 行
++✓ B5：新：--wait 退出码 1（判失联退 1）、载体不抹 true、glm 侧组员仍在 1、正文带精确成员数 true；旧：退出码 1（判失联同样退 1，但两侧都判 gone 照抹）、载体不抹 false（应为 false）
++✓ B6：doctor --selftest 退 0、14/14
++
++7 / 7 通过；残留进程组 []
+diff --git a/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-output.txt b/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-output.txt
+new file mode 100644
+index 00000000..91c63c06
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-output.txt
+@@ -0,0 +1,9 @@
++✓ 构建：新旧 bundle sha256 不同（new e6713d1cfb2d / old 4c1890f0ccbd）
++✓ B1：新：孤儿组成员数 1、Hook 后载体在 true（H 格挡住 true）；旧：载体在 false（应为 false，旧版放行抹除）；组结束后新构建再清扫即抹 true
++✓ B2：新：到期整删后目录在 true（H 格挡住）、两组结束后再整删即删 true；旧：目录在 false（应为 false，旧版照删）
++✓ B3：新：--cancel 之后 glm 侧组员 0（应已被组信号结束）、gemini 侧 0、照抹 true；旧：glm 侧组员遗留 1（旧版从不按记录结束孤儿组，组长已不在即判 gone 直接抹除，组员照样烧配额）、gemini 侧 0
++✓ B4：常态 --cancel（两组都活）：退出码 0/0、差异 0+0 行；常态跑完（两组自然结束）：退出码 75/75、差异 0+0 行
++✓ B5：新：--wait 退出码 1（判失联退 1）、载体不抹 true、glm 侧组员仍在 1、正文带精确成员数 true；旧：退出码 1（判失联同样退 1，但两侧都判 gone 照抹）、载体不抹 false（应为 false）
++✓ B6：doctor --selftest 退 0、14/14
++
++7 / 7 通过；残留进程组 []
+diff --git a/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-readout.json b/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-readout.json
+new file mode 100644
+index 00000000..b38d45d8
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-readout.json
+@@ -0,0 +1,205 @@
++{
++  "results": [
++    {
++      "id": "构建",
++      "ok": true,
++      "detail": "新旧 bundle sha256 不同（new e6713d1cfb2d / old 4c1890f0ccbd）"
++    },
++    {
++      "id": "B1",
++      "ok": true,
++      "detail": "新：孤儿组成员数 1、Hook 后载体在 true（H 格挡住 true）；旧：载体在 false（应为 false，旧版放行抹除）；组结束后新构建再清扫即抹 true"
++    },
++    {
++      "id": "B2",
++      "ok": true,
++      "detail": "新：到期整删后目录在 true（H 格挡住）、两组结束后再整删即删 true；旧：目录在 false（应为 false，旧版照删）"
++    },
++    {
++      "id": "B3",
++      "ok": true,
++      "detail": "新：--cancel 之后 glm 侧组员 0（应已被组信号结束）、gemini 侧 0、照抹 true；旧：glm 侧组员遗留 1（旧版从不按记录结束孤儿组，组长已不在即判 gone 直接抹除，组员照样烧配额）、gemini 侧 0"
++    },
++    {
++      "id": "B4",
++      "ok": true,
++      "detail": "常态 --cancel（两组都活）：退出码 0/0、差异 0+0 行；常态跑完（两组自然结束）：退出码 75/75、差异 0+0 行"
++    },
++    {
++      "id": "B5",
++      "ok": true,
++      "detail": "新：--wait 退出码 1（判失联退 1）、载体不抹 true、glm 侧组员仍在 1、正文带精确成员数 true；旧：退出码 1（判失联同样退 1，但两侧都判 gone 照抹）、载体不抹 false（应为 false）"
++    },
++    {
++      "id": "B6",
++      "ok": true,
++      "detail": "doctor --selftest 退 0、14/14"
++    }
++  ],
++  "readout": {
++    "base_ref": "eeceeaa",
++    "node": "v25.2.1",
++    "platform": "darwin",
++    "bundles": {
++      "new": {
++        "path": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++        "sha256": "e6713d1cfb2d8d03fd6c198f19ca5d4044b4feec321d3fa2add9abb73033b8d5"
++      },
++      "old": {
++        "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-JDEo20/old-build/skills/dual-critic/scripts/trivium.cjs",
++        "sha256": "4c1890f0ccbdf70b88b2522e38236d5342ffe521afd1b3b7583d8a6e8eaaad9e",
++        "from": "eeceeaa"
++      }
++    },
++    "B1": {
++      "new": {
++        "glmMembersAfterOrphan": 1,
++        "code1": 0,
++        "ctx1": "TriviumCode 待办：\n  · 1 个运行目录因审查员 CLI 进程组记录未动（CLI 仍在／判不了／记录读不懂）——CLI 结束后下次会话会再判；记录读不懂的不会自愈。首个：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-JDEo20/runs-B1-new/B1-new-09f53299/20260929T035806Z（glm 侧审查员 CLI 进程组 32606 的组长已退出，组里还有 1 个成员）\n  · 已回收 孤儿组验收/plan 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁\n  · 孤儿组验收/plan 双审进行中（run 20260929T035806Z）——请先 trivium review --wait 20260929T035806Z",
++        "carrierAfterHook1": true,
++        "ended": [
++          0
++        ],
++        "code2": 0,
++        "carrierAfterHook2": false
++      },
++      "old": {
++        "glmMembersAfterOrphan": 1,
++        "code1": 0,
++        "ctx1": "TriviumCode 待办：\n  · 已抹除 1 个运行目录的凭据副本\n  · 已回收 孤儿组验收/plan 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁\n  · 孤儿组验收/plan 双审进行中（run 20260929T035808Z）——请先 trivium review --wait 20260929T035808Z",
++        "carrierAfterHook1": false,
++        "ended": [
++          0
++        ],
++        "code2": 0,
++        "carrierAfterHook2": false
++      },
++      "diff": {
++        "onlyNew": [
++          "  · 1 个运行目录因审查员 CLI 进程组记录未动（CLI 仍在／判不了／记录读不懂）——CLI 结束后下次会话会再判；记录读不懂的不会自愈。首个：〈BASE〉/runs-B1-〈B〉/B1-〈B〉-〈H〉/〈RUN〉（glm 侧审查员 CLI 进程组 〈N〉 的组长已退出，组里还有 1 个成员）"
++        ],
++        "onlyOld": [
++          "  · 已抹除 1 个运行目录的凭据副本"
++        ]
++      }
++    },
++    "B2": {
++      "new": {
++        "code1": 0,
++        "dirAfter1": true,
++        "carrierAfter1": true,
++        "ended": [
++          0,
++          0
++        ],
++        "code2": 0,
++        "dirAfter2": false
++      },
++      "old": {
++        "code1": 0,
++        "dirAfter1": false,
++        "carrierAfter1": false,
++        "ended": [
++          0,
++          0
++        ],
++        "code2": null,
++        "dirAfter2": false
++      }
++    },
++    "B3": {
++      "new": {
++        "code": 0,
++        "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035814Z 已取消\n",
++        "stderr": "· 工作进程 34514 已不存在，仅做状态与锁的清理\n· 按记录结束审查员 CLI：gemini 侧进程组 34562（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 34564（SIGTERM）\n· 已把归档里的 run-20260929T035814Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
++        "glmMembersAfter": 0,
++        "gemMembersAfter": 0,
++        "carrierAfter": false,
++        "glmPgid": 34564,
++        "gemPgid": 34562
++      },
++      "old": {
++        "code": 0,
++        "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035816Z 已取消\n",
++        "stderr": "· 工作进程 34975 已不存在，仅做状态与锁的清理\n· 按记录结束审查员 CLI：gemini 侧进程组 35023（SIGTERM）\n· 已把归档里的 run-20260929T035816Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
++        "glmMembersAfter": 1,
++        "gemMembersAfter": 0,
++        "carrierAfter": false,
++        "glmPgid": 35025,
++        "gemPgid": 35023
++      }
++    },
++    "B4": {
++      "cancel": {
++        "new": {
++          "code": 0,
++          "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035818Z 已取消\n",
++          "stderr": "· 向工作进程组 35437 发送 SIGTERM\n· 已把归档里的 run-20260929T035818Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
++        },
++        "old": {
++          "code": 0,
++          "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035820Z 已取消\n",
++          "stderr": "· 向工作进程组 35891 发送 SIGTERM\n· 已把归档里的 run-20260929T035820Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
++        },
++        "diff": {
++          "onlyNew": [],
++          "onlyOld": []
++        }
++      },
++      "done": {
++        "new": {
++          "code": 75,
++          "stdout": "运行 20260929T035822Z ｜ 主题 孤儿组验收 ｜ 阶段 plan ｜ 阶段状态 失败\n已用 2s / 预算 15m0s（0%） ｜ 第 1/92 次等待 ｜ 最近心跳 1s 前\n  gemini: 超时 ｜ gemini-3.8-flash-high ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n  glm: 超时 ｜ GLM-5.3 ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n",
++          "stderr": ""
++        },
++        "old": {
++          "code": 75,
++          "stdout": "运行 20260929T035826Z ｜ 主题 孤儿组验收 ｜ 阶段 plan ｜ 阶段状态 失败\n已用 2s / 预算 15m0s（0%） ｜ 第 1/92 次等待 ｜ 最近心跳 1s 前\n  gemini: 超时 ｜ gemini-3.8-flash-high ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n  glm: 超时 ｜ GLM-5.3 ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n",
++          "stderr": ""
++        },
++        "diff": {
++          "onlyNew": [],
++          "onlyOld": []
++        }
++      }
++    },
++    "B5": {
++      "new": {
++        "code": 1,
++        "stdout": "",
++        "stderr": "✗ 运行 20260929T035830Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-JDEo20/runs-B5-new/B5-new-fa8e28d2/20260929T035830Z/worker.log\n  已把归档里的 run-20260929T035830Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n  凭据副本未抹：工作进程 37816 已不存在，但审查员 CLI 未确认结束——glm 侧审查员 CLI 进程组 37866 的组长已退出，组里还有 1 个成员（pid_gone），留给会话启动清扫\n  其中仍在的审查员 CLI 可用 trivium review --cancel 20260929T035830Z 按记录结束（本命令不结束任何进程）；结束之后下一次会话启动清扫会重判，放行即抹副本\n",
++        "carrierAfter": true,
++        "glmMembersAfter": 1,
++        "ended": [
++          0
++        ],
++        "glmPgid": 37866,
++        "glmMembersAtCheck": 1
++      },
++      "old": {
++        "code": 1,
++        "stdout": "",
++        "stderr": "✗ 运行 20260929T035832Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-JDEo20/runs-B5-old/B5-old-277de148/20260929T035832Z/worker.log\n  已把归档里的 run-20260929T035832Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n",
++        "carrierAfter": false,
++        "glmMembersAfter": 1,
++        "ended": [
++          0
++        ],
++        "glmPgid": 38326,
++        "glmMembersAtCheck": 1
++      }
++    },
++    "B6": {
++      "code": 0,
++      "tail": [
++        "· ✓ 裁决齐备后放行提交",
++        "· ✓ 裁决齐备后放行收工",
++        "· ✓ 禁止主脑自行产出 -gemini.md（AC-07）",
++        "· ✓ 编译测试出口真实执行并落盘（AC-10）",
++        "· ✓ 复盘可生成（含时间线与采纳率）",
++        "· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）"
++      ]
++    },
++    "leftover_groups": []
++  }
++}
+diff --git a/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-readout.r0.json b/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-readout.r0.json
+new file mode 100644
+index 00000000..0444bb0c
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance-readout.r0.json
+@@ -0,0 +1,205 @@
++{
++  "results": [
++    {
++      "id": "构建",
++      "ok": true,
++      "detail": "新旧 bundle sha256 不同（new e6713d1cfb2d / old 4c1890f0ccbd）"
++    },
++    {
++      "id": "B1",
++      "ok": true,
++      "detail": "新：孤儿组成员数 1、Hook 后载体在 true（H 格挡住 true）；旧：载体在 false（应为 false，旧版放行抹除）；组结束后新构建再清扫即抹 true"
++    },
++    {
++      "id": "B2",
++      "ok": true,
++      "detail": "新：到期整删后目录在 true（H 格挡住）、两组结束后再整删即删 true；旧：目录在 false（应为 false，旧版照删）"
++    },
++    {
++      "id": "B3",
++      "ok": true,
++      "detail": "新：--cancel 之后 glm 侧组员 0（应已被组信号结束）、gemini 侧 0、照抹 true；旧：glm 侧组员遗留 1（旧版从不按记录结束孤儿组，组长已不在即判 gone 直接抹除，组员照样烧配额）、gemini 侧 0"
++    },
++    {
++      "id": "B4",
++      "ok": true,
++      "detail": "常态 --cancel（两组都活）：退出码 0/0、差异 0+0 行；常态跑完（两组自然结束）：退出码 75/75、差异 0+0 行"
++    },
++    {
++      "id": "B5",
++      "ok": true,
++      "detail": "新：--wait 退出码 1（判失联退 1）、载体不抹 true、glm 侧组员仍在 1、正文带精确成员数 true；旧：退出码 1（判失联同样退 1，但两侧都判 gone 照抹）、载体不抹 false（应为 false）"
++    },
++    {
++      "id": "B6",
++      "ok": true,
++      "detail": "doctor --selftest 退 0、14/14"
++    }
++  ],
++  "readout": {
++    "base_ref": "eeceeaa",
++    "node": "v25.2.1",
++    "platform": "darwin",
++    "bundles": {
++      "new": {
++        "path": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++        "sha256": "e6713d1cfb2d8d03fd6c198f19ca5d4044b4feec321d3fa2add9abb73033b8d5"
++      },
++      "old": {
++        "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-EZAat3/old-build/skills/dual-critic/scripts/trivium.cjs",
++        "sha256": "4c1890f0ccbdf70b88b2522e38236d5342ffe521afd1b3b7583d8a6e8eaaad9e",
++        "from": "eeceeaa"
++      }
++    },
++    "B1": {
++      "new": {
++        "glmMembersAfterOrphan": 1,
++        "code1": 0,
++        "ctx1": "TriviumCode 待办：\n  · 1 个运行目录因审查员 CLI 进程组记录未动（CLI 仍在／判不了／记录读不懂）——CLI 结束后下次会话会再判；记录读不懂的不会自愈。首个：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-EZAat3/runs-B1-new/B1-new-0f82683c/20260929T035724Z（glm 侧审查员 CLI 进程组 24187 的组长已退出，组里还有 1 个成员）\n  · 已回收 孤儿组验收/plan 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁\n  · 孤儿组验收/plan 双审进行中（run 20260929T035724Z）——请先 trivium review --wait 20260929T035724Z",
++        "carrierAfterHook1": true,
++        "ended": [
++          0
++        ],
++        "code2": 0,
++        "carrierAfterHook2": false
++      },
++      "old": {
++        "glmMembersAfterOrphan": 1,
++        "code1": 0,
++        "ctx1": "TriviumCode 待办：\n  · 已抹除 1 个运行目录的凭据副本\n  · 已回收 孤儿组验收/plan 的遗留闸门：其工作进程已不存在（崩溃或被强杀），业务写入已解锁\n  · 孤儿组验收/plan 双审进行中（run 20260929T035726Z）——请先 trivium review --wait 20260929T035726Z",
++        "carrierAfterHook1": false,
++        "ended": [
++          0
++        ],
++        "code2": 0,
++        "carrierAfterHook2": false
++      },
++      "diff": {
++        "onlyNew": [
++          "  · 1 个运行目录因审查员 CLI 进程组记录未动（CLI 仍在／判不了／记录读不懂）——CLI 结束后下次会话会再判；记录读不懂的不会自愈。首个：〈BASE〉/runs-B1-〈B〉/B1-〈B〉-〈H〉/〈RUN〉（glm 侧审查员 CLI 进程组 〈N〉 的组长已退出，组里还有 1 个成员）"
++        ],
++        "onlyOld": [
++          "  · 已抹除 1 个运行目录的凭据副本"
++        ]
++      }
++    },
++    "B2": {
++      "new": {
++        "code1": 0,
++        "dirAfter1": true,
++        "carrierAfter1": true,
++        "ended": [
++          0,
++          0
++        ],
++        "code2": 0,
++        "dirAfter2": false
++      },
++      "old": {
++        "code1": 0,
++        "dirAfter1": false,
++        "carrierAfter1": false,
++        "ended": [
++          0,
++          0
++        ],
++        "code2": null,
++        "dirAfter2": false
++      }
++    },
++    "B3": {
++      "new": {
++        "code": 0,
++        "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035733Z 已取消\n",
++        "stderr": "· 工作进程 26348 已不存在，仅做状态与锁的清理\n· 按记录结束审查员 CLI：gemini 侧进程组 26399（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 26401（SIGTERM）\n· 已把归档里的 run-20260929T035733Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
++        "glmMembersAfter": 0,
++        "gemMembersAfter": 0,
++        "carrierAfter": false,
++        "glmPgid": 26401,
++        "gemPgid": 26399
++      },
++      "old": {
++        "code": 0,
++        "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035735Z 已取消\n",
++        "stderr": "· 工作进程 26814 已不存在，仅做状态与锁的清理\n· 按记录结束审查员 CLI：gemini 侧进程组 26862（SIGTERM）\n· 已把归档里的 run-20260929T035735Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n",
++        "glmMembersAfter": 1,
++        "gemMembersAfter": 0,
++        "carrierAfter": false,
++        "glmPgid": 26864,
++        "gemPgid": 26862
++      }
++    },
++    "B4": {
++      "cancel": {
++        "new": {
++          "code": 0,
++          "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035737Z 已取消\n",
++          "stderr": "· 向工作进程组 27273 发送 SIGTERM\n· 已把归档里的 run-20260929T035737Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
++        },
++        "old": {
++          "code": 0,
++          "stdout": "已回收主题「孤儿组验收」的锁\n运行 20260929T035739Z 已取消\n",
++          "stderr": "· 向工作进程组 27720 发送 SIGTERM\n· 已把归档里的 run-20260929T035739Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
++        },
++        "diff": {
++          "onlyNew": [],
++          "onlyOld": []
++        }
++      },
++      "done": {
++        "new": {
++          "code": 75,
++          "stdout": "运行 20260929T035741Z ｜ 主题 孤儿组验收 ｜ 阶段 plan ｜ 阶段状态 失败\n已用 2s / 预算 15m0s（0%） ｜ 第 1/92 次等待 ｜ 最近心跳 1s 前\n  gemini: 超时 ｜ gemini-3.8-flash-high ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n  glm: 超时 ｜ GLM-5.3 ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n",
++          "stderr": ""
++        },
++        "old": {
++          "code": 75,
++          "stdout": "运行 20260929T035745Z ｜ 主题 孤儿组验收 ｜ 阶段 plan ｜ 阶段状态 失败\n已用 2s / 预算 15m0s（0%） ｜ 第 1/92 次等待 ｜ 最近心跳 1s 前\n  gemini: 超时 ｜ gemini-3.8-flash-high ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n  glm: 超时 ｜ GLM-5.3 ｜ 第 1 次尝试 ｜ 1s ｜ 桩 CLI 挂起未被取消（code=0 signal=null）\n",
++          "stderr": ""
++        },
++        "diff": {
++          "onlyNew": [],
++          "onlyOld": []
++        }
++      }
++    },
++    "B5": {
++      "new": {
++        "code": 1,
++        "stdout": "",
++        "stderr": "✗ 运行 20260929T035748Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-EZAat3/runs-B5-new/B5-new-4452f417/20260929T035748Z/worker.log\n  已把归档里的 run-20260929T035748Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n  凭据副本未抹：工作进程 29403 已不存在，但审查员 CLI 未确认结束——glm 侧审查员 CLI 进程组 29453 的组长已退出，组里还有 1 个成员（pid_gone），留给会话启动清扫\n  其中仍在的审查员 CLI 可用 trivium review --cancel 20260929T035748Z 按记录结束（本命令不结束任何进程）；结束之后下一次会话启动清扫会重判，放行即抹副本\n",
++        "carrierAfter": true,
++        "glmMembersAfter": 1,
++        "ended": [
++          0
++        ],
++        "glmPgid": 29453,
++        "glmMembersAtCheck": 1
++      },
++      "old": {
++        "code": 1,
++        "stdout": "",
++        "stderr": "✗ 运行 20260929T035750Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-ev165-EZAat3/runs-B5-old/B5-old-16428d47/20260929T035750Z/worker.log\n  已把归档里的 run-20260929T035750Z.json 收尾为 failed\n  已把 task.json 的运行登记同步为 failed\n",
++        "carrierAfter": false,
++        "glmMembersAfter": 1,
++        "ended": [
++          0
++        ],
++        "glmPgid": 29917,
++        "glmMembersAtCheck": 1
++      }
++    },
++    "B6": {
++      "code": 0,
++      "tail": [
++        "· ✓ 裁决齐备后放行提交",
++        "· ✓ 裁决齐备后放行收工",
++        "· ✓ 禁止主脑自行产出 -gemini.md（AC-07）",
++        "· ✓ 编译测试出口真实执行并落盘（AC-10）",
++        "· ✓ 复盘可生成（含时间线与采纳率）",
++        "· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）"
++      ]
++    },
++    "leftover_groups": []
++  }
++}
+diff --git a/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance.mjs b/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance.mjs
+new file mode 100644
+index 00000000..cde87206
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-cli-admission-20260929/acceptance.mjs
+@@ -0,0 +1,421 @@
++#!/usr/bin/env node
++/**
++ * 「组长已退组员仍在的准入」（EV-165）零配额验收（计划 r2 §3.4 B1～B5，另加 B6 doctor 自检）。
++ *
++ * **不碰真实 HOME、不改本仓归档、不碰真实运行根**：夹具、运行目录、旧构建都建在一个 mkdtemp 目录下；
++ * 审核者换成桩（`TRIVIUM_STUB_CRITIC`，`hang_cli` 以仓库的 run() 按 killTree 真实拉起 `sh -c 'sleep 600; : "$0"'`），
++ * 不发起任何模型调用。收尾只删 mkdtemp 的返回值；残留进程按标记与组号结束。
++ *
++ * 新旧两份构建（沿用上一主题做法）：
++ *   - 新：工作树 `skills/dual-critic/scripts/trivium.cjs`（先 npm run build）；
++ *   - 旧：`git archive` 固定提交（缺省 eeceeaa，起点，ACCEPT_BASE_REF 可覆盖）+ `.reviews/`，展开进 mkdtemp，
++ *     `node_modules` 软链工作树，`node scripts/build.mjs`；
++ *   - 两份都 `node <bundle>` 直接调；记 sha256 并断言不同。
++ *
++ * 「组长已退、组员仍在」的构造：起两侧 hang_cli（组长 `sh` + 子进程 `sleep`，同组）→ 按组 SIGKILL worker
++ * （它的 SIGTERM 处理器跑不到）→ 对 glm 侧单 pid（非组）SIGKILL 组长，`gemini` 侧组长保持存活作对照。
++ * worker 已经不在，不会有观察者把 glm 侧记录清成 null（计划双审 r1 CODEX-01≡CODEX-02≡AGY-02≡GLM-03 的教训）。
++ *
++ *   B1  会话启动清扫：新——glm 侧（H 格）不抹、gemini 侧（仍活）不抹；旧——两侧都照抹
++ *   B2  到期整删（推到 31 天前）：新——目录在（H 格挡住）；旧——目录已删
++ *   B3  --cancel：新——按组结束 glm 侧组员（组信号打到 pgid 仍有效）与 gemini 侧组长之后，两侧都照抹；
++ *       旧——glm 侧组长已不在直接判 gone 放行抹除（组员未被结束，遗留进程），gemini 侧走既有 alive 路径照抹
++ *   B4  常态回归（两侧都正常存活、两侧都已自然结束）：新旧逐行输出与退出码相同——确认本轮改动没有波及既有路径
++ *   B5  --wait 判失联：新——glm 侧（H 格）不抹、带精确成员数；gemini 侧（alive）不抹；两者都不结束进程；
++ *       旧——两侧都照抹（旧版对 glm 侧的组长已退出直接判 gone 放行）
++ *   B6  新构建 doctor --selftest
++ *
++ * 用法（在仓库根，先 npm run build 与 node scripts/build.mjs --tests-only）：node acceptance.mjs [输出 JSON 路径]
++ */
++import { execFile, execFileSync, spawn } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import { promisify } from 'node:util';
++import { promises as fs, existsSync, readFileSync } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { pathToFileURL } from 'node:url';
++
++const pexec = promisify(execFile);
++const ROOT = process.cwd();
++const OUT = process.argv[2] ?? null;
++const BASE_REF = process.env.ACCEPT_BASE_REF ?? 'eeceeaa';
++const imp = (p) => import(pathToFileURL(p).href);
++const { encodeStubConfig, STUB_ENV_VAR } = await imp(path.join(ROOT, 'dist/test/src/trivium/adapters/stub.js'));
++const SESSION = 'S-验收';
++const TD = '.' + 'trivium';
++const TOPIC = '孤儿组验收';
++const NEW = { name: 'new', cli: path.join(ROOT, 'skills/dual-critic/scripts/trivium.cjs'), asset: path.join(ROOT, 'skills/dual-critic') };
++if (!existsSync(NEW.cli)) throw new Error(`找不到：${NEW.cli}`);
++
++const results = [];
++const readout = { base_ref: BASE_REF, node: process.version, platform: process.platform };
++const check = (id, ok, detail) => { results.push({ id, ok, detail }); console.log(`${ok ? '✓' : '✖'} ${id}：${detail}`); };
++const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
++const sha = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
++const jsonOf = (text) => { try { return JSON.parse(text.slice(text.indexOf('{'))); } catch { return null; } };
++const readJson = async (p) => JSON.parse(await fs.readFile(p, 'utf8'));
++const today = () => {
++  const d = new Date();
++  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
++};
++
++async function sh(cwd, bin, args, env = {}) {
++  try {
++    const o = await pexec(bin, args, { cwd, env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024, timeout: 300_000 });
++    return { code: 0, stdout: o.stdout, stderr: o.stderr };
++  } catch (e) {
++    return { code: typeof e.code === 'number' ? e.code : null, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
++  }
++}
++const git = (cwd, args) => sh(cwd, 'git', ['-c', 'user.email=a@a', '-c', 'user.name=a', ...args]);
++const envFor = (build, stub) => ({ TRIVIUM_ASSET_ROOT: build.asset, [STUB_ENV_VAR]: stub ? encodeStubConfig(stub) : '', CLAUDE_SESSION_ID: SESSION });
++const cli = (build, cwd, args, stub = null) => sh(cwd, process.execPath, [build.cli, ...args], envFor(build, stub));
++
++// 按进程表认组：与 test/helpers/proc.ts 同源（本脚本要能脱离测试构建单独跑）
++function psRows() {
++  const out = execFileSync('/bin/ps', ['-axo', 'pid=,pgid=,ppid=,stat=,command='], { encoding: 'utf8' });
++  const rows = [];
++  for (const l of out.split('\n')) {
++    const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(l);
++    if (m) rows.push({ pid: +m[1], pgid: +m[2], ppid: +m[3], stat: m[4], cmd: m[5] });
++  }
++  return rows;
++}
++const groupsWithMark = (mark) => [...new Set(psRows().filter((r) => r.cmd.includes(mark)).map((r) => r.pgid))];
++const members = (pgid) => psRows().filter((r) => r.pgid === pgid && !r.stat.startsWith('Z')).length;
++const killGroup = (g) => { if (g > 1) try { process.kill(-g, 'SIGKILL'); } catch { /* 已不在 */ } };
++const killLeaderOnly = (pid) => { try { process.kill(pid, 'SIGKILL'); } catch { /* 已不在 */ } };
++const pidGone = (pid) => { try { process.kill(pid, 0); return false; } catch (e) { return e.code !== 'EPERM'; } };
++const marks = new Set();
++const runIds = new Set();
++
++async function fixture(base, dir) {
++  const root = path.join(base, dir);
++  await fs.mkdir(path.join(root, 'src'), { recursive: true });
++  await fs.writeFile(path.join(root, 'src/a.ts'), 'export const a = 1;\n');
++  await fs.mkdir(path.join(root, TD), { recursive: true });
++  const runRoot = path.join(base, 'runs-' + dir);
++  await fs.writeFile(path.join(root, TD, 'config.yaml'), [
++    'runtime:', `  run_root: ${runRoot}`,
++    'review:', '  default_critics: [gemini, glm]',
++    '  timeout_s:', '    plan: 900', '    code: 900', '    bug: 900', '  wait_timeout_s: 30',
++    'verify:', '  build: []', '  test: []', '',
++  ].join('\n'));
++  await git(root, ['init', '-q', '-b', 'main']);
++  await git(root, ['add', '-A']);
++  await git(root, ['commit', '-q', '-m', 'baseline', '--no-verify']);
++  const stageDir = path.join(root, '.reviews', TOPIC, 'plan');
++  await fs.mkdir(stageDir, { recursive: true });
++  await fs.writeFile(path.join(stageDir, `${today()}-${TOPIC}-` + 'claude.md'), '# 待审计划\n\n## 一、目标\n\n验收。\n');
++  return { root, stageDir, runRoot };
++}
++
++async function start(build, fx, stub) {
++  const r = await cli(build, fx.root, ['review', '--start', '--entry', 'B', '--stage', 'plan', '--topic', TOPIC, '--focus', '验收', '--session-id', SESSION, '--json'], stub);
++  const js = r.code === 0 ? jsonOf(r.stdout) : null;
++  if (js?.run_id) runIds.add(js.run_id);
++  if (js?.run_dir) marks.add(`trivium-stub-cli:${js.run_dir}`);
++  return { r, js };
++}
++
++async function cliGroups(runDir) {
++  const mark = `trivium-stub-cli:${runDir}`;
++  let g = [];
++  for (let i = 0; i < 100 && g.length < 2; i++) {
++    g = groupsWithMark(mark);
++    if (g.length < 2) await sleep(100);
++  }
++  return g;
++}
++
++const sidesCli = async (runDir) => {
++  const s = await readJson(path.join(runDir, 'status.json')).catch(() => null);
++  return s ? Object.fromEntries(Object.entries(s.sides).map(([k, v]) => [k, v.cli])) : null;
++};
++
++/** 两份构建都写 CLI 记录：等 status.json 两侧都记下组号与启动时刻 */
++async function waitRecords(runDir) {
++  let rec = null;
++  for (let i = 0; i < 100; i++) {
++    rec = await sidesCli(runDir);
++    const v = Object.values(rec ?? {});
++    if (v.length === 2 && v.every((x) => x && x.started_at)) break;
++    await sleep(100);
++  }
++  return rec;
++}
++
++async function killWorker(pid) {
++  killGroup(pid);
++  for (let i = 0; i < 100 && !pidGone(pid); i++) await sleep(50);
++  return pidGone(pid);
++}
++
++async function endGroups(groups) {
++  for (const g of groups) killGroup(g);
++  for (let i = 0; i < 40 && groups.some((g) => members(g) > 0); i++) await sleep(50);
++  return groups.map((g) => members(g));
++}
++
++async function hookSessionStart(build, cwd) {
++  return new Promise((resolve) => {
++    const p = spawn(process.execPath, [build.cli, 'gate', 'hook-session-start'], {
++      cwd, env: { ...process.env, TRIVIUM_ASSET_ROOT: build.asset, CLAUDE_SESSION_ID: SESSION },
++    });
++    let stdout = '';
++    p.stdout.on('data', (d) => (stdout += d));
++    p.stderr.on('data', () => {});
++    p.on('close', (code) => resolve({ code, ctx: jsonOf(stdout)?.hookSpecificOutput?.additionalContext ?? '' }));
++    p.stdin.end(JSON.stringify({ hook_event_name: 'SessionStart', session_id: SESSION }));
++  });
++}
++
++async function placeCarrier(runDir) {
++  const carrier = path.join(runDir, 'glm', 'home', '.zcode', 'cli', 'config.json');
++  await fs.mkdir(path.dirname(carrier), { recursive: true });
++  await fs.writeFile(carrier, '{"provider":{"k":{"apiKey":"fake"}}}');
++  return carrier;
++}
++const exists = async (p) => fs.access(p).then(() => true, () => false);
++
++/** 运行目录连同 status.json 的心跳推到 days 天前（目标只在 mkdtemp 之下） */
++async function age(base, dir, days) {
++  if (!dir.startsWith(base + path.sep)) throw new Error(`拒绝改 mkdtemp 之外的目录：${dir}`);
++  const t = new Date(Date.now() - days * 86_400_000);
++  const sp = path.join(dir, 'status.json');
++  const s = await readJson(sp);
++  s.heartbeat_at = t.toISOString();
++  await fs.writeFile(sp, JSON.stringify(s, null, 2) + '\n', 'utf8');
++  for (const f of await fs.readdir(dir)) await fs.utimes(path.join(dir, f), t, t);
++  await fs.utimes(dir, t, t);
++}
++
++let BASE = '';
++const norm = (s) => String(s ?? '')
++  .split(BASE).join('〈BASE〉')
++  .replace(/\d{8}T\d{6}Z(?:-\d+)?/g, '〈RUN〉')
++  .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, '〈TS〉')
++  .replace(/([A-Za-z0-9]+)-(new|old)\b/g, '$1-〈B〉')
++  .replace(/-[0-9a-f]{8}\b/g, '-〈H〉')
++  .replace(/\b\d{3,7}\b/g, '〈N〉');
++
++/** 归一化后逐行多重集差：新有旧无、旧有新无 */
++function lineDiff(a, b) {
++  const la = norm(a).split('\n');
++  const lb = norm(b).split('\n');
++  const cnt = new Map();
++  for (const l of lb) cnt.set(l, (cnt.get(l) ?? 0) + 1);
++  const onlyA = [];
++  for (const l of la) {
++    const n = cnt.get(l) ?? 0;
++    if (n > 0) cnt.set(l, n - 1);
++    else onlyA.push(l);
++  }
++  const onlyB = [];
++  for (const [l, n] of cnt) for (let i = 0; i < n; i++) onlyB.push(l);
++  return { onlyNew: onlyA, onlyOld: onlyB };
++}
++
++const TWO = { gemini: { mode: 'hang_cli' }, glm: { mode: 'hang_cli' } };
++
++/** 起两侧 hang_cli、等记录、按组 SIGKILL worker、放载体、对 glm 侧单 pid SIGKILL 组长（造孤儿组）；gemini 侧组长保持存活作对照 */
++async function orphanedRun(build, base, dir) {
++  await sleep(1100); // run_id 秒级：两次 --start 错开
++  const fx = await fixture(base, dir);
++  const { r, js } = await start(build, fx, TWO);
++  if (!js) return { error: `--start 失败：${r.stdout}${r.stderr}` };
++  const groups = await cliGroups(js.run_dir);
++  const rec = await waitRecords(js.run_dir);
++  const workerGone = await killWorker(js.worker_pid);
++  const carrier = await placeCarrier(js.run_dir);
++  const glmPgid = rec?.glm?.pgid;
++  const gemPgid = rec?.gemini?.pgid;
++  killLeaderOnly(glmPgid);
++  let n = members(glmPgid);
++  for (let i = 0; i < 60 && n === 0; i++) { await sleep(50); n = members(glmPgid); }
++  return { fx, js, groups, rec, workerGone, carrier, glmPgid, gemPgid, glmMembersAfterOrphan: n };
++}
++
++/**
++ * 同 `orphanedRun`，但额外把 gemini 侧整组结束（含组员）——只留 glm 侧的孤儿态作为准入判据的唯一变量。
++ * 不这样做的话，gemini 侧「仍在」会先一步挡住准入，新旧构建在这一步的输出都会相同，观察不到 glm 侧孤儿组
++ * 本身有没有被本轮判据挡住（B1/B2/B5 要单独看 glm 侧；B3 需要 gemini 仍活，走既有 alive 路径，不用本函数）。
++ */
++async function orphanedRunIsolated(build, base, dir) {
++  const o = await orphanedRun(build, base, dir);
++  if (o.error) return o;
++  killGroup(o.gemPgid);
++  for (let i = 0; i < 60 && members(o.gemPgid) > 0; i++) await sleep(50);
++  return o;
++}
++
++const base = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-accept-ev165-'));
++BASE = base;
++try {
++  // ── 构建 ──
++  const oldDir = path.join(base, 'old-build');
++  await fs.mkdir(oldDir, { recursive: true });
++  const tarPath = path.join(base, 'old.tar');
++  const ar = await sh(ROOT, 'git', ['archive', '--format=tar', '-o', tarPath, BASE_REF, 'src', 'scripts', 'skills', 'skills-src', 'test', '.reviews', 'package.json', 'tsconfig.json']);
++  if (ar.code !== 0) throw new Error(`git archive 失败：${ar.stderr}`);
++  const ex = await sh(oldDir, 'tar', ['-xf', tarPath]);
++  if (ex.code !== 0) throw new Error(`解包失败：${ex.stderr}`);
++  await fs.symlink(path.join(ROOT, 'node_modules'), path.join(oldDir, 'node_modules'));
++  const b = await sh(oldDir, process.execPath, ['scripts/build.mjs']);
++  if (b.code !== 0) throw new Error(`旧构建失败：${b.stdout}${b.stderr}`);
++  const OLD = { name: 'old', cli: path.join(oldDir, 'skills/dual-critic/scripts/trivium.cjs'), asset: path.join(oldDir, 'skills/dual-critic') };
++  readout.bundles = { new: { path: NEW.cli, sha256: sha(NEW.cli) }, old: { path: OLD.cli, sha256: sha(OLD.cli), from: BASE_REF } };
++  check('构建', readout.bundles.new.sha256 !== readout.bundles.old.sha256,
++    `新旧 bundle sha256 不同（new ${readout.bundles.new.sha256.slice(0, 12)} / old ${readout.bundles.old.sha256.slice(0, 12)}）`);
++
++  // ── B1：会话启动清扫（仅 glm 侧孤儿态，gemini 侧已整组结束、不参与判定） ──
++  const b1Case = async (build) => {
++    const o = await orphanedRunIsolated(build, base, `B1-${build.name}`);
++    if (o.error) return o;
++    const h1 = await hookSessionStart(build, o.fx.root);
++    const carrierAfterHook1 = await exists(o.carrier);
++    const ended = await endGroups([o.glmPgid]);
++    const h2 = await hookSessionStart(build, o.fx.root);
++    const carrierAfterHook2 = await exists(o.carrier);
++    return { glmMembersAfterOrphan: o.glmMembersAfterOrphan, code1: h1.code, ctx1: h1.ctx, carrierAfterHook1, ended, code2: h2.code, carrierAfterHook2 };
++  };
++  const b1n = await b1Case(NEW);
++  const b1o = await b1Case(OLD);
++  {
++    const d = lineDiff(b1n.ctx1, b1o.ctx1);
++    const fourth = d.onlyNew.find((l) => /组长已退出，组里还有.+个成员/.test(l)) ?? '';
++    readout.B1 = { new: b1n, old: b1o, diff: d };
++    check('B1', !b1n.error && !b1o.error && b1n.glmMembersAfterOrphan > 0
++      && b1n.code1 === 0 && b1o.code1 === 0 && b1n.carrierAfterHook1
++      && !b1o.carrierAfterHook1 && fourth !== ''
++      && b1n.ended.every((n) => n === 0) && b1n.code2 === 0 && !b1n.carrierAfterHook2,
++      `新：孤儿组成员数 ${b1n.glmMembersAfterOrphan}、Hook 后载体在 ${b1n.carrierAfterHook1}（H 格挡住 ${fourth !== ''}）；` +
++      `旧：载体在 ${b1o.carrierAfterHook1}（应为 false，旧版放行抹除）；组结束后新构建再清扫即抹 ${!b1n.carrierAfterHook2}`);
++  }
++
++  // ── B2：到期整删 ──
++  const b2Case = async (build) => {
++    const o = await orphanedRunIsolated(build, base, `B2-${build.name}`);
++    if (o.error) return o;
++    await age(base, o.js.run_dir, 31);
++    const h1 = await hookSessionStart(build, o.fx.root);
++    const dirAfter1 = await exists(o.js.run_dir);
++    const carrierAfter1 = await exists(o.carrier);
++    const ended = await endGroups([o.glmPgid, o.gemPgid]);
++    let h2 = null;
++    let dirAfter2 = dirAfter1;
++    if (dirAfter1) {
++      await age(base, o.js.run_dir, 31);
++      h2 = await hookSessionStart(build, o.fx.root);
++      dirAfter2 = await exists(o.js.run_dir);
++    }
++    return { code1: h1.code, dirAfter1, carrierAfter1, ended, code2: h2?.code ?? null, dirAfter2 };
++  };
++  const b2n = await b2Case(NEW);
++  const b2o = await b2Case(OLD);
++  check('B2', !b2n.error && !b2o.error && b2n.code1 === 0 && b2o.code1 === 0
++    && b2n.dirAfter1 && b2n.carrierAfter1 && !b2o.dirAfter1
++    && b2n.ended.every((n) => n === 0) && !b2n.dirAfter2,
++    `新：到期整删后目录在 ${b2n.dirAfter1}（H 格挡住）、两组结束后再整删即删 ${!b2n.dirAfter2}；旧：目录在 ${b2o.dirAfter1}（应为 false，旧版照删）`);
++  readout.B2 = { new: b2n, old: b2o };
++
++  // ── B3：--cancel（新按组结束孤儿组员之后照抹；旧对孤儿组直接判 gone 放行、组员遗留） ──
++  const b3Case = async (build) => {
++    const o = await orphanedRun(build, base, `B3-${build.name}`);
++    if (o.error) return o;
++    const c = await cli(build, o.fx.root, ['review', '--cancel', o.js.run_id]);
++    await sleep(200);
++    const glmMembersAfter = members(o.glmPgid);
++    const gemMembersAfter = members(o.gemPgid);
++    const carrierAfter = await exists(o.carrier);
++    return { code: c.code, stdout: c.stdout, stderr: c.stderr, glmMembersAfter, gemMembersAfter, carrierAfter, glmPgid: o.glmPgid, gemPgid: o.gemPgid };
++  };
++  const b3n = await b3Case(NEW);
++  const b3o = await b3Case(OLD);
++  check('B3', !b3n.error && !b3o.error && b3n.code === 0 && b3o.code === 0
++    && b3n.glmMembersAfter === 0 && b3n.gemMembersAfter === 0 && !b3n.carrierAfter
++    && b3o.glmMembersAfter > 0 && b3o.gemMembersAfter === 0 && !b3o.carrierAfter,
++    `新：--cancel 之后 glm 侧组员 ${b3n.glmMembersAfter}（应已被组信号结束）、gemini 侧 ${b3n.gemMembersAfter}、照抹 ${!b3n.carrierAfter}；` +
++    `旧：glm 侧组员遗留 ${b3o.glmMembersAfter}（旧版从不按记录结束孤儿组，组长已不在即判 gone 直接抹除，组员照样烧配额）、gemini 侧 ${b3o.gemMembersAfter}`);
++  // 旧构建遗留的孤儿组是本脚本自己造的桩进程（sleep），收尾按标记结束，不留系统残留
++  killGroup(b3o.glmPgid); killGroup(b3o.gemPgid);
++  readout.B3 = { new: b3n, old: b3o };
++
++  // ── B4：常态回归（无孤儿组时新旧逐字相同——确认既有路径未受影响） ──
++  {
++    const normalCancel = async (build) => {
++      await sleep(1100);
++      const fx = await fixture(base, `B4cancel-${build.name}`);
++      const { js } = await start(build, fx, TWO);
++      await cliGroups(js.run_dir);
++      const c = await cli(build, fx.root, ['review', '--cancel', js.run_id]);
++      for (const g of groupsWithMark(`trivium-stub-cli:${js.run_dir}`)) killGroup(g);
++      return { code: c.code, stdout: c.stdout, stderr: c.stderr };
++    };
++    const normalDone = async (build) => {
++      await sleep(1100);
++      const fx = await fixture(base, `B4done-${build.name}`);
++      const stub = { gemini: { mode: 'hang_cli', sleepS: 1 }, glm: { mode: 'hang_cli', sleepS: 1 } };
++      const { js } = await start(build, fx, stub);
++      let w = { code: 73, stdout: '', stderr: '' };
++      for (let i = 0; i < 10 && w.code === 73; i++) w = await cli(build, fx.root, ['review', '--wait', js.run_id, '--timeout', '20'], stub);
++      return { code: w.code, stdout: w.stdout, stderr: w.stderr };
++    };
++    const n1 = await normalCancel(NEW); const o1 = await normalCancel(OLD);
++    const d1 = lineDiff(n1.stdout + n1.stderr, o1.stdout + o1.stderr);
++    const n2 = await normalDone(NEW); const o2 = await normalDone(OLD);
++    const d2 = lineDiff(n2.stdout + n2.stderr, o2.stdout + o2.stderr);
++    readout.B4 = { cancel: { new: n1, old: o1, diff: d1 }, done: { new: n2, old: o2, diff: d2 } };
++    check('B4', n1.code === o1.code && d1.onlyNew.length === 0 && d1.onlyOld.length === 0
++      && n2.code === o2.code && d2.onlyNew.length === 0 && d2.onlyOld.length === 0,
++      `常态 --cancel（两组都活）：退出码 ${n1.code}/${o1.code}、差异 ${d1.onlyNew.length}+${d1.onlyOld.length} 行；` +
++      `常态跑完（两组自然结束）：退出码 ${n2.code}/${o2.code}、差异 ${d2.onlyNew.length}+${d2.onlyOld.length} 行`);
++  }
++
++  // ── B5：--wait 判失联（仅 glm 侧孤儿态，gemini 侧已整组结束、不参与判定） ──
++  const b5Case = async (build) => {
++    const o = await orphanedRunIsolated(build, base, `B5-${build.name}`);
++    if (o.error) return o;
++    const w = await cli(build, o.fx.root, ['review', '--wait', o.js.run_id, '--timeout', '20']);
++    const carrierAfter = await exists(o.carrier);
++    const glmMembersAfter = members(o.glmPgid);
++    const ended = await endGroups([o.glmPgid]);
++    return { code: w.code, stdout: w.stdout, stderr: w.stderr, carrierAfter, glmMembersAfter, ended, glmPgid: o.glmPgid, glmMembersAtCheck: o.glmMembersAfterOrphan };
++  };
++  const b5n = await b5Case(NEW);
++  const b5o = await b5Case(OLD);
++  {
++    const out = b5n.stdout + b5n.stderr;
++    const line = out.split('\n').find((l) => l.includes('凭据副本未抹')) ?? '';
++    check('B5', !b5n.error && !b5o.error && b5n.code === 1 && b5o.code === 1
++      && b5n.carrierAfter && !b5o.carrierAfter
++      && b5n.glmMembersAfter > 0
++      && line.includes(`glm 侧审查员 CLI 进程组 ${b5n.glmPgid} 的组长已退出，组里还有 ${b5n.glmMembersAtCheck} 个成员`),
++      `新：--wait 退出码 ${b5n.code}（判失联退 1）、载体不抹 ${b5n.carrierAfter}、glm 侧组员仍在 ${b5n.glmMembersAfter}、正文带精确成员数 ${line !== ''}；` +
++      `旧：退出码 ${b5o.code}（判失联同样退 1，但两侧都判 gone 照抹）、载体不抹 ${b5o.carrierAfter}（应为 false）`);
++  }
++  readout.B5 = { new: b5n, old: b5o };
++
++  // ── B6：新构建 doctor 自检 ──
++  {
++    const d = await sh(ROOT, process.execPath, [NEW.cli, 'doctor', '--selftest'], { TRIVIUM_ASSET_ROOT: NEW.asset });
++    const m = /(\d+)\s*\/\s*(\d+)/.exec(d.stdout + d.stderr);
++    readout.B6 = { code: d.code, tail: (d.stdout + d.stderr).trim().split('\n').slice(-6) };
++    check('B6', d.code === 0 && !!m && m[1] === m[2], `doctor --selftest 退 ${d.code}、${m ? `${m[1]}/${m[2]}` : '（没读到计数）'}`);
++  }
++} finally {
++  for (const m of marks) for (const g of groupsWithMark(m)) killGroup(g);
++  for (const id of runIds) for (const r of psRows()) if (r.cmd.includes(`--worker ${id}`)) killGroup(r.pgid);
++  await sleep(300);
++  const left = [];
++  for (const m of marks) left.push(...groupsWithMark(m));
++  for (const id of runIds) for (const r of psRows()) if (r.cmd.includes(`--worker ${id}`)) left.push(r.pgid);
++  readout.leftover_groups = left;
++  if (!base.startsWith(os.tmpdir())) throw new Error(`拒绝删除 mkdtemp 之外的目录：${base}`);
++  await fs.rm(base, { recursive: true, force: true });
++}
++
++const pass = results.filter((r) => r.ok).length;
++console.log(`\n${pass} / ${results.length} 通过；残留进程组 ${JSON.stringify(readout.leftover_groups)}`);
++if (OUT) await fs.writeFile(OUT, JSON.stringify({ results, readout }, null, 2) + '\n');
++process.exit(pass === results.length && readout.leftover_groups.length === 0 ? 0 : 1);
+diff --git a/doc/05_testing/evidence/orphan-cli-admission-20260929/gen-mutation-spec.mjs b/doc/05_testing/evidence/orphan-cli-admission-20260929/gen-mutation-spec.mjs
+new file mode 100644
+index 00000000..30f6ca3a
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-cli-admission-20260929/gen-mutation-spec.mjs
+@@ -0,0 +1,53 @@
++// 生成「组长已退组员仍在的准入」（EV-165）的源码变异规格：find 串从现行源码截取，逐条核对恰好出现一次，再落盘。
++// 照搬 evidence/cancel-wait-cli-admission-20260929/gen-mutation-spec.mjs 的形态。
++// 用法（在仓库根）：node gen-mutation-spec.mjs 〈输出路径〉
++import fs from 'node:fs';
++import path from 'node:path';
++
++const ROOT = process.cwd();
++const OUT = process.argv[2];
++const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
++
++const STATUS = 'src/trivium/status.ts';
++const PROTO = 'src/trivium/run-protocol.ts';
++const S = {
++  unit: 'dist/test/test/unit/scrub-admission.test.js',
++};
++const NEVER = "process.env['TRIVIUM_MUT_NEVER'] === '1'";
++
++const cases = [
++  { id: 'M1', desc: 'leaderGone 不再把成员数带出 out（U0/U1′ 的 out.membersLeft 与 why 里的精确数字咬不住）', file: STATUS,
++    find: '    if (o.out) o.out.membersLeft = n;\n', replace: '', expect: S.unit },
++  { id: 'M2', desc: '成员计数取不到时不再判 orphan_unverifiable（回落到 gone，判不了被静默放行）⇒ U0/U1′ 的 Hu', file: STATUS,
++    find: "    if (n === null) return 'orphan_unverifiable';\n",
++    replace: `    if (${NEVER}) return 'orphan_unverifiable';\n`, expect: S.unit },
++  { id: 'M3', desc: '成员数 > 0 时不再判 orphaned（永远视同已结束）⇒ U0/U1′/U3′/U4′/U5″/U6′ 的 H 格', file: STATUS,
++    find: "    return n > 0 ? 'orphaned' : 'gone';\n", replace: "    return 'gone';\n", expect: S.unit },
++  { id: 'M4', desc: '组长不在时不再数成员，直接判 gone（回到 EV-165 之前）⇒ U0/U1′/U3′/U4′/U5″/U6′ 的 H 格', file: STATUS,
++    find: '  if (!alive) return leaderGone();\n', replace: "  if (!alive) return 'gone';\n", expect: S.unit },
++  { id: 'M5', desc: 'cliGroupsConfirmedGone 的 orphaned 分支不再产生阻挡 ⇒ U1′/U3′/U4′/U5″/U6′', file: STATUS,
++    find: "    } else if (v === 'orphaned') {\n",
++    replace: `    } else if (v === 'orphaned' && ${NEVER}) {\n`, expect: S.unit },
++  { id: 'M6', desc: 'cliGroupsConfirmedGone 的 orphan_unverifiable 分支不再产生阻挡 ⇒ U1′ 的 Hu（memberCountOf 注入）', file: STATUS,
++    find: "    } else if (v === 'orphan_unverifiable') {\n",
++    replace: `    } else if (v === 'orphan_unverifiable' && ${NEVER}) {\n`, expect: S.unit },
++  { id: 'M7', desc: 'terminateRecordedCliGroups 回到只对 alive 发信号，orphaned 组不再按组结束 ⇒ U5″（--cancel 结束 H 格组员后照抹）', file: PROTO,
++    find: "      if (verdict !== 'alive' && verdict !== 'orphaned') {\n",
++    replace: "      if (verdict !== 'alive') {\n", expect: S.unit },
++  { id: 'M8', desc: 'settledCliSides 不再为 orphaned 来源清记录 ⇒ U5″（--cancel 结束组员之后记录应清 null）', file: PROTO,
++    find: "    if (g.verdict === 'gone' || ((g.verdict === 'alive' || g.verdict === 'orphaned') && g.gone && g.membersLeft === 0)) {\n",
++    replace: "    if (g.verdict === 'gone' || (g.verdict === 'alive' && g.gone && g.membersLeft === 0)) {\n", expect: S.unit },
++  { id: 'M9', desc: '--wait 的 --cancel 出口只认 alive，orphaned 不再给出口 ⇒ U6′', file: PROTO,
++    find: "        if (adm.cli?.blockers.some((b) => b.kind === 'alive' || b.kind === 'orphaned')) {\n",
++    replace: "        if (adm.cli?.blockers.some((b) => b.kind === 'alive')) {\n", expect: S.unit },
++];
++
++for (const c of cases) {
++  const text = read(c.file);
++  const n = text.split(c.find).length - 1;
++  if (n !== 1) throw new Error(`${c.id} 的 find 在 ${c.file} 里出现 ${n} 次（应为 1）`);
++  if (c.find === c.replace) throw new Error(`${c.id} 的 replace 与 find 相同`);
++}
++const spec = { targets: [STATUS, PROTO], suites: Object.values(S), cases };
++fs.writeFileSync(OUT, JSON.stringify(spec, null, 2) + '\n');
++console.log(`${cases.length} 条，锚点全部唯一 → ${OUT}`);
+diff --git a/doc/05_testing/evidence/orphan-cli-admission-20260929/mutation-output.txt b/doc/05_testing/evidence/orphan-cli-admission-20260929/mutation-output.txt
+new file mode 100644
+index 00000000..1fdb09e8
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-cli-admission-20260929/mutation-output.txt
+@@ -0,0 +1,70 @@
++✓ 工作树干净、基线全绿（1 个套件）
++  M1 ✓ 咬住（fail=4）
++  M2 ✓ 咬住（fail=2）
++  M3 ✓ 咬住（fail=7）
++  M4 ✓ 咬住（fail=7）
++  M5 ✓ 咬住（fail=5）
++  M6 ✓ 咬住（fail=1）
++  M7 ✓ 咬住（fail=1）
++  M8 ✓ 咬住（fail=1）
++  M9 ✓ 咬住（fail=1）
++{
++  "总数": 9,
++  "咬住": 9,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "leaderGone 不再把成员数带出 out（U0/U1′ 的 out.membersLeft 与 why 里的精确数字咬不住）",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M2",
++      "desc": "成员计数取不到时不再判 orphan_unverifiable（回落到 gone，判不了被静默放行）⇒ U0/U1′ 的 Hu",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M3",
++      "desc": "成员数 > 0 时不再判 orphaned（永远视同已结束）⇒ U0/U1′/U3′/U4′/U5″/U6′ 的 H 格",
++      "verdict": "✓ 咬住（fail=7）",
++      "fail": 7
++    },
++    {
++      "id": "M4",
++      "desc": "组长不在时不再数成员，直接判 gone（回到 EV-165 之前）⇒ U0/U1′/U3′/U4′/U5″/U6′ 的 H 格",
++      "verdict": "✓ 咬住（fail=7）",
++      "fail": 7
++    },
++    {
++      "id": "M5",
++      "desc": "cliGroupsConfirmedGone 的 orphaned 分支不再产生阻挡 ⇒ U1′/U3′/U4′/U5″/U6′",
++      "verdict": "✓ 咬住（fail=5）",
++      "fail": 5
++    },
++    {
++      "id": "M6",
++      "desc": "cliGroupsConfirmedGone 的 orphan_unverifiable 分支不再产生阻挡 ⇒ U1′ 的 Hu（memberCountOf 注入）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M7",
++      "desc": "terminateRecordedCliGroups 回到只对 alive 发信号，orphaned 组不再按组结束 ⇒ U5″（--cancel 结束 H 格组员后照抹）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M8",
++      "desc": "settledCliSides 不再为 orphaned 来源清记录 ⇒ U5″（--cancel 结束组员之后记录应清 null）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M9",
++      "desc": "--wait 的 --cancel 出口只认 alive，orphaned 不再给出口 ⇒ U6′",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/orphan-cli-admission-20260929/mutation-spec.json b/doc/05_testing/evidence/orphan-cli-admission-20260929/mutation-spec.json
+new file mode 100644
+index 00000000..1d8fafb9
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-cli-admission-20260929/mutation-spec.json
+@@ -0,0 +1,83 @@
++{
++  "targets": [
++    "src/trivium/status.ts",
++    "src/trivium/run-protocol.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/scrub-admission.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "leaderGone 不再把成员数带出 out（U0/U1′ 的 out.membersLeft 与 why 里的精确数字咬不住）",
++      "file": "src/trivium/status.ts",
++      "find": "    if (o.out) o.out.membersLeft = n;\n",
++      "replace": "",
++      "expect": "dist/test/test/unit/scrub-admission.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "成员计数取不到时不再判 orphan_unverifiable（回落到 gone，判不了被静默放行）⇒ U0/U1′ 的 Hu",
++      "file": "src/trivium/status.ts",
++      "find": "    if (n === null) return 'orphan_unverifiable';\n",
++      "replace": "    if (process.env['TRIVIUM_MUT_NEVER'] === '1') return 'orphan_unverifiable';\n",
++      "expect": "dist/test/test/unit/scrub-admission.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "成员数 > 0 时不再判 orphaned（永远视同已结束）⇒ U0/U1′/U3′/U4′/U5″/U6′ 的 H 格",
++      "file": "src/trivium/status.ts",
++      "find": "    return n > 0 ? 'orphaned' : 'gone';\n",
++      "replace": "    return 'gone';\n",
++      "expect": "dist/test/test/unit/scrub-admission.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "组长不在时不再数成员，直接判 gone（回到 EV-165 之前）⇒ U0/U1′/U3′/U4′/U5″/U6′ 的 H 格",
++      "file": "src/trivium/status.ts",
++      "find": "  if (!alive) return leaderGone();\n",
++      "replace": "  if (!alive) return 'gone';\n",
++      "expect": "dist/test/test/unit/scrub-admission.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "cliGroupsConfirmedGone 的 orphaned 分支不再产生阻挡 ⇒ U1′/U3′/U4′/U5″/U6′",
++      "file": "src/trivium/status.ts",
++      "find": "    } else if (v === 'orphaned') {\n",
++      "replace": "    } else if (v === 'orphaned' && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
++      "expect": "dist/test/test/unit/scrub-admission.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "cliGroupsConfirmedGone 的 orphan_unverifiable 分支不再产生阻挡 ⇒ U1′ 的 Hu（memberCountOf 注入）",
++      "file": "src/trivium/status.ts",
++      "find": "    } else if (v === 'orphan_unverifiable') {\n",
++      "replace": "    } else if (v === 'orphan_unverifiable' && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
++      "expect": "dist/test/test/unit/scrub-admission.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "terminateRecordedCliGroups 回到只对 alive 发信号，orphaned 组不再按组结束 ⇒ U5″（--cancel 结束 H 格组员后照抹）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "      if (verdict !== 'alive' && verdict !== 'orphaned') {\n",
++      "replace": "      if (verdict !== 'alive') {\n",
++      "expect": "dist/test/test/unit/scrub-admission.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "settledCliSides 不再为 orphaned 来源清记录 ⇒ U5″（--cancel 结束组员之后记录应清 null）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "    if (g.verdict === 'gone' || ((g.verdict === 'alive' || g.verdict === 'orphaned') && g.gone && g.membersLeft === 0)) {\n",
++      "replace": "    if (g.verdict === 'gone' || (g.verdict === 'alive' && g.gone && g.membersLeft === 0)) {\n",
++      "expect": "dist/test/test/unit/scrub-admission.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "--wait 的 --cancel 出口只认 alive，orphaned 不再给出口 ⇒ U6′",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "        if (adm.cli?.blockers.some((b) => b.kind === 'alive' || b.kind === 'orphaned')) {\n",
++      "replace": "        if (adm.cli?.blockers.some((b) => b.kind === 'alive')) {\n",
++      "expect": "dist/test/test/unit/scrub-admission.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.mjs b/doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.mjs
+new file mode 100644
+index 00000000..5da09599
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.mjs
+@@ -0,0 +1,85 @@
++#!/usr/bin/env node
++/**
++ * EV-165 前置探针（零配额）：macOS 上，组长已退出而组里还有成员时，这个组号（= 组长原 pid）会不会被分给新进程？
++ *
++ * 做法：
++ *   1. 造 G 个孤儿组：detached `sh -c '〈node 常驻成员〉 & sleep 0.3'`，sh 是组长、0.3 s 后退出；成员是带标记的 node 常驻进程，
++ *      过继给 launchd 后仍留在原组里。确认每组「组长 pid 已不在、组号下有 1 个带标记的成员」。
++ *   2. 连续派生短命进程（/usr/bin/true），记下每个 pid，直到 pid 回绕一整圈并越过全部孤儿组号（或达到上限）。
++ *   3. 看有没有新进程的 pid 等于某个孤儿组号；再确认孤儿组的成员仍在、组号未变。
++ *   4. 收尾：只按标记结束本探针的成员（逐个 pid，SIGKILL）；不删任何文件。
++ *
++ * 用法：node probe-pgid-reuse.mjs [孤儿组数=30] [派生上限=260000] [并发=32]
++ */
++import { spawn, execFileSync } from 'node:child_process';
++
++const G = Number(process.argv[2] ?? 30);
++const LIMIT = Number(process.argv[3] ?? 260_000);
++const CONC = Number(process.argv[4] ?? 32);
++const MARK = `probe-pgid-reuse-${process.pid}`;
++const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
++const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
++const rows = () => execFileSync('/bin/ps', ['-axo', 'pid=,pgid=,stat=,command='], { encoding: 'utf8', maxBuffer: 64 << 20 })
++  .split('\n').map((l) => /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(l)).filter(Boolean)
++  .map((m) => ({ pid: +m[1], pgid: +m[2], stat: m[3], cmd: m[4] }));
++
++// ── 1. 孤儿组 ──
++const member = `${process.execPath} -e 'setTimeout(function(){},1800000)' ${MARK}`;
++const groups = [];
++for (let i = 0; i < G; i++) {
++  const c = spawn('/bin/sh', ['-c', `${member} & sleep 0.3`], { detached: true, stdio: 'ignore' });
++  groups.push(c.pid);
++  await new Promise((r) => c.once('exit', r));
++}
++await sleep(500);
++const before = rows();
++const setup = groups.map((g) => ({
++  pgid: g,
++  leaderAlive: alive(g),
++  members: before.filter((r) => r.pgid === g && r.cmd.includes(MARK) && !r.stat.startsWith('Z')).map((r) => r.pid),
++}));
++const okSetup = setup.filter((s) => !s.leaderAlive && s.members.length === 1).map((s) => s.pgid);
++const orphan = new Set(okSetup);
++const maxOrphan = Math.max(...okSetup);
++
++// ── 2. 派生到 pid 回绕并越过全部孤儿组号 ──
++let spawned = 0, wrapped = false, lastPid = 0, minSeen = Infinity, maxSeen = 0;
++const hits = [];
++const t0 = Date.now();
++async function one() {
++  const c = spawn('/usr/bin/true', [], { stdio: 'ignore' });
++  const pid = c.pid;
++  await new Promise((r) => { c.once('exit', r); c.once('error', r); });
++  return pid;
++}
++while (spawned < LIMIT) {
++  const batch = [];
++  for (let k = 0; k < CONC; k++) batch.push(one());
++  for (const pid of await Promise.all(batch)) {
++    spawned++;
++    if (pid === undefined) continue;
++    if (orphan.has(pid)) hits.push(pid);
++    if (lastPid && pid + 50_000 < lastPid) wrapped = true;
++    lastPid = pid; minSeen = Math.min(minSeen, pid); maxSeen = Math.max(maxSeen, pid);
++  }
++  if (wrapped && lastPid > maxOrphan + 1000) break;
++}
++const ms = Date.now() - t0;
++
++// ── 3. 孤儿组仍完好吗 ──
++const after = rows();
++const intact = okSetup.filter((g) => after.some((r) => r.pgid === g && r.cmd.includes(MARK) && !r.stat.startsWith('Z')));
++
++// ── 4. 收尾：只按标记逐个结束本探针的成员 ──
++for (const r of after) if (r.cmd.includes(MARK) && r.pid !== process.pid) { try { process.kill(r.pid, 'SIGKILL'); } catch { /* 已不在 */ } }
++await sleep(300);
++const leftover = rows().filter((r) => r.cmd.includes(MARK) && !r.stat.startsWith('Z')).length;
++
++console.log(JSON.stringify({
++  node: process.version, orphanGroupsRequested: G, orphanGroupsValid: okSetup.length, orphanPgids: okSetup,
++  spawned, wrapped, pidRange: [minSeen, maxSeen], ms,
++  pidEqualsLiveOrphanPgid: hits, orphanGroupsIntactAfter: intact.length, leftover,
++  verdict: !wrapped ? '未回绕，结论不成立（上限太小）'
++    : hits.length === 0 && intact.length === okSetup.length ? '回绕一整圈，没有新进程拿到仍有成员的组号'
++    : '有新进程拿到了仍有成员的组号，或孤儿组在期间被破坏',
++}, null, 2));
+diff --git a/doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.out.json b/doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.out.json
+new file mode 100644
+index 00000000..2f1d97f5
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.out.json
+@@ -0,0 +1,48 @@
++{
++  "node": "v25.2.1",
++  "orphanGroupsRequested": 30,
++  "orphanGroupsValid": 30,
++  "orphanPgids": [
++    86765,
++    86768,
++    86771,
++    86783,
++    86787,
++    86790,
++    86794,
++    86797,
++    86800,
++    86803,
++    86806,
++    86810,
++    86813,
++    86816,
++    86820,
++    86823,
++    86835,
++    86838,
++    86841,
++    86844,
++    86847,
++    86850,
++    86854,
++    86858,
++    86862,
++    86865,
++    86868,
++    86871,
++    86874,
++    86878
++  ],
++  "spawned": 99680,
++  "wrapped": true,
++  "pidRange": [
++    100,
++    99998
++  ],
++  "ms": 23830,
++  "pidEqualsLiveOrphanPgid": [],
++  "orphanGroupsIntactAfter": 30,
++  "leftover": 0,
++  "verdict": "回绕一整圈，没有新进程拿到仍有成员的组号"
++}
+diff --git a/doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.out2.json b/doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.out2.json
+new file mode 100644
+index 00000000..135f7661
+--- /dev/null
++++ b/doc/05_testing/evidence/orphan-cli-admission-20260929/probe-pgid-reuse.out2.json
+@@ -0,0 +1,58 @@
++{
++  "node": "v25.2.1",
++  "orphanGroupsRequested": 40,
++  "orphanGroupsValid": 40,
++  "orphanPgids": [
++    88218,
++    88221,
++    88224,
++    88229,
++    88232,
++    88235,
++    88238,
++    88241,
++    88244,
++    88247,
++    88250,
++    88253,
++    88256,
++    88263,
++    88272,
++    88275,
++    88280,
++    88283,
++    88287,
++    88290,
++    88293,
++    88296,
++    88300,
++    88303,
++    88381,
++    88414,
++    88417,
++    88429,
++    88432,
++    88436,
++    88439,
++    88442,
++    88447,
++    88450,
++    88453,
++    88456,
++    88459,
++    88462,
++    88466,
++    88469
++  ],
++  "spawned": 99744,
++  "wrapped": true,
++  "pidRange": [
++    100,
++    99998
++  ],
++  "ms": 22982,
++  "pidEqualsLiveOrphanPgid": [],
++  "orphanGroupsIntactAfter": 40,
++  "leftover": 0,
++  "verdict": "回绕一整圈，没有新进程拿到仍有成员的组号"
++}

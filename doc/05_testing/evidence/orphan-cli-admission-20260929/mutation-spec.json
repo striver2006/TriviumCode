@@ -1,0 +1,83 @@
+{
+  "targets": [
+    "src/trivium/status.ts",
+    "src/trivium/run-protocol.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/scrub-admission.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "leaderGone 不再把成员数带出 out（U0/U1′ 的 out.membersLeft 与 why 里的精确数字咬不住）",
+      "file": "src/trivium/status.ts",
+      "find": "    if (o.out) o.out.membersLeft = n;\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "成员计数取不到时不再判 orphan_unverifiable（回落到 gone，判不了被静默放行）⇒ U0/U1′ 的 Hu",
+      "file": "src/trivium/status.ts",
+      "find": "    if (n === null) return 'orphan_unverifiable';\n",
+      "replace": "    if (process.env['TRIVIUM_MUT_NEVER'] === '1') return 'orphan_unverifiable';\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "成员数 > 0 时不再判 orphaned（永远视同已结束）⇒ U0/U1′/U3′/U4′/U5″/U6′ 的 H 格",
+      "file": "src/trivium/status.ts",
+      "find": "    return n > 0 ? 'orphaned' : 'gone';\n",
+      "replace": "    return 'gone';\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "组长不在时不再数成员，直接判 gone（回到 EV-165 之前）⇒ U0/U1′/U3′/U4′/U5″/U6′ 的 H 格",
+      "file": "src/trivium/status.ts",
+      "find": "  if (!alive) return leaderGone();\n",
+      "replace": "  if (!alive) return 'gone';\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "cliGroupsConfirmedGone 的 orphaned 分支不再产生阻挡 ⇒ U1′/U3′/U4′/U5″/U6′",
+      "file": "src/trivium/status.ts",
+      "find": "    } else if (v === 'orphaned') {\n",
+      "replace": "    } else if (v === 'orphaned' && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "cliGroupsConfirmedGone 的 orphan_unverifiable 分支不再产生阻挡 ⇒ U1′ 的 Hu（memberCountOf 注入）",
+      "file": "src/trivium/status.ts",
+      "find": "    } else if (v === 'orphan_unverifiable') {\n",
+      "replace": "    } else if (v === 'orphan_unverifiable' && process.env['TRIVIUM_MUT_NEVER'] === '1') {\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "terminateRecordedCliGroups 回到只对 alive 发信号，orphaned 组不再按组结束 ⇒ U5″（--cancel 结束 H 格组员后照抹）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      if (verdict !== 'alive' && verdict !== 'orphaned') {\n",
+      "replace": "      if (verdict !== 'alive') {\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "settledCliSides 不再为 orphaned 来源清记录 ⇒ U5″（--cancel 结束组员之后记录应清 null）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    if (g.verdict === 'gone' || ((g.verdict === 'alive' || g.verdict === 'orphaned') && g.gone && g.membersLeft === 0)) {\n",
+      "replace": "    if (g.verdict === 'gone' || (g.verdict === 'alive' && g.gone && g.membersLeft === 0)) {\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "--wait 的 --cancel 出口只认 alive，orphaned 不再给出口 ⇒ U6′",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        if (adm.cli?.blockers.some((b) => b.kind === 'alive' || b.kind === 'orphaned')) {\n",
+      "replace": "        if (adm.cli?.blockers.some((b) => b.kind === 'alive')) {\n",
+      "expect": "dist/test/test/unit/scrub-admission.test.js"
+    }
+  ]
+}

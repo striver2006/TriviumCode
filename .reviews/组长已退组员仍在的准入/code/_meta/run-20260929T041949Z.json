@@ -1,0 +1,290 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260929T041949Z",
+  "topic": "组长已退组员仍在的准入",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「组长已退组员仍在的准入」：解决 BACKLOG EV-165（凭据准入与到期整删只看审查员 CLI 的组长：组长已退出而组里还有成员时判已结束、放行，组员若仍在用或写回副本会被抹掉；--cancel 在同一次调用里已数出成员，却不挡准入）。判据单一来源，只改 judgeCliGroup 与 cliGroupsConfirmedGone；--cancel 对这种组也按组结束（撤回 EV-154…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "eeceeaac84be433ae8259aa11b4d3a86f4712ac8",
+    "tree_hash": "d872b05ddc4299f63b586a6a76c38fcc1dedf236",
+    "dirty": true,
+    "subject_sha256": "b31da49b4e623f97f5dd716945b9f6af2505304df06933d032743df213fc40c0",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "eeceeaac84be433ae8259aa11b4d3a86f4712ac8",
+      "dirty": false,
+      "inputs_sha256": "d9288417fd8b7efc262da33478439050f6b13f084ca83f889195fc377ce1cace",
+      "built_at": "2026-09-29T02:16:57.261Z"
+    },
+    "after_tree_hash": "96c17f420252e117dc4eb25650e4fb69907945ea"
+  },
+  "started_at": "2026-09-29T04:19:51.439Z",
+  "finished_at": "2026-09-29T04:29:19.005Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.157.1",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "parse_fallback",
+      "exit_code": 0,
+      "duration_s": 512.321,
+      "tool_calls": {
+        "run_command": 19,
+        "project_reads": 10
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "JSON 不符合 trivium.review.v1：/schema must be equal to constant {\"allowedValue\":\"trivium.review.v1\"}",
+      "empty_review": false,
+      "parse_fallback": true,
+      "session_id": "01a0eb63-f5f7-71c3-9317-8542aa5dca18",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.12",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 395.462,
+      "tool_calls": {
+        "read": 42,
+        "grep": 15,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 25
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 734615,
+        "output_tokens": 47841,
+        "thinking_tokens": 40699,
+        "cache_read_tokens": 8425522,
+        "total_tokens": 782456
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "8248950a-3c30-4e50-b101-054c724ba565",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 567.316,
+      "tool_calls": {
+        "read": 10,
+        "grep": 3,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 6
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 8,
+        "inputTokens": 940616,
+        "outputTokens": 29908,
+        "totalTokens": 970524,
+        "cacheReadTokens": 801664,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_b25713ae-0b60-49bb-8d7a-418ec7945f7a",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/组长已退组员仍在的准入/plan/2026-09-29-组长已退组员仍在的准入-gemini.md",
+    ".reviews/组长已退组员仍在的准入/plan/2026-09-29-组长已退组员仍在的准入-glm.md",
+    ".reviews/组长已退组员仍在的准入/plan/_meta/review-gemini-20260929T025220Z.json",
+    ".reviews/组长已退组员仍在的准入/plan/_meta/review-glm-20260929T025220Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "组长已退组员仍在的准入/code/_meta/changes-20260929T041949Z.diff",
+      "sha256": "b31da49b4e623f97f5dd716945b9f6af2505304df06933d032743df213fc40c0"
+    },
+    {
+      "path": "组长已退组员仍在的准入/code/_meta/brief-codex-20260929T041949Z.md",
+      "sha256": "e7bbbc1261fd13c2fcc3e3d00627d1c80f6112f0391b8e1d264e535b4a2ec526"
+    },
+    {
+      "path": "组长已退组员仍在的准入/code/_meta/brief-gemini-20260929T041949Z.md",
+      "sha256": "8bfffa617d05b932a69c0eb2f399fa0ef09bd53b82e21e55d3d2b584cd97c8fc"
+    },
+    {
+      "path": "组长已退组员仍在的准入/code/_meta/brief-glm-20260929T041949Z.md",
+      "sha256": "3576d8cc3b8841ffbf7cc41a60fceb84af3335d8a9a998f6e2d6561127dc238e"
+    },
+    {
+      "path": "组长已退组员仍在的准入/code/_meta/review-codex-20260929T041949Z.json",
+      "sha256": "9b189d46d0b16cd7f0517e1ec633f8506d4608439f2003a4144b785b49e5bf32"
+    },
+    {
+      "path": "组长已退组员仍在的准入/code/_meta/review-codex-20260929T041949Z.fallback-items.md",
+      "sha256": "5e73525d43753b075ae1b542851ce12055fd25f7cbcc2b9bc49f36eb42e39238"
+    },
+    {
+      "path": "组长已退组员仍在的准入/code/_meta/review-gemini-20260929T041949Z.json",
+      "sha256": "da826df78bcc7697210838e6dae0f35ef19c5917e58400b2fc835abf7cfcb378"
+    },
+    {
+      "path": "组长已退组员仍在的准入/code/_meta/review-glm-20260929T041949Z.json",
+      "sha256": "d1edf6c7b4de5a9a47f4c2d241821fe3e09ea035d0f02d45514c64971c59092b"
+    },
+    {
+      "path": "组长已退组员仍在的准入/code/2026-09-29-组长已退组员仍在的准入-codex.md",
+      "sha256": "5720c3c42e8ad5f7ff4202947130b6656aced4c9d94df320ee3a2531ef437670"
+    },
+    {
+      "path": "组长已退组员仍在的准入/code/2026-09-29-组长已退组员仍在的准入-gemini.md",
+      "sha256": "98c21d9e8827a209f5daef2e2dfedcedf7147635f5b5f5760bd52f4f8f636691"
+    },
+    {
+      "path": "组长已退组员仍在的准入/code/2026-09-29-组长已退组员仍在的准入-glm.md",
+      "sha256": "cfe6c073587e3f336e1bf84b26fbdacdf07539b8daea43fb2c3ede06dbc3f242"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装"
+    ]
+  },
+  "status": "success"
+}

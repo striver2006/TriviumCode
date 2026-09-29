@@ -1,0 +1,9 @@
+✓ 构建：新旧 bundle sha256 不同（new f5a61c5b6eb2 / old 4c1890f0ccbd）
+✓ B1：新：孤儿组成员数 1、Hook 后载体在 true（H 格挡住 true）；旧：载体在 false（应为 false，旧版放行抹除）；组结束后新构建再清扫即抹 true
+✓ B2：新：到期整删后目录在 true（H 格挡住）、两组结束后再整删即删 true；旧：目录在 false（应为 false，旧版照删）
+✓ B3：新：--cancel 之后 glm 侧组员 0（应已被组信号结束）、gemini 侧 0、照抹 true；旧：glm 侧组员遗留 1（旧版从不按记录结束孤儿组，组长已不在即判 gone 直接抹除，组员照样烧配额）、gemini 侧 0
+✓ B4：常态 --cancel（两组都活）：退出码 0/0、差异 0+0 行；常态跑完（两组自然结束）：退出码 75/75、差异 0+0 行
+✓ B5：新：--wait 退出码 1（判失联退 1）、载体不抹 true、glm 侧组员仍在 1、正文带精确成员数 true；旧：退出码 1（判失联同样退 1，但两侧都判 gone 照抹）、载体不抹 false（应为 false）
+✓ B6：doctor --selftest 退 0、14/14
+
+7 / 7 通过；残留进程组 []
