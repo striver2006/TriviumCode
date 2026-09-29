@@ -1,0 +1,167 @@
+[
+  {
+    "id": "M1",
+    "desc": "动机句整句换回 48a7e4d 的旧句 ⇒ T5、T8",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句 EV-166 改写、仍是一行，其余 9 行不变）",
+      "EV-166 T8：帮助不再承诺「躺到整删」；动机句带齐事实要素、不产生新的最宽行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+      "AssertionError [ERR_ASSERTION]: 帮助里不该再有同时含「躺到」与「整删」的行"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M2",
+    "desc": "删掉限定语（括号整段）⇒ T5、T8",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句 EV-166 改写、仍是一行，其余 9 行不变）",
+      "EV-166 T8：帮助不再承诺「躺到整删」；动机句带齐事实要素、不产生新的最宽行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+      "AssertionError [ERR_ASSERTION]: 动机句应含「仍在、判不了或读不懂时到期也不删」，实得：      到期整删也只在它的会话启动时跑；不再回到那个仓库就没有任何自动清理，这条命令只补抹凭据。"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M3",
+    "desc": "「没有任何自动清理」→「副本会一直躺到整删」⇒ T5、T8",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句 EV-166 改写、仍是一行，其余 9 行不变）",
+      "EV-166 T8：帮助不再承诺「躺到整删」；动机句带齐事实要素、不产生新的最宽行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+      "AssertionError [ERR_ASSERTION]: 帮助里不该再有同时含「躺到」与「整删」的行"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M4",
+    "desc": "动机句在「；」处折成两行 ⇒ T5、T8（代码双审 r1 CODEX-06：拆行后含「没有任何自动清理」的半行缺前半句要素）",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句 EV-166 改写、仍是一行，其余 9 行不变）",
+      "EV-166 T8：帮助不再承诺「躺到整删」；动机句带齐事实要素、不产生新的最宽行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+      "AssertionError [ERR_ASSERTION]: 动机句应含「到期整删也只在它的会话启动时跑」，实得：      不再回到那个仓库就没有任何自动清理，这条命令只补抹凭据。"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M5",
+    "desc": "「只补抹凭据」→「补那一格」⇒ T5",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句 EV-166 改写、仍是一行，其余 9 行不变）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M6",
+    "desc": "scrub 一节第二行（冻结）改一个字 ⇒ T5",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句 EV-166 改写、仍是一行，其余 9 行不变）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M7",
+    "desc": "帮助别处（trivium status 说明行）加「副本会一直躺到整删」⇒ T8（全文扫描）",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-166 T8：帮助不再承诺「躺到整删」；动机句带齐事实要素、不产生新的最宽行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 帮助里不该再有同时含「躺到」与「整删」的行"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M8",
+    "desc": "第四格之后的提示行（EV-164 句）改一个字 ⇒ T1、T2",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-164 T1：真跑，A / D / E 三格——stdout 整段逐字（新提示行恰一次，其余人读行不变）；A / D 不抹、E 已抹",
+      "EV-164 T2：--dry-run，同一现场——stdout 整段逐字（预览行、第四格与新提示行）；盘上什么都不动"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M9",
+    "desc": "会话启动第四格「CLI 结束后下次会话会再判」改一个字 ⇒ T7",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "EV-164 T7：会话启动提示第四格整行逐字（「CLI 结束后下次会话会再判；记录读不懂的不会自愈」不改）"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 第四格那一行应逐字不变，实得："
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M10",
+    "desc": "动机句句末加长到超过 151（仍一行）⇒ T5、T8（宽度断言）",
+    "suite": "dist/test/test/integration/scrub-output-text.test.js",
+    "pattern": null,
+    "fail": 2,
+    "red": [
+      "EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句 EV-166 改写、仍是一行，其余 9 行不变）",
+      "EV-166 T8：帮助不再承诺「躺到整删」；动机句带齐事实要素、不产生新的最宽行"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+      "AssertionError [ERR_ASSERTION]: 动机句宽 209，不应超过帮助其余各行的最大宽度 151（最宽行：  trivium preflight --stage plan|code|bug|all [--json] [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--skip-auth-check] [--r"
+    ],
+    "windowMiss": false
+  },
+  {
+    "id": "M11",
+    "desc": "ORCHESTRATOR_LOG_FILES 去掉 rollout.jsonl ⇒ orchestrator-logs-parity（核对新失败文案）",
+    "suite": "dist/test/test/contract/orchestrator-logs-parity.test.js",
+    "pattern": null,
+    "fail": 1,
+    "red": [
+      "适配器写进 out/ 的每份原始日志都在 ORCHESTRATOR_LOG_FILES 里"
+    ],
+    "firstLines": [
+      "AssertionError [ERR_ASSERTION]: 这些写入 out/ 的文件不在脱敏清单里，模型输出里的凭据会原样留在盘上、不会被脱敏："
+    ],
+    "windowMiss": false
+  }
+]

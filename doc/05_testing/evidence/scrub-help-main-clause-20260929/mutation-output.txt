@@ -1,0 +1,85 @@
+✓ 工作树干净、基线全绿（2 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=2）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=2）
+  M11 ✓ 咬住（fail=1）
+{
+  "总数": 11,
+  "咬住": 11,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "动机句整句换回 48a7e4d 的旧句 ⇒ T5、T8",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "删掉限定语（括号整段）⇒ T5、T8",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "「没有任何自动清理」→「副本会一直躺到整删」⇒ T5、T8",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "动机句在「；」处折成两行 ⇒ T5、T8（代码双审 r1 CODEX-06：拆行后含「没有任何自动清理」的半行缺前半句要素）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M5",
+      "desc": "「只补抹凭据」→「补那一格」⇒ T5",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "scrub 一节第二行（冻结）改一个字 ⇒ T5",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "帮助别处（trivium status 说明行）加「副本会一直躺到整删」⇒ T8（全文扫描）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "第四格之后的提示行（EV-164 句）改一个字 ⇒ T1、T2",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "会话启动第四格「CLI 结束后下次会话会再判」改一个字 ⇒ T7",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "动机句句末加长到超过 151（仍一行）⇒ T5、T8（宽度断言）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M11",
+      "desc": "ORCHESTRATOR_LOG_FILES 去掉 rollout.jsonl ⇒ orchestrator-logs-parity（核对新失败文案）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0

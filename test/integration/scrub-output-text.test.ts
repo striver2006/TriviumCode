@@ -19,14 +19,21 @@ import { repoId } from '../../src/trivium/review.js';
  * 夹具：运行根下两个别的项目的桶（`scrub` 要补的跨仓那一格）。桶内 `readdir` 不排序、桶名由 `scrubAllRunRoot` 排序，
  * 所以两条第四格分放 `aa-` / `bb-` 两个桶，顺序由代码自己定（GLM-01）。A 格的 CLI 组是真实的 detached `sh`，
  * 挂 600 s（与桩 `hang_cli` 对齐，GLM-02），finally 里按组结束、再按标记兜底；worker 用已退出的 pid。
+ *
+ * EV-166（清扫帮助主句失实计划 r2 §4.1）：帮助动机句的主句改写——到期整删与凭据抹除都只在那个仓库自己的会话启动时跑，
+ * 不再回去就没有任何自动清理（此前「副本会一直躺到 retention.run_dir_days 整删」失实）。T5 的逐字期望随之更新，
+ * 新增 T8 钉语义要素与「不产生新的最宽行」；T1～T4、T6、T7 不动。
  */
 
 const MARK = 'trivium-it-scrub-text';
 const HINT = '    CLI 结束后再跑会重判；「记录读不懂」不会自愈，需把该侧 cli 改回 null（到期整删也会保留它）';
 const OLD_HALF = '或等 run_dir_days 整删';
 const MOTIVE =
-  '      不再回到那个仓库时，副本会一直躺到 retention.run_dir_days 整删（那一轮记录里的审查员 CLI 仍在、判不了或读不懂时，到期也不删）。这条命令补那一格。';
+  '      到期整删也只在它的会话启动时跑（记录里的审查员 CLI 仍在、判不了或读不懂时到期也不删）；不再回到那个仓库就没有任何自动清理，这条命令只补抹凭据。';
 const OLD_MOTIVE = '副本会一直躺到 retention.run_dir_days 整删。';
+/** EV-164 那一版的整句（EV-166 改写前） */
+const EV164_MOTIVE =
+  '      不再回到那个仓库时，副本会一直躺到 retention.run_dir_days 整删（那一轮记录里的审查员 CLI 仍在、判不了或读不懂时，到期也不删）。这条命令补那一格。';
 const MALFORMED = { pgid: 'not-a-number' };
 
 /** 一个已退出的 worker pid，连同它生前的两种启动时刻 */
@@ -210,7 +217,7 @@ test('EV-164 T4：--json，同一现场——15 个键不变，deferred_cli 的 
  * 不钉 USAGE 的全局行数（代码双审 r1 CODEX-03）：它与这两处文字无关，钉住会让下一次任何正当的帮助改动红在这里。
  * 「动机句仍是一行」由下面 scrub 一节的整段逐字守住（拆成两行这一节就不等）；新旧全局行数的对照在验收 B1。
  */
-test('EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句带限定、仍是一行，其余 9 行不变）', { skip: bundleMissing && bundleSkipReason }, async () => {
+test('EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句 EV-166 改写、仍是一行，其余 9 行不变）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: '清扫文字用例', draft: false });
   const r = await cli(fx.root, ['--help']);
   assert.equal(r.code, 0);
@@ -231,6 +238,60 @@ test('EV-164 T5：--help 的 trivium scrub 一节整段逐字（动机句带限�
     '      不让任何一类看过的目录哪一格都不进。',
   ]);
   assert.ok(!r.stdout.includes(OLD_MOTIVE), '旧动机句不该再出现');
+  assert.ok(!r.stdout.includes(EV164_MOTIVE), 'EV-164 版动机句不该再出现');
+});
+
+/**
+ * 显示宽度：Unicode East Asian Width（UAX #11）为 W / F 的码位记 2，其余一律记 1——含二义宽度 A 类
+ * （如 preflight 那一行里的「…」U+2026）。只列帮助文本可能用到的 W / F 主要区段，不是完整的 EAW 表。
+ * 断言只用相对不变量（不产生新的最宽行），对 A 类取 1 还是 2 不敏感（清扫帮助主句失实计划 r2 §2.1，GLM-01）。
+ * **前提**：本表只覆盖当前帮助文本用到的码位，未含组合标记（应记 0）、变体选择符（如 U+FE0F）与部分 W 区段
+ * （如 U+1F680–1F6FF、Tangut）；帮助里新增 emoji、变体选择符或生僻文字之前先补表（代码双审 r1 CODEX-03）。
+ */
+function displayWidth(s: string): number {
+  let n = 0;
+  for (const ch of s) {
+    const c = ch.codePointAt(0)!;
+    const wide =
+      (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0x303e) || (c >= 0x3041 && c <= 0x33ff) ||
+      (c >= 0x3400 && c <= 0x4dbf) || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xa000 && c <= 0xa4cf) ||
+      (c >= 0xac00 && c <= 0xd7a3) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) ||
+      (c >= 0xff00 && c <= 0xff60) || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1f64f) ||
+      (c >= 0x1f900 && c <= 0x1f9ff) || (c >= 0x20000 && c <= 0x3fffd);
+    n += wide ? 2 : 1;
+  }
+  return n;
+}
+
+/*
+ * T5 钉措辞，T8 钉语义要素：将来有人重写这句，T5 必然要改，T8 守住「不许再承诺整删、事实要素不许丢、不许变成最宽行」
+ * （清扫帮助主句失实计划 r2 §4.1；宽度断言 r2 CODEX-03）。
+ *
+ * 宽度断言的耦合面（代码双审 r1 CODEX-01）：上界取「帮助其余各行的最大宽度」，是用户约束「不超过 USAGE 现有最宽行」的直译，
+ * 不钉 151 这个数。别处写宽不会让它红（上界只会变大）；只在两种情况下红——动机句自己变宽，或现有最宽行
+ * （今天是 preflight 那一行）被改窄到动机句以下。后者与本句无关，所以失败文案带出最宽行原文，红的人不必反推。
+ */
+test('EV-166 T8：帮助不再承诺「躺到整删」；动机句带齐事实要素、不产生新的最宽行', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: '清扫文字用例', draft: false });
+  const r = await cli(fx.root, ['--help']);
+  assert.equal(r.code, 0);
+  const all = lines(r.stdout);
+  const promise = all.filter((l) => l.includes('躺到') && l.includes('整删'));
+  assert.deepEqual(promise, [], '帮助里不该再有同时含「躺到」与「整删」的行');
+  const i = all.indexOf('  trivium scrub [--dry-run] [--json]');
+  assert.ok(i >= 0, '帮助里应有 trivium scrub 一节');
+  const motive = all.slice(i, all.indexOf('', i)).find((l) => l.includes('没有任何自动清理'));
+  assert.ok(motive !== undefined, 'scrub 一节应写明「没有任何自动清理」');
+  for (const part of ['到期整删也只在它的会话启动时跑', '不再回到那个仓库就没有任何自动清理', '仍在、判不了或读不懂时到期也不删']) {
+    assert.ok(motive.includes(part), `动机句应含「${part}」，实得：${motive}`);
+  }
+  const rest = all.filter((l) => l !== motive);
+  const widths = rest.map(displayWidth);
+  const max = Math.max(...widths);
+  assert.ok(
+    displayWidth(motive) <= max,
+    `动机句宽 ${displayWidth(motive)}，不应超过帮助其余各行的最大宽度 ${max}（最宽行：${rest[widths.indexOf(max)]}）`,
+  );
 });
 
 /*

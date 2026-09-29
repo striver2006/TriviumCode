@@ -1,0 +1,51 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "走向 ①（只改文字）落地与声明一致，未见任何判据/行为面改动。帮助动机句的两个事实断言都核到代码：到期整删的唯一自动入口是会话启动 Hook（pruneRunDirs 全仓唯一调用方 hooks.ts:1502，论域 path.join(runRoot, repoId(projectRoot))），`trivium scrub` 只抹不删（fs.rm 仅存在于 pruneRunDirs，scrubAllRunRoot 无删除路径）。T5（scrub 一节整段逐字）与 T8（全文不再有「躺到+整删」同行、三段事实要素、宽度不超过其余各行最大值）分层钉法合理，变异读数 11/11 咬住。RUNBOOK 新增两处事实句各有代码依据（StateCorruptError ⇒ 会话启动只提示不清扫，hooks.ts:1700-1707；桶名按绝对路径派生，review.ts:335-336）。唯一意见 GLM-01（nit）：PROTOCOL 对帮助的转写把「凭据抹除」也写成「只在该仓库自己的会话启动时跑」，比帮助原文说得强。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "doc/03_api/PROTOCOL_dual_critic_relay.md:369（scrub 行）",
+      "problem": "PROTOCOL 对帮助改写的转写「自设计 v1.3.61 起写明到期整删与凭据抹除都只在该仓库自己的会话启动时跑」比帮助原文说得强。帮助实际写的是「会话启动清扫只覆盖本项目的桶…到期整删也只在它的会话启动时跑…不再回到那个仓库就没有任何自动清理」——「凭据抹除」那一半以「不再回去 ⇒ 没有任何自动清理」为论域才严格成立：本仓运行内的 runner finally（挂载点 ①）、人工 --cancel / --wait（②③）、显式 `trivium scrub` 也抹凭据。转写丢掉了「自动 / 遗留副本」限定，严格读是话比事实强——与 EV-164/166 整治的是同一形状，只是量级小、且同句后半「不再回到那个仓库就没有任何自动清理」已把读者拉回正确语义，故仅 nit。",
+      "evidence": "doc/03_api/PROTOCOL_dual_critic_relay.md 的 scrub 行（补丁 hunk @@ -366 +366，工作树现状同）对照 src/trivium/cli.ts:327-328 的帮助原文；凭据抹除的四处挂载见 src/trivium/scrub.ts:12-19（① runner finally、② waitRun、③ cancelRun、④ 会话启动清扫）。",
+      "suggestion": "把那一半改成帮助自己的无条件短语，例如「写明到期整删只在该仓库自己的会话启动时跑、不再回到那个仓库就没有任何自动清理」，不给「凭据抹除」下无限定的「只在会话启动时跑」。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "帮助动机句两个事实断言经代码核实成立：pruneRunDirs 全仓唯一调用方是会话启动 Hook（hooks.ts:1502），scrubAllRunRoot 全程无删除动作（retention.ts:305-360，fs.rm 只在 pruneRunDirs:230）。",
+    "T5 将 scrub 一节 10 行整段逐字钉住（与 cli.ts:325-334 现状逐行一致），T8 以全文扫描（「躺到」「整删」不得同行）、三段事实要素、相对宽度断言补语义面；displayWidth 自注明非完整 EAW 表、断言只用相对不变量，口径自洽。",
+    "五处「核后不改」注释逐一复核语境成立：hooks.ts:1544（本项目桶内 status 读不到的目录到期按 mtime 整删——pruneRunDirs 对 null status 走 cliGroupsConfirmedGone(null) 判 gone，签名显式收 RunStatus | null）、hooks.ts:1557 与 retention.ts:68（本项目会话语境的「躺到 TTL」，deferred 三类到期确会被整删）、run-protocol.ts:1264（本项目「下次会话启动」）、scrub.ts:8 与 orchestrator-logs-parity.test.ts:13（「此前」的历史叙述）。",
+    "RUNBOOK/MANUAL 新增事实句有代码依据：state.json 存在却读不出 ⇒ StateCorruptError 在 hooks.ts:1700-1707 使会话启动只回提示、清扫整段不跑（sweepDeadRunningGates 在 pruneRunDirs 之前）；repoId = basename + sha256(projectRoot).slice(0,8)（review.ts:335-336），挪位置或改名都换桶，「旧桶没人清」成立。",
+    "orchestrator-logs-parity 新失败文案「会原样留在盘上、不会被脱敏」在失败点上无条件为真，替换「躺到整删」方向正确；M11 变异读数确认新文案被实际打出。",
+    "BACKLOG 处置符合本项目纪律：EV-33 原文按历史登记保留、行首加注指向 EV-166 不改写正文；EV-167 只加读数注记仍暂缓；EV-164 范围句补「EV-166 已改写主句」的指向。"
+  ],
+  "not_covered": [
+    "只读审查：未重新构建、未复跑任何测试（npm run check、变异装置、零配额验收只读实施报告与证据输出，未独立复跑）；帮助宽度 149 / 最宽 151 的具体数字取自验收读数，测试侧只依赖相对断言，未独立复算。",
+    "证据脚本（acceptance.mjs、gen-mutation-spec.mjs、mutation-names.mjs）正文未逐行审，只经补丁节选与输出读数核对结论；它们不进打包产物。",
+    "skills-src/ 与 skills/ 渲染产物未查——本补丁未触及入口资产；帮助文字若同步出现在入口面，由 entry-render-parity 兜底，该面未验证。",
+    "计划 r2 与实施的逐条对账以实施报告自述为准（计划双审件属禁读面，未读）。",
+    "另一位审查员的结论（背靠背，未读、不猜测）。"
+  ],
+  "consulted": [
+    ".reviews/清扫帮助主句失实/code/_meta/changes-20260929T064042Z.diff",
+    "src/trivium/cli.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/scrub.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts",
+    "src/trivium/review.ts",
+    "test/integration/scrub-output-text.test.ts",
+    "test/contract/orchestrator-logs-parity.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md"
+  ]
+}

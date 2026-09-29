@@ -1,0 +1,22 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  E3 ✓ 咬住（fail=1）
+  E2 ✓ 咬住（fail=4）
+{
+  "总数": 2,
+  "咬住": 2,
+  "逐条": [
+    {
+      "id": "E3",
+      "desc": "terminateRecordedCliGroups 对 unverifiable 也走发信号路径 ⇒ U15（不发信号的格）红（E1「对 gone 也发」是等价变异：terminateProcessGroup 发信号前先问 isGone，见 ev170-mutation-output.e1-equivalent.txt）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "E2",
+      "desc": "组长不在时成员数为 0 也判 orphaned ⇒ U13 的 gone 断言与 U15 的 claude:gone 红",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    }
+  ]
+}
+exit=0

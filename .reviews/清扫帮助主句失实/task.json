@@ -1,0 +1,83 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "清扫帮助主句失实",
+  "goal": "主题「清扫帮助主句失实」：解决 BACKLOG EV-166（trivium scrub 帮助里「不再回到那个仓库时，副本会一直躺到 retention.run_dir_days 整删」这句主句本身失实：到期整删与会话启动的凭据抹除都只在该项目自己的会话启动 Hook 里跑、论域只有本项目的桶，trivium scrub 只抹凭据不删目录，所以不回到那个仓库就不会有任何自动清理，读者可能误以为废弃…",
+  "created_at": "2026-09-29T06:07:41.962Z",
+  "updated_at": "2026-09-29T07:39:14.309Z",
+  "runs": [
+    {
+      "run_id": "20260929T061215Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T06:12:16.529Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260929T064042Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T06:40:43.723Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260929T070000Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "full",
+      "started_at": "2026-09-29T07:04:26.739Z"
+    },
+    {
+      "run_id": "20260929T073425Z",
+      "stage": "verify",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T07:39:14.309Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-09-29T06:07:41.962Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-09-29T06:29:01.203Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20260929T061215Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-29T06:28:56.255Z"
+    },
+    {
+      "run_id": "20260929T064042Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-29T06:51:44.493Z"
+    }
+  ]
+}

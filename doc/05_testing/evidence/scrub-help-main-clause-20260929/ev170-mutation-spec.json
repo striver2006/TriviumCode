@@ -1,0 +1,12 @@
+{
+  "targets": ["src/trivium/run-protocol.ts", "src/trivium/status.ts"],
+  "suites": ["dist/test/test/unit/cli-group-record.test.js"],
+  "cases": [
+    { "id": "E3", "desc": "terminateRecordedCliGroups 对 unverifiable 也走发信号路径 ⇒ U15（不发信号的格）红（E1「对 gone 也发」是等价变异：terminateProcessGroup 发信号前先问 isGone，见 ev170-mutation-output.e1-equivalent.txt）", "file": "src/trivium/run-protocol.ts",
+      "find": "      if (verdict !== 'alive' && verdict !== 'orphaned') {", "replace": "      if (verdict !== 'alive' && verdict !== 'orphaned' && verdict !== 'unverifiable') {",
+      "expect": "dist/test/test/unit/cli-group-record.test.js" },
+    { "id": "E2", "desc": "组长不在时成员数为 0 也判 orphaned ⇒ U13 的 gone 断言与 U15 的 claude:gone 红", "file": "src/trivium/status.ts",
+      "find": "    return n > 0 ? 'orphaned' : 'gone';", "replace": "    return n >= 0 ? 'orphaned' : 'gone';",
+      "expect": "dist/test/test/unit/cli-group-record.test.js" }
+  ]
+}

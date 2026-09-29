@@ -40,9 +40,10 @@ test('适配器写进 out/ 的每份原始日志都在 ORCHESTRATOR_LOG_FILES �
       if (!ORCHESTRATOR_LOG_FILES.includes(name)) missing.push(`${f}: ${name}`);
     }
   }
+  // 不写「躺到整删」：整删只在该仓库自己的会话启动时跑，不再回去就永远不来（BACKLOG EV-166，清扫帮助主句失实计划 r2 §2.4 C6）
   assert.deepEqual(
     missing, [],
-    `这些写入 out/ 的文件不在脱敏清单里，模型输出里的凭据会随它们躺到整删：\n${missing.join('\n')}`,
+    `这些写入 out/ 的文件不在脱敏清单里，模型输出里的凭据会原样留在盘上、不会被脱敏：\n${missing.join('\n')}`,
   );
 });
 

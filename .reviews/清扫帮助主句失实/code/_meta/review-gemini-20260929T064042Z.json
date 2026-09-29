@@ -1,0 +1,32 @@
+{
+  "agreed": [
+    "严格遵循已批准计划 r2 走向 ①，只改文字不改判据与行为，彻底清除了「不再回到该仓库时副本会躺到整删」的失实承诺与安全误导。",
+    "帮助动机句选用 149 显示宽度的写法乙，紧凑保留 EV-164 限定语语义的同时，不超过 USAGE 最宽行 151，避免了帮助文本布局漂移。",
+    "多处同义失实句（`retention.ts` 文档块、MANUAL、RUNBOOK、PROTOCOL、LLD、主设计）与断言文案（`orchestrator-logs-parity`）同步改准，同时对 5 处历史/本仓语境注释的保留理由论证严密且符合事实。",
+    "测试保护全面且严谨：T5 更新逐字期望，T8 相对断言守住语义要素、无「躺到整删」承诺及最宽行不变量；变异测试 11/11 均有效咬住；验收脚本包含 B0′ 运行根隔离防呆，杜绝了测试副作用。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/清扫帮助主句失实/plan/2026-09-29-清扫帮助主句失实-r2-claude.md",
+    "src/trivium/cli.ts",
+    "src/trivium/retention.ts",
+    "test/contract/orchestrator-logs-parity.test.ts",
+    "test/integration/scrub-output-text.test.ts",
+    "doc/05_testing/REPORT_2026-09-29_scrub_help_main_clause.md",
+    "doc/05_testing/evidence/scrub-help-main-clause-20260929/acceptance.mjs"
+  ],
+  "findings": [],
+  "not_covered": [
+    "因只读审查员权限约束，未在本地直接执行 `acceptance.mjs` 与全量 `npm run check`，依赖所附 evidence 读数交叉审阅。",
+    "未测试超窄终端（显示列宽 < 149）下 terminal 软折行的视觉渲染效果，仅从字符宽度相对不变量（≤ 151）层面进行了契约校验。",
+    "未评估非 macOS 系统下 XNU 进程管理之外的孤儿进程生命周期行为。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "代码变更与已批准计划（r2）高度契合，范围与改动边界极其克制且严密。\n帮助动机句、注释、文档及断言文案均准确修复了「副本会一直躺到整删」的失实表述，对外 CLI 参数、返回契约与退出码零漂移。\n测试用例补充充分（T5 逐字更新、T8 语义与宽度相对守卫），变异用例 11/11 精确咬住，零配额验收测试包含运行根隔离防呆。\n未发现任何偏离计划、对外契约漂移、非必要复杂度或跨文件调用链断裂问题。结论为 approve。",
+  "verdict": "approve"
+}

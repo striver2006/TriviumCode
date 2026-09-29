@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import {
-  processStartTime, run, trackedTrees, watchTrackedTrees, withTreeTag, type RunResult, type TrackedTree,
+  processGroupMemberCount, processStartTime, run, trackedTrees, watchTrackedTrees, withTreeTag, type RunResult, type TrackedTree,
 } from '../../src/trivium/util/exec.js';
 import {
   cliGroupsConfirmedGone, cliRecordsOf, judgeCliGroup, newStatus, syncCliRecords, type RunStatus,
@@ -34,6 +34,27 @@ async function until<T>(f: () => T | Promise<T>, ok: (v: T) => boolean, ms: numb
     v = await f();
   }
   return v;
+}
+
+/**
+ * 按组结束，并等到组号下没有非僵尸成员（BACKLOG EV-170）。只等组长 exit 不够：按组 SIGKILL 的那一刻 `sh` 若正在派生
+ * `sleep`，子进程偶尔漏过信号、留在组里（零配额探针 1000 次 1 次，`doc/05_testing/evidence/scrub-help-main-clause-20260929/`），
+ * EV-165 起判据把这种状态判 `orphaned` 而不是 `gone`，用例「这一组已结束」的前提就不成立。
+ * 数法与生产判据同源（`processGroupMemberCount`，排除僵尸——满载下孤儿僵尸回收慢，不能拿来当前提）；漏网的成员再补一次 SIGKILL。
+ */
+async function endGroup(g: { pgid: number; exited: Promise<void> }): Promise<void> {
+  killGroup(g.pgid);
+  await g.exited;
+  const left = await until(
+    async () => {
+      const n = await processGroupMemberCount(g.pgid);
+      if (n !== 0) killGroup(g.pgid);
+      return n;
+    },
+    (n) => n === 0,
+    5000,
+  );
+  assert.equal(left, 0, `组 ${g.pgid} 应已清空（用例前提），非僵尸成员：${left}`);
 }
 
 function cleanup(): void {
@@ -145,8 +166,7 @@ test('EV-154 U13：judgeCliGroup——组长在且规范化启动时刻相符才
     assert.equal(await judgeCliGroup({ pgid: g.pgid, started_at: t }), 'alive');
     assert.equal(await judgeCliGroup({ pgid: g.pgid, started_at: 'Thu Jan  1 00:00:00 1970' }), 'reused');
     assert.equal(await judgeCliGroup({ pgid: g.pgid, started_at: null }), 'unverifiable');
-    killGroup(g.pgid);
-    await g.exited;
+    await endGroup(g);
     assert.equal(await judgeCliGroup({ pgid: g.pgid, started_at: t }), 'gone');
     assert.equal(await judgeCliGroup({ pgid: g.pgid, started_at: null }), 'gone', '没记下启动时刻的，进程不在时照样判 gone（AGY-01）');
   } finally {
@@ -190,8 +210,7 @@ test('EV-154 U15（不发信号的格）：reused、unverifiable、形状坏、�
   const dead = spawnGroup('u15d');
   try {
     const deadStart = await processStartTime(dead.pgid, { canonical: true });
-    killGroup(dead.pgid);
-    await dead.exited;
+    await endGroup(dead);
     const sent: Array<[number, string]> = [];
     const count = (pid: number, sig: NodeJS.Signals) => {
       sent.push([pid, sig]);
