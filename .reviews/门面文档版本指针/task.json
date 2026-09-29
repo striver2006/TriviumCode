@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "门面文档版本指针",
+  "goal": "主题「门面文档版本指针」：解决 BACKLOG EV-167（门面文档里指向「当前版本」的版本号写死，各主题都不同步：doc/02_design/README.md 写主设计 v1.3.43、LLD v1.1.3，实际已是 v1.3.62、v1.1.20；它不在任何主题的文档同步清单里，只能靠记性）。 开工前先读：记忆 m10b-next-after-ev82.md 的最后两段、pipeline-…",
+  "created_at": "2026-09-29T13:30:22.356Z",
+  "updated_at": "2026-09-29T14:40:48.304Z",
+  "runs": [
+    {
+      "run_id": "20260929T133946Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T13:39:48.505Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260929T141008Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-09-29T14:10:09.845Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20260929T143617Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "full",
+      "started_at": "2026-09-29T14:40:48.304Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-09-29T13:30:22.356Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-09-29T13:55:28.308Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20260929T133946Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-09-29T13:55:24.075Z"
+    },
+    {
+      "run_id": "20260929T141008Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-09-29T14:25:07.626Z"
+    }
+  ]
+}

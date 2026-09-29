@@ -1,6 +1,6 @@
 # PROTOCOL：Driver-DualCritic 工件中继与协议契约
 
-> 依据 [设计 v1.3.43](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD v1.4.8](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD](../01_requirements/PRD_driver_dual_critic.md)（两者的当前版本见其文档头）。
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
 >
 > **⚠️ 本文描述的是当前真实生效的契约**（**`config.v2`** / **`run.v2`** / 四家审核者（缺省三家）/ `--driver <id>`）。

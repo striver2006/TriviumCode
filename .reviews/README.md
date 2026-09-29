@@ -2,7 +2,7 @@
 
 本目录是 **「主攻 + 多审」（Driver-MultiCritic）** 流水线对外的**事实来源**：全部审查结论、逐条裁决与审计材料都落在这里并纳入 Git 版本管理，验收标准（AC-01～AC-19；演进项 AC-20 / AC-21 / AC-24 已达成（AC-21 含达成边界，见 PRD）、AC-22 部分达成，其余待实施）都从本目录读取。
 
-> 规范依据：[PRD v1.4.8](../doc/01_requirements/PRD_driver_dual_critic.md) FR-08 / FR-09，[设计 v1.3.43](../doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6 章。
+> 规范依据：[PRD](../doc/01_requirements/PRD_driver_dual_critic.md) FR-08 / FR-09，[设计](../doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6 章（两者的当前版本见其文档头）。
 >
 > **措辞说明**：N 方化后「双审」的正确称谓是「**多审**」，文档层面统称多审；
 > 但**命令名 `/dual-*`、本目录名 `.reviews/` 与运行时目录一律不改名**（兼容优先）。

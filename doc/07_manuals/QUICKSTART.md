@@ -1,7 +1,7 @@
 # 快速上手：Driver-DualCritic 双审流水线
 
 > 目标：**15 分钟内**装好并跑通一条真实任务。
-> 依据 [设计 v1.3.43](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD v1.4.8](../01_requirements/PRD_driver_dual_critic.md)。
+> 依据 [设计](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD](../01_requirements/PRD_driver_dual_critic.md)（两者的当前版本见其文档头）。
 >
 > **本文描述的是当前可用的系统**：缺省由 Claude Code 主攻 + 缺省三侧审查（Antigravity / ZCode / Codex，2026-09-16 起默认即三侧）。
 > 第四家（Claude Code 作审核者）已随 M9 接入，入选须由另一家当 Driver。
