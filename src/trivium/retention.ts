@@ -61,7 +61,7 @@ export interface ScrubTally {
   unknown: string[];
   /**
    * 准入判据未过、而 `status.json` **读得到**的目录：`starting`（副本可能正在写下）、
-   * 非终态但拿不到 pid、终态但 pid 现势仍是同一活进程。
+   * 非终态但拿不到 pid、终态但 pid 现势仍是同一活进程、终态而 pid 仍活着却取不到它的启动时刻（判不了，EV-175）。
    *
    * 不抹它们是 EV-20 的既定安全决策，登记这一格只为**可见**——它们此前不计 `alive`
    * （`workerStillAlive` 对三类都返回 false）、不计 `unknown`（status 存在）、
@@ -85,6 +85,10 @@ export interface ScrubTally {
 
 export interface PruneResult extends ScrubTally {
   removed: string[];
+  /**
+   * 没被整删的运行目录数：worker 现势还在（含活着而取不到启动时刻、判不了的非终态目录，EV-175——它们同样不进 `deferred`），
+   * 以及未到期或到期而被审查员 CLI 记录挡住的（代码双审 r1 GLM-01）
+   */
   kept: number;
 }
 
@@ -95,12 +99,15 @@ const emptyTally = (): ScrubTally => ({
 /**
  * 一个运行目录的 worker 现势还在不在：非终态且 pid 确实是同一进程才算活着。
  * `pruneRunDirs` 用它决定「无论多老都不动」，`scrubAllRunRoot` 用它决定「跳过不抹」。
+ * 活着而取不到启动时刻（`identity: 'unverifiable'`，EV-175）是判不了，**当仍在**：不整删、不抹——此前读成「不是同一进程」，
+ * 活 worker 的运行目录到期被整删、未到期被抹凭据（取不到启动时刻当不在计划 r2 §2 探针 S-prune / S-sweep）。
+ * 显式正向判定（计划双审 r1 AGY-01）：`identity` 缺失即旧口径 `alive && sameProcess`，不因可选字段缺失而放宽。
  */
 async function workerStillAlive(status: RunStatus | null): Promise<boolean> {
   if (!status || isTerminal(status.phase) || !status.worker_pid) return false;
   // 身份判据与 workerConfirmedGone 同源：有规范化启动时刻只按它比（EV-158）
   const a = await processMatchesRecord(status.worker_pid, workerStartOf(status));
-  return a.alive && a.sameProcess;
+  return (a.alive && a.sameProcess) || a.identity === 'unverifiable';
 }
 
 /**
@@ -216,7 +223,7 @@ export async function pruneRunDirs(
     }
     if (await workerStillAlive(status)) {
       out.kept++;
-      continue; // 还在跑，无论多老都不动
+      continue; // 还在跑（含判不了，EV-175），无论多老都不动
     }
 
     // ── 到期整删 ──
@@ -246,7 +253,10 @@ export interface SweepResult extends ScrubTally {
   buckets: string[];
   /** 看过的运行目录总数 */
   visited: number;
-  /** 因 worker 现势还活着而没动的运行目录数 */
+  /**
+   * 因 worker 现势还活着而没动的运行目录数——含活着而取不到它的启动时刻、判不了的非终态目录（EV-175，代码双审 r1 GLM-01）：
+   * 判不了按仍在处置，人读输出里与确认活着的不另分格（另立一格会改 `trivium scrub` 的输出格式）
+   */
   alive: number;
   /**
    * 准入判据通过、且**侧层**确实还有活要干的运行目录。

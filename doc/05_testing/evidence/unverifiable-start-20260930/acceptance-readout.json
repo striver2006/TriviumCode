@@ -1,0 +1,141 @@
+{
+  "base_root": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/pre-c4d082e",
+  "node": "v25.2.1",
+  "platform": "darwin",
+  "at": "2026-09-30T10:55:09.805Z",
+  "bundles": {
+    "new": "c3de6c0f90e7ba87f4d6bdb6074fdb9dac1d8b86df8488f1b39476c4da6080c5",
+    "old": "025c0ff72765e0ec6c0440a850f3cc75b03ee706b4e09bb209f9bda39fb782d5"
+  },
+  "new": {
+    "build": "new",
+    "X1": {
+      "steady": true,
+      "code": 73,
+      "blocked": 4,
+      "phase": "running",
+      "lost": null,
+      "worker_alive": true,
+      "gate": "running",
+      "stderr_head": ""
+    },
+    "X2": {
+      "steady": true,
+      "code": 69,
+      "blocked": 1,
+      "stdout": "",
+      "stderr": "✗ 取不到工作进程 72413 的启动时刻（ps 未返回），判不了它是不是 status.json 记录的那个工作进程：本次不取消——未发信号，status.json、主题锁、闸门、归档与凭据副本都没动。请稍后重试 trivium review --cancel 20260930T105515Z。一直取不到时：先在终端确认 72413 的命令行含 review --worker 20260930T105515Z（ps -p 72413 -o command=），确认是它、要结束这一轮，就在终端按组结束它（kill -TERM -72413），之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI",
+      "worker_alive_at_return": true,
+      "phase_at_return": "running",
+      "phase": "running",
+      "lock_same": true,
+      "lock_present": true,
+      "gate": "running",
+      "worker_alive": true
+    },
+    "X3": {
+      "code": 70,
+      "stderr_head": "✗ 主题「验收乙new」已被占用：run_id 20260930T105515Z（pid 72413，自 2026-09-30T10:55:15.571Z 起）。\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。",
+      "second_run": null
+    },
+    "X4": {
+      "code": 0,
+      "worker_gone": true,
+      "lock_present": false,
+      "stdout_tail": "运行 20260930T105515Z 已取消"
+    }
+  },
+  "old": {
+    "build": "old",
+    "X1": {
+      "steady": true,
+      "code": 1,
+      "blocked": 3,
+      "phase": "failed",
+      "lost": "pid_gone",
+      "worker_alive": true,
+      "gate": "idle",
+      "stderr_head": "✗ 运行 20260930T105518Z 的工作进程失联（pid_gone）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev175-accept-Bjsw6b/runs-验收甲old/验收甲old-bc0d510c/20260930T105518Z/worker.log\n  已把归档里的 run-20260930T105518Z.json 收尾为 failed"
+    },
+    "X2": {
+      "steady": true,
+      "code": 0,
+      "blocked": 2,
+      "stdout": "已回收主题「验收乙old」的锁\n运行 20260930T105518Z 已取消",
+      "stderr": "· 工作进程 73450 已不存在，仅做状态与锁的清理\n· 按记录结束审查员 CLI：gemini 侧进程组 73501（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 73499（SIGTERM）\n· 已把归档里的 run-20260930T105518Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled",
+      "worker_alive_at_return": true,
+      "phase_at_return": "cancelled",
+      "phase": "failed",
+      "lock_same": false,
+      "lock_present": false,
+      "gate": "idle",
+      "worker_alive": false
+    },
+    "X3": {
+      "code": 0,
+      "stderr_head": "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\n  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}",
+      "second_run": "20260930T105521Z",
+      "second_run_wait_code": 0
+    },
+    "X4": {
+      "code": 0,
+      "worker_gone": true,
+      "lock_present": false,
+      "stdout_tail": "  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。"
+    }
+  },
+  "checks": [
+    {
+      "id": "B0 两份 bundle 不同",
+      "ok": true,
+      "detail": "new c3de6c0f90e7ba87 / old 025c0ff72765e0ec"
+    },
+    {
+      "id": "new 稳态与桩自证",
+      "ok": true,
+      "detail": "steady true/true，被拦 4/1"
+    },
+    {
+      "id": "old 稳态与桩自证",
+      "ok": true,
+      "detail": "steady true/true，被拦 3/2"
+    },
+    {
+      "id": "X1 改前：--wait 退 1、status failed（pid_gone）",
+      "ok": true,
+      "detail": "{\"steady\":true,\"code\":1,\"blocked\":3,\"phase\":\"failed\",\"lost\":\"pid_gone\",\"worker_alive\":true,\"gate\":\"idle\",\"stderr_head\":\"✗ 运行 20260930T105518Z 的工作进程失联（pid_gone）。\\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev175-accept-Bjsw6b/runs-验收甲old/验收甲old-bc0d510c/20260930T105518Z/worker.log\\n  已把归档里的 run-20260930T105518Z.json 收尾为 failed\"}"
+    },
+    {
+      "id": "X1 改后：--wait 退 73、status 仍 running",
+      "ok": true,
+      "detail": "{\"steady\":true,\"code\":73,\"blocked\":4,\"phase\":\"running\",\"lost\":null,\"worker_alive\":true,\"gate\":\"running\",\"stderr_head\":\"\"}"
+    },
+    {
+      "id": "X2 改前：--cancel 退 0、对活工作进程判「已不存在」（返回时它仍活）、按记录结束 CLI、status 写 cancelled、锁没了",
+      "ok": true,
+      "detail": "{\"steady\":true,\"code\":0,\"blocked\":2,\"worker_alive_at_return\":true,\"phase_at_return\":\"cancelled\",\"phase\":\"failed\",\"lock_same\":false,\"lock_present\":false,\"gate\":\"idle\",\"worker_alive\":false}"
+    },
+    {
+      "id": "X2 改后：--cancel 退 69、锁原样、闸门 running、status running、工作进程仍活",
+      "ok": true,
+      "detail": "{\"steady\":true,\"code\":69,\"blocked\":1,\"stderr\":\"✗ 取不到工作进程 72413 的启动时刻（ps 未返回），判不了它是不是 status.json 记录的那个工作进程：本次不取消——未发信号，status.json、主题锁、闸门、归档与凭据副本都没动。请稍后重试 trivium review --cancel 20260930T105515Z。一直取不到时：先在终端确认 72413 的命令行含 review --worker 20260930T105515Z（ps -p 72413 -o command=），确认是它、要结束这一轮，就在终端按组结束它（kill -TERM -72413），之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI\",\"worker_alive_at_return\":true,\"phase_at_return\":\"running\",\"phase\":\"running\",\"lock_same\":true,\"lock_present\":true,\"gate\":\"running\",\"worker_alive\":true}"
+    },
+    {
+      "id": "X3 改前：同主题 --start 退 0（双跑）",
+      "ok": true,
+      "detail": "{\"code\":0,\"stderr_head\":\"⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\\n  注入配置：{\\\"gemini\\\":{\\\"mode\\\":\\\"ok\\\"},\\\"glm\\\":{\\\"mode\\\":\\\"ok\\\"}}\",\"second_run\":\"20260930T105521Z\",\"second_run_wait_code\":0}"
+    },
+    {
+      "id": "X3 改后：同主题 --start 退 70",
+      "ok": true,
+      "detail": "{\"code\":70,\"stderr_head\":\"✗ 主题「验收乙new」已被占用：run_id 20260930T105515Z（pid 72413，自 2026-09-30T10:55:15.571Z 起）。\\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。\",\"second_run\":null}"
+    },
+    {
+      "id": "X4 两边：撤桩 --cancel 退 0、工作进程退出",
+      "ok": true,
+      "detail": "{\"new\":{\"code\":0,\"worker_gone\":true,\"lock_present\":false,\"stdout_tail\":\"运行 20260930T105515Z 已取消\"},\"old\":{\"code\":0,\"worker_gone\":true,\"lock_present\":false,\"stdout_tail\":\"  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。\"}}"
+    }
+  ],
+  "pass": 10,
+  "total": 10
+}

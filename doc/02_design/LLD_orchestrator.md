@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.23
+> - **当前版本**：v1.1.24
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.24（2026-09-30）随设计 v1.3.66（取不到启动时刻当不在，EV-175）同步：4.2 新增「`cancelRun` 主路径判不了身份」引述块（`RecordMatch.identity` 三态、五处处置、69 与手工出路）；已知缺口表「其余身份消费方把『活着而取不到启动时刻』当『不在』」一行改为已解决，新增「SIGTERM 之后宽限期里 `ps` 转坏仍回收锁」一行（EV-176，暂缓）；2.7 表 `util/exec.ts`、`lock.ts` 行数与职责。
 > - **变更说明**：v1.1.23（2026-09-30）随设计 v1.3.65（并发写闸门偶发红，EV-153）同步：4.3 判据表 `pid_reused` 一行改为「取到了启动时刻且不符」并写明取不到时的去向（终态与年龄判据、耗满预算即 70）；已知缺口表新增「其余身份消费方把『活着而取不到启动时刻』当『不在』」一行（EV-175，暂缓）；2.7 表 `lock.ts` 行数。
 > - **变更说明**：v1.1.22（2026-09-30）随设计 v1.3.64（锁回收误判已删锁文件，EV-173 / EV-149）同步：4.3 判据表 `unparsable` 一行改为「文件**存在**而内容读不出」并补「撞 EEXIST 后文件已不存在 ⇒ 立刻重试」；回收一段改写为「预检 → 按身份认领 → 复查 → rename → 复验 → 删除、放回用 link、告警在真回收之后」，写明身份三元组与适用面；2.7 表 `lock.ts` 行数与职责；已知缺口表新增「遗留锁回收仍可能挪走活锁的剩余格」一行（EV-174，暂缓）。
 > - **变更说明**：v1.1.21（2026-09-29）随设计 v1.3.63（门面文档版本指针，EV-167）同步：第一章的规模基准句不再写死模块数与行数（原写的数字停在起草时，`79d2ed4` 上 `src/` 已是 69 个文件、42561 行），改为「随代码变、以 `src/` 为准」；其余不变。
@@ -164,13 +165,13 @@ graph TD
 | 模块 | 行数 | 职责 |
 | :--- | ---: | :--- |
 | `config.ts` | 494 | 四级配置合并（内置默认 → `config.yaml` → `config.local.yaml` → 命令行）、**v1 → v2 内存迁移**（`migrateConfigV1`，逐源且在合并之前）、按 vendor 收窄的配置取值（`agentConfigOf`）、探针回填与时效 |
-| `lock.ts` | 522 | 主题锁（长持锁 / 短临界区）、遗留锁回收（短临界区的持有超时有 30 s 下限，`criticalHoldTimeoutMs`，v1.1.20；读锁区分「不存在」与「不可解析」、回收前按身份预检与认领、放回用 `link`，v1.1.22）、免锁计数 |
+| `lock.ts` | 523 | 主题锁（长持锁 / 短临界区）、遗留锁回收（短临界区的持有超时有 30 s 下限，`criticalHoldTimeoutMs`，v1.1.20；读锁区分「不存在」与「不可解析」、回收前按身份预检与认领、放回用 `link`，v1.1.22）、免锁计数 |
 | `freeze.ts` | 249 | 快照冻结、禁读清单枚举、漂移判定 |
 | `brief.ts` | 310 | 八段送审任务书渲染 |
 | `secrets.ts` | 140 | 落盘前的密钥扫描（10 条规则 + 熵判定） |
 | `types.ts` | 518 | 全部类型定义与编译期契约 |
 | `exit-codes.ts` | 67 | 九个退出码 |
-| `util/exec.ts` | 339 | 子进程执行、进程树杀灭、PID 复用识别 |
+| `util/exec.ts` | 850 | 子进程执行、进程树杀灭、PID 复用识别（`processMatchesRecord` 给出三态身份结论 `identity`：同一 / 不是 / 判不了，v1.1.24） |
 | `util/git.ts` | 447 | 工作树哈希、补丁生成、变更列举；审批时摘要用的严格助手 `treeExists()` / `diffTreesNameStatus()`（失败即抛，与失败返回空的 `diffTrees()` 分开） |
 | `util/fsx.ts` `util/log.ts` | 119 / 39 | 文件系统与日志 |
 
@@ -496,6 +497,12 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
 > `waitRun` 判 `worker_lost` 时在写 `failed` 的同一次 `patchStatus` 里记 `status.lost = { reason, at }`（`status.ts` `lostOf` 读，形状不对即当没有）；`heartbeat_stale` 而 worker 仍在时，报错先列判定依据（心跳年龄、`heartbeat_stale_s`、`WORKER_HEARTBEAT_MS`；「阈值不大于心跳间隔」那一句经 `status.ts` 的 `staleThresholdWithinHeartbeat` 判，与预检 / `--start` 的「失联阈值」只警告项同一来源，v1.1.15 起，EV-160）再给 `--cancel` 出口。
 > `cancelRun` 的终态分支先调 `classifyLostCancel(s)`：`none`（不是 failed + heartbeat_stale）/ `no_identity`（`worker_pid` 不是 > 1 的整数，或 `worker_pid` 合法但两种启动时刻都缺失且进程还在）/ `gone`（进程不存在，含「pid 合法但两种启动时刻都缺失、进程也不在」，v1.1.14 起收窄进本格，EV-159）/ `mismatch`（活着而不是同一进程；v1.1.13 起身份经 `processMatchesRecord`——有规范化启动时刻只比它，没有退回缺省比较；`mismatch` 带 `basis`，告警据它分写；类型守卫放宽为两种形态有其一）/ `alive`。`alive` 与 `gone` 都会补收归档，共用 `finalizeLostAndReclaimLock(ctx, runId, s, pid)`（v1.1.14 起抽出，EV-159）：确认退出后 `finalizeFailedRunMeta({ workerGone: true, termination: { by: worker_lost, reason: heartbeat_stale } })`，播报经 `reportFinalizeStep` 的第四参数换成「可以再跑一次 --cancel 重试」的措辞；随后 `inspectLock` 的 `run_id` 与 `pid` 都相符才 `reclaimStaleLock`；返回两步的 `FinalizeStep`，调用方结论句一律不复述（只说「见上方输出」，代码双审 r1 CODEX-01 ≡ AGY-01 ≡ GLM-02）。`alive` 交给 `cancelLostWorker`：①开场列事实；②`terminateProcessGroup(pid, { isGone: lostWorkerGone, graceMs: WORKER_TERM_GRACE_MS, killWaitMs: ORPHAN_KILL_CONFIRM_MS })`——`lostWorkerGone` 是严格判据（纯函数核 `lostWorkerGoneFrom`：进程不存在或取到的启动时刻不同才算已退出，`ps` 取不到不算；共享的 `workerGoneForCancel` 不改，代码双审 r1 GLM-01），播报按「零信号已不在 / 宽限内响应 / 升级」三态分（CODEX-01）（单测经 `cancelRun` 第三参数 `o.terminateWorker` 替换）；③`terminateRecordedCliGroups`（没确认退出也照做）；④⑤即 `finalizeLostAndReclaimLock`。`gone` 交给 `finalizeGoneWorker`：CLI 结束在调用方已做过（`workerConfirmedGone` 判据覆盖 `gone` 格），本函数只调 `finalizeLostAndReclaimLock`、不发信号（本来就没有活进程可杀）。status.json 不写、闸门不动、不抹凭据；两格结局都退 0。`mismatch` 格跳过 EV-154 终态分支的按记录结束 CLI（一个信号都不发，代码双审 r1 CODEX-02）；`no_identity` 格照走那一支自己的判断（`workerConfirmedGone` 判已不在才结束 CLI，GLM-02）；两格之后都打如实结论（不再打「无需取消」）；`none` 输出与 v1.1.11 相同。
 
+> **`cancelRun` 主路径判不了身份（v1.1.24 起，EV-175）。**
+> `processMatchesRecord` 的三个出口都经 `withIdentity` 补上可选字段 `identity`（纯函数 `recordIdentityOf`：`sameProcess` ⇒ `same`；活着、记录有期望值、而启动时刻取不到 ⇒ `unverifiable`；其余 ⇒ `different`），原五个字段与 `sameProcess` 的含义逐字不变——`judgeStale`、`workerGoneForCancel`、`classifyLostCancel`、`lostWorkerGone` 只读原字段，行为不变。
+> 主路径在判「同一进程」之前先看 `identity === 'unverifiable'`：成立就 `throw envError(…)`（69）——不发信号（worker 与按记录的 CLI 都不）、不写 status.json、不回收锁与闸门、不走挂载点 ③、不补收 run.json；正文写明「本次不取消，稍后重试」，并给 `ps` 持续取不到时的手工出路（核命令行含 `review --worker 〈run_id〉` → 终端按组结束 → 再 `--cancel` 即走「已不存在」格）。`s` 为 null 时记录无期望值，只看存活，落不进这一格。
+> 其余四处同一口径：`interpretStatus` 情形 A 与活着同处置、情形 C 不判 `pid_gone` 而按心跳判；`workerConfirmedGone` 返回 `gone: false`（why「工作进程 N 仍在，但取不到它的启动时刻：判不了……」），因而 `scrubAdmission`、`waitRun` 的 `goneForArchive`、终态分支 ③ 的 CLI 结束都不放行；`retention.ts` `workerStillAlive` 当仍在（显式正向判定，`identity` 缺失即旧口径）。
+> 宽限期轮询 `workerGoneForCancel` **有意不读** `identity`：已判同一进程、发过 SIGTERM 之后取不到按已退出＝停止升级（不向身份判不了的进程发 SIGKILL）；其后收尾不抹不补收，但 status、锁与闸门照常回收——残余见第七章 EV-176。
+
 ### 4.3 锁的生命周期
 
 两类用途，同一套实现（[lock.ts](../../src/trivium/lock.ts)）：
@@ -627,7 +634,8 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 | ~~**`heartbeat_stale_s` 不大于 worker 心跳间隔时事前不告警**~~ | ~~配置只约束 `> 0`，`HEARTBEAT_MS` 是 30 s 常量；这样配时每一轮都会被判 `heartbeat_stale`~~ | **已解决（2026-09-29，EV-160）**：预检 ④‴ 与 `startRun` 出只警告项「失联阈值」（`checkHeartbeatThreshold`），判据与 `--wait` 报错那一句共用 `staleThresholdWithinHeartbeat`；不拦截、配置契约不改；`(30 s, 60 s)` 不告警（要一次心跳迟到才会被判，配置层判不出，BACKLOG 另登） |
 | ~~**短临界区锁的持有超时借用 `heartbeat_stale_s`**~~ | ~~`lock.ts` `judgeStale` 对 `critical` 锁按 `now − acquired_at > heartbeatStaleMs` 判 `heartbeat_dead`；临界区不写心跳，危险临界值是最长临界区的持续时间（毫秒到数十毫秒），与 30 s 心跳间隔无关~~ | **已解决（2026-09-29，EV-161）**：年龄判据改比 `criticalHoldTimeoutMs(阈值)` = `max(阈值, WORKER_HEARTBEAT_MS)`，亚秒阈值下活着的临界区 30 s 内不再被回收；阈值 ≥ 30 s 时判定不变，worker 失联判定不取下限（临界区锁超时下限计划 r2） |
 | **遗留锁回收仍可能挪走活锁的剩余格** | v1.1.22 起回收者之间按遗留锁身份认领互斥，回收者对回收者的竞争已关死（实施期 e149 形状压测 1200 轮 0 双持有）。剩下三格：①认领之后、rename 之前被**非回收者**删掉并重建（被误判遗留的活持有者自己 release——只在 `heartbeat_dead` / `runTerminal` 下可达）；②`fstat` 失败取不到身份，无法认领，退回只靠预检；③认领者中途崩溃、认领残留 10 s 以上时，两个回收者同时按年龄清理认领的竞争。另有④崩溃残件（`.reclaim-*` / `.stale-*` / `.tmp-*`）没有通用清扫，只在同身份后来者撞上时机会性清理，残件不会被 `hooks.ts` 的锁目录枚举误读成锁（按 `.lock` 后缀过滤），只是垃圾文件。同族：`release()` 的「读 → 比 → 删」在「活持有者被判遗留、锁被回收并由别人重建」时会删掉别人的锁 | 命中时两个持有者并存；复验不符后的 `link` 放回会失败并告警「挪走了一把新建的锁且放不回」，不再静默。三格都要求罕见前提（误判活持有者、stat 失败、回收中途崩溃），暂缓（EV-174；读数见锁回收误判已删锁文件实施报告） |
-| **其余身份消费方把「活着而取不到启动时刻」当「不在」** | `processMatchesRecord` 在进程活着而 `ps` 取不到启动时刻时返回 `sameProcess: false`，「确认不符」与「判不了」压成一个布尔。v1.1.23 起 `judgeStale` 对这一格不判复用（EV-153）；`interpretStatus` 情形 C、`workerConfirmedGone`、`workerStillAlive`、`cancelRun` 主路径照旧按「不在 / 失联」处置，与 `lostWorkerGone` 的「取不到不算已退出」不一致 | 满载下 `ps` 派生失败时：活 worker 被 `--wait` 写成 failed、凭据副本被抹、到期可整删、`--cancel` 只清状态与锁不发信号——而 v1.1.23 起等待者在这一格耗满预算抛 70，70 的正文正指向 `--cancel`：命中即活 worker 脱锁、同主题可再 `--start` 双跑。各消费方的「判不了」处置要逐一论证（凭据可用性与安全、`--wait` 能否结束、`--cancel` 的出口），暂缓（EV-175；候选：`RecordMatch` 三态化） |
+| ~~**其余身份消费方把「活着而取不到启动时刻」当「不在」**~~ | ~~`processMatchesRecord` 在进程活着而 `ps` 取不到启动时刻时返回 `sameProcess: false`，「确认不符」与「判不了」压成一个布尔；`interpretStatus` 情形 C、`workerConfirmedGone`、`workerStillAlive`、`cancelRun` 主路径按「不在 / 失联」处置~~ | **已解决（2026-09-30，EV-175，v1.1.24）**：`RecordMatch` 加可选三态字段 `identity`，五处只在 `unverifiable` 时走新分支（情形 A 同活着、情形 C 按心跳、`workerConfirmedGone` 不算已不在、`workerStillAlive` 当仍在、`cancelRun` 主路径什么都不动并以 69 退出），见 4.2「`cancelRun` 主路径判不了身份」。改前构建上 14 格零配额读数（`--wait` 写 failed 并抹凭据、到期整删活 worker 的目录、`--cancel` 只清不杀后同主题双跑）改后逐格等于不拦时的结局；情形 A 生产形状本就不受影响。残余：`ps` 持续取不到时工具自己结束不了这一轮（`--cancel` 每次 69，出路是正文里的手工结束），见下一行与 BACKLOG EV-176 |
+| **`--cancel` 发过 SIGTERM 之后、宽限期里 `ps` 转坏仍回收锁** | 主路径已判同一进程、发了 SIGTERM；宽限期轮询 `workerGoneForCancel` 有意不读 `identity`，取不到即按已退出停止升级；收尾经 `scrubAdmission` 不抹、不补收 run.json，但 status.json 写 cancelled、锁与闸门照常回收 | 工作进程若还没来得及响应 SIGTERM，就是一把活锁被释放、同主题可再 `--start`。触发要 `ps` 在 5 s 宽限里由好转坏且 worker 没在毫秒级响应 SIGTERM。修法要论证「退出未确认时锁留不留」，会改 EV-150 定下的「SIGKILL 之后不等确认就回收」语义，暂缓（EV-176） |
 | **取消落在收尾段时归档可能不是 `cancelled`** | 两侧 CLI 已结束、worker 在解析与归档时，信号到达与 SIGTERM 处理器执行之间至多一次事件循环迭代，其间已就绪的回调可先行（没有处理器时这段窗口为零）；按代码论证，造不出确定时序 | 最坏：worker 把 run.json 与 status.json 都写成终态 ⇒ `--cancel` 终态早退，归档记 `success` / `failed`；只写了 run.json ⇒ status.json 被写成 `cancelled`，两边劈叉。如实保留（取消够不到审查员CLI计划 r2 §4.4 a″） |
 | **协议片段无升级路径** | `appendSnippet`（`init.ts:63-66`）见标记即跳过，与 hooks 的「按名替换」不一致 | 已初始化项目的协议片段永不更新。实测某项目落后 18 行 |
 | **人工审批无机械边界** | `recordApproval`（`approval.ts:54-86`）无任何调用者身份校验；skill 的 `allowed-tools` 预批准了 `Bash(.trivium/bin/trivium:*)` | Driver 自己一条命令就能关掉等人工审批的闸门。曾加过一次性确认码，因明文经 stdout 由 Driver 转述、构不成边界而**主动移除**——「虚假的安全感比没有护栏更糟」。真解需要宿主提供不经过模型的带外通道 |

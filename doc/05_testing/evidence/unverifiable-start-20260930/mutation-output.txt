@@ -1,0 +1,77 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  M1 ✓ 咬住（fail=9）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=3）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=3）
+{
+  "总数": 10,
+  "咬住": 10,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "recordIdentityOf 的判不了改回 different ⇒ U1a、U1b、U2～U8 的新行为格",
+      "verdict": "✓ 咬住（fail=9）",
+      "fail": 9
+    },
+    {
+      "id": "M2",
+      "desc": "情形 C 删掉判不了分支（回到「!alive 或 !sameProcess 即 pid_gone」）⇒ U3、U8",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "情形 C 的判不了不走心跳、直接 running ⇒ U3 过期格、U8 过期格",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "情形 A 删掉判不了分支 ⇒ U2",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "workerConfirmedGone 删判不了分支 ⇒ U4、U7、U8 过期格",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M6",
+      "desc": "workerStillAlive 删判不了分支 ⇒ U5",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "cancelRun 主路径删判不了分支 ⇒ U6",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "判不了时退 1 而不是 69 ⇒ U6",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "规范化且不在那个 return 不补 identity（计划双审 r1 GLM-02）⇒ U1b 不在的规范化格",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "legacy 分支那个 return 不补 identity ⇒ U1b legacy 格、U2、U3 旧版记录格",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    }
+  ]
+}

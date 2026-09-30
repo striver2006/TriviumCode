@@ -1,0 +1,93 @@
+{
+  "targets": [
+    "src/trivium/util/exec.ts",
+    "src/trivium/status.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/run-protocol.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/unverifiable-start.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "recordIdentityOf 的判不了改回 different ⇒ U1a、U1b、U2～U8 的新行为格",
+      "file": "src/trivium/util/exec.ts",
+      "find": "  return m.alive && m.startedAt === null && m.expected !== null ? 'unverifiable' : 'different';\n",
+      "replace": "  return m.alive && m.startedAt === null && m.expected !== null ? 'different' : 'different';\n",
+      "expect": "dist/test/test/integration/unverifiable-start.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "情形 C 删掉判不了分支（回到「!alive 或 !sameProcess 即 pid_gone」）⇒ U3、U8",
+      "file": "src/trivium/status.ts",
+      "find": "    if (live.identity !== 'unverifiable' && (!live.alive || !live.sameProcess)) {\n",
+      "replace": "    if ((!live.alive || !live.sameProcess)) {\n",
+      "expect": "dist/test/test/integration/unverifiable-start.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "情形 C 的判不了不走心跳、直接 running ⇒ U3 过期格、U8 过期格",
+      "file": "src/trivium/status.ts",
+      "find": "    if (live.identity !== 'unverifiable' && (!live.alive || !live.sameProcess)) {\n",
+      "replace": "    if (live.identity === 'unverifiable') return { kind: 'running', status: raw };\n    if (live.identity !== 'unverifiable' && (!live.alive || !live.sameProcess)) {\n",
+      "expect": "dist/test/test/integration/unverifiable-start.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "情形 A 删掉判不了分支 ⇒ U2",
+      "file": "src/trivium/status.ts",
+      "find": "    if ((live.alive && live.sameProcess) || live.identity === 'unverifiable') return { kind: 'inconclusive', reason };\n",
+      "replace": "    if ((live.alive && live.sameProcess)) return { kind: 'inconclusive', reason };\n",
+      "expect": "dist/test/test/integration/unverifiable-start.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "workerConfirmedGone 删判不了分支 ⇒ U4、U7、U8 过期格",
+      "file": "src/trivium/status.ts",
+      "find": "    if (live.identity === 'unverifiable') {\n",
+      "replace": "    if (false) {\n",
+      "expect": "dist/test/test/integration/unverifiable-start.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "workerStillAlive 删判不了分支 ⇒ U5",
+      "file": "src/trivium/retention.ts",
+      "find": "  return (a.alive && a.sameProcess) || a.identity === 'unverifiable';\n",
+      "replace": "  return (a.alive && a.sameProcess);\n",
+      "expect": "dist/test/test/integration/unverifiable-start.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "cancelRun 主路径删判不了分支 ⇒ U6",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    if (live.identity === 'unverifiable') {\n",
+      "replace": "    if (false) {\n",
+      "expect": "dist/test/test/integration/unverifiable-start.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "判不了时退 1 而不是 69 ⇒ U6",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      throw envError(\n",
+      "replace": "      throw new TriviumError(EXIT.FAIL, \n",
+      "expect": "dist/test/test/integration/unverifiable-start.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "规范化且不在那个 return 不补 identity（计划双审 r1 GLM-02）⇒ U1b 不在的规范化格",
+      "file": "src/trivium/util/exec.ts",
+      "find": "  if (!alive) return withIdentity({ alive: false, sameProcess: false, startedAt: null, expected, basis: 'canonical' });\n",
+      "replace": "  if (!alive) return ({ alive: false, sameProcess: false, startedAt: null, expected, basis: 'canonical' });\n",
+      "expect": "dist/test/test/integration/unverifiable-start.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "legacy 分支那个 return 不补 identity ⇒ U1b legacy 格、U2、U3 旧版记录格",
+      "file": "src/trivium/util/exec.ts",
+      "find": "    return withIdentity({ ...p, expected: legacy || null, basis: 'legacy' });\n",
+      "replace": "    return ({ ...p, expected: legacy || null, basis: 'legacy' });\n",
+      "expect": "dist/test/test/integration/unverifiable-start.test.js"
+    }
+  ]
+}

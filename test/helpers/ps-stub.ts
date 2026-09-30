@@ -11,6 +11,10 @@
  * 那样两种形态的生效环境逐字相同、无从区分，`psStubWorks` 以「环境前提不满足」判红，而不是报成桩没生效。
  *
  * 桩是否真的生效要由调用方自证（`psStubWorks`）：桩在某个 Node 版本上不透传时，依赖它的用例会空转成绿（计划双审 CODEX-02）。
+ *
+ * **按 pid 过滤**（EV-175，取不到启动时刻当不在计划 r2 §5.1）：给了 `pids` 就只拦 `-p` 参数在其中的调用，别的 pid 与
+ * `ps -axo`（进程组成员数）照常。审查员 CLI 进程组的判定（`judgeCliGroup`）也调规范化形态的 `ps`，不过滤就会让 CLI 记录
+ * 一律判不了、「信号发没发」失去分辨力。不给 `pids` 即此前的行为（EV-153 的用例不动）。
  */
 import cp from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
@@ -33,11 +37,19 @@ export interface PsStub {
   restore: () => void;
 }
 
-export function stubPsFailure(which: PsForm): PsStub {
+/** 这次 `ps` 调用的 `-p` 参数是不是被拦的 pid 之一；没给 `pids` 时一律算是 */
+function targetsBlockedPid(args: readonly string[] | undefined, pids: ReadonlySet<number> | null): boolean {
+  if (pids === null) return true;
+  const i = args?.indexOf('-p') ?? -1;
+  return i >= 0 && pids.has(Number(args![i + 1]));
+}
+
+export function stubPsFailure(which: PsForm, o: { pids?: readonly number[] } = {}): PsStub {
   const orig = cp.spawn;
   const state = { blocked: 0, restored: false };
+  const pids = o.pids ? new Set(o.pids) : null;
   const stub = function (this: unknown, bin: string, args?: readonly string[], opts?: cp.SpawnOptions) {
-    if (bin === '/bin/ps') {
+    if (bin === '/bin/ps' && targetsBlockedPid(args, pids)) {
       const canonical = isCanonicalEnv(opts?.env as NodeJS.ProcessEnv | undefined);
       if (which === 'both' || (which === 'canonical') === canonical) {
         state.blocked++;
@@ -62,10 +74,10 @@ export function stubPsFailure(which: PsForm): PsStub {
 }
 
 /**
- * 桩自证：装桩后以对应形态取一次本进程的启动时刻，应得 null。取到值说明桩没透传到 `exec.ts` 的具名绑定——
- * 返回可读的原因，调用方据此判红，而不是让用例在桩失效时空转绿。
+ * 桩自证：装桩后以对应形态取一次 `pid`（缺省本进程）的启动时刻，应得 null。取到值说明桩没透传到 `exec.ts` 的具名绑定——
+ * 返回可读的原因，调用方据此判红，而不是让用例在桩失效时空转绿。按 pid 过滤的桩要传被拦的那个 pid。
  */
-export async function psStubWorks(which: PsForm): Promise<string | null> {
+export async function psStubWorks(which: PsForm, pid: number = process.pid): Promise<string | null> {
   if (which !== 'both' && psFormsIndistinguishable()) {
     return (
       '环境前提不满足：宿主环境已同时设 LC_ALL=C 与 TZ=UTC0，缺省与规范化两种形态的 ps 生效环境相同，桩分不出拦哪一种' +
@@ -74,8 +86,8 @@ export async function psStubWorks(which: PsForm): Promise<string | null> {
   }
   const forms = which === 'both' ? ['canonical', 'legacy'] as const : [which];
   for (const f of forms) {
-    const t = await processStartTime(process.pid, f === 'canonical' ? { canonical: true } : {});
-    if (t !== null) return `桩未生效：${f} 形态仍取到启动时刻「${t}」（Node ${process.version} 未把 spawn 的改动同步进具名导入）`;
+    const t = await processStartTime(pid, f === 'canonical' ? { canonical: true } : {});
+    if (t !== null) return `桩未生效：${f} 形态仍取到 pid ${pid} 的启动时刻「${t}」（Node ${process.version} 未把 spawn 的改动同步进具名导入，或 pid 不在拦截集里）`;
   }
   return null;
 }

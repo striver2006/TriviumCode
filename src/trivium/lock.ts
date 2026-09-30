@@ -162,7 +162,8 @@ export function criticalHoldTimeoutMs(heartbeatStaleMs: number): number {
  * 它的启动时刻（满载下派生失败、10 s 超时）是「判不了」：原先读成「不是同一进程」，会把一把活锁当遗留锁回收——同进程的两个
  * `setGate` 由此同时读改写 `state.json` 而丢更新，跨进程则是 `--start` 回收活 worker 的运行锁。现在往下走终态与年龄判据：
  * 短临界区锁持有超时后仍判 `heartbeat_dead`；其余不回收，等待者按原预算重试，耗满即 70（本次调用等不到年龄兜底）。
- * `processMatchesRecord` 的其余消费方对「取不到」的处置不变（同根的 fail-open 登记 BACKLOG EV-175）。
+ * 本函数按 `startedAt !== null` 判，不读 `RecordMatch.identity`（两者对这一格等价）；其余消费方经 `identity` 同一口径区分
+ * 「判不了」（EV-175，取不到启动时刻当不在）。
  *
  * @param heartbeatStaleMs 调用方传入的 `heartbeat_stale_s × 1000`；对 `critical` 锁的年龄判据经 `criticalHoldTimeoutMs`
  *                         取 30 s 下限（EV-161），`run` 锁不走年龄判据。

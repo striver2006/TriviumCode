@@ -1,0 +1,1060 @@
+{
+  "root": "/Users/chenzhenbo/Work/TriviumCode",
+  "node": "v25.2.1",
+  "platform": "darwin",
+  "at": "2026-09-30T10:52:19.184Z",
+  "exec_js_sha16": "0368371ce88e404c",
+  "status_js_sha16": "96beffd7e525b792",
+  "retention_js_sha16": "b32f4abb871f1e88",
+  "run_protocol_js_sha16": "98ad96a80048d133",
+  "results": [
+    {
+      "desc": "interpretStatus 情形 A：status.json 不存在，只给 fallbackPid（生产形状，waitRun 不传 fallbackPidStartedAt）",
+      "ps_block_form": "fail",
+      "id": "A-prod",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 3,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "reading": {
+        "kind": "inconclusive",
+        "reason": "no_status_file"
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "interpretStatus 情形 A：同上，另给 fallbackPidStartedAt = 缺省形态（只供同进程构造的入口）",
+      "ps_block_form": "fail",
+      "id": "A-test",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 3,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "reading": {
+        "kind": "inconclusive",
+        "reason": "no_status_file"
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "interpretStatus 情形 C：running、规范化记录、心跳新鲜",
+      "ps_block_form": "fail",
+      "id": "C-canon-fresh",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 3,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "reading": {
+        "kind": "running",
+        "status": {
+          "schema": "trivium.status.v1",
+          "run_id": "R",
+          "topic": "t",
+          "stage": "plan",
+          "phase": "running",
+          "worker_pid": 65482,
+          "worker_started_at": "Wed Sep 30 18:51:45 2026",
+          "worker_started_at_canonical": "Wed Sep 30 10:51:45 2026",
+          "started_at": "2026-09-30T10:51:45.294Z",
+          "heartbeat_at": "2026-09-30T10:51:45.294Z",
+          "sides": {
+            "glm": {
+              "state": "pending",
+              "model": null,
+              "attempt": 0,
+              "elapsed_s": 0
+            }
+          },
+          "artifacts": [],
+          "exit_code": null,
+          "message": null
+        }
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "interpretStatus 情形 C：running、旧版记录（无规范化键）、心跳新鲜",
+      "ps_block_form": "fail",
+      "id": "C-legacy-fresh",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 3,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "reading": {
+        "kind": "running",
+        "status": {
+          "schema": "trivium.status.v1",
+          "run_id": "R",
+          "topic": "t",
+          "stage": "plan",
+          "phase": "running",
+          "worker_pid": 65497,
+          "worker_started_at": "Wed Sep 30 18:51:45 2026",
+          "started_at": "2026-09-30T10:51:45.456Z",
+          "heartbeat_at": "2026-09-30T10:51:45.456Z",
+          "sides": {
+            "glm": {
+              "state": "pending",
+              "model": null,
+              "attempt": 0,
+              "elapsed_s": 0
+            }
+          },
+          "artifacts": [],
+          "exit_code": null,
+          "message": null
+        }
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "interpretStatus 情形 C：running、规范化记录、心跳过期（1 h 前）",
+      "ps_block_form": "fail",
+      "id": "C-canon-stale",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 3,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "reading": {
+        "kind": "worker_lost",
+        "reason": "heartbeat_stale"
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "waitRun 全程：running、规范化记录、心跳新鲜、闸门 running、主题锁归工作进程、带凭据载体",
+      "ps_block_form": "fail",
+      "id": "C-wait",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 5,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "io": {
+        "ok": true,
+        "exitCode": 73,
+        "out": "",
+        "err": ""
+      },
+      "after": {
+        "status": {
+          "phase": "running",
+          "message": null,
+          "lost": null,
+          "cli": null
+        },
+        "carrier_present": true,
+        "lock_present": true,
+        "gate": "running"
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "waitRun 全程：running、规范化记录、心跳过期（1 h 前）、闸门 running、主题锁归工作进程、带凭据载体",
+      "ps_block_form": "fail",
+      "id": "C-wait-stale",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 5,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "io": {
+        "ok": false,
+        "error": {
+          "code": 1,
+          "message": "运行 R-EV175-W 的工作进程失联（heartbeat_stale）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev175-W-bX0TVz/runs/trivium-ev175-W-bX0TVz-3a58e0b8/R-EV175-W/worker.log\n  归档 run-R-EV175-W.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  task.json 的运行登记未改：归档 run.json 不是 failed（读不到），不改登记\n  判定依据：工作进程 65668 仍在，status.json 已 3600 s 未更新（失联阈值 heartbeat_stale_s = 120 s；工作进程的心跳间隔是 30 s）\n  若确认它卡死、要结束这一轮：trivium review --cancel R-EV175-W——会结束它与它拉起的审查员 CLI，并补收归档 run.json；它若只是慢，这样做会结束一个仍在推进的轮次\n  凭据副本未抹：工作进程 65668 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程（heartbeat_stale），留给会话启动清扫"
+        },
+        "out": "",
+        "err": ""
+      },
+      "after": {
+        "status": {
+          "phase": "failed",
+          "message": "worker_lost（heartbeat_stale）",
+          "lost": {
+            "reason": "heartbeat_stale",
+            "at": "2026-09-30T10:51:49.957Z"
+          },
+          "cli": null
+        },
+        "carrier_present": true,
+        "lock_present": true,
+        "gate": "idle"
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "workerConfirmedGone / scrubAdmission：running、规范化记录",
+      "ps_block_form": "fail",
+      "id": "G-running",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 4,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "workerConfirmedGone": {
+        "gone": false,
+        "why": "工作进程 65680 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程"
+      },
+      "scrubAdmission": {
+        "admit": false,
+        "worker": {
+          "gone": false,
+          "why": "工作进程 65680 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程"
+        }
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "workerConfirmedGone / scrubAdmission：failed（--wait 判 heartbeat_stale 之后的形态）、规范化记录",
+      "ps_block_form": "fail",
+      "id": "G-failed",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 4,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "workerConfirmedGone": {
+        "gone": false,
+        "why": "工作进程 65689 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程"
+      },
+      "scrubAdmission": {
+        "admit": false,
+        "worker": {
+          "gone": false,
+          "why": "工作进程 65689 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程"
+        }
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "cancelRun 终态分支：failed（worker_lost pid_gone，无 lost.heartbeat_stale）、工作进程活着、带一条活 CLI 组记录",
+      "ps_block_form": "fail",
+      "id": "G-cancel-terminal",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 3,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "cli_started_at_recorded": true,
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "运行 R-EV175-T 已处于终态（failed），无需取消。\n  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。\n",
+        "err": ""
+      },
+      "after": {
+        "status": {
+          "phase": "failed",
+          "message": "worker_lost（pid_gone）",
+          "lost": {
+            "reason": "pid_gone",
+            "at": "2026-09-30T10:51:50.596Z"
+          },
+          "cli": {
+            "pgid": 65705,
+            "started_at": "Wed Sep 30 10:51:50 2026"
+          }
+        },
+        "carrier_present": true
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": [
+        true
+      ]
+    },
+    {
+      "desc": "pruneRunDirs：running、规范化记录、已过 run_dir_days（now 取 31 天后）、带凭据载体",
+      "ps_block_form": "fail",
+      "id": "S-prune",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 3,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "io": {
+        "ok": true,
+        "removed": 0,
+        "kept": 1,
+        "scrubbed": 0,
+        "deferred": 0
+      },
+      "after": {
+        "run_dir_present": true,
+        "carrier_present": true
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "pruneRunDirs：同上但未到期（now 取当下）",
+      "ps_block_form": "fail",
+      "id": "S-prune-fresh",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 3,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "io": {
+        "ok": true,
+        "removed": 0,
+        "kept": 1,
+        "scrubbed": 0,
+        "deferred": 0
+      },
+      "after": {
+        "run_dir_present": true,
+        "carrier_present": true
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "scrubAllRunRoot（跨仓清扫，非 dry-run）：running、规范化记录、带凭据载体",
+      "ps_block_form": "fail",
+      "id": "S-sweep",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 3,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "io": {
+        "ok": true,
+        "visited": 1,
+        "alive": 1,
+        "scrubbed": 0,
+        "deferred": 0
+      },
+      "after": {
+        "carrier_present": true
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "cancelRun 主路径：running、规范化记录、闸门 running、主题锁归工作进程、带凭据载体与一条活 CLI 组记录；之后同主题 acquireLock",
+      "ps_block_form": "fail",
+      "id": "K-main",
+      "mode": "psfail",
+      "selfCheck": {
+        "ok": true,
+        "worker": [
+          null,
+          null
+        ],
+        "self": [
+          true,
+          true
+        ]
+      },
+      "ps_blocked": 4,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "cli_started_at_recorded": true,
+      "ms": 1,
+      "io": {
+        "ok": false,
+        "error": {
+          "code": 69,
+          "message": "取不到工作进程 65741 的启动时刻（ps 未返回），判不了它是不是 status.json 记录的那个工作进程：本次不取消——未发信号，status.json、主题锁、闸门、归档与凭据副本都没动。请稍后重试 trivium review --cancel R-EV175-K。一直取不到时：先在终端确认 65741 的命令行含 review --worker R-EV175-K（ps -p 65741 -o command=），确认是它、要结束这一轮，就在终端按组结束它（kill -TERM -65741），之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI"
+        },
+        "out": "",
+        "err": ""
+      },
+      "after": {
+        "status": {
+          "phase": "running",
+          "message": null,
+          "lost": null,
+          "cli": {
+            "pgid": 65748,
+            "started_at": "Wed Sep 30 10:51:51 2026"
+          }
+        },
+        "carrier_present": true,
+        "lock_present": true,
+        "gate": "running",
+        "worker_alive": true,
+        "cli_alive": true
+      },
+      "next_acquire": {
+        "error": {
+          "code": 70,
+          "message": "主题「探针」已被占用：run_id R-EV175-K（pid 65741，自 2026-09-30T10:51:51.395Z 起）。\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。"
+        },
+        "err": ""
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": [
+        true
+      ]
+    },
+    {
+      "desc": "cancelRun 主路径：running、规范化记录、闸门 running、主题锁归工作进程、带凭据载体与一条活 CLI 组记录；之后同主题 acquireLock（ps 超时形态：被拦的 ps 睡过 10 s）",
+      "ps_block_form": "timeout",
+      "id": "K-main-timeout",
+      "mode": "psfail",
+      "selfCheck": null,
+      "ps_blocked": 2,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "cli_started_at_recorded": true,
+      "ms": 10005,
+      "io": {
+        "ok": false,
+        "error": {
+          "code": 69,
+          "message": "取不到工作进程 65754 的启动时刻（ps 未返回），判不了它是不是 status.json 记录的那个工作进程：本次不取消——未发信号，status.json、主题锁、闸门、归档与凭据副本都没动。请稍后重试 trivium review --cancel R-EV175-K。一直取不到时：先在终端确认 65754 的命令行含 review --worker R-EV175-K（ps -p 65754 -o command=），确认是它、要结束这一轮，就在终端按组结束它（kill -TERM -65754），之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI"
+        },
+        "out": "",
+        "err": ""
+      },
+      "after": {
+        "status": {
+          "phase": "running",
+          "message": null,
+          "lost": null,
+          "cli": {
+            "pgid": 65757,
+            "started_at": "Wed Sep 30 10:51:51 2026"
+          }
+        },
+        "carrier_present": true,
+        "lock_present": true,
+        "gate": "running",
+        "worker_alive": true,
+        "cli_alive": true
+      },
+      "next_acquire": {
+        "error": {
+          "code": 70,
+          "message": "主题「探针」已被占用：run_id R-EV175-K（pid 65754，自 2026-09-30T10:51:51.717Z 起）。\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。"
+        },
+        "err": ""
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": [
+        true
+      ]
+    },
+    {
+      "desc": "interpretStatus 情形 A：status.json 不存在，只给 fallbackPid（生产形状，waitRun 不传 fallbackPidStartedAt）",
+      "ps_block_form": null,
+      "id": "A-prod",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "reading": {
+        "kind": "inconclusive",
+        "reason": "no_status_file"
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "interpretStatus 情形 A：同上，另给 fallbackPidStartedAt = 缺省形态（只供同进程构造的入口）",
+      "ps_block_form": null,
+      "id": "A-test",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "reading": {
+        "kind": "inconclusive",
+        "reason": "no_status_file"
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "interpretStatus 情形 C：running、规范化记录、心跳新鲜",
+      "ps_block_form": null,
+      "id": "C-canon-fresh",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "reading": {
+        "kind": "running",
+        "status": {
+          "schema": "trivium.status.v1",
+          "run_id": "R",
+          "topic": "t",
+          "stage": "plan",
+          "phase": "running",
+          "worker_pid": 66088,
+          "worker_started_at": "Wed Sep 30 18:52:12 2026",
+          "worker_started_at_canonical": "Wed Sep 30 10:52:12 2026",
+          "started_at": "2026-09-30T10:52:12.212Z",
+          "heartbeat_at": "2026-09-30T10:52:12.212Z",
+          "sides": {
+            "glm": {
+              "state": "pending",
+              "model": null,
+              "attempt": 0,
+              "elapsed_s": 0
+            }
+          },
+          "artifacts": [],
+          "exit_code": null,
+          "message": null
+        }
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "interpretStatus 情形 C：running、旧版记录（无规范化键）、心跳新鲜",
+      "ps_block_form": null,
+      "id": "C-legacy-fresh",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "reading": {
+        "kind": "running",
+        "status": {
+          "schema": "trivium.status.v1",
+          "run_id": "R",
+          "topic": "t",
+          "stage": "plan",
+          "phase": "running",
+          "worker_pid": 66092,
+          "worker_started_at": "Wed Sep 30 18:52:12 2026",
+          "started_at": "2026-09-30T10:52:12.369Z",
+          "heartbeat_at": "2026-09-30T10:52:12.369Z",
+          "sides": {
+            "glm": {
+              "state": "pending",
+              "model": null,
+              "attempt": 0,
+              "elapsed_s": 0
+            }
+          },
+          "artifacts": [],
+          "exit_code": null,
+          "message": null
+        }
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "interpretStatus 情形 C：running、规范化记录、心跳过期（1 h 前）",
+      "ps_block_form": null,
+      "id": "C-canon-stale",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "reading": {
+        "kind": "worker_lost",
+        "reason": "heartbeat_stale"
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "waitRun 全程：running、规范化记录、心跳新鲜、闸门 running、主题锁归工作进程、带凭据载体",
+      "ps_block_form": null,
+      "id": "C-wait",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "io": {
+        "ok": true,
+        "exitCode": 73,
+        "out": "",
+        "err": ""
+      },
+      "after": {
+        "status": {
+          "phase": "running",
+          "message": null,
+          "lost": null,
+          "cli": null
+        },
+        "carrier_present": true,
+        "lock_present": true,
+        "gate": "running"
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "waitRun 全程：running、规范化记录、心跳过期（1 h 前）、闸门 running、主题锁归工作进程、带凭据载体",
+      "ps_block_form": null,
+      "id": "C-wait-stale",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "io": {
+        "ok": false,
+        "error": {
+          "code": 1,
+          "message": "运行 R-EV175-W 的工作进程失联（heartbeat_stale）。\n  日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev175-W-elGvlT/runs/trivium-ev175-W-elGvlT-ee4956f6/R-EV175-W/worker.log\n  归档 run-R-EV175-W.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  task.json 的运行登记未改：归档 run.json 不是 failed（读不到），不改登记\n  判定依据：工作进程 66181 仍在，status.json 已 3600 s 未更新（失联阈值 heartbeat_stale_s = 120 s；工作进程的心跳间隔是 30 s）\n  若确认它卡死、要结束这一轮：trivium review --cancel R-EV175-W——会结束它与它拉起的审查员 CLI，并补收归档 run.json；它若只是慢，这样做会结束一个仍在推进的轮次\n  凭据副本未抹：工作进程 66181 仍在（heartbeat_stale），留给会话启动清扫"
+        },
+        "out": "",
+        "err": ""
+      },
+      "after": {
+        "status": {
+          "phase": "failed",
+          "message": "worker_lost（heartbeat_stale）",
+          "lost": {
+            "reason": "heartbeat_stale",
+            "at": "2026-09-30T10:52:16.863Z"
+          },
+          "cli": null
+        },
+        "carrier_present": true,
+        "lock_present": true,
+        "gate": "idle"
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "workerConfirmedGone / scrubAdmission：running、规范化记录",
+      "ps_block_form": null,
+      "id": "G-running",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "workerConfirmedGone": {
+        "gone": false,
+        "why": "工作进程 66189 仍在"
+      },
+      "scrubAdmission": {
+        "admit": false,
+        "worker": {
+          "gone": false,
+          "why": "工作进程 66189 仍在"
+        }
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "workerConfirmedGone / scrubAdmission：failed（--wait 判 heartbeat_stale 之后的形态）、规范化记录",
+      "ps_block_form": null,
+      "id": "G-failed",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "workerConfirmedGone": {
+        "gone": false,
+        "why": "工作进程 66194 仍在"
+      },
+      "scrubAdmission": {
+        "admit": false,
+        "worker": {
+          "gone": false,
+          "why": "工作进程 66194 仍在"
+        }
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "cancelRun 终态分支：failed（worker_lost pid_gone，无 lost.heartbeat_stale）、工作进程活着、带一条活 CLI 组记录",
+      "ps_block_form": null,
+      "id": "G-cancel-terminal",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "cli_started_at_recorded": true,
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "运行 R-EV175-T 已处于终态（failed），无需取消。\n  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。\n",
+        "err": ""
+      },
+      "after": {
+        "status": {
+          "phase": "failed",
+          "message": "worker_lost（pid_gone）",
+          "lost": {
+            "reason": "pid_gone",
+            "at": "2026-09-30T10:52:17.493Z"
+          },
+          "cli": {
+            "pgid": 66203,
+            "started_at": "Wed Sep 30 10:52:17 2026"
+          }
+        },
+        "carrier_present": true
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": [
+        true
+      ]
+    },
+    {
+      "desc": "pruneRunDirs：running、规范化记录、已过 run_dir_days（now 取 31 天后）、带凭据载体",
+      "ps_block_form": null,
+      "id": "S-prune",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "io": {
+        "ok": true,
+        "removed": 0,
+        "kept": 1,
+        "scrubbed": 0,
+        "deferred": 0
+      },
+      "after": {
+        "run_dir_present": true,
+        "carrier_present": true
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "pruneRunDirs：同上但未到期（now 取当下）",
+      "ps_block_form": null,
+      "id": "S-prune-fresh",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "io": {
+        "ok": true,
+        "removed": 0,
+        "kept": 1,
+        "scrubbed": 0,
+        "deferred": 0
+      },
+      "after": {
+        "run_dir_present": true,
+        "carrier_present": true
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "scrubAllRunRoot（跨仓清扫，非 dry-run）：running、规范化记录、带凭据载体",
+      "ps_block_form": null,
+      "id": "S-sweep",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "io": {
+        "ok": true,
+        "visited": 1,
+        "alive": 1,
+        "scrubbed": 0,
+        "deferred": 0
+      },
+      "after": {
+        "carrier_present": true
+      },
+      "worker_alive_after": true,
+      "cli_groups_alive_after": []
+    },
+    {
+      "desc": "cancelRun 主路径：running、规范化记录、闸门 running、主题锁归工作进程、带凭据载体与一条活 CLI 组记录；之后同主题 acquireLock",
+      "ps_block_form": null,
+      "id": "K-main",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "cli_started_at_recorded": true,
+      "ms": 276,
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 R-EV175-K 已取消\n",
+        "err": "· 向工作进程组 66218 发送 SIGTERM\n⚠️  凭据副本未抹：工作进程 66218 已不存在，但审查员 CLI 未确认结束——glm 侧审查员 CLI 进程组 66221 仍在——留给会话启动清扫\n· 归档 run-R-EV175-K.json 未回写：归档里没有 run-R-EV175-K.json\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（读不到），不改登记\n"
+      },
+      "after": {
+        "status": {
+          "phase": "cancelled",
+          "message": "被 --cancel 取消",
+          "lost": null,
+          "cli": {
+            "pgid": 66221,
+            "started_at": "Wed Sep 30 10:52:18 2026"
+          }
+        },
+        "carrier_present": true,
+        "lock_present": false,
+        "gate": "idle",
+        "worker_alive": false,
+        "cli_alive": true
+      },
+      "next_acquire": "acquired",
+      "worker_alive_after": false,
+      "cli_groups_alive_after": [
+        true
+      ]
+    },
+    {
+      "desc": "cancelRun 主路径：running、规范化记录、闸门 running、主题锁归工作进程、带凭据载体与一条活 CLI 组记录；之后同主题 acquireLock（ps 超时形态：被拦的 ps 睡过 10 s）",
+      "ps_block_form": null,
+      "id": "K-main-timeout",
+      "mode": "control",
+      "selfCheck": null,
+      "ps_blocked": 0,
+      "recorded": {
+        "legacy": true,
+        "canonical": true
+      },
+      "cli_started_at_recorded": true,
+      "ms": 274,
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 R-EV175-K 已取消\n",
+        "err": "· 向工作进程组 66231 发送 SIGTERM\n⚠️  凭据副本未抹：工作进程 66231 已不存在，但审查员 CLI 未确认结束——glm 侧审查员 CLI 进程组 66234 仍在——留给会话启动清扫\n· 归档 run-R-EV175-K.json 未回写：归档里没有 run-R-EV175-K.json\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（读不到），不改登记\n"
+      },
+      "after": {
+        "status": {
+          "phase": "cancelled",
+          "message": "被 --cancel 取消",
+          "lost": null,
+          "cli": {
+            "pgid": 66234,
+            "started_at": "Wed Sep 30 10:52:18 2026"
+          }
+        },
+        "carrier_present": true,
+        "lock_present": false,
+        "gate": "idle",
+        "worker_alive": false,
+        "cli_alive": true
+      },
+      "next_acquire": "acquired",
+      "worker_alive_after": false,
+      "cli_groups_alive_after": [
+        true
+      ]
+    }
+  ]
+}

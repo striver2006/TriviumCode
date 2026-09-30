@@ -581,6 +581,12 @@ export interface RecordedStart {
   legacy: string | null | undefined;
 }
 
+/**
+ * 与记录比对的三态结论（EV-175，取不到启动时刻当不在计划 r2 §3 D1）：同一进程 / 不是同一进程（含已不在）/
+ * 判不了（活着、记录里有期望值、而本次取不到启动时刻——满载下 `ps` 派生失败或 10 s 超时）。
+ */
+export type RecordIdentity = 'same' | 'different' | 'unverifiable';
+
 export interface RecordMatch {
   alive: boolean;
   sameProcess: boolean;
@@ -590,14 +596,42 @@ export interface RecordMatch {
   expected: string | null;
   /** 比的是哪一种形态——告警措辞据它分写（计划 r2 D6），判据不读人读文案 */
   basis: 'canonical' | 'legacy';
+  /**
+   * 三态结论（EV-175），由 `recordIdentityOf` 从上面五个字段导出，`'same'` ⇔ `sameProcess`。上面五个字段的含义逐字不变，
+   * 所以只读它们的消费方（`judgeStale`、`workerGoneForCancel`、`classifyLostCancel`、`lostWorkerGone`）行为不变。
+   * **可选只为兼容手工构造的 RecordMatch**（单测桩等）；`processMatchesRecord` 总会给出。消费方只在它为 `'unverifiable'`
+   * 时走「判不了」分支，缺失即按 `alive` / `sameProcess` 的旧口径（计划双审 r1 AGY-01）。
+   */
+  identity?: RecordIdentity;
+}
+
+/**
+ * `RecordMatch` 的三态结论（EV-175）：`sameProcess` ⇒ `same`；活着、有期望值、而启动时刻取不到 ⇒ `unverifiable`；
+ * 其余（不在，或取到了且不符）⇒ `different`。`startedAt` 为 null 只来自取不到（进程不在时 `alive` 已为假），
+ * 期望值为假值时 `processAlive` 给 `sameProcess: true`（「期望为假值即相符」），落不进 `unverifiable`。
+ *
+ * 不做「取不到后复检存活」（计划 r2 D1）：复检要改 `alive`，`judgeStale` 与 `lostWorkerGone` 的输入随之变。
+ * 进程恰在 `kill(0)` 与 `ps` 之间退出时因此判 `unverifiable`（保守一侧），下一次判定即得 `different`。
+ */
+export function recordIdentityOf(m: Pick<RecordMatch, 'alive' | 'sameProcess' | 'startedAt' | 'expected'>): RecordIdentity {
+  if (m.sameProcess) return 'same';
+  return m.alive && m.startedAt === null && m.expected !== null ? 'unverifiable' : 'different';
+}
+
+/** `processMatchesRecord` 的每个出口都经它补上 `identity`，不逐处手写（计划双审 r1 GLM-02：三个 return，漏一个就是 undefined） */
+function withIdentity(m: Omit<RecordMatch, 'identity'>): RecordMatch {
+  return { ...m, identity: recordIdentityOf(m) };
 }
 
 /**
  * 进程 `pid` 是不是记录 `rec` 里的那一个——**跨进程身份比对的唯一读法**（EV-158，worker启动时刻规范化计划 r2 §4.3）。
  *
  * - 记录里有规范化启动时刻（`canonicalStartOf`）⇒ **只**按规范化形态比：读者自己也以 `LC_ALL=C`、`TZ=UTC0` 取，
- *   与写者、读者各自的 TZ / 区域设置无关；不再看缺省字段。活着而取不到 ⇒ `sameProcess: false`（与今天「期望非空而取不到」同口径）。
+ *   与写者、读者各自的 TZ / 区域设置无关；不再看缺省字段。活着而取不到 ⇒ `sameProcess: false`（与今天「期望非空而取不到」同口径）、
+ *   `identity: 'unverifiable'`（EV-175：「判不了」与「确认不符」由这个字段分开，`sameProcess` 的含义不改）。
  * - 没有（旧版写的、写时取不到、形状不对）⇒ 原样退回 `processAlive(pid, legacy)`——逐字是今天的行为，含「期望为假值即相符」。
+ *
+ * 三个出口都经 `withIdentity` 补上三态结论（`recordIdentityOf`）。
  *
  * 规范化形态是盘上契约，见 `processStartTime` 文档块。第三参只为单测模拟「规范化取不到」而开，缺省一支不起作用。
  */
@@ -610,7 +644,7 @@ export async function processMatchesRecord(
   if (expected === null) {
     const legacy = rec.legacy ?? null;
     const p = await processAlive(pid, legacy);
-    return { ...p, expected: legacy || null, basis: 'legacy' };
+    return withIdentity({ ...p, expected: legacy || null, basis: 'legacy' });
   }
   let alive: boolean;
   try {
@@ -620,11 +654,13 @@ export async function processMatchesRecord(
     // EPERM 表示进程存在但不属于当前用户——仍算存活（与 processAlive 同）
     alive = (e as NodeJS.ErrnoException).code === 'EPERM';
   }
-  if (!alive) return { alive: false, sameProcess: false, startedAt: null, expected, basis: 'canonical' };
+  if (!alive) return withIdentity({ alive: false, sameProcess: false, startedAt: null, expected, basis: 'canonical' });
   const startedAt = await (o.canonicalStartTimeOf ?? ((p: number) => processStartTime(p, { canonical: true })))(pid).catch(
     () => null,
   );
-  return { alive: true, sameProcess: startedAt !== null && startedAt === expected, startedAt, expected, basis: 'canonical' };
+  return withIdentity({
+    alive: true, sameProcess: startedAt !== null && startedAt === expected, startedAt, expected, basis: 'canonical',
+  });
 }
 
 /**

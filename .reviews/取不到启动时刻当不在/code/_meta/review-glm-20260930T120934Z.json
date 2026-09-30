@@ -1,0 +1,52 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "未发现会让线上出错的缺陷：三态化（RecordMatch.identity）向后兼容性好——原五字段与 sameProcess 逐字不变、identity 可选、消费方只在 unverifiable 走新分支，手工构造的旧 RecordMatch 自动落回旧口径。cancelRun 的 69 抛出点位置正确（终态分支之后、全部写动作与信号之前，U6 以文件身份+闸门状态+进程存活三面断言「什么都不动」）。五处处置与设计 v1.3.66/LLD/MANUAL/PROTOCOL 一致，EV-176 残余在代码注释、LLD 缺口表、BACKLOG 三处一致登记。测试判别力经移植验收（改前树红 9 绿 5）与 10 项变异（10/10 咬住）背书。唯一意见是 nit：清扫计数的 alive/kept 现在把「判不了」混入「还活着」，该类目录在 ScrubTally 无专属可见落点。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/retention.ts:252（另见 :220-223、:102-107）",
+      "problem": "workerStillAlive 自本版起对 identity === 'unverifiable' 返回 true（判不了当仍在，处置方向正确且 U5 有断言），但 SweepResult.alive 的注释仍写「因 worker 现势还活着而没动的运行目录数」，pruneRunDirs 的 kept 同理。非终态而取不到启动时刻的目录现在计入 alive/kept 且不进 deferred（workerStillAlive 拦在 admitScrub 之前），于是「判不了」与「确认活着」在人读输出（trivium scrub 的 alive 数、会话启动清扫摘要）里不可区分——deferred 注释补的「终态而取不到」（经 workerConfirmedGone 那一路）有可见落点，非终态这一路没有对等说明，与 ScrubTally 自述的「分档要闭合、登记只为可见」纪律有轻微张力。后来的人读 alive 数会以为全是确认活着的 worker。",
+      "evidence": "src/trivium/retention.ts:102-107（workerStillAlive 的 `(a.alive && a.sameProcess) || a.identity === 'unverifiable'`）、:220-223（pruneRunDirs 的 kept++ 并 continue）、:252（alive 注释原文）、:345-347（scrubAllRunRoot 的 alive++）；test/integration/unverifiable-start.test.ts:361-377（U5 断言 pr.kept === 1、sw.alive === 1）；实施报告 §3.1 S-sweep 格「不抹（sweep alive: 1）」。",
+      "suggestion": "在 SweepResult.alive 与 pruneRunDirs kept 的注释补一句「含活着而取不到启动时刻（判不了，EV-175）」的限定；是否要在人读输出里把「判不了」单独可辨（另立一格或 alive 语义注明）由 Driver 裁量，不要求本主题扩范围。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "三态化的兼容设计：recordIdentityOf 是纯函数、same ⇔ sameProcess、原五字段逐字不变；processMatchesRecord 三个出口统一经 withIdentity 补 identity（防漏出口），只读原字段的 judgeStale / workerGoneForCancel / classifyLostCancel / lostWorkerGone 行为不变——我逐个核过调用点，judgeStale 用 startedAt !== null 判与 identity 对「活着而取不到」这一格确实等价（lock.ts:185-198）。",
+    "cancelRun 主路径 69 的抛出点与内容：位于终态分支之后、发信号与所有写动作之前，从 cancelRun 入口到该点无任何输出（U6 断言 stdout 为空成立）；正文含重试出口与 ps 持续失败时的手工出路（核 command= → kill -TERM -N → 再 --cancel 走「已不存在」格），选 69 而非 70/1 的论证（70 会把人从 --cancel 指回 --cancel）成立，EXIT.ENV 语义兼容。",
+    "五处处置各自正确：情形 A 与活着同处置（生产调用方不传 fallbackPidStartedAt，grep 核实 src/ 内仅 status.ts 定义与自用，「生产形状不受影响」的论证属实）；情形 C 按心跳判（新鲜 running/73、过期 heartbeat_stale）；workerConfirmedGone 不算已不在（unverifiable 蕴含 !sameProcess，分支顺序无遮蔽），凭据抹除准入、--wait 补收（waitRun 的 goneForArchive 经 workerConfirmedGone）、终态分支按记录结束 CLI 三条下游我都顺调用链核过；workerStillAlive 显式正向判定不因可选字段缺失而放宽。",
+    "测试有真判别力：真实 detached 子进程 + 按 pid 过滤的 ps 桩（CLI 进程组判定不受污染，信号发没发才分得清）、装桩自证 psStubWorks + blocked>0 双保险、回归格与新行为格分离（改前树移植验收红 9 绿 5）、10 项变异全部咬住；DEAD_PID=999_995 超过 macOS 缺省 pid 上限，恒不存在、无环境闪红；U6 用 dev:ino:mtimeNs+sha256 的文件身份断言「status.json 与锁一字节不动」。",
+    "EV-153 与 EV-175 的连锁已断：改前同主题再 --start 拿到锁双跑（跨进程验收 X3 改前退 0），改后 --cancel 抛 69 什么都不动、--start 撞活锁；EV-176 残余（SIGTERM 后宽限期 ps 转坏仍回收锁与闸门）在 run-protocol.ts 注释、LLD 已知缺口表、BACKLOG 三处如实一致登记，暂缓理由（要论证退出未确认时锁留不留、牵动 EV-150 语义）充分。",
+    "文档同步齐全且交叉引用方向正确：设计 v1.3.66（:1485 段、§12.6、§24 台账）、LLD v1.1.24、MANUAL v1.0.22（新段 :652-659 与 :672 括号指向 :678「规范化记录不符」条，核过原文方向无误）、PROTOCOL（退出码表 69 行与 --cancel 叙述）、BACKLOG（EV-175 done + EV-176 新登）；盘上契约、退出码 70 与其文案、锁文件格式均未动，与计划承诺一致。",
+    "进程恰在 kill(0) 与 ps 之间退出时判 unverifiable（而非 different）的取舍已声明为保守侧（exec.ts:613-614），代价仅多一次重试，与「不做取不到后复检存活」的设计决策自洽。"
+  ],
+  "not_covered": [
+    "evidence/ 目录下约 20 个探针与验收文件（probe-unverifiable.mjs、acceptance.mjs、各读数 JSON、check-1/2.txt、node18/22.txt）只经 diff 文件头清单与实施报告 §3 交叉印证，未逐行读、未复跑任何装置（npm run check、doctor --selftest、变异检查均信任报告读数）。",
+    "hooks.ts 的会话启动闸门回收（只看存活、经 processAlive）与 classifyLostCancel 内部判格细节只确认不受本次改动影响，未深审其既有逻辑。",
+    "锁回收路径（reclaimStaleLock 的认领/放回）本次只改注释，其竞态面属 EV-174 范畴，未重新审查。",
+    "QUICKSTART 与 MANUAL 其余章节、PROTOCOL 其余命令段未通读，仅核了本次改动的段落。",
+    "真实厂商 CLI（agy/codex/claude）在「取不到启动时刻」故障下的端到端行为未实测（跨进程验收用的是桩 CLI）。"
+  ],
+  "consulted": [
+    ".reviews/取不到启动时刻当不在/code/_meta/changes-20260930T120934Z.diff",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "src/trivium/util/exec.ts",
+    "src/trivium/status.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/cli.ts",
+    "test/integration/unverifiable-start.test.ts"
+  ]
+}

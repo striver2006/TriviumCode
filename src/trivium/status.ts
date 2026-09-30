@@ -17,7 +17,7 @@ import type { CriticId, Stage } from './types.js';
 import { writeAtomic, exists } from './util/fsx.js';
 import { RUN_DIR_FILES } from './run-files.js';
 import {
-  processAlive, processGroupMemberCount, processMatchesRecord, processStartTime, type RecordedStart, type TrackedTree,
+  processGroupMemberCount, processMatchesRecord, processStartTime, type RecordedStart, type TrackedTree,
 } from './util/exec.js';
 
 export type RunPhase =
@@ -174,7 +174,7 @@ export async function patchStatus(
 /**
  * status.json 里工作进程的身份记录（EV-158）：规范化启动时刻与缺省环境下的启动时刻，交给 `processMatchesRecord`。
  * 身份消费方（`workerConfirmedGone`、`interpretStatus`、`workerStillAlive`、`--cancel` 主路径与失联后取消那一格）都经它取，
- * 两个字段不会各取各的。
+ * 两个字段不会各取各的。取不到启动时刻（活着而 `ps` 失败）时各自的处置按 `RecordMatch.identity` 分（EV-175）。
  */
 export function workerStartOf(s: RunStatus, legacyFallback: string | null = null): RecordedStart {
   return { canonical: s.worker_started_at_canonical, legacy: s.worker_started_at ?? legacyFallback };
@@ -196,6 +196,9 @@ export const isTerminal = (p: RunPhase): boolean => TERMINAL_PHASES.includes(p);
  * - `status.json` 读不到、或里面没有 pid 时，此前有的地方当「已死」直接抹、有的地方跳过
  *   （CODEX-05 ≡ GLM-02）。没有 pid 就是**没有证据**，一律不抹。
  * - `starting` 是副本正在写下的窗口，任何情况下都不抹。
+ * - 进程活着而取不到它的启动时刻（`identity: 'unverifiable'`，EV-175）是**判不了**，不算已不在：满载下 `ps` 派生失败或
+ *   超时时，此前这一格读成「不是同一进程」而判「已不存在」，于是抹掉活 worker 的凭据副本、补收它的 run.json、
+ *   按记录结束它名下的 CLI（取不到启动时刻当不在计划 r2 §2 探针 G-running / C-wait / G-cancel-terminal）。
  *
  * `fallbackPid` 是 `worker.pid` 文件——`interpretStatus` 自己就用它兜底，这里同源复用。
  */
@@ -211,6 +214,9 @@ export async function workerConfirmedGone(
   if (pid !== null && pid !== undefined) {
     const live = await processMatchesRecord(pid, workerStartOf(status));
     if (live.alive && live.sameProcess) return { gone: false, why: `工作进程 ${pid} 仍在` };
+    if (live.identity === 'unverifiable') {
+      return { gone: false, why: `工作进程 ${pid} 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程` };
+    }
     return { gone: true, why: `工作进程 ${pid} 已不存在` };
   }
   /*
@@ -504,6 +510,7 @@ export async function interpretStatus(
      * 兜底 pid 的启动时刻：**调用方自己环境下取的缺省形态**，只供同进程构造（单测）。按读者缺省环境比，是规范化读法
      * （`processMatchesRecord`）之外的入口——生产代码不传，也不得传锁或 status.json 里别的进程写下的启动时刻：
      * 跨进程的身份一律经 status.json 的两个字段（EV-158，worker启动时刻规范化代码双审 r1 CODEX-01）。
+     * 活着而取不到启动时刻时与活着同处置（EV-175）。生产调用方（`waitRun`）不传它，期望值为 null 时只看存活，不受 `ps` 影响。
      */
     fallbackPidStartedAt?: string | null;
     now?: number;
@@ -521,8 +528,10 @@ export async function interpretStatus(
       // 连 pid 都不知道：只能判失联，否则会无限等一个可能根本没起来的进程
       return { kind: 'worker_lost', reason: 'no_status_file' };
     }
-    const live = await processAlive(pid, opts.fallbackPidStartedAt ?? null);
-    if (live.alive && live.sameProcess) return { kind: 'inconclusive', reason };
+    // 没有规范化键即退回 processAlive(pid, legacy)，与此前逐字同一判据，多拿到三态结论（EV-175）
+    const live = await processMatchesRecord(pid, { legacy: opts.fallbackPidStartedAt ?? null });
+    // 取不到启动时刻是判不了，与活着同处置：本次轮询不下结论
+    if ((live.alive && live.sameProcess) || live.identity === 'unverifiable') return { kind: 'inconclusive', reason };
     return { kind: 'worker_lost', reason: 'pid_gone' };
   }
 
@@ -537,8 +546,13 @@ export async function interpretStatus(
   if (pid !== null) {
     // 有规范化启动时刻只按它比；没有（旧版写的）退回缺省比较（EV-158）
     const live = await processMatchesRecord(pid, workerStartOf(raw, opts.fallbackPidStartedAt ?? null));
-    // 进程没了却没留终态 → 失联（无论心跳是否还新鲜）
-    if (!live.alive || !live.sameProcess) return { kind: 'worker_lost', reason: 'pid_gone' };
+    /*
+     * 进程没了（或已不是同一进程）却没留终态 → 失联（无论心跳是否还新鲜）。
+     * 活着而取不到启动时刻是判不了（EV-175）：不判 pid_gone，交给下面的心跳判据——新鲜仍算运行中、过期判 heartbeat_stale。
+     */
+    if (live.identity !== 'unverifiable' && (!live.alive || !live.sameProcess)) {
+      return { kind: 'worker_lost', reason: 'pid_gone' };
+    }
   }
   // 进程活着但心跳过期 → 也算失联（卡死在某处不再更新）
   if (stale) return { kind: 'worker_lost', reason: 'heartbeat_stale' };

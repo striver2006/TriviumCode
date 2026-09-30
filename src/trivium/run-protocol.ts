@@ -754,8 +754,11 @@ export async function settleOrphanedStart(i: OrphanedStartInput): Promise<void> 
  * `--cancel` 宽限期内「工作进程已退出」的判据：不存活，**或不是同一进程**（EV-150，计划双审 r1 AGY-04，用户审批并入）。
  *
  * 此前只看存活：宽限期内 PID 若被复用，会把复用者当成 worker、升级 SIGKILL；而 `kill(-pid)` 在复用者不是组长时
- * ESRCH、退回 `kill(pid)`，信号就打到了无关进程。与 `workerConfirmedGone` 同一口径；`judgeStale` 自 EV-153 起对「取不到启动时刻」
- * 不判不是同一进程（那里判错会删活锁），这里仍判已退出——宽限期内那是停止升级的保守方向（同根的 fail-open 登记 EV-175）。
+ * ESRCH、退回 `kill(pid)`，信号就打到了无关进程。`judgeStale`（EV-153）与 `workerConfirmedGone`、主路径入口（EV-175）对
+ * 「取不到启动时刻」都判「判不了」，**本函数有意不读 `RecordMatch.identity`**：它只在主路径已判同一进程、发过 SIGTERM 之后的
+ * 宽限期里轮询，取不到就按已退出＝停止升级，不向身份判不了的进程发 SIGKILL（保守方向）。其后的收尾经 `scrubAdmission`
+ * 判不了即不抹、不补收 run.json；status.json、锁与闸门仍照常回收——工作进程若还没响应 SIGTERM 就是一把活锁被释放，
+ * 登记 BACKLOG EV-176（取不到启动时刻当不在计划 r2 §4 R1，暂缓）。
  * 身份按 status.json 的记录比（`processMatchesRecord`，EV-158）：有规范化启动时刻只按它比，与主路径判存活那一处同一份记录。
  */
 export async function workerGoneForCancel(pid: number, rec: RecordedStart): Promise<boolean> {
@@ -1774,6 +1777,25 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
     // 身份按 status.json 的记录比：有规范化启动时刻只按它比，没有（旧版写的）退回缺省比较（EV-158）
     const rec: RecordedStart = s ? workerStartOf(s) : { legacy: null };
     const live = await processMatchesRecord(pid, rec);
+    /*
+     * 活着而取不到它的启动时刻（EV-175，取不到启动时刻当不在计划 r2 §3 D6）：判不了是不是记录里的那个工作进程。
+     * 此前读成「已不存在」，只清状态与锁、不发信号——活 worker 脱锁，同主题下一次 --start 能拿到锁、两条流水线同时跑
+     * （计划 r2 §2 探针 K-main）；而 EV-153 之后等待者耗满预算抛 70，70 的正文正指向这里。
+     * 现在**什么都不动**：不发信号（worker 与 CLI 都不）、不写 status.json、不回收锁与闸门、不抹、不补收，以 69 退出。
+     * 69（环境或预检失败）而不是 70 / 1：70 会把人从 --cancel 指回 --cancel；1 分不出「什么都没做、可重试」（计划 r2 D6 论证）。
+     * `ps` 持续取不到时工具自己结束不了这一轮（R4），正文给出确定性的手工出路（计划双审 r1 CODEX-01 ≡ GLM-03）：
+     * 工作进程被人结束后 kill(0) 即失败、identity 为 different，再跑一次就走下面「已不存在」那一格收尾。
+     * s 为 null 时记录无期望值，只看存活，落不进这一格。
+     */
+    if (live.identity === 'unverifiable') {
+      throw envError(
+        `取不到工作进程 ${pid} 的启动时刻（ps 未返回），判不了它是不是 status.json 记录的那个工作进程：本次不取消——` +
+          '未发信号，status.json、主题锁、闸门、归档与凭据副本都没动。请稍后重试 ' +
+          `trivium review --cancel ${runId}。一直取不到时：先在终端确认 ${pid} 的命令行含 review --worker ${runId}` +
+          `（ps -p ${pid} -o command=），确认是它、要结束这一轮，就在终端按组结束它（kill -TERM -${pid}），` +
+          '之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI',
+      );
+    }
     if (live.alive && live.sameProcess) {
       /*
        * 按**进程组**发：只杀 worker 会把与它同组的子进程遗弃给 init。适配器以 `killTree` 拉起的厂商 CLI

@@ -1,0 +1,132 @@
+{
+  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e",
+  "node": "v25.2.1",
+  "at": "2026-09-30T10:55:59.564Z",
+  "ported": [
+    {
+      "file": "test/integration/unverifiable-start.test.ts",
+      "repo_sha": "9c1525677a201bda57423a61bbf7b71fb8b16ced69b3167ba03121f6ea087566",
+      "tree_before": null,
+      "tree_after": "9c1525677a201bda57423a61bbf7b71fb8b16ced69b3167ba03121f6ea087566"
+    },
+    {
+      "file": "test/helpers/ps-stub.ts",
+      "repo_sha": "811a42527d869ca25fa0eb5291097eee2a94f179a1655ed978eb08b5ab11c83e",
+      "tree_before": "d86521fc9e7dd847cb85b706447892fa32b87bf72e993c3c73ee0907f7960149",
+      "tree_after": "811a42527d869ca25fa0eb5291097eee2a94f179a1655ed978eb08b5ab11c83e"
+    }
+  ],
+  "pre_counts": [
+    14,
+    5,
+    9
+  ],
+  "post_counts": [
+    14,
+    14,
+    0
+  ],
+  "cells": [
+    {
+      "case": "EV-175 U1a",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U1b",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U1c（回归）",
+      "pre_expected": "pass",
+      "pre_got": "pass",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U2：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U2′（回归）",
+      "pre_expected": "pass",
+      "pre_got": "pass",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U3：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U3′（回归）",
+      "pre_expected": "pass",
+      "pre_got": "pass",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U4：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U4′（回归）",
+      "pre_expected": "pass",
+      "pre_got": "pass",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U5：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U6：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U6′（回归）",
+      "pre_expected": "pass",
+      "pre_got": "pass",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U7：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-175 U8：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    }
+  ],
+  "pass": 14,
+  "total": 14,
+  "pre_fail_block": "✖ failing tests:\n\ntest at dist/test/test/integration/unverifiable-start.test.js:152:1\n✖ EV-175 U1a：recordIdentityOf 真值表（动态导入：改前树没有这个导出即红） (1.068791ms)\n  AssertionError [ERR_ASSERTION]: util/exec.js 应导出 recordIdentityOf\n  + actual - expected\n  \n  + 'undefined'\n  - 'function'\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:155:10)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 'undefined',\n    expected: 'function',\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/unverifiable-start.test.js:168:1\n✖ EV-175 U1b：processMatchesRecord 的 identity——同一 / 不符 / 不在（两种 basis）/ 取不到（注入与按 pid 拦，两种 basis） (5.785625ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + undefined\n  - 'same'\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:173:12)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: 'same',\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/unverifiable-start.test.js:212:1\n✖ EV-175 U2：情形 A（status.json 不存在）——给了 fallbackPidStartedAt 而取不到 ⇒ inconclusive；不给（生产形状）照旧 inconclusive (164.342208ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n  + actual - expected\n  \n    {\n  +   kind: 'worker_lost',\n  +   reason: 'pid_gone'\n  -   kind: 'inconclusive',\n  -   reason: 'no_status_file'\n    }\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:221:12)\n      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',\n    actual: { kind: 'worker_lost', reason: 'pid_gone' },\n    expected: { kind: 'inconclusive', reason: 'no_status_file' },\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/unverifiable-start.test.js:238:1\n✖ EV-175 U3：情形 C——取不到时按心跳判：新鲜 ⇒ running（规范化 / 旧版记录），过期 ⇒ heartbeat_stale (162.988875ms)\n  AssertionError [ERR_ASSERTION]: canon-fresh：{\"kind\":\"worker_lost\",\"reason\":\"pid_gone\"}\n  + actual - expected\n  \n  + 'worker_lost/pid_gone'\n  - 'running'\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:254:14)\n      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 'worker_lost/pid_gone',\n    expected: 'running',\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/unverifiable-start.test.js:275:1\n✖ EV-175 U4：workerConfirmedGone 取不到 ⇒ 不算已不在、why 写明判不了；scrubAdmission 不准入（running 与 heartbeat_stale 后的 failed） (127.163917ms)\n  AssertionError [ERR_ASSERTION]: running：工作进程 74857 已不存在\n  \n  true !== false\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:286:14)\n      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: true,\n    expected: false,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/unverifiable-start.test.js:307:1\n✖ EV-175 U5：workerStillAlive 取不到当仍在——到期不整删、未到期不抹、跨仓清扫计 alive (127.756916ms)\n  AssertionError [ERR_ASSERTION]: 到期也不整删：{\"removed\":[\"/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev175-u5-tjga0j/runs/proj-5b34ce39/R-EXPIRED\"],\"kept\":0,\"scrubbed\":[],\"runDirRedacted\":[],\"scrubFailed\":[],\"unknown\":[],\"deferred\":[],\"deferredCli\":[],\"incomplete\":[]}\n  + actual - expected\n  \n  + [\n  +   '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev175-u5-tjga0j/runs/proj-5b34ce39/R-EXPIRED'\n  + ]\n  - []\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:318:12)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: [ '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev175-u5-tjga0j/runs/proj-5b34ce39/R-EXPIRED' ],\n    expected: [],\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/unverifiable-start.test.js:337:1\n✖ EV-175 U6：cancelRun 主路径取不到 ⇒ 抛 69、什么都不动（不发信号、status / 锁 / 闸门 / 载体原样） (609.579542ms)\n  AssertionError [ERR_ASSERTION]: 应抛出而不是返回 0；stdout=已回收主题「判不了用例」的锁\n  运行 R-EV175-U6 已取消\n   stderr=· 工作进程 74872 已不存在，仅做状态与锁的清理\n  · 按记录结束审查员 CLI：glm 侧进程组 74873（SIGTERM）\n  · 归档 run-R-EV175-U6.json 未回写：归档里没有 run-R-EV175-U6.json\n  · task.json 的运行登记未改：归档 run.json 不是 cancelled（读不到），不改登记\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:355:12)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: true,\n    operator: '==',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/unverifiable-start.test.js:395:1\n✖ EV-175 U7：cancelRun 终态分支（failed / pid_gone）取不到 ⇒ 不按记录结束活 worker 名下的 CLI (582.8375ms)\n  AssertionError [ERR_ASSERTION]: · 按记录结束审查员 CLI：glm 侧进程组 74904（SIGTERM）\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:417:12)\n      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: '· 按记录结束审查员 CLI：glm 侧进程组 74904（SIGTERM）\\n',\n    expected: /按记录结束审查员 CLI/,\n    operator: 'doesNotMatch',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/unverifiable-start.test.js:426:1\n✖ EV-175 U8：waitRun 取不到——心跳新鲜 ⇒ 73、什么都不动；过期 ⇒ heartbeat_stale、凭据不抹、正文写明判不了 (141.598542ms)\n  AssertionError [ERR_ASSERTION]: 运行 R-EV175-U8F 的工作进程失联（pid_gone）。\n    日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev175-u8-Y3dvhf/runs/trivium-ev175-u8-Y3dvhf-2de6fc42/R-EV175-U8F/worker.log\n    归档 run-R-EV175-U8F.json 未回写：归档里没有 run-R-EV175-U8F.json\n    task.json 的运行登记未改：归档 run.json 不是 failed（读不到），不改登记\n  + actual - expected\n  \n  + TriviumError: 运行 R-EV175-U8F 的工作进程失联（pid_gone）。\n  +   日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev175-u8-Y3dvhf/runs/trivium-ev175-u8-Y3dvhf-2de6fc42/R-EV175-U8F/worker.log\n  +   归档 run-R-EV175-U8F.json 未回写：归档里没有 run-R-EV175-U8F.json\n  +   task.json 的运行登记未改：归档 run.json 不是 failed（读不到），不改登记\n  +     at waitRun (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/src/trivium/run-protocol.js:774:13)\n  +     at async captureIO (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:144:21)\n  +     at async underStub (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:79:15)\n  +     at async TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:436:16)\n  +     at async Test.run (node:internal/test_runner/test:1113:7)\n  +     at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n  +   code: 1,\n  +   details: undefined\n  + }\n  - undefined\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:437:12)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: TriviumError: 运行 R-EV175-U8F 的工作进程失联（pid_gone）。\n      日志：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev175-u8-Y3dvhf/runs/trivium-ev175-u8-Y3dvhf-2de6fc42/R-EV175-U8F/worker.log\n      归档 run-R-EV175-U8F.json 未回写：归档里没有 run-R-EV175-U8F.json\n      task.json 的运行登记未改：归档 run.json 不是 failed（读不到），不改登记\n        at waitRun (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/src/trivium/run-protocol.js:774:13)\n        at async captureIO (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:144:21)\n        at async underStub (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:79:15)\n        at async TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/a8e2605b-b69a-4346-8f28-593c4b37f26e/scratchpad/port-c4d082e/dist/test/test/integration/unverifiable-start.test.js:436:16)\n        at async Test.run (node:internal/test_runner/test:1113:7)\n        at async Test.processPendingSubtests (node:internal/test_runner/test:788:7),\n    expected: undefined,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n"
+}

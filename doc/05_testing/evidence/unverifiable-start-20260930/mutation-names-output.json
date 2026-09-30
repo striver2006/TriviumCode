@@ -1,0 +1,146 @@
+[
+  {
+    "id": "M1",
+    "desc": "recordIdentityOf 的判不了改回 different ⇒ U1a、U1b、U2～U8 的新行为格",
+    "suite": "dist/test/test/integration/unverifiable-start.test.js",
+    "fail": 9,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-175 U1a：recordIdentityOf 真值表（动态导入：改前树没有这个导出即红）",
+      "EV-175 U1b：processMatchesRecord 的 identity——同一 / 不符 / 不在（两种 basis）/ 取不到（注入与按 pid 拦，两种 basis）",
+      "EV-175 U2：情形 A（status.json 不存在）——给了 fallbackPidStartedAt 而取不到 ⇒ inconclusive；不给（生产形状）照旧 inconclusive",
+      "EV-175 U3：情形 C——取不到时按心跳判：新鲜 ⇒ running（规范化 / 旧版记录），过期 ⇒ heartbeat_stale",
+      "EV-175 U4：workerConfirmedGone 取不到 ⇒ 不算已不在、why 写明判不了；scrubAdmission 不准入（running 与 heartbeat_stale 后的 failed）",
+      "EV-175 U5：workerStillAlive 取不到当仍在——到期不整删、未到期不抹、跨仓清扫计 alive",
+      "EV-175 U6：cancelRun 主路径取不到 ⇒ 抛 69、什么都不动（不发信号、status / 锁 / 闸门 / 载体原样）",
+      "EV-175 U7：cancelRun 终态分支（failed / pid_gone）取不到 ⇒ 不按记录结束活 worker 名下的 CLI",
+      "EV-175 U8：waitRun 取不到——心跳新鲜 ⇒ 73、什么都不动；过期 ⇒ heartbeat_stale、凭据不抹、正文写明判不了"
+    ],
+    "firstLines": [],
+    "elapsed_s": 2
+  },
+  {
+    "id": "M2",
+    "desc": "情形 C 删掉判不了分支（回到「!alive 或 !sameProcess 即 pid_gone」）⇒ U3、U8",
+    "suite": "dist/test/test/integration/unverifiable-start.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-175 U3：情形 C——取不到时按心跳判：新鲜 ⇒ running（规范化 / 旧版记录），过期 ⇒ heartbeat_stale",
+      "EV-175 U8：waitRun 取不到——心跳新鲜 ⇒ 73、什么都不动；过期 ⇒ heartbeat_stale、凭据不抹、正文写明判不了"
+    ],
+    "firstLines": [],
+    "elapsed_s": 3
+  },
+  {
+    "id": "M3",
+    "desc": "情形 C 的判不了不走心跳、直接 running ⇒ U3 过期格、U8 过期格",
+    "suite": "dist/test/test/integration/unverifiable-start.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-175 U3：情形 C——取不到时按心跳判：新鲜 ⇒ running（规范化 / 旧版记录），过期 ⇒ heartbeat_stale",
+      "EV-175 U8：waitRun 取不到——心跳新鲜 ⇒ 73、什么都不动；过期 ⇒ heartbeat_stale、凭据不抹、正文写明判不了"
+    ],
+    "firstLines": [],
+    "elapsed_s": 6
+  },
+  {
+    "id": "M4",
+    "desc": "情形 A 删掉判不了分支 ⇒ U2",
+    "suite": "dist/test/test/integration/unverifiable-start.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-175 U2：情形 A（status.json 不存在）——给了 fallbackPidStartedAt 而取不到 ⇒ inconclusive；不给（生产形状）照旧 inconclusive"
+    ],
+    "firstLines": [],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M5",
+    "desc": "workerConfirmedGone 删判不了分支 ⇒ U4、U7、U8 过期格",
+    "suite": "dist/test/test/integration/unverifiable-start.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-175 U4：workerConfirmedGone 取不到 ⇒ 不算已不在、why 写明判不了；scrubAdmission 不准入（running 与 heartbeat_stale 后的 failed）",
+      "EV-175 U7：cancelRun 终态分支（failed / pid_gone）取不到 ⇒ 不按记录结束活 worker 名下的 CLI",
+      "EV-175 U8：waitRun 取不到——心跳新鲜 ⇒ 73、什么都不动；过期 ⇒ heartbeat_stale、凭据不抹、正文写明判不了"
+    ],
+    "firstLines": [],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M6",
+    "desc": "workerStillAlive 删判不了分支 ⇒ U5",
+    "suite": "dist/test/test/integration/unverifiable-start.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-175 U5：workerStillAlive 取不到当仍在——到期不整删、未到期不抹、跨仓清扫计 alive"
+    ],
+    "firstLines": [],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M7",
+    "desc": "cancelRun 主路径删判不了分支 ⇒ U6",
+    "suite": "dist/test/test/integration/unverifiable-start.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-175 U6：cancelRun 主路径取不到 ⇒ 抛 69、什么都不动（不发信号、status / 锁 / 闸门 / 载体原样）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 5
+  },
+  {
+    "id": "M8",
+    "desc": "判不了时退 1 而不是 69 ⇒ U6",
+    "suite": "dist/test/test/integration/unverifiable-start.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-175 U6：cancelRun 主路径取不到 ⇒ 抛 69、什么都不动（不发信号、status / 锁 / 闸门 / 载体原样）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M9",
+    "desc": "规范化且不在那个 return 不补 identity（计划双审 r1 GLM-02）⇒ U1b 不在的规范化格",
+    "suite": "dist/test/test/integration/unverifiable-start.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-175 U1b：processMatchesRecord 的 identity——同一 / 不符 / 不在（两种 basis）/ 取不到（注入与按 pid 拦，两种 basis）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M10",
+    "desc": "legacy 分支那个 return 不补 identity ⇒ U1b legacy 格、U2、U3 旧版记录格",
+    "suite": "dist/test/test/integration/unverifiable-start.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-175 U1b：processMatchesRecord 的 identity——同一 / 不符 / 不在（两种 basis）/ 取不到（注入与按 pid 拦，两种 basis）",
+      "EV-175 U2：情形 A（status.json 不存在）——给了 fallbackPidStartedAt 而取不到 ⇒ inconclusive；不给（生产形状）照旧 inconclusive",
+      "EV-175 U3：情形 C——取不到时按心跳判：新鲜 ⇒ running（规范化 / 旧版记录），过期 ⇒ heartbeat_stale"
+    ],
+    "firstLines": [],
+    "elapsed_s": 4
+  }
+]

@@ -1,0 +1,142 @@
+{
+  "pre": "probe-pre-c4d082e.coding.json",
+  "post": "probe-post.json",
+  "failures": [],
+  "rows": [
+    {
+      "id": "A-prod",
+      "pre_psfail": "{\"reading\":\"inconclusive/no_status_file\",\"worker_alive\":true}",
+      "post_psfail": "{\"reading\":\"inconclusive/no_status_file\",\"worker_alive\":true}",
+      "control": "{\"reading\":\"inconclusive/no_status_file\",\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "A-test",
+      "pre_psfail": "{\"reading\":\"worker_lost/pid_gone\",\"worker_alive\":true}",
+      "post_psfail": "{\"reading\":\"inconclusive/no_status_file\",\"worker_alive\":true}",
+      "control": "{\"reading\":\"inconclusive/no_status_file\",\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "C-canon-fresh",
+      "pre_psfail": "{\"reading\":\"worker_lost/pid_gone\",\"worker_alive\":true}",
+      "post_psfail": "{\"reading\":\"running\",\"worker_alive\":true}",
+      "control": "{\"reading\":\"running\",\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "C-legacy-fresh",
+      "pre_psfail": "{\"reading\":\"worker_lost/pid_gone\",\"worker_alive\":true}",
+      "post_psfail": "{\"reading\":\"running\",\"worker_alive\":true}",
+      "control": "{\"reading\":\"running\",\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "C-canon-stale",
+      "pre_psfail": "{\"reading\":\"worker_lost/pid_gone\",\"worker_alive\":true}",
+      "post_psfail": "{\"reading\":\"worker_lost/heartbeat_stale\",\"worker_alive\":true}",
+      "control": "{\"reading\":\"worker_lost/heartbeat_stale\",\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "C-wait",
+      "pre_psfail": "{\"threw\":1,\"phase\":\"failed/pid_gone\",\"carrier_present\":false,\"lock_present\":true,\"gate\":\"idle\",\"worker_alive\":true}",
+      "post_psfail": "{\"exit\":73,\"phase\":\"running\",\"carrier_present\":true,\"lock_present\":true,\"gate\":\"running\",\"worker_alive\":true}",
+      "control": "{\"exit\":73,\"phase\":\"running\",\"carrier_present\":true,\"lock_present\":true,\"gate\":\"running\",\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "C-wait-stale",
+      "pre_psfail": "{\"threw\":1,\"phase\":\"failed/pid_gone\",\"carrier_present\":false,\"lock_present\":true,\"gate\":\"idle\",\"worker_alive\":true}",
+      "post_psfail": "{\"threw\":1,\"phase\":\"failed/heartbeat_stale\",\"carrier_present\":true,\"lock_present\":true,\"gate\":\"idle\",\"worker_alive\":true}",
+      "control": "{\"threw\":1,\"phase\":\"failed/heartbeat_stale\",\"carrier_present\":true,\"lock_present\":true,\"gate\":\"idle\",\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "G-running",
+      "pre_psfail": "{\"gone\":true,\"admit\":true,\"worker_alive\":true}",
+      "post_psfail": "{\"gone\":false,\"admit\":false,\"worker_alive\":true}",
+      "control": "{\"gone\":false,\"admit\":false,\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "G-failed",
+      "pre_psfail": "{\"gone\":true,\"admit\":true,\"worker_alive\":true}",
+      "post_psfail": "{\"gone\":false,\"admit\":false,\"worker_alive\":true}",
+      "control": "{\"gone\":false,\"admit\":false,\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "G-cancel-terminal",
+      "pre_psfail": "{\"exit\":0,\"phase\":\"failed/pid_gone\",\"carrier_present\":true,\"worker_alive\":true,\"cli_alive\":false}",
+      "post_psfail": "{\"exit\":0,\"phase\":\"failed/pid_gone\",\"carrier_present\":true,\"worker_alive\":true,\"cli_alive\":true}",
+      "control": "{\"exit\":0,\"phase\":\"failed/pid_gone\",\"carrier_present\":true,\"worker_alive\":true,\"cli_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "S-prune",
+      "pre_psfail": "{\"removed\":1,\"kept\":0,\"scrubbed\":0,\"deferred\":0,\"carrier_present\":false,\"run_dir_present\":false,\"worker_alive\":true}",
+      "post_psfail": "{\"removed\":0,\"kept\":1,\"scrubbed\":0,\"deferred\":0,\"carrier_present\":true,\"run_dir_present\":true,\"worker_alive\":true}",
+      "control": "{\"removed\":0,\"kept\":1,\"scrubbed\":0,\"deferred\":0,\"carrier_present\":true,\"run_dir_present\":true,\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "S-prune-fresh",
+      "pre_psfail": "{\"removed\":0,\"kept\":1,\"scrubbed\":1,\"deferred\":0,\"carrier_present\":false,\"run_dir_present\":true,\"worker_alive\":true}",
+      "post_psfail": "{\"removed\":0,\"kept\":1,\"scrubbed\":0,\"deferred\":0,\"carrier_present\":true,\"run_dir_present\":true,\"worker_alive\":true}",
+      "control": "{\"removed\":0,\"kept\":1,\"scrubbed\":0,\"deferred\":0,\"carrier_present\":true,\"run_dir_present\":true,\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "S-sweep",
+      "pre_psfail": "{\"scrubbed\":1,\"deferred\":0,\"alive\":0,\"carrier_present\":false,\"worker_alive\":true}",
+      "post_psfail": "{\"scrubbed\":0,\"deferred\":0,\"alive\":1,\"carrier_present\":true,\"worker_alive\":true}",
+      "control": "{\"scrubbed\":0,\"deferred\":0,\"alive\":1,\"carrier_present\":true,\"worker_alive\":true}",
+      "post_equals_control": true,
+      "pre_ms": null,
+      "post_ms": null
+    },
+    {
+      "id": "K-main",
+      "pre_psfail": "{\"exit\":0,\"phase\":\"cancelled\",\"carrier_present\":false,\"lock_present\":false,\"gate\":\"idle\",\"next\":\"acquired\",\"worker_alive\":true,\"cli_alive\":false}",
+      "post_psfail": "{\"threw\":69,\"phase\":\"running\",\"carrier_present\":true,\"lock_present\":true,\"gate\":\"running\",\"next\":\"threw:70\",\"worker_alive\":true,\"cli_alive\":true}",
+      "control": "{\"exit\":0,\"phase\":\"cancelled\",\"carrier_present\":true,\"lock_present\":false,\"gate\":\"idle\",\"next\":\"acquired\",\"worker_alive\":false,\"cli_alive\":true}",
+      "post_equals_control": false,
+      "pre_ms": 71,
+      "post_ms": 1
+    },
+    {
+      "id": "K-main-timeout",
+      "pre_psfail": "{\"exit\":0,\"phase\":\"cancelled\",\"carrier_present\":false,\"lock_present\":false,\"gate\":\"idle\",\"next\":\"acquired\",\"worker_alive\":true,\"cli_alive\":false}",
+      "post_psfail": "{\"threw\":69,\"phase\":\"running\",\"carrier_present\":true,\"lock_present\":true,\"gate\":\"running\",\"next\":\"threw:70\",\"worker_alive\":true,\"cli_alive\":true}",
+      "control": "{\"exit\":0,\"phase\":\"cancelled\",\"carrier_present\":true,\"lock_present\":false,\"gate\":\"idle\",\"next\":\"acquired\",\"worker_alive\":false,\"cli_alive\":true}",
+      "post_equals_control": false,
+      "pre_ms": 20367,
+      "post_ms": 10005
+    }
+  ]
+}
