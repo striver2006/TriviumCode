@@ -1,0 +1,91 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "计划整体质量高：定性以实测探针为据、候选②不冒充 EV-149 修法、用户决策贯穿一致，D1-D6 的方向我核过代码后基本认同。但有两条必须先补：①D3 的前提「三处调用方对 false 都已有处理」与代码不符——cancelRun 的 :1877 无视 reclaimStaleLock 返回值、无条件 say「已回收主题「X」的锁」，且该文案被两条集成测试钉住；D3 扩大 false 集合后这条对外路径会失实报成功，恰与本计划 D5 的「只说真话」原则自相矛盾。②§6.2「新 X3 用例在旧构建上的红率」缺装配与存在性断言——git archive 出的旧树根本没有 X3 用例，忘了移植的静默结局是「旧构建 0 红」被读成「修前命中率 0%」，这在本仓 mutation-check 有陈旧产物的先例。另有统计功效（240 轮对 0.5% 级事件检出力仅约七成）与跨 Node 版本/文件系统假设未登记的核算问题。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §1 F8 / §3 D3「三处调用方对 false 都已有处理：两处忽略」；src/trivium/run-protocol.ts:1872-1877",
+      "problem": "D3 把「忽略返回值」当作无害，但 :1877（cancelRun 的 --cancel 收尾）实际是无条件播报成功：`await reclaimStaleLock(...)` 之后紧接 `say('已回收主题「X」的锁')`，不分支返回值；:745 的 soft('回收已改记到工作进程名下的主题锁') 同样只看是否抛异常。D3 之后 false 结局变多（missing/身份预检不符），这两处会在新语义下失实报「已回收」——与本修法 D5「告警只在回收成功后打」的口径直接冲突，而 --cancel 的 stdout 是用户出口。另外 F8 说三处「都是先 inspectLock 按 run_id（与 pid）复核」，:1877 实际只核 run_id 不核 pid，括号掩盖了两处的复核强度不同。",
+      "evidence": "读 src/trivium/run-protocol.ts:740-752、:1552-1563、:1830-1880（:1876-1877 的 reclaim+say 连续两行、run_id 单条件复核属实）；grep「回收主题」全仓：test/integration/run-protocol.test.ts 两处 assert.match(/已回收主题「协议用例」的锁/) 钉住该文案，证明它是对外可观测契约；被审计划 D3 原文「两处忽略」。",
+      "suggestion": "把 :1877（以及 :745 soft 的标签措辞）改为按返回值分支播报（:1558 已有范式），落进 D3 的改动范围并补一条对应用例；若不并入，至少在 §4 残余项里如实登记「--cancel 路径在新语义下可能报已回收而实际未回收」，并修正 F8 的「（与 pid）」措辞。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §6.2「新 X3 用例在旧构建上的红率」",
+      "problem": "验收装配步骤没写：旧构建用 git archive 3e38d29 导出，那棵树里的 lock-cross-process.test.ts 不含 X3 用例；要拿「X3 修前红率」必须把改后的新测试文件移植进旧树再 --tests-only 编译。计划既没写移植步骤，也没有「旧构建上确实跑到了 X3 这条用例」的存在性断言。失败是静默的：漏移植的读数会是「旧构建 X3 零红」，很容易被当成「修前命中率不足」从而放弃 §5.2 对 X3 回归判据的期待。本仓 scripts/mutation-check.mjs 头注释记录过同款事故（构建失败被吞、每条变异跑的都是陈旧产物）。",
+      "evidence": "读 scripts/mutation-check.mjs 头部（失败 1-3 与七道闸的动机）；读 scripts/build.mjs:17-30（--tests-only 逐文件转译 src+test，机制上可行但按树编译，旧树无 X3）；§6.2 原文只承诺记录新旧 trivium.cjs/lock.js 的 sha256，未覆盖测试件本身。",
+      "suggestion": "§6.2 补两步：旧树编译前显式拷贝新测试文件并记录其 sha256；旧构建运行输出里断言 X3 用例名出现且实际执行（用例数为非零的正面断言，而非「没红」的负面读数）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §5.2（X3 修前命中率）与 §6.3（新旧各 240 次）",
+      "problem": "统计功效未核算：实测基线是 e149 双赢家 1/200（0.5%）、x1 告警 5/200。240 次文件级跑对 0.5% 级事件，无论修前「复现出红」还是修后「判消除」，检出力都只有约 1-0.995^240 ≈ 69%——修后 0 红并不能把残余率压到可下结论的水平；X3 的修前命中率本身未知，计划「若不足就如实写明」等于接受一条可能没有判别力的用例。而 §6.2 的 probe-xproc 每 200 轮仅 42-46 秒，加轮次的边际成本几乎为零（600 轮≈1.5 分钟，检出力>95%）。",
+      "evidence": "读 doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-xproc-e149-3e38d29.json（rounds:200, rounds_multi_winner:1, elapsed_s:42）与 probe-xproc-x1-3e38d29.json（rounds_with_reclaim_warn:5, elapsed_s:46）；对照计划 §5.2/§6.3 的轮次设定。",
+      "suggestion": "给 §6.2/§6.3 每项对照写明确切期望命中率与通过判据；把主判据放在廉价可扩的 probe-xproc（提到 500-600 轮），240 次文件级跑降为辅助信号。这是成本核算问题，不是方向问题。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §3 D1/D2/D3 与 §6 验证矩阵",
+      "problem": "支持矩阵上的环境与版本假设只有一台机器一份读数：探针 JSON 记录 node v25.2.1，而 package.json engines 是 >=18——D1/D2 新依赖 FileHandle#readFile 与 fh.stat({bigint:true}) 在最低支持版本上的可用性未列验证步骤；D3 的「writeFile 新写 mtimeNs 必然不同」依赖文件系统时间戳精度与 dev/ino 语义，本地 APFS 成立，但 .trivium/ 随仓库放在网络卷/云同步目录（NFS 属性缓存会回吐旧 fstat、ino 由服务端重新分配）时身份三元组的判别力没有论证，计划也未把适用范围写死。项目纪律 1（取值靠实测、按支持矩阵登记）要求补这一格。",
+      "evidence": "读 doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-inproc-3e38d29.json（\"node\":\"v25.2.1\"）；package.json engines >=18；计划 §2.1 用 ext4 inode 复用论证身份三段、但只给 macOS 本地盘的隐含前提；§6 全部验证未提 Node 版本矩阵或挂载点类型。",
+      "suggestion": "验证里加最低支持 Node 版本的一次跑（成本一条命令）；LLD §4.3 同步登记身份三元组的文件系统边界（明确只保证本地 APFS，或声明网络卷下降级为内容比对的策略）。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "D1/D2 对 EV-173 的成因定性与修法正确：F1-F5 的行号与语义我逐条核过 src/trivium/lock.ts（:93-99/:133-134/:162-192/:194-201/:266-280 全部属实），P1/P1c 读数与 probe-inproc JSON 一致；missing⇒continue 不查预算与今天 stale 分支同形（今天的回收分支同样 continue 且 attempt 预算只在「活锁」路径生效），不是新增的活锁面。",
+    "D4 的自我定位诚实且被 P2 事件线支撑：双持有在放回之前已成立（C 拿到句柄时 A 的锁在 B 的 tmp 里），候选②单独救不了 EV-149——计划没有像常见错误那样把「原子失败」当万能药。",
+    "§2.2 对 idx 125 的推演成立：赢家 stderr 为空、恰一条 pid_gone、两条 unparsable 与 JSON 逐项吻合；「只有一个 pid_gone」在改前时间线上足以排除入口 B 单独成因——改前告警在 rename 之前无条件打，入口 B 的慢回收者必然也留一条 pid_gone。（F11 那次有两条 pid_gone，单凭文案钉不住是入口 A 独走，但两条入口都修，不影响修法成立。）",
+    "D5 经 grep 全仓核实无外部依赖：「回收主题」告警文案只有 lock-cross-process.test.ts:300 的 doesNotMatch 断言消费，run-protocol 的两处是自有 say 文案，没有调用者依赖「每个判定者都告警」。",
+    "D3 用 dev:ino:mtimeNs 而非仅 inode、rename 后身份可比（rename 不改 inode 与 mtime）在本地 APFS 上论证正确；对外部调用方走内容预检、不传身份，是更保守的方向，符合其「只会多一种不回收结局」的声称（结论层面见 CODEX-01 对播报的补充）。",
+    "R1 暂缓的理由站得住：POSIX 没有「身份比对+rename」的原子原语，互斥守卫会再造一层带遗留判据的锁，属于以范围扩张换极小残余，且 D4 让命中留痕、§6.3 承诺给出实际频率。D6 零成本正确。",
+    "用户决策边界（锁文件格式/70/判据/重试预算不动、零配额）全程贯彻，BACKLOG EV-149/EV-173 条目原文与计划的「先实证后改码」口径一致。"
+  ],
+  "not_covered": [
+    "只读沙箱下没有重跑探针做二次实证，统计读数全部来自核对 evidence JSON 原文。",
+    "未逐句读 LLD §4.3 与设计 §12.6 全文，§7 文档同步清单里「2.7 表行数」「已知缺口表」等目标位置未逐一预查。",
+    "D1 新用的 FileHandle API 与 mtimeNs 精度在 Node 18/20、其它挂载类型上的实际行为未验证（CODEX-04 只指出计划未登记，非实测反证）。",
+    "未评估 Hook 与闸门对 stderr 告警时序（D5 改动）的间接依赖面 beyond 本主题 grep 范围。",
+    "另一审查员的镜头与本侧无关，未尝试覆盖。"
+  ],
+  "consulted": [
+    "src/trivium/lock.ts",
+    "src/trivium/run-protocol.ts",
+    "test/integration/lock-cross-process.test.ts",
+    "test/integration/run-protocol.test.ts",
+    "test/unit/lock.test.ts",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-inproc.mjs",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-xproc.mjs",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-inproc-3e38d29.json",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-xproc-e149-3e38d29.json",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-xproc-x1-3e38d29.json",
+    ".reviews/门面文档版本指针/verify/2026-09-29-门面文档版本指针-verify.md",
+    ".reviews/锁回收误判已删锁文件/plan/2026-09-30-锁回收误判已删锁文件-claude.md",
+    "scripts/mutation-check.mjs",
+    "scripts/build.mjs",
+    "package.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md"
+  ]
+}

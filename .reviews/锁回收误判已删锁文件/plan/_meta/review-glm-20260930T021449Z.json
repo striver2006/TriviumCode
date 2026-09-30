@@ -1,0 +1,71 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "整体：approve-with-nits。计划的事实基础扎实——F1–F11、探针读数、BACKLOG 条目、文档版本递增与引用的脚本/旗标逐条核对全部属实，§2.2 对 idx 125 的四步推演与代码路径逐项相符。最值得先看的一条：§5.2 的「告警恰一条 / 零告警」断言会把 R1 残余窗口的每次命中经 D4 的新告警直接变成测试红，而计划只承诺「把残余读数写进报告」，没有残余非零时的验收分支——EV-173 本身就是偶发红，这里需要预先定好处置，否则可能修出一个新的偶发红源。其次 D1 的 readLockFile 漏定义了 open 成功后 stat/read 失败的格子。两条均 minor，不阻塞。§8 五问逐一核过：入口 B 的排除论证、dev:ino:mtimeNs 身份、missing→continue 与今天同形、D5 无依赖方、R1 暂缓理由，均成立。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §5.2（EV-149 断言④、X3 零告警断言）与 §6.3",
+      "problem": "R1 残余窗口（预检通过到 rename 之间）一旦被命中，D4 会打出一条含「回收主题」字样的新告警，直接把 §5.2 的断言④「『回收主题』告警恰一条」与 X3 的「零『回收主题』告警」打成红。计划 §6.3 只写「把 probe-xproc 残余读数写进报告（R1）」，没有定义残余频率多低才算验收通过、以及出现命中后这两条断言如何处置。EV-173 本身就是全量满载下的偶发红；若不在计划里预先定分支，编码阶段要么临场放松断言、要么留下一个新的偶发红源——与本主题的目标相悖。",
+      "evidence": "计划 §3 D4 的告警文字「回收主题「X」的锁时挪走了一把新建的锁且放不回…」含「回收主题」；src/trivium/lock.ts:277 今天的告警同样以「回收主题」开头，test/integration/lock-cross-process.test.ts:299-301 的 X1 断言（doesNotMatch /回收主题/）正是靠这个字面拦下 EV-173 的失实告警；§6.3 对 R1 只承诺记录读数。残余命中需要三重巧合（本回收者预检后被调度出去、另一回收者完成整套回收并重建、第三者恰在其空档 link），概率极低，但 §6.3 的 240 次高并发并非零概率场景。",
+      "suggestion": "在 §6.3 预先写下验收分支：240 次零命中 → 断言④维持「恰一条」；出现命中 → 断言④放宽为「恰一条 pid_gone，且允许至多一条『挪走了一把新建的锁且放不回』的 R1 残余告警」，并把实测频率写进 BACKLOG 的 R1 条目。计划里定死这个分支即可，不必现在改断言本身。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3 D1",
+      "problem": "readLockFile 的三态只定义了 open 的错误格（ENOENT → missing；其它 open 错误 → present/content:null/identity:null），open 成功之后 fh.stat / fh.readFile 失败（EIO、open 后权限被收回等）的归属没有写。今天的 readLock 对一切异常吞成 null，若新函数让这些错误冒出来，acquireLock 的 EEXIST 分支会抛出非 70、非 TriviumError 的意外异常——比今天「判 unparsable → 告警 → 回收失败 → continue」的结局更差。属于计划未决策格，现在一行话定死比编码时临场定好。",
+      "evidence": "src/trivium/lock.ts:93-99（readLock 对任何异常 catch 后返回 null）；计划 §3 D1 的三态枚举只覆盖 open 的两种失败与成功路径，未提 fd 打开成功后的 stat/read 失败。",
+      "suggestion": "计划里补一句：fd 打开成功后的 stat / readFile 失败一律并入 { state:'present', content:null, … }（fstat 已成功则 identity/mtimeMs 照给），保持「读不了 ⇒ 不可解析」的旧语义；可加一条对应单测（桩 fh.readFile 抛 EIO，断言走 unparsable 判定而非异常冒出）。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§1 事实清单 F1–F11 逐条对照 3e38d29 源码与读数核实无误（lock.ts:93-99/133-134/162-192/194-201/266-280；lock-cross-process.test.ts:217-251/258-310；verify 文档 :194-195 的失败文案与 F11 逐字一致）。",
+    "§2 探针读数与 JSON 落数完全一致：probe-inproc-3e38d29.json 的 P1 告警、P1c 对照抛 70、P2 double_holder=true 及两条 pid_gone 告警；e149 的 1 轮双赢家且区间重叠、0 轮先后、0 轮晚就绪、44 轮 unparsable（59 次）；x1 的 5 轮 6 次全 unparsable、0 丢更新。idx 125 与 F11 同构，四步推演与代码路径相符，EV-173 成因与 EV-149「非用例误判」的定性成立。",
+    "§8.1 的排除论证成立：入口 B 单独成因需要两个 pid_gone 判定者，而今天的告警在回收之前无条件打（lock.ts:277-278），P2 读数里 A、B 两个回收者确实各留一条 pid_gone；idx 125 与 F11 都只有一条 pid_gone，入口 A 必在场上。",
+    "D1–D6 的方向与取舍：D1 同一 fd 取内容与元数据同时堵 EV-173 与入口 A；D2 同 inode 年龄消掉 +∞ 越界；D3 身份预检把入口 B 的窗口从一次 ps 派生收窄到两次系统调用之间；D4 定位为「可察觉」与 P2 的论证一致（双持有成立于放回之前）；D6 零成本且 randomUUID 已导入（lock.ts:17）。dev:ino:mtimeNs 在受支持平台上足以区分新旧锁——POSIX rename 不改 mtime，APFS 为纳秒级时间戳；身份误同的失败形态也已被 §3 的 inode 复用论证覆盖。",
+    "§8.3：missing→continue 不查预算不睡与今天回收分支同形（lock.ts:276-280 今天同样 continue 且不查预算不睡），且每次 continue 立即重试 link 本身可赢，不构成新的活锁类别，最多少跑一次 runTerminal 查询与一次注定失败的 rename。",
+    "§8.4：已核实无调用方或用例依赖「每个判定者都告警」——run-protocol.ts:1558-1559/1876-1877 的播报本就以 reclaimStaleLock 返回 true 为条件，run-protocol.test.ts:874/:1170 断言的正是这两处播报；test/ 下没有对 lock.ts 告警条数的计数断言。",
+    "§8.5：R1 暂缓站得住——check→rename 的 TOCTOU 在不引入新互斥物的前提下关不死（macOS 无 renameat2 RENAME_NOREPLACE，link+unlink 组合只是换一种 TOCTOU），守卫文件等于再造一层自带遗留判据的锁；D4 让残余命中留痕是合理的折中。",
+    "§5.1 的三个既有用例在 D3 后仍成立（「并发只有一个成功」仍恰一个 true——预检与 rename 只有一个能过；两个「不回收」用例在预检一步就返回 false 且不动 p）；§6.2 引用的 --tests-only 旗标在 scripts/build.mjs:30 存在，§6.4 引用的 scripts/mutation-check.mjs 存在（glob 核实）；§7 的版本递增与落点（主设计 v1.3.63→v1.3.64、§12.6「同主题并发互斥」在 :2795；LLD v1.1.21→v1.1.22、§4.3 判据表 unparsable 行在 :515、2.7 表 lock.ts 行在 :165）与文档现状全部对得上；BACKLOG EV-173（:271）/EV-149（:247）均为 todo，EV-149 的「先后合法获取」假设已被读数正确否定。"
+  ],
+  "not_covered": [
+    "未运行任何探针或测试（审查只读，构建与跑测会写 dist）；对两份探针只做了脚本逻辑与 JSON 落数的静态核对，未独立复跑。",
+    "probe-xproc.mjs 的调度公平性与跨进程计时偏斜（performance.timeOrigin）对读数的系统偏差未深究，只评估了其对 900 ms 持锁区间的判别力（偏斜 « 持锁时长，不影响重叠判定）。",
+    "PRD 与 MANUAL 里「回收遗留锁」的表述未逐一核对（计划 §7 已列为编码阶段 grep 项，与本修法冲突的概率低）。",
+    "Linux 文件系统行为未覆盖（项目仅支持 macOS）；identity 论证只在受支持平台（APFS）上评估，HFS+ 等粗粒度 mtime 文件系统只作理论提及。",
+    "明确不并入的 EV-163/168/169/171/172/159 第二形态、release() 的读比删窗口（R2）与外部调用方身份传递（R3）未深审，按计划暂缓处理。",
+    "主设计 §12.6 正文只核了章节存在性，未逐句审「补一条回收流程」后的完整行文。"
+  ],
+  "consulted": [
+    ".reviews/锁回收误判已删锁文件/plan/2026-09-30-锁回收误判已删锁文件-claude.md",
+    "src/trivium/lock.ts",
+    "src/trivium/run-protocol.ts",
+    "test/integration/lock-cross-process.test.ts",
+    "test/unit/lock.test.ts",
+    "test/integration/run-protocol.test.ts",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-inproc.mjs",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-inproc-3e38d29.json",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-xproc.mjs",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-xproc-e149-3e38d29.json",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/probe-xproc-x1-3e38d29.json",
+    ".reviews/门面文档版本指针/verify/2026-09-29-门面文档版本指针-verify.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/README.md",
+    "doc/01_requirements/README.md",
+    "doc/README.md",
+    "README.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "scripts/build.mjs"
+  ]
+}
