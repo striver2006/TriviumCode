@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.67
+> - **当前版本**：v1.3.68
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -620,7 +620,7 @@ sequenceDiagram
 | **AD-05** | **就地审查（`in-place`）为唯一隔离模式：审查员 cwd 即项目根，不构造镜像树**（`ADR_001_isolation_mode.md`，Accepted，2026-09-11） | ①冻结镜像树 `mirror`（v1.0.0～v1.1.0 默认）；②`in-place` 仅靠提示词 | 项目负责人裁决 UR-03/UR-06。`in-place` 与 PRD FR-07 字面一致，`.git`、依赖目录、`git log/blame` 能力无损，零拷贝。需要屏蔽的对方产出只有两类：**本次**结论（延迟落盘 + 运行目录在项目外，审查中物理不存在，无需提示词）与**同主题重跑时的历史**产出（三层屏蔽：BRIEF 逐个列出的禁读清单 → CLI 路径级 deny（探针可用时注入）→ 事后轨迹核验，命中即作废重跑）。代价：整树无法 `chmod` 只读，只读退化为「工具层禁写 + 前后指纹」；审查期间开发者手改文件会造成漂移，只能检出并记录（9.2）；两家 Agent 在 cwd 的临时文件需探针白名单（10.3）。`mirror` 方案被否决的理由：无 `.git`、依赖缺席、双份拷贝、与 FR-07 字面冲突需回填 PRD，而其唯一收益（历史产出物理剔除）可由三层屏蔽以可接受的置信度替代 |
 | **AD-06** | **只读 = 工具白名单/黑名单 + 前后指纹（`tree_hash` + `git status --porcelain -uall`，排除 scratch 白名单）+ 轨迹核验三重** | 仅提示词约束；整树 `chmod a-w`（就地模式不可行） | 提示词可被绕过；三重叠加使「审查员改代码」成为可检出的事件，主仓库被写入即中止并列出受影响文件（FR-15 / AC-08） |
 | **AD-07** | **禁用 `--dangerously-skip-permissions`** | 用它避免 headless 挂起 | 它会连写工具一起放行，与只读要求正面冲突。挂起问题改用「自定义只读 Agent + 预授权只读工具 + 伪终端兜底 + 轨迹下限校验」解决 |
-| **AD-08** | **结构化输出 = `agy --json-schema` + zcode 提示词约定同一 schema；解析失败降级留原文** | 只收自由文本 | 结构化才能做严重度聚合、逐条裁决校验与统计；降级路径保证鲁棒（该侧标 `parse_fallback`，不参与阻断判定） |
+| **AD-08** | **结构化输出 = `agy --json-schema` + zcode 提示词约定同一 schema；解析失败降级留原文** | 只收自由文本 | 结构化才能做严重度聚合、逐条裁决校验与统计；降级路径保证鲁棒（该侧标 `parse_fallback`，不参与阻断判定）。**v1.3.68 起分两档**：根对象合法而个别意见不合 schema 时只把那几条逐条降级、其余照常参与阻断；整份回退只留给连根对象都拿不到的情形，并标成因（6.5.1） |
 | **AD-09** | **失败策略默认 `strict`（阻塞中止）** | 默认 `degrade` | PRD 要求两种都支持、默认留给设计。默认严格更贴合「不得假双审」的整体立场；降级需项目配置或 `--allow-single` 显式开启，且必须写入降级标记与原因 |
 | **AD-10** | **阶段目录 `plan/` `code/` `bug/` `verify/`** | 全部平铺 + 文件名区分 | PRD 6.2 明确要求避免 `*-claude.md` 互相覆盖，`bug/` 为命令 D 必选 |
 | **AD-11** | **重跑 = 主题字段追加 `-r<N>`，绝不覆盖** | 覆盖旧件 / 移入 archive 子目录 | FR-25 要求既有工件无论是否已审批都不得覆盖；追加后缀保持命名规则不变，且 `ls` 即时间线 |
@@ -982,7 +982,7 @@ TriviumCode/
   > 根治是把身份从 schema 里拿掉。相应地，`registry-parity` 的对账改为**全目录兜底扫描**
   > （`schema/` 下每一份契约的每个校验关键字都不得枚举 Agent id 或前缀，
   > 历史契约 `run.v1.json` 是唯一豁免），新增 schema 文件自动进入论域，不再依赖谁记得加清单。
-- 每条意见必须是可单独接受/驳回的最小单元，七个字段（编号、严重度、位置、问题、依据、建议、置信度）缺一即 schema 不合格。
+- 每条意见必须是可单独接受/驳回的最小单元，九个字段（编号、严重度、层次、类别、位置、问题、依据、建议、置信度）缺一即 schema 不合格。不合格的意见**逐条降级**，不再拖垮整份结论（v1.3.68，6.5.1）。任务书第 6 节列出全部必填字段与四个枚举字段的合法取值，取值从本 schema 读、不抄第二份（9.4）。
 - `findings: []` 合法，表示该侧「无问题」，但必须落盘且在元数据标 `empty_review: true`（PRD 第 10 章：不得删除该侧文件假装没跑）。
 
 渲染到 Markdown 时，文件头必须带 front-matter（供机读统计与追溯）：
@@ -1010,6 +1010,10 @@ verdict: request-changes
 findings_count: {blocker: 1, major: 2, minor: 4, nit: 6}
 degraded: false            # 单审/解析降级标记
 parse_fallback: false
+# 以下三键 v1.3.68 起、条件出现（常态不渲染，6.5.1）：
+# findings_degraded: [CODEX-03, CODEX-04]   # 逐条降级的意见编号，与 run.json 同型；findings_count 只数合格意见
+# parse_repairs: {stripped_fields: [topic], unescaped_backslashes: 1}   # 与 run.json 同一份完整记录；仅在有审查员造成的修复（回显字段、非法转义）时出现
+# parse_fallback_cause: no_json_object   # 整份回退时的成因
 peer_leak: {hit: false}    # 禁读核验结论（2026-09-16 起）。命中时形如
                            # {hit: true, via: path|command|both, category: 最重档, paths: […]}
                            # 与 peer_deny 正交——后者只说「路径级 deny 有没有生效」，
@@ -1019,6 +1023,39 @@ peer_leak: {hit: false}    # 禁读核验结论（2026-09-16 起）。命中时�
 
 > **本表是 front-matter 的契约面**：`render.ts` 自陈「字段名与本节逐一对应，不得随意增减」。
 > 新增字段必须先在此登记，否则渲染侧与设计会各自漂移。
+
+#### 6.5.1 解析与降级【已实现 · v1.3.68，BACKLOG EV-10 / EV-56 / EV-105 / EV-113 / EV-124】
+
+**两档降级**（`parse.ts` `parseReview`）：
+
+| 情形 | 处置 | 阻断资格 | 裁决编号 |
+| :-- | :-- | :-- | :-- |
+| 整份合格（含靠无损修复才合格的） | 结构化结论 | 全部意见 | 原编号 |
+| 根对象合法、`findings` 是数组，个别意见不合 schema | **逐条降级**：该侧 status 仍 `ok`，不合格的那几条不进 `Review.findings` | 只有合格意见（降级意见不参与阻断与共同阻断，6.6 规则 7） | 全部按原编号（降级意见同样要裁决、接受要写落点） |
+| 连根对象都拿不到 | **整份回退** `parse_fallback`，标成因 | 无 | `<前缀>-F<n>`（6.6 规则 8）：对象拿得到（根不合、编号不可用、前缀不属本侧）时**按意见逐条出单元**、正文是那一条的原文；拿不到对象（没有 JSON、语法修不好）时按原文段落切 |
+
+整份回退的成因（run.json `critics[c].parse_fallback_cause`、front-matter 同名键、横幅、`.fallback-items.md` 抬头）：
+`no_json_object`（回答里没有 JSON 对象，EV-113 形态）、`json_syntax`（还原非法转义后仍无法解析）、`root_invalid`（缺根必填字段、取值不合、带了不属于结论的字段、`findings` 不是数组）、
+`finding_unaddressable`（不合格意见的编号不可用——缺 `id`、形状不合 schema 的 pattern 或不是对象，没法按原编号单独裁决）、`foreign_prefix`（编号前缀不属于本侧，`review.ts` 的既有硬失败，对降级编号同样生效）。
+
+**校验之前的两类无损修复**，都只随**所选候选**留痕（run.json `critics[c].parse_repairs`）：
+
+1. **剥根字段**：厂商注入的 `toolAction` / `toolSummary`（agy 每轮都注入，常态），与审查员回显的**编排器自己会写进本节 front-matter 的键**（`ECHOED_ORCHESTRATOR_KEYS`，由契约用例与 `renderFrontMatter` 的全开键集逐项相等绑定）。判据是「编排器自己会写的」，不是「样本里见过的」；`reviewer` / `addresses` 与拼错的键不剥，照旧判根不合——「字段名写错能被发现」的保护不丢。文档横幅与 front-matter 只在出现**审查员造成的**修复（回显字段或非法转义）时渲染，厂商字段的常态剥离只进 run.json。
+2. **还原非法转义**：只在 `JSON.parse` 失败时才试；字符串字面量内部、反斜杠后跟的不是合法转义字符（含「`u` 加恰好四位十六进制」）时，把反斜杠按字面保留。实测形态是 Markdown 的竖线转义与 Windows 路径。修后仍失败照旧 `json_syntax`；缺逗号 / 括号这类要猜结构的错误不修（EV-178）。
+
+**候选选取——覆盖才替换**：首个根合格的候选为默认；默认只是部分合格时，其后的全合格候选要编号集**覆盖**默认候选的全部编号（合格 ∪ 降级）才替换它，否则留默认——一份排在后面、意见更少的对象不能顶掉前面那份结论。一个根合格候选都没有时，成因取走得最远的那一格。
+
+**留痕（只取加法，`review.v1` 的 schema 本身不放宽、枚举不改、不做语义映射）**：
+
+- `_meta/review-<侧>-<run>.json` 保持纯 `review.v1`，只含合格意见；
+- 降级意见原样进旁路 `_meta/review-<侧>-<run>.degraded.json`（`{critic, run_id, findings: [{index, id, problems, raw}]}`），进 `run.json.artifacts` 保护集；
+- run.json `critics[c]`：解析成功的侧恒写 `findings_degraded`（编号数组，无即 `[]`）与 `parse_repairs`；回退侧恒写 `parse_fallback_cause`；失败 / 超时侧三格都不写（6.7.1）；`empty_review` 为「合格 0 条且降级 0 条」；
+- 审查文档：front-matter 三键（上表注释；`findings_degraded` 与 run.json 同为编号数组，`parse_repairs` 两处同为完整记录）、横幅、「不合格意见」一节（逐字段点名缺失 / 不合法 / 多余，原值照录；表格单元格转义竖线、超 200 字截断，段落不截断）。
+- 完整性校验（前缀归属、撞号、evidence 未列入 consulted、零意见未说明）一律按「合格 ∪ 降级」判（`checkReviewIntegrity` 第三参为降级意见本身，必填）。
+
+**gate 的旧留痕重试**（8.6 第 1 步）：重试得到全合格 ⇒ 按结构化校验（既有行为）；得到部分合格 ⇒ **仍按 F 编号**——旧 run.json 没有 `findings_degraded`，按结构化校验会让降级意见静默掉出期望集；重试还要过前缀归属。解析器变好后，当时按 F 编号裁决、现在重试全合格的历史轮次，手工 `gate --check --run-id` 会报缺裁决（口径差，不是漏裁；本版实测 5 轮，见测试报告），审批复核只对最新一轮跑、提交锚不跑裁决校验，日常流程碰不到。
+
+**codex 侧不传 `--output-schema`**：本机 qwen provider 实测静默不生效（EV-124）；其它 provider 未测（EV-179）。codex 侧的输出约束只靠任务书第 6 节。
 
 ### 6.6 裁决件 schema（`trivium.disposition.v1`）
 
@@ -1074,7 +1111,7 @@ addresses:               # 本件应答的审查文档文件名，不是意见�
 7. **至少两个互相独立的审核者**都提出的同一条 `blocker`（`location` 精确相同，或文本相似度超阈值）被 `驳回` 时，按 `gate.joint_blocker_policy` 处理：`warn`（默认）输出 `joint_blocker_rejected` 警告，要求理由非空并在 `task.json` 记 `disputed: true`，不阻断；`hard` 仅在 `location` 精确相同时判为失败（相似度判定永远只到 warning，避免启发式误判卡死闸门）。
    **「双方」这个措辞随 N 审泛化为「两家」**：阈值 2 的语义是「至少两个独立来源指出同一处」，与入选总数无关——三家里的两家仍是两个独立来源，故 N=3 时阈值不上调。
    **按 10.1.1 判作废的一侧不计入独立来源**：它作为「第二只眼」的身份已不可采信，与它每条意见是否属实无关。排除后有效侧不足两家时，按 12.1 落三态字段并告警，**不得静默返回空集**。
-8. `parse_fallback` 侧（AD-08）的原文意见同样必须逐条进入裁决表：Driver 自行按 `<前缀>-F<序号>` 编号并标 `来源: fallback`；`gate` 对该侧只校验「每条被编号的意见均有裁决与理由」，不参与规则 7 的共同阻断判定。
+8. `parse_fallback` 侧（AD-08）的原文意见同样必须逐条进入裁决表：Driver 自行按 `<前缀>-F<序号>` 编号并标 `来源: fallback`；`gate` 对该侧只校验「每条被编号的意见均有裁决与理由」，不参与规则 7 的共同阻断判定。**v1.3.68 起 `<前缀>-F<n>` 只属于整份回退**（6.5.1）；逐条降级的意见按**原编号**裁决，与合格意见同一套逐行校验（接受要写落点），但同样不参与规则 7——`gate --check` 出 `degraded_findings` 告警点名它们。
 
 ### 6.7 运行元数据 schema（`trivium.run.v1`，对应 NFR-05 / FR-24）
 
@@ -1815,7 +1852,9 @@ Hook 行为约定：
 输入：主题、阶段、run_id
 1. 读取该阶段本轮的两份审查文档 front-matter 与 findings 列表 → 集合 IDS
    （单审降级时只读存在的一侧，并要求 run 元数据已标记 degraded；
-    parse_fallback 侧无结构化 findings，改为收集裁决表中该侧前缀 `<前缀>-F<n>` 的编号，只校验有裁决与理由，6.6 规则 8）
+    parse_fallback 侧无结构化 findings，改为收集裁决表中该侧前缀 `<前缀>-F<n>` 的编号，只校验有裁决与理由，6.6 规则 8；
+    逐条降级的意见按原编号并入 IDS——取自 run.json 的 critics[c].findings_degraded，读不出时读旁路 .degraded.json；
+    它们计入空表守卫与缺裁决 / 多余裁决，但不在结构化结论里、不参与 g；有降级意见时出 WARN(degraded_findings)，v1.3.68）
 2. 定位本轮裁决件（plan/bug → *-revised-claude.md；code → *-response-claude.md）
    缺失 → FAIL(missing_disposition)
 3. 解析裁决件 front-matter：schema/topic/stage/kind/addresses 必须匹配本轮
@@ -1966,7 +2005,7 @@ Hook 行为约定：
    都取不到则整行不渲染——不硬造一个目标去误导审查员，也不兜底成主题名（主题是个短标签，当目标只是噪音）。
    plan 阶段不走第三级：被审对象就是那份计划，拿它的标题当任务目标是同义反复。
 5. **本侧镜头**：来自 9.3。
-6. **输出契约**：严格输出 `trivium.review.v1` JSON；编号前缀（`AGY-` / `GLM-`）；每条意见七字段必填；允许 `findings: []` 但需说明检查了什么；`consulted` 必填。
+6. **输出契约**：严格输出 `trivium.review.v1` JSON，结论是**一个裸 JSON 对象**（不要代码围栏与前后说明）、不加 schema 之外的字段；编号前缀（本侧注册表前缀）；每条意见九个字段必填，四个枚举字段逐一列出合法取值——取值从 `review.v1.json` 读、不抄第二份；允许 `findings: []` 但需说明检查了什么；`consulted` 必填；zcode 侧末尾固定「不要调用 ExitPlanMode」（EV-113）。v1.3.68 起（6.5.1）；此前只写「七个字段必填，另需 layer 与 kind」、一个枚举值都没列。
 7. **反谄媚约束**：不要为了显得有用而编造问题；对不确定的判断标 `confidence: low`；必须填写 `not_covered`。
 8. **禁读与禁止事项**：编排器**逐个列出**的对方历史审查文件路径（如 `.reviews/登录重构/plan/2026-09-10-登录重构-glm.md`）——「另一位审查员的文件，读取即本次审查作废」；`.trivium/`、`~/.trivium/`、`review.sensitive_globs` 匹配的敏感文件；不得给出大段可粘贴补丁（避免变成第二作者）；不得引用或猜测另一位审查员的结论。逐个列出而不是给 glob，是为了让轨迹核验与提示语之间可逐条对账。
 
@@ -2726,7 +2765,7 @@ profiles:
 | :--- | :--- | :--- | :--- |
 | 一侧/两侧未安装或不可调用 | 预检失败，明确报错并中止，退出 69 | **零工件**、零双审标记 | FR-18 / AC-16 |
 | 一侧/两侧未认证 | 同上 | 同上 | FR-18 / AC-16 |
-| 输出无法解析为可用意见 | 该侧标 `parse_fallback`；重试一次（把 schema 校验错误追加进 brief 再要一次结构化结果）；仍失败标 `failed(parse)` | 原始输出保留于 `_meta/review-<critic>-<run_id>.raw.txt` | FR-19 |
+| 输出无法解析为可用意见 | 根对象合法时只把不合格的意见逐条降级、该侧仍 `ok`；连根对象都拿不到才标 `parse_fallback` 并记成因（6.5.1）。**不对解析失败重试**（此前这一格写的「重试一次、仍失败标 `failed(parse)`」从未实现：瞬时故障重试发生在适配器层、解析之前；v1.3.68 更正） | 原始输出保留于 `_meta/review-<critic>-<run_id>.json` 的 `raw`，编号化单元在 `.fallback-items.md`；降级意见在 `.degraded.json`（此前写的 `.raw.txt` 不存在，v1.3.68 更正） | FR-19 |
 | 一侧超时 | 先 SIGTERM 再 SIGKILL；标 `timeout` | `run.json` 记 `status: timeout` 与耗时；**严格模式**中止全流程、**降级模式**继续并标 `review_mode: single` + `degraded_reason` | FR-19 / AC-06 / NFR-03 |
 | 一侧失败（严格模式，默认） | 中止，退出 75 | 已生成的另一侧文件**保留**且标 `degraded: true`；**绝不**改名冒充对方 | FR-19 / AC-06 |
 | 一侧失败（降级模式） | 继续后续裁决与流程 | `review_mode: single`；`task.json` 记录降级事件；命令输出显著提示 | FR-19 |
@@ -3003,7 +3042,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | FR-10 背靠背隔离 | P0 | 四道机制（独立进程 / 延迟落盘 + 项目外运行目录 / 历史产出三层屏蔽 / 只读指纹） | `freeze`、`guard` | 10.1 |
 | FR-11 全流程顺序 | P0 | 命令 A 状态机 S0.5～S10（EV-125 前为 S0～S10） | `cli`、命令模板 | 8.2 |
 | FR-12 四条命令 | P0 | `/dual-run` `/dual-review-plan` `/dual-review-code` `/dual-review-bug`（用户级入口 skill） | 入口 skill | 第 7 章 |
-| FR-13 意见可裁决 | P1 | `trivium.review.v1` 七字段必填 + 编号前缀隔离 | `parse` | 6.5 |
+| FR-13 意见可裁决 | P1 | `trivium.review.v1` 九字段必填 + 编号前缀隔离；不合格意见逐条降级、按原编号裁决（v1.3.68） | `parse` | 6.5 / 6.5.1 |
 | FR-14 逐条裁决 | P1 | 接受/驳回/暂缓 + 理由 + 落点，`gate` 硬校验（空洞理由与共同 blocker 默认 warning） | `gate` | 6.6、8.6 |
 | FR-15 审查员只读 | P1 | 工具层禁写 + 前后指纹 + 轨迹写事件扫描，失守检出与告警 | `guard` | 10.3 |
 | FR-16 送审自包含 | P1 | 送审包落 `_meta/` + 被审对象 sha256 + `tree_hash` 漂移检测 | `freeze`、`brief` | 9.1、9.2 |
@@ -3484,6 +3523,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.68** | 2026-10-01 | **解析回退逐条降级（EV-10、EV-56、EV-105、EV-113、EV-124）。** 计划 `.reviews/解析回退逐条降级/plan/` r2（计划双审第 1 轮 run `20260930T180539Z`：codex / glm `approve-with-nits`、gemini `request-changes`，11 条接受 10、驳回 1）。先以零配额普查固化实证：全仓 564 份审查元数据里 48 份整份回退，改前解析器重放 schema 不合 36、语法错 7（其中 5 份是字符串里的非法转义）、没有 JSON 3、已能解析 2；**引言与代码围栏不是成因**，EV-56 / EV-105 的诊断改写。新增 **6.5.1 解析与降级**：根合法则逐条降级（原编号、失去阻断资格、渲染标出不合格字段），整份回退只留给连根对象都拿不到的情形并标五种成因；校验前两类无损修复（剥编排器回显的 front-matter 键——清单与 `renderFrontMatter` 由契约用例绑定；还原非法转义——只在解析失败时）；候选选取改「覆盖才替换」；gate 期望集并入降级编号（含空表守卫）、新告警 `degraded_findings`、旧留痕重试部分合格仍按 F 编号并补前缀归属核对。6.5 必填字段口径由「七个」更正为九个，6.6 规则 8、8.6 第 1 步、AD-08 行同步；12.1「输出无法解析」一行更正两处失实（不重试解析、不写 `.raw.txt`）。任务书第 6 节列全部字段与枚举取值（从 schema 读）、写明裸 JSON，zcode 侧固定「不要调用 ExitPlanMode」。EV-124：本机 qwen provider 两次最小调用实测 `--output-schema` 静默不生效，不接（EV-179 另登其它 provider）。普查改后重放 48 份逐份与独立预测一致；历史闸门翻转 5 轮（均为当时按 F 编号裁决、现重试全合格，口径差）。新登 EV-178、EV-179。**代码双审 r1**（run `20260930T190327Z`：gemini `approve`、codex / glm `approve-with-nits`，9 条全接受）：整份回退而对象拿得到时 F 单元按意见逐条出（CODEX-01）；回显清单加源码静态枚举的绑定（CODEX-02）；front-matter 的 `findings_degraded` 改为编号数组、与 run.json 同型（CODEX-03）；完整性校验的 evidence 核对并入降级意见（GLM-01）；不合格意见表格单元格转义竖线并截断（CODEX-05 ≡ GLM-02）；任务书可选根字段类型从 schema 取（CODEX-06） |
 | **v1.3.67** | 2026-09-30 | **取消宽限期判不了仍放锁（EV-176）。** 计划 `.reviews/取消宽限期判不了仍放锁/plan/` r2（计划双审第 1 轮 run `20260930T144941Z`：codex / glm `approve-with-nits`、gemini `approve`，8 条全接受）。先以零配额探针在改前构建（`d1e6408`）上实证：每格另起真实工作进程，只拦 `ps -p 〈工作进程 pid〉` 并按格决定何时开始拦，`process.kill` 包装记信号、扣 SIGKILL——零信号格（入口判同一进程后首检即取不到）一个信号没发却播报「发送 SIGTERM」，宽限期格 7 ms 即返回、不升级，SIGKILL 被扣下的格不等确认；三格都退 0、status 写 cancelled、锁与闸门回收，工作进程返回时仍活，同主题再拿锁成功。**一、`terminateProcessGroup` 认得「判不了」**：`isGone` 可返回 `'unverifiable'`（`GoneJudgment`），不算已退出；首检判不了一个信号都不发，宽限期满最后一次仍判不了不升级 SIGKILL，SIGKILL 之后判不了继续等；返回 `TerminateResult` 加可选 `unverifiable`，新增 `onTerm` 回调；布尔判据的调用方逐字不变。**二、`workerGoneForCancel` 三态**。**三、`cancelRun` 主路径**：「发送 SIGTERM」经 `onTerm` 只在确实要发时播报；SIGKILL 之后至多等 `ORPHAN_KILL_CONFIRM_MS` 确认（撤回 EV-150 的不等确认）；升级过或扣下 SIGKILL 都按记录结束 CLI；未确认退出（仍是同一进程或判不了）⇒ 69、什么收尾都不做，零信号格与入口判不了同一句正文。退出码沿用 69、与 EV-175 同码（逐一排除 0 / 1 / 70 / 73 / 75）。盘上契约、退出码 70 与其文案、`judgeStale`、`lostWorkerGone`、`classifyLostCancel`、锁文件格式不改。失联那一格的两处不同口径另登 EV-177（暂缓）。读数见 `doc/05_testing/REPORT_2026-09-30_cancel_grace_unverifiable.md`。 |
 | **v1.3.66** | 2026-09-30 | **取不到启动时刻当不在（EV-175）。** 计划 `.reviews/取不到启动时刻当不在/plan/` r2（计划双审第 1 轮 run `20260930T102656Z`：三侧 `approve-with-nits`，8 条全接受）。先以零配额探针在改前构建（`c4d082e`）上实证：只拦 `ps -p 〈工作进程 pid〉` 造出「活着而取不到启动时刻」，14 格逐一读结局——`interpretStatus` 情形 C 判 `pid_gone`（`--wait` 把活 worker 写成 failed 并抹凭据）、`workerConfirmedGone` 判已不存在（抹凭据准入放行、终态分支按记录结束活 worker 名下的 CLI）、到期整删活 worker 的运行目录、跨仓清扫抹凭据、`--cancel` 主路径只清不杀（同主题再 `--start` 拿到锁即双跑）；情形 A 只在单测入口命中、生产形状不受影响。修法（:1485 段）：`RecordMatch` 加可选三态字段 `identity`（`recordIdentityOf` 从原五个字段导出，`same` ⇔ `sameProcess`），五处只在 `unverifiable` 时走新分支——情形 A 同活着、情形 C 按心跳、`workerConfirmedGone` 不算已不在、`workerStillAlive` 当仍在、`cancelRun` 主路径什么都不动并以 69 退出（正文给手工出路）；`sameProcess` 与原五个字段、盘上契约、退出码 70 与其文案、`judgeStale`、锁文件格式都不改。§12.6 补 70 与 `--cancel` 的连锁已断。残余登 EV-176（SIGTERM 之后宽限期里 `ps` 转坏仍回收锁）。LLD v1.1.24、MANUAL v1.0.22、PROTOCOL 同步；PRD 核后不改。读数见 `doc/05_testing/REPORT_2026-09-30_unverifiable_start.md` |
 | **v1.3.65** | 2026-09-30 | **并发写闸门偶发红（EV-153）。** 计划 `.reviews/并发写闸门偶发红/plan/` r2（计划双审第 1 轮 run `20260930T082840Z`：codex / gemini `approve-with-nits`、glm `request-changes`，13 条全接受）。先以零配额探针实证（同进程 8 写者、用例原形状，新旧构建对照、满载与注入）：①重试预算耗尽排除——09-27 那次红只用 315 ms，快于 24 次通过（442～789 ms），而抛 70 至少 4 s，7 千余轮单写者最多用 8 次尝试；②无告警丢更新未见——丢更新只出现在同进程活锁被回收之后；③EV-173 的同进程形态（锁恰被释放判 `unparsable`）在旧构建上 67～73 % 的轮次出现，但只造成失实告警，新构建 0 条；④本版认出的第二入口：持有者活着而 `ps` 取不到启动时刻 ⇒ `judgeStale` 判 `pid_reused` ⇒ 回收活锁 ⇒ 两个写者同时读改写，新旧构建都在（注入 2 % 派生失败 + 临界区放慢即 25 % 轮次丢更新）。那一次红归③还是④分不出，④按产品缺陷修。修法（§12.6「取不到持有者的启动时刻不判复用」）：`pid_reused` 只在取到了启动时刻且不符时成立，取不到往下走终态与年龄判据，耗满预算即 70；跨进程同样覆盖（`--start` 不再因 `ps` 失败回收活 worker 的运行锁）。锁文件格式、退出码 70、其余判据与重试预算不改。其余身份消费方的同根 fail-open 登 EV-175（暂缓，:1485 登记）。LLD v1.1.23 同步；PRD、MANUAL 核后不改。读数见 `doc/05_testing/REPORT_2026-09-30_concurrent_setgate_flake.md` |

@@ -74,6 +74,7 @@ test('全部裁决齐备 → 通过', async () => {
 | AGY-01 | gemini | major | 接受 | 确认成立 | §3.2 |
 | GLM-01 | glm | minor | 驳回 | 上游已拒绝该分支 | 不改 |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]), glm: review([{ id: 'GLM-01', severity: 'minor' }]) },
@@ -85,6 +86,7 @@ test('全部裁决齐备 → 通过', async () => {
 test('缺裁决件 → missing_disposition，并提示即使全驳回也要产出', async () => {
   const l = await layout();
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -99,6 +101,7 @@ test('删掉一条裁决 → missing_findings 并列出编号（AC-12）', async
   await putDisposition(l, `${HEAD}
 | AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }, { id: 'AGY-02' }]) }, degraded: false,
@@ -114,6 +117,7 @@ test('裁决了不存在的编号 → unknown_findings', async () => {
 | AGY-01 | gemini | major | 接受 | 成立 | §3 |
 | AGY-99 | gemini | major | 接受 | 抄错了 | §4 |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -129,6 +133,7 @@ test('AGY-04 的关键点：fallback 虚拟编号不被判「多余 id」', asyn
 | GLM-F01 | fallback | — | 接受 | 降级侧第一条意见，确认成立 | — |
 | GLM-F02 | fallback | — | 驳回 | 降级侧第二条，已被上游覆盖 | — |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     // glm 侧 parse_fallback，没有结构化 findings
@@ -152,6 +157,7 @@ test('fallback 单元少裁一条 → missing_findings 点名 <前缀>-F<n>', as
 | GLM-F01 | fallback | — | 接受 | 确认成立 | — |
 | GLM-F02 | fallback | — | 驳回 | 上游已覆盖 | — |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { glm: null }, degraded: false,
@@ -165,6 +171,7 @@ test('关键用例：两侧都 parse_fallback 时空裁决表不得通过', asyn
   const l = await layout();
   await putDisposition(l, `${HEAD}`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: null, glm: null }, degraded: false,
@@ -181,6 +188,7 @@ test('裁了清单之外的 fallback 编号 → unknown_findings', async () => {
 | GLM-F01 | fallback | — | 接受 | 确认成立 | — |
 | GLM-F07 | fallback | — | 驳回 | 编号抄错了 | — |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { glm: null }, degraded: false, expectedFallbackIds: ['GLM-F01'],
@@ -193,6 +201,7 @@ test('run.json 记录已产出结论、结构化结论却读不到 → missing_r
   await putDisposition(l, `${HEAD}
 | AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -217,6 +226,7 @@ test('run.json 的 gate.warnings 作为 run_warning 透传，缺裁决件的早�
   const notice = '本轮原稿不在保护集：/proj/doc/x.md 不在归档根内，提交锚不覆盖它';
   // 没有裁决件：checkAdjudication 走 missing_disposition 早退
   const early = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -228,6 +238,7 @@ test('run.json 的 gate.warnings 作为 run_warning 透传，缺裁决件的早�
   await putDisposition(l, `${HEAD}
 | AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
   const full = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -242,6 +253,7 @@ test('AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求�
   await putDisposition(l, `${HEAD}
 | GLM-F01 | fallback | — | 接受 | 确认成立 | |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { glm: null }, degraded: false, expectedFallbackIds: ['GLM-F01'],
@@ -254,6 +266,7 @@ test('AGY-04 的关键点：findings 为空数组显式合法', async () => {
   await putDisposition(l, `${HEAD}
 | — | — | — | — | 两侧均未发现问题，无需裁决 | — |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([]), glm: review([]) }, degraded: false,
@@ -267,6 +280,7 @@ test('理由为空 → empty_reason（三种裁决都要理由）', async () => 
   await putDisposition(l, `${HEAD}
 | AGY-01 | gemini | major | 驳回 |  | 不改 |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -279,6 +293,7 @@ test('接受但无落点 → missing_action', async () => {
   await putDisposition(l, `${HEAD}
 | AGY-01 | gemini | major | 接受 | 确认成立 | |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -291,6 +306,7 @@ test('驳回不要求落点', async () => {
   await putDisposition(l, `${HEAD}
 | AGY-01 | gemini | major | 驳回 | 上游已处理，证据 src/x.ts:31 | |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -304,6 +320,7 @@ test('空洞理由默认只 warn（reason_policy=warn）', async () => {
 | AGY-01 | gemini | major | 驳回 | 无需修改 | |`);
   const cfg = defaultConfig();
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg, layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -319,6 +336,7 @@ test('reason_policy=hard 时空洞理由升级为失败', async () => {
   const cfg = defaultConfig();
   cfg.gate.reason_policy = 'hard';
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg, layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -333,6 +351,7 @@ test('allow_defer=false 时「暂缓」被拒', async () => {
   const cfg = defaultConfig();
   cfg.gate.allow_defer = false;
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg, layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -345,6 +364,7 @@ test('裁决件的 run_id 与本轮不符 → bad_front_matter（不得复用上
   await putDisposition(l, `${HEAD}
 | AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R2',
@@ -375,6 +395,7 @@ ${HEAD}
     kind: 'revised', rerunIndex: 1, content: md, date: DATE,
   });
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
@@ -444,6 +465,7 @@ test('N-2：文件名后缀是当轮 Driver、front-matter 的 role 是另一个
   const l = await layout();
   await putDispositionAs(l, { suffix: 'codex', fmRole: 'glm', table: `${HEAD}\n${ROW_OK}` });
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
@@ -464,6 +486,7 @@ test('N-2 正例：非缺省 Driver 诚实写自己的 id → 通过（EV-66 的
   const l = await layout();
   await putDispositionAs(l, { suffix: 'codex', fmRole: 'codex', table: `${HEAD}\n${ROW_OK}` });
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
@@ -494,6 +517,7 @@ test('N-2 边界：role 是未登记的 id → bad_front_matter（闸门层 fail
   const l = await layout();
   await putDispositionAs(l, { suffix: 'codex', fmRole: 'nobody', table: `${HEAD}\n${ROW_OK}` });
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
@@ -622,6 +646,7 @@ test('joint_blocker_policy=hard 时升级为失败', async () => {
   const cfg = defaultConfig();
   cfg.gate.joint_blocker_policy = 'hard';
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg, layout: l, stage: 'plan', rerunIndex: 1,
     reviews: {
@@ -649,6 +674,7 @@ test('渲染结果在失败时列出编号，便于 Driver 直接照着补', asy
   await putDisposition(l, `${HEAD}
 | AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }, { id: 'AGY-02' }, { id: 'AGY-03' }]) },
@@ -673,6 +699,7 @@ test('降级轮次出 warning 而非 failure：闸门仍放行，但审计面上
   await putDisposition(l, `${HEAD}
 | AGY-01 | gemini | major | 接受 | 确认成立 | §3.2 |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) },
@@ -696,6 +723,7 @@ test('非降级轮次不得凭空冒出 degraded_round 警告', async () => {
   await putDisposition(l, `${HEAD}
 | AGY-01 | gemini | major | 接受 | 确认成立 | §3.2 |`);
   const r = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) },
@@ -740,6 +768,7 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
   assert.deepEqual(rb1, { hit: true, files: ['Write(/p/breach.txt)'] });
   await putDisposition(l1, table);
   const r1 = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l1, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, readonlyBreach: rb1,
@@ -789,6 +818,7 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
   assert.deepEqual(rb2, { hit: false, files: [] });
   await putDisposition(l2, table);
   const r2 = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l2, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, readonlyBreach: rb2,
@@ -797,6 +827,7 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
 
   // ③ 漏传（可选参数缺省）→ 与 ② 同：守的是「缺省不误拦」，接线由 cli 侧两处调用点负责
   const r3 = await checkAdjudication({
+    expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
     cfg: defaultConfig(), layout: l2, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,

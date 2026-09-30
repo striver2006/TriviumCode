@@ -703,6 +703,25 @@
         "parse_fallback": {
           "type": "boolean"
         },
+        "findings_degraded": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "逐条降级的意见编号（设计 §6.5）：根对象合法、这几条不合 trivium.review.v1。它们不在 _meta/review-<侧>-<run>.json 里（那份只含合格意见），按原编号逐条进裁决期望集，不参与阻断与共同阻断。解析成功（status ok）的侧恒写，[] = 解析过、没有降级；失败 / 超时 / parse_fallback 侧与早于该字段的留痕不写。原始对象与逐字段问题在旁路文件 _meta/review-<侧>-<run>.degraded.json"
+        },
+        "parse_repairs": {
+          "type": "object",
+          "properties": {
+            "stripped_fields": { "type": "array", "items": { "type": "string" } },
+            "unescaped_backslashes": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["stripped_fields", "unescaped_backslashes"],
+          "additionalProperties": false,
+          "description": "所选候选在校验前做过的无损修复（设计 §6.5）：剥掉的根字段（厂商注入的 toolAction / toolSummary 与编排器回显的 front-matter 键两类）与按字面还原的非法转义处数。解析成功的侧恒写，零值 = 解析过、没修；agy 侧 stripped_fields 常态含 toolAction / toolSummary"
+        },
+        "parse_fallback_cause": {
+          "enum": ["no_json_object", "json_syntax", "root_invalid", "finding_unaddressable", "foreign_prefix"],
+          "description": "整份回退的成因（设计 §6.5）：没有 JSON 对象 / 语法错（还原非法转义后仍无法解析）/ 根字段不合 / 有意见编号不可用 / 编号前缀不属于本侧。status 为 parse_fallback 的侧恒写，其余不写"
+        },
         "session_id": {
           "type": [
             "string",

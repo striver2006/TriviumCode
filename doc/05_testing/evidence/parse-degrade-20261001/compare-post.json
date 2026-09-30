@@ -1,0 +1,202 @@
+{
+  "mode": "pre-post",
+  "a": "doc/05_testing/evidence/parse-degrade-20261001/census-pre-d418ce7.r1.json",
+  "b": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/f9f42a9d-5d3f-4e63-a3b4-45a605ec17c9/scratchpad/census-post.json",
+  "samples": 48,
+  "problems": [],
+  "flips": [
+    {
+      "round": ".reviews/CLI进程组记录/code 20260928T030117Z",
+      "before": true,
+      "after": false,
+      "failures": [
+        {
+          "code": "missing_findings",
+          "ids": [
+            "GLM-01",
+            "GLM-02",
+            "GLM-03",
+            "GLM-04"
+          ]
+        },
+        {
+          "code": "unknown_findings",
+          "ids": [
+            "GLM-F01",
+            "GLM-F02"
+          ]
+        }
+      ],
+      "notes": [
+        "glm 侧当时被判 parse_fallback，但用当前解析器重试成功（4 条意见）——按结构化结论校验。若该轮当时按 <前缀>-F<n> 裁决，这里报的缺裁决是口径差，不是漏裁"
+      ]
+    },
+    {
+      "round": ".reviews/M8-Codex审核者接入/plan 20260915T105915Z",
+      "before": true,
+      "after": false,
+      "failures": [
+        {
+          "code": "missing_findings",
+          "ids": [
+            "GLM-01",
+            "GLM-02",
+            "GLM-03",
+            "GLM-04",
+            "GLM-05",
+            "GLM-06",
+            "GLM-07"
+          ]
+        },
+        {
+          "code": "unknown_findings",
+          "ids": [
+            "GLM-F01",
+            "GLM-F02",
+            "GLM-F03",
+            "GLM-F04"
+          ]
+        }
+      ],
+      "notes": [
+        "glm 侧当时被判 parse_fallback，但用当前解析器重试成功（7 条意见）——按结构化结论校验。若该轮当时按 <前缀>-F<n> 裁决，这里报的缺裁决是口径差，不是漏裁"
+      ]
+    },
+    {
+      "round": ".reviews/M8-Codex审核者接入/code 20260915T024740Z",
+      "before": true,
+      "after": false,
+      "failures": [
+        {
+          "code": "missing_findings",
+          "ids": [
+            "GLM-01",
+            "GLM-02",
+            "GLM-03",
+            "GLM-04",
+            "GLM-05",
+            "GLM-06"
+          ]
+        },
+        {
+          "code": "unknown_findings",
+          "ids": [
+            "GLM-F01",
+            "GLM-F02",
+            "GLM-F03",
+            "GLM-F04",
+            "GLM-F05",
+            "GLM-F06",
+            "GLM-F07",
+            "GLM-F08"
+          ]
+        }
+      ],
+      "notes": [
+        "glm 侧当时被判 parse_fallback，但用当前解析器重试成功（6 条意见）——按结构化结论校验。若该轮当时按 <前缀>-F<n> 裁决，这里报的缺裁决是口径差，不是漏裁"
+      ]
+    },
+    {
+      "round": ".reviews/M9-Hook当轮Driver保护集/code 20260919T085742Z",
+      "before": true,
+      "after": false,
+      "failures": [
+        {
+          "code": "missing_findings",
+          "ids": [
+            "CODEX-01",
+            "CODEX-02",
+            "CODEX-03"
+          ]
+        },
+        {
+          "code": "unknown_findings",
+          "ids": [
+            "CODEX-F01"
+          ]
+        }
+      ],
+      "notes": [
+        "codex 侧当时被判 parse_fallback，但用当前解析器重试成功（3 条意见）——按结构化结论校验。若该轮当时按 <前缀>-F<n> 裁决，这里报的缺裁决是口径差，不是漏裁"
+      ]
+    },
+    {
+      "round": ".reviews/M9-裁决件角色契约放宽/plan 20260919T025314Z",
+      "before": true,
+      "after": false,
+      "failures": [
+        {
+          "code": "missing_findings",
+          "ids": [
+            "CODEX-01",
+            "CODEX-02",
+            "CODEX-03",
+            "CODEX-04",
+            "CODEX-05",
+            "CODEX-06",
+            "CODEX-07"
+          ]
+        },
+        {
+          "code": "unknown_findings",
+          "ids": [
+            "CODEX-F01"
+          ]
+        }
+      ],
+      "notes": [
+        "codex 侧当时被判 parse_fallback，但用当前解析器重试成功（7 条意见）——按结构化结论校验。若该轮当时按 <前缀>-F<n> 裁决，这里报的缺裁决是口径差，不是漏裁"
+      ]
+    }
+  ],
+  "lines": [
+    "一致  glm    ok                             q4 d0 esc2 strip[]  .reviews/CLI进程组记录/code/_meta/review-glm-20260928T030117Z.json",
+    "一致  glm    fallback:root_invalid          q- d- esc- strip[]  .reviews/EV-122-未受控模型播报/code/_meta/review-glm-20260924T222959Z.json",
+    "一致  codex  partial                        q0 d8 esc0 strip[]  .reviews/EV-123-预检提示副本源缺失/plan/_meta/review-codex-20260924T230522Z.json",
+    "一致  glm    fallback:no_json_object        q- d- esc- strip[]  .reviews/EV-125-命令A支持选侧旗标/code/_meta/review-glm-20260925T102608Z.json",
+    "一致  codex  ok                             q9 d0 esc1 strip[]  .reviews/EV-74-探针喂真实契约文件/plan/_meta/review-codex-20260922T170908Z.json",
+    "一致  gemini partial                        q4 d1 esc0 strip[]  .reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T170908Z.json",
+    "一致  codex  partial                        q0 d9 esc0 strip[]  .reviews/EV-79-写命令判据两处缺口/plan/_meta/review-codex-20260922T061939Z.json",
+    "一致  codex  partial                        q0 d6 esc0 strip[]  .reviews/EV-79-写命令判据两处缺口/plan/_meta/review-codex-20260922T075753Z.json",
+    "一致  gemini ok                             q2 d0 esc1 strip[]  .reviews/EV-79-写命令判据两处缺口/plan/_meta/review-gemini-20260922T075753Z.json",
+    "一致  glm    fallback:json_syntax           q- d- esc- strip[]  .reviews/EV-79-写命令判据两处缺口/plan/_meta/review-glm-20260922T065306Z.json",
+    "一致  glm    fallback:no_json_object        q- d- esc- strip[]  .reviews/EV-79-写命令判据两处缺口/plan/_meta/review-glm-20260922T075753Z.json",
+    "一致  codex  fallback:json_syntax           q- d- esc- strip[]  .reviews/EV-82-同形第二臂与构建标识/code/_meta/review-codex-20260924T055944Z.json",
+    "一致  glm    fallback:no_json_object        q- d- esc- strip[]  .reviews/EV-82-审查臂诊断/plan/_meta/review-glm-20260924T014145Z.json",
+    "一致  codex  partial                        q10 d1 esc0 strip[]  .reviews/M10-任意Driver/plan/_meta/review-codex-20260921T145353Z.json",
+    "一致  codex  partial                        q5 d1 esc0 strip[]  .reviews/M10-任意Driver/plan/_meta/review-codex-20260922T004543Z.json",
+    "一致  codex  partial                        q0 d10 esc0 strip[]  .reviews/M10-任意Driver/plan/_meta/review-codex-20260922T024405Z.json",
+    "一致  glm    partial                        q6 d3 esc0 strip[]  .reviews/M10-任意Driver/plan/_meta/review-glm-20260921T145353Z.json",
+    "一致  glm    partial                        q3 d3 esc0 strip[]  .reviews/M10-任意Driver/plan/_meta/review-glm-20260921T152520Z.json",
+    "一致  glm    partial                        q1 d6 esc0 strip[]  .reviews/M10-任意Driver/plan/_meta/review-glm-20260922T004543Z.json",
+    "一致  codex  partial                        q4 d1 esc0 strip[]  .reviews/M10b-入口资产与真载体验收/code/_meta/review-codex-20260925T060626Z.json",
+    "一致  codex  partial                        q0 d6 esc0 strip[]  .reviews/M10b-入口资产与真载体验收/code/_meta/review-codex-20260925T064650Z.json",
+    "一致  gemini ok                             q6 d0 esc0 strip[toolAction,toolSummary]  .reviews/M2-skills与闸门/plan/_meta/review-gemini-20260910T221346Z.json",
+    "一致  gemini ok                             q6 d0 esc0 strip[toolAction,toolSummary]  .reviews/M4-M5实现/code/_meta/review-gemini-20260911T025329Z.json",
+    "一致  glm    ok                             q7 d0 esc0 strip[role,stage,topic]  .reviews/M8-Codex审核者接入/plan/_meta/review-glm-20260915T105915Z.json",
+    "一致  glm    ok                             q6 d0 esc0 strip[rerun_index,role,stage,topic]  .reviews/M8-Codex审核者接入/code/_meta/review-glm-20260915T024740Z.json",
+    "一致  glm    partial                        q9 d1 esc0 strip[role,stage,topic]  .reviews/M8-Codex审核者接入/code/_meta/review-glm-20260915T153603Z.json",
+    "一致  glm    partial                        q2 d2 esc0 strip[role,stage,topic]  .reviews/M8-Codex审核者接入/code/_meta/review-glm-20260916T092815Z.json",
+    "一致  codex  partial                        q11 d1 esc0 strip[]  .reviews/M9-ClaudeCode审核者接入/plan/_meta/review-codex-20260917T140800Z.json",
+    "一致  codex  partial                        q6 d2 esc0 strip[]  .reviews/M9-ClaudeCode审核者接入/code/_meta/review-codex-20260917T231200Z.json",
+    "一致  codex  ok                             q3 d0 esc1 strip[]  .reviews/M9-Hook当轮Driver保护集/code/_meta/review-codex-20260919T085742Z.json",
+    "一致  codex  partial                        q0 d7 esc0 strip[]  .reviews/M9-审核者启用与夹具收口/plan/_meta/review-codex-20260918T134236Z.json",
+    "一致  codex  ok                             q7 d0 esc2 strip[]  .reviews/M9-裁决件角色契约放宽/plan/_meta/review-codex-20260919T025314Z.json",
+    "一致  codex  partial                        q0 d6 esc0 strip[]  .reviews/M9-适配器本体与准入收口/code/_meta/review-codex-20260918T111815Z.json",
+    "一致  codex  partial                        q5 d1 esc0 strip[]  .reviews/M9-验收实跑/code/_meta/review-codex-20260919T133957Z.json",
+    "一致  codex  partial                        q0 d5 esc0 strip[]  .reviews/zcode-provider配置注入/code/_meta/review-codex-20260921T080553Z.json",
+    "一致  codex  partial                        q3 d2 esc0 strip[]  .reviews/zcode-provider配置注入/code/_meta/review-codex-20260921T083716Z.json",
+    "一致  codex  partial                        q5 d2 esc0 strip[]  .reviews/zcode-模型覆盖落点/code/_meta/review-codex-20260921T124003Z.json",
+    "一致  codex  partial                        q0 d7 esc0 strip[]  .reviews/事后收尾余项/code/_meta/review-codex-20260927T074234Z.json",
+    "一致  codex  partial                        q0 d7 esc0 strip[]  .reviews/取消与失联的凭据准入核CLI/code/_meta/review-codex-20260928T235013Z.json",
+    "一致  codex  partial                        q13 d1 esc0 strip[]  .reviews/护栏判定的落地缺口/plan/_meta/review-codex-20260916T113735Z.json",
+    "一致  codex  partial                        q0 d12 esc0 strip[]  .reviews/护栏判定的落地缺口/plan/_meta/review-codex-20260916T120829Z.json",
+    "一致  codex  partial                        q0 d9 esc0 strip[]  .reviews/护栏判定的落地缺口/plan/_meta/review-codex-20260916T125341Z.json",
+    "一致  codex  partial                        q0 d10 esc0 strip[]  .reviews/护栏判定的落地缺口/code/_meta/review-codex-20260916T154758Z.json",
+    "一致  glm    partial                        q3 d1 esc0 strip[]  .reviews/护栏判定范围收窄/plan/_meta/review-glm-20260913T162911Z.json",
+    "一致  glm    partial                        q5 d2 esc0 strip[evidence_ok,rerun_index,role,run_id,stage,topic]  .reviews/探针扩展与事实回填/code/_meta/review-glm-20260914T222706Z.json",
+    "一致  codex  fallback:root_invalid          q- d- esc- strip[]  .reviews/组长已退组员仍在的准入/code/_meta/review-codex-20260929T041949Z.json",
+    "一致  glm    partial                        q7 d3 esc0 strip[]  .reviews/配置v2与动态多审/plan/_meta/review-glm-20260913T172119Z.json",
+    "一致  codex  partial                        q8 d1 esc0 strip[]  .reviews/门面文档版本指针/code/_meta/review-codex-20260929T141008Z.json"
+  ]
+}

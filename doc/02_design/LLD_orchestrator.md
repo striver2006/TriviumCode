@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.25
+> - **当前版本**：v1.1.26
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.26（2026-10-01）随设计 v1.3.68（解析回退逐条降级，EV-10 / EV-56 / EV-105 / EV-113 / EV-124）同步：3.4 的「`parse_fallback`：有原文、没结构」一段改写为两档（逐条降级 / 整份回退），补两类无损修复、覆盖才替换、成因、留痕面与 gate 重试三分；2.5 表 `parse.ts` 行数与职责。代码双审 r1 修订：完整性校验第三参改为降级意见本身（evidence 核对并入）、`judgeSide` / `judgeRun` 字段改名 `degraded`；F 单元在对象拿得到时按意见逐条出。
 > - **变更说明**：v1.1.25（2026-09-30）随设计 v1.3.67（取消宽限期判不了仍放锁，EV-176）同步：4.2「`cancelRun` 主路径判不了身份」引述块末段改为入口之后才判不了的处置（`terminateProcessGroup` 三态 `isGone`、首检判不了零信号、期满判不了不升级、SIGKILL 后等确认、未确认 69 不收尾）；「按记录结束审查员 CLI」引述块的触发格补「扣下 SIGKILL」；已知缺口表「`--cancel` 发过 SIGTERM 之后、宽限期里 `ps` 转坏仍回收锁」一行改为已解决，新增「失联后取消与主路径的两处不同口径」一行（EV-177，暂缓）；2.7 表 `util/exec.ts`、`run-protocol.ts` 行数与职责。
 > - **变更说明**：v1.1.24（2026-09-30）随设计 v1.3.66（取不到启动时刻当不在，EV-175）同步：4.2 新增「`cancelRun` 主路径判不了身份」引述块（`RecordMatch.identity` 三态、五处处置、69 与手工出路）；已知缺口表「其余身份消费方把『活着而取不到启动时刻』当『不在』」一行改为已解决，新增「SIGTERM 之后宽限期里 `ps` 转坏仍回收锁」一行（EV-176，暂缓）；2.7 表 `util/exec.ts`、`lock.ts` 行数与职责。
 > - **变更说明**：v1.1.23（2026-09-30）随设计 v1.3.65（并发写闸门偶发红，EV-153）同步：4.3 判据表 `pid_reused` 一行改为「取到了启动时刻且不符」并写明取不到时的去向（终态与年龄判据、耗满预算即 70）；已知缺口表新增「其余身份消费方把『活着而取不到启动时刻』当『不在』」一行（EV-175，暂缓）；2.7 表 `lock.ts` 行数。
@@ -124,7 +125,7 @@ graph TD
 
 | 模块 | 行数 | 职责 | 关键导出 |
 | :--- | ---: | :--- | :--- |
-| `parse.ts` | 262 | 从厂商 stdout 里抠出审查结论并按 schema 校验 | `parseReview()` `extractJsonCandidates()` `enumerateFallbackFindings()` |
+| `parse.ts` | 519 | 从厂商 stdout 里抠出审查结论并按 schema 校验；校验前两类无损修复（剥厂商与回显根字段、还原非法转义），根合法时逐条降级不合格意见，整份回退标成因（v1.1.26） | `parseReview()` `extractJsonCandidates()` `repairInvalidEscapes()` `checkReviewIntegrity()` `enumerateFallbackFindings()` |
 | `disposition.ts` | 248 | 裁决表解析与三态归一 | `parseDisposition()` `normalizeDisposal()` |
 | `divergence.ts` | 202 | 多审退化指标（镜头重合度 Jaccard，按入选集合逐对计算） | `measureDivergence()` `measureAllPairs()` |
 | `schemas.ts` | 212 | 五份 schema 的 ajv 编译与缓存（`review.v1` 由 `parse.ts` 自持）；`run.v2` 与 `config.v2` 另在 ajv 之后按注册表补校 Agent 身份与跨字段规则——id 与 vendor **不在 schema 里枚举**（纪律 7：抄第二份来源就会改一漏二） | `validateRunMeta()` `validateRunMetaV1()` `validateConfig()` |
@@ -322,13 +323,21 @@ bashTimeoutFor  = min(600_000, waitTimeoutS × 1000 + 60_000)
 
 校验前剥厂商噪音 `VENDOR_NOISE_KEYS = ['toolAction','toolSummary']`——Antigravity 即便用了 `--json-schema` 仍往根对象塞自己的字段，而 schema 的 `additionalProperties: false` 会把合格结论判死。**刻意不放宽 schema**，放宽会同时失去「字段名写错能被发现」的保护。
 
-#### `parse_fallback`：有原文、没结构
+#### 解析与降级：逐条降级 / 整份回退（v1.1.26 起，设计 6.5.1）
 
-触发于 `review.ts:707-716`。语义（`parse.ts:3-5`）：**不是致命错误**，原文保留、标记该侧、**不参与阻断判定**，但裁决件仍必须逐条应答它的意见。
+`parseReview` 逐候选走五步：**语法**（失败才试 `repairInvalidEscapes`，只动字符串字面量内部、把非法转义的反斜杠按字面保留）→ **剥根字段**（`VENDOR_NOISE_KEYS` 与 `ECHOED_ORCHESTRATOR_KEYS`；后者 = `renderFrontMatter` 全开键集减 `review.v1` 根属性，由 `parse-degrade.test.ts` P9 逐项相等绑定）→ **整份校验** → **根校验**（`findings` 是数组、把它换成 `[]` 后整份合格）→ **逐条校验**（`findings.items` 子 schema 与整份校验器同一 ajv 实例、同一份 schema 编译）。
 
-落盘三件事：`review-<c>-<runId>.json` 写成 `{parse_fallback: true, raw: ...}`；审查文档顶部打醒目标记；`fallback-items.md` 把原文切块编成虚拟编号 `AGY-F01`。目的不是复原结构，而是**让 Driver 有可逐条裁决的最小单元**——否则该侧意见会被静默丢弃。
+- 全合格 ⇒ `ok`、`degraded: []`；根合格、部分意见不合格且它们的编号都可用 ⇒ `ok`，合格意见进 `review.findings`、其余进 `degraded`（`{index, id, problems, raw}`）；
+- 选取「覆盖才替换」：首个根合格候选为默认，其后的全合格候选编号集覆盖默认候选全部编号（合格 ∪ 降级）才替换；`repairs` / `degraded` 只随所选候选；
+- 一个根合格候选都没有 ⇒ 失败，`cause` 取走得最远的一格（`finding_unaddressable` > `root_invalid` > `json_syntax` > `no_json_object`）。
 
-**追溯性重解析**（`gate.ts:394-406`）：`gate` 读到 `parse_fallback` 时用**当前**解析器对 `raw` 重试一次。解析降级往往是解析器自己的缺陷，修好之后既有归档能追溯地变成机读，不必重跑双审。
+`review.ts` 的接线：`checkReviewIntegrity(review, critic, degraded)`（第三参为降级意见本身、必填）对合格 ∪ 降级判前缀归属、撞号与 evidence-consulted——异前缀照旧整份回退，成因 `foreign_prefix`；部分合格时该侧仍 `ok`、`warn` 点名降级编号；降级意见写旁路 `review-<c>-<runId>.degraded.json`（进保护集），`review-<c>-<runId>.json` 保持纯 `review.v1`；run.json 逐侧恒写 `findings_degraded` / `parse_repairs`（解析成功侧）或 `parse_fallback_cause`（回退侧），`empty_review` 按「合格 0 且降级 0」。`guard.judgeSide` 的完整性告警同样按合格 ∪ 降级判（`degraded` 必填）。渲染：front-matter 三键条件出现，「不合格意见」一节逐字段标出。
+
+整份回退语义不变：**不是致命错误**，原文保留、标记该侧、**不参与阻断判定**，裁决件逐条应答 `fallback-items.md` 的虚拟编号 `AGY-F01`（抬头多一行成因；对象拿得到时按意见逐条出单元，否则按原文段落切）。
+
+**gate 侧**：`loadRoundReviews` 返回 `expectedDegradedIds`（取 run.json 的 `findings_degraded`，读不出时读旁路文件），`checkAdjudication` 的 `expectedDegradedIds` **必填**——并入 `idsSet` 与空表守卫的 `expectedCount`，降级行与合格行同一套逐行校验，出 `degraded_findings` 告警；共同阻断只看 `reviews`，一行不改即排除降级意见。
+
+**追溯性重解析**：`gate` 读到 `parse_fallback` 时用**当前**解析器对 `raw` 重试一次。解析降级往往是解析器自己的缺陷，修好之后既有归档能追溯地变成机读，不必重跑双审。v1.1.26 起三分：全合格且前缀属本侧 ⇒ 结构化；部分合格 ⇒ **仍按 F 编号**（旧 run.json 没有 `findings_degraded`，否则降级意见会静默掉出期望集）；仍失败 ⇒ F 编号。
 
 #### `gate --check` 的 11 个失败码（[gate.ts:91](../../src/trivium/gate.ts#L91)）
 

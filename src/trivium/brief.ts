@@ -13,7 +13,8 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import type { Config, CriticId, DenyCategory, Stage } from './types.js';
-import { CRITIC_PREFIX } from './types.js';
+import { CRITIC_PREFIX, CRITIC_VENDOR } from './types.js';
+import reviewSchema from '../../skills/dual-critic/schema/review.v1.json' with { type: 'json' };
 import { exists, expandHome } from './util/fsx.js';
 import {
   classifyDenyPath,
@@ -24,6 +25,63 @@ import {
 import { TRIVIUM_DIR } from './config.js';
 import { normalizeAbs, isUnder } from './adapters/base.js';
 import { RUN_DIR_FILE_NAMES } from './run-files.js';
+
+/**
+ * 第 6 节输出契约（设计 §9.4；解析回退逐条降级计划 r2 §3.7）。
+ *
+ * **枚举取值与必填字段从 `review.v1.json` 读**，不在文案里抄第二份：普查里 137 条不合格意见
+ * 全是缺字段（缺 `confidence` 97 条）与表外值（`medium` / `docs` / `risk` 一类），而旧文案只写了
+ * 「七个字段必填，另需 layer 与 kind」，一个枚举值都没列。抄一份的话 schema 改了这里不会跟。
+ *
+ * zcode 侧末尾固定加「不要调用 ExitPlanMode」（EV-113：以该工具收尾时回合结束、结论没有输出）。
+ * 按厂商判而不按侧名：ExitPlanMode 是该 CLI 的工具。
+ */
+function renderOutputContract(schemaPath: string, prefix: string, critic: CriticId): string {
+  type Prop = { enum?: readonly string[]; const?: string; type?: string; items?: { type?: string } };
+  const root = reviewSchema as unknown as {
+    required: readonly string[];
+    properties: Record<string, Prop> & { findings: { items: { required: readonly string[]; properties: Record<string, Prop> } } };
+  };
+  const item = root.properties.findings.items;
+  const code = (xs: readonly string[]): string => xs.map((x) => `\`${x}\``).join(' / ');
+  const enumLine = (k: string): string => `  - \`${k}\`：${code(item.properties[k]?.enum ?? [])}`;
+  const optionalRoot = Object.keys(root.properties).filter((k) => !root.required.includes(k));
+  /*
+   * 可选根字段的类型也从 schema 取（代码双审 r1 CODEX-06）：此前写死「是字符串数组」，
+   * 是当前 schema 碰巧的形状；加一个非数组的可选根字段时文案会失实。认不出的类型只列名不写类型。
+   */
+  const TYPE_LABEL: Record<string, string> = { string: '字符串', integer: '整数', number: '数字', boolean: '布尔', object: '对象' };
+  const typeOf = (p: Prop | undefined): string | null => {
+    if (!p?.type) return null;
+    if (p.type === 'array') return p.items?.type && TYPE_LABEL[p.items.type] ? `${TYPE_LABEL[p.items.type]}数组` : null;
+    return TYPE_LABEL[p.type] ?? null;
+  };
+  const optionalLine = optionalRoot
+    .map((k) => {
+      const t = typeOf(root.properties[k]);
+      return t ? `\`${k}\`（${t}）` : `\`${k}\``;
+    })
+    .join(' / ');
+  const zcodeLine =
+    CRITIC_VENDOR[critic] === 'zcode'
+      ? '\n- **不要调用 ExitPlanMode**，直接在最终回复里输出完整 JSON。以该工具收尾时回合就此结束，结论不会输出。'
+      : '';
+  return `## 6. 输出契约
+
+严格输出符合 \`trivium.review.v1\` 的 JSON，schema 在：\`${schemaPath}\`
+
+- **结论是一个裸 JSON 对象**：最终回复只输出这个对象本身，不要代码围栏、不要前后说明文字；
+- 根字段 ${code(root.required)} 必填（\`schema\` 固定为 \`${root.properties['schema']?.const ?? 'trivium.review.v1'}\`，\`verdict\` 取 ${code(root.properties['verdict']?.enum ?? [])} 之一）；
+  可选根字段 ${optionalLine}；**不要添加 schema 之外的字段**——\`topic\` / \`stage\` / \`role\` / \`run_id\` 这类由编排器填写；
+- 意见编号前缀固定为 \`${prefix}-\`，序号从 01 起（如 \`${prefix}-01\`）；
+- 每条意见**${item.required.length} 个字段全部必填**：${code(item.required)}；缺一即不合格。四个枚举字段只能取下列值：
+${['severity', 'layer', 'kind', 'confidence'].map(enumLine).join('\n')}
+  表外值（如 \`medium\` 当严重度、\`docs\` 当层次、\`risk\` 当类别）会让这条意见不合格、失去阻断资格；
+- 字符串里不要写 JSON 不认的转义（如反斜杠加竖线）——要表达竖线直接写竖线；
+- 每条意见必须是可**单独**接受或驳回的最小单元；
+- \`findings: []\` 是合法的（表示「没发现问题」），但你必须在 \`summary\` 与 \`not_covered\` 里说明你检查了什么；
+- \`consulted\` 必填。${zcodeLine}`;
+}
 
 /**
  * 运行根是一棵**混合树**：对端本轮输出与审查员**自己**的运行材料同处一棵，
@@ -227,16 +285,7 @@ ${lens.trim()}
 另一位审查员看的是**不同的**角度。你不需要覆盖他的角度，但也不要因此放过你视野内的任何问题。`);
 
   // ── 6. 输出契约 ──
-  parts.push(`## 6. 输出契约
-
-严格输出符合 \`trivium.review.v1\` 的 JSON，schema 在：\`${schemaPath}\`
-
-- 意见编号前缀固定为 \`${prefix}-\`，序号从 01 起（如 \`${prefix}-01\`）；
-- 每条意见**七个字段必填**：\`id\` / \`severity\` / \`location\` / \`problem\` / \`evidence\` / \`suggestion\` / \`confidence\`，
-  另需 \`layer\` 与 \`kind\`；缺一即不合格；
-- 每条意见必须是可**单独**接受或驳回的最小单元；
-- \`findings: []\` 是合法的（表示「没发现问题」），但你必须在 \`summary\` 与 \`not_covered\` 里说明你检查了什么；
-- \`consulted\` 必填。`);
+  parts.push(renderOutputContract(schemaPath, prefix, critic));
 
   // ── 7. 反谄媚约束 ──
   parts.push(`## 7. 反谄媚约束

@@ -1350,7 +1350,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       `找不到 ${stage} 阶段的运行元数据。请先跑一次双审，或用 --run-id 指定。`,
     );
   }
-  const { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs } =
+  const { reviews, notes, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs } =
     await loadRoundReviews(ref.layout, stage, runId);
   for (const n of notes) step(n);
 
@@ -1359,7 +1359,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     driver: gateDriver,
     runIdPinned: Boolean(pinnedId),
     degraded, voidedSides, readonlyBreach, runWarnings,
-    expectedFallbackIds, missingSides, runId, reviewDocs,
+    expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs,
   });
 
   if (isJsonMode()) {
@@ -1370,6 +1370,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       warnings: result.warnings,
       structured_ids: result.structuredIds,
       fallback_ids: result.fallbackIds,
+      degraded_ids: result.degradedIds,
       disposition: result.dispositionPath,
     });
   } else {

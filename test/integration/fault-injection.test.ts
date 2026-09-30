@@ -983,6 +983,98 @@ test('自造未登记前缀 → 同样转 parse_fallback，且重编号用本侧
 });
 
 /*
+ * ── 逐条降级的端到端格（设计 §6.5；解析回退逐条降级计划 r2 §5.1 I 组）──
+ *
+ * 纯函数单测只证明 `parseReview` 分对了；这两格证明它**真的被接上**：经 worker 落进 run.json 三格、
+ * 旁路文件进保护集、审查文档有不合格一节、`gate --check` 按原编号要求逐条裁决。
+ */
+test('I1 部分意见不合 schema → 该侧仍 ok，只把那几条逐条降级，gate 按原编号要求裁决', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { root, stageDir, meta } = await runInjected({
+    gemini: { mode: 'partial_schema' },
+    glm: { mode: 'ok' },
+  });
+
+  const g = meta.critics.gemini!;
+  assert.equal(g.status, 'ok', '根对象合法时不整份回退');
+  assert.equal(g.parse_fallback, false);
+  assert.deepEqual(g.findings_degraded, ['AGY-03', 'AGY-04']);
+  assert.deepEqual([...(g.parse_repairs?.stripped_fields ?? [])].sort(), ['run_id', 'stage', 'topic']);
+  assert.equal(g.parse_repairs?.unescaped_backslashes, 1);
+  assert.equal(g.empty_review, false);
+  assert.equal('parse_fallback_cause' in g, false);
+  // 对侧：解析成功的侧恒写两格零值
+  assert.deepEqual(meta.critics.glm?.findings_degraded, []);
+  assert.deepEqual(meta.critics.glm?.parse_repairs, { stripped_fields: [], unescaped_backslashes: 0 });
+
+  // 结构化结论只含合格意见；旁路文件原样保留降级意见并进保护集
+  const metaDirAbs = path.join(stageDir, '_meta');
+  const rj = JSON.parse(await fs.readFile(path.join(metaDirAbs, `review-gemini-${meta.run_id}.json`), 'utf8')) as { findings: { id: string }[] };
+  assert.deepEqual(rj.findings.map((f) => f.id), ['AGY-01', 'AGY-02']);
+  const side = `review-gemini-${meta.run_id}.degraded.json`;
+  const dj = JSON.parse(await fs.readFile(path.join(metaDirAbs, side), 'utf8')) as { findings: { id: string; raw: Record<string, unknown> }[] };
+  assert.deepEqual(dj.findings.map((f) => f.id), ['AGY-03', 'AGY-04']);
+  assert.equal(dj.findings[1]!.raw['severity'], 'medium', '原值照录');
+  assert.ok(meta.artifacts.some((a) => a.path.endsWith(side)), '旁路文件要进 run.json.artifacts 保护集');
+
+  // 审查文档
+  const doc = await fs.readFile(path.join(stageDir, `${today()}-${TOPIC}-gemini.md`), 'utf8');
+  assert.match(doc, /^findings_degraded:\n  - AGY-03\n  - AGY-04$/m);
+  assert.match(doc, /^parse_repairs:$/m);
+  assert.match(doc, /## 不合格意见（逐条降级，共 2 条）/);
+
+  // gate：只裁合格意见 ⇒ 缺降级编号；补齐后通过，并带 degraded_findings 告警
+  const glmIds = (JSON.parse(await fs.readFile(path.join(metaDirAbs, `review-glm-${meta.run_id}.json`), 'utf8')) as { findings: { id: string }[] })
+    .findings.map((f) => f.id);
+  const disp = async (ids: string[]): Promise<void> => {
+    await fs.writeFile(
+      path.join(stageDir, `${today()}-${TOPIC}-revised-claude.md`),
+      [
+        '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
+        'role: claude', 'kind: revised', `run_id: ${meta.run_id}`,
+        'addresses:', `  - ${today()}-${TOPIC}-gemini.md`, `  - ${today()}-${TOPIC}-glm.md`,
+        '---', '',
+        '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 落点 |',
+        '| :--- | :--- | :--- | :--- | :--- | :--- |',
+        ...ids.map((id) => `| ${id} | ${id.startsWith('AGY') ? 'gemini' : 'glm'} | minor | 接受 | 用例逐条接受 | §1 |`),
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+  };
+  await disp(['AGY-01', 'AGY-02', ...glmIds]);
+  const c1 = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
+  const o1 = JSON.parse(extractJsonCandidate(c1.stdout)!.json) as { ok: boolean; failures: { code: string; ids?: string[] }[] };
+  assert.equal(o1.ok, false);
+  assert.deepEqual(o1.failures.find((f) => f.code === 'missing_findings')?.ids, ['AGY-03', 'AGY-04']);
+
+  await disp(['AGY-01', 'AGY-02', 'AGY-03', 'AGY-04', ...glmIds]);
+  const c2 = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
+  const o2 = JSON.parse(extractJsonCandidate(c2.stdout)!.json) as {
+    ok: boolean; degraded_ids?: string[]; warnings: { code: string }[]; failures: unknown[];
+  };
+  assert.equal(o2.ok, true, JSON.stringify(o2.failures));
+  assert.deepEqual(o2.degraded_ids, ['AGY-03', 'AGY-04']);
+  assert.ok(o2.warnings.some((w) => w.code === 'degraded_findings'));
+});
+
+test('I2 全部意见都降级的一侧不是空结论（empty_review: false），整份回退的一侧记成因', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { meta } = await runInjected({
+    gemini: { mode: 'partial_schema', note: 'all' },
+    glm: { mode: 'dirty_output' },
+  });
+  const g = meta.critics.gemini!;
+  assert.equal(g.status, 'ok');
+  assert.deepEqual(g.findings_degraded, ['AGY-01', 'AGY-02', 'AGY-03', 'AGY-04']);
+  assert.equal(g.empty_review, false, '交了四条意见、只是全部降级，不是空结论');
+
+  const l = meta.critics.glm!;
+  assert.equal(l.status, 'parse_fallback');
+  assert.equal(l.parse_fallback_cause, 'no_json_object');
+  assert.match(l.fail_reason ?? '', /^\[no_json_object\] /);
+  assert.equal('findings_degraded' in l, false, '回退侧不写降级两格');
+});
+
+/*
  * ── 构建标识的收尾接线（EV-82 小主题第一段，代码双审 r2 CODEX-06）──
  *
  * 纯函数单测只证明 `collectBuildStampNotices` 返回了什么；这条证明它**真的被接上**：

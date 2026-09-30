@@ -6,7 +6,7 @@
  */
 import nodePath from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { Config, CriticId, CriticRequest, CriticResult, DenyCategory, Review,
+import type { Config, CriticId, CriticRequest, CriticResult, DegradedFinding, DenyCategory, Review,
   SuspectedWrite,
 } from './types.js';
 import {
@@ -232,6 +232,11 @@ export function judgeSide(
     /** 运行根的绝对路径。那是混合树，己方材料与对端输出都在里面 */
     runRoot: string;
     capability?: TraceCapability;
+    /**
+     * 本侧逐条降级的意见（设计 §6.5）。**必填**：完整性告警（撞号、「零意见未说明」、evidence 未列入
+     * consulted）要按「合格 ∪ 降级」判——漏传时全部降级的一侧会被误报成「零意见」，合格与降级撞号也不再有人报。
+     */
+    degraded: readonly DegradedFinding[];
   },
 ): SideVerdict {
   /*
@@ -443,7 +448,7 @@ export function judgeSide(
 
   const integrityIssues: string[] = [];
   if (review) {
-    const i = checkReviewIntegrity(review, critic);
+    const i = checkReviewIntegrity(review, critic, opts.degraded);
     if (!i.prefixOk) integrityIssues.push(`编号前缀不属于本侧：${i.badIds.join(', ')}`);
     if (i.duplicateIds.length > 0) integrityIssues.push(`编号重复：${i.duplicateIds.join(', ')}`);
     if (i.evidenceNotInConsulted.length > 0) {
@@ -598,6 +603,11 @@ export interface JudgeRunInput {
   relatedPaths: string[];
   results: Partial<Record<CriticId, CriticResult>>;
   reviews: Partial<Record<CriticId, Review | null>>;
+  /**
+   * 逐侧逐条降级的意见（设计 §6.5）。**必填**，理由同 `judgeSide` 的同名字段；
+   * 某侧缺键按 `[]`（该侧没有降级意见，或根本没解析成功）。
+   */
+  degraded: Partial<Record<CriticId, readonly DegradedFinding[]>>;
   requests: Partial<Record<CriticId, CriticRequest>>;
   /**
    * 逐侧的轨迹能力声明，取自适配器表（`ctx.adapters[critic].capability`）。
@@ -681,6 +691,7 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
       triviumDir: nodePath.resolve(input.projectRoot, input.triviumDirRel ?? TRIVIUM_DIR),
       runRoot: expandHome(cfg.runtime.run_root),
       ...(cap ? { capability: cap } : {}),
+      degraded: input.degraded[c] ?? [],
     });
   }
 

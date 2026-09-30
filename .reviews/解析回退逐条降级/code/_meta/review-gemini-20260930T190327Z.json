@@ -1,0 +1,45 @@
+{
+  "agreed": [
+    "两档降级架构清晰：根对象合法且 findings 为数组时逐条降级（保留原编号、单列于不合格节、必须逐条裁决且接受须写落点，但不进 Review.findings、失去阻断资格），连根对象都拿不到时才整份回退（parse_fallback）并标明五种成因，彻底消除了个别意见字段瑕疵拖垮整份审查结论的问题。",
+    "无损修复边界严密：剥离编排器回显字段清单（ECHOED_ORCHESTRATOR_KEYS）与 renderFrontMatter 由 P9 测试严格等价绑定，非法转义还原仅在 JSON.parse 失败时在字符串字面量内尝试且留痕，且通过 hasReviewerRepairs 避免了 Antigravity 每轮注入厂商字段常态挂横幅的信噪比问题。",
+    "候选选取实行「覆盖才替换」：以首个根合格候选为默认，后续全合格候选必须完全覆盖默认候选全部编号（合格 ∪ 降级）才替换，杜绝了排在后面但意见更少的截短对象顶掉前面意见导致静默丢弃的问题。",
+    "闸门闭环与防护健全：gate 期望集严格并入降级编号（补全 missing_findings、unknown_findings、空表守卫 expectedCount），且针对历史留痕重试时部分合格维持 F 编号口径，防止降级意见静默掉出期望集；重试同时补齐了前缀归属核对。",
+    "零配额普查与实证支撑充分：全仓 48 份历史回退样本改后重放与独立预测逐份一致，5 轮历史闸门翻转性质明晰（口径差而非漏裁），18 处源码变异全部咬住，移植验收 81/81 全过。"
+  ],
+  "consulted": [
+    "src/trivium/types.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/review.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/render.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/report.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/stub.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/review.v1.json",
+    ".reviews/解析回退逐条降级/plan/2026-10-01-解析回退逐条降级-r2-claude.md",
+    "test/unit/parse-degrade.test.ts",
+    "test/unit/gate-degrade.test.ts",
+    "test/unit/render-degrade.test.ts",
+    "test/unit/brief-output-contract.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/REPORT_2026-10-01_parse_degrade.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "README.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未在真实包含大量非 ASCII 路径的特定多语言极端项目工程上实测 checkReviewIntegrity 路径匹配（已有历史 383 份审查件实测与 EV-127 范围）",
+    "除本机 qwen provider 外，未实测 OpenAI 自家 Responses 或其它商用 provider 下 codex CLI 对 --output-schema 的生效情况（已另登 BACKLOG EV-179 跟踪）"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "代码变更完整实现了已批准的计划 r2 与设计 §6.5.1。解析回退改为「逐条降级」与「整份回退」两档，降级意见保留原编号必须逐条裁决且接受须写落点，同时失去阻断资格；无损修复（回显根字段剥离、非法转义字面还原）均在校验前执行并忠实留痕，且 front-matter/横幅仅对审查员造成的修复报警示；gate 期望集、空表守卫与共同阻断判定严密，历史重试三分与前缀归属后盾健全。全仓 48 份历史样本普查重放、81 项移植用例与 18 项源码变异均全部咬住，未发现设计偏离或契约漂移，整体质量优异，予以通过。",
+  "verdict": "approve"
+}

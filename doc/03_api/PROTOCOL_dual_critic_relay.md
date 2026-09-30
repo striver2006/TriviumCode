@@ -96,19 +96,49 @@ YAML 往返会丢注释，原注释保留在备份中）。三条跨字段规则
   > 此处曾写死 `^(AGY|GLM)-`（至设计 v1.3.5）。M7b 第 6 步的桩夹具实测发现：
   > 那样写会让第三家的**合法**结论被 ajv 拒掉、整份退化成 `parse_fallback`，
   > 而当时没有任何检查看着这份 schema，全套测试照常全绿。详见设计 6.5 与 5.1.1。
-- **每条意见七个字段必填**：`id` / `severity` / `location` / `problem` / `evidence` /
-  `suggestion` / `confidence`，另需 `layer` 与 `kind`。
+- **每条意见九个字段必填**：`id` / `severity` / `layer` / `kind` / `location` / `problem` /
+  `evidence` / `suggestion` / `confidence`；四个枚举字段的合法取值见 schema，任务书第 6 节逐一列出。
+  结论是一个**裸 JSON 对象**，不加 schema 之外的字段。
 - **每条意见必须是可单独接受或驳回的最小单元**——这是「逐条裁决」得以成立的前提。
 - `findings: []` **是合法的**（表示没发现问题），但 `summary` 与 `not_covered` 必须说明检查了什么。
 - `consulted` 必填，用于与工具轨迹交叉核对（§11.4）。
 
-### 解析失败的降级：`parse_fallback`
+### 解析与降级：逐条降级与整份回退（设计 §6.5.1，v1.3.68 起）
 
-两侧输出不符合 schema 时**不丢弃**：原文照常落盘，该侧标 `parse_fallback: true`，
-其意见按 `<前缀>-F<序号>` 虚拟编号参与裁决校验，但**不参与阻断判定**（§6.6 规则 8）。
+输出不符合 schema 时**不丢弃**，按能拿到多少分两档：
+
+- **逐条降级**：根对象合法、`findings` 是数组，只是个别意见不合 schema——该侧 status 仍为 `ok`，
+  只有不合格的那几条降级：保留**原编号**、逐条进裁决（接受照样要写落点），但**不参与阻断与共同阻断判定**；
+  合格意见照常。`gate --check` 对它们出 `degraded_findings` 告警。
+- **整份回退**：连根对象都拿不到（没有 JSON 对象、语法修不好、根字段不合、有不合格意见的编号不可用、编号前缀不属于本侧）——
+  该侧标 `parse_fallback: true` 并记成因，原文按 `<前缀>-F<序号>` 虚拟编号参与裁决校验，**不参与阻断判定**（§6.6 规则 8）。
+
+校验之前做两类无损修复，剥了什么、还原了几处都留痕：剥掉厂商注入字段（`toolAction` / `toolSummary`）与审查员回显的
+**编排器自己会写进审查文档 front-matter 的键**（`topic`、`stage`、`role`、`run_id` 等，清单即 front-matter 键集减 `review.v1` 根属性；
+拼错的键与 `reviewer` / `addresses` 不剥）；JSON 字符串里的非法转义（反斜杠后跟非转义字符）按字面还原——只在 `JSON.parse` 失败时才试。
+
+**留痕面（只取加法；`review.v1` 的 schema 不放宽、枚举不改、不做语义映射）**：
+
+| 落点 | 字段 / 文件 | 何时有 |
+| :--- | :--- | :--- |
+| `run.json.critics[c]` | `findings_degraded`：逐条降级的编号数组 | 解析成功（status `ok`）的侧恒写，`[]` = 没有 |
+| `run.json.critics[c]` | `parse_repairs`：`{ stripped_fields, unescaped_backslashes }` | 解析成功的侧恒写（零值 = 没修）；agy 侧 `stripped_fields` 常态含厂商字段 |
+| `run.json.critics[c]` | `parse_fallback_cause`：`no_json_object` / `json_syntax` / `root_invalid` / `finding_unaddressable` / `foreign_prefix` | status 为 `parse_fallback` 的侧恒写；`fail_reason` 同时以 `[成因]` 起头 |
+| `_meta/review-<侧>-<run_id>.json` | 纯 `review.v1`，**只含合格意见** | 解析成功的侧 |
+| `_meta/review-<侧>-<run_id>.degraded.json` | `{ critic, run_id, findings: [{ index, id, problems: [{ field, kind: missing｜invalid｜extra, message }], raw }] }`，原样保留审查员给的对象 | 有降级意见时；进 `run.json.artifacts[]` 保护集 |
+| `_meta/review-<侧>-<run_id>.fallback-items.md` | 抬头多一行成因；对象拿得到（根不合、编号不可用、前缀不属本侧）时每条意见一个单元，否则按原文段落切 | 整份回退时 |
+| 审查文档 front-matter | `findings_degraded`（编号数组，与 run.json 同型）、`parse_repairs`（与 run.json 同一份完整记录）、`parse_fallback_cause` | 条件出现：有降级、有**审查员造成的**修复（回显字段或非法转义；厂商字段的常态剥离只进 run.json）、整份回退 |
+| `gate --check --json` | `degraded_ids` | 恒有（无则 `[]`） |
+
+失败 / 超时侧与早于 v1.3.68 的留痕，run.json 三格都缺。`empty_review` 为「合格 0 条且降级 0 条」。
+**降级留痕需本版及以上读取**：旧版本的 `gate` 读新归档看不到 `findings_degraded`，会把降级编号的裁决行报成多余裁决。
 
 `gate` 会用**当前**解析器重试一次历史 `parse_fallback` 原文——解析器修好之后，
-旧的运行不该继续背着一个已经不存在的缺陷。
+旧的运行不该继续背着一个已经不存在的缺陷。重试得到全合格才按结构化校验；得到部分合格时**仍按 F 编号**
+（旧 run.json 没有 `findings_degraded`，按结构化校验会让降级意见静默掉出期望集），重试同样要过前缀归属。
+当时按 F 编号裁决、现在重试全合格的历史轮次，手工 `gate --check --run-id` 会报缺裁决——口径差，不是漏裁。
+
+codex 侧不传 `--output-schema`：本机 qwen provider 实测静默不生效（BACKLOG EV-124）；其它 provider 未测（EV-179）。
 
 ---
 

@@ -254,6 +254,7 @@ async function verdictWith(carriers: CriticResult['carriers_landed']) {
     min_tool_calls: 0, min_project_reads: 0, deny_paths: [],
   };
   return judgeSide(defaultConfig(), 'glm', result, null, req as never, {
+    degraded: [],
     archiveRootAbs: '/proj/.reviews', projectRoot: '/proj',
     triviumDir: '/proj/.trivium', runRoot: '/tmp/runs',
     capability: TOOL_TRACE_CAPABILITY,

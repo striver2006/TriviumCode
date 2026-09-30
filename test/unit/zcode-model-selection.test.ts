@@ -803,6 +803,7 @@ async function verdictOf(applied: boolean | null | undefined) {
     min_tool_calls: 0, min_project_reads: 0, deny_paths: [],
   };
   return judgeSide(defaultConfig(), 'glm', await resultWith(applied), null, req as never, {
+    degraded: [],
     archiveRootAbs: '/proj/.reviews', projectRoot: '/proj',
     triviumDir: '/proj/.trivium', runRoot: '/tmp/runs',
     capability: TOOL_TRACE_CAPABILITY,
@@ -856,6 +857,7 @@ async function warningsForUnenforced(u: Unenforced | undefined): Promise<{ notes
     min_tool_calls: 0, min_project_reads: 0, deny_paths: [],
   };
   const verdict = judgeSide(defaultConfig(), 'glm', result, null, req as never, {
+    degraded: [],
     archiveRootAbs: '/proj/.reviews', projectRoot: '/proj',
     triviumDir: '/proj/.trivium', runRoot: '/tmp/runs',
     capability: TOOL_TRACE_CAPABILITY,

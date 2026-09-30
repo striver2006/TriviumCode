@@ -1,0 +1,210 @@
+{
+  "targets": [
+    "src/trivium/parse.ts",
+    "src/trivium/review.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/render.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/parse-degrade.test.js",
+    "dist/test/test/unit/gate-degrade.test.js",
+    "dist/test/test/unit/render-degrade.test.js",
+    "dist/test/test/unit/brief-output-contract.test.js",
+    "dist/test/test/integration/fault-injection.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "还原删掉「u 加四位十六进制原样」分支 ⇒ P5‴",
+      "file": "src/trivium/parse.ts",
+      "find": "      if (next === 'u' && /^[0-9a-fA-F]{4}$/.test(json.slice(i + 2, i + 6))) {\n        out += json.slice(i, i + 6);\n        i += 5;\n        continue;\n      }\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "还原对 u 不核四位十六进制 ⇒ P5′",
+      "file": "src/trivium/parse.ts",
+      "find": "      if (next === 'u' && /^[0-9a-fA-F]{4}$/.test(json.slice(i + 2, i + 6))) {\n",
+      "replace": "      if (next === 'u') {\n",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "回显清单删 evidence_ok ⇒ P1、P9",
+      "file": "src/trivium/parse.ts",
+      "find": "  'duration_s', 'tool_calls', 'evidence_ok', 'findings_count', 'findings_degraded', 'degraded', 'parse_fallback',\n",
+      "replace": "  'duration_s', 'tool_calls', 'findings_count', 'findings_degraded', 'degraded', 'parse_fallback',\n",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "根校验不要求 findings 是数组 ⇒ P11",
+      "file": "src/trivium/parse.ts",
+      "find": "  if (!Array.isArray(findings) || !rootOk) {\n",
+      "replace": "  if (!rootOk) {\n",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "逐条降级退回整份判死（降级一律当编号不可用）⇒ P7、P7′、P10③ 等",
+      "file": "src/trivium/parse.ts",
+      "find": "    degraded.push({ index, id, problems, raw: f as Record<string, unknown> });\n",
+      "replace": "    unaddressable.push('x');\n",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "选取不看覆盖、首个全合格即替换 ⇒ P10②",
+      "file": "src/trivium/parse.ts",
+      "find": "      if (chosen.ids.every((id) => mine.has(id))) {\n        chosen = { ...v, from: cand.from };\n",
+      "replace": "      if (true) {\n        chosen = { ...v, from: cand.from };\n",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "替换候选时沿用前一候选的修复（跨候选累加的形态）⇒ P13",
+      "file": "src/trivium/parse.ts",
+      "find": "      if (chosen.ids.every((id) => mine.has(id))) {\n        chosen = { ...v, from: cand.from };\n",
+      "replace": "      if (chosen.ids.every((id) => mine.has(id))) {\n        chosen = { ...v, repairs: chosen.repairs, from: cand.from };\n",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "回退成因取最后一个而非走得最远 ⇒ P11",
+      "file": "src/trivium/parse.ts",
+      "find": "      if (!deepest || v.rank > deepest.rank) deepest = v;\n",
+      "replace": "      deepest = v;\n",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "完整性校验不看降级编号 ⇒ P12",
+      "file": "src/trivium/parse.ts",
+      "find": "  const allIds = [...review.findings.map((f) => f.id), ...degraded.map((d) => d.id)];\n",
+      "replace": "  const allIds = review.findings.map((f) => f.id);\n",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "empty_review 退回只数合格意见 ⇒ I2",
+      "file": "src/trivium/review.ts",
+      "find": "      empty_review: reviews[c] ? reviews[c]!.findings.length === 0 && (degraded[c] ?? []).length === 0 : false,\n",
+      "replace": "      empty_review: (reviews[c]?.findings.length ?? -1) === 0,\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "run.json 不记降级编号 ⇒ I1、I2",
+      "file": "src/trivium/review.ts",
+      "find": "            findings_degraded: (degraded[c] ?? []).map((d) => d.id),\n",
+      "replace": "            findings_degraded: [],\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "gate 期望集漏并降级编号 ⇒ G1、G2",
+      "file": "src/trivium/gate.ts",
+      "find": "  const idsSet = new Set([...structuredIds, ...degradedIds]);\n",
+      "replace": "  const idsSet = new Set(structuredIds);\n",
+      "expect": "dist/test/test/unit/gate-degrade.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "gate 空表守卫漏计降级编号 ⇒ G4",
+      "file": "src/trivium/gate.ts",
+      "find": "  const expectedCount = structuredIds.length + (expectedFallback?.length ?? 0) + degradedIds.length;\n",
+      "replace": "  const expectedCount = structuredIds.length + (expectedFallback?.length ?? 0);\n",
+      "expect": "dist/test/test/unit/gate-degrade.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "重试把部分合格当成功 ⇒ G10、G10′",
+      "file": "src/trivium/gate.ts",
+      "find": "        if (retry?.ok && retry.degraded.length === 0 && prefixOk) {\n",
+      "replace": "        if (retry?.ok && prefixOk) {\n",
+      "expect": "dist/test/test/unit/gate-degrade.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "重试不核前缀归属 ⇒ G11",
+      "file": "src/trivium/gate.ts",
+      "find": "        if (retry?.ok && retry.degraded.length === 0 && prefixOk) {\n",
+      "replace": "        if (retry?.ok && retry.degraded.length === 0) {\n",
+      "expect": "dist/test/test/unit/gate-degrade.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "ExitPlanMode 一句的厂商条件取反 ⇒ B3",
+      "file": "src/trivium/brief.ts",
+      "find": "    CRITIC_VENDOR[critic] === 'zcode'\n",
+      "replace": "    CRITIC_VENDOR[critic] !== 'zcode'\n",
+      "expect": "dist/test/test/unit/brief-output-contract.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "不渲染不合格意见一节 ⇒ R4",
+      "file": "src/trivium/render.ts",
+      "find": "  if (nDegraded > 0) parts.push(renderDegradedSection(input.degradedFindings!));\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/render-degrade.test.js"
+    },
+    {
+      "id": "M18",
+      "desc": "厂商字段的剥离也挂横幅与 front-matter ⇒ R2",
+      "file": "src/trivium/render.ts",
+      "find": "  return r.unescaped_backslashes > 0 || r.stripped_fields.some((k) => !vendor.has(k));\n",
+      "replace": "  return r.unescaped_backslashes > 0 || r.stripped_fields.length > 0;\n",
+      "expect": "dist/test/test/unit/render-degrade.test.js"
+    },
+    {
+      "id": "M19",
+      "desc": "整份回退一律按散文切、不按意见逐条出 F 单元（CODEX-01）⇒ P15",
+      "file": "src/trivium/parse.ts",
+      "find": "    findingsOfFirstObject(rawText) ??\n",
+      "replace": "    null ??\n",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    },
+    {
+      "id": "M20",
+      "desc": "降级意见的 evidence 不参与 consulted 核对（GLM-01）⇒ P12′",
+      "file": "src/trivium/parse.ts",
+      "find": "    ...degraded.map((d) => d.raw['evidence']).filter((e): e is string => typeof e === 'string'),\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    },
+    {
+      "id": "M21",
+      "desc": "不合格意见单元格不转义竖线（CODEX-05 ≡ GLM-02）⇒ R4′",
+      "file": "src/trivium/render.ts",
+      "find": "      v = v.replace(/\\|/g, '\\\\|');\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/render-degrade.test.js"
+    },
+    {
+      "id": "M22",
+      "desc": "可选根字段类型不从 schema 取（CODEX-06）⇒ B2′",
+      "file": "src/trivium/brief.ts",
+      "find": "    if (!p?.type) return null;\n",
+      "replace": "    return null;\n",
+      "expect": "dist/test/test/unit/brief-output-contract.test.js"
+    },
+    {
+      "id": "M23",
+      "desc": "front-matter 的 findings_degraded 退回条数（CODEX-03）⇒ R1",
+      "file": "src/trivium/render.ts",
+      "find": "    ...(degradedCount(input) > 0 ? { findings_degraded: input.degradedFindings!.map((d) => d.id) } : {}),\n",
+      "replace": "    ...(degradedCount(input) > 0 ? { findings_degraded: degradedCount(input) } : {}),\n",
+      "expect": "dist/test/test/unit/render-degrade.test.js"
+    },
+    {
+      "id": "M24",
+      "desc": "front-matter 新增一个夹具没覆盖的条件键而回显清单没跟（CODEX-02：P9 假绿、P9′ 要红）⇒ P9′",
+      "file": "src/trivium/render.ts",
+      "find": "    ...(input.consultedUnverified ? { consulted_unverified: true } : {}),\n",
+      "replace": "    ...(input.consultedUnverified ? { consulted_unverified: true } : {}),\n    ...(input.drift ? { drift_detail: true } : {}),\n",
+      "expect": "dist/test/test/unit/parse-degrade.test.js"
+    }
+  ]
+}

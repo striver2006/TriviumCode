@@ -60,6 +60,11 @@ export interface RoundReport {
     modelRequested: string | null;
     durationS: number;
     findings: number | null;
+    /**
+     * 逐条降级的意见数（设计 §6.5），取自 run.json 的 `critics[c].findings_degraded`；早于该字段的留痕与
+     * 未解析成功的侧为 0。`findings` 只数合格意见，这一格不并进去——降级意见不参与严重度统计。
+     */
+    findingsDegraded: number;
     evidenceOk: boolean;
     failReason: string | null;
   }[];
@@ -257,6 +262,7 @@ async function buildRound(
       modelRequested: m.model_requested,
       durationS: m.duration_s,
       findings: review ? review.findings.length : null,
+      findingsDegraded: m.findings_degraded?.length ?? 0,
       evidenceOk: m.evidence_ok,
       failReason: m.fail_reason ?? null,
     });
@@ -631,7 +637,8 @@ export function renderTopicReport(r: TopicReport): string {
         if (!s) return '—';
         // 失败/降级侧显示原因而不是 0：0 会被读成「没提意见」
         if (s.findings === null) return `（${s.status}）`;
-        return String(s.findings);
+        // 逐条降级的另记一笔：只写合格数会把「交了 5 条、4 条不合格」读成「只提了 1 条」
+        return s.findingsDegraded > 0 ? `${s.findings}（另 ${s.findingsDegraded} 条逐条降级）` : String(s.findings);
       };
       const dz = d.disposals;
       L.push(

@@ -70,16 +70,23 @@ test('findings 为空数组合法（表示无问题）', () => {
   assert.equal(r.ok, true);
 });
 
-test('七字段缺一即不合格，并给出可回喂给模型的错误清单', () => {
+/*
+ * 下面两条在「解析回退逐条降级」之前断言的是**整份回退**（`ok: false`）：单条意见缺字段或取值越界，
+ * 整份结论判死。那正是本主题改掉的语义——根对象合法时只把那一条降级、原编号保留、逐字段点名问题。
+ * 断言随语义改写，而不是删掉：「这一条不合格」这件事仍要被说出来，只是落点从整份回退换成了 `degraded`。
+ */
+test('意见缺必填字段 ⇒ 这一条逐条降级（原编号保留、点名缺的字段），不再整份回退', () => {
   const bad = validReview();
   // @ts-expect-error 故意删字段
   delete bad.findings[0]!.evidence;
   const r = parseReview(JSON.stringify(bad));
-  assert.equal(r.ok, false);
-  if (!r.ok) {
-    assert.ok(r.errors.length > 0);
-    assert.ok(r.errors.some((e) => e.includes('evidence')), `错误应点名 evidence：${r.errors.join('; ')}`);
-    assert.equal(r.rawText.length > 0, true, '原文必须保留供 parse_fallback 落盘');
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.deepEqual(r.review.findings, [], '不合格的那条不进 review.findings（失去阻断资格）');
+    assert.equal(r.degraded.length, 1);
+    assert.equal(r.degraded[0]!.id, 'AGY-01');
+    assert.deepEqual(r.degraded[0]!.problems.map((p) => [p.field, p.kind]), [['evidence', 'missing']]);
+    assert.ok(r.degraded[0]!.problems[0]!.message.includes('evidence'), '问题文案可回喂给模型');
   }
 });
 
@@ -89,11 +96,17 @@ test('编号不符合 AGY-/GLM- 前缀模式即 schema 不合格', () => {
   assert.equal(parseReview(JSON.stringify(bad)).ok, false);
 });
 
-test('severity / confidence 取值受枚举约束', () => {
+test('severity / confidence 取值受枚举约束：表外值让这一条降级，不做语义映射', () => {
   const bad = validReview();
   // @ts-expect-error 故意给非法枚举值
   bad.findings[0]!.severity = 'critical';
-  assert.equal(parseReview(JSON.stringify(bad)).ok, false);
+  const r = parseReview(JSON.stringify(bad));
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.review.findings.length, 0);
+    assert.deepEqual(r.degraded[0]!.problems.map((p) => [p.field, p.kind]), [['severity', 'invalid']]);
+    assert.equal(r.degraded[0]!.raw['severity'], 'critical', '原值照录，不映射成任何合法值');
+  }
 });
 
 test('多余字段被拒（additionalProperties: false）', () => {
@@ -112,24 +125,24 @@ test('找不到 JSON 与语法错误分别给出原因', () => {
 });
 
 test('语义校验：编号前缀必须属于本侧（两侧不得冲突）', () => {
-  const i = checkReviewIntegrity(validReview(), 'glm');
+  const i = checkReviewIntegrity(validReview(), 'glm', []);
   assert.equal(i.prefixOk, false);
   assert.deepEqual(i.badIds, ['AGY-01']);
-  assert.equal(checkReviewIntegrity(validReview(), 'gemini').prefixOk, true);
+  assert.equal(checkReviewIntegrity(validReview(), 'gemini', []).prefixOk, true);
 });
 
 test('语义校验：重复编号被揪出', () => {
   const r = validReview();
   r.findings.push({ ...r.findings[0]! });
-  assert.deepEqual(checkReviewIntegrity(r, 'gemini').duplicateIds, ['AGY-01']);
+  assert.deepEqual(checkReviewIntegrity(r, 'gemini', []).duplicateIds, ['AGY-01']);
 });
 
 test('语义校验：evidence 引用的文件必须出现在 consulted', () => {
   const r = validReview({ consulted: ['src/auth/oidc.ts'] });
-  const i = checkReviewIntegrity(r, 'gemini');
+  const i = checkReviewIntegrity(r, 'gemini', []);
   assert.deepEqual(i.evidenceNotInConsulted, ['doc/01_requirements/PRD_x.md']);
 
-  const ok = checkReviewIntegrity(validReview(), 'gemini');
+  const ok = checkReviewIntegrity(validReview(), 'gemini', []);
   assert.deepEqual(ok.evidenceNotInConsulted, []);
 });
 
@@ -141,7 +154,7 @@ test('语义校验：evidence 引用的文件必须出现在 consulted', () => {
 function evidenceMissing(evidence: string, consulted: string[]): string[] {
   const r = validReview({ consulted });
   r.findings[0]!.evidence = evidence;
-  return checkReviewIntegrity(r, 'gemini').evidenceNotInConsulted;
+  return checkReviewIntegrity(r, 'gemini', []).evidenceNotInConsulted;
 }
 
 test('EV-127 U1：skills-src/ 路径不再被截成 src/…（完整路径已列入 consulted）', () => {
@@ -182,14 +195,14 @@ test('EV-127 U8：evidence 与 consulted 两侧都写前导 ./ 时对得上（co
 
 test('语义校验：零意见且未说明检查了什么会被标记', () => {
   const lazy = validReview({ findings: [], summary: '没问题', not_covered: [] });
-  assert.equal(checkReviewIntegrity(lazy, 'gemini').emptyWithoutExplanation, true);
+  assert.equal(checkReviewIntegrity(lazy, 'gemini', []).emptyWithoutExplanation, true);
 
   const honest = validReview({
     findings: [],
     summary: '通读了计划与 src/auth 下全部文件，未发现阻断性问题。',
     not_covered: ['未审查前端'],
   });
-  assert.equal(checkReviewIntegrity(honest, 'gemini').emptyWithoutExplanation, false);
+  assert.equal(checkReviewIntegrity(honest, 'gemini', []).emptyWithoutExplanation, false);
 });
 
 test('降级兜底：从原文切出可逐条裁决的编号单元（§6.6 规则 8）', () => {
@@ -265,7 +278,7 @@ test('结论之后追加的噪声对象顶不掉真正的结论', () => {
   assert.equal(r.ok && r.review.findings[0]!.id, 'AGY-01');
 });
 
-test('全都不合格时如实报最后一次的校验错误', () => {
+test('全都不合格时如实报走得最远那一格的校验错误', () => {
   const r = parseReview('{"a":1}\n{"b":2}');
   assert.equal(r.ok, false);
   assert.match(r.ok ? '' : r.reason, /不符合 trivium\.review\.v1/);

@@ -1,0 +1,117 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "整体质量高，我这一侧（跨平台/环境、资源与生命周期、版本兼容）没有发现阻断性问题：非法转义还原在 Windows 路径与 \\u 短序列上行为正确、Node 18/22 双版本实测、run.v2 的 critic 对象未设 additionalProperties:false 故旧 CLI 读新留痕不炸、旁路 .degraded.json 被 freeze.ts 的 _meta 判据覆盖且进保护集、变异装置 18 条锚点在当前工作树零残留（我逐条核对过）。真正值得 Driver 处置的是残留的一格：因 root_invalid / finding_unaddressable 整份回退时，原文是 JSON，enumerateFallbackFindings 的切块判据只认散文边界，一侧的 N 条意见塌成 1 条 F01 巨型 JSON 单元——正是本主题宣称要消灭的形态换了个成因标签继续存在，普查读数里这类样本有 4/48，设计 6.5.1 与测试都没说出来。另有 5 条 minor/nit：回显清单的守卫依赖夹具完备性、front-matter 与 run.json 同名键两种类型、变异脚本副本缺正式装置的哨兵、降级一节表格值未转义竖线、任务书对可选根字段类型做了硬编码断言。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/parse.ts:511-518（enumerateFallbackFindings）；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1035（6.5.1 表格「裁决编号 <前缀>-F<n>」）",
+      "problem": "整份回退的三种 JSON 形态成因（root_invalid、finding_unaddressable、修不好的 json_syntax）下，原文是一个 JSON 对象，而 enumerateFallbackFindings 只在空行 / `-` 或 `*` 行首 / `N)` 行首 / 标题行处切块——裸 JSON（6/48 样本）里这些边界一个都没有，于是该侧全部意见塌成**一条** `CODEX-F01: {\"schema\":…}` 巨型单元；散文+围栏形态（38/48）里围栏内那段 JSON 也整块成一条。后果：本主题的核心目标「个别意见不合格不再拖垮整份、每条意见可单独裁决」在这几格里逐字没有达成，gate 只能校验「这一条被裁过」，逐条粒度、严重度、落点全丢，而 Driver 面对的是一条几百字符的 JSON 原文。设计 6.5.1 的表格只写「<前缀>-F<n>」，读起来像按意见逐条编号；普查自己给的数是「仍整份回退 7：没有 JSON 3、语法修不好 2、根字段不合 2」，即 4 份样本属于这一类，报告与测试都没覆盖（test/unit/parse.test.ts:216-223 只喂散文原文）。注：这不是本补丁引入的回归，改前同样如此，但补丁把「逐条降级」立为口径后，这一格就成了同一族里未被说出的残余。",
+      "evidence": "读 src/trivium/parse.ts:511-518（切块正则）与 src/trivium/review.ts:1426-1434（.fallback-items.md 只由该函数产出、成因只多一行抬头）；在改后构建上实跑：对「三条合格 + 一条 id 写成 CODEX-3」的结论调 parseReview，得 {ok:false, cause:\"finding_unaddressable\", errors:[\"/findings/2 编号不可用（id=\\\"CODEX-3\\\"）\"]}，再对该 rawText 调 enumerateFallbackFindings 得 `F 单元数= 1`，正文是整段 JSON；对 root_invalid 同族读 doc/05_testing/evidence/parse-degrade-20261001/census-post.json（48 行 rows，其中 parser.ok=false 共 7 条，cause 分布 no_json_object 3 / json_syntax 2 / root_invalid 2，其一 errors 点名 missingProperty verdict）与 doc/05_testing/REPORT_2026-10-01_parse_degrade.md:35（38 份散文+围栏、4 份纯散文、6 份裸 JSON、降级意见编号全部可用）；设计表格见 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1027-1035。",
+      "suggestion": "不必改判据档位（整份回退的取舍我认同），但要把这一格补齐：① 当 rawText 能按现有候选机制抠出对象且其 findings 是数组时，fallback 单元**按 findings 下标逐条出**（编号仍走 `<前缀>-F<n>`，正文只放那一条的原文），这样 finding_unaddressable / root_invalid 两类从「一条巨型单元」变成「N 条可裁决单元」；② 退一步也要在 6.5.1 表格与 §12.1 那一格写明「整份回退时单元的粒度取决于原文形态」，并把残余登记进 doc/08_project/BACKLOG.md（与 EV-178 / EV-179 并列），别让后来的人以为 F 编号等于逐条降级。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/parse-degrade.test.ts:164-203（P9）；src/trivium/parse.ts:182-189（ECHOED_ORCHESTRATOR_KEYS）",
+      "problem": "这份 35 键清单的唯一机械守卫是「夹具渲染出来的键集 == 清单」，而夹具是手写的两条 RenderInput（结构化 + 回退）。renderFrontMatter 里凡是**条件渲染**的键，只有当夹具恰好把触发条件摆出来才会进键集：将来给 front-matter 加一个由新 RenderInput 字段控制的条件键、而改动者没碰 P9 这条用例时，P9 依旧绿，清单静默少一项——审查员回显那个键就撞 additionalProperties:false 整份判死，正是 EV-10 的原始症状。设计与 LLD 把这条断言称为「清单唯一的机械守卫」，实际强度是「夹具完备时才是守卫」。",
+      "evidence": "读 src/trivium/parse.ts:182-199（清单 + 注释「与 renderFrontMatter 由契约用例逐项相等绑定」「不许放宽成子集」）、src/trivium/render.ts:178-195（键集含大量 `...(cond ? {k:v} : {})` 条件展开）、test/unit/parse-degrade.test.ts:164-203（P9 的 keysOf 只跑 base 与 base+review:null 两次渲染，并另用一句 expected.includes(…) 兜三个新键的前提）；同族教训见 AGENTS.md 纪律 11/12「靠记性的纪律要换成不依赖记性的机制」。",
+      "suggestion": "把判据从「夹具枚举」换成「来源枚举」：让 renderFrontMatter 除了字符串还暴露一个可测的键集导出（或让 P9 用 fixture 生成全开 RenderInput：遍历 RenderInput 的可选字段逐个置为真值再取并集），使新增条件键在夹具未跟上时也被判为「键集缺一员」而红。退一步的口径是：在 P9 注释里写明「本用例只锁夹具已覆盖的分支，新增条件键必须同时扩充夹具」，并把这条挂到改动同步清单。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/render.ts:188-192（front-matter）与 src/trivium/review.ts:1642-1643（run.json）",
+      "problem": "同一个键名在两份留痕里是两种类型与两种语义：front-matter 的 findings_degraded 是**条数**（数字）、parse_repairs 只含**审查员造成的**那部分修复；run.json 的 findings_degraded 是**编号数组**、parse_repairs 是全集（含厂商常态剥离）。设计 6.5.1 与 PROTOCOL 都在同一张表里并列写了它们。跨留痕做统计/追溯的脚本与后来的人极易按 run.json 的形状去读 front-matter（例如 `len(fm['findings_degraded'])` 直接抛错，或把条数当编号集判「无降级」），而这类读取没有 schema 校验——front-matter 侧只有 parseFrontMatter 的 YAML 形状、无机读契约守着。",
+      "evidence": "读 src/trivium/render.ts:188-192 与 121-135（degradedCount 返回条数、hasReviewerRepairs 过滤掉厂商字段）；src/trivium/review.ts:1642-1643（写的是 id 数组与完整 repairs）；src/trivium/report.ts:265 只能从 run.json 取 `.length`（同一读法若换到 front-matter 就错）；两处口径并列登记于 doc/03_api/PROTOCOL_dual_critic_relay.md:124-131 与设计 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1010-1024 的 front-matter 契约表。",
+      "suggestion": "把 front-matter 的两个键改名以消除同名异义（例如 findings_degraded_count，parse_repairs 可保留但注释写明「只含审查员造成的」），或反过来让 front-matter 也写编号数组（它本来就是给人读的文档，条数与编号并存更省事）。无论选哪种，都要同步 6.5 的 front-matter 契约表、PROTOCOL 与 ECHOED_ORCHESTRATOR_KEYS——那份清单靠 P9 绑着，改名不会漏。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/evidence/parse-degrade-20261001/mutation-names.mjs:33-54",
+      "problem": "这份**提交进仓库、后来的人会被指引去重跑**的变异副本，恢复只靠 try/finally；进程被 SIGTERM/SIGKILL 时 finally 不执行，而它自己第四行注释就记着这次实跑「挂死一小时被强制终止」。它又直接 fs.writeFileSync 改 src/ 并重建 dist：若被强杀，工作树带着变异残留，而下一轮 `dual-run` 的 changes.diff 就是从工作树取的——审计对象会被污染且无提示。正式装置 scripts/mutation-check.mjs 为同一失败形态专门做了哨兵文件（开跑落、正常收尾删、下次发现还在就拒跑），副本没带上这道。",
+      "evidence": "读 doc/05_testing/evidence/parse-degrade-20261001/mutation-names.mjs:1-55（备份/变异/恢复/逐字节核对，无 process.on 与哨兵）；读 scripts/mutation-check.mjs:145-170（SENTINEL = .mutation-check-running 与其注释「比 git 判据更精确：只对本装置的失败形态说话」）与同文件 finally 恢复段；对照 doc/05_testing/REPORT_2026-10-01_parse_degrade.md:62（18/18 咬住、r0 挂死一小时的记要）。我按 spec 逐条核对过当前工作树：18 个案例的 find 各命中一次、replace 零残留（drift=0），本轮没有中招。",
+      "suggestion": "副本要么复用正式装置的哨兵（哪怕只落一个 .mutation-names-running 标记 + 开跑前拒绝），要么在文件头把「被强杀后必须先跑 `git diff --exit-code <targets>` 再重跑」写成硬步骤，并把 targets 的 sha256 也存进输出 JSON 供事后对账。不要依赖 finally 挡信号。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/render.ts:485-520（renderDegradedSection 的 cell/para）",
+      "problem": "「不合格意见」一节的表格单元格对值只做了换行折叠（replace 空白+换行），没转义竖线，也没截断长度。而这一节打印的恰恰是**形状不合 schema 的原值**：kind/layer 可能是数组、severity 可能是 `critical`、location 可能是含 `|` 的字符串（本主题的普查里「反斜杠+竖线」就是最常见的一类原文形态，还原后值里保留字面反斜杠竖线，能正常渲染；但裸写竖线是合法 JSON，会直接把两列表格撑成三列）。裁决者看到的那一条会串行，而它正是最需要读清楚的一条。",
+      "evidence": "读 src/trivium/render.ts:485-520（cell 里 `.replace(/\\s*\\n\\s*/g, ' ')` 只处理换行；extras 段用 JSON.stringify 原值拼进正文）与 425-440（合格意见那一段同样是裸插值，属既有形态，但那里的值至少过了 schema 的 string/minLength）；doc/05_testing/REPORT_2026-10-01_parse_degrade.md:35 记着降级 137 条里 kind 表外 22、layer 表外 17——非字符串与含竖线取值都落在这条路径上。",
+      "suggestion": "给 cell() 加一步 `|` 转义（Markdown 表内即使反引号里也得转义）与长度上限（超出截断并标「…见 .degraded.json」），para() 只需长度上限。顺带把合格/不合格两段的插值口径统一，避免下一次有人只修一处。",
+      "confidence": "low"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/brief.ts:48 与 59（renderOutputContract）",
+      "problem": "第 6 节的必填字段与四个枚举取值确实是从 review.v1.json 读的，但可选根字段那半句「${optionalRoot} 是字符串数组」是把**当前 schema 碰巧的形状**写死在文案里：optionalRoot 由 `Object.keys(properties) − required` 算出，将来给 review.v1 加一个可选的非数组根字段（比如对象型的诊断信息），任务书会把这个键说成字符串数组，审查员按文案填 → 根判死 → 整份回退，而 brief-output-contract 的用例（只比枚举行与必填项）不会红。",
+      "evidence": "读 src/trivium/brief.ts:44-62（root.required / item.required / enum 取自 schema，optionalRoot 见 48 行、断言见 59 行）与 skills/dual-critic/schema/review.v1.json（可选根属性恰好只有 agreed / not_covered / consulted，全是 items:type=string 的数组）；读 test/unit/brief-output-contract.test.ts:45-67 确认 B1/B2 只锁枚举与必填、没有覆盖「可选字段类型」这句。",
+      "suggestion": "把类型也从 schema 取（读 `root.properties[k].type` 再拼「是字符串数组 / 是字符串」），或干脆删掉这半句、只保留「不要添加 schema 之外的字段」；并在 B 组加一格断言文案里出现的类型描述与 schema 的 type 一致。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "「覆盖才替换」的候选选取是对的：只有后面那个全合格候选的编号集覆盖默认候选（合格 ∪ 降级）才替换，防住了厂商在结论之后追加的东西顶掉真结论；P10①～④ 把四格都锁住了。",
+    "repairInvalidEscapes 的实现我实跑验过，边界站得住：Windows 路径 `C:\\Users\\x\\y.ts` 还原后字面保留、`\\u` 后不足四位十六进制按字面处理（不吞后随字符）、合法转义对与 `\\uXXXX` 一概不动、只在结构字符之外（字符串内部）动手；因此不存在「把结构反斜杠也改了」的跨平台隐患。",
+    "版本兼容做得到位：run.v2 的 $defs/critic 没设 additionalProperties:false，旧版本 CLI 读到新 run.json 不会被 schema 判死；PROTOCOL 明确写了「旧 gate 看不到 findings_degraded 会把降级裁决报成多余」的口径差；Node 18.20.8 与 22.23.3 双版本全量 TAP 读数（357/357、2410 用例）都在证据目录里。",
+    "旁路文件没有开新的泄漏口子：freeze.ts 的 _meta 判据是 /^review-([a-z]+)-.+\\.(?:json|md)$/，`review-<侧>-<run>.degraded.json` 命中它、按角色段归属，对方的降级件对己方仍在禁读集里；同时它进 protectedMeta，删了提交锚报「已丢失」。",
+    "必填参数化的三处（checkReviewIntegrity 第三参、checkAdjudication 的 expectedDegradedIds、judgeSide/judgeRun 的 degradedIds）都是**必填无默认**，并把「漏传就静默退回只核合格编号」的理由写在注释里——这是防静默漏裁的正确取舍，既有调用点也都补齐了。",
+    "文档改的两处失实我核过源码：全仓没有 raw.txt 写出、解析失败确实不重试（重试只发生在适配器层，runner.ts 的 onRetryBrief），12.1 那一格的更正是诚实的而不是粉饰。",
+    "gate 的旧留痕重试补上前缀归属核对，堵住了「因冒名前缀回退的原文重试后让冒名编号进结构化期望集」这条同族缺口（G11）。"
+  ],
+  "not_covered": [
+    "没有重跑普查与变异装置（census*.mjs / compare-census.mjs / port-acceptance.mjs 我只读脚本与读数，未再执行），48 份样本的预测一致性、81/81 移植验收与 18/18 咬住按报告读数采信。",
+    "没有用真实厂商 CLI（agy / zcode / glm / codex）验证新第 6 节输出契约的实际效果，尤其没有验证「裸 JSON + 枚举取值全列出」能否把 glm 侧那 97 条缺 confidence 压下去；EV-179（codex 其它 provider 的 --output-schema）本就未测。",
+    "只读视角没有覆盖 Linux/Windows 整条流水线（本项目声明 macOS-only），对 hooks.ts 里以 `/` 拆分的 relFromRoot 之类既有平台假设未作展开评审。",
+    "未审 disposition.ts 对降级编号的收行细节（降级编号形态与普通意见一致，按既有收行正则应可收，但没跑端到端验证）。",
+    "未审 doc/07_manuals/MANUAL_user.md、doc/08_project/BACKLOG.md 的文案逐条措辞，以及 skills-src/ 渲染产物与本补丁的口径是否需要在下一轮 render 对齐（本补丁没动 skills-src）。",
+    "性能与超大原文（数百 KB 单行 JSON、成千行候选）只做静态判断、未压测：evaluateCandidate 对每个候选跑两次整份校验加逐条校验，理论上是 O(候选数 × 意见数)，没有规模上限。"
+  ],
+  "consulted": [
+    "src/trivium/parse.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts",
+    "src/trivium/render.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/report.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/adapters/stub.ts",
+    "test/unit/parse.test.ts",
+    "test/unit/parse-degrade.test.ts",
+    "test/unit/gate-degrade.test.ts",
+    "test/unit/brief-output-contract.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "scripts/mutation-check.mjs",
+    "skills/dual-critic/schema/review.v1.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-10-01_parse_degrade.md",
+    "doc/05_testing/evidence/parse-degrade-20261001/census-post.json",
+    "doc/05_testing/evidence/parse-degrade-20261001/census.mjs",
+    "doc/05_testing/evidence/parse-degrade-20261001/mutation-names.mjs",
+    "doc/05_testing/evidence/parse-degrade-20261001/mutation-spec.json",
+    "doc/05_testing/evidence/parse-degrade-20261001/node18.txt",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md"
+  ]
+}

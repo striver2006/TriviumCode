@@ -58,6 +58,14 @@ export interface CodexInvokeOptions {
  * **prompt 走 stdin（末尾的 `-`）而不是 argv**：送审包是几十 KB 量级的文本，
  * 塞进 argv 是在赌 `ARG_MAX`。`codex exec --help` 明载 `[PROMPT]` 支持 `-`
  * 从 stdin 读，本步实测以 78 KB 跑通。
+ *
+ * **不传 `--output-schema`，这是实测结论而不是遗漏**（EV-124，解析回退逐条降级主题）：
+ * 本机 qwen provider（经 `responses` 兼容端点）下两次最小调用——一次喂 `review.v1.json`、一次喂
+ * 严格模式兼容的最小 schema——CLI 都退 0，模型输出都**逐字照提示违规**，schema 被静默忽略
+ * （读数 `doc/05_testing/evidence/parse-degrade-20261001/ev124-probe/`）。在已测的 provider 上接了不生效，
+ * 还会让读代码的人以为 codex 侧有生成约束；codex 侧的输出约束只靠任务书第 6 节。
+ * **其它 provider（含 OpenAI 自家 Responses）未测**：换 provider 或 CLI 升级后要接，先按同一装置重测
+ * （BACKLOG EV-179），不要照 agy / claude 的样子顺手加上。
  */
 export function buildCodexArgs(
   opts: Pick<CodexInvokeOptions, 'profile' | 'model' | 'effort' | 'readonlyArgs' | 'cwd'>,

@@ -7,10 +7,23 @@
  */
 import YAML from 'yaml';
 import type {
-  CriticId, CriticResult, DenyCategory, Review, Severity, Stage, Vendor,
+  CriticId, CriticResult, DegradedFinding, DenyCategory, FallbackCause, ParseRepairs, Review, Severity, Stage, Vendor,
 } from './types.js';
 import { CRITIC_VENDOR } from './types.js';
 import { agentById } from './agents/registry.js';
+import { FINDING_FIELDS, VENDOR_NOISE_KEYS } from './parse.js';
+
+/**
+ * 整份回退成因的人读名（设计 §6.5）。横幅、`.fallback-items.md` 抬头与 review.ts 的告警共用这一份，
+ * 三处各写一份文案就会漂。
+ */
+export const FALLBACK_CAUSE_LABEL: Record<FallbackCause, string> = {
+  no_json_object: '回答里没有 JSON 对象',
+  json_syntax: 'JSON 语法错误，按字面还原非法转义后仍无法解析',
+  root_invalid: 'JSON 根对象不符合 trivium.review.v1（缺必填字段、取值不合，或带了不属于结论的字段）',
+  finding_unaddressable: '有意见的编号不可用（缺 id、形状不合或不是对象），无法逐条降级',
+  foreign_prefix: '意见编号前缀不属于本侧',
+};
 
 const SEVERITY_ORDER: readonly Severity[] = ['blocker', 'major', 'minor', 'nit'];
 const SEVERITY_LABEL: Record<Severity, string> = {
@@ -29,6 +42,15 @@ export interface RenderInput {
   review: Review | null;
   /** 解析失败时的原文，与 review 二者必有其一 */
   rawText: string | null;
+  /**
+   * 逐条降级的意见（设计 §6.5）。**省略 = 没有**：它们不在 `review.findings` 里，
+   * 单列在「不合格意见」一节，保留原编号、标出不合格的字段。
+   */
+  degradedFindings?: readonly DegradedFinding[];
+  /** 所选候选在校验前做过的无损修复；零值或省略都不渲染 */
+  parseRepairs?: ParseRepairs;
+  /** 整份回退的成因（`review === null` 时才有意义） */
+  parseFallbackCause?: FallbackCause;
   result: CriticResult;
   modelRequested: string | null;
   effort?: string | null;
@@ -99,6 +121,23 @@ export interface RenderInput {
   overrideReason?: string | null;
 }
 
+function degradedCount(input: Pick<RenderInput, 'degradedFindings'>): number {
+  return input.degradedFindings?.length ?? 0;
+}
+
+/**
+ * 这次修复里有没有**审查员造成的**那一类：剥掉了编排器回显字段，或还原了非法转义。
+ *
+ * 厂商注入字段（agy 的 `toolAction` / `toolSummary`）的剥离是常态——实测 agy 每轮都注入——
+ * 它照样恒写进 run.json 的 `parse_repairs`，但不进文档横幅与 front-matter：每份 gemini 文档都挂一条
+ * 修复警示，会稀释真正要看见的那一行（与 `verification` 档位只在降级时渲染同口径）。
+ */
+function hasReviewerRepairs(r: ParseRepairs | undefined): r is ParseRepairs {
+  if (!r) return false;
+  const vendor = new Set<string>(VENDOR_NOISE_KEYS);
+  return r.unescaped_backslashes > 0 || r.stripped_fields.some((k) => !vendor.has(k));
+}
+
 export function countSeverities(review: Review | null): Record<Severity, number> {
   const c: Record<Severity, number> = { blocker: 0, major: 0, minor: 0, nit: 0 };
   for (const f of review?.findings ?? []) c[f.severity]++;
@@ -139,9 +178,19 @@ export function renderFrontMatter(input: RenderInput): string {
     tool_calls: { ...input.result.tool_calls, project_reads: input.projectReads },
     evidence_ok: input.evidenceOk,
     verdict: input.review?.verdict ?? 'request-changes',
+    // 只数合格意见；逐条降级的条数另记在 findings_degraded（它们的 severity 可能正是不合格的那个字段）
     findings_count: countSeverities(input.review),
+    /*
+     * 解析与降级的三个键（设计 §6.5；解析回退逐条降级计划 r2 §3.5），与 `consulted_unverified`
+     * 同款条件展开：常态不出现，出现就是要看见的那一行。三个键同批进 `parse.ts` 的
+     * `ECHOED_ORCHESTRATOR_KEYS`——审查员照着落盘文档回显它们时要被剥掉，而不是整份判死。
+     */
+    // 编号数组，与 run.json 的 critics[c].findings_degraded 同型（代码双审 r1 CODEX-03：此前是条数，同名异型）
+    ...(degradedCount(input) > 0 ? { findings_degraded: input.degradedFindings!.map((d) => d.id) } : {}),
     degraded: input.degraded,
     parse_fallback: parseFallback,
+    ...(parseFallback && input.parseFallbackCause ? { parse_fallback_cause: input.parseFallbackCause } : {}),
+    ...(hasReviewerRepairs(input.parseRepairs) ? { parse_repairs: input.parseRepairs } : {}),
     // 诚实边界：本机两侧路径级 deny 均不可用，这里如实记 false（§10.2）
     peer_deny: input.peerDeny,
     drift: input.drift,
@@ -238,7 +287,29 @@ export function renderReviewDoc(input: RenderInput): string {
         '实际完成情况见抬头的审核者清单与 run 元数据的 `degraded_reason`。',
     );
   }
-  if (review === null) flags.push('**解析降级**：本侧输出未能解析为结构化结论，下方为原文。该侧不参与阻断判定。');
+  if (review === null) {
+    flags.push(
+      '**解析降级**：本侧输出未能解析为结构化结论，下方为原文。该侧不参与阻断判定。' +
+        (input.parseFallbackCause ? `成因：${FALLBACK_CAUSE_LABEL[input.parseFallbackCause]}。` : ''),
+    );
+  }
+  const nDegraded = degradedCount(input);
+  if (review !== null && nDegraded > 0) {
+    flags.push(
+      `**逐条降级**：本侧有 ${nDegraded} 条意见不合 schema，单列在「不合格意见」一节，` +
+        '保留原编号、须逐条裁决，但不参与阻断与共同阻断判定。',
+    );
+  }
+  if (review !== null && hasReviewerRepairs(input.parseRepairs)) {
+    const parts: string[] = [];
+    if (input.parseRepairs.stripped_fields.length > 0) {
+      parts.push(`剥掉根字段 ${input.parseRepairs.stripped_fields.map((k) => `\`${k}\``).join('、')}`);
+    }
+    if (input.parseRepairs.unescaped_backslashes > 0) {
+      parts.push(`按字面还原非法转义 ${input.parseRepairs.unescaped_backslashes} 处`);
+    }
+    flags.push(`**解析前做了无损修复**：${parts.join('；')}（详见 front-matter 的 \`parse_repairs\`）。`);
+  }
   if (!input.evidenceOk) flags.push('**Agent 执行证据不足**：本侧不得计为合格双审的一半。');
   if (input.drift) flags.push('**审查期间工作树发生漂移**：本结论对应送审时刻的快照，与当前工作树可能已不一致。');
   if (!input.peerDeny) {
@@ -333,7 +404,12 @@ ${review.summary.trim()}
 
 **结论**：\`${review.verdict}\``);
 
-  if (review.findings.length === 0) {
+  if (review.findings.length === 0 && nDegraded > 0) {
+    // 交了意见、只是全部降级：不能说「未发现问题」（解析回退逐条降级计划 r2 §3.5）
+    parts.push(`## 审查意见
+
+合格意见 0 条；本侧另有 ${nDegraded} 条意见逐条降级，见下方「不合格意见」。`);
+  } else if (review.findings.length === 0) {
     parts.push(`## 审查意见
 
 本侧**未发现问题**。
@@ -367,6 +443,8 @@ ${review.summary.trim()}
     }
   }
 
+  if (nDegraded > 0) parts.push(renderDegradedSection(input.degradedFindings!));
+
   if ((review.agreed ?? []).length > 0) {
     parts.push(`## 认为正确的部分\n\n${review.agreed!.map((a) => `- ${a}`).join('\n')}`);
   }
@@ -391,6 +469,74 @@ ${(review.consulted ?? []).length > 0
 审查员无写仓库权限，全部落盘由编排器完成。*`);
 
   return parts.join('\n\n') + '\n';
+}
+
+/** 「不合格意见」表格单元格的长度上限 */
+const CELL_MAX = 200;
+
+const PROBLEM_KIND_LABEL: Record<DegradedFinding['problems'][number]['kind'], string> = {
+  missing: '缺失',
+  invalid: '取值不合法',
+  extra: '多余字段',
+};
+
+/**
+ * 「不合格意见」一节（设计 §6.5；解析回退逐条降级计划 r2 §3.5）。
+ *
+ * **原值照录、不改写**：缺的写「（缺失）」，不合法的值原样列出并标「（不合法）」，非字符串值 JSON 化。
+ * 裁决者要据此判断这条意见本身成不成立——它只是某个字段不合 schema，内容仍是审查员的原话。
+ */
+function renderDegradedSection(items: readonly DegradedFinding[]): string {
+  const out: string[] = [
+    `## 不合格意见（逐条降级，共 ${items.length} 条）
+
+> 下列意见不合 \`trivium.review.v1\`：保留原编号、**仍须逐条裁决**（接受要写落点），
+> 但**不参与阻断与共同阻断判定**——其中声称 blocker 的，被驳回也不会触发共同阻断告警。`,
+  ];
+  for (const d of items) {
+    const bad = new Map<string, string>();
+    for (const p of d.problems) if (!bad.has(p.field)) bad.set(p.field, PROBLEM_KIND_LABEL[p.kind]);
+    const raw = d.raw;
+    const str = (v: unknown): string => (typeof v === 'string' ? v : JSON.stringify(v));
+    /*
+     * 表格单元格：值是形状不合 schema 的原文，可能含竖线、反引号、换行或很长（代码双审 r1 CODEX-05 ≡ GLM-02）。
+     * 竖线转义、不用反引号包裹（值里的反引号会截断包裹）、换行压平、超长截断并指向旁路文件；
+     * 段落（问题 / 依据 / 建议）不截断——那是审查员的原话，裁决者要读全文。
+     */
+    const cell = (k: string): string => {
+      if (!(k in raw)) return '（缺失）';
+      let v = str(raw[k]).replace(/\s*\n\s*/g, ' ');
+      if (v.length > CELL_MAX) v = `${v.slice(0, CELL_MAX)}…（全文见 .degraded.json）`;
+      v = v.replace(/\|/g, '\\|');
+      return bad.has(k) ? `${v}（不合法）` : v;
+    };
+    const para = (k: string): string => {
+      if (!(k in raw)) return '（缺失）';
+      return bad.has(k) ? `${str(raw[k])}（不合法）` : str(raw[k]);
+    };
+    const known = new Set(FINDING_FIELDS);
+    const extras = Object.keys(raw).filter((k) => !known.has(k));
+    out.push(`### ${d.id} · 不合格
+
+**不合格之处**：
+${d.problems.map((p) => `- \`${p.field}\`：${PROBLEM_KIND_LABEL[p.kind]}（${p.message}）`).join('\n')}
+
+| 项 | 内容 |
+| :--- | :--- |
+| 严重度 | ${cell('severity')} |
+| 位置 | ${cell('location')} |
+| 类别 | ${cell('kind')} ｜ 层次 ${cell('layer')} |
+| 置信度 | ${cell('confidence')} |
+
+**问题**：${para('problem')}
+
+**依据**：${para('evidence')}
+
+**建议**：${para('suggestion')}${
+      extras.length > 0 ? `\n\n**多余字段**：${extras.map((k) => `\`${k}\` = ${str(raw[k])}`).join('；')}` : ''
+    }`);
+  }
+  return out.join('\n\n');
 }
 
 /** 从 Markdown 文件头解析 front-matter（gate 与 report 机读用） */

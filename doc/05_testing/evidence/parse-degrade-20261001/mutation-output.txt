@@ -1,0 +1,176 @@
+✓ 工作树干净、基线全绿（5 个套件）
+  M1 ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=3）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=4）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=2）
+  M12 ✓ 咬住（fail=3）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=2）
+  M15 ✓ 咬住（fail=1）
+  M16 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=2）
+  M18 ✓ 咬住（fail=1）
+  M19 ✓ 咬住（fail=1）
+  M20 ✓ 咬住（fail=1）
+  M21 ✓ 咬住（fail=1）
+  M22 ✓ 咬住（fail=1）
+  M23 ✓ 咬住（fail=1）
+  M24 ✓ 咬住（fail=1）
+{
+  "总数": 24,
+  "咬住": 24,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "还原删掉「u 加四位十六进制原样」分支 ⇒ P5‴",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "还原对 u 不核四位十六进制 ⇒ P5′",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "回显清单删 evidence_ok ⇒ P1、P9",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M4",
+      "desc": "根校验不要求 findings 是数组 ⇒ P11",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "逐条降级退回整份判死（降级一律当编号不可用）⇒ P7、P7′、P10③ 等",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M6",
+      "desc": "选取不看覆盖、首个全合格即替换 ⇒ P10②",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "替换候选时沿用前一候选的修复（跨候选累加的形态）⇒ P13",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "回退成因取最后一个而非走得最远 ⇒ P11",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "完整性校验不看降级编号 ⇒ P12",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "empty_review 退回只数合格意见 ⇒ I2",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "run.json 不记降级编号 ⇒ I1、I2",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M12",
+      "desc": "gate 期望集漏并降级编号 ⇒ G1、G2",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M13",
+      "desc": "gate 空表守卫漏计降级编号 ⇒ G4",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "重试把部分合格当成功 ⇒ G10、G10′",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M15",
+      "desc": "重试不核前缀归属 ⇒ G11",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M16",
+      "desc": "ExitPlanMode 一句的厂商条件取反 ⇒ B3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "不渲染不合格意见一节 ⇒ R4",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M18",
+      "desc": "厂商字段的剥离也挂横幅与 front-matter ⇒ R2",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M19",
+      "desc": "整份回退一律按散文切、不按意见逐条出 F 单元（CODEX-01）⇒ P15",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M20",
+      "desc": "降级意见的 evidence 不参与 consulted 核对（GLM-01）⇒ P12′",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M21",
+      "desc": "不合格意见单元格不转义竖线（CODEX-05 ≡ GLM-02）⇒ R4′",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M22",
+      "desc": "可选根字段类型不从 schema 取（CODEX-06）⇒ B2′",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M23",
+      "desc": "front-matter 的 findings_degraded 退回条数（CODEX-03）⇒ R1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M24",
+      "desc": "front-matter 新增一个夹具没覆盖的条件键而回显清单没跟（CODEX-02：P9 假绿、P9′ 要红）⇒ P9′",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0

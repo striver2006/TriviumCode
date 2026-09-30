@@ -176,6 +176,7 @@ function judge(
   over: { req?: Partial<CriticRequest>; projectRoots?: readonly string[] } = {},
 ) {
   return judgeSide(defaultConfig(), 'claude', result, review, { ...REQ, ...over.req } as CriticRequest, {
+    degraded: [],
     archiveRootAbs: `${FAKE_ROOT}/.reviews`,
     projectRoot: FAKE_ROOT,
     ...(over.projectRoots ? { projectRoots: over.projectRoots } : {}),
@@ -309,6 +310,7 @@ test('T13 符号链接根：projectRoots 带 realpath 别名时，物理形态�
   const REAL = '/Volumes/data/repo';
   const req = { ...REQ, project_root: LINK, deny_paths: ['.reviews/T/plan/2026-09-19-T-glm.md'] } as CriticRequest;
   const opts = (roots?: readonly string[]) => ({
+    degraded: [],
     archiveRootAbs: `${LINK}/.reviews`,
     projectRoot: LINK,
     ...(roots ? { projectRoots: roots } : {}),

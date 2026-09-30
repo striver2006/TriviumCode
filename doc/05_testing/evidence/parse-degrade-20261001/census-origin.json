@@ -1,0 +1,962 @@
+{
+  "total": 564,
+  "fallback": 48,
+  "bySide": {
+    "glm": 16,
+    "codex": 28,
+    "gemini": 4
+  },
+  "byCause": {
+    "json_syntax": 7,
+    "schema": 36,
+    "no_json": 3,
+    "now_ok": 2
+  },
+  "bySideCause": {
+    "glm/json_syntax": 2,
+    "glm/schema": 11,
+    "codex/schema": 24,
+    "glm/no_json": 3,
+    "codex/json_syntax": 4,
+    "gemini/schema": 1,
+    "gemini/json_syntax": 1,
+    "gemini/now_ok": 2
+  },
+  "byWrap": {
+    "prose+fence": 38,
+    "prose": 4,
+    "bare": 6
+  },
+  "schemaKinds": {
+    "missing_field": 16,
+    "extra_field": 7,
+    "enum": 20
+  },
+  "rows": [
+    {
+      "file": ".reviews/CLI进程组记录/code/_meta/review-glm-20260928T030117Z.json",
+      "side": "glm",
+      "run": "20260928T030117Z",
+      "cause": "json_syntax",
+      "kinds": [],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [],
+      "reason": "JSON 语法错误：Bad escaped character in JSON at position 4183 (line 46 column 72)",
+      "rawLen": 7405
+    },
+    {
+      "file": ".reviews/EV-122-未受控模型播报/code/_meta/review-glm-20260924T222959Z.json",
+      "side": "glm",
+      "run": "20260924T222959Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field",
+        "extra_field",
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "(根对象) must have required property 'verdict' {\"missingProperty\":\"verdict\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"run_id\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"reviewer\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"addresses\"}",
+        "/findings/0/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 7687
+    },
+    {
+      "file": ".reviews/EV-123-预检提示副本源缺失/plan/_meta/review-codex-20260924T230522Z.json",
+      "side": "codex",
+      "run": "20260924T230522Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 12231
+    },
+    {
+      "file": ".reviews/EV-125-命令A支持选侧旗标/code/_meta/review-glm-20260925T102608Z.json",
+      "side": "glm",
+      "run": "20260925T102608Z",
+      "cause": "no_json",
+      "kinds": [],
+      "wrapped": "prose",
+      "cands": [],
+      "errs": [],
+      "reason": "回答中找不到 JSON 对象",
+      "rawLen": 545
+    },
+    {
+      "file": ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-codex-20260922T170908Z.json",
+      "side": "codex",
+      "run": "20260922T170908Z",
+      "cause": "json_syntax",
+      "kinds": [],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [],
+      "reason": "JSON 语法错误：Bad escaped character in JSON at position 4359 (line 45 column 263)",
+      "rawLen": 11752
+    },
+    {
+      "file": ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T170908Z.json",
+      "side": "gemini",
+      "run": "20260922T170908Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "bare",
+      "cands": [
+        "fence",
+        "braces"
+      ],
+      "errs": [
+        "(根对象) must have required property 'schema' {\"missingProperty\":\"schema\"}",
+        "(根对象) must have required property 'verdict' {\"missingProperty\":\"verdict\"}",
+        "(根对象) must have required property 'summary' {\"missingProperty\":\"summary\"}",
+        "(根对象) must have required property 'findings' {\"missingProperty\":\"findings\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 6461
+    },
+    {
+      "file": ".reviews/EV-79-写命令判据两处缺口/plan/_meta/review-codex-20260922T061939Z.json",
+      "side": "codex",
+      "run": "20260922T061939Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field",
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 11592
+    },
+    {
+      "file": ".reviews/EV-79-写命令判据两处缺口/plan/_meta/review-codex-20260922T075753Z.json",
+      "side": "codex",
+      "run": "20260922T075753Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+        "/findings/0/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+        "/findings/1/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+        "/findings/1/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+        "/findings/2/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+        "/findings/2/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 14052
+    },
+    {
+      "file": ".reviews/EV-79-写命令判据两处缺口/plan/_meta/review-gemini-20260922T075753Z.json",
+      "side": "gemini",
+      "run": "20260922T075753Z",
+      "cause": "json_syntax",
+      "kinds": [],
+      "wrapped": "bare",
+      "cands": [
+        "whole",
+        "braces",
+        "braces"
+      ],
+      "errs": [],
+      "reason": "JSON 语法错误：Bad escaped character in JSON at position 2588 (line 30 column 182)",
+      "rawLen": 4415
+    },
+    {
+      "file": ".reviews/EV-79-写命令判据两处缺口/plan/_meta/review-glm-20260922T065306Z.json",
+      "side": "glm",
+      "run": "20260922T065306Z",
+      "cause": "json_syntax",
+      "kinds": [],
+      "wrapped": "prose",
+      "cands": [
+        "braces"
+      ],
+      "errs": [],
+      "reason": "JSON 语法错误：Expected ',' or '}' after property value in JSON at position 2150 (line 1 column 2151)",
+      "rawLen": 10561
+    },
+    {
+      "file": ".reviews/EV-79-写命令判据两处缺口/plan/_meta/review-glm-20260922T075753Z.json",
+      "side": "glm",
+      "run": "20260922T075753Z",
+      "cause": "no_json",
+      "kinds": [],
+      "wrapped": "prose",
+      "cands": [],
+      "errs": [],
+      "reason": "回答中找不到 JSON 对象",
+      "rawLen": 147
+    },
+    {
+      "file": ".reviews/EV-82-同形第二臂与构建标识/code/_meta/review-codex-20260924T055944Z.json",
+      "side": "codex",
+      "run": "20260924T055944Z",
+      "cause": "json_syntax",
+      "kinds": [],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [],
+      "reason": "JSON 语法错误：Expected ',' or '}' after property value in JSON at position 4730 (line 35 column 351)",
+      "rawLen": 13948
+    },
+    {
+      "file": ".reviews/EV-82-审查臂诊断/plan/_meta/review-glm-20260924T014145Z.json",
+      "side": "glm",
+      "run": "20260924T014145Z",
+      "cause": "no_json",
+      "kinds": [],
+      "wrapped": "prose",
+      "cands": [],
+      "errs": [],
+      "reason": "回答中找不到 JSON 对象",
+      "rawLen": 137
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-codex-20260921T145353Z.json",
+      "side": "codex",
+      "run": "20260921T145353Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/9/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 14665
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-codex-20260922T004543Z.json",
+      "side": "codex",
+      "run": "20260922T004543Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/1/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 8398
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-codex-20260922T024405Z.json",
+      "side": "codex",
+      "run": "20260922T024405Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 13856
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T145353Z.json",
+      "side": "glm",
+      "run": "20260921T145353Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/2/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}",
+        "/findings/3/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}",
+        "/findings/4/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 11565
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T152520Z.json",
+      "side": "glm",
+      "run": "20260921T152520Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/1/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+        "/findings/3/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+        "/findings/5/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 10269
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T004543Z.json",
+      "side": "glm",
+      "run": "20260922T004543Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/1/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+        "/findings/2/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+        "/findings/3/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+        "/findings/4/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+        "/findings/5/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+        "/findings/6/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 11244
+    },
+    {
+      "file": ".reviews/M10b-入口资产与真载体验收/code/_meta/review-codex-20260925T060626Z.json",
+      "side": "codex",
+      "run": "20260925T060626Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/2/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 13567
+    },
+    {
+      "file": ".reviews/M10b-入口资产与真载体验收/code/_meta/review-codex-20260925T064650Z.json",
+      "side": "codex",
+      "run": "20260925T064650Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 12111
+    },
+    {
+      "file": ".reviews/M2-skills与闸门/plan/_meta/review-gemini-20260910T221346Z.json",
+      "side": "gemini",
+      "run": "20260910T221346Z",
+      "cause": "now_ok",
+      "kinds": [],
+      "wrapped": "bare",
+      "cands": [
+        "whole"
+      ],
+      "errs": [],
+      "reason": null,
+      "rawLen": 6824
+    },
+    {
+      "file": ".reviews/M4-M5实现/code/_meta/review-gemini-20260911T025329Z.json",
+      "side": "gemini",
+      "run": "20260911T025329Z",
+      "cause": "now_ok",
+      "kinds": [],
+      "wrapped": "bare",
+      "cands": [
+        "whole",
+        "braces",
+        "braces"
+      ],
+      "errs": [],
+      "reason": null,
+      "rawLen": 13550
+    },
+    {
+      "file": ".reviews/M8-Codex审核者接入/plan/_meta/review-glm-20260915T105915Z.json",
+      "side": "glm",
+      "run": "20260915T105915Z",
+      "cause": "schema",
+      "kinds": [
+        "extra_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"topic\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"role\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 13406
+    },
+    {
+      "file": ".reviews/M8-Codex审核者接入/code/_meta/review-glm-20260915T024740Z.json",
+      "side": "glm",
+      "run": "20260915T024740Z",
+      "cause": "schema",
+      "kinds": [
+        "extra_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"topic\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"role\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"rerun_index\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 10967
+    },
+    {
+      "file": ".reviews/M8-Codex审核者接入/code/_meta/review-glm-20260915T153603Z.json",
+      "side": "glm",
+      "run": "20260915T153603Z",
+      "cause": "schema",
+      "kinds": [
+        "extra_field",
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"topic\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"role\"}",
+        "/findings/5/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 14225
+    },
+    {
+      "file": ".reviews/M8-Codex审核者接入/code/_meta/review-glm-20260916T092815Z.json",
+      "side": "glm",
+      "run": "20260916T092815Z",
+      "cause": "schema",
+      "kinds": [
+        "extra_field",
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"topic\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"role\"}",
+        "/findings/0/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+        "/findings/3/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 9615
+    },
+    {
+      "file": ".reviews/M9-ClaudeCode审核者接入/plan/_meta/review-codex-20260917T140800Z.json",
+      "side": "codex",
+      "run": "20260917T140800Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "bare",
+      "cands": [
+        "whole"
+      ],
+      "errs": [
+        "/findings/11/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 18770
+    },
+    {
+      "file": ".reviews/M9-ClaudeCode审核者接入/code/_meta/review-codex-20260917T231200Z.json",
+      "side": "codex",
+      "run": "20260917T231200Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/1/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+        "/findings/3/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 13112
+    },
+    {
+      "file": ".reviews/M9-Hook当轮Driver保护集/code/_meta/review-codex-20260919T085742Z.json",
+      "side": "codex",
+      "run": "20260919T085742Z",
+      "cause": "json_syntax",
+      "kinds": [],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [],
+      "reason": "JSON 语法错误：Bad escaped character in JSON at position 5872 (line 44 column 204)",
+      "rawLen": 7978
+    },
+    {
+      "file": ".reviews/M9-审核者启用与夹具收口/plan/_meta/review-codex-20260918T134236Z.json",
+      "side": "codex",
+      "run": "20260918T134236Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 14876
+    },
+    {
+      "file": ".reviews/M9-裁决件角色契约放宽/plan/_meta/review-codex-20260919T025314Z.json",
+      "side": "codex",
+      "run": "20260919T025314Z",
+      "cause": "json_syntax",
+      "kinds": [],
+      "wrapped": "bare",
+      "cands": [
+        "whole"
+      ],
+      "errs": [],
+      "reason": "JSON 语法错误：Bad escaped character in JSON at position 5600 (line 35 column 596)",
+      "rawLen": 14792
+    },
+    {
+      "file": ".reviews/M9-适配器本体与准入收口/code/_meta/review-codex-20260918T111815Z.json",
+      "side": "codex",
+      "run": "20260918T111815Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 12076
+    },
+    {
+      "file": ".reviews/M9-验收实跑/code/_meta/review-codex-20260919T133957Z.json",
+      "side": "codex",
+      "run": "20260919T133957Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/5/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 12268
+    },
+    {
+      "file": ".reviews/zcode-provider配置注入/code/_meta/review-codex-20260921T080553Z.json",
+      "side": "codex",
+      "run": "20260921T080553Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 8128
+    },
+    {
+      "file": ".reviews/zcode-provider配置注入/code/_meta/review-codex-20260921T083716Z.json",
+      "side": "codex",
+      "run": "20260921T083716Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/2/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+        "/findings/4/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 8267
+    },
+    {
+      "file": ".reviews/zcode-模型覆盖落点/code/_meta/review-codex-20260921T124003Z.json",
+      "side": "codex",
+      "run": "20260921T124003Z",
+      "cause": "schema",
+      "kinds": [
+        "extra_field",
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/1 must NOT have additional properties {\"additionalProperty\":\"evidence_extra\"}",
+        "/findings/4/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 11580
+    },
+    {
+      "file": ".reviews/事后收尾余项/code/_meta/review-codex-20260927T074234Z.json",
+      "side": "codex",
+      "run": "20260927T074234Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 13670
+    },
+    {
+      "file": ".reviews/取消与失联的凭据准入核CLI/code/_meta/review-codex-20260928T235013Z.json",
+      "side": "codex",
+      "run": "20260928T235013Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 12281
+    },
+    {
+      "file": ".reviews/护栏判定的落地缺口/plan/_meta/review-codex-20260916T113735Z.json",
+      "side": "codex",
+      "run": "20260916T113735Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/9/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 19954
+    },
+    {
+      "file": ".reviews/护栏判定的落地缺口/plan/_meta/review-codex-20260916T120829Z.json",
+      "side": "codex",
+      "run": "20260916T120829Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 16713
+    },
+    {
+      "file": ".reviews/护栏判定的落地缺口/plan/_meta/review-codex-20260916T125341Z.json",
+      "side": "codex",
+      "run": "20260916T125341Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 10940
+    },
+    {
+      "file": ".reviews/护栏判定的落地缺口/code/_meta/review-codex-20260916T154758Z.json",
+      "side": "codex",
+      "run": "20260916T154758Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+        "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 17692
+    },
+    {
+      "file": ".reviews/护栏判定范围收窄/plan/_meta/review-glm-20260913T162911Z.json",
+      "side": "glm",
+      "run": "20260913T162911Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/1 must have required property 'location' {\"missingProperty\":\"location\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 8397
+    },
+    {
+      "file": ".reviews/探针扩展与事实回填/code/_meta/review-glm-20260914T222706Z.json",
+      "side": "glm",
+      "run": "20260914T222706Z",
+      "cause": "schema",
+      "kinds": [
+        "extra_field",
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"topic\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"role\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"run_id\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"rerun_index\"}",
+        "(根对象) must NOT have additional properties {\"additionalProperty\":\"evidence_ok\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 13011
+    },
+    {
+      "file": ".reviews/组长已退组员仍在的准入/code/_meta/review-codex-20260929T041949Z.json",
+      "side": "codex",
+      "run": "20260929T041949Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/schema must be equal to constant {\"allowedValue\":\"trivium.review.v1\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 6056
+    },
+    {
+      "file": ".reviews/配置v2与动态多审/plan/_meta/review-glm-20260913T172119Z.json",
+      "side": "glm",
+      "run": "20260913T172119Z",
+      "cause": "schema",
+      "kinds": [
+        "enum"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/6/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}",
+        "/findings/7/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}",
+        "/findings/9/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 13102
+    },
+    {
+      "file": ".reviews/门面文档版本指针/code/_meta/review-codex-20260929T141008Z.json",
+      "side": "codex",
+      "run": "20260929T141008Z",
+      "cause": "schema",
+      "kinds": [
+        "missing_field"
+      ],
+      "wrapped": "prose+fence",
+      "cands": [
+        "fence"
+      ],
+      "errs": [
+        "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+      ],
+      "reason": "JSON 不符合 trivium.review.v1",
+      "rawLen": 16654
+    }
+  ]
+}

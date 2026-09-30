@@ -1,0 +1,5672 @@
+{
+  "build": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/f9f42a9d-5d3f-4e63-a3b4-45a605ec17c9/scratchpad/base-d418ce7",
+  "generated_at": "2026-09-30T18:22:02.304Z",
+  "samples": 48,
+  "bySide": {
+    "glm": 16,
+    "codex": 28,
+    "gemini": 4
+  },
+  "predicted": {
+    "ok": 9,
+    "fallback:root_invalid": 2,
+    "partial": 32,
+    "fallback:no_json_object": 3,
+    "fallback:json_syntax": 2
+  },
+  "predictedBySide": {
+    "glm/ok": 3,
+    "glm/fallback:root_invalid": 1,
+    "codex/partial": 23,
+    "glm/fallback:no_json_object": 3,
+    "codex/ok": 3,
+    "gemini/partial": 1,
+    "gemini/ok": 3,
+    "glm/fallback:json_syntax": 1,
+    "codex/fallback:json_syntax": 1,
+    "glm/partial": 8,
+    "codex/fallback:root_invalid": 1
+  },
+  "parserOk": {
+    "false": 46,
+    "true": 2
+  },
+  "parserCause": {
+    "fallback(改前无成因字段)": 46,
+    "ok": 2
+  },
+  "gateOk": {
+    "true": 29,
+    "false": 19
+  },
+  "findingsInRootOkCandidates": 297,
+  "findingsDegradedPredicted": 137,
+  "findingsIdUnusable": 0,
+  "findingErrorKinds": {
+    "缺 confidence": 97,
+    "kind 表外值": 22,
+    "layer 表外值": 17,
+    "severity 表外值": 7,
+    "多余字段": 1,
+    "缺 location": 1
+  },
+  "predictedLostIds": 0,
+  "parserLostIds": 0,
+  "rows": [
+    {
+      "file": ".reviews/CLI进程组记录/code/_meta/review-glm-20260928T030117Z.json",
+      "side": "glm",
+      "run": "20260928T030117Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "ok",
+        "from": "fence",
+        "qualified": 4,
+        "degraded": 0,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 2,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 7270,
+          "syntaxError": "Bad escaped character in JSON at position 4183 (line 46 column 72)",
+          "syntax": "repaired",
+          "escapesRepaired": 2,
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "GLM-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "GLM-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "GLM-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "GLM-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "ok"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 语法错误：Bad escaped character in JSON at position 4183 (line 46 column 72)",
+        "errors": []
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-122-未受控模型播报/code/_meta/review-glm-20260924T222959Z.json",
+      "side": "glm",
+      "run": "20260924T222959Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "fallback:root_invalid",
+        "errors": [
+          "(根) must have required property 'verdict' {\"missingProperty\":\"verdict\"}",
+          "(根) must NOT have additional properties {\"additionalProperty\":\"reviewer\"}",
+          "(根) must NOT have additional properties {\"additionalProperty\":\"addresses\"}"
+        ]
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 7129,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [
+            "run_id",
+            "stage"
+          ],
+          "extraOther": [
+            "reviewer",
+            "addresses"
+          ],
+          "rootErrors": [
+            "(根) must have required property 'verdict' {\"missingProperty\":\"verdict\"}",
+            "(根) must NOT have additional properties {\"additionalProperty\":\"reviewer\"}",
+            "(根) must NOT have additional properties {\"additionalProperty\":\"addresses\"}"
+          ],
+          "root": "invalid"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "(根对象) must have required property 'verdict' {\"missingProperty\":\"verdict\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"run_id\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"reviewer\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"addresses\"}",
+          "/findings/0/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/0/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/1/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/1/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/2/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}",
+          "/findings/2/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/2/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-123-预检提示副本源缺失/plan/_meta/review-codex-20260924T230522Z.json",
+      "side": "codex",
+      "run": "20260924T230522Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 8,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 12219,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/6 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/7 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-125-命令A支持选侧旗标/code/_meta/review-glm-20260925T102608Z.json",
+      "side": "glm",
+      "run": "20260925T102608Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "fallback:no_json_object",
+        "errors": []
+      },
+      "candidates": [],
+      "parser": {
+        "ok": false,
+        "reason": "回答中找不到 JSON 对象",
+        "errors": []
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-codex-20260922T170908Z.json",
+      "side": "codex",
+      "run": "20260922T170908Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "ok",
+        "from": "fence",
+        "qualified": 9,
+        "degraded": 0,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 1,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 11700,
+          "syntaxError": "Bad escaped character in JSON at position 4359 (line 45 column 263)",
+          "syntax": "repaired",
+          "escapesRepaired": 1,
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 8,
+              "id": "CODEX-09",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "ok"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 语法错误：Bad escaped character in JSON at position 4359 (line 45 column 263)",
+        "errors": []
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "gemini 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-74-探针喂真实契约文件/plan/_meta/review-gemini-20260922T170908Z.json",
+      "side": "gemini",
+      "run": "20260922T170908Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 4,
+        "degraded": 1,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 6379,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "AGY-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "AGY-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "AGY-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "AGY-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "AGY-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        },
+        {
+          "from": "braces",
+          "len": 68,
+          "syntax": "ok",
+          "strippedVendor": [
+            "toolAction",
+            "toolSummary"
+          ],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [
+            "findings 不是数组",
+            "(根) must have required property 'schema' {\"missingProperty\":\"schema\"}",
+            "(根) must have required property 'verdict' {\"missingProperty\":\"verdict\"}",
+            "(根) must have required property 'summary' {\"missingProperty\":\"summary\"}"
+          ],
+          "root": "invalid"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "(根对象) must have required property 'schema' {\"missingProperty\":\"schema\"}",
+          "(根对象) must have required property 'verdict' {\"missingProperty\":\"verdict\"}",
+          "(根对象) must have required property 'summary' {\"missingProperty\":\"summary\"}",
+          "(根对象) must have required property 'findings' {\"missingProperty\":\"findings\"}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "gemini 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-79-写命令判据两处缺口/plan/_meta/review-codex-20260922T061939Z.json",
+      "side": "codex",
+      "run": "20260922T061939Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 9,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 11580,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 8,
+              "id": "CODEX-09",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/6 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/7 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/7/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/8 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-79-写命令判据两处缺口/plan/_meta/review-codex-20260922T075753Z.json",
+      "side": "codex",
+      "run": "20260922T075753Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 6,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 13261,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/0/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/1/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/1/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/2/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/2/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/3/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/3/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/4/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/4/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/5/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/5/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "gemini 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-79-写命令判据两处缺口/plan/_meta/review-gemini-20260922T075753Z.json",
+      "side": "gemini",
+      "run": "20260922T075753Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "ok",
+        "from": "braces",
+        "qualified": 2,
+        "degraded": 0,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 1,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "whole",
+          "len": 4414,
+          "syntaxError": "Unexpected non-whitespace character after JSON at position 88 (line 2 column 1)",
+          "syntax": "broken",
+          "escapesTried": 1,
+          "afterRepairError": "Unexpected non-whitespace character after JSON at position 88 (line 2 column 1)"
+        },
+        {
+          "from": "braces",
+          "len": 87,
+          "syntax": "ok",
+          "strippedVendor": [
+            "toolAction",
+            "toolSummary"
+          ],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [
+            "findings 不是数组",
+            "(根) must have required property 'schema' {\"missingProperty\":\"schema\"}",
+            "(根) must have required property 'verdict' {\"missingProperty\":\"verdict\"}",
+            "(根) must have required property 'summary' {\"missingProperty\":\"summary\"}"
+          ],
+          "root": "invalid"
+        },
+        {
+          "from": "braces",
+          "len": 4326,
+          "syntaxError": "Bad escaped character in JSON at position 2588 (line 30 column 182)",
+          "syntax": "repaired",
+          "escapesRepaired": 1,
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "AGY-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "AGY-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "ok"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 语法错误：Bad escaped character in JSON at position 2588 (line 30 column 182)",
+        "errors": []
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "gemini 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-79-写命令判据两处缺口/plan/_meta/review-glm-20260922T065306Z.json",
+      "side": "glm",
+      "run": "20260922T065306Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "fallback:json_syntax",
+        "errors": [
+          "Expected ',' or '}' after property value in JSON at position 2150 (line 1 column 2151)"
+        ]
+      },
+      "candidates": [
+        {
+          "from": "braces",
+          "len": 10416,
+          "syntaxError": "Expected ',' or '}' after property value in JSON at position 2150 (line 1 column 2151)",
+          "syntax": "broken"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 语法错误：Expected ',' or '}' after property value in JSON at position 2150 (line 1 column 2151)",
+        "errors": []
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "missing_disposition",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧本轮失败，未产出结论（单审降级）",
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-79-写命令判据两处缺口/plan/_meta/review-glm-20260922T075753Z.json",
+      "side": "glm",
+      "run": "20260922T075753Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "fallback:no_json_object",
+        "errors": []
+      },
+      "candidates": [],
+      "parser": {
+        "ok": false,
+        "reason": "回答中找不到 JSON 对象",
+        "errors": []
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "gemini 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-82-同形第二臂与构建标识/code/_meta/review-codex-20260924T055944Z.json",
+      "side": "codex",
+      "run": "20260924T055944Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "fallback:json_syntax",
+        "errors": [
+          "Expected ',' or '}' after property value in JSON at position 4730 (line 35 column 351)"
+        ]
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 13936,
+          "syntaxError": "Expected ',' or '}' after property value in JSON at position 4730 (line 35 column 351)",
+          "syntax": "broken"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 语法错误：Expected ',' or '}' after property value in JSON at position 4730 (line 35 column 351)",
+        "errors": []
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/EV-82-审查臂诊断/plan/_meta/review-glm-20260924T014145Z.json",
+      "side": "glm",
+      "run": "20260924T014145Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "fallback:no_json_object",
+        "errors": []
+      },
+      "candidates": [],
+      "parser": {
+        "ok": false,
+        "reason": "回答中找不到 JSON 对象",
+        "errors": []
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-codex-20260921T145353Z.json",
+      "side": "codex",
+      "run": "20260921T145353Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 10,
+        "degraded": 1,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 14611,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 8,
+              "id": "CODEX-09",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 9,
+              "id": "CODEX-10",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 10,
+              "id": "CODEX-11",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/9/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-codex-20260922T004543Z.json",
+      "side": "codex",
+      "run": "20260922T004543Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 5,
+        "degraded": 1,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 8386,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/1/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-codex-20260922T024405Z.json",
+      "side": "codex",
+      "run": "20260922T024405Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 10,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 13675,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 8,
+              "id": "CODEX-09",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 9,
+              "id": "CODEX-10",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/6 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/7 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/8 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/9 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T145353Z.json",
+      "side": "glm",
+      "run": "20260921T145353Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 6,
+        "degraded": 3,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 10982,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "GLM-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "GLM-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "GLM-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "GLM-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "GLM-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "GLM-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 6,
+              "id": "GLM-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 7,
+              "id": "GLM-08",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 8,
+              "id": "GLM-09",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/2/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}",
+          "/findings/3/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}",
+          "/findings/4/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-glm-20260921T152520Z.json",
+      "side": "glm",
+      "run": "20260921T152520Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 3,
+        "degraded": 3,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 9771,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "GLM-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "GLM-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "GLM-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "GLM-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "GLM-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "GLM-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/1/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/3/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/5/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M10-任意Driver/plan/_meta/review-glm-20260922T004543Z.json",
+      "side": "glm",
+      "run": "20260922T004543Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 1,
+        "degraded": 6,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 11077,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "GLM-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "GLM-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "GLM-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "GLM-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "GLM-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "GLM-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "GLM-07",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/1/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/2/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/3/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/4/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/5/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}",
+          "/findings/6/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "bad_front_matter",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验",
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M10b-入口资产与真载体验收/code/_meta/review-codex-20260925T060626Z.json",
+      "side": "codex",
+      "run": "20260925T060626Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 4,
+        "degraded": 1,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 13491,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/2/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M10b-入口资产与真载体验收/code/_meta/review-codex-20260925T064650Z.json",
+      "side": "codex",
+      "run": "20260925T064650Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 6,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 12099,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M2-skills与闸门/plan/_meta/review-gemini-20260910T221346Z.json",
+      "side": "gemini",
+      "run": "20260910T221346Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "ok",
+        "from": "whole",
+        "qualified": 6,
+        "degraded": 0,
+        "strippedEcho": [],
+        "strippedVendor": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "whole",
+          "len": 6823,
+          "syntax": "ok",
+          "strippedVendor": [
+            "toolAction",
+            "toolSummary"
+          ],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "AGY-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "AGY-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "AGY-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "AGY-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "AGY-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "AGY-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "ok"
+        }
+      ],
+      "parser": {
+        "ok": true,
+        "extractedFrom": "whole",
+        "findings": 6,
+        "ids": [
+          "AGY-01",
+          "AGY-02",
+          "AGY-03",
+          "AGY-04",
+          "AGY-05",
+          "AGY-06"
+        ],
+        "lostIds": []
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "gemini 侧当时被判 parse_fallback，但用当前解析器重试成功（6 条意见）——按结构化结论校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M4-M5实现/code/_meta/review-gemini-20260911T025329Z.json",
+      "side": "gemini",
+      "run": "20260911T025329Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "ok",
+        "from": "braces",
+        "qualified": 6,
+        "degraded": 0,
+        "strippedEcho": [],
+        "strippedVendor": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "whole",
+          "len": 13549,
+          "syntaxError": "Unexpected non-whitespace character after JSON at position 6785 (line 2 column 1)",
+          "syntax": "broken"
+        },
+        {
+          "from": "braces",
+          "len": 6784,
+          "syntax": "ok",
+          "strippedVendor": [
+            "toolAction",
+            "toolSummary"
+          ],
+          "strippedEcho": [],
+          "extraOther": [
+            "confidence"
+          ],
+          "rootErrors": [
+            "(根) must NOT have additional properties {\"additionalProperty\":\"confidence\"}"
+          ],
+          "root": "invalid"
+        },
+        {
+          "from": "braces",
+          "len": 6764,
+          "syntax": "ok",
+          "strippedVendor": [
+            "toolAction",
+            "toolSummary"
+          ],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "AGY-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "AGY-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "AGY-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "AGY-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "AGY-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "AGY-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "ok"
+        }
+      ],
+      "parser": {
+        "ok": true,
+        "extractedFrom": "braces",
+        "findings": 6,
+        "ids": [
+          "AGY-01",
+          "AGY-02",
+          "AGY-03",
+          "AGY-04",
+          "AGY-05",
+          "AGY-06"
+        ],
+        "lostIds": []
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "gemini 侧当时被判 parse_fallback，但用当前解析器重试成功（6 条意见）——按结构化结论校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M8-Codex审核者接入/plan/_meta/review-glm-20260915T105915Z.json",
+      "side": "glm",
+      "run": "20260915T105915Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "ok",
+        "from": "fence",
+        "qualified": 7,
+        "degraded": 0,
+        "strippedEcho": [
+          "topic",
+          "stage",
+          "role"
+        ],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 12473,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [
+            "topic",
+            "stage",
+            "role"
+          ],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "GLM-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "GLM-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "GLM-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "GLM-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "GLM-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "GLM-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 6,
+              "id": "GLM-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "ok"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"topic\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"role\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M8-Codex审核者接入/code/_meta/review-glm-20260915T024740Z.json",
+      "side": "glm",
+      "run": "20260915T024740Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "ok",
+        "from": "fence",
+        "qualified": 6,
+        "degraded": 0,
+        "strippedEcho": [
+          "topic",
+          "stage",
+          "role",
+          "rerun_index"
+        ],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 10265,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [
+            "topic",
+            "stage",
+            "role",
+            "rerun_index"
+          ],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "GLM-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "GLM-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "GLM-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "GLM-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "GLM-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "GLM-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "ok"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"topic\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"role\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"rerun_index\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M8-Codex审核者接入/code/_meta/review-glm-20260915T153603Z.json",
+      "side": "glm",
+      "run": "20260915T153603Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 9,
+        "degraded": 1,
+        "strippedEcho": [
+          "topic",
+          "stage",
+          "role"
+        ],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 13234,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [
+            "topic",
+            "stage",
+            "role"
+          ],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "GLM-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "GLM-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "GLM-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "GLM-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "GLM-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "GLM-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "GLM-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 7,
+              "id": "GLM-08",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 8,
+              "id": "GLM-09",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 9,
+              "id": "GLM-10",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"topic\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"role\"}",
+          "/findings/5/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M8-Codex审核者接入/code/_meta/review-glm-20260916T092815Z.json",
+      "side": "glm",
+      "run": "20260916T092815Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 2,
+        "degraded": 2,
+        "strippedEcho": [
+          "topic",
+          "stage",
+          "role"
+        ],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 9603,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [
+            "topic",
+            "stage",
+            "role"
+          ],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "GLM-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "GLM-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "GLM-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "GLM-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"topic\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"role\"}",
+          "/findings/0/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/3/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M9-ClaudeCode审核者接入/plan/_meta/review-codex-20260917T140800Z.json",
+      "side": "codex",
+      "run": "20260917T140800Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "whole",
+        "qualified": 11,
+        "degraded": 1,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "whole",
+          "len": 18770,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 8,
+              "id": "CODEX-09",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 9,
+              "id": "CODEX-10",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 10,
+              "id": "CODEX-11",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 11,
+              "id": "CODEX-12",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/11/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M9-ClaudeCode审核者接入/code/_meta/review-codex-20260917T231200Z.json",
+      "side": "codex",
+      "run": "20260917T231200Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 6,
+        "degraded": 2,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 13077,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/1/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/3/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M9-Hook当轮Driver保护集/code/_meta/review-codex-20260919T085742Z.json",
+      "side": "codex",
+      "run": "20260919T085742Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "ok",
+        "from": "fence",
+        "qualified": 3,
+        "degraded": 0,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 1,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 7966,
+          "syntaxError": "Bad escaped character in JSON at position 5872 (line 44 column 204)",
+          "syntax": "repaired",
+          "escapesRepaired": 1,
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "ok"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 语法错误：Bad escaped character in JSON at position 5872 (line 44 column 204)",
+        "errors": []
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M9-审核者启用与夹具收口/plan/_meta/review-codex-20260918T134236Z.json",
+      "side": "codex",
+      "run": "20260918T134236Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 7,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 14813,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/6 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M9-裁决件角色契约放宽/plan/_meta/review-codex-20260919T025314Z.json",
+      "side": "codex",
+      "run": "20260919T025314Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "ok",
+        "from": "whole",
+        "qualified": 7,
+        "degraded": 0,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 2,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "whole",
+          "len": 14792,
+          "syntaxError": "Bad escaped character in JSON at position 5600 (line 35 column 596)",
+          "syntax": "repaired",
+          "escapesRepaired": 2,
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "ok"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 语法错误：Bad escaped character in JSON at position 5600 (line 35 column 596)",
+        "errors": []
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M9-适配器本体与准入收口/code/_meta/review-codex-20260918T111815Z.json",
+      "side": "codex",
+      "run": "20260918T111815Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 6,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 12028,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/M9-验收实跑/code/_meta/review-codex-20260919T133957Z.json",
+      "side": "codex",
+      "run": "20260919T133957Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 5,
+        "degraded": 1,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 12256,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/5/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/zcode-provider配置注入/code/_meta/review-codex-20260921T080553Z.json",
+      "side": "codex",
+      "run": "20260921T080553Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 5,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 8116,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/zcode-provider配置注入/code/_meta/review-codex-20260921T083716Z.json",
+      "side": "codex",
+      "run": "20260921T083716Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 3,
+        "degraded": 2,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 8041,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/2/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/4/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/zcode-模型覆盖落点/code/_meta/review-codex-20260921T124003Z.json",
+      "side": "codex",
+      "run": "20260921T124003Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 5,
+        "degraded": 2,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 11164,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [
+                "evidence_extra"
+              ],
+              "errors": [
+                "(根) must NOT have additional properties {\"additionalProperty\":\"evidence_extra\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/1 must NOT have additional properties {\"additionalProperty\":\"evidence_extra\"}",
+          "/findings/4/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/事后收尾余项/code/_meta/review-codex-20260927T074234Z.json",
+      "side": "codex",
+      "run": "20260927T074234Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 7,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 13486,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/6 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/取消与失联的凭据准入核CLI/code/_meta/review-codex-20260928T235013Z.json",
+      "side": "codex",
+      "run": "20260928T235013Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 7,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 12215,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/6 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/护栏判定的落地缺口/plan/_meta/review-codex-20260916T113735Z.json",
+      "side": "codex",
+      "run": "20260916T113735Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 13,
+        "degraded": 1,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 19702,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 8,
+              "id": "CODEX-09",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 9,
+              "id": "CODEX-10",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 10,
+              "id": "CODEX-11",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 11,
+              "id": "CODEX-12",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 12,
+              "id": "CODEX-13",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 13,
+              "id": "CODEX-14",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/9/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/护栏判定的落地缺口/plan/_meta/review-codex-20260916T120829Z.json",
+      "side": "codex",
+      "run": "20260916T120829Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 12,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 16701,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 8,
+              "id": "CODEX-09",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 9,
+              "id": "CODEX-10",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 10,
+              "id": "CODEX-11",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 11,
+              "id": "CODEX-12",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/6 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/7 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/8 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/9 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/10 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/11 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/护栏判定的落地缺口/plan/_meta/review-codex-20260916T125341Z.json",
+      "side": "codex",
+      "run": "20260916T125341Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 9,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 10631,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 8,
+              "id": "CODEX-09",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/6 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/7 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/8 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/护栏判定的落地缺口/code/_meta/review-codex-20260916T154758Z.json",
+      "side": "codex",
+      "run": "20260916T154758Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 0,
+        "degraded": 10,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 17680,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 8,
+              "id": "CODEX-09",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 9,
+              "id": "CODEX-10",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/1 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/2 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/3 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/4 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/5 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/6 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/7 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/8 must have required property 'confidence' {\"missingProperty\":\"confidence\"}",
+          "/findings/9 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/护栏判定范围收窄/plan/_meta/review-glm-20260913T162911Z.json",
+      "side": "glm",
+      "run": "20260913T162911Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 3,
+        "degraded": 1,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 8208,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "GLM-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "GLM-02",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "location"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'location' {\"missingProperty\":\"location\"}"
+              ]
+            },
+            {
+              "index": 2,
+              "id": "GLM-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "GLM-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/1 must have required property 'location' {\"missingProperty\":\"location\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/探针扩展与事实回填/code/_meta/review-glm-20260914T222706Z.json",
+      "side": "glm",
+      "run": "20260914T222706Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 5,
+        "degraded": 2,
+        "strippedEcho": [
+          "topic",
+          "stage",
+          "role",
+          "run_id",
+          "rerun_index",
+          "evidence_ok"
+        ],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 12488,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [
+            "topic",
+            "stage",
+            "role",
+            "run_id",
+            "rerun_index",
+            "evidence_ok"
+          ],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "GLM-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "GLM-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "GLM-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "GLM-04",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+              ]
+            },
+            {
+              "index": 4,
+              "id": "GLM-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "GLM-06",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+                "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+              ]
+            },
+            {
+              "index": 6,
+              "id": "GLM-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"topic\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"stage\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"role\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"run_id\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"rerun_index\"}",
+          "(根对象) must NOT have additional properties {\"additionalProperty\":\"evidence_ok\"}",
+          "/findings/3/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/5/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}",
+          "/findings/5/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/组长已退组员仍在的准入/code/_meta/review-codex-20260929T041949Z.json",
+      "side": "codex",
+      "run": "20260929T041949Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "fallback:root_invalid",
+        "errors": [
+          "/schema must be equal to constant {\"allowedValue\":\"trivium.review.v1\"}"
+        ]
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 5805,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [
+            "/schema must be equal to constant {\"allowedValue\":\"trivium.review.v1\"}"
+          ],
+          "root": "invalid"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/schema must be equal to constant {\"allowedValue\":\"trivium.review.v1\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/配置v2与动态多审/plan/_meta/review-glm-20260913T172119Z.json",
+      "side": "glm",
+      "run": "20260913T172119Z",
+      "stage": "plan",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 7,
+        "degraded": 3,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 12992,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "GLM-01",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 1,
+              "id": "GLM-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "GLM-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "GLM-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "GLM-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "GLM-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 6,
+              "id": "GLM-07",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+              ]
+            },
+            {
+              "index": 7,
+              "id": "GLM-08",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+              ]
+            },
+            {
+              "index": 8,
+              "id": "GLM-09",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 9,
+              "id": "GLM-10",
+              "ok": false,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": [
+                "/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+              ]
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/6/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}",
+          "/findings/7/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}",
+          "/findings/9/severity must be equal to one of the allowed values {\"allowedValues\":[\"blocker\",\"major\",\"minor\",\"nit\"]}"
+        ]
+      },
+      "gate": {
+        "ok": false,
+        "failures": [
+          {
+            "code": "missing_disposition",
+            "ids": []
+          }
+        ],
+        "notes": [
+          "gemini 侧本轮失败，未产出结论（单审降级）",
+          "glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    },
+    {
+      "file": ".reviews/门面文档版本指针/code/_meta/review-codex-20260929T141008Z.json",
+      "side": "codex",
+      "run": "20260929T141008Z",
+      "stage": "code",
+      "predicted": {
+        "outcome": "partial",
+        "from": "fence",
+        "qualified": 8,
+        "degraded": 1,
+        "strippedEcho": [],
+        "strippedVendor": [],
+        "escapesRepaired": 0,
+        "lostIds": []
+      },
+      "candidates": [
+        {
+          "from": "fence",
+          "len": 16325,
+          "syntax": "ok",
+          "strippedVendor": [],
+          "strippedEcho": [],
+          "extraOther": [],
+          "rootErrors": [],
+          "root": "ok",
+          "findings": [
+            {
+              "index": 0,
+              "id": "CODEX-01",
+              "ok": false,
+              "idUsable": true,
+              "missing": [
+                "confidence"
+              ],
+              "extra": [],
+              "errors": [
+                "(根) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+              ]
+            },
+            {
+              "index": 1,
+              "id": "CODEX-02",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 2,
+              "id": "CODEX-03",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 3,
+              "id": "CODEX-04",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 4,
+              "id": "CODEX-05",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 5,
+              "id": "CODEX-06",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 6,
+              "id": "CODEX-07",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 7,
+              "id": "CODEX-08",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            },
+            {
+              "index": 8,
+              "id": "CODEX-09",
+              "ok": true,
+              "idUsable": true,
+              "missing": [],
+              "extra": [],
+              "errors": []
+            }
+          ],
+          "predicted": "partial"
+        }
+      ],
+      "parser": {
+        "ok": false,
+        "reason": "JSON 不符合 trivium.review.v1",
+        "errors": [
+          "/findings/0 must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        ]
+      },
+      "gate": {
+        "ok": true,
+        "failures": [],
+        "notes": [
+          "codex 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验"
+        ]
+      }
+    }
+  ]
+}

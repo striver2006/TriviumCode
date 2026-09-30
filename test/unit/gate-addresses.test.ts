@@ -49,6 +49,7 @@ async function check(addresses: string[], reviewDocs: readonly string[] | null) 
   const l = await layout();
   await putDisposition(l, addresses);
   return checkAdjudication({
+    expectedDegradedIds: [],
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review('AGY-01'), glm: review('GLM-01') },
     degraded: false, reviewDocs,

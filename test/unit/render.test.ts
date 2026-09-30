@@ -237,6 +237,7 @@ test('回归：超时的一侧不产生证据不足告警，避免把真正原�
   };
 
   const v = await judgeRun({
+    degraded: {},
     cfg: defaultConfig(),
     projectRoot: dir,
     archiveRootAbs: path.join(dir, '.reviews'),

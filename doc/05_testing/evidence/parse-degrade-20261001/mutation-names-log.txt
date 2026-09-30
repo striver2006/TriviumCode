@@ -1,0 +1,25 @@
+M1：fail=1 cancelled=0 0s ⇒ P5‴ 原文因非法转义要还原时，同一段里合法的「反斜杠 u 加四位十六进制」照旧按转义解析、不被双写
+M2：fail=1 cancelled=0 0s ⇒ P5′ Windows 路径形态（反斜杠后跟 users、再跟 glm）⇒ 两处按字面还原、计数 2
+M3：fail=3 cancelled=0 0s ⇒ P1 根带编排器回显的六个键 ⇒ 剥掉后整份合格，stripped_fields 逐项记下 ｜ P9 回显清单 = 全开分支 renderFrontMatter 的键集 − review.v1 根属性（逐项相等，不许放宽成子集） ｜ P9′ 回显清单 = render.ts 源码里 renderFrontMatter 能写出的键 − review.v1 根属性（源码静态枚举）
+M4：fail=1 cancelled=0 0s ⇒ P11 没有候选 ⇒ no_json_object；findings 不是数组 ⇒ root_invalid；多候选失败取走得最远那格
+M5：fail=4 cancelled=0 0s ⇒ P7 两条合格 + 缺 confidence + severity: medium ⇒ 合格两条进 review、两条降级并逐字段点名 ｜ P7′ 意见多带字段 ⇒ 降级、kind 为 extra ｜ P10② 首候选部分合格、后候选全合格但只是其子集 ⇒ 留前者，合格与降级编号都不丢 ｜ P10③ 首候选根不合、后候选部分合格 ⇒ 取后者
+M6：fail=1 cancelled=0 0s ⇒ P10② 首候选部分合格、后候选全合格但只是其子集 ⇒ 留前者，合格与降级编号都不丢
+M7：fail=1 cancelled=0 0s ⇒ P13 修复只随所选候选：首候选部分合格且带修复、后候选全合格无修复且覆盖 ⇒ 取后者、repairs 零值
+M8：fail=1 cancelled=0 0s ⇒ P11 没有候选 ⇒ no_json_object；findings 不是数组 ⇒ root_invalid；多候选失败取走得最远那格
+M9：fail=1 cancelled=0 0s ⇒ P12 checkReviewIntegrity 对降级编号判前缀与撞号；有降级意见时不算「零意见未说明」
+M10：fail=1 cancelled=0 74s ⇒ I2 全部意见都降级的一侧不是空结论（empty_review: false），整份回退的一侧记成因
+M11：fail=2 cancelled=0 74s ⇒ I1 部分意见不合 schema → 该侧仍 ok，只把那几条逐条降级，gate 按原编号要求裁决 ｜ I2 全部意见都降级的一侧不是空结论（empty_review: false），整份回退的一侧记成因
+M12：fail=3 cancelled=0 0s ⇒ G1 降级编号没有裁决 ⇒ missing_findings 点名它 ｜ G2 降级编号有裁决 ⇒ 通过；不在合格 ∪ 降级里的编号仍报多余 ｜ G3 降级意见「接受」也要写落点
+M13：fail=1 cancelled=0 0s ⇒ G4 一侧全部降级、没有 F 单元、裁决表为空 ⇒ unparsable_table（计划双审 r1 AGY-02）
+M14：fail=2 cancelled=0 0s ⇒ G10〔回归〕旧留痕重试：部分合格 ⇒ 仍按 F 编号（该轮没有逐条降级留痕） ｜ G10′ 部分合格维持回退口径时 note 说清原因
+M15：fail=1 cancelled=0 0s ⇒ G11 旧留痕重试：解析得出但编号前缀不属于本侧 ⇒ 仍按 F 编号（与 review.ts 同一道后盾）
+M16：fail=1 cancelled=0 0s ⇒ B3 zcode 侧有「不要调用 ExitPlanMode」一句，其余各家没有（按厂商判）
+M17：fail=2 cancelled=0 0s ⇒ R4 不合格意见一节：保留原编号、点名不合格字段、原值照录、多余字段列出 ｜ R4′ 不合格意见的值含竖线、反引号或很长时，表格仍是每行两列（代码双审 r1 CODEX-05 ≡ GLM-02）
+M18：fail=1 cancelled=0 0s ⇒ R2 审查员造成的修复 ⇒ front-matter 与横幅都说出来；只剥了厂商字段则都不渲染
+M19：fail=1 cancelled=0 0s ⇒ P15 根不合而对象拿得到 ⇒ F 单元按意见逐条出，每条单元含对应意见（代码双审 r1 CODEX-01）
+M20：fail=1 cancelled=0 0s ⇒ P12′ 降级意见的 evidence 同样与 consulted 交叉核对（代码双审 r1 GLM-01）
+M21：fail=1 cancelled=0 0s ⇒ R4′ 不合格意见的值含竖线、反引号或很长时，表格仍是每行两列（代码双审 r1 CODEX-05 ≡ GLM-02）
+M22：fail=1 cancelled=0 0s ⇒ B2′ 可选根字段的类型描述与 schema 一致（代码双审 r1 CODEX-06：不写死「是字符串数组」）
+M23：fail=1 cancelled=0 0s ⇒ R1 有降级意见 ⇒ front-matter 记 findings_degraded，findings_count 只数合格意见
+M24：fail=1 cancelled=0 0s ⇒ P9′ 回显清单 = render.ts 源码里 renderFrontMatter 能写出的键 − review.v1 根属性（源码静态枚举）
+exit=0

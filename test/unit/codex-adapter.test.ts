@@ -413,6 +413,7 @@ test('疑似写有人读出口：判定告警里点得出条数与理由', () =>
     min_tool_calls: 0, min_project_reads: 0, deny_paths: [],
   };
   const verdict = judgeSide(defaultConfig(), 'codex', result, null, req as never, {
+    degraded: [],
     archiveRootAbs: '/proj/.reviews', projectRoot: '/proj',
     triviumDir: '/proj/' + TRIVIUM_DIR, runRoot: '/tmp/runs',
     capability: COMMAND_TRACE_CAPABILITY,

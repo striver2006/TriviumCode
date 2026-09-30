@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.23
+> - **当前版本**：v1.0.24
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -531,7 +531,8 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `changes.diff` | 上者的人读便利副本 |
 | `review-<侧>-<run_id>.json` | **结构化结论。`gate --check` 的唯一事实来源** |
 | `review-<侧>-<run_id>.failed.json` | 该侧失败/超时的记录（绝不改名冒充对方） |
-| `review-<侧>-<run_id>.fallback-items.md` | 解析降级时的编号化待裁决单元 |
+| `review-<侧>-<run_id>.fallback-items.md` | 整份回退时的编号化待裁决单元（抬头写明成因） |
+| `review-<侧>-<run_id>.degraded.json` | 逐条降级的意见原样（v1.0.24 起）：哪几条、缺了 / 错了 / 多了哪个字段、审查员给的原值 |
 | `run-<run_id>.json` | 运行元数据：快照、漂移、生效模型、工具轨迹、留痕保护集 |
 
 **`_meta/` 和 `task.json` 是编排器独占的，任何时候都不许你改**——它们是留痕的锚，改了就能整枝绕过核验。
@@ -543,7 +544,9 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | 旗标 | 含义 |
 | :--- | :--- |
 | `degraded: true` | 这不是双审，只有一侧 |
-| `parse_fallback: true` | 该侧输出不合 schema，**不参与阻断判定**，但仍须逐条裁决 |
+| `parse_fallback: true` | 该侧连根对象都拿不到（成因见 `parse_fallback_cause`），**不参与阻断判定**，但仍须按 `<前缀>-F<n>` 逐条裁决 |
+| `findings_degraded: [编号…]` | 该侧这几条意见不合 schema、被**逐条降级**（v1.0.24 起）：见文档里「不合格意见」一节，按原编号裁决，不参与阻断 |
+| `parse_repairs` | 解析前做过无损修复：剥掉了审查员回显的编排器字段（`topic` 之类）、或还原了字符串里的非法转义。内容不受影响，记此一笔 |
 | `evidence_ok: false` | **证据不足：本侧不得计为合格双审的一半** |
 | `drift: true` | 审查期间工作树变动过 |
 
@@ -566,6 +569,24 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 解析器对写法很宽容：全角半角、`**AGY-01**` 的加粗、`` `AGY-01` `` 的反引号、列名同义词都能认。但对语义很严格：少一条、编号不存在、理由为空，一律退 2 并**点名缺口**。
 
 **不要静默忽略任何一条**。闸门会逐条比对期望编号与表中编号的双向差集。
+
+**逐条降级的意见怎么裁决**（v1.0.24 起，设计 v1.3.68 §6.5.1）：审查员交的结论里，个别意见缺了字段（最常见是缺 `confidence`）
+或取了表外值（`severity: medium`、`layer: docs`、`kind: risk` 之类）时，编排器只把那几条降级，其余照常。它们：
+
+- 用**原编号**（如 `CODEX-03`）写进裁决表，与合格意见一样逐条裁决，**接受也要写落点**；
+- 在审查文档的「不合格意见」一节里，逐字段标出缺失 / 不合法 / 多余，原值照录——内容仍是审查员的原话，按内容判断成不成立；
+- **不参与阻断与共同阻断**：其中声称 blocker 的，被驳回也不会触发 `joint_blocker_rejected`。`gate --check` 会出一条
+  `degraded_findings` 告警点名它们，提醒你这几条少了这层保护——觉得是真 blocker，照样接受并改。
+
+**整份回退**只在连根对象都拿不到时发生，这时仍按 `<前缀>-F<n>` 裁决：原文里的 JSON 对象拿得到（下表后三种成因）时，每条意见一个 F 单元；拿不到时按原文段落切。成因写在文档横幅与 front-matter 的 `parse_fallback_cause`：
+
+| 成因 | 意思 | 通常怎么办 |
+| :--- | :--- | :--- |
+| `no_json_object` | 回答里没有 JSON（glm 侧以 ExitPlanMode 收尾、或只写了一段小结） | 看原文有没有可裁决的意见；没有就如实写「本侧未交付意见」并考虑重跑 |
+| `json_syntax` | JSON 语法错，按字面还原非法转义后仍无法解析（缺逗号 / 括号） | 按 F 单元逐条裁决原文 |
+| `root_invalid` | 根对象不合：缺 `verdict` 之类必填字段、`schema` 值不对、带了不属于结论的字段 | 同上 |
+| `finding_unaddressable` | 有不合格意见的编号不可用（缺 `id` 或形状不对），没法按原编号裁决 | 同上 |
+| `foreign_prefix` | 意见编号前缀不属于本侧 | 同上；F 单元用本侧合法前缀重新编号 |
 
 ### 6.4 看复盘
 

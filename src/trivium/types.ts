@@ -1095,6 +1095,41 @@ export interface Review {
   consulted?: string[];
 }
 
+/**
+ * 逐条降级的意见（设计 §6.5 解析与降级）：根对象合法、这一条不合 `trivium.review.v1`。
+ *
+ * **不进 `Review.findings`**——那是「失去阻断资格」的全部实现：共同阻断、严重度计数、分歧度量
+ * 只读合格意见，一行不改就自动排除它。它另走旁路进裁决期望集（按原编号）与渲染（标出不合格字段）。
+ * `raw` 原样保留审查员给的对象，不补字段、不映射表外值。
+ */
+export interface DegradedFinding {
+  /** 在原 `findings` 数组里的下标 */
+  index: number;
+  /** 原编号。形状已过 schema 的 id pattern；编号不可用的意见不会降级，而是让整份回退（`finding_unaddressable`） */
+  id: string;
+  problems: { field: string; kind: 'missing' | 'invalid' | 'extra'; message: string }[];
+  raw: Record<string, unknown>;
+}
+
+/**
+ * 校验之前做过的无损修复（设计 §6.5）。**只随所选候选记录**，未入选候选的修复不留痕。
+ * 解析成功的侧在 run.json 里恒写（零值 = 解析过、没修）。
+ */
+export interface ParseRepairs {
+  /** 剥掉的根字段：厂商注入（`toolAction` / `toolSummary`）与编排器回显（front-matter 键）两类 */
+  stripped_fields: string[];
+  /** JSON 字符串里按字面还原的非法转义处数（只在 `JSON.parse` 失败时才试） */
+  unescaped_backslashes: number;
+}
+
+/** 整份回退的成因。`foreign_prefix` 由 review.ts 的前缀硬失败给出，解析器本身不产出 */
+export type FallbackCause =
+  | 'no_json_object'
+  | 'json_syntax'
+  | 'root_invalid'
+  | 'finding_unaddressable'
+  | 'foreign_prefix';
+
 // ─────────────────── 裁决件（trivium.disposition.v1，§6.6） ───────────────────
 
 export type Disposal = '接受' | '驳回' | '暂缓';
@@ -1195,6 +1230,15 @@ export interface CriticRunMeta {
   fail_reason?: string | null;
   empty_review?: boolean;
   parse_fallback?: boolean;
+  /**
+   * 逐条降级、修复与回退成因（设计 §6.5；本主题「解析回退逐条降级」）。三态落在结构上：
+   * `findings_degraded` / `parse_repairs` 在**解析成功**（status ok）的侧恒写，零值 = 解析过、没有；
+   * `parse_fallback_cause` 在 status 为 `parse_fallback` 的侧恒写；失败 / 超时侧与早于本主题的留痕三格都缺。
+   * gate 的降级期望集取自 `findings_degraded`（run.json 只写一次、在提交锚保护下）。
+   */
+  findings_degraded?: string[];
+  parse_repairs?: ParseRepairs;
+  parse_fallback_cause?: FallbackCause;
   session_id?: string | null;
   peer_deny_applied?: boolean;
   /**

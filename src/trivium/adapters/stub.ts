@@ -88,6 +88,13 @@ export type StubMode =
    */
   | 'wrong_prefix'
   /**
+   * **逐条降级**形态（设计 §6.5，解析回退逐条降级主题）：根对象合法、带编排器回显的根字段
+   * （`topic` / `stage` / `run_id`）、一处字符串里的非法转义（反斜杠加竖线），四条意见里两条合格、
+   * 一条缺 `confidence`、一条 `severity: medium`——取自普查里最常见的三类不合格。
+   * `note: 'all'` 时四条全部缺 `confidence`（「全部降级的一侧不是空结论」那一格用）。
+   */
+  | 'partial_schema'
+  /**
    * **「读即命令」形态**（§11.1，M8 第 2 步）：路径只存在于命令文本里，
    * `read_paths` 恒空、`tool_calls` 只有 `run_command`，且被拒的写不留痕。
    *
@@ -217,6 +224,41 @@ function sampleReview(critic: CriticId, n: number, prefixOverride?: string): str
     not_covered: ['这是桩数据'],
     consulted: ['src/stub.ts'],
   });
+}
+
+/** `partial_schema` 的输出：根合法、带回显字段与一处非法转义，部分意见不合 schema */
+function partialSchemaReview(critic: CriticId, allDegraded: boolean): string {
+  const prefix = agentById(critic)?.findingPrefix ?? critic.toUpperCase();
+  const f = (i: number, over: Record<string, unknown>, drop: string[] = []): Record<string, unknown> => {
+    const base: Record<string, unknown> = {
+      id: `${prefix}-${String(i).padStart(2, '0')}`,
+      severity: i === 1 ? 'blocker' : 'minor',
+      layer: 'plan',
+      kind: 'correctness',
+      location: `src/stub.ts:${10 + i}`,
+      problem: `桩注入的第 ${i} 条问题`,
+      evidence: '读了 src/stub.ts',
+      suggestion: '这是桩数据，不代表真实审查结论',
+      confidence: 'high',
+      ...over,
+    };
+    for (const k of [...drop, ...(allDegraded ? ['confidence'] : [])]) delete base[k];
+    return base;
+  };
+  const json = JSON.stringify({
+    schema: 'trivium.review.v1',
+    topic: '桩回显的主题',
+    stage: 'plan',
+    run_id: 'ECHOED',
+    verdict: 'request-changes',
+    summary: '桩适配器产出的部分合格结论：表格写法 a PIPE_ESC b。',
+    findings: [f(1, {}), f(2, {}), f(3, {}, ['confidence']), f(4, { severity: 'medium' })],
+    agreed: [],
+    not_covered: ['这是桩数据'],
+    consulted: ['src/stub.ts'],
+  });
+  // 占位换成 JSON 不认的转义（反斜杠加竖线）：解析器要在 JSON.parse 失败后按字面还原
+  return json.replace('PIPE_ESC', '\\|');
 }
 
 function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): CriticResult {
@@ -360,6 +402,11 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
             reason: spec.note ?? '桩注入的进程级失败',
             exitCode: 1,
           });
+        case 'partial_schema':
+          return {
+            ...baseResult(critic, req, spec),
+            raw_response_text: partialSchemaReview(critic, spec.note === 'all'),
+          };
         case 'dirty_output':
           return {
             ...baseResult(critic, req, spec),

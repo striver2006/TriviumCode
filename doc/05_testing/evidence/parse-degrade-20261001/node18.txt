@@ -1,0 +1,1796 @@
+# v18.20.8（/Users/chenzhenbo/.npm/_npx/83786caec519d9fd/node_modules/.bin/node；14 个相关文件）
+TAP version 13
+# Subtest: 桩经环境变量跨进程注入，worker 真的用了桩（AGY-05）
+ok 1 - 桩经环境变量跨进程注入，worker 真的用了桩（AGY-05）
+  ---
+  duration_ms: 2501.193625
+  ...
+# Subtest: plan 原稿在成功收尾后进 meta.artifacts（M10a 第 2 步 EV-55 §3.1.1）
+ok 2 - plan 原稿在成功收尾后进 meta.artifacts（M10a 第 2 步 EV-55 §3.1.1）
+  ---
+  duration_ms: 2507.01075
+  ...
+# Subtest: 作废轮（subject_drift）不登记原稿，之后原地改稿不触发锚②（EV-55 §3.1.1 时点）
+ok 3 - 作废轮（subject_drift）不登记原稿，之后原地改稿不触发锚②（EV-55 §3.1.1 时点）
+  ---
+  duration_ms: 2422.982417
+  ...
+# Subtest: 归档外被审对象（--plan-file doc/…）不登记，run.json 与 gate --check 都有标注（EV-55 §3.1.1 域）
+ok 4 - 归档外被审对象（--plan-file doc/…）不登记，run.json 与 gate --check 都有标注（EV-55 §3.1.1 域）
+  ---
+  duration_ms: 2702.790208
+  ...
+# Subtest: 未设注入变量时，绝不会用到桩
+ok 5 - 未设注入变量时，绝不会用到桩
+  ---
+  duration_ms: 156.672708
+  ...
+# Subtest: 生产路径检出注入变量会打醒目告警
+ok 6 - 生产路径检出注入变量会打醒目告警
+  ---
+  duration_ms: 158.476375
+  ...
+# Subtest: 一侧超时 → 降级单审，失败侧留 .failed.json 而非消失（AC-06）
+ok 7 - 一侧超时 → 降级单审，失败侧留 .failed.json 而非消失（AC-06）
+  ---
+  duration_ms: 2369.445667
+  ...
+# Subtest: 两侧返回非 JSON → 双双 parse_fallback，仍落盘
+ok 8 - 两侧返回非 JSON → 双双 parse_fallback，仍落盘
+  ---
+  duration_ms: 2400.005667
+  ...
+# Subtest: exit 0 但零工具调用 → 证据不足
+ok 9 - exit 0 但零工具调用 → 证据不足
+  ---
+  duration_ms: 2405.288875
+  ...
+# Subtest: 只读了送审材料自己 → 判 no_project_context
+ok 10 - 只读了送审材料自己 → 判 no_project_context
+  ---
+  duration_ms: 2398.688209
+  ...
+# Subtest: 审查期间无关业务文件被改 → unrelated，默认 warn，运行仍成功
+ok 11 - 审查期间无关业务文件被改 → unrelated，默认 warn，运行仍成功
+  ---
+  duration_ms: 2399.005458
+  ...
+# Subtest: 审查期间 --context 涉及的文件被改 → related，默认 fail
+ok 12 - 审查期间 --context 涉及的文件被改 → related，默认 fail
+  ---
+  duration_ms: 2403.913042
+  ...
+# Subtest: 审查中写项目文件 → readonly_breach，且 gate --check 判失败（接线端到端）
+ok 13 - 审查中写项目文件 → readonly_breach，且 gate --check 判失败（接线端到端）
+  ---
+  duration_ms: 2550.297375
+  ...
+# Subtest: 读到凭据文件 → 记一笔，但**不判作废**（分档：安全告警线）
+ok 14 - 读到凭据文件 → 记一笔，但**不判作废**（分档：安全告警线）
+  ---
+  duration_ms: 2373.532333
+  ...
+# Subtest: 读到对端审查产出 → 判作废（分档：会作废的那一档）
+ok 15 - 读到对端审查产出 → 判作废（分档：会作废的那一档）
+  ---
+  duration_ms: 2402.340875
+  ...
+# Subtest: 读自己那一侧的运行材料 → 完全不算命中（分档：②′ 己方材料）
+ok 16 - 读自己那一侧的运行材料 → 完全不算命中（分档：②′ 己方材料）
+  ---
+  duration_ms: 2403.642167
+  ...
+# Subtest: 读对端那一侧的运行输出 → 判作废（分档：② 对端输出）
+ok 17 - 读对端那一侧的运行输出 → 判作废（分档：② 对端输出）
+  ---
+  duration_ms: 2399.986333
+  ...
+# Subtest: 命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01）
+ok 18 - 命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01）
+  ---
+  duration_ms: 2395.874458
+  ...
+# Subtest: 命令里提到的是**自己那一侧**的运行材料 → 不作废（两条通道同一个谓词）
+ok 19 - 命令里提到的是**自己那一侧**的运行材料 → 不作废（两条通道同一个谓词）
+  ---
+  duration_ms: 2395.255667
+  ...
+# Subtest: 回读到的生效模型与请求不符时如实记录（AC-13）
+ok 20 - 回读到的生效模型与请求不符时如实记录（AC-13）
+  ---
+  duration_ms: 2400.0625
+  ...
+# Subtest: 默认 strict：一侧失败即整次中止（退 75）
+ok 21 - 默认 strict：一侧失败即整次中止（退 75）
+  ---
+  duration_ms: 2399.240958
+  ...
+# Subtest: --allow-single：一侧失败不中止，产出单审并标降级
+ok 22 - --allow-single：一侧失败不中止，产出单审并标降级
+  ---
+  duration_ms: 2400.753291
+  ...
+# Subtest: 配置关掉 allow_single_flag 时，命令行也开不回来
+ok 23 - 配置关掉 allow_single_flag 时，命令行也开不回来
+  ---
+  duration_ms: 2403.505292
+  ...
+# Subtest: 两侧都失败：无论什么策略都中止
+ok 24 - 两侧都失败：无论什么策略都中止
+  ---
+  duration_ms: 2408.565
+  ...
+# Subtest: --critics 单侧：真的只跑那一侧，且不记降级（AC-22 的核心断言）
+ok 25 - --critics 单侧：真的只跑那一侧，且不记降级（AC-22 的核心断言）
+  ---
+  duration_ms: 2361.614375
+  ...
+# Subtest: 停点话术：调用写法与「不得修改业务文件」都按当轮 Driver（非缺省、无 Hook、非斜杠写法）
+ok 26 - 停点话术：调用写法与「不得修改业务文件」都按当轮 Driver（非缺省、无 Hook、非斜杠写法）
+  ---
+  duration_ms: 2596.618667
+  ...
+# Subtest: 缺省（不给 --critics）：仍按 default_critics 跑满两侧
+ok 27 - 缺省（不给 --critics）：仍按 default_critics 跑满两侧
+  ---
+  duration_ms: 2367.517833
+  ...
+# Subtest: 跨命令：resolve(--critics) 的输出照抄进 --start 能启动
+ok 28 - 跨命令：resolve(--critics) 的输出照抄进 --start 能启动
+  ---
+  duration_ms: 353.140833
+  ...
+# Subtest: 跨命令：resolve(--only) 的输出照抄进 --start 也能启动（旧别名不得必败）
+ok 29 - 跨命令：resolve(--only) 的输出照抄进 --start 也能启动（旧别名不得必败）
+  ---
+  duration_ms: 336.461334
+  ...
+# Subtest: --critics 拼错：退 64 且不产生任何工件
+ok 30 - --critics 拼错：退 64 且不产生任何工件
+  ---
+  duration_ms: 162.7715
+  ...
+# Subtest: 冒用对侧前缀 → 该侧转 parse_fallback，不得作为结构化结论落盘
+ok 31 - 冒用对侧前缀 → 该侧转 parse_fallback，不得作为结构化结论落盘
+  ---
+  duration_ms: 2373.885416
+  ...
+# Subtest: 自造未登记前缀 → 同样转 parse_fallback，且重编号用本侧合法前缀
+ok 32 - 自造未登记前缀 → 同样转 parse_fallback，且重编号用本侧合法前缀
+  ---
+  duration_ms: 2400.638792
+  ...
+# Subtest: I1 部分意见不合 schema → 该侧仍 ok，只把那几条逐条降级，gate 按原编号要求裁决
+ok 33 - I1 部分意见不合 schema → 该侧仍 ok，只把那几条逐条降级，gate 按原编号要求裁决
+  ---
+  duration_ms: 2674.026042
+  ...
+# Subtest: I2 全部意见都降级的一侧不是空结论（empty_review: false），整份回退的一侧记成因
+ok 34 - I2 全部意见都降级的一侧不是空结论（empty_review: false），整份回退的一侧记成因
+  ---
+  duration_ms: 2371.168167
+  ...
+# Subtest: 构建标识告警经收尾接线落进 run.json 的 gate.warnings，gate --check 转述为 run_warning（r2 CODEX-06）
+ok 35 - 构建标识告警经收尾接线落进 run.json 的 gate.warnings，gate --check 转述为 run_warning（r2 CODEX-06）
+  ---
+  duration_ms: 2551.682875
+  ...
+# Subtest: B1 四个枚举字段的合法取值逐项列出，且与 review.v1.json 一致
+ok 36 - B1 四个枚举字段的合法取值逐项列出，且与 review.v1.json 一致
+  ---
+  duration_ms: 0.972
+  ...
+# Subtest: B2 意见全部必填字段都列出、个数随 schema；根必填与 verdict 取值列出；要求裸 JSON、不加 schema 外字段
+ok 37 - B2 意见全部必填字段都列出、个数随 schema；根必填与 verdict 取值列出；要求裸 JSON、不加 schema 外字段
+  ---
+  duration_ms: 0.148291
+  ...
+# Subtest: B3 zcode 侧有「不要调用 ExitPlanMode」一句，其余各家没有（按厂商判）
+ok 38 - B3 zcode 侧有「不要调用 ExitPlanMode」一句，其余各家没有（按厂商判）
+  ---
+  duration_ms: 0.207958
+  ...
+# Subtest: B4〔回归〕八段结构不变：第 6 节仍在第 5 与第 7 节之间
+ok 39 - B4〔回归〕八段结构不变：第 6 节仍在第 5 与第 7 节之间
+  ---
+  duration_ms: 0.127583
+  ...
+# Subtest: B5〔回归〕codex argv 不含 --output-schema（EV-124：本机 qwen provider 实测不生效；改动须先按同一装置重测）
+ok 40 - B5〔回归〕codex argv 不含 --output-schema（EV-124：本机 qwen provider 实测不生效；改动须先按同一装置重测）
+  ---
+  duration_ms: 0.052
+  ...
+# Subtest: 八个段落按固定顺序出现，一个不缺
+ok 41 - 八个段落按固定顺序出现，一个不缺
+  ---
+  duration_ms: 1.554125
+  ...
+# Subtest: 提示语逐字嵌入（FR-20 / AC-09 的唯一落点）
+ok 42 - 提示语逐字嵌入（FR-20 / AC-09 的唯一落点）
+  ---
+  duration_ms: 0.177459
+  ...
+# Subtest: 提示语多行时逐行加引用前缀，不丢内容
+ok 43 - 提示语多行时逐行加引用前缀，不丢内容
+  ---
+  duration_ms: 0.0935
+  ...
+# Subtest: 无提示语时明确说明，不留空段
+ok 44 - 无提示语时明确说明，不留空段
+  ---
+  duration_ms: 0.078292
+  ...
+# Subtest: 两侧编号前缀不冲突，且镜头不同
+ok 45 - 两侧编号前缀不冲突，且镜头不同
+  ---
+  duration_ms: 0.170167
+  ...
+# Subtest: 禁读清单逐个列出路径，便于与轨迹逐条对账
+ok 46 - 禁读清单逐个列出路径，便于与轨迹逐条对账
+  ---
+  duration_ms: 0.124625
+  ...
+# Subtest: 禁读清单为空时给出明确说明而非空列表
+ok 47 - 禁读清单为空时给出明确说明而非空列表
+  ---
+  duration_ms: 0.07825
+  ...
+# Subtest: 禁读清单按处置分两节：作废档与告警档各自说清后果
+ok 48 - 禁读清单按处置分两节：作废档与告警档各自说清后果
+  ---
+  duration_ms: 0.280875
+  ...
+# Subtest: 运行根这棵混合树要点明「你自己那一份不算命中」
+ok 49 - 运行根这棵混合树要点明「你自己那一份不算命中」
+  ---
+  duration_ms: 0.248083
+  ...
+# Subtest: 禁读集里没有运行根时，不凭空造一段混合树说明
+ok 50 - 禁读集里没有运行根时，不凭空造一段混合树说明
+  ---
+  duration_ms: 0.147584
+  ...
+# Subtest: 具名放行的条目根本不进禁读清单
+ok 51 - 具名放行的条目根本不进禁读清单
+  ---
+  duration_ms: 0.079625
+  ...
+# Subtest: 被审对象以分隔符包裹并声明是数据不是指令（防提示注入）
+ok 52 - 被审对象以分隔符包裹并声明是数据不是指令（防提示注入）
+  ---
+  duration_ms: 0.076125
+  ...
+# Subtest: 被审对象给真实路径与哈希，并要求亲自读仓库
+ok 53 - 被审对象给真实路径与哈希，并要求亲自读仓库
+  ---
+  duration_ms: 0.274208
+  ...
+# Subtest: 写明项目文件读取下限与工具调用下限（AC-11 / AC-05）
+ok 54 - 写明项目文件读取下限与工具调用下限（AC-11 / AC-05）
+  ---
+  duration_ms: 0.314417
+  ...
+# Subtest: 绝不包含对方结论或摘录（FR-10）
+ok 55 - 绝不包含对方结论或摘录（FR-10）
+  ---
+  duration_ms: 0.119
+  ...
+# Subtest: 己方历史产出会列出，让审查员知道上一轮说过什么
+ok 56 - 己方历史产出会列出，让审查员知道上一轮说过什么
+  ---
+  duration_ms: 0.094625
+  ...
+# Subtest: 提取路径式引用：只认常见源码目录前缀，去重排序
+ok 57 - 提取路径式引用：只认常见源码目录前缀，去重排序
+  ---
+  duration_ms: 0.42
+  ...
+# Subtest: 提取路径式引用：不把章节号误当路径
+ok 58 - 提取路径式引用：不把章节号误当路径
+  ---
+  duration_ms: 0.096459
+  ...
+# Subtest: 节选：短文本原样返回
+ok 59 - 节选：短文本原样返回
+  ---
+  duration_ms: 0.052958
+  ...
+# Subtest: 节选：超长时截断头尾并提示读全文
+ok 60 - 节选：超长时截断头尾并提示读全文
+  ---
+  duration_ms: 0.17025
+  ...
+# Subtest: 阶段要点并入第 5 段，不另起第 9 段
+ok 61 - 阶段要点并入第 5 段，不另起第 9 段
+  ---
+  duration_ms: 0.112375
+  ...
+# Subtest: 缺 prompts/ 文件时第 5 段只含镜头，不报错
+ok 62 - 缺 prompts/ 文件时第 5 段只含镜头，不报错
+  ---
+  duration_ms: 0.074292
+  ...
+# Subtest: loadStagePrompt 剥掉写给维护者的 HTML 注释
+ok 63 - loadStagePrompt 剥掉写给维护者的 HTML 注释
+  ---
+  duration_ms: 11.743833
+  ...
+# Subtest: loadStagePrompt 文件不存在返回 null——旧版安装不该因此跑不起来
+ok 64 - loadStagePrompt 文件不存在返回 null——旧版安装不该因此跑不起来
+  ---
+  duration_ms: 1.290292
+  ...
+# Subtest: loadStagePrompt 只剩注释时也返回 null
+ok 65 - loadStagePrompt 只剩注释时也返回 null
+  ---
+  duration_ms: 2.095875
+  ...
+# Subtest: 随仓库分发的三份阶段要点都能加载，且不含写给维护者的注释
+ok 66 - 随仓库分发的三份阶段要点都能加载，且不含写给维护者的注释
+  ---
+  duration_ms: 0.756625
+  ...
+# Subtest: 任务目标非空时渲染进第 4 段，且不与第 2 段的审查焦点混淆
+ok 67 - 任务目标非空时渲染进第 4 段，且不与第 2 段的审查焦点混淆
+  ---
+  duration_ms: 0.275084
+  ...
+# Subtest: 任务目标为空时该行整体消失，第 4 段其余内容完好
+ok 68 - 任务目标为空时该行整体消失，第 4 段其余内容完好
+  ---
+  duration_ms: 0.138291
+  ...
+# Subtest: argv：只读旗标一律由探针结论构造，不写死
+ok 69 - argv：只读旗标一律由探针结论构造，不写死
+  ---
+  duration_ms: 0.74175
+  ...
+# Subtest: argv：探针没给只读旗标时不凭空补一个默认值
+ok 70 - argv：探针没给只读旗标时不凭空补一个默认值
+  ---
+  duration_ms: 0.051125
+  ...
+# Subtest: argv：prompt 走 stdin（末尾 `-`），不进 argv
+ok 71 - argv：prompt 走 stdin（末尾 `-`），不进 argv
+  ---
+  duration_ms: 0.035375
+  ...
+# Subtest: 事件流：顶层 error 事件要被认出来（跨家族调用的唯一错误信息来源）
+ok 72 - 事件流：顶层 error 事件要被认出来（跨家族调用的唯一错误信息来源）
+  ---
+  duration_ms: 0.053708
+  ...
+# Subtest: 事件流：未知 item 类型跳过而不抛（reasoning 就是实测新出现的）
+ok 73 - 事件流：未知 item 类型跳过而不抛（reasoning 就是实测新出现的）
+  ---
+  duration_ms: 0.1
+  ...
+# Subtest: 事件流：只有成功执行的命令进写判据的入参
+ok 74 - 事件流：只有成功执行的命令进写判据的入参
+  ---
+  duration_ms: 0.052458
+  ...
+# Subtest: 回读：session_meta 给出家族与生效模型
+ok 75 - 回读：session_meta 给出家族与生效模型
+  ---
+  duration_ms: 0.056209
+  ...
+# Subtest: 回读：拿不到就是拿不到，不得回落成别的值
+ok 76 - 回读：拿不到就是拿不到，不得回落成别的值
+  ---
+  duration_ms: 0.041292
+  ...
+# Subtest: 裁剪：MCP、plugins、notify、他人项目信任表一律剥掉
+ok 77 - 裁剪：MCP、plugins、notify、他人项目信任表一律剥掉
+  ---
+  duration_ms: 0.112333
+  ...
+# Subtest: 裁剪：模型相关键与 provider 段必须留下（否则副本跑不起来）
+ok 78 - 裁剪：模型相关键与 provider 段必须留下（否则副本跑不起来）
+  ---
+  duration_ms: 0.089959
+  ...
+# Subtest: 重写：~/ 路径改为副本内绝对路径，并把文件拷进来
+ok 79 - 重写：~/ 路径改为副本内绝对路径，并把文件拷进来
+  ---
+  duration_ms: 9.575292
+  ...
+# Subtest: 重写：目标不存在或不是普通文件时留痕跳过，不抛异常
+ok 80 - 重写：目标不存在或不是普通文件时留痕跳过，不抛异常
+  ---
+  duration_ms: 3.053
+  ...
+# Subtest: 准备：产出独立 CODEX_HOME 与独立 HOME，凭据权限收紧到 600
+ok 81 - 准备：产出独立 CODEX_HOME 与独立 HOME，凭据权限收紧到 600
+  ---
+  duration_ms: 5.922791
+  ...
+# Subtest: 能力声明：codex 是 command-trace，且被拒操作不留痕
+ok 82 - 能力声明：codex 是 command-trace，且被拒操作不留痕
+  ---
+  duration_ms: 0.242083
+  ...
+# Subtest: 能力对账：声明与探针实测不符时必须被点名
+ok 83 - 能力对账：声明与探针实测不符时必须被点名
+  ---
+  duration_ms: 0.3565
+  ...
+# Subtest: 能力对账：探针没测出结论（null）时不报不符
+ok 84 - 能力对账：探针没测出结论（null）时不报不符
+  ---
+  duration_ms: 0.075416
+  ...
+# Subtest: 组装：回读到生效模型 → 来源记 trace
+ok 85 - 组装：回读到生效模型 → 来源记 trace
+  ---
+  duration_ms: 1.52375
+  ...
+# Subtest: 组装：回读不到 → 记 unverified，且 model_effective 保持 null
+ok 86 - 组装：回读不到 → 记 unverified，且 model_effective 保持 null
+  ---
+  duration_ms: 0.319875
+  ...
+# Subtest: 组装：read_paths 恒空且 command_texts 拿全集（含失败的命令）
+ok 87 - 组装：read_paths 恒空且 command_texts 拿全集（含失败的命令）
+  ---
+  duration_ms: 0.877459
+  ...
+# Subtest: 组装：项目内的成功写入进 write_events，项目外进疑似档
+ok 88 - 组装：项目内的成功写入进 write_events，项目外进疑似档
+  ---
+  duration_ms: 0.57875
+  ...
+# Subtest: 可用性：五档不可用理由互不混淆
+ok 89 - 可用性：五档不可用理由互不混淆
+  ---
+  duration_ms: 0.535083
+  ...
+# Subtest: 可用性：配置的 profile 在本机不存在 → 拒，并列出已探到的
+ok 90 - 可用性：配置的 profile 在本机不存在 → 拒，并列出已探到的
+  ---
+  duration_ms: 0.079584
+  ...
+# Subtest: 可用性：profile 存在但该家族没有凭据 → 拒，并给出可粘贴的落点
+ok 91 - 可用性：profile 存在但该家族没有凭据 → 拒，并给出可粘贴的落点
+  ---
+  duration_ms: 0.170958
+  ...
+# Subtest: 可用性：探针齐备且家族有凭据 → 可用
+ok 92 - 可用性：探针齐备且家族有凭据 → 可用
+  ---
+  duration_ms: 0.188
+  ...
+# Subtest: 疑似写有人读出口：判定告警里点得出条数与理由
+ok 93 - 疑似写有人读出口：判定告警里点得出条数与理由
+  ---
+  duration_ms: 1.092208
+  ...
+# Subtest: 探活指纹：基底 config.toml 的 provider 段参与指纹，其余杂项不参与
+ok 94 - 探活指纹：基底 config.toml 的 provider 段参与指纹，其余杂项不参与
+  ---
+  duration_ms: 0.07275
+  ...
+# Subtest: 组装：provider 回读值进结果，且与生效模型是两个独立维度
+ok 95 - 组装：provider 回读值进结果，且与生效模型是两个独立维度
+  ---
+  duration_ms: 0.035125
+  ...
+# Subtest: 组装：profile 是请求值、provider 是回读值，两者绝不互相渗透
+ok 96 - 组装：profile 是请求值、provider 是回读值，两者绝不互相渗透
+  ---
+  duration_ms: 0.031667
+  ...
+# Subtest: 组装：回读不到 provider 时记 null，不拿请求值顶替
+ok 97 - 组装：回读不到 provider 时记 null，不拿请求值顶替
+  ---
+  duration_ms: 0.075
+  ...
+# Subtest: 目录：按本次 profile 取，不再拿基底目录顶替
+ok 98 - 目录：按本次 profile 取，不再拿基底目录顶替
+  ---
+  duration_ms: 0.107334
+  ...
+# Subtest: 目录：没配 profile → 用基底的**可见**子集，不是含隐藏项的全集
+ok 99 - 目录：没配 profile → 用基底的**可见**子集，不是含隐藏项的全集
+  ---
+  duration_ms: 0.051875
+  ...
+# Subtest: 目录：旧留痕 + 没配 profile → 回落基底，绝不降级成放行
+ok 100 - 目录：旧留痕 + 没配 profile → 回落基底，绝不降级成放行
+  ---
+  duration_ms: 0.048333
+  ...
+# Subtest: 目录：旧留痕 + 配了 profile → fallback（回落且说出来），不静默
+ok 101 - 目录：旧留痕 + 配了 profile → fallback（回落且说出来），不静默
+  ---
+  duration_ms: 0.044
+  ...
+# Subtest: 目录：本 profile 采集失败 → fallback（回落且说出原因），不是 unverifiable
+ok 102 - 目录：本 profile 采集失败 → fallback（回落且说出原因），不是 unverifiable
+  ---
+  duration_ms: 0.051709
+  ...
+# Subtest: 目录：采到了、确实为空 → unverifiable（这一格才是「测出来没有」）
+ok 103 - 目录：采到了、确实为空 → unverifiable（这一格才是「测出来没有」）
+  ---
+  duration_ms: 0.045541
+  ...
+# Subtest: 目录：探针没有本 profile 的任何结论 → fallback，不假装「目录为空」
+ok 104 - 目录：探针没有本 profile 的任何结论 → fallback，不假装「目录为空」
+  ---
+  duration_ms: 0.037417
+  ...
+# Subtest: 解析：隐藏项进 models、不进 visible
+ok 105 - 解析：隐藏项进 models、不进 visible
+  ---
+  duration_ms: 0.190375
+  ...
+# Subtest: 解析：visibility 字段缺失按可见处理（宁可少拦一个，不因厂商加字段而全表不可用）
+ok 106 - 解析：visibility 字段缺失按可见处理（宁可少拦一个，不因厂商加字段而全表不可用）
+  ---
+  duration_ms: 0.050959
+  ...
+# Subtest: 解析：不是 JSON → null（与「解析出空目录」不是一回事）
+ok 107 - 解析：不是 JSON → null（与「解析出空目录」不是一回事）
+  ---
+  duration_ms: 0.042458
+  ...
+# Subtest: provider：base_url 归一到 host，userinfo 与 query 一律不入库
+ok 108 - provider：base_url 归一到 host，userinfo 与 query 一律不入库
+  ---
+  duration_ms: 0.158125
+  ...
+# Subtest: 契约形态（两份审查文档文件名）⇒ 通过
+ok 109 - 契约形态（两份审查文档文件名）⇒ 通过
+  ---
+  duration_ms: 40.597916
+  ...
+# Subtest: 意见编号形态 ⇒ bad_front_matter，文案点名期望的文件名并给两档出口
+ok 110 - 意见编号形态 ⇒ bad_front_matter，文案点名期望的文件名并给两档出口
+  ---
+  duration_ms: 3.127
+  ...
+# Subtest: 少一份 ⇒ 红，点名缺哪份
+ok 111 - 少一份 ⇒ 红，点名缺哪份
+  ---
+  duration_ms: 2.141916
+  ...
+# Subtest: 多列一份不属本轮的文档（上一轮的名字）⇒ 红
+ok 112 - 多列一份不属本轮的文档（上一轮的名字）⇒ 红
+  ---
+  duration_ms: 2.972833
+  ...
+# Subtest: 重复 ⇒ 红
+ok 113 - 重复 ⇒ 红
+  ---
+  duration_ms: 2.832083
+  ...
+# Subtest: 项目根相对路径（glm 按模板照填的形态）⇒ 通过；指到别的阶段 ⇒ 红
+ok 114 - 项目根相对路径（glm 按模板照填的形态）⇒ 通过；指到别的阶段 ⇒ 红
+  ---
+  duration_ms: 3.679375
+  ...
+# Subtest: 期望集为空（运行元数据读不出 / 没有一侧落了审查文档）⇒ 只核非空并告警，不判红
+ok 115 - 期望集为空（运行元数据读不出 / 没有一侧落了审查文档）⇒ 只核非空并告警，不判红
+  ---
+  duration_ms: 6.736792
+  ...
+# Subtest: 期望集：ok 与 parse_fallback 侧计入，failed / timeout 侧不计（单审降级只列幸存侧）
+ok 116 - 期望集：ok 与 parse_fallback 侧计入，failed / timeout 侧不计（单审降级只列幸存侧）
+  ---
+  duration_ms: 0.863958
+  ...
+# Subtest: 期望集：Driver 原稿、裁决件、_meta、别的阶段一律不算；撞名抬升与跨零点按登记的实际名字
+ok 117 - 期望集：Driver 原稿、裁决件、_meta、别的阶段一律不算；撞名抬升与跨零点按登记的实际名字
+  ---
+  duration_ms: 0.231916
+  ...
+# Subtest: 期望集：没有一侧落了审查文档（全侧失败 / 跳过轮 / 骨架）⇒ 空集
+ok 118 - 期望集：没有一侧落了审查文档（全侧失败 / 跳过轮 / 骨架）⇒ 空集
+  ---
+  duration_ms: 0.231792
+  ...
+# Subtest: G1 降级编号没有裁决 ⇒ missing_findings 点名它
+ok 119 - G1 降级编号没有裁决 ⇒ missing_findings 点名它
+  ---
+  duration_ms: 47.861375
+  ...
+# Subtest: G2 降级编号有裁决 ⇒ 通过；不在合格 ∪ 降级里的编号仍报多余
+ok 120 - G2 降级编号有裁决 ⇒ 通过；不在合格 ∪ 降级里的编号仍报多余
+  ---
+  duration_ms: 7.831541
+  ...
+# Subtest: G3 降级意见「接受」也要写落点
+ok 121 - G3 降级意见「接受」也要写落点
+  ---
+  duration_ms: 2.757708
+  ...
+# Subtest: G4 一侧全部降级、没有 F 单元、裁决表为空 ⇒ unparsable_table（计划双审 r1 AGY-02）
+ok 122 - G4 一侧全部降级、没有 F 单元、裁决表为空 ⇒ unparsable_table（计划双审 r1 AGY-02）
+  ---
+  duration_ms: 3.555333
+  ...
+# Subtest: G5〔回归〕两侧同位置的 blocker 其一降级 ⇒ 不算共同来源，双双驳回也不触发共同阻断
+ok 123 - G5〔回归〕两侧同位置的 blocker 其一降级 ⇒ 不算共同来源，双双驳回也不触发共同阻断
+  ---
+  duration_ms: 8.724334
+  ...
+# Subtest: G6 有降级意见 ⇒ degraded_findings 告警列全编号，并说清不参与阻断
+ok 124 - G6 有降级意见 ⇒ degraded_findings 告警列全编号，并说清不参与阻断
+  ---
+  duration_ms: 2.21975
+  ...
+# Subtest: G7 降级编号取自 run.json 的 findings_degraded
+ok 125 - G7 降级编号取自 run.json 的 findings_degraded
+  ---
+  duration_ms: 26.4025
+  ...
+# Subtest: G8 run.json 读不出时退而读旁路 .degraded.json
+ok 126 - G8 run.json 读不出时退而读旁路 .degraded.json
+  ---
+  duration_ms: 5.004167
+  ...
+# Subtest: G9 旧留痕重试：只因回显字段回退的结论 ⇒ 全合格，按结构化校验（既有行为）
+ok 127 - G9 旧留痕重试：只因回显字段回退的结论 ⇒ 全合格，按结构化校验（既有行为）
+  ---
+  duration_ms: 27.946583
+  ...
+# Subtest: G10〔回归〕旧留痕重试：部分合格 ⇒ 仍按 F 编号（该轮没有逐条降级留痕）
+ok 128 - G10〔回归〕旧留痕重试：部分合格 ⇒ 仍按 F 编号（该轮没有逐条降级留痕）
+  ---
+  duration_ms: 7.440709
+  ...
+# Subtest: G10′ 部分合格维持回退口径时 note 说清原因
+ok 129 - G10′ 部分合格维持回退口径时 note 说清原因
+  ---
+  duration_ms: 5.99925
+  ...
+# Subtest: G11 旧留痕重试：解析得出但编号前缀不属于本侧 ⇒ 仍按 F 编号（与 review.ts 同一道后盾）
+ok 130 - G11 旧留痕重试：解析得出但编号前缀不属于本侧 ⇒ 仍按 F 编号（与 review.ts 同一道后盾）
+  ---
+  duration_ms: 3.957625
+  ...
+# Subtest: 全部裁决齐备 → 通过
+ok 131 - 全部裁决齐备 → 通过
+  ---
+  duration_ms: 58.757875
+  ...
+# Subtest: 缺裁决件 → missing_disposition，并提示即使全驳回也要产出
+ok 132 - 缺裁决件 → missing_disposition，并提示即使全驳回也要产出
+  ---
+  duration_ms: 1.359084
+  ...
+# Subtest: 删掉一条裁决 → missing_findings 并列出编号（AC-12）
+ok 133 - 删掉一条裁决 → missing_findings 并列出编号（AC-12）
+  ---
+  duration_ms: 3.317375
+  ...
+# Subtest: 裁决了不存在的编号 → unknown_findings
+ok 134 - 裁决了不存在的编号 → unknown_findings
+  ---
+  duration_ms: 4.0965
+  ...
+# Subtest: AGY-04 的关键点：fallback 虚拟编号不被判「多余 id」
+ok 135 - AGY-04 的关键点：fallback 虚拟编号不被判「多余 id」
+  ---
+  duration_ms: 4.640875
+  ...
+# Subtest: fallback 单元少裁一条 → missing_findings 点名 <前缀>-F<n>
+ok 136 - fallback 单元少裁一条 → missing_findings 点名 <前缀>-F<n>
+  ---
+  duration_ms: 3.89375
+  ...
+# Subtest: 关键用例：两侧都 parse_fallback 时空裁决表不得通过
+ok 137 - 关键用例：两侧都 parse_fallback 时空裁决表不得通过
+  ---
+  duration_ms: 2.039583
+  ...
+# Subtest: 裁了清单之外的 fallback 编号 → unknown_findings
+ok 138 - 裁了清单之外的 fallback 编号 → unknown_findings
+  ---
+  duration_ms: 1.721833
+  ...
+# Subtest: run.json 记录已产出结论、结构化结论却读不到 → missing_review_json
+ok 139 - run.json 记录已产出结论、结构化结论却读不到 → missing_review_json
+  ---
+  duration_ms: 2.213875
+  ...
+# Subtest: run.json 的 gate.warnings 作为 run_warning 透传，缺裁决件的早退路径也带着（代码双审 r2 GLM-04）
+ok 140 - run.json 的 gate.warnings 作为 run_warning 透传，缺裁决件的早退路径也带着（代码双审 r2 GLM-04）
+  ---
+  duration_ms: 2.587042
+  ...
+# Subtest: AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求落点
+ok 141 - AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求落点
+  ---
+  duration_ms: 2.405583
+  ...
+# Subtest: AGY-04 的关键点：findings 为空数组显式合法
+ok 142 - AGY-04 的关键点：findings 为空数组显式合法
+  ---
+  duration_ms: 4.465291
+  ...
+# Subtest: 理由为空 → empty_reason（三种裁决都要理由）
+ok 143 - 理由为空 → empty_reason（三种裁决都要理由）
+  ---
+  duration_ms: 7.234208
+  ...
+# Subtest: 接受但无落点 → missing_action
+ok 144 - 接受但无落点 → missing_action
+  ---
+  duration_ms: 2.03575
+  ...
+# Subtest: 驳回不要求落点
+ok 145 - 驳回不要求落点
+  ---
+  duration_ms: 3.082667
+  ...
+# Subtest: 空洞理由默认只 warn（reason_policy=warn）
+ok 146 - 空洞理由默认只 warn（reason_policy=warn）
+  ---
+  duration_ms: 2.218291
+  ...
+# Subtest: reason_policy=hard 时空洞理由升级为失败
+ok 147 - reason_policy=hard 时空洞理由升级为失败
+  ---
+  duration_ms: 3.916541
+  ...
+# Subtest: allow_defer=false 时「暂缓」被拒
+ok 148 - allow_defer=false 时「暂缓」被拒
+  ---
+  duration_ms: 3.3265
+  ...
+# Subtest: 裁决件的 run_id 与本轮不符 → bad_front_matter（不得复用上一轮的裁决件）
+ok 149 - 裁决件的 run_id 与本轮不符 → bad_front_matter（不得复用上一轮的裁决件）
+  ---
+  duration_ms: 2.426542
+  ...
+# Subtest: front-matter 与本轮不匹配 → bad_front_matter
+ok 150 - front-matter 与本轮不匹配 → bad_front_matter
+  ---
+  duration_ms: 3.110667
+  ...
+# Subtest: N-2：文件名后缀是当轮 Driver、front-matter 的 role 是另一个已登记 id → bad_front_matter
+ok 151 - N-2：文件名后缀是当轮 Driver、front-matter 的 role 是另一个已登记 id → bad_front_matter
+  ---
+  duration_ms: 4.386625
+  ...
+# Subtest: N-2 正例：非缺省 Driver 诚实写自己的 id → 通过（EV-66 的全部目的）
+ok 152 - N-2 正例：非缺省 Driver 诚实写自己的 id → 通过（EV-66 的全部目的）
+  ---
+  duration_ms: 1.759167
+  ...
+# Subtest: N-2 边界：role 是未登记的 id → bad_front_matter（闸门层 fail-closed，不区分是哪道判据拦的）
+ok 153 - N-2 边界：role 是未登记的 id → bad_front_matter（闸门层 fail-closed，不区分是哪道判据拦的）
+  ---
+  duration_ms: 2.5175
+  ...
+# Subtest: 双方共同 blocker 被驳回：默认只 warn，且只用 location 精确相同判定
+ok 154 - 双方共同 blocker 被驳回：默认只 warn，且只用 location 精确相同判定
+  ---
+  duration_ms: 0.158542
+  ...
+# Subtest: 位置不同的 blocker 不算共同（不做文本相似度，避免启发式误判卡死闸门）
+ok 155 - 位置不同的 blocker 不算共同（不做文本相似度，避免启发式误判卡死闸门）
+  ---
+  duration_ms: 0.111375
+  ...
+# Subtest: 作废侧不计入独立来源——否则它反而获得了逼停流水线的否决权
+ok 156 - 作废侧不计入独立来源——否则它反而获得了逼停流水线的否决权
+  ---
+  duration_ms: 0.102084
+  ...
+# Subtest: 三态：两家有效且有共同项 → checked-found
+ok 157 - 三态：两家有效且有共同项 → checked-found
+  ---
+  duration_ms: 0.078583
+  ...
+# Subtest: 三态：两家有效但无共同项 → checked-none（查过、没发现）
+ok 158 - 三态：两家有效但无共同项 → checked-none（查过、没发现）
+  ---
+  duration_ms: 0.061166
+  ...
+# Subtest: 三态：排除作废侧后不足两家 → skipped，与「查过没发现」分得开
+ok 159 - 三态：排除作废侧后不足两家 → skipped，与「查过没发现」分得开
+  ---
+  duration_ms: 0.048375
+  ...
+# Subtest: 三态：阈值不随入选总数上调——三家里的两家仍是两个独立来源
+ok 160 - 三态：阈值不随入选总数上调——三家里的两家仍是两个独立来源
+  ---
+  duration_ms: 0.056458
+  ...
+# Subtest: 共同 blocker 只要有一条被接受就不算「被驳回」
+ok 161 - 共同 blocker 只要有一条被接受就不算「被驳回」
+  ---
+  duration_ms: 0.057625
+  ...
+# Subtest: joint_blocker_policy=hard 时升级为失败
+ok 162 - joint_blocker_policy=hard 时升级为失败
+  ---
+  duration_ms: 4.0895
+  ...
+# Subtest: 空洞词表判定：只有整条理由都是空洞词才算
+ok 163 - 空洞词表判定：只有整条理由都是空洞词才算
+  ---
+  duration_ms: 0.143459
+  ...
+# Subtest: 渲染结果在失败时列出编号，便于 Driver 直接照着补
+ok 164 - 渲染结果在失败时列出编号，便于 Driver 直接照着补
+  ---
+  duration_ms: 2.462625
+  ...
+# Subtest: 降级轮次出 warning 而非 failure：闸门仍放行，但审计面上看得见
+ok 165 - 降级轮次出 warning 而非 failure：闸门仍放行，但审计面上看得见
+  ---
+  duration_ms: 2.266125
+  ...
+# Subtest: 非降级轮次不得凭空冒出 degraded_round 警告
+ok 166 - 非降级轮次不得凭空冒出 degraded_round 警告
+  ---
+  duration_ms: 5.424792
+  ...
+# Subtest: readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-06；M9 第 6 步代码双审 CODEX-02 ≡ AGY-02 ≡ GLM-02）
+ok 167 - readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-06；M9 第 6 步代码双审 CODEX-02 ≡ AGY-02 ≡ GLM-02）
+  ---
+  duration_ms: 33.997625
+  ...
+# Subtest: voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）
+ok 168 - voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）
+  ---
+  duration_ms: 14.871958
+  ...
+# Subtest: loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推
+ok 169 - loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推
+  ---
+  duration_ms: 3.992584
+  ...
+# Subtest: 审批前复核：runId 为 null ⇒ 第 1 步拒绝（退 65），且不是落到第 2 步才被拦下
+ok 170 - 审批前复核：runId 为 null ⇒ 第 1 步拒绝（退 65），且不是落到第 2 步才被拦下
+  ---
+  duration_ms: 0.833334
+  ...
+# Subtest: 审批前复核：runId 非空但本轮运行元数据读不出 ⇒ 第 2 步拒绝（退 65），不回落缺省 Driver
+ok 171 - 审批前复核：runId 非空但本轮运行元数据读不出 ⇒ 第 2 步拒绝（退 65），不回落缺省 Driver
+  ---
+  duration_ms: 0.550667
+  ...
+# Subtest: 审批前复核：两句判别文字互不包含、都是纯文本（不带 Markdown 记号）
+ok 172 - 审批前复核：两句判别文字互不包含、都是纯文本（不带 Markdown 记号）
+  ---
+  duration_ms: 0.112667
+  ...
+# Subtest: 提取：剥掉 /bin/zsh -lc 子 shell 封装后才拿得到路径（r3 blocker）
+ok 173 - 提取：剥掉 /bin/zsh -lc 子 shell 封装后才拿得到路径（r3 blocker）
+  ---
+  duration_ms: 1.131667
+  ...
+# Subtest: 提取：裸项目相对路径计入，与措施 b 的 F-2 同口径（r3 blocker）
+ok 174 - 提取：裸项目相对路径计入，与措施 b 的 F-2 同口径（r3 blocker）
+  ---
+  duration_ms: 0.049292
+  ...
+# Subtest: 提取：git 对象语法取出路径，通配不展开
+ok 175 - 提取：git 对象语法取出路径，通配不展开
+  ---
+  duration_ms: 0.113125
+  ...
+# Subtest: 提取：写目标位不计入读证据，但同一条命令里的读取源保留
+ok 176 - 提取：写目标位不计入读证据，但同一条命令里的读取源保留
+  ---
+  duration_ms: 0.142833
+  ...
+# Subtest: 提取：fd 前缀重定向的目标不算读证据（r6 AGY-01 ≡ GLM-02a）
+ok 177 - 提取：fd 前缀重定向的目标不算读证据（r6 AGY-01 ≡ GLM-02a）
+  ---
+  duration_ms: 0.054334
+  ...
+# Subtest: 提取：写动词按命令段判定，不跨管道与分号（r6 GLM-02b）
+ok 178 - 提取：写动词按命令段判定，不跨管道与分号（r6 GLM-02b）
+  ---
+  duration_ms: 0.037791
+  ...
+# Subtest: 提取：动词取 basename，绝对路径动词同样生效（r6 AGY-01）
+ok 179 - 提取：动词取 basename，绝对路径动词同样生效（r6 AGY-01）
+  ---
+  duration_ms: 0.028
+  ...
+# Subtest: 提取：版本区间与断尾路径不得虚构成读证据（r6 GLM-03）
+ok 180 - 提取：版本区间与断尾路径不得虚构成读证据（r6 GLM-03）
+  ---
+  duration_ms: 0.047375
+  ...
+# Subtest: 提取：引号内的段分隔符不得击穿分段（r7 AGY-01 ≡ GLM-02）
+ok 181 - 提取：引号内的段分隔符不得击穿分段（r7 AGY-01 ≡ GLM-02）
+  ---
+  duration_ms: 0.105833
+  ...
+# Subtest: 提取：目录目标与 URL 不是读证据（r7 GLM-04）
+ok 182 - 提取：目录目标与 URL 不是读证据（r7 GLM-04）
+  ---
+  duration_ms: 0.091125
+  ...
+# Subtest: 阈值：配置 0 表示显式关闭，不得在 command-trace 侧被反向抬升（r6 AGY-03 ≡ GLM-05）
+ok 183 - 阈值：配置 0 表示显式关闭，不得在 command-trace 侧被反向抬升（r6 AGY-03 ≡ GLM-05）
+  ---
+  duration_ms: 0.042667
+  ...
+# Subtest: tool-trace 的有效路径逐项等于 read_paths（相等，不是包含）
+ok 184 - tool-trace 的有效路径逐项等于 read_paths（相等，不是包含）
+  ---
+  duration_ms: 0.109834
+  ...
+# Subtest: command-trace 的有效路径 = read_paths ∪ 命令提取，裸相对按项目根归一
+ok 185 - command-trace 的有效路径 = read_paths ∪ 命令提取，裸相对按项目根归一
+  ---
+  duration_ms: 0.073458
+  ...
+# Subtest: 回填：~ / $HOME 在归一前展开，否则 consulted 交叉核对必然对不上（r6 AGY-05）
+ok 186 - 回填：~ / $HOME 在归一前展开，否则 consulted 交叉核对必然对不上（r6 AGY-05）
+  ---
+  duration_ms: 0.065333
+  ...
+# Subtest: 回填是派生视图，绝不回写 CriticResult（诚实记录不被污染）
+ok 187 - 回填是派生视图，绝不回写 CriticResult（诚实记录不被污染）
+  ---
+  duration_ms: 0.034541
+  ...
+# Subtest: 回填：双流重定向的目标不进有效读取路径（证据面出口）
+ok 188 - 回填：双流重定向的目标不进有效读取路径（证据面出口）
+  ---
+  duration_ms: 0.040875
+  ...
+# Subtest: 回填：重定向目标不得坐实虚假的 consulted 声明（交叉核对出口）
+ok 189 - 回填：重定向目标不得坐实虚假的 consulted 声明（交叉核对出口）
+  ---
+  duration_ms: 0.17225
+  ...
+# Subtest: 回填：重定向目标不得计进 projectReads（证据面出口）
+ok 190 - 回填：重定向目标不得计进 projectReads（证据面出口）
+  ---
+  duration_ms: 0.148292
+  ...
+# Subtest: toolTotal：command-trace 计入 run_command，tool-trace 不计
+ok 191 - toolTotal：command-trace 计入 run_command，tool-trace 不计
+  ---
+  duration_ms: 0.081834
+  ...
+# Subtest: min_project_reads 对 command-trace 族折减，并如实回报生效值
+ok 192 - min_project_reads 对 command-trace 族折减，并如实回报生效值
+  ---
+  duration_ms: 0.052042
+  ...
+# Subtest: no_trace 由 toolTotal 分档覆盖：command-trace 侧有命令就不触发（r3 GLM-04）
+ok 193 - no_trace 由 toolTotal 分档覆盖：command-trace 侧有命令就不触发（r3 GLM-04）
+  ---
+  duration_ms: 0.083125
+  ...
+# Subtest: rejectionRecorded=false + 有写事件 ⇒ 仍判失守（r2 blocker 的锁）
+ok 194 - rejectionRecorded=false + 有写事件 ⇒ 仍判失守（r2 blocker 的锁）
+  ---
+  duration_ms: 0.203125
+  ...
+# Subtest: rejectionRecorded=false + 无写事件 ⇒ 不判失守，但档位为 unavailable
+ok 195 - rejectionRecorded=false + 无写事件 ⇒ 不判失守，但档位为 unavailable
+  ---
+  duration_ms: 0.035583
+  ...
+# Subtest: 结构化轨迹两家的档位与判定与本步之前逐字等价
+ok 196 - 结构化轨迹两家的档位与判定与本步之前逐字等价
+  ---
+  duration_ms: 0.037416
+  ...
+# Subtest: 措施 a 不吃回填：只在命令里提到 deny 条目时，命中走措施 b 而非 a
+ok 197 - 措施 a 不吃回填：只在命令里提到 deny 条目时，命中走措施 b 而非 a
+  ---
+  duration_ms: 0.428875
+  ...
+# Subtest: command-trace 侧的 path 档位为 unavailable（措施 a 无输入可扫）
+ok 198 - command-trace 侧的 path 档位为 unavailable（措施 a 无输入可扫）
+  ---
+  duration_ms: 0.03525
+  ...
+# Subtest: consulted 交叉核对吃回填后的路径，否则 command-trace 侧每轮误报
+ok 199 - consulted 交叉核对吃回填后的路径，否则 command-trace 侧每轮误报
+  ---
+  duration_ms: 0.26925
+  ...
+# Subtest: 未传 capability 时按结构化轨迹判——本步之前的唯一形态，行为等价
+ok 200 - 未传 capability 时按结构化轨迹判——本步之前的唯一形态，行为等价
+  ---
+  duration_ms: 0.03275
+  ...
+# Subtest: 归因扣除：尾段子串不相干文件不得被误扣（r7 AGY-03 ≡ GLM-01）
+ok 201 - 归因扣除：尾段子串不相干文件不得被误扣（r7 AGY-03 ≡ GLM-01）
+  ---
+  duration_ms: 228.445416
+  ...
+# Subtest: 归因：不可用侧超时被跳过，仍须按其能力声明判定（r6 AGY-02b）
+ok 202 - 归因：不可用侧超时被跳过，仍须按其能力声明判定（r6 AGY-02b）
+  ---
+  duration_ms: 131.01525
+  ...
+# Subtest: 提取：git 范围与引用不是路径（r8 AGY-02）
+ok 203 - 提取：git 范围与引用不是路径（r8 AGY-02）
+  ---
+  duration_ms: 0.094291
+  ...
+# Subtest: 提取：非读取动词的参数位不计入读证据（r8 GLM-03）
+ok 204 - 提取：非读取动词的参数位不计入读证据（r8 GLM-03）
+  ---
+  duration_ms: 0.025
+  ...
+# Subtest: 提取：引号内含段分隔符的**路径**同样漏报，这是已登记的代价（r8 GLM-02）
+ok 205 - 提取：引号内含段分隔符的**路径**同样漏报，这是已登记的代价（r8 GLM-02）
+  ---
+  duration_ms: 0.023041
+  ...
+# Subtest: 归因扣除：斜杠对齐后缀与右端开放两族都不得误扣（r8 GLM-01 ≡ AGY-03）
+ok 206 - 归因扣除：斜杠对齐后缀与右端开放两族都不得误扣（r8 GLM-01 ≡ AGY-03）
+  ---
+  duration_ms: 114.81275
+  ...
+# Subtest: path 档位：必带路径的调用全都提出了路径 → ok
+ok 207 - path 档位：必带路径的调用全都提出了路径 → ok
+  ---
+  duration_ms: 0.151375
+  ...
+# Subtest: path 档位：有提不出路径的 → partial（提取器相对厂商参数名退化了）
+ok 208 - path 档位：有提不出路径的 → partial（提取器相对厂商参数名退化了）
+  ---
+  duration_ms: 0.039125
+  ...
+# Subtest: path 档位：该侧没报计数 → unavailable，不得记 ok
+ok 209 - path 档位：该侧没报计数 → unavailable，不得记 ok
+  ---
+  duration_ms: 0.030208
+  ...
+# Subtest: path 档位：分母为 0（本轮没有必带路径的调用）→ unavailable
+ok 210 - path 档位：分母为 0（本轮没有必带路径的调用）→ unavailable
+  ---
+  duration_ms: 0.023042
+  ...
+# Subtest: P1 根带编排器回显的六个键 ⇒ 剥掉后整份合格，stripped_fields 逐项记下
+ok 211 - P1 根带编排器回显的六个键 ⇒ 剥掉后整份合格，stripped_fields 逐项记下
+  ---
+  duration_ms: 33.83575
+  ...
+# Subtest: P2〔回归〕拼错的回显键（toppic）不剥 ⇒ 根不合、整份回退，错误点名它
+ok 212 - P2〔回归〕拼错的回显键（toppic）不剥 ⇒ 根不合、整份回退，错误点名它
+  ---
+  duration_ms: 0.343209
+  ...
+# Subtest: P2′ 拼错的回显键 ⇒ 成因是 root_invalid
+ok 213 - P2′ 拼错的回显键 ⇒ 成因是 root_invalid
+  ---
+  duration_ms: 0.101709
+  ...
+# Subtest: P3 reviewer / addresses 不在清单 ⇒ root_invalid（不是编排器写进审查文档的字段）
+ok 214 - P3 reviewer / addresses 不在清单 ⇒ root_invalid（不是编排器写进审查文档的字段）
+  ---
+  duration_ms: 0.102417
+  ...
+# Subtest: P4 字符串里的「反斜杠 + 竖线」⇒ 按字面还原后合格，计数与值都对
+ok 215 - P4 字符串里的「反斜杠 + 竖线」⇒ 按字面还原后合格，计数与值都对
+  ---
+  duration_ms: 0.231
+  ...
+# Subtest: P5 合法转义原样；能直接解析的文本不走还原（计数 0）
+ok 216 - P5 合法转义原样；能直接解析的文本不走还原（计数 0）
+  ---
+  duration_ms: 0.062959
+  ...
+# Subtest: P5′ Windows 路径形态（反斜杠后跟 users、再跟 glm）⇒ 两处按字面还原、计数 2
+ok 217 - P5′ Windows 路径形态（反斜杠后跟 users、再跟 glm）⇒ 两处按字面还原、计数 2
+  ---
+  duration_ms: 0.0815
+  ...
+# Subtest: P5‴ 原文因非法转义要还原时，同一段里合法的「反斜杠 u 加四位十六进制」照旧按转义解析、不被双写
+ok 218 - P5‴ 原文因非法转义要还原时，同一段里合法的「反斜杠 u 加四位十六进制」照旧按转义解析、不被双写
+  ---
+  duration_ms: 0.141416
+  ...
+# Subtest: P5″ repairInvalidEscapes 只动字符串内部
+ok 219 - P5″ repairInvalidEscapes 只动字符串内部
+  ---
+  duration_ms: 0.0535
+  ...
+# Subtest: P6〔回归〕缺逗号 ⇒ 整份回退，reason 是原始语法报错
+ok 220 - P6〔回归〕缺逗号 ⇒ 整份回退，reason 是原始语法报错
+  ---
+  duration_ms: 0.11725
+  ...
+# Subtest: P6′ 缺逗号 ⇒ 成因 json_syntax；有非法转义也修不好时同样 json_syntax，并说明试过还原
+ok 221 - P6′ 缺逗号 ⇒ 成因 json_syntax；有非法转义也修不好时同样 json_syntax，并说明试过还原
+  ---
+  duration_ms: 0.134875
+  ...
+# Subtest: P7 两条合格 + 缺 confidence + severity: medium ⇒ 合格两条进 review、两条降级并逐字段点名
+ok 222 - P7 两条合格 + 缺 confidence + severity: medium ⇒ 合格两条进 review、两条降级并逐字段点名
+  ---
+  duration_ms: 0.382459
+  ...
+# Subtest: P7′ 意见多带字段 ⇒ 降级、kind 为 extra
+ok 223 - P7′ 意见多带字段 ⇒ 降级、kind 为 extra
+  ---
+  duration_ms: 0.405958
+  ...
+# Subtest: P8 降级意见编号不可用（缺 id / 形状畸形 / 不是对象）⇒ finding_unaddressable
+ok 224 - P8 降级意见编号不可用（缺 id / 形状畸形 / 不是对象）⇒ finding_unaddressable
+  ---
+  duration_ms: 0.579125
+  ...
+# Subtest: P9 回显清单 = 全开分支 renderFrontMatter 的键集 − review.v1 根属性（逐项相等，不许放宽成子集）
+ok 225 - P9 回显清单 = 全开分支 renderFrontMatter 的键集 − review.v1 根属性（逐项相等，不许放宽成子集）
+  ---
+  duration_ms: 6.852375
+  ...
+# Subtest: P10① 首候选部分合格、后候选全合格且编号覆盖 ⇒ 取后者
+ok 226 - P10① 首候选部分合格、后候选全合格且编号覆盖 ⇒ 取后者
+  ---
+  duration_ms: 0.428208
+  ...
+# Subtest: P10② 首候选部分合格、后候选全合格但只是其子集 ⇒ 留前者，合格与降级编号都不丢
+ok 227 - P10② 首候选部分合格、后候选全合格但只是其子集 ⇒ 留前者，合格与降级编号都不丢
+  ---
+  duration_ms: 0.199375
+  ...
+# Subtest: P10③ 首候选根不合、后候选部分合格 ⇒ 取后者
+ok 228 - P10③ 首候选根不合、后候选部分合格 ⇒ 取后者
+  ---
+  duration_ms: 0.267
+  ...
+# Subtest: P10④〔回归〕两个全合格候选 ⇒ 取前者
+ok 229 - P10④〔回归〕两个全合格候选 ⇒ 取前者
+  ---
+  duration_ms: 0.10125
+  ...
+# Subtest: P11 没有候选 ⇒ no_json_object；findings 不是数组 ⇒ root_invalid；多候选失败取走得最远那格
+ok 230 - P11 没有候选 ⇒ no_json_object；findings 不是数组 ⇒ root_invalid；多候选失败取走得最远那格
+  ---
+  duration_ms: 0.144084
+  ...
+# Subtest: P12 checkReviewIntegrity 对降级编号判前缀与撞号；有降级意见时不算「零意见未说明」
+ok 231 - P12 checkReviewIntegrity 对降级编号判前缀与撞号；有降级意见时不算「零意见未说明」
+  ---
+  duration_ms: 0.206375
+  ...
+# Subtest: P13 修复只随所选候选：首候选部分合格且带修复、后候选全合格无修复且覆盖 ⇒ 取后者、repairs 零值
+ok 232 - P13 修复只随所选候选：首候选部分合格且带修复、后候选全合格无修复且覆盖 ⇒ 取后者、repairs 零值
+  ---
+  duration_ms: 0.176709
+  ...
+# Subtest: P14 厂商注入字段照剥并如实留痕
+ok 233 - P14 厂商注入字段照剥并如实留痕
+  ---
+  duration_ms: 0.093583
+  ...
+# Subtest: 整段就是 JSON 时直接解析（--json-schema 生效的常态）
+ok 234 - 整段就是 JSON 时直接解析（--json-schema 生效的常态）
+  ---
+  duration_ms: 34.085875
+  ...
+# Subtest: 包在 ```json 围栏里也能抠出来
+ok 235 - 包在 ```json 围栏里也能抠出来
+  ---
+  duration_ms: 0.190792
+  ...
+# Subtest: 前后有散文时靠括号配平兜底
+ok 236 - 前后有散文时靠括号配平兜底
+  ---
+  duration_ms: 0.067083
+  ...
+# Subtest: 配平扫描不被字符串内的花括号骗到
+ok 237 - 配平扫描不被字符串内的花括号骗到
+  ---
+  duration_ms: 0.279375
+  ...
+# Subtest: findings 为空数组合法（表示无问题）
+ok 238 - findings 为空数组合法（表示无问题）
+  ---
+  duration_ms: 0.19
+  ...
+# Subtest: 意见缺必填字段 ⇒ 这一条逐条降级（原编号保留、点名缺的字段），不再整份回退
+ok 239 - 意见缺必填字段 ⇒ 这一条逐条降级（原编号保留、点名缺的字段），不再整份回退
+  ---
+  duration_ms: 0.572625
+  ...
+# Subtest: 编号不符合 AGY-/GLM- 前缀模式即 schema 不合格
+ok 240 - 编号不符合 AGY-/GLM- 前缀模式即 schema 不合格
+  ---
+  duration_ms: 0.124959
+  ...
+# Subtest: severity / confidence 取值受枚举约束：表外值让这一条降级，不做语义映射
+ok 241 - severity / confidence 取值受枚举约束：表外值让这一条降级，不做语义映射
+  ---
+  duration_ms: 0.134209
+  ...
+# Subtest: 多余字段被拒（additionalProperties: false）
+ok 242 - 多余字段被拒（additionalProperties: false）
+  ---
+  duration_ms: 0.071292
+  ...
+# Subtest: 找不到 JSON 与语法错误分别给出原因
+ok 243 - 找不到 JSON 与语法错误分别给出原因
+  ---
+  duration_ms: 0.168458
+  ...
+# Subtest: 语义校验：编号前缀必须属于本侧（两侧不得冲突）
+ok 244 - 语义校验：编号前缀必须属于本侧（两侧不得冲突）
+  ---
+  duration_ms: 0.201459
+  ...
+# Subtest: 语义校验：重复编号被揪出
+ok 245 - 语义校验：重复编号被揪出
+  ---
+  duration_ms: 0.04075
+  ...
+# Subtest: 语义校验：evidence 引用的文件必须出现在 consulted
+ok 246 - 语义校验：evidence 引用的文件必须出现在 consulted
+  ---
+  duration_ms: 0.040834
+  ...
+# Subtest: EV-127 U1：skills-src/ 路径不再被截成 src/…（完整路径已列入 consulted）
+ok 247 - EV-127 U1：skills-src/ 路径不再被截成 src/…（完整路径已列入 consulted）
+  ---
+  duration_ms: 0.079834
+  ...
+# Subtest: EV-127 U2：不以已知根目录起头的路径不在核对范围（漏报方向，有意）
+ok 248 - EV-127 U2：不以已知根目录起头的路径不在核对范围（漏报方向，有意）
+  ---
+  duration_ms: 0.02475
+  ...
+# Subtest: EV-127 U3：dist/test/… 不再被截成 test/…
+ok 249 - EV-127 U3：dist/test/… 不再被截成 test/…
+  ---
+  duration_ms: 0.022667
+  ...
+# Subtest: EV-127 U4：绝对路径里的 .app/ 不再被截成 app/…
+ok 250 - EV-127 U4：绝对路径里的 .app/ 不再被截成 app/…
+  ---
+  duration_ms: 0.167167
+  ...
+# Subtest: EV-127 U5：前导 ./ 照收，报的是去掉 ./ 之后的路径
+ok 251 - EV-127 U5：前导 ./ 照收，报的是去掉 ./ 之后的路径
+  ---
+  duration_ms: 0.147041
+  ...
+# Subtest: EV-127 U6：全角括号、反引号、全角逗号、行首这些常见前界仍然有效
+ok 252 - EV-127 U6：全角括号、反引号、全角逗号、行首这些常见前界仍然有效
+  ---
+  duration_ms: 0.042958
+  ...
+# Subtest: EV-127 U7：前面紧跟下划线时不起匹配（与旧判据相同的对照格）
+ok 253 - EV-127 U7：前面紧跟下划线时不起匹配（与旧判据相同的对照格）
+  ---
+  duration_ms: 0.090458
+  ...
+# Subtest: EV-127 U8：evidence 与 consulted 两侧都写前导 ./ 时对得上（consulted 同口径去 ./，代码双审 r1 CODEX-02）
+ok 254 - EV-127 U8：evidence 与 consulted 两侧都写前导 ./ 时对得上（consulted 同口径去 ./，代码双审 r1 CODEX-02）
+  ---
+  duration_ms: 0.026167
+  ...
+# Subtest: 语义校验：零意见且未说明检查了什么会被标记
+ok 255 - 语义校验：零意见且未说明检查了什么会被标记
+  ---
+  duration_ms: 0.033
+  ...
+# Subtest: 降级兜底：从原文切出可逐条裁决的编号单元（§6.6 规则 8）
+ok 256 - 降级兜底：从原文切出可逐条裁决的编号单元（§6.6 规则 8）
+  ---
+  duration_ms: 0.116
+  ...
+# Subtest: 降级兜底：过短的碎片不计入
+ok 257 - 降级兜底：过短的碎片不计入
+  ---
+  duration_ms: 0.02
+  ...
+# Subtest: 回归：剥离 agy 注入的 toolAction / toolSummary 后仍能通过校验
+ok 258 - 回归：剥离 agy 注入的 toolAction / toolSummary 后仍能通过校验
+  ---
+  duration_ms: 0.081667
+  ...
+# Subtest: 回归：剥离只针对已知厂商字段，真正写错的字段名仍会被发现
+ok 259 - 回归：剥离只针对已知厂商字段，真正写错的字段名仍会被发现
+  ---
+  duration_ms: 0.064416
+  ...
+# Subtest: 两个首尾相接的 JSON 对象：取首个通过校验的，不再整段降级
+ok 260 - 两个首尾相接的 JSON 对象：取首个通过校验的，不再整段降级
+  ---
+  duration_ms: 0.100917
+  ...
+# Subtest: 第一个对象残缺时跳过它，取后面合格的那个
+ok 261 - 第一个对象残缺时跳过它，取后面合格的那个
+  ---
+  duration_ms: 0.066458
+  ...
+# Subtest: 结论之后追加的噪声对象顶不掉真正的结论
+ok 262 - 结论之后追加的噪声对象顶不掉真正的结论
+  ---
+  duration_ms: 0.066375
+  ...
+# Subtest: 全都不合格时如实报走得最远那一格的校验错误
+ok 263 - 全都不合格时如实报走得最远那一格的校验错误
+  ---
+  duration_ms: 0.118708
+  ...
+# Subtest: extractJsonCandidates 去重并保序
+ok 264 - extractJsonCandidates 去重并保序
+  ---
+  duration_ms: 0.033375
+  ...
+# Subtest: extractJsonCandidates 同时收代码围栏与裸对象，且不重复
+ok 265 - extractJsonCandidates 同时收代码围栏与裸对象，且不重复
+  ---
+  duration_ms: 0.033875
+  ...
+# Subtest: 注册表：id / 后缀 / 前缀三者互不重复，且 suffix 恒等于 id
+ok 266 - 注册表：id / 后缀 / 前缀三者互不重复，且 suffix 恒等于 id
+  ---
+  duration_ms: 0.559333
+  ...
+# Subtest: 缺省集合：defaultSelected 真被消费——标了就进集合，没标就不进
+ok 267 - 缺省集合：defaultSelected 真被消费——标了就进集合，没标就不进
+  ---
+  duration_ms: 0.232833
+  ...
+# Subtest: 缺省集合：标了 defaultSelected 却没 criticEnabled → 加载期抛错
+ok 268 - 缺省集合：标了 defaultSelected 却没 criticEnabled → 加载期抛错
+  ---
+  duration_ms: 0.128709
+  ...
+# Subtest: 缺省集合：项数超过 max_critics 内置默认 → 加载期抛错
+ok 269 - 缺省集合：项数超过 max_critics 内置默认 → 加载期抛错
+  ---
+  duration_ms: 0.170917
+  ...
+# Subtest: 缺省集合：真实注册表当前未顶满上限时，仍要留有明确记录
+ok 270 - 缺省集合：真实注册表当前未顶满上限时，仍要留有明确记录
+  ---
+  duration_ms: 0.132958
+  ...
+# Subtest: 注册表：意见前缀不得互为前缀
+ok 271 - 注册表：意见前缀不得互为前缀
+  ---
+  duration_ms: 0.152666
+  ...
+# Subtest: 注册表：默认 Driver 必须是已登记且允许作 Driver 的 Agent
+ok 272 - 注册表：默认 Driver 必须是已登记且允许作 Driver 的 Agent
+  ---
+  duration_ms: 0.082125
+  ...
+# Subtest: 派生：types 的 CRITICS / CRITIC_VENDOR / CRITIC_PREFIX 与注册表逐项相符
+ok 273 - 派生：types 的 CRITICS / CRITIC_VENDOR / CRITIC_PREFIX 与注册表逐项相符
+  ---
+  duration_ms: 0.230167
+  ...
+# Subtest: 派生：工件名正则认全部已登记后缀
+ok 274 - 派生：工件名正则认全部已登记后缀
+  ---
+  duration_ms: 0.39525
+  ...
+# Subtest: 派生：fallback 编号正则认全部已登记前缀
+ok 275 - 派生：fallback 编号正则认全部已登记前缀
+  ---
+  duration_ms: 0.221208
+  ...
+# Subtest: 派生：交替正则片段与注册表次序一致
+ok 276 - 派生：交替正则片段与注册表次序一致
+  ---
+  duration_ms: 0.0585
+  ...
+# Subtest: 反推：未登记的前缀返回 null，而不是兜底到任一 Agent
+ok 277 - 反推：未登记的前缀返回 null，而不是兜底到任一 Agent
+  ---
+  duration_ms: 0.048083
+  ...
+# Subtest: 反推：已登记前缀逐项命中正确的 Agent
+ok 278 - 反推：已登记前缀逐项命中正确的 Agent
+  ---
+  duration_ms: 0.0425
+  ...
+# Subtest: 反推：畸形编号不抛异常，返回 null
+ok 279 - 反推：畸形编号不抛异常，返回 null
+  ---
+  duration_ms: 0.129584
+  ...
+# Subtest: 白名单纪律：每一项都要写明理由，且不得豁免不存在的文件
+ok 280 - 白名单纪律：每一项都要写明理由，且不得豁免不存在的文件
+  ---
+  duration_ms: 5.24875
+  ...
+# Subtest: 白名单纪律：不得留过期条目（豁免必须仍然被需要）
+ok 281 - 白名单纪律：不得留过期条目（豁免必须仍然被需要）
+  ---
+  duration_ms: 57.633875
+  ...
+# Subtest: grep 对账：白名单外的模块不得出现 Agent id / 前缀字面量
+ok 282 - grep 对账：白名单外的模块不得出现 Agent id / 前缀字面量
+  ---
+  duration_ms: 50.900458
+  ...
+# Subtest: grep 对账（属性访问形态）：白名单外不得出现 .<id> / <id>: 的硬编码
+ok 283 - grep 对账（属性访问形态）：白名单外不得出现 .<id> / <id>: 的硬编码
+  ---
+  duration_ms: 41.894
+  ...
+# Subtest: 剥离器：字符串里的 /* 不得被当成注释开头（否则后续代码对扫描器隐形）
+ok 284 - 剥离器：字符串里的 /* 不得被当成注释开头（否则后续代码对扫描器隐形）
+  ---
+  duration_ms: 0.138458
+  ...
+# Subtest: 剥离器：真正的块注释与行注释要被剥掉，但保留行号
+ok 285 - 剥离器：真正的块注释与行注释要被剥掉，但保留行号
+  ---
+  duration_ms: 0.091583
+  ...
+# Subtest: 剥离器：字符串内容被空格化，因此带引号的扫描必须走原文
+ok 286 - 剥离器：字符串内容被空格化，因此带引号的扫描必须走原文
+  ---
+  duration_ms: 0.023833
+  ...
+# Subtest: 剥离器：转义引号不得让字符串提前闭合
+ok 287 - 剥离器：转义引号不得让字符串提前闭合
+  ---
+  duration_ms: 0.017666
+  ...
+# Subtest: 剥离器：正则字面量里的引号不得让机器失步（比原 bug 更毒的形态）
+ok 288 - 剥离器：正则字面量里的引号不得让机器失步（比原 bug 更毒的形态）
+  ---
+  duration_ms: 0.021875
+  ...
+# Subtest: run.v2 schema：身份字段一律不得枚举 Agent id 或 vendor
+ok 289 - run.v2 schema：身份字段一律不得枚举 Agent id 或 vendor
+  ---
+  duration_ms: 0.62825
+  ...
+# Subtest: config.v2 schema：身份字段不得枚举 Agent id（但形状判别式的 vendor const 必须留着）
+ok 290 - config.v2 schema：身份字段不得枚举 Agent id（但形状判别式的 vendor const 必须留着）
+  ---
+  duration_ms: 0.388458
+  ...
+# Subtest: run.v2 校验：每一个已登记 Agent 出现在入选集合里，形状上都必须被接受
+ok 291 - run.v2 校验：每一个已登记 Agent 出现在入选集合里，形状上都必须被接受
+  ---
+  duration_ms: 31.919875
+  ...
+# Subtest: 全部机读 schema：任何校验关键字都不得枚举 Agent id 或意见编号前缀
+ok 292 - 全部机读 schema：任何校验关键字都不得枚举 Agent id 或意见编号前缀
+  ---
+  duration_ms: 2.324708
+  ...
+# Subtest: cliName 全表唯一
+ok 293 - cliName 全表唯一
+  ---
+  duration_ms: 0.089625
+  ...
+# Subtest: ProbeByCli 的具名键 ⊆ 注册表 cliName 集
+ok 294 - ProbeByCli 的具名键 ⊆ 注册表 cliName 集
+  ---
+  duration_ms: 0.710833
+  ...
+# Subtest: 架构契约：adapters/ 不得 import probes/
+ok 295 - 架构契约：adapters/ 不得 import probes/
+  ---
+  duration_ms: 4.497166
+  ...
+# Subtest: 架构契约：probes/ 的 import 面——允许清单而非黑名单（EV-74 计划 §5 用例 6）
+ok 296 - 架构契约：probes/ 的 import 面——允许清单而非黑名单（EV-74 计划 §5 用例 6）
+  ---
+  duration_ms: 2.074917
+  ...
+# Subtest: 文案豁免纪律：每条都要写明理由，且不得豁免已经不存在的命中
+ok 297 - 文案豁免纪律：每条都要写明理由，且不得豁免已经不存在的命中
+  ---
+  duration_ms: 1.71975
+  ...
+# Subtest: 架构契约：adapters/ 不得字面重建探针的安全不变量
+ok 298 - 架构契约：adapters/ 不得字面重建探针的安全不变量
+  ---
+  duration_ms: 31.538292
+  ...
+# Subtest: 架构契约：黑名单两族各自的防空转判据
+ok 299 - 架构契约：黑名单两族各自的防空转判据
+  ---
+  duration_ms: 21.822292
+  ...
+# Subtest: 不覆盖形态：六类逐条锁住「确实扫不到」，不留散文断言
+ok 300 - 不覆盖形态：六类逐条锁住「确实扫不到」，不留散文断言
+  ---
+  duration_ms: 0.119834
+  ...
+# Subtest: 镜头键对账：lenses.yaml 顶层键必须是注册表里的 Agent id
+ok 301 - 镜头键对账：lenses.yaml 顶层键必须是注册表里的 Agent id
+  ---
+  duration_ms: 0.281834
+  ...
+# Subtest: ④-a 反面夹具：散文里的工具名不得误伤，独占字面量必须抓住（r3 CODEX-06）
+ok 302 - ④-a 反面夹具：散文里的工具名不得误伤，独占字面量必须抓住（r3 CODEX-06）
+  ---
+  duration_ms: 0.085791
+  ...
+# Subtest: R1 有降级意见 ⇒ front-matter 记 findings_degraded，findings_count 只数合格意见
+ok 303 - R1 有降级意见 ⇒ front-matter 记 findings_degraded，findings_count 只数合格意见
+  ---
+  duration_ms: 7.148875
+  ...
+# Subtest: R1′〔回归〕没有降级、没有修复 ⇒ 三个新键都不出现（常态不渲染）
+ok 304 - R1′〔回归〕没有降级、没有修复 ⇒ 三个新键都不出现（常态不渲染）
+  ---
+  duration_ms: 1.569083
+  ...
+# Subtest: R2 审查员造成的修复 ⇒ front-matter 与横幅都说出来；只剥了厂商字段则都不渲染
+ok 305 - R2 审查员造成的修复 ⇒ front-matter 与横幅都说出来；只剥了厂商字段则都不渲染
+  ---
+  duration_ms: 3.940875
+  ...
+# Subtest: R3 整份回退 ⇒ front-matter 记成因、横幅说出成因
+ok 306 - R3 整份回退 ⇒ front-matter 记成因、横幅说出成因
+  ---
+  duration_ms: 0.775708
+  ...
+# Subtest: R4 不合格意见一节：保留原编号、点名不合格字段、原值照录、多余字段列出
+ok 307 - R4 不合格意见一节：保留原编号、点名不合格字段、原值照录、多余字段列出
+  ---
+  duration_ms: 0.348625
+  ...
+# Subtest: R5 合格 0 条而有降级意见 ⇒ 不说「未发现问题」
+ok 308 - R5 合格 0 条而有降级意见 ⇒ 不说「未发现问题」
+  ---
+  duration_ms: 0.24575
+  ...
+# Subtest: R5′〔回归〕合格与降级都为 0 ⇒ 仍说「未发现问题」
+ok 309 - R5′〔回归〕合格与降级都为 0 ⇒ 仍说「未发现问题」
+  ---
+  duration_ms: 0.20075
+  ...
+# Subtest: front-matter 可被 YAML 解析，且关键机读字段齐备
+ok 310 - front-matter 可被 YAML 解析，且关键机读字段齐备
+  ---
+  duration_ms: 7.853375
+  ...
+# Subtest: 生效模型来源被记录，不采信 Agent 自述（AC-13）
+ok 311 - 生效模型来源被记录，不采信 Agent 自述（AC-13）
+  ---
+  duration_ms: 1.68675
+  ...
+# Subtest: project_reads 进 tool_calls（AC-11 的机读落点）
+ok 312 - project_reads 进 tool_calls（AC-11 的机读落点）
+  ---
+  duration_ms: 1.739708
+  ...
+# Subtest: 意见按严重度排序，blocker 排在最前
+ok 313 - 意见按严重度排序，blocker 排在最前
+  ---
+  duration_ms: 0.278041
+  ...
+# Subtest: 降级标记出现在正文顶部而非只在 front-matter（不可伪装）
+ok 314 - 降级标记出现在正文顶部而非只在 front-matter（不可伪装）
+  ---
+  duration_ms: 0.824708
+  ...
+# Subtest: 入选一侧并成功：渲染参与者事实，但不打降级横幅
+ok 315 - 入选一侧并成功：渲染参与者事实，但不打降级横幅
+  ---
+  duration_ms: 0.830458
+  ...
+# Subtest: 参与者事实在降级轮次里照样渲染，两个标记并存不互相顶替
+ok 316 - 参与者事实在降级轮次里照样渲染，两个标记并存不互相顶替
+  ---
+  duration_ms: 0.240292
+  ...
+# Subtest: 降级文案不得再出现「另一侧」这种只对两侧成立的指代
+ok 317 - 降级文案不得再出现「另一侧」这种只对两侧成立的指代
+  ---
+  duration_ms: 0.310208
+  ...
+# Subtest: 证据不足会显式标注该侧不算合格双审的一半
+ok 318 - 证据不足会显式标注该侧不算合格双审的一半
+  ---
+  duration_ms: 0.777333
+  ...
+# Subtest: 路径级 deny 未生效时如实标注诚实边界（§10.2）
+ok 319 - 路径级 deny 未生效时如实标注诚实边界（§10.2）
+  ---
+  duration_ms: 3.317708
+  ...
+# Subtest: 漂移会标注「结论对应送审时刻快照」
+ok 320 - 漂移会标注「结论对应送审时刻快照」
+  ---
+  duration_ms: 2.092458
+  ...
+# Subtest: 与主脑同源时醒目告警并记录覆盖理由（AC-18）
+ok 321 - 与主脑同源时醒目告警并记录覆盖理由（AC-18）
+  ---
+  duration_ms: 1.828084
+  ...
+# Subtest: 同源旗标不写死 Claude 系（EV-62）
+ok 322 - 同源旗标不写死 Claude 系（EV-62）
+  ---
+  duration_ms: 0.556417
+  ...
+# Subtest: 零意见时文件照常渲染，并提示这不等于没审（FR-13）
+ok 323 - 零意见时文件照常渲染，并提示这不等于没审（FR-13）
+  ---
+  duration_ms: 1.9285
+  ...
+# Subtest: 解析降级时保留原文并标注不参与阻断判定（AD-08）
+ok 324 - 解析降级时保留原文并标注不参与阻断判定（AD-08）
+  ---
+  duration_ms: 1.306292
+  ...
+# Subtest: consulted 未填时明确说明无法交叉核对
+ok 325 - consulted 未填时明确说明无法交叉核对
+  ---
+  duration_ms: 0.2475
+  ...
+# Subtest: consulted 未通过核验时打 consulted_unverified 标记
+ok 326 - consulted 未通过核验时打 consulted_unverified 标记
+  ---
+  duration_ms: 0.785667
+  ...
+# Subtest: 重跑轮次在标题与 front-matter 中都可见
+ok 327 - 重跑轮次在标题与 front-matter 中都可见
+  ---
+  duration_ms: 0.598042
+  ...
+# Subtest: 两侧 vendor 与 agent_cli 正确区分
+ok 328 - 两侧 vendor 与 agent_cli 正确区分
+  ---
+  duration_ms: 0.541833
+  ...
+# Subtest: countSeverities 对 null 安全
+ok 329 - countSeverities 对 null 安全
+  ---
+  duration_ms: 0.03575
+  ...
+# Subtest: parseFrontMatter 对无 front-matter 的文件返回 null
+ok 330 - parseFrontMatter 对无 front-matter 的文件返回 null
+  ---
+  duration_ms: 0.023458
+  ...
+# Subtest: 回归：超时的一侧不产生证据不足告警，避免把真正原因埋在噪音里
+ok 331 - 回归：超时的一侧不产生证据不足告警，避免把真正原因埋在噪音里
+  ---
+  duration_ms: 115.050958
+  ...
+# Subtest: 只读失守的告警包含可执行的人工核对命令，且明确不自动回滚
+ok 332 - 只读失守的告警包含可执行的人工核对命令，且明确不自动回滚
+  ---
+  duration_ms: 0.197958
+  ...
+# Subtest: 空主题：如实说「没有轮次」，不渲染成一份看起来干净的报告
+ok 333 - 空主题：如实说「没有轮次」，不渲染成一份看起来干净的报告
+  ---
+  duration_ms: 5.451667
+  ...
+# Subtest: 一轮双审：时间线、意见数、严重度分布、生效模型齐备
+ok 334 - 一轮双审：时间线、意见数、严重度分布、生效模型齐备
+  ---
+  duration_ms: 55.587208
+  ...
+# Subtest: 时间线带「Driver（护栏）」列：留痕有等级就写等级，旧留痕没有就写「—」，不补成 L1（B1）
+ok 335 - 时间线带「Driver（护栏）」列：留痕有等级就写等级，旧留痕没有就写「—」，不补成 L1（B1）
+  ---
+  duration_ms: 19.031459
+  ...
+# Subtest: 归一化后的重合度进表，且未归一化值一并给出
+ok 336 - 归一化后的重合度进表，且未归一化值一并给出
+  ---
+  duration_ms: 9.145209
+  ...
+# Subtest: 单侧超时：显示状态而非 0，并进降级清单
+ok 337 - 单侧超时：显示状态而非 0，并进降级清单
+  ---
+  duration_ms: 9.299084
+  ...
+# Subtest: 审查完成但无裁决件 → 明确点出，采纳率不按 0 算
+ok 338 - 审查完成但无裁决件 → 明确点出，采纳率不按 0 算
+  ---
+  duration_ms: 8.045834
+  ...
+# Subtest: 裁决件被解析：采纳率与被驳回项带理由
+ok 339 - 裁决件被解析：采纳率与被驳回项带理由
+  ---
+  duration_ms: 10.179917
+  ...
+# Subtest: token 逐侧列出，字符串字段被丢弃而不是累加成垃圾
+ok 340 - token 逐侧列出，字符串字段被丢弃而不是累加成垃圾
+  ---
+  duration_ms: 16.853583
+  ...
+# Subtest: 漂移与路径 deny 降级进告警清单
+ok 341 - 漂移与路径 deny 降级进告警清单
+  ---
+  duration_ms: 10.143875
+  ...
+# Subtest: EV-137 G1：forged_role_file 即使为 true 也不打「角色后缀伪造」旗标（保留字段，不代表检测过）
+ok 342 - EV-137 G1：forged_role_file 即使为 true 也不打「角色后缀伪造」旗标（保留字段，不代表检测过）
+  ---
+  duration_ms: 6.176916
+  ...
+# Subtest: 多轮按轮次升序，采纳率跨轮累计
+ok 343 - 多轮按轮次升序，采纳率跨轮累计
+  ---
+  duration_ms: 11.3905
+  ...
+# Subtest: 缺 run.json 的轮次照样出现在报告里，并说明元数据缺失
+ok 344 - 缺 run.json 的轮次照样出现在报告里，并说明元数据缺失
+  ---
+  duration_ms: 1.059208
+  ...
+# Subtest: task.json 的降级与争议项被带进报告
+ok 345 - task.json 的降级与争议项被带进报告
+  ---
+  duration_ms: 6.407333
+  ...
+# Subtest: verify 记录损坏 → 如实说损坏，不伪装成「从未验证」
+ok 346 - verify 记录损坏 → 如实说损坏，不伪装成「从未验证」
+  ---
+  duration_ms: 7.520791
+  ...
+# Subtest: 裁决件读不到不让整份复盘崩溃
+ok 347 - 裁决件读不到不让整份复盘崩溃
+  ---
+  duration_ms: 6.0505
+  ...
+# Subtest: EV-144 V1：只有一份被取消的运行 ⇒ 轮次 0，另列一条「被 review --cancel 取消」，头部注明另有 1 次
+ok 348 - EV-144 V1：只有一份被取消的运行 ⇒ 轮次 0，另列一条「被 review --cancel 取消」，头部注明另有 1 次
+  ---
+  duration_ms: 1.790083
+  ...
+# Subtest: EV-144 V2：入选侧全部失败 + 同轮次号的成功重跑 ⇒ 时间线只列重跑，失败那次进下表且预定轮次同为 r1
+ok 349 - EV-144 V2：入选侧全部失败 + 同轮次号的成功重跑 ⇒ 时间线只列重跑，失败那次进下表且预定轮次同为 r1
+  ---
+  duration_ms: 6.892584
+  ...
+# Subtest: EV-144 V3：停在 running 的运行 ⇒ 说明「进行中，或没走到收尾」（report 只读归档，分不出这两种）
+ok 350 - EV-144 V3：停在 running 的运行 ⇒ 说明「进行中，或没走到收尾」（report 只读归档，分不出这两种）
+  ---
+  duration_ms: 1.533917
+  ...
+# Subtest: EV-144 V4：两条事后收尾写成的 failed ⇒ 说明分别带退出码与失联原因
+ok 351 - EV-144 V4：两条事后收尾写成的 failed ⇒ 说明分别带退出码与失联原因
+  ---
+  duration_ms: 3.438333
+  ...
+# Subtest: EV-144 V5：纯文档跳过（success、skipped_doc_only）⇒ 说明「纯文档跳过（FR-23）」
+ok 352 - EV-144 V5：纯文档跳过（success、skipped_doc_only）⇒ 说明「纯文档跳过（FR-23）」
+  ---
+  duration_ms: 2.092208
+  ...
+# Subtest: EV-144 V6：读不出来的 run.json 不进下表，进 notes（此前被静默跳过）
+ok 353 - EV-144 V6：读不出来的 run.json 不进下表，进 notes（此前被静默跳过）
+  ---
+  duration_ms: 2.060917
+  ...
+# Subtest: EV-144 V7：所有运行都进了时间线 ⇒ 不渲染下表，头部也没有「另有」半句（防噪声）
+ok 354 - EV-144 V7：所有运行都进了时间线 ⇒ 不渲染下表，头部也没有「另有」半句（防噪声）
+  ---
+  duration_ms: 9.042666
+  ...
+# Subtest: EV-145 V8：prepare_exception / sync_exception 写成的 failed ⇒ 说明分别写清「未拉起审查员」与「同步路径异常」并带退出码
+ok 355 - EV-145 V8：prepare_exception / sync_exception 写成的 failed ⇒ 说明分别写清「未拉起审查员」与「同步路径异常」并带退出码
+  ---
+  duration_ms: 2.076417
+  ...
+# Subtest: EV-150 V8′：post_spawn_exception 写成的 failed ⇒ 说明写清「派生工作进程之后启动未完成，工作进程已终止」并带退出码
+ok 356 - EV-150 V8′：post_spawn_exception 写成的 failed ⇒ 说明写清「派生工作进程之后启动未完成，工作进程已终止」并带退出码
+  ---
+  duration_ms: 1.166792
+  ...
+# Subtest: EV-145 V9：termination.by 的每一个取值都有专门的说明，不落进兜底「failed（gate.state=…）」
+ok 357 - EV-145 V9：termination.by 的每一个取值都有专门的说明，不落进兜底「failed（gate.state=…）」
+  ---
+  duration_ms: 3.2755
+  ...
+1..357
+# tests 357
+# suites 0
+# pass 357
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 74458.3555

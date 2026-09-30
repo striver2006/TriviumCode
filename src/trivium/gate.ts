@@ -13,7 +13,7 @@ import { isFallbackId, parseDisposition, type ParsedDisposition } from './dispos
 import { checkRecordedArtifacts, listStageArtifacts, metaDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { dispositionKindForStage, parseArtifactName } from './naming.js';
-import { parseReview } from './parse.js';
+import { checkReviewIntegrity, parseReview } from './parse.js';
 import { validateDispositionFrontMatter } from './schemas.js';
 
 // ─────────────────────── 校验结果 ───────────────────────
@@ -51,7 +51,9 @@ export interface GateWarning {
     /** 运行期写进 run.json `gate.warnings` 的标注，原样透传（如「本轮原稿不在保护集」） */
     | 'run_warning'
     /** 本轮期望的审查文档集为空（run 元数据读不出，或没有一侧落了审查文档），`addresses` 只核非空（EV-134） */
-    | 'addresses_unchecked';
+    | 'addresses_unchecked'
+    /** 本轮有逐条降级的意见：仍须逐条裁决，但不参与阻断与共同阻断判定（设计 §6.5） */
+    | 'degraded_findings';
   message: string;
   ids?: string[];
 }
@@ -63,6 +65,8 @@ export interface GateCheckResult {
   /** 本轮涉及的意见编号（结构化 + fallback） */
   structuredIds: string[];
   fallbackIds: string[];
+  /** 本轮逐条降级的意见编号（按原编号进期望集，不在 `structuredIds` 里——那里只有合格意见） */
+  degradedIds: string[];
   dispositionPath: string | null;
   rows: DispositionRow[];
   /**
@@ -127,6 +131,15 @@ export interface GateCheckInput {
    * 提供时**逐条要求**出现在裁决表里（§6.6 规则 8）；不提供则只校验出现的 fallback 行。
    */
   expectedFallbackIds?: string[];
+  /**
+   * 本轮逐条降级的意见编号（设计 §6.5；解析回退逐条降级计划 r2 §3.4），由 `loadRoundReviews` 取自
+   * run.json 的 `critics[c].findings_degraded`。它们**不在** `reviews` 里（失去阻断资格的全部实现），
+   * 却按原编号逐条进期望集：缺裁决、多余裁决、空表守卫都按「合格 ∪ 降级」判。
+   *
+   * **必填**：做成可选参数，漏传就静默退回只核合格编号——降级意见整批掉出期望集而闸门照绿，
+   * 正是 `voidedSides` / `reviewDocs` 两处注释记着的那个教训。没有就传 `[]`。
+   */
+  expectedDegradedIds: readonly string[];
   /** run.json 记录跑过、却读不到结构化结论的一侧——那是留痕被动过，必须失败 */
   missingSides?: CriticId[];
   /** 本轮 run_id：裁决件 front-matter 的 run_id 必须与之一致，否则把上一轮的裁决件抄过来也能过 */
@@ -217,6 +230,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
       warnings,
       structuredIds,
       fallbackIds: [],
+      degradedIds: [...input.expectedDegradedIds],
       dispositionPath: null,
       rows: [],
       /*
@@ -399,15 +413,21 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
   }
 
   const expectedFallback = input.expectedFallbackIds ?? null;
-  const expectedCount = structuredIds.length + (expectedFallback?.length ?? 0);
+  const degradedIds = [...new Set(input.expectedDegradedIds)];
+  /*
+   * 逐条降级的编号同样计数（计划双审 r1 AGY-02）：一侧全部降级、又没有 F 单元时，漏计它们会让
+   * 一张空裁决表过这一格。
+   */
+  const expectedCount = structuredIds.length + (expectedFallback?.length ?? 0) + degradedIds.length;
   if (parsed.rows.length === 0) {
-    // 两侧都确无意见（结构化为空且无待裁决的降级单元）时，空表是合法的
+    // 各侧都确无意见（合格与降级都为空、且无待裁决的回退单元）时，空表是合法的
     if (expectedCount > 0) {
       failures.push({
         code: 'unparsable_table',
         message:
           '裁决表为空或无法解析，但本轮共有 ' + expectedCount + ' 条意见需要裁决' +
-          (expectedFallback && expectedFallback.length > 0 ? `（含 ${expectedFallback.length} 条降级编号）` : '') + '。' +
+          (expectedFallback && expectedFallback.length > 0 ? `（含 ${expectedFallback.length} 条降级编号）` : '') +
+          (degradedIds.length > 0 ? `（含 ${degradedIds.length} 条逐条降级）` : '') + '。' +
           parsed.problems.map((p) => `\n    第 ${p.line} 行：${p.message}`).join(''),
       });
     }
@@ -420,7 +440,8 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
   const fallbackIds = fallbackRows.map((r) => r.id);
 
   const decKeys = new Set(structuredRows.map((r) => r.id));
-  const idsSet = new Set(structuredIds);
+  // 期望集 = 合格 ∪ 逐条降级（后者按原编号，同走下面的缺裁决 / 多余裁决与逐行校验，接受照样要落点）
+  const idsSet = new Set([...structuredIds, ...degradedIds]);
 
   /*
    * fallback 编号同样要逐条对账（§6.6 规则 8）。原先 fallback 行只在**出现时**被校验、
@@ -553,12 +574,27 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     });
   }
 
+  /*
+   * 逐条降级的意见不在 `reviews` 里，上面的共同阻断一行不改即把它们排除在外——这件事必须说出来：
+   * 裁决者要知道其中声称 blocker 的那几条被驳回，不会有任何告警。
+   */
+  if (degradedIds.length > 0) {
+    warnings.push({
+      code: 'degraded_findings',
+      message:
+        '下列意见不合 trivium.review.v1，已逐条降级：仍须逐条裁决，但不参与阻断与共同阻断判定' +
+        '——其中声称 blocker 的，被驳回不会触发共同阻断告警',
+      ids: [...degradedIds].sort(),
+    });
+  }
+
   return {
     ok: failures.length === 0,
     failures,
     warnings,
     structuredIds,
     fallbackIds,
+    degradedIds,
     dispositionPath,
     rows,
     jointCheck: jc,
@@ -679,7 +715,10 @@ function whyInsufficient(
 export function renderGateResult(r: GateCheckResult): string {
   const lines: string[] = [];
   if (r.ok) {
-    lines.push(`✓ 裁决完整性校验通过（${r.rows.length} 条裁决，含 ${r.fallbackIds.length} 条降级编号）`);
+    lines.push(
+      `✓ 裁决完整性校验通过（${r.rows.length} 条裁决，含 ${r.fallbackIds.length} 条降级编号` +
+        `${r.degradedIds.length > 0 ? `、${r.degradedIds.length} 条逐条降级` : ''}）`,
+    );
   } else {
     lines.push(`✗ 裁决完整性校验未通过，共 ${r.failures.length} 项：`);
     for (const f of r.failures) {
@@ -822,6 +861,8 @@ export async function loadRoundReviews(
   notes: string[];
   /** parse_fallback 侧待裁决单元的编号（读自 .fallback-items.md） */
   expectedFallbackIds: string[];
+  /** 逐条降级的意见编号（读自 run.json 的 `findings_degraded`；run.json 读不出时读旁路 `.degraded.json`） */
+  expectedDegradedIds: string[];
   /** run.json 记录已产出结论、结构化结论却读不到的一侧 */
   missingSides: CriticId[];
   /**
@@ -858,6 +899,7 @@ export async function loadRoundReviews(
   const reviews: Partial<Record<CriticId, Review | null>> = {};
   const notes: string[] = [];
   const expectedFallbackIds: string[] = [];
+  const expectedDegradedIds: string[] = [];
   const missingSides: CriticId[] = [];
   const dir = metaDir(layout, stage);
   const { readRunMeta } = await import('./meta.js');
@@ -880,19 +922,43 @@ export async function loadRoundReviews(
         | { parse_fallback: true; raw: string | null };
       if ('parse_fallback' in raw && raw.parse_fallback) {
         const retry = raw.raw ? parseReview(raw.raw) : null;
-        if (retry?.ok) {
+        /*
+         * 重试结果三分（解析回退逐条降级计划 r2 §3.6）：
+         *   · 全合格（含靠两类无损修复才合格的）⇒ 按结构化校验——既有行为；
+         *   · **部分合格 ⇒ 仍按 F 编号**：这一轮当时判的是整份回退，run.json 里没有 `findings_degraded`，
+         *     按结构化校验的话降级意见会**静默掉出期望集**——正是本主题要防的那一类；
+         *   · 仍失败 ⇒ 按 F 编号——既有行为。
+         * 重试同样要过前缀归属（与 review.ts 同一道后盾）：异前缀的结论按结构化校验会让冒名编号进期望集。
+         */
+        const prefixOk = retry?.ok ? checkReviewIntegrity(retry.review, c, retry.degraded).prefixOk : false;
+        if (retry?.ok && retry.degraded.length === 0 && prefixOk) {
           reviews[c] = retry.review;
           notes.push(
             `${c} 侧当时被判 parse_fallback，但用当前解析器重试成功（${retry.review.findings.length} 条意见）——` +
-              '按结构化结论校验',
+              '按结构化结论校验。若该轮当时按 <前缀>-F<n> 裁决，这里报的缺裁决是口径差，不是漏裁',
           );
         } else {
           reviews[c] = null;
           expectedFallbackIds.push(...(await readFallbackIds(path.join(dir, `review-${c}-${runId}.fallback-items.md`))));
-          notes.push(`${c} 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验`);
+          notes.push(
+            retry?.ok && retry.degraded.length > 0
+              ? `${c} 侧当时被判 parse_fallback；用当前解析器重试得到 ${retry.degraded.length} 条逐条降级，` +
+                  '该轮没有逐条降级留痕，维持回退口径：其意见按 <前缀>-F<n> 编号逐条校验'
+              : `${c} 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验`,
+          );
         }
       } else {
         reviews[c] = raw as Review;
+        /*
+         * 逐条降级的编号（设计 §6.5）：以 run.json 的 `findings_degraded` 为准（只写一次、在提交锚保护下）；
+         * run.json 读不出时退而读旁路文件（尽力；那一格已由 missingSides 与审批路径的「留痕读不出即拒」兜底）。
+         */
+        const fromMeta = runMeta?.critics[c]?.findings_degraded;
+        const ids = fromMeta ?? (runMeta ? [] : await readDegradedIds(path.join(dir, `review-${c}-${runId}.degraded.json`)));
+        if (ids.length > 0) {
+          expectedDegradedIds.push(...ids);
+          notes.push(`${c} 侧有 ${ids.length} 条意见逐条降级（${ids.join(', ')}），按原编号逐条校验、不参与阻断`);
+        }
       }
     } catch {
       const failed = path.join(dir, `review-${c}-${runId}.failed.json`);
@@ -952,7 +1018,9 @@ export async function loadRoundReviews(
   const runWarnings = [...(runMeta?.gate?.warnings ?? [])];
   const reviewDocs = runMeta ? expectedReviewDocs(layout, stage, runMeta) : null;
 
-  return { reviews, notes, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs };
+  return {
+    reviews, notes, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs,
+  };
 }
 
 /**
@@ -1054,14 +1122,14 @@ export async function verifyRoundForApproval(i: ApprovalCheckInput): Promise<App
     );
   }
 
-  const { reviews, expectedFallbackIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs } =
+  const { reviews, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs } =
     await loadRoundReviews(layout, stage, runId);
   const result = await checkAdjudication({
     cfg, layout, stage, rerunIndex: runMeta.rerun_index, reviews,
     driver: runMeta.driver,
     runIdPinned: i.runIdPinned,
     degraded, voidedSides, readonlyBreach, runWarnings,
-    expectedFallbackIds, missingSides, runId, reviewDocs,
+    expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs,
   });
   const tampered = await checkRecordedArtifacts(layout, [
     { run_id: runId, stage, artifacts: runMeta.artifacts },
@@ -1100,6 +1168,19 @@ export function renderTamperedArtifacts(
     '\n  · **已提交过的**：可用 `git restore <路径>` 恢复，**这一步请在终端里手动执行**——常规写法在会话里' +
     '\n    会被 hook-pre-bash 拦下；那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。'
   );
+}
+
+/**
+ * 从旁路 `.degraded.json` 读回逐条降级的编号——**只在 run.json 读不出时**才用（尽力而为）。
+ * 读不到或形状不对即空：那一格的失败由 `missingSides` 与审批路径的「留痕读不出即拒」承担。
+ */
+async function readDegradedIds(p: string): Promise<string[]> {
+  try {
+    const j = JSON.parse(await fs.readFile(p, 'utf8')) as { findings?: { id?: unknown }[] };
+    return (j.findings ?? []).map((f) => f.id).filter((id): id is string => typeof id === 'string');
+  } catch {
+    return [];
+  }
 }
 
 /** 从 `.fallback-items.md` 读回编排器编好号的待裁决单元（每行 `- <前缀>-F<n>: …`） */

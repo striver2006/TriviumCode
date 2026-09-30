@@ -361,6 +361,7 @@ const cfg = defaultConfig();
 
 function judge(over: Partial<CriticResult>, cap?: TraceCapability, review: Review | null = null) {
   return judgeSide(cfg, 'gemini', result(over), review, REQ, {
+    degraded: [],
     archiveRootAbs: OPTS.archiveRootAbs,
     projectRoot: ROOT,
     triviumDir: `${ROOT}/${TRIVIUM_DIR}`,
@@ -458,6 +459,7 @@ test('归因扣除：尾段子串不相干文件不得被误扣（r7 AGY-03 ≡ 
 
   const v = await judgeRun({
     cfg,
+    degraded: {},
     projectRoot: dir,
     archiveRootAbs: nodePath.join(dir, '.reviews'),
     archiveRootRel: '.reviews',
@@ -514,6 +516,7 @@ test('归因：不可用侧超时被跳过，仍须按其能力声明判定（r6
 
   const v = await judgeRun({
     cfg,
+    degraded: {},
     projectRoot: dir,
     archiveRootAbs: nodePath.join(dir, '.reviews'),
     archiveRootRel: '.reviews',
@@ -591,6 +594,7 @@ test('归因扣除：斜杠对齐后缀与右端开放两族都不得误扣（r8
 
   const v = await judgeRun({
     cfg,
+    degraded: {},
     projectRoot: dir,
     archiveRootAbs: nodePath.join(dir, '.reviews'),
     archiveRootRel: '.reviews',

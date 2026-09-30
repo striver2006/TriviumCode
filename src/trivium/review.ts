@@ -13,6 +13,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type {
   Config, CriticId, CriticRequest, CriticResult, Ctx, DenyCategory, Review, Stage, CommandEntry,
+  DegradedFinding, FallbackCause, ParseRepairs,
 } from './types.js';
 import { CRITIC_PREFIX, CRITIC_VENDOR, VOIDING_DENY_CATEGORIES } from './types.js';
 import { DEFAULT_DRIVER, agentById, type AgentId } from './agents/registry.js';
@@ -36,7 +37,7 @@ import {
 import { parseReview, checkReviewIntegrity, enumerateFallbackFindings } from './parse.js';
 import { decideMode, runBothSides, type SideProgress } from './runner.js';
 import { judgeRun, renderGuardWarnings, type SideVerdict } from './guard.js';
-import { renderReviewDoc, type RenderInput } from './render.js';
+import { FALLBACK_CAUSE_LABEL, renderReviewDoc, type RenderInput } from './render.js';
 import { resolveTopicReadOnly, locateSubject } from './topic.js';
 import {
   buildDiffHeader,
@@ -1165,6 +1166,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   // ── 解析 ──
   const reviews: Partial<Record<CriticId, Review | null>> = {};
   const fallbackText: Partial<Record<CriticId, string>> = {};
+  /** 逐条降级的意见（根合法、这一条不合 schema）。只在解析成功的侧有键，无降级即 [] */
+  const degraded: Partial<Record<CriticId, DegradedFinding[]>> = {};
+  /** 所选候选在校验前做过的无损修复。只在解析成功的侧有键 */
+  const repairs: Partial<Record<CriticId, ParseRepairs>> = {};
+  /** 整份回退的成因。只在 parse_fallback 侧有键 */
+  const fallbackCause: Partial<Record<CriticId, FallbackCause>> = {};
   for (const c of sides) {
     const r = results[c];
     if (!r || r.status !== 'ok' || !r.raw_response_text) {
@@ -1203,19 +1210,32 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
      *
      * **只拦前缀归属**：重复编号与 evidence-consulted 两项在改动前就只是告警，
      * 未因本次改动变化，不在此处顺手收严（那属独立取舍，要单独论证）。
+     *
+     * **逐条降级的编号同样过这道**（解析回退逐条降级计划 r2 §3.3）：降级意见照样按原编号进裁决期望集，
+     * 冒名 / 死锁两条后果对它一样成立，所以异前缀的降级编号也让整份回退，成因记 `foreign_prefix`。
      */
-    const integrity = p.ok ? checkReviewIntegrity(p.review, c) : null;
+    const integrity = p.ok ? checkReviewIntegrity(p.review, c, p.degraded) : null;
     if (p.ok && integrity!.prefixOk) {
       reviews[c] = p.review;
+      degraded[c] = p.degraded;
+      repairs[c] = p.repairs;
+      if (p.degraded.length > 0) {
+        warn(
+          `${c} 侧有 ${p.degraded.length} 条意见不合 trivium.review.v1，逐条降级（仍须逐条裁决，不参与阻断）：` +
+            p.degraded.map((d) => `${d.id}[${d.problems.map((x) => `${x.field}:${x.kind}`).join(',')}]`).join('、'),
+        );
+      }
     } else {
+      const cause: FallbackCause = p.ok ? 'foreign_prefix' : p.cause;
       const reason = p.ok
         ? `编号前缀不属于本侧（应为 ${CRITIC_PREFIX[c]}-）：${integrity!.badIds.join(', ')}`
         : `${p.reason}${p.errors.length > 0 ? `：${p.errors.slice(0, 5).join('; ')}` : ''}`;
       reviews[c] = null;
       fallbackText[c] = r.raw_response_text;
+      fallbackCause[c] = cause;
       r.status = 'parse_fallback';
-      r.fail_reason = reason;
-      warn(`${c} 侧输出未能结构化解析，转 parse_fallback：${reason}`);
+      r.fail_reason = `[${cause}] ${reason}`;
+      warn(`${c} 侧输出未能结构化解析，转 parse_fallback（${FALLBACK_CAUSE_LABEL[cause]}）：${reason}`);
     }
   }
 
@@ -1232,6 +1252,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     // 「相关」= --context 指明的路径 **与 diff 涉及文件**（设计 §9.2 第 3.c 步，freeze.ts 注释同）
     relatedPaths: [...opts.contextPaths, ...diffFiles],
     results, reviews, requests,
+    degraded: Object.fromEntries(sides.map((c) => [c, degraded[c] ?? []])),
     /*
      * 逐侧能力声明从适配器表取——**这是它唯一的起源**，`judgeRun` 自己拿不到。
      * 漏传会让 `command-trace` 侧按结构化轨迹判定，证据恒不达标（响亮失败），
@@ -1322,6 +1343,9 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       critic: c, stage, topic: ref.topic, runId, rerunIndex: sharedIndex,
       review: reviews[c] ?? null,
       rawText: fallbackText[c] ?? null,
+      degradedFindings: degraded[c] ?? [],
+      ...(repairs[c] ? { parseRepairs: repairs[c] } : {}),
+      ...(fallbackCause[c] ? { parseFallbackCause: fallbackCause[c] } : {}),
       result: r,
       modelRequested: requests[c]!.model,
       effort: requests[c]!.effort ?? null,
@@ -1380,12 +1404,33 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     metaPaths.push(rj.absPath);
     protectedMeta.push({ path: rj.relPath, sha256: rj.sha256 });
 
+    /*
+     * 逐条降级的意见另存旁路文件（解析回退逐条降级计划 r2 §3.3）。
+     *
+     * 上面那份 `review-<侧>-<run>.json` 保持**纯 review.v1**（只含合格意见）：它是 gate 的事实来源、
+     * 也是 schema 合法的审查结论，混入不合格对象会打破这两点。裁决期望集取自 run.json 的
+     * `findings_degraded`（只写一次、在提交锚保护下）；这份文件原样保留审查员给的对象，供渲染与追溯，
+     * 同样进保护集——删了它提交锚报「已丢失」。
+     */
+    const dg = degraded[c] ?? [];
+    if (dg.length > 0) {
+      const w = await writeMeta(
+        ref.layout, stage, `review-${c}-${runId}.degraded.json`,
+        JSON.stringify({ critic: c, run_id: runId, findings: dg }, null, 2) + '\n',
+      );
+      metaPaths.push(w.absPath);
+      protectedMeta.push({ path: w.relPath, sha256: w.sha256 });
+    }
+
     // parse_fallback 侧另存编号化的原文，让 Driver 有可逐条裁决的单元（§6.6 规则 8）
     if (reviews[c] === null && fallbackText[c]) {
       const items = enumerateFallbackFindings(fallbackText[c]!, c);
+      const cause = fallbackCause[c];
       const fb = await writeMeta(
         ref.layout, stage, `review-${c}-${runId}.fallback-items.md`,
-        `# ${c} 侧解析降级：待逐条裁决的意见单元\n\n${items.map((i) => `- ${i}`).join('\n')}\n`,
+        `# ${c} 侧解析降级：待逐条裁决的意见单元\n\n` +
+          (cause ? `> 整份回退的成因：${FALLBACK_CAUSE_LABEL[cause]}（\`${cause}\`）\n\n` : '') +
+          `${items.map((i) => `- ${i}`).join('\n')}\n`,
       );
       metaPaths.push(fb.absPath);
       protectedMeta.push({ path: fb.relPath, sha256: fb.sha256 });
@@ -1582,8 +1627,23 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
         c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested, meta.driver,
       ),
       fail_reason: r.fail_reason,
-      empty_review: (reviews[c]?.findings.length ?? -1) === 0,
+      /*
+       * 「合格 0 条**且**降级 0 条」才是空结论（解析回退逐条降级计划 r2 §3.3）：只数合格意见的话，
+       * 全部意见都降级的一侧会被记成 `empty_review: true`，而它明明交了意见。
+       */
+      empty_review: reviews[c] ? reviews[c]!.findings.length === 0 && (degraded[c] ?? []).length === 0 : false,
       parse_fallback: r.status === 'parse_fallback',
+      /*
+       * 三格的三态落在结构上（计划 r2 §3.3）：解析成功的侧恒写前两格（零值 = 解析过、没有），
+       * parse_fallback 侧恒写成因；失败 / 超时侧三格都不写。gate 的降级期望集取自 `findings_degraded`。
+       */
+      ...(reviews[c]
+        ? {
+            findings_degraded: (degraded[c] ?? []).map((d) => d.id),
+            parse_repairs: repairs[c] ?? { stripped_fields: [], unescaped_backslashes: 0 },
+          }
+        : {}),
+      ...(r.status === 'parse_fallback' && fallbackCause[c] ? { parse_fallback_cause: fallbackCause[c] } : {}),
       session_id: r.session_id,
       peer_deny_applied: r.peer_deny_applied,
       /*
@@ -1829,7 +1889,13 @@ async function listOwnHistory(
     .sort();
 }
 
-/** 重试时追加进 BRIEF 的提示：让模型知道上一次哪里不对（§12.3） */
+/**
+ * 重试时追加进 BRIEF 的提示：让模型知道上一次哪里不对（§12.3）。
+ *
+ * **只在适配器层判为瞬时故障、要重试这一侧时**经 `runBothSides` 的 `onRetryBrief` 调用。
+ * 解析与 `parse_fallback` 的判定发生在全部重试结束之后（本文件「解析」一段），不经这里——
+ * 回退成因的标记到不了本函数（解析回退逐条降级计划双审 r1 AGY-03 驳回时核实）。
+ */
 function buildRetryHint(critic: CriticId, prev: CriticResult): string {
   const reason = prev.fail_reason ?? '未记录原因';
   if (/no_project_context/.test(reason)) {
@@ -1851,7 +1917,7 @@ function buildRetryHint(critic: CriticId, prev: CriticResult): string {
       '## 上一次输出未能解析\n\n' +
       `${reason}\n\n` +
       '请严格按第 6 节的输出契约重新输出：**只输出 JSON**，不要包裹说明文字，' +
-      '七个字段全部必填。'
+      '九个字段全部必填，枚举字段只取第 6 节列出的值。'
     );
   }
   return `## 上一次尝试失败\n\n${critic} 侧上一次的失败原因：${reason}`;
