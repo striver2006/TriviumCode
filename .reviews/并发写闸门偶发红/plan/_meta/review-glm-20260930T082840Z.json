@@ -1,0 +1,81 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最要紧的一条：R1/D1 的支撑论证写「只有锁这一处把『判不了』读成『不是同一进程』、是 fail-open」「其余消费方不删锁、不写闸门」——这不准确。workerConfirmedGone（status.ts:202–214）把同一读数（ps 取不到 ⇒ alive:true, sameProcess:false）判成「工作进程 N 已不存在」，而它的文档块自称「不可逆动作的唯一准入判据（EV-20）」，下游是抹凭据副本、run 目录脱敏/整删与 --wait 把活 worker 收成 failed——同根 fail-open 在不可逆路径上仍在，须按计划 §4 自己的提议登记 BACKLOG 并改 R1 表述。D1 本身成立：落点、条件、兜底判据与证据逐环核实相符（C2 的 JSON 里「原因 pid_reused」937 处、D1 原型同条件 0 处）。D3 有两处规格缺口：U1 的旧版记录子句与「桩只拦规范化形态」自相矛盾（照写测不到目标路径）；U2「确定性红」依赖的临界区 30 ms 持有没有写明实现机制（探针靠 fs 桩），缺它 M1 变异不保证红。其余（①排除、D2 三断言、M3 期望、版本顺延 v1.3.65/v1.1.23）逐项核实无异议。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §4 R1（支撑论证在 §3 D1 第一条要点）",
+      "problem": "R1 以「它们不删锁、不写闸门」收束其余七个身份消费方，D1 论证更断言「只有锁这一处把『判不了』读成『不是同一进程』并据此删别人的锁，是 fail-open」。实际上 workerConfirmedGone 把同一读数判成 `{gone:true,『工作进程 N 已不存在』}`，而其文档块自称「不可逆动作的唯一准入判据（EV-20）」。下游正是不折不扣的不可逆动作与改写他人状态：scrubAdmission→admitScrub（retention.ts:116 一带，抹凭据副本、run 目录脱敏）、pruneRunDirs/scrubAllRunRoot 经 workerStillAlive（retention.ts:99–104，ps 失败 ⇒ 判「不在」⇒ 到期可整删）、--wait 判失联后的收尾闸（run-protocol.ts:1203–1206 的 goneForArchive 复核也经它——同一轮 ps 失败下活 worker 被写成 failed、凭据被抹）。这正是④假设的同一负载条件，且仓库已有严格判据先例（lostWorkerGone「ps 取不到启动时刻不算」，设计 :1483），workerConfirmedGone 一支却维持 fail-open。计划 §4 自己写了「若审查员认为 R1 中哪一处也是 fail-open，按裁决登记」，现稿漏登；若不改，EV-153 结案记录会把「只有锁一处 fail-open」固化下来。",
+      "evidence": "读 src/trivium/status.ts:186–225（workerConfirmedGone 判定分支与 EV-20「不可逆动作唯一准入」文档块）、src/trivium/retention.ts:95–129（workerStillAlive / admitScrub 准入）、src/trivium/run-protocol.ts:1188–1219（--wait worker_lost 后的 goneForArchive 复核与收尾）、src/trivium/util/exec.ts:604–628（ps 取不到 ⇒ alive:true, sameProcess:false, startedAt:null，canonical 与 legacy 两路同形）、doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1485（「取不到启动时刻时各消费方的处置不变」及八个消费方清单）与 :1483（lostWorkerGone 严格判据先例）。",
+      "suggestion": "不必并入本主题改码（范围纪律成立）；按 §4 的提议登记一条 BACKLOG 条目（同根：processMatchesRecord 取不到 ⇒ sameProcess:false 进入不可逆动作准入，涉及 workerConfirmedGone / workerStillAlive / interpretStatus 情形 C），并把 R1 的「不删锁、不写闸门」与 D1 的「只有锁这一处……fail-open」改成如实表述（「只有锁这一处删锁；workerConfirmedGone 一支同根 fail-open，登记另修」）。§6 给设计 :1485 补 judgeStale 例外时，在同一处顺带登记该残余并点明与 :1483 lostWorkerGone 判据的不一致。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3 D3 U1（旧版记录子句）与末段「桩只拦规范化形态的 ps」",
+      "problem": "U1 要求「旧版记录（只有 pid_started_at）ps 失败 ⇒ null」，但旧版记录退回 processAlive 的缺省形态 ps（exec.ts:518，不带 TZ=UTC0），而桩「只拦带 TZ=UTC0 的 /bin/ps」拦不到它。于是该子句要么退化成「缺省 ps 成功且记录值相符 ⇒ null」（根本没测到 ps 失败这一前提），要么（记录值造得不符时）得到 startedAt 非 null、sameProcess:false ⇒ D1 照判 pid_reused，期望的 null 拿不到——子句与「只拦规范化」的前提自相矛盾，照写实现会做出一个测不到目标路径的用例，甚至写不绿。",
+      "evidence": "读 src/trivium/util/exec.ts:504–525（processAlive 以缺省形态 processStartTime(pid) 取值、无 canonical 旗标）、:604–614（canonicalStartOf 为 null 即整段退回 legacy 路径）、计划 §3 D3 U1 与末段「桩只拦规范化形态的 ps：……判定时只有规范化那一次失败」。",
+      "suggestion": "该子句单独把缺省形态的 ps 也拦掉（例如桩的判据对这一子句放宽到两种形态），并让记录里的 legacy 值取自真实捕获，使断言的 null 确由 ps 失败得出；U1 其余子句的最小前提（只拦规范化）不必动。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3 D3 U2",
+      "problem": "U2 的「确定性红（不靠概率）」依赖把临界区拉长到 30 ms，但 D3 只规格化了 spawn 桩；这个持有在探针里是靠 fs.promises 桩（读完状态文件后注入等待）做出来的，用例规格没把这一机制写进来。缺它的话：每个写者首次 link 前要先跑一次缺省形态的真实 ps（lock.ts:340，不缓存，约十几毫秒），持有者临界区只有毫秒级（state.ts:146–152，读+原子写），等待者多半根本撞不上 EEXIST——M1 变异（去掉 D1 条件）下 U2 不保证红，「确定性」落空，变异检查对④的并发形态失去咬合力。",
+      "evidence": "读 src/trivium/lock.ts:334–355（每次尝试先构造锁内容——含一次不缓存的缺省 ps——再 link）、src/trivium/state.ts:139–153（临界区=锁内读改写，毫秒级）、doc/05_testing/evidence/concurrent-setgate-flake-20260930/probe-inproc.mjs:75–80（fs.promises 桩族：link/readFile/open/rename 注入与还原）、计划 §3 D3 U2 与「全部等待带超时」段。",
+      "suggestion": "D3 明确 U2 需要同款 fs.promises 桩（对 state.json 的读注入 0–30 ms 等待）并同样在 finally 还原，或在用例里写明「持有 ≥ 等待者首个 link 前的取值耗时」这一成立条件；spawn 桩与 fs 桩的还原顺序也一并写清，避免两套全局桩互相踩还原。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "④的机理链逐环属实：acquireLock:334–344 写记录、judgeStale:174–180 现文「!sameProcess 即 pid_reused」、processMatchesRecord:624–627「活着而取不到 ⇒ sameProcess:false, startedAt:null」、run():304–307 spawn 失败以 code null 收尾、processStartTime:546 code!==0 ⇒ null——「取不到持有者启动时刻 = 判复用 = 回收活锁」成立，canonical 与 legacy 两路都在。",
+    "①排除的推理成立：预算 40×100 ms ≥ 4 s，而 09-27 留痕（check-r1.txt，仅用例名+耗时 315.087 ms）远快于此、且快于常态通过时长——指向早拒绝（丢键/ENOENT）而非预算耗尽；「那一次红分不出③④」的诚实表述与按②类产品缺陷定修的做法正确。",
+    "D1 落点与条件正确：lock.ts:180 现文与拟改条件核对无误；startedAt 字段在 RecordMatch 上可得（exec.ts:584–593）；取不到时继续走 runTerminal（:183）与年龄判据（:185–189，criticalHoldTimeoutMs 有 30 s 下限）——死锁不会因 ps 坏掉而永久化；真复用（取到且不符）仍判 pid_reused。运行锁代价的论证与 70 文案相符（lock.ts:404–409 已给 --cancel 出口）。",
+    "D1 不走的备选否决得当：同进程捷径修不了跨进程同缺陷；writeAtomic 临时名（fsx.ts:28，pid+毫秒）确实只是双持有的症状，加随机段只会把撞名变成静默丢更新。",
+    "D2 第三条断言在新构建上无误红来源：EV-173 修复后锁不在即 continue（lock.ts:376–377）、不可解析且 <2 s 不回收（:385–389）、同进程 canonical 相符不判 stale——合法路径下 0 告警，红即判定出错；warn 走 process.stderr.write（log.ts:24–26），可截取、finally 还原可行。",
+    "证据抽查相符：C2（新构建 psfail30+hold20）的 JSON 内「原因 pid_reused」937 处（与 382 红轮/397 告警轮的量级一致），D1 原型 P1 同条件 0 处——「④在新构建仍复现、D1 原型消除之」有据；P2 在 2 % 失败率下同样 0 红 0 告警。",
+    "§5 判据可行（改后 C2/C3 0 红 0 告警由 P1/P2 直接支撑）；M3 期望有依据——既有「判据 2：PID 存在但启动时刻不符 → pid_reused」用例确在（lock.test.ts:73–81）；§6 版本顺延正确（主设计现 v1.3.64→v1.3.65，LLD 现 v1.1.22→v1.1.23），LLD §5.3「护栏判定一律 fail-closed」确在（LLD_orchestrator.md:556），run-protocol.ts:757 待改注释确存且改动仅限注释。",
+    "范围纪律清晰：不并 EV-163/168/169/171/172/174/159 第二形态、不动锁文件格式与退出码 70、不动 judgeStale 其余判据与重试预算、不烧配额实测；R2/R3 残余如实登记。"
+  ],
+  "not_covered": [
+    "只读审查：未运行任何探针/测试/变异；§2.1 读数表仅抽查 C2 与 P1（「原因 pid_reused」计数）及 09-27 留痕，未逐项复算全部轮次数字（含 A/B 组与 repeat-*.json 的 240 次 0 红之数）。",
+    "§7.5 之问只能答到推定：未在真实 Node 18 上验证 spawn 桩 + syncBuiltinESMExports 对具名导入绑定的生效（依据是探针在本机构建树上的生效记录与 Node 文档；probe-inproc.mjs:47 的注释说明具名导入确实需要 syncBuiltinESMExports）。",
+    "未复核 PRD/MANUAL 的承诺面是否真的不含本判据（§6 称核后不改，接受但未验证）。",
+    "EV-163/168/169/171/172/174/159 第二形态等明确不做条目与本主题的独立性未逐条评估（按用户决策接受范围）。",
+    "未读另一位审查员的任何产出（背靠背约束）；.reviews/ 下仅读了被审计划本体。"
+  ],
+  "consulted": [
+    ".reviews/并发写闸门偶发红/plan/2026-09-30-并发写闸门偶发红-claude.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/05_testing/evidence/concurrent-setgate-flake-20260930/probe-inproc.mjs",
+    "doc/05_testing/evidence/concurrent-setgate-flake-20260930/load-new-psfail30-hold20.json",
+    "doc/05_testing/evidence/concurrent-setgate-flake-20260930/load-protoF2-psfail30-hold20.json",
+    "doc/05_testing/evidence/orphan-worker-20260927/check-r1.txt",
+    "src/trivium/lock.ts",
+    "src/trivium/state.ts",
+    "src/trivium/status.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/log.ts",
+    "test/unit/state.test.ts",
+    "test/unit/lock.test.ts"
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "agreed": [
+    "通过 315 ms 极短耗时（远低于 4000 ms 重试耗时，甚至快于正常串行 8 写者耗时）有力排除了重试预算耗尽（①），定位为「活锁误判回收后两写者并发进临界区」的定性推理严密可靠。",
+    "通过大样本探针证明全局状态文件在锁未误收时丢失率为 0，排除了固有写入缺陷（②），且验证了 EV-173 修复（③）在新构建上已生效。",
+    "D1 核心落点精准：在 judgeStale 中将 pid_reused 收紧为「启动时刻取到了且不符」，取不到时下沉走年龄判据/等待重试，符合 fail-closed 原则，在测试原型下实现了 0 红 0 告警。",
+    "D2 新增「同进程 0 条回收告警」断言设计敏锐合理：同进程新建目录不存在合法回收场景，能将不可控的「并发竞态丢键」转化为确定性的「只要误判就红」，不会误红。",
+    "变异测试规划（M1-M3）针对性强，依托 scripts/mutation-check.mjs 的七道闸守卫充分保证了测试咬合力。"
+  ],
+  "consulted": [
+    "README.md",
+    "CLAUDE.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "src/trivium/lock.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/status.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/run-protocol.ts",
+    "test/unit/state.test.ts",
+    "test/unit/lock.test.ts",
+    "scripts/mutation-check.mjs",
+    "doc/05_testing/evidence/concurrent-setgate-flake-20260930/probe-inproc.mjs"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/status.ts:539-542、src/trivium/run-protocol.ts:1188-1206、src/trivium/run-protocol.ts:1775-1805 及 src/trivium/status.ts:212-214。在上述代码中，processMatchesRecord 返回 sameProcess: false 直接驱动了非终态改写终态和脱锁清理。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §3 D1 与 §4 R1",
+      "problem": "Plan 声称「只有锁这一处把『判不了』读成『不是同一进程』并据此删别人的锁，其余七个消费方不动」，这一前提不准确。在其余消费方中，至少有两处在 ps 派生瞬时失败（live.alive && !live.sameProcess && live.startedAt === null）时同样存在破坏性 fail-open 风险：1) status.ts:541（interpretStatus 情形 C）：会将心跳未超期的健康 worker 误判为 worker_lost(pid_gone)，导致 waitRun 强行将 status.json 与 run.json 改写为 failed 终态（改别人状态/误杀健康轮次）；2) run-protocol.ts:1776（cancelRun 主路径）：当 worker 存活时若 ps 失败，误判 worker 已不存在，不发终止信号却直接释放主题锁，造成活 worker 脱锁裸跑与并发写冲突（删别人的锁）。",
+      "severity": "major",
+      "suggestion": "1. 修正 Plan §3 D1 和 §4 R1 对其余消费方的安全性论述；2. 若遵循 EV-153 不扩散范围的用户决策，需在 §4 R1 明确登记上述两处已知风险并录入 BACKLOG；3. 从长远契约看，RecordMatch 将「确认不符」与「取不到无法判定」压缩在同一个布尔值 sameProcess 中是系统性根因，后续应推进三态化（如 match: 'yes' | 'no' | 'unverifiable'）。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 doc/05_testing/evidence/concurrent-setgate-flake-20260930/probe-inproc.mjs:47-70、src/trivium/util/exec.ts:8 与 test/unit/lock.test.ts:412。",
+      "id": "AGY-02",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §3 D3",
+      "problem": "D3 单测桩方案存在泄漏风险与实现盲区：1) 在 ESM 环境下，具名导入 import { spawn } from 'node:child_process'（如 exec.ts:8）在打桩修改 cp.spawn 时需调 syncBuiltinESMExports()，但在 finally 恢复原始 spawn 时若未再次调用 syncBuiltinESMExports()，具名导入绑定的仍是桩函数，导致测试泄漏污染后续用例；2) 用例 U2 依赖「临界区读完后等 30 ms」，Plan 未说明具体注入机制。",
+      "severity": "minor",
+      "suggestion": "1. 将 spawn 桩封装为对称的 helper（如 stubSpawn），其还原函数在复原 origSpawn 后必须显式执行 syncBuiltinESMExports()；2. 明确 U2 中拉长临界区是借助 test/unit/lock.test.ts 现有的 stubFs 机制拦截 readFile 实现，并纳入同一 finally 清理块。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/lock.ts:158-181。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §6 文档同步",
+      "problem": "文档同步清单漏列了 src/trivium/lock.ts:180 行内注释与 judgeStale 函数 JSDoc 说明。现有行内注释明确写着「// PID 存在但启动时刻不符 → 是被复用的无关进程，不是原持有者」，D1 修改后若保留原注释，会掩盖「启动时刻取不到时不判复用」的关键判据变化。",
+      "severity": "nit",
+      "suggestion": "在 §6 补列 src/trivium/lock.ts 对应注释的同步更新，明确说明取不到时不判复用的 fail-closed 语义。"
+    }
+  ],
+  "not_covered": [
+    "未对 macOS 极端高负载下 kern.maxprocperuid 耗尽场景进行真实机压测（依任务书约定使用桩和原型数据验证）。",
+    "未评估除 processMatchesRecord 之外其它间接依赖 ps 的工具函数（如 processGroupMemberCount）在进程表耗尽时的极端行为。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最危险问题：D1 论证中声称其余消费方「不删锁、不改状态」与代码事实不符，interpretStatus:541（误判失联写 failed）与 cancelRun:1776（误判已退出释放锁）在 ps 瞬时失败时同样存在 fail-open 风险，需在 R1 纠正并登记 BACKLOG。\n核心定性站得住脚：315 ms 极短耗时成功排除重试预算耗尽（①），确定成因为活锁误收导致的并发写冲突（④）。\nD1 核心修法准确：judgeStale 改为启动时刻取到且不符才判 pid_reused，符合 fail-closed 原则。\nD2 断言增强必要：同进程 0 条回收告警断言在语义上绝对有效，不会误红，能精准捕获任何误回收。\nD3 单测桩需防泄漏：child_process.spawn 桩在 finally 恢复时必须对称调用 syncBuiltinESMExports()，且需补齐 U2 临界区延迟机制说明。\n结论为 approve-with-nits，计划主体成熟，可依此推进修订与实施。",
+  "verdict": "approve-with-nits"
+}
