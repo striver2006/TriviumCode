@@ -1,0 +1,279 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260930T180539Z",
+  "topic": "解析回退逐条降级",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「解析回退逐条降级」：解决审查员的结构化结论因个别意见字段不合 schema、字符串里的非法转义、或多带回显的编排器元数据，就整份判 parse_fallback、塌成 F01 / F02 兜底编号的问题。覆盖 BACKLOG EV-10、EV-56、EV-105、EV-113、EV-124（EV-56 / EV-105 的成因描述按普查改写）。 开工前先读：记忆 pipeline-known…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "d418ce7627b07ff581fa304a7a128d81fd1de797",
+    "tree_hash": "fb3e4be1a3e60b2e2a9a10043156a7be044f122b",
+    "dirty": true,
+    "subject_sha256": "29fcea421f795fa16e3ea0062cb94862c8aea4ec99b401983b9828d7cd520312",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "d418ce7627b07ff581fa304a7a128d81fd1de797",
+      "dirty": false,
+      "inputs_sha256": "7ae8ebc3ee07b383a2692516076681db5c174b897ccc5471f1730a3bf219453c",
+      "built_at": "2026-09-30T16:55:45.266Z"
+    },
+    "after_tree_hash": "821b5e11eaba1f503dd60a329dda3e894facf063"
+  },
+  "started_at": "2026-09-30T18:05:40.805Z",
+  "finished_at": "2026-09-30T18:16:20.632Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.159.2",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 454.356,
+      "tool_calls": {
+        "run_command": 19,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0f37e-6153-7540-8504-e7299d25b108",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.14",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 334.656,
+      "tool_calls": {
+        "read": 39,
+        "grep": 9,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 383926,
+        "output_tokens": 40480,
+        "thinking_tokens": 34076,
+        "cache_read_tokens": 4830220,
+        "total_tokens": 424406
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "af05c1a7-292d-486e-8449-1c2aa0a54dde",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 639.564,
+      "tool_calls": {
+        "read": 25,
+        "grep": 5,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 20
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 11,
+        "inputTokens": 882497,
+        "outputTokens": 41420,
+        "totalTokens": 923917,
+        "cacheReadTokens": 787200,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_973beacd-b8d9-4f3a-997c-4d53d149c4b6",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "解析回退逐条降级/plan/_meta/brief-codex-20260930T180539Z.md",
+      "sha256": "fef1c065b7e58101394e6f3a445aeca99fd83371d9cba300a99c236bbc465c11"
+    },
+    {
+      "path": "解析回退逐条降级/plan/_meta/brief-gemini-20260930T180539Z.md",
+      "sha256": "44b8a500445956a01ce0f01367b1a148311dcbfcc6f639e57d81df59c924fb8d"
+    },
+    {
+      "path": "解析回退逐条降级/plan/_meta/brief-glm-20260930T180539Z.md",
+      "sha256": "8c20dcee90b1731b7b8b8ab457909073c7d88d84b40658366a7174397c6d6ecc"
+    },
+    {
+      "path": "解析回退逐条降级/plan/_meta/review-codex-20260930T180539Z.json",
+      "sha256": "d41d5c7abd98d0c6e5966d0d6da4b41dcfe3c43a649248f57e37c71beb2853ff"
+    },
+    {
+      "path": "解析回退逐条降级/plan/_meta/review-gemini-20260930T180539Z.json",
+      "sha256": "211dd1a89cbc738d5c30f0d1d0614d8213173acdfa45070ffbdaf03933f1f73d"
+    },
+    {
+      "path": "解析回退逐条降级/plan/_meta/review-glm-20260930T180539Z.json",
+      "sha256": "51695a8ee34a72b128a1aaee566209619020682878de4fd388c3266dd0e0dd5c"
+    },
+    {
+      "path": "解析回退逐条降级/plan/2026-10-01-解析回退逐条降级-codex.md",
+      "sha256": "13a20259ace94dc62838a2bd9ec56cbe17d203149c1f0bf44464ebd2c3bc07c2"
+    },
+    {
+      "path": "解析回退逐条降级/plan/2026-10-01-解析回退逐条降级-gemini.md",
+      "sha256": "b917a7136de9d9b99095cac88651f4db96cb38f7a570ea14b02d1a5cad85324c"
+    },
+    {
+      "path": "解析回退逐条降级/plan/2026-10-01-解析回退逐条降级-glm.md",
+      "sha256": "3c60fe6ba4c4691d5e60134faa09eda9540e3f812a04b4077fd823fa722be217"
+    },
+    {
+      "path": "解析回退逐条降级/plan/2026-10-01-解析回退逐条降级-claude.md",
+      "sha256": "29fcea421f795fa16e3ea0062cb94862c8aea4ec99b401983b9828d7cd520312"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
