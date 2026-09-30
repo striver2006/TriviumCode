@@ -1,0 +1,40 @@
+{
+  "agreed": [
+    "探针先行坐实缺陷：在起草前已在改前构建（d1e6408）上完成 7 格真实进程探针实测，不仅坐实了 Z1 零信号播报失实、G1/G2 宽限期 7 ms 早退未确认、K1 不等确认抢跑放锁等问题，还精准捕获到了 G3 格因僵尸窗口导致「锁已回收但凭据漏抹、归档漏补收」的脑裂现象，为修法提供了确凿实据。",
+    "三态契约与保守退出原则（D1/D2）：terminateProcessGroup 放宽支持 'unverifiable' 三态，宽限期内判不了不算退出继续轮询，期满最后一次仍判不了时明确禁止向身份不可证的进程发送致命的 SIGKILL；同时原有 4 个布尔调用方行为逐字保持不变，最小化侵入且向后兼容。",
+    "统一收尾拦截与防脑裂闭环（D3/D4）：主路径以 !t.gone 统一守住收尾入口，未确认退出一律抛 69，凭据副本不抹、归档不补收、status.json 维持 running、主题锁与闸门完好保留，彻底杜绝了活 worker 脱锁与同主题双跑问题；退出码沿用 69（环境/预检不可用，原样未改可重试），不引入新退出码。",
+    "播报失实根治与确认等待对齐：发 SIGTERM 的播报从主路径无条件调用移入 terminateProcessGroup 的 onTerm 回调，确保只在真正发出信号时播报；主路径 killWaitMs 改为 ORPHAN_KILL_CONFIRM_MS（5 s），撤回 EV-150 对 SIGKILL 不等确认的旧语义，与孤儿及失联 worker 逻辑拉齐。",
+    "范围收敛与边界清晰（§0/§4 R5）：严格遵守不做清单，不将 cancelLostWorker 的镜像形态超范围混入主路径收尾，而是将其口径差异作为残余登记 EV-177 并修订失实注释，边界划定合理。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/evidence/cancel-grace-unverifiable-20260930/probe-pre-d1e6408.json",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts",
+    "src/trivium/util/exec.ts",
+    "test/helpers/ps-stub.ts",
+    "test/unit/start-canonical.test.ts",
+    ".reviews/取消宽限期判不了仍放锁/plan/2026-09-30-取消宽限期判不了仍放锁-claude.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未在真实生产多载体（Claude/Antigravity/ZCode/Codex）环境下消耗真实配额进行端到端审查取消的实跑（按不做清单约定）；",
+    "未对极端高并发或宿主 CPU 100% 满载导致 ps 派生持续超时超过 120 s（触碰 Bash 工具调用外层超时）的极端场景做压力注入；",
+    "未对不同 macOS 内核版本下 launchd 回收僵尸进程的极端延迟差异做跨系统实测。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本实施计划架构推演清晰、修法逻辑闭环，改前通过 7 格零配额探针充分坐实了宽限期判不了导致的早退放锁与脑裂隐患。方案 D1～D4 严谨，将 terminateProcessGroup 泛化为三态判据并严格遵守「判不了不升级 SIGKILL」的防御原则，主路径在未确认退出时一律抛 69 拒绝收尾放锁，彻底阻断了活 worker 脱锁双跑的根因。改动完全向后兼容，不改动盘上数据契约，测试覆盖与变异矩阵设计完备，同意按本计划实施。",
+  "verdict": "approve"
+}

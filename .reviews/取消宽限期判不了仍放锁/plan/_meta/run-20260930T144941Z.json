@@ -1,0 +1,279 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20260930T144941Z",
+  "topic": "取消宽限期判不了仍放锁",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「取消宽限期判不了仍放锁」：解决 BACKLOG EV-176（--cancel 主路径已判同一进程之后，身份转为判不了，仍写 cancelled、回收锁与闸门，活 worker 脱锁），是刚结案的 EV-175 登记的残余。 开工前先读：记忆 m10b-next-after-ev82.md 的最后三段、pipeline-known-pitfalls.md、reply-in-chinese.m…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "d1e640884e3d27cfddac35c7feb39e26665dc804",
+    "tree_hash": "dc48865e5e2d2b0150fe23630be3608ae3572530",
+    "dirty": true,
+    "subject_sha256": "af368402e808917822e1dbaa0f55a53d9badef039e13b2e31fcc8af1fffa17d0",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "d1e640884e3d27cfddac35c7feb39e26665dc804",
+      "dirty": false,
+      "inputs_sha256": "3d637e1fdbb2e21a21c6105cb5cce14026fad86f2b9e37cab84cd64640ffa410",
+      "built_at": "2026-09-30T13:59:56.915Z"
+    },
+    "after_tree_hash": "7eaf1ee641509e00e45631f997758955871f45fe"
+  },
+  "started_at": "2026-09-30T14:49:43.531Z",
+  "finished_at": "2026-09-30T15:01:05.232Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.159.2",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 351.65,
+      "tool_calls": {
+        "run_command": 16,
+        "project_reads": 20
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a0f2ca-fb23-74d2-a1ee-6cd5c22b886d",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.14",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 681.535,
+      "tool_calls": {
+        "read": 27,
+        "grep": 14,
+        "glob": 4,
+        "run_command": 0,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 267665,
+        "output_tokens": 46468,
+        "thinking_tokens": 41492,
+        "cache_read_tokens": 4025246,
+        "total_tokens": 314133
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "session_id": "dbaad366-e9f9-4aaf-90c6-3005323187ac",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 674.403,
+      "tool_calls": {
+        "read": 19,
+        "grep": 9,
+        "glob": 5,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 17,
+        "inputTokens": 1682318,
+        "outputTokens": 42642,
+        "totalTokens": 1724960,
+        "cacheReadTokens": 1553792,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "sess_c98db596-b459-46ef-9a72-635cd8361d50",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "取消宽限期判不了仍放锁/plan/_meta/brief-codex-20260930T144941Z.md",
+      "sha256": "4ae4f3fa0fa0928e0ecdb4ecd46d61eb069392a6e5504be4ef7c8e321b6f5ec8"
+    },
+    {
+      "path": "取消宽限期判不了仍放锁/plan/_meta/brief-gemini-20260930T144941Z.md",
+      "sha256": "e420849f7bd76363519e57d9b6c93163f7d4b27c227db9a91497b940a63b65c8"
+    },
+    {
+      "path": "取消宽限期判不了仍放锁/plan/_meta/brief-glm-20260930T144941Z.md",
+      "sha256": "6afd99d8a32318570cf81634ef17fc5f09141f00097319229b9075285a8b7e94"
+    },
+    {
+      "path": "取消宽限期判不了仍放锁/plan/_meta/review-codex-20260930T144941Z.json",
+      "sha256": "4fde18f75c5e9d946a648e521fa79ea12d95780d5532030ed8c383c62884124c"
+    },
+    {
+      "path": "取消宽限期判不了仍放锁/plan/_meta/review-gemini-20260930T144941Z.json",
+      "sha256": "10c9ed851c892b8befd026b09f7fada757145cb27e384be8c0a58afa0cec6d57"
+    },
+    {
+      "path": "取消宽限期判不了仍放锁/plan/_meta/review-glm-20260930T144941Z.json",
+      "sha256": "75a247d2d546256b00b38a492bce83ca4061508722eb3d4031b3e79c90e1829f"
+    },
+    {
+      "path": "取消宽限期判不了仍放锁/plan/2026-09-30-取消宽限期判不了仍放锁-codex.md",
+      "sha256": "19abec2d578bed2f5aa9346835a0c8e2097088fba830a74bc490f54c6c1f9bca"
+    },
+    {
+      "path": "取消宽限期判不了仍放锁/plan/2026-09-30-取消宽限期判不了仍放锁-gemini.md",
+      "sha256": "dddb6fe8f1ffb51f0b2beca864ee08e74572df790683de2fecbd36bc43d27c19"
+    },
+    {
+      "path": "取消宽限期判不了仍放锁/plan/2026-09-30-取消宽限期判不了仍放锁-glm.md",
+      "sha256": "69aa53ded7ce80e38888daa84fb7c362db6cf44050af72793505238f2c756292"
+    },
+    {
+      "path": "取消宽限期判不了仍放锁/plan/2026-09-30-取消宽限期判不了仍放锁-claude.md",
+      "sha256": "af368402e808917822e1dbaa0f55a53d9badef039e13b2e31fcc8af1fffa17d0"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
