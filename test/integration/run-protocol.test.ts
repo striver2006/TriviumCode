@@ -300,6 +300,36 @@ test('EV-128 E1：--cancel 把归档 run.json 与 task.json 登记收尾为 canc
   assert.ok((await mt(a.taskJson)) < statusMt, 'task.json 登记应先于 status.json 写');
 });
 
+test('锁回收误判 U11：--cancel 收尾时锁在复核之后被改动 ⇒ 回收放弃，播报「未回收」而不是「已回收」（计划 r2 D7）', async () => {
+  const ctx = await fakeCtx();
+  const { pid } = await seedRun(ctx, 'R-D7');
+  await seedArchive(ctx, 'R-D7');
+  await holdLock(ctx, 'R-D7', pid);
+  // 回收的预检读之前，把锁就地改写成另一次获取（同 run_id，acquired_at 不同）：inspectLock 复核时还是它，回收时已不是
+  const t = fs as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
+  const origOpen = t['open']!;
+  let rewritten = false;
+  t['open'] = async (...a: unknown[]) => {
+    if (!rewritten && a[0] === lockFile(ctx) && /reclaimStaleLock/.test(new Error().stack ?? '')) {
+      rewritten = true;
+      const cur = JSON.parse(await fs.readFile(lockFile(ctx), 'utf8')) as Record<string, unknown>;
+      await fs.writeFile(lockFile(ctx), JSON.stringify({ ...cur, acquired_at: '2026-01-01T00:00:00.000Z' }, null, 2));
+    }
+    return origOpen(...a);
+  };
+  try {
+    const { value: code, out, err } = await captureOut(() => cancelRun(ctx, 'R-D7'));
+    assert.equal(code, EXIT.OK);
+    assert.ok(rewritten, '桩必须在回收的预检读时触发');
+    assert.doesNotMatch(out, /已回收主题/, '什么都没回收就不说已回收');
+    assert.match(err, /主题锁在回收时已被别的进程动过，未回收/);
+    assert.equal((await inspectLock(ctx.triviumDir, TOPIC))?.acquired_at, '2026-01-01T00:00:00.000Z', '改动过的锁原样在位');
+  } finally {
+    t['open'] = origOpen;
+    killQuietly(pid);
+  }
+});
+
 test('EV-128 E3：工作进程未确认退出（运行中却拿不到 worker_pid）⇒ 归档 run.json 不写，输出写明原因', async () => {
   const ctx = await fakeCtx();
   const { pid, runDir } = await seedRun(ctx, 'R-UNSURE');

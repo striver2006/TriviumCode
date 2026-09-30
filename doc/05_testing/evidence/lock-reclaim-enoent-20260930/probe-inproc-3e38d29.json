@@ -1,0 +1,73 @@
+{
+  "lock_module": "dist/test/src/trivium/lock.js",
+  "node": "v25.2.1",
+  "at": "2026-09-30T02:08:40.851Z",
+  "P1_enoent_after_eexist": {
+    "delete_before_read": true,
+    "injected": 1,
+    "acquired": true,
+    "holder_pid": 32158,
+    "reclaim_warnings": [
+      "⚠️  回收主题「探针抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）"
+    ]
+  },
+  "P1c_control_no_delete": {
+    "delete_before_read": false,
+    "injected": 0,
+    "acquired": false,
+    "code": 70,
+    "message": "主题「探针抢锁」已被占用：run_id 未知（pid 32158，自 2026-09-30T02:08:40.864Z 起）。",
+    "reclaim_warnings": []
+  },
+  "P2_reclaim_displaces_live_lock": {
+    "a_acquired": true,
+    "c_acquired": true,
+    "c_error": null,
+    "b": {
+      "acquired": false,
+      "code": 70,
+      "message": "主题「探针抢锁」已被占用：run_id R-A（pid 32158，自 2026-09-30T02:08:40.874Z 起）。"
+    },
+    "double_holder": true,
+    "events": [
+      {
+        "tag": "A 回收并建好新锁之后",
+        "lock_path_holds": "R-A",
+        "stale_files": 0
+      },
+      {
+        "tag": "B 已把 A 的活锁挪走、正在复验（空档）",
+        "lock_path_holds": "(不存在)",
+        "stale_files": 1
+      },
+      {
+        "tag": "C 拿到句柄那一刻",
+        "lock_path_holds": "R-C",
+        "stale_files": 1
+      },
+      {
+        "tag": "C 拿到句柄时 A 是否仍持有",
+        "a_holds": true
+      },
+      {
+        "tag": "B 放回之后",
+        "lock_path_holds": "R-A",
+        "stale_files": 0
+      },
+      {
+        "tag": "A、C 各自 release 之后",
+        "lock_path_holds": "(不存在)",
+        "stale_files": 0
+      }
+    ],
+    "reclaim_warnings": [
+      "⚠️  回收主题「探针抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）",
+      "⚠️  回收主题「探针抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）"
+    ],
+    "after_release": {
+      "tag": "A、C 各自 release 之后",
+      "lock_path_holds": "(不存在)",
+      "stale_files": 0
+    }
+  }
+}

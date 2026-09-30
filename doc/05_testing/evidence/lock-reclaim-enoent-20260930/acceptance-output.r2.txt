@@ -1,0 +1,20 @@
+✓ A0 依赖声明一致：package.json 相同；package-lock.json 相同
+✓ A0 移植测试逐字节相同：test/unit/lock.test.ts：拷入前与新树不同、拷入后相同；test/integration/lock-cross-process.test.ts：拷入前与新树不同、拷入后相同；test/integration/run-protocol.test.ts：拷入前与新树不同、拷入后相同
+✓ A0 新旧产物不同：trivium.cjs 5af11d60c9a9 / b196568f8d02；lock.js 62c105b8323c / 3e24bc65c4d7
+✓ A1 P1 旧：注入 1 次；告警：⚠️  回收主题「探针抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）
+✓ A1 P1 新：注入 1 次；拿到锁 true；告警：无
+✓ A1 P1c 两边：旧 70、新 70，均无告警
+✓ A1 P2 旧：双持有 true；C 抢锁时机：B 复验期间（空档）；回收告警 2 条
+✓ A1 P2 新：双持有 false；C 抢锁时机：B 结束之后（A 仍持有），结局 70；回收告警 1 条
+✓ A2 e149 旧：600 轮：unparsable 告警 159 轮，多赢家 2 轮（重叠 2、先后 0），晚就绪 0 轮
+✓ A2 e149 新：600 轮：unparsable 告警 0 轮，多赢家 0 轮，晚就绪 0 轮；回收原因计数 {"pid_gone":600}
+✓ A3 x1 旧：600 轮：告警 40 轮（{"unparsable":44,"pid_reused":1}），区内 > 1 0 轮，丢更新 0 轮
+✓ A3 x1 新：600 轮：告警 0 轮，区内 > 1 0 轮，丢更新 0 轮
+✓ A4 旧构建跑到了全部目标用例：全部 16 条出现；ℹ tests 99；ℹ pass 84；ℹ fail 15
+✓ A4 旧构建上的红绿（记录）：跨进程多个进程同时回收同一把遗留锁，仍只有一个拿到红 X3红 U1红 U2红 U3红 U4红 U4′红 U4b红 U5红 U6红 U7红 U8红 U9红 U10绿 U11红 U12红
+✓ A4 新构建全绿：16/16；ℹ tests 99；ℹ pass 99；ℹ fail 0
+✓ A5 死持有者：新旧都回收、输出逐字相同：退出码 新 0 / 旧 0；stderr：⚠️  回收主题「.task-锁验收」的遗留锁（原因 pid_gone，原持有者 pid 〈PID〉）
+✓ A5 活持有者：新旧都 70、输出逐字相同：退出码 新 70 / 旧 70
+
+验收：17/17 通过
+exit=0

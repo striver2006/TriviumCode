@@ -1,0 +1,40 @@
+{
+  "root": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/3bc69dfe-6577-4368-a3b7-9a95c24dd8d5/scratchpad/old-3e38d29",
+  "file": "dist/test/test/integration/lock-cross-process.test.js",
+  "node": "v25.2.1",
+  "parallel": 8,
+  "runs_per_lane": 30,
+  "total_runs": 240,
+  "red_runs": 240,
+  "elapsed_s": 601,
+  "per_test": {
+    "跨进程：N 个独立进程同抢一把锁，有且只有一个拿到": {
+      "pass": 240,
+      "fail": 0
+    },
+    "跨进程：临界区串行化，并发读改写不丢更新": {
+      "pass": 239,
+      "fail": 1
+    },
+    "跨进程：持锁进程被杀后，遗留锁按 pid_gone 被真实回收": {
+      "pass": 240,
+      "fail": 0
+    },
+    "跨进程：多个进程同时回收同一把遗留锁，仍只有一个拿到": {
+      "pass": 127,
+      "fail": 113
+    },
+    "锁回收误判 X3：跨进程——高频抢放短临界区，锁恰被释放的那一格不告警、不回收、不交叠、不丢更新": {
+      "pass": 0,
+      "fail": 240
+    },
+    "EV-161 X1：跨进程——亚秒阈值下慢临界区（withTopicLock）不被并发者回收、不丢更新": {
+      "pass": 214,
+      "fail": 26
+    },
+    "EV-161 X2：跨进程——亚秒阈值下慢临界区（withGlobalLock）不被并发者回收、不丢更新": {
+      "pass": 212,
+      "fail": 28
+    }
+  }
+}

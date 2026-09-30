@@ -14,7 +14,8 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import type { FileHandle } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Stage } from './types.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { ensureDir, exists } from './util/fsx.js';
@@ -90,12 +91,48 @@ const lockPath = (triviumDir: string, topic: string): string =>
  */
 export const lockPathFor = lockPath;
 
-async function readLock(p: string): Promise<LockContent | null> {
+/**
+ * 读一次锁文件的结局（锁回收误判已删锁文件计划 r2 D1）。
+ *
+ * - `missing`：文件不存在（持有者恰已释放，或别人刚回收走）——**不是**「内容坏了」。原先两者都读成 null、判 `unparsable`，
+ *   再由按路径 `stat` 的年龄得 +∞ 越过 2 s 防御，打出失实的「回收遗留锁」告警，回收时还会把刚建好的活锁挪走（EV-173 / EV-149）；
+ * - `present`：文件在。`content` 读不出或解析失败时为 null（与原先「读不了 ⇒ 不可解析」同义）；`identity` / `mtimeMs` 取自
+ *   **读内容的同一个描述符**的 `fstat`，`fstat` 失败才为 null。`identity` 是 `dev:ino:mtimeNs`——只比 inode 不够，
+ *   ext4 等会把刚释放的 inode 号立刻分给下一个新文件；`rename` 不改 inode 与 mtime，回收前后比得上。
+ */
+type LockFileRead =
+  | { state: 'missing' }
+  | { state: 'present'; content: LockContent | null; identity: string | null; mtimeMs: number | null };
+
+async function readLockFile(p: string): Promise<LockFileRead> {
+  let fh: FileHandle;
   try {
-    return JSON.parse(await fs.readFile(p, 'utf8')) as LockContent;
-  } catch {
-    return null;
+    fh = await fs.open(p, 'r');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { state: 'missing' };
+    return { state: 'present', content: null, identity: null, mtimeMs: null };
   }
+  const got: { content: LockContent | null; identity: string | null; mtimeMs: number | null } = {
+    content: null,
+    identity: null,
+    mtimeMs: null,
+  };
+  try {
+    const st = await fh.stat({ bigint: true });
+    got.identity = `${st.dev}:${st.ino}:${st.mtimeNs}`;
+    got.mtimeMs = Number(st.mtimeMs);
+    got.content = JSON.parse(await fh.readFile('utf8')) as LockContent;
+  } catch {
+    // 读不了或解析失败：不可解析，已取到的身份与修改时刻照给
+  } finally {
+    await fh.close().catch(() => undefined);
+  }
+  return { state: 'present', ...got };
+}
+
+async function readLock(p: string): Promise<LockContent | null> {
+  const r = await readLockFile(p);
+  return r.state === 'missing' ? null : r.content;
 }
 
 export type StaleReason =
@@ -154,49 +191,120 @@ export async function judgeStale(
 }
 
 /**
- * 回收遗留锁：**rename → 复验 → 删除**。
+ * 回收遗留锁：**预检 → rename → 复验 → 删除**。返回 true 当且仅当删掉的正是判定为遗留的那一份。
  *
  * 直接 unlink 有竞态：两个并发者都判定为遗留时，第二个可能删掉第一个刚创建的新锁
  * （审查意见 GLM-04）。rename 是原子的，只有一个能成功。
+ *
+ * 但 rename 会把 `p` 上**此刻**的文件整个挪走——判定与 rename 之间若已换了人（慢回收者判的是旧遗留锁、快回收者已建好新锁），
+ * 挪走的就是一把活锁，`p` 上随即出现空档，空档里 `link` 成功的第三者与被挪走的原持有者同时持锁；这在「放回」之前就已成立，
+ * 放回方式救不回来（锁回收误判已删锁文件计划 r2 §2.1 P2，EV-149）。所以先**预检**：rename 之前再读一次 `p`，
+ * 不是判定的那一份就不动它。
+ *
+ * 光有预检不够（实施期读数，报告 §3 偏离 D8）：两个回收者对**同一份**遗留锁都过了预检，先 rename 的一挪走它，
+ * 非回收者立刻 `link` 进空档，后一个的 rename 挪走的就是那把活锁——只要一次 rename 加一次 link 落在两次系统调用之间，
+ * 压测下约千分之一。所以回收前先**认领**：按判定的那份锁的身份命名一个认领文件，以 `O_EXCL` 创建，同一份遗留锁同一时刻
+ * 只有一个回收者动手；认领到手后再核一次身份（拿认领之前上一个认领者可能已收掉了它）。认领期间锁路径上的这份文件
+ * 只有认领者会挪；剩下的只有非回收者的删除（活持有者被误判后自己 release、`--cancel` 等收尾）——那一格由复验与放回兜住。
+ * 认领只存在于几次系统调用之间；超过 `RECLAIM_CLAIM_STALE_MS` 还在只可能是认领者中途死了，按年龄清掉，交下一轮重来。
+ *
+ * 「是判定的那一份」的谓词（r2 D3）：
+ * - 给了 `identity`（`acquireLock` 传判定那次读到的 `dev:ino:mtimeNs`）：身份相等；
+ * - 没给（`run-protocol.ts` 的三处收尾，先 `inspectLock` 复核过内容）：`expected === null` ⇒ 此刻仍不可解析；
+ *   否则此刻**可解析**且 pid 与 `acquired_at` 都相符。不容忍「此刻读不出」：rename 之前读不出说明有人正在改写这份锁
+ *   （`workerLockContent` 的两处调用方以非原子 `writeFile` 落盘），之后读不出说明有人正往这个 inode 里写，删它等于删活锁（计划双审 AGY-01）。
+ *
+ * 预检、认领后的复查与复验用同一个谓词：复验防的是复查之后才换人的格。
  */
-export async function reclaimStaleLock(p: string, expected: LockContent | null): Promise<boolean> {
-  const tmp = `${p}.stale-${process.pid}-${Date.now()}`;
+export async function reclaimStaleLock(p: string, expected: LockContent | null, identity?: string): Promise<boolean> {
+  const isJudged = (r: LockFileRead): boolean => {
+    if (r.state === 'missing') return false;
+    if (identity !== undefined) return r.identity !== null && r.identity === identity;
+    if (expected === null) return r.content === null;
+    return r.content !== null && r.content.pid === expected.pid && r.content.acquired_at === expected.acquired_at;
+  };
+  // 预检：已不在（别人先回收了）或已换成别的锁，都不动
+  const first = await readLockFile(p);
+  if (!isJudged(first)) return false;
+  // 认领按判定的那份锁的身份命名；外部调用方不传身份，取预检这一次读到的。取不到身份（fstat 失败）就没法认领，退回只靠预检
+  const id = identity ?? (first.state === 'present' ? first.identity : null);
+  const claim = id === null ? null : `${p}.reclaim-${createHash('sha256').update(id).digest('hex').slice(0, 16)}`;
+  if (claim !== null) {
+    try {
+      await fs.writeFile(claim, `${process.pid}\n`, { flag: 'wx' });
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code === 'EEXIST') {
+        // 别的回收者正在收这一份；认领放了太久只可能是它中途死了——清掉，交调用方下一轮重来
+        // （只在同身份的后来者撞上时才清得到，崩溃残件没有通用清扫，EV-174）
+        const age = await fileAgeMs(claim);
+        if (age !== null && age > RECLAIM_CLAIM_STALE_MS) await fs.rm(claim, { force: true }).catch(() => undefined);
+      } else {
+        // 其余失败同样不回收（fail-closed），但留痕：否则「回收永远不发生」无从追因（代码双审 GLM-02）
+        warn(`回收主题「${path.basename(p, '.lock')}」的遗留锁时认领失败（${code ?? String(e)}），本轮不回收`);
+      }
+      return false;
+    }
+  }
+  try {
+    if (claim !== null) {
+      // 认领之后再核一次：拿到认领之前，上一个认领者可能已经收掉了这一份（此刻锁路径上是别人的新锁或空）
+      const again = await readLockFile(p);
+      if (!isJudged(again) || again.state !== 'present' || again.identity !== id) return false;
+    }
+    return await renameAndVerify(p, isJudged);
+  } finally {
+    // 清理失败最多留一个残件，不该改变回收结果的类型（代码双审 CODEX-04）
+    if (claim !== null) await fs.rm(claim, { force: true }).catch(() => undefined);
+  }
+}
+
+/** 回收认领的遗留判据（D8）：认领只在几次系统调用之间存在，毫秒级；10 s 还在只可能是认领者中途死了 */
+const RECLAIM_CLAIM_STALE_MS = 10_000;
+
+/** 回收的后半段：rename → 复验 → 删除；复验不符则 `link` 放回（r2 D3 / D4） */
+async function renameAndVerify(p: string, isJudged: (r: LockFileRead) => boolean): Promise<boolean> {
+  // 随机段：同进程同一毫秒的两个回收者不得撞同一个 tmp 名（r2 D6）
+  const tmp = `${p}.stale-${process.pid}-${randomUUID()}`;
   try {
     await fs.rename(p, tmp);
   } catch {
     return false; // 别人先动手了
   }
-  // 复验：拿到手的确实是我们判定为遗留的那一份
-  const got = await readLock(tmp);
-  const same =
-    expected === null
-      ? got === null // 原本就不可解析：此刻若已是合法锁，那是别人刚建的
-      : got === null || (got.pid === expected.pid && got.acquired_at === expected.acquired_at);
-  if (same) {
-    await fs.rm(tmp, { force: true });
-    return true;
-  }
-  /*
-   * 不是那一份：原持有者已 release、别人已重新持有，我们 rename 走的是**别人的新锁**。
-   * 原先这里照样 rm——复验结论既不影响删除、调用方也忽略返回值，头注释承诺的
-   * 「防第二个删掉第一个刚创建的新锁」从未兑现，结果是两个进程同时「持锁」。
-   * 放回去；放不回（此刻又冒出一把新锁）只能丢弃这一份，由持有者 release 时的
-   * 「只删自己的锁」规则兜底。
-   */
   try {
-    await fs.rename(tmp, p);
-  } catch {
-    await fs.rm(tmp, { force: true });
+    // 复验：拿到手的确实是我们判定为遗留的那一份
+    if (isJudged(await readLockFile(tmp))) return true;
+    /*
+     * 不是那一份：复查之后、rename 之前换了人，挪走的是**别人的新锁**。认领之后只剩非回收者的删除能造成这一格（活持有者被误判后
+     * 自己 release、`--cancel` 等收尾；取不到身份而没认领时还有并发回收者）。放回用 `link`——目标已存在就原子失败，
+     * 不覆盖空档里又建好的锁（原先用 rename 放回会静默盖掉它）。放不回时两个持有者已经并存（r2 D4：成立在放回之前），
+     * 救不回来，只能留痕；由持有者 release 时的「只删自己的锁」规则兜住收尾。
+     */
+    try {
+      await fs.link(tmp, p);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
+        warn(`回收主题「${path.basename(p, '.lock')}」的锁时挪走了一把新建的锁且放不回，可能有两个持有者`);
+      }
+    }
+    return false;
+  } finally {
+    // 无论相符、放回成功还是放不回：link 不像 rename 会移走源，tmp 一律删（计划双审 AGY-02）；
+    // 删不掉（例如 rename 走的是一个占着锁路径的目录）只留残件，不抛给调用方（代码双审 CODEX-04）
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
   }
-  return false;
 }
 
-/** 锁文件距上次修改多久（毫秒）；读不到视为无穷久 */
-async function fileAgeMs(p: string): Promise<number> {
+/**
+ * 锁文件距上次修改多久（毫秒），只给 `readLockFile` 取不到修改时刻的那一格兜底（r2 D2）。
+ * 文件已不在返回 null（调用方按「锁已释放」重试）——原先得 +∞，越过 2 s 防御把一次正常释放读成遗留锁（EV-173）；
+ * 其余读不到仍视为无穷久（存在而连 stat 都不行，与原先一样可回收，否则永久锁死）。
+ */
+async function fileAgeMs(p: string): Promise<number | null> {
   try {
     return Date.now() - (await fs.stat(p)).mtimeMs;
-  } catch {
-    return Number.POSITIVE_INFINITY;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? null : Number.POSITIVE_INFINITY;
   }
 }
 
@@ -264,19 +372,32 @@ export async function acquireLock(opts: AcquireOptions): Promise<LockHandle> {
     }
 
     // 已被占用：看是不是遗留锁
-    const existing = await readLock(p);
+    const seen = await readLockFile(p);
+    // 持有者恰在 EEXIST 与读锁之间释放：锁已不在，不是遗留锁——立刻重试 link，不判定、不告警、不回收（EV-173）
+    if (seen.state === 'missing') continue;
+    const existing = seen.content;
     const terminal = opts.runTerminal ? await opts.runTerminal(existing?.run_id ?? null) : false;
     let stale = await judgeStale(existing, {
       heartbeatStaleMs: opts.heartbeatStaleMs,
       runTerminal: terminal,
     });
-    // 防御：不可解析但刚写下不久的文件，可能是别的工具正在写——别抢，重试
-    if (stale === 'unparsable' && (await fileAgeMs(p)) < 2_000) stale = null;
+    // 防御：不可解析但刚写下不久的文件，可能是别的工具正在写——别抢，重试。年龄取自判定的同一个 inode（r2 D2）
+    if (stale === 'unparsable') {
+      const age = seen.mtimeMs !== null ? Date.now() - seen.mtimeMs : await fileAgeMs(p);
+      if (age === null) continue; // 兜底 stat 时锁已不在：同上
+      if (age < 2_000) stale = null;
+    }
 
     if (stale !== null) {
-      warn(`回收主题「${opts.topic}」的遗留锁（原因 ${stale}，原持有者 pid ${existing?.pid ?? '?'}）`);
-      await reclaimStaleLock(p, existing);
-      continue; // 立刻重试创建
+      // 只在真回收了判定的那一份之后告警：预检不符 / 别人先动手时什么都没回收（r2 D5）
+      if (await reclaimStaleLock(p, existing, seen.identity ?? undefined)) {
+        warn(`回收主题「${opts.topic}」的遗留锁（原因 ${stale}，原持有者 pid ${existing?.pid ?? '?'}）`);
+        continue; // 立刻重试创建
+      }
+      // 没回收成（别人先动手 / 预检不符 / 认领被占）：隔一个间隔再来。认领者中途崩溃时认领要 10 s 才清得掉，
+      // 不隔就是每轮两次 ps 派生的空转（代码双审 CODEX-02）。预算与间隔取值不变，只在这一路补上间隔
+      await new Promise((r) => setTimeout(r, delay));
+      continue;
     }
 
     if (attempt >= retries) {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import {
   acquireLock, criticalHoldTimeoutMs, inspectLock, judgeStale, reclaimStaleLock, withTopicLock,
   bumpStopBlockCount, resetStopBlockCount, type LockContent,
@@ -401,6 +402,548 @@ test('EV-161 U8：同进程并发——亚秒阈值下慢临界区不被并发�
   assert.equal(maxInside, 1, `临界区最多一个持有者，实际 ${maxInside}（${order.join(' ')}）`);
   assert.deepEqual(order, ['A+', 'A-', 'B+', 'B-'], 'B 必须在 A 放锁之后进');
   assert.equal(counter, 2, '读改写不丢更新');
+});
+
+// ── 锁回收误判已删锁文件（EV-173 / EV-149，计划 r2 §5.1）：同进程 + fs.promises 桩控制 lock.ts 内部时序 ──
+
+type FsFn = (...a: unknown[]) => Promise<unknown>;
+
+/** 给 `fs.promises` 的一个方法打桩（`lock.ts` 取的是同一个对象、调用时按属性查找）；返回复原函数，调用方在 finally 里复原 */
+function stubFs(name: 'open' | 'readFile' | 'writeFile' | 'rename' | 'link', wrap: (orig: FsFn) => FsFn): () => void {
+  const t = fs as unknown as Record<string, FsFn>;
+  const orig = t[name]!;
+  t[name] = wrap(orig);
+  return () => {
+    t[name] = orig;
+  };
+}
+
+/** 截 stderr（`warn` 直接写 process.stderr）；拒绝时把错误一并带回 */
+async function withStderr<T>(fn: () => Promise<T>): Promise<{ value: T | undefined; error: unknown; err: string }> {
+  const orig = process.stderr.write.bind(process.stderr);
+  let err = '';
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    err += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    return { value: await fn(), error: undefined, err };
+  } catch (e) {
+    return { value: undefined, error: e, err };
+  } finally {
+    process.stderr.write = orig;
+  }
+}
+
+/** 与 `lock.ts` `readLockFile` 同一形态的身份：`dev:ino:mtimeNs` */
+async function identityOf(p: string): Promise<string> {
+  const st = await fs.stat(p, { bigint: true });
+  return `${st.dev}:${st.ino}:${st.mtimeNs}`;
+}
+
+const DEAD: LockContent = {
+  topic: TOPIC, stage: 'plan', run_id: 'R-DEAD', pid: 2 ** 22, pid_started_at: null,
+  acquired_at: '2026-01-01T00:00:00.000Z', kind: 'run',
+};
+const liveContent = (runId: string): LockContent => ({
+  topic: TOPIC, stage: 'plan', run_id: runId, pid: process.pid, pid_started_at: null,
+  acquired_at: new Date().toISOString(), kind: 'run',
+});
+const writeLockFile = (p: string, c: LockContent | string): Promise<void> =>
+  fs.writeFile(p, typeof c === 'string' ? c : JSON.stringify(c, null, 2) + '\n');
+const staleLeftovers = async (dir: string): Promise<string[]> =>
+  (await fs.readdir(path.join(dir, 'lock'))).filter((n) => n.includes('.stale-'));
+
+test('锁回收误判 U1：EEXIST 之后、读锁之前持有者释放 ⇒ 立刻重试拿到锁，不告警、不 rename（EV-173）', async () => {
+  const dir = await tmpTrivium();
+  await acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS });
+  let injected = 0;
+  let renames = 0;
+  const r1 = stubFs('open', (orig) => async (...a) => {
+    if (a[0] === lockFile(dir) && injected++ === 0) await fs.rm(lockFile(dir), { force: true }); // 持有者恰在此刻释放
+    return orig(...a);
+  });
+  const r2 = stubFs('rename', (orig) => async (...a) => {
+    renames++;
+    return orig(...a);
+  });
+  try {
+    let judged = 0;
+    const runTerminal = async (): Promise<boolean> => {
+      judged++;
+      return false;
+    };
+    const r = await withStderr(() =>
+      acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 0, runTerminal }),
+    );
+    assert.ok(injected >= 1, '桩必须真的在读锁前删过');
+    assert.equal(r.error, undefined, `应拿到锁：${String(r.error)}`);
+    assert.equal(r.value?.content.pid, process.pid);
+    assert.doesNotMatch(r.err, /回收主题/, '锁已释放不是遗留锁，不得告警');
+    assert.equal(judged, 0, '锁已不在就不进判定（不查 runTerminal）');
+    assert.equal(renames, 0, '不得进回收');
+    await r.value?.release();
+  } finally {
+    r1();
+    r2();
+  }
+});
+
+test('锁回收误判 U2：读锁时锁已不在、重试 link 前又被别人建上 ⇒ 按活锁判、抛 70，无告警', async () => {
+  const dir = await tmpTrivium();
+  await acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS });
+  let phase = 0;
+  const r1 = stubFs('open', (orig) => async (...a) => {
+    if (a[0] === lockFile(dir) && phase === 0) {
+      phase = 1;
+      await fs.rm(lockFile(dir), { force: true });
+    }
+    return orig(...a);
+  });
+  const r2 = stubFs('link', (orig) => async (...a) => {
+    if (a[1] === lockFile(dir) && phase === 1) {
+      phase = 2;
+      await writeLockFile(lockFile(dir), liveContent('R-OTHER')); // 别人抢先建上
+    }
+    return orig(...a);
+  });
+  try {
+    const r = await withStderr(() => acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 0 }));
+    assert.equal(phase, 2, '两段桩都应触发');
+    assert.equal((r.error as { code?: number } | undefined)?.code, EXIT.LOCKED, `应抛 70：${String(r.error)}`);
+    assert.match(String((r.error as Error).message), /run_id R-OTHER/);
+    assert.doesNotMatch(r.err, /回收主题/);
+    assert.equal((await inspectLock(dir, TOPIC))?.run_id, 'R-OTHER', '别人的锁原样在位');
+  } finally {
+    r1();
+    r2();
+  }
+});
+
+test('锁回收误判 U3：不可解析锁的年龄取自判定的同一个 inode——读后路径被换成旧文件，仍按新写的不回收', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  await writeLockFile(lockFile(dir), ''); // 刚写下、不可解析
+  let swapped = false;
+  const r1 = stubFs('open', (orig) => async (...a) => {
+    const fh = await orig(...a);
+    if (a[0] === lockFile(dir) && !swapped) {
+      swapped = true;
+      // 描述符已拿到之后，路径上换成一份 60 s 前的旧文件：按路径 stat 会得「旧」，按描述符 fstat 仍是「新」
+      const other = `${lockFile(dir)}.swap`;
+      await writeLockFile(other, '');
+      const old = new Date(Date.now() - 60_000);
+      await fs.utimes(other, old, old);
+      await fs.rename(other, lockFile(dir));
+    }
+    return fh;
+  });
+  try {
+    const r = await withStderr(() => acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 0 }));
+    assert.ok(swapped);
+    assert.equal((r.error as { code?: number } | undefined)?.code, EXIT.LOCKED, `判定的那一份是新写的，应当活锁处理：${String(r.error)}`);
+    assert.doesNotMatch(r.err, /回收主题/);
+  } finally {
+    r1();
+  }
+});
+
+test('锁回收误判 U4：回收前身份预检——路径上已换成新锁 ⇒ 返回 false、不 rename、新锁逐字节不变', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  await writeLockFile(lockFile(dir), DEAD);
+  const judged = await identityOf(lockFile(dir));
+  await fs.rm(lockFile(dir));
+  await writeLockFile(lockFile(dir), liveContent('R-NEW'));
+  const before = await fs.readFile(lockFile(dir), 'utf8');
+  let renames = 0;
+  const r1 = stubFs('rename', (orig) => async (...a) => {
+    renames++;
+    return orig(...a);
+  });
+  try {
+    assert.equal(await reclaimStaleLock(lockFile(dir), DEAD, judged), false);
+    assert.equal(renames, 0, '预检不符不得 rename');
+    assert.equal(await fs.readFile(lockFile(dir), 'utf8'), before);
+    // 反面：身份相符照常回收
+    assert.equal(await reclaimStaleLock(lockFile(dir), null, await identityOf(lockFile(dir))), true);
+    assert.equal(await inspectLock(dir, TOPIC), null);
+  } finally {
+    r1();
+  }
+});
+
+test('锁回收误判 U4′：身份含修改时刻——判定之后遗留锁被就地改写（inode 相同、mtime 不同）⇒ 预检不符，不回收', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  await writeLockFile(lockFile(dir), DEAD);
+  const old = new Date(Date.now() - 60_000);
+  await fs.utimes(lockFile(dir), old, old);
+  const ino = (await fs.stat(lockFile(dir))).ino;
+  let opens = 0;
+  const r1 = stubFs('open', (orig) => async (...a) => {
+    // 第一次是判定读，第二次是回收的预检读：在预检之前就地改写成活锁（同一 inode，只改内容与修改时刻）
+    if (a[0] === lockFile(dir) && ++opens === 2) await writeLockFile(lockFile(dir), liveContent('R-REWRITTEN'));
+    return orig(...a);
+  });
+  try {
+    const r = await withStderr(() => acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 0 }));
+    assert.ok(opens >= 2, '桩必须在预检读时触发');
+    assert.equal((await fs.stat(lockFile(dir))).ino, ino, '前提：同一 inode');
+    assert.equal((r.error as { code?: number } | undefined)?.code, EXIT.LOCKED, `就地改写后的是活锁：${String(r.error)}`);
+    assert.doesNotMatch(r.err, /回收主题/);
+    assert.equal((await inspectLock(dir, TOPIC))?.run_id, 'R-REWRITTEN', '活锁原样在位');
+  } finally {
+    r1();
+  }
+});
+
+test('锁回收误判 U4b：不传身份、expected 非空而此刻内容读不出 ⇒ 不回收（计划双审 AGY-01）', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  await writeLockFile(lockFile(dir), '{"topic": "写到一半');
+  assert.equal(await reclaimStaleLock(lockFile(dir), DEAD), false);
+  assert.equal(await fs.readFile(lockFile(dir), 'utf8'), '{"topic": "写到一半', '正在改写的锁不得被挪走');
+  assert.deepEqual(await staleLeftovers(dir), []);
+});
+
+test('锁回收误判 U5：慢回收者判定之后快回收者已建好新锁 ⇒ 慢者不挪走活锁，空档不出现，只有一个持有者（EV-149 入口 B）', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  await writeLockFile(lockFile(dir), DEAD);
+  const opts = (runId: string) => ({ triviumDir: dir, topic: TOPIC, runId, kind: 'run' as const, heartbeatStaleMs: STALE_MS, retries: 0 });
+  // B 对锁路径的第二次触碰（判定之后的预检读 / 旧实现的 rename）被扣住，直到 A 回收并持锁
+  let touches = 0;
+  let phase: 'B' | 'A' = 'B';
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  let atHold!: () => void;
+  const reachedHold = new Promise<void>((r) => (atHold = r));
+  let renamesOfLock = 0;
+  const hold = async (p: unknown) => {
+    if (phase === 'B' && p === lockFile(dir) && ++touches === 2) {
+      atHold();
+      await held;
+    }
+  };
+  const r1 = stubFs('open', (orig) => async (...a) => {
+    await hold(a[0]);
+    return orig(...a);
+  });
+  const r2 = stubFs('rename', (orig) => async (...a) => {
+    await hold(a[0]);
+    if (a[0] === lockFile(dir)) renamesOfLock++;
+    return orig(...a);
+  });
+  // 旧实现读锁走 readFile：一并计入触碰，否则扣留点到不了（移植到旧构建上时应红而不是挂死）
+  const r3 = stubFs('readFile', (orig) => async (...a) => {
+    await hold(a[0]);
+    return orig(...a);
+  });
+  try {
+    const cap = await withStderr(async () => {
+      const b = acquireLock(opts('R-B')).then(() => 'B 拿到了', (e: { code?: number }) => e.code);
+      const reached = await Promise.race([reachedHold.then(() => true), new Promise<boolean>((r) => setTimeout(() => r(false), 5_000))]);
+      assert.ok(reached, 'B 没走到判定之后的第二次触碰（桩失效）');
+      phase = 'A';
+      const a = await acquireLock(opts('R-A'));
+      release();
+      const bResult = await b;
+      const c = await acquireLock(opts('R-C')).then(() => 'C 拿到了', (e: { code?: number }) => e.code);
+      return { a, bResult, c };
+    });
+    assert.equal(cap.error, undefined, String(cap.error));
+    const { a, bResult, c } = cap.value!;
+    assert.equal(bResult, EXIT.LOCKED, 'B 预检看到新锁，不回收，按活锁抛 70');
+    assert.equal(c, EXIT.LOCKED, 'A 持有期间 C 不得拿到');
+    assert.equal(renamesOfLock, 1, '只有 A 的一次回收 rename');
+    assert.equal((await inspectLock(dir, TOPIC))?.run_id, 'R-A');
+    assert.equal((cap.err.match(/回收主题/g) ?? []).length, 1, `只有真回收的 A 告警一条：${cap.err}`);
+    await a.release();
+    assert.equal(await inspectLock(dir, TOPIC), null);
+  } finally {
+    release();
+    r1();
+    r2();
+    r3();
+  }
+});
+
+test('锁回收误判 U6：残余窗口命中（预检之后才换人）⇒ 放回用 link、不覆盖空档里的新锁，留痕告警，不留 tmp', async () => {
+  for (const cJoins of [true, false]) {
+    const dir = await tmpTrivium();
+    await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+    await writeLockFile(lockFile(dir), DEAD);
+    const judged = await identityOf(lockFile(dir));
+    let swapped = false;
+    let cLinked = false;
+    const r1 = stubFs('rename', (orig) => async (...a) => {
+      if (a[0] === lockFile(dir) && !swapped) {
+        swapped = true;
+        // 预检已通过；此刻另一回收者完成了回收并建好新锁 LA
+        await fs.rm(lockFile(dir));
+        await writeLockFile(lockFile(dir), liveContent('R-LA'));
+      }
+      return orig(...a);
+    });
+    const r2 = stubFs('open', (orig) => async (...a) => {
+      if (cJoins && !cLinked && String(a[0]).includes('.stale-')) {
+        cLinked = true;
+        await writeLockFile(lockFile(dir), liveContent('R-LC')); // 复验期间 C 在空档里建锁
+      }
+      return orig(...a);
+    });
+    try {
+      const r = await withStderr(() => reclaimStaleLock(lockFile(dir), DEAD, judged));
+      assert.equal(r.value, false, `挪走的不是判定的那一份（C ${cJoins ? '进' : '不进'}空档）`);
+      assert.deepEqual(await staleLeftovers(dir), [], 'link 放回不移走源，tmp 必须删掉');
+      if (cJoins) {
+        assert.equal((await inspectLock(dir, TOPIC))?.run_id, 'R-LC', '放回不得覆盖空档里的新锁');
+        assert.match(r.err, /回收主题「登录重构」的锁时挪走了一把新建的锁且放不回，可能有两个持有者/);
+      } else {
+        assert.equal((await inspectLock(dir, TOPIC))?.run_id, 'R-LA', '没人进空档时原样放回');
+        assert.doesNotMatch(r.err, /回收主题/);
+      }
+    } finally {
+      r1();
+      r2();
+    }
+  }
+});
+
+test('锁回收误判 U7：告警只在真回收之后打，文字不变；预检不符放弃回收时不告警', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  await writeLockFile(lockFile(dir), DEAD);
+  const ok = await withStderr(() => acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 0 }));
+  assert.equal(ok.error, undefined);
+  assert.equal(
+    ok.err.split('\n').filter((l) => l.includes('回收主题')).join('\n'),
+    `⚠️  回收主题「${TOPIC}」的遗留锁（原因 pid_gone，原持有者 pid ${2 ** 22}）`,
+  );
+  await ok.value?.release();
+
+  // 判定（第一次读）之后、预检（第二次读）之前换成活锁：什么都没回收，不得告警
+  await writeLockFile(lockFile(dir), DEAD);
+  let opens = 0;
+  const r1 = stubFs('open', (orig) => async (...a) => {
+    if (a[0] === lockFile(dir) && ++opens === 2) {
+      await fs.rm(lockFile(dir));
+      await writeLockFile(lockFile(dir), liveContent('R-LIVE'));
+    }
+    return orig(...a);
+  });
+  try {
+    const r = await withStderr(() => acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 0 }));
+    assert.equal((r.error as { code?: number } | undefined)?.code, EXIT.LOCKED);
+    assert.doesNotMatch(r.err, /回收主题/, '没回收就不说回收了');
+    assert.equal((await inspectLock(dir, TOPIC))?.run_id, 'R-LIVE');
+  } finally {
+    r1();
+  }
+});
+
+test('锁回收误判 U8：同进程同一毫秒的两次回收 tmp 名不同', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  await writeLockFile(lockFile(dir), DEAD);
+  const targets: string[] = [];
+  const now = Date.now;
+  Date.now = () => 1_790_000_000_000;
+  const r1 = stubFs('rename', () => async (...a) => {
+    targets.push(String(a[1]));
+    throw Object.assign(new Error('桩：不真的挪'), { code: 'EBUSY' });
+  });
+  try {
+    // 顺序两次：同一份遗留锁同一时刻只许一个回收者持认领（D8），认领在 finally 里释放，第二次照样走到 rename
+    assert.equal(await reclaimStaleLock(lockFile(dir), DEAD), false);
+    assert.equal(await reclaimStaleLock(lockFile(dir), DEAD), false);
+  } finally {
+    r1();
+    Date.now = now;
+  }
+  assert.equal(targets.length, 2, '两次都应走到 rename');
+  assert.notEqual(targets[0], targets[1], `tmp 名撞了：${targets.join(' ')}`);
+});
+
+const claimOf = (p: string, identity: string): string =>
+  `${p}.reclaim-${createHash('sha256').update(identity).digest('hex').slice(0, 16)}`;
+const claimLeftovers = async (dir: string): Promise<string[]> =>
+  (await fs.readdir(path.join(dir, 'lock'))).filter((n) => n.includes('.reclaim-'));
+
+test('锁回收误判 U12：回收认领——同一份遗留锁同一时刻只有一个回收者动手；新鲜认领挡住后来者，陈旧认领被清掉后可重来（D8）', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  await writeLockFile(lockFile(dir), DEAD);
+  const judged = await identityOf(lockFile(dir));
+
+  // ① 第一个回收者持认领、在 rename 前被扣住：第二个同身份回收者拿不到认领，直接放弃，不碰锁路径
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  let atRename!: () => void;
+  const reachedRename = new Promise<void>((r) => (atRename = r));
+  let renamesOfLock = 0;
+  const r1 = stubFs('rename', (orig) => async (...a) => {
+    if (a[0] === lockFile(dir) && renamesOfLock++ === 0) {
+      atRename();
+      await held;
+    }
+    return orig(...a);
+  });
+  try {
+    const first = reclaimStaleLock(lockFile(dir), DEAD, judged);
+    // 带超时：变异下第一个回收者可能根本走不到 rename，此时应红而不是挂死（变异装置不给套件加超时）
+    const reached = await Promise.race([reachedRename.then(() => true), new Promise<boolean>((r) => setTimeout(() => r(false), 5_000))]);
+    if (!reached) assert.fail(`第一个回收者没走到 rename：${String(await first)}`); // 没走到就不会被扣住，first 此时已返回
+    assert.deepEqual(await claimLeftovers(dir), [path.basename(claimOf(lockFile(dir), judged))], '认领按身份命名');
+    assert.equal(await reclaimStaleLock(lockFile(dir), DEAD, judged), false, '同身份的第二个回收者应放弃');
+    assert.equal(await reclaimStaleLock(lockFile(dir), DEAD), false, '不传身份的外部调用方按预检读到的身份认领，同样放弃');
+    assert.equal(renamesOfLock, 1, '只有持认领者走到 rename');
+    release();
+    assert.equal(await first, true);
+  } finally {
+    release();
+    r1();
+  }
+  assert.equal(await inspectLock(dir, TOPIC), null);
+  assert.deepEqual(await claimLeftovers(dir), [], '认领在收尾时释放');
+
+  // ② 认领残留：新鲜的挡住、原样保留；10 s 以上的按认领者中途死了清掉，下一轮照常回收
+  await writeLockFile(lockFile(dir), DEAD);
+  const id2 = await identityOf(lockFile(dir));
+  const claim = claimOf(lockFile(dir), id2);
+  await fs.writeFile(claim, '999999\n');
+  assert.equal(await reclaimStaleLock(lockFile(dir), DEAD, id2), false, '新鲜认领挡住');
+  assert.ok(await fs.stat(claim).then(() => true, () => false), '新鲜认领不得被清掉');
+  const old = new Date(Date.now() - 60_000);
+  await fs.utimes(claim, old, old);
+  assert.equal(await reclaimStaleLock(lockFile(dir), DEAD, id2), false, '碰到陈旧认领这一轮先放弃');
+  assert.deepEqual(await claimLeftovers(dir), [], '陈旧认领已清掉');
+  assert.equal(await reclaimStaleLock(lockFile(dir), DEAD, id2), true, '下一轮照常回收');
+  assert.equal(await inspectLock(dir, TOPIC), null);
+
+  // ③ 迟到的回收者：预检时还是那份遗留锁，拿认领之前上一个认领者已收掉它、别人建了新锁 ⇒ 认领后复查不符，不 rename
+  await writeLockFile(lockFile(dir), DEAD);
+  const id3 = await identityOf(lockFile(dir));
+  let renames3 = 0;
+  const r2 = stubFs('writeFile', (orig) => async (...a) => {
+    if (String(a[0]).includes('.reclaim-') && renames3 === 0) {
+      await fs.rm(lockFile(dir));
+      await writeLockFile(lockFile(dir), liveContent('R-NEWER')); // 上一个认领者收掉了、别人建了新锁
+    }
+    return orig(...a);
+  });
+  const r3 = stubFs('rename', (orig) => async (...a) => {
+    if (a[0] === lockFile(dir)) renames3++;
+    return orig(...a);
+  });
+  try {
+    assert.equal(await reclaimStaleLock(lockFile(dir), DEAD, id3), false);
+    assert.equal(renames3, 0, '认领之后复查不符，不得 rename');
+    assert.equal((await inspectLock(dir, TOPIC))?.run_id, 'R-NEWER');
+    assert.deepEqual(await claimLeftovers(dir), []);
+  } finally {
+    r2();
+    r3();
+  }
+});
+
+test('锁回收误判 U9：读锁取不到修改时刻、兜底 stat 时锁已不在 ⇒ 按已释放重试，不进回收', async () => {
+  const dir = await tmpTrivium();
+  await acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS });
+  let opens = 0;
+  const r1 = stubFs('open', (orig) => async (...a) => {
+    if (a[0] === lockFile(dir) && ++opens === 1) {
+      await fs.rm(lockFile(dir), { force: true });
+      throw Object.assign(new Error('桩：权限不足'), { code: 'EACCES' }); // 读不了 ⇒ 不可解析、没有修改时刻
+    }
+    return orig(...a);
+  });
+  try {
+    const r = await withStderr(() => acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 0 }));
+    assert.equal(r.error, undefined, String(r.error));
+    assert.equal(opens, 1, '兜底 stat 得 ENOENT 应直接重试 link，不进回收的预检读');
+    assert.doesNotMatch(r.err, /回收主题/);
+    await r.value?.release();
+  } finally {
+    r1();
+  }
+});
+
+test('锁回收误判 U10：打开锁文件之后读内容出错（EIO）⇒ 按不可解析判、不抛非 70 的异常（计划双审 GLM-02）', async () => {
+  const dir = await tmpTrivium();
+  await acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS });
+  const r1 = stubFs('open', (orig) => async (...a) => {
+    const fh = (await orig(...a)) as object;
+    if (a[0] !== lockFile(dir)) return fh;
+    return new Proxy(fh, {
+      get(t, k) {
+        if (k === 'readFile') return async () => { throw Object.assign(new Error('桩：EIO'), { code: 'EIO' }); };
+        const v = Reflect.get(t, k) as unknown;
+        return typeof v === 'function' ? (v as (...x: unknown[]) => unknown).bind(t) : v;
+      },
+    });
+  });
+  try {
+    const r = await withStderr(() => acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 0 }));
+    assert.equal((r.error as { code?: number } | undefined)?.code, EXIT.LOCKED, `刚写下的不可解析锁按活锁处理：${String(r.error)}`);
+    assert.doesNotMatch(r.err, /回收主题/);
+  } finally {
+    r1();
+  }
+});
+
+test('锁回收误判 U13：清理失败不改变结果类型——锁路径被旧目录占着照常拿到锁；认领创建遇非 EEXIST 错误时不回收并告警（代码双审 CODEX-04 / GLM-02）', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(lockFile(dir), { recursive: true }); // 锁路径上是一个目录
+  const old = new Date(Date.now() - 60_000);
+  await fs.utimes(lockFile(dir), old, old);
+  const r = await withStderr(() => acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 0 }));
+  assert.equal(r.error, undefined, `不得抛出清理阶段的原始异常：${String(r.error)}`);
+  assert.equal(r.value?.content.pid, process.pid);
+  await r.value?.release();
+
+  const dir2 = await tmpTrivium();
+  await fs.mkdir(path.join(dir2, 'lock'), { recursive: true });
+  await writeLockFile(lockFile(dir2), DEAD);
+  const r1 = stubFs('writeFile', (orig) => async (...a) => {
+    if (String(a[0]).includes('.reclaim-')) throw Object.assign(new Error('桩：权限不足'), { code: 'EACCES' });
+    return orig(...a);
+  });
+  try {
+    const w = await withStderr(() => reclaimStaleLock(lockFile(dir2), DEAD));
+    assert.equal(w.value, false, 'fail-closed：认领不到就不回收');
+    assert.match(w.err, /回收主题「登录重构」的遗留锁时认领失败（EACCES），本轮不回收/);
+    assert.equal((await inspectLock(dir2, TOPIC))?.run_id, 'R-DEAD', '遗留锁原样在位');
+  } finally {
+    r1();
+  }
+});
+
+test('锁回收误判 U14：回收没成（认领被占）时隔一个重试间隔再来，不空转（代码双审 CODEX-02）', async () => {
+  const dir = await tmpTrivium();
+  await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  await writeLockFile(lockFile(dir), DEAD);
+  const claim = claimOf(lockFile(dir), await identityOf(lockFile(dir)));
+  await fs.writeFile(claim, '999999\n'); // 一个「正在回收」的认领（未满 10 s）
+  const judgedAt: number[] = [];
+  const runTerminal = async (): Promise<boolean> => {
+    judgedAt.push(Date.now());
+    return false;
+  };
+  const DELAY = 150;
+  // 约 500 ms 后认领者收工：删认领，下一轮照常回收
+  const done = new Promise<void>((res) => setTimeout(() => void fs.rm(claim, { force: true }).then(() => res()), 500));
+  const r = await withStderr(() =>
+    acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 0, retryDelayMs: DELAY, runTerminal }),
+  );
+  await done;
+  assert.equal(r.error, undefined, String(r.error));
+  assert.equal(r.value?.content.pid, process.pid, '认领释放后照常回收并拿到锁');
+  assert.ok(judgedAt.length >= 2, `应至少判定两轮：${judgedAt.length}`);
+  const gaps = judgedAt.slice(1).map((t, i) => t - judgedAt[i]!);
+  assert.ok(Math.min(...gaps) >= DELAY - 10, `两次判定之间应隔一个重试间隔（${DELAY} ms），实际 ${gaps.join(' / ')} ms`);
+  await r.value?.release();
 });
 
 // ── hook-stop 阻断计数：免锁自增 ──

@@ -1,0 +1,157 @@
+{
+  "targets": [
+    "src/trivium/lock.ts",
+    "src/trivium/run-protocol.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/lock.test.js",
+    "dist/test/test/integration/lock-cross-process.test.js",
+    "dist/test/test/integration/run-protocol.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "D1 撤销：missing 不再直接重试（落进判定）⇒ U1（runTerminal 被调用）",
+      "file": "src/trivium/lock.ts",
+      "find": "    if (seen.state === 'missing') continue;\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "D2 撤销：不可解析锁的年龄改回按路径 stat ⇒ U3",
+      "file": "src/trivium/lock.ts",
+      "find": "      const age = seen.mtimeMs !== null ? Date.now() - seen.mtimeMs : await fileAgeMs(p);\n",
+      "replace": "      const age = await fileAgeMs(p);\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "D3 身份只比 dev:ino（去掉修改时刻）⇒ U4′（就地改写的活锁被回收）",
+      "file": "src/trivium/lock.ts",
+      "find": "    got.identity = `${st.dev}:${st.ino}:${st.mtimeNs}`;\n",
+      "replace": "    got.identity = `${st.dev}:${st.ino}`;\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "D3 谓词退回容忍「此刻读不出」⇒ U4b",
+      "file": "src/trivium/lock.ts",
+      "find": "    return r.content !== null && r.content.pid === expected.pid && r.content.acquired_at === expected.acquired_at;\n",
+      "replace": "    return r.content === null || r.content.pid === expected.pid && r.content.acquired_at === expected.acquired_at;\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "D4 撤销：放回改回会覆盖的 rename ⇒ U6（C 的锁被盖掉）",
+      "file": "src/trivium/lock.ts",
+      "find": "     * 救不回来，只能留痕；由持有者 release 时的「只删自己的锁」规则兜住收尾。\n     */\n    try {\n      await fs.link(tmp, p);\n",
+      "replace": "     * 救不回来，只能留痕；由持有者 release 时的「只删自己的锁」规则兜住收尾。\n     */\n    try {\n      await fs.rename(tmp, p);\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "D4 放回之后不删 tmp ⇒ U6（.stale- 残留）",
+      "file": "src/trivium/lock.ts",
+      "find": "    // 无论相符、放回成功还是放不回：link 不像 rename 会移走源，tmp 一律删（计划双审 AGY-02）；\n    // 删不掉（例如 rename 走的是一个占着锁路径的目录）只留残件，不抛给调用方（代码双审 CODEX-04）\n    await fs.rm(tmp, { force: true }).catch(() => undefined);\n",
+      "replace": "    // 无论相符、放回成功还是放不回：link 不像 rename 会移走源，tmp 一律删（计划双审 AGY-02）；\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "D5 撤销：告警挪回回收之前 ⇒ U5 / U7",
+      "file": "src/trivium/lock.ts",
+      "find": "      if (await reclaimStaleLock(p, existing, seen.identity ?? undefined)) {\n        warn(`回收主题「${opts.topic}」的遗留锁（原因 ${stale}，原持有者 pid ${existing?.pid ?? '?'}）`);\n        continue; // 立刻重试创建\n      }\n",
+      "replace": "      warn(`回收主题「${opts.topic}」的遗留锁（原因 ${stale}，原持有者 pid ${existing?.pid ?? '?'}）`);\n      await reclaimStaleLock(p, existing, seen.identity ?? undefined);\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M8x",
+      "desc": "同 M8，跨进程 ⇒ EV-149 用例断言④（多个判定者各告警一条 pid_gone；概率性）",
+      "file": "src/trivium/lock.ts",
+      "find": "      if (await reclaimStaleLock(p, existing, seen.identity ?? undefined)) {\n        warn(`回收主题「${opts.topic}」的遗留锁（原因 ${stale}，原持有者 pid ${existing?.pid ?? '?'}）`);\n        continue; // 立刻重试创建\n      }\n",
+      "replace": "      warn(`回收主题「${opts.topic}」的遗留锁（原因 ${stale}，原持有者 pid ${existing?.pid ?? '?'}）`);\n      await reclaimStaleLock(p, existing, seen.identity ?? undefined);\n",
+      "expect": "dist/test/test/integration/lock-cross-process.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "D6 撤销：tmp 名去掉随机段 ⇒ U8",
+      "file": "src/trivium/lock.ts",
+      "find": "  const tmp = `${p}.stale-${process.pid}-${randomUUID()}`;\n",
+      "replace": "  const tmp = `${p}.stale-${process.pid}-${Date.now()}`;\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "D7 撤销：--cancel 收尾无条件播报「已回收」⇒ U11",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      if (await reclaimStaleLock(lockPathFor(ctx.triviumDir, topic), existing)) {\n        say(`已回收主题「${topic}」的锁`);\n      } else {\n        step('主题锁在回收时已被别的进程动过，未回收');\n",
+      "replace": "      await reclaimStaleLock(lockPathFor(ctx.triviumDir, topic), existing);\n      {\n        say(`已回收主题「${topic}」的锁`);\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "fileAgeMs 对不存在的文件改回 +∞ ⇒ U9（进了回收的预检读）",
+      "file": "src/trivium/lock.ts",
+      "find": "    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? null : Number.POSITIVE_INFINITY;\n",
+      "replace": "    return Number.POSITIVE_INFINITY;\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "解析失败时丢掉同一描述符的修改时刻（退回按路径 stat）⇒ U3",
+      "file": "src/trivium/lock.ts",
+      "find": "    // 读不了或解析失败：不可解析，已取到的身份与修改时刻照给\n",
+      "replace": "    // 读不了或解析失败：不可解析，已取到的身份与修改时刻照给\n    got.mtimeMs = null;\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "D8 撤销：不认领（同一份遗留锁的回收者不再互斥）⇒ U12①",
+      "file": "src/trivium/lock.ts",
+      "find": "  const claim = id === null ? null : `${p}.reclaim-${createHash('sha256').update(id).digest('hex').slice(0, 16)}`;\n",
+      "replace": "  const claim: string | null = null;\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "D8 认领之后不复查 ⇒ U12③（迟到的回收者挪走新锁）",
+      "file": "src/trivium/lock.ts",
+      "find": "      if (!isJudged(again) || again.state !== 'present' || again.identity !== id) return false;\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "CODEX-02 撤销：回收没成时不隔间隔（空转）⇒ U14",
+      "file": "src/trivium/lock.ts",
+      "find": "      // 不隔就是每轮两次 ps 派生的空转（代码双审 CODEX-02）。预算与间隔取值不变，只在这一路补上间隔\n      await new Promise((r) => setTimeout(r, delay));\n",
+      "replace": "      // 不隔就是每轮两次 ps 派生的空转（代码双审 CODEX-02）。预算与间隔取值不变，只在这一路补上间隔\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "CODEX-04 撤销：tmp 清理失败抛给调用方 ⇒ U13（目录占位）",
+      "file": "src/trivium/lock.ts",
+      "find": "    await fs.rm(tmp, { force: true }).catch(() => undefined);\n",
+      "replace": "    await fs.rm(tmp, { force: true });\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "GLM-02 撤销：认领失败不留痕 ⇒ U13",
+      "file": "src/trivium/lock.ts",
+      "find": "        warn(`回收主题「${path.basename(p, '.lock')}」的遗留锁时认领失败（${code ?? String(e)}），本轮不回收`);\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M0x",
+      "desc": "acquireLock 一侧整段退回 3e38d29 的判定（保留 D3 / D4）⇒ EV-149 断言③④、X3（概率性）",
+      "file": "src/trivium/lock.ts",
+      "find": "    const seen = await readLockFile(p);\n    // 持有者恰在 EEXIST 与读锁之间释放：锁已不在，不是遗留锁——立刻重试 link，不判定、不告警、不回收（EV-173）\n    if (seen.state === 'missing') continue;\n    const existing = seen.content;\n    const terminal = opts.runTerminal ? await opts.runTerminal(existing?.run_id ?? null) : false;\n    let stale = await judgeStale(existing, {\n      heartbeatStaleMs: opts.heartbeatStaleMs,\n      runTerminal: terminal,\n    });\n    // 防御：不可解析但刚写下不久的文件，可能是别的工具正在写——别抢，重试。年龄取自判定的同一个 inode（r2 D2）\n    if (stale === 'unparsable') {\n      const age = seen.mtimeMs !== null ? Date.now() - seen.mtimeMs : await fileAgeMs(p);\n      if (age === null) continue; // 兜底 stat 时锁已不在：同上\n      if (age < 2_000) stale = null;\n    }\n\n    if (stale !== null) {\n      // 只在真回收了判定的那一份之后告警：预检不符 / 别人先动手时什么都没回收（r2 D5）\n      if (await reclaimStaleLock(p, existing, seen.identity ?? undefined)) {\n        warn(`回收主题「${opts.topic}」的遗留锁（原因 ${stale}，原持有者 pid ${existing?.pid ?? '?'}）`);\n        continue; // 立刻重试创建\n      }\n      // 没回收成（别人先动手 / 预检不符 / 认领被占）：隔一个间隔再来。认领者中途崩溃时认领要 10 s 才清得掉，\n      // 不隔就是每轮两次 ps 派生的空转（代码双审 CODEX-02）。预算与间隔取值不变，只在这一路补上间隔\n",
+      "replace": "    const existing = await readLock(p);\n    const terminal = opts.runTerminal ? await opts.runTerminal(existing?.run_id ?? null) : false;\n    let stale = await judgeStale(existing, {\n      heartbeatStaleMs: opts.heartbeatStaleMs,\n      runTerminal: terminal,\n    });\n    if (stale === 'unparsable' && ((await fileAgeMs(p)) ?? Number.POSITIVE_INFINITY) < 2_000) stale = null;\n    if (stale !== null) {\n      warn(`回收主题「${opts.topic}」的遗留锁（原因 ${stale}，原持有者 pid ${existing?.pid ?? '?'}）`);\n      await reclaimStaleLock(p, existing);\n      continue; // 立刻重试创建\n",
+      "expect": "dist/test/test/integration/lock-cross-process.test.js"
+    }
+  ]
+}

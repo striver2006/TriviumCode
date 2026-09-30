@@ -1,0 +1,80 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "锁回收的核心修法在我这一侧镜头下成立：readLockFile 以同一描述符取内容与 dev:ino:mtimeNs 身份、区分「不存在/不可解析」，预检→认领→复查→rename→复验→link 放回的真回收才告警，契约在全部四处调用方一致；Node 18.20.8 实测全绿，跨进程新产物文件（.reclaim-/.stale-/.tmp-）已核过不影响 hooks 的锁目录枚举；证据链自洽（旧构建 240/240 红、新构建 240/240 绿、D8 后 600/1200 轮 0 双持有）。提出 4 条非阻断意见：①原始需求.txt 混入与本主题无关的机型冒烟记录，污染本 run 审计 diff；②回收认领竞争路径上的零延时热重试（认领者崩溃时可持续约 10 s）；③SIGKILL 落在清理点之间时锁目录残料无任何清扫入口；④renameAndVerify/claim 的 finally 清理调用可抛非 70 原始异常穿透 acquireLock（目录占位场景论证成立、未实测）。均可逐条独立裁决，不阻断合入。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "scope-drift",
+      "location": "doc/01_requirements/原始需求.txt（本 run changes.diff 首个 hunk）",
+      "problem": "混入了与主题「锁回收误判已删锁文件」完全无关的内容：五条手机机型（华为 Pura 70 Ultra / Nova 5 Pro / iPhone 12 Pro / 小米 Mi 10 / OPPO Pad Air2）的「课程播放功能」正式版冒烟测试记录，明显属于另一个移动端项目的 QA 笔记；还引入了一行只有空格的伪空行（「+ 」）。它被登记进本主题的审计 diff（sha256:d8f1c93a…，files 列表第一项），会让后来翻留痕的人对「本主题动了需求文件什么、为什么动」产生误解，也污染需求溯源。",
+      "evidence": "读被审 diff 首个 hunk（doc/01_requirements/原始需求.txt，+「20260930以下机型使用正式版随机挑选1-2门课冒烟测试课程播放功能…」）；git status 显示该文件 M 于工作树；同文件上文仅有「20260912需求 1.在其他Agent进行双审时…」属 TriviumCode 自身需求，与新增块内容无交集。",
+      "suggestion": "由 Driver 与用户确认这段冒烟记录是否确要入本仓库；若是，建议从本主题的提交里拆出单独 chore 提交，别让它进本主题的 changes.diff 留痕；顺手去掉只含空格的行。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "performance",
+      "location": "src/trivium/lock.ts:386-390（回收失败 continue）与 :232-241（认领 EEXIST 放弃分支）",
+      "problem": "acquireLock 的「missing continue」「stale→回收失败 continue」两条路径都不经过循环底的 retryDelayMs 休眠，也不经过 attempt>=retries 抛出点。D8 新增了一条可持续数秒的该形态：上一轮认领者中途被 SIGKILL、认领文件年龄不足 RECLAIM_CLAIM_STALE_MS(10s) 时，每轮都是「写 tmp→link EEXIST→删 tmp→读锁→判定→认领 EEXIST→stat 认领→放弃→立刻 continue」的零延时热循环，--start（retries=0）与 withTopicLock（2000×5ms）都在空转烧 CPU 与系统调用，最长约 10 s（到认领按年龄清掉为止）。旧代码回收失败同样立刻 continue（既有形态），认领竞争是把秒级持续的新入口加进了这条既有快路径。",
+      "evidence": "读 src/trivium/lock.ts 全文：for(let attempt…) 循环体中 `if (seen.state === 'missing') continue;`、`if (stale !== null){…continue;}` 均无 sleep，setTimeout(delay) 只在循环体末尾 stale===null 且未超预算时执行；reclaimStaleLock 认领 EEXIST 分支读 fileAgeMs 后 age≤10s 即直接 return false。U12 用例（node18.txt 用例名「锁回收误判 U12…新鲜认领挡住后来者，陈旧认领被清掉后可重来」）证实该形态存在，只是单测不断言重试节奏。",
+      "suggestion": "认领 EEXIST 放弃（未删陈旧认领的那一格）后，continue 前等一个 retryDelayMs 量级的间隔；或删掉陈旧认领后在同轮直接重试认领一次。方向即可，勿为此加新配置项。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/lock.ts:229-241（claim）、:262-289（tmp `.stale-`）",
+      "problem": "回收新增的两类瞬时文件只在正常路径的 finally 里删除：进程在「创建认领之后、rename 之前」被 SIGKILL 会留下 `.lock.reclaim-<hash>` 孤儿，在「rename 之后、finally 之前」被杀会留下 `.lock.stale-<pid>-<uuid>` 孤儿。陈旧认领只在下一次对同一身份发起回收、且年龄超 10 s 时才被顺带清掉——旧锁若已被删除或改写，那个身份哈希永不再出现，孤儿就永久留在 .trivium/lock/。全仓没有任何针对锁目录残料的清扫（retention/scrub 论域是运行目录），人工排查时会看到来路不明的文件。已核实这些孤儿不会被误读成锁：hooks 的锁目录枚举按 `.lock` 后缀过滤，`.lock.reclaim-*` 等不在论域，因此只是观感与留痕问题，不构成误判。",
+      "evidence": "读 src/trivium/lock.ts 认领与 renameAndVerify 的清理全在 finally（异步 SIGKILL 打不断 finally）；grep src/trivium/hooks.ts:1636-1646 findRunningRuns 用 `e.endsWith('.lock') && !e.startsWith('.')` 过滤；grep retention.ts/scrub.ts 无 `.stale-`/`.reclaim-`/`tmp-` 清扫逻辑。EV-152/EV-150 的既有收尾链本就有 SIGKILL 升级路径（killTree→SIGKILL），落点窗口真实存在。",
+      "suggestion": "要么在 LLD/EV-174 如实登记「认领与 stale-tmp 的崩溃残料无清扫、仅同身份再回收时按年龄清」，要么在会话启动 Hook 顺带删超过一定年龄（如 1 个心跳周期）的 `.lock.stale-*` / `.lock.reclaim-*` / `.lock.tmp-*`（这些前缀不与任何判据重名，误删无害）。选登记也完全可以。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/lock.ts:286-288（renameAndVerify finally 的 fs.rm）与 :246（reclaimStaleLock finally 的 fs.rm）",
+      "problem": "finally 里的清理 `fs.rm(x,{force:true})` 的 force 只吞 ENOENT：若清理本身出错（EACCES、EROFS，或锁路径被目录占据——macOS 上 open 目录成功、readFile 抛 EISDIR，于是 readLockFile 给出 present + 目录身份、判定 unparsable，回收把整个目录 rename 到 tmp 后「复验」按同一 inode 身份判为相符，finally 的 rm 对目录抛 ERR_FS_EISDIR 直接穿透 reclaimStaleLock 抛给调用方），调用方拿到的是非 70 的原始异常，且残料以 `.stale-*` 名字继续留在锁目录。tmp 清理同型问题在旧代码已有（非本次回归），但本次新加了认领文件的同款 finally rm，等于把这一形态又扩了一处。",
+      "evidence": "读 src/trivium/lock.ts renameAndVerify 与 reclaimStaleLock 的两处 finally；readLockFile 对目录的 EISDIR 行为按其 catch（present、content null、identity 取目录 fstat）+ Node fs.rm 语义（force 仅忽略 ENOENT）推出。EV-150 结案记录里有「预建运行目录里放一个名为 worker.pid 的目录」的同型夹具先例，说明该形态在本项目测试文化里不算纯臆想。此为按代码论证，沙箱只读、未实测命中。",
+      "suggestion": "回收路径上各 finally/清理动作统一 `.catch(() => undefined)` 或就地吞错（清理失败最多少删一个残料，不该改变获取结果的类型与退出码）；若要更稳，readLockFile 对 stat 返回.isDirectory() 的条目直接按 present-null、identity null 处理，从源头不进「rename 整个目录」这条路。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "readLockFile 的设计点站得住：内容与身份取自同一 open 的描述符（消灭 EV-173 的「按路径 stat 得 +∞」）、身份用 dev:ino:mtimeNs 且对 ext4 inode 即时复用与 rename 不改 inode/mtime 的论证正确、BigInt 模板串（`${st.mtimeNs}` 不带 n 后缀）跨调用可比；open 非 ENOENT 错误（EIO 等）归 present-null 走保守不回收，U10 有格。",
+    "放回用 link（目标存在即原子失败）替代会覆盖的 rename、tmp 名加随机段、告警与 --cancel 播报改按回收结果——四处调用方（lock.ts:386、run-protocol.ts:1558/1877/748）与布尔返回契约逐一核对一致；748 的 soft 步骤静默吞结果符合该处既有语义。",
+    "跨文件影响面核过：hooks.ts findRunningRuns 的锁目录枚举以 endsWith('.lock') + 拒绝点开头过滤，新增 .reclaim-/.stale-/.tmp- 产物不进任何既有判据；bumpStopBlockCount 的计数在独立子目录，不受影响。",
+    "Node 兼容与打包约束满足：FileHandle.stat({bigint:true})、fs.rm force、crypto sha256 均在 Node ≥18 面内，无新依赖；证据 node18.txt（v18.20.8）整文件 7 条跨进程用例 + 全部单测绿。",
+    "证据链自洽且偏离显式：acceptance-xproc-e149-new.r1.json（D8 前 600 轮 1 重叠双持有 + 对应一条放不回告警）与报告 §3.1 叙事逐字段吻合，D8 后 e149-new 600 轮、probe-xproc-e149-d8 1200 轮均 0 双持有；repeat-new 240/240 绿对 repeat-old 240/240 红构成 X3 的因果对照；EV-174 三格剩余与 release() 同族窗口如实暂缓。",
+    "e149 用例改持锁区间回报（bootAt/readyAt/acq/rel）正确把「先后合法获取」与「真双持有」在断言层面分离，跨进程时间戳用 performance.timeOrigin+performance.now() 归一到墙上时钟、可比。"
+  ],
+  "not_covered": [
+    "按计划禁读清单未读另一位审查员的计划期产出，也未读本主题 plan/ 目录原文——「偏离 r2」的核对只依据 BACKLOG、LLD 与实施报告的自述，r2 原文引用（§2.1 P2、§4 R1/R2 等）未逐条对账。",
+    "沙箱只读，未重跑任何探针/压测/验收脚本；全部性能与竞态读数以落盘证据文件为准。",
+    "变异规格（gen-mutation-spec.mjs、mutation-output.txt、M13/M14 的用例映射）未逐条核对红集与变异体形态。",
+    "网络文件系统/NFS、APFS 大小写不敏感目录、iCloud 同步目录下的身份三元组行为未验证（LLD 已声明适用面为本地文件系统，视为已覆盖）。",
+    "CODEX-04 的目录占位路径为代码论证，未构造夹具实测；认领崩溃竞争（EV-174 ③）按项目「有实测命中前不动」的既定口径未再展开。",
+    "全量 diff 的 50 个文件只精读了 src/test/doc 四份代码与文档及关键证据 JSON/txt，其余证据文本文件为抽样阅读。"
+  ],
+  "consulted": [
+    "src/trivium/lock.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/hooks.ts",
+    "test/integration/lock-cross-process.test.ts",
+    "doc/05_testing/REPORT_2026-09-30_lock_reclaim_enoent.md",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/node18.txt",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/repeat-new.json",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/acceptance-xproc-e149-new.json",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/acceptance-xproc-e149-new.r1.json",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/acceptance-xproc-x1-new.json",
+    "CLAUDE.md"
+  ]
+}

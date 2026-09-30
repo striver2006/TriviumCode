@@ -1,0 +1,528 @@
+{
+  "base_ref": "3e38d29",
+  "node": "v25.2.1",
+  "platform": "darwin",
+  "rounds": 600,
+  "parallel": 8,
+  "a0_pkg": [
+    {
+      "f": "package.json",
+      "old": "f2fefaa519997bf12cc447eb97c0fa24766c31f5213e634eb7aa24ff6cee634e",
+      "new": "f2fefaa519997bf12cc447eb97c0fa24766c31f5213e634eb7aa24ff6cee634e"
+    },
+    {
+      "f": "package-lock.json",
+      "old": "2b4a1019758f6bb43b73b87f5b709bbbf091099c03f950c2a165fd9b5152fde8",
+      "new": "2b4a1019758f6bb43b73b87f5b709bbbf091099c03f950c2a165fd9b5152fde8"
+    }
+  ],
+  "a0_ported": [
+    {
+      "f": "test/unit/lock.test.ts",
+      "old_tree_before": "624d096e47b5b8432ac95b90adf1a8a79ead92a3e6e8576a3a2ab70bb3e1471d",
+      "old_tree_after": "dbc8ebc1550fcea5cfd3d95ed470186541c43db75fb9c56502589371a2ea52bb",
+      "new_tree": "dbc8ebc1550fcea5cfd3d95ed470186541c43db75fb9c56502589371a2ea52bb"
+    },
+    {
+      "f": "test/integration/lock-cross-process.test.ts",
+      "old_tree_before": "ae0a694a36bfb0a5f5abe051f0798102ce641474bb20f0f9977c2d07713fb9a1",
+      "old_tree_after": "07a23b3d1e64c39293e29bba6129fd57f3d47ced885b152755bd6c2db0350df4",
+      "new_tree": "07a23b3d1e64c39293e29bba6129fd57f3d47ced885b152755bd6c2db0350df4"
+    },
+    {
+      "f": "test/integration/run-protocol.test.ts",
+      "old_tree_before": "a0f5b98e4bae6a4c5aa4abc4bc6d8b01d4d633e944ac6371e1b4d610895148a5",
+      "old_tree_after": "bd2f047abd51ff4faacb4752d6065b9aeca72fbc2c7ffe0dd904722b90a7035c",
+      "new_tree": "bd2f047abd51ff4faacb4752d6065b9aeca72fbc2c7ffe0dd904722b90a7035c"
+    }
+  ],
+  "a0_sha": {
+    "old_cli": "5af11d60c9a9f16a834c803e5adad4929dff9590019888270c6fcb6db80a5a94",
+    "new_cli": "4c9e52a8d788ae14f57e68b3847f262da7a170ee34258f9e23165468df9323ca",
+    "old_lock": "62c105b8323c258b7b4cdd154acf0d2899db73922e5b43dae95c66c8d8add6eb",
+    "new_lock": "b4e78aaf0ace8c8ddd884702e5be490b9f6403aeafd6282cbe198e17803e0694"
+  },
+  "a1_inproc": {
+    "old": {
+      "lock_module": "../../../../private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-OXJAK3/old/dist/test/src/trivium/lock.js",
+      "node": "v25.2.1",
+      "at": "2026-09-30T05:21:01.761Z",
+      "P1_enoent_after_eexist": {
+        "delete_before_read": true,
+        "injected": 1,
+        "acquired": true,
+        "holder_pid": 25064,
+        "reclaim_warnings": [
+          "⚠️  回收主题「探针抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）"
+        ]
+      },
+      "P1c_control_no_delete": {
+        "delete_before_read": false,
+        "injected": 0,
+        "acquired": false,
+        "code": 70,
+        "message": "主题「探针抢锁」已被占用：run_id 未知（pid 25064，自 2026-09-30T05:21:01.774Z 起）。",
+        "reclaim_warnings": []
+      },
+      "P2_reclaim_displaces_live_lock": {
+        "a_acquired": true,
+        "c_acquired": true,
+        "c_error": null,
+        "c_tried_at": "B 复验期间（空档）",
+        "b": {
+          "acquired": false,
+          "code": 70,
+          "message": "主题「探针抢锁」已被占用：run_id R-A（pid 25064，自 2026-09-30T05:21:01.783Z 起）。"
+        },
+        "double_holder": true,
+        "events": [
+          {
+            "tag": "A 回收并建好新锁之后",
+            "lock_path_holds": "R-A",
+            "stale_files": 0
+          },
+          {
+            "tag": "B 已把 A 的活锁挪走、正在复验（空档）",
+            "lock_path_holds": "(不存在)",
+            "stale_files": 1
+          },
+          {
+            "tag": "C 拿到句柄那一刻",
+            "lock_path_holds": "R-C",
+            "stale_files": 1
+          },
+          {
+            "tag": "C 拿到句柄时 A 是否仍持有",
+            "a_holds": true
+          },
+          {
+            "tag": "B 结束之后",
+            "lock_path_holds": "R-A",
+            "stale_files": 0
+          },
+          {
+            "tag": "A、C 各自 release 之后",
+            "lock_path_holds": "(不存在)",
+            "stale_files": 0
+          }
+        ],
+        "reclaim_warnings": [
+          "⚠️  回收主题「探针抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）",
+          "⚠️  回收主题「探针抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）"
+        ],
+        "after_release": {
+          "tag": "A、C 各自 release 之后",
+          "lock_path_holds": "(不存在)",
+          "stale_files": 0
+        }
+      }
+    },
+    "new": {
+      "lock_module": "dist/test/src/trivium/lock.js",
+      "node": "v25.2.1",
+      "at": "2026-09-30T05:21:01.837Z",
+      "P1_enoent_after_eexist": {
+        "delete_before_read": true,
+        "injected": 1,
+        "acquired": true,
+        "holder_pid": 25078,
+        "reclaim_warnings": []
+      },
+      "P1c_control_no_delete": {
+        "delete_before_read": false,
+        "injected": 0,
+        "acquired": false,
+        "code": 70,
+        "message": "主题「探针抢锁」已被占用：run_id 未知（pid 25078，自 2026-09-30T05:21:01.849Z 起）。",
+        "reclaim_warnings": []
+      },
+      "P2_reclaim_displaces_live_lock": {
+        "a_acquired": true,
+        "c_acquired": false,
+        "c_error": {
+          "code": 70,
+          "message": "主题「探针抢锁」已被占用：run_id R-A（pid 25078，自 2026-09-30T05:21:01.858Z 起）。"
+        },
+        "c_tried_at": "B 结束之后（A 仍持有）",
+        "b": {
+          "acquired": false,
+          "code": 70,
+          "message": "主题「探针抢锁」已被占用：run_id R-A（pid 25078，自 2026-09-30T05:21:01.858Z 起）。"
+        },
+        "double_holder": false,
+        "events": [
+          {
+            "tag": "A 回收并建好新锁之后",
+            "lock_path_holds": "R-A",
+            "stale_files": 0
+          },
+          {
+            "tag": "B 结束之后",
+            "lock_path_holds": "R-A",
+            "stale_files": 0
+          },
+          {
+            "tag": "A、C 各自 release 之后",
+            "lock_path_holds": "(不存在)",
+            "stale_files": 0
+          }
+        ],
+        "reclaim_warnings": [
+          "⚠️  回收主题「探针抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）"
+        ],
+        "after_release": {
+          "tag": "A、C 各自 release 之后",
+          "lock_path_holds": "(不存在)",
+          "stale_files": 0
+        }
+      }
+    }
+  },
+  "a2_a3_xproc": {
+    "e149": {
+      "old": {
+        "scenario": "e149",
+        "lock_module": "../../../../private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-OXJAK3/old/dist/test/src/trivium/lock.js",
+        "rounds": 600,
+        "parallel": 8,
+        "elapsed_s": 126,
+        "reclaim_reason_counts": {
+          "pid_gone": 950,
+          "unparsable": 211
+        },
+        "rounds_multi_winner": 6,
+        "rounds_multi_winner_overlapping": 6,
+        "rounds_multi_winner_sequential": 0,
+        "rounds_zero_winner": 0,
+        "rounds_with_unparsable_warn": 154,
+        "rounds_with_late_boot": 0
+      },
+      "new": {
+        "scenario": "e149",
+        "lock_module": "dist/test/src/trivium/lock.js",
+        "rounds": 600,
+        "parallel": 8,
+        "elapsed_s": 126,
+        "reclaim_reason_counts": {
+          "pid_gone": 600
+        },
+        "rounds_multi_winner": 0,
+        "rounds_multi_winner_overlapping": 0,
+        "rounds_multi_winner_sequential": 0,
+        "rounds_zero_winner": 0,
+        "rounds_with_unparsable_warn": 0,
+        "rounds_with_late_boot": 0
+      }
+    },
+    "x1": {
+      "old": {
+        "scenario": "x1",
+        "lock_module": "../../../../private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-OXJAK3/old/dist/test/src/trivium/lock.js",
+        "rounds": 600,
+        "parallel": 8,
+        "elapsed_s": 138,
+        "reclaim_reason_counts": {
+          "unparsable": 41,
+          "pid_reused": 1
+        },
+        "rounds_with_reclaim_warn": 38,
+        "rounds_max_inside_gt1": 0,
+        "rounds_lost_update": 0,
+        "rounds_not_all_ok": 0
+      },
+      "new": {
+        "scenario": "x1",
+        "lock_module": "dist/test/src/trivium/lock.js",
+        "rounds": 600,
+        "parallel": 8,
+        "elapsed_s": 138,
+        "reclaim_reason_counts": {},
+        "rounds_with_reclaim_warn": 0,
+        "rounds_max_inside_gt1": 0,
+        "rounds_lost_update": 0,
+        "rounds_not_all_ok": 0
+      }
+    }
+  },
+  "a4_ported": {
+    "old": [
+      {
+        "want": "跨进程：多个进程同时回收同一把遗留锁，仍只有一个拿到",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 X3",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U1：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U2：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U3：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U4：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U4′：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U4b：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U5：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U6：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U7：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U8：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U9：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U10：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U11：",
+        "seen": true,
+        "pass": false
+      },
+      {
+        "want": "锁回收误判 U12：",
+        "seen": true,
+        "pass": false
+      }
+    ],
+    "old_summary": "ℹ tests 101；ℹ pass 84；ℹ fail 17",
+    "new": [
+      {
+        "want": "跨进程：多个进程同时回收同一把遗留锁，仍只有一个拿到",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 X3",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U1：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U2：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U3：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U4：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U4′：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U4b：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U5：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U6：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U7：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U8：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U9：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U10：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U11：",
+        "seen": true,
+        "pass": true
+      },
+      {
+        "want": "锁回收误判 U12：",
+        "seen": true,
+        "pass": true
+      }
+    ],
+    "new_summary": "ℹ tests 101；ℹ pass 101；ℹ fail 0"
+  },
+  "a5_cli": {
+    "dead": {
+      "new": {
+        "code": 0,
+        "stdout": "{\n  \"ok\": true,\n  \"topic\": \"锁验收\",\n  \"stage\": \"plan\",\n  \"driver\": \"claude\",\n  \"outcome\": \"claimed\",\n  \"claimed_at\": \"〈TS〉\",\n  \"claimed_by\": \"S-验收\",\n  \"history_len\": 0\n}\n",
+        "stderr": "⚠️  回收主题「.task-锁验收」的遗留锁（原因 pid_gone，原持有者 pid 〈PID〉）\n"
+      },
+      "old": {
+        "code": 0,
+        "stdout": "{\n  \"ok\": true,\n  \"topic\": \"锁验收\",\n  \"stage\": \"plan\",\n  \"driver\": \"claude\",\n  \"outcome\": \"claimed\",\n  \"claimed_at\": \"〈TS〉\",\n  \"claimed_by\": \"S-验收\",\n  \"history_len\": 0\n}\n",
+        "stderr": "⚠️  回收主题「.task-锁验收」的遗留锁（原因 pid_gone，原持有者 pid 〈PID〉）\n"
+      }
+    },
+    "live": {
+      "new": {
+        "code": 70,
+        "stdout": "",
+        "stderr": "✗ 主题「.task-锁验收」已被占用：run_id 未知（pid 〈PID〉，自 〈TS〉 起）。\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。\n"
+      },
+      "old": {
+        "code": 70,
+        "stdout": "",
+        "stderr": "✗ 主题「.task-锁验收」已被占用：run_id 未知（pid 〈PID〉，自 〈TS〉 起）。\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。\n"
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "A0 依赖声明一致",
+      "ok": true,
+      "detail": "package.json 相同；package-lock.json 相同"
+    },
+    {
+      "id": "A0 移植测试逐字节相同",
+      "ok": true,
+      "detail": "test/unit/lock.test.ts：拷入前与新树不同、拷入后相同；test/integration/lock-cross-process.test.ts：拷入前与新树不同、拷入后相同；test/integration/run-protocol.test.ts：拷入前与新树不同、拷入后相同"
+    },
+    {
+      "id": "A0 新旧产物不同",
+      "ok": true,
+      "detail": "trivium.cjs 5af11d60c9a9 / 4c9e52a8d788；lock.js 62c105b8323c / b4e78aaf0ace"
+    },
+    {
+      "id": "A1 P1 旧",
+      "ok": true,
+      "detail": "注入 1 次；告警：⚠️  回收主题「探针抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）"
+    },
+    {
+      "id": "A1 P1 新",
+      "ok": true,
+      "detail": "注入 1 次；拿到锁 true；告警：无"
+    },
+    {
+      "id": "A1 P1c 两边",
+      "ok": true,
+      "detail": "旧 70、新 70，均无告警"
+    },
+    {
+      "id": "A1 P2 旧",
+      "ok": true,
+      "detail": "双持有 true；C 抢锁时机：B 复验期间（空档）；回收告警 2 条"
+    },
+    {
+      "id": "A1 P2 新",
+      "ok": true,
+      "detail": "双持有 false；C 抢锁时机：B 结束之后（A 仍持有），结局 70；回收告警 1 条"
+    },
+    {
+      "id": "A2 e149 旧",
+      "ok": true,
+      "detail": "600 轮：unparsable 告警 154 轮，多赢家 6 轮（重叠 6、先后 0），晚就绪 0 轮"
+    },
+    {
+      "id": "A2 e149 新",
+      "ok": true,
+      "detail": "600 轮：unparsable 告警 0 轮，多赢家 0 轮，晚就绪 0 轮；回收原因计数 {\"pid_gone\":600}"
+    },
+    {
+      "id": "A3 x1 旧",
+      "ok": true,
+      "detail": "600 轮：告警 38 轮（{\"unparsable\":41,\"pid_reused\":1}），区内 > 1 0 轮，丢更新 0 轮"
+    },
+    {
+      "id": "A3 x1 新",
+      "ok": true,
+      "detail": "600 轮：告警 0 轮，区内 > 1 0 轮，丢更新 0 轮"
+    },
+    {
+      "id": "A4 旧构建跑到了全部目标用例",
+      "ok": true,
+      "detail": "全部 16 条出现；ℹ tests 101；ℹ pass 84；ℹ fail 17"
+    },
+    {
+      "id": "A4 旧构建上的红绿（记录）",
+      "ok": true,
+      "detail": "跨进程多个进程同时回收同一把遗留锁，仍只有一个拿到红 X3红 U1红 U2红 U3红 U4红 U4′红 U4b红 U5红 U6红 U7红 U8红 U9红 U10绿 U11红 U12红"
+    },
+    {
+      "id": "A4 新构建全绿",
+      "ok": true,
+      "detail": "16/16；ℹ tests 101；ℹ pass 101；ℹ fail 0"
+    },
+    {
+      "id": "A5 死持有者：新旧都回收、输出逐字相同",
+      "ok": true,
+      "detail": "退出码 新 0 / 旧 0；stderr：⚠️  回收主题「.task-锁验收」的遗留锁（原因 pid_gone，原持有者 pid 〈PID〉）"
+    },
+    {
+      "id": "A5 活持有者：新旧都 70、输出逐字相同",
+      "ok": true,
+      "detail": "退出码 新 70 / 旧 70"
+    }
+  ]
+}

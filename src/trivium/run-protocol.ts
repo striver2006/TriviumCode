@@ -1873,8 +1873,12 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
   if (topic) {
     const existing = await inspectLock(ctx.triviumDir, topic);
     if (existing && existing.run_id === runId) {
-      await reclaimStaleLock(lockPathFor(ctx.triviumDir, topic), existing);
-      say(`已回收主题「${topic}」的锁`);
+      // 按回收结果播报（锁回收误判已删锁文件计划 r2 D7）：回收前预检不符时什么都没回收，原先照样说「已回收」
+      if (await reclaimStaleLock(lockPathFor(ctx.triviumDir, topic), existing)) {
+        say(`已回收主题「${topic}」的锁`);
+      } else {
+        step('主题锁在回收时已被别的进程动过，未回收');
+      }
     }
     /*
      * 闸门也要一并回到 idle。取消后若还留着 `running`，Driver 会被一个已经不存在的

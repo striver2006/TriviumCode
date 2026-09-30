@@ -1,0 +1,396 @@
+✔ 跨进程：N 个独立进程同抢一把锁，有且只有一个拿到 (1618.736667ms)
+✔ 跨进程：临界区串行化，并发读改写不丢更新 (1045.507875ms)
+⚠️  回收主题「跨进程抢锁」的遗留锁（原因 pid_gone，原持有者 pid 47223）
+✔ 跨进程：持锁进程被杀后，遗留锁按 pid_gone 被真实回收 (171.1165ms)
+✖ 跨进程：多个进程同时回收同一把遗留锁，仍只有一个拿到 (1623.632041ms)
+✖ 锁回收误判 X3：跨进程——高频抢放短临界区，锁恰被释放的那一格不告警、不回收、不交叠、不丢更新 (837.071583ms)
+✔ EV-161 X1：跨进程——亚秒阈值下慢临界区（withTopicLock）不被并发者回收、不丢更新 (1866.998833ms)
+✔ EV-161 X2：跨进程——亚秒阈值下慢临界区（withGlobalLock）不被并发者回收、不丢更新 (1830.832542ms)
+✔ --status 在运行中返回 73 并渲染两侧进度 (25.02625ms)
+✔ 尚无有效心跳时：status 为 null，字段退化而非报错（AC-19） (1012.049209ms)
+✔ Bash 工具超时贴着等待窗口，并封顶在平台上限 (0.254667ms)
+✔ --status 对不存在的运行返回 65 (0.865458ms)
+✔ --wait 窗口用尽时返回 73（这是预期返回，不是失败） (3020.740958ms)
+✔ --wait 在工作进程写下终态后立即返回其退出码 (8.836459ms)
+✔ --wait 透出工作进程记录的失败退出码 (8.239958ms)
+✔ --wait 发现工作进程失联时抛错并把终态写下来 (330.558583ms)
+✔ --wait 对不存在的运行目录报 65 (0.526708ms)
+· 向工作进程组 47283 发送 SIGTERM
+· 归档 run-R-CANCEL.json 未回写：归档里没有 run-R-CANCEL.json
+· task.json 的运行登记未改：归档 run.json 不是 cancelled（读不到），不改登记
+已回收主题「协议用例」的锁
+运行 R-CANCEL 已取消
+✔ --cancel 终止工作进程、标 cancelled、并回收主题锁 (538.442ms)
+已回收主题「协议用例」的锁
+运行 R-ARCH 已取消
+✔ EV-128 E1：--cancel 把归档 run.json 与 task.json 登记收尾为 cancelled，且排在 status.json 之前写 (66.632958ms)
+✖ 锁回收误判 U11：--cancel 收尾时锁在复核之后被改动 ⇒ 回收放弃，播报「未回收」而不是「已回收」（计划 r2 D7） (34.175667ms)
+运行 R-UNSURE 已取消
+✔ EV-128 E3：工作进程未确认退出（运行中却拿不到 worker_pid）⇒ 归档 run.json 不写，输出写明原因 (16.70575ms)
+已回收主题「协议用例」的锁
+运行 R-ROFS 已取消
+✔ EV-128 E6：归档侧写失败（_meta 只读）不连坐锁与闸门回收：退 0、锁已回收、status.json 为 cancelled、告警写明原因 (24.61825ms)
+✔ EV-142 L1：worker 被杀后 --wait 判 pid_gone ⇒ 归档 run.json 收尾为 failed、带 termination，task.json 同步 (329.340166ms)
+✔ EV-142 L2：进程还活着、只是心跳过期（heartbeat_stale）⇒ 归档 run.json 不写，报错写明未确认退出 (22.741042ms)
+✔ EV-142 L3：运行中却拿不到 pid、心跳过期 ⇒ 用改写前的 status.json 判「未确认」，run.json 不写 (13.627ms)
+✔ EV-142 L5：status.json 读不到、worker.pid 指向的进程已死（pid_gone）⇒ 也收尾为 failed；进程活着则不判失联 (2323.048333ms)
+· 工作进程 47601 已不存在，仅做状态与锁的清理
+⚠️  status.json 里没有在跑的审查员 CLI 记录——CLI 已先结束，或派生后来不及记下；后者本命令够不到，请用 ps 核对 ppid 为 1 的 CLI 进程（设计 7.5「审查员 CLI 进程组记录」的如实保留清单）
+· 归档 run-R-DEADCANCEL.json 未回写：归档里没有 run-R-DEADCANCEL.json
+· task.json 的运行登记未改：归档 run.json 不是 cancelled（读不到），不改登记
+运行 R-DEADCANCEL 已取消
+✔ --cancel 对已退出的工作进程也能清理状态与锁 (620.897708ms)
+✔ EV-150 U5①：确认退出 ⇒ 终止先于闸门回收；随后闸门 idle、run.json 与登记 failed（post_spawn_exception）、status.json failed、已改写成 worker 的锁按 run_id 回收 (22.468541ms)
+✔ EV-150 U5②：确认不了退出 ⇒ 闸门、run.json、status.json 的 phase 不动；补记 worker_pid 与启动时刻；本进程内容的锁改记到 worker 名下；给出 --cancel 出路 (9.983083ms)
+✔ EV-150 U5③：收尾窗口里主题锁已被新一轮接管 ⇒ 第 6 步不删它，新一轮的闸门也不动 (17.720167ms)
+✔ EV-150 U5④：worker 在被终止之前已跑完（run.json 与 status.json 都是 success）⇒ 两者都不改写，指路 --wait (11.433792ms)
+✔ EV-150 U5⑤：回读 run.json 读不出（不可解析）⇒ status.json 的 phase 不动、只补 pid，并告警人工核对（代码双审 r1 CODEX-03） (10.948167ms)
+✔ EV-150 U5⑥：确认不了退出、锁已不归本进程也不归 worker ⇒ 不说「已记在它名下」，如实说明锁的归属与并发风险（代码双审 r1 GLM-01 第 2 点） (7.764458ms)
+✔ EV-150 U6：--cancel 宽限期判据——存活但不是同一进程（PID 被复用）即算已退出；同一进程算未退出；不存在算已退出 (3.377291ms)
+✔ EV-152 U8：worker 处理器的预算落在取消宽限之内（转发宽限 + SIGKILL 后等待 + 1 s 余量 ≤ WORKER_TERM_GRACE_MS） (0.051541ms)
+✔ EV-152 U9①：处理器——登记为空时收到 SIGTERM 即以 signal: SIGTERM 退出（退出形态与今天相同，不是 exit(143)） (581.630917ms)
+✔ EV-152 U9②：处理器——连发两次 SIGTERM 只处理第一次：忽略 SIGTERM 的 CLI 组被升级 SIGKILL 结束（组空），worker 仍以 signal: SIGTERM 在宽限内退出 (2715.04575ms)
+✔ EV-146 K2：--wait 判失联时记下结构化的 lost；heartbeat_stale 的报错先列事实再给 --cancel 出口，pid_gone 不给 (354.727125ms)
+✔ EV-160 R1：--wait 那一句、共享判据、预检告警三者对同一阈值给出同一结论（2 / 30 / 30.5 / 120） (73.34ms)
+✔ EV-146 K3：本格主线——结束 worker、补收 run.json 与登记（worker_lost / heartbeat_stale）、按 run_id + pid 回收锁；status.json 逐字节不变、闸门不动 (286.434917ms)
+✔ EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如实说明；再跑一次仍入本格（判格可重入） (32.145666ms)
+✔ EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」 (93.270709ms)
+✔ EV-146 K5′：身份判不上（mismatch）时，status.json 里记着的活 CLI 组也不结束（代码双审 r1 CODEX-02）；同形但两种启动时刻缺失、worker 已不在时改判 gone（EV-159）、照旧按记录结束 CLI 并尝试补收 (568.133125ms)
+✔ EV-146 K10：结束工作进程时一个信号都没发就判已不在（零信号）⇒ 不说「响应 SIGTERM」「处理器已收拾」，无记录告警照常打，结论不说「已结束仍挂着的」（代码双审 r1 CODEX-01） (21.7005ms)
+✔ EV-146 K11：本格的退出判据是严格的——进程在而启动时刻取不到（ps 瞬时失败）不算已退出；不存在或启动时刻不同才算（代码双审 r1 GLM-01） (0.070542ms)
+✔ EV-146 K6：锁已不归本运行的 worker（run_id 相同而 pid 不同 / run_id 不同）⇒ 不动它、如实说明；worker 与归档照常收尾 (588.633375ms)
+✔ EV-146 K7：worker 挂住之前已写下归档终态（success）⇒ run.json 不追溯改写、如实说明；worker 照样结束、锁照样回收 (295.886375ms)
+✔ EV-159 N2：alive 格成功之后再跑一次 --cancel ⇒ worker 已不在（gone 格），按前提跳过（已是终态，不追溯改写）、可重入、逐字节不变 (313.510542ms)
+✔ EV-146 K9：本格的归档写失败（归档元数据目录只读）⇒ 告警带本格自己的「没有第二次机会」半句，不是主路径那句；锁照常回收 (289.770792ms)
+✔ EV-159 N1：worker 自己死了（不经 cancelLostWorker）⇒ classifyLostCancel 直接判 gone，--cancel 按 EV-142 前提补收 run.json 与登记、回收锁；不说「无需取消」 (352.373ms)
+✔ EV-159 N3：gone 格下锁已不归本运行的 worker（run_id 相同而 pid 不同 / run_id 不同）⇒ 不动它、如实说明；归档照常补收 (683.811166ms)
+✔ EV-159 N4：gone 格归档写失败（归档元数据目录只读）⇒ 告警带「可以再跑一次 --cancel 重试」的措辞，不是「没有第二次机会」；锁照常回收 (335.576875ms)
+✔ EV-159 classifyLostCancel 矩阵：pid 不合法（不管死活）⇒ no_identity；pid 合法+两时刻缺失+活着 ⇒ no_identity；+已死 ⇒ gone（新增）；pid 合法+有时刻+已死 ⇒ gone（既有行为，回归） (310.321666ms)
+✔ EV-158 U4 ②：settleOrphanedStart 确认不了退出 ⇒ status.json 补记规范化启动时刻、改写后的锁带 worker 的而不是本进程的；已有值不覆盖（??=） (32.57025ms)
+✔ EV-158 U4 ②′：settleOrphanedStart 确认退出一支 ⇒ status.json 为 null 的规范化字段按 startRun 已取到的值补上 (17.244458ms)
+✔ EV-158 C5 / C6：--cancel 主路径在与 --start 不同的环境里——新版记录 ⇒ 向活 worker 发 SIGTERM 并确认退出、收尾 cancelled；旧版记录 ⇒ 仍当它已不存在（今天的行为） (37.3195ms)
+✔ EV-158 U9（D6）：失联后取消那一格判 mismatch ⇒ 告警按比对依据分写，两种依据下都不对 worker 与记录里的 CLI 发信号 (52.015125ms)
+✔ 首次获取成功，锁文件记录 pid 与启动时刻 (13.2025ms)
+✔ 活锁被占用且不重试 → 抛退出码 70，并带上现有 run_id (11.16825ms)
+✔ release 只删自己的锁：内容不符时不误删他人的锁 (5.097417ms)
+✔ 判据 1：PID 不存在 → pid_gone (0.190708ms)
+✔ 判据 2：PID 存在但启动时刻不符 → pid_reused（治 macOS PID 复用） (2.336791ms)
+✔ 判据 2 的反面：启动时刻相符的活进程不算遗留 (5.188542ms)
+✔ 判据 3：运行已终态 → heartbeat_dead，不必等满心跳 TTL (4.675708ms)
+✔ 锁文件损坏 → unparsable，视为遗留（否则永久锁死） (0.16625ms)
+✔ 短临界区持有过久 → heartbeat_dead（长持锁不受此限） (6.423083ms)
+⚠️  回收主题「登录重构」的遗留锁（原因 pid_gone，原持有者 pid 4194304）
+✔ 遗留锁被自动回收后可重新获取 (8.420167ms)
+✔ 回收用 rename → 复验 → 删除，并发只有一个成功 (1.165833ms)
+✔ 回收复验不符时，把别人的新锁放回去而不是删掉（GLM-04 的承诺此前未兑现） (1.283709ms)
+✔ 原本不可解析、此刻已是合法锁 → 不回收（那是别人刚建的） (1.051166ms)
+⚠️  回收主题「登录重构」的遗留锁（原因 unparsable，原持有者 pid ?）
+⚠️  回收主题「登录重构」的遗留锁（原因 unparsable，原持有者 pid ?）
+✔ 锁文件一出现就是完整内容：并发争抢从不观察到空文件 (401.063208ms)
+⚠️  回收主题「登录重构」的遗留锁（原因 unparsable，原持有者 pid ?）
+✔ 不可解析但刚写下的锁文件：不抢，先当活锁重试 (18.960416ms)
+✔ 短临界区串行化：并发 withTopicLock 不会交叠 (824.116542ms)
+✔ 短臨界区异常也会释放锁 (4.797875ms)
+✔ 不同主题的锁互不影响 (7.947959ms)
+✔ EV-161 U1：下限的来源就是 WORKER_HEARTBEAT_MS，取大不取小 (0.142042ms)
+✔ EV-161 U1′：阈值为 NaN 时 critical 活锁照旧不按年龄回收 (4.267417ms)
+✔ EV-161 U2：阈值低于下限时 critical 锁按下限判，持有未过下限不回收 (9.202708ms)
+✔ EV-161 U3：阈值等于、高于下限时与原判据逐字相同 (38.199583ms)
+✔ EV-161 U4：run 锁不受影响（不走年龄判据） (12.92325ms)
+✔ EV-161 U5：小阈值下其余判据不变（pid_gone / pid_reused / runTerminal / unparsable） (3.643792ms)
+✔ EV-161 U6：acquireLock 在亚秒阈值下不回收刚取不久的活锁，锁文件逐字节不变 (4.827625ms)
+⚠️  回收主题「登录重构」的遗留锁（原因 heartbeat_dead，原持有者 pid 46948）
+✔ EV-161 U7：acquireLock 在亚秒阈值下过了下限照常回收 (6.525958ms)
+✔ EV-161 U8：同进程并发——亚秒阈值下慢临界区不被并发者回收、不丢更新 (387.54875ms)
+✖ 锁回收误判 U1：EEXIST 之后、读锁之前持有者释放 ⇒ 立刻重试拿到锁，不告警、不 rename（EV-173） (9.04525ms)
+✖ 锁回收误判 U2：读锁时锁已不在、重试 link 前又被别人建上 ⇒ 按活锁判、抛 70，无告警 (8.005334ms)
+✖ 锁回收误判 U3：不可解析锁的年龄取自判定的同一个 inode——读后路径被换成旧文件，仍按新写的不回收 (9.526375ms)
+✖ 锁回收误判 U4：回收前身份预检——路径上已换成新锁 ⇒ 返回 false、不 rename、新锁逐字节不变 (1.972875ms)
+✖ 锁回收误判 U4′：身份含修改时刻——判定之后遗留锁被就地改写（inode 相同、mtime 不同）⇒ 预检不符，不回收 (6.730625ms)
+✖ 锁回收误判 U4b：不传身份、expected 非空而此刻内容读不出 ⇒ 不回收（计划双审 AGY-01） (1.043625ms)
+✖ 锁回收误判 U5：慢回收者判定之后快回收者已建好新锁 ⇒ 慢者不挪走活锁，空档不出现，只有一个持有者（EV-149 入口 B） (19.966917ms)
+✖ 锁回收误判 U6：残余窗口命中（预检之后才换人）⇒ 放回用 link、不覆盖空档里的新锁，留痕告警，不留 tmp (2.001375ms)
+✖ 锁回收误判 U7：告警只在真回收之后打，文字不变；预检不符放弃回收时不告警 (14.22075ms)
+✖ 锁回收误判 U8：同进程同一毫秒的两次回收 tmp 名不同 (0.639166ms)
+✖ 锁回收误判 U12：回收认领——同一份遗留锁同一时刻只有一个回收者动手；新鲜认领挡住后来者，陈旧认领被清掉后可重来（D8） (1.417458ms)
+✖ 锁回收误判 U9：读锁取不到修改时刻、兜底 stat 时锁已不在 ⇒ 按已释放重试，不进回收 (8.529083ms)
+✔ 锁回收误判 U10：打开锁文件之后读内容出错（EIO）⇒ 按不可解析判、不抛非 70 的异常（计划双审 GLM-02） (7.171959ms)
+✔ 阻断计数自增并在超过上限时报 exceeded (1.181041ms)
+✔ 阻断计数按主题与阶段分别记，reset 只清对应的一份 (2.064458ms)
+✔ 阻断计数并发自增不丢计数 (3.76725ms)
+ℹ tests 99
+ℹ suites 0
+ℹ pass 84
+ℹ fail 15
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17896.784833
+
+✖ failing tests:
+
+test at dist/test/test/integration/lock-cross-process.test.js:152:1
+✖ 跨进程：多个进程同时回收同一把遗留锁，仍只有一个拿到 (1623.632041ms)
+  AssertionError [ERR_ASSERTION]: 不得把已删的锁文件判成不可解析：[{"id":0,"ok":false,"code":70,"message":"主题「跨进程抢锁」已被占用：run_id R-1（pid 47233，自 2026-09-30T04:36:19.427Z 起）。\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。","__stderr":"⚠️  回收主题「跨进程抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）\n"},{"id":1,"ok":true,"acq":1790742979428.6467,"rel":1790742980331.428,"__stderr":"⚠️  回收主题「跨进程抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）\n"},{"id":2,"ok":false,"code":70,"message":"主题「跨进程抢锁」已被占用：run_id R-1（pid 47233，自 2026-09-30T04:36:19.427Z 起）。\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。","__stderr":"⚠️  回收主题「跨进程抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）\n"},{"id":3,"ok":false,"code":70,"message":"主题「跨进程抢锁」已被占用：run_id R-1（pid 47233，自 2026-09-30T04:36:19.427Z 起）。\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。","__stderr":"⚠️  回收主题「跨进程抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）\n"},{"id":4,"ok":false,"code":70,"message":"主题「跨进程抢锁」已被占用：run_id R-1（pid 47233，自 2026-09-30T04:36:19.427Z 起）。\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。","__stderr":"⚠️  回收主题「跨进程抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）\n"}]
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/integration/lock-cross-process.test.js:195:10)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: '⚠️  回收主题「跨进程抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）\n⚠️  回收主题「跨进程抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）\n⚠️  回收主题「跨进程抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）\n⚠️  回收主题「跨进程抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）\n⚠️  回收主题「跨进程抢锁」的遗留锁（原因 pid_gone，原持有者 pid 4194304）\n',
+    expected: /原因 unparsable/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }
+
+test at dist/test/test/integration/lock-cross-process.test.js:200:1
+✖ 锁回收误判 X3：跨进程——高频抢放短临界区，锁恰被释放的那一格不告警、不回收、不交叠、不丢更新 (837.071583ms)
+  AssertionError [ERR_ASSERTION]: 锁恰被释放不是遗留锁，不得告警 / 回收：⚠️  回收主题「跨进程抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）
+  ⚠️  回收主题「跨进程抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）
+  ⚠️  回收主题「跨进程抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）
+  ⚠️  回收主题「跨进程抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）
+  
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/integration/lock-cross-process.test.js:240:12)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: '⚠️  回收主题「跨进程抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）\n⚠️  回收主题「跨进程抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）\n⚠️  回收主题「跨进程抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）\n⚠️  回收主题「跨进程抢锁」的遗留锁（原因 unparsable，原持有者 pid ?）\n',
+    expected: /回收主题/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }
+
+test at dist/test/test/integration/run-protocol.test.js:276:1
+✖ 锁回收误判 U11：--cancel 收尾时锁在复核之后被改动 ⇒ 回收放弃，播报「未回收」而不是「已回收」（计划 r2 D7） (34.175667ms)
+  AssertionError [ERR_ASSERTION]: 桩必须在回收的预检读时触发
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/integration/run-protocol.test.js:295:12)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:478:1
+✖ 锁回收误判 U1：EEXIST 之后、读锁之前持有者释放 ⇒ 立刻重试拿到锁，不告警、不 rename（EV-173） (9.04525ms)
+  AssertionError [ERR_ASSERTION]: 桩必须真的在读锁前删过
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:500:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:512:1
+✖ 锁回收误判 U2：读锁时锁已不在、重试 link 前又被别人建上 ⇒ 按活锁判、抛 70，无告警 (8.005334ms)
+  AssertionError [ERR_ASSERTION]: 两段桩都应触发
+  
+  0 !== 2
+  
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:532:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:542:1
+✖ 锁回收误判 U3：不可解析锁的年龄取自判定的同一个 inode——读后路径被换成旧文件，仍按新写的不回收 (9.526375ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(swapped)
+  
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:561:12)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:568:1
+✖ 锁回收误判 U4：回收前身份预检——路径上已换成新锁 ⇒ 返回 false、不 rename、新锁逐字节不变 (1.972875ms)
+  AssertionError [ERR_ASSERTION]: 预检不符不得 rename
+  
+  2 !== 0
+  
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:583:12)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:591:1
+✖ 锁回收误判 U4′：身份含修改时刻——判定之后遗留锁被就地改写（inode 相同、mtime 不同）⇒ 预检不符，不回收 (6.730625ms)
+  AssertionError [ERR_ASSERTION]: 桩必须在预检读时触发
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:605:12)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:614:1
+✖ 锁回收误判 U4b：不传身份、expected 非空而此刻内容读不出 ⇒ 不回收（计划双审 AGY-01） (1.043625ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:618:10)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:622:1
+✖ 锁回收误判 U5：慢回收者判定之后快回收者已建好新锁 ⇒ 慢者不挪走活锁，空档不出现，只有一个持有者（EV-149 入口 B） (19.966917ms)
+  AssertionError [ERR_ASSERTION]: 只有 A 的一次回收 rename
+  
+  2 !== 1
+  
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:669:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:681:1
+✖ 锁回收误判 U6：残余窗口命中（预检之后才换人）⇒ 放回用 link、不覆盖空档里的新锁，留痕告警，不留 tmp (2.001375ms)
+  AssertionError [ERR_ASSERTION]: 放回不得覆盖空档里的新锁
+  
+  'R-LA' !== 'R-LC'
+  
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:709:16)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'R-LA',
+    expected: 'R-LC',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:721:1
+✖ 锁回收误判 U7：告警只在真回收之后打，文字不变；预检不符放弃回收时不告警 (14.22075ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  undefined !== 70
+  
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:743:12)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 70,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:750:1
+✖ 锁回收误判 U8：同进程同一毫秒的两次回收 tmp 名不同 (0.639166ms)
+  AssertionError [ERR_ASSERTION]: tmp 名撞了：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-lock-TL1H6n/lock/登录重构.lock.stale-46948-1790000000000 /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-lock-TL1H6n/lock/登录重构.lock.stale-46948-1790000000000
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:769:10)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-lock-TL1H6n/lock/登录重构.lock.stale-46948-1790000000000',
+    expected: '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-lock-TL1H6n/lock/登录重构.lock.stale-46948-1790000000000',
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:773:1
+✖ 锁回收误判 U12：回收认领——同一份遗留锁同一时刻只有一个回收者动手；新鲜认领挡住后来者，陈旧认领被清掉后可重来（D8） (1.417458ms)
+  AssertionError [ERR_ASSERTION]: 认领按身份命名
+  + actual - expected
+  
+  + []
+  - [
+  -   '登录重构.lock.reclaim-4e7e724bf3566bcf'
+  - ]
+  
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:794:12)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [],
+    expected: [ '登录重构.lock.reclaim-4e7e724bf3566bcf' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/lock.test.js:842:1
+✖ 锁回收误判 U9：读锁取不到修改时刻、兜底 stat 时锁已不在 ⇒ 按已释放重试，不进回收 (8.529083ms)
+  AssertionError [ERR_ASSERTION]: TriviumError: 主题「登录重构」已被占用：run_id 未知（pid 46948，自 2026-09-30T04:36:17.744Z 起）。
+    若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。
+  + actual - expected
+  
+  + TriviumError: 主题「登录重构」已被占用：run_id 未知（pid 46948，自 2026-09-30T04:36:17.744Z 起）。
+  +   若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。
+  +     at acquireLock (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/src/trivium/lock.js:128:13)
+  +     at async withStderr (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:447:21)
+  +     at async TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:854:15)
+  +     at async Test.run (node:internal/test_runner/test:1113:7)
+  +     at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+  +   code: 70,
+  +   details: undefined
+  + }
+  - undefined
+  
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:855:12)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: TriviumError: 主题「登录重构」已被占用：run_id 未知（pid 46948，自 2026-09-30T04:36:17.744Z 起）。
+      若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。
+        at acquireLock (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/src/trivium/lock.js:128:13)
+        at async withStderr (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:447:21)
+        at async TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-accept-lock-reclaim-KaD2ab/old/dist/test/test/unit/lock.test.js:854:15)
+        at async Test.run (node:internal/test_runner/test:1113:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:788:7),
+    expected: undefined,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

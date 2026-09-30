@@ -1,0 +1,78 @@
+{
+  "scenario": "e149",
+  "lock_module": "dist/test/src/trivium/lock.js",
+  "rounds": 600,
+  "parallel": 8,
+  "elapsed_s": 126,
+  "reclaim_reason_counts": {
+    "pid_gone": 600
+  },
+  "rounds_multi_winner": 1,
+  "rounds_multi_winner_overlapping": 1,
+  "rounds_multi_winner_sequential": 0,
+  "rounds_zero_winner": 0,
+  "rounds_with_unparsable_warn": 0,
+  "rounds_with_late_boot": 5,
+  "bad_rounds": [
+    {
+      "idx": 52,
+      "workers": [
+        {
+          "id": 0,
+          "bootAt": 1790736951606.937,
+          "readyAt": 1790736951783,
+          "startAt": 1790736952235,
+          "ok": true,
+          "acq": 1790736952277.2048,
+          "rel": 1790736953178.7852,
+          "reclaim_reasons": []
+        },
+        {
+          "id": 1,
+          "bootAt": 1790736951569.536,
+          "readyAt": 1790736951766,
+          "startAt": 1790736952235,
+          "ok": false,
+          "code": 70,
+          "message": "主题「跨进程抢锁」已被占用：run_id R-3（pid 4196，自 2026-09-30T02:55:52.276Z 起）。",
+          "reclaim_reasons": []
+        },
+        {
+          "id": 2,
+          "bootAt": 1790736951566.265,
+          "readyAt": 1790736951859,
+          "startAt": 1790736952235,
+          "ok": false,
+          "code": 70,
+          "message": "主题「跨进程抢锁」已被占用：run_id R-3（pid 4196，自 2026-09-30T02:55:52.276Z 起）。",
+          "reclaim_reasons": []
+        },
+        {
+          "id": 3,
+          "bootAt": 1790736951567.111,
+          "readyAt": 1790736951848,
+          "startAt": 1790736952235,
+          "ok": true,
+          "acq": 1790736952278.789,
+          "rel": 1790736953180.3562,
+          "reclaim_reasons": [
+            "pid_gone"
+          ]
+        },
+        {
+          "id": 4,
+          "bootAt": 1790736951570.96,
+          "readyAt": 1790736951858,
+          "startAt": 1790736952235,
+          "ok": false,
+          "code": 70,
+          "message": "主题「跨进程抢锁」已被占用：run_id R-3（pid 4196，自 2026-09-30T02:55:52.276Z 起）。",
+          "reclaim_reasons": []
+        }
+      ],
+      "winners": 2,
+      "overlap": true,
+      "late_boot": []
+    }
+  ]
+}

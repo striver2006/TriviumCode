@@ -1,0 +1,113 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  M1 ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=4）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=3）
+  M8x ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+  M0x ✓ 咬住（fail=2）
+{
+  "总数": 15,
+  "咬住": 15,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "D1 撤销：missing 不再直接重试（落进判定）⇒ U1（runTerminal 被调用）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "D2 撤销：不可解析锁的年龄改回按路径 stat ⇒ U3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "D3 身份只比 dev:ino（去掉修改时刻）⇒ U4′（就地改写的活锁被回收）",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M5",
+      "desc": "D3 谓词退回容忍「此刻读不出」⇒ U4b",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "D4 撤销：放回改回会覆盖的 rename ⇒ U6（C 的锁被盖掉）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "D4 放回之后不删 tmp ⇒ U6（.stale- 残留）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "D5 撤销：告警挪回回收之前 ⇒ U5 / U7",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M8x",
+      "desc": "同 M8，跨进程 ⇒ EV-149 用例断言④（多个判定者各告警一条 pid_gone；概率性）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "D6 撤销：tmp 名去掉随机段 ⇒ U8",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "D7 撤销：--cancel 收尾无条件播报「已回收」⇒ U11",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "fileAgeMs 对不存在的文件改回 +∞ ⇒ U9（进了回收的预检读）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "解析失败时丢掉同一描述符的修改时刻（退回按路径 stat）⇒ U3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "D8 撤销：不认领（同一份遗留锁的回收者不再互斥）⇒ U12①",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "D8 认领之后不复查 ⇒ U12③（迟到的回收者挪走新锁）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M0x",
+      "desc": "acquireLock 一侧整段退回 3e38d29 的判定（保留 D3 / D4）⇒ EV-149 断言③④、X3（概率性）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    }
+  ]
+}
+exit=0

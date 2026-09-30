@@ -229,25 +229,100 @@ test('跨进程：多个进程同时回收同一把遗留锁，仍只有一个�
   };
   await fs.writeFile(path.join(dir, 'lock', `${TOPIC}.lock`), JSON.stringify(dead, null, 2) + '\n');
 
+  /*
+   * 锁回收误判已删锁文件（EV-149 / EV-173，计划 r2 §5.2）：赢家回报持锁区间（拿到 / 释放时刻），
+   * 把「真双持有」（区间重叠）与「晚启动者在赢家释放后合法拿锁」（区间先后）从读数上分开；
+   * 修前探针 200 轮里后者 0 轮，唯一的双赢家区间重叠，入口是 ENOENT 被误判 unparsable 的回收挪走了活锁。
+   */
   const results = await raceWorkers(
     dir,
-    `const h = await lock.acquireLock({
+    `const now = () => performance.timeOrigin + performance.now();
+     const h = await lock.acquireLock({
        triviumDir: dir, topic: ${JSON.stringify(TOPIC)}, runId: 'R-' + id,
        kind: 'run', heartbeatStaleMs: ${STALE_MS}, retries: 0,
      });
+     const acq = now();
      await new Promise((r) => setTimeout(r, 900));
+     const rel = now();
      await h.release();
-     return { ok: true };`,
+     return { ok: true, acq, rel };`,
     5,
   );
 
-  const winners = results.filter((r) => r['ok'] === true);
+  const winners = results.filter((r) => r['ok'] === true) as Array<Record<string, unknown> & { acq: number; rel: number }>;
+  const overlapping: string[] = [];
+  for (let a = 0; a < winners.length; a++) {
+    for (let b = a + 1; b < winners.length; b++) {
+      if (winners[a]!.acq < winners[b]!.rel && winners[b]!.acq < winners[a]!.rel) {
+        overlapping.push(`${String(winners[a]!['id'])}×${String(winners[b]!['id'])}`);
+      }
+    }
+  }
+  assert.deepEqual(overlapping, [], `任意两段持锁区间不得重叠（真双持有）：${JSON.stringify(results)}`);
   assert.equal(
     winners.length,
     1,
-    `回收遗留锁的竞争也只应有一个赢家，实际 ${winners.length} 个：${JSON.stringify(results)}`,
+    `回收遗留锁的竞争也只应有一个赢家，实际 ${winners.length} 个（区间不重叠 ⇒ 先后合法获取，用例构造问题）：${JSON.stringify(results)}`,
   );
+  const stderr = results.map((r) => String(r['__stderr'])).join('');
+  // 这把遗留锁可解析：`unparsable` 只可能来自「锁恰被释放 / 挪走时读到 ENOENT」的误判（EV-173）
+  assert.doesNotMatch(stderr, /原因 unparsable/, `不得把已删的锁文件判成不可解析：${JSON.stringify(results)}`);
+  // 告警只在真回收之后打（计划 r2 D5）：恰有一个进程回收了那把死锁
+  const reasons = [...stderr.matchAll(/回收主题「[^」]+」的遗留锁（原因 (\w+)/g)].map((m) => m[1]);
+  assert.deepEqual(reasons, ['pid_gone'], `回收告警应恰一条且原因 pid_gone：${JSON.stringify(results)}`);
   assert.equal(await inspectLock(dir, TOPIC), null, '赢家 release 后不应残留');
+});
+
+/*
+ * 锁回收误判已删锁文件 X3（计划 r2 §5.2）：「释放抖动」——4 个进程各做 25 次短临界区，专门把
+ * 「撞 EEXIST 之后、读锁之前持有者恰好释放」这一格压出来。改前这一格读到 ENOENT 判 unparsable、年龄得 +∞，
+ * 打出失实告警并去回收，回收时若别人刚建好新锁就把活锁挪走（EV-173 / EV-149 入口 A）。
+ * 缺省阈值（120 s）：没有任何锁该被回收，任何「回收主题」字样都是误判。
+ */
+test('锁回收误判 X3：跨进程——高频抢放短临界区，锁恰被释放的那一格不告警、不回收、不交叠、不丢更新', async () => {
+  const dir = await tmpTrivium();
+  const counter = path.join(dir, 'counter.json');
+  const trace = path.join(dir, 'trace.log');
+  await fs.writeFile(counter, JSON.stringify({ n: 0 }), 'utf8');
+  const N = 4;
+  const ROUNDS = 25;
+  const results = await raceWorkers(
+    dir,
+    `const fsp = (await import('node:fs')).promises;
+     const { appendFileSync } = await import('node:fs');
+     const counter = ${JSON.stringify(counter)};
+     const trace = ${JSON.stringify(trace)};
+     for (let k = 0; k < ${ROUNDS}; k++) {
+       await lock.withTopicLock(
+         { triviumDir: dir, topic: ${JSON.stringify(TOPIC)}, heartbeatStaleMs: ${STALE_MS}, retries: 2000, retryDelayMs: 5 },
+         async () => {
+           appendFileSync(trace, '+' + id + '\\n');
+           const cur = JSON.parse(await fsp.readFile(counter, 'utf8'));
+           await fsp.writeFile(counter, JSON.stringify({ n: cur.n + 1 }));
+           appendFileSync(trace, '-' + id + '\\n');
+         },
+       );
+     }
+     return { ok: true };`,
+    N,
+  );
+
+  assert.equal(results.filter((r) => r['ok'] === true).length, N, `全部应成功：${JSON.stringify(results)}`);
+  let inside = 0;
+  let maxInside = 0;
+  const lines = (await fs.readFile(trace, 'utf8')).split('\n').filter(Boolean);
+  for (const l of lines) {
+    inside += l.startsWith('+') ? 1 : -1;
+    maxInside = Math.max(maxInside, inside);
+  }
+  assert.equal(lines.length, 2 * N * ROUNDS, '每次进出各一行');
+  assert.equal(maxInside, 1, `临界区须串行，实际同时 ${maxInside} 个`);
+  const final = JSON.parse(await fs.readFile(counter, 'utf8')) as { n: number };
+  assert.equal(final.n, N * ROUNDS, `${N}×${ROUNDS} 次各加一应得 ${N * ROUNDS}，实际 ${final.n} —— 少了就是丢更新`);
+  for (const r of results) {
+    assert.doesNotMatch(String(r['__stderr']), /回收主题/, `锁恰被释放不是遗留锁，不得告警 / 回收：${String(r['__stderr'])}`);
+  }
+  assert.equal(await inspectLock(dir, TOPIC), null, '全部退出后不应残留锁');
 });
 
 /*

@@ -1,0 +1,86 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "修法与 r2 计划逐格一致，偏离只有已显式声明的 D8（回收认领），且该偏离有读数支撑、论证充分、文档同步齐备。核心链路我逐行核过：readLockFile 三态与同描述符身份/年龄、预检-认领-复查-rename-复验-删除的次序、link 放回不覆盖、告警后移、acquireLock 三处调用与 run-protocol 三处外部收尾，未发现新的竞态或契约漂移。证据面 exceptional：新旧构建对照（移植测试旧红 15/16、新绿 99/99，拷贝逐字节校验）、600+1200 轮探针 0 双持有、变异 15/15 咬住。最值得处理的一条是范围外的：用户自己改的 doc/01_requirements/原始需求.txt（手机机型冒烟记录，与本仓产品无关）混在本轮变更集里，不得随本主题提交。其余为 nit：认领创建的非 EEXIST 错误被静默吞掉、孤儿认领/tmp 文件无通用回收、报告一处行数统计不准。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "scope-drift",
+      "location": "doc/01_requirements/原始需求.txt（changes-20260930T050232Z.diff 首个 hunk）",
+      "problem": "本轮变更集里混入一段与本主题、与本仓产品都无关的改动：原始需求.txt 追加了「20260930 以下机型使用正式版随机挑选 1-2 门课冒烟测试课程播放功能」及华为/Apple/小米/OPPO 五款机型的记录——那是移动端课程播放产品的测试笔记，不是 TriviumCode（macOS + VS Code 的代码审查编排器）的需求。实施报告 §起点已注明这是用户自己的工作树改动、与本主题无关，但它仍在 changes.diff 的 50 个文件清单里：若本主题提交时按这份 diff 落盘，无关产品内容会进需求文档并挂在本主题的 commit 下，污染审计留痕。",
+      "evidence": ".reviews/锁回收误判已删锁文件/code/_meta/changes-20260930T050232Z.diff 的原始需求.txt hunk（+10 行机型列表）；doc/05_testing/REPORT_2026-09-30_lock_reclaim_enoent.md 第 5 行「工作树只有用户自己改的 doc/01_requirements/原始需求.txt，与本主题无关」；README.md 第 22-28 行（本仓产品定位）；doc/01_requirements/README.md（目录承载的是本仓需求文档）。",
+      "suggestion": "本主题提交时把该文件的改动排除在 commit 之外（留在工作树），或先与用户确认这段笔记的归属——若是误粘到别的项目文件里，应由用户处置；不要让它随「锁回收误判已删锁文件」的提交进仓。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/lock.ts:232-243（reclaimStaleLock 认领创建的 catch）",
+      "problem": "认领文件创建的 catch 只区分 EEXIST，其余错误（ENOSPC、EACCES 等意外 errno）同样落到 return false 且不留任何痕迹。fail-closed 的结局本身是对的（不回收、交下一轮），但这格是新引入的静默失败面：若认领持续创建失败，等待者只会看到反复的 70「已被占用」，日志里没有任何线索说明回收为何从未发生。实际命中率低（走到回收前刚在同一目录成功写过 tmp 并 link 过，目录通常可写），但按本仓「错误被吞掉要留痕」的一贯口径，这格值得一句告警。",
+      "evidence": "src/trivium/lock.ts:233-242：catch (e) 内只处理 code === 'EEXIST'（含按年龄清理），其余异常无分支直接 return false；对照 D4 放回失败时同类情形有 warn（lock.ts:279-282）。",
+      "suggestion": "保持 fail-closed 不变，但在 EEXIST 之外的 errno 上 warn 一行（带路径与 code），让「回收永远不发生」可从 stderr 追因。不必重试、不必回退到无认领回收。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/lock.ts:229-253、262、287（认领与 tmp 文件的生命周期）",
+      "problem": "回收者若在「创建认领 → finally 删除」之间崩溃，.trivium/lock/ 里的 <锁>.reclaim-<hash> 会永久残留：10 s 按年龄清理只在「另一个回收者算出同一 sha256(identity) 并撞 EEXIST」时才触发，而身份含 mtimeNs，原锁一旦被收走或替换，同身份的后来者实际上不存在。同理 rename 之后、rm(tmp) 之前崩溃会留下 .stale-* 残件。已核 hooks.ts findRunningRuns 按 endsWith('.lock') 过滤，这些残件不会被误读成运行中的锁——纯垃圾文件缓慢累积（每份几字节），无功能影响，但设计与 LLD 里「10 s 以上还在……清掉」的表述容易让人以为有通用回收，实际是机会性的。",
+      "evidence": "src/trivium/lock.ts:238-239（清理仅发生在同身份认领撞 EEXIST 的分支）、252（finally 删认领）、287（finally 删 tmp）；src/trivium/hooks.ts:1640-1641（readdir 后 !e.endsWith('.lock') || e.startsWith('.') 直接 continue，残件被跳过）；LLD_orchestrator.md 回收段「认领 10 s 以上还在按认领者中途死了清掉，本轮仍放弃、交下一轮重来」。",
+      "suggestion": "不必本主题内改码。给 EV-174 补一句注记（或单独登一条 BACKLOG）：会话启动清扫可按年龄清理 lock 目录下的 .reclaim-* / .stale-* / .tmp-* 残件，并在 LLD 那句旁注明清理是「同身份后来者触发的机会性清理」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/REPORT_2026-09-30_lock_reclaim_enoent.md:27",
+      "problem": "报告写「src/trivium/run-protocol.ts（+8 −2）」，实际该文件只有一个 hunk（@@ -1873,8 +1873,12 @@），删 2 行加 6 行，净 +4。审计材料里的数字被别处引用时会放大误差，属事实性小错。",
+      "evidence": ".reviews/锁回收误判已删锁文件/code/_meta/changes-20260930T050232Z.diff 第 429-441 行（唯一 hunk，-2/+6）；doc/05_testing/REPORT_2026-09-30_lock_reclaim_enoent.md 第 27 行。",
+      "suggestion": "报告里改为 +6 −2（或按 hunk 头写「8 行上下文变 12 行」）。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "readLockFile 的三态设计与同一描述符取内容/身份/修改时刻（D1/D2）：open-ENOENT ⇒ missing，其余失败并入 present/unparsable，stat 与 readFile 同 try 保证 identity 为 null 时 content 必为 null，各失败格与 r2 §3 D1 的结局表逐格一致；readLock 薄包装对外行为不变，release/inspectLock 不受影响。",
+    "D3 谓词两条路分得干净：给身份只比 dev:ino:mtimeNs（mtimeNs 挡住 ext4 inode 复用与 workerLockContent 就地改写，rename 不改 inode/mtime 使复验可比）；外部调用方比内容且不容忍「此刻读不出」（AGY-01 收严落在 isJudged 的 expected 分支）。预检、认领后复查、复验共用同一谓词。",
+    "D8 认领互斥在并发上成立：O_EXCL 创建 + 认领后复查身份（堵住「上一个认领者已收掉」格）+ finally 删认领；认领名按身份 hash，作用域恰好是「同一份遗留锁」，不会把不同遗留锁的回收者互卡。偏离 r2 有读数支撑（600 轮仍 1 双持有 ⇒ 千分之一级），且已同步主设计 §12.6、LLD 4.3、BACKLOG EV-174——这是「实现推翻计划前提」的正确处理方式。",
+    "D4 放回改 link、EEXIST 告警、无论结局删 tmp；D5 告警后移且文字逐字不变；D6 tmp 随机段；D7 --cancel 按回收结果分两句且 :904/:1200 既有「已回收」断言保留——四处均与代码核实一致。",
+    "EV-149 用例加强的方向正确：区间重叠判定放在赢家数之前，把「真双持有」与「先后合法获取」从读数上分开（原 EV-149 登记里悬而未决的正是这个）；raceWorkers 以共同起跑时刻做屏障，晚启动理论上仍可能但探针 0/200、新构建 240 次文件级 0 红，残余可接受。X3 用缺省阈值断言零「回收主题」是干净的误判探测器（旧构建 240/240 红证明它会红）。",
+    "验收方法学扎实：移植测试拷贝前后 sha256 逐字节对账（防「旧树没跑到新用例」的假红绿）、正面断言 16 条用例全部出现、U10 在旧构建绿的原因（旧实现读锁不经 open，桩够不到）如实解释而非藏起来；r1 的 16/17 与挂死事故（§3.2）都如实登记。",
+    "文档同步齐备：主设计 v1.3.64、LLD v1.1.22（判据表 unparsable 行、回收段、2.7 行数、缺口表新增 EV-174 行）、BACKLOG EV-149/EV-173 分条结案 + EV-174 新登，均与代码实况对得上。"
+  ],
+  "not_covered": [
+    "我只做了只读审查，没有自行跑 npm run check / 集成测试 / 探针 / 变异装置；全量 2323 绿、doctor 14/14、Node 18 读数、ext4 与网络卷论证均取自报告与 evidence 文件，仅做了内部一致性交叉核对（repeat-new.json 240/240、acceptance-readout.json 17/17 及各分项与报告表格相符）。",
+    "evidence 目录 41 个文件未逐一细读（读详单：repeat-new.json、acceptance-readout.json 全文；r1 读数、mutation 输出、node18、check-1/2 依赖报告表格与 brief 节选交叉核对）。",
+    "MANUAL 与 PRD 的「核后不改」没有独立复核（未重新 grep 两份文档里关于锁回收的表述），采信报告 §1 §7 的核对结论。",
+    "计划 r1 与 revised 稿、以及另一位审查员的任何产出按禁读清单未读；test/unit/lock.test.ts 与 test/integration/run-protocol.test.ts 只按用例名与断言做了定点抽取（U1-U12/U11 存在且断言方向正确），未逐行读全部用例体。",
+    "EV-174 已登记的三格残余（非回收者删除、fstat 失败无认领、认领清理竞争）与 release() 同族窗口、doc/05_testing/README.md 报告索引未收新报告（EV-172 已登记暂缓）均系已知留痕，未作为本轮意见重复提出。",
+    "README.md 与 doc/README.md 仅读了开头部（上下文性文件，与被审代码无直接契约面）。"
+  ],
+  "consulted": [
+    ".reviews/锁回收误判已删锁文件/code/_meta/changes-20260930T050232Z.diff",
+    ".reviews/锁回收误判已删锁文件/plan/2026-09-30-锁回收误判已删锁文件-r2-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/05_testing/REPORT_2026-09-30_lock_reclaim_enoent.md",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/repeat-new.json",
+    "doc/05_testing/evidence/lock-reclaim-enoent-20260930/acceptance-readout.json",
+    "src/trivium/lock.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/hooks.ts",
+    "test/unit/lock.test.ts",
+    "test/integration/lock-cross-process.test.ts",
+    "test/integration/run-protocol.test.ts"
+  ]
+}
